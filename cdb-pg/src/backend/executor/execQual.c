@@ -751,7 +751,7 @@ ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 		prm = &(econtext->ecxt_param_exec_vals[thisParamId]);
 		if (prm->execPlan != NULL)
 		{
-			if (Mpp_role == MPP_ROLE_EXECUTE)
+			if (Gp_role == GP_ROLE_EXECUTE)
 			{
 				ParamListInfo paramInfo = econtext->ecxt_param_list_info;
 				int ni, nx = paramInfo->numParams;

@@ -658,7 +658,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
            sendSlice->sliceIndex == node->motionID);
 
 	/* QD must fill in the global slice table. */
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		MemoryContext   oldcxt = MemoryContextSwitchTo(estate->es_query_cxt);
         Flow           *sendFlow;
@@ -725,7 +725,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
     /* QE must fill in map from motionID to MotionState node. */
 	else
 	{
-        Insist(Mpp_role == MPP_ROLE_EXECUTE);
+        Insist(Gp_role == GP_ROLE_EXECUTE);
 		Assert(estate->es_slice_map != NULL && estate->es_slice_map[0] == NULL);
 
 		estate->es_slice_map[node->motionID] = motionstate;

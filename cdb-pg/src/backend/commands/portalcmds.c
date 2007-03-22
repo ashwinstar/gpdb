@@ -67,7 +67,7 @@ PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params)
 	if (!(stmt->options & CURSOR_OPT_HOLD))
 		RequireTransactionChain((void *) stmt, "DECLARE CURSOR");
 
-	if (Mpp_role != MPP_ROLE_UTILITY && (stmt->options & CURSOR_OPT_SCROLL))
+	if (Gp_role != GP_ROLE_UTILITY && (stmt->options & CURSOR_OPT_SCROLL))
 		ereport(ERROR,
 				(errcode(ERRCODE_MPP_FEATURE_NOT_YET),
 				 errmsg("scrollable cursors are not yet supported in Greenplum Database")));
@@ -175,7 +175,7 @@ PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params)
 	 * If Resource Scheduling is enabled, then record if this portal is
 	 * holdable or not in the portal's increment record.
 	 */
-	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
 	{
 		if (portal->cursorOptions & CURSOR_OPT_HOLD )
 		{
@@ -414,7 +414,7 @@ PersistHoldablePortal(Portal portal)
 		 * We don't allow scanning backwards in MPP! skip this call and 
 		 * skip the reset position call few lines down.
 		 */
-		if(Mpp_role == MPP_ROLE_UTILITY)
+		if(Gp_role == GP_ROLE_UTILITY)
 			ExecutorRewind(queryDesc);
 
 		/* Change the destination to output to the tuplestore */
@@ -450,7 +450,7 @@ PersistHoldablePortal(Portal portal)
 		 * don't want to reset the position because we are already in
 		 * the position we need to be. Allow this only in utility mode.
 		 */
-		if(Mpp_role == MPP_ROLE_UTILITY)
+		if(Gp_role == GP_ROLE_UTILITY)
 		{
 			if (portal->atEnd)
 			{

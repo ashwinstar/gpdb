@@ -86,7 +86,7 @@ compute_return_type(TypeName *returnType, Oid languageOid,
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 						 errmsg("SQL function cannot return shell type %s",
 								TypeNameToString(returnType))));
-			else if (Mpp_role != MPP_ROLE_EXECUTE)
+			else if (Gp_role != GP_ROLE_EXECUTE)
 				ereport(NOTICE,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("return type %s is only a shell",
@@ -113,7 +113,7 @@ compute_return_type(TypeName *returnType, Oid languageOid,
 					 errmsg("type \"%s\" does not exist", typnam)));
 
 		/* Otherwise, go ahead and make a shell type */
-		if (Mpp_role == MPP_ROLE_EXECUTE)
+		if (Gp_role == GP_ROLE_EXECUTE)
 		{
 			ereport(DEBUG1,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -193,7 +193,7 @@ examine_parameter_list(List *parameters, Oid languageOid,
 							(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 						   errmsg("SQL function cannot accept shell type %s",
 								  TypeNameToString(t))));
-				else if (Mpp_role != MPP_ROLE_EXECUTE)
+				else if (Gp_role != GP_ROLE_EXECUTE)
 					ereport(NOTICE,
 							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 							 errmsg("argument type %s is only a shell",
@@ -680,7 +680,7 @@ CreateFunction(CreateFunctionStmt *stmt)
 					PointerGetDatum(parameterNames),
 					stmt->funcOid);
 					
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}
@@ -737,7 +737,7 @@ RemoveFunction(RemoveFuncStmt *stmt)
 	if (((Form_pg_proc) GETSTRUCT(tup))->prolang == INTERNALlanguageId)
 	{
 		/* "Helpful" NOTICE when removing a builtin function ... */
-		if (Mpp_role != MPP_ROLE_EXECUTE)
+		if (Gp_role != GP_ROLE_EXECUTE)
 		ereport(NOTICE,
 				(errcode(ERRCODE_WARNING),
 				 errmsg("removing built-in function \"%s\"",
@@ -755,7 +755,7 @@ RemoveFunction(RemoveFuncStmt *stmt)
 
 	performDeletion(&object, stmt->behavior);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}
@@ -1088,7 +1088,7 @@ AlterFunction(AlterFunctionStmt *stmt)
 	heap_close(rel, NoLock);
 	heap_freetuple(tup);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}
@@ -1402,7 +1402,7 @@ CreateCast(CreateCastStmt *stmt)
 
 	heap_close(relation, RowExclusiveLock);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}
@@ -1467,7 +1467,7 @@ DropCast(DropCastStmt *stmt)
 
 	performDeletion(&object, stmt->behavior);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}

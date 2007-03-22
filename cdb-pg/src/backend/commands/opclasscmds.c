@@ -428,7 +428,7 @@ DefineOpClass(CreateOpClassStmt *stmt)
 
 	heap_close(rel, RowExclusiveLock);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}
@@ -765,7 +765,7 @@ RemoveOpClass(RemoveOpClassStmt *stmt)
 
 	performDeletion(&object, stmt->behavior);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}

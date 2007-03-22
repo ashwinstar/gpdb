@@ -180,8 +180,8 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 		}
 
 		getGpId();
-		instid = (MppIdentity.segindex == -1) ? 1 : 0;	/* dispatch node */
-		segid = MppIdentity.dbid;
+		instid = (GpIdentity.segindex == -1) ? 1 : 0;	/* dispatch node */
+		segid = GpIdentity.dbid;
 		
 		/* 
 		 * dump schema and data for entry db, and data only for segment db.
@@ -324,8 +324,8 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 	bool		is_compress;
 
 	getGpId();
-	instid = (MppIdentity.segindex == -1) ? 1 : 0;		/* dispatch node */
-	segid = MppIdentity.dbid;
+	instid = (GpIdentity.segindex == -1) ? 1 : 0;		/* dispatch node */
+	segid = GpIdentity.dbid;
 
 	if (!PG_ARGISNULL(0))
 	{
@@ -963,8 +963,8 @@ formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool is_com
 	char	   *pszBackupFileName;
 
 	getGpId();
-	instid = (MppIdentity.segindex == -1) ? 1 : 0;		/* dispatch node */
-	segid = MppIdentity.dbid;
+	instid = (GpIdentity.segindex == -1) ? 1 : 0;		/* dispatch node */
+	segid = GpIdentity.dbid;
 
 	sprintf(szFileNamePrefix, "gp_dump_%d_%d_", instid, segid);
 
@@ -1027,8 +1027,8 @@ formStatusFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool bIsBac
 	char	   *pszFileName;
 
 	getGpId();
-	instid = (MppIdentity.segindex == -1) ? 1 : 0;		/* dispatch node */
-	segid = MppIdentity.dbid;
+	instid = (GpIdentity.segindex == -1) ? 1 : 0;		/* dispatch node */
+	segid = GpIdentity.dbid;
 
 	sprintf(szFileNamePrefix, "gp_%s_status_%d_%d_", (bIsBackup ? "dump" : "restore"),
 			instid, segid);

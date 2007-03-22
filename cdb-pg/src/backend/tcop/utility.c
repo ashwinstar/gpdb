@@ -164,7 +164,7 @@ DropErrorMsgNonExistent(RangeVar *rel, char rightkind, bool missing_ok)
 			}
             else
             {
-            	if (Mpp_role != MPP_ROLE_EXECUTE)
+            	if (Gp_role != GP_ROLE_EXECUTE)
                 	ereport(NOTICE, (errmsg(rentry->skipping_msg, rel->relname)));
                 break;
             }
@@ -450,7 +450,7 @@ ProcessUtility(Node *parsetree,
 						break;
 
 					case TRANS_STMT_PREPARE:
-						if (Mpp_role == MPP_ROLE_DISPATCH)
+						if (Gp_role == GP_ROLE_DISPATCH)
 						{
 							ereport(ERROR, (
 											errcode(ERRCODE_MPP_COMMAND_ERROR),
@@ -467,7 +467,7 @@ ProcessUtility(Node *parsetree,
 						break;
 
 					case TRANS_STMT_COMMIT_PREPARED:
-						if (Mpp_role == MPP_ROLE_DISPATCH)
+						if (Gp_role == GP_ROLE_DISPATCH)
 						{
 							ereport(ERROR, (
 											errcode(ERRCODE_MPP_COMMAND_ERROR),
@@ -480,7 +480,7 @@ ProcessUtility(Node *parsetree,
 						break;
 
 					case TRANS_STMT_ROLLBACK_PREPARED:
-						if (Mpp_role == MPP_ROLE_DISPATCH)
+						if (Gp_role == GP_ROLE_DISPATCH)
 						{
 							ereport(ERROR, (
 											errcode(ERRCODE_MPP_COMMAND_ERROR),
@@ -513,7 +513,7 @@ ProcessUtility(Node *parsetree,
 
 							Assert(PointerIsValid(name));
 
-							if (Mpp_role == MPP_ROLE_DISPATCH)
+							if (Gp_role == GP_ROLE_DISPATCH)
 							{
 								/* We already checked that we're in a
 								 * transaction; need to make certain
@@ -577,7 +577,7 @@ ProcessUtility(Node *parsetree,
 				Oid			relOid;
 				char		relKind = RELKIND_RELATION;
 
-				if (Mpp_role == MPP_ROLE_EXECUTE)
+				if (Gp_role == GP_ROLE_EXECUTE)
 					if (((CreateStmt *) parsetree)->relKind != 0)
 						relKind = ((CreateStmt *) parsetree)->relKind;
 
@@ -701,7 +701,7 @@ ProcessUtility(Node *parsetree,
 				/*
 				 * If we are the QD, dispatch this DROP command to all the QEs
 				 */
-				if (Mpp_role == MPP_ROLE_DISPATCH)
+				if (Gp_role == GP_ROLE_DISPATCH)
 				{
 					stmt->missing_ok=true;
 					CdbDispatchUtilityStatement((Node *) stmt);
@@ -803,7 +803,7 @@ ProcessUtility(Node *parsetree,
 						break;
 				}
 
-				if (Mpp_role == MPP_ROLE_DISPATCH)
+				if (Gp_role == GP_ROLE_DISPATCH)
 				{
 					CdbDispatchUtilityStatement((Node *) stmt);
 				}
@@ -904,7 +904,7 @@ ProcessUtility(Node *parsetree,
 
 		case T_RuleStmt:		/* CREATE RULE */
 			DefineQueryRewrite((RuleStmt *) parsetree);
-			if (Mpp_role == MPP_ROLE_DISPATCH)
+			if (Gp_role == GP_ROLE_DISPATCH)
 			{
 				CdbDispatchUtilityStatement((Node *) parsetree);
 			}
@@ -965,7 +965,7 @@ ProcessUtility(Node *parsetree,
 			{
 				NotifyStmt *stmt = (NotifyStmt *) parsetree;
 				
-				if (Mpp_role == MPP_ROLE_EXECUTE)
+				if (Gp_role == GP_ROLE_EXECUTE)
 					ereport(ERROR, (
 								errcode(ERRCODE_MPP_COMMAND_ERROR),
 						 errmsg("Notify command cannot run in a function running on a segDB.")
@@ -979,7 +979,7 @@ ProcessUtility(Node *parsetree,
 			{
 				ListenStmt *stmt = (ListenStmt *) parsetree;
 				
-				if (Mpp_role == MPP_ROLE_EXECUTE)
+				if (Gp_role == GP_ROLE_EXECUTE)
 					ereport(ERROR, (
 								errcode(ERRCODE_MPP_COMMAND_ERROR),
 						 errmsg("Listen command cannot run in a function running on a segDB.")
@@ -993,7 +993,7 @@ ProcessUtility(Node *parsetree,
 			{
 				UnlistenStmt *stmt = (UnlistenStmt *) parsetree;
 				
-				if (Mpp_role == MPP_ROLE_EXECUTE)
+				if (Gp_role == GP_ROLE_EXECUTE)
 					ereport(ERROR, (
 								errcode(ERRCODE_MPP_COMMAND_ERROR),
 						 errmsg("Unlisten command cannot run in a function running on a segDB.")
@@ -1011,7 +1011,7 @@ ProcessUtility(Node *parsetree,
 				/* Allowed names are restricted if you're not superuser */
 				load_file(stmt->filename, !superuser());
 				
-				if (Mpp_role == MPP_ROLE_DISPATCH)
+				if (Gp_role == GP_ROLE_DISPATCH)
 				{
 					StringInfoData buffer;
 
@@ -1096,7 +1096,7 @@ ProcessUtility(Node *parsetree,
 
 				ResetPGVariable(n->name);
 
-				if (Mpp_role == MPP_ROLE_DISPATCH)
+				if (Gp_role == GP_ROLE_DISPATCH)
 				{
 					/*
 					 * RESET must be dispatched different, because it can't
@@ -1116,7 +1116,7 @@ ProcessUtility(Node *parsetree,
 
 		case T_CreateTrigStmt:
 			CreateTrigger((CreateTrigStmt *) parsetree, false);
-			if (Mpp_role == MPP_ROLE_DISPATCH)
+			if (Gp_role == GP_ROLE_DISPATCH)
 			{
 				CdbDispatchUtilityStatement((Node *) parsetree);
 			}
@@ -1147,7 +1147,7 @@ ProcessUtility(Node *parsetree,
 							 (int) stmt->removeType);
 						break;
 				}
-				if (Mpp_role == MPP_ROLE_DISPATCH)
+				if (Gp_role == GP_ROLE_DISPATCH)
 				{
 					CdbDispatchUtilityStatement((Node *) parsetree);
 				}
@@ -1224,7 +1224,7 @@ ProcessUtility(Node *parsetree,
 				ereport(ERROR,
 						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 						 errmsg("must be superuser to do CHECKPOINT")));
-			if (Mpp_role == MPP_ROLE_DISPATCH)
+			if (Gp_role == GP_ROLE_DISPATCH)
 			{
 				CdbDoCommand("CHECKPOINT", false, false, /* mirrors */ true, /* primaries */ true);
 			}
@@ -1253,7 +1253,7 @@ ProcessUtility(Node *parsetree,
 						break;
 				}
 
-				if (Mpp_role == MPP_ROLE_DISPATCH)
+				if (Gp_role == GP_ROLE_DISPATCH)
 				{
 					if (stmt->kind != OBJECT_DATABASE)
 						CdbDispatchUtilityStatement((Node *) stmt);

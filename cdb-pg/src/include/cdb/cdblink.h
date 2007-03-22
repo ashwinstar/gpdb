@@ -46,9 +46,9 @@ extern void cdblink_setup(void);
 /*
  * Returns the number of segments
  *
- * N.B.  Mpp_role must be either dispatch or execute, since
+ * N.B.  Gp_role must be either dispatch or execute, since
  * when utiliy	no mpp catalog tables are read.  An Assert is
- * thrown if Mpp_role = utility.
+ * thrown if Gp_role = utility.
  */
 extern int	getgpsegmentCount(void);
 

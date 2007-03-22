@@ -95,7 +95,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 		 * Give a notice if we are ignoring supplied parameters.
 		 */
 		if (stmt->plhandler)
-			if (Mpp_role != MPP_ROLE_EXECUTE)
+			if (Gp_role != GP_ROLE_EXECUTE)
 			ereport(NOTICE,
 					(errmsg("using pg_pltemplate information instead of CREATE LANGUAGE parameters")));
 
@@ -206,7 +206,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 			 */
 			if (funcrettype == OPAQUEOID)
 			{
-				if (Mpp_role != MPP_ROLE_EXECUTE)
+				if (Gp_role != GP_ROLE_EXECUTE)
 				ereport(WARNING,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("changing return type of function %s from \"opaque\" to \"language_handler\"",
@@ -235,7 +235,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 	}
 	
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}
@@ -433,7 +433,7 @@ DropProceduralLanguage(DropPLangStmt *stmt)
 	 */
 	performDeletion(&object, stmt->behavior);
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}

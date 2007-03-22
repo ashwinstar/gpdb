@@ -242,7 +242,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 
 	MemoryContext oldContext;
 
-	Assert(Mpp_role == MPP_ROLE_DISPATCH &&
+	Assert(Gp_role == GP_ROLE_DISPATCH &&
 		   gp &&
 		   gp->size > 0 &&
 		   dispatchResults &&
@@ -2632,7 +2632,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	
 	*pDispatchThreads = NULL;
 
-	Assert(Mpp_role == MPP_ROLE_DISPATCH);
+	Assert(Gp_role == GP_ROLE_DISPATCH);
 	Assert(queryDesc != NULL && queryDesc->estate != NULL);
 
 	/*

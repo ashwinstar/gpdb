@@ -104,7 +104,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 												 sizeof(ShmemIndexEnt)));
 		size = add_size(size, BufferShmemSize());
 		size = add_size(size, LockShmemSize());
-		if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+		if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
 		{
 			size = add_size(size, ResSchedulerShmemSize());
 			size = add_size(size, ResPortalIncrementShmemSize());
@@ -206,7 +206,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	/*
 	 * Set up resource schedular
 	 */
-	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
 	{
 		InitResScheduler();
 		InitResPortalIncrementHash();

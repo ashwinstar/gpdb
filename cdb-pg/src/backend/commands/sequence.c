@@ -136,7 +136,7 @@ DefineSequence(CreateSeqStmt *seq)
 	NameData	name;
 
 	
-	bool shouldDispatch =  Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
+	bool shouldDispatch =  Gp_role == GP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
 
 	/* Check and set all option values */
 	init_params(seq->options, true, &new, &owned_by);
@@ -154,7 +154,7 @@ DefineSequence(CreateSeqStmt *seq)
 		
 			/* stmt->relOid = newOid(); */
 	}
-	else if (Mpp_role == MPP_ROLE_EXECUTE)
+	else if (Gp_role == GP_ROLE_EXECUTE)
 	{
 
 			stmt->oidInfo.relOid = seq->relOid;
@@ -443,7 +443,7 @@ AlterSequence(AlterSeqStmt *stmt)
 
 	relation_close(seqrel, NoLock);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *)stmt);
 	}
@@ -500,7 +500,7 @@ nextval_internal(Oid relid)
 						RelationGetRelationName(seqrel))));
 
     /* Update the sequence object. */
-    if (Mpp_role == MPP_ROLE_EXECUTE)
+    if (Gp_role == GP_ROLE_EXECUTE)
         cdb_sequence_nextval_proxy(seqrel->rd_node.spcNode,
                                    seqrel->rd_node.dbNode,
                                    relid,
@@ -712,14 +712,14 @@ currval_oid(PG_FUNCTION_ARGS)
 	Relation	seqrel;
 
 	/* For now, strictly forbidden on MPP. */
-	if (Mpp_role == MPP_ROLE_DISPATCH || Mpp_role == MPP_ROLE_EXECUTE)
+	if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
 				 errmsg("currval() not supported")));
 	}
 	
-	if (Mpp_role == MPP_ROLE_EXECUTE  && !Gp_is_primary)
+	if (Gp_role == GP_ROLE_EXECUTE  && !Gp_is_primary)
 	{
 		elog(ERROR,"currval() cannot be used in this statement when mirroring is active");
 	}
@@ -754,7 +754,7 @@ lastval(PG_FUNCTION_ARGS)
 	int64		result;
 
 	/* For now, strictly forbidden on MPP. */
-	if (Mpp_role == MPP_ROLE_DISPATCH || Mpp_role == MPP_ROLE_EXECUTE)
+	if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
@@ -813,7 +813,7 @@ do_setval(Oid relid, int64 next, bool iscalled)
 	Buffer		buf;
 	Form_pg_sequence seq;
 
-	if (Mpp_role == MPP_ROLE_EXECUTE)
+	if (Gp_role == GP_ROLE_EXECUTE)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),

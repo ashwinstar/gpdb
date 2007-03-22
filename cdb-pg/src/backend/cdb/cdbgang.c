@@ -39,7 +39,7 @@ extern char *session_authorization_string;
 #include "cdb/cdbgang.h"		/* me */
 #include "cdb/cdbtm.h"			/* discardDtxTransaction() */
 #include "cdb/cdbutil.h"		/* CdbComponentDatabaseInfo */
-#include "cdb/cdbvars.h"		/* Mpp_role, etc. */
+#include "cdb/cdbvars.h"		/* Gp_role, etc. */
 
 
 /*
@@ -1345,7 +1345,7 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 
 	Gang	   *gp = NULL;
 
-	Insist(Mpp_role == MPP_ROLE_DISPATCH);
+	Insist(Gp_role == GP_ROLE_DISPATCH);
 
     if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
         elog(DEBUG4, "allocateGang for portal %s: allocatedReaderGangsN %d, availableReaderGangsN %d",
@@ -1576,7 +1576,7 @@ getCdbProcessList(Gang *gang, int sliceIndex)
 	List	   *list = NIL;
 
 
-	Assert(Mpp_role == MPP_ROLE_DISPATCH && Gp_is_primary);
+	Assert(Gp_role == GP_ROLE_DISPATCH && Gp_is_primary);
 	Assert(gang != NULL);
     if (gp_log_gang >= CDBVARS_VERBOSITY_DEBUG)
 	    elog(DEBUG3, "getCdbProcessList slice%d gangtype=%d gangsize=%d",
@@ -1684,7 +1684,7 @@ getCdbProcessesForQD(int isPrimary)
 	CdbComponentDatabaseInfo *qdinfo;
 	CdbProcess *proc;
 
-	Assert(Mpp_role == MPP_ROLE_DISPATCH && Gp_is_primary);
+	Assert(Gp_role == GP_ROLE_DISPATCH && Gp_is_primary);
 	if (!isPrimary)
 	{
 		elog(FATAL, "getCdbProcessesForQD: unsupported request for QD mirror process");
@@ -1949,7 +1949,7 @@ freeGangsForPortal(char *portal_name)
 {
 	MemoryContext oldContext;
 
-	if (Mpp_role != MPP_ROLE_DISPATCH)
+	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
 	oldContext = MemoryContextSwitchTo(TopMemoryContext);
@@ -2349,7 +2349,7 @@ SetSeqServerInfo(struct QueryDesc *queryDesc)
 
 	Assert(IsA(sliceTable, SliceTable) && sliceTable->seqServerHost == NULL);
 
-	if (Mpp_role != MPP_ROLE_DISPATCH || !Gp_is_primary)
+	if (Gp_role != GP_ROLE_DISPATCH || !Gp_is_primary)
 	{
 		elog(FATAL, "SetSeqServerInfo: unsupported request");
 	}

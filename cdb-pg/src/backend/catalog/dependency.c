@@ -672,7 +672,7 @@ recursiveDeletion(const ObjectAddress *object,
 							getObjectDescription(&owningObject))));
 		else if (behavior == DROP_RESTRICT)
 		{
-			if (msglevel == NOTICE && Mpp_role == MPP_ROLE_EXECUTE)
+			if (msglevel == NOTICE && Gp_role == GP_ROLE_EXECUTE)
 			ereport(DEBUG1,
 					(errmsg("%s depends on %s",
 							getObjectDescription(&owningObject),
@@ -686,7 +686,7 @@ recursiveDeletion(const ObjectAddress *object,
 		}
 		else
 		{
-			if (Mpp_role == MPP_ROLE_EXECUTE)
+			if (Gp_role == GP_ROLE_EXECUTE)
 			ereport(DEBUG1,
 					(errmsg("drop cascades to %s",
 							getObjectDescription(&owningObject))));
@@ -850,7 +850,7 @@ deleteDependentObjects(const ObjectAddress *object,
 									getObjectDescription(&otherObject))));
 				else if (behavior == DROP_RESTRICT)
 				{
-					if (msglevel == NOTICE && Mpp_role == MPP_ROLE_EXECUTE)
+					if (msglevel == NOTICE && Gp_role == GP_ROLE_EXECUTE)
 					ereport(DEBUG1,
 							(errmsg("%s depends on %s",
 									getObjectDescription(&otherObject),
@@ -864,7 +864,7 @@ deleteDependentObjects(const ObjectAddress *object,
 				}
 				else
 				{
-					if (Mpp_role == MPP_ROLE_EXECUTE)
+					if (Gp_role == GP_ROLE_EXECUTE)
 					ereport(DEBUG1,
 							(errmsg("drop cascades to %s",
 									getObjectDescription(&otherObject))));

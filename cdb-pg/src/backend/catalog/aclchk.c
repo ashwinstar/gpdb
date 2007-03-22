@@ -360,7 +360,7 @@ ExecuteGrantStmt(GrantStmt *stmt)
 	ExecGrantStmt_oids(&istmt);
 	
 		
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *)stmt);
 	}

@@ -632,7 +632,7 @@ PrintFreeSpaceMapStatistics(int elevel)
 			  MaxFSMPages, MaxFSMRelations,
 			  (double) FreeSpaceShmemSize() / 1024.0)));
 
-	if (Mpp_role != MPP_ROLE_DISPATCH) /* not interesting on the dispatch node */
+	if (Gp_role != GP_ROLE_DISPATCH) /* not interesting on the dispatch node */
 		CheckFreeSpaceMapStatistics(NOTICE, numRels, needed);
 	/* Print to server logs too because is deals with a config variable. */
 	CheckFreeSpaceMapStatistics(LOG, numRels, needed);

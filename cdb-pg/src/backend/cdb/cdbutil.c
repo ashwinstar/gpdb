@@ -55,7 +55,7 @@ static int segment_ip_cache_limit = 0;
 /*
  * getGpId() causes the gp_id table's singleton row to be read into a global structure
  * This is called from cdblink_setup().
- * The global variable is named MppIdentity, and is declared in cdbvars.h and defined in cdbvars.c.
+ * The global variable is named GpIdentity, and is declared in cdbvars.h and defined in cdbvars.c.
  * There is one member variable that is a string.  It is allocated from the TopMemoryContext
  * because this information is intended to last for the life of the connection.
  * This call is made whether the database is an entry database or a segment database.
@@ -72,19 +72,19 @@ getGpId(void)
 	MemoryContext oldContext;
 	MemoryContext permanentContext = TopMemoryContext;
 
-	if (Mpp_role == MPP_ROLE_UTILITY)
+	if (Gp_role == GP_ROLE_UTILITY)
 		elog(DEBUG1, "WARNING: called getGpId when in utility mode");
 
-	if (Mpp_role == MPP_ROLE_DISPATCH && Gp_segment < -1)
+	if (Gp_role == GP_ROLE_DISPATCH && Gp_segment < -1)
 		Gp_segment = -1;
 
 	/*
 	 * Release storage for the cdbname if not NULL
 	 */
-	if (MppIdentity.gpname != NULL)
+	if (GpIdentity.gpname != NULL)
 	{
-		pfree(MppIdentity.gpname);
-		MppIdentity.gpname = NULL;
+		pfree(GpIdentity.gpname);
+		GpIdentity.gpname = NULL;
 	}
 
 	/*
@@ -126,7 +126,7 @@ getGpId(void)
 	 * cdblink_disconnect().
 	 */
 	oldContext = MemoryContextSwitchTo(permanentContext);
-	MppIdentity.gpname = pstrdup(gpname->data);
+	GpIdentity.gpname = pstrdup(gpname->data);
 	MemoryContextSwitchTo(oldContext);
 
 	/*
@@ -134,21 +134,21 @@ getGpId(void)
 	 */
 	attr = heap_getattr(gp_id_tuple, Anum_gp_id_numsegments, gp_id_rel->rd_att, &isNull);
 	Assert(!isNull);
-	MppIdentity.numsegments = DatumGetInt16(attr);
+	GpIdentity.numsegments = DatumGetInt16(attr);
 
 	/*
 	 * dbid
 	 */
 	attr = heap_getattr(gp_id_tuple, Anum_gp_id_dbid, gp_id_rel->rd_att, &isNull);
 	Assert(!isNull);
-	MppIdentity.dbid = DatumGetInt16(attr);
+	GpIdentity.dbid = DatumGetInt16(attr);
 
 	/*
 	 * content
 	 */
 	attr = heap_getattr(gp_id_tuple, Anum_gp_id_content, gp_id_rel->rd_att, &isNull);
 	Assert(!isNull);
-	MppIdentity.segindex = DatumGetInt16(attr);
+	GpIdentity.segindex = DatumGetInt16(attr);
 
 	/*
 	 * End the heapscan and close the relation that we opened.
@@ -162,19 +162,19 @@ getGpId(void)
 	 * If the role is EXECUTE, we can be either a segment database or an
      * entry database.
 	 */
-	if (Mpp_role == MPP_ROLE_DISPATCH && MppIdentity.segindex >= 0)
+	if (Gp_role == GP_ROLE_DISPATCH && GpIdentity.segindex >= 0)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-				 errmsg("Cannot have a Mpp_role of dispatch when connected to a segment database."
+				 errmsg("Cannot have a Gp_role of dispatch when connected to a segment database."
 					 )));
 	}
 
-	if (Mpp_role != MPP_ROLE_UTILITY && MppIdentity.segindex != Gp_segment)
+	if (Gp_role != GP_ROLE_UTILITY && GpIdentity.segindex != Gp_segment)
 	{
 		if (Gp_segment < -1)
 		{
-			Gp_segment = MppIdentity.segindex;
+			Gp_segment = GpIdentity.segindex;
 			ereport(WARNING,
 					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
 					 errmsg("gp_id segindex not same as Gp_segment."
@@ -199,13 +199,13 @@ getGpId(void)
 void
 freeGpId(void)
 {
-	if (MppIdentity.gpname != NULL)
+	if (GpIdentity.gpname != NULL)
 	{
-		pfree(MppIdentity.gpname);
-		MppIdentity.gpname = NULL;
+		pfree(GpIdentity.gpname);
+		GpIdentity.gpname = NULL;
 	}
 
-	if (Mpp_role == MPP_ROLE_DISPATCH && segment_ip_cache != NULL)
+	if (Gp_role == GP_ROLE_DISPATCH && segment_ip_cache != NULL)
 	{
 		int i;
 
@@ -222,9 +222,9 @@ freeGpId(void)
 		segment_ip_cache_limit = 0;
 	}
 
-	MppIdentity.numsegments = 0;
-	MppIdentity.dbid = -1;
-	MppIdentity.segindex = -999;
+	GpIdentity.numsegments = 0;
+	GpIdentity.dbid = -1;
+	GpIdentity.segindex = -999;
 }
 
 /*
@@ -472,11 +472,11 @@ getCdbComponentInfo(void)
 	}
 
 
-	if (MppIdentity.numsegments <= 0)	/* gp_id not available or not read in yet */
+	if (GpIdentity.numsegments <= 0)	/* gp_id not available or not read in yet */
 	{
-		MppIdentity.numsegments = component_databases->total_segments;
-		MppIdentity.segindex = -1;
-		MppIdentity.dbid = 1;
+		GpIdentity.numsegments = component_databases->total_segments;
+		GpIdentity.segindex = -1;
+		GpIdentity.dbid = 1;
 	}
 
 	/*
@@ -497,7 +497,7 @@ getCdbComponentInfo(void)
 	{
 		CdbComponentDatabaseInfo *pInfo = &component_databases->entry_db_info[i];
 
-		if (pInfo->dbid == MppIdentity.dbid && pInfo->segindex == Gp_segment)
+		if (pInfo->dbid == GpIdentity.dbid && pInfo->segindex == Gp_segment)
 		{
 			break;
 		}
@@ -507,11 +507,11 @@ getCdbComponentInfo(void)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_EXCEPTION),
 				 errmsg("Cannot locate entry database represented by gp_id row in gp_configuration: dbid %d content %d",
-						MppIdentity.dbid, Gp_segment)));
+						GpIdentity.dbid, Gp_segment)));
 	}
 
 	/*
-	 * Now validate that the segindexes for the segment databases are between 0 and MppIdentity.numsegments-1 inclusive,
+	 * Now validate that the segindexes for the segment databases are between 0 and GpIdentity.numsegments-1 inclusive,
 	 * and that we hit them all. Since it's sorted, this is relatively easy.
 	 */
 	x = 0;
@@ -639,13 +639,13 @@ cdb_setup(void)
 	cdblink_setup();
 
 	/* If gp_role is UTILITY, skip this call. */
-	if (Mpp_role != MPP_ROLE_UTILITY)
+	if (Gp_role != GP_ROLE_UTILITY)
 	{
 		/* Initialize the Motion Layer IPC subsystem. */
 		InitMotionLayerIPC();
 	}
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		/* connect to mirrored entry db */
 		buildMirrorQDDefinition();
@@ -673,7 +673,7 @@ cdb_cleanup(int code, Datum arg)
 
 	disconnectMirrorQD();
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		if (cdb_total_plans > 0)
 			elog(DEBUG1, "session dispatched %d plans %d slices (%f), largest plan %d",
@@ -682,7 +682,7 @@ cdb_cleanup(int code, Datum arg)
 				 cdb_max_slices);
 	}
 
-	if (Mpp_role != MPP_ROLE_UTILITY)
+	if (Gp_role != GP_ROLE_UTILITY)
 	{
 		/* shutdown our listener socket */
 		CleanUpMotionLayerIPC();

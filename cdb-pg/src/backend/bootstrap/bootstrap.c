@@ -425,7 +425,7 @@ BootstrapMain(int argc, char *argv[])
 			StartupXLOG();
 			LoadFreeSpaceMap();
 			BuildFlatFiles(false);
-			if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+			if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
 				InitResQueues();
 			proc_exit(0);		/* startup done */
 

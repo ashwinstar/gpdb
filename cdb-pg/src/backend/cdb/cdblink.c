@@ -65,7 +65,7 @@ cdblink_setup(void)
 	/*
 	 * If gp_role is UTILITY, skip this call.
 	 */
-	if (Mpp_role == MPP_ROLE_UTILITY)
+	if (Gp_role == GP_ROLE_UTILITY)
 		return;
 
 	getGpId();
@@ -104,47 +104,47 @@ log_backtrace(void)
 /*
  * Returns the number of segments
  *
- * N.B.  Mpp_role must be either dispatch or execute, since
+ * N.B.  Gp_role must be either dispatch or execute, since
  * when utiliy	no GP catalog tables are read.  An Assert is
- * thrown if Mpp_role = utility.
+ * thrown if Gp_role = utility.
  */
 int
 getgpsegmentCount(void)
 {
-	if (Mpp_role == MPP_ROLE_UTILITY)
+	if (Gp_role == GP_ROLE_UTILITY)
 	{
-		if (MppIdentity.numsegments <= 0)
+		if (GpIdentity.numsegments <= 0)
 		{
-			elog(DEBUG5, "getgpsegmentCount called when Mpp_role == utility. returning zero segments.");
+			elog(DEBUG5, "getgpsegmentCount called when Gp_role == utility. returning zero segments.");
 			return 0;
 		}
 
-		elog(DEBUG1, "getgpsegmentCount called when Mpp_role == utility, but is relying on gp_id info");
+		elog(DEBUG1, "getgpsegmentCount called when Gp_role == utility, but is relying on gp_id info");
 		/* log_backtrace(); */
 
 	}
 
-	if (Mpp_role == MPP_ROLE_EXECUTE)
+	if (Gp_role == GP_ROLE_EXECUTE)
 	{
-		if (MppIdentity.numsegments <= 0)
+		if (GpIdentity.numsegments <= 0)
 		{
-			elog(DEBUG5, "getgpsegmentCount called when Mpp_role == execute. returning zero segments.");
+			elog(DEBUG5, "getgpsegmentCount called when Gp_role == execute. returning zero segments.");
 			return 0;
 		}
-		elog(DEBUG1, "getgpsegmentCount called when Mpp_role == execute, but is relying on gp_id info");
+		elog(DEBUG1, "getgpsegmentCount called when Gp_role == execute, but is relying on gp_id info");
 		/* log_backtrace(); */
 	}
-	/* Assert( Mpp_role != MPP_ROLE_EXECUTE ); */
+	/* Assert( Gp_role != GP_ROLE_EXECUTE ); */
 
-	if (MppIdentity.numsegments <= 0)
+	if (GpIdentity.numsegments <= 0)
 	{
 		elog(LOG, "getgpsegmentCount called BEFORE gp_id record has been read in.");
 		/* log_backtrace(); */
 	}
 
-	/* Assert( Mpp_role != MPP_ROLE_UTILITY ); */
+	/* Assert( Gp_role != GP_ROLE_UTILITY ); */
 
-	return MppIdentity.numsegments;
+	return GpIdentity.numsegments;
 }
 
 /*
@@ -183,7 +183,7 @@ buildMirrorQDDefinition(void)
 		 *
 		 * So we are assuming that we got back exactly two entry databases.
 		 */
-		if (entryDb->dbid == MppIdentity.dbid)
+		if (entryDb->dbid == GpIdentity.dbid)
 			mirrorDb = entryDb + 1;
 		else
 		{

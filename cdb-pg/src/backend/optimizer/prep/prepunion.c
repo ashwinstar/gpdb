@@ -299,7 +299,7 @@ generate_union_plan(SetOperationStmt *op, PlannerInfo *root,
 												  op, refnames_tlist));
 	
 	/* CDB: Decide on approach, condition argument plans to suit. */
-	if ( Mpp_role == MPP_ROLE_DISPATCH )
+	if ( Gp_role == GP_ROLE_DISPATCH )
 	{
 		optype = choose_setop_type(planlist);
 		adjust_setop_arguments(planlist, optype);
@@ -382,7 +382,7 @@ generate_nonunion_plan(SetOperationStmt *op, PlannerInfo *root,
 	planlist = list_make2(lplan, rplan);
 
 	/* CDB: Decide on approach, condition argument plans to suit. */
-	if ( Mpp_role == MPP_ROLE_DISPATCH )
+	if ( Gp_role == GP_ROLE_DISPATCH )
 	{
 		optype = choose_setop_type(planlist);
 		adjust_setop_arguments(planlist, optype);

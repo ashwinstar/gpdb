@@ -1051,12 +1051,12 @@ pq_flush(void)
 	/* No-op if reentrant call */
 	if (PqCommBusy)
 		return 0;
-	if (Mpp_role == MPP_ROLE_DISPATCH && IsUnderPostmaster)
+	if (Gp_role == GP_ROLE_DISPATCH && IsUnderPostmaster)
 		pthread_mutex_lock(&send_mutex);
 	PqCommBusy = true;
 	res = internal_flush();
 	PqCommBusy = false;
-	if (Mpp_role == MPP_ROLE_DISPATCH && IsUnderPostmaster)
+	if (Gp_role == GP_ROLE_DISPATCH && IsUnderPostmaster)
 		pthread_mutex_unlock(&send_mutex);
 	return res;
 }
@@ -1150,7 +1150,7 @@ internal_flush(void)
 int
 pq_putmessage(char msgtype, const char *s, size_t len)
 {
-	if (Mpp_role == MPP_ROLE_DISPATCH && IsUnderPostmaster)
+	if (Gp_role == GP_ROLE_DISPATCH && IsUnderPostmaster)
 		pthread_mutex_lock(&send_mutex);
 	if (DoingCopyOut || PqCommBusy)
 		goto end;
@@ -1170,13 +1170,13 @@ pq_putmessage(char msgtype, const char *s, size_t len)
 		goto fail;
 	PqCommBusy = false;
 end:
-	if (Mpp_role == MPP_ROLE_DISPATCH && IsUnderPostmaster)
+	if (Gp_role == GP_ROLE_DISPATCH && IsUnderPostmaster)
 		pthread_mutex_unlock(&send_mutex);
 	return 0;
 
 fail:
 	PqCommBusy = false;
-	if (Mpp_role == MPP_ROLE_DISPATCH && IsUnderPostmaster)
+	if (Gp_role == GP_ROLE_DISPATCH && IsUnderPostmaster)
 		pthread_mutex_unlock(&send_mutex);
 	return EOF;
 }

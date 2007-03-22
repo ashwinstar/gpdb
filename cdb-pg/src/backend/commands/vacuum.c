@@ -285,10 +285,10 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 	else
 		elevel = DEBUG2;
 		
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 		elevel = DEBUG2; /* vacuum and analyze messages aren't interesting from the QD */
 		
-	if (Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_primary)
+	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_primary)
 		elevel = DEBUG2; /* the mirrors usually just repeat what the primaries say */
 
 	/*
@@ -321,7 +321,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 	 */
 	if (vacstmt->vacuum && vacstmt->full)
 	{
-		if (Mpp_role == MPP_ROLE_DISPATCH)
+		if (Gp_role == GP_ROLE_DISPATCH)
 		ereport(NOTICE,
 				(errcode(ERRCODE_WARNING),
 				 errmsg("'VACUUM FULL' is not safe for large tables and has "
@@ -399,7 +399,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 	 * vacuum calls to all the qExecs and wait for
 	 * them to finish, before we query their statistics.
 	 */
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		struct CdbDispatchResults *primaryResults;
 		struct CdbDispatchResults *mirrorResults;
@@ -409,7 +409,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 
 		Query	   *q;
 
-		Assert(Mpp_role == MPP_ROLE_DISPATCH);
+		Assert(Gp_role == GP_ROLE_DISPATCH);
 
 		/*
 		 * Serialize the stmt tree, and create the sql statement: mppexec ....
@@ -830,7 +830,7 @@ vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
 	/*
 	 * CDB: Query the segment db local catalogs to get summary statistics.
 	 */
-	if (!inplace && Mpp_role == MPP_ROLE_DISPATCH)
+	if (!inplace && Gp_role == GP_ROLE_DISPATCH)
 	{
 		elog(DEBUG5, "vac_update_relstats(): doing out-of-place update for vacuum");
 

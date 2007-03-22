@@ -120,10 +120,10 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	else
 		elevel = DEBUG2;
 		
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 		elevel = DEBUG2; /* vacuum and analyze messages aren't interesting from the QD */
 		
-	if (Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_primary)
+	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_primary)
 		elevel = DEBUG2; /* the mirrors usually just repeat what the primaries say */
 
 	/*
@@ -158,7 +158,7 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	{
 		/* No need for a WARNING if we already complained during VACUUM */
 		if (!vacstmt->vacuum)
-			if (Mpp_role != MPP_ROLE_EXECUTE)
+			if (Gp_role != GP_ROLE_EXECUTE)
 			ereport(WARNING,
 					(errmsg("skipping \"%s\" --- only table or database owner can analyze it",
 							RelationGetRelationName(onerel))));
@@ -174,7 +174,7 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	{
 		/* No need for a WARNING if we already complained during VACUUM */
 		if (!vacstmt->vacuum)
-			if (Mpp_role != MPP_ROLE_EXECUTE)
+			if (Gp_role != GP_ROLE_EXECUTE)
 			ereport(WARNING,
 					(errmsg("skipping \"%s\" --- cannot analyze indexes, views, or special system tables",
 							RelationGetRelationName(onerel))));
@@ -372,7 +372,7 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	 * responsible to make sure that whatever they store into the VacAttrStats
 	 * structure is allocated in anl_context.
 	 */
-	if (numrows > 0 || (Mpp_role == MPP_ROLE_DISPATCH && RelationGetRelid(onerel) >= FirstNormalObjectId))
+	if (numrows > 0 || (Gp_role == GP_ROLE_DISPATCH && RelationGetRelid(onerel) >= FirstNormalObjectId))
 	{
 		if (numrows > 0)
 		{
@@ -1127,7 +1127,7 @@ update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats)
 		char		nulls[Natts_pg_statistic];
 		char		replaces[Natts_pg_statistic];
 		
-		if (Mpp_role == MPP_ROLE_DISPATCH && relid >= FirstNormalObjectId)
+		if (Gp_role == GP_ROLE_DISPATCH && relid >= FirstNormalObjectId)
 		{
 			Assert(stats != NULL);
 			cdbanalyze_get_columnstats(rel, stats);

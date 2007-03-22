@@ -169,7 +169,7 @@ pg_database_size_oid(PG_FUNCTION_ARGS)
 	Oid			dbOid = PG_GETARG_OID(0);
 	size = calculate_database_size(dbOid);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		StringInfoData buffer;
 		
@@ -198,7 +198,7 @@ pg_database_size_name(PG_FUNCTION_ARGS)
 						
 	size = calculate_database_size(dbOid);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		StringInfoData buffer;
 		
@@ -274,7 +274,7 @@ pg_tablespace_size_oid(PG_FUNCTION_ARGS)
 
 	size = calculate_tablespace_size(tblspcOid);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		StringInfoData buffer;
 		
@@ -303,7 +303,7 @@ pg_tablespace_size_name(PG_FUNCTION_ARGS)
 
 	size = calculate_tablespace_size(tblspcOid);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		StringInfoData buffer;
 		
@@ -370,7 +370,7 @@ pg_relation_size_oid(PG_FUNCTION_ARGS)
 
 	relation_close(rel, AccessShareLock);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		StringInfoData buffer;
 		
@@ -397,7 +397,7 @@ pg_relation_size_name(PG_FUNCTION_ARGS)
 	
 	relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
 	
-	if (Mpp_role == MPP_ROLE_EXECUTE && relrv->schemaname != NULL)
+	if (Gp_role == GP_ROLE_EXECUTE && relrv->schemaname != NULL)
 	{
 		Oid namespaceId;
 		Oid relOid;
@@ -421,7 +421,7 @@ pg_relation_size_name(PG_FUNCTION_ARGS)
 
 	relation_close(rel, AccessShareLock);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		char * rawname;
 		StringInfoData buffer;
@@ -498,7 +498,7 @@ pg_total_relation_size_oid(PG_FUNCTION_ARGS)
 	
 	size = calculate_total_relation_size(relid);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		StringInfoData buffer;
 		
@@ -522,7 +522,7 @@ pg_total_relation_size_name(PG_FUNCTION_ARGS)
 
 	relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
 	
-	if (Mpp_role == MPP_ROLE_EXECUTE && relrv->schemaname != NULL)
+	if (Gp_role == GP_ROLE_EXECUTE && relrv->schemaname != NULL)
 	{
 		Oid namespaceId;
 		/*
@@ -539,7 +539,7 @@ pg_total_relation_size_name(PG_FUNCTION_ARGS)
 
 	size = calculate_total_relation_size(relid);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		char * rawname;
 		StringInfoData buffer;

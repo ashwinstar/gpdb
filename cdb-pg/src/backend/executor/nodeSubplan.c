@@ -954,7 +954,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	bool		needXact, shouldDispatch = false;
 	volatile	bool shouldTeardownInterconnect = false;
 
-	if (Mpp_role == MPP_ROLE_DISPATCH &&
+	if (Gp_role == GP_ROLE_DISPATCH &&
 		planstate != NULL &&
 		planstate->plan != NULL &&
 		planstate->plan->dispatch == DISPATCH_PARALLEL)

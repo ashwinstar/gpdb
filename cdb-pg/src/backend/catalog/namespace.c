@@ -233,7 +233,7 @@ RangeVarGetCreationNamespace(const RangeVar *newRelation)
 	if (newRelation->istemp)
 	{
 		/* TEMP tables are created in our backend-local temp namespace */
-		if (Mpp_role != MPP_ROLE_EXECUTE)
+		if (Gp_role != GP_ROLE_EXECUTE)
 		if (newRelation->schemaname)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
@@ -1695,7 +1695,7 @@ InitTempTableNamespace(void)
 				 errmsg("permission denied to create temporary tables in database \"%s\"",
 						get_database_name(MyDatabaseId))));
 
-	if (Mpp_role == MPP_ROLE_UTILITY)
+	if (Gp_role == GP_ROLE_UTILITY)
 		snprintf(namespaceName, sizeof(namespaceName), "pg_temp_%d", MyBackendId);
 	else
 		snprintf(namespaceName, sizeof(namespaceName), "pg_temp_%d", gp_session_id);

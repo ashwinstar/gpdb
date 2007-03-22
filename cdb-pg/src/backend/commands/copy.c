@@ -1004,9 +1004,9 @@ DoCopy(const CopyStmt *stmt)
 	cstate->need_transcoding =
 		((cstate->client_encoding != GetDatabaseEncoding() ||
 		  pg_database_encoding_max_length() > 1) &&
-		 (!is_from || (Mpp_role != MPP_ROLE_EXECUTE)) );
+		 (!is_from || (Gp_role != GP_ROLE_EXECUTE)) );
 	cstate->encoding_embeds_ascii = PG_ENCODING_IS_CLIENT_ONLY(cstate->client_encoding);
-	cstate->line_buf_converted = (Mpp_role == MPP_ROLE_EXECUTE ? true : false);
+	cstate->line_buf_converted = (Gp_role == GP_ROLE_EXECUTE ? true : false);
 
 	cstate->copy_dest = COPY_FILE;		/* default */
 	cstate->filename = stmt->filename;
@@ -1078,7 +1078,7 @@ DoCopy(const CopyStmt *stmt)
 			}
 		}
 		
-		if (Mpp_role == MPP_ROLE_DISPATCH)
+		if (Gp_role == GP_ROLE_DISPATCH)
 			CopyFromDispatch(cstate);
 		else
 			/* execute or utility mode */
@@ -1214,7 +1214,7 @@ DoCopyTo(CopyState cstate)
 		 * doing COPY (SELECT) we just go straight to work, without
 		 * dispatching COPY commands to executors.
 		 */
-		if (Mpp_role == MPP_ROLE_DISPATCH && cstate->rel)
+		if (Gp_role == GP_ROLE_DISPATCH && cstate->rel)
 			CopyToDispatch(cstate);		
 		else
 			CopyTo(cstate);		
@@ -1304,7 +1304,7 @@ CopyTo(CopyState cstate)
 		 * We don't want binary header in exec mode. it's
 		 * taken care of in the dispatcher code.
 		 */
-		if (Mpp_role != MPP_ROLE_EXECUTE)
+		if (Gp_role != GP_ROLE_EXECUTE)
 		{
 			/* Generate header for a binary copy */
 			int32		tmp;
@@ -1335,7 +1335,7 @@ CopyTo(CopyState cstate)
 		if (cstate->header_line)
 		{
 			/* header should not be printed in execute mode. */
-			if (Mpp_role != MPP_ROLE_EXECUTE)
+			if (Gp_role != GP_ROLE_EXECUTE)
 			{
 			bool		hdr_delim = false;
 
@@ -1386,7 +1386,7 @@ CopyTo(CopyState cstate)
 	}
 	else
 	{
-		Assert(Mpp_role != MPP_ROLE_EXECUTE);
+		Assert(Gp_role != GP_ROLE_EXECUTE);
 		
 		/* run the plan --- the dest receiver will send tuples */
 		ExecutorRun(cstate->queryDesc, ForwardScanDirection, 0L);
@@ -1394,7 +1394,7 @@ CopyTo(CopyState cstate)
 	
 	if (cstate->binary)
 	{
-		if (Mpp_role != MPP_ROLE_EXECUTE)
+		if (Gp_role != GP_ROLE_EXECUTE)
 		{
 			/* Generate trailer for a binary copy */
 			CopySendInt16(cstate, -1);
@@ -1755,7 +1755,7 @@ copy_in_error_callback(void *arg)
 	/*
 	 * If we saved the error context from a QE in cdbcopy.c append it here.
 	 */
-	if(Mpp_role == MPP_ROLE_DISPATCH && cstate->executor_err_context.len > 0)
+	if(Gp_role == GP_ROLE_DISPATCH && cstate->executor_err_context.len > 0)
 	{
 		errcontext("%s", cstate->executor_err_context.data);
 		return;
@@ -1777,7 +1777,7 @@ copy_in_error_callback(void *arg)
 			/* error is relevant to a particular column */
 			limit_printout_length(&cstate->attribute_buf);
 
-			if (Mpp_role == MPP_ROLE_EXECUTE)
+			if (Gp_role == GP_ROLE_EXECUTE)
 				errcontext("COPY %s, line %d of this segment db input data, column %s",
 						   cstate->cur_relname, cstate->cur_lineno, cstate->cur_attname);
 			else if(!cstate->error_on_executor)
@@ -1805,7 +1805,7 @@ copy_in_error_callback(void *arg)
 			{
 				limit_printout_length(&cstate->line_buf);
 
-				if (Mpp_role == MPP_ROLE_EXECUTE)
+				if (Gp_role == GP_ROLE_EXECUTE)
 					errcontext("COPY %s, line %d of this segment db input data: \"%s\"", cstate->cur_relname, cstate->cur_lineno, cstate->line_buf.data);
 				else if(!cstate->error_on_executor) /* don't print out context if error wasn't local */
 					errcontext("COPY %s, line %d: \"%s\"", cstate->cur_relname, cstate->cur_lineno, cstate->line_buf.data);
@@ -1820,7 +1820,7 @@ copy_in_error_callback(void *arg)
 				 * to regurgitate it without conversion.  So we have to punt
 				 * and just report the line number.
 				 */
-				if (Mpp_role == MPP_ROLE_EXECUTE)
+				if (Gp_role == GP_ROLE_EXECUTE)
 					errcontext("COPY %s, line %d of this segment db input data", cstate->cur_relname, cstate->cur_lineno);
 				else if(!cstate->error_on_executor)
 					errcontext("COPY %s, line %d", cstate->cur_relname, cstate->cur_lineno);
@@ -2327,7 +2327,7 @@ CopyFromDispatch(CopyState cstate)
 			{
 				CopyGetData(cstate, readSig, 1);
 
-				if (Mpp_role == MPP_ROLE_DISPATCH)
+				if (Gp_role == GP_ROLE_DISPATCH)
 					appendBinaryStringInfo(&header_buf, readSig, 1);
 
 				
@@ -4338,7 +4338,7 @@ CopyReadAttributesText(CopyState cstate, char *nulls,
 				 * for the dispatcher - stop parsing once we have
 				 * all the hash field values. We don't need the rest.
 				 */
-				if (Mpp_role == MPP_ROLE_DISPATCH)
+				if (Gp_role == GP_ROLE_DISPATCH)
 				{
 					if (attribute == cstate->last_hash_field)
 					{
@@ -4504,7 +4504,7 @@ CopyReadBinaryAttribute(CopyState cstate, int column_no, FmgrInfo *flinfo, Oid t
 				(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 				 errmsg("unexpected EOF in COPY data")));
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		buf = htonl((uint32) fld_size); /* change to network byte order */
 		appendBinaryStringInfo(&cstate->line_buf, (char *) &buf, sizeof(buf));
@@ -4535,7 +4535,7 @@ CopyReadBinaryAttribute(CopyState cstate, int column_no, FmgrInfo *flinfo, Oid t
 				 errmsg("unexpected EOF in COPY data")));
 
 	/* load raw data into line buf for dispatching later */
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 		appendBinaryStringInfo(&cstate->line_buf, cstate->attribute_buf.data, fld_size);
 
 	cstate->attribute_buf.len = fld_size;
@@ -4693,7 +4693,7 @@ CopyReadAttributesCSV(CopyState cstate, char *nulls, int *attr_offsets,
 			 * for the dispatcher - stop parsing once we have
 			 * all the hash field values. We don't need the rest.
 			 */
-			if (Mpp_role == MPP_ROLE_DISPATCH)
+			if (Gp_role == GP_ROLE_DISPATCH)
 			{
 				if (attribute == cstate->last_hash_field)
 					break;

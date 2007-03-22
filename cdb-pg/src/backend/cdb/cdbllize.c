@@ -162,14 +162,14 @@ cdbparallelize(Plan *plan,
 	PlanProfile *context = &profile;
 	
 	/* Make sure we're called correctly (and need to be called).  */
-	switch ( Mpp_role )
+	switch ( Gp_role )
 	{
-	case MPP_ROLE_DISPATCH:
+	case GP_ROLE_DISPATCH:
 		break;
-	case MPP_ROLE_UTILITY:
+	case GP_ROLE_UTILITY:
 		return plan;
-	case MPP_ROLE_EXECUTE:
-	case MPP_ROLE_UNDEFINED:
+	case GP_ROLE_EXECUTE:
+	case GP_ROLE_UNDEFINED:
 		Insist(0);
 	}
 	Assert(is_plan_node((Node *) plan));

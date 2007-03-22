@@ -342,7 +342,7 @@ TypeCreateWithOid(const char *typeName,
 			elog(DEBUG5," Setting Oid in new pg_type tuple");
 			HeapTupleSetOid(tup, newtypeOid);
 		}
-		else if (Mpp_role == MPP_ROLE_EXECUTE) elog(ERROR," newtypeOid NULL");
+		else if (Gp_role == GP_ROLE_EXECUTE) elog(ERROR," newtypeOid NULL");
 
 		typeObjectId = simple_heap_insert(pg_type_desc, tup);
 	}

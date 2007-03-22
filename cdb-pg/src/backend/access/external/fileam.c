@@ -119,8 +119,8 @@ file_beginscan(Relation relation, List *uriList, List *fmtOpts,
 	/*
 	 * get the external URI assigned to us. 
 	 */
-	if(Mpp_role == MPP_ROLE_EXECUTE)
-		uri = (char *) strVal(list_nth(uriList, MppIdentity.segindex));
+	if(Gp_role == GP_ROLE_EXECUTE)
+		uri = (char *) strVal(list_nth(uriList, GpIdentity.segindex));
 	
 	/*
 	 * if a uri is assigned to us - save a copy of it. Some executors
@@ -320,7 +320,7 @@ file_getnext(FileScanDesc scan, ScanDirection direction)
 
 
 /* ----------------
-*		filegettup â form another tuple from the data file.
+*		filegettup ï¿½ form another tuple from the data file.
 *		This is the workhorse - make sure it's fast!
 *
 *		Initialize the scan if not already done.

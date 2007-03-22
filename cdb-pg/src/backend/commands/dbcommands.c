@@ -197,7 +197,7 @@ createdb_int(CreatedbStmt *stmt,
 	int			encoding = -1;
 	int			dbconnlimit = -1;
 
-	bool		shouldDispatch = (Mpp_role == MPP_ROLE_DISPATCH);
+	bool		shouldDispatch = (Gp_role == GP_ROLE_DISPATCH);
 
 	if (shouldDispatch)
 		if (IsBootstrapProcessingMode())
@@ -450,7 +450,7 @@ createdb_int(CreatedbStmt *stmt,
 	 */
 	pg_database_rel = heap_open(DatabaseRelationId, RowExclusiveLock);
 
-	if (Mpp_role == MPP_ROLE_EXECUTE && stmt->dbOid != 0)
+	if (Gp_role == GP_ROLE_EXECUTE && stmt->dbOid != 0)
 		dboid = stmt->dbOid;
 	else
 	{
@@ -707,7 +707,7 @@ dropdb(const char *dbname, bool missing_ok)
 					 errmsg("database \"%s\" does not exist", dbname)));
 		}
 		else
-		if ( missing_ok && Mpp_role == MPP_ROLE_EXECUTE )
+		if ( missing_ok && Gp_role == GP_ROLE_EXECUTE )
 		{
 			/* This branch exists just to facilitate cleanup of a failed
 			 * CREATE DATABASE.  Other callers will supply missing_ok as
@@ -763,7 +763,7 @@ dropdb(const char *dbname, bool missing_ok)
 	 * Free the database on the segDBs
 	 *
 	 */
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 
 
@@ -1017,7 +1017,7 @@ AlterDatabase(AlterDatabaseStmt *stmt)
 	/* Close pg_database, but keep lock till commit */
 	heap_close(rel, NoLock);
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 
 		StringInfoData buffer;
@@ -1122,7 +1122,7 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 	/* Close pg_database, but keep lock till commit */
 	heap_close(rel, NoLock);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 
 		StringInfoData buffer;

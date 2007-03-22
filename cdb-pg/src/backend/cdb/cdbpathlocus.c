@@ -178,7 +178,7 @@ cdbpathlocus_from_baserel(struct PlannerInfo   *root,
     CdbPathLocus result;
     MppPolicy   *policy = rel->cdbpolicy;
 	
-	if ( Mpp_role != MPP_ROLE_DISPATCH )
+	if ( Gp_role != GP_ROLE_DISPATCH )
 	{
 		CdbPathLocus_MakeEntry(&result);
 		return result;

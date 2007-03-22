@@ -356,7 +356,7 @@ DefineRelation_int(CreateStmt *stmt,
 	AttrNumber	attnum;
 	bool		shared_relation = false;
 
-	bool		shouldDispatch = Mpp_role == MPP_ROLE_DISPATCH &&
+	bool		shouldDispatch = Gp_role == GP_ROLE_DISPATCH &&
                                  IsNormalProcessingMode() &&
                                  relkind != RELKIND_SEQUENCE &&
                                  relkind != RELKIND_VIEW;
@@ -543,7 +543,7 @@ DefineRelation_int(CreateStmt *stmt,
 		
 		heap_close(pg_type_desc, RowExclusiveLock);
 	}
-	else if (Mpp_role == MPP_ROLE_EXECUTE)
+	else if (Gp_role == GP_ROLE_EXECUTE)
 	{
 		Assert(stmt->oidInfo.relOid != 0);
 		relationId = stmt->oidInfo.relOid;
@@ -732,7 +732,7 @@ extern void	DefineExternalRelation(CreateExternalStmt *stmt)
 	/*
 	 * Policy for external tables is a NULL policy (randomly distributed)
 	 */
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{		
 		createStmt->policy = (MppPolicy *) palloc(sizeof(MppPolicy) + 
 										sizeof(createStmt->policy->attrs[0]));
@@ -831,7 +831,7 @@ RemoveExternalRelation(const RangeVar *relation, DropBehavior behavior)
 	/*
 	 * now remove the pg_exttable entry (for now it's only on the QD)
 	 */
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		
 		/*
@@ -995,7 +995,7 @@ ExecuteTruncate(TruncateStmt *stmt)
 	}
 	
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		
 		CdbDispatchUtilityStatement((Node *) stmt);
@@ -1261,7 +1261,7 @@ MergeAttributes(List *schema, List *supers, bool istemp,
 				 * Yes, try to merge the two column definitions. They must
 				 * have the same type and typmod.
 				 */
-				if (Mpp_role == MPP_ROLE_EXECUTE)
+				if (Gp_role == GP_ROLE_EXECUTE)
 				{
 					ereport(DEBUG1,
 						(errmsg("merging multiple inherited definitions of column \"%s\"",
@@ -1409,7 +1409,7 @@ MergeAttributes(List *schema, List *supers, bool istemp,
 				 * Yes, try to merge the two column definitions. They must
 				 * have the same type and typmod.
 				 */
-				if (Mpp_role == MPP_ROLE_EXECUTE)
+				if (Gp_role == GP_ROLE_EXECUTE)
 				{
 					ereport(DEBUG1,
 					   (errmsg("merging column \"%s\" with inherited definition",
@@ -2359,7 +2359,7 @@ AlterTable(AlterTableStmt *stmt)
 				 &stmt->oidInfoCount,
 				 &stmt->oidInfo);
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 		CdbDispatchUtilityStatement((Node *) stmt);
 }
 
@@ -2404,7 +2404,7 @@ ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOi
 	/* Close the relation, but keep lock until commit */
 	relation_close(rel, NoLock);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH && oidInfoCount != NULL)
+	if (Gp_role == GP_ROLE_DISPATCH && oidInfoCount != NULL)
 	{
 		foreach(ltab, wqueue)
 		{
@@ -2697,7 +2697,7 @@ ATAddToastIfNeeded(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 			 tab->subcmds[AT_PASS_COL_ATTRS]))
 		{
 			
-			if (Mpp_role == MPP_ROLE_DISPATCH && oidInfo != NULL)
+			if (Gp_role == GP_ROLE_DISPATCH && oidInfo != NULL)
 			{
 				Relation	pg_class_desc;
 				Relation	rel;
@@ -2732,7 +2732,7 @@ ATAddToastIfNeeded(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 				heap_close(pg_class_desc, NoLock);  /* gonna update, so don't unlock */
 				
 			}
-			if (Mpp_role == MPP_ROLE_EXECUTE && oidInfo != NULL)
+			if (Gp_role == GP_ROLE_EXECUTE && oidInfo != NULL)
 			{
 				Assert(m<oidInfoCount);
 				tOid = oidInfo[m].toastOid;
@@ -3660,7 +3660,7 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 			heap_freetuple(tuple);
 
 			/* Inform the user about the merge */
-			if (Mpp_role == MPP_ROLE_EXECUTE)
+			if (Gp_role == GP_ROLE_EXECUTE)
 			{
 				ereport(DEBUG1,
 			  (errmsg("merging definition of column \"%s\" for child \"%s\"",
@@ -4280,7 +4280,7 @@ ATExecDropColumn(Relation rel, const char *colName,
 				policy->nattrs = 0;
 				rel->rd_cdbpolicy = MppPolicyCopy(GetMemoryChunkContext(rel), policy);
 				MppPolicyReplace(rel->rd_id, policy);
-				if (Mpp_role != MPP_ROLE_EXECUTE)
+				if (Gp_role != GP_ROLE_EXECUTE)
 				    ereport(NOTICE,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("Dropping a column that is part of the distribution policy forces a NULL distribution policy")));
@@ -4432,7 +4432,7 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation rel,
 	Assert(IsA(stmt, IndexStmt));
 
 	/* The index should already be built if we are a QE */
-	if (Mpp_role == MPP_ROLE_EXECUTE)
+	if (Gp_role == GP_ROLE_EXECUTE)
 		return;
 
 	/* suppress schema rights check when rebuilding existing index */
@@ -4718,7 +4718,7 @@ ATAddForeignKeyConstraint(AlteredTableInfo *tab, Relation rel,
 		 * generate a warning if not, since otherwise costly seqscans will be
 		 * incurred to check FK validity.
 		 */
-		if (Mpp_role != MPP_ROLE_EXECUTE && !op_in_opclass(oprid(o), opclasses[i]))
+		if (Gp_role != GP_ROLE_EXECUTE && !op_in_opclass(oprid(o), opclasses[i]))
 			ereport(WARNING,
 					(errmsg("foreign key constraint \"%s\" "
 							"will require costly sequential scans",
@@ -5215,9 +5215,9 @@ createForeignKeyTriggers(Relation rel, FkConstraint *fkconstraint,
 	/*
 	 * Special for MPP: Ignore foreign keys for now, with warning
 	 */
-	if ((!gp_enable_functions) && (Mpp_role == MPP_ROLE_DISPATCH || Mpp_role == MPP_ROLE_EXECUTE))
+	if ((!gp_enable_functions) && (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE))
 	{
-		if (Mpp_role == MPP_ROLE_DISPATCH)
+		if (Gp_role == GP_ROLE_DISPATCH)
 			ereport(WARNING,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("Referential integrity (FOREIGN KEY) constraints are not supported in Greenplum Database, will not be enforced.")));
@@ -5454,7 +5454,7 @@ ATExecDropConstraint(Relation rel, const char *constrName,
 					 errmsg("constraint \"%s\" does not exist",
 							constrName)));
 		/* Otherwise if more than one constraint deleted, notify */
-		else if (deleted > 1 && Mpp_role != MPP_ROLE_EXECUTE)
+		else if (deleted > 1 && Gp_role != GP_ROLE_EXECUTE)
 			ereport(NOTICE,
 					(errmsg("multiple constraints named \"%s\" were dropped",
 							constrName)));
@@ -5758,7 +5758,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 													   foundObject.objectId);
 							tab->changedIndexDefs = lappend(tab->changedIndexDefs,indexdefstring);
 						
-							if (Mpp_role == MPP_ROLE_DISPATCH && indexdefstring &&strstr(indexdefstring," UNIQUE ")!=0 && !hashCompatible)
+							if (Gp_role == GP_ROLE_DISPATCH && indexdefstring &&strstr(indexdefstring," UNIQUE ")!=0 && !hashCompatible)
 							{
 								policy = rel->rd_cdbpolicy;
 								if (policy != NULL && policy->ptype == POLICYTYPE_PARTITIONED)
@@ -5804,7 +5804,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 				{
 					char	   *defstring = pg_get_constraintdef_string(foundObject.objectId);
 	
-					if (Mpp_role == MPP_ROLE_DISPATCH && !hashCompatible)
+					if (Gp_role == GP_ROLE_DISPATCH && !hashCompatible)
 					if (strstr(defstring," UNIQUE")!=0 ||
 						strstr(defstring,"PRIMARY KEY")!=0 )
 					{
@@ -5954,7 +5954,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 				policy->nattrs = 0;
 				rel->rd_cdbpolicy = MppPolicyCopy(GetMemoryChunkContext(rel), policy);
 				MppPolicyReplace(rel->rd_id, policy);
-				if (Mpp_role != MPP_ROLE_EXECUTE)
+				if (Gp_role != GP_ROLE_EXECUTE)
 					ereport(NOTICE,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("Changing the datatype of a column that is part of the distribution policy forces a NULL distribution policy")));

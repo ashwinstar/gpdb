@@ -162,7 +162,7 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 	/* executor wants to know total number of Params used overall */
 	result_plan->nParamExec = list_length(PlannerParamList);
 
-	if ( Mpp_role == MPP_ROLE_DISPATCH )
+	if ( Gp_role == GP_ROLE_DISPATCH )
 	{
 		bool uses_correlation = has_correlation_params(PlannerParamList);
 		
@@ -227,7 +227,7 @@ subquery_planner(Query *parse, double tuple_fraction,
 
     /* CDB: Initialize globals */
     mpp_trying_fallback_plan = false;
-    if (Mpp_role != MPP_ROLE_DISPATCH)
+    if (Gp_role != GP_ROLE_DISPATCH)
         cdbpath_segments = 1;
     else
     {
@@ -651,7 +651,7 @@ inheritance_planner(PlannerInfo *root)
 
 		
 		/* MPP needs target loci to match. */
-		if ( Mpp_role == MPP_ROLE_DISPATCH )
+		if ( Gp_role == GP_ROLE_DISPATCH )
 		{
 			CdbLocusType locustype = ( subplan->flow == NULL ) ?
 				CdbLocusType_Null : subplan->flow->locustype;
@@ -741,7 +741,7 @@ inheritance_planner(PlannerInfo *root)
 	plan = (Plan *) make_append(subplans, true, tlist);
 	
 	/* MPP dispatch needs to know the kind of locus. */
-	if ( Mpp_role == MPP_ROLE_DISPATCH )
+	if ( Gp_role == GP_ROLE_DISPATCH )
 	{
 		switch ( append_locustype )
 		{
@@ -998,7 +998,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		 * Eventually we should add a parallel version of the min-max
 		 * optimization.  For now, it's either-or.
 		 */
-		if ( Mpp_role == MPP_ROLE_DISPATCH )
+		if ( Gp_role == GP_ROLE_DISPATCH )
 		{
 			result_plan = cdb_grouping_planner(root,
 											&agg_counts,
@@ -1018,7 +1018,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 				current_pathkeys = NIL;
 			}
 		}
-		else /* Not MPP_ROLE_DISPATCH */
+		else /* Not GP_ROLE_DISPATCH */
 		{
 			/*
 			 * Check to see if it's possible to optimize MIN/MAX aggregates.
@@ -1245,7 +1245,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	 * MPP: If there's a DISTINCT clause and we're not collocated on the
 	 * key, we need to redistribute.
 	 */
-	 if ( Mpp_role == MPP_ROLE_DISPATCH && parse->distinctClause != NULL)
+	 if ( Gp_role == GP_ROLE_DISPATCH && parse->distinctClause != NULL)
 	 {
 		if ( result_plan->flow->flotype == FLOW_PARTITIONED )
 		{
@@ -1344,7 +1344,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	 */
 	if (parse->limitCount || parse->limitOffset)
 	{
-		if ( Mpp_role == MPP_ROLE_DISPATCH && result_plan->flow->flotype == FLOW_PARTITIONED )
+		if ( Gp_role == GP_ROLE_DISPATCH && result_plan->flow->flotype == FLOW_PARTITIONED )
 		{
 			/* Note max result size.  May be unspecified. */
 			Node *precount = copyObject(parse->limitCount);

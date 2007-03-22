@@ -545,11 +545,11 @@ InitPostgres(const char *dbname, const char *username)
     /* 
      * MPP SharedSnapshot Setup
 	 */
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		addSharedSnaphot("Query Dispatcher", gp_session_id);
 	}
-    else if (Gp_segment == -1 && Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_writer)
+    else if (Gp_segment == -1 && Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
     {
 		/* 
 		 * Entry db singleton QE is a user of the shared snapshot -- not a creator.
@@ -558,7 +558,7 @@ InitPostgres(const char *dbname, const char *username)
 		elog(LOG, "InitPostgres initializing entry db singleton QE -- is QD's slot among %s ???",
 		     SharedSnapshotDump());
     }
-    else if (Mpp_role == MPP_ROLE_EXECUTE)
+    else if (Gp_role == GP_ROLE_EXECUTE)
 	{
 		if (Gp_is_writer)
 		{
@@ -610,7 +610,7 @@ ShutdownPostgres(int code, Datum arg)
 	AbortOutOfAnyTransaction();
 
 	/* Final cleanup for any resource locks (holdable cursors). */
-	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
 		ResLockReleaseAll(true, true, true);
 
 	/*
@@ -622,7 +622,7 @@ ShutdownPostgres(int code, Datum arg)
     /*
      * shutdown TM
      */
-    if ( Mpp_role == MPP_ROLE_DISPATCH )
+    if ( Gp_role == GP_ROLE_DISPATCH )
         shutdownTM();
 }
 

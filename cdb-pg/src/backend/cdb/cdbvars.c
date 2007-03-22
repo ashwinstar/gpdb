@@ -36,12 +36,12 @@
 
 
 
-MppRoleValue Mpp_role;			/* Role paid by this MPP backend */
+GpRoleValue Gp_role;			/* Role paid by this MPP backend */
 char	   *gp_role_string;	/* Staging area for guc.c */
 char	   *gp_fault_action_string;	/* Staging area for guc.c */
 bool		gp_set_read_only;	/* Staging area for guc.c */
 
-MppRoleValue Gp_session_role;	/* Role paid by this MPP backend */
+GpRoleValue Gp_session_role;	/* Role paid by this MPP backend */
 char	   *gp_session_role_string;	/* Staging area for guc.c */
 
 bool		Gp_is_primary;		/* Is this session primary (or mirror) */
@@ -146,9 +146,9 @@ int         mpp_singleton_segindex;
  * for both dispatch and execute modes.
  *
  * Any code needing the  "numsegments"
- * can simply #include cdbvars.h, and use MppIdentity.numsegments
+ * can simply #include cdbvars.h, and use GpIdentity.numsegments
  */
-GpId		MppIdentity = {NULL, 0, -1, -999};
+GpId		GpIdentity = {NULL, 0, -1, -999};
 
 
 /*
@@ -166,53 +166,53 @@ int cdb_max_slices = 0;
 /*
  *	Forward declarations of local function.
  */
-MppRoleValue string_to_role(const char *string);
-const char *role_to_string(MppRoleValue role);
+GpRoleValue string_to_role(const char *string);
+const char *role_to_string(GpRoleValue role);
 
 
 /*
  * Convert a MPP role string (as for gp_session_role or gp_role) to an
- * enum value of type MppRoleValue. Return MPP_ROLE_UNDEFINED in case the
+ * enum value of type GpRoleValue. Return GP_ROLE_UNDEFINED in case the
  * string is unrecognized.
  */
-MppRoleValue
+GpRoleValue
 string_to_role(const char *string)
 {
-	MppRoleValue role = MPP_ROLE_UNDEFINED;
+	GpRoleValue role = GP_ROLE_UNDEFINED;
 
 	if (pg_strcasecmp(string, "dispatch") == 0 || pg_strcasecmp(string, "") == 0)
 	{
-		role = MPP_ROLE_DISPATCH;
+		role = GP_ROLE_DISPATCH;
 	}
 	else if (pg_strcasecmp(string, "execute") == 0)
 	{
-		role = MPP_ROLE_EXECUTE;
+		role = GP_ROLE_EXECUTE;
 	}
 	else if (pg_strcasecmp(string, "utility") == 0)
 	{
-		role = MPP_ROLE_UTILITY;
+		role = GP_ROLE_UTILITY;
 	}
 
 	return role;
 }
 
 /*
- * Convert a MppRoleValue to a role string (as for gp_session_role or
+ * Convert a GpRoleValue to a role string (as for gp_session_role or
  * gp_role).  Return eyecatcher in the unexpected event that the value
  * is unknown or undefined.
  */
 const char *
-role_to_string(MppRoleValue role)
+role_to_string(GpRoleValue role)
 {
 	switch (role)
 	{
-		case MPP_ROLE_DISPATCH:
+		case GP_ROLE_DISPATCH:
 			return "dispatch";
-		case MPP_ROLE_EXECUTE:
+		case GP_ROLE_EXECUTE:
 			return "execute";
-		case MPP_ROLE_UTILITY:
+		case GP_ROLE_UTILITY:
 			return "utility";
-		case MPP_ROLE_UNDEFINED:
+		case GP_ROLE_UNDEFINED:
 		default:
 			return "*undefined*";
 	}
@@ -236,9 +236,9 @@ assign_gp_session_role(const char *newval, bool doit, GucSource source)
 		 show_gp_session_role(), newval, (doit ? "true" : "false"));
 #endif
 
-	MppRoleValue newrole = string_to_role(newval);
+	GpRoleValue newrole = string_to_role(newval);
 
-	if (newrole == MPP_ROLE_UNDEFINED)
+	if (newrole == GP_ROLE_UNDEFINED)
 	{
 		return NULL;
 	}
@@ -246,9 +246,9 @@ assign_gp_session_role(const char *newval, bool doit, GucSource source)
 	if (doit)
 	{
 		Gp_session_role = newrole;
-		Mpp_role = Gp_session_role;
+		Gp_role = Gp_session_role;
 
-		if (Mpp_role == MPP_ROLE_DISPATCH)
+		if (Gp_role == GP_ROLE_DISPATCH)
 			Gp_segment = -1;
 	}
 	return newval;
@@ -275,10 +275,10 @@ assign_gp_role(const char *newval, bool doit, GucSource source)
 #endif
 
 
-	MppRoleValue newrole = string_to_role(newval);
-	MppRoleValue oldrole = Mpp_role;
+	GpRoleValue newrole = string_to_role(newval);
+	GpRoleValue oldrole = Gp_role;
 
-	if (newrole == MPP_ROLE_UNDEFINED)
+	if (newrole == GP_ROLE_UNDEFINED)
 	{
 		return NULL;
 	}
@@ -293,19 +293,19 @@ assign_gp_role(const char *newval, bool doit, GucSource source)
 		bool		do_disconnect = false;
 		bool		do_connect = false;
 
-		if (Mpp_role != newrole && IsUnderPostmaster)
+		if (Gp_role != newrole && IsUnderPostmaster)
 		{
-			if (Mpp_role != MPP_ROLE_UTILITY)
+			if (Gp_role != GP_ROLE_UTILITY)
 				do_disconnect = true;
 
-			if (newrole != MPP_ROLE_UTILITY)
+			if (newrole != GP_ROLE_UTILITY)
 				do_connect = true;
 		}
 
 		if (do_disconnect)
 			cdb_cleanup(0, (Datum) NULL);
 
-		Mpp_role = newrole;
+		Gp_role = newrole;
 
 		if (source != PGC_S_DEFAULT)
 		if (do_connect)
@@ -323,8 +323,8 @@ assign_gp_role(const char *newval, bool doit, GucSource source)
 			PG_CATCH();
 			{
 				cdb_cleanup(0, (Datum) NULL);
-				Mpp_role = oldrole;
-				if (Mpp_role != MPP_ROLE_UTILITY)
+				Gp_role = oldrole;
+				if (Gp_role != GP_ROLE_UTILITY)
 					cdb_setup();
 				PG_RE_THROW();
 			}
@@ -404,7 +404,7 @@ show_gp_session_role(void)
 const char *
 show_gp_role(void)
 {
-	return role_to_string(Mpp_role);
+	return role_to_string(Gp_role);
 }
 
 /*

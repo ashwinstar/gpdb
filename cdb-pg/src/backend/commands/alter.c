@@ -63,7 +63,7 @@ ExecRenameStmt(RenameStmt *stmt)
 
 		case OBJECT_LANGUAGE:
 			RenameLanguage(stmt->subname, stmt->newname);
-			if (Mpp_role == MPP_ROLE_DISPATCH)
+			if (Gp_role == GP_ROLE_DISPATCH)
 			break;
 
 		case OBJECT_OPCLASS:
@@ -138,7 +138,7 @@ ExecRenameStmt(RenameStmt *stmt)
 			elog(ERROR, "unrecognized rename stmt type: %d",
 				 (int) stmt->renameType);
 	}
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}
@@ -179,7 +179,7 @@ ExecAlterObjectSchemaStmt(AlterObjectSchemaStmt *stmt)
 			elog(ERROR, "unrecognized AlterObjectSchemaStmt type: %d",
 				 (int) stmt->objectType);
 	}
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}
@@ -241,7 +241,7 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 			elog(ERROR, "unrecognized AlterOwnerStmt type: %d",
 				 (int) stmt->objectType);
 	}
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		if (stmt->objectType == OBJECT_DATABASE ||
 			stmt->objectType == OBJECT_TABLESPACE || 

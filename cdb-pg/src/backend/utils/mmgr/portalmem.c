@@ -199,7 +199,7 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 					(errcode(ERRCODE_DUPLICATE_CURSOR),
 					 errmsg("cursor \"%s\" already exists", name)));
 		if (!dupSilent)
-			if (Mpp_role != MPP_ROLE_EXECUTE)
+			if (Gp_role != GP_ROLE_EXECUTE)
 			ereport(WARNING,
 					(errcode(ERRCODE_DUPLICATE_CURSOR),
 					 errmsg("closing existing cursor \"%s\"",
@@ -233,7 +233,7 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 	portal->creation_time = GetCurrentStatementStartTimestamp();
 
 	/* set portal id and queue id if have enabled resource scheduling */
-	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
 	{
 		portal->portalId = ResCreatePortalId(name);
 		portal->queueId = GetResQueueId();

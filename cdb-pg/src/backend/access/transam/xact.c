@@ -50,7 +50,7 @@
 
 #include "cdb/cdbgang.h"
 #include "cdb/cdbtm.h"
-#include "cdb/cdbvars.h"		/* Mpp_role, Gp_is_writer,
+#include "cdb/cdbvars.h"		/* Gp_role, Gp_is_writer,
 					   interconnect_setup_timeout */
 
 /*
@@ -519,13 +519,13 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 
 
     /*$$$$$$$ FIX ME $$$$$$$$$*/
-    if (Gp_segment == -1 && Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_writer)
+    if (Gp_segment == -1 && Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
     {
          elog(LOG, "TransactionIdIsCurrentTransactionId for entry db singleton QE: Subtransactions not implemented.  Punt!"); 
     }
     else
     /*$$$$$$$$$$$$$$$$$$$$$$$*/
-	if (Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_writer &&
+	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer &&
 		SharedLocalSnapshotSlot != NULL && 
 		SharedLocalSnapshotSlot->xid == TopTransactionStateData.transactionId)
 	{
@@ -786,7 +786,7 @@ RecordTransactionCommit(void)
 
 
 		/* Safety check in case our assumption is ever broken. */
-		if (Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_writer && !seqXlogWrite)
+		if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer && !seqXlogWrite)
 		{
 			/*
 			 * we better only do really minor things on the reader that result
@@ -1669,7 +1669,7 @@ StartTransaction(void)
 	 *
 	 * @see also variable.c assign_XactIsoLevel()
 	 */
-	if (Mpp_role == MPP_ROLE_DISPATCH || Mpp_role == MPP_ROLE_EXECUTE)
+	if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE)
 	{
 		if (XactIsoLevel == XACT_REPEATABLE_READ)
 			elog(ERROR, "Greenplum Database does not support REPEATABLE READ transactions.");
@@ -1964,7 +1964,7 @@ CommitTransaction(void)
 	AtCommit_Portals();
 
 	/* Perform any Resource Scheduler commit procesing. */
-	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
 		AtCommit_ResScheduler();
 
 	/*
@@ -2422,7 +2422,7 @@ AbortTransaction(void)
 	AtAbort_Portals();
 
 	/* Perform any Resource Scheduler abort procesing. */
-	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
 		AtAbort_ResScheduler();
 		
 	AtAbort_ExtTables();
@@ -2593,7 +2593,7 @@ StartTransactionCommand(void)
 			/* There may be reader gangs waiting for us to update the
 			 * QDSentXID -- make sure the state of the sharedsnapshot
 			 * slot properly tracks the qd-xid */
-			if (Mpp_role == MPP_ROLE_EXECUTE && Gp_is_writer && SharedLocalSnapshotSlot != NULL)
+			if (Gp_role == GP_ROLE_EXECUTE && Gp_is_writer && SharedLocalSnapshotSlot != NULL)
 			{
 				SharedLocalSnapshotSlot->xid = s->transactionId;
 				SharedLocalSnapshotSlot->startTimestamp = xactStartTimestamp;
@@ -3291,7 +3291,7 @@ BeginTransactionBlock(void)
 		case TBLOCK_SUBINPROGRESS:
 		case TBLOCK_ABORT:
 		case TBLOCK_SUBABORT:
-			if (Mpp_role == MPP_ROLE_EXECUTE)
+			if (Gp_role == GP_ROLE_EXECUTE)
 			ereport(DEBUG1,
 					(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
 					 errmsg("there is already a transaction in progress")));
@@ -3463,7 +3463,7 @@ EndTransactionBlock(void)
 			 * put us back into the default state.
 			 */
 		case TBLOCK_STARTED:
-			if (Mpp_role == MPP_ROLE_EXECUTE)
+			if (Gp_role == GP_ROLE_EXECUTE)
 			{
 				ereport(DEBUG2,
 					(errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION),
@@ -3562,7 +3562,7 @@ UserAbortTransactionBlock(void)
 			 * default state.
 			 */
 		case TBLOCK_STARTED:
-			if (Mpp_role == MPP_ROLE_EXECUTE)
+			if (Gp_role == GP_ROLE_EXECUTE)
 			{
 				ereport(DEBUG2,
 					(errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION),
@@ -3609,7 +3609,7 @@ DefineSavepoint(char *name)
 		case TBLOCK_SUBINPROGRESS:
 
 			/* First we attempt to create on the QEs */
-			if (Mpp_role == MPP_ROLE_DISPATCH)
+			if (Gp_role == GP_ROLE_DISPATCH)
 			{
 				char	   *cmd = NULL;
 				bool		freecmd;
@@ -3741,7 +3741,7 @@ ReleaseSavepoint(List *options)
 
 	Assert(PointerIsValid(name));
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		char	   *cmd = NULL;
 		bool		freecmd;
@@ -3872,7 +3872,7 @@ RollbackToSavepoint(List *options)
 
 	Assert(PointerIsValid(name));
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		char	   *cmd;
 		bool		freecmd;

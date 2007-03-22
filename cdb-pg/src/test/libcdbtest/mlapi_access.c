@@ -133,7 +133,7 @@ Datum MLAPI_SendTuple__int1_text1(PG_FUNCTION_ARGS)
 
     oldCtxt = MemoryContextSwitchTo(CacheMemoryContext);
 
-    getMppIdentity(&mySegIdx, NULL);
+    getGpIdentity(&mySegIdx, NULL);
 
     /*-----------------------------*
      * Set up tuple send context.
@@ -333,7 +333,7 @@ Datum MLAPI_SendRecvPerf__int1_text1(PG_FUNCTION_ARGS)
 
     /* Start sending and receiving tuple data!  Track stats, too. */
 
-    getMppIdentity(&mySegIdx, NULL);
+    getGpIdentity(&mySegIdx, NULL);
 
     bzero(&tup_send_ctxt, sizeof(tup_send_ctxt));
     tup_send_ctxt.heap_tuple = SPI_tuptable->vals[0];

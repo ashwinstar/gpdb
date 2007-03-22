@@ -1904,7 +1904,7 @@ log_line_prefix(StringInfo buf)
                     appendStringInfo(buf, "con%d ", gp_session_id);
                 if (gp_command_count > 0)
                     appendStringInfo(buf, "cmd%d ", gp_command_count);
-				if (Mpp_role == MPP_ROLE_EXECUTE)
+				if (Gp_role == GP_ROLE_EXECUTE)
                     appendStringInfo(buf, "%s%d ",
                                      Gp_is_primary ? "seg" : "mir",
                                      Gp_segment);
@@ -1915,7 +1915,7 @@ log_line_prefix(StringInfo buf)
                     buf->len--;
 				break;
 			case 'P':
-				if( Mpp_role == MPP_ROLE_EXECUTE )
+				if( Gp_role == GP_ROLE_EXECUTE )
 				{
                     appendStringInfoChar(buf, Gp_is_primary?'P':'M');
 				}
@@ -1927,7 +1927,7 @@ log_line_prefix(StringInfo buf)
                     appendStringInfo(buf, uname && uname[0] ? uname : "postmaster");
                 }
                 else
-				    appendStringInfo(buf, "%s", role_to_string(Mpp_role));	
+				    appendStringInfo(buf, "%s", role_to_string(Gp_role));	
 				break;
 			case 'S':
 				if (currentSliceId >= 0)
@@ -1938,9 +1938,9 @@ log_line_prefix(StringInfo buf)
 			case 'T':
                 if (MyProcPort)
                 {
-                    if (Mpp_role == MPP_ROLE_EXECUTE)
+                    if (Gp_role == GP_ROLE_EXECUTE)
                         appendStringInfo(buf, "qe");
-                    else if (Mpp_role == MPP_ROLE_DISPATCH)
+                    else if (Gp_role == GP_ROLE_DISPATCH)
                         appendStringInfo(buf, "qd");
                 }
 				break;	

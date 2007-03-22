@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * cdbvars.h
- *	  definitions for MPP global variables
+ *	  definitions for Greenplum-specific global variables
  *
  * Copyright (c) 2003-2007, Greenplum
  *
@@ -21,7 +21,7 @@
 #include "utils/guc.h"
 
 /*
- * ----- Declarations of MPP global variables ------
+ * ----- Declarations of Greenplum-specific global variables ------
  */
 
 /*
@@ -40,7 +40,7 @@
  * Both parameters are initialized to the same value at connection
  * time and are local to the backend process resulting from the
  * connection.	The default is dispatch which is the normal setting
- * for a user of MPP connecting to a node of  the MPP cluster.
+ * for a user of Greenplum connecting to a node of  the Greenplum cluster.
  * Neither parameter appears in the configuration file.
  *
  * gp_session_role
@@ -70,21 +70,21 @@
  *
  * ----------
  *
- * MPP Developers can access the values of these parameters via the
- * global variables Gp_session_role and Mpp_role of type
- * MppRoleValue. For example
+ * Greenplum Developers can access the values of these parameters via the
+ * global variables Gp_session_role and Gp_role of type
+ * GpRoleValue. For example
  *
  *	#include "cdb/cdbvars.h"
  *
- *	switch ( Mpp_role  )
+ *	switch ( Gp_role  )
  *	{
- *		case MPP_ROLE_DISPATCH:
+ *		case GP_ROLE_DISPATCH:
  *			... Act like a query dispatcher ...
  *			break;
- *		case MPP_ROLE_EXECUTE:
+ *		case GP_ROLE_EXECUTE:
  *			... Act like a query executor ...
  *			break;
- *		case MPP_ROLE_UTILITY:
+ *		case GP_ROLE_UTILITY:
  *			... Act like an unmodified PostgreSQL backend. ...
  *			break;
  *		default:
@@ -92,7 +92,7 @@
  *			break;
  *	}
  *
- * You can also modify Mpp_role (even if the session doesn't have
+ * You can also modify Gp_role (even if the session doesn't have
  * superuser privileges) by setting it to one of the three valid
  * values, however this must be well documented to avoid
  * disagreements between modules.  Don't modify the value  of
@@ -102,20 +102,20 @@
 
 typedef enum
 {
-	MPP_ROLE_UTILITY = 0,		/* Operating as a simple database engine */
-	MPP_ROLE_DISPATCH,			/* Operating as the parallel query dispatcher */
-	MPP_ROLE_EXECUTE,			/* Operating as a parallel query executor */
-	MPP_ROLE_UNDEFINED			/* Should never see this role in use */
-} MppRoleValue;
+	GP_ROLE_UTILITY = 0,		/* Operating as a simple database engine */
+	GP_ROLE_DISPATCH,			/* Operating as the parallel query dispatcher */
+	GP_ROLE_EXECUTE,			/* Operating as a parallel query executor */
+	GP_ROLE_UNDEFINED			/* Should never see this role in use */
+} GpRoleValue;
 
 
-extern MppRoleValue Gp_session_role;	/* GUC var - server startup mode.  */
+extern GpRoleValue Gp_session_role;	/* GUC var - server startup mode.  */
 extern char *gp_session_role_string;	/* Use by guc.c as staging area for
 										 * value. */
 extern const char *assign_gp_session_role(const char *newval, bool doit, GucSource source);
 extern const char *show_gp_session_role(void);
 
-extern MppRoleValue Mpp_role;	/* GUC var - server operating mode.  */
+extern GpRoleValue Gp_role;	/* GUC var - server operating mode.  */
 extern char *gp_role_string;	/* Use by guc.c as staging area for value. */
 extern const char *assign_gp_role(const char *newval, bool doit, GucSource source);
 extern const char *show_gp_role(void);
@@ -152,7 +152,7 @@ extern bool Gp_is_writer;
 /* Parameter gp_session_id
  *
  * This run time parameter indicates a unique id to identify a particular user
- * session throughout the entire MPP array.
+ * session throughout the entire Greenplum array.
  */
 extern int gp_session_id;
 
@@ -250,7 +250,7 @@ extern char *gp_fault_action_string;	/* Use by guc.c as user defined fault
 extern bool gp_set_read_only;
 extern bool assign_gp_set_read_only(bool newval, bool doit, GucSource source);
 extern const char *show_gp_set_read_only(void);
-extern const char *role_to_string(MppRoleValue role);
+extern const char *role_to_string(GpRoleValue role);
 
 extern int	gp_segment_connect_timeout; /* GUC var - timeout specifier for gang creation */
 
@@ -358,7 +358,7 @@ cdbvars_show_gp_log_interconnect(void);
 
 
 /* --------------------------------------------------------------------------------------------------
- * MPP Optimizer GUCs
+ * Greenplum Optimizer GUCs
  */
 
 
@@ -397,7 +397,7 @@ extern bool gp_enable_motion_deadlock_sanity;
 
 /* ----- Experimental Features ----- */
 
-/* May MPP redistribute on the argument of a lone aggregate distinct in
+/* May Greenplum redistribute on the argument of a lone aggregate distinct in
  * order to use 2-phase aggregation?
  *
  * The code does not currently use planner estimates for this.  If enabled,
@@ -405,7 +405,7 @@ extern bool gp_enable_motion_deadlock_sanity;
  */
 extern bool gp_enable_agg_distinct;
 
-/* May MPP apply Unique operator (and possibly a Sort) in parallel prior
+/* May Greenplum apply Unique operator (and possibly a Sort) in parallel prior
  * to the collocation motion for a Unique operator?  The idea is to reduce
  * the number of rows moving over the interconnect.
  *
@@ -414,13 +414,13 @@ extern bool gp_enable_agg_distinct;
  */
 extern bool gp_enable_preunique;
 
-/* May MPP dump statistics for all segments as a huge ugly string
+/* May Greenplum dump statistics for all segments as a huge ugly string
  * during EXPLAIN ANALYZE? 
  *
  */
 extern bool gp_enable_explain_allstat;
 
-/* May MPP restrict ORDER BY sorts to the first N rows if the ORDER BY
+/* May Greenplum restrict ORDER BY sorts to the first N rows if the ORDER BY
  * is wrapped by a LIMIT clause (where N=OFFSET+LIMIT)?
  *
  * The code does not currently use planner estimates for this.  If enabled,
@@ -428,7 +428,7 @@ extern bool gp_enable_explain_allstat;
  */
 extern bool gp_enable_sort_limit;
 
-/* May MPP discard duplicate rows in sort if it is is wrapped by a
+/* May Greenplum discard duplicate rows in sort if it is is wrapped by a
  * DISTINCT clause (unique aggregation operator)?
  *
  * The code does not currently use planner estimates for this.  If enabled,
@@ -436,7 +436,7 @@ extern bool gp_enable_sort_limit;
  */
 extern bool gp_enable_sort_distinct;
 
-/* Generic MPP sort flag for testing.
+/* Generic Greenplum sort flag for testing.
  *
  *
  */
@@ -480,7 +480,7 @@ extern int cdb_total_slices;
 extern int cdb_max_slices;
 
 /* --------------------------------------------------------------------------------------------------
- * Structure for row of mpp.mpp table
+ * Structure for row of gp_id table
  */
 typedef struct GpId
 {
@@ -493,9 +493,9 @@ typedef struct GpId
 } GpId;
 
 /* --------------------------------------------------------------------------------------------------
- * Global variable declaration for the data for the single row of mpp.mpp table
+ * Global variable declaration for the data for the single row of gp_id table
  */
-extern GpId MppIdentity;
+extern GpId GpIdentity;
 
 
 /* Stores the listener port that this process uses to listen for incoming

@@ -1797,17 +1797,17 @@ sliceRunsOnQE(Slice * slice)
  * There are types:
  *
  * 1. No-Op (ignore) -- this occurs when the specified direction is
- *	 NoMovementScanDirection or when Mpp_role is MPP_ROLE_DISPATCH
+ *	 NoMovementScanDirection or when Gp_role is GP_ROLE_DISPATCH
  *	 and the current slice belongs to a QE.
  *
- * 2. Executor serves a Root Slice -- this occurs when Mpp_role is
- *   MPP_ROLE_UTILITY or the current slice is a root.  It corresponds
+ * 2. Executor serves a Root Slice -- this occurs when Gp_role is
+ *   GP_ROLE_UTILITY or the current slice is a root.  It corresponds
  *   to the "normal" path through the executor in that we enter the plan
  *   at the top and count on the motion nodes at the fringe of the top
  *   slice to return without ever calling nodes below them.
  *
  * 3. Executor serves a Non-Root Slice on a QE -- this occurs when
- *   Mpp_role is MPP_ROLE_EXECUTE and the current slice is not a root
+ *   Gp_role is GP_ROLE_EXECUTE and the current slice is not a root
  *   slice. It corresponds to a QE running a slice with a motion node on
  *	 top.  The call, thus, returns no tuples (since they all go out
  *	 on the interconnect to the receiver version of the motion node),
@@ -1824,7 +1824,7 @@ getMppExecIdentity(QueryDesc *queryDesc,
 	currentSlice = getCurrentSlice(estate);
 	if (currentSlice)
     {
-        if (Mpp_role == MPP_ROLE_EXECUTE ||
+        if (Gp_role == GP_ROLE_EXECUTE ||
             sliceRunsOnQD(currentSlice))
             currentSliceId = currentSlice->sliceIndex;
     }
@@ -1834,11 +1834,11 @@ getMppExecIdentity(QueryDesc *queryDesc,
 	{
 		return MPP_IGNORE;
 	}
-	else if (Mpp_role == MPP_ROLE_DISPATCH && sliceRunsOnQE(currentSlice))
+	else if (Gp_role == GP_ROLE_DISPATCH && sliceRunsOnQE(currentSlice))
 	{
 		return MPP_IGNORE;
 	}
-	else if (Mpp_role == MPP_ROLE_EXECUTE && estate->es_cur_slice_idx != estate->es_cur_root_idx)
+	else if (Gp_role == GP_ROLE_EXECUTE && estate->es_cur_slice_idx != estate->es_cur_root_idx)
 	{
 		return MPP_NON_ROOT_ON_QE;
 	}

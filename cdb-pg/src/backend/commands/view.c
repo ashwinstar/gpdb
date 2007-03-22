@@ -413,7 +413,7 @@ DefineView(ViewStmt *stmt)
 	Query	   *viewParse = stmt->query;
 	bool		replace = stmt->replace;
 
-	if (Mpp_role != MPP_ROLE_EXECUTE)
+	if (Gp_role != GP_ROLE_EXECUTE)
 		viewOid = 0;
 	/*
 	 * If the user didn't explicitly ask for a temporary view, check whether
@@ -423,7 +423,7 @@ DefineView(ViewStmt *stmt)
 	{
 		view->istemp = isViewOnTempTable(viewParse);
 		if (view->istemp)
-			if (Mpp_role != MPP_ROLE_EXECUTE)
+			if (Gp_role != GP_ROLE_EXECUTE)
 			ereport(NOTICE,
 					(errmsg("view \"%s\" will be a temporary view",
 							view->relname)));
@@ -457,7 +457,7 @@ DefineView(ViewStmt *stmt)
 	 */
 	DefineViewRules(view, viewParse, replace);
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt);
 

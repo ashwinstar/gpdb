@@ -134,7 +134,7 @@ void
 RemoveMotionLayer(MotionLayerState *mlStates, bool flushCommLayer)
 {
 
-	if (Mpp_role == MPP_ROLE_UTILITY)
+	if (Gp_role == GP_ROLE_UTILITY)
 		return;
 
 #ifdef AMS_VERBOSE_LOGGING
@@ -181,7 +181,7 @@ initMotionLayerStructs(MotionLayerState **mlStates)
 	HASHCTL		hctl;
 	HTAB	   *htab;
 
-	if(Mpp_role == MPP_ROLE_UTILITY)
+	if(Gp_role == GP_ROLE_UTILITY)
 		return;
 	
 	Gp_max_tuple_chunk_size = Gp_max_packet_size - PACKET_HEADER_SIZE - TUPLE_CHUNK_HEADER_SIZE;

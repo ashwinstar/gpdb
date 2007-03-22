@@ -147,7 +147,7 @@ CreateRole(CreateRoleStmt *stmt)
 		}
 		else if (strcmp(defel->defname, "sysid") == 0)
 		{
-			if (Mpp_role != MPP_ROLE_EXECUTE)
+			if (Gp_role != GP_ROLE_EXECUTE)
 			ereport(NOTICE,
 					(errmsg("SYSID can no longer be specified")));
 		}
@@ -353,7 +353,7 @@ CreateRole(CreateRoleStmt *stmt)
 	else
 		new_record_nulls[Anum_pg_authid_rolvaliduntil - 1] = 'n';
 
-	if (resqueue && (Mpp_role == MPP_ROLE_DISPATCH))
+	if (resqueue && (Gp_role == GP_ROLE_DISPATCH))
 	{
 		Oid		queueid;
 
@@ -442,7 +442,7 @@ CreateRole(CreateRoleStmt *stmt)
 	 */
 	auth_file_update_needed();
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		Assert(stmt->type == T_CreateRoleStmt);
 		Assert(stmt->type < 1000);
@@ -744,7 +744,7 @@ AlterRole(AlterRoleStmt *stmt)
 	}
 
 	/* resource queue */
-	if (resqueue && (Mpp_role == MPP_ROLE_DISPATCH))
+	if (resqueue && (Gp_role == GP_ROLE_DISPATCH))
 	{
 		Oid			queueid;
 
@@ -809,7 +809,7 @@ AlterRole(AlterRoleStmt *stmt)
 	 */
 	auth_file_update_needed();
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}
@@ -905,7 +905,7 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 	/* needn't keep lock since we won't be updating the flat file */
 	heap_close(rel, RowExclusiveLock);
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 
 		StringInfoData buffer;
@@ -1133,7 +1133,7 @@ DropRole(DropRoleStmt *stmt)
 	 */
 	auth_file_update_needed();
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt);
 
@@ -1238,7 +1238,7 @@ RenameRole(const char *oldname, const char *newname)
 		repl_repl[Anum_pg_authid_rolpassword - 1] = 'r';
 		repl_null[Anum_pg_authid_rolpassword - 1] = 'n';
 
-		if (Mpp_role != MPP_ROLE_EXECUTE)
+		if (Gp_role != GP_ROLE_EXECUTE)
 		ereport(NOTICE,
 				(errmsg("MD5 password cleared because of role rename")));
 	}
@@ -1319,7 +1319,7 @@ GrantRole(GrantRoleStmt *stmt)
 	 */
 	auth_file_update_needed();
 
-    if (Mpp_role == MPP_ROLE_DISPATCH)
+    if (Gp_role == GP_ROLE_DISPATCH)
     {
         CdbDispatchUtilityStatement((Node *) stmt);
     }
@@ -1501,7 +1501,7 @@ AddRoleMems(const char *rolename, Oid roleid,
 			(!admin_opt ||
 			 ((Form_pg_auth_members) GETSTRUCT(authmem_tuple))->admin_option))
 		{
-			if (Mpp_role != MPP_ROLE_EXECUTE)
+			if (Gp_role != GP_ROLE_EXECUTE)
 			ereport(NOTICE,
 					(errmsg("role \"%s\" is already a member of role \"%s\"",
 							membername, rolename)));

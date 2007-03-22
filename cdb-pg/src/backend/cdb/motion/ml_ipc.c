@@ -1434,7 +1434,7 @@ setupListeningSocket(int backlog, int *listenerSocketFd, int *listenerPort)
 	/* We use INADDR_ANY if we don't have a valid address for
 	 * ourselves (e.g. QD local connections tend to be AF_UNIX, or
 	 * on 127.0.0.1 -- so bind everything) */
-	if (Mpp_role == MPP_ROLE_DISPATCH ||
+	if (Gp_role == GP_ROLE_DISPATCH ||
 		MyProcPort->laddr.addr.ss_family != AF_INET)
 		saddr.sin_addr.s_addr = htonl(INADDR_ANY);
 	else

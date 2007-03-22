@@ -67,7 +67,7 @@ Datum ml_ipc_bench(PG_FUNCTION_ARGS)
 	char *msg;
 	uint64 totalMsec;
 	
-	MppRoleValue oldRole = Mpp_role;
+	GpRoleValue oldRole = Gp_role;
 	
 	/* temporarily disable this routine. see TODO item below. */
 	ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_YET),
@@ -104,7 +104,7 @@ Datum ml_ipc_bench(PG_FUNCTION_ARGS)
 
 		
         //set things up
-	    getMppIdentity( &mySegIndex, &isPrimary );
+	    getGpIdentity( &mySegIndex, &isPrimary );
 
         //create our test message
         msg = palloc(data_size);

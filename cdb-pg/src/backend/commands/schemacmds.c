@@ -54,7 +54,7 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 	Oid			saved_uid;
 	AclResult	aclresult;
 
-	bool		shouldDispatch = Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
+	bool		shouldDispatch = Gp_role == GP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
 
 	saved_uid = GetUserId();
 
@@ -99,7 +99,7 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 		SetUserId(owner_uid);
 
 	/* Create the schema's namespace */
-	if (shouldDispatch || Mpp_role != MPP_ROLE_EXECUTE)
+	if (shouldDispatch || Gp_role != GP_ROLE_EXECUTE)
 	{
 		namespaceId = NamespaceCreate(schemaName, owner_uid, 0);
 
@@ -119,7 +119,7 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 		}
 
 	}
-	else if (Mpp_role == MPP_ROLE_EXECUTE)
+	else if (Gp_role == GP_ROLE_EXECUTE)
 	{
 		namespaceId = NamespaceCreate(schemaName, owner_uid, stmt->schemaOid);
 	}
@@ -205,7 +205,7 @@ RemoveSchema(List *names, DropBehavior behavior, bool missing_ok)
 		}
 		else
 		{
-			if (Mpp_role != MPP_ROLE_EXECUTE)
+			if (Gp_role != GP_ROLE_EXECUTE)
 			ereport(NOTICE,
 					(errcode(ERRCODE_UNDEFINED_SCHEMA),
 					 errmsg("schema \"%s\" does not exist, skipping", 

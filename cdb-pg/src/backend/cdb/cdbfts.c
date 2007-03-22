@@ -93,7 +93,7 @@ FtsShmemInit(void)
 		shared->ftsSegDBTransientCount = 0;
 		shared->ftsReadOnlyFlag = gp_set_read_only;
 
-		if (Mpp_role == MPP_ROLE_DISPATCH)
+		if (Gp_role == GP_ROLE_DISPATCH)
 		{
 			shared->ftsAction = convertFaultActionValue(gp_fault_action_string);
 			elog(LOG, "FTS: Fault Tolerance Action is set to : %s", gp_fault_action_string);
@@ -733,7 +733,7 @@ markSegDBPersistentState(int dbid, bool state)
 	q = getEntrySegDB(&count);
 
 	if (count > 1)
-		if (q->dbid != MppIdentity.dbid)
+		if (q->dbid != GpIdentity.dbid)
 			q = q + 1;
 
 	entryBuffer = createPQExpBuffer();
@@ -849,7 +849,7 @@ FtsCondSetTxnReadOnly(bool *XactFlag)
 	if (!isFTSEnabled())
 		return;
 
-	if (*ftsReadOnlyFlag && Mpp_role != MPP_ROLE_UTILITY)
+	if (*ftsReadOnlyFlag && Gp_role != GP_ROLE_UTILITY)
 		*XactFlag = true;
 }
 
@@ -877,7 +877,7 @@ assign_gp_set_read_only(bool newval, bool doit, GucSource source)
 
 
 		/*
-		if (Mpp_role == MPP_ROLE_DISPATCH)
+		if (Gp_role == GP_ROLE_DISPATCH)
 		{
 			char cmdbuf[30];
 			strcpy( cmdbuf, "set gp_set_read_only=" );

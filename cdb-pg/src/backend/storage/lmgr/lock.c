@@ -310,7 +310,7 @@ InitLocks(void)
 	max_table_size = NLOCKENTS();
 	
 		/* Allow for extra entries if resource locking is enabled. */
-	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
 	{
 		add_size(max_table_size, NRESLOCKENTS() );
 		//add_size(max_plock_table_size, NRESPROCLOCKENTS() );
@@ -594,7 +594,7 @@ LockAcquire(const LOCKTAG *locktag,
 	
 	if (lockmethodid == DEFAULT_LOCKMETHOD && locktag->locktag_type != LOCKTAG_TRANSACTION)
 	{
-		if (Mpp_role == MPP_ROLE_EXECUTE && (gp_is_callback || !Gp_is_writer))
+		if (Gp_role == GP_ROLE_EXECUTE && (gp_is_callback || !Gp_is_writer))
 		{	
 			if (lockHolderProcPtr == NULL || lockHolderProcPtr == MyProc)
 			{
@@ -622,7 +622,7 @@ LockAcquire(const LOCKTAG *locktag,
 			}
 				
 		}
-		else if (gp_enable_functions && gp_is_callback && gp_qd_proc_offset!=-1 && Mpp_role == MPP_ROLE_DISPATCH)
+		else if (gp_enable_functions && gp_is_callback && gp_qd_proc_offset!=-1 && Gp_role == GP_ROLE_DISPATCH)
 		{
 			lockHolderProcPtr = (PGPROC *)MAKE_PTR(gp_qd_proc_offset);
 			elog(DEBUG1,"QD callback trying to acquire a lock [%u,%u] %s %d",
@@ -912,7 +912,7 @@ LockAcquire(const LOCKTAG *locktag,
 	 * We shouldn't already hold the desired lock; else locallock table is
 	 * broken.
 	 */
-	if (Mpp_role != MPP_ROLE_UTILITY)
+	if (Gp_role != GP_ROLE_UTILITY)
 	{
 		if (proclock->holdMask & LOCKBIT_ON(lockmode))
 		{
@@ -1008,7 +1008,7 @@ LockAcquire(const LOCKTAG *locktag,
 			return LOCKACQUIRE_NOT_AVAIL;
 		}
 		
-		if (Mpp_role == MPP_ROLE_EXECUTE)
+		if (Gp_role == GP_ROLE_EXECUTE)
 		{
 			if (!Gp_is_writer)
 				elog(NOTICE,"Reader gang member waiting on a lock [%u,%u] %s",
@@ -1020,7 +1020,7 @@ LockAcquire(const LOCKTAG *locktag,
 					 lock_mode_names[lockmode]);
 		}
 
-		if (Mpp_role == MPP_ROLE_EXECUTE && gp_is_callback && gp_enable_functions)
+		if (Gp_role == GP_ROLE_EXECUTE && gp_is_callback && gp_enable_functions)
 		{
 			elog(NOTICE,"Call back wants to wait on Lock");
 			lock->nRequested--;
@@ -2352,14 +2352,14 @@ LockShmemSize(void)
 	/* lock hash table */
 	max_table_size = NLOCKENTS();
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
 	{
 		add_size(max_table_size, NRESLOCKENTS() );
 	}
 	
 	size = add_size(size, hash_estimate_size(max_table_size, sizeof(LOCK)));
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
 	{
 		add_size(max_table_size, NRESPROCLOCKENTS() );
 	}

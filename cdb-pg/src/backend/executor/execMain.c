@@ -172,7 +172,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	 * If the transaction is read-only, we need to check if any writes are
 	 * planned to non-temporary tables.  EXPLAIN is considered read-only.
 	 */
-	if ((XactReadOnly || Mpp_role == MPP_ROLE_DISPATCH) && !(eflags & EXEC_FLAG_EXPLAIN_ONLY))
+	if ((XactReadOnly || Gp_role == GP_ROLE_DISPATCH) && !(eflags & EXEC_FLAG_EXPLAIN_ONLY))
 		ExecCheckXactReadOnly(queryDesc->parsetree);
 
 	/*
@@ -209,7 +209,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	/*
 	 * Handling of the Slice table depends on context.
 	 */
-	if (Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
+	if (Gp_role == GP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
 	{
 		/* Set up blank slice table to be filled in during InitPlan. */
 		InitSliceTable(estate, queryDesc->plantree->nMotionNodes, queryDesc->plantree->nInitPlans);
@@ -248,7 +248,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			
 		}
 	}
-	else if (Mpp_role == MPP_ROLE_EXECUTE)
+	else if (Gp_role == GP_ROLE_EXECUTE)
 	{
 		/*
 		 * Set up blank map (motionID -> MotionState*) to be filled in during
@@ -315,7 +315,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	 */
 	InitPlan(queryDesc, eflags);
 
-	if (Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
+	if (Gp_role == GP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
 	{
 		/* Assign gang descriptions to the root slices of the slice forest. */
 		InitRootSlices(queryDesc);
@@ -340,7 +340,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		}
 	}
 
-	if (Debug_print_slice_table && Mpp_role == MPP_ROLE_DISPATCH)
+	if (Debug_print_slice_table && Gp_role == GP_ROLE_DISPATCH)
 		elog_node_display(DEBUG3, "slice table", estate->es_sliceTable, true);
 
 	/*
@@ -348,7 +348,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	 * then we need to finish the EState setup we prepared for back in
 	 * CdbExecQuery.
 	 */
-	if (Mpp_role == MPP_ROLE_EXECUTE && estate->es_sliceTable != NULL)
+	if (Gp_role == GP_ROLE_EXECUTE && estate->es_sliceTable != NULL)
 	{
 		MotionState *motionstate = NULL;
 		
@@ -386,7 +386,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		 * Are we going to dispatch this plan parallel?  Only if we're running as
 		 * a QD and the plan is a parallel plan.
 		 */
-		shouldDispatch = Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL && !(eflags & EXEC_FLAG_EXPLAIN_ONLY);
+		shouldDispatch = Gp_role == GP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL && !(eflags & EXEC_FLAG_EXPLAIN_ONLY);
 		
 		/*
 		 * if in dispatch mode, time to serialize plan and query
@@ -557,7 +557,7 @@ ExecutorRun(QueryDesc *queryDesc,
     currentSlice = getCurrentSlice(estate);
     if (currentSlice)
     {
-        if (Mpp_role == MPP_ROLE_EXECUTE ||
+        if (Gp_role == GP_ROLE_EXECUTE ||
             sliceRunsOnQD(currentSlice))
             currentSliceId = currentSlice->sliceIndex;
     }
@@ -733,7 +733,7 @@ ExecutorEnd(QueryDesc *queryDesc)
 	/*
 	 * Release any gangs we may have assigned.
 	 */
-	if (Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
+	if (Gp_role == GP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
 		ReleaseGangs(queryDesc);
 
 	/* 
@@ -967,7 +967,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	List	   *rangeTable;
 	TupleDesc	tupType;
 	ListCell   *l;
-	bool		shouldDispatch = Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL;
+	bool		shouldDispatch = Gp_role == GP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL;
 
 	Assert(parseTree->intoPolicy == NULL || parseTree->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
 	/*
@@ -976,13 +976,13 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	 * ExecInitSubPlan().
 	 */
 	
-	if (operation == CMD_SELECT && (Mpp_role == MPP_ROLE_EXECUTE || (shouldDispatch && cdbpathlocus_querysegmentcatalogs)))
+	if (operation == CMD_SELECT && (Gp_role == GP_ROLE_EXECUTE || (shouldDispatch && cdbpathlocus_querysegmentcatalogs)))
 	{
 		/*
 		 * We don't check the rights here, so we can query pg_statistic even if we are a non-privileged user.
 		 * This shouldn't cause a problem, because "cdbpathlocus_querysegmentcatalogs" can only be true if we
 		 * are doing special catalog queries for ANALYZE.  Otherwise, the QD will execute the normal access right
-		 * check.  This does open a security hole, as it's possible for a hacker to connect to a segdb with MPP_ROLE_EXECUTE,
+		 * check.  This does open a security hole, as it's possible for a hacker to connect to a segdb with GP_ROLE_EXECUTE,
 		 * (at least, in theory, although it isn't easy) and then do a query.  But all they can see is
 		 * pg_statistic and pg_class, and pg_class is normally readable by everyone.
 		 */
@@ -1056,7 +1056,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 								  rangeTable,
 								  operation,
 								  estate->es_instrument,
-								  (Mpp_role != MPP_ROLE_EXECUTE || Gp_is_writer));
+								  (Gp_role != GP_ROLE_EXECUTE || Gp_is_writer));
 				resultRelInfo++;
 			}
 		}
@@ -1072,7 +1072,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 							  rangeTable,
 							  operation,
 							  estate->es_instrument,
-							  (Mpp_role != MPP_ROLE_EXECUTE || Gp_is_writer));
+							  (Gp_role != GP_ROLE_EXECUTE || Gp_is_writer));
 		}
 
 		estate->es_result_relations = resultRelInfos;
@@ -1348,7 +1348,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	 */
 	if (estate->es_select_into && !(eflags & EXEC_FLAG_EXPLAIN_ONLY) && 
 			/* Only create the table if root slice */
-	        (Mpp_role != MPP_ROLE_EXECUTE || Gp_is_writer) )
+	        (Gp_role != GP_ROLE_EXECUTE || Gp_is_writer) )
 		OpenIntoRel(queryDesc);
 }
 
@@ -1607,7 +1607,7 @@ ExecutePlan(EState *estate,
 	/*
 	 * Process BEFORE EACH STATEMENT triggers
 	 */
-	if (Mpp_role != MPP_ROLE_EXECUTE || Gp_is_writer)
+	if (Gp_role != GP_ROLE_EXECUTE || Gp_is_writer)
 	switch (operation)
 	{
 		case CMD_UPDATE:
@@ -1790,7 +1790,7 @@ lnext:	;
 				slot = ExecFilterJunk(junkfilter, slot);
 		}
 		
-		if (operation != CMD_SELECT && Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_writer)
+		if (operation != CMD_SELECT && Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
 		{
 			elog(ERROR,"Internal Error: INSERT/UPDATE/DELETE must be executed by a writer gang");
 		}
@@ -1842,7 +1842,7 @@ lnext:	;
 	/*
 	 * Process AFTER EACH STATEMENT triggers
 	 */
-	if (Mpp_role != MPP_ROLE_EXECUTE || Gp_is_writer)
+	if (Gp_role != GP_ROLE_EXECUTE || Gp_is_writer)
 	switch (operation)
 	{
 		case CMD_UPDATE:

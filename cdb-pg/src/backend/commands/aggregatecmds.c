@@ -205,7 +205,7 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters, Oid new
 					initval,	/* initial condition */
 					newOid);
 					
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		DefineStmt * stmt = makeNode(DefineStmt);
 		stmt->kind = OBJECT_AGGREGATE;
@@ -273,7 +273,7 @@ RemoveAggregate(RemoveFuncStmt *stmt)
 
 	performDeletion(&object, stmt->behavior);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}

@@ -132,7 +132,7 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 			constrrelid = RangeVarGetRelid(rel, true);
 		}
 		if (needconstrrelid && constrrelid == InvalidOid)
-			if (Mpp_role != MPP_ROLE_EXECUTE)
+			if (Gp_role != GP_ROLE_EXECUTE)
 			ereport(NOTICE,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("could not determine referenced table for constraint \"%s\"",
@@ -289,7 +289,7 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 		 */
 		if (funcrettype == OPAQUEOID)
 		{
-			if (Mpp_role != MPP_ROLE_EXECUTE)
+			if (Gp_role != GP_ROLE_EXECUTE)
 			ereport(WARNING,
 					(errmsg("changing return type of function %s from \"opaque\" to \"trigger\"",
 							NameListToString(stmt->funcname))));
@@ -316,7 +316,7 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 	/*
 	 * Special for MPP: Ignore foreign keys for now
 	 */
-	if ((!gp_enable_functions) && (stmt->isconstraint) && (Mpp_role == MPP_ROLE_DISPATCH || Mpp_role == MPP_ROLE_EXECUTE))
+	if ((!gp_enable_functions) && (stmt->isconstraint) && (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE))
 	{
 		/*
 		 * Create the tigger as disabled 
@@ -3178,7 +3178,7 @@ AfterTriggerSetState(ConstraintsSetStmt *stmt)
 		}
 	}
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}

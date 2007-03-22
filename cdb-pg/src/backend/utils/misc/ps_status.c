@@ -31,7 +31,7 @@
 #include "miscadmin.h"
 #include "utils/ps_status.h"
 
-#include "cdb/cdbvars.h"        /* Mpp_role, Gp_segment, currentSliceId */
+#include "cdb/cdbvars.h"        /* Gp_role, Gp_segment, currentSliceId */
 
 extern char **environ;
 bool		update_process_title = true;
@@ -330,12 +330,12 @@ set_ps_display(const char *activity, bool force)
         cp += snprintf(cp, ep-cp, "con%d ", gp_session_id);
 
     /* Add host and port.  (Not very useful for qExecs, so skip.) */
-    if (Mpp_role != MPP_ROLE_EXECUTE &&
+    if (Gp_role != GP_ROLE_EXECUTE &&
         ps_host_info[0] != '\0')
         cp += snprintf(cp, ep-cp, "%s ", ps_host_info);
 
     /* Which segment is accessed by this qExec? */
-    if (Mpp_role == MPP_ROLE_EXECUTE &&
+    if (Gp_role == GP_ROLE_EXECUTE &&
         Gp_segment >= -1)
         cp += snprintf(cp, ep-cp, "%s%d ",
                        Gp_is_primary ? "seg" : "mir",

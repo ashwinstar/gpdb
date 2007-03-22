@@ -246,7 +246,7 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 			{
 				ProcReleaseLocks(isCommit);
 				
-				if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+				if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
  					ResProcReleaseLocks(isCommit, false);
 			}
 		}
@@ -263,7 +263,7 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 			else
 				LockReleaseCurrentOwner();
 
-			if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+			if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
  				ResProcReleaseCurrentOwner(isCommit, false);
 		}
 	}

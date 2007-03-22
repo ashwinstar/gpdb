@@ -808,7 +808,7 @@ exec_mpp_query(const char *query_string,
     Slice      *slice = NULL;
 	ParamListInfo paramLI = NULL;
 
-	Assert(Mpp_role == MPP_ROLE_EXECUTE);
+	Assert(Gp_role == GP_ROLE_EXECUTE);
 	
 	
 	
@@ -3001,7 +3001,7 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
     char       *signame;
     char       *pts = "process";
 
-	if (Mpp_role == MPP_ROLE_DISPATCH &&
+	if (Gp_role == GP_ROLE_DISPATCH &&
 		!pthread_equal(main_tid, pthread_self()))
 	{
 #ifndef _WIN32
@@ -3048,9 +3048,9 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
             break;
     }
 
-    if (Mpp_role == MPP_ROLE_DISPATCH)
+    if (Gp_role == GP_ROLE_DISPATCH)
         pts = "QD process";
-    else if (Mpp_role == MPP_ROLE_EXECUTE)
+    else if (Gp_role == GP_ROLE_EXECUTE)
         pts = "QE process";
     else
         pts = "Process";
@@ -3120,7 +3120,7 @@ ProcessInterrupts(void)
 		 * to call CdbCheckDispatchResult(). Also we're about to
 		 * yank the carpet out from under any dispatched threads!
 		 */
-		if (Mpp_role == MPP_ROLE_DISPATCH)
+		if (Gp_role == GP_ROLE_DISPATCH)
 			CdbShutdownPortals();
 
 		ereport(FATAL,
@@ -3133,7 +3133,7 @@ ProcessInterrupts(void)
 		ImmediateInterruptOK = false;	/* not idle anymore */
 		DisableNotifyInterrupt();
 		DisableCatchupInterrupt();
-        if (Mpp_role == MPP_ROLE_EXECUTE)
+        if (Gp_role == GP_ROLE_EXECUTE)
 		    ereport(ERROR,
 			    	(errcode(ERRCODE_MPP_OPERATION_CANCELED),
 				     errmsg("canceling MPP operation")));
@@ -4028,7 +4028,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 
         /* Reset elog globals */
         currentSliceId = UNSET_SLICE_ID;
-        if (Mpp_role == MPP_ROLE_EXECUTE)
+        if (Gp_role == GP_ROLE_EXECUTE)
             gp_command_count = 0;
 
 		/*
@@ -4059,7 +4059,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 				pgstat_report_activity("<IDLE>");
 			}
 
-			if (Mpp_role == MPP_ROLE_EXECUTE && Gp_is_writer)
+			if (Gp_role == GP_ROLE_EXECUTE && Gp_is_writer)
 			{
 				ReadyForQuery_QEWriter(whereToSendOutput);
 			}
@@ -4110,7 +4110,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 				{
 					const char *query_string;
 
-                    if (Mpp_role != MPP_ROLE_EXECUTE)
+                    if (Gp_role != GP_ROLE_EXECUTE)
                         gp_command_count++;
 
 					/* Set statement_timestamp() */
@@ -4314,7 +4314,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					int			numParams;
 					Oid		   *paramTypes = NULL;
 
-                    if (Mpp_role != MPP_ROLE_EXECUTE)
+                    if (Gp_role != GP_ROLE_EXECUTE)
                         gp_command_count++;
 
 					/* Set statement_timestamp() */
@@ -4354,7 +4354,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 				/* Set statement_timestamp() */
 				SetCurrentStatementStartTimestamp();
 
-                if (Mpp_role != MPP_ROLE_EXECUTE)
+                if (Gp_role != GP_ROLE_EXECUTE)
                     gp_command_count++;
 
 				/*
@@ -4369,7 +4369,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					const char *portal_name;
 					int			max_rows;
 
-                    if (Mpp_role != MPP_ROLE_EXECUTE)
+                    if (Gp_role != GP_ROLE_EXECUTE)
                         gp_command_count++;
 
 					/* Set statement_timestamp() */
@@ -4386,7 +4386,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 				break;
 
 			case 'F':			/* fastpath function call */
-                if (Mpp_role != MPP_ROLE_EXECUTE)
+                if (Gp_role != GP_ROLE_EXECUTE)
                     gp_command_count++;
                     
                 /* Set statement_timestamp() */

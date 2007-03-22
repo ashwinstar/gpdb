@@ -59,7 +59,7 @@ MppSetOpType choose_setop_type(List *planlist)
 	bool ok_single_qe = TRUE;
 	bool has_partitioned = FALSE;
 	
-	Assert( Mpp_role == MPP_ROLE_DISPATCH );
+	Assert( Gp_role == GP_ROLE_DISPATCH );
 	
 	foreach(cell, planlist)
 	{

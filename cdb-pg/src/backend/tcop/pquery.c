@@ -432,7 +432,7 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 	             * If resource scheduling is enabled, lock the portal here.
 	             * Skip this if we are superuser!
 	             */
-	            if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler && !superuser())
+	            if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler && !superuser())
 		            portal->releaseResLock = ResLockPortal(portal, queryDesc->plantree);
 
 				/*

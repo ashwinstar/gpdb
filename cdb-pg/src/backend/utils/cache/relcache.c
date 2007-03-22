@@ -65,7 +65,7 @@
 #include "utils/typcache.h"
 
 #include "cdb/cdbcat.h"         /* MppPolicy */
-#include "cdb/cdbvars.h"        /* Mpp_role */
+#include "cdb/cdbvars.h"        /* Gp_role */
 
 
 /*
@@ -844,7 +844,7 @@ RelationBuildDesc(Oid targetRelId, Relation oldrelation)
      */
     if (relation->rd_istemp &&
         relation->rd_rel->relkind != RELKIND_SEQUENCE &&
-        Mpp_role != MPP_ROLE_EXECUTE)
+        Gp_role != GP_ROLE_EXECUTE)
         relation->rd_isLocalBuf = true;
     else
         relation->rd_isLocalBuf = false;
@@ -2217,7 +2217,7 @@ RelationBuildLocalRelation(const char *relname,
      */
     if (rel->rd_istemp &&
         relkind != RELKIND_SEQUENCE &&
-        Mpp_role != MPP_ROLE_EXECUTE)
+        Gp_role != GP_ROLE_EXECUTE)
         rel->rd_isLocalBuf = true;
     else
         rel->rd_isLocalBuf = false;

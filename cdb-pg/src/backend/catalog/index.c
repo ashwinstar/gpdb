@@ -1230,7 +1230,7 @@ setNewRelfilenode(Relation relation)
 									   relation->rd_rel->relisshared,
 									   NULL);
 
-	if (Mpp_role == MPP_ROLE_EXECUTE)
+	if (Gp_role == GP_ROLE_EXECUTE)
 	{
 		elog(DEBUG1,"setNewRelfilenode called in EXECUTE mode, newrelfilenode=%d",newrelfilenode);
 	}
@@ -1436,7 +1436,7 @@ UpdateStats(Oid relid, double reltuples)
 	/*
 	 * CDB: Query the segment db local catalogs to get summary statistics.
 	 */
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 		cdbanalyze_get_relstats(whichRel, &relpages, &reltuples);
 	
 

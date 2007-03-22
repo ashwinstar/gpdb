@@ -96,7 +96,7 @@ CreateConversionCommand(CreateConversionStmt *stmt)
 	stmt->convOid = ConversionCreate(conversion_name, namespaceId, GetUserId(),
 					 from_encoding, to_encoding, funcoid, stmt->def, stmt->convOid);
 					 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}
@@ -122,7 +122,7 @@ DropConversionCommand(List *name, DropBehavior behavior, bool missing_ok)
 		}
 		else
 		{
-			if (Mpp_role != MPP_ROLE_EXECUTE)
+			if (Gp_role != GP_ROLE_EXECUTE)
 			ereport(NOTICE,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("conversion \"%s\" does not exist, skipping",
@@ -134,7 +134,7 @@ DropConversionCommand(List *name, DropBehavior behavior, bool missing_ok)
 
 	ConversionDrop(conversionOid, behavior);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		DropStmt * stmt = makeNode(DropStmt);
 		stmt->objects = list_make1(name);

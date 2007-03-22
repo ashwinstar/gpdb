@@ -163,7 +163,7 @@ cluster(ClusterStmt *stmt)
 		/* Do the job */
 		cluster_rel(&rvtc, false, stmt);
 		
-		if (Mpp_role == MPP_ROLE_DISPATCH)
+		if (Gp_role == GP_ROLE_DISPATCH)
 		{
 			CdbDispatchUtilityStatement((Node *) stmt);
 		}
@@ -216,7 +216,7 @@ cluster(ClusterStmt *stmt)
 			ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
 			cluster_rel(rvtc, true, stmt);
 			
-			if (Mpp_role == MPP_ROLE_DISPATCH)
+			if (Gp_role == GP_ROLE_DISPATCH)
 			{
 				
 				stmt->relation = makeNode(RangeVar);
@@ -613,7 +613,7 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 	OldHeapDesc = RelationGetDescr(OldHeap);
 
 
-	if (Mpp_role == MPP_ROLE_DISPATCH && oidInfo != NULL)
+	if (Gp_role == GP_ROLE_DISPATCH && oidInfo != NULL)
 	{
 		Relation	pg_class_desc;
 		Relation	pg_type_desc;
@@ -649,7 +649,7 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 		toastComptypeOid = &oidInfo->toastComptypeOid;
 		comptypeOid = &oidInfo->comptypeOid;
 	}
-	else if (Mpp_role == MPP_ROLE_EXECUTE && oidInfo != NULL)
+	else if (Gp_role == GP_ROLE_EXECUTE && oidInfo != NULL)
 	{
 		toastComptypeOid = &oidInfo->toastComptypeOid;
 		comptypeOid = &oidInfo->comptypeOid;

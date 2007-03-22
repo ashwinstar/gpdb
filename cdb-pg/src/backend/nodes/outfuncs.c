@@ -3325,7 +3325,7 @@ _outNode(StringInfo str, void *obj)
 				 * This should be an ERROR, but it's too useful to be able to
 				 * dump structures that _outNode only understands part of.
 				 */
-				if (Mpp_role == MPP_ROLE_DISPATCH)
+				if (Gp_role == GP_ROLE_DISPATCH)
 					elog(ERROR, "could not serialize unrecognized node type: %d",
 						 (int) nodeTag(obj));
 				else

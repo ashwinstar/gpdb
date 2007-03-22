@@ -208,7 +208,7 @@ CreateQueue(CreateQueueStmt *stmt)
 	 * Create the in-memory resource queue, if resource scheduling is on,
 	 * otherwise don't - and gripe a little about it.
 	 */
-	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
 	{
 		LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
 
@@ -445,7 +445,7 @@ AlterQueue(AlterQueueStmt *stmt)
 	 * for the in-memory queue.
 	 * otherwise don't - and gripe a little about it.
 	 */
-	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
 	{
 		LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
 
@@ -571,7 +571,7 @@ DropQueue(DropQueueStmt *stmt)
 	 * If resource scheduling is on, see if we can destroy the in-memory queue.
 	 * otherwise don't - and gripe a little about it.
 	 */
-	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler)
+	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
 	{
 		LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
 

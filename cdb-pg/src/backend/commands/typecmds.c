@@ -431,7 +431,7 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 
 	pfree(shadow_type);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		DefineStmt * stmt = makeNode(DefineStmt);
 		stmt->kind = OBJECT_TYPE;
@@ -474,7 +474,7 @@ RemoveType(List *names, DropBehavior behavior, bool missing_ok)
 		}
 		else
 		{
-			if (Mpp_role != MPP_ROLE_EXECUTE)
+			if (Gp_role != GP_ROLE_EXECUTE)
 			ereport(NOTICE,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("type \"%s\" does not exist, skipping",
@@ -833,7 +833,7 @@ DefineDomain(CreateDomainStmt *stmt)
 	 */
 	ReleaseSysCache(typeTup);
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}
@@ -871,7 +871,7 @@ RemoveDomain(List *names, DropBehavior behavior, bool missing_ok)
 		}
 		else
 		{
-			if (Mpp_role != MPP_ROLE_EXECUTE)
+			if (Gp_role != GP_ROLE_EXECUTE)
 			ereport(NOTICE,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("type \"%s\" does not exist, skipping",
@@ -1172,7 +1172,7 @@ DefineCompositeType(const RangeVar *typevar, List *coldeflist, Oid relOid, Oid c
 	/*
 	 * DefineRelation already dispatches this.
 	 * 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CompositeTypeStmt *stmt = makeNode(CompositeTypeStmt);
 		stmt->typevar = (RangeVar *)typevar;

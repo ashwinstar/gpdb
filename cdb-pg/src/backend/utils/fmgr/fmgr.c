@@ -199,7 +199,7 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 		finfo->fn_addr = fbp->func;
 		finfo->fn_oid = functionId;
 		
-		if (Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_primary)
+		if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_primary)
 		{
 			/*
 			 * These built-in functions don't work if we are on a mirror, since
@@ -234,7 +234,7 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 	finfo->fn_strict = procedureStruct->proisstrict;
 	finfo->fn_retset = procedureStruct->proretset;
 	
-	if (Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_primary && procedureStruct->provolatile != PROVOLATILE_IMMUTABLE)
+	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_primary && procedureStruct->provolatile != PROVOLATILE_IMMUTABLE)
 	{
 		if (strstr(NameStr(procedureStruct->proname),"_validator")!=0 && 
 			strstr(NameStr(procedureStruct->proname),"_call_handler")!=0)

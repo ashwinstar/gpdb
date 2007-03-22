@@ -293,13 +293,13 @@ InitProcess(void)
      */
     elog(DEBUG1,"InitProcess(): gp_session_id %d, gp_is_callback %d",gp_session_id,gp_is_callback);
     Assert(gp_session_id > 0 || !gp_is_callback);
-    if (Mpp_role == MPP_ROLE_DISPATCH && gp_session_id == -1)
+    if (Gp_role == GP_ROLE_DISPATCH && gp_session_id == -1)
         gp_session_id = mppLocalProcessSerial;
     MyProc->mppSessionId = gp_session_id;
     
     MyProc->mppIsWriter = Gp_is_writer;
     
-    if (Mpp_role == MPP_ROLE_DISPATCH)
+    if (Gp_role == GP_ROLE_DISPATCH)
     	MyProc->mppIsWriter = !gp_is_callback;
 
 
@@ -505,7 +505,7 @@ LockWaitCancel(void)
 		return false;
 
 	/* Don't try to cancel resource locks.*/
-	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler &&
+	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler &&
 		LOCALLOCK_LOCKMETHOD(*lockAwaited) == RESOURCE_LOCKMETHOD)
 		return false;
 
@@ -616,17 +616,17 @@ ProcKill(int code, Datum arg)
 	 */
 	if (SharedLocalSnapshotSlot != NULL)
 	{
-		if(Mpp_role == MPP_ROLE_DISPATCH)
+		if(Gp_role == GP_ROLE_DISPATCH)
 		{
 			SharedSnapshotRemove(SharedLocalSnapshotSlot, "Query Dispatcher");
 		}
-	    else if (Gp_segment == -1 && Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_writer)
+	    else if (Gp_segment == -1 && Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
 	    {
 			/* 
 			 * Entry db singleton QE is a user of the shared snapshot -- not a creator.
 			 */	
 	    }
-		else if (Mpp_role == MPP_ROLE_EXECUTE && Gp_is_writer)
+		else if (Gp_role == GP_ROLE_EXECUTE && Gp_is_writer)
 		{
 			SharedSnapshotRemove(SharedLocalSnapshotSlot, "Writer qExec");
 		}
@@ -1108,7 +1108,7 @@ CheckDeadLock(void)
 	 * If we are removing a resource lock, the calls its specific routine.
 	 */
 	Assert(MyProc->waitLock != NULL);
-	if (Mpp_role == MPP_ROLE_DISPATCH && ResourceScheduler && 
+	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler && 
 		LOCK_LOCKMETHOD(*(MyProc->waitLock)) == RESOURCE_LOCKMETHOD)
 	{
 		ResRemoveFromWaitQueue(MyProc, 

@@ -15,7 +15,7 @@
 #include "lib/stringinfo.h"
 #include "commands/vacuum.h"
 #include "cdb/cdbpathlocus.h"	/* cdbpathlocus_querysegmentcatalogs */
-#include "cdb/cdbvars.h"		/* Mpp_role */
+#include "cdb/cdbvars.h"		/* Gp_role */
 #include "cdb/cdbanalyze.h"		/* me */
 #include "catalog/pg_statistic.h"
 #include "utils/lsyscache.h"
@@ -38,7 +38,7 @@ cdbanalyze_query_local_catalogs(StringInfo sqlstmt,
 	volatile bool connected = false;
 
 	Assert(callback &&
-		   Mpp_role == MPP_ROLE_DISPATCH);
+		   Gp_role == GP_ROLE_DISPATCH);
 
 	PG_TRY();
 	{

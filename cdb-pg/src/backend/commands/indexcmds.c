@@ -140,7 +140,7 @@ DefineIndex(RangeVar *heapRelation,
 	HeapTuple	indexTuple;
 	Form_pg_index indexForm;
 
-	bool		shouldDispatch = Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
+	bool		shouldDispatch = Gp_role == GP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
 
 
 	/*
@@ -506,7 +506,7 @@ DefineIndex(RangeVar *heapRelation,
 			}
 		}
 	}
-	else if (Mpp_role == MPP_ROLE_EXECUTE)
+	else if (Gp_role == GP_ROLE_EXECUTE)
 	{
 		if (stmt)
 		{
@@ -538,7 +538,7 @@ DefineIndex(RangeVar *heapRelation,
 	 * error checks)
 	 */
 	if (isconstraint && !quiet)
-		if (Mpp_role != MPP_ROLE_EXECUTE)
+		if (Gp_role != GP_ROLE_EXECUTE)
 		ereport(NOTICE,
 		  (errmsg("%s %s will create implicit index \"%s\" for table \"%s\"",
 				  is_alter_table ? "ALTER TABLE / ADD" : "CREATE TABLE /",
@@ -1344,7 +1344,7 @@ ReindexTable(RangeVar *relation)
 	ReleaseSysCache(tuple);
 
 	if (!reindex_relation(heapOid, true))
-		if (Mpp_role != MPP_ROLE_EXECUTE)
+		if (Gp_role != GP_ROLE_EXECUTE)
 		ereport(NOTICE,
 				(errmsg("table \"%s\" has no indexes",
 						relation->relname)));

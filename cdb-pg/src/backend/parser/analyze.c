@@ -1009,7 +1009,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 					 * For MPP distributed tables, default to the same distribution as the first LIKE table,
 					 * unless we also have INHERITS
 					 */
-					if (Mpp_role == MPP_ROLE_DISPATCH && stmt->distributedBy == NIL && stmt->inhRelations == NIL && isBeginning && stmt->policy == NULL)
+					if (Gp_role == GP_ROLE_DISPATCH && stmt->distributedBy == NIL && stmt->inhRelations == NIL && isBeginning && stmt->policy == NULL)
 					{
 						InhRelation *e = (InhRelation *) element;
 						Oid			relId = RangeVarGetRelid(e->relation, false);
@@ -1826,7 +1826,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 	 * utility mode creates can't have a policy.  Only the QD can have policies
 	 *
 	 */
-	if (Mpp_role != MPP_ROLE_DISPATCH)
+	if (Gp_role != GP_ROLE_DISPATCH)
 	{
 		*policyp = NULL;
 		return;
@@ -2944,7 +2944,7 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 		qry->intoOnCommit = stmt->intoOnCommit;
 		qry->intoTableSpaceName = stmt->intoTableSpaceName;
 
-		if (stmt->distributedBy && Mpp_role == MPP_ROLE_DISPATCH)
+		if (stmt->distributedBy && Gp_role == GP_ROLE_DISPATCH)
 			setQryDistributionPolicy(stmt, qry);
 	}
 
@@ -3109,7 +3109,7 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			 errmsg("SELECT FOR UPDATE/SHARE cannot be applied to VALUES")));
 		
-	if (stmt->distributedBy && Mpp_role == MPP_ROLE_DISPATCH)
+	if (stmt->distributedBy && Gp_role == GP_ROLE_DISPATCH)
 		setQryDistributionPolicy(stmt, qry);
 
 	/* handle any CREATE TABLE AS spec */
@@ -4673,7 +4673,7 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 	int			colindex = 0;
 	int			maxattrs = 200;
 
-	if (Mpp_role != MPP_ROLE_DISPATCH)
+	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
 	Assert(stmt->distributedBy);

@@ -198,7 +198,7 @@ DefineOperator(List *names, List *parameters, Oid newOid)
 				   gtCompareName,		/* optional < comparison op */
 				   newOid);
 				   
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		DefineStmt * stmt = makeNode(DefineStmt);
 		stmt->kind = OBJECT_OPERATOR;
@@ -264,7 +264,7 @@ RemoveOperator(RemoveFuncStmt *stmt)
 
 	performDeletion(&object, stmt->behavior);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}

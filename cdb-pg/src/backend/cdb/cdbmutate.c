@@ -1410,7 +1410,7 @@ DoesDistributionHaveDependencies(Oid relOid, MppPolicy * policy)
 	AttrNumber  attnum;
 	int			ia;
 
-	if (Mpp_role != MPP_ROLE_DISPATCH || policy == NULL)
+	if (Gp_role != GP_ROLE_DISPATCH || policy == NULL)
 		return false;
 	
 	/*

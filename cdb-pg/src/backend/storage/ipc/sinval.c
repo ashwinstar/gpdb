@@ -347,7 +347,7 @@ ProcessCatchupEvent(void)
 	{
 		elog(DEBUG4, "ProcessCatchupEvent outside transaction");
 
-		if (Mpp_role == MPP_ROLE_DISPATCH)
+		if (Gp_role == GP_ROLE_DISPATCH)
 		{
 			disconnectAndDestroyAllGangs();
 		}

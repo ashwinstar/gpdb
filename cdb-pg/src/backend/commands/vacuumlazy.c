@@ -148,7 +148,7 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 	else
 		elevel = DEBUG2;
 		
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 		elevel = DEBUG2; /* vacuum and analyze messages aren't interesting from the QD */
 
 	vacuum_set_xid_limits(vacstmt, onerel->rd_rel->relisshared,

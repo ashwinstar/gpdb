@@ -371,7 +371,7 @@ prepareDtxTransaction(void)
 bool
 isPreparedDtxTransaction(void)
 {
-	if (Mpp_role != MPP_ROLE_DISPATCH || DistributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE || currentGxact == NULL)
+	if (Gp_role != GP_ROLE_DISPATCH || DistributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE || currentGxact == NULL)
 		return false;
 
 	return (currentGxact->state == DTX_STATE_PREPARED);
@@ -993,7 +993,7 @@ initTM(void)
 int
 tmShmemSize(void)
 {
-	if (Mpp_role != MPP_ROLE_DISPATCH)
+	if (Gp_role != GP_ROLE_DISPATCH)
 		return 0;
 	return MAXALIGN(sizeof(TmControlBlock) +
 					max_tm_gxacts * (sizeof(TMGXACT *) + sizeof(TMGXACT)));
@@ -1010,7 +1010,7 @@ tmShmemInit(void)
 	bool		found;
 	TmControlBlock *shared;
 
-	if (Mpp_role != MPP_ROLE_DISPATCH)
+	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
 	shared = (TmControlBlock *) ShmemInitStruct("Transaction manager", tmShmemSize(), &found);
@@ -2298,7 +2298,7 @@ dumpRMOnlyDtx(HTAB *htab, StringInfoData *buff)
  */
 void verify_shared_snapshot_ready(void)
 {
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		char cmdbuf[35];
 		strcpy(cmdbuf, "set gp_write_shared_snapshot=true" );
@@ -2327,7 +2327,7 @@ assign_gp_write_shared_snapshot(bool newval, bool doit, GucSource source)
 	 */
 	if (doit && newval)
 	{
-		if(Mpp_role == MPP_ROLE_EXECUTE)
+		if(Gp_role == GP_ROLE_EXECUTE)
 			ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());			
 	}
 
@@ -2349,7 +2349,7 @@ getDistributedSnapshotSerializeInfo(int *serializedLen,
 	*distributedSnapshot = NULL;
 	
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		if (currentGxact != NULL)
 		{
@@ -2364,25 +2364,25 @@ getDistributedSnapshotSerializeInfo(int *serializedLen,
 				*qdSharedLocalSnapshotSlotId = gp_session_id;
 
 				*distributedSnapshot = CurrentDistributedSnapshot;
-				elog(DEBUG5,"getDistributedSnapshotSerializeInfo Mpp_role is DISPATCH and have currentGxact = %s, gxid = %u --> have distributed snapshot",
+				elog(DEBUG5,"getDistributedSnapshotSerializeInfo Gp_role is DISPATCH and have currentGxact = %s, gxid = %u --> have distributed snapshot",
 				 	currentGxact->gid, currentGxact->gxid); 
 			}
 			else
 			{
-				elog(DEBUG5,"getDistributedSnapshotSerializeInfo Mpp_role is DISPATCH and currentGxact is non-NULL, but gxid is InvalidDistributedTransactionId");
+				elog(DEBUG5,"getDistributedSnapshotSerializeInfo Gp_role is DISPATCH and currentGxact is non-NULL, but gxid is InvalidDistributedTransactionId");
 			}
 		}
 		else
 		{
-			elog(DEBUG5,"getDistributedSnapshotSerializeInfo Mpp_role is DISPATCH but no currentGxact --> no distributed snapshot"); 
+			elog(DEBUG5,"getDistributedSnapshotSerializeInfo Gp_role is DISPATCH but no currentGxact --> no distributed snapshot"); 
 		}
 	}
-	else if (Mpp_role == MPP_ROLE_EXECUTE)
+	else if (Gp_role == GP_ROLE_EXECUTE)
 	{
 		*currentDistributedTransactionId = QDSentDistributedXid;
 		*qdSharedLocalSnapshotSlotId = QDSentSharedLocalSnapshotSlotId;
 		*distributedSnapshot = QDSentDistributedSnapshot;
-		elog(DEBUG5,"getDistributedSnapshotSerializeInfo Mpp_role is EXECUTE QDSentDistributedXid = %u --> have distributed snapshot",
+		elog(DEBUG5,"getDistributedSnapshotSerializeInfo Gp_role is EXECUTE QDSentDistributedXid = %u --> have distributed snapshot",
 			 QDSentDistributedXid); 
 	}
 
@@ -2589,8 +2589,8 @@ determineDistributedTransactionContext (void)
 	isDtmStarted = (shmDtmStarted != NULL && *shmDtmStarted);
 	isSharedLocalSnapshotSlotPresent = (SharedLocalSnapshotSlot != NULL);
 
-	elog(LOG, "determineDistributedTransactionContext inputs (part 1): Mpp_role = %s, Gp_is_writer = %s, txnOptions = 0x%x, statementWantsDtxTransaction = %s, dirty = %s, explicitBegin = %s, haveDistributedSnapshot = %s, isDtmStarted = %s",
-		 role_to_string(Mpp_role), (Gp_is_writer ? "true" : "false"), QDSentTxnOptions,
+	elog(LOG, "determineDistributedTransactionContext inputs (part 1): Gp_role = %s, Gp_is_writer = %s, txnOptions = 0x%x, statementWantsDtxTransaction = %s, dirty = %s, explicitBegin = %s, haveDistributedSnapshot = %s, isDtmStarted = %s",
+		 role_to_string(Gp_role), (Gp_is_writer ? "true" : "false"), QDSentTxnOptions,
 		 (statementWantsDtxTransaction ? "true" : "false"), (dirty ? "true" : "false"), (explicitBegin ? "true" : "false"), 
 		 (haveDistributedSnapshot ? "true" : "false"),
 		 (isDtmStarted ? "true" : "false")); 
@@ -2617,16 +2617,16 @@ determineDistributedTransactionContext (void)
 			 SharedLocalSnapshotSlot->QDcid);
 	}
 
-	switch (Mpp_role)
+	switch (Gp_role)
 	{
-	case MPP_ROLE_DISPATCH:
+	case GP_ROLE_DISPATCH:
 		if (isDtmStarted)
 		{
 			isQueryDispatcher = true;
 		}
 		break;
 		
-	case MPP_ROLE_EXECUTE:
+	case GP_ROLE_EXECUTE:
 		if (Gp_segment == -1 && !Gp_is_writer)
 		{
 			isEntryDbSingleton = true;
@@ -2661,7 +2661,7 @@ determineDistributedTransactionContext (void)
 		
 	default:
 		Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
-		elog(DEBUG5, "determineDistributedTransactionContext leaving context = 'Local Only' for Mpp_role = %s", role_to_string(Mpp_role) );
+		elog(DEBUG5, "determineDistributedTransactionContext leaving context = 'Local Only' for Gp_role = %s", role_to_string(Gp_role) );
 		return;
 	}
 
@@ -2823,7 +2823,7 @@ determineDistributedTransactionContext (void)
 	elog(LOG, "determineDistributedTransactionContext final result: DistributedTransactionContext = '%s'.", 
 		 DtxContextToString(DistributedTransactionContext));
 	
-//	if (Mpp_role == MPP_ROLE_DISPATCH)
+//	if (Gp_role == GP_ROLE_DISPATCH)
 //	{
 //		Assert(false);		// UNDONE !!!!
 //		elog(DEBUG1,"QD Got snapshot from QE, xid = %d",QDSentXID);

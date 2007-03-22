@@ -359,11 +359,11 @@ GetNewOid(Relation relation)
 		
 		if (IsSystemNamespace(RelationGetNamespace(relation)))
 		{
-			if (Mpp_role == MPP_ROLE_EXECUTE)
+			if (Gp_role == GP_ROLE_EXECUTE)
 			{
 				elog(DEBUG1,"Allocating Oid %u on relid %u %s in EXECUTE mode",result,relation->rd_id,RelationGetRelationName(relation));
 			}
-			if (Mpp_role == MPP_ROLE_DISPATCH)
+			if (Gp_role == GP_ROLE_DISPATCH)
 			{
 				elog(DEBUG5,"Allocating Oid %u on relid %u %s in DISPATCH mode",result,relation->rd_id,RelationGetRelationName(relation));
 			}
@@ -420,14 +420,14 @@ GetNewOidWithIndex(Relation relation, Relation indexrel)
 	
 	if (IsSystemNamespace(RelationGetNamespace(relation)))
 	{
-		if (Mpp_role == MPP_ROLE_EXECUTE)
+		if (Gp_role == GP_ROLE_EXECUTE)
 		{
 			if (relation->rd_id != 2604 /* pg_attrdef */ && relation->rd_id != 2606 /* pg_constraint */ && relation->rd_id != 2615 /* pg_namespace */) 
 				elog(DEBUG1,"Allocating Oid %u with index on relid %u %s in EXECUTE mode",newOid,relation->rd_id, RelationGetRelationName(relation));
 			else
 				elog(DEBUG4,"Allocating Oid %u with index on relid %u %s in EXECUTE mode",newOid,relation->rd_id, RelationGetRelationName(relation));
 		}
-		if (Mpp_role == MPP_ROLE_DISPATCH)
+		if (Gp_role == GP_ROLE_DISPATCH)
 		{
 			elog(DEBUG5,"Allocating Oid %u with index on relid %u %s in DISPATCH mode",newOid,relation->rd_id,  RelationGetRelationName(relation));
 		}
@@ -501,7 +501,7 @@ GetNewRelFileNode(Oid reltablespace, bool relisshared, Relation pg_class)
 		pfree(rpath);
 	} while (collides);
 	
-	if (Mpp_role == MPP_ROLE_EXECUTE)
+	if (Gp_role == GP_ROLE_EXECUTE)
 	{
 		if (pg_class)
 			elog(ERROR,"Calling GetNewRelFileNode (with pg_class) in EXECUTE mode.  New relOid = %d", rnode.relNode );

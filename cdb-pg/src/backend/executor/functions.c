@@ -260,7 +260,7 @@ init_sql_fcache(FmgrInfo *finfo)
 	 * will run the query locally.
 	 * 
 	 */
-	if (Mpp_role == MPP_ROLE_EXECUTE)
+	if (Gp_role == GP_ROLE_EXECUTE)
 	{
 		foreach(list_item, queryTree_list)
 		{

@@ -18,7 +18,7 @@
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "cdb/cdbcat.h"
-#include "cdb/cdbvars.h"		/* Mpp_role */
+#include "cdb/cdbvars.h"		/* Gp_role */
 #include "catalog/pg_type.h"
 #include "utils/array.h"
 static void extract_INT2OID_array(Datum array_datum, int *lenp, int16 **vecp);
@@ -68,7 +68,7 @@ MppPolicyFetch(MemoryContext mcxt, Oid tbloid)
 	/*
 	 * Skip if qExec or utility mode.
 	 */
-	if (Mpp_role != MPP_ROLE_DISPATCH)
+	if (Gp_role != GP_ROLE_DISPATCH)
 		return NULL;
 
 	/*

@@ -95,13 +95,13 @@ can_execute_this_locally(const char * src)
 	/*
 	 * Utility mode never uses (or needs) the special callback code
 	 */
-	if (Mpp_role == MPP_ROLE_UTILITY)
+	if (Gp_role == GP_ROLE_UTILITY)
 		return true;
 	/*
 	 * If we are running on the QD, we should be able to execute any function without problem,
 	 * because the QD knows how to dispatch SQL statements if necessary.
 	 */
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 		return true;
 		
 	/*
@@ -182,7 +182,7 @@ can_execute_this_locally(const char * src)
 	if (!gp_enable_functions)
 		elog(ERROR, "Functions that execute SQL statements from the segDBs are not yet supported");
 		
-	if (Mpp_role == MPP_ROLE_EXECUTE && !Gp_is_primary && !is_a_select)
+	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_primary && !is_a_select)
 		elog(ERROR, "Functions that execute non-SELECT SQL statements from the mirrorDBs are not supported");
 
 	return false;
@@ -345,7 +345,7 @@ int connect_back_to_qd(void)
 		return SPI_OK_CONNECT;
 		
 	/* Never do this in utility mode */
-	if (Mpp_role == MPP_ROLE_UTILITY)
+	if (Gp_role == GP_ROLE_UTILITY)
 		return SPI_OK_CONNECT;
 		
 	_QD_currently_prepared_stmt = NULL;
@@ -529,7 +529,7 @@ int connect_back_to_qd(void)
 	/*
 	 * The one this we can't guess is the port, so the QD passes that to us
 	 */
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 		appendStringInfo(&buffer,"port=%d",PostPortNumber);
 	else
 		appendStringInfo(&buffer,gp_qd_callback_info);
@@ -545,7 +545,7 @@ int connect_back_to_qd(void)
     if (PQstatus(_QD_conn) != CONNECTION_OK)
     {
     	
-    	if (Mpp_role == MPP_ROLE_EXECUTE)
+    	if (Gp_role == GP_ROLE_EXECUTE)
     	{
     		elog(ERROR, "Connection Failed: %s", PQerrorMessage(_QD_conn));
     	}
@@ -2096,7 +2096,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 			
 		
 		elog(DEBUG1,"_SPI_execute_plan via QD: %s",plan->query);
-		if (Mpp_role == MPP_ROLE_EXECUTE)
+		if (Gp_role == GP_ROLE_EXECUTE)
 		{
 			if (!Gp_is_primary)
 				elog(DEBUG1,"Stored procedure running on mirror...");
@@ -2269,7 +2269,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 					ActiveSnapshot->curcid = GetCurrentCommandId();
 			}
 			
-			if (Mpp_role == MPP_ROLE_EXECUTE)
+			if (Gp_role == GP_ROLE_EXECUTE)
 			{
 			
 				/*
