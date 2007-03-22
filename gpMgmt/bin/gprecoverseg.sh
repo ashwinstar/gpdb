@@ -26,7 +26,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_fuctions.sh
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ];then
         . $FUNCTIONS
 else
@@ -89,9 +89,9 @@ USAGE () {
 		$ECHO "         the pool host must have the following characteristics:"
 		$ECHO "         1. Same OS version"
 		$ECHO "         2. Same locale"
-		$ECHO "         3. Correct Bizgres MPP software version"
-		$ECHO "         4. Inter-ssh access to active MPP array"
-		$ECHO "         5. MPP superuser account configured"
+		$ECHO "         3. Correct Greenplum Database software version"
+		$ECHO "         4. Inter-ssh access to active Greenplum array"
+		$ECHO "         5. Greenplum superuser account configured"
 		$ECHO "         6. Sufficient capacity left to accommodate recovered segments"
 		$ECHO "      -s <Primary segment directory,Mirror segment directory>"
 		$ECHO "         example -p /data_p4/pri,/data_m4/mir, this assumes that the MPP array was"
