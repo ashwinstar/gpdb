@@ -8027,6 +8027,15 @@ static Datum transformFormatOpts(char formattype, List *formatOpts)
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("HEADER available only in CSV mode")));
 	
+	if(header_line)
+		ereport(NOTICE,
+				(errmsg("HEADER means that each one of the data files "
+				        "has a header row. Also, if you are using a file "
+						"distribution utility such as gpfdist re-create "
+						"this table without HEADER and specify the header "
+						"option in the utility itself (since the header row "
+						"will be distributed to only one segment database)")));
+	
 	/*
 	 * Check quote
 	 */

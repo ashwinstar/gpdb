@@ -51,6 +51,7 @@ static void initParseState(CopyState pstate, Relation relation, List *fmtOpts, b
 static void open_external_file(FileScanDesc scan);
 static int	file_getdata(URL_FILE *extfile, CopyState pstate, int maxread);
 static void file_scan_error_callback(void *arg);
+void readHeaderLine(CopyState pstate);
 
 
 /* ----------------------------------------------------------------
@@ -319,6 +320,7 @@ file_getnext(FileScanDesc scan, ScanDirection direction)
 }
 
 
+
 /* ----------------
 *		filegettup � form another tuple from the data file.
 *		This is the workhorse - make sure it's fast!
@@ -367,6 +369,10 @@ filegettup(FileScanDesc scan,
 			pstate->begloc = pstate->raw_buf;
 			pstate->raw_buf_done = false;
 			pstate->raw_buf_index = 0;
+			
+			/* on first time around just throw the header line away */
+			if(pstate->header_line)
+				readHeaderLine(pstate);
 		}
 
 		if (pstate->bytesread > 0 || !pstate->fe_eof)
@@ -375,7 +381,7 @@ filegettup(FileScanDesc scan,
 			while (!pstate->raw_buf_done)
 			{
 				//CHECK_FOR_INTERRUPTS();
-
+				
 				/* Initialize all values for row to NULL */
 				MemSet(scan->values, 0, scan->num_phys_attrs * sizeof(Datum));
 				MemSet(scan->nulls, 'n', scan->num_phys_attrs * sizeof(char));
@@ -835,6 +841,26 @@ file_scan_error_callback(void *arg)
 		}
 	}
 
+}
+
+/*
+ * Read the data file header line and ignore it. 
+ *
+ * This function should be called only once for each data file
+ * and only if HEADER is specified in the SQL command. 
+ */
+void readHeaderLine(CopyState pstate)
+{
+
+	pstate->line_done = pstate->csv_mode ?
+		CopyReadLineCSV(pstate, pstate->bytesread) :
+		CopyReadLineText(pstate, pstate->bytesread);
+		
+	pstate->cur_lineno++;
+	pstate->line_buf.len = 0;
+	pstate->line_buf.data[0] = '\0';
+	pstate->line_buf.cursor = 0;
+	pstate->header_line = false;
 }
 
 /*
