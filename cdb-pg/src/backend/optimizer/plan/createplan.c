@@ -978,11 +978,11 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	
 	Assert(rel->locationlist != NIL);
 	
-	/* use rel->locationlis (but this may get overidden if gpfdistd is used) */
+	/* use rel->locationlis (but this may get overidden if gpfdist is used) */
 	finalUriList = rel->locationlist;
 	
 	/*
-	 * If we happen to be dealing with URI's with the 'gpfdistd' protocol
+	 * If we happen to be dealing with URI's with the 'gpfdist' protocol
 	 * we do an extra step here. We modify the locationlist so that every
 	 * primary segdb will get a URI (therefore we duplicate the existing
 	 * URI's until the list is of size = total_primaries.
@@ -992,7 +992,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	 */
 	first_uri_str = (char *) strVal(lfirst(list_head(rel->locationlist)));
 	uri = ParseUriString(first_uri_str);
-	if(uri->protocol == URI_GPFDISTD)
+	if(uri->protocol == URI_GPFDIST)
 	{
 		bool done = false;
 		
