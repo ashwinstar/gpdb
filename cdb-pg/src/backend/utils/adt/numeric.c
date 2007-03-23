@@ -230,9 +230,6 @@ static void dump_var(const char *str, NumericVar *var);
 			 pfree(buf); \
 	} while (0)
 
-/*
-#define init_var(v)		MemSetAligned(v, 0, sizeof(NumericVar))
-*/
 #define init_var(v) \
 	do { \
 		(v)->buf = (v)->digits = NULL; \
@@ -2702,8 +2699,6 @@ init_var_from_str(const char *str, NumericVar *dest)
 	NumericDigit *digits;
 	unsigned char tdd[NUMERIC_LOCAL_DTXT];
 
-	init_var(dest);
-
 	/*
 	 * We first parse the string to extract decimal digits and determine the
 	 * correct decimal weight.	Then convert to NBASE representation.
@@ -2829,6 +2824,7 @@ init_var_from_str(const char *str, NumericVar *dest)
 	offset = (weight + 1) * DEC_DIGITS - (dweight + 1);
 	ndigits = (ddigits + offset + DEC_DIGITS - 1) / DEC_DIGITS;
 
+	quick_init_var(dest);
 	alloc_var(dest, ndigits);
 	dest->sign = sign;
 	dest->weight = weight;
