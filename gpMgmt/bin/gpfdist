@@ -17,6 +17,7 @@ import SocketServer, BaseHTTPServer, os, sys, getopt, threading, time, socket
 opt = {}
 opt['-p'] = 8080
 opt['-v'] = False
+opt['-V'] = False
 opt['-d'] = '.'
 
 
@@ -37,7 +38,7 @@ def parseCommandLine():
 
     for (switch, val) in options:
 	if (switch == '-?'):		usage(0)
-        elif (switch == '-v'):		opt[switch] = True
+        elif (switch[1] in 'Vv'):	opt[switch] = True
         elif (switch == '-d'):          opt[switch] = val
         elif (switch[1] in 'p'):	opt[switch] = parseInt(val)
 
@@ -53,6 +54,8 @@ def parseCommandLine():
 
     if len(args) != 0:
 	usage(1)
+
+    if opt['-V']: opt['-v'] = true
 	    
 
 class Session:
@@ -100,12 +103,9 @@ def findSession(TID, fname):
     sessSem.acquire()
     try:
 	if key not in sess:
-	    try:
-		fd = open(fname, 'r', 1024*1024)
-		sess[key] = Session(fd, fname)
-		if opt['-v']: print '[INFO] initiated session', key
-	    except IOError:
-		return None
+	    fd = open(fname, 'r', 1024*1024)
+	    sess[key] = Session(fd, fname)
+	    if opt['-v']: print '[INFO] initiated session', key
 	else:
 	    if opt['-v']: print '[INFO] joined session', key
     finally:
@@ -138,13 +138,17 @@ class GPFDistRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 	    if fname.find('/') == 0: fname = fname[1:]
 	    fname = os.path.join(opt['-d'], fname)
 	    fname = os.path.normpath(fname)
-	    if fname.find('..') >= 0:
+	    if len(fname) < len(opt['-d']): 
 		msg = 'bad path specified (%s)' % (self.path)
 		return self.send400(msg)
 
-	    s = findSession(TID, fname)
-	    if not s:
-		msg = 'unable to serve TID %s' % TID
+	    try:
+		s = findSession(TID, fname)
+		if not s:
+		    msg = 'unable to serve TID %s' % TID
+		    return self.send400(msg)
+	    except IOError, e:
+		msg = str(e)
 		return self.send400(msg)
 
 	    self.send_response(200)
@@ -159,7 +163,7 @@ class GPFDistRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 		    self.wfile.write(c)
 		    bytes = bytes + len(c)
 
-		if opt['-v']: print '  %s %d' % (fname, bytes)
+		if opt['-V']: print '  %s %d' % (fname, bytes)
 
 	    if opt['-v']: print '  %s done' % fname
 	    if TID.find('auto-tid.') == 0:
