@@ -262,7 +262,6 @@ static void zero_var(NumericVar *var);
 static void init_var_from_str(const char *str, NumericVar *dest);
 static void set_var_from_var(NumericVar *value, NumericVar *dest);
 static void init_var_from_var(NumericVar *value, NumericVar *dest);
-static void set_var_from_num(Numeric value, NumericVar *dest);
 static void init_var_from_num(Numeric value, NumericVar *dest);
 static void init_ro_var_from_num(Numeric value, NumericVar *dest);
 static char *get_str_from_var(NumericVar *var, int dscale);
@@ -387,7 +386,7 @@ numeric_out(PG_FUNCTION_ARGS)
 	 * Get the number in the variable format.
 	 *
 	 * Even if we didn't need to change format, we'd still need to copy the
-	 * value to have a modifiable copy for rounding.  set_var_from_num() also
+	 * value to have a modifiable copy for rounding.  init_var_from_num() also
 	 * guarantees there is extra digit space in case we produce a carry out
 	 * from rounding.
 	 */
@@ -2858,28 +2857,6 @@ init_var_from_str(const char *str, NumericVar *dest)
 
 	/* Strip any leading/trailing zeroes, and normalize weight if zero */
 	strip_var(dest);
-}
-
-
-/*
- * set_var_from_num() -
- *
- *	Convert the packed db format into a variable
- */
-static void
-set_var_from_num(Numeric num, NumericVar *dest)
-{
-	int			ndigits;
-
-	ndigits = NUMERIC_NDIGITS(num);
-
-	alloc_var(dest, ndigits);
-
-	dest->weight = num->n_weight;
-	dest->sign = NUMERIC_SIGN(num);
-	dest->dscale = NUMERIC_DSCALE(num);
-
-	memcpy(dest->digits, num->n_data, ndigits * sizeof(NumericDigit));
 }
 
 
