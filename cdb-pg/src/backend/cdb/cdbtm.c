@@ -2583,7 +2583,7 @@ doQEDistributedExplicitBegin()
 	
 }
 
-void
+static void
 doQEUpdateDistributedSnapshot()
 {
 	doQEAddLocalXidsForDistributedIndoubt();
