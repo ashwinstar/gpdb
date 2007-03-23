@@ -66,7 +66,13 @@ sub gpdiff_files
 
     my $args = join(" ", @ARGV, $newf1, $newf2);
 
-    system "diff $args";
+    my $outi =`diff $args`;
+
+    # replace temp file name references with actual file names
+    $outi =~ s/$newf1/$f1/gm;
+    $outi =~ s/$newf2/$f2/gm;
+
+    print $outi;
 
 #my $stat = WEXITVALUE($?); # diff status
     my $stat = $? >> 8; # diff status
