@@ -79,12 +79,16 @@ def parseCommandLine():
     if opt['-V']: opt['-v'] = true
 
 
+# a File Session - shared among all GET request threads
 class Session:
     def __init__(self, fd, fname):
 	self.m_fname = fname
 	self.m_fd = fd
 	self.m_sem = threading.Semaphore(1)
 	self.m_residue = None
+	self.m_off = 0
+	self.m_max = 0
+	self.m_linecnt = 0
 
     def readLine(self):
 	line = ''
@@ -92,11 +96,28 @@ class Session:
 	lastWasEsc = False
 	self.m_sem.acquire()
 	try:
-	    while self.m_fd:
-		c = self.m_fd.read(1)
-		if not c: 
-		    self.m_fd.close()
+	    while True:
+		if not self.m_residue:
+		    if not self.m_fd: break
+		    self.m_residue = self.m_fd.read(1024*1024)
+		    if not self.m_residue:
+			self.m_fd.close()
+			self.m_fd = None
+			break
+		    self.m_off = 0
+		    self.m_max = len(self.m_residue)
+		
+		if (self.m_off >= self.m_max):
+		    self.m_residue = None
+		    continue
+
+		c = self.m_residue[self.m_off]
+		self.m_off = self.m_off + 1
+		
+		if c == '\n' and not inQuote: 
+		    line = line + c
 		    break
+
 		if inQuote and c == xc:
 		    lastWasEsc = not lastWasEsc
 		if c == qc and not lastWasEsc:
@@ -104,11 +125,13 @@ class Session:
 		if c != xc:
 		    lastWasEsc = False
 		line = line + c
-		if c == '\n': 
-		    break
 	finally:
 	    self.m_sem.release()
 	
+	self.m_linecnt = self.m_linecnt + 1
+	if self.m_linecnt % 10000 == 0: 
+	    print self.m_linecnt, 'lines'
+
 	return line
 
     def readFile(self):
