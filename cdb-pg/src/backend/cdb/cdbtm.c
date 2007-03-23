@@ -312,7 +312,10 @@ summarizeParticipation(void)
 {
 	if (DistributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE)
 	{
- 		Assert(currentGxact == NULL);
+		if (currentGxact == NULL)
+		{
+			elog(FATAL, "summarizeParticipation found current distributed transaction is NULL");
+		}
 		elog(LOG,"summarizeParticipation DistributedTransactionContext is not 'QD Distributed'");
 		return;
 	}
@@ -380,7 +383,10 @@ isPreparedDtxTransaction(void)
 void
 getDtxLogInfo(TMGXACT_LOG *gxact_log)
 {
-	Assert(currentGxact != NULL);
+	if (currentGxact == NULL)
+	{
+		elog(FATAL, "getDtxLogInfo found current distributed transaction is NULL");
+	}
 
 	memcpy(gxact_log->gid, currentGxact->gid, TMGIDSIZE);
 	gxact_log->gxid = currentGxact->gxid;
@@ -449,7 +455,10 @@ rollbackDtxTransaction(void)
 void
 markDtxAsDistributed(void)
 {
-	Assert (currentGxact != NULL);
+	if (currentGxact == NULL)
+	{
+		elog(FATAL, "markDtxAsDistributed found current distributed transaction is NULL");
+	}
 
 	if (currentGxact->state == DTX_STATE_ACTIVE_NOT_DISTRIBUTED)
 	{
@@ -524,8 +533,11 @@ doCommitAllReadOnly(void)
 					/* dispatchToMirrors */ false, /* raiseError */ false);
 	if (!succeeded)
 	{
-		elog(ERROR, "Commit of read-only segments failed");
+		elog(ERROR, "The distributed transaction 'Read-Only Commit' broadcast to one or more segments failed for gid = %s.",
+			 currentGxact->gid);
 	}
+	elog(DEBUG5, "The distributed transaction 'Read-Only Commit' broadcast to the segments succeeded for gid = %s.",
+		 currentGxact->gid);
 	
 	getTmLock();
 	Assert(currentGxact->state == DTX_STATE_COMMITTING_ALL_READ_ONLY);
@@ -557,9 +569,11 @@ doPrepareTransaction(void)
 					/* dispatchToMirrors */ true, /* raiseError */ false);
 	if (!succeeded)
 	{
-		elog(ERROR, "Preparation of the distributed transaction gid = %s on one or more segments failed", currentGxact->gid);
+		elog(ERROR, "The distributed transaction 'Prepare' broadcast to one or more segments failed for gid = %s.",
+			 currentGxact->gid);
 	}
-	elog(LOG, "Preparation of the distributed transaction gid = %s succeeded", currentGxact->gid);
+	elog(DEBUG5, "The distributed transaction 'Prepare' broadcast to the segments succeeded for gid = %s.",
+		 currentGxact->gid);
 	
 	getTmLock();
 	Assert(currentGxact->state == DTX_STATE_PREPARING);
@@ -614,11 +628,14 @@ doNotifyingCommitted(void)
 					/* dispatchToMirrors */ true, /* raiseError */ false);
 	if (!succeeded)
 	{
-		elog(WARNING, "Commit notification for gid = %s failed to one or more segments.  System will retry again later", currentGxact->gid);
+		elog(WARNING, "The distributed transaction 'Commit Notification' broadcast to one or more segments failed for gid = %s. "
+			 "The system will retry again later",
+			 currentGxact->gid);
 	}
 	else
 	{
-		elog(LOG, "Commit notification for gid = %s succeeded", currentGxact->gid);
+		elog(DEBUG5, "The distributed transaction 'Commit Notification' broadcast to the segments succeeded for gid = %s.",
+			 currentGxact->gid);
 	}
 
 	getTmLock();
@@ -657,11 +674,13 @@ doRetryingNotifyCommitted(void)
 					/* dispatchToMirrors */ true, /* raiseError */ false);
 	if (!succeeded)
 	{
-		elog(WARNING, "System retry delivery of commit notification for gid =%s failed to one or more segments.  System will retry again later", currentGxact->gid);
+		elog(WARNING, "System retry of the distributed transaction 'Commit Notification' broadcast for gid = %s failed to one or more segments.  System will retry again later", 
+			 currentGxact->gid);
 	}
 	else
 	{
-		elog(LOG, "System retry delivery of commit notification for gid =%s succeeded", currentGxact->gid);
+		elog(INFO, "System retry of the distributed transaction 'Commit Notification' broadcast for gid = %s succeeded", 
+			 currentGxact->gid);
 	}
 	
 	getTmLock();
@@ -701,9 +720,11 @@ doNotifyingAborted(bool noPreparesIssued)
 						/* dispatchToMirrors */ true, /* raiseError */ false);
 		if (!succeeded)
 		{
-			elog(ERROR, "Abort of the distributed transaction on one or more segments failed");
+			elog(WARNING, "The distributed transaction 'Abort' broadcast to one or more segments failed for gid = %s.",
+				 currentGxact->gid);
 		}
-		elog(LOG, "Abort of the distributed transaction succeeded");
+		elog(DEBUG5, "The distributed transaction 'Abort' broadcast to the segments succeeded for gid = %s.",
+			 currentGxact->gid);
 	}
 	else
 	{
@@ -713,9 +734,11 @@ doNotifyingAborted(bool noPreparesIssued)
 						/* dispatchToMirrors */ true, /* raiseError */ false);
 		if (!succeeded)
 		{
-			elog(ERROR, "Abort prepared of the distributed transaction on one or more segments failed");
+			elog(WARNING, "The distributed transaction 'Abort' prepared broadcast to one or more segments failed for gid = %s.",
+				 currentGxact->gid);
 		}
-		elog(LOG, "Abort prepared of the distributed transaction succeeded");
+		elog(DEBUG5, "The distributed transaction 'Abort Prepared' broadcast to the segments succeeded for gid = %s.",
+			 currentGxact->gid);
 	}
 		
 	getTmLock();
@@ -727,6 +750,7 @@ doNotifyingAborted(bool noPreparesIssued)
 	}
 	else
 	{
+		// UNDONE: Should we enter this state when no prepares were issued???
 		currentGxact->state = DTX_STATE_NOTIFY_ABORTED_RETRY_NEEDED;
 		currentGxact = NULL;	// Let go so another process can retry.
 	}
@@ -759,12 +783,12 @@ doRetryingNotifyAborted(void)
 					/* dispatchToMirrors */ true, /* raiseError */ false);
 	if (!succeeded)
 	{
-		elog(WARNING, "System retry delivery of abort notification for gid =%s failed to one or more segments.  System will retry again later", 
+		elog(WARNING, "System retry of the distributed transaction 'Abort Prepared' broadcast for gid = %s failed to one or more segments.  System will retry again later", 
 			 currentGxact->gid);
 	}
 	else
 	{
-		elog(LOG, "System retry delivery of abort notification for gid =%s succeeded", 
+		elog(INFO, "System retry of the distributed transaction 'Abort Prepared' broadcast for gid = %s succeeded", 
 			 currentGxact->gid);
 	}
 	
@@ -802,12 +826,12 @@ doAbortInDoubt(char *gid)
 					/* dispatchToMirrors */ true, /* raiseError */ false);
 	if (!succeeded)
 	{
-		elog(WARNING, "System retry delivery of abort notification for gid =%s failed to one or more segments.  System will retry again later", 
+		elog(WARNING, "Crash recovery retry of the distributed transaction 'Abort Prepared' broadcast for gid = %s failed to one or more segments.  System will retry again later", 
 			 gid);
 	}
 	else
 	{
-		elog(LOG, "System retry delivery of abort notification for gid =%s succeeded", 
+		elog(LOG, "Crash recovery retry of the distributed transaction 'Abort Prepared' broadcast for gid = %s succeeded", 
 			 gid);
 	}
 }
