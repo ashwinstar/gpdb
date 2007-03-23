@@ -64,17 +64,14 @@ def parseCommandLine():
     if '-q' in opt: qc = opt['-q']; opt['-f'] = False
     if '-x' in opt: xc = opt['-x']; opt['-f'] = False
 
-    if qc:
-	if len(qc) != 1: 
-	    usage('Error: please specify a character for -q switch')
-	else:
-	    qc = qc[0]
+    if qc and len(qc) != 1: 
+	usage('Error: please specify a character for -q switch')
 
-    if xc:
-	if len(xc) != 1:
-	    usage('Error: please specify a character for -x switch')
-	else:
-	    xc = xc[0]
+    if xc and len(xc) != 1:
+	usage('Error: please specify a character for -x switch')
+    
+    if not qc and xc: 
+	usage('Error: you must specify -q qchar with -x xchar')
 
     if len(args) != 0:
 	usage(1)
@@ -95,13 +92,10 @@ class Session:
 	lastWasEsc = False
 	self.m_sem.acquire()
 	try:
-	    while m_fd:
-		c = m_fd.read()
+	    while self.m_fd:
+		c = self.m_fd.read(1)
 		if not c: 
-		    m_fd.close()
-		    break
-		if c == '\n' and not self.lastWasEsc: 
-		    line = line + c
+		    self.m_fd.close()
 		    break
 		if inQuote and c == xc:
 		    lastWasEsc = not lastWasEsc
@@ -109,9 +103,12 @@ class Session:
 		    inQuote = not inQuote
 		if c != xc:
 		    lastWasEsc = False
+		line = line + c
+		if c == '\n': 
+		    break
 	finally:
 	    self.m_sem.release()
-
+	
 	return line
 
     def readFile(self):
