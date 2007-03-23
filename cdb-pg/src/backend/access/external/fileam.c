@@ -371,7 +371,7 @@ filegettup(FileScanDesc scan,
 			pstate->raw_buf_index = 0;
 			
 			/* on first time around just throw the header line away */
-			if(pstate->header_line)
+			if(pstate->header_line && pstate->bytesread > 0)
 				readHeaderLine(pstate);
 		}
 
