@@ -29,6 +29,7 @@
  */
 #include "postgres.h"
 
+#include "access/cdbdistributedxidmap.h"
 #include "access/subtrans.h"
 #include "access/transam.h"
 #include "access/xact.h"

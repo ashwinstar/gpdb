@@ -2904,7 +2904,8 @@ rememberDtxExplicitBegin()
 
 void
 performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
-					char* loggingStr, char* gid, DistributedTransactionId gxid)
+					const char *loggingStr, const char *gid, 
+					DistributedTransactionId gxid)
 {
 	elog(LOG, "performDtxProtocolCommand called with DTX protocol = %s, QE distribute transaction context: '%s'",
 		DtxProtocolCommandToString(dtxProtocolCommand), DtxContextToString(DistributedTransactionContext));
@@ -2938,7 +2939,7 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 			if (dtxProtocolCommand == DTX_PROTOCOL_COMMAND_PREPARE)
 			{
 				elog(LOG, "performDtxProtocolCommand going to call PrepareTransactionBlock for distributed transaction %s", gid);
-				if (!PrepareTransactionBlock(gid))
+				if (!PrepareTransactionBlock((char *)gid))
 				{
 					elog(ERROR, "Prepare of distributed transaction %s failed", gid);
 					break;
@@ -2995,7 +2996,7 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		}
 
 		elog(LOG, "performDtxProtocolCommand going to call FinishPreparedTransaction for distributed transaction %s", gid);
-		FinishPreparedTransaction(gid, /* isCommit */ true, /* raiseErrorIfNotFound */ true);
+		FinishPreparedTransaction((char *)gid, /* isCommit */ true, /* raiseErrorIfNotFound */ true);
 		finishDistributedTransactionContext();
 		break;
 
@@ -3004,7 +3005,7 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		 * We can be doing this on a different connection, so ignore DistributedTransactionContext.
 		 */
 		elog(LOG, "performDtxProtocolCommand going to call FinishPreparedTransaction for distributed transaction %s", gid);
-		FinishPreparedTransaction(gid, /* isCommit */ true, /* raiseErrorIfNotFound */ false);
+		FinishPreparedTransaction((char *)gid, /* isCommit */ true, /* raiseErrorIfNotFound */ false);
 		finishDistributedTransactionContext();
 		break;
 
@@ -3030,7 +3031,7 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 			break;
 			
 		case DTX_CONTEXT_QE_PREPARED:
-			FinishPreparedTransaction(gid, /* isCommit */ false, /* raiseErrorIfNotFound */ true);
+			FinishPreparedTransaction((char *)gid, /* isCommit */ false, /* raiseErrorIfNotFound */ true);
 			finishDistributedTransactionContext();
 			break;
 			
@@ -3055,14 +3056,14 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		elog(LOG, "performDtxProtocolCommand going to call AbortOutOfAnyTransaction for distributed transaction %s", gid);
 		AbortOutOfAnyTransaction();
 		elog(LOG, "performDtxProtocolCommand going to call FinishPreparedTransaction for distributed transaction %s", gid);
-		FinishPreparedTransaction(gid, /* isCommit */ false, /* raiseErrorIfNotFound */ false);
+		FinishPreparedTransaction((char *)gid, /* isCommit */ false, /* raiseErrorIfNotFound */ false);
 		finishDistributedTransactionContext();
 		break;
 
 	case DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED:
 		Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
 		elog(LOG, "performDtxProtocolCommand going to call FinishPreparedTransaction for distributed transaction %s", gid);
-		FinishPreparedTransaction(gid, /* isCommit */ false, /* raiseErrorIfNotFound */ false);
+		FinishPreparedTransaction((char *)gid, /* isCommit */ false, /* raiseErrorIfNotFound */ false);
 		break;
 
 	default:

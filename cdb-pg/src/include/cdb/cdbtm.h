@@ -217,6 +217,7 @@ extern void determineDistributedTransactionContext (void);
 extern void finishDistributedTransactionContext (void);
 extern void rememberDtxExplicitBegin();
 extern void performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
-					char* loggingStr, char* gid, DistributedTransactionId gxid);
+					const char *loggingStr, const char *gid, 
+					DistributedTransactionId gxid);
 
 #endif   /* CDBTM_H */

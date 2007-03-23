@@ -1249,12 +1249,12 @@ exec_mpp_query(const char *query_string,
 static void
 exec_mpp_dtx_protocol_command(
 					DtxProtocolCommand 			dtxProtocolCommand,
-					char* 						loggingStr,
-					char* 						gid,
+					const char *				loggingStr,
+					const char * 				gid,
 					DistributedTransactionId 	gxid)
 {
 	CommandDest dest = whereToSendOutput;
-	char* commandTag = loggingStr;
+	const char *commandTag = loggingStr;
 
 	elog(DEBUG5,"exec_mpp_dtx_protocol_command received the dtxProtocolCommand = %d (%s) gid = %s gxid = %u",
 		 dtxProtocolCommand, loggingStr, gid, gxid);
@@ -4271,10 +4271,10 @@ PostgresMain(int argc, char *argv[], const char *username)
 					DtxProtocolCommand dtxProtocolCommand;
 					
 					int loggingStrLen;
-					char* loggingStr;
+					const char *loggingStr;
 					
 					int gidLen;
-					char* gid;
+					const char *gid;
 
 					DistributedTransactionId gxid;
 					
