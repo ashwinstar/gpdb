@@ -259,7 +259,7 @@ static void alloc_var(NumericVar *var, int ndigits);
 
 static void zero_var(NumericVar *var);
 
-static void set_var_from_str(const char *str, NumericVar *dest);
+static void init_var_from_str(const char *str, NumericVar *dest);
 static void set_var_from_var(NumericVar *value, NumericVar *dest);
 static void init_var_from_var(NumericVar *value, NumericVar *dest);
 static void set_var_from_num(Numeric value, NumericVar *dest);
@@ -352,11 +352,10 @@ numeric_in(PG_FUNCTION_ARGS)
 		PG_RETURN_NUMERIC(make_result(&const_nan));
 
 	/*
-	 * Use set_var_from_str() to parse the input string and return it in the
+	 * Use init_var_from_str() to parse the input string and return it in the
 	 * packed DB storage format
 	 */
-	init_var(&value);
-	set_var_from_str(str, &value);
+	init_var_from_str(str, &value);
 
 	apply_typmod(&value, typmod);
 
@@ -1874,9 +1873,7 @@ float8_numeric(PG_FUNCTION_ARGS)
 
 	sprintf(buf, "%.*g", DBL_DIG, val);
 
-	init_var(&result);
-
-	set_var_from_str(buf, &result);
+	init_var_from_str(buf, &result);
 	res = make_result(&result);
 
 	PG_RETURN_NUMERIC(res);
@@ -1932,9 +1929,7 @@ float4_numeric(PG_FUNCTION_ARGS)
 
 	sprintf(buf, "%.*g", FLT_DIG, val);
 
-	init_var(&result);
-
-	set_var_from_str(buf, &result);
+	init_var_from_str(buf, &result);
 	res = make_result(&result);
 
 	PG_RETURN_NUMERIC(res);
@@ -2687,12 +2682,12 @@ zero_var(NumericVar *var)
 
 
 /*
- * set_var_from_str()
+ * init_var_from_str()
  *
  *	Parse a string and put the number into a variable
  */
 static void
-set_var_from_str(const char *str, NumericVar *dest)
+init_var_from_str(const char *str, NumericVar *dest)
 {
 	const char *cp = str;
 	bool		have_dp = FALSE;
@@ -2707,6 +2702,8 @@ set_var_from_str(const char *str, NumericVar *dest)
 	int			offset;
 	NumericDigit *digits;
 	unsigned char tdd[NUMERIC_LOCAL_DTXT];
+
+	init_var(dest);
 
 	/*
 	 * We first parse the string to extract decimal digits and determine the
@@ -4354,8 +4351,6 @@ sqrt_var(NumericVar *arg, NumericVar *result, int rscale)
 				(errcode(ERRCODE_INVALID_ARGUMENT_FOR_POWER_FUNCTION),
 				 errmsg("cannot take square root of a negative number")));
 
-	init_var(&tmp_val);
-
 	/* Copy arg in case it is the same var as result */
 	init_var_from_var(arg, &tmp_arg);
 
@@ -4370,6 +4365,7 @@ sqrt_var(NumericVar *arg, NumericVar *result, int rscale)
 	result->sign = NUMERIC_POS;
 
 	init_var_from_var(result, &last_val);
+	init_var(&tmp_val);
 
 	for (;;)
 	{
@@ -4489,11 +4485,7 @@ exp_var_internal(NumericVar *arg, NumericVar *result, int rscale)
 	int			ndiv2 = 0;
 	int			local_rscale;
 
-	init_var(&xpow);
-	init_var(&ifac);
 	init_var(&elem);
-	init_var(&ni);
-
 	init_var_from_var(arg, &x);
 
 	Assert(x.sign == NUMERIC_POS);
@@ -4517,9 +4509,9 @@ exp_var_internal(NumericVar *arg, NumericVar *result, int rscale)
 	 * We run the series until the terms fall below the local_rscale limit.
 	 */
 	add_var(&const_one, &x, result);
-	set_var_from_var(&x, &xpow);
-	set_var_from_var(&const_one, &ifac);
-	set_var_from_var(&const_one, &ni);
+	init_var_from_var(&x, &xpow);
+	init_var_from_var(&const_one, &ifac);
+	init_var_from_var(&const_one, &ni);
 
 	for (;;)
 	{
