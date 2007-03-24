@@ -173,6 +173,7 @@ if (1)
     my $getrows = 0;
     my $getstatement = 0;
     my $has_order = 0;
+    my $copy_select = 0;
 
     while (<>) # big while
     {
@@ -180,6 +181,24 @@ if (1)
 
         if ($getrows) # getting rows from SELECT output
         {
+            # special case for copy select
+            if ($copy_select &&
+                ($ini =~ m/(\-\-)|(ERROR)/))
+            {
+                my @ggg= sort @outarr;
+                for my $line (@ggg)
+                {
+                    print $bpref, $line;
+                }
+
+                @outarr = ();
+                $getrows = 0;
+                $has_order = 0;
+                $copy_select = 0;
+                next;
+            }
+
+
             # regex example: (5 rows)
             if ($ini =~ m/^\s*\(\d+\s+row(s)*\)\s*$/)
             {
@@ -206,8 +225,9 @@ if (1)
         else # finding SQL statement or start of SELECT output
         {
 
-            if ($ini =~ m/(insert|update|delete|select|\\d)/i)
-            {
+            if ($ini =~ m/(insert|update|delete|select|\\d|copy)/i)
+            {                
+                $copy_select = 0;
                 $has_order = 0;
                 $sql_statement = "";
             }
@@ -226,8 +246,19 @@ if (1)
 
             # regex example: ---- or ---+---
             # need at least 3 dashes to avoid confusion with "--" comments
-            if ($ini =~ m/^\s*((\-\-)(\-)+(\+(\-)+)*)+\s*$/)
+            if (($ini =~ m/^\s*((\-\-)(\-)+(\+(\-)+)*)+\s*$/)
+                # special case for copy select
+                || (($ini =~ m/^\s*copy\s*\(\s*select.*to stdout\;/i)
+                    && ($ini !~ m/order\s+by/i)))
             {
+
+                # special case for copy select
+                if ($ini =~ m/^\s*copy\s*\(\s*select.*to stdout\;/i)
+                {
+                    $copy_select = 1;
+                    $sql_statement = "";
+                }
+
                 $getstatement = 0;
 
                 for my $line (@outarr)
