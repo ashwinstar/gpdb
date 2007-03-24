@@ -206,7 +206,7 @@ if (1)
         else # finding SQL statement or start of SELECT output
         {
 
-            if ($ini =~ m/(insert|update|delete|select)/i)
+            if ($ini =~ m/(insert|update|delete|select|\\d)/i)
             {
                 $has_order = 0;
                 $sql_statement = "";
@@ -272,7 +272,27 @@ if (1)
         {
             $ini =~ s/\".*\"/\"dummy key\"/;
         }
-        if ($ini =~ m/NOTICE:\s+Table doesn\'t have \'DISTRIBUTED BY\' clause/)
+
+        if ($ini =~ m/CONTEXT:.*\s+of this segment db input data/)
+        {
+            $ini =~ s/\s+of this segment db input data//;
+        }
+
+        # XXX XXX: note the discrepancy in the NOTICE messages
+        # 'distributed by' vs 'DISTRIBUTED BY'
+        if ($ini =~ m/NOTICE:\s+Table doesn\'t have \'distributed by\' clause\, and no column type is suitable/i)
+        {
+            next;
+        }
+        if ($ini =~ m/NOTICE:\s+Table doesn\'t have \'DISTRIBUTED BY\' clause/i)
+        {
+            next;
+        }
+        if ($ini =~ m/NOTICE:\s+Dropping a column that is part of the distribution policy/)
+        {
+            next;
+        }
+        if ($ini =~ m/NOTICE:\s+Table has parent\, setting distribution columns to match parent table/)
         {
             next;
         }
@@ -285,6 +305,12 @@ if (1)
             next;
         }
 
+
+
+        if ($ini =~ m/^\s*Distributed by:\s+\(.*\)\s*$/)
+        {
+            next;
+        }
 
         push @outarr, $ini;
 
