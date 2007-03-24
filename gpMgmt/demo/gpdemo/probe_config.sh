@@ -35,7 +35,7 @@ GPPATH=`dirname $GPPATH`
 # Create a list of catalog tables to printout
 #***********************************************************
 declare -a TABLES=(mpp version_at_initdb)
-declare -a TABLESQD=(configuration mpp pgdatabase distribution_policy version_at_initdb)
+declare -a TABLESQD=(configuration id pgdatabase distribution_policy version_at_initdb)
 
 #***********************************************************
 # Declare the max and min port numbers to probe
@@ -78,9 +78,9 @@ do
   if [ ${i} -eq 0 ]; then 
     for table in ${TABLESQD[@]}
     do
-        echo "Table: mpp_$table"
+        echo "Table: gp_$table"
         echo "**************************"
-        PGOPTIONS="-c gp_session_role=utility" $GPPATH/psql -p ${PORTS[$i]} template1 -c  "select * from mpp_"$table
+        PGOPTIONS="-c gp_session_role=utility" $GPPATH/psql -p ${PORTS[$i]} template1 -c  "select * from gp_"$table
 	    RETVAL=$?
 	    if [ $RETVAL -ne 0 ]; then
 	        echo "$0 failed."
@@ -91,10 +91,10 @@ do
 
   for table in ${TABLES[@]}
   do
-    echo "Table: mpp_$table"
+    echo "Table: gp_$table"
     echo "**************************"
     PGOPTIONS="-c gp_session_role=utility" $GPPATH/psql -p ${PORTS[$i]} template1 -c \
-    "select * from mpp_"$table
+    "select * from gp_"$table
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ]; then
 	  echo "$0 failed."
