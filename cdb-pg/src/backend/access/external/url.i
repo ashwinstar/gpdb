@@ -263,7 +263,8 @@ url_fopen(char *url, char *filename, const char *operation)
         curl_easy_setopt(file->handle.curl, CURLOPT_WRITEFUNCTION, write_callback);
 		if (isGpfdist) 
 		{
-		    sprintf(sessionIDBuf, "X-GP-TID: %d", gp_session_id);
+		    sprintf(sessionIDBuf, "X-GP-TID: %x.%x.%x", 
+					gp_session_id, QDSentDistributedXid, QDSentDistributedCommandId);
             file->x_httpheader = NULL;
     		file->x_httpheader = curl_slist_append(file->x_httpheader, sessionIDBuf);
             curl_easy_setopt(file->handle.curl, CURLOPT_HTTPHEADER, file->x_httpheader);
