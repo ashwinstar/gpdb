@@ -41,9 +41,9 @@ CMDPATH=(/usr/kerberos/bin /usr/sfw/bin /opt/sfw/bin /usr/local/bin /bin /usr/bi
 
 #GPPATH is the list of possible locations for the Greenplum Database binaries, in precedence order
 declare -a GPPATH
-GPPATH=( $MPPHOME $GPHOME $BIZHOME )
+GPPATH=( $GPHOME $MPPHOME $BIZHOME )
 if [ ${#GPPATH[@]} -eq 0 ];then
-	echo "[FATAL]:-MPPHOME and GPHOME are not set, need to set at least one of these within environment"
+	echo "[FATAL]:-GPHOME is not set, need to set this within environment"
 	exit 2
 fi
 
@@ -180,7 +180,7 @@ GPSTATE=$SCRIPTDIR/gpstate.sh
 GPSTOP=$SCRIPTDIR/gpstop.sh
 MAILFILE=$SCRIPTDIR/mail_contacts
 HMAILFILE=$HOME/mail_contacts
-GPDOCDIR=${MPPHOME}/gpMgmt/doc
+GPDOCDIR=${GPHOME}/gpMgmt/doc
 #******************************************************************************
 # Greenplum Command Variables
 #******************************************************************************

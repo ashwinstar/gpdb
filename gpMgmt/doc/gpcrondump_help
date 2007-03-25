@@ -29,7 +29,7 @@ Greenplum Database management scripts  this is required to
 run gpcrondump.sh. 
 
 SHELL=/bin/bash
-PATH=/sbin:/bin:/usr/sbin:/usr/bin:$MPPHOME/gpMgmt/bin
+PATH=/sbin:/bin:/usr/sbin:/usr/bin:$GPHOME/gpMgmt/bin
 MAILTO=gpadmin
 HOME=/home/gpadmin
 
@@ -195,7 +195,7 @@ A crontab file that runs a backup of the sales database nightly at one past midn
 
 SHELL=/bin/bash
 
-PATH=/sbin:/bin:/usr/sbin:/usr/bin:$MPPHOME/gpMgmt/bin
+PATH=/sbin:/bin:/usr/sbin:/usr/bin:$GPHOME/gpMgmt/bin
 
 01 0 * * * gpadmin gpcrondump.sh -x customers -a -q >> mpp_custdump.log
 

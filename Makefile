@@ -3,7 +3,7 @@ GPMGMT=gpMgmt
 ISCONFIG=$(GPPGDIR)/GNUmakefile
 
 RELEASE=`$(CURDIR)/releasetag`
-GPDIR=gp-pgsql$(RELEASE)
+GPDIR=greenplum-db$(RELEASE)
 GPDOCDIR=$(CURDIR)/docs/release
 
 TARBALL=/tmp/$(GPDIR).tar.gz
@@ -13,7 +13,7 @@ DEFPORT=5432
 OPTFLAGS="-O3 -finline-limit=1800 -funroll-loops -fargument-noalias-global $(COPTX) -g"
 DEBUGFLAGS="-O0 -g"
 
-DISTPATH=$(BIZHOME)/$(GPDIR)
+DISTPATH=$(GPROOT)/$(GPDIR)
 DEVPATH=$(HOME)/$(GPDIR)
 
 CONFIGFLAGS=--enable-thread-safety --enable-integer-datetimes --with-pgport=$(DEFPORT) --enable-depend 
@@ -27,7 +27,7 @@ endif
 
 all : devel
 
-.PHONY : RECONFIG BIZDEP HOMEDEP clean distclean tarball distprep
+.PHONY : RECONFIG GPROOTDEP HOMEDEP clean distclean tarball distprep
 
 test2 :
 	echo "CWD ="$(CURDIR)
@@ -45,7 +45,7 @@ devel : HOMEDEP $(ISCONFIG)
 
 dist : INSTCFLAGS=$(OPTFLAGS)
 dist : INSTLOC=$(DISTPATH)
-dist : BIZDEP RECONFIG $(ISCONFIG)
+dist : GPROOTDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR); make install
 	@make groupSession
@@ -74,16 +74,16 @@ tarball :
 
 mgmtcopy :
 	@#Copy the management utilities
-	@mkdir $(INSTLOC)/$(GPMGMT)
-	@cp -rp $(GPMGMT)/bin $(INSTLOC)/$(GPMGMT)
-	@if [ -d $(GPMGMT)/doc ]; then cp -rp $(GPMGMT)/doc $(INSTLOC)/$(GPMGMT); fi
-	@if [ -d $(GPMGMT)/demo/gpdemo ]; then mkdir $(INSTLOC)/$(GPMGMT)/demo; gtar --exclude \*CVS\* -C $(GPMGMT)/demo -czf $(INSTLOC)/$(GPMGMT)/demo/gpdemo.tar.gz gpdemo; fi
+	@cp -rp $(GPMGMT)/bin $(INSTLOC)
+	@if [ -d $(GPMGMT)/doc ]; then cp -rp $(GPMGMT)/doc $(INSTLOC); fi
+	@if [ -d $(GPMGMT)/demo/gpdemo ]; then mkdir $(INSTLOC)/demo; gtar --exclude \*CVS\* -C $(GPMGMT)/demo -czf $(INSTLOC)/demo/gpdemo.tar.gz gpdemo; fi
 	@# Remove unwanted files.
-	@rm -rf $(INSTLOC)/$(GPMGMT)/bin/CVS
-	@rm -rf $(INSTLOC)/$(GPMGMT)/doc/CVS
-	@rm -rf $(INSTLOC)/$(GPMGMT)/bin/pythonSrc
-	@rm -rf $(INSTLOC)/$(GPMGMT)/bin/Makefile
-	@rm -rf $(INSTLOC)/$(GPMGMT)/bin/lib/CVS
+	@rm -rf $(INSTLOC)/bin/CVS
+	@rm -rf $(INSTLOC)/doc/CVS
+	@rm -rf $(INSTLOC)/bin/pythonSrc
+	@rm -rf $(INSTLOC)/bin/Makefile
+	@rm -rf $(INSTLOC)/bin/lib/CVS
+	@rm -rf $(INSTLOC)/bin/src
 
 copylibs :
 	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep readline | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi
@@ -98,18 +98,18 @@ $(ISCONFIG) :
 	cd $(GPPGDIR); CFLAGS=$(INSTCFLAGS) ./configure $(CONFIGFLAGS) --prefix=$(INSTLOC) --with-docdir=$(INSTLOC)/doc --mandir=$(INSTLOC)/man
 
 HOMEDEP :
-	@#If the BIZHOME variable isn't set, then execute the usage() path
+	@#If the HOME variable isn't set, then execute the usage() path
 	@if [ x"$(HOME)" = x ]; then make HOMEFAIL; fi
 
-BIZDEP :
-	@#If the BIZHOME variable isn't set, then execute the usage() path
-	@if [ x"$(BIZHOME)" = x ]; then make BIZFAIL; fi
+GPROOTDEP :
+	@#If the GPROOT variable isn't set, then execute the usage() path
+	@if [ x"$(GPROOT)" = x ]; then make GPROOTFAIL; fi
 
-BIZFAIL :
+GPROOTFAIL :
 	@echo
-	@echo "	The BIZHOME path variable is not set."
+	@echo "	The GPROOT path variable is not set."
 	@echo
-	@echo "	You must install bizgres first, then source the file with path variables prior to"
+	@echo "	You must decide where you will install to, and set GPROOT to that location, prior to"
 	@echo "	installing the GP module with this Makefile."
 	@echo
 	@exit 1

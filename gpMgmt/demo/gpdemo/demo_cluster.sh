@@ -69,7 +69,7 @@ USAGE(){
 # Clean up the demo
 #
 cleanDemo(){
-    PG_CTL_PATH=${MPPHOME}/bin/pg_ctl
+    PG_CTL_PATH=${GPHOME}/bin/pg_ctl
     # Data Directories for the segments
     if [ -f ${QDDIR}/demoDataDir-1/postmaster.pid ] ; then 
         echo "stopping postmaster ${PG_CTL_PATH} -D ${QDDIR}/demoDataDir-1 stop"
@@ -132,7 +132,7 @@ echo "This is a demo of the Greenplum Database module.  We'll perform a local cl
 echo "master instance and 3 segment instances all on this machine."
 echo ""
 echo "In order to run the Greenplum Database module, you must either have the BIZHOME environment variable"
-echo "set, or the MPPHOME environment variable set to the location of the Greenplum install."
+echo "set, or the GPHOME environment variable set to the location of the Greenplum install."
 echo "You must also have the following port numbers free ${MASTER_DEMO_PORT} ${DEMO_SEG_PORTS[@]}"
 echo ""
 echo "**************************************************************************************************"
@@ -140,9 +140,9 @@ echo ""
 
 
 
-if [ x"$MPPHOME" = x ]; then
+if [ x"$GPHOME" = x ]; then
     if [ x"$BIZHOME" = x ]; then
-        echo "Neither MPPHOME or BIZHOME are set.  Set one of these variables to point to the location"
+        echo "Neither GPHOME or BIZHOME are set.  Set one of these variables to point to the location"
      echo "of the Greenplum installation directory."
         echo ""
         exit 1
@@ -150,7 +150,7 @@ if [ x"$MPPHOME" = x ]; then
         GPSEARCH=$BIZHOME
     fi
 else
-    GPSEARCH=$MPPHOME
+    GPSEARCH=$GPHOME
 fi
 
 GPPATH=`find $GPSEARCH -name gp_dump| tail -1`
@@ -246,8 +246,8 @@ echo "" >> $CLUSTER_CONFIG
 echo "ENCODING=UNICODE" >> $CLUSTER_CONFIG
 echo "" >> $CLUSTER_CONFIG
 echo "# Path for Greenplum mgmt utils and Greenplum binaries" >> $CLUSTER_CONFIG
-echo "PATH=$MPPHOME/bin:$MPPHOME/gpMgmt/bin:$PATH" >> $CLUSTER_CONFIG
-echo "LD_LIBRARY_PATH=$MPPHOME/lib:$LD_LIBRARY_PATH" >> $CLUSTER_CONFIG
+echo "PATH=$GPHOME/bin:$GPHOME/gpMgmt/bin:$PATH" >> $CLUSTER_CONFIG
+echo "LD_LIBRARY_PATH=$GPHOME/lib:$LD_LIBRARY_PATH" >> $CLUSTER_CONFIG
 echo "export PATH" >> $CLUSTER_CONFIG
 echo "export LD_LIBRARY_PATH" >> $CLUSTER_CONFIG
 echo "export MASTER_DATA_DIRECTORY" >> $CLUSTER_CONFIG

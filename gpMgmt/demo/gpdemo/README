@@ -38,7 +38,7 @@ RUNNING GP DEMO
 
 3. Unzip and untar gpdemo:
 
-	tar -xvzf $MPPHOME/gpMgmt/demo/gpdemo.tar.gz
+	tar -xvzf $GPHOME/gpMgmt/demo/gpdemo.tar.gz
 
 4. Go into the gpdemo directory you just untarred:
 

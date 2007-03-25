@@ -520,10 +520,10 @@ LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 if [ x"" == x"$CHK_STANDBY" ];then
 	CHK_ON_PASSIVE_STANDBY
 fi
-if [ x"" != x"$MPPHOME" ];then
-	APP_PATH=${MPPHOME}/bin
+if [ x"" != x"$GPHOME" ];then
+	APP_PATH=${GPHOME}/bin
 else
-	APP_PATH=${BIZHOME}/bin
+	APP_PATH=${MPPHOME}/bin
 fi
 CHK_QD_DB_RUNNING
 GET_MASTER_PORT $MASTER_DATA_DIRECTORY

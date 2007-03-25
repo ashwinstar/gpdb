@@ -141,7 +141,7 @@ CHECK_PARAM () {
 		if [ $PID -ne 0 ] && [ x"" != x"$FAIL_PRI_SEG" ];then
 			LOG_MSG "[WARN]:-Active read only master detected on $MASTER_STANDBY_HOSTNAME" 1
 			LOG_MSG "[INFO]:-Calling close down routine" 1
-			$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$GPSTOP -d $MASTER_DATA_DIRECTORY -m"
+			$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export GPHOME=$GPHOME;$GPSTOP -d $MASTER_DATA_DIRECTORY -m"
 		fi
 	else
 		#Do not have a directory, but check to ensure we do not have a sync process
@@ -340,7 +340,7 @@ FAIL_PRIMARY_SEGMENTS () {
         fi
 	#Start the readonly master segment in utility mode
 	LOG_MSG "[INFO]:-Starting read only master segment instance in utility mode" 1
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$GPSTART -d $MASTER_DATA_DIRECTORY -m"
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export GPHOME=$GPHOME;$GPSTART -d $MASTER_DATA_DIRECTORY -m"
 	ERROR_CHK $? "start read only master segment instance" 2
 	#Now set primary segment instances port numbers to a negative number
 	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MASTER_PORT $DEFAULTDB -c\" update $CONFIG_TABLE set port=dbid*-1 where definedprimary='t' and content<>-1;\""
@@ -352,9 +352,9 @@ FAIL_PRIMARY_SEGMENTS () {
 	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MASTER_PORT $DEFAULTDB -c\" update $CONFIG_TABLE set hostname='$MASTER_STANDBY_HOSTNAME' where content=-1;\""
 	ERROR_CHK $? "update master instance hostname" 2
 	#Now shutdown the read only master from utility mode
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$GPSTOP -d $MASTER_DATA_DIRECTORY -m"
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export GPHOME=$GPHOME;$GPSTOP -d $MASTER_DATA_DIRECTORY -m"
 	#Now start up the read only master
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$PG_CTL -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log start"
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export GPHOME=$GPHOME;$PG_CTL -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log start"
 	ERROR_CHK $? "start readonly master instance" 2
 	#Now force an update of gp_pgdatabase
 	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "$PSQL -p $MASTER_PORT $DEFAULTDB -c\" \l\"" >/dev/null 2>&1

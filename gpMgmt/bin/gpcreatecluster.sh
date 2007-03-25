@@ -139,9 +139,8 @@ CHK_PARAMS () {
 		if [ $USER_NAME == "root" ]; then
 				ERROR_EXIT "[FATAL]:-Unable to run this script as $USER" 2
 		fi
-		if [ x"" = x"$MPPHOME" ] && [ x"" = x"$BIZHOME" ]; then
-				LOG_MSG "[FATAL]:-Environment variables MPPHOME and BIZHOME not set" 1
-				LOG_MSG "[FATAL]:-At least one of these must be set for this script to continue" 1
+		if [ x"" = x"$GPHOME" ] && [ x"" = x"$MPPHOME" ]; then
+				LOG_MSG "[FATAL]:-Environment variable GPHOME not set" 1
 				ERROR_EXIT "[FATAL]:-Unable to continue" 2
 		fi
 		#Check that we can see initdb

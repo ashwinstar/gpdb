@@ -885,12 +885,12 @@ CHK_POOL_HOST () {
 	LOG_MSG "[INFO]:-Checking ssh access as user $USER to $POOL_HOST" 1
 	$TRUSTED_SHELL $POOL_HOST "ls /tmp > /dev/null"
 	ERROR_CHK $? "ssh access check to $POOL_HOST" 2
-	#Check for $MPPHOME directory on pool host
-	CHK_DIR $MPPHOME $POOL_HOST
+	#Check for $GPHOME directory on pool host
+	CHK_DIR $GPHOME $POOL_HOST
 	if [ $EXISTS -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Issue with $MPPHOME directory on $POOL_HOST" 2
+		ERROR_EXIT "[FATAL]:-Issue with $GPHOME directory on $POOL_HOST" 2
 	else
-		LOG_MSG "[INFO]:-Check for directory $MPPHOME passed" 1
+		LOG_MSG "[INFO]:-Check for directory $GPHOME passed" 1
 	fi
 	#Check that correct software and OS versions installed
 	QD_INITDB_VERSION=`$INITDB -V`

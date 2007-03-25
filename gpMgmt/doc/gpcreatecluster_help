@@ -37,7 +37,7 @@ gpcreatecluster.sh script takes care of initializing the database on
 the master and on each segment instance, and configuring the system 
 as a whole.
 
-Before running gpcreatecluster.sh, you must set the $MPPHOME environment 
+Before running gpcreatecluster.sh, you must set the $GPHOME environment 
 variable to point to the location of your Greenplum Database server 
 installation on the master host.
 

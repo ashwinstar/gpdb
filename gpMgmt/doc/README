@@ -3,7 +3,7 @@ GREENPLUM DATABASE MANAGEMENT OVERVIEW
 **************************************************
 
 The following Greenplum Database management scripts and utilities 
-are available. All are located in $MPPHOME/gpMgmt/bin unless 
+are available. All are located in $GPHOME/gpMgmt/bin unless 
 otherwise noted.
 
 * cperf - Verifies the baseline hardware performance of the specified 
@@ -49,7 +49,7 @@ otherwise noted.
                      gpaddpart.sh (used to maintain a rolling window of date 
                      partitioned data).
 
-* gp_dump - Located in $MPPHOME/bin. Writes out a database to archive files
+* gp_dump - Located in $GPHOME/bin. Writes out a database to archive files
              or SQL script files, which can then be used to restore the 
              database at a later time.
 
@@ -68,7 +68,7 @@ otherwise noted.
 
 * gprecoverseg.sh - Recovers a failed primary or mirror segment.
 
-* gp_restore - Located in $MPPHOME/bin. Restores Greenplum Database 
+* gp_restore - Located in $GPHOME/bin. Restores Greenplum Database 
                 databases that were backed up using gp_dump.
 
 * gpsegcron - NOT RUN DIRECTLY. Used by gpcrondump.sh for parallel operations.
@@ -104,7 +104,7 @@ otherwise noted.
 ENVIRONMENT SETUP
 **************************************************
 
-GPHOME or MPPHOME must be set on the Greenplum master host.
+GPHOME or GPHOME must be set on the Greenplum master host.
 
 MASTER_DATA_DIRECTORY must be set on the Greenplum master host,
 which points to the script-created master data directory

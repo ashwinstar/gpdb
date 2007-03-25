@@ -286,7 +286,7 @@ DELETE_RO_MASTER () {
 		GET_PG_PID_ACTIVE $MASTER_PORT $FAIL_PRI_SEG
 		if [ $PID -ne 0 ];then
 			LOG_MSG "[INFO]:-Master read only host process active, calling shutdown" 1
-			$TRUSTED_SHELL $FAIL_PRI_SEG "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$GPSTOP -d $MASTER_DATA_DIRECTORY -m"
+			$TRUSTED_SHELL $FAIL_PRI_SEG "export BIZHOME=$BIZHOME;export GPHOME=$GPHOME;$GPSTOP -d $MASTER_DATA_DIRECTORY -m"
 		fi
 		LOG_MSG "[INFO]:-Deleting Master read only directory and log file" 1
 		$TRUSTED_SHELL $FAIL_PRI_SEG "if [ -d $MASTER_DATA_DIRECTORY ];then $RM -Rf $MASTER_DATA_DIRECTORY; $RM -f ${MASTER_DATA_DIRECTORY}.log;fi"

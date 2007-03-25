@@ -811,10 +811,10 @@ if [ x"" != x"$LOG_DIR" ];then
 fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
-if [ x"" != x"$MPPHOME" ];then
-	APP_PATH=${MPPHOME}/bin
+if [ x"" != x"$GPHOME" ];then
+	APP_PATH=${GPHOME}/bin
 else
-	APP_PATH=${BIZHOME}/bin
+	APP_PATH=${MPPHOME}/bin
 fi
 #Check to ensure mandatory parameters have been supplied
 CHK_ON_PASSIVE_STANDBY
