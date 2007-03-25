@@ -159,7 +159,7 @@ if [ x"$PSQLBIN" = x"" ];then
 fi
 
 PSQLBIN=`$DIRNAME $PSQLBIN`
-SCRIPTDIR="`$DIRNAME $PSQLBIN`/gpMgmt/bin"
+SCRIPTDIR="`$DIRNAME $PSQLBIN`/bin"
 #******************************************************************************
 # Greenplum Scripts
 #******************************************************************************
@@ -180,7 +180,7 @@ GPSTATE=$SCRIPTDIR/gpstate.sh
 GPSTOP=$SCRIPTDIR/gpstop.sh
 MAILFILE=$SCRIPTDIR/mail_contacts
 HMAILFILE=$HOME/mail_contacts
-GPDOCDIR=${GPHOME}/gpMgmt/doc
+GPDOCDIR=${GPHOME}/doc
 #******************************************************************************
 # Greenplum Command Variables
 #******************************************************************************
@@ -1167,7 +1167,7 @@ esac
 GP_LIBRARY_PATH=`$DIRNAME \`$DIRNAME $INITDB\``/lib
 export LD_LIBRARY_PATH=$GP_LIBRARY_PATH:$LD_LIBRARY_PATH
 SHARE_PATH=`$DIRNAME \`$DIRNAME $INITDB\``/share
-SCRIPTS_DIR=`$DIRNAME \` $DIRNAME $INITDB\``/gpMgmt/bin
+SCRIPTS_DIR=`$DIRNAME \` $DIRNAME $INITDB\``/bin
 
 export $LIB_TYPE=$GP_LIBRARY_PATH:\$$LIB_TYPE
 EXPORT_LIB_PATH='export '${LIB_TYPE}'='$GP_LIBRARY_PATH':$'$LIB_TYPE
