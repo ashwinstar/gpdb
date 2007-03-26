@@ -166,9 +166,8 @@ if [ ! -x "$GPPATH" ]; then
     exit 1
 fi
 GPPATH=`dirname $GPPATH`
-GPMGMT=$GPPATH/../gpMgmt/bin
-if [ ! -x $GPMGMT/gpcreatecluster.sh ]; then
-    echo "No mgmt executables found for Greenplum installation in $GPMGMT"
+if [ ! -x $GPPATH/gpcreatecluster.sh ]; then
+    echo "No mgmt executables found for Greenplum installation in $GPPATH"
     exit 1
 fi
 
@@ -246,7 +245,7 @@ echo "" >> $CLUSTER_CONFIG
 echo "ENCODING=UNICODE" >> $CLUSTER_CONFIG
 echo "" >> $CLUSTER_CONFIG
 echo "# Path for Greenplum mgmt utils and Greenplum binaries" >> $CLUSTER_CONFIG
-echo "PATH=$GPHOME/bin:$GPHOME/gpMgmt/bin:$PATH" >> $CLUSTER_CONFIG
+echo "PATH=$GPHOME/bin:$PATH" >> $CLUSTER_CONFIG
 echo "LD_LIBRARY_PATH=$GPHOME/lib:$LD_LIBRARY_PATH" >> $CLUSTER_CONFIG
 echo "export PATH" >> $CLUSTER_CONFIG
 echo "export LD_LIBRARY_PATH" >> $CLUSTER_CONFIG
@@ -256,4 +255,4 @@ echo "export TRUSTED_SHELL" >> $CLUSTER_CONFIG
 #*****************************************************************************************
 # Create cluster
 #*****************************************************************************************
-$GPMGMT/gpcreatecluster.sh -q -a -c $CLUSTER_CONFIG
+$GPPATH/gpcreatecluster.sh -q -a -c $CLUSTER_CONFIG
