@@ -128,6 +128,7 @@ typedef struct DispatchCommandParms
 	 * The pthread_t thread handle.
 	 */
 	pthread_t	thread;
+	bool		thread_valid;
 	
 }	DispatchCommandParms;
 

@@ -416,12 +416,15 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 		pthread_attr_setstacksize(&t_atts, Max(PTHREAD_STACK_MIN, (64*1024)));
 #endif
 
+		pParms->thread_valid = true;
 		pthread_err = pthread_create(&pParms->thread, &t_atts, thread_DispatchCommand, pParms);
 
 		pthread_attr_destroy(&t_atts);
 		if (pthread_err != 0)
 		{
 			int j;
+
+			pParms->thread_valid = false;
 
 			/* Error during thread create (this should be caused by
 			 * resource constraints). If we leave the threads running,
@@ -435,6 +438,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 				DispatchCommandParms *pParms;
 
 				pParms = &(*dispatchThreads)->dispatchCommandParmsAr[j];
+				pParms->thread_valid = false;
 				pthread_join(pParms->thread, NULL);
 			}
 
@@ -649,18 +653,24 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 		elog(DEBUG4, "CheckDispatchResult: Joining to thread %d of %d",
 			 i + 1, dispatchThreads->threadCount);
 
-		pthread_err = pthread_join(pParms->thread, NULL);
-		if (pthread_err != 0)
-			elog(FATAL, "CheckDispatchResult: pthread_join failed on thread %d (0x%x) of %d (returned %d attempting to join to 0x%x)",
-				 i + 1, 
+		if (pParms->thread_valid)
+		{
+			pthread_err = pthread_join(pParms->thread, NULL);
+			if (pthread_err != 0)
+				elog(FATAL, "CheckDispatchResult: pthread_join failed on thread %d (0x%x) of %d (returned %d attempting to join to 0x%x)",
+					 i + 1, 
 #ifndef _WIN32
-				 (unsigned int) pParms->thread, 
+					 (unsigned int) pParms->thread, 
 #else
-				 (unsigned int) pParms->thread.p,
+					 (unsigned int) pParms->thread.p,
 #endif
-				 dispatchThreads->threadCount, pthread_err, mythread());
+					 dispatchThreads->threadCount, pthread_err, mythread());
+		}
 
+		HOLD_INTERRUPTS();
+		pParms->thread_valid = false;
 		memset(&pParms->thread, 0, sizeof(pParms->thread));
+		RESUME_INTERRUPTS();
 
 		/*
 		 * Examine the CdbDispatchResult objects containing the results
