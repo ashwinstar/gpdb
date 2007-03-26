@@ -483,7 +483,8 @@ CommentRelation(int objtype, List *relname, char *comment)
 								RelationGetRelationName(relation))));
 			break;
 		case OBJECT_TABLE:
-			if (relation->rd_rel->relkind != RELKIND_RELATION)
+			if (relation->rd_rel->relkind != RELKIND_RELATION &&
+				relation->rd_rel->relkind != RELKIND_EXTERNAL)
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("\"%s\" is not a table",
