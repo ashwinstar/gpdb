@@ -141,8 +141,6 @@ class Session:
 	self.m_sem.acquire()
 	try:
 	    if self.m_fd:
-		if qc: 
-		    return [self.readLine()]
 		if self.m_residue:
 		    lines.append(self.m_residue);
 		    self.m_residue = None
@@ -152,13 +150,13 @@ class Session:
 			self.m_fd.close()
 			self.m_fd = None
 		    else:
-			i = chunk.find('\n')
-			if i >= 0:
-			    i = i + 1
-			    lines.append(chunk[:i])
-			    self.m_residue = chunk[i:]
+			c = chunk.split('\n', 1)
+			if (len(c) == 1):
+			    lines.append(c[0])
 			else:
-			    lines.append(chunk)
+			    lines.append(c[0])
+			    lines.append('\n')
+			    self.m_residue = c[1]
 	finally:
 	    self.m_sem.release()
 
@@ -228,13 +226,11 @@ class GPFDistRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 	    self.send_header("Content-type", "text/plain")
 	    self.end_headers()
 
-	    bytes = 0
 	    while 1:
 		chunks = s.readFile()
 		if not chunks: break
 		for c in chunks:
 		    self.wfile.write(c)
-		    bytes = bytes + len(c)
 
 	    if opt['-V']: print '  %s done' % fname
 	    if TID.find('auto-tid.') == 0:
