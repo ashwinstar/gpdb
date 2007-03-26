@@ -1992,7 +1992,8 @@ CommitTransaction(void)
 	elog(LOG, "CommitTransaction returns from prepareDtxTransaction in %s state",
 	     TransStateAsString(s->state));
 
-	/* Prevent cancel/die interrupt while cleaning up */
+	/* Prevent cancel/die interrupt while cleaning up, we want to hold off on processing all
+	 * signals until we're in a consistent state. */
 	HOLD_INTERRUPTS();
 
 	/*
@@ -2125,15 +2126,18 @@ CommitTransaction(void)
 	 */
 	s->state = TRANS_DEFAULT;
 
-	RESUME_INTERRUPTS();
-
 	/*
-	 * Do 2nd phase of commit to all QE.
+	 * Do 2nd phase of commit to all QE. NOTE: we can't process
+	 * signals (which may attempt to abort our now partially-completed
+	 * transaction) until we've notified the QEs.
 	 */
 	elog(LOG,"CommitTransaction calling notifyCommittedDtxTransaction.");
 	notifyCommittedDtxTransaction();
 
 	finishDistributedTransactionContext();
+
+	/* we're now in a consistent state to handle an interrupt. */
+	RESUME_INTERRUPTS();
 
 	freeGangsForPortal(NULL);
 }
