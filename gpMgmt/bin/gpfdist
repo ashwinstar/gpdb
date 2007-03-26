@@ -128,15 +128,13 @@ class Session:
 	finally:
 	    self.m_sem.release()
 	
-	self.m_linecnt = self.m_linecnt + 1
-	if self.m_linecnt % 10000 == 0: 
-	    print self.m_linecnt, 'lines'
+	#self.m_linecnt = self.m_linecnt + 1
+	#if self.m_linecnt % 10000 == 0: 
+	#    print self.m_linecnt, 'lines'
 
 	return line
 
     def readFile(self):
-	if qc: 
-	    return self.readLine()
 	lines = []
 	self.m_sem.acquire()
 	try:
@@ -145,7 +143,7 @@ class Session:
 		    lines.append(self.m_residue);
 		    self.m_residue = None
 		while not self.m_residue and self.m_fd:
-		    chunk = self.m_fd.read(1024*32)
+		    chunk = self.m_fd.read(1024*64)
 		    if not chunk:
 			self.m_fd.close()
 			self.m_fd = None
@@ -226,11 +224,17 @@ class GPFDistRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 	    self.send_header("Content-type", "text/plain")
 	    self.end_headers()
 
-	    while 1:
-		chunks = s.readFile()
-		if not chunks: break
-		for c in chunks:
-		    self.wfile.write(c)
+	    if qc:
+		while 1:
+		    line = s.readLine()
+		    if not line: break
+		    self.wfile.write(line)
+	    else:
+		while 1:
+		    chunks = s.readFile()
+		    if not chunks: break
+		    for c in chunks:
+			self.wfile.write(c)
 
 	    if opt['-V']: print '  %s done' % fname
 	    if TID.find('auto-tid.') == 0:
