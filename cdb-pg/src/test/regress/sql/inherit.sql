@@ -1,47 +1,47 @@
 --
 -- Test inheritance features
 --
-CREATE TABLE a (dummy serial, aa TEXT);
-CREATE TABLE b (bb TEXT) INHERITS (a);
-CREATE TABLE c (cc TEXT) INHERITS (a);
-CREATE TABLE d (dd TEXT) INHERITS (b,c,a);
+CREATE TABLE a (int p, aa TEXT);
+CREATE TABLE b (int p, bb TEXT) INHERITS (a);
+CREATE TABLE c (int p, cc TEXT) INHERITS (a);
+CREATE TABLE d (int p, dd TEXT) INHERITS (b,c,a);
 
-INSERT INTO a(aa) VALUES('aaa');
-INSERT INTO a(aa) VALUES('aaaa');
-INSERT INTO a(aa) VALUES('aaaaa');
-INSERT INTO a(aa) VALUES('aaaaaa');
-INSERT INTO a(aa) VALUES('aaaaaaa');
-INSERT INTO a(aa) VALUES('aaaaaaaa');
+INSERT INTO a(aa) VALUES(1, 'aaa');
+INSERT INTO a(aa) VALUES(2, 'aaaa');
+INSERT INTO a(aa) VALUES(3, 'aaaaa');
+INSERT INTO a(aa) VALUES(4, 'aaaaaa');
+INSERT INTO a(aa) VALUES(5, 'aaaaaaa');
+INSERT INTO a(aa) VALUES(6, 'aaaaaaaa');
 
-INSERT INTO b(aa) VALUES('bbb');
-INSERT INTO b(aa) VALUES('bbbb');
-INSERT INTO b(aa) VALUES('bbbbb');
-INSERT INTO b(aa) VALUES('bbbbbb');
-INSERT INTO b(aa) VALUES('bbbbbbb');
-INSERT INTO b(aa) VALUES('bbbbbbbb');
+INSERT INTO b(aa) VALUES(7, 'bbb');
+INSERT INTO b(aa) VALUES(8, 'bbbb');
+INSERT INTO b(aa) VALUES(9, 'bbbbb');
+INSERT INTO b(aa) VALUES(10, 'bbbbbb');
+INSERT INTO b(aa) VALUES(11, 'bbbbbbb');
+INSERT INTO b(aa) VALUES(12, 'bbbbbbbb');
 
-INSERT INTO c(aa) VALUES('ccc');
-INSERT INTO c(aa) VALUES('cccc');
-INSERT INTO c(aa) VALUES('ccccc');
-INSERT INTO c(aa) VALUES('cccccc');
-INSERT INTO c(aa) VALUES('ccccccc');
-INSERT INTO c(aa) VALUES('cccccccc');
+INSERT INTO c(aa) VALUES(13, 'ccc');
+INSERT INTO c(aa) VALUES(14, 'cccc');
+INSERT INTO c(aa) VALUES(15, 'ccccc');
+INSERT INTO c(aa) VALUES(16, 'cccccc');
+INSERT INTO c(aa) VALUES(17, 'ccccccc');
+INSERT INTO c(aa) VALUES(18, 'cccccccc');
 
-INSERT INTO d(aa) VALUES('ddd');
-INSERT INTO d(aa) VALUES('dddd');
-INSERT INTO d(aa) VALUES('ddddd');
-INSERT INTO d(aa) VALUES('dddddd');
-INSERT INTO d(aa) VALUES('ddddddd');
-INSERT INTO d(aa) VALUES('dddddddd');
+INSERT INTO d(aa) VALUES(19, 'ddd');
+INSERT INTO d(aa) VALUES(20, 'dddd');
+INSERT INTO d(aa) VALUES(21, 'ddddd');
+INSERT INTO d(aa) VALUES(22, 'dddddd');
+INSERT INTO d(aa) VALUES(23, 'ddddddd');
+INSERT INTO d(aa) VALUES(24, 'dddddddd');
 
-SELECT relname, a.* FROM a, pg_class where a.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, b.* FROM b, pg_class where b.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, c.* FROM c, pg_class where c.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, d.* FROM d, pg_class where d.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid ORDER BY 1,2;
+SELECT relname, a.* FROM a, pg_class where a.tableoid = pg_class.oid;
+SELECT relname, b.* FROM b, pg_class where b.tableoid = pg_class.oid;
+SELECT relname, c.* FROM c, pg_class where c.tableoid = pg_class.oid;
+SELECT relname, d.* FROM d, pg_class where d.tableoid = pg_class.oid;
+SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid;
+SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid;
+SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid;
+SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid;
 
 UPDATE a SET aa='zzzz' WHERE aa='aaaa';
 UPDATE ONLY a SET aa='zzzzz' WHERE aa='aaaaa';
@@ -49,49 +49,49 @@ UPDATE b SET aa='zzz' WHERE aa='aaa';
 UPDATE ONLY b SET aa='zzz' WHERE aa='aaa';
 UPDATE a SET aa='zzzzzz' WHERE aa LIKE 'aaa%';
 
-SELECT relname, a.* FROM a, pg_class where a.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, b.* FROM b, pg_class where b.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, c.* FROM c, pg_class where c.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, d.* FROM d, pg_class where d.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid ORDER BY 1,2;
+SELECT relname, a.* FROM a, pg_class where a.tableoid = pg_class.oid;
+SELECT relname, b.* FROM b, pg_class where b.tableoid = pg_class.oid;
+SELECT relname, c.* FROM c, pg_class where c.tableoid = pg_class.oid;
+SELECT relname, d.* FROM d, pg_class where d.tableoid = pg_class.oid;
+SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid;
+SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid;
+SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid;
+SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid;
 
 UPDATE b SET aa='new';
 
-SELECT relname, a.* FROM a, pg_class where a.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, b.* FROM b, pg_class where b.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, c.* FROM c, pg_class where c.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, d.* FROM d, pg_class where d.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid ORDER BY 1,2;
+SELECT relname, a.* FROM a, pg_class where a.tableoid = pg_class.oid;
+SELECT relname, b.* FROM b, pg_class where b.tableoid = pg_class.oid;
+SELECT relname, c.* FROM c, pg_class where c.tableoid = pg_class.oid;
+SELECT relname, d.* FROM d, pg_class where d.tableoid = pg_class.oid;
+SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid;
+SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid;
+SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid;
+SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid;
 
 UPDATE a SET aa='new';
 
 DELETE FROM ONLY c WHERE aa='new';
 
-SELECT relname, a.* FROM a, pg_class where a.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, b.* FROM b, pg_class where b.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, c.* FROM c, pg_class where c.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, d.* FROM d, pg_class where d.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid ORDER BY 1,2;
+SELECT relname, a.* FROM a, pg_class where a.tableoid = pg_class.oid;
+SELECT relname, b.* FROM b, pg_class where b.tableoid = pg_class.oid;
+SELECT relname, c.* FROM c, pg_class where c.tableoid = pg_class.oid;
+SELECT relname, d.* FROM d, pg_class where d.tableoid = pg_class.oid;
+SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid;
+SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid;
+SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid;
+SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid;
 
 DELETE FROM a;
 
-SELECT relname, a.* FROM a, pg_class where a.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, b.* FROM b, pg_class where b.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, c.* FROM c, pg_class where c.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, d.* FROM d, pg_class where d.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid ORDER BY 1,2;
-SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid ORDER BY 1,2;
+SELECT relname, a.* FROM a, pg_class where a.tableoid = pg_class.oid;
+SELECT relname, b.* FROM b, pg_class where b.tableoid = pg_class.oid;
+SELECT relname, c.* FROM c, pg_class where c.tableoid = pg_class.oid;
+SELECT relname, d.* FROM d, pg_class where d.tableoid = pg_class.oid;
+SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid;
+SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid;
+SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid;
+SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid;
 
 -- Confirm PRIMARY KEY adds NOT NULL constraint to child table
 CREATE TEMP TABLE z (b TEXT, PRIMARY KEY(aa, b)) inherits (a);
@@ -160,7 +160,7 @@ DROP TABLE inhg;
 -- Test changing the type of inherited columns
 insert into d values('test','one','two','three');
 alter table a alter column aa type integer using bit_length(aa);
-select * from d ORDER BY 1,2,3;
+select * from d;
 
 -- Tests for casting between the rowtypes of parent and child
 -- tables. See the pgsql-hackers thread beginning Dec. 4/04

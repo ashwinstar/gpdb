@@ -127,78 +127,78 @@ INSERT INTO TIMESTAMPTZ_TBL VALUES ('Jan 01 17:32:01 2001');
 INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 -0097');
 INSERT INTO TIMESTAMPTZ_TBL VALUES ('Feb 16 17:32:01 5097 BC');
 
-SELECT '' AS "64", d1 FROM TIMESTAMPTZ_TBL ORDER BY 2; 
+SELECT '' AS "64", d1 FROM TIMESTAMPTZ_TBL; 
 
 -- Demonstrate functions and operators
 SELECT '' AS "48", d1 FROM TIMESTAMPTZ_TBL
-   WHERE d1 > timestamp with time zone '1997-01-02' ORDER BY 2;
+   WHERE d1 > timestamp with time zone '1997-01-02';
 
 SELECT '' AS "15", d1 FROM TIMESTAMPTZ_TBL
-   WHERE d1 < timestamp with time zone '1997-01-02' ORDER BY 2;
+   WHERE d1 < timestamp with time zone '1997-01-02';
 
 SELECT '' AS one, d1 FROM TIMESTAMPTZ_TBL
-   WHERE d1 = timestamp with time zone '1997-01-02' ORDER BY 2;
+   WHERE d1 = timestamp with time zone '1997-01-02';
 
 SELECT '' AS "63", d1 FROM TIMESTAMPTZ_TBL
-   WHERE d1 != timestamp with time zone '1997-01-02' ORDER BY 2;
+   WHERE d1 != timestamp with time zone '1997-01-02';
 
 SELECT '' AS "16", d1 FROM TIMESTAMPTZ_TBL
-   WHERE d1 <= timestamp with time zone '1997-01-02' ORDER BY 2;
+   WHERE d1 <= timestamp with time zone '1997-01-02';
 
 SELECT '' AS "49", d1 FROM TIMESTAMPTZ_TBL
-   WHERE d1 >= timestamp with time zone '1997-01-02' ORDER BY 2;
+   WHERE d1 >= timestamp with time zone '1997-01-02';
 
 SELECT '' AS "54", d1 - timestamp with time zone '1997-01-02' AS diff
-   FROM TIMESTAMPTZ_TBL WHERE d1 BETWEEN '1902-01-01' AND '2038-01-01' ORDER BY 2;
+   FROM TIMESTAMPTZ_TBL WHERE d1 BETWEEN '1902-01-01' AND '2038-01-01';
 
 SELECT '' AS date_trunc_week, date_trunc( 'week', timestamp with time zone '2004-02-29 15:44:17.71393' ) AS week_trunc;
 
 -- Test casting within a BETWEEN qualifier
 SELECT '' AS "54", d1 - timestamp with time zone '1997-01-02' AS diff
   FROM TIMESTAMPTZ_TBL
-  WHERE d1 BETWEEN timestamp with time zone '1902-01-01' AND timestamp with time zone '2038-01-01' ORDER BY 2;
+  WHERE d1 BETWEEN timestamp with time zone '1902-01-01' AND timestamp with time zone '2038-01-01';
 
 SELECT '' AS "54", d1 as timestamptz,
    date_part( 'year', d1) AS year, date_part( 'month', d1) AS month,
    date_part( 'day', d1) AS day, date_part( 'hour', d1) AS hour,
    date_part( 'minute', d1) AS minute, date_part( 'second', d1) AS second
-   FROM TIMESTAMPTZ_TBL WHERE d1 BETWEEN '1902-01-01' AND '2038-01-01' ORDER BY 2;
+   FROM TIMESTAMPTZ_TBL WHERE d1 BETWEEN '1902-01-01' AND '2038-01-01';
 
 SELECT '' AS "54", d1 as timestamptz,
    date_part( 'quarter', d1) AS quarter, date_part( 'msec', d1) AS msec,
    date_part( 'usec', d1) AS usec
-   FROM TIMESTAMPTZ_TBL WHERE d1 BETWEEN '1902-01-01' AND '2038-01-01' ORDER BY 2;
+   FROM TIMESTAMPTZ_TBL WHERE d1 BETWEEN '1902-01-01' AND '2038-01-01';
 
 -- TO_CHAR()
 SELECT '' AS to_char_1, to_char(d1, 'DAY Day day DY Dy dy MONTH Month month RM MON Mon mon') 
-   FROM TIMESTAMPTZ_TBL ORDER BY 2;
+   FROM TIMESTAMPTZ_TBL;
 	
 SELECT '' AS to_char_2, to_char(d1, 'FMDAY FMDay FMday FMMONTH FMMonth FMmonth FMRM')
-   FROM TIMESTAMPTZ_TBL ORDER BY 2;	
+   FROM TIMESTAMPTZ_TBL;	
 
 SELECT '' AS to_char_3, to_char(d1, 'Y,YYY YYYY YYY YY Y CC Q MM WW DDD DD D J')
-   FROM TIMESTAMPTZ_TBL ORDER BY 2;
+   FROM TIMESTAMPTZ_TBL;
 	
 SELECT '' AS to_char_4, to_char(d1, 'FMY,YYY FMYYYY FMYYY FMYY FMY FMCC FMQ FMMM FMWW FMDDD FMDD FMD FMJ') 
-   FROM TIMESTAMPTZ_TBL ORDER BY 2;	
+   FROM TIMESTAMPTZ_TBL;	
 	
 SELECT '' AS to_char_5, to_char(d1, 'HH HH12 HH24 MI SS SSSS') 
-   FROM TIMESTAMPTZ_TBL ORDER BY 2;
+   FROM TIMESTAMPTZ_TBL;
 
 SELECT '' AS to_char_6, to_char(d1, E'"HH:MI:SS is" HH:MI:SS "\\"text between quote marks\\""') 
-   FROM TIMESTAMPTZ_TBL ORDER BY 2;		
+   FROM TIMESTAMPTZ_TBL;		
 		
 SELECT '' AS to_char_7, to_char(d1, 'HH24--text--MI--text--SS')
-   FROM TIMESTAMPTZ_TBL ORDER BY 2;		
+   FROM TIMESTAMPTZ_TBL;		
 
 SELECT '' AS to_char_8, to_char(d1, 'YYYYTH YYYYth Jth') 
-   FROM TIMESTAMPTZ_TBL ORDER BY 2;
+   FROM TIMESTAMPTZ_TBL;
   
 SELECT '' AS to_char_9, to_char(d1, 'YYYY A.D. YYYY a.d. YYYY bc HH:MI:SS P.M. HH:MI:SS p.m. HH:MI:SS pm') 
-   FROM TIMESTAMPTZ_TBL ORDER BY 2;   
+   FROM TIMESTAMPTZ_TBL;   
 
 SELECT '' AS to_char_10, to_char(d1, 'YYYY WW IYYY IYY IY I IW') 
-   FROM TIMESTAMPTZ_TBL ORDER BY 2;
+   FROM TIMESTAMPTZ_TBL;
 
 -- TO_TIMESTAMP()
 SELECT '' AS to_timestamp_1, to_timestamp('0097/Feb/16 --> 08:14:30', 'YYYY/Mon/DD --> HH:MI:SS');
