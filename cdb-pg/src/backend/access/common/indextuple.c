@@ -4,12 +4,12 @@
  *	   This file contains index tuple accessor and mutator routines,
  *	   as well as various tuple utilities.
  *
- * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2007, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/common/indextuple.c,v 1.80 2007/01/05 22:19:21 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/common/indextuple.c,v 1.81 2007-02-27 23:48:06 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -389,12 +389,12 @@ nocache_index_getattr(IndexTuple tup,
 				 * Don't bother looking if it's not a varlena though.*/
 				if (att[i]->attlen != -1 || !tp[off])
 					off = att_align(off, att[i]->attalign);
-
-				if (usecache && att[i]->attlen < 0)
-					usecache = false;
-				else if (usecache)
+				if (usecache && att[i]->attlen != -1)
 					att[i]->attcacheoff = off;
 			}
+
+			if (att[i]->attlen < 0)
+				usecache = false;
 
 			off = att_addlength(off, att[i]->attlen, tp + off);
 
