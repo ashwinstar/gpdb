@@ -95,19 +95,21 @@ class Session:
 	inQuote = False
 	lastWasEsc = False
 	self.m_sem.acquire()
+	start = self.m_off
 	try:
 	    while True:
 		if not self.m_residue:
 		    if not self.m_fd: break
-		    self.m_residue = self.m_fd.read(1024*1024)
+		    self.m_residue = self.m_fd.read(1024*64)
 		    if not self.m_residue:
 			self.m_fd.close()
 			self.m_fd = None
 			break
+		    start = 0
 		    self.m_off = 0
 		    self.m_max = len(self.m_residue)
-		
-		if (self.m_off >= self.m_max):
+		elif (self.m_off >= self.m_max):
+		    line = line + self.m_residue[start:]
 		    self.m_residue = None
 		    continue
 
@@ -115,7 +117,7 @@ class Session:
 		self.m_off = self.m_off + 1
 		
 		if c == '\n' and not inQuote: 
-		    line = line + c
+		    line = line + self.m_residue[start:self.m_off]
 		    break
 
 		if inQuote and c == xc:
@@ -124,13 +126,13 @@ class Session:
 		    inQuote = not inQuote
 		if c != xc:
 		    lastWasEsc = False
-		line = line + c
+
 	finally:
 	    self.m_sem.release()
 	
-	#self.m_linecnt = self.m_linecnt + 1
-	#if self.m_linecnt % 10000 == 0: 
-	#    print self.m_linecnt, 'lines'
+	self.m_linecnt = self.m_linecnt + 1
+	if self.m_linecnt % 10000 == 0: 
+	    print self.m_linecnt, 'lines'
 
 	return line
 
