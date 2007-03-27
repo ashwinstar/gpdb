@@ -2169,12 +2169,16 @@ SELECT * FROM t3 ORDER BY 1,2;
 (3 rows)
 
 DELETE FROM t3 USING t1 JOIN t2 USING (a) WHERE t3.x > t1.a;
+ERROR:  Cannot parallelize that DELETE yet
+DETAIL:  Passage of data from one segment to another is not yet supported during DELETE operations.
+HINT:  The WHERE condition must specify equality between corresponding DISTRIBUTED BY columns of the target table and all joined tables.
 SELECT * FROM t3 ORDER BY 1,2;
- x | y 
----+---
- 6 | 7
- 7 | 8
-(2 rows)
+  x  |  y  
+-----+-----
+   6 |   7
+   7 |   8
+ 500 | 100
+(3 rows)
 
 DELETE FROM t3 USING t3 t3_other WHERE t3.x = t3_other.x AND t3.y = t3_other.y;
 SELECT * FROM t3 ORDER BY 1,2;

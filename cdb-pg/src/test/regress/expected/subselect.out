@@ -82,13 +82,8 @@ SELECT '' AS three, f1, f2
   FROM SUBSELECT_TBL
   WHERE (f1, f2) NOT IN (SELECT f2, CAST(f3 AS int4) FROM SUBSELECT_TBL
                          WHERE f3 IS NOT NULL) ORDER BY 2,3;
- three | f1 | f2 
--------+----+----
-       |  1 |  2
-       |  6 |  7
-       |  8 |  9
-(3 rows)
-
+ERROR:  Greenplum Database does not yet support that query.
+DETAIL:  The query contains a multi-row subquery.
 -- Correlated subselects
 SELECT '' AS six, f1 AS "Correlated Field", f2 AS "Second Field"
   FROM SUBSELECT_TBL upper
@@ -148,16 +143,8 @@ SELECT '' AS eight, ss.f1 AS "Correlated Field", ss.f3 AS "Second Field"
   FROM SUBSELECT_TBL ss
   WHERE f1 NOT IN (SELECT f1+1 FROM INT4_TBL
                    WHERE f1 != ss.f1 AND f1 < 2147483647) ORDER BY 2,3;
- eight | Correlated Field | Second Field 
--------+------------------+--------------
-       |                2 |            2
-       |                2 |            4
-       |                3 |            3
-       |                3 |            5
-       |                6 |            8
-       |                8 |             
-(6 rows)
-
+ERROR:  Greenplum Database does not yet support that query.
+DETAIL:  The query contains a correlated subquery.
 select q1, float8(count(*)) / (select count(*) from int8_tbl)
 from int8_tbl group by q1 order by q1;
         q1        | ?column? 
@@ -316,21 +303,8 @@ END) AS "Status",
 END) AS "Status_OK"
 FROM orderstest ord;
 SELECT * FROM orders_view ORDER BY 1,2;
- approver_ref | po_ref | ordercancelled | Approved |  Status   | Status_OK 
---------------+--------+----------------+----------+-----------+-----------
-            1 |      1 | f              | ---      | ---       | ---
-            1 |      1 | f              | ---      | ---       | ---
-            1 |      1 | f              | ---      | ---       | ---
-           66 |      1 | f              | Approved | Approved  | Approved
-           66 |      1 | t              | Approved | Cancelled | Cancelled
-           66 |      1 | f              | Approved | Approved  | Approved
-           66 |      5 | f              | Approved | PO        | PO
-           66 |      6 | f              | Approved | PO        | PO
-           66 |      7 | f              | Approved | PO        | PO
-           66 |      8 | f              | Approved | PO        | PO
-           77 |      1 | f              | Approved | Approved  | Approved
-(11 rows)
-
+ERROR:  Greenplum Database does not yet support that query.
+DETAIL:  The query contains a correlated subquery.
 DROP TABLE orderstest cascade;
 NOTICE:  drop cascades to rule _RETURN on view orders_view
 NOTICE:  drop cascades to view orders_view
@@ -368,21 +342,16 @@ update shipped_view set value = 11
     from int4_tbl a join int4_tbl b
       on (a.f1 = (select f1 from int4_tbl c where c.f1=b.f1))
     where ordnum = a.f1;
+ERROR:  Greenplum Database does not yet support that query.
+DETAIL:  The query contains a correlated subquery.
 select * from shipped_view ORDER BY 1,2;
- ttype | ordnum | partnum | value 
--------+--------+---------+-------
- wt    |      0 | 1       |    11
+ ttype | ordnum | partnum |  value  
+-------+--------+---------+---------
+ wt    |      0 | 1       | 1234.56
 (1 row)
 
 select f1, ss1 as relabel from
     (select *, (select sum(f1) from int4_tbl b where f1 >= a.f1) as ss1
      from int4_tbl a) ss;
-     f1      |  relabel   
--------------+------------
-           0 | 2147607103
-      123456 | 2147607103
-     -123456 | 2147483647
-  2147483647 | 2147483647
- -2147483647 |          0
-(5 rows)
-
+ERROR:  Greenplum Database does not yet support that query.
+DETAIL:  The query contains a correlated subquery.

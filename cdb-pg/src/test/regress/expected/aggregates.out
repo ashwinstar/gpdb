@@ -278,15 +278,8 @@ SELECT sum2(q1,q2) FROM int8_tbl;
 select ten, sum(distinct four) from onek a
 group by ten
 having exists (select 1 from onek b where sum(distinct a.four) = b.four);
- ten | sum 
------+-----
-   0 |   2
-   2 |   2
-   4 |   2
-   6 |   2
-   8 |   2
-(5 rows)
-
+ERROR:  Greenplum Database does not yet support that query.
+DETAIL:  The query contains a correlated subquery.
 -- this should fail because subquery has an agg of its own in WHERE
 select ten, sum(distinct four) from onek a
 group by ten
@@ -475,12 +468,5 @@ select min(tenthous) from tenk1 where thousand = 33;
 -- check parameter propagation into an indexscan subquery
 select f1, (select min(unique1) from tenk1 where unique1 > f1) AS gt
 from int4_tbl;
-     f1      | gt 
--------------+----
-           0 |  1
-      123456 |   
-     -123456 |  0
-  2147483647 |   
- -2147483647 |  0
-(5 rows)
-
+ERROR:  Greenplum Database does not yet support that query.
+DETAIL:  The query contains a correlated subquery.
