@@ -1134,10 +1134,10 @@ results_differ(const char *testname)
 
 	/* Special for MPP:  Remove (seg...) stuff from error messages */
 	
-	snprintf(cmd, sizeof(cmd),
+/*	snprintf(cmd, sizeof(cmd),
 			 SYSTEMQUOTE "sed -i -e 's/  (seg.*pid.*)//' %s " SYSTEMQUOTE,
 			 resultsfile);
-	system(cmd);		 
+			 system(cmd);		 */
 
 
 	/* Name to use for temporary diff file */

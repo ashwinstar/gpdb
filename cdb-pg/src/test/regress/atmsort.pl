@@ -175,6 +175,7 @@ if (1)
     my $has_order = 0;
     my $copy_select = 0;
 
+  L_bigwhile:
     while (<>) # big while
     {
         my $ini = $_;
@@ -223,7 +224,7 @@ if (1)
             }
         }
         else # finding SQL statement or start of SELECT output
-        {
+        { 
 
             if ($ini =~ m/(insert|update|delete|select|\\d|copy)/i)
             {                
@@ -244,13 +245,54 @@ if (1)
                 $getstatement = 0;
             }
 
+            # prune notices with segment info if they are duplicates
+#            if ($ini =~ m/^\s*(NOTICE|ERROR|HINT|DETAIL|WARNING)\:.*\s+\(seg.*pid.*\)/)
+            if ($ini =~ m/^\s*(NOTICE|ERROR|HINT|DETAIL|WARNING)\:/)
+            {
+                $ini =~ s/\s+\(seg.*pid.*\)//;
+
+                my $outsize = scalar(@outarr);
+
+                my $lastguy = -1;
+
+              L_checkfor:
+                for my $jj (1..$outsize)
+                {
+                    my $checkstr = $outarr[$lastguy];
+
+                    #remove trailing spaces for comparison
+                    $checkstr =~ s/\s+$//;
+
+                    my $skinny = $ini;
+                    $skinny =~ s/\s+$//;
+
+                    # stop when no more notices
+                    last L_checkfor
+                        if ($checkstr !~ m/^\s*(NOTICE|ERROR|HINT|DETAIL|WARNING)\:/);
+
+                    # discard this line if matches a previous notice
+                    if ($skinny eq $checkstr)
+                    {
+                        if (0) # debug code
+                        {
+                            $ini = "DUP: " . $ini;
+                            last L_checkfor;
+                        }
+                        next L_bigwhile;
+                    }
+                    $lastguy--;
+                }
+
+            } # end if pruning notices
+
+
             # regex example: ---- or ---+---
             # need at least 3 dashes to avoid confusion with "--" comments
             if (($ini =~ m/^\s*((\-\-)(\-)+(\+(\-)+)*)+\s*$/)
                 # special case for copy select
                 || (($ini =~ m/^\s*copy\s*\(\s*select.*to stdout\;/i)
                     && ($ini !~ m/order\s+by/i)))
-            {
+            { # sort this region
 
                 # special case for copy select
                 if ($ini =~ m/^\s*copy\s*\(\s*select.*to stdout\;/i)
@@ -290,8 +332,8 @@ if (1)
 
                 $getrows = 1;
                 next;
-            }
-        }
+            } # end sort this region
+        } # end finding SQL
 
         # some cleanup of greenplum-specific messages
         if ($ini =~ m/\s+\(seg.*pid.*\)/)
