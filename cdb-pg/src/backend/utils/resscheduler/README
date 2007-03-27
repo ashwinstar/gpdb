@@ -73,9 +73,10 @@ The basic API consists of:
     ResLockPortal(Portal portal);
     ResUnLockPortal(Portal portal);
 
-which are inserted into PortalRun. As this executes after planning is completed,
-there is access to all elements of the plan structure, thus controlling
-resources on the basis of cost is possible.
+which are inserted into PortalStart and PortalRun respectively. In PortalStart
+the ResLockPortal call is made after planning is completed, so there is access 
+to all elements of the plan structure, thus controlling resources on the basis 
+of cost is possible.
 
 As the resource lock is taken after parse/analyze most standard locks have
 been already acquired before the resource lock is (tuple level locks are the
@@ -161,8 +162,8 @@ a maximum reasonable threshold for cost is likely to be, so we allow very large
 values.
 
 The ALTER RESOURCE QUEUE command will only allow the thresholds to be amended 
-if the current values for the in-memory queues are all zero. This is a safety 
-feature to prevent unexpected behaviour.
+to a value larger than the current counter for the in-memory queues. This is a 
+safety feature to prevent unexpected behaviour.
 
 The DROP RESOURCE command does not allow queues to be dropped if there are roles
 assigned to it, It does not allow it to be dropped unless all of the current 
@@ -185,9 +186,6 @@ ALTER ROLE <name>  [role options] [RESOURCE QUEUE <name>];
 ALTER ROLE <name>  [role options] [RESOURCE QUEUE none];
 
 The resource queue name 'none' is used to mean 'no resource queue thanks'.
-
-These will be covered in more detail when the documentation is written (TODO).
-
 -----------------------------------------------------------------------------
 
 Catalog Changes
@@ -226,4 +224,5 @@ Views:
 
   pg_roles     (existing view gets 1 new column, added before pg_authid.oid)
     pg_authid.rolresqueue
+ pg_resqueue_status (new)
 
