@@ -417,7 +417,7 @@ bool ParseCDBDumpInfo( char *progName, char* pszCDBDumpInfo, char** ppCDBDumpKey
 }
 
 /*
- * ReadBackendBackupFile: This function calls the backend function mpp_read_backup_file 
+ * ReadBackendBackupFile: This function calls the backend function gp_read_backup_file 
  * which reads the contents out of the appropriate file on the database server.
  * If the call fails, it returns NULL.  The returned pointer must be freed by the caller.
  */
@@ -445,7 +445,7 @@ char* ReadBackendBackupFile( PGconn* pConn, const char* pszBackupDirectory, cons
 	}
 	
 	Qry = createPQExpBuffer();
-	appendPQExpBuffer( Qry, "SELECT * FROM mpp_read_backup_file('%s', '%s', %s)", 
+	appendPQExpBuffer( Qry, "SELECT * FROM gp_read_backup_file('%s', '%s', %s)", 
 					StringNotNull( pszBackupDirectory, ""), 
 					StringNotNull( pszKey, "" ), 
 					pszFileType );
