@@ -790,8 +790,9 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 	/* never want to start a global transaction for these */
 	bool		startTransaction = false;
 
-	elog(LOG, "CdbDoCommandOnAllGangs for command = '%s', withSnapshot = %s",
-		 strCommand, (withSnapshot ? "true" : "false"));
+	if (fullDtmTrace)
+		elog(LOG, "CdbDoCommandOnAllGangs for command = '%s', withSnapshot = %s",
+			 strCommand, (withSnapshot ? "true" : "false"));
 
 	/* Launch the command.	Don't cancel on error. */
 	cdbdisp_dispatchCommand(strCommand, NULL, 0,
@@ -906,7 +907,8 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	Gang	*mirrorGang;
 	int		nsegdb = getgpsegmentCount();
 	
-	elog(LOG, "cdbdisp_dispatchDtxProtocolCommand: %s on gid = %s", dtxProtocolCommandLoggingStr, gid);
+	if (fullDtmTrace)
+		elog(LOG, "cdbdisp_dispatchDtxProtocolCommand: %s on gid = %s", dtxProtocolCommandLoggingStr, gid);
 
 	memset(&dtxProtocolParms, 0, sizeof(dtxProtocolParms));
 	dtxProtocolParms.dtxProtocolCommand = dtxProtocolCommand;
@@ -2243,8 +2245,9 @@ CdbDoCommand(const char *strCommand,
 
 	Assert(dispatchToMirrors || dispatchToPrimaries);
 	
-	elog(LOG, "CdbDoCommand for command = '%s', startTransaction = %s",
-		 strCommand, (startTransaction ? "true" : "false"));
+	if (fullDtmTrace)
+		elog(LOG, "CdbDoCommand for command = '%s', startTransaction = %s",
+			 strCommand, (startTransaction ? "true" : "false"));
 		
 	if (startTransaction)
 	{
@@ -2279,8 +2282,9 @@ CdbDoCommandOnAllGangs(const char *strCommand,
 	CdbDispatchCmdThreads *dispatchThreads;
 
 
-	elog(LOG, "CdbDoCommandOnAllGangs for command = '%s', startTransaction = %s",
-		 strCommand, (startTransaction ? "true" : "false"));
+	if (fullDtmTrace)
+		elog(LOG, "CdbDoCommandOnAllGangs for command = '%s', startTransaction = %s",
+			 strCommand, (startTransaction ? "true" : "false"));
 		
 
 	if (startTransaction)
@@ -3079,7 +3083,8 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 	bool 		dispatchToMirrors = true;
 
 
-	elog(LOG,"cdbdisp_dispatchUtilityStatement debug_query_string = %s", debug_query_string);
+	if (fullDtmTrace)
+		elog(LOG,"cdbdisp_dispatchUtilityStatement debug_query_string = %s", debug_query_string);
 	
 	/* mark the dtx as dirty */
 	setCurrentDtxDirty();
@@ -3136,7 +3141,8 @@ CdbDispatchUtilityStatement(struct Node *stmt)
 	CdbDispatchCmdThreads *dispatchThreads;
 	bool	startTransaction = true;
 	
-	elog(LOG,"cdbdisp_dispatchUtilityStatement called");
+	if (fullDtmTrace)
+		elog(LOG,"cdbdisp_dispatchUtilityStatement called");
 	
 	/* Mark the DTX as distributed and reconfigure the cluster if needed. */
 	cdbdisp_markDtxAsDistributed();
@@ -3257,7 +3263,8 @@ serializeSnapshot(int * size)
 		}
 		else
 		{
-			elog(LOG,"serializeSnapshot local snapshot available, yet distributed one is not!!");
+			if (fullDtmTrace)
+				elog(LOG,"serializeSnapshot local snapshot available, yet distributed one is not!!");
 			serializedSnapshot = NULL;
 			*size=0;
 		}
@@ -3265,7 +3272,8 @@ serializeSnapshot(int * size)
 	}
 	else
 	{
-		elog(LOG,"serializeSnapshot No Local snapshot available, so don't include distributed one");
+		if (fullDtmTrace)
+			elog(LOG,"serializeSnapshot No Local snapshot available, so don't include distributed one");
 		/* basically this should mean that we have an Abort in progress and
 		 * so can't and don't need to send a serialized snapshot.  so we'll
 		 * send nothing.

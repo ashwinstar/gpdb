@@ -4788,8 +4788,9 @@ StartupXLOG(void)
 		 */
 		checkPointLoc = ControlFile->checkPoint;
 
-		elog(LOG,"StartupXLOG going to call ReadCheckpointRecord(checkPointLoc, 1) at %X/%X",
-			 checkPointLoc.xlogid, checkPointLoc.xrecoff);
+		if (fullDtmTrace)
+			elog(LOG,"StartupXLOG going to call ReadCheckpointRecord(checkPointLoc, 1) at %X/%X",
+				 checkPointLoc.xlogid, checkPointLoc.xrecoff);
 		record = ReadCheckpointRecord(checkPointLoc, 1);
 		if (record != NULL)
 		{
@@ -4800,8 +4801,9 @@ StartupXLOG(void)
 		else
 		{
 			checkPointLoc = ControlFile->prevCheckPoint;
-			elog(LOG,"StartupXLOG going to call ReadCheckpointRecord(checkPointLoc, 2) at %X/%X",
-				 checkPointLoc.xlogid, checkPointLoc.xrecoff);
+			if (fullDtmTrace)
+				elog(LOG,"StartupXLOG going to call ReadCheckpointRecord(checkPointLoc, 2) at %X/%X",
+					 checkPointLoc.xlogid, checkPointLoc.xrecoff);
 			record = ReadCheckpointRecord(checkPointLoc, 2);
 			if (record != NULL)
 			{
@@ -5267,22 +5269,20 @@ ReadCheckpointRecord(XLogRecPtr RecPtr, int whichChkpt)
 	uint32 delta_xl_len;			/* delta of total len of rmgr data */
 	char * dtxCheckPointInfo;
 
-	elog(LOG,"ReadCheckpointRecord entering...");
-	
 	if (!XRecOffIsValid(RecPtr.xrecoff))
 	{
 		switch (whichChkpt)
 		{
 			case 1:
-				ereport(PANIC,
+				ereport(LOG,
 				(errmsg("invalid primary checkpoint link in control file")));
 				break;
 			case 2:
-				ereport(PANIC,
+				ereport(LOG,
 						(errmsg("invalid secondary checkpoint link in control file")));
 				break;
 			default:
-				ereport(PANIC,
+				ereport(LOG,
 				   (errmsg("invalid checkpoint link in backup_label file")));
 				break;
 		}
@@ -5296,15 +5296,15 @@ ReadCheckpointRecord(XLogRecPtr RecPtr, int whichChkpt)
 		switch (whichChkpt)
 		{
 			case 1:
-				ereport(PANIC,
+				ereport(LOG,
 						(errmsg("invalid primary checkpoint record")));
 				break;
 			case 2:
-				ereport(PANIC,
+				ereport(LOG,
 						(errmsg("invalid secondary checkpoint record")));
 				break;
 			default:
-				ereport(PANIC,
+				ereport(LOG,
 						(errmsg("invalid checkpoint record")));
 				break;
 		}
@@ -5315,15 +5315,15 @@ ReadCheckpointRecord(XLogRecPtr RecPtr, int whichChkpt)
 		switch (whichChkpt)
 		{
 			case 1:
-				ereport(PANIC,
+				ereport(LOG,
 						(errmsg("invalid resource manager ID in primary checkpoint record")));
 				break;
 			case 2:
-				ereport(PANIC,
+				ereport(LOG,
 						(errmsg("invalid resource manager ID in secondary checkpoint record")));
 				break;
 			default:
-				ereport(PANIC,
+				ereport(LOG,
 				(errmsg("invalid resource manager ID in checkpoint record")));
 				break;
 		}
@@ -5335,15 +5335,15 @@ ReadCheckpointRecord(XLogRecPtr RecPtr, int whichChkpt)
 		switch (whichChkpt)
 		{
 			case 1:
-				ereport(PANIC,
+				ereport(LOG,
 				   (errmsg("invalid xl_info in primary checkpoint record")));
 				break;
 			case 2:
-				ereport(PANIC,
+				ereport(LOG,
 				 (errmsg("invalid xl_info in secondary checkpoint record")));
 				break;
 			default:
-				ereport(PANIC,
+				ereport(LOG,
 						(errmsg("invalid xl_info in checkpoint record")));
 				break;
 		}
@@ -5374,15 +5374,15 @@ ReadCheckpointRecord(XLogRecPtr RecPtr, int whichChkpt)
 		switch (whichChkpt)
 		{
 			case 1:
-				ereport(PANIC,
+				ereport(LOG,
 					(errmsg("invalid length of primary checkpoint")));
 				break;
 			case 2:
-				ereport(PANIC,
+				ereport(LOG,
 				  (errmsg("invalid length of secondary checkpoint record")));
 				break;
 			default:
-				ereport(PANIC,
+				ereport(LOG,
 						(errmsg("invalid length of checkpoint record")));
 				break;
 		}

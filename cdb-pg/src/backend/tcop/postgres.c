@@ -4191,7 +4191,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 					
 					/* get the transaction options */
 					QDSentTxnOptions = pq_getmsgint(&input_message, 4);
-					elog(LOG,"QDSentTxnOptions = 0x%x", QDSentTxnOptions);
+					if (fullDtmTrace)
+						elog(LOG,"QDSentTxnOptions = 0x%x", QDSentTxnOptions);
 					
 					/* get the query string and kick off processing. */
 					if (query_string_len == 0)
@@ -4222,13 +4223,14 @@ PostgresMain(int argc, char *argv[], const char *username)
 					pq_getmsgend(&input_message);
 
 					 
-					elog(DEBUG5, "MPP dispatched stmt from QD: %s.",query_string);
-					elog(LOG, "MPP dispatched stmt from QD: %s.",query_string);
-					elog(LOG, "...QDSentDistributedXid = %u, QDSentXminAllDistributedSnapshots = %u, QDSentDistributedSnapshot (xmin = %u, xmax = %u, xcnt = %u), QDSentDistributedCommandId = %d",
-				              QDSentDistributedXid, 
-				              QDSentXminAllDistributedSnapshots, 
-				              QDSentDistributedSnapshot->xmin, QDSentDistributedSnapshot->xmax, QDSentDistributedSnapshot->xcnt,
-				              QDSentDistributedCommandId);
+					elog((fullDtmTrace ? LOG : DEBUG5), "MPP dispatched stmt from QD: %s.",query_string);
+
+					if (fullDtmTrace)
+						elog(LOG, "...QDSentDistributedXid = %u, QDSentXminAllDistributedSnapshots = %u, QDSentDistributedSnapshot (xmin = %u, xmax = %u, xcnt = %u), QDSentDistributedCommandId = %d",
+					              QDSentDistributedXid, 
+					              QDSentXminAllDistributedSnapshots, 
+					              QDSentDistributedSnapshot->xmin, QDSentDistributedSnapshot->xmax, QDSentDistributedSnapshot->xcnt,
+					              QDSentDistributedCommandId);
 					 
 					if (suid > 0)				
 						SetSessionAuthorization(suid, suid_is_super);  /* Set the session UserId */

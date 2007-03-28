@@ -192,8 +192,9 @@ SetProcXid(TransactionId xid, DistributedTransactionId mppDistributedTransaction
 
 	LWLockRelease(XidGenLock);
 
-	elog(LOG,"SetProcId pid = %d, xid = %u, distributed xid = %u",
-		 MyProcPid, xid, mppDistributedTransactionId);
+	if (fullDtmTrace)
+		elog(LOG,"SetProcId pid = %d, xid = %u, distributed xid = %u",
+			 MyProcPid, xid, mppDistributedTransactionId);
 }
 
 /*
