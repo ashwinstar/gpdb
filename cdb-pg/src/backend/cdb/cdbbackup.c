@@ -321,8 +321,8 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 				len_name;
 	text	   *result;
 	char	   *ptr;
-	bool		is_compress;
-
+	bool		is_decompress;
+	bool		is_file_compressed; /* is the dump file ending with '.gz'*/
 	getGpId();
 	instid = (GpIdentity.segindex == -1) ? 1 : 0;		/* dispatch node */
 	segid = GpIdentity.dbid;
@@ -366,11 +366,11 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 	/* Validate existence of compression program and gp_restore_agent program */
 	testCmdsExist(pszCompressionProgram, "gp_restore_agent");
 
-	/* are we going to use a compression program? */
-	is_compress = (pszCompressionProgram != NULL && *pszCompressionProgram != '\0' ? true : false);
+	/* are we going to use a decompression program? */
+	is_decompress = (pszCompressionProgram != NULL && *pszCompressionProgram != '\0' ? true : false);
 
 	/* Form backup file path name */
-	pszBackupFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey, is_compress);
+	pszBackupFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey, is_decompress);
 	pszStatusFileName = formStatusFilePathName(pszBackupDirectory, pszBackupKey, false);
 
 	/* Make sure pszBackupFileName exists */
@@ -381,8 +381,32 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("No Backup FileName could be found to restore dbid %d from directory %s with backup key %s", segid, pszBackupDirectory, pszBackupKey)));
-	}
 
+		/* 
+		 * If --gp-c is on make sure our file name has a .gz suffix.
+		 * If no decompression requested make sure the file *doesn't* have
+		 * a .gz suffix. This fixes the problem with forgetting to use
+		 * the compression flags and gp_restore completing silently with
+		 * no errors (hard to reproduce, but this check doesn't hurt)
+		 */
+		len_name = strlen(pszBackupFileName);
+		is_file_compressed = (strcmp(pszBackupFileName + (len_name - 3), ".gz") == 0 ? true : false);
+		
+		if(is_file_compressed && !is_decompress)
+			ereport(ERROR,
+					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+					errmsg("dump file appears to be compressed. Pass a decompression "
+						   "option to gp_restore to decompress it on the fly")));
+
+		if(!is_file_compressed && is_decompress)
+			ereport(ERROR,
+					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+					errmsg("a decompression cmd line option is used but the dump "
+						   "file does not appear to be compressed.")));
+	}
+	
+	len_name = strlen(pszBackupFileName); 
+	
 	pszDBName = NULL;
 	pszUserName = NULL;
 	if (MyProcPort != NULL)
@@ -455,7 +479,7 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 		/* 
 		 * if compression was requested with --gp-c
 		 */
-		if (pszCompressionProgram[0] != '\0')
+		if (is_decompress)
 		{
 			len += 4 + strlen(compPg) +
 				+strlen(pszBackupFileName);
@@ -474,9 +498,6 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 			 * de-compress backupfile and pipe into stdin of gp_restore_agent along with its
 			 * options. Redirect both stdout and stderr into the status file.
 			 */
-			//sprintf(pszCmdLine, "%s %s | %s --gp-c --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s > %s 2>&1",
-			//		compPg, pszBackupFileName, bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName,
-			//		pszPassThroughParameters, pszPassThroughTargetInfo, pszDBName, pszStatusFileName);
 			sprintf(pszCmdLine, "%s --gp-c %s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s > %s 2>&1",
 					bkPg, compPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName,
 					pszPassThroughParameters, pszPassThroughTargetInfo, pszDBName, pszBackupFileName, pszStatusFileName);
@@ -515,7 +536,7 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 
 	assert(pszBackupFileName != NULL && pszBackupFileName[0] != '\0');
 
-	len_name = strlen(pszBackupFileName);
+
 	len = len_name + VARHDRSZ;
 	result = (text *) palloc(len);
 	if (result == NULL)
