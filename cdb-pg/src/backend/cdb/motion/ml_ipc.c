@@ -124,10 +124,6 @@ static ChunkTransportStateEntry *startOutgoingConnections(ChunkTransportState *t
 
 static void setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn);
 static void updateOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn, int errnoSave);
-#ifdef UNUSED
-static int  getOutgoingPort(ChunkTransportStateEntry *pEntry);
-static void zapOutgoingPort(ChunkTransportStateEntry *pEntry);
-#endif
 
 static void sendRegisterMessage(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn * conn);
 static bool readRegisterMessage(ChunkTransportState *transportStates,
@@ -359,7 +355,6 @@ RecvTupleChunkFromAny(MotionLayerState *mlStates,
 	int			n,
 				i,
 				index;
-	bool		skipSelect = false;
 
 	Insist(transportStates && transportStates->activated);
 
@@ -384,23 +379,36 @@ RecvTupleChunkFromAny(MotionLayerState *mlStates,
 		 * short-circuit the select() call (and if we don't do this we may
 		 * wait when we have data ready, since it has already been read)
 		 */
-		for (i = 0; i < pEntry->numConns; i++)
+		index = pEntry->scanStart;
+		for (i = 0; i < pEntry->numConns; i++, index++)
 		{
-			conn = pEntry->conns + i;
+			if (index >= pEntry->numConns)
+				index = 0;
+
+			conn = pEntry->conns + index;
 
 			if (conn->sockfd >= 0 &&
                 MPP_FD_ISSET(conn->sockfd, &rset) &&
                 conn->recvBytes != 0)
 			{
-				/* we have data on this socket, let's short-circuit our select */
-				MPP_FD_ZERO(&rset);
-				MPP_FD_SET(conn->sockfd, &rset);
+				/* we have data on this socket, let's return immediately */
+#ifdef AMS_VERBOSE_LOGGING
+				elog(DEBUG5, "RecvTupleChunkFromAny() (fd %d) %d/%d", conn->sockfd, motNodeID, index);
+#endif
 
-				skipSelect = true;
+				tcItem = RecvTupleChunk(transportStates, conn);
+
+				*srcRoute = index;
+
+				/*
+				 * advance start point (avoid doing division/modulus operation
+				 * here)
+				 */
+				pEntry->scanStart = index + 1;
+
+				return tcItem;
 			}
 		}
-		if (skipSelect)
-			break;
 
 		n = select(pEntry->highReadSock + 1, (fd_set *)&rset, NULL, NULL, &timeout);
 		pMNEntry->sel_rd_wait += (tval.tv_sec - timeout.tv_sec) * 1000000 + (tval.tv_usec - timeout.tv_usec);
@@ -425,9 +433,6 @@ RecvTupleChunkFromAny(MotionLayerState *mlStates,
     index = pEntry->scanStart;
 	for (i = 0; i < pEntry->numConns; i++, index++)
 	{
-		/*
-		 * avoid division ? index = ((scanStart + i) % pEntry->numConns);
-		 */
 		if (index >= pEntry->numConns)
 			index = 0;
 
@@ -450,10 +455,7 @@ RecvTupleChunkFromAny(MotionLayerState *mlStates,
 
 			*srcRoute = index;
 
-			/*
-			 * advance start point (avoid doing division/modulus operation
-			 * here)
-			 */
+			/* advance start point. */
 			pEntry->scanStart = index + 1;
 
 			return tcItem;
@@ -1407,7 +1409,7 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 /*
  * setupListeningSocket
  */
-void
+static void
 setupListeningSocket(int backlog, int *listenerSocketFd, int *listenerPort)
 {
 	struct sockaddr_in  saddr;
@@ -1991,61 +1993,6 @@ updateOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportSta
     /* Tell caller to close the socket and try again. */
     conn->state = mcsSetupOutgoingConnection;
 }                               /* updateOutgoingConnection */
-
-
-#ifdef UNUSED
-/*
- * getOutgoingPort
- *
- * Returns port number for an outgoing connection.
- */
-static int
-getOutgoingPort(ChunkTransportStateEntry *pEntry)
-{
-    int oldPortReservationFd = portReservationFd;
-
-    /* Already got a port number?  Keep using it. */
-    if (outgoingPort)
-        return outgoingPort;
-
-    /* Reserve new port number.  There will be no connections to this socket. */
-    setupListeningSocket(0, &portReservationFd, &outgoingPort);
-
-    /* Close dummy listening socket that reserved our old outgoing port#. */
-    if (oldPortReservationFd >= 0)
-    {
-        closesocket(oldPortReservationFd);
-        pEntry->outgoingPortRetryCount++;
-    }
-
-    if (gp_log_interconnect >= GPVARS_VERBOSITY_VERBOSE)
-        ereport(LOG, (errmsg("Outgoing connections will use tcp port %d",
-                             outgoingPort) ));
-    return outgoingPort;
-}                               /* getOutgoingPort */
-
-/*
- * zapOutgoingPort
- *
- * Abandon the current outgoing port reservation.
- */
-static void
-zapOutgoingPort(ChunkTransportStateEntry *pEntry)
-{
-    /* Tell getOutgoingPort() to pick a new port number. */
-    outgoingPort = 0;
-
-    /* Bail if too many retries. */
-    if (pEntry->outgoingPortRetryCount >= MAX_BIND_RETRIES)
-    {
-        ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-                        errmsg("Interconnect Error: Connection setup abandoned "
-                               "after %d retries.",
-                               pEntry->outgoingPortRetryCount)
-                ));
-    }
-}                               /* zapOutgoingPort */
-#endif  /*UNUSED*/
 
 /* Function sendRegisterMessage() used to send a Register message to the
  * remote destination on the other end of the provided conn.
