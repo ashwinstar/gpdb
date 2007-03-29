@@ -717,6 +717,11 @@ if test "$with_pam" = yes ; then
   AC_CHECK_LIB(pam,    pam_start, [], [AC_MSG_ERROR([library 'pam' is required for PAM])])
 fi
 
+# Check for curl.
+AC_CHECK_CURL([7.0.0])
+CFLAGS="$CFLAGS $CURL_CFLAGS"
+LIBS="$LIBS $CURL_LIBS"
+
 
 ##
 ## Header files
