@@ -1521,7 +1521,7 @@ heap_get_latest_tid(Relation relation,
 }
 
 /* turn heap inserts on ... will be removed after testing */
-bool heap_enableHeapInsertDesc = true;
+bool heap_enableHeapInsertDesc = false;
 
 HeapInsertDesc *
 heap_begininsert(Relation relation, CommandId cid, bool use_wal, bool use_fsm)
