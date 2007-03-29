@@ -602,7 +602,7 @@ DefineRelation_int(CreateStmt *stmt,
 		 * which can cause a non-local deadlock if we've already
 		 * dispatched 
 		 */
-		cdbdisp_markDtxAsDistributed();
+		cdbdisp_markDtxAsDistributed("DefineRelation_int", "stmt");
 	}
 
 	relationId = heap_create_with_catalog(relname,

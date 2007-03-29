@@ -395,17 +395,19 @@ notifyCommittedDtxTransaction(void)
  * make it ready to go distributed to the segments.
  */
 void
-markDtxAsDistributed(void)
+markDtxAsDistributed(char* debugCaller, char* debugDetail)
 {
 	if (currentGxact == NULL)
 	{
-		elog(FATAL, "markDtxAsDistributed found current distributed transaction is NULL");
+		elog(FATAL, "markDtxAsDistributed found current distributed transaction is NULL (%s, detail = '%s')",
+			 debugCaller, debugDetail);
 	}
 
 	if (currentGxact->state == DTX_STATE_ACTIVE_NOT_DISTRIBUTED)
 	{
 		if (fullDtmTrace)
-			elog(LOG,"markDtxAsDistributed going distributed for gid = %s", currentGxact->gid);
+			elog(LOG,"markDtxAsDistributed going distributed for gid = %s (%s, detail = '%s')", 
+			     currentGxact->gid, debugCaller, debugDetail);
 		currentGxact->state = DTX_STATE_ACTIVE_DISTRIBUTED;
 		
 		/* UNDONE: Used to check if we have in-doubt transactions to resolve */
@@ -415,7 +417,8 @@ markDtxAsDistributed(void)
  	else if (currentGxact->state == DTX_STATE_ACTIVE_DISTRIBUTED)
 	{
 		if (fullDtmTrace)
-			elog(LOG,"markDtxAsDistributed gid = %s is already distributed", currentGxact->gid);
+			elog(LOG,"markDtxAsDistributed gid = %s is already distributed (%s, detail = '%s')", 
+			     currentGxact->gid, debugCaller, debugDetail);
 	}
 	else
 	{
@@ -2873,7 +2876,7 @@ determineDistributedTransactionContext (void)
 }
 
 void
-finishDistributedTransactionContext (void)
+finishDistributedTransactionContext (char* debugCaller)
 {
 	DistributedTransactionContext = DTX_CONTEXT_LOCAL_ONLY;
 
@@ -2885,9 +2888,12 @@ finishDistributedTransactionContext (void)
 
 	if(currentGxact != NULL)
 	{
-		elog(FATAL, "Expected currentGxact to be NULL at this point.  Found gid =%s, gxid = %u",
-			currentGxact->gid, currentGxact->gxid);
+		elog(FATAL, "Expected currentGxact to be NULL at this point.  Found gid =%s, gxid = %u (caller = %s)",
+			currentGxact->gid, currentGxact->gxid, debugCaller);
 	}
+	if (fullDtmTrace)
+		elog(LOG, "finishDistributedTransactionContext called (caller = %s)",
+			 debugCaller);
 }
 
 void
@@ -2988,13 +2994,15 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 			{
 				if (fullDtmTrace)
 					elog(LOG, "Prepare of distributed transaction %s succeeded", gid);
+				
 				DistributedTransactionContext = DTX_CONTEXT_QE_PREPARED;
 			}
 			else
 			{
 				if (fullDtmTrace)
 					elog(LOG, "Read only commit of distributed transaction %s succeeded", gid);
-				finishDistributedTransactionContext();
+				
+				Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
 			}
 			break;
 			
@@ -3023,7 +3031,8 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		if (fullDtmTrace)
 			elog(LOG, "performDtxProtocolCommand going to call FinishPreparedTransaction for distributed transaction %s", gid);
 		FinishPreparedTransaction((char *)gid, /* isCommit */ true, /* raiseErrorIfNotFound */ true);
-		finishDistributedTransactionContext();
+		
+		finishDistributedTransactionContext("performDtxProtocolCommand -- Commit Prepared");
 		break;
 
 	case DTX_PROTOCOL_COMMAND_RETRY_COMMIT_PREPARED:
@@ -3033,7 +3042,8 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		if (fullDtmTrace)
 			elog(LOG, "performDtxProtocolCommand going to call FinishPreparedTransaction for distributed transaction %s", gid);
 		FinishPreparedTransaction((char *)gid, /* isCommit */ true, /* raiseErrorIfNotFound */ false);
-		finishDistributedTransactionContext();
+
+		finishDistributedTransactionContext("performDtxProtocolCommand -- Retry Commit Prepared");
 		break;
 
 	case DTX_PROTOCOL_COMMAND_ABORT_PREPARED:
@@ -3059,7 +3069,8 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 			
 		case DTX_CONTEXT_QE_PREPARED:
 			FinishPreparedTransaction((char *)gid, /* isCommit */ false, /* raiseErrorIfNotFound */ true);
-			finishDistributedTransactionContext();
+
+			finishDistributedTransactionContext("performDtxProtocolCommand -- Abort Prepared");
 			break;
 			
 		case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
@@ -3086,7 +3097,8 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		if (fullDtmTrace)
 			elog(LOG, "performDtxProtocolCommand going to call FinishPreparedTransaction for distributed transaction %s", gid);
 		FinishPreparedTransaction((char *)gid, /* isCommit */ false, /* raiseErrorIfNotFound */ false);
-		finishDistributedTransactionContext();
+
+		finishDistributedTransactionContext("performDtxProtocolCommand -- Retry Abort Prepared");
 		break;
 
 	case DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED:

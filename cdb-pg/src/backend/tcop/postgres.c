@@ -4119,6 +4119,8 @@ PostgresMain(int argc, char *argv[], const char *username)
                     query_string = pq_getmsgstring(&input_message);
 					pq_getmsgend(&input_message);
 
+					elog((fullDtmTrace ? LOG : DEBUG5), "Simple query stmt: %s.",query_string);
+
 					determineDistributedTransactionContext();
 					
 					exec_simple_query(query_string);
@@ -4335,6 +4337,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 					}
 					pq_getmsgend(&input_message);
 
+					elog((fullDtmTrace ? LOG : DEBUG5), "Parse: %s.",query_string);
+
 					determineDistributedTransactionContext();
 					
 					exec_parse_message(query_string, stmt_name,
@@ -4381,6 +4385,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 					max_rows = pq_getmsgint(&input_message, 4);
 					pq_getmsgend(&input_message);
 
+					elog((fullDtmTrace ? LOG : DEBUG5), "Execute: %s.",portal_name);
+
 					determineDistributedTransactionContext();
 					
 					exec_execute_message(portal_name, max_rows);
@@ -4396,6 +4402,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 
 				/* Tell the collector what we're doing */
 				pgstat_report_activity("<FASTPATH> function call");
+
+				elog((fullDtmTrace ? LOG : DEBUG5), "Fast path function call.");
 
 				determineDistributedTransactionContext();
 					
@@ -4442,8 +4450,6 @@ PostgresMain(int argc, char *argv[], const char *username)
 					close_type = pq_getmsgbyte(&input_message);
 					close_target = pq_getmsgstring(&input_message);
 					pq_getmsgend(&input_message);
-
-					determineDistributedTransactionContext();
 
 					switch (close_type)
 					{
@@ -4496,6 +4502,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 					describe_target = pq_getmsgstring(&input_message);
 					pq_getmsgend(&input_message);
 
+					elog((fullDtmTrace ? LOG : DEBUG5), "Describe: %s.", describe_target);
+					
 					determineDistributedTransactionContext();
 					
 					switch (describe_type)

@@ -158,7 +158,7 @@ static volatile bool pleaseCancel = false; /* (transaction granularity) */
 
 /* Mark the DTX as going distributed and invoke FTS reconfiguration if needed. */
 void
-cdbdisp_markDtxAsDistributed(void)
+cdbdisp_markDtxAsDistributed(char* debugCaller, char* debugDetail)
 {
 	/*
 	 * check fts sync count
@@ -176,7 +176,7 @@ cdbdisp_markDtxAsDistributed(void)
 	 * Take our always started and available DTM transaction and
 	 * mark it ready to go distributed to the segments.
 	 */
-	markDtxAsDistributed();
+	markDtxAsDistributed(debugCaller, debugDetail);
 
 }	/* cdbdisp_markDtxAsDistributed */
 
@@ -2252,7 +2252,7 @@ CdbDoCommand(const char *strCommand,
 	if (startTransaction)
 	{
 		/* Mark the DTX as distributed and reconfigure the cluster if needed. */
-		cdbdisp_markDtxAsDistributed();
+		cdbdisp_markDtxAsDistributed("CdbDoCommand", strCommand);
 		
 		/* mark this txn as dirty */
 		setCurrentDtxDirty();
@@ -2290,7 +2290,7 @@ CdbDoCommandOnAllGangs(const char *strCommand,
 	if (startTransaction)
 	{
 		/* Mark the DTX as distributed and reconfigure the cluster if needed. */
-		cdbdisp_markDtxAsDistributed();
+		cdbdisp_markDtxAsDistributed("CdbDoCommandOnAllGangs", strCommand);
 		
 		/* mark this txn as dirty */
 		setCurrentDtxDirty();
@@ -3145,7 +3145,7 @@ CdbDispatchUtilityStatement(struct Node *stmt)
 		elog(LOG,"cdbdisp_dispatchUtilityStatement called");
 	
 	/* Mark the DTX as distributed and reconfigure the cluster if needed. */
-	cdbdisp_markDtxAsDistributed();
+	cdbdisp_markDtxAsDistributed("CdbDispatchUtilityStatement", "(Node)");
 
 	cdbdisp_dispatchUtilityStatement(stmt, true, startTransaction, &primaryResults, &mirrorResults, &dispatchThreads);
 

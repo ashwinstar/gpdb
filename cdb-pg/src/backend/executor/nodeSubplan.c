@@ -1014,7 +1014,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 				/*
 				 * Mark the DTX as distributed and reconfigure the cluster if needed.
 				 */
-				cdbdisp_markDtxAsDistributed();
+				cdbdisp_markDtxAsDistributed("ExecSetParamPlan", "(queryDesc)");
 			}
 		
 			/*

@@ -419,7 +419,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 				/*
 				 * Mark the DTX as distributed and reconfigure the cluster if needed.
 				 */
-				cdbdisp_markDtxAsDistributed();
+				cdbdisp_markDtxAsDistributed("ExecutorStart", "(queryDesc)");
 			}
 						
 			/*

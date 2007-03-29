@@ -1497,23 +1497,34 @@ SetSharedTransactionId(void)
 {
 	Assert(SharedLocalSnapshotSlot != NULL);
 
-	if (DistributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE ||
-		DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER ||
-		DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER ||
-		DistributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT)
+	switch (DistributedTransactionContext)
 	{
+	case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
 		if (fullDtmTrace)
-			elog(LOG, "qExec WRITER setting shared xid to: %d (QDSentDistributedXid %d)", TopTransactionStateData.transactionId, QDSentDistributedXid);
+			elog(LOG, "Query Dispatcher setting shared xid to: %u", TopTransactionStateData.transactionId);
 		SharedLocalSnapshotSlot->xid = TopTransactionStateData.transactionId;
-	}
-	else if (DistributedTransactionContext == DTX_CONTEXT_QE_READER ||
-		     DistributedTransactionContext == DTX_CONTEXT_QE_ENTRY_DB_SINGLETON)
-	{
+	    break;
+		
+	case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
+	case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
+	case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
+		if (fullDtmTrace)
+			elog(LOG, "qExec WRITER setting shared xid to: %u (QDSentDistributedXid %u)", TopTransactionStateData.transactionId, QDSentDistributedXid);
+		SharedLocalSnapshotSlot->xid = TopTransactionStateData.transactionId;
+		break;
+		
+	case DTX_CONTEXT_QE_READER:
+	case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
 		TopTransactionStateData.transactionId = SharedLocalSnapshotSlot->xid;
 		currentCommandId = SharedLocalSnapshotSlot->snapshot.curcid;
 
 		if (fullDtmTrace)
-			elog(LOG, "qExec READER setting local xid to: %d (QDSentDistributedXid %d)", TopTransactionStateData.transactionId, QDSentDistributedXid);
+			elog(LOG, "qExec READER setting local xid to: %u (QDSentDistributedXid %u)", TopTransactionStateData.transactionId, QDSentDistributedXid);
+		break;
+
+	default:
+		elog(FATAL, "Unrecognized or unexpected DTX transaction context: %d",
+			(int) DistributedTransactionContext);
 	}
 }
 
@@ -1792,7 +1803,8 @@ StartTransaction(void)
 			/* the pg_usleep() call below is in units of ms,
 			 * interconnect timeout is in seconds */
 			int     sleep_per_check_ms = 200;
-			int		segmate_timeout_ms = interconnect_setup_timeout * 1000;
+			/* Wait for up to 1/4 the timeout period */
+			int		segmate_timeout_ms = (interconnect_setup_timeout * 1000) / 4;
 			
 			/*
 			 * MPP: we're a QE Reader.
@@ -1856,12 +1868,7 @@ StartTransaction(void)
 
 					if (segmate_timeout_ms <= 0)
 					{
-						/*
-						 * FATAL seems pretty bad... but once we get out
-						 * of sync with the writer qExec we really need to
-						 * die
-						 */
-						ereport(FATAL,
+						ereport(ERROR,
 								(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 								 errmsg("StartTransaction timed out waiting for Writer to set the shared snapshot."),
 								 errdetail("We are waiting for the shared snapshot to have XID: %d but the value "
@@ -2134,7 +2141,7 @@ CommitTransaction(void)
 	 */
 	notifyCommittedDtxTransaction();
 
-	finishDistributedTransactionContext();
+	finishDistributedTransactionContext("CommitTransaction");
 
 	/* we're now in a consistent state to handle an interrupt. */
 	RESUME_INTERRUPTS();
@@ -2498,12 +2505,15 @@ AbortTransaction(void)
 	pgstat_count_xact_rollback();
 
 	/*
+	 * Do abort to all QE. NOTE: we don't process
+	 * signals to prevent recursion until we've notified the QEs.
+	 */
+	rollbackDtxTransaction();
+
+	/*
 	 * State remains TRANS_ABORT until CleanupTransaction().
 	 */
 	RESUME_INTERRUPTS();
-
-	/* abort all QE as cleanup process, ignore all errors */
-	rollbackDtxTransaction();
 
 	freeGangsForPortal(NULL);
 }
@@ -2548,7 +2558,7 @@ CleanupTransaction(void)
 	 */
 	s->state = TRANS_DEFAULT;
 
-	finishDistributedTransactionContext();
+	finishDistributedTransactionContext("CleanupTransaction");
 
 }
 
@@ -2955,6 +2965,8 @@ AbortCurrentTransaction(void)
 		case TBLOCK_ABORT_END:
 			CleanupTransaction();
 			s->blockState = TBLOCK_DEFAULT;
+			
+			Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
 			break;
 
 			/*
@@ -2965,6 +2977,8 @@ AbortCurrentTransaction(void)
 			AbortTransaction();
 			CleanupTransaction();
 			s->blockState = TBLOCK_DEFAULT;
+			
+			Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
 			break;
 
 			/*
@@ -2976,6 +2990,8 @@ AbortCurrentTransaction(void)
 			AbortTransaction();
 			CleanupTransaction();
 			s->blockState = TBLOCK_DEFAULT;
+			
+			Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
 			break;
 
 			/*
@@ -3012,8 +3028,6 @@ AbortCurrentTransaction(void)
 			break;
 	}
 	
-	finishDistributedTransactionContext();
-
 }
 
 /*
@@ -4120,12 +4134,16 @@ AbortOutOfAnyTransaction(void)
 				AbortTransaction();
 				CleanupTransaction();
 				s->blockState = TBLOCK_DEFAULT;
+
+				Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
 				break;
 			case TBLOCK_ABORT:
 			case TBLOCK_ABORT_END:
 				/* AbortTransaction already done, still need Cleanup */
 				CleanupTransaction();
 				s->blockState = TBLOCK_DEFAULT;
+
+				Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
 				break;
 
 				/*
@@ -4153,9 +4171,6 @@ AbortOutOfAnyTransaction(void)
 
 	/* Should be out of all subxacts now */
 	Assert(s->parent == NULL);
-
-	finishDistributedTransactionContext();
-	
 }
 
 /*

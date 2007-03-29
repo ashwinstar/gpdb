@@ -160,7 +160,7 @@ extern bool isPreparedDtxTransaction(void);
 extern void getDtxLogInfo(TMGXACT_LOG *gxact_log);
 extern void notifyCommittedDtxTransaction(void);
 extern void	rollbackDtxTransaction(void);
-extern void	markDtxAsDistributed(void);
+extern void	markDtxAsDistributed(char* debugCaller, char* debugDetail);
 extern void setCurrentDtxDirty(void);
 
 extern void insertingDistributedCommitted(void);
@@ -216,7 +216,7 @@ extern void serializeDistributedSnapshot(char **buffref,
                              CommandId curcid);
 extern void getGlobalSnapshot(const char *serializedSnapshot, int serializedSnapshotlen);
 extern void determineDistributedTransactionContext (void);
-extern void finishDistributedTransactionContext (void);
+extern void finishDistributedTransactionContext (char* debugCaller);
 extern void rememberDtxExplicitBegin();
 extern void performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 					const char *loggingStr, const char *gid, 

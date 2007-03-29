@@ -533,7 +533,8 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 		/* the pg_usleep() call below is in units of ms, interconnect
 		 * timeout is in seconds */
 		int     sleep_per_check_ms = 200;
-		int		segmate_timeout_ms = interconnect_setup_timeout * 1000;
+		/* Wait for up to 1/4 the timeout period */
+		int		segmate_timeout_ms = (interconnect_setup_timeout * 1000) / 4;
 
 
 		if (DistributedTransactionContext == DTX_CONTEXT_QE_ENTRY_DB_SINGLETON)
@@ -600,11 +601,13 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 							 "We are waiting for the shared snapshot to have XID: %d but the value "
 												   "is currently: %d." 
 												   " waiting for cid to be %d but is currently %d.  ready=%d."
-												   " Our slotindex is: %d \n",
+												   " Our slotindex is: %d \n"
+												   "DistributedTransactionContext = %s.",
 												   QDSentDistributedXid, SharedLocalSnapshotSlot->QDxid,
 												   QDSentDistributedCommandId, SharedLocalSnapshotSlot->QDcid,
 												   SharedLocalSnapshotSlot->ready,
-												   SharedLocalSnapshotSlot->slotindex);
+												   SharedLocalSnapshotSlot->slotindex,
+												   DtxContextToString(DistributedTransactionContext));
 
 				
 				pg_usleep(sleep_per_check_ms);
@@ -623,9 +626,11 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 									   "is currently: %d." 
 									   " waiting for cid to be %d but is currently %d.  ready=%d."
 									   " Our slotindex is: %d \n"
+									   "DistributedTransactionContext = %s."
 									   "Dump of all sharedsnapshots in shmem: %s",
 									   QDSentDistributedXid, SharedLocalSnapshotSlot->QDxid,
 									   QDSentDistributedCommandId, SharedLocalSnapshotSlot->QDcid,  SharedLocalSnapshotSlot->ready,
+									   DtxContextToString(DistributedTransactionContext),
 									   SharedLocalSnapshotSlot->slotindex, SharedSnapshotDump())));
 			}
 		}

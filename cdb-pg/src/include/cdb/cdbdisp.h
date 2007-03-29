@@ -147,7 +147,7 @@ typedef struct CdbDispatchCmdThreads
 
 /* Mark the DTX as distributed and reconfigure the cluster if needed. */
 void
-cdbdisp_markDtxAsDistributed(void);
+cdbdisp_markDtxAsDistributed(char* debugCaller, char* debugDetail);
 
 /*--------------------------------------------------------------------*/
 
