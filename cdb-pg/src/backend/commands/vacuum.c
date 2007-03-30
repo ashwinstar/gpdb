@@ -867,6 +867,11 @@ vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
 					replaces[i] = 'r';
 				else if (i == (Anum_pg_class_relpages - 1))
 					replaces[i] = 'r';
+				else if (i == (Anum_pg_class_relhasindex - 1))
+				       /* Update relhasindex column here because it is not
+					* updated after dropping indexes.
+					*/ 
+					replaces[i] = 'r';
 				else
 					replaces[i] = ' ';
 				nulls[i] = ' ';
@@ -874,6 +879,7 @@ vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
 
 			values[Anum_pg_class_relpages - 1] = Int32GetDatum(num_pages);
 			values[Anum_pg_class_reltuples - 1] = Float4GetDatum(num_tuples);
+			values[Anum_pg_class_relhasindex - 1] = BoolGetDatum(hasindex);
 
 			stup = heap_modifytuple(oldtup,
 									RelationGetDescr(rd),
