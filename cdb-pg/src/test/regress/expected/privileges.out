@@ -141,6 +141,9 @@ UPDATE atest2 SET col2 = NULL; -- ok
 UPDATE atest2 SET col2 = NOT col2; -- fails; requires SELECT on atest2
 ERROR:  permission denied for relation atest2
 UPDATE atest2 SET col2 = true FROM atest1 WHERE atest1.a = 5; -- ok
+ERROR:  Cannot parallelize that UPDATE yet
+DETAIL:  Passage of data from one segment to another is not yet supported during UPDATE operations.
+HINT:  The WHERE condition must specify equality between corresponding DISTRIBUTED BY columns of the target table and all joined tables.
 SELECT * FROM atest1 FOR UPDATE; -- fail
 ERROR:  permission denied for relation atest1
 SELECT * FROM atest2 FOR UPDATE; -- fail
@@ -269,7 +272,7 @@ ERROR:  permission denied for relation atest2
 SELECT testfunc4(true); -- ok
  testfunc4 
 -----------
- bar
+ 
 (1 row)
 
 SET SESSION AUTHORIZATION regressuser4;
