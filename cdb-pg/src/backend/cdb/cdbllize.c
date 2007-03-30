@@ -225,7 +225,23 @@ cdbparallelize(Plan *plan,
 					context->resultSegments = true;
 
                 if (policy)
-				    pfree(policy);	
+				    pfree(policy);
+
+                /* RETURNING is not yet implemented for partitioned tables. */
+                if (query->returningList &&
+                    context->resultSegments)
+                {
+                    const char *cmd = (query->commandType == CMD_INSERT) ? "INSERT" 
+                                    : (query->commandType == CMD_UPDATE) ? "UPDATE" 
+                                    :                                      "DELETE";
+
+                    ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
+                                    errmsg("The RETURNING clause of the %s "
+                                           "statement is not yet supported in "
+                                           "this version of " PACKAGE_NAME ".",
+                                           cmd) 
+                                    ));
+                }
 			}
 			break;
 
