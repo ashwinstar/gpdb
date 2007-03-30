@@ -323,35 +323,34 @@ apply_motion(Plan *plan, Query *query)
                  *
                  * If the query has an ORDER BY clause, use Merge Receive to
                  * preserve the ordering.
+                 *
+                 * The plan has already been set up to ensure each qExec's 
+                 * result is properly ordered according to the ORDER BY 
+                 * specification.  The existing ordering could be stronger 
+                 * than required; if so, omit the extra trailing columns 
+                 * from the Merge Receive key.
                  */
                 if (query->sortClause)
                 {
-					/* Since some node above the sort may have projected,
-					 * we need to ralign the sort specifications. */
-					ListCell *cell;
-					TargetEntry *tle;
-					SortClause *sortcl;
-					int i = 0, n = list_length(query->sortClause);
-					Assert( n == plan->flow->numSortCols);
+                    ListCell   *cell;
+                    int         i = 0;
+
+					/* The (claimed) existing order must match the ORDER BY. */
 					foreach (cell, query->sortClause)
 					{
-						sortcl = (SortClause*)lfirst(cell);
-						/* this will issue an error if not found */
-						tle = get_sortgroupclause_tle(sortcl, plan->targetlist);
-						if ( tle->resno != plan->flow->sortColIdx[i] )
-						{
-							ereport(DEBUG4, (
-								errmsg("cdbmutate realigned top-level Sort "
-								       "operator %d column index: old = %d, new = %d",
-									    i, plan->flow->sortColIdx[i], tle->resno) ));
-										
-							plan->flow->sortColIdx[i] = tle->resno;
-						}
+                        SortClause     *sortcl = (SortClause*)lfirst(cell);
+                        TargetEntry    *tle = get_sortgroupclause_tle(sortcl, plan->targetlist);
+
+                        Insist(i < plan->flow->numSortCols &&
+                               tle->resno == plan->flow->sortColIdx[i]);
 						i++;
 					}
-					
+
+                    /* Drop extra low-order ordering cols for Merge Receive. */
+                    plan->flow->numSortCols = i;
+
                     Insist(focusPlan(plan, true, true, false));
-                    Insist(plan->flow->numSortCols > 0);
+                    Insist(plan->flow->numSortCols == i);
                 }
                 else
                     Insist(focusPlan(plan, true, false, false));
