@@ -236,6 +236,9 @@
 /* Define to 1 if you have the `m' library (-lm). */
 #undef HAVE_LIBM
 
+/* Define to 1 if you have the `nsl' library (-lnsl). */
+#undef HAVE_LIBNSL
+
 /* Define to 1 if you have the `pam' library (-lpam). */
 #undef HAVE_LIBPAM
 
@@ -582,7 +585,7 @@
    (--with-krb-srvnam=NAME) */
 #undef PG_KRB_SRVNAM
 
-/* PostgreSQL version as a string */
+/* Greenplum Database version */
 #undef PG_VERSION
 
 /* PostgreSQL version as a number */
@@ -650,6 +653,10 @@
 
 /* Define to select Win32-style semaphores. */
 #undef USE_WIN32_SEMAPHORES
+
+/* Define to 1 if your processor stores words with the most significant byte
+   first (like Motorola and SPARC, unlike Intel and VAX). */
+#undef WORDS_BIGENDIAN
 
 /* Number of bits in a file offset, on hosts where this is settable. */
 #undef _FILE_OFFSET_BITS
