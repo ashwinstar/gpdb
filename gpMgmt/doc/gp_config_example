@@ -12,7 +12,7 @@
 # A name for the array you are configuring. You can use any name you 
 # like. Enclose the name in quotes if the name contains spaces.
 
-ARRAY_NAME="MPP Test"
+ARRAY_NAME="Greenplum Test"
 
 
 # This specifies the file that contains the list of segment host names 
@@ -27,13 +27,13 @@ MACHINE_LIST_FILE=/home/bgadmin/host_file
 # Prefix used to name the data directories on the master and segment
 # instances. The naming convention for data directories in a 
 # Greenplum Database system is SEG_PREFIXnumber where number starts with 0 
-# (zero) for the MPP master and is incremented by one for each segment 
-# instance created. So for example, if you choose the prefix mpp, your 
-# master instance data directory would be named mpp0, and the segment 
-# instances would be named mpp1, mpp2, mpp3, mpp4, and so on.
+# (zero) for the GP master and is incremented by one for each segment 
+# instance created. So for example, if you choose the prefix gp, your 
+# master instance data directory would be named gp0, and the segment 
+# instances would be named gp1, gp2, gp3, gp4, and so on.
 
 
-SEG_PREFIX=mpp
+SEG_PREFIX=gp
 
 
 # Base port number on which primary segment instances will be 
@@ -62,15 +62,15 @@ PORT_BASE=50000
 
 
 declare -a DATA_DIRECTORY=(/dbfast1 /dbfast2)
-# declare -a DATA_DIRECTORY=(/mpp_primary /mpp_primary)
+# declare -a DATA_DIRECTORY=(/gp_primary /gp_primary)
 
 
-# The host name of the MPP master instance. Must match the output
+# The host name of the GP master instance. Must match the output
 # of the 'hostname' system command
 
 MASTER_HOSTNAME=hostname
 
-# The location where the data directory will be created on the MPP 
+# The location where the data directory will be created on the GP 
 # master host. 
 
 # You must make sure that the user who runs gpcreatecluster.sh
@@ -81,18 +81,18 @@ MASTER_HOSTNAME=hostname
 MASTER_DIRECTORY=/dbfast1
 
 
-# The port number for the MPP master instance. This is the port number 
+# The port number for the GP master instance. This is the port number 
 # that users and client connections will use when accessing the 
 # Greenplum Database system.
 
 MASTER_PORT=5432
 
 # This parameter specifies the IP address(es) of the hosts allowed to 
-# connect to a MPP master instance. This adds an entry in the PostgreSQL 
+# connect to a GP master instance. This adds an entry in the PostgreSQL 
 # pg_hba.conf file for the master instance. By default, local host 
 # connections are already allowed. The segment instances are configured 
 # by default to allow client connections from the master only (not configurable 
-# by this parameter). The default pg_hba.conf file on the MPP master has the 
+# by this parameter). The default pg_hba.conf file on the GP master has the 
 # following entries (assuming 0.0.0.0/0 is the IP_ALLOW setting and bgadmin 
 # is the database super user):
 #
@@ -168,5 +168,5 @@ ENCODING=UNICODE
 
 
 #declare -a MIRROR_DATA_DIRECTORY=(/dbfast3 /dbfast4)
-#declare -a MIRROR_DATA_DIRECTORY=(/mpp_mirror /mpp_mirror)
+#declare -a MIRROR_DATA_DIRECTORY=(/gp_mirror /gp_mirror)
 
