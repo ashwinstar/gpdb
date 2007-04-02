@@ -35,7 +35,7 @@ HOME=/home/gpadmin
 
 # Greenplum Database nightly database dump job
 01 0 * * * gpadmin gpcrondump.sh -x customers -a -q >> 
-mpp_custdump.log
+gp_custdump.log
 
 
 *****************************************************

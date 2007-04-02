@@ -130,7 +130,7 @@ The default is 25.
 -e <superuser_password>
 
 The password to set for the Greenplum Database super user. Defaults to 
-'mpparray'. You can always change the super user password at a later 
+'gparray'. You can always change the super user password at a later 
 time using the ALTER ROLE command. Client connections over the network 
 require a password login for the database super user account (gpadmin).
 

@@ -43,7 +43,7 @@ failed segments.
 
 The Greenplum Database can run in two modes with regards to mirroring and 
 fault tolerance  continue (read-write) mode and read-only mode. This mode 
-is set with the mpp_fault_action parameter in postgresql.conf.
+is set with the gp_fault_action parameter in postgresql.conf.
 
 If the system is in continue (read-write) mode, this script will shutdown 
 the system, copy the data directory of the active segment to the failed 
@@ -59,7 +59,7 @@ If you do not have mirroring enabled, you must take manual steps to recover
 a failed segment instance. To manually mark a segment instance as valid 
 again, run the following function on the master:
 
-SELECT mpp_set_segdb_state(<dbid>, <true|false>);
+SELECT gp_set_segdb_state(<dbid>, <true|false>);
 
 <dbid> is the unique ID for a segment instance. True marks the segment as 
 valid and false marks it as invalid.

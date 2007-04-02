@@ -285,7 +285,7 @@ gp_dump --gp-d=/home/gpadmin/backups gpdb
 
 Back up the Greenplum system catalog tables only:
 
-gp_dump -n mpp template1
+gp_dump -n gpdb template1
 
 
 *****************************************************

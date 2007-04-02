@@ -203,9 +203,9 @@ EXAMPLES
 *****************************************************
 
 
-Restore a MPP database using backup files created by gp_dump:
+Restore a Greenplum database using backup files created by gp_dump:
 
-gp_restore -gp-k=2005103112453 -d mppdb
+gp_restore -gp-k=2005103112453 -d gpdb
 
 
 *****************************************************

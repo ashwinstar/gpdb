@@ -124,13 +124,13 @@ EXAMPLES
 Activate the backup master host and make it the active master instance for a 
 Greenplum Database system (run from backup master host you are activating):
 
-gpactivatestandby.sh -d /mppdata
+gpactivatestandby.sh -d /gpdata
 
 
 Activate the backup master host and at the same time configure another 
 host to be your new standby master:
 
-gpactivatestandby.sh -d /mppdata -c new_standby_hostname
+gpactivatestandby.sh -d /gpdata -c new_standby_hostname
 
 
 *****************************************************
