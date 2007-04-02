@@ -1085,10 +1085,15 @@ tuplesort_performsort(Tuplesortstate *state)
 			 */
 			dumptuples(state, true);
 
-            /* CDB: How much work_mem would be needed to sort in memory? */
+            /* CDB: How much work_mem would be enough for in-memory sort? */
             if (state->instrument)
+            {
+                int64   workmemwanted = state->allowedMem - state->availMem +
+                                        state->spilledBytes;
+
                 state->instrument->workmemwanted = 
-                    Max(state->instrument->workmemwanted, state->spilledBytes);
+                    Max(state->instrument->workmemwanted, workmemwanted);
+            }
 
 			mergeruns(state);
 			state->eof_reached = false;
