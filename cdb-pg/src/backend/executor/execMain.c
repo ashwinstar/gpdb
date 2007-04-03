@@ -919,12 +919,26 @@ ExecCheckXactReadOnly(Query *parsetree)
 
         /* CDB: Allow SELECT FOR SHARE/UPDATE * 
          * 
-         * NOTE: This code is broken in the 8.2 merge, so I'm commenting it out for now
-         * 
-        if ((rte->requiredPerms & ~(ACL_SELECT | ACL_SELECT_FOR_UPDATE)) == 0 &&
-            list_member_int(parsetree->rowMarks, rti))
-            continue;
-		*/
+         */
+        if ((rte->requiredPerms & ~(ACL_SELECT | ACL_SELECT_FOR_UPDATE)) == 0)
+        {
+        	ListCell   *cell;
+        	bool foundRTI = false;
+        	
+        	foreach(cell, parsetree->rowMarks)
+			{
+				RowMarkClause *rmc = lfirst(cell);
+				if( rmc->rti == rti )
+				{
+					foundRTI = true;
+					break;
+				}
+			}
+			
+			if (foundRTI)
+				continue;
+        }
+		
 		goto fail;
 	}
 	return;
