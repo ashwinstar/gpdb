@@ -139,7 +139,6 @@ typedef struct NumericVar
 	int			dscale;			/* display scale */
 	NumericDigit *buf			/* start of space for digits[] */;
 	NumericDigit *digits;		/* base-NBASE digits */
-	NumericDigit *pabp;			/* start of palloc'd space for digits[] */
 	NumericDigit ndb[NUMERIC_LOCAL_NDIG];	/* local space for digits[] */
 } NumericVar;
 
@@ -152,15 +151,15 @@ typedef struct NumericVar
  */
 static NumericDigit const_zero_data[1] = {0};
 static NumericVar const_zero =
-{0, 0, NUMERIC_POS, 0, NULL, const_zero_data, NULL, {0}};
+{0, 0, NUMERIC_POS, 0, const_zero.ndb, const_zero_data, {0}};
 
 static NumericDigit const_one_data[1] = {1};
 static NumericVar const_one =
-{1, 0, NUMERIC_POS, 0, NULL, const_one_data, NULL, {0}};
+{1, 0, NUMERIC_POS, 0, const_one.ndb, const_one_data, {0}};
 
 static NumericDigit const_two_data[1] = {2};
 static NumericVar const_two =
-{1, 0, NUMERIC_POS, 0, NULL, const_two_data, NULL, {0}};
+{1, 0, NUMERIC_POS, 0, const_two.ndb, const_two_data, {0}};
 
 #if DEC_DIGITS == 4
 static NumericDigit const_zero_point_five_data[1] = {5000};
@@ -170,7 +169,7 @@ static NumericDigit const_zero_point_five_data[1] = {50};
 static NumericDigit const_zero_point_five_data[1] = {5};
 #endif
 static NumericVar const_zero_point_five =
-{1, -1, NUMERIC_POS, 1, NULL, const_zero_point_five_data, NULL, {0}};
+{1, -1, NUMERIC_POS, 1, const_zero_point_five.ndb, const_zero_point_five_data, {0}};
 
 #if DEC_DIGITS == 4
 static NumericDigit const_zero_point_nine_data[1] = {9000};
@@ -180,20 +179,20 @@ static NumericDigit const_zero_point_nine_data[1] = {90};
 static NumericDigit const_zero_point_nine_data[1] = {9};
 #endif
 static NumericVar const_zero_point_nine =
-{1, -1, NUMERIC_POS, 1, NULL, const_zero_point_nine_data, NULL, {0}};
+{1, -1, NUMERIC_POS, 1, const_zero_point_nine.ndb, const_zero_point_nine_data, {0}};
 
 #if DEC_DIGITS == 4
 static NumericDigit const_zero_point_01_data[1] = {100};
 static NumericVar const_zero_point_01 =
-{1, -1, NUMERIC_POS, 2, NULL, const_zero_point_01_data, NULL, {0}};
+{1, -1, NUMERIC_POS, 2, const_zero_point_01.ndb, const_zero_point_01_data, {0}};
 #elif DEC_DIGITS == 2
 static NumericDigit const_zero_point_01_data[1] = {1};
 static NumericVar const_zero_point_01 =
-{1, -1, NUMERIC_POS, 2, NULL, const_zero_point_01_data, NULL, {0}};
+{1, -1, NUMERIC_POS, 2, const_zero_point_01.ndb, const_zero_point_01_data, {0}};
 #elif DEC_DIGITS == 1
 static NumericDigit const_zero_point_01_data[1] = {1};
 static NumericVar const_zero_point_01 =
-{1, -2, NUMERIC_POS, 2, NULL, const_zero_point_01_data, NULL, {0}};
+{1, -2, NUMERIC_POS, 2, const_zero_point_01.ndb, const_zero_point_01_data, {0}};
 #endif
 
 #if DEC_DIGITS == 4
@@ -204,10 +203,10 @@ static NumericDigit const_one_point_one_data[2] = {1, 10};
 static NumericDigit const_one_point_one_data[2] = {1, 1};
 #endif
 static NumericVar const_one_point_one =
-{2, 0, NUMERIC_POS, 1, NULL, const_one_point_one_data, NULL, {0}};
+{2, 0, NUMERIC_POS, 1, const_one_point_one.ndb, const_one_point_one_data, {0}};
 
 static NumericVar const_nan =
-{0, 0, NUMERIC_NAN, 0, NULL, NULL, NULL, {0}};
+{0, 0, NUMERIC_NAN, 0, const_nan.ndb, NULL, {0}};
 
 #if DEC_DIGITS == 4
 static const int round_powers[4] = {0, 1000, 100, 10};
@@ -227,7 +226,7 @@ static void dump_var(const char *str, NumericVar *var);
 #define dump_var(s,v)
 #endif
 
-/*
+/* ----------
  * a few Numeric access things not defined in numeric.h
  */
 #define NUMERIC_SIGN_DSCALE(num) ((num)->n_sign_dscale)
@@ -235,6 +234,22 @@ static void dump_var(const char *str, NumericVar *var);
 #define NUMERIC_DIGITS(num) ((NumericDigit *)(num)->n_data)
 #define NUMERIC_NDIGITS(num) \
 	((VARSIZE(num) - NUMERIC_HDRSZ) / sizeof(NumericDigit))
+/*
+ *----------
+ */
+
+#define quick_init_var(v) \
+	do { \
+		(v)->buf = (v)->ndb;	\
+		(v)->digits = NULL; 	\
+	} while (0)
+
+
+#define init_var(v) \
+	do { \
+		quick_init_var((v));	\
+		(v)->ndigits = (v)->weight = (v)->sign = (v)->dscale = 0; \
+	} while (0)
 
 
 #define digitbuf_alloc(ndigits)  \
@@ -242,27 +257,40 @@ static void dump_var(const char *str, NumericVar *var);
 
 #define digitbuf_free(v)	\
 	do { \
-		 if (((v)->pabp) != NULL) \
-			 pfree((v)->pabp); \
-		(v)->pabp = NULL;	\
-	} while (0)
-
-#define init_var(v) \
-	do { \
-		(v)->buf = (v)->digits = (v)->pabp = NULL; \
-		(v)->ndigits = (v)->weight = (v)->sign = (v)->dscale = 0; \
+		if ((v)->buf != (v)->ndb)	\
+		{							\
+		 	pfree((v)->buf); 		\
+			(v)->buf = (v)->ndb;	\
+		}	\
 	} while (0)
 
 #define free_var(v)	\
 				digitbuf_free((v));
 
+/*
+ * init_alloc_var() -
+ *
+ *	Init a var and allocate digit buffer of ndigits digits (plus a spare
+ *  digit for rounding).
+ *  Called when first using a var.
+ */
+#define	init_alloc_var(v, n) \
+	do 	{	\
+		(v)->buf = (v)->ndb;	\
+		(v)->ndigits = (n);	\
+		if ((n) > NUMERIC_LOCAL_NMAX)	\
+			(v)->buf = digitbuf_alloc((n) + 1);	\
+		(v)->buf[0] = 0;	\
+		(v)->digits = (v)->buf + 1;	\
+	} while (0)
+
 static void alloc_var(NumericVar *var, int ndigits);
-static void init_alloc_var(NumericVar *var, int ndigits);
 static void zero_var(NumericVar *var);
 
 static void init_var_from_str(const char *str, NumericVar *dest);
 static void set_var_from_var(NumericVar *value, NumericVar *dest);
 static void init_var_from_var(NumericVar *value, NumericVar *dest);
+static void init_ro_var_from_var(NumericVar *value, NumericVar *dest);
 static void init_var_from_num(Numeric value, NumericVar *dest);
 static void init_ro_var_from_num(Numeric value, NumericVar *dest);
 static char *get_str_from_var(NumericVar *var, int dscale);
@@ -667,14 +695,14 @@ numeric_sign(PG_FUNCTION_ARGS)
 	 * we can identify a ZERO by the fact that there are no digits at all.
 	 */
 	if (VARSIZE(num) == NUMERIC_HDRSZ)
-		init_var_from_var(&const_zero, &result);
+		init_ro_var_from_var(&const_zero, &result);
 	else
 	{
 		/*
 		 * And if there are some, we return a copy of ONE with the sign of our
 		 * argument
 		 */
-		init_var_from_var(&const_one, &result);
+		init_ro_var_from_var(&const_one, &result);
 		result.sign = NUMERIC_SIGN(num);
 	}
 
@@ -851,8 +879,8 @@ width_bucket_numeric(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_ARGUMENT_FOR_WIDTH_BUCKET_FUNCTION),
 				 errmsg("count must be greater than zero")));
 
-	init_var(&result_var);
-	init_var(&count_var);
+	quick_init_var(&result_var);
+	quick_init_var(&count_var);
 
 	/* Convert 'count' to a numeric, for ease of use later */
 	int8_to_numericvar((int64) count, &count_var);
@@ -909,9 +937,9 @@ compute_bucket(Numeric operand, Numeric bound1, Numeric bound2,
 	NumericVar	bound2_var;
 	NumericVar	operand_var;
 
-	init_var_from_num(bound1, &bound1_var);
-	init_var_from_num(bound2, &bound2_var);
-	init_var_from_num(operand, &operand_var);
+	init_ro_var_from_num(bound1, &bound1_var);
+	init_ro_var_from_num(bound2, &bound2_var);
+	init_ro_var_from_num(operand, &operand_var);
 
 	if (cmp_var(&bound1_var, &bound2_var) < 0)
 	{
@@ -1120,7 +1148,7 @@ numeric_add(PG_FUNCTION_ARGS)
 	/*
 	 * Unpack the values, let add_var() compute the result and return it.
 	 */
-	init_var(&result);
+	quick_init_var(&result);
 
 	init_ro_var_from_num(num1, &arg1);
 	init_ro_var_from_num(num2, &arg2);
@@ -1157,7 +1185,7 @@ numeric_sub(PG_FUNCTION_ARGS)
 	/*
 	 * Unpack the values, let sub_var() compute the result and return it.
 	 */
-	init_var(&result);
+	quick_init_var(&result);
 
 	init_ro_var_from_num(num1, &arg1);
 	init_ro_var_from_num(num2, &arg2);
@@ -1198,7 +1226,7 @@ numeric_mul(PG_FUNCTION_ARGS)
 	 * we request exact representation for the product (rscale = sum(dscale of
 	 * arg1, dscale of arg2)).
 	 */
-	init_var(&result);
+	quick_init_var(&result);
 
 	init_ro_var_from_num(num1, &arg1);
 	init_ro_var_from_num(num2, &arg2);
@@ -1239,7 +1267,7 @@ numeric_div(PG_FUNCTION_ARGS)
 	/*
 	 * Unpack the arguments
 	 */
-	init_var(&result);
+	quick_init_var(&result);
 
 	init_ro_var_from_num(num1, &arg1);
 	init_ro_var_from_num(num2, &arg2);
@@ -1281,7 +1309,7 @@ numeric_mod(PG_FUNCTION_ARGS)
 	if (NUMERIC_IS_NAN(num1) || NUMERIC_IS_NAN(num2))
 		PG_RETURN_NUMERIC(make_result(&const_nan));
 
-	init_var(&result);
+	quick_init_var(&result);
 
 	init_ro_var_from_num(num1, &arg1);
 	init_ro_var_from_num(num2, &arg2);
@@ -1319,7 +1347,7 @@ numeric_inc(PG_FUNCTION_ARGS)
 	 * Compute the result and return it
 	 */
 
-	init_var_from_num(num, &arg);
+	init_ro_var_from_num(num, &arg);
 
 	add_var(&arg, &const_one, &arg);
 
@@ -1399,8 +1427,8 @@ numeric_fac(PG_FUNCTION_ARGS)
 		PG_RETURN_NUMERIC(res);
 	}
 
-	init_var(&fact);
-	init_var(&result);
+	quick_init_var(&fact);
+	quick_init_var(&result);
 
 	int8_to_numericvar(num, &result);
 
@@ -1445,7 +1473,7 @@ numeric_sqrt(PG_FUNCTION_ARGS)
 	 * to give at least NUMERIC_MIN_SIG_DIGITS significant digits; but in any
 	 * case not less than the input's dscale.
 	 */
-	init_var(&result);
+	quick_init_var(&result);
 
 	init_ro_var_from_num(num, &arg);
 
@@ -1495,7 +1523,7 @@ numeric_exp(PG_FUNCTION_ARGS)
 	 * to give at least NUMERIC_MIN_SIG_DIGITS significant digits; but in any
 	 * case not less than the input's dscale.
 	 */
-	init_var(&result);
+	quick_init_var(&result);
 
 	init_var_from_num(num, &arg);
 
@@ -1551,7 +1579,7 @@ numeric_ln(PG_FUNCTION_ARGS)
 	if (NUMERIC_IS_NAN(num))
 		PG_RETURN_NUMERIC(make_result(&const_nan));
 
-	init_var(&result);
+	quick_init_var(&result);
 
 	init_ro_var_from_num(num, &arg);
 
@@ -1603,7 +1631,7 @@ numeric_log(PG_FUNCTION_ARGS)
 	/*
 	 * Initialize things
 	 */
-	init_var(&result);
+	quick_init_var(&result);
 
 	init_ro_var_from_num(num1, &arg1);
 	init_ro_var_from_num(num2, &arg2);
@@ -1648,7 +1676,7 @@ numeric_power(PG_FUNCTION_ARGS)
 	/*
 	 * Initialize things
 	 */
-	init_var(&result);
+	quick_init_var(&result);
 
 	init_ro_var_from_num(num1, &arg1);
 	init_ro_var_from_num(num2, &arg2);
@@ -1699,7 +1727,7 @@ int4_numeric(PG_FUNCTION_ARGS)
 	Numeric		res;
 	NumericVar	result;
 
-	init_var(&result);
+	quick_init_var(&result);
 
 	int8_to_numericvar((int64) val, &result);
 
@@ -1763,7 +1791,7 @@ int8_numeric(PG_FUNCTION_ARGS)
 	Numeric		res;
 	NumericVar	result;
 
-	init_var(&result);
+	quick_init_var(&result);
 
 	int8_to_numericvar(val, &result);
 
@@ -1805,7 +1833,7 @@ int2_numeric(PG_FUNCTION_ARGS)
 	Numeric		res;
 	NumericVar	result;
 
-	init_var(&result);
+	quick_init_var(&result);
 
 	int8_to_numericvar((int64) val, &result);
 
@@ -2193,7 +2221,7 @@ numeric_stddev_internal(ArrayType *transarray,
 		return NULL;
 	}
 
-	init_var(&vNminus1);
+	quick_init_var(&vNminus1);
 	sub_var(&vN, &const_one, &vNminus1);
 
 	init_var_from_num(sumX, &vsumX);
@@ -2632,31 +2660,7 @@ static void
 alloc_var(NumericVar *var, int ndigits)
 {
 	digitbuf_free(var);
-	var->buf = var->ndb;
-	if (ndigits > NUMERIC_LOCAL_NMAX)
-		var->buf = var->pabp = digitbuf_alloc(ndigits + 1);
-	var->buf[0] = 0;			/* spare digit for rounding */
-	var->digits = var->buf + 1;
-	var->ndigits = ndigits;
-}
-
-/*
- * init_alloc_var() -
- *
- *	Init a var and allocate digit buffer of ndigits digits (plus a spare
- *  digit for rounding).
- *  Called when first using a var.
- */
-static void
-init_alloc_var(NumericVar *var, int ndigits)
-{
-	var->pabp = NULL;
-	var->buf = var->ndb;
-	if (ndigits > NUMERIC_LOCAL_NMAX)
-		var->buf = var->pabp = digitbuf_alloc(ndigits + 1);
-	var->buf[0] = 0;			/* spare digit for rounding */
-	var->digits = var->buf + 1;
-	var->ndigits = ndigits;
+	init_alloc_var(var, ndigits);
 }
 
 
@@ -2670,7 +2674,7 @@ static void
 zero_var(NumericVar *var)
 {
 	digitbuf_free(var);
-	var->buf = var->digits = NULL;
+	quick_init_var(var);
 	var->ndigits = 0;
 	var->weight = 0;			/* by convention; doesn't really matter */
 	var->sign = NUMERIC_POS;	/* anything but NAN... */
@@ -2735,11 +2739,10 @@ init_var_from_str(const char *str, NumericVar *dest)
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 			  errmsg("invalid input syntax for type numeric: \"%s\"", str)));
 
+	decdigits = tdd;
 	i = strlen(cp) + DEC_DIGITS * 2;
 	if ( i > NUMERIC_LOCAL_DMAX)
 		decdigits = (unsigned char *) palloc(i);
-	else
-		decdigits = tdd;
 
 	/* leading padding for digit alignment later */
 	memset(decdigits, 0, DEC_DIGITS);
@@ -2889,7 +2892,7 @@ init_ro_var_from_num(Numeric num, NumericVar *dest)
 	dest->sign = NUMERIC_SIGN(num);
 	dest->dscale = NUMERIC_DSCALE(num);
 	dest->digits = NUMERIC_DIGITS(num);
-	dest->buf = dest->pabp = NULL;
+	dest->buf = dest->ndb;
 }
 
 
@@ -2915,9 +2918,6 @@ set_var_from_var(NumericVar *value, NumericVar *dest)
 	dest->buf = newbuf;
 	dest->digits = newbuf + 1;
 	newbuf[0] = 0;				/* spare digit for rounding */
-
-	if (newbuf != dest->ndb)
-		dest->pabp = newbuf;
 }
 
 
@@ -2936,6 +2936,22 @@ init_var_from_var(NumericVar *value, NumericVar *dest)
 	dest->dscale = value->dscale;
 
 	memcpy(dest->digits, value->digits, value->ndigits * sizeof(NumericDigit));
+}
+
+/*
+ * init_ro_var_from_var() -
+ *
+ *	init one variable from another - they must NOT be the same variable
+ */
+static void
+init_ro_var_from_var(NumericVar *value, NumericVar *dest)
+{
+	dest->ndigits = value->ndigits;
+	dest->weight = value->weight;
+	dest->sign = value->sign;
+	dest->dscale = value->dscale;
+	dest->digits = value->digits;
+	dest->buf = dest->ndb;
 }
 
 
@@ -4228,7 +4244,7 @@ mod_var(NumericVar *var1, NumericVar *var2, NumericVar *result)
 	NumericVar	tmp;
 	int			rscale;
 
-	init_var(&tmp);
+	quick_init_var(&tmp);
 
 	/* ---------
 	 * We do this using the equation
@@ -4347,7 +4363,7 @@ sqrt_var(NumericVar *arg, NumericVar *result, int rscale)
 	result->sign = NUMERIC_POS;
 
 	init_var_from_var(result, &last_val);
-	init_var(&tmp_val);
+	quick_init_var(&tmp_val);
 
 	for (;;)
 	{
@@ -4431,7 +4447,7 @@ exp_var(NumericVar *arg, NumericVar *result, int rscale)
 	{
 		NumericVar	e;
 
-		init_var(&e);
+		quick_init_var(&e);
 		exp_var_internal(&const_one, &e, local_rscale);
 		power_var_int(&e, xintval, &e, local_rscale);
 		mul_var(&e, result, result, local_rscale);
@@ -4467,7 +4483,7 @@ exp_var_internal(NumericVar *arg, NumericVar *result, int rscale)
 	int			ndiv2 = 0;
 	int			local_rscale;
 
-	init_var(&elem);
+	quick_init_var(&elem);
 	init_var_from_var(arg, &x);
 
 	Assert(x.sign == NUMERIC_POS);
@@ -4492,8 +4508,8 @@ exp_var_internal(NumericVar *arg, NumericVar *result, int rscale)
 	 */
 	add_var(&const_one, &x, result);
 	init_var_from_var(&x, &xpow);
-	init_var_from_var(&const_one, &ifac);
-	init_var_from_var(&const_one, &ni);
+	init_ro_var_from_var(&const_one, &ifac);
+	init_ro_var_from_var(&const_one, &ni);
 
 	for (;;)
 	{
@@ -4548,12 +4564,12 @@ ln_var(NumericVar *arg, NumericVar *result, int rscale)
 
 	local_rscale = rscale + 8;
 
-	init_var(&xx);
-	init_var(&ni);
-	init_var(&elem);
+	quick_init_var(&xx);
+	quick_init_var(&ni);
+	quick_init_var(&elem);
 
 	init_var_from_var(arg, &x);
-	init_var_from_var(&const_two, &fact);
+	init_ro_var_from_var(&const_two, &fact);
 
 	/* Reduce input into range 0.9 < x < 1.1 */
 	while (cmp_var(&x, &const_zero_point_nine) <= 0)
@@ -4630,8 +4646,8 @@ log_var(NumericVar *base, NumericVar *num, NumericVar *result)
 	int			rscale;
 	int			local_rscale;
 
-	init_var(&ln_base);
-	init_var(&ln_num);
+	quick_init_var(&ln_base);
+	quick_init_var(&ln_num);
 
 	/* Set scale for ln() calculations --- compare numeric_ln() */
 
@@ -4715,8 +4731,8 @@ power_var(NumericVar *base, NumericVar *exp, NumericVar *result)
 		}
 	}
 
-	init_var(&ln_base);
-	init_var(&ln_num);
+	quick_init_var(&ln_base);
+	quick_init_var(&ln_num);
 
 	/* Set scale for ln() calculation --- need extra accuracy here */
 
@@ -5004,14 +5020,14 @@ add_abs(NumericVar *var1, NumericVar *var2, NumericVar *result)
 	digitbuf_free(result);
 	if (res_buf != tdig)
 	{
-		result->buf = result->pabp = res_buf;
+		result->buf = res_buf;
 		result->digits = res_digits;
 	}
 	else
 	{
 		result->digits = result->buf = result->ndb;
 		memcpy(result->buf, res_buf, (sizeof(NumericDigit) * (res_ndigits +1)));
-		result->digits += res_digits - res_buf;
+		result->digits ++;
 	}
 	result->ndigits = res_ndigits;
 	result->weight = res_weight;
@@ -5101,14 +5117,14 @@ sub_abs(NumericVar *var1, NumericVar *var2, NumericVar *result)
 	digitbuf_free(result);
 	if (res_buf != tdig)
 	{
-		result->buf = result->pabp = res_buf;
+		result->buf = res_buf;
 		result->digits = res_digits;
 	}
 	else
 	{
 		result->digits = result->buf = result->ndb;
 		memcpy(result->buf, res_buf, (sizeof(NumericDigit) * (res_ndigits +1)));
-		result->digits += res_digits - res_buf;
+		result->digits ++;
 	}
 	result->ndigits = res_ndigits;
 	result->weight = res_weight;
