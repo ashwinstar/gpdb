@@ -1452,7 +1452,11 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_KB
 		},
 		&work_mem,
+#ifdef USE_ASSERT_CHECKING      /* allow executor testing with low memory */
+        32768, 2 * BLCKSZ / 1024, MAX_KILOBYTES, NULL, NULL
+#else
 		32768, 8 * BLCKSZ / 1024, MAX_KILOBYTES, NULL, NULL
+#endif
 	},
 
 	{
