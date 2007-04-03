@@ -1627,6 +1627,9 @@ _outTruncateStmt(StringInfo str, TruncateStmt *node)
 
 	WRITE_NODE_FIELD(relations);
 	WRITE_ENUM_FIELD(behavior, DropBehavior);
+	WRITE_NODE_FIELD(relids);
+	WRITE_NODE_FIELD(new_heap_oids);
+	WRITE_NODE_FIELD(new_toast_oids);
 	
 }
 

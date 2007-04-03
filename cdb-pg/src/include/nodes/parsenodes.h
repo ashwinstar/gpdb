@@ -1462,6 +1462,9 @@ typedef struct TruncateStmt
 	NodeTag		type;
 	List	   *relations;		/* relations (RangeVars) to be truncated */
 	DropBehavior behavior;		/* RESTRICT or CASCADE behavior */
+	List	   *relids;
+	List	   *new_heap_oids;
+	List	   *new_toast_oids;
 } TruncateStmt;
 
 /* ----------------------

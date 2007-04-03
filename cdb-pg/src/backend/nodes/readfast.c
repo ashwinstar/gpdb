@@ -509,6 +509,10 @@ _readTruncateStmt(const char ** str)
 
 	READ_NODE_FIELD(relations);
 	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);
+	
+	READ_NODE_FIELD(relids);
+	READ_NODE_FIELD(new_heap_oids);
+	READ_NODE_FIELD(new_toast_oids);
 
 	READ_DONE();
 }

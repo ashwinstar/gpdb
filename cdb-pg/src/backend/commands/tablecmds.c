@@ -19,6 +19,7 @@
 #include "access/heapam.h"
 #include "access/reloptions.h"
 #include "access/xact.h"
+#include "access/transam.h"
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/heap.h"
@@ -508,9 +509,14 @@ DefineRelation_int(CreateStmt *stmt,
 		Oid 		comptypeOid = InvalidOid;
 		Oid			toastIndexId = InvalidOid;
 		MemoryContext oldContext;
+		int 		i;
 	
 		pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
 		pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
+		
+		/* Burn a few oids to keep ahead of the QEs */
+		if (Gp_role == GP_ROLE_DISPATCH)
+			for(i=0;i<100;i++) GetNewObjectId();
 	
 		/*
 		 * Pre-Allocate an OID for the relation, and one for the toast table (just in case).
@@ -888,6 +894,8 @@ ExecuteTruncate(TruncateStmt *stmt)
 {
 	List	   *rels = NIL;
 	List	   *relids = NIL;
+	List	   *new_heap_oids = NIL;
+	List	   *new_toast_oids = NIL;
 	ListCell   *cell;
 
 	/*
@@ -903,6 +911,7 @@ ExecuteTruncate(TruncateStmt *stmt)
 		rels = lappend(rels, rel);
 		relids = lappend_oid(relids, RelationGetRelid(rel));
 	}
+
 
 	/*
 	 * In CASCADE mode, suck in all referencing relations as well.	This
@@ -938,6 +947,7 @@ ExecuteTruncate(TruncateStmt *stmt)
 		}
 	}
 
+
 	/*
 	 * Check foreign key references.  In CASCADE mode, this should be
 	 * unnecessary since we just pulled in all the references; but as a
@@ -960,47 +970,119 @@ ExecuteTruncate(TruncateStmt *stmt)
 	/*
 	 * OK, truncate each table.
 	 */
-	foreach(cell, rels)
+	if (Gp_role != GP_ROLE_EXECUTE)
 	{
-		Relation	rel = (Relation) lfirst(cell);
-		Oid			heap_relid;
-		Oid			toast_relid;
-
-		/*
-		 * Create a new empty storage file for the relation, and assign it as
-		 * the relfilenode value.	The old storage file is scheduled for
-		 * deletion at commit.
-		 */
-		setNewRelfilenode(rel);
-
-		heap_relid = RelationGetRelid(rel);
-		toast_relid = rel->rd_rel->reltoastrelid;
-
-		heap_close(rel, NoLock);
-
-		/*
-		 * The same for the toast table, if any.
-		 */
-		if (OidIsValid(toast_relid))
-		{
-			rel = relation_open(toast_relid, AccessExclusiveLock);
-			setNewRelfilenode(rel);
-			heap_close(rel, NoLock);
-		}
-
-		/*
-		 * Reconstruct the indexes to match, and we're done.
-		 */
-		reindex_relation(heap_relid, true);
-	}
-	
-	
-	if (Gp_role == GP_ROLE_DISPATCH)
-	{
+		int i;
+		/* GPDB: Burn a few oids to help keep us ahead of the QEs */
+		if (Gp_role == GP_ROLE_DISPATCH)
+			for(i=0;i<100;i++) GetNewObjectId();
 		
-		CdbDispatchUtilityStatement((Node *) stmt);
-	}
+		foreach(cell, rels)
+		{
+			Relation	rel = (Relation) lfirst(cell);
+			Oid			heap_relid;
+			Oid			toast_relid;
+			Oid			new_heap_oid = InvalidOid;
+			Oid			new_toast_oid = InvalidOid;
 	
+			/*
+			 * Create a new empty storage file for the relation, and assign it as
+			 * the relfilenode value.	The old storage file is scheduled for
+			 * deletion at commit.
+			 */
+			new_heap_oid = setNewRelfilenode(rel);
+			
+			new_heap_oids = lappend_oid(new_heap_oids, new_heap_oid);
+	
+			heap_relid = RelationGetRelid(rel);			
+			toast_relid = rel->rd_rel->reltoastrelid;
+	
+			heap_close(rel, NoLock);
+	
+			/*
+			 * The same for the toast table, if any.
+			 */
+			if (OidIsValid(toast_relid))
+			{
+				rel = relation_open(toast_relid, AccessExclusiveLock);
+				new_toast_oid = setNewRelfilenode(rel);
+				heap_close(rel, NoLock);
+			}
+			
+			new_toast_oids = lappend_oid(new_toast_oids, new_toast_oid);
+			
+			/*
+			 * Reconstruct the indexes to match, and we're done.
+			 */
+			reindex_relation(heap_relid, true);
+		}
+		
+		
+		if (Gp_role == GP_ROLE_DISPATCH)
+		{
+			stmt->relids = relids;
+			stmt->new_heap_oids = new_heap_oids;
+			stmt->new_toast_oids = new_toast_oids;
+			
+			CdbDispatchUtilityStatement((Node *) stmt);
+		}
+	}
+	else /* role=execute */
+	{
+		ListCell   *cell2;
+		ListCell   *cell3;
+		ListCell   *cell4;
+		int			len = list_length(relids);
+		Assert(len==list_length(stmt->relids));
+		Assert(len==list_length(stmt->new_heap_oids));
+		Assert(len==list_length(stmt->new_toast_oids));
+		
+		cell2 = list_head(stmt->relids); 
+		cell3 = list_head(stmt->new_heap_oids); 
+		cell4 = list_head(stmt->new_toast_oids); 
+		
+		
+	
+		foreach(cell, rels)
+		{
+			Relation	rel = (Relation) lfirst(cell);
+			Oid			heap_relid = lfirst_oid(cell2);
+			Oid			toast_relid;
+			Oid			new_heap_oid = lfirst_oid(cell3);
+			Oid			new_toast_oid = lfirst_oid(cell4);
+	
+			/*
+			 * Create a new empty storage file for the relation, and assign it as
+			 * the relfilenode value.	The old storage file is scheduled for
+			 * deletion at commit.
+			 */
+			setNewRelfilenodeToOid(rel,new_heap_oid);
+	
+			heap_relid = RelationGetRelid(rel);			
+			toast_relid = rel->rd_rel->reltoastrelid;
+	
+			heap_close(rel, NoLock);
+	
+			/*
+			 * The same for the toast table, if any.
+			 */
+			if (OidIsValid(toast_relid))
+			{
+				rel = relation_open(toast_relid, AccessExclusiveLock);
+				setNewRelfilenodeToOid(rel, new_toast_oid);
+				heap_close(rel, NoLock);
+			}
+			
+			/*
+			 * Reconstruct the indexes to match, and we're done.
+			 */
+			reindex_relation(heap_relid, true);
+			
+			cell2 = lnext(cell2);
+			cell3 = lnext(cell3);
+			cell4 = lnext(cell4);
+		}
+	}
 }
 
 /*
@@ -2392,6 +2474,11 @@ ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOi
 	ListCell	*ltab;
 	int			ocount = 0;
 	TableOidInfo * oids = NULL;
+	int			i;
+	
+	/* Burn a few oids to keep ahead of the QEs */
+	if (Gp_role == GP_ROLE_DISPATCH)
+			for(i=0;i<100;i++) GetNewObjectId();
 
 	/* Phase 1: preliminary examination of commands, create work queue */
 	foreach(lcmd, cmds)
