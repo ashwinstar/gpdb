@@ -991,7 +991,12 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 	
 	nH = floor((memquota - nB*zB)/zH);
 	
-	if ( nB > INT_MAX || nH > INT_MAX )
+    /* Allocate at least a few hash entries regardless of memquota. */
+    nH = Max(nH, NGROUP_PER_BUCKET);
+
+	nK = ceil(nH/NGROUP_PER_BUCKET);
+
+	if ( nB > INT_MAX || nH > INT_MAX || nK > INT_MAX )
 	{
 		if ( force )
 		{
@@ -1006,11 +1011,6 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 		}
 	}
 	
-	nK = ceil(nH/NGROUP_PER_BUCKET);
-	
-	Assert( memquota >= floor(nH*zH + nB*zB) );
-	Assert( nK<INT_MAX && nH<INT_MAX && nB<INT_MAX );
-			
     if (out_hats)
     {
         out_hats->nbuckets = (int)nK;
