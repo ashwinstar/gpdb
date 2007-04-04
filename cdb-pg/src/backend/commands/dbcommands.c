@@ -772,7 +772,7 @@ dropdb(const char *dbname, bool missing_ok)
 
 		initStringInfo(&buffer);
 
-		appendStringInfo(&buffer, "DROP DATABASE \"%s\"", dbname);
+		appendStringInfo(&buffer, "DROP DATABASE IF EXISTS \"%s\"", dbname);
 
 
 
