@@ -233,11 +233,15 @@ RangeVarGetCreationNamespace(const RangeVar *newRelation)
 	if (newRelation->istemp)
 	{
 		/* TEMP tables are created in our backend-local temp namespace */
-		if (Gp_role != GP_ROLE_EXECUTE)
-		if (newRelation->schemaname)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				  errmsg("temporary tables may not specify a schema name")));
+		if (Gp_role != GP_ROLE_EXECUTE && newRelation->schemaname)
+		{
+			char		namespaceName[NAMEDATALEN];
+			snprintf(namespaceName, sizeof(namespaceName), "pg_temp_%d", gp_session_id);
+			if (strcmp(newRelation->schemaname,namespaceName)!=0)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					  errmsg("temporary tables may not specify a schema name")));
+		}
 		/* Initialize temp namespace if first time through */
 		if (!OidIsValid(myTempNamespace))
 			InitTempTableNamespace();
