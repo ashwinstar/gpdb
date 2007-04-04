@@ -872,7 +872,6 @@ GET_PG_PID_ACTIVE () {
 				if [ x"" == x"$PG_LOCK_NETSTAT" ] && [ $PG_LOCK_TMP -eq 0 ];then
 					PID=0
 					LOG_MSG "[INFO]:-No socket connection or lock file $PG_LOCK_FILE found for port=${PORT}"
-					EXIT_STATUS=1
 				else
 				#Now check the failure combinations
 					if [ $PG_LOCK_TMP -eq 0 ] && [ x"" != x"$PG_LOCK_NETSTAT" ];then
