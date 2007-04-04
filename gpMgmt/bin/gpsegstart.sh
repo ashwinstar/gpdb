@@ -219,6 +219,12 @@ while getopts ":v'?'" opt
 	esac
 done
 #Now process supplied call parameters
+#Setting APP_PATH
+if [ x"" != x"$MPPHOME" ];then
+        APP_PATH=${MPPHOME}/bin
+else
+        APP_PATH=${BIZHOME}/bin
+fi
 PARENT_PID=$1;shift		#PID of gpstart.sh process calling this script
 CHK_CALL
 QE_SWITCH_LOG=$1;shift		#0=No switch segment log 1=switch segment log
