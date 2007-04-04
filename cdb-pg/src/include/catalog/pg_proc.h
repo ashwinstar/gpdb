@@ -3974,6 +3974,9 @@ DATA(insert OID = 6014 (  float8_regr_amalg	   PGNSP PGUID 12 f f t f i 2 1022 f
 DATA(insert OID = 6021 (  int8			   PGNSP PGUID 12 f f t f i 1 20 f "27" _null_ _null_ _null_	tidtoi8 - _null_ ));
 DESCR("convert tid to int8");
 #define CDB_PROC_TIDTOI8    6021
+DATA(insert OID = 6022 (  pg_highest_oid		   PGNSP PGUID 12 f f t f v 0 26 f "" _null_ _null_ _null_ pg_highest_oid - _null_ ));
+DESCR("Highest Oid used so far");
+
 
 
 /* GIN array support */

@@ -56,6 +56,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
 #include "cdb/cdbrelsize.h"
+#include "cdb/cdboidsync.h"
 
 /* non-export function prototypes */
 static void CheckPredicate(Expr *predicate);
@@ -554,6 +555,8 @@ DefineIndex(RangeVar *heapRelation,
 		{
 			Relation pg_class;
 			Relation pg_type;
+			
+			cdb_sync_oid_to_segments();
 			
 			pg_class = heap_open(RelationRelationId, RowExclusiveLock);
 			

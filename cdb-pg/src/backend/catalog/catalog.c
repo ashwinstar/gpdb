@@ -470,7 +470,10 @@ GetNewRelFileNode(Oid reltablespace, bool relisshared, Relation pg_class)
 		if (pg_class)
 			rnode.relNode = GetNewOid(pg_class);
 		else
+		{	
 			rnode.relNode = GetNewObjectId();
+			elog(DEBUG1,"GetNewRelFileNode without pg_class.  newoid = %d",rnode.relNode);
+		}
 
 		/* Check for existing file of same name */
 		rpath = relpath(rnode);
@@ -581,6 +584,7 @@ CheckNewRelFileNodeIsOk(Oid newOid, Oid reltablespace, bool relisshared, Relatio
 	if (collides && !relisshared)
 		elog(ERROR,"Tried to re-use a relfilenode already in use.  refilenode = %d", newOid );	
 
+	while(GetNewObjectId() < newOid);
 
 	return !collides;
 }

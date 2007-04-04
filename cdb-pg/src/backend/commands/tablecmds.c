@@ -77,6 +77,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
 #include "cdb/cdbrelsize.h"
+#include "cdb/cdboidsync.h"
 
 
 
@@ -509,14 +510,11 @@ DefineRelation_int(CreateStmt *stmt,
 		Oid 		comptypeOid = InvalidOid;
 		Oid			toastIndexId = InvalidOid;
 		MemoryContext oldContext;
-		int 		i;
 	
 		pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
 		pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
 		
-		/* Burn a few oids to keep ahead of the QEs */
-		if (Gp_role == GP_ROLE_DISPATCH)
-			for(i=0;i<100;i++) GetNewObjectId();
+		cdb_sync_oid_to_segments();
 	
 		/*
 		 * Pre-Allocate an OID for the relation, and one for the toast table (just in case).
@@ -972,10 +970,7 @@ ExecuteTruncate(TruncateStmt *stmt)
 	 */
 	if (Gp_role != GP_ROLE_EXECUTE)
 	{
-		int i;
-		/* GPDB: Burn a few oids to help keep us ahead of the QEs */
-		if (Gp_role == GP_ROLE_DISPATCH)
-			for(i=0;i<100;i++) GetNewObjectId();
+		cdb_sync_oid_to_segments();
 		
 		foreach(cell, rels)
 		{
@@ -2474,11 +2469,8 @@ ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOi
 	ListCell	*ltab;
 	int			ocount = 0;
 	TableOidInfo * oids = NULL;
-	int			i;
 	
-	/* Burn a few oids to keep ahead of the QEs */
-	if (Gp_role == GP_ROLE_DISPATCH)
-			for(i=0;i<100;i++) GetNewObjectId();
+	cdb_sync_oid_to_segments();
 
 	/* Phase 1: preliminary examination of commands, create work queue */
 	foreach(lcmd, cmds)

@@ -33,7 +33,7 @@ OBJS = cdbanalyze.o \
 	   cdbsetop.o cdbsrlz.o cdbsubplan.o cdbsubselect.o \
 	   cdbtm.o \
 	   cdbutil.o cdbrelsize.o \
-	   cdbvars.o
+	   cdbvars.o cdboidsync.o
 
 ifeq ($(PORTNAME),cygwin)
 .LIBPATTERNS := $(filter-out %.so,$(.LIBPATTERNS))

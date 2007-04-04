@@ -40,6 +40,7 @@
 #include "utils/relcache.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp.h"
+#include "cdb/cdboidsync.h"
 
 
 /*
@@ -618,6 +619,7 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 		Relation	pg_class_desc;
 		Relation	pg_type_desc;
 
+		cdb_sync_oid_to_segments();
 	
 		pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
 		pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);

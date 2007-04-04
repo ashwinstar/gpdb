@@ -71,6 +71,7 @@
 #include "cdb/cdbmotion.h"
 #include "cdb/cdbtm.h"
 #include "cdb/cdbgang.h"
+#include "cdb/cdboidsync.h"
 
 extern bool isFtsReadOnlySet(void);
 extern void FtsEvaluateTransientState(void);
@@ -225,6 +226,8 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		{
 			Relation	pg_class_desc;
 			Relation	pg_type_desc;
+			
+			cdb_sync_oid_to_segments();
 
 			Oid reltablespace = GetDefaultTablespace();
 		
