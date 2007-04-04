@@ -1346,7 +1346,12 @@ DropOwnedObjects(DropOwnedStmt *stmt)
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("permission denied to drop objects")));
 	}
-
+	
+	if (Gp_role == GP_ROLE_DISPATCH)
+    {
+        CdbDispatchUtilityStatement((Node *) stmt);
+    }
+    
 	/* Ok, do it */
 	shdepDropOwned(role_ids, stmt->behavior);
 }
@@ -1381,6 +1386,11 @@ ReassignOwnedObjects(ReassignOwnedStmt *stmt)
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to reassign objects")));
+				 
+	if (Gp_role == GP_ROLE_DISPATCH)
+    {
+        CdbDispatchUtilityStatement((Node *) stmt);
+    }
 
 	/* Ok, do it */
 	shdepReassignOwned(role_ids, newrole);

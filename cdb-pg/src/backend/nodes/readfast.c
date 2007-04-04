@@ -502,6 +502,28 @@ _readDropPropertyStmt(const char ** str)
 	READ_DONE();
 }
 
+static DropOwnedStmt *
+_readDropOwnedStmt(const char ** str)
+{
+	READ_LOCALS(DropOwnedStmt);
+
+	READ_NODE_FIELD(roles);
+	READ_ENUM_FIELD(behavior, DropBehavior);
+	
+	READ_DONE();
+}
+
+static ReassignOwnedStmt * 
+_readReassignOwnedStmt(const char ** str)
+{
+	READ_LOCALS(ReassignOwnedStmt);
+
+	READ_NODE_FIELD(roles);
+	READ_STRING_FIELD(newrole);
+	
+	READ_DONE();
+}
+
 static TruncateStmt *
 _readTruncateStmt(const char ** str)
 {
@@ -2990,6 +3012,14 @@ readNodeBinary(const char ** str)
 			case T_DropPropertyStmt:
 				return_value = _readDropPropertyStmt(str);
 				break;
+				
+			case T_DropOwnedStmt:
+				return_value = _readDropOwnedStmt(str);
+				break;
+			case T_ReassignOwnedStmt:
+				return_value = _readReassignOwnedStmt(str);
+				break;
+				
 			case T_TruncateStmt:
 				return_value = _readTruncateStmt(str);
 				break;

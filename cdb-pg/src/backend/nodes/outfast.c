@@ -1621,6 +1621,25 @@ _outDropPropertyStmt(StringInfo str, DropPropertyStmt *node)
 }
 
 static void
+_outDropOwnedStmt(StringInfo str, DropOwnedStmt *node)
+{
+	WRITE_NODE_TYPE("DROPOWNEDSTMT");
+
+	WRITE_NODE_FIELD(roles);
+	WRITE_ENUM_FIELD(behavior, DropBehavior);
+}
+
+static void 
+_outReassignOwnedStmt(StringInfo str, ReassignOwnedStmt *node)
+{
+	WRITE_NODE_TYPE("REASSIGNOWNEDSTMT");
+
+	WRITE_NODE_FIELD(roles);
+	WRITE_STRING_FIELD(newrole)
+	
+}
+
+static void
 _outTruncateStmt(StringInfo str, TruncateStmt *node)
 {
 	WRITE_NODE_TYPE("TRUNCATESTMT");
@@ -2994,6 +3013,14 @@ _outNode(StringInfo str, void *obj)
 			case T_DropPropertyStmt:
 				_outDropPropertyStmt(str, obj);
 				break;
+				
+			case T_DropOwnedStmt:
+				_outDropOwnedStmt(str, obj);
+				break;
+			case T_ReassignOwnedStmt:
+				_outReassignOwnedStmt(str, obj);
+				break;
+				
 			case T_TruncateStmt:
 				_outTruncateStmt(str, obj);
 				break;
