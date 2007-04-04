@@ -52,6 +52,7 @@
 #include "utils/syscache.h"
 
 #include "cdb/cdbdisp.h"
+#include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
@@ -588,7 +589,26 @@ DefineIndex(RangeVar *heapRelation,
          * Start a global transaction and reconfigure cluster if needed.
          * Wait for QEs to finish.  Exit via ereport(ERROR,...) if error.
          */
-        CdbDispatchUtilityStatement((Node *)stmt);
+        if (stmt->concurrent)
+        {
+        	CdbDispatchResults *primaryResults;
+			CdbDispatchResults *mirrorResults;
+			CdbDispatchCmdThreads *dispatchThreads;
+        	/* Dispatch the command to all primary and mirror segdbs.
+	         * Doesn't start a global transaction.
+	         * Doesn't wait for the QEs to finish execution.
+	         */
+	        cdbdisp_dispatchUtilityStatement((Node *)stmt,
+	                                         true,      /* cancelOnError */
+	                                         false,      /* startTransaction */
+	                                         &primaryResults,
+	                                         &mirrorResults,
+											 &dispatchThreads);
+			/* Wait for all QEs to finish.	Throw up if error. */
+			cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
+        }
+        else
+        	CdbDispatchUtilityStatement((Node *)stmt);
 	}
 
 	/* 
