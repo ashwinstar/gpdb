@@ -2268,6 +2268,11 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 				if (!read_only)
 					ActiveSnapshot->curcid = GetCurrentCommandId();
 			}
+
+
+			/*
+			 * UNDONE: Despite all the work above... we ignore the ActiveSnapshot below!
+			 */
 			
 			if (Gp_role == GP_ROLE_EXECUTE)
 			{
@@ -2292,7 +2297,8 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 			}
 			else
 			{
-				serializedSnapshot = serializeSnapshot(&serializedSnapshotlen, txnOptions);
+				serializedSnapshot = 
+					qdSerializeDtxContextInfo(&serializedSnapshotlen, true /* wantSnapshot */, txnOptions);
 				
 			}
 	

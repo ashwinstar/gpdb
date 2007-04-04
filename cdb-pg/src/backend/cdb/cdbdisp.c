@@ -550,15 +550,15 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 					pParms->queryParms.serializedSliceInfolen = pQueryParms->serializedSliceInfolen;
 				}
 				
-				if (pQueryParms->serializedSnapshot == NULL || pQueryParms->serializedSnapshotlen == 0)
+				if (pQueryParms->serializedDtxContextInfo == NULL || pQueryParms->serializedDtxContextInfolen == 0)
 				{
-					pParms->queryParms.serializedSnapshot = NULL;
-					pParms->queryParms.serializedSnapshotlen = 0;
+					pParms->queryParms.serializedDtxContextInfo = NULL;
+					pParms->queryParms.serializedDtxContextInfolen = 0;
 				}
 				else
 				{
-					pParms->queryParms.serializedSnapshot = pQueryParms->serializedSnapshot;
-					pParms->queryParms.serializedSnapshotlen = pQueryParms->serializedSnapshotlen;
+					pParms->queryParms.serializedDtxContextInfo = pQueryParms->serializedDtxContextInfo;
+					pParms->queryParms.serializedDtxContextInfolen = pQueryParms->serializedDtxContextInfolen;
 				}
 			}
 			break;
@@ -1118,15 +1118,9 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 		}
 	}
 
-	/* Serialize a version of our snapshot */
-	if (withSnapshot)
-		queryParms.serializedSnapshot = 
-				serializeSnapshot(&queryParms.serializedSnapshotlen, generateTxnOptions(startTransaction));
-	else
-	{
-		queryParms.serializedSnapshot = NULL;
-		queryParms.serializedSnapshotlen = 0;
-	}
+	/* Serialize a version of our DTX Context Info */
+	queryParms.serializedDtxContextInfo = 
+			qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, withSnapshot, generateTxnOptions(startTransaction));
 
 	/*
      * Dispatch the command.
@@ -1376,8 +1370,8 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 	}
 
 	/* serialized a version of our snapshot */
-	queryParms.serializedSnapshot = 
-			serializeSnapshot(&queryParms.serializedSnapshotlen, generateTxnOptions(startTransaction));
+	queryParms.serializedDtxContextInfo = 
+			qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, true /* withSnapshot */, generateTxnOptions(startTransaction));
 	
 	readerGangs = getAllReaderGangs();
 	
@@ -1450,7 +1444,7 @@ thread_DispatchCommand(void *arg)
 						pQueryParms->serializedPlantree, pQueryParms->serializedPlantreelen, 
 						pQueryParms->serializedParams, pQueryParms->serializedParamslen, 
 						pQueryParms->serializedSliceInfo, pQueryParms->serializedSliceInfolen, 
-						pQueryParms->serializedSnapshot, pQueryParms->serializedSnapshotlen, 
+						pQueryParms->serializedDtxContextInfo, pQueryParms->serializedDtxContextInfolen, 
 						0 /* unused flags*/, pParms->cmdID, pParms->localSlice, 
 						GetSessionUserId(), superuser_arg(GetSessionUserId()),
 						GetOuterUserId(), superuser_arg(GetOuterUserId()), GetUserId(),
@@ -2863,8 +2857,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 * to decide if the special circumstances exist which allow us to
 	 * dispatch without starting a global xact.
 	 */
-	queryParms.serializedSnapshot = 
-			serializeSnapshot(&queryParms.serializedSnapshotlen, generateTxnOptions(planRequiresTxn));
+	queryParms.serializedDtxContextInfo = 
+			qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, true /* wantSnapshot */, generateTxnOptions(planRequiresTxn));
 	
 	cdb_total_plans++;
 	cdb_total_slices += nSlices;
@@ -3154,9 +3148,9 @@ CdbDispatchUtilityStatement(struct Node *stmt)
 
 
 char*
-serializeSnapshot(int * size, int txnOptions)
+qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions)
 {
-	char *serializedSnapshot;
+	char *serializedDtxContextInfo;
 
 	DistributedSnapshot distributedSnapshot;
 	Snapshot snapshot;
@@ -3198,50 +3192,50 @@ serializeSnapshot(int * size, int txnOptions)
 	 */
 	 
 	*size = 0;
+	distributedSnapshot = NULL;
+	snapshot = NULL;
 
+	if (wantSnapshot)
+	{
 	
-	if (LatestDistributedSnapshot == NULL &&
-		SerializableDistributedSnapshot == NULL &&
-		!IsAbortInProgress() )  		
-	{
-		/* unfortunately, the dtm issues a select for prepared xacts at the
-		 * beginning and this is before a snapshot has been set up.  so we need
-		 * one for that but not for when we dont have a valid XID.
-		 *
-		 * but we CANT do this if an ABORT is in progress... instead we'll send
-		 * a NONE since the qExecs dont need the information to do a ROLLBACK.
-		 *
-		 */
-		if (fullDtmTrace)
-			elog(LOG,"serializeSnapshot calling GetTransactionSnapshot to make snapshot");
+		if (LatestDistributedSnapshot == NULL &&
+			SerializableDistributedSnapshot == NULL &&
+			!IsAbortInProgress() )  		
+		{
+			/* unfortunately, the dtm issues a select for prepared xacts at the
+			 * beginning and this is before a snapshot has been set up.  so we need
+			 * one for that but not for when we dont have a valid XID.
+			 *
+			 * but we CANT do this if an ABORT is in progress... instead we'll send
+			 * a NONE since the qExecs dont need the information to do a ROLLBACK.
+			 *
+			 */
+			if (fullDtmTrace)
+				elog(LOG,"qdSerializeDtxContextInfo calling GetTransactionSnapshot to make snapshot");
+			
+			GetTransactionSnapshot();
+		}
 		
-		GetTransactionSnapshot();
-	}
-	
-	if (LatestDistributedSnapshot != NULL)
-	{
-		if (fullDtmTrace)
-			elog(LOG,"serializeSnapshot using LatestDistributedSnapshot");
-		
-		distributedSnapshot = LatestDistributedSnapshot;
+		if (LatestDistributedSnapshot != NULL)
+		{
+			if (fullDtmTrace)
+				elog(LOG,"qdSerializeDtxContextInfo using LatestDistributedSnapshot");
+			
+			distributedSnapshot = LatestDistributedSnapshot;
 
-		Assert(LatestSnapshot != NULL);
-		snapshot = LatestSnapshot;
-	}
-	else if (SerializableDistributedSnapshot != NULL)
-	{
-		if (fullDtmTrace)
-			elog(LOG,"serializeSnapshot using SerializableDistributedSnapshot");
-		
-		distributedSnapshot = SerializableDistributedSnapshot;
+			Assert(LatestSnapshot != NULL);
+			snapshot = LatestSnapshot;
+		}
+		else if (SerializableDistributedSnapshot != NULL)
+		{
+			if (fullDtmTrace)
+				elog(LOG,"qdSerializeDtxContextInfo using SerializableDistributedSnapshot");
+			
+			distributedSnapshot = SerializableDistributedSnapshot;
 
-		Assert(SerializableSnapshot != NULL);
-		snapshot = SerializableSnapshot;
-	}
-	else
-	{
-		distributedSnapshot = NULL;
-		snapshot = NULL;
+			Assert(SerializableSnapshot != NULL);
+			snapshot = SerializableSnapshot;
+		}
 	}
 
 	
@@ -3268,14 +3262,14 @@ serializeSnapshot(int * size, int txnOptions)
 	Assert (serializedLen > 0);
 	
 	*size = serializedLen;
-	serializedSnapshot = palloc(*size);
+	serializedDtxContextInfo = palloc(*size);
 
-	serializeDtxContextInfo(serializedSnapshot, pDtxContextInfo); 
+	serializeDtxContextInfo(serializedDtxContextInfo, pDtxContextInfo); 
 
 	if (fullDtmTrace)
-		elog(LOG,"serializeSnapshot returning a snapshot of %d bytes (ptr is %s)",
-		     *size, (serializedSnapshot != NULL ? "Non-NULL" : "NULL"));
-	return serializedSnapshot;
+		elog(LOG,"qdSerializeDtxContextInfo returning a snapshot of %d bytes (ptr is %s)",
+		     *size, (serializedDtxContextInfo != NULL ? "Non-NULL" : "NULL"));
+	return serializedDtxContextInfo;
 }
 
 /* generateTxnOptions:
@@ -3366,11 +3360,11 @@ cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads)
 					pQueryParms->strCommand = NULL;
 				}
 				
-				if (pQueryParms->serializedSnapshot)
+				if (pQueryParms->serializedDtxContextInfo)
 				{
 					if (i==0)
-						pfree(pQueryParms->serializedSnapshot);
-					pQueryParms->serializedSnapshot = NULL;
+						pfree(pQueryParms->serializedDtxContextInfo);
+					pQueryParms->serializedDtxContextInfo = NULL;
 				}
 				
 				if (pQueryParms->serializedSliceInfo)

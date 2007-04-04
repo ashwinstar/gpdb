@@ -53,10 +53,10 @@ typedef struct DispatchCommandQueryParms
 	int			serializedSliceInfolen;
 	
 	/*
-	 * serialized snapshot string
+	 * serialized DTX context string
 	 */
-	char		*serializedSnapshot;
-	int			serializedSnapshotlen;
+	char		*serializedDtxContextInfo;
+	int			serializedDtxContextInfolen;
 
 } DispatchCommandQueryParms;
 
@@ -416,9 +416,9 @@ void
 cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads);
 
 /* used to take the current Transaction Snapshot and serialized a version of it
- * into the static variable serializedSnapshot */
+ * into the static variable serializedDtxContextInfo */
 char *
-serializeSnapshot(int * size, int txnOptions);
+qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions);
 
 
 /* this is used for dire cleanup emergencies (in portalmem.c) */
