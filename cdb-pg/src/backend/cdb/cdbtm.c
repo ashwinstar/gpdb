@@ -601,6 +601,8 @@ doNotifyingCommitted(void)
 	else
 	{
 		currentGxact->state = DTX_STATE_NOTIFY_COMMITTED_RETRY_NEEDED;
+		if (fullDtmTrace)
+			elog(LOG, "doNotifyingCommitted setting currentGxact to NULL for gid = %s (index = %d)", currentGxact->gid, currentGxact->debugIndex);
 		currentGxact = NULL;	// Let go so another process can retry.
 	}
 	
@@ -645,6 +647,8 @@ doRetryingNotifyCommitted(void)
 	else
 	{
 		currentGxact->state = DTX_STATE_NOTIFY_COMMITTED_RETRY_NEEDED;
+		if (fullDtmTrace)
+			elog(LOG, "doRetryingNotifyCommitted setting currentGxact to NULL for gid = %s (index = %d)", currentGxact->gid, currentGxact->debugIndex);
 		currentGxact = NULL;	// Let go so another process can retry.
 	}
 	
@@ -707,6 +711,8 @@ doNotifyingAborted(bool noPreparesIssued)
 	{
 		// UNDONE: Should we enter this state when no prepares were issued???
 		currentGxact->state = DTX_STATE_NOTIFY_ABORTED_RETRY_NEEDED;
+		if (fullDtmTrace)
+			elog(LOG, "doNotifyingAborted setting currentGxact to NULL for gid = %s (index = %d)", currentGxact->gid, currentGxact->debugIndex);
 		currentGxact = NULL;	// Let go so another process can retry.
 	}
 	
@@ -759,6 +765,8 @@ doRetryingNotifyAborted(void)
 	else
 	{
 		currentGxact->state = DTX_STATE_NOTIFY_COMMITTED_RETRY_NEEDED;
+		if (fullDtmTrace)
+			elog(LOG, "doRetryingNotifyAborted setting currentGxact to NULL for gid = %s (index = %d)", currentGxact->gid, currentGxact->debugIndex);
 		currentGxact = NULL;	// Let go so another process can retry.
 	}
 	
@@ -1504,9 +1512,6 @@ initGxact(TMGXACT * gxact)
     gxact->xminDistributedSnapshot = 0;
 
 	gxact->participationSummary = DTX_PARTICIPATION_SUMMARY_NONE;
-	
-	if (fullDtmTrace)
-		elog(LOG,"initGxact gid = %s, gxid = %u (index = %d)", gxact->gid, gxact->gxid, gxact->debugIndex);
 }
 
 // UNDONE: Call this from where regular snapshots get created...
@@ -1519,7 +1524,7 @@ createDtxSnapshot(DistributedSnapshot distributedSnapshot)
 	DtxState      		state;
 	DistributedTransactionId 	indoubtxid;
 
-	if(currentGxact != NULL)
+	if(currentGxact == NULL)
 	{
 		if (fullDtmTrace)
 			elog(LOG,"createDtxSnapshot found currentGxact is NULL");
@@ -1605,7 +1610,7 @@ createDtxSnapshot(DistributedSnapshot distributedSnapshot)
 		Assert(distributedSnapshot->xcnt < 100);
 
 		distributedSnapshot->xip[distributedSnapshot->xcnt++] = indoubtxid;
-		elog(LOG,"createDtx added gxid = %u to distributed snapshot", indoubtxid);
+		elog(LOG,"createDtxSnapshot added gxid = %u to distributed snapshot", indoubtxid);
 	}
 	
 	if (distributedSnapshot->xmin == UINT_MAX)
@@ -1620,7 +1625,7 @@ createDtxSnapshot(DistributedSnapshot distributedSnapshot)
 	}
 
 	if (fullDtmTrace)
-		elog(LOG,"createDtx distributed snapshot has xmin = %u, xcnt = %u, xmax = %u.", 
+		elog(LOG,"createDtxSnapshot distributed snapshot has xmin = %u, xcnt = %u, xmax = %u.", 
 			 distributedSnapshot->xmin, distributedSnapshot->xcnt, distributedSnapshot->xmax);
 
 
@@ -1673,6 +1678,12 @@ createDtx(TransactionId *pLocalXid)
 	releaseTmLock();
 
 	currentGxact = gxact;
+
+	if (fullDtmTrace)
+		elog(LOG,"createDtx created new distributed transaction gid = %s, gxid = %u.", 
+			 currentGxact->gid, currentGxact->gxid);
+
+
 }
 
 
@@ -1953,6 +1964,8 @@ recoverTM(void)
 	if (isFtsReadOnlySet())
 	{
 		elog((fullDtmTrace ? LOG : DEBUG3), "FTS is Read Only.  Defer DTM recovery till later.");
+		if (currentGxact != NULL && fullDtmTrace)
+			elog(LOG, "recoverTM setting currentGxact to NULL for gid = %s (index = %d)", currentGxact->gid, currentGxact->debugIndex);
 		currentGxact = NULL;
 		return;
 	}
