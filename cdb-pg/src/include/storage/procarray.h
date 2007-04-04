@@ -40,4 +40,6 @@ extern void XidCacheRemoveRunningXids(TransactionId xid,
 						  
 extern PGPROC *FindProcByGpSessionId(long gp_session_id);
 
+
+
 #endif   /* PROCARRAY_H */

@@ -555,8 +555,7 @@ InitPostgres(const char *dbname, const char *username)
 		 * Entry db singleton QE is a user of the shared snapshot -- not a creator.
 		 * The lookup will occur once the distributed snapshot has been received.
 		 */	
-		elog(LOG, "InitPostgres initializing entry db singleton QE -- is QD's slot among %s ???",
-		     SharedSnapshotDump());
+		lookupSharedSnaphot("Entry DB Singleton", "Query Dispatcher", gp_session_id);
     }
     else if (Gp_role == GP_ROLE_EXECUTE)
 	{

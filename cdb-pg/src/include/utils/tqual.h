@@ -77,22 +77,16 @@ extern DLLIMPORT Snapshot SerializableSnapshot;
 extern DLLIMPORT Snapshot LatestSnapshot;
 extern DLLIMPORT Snapshot ActiveSnapshot;
 
+extern DLLIMPORT DistributedSnapshot SerializableDistributedSnapshot;
+extern DLLIMPORT DistributedSnapshot LatestDistributedSnapshot;
+
 extern TransactionId TransactionXmin;
 extern TransactionId RecentXmin;
 extern TransactionId RecentGlobalXmin;
 
-// extern DLLIMPORT Snapshot QDSentSnapshot;
-// extern TransactionId QDSentXID;
-
 extern DtxContext DistributedTransactionContext;
 
-extern DLLIMPORT DistributedSnapshot QDSentDistributedSnapshot;
-extern DistributedTransactionId QDSentDistributedXid;
-extern DistributedTransactionId QDSentXminAllDistributedSnapshots;
-extern int QDSentSharedLocalSnapshotSlotId;
-extern CommandId QDSentDistributedCommandId;
-
-extern int QDSentTxnOptions;
+extern DtxContextInfo QEDtxContextInfo;
 
 /* MPP Shared Snapshot */
 typedef struct SharedSnapshotSlot
@@ -197,6 +191,9 @@ extern void FreeSnapshot(Snapshot snapshot);
 extern void FreeXactSnapshot(void);
 
 /* in procarray.c; declared here to avoid including tqual.h in procarray.h: */
-extern Snapshot GetSnapshotData(Snapshot snapshot, bool serializable);
+extern Snapshot GetSnapshotData(Snapshot snapshot, bool serializable,
+ 			                    DistributedSnapshot *distributedSnapshot,
+ 			                    DistributedSnapshotData *distributedSnapshotData);
+extern void updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot);
 
 #endif   /* TQUAL_H */

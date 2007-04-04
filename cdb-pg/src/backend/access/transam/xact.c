@@ -594,6 +594,12 @@ CommandCounterIncrement(void)
 		SerializableSnapshot->curcid = currentCommandId;
 	if (LatestSnapshot)
 		LatestSnapshot->curcid = currentCommandId;
+	
+	/* Also propagate to our distributed ones, too. */
+	if (SerializableDistributedSnapshot)
+		SerializableDistributedSnapshot->curcid = currentCommandId;
+	if (LatestDistributedSnapshot)
+		LatestDistributedSnapshot->curcid = currentCommandId;
 
 	/*
 	 * make cache changes visible to me.
@@ -1509,7 +1515,8 @@ SetSharedTransactionId(void)
 	case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
 	case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
 		if (fullDtmTrace)
-			elog(LOG, "qExec WRITER setting shared xid to: %u (QDSentDistributedXid %u)", TopTransactionStateData.transactionId, QDSentDistributedXid);
+			elog(LOG, "qExec WRITER setting shared xid to: %u (distributedXid %u)", 
+			     TopTransactionStateData.transactionId, QEDtxContextInfo.distributedXid);
 		SharedLocalSnapshotSlot->xid = TopTransactionStateData.transactionId;
 		break;
 		
@@ -1519,7 +1526,8 @@ SetSharedTransactionId(void)
 		currentCommandId = SharedLocalSnapshotSlot->snapshot.curcid;
 
 		if (fullDtmTrace)
-			elog(LOG, "qExec READER setting local xid to: %u (QDSentDistributedXid %u)", TopTransactionStateData.transactionId, QDSentDistributedXid);
+			elog(LOG, "qExec READER setting local xid to: %u (distributedXid %u)", 
+			     TopTransactionStateData.transactionId, QEDtxContextInfo.distributedXid);
 		break;
 
 	default:
@@ -1764,34 +1772,50 @@ StartTransaction(void)
 			/*
 			 * MPP: we're a QE Writer.
 			 */
-			 
+			if (QEDtxContextInfo.distributedXid != InvalidDistributedTransactionId)
+			{
+				/*
+				 * Use local xid that is mapped to distributed xid.
+				 */
+				AllocOrGetLocalXidForDistributedTransaction(QEDtxContextInfo.distributedXid,&s->transactionId);
+				
+			  	/*
+			 	 * now() and statement_timestamp() should be the same time
+			  	 */
+			  	xactStartTimestamp = stmtStartTimestamp;
+
+				if (fullDtmTrace)
+					elog(LOG, "qExec writer setting distributedXid: %d ready: false", QEDtxContextInfo.distributedXid);
+
+				if (SharedLocalSnapshotSlot != NULL)
+				{
+					SharedLocalSnapshotSlot->xid = s->transactionId;
+					SharedLocalSnapshotSlot->startTimestamp = xactStartTimestamp;
+					SharedLocalSnapshotSlot->QDxid = QEDtxContextInfo.distributedXid;
+
+					SharedLocalSnapshotSlot->pid = MyProc->pid;
+
+					SharedLocalSnapshotSlot->ready = false;
+				}
+			}
+			else
+			{
+				/*
+				 * Not tied to distributed transaction id, but still coordinated
+				 * as a distributed transaction with the 2 phase protocol.
+				 *
+				 * Generate a new transaction id
+				 */
+				s->transactionId = GetNewTransactionId(false, true);
+			}
+
 			/*
-			 * Use local xid that is mapped to distributed xid.
+			 * Common.
 			 */
-			AllocOrGetLocalXidForDistributedTransaction(QDSentDistributedXid,&s->transactionId);
-			
 			XactLockTableInsert(s->transactionId);
 			
 			PG_TRACE1(transaction__start, s->transactionId);
 
-		  	/*
-		 	 * now() and statement_timestamp() should be the same time
-		  	 */
-		  	xactStartTimestamp = stmtStartTimestamp;
-
-			if (fullDtmTrace)
-				elog(LOG, "qExec writer setting QDSentDistributedXid: %d ready: false", QDSentDistributedXid);
-
-			if (SharedLocalSnapshotSlot != NULL)
-			{
-				SharedLocalSnapshotSlot->xid = s->transactionId;
-				SharedLocalSnapshotSlot->startTimestamp = xactStartTimestamp;
-				SharedLocalSnapshotSlot->QDxid = QDSentDistributedXid;
-
-				SharedLocalSnapshotSlot->pid = MyProc->pid;
-
-				SharedLocalSnapshotSlot->ready = false;
-			}
 		}
 		break;
 
@@ -1809,12 +1833,8 @@ StartTransaction(void)
 			/*
 			 * MPP: we're a QE Reader.
 			 */
-			if (DistributedTransactionContext == DTX_CONTEXT_QE_ENTRY_DB_SINGLETON)
-			{
-				lookupSharedSnaphot("Entry DB Singleton", "Query Dispatcher", QDSentSharedLocalSnapshotSlotId);
-			}
-
 			Assert (SharedLocalSnapshotSlot != NULL);
+			
 			/*
 			 * we want to get our XID from the shared snapshot and not
 			 * generate one ourselves
@@ -1822,12 +1842,12 @@ StartTransaction(void)
 
 
 			if (fullDtmTrace)
-				elog(LOG, "qExec reader: QDSentDistributedXid %d sharedlocalsnapshot->QDxid %d sharedsnapshots: %s",
-					 QDSentDistributedXid, SharedLocalSnapshotSlot->QDxid, SharedSnapshotDump());
+				elog(LOG, "qExec reader: distributedXid %d sharedlocalsnapshot->QDxid %d sharedsnapshots: %s",
+					 QEDtxContextInfo.distributedXid, SharedLocalSnapshotSlot->QDxid, 
+					 SharedSnapshotDump());
 
 			while (!done)
 			{
-				Assert(QDSentDistributedSnapshot != NULL);
 				Assert(SharedLocalSnapshotSlot != NULL);
 
 				/*
@@ -1835,7 +1855,7 @@ StartTransaction(void)
 				 * one that the QD sent us... then we know we are both on
 				 * the same page.
 				 */
-				if (QDSentDistributedXid == SharedLocalSnapshotSlot->QDxid)
+				if (QEDtxContextInfo.distributedXid == SharedLocalSnapshotSlot->QDxid)
 				{
 					s->transactionId = SharedLocalSnapshotSlot->xid;
 					xactStartTimestamp = SharedLocalSnapshotSlot->startTimestamp;
@@ -1855,7 +1875,7 @@ StartTransaction(void)
 								 "We are waiting for the shared snapshot to have XID: %d but the value "
 							     "is currently: %d. Our slotindex is: %d. "
 							     "DistributedTransactionContext = %s.",
-							     QDSentDistributedXid, SharedLocalSnapshotSlot->QDxid,
+							     QEDtxContextInfo.distributedXid, SharedLocalSnapshotSlot->QDxid,
 							     SharedLocalSnapshotSlot->slotindex,
 							     DtxContextToString(DistributedTransactionContext));
 					pg_usleep(sleep_per_check_ms);
@@ -1875,7 +1895,7 @@ StartTransaction(void)
 							     "is currently: %d. Our slotindex is: %d \n"
 							     "DistributedTransactionContext = %s."
 							     "Dump of all sharedsnapshots in shmem: %s",
-							     QDSentDistributedXid, SharedLocalSnapshotSlot->QDxid,
+							     QEDtxContextInfo.distributedXid, SharedLocalSnapshotSlot->QDxid,
 							     SharedLocalSnapshotSlot->slotindex, 
 							     DtxContextToString(DistributedTransactionContext),
 							     SharedSnapshotDump())));
@@ -2611,7 +2631,7 @@ StartTransactionCommand(void)
 			{
 				SharedLocalSnapshotSlot->xid = s->transactionId;
 				SharedLocalSnapshotSlot->startTimestamp = xactStartTimestamp;
-				SharedLocalSnapshotSlot->QDxid = QDSentDistributedXid;
+				SharedLocalSnapshotSlot->QDxid = QEDtxContextInfo.distributedXid;
 			}
 			break;
 
@@ -4261,8 +4281,8 @@ TransactionBlockStatusCode(void)
 void
 TransactionInformationQEWriter(DistributedTransactionId *QEDistributedTransactionId, CommandId *QECommandId, bool *QEDirty)
 {
-	*QEDistributedTransactionId = QDSentDistributedXid;
-	*QECommandId = QDSentDistributedCommandId;
+	*QEDistributedTransactionId = QEDtxContextInfo.distributedXid;
+	*QECommandId = QEDtxContextInfo.distributedSnapshotData.curcid;
 	*QEDirty = IsTransactionDirty();
 }
 

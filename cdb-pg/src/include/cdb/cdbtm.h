@@ -73,7 +73,7 @@ typedef enum
 	DTX_CONTEXT_QE_READER,
 	DTX_CONTEXT_QE_PREPARED
 } DtxContext;
-	
+
 typedef struct TMGXACT_LOG
 {
 	char						gid[TMGIDSIZE];
@@ -105,7 +105,7 @@ typedef struct TMGXACT
 
 	bool						explicitBeginRemembered;
 
-	DistributedTransactionId	xminGlobalSnapshot;
+	DistributedTransactionId	xminDistributedSnapshot;
 
 	DtxParticipationSummary		participationSummary;
 
@@ -132,12 +132,28 @@ typedef struct DistributedSnapshotData
 	DistributedTransactionId 	xmin;	/* XID < xmin are visible to me */
 	DistributedTransactionId 	xmax;	/* XID >= xmax are invisible to me */
 	uint32						xcnt;	/* # of xact ids in xip[] */
-	DistributedTransactionId 	*xip;	/* array of xact IDs in progress */
+	
+	DistributedTransactionId 	xip[100];	/* array of xact IDs in progress */
+										/* UNDONE: Arbitrary limit of 100 for now... */
+
+	CommandId					curcid;	/* in my xact, CID < curcid are visible */
+
+										
 } DistributedSnapshotData;
 
 typedef DistributedSnapshotData *DistributedSnapshot;
 
-extern DLLIMPORT DistributedSnapshot CurrentDistributedSnapshot;
+typedef struct DtxContextInfo
+{
+	DistributedTransactionId distributedXid;
+	DistributedTransactionId xminAllDistributedSnapshots;
+
+	DistributedSnapshotData distributedSnapshotData;
+
+	int distributedTxnOptions;
+
+} DtxContextInfo;
+	
 
 
 /* state variables for how much of the log file has been flushed */
@@ -155,6 +171,7 @@ extern char* DtxProtocolCommandToString(DtxProtocolCommand command);
 extern char* DtxContextToString(DtxContext context);
 extern DistributedTransactionId getDistributedTransactionId(void);
 extern void createDtx(TransactionId *pLocalXid);
+extern bool createDtxSnapshot(DistributedSnapshot distributedSnapshot);
 extern void	prepareDtxTransaction(void);
 extern bool isPreparedDtxTransaction(void);
 extern void getDtxLogInfo(TMGXACT_LOG *gxact_log);
@@ -203,19 +220,16 @@ bool		isMppTxOptions_Dirty(int txnOptions);
 bool		isMppTxOptions_ExplicitBegin(int txnOptions);
 
 
-extern void getDistributedSnapshotSerializeInfo(int *serializedLen,
-                             DistributedTransactionId *currentDistributedTransactionId,
-                             DistributedTransactionId *xminAllDistributedSnapshots,
-                             int *qdSharedLocalSnapshotSlotId,
-                             DistributedSnapshot *distributedSnapshot);
-extern void serializeDistributedSnapshot(char **buffref,
-                             DistributedTransactionId currentDistributedTransactionId,
-                             DistributedTransactionId xminAllDistributedSnapshots,
-                             int qdSharedLocalSnapshotSlotId,
-                             DistributedSnapshot distributedSnapshot,
-                             CommandId curcid);
-extern void getGlobalSnapshot(const char *serializedSnapshot, int serializedSnapshotlen);
-extern void determineDistributedTransactionContext (void);
+extern void qdCreateDtxContextInfo(DtxContextInfo *dtxContextInfo, DistributedSnapshot distributedSnapshot, int txnOptions);
+extern int dtxContextInfoSerializeSize(DtxContextInfo *dtxContextInfo);
+
+extern void createDtxContextInfo(DtxContextInfo *dtxContextInfo);
+extern int dtxContextInfoSize(DtxContextInfo *dtxContextInfo);
+extern void serializeDtxContextInfo(char *buffer, DtxContextInfo *dtxContextInfo);
+extern void deserializeDtxContextInfo(const char *serializedSnapshot, int serializedSnapshotlen,
+							 DtxContextInfo *dtxContextInfo);
+extern void setupRegularDtxContext (void);
+extern void setupQEDtxContext (DtxContextInfo *dtxContextInfo);
 extern void finishDistributedTransactionContext (char* debugCaller);
 extern void rememberDtxExplicitBegin();
 extern void performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,

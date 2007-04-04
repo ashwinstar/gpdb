@@ -174,6 +174,9 @@ static int	UseNewLine = 0;		/* Use EOF as query delimiters */
 #endif   /* TCOP_DONTUSENEWLINE */
 
 
+static DtxContextInfo TempDtxContextInfo;
+
+
 /* ----------------------------------------------------------------
  *		decls for routines only used in this file
  * ----------------------------------------------------------------
@@ -4121,7 +4124,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 
 					elog((fullDtmTrace ? LOG : DEBUG5), "Simple query stmt: %s.",query_string);
 
-					determineDistributedTransactionContext();
+					setupRegularDtxContext();
 					
 					exec_simple_query(query_string);
 
@@ -4154,7 +4157,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 					Oid 	cuid;
 					bool	suid_is_super = false;
 					bool	ouid_is_super = false;
-					
+
+					int unusedFlags;
 
 					/* Set statement_timestamp() */
  					SetCurrentStatementStartTimestamp();
@@ -4189,12 +4193,12 @@ PostgresMain(int argc, char *argv[], const char *username)
 					else
 						serializedSnapshot = pq_getmsgbytes(&input_message,serializedSnapshotlen);
 
-					getGlobalSnapshot(serializedSnapshot, serializedSnapshotlen);
-					
+					deserializeDtxContextInfo(
+						serializedSnapshot, serializedSnapshotlen,
+						&TempDtxContextInfo);
+
 					/* get the transaction options */
-					QDSentTxnOptions = pq_getmsgint(&input_message, 4);
-					if (fullDtmTrace)
-						elog(LOG,"QDSentTxnOptions = 0x%x", QDSentTxnOptions);
+					unusedFlags = pq_getmsgint(&input_message, 4);
 					
 					/* get the query string and kick off processing. */
 					if (query_string_len == 0)
@@ -4221,26 +4225,18 @@ PostgresMain(int argc, char *argv[], const char *username)
 						serializedSliceInfo = NULL;
 					else
 						serializedSliceInfo = pq_getmsgbytes(&input_message,serializedSliceInfolen);
-					
-					pq_getmsgend(&input_message);
 
+					pq_getmsgend(&input_message);
 					 
 					elog((fullDtmTrace ? LOG : DEBUG5), "MPP dispatched stmt from QD: %s.",query_string);
 
-					if (fullDtmTrace)
-						elog(LOG, "...QDSentDistributedXid = %u, QDSentXminAllDistributedSnapshots = %u, QDSentDistributedSnapshot (xmin = %u, xmax = %u, xcnt = %u), QDSentDistributedCommandId = %d",
-					              QDSentDistributedXid, 
-					              QDSentXminAllDistributedSnapshots, 
-					              QDSentDistributedSnapshot->xmin, QDSentDistributedSnapshot->xmax, QDSentDistributedSnapshot->xcnt,
-					              QDSentDistributedCommandId);
-					 
 					if (suid > 0)				
 						SetSessionAuthorization(suid, suid_is_super);  /* Set the session UserId */
 	
 					if (ouid > 0 && ouid != GetSessionUserId()) 
 						SetCurrentRoleId(ouid, ouid_is_super);		/* Set the outer UserId */
 						
-					determineDistributedTransactionContext();
+					setupQEDtxContext(&TempDtxContextInfo);
 					
 					//PG_TRY();
 					{				
@@ -4339,7 +4335,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 
 					elog((fullDtmTrace ? LOG : DEBUG5), "Parse: %s.",query_string);
 
-					determineDistributedTransactionContext();
+					setupRegularDtxContext();
 					
 					exec_parse_message(query_string, stmt_name,
 									   paramTypes, numParams);
@@ -4387,7 +4383,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 
 					elog((fullDtmTrace ? LOG : DEBUG5), "Execute: %s.",portal_name);
 
-					determineDistributedTransactionContext();
+					setupRegularDtxContext();
 					
 					exec_execute_message(portal_name, max_rows);
 				}
@@ -4405,7 +4401,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 
 				elog((fullDtmTrace ? LOG : DEBUG5), "Fast path function call.");
 
-				determineDistributedTransactionContext();
+				setupRegularDtxContext();
 					
 				/* start an xact for this function invocation */
 				start_xact_command();
@@ -4504,7 +4500,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 
 					elog((fullDtmTrace ? LOG : DEBUG5), "Describe: %s.", describe_target);
 					
-					determineDistributedTransactionContext();
+					setupRegularDtxContext();
 					
 					switch (describe_type)
 					{

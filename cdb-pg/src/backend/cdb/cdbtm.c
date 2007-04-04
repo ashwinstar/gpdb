@@ -86,15 +86,6 @@ typedef struct InDoubtDtx
 
 #define GP_OPT_EXPLICT_BEGIN      						0x0040
 
-/*
- * These DistributedSnapshotData structs are static to simplify memory allocation
- * (see the hack in GetSnapshotData to avoid repeated malloc/free).
- */
-static DistributedSnapshotData CurrentDistributedSnapshotData;
-
-/* Externally visible pointers to valid snapshots: */
-DistributedSnapshot	CurrentDistributedSnapshot = &CurrentDistributedSnapshotData;
-
 /*=========================================================================
  * FUNCTIONS PROTOTYPES
  */
@@ -128,7 +119,11 @@ static void doNotifyingAborted(bool noPreparesIssued);
 static void doRetryingNotifyAborted(void);
 static void doAbortInDoubt(char *gid);
 static void doQEAddLocalXidsForDistributedIndoubt();
-static void doQEDistributedExplicitBegin();
+static void doQEDistributedExplicitBegin(int txnOptions);
+
+static void copyDtxContextInfo(DtxContextInfo *targetDtxContextInfo, DtxContextInfo *sourceDtxContextInfo);
+static void resetDtxContextInfo(DtxContextInfo *dtxContextInfo);
+static bool isDtxQueryDispatcher(void);
 
 /*=========================================================================
  * VISIBLE FUNCTIONS
@@ -1209,12 +1204,14 @@ validateRedoDtxCheckPointSize(char *dtxCheckpointBuffer, int dtxCheckpointBuffer
 	TMGXACT_CHECKPOINT * gxact_checkpoint;
 	int committedCount;
 
-	elog(DEBUG5, "redoDtxCheckPoint has size %d", dtxCheckpointBufferSize);
+	if (fullDtmTrace)
+		elog(LOG, "redoDtxCheckPoint has size %d", dtxCheckpointBufferSize);
 	gxact_checkpoint = (TMGXACT_CHECKPOINT *)dtxCheckpointBuffer;
 	
 	committedCount = gxact_checkpoint->committedCount;
-	elog(DEBUG5, "redoDtxCheckPoint has committedCount = %d",
-		 committedCount);
+	if (fullDtmTrace)
+		elog(LOG, "redoDtxCheckPoint has committedCount = %d",
+			 committedCount);
 
 	return (dtxCheckpointBufferSize == 
 		    offsetof(TMGXACT_CHECKPOINT,committedGxactArray) + committedCount * sizeof(TMGXACT_LOG));
@@ -1237,8 +1234,9 @@ redoDtxCheckPoint(char *dtxCheckpointBuffer, int dtxCheckpointBufferSize)
 	
 	committedCount = gxact_checkpoint->committedCount;
 	segmentCount = gxact_checkpoint->segmentCount;
-	elog(DEBUG5, "redoDtxCheckPoint has size %d, committedCount = %d, segmentCount = %d",
-		 dtxCheckpointBufferSize, committedCount, segmentCount);
+	if (fullDtmTrace)
+		elog(LOG, "redoDtxCheckPoint has size %d, committedCount = %d, segmentCount = %d",
+			 dtxCheckpointBufferSize, committedCount, segmentCount);
 	
 	for (i = 0; i < committedCount; i++)
 	{
@@ -1305,8 +1303,9 @@ redoDistributedForgetCommitRecord(TMGXACT_LOG * gxact_log)
 		}
 	}
 
-	elog(ERROR, "Crash recovery redo did not find committed distributed transaction gid = %s for forget",
-		 gxact_log->gid);
+	if (fullDtmTrace)
+		elog(WARNING, "Crash recovery redo did not find committed distributed transaction gid = %s for forget",
+			 gxact_log->gid);
 }
 
 static void
@@ -1502,7 +1501,7 @@ initGxact(TMGXACT * gxact)
 	 */
 	gxact->explicitBeginRemembered = false;
 	
-    gxact->xminGlobalSnapshot = 0;
+    gxact->xminDistributedSnapshot = 0;
 
 	gxact->participationSummary = DTX_PARTICIPATION_SUMMARY_NONE;
 	
@@ -1511,7 +1510,7 @@ initGxact(TMGXACT * gxact)
 }
 
 // UNDONE: Call this from where regular snapshots get created...
-static void
+bool
 createDtxSnapshot(DistributedSnapshot distributedSnapshot)
 {
 	int 						count;
@@ -1519,21 +1518,25 @@ createDtxSnapshot(DistributedSnapshot distributedSnapshot)
 	TMGXACT    			*gxact_candidate;
 	DtxState      		state;
 	DistributedTransactionId 	indoubtxid;
-	
-	if (distributedSnapshot->xip == NULL)
+
+	if(currentGxact != NULL)
 	{
-		distributedSnapshot->xip = (DistributedTransactionId *)
-			malloc(max_tm_gxacts * sizeof(DistributedTransactionId));
+		if (fullDtmTrace)
+			elog(LOG,"createDtxSnapshot found currentGxact is NULL");
+		return false;
 	}
+
+	getTmLock();
 
 	/*
 	 * Gather up current in-progress global transactions for the
-	 * distributed snapshot.  Exclude ourselves.
+	 * distributed snapshot.
 	 */
-	count = *shmNumGxacts - 1;
+	count = *shmNumGxacts;
 	distributedSnapshot->xmax = 0;
 	distributedSnapshot->xcnt = 0;
 	distributedSnapshot->xmin = UINT_MAX;
+	
 	for (i = 0; i < count; i++)
 	{
 		gxact_candidate = shmGxactArray[i];
@@ -1598,16 +1601,32 @@ createDtxSnapshot(DistributedSnapshot distributedSnapshot)
 			distributedSnapshot->xmax = indoubtxid;
 		}
 
+		// UNDONE: Temporary hard coded limit
+		Assert(distributedSnapshot->xcnt < 100);
+
 		distributedSnapshot->xip[distributedSnapshot->xcnt++] = indoubtxid;
 		elog(LOG,"createDtx added gxid = %u to distributed snapshot", indoubtxid);
 	}
 	
-	if (distributedSnapshot->xmin == UINT_MAX);
+	if (distributedSnapshot->xmin == UINT_MAX)
+	{
 		distributedSnapshot->xmin = InvalidDistributedTransactionId;
+	}
+	else if (distributedSnapshot->xmin < currentGxact->xminDistributedSnapshot)
+	{
+		currentGxact->xminDistributedSnapshot = distributedSnapshot->xmin;
+
+		// UNDONE: Update global xmin???
+	}
 
 	if (fullDtmTrace)
 		elog(LOG,"createDtx distributed snapshot has xmin = %u, xcnt = %u, xmax = %u.", 
 			 distributedSnapshot->xmin, distributedSnapshot->xcnt, distributedSnapshot->xmax);
+
+
+	releaseTmLock();
+
+	return true;
 }
 
 /*
@@ -1641,10 +1660,11 @@ createDtx(TransactionId *pLocalXid)
 	
 	AllocOrGetLocalXidForDistributedTransaction(gxact->gxid,pLocalXid);
 
-	// UNDONE: Temporarily...
-	createDtxSnapshot(CurrentDistributedSnapshot);
-	
-	gxact->xminGlobalSnapshot = CurrentDistributedSnapshot->xmin;
+	/*
+	 * Until we get our first distributed snapshot, we use our
+	 * distributed transaction identifier for the minimum.
+	 */
+	gxact->xminDistributedSnapshot = gxact->gxid;
 
 	Assert(gxact->participationSummary == DTX_PARTICIPATION_SUMMARY_NONE);
 	
@@ -1693,9 +1713,9 @@ releaseGxact(void)
 		}
 		else
 		{
-			if (shmGxactArray[i]->xminGlobalSnapshot < *shmXminAllDistributedSnapshots)
+			if (shmGxactArray[i]->xminDistributedSnapshot < *shmXminAllDistributedSnapshots)
 			{
-				*shmXminAllDistributedSnapshots = shmGxactArray[i]->xminGlobalSnapshot;
+				*shmXminAllDistributedSnapshots = shmGxactArray[i]->xminDistributedSnapshot;
 			}
 		}
 	}
@@ -2357,6 +2377,7 @@ assign_gp_write_shared_snapshot(bool newval, bool doit, GucSource source)
 	return true;
 }
 
+/*
 void
 getDistributedSnapshotSerializeInfo(int *serializedLen,
                              DistributedTransactionId *currentDistributedTransactionId,
@@ -2417,8 +2438,8 @@ getDistributedSnapshotSerializeInfo(int *serializedLen,
 	if (*currentDistributedTransactionId != InvalidDistributedTransactionId)
 	{
 		*serializedLen = sizeof(DistributedTransactionId)*4 + 
-			             sizeof(int) + /* slot id */
-						 sizeof(uint32) + /*xcnt*/
+			             sizeof(int) + 
+						 sizeof(uint32) +
 						 (*distributedSnapshot)->xcnt*sizeof(DistributedTransactionId) +
 						 sizeof(CommandId);
 	}
@@ -2430,49 +2451,183 @@ getDistributedSnapshotSerializeInfo(int *serializedLen,
 	if (fullDtmTrace)
 		elog(LOG,"getDistributedSnapshotSerializeInfo is returning serializedLen = %d", *serializedLen);
 }
+*/
+
+static void
+copyDtxContextInfo(DtxContextInfo *targetDtxContextInfo, DtxContextInfo *sourceDtxContextInfo)
+{
+	resetDtxContextInfo(targetDtxContextInfo);
+
+	targetDtxContextInfo->distributedXid = sourceDtxContextInfo->distributedXid;
+
+	if (targetDtxContextInfo->distributedXid != InvalidDistributedTransactionId)
+	{
+		targetDtxContextInfo->xminAllDistributedSnapshots = 
+					sourceDtxContextInfo->xminAllDistributedSnapshots;
+
+		memcpy(&targetDtxContextInfo->distributedSnapshotData,
+			   &sourceDtxContextInfo->distributedSnapshotData,
+			   sizeof(DistributedSnapshotData));
+
+	}
+
+	targetDtxContextInfo->distributedTxnOptions = sourceDtxContextInfo->distributedTxnOptions;
+}
 
 void
-serializeDistributedSnapshot(char **buffref,
-                             DistributedTransactionId currentDistributedTransactionId,
-                             DistributedTransactionId xminAllDistributedSnapshots,
-                             int qdSharedLocalSnapshotSlotId,
-                             DistributedSnapshot distributedSnapshot,
-                             CommandId curcid)
+qdCreateDtxContextInfo(DtxContextInfo *dtxContextInfo, DistributedSnapshot distributedSnapshot, int txnOptions)
 {
-	char *p = *buffref;
 	int i;
+	
+	resetDtxContextInfo(dtxContextInfo);
 
-	if (currentDistributedTransactionId != InvalidDistributedTransactionId)
+	if (distributedSnapshot != NULL)
 	{
-		Assert(distributedSnapshot != NULL);
-		
-		memcpy(p,&currentDistributedTransactionId,sizeof(DistributedTransactionId)); p += sizeof(DistributedTransactionId);
-
-		memcpy(p,&xminAllDistributedSnapshots,sizeof(DistributedTransactionId)); p += sizeof(DistributedTransactionId);
-		memcpy(p,&qdSharedLocalSnapshotSlotId,sizeof(int)); p += sizeof(int);
-		
-		memcpy(p,&distributedSnapshot->xmin,sizeof(DistributedTransactionId)); p += sizeof(DistributedTransactionId);
-		memcpy(p,&distributedSnapshot->xmax,sizeof(DistributedTransactionId)); p += sizeof(DistributedTransactionId);
-		memcpy(p,&distributedSnapshot->xcnt,sizeof(uint32)); p += sizeof(uint32);
-		for (i = 0; i < distributedSnapshot->xcnt; i++)
+		if (currentGxact != NULL)
 		{
-			memcpy(p,&distributedSnapshot->xip[i],sizeof(DistributedTransactionId)); p += sizeof(DistributedTransactionId);
-		}
+			dtxContextInfo->distributedXid = currentGxact->gxid;
 
-		memcpy(p,&curcid, sizeof(CommandId)); p += sizeof(CommandId);
-		
-		if (fullDtmTrace)
-			elog(LOG,"serializeDistributedSnapshot copied information");
+			if (dtxContextInfo->distributedXid != InvalidDistributedTransactionId)
+			{
+				getTmLock();
+				dtxContextInfo->xminAllDistributedSnapshots = 
+						(*shmXminAllDistributedSnapshots == UINT_MAX ? 0 : *shmXminAllDistributedSnapshots);
+				releaseTmLock();
+
+				memcpy(&dtxContextInfo->distributedSnapshotData,
+					   distributedSnapshot,
+					   sizeof(DistributedSnapshotData));
+
+				if (fullDtmTrace)
+				{
+					elog(LOG,"qdCreateDtxContextInfo Gp_role is DISPATCH and have currentGxact = %s, gxid = %u --> have distributed snapshot",
+					 	currentGxact->gid, currentGxact->gxid);
+					elog(LOG,"qdCreateDtxContextInfo distributedXid = %u, "
+					     "xminAllDistributedSnapshots = %u, "
+					     "distributedSnapshotData (xmin = %u, xmax = %u, xcnt = %u)",
+						dtxContextInfo->distributedXid, 
+						dtxContextInfo->xminAllDistributedSnapshots, 
+						dtxContextInfo->distributedSnapshotData.xmin, 
+						dtxContextInfo->distributedSnapshotData.xmax,
+						dtxContextInfo->distributedSnapshotData.xcnt);
+					for (i = 0; i < dtxContextInfo->distributedSnapshotData.xcnt; i++)
+					{
+						elog(LOG,"....    distributedSnapshotData->xip[%d] = %u", 
+						     i, dtxContextInfo->distributedSnapshotData.xip[i]);
+					}
+					elog(LOG,"qdCreateDtxContextInfo curcid = %u", dtxContextInfo->distributedSnapshotData.curcid);
+				}
+				
+			}
+			else
+			{
+				if (fullDtmTrace)
+					elog(LOG,"qdCreateDtxContextInfo Gp_role is DISPATCH and currentGxact is non-NULL, but gxid is InvalidDistributedTransactionId");
+			}
+		}
+		else
+		{
+			if (fullDtmTrace)
+				elog(LOG,"qdCreateDtxContextInfo Gp_role is DISPATCH but has distributed snapshot but no currentGxact..."); 
+		}
 	}
 	else
 	{
-		memcpy(p,&currentDistributedTransactionId,sizeof(DistributedTransactionId)); p += sizeof(DistributedTransactionId);
 		if (fullDtmTrace)
-			elog(LOG,"serializeDistributedSnapshot only copied InvalidDistributedTransactionId");
+			elog(LOG,"qdCreateDtxContextInfo Gp_role is DISPATCH but no distributed snapshot"); 
 	}
 
+	dtxContextInfo->distributedTxnOptions = txnOptions;
+	if (fullDtmTrace)
+		elog(LOG,"qdCreateDtxContextInfo txnOptions = 0x%x", txnOptions); 
+}
 
-	*buffref = p;
+int 
+dtxContextInfoSerializeSize(DtxContextInfo *dtxContextInfo)
+{
+	int size = 0;
+
+	size += sizeof(DistributedTransactionId);
+
+	if (dtxContextInfo->distributedXid != InvalidDistributedTransactionId)
+	{
+		size += sizeof(DistributedTransactionId) +	  // xminAllDistributedSnapshots
+		        sizeof(CommandId) +					  // curcid
+	            2 * sizeof(DistributedTransactionId); // xmin, max
+
+		size += sizeof(uint32) + 					  // xcnt
+			    sizeof(DistributedTransactionId) *    
+			        dtxContextInfo->distributedSnapshotData.xcnt;  // xip
+	}
+
+	size += sizeof(int);							  // distributedTxnOptions
+	
+	if (fullDtmTrace)
+		elog(LOG,"dtxContextInfoSerializeSize is returning size = %d", size);
+
+	return size;
+}
+
+void
+serializeDtxContextInfo(char *buffer, DtxContextInfo *dtxContextInfo)
+{
+	char *p = buffer;
+	int i;
+	int used;
+
+	memcpy(p,&dtxContextInfo->distributedXid,sizeof(DistributedTransactionId)); p += sizeof(DistributedTransactionId);
+	if (dtxContextInfo->distributedXid != InvalidDistributedTransactionId)
+	{
+		memcpy(p,&dtxContextInfo->xminAllDistributedSnapshots,sizeof(DistributedTransactionId)); p += sizeof(DistributedTransactionId);
+		
+		memcpy(p,&dtxContextInfo->distributedSnapshotData.xmin,sizeof(DistributedTransactionId)); p += sizeof(DistributedTransactionId);
+		memcpy(p,&dtxContextInfo->distributedSnapshotData.xmax,sizeof(DistributedTransactionId)); p += sizeof(DistributedTransactionId);
+		memcpy(p,&dtxContextInfo->distributedSnapshotData.xcnt,sizeof(uint32)); p += sizeof(uint32);
+
+		// UNDONE: Temporary hard coded limit
+		Assert(dtxContextInfo->distributedSnapshotData.xcnt <= 100);
+
+		for (i = 0; i < dtxContextInfo->distributedSnapshotData.xcnt; i++)
+		{
+			memcpy(p,&dtxContextInfo->distributedSnapshotData.xip[i],sizeof(DistributedTransactionId)); p += sizeof(DistributedTransactionId);
+		}
+
+		memcpy(p,&dtxContextInfo->distributedSnapshotData.curcid, sizeof(CommandId)); p += sizeof(CommandId);
+		
+		if (fullDtmTrace)
+		{
+			elog(LOG,"serializeDtxContextInfo distributedXid = %u, "
+			     "xminAllDistributedSnapshots = %u, "
+			     "distributedSnapshotData (xmin = %u, xmax = %u, xcnt = %u)",
+				dtxContextInfo->distributedXid, 
+				dtxContextInfo->xminAllDistributedSnapshots, 
+				dtxContextInfo->distributedSnapshotData.xmin, 
+				dtxContextInfo->distributedSnapshotData.xmax,
+				dtxContextInfo->distributedSnapshotData.xcnt);
+			for (i = 0; i < dtxContextInfo->distributedSnapshotData.xcnt; i++)
+			{
+				elog(LOG,"....    distributedSnapshotData->xip[%d] = %u", 
+				     i, dtxContextInfo->distributedSnapshotData.xip[i]);
+			}
+			elog(LOG,"serializeDtxContextInfo curcid = %u", dtxContextInfo->distributedSnapshotData.curcid);
+		}
+
+	}
+	else
+	{
+		if (fullDtmTrace)
+			elog(LOG,"serializeDtxContextInfo only copied InvalidDistributedTransactionId");
+	}
+
+	memcpy(p,&dtxContextInfo->distributedTxnOptions,sizeof(int)); p += sizeof(int);
+	if (fullDtmTrace)
+		elog(LOG,"serializeDtxContextInfo txnOptions = 0x%x", dtxContextInfo->distributedTxnOptions);
+
+	if (fullDtmTrace)
+	{
+		used = (p - buffer);
+		elog(LOG,"serializeDtxContextInfo copied %d bytes", used);
+	}
 }
 
 static void
@@ -2481,71 +2636,95 @@ clearDistributedSnapshot(DistributedSnapshot distributedSnapshot)
 	distributedSnapshot->xmin = InvalidDistributedTransactionId;		
 	distributedSnapshot->xmax = InvalidDistributedTransactionId;		
 	distributedSnapshot->xcnt = 0;		
-	distributedSnapshot->xip = NULL;
+	MemSet(distributedSnapshot->xip, 0, sizeof(DistributedTransactionId)*100);
+	distributedSnapshot->curcid = 0;
+}
+
+static void
+resetDtxContextInfo(DtxContextInfo *dtxContextInfo)
+{
+	dtxContextInfo->distributedXid = InvalidDistributedTransactionId;
+	dtxContextInfo->xminAllDistributedSnapshots = InvalidDistributedTransactionId;
+	
+	clearDistributedSnapshot(&dtxContextInfo->distributedSnapshotData);
+
+	dtxContextInfo->distributedTxnOptions = 0;
 }
 
 void
-getGlobalSnapshot(const char *serializedSnapshot, int serializedSnapshotlen)
+deserializeDtxContextInfo(
+				const char *serializedSnapshot, int serializedSnapshotlen,
+				DtxContextInfo *dtxContextInfo)
 {			
 	int i;
-				
+
+	resetDtxContextInfo(dtxContextInfo);
+	
 	if (serializedSnapshotlen > 0)
 	{			
 		int xipsize;
 		const char * p = serializedSnapshot;		
 						
-		memcpy(&QDSentDistributedXid,p,sizeof(DistributedTransactionId)); 	p+=sizeof(DistributedTransactionId);		
-		if (QDSentDistributedXid != InvalidDistributedTransactionId)
+		if (fullDtmTrace)
+			elog(LOG,"deserializeDtxContextInfo serializedSnapshotlen = %d.",
+			     serializedSnapshotlen);
+		
+		memcpy(&dtxContextInfo->distributedXid,p,sizeof(DistributedTransactionId)); 	p+=sizeof(DistributedTransactionId);		
+		if (dtxContextInfo->distributedXid != InvalidDistributedTransactionId)
 		{
-			memcpy(&QDSentXminAllDistributedSnapshots,p,sizeof(DistributedTransactionId)); 	p+=sizeof(DistributedTransactionId);		
-			memcpy(&QDSentSharedLocalSnapshotSlotId,p,sizeof(int)); 							    p+=sizeof(int);		
-			memcpy(&QDSentDistributedSnapshot->xmin,p,sizeof(DistributedTransactionId)); 	p+=sizeof(DistributedTransactionId);		
-			memcpy(&QDSentDistributedSnapshot->xmax,p,sizeof(DistributedTransactionId)); 	p+=sizeof(DistributedTransactionId);		
-			memcpy(&QDSentDistributedSnapshot->xcnt,p,sizeof(uint32)); 	p+=sizeof(uint32);		
+			memcpy(&dtxContextInfo->xminAllDistributedSnapshots,p,sizeof(DistributedTransactionId)); 	p+=sizeof(DistributedTransactionId);		
+			memcpy(&dtxContextInfo->distributedSnapshotData.xmin,p,sizeof(DistributedTransactionId)); 	p+=sizeof(DistributedTransactionId);		
+			memcpy(&dtxContextInfo->distributedSnapshotData.xmax,p,sizeof(DistributedTransactionId)); 	p+=sizeof(DistributedTransactionId);		
+			memcpy(&dtxContextInfo->distributedSnapshotData.xcnt,p,sizeof(uint32)); 	p+=sizeof(uint32);		
 
-			xipsize = sizeof(DistributedTransactionId)*QDSentDistributedSnapshot->xcnt;
-			QDSentDistributedSnapshot->xip = palloc(xipsize);
-			memcpy(QDSentDistributedSnapshot->xip,p,xipsize); p += xipsize;
+			// UNDONE: Temporary hard coded limit check
+			Assert(dtxContextInfo->distributedSnapshotData.xcnt <= 100);
 
-			memcpy(&QDSentDistributedCommandId,p,sizeof(CommandId)); 	p+=sizeof(CommandId);	
+			xipsize = sizeof(DistributedTransactionId) * dtxContextInfo->distributedSnapshotData.xcnt;
+			memcpy(dtxContextInfo->distributedSnapshotData.xip,p,xipsize); p += xipsize;
+
+			memcpy(&dtxContextInfo->distributedSnapshotData.curcid,p,sizeof(CommandId)); 	p+=sizeof(CommandId);	
 
 			if (fullDtmTrace)
-				elog(LOG,"getGlobalSnapshot QDSentDistributedXid = %u, QDSentXminAllDistributedSnapshots = %u, QDSentDistributedSnapshot (xmin = %u, xmax = %u, xcnt = %u)",
-					QDSentDistributedXid, QDSentXminAllDistributedSnapshots, 
-					QDSentDistributedSnapshot->xmin, QDSentDistributedSnapshot->xmax, QDSentDistributedSnapshot->xcnt);
-			for (i = 0; i < QDSentDistributedSnapshot->xcnt; i++)
 			{
-				if (fullDtmTrace)
-					elog(LOG,"....    QDSentDistributedSnapshot->xip[%d] = %u", i, QDSentDistributedSnapshot->xip[i]);
+				elog(LOG,"deserializeDtxContextInfo distributedXid = %u, "
+				     "xminAllDistributedSnapshots = %u, "
+				     "distributedSnapshotData (xmin = %u, xmax = %u, xcnt = %u)",
+					dtxContextInfo->distributedXid, 
+					dtxContextInfo->xminAllDistributedSnapshots, 
+					dtxContextInfo->distributedSnapshotData.xmin, 
+					dtxContextInfo->distributedSnapshotData.xmax,
+					dtxContextInfo->distributedSnapshotData.xcnt);
+				for (i = 0; i < dtxContextInfo->distributedSnapshotData.xcnt; i++)
+				{
+					elog(LOG,"....    distributedSnapshotData->xip[%d] = %u", 
+					     i, dtxContextInfo->distributedSnapshotData.xip[i]);
+				}
+				elog(LOG,"....distributedCommandId = %u", dtxContextInfo->distributedSnapshotData.curcid);
 			}
-			if (fullDtmTrace)
-				elog(LOG,"....QDSentDistributedCommandId = %u", QDSentDistributedCommandId);
 
 		}
 		else
 		{
 			if (fullDtmTrace)
-				elog(LOG,"getGlobalSnapshot QDSentDistributedXid was InvalidDistributedTransactionId");
+				elog(LOG,"deserializeDtxContextInfo distributedXid was InvalidDistributedTransactionId");
 		}
-
-
+		
+		memcpy(&dtxContextInfo->distributedTxnOptions,p,sizeof(int)); 	p+=sizeof(int);		
+		if (fullDtmTrace)
+			elog(LOG,"deserializeDtxContextInfo txnOptions = 0x%x", dtxContextInfo->distributedTxnOptions);
 	}
 	else
 	{
-		QDSentDistributedXid = InvalidDistributedTransactionId;
+		Assert(dtxContextInfo->distributedXid == InvalidDistributedTransactionId);
+		Assert(dtxContextInfo->distributedTxnOptions == 0);
 	}
 
-	if (QDSentDistributedXid == InvalidDistributedTransactionId)
+	if (dtxContextInfo->distributedXid == InvalidDistributedTransactionId)
 	{
 		if (fullDtmTrace)
-			elog(LOG, "getGlobalSnapshot No distributed snapshot");
+			elog(LOG, "deserializeDtxContextInfo no distributed snapshot");
 		
-		QDSentXminAllDistributedSnapshots = InvalidDistributedTransactionId;
-		QDSentSharedLocalSnapshotSlotId = 0;
-
-		clearDistributedSnapshot(QDSentDistributedSnapshot);
-		
-		QDSentDistributedCommandId = 0;
 	}
 }
 
@@ -2553,14 +2732,17 @@ static void
 doQEAddLocalXidsForDistributedIndoubt()
 {
 	elog(DEBUG5, "Calling AddLocalXidsForDistributedTransactions to map distributed in-doubt XIDs to local XIDs.");
-	AddLocalXidsForDistributedTransactions(QDSentDistributedSnapshot->xip, QDSentDistributedSnapshot->xcnt);
+	AddLocalXidsForDistributedTransactions(
+		QEDtxContextInfo.distributedSnapshotData.xip, 
+		QEDtxContextInfo.distributedSnapshotData.xcnt);
 
-	if (QDSentXminAllDistributedSnapshots != InvalidDistributedTransactionId)
+	if (QEDtxContextInfo.xminAllDistributedSnapshots != InvalidDistributedTransactionId)
 	{
-		Assert(QDSentDistributedXid >= QDSentXminAllDistributedSnapshots);
+		Assert(QEDtxContextInfo.distributedXid >= QEDtxContextInfo.xminAllDistributedSnapshots);
 		
-		elog(DEBUG5, "Calling TruncateDistributedXidMap with %u.", QDSentXminAllDistributedSnapshots);
-		TruncateDistributedXidMap(QDSentXminAllDistributedSnapshots);
+		elog(DEBUG5, "Calling TruncateDistributedXidMap with %u.", 
+			 QEDtxContextInfo.xminAllDistributedSnapshots);
+		TruncateDistributedXidMap(QEDtxContextInfo.xminAllDistributedSnapshots);
 	}
 	else
 		elog(DEBUG5, "Skipping call to TruncateDistributedXidMap");
@@ -2568,7 +2750,7 @@ doQEAddLocalXidsForDistributedIndoubt()
 
 
 static void
-doQEDistributedExplicitBegin()
+doQEDistributedExplicitBegin(int txnOptions)
 {
 	int ExplicitIsoLevel;
 	bool ExplicitReadOnly;
@@ -2581,7 +2763,7 @@ doQEDistributedExplicitBegin()
 	// Here is the explicit BEGIN.
 	BeginTransactionBlock();
 
-	unpackMppTxnOptions(QDSentTxnOptions,
+	unpackMppTxnOptions(txnOptions,
 		&ExplicitIsoLevel, &ExplicitReadOnly);
 
 	XactIsoLevel = ExplicitIsoLevel;
@@ -2603,51 +2785,109 @@ doQEUpdateDistributedSnapshot()
 	// UNDONE
 }
 
-void
-determineDistributedTransactionContext (void)
+static bool 
+isDtxQueryDispatcher(void)
 {
+	bool isDtmStarted;
+	bool isSharedLocalSnapshotSlotPresent;
+	
+	isDtmStarted = (shmDtmStarted != NULL && *shmDtmStarted);
+	isSharedLocalSnapshotSlotPresent = (SharedLocalSnapshotSlot != NULL);
+
+ 	return (Gp_role == GP_ROLE_DISPATCH &&
+		    isDtmStarted &&
+		    isSharedLocalSnapshotSlotPresent);
+}
+
+/*
+ * Handle a request coming to the QD, or
+ * a utility request coming to a QE.
+ */
+void
+setupRegularDtxContext(void)
+{
+	if (DistributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE)
+	{
+		// Continue in this context.  Do not touch QEDtxContextInfo, etc.
+	}
+	else if (DistributedTransactionContext != DTX_CONTEXT_LOCAL_ONLY)
+	{
+		elog(ERROR, "setupRegularDtxContext finds unexpected DistributedTransactionContext = '%s'",
+			 DtxContextToString(DistributedTransactionContext));
+	}
+	else
+	{
+		Assert(QEDtxContextInfo.distributedXid == InvalidDistributedTransactionId);
+		
+		/*
+		 * Determine if we are strictly local or a distributed capable QD.
+		 */
+		Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
+
+		if (isDtxQueryDispatcher())
+		{
+			DistributedTransactionContext = DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE;
+		}
+	}
+	
+	
+	if (fullDtmTrace)
+		elog(LOG, "setupRegularDtxContext leaving with DistributedTransactionContext = '%s'.",
+			 DtxContextToString(DistributedTransactionContext));
+}
+
+void
+setupQEDtxContext (DtxContextInfo *dtxContextInfo)
+{
+	DistributedSnapshotData *distributedSnapshotData;
+	int txnOptions;
 	bool statementWantsDtxTransaction;
 	bool dirty;
 	bool explicitBegin;
 	bool haveDistributedSnapshot;
-	bool isQueryDispatcher = false;
 	bool isEntryDbSingleton = false;
 	bool isReaderQE = false;
 	bool isWriterQE = false;
-	bool isDtmStarted = false;
 	bool isSharedLocalSnapshotSlotPresent;
+
+	Assert (dtxContextInfo != NULL);
+
+	/*
+	 * DTX Context Info (even when empty) only comes in QE requests.
+	 */
+	distributedSnapshotData = &dtxContextInfo->distributedSnapshotData;
+	txnOptions = dtxContextInfo->distributedTxnOptions;
 	
-	statementWantsDtxTransaction = isMppTxOptions_StatementWantsDtxTransaction(QDSentTxnOptions);
-	dirty = isMppTxOptions_Dirty(QDSentTxnOptions);
-	explicitBegin = isMppTxOptions_ExplicitBegin(QDSentTxnOptions);
+	statementWantsDtxTransaction = isMppTxOptions_StatementWantsDtxTransaction(txnOptions);
+	dirty = isMppTxOptions_Dirty(txnOptions);
+	explicitBegin = isMppTxOptions_ExplicitBegin(txnOptions);
 	
-	haveDistributedSnapshot = (QDSentDistributedXid != InvalidDistributedTransactionId);
-	isDtmStarted = (shmDtmStarted != NULL && *shmDtmStarted);
+	haveDistributedSnapshot = 
+		(dtxContextInfo->distributedXid!= InvalidDistributedTransactionId);
 	isSharedLocalSnapshotSlotPresent = (SharedLocalSnapshotSlot != NULL);
 
 	if (fullDtmTrace)
-		elog(LOG, "determineDistributedTransactionContext inputs (part 1): Gp_role = %s, Gp_is_writer = %s, txnOptions = 0x%x, statementWantsDtxTransaction = %s, dirty = %s, explicitBegin = %s, haveDistributedSnapshot = %s, isDtmStarted = %s",
-			 role_to_string(Gp_role), (Gp_is_writer ? "true" : "false"), QDSentTxnOptions,
+		elog(LOG, "setupQEDtxContext inputs (part 1): Gp_role = %s, Gp_is_writer = %s, txnOptions = 0x%x, statementWantsDtxTransaction = %s, dirty = %s, explicitBegin = %s, haveDistributedSnapshot = %s.",
+			 role_to_string(Gp_role), (Gp_is_writer ? "true" : "false"), txnOptions,
 			 (statementWantsDtxTransaction ? "true" : "false"), (dirty ? "true" : "false"), (explicitBegin ? "true" : "false"), 
-			 (haveDistributedSnapshot ? "true" : "false"),
-			 (isDtmStarted ? "true" : "false")); 
+			 (haveDistributedSnapshot ? "true" : "false")); 
 	if (fullDtmTrace)
-	    elog(LOG, "determineDistributedTransactionContext inputs (part 2): QDSentDistributedXid = %u, isSharedLocalSnapshotSlotPresent = %s.",
-			 QDSentDistributedXid,
+	    elog(LOG, "setupQEDtxContext inputs (part 2): distributedXid = %u, isSharedLocalSnapshotSlotPresent = %s.",
+			 dtxContextInfo->distributedXid,
 		     (isSharedLocalSnapshotSlotPresent ? "true" : "false"));
 	if (haveDistributedSnapshot)
 	{
 		if (fullDtmTrace)
-			elog(LOG, "determineDistributedTransactionContext inputs (part 2a): QDSentDistributedXid = %u, QDSentXminAllDistributedSnapshots = %u, QDSentDistributedSnapshot (xmin = %u, xmax = %u, xcnt = %u), QDSentDistributedCommandId = %d",
-		              QDSentDistributedXid, 
-		              QDSentXminAllDistributedSnapshots, 
-		              QDSentDistributedSnapshot->xmin, QDSentDistributedSnapshot->xmax, QDSentDistributedSnapshot->xcnt,
-		              QDSentDistributedCommandId);
+			elog(LOG, "setupQEDtxContext inputs (part 2a): distributedXid = %u, xminAllDistributedSnapshots = %u, distributedSnapshotData (xmin = %u, xmax = %u, xcnt = %u), distributedCommandId = %d",
+		              dtxContextInfo->distributedXid, 
+		              dtxContextInfo->xminAllDistributedSnapshots, 
+		              distributedSnapshotData->xmin, distributedSnapshotData->xmax, distributedSnapshotData->xcnt,
+		              dtxContextInfo->distributedSnapshotData.curcid);
 	}
 	if (isSharedLocalSnapshotSlotPresent)
 	{
 		if (fullDtmTrace)
-			elog(LOG, "determineDistributedTransactionContext inputs (part 2b):  shared local snapshot xid = %u (xmin: %u xmax: %u xcnt: %u) curcid: %d, QDxid = %u, QDcid = %u", 
+			elog(LOG, "setupQEDtxContext inputs (part 2b):  shared local snapshot xid = %u (xmin: %u xmax: %u xcnt: %u) curcid: %d, QDxid = %u, QDcid = %u", 
 				 SharedLocalSnapshotSlot->xid,
 				 SharedLocalSnapshotSlot->snapshot.xmin,
 				 SharedLocalSnapshotSlot->snapshot.xmax,
@@ -2659,13 +2899,6 @@ determineDistributedTransactionContext (void)
 
 	switch (Gp_role)
 	{
-	case GP_ROLE_DISPATCH:
-		if (isDtmStarted)
-		{
-			isQueryDispatcher = true;
-		}
-		break;
-		
 	case GP_ROLE_EXECUTE:
 		if (Gp_segment == -1 && !Gp_is_writer)
 		{
@@ -2682,7 +2915,7 @@ determineDistributedTransactionContext (void)
 			{
 				if (explicitBegin || haveDistributedSnapshot)
 				{
-					elog(ERROR, "determineDistributedTransactionContext not expecting distributed begin or snapshot when no Snapshot slot exists");
+					elog(ERROR, "setupQEDtxContext not expecting distributed begin or snapshot when no Snapshot slot exists");
 				}
 			} 
 			else 
@@ -2702,15 +2935,20 @@ determineDistributedTransactionContext (void)
 	default:
 		Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
 		if (fullDtmTrace)
-			elog(LOG, "determineDistributedTransactionContext leaving context = 'Local Only' for Gp_role = %s", role_to_string(Gp_role) );
+			elog(LOG, "setupQEDtxContext leaving context = 'Local Only' for Gp_role = %s", role_to_string(Gp_role) );
 		return;
 	}
 
 	if (fullDtmTrace)
-		elog(LOG, "determineDistributedTransactionContext intermediate result: isQueryDispatcher = %s, isEntryDbSingleton = %s, isWriterQE = %s, isReaderQE = %s.", 
-			 (isQueryDispatcher ? "true" : "false"), (isEntryDbSingleton ? "true" : "false"),
+		elog(LOG, "setupQEDtxContext intermediate result: isEntryDbSingleton = %s, isWriterQE = %s, isReaderQE = %s.", 
+			 (isEntryDbSingleton ? "true" : "false"),
 			 (isWriterQE ? "true" : "false"), (isReaderQE ? "true" : "false"));
 
+	/*
+	 * Copy to our private global variable.
+	 */
+	memcpy(&QEDtxContextInfo, dtxContextInfo, sizeof(DtxContextInfo));
+	
 	if (haveDistributedSnapshot)
 	{
 		/*
@@ -2723,11 +2961,7 @@ determineDistributedTransactionContext (void)
 	switch (DistributedTransactionContext)
 	{
 	case DTX_CONTEXT_LOCAL_ONLY:
-		if (isQueryDispatcher)
-		{
-			DistributedTransactionContext = DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE;
-		}
-		else if (isEntryDbSingleton && haveDistributedSnapshot)
+		if (isEntryDbSingleton && haveDistributedSnapshot)
 		{
 			/*
 			 * Later, in GetSnapshotData, we will adopt the QD's
@@ -2750,7 +2984,7 @@ determineDistributedTransactionContext (void)
 			if (!haveDistributedSnapshot)
 			{
 				if (fullDtmTrace)
-					elog(LOG, "QE Writer is involved in a distributed transaction without a distributed snapshot...");
+					elog(LOG, "setupQEDtxContext QE Writer is involved in a distributed transaction without a distributed snapshot...");
 			}
 			
 			if (IsTransactionOrTransactionBlock())
@@ -2767,7 +3001,7 @@ determineDistributedTransactionContext (void)
 				 */
 				DistributedTransactionContext = DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER;
 				
-				doQEDistributedExplicitBegin();
+				doQEDistributedExplicitBegin(txnOptions);
 			}
 			else
 			{
@@ -2803,10 +3037,6 @@ determineDistributedTransactionContext (void)
 			 */
 			Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
 		}
-		break;
-
-	case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
-		// Ok.
 		break;
 
 	case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
@@ -2864,36 +3094,29 @@ determineDistributedTransactionContext (void)
 	}
 
 	if (fullDtmTrace)
-		elog(LOG, "determineDistributedTransactionContext final result: DistributedTransactionContext = '%s'.", 
+		elog(LOG, "setupQEDtxContext final result: DistributedTransactionContext = '%s'.", 
 			 DtxContextToString(DistributedTransactionContext));
-	
-//	if (Gp_role == GP_ROLE_DISPATCH)
-//	{
-//		Assert(false);		// UNDONE !!!!
-//		elog(DEBUG1,"QD Got snapshot from QE, xid = %d",QDSentXID);
-//		ActiveSnapshot = CopySnapshot(QDSentSnapshot);
-//	}
 }
 
 void
 finishDistributedTransactionContext (char* debugCaller)
 {
-	DistributedTransactionContext = DTX_CONTEXT_LOCAL_ONLY;
-
-	QDSentTxnOptions = 0;
-	QDSentDistributedXid = InvalidDistributedTransactionId;
-	QDSentXminAllDistributedSnapshots = InvalidDistributedTransactionId;
-	QDSentSharedLocalSnapshotSlotId = 0;
-	clearDistributedSnapshot(QDSentDistributedSnapshot);
-
 	if(currentGxact != NULL)
 	{
 		elog(FATAL, "Expected currentGxact to be NULL at this point.  Found gid =%s, gxid = %u (caller = %s)",
 			currentGxact->gid, currentGxact->gxid, debugCaller);
 	}
+	
 	if (fullDtmTrace)
-		elog(LOG, "finishDistributedTransactionContext called (caller = %s)",
+		elog(LOG, "finishDistributedTransactionContext called to change DistributedTransactionContext from %s to %s (caller = %s)",
+			 DtxContextToString(DistributedTransactionContext), 
+			 DtxContextToString(DTX_CONTEXT_LOCAL_ONLY), 
 			 debugCaller);
+	
+	DistributedTransactionContext = DTX_CONTEXT_LOCAL_ONLY;
+
+	resetDtxContextInfo(&QEDtxContextInfo);
+
 }
 
 void

@@ -72,8 +72,9 @@ AllocOrGetLocalXidForDistributedTransaction(DistributedTransactionId gxid, Trans
 	int			slotno;
 	TransactionId *ptr;
 
+	Assert(gxid != InvalidDistributedTransactionId);
 	Assert(xid != NULL);
-	
+
 	elog(DEBUG5, "Entering AllocOrGetLocalXidForDistributedTransaction with distributed xid = %d (pageno = %d, entryno = %d, DistributedXidMapHighestPageNo = %d)",
 		 gxid, pageno, entryno, DistributedXidMapHighestPageNo);
 	

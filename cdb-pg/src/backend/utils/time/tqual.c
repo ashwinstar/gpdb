@@ -64,7 +64,6 @@
 static SnapshotData SnapshotDirtyData;
 static SnapshotData SerializableSnapshotData;
 static SnapshotData LatestSnapshotData;
-//	static SnapshotData QDSentSnapshotData;
 
 /* Externally visible pointers to valid snapshots: */
 Snapshot	SnapshotDirty = &SnapshotDirtyData;
@@ -77,6 +76,23 @@ Snapshot	LatestSnapshot = NULL;
  * GetTransactionSnapshot's result to ActiveSnapshot.
  */
 Snapshot	ActiveSnapshot = NULL;
+
+/* 
+ * NEW
+ *
+ */
+ 
+/*
+ * These DistributedSnapshotData structs are static to simplify memory allocation
+ * (see the hack in GetSnapshotData to avoid repeated malloc/free).
+ */
+static DistributedSnapshotData SerializableDistributedSnapshotData;
+static DistributedSnapshotData LatestDistributedSnapshotData;
+
+/* Externally visible pointers to valid snapshots: */
+DistributedSnapshot	SerializableDistributedSnapshot = NULL;
+DistributedSnapshot	LatestDistributedSnapshot = NULL;
+
 
 /* These are updated by GetSnapshotData: */
 TransactionId TransactionXmin = InvalidTransactionId;
@@ -91,14 +107,8 @@ static bool XidInSnapshot(TransactionId xid, Snapshot snapshot);
  */
 DtxContext DistributedTransactionContext = DTX_CONTEXT_LOCAL_ONLY;
 
-DistributedSnapshotData QDSentDistributedSnapshotData;
-DistributedSnapshot QDSentDistributedSnapshot = &QDSentDistributedSnapshotData;
-DistributedTransactionId QDSentDistributedXid = InvalidDistributedTransactionId;
-DistributedTransactionId QDSentXminAllDistributedSnapshots = InvalidDistributedTransactionId;
-int QDSentSharedLocalSnapshotSlotId = 0;
-CommandId QDSentDistributedCommandId = 0;
+DtxContextInfo QEDtxContextInfo;
 
-int QDSentTxnOptions = 0;
 
 /* MPP Shared Snapshot. */
 typedef struct SharedSnapshotStruct
@@ -120,7 +130,7 @@ typedef struct SharedSnapshotStruct
 
 static SharedSnapshotStruct *sharedSnapshotArray;
 
-volatile SharedSnapshotSlot *SharedLocalSnapshotSlot;
+volatile SharedSnapshotSlot *SharedLocalSnapshotSlot = NULL;
 static Size slotSize;
 
 
@@ -177,6 +187,9 @@ CreateSharedSnapshotArray(void)
 			/* need to do byte addressing to find the right slot */ 	
 			SharedSnapshotSlot *tmpSlot = (SharedSnapshotSlot*) ((char*)&sharedSnapshotArray->slots + (i*slotSize)); 
 			tmpSlot->slotid = -1;
+
+			/* Fixup xip array pointer reference space allocated after slot struct */
+			tmpSlot->snapshot.xip = ((char *)tmpSlot) + sizeof(SharedSnapshotSlot);
 		}		
 	}
 }
@@ -1543,14 +1556,23 @@ GetTransactionSnapshot(void)
 	/* First call in transaction? */
 	if (SerializableSnapshot == NULL)
 	{
-		SerializableSnapshot = GetSnapshotData(&SerializableSnapshotData, true);
+		/*
+		 * Verify SerializableSnapshot and LatestSnapshot are a bound pair.
+		 */
+		Assert(LatestSnapshot == NULL);
+
+		SerializableSnapshot = GetSnapshotData(&SerializableSnapshotData, true,
+			                                   &SerializableDistributedSnapshot,
+			                                   &SerializableDistributedSnapshotData);
 		return SerializableSnapshot;
 	}
 
 	if (IsXactIsoLevelSerializable)
 		return SerializableSnapshot;
 
-	LatestSnapshot = GetSnapshotData(&LatestSnapshotData, false);
+	LatestSnapshot = GetSnapshotData(&LatestSnapshotData, false,
+		                             &LatestDistributedSnapshot,
+		                             &LatestDistributedSnapshotData);
 
 	return LatestSnapshot;
 }
@@ -1567,7 +1589,9 @@ GetLatestSnapshot(void)
 	if (SerializableSnapshot == NULL)
 		elog(ERROR, "no snapshot has been set");
 
-	LatestSnapshot = GetSnapshotData(&LatestSnapshotData, false);
+	LatestSnapshot = GetSnapshotData(&LatestSnapshotData, false,
+		                             &LatestDistributedSnapshot,
+		                             &LatestDistributedSnapshotData);
 
 	return LatestSnapshot;
 }
@@ -1648,6 +1672,10 @@ FreeXactSnapshot(void)
 	 */
 	SerializableSnapshot = NULL;
 	LatestSnapshot = NULL;
+	
+	SerializableDistributedSnapshot = NULL;
+	LatestDistributedSnapshot = NULL;
+	
 	ActiveSnapshot = NULL;		/* just for cleanliness */
 }
 

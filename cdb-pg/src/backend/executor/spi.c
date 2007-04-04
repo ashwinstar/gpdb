@@ -2282,36 +2282,17 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 				 * moved forward?
 				 */
 
-				char * p;
-				CommandId currentCommandId = GetCurrentCommandId();  // or QDSentSnapshot->curcid++;
-		        DistributedTransactionId currentDistributedTransactionId;
-		        DistributedTransactionId xminAllDistributedSnapshots;
-                int qdSharedLocalSnapshotSlotId;
-		        DistributedSnapshot distributedSnapshot;
-
-		        getDistributedSnapshotSerializeInfo(&serializedSnapshotlen,
-		                             &currentDistributedTransactionId,
-		                             &xminAllDistributedSnapshots,
-		                             &qdSharedLocalSnapshotSlotId,
-		                             &distributedSnapshot);
-				if (serializedSnapshotlen == 0)
-				{
-					// ????
-					elog(ERROR,"Expecting non-empty snapshot");
-				}
-		
+				serializedSnapshotlen = dtxContextInfoSerializeSize(&QEDtxContextInfo);
+				Assert (serializedSnapshotlen > 0);
+				
 				serializedSnapshot = palloc(serializedSnapshotlen);
-				p = serializedSnapshot;
-				serializeDistributedSnapshot(&p, 
-		                             currentDistributedTransactionId,
-		                             xminAllDistributedSnapshots,
-		                             qdSharedLocalSnapshotSlotId,
-		                             distributedSnapshot,
-		                 			 currentCommandId);
+
+				serializeDtxContextInfo(serializedSnapshot, &QEDtxContextInfo); 
+
 			}
 			else
 			{
-				serializedSnapshot = serializeSnapshot(&serializedSnapshotlen);
+				serializedSnapshot = serializeSnapshot(&serializedSnapshotlen, txnOptions);
 				
 			}
 	
@@ -2320,7 +2301,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 				query, strlen(query)+1, 
 				NULL, 0, NULL, 0, NULL, 0, NULL, 0,
 				serializedSnapshot, serializedSnapshotlen, 
-				txnOptions, gp_command_count, -1, 
+				0 /* unused flag */, gp_command_count, -1, 
 				GetSessionUserId(), superuser_arg(GetSessionUserId()), GetOuterUserId(), superuser_arg(GetOuterUserId()), GetUserId(),
 				&query_text_len);
 			 
