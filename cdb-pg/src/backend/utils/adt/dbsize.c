@@ -204,7 +204,7 @@ pg_database_size_name(PG_FUNCTION_ARGS)
 		
 		initStringInfo(&buffer);
 
-		appendStringInfo(&buffer, "select pg_database_size('\"%s\"')", NameStr(*dbName));
+		appendStringInfo(&buffer, "select pg_database_size('%s')", quote_identifier(NameStr(*dbName)));
 		
 		size += get_size_from_segDBs(buffer.data);
 		
@@ -309,7 +309,7 @@ pg_tablespace_size_name(PG_FUNCTION_ARGS)
 		
 		initStringInfo(&buffer);
 		
-		appendStringInfo(&buffer, "select pg_tablespace_size('\"%s\"')", NameStr(*tblspcName));
+		appendStringInfo(&buffer, "select pg_tablespace_size('%s')", quote_identifier(NameStr(*tblspcName)));
 		
 		size += get_size_from_segDBs(buffer.data);
 		
@@ -376,7 +376,7 @@ pg_relation_size_oid(PG_FUNCTION_ARGS)
 		
 		initStringInfo(&buffer);
 		
-		appendStringInfo(&buffer, "select pg_relation_size('\"%s\".\"%s\"')", get_namespace_name(get_rel_namespace(relOid)),get_rel_name(relOid));
+		appendStringInfo(&buffer, "select pg_relation_size('%s.%s')", quote_identifier(get_namespace_name(get_rel_namespace(relOid))),quote_identifier(get_rel_name(relOid)));
 		
 		size += get_size_from_segDBs(buffer.data);
 		
@@ -504,7 +504,7 @@ pg_total_relation_size_oid(PG_FUNCTION_ARGS)
 		
 		initStringInfo(&buffer);
 		
-		appendStringInfo(&buffer, "select pg_total_relation_size('\"%s\".\"%s\"')", get_namespace_name(get_rel_namespace(relid)),get_rel_name(relid));
+		appendStringInfo(&buffer, "select pg_total_relation_size('%s.%s')", quote_identifier(get_namespace_name(get_rel_namespace(relid))),quote_identifier(get_rel_name(relid)));
 		
 		size += get_size_from_segDBs(buffer.data);
 	}
