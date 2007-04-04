@@ -47,7 +47,7 @@ int64 cdbRelSize(Oid relOid)
 	 * Safer to pass names than oids, just in case they get out of sync between QD and QE,
 	 * which might happen with a toast table or index, I think (but maybe not)
 	 */
-	appendStringInfo(&buffer, "select pg_relation_size('%s.%s')", get_namespace_name(get_rel_namespace(relOid)),get_rel_name(relOid));
+	appendStringInfo(&buffer, "select pg_relation_size('\"%s\".\"%s\"')", get_namespace_name(get_rel_namespace(relOid)),get_rel_name(relOid));
 
 	/* 
 	 * In the future, it would be better to send the command to only one QE for the optimizer's needs,
