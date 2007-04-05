@@ -252,7 +252,7 @@ _readQuery(void)
 	 * systems that we initdb's using prior versions don't have these field, so to avoid
 	 * making the developers do an initdb, we will check.
 	 * 
-	 * This shouldn't matter for anyone who does an initDB in the future (with our production 2.4 release).
+	 * This shouldn't matter for anyone who does an initDB in the future (with our production 3.0 release).
      */
     if (pg_strtok_peek_fldname("intoOidInfo.relOid"))
     {                            
