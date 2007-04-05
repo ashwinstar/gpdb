@@ -162,9 +162,6 @@ extern int *shmSegmentCount;
 extern int *shmSegmentsStatesByteLen;
 extern DistributedTransactionId *shmXminAllDistributedSnapshots;
 
-extern bool fullDtmTrace;
-
-
 extern char* DtxStateToString(DtxState state);
 extern char* DtxParticipationSummaryToString(DtxParticipationSummary summary);
 extern char* DtxProtocolCommandToString(DtxProtocolCommand command);

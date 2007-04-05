@@ -477,13 +477,12 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot)
 	Assert(SharedLocalSnapshotSlot != NULL);
 	Assert(snapshot != NULL);
 	
-	if (fullDtmTrace)
-		elog(LOG, "updateSharedLocalSnapshot for DistributedTransactionContext = '%s' passed local snapshot (xmin: %u xmax: %u xcnt: %u) curcid: %d", 
-			 DtxContextToString(DistributedTransactionContext),
-			 snapshot->xmin,
-			 snapshot->xmax,
-			 snapshot->xcnt,
-			 snapshot->curcid);
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "updateSharedLocalSnapshot for DistributedTransactionContext = '%s' passed local snapshot (xmin: %u xmax: %u xcnt: %u) curcid: %d", 
+		 DtxContextToString(DistributedTransactionContext),
+		 snapshot->xmin,
+		 snapshot->xmax,
+		 snapshot->xcnt,
+		 snapshot->curcid);
 			 
 	SharedLocalSnapshotSlot->snapshot.xmin = snapshot->xmin;
 	SharedLocalSnapshotSlot->snapshot.xmax = snapshot->xmax;
@@ -499,8 +498,7 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot)
     GetSubtransactionsForSharedSnapshot(
     	&SharedLocalSnapshotSlot->subcnt,
     	SharedLocalSnapshotSlot->subxids);
-	if (fullDtmTrace)
-		elog(LOG,"updateSharedLocalSnapshot count of subtransaction ids %u",SharedLocalSnapshotSlot->subcnt);
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"updateSharedLocalSnapshot count of subtransaction ids %u",SharedLocalSnapshotSlot->subcnt);
 
 	if (snapshot->xcnt > 0)
 	{
@@ -508,8 +506,7 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot)
 		Assert(SharedLocalSnapshotSlot->snapshot.xip == ((char *)SharedLocalSnapshotSlot) + sizeof(SharedSnapshotSlot));
 		Assert(snapshot->xip != NULL);
 	
-		if (fullDtmTrace)
-			elog(LOG,"updateSharedLocalSnapshot count of in-doubt ids %u",SharedLocalSnapshotSlot->snapshot.xcnt);
+		elog((Debug_print_full_dtm ? LOG : DEBUG5),"updateSharedLocalSnapshot count of in-doubt ids %u",SharedLocalSnapshotSlot->snapshot.xcnt);
 
 		memcpy(SharedLocalSnapshotSlot->snapshot.xip, snapshot->xip, snapshot->xcnt * sizeof(TransactionId));
 	}
@@ -522,16 +519,15 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot)
 	SharedLocalSnapshotSlot->QDxid = dtxContextInfo->distributedXid;
 		
 	SharedLocalSnapshotSlot->ready = true;
-	if (fullDtmTrace)
-		elog(LOG, "updateSharedLocalSnapshot for DistributedTransactionContext = '%s' setting shared local snapshot xid = %u (xmin: %u xmax: %u xcnt: %u) curcid: %d, QDxid = %u, QDcid = %u", 
-			 DtxContextToString(DistributedTransactionContext),
-			 SharedLocalSnapshotSlot->xid,
-			 SharedLocalSnapshotSlot->snapshot.xmin,
-			 SharedLocalSnapshotSlot->snapshot.xmax,
-			 SharedLocalSnapshotSlot->snapshot.xcnt,
-			 SharedLocalSnapshotSlot->snapshot.curcid,
-			 SharedLocalSnapshotSlot->QDxid,
-			 SharedLocalSnapshotSlot->QDcid);
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "updateSharedLocalSnapshot for DistributedTransactionContext = '%s' setting shared local snapshot xid = %u (xmin: %u xmax: %u xcnt: %u) curcid: %d, QDxid = %u, QDcid = %u", 
+		 DtxContextToString(DistributedTransactionContext),
+		 SharedLocalSnapshotSlot->xid,
+		 SharedLocalSnapshotSlot->snapshot.xmin,
+		 SharedLocalSnapshotSlot->snapshot.xmax,
+		 SharedLocalSnapshotSlot->snapshot.xcnt,
+		 SharedLocalSnapshotSlot->snapshot.curcid,
+		 SharedLocalSnapshotSlot->QDxid,
+		 SharedLocalSnapshotSlot->QDcid);
 }
 	
 
@@ -587,14 +583,12 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 	{
 		if(createDtxSnapshot(distributedSnapshotData))
 		{
-			if (fullDtmTrace)
-				elog(LOG,"GetSnapshotData go a distributed snapshot from createDtxSnapshot!");
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),"GetSnapshotData go a distributed snapshot from createDtxSnapshot!");
 			*distributedSnapshot = distributedSnapshotData;
 		}
 		else
 		{
-			if (fullDtmTrace)
-				elog(LOG,"GetSnapshotData got no distributed snapshot from createDtxSnapshot");
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),"GetSnapshotData got no distributed snapshot from createDtxSnapshot");
 			
 			*distributedSnapshot = NULL;
 		}
@@ -622,8 +616,8 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 		/* the pg_usleep() call below is in units of ms, interconnect
 		 * timeout is in seconds */
 		int     sleep_per_check_ms = 200;
-		/* Wait for up to 1/4 the timeout period */
-		int		segmate_timeout_ms = (interconnect_setup_timeout * 1000) / 4;
+		/* Wait for up to 3/4 the timeout period */
+		int		segmate_timeout_ms = (3* interconnect_setup_timeout * 1000) / 4;
 
 
 		for (;;)
@@ -660,7 +654,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 				elog(DEBUG5, "Reader qExec setting shared local snapshot to: xmin: %d xmax: %d curcid: %d",
 					 snapshot->xmin, snapshot->xmax, snapshot->curcid);
 				
-				if (fullDtmTrace)
+				if (Debug_print_full_dtm)
 				{
 					ShowSubtransactionsForSharedSnapshot(SharedLocalSnapshotSlot->subcnt,SharedLocalSnapshotSlot->subxids);
 				}
@@ -675,7 +669,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 				 *
 				 * TODO: is there a semaphore or something better we can do ehre.
 				 */
-				if (count > 0)
+				if (count > 5)
 					elog(LOG,"GetSnapshotData did not find shared local snapshot information. "
 							 "We are waiting for the shared snapshot to have XID: %d but the value "
 												   "is currently: %d." 
@@ -798,9 +792,8 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 	if (DistributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE &&
 		*distributedSnapshot != NULL)
 	{
-		if (fullDtmTrace)
-			elog(LOG, "GetSnapshotData going to check CurrentDistributedSnapshot in-doubt xids (count = %d)",
-			     distributedSnapshotData->xcnt);
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData going to check CurrentDistributedSnapshot in-doubt xids (count = %d)",
+		     distributedSnapshotData->xcnt);
 		for (index = 0; index < distributedSnapshotData->xcnt; index++)
 		{
 			DistributedTransactionId dxid = distributedSnapshotData->xip[index];
@@ -808,9 +801,8 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 
 			if (xid != InvalidTransactionId)
 			{
-				if (fullDtmTrace)
-					elog(LOG, "GetSnapshotData adding CurrentDistributedSnapshot in-doubt xid = %u as local xid = %u",
-						 dxid, xid);
+				elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData adding CurrentDistributedSnapshot in-doubt xid = %u as local xid = %u",
+					 dxid, xid);
 				
 				if (TransactionIdPrecedes(xid, xmin))
 					xmin = xid;
@@ -819,9 +811,8 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 			}
 			else
 			{
-				if (fullDtmTrace)
-					elog(LOG, "GetSnapshotData found CurrentDistributedSnapshot in-doubt xid = %u was invalid",
-						 dxid);
+				elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData found CurrentDistributedSnapshot in-doubt xid = %u was invalid",
+					 dxid);
 			}
 
 			// UNDONE: Unclear how to update globalxmin.
@@ -832,9 +823,8 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 		DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER||
 		DistributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT)
 	{
-		if (fullDtmTrace)
-			elog(LOG, "GetSnapshotData going to check distributedSnapshot in-doubt xids (count = %d)",
-			     QEDtxContextInfo.distributedSnapshotData.xcnt);
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData going to check distributedSnapshot in-doubt xids (count = %d)",
+		     QEDtxContextInfo.distributedSnapshotData.xcnt);
 		for (index = 0; index < QEDtxContextInfo.distributedSnapshotData.xcnt; index++)
 		{
 			TransactionId dxid = QEDtxContextInfo.distributedSnapshotData.xip[index];
@@ -842,9 +832,8 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 
 			if (xid != InvalidTransactionId)
 			{
-				if (fullDtmTrace)
-					elog(LOG, "GetSnapshotData adding distributedSnapshotData in-doubt xid = %u as local xid = %u",
-						 dxid, xid);
+				elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData adding distributedSnapshotData in-doubt xid = %u as local xid = %u",
+					 dxid, xid);
 				
 				if (TransactionIdPrecedes(xid, xmin))
 					xmin = xid;
@@ -853,9 +842,8 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 			}
 			else
 			{
-				if (fullDtmTrace)
-						elog(LOG, "GetSnapshotData found distributedSnapshotData in-doubt xid = %u was invalid",
-							 dxid);
+				elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData found distributedSnapshotData in-doubt xid = %u was invalid",
+					 dxid);
 			}
 
 			// UNDONE: Unclear how to update globalxmin.
@@ -884,18 +872,16 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 			proc->inVacuum)
 			continue;
 
-		if (fullDtmTrace)
-			elog(LOG, "GetSnapshotData checking proc->pid = %d, xid = %u, mppDistributedTransactionId = %u",
-			     proc->pid, xid, proc->mppDistributedTransactionId);
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData checking proc->pid = %d, xid = %u, mppDistributedTransactionId = %u",
+		     proc->pid, xid, proc->mppDistributedTransactionId);
 		if (proc->mppDistributedTransactionId != InvalidDistributedTransactionId &&
 			(DistributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE ||
 		     DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER ||
 		     DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER ||
 		     DistributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT))
 		{
-			if (fullDtmTrace)
-				elog(LOG, "GetSnapshotData excluding local xid = %u for distributed xid = %u",
-				     xid, proc->mppDistributedTransactionId);
+			elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData excluding local xid = %u for distributed xid = %u",
+			     xid, proc->mppDistributedTransactionId);
 			continue;
 		}
 		

@@ -4788,9 +4788,8 @@ StartupXLOG(void)
 		 */
 		checkPointLoc = ControlFile->checkPoint;
 
-		if (fullDtmTrace)
-			elog(LOG,"StartupXLOG going to call ReadCheckpointRecord(checkPointLoc, 1) at %X/%X",
-				 checkPointLoc.xlogid, checkPointLoc.xrecoff);
+		elog((Debug_print_full_dtm ? LOG : DEBUG5),"StartupXLOG going to call ReadCheckpointRecord(checkPointLoc, 1) at %X/%X",
+			 checkPointLoc.xlogid, checkPointLoc.xrecoff);
 		record = ReadCheckpointRecord(checkPointLoc, 1);
 		if (record != NULL)
 		{
@@ -4801,9 +4800,8 @@ StartupXLOG(void)
 		else
 		{
 			checkPointLoc = ControlFile->prevCheckPoint;
-			if (fullDtmTrace)
-				elog(LOG,"StartupXLOG going to call ReadCheckpointRecord(checkPointLoc, 2) at %X/%X",
-					 checkPointLoc.xlogid, checkPointLoc.xrecoff);
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),"StartupXLOG going to call ReadCheckpointRecord(checkPointLoc, 2) at %X/%X",
+				 checkPointLoc.xlogid, checkPointLoc.xrecoff);
 			record = ReadCheckpointRecord(checkPointLoc, 2);
 			if (record != NULL)
 			{

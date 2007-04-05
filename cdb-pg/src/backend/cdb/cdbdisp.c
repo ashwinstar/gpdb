@@ -790,9 +790,8 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 	/* never want to start a global transaction for these */
 	bool		startTransaction = false;
 
-	if (fullDtmTrace)
-		elog(LOG, "CdbDoCommandOnAllGangs for command = '%s', withSnapshot = %s",
-			 strCommand, (withSnapshot ? "true" : "false"));
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "CdbDoCommandOnAllGangs for command = '%s', withSnapshot = %s",
+	     strCommand, (withSnapshot ? "true" : "false"));
 
 	/* Launch the command.	Don't cancel on error. */
 	cdbdisp_dispatchCommand(strCommand, NULL, 0,
@@ -907,8 +906,8 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	Gang	*mirrorGang;
 	int		nsegdb = getgpsegmentCount();
 	
-	if (fullDtmTrace)
-		elog(LOG, "cdbdisp_dispatchDtxProtocolCommand: %s on gid = %s", dtxProtocolCommandLoggingStr, gid);
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "cdbdisp_dispatchDtxProtocolCommand: %s on gid = %s", 
+		 dtxProtocolCommandLoggingStr, gid);
 
 	memset(&dtxProtocolParms, 0, sizeof(dtxProtocolParms));
 	dtxProtocolParms.dtxProtocolCommand = dtxProtocolCommand;
@@ -2234,9 +2233,8 @@ CdbDoCommand(const char *strCommand,
 
 	Assert(dispatchToMirrors || dispatchToPrimaries);
 	
-	if (fullDtmTrace)
-		elog(LOG, "CdbDoCommand for command = '%s', startTransaction = %s",
-			 strCommand, (startTransaction ? "true" : "false"));
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "CdbDoCommand for command = '%s', startTransaction = %s",
+		 strCommand, (startTransaction ? "true" : "false"));
 		
 	if (startTransaction)
 	{
@@ -2270,10 +2268,8 @@ CdbDoCommandOnAllGangs(const char *strCommand,
 	CdbDispatchResults *mirrorResults;
 	CdbDispatchCmdThreads *dispatchThreads;
 
-
-	if (fullDtmTrace)
-		elog(LOG, "CdbDoCommandOnAllGangs for command = '%s', startTransaction = %s",
-			 strCommand, (startTransaction ? "true" : "false"));
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "CdbDoCommandOnAllGangs for command = '%s', startTransaction = %s",
+		 strCommand, (startTransaction ? "true" : "false"));
 		
 
 	if (startTransaction)
@@ -3070,10 +3066,8 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 	StringInfoData buffer;
 	bool 		dispatchToMirrors = true;
 
-
-	if (fullDtmTrace)
-		elog(LOG,"cdbdisp_dispatchUtilityStatement debug_query_string = %s (startTransaction = %s)",
-		     debug_query_string, (startTransaction ? "true" : "false"));
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"cdbdisp_dispatchUtilityStatement debug_query_string = %s (startTransaction = %s)",
+	     debug_query_string, (startTransaction ? "true" : "false"));
 	
 	/* mark the dtx as dirty */
 	setCurrentDtxDirty();
@@ -3130,8 +3124,7 @@ CdbDispatchUtilityStatement(struct Node *stmt)
 	CdbDispatchCmdThreads *dispatchThreads;
 	bool	startTransaction = true;
 	
-	if (fullDtmTrace)
-		elog(LOG,"cdbdisp_dispatchUtilityStatement called");
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"cdbdisp_dispatchUtilityStatement called");
 	
 	/* Mark the DTX as distributed and reconfigure the cluster if needed. */
 	cdbdisp_markDtxAsDistributed("CdbDispatchUtilityStatement", "(Node)");
@@ -3210,16 +3203,14 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions)
 			 * a NONE since the qExecs dont need the information to do a ROLLBACK.
 			 *
 			 */
-			if (fullDtmTrace)
-				elog(LOG,"qdSerializeDtxContextInfo calling GetTransactionSnapshot to make snapshot");
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),"qdSerializeDtxContextInfo calling GetTransactionSnapshot to make snapshot");
 			
 			GetTransactionSnapshot();
 		}
 		
 		if (LatestDistributedSnapshot != NULL)
 		{
-			if (fullDtmTrace)
-				elog(LOG,"qdSerializeDtxContextInfo using LatestDistributedSnapshot");
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),"qdSerializeDtxContextInfo using LatestDistributedSnapshot");
 			
 			distributedSnapshot = LatestDistributedSnapshot;
 
@@ -3228,8 +3219,7 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions)
 		}
 		else if (SerializableDistributedSnapshot != NULL)
 		{
-			if (fullDtmTrace)
-				elog(LOG,"qdSerializeDtxContextInfo using SerializableDistributedSnapshot");
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),"qdSerializeDtxContextInfo using SerializableDistributedSnapshot");
 			
 			distributedSnapshot = SerializableDistributedSnapshot;
 
@@ -3266,9 +3256,8 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions)
 
 	serializeDtxContextInfo(serializedDtxContextInfo, pDtxContextInfo); 
 
-	if (fullDtmTrace)
-		elog(LOG,"qdSerializeDtxContextInfo returning a snapshot of %d bytes (ptr is %s)",
-		     *size, (serializedDtxContextInfo != NULL ? "Non-NULL" : "NULL"));
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"qdSerializeDtxContextInfo returning a snapshot of %d bytes (ptr is %s)",
+	     *size, (serializedDtxContextInfo != NULL ? "Non-NULL" : "NULL"));
 	return serializedDtxContextInfo;
 }
 

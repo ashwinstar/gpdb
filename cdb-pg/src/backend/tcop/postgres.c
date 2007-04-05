@@ -4122,7 +4122,7 @@ PostgresMain(int argc, char *argv[], const char *username)
                     query_string = pq_getmsgstring(&input_message);
 					pq_getmsgend(&input_message);
 
-					elog((fullDtmTrace ? LOG : DEBUG5), "Simple query stmt: %s.",query_string);
+					elog((Debug_print_full_dtm ? LOG : DEBUG5), "Simple query stmt: %s.",query_string);
 
 					setupRegularDtxContext();
 					
@@ -4228,7 +4228,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 
 					pq_getmsgend(&input_message);
 					 
-					elog((fullDtmTrace ? LOG : DEBUG5), "MPP dispatched stmt from QD: %s.",query_string);
+					elog((Debug_print_full_dtm ? LOG : DEBUG5), "MPP dispatched stmt from QD: %s.",query_string);
 
 					if (suid > 0)				
 						SetSessionAuthorization(suid, suid_is_super);  /* Set the session UserId */
@@ -4333,7 +4333,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					}
 					pq_getmsgend(&input_message);
 
-					elog((fullDtmTrace ? LOG : DEBUG5), "Parse: %s.",query_string);
+					elog((Debug_print_full_dtm ? LOG : DEBUG5), "Parse: %s.",query_string);
 
 					setupRegularDtxContext();
 					
@@ -4381,7 +4381,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					max_rows = pq_getmsgint(&input_message, 4);
 					pq_getmsgend(&input_message);
 
-					elog((fullDtmTrace ? LOG : DEBUG5), "Execute: %s.",portal_name);
+					elog((Debug_print_full_dtm ? LOG : DEBUG5), "Execute: %s.",portal_name);
 
 					setupRegularDtxContext();
 					
@@ -4399,7 +4399,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 				/* Tell the collector what we're doing */
 				pgstat_report_activity("<FASTPATH> function call");
 
-				elog((fullDtmTrace ? LOG : DEBUG5), "Fast path function call.");
+				elog((Debug_print_full_dtm ? LOG : DEBUG5), "Fast path function call.");
 
 				setupRegularDtxContext();
 					
@@ -4498,7 +4498,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					describe_target = pq_getmsgstring(&input_message);
 					pq_getmsgend(&input_message);
 
-					elog((fullDtmTrace ? LOG : DEBUG5), "Describe: %s.", describe_target);
+					elog((Debug_print_full_dtm ? LOG : DEBUG5), "Describe: %s.", describe_target);
 					
 					setupRegularDtxContext();
 					

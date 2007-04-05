@@ -1850,10 +1850,9 @@ disconnectAndDestroyGang(Gang * gp)
 			PGTransactionStatusType status =
 				PQtransactionStatus(segdbDesc->conn);
 
-			if (fullDtmTrace)
-				elog(LOG,"disconnectAndDestroyGang: got QEDistributedTransactionId = %u, QECommandId = %u, and QEDirty = %s",
-				     segdbDesc->conn->QEWriter_DistributedTransactionId, 
-				     segdbDesc->conn->QEWriter_CommandId, (segdbDesc->conn->QEWriter_Dirty ? "true" : "false"));
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),"disconnectAndDestroyGang: got QEDistributedTransactionId = %u, QECommandId = %u, and QEDirty = %s",
+			     segdbDesc->conn->QEWriter_DistributedTransactionId, 
+			     segdbDesc->conn->QEWriter_CommandId, (segdbDesc->conn->QEWriter_Dirty ? "true" : "false"));
 
             if (gp_log_gang >= GPVARS_VERBOSITY_TERSE)
             {

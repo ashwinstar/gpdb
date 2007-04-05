@@ -21,6 +21,7 @@
 #include "storage/pmsignal.h"
 #include "storage/proc.h"
 #include "utils/builtins.h"
+#include "utils/guc.h"
 
 
 /* Number of OIDs to prefetch (preallocate) per XLOG write */
@@ -192,9 +193,8 @@ SetProcXid(TransactionId xid, DistributedTransactionId mppDistributedTransaction
 
 	LWLockRelease(XidGenLock);
 
-	if (fullDtmTrace)
-		elog(LOG,"SetProcId pid = %d, xid = %u, distributed xid = %u",
-			 MyProcPid, xid, mppDistributedTransactionId);
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"SetProcId pid = %d, xid = %u, distributed xid = %u",
+		 MyProcPid, xid, mppDistributedTransactionId);
 }
 
 /*

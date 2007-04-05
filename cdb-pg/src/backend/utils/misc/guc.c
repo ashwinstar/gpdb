@@ -179,6 +179,8 @@ bool		Debug_print_parse = false;
 bool		Debug_print_rewritten = false;
 bool		Debug_pretty_print = false;
 bool		Explain_pretty_print = true;
+bool		Debug_print_full_dtm = false;
+
 
 bool		log_parser_stats = false;
 bool		log_planner_stats = false;
@@ -1266,6 +1268,15 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 
+	{
+		{"debug_print_full_dtm", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Prints full DTM information to server log."),
+			NULL
+		},
+		&Debug_print_full_dtm,
+		false, NULL, NULL
+	},
+	
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL

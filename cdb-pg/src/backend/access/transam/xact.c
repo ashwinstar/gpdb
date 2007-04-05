@@ -530,15 +530,13 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 		if (TransactionIdEquals(xid,TopTransactionStateData.transactionId))
 		{
 			isCurrentTransactionId = true;
-			if (fullDtmTrace)
-			    elog(LOG,"qExec Reader CheckSharedSnapshotForSubtransaction(xid = %u) = true -- TOP", xid);
+		    elog((Debug_print_full_dtm ? LOG : DEBUG5),"qExec Reader CheckSharedSnapshotForSubtransaction(xid = %u) = true -- TOP", xid);
 		}
 		else
 		{
 	    	isCurrentTransactionId = CheckSharedSnapshotForSubtransaction(xid);
-			if (fullDtmTrace)
-			    elog(LOG,"qExec Reader CheckSharedSnapshotForSubtransaction(xid = %u) = %s -- Subtransaction",
-					 xid, (isCurrentTransactionId ? "true" : "false"));
+		    elog((Debug_print_full_dtm ? LOG : DEBUG5),"qExec Reader CheckSharedSnapshotForSubtransaction(xid = %u) = %s -- Subtransaction",
+				 xid, (isCurrentTransactionId ? "true" : "false"));
 		}
 		
 
@@ -1506,17 +1504,16 @@ SetSharedTransactionId(void)
 	switch (DistributedTransactionContext)
 	{
 	case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
-		if (fullDtmTrace)
-			elog(LOG, "Query Dispatcher setting shared xid to: %u", TopTransactionStateData.transactionId);
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "Query Dispatcher setting shared xid to: %u", TopTransactionStateData.transactionId);
 		SharedLocalSnapshotSlot->xid = TopTransactionStateData.transactionId;
 	    break;
 		
 	case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
 	case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
 	case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
-		if (fullDtmTrace)
-			elog(LOG, "qExec WRITER setting shared xid to: %u (distributedXid %u)", 
-			     TopTransactionStateData.transactionId, QEDtxContextInfo.distributedXid);
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "qExec WRITER setting shared xid to: %u (distributedXid %u)", 
+		     TopTransactionStateData.transactionId, QEDtxContextInfo.distributedXid);
+
 		SharedLocalSnapshotSlot->xid = TopTransactionStateData.transactionId;
 		break;
 		
@@ -1525,9 +1522,8 @@ SetSharedTransactionId(void)
 		TopTransactionStateData.transactionId = SharedLocalSnapshotSlot->xid;
 		currentCommandId = SharedLocalSnapshotSlot->snapshot.curcid;
 
-		if (fullDtmTrace)
-			elog(LOG, "qExec READER setting local xid to: %u (distributedXid %u)", 
-			     TopTransactionStateData.transactionId, QEDtxContextInfo.distributedXid);
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "qExec READER setting local xid to: %u (distributedXid %u)", 
+		     TopTransactionStateData.transactionId, QEDtxContextInfo.distributedXid);
 		break;
 
 	default:
@@ -1564,8 +1560,7 @@ GetSubtransactionsForSharedSnapshot(uint32 *subcnt, TransactionId *subxids)
 				continue;
 
 			Assert(*subcnt <= MaxGpSavePoints);
-			if (fullDtmTrace)
-				elog(LOG,"Adding subtransaction xid %u as #%u to shared snapshot",s->transactionId,*subcnt);
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),"Adding subtransaction xid %u as #%u to shared snapshot",s->transactionId,*subcnt);
 			subxids[(*subcnt)++] = s->transactionId;
 		}
 
@@ -1574,8 +1569,7 @@ GetSubtransactionsForSharedSnapshot(uint32 *subcnt, TransactionId *subxids)
 		foreach(cell, s->childXids)
 		{
 			Assert(*subcnt <= MaxGpSavePoints);
-			if (fullDtmTrace)
-				elog(LOG,"Adding subcommitted child xid %u as #%u to shared snapshot",lfirst_xid(cell),*subcnt);
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),"Adding subcommitted child xid %u as #%u to shared snapshot",lfirst_xid(cell),*subcnt);
 			subxids[(*subcnt)++] = lfirst_xid(cell);
 		}
 	}
@@ -1603,12 +1597,10 @@ void
 ShowSubtransactionsForSharedSnapshot(uint32 subcnt, TransactionId *subxids)
 {
     uint32 sub;
-	if (fullDtmTrace)
-		elog(LOG,"Reader qExec count of subtransaction ids %u",SharedLocalSnapshotSlot->subcnt);
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"Reader qExec count of subtransaction ids %u",SharedLocalSnapshotSlot->subcnt);
 	for (sub = 0; sub < subcnt; sub++)
 	{
-		if (fullDtmTrace)
-			elog(LOG,"Reader qExec subtransaction xid %u as #%u from shared snapshot",subxids[sub],sub);
+		elog((Debug_print_full_dtm ? LOG : DEBUG5),"Reader qExec subtransaction xid %u as #%u from shared snapshot",subxids[sub],sub);
 	}
 
 }
@@ -1708,8 +1700,7 @@ StartTransaction(void)
 	 * a purely-local transaction.
 	 *
 	 */
-	if (fullDtmTrace)
-		elog(LOG,"StartTransaction DTX Context = '%s'", DtxContextToString(DistributedTransactionContext));
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"StartTransaction DTX Context = '%s'", DtxContextToString(DistributedTransactionContext));
 	
 	switch (DistributedTransactionContext)
 	{
@@ -1784,8 +1775,7 @@ StartTransaction(void)
 			  	 */
 			  	xactStartTimestamp = stmtStartTimestamp;
 
-				if (fullDtmTrace)
-					elog(LOG, "qExec writer setting distributedXid: %d ready: false", QEDtxContextInfo.distributedXid);
+				elog((Debug_print_full_dtm ? LOG : DEBUG5), "qExec writer setting distributedXid: %d ready: false", QEDtxContextInfo.distributedXid);
 
 				if (SharedLocalSnapshotSlot != NULL)
 				{
@@ -1828,7 +1818,7 @@ StartTransaction(void)
 			 * interconnect timeout is in seconds */
 			int     sleep_per_check_ms = 200;
 			/* Wait for up to 1/4 the timeout period */
-			int		segmate_timeout_ms = (interconnect_setup_timeout * 1000) / 4;
+			int		segmate_timeout_ms = (3 * interconnect_setup_timeout * 1000) / 4;
 			
 			/*
 			 * MPP: we're a QE Reader.
@@ -1841,10 +1831,9 @@ StartTransaction(void)
 			 */
 
 
-			if (fullDtmTrace)
-				elog(LOG, "qExec reader: distributedXid %d sharedlocalsnapshot->QDxid %d sharedsnapshots: %s",
-					 QEDtxContextInfo.distributedXid, SharedLocalSnapshotSlot->QDxid, 
-					 SharedSnapshotDump());
+			elog((Debug_print_full_dtm ? LOG : DEBUG5), "qExec reader: distributedXid %d sharedlocalsnapshot->QDxid %d sharedsnapshots: %s",
+				 QEDtxContextInfo.distributedXid, SharedLocalSnapshotSlot->QDxid, 
+				 SharedSnapshotDump());
 
 			while (!done)
 			{
@@ -1870,7 +1859,7 @@ StartTransaction(void)
 					 * TODO: is there a semaphore or something better we can
 					 * do here.
 					 */
-					if (count > 0)
+					if (count > 5)
 						elog(LOG,"StartTransaction did not find shared local snapshot information. "
 								 "We are waiting for the shared snapshot to have XID: %d but the value "
 							     "is currently: %d. Our slotindex is: %d. "
@@ -4233,9 +4222,8 @@ IsTransactionDirty(void)
 {
 	bool result = (MyXactMadeXLogEntry || MyXactMadeTempRelUpdate || smgrIsPendingDeletes(true));
 
-	if (fullDtmTrace)
-		elog(LOG, "IsTransactionDirty: TopTransactionId %u, dirty = %s",
-			 GetTopTransactionId(), (result ? "true" : "false"));
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "IsTransactionDirty: TopTransactionId %u, dirty = %s",
+		 GetTopTransactionId(), (result ? "true" : "false"));
 	
 	return result;
 }
