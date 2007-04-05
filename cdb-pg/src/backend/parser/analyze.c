@@ -3845,6 +3845,26 @@ transformAlterTableStmt(ParseState *pstate, AlterTableStmt *stmt,
 					ColumnDef  *def = (ColumnDef *) cmd->def;
 
 					Assert(IsA(cmd->def, ColumnDef));
+					
+					/*
+					 * Disallow adding a column with primary key constraint
+					 */
+					if (Gp_role == GP_ROLE_DISPATCH)
+					{
+						ListCell *c;
+						foreach(c, def->constraints)
+						{
+							Constraint	   *cons = (Constraint *) lfirst(c);
+							if(cons->contype == CONSTR_PRIMARY)
+								elog(ERROR, "Cannot add column with primary "
+									 "key constraint");
+							if(cons->contype == CONSTR_UNIQUE)
+								elog(ERROR, "Cannot add column with unique "
+									 "constraint");
+							
+						}
+					}
+					
 					transformColumnDefinition(pstate, &cxt,
 											  (ColumnDef *) cmd->def);
 
