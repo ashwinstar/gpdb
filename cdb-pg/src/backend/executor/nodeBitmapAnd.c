@@ -188,7 +188,7 @@ MultiExecBitmapAnd(BitmapAndState *node)
    				{
 	   				StreamBitmap *s = (StreamBitmap *)subresult;
 		   			stream_add_node((StreamBitmap *)node->bitmap,
-									s->opaque, BMS_AND);
+									s->streamNode, BMS_AND);
 			   	}
 			}
    			else
@@ -198,7 +198,7 @@ MultiExecBitmapAnd(BitmapAndState *node)
 
 	/* must provide our own instrumentation support */
 	if (node->ps.instrument)
-		InstrStopNode(node->ps.instrument, 0 /* XXX */ );
+        InstrStopNode(node->ps.instrument, empty ? 0 : 1);
 
 	if (empty)
 		return (Node*) NULL;

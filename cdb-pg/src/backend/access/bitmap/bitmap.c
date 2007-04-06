@@ -32,8 +32,8 @@ static bool words_get_match(BMBatchWords *words, BMIterateResult *result,
                             BlockNumber blockno, PagetableEntry *entry,
 							bool newentry);
 static IndexScanDesc copy_scan_desc(IndexScanDesc scan);
-static void stream_free(void *opaque);
-static bool pull_stream(void *opaque, PagetableEntry *e);
+static void stream_free(StreamNode *self);
+static bool pull_stream(StreamNode *self, PagetableEntry *e);
 static void cleanup_pos(BMScanPosition pos);
 
 /* type to hide BM specific stream state */
@@ -112,7 +112,7 @@ bmbuild(PG_FUNCTION_ARGS)
     }
 	
 	/* return statistics */
-	result = (IndexBuildResult *) palloc(sizeof(IndexBuildResult));
+	result = (IndexBuildResult *) palloc0(sizeof(IndexBuildResult));
 
 	result->heap_tuples = reltuples;
 	result->index_tuples = bmstate.ituples;
@@ -175,12 +175,13 @@ bmgetbitmap(PG_FUNCTION_ARGS)
 	bool res;
 
 	/* perhaps this should be in a special context? */
-	is = (IndexStream *)palloc(sizeof(IndexStream));
+	is = (IndexStream *)palloc0(sizeof(IndexStream));
 	is->type = BMS_INDEX;
-	is->free = stream_free;
-	is->nextblock = 0;
 	is->pull = pull_stream;
-	is->needfree = true;
+	is->nextblock = 0;
+	is->free = stream_free;
+    is->set_instrument = NULL;
+    is->upd_instrument = NULL;
 
 	/* create a memory context for the stream */
 
@@ -207,7 +208,6 @@ bmgetbitmap(PG_FUNCTION_ARGS)
 		/* there were no matches so our state "invalid" */
 		is->opaque = NULL;
 	}
-		
 
 	if(!bm)
 	{
@@ -220,12 +220,12 @@ bmgetbitmap(PG_FUNCTION_ARGS)
 		 * memory, we'll be reading invalid memory.
 		 */
 		StreamBitmap *sb = makeNode(StreamBitmap);
-		sb->opaque = (void *)is;
+		sb->streamNode = is;
 		bm = (Node *)sb;
 	}
 	else if(IsA(bm, StreamBitmap))
 	{
-		stream_add_node((StreamBitmap *)bm, (void *)is, BMS_OR);
+		stream_add_node((StreamBitmap *)bm, is, BMS_OR);
 	}
 	else
 	{
@@ -526,18 +526,18 @@ bmbuildCallback(Relation index, HeapTuple htup, Datum *attdata,
  */
 
 static void
-stream_free(void *opaque)
+stream_free(StreamNode *self)
 {
-	IndexStream *is = (IndexStream *)opaque;
+	IndexStream *is = self;
 	BMStreamOpaque *so = (BMStreamOpaque *)is->opaque;
 
 	/* opaque may be NULL */
-	if(is->needfree && so)
+	if (so)
 	{
 		IndexScanDesc scan = so->scan;
 		BMScanOpaque s = (BMScanOpaque)scan->opaque;
 
-		is->needfree = false;
+		is->opaque = NULL;
 		if(s->bm_currPos)
 		{
 			cleanup_pos(s->bm_currPos);
@@ -548,7 +548,6 @@ stream_free(void *opaque)
 			cleanup_pos(s->bm_markPos);
 			s->bm_markPos = NULL;
 		}
-		is->opaque = NULL;
 	}
 }
 
@@ -574,9 +573,9 @@ cleanup_pos(BMScanPosition pos)
  */
 
 static bool 
-pull_stream(void *opaque, PagetableEntry *e)
+pull_stream(StreamNode *self, PagetableEntry *e)
 {
-	StreamNode 	   *n = (StreamNode *)opaque;
+	StreamNode 	   *n = self;
 	bool			res = false;
 	bool 			newentry = true;
 	IndexStream    *is = (IndexStream *)n;

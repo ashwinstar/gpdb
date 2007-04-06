@@ -13,6 +13,7 @@
  * fact that a particular page needs to be visited.
  *
  *
+ * Portions Copyright (c) 2007, greenplum inc
  * Copyright (c) 2003-2006, PostgreSQL Global Development Group
  *
  * $PostgreSQL: pgsql/src/include/nodes/tidbitmap.h,v 1.3 2005/10/15 02:49:45 momjian Exp $
@@ -28,6 +29,9 @@
 #include "nodes/pg_list.h"
 #include "storage/itemptr.h"
 #include "storage/bufpage.h"
+
+struct Instrumentation;                 /* #include "executor/instrument.h" */
+
 
 /*
  * The maximum number of tuples per page is not large (typically 256 with
@@ -105,54 +109,36 @@ typedef struct StreamBitmap
 {
 	NodeTag			type;		/* to make it a valid Node */
 	PagetableEntry	entry;		/* a page of tids in this stream bitmap */
-	void		   *opaque;		/* state internal to stream implementation */
+	struct StreamNode      *streamNode; /* state internal to stream implementation */
+    struct Instrumentation *instrument; /* CDB: stats for EXPLAIN ANALYZE */
 } StreamBitmap;
 
 /*
- * Generic type so that we know what kind of stream object we're 
- * dealing with. Notice that the first 3 fields are packed the same
- * in the IndexStream and OpStream structures!
+ * Stream object.
  */
 typedef struct StreamNode
 {
-	StreamType type; /* type of stream */
-	bool            (*pull) (void *opaque, PagetableEntry *e);
-	void            (*free) (void *opaque);
+	StreamType      type;       /* one of: BMS_INDEX, BMS_AND, BMS_OR */
+	bool          (*pull)(struct StreamNode *self, PagetableEntry *e);
 	BlockNumber		nextblock;	/* block number we're up to */
-	bool			needfree;	/* does the opaque need freeing? */
+	void		   *opaque;     /* for IndexStream only */
+	List		   *input;		/* input streams; for OpStream only */
+	void          (*free)(struct StreamNode *self);
+	void          (*set_instrument)(struct StreamNode *self, struct Instrumentation *instr);
+	void          (*upd_instrument)(struct StreamNode *self);
 } StreamNode;
 
 /*
  * Storage for state specific to the streaming of blocks from the index
  * itself.
  */
-typedef struct IndexStream
-{
-	StreamType		type;
-	/* pull up another block */
-	bool            (*pull) (void *opaque, PagetableEntry *e);
-	/* stream specific free */
-	void			(*free) (void *opaque);
-	BlockNumber		nextblock;	/* block number we're up to */
-	bool			needfree;
-	void		   *opaque;
-    /* function to pull more data */
-} IndexStream;
+typedef struct StreamNode   IndexStream;
 
 /*
  * Storage for streaming of multiple index streams which need to be
  * AND or OR'd together
  */
-
-typedef struct OpStream
-{
-	StreamType		type;
-	bool            (*pull) (void *opaque, PagetableEntry *e);
-	void            (*free) (void *opaque);
-	BlockNumber		nextblock;	/* block number we're up to */
-	bool			needfree;
-	List		   *input;		/* input streams */
-} OpStream;
+typedef struct StreamNode   OpStream;
 
 /* Result structure for tbm_iterate */
 typedef struct
@@ -174,9 +160,13 @@ extern bool tbm_is_empty(const HashBitmap *tbm);
 extern void tbm_begin_iterate(HashBitmap *tbm);
 extern bool tbm_iterate(Node *tbm, TBMIterateResult *output);
 
-extern void stream_add_node(StreamBitmap *strm, void *node, StreamType kind);
-extern void *tbm_create_stream_node(HashBitmap *tbm);
-extern bool bitmap_stream_iterate(void *opaque, PagetableEntry *e);
-extern void bitmap_stream_free(void *opaque);
+extern void stream_add_node(StreamBitmap *strm, StreamNode *node, StreamType kind);
+extern StreamNode *tbm_create_stream_node(HashBitmap *tbm);
+extern bool bitmap_stream_iterate(StreamNode *n, PagetableEntry *e);
+
+/* These functions accept either a HashBitmap or a StreamBitmap... */
+extern void tbm_bitmap_free(Node *bm);
+extern void tbm_bitmap_set_instrument(Node *bm, struct Instrumentation *instr);
+extern void tbm_bitmap_upd_instrument(Node *bm);
 
 #endif   /* TIDBITMAP_H */

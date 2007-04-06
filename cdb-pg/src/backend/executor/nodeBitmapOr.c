@@ -163,7 +163,7 @@ MultiExecBitmapOr(BitmapOrState *node)
 				{
 					StreamBitmap *s = (StreamBitmap *)subresult;
 					stream_add_node((StreamBitmap *)node->bitmap, 
-									s->opaque, BMS_OR);
+									s->streamNode, BMS_OR);
 				}
 			}
 			else
@@ -183,7 +183,7 @@ MultiExecBitmapOr(BitmapOrState *node)
 
 	/* must provide our own instrumentation support */
 	if (node->ps.instrument)
-		InstrStopNode(node->ps.instrument, 0 /* XXX */ );
+        InstrStopNode(node->ps.instrument, node->bitmap ? 1 : 0);
 
 	return node->bitmap;
 }

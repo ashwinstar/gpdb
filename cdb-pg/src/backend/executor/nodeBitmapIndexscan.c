@@ -3,6 +3,7 @@
  * nodeBitmapIndexscan.c
  *	  Routines to support bitmapped index scans of relations
  *
+ * Portions Copyright (c) 2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -78,6 +79,10 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 
 		CHECK_FOR_INTERRUPTS();
 
+        /* CDB: If EXPLAIN ANALYZE, let bitmap share our Instrumentation. */
+        if (node->ss.ps.instrument)
+            tbm_bitmap_set_instrument(bitmap, node->ss.ps.instrument);
+
 		if(node->bitmap == NULL)
 			node->bitmap = (Node *)bitmap;
 		doscan = ExecIndexAdvanceArrayKeys(node->biss_ArrayKeys,
@@ -88,7 +93,7 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 
 	/* must provide our own instrumentation support */
 	if (node->ss.ps.instrument)
-		InstrStopNode(node->ss.ps.instrument, 0 /* XXX */);
+		InstrStopNode(node->ss.ps.instrument, 1 /* XXX */);
 
 	return (Node *) bitmap;
 }
@@ -151,7 +156,7 @@ ExecBitmapIndexReScan(BitmapIndexScanState *node, ExprContext *exprCtxt)
 	/* reset hashBitmap */
 	if(node->bitmap && IsA(node->bitmap, HashBitmap))
 	{
-		tbm_free((HashBitmap *)node->bitmap);
+        tbm_free((HashBitmap *)node->bitmap);
 		node->bitmap = NULL;
 	}
 	else
@@ -186,12 +191,19 @@ ExecEndBitmapIndexScan(BitmapIndexScanState *node)
 		FreeExprContext(node->biss_RuntimeContext);
 #endif
 
+    /* 
+     * CDB: Report statistics for EXPLAIN ANALYZE 
+     */
+    if (node->ss.ps.instrument)
+        tbm_bitmap_upd_instrument(node->bitmap);
+
 	/*
 	 * close the index relation
 	 */
 	index_endscan(indexScanDesc);
 
 	index_close(indexRelationDesc, NoLock);
+
 #ifdef NOT_USED
 	if (node->bitmap != NULL)
 	{

@@ -404,15 +404,8 @@ ExecBitmapHeapReScan(BitmapHeapScanState *node, ExprContext *exprCtxt)
 			tbm_free((HashBitmap *)node->tbm);
 			node->tbm = NULL;
 		}
-		else if(IsA(node->tbm, StreamBitmap))
-		{
-			StreamBitmap *s = (StreamBitmap *)node->tbm;
-			if(s->opaque)
-			{
-				bitmap_stream_free(s->opaque);
-				s->opaque = NULL;
-			}
-		}
+		else
+            tbm_bitmap_free(node->tbm);
 	}
 	node->tbm = NULL;
 	node->tbmres->ntuples = 0;
