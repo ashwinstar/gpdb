@@ -176,6 +176,7 @@ GET_CHILD_NAMES () {
 
 GET_NODE_COUNT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	REC_COUNT=0
 	if [ `$ECHO $TARGETTBL|$GREP -c "\."` -eq 1 ];then
 		SCHEMA_NAME=`$ECHO $TARGETTBL|$CUT -d. -f1`
 		T_NAME=`$ECHO $TARGETTBL|$CUT -d. -f2`
