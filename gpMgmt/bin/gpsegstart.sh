@@ -220,8 +220,8 @@ while getopts ":v'?'" opt
 done
 #Now process supplied call parameters
 #Setting APP_PATH
-if [ x"" != x"$MPPHOME" ];then
-        APP_PATH=${MPPHOME}/bin
+if [ x"" != x"$GPHOME" ];then
+        APP_PATH=${GPHOME}/bin
 else
         APP_PATH=${BIZHOME}/bin
 fi
