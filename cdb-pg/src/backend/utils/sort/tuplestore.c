@@ -32,6 +32,7 @@
  * the Tuplestore's state.
  *
  *
+ * Portions Copyright (c) 2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -44,6 +45,7 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "executor/instrument.h"        /* struct Instrumentation */
 #include "storage/buffile.h"
 #include "utils/memutils.h"
 #include "utils/tuplestore.h"
@@ -138,6 +140,14 @@ struct Tuplestorestate
 	int			markpos_current;	/* saved "current" */
 	int			markpos_file;	/* saved "readpos_file" */
 	long		markpos_offset; /* saved "readpos_offset" */
+
+    /*
+     * CDB: EXPLAIN ANALYZE reporting interface and statistics.
+     */
+    struct Instrumentation *instrument;
+	long		allowedMem;		/* total memory allowed, in bytes */
+    long        availMemMin;    /* availMem low water mark (bytes) */
+    int64       spilledBytes;   /* memory used for spilled tuples */
 };
 
 #define COPYTUP(state,tup)	((*(state)->copytup) (state, tup))
@@ -145,7 +155,15 @@ struct Tuplestorestate
 #define READTUP(state,len)	((*(state)->readtup) (state, len))
 #define LACKMEM(state)		((state)->availMem < 0)
 #define USEMEM(state,amt)	((state)->availMem -= (amt))
-#define FREEMEM(state,amt)	((state)->availMem += (amt))
+
+static inline void
+FREEMEM(Tuplestorestate *state, int amt)
+{
+    if (state->availMemMin > state->availMem)
+        state->availMemMin = state->availMem;
+    state->availMem += amt;
+}
+
 
 /*--------------------
  *
@@ -219,6 +237,8 @@ tuplestore_begin_common(bool randomAccess, bool interXact, int maxKBytes)
 	state->randomAccess = randomAccess;
 	state->interXact = interXact;
 	state->availMem = maxKBytes * 1024L;
+    state->availMemMin = state->availMem;
+    state->allowedMem = state->availMem;
 	state->myfile = NULL;
 
 	state->memtupcount = 0;
@@ -266,6 +286,24 @@ tuplestore_begin_heap(bool randomAccess, bool interXact, int maxKBytes)
 	return state;
 }
 
+
+/*
+ * tuplestore_set_instrument
+ *
+ * May be called after tuplestore_begin_xxx() to enable reporting of
+ * statistics and events for EXPLAIN ANALYZE.
+ *
+ * The 'instr' ptr is retained in the 'state' object.  The caller must 
+ * ensure that it remains valid for the life of the Tuplestorestate object.
+ */
+void 
+tuplestore_set_instrument(Tuplestorestate          *state,
+                          struct Instrumentation   *instrument)
+{
+    state->instrument = instrument;
+}                               /* tuplestore_set_instrument */
+
+
 /*
  * tuplestore_end
  *
@@ -275,6 +313,27 @@ void
 tuplestore_end(Tuplestorestate *state)
 {
 	int			i;
+
+    /* 
+     * CDB: Report statistics to EXPLAIN ANALYZE.
+     */ 
+    if (state->instrument)
+    {
+        double  nbytes;
+
+        /* How close did we come to the work_mem limit? */
+        FREEMEM(state, 0);              /* update low-water mark */
+        nbytes = state->allowedMem - state->availMemMin;
+        state->instrument->workmemused = Max(state->instrument->workmemused, nbytes);
+
+        /* How much work_mem would be enough to hold all tuples in memory? */
+        if (state->spilledBytes > 0)
+        {
+            nbytes = state->allowedMem - state->availMem + state->spilledBytes;
+            state->instrument->workmemwanted =
+                Max(state->instrument->workmemwanted, nbytes);
+        }
+    }
 
 	if (state->myfile)
 		BufFileClose(state->myfile);
@@ -780,6 +839,7 @@ writetup_heap(Tuplestorestate *state, void *tup)
 {
 	MinimalTuple tuple = (MinimalTuple) tup;
 	unsigned int tuplen = tuple->t_len;
+    Size         memsize;
 
 	if (BufFileWrite(state->myfile, (void *) tuple, tuplen) != (size_t) tuplen)
 		elog(ERROR, "write failed");
@@ -788,7 +848,10 @@ writetup_heap(Tuplestorestate *state, void *tup)
 						 sizeof(tuplen)) != sizeof(tuplen))
 			elog(ERROR, "write failed");
 
-	FREEMEM(state, GetMemoryChunkSpace(tuple));
+	memsize = GetMemoryChunkSpace(tuple);
+    state->spilledBytes += memsize;
+	FREEMEM(state, memsize);
+
 	heap_free_minimal_tuple(tuple);
 }
 

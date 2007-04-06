@@ -3,7 +3,7 @@
  * nodeNestloop.c
  *	  routines to support nest-loop joins
  *
- * Portions Copyright (c) 2006, greenplum inc
+ * Portions Copyright (c) 2006-2007, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -112,7 +112,7 @@ ExecInitAdaptiveNestLoop(AdaptiveNestLoop *node, EState *estate, int eflags)
 	anlstate->nl_strategy = NL_STRATEGY_UNDECIDED;
 	anlstate->nl_strategy_threshold = node->nl_strategy_threshold;
 
-	anlstate->outer_q = makeTQ(anlstate->nl_strategy_threshold);
+	anlstate->outer_q = makeTQ(anlstate->nl_strategy_threshold, anlstate->ps.instrument);
 
 	/* if our threshold is too large to queue up tuples within work_mem we're in trouble. */
 	if (anlstate->outer_q == NULL)

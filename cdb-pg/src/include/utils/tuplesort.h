@@ -103,7 +103,7 @@ extern void tuplesort_restorepos(Tuplesortstate *state);
  * The 'instr' and 'explainbuf' ptrs are retained in the 'state' object for
  * possible use anytime during the sort, up to and including tuplesort_end().
  * The caller must ensure that the referenced objects remain allocated and
- * valid for the life of the Tuplestorestate object; or if they are to be
+ * valid for the life of the Tuplesortstate object; or if they are to be
  * freed early, disconnect them by calling again with NULL pointers.
  */
 void 

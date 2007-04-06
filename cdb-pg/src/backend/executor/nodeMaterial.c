@@ -3,7 +3,7 @@
  * nodeMaterial.c
  *	  Routines to handle materialization nodes.
  *
- * Portions Copyright (c) 2005, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -25,6 +25,9 @@
 #include "executor/executor.h"
 #include "executor/nodeMaterial.h"
 #include "miscadmin.h"
+
+static void ExecMaterialExplainEnd(PlanState *planstate, struct StringInfoData *buf);
+
 
 /* ----------------------------------------------------------------
  *		ExecMaterial
@@ -62,6 +65,16 @@ ExecMaterial(MaterialState *node)
 		tuplestorestate = tuplestore_begin_heap(true, false, work_mem);
 
 		node->tuplestorestate = (void *) tuplestorestate;
+
+        /* CDB: Offer extra info for EXPLAIN ANALYZE. */
+        if (node->ss.ps.instrument)
+        {
+            /* Let the tuplestore share our Instrumentation object. */
+            tuplestore_set_instrument(tuplestorestate, node->ss.ps.instrument);
+
+            /* Request a callback at end of query. */
+            node->ss.ps.cdbexplainfun = ExecMaterialExplainEnd;
+        }
 
 		/*
 		 * MPP: If requested, fetch all rows from subplan and put them
@@ -241,6 +254,26 @@ ExecCountSlotsMaterial(Material *node)
 		ExecCountSlotsNode(innerPlan((Plan *) node)) +
 		MATERIAL_NSLOTS;
 }
+
+
+/*
+ * ExecMaterialExplainEnd
+ *      Called before ExecutorEnd to finish EXPLAIN ANALYZE reporting.
+ *
+ * Some of the cleanup that ordinarily would occur during ExecEndMaterial()
+ * needs to be done earlier in order to report statistics to EXPLAIN ANALYZE.  
+ * Note that ExecEndMaterial() will be called again during ExecutorEnd().
+ */
+void
+ExecMaterialExplainEnd(PlanState *planstate, struct StringInfoData *buf)
+{
+    PlanState *savechild = outerPlanState(planstate);
+
+    outerPlanState(planstate) = NULL;       /* don't shut down subplan yet */
+    ExecEndMaterial((MaterialState *)planstate);
+    outerPlanState(planstate) = savechild;  /* restore */
+}                               /* ExecMaterialExplainEnd */
+
 
 /* ----------------------------------------------------------------
  *		ExecEndMaterial

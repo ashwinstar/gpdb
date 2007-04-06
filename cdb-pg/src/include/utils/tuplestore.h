@@ -31,6 +31,8 @@
 
 #include "executor/tuptable.h"
 
+struct Instrumentation;                 /* #include "executor/instrument.h" */
+
 
 /* Tuplestorestate is an opaque type whose details are not known outside
  * tuplestore.c.
@@ -45,6 +47,19 @@ typedef struct Tuplestorestate Tuplestorestate;
 extern Tuplestorestate *tuplestore_begin_heap(bool randomAccess,
 					  bool interXact,
 					  int maxKBytes);
+
+/*
+ * tuplestore_set_instrument
+ *
+ * May be called after tuplestore_begin_xxx() to enable reporting of
+ * statistics and events for EXPLAIN ANALYZE.
+ *
+ * The 'instr' ptr is retained in the 'state' object.  The caller must
+ * ensure that it remains valid for the life of the Tuplestorestate object.
+ */
+void 
+tuplestore_set_instrument(Tuplestorestate          *state,
+                          struct Instrumentation   *instrument);
 
 extern void tuplestore_puttupleslot(Tuplestorestate *state,
 						TupleTableSlot *slot);

@@ -3,7 +3,7 @@
  * nodeFunctionscan.c
  *	  Support routines for scanning RangeFunctions (functions in rangetable).
  *
- * Portions Copyright (c) 2006, greenplum inc
+ * Portions Copyright (c) 2006-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -32,6 +32,8 @@
 
 static TupleTableSlot *FunctionNext(FunctionScanState *node);
 static void tupledesc_match(TupleDesc dst_tupdesc, TupleDesc src_tupdesc);
+static void ExecFunctionScanExplainEnd(PlanState *planstate, struct StringInfoData *buf);
+
 
 /* ----------------------------------------------------------------
  *						Scan Support
@@ -73,6 +75,16 @@ FunctionNext(FunctionScanState *node)
 										econtext,
 										node->tupdesc,
 										&funcTupdesc);
+
+        /* CDB: Offer extra info for EXPLAIN ANALYZE. */
+        if (node->ss.ps.instrument)
+        {
+            /* Let the tuplestore share our Instrumentation object. */
+            tuplestore_set_instrument(tuplestorestate, node->ss.ps.instrument);
+
+            /* Request a callback at end of query. */
+            node->ss.ps.cdbexplainfun = ExecFunctionScanExplainEnd;
+        }
 
 		/*
 		 * If function provided a tupdesc, cross-check it.	We only really
@@ -269,6 +281,22 @@ ExecCountSlotsFunctionScan(FunctionScan *node)
 		ExecCountSlotsNode(innerPlan(node)) +
 		FUNCTIONSCAN_NSLOTS;
 }
+
+
+/*
+ * ExecFunctionScanExplainEnd
+ *      Called before ExecutorEnd to finish EXPLAIN ANALYZE reporting.
+ *
+ * The cleanup that ordinarily would occur during ExecutorEnd() needs to be 
+ * done earlier in order to report statistics to EXPLAIN ANALYZE.  Note that 
+ * ExecEndFunctionScan() will be called for a second time during ExecutorEnd().
+ */
+void
+ExecFunctionScanExplainEnd(PlanState *planstate, struct StringInfoData *buf)
+{
+    ExecEndFunctionScan((FunctionScanState *)planstate);
+}                               /* ExecFunctionScanExplainEnd */
+
 
 /* ----------------------------------------------------------------
  *		ExecEndFunctionScan

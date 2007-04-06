@@ -18,6 +18,7 @@
 
 #include "executor/executor.h"
 #include "executor/hashjoin.h"
+#include "executor/instrument.h"        /* Instrumentation */
 #include "executor/nodeHash.h"
 #include "executor/nodeHashjoin.h"
 #include "utils/memutils.h"
@@ -902,7 +903,7 @@ ExecReScanHashJoin(HashJoinState *node, ExprContext *exprCtxt)
 }
 
 executorTupleQueue *
-makeTQ(int size)
+makeTQ(int size, struct Instrumentation *instr)
 {
 	int tq_size;
 	executorTupleQueue *tq = NULL;
@@ -911,6 +912,9 @@ makeTQ(int size)
 
 	if (tq_size > (work_mem*1024))
 		return NULL;
+
+    if (instr)
+        instr->workmemused = Max(instr->workmemused, tq_size);
 
 	tq = palloc0(tq_size);
 
