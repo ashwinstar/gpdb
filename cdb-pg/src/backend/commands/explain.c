@@ -51,6 +51,7 @@ typedef struct ExplainState
     StringInfo  extratextbuf;   /* -> buffer for extra message text */
     StringInfoData  workbuf;    /* a scratch buffer */
 	instr_time	starttime;      /* start time of query */
+    struct CdbExplain_ShowStatCtx  *showctx;    /* EXPLAIN ANALYZE info */
 } ExplainState;
 
 static void ExplainOneQuery(Query *query, ExplainStmt *stmt,
@@ -260,6 +261,7 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 
 	memset(es, 0, sizeof(*es));
     es->queryDesc = queryDesc;
+    es->showctx = NULL;
 
 	initStringInfoOfSize(&buf, 16000);
     initStringInfoOfSize(&es->workbuf, 1000);
@@ -279,11 +281,11 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 
 	/* If analyzing, we need to cope with queued triggers */
 	if (stmt->analyze)
-		AfterTriggerBeginQuery();
+        AfterTriggerBeginQuery();
 
 	/* Select execution options */
 	if (stmt->analyze)
-		eflags = 0;				/* default run-to-completion flags */
+        eflags = 0;				/* default run-to-completion flags */
 	else
 		eflags = EXEC_FLAG_EXPLAIN_ONLY;
 
@@ -317,6 +319,9 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
         /* We can't clean up 'till we're done printing the stats... */
         else
 		    totaltime += elapsed_time(&starttime);
+
+        /* Allocate workarea for summary stats. */
+        es->showctx = cdbexplain_showExecStatsBegin(starttime);
 	}
 
 	es->printNodes = stmt->verbose;
@@ -449,8 +454,13 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
     }
 
 	if (stmt->analyze)
+    {
+        cdbexplain_showExecStatsEnd(es->showctx, &buf);
+        es->showctx = NULL;
+
 		appendStringInfo(&buf, "Total runtime: %.3f ms\n",
 						 1000.0 * totaltime);
+    }
 
 	do_text_output_multiline(tstate, buf.data);
 
@@ -1042,8 +1052,8 @@ explain_outNode(StringInfo str,
         cdbexplain_showExecStats(planstate,
                                  str,
                                  indent+1,
-                                 es->extratextbuf,
-                                 es->starttime);
+                                 es->showctx,
+                                 es->extratextbuf);
 
 	/* initPlan-s */
 	if (plan->initPlan)

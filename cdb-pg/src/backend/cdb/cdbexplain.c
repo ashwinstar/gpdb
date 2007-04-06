@@ -129,6 +129,17 @@ typedef struct CdbExplain_RecvStatCtx
 } CdbExplain_RecvStatCtx;
 
 
+/* State for cdbexplain_showExecStats */
+typedef struct CdbExplain_ShowStatCtx
+{
+    instr_time      querystarttime;
+
+    /* Summary over entire query plan */
+    double          workmemused_max;
+    double          workmemwanted_max;
+} CdbExplain_ShowStatCtx;
+
+
 static CdbVisitOpt
 cdbexplain_sendStatWalker(PlanState *planstate, void *context);
 static CdbVisitOpt
@@ -679,9 +690,76 @@ cdbexplain_formatSeg(char *outbuf, int segindex, int nInst)
 
 
 /*
+ * cdbexplain_showExecStatsBegin
+ *    Called by qDisp process to create a CdbExplain_ShowStatCtx structure
+ *    in which to accumulate overall statistics for a query.
+ *
+ * 'querystarttime' is the timestamp of the start of the query, in a
+ *      platform-dependent format.
+ */
+struct CdbExplain_ShowStatCtx *
+cdbexplain_showExecStatsBegin(instr_time    querystarttime)
+{
+    CdbExplain_ShowStatCtx *ctx = (CdbExplain_ShowStatCtx *)palloc0(sizeof(*ctx));
+
+    ctx->querystarttime = querystarttime;
+    ctx->workmemused_max = 0;
+    ctx->workmemwanted_max = 0;
+    return ctx;
+}                               /* cdbexplain_showExecStatsBegin */
+
+
+/*
+ * cdbexplain_showExecStatsEnd
+ *    Called by qDisp process to format the overall statistics for a query
+ *    into the caller's buffer and free the CdbExplain_ShowStatCtx object.
+ *
+ * 'ctx' is the CdbExplain_ShowStatCtx object which was created by a call to
+ *      cdbexplain_showExecStatsBegin() and contains statistics which have
+ *      been accumulated over a series of calls to cdbexplain_showExecStats().
+ *      Invalid on return (it is freed).
+ * 'str' is the output buffer.
+ */
+void
+cdbexplain_showExecStatsEnd(struct CdbExplain_ShowStatCtx  *ctx,
+                            struct StringInfoData          *str)
+{
+    if (str)
+    {
+        int     startlen = str->len;
+        char    abuf[50];
+        char    bbuf[50];
+
+        if (ctx->workmemwanted_max > 0)
+        {
+            cdbexplain_formatMemory(abuf, ctx->workmemused_max);
+            cdbexplain_formatMemory(bbuf, ctx->workmemwanted_max);
+            appendStringInfo(str,
+                             "Work_mem:  %s used, %s wanted.",
+                             abuf,
+                             bbuf);
+        }
+        else if (ctx->workmemused_max > 0)
+        {
+            cdbexplain_formatMemory(abuf, ctx->workmemused_max);
+            appendStringInfo(str,
+                             "Work_mem:  %s used.",
+                             abuf);
+        }
+
+        if (startlen < str->len)
+            appendStringInfoChar(str, '\n');
+    }
+    pfree(ctx);
+}                               /* cdbexplain_showExecStatsEnd */
+
+
+/*
  * cdbexplain_showExecStats
  *    Called by qDisp process to format a node's EXPLAIN ANALYZE statistics.
  *
+ * 'ctx' is a CdbExplain_ShowStatCtx object which was created by a call to
+ *      cdbexplain_showExecStatsBegin().
  * 'str' is the output buffer.
  * 'extratextbuf' is the buffer in which extra message text was saved by
  *      cdbexplain_recvExecStats().  Some more extra message text might be
@@ -696,11 +774,11 @@ cdbexplain_formatSeg(char *outbuf, int segindex, int nInst)
  * the qDisp process for execution.
  */
 void
-cdbexplain_showExecStats(struct PlanState      *planstate,
-                         struct StringInfoData *str,
-                         int                    indent,
-                         struct StringInfoData *extratextbuf,
-                         instr_time             querystarttime)
+cdbexplain_showExecStats(struct PlanState              *planstate,
+                         struct StringInfoData         *str,
+                         int                            indent,
+                         struct CdbExplain_ShowStatCtx *ctx,
+                         struct StringInfoData         *extratextbuf)
 {
     Instrumentation        *instr = planstate->instrument;
     CdbExplain_NodeSummary *ns = instr->cdbNodeSummary;
@@ -708,6 +786,8 @@ cdbexplain_showExecStats(struct PlanState      *planstate,
     int                     i;
 
     CdbExplain_NodeSummary  nsqd;
+    const char *s_row = " row";
+    const char *s_rows = " rows";
     char        firstbuf[50];
     char        totalbuf[50];
     char        avgbuf[50];
@@ -746,6 +826,13 @@ cdbexplain_showExecStats(struct PlanState      *planstate,
     appendStringInfoFill(str, 2*indent, ' ');
     switch (planstate->type)
     {
+        case T_BitmapAndState:
+        case T_BitmapOrState:
+        case T_BitmapIndexScanState:
+            appendStringInfoString(str, "Bitmaps out:  ");
+            s_row = "";
+            s_rows = "";
+            break;
         case T_HashState:
             appendStringInfoString(str, "Rows in:  ");
             break;
@@ -760,15 +847,18 @@ cdbexplain_showExecStats(struct PlanState      *planstate,
     cdbexplain_formatSeg(segbuf, ns->ntuples.segmax, ns->nInst);
     if (ns->ntuples.vcnt > 1)
         appendStringInfo(str,
-                         "Avg %.1f rows x %d workers.  Max %.0f rows%s",
+                         "Avg %.1f%s x %d workers.  Max %.0f%s%s",
                          ns->ntuples.vsum / ns->ntuples.vcnt,
+                         s_rows,
                          ns->ntuples.vcnt,
                          ns->ntuples.vmax,
+                         s_rows,
                          segbuf);
     else
         appendStringInfo(str,
-                         "%.0f rows%s",
+                         "%.0f%s%s",
                          ns->ntuples.vmax,
+                         s_rows,
                          segbuf);
 
     /* Time from this worker's first InstrStartNode() to its first result row */
@@ -780,8 +870,9 @@ cdbexplain_showExecStats(struct PlanState      *planstate,
     /* Show elapsed time just once if they are the same. */
     if (strcmp(firstbuf, totalbuf) != 0)
         appendStringInfo(str,
-                         " with %s to first row, %s to end",
+                         " with %s to first %s, %s to end",
                          firstbuf,
+                         s_row,
                          totalbuf);
     else
         appendStringInfo(str,
@@ -795,7 +886,7 @@ cdbexplain_showExecStats(struct PlanState      *planstate,
 	/* Time from start of query on qDisp to this worker's first result row */
 	if (!(INSTR_TIME_IS_ZERO(instr->firststart)))
 	{
-        InstrTimeSubtract(&timediff, &instr->firststart, &querystarttime);
+        InstrTimeSubtract(&timediff, &instr->firststart, &ctx->querystarttime);
 		cdbexplain_formatSeconds(startbuf, INSTR_TIME_GET_DOUBLE(timediff));
 		appendStringInfo(str, ", start offset by %s", startbuf);
 	}
@@ -808,6 +899,7 @@ cdbexplain_showExecStats(struct PlanState      *planstate,
     if (ns->workmemused.vcnt > 0)
     {
         appendStringInfoFill(str, 2*indent, ' ');
+        ctx->workmemused_max = Max(ctx->workmemused_max, ns->workmemused.vmax);
         cdbexplain_formatMemory(maxbuf, ns->workmemused.vmax);
         if (ns->workmemused.vcnt == 1)
             appendStringInfo(str,
@@ -831,6 +923,7 @@ cdbexplain_showExecStats(struct PlanState      *planstate,
     if (ns->workmemwanted.vcnt > 0)
     {
         appendStringInfoFill(str, 2*indent, ' ');
+        ctx->workmemwanted_max = Max(ctx->workmemwanted_max, ns->workmemwanted.vmax);
         cdbexplain_formatMemory(maxbuf, ns->workmemwanted.vmax);
         if (ns->nInst == 1)
             appendStringInfo(str,
@@ -891,7 +984,7 @@ cdbexplain_showExecStats(struct PlanState      *planstate,
                 continue;
 
 	        /* Time from start of query on qDisp to worker's first result row */
-            InstrTimeSubtract(&timediff, &nsi->firststart, &querystarttime);
+            InstrTimeSubtract(&timediff, &nsi->firststart, &ctx->querystarttime);
 	        cdbexplain_formatSeconds(startbuf, INSTR_TIME_GET_DOUBLE(timediff));
 
 			appendStringInfo(str, 
