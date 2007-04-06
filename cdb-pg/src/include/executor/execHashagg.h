@@ -111,6 +111,9 @@ typedef struct HashAggTable
 
     /* CDB: Statistics for EXPLAIN ANALYZE */
     HashAggTableSizes   hats;
+    int                 num_overflow_batches;
+    double              num_overflow_rows;
+    double              num_groups_total;
 } HashAggTable;
 
 extern HashAggTable *create_agg_hash_table(AggState *aggstate);

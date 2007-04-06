@@ -363,11 +363,11 @@ agg_hash_initial_pass(AggState *aggstate)
         StringInfo          hbuf = aggstate->ss.ps.cdbexplainbuf;
         Size                workmemused;
 
+        ht->num_groups_total = ht->ngroup;
         if (noverflow > 0)
             appendStringInfo(hbuf,
-                             "pass %d: %ld groups made from %ld rows; "
-                             "%ld rows written to workfile\n",
-                             ht->pass,
+                             "%ld groups made from %ld rows in first batch; "
+                             "%ld rows spilled to workfile\n",
                              ht->ngroup,
                              ht->ntuple,
                              noverflow);
@@ -435,13 +435,29 @@ agg_hash_next_pass(AggState *aggstate)
     if (aggstate->ss.ps.instrument)
     {
         Instrumentation    *instr = aggstate->ss.ps.instrument;
-        Size                workmemwanted;
+        StringInfo          hbuf = aggstate->ss.ps.cdbexplainbuf;
+
+        if (ht->ngroup < ht->num_groups_total ||
+            ht->num_overflow_batches > 0)
+        {
+            /* Note change in terminology for user consumption: batch vs pass */
+            appendStringInfo(hbuf, 
+                             "%.0f groups total in %d batches"
+                             "; %d respill passes" 
+                             "; %.0f respill rows",
+                             ht->num_groups_total,
+                             nbatch,
+                             ht->num_overflow_batches,
+                             ht->num_overflow_rows);
+            appendStringInfoChar(hbuf, '\n');
+        }
 
         /* work_mem setting that would suffice to hold all groups in memory */
         if (ht->ngroup > ht->max_entries)
         {
-            workmemwanted = ht->ngroup * ht->hats.workmem_per_entry +
-                            ht->hats.workmem_initial;
+            Size    workmemwanted = ht->ngroup * ht->hats.workmem_per_entry +
+                                    ht->hats.workmem_initial;
+
             instr->workmemwanted = Max(instr->workmemwanted, workmemwanted);
         }
     }
@@ -587,19 +603,11 @@ agg_hash_reload(AggState *aggstate)
     if (aggstate->ss.ps.instrument)
     {
         Instrumentation    *instr = aggstate->ss.ps.instrument;
-        StringInfo          hbuf = aggstate->ss.ps.cdbexplainbuf;
         Size                workmemused;
 
-        appendStringInfo(hbuf,
-                         "pass %d: %ld groups made from %ld rows",
-                         ht->pass,
-                         ngroup,
-                         ntuple);
-        if (noverflow > 0)
-            appendStringInfo(hbuf,
-                             "; %ld rows rewritten to workfile",
-                             noverflow);
-        appendStringInfoChar(hbuf, '\n');
+        ht->num_overflow_batches++;
+        ht->num_overflow_rows += noverflow;
+        ht->num_groups_total += ngroup;
 
         /* work_mem quota to accommodate number of entries in this pass */
         workmemused = ngroup * ht->hats.workmem_per_entry +
