@@ -324,7 +324,7 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 {
 	int			i;
 	bool		dtx_active;
-	bool		dtx_dirty;
+	bool		dtx_twophase;
 	bool		reportError = false;
     bool		realFaultFound = false;
 
@@ -388,7 +388,7 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 
 	/* is there a transaction active ? */
 	dtx_active = isCurrentDtxActive();
-	dtx_dirty = isCurrentDtxDirty();
+	dtx_twophase = isCurrentDtxTwoPhase();
 
     /* rollback current DTM transaction */
 	if (dtx_active)
@@ -422,10 +422,11 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 //	{
 //		condStartDtxTransaction();
 //	}
-	if (dtx_dirty)
-	{
-		setCurrentDtxDirty();
-	}
+//	if (dtx_dirty)
+//	{
+//		setCurrentDtxDirty();
+//	}
+	Assert(false);	// UNDONE
 
 	return false;
 }

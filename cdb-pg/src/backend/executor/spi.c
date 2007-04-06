@@ -2128,7 +2128,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 		 * txnOptions is used only if we send the query via PQsendGpQuery
 		 * Otherwise, we need to do an explicit BEGIN.
 		 */
-		txnOptions = mppTxnOptions(true /* AutoBegin */);
+		txnOptions = mppTxnOptions(true /* needTwoPhase */);
 		
 		_SPI_current->processed = 0;
 		_SPI_current->lastoid = InvalidOid;
@@ -2298,7 +2298,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 			else
 			{
 				serializedSnapshot = 
-					qdSerializeDtxContextInfo(&serializedSnapshotlen, true /* wantSnapshot */, txnOptions);
+					qdSerializeDtxContextInfo(&serializedSnapshotlen, true /* wantSnapshot */, txnOptions, "_SPI_execute_plan");
 				
 			}
 	

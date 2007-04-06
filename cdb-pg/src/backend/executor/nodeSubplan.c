@@ -951,7 +951,8 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 
     struct CdbDispatchResults  *primaryResults = NULL;
 	struct CdbDispatchCmdThreads  *dispatchThreads = NULL; 
-	bool		needXact, shouldDispatch = false;
+	bool		needDtxTwoPhase;
+	bool		shouldDispatch = false;
 	volatile	bool shouldTeardownInterconnect = false;
 
 	if (Gp_role == GP_ROLE_DISPATCH &&
@@ -1008,13 +1009,13 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	{
 		if (shouldDispatch)
 		{			
-			needXact = isCurrentDtxDirty();
-			if (needXact)
+			needDtxTwoPhase = isCurrentDtxTwoPhase();
+			if (needDtxTwoPhase)
 			{
 				/*
-				 * Mark the DTX as distributed and reconfigure the cluster if needed.
+				 * Reconfigure the cluster if needed.
 				 */
-				cdbdisp_markDtxAsDistributed("ExecSetParamPlan", "(queryDesc)");
+				cdbdisp_reconfigureFtsIfNecessary();
 			}
 		
 			/*
@@ -1022,7 +1023,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
              * command to the appropriate segdbs.  It does not wait for them
              * to finish unless an error is detected before all are dispatched.
 			 */
-			cdbdisp_dispatchPlan(queryDesc, needXact, true, &primaryResults, NULL, &dispatchThreads);
+			cdbdisp_dispatchPlan(queryDesc, needDtxTwoPhase, true, &primaryResults, NULL, &dispatchThreads);
 
 
 			SetupSequenceServer(queryDesc->estate->es_sliceTable);

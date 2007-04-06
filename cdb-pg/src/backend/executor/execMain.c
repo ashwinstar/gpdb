@@ -161,7 +161,8 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	EState	   *estate;
 	MemoryContext oldcontext;
 	GpExecIdentity exec_identity;
-	bool		shouldDispatch, needXact;
+	bool		shouldDispatch;
+	bool		needDtxTwoPhase;
 	
 	/* sanity checks: queryDesc must not be started already */
 	Assert(queryDesc != NULL);
@@ -416,13 +417,13 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 																   queryDesc->plantree->nParamExec);
 			}
 			
-			needXact = isCurrentDtxDirty();
-			if (needXact)
+			needDtxTwoPhase = isCurrentDtxTwoPhase();
+			if (needDtxTwoPhase)
 			{
 				/*
-				 * Mark the DTX as distributed and reconfigure the cluster if needed.
+				 * Reconfigure the cluster if needed.
 				 */
-				cdbdisp_markDtxAsDistributed("ExecutorStart", "(queryDesc)");
+				cdbdisp_reconfigureFtsIfNecessary();
 			}
 						
 			/*
@@ -431,7 +432,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
              * finish unless an error is detected before all slices have been
              * dispatched.
 			 */
-			cdbdisp_dispatchPlan(queryDesc, needXact, true, &estate->primaryResults, &estate->mirrorResults, &estate->dispatchThreads);
+			cdbdisp_dispatchPlan(queryDesc, needDtxTwoPhase, true, &estate->primaryResults, &estate->mirrorResults, &estate->dispatchThreads);
 		}
 		
 		/*
@@ -962,7 +963,7 @@ fail:
 				(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
 				 errmsg("transaction is read-only")));
 	else
-		setCurrentDtxDirty();
+		setCurrentDtxTwoPhase("ExecCheckXactReadOnly","(none)");
 }
 
 

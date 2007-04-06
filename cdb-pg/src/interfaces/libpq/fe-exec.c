@@ -875,6 +875,7 @@ PQbuildGpQueryString(const char  *command,
 char *
 PQbuildGpDtxProtocolCommand(
 					  int						dtxProtocolCommand,
+					  int						flags,
 					  char*						dtxProtocolCommandLoggingStr,
 					  char*						gid,
 					  int   					gxid,
@@ -889,7 +890,8 @@ PQbuildGpDtxProtocolCommand(
 	loggingStrLen = strlen(dtxProtocolCommandLoggingStr);
 	gidLen = strlen(gid);
 
-	total_query_len = 5 /* overhead */ + 4 /* dtxProtocolCommand */ + 8 /* lengths */ +
+	total_query_len = 5 /* overhead */ + 4 /* dtxProtocolCommand */ + 
+		   4 /*flags */ + 8 /* lengths */ +
 		   loggingStrLen + gidLen + 4 /* gxid */;
 
 	shared_query = malloc(total_query_len);
@@ -908,6 +910,10 @@ PQbuildGpDtxProtocolCommand(
 	pos += 4; /* place holder for message length */
 
 	tmp = htonl(dtxProtocolCommand);
+	memcpy(pos, &tmp, 4);
+	pos += 4;
+	
+	tmp = htonl(flags);
 	memcpy(pos, &tmp, 4);
 	pos += 4;
 	

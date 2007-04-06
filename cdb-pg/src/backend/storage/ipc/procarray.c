@@ -583,7 +583,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 	{
 		if(createDtxSnapshot(distributedSnapshotData))
 		{
-			elog((Debug_print_full_dtm ? LOG : DEBUG5),"GetSnapshotData go a distributed snapshot from createDtxSnapshot!");
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),"GetSnapshotData got a distributed snapshot from createDtxSnapshot!");
 			*distributedSnapshot = distributedSnapshotData;
 		}
 		else
@@ -698,8 +698,8 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 							 errdetail("We are waiting for the shared snapshot to have XID: %d but the value "
 									   "is currently: %d." 
 									   " waiting for cid to be %d but is currently %d.  ready=%d."
+									   "DistributedTransactionContext = %s. "
 									   " Our slotindex is: %d \n"
-									   "DistributedTransactionContext = %s."
 									   "Dump of all sharedsnapshots in shmem: %s",
 									   QEDtxContextInfo.distributedXid, SharedLocalSnapshotSlot->QDxid,
 									   QEDtxContextInfo.distributedSnapshotData.curcid, SharedLocalSnapshotSlot->QDcid,  SharedLocalSnapshotSlot->ready,

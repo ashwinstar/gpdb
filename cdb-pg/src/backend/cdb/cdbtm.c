@@ -49,7 +49,6 @@ static TMGXACT *currentGxact;
 static bool duringRecovery = false;
 static int	max_tm_gxacts = 100;
 
-static bool isDirty = false;
 static bool resolveDtx = false;
 
 typedef struct InDoubtDtx
@@ -70,7 +69,7 @@ typedef struct InDoubtDtx
  *						   11 serializable
  * bit 4 is for read-only
  */
-#define GP_OPT_STATEMENT_WANTS_DTX_TRANSACTION         0x0001
+#define GP_OPT_NEED_TWO_PHASE                           0x0001
 
 #define GP_OPT_READ_COMMITTED    						0x0002
 #define GP_OPT_READ_UNCOMMITTED  						0x0004
@@ -79,9 +78,7 @@ typedef struct InDoubtDtx
 
 #define GP_OPT_READ_ONLY         						0x0010
 
-#define GP_OPT_DIRTY             						0x0020
-
-#define GP_OPT_EXPLICT_BEGIN      						0x0040
+#define GP_OPT_EXPLICT_BEGIN      						0x0020
 
 /*=========================================================================
  * FUNCTIONS PROTOTYPES
@@ -105,6 +102,7 @@ static void clearDistributedSnapshot(DistributedSnapshot distributedSnapshot);
 static void summarizeParticipation(void);
 static bool doDispatchDtxProtocolCommand(
 				DtxProtocolCommand dtxProtocolCommand, 
+				int flags,
 				char* gid, DistributedTransactionId gxid,
 				bool dispatchToMirrors, bool raiseError);
 static void doCommitAllReadOnly(void);
@@ -118,7 +116,6 @@ static void doAbortInDoubt(char *gid);
 static void doQEAddLocalXidsForDistributedIndoubt();
 static void doQEDistributedExplicitBegin(int txnOptions);
 
-static void copyDtxContextInfo(DtxContextInfo *targetDtxContextInfo, DtxContextInfo *sourceDtxContextInfo);
 static void resetDtxContextInfo(DtxContextInfo *dtxContextInfo);
 static bool isDtxQueryDispatcher(void);
 
@@ -312,16 +309,8 @@ summarizeParticipation(void)
 		return;
 	}
 
-	// UNDONE:
-	if (isDirty)
-	{
-		currentGxact->participationSummary = DTX_PARTICIPATION_SUMMARY_MULTIPLE_SEGMENTS_DIRTY;
-	}
-	else
-	{
-		currentGxact->participationSummary = DTX_PARTICIPATION_SUMMARY_ALL_READ_ONLY;
-	}
-
+	// FUTURE: Collect information on whether particular segments were dirty
+	currentGxact->participationSummary = DTX_PARTICIPATION_SUMMARY_MULTIPLE_SEGMENTS_DIRTY;
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"summarizeParticipation participationSummary = \"%s\"",
 		 DtxParticipationSummaryToString(currentGxact->participationSummary));
@@ -377,50 +366,35 @@ notifyCommittedDtxTransaction(void)
 }
 
 
-/*
- * markDtxAsDistributed:
- *    Take our always started and available DTM transaction and
- * make it ready to go distributed to the segments.
- */
-void
-markDtxAsDistributed(char* debugCaller, char* debugDetail)
-{
-	if (currentGxact == NULL)
-	{
-		elog(FATAL, "markDtxAsDistributed found current distributed transaction is NULL (%s, detail = '%s')",
-			 debugCaller, debugDetail);
-	}
-
-	if (currentGxact->state == DTX_STATE_ACTIVE_NOT_DISTRIBUTED)
-	{
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),"markDtxAsDistributed going distributed for gid = %s (%s, detail = '%s')", 
-		     currentGxact->gid, debugCaller, debugDetail);
-		currentGxact->state = DTX_STATE_ACTIVE_DISTRIBUTED;
-		
-		/* UNDONE: Used to check if we have in-doubt transactions to resolve */
-	//	if (resolveDtx)
-	//		resolveInDoubtDtx();
-	}
- 	else if (currentGxact->state == DTX_STATE_ACTIVE_DISTRIBUTED)
-	{
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),"markDtxAsDistributed gid = %s is already distributed (%s, detail = '%s')", 
-		     currentGxact->gid, debugCaller, debugDetail);
-	}
-	else
-	{
-		elog(ERROR,"DTM transaction is not active");
-	}
-}
-
-
 /* marks the current Distrubuted Transaction as "dirty", meaning that actual
  * work has been performed and we'll need to use 2pc on commit and log to our
  * tmlog.
  */
 void
-setCurrentDtxDirty(void)
+setCurrentDtxTwoPhase(const char* debugCaller, const char* debugDetail)
 {
-	isDirty = true;
+	if (currentGxact != NULL)
+	{
+		if (currentGxact->state == DTX_STATE_ACTIVE_NOT_DISTRIBUTED)
+		{
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),"setCurrentDtxTwoPhase going distributed for gid = %s (%s, detail = '%s')", 
+			     currentGxact->gid, debugCaller, debugDetail);
+			currentGxact->state = DTX_STATE_ACTIVE_DISTRIBUTED;
+		}
+	 	else if (currentGxact->state == DTX_STATE_ACTIVE_DISTRIBUTED)
+		{
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),"setCurrentDtxTwoPhase gid = %s is already distributed (%s, detail = '%s')", 
+			     currentGxact->gid, debugCaller, debugDetail);
+		}
+		else
+		{
+			elog(ERROR,"DTM transaction is not active (%s, detail = '%s')", debugCaller, debugDetail);
+		}
+	}
+	else
+	{
+			elog(ERROR,"DTM transaction is not active (%s, detail = '%s')", debugCaller, debugDetail);
+	}
 }
 
 /*
@@ -428,9 +402,16 @@ setCurrentDtxDirty(void)
  * the current dtx is clean and we aren't in a user-started global transaction.
  */
 bool
-isCurrentDtxDirty(void)
+isCurrentDtxTwoPhase(void)
 {
-	return isDirty || (currentGxact != NULL && currentGxact->state != DTX_STATE_ACTIVE_NOT_DISTRIBUTED);
+	if (currentGxact == NULL)
+	{
+		return false;
+	}
+	else
+	{
+		return currentGxact->state == DTX_STATE_ACTIVE_DISTRIBUTED;
+	}
 }
 
 /*
@@ -447,21 +428,23 @@ doCommitAllReadOnly(void)
 {
 	bool succeeded;
 	
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"doCommitAllReadOnly entering in state = %s", DtxStateToString(currentGxact->state));
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"doCommitAllReadOnly entering in state = %s", 
+		 DtxStateToString(currentGxact->state));
 	
 	getTmLock();
 	Assert(currentGxact->state == DTX_STATE_ACTIVE_DISTRIBUTED);
 	currentGxact->state = DTX_STATE_COMMITTING_ALL_READ_ONLY;
 	releaseTmLock();
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"doCommitAllReadOnly moved to state = %s", DtxStateToString(currentGxact->state));
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"doCommitAllReadOnly moved to state = %s", 
+		 DtxStateToString(currentGxact->state));
 
 	/*
 	 * Do Read-Only COMMIT broadcast.
 	 */
 	// UNDONE: What about dispatchToMirrors parameter?
 	succeeded = doDispatchDtxProtocolCommand(
-					DTX_PROTOCOL_COMMAND_READ_ONLY_COMMIT,
+					DTX_PROTOCOL_COMMAND_READ_ONLY_COMMIT, /* flags */ 0,
 					currentGxact->gid, currentGxact->gxid,
 					/* dispatchToMirrors */ false, /* raiseError */ false);
 	if (!succeeded)
@@ -498,7 +481,7 @@ doPrepareTransaction(void)
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"doPrepareTransaction moved to state = %s", DtxStateToString(currentGxact->state));
 
 	succeeded = doDispatchDtxProtocolCommand(
-					DTX_PROTOCOL_COMMAND_PREPARE, 
+					DTX_PROTOCOL_COMMAND_PREPARE, /* flags */ 0, 
 					currentGxact->gid, currentGxact->gxid,
 					/* dispatchToMirrors */ true, /* raiseError */ false);
 	if (!succeeded)
@@ -555,7 +538,7 @@ doNotifyingCommitted(void)
 	releaseTmLock();
 
 	succeeded = doDispatchDtxProtocolCommand(
-					DTX_PROTOCOL_COMMAND_COMMIT_PREPARED,  
+					DTX_PROTOCOL_COMMAND_COMMIT_PREPARED, /* flags */ 0,  
 					currentGxact->gid, currentGxact->gxid,
 					/* dispatchToMirrors */ true, /* raiseError */ false);
 	if (!succeeded)
@@ -600,7 +583,7 @@ doRetryingNotifyCommitted(void)
 	releaseTmLock();
 
 	succeeded = doDispatchDtxProtocolCommand(
-					DTX_PROTOCOL_COMMAND_RETRY_COMMIT_PREPARED,
+					DTX_PROTOCOL_COMMAND_RETRY_COMMIT_PREPARED, /* flags */ 0,
 					currentGxact->gid, currentGxact->gxid,
 					/* dispatchToMirrors */ true, /* raiseError */ false);
 	if (!succeeded)
@@ -647,7 +630,7 @@ doNotifyingAborted(bool noPreparesIssued)
 	if (noPreparesIssued)
 	{
 		succeeded = doDispatchDtxProtocolCommand(
-						DTX_PROTOCOL_COMMAND_ABORT,  
+						DTX_PROTOCOL_COMMAND_ABORT, /* flags */ 0,  
 						currentGxact->gid, currentGxact->gxid,
 						/* dispatchToMirrors */ true, /* raiseError */ false);
 		if (!succeeded)
@@ -661,7 +644,7 @@ doNotifyingAborted(bool noPreparesIssued)
 	else
 	{
 		succeeded = doDispatchDtxProtocolCommand(
-						DTX_PROTOCOL_COMMAND_ABORT_PREPARED,
+						DTX_PROTOCOL_COMMAND_ABORT_PREPARED, /* flags */ 0,
 						currentGxact->gid, currentGxact->gxid,
 						/* dispatchToMirrors */ true, /* raiseError */ false);
 		if (!succeeded)
@@ -711,7 +694,7 @@ doRetryingNotifyAborted(void)
 	releaseTmLock();
 
 	succeeded = doDispatchDtxProtocolCommand(
-					DTX_PROTOCOL_COMMAND_RETRY_ABORT_PREPARED,
+					DTX_PROTOCOL_COMMAND_RETRY_ABORT_PREPARED, /* flags */ 0,
 					currentGxact->gid, currentGxact->gxid,
 					/* dispatchToMirrors */ true, /* raiseError */ false);
 	if (!succeeded)
@@ -755,7 +738,7 @@ doAbortInDoubt(char *gid)
 
 	// UNDONE: Pass real gxid instead of InvalidDistributedTransactionId.
 	succeeded = doDispatchDtxProtocolCommand(
-					DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED,
+					DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED, /* flags */ 0,
 					gid, InvalidDistributedTransactionId,
 					/* dispatchToMirrors */ true, /* raiseError */ false);
 	if (!succeeded)
@@ -840,9 +823,6 @@ void
 rollbackDtxTransaction(void)
 {
 	bool noPreparesIssued = false;
-	
-	// UNDONE: Why is this being done????
-	isDirty = false;
 	
 	if(DistributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE)
 	{
@@ -1051,12 +1031,12 @@ restoreGxact(TMGXACT_LOG * gxact_log, DtxState state)
  * after the statement.
  */
 int
-mppTxnOptions(bool statementWantsDtxTransaction)
+mppTxnOptions(bool needTwoPhase)
 {
 	int options = 0;
 
-	if (statementWantsDtxTransaction)
-		options |= GP_OPT_STATEMENT_WANTS_DTX_TRANSACTION;
+	if (needTwoPhase)
+		options |= GP_OPT_NEED_TWO_PHASE;
 
 	if (XactIsoLevel == XACT_READ_COMMITTED)
 		options |= GP_OPT_READ_COMMITTED;
@@ -1068,9 +1048,6 @@ mppTxnOptions(bool statementWantsDtxTransaction)
 	if (XactReadOnly)
 		options |= GP_OPT_READ_ONLY;
 		
-	if (isDirty)
-		options |= GP_OPT_DIRTY;
-
 	if (currentGxact != NULL && currentGxact->explicitBeginRemembered)
 		options |= GP_OPT_EXPLICT_BEGIN;
 
@@ -1104,21 +1081,12 @@ unpackMppTxnOptions(int txnOptions, int *isoLevel, bool *readOnly)
 }
 
 /* isMppTxOptions_StatementWantsDtxTransaction:
- * Return the StatementWantsDtxTransaction flag.
+ * Return the NeedTwoPhase flag.
  */
 bool
-isMppTxOptions_StatementWantsDtxTransaction(int txnOptions)
+isMppTxOptions_NeedTwoPhase(int txnOptions)
 {
-	return ((txnOptions & GP_OPT_STATEMENT_WANTS_DTX_TRANSACTION) != 0);
-}
-
-/* isMppTxOptions_Dirty:
- * Return the Dirty flag.
- */
-bool
-isMppTxOptions_Dirty(int txnOptions)
-{
-	return ((txnOptions & GP_OPT_DIRTY) != 0);
+	return ((txnOptions & GP_OPT_NEED_TWO_PHASE) != 0);
 }
 
 /* isMppTxOptions_ExplicitBegin:
@@ -1301,7 +1269,8 @@ descDistributedForgetCommitRecord(StringInfo buf, TMGXACT_LOG * gxact_log)
 
 static bool
 doDispatchDtxProtocolCommand(
-			DtxProtocolCommand dtxProtocolCommand, 
+			DtxProtocolCommand dtxProtocolCommand,
+			int flags,
 			char* gid, DistributedTransactionId gxid,
 			bool dispatchToMirrors, bool raiseError)
 {
@@ -1318,6 +1287,7 @@ doDispatchDtxProtocolCommand(
 
 	initStringInfo(&errbuf);
 	results = cdbdisp_dispatchDtxProtocolCommand(dtxProtocolCommand,
+										flags,
 										dtxProtocolCommandStr,
 										gid,
 										gxid,
@@ -1595,9 +1565,6 @@ createDtx(TransactionId *pLocalXid)
 //	if (resolveDtx)
 //		resolveInDoubtDtx();
 
-	/* reset some transaction state variables */
-	isDirty = false;
-
 	getTmLock();
 
 	if (*shmNumGxacts >= max_tm_gxacts)
@@ -1690,7 +1657,6 @@ releaseGxact(void)
 	}
 	currentGxact = NULL;
 	releaseTmLock();
-	isDirty = false;
 }
 
 /*
@@ -2332,27 +2298,6 @@ assign_gp_write_shared_snapshot(bool newval, bool doit, GucSource source)
 	return true;
 }
 
-static void
-copyDtxContextInfo(DtxContextInfo *targetDtxContextInfo, DtxContextInfo *sourceDtxContextInfo)
-{
-	resetDtxContextInfo(targetDtxContextInfo);
-
-	targetDtxContextInfo->distributedXid = sourceDtxContextInfo->distributedXid;
-
-	if (targetDtxContextInfo->distributedXid != InvalidDistributedTransactionId)
-	{
-		targetDtxContextInfo->xminAllDistributedSnapshots = 
-					sourceDtxContextInfo->xminAllDistributedSnapshots;
-
-		memcpy(&targetDtxContextInfo->distributedSnapshotData,
-			   &sourceDtxContextInfo->distributedSnapshotData,
-			   sizeof(DistributedSnapshotData));
-
-	}
-
-	targetDtxContextInfo->distributedTxnOptions = sourceDtxContextInfo->distributedTxnOptions;
-}
-
 void
 qdCreateDtxContextInfo(DtxContextInfo *dtxContextInfo, DistributedSnapshot distributedSnapshot, int txnOptions)
 {
@@ -2666,6 +2611,10 @@ setupRegularDtxContext(void)
 	{
 		// Continue in this context.  Do not touch QEDtxContextInfo, etc.
 	}
+	else if (DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER)
+	{
+		// Allow this for copy...???  Do not touch QEDtxContextInfo, etc.
+	}
 	else if (DistributedTransactionContext != DTX_CONTEXT_LOCAL_ONLY)
 	{
 		elog(ERROR, "setupRegularDtxContext finds unexpected DistributedTransactionContext = '%s'",
@@ -2696,8 +2645,7 @@ setupQEDtxContext (DtxContextInfo *dtxContextInfo)
 {
 	DistributedSnapshotData *distributedSnapshotData;
 	int txnOptions;
-	bool statementWantsDtxTransaction;
-	bool dirty;
+	bool needTwoPhase;
 	bool explicitBegin;
 	bool haveDistributedSnapshot;
 	bool isEntryDbSingleton = false;
@@ -2713,17 +2661,16 @@ setupQEDtxContext (DtxContextInfo *dtxContextInfo)
 	distributedSnapshotData = &dtxContextInfo->distributedSnapshotData;
 	txnOptions = dtxContextInfo->distributedTxnOptions;
 	
-	statementWantsDtxTransaction = isMppTxOptions_StatementWantsDtxTransaction(txnOptions);
-	dirty = isMppTxOptions_Dirty(txnOptions);
+	needTwoPhase = isMppTxOptions_NeedTwoPhase(txnOptions);
 	explicitBegin = isMppTxOptions_ExplicitBegin(txnOptions);
 	
 	haveDistributedSnapshot = 
 		(dtxContextInfo->distributedXid!= InvalidDistributedTransactionId);
 	isSharedLocalSnapshotSlotPresent = (SharedLocalSnapshotSlot != NULL);
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5), "setupQEDtxContext inputs (part 1): Gp_role = %s, Gp_is_writer = %s, txnOptions = 0x%x, statementWantsDtxTransaction = %s, dirty = %s, explicitBegin = %s, haveDistributedSnapshot = %s.",
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "setupQEDtxContext inputs (part 1): Gp_role = %s, Gp_is_writer = %s, txnOptions = 0x%x, needTwoPhase = %s, explicitBegin = %s, haveDistributedSnapshot = %s.",
 		 role_to_string(Gp_role), (Gp_is_writer ? "true" : "false"), txnOptions,
-		 (statementWantsDtxTransaction ? "true" : "false"), (dirty ? "true" : "false"), (explicitBegin ? "true" : "false"), 
+		 (needTwoPhase ? "true" : "false"), (explicitBegin ? "true" : "false"), 
 		 (haveDistributedSnapshot ? "true" : "false")); 
     elog((Debug_print_full_dtm ? LOG : DEBUG5), "setupQEDtxContext inputs (part 2): distributedXid = %u, isSharedLocalSnapshotSlotPresent = %s.",
 		 dtxContextInfo->distributedXid,
@@ -2828,7 +2775,7 @@ setupQEDtxContext (DtxContextInfo *dtxContextInfo)
 			 
 			DistributedTransactionContext = DTX_CONTEXT_QE_READER;
 		}
-		else if (isWriterQE && (explicitBegin || statementWantsDtxTransaction))
+		else if (isWriterQE && (explicitBegin || needTwoPhase))
 		{
 			if (!haveDistributedSnapshot)
 			{
@@ -2853,7 +2800,7 @@ setupQEDtxContext (DtxContextInfo *dtxContextInfo)
 			}
 			else
 			{
-				Assert(statementWantsDtxTransaction);
+				Assert(needTwoPhase);
 				DistributedTransactionContext = DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER;
 			}
 		}
@@ -2966,36 +2913,51 @@ finishDistributedTransactionContext (char* debugCaller)
 }
 
 void
-rememberDtxExplicitBegin()
+rememberDtxExplicitBegin(void)
 {
 	if (currentGxact == NULL)
 	{
 		return;
 	}
 
-	if (currentGxact->state == DTX_STATE_ACTIVE_NOT_DISTRIBUTED)
-	{
-		/*
-		 * We do not change the state to distributed until a query statement
-		 * is sent.  We just remember the BEGIN occurred.
-		 */
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),"rememberDtxExplicitBegin explicit BEGIN for gid = %s", currentGxact->gid);
+	setCurrentDtxTwoPhase("rememberDtxExplicitBegin", "(none)");
 
-		currentGxact->explicitBeginRemembered = true;
-	}
-	else if (currentGxact->state == DTX_STATE_ACTIVE_DISTRIBUTED)
+	if (!currentGxact->explicitBeginRemembered)
 	{
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),"rememberDtxExplicitBegin remembering an explicit BEGIN for gid = %s which is distribuuted (explicitBeginRemembered = %s",
-			 currentGxact->gid, (currentGxact->explicitBeginRemembered ? "true" : "false"));
+		elog((Debug_print_full_dtm ? LOG : DEBUG5),"rememberDtxExplicitBegin explicit BEGIN for gid = %s", 
+			 currentGxact->gid);
+		currentGxact->explicitBeginRemembered = true;
 	}
 	else
 	{
-		elog(ERROR,"DTM transaction is not active");
+		elog((Debug_print_full_dtm ? LOG : DEBUG5),"rememberDtxExplicitBegin already an explicit BEGIN for gid = %s",
+			 currentGxact->gid);
+	}
+}
+
+/*
+ * This is mostly here because
+ * cdbcopy doesn't use cdbdisp's services.
+ */
+void
+sendDtxExplicitBegin(void)
+{
+	rememberDtxExplicitBegin();
+	
+	/*
+	 * dispatch a DTX command, in the event of an error, this call
+	 * will either exit via elog()/ereport() or return false
+	 */
+	if (!dispatchDtxCommand("BEGIN", /* dispatchToMirrors */ true, /* withSnapshot */ true, /* raiseError */ false))
+	{
+			ereport(ERROR, (errmsg("Global transaction BEGIN failed failed for gid = \"%s\" due to error",
+								   currentGxact->gid)));
 	}
 }
 
 void
 performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
+					int flags,
 					const char *loggingStr, const char *gid, 
 					DistributedTransactionId gxid)
 {

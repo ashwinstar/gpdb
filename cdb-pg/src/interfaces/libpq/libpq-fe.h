@@ -353,6 +353,7 @@ extern char *PQbuildGpQueryString(const char  *command,
 
 extern char *PQbuildGpDtxProtocolCommand(
 					  int						dtxProtocolCommand,
+					  int						flags,
 					  char*						dtxProtocolCommandLoggingStr,
 					  char*						gid,
 					  int   					gxid,

@@ -1252,6 +1252,7 @@ exec_mpp_query(const char *query_string,
 static void
 exec_mpp_dtx_protocol_command(
 					DtxProtocolCommand 			dtxProtocolCommand,
+					int							flags,
 					const char *				loggingStr,
 					const char * 				gid,
 					DistributedTransactionId 	gxid)
@@ -1259,17 +1260,17 @@ exec_mpp_dtx_protocol_command(
 	CommandDest dest = whereToSendOutput;
 	const char *commandTag = loggingStr;
 
-	elog(DEBUG5,"exec_mpp_dtx_protocol_command received the dtxProtocolCommand = %d (%s) gid = %s gxid = %u",
-		 dtxProtocolCommand, loggingStr, gid, gxid);
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"exec_mpp_dtx_protocol_command received the dtxProtocolCommand = %d (%s) gid = %s (gxid = %u, flags = 0x%x)",
+		 dtxProtocolCommand, loggingStr, gid, gxid, flags);
 
 	set_ps_display(commandTag, false);
 
 	BeginCommand(commandTag, dest);
 
-	performDtxProtocolCommand(dtxProtocolCommand, loggingStr, gid, gxid);
+	performDtxProtocolCommand(dtxProtocolCommand, flags, loggingStr, gid, gxid);
 
-	elog(DEBUG5,"exec_mpp_dtx_protocol_command calling EndCommand for dtxProtocolCommand = %d (%s) gid = %s gxid = %u",
-		 dtxProtocolCommand, loggingStr, gid, gxid);
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"exec_mpp_dtx_protocol_command calling EndCommand for dtxProtocolCommand = %d (%s) gid = %s",
+		 dtxProtocolCommand, loggingStr, gid);
 	EndCommand(commandTag, dest);
 }
 
@@ -4244,7 +4245,30 @@ PostgresMain(int argc, char *argv[], const char *username)
 							SetUserId(cuid);								/* Set current userid */
 							
 						if (serializedQuerytreelen==0 && serializedPlantreelen==0)
-							exec_simple_query(query_string);
+							{
+								if (strcmp(query_string, "BEGIN") == 0)
+								{
+									CommandDest dest = whereToSendOutput;
+
+									/*
+									 * Special explicit BEGIN for COPY, etc.
+									 * We've already begun it as part of setting up the context.
+									 */
+									elog((Debug_print_full_dtm ? LOG : DEBUG5), "PostgresMain special explicit BEGIN for COPY");
+
+									// UNDONE: HACK
+									set_ps_display("BEGIN", false);
+
+									BeginCommand("BEGIN", dest);
+
+									EndCommand("BEGIN", dest);
+
+								}
+								else
+								{
+									exec_simple_query(query_string);
+								}
+							}
 						else
 							exec_mpp_query(query_string, 
 											serializedQuerytree, serializedQuerytreelen,
@@ -4269,6 +4293,8 @@ PostgresMain(int argc, char *argv[], const char *username)
             case 'T':           /* MPP dispatched dtx protocol command from QD */
 				{
 					DtxProtocolCommand dtxProtocolCommand;
+
+					int flags;
 					
 					int loggingStrLen;
 					const char *loggingStr;
@@ -4281,6 +4307,9 @@ PostgresMain(int argc, char *argv[], const char *username)
 					/* get the transaction protocol command # */
 					dtxProtocolCommand = (DtxProtocolCommand) pq_getmsgint(&input_message, 4);
 
+					/* get the flags */
+					flags = pq_getmsgint(&input_message, 4);
+					
 					/* get the logging string length */
 					loggingStrLen = pq_getmsgint(&input_message, 4);
 					
@@ -4300,7 +4329,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 
 					// Do not touch DTX context.
 
-					exec_mpp_dtx_protocol_command(dtxProtocolCommand, loggingStr, gid, gxid);
+					exec_mpp_dtx_protocol_command(dtxProtocolCommand, flags, loggingStr, gid, gxid);
 
 					send_ready_for_query = true;
 

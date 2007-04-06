@@ -174,8 +174,6 @@ extern bool isPreparedDtxTransaction(void);
 extern void getDtxLogInfo(TMGXACT_LOG *gxact_log);
 extern void notifyCommittedDtxTransaction(void);
 extern void	rollbackDtxTransaction(void);
-extern void	markDtxAsDistributed(char* debugCaller, char* debugDetail);
-extern void setCurrentDtxDirty(void);
 
 extern void insertingDistributedCommitted(void);
 extern void insertedDistributedCommitted(void);
@@ -188,8 +186,11 @@ extern void redoDistributedForgetCommitRecord(TMGXACT_LOG * gxact_log);
 extern void descDistributedCommitRecord(StringInfo buf, TMGXACT_LOG * gxact_log);
 extern void descDistributedForgetCommitRecord(StringInfo buf, TMGXACT_LOG * gxact_log);
 
-extern bool isCurrentDtxDirty(void);
+extern void setCurrentDtxTwoPhase(const char* debugCaller, const char* debugDetail);
+extern bool isCurrentDtxTwoPhase(void);
 extern bool isCurrentDtxActive(void);
+extern void rememberDtxExplicitBegin(void);
+extern void sendDtxExplicitBegin(void);
 
 extern bool dispatchDtxCommand(const char *cmd, bool dispatchToMirrors, bool withSnapshot, bool raiseError);
 
@@ -210,10 +211,9 @@ extern void verify_shared_snapshot_ready(void);
 void		getTmLock(void);
 void		releaseTmLock(void);
 
-int			mppTxnOptions(bool statementWantsDtxTransaction);
+int			mppTxnOptions(bool needTwoPhase);
 void		unpackMppTxnOptions(int txnOptions, int *isoLevel, bool *readOnly);
-bool		isMppTxOptions_StatementWantsDtxTransaction(int txnOptions);
-bool		isMppTxOptions_Dirty(int txnOptions);
+bool		isMppTxOptions_NeedTwoPhase(int txnOptions);
 bool		isMppTxOptions_ExplicitBegin(int txnOptions);
 
 
@@ -230,6 +230,7 @@ extern void setupQEDtxContext (DtxContextInfo *dtxContextInfo);
 extern void finishDistributedTransactionContext (char* debugCaller);
 extern void rememberDtxExplicitBegin();
 extern void performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
+					int flags,
 					const char *loggingStr, const char *gid, 
 					DistributedTransactionId gxid);
 

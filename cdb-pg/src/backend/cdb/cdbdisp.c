@@ -116,7 +116,7 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 						char 		   				*serializedPlantree,
 						int							serializedPlantreelen,
                         bool                        cancelOnError,
-                        bool						startTransaction,
+                        bool						needTwoPhase,
                         struct CdbDispatchResults **pPrimaryResults,
                         struct CdbDispatchResults **pMirrorResults,
 						struct CdbDispatchCmdThreads  **pDispatchThreads);
@@ -134,7 +134,7 @@ typedef struct {
 static int fillSliceVector(SliceTable * sliceTable, int sliceIndex, sliceVec *sliceVector, int len);
 
 /* determines which dispatchOptions need to be set. */
-static int generateTxnOptions(bool statementWantsDtxTransaction);
+static int generateTxnOptions(bool needTwoPhase);
 
 typedef struct
 {
@@ -158,9 +158,9 @@ static DtxContextInfo TempQDDtxContextInfo;
 /*--------------------------------------------------------------------*/
 
 
-/* Mark the DTX as going distributed and invoke FTS reconfiguration if needed. */
+/* Invoke FTS reconfiguration if needed. */
 void
-cdbdisp_markDtxAsDistributed(char* debugCaller, char* debugDetail)
+cdbdisp_reconfigureFtsIfNecessary(void)
 {
 	/*
 	 * check fts sync count
@@ -173,14 +173,7 @@ cdbdisp_markDtxAsDistributed(char* debugCaller, char* debugDetail)
 		if (!FtsReConfigureMPP())
 			elog(PANIC, "FTS: reconfigMPP failed");
 	}
-
-	/*
-	 * Take our always started and available DTM transaction and
-	 * mark it ready to go distributed to the segments.
-	 */
-	markDtxAsDistributed(debugCaller, debugDetail);
-
-}	/* cdbdisp_markDtxAsDistributed */
+}	/* cdbdisp_reconfigureFtsIfNecessary */
 
 
 
@@ -568,6 +561,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 				DispatchCommandDtxProtocolParms *pDtxProtocolParms = (DispatchCommandDtxProtocolParms *) commandTypeParms;
 
 				pParms->dtxProtocolParms.dtxProtocolCommand = pDtxProtocolParms->dtxProtocolCommand;
+				pParms->dtxProtocolParms.flags = pDtxProtocolParms->flags;
 				pParms->dtxProtocolParms.dtxProtocolCommandLoggingStr = pDtxProtocolParms->dtxProtocolCommandLoggingStr;
 				memcpy(pParms->dtxProtocolParms.gid, pDtxProtocolParms->gid, TMGIDSIZE);
 				pParms->dtxProtocolParms.gxid = pDtxProtocolParms->gxid;
@@ -788,7 +782,7 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 	int			totalResultCount=0;
 	
 	/* never want to start a global transaction for these */
-	bool		startTransaction = false;
+	bool		needTwoPhase = false;
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "CdbDoCommandOnAllGangs for command = '%s', withSnapshot = %s",
 	     strCommand, (withSnapshot ? "true" : "false"));
@@ -796,7 +790,7 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 	/* Launch the command.	Don't cancel on error. */
 	cdbdisp_dispatchCommand(strCommand, NULL, 0,
 							/* cancelOnError */false,
-							startTransaction, withSnapshot, 
+							needTwoPhase, withSnapshot, 
 							dispatchToMirrors, /* disp to primaries*/ true,
 							&primaryResults, &mirrorResults, &dispatchThreads);
 
@@ -881,6 +875,7 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
  */
 struct pg_result **				/* returns ptr to array of PGresult ptrs */
 cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
+						  int						flags,
 						  char*						dtxProtocolCommandLoggingStr,
 						  char*						gid,
 						  DistributedTransactionId	gxid,
@@ -911,6 +906,7 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 
 	memset(&dtxProtocolParms, 0, sizeof(dtxProtocolParms));
 	dtxProtocolParms.dtxProtocolCommand = dtxProtocolCommand;
+	dtxProtocolParms.flags = flags;
 	dtxProtocolParms.dtxProtocolCommandLoggingStr = dtxProtocolCommandLoggingStr;
 	memcpy(dtxProtocolParms.gid, gid, TMGIDSIZE);
 	dtxProtocolParms.gxid = gxid;
@@ -1057,7 +1053,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 						char			   		   *serializedQuerytree,
 						int							serializedQuerytreelen,
                         bool                        cancelOnError,
-                        bool						startTransaction,
+                        bool						needTwoPhase,
                         bool						withSnapshot,
                         bool						dispatchToMirrors,
 						bool						dispatchToPrimaries,
@@ -1073,9 +1069,11 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	Assert(dispatchToPrimaries || dispatchToMirrors);
 	
 	if (DEBUG5 >= log_min_messages)
-    	elog(DEBUG3, "cdbdisp_dispatchCommand: %s", strCommand);
+    	elog(DEBUG3, "cdbdisp_dispatchCommand: %s (needTwoPhase = %s)", 
+	    	 strCommand, (needTwoPhase ? "true" : "false"));
     else
-    	elog(DEBUG3, "cdbdisp_dispatchCommand: %.50s", strCommand);
+    	elog((Debug_print_full_dtm ? LOG : DEBUG3), "cdbdisp_dispatchCommand: %.50s (needTwoPhase = %s)", 
+    	     strCommand, (needTwoPhase ? "true" : "false"));
 
     *pPrimaryResults = NULL;
     if (pMirrorResults)
@@ -1119,7 +1117,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 
 	/* Serialize a version of our DTX Context Info */
 	queryParms.serializedDtxContextInfo = 
-			qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, withSnapshot, generateTxnOptions(startTransaction));
+			qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, withSnapshot, generateTxnOptions(needTwoPhase), "cdbdisp_dispatchCommand");
 
 	/*
      * Dispatch the command.
@@ -1309,7 +1307,7 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 						char 		   				*serializedPlantree,
 						int							serializedPlantreelen,
                         bool                        cancelOnError,
-                        bool						startTransaction,
+                        bool						needTwoPhase,
                         struct CdbDispatchResults **pPrimaryResults,    /* OUT */
                         struct CdbDispatchResults **pMirrorResults,     /* OUT */
 						struct CdbDispatchCmdThreads **pDispatchThreads)   /* OUT */
@@ -1370,7 +1368,7 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 
 	/* serialized a version of our snapshot */
 	queryParms.serializedDtxContextInfo = 
-			qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, true /* withSnapshot */, generateTxnOptions(startTransaction));
+			qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, true /* withSnapshot */, generateTxnOptions(needTwoPhase), "cdbdisp_dispatchCommandToAllGangs");
 	
 	readerGangs = getAllReaderGangs();
 	
@@ -1455,6 +1453,7 @@ thread_DispatchCommand(void *arg)
 		{
 			pParms->query_text = PQbuildGpDtxProtocolCommand(
 						(int)pParms->dtxProtocolParms.dtxProtocolCommand,
+						pParms->dtxProtocolParms.flags,
 						pParms->dtxProtocolParms.dtxProtocolCommandLoggingStr,
 						pParms->dtxProtocolParms.gid,
 						pParms->dtxProtocolParms.gxid,
@@ -2217,13 +2216,13 @@ processResults(CdbDispatchResult * dispatchResult)
  * If not all QEs execute the command successfully, throws an error and
  * does not return.
  *
- * startTransaction specifies a desire to include global transaction control
+ * needTwoPhase specifies a desire to include global transaction control
  *  before dispatch.
  */
 void
 CdbDoCommand(const char *strCommand,
 				  bool cancelOnError,
-				  bool startTransaction,
+				  bool needTwoPhase,
 				  bool dispatchToMirrors,
 				  bool dispatchToPrimaries)
 {
@@ -2233,20 +2232,20 @@ CdbDoCommand(const char *strCommand,
 
 	Assert(dispatchToMirrors || dispatchToPrimaries);
 	
-	elog((Debug_print_full_dtm ? LOG : DEBUG5), "CdbDoCommand for command = '%s', startTransaction = %s",
-		 strCommand, (startTransaction ? "true" : "false"));
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "CdbDoCommand for command = '%s', needTwoPhase = %s",
+		 strCommand, (needTwoPhase ? "true" : "false"));
 		
-	if (startTransaction)
+	if (needTwoPhase)
 	{
-		/* Mark the DTX as distributed and reconfigure the cluster if needed. */
-		cdbdisp_markDtxAsDistributed("CdbDoCommand", strCommand);
+		/* Reconfigure the cluster if needed. */
+		cdbdisp_reconfigureFtsIfNecessary();
 		
-		/* mark this txn as dirty */
-		setCurrentDtxDirty();
+		/* Mark this txn as needing a two-phase distributed transaction */
+		setCurrentDtxTwoPhase("CdbDoCommand", strCommand);
 
 	}
 
-	cdbdisp_dispatchCommand(strCommand, NULL, 0, cancelOnError, startTransaction, 
+	cdbdisp_dispatchCommand(strCommand, NULL, 0, cancelOnError, needTwoPhase, 
 							/* withSnapshot */true, dispatchToMirrors, dispatchToPrimaries,
 							&primaryResults, &mirrorResults, &dispatchThreads);
 
@@ -2262,26 +2261,26 @@ CdbDoCommand(const char *strCommand,
 void
 CdbDoCommandOnAllGangs(const char *strCommand,
 				  bool cancelOnError,
-				  bool startTransaction)
+				  bool needTwoPhase)
 {
 	CdbDispatchResults *primaryResults;
 	CdbDispatchResults *mirrorResults;
 	CdbDispatchCmdThreads *dispatchThreads;
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5), "CdbDoCommandOnAllGangs for command = '%s', startTransaction = %s",
-		 strCommand, (startTransaction ? "true" : "false"));
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "CdbDoCommandOnAllGangs for command = '%s', needTwoPhase = %s",
+		 strCommand, (needTwoPhase ? "true" : "false"));
 		
 
-	if (startTransaction)
+	if (needTwoPhase)
 	{
-		/* Mark the DTX as distributed and reconfigure the cluster if needed. */
-		cdbdisp_markDtxAsDistributed("CdbDoCommandOnAllGangs", strCommand);
+		/* Reconfigure the cluster if needed. */
+		cdbdisp_reconfigureFtsIfNecessary();
 		
 		/* mark this txn as dirty */
-		setCurrentDtxDirty();
+		setCurrentDtxTwoPhase("CdbDoCommandOnAllGangs", strCommand);
 	}
 	
-	cdbdisp_dispatchCommandToAllGangs(strCommand, NULL, 0, NULL, 0, cancelOnError, startTransaction,
+	cdbdisp_dispatchCommandToAllGangs(strCommand, NULL, 0, NULL, 0, cancelOnError, needTwoPhase,
 							&primaryResults, &mirrorResults, &dispatchThreads);
 
 	/*
@@ -2854,7 +2853,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 * dispatch without starting a global xact.
 	 */
 	queryParms.serializedDtxContextInfo = 
-			qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, true /* wantSnapshot */, generateTxnOptions(planRequiresTxn));
+			qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, true /* wantSnapshot */, generateTxnOptions(planRequiresTxn), "cdbdisp_dispatchPlan");
 	
 	cdb_total_plans++;
 	cdb_total_slices += nSlices;
@@ -3055,7 +3054,7 @@ fillSliceVector(SliceTable *sliceTbl, int rootIdx, sliceVec *sliceVector, int sl
 void
 cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 								 bool cancelOnError,
-								 bool startTransaction,
+								 bool needTwoPhase,
 								 struct CdbDispatchResults ** pPrimaryResults,
 								 struct CdbDispatchResults ** pMirrorResults,
 								 struct CdbDispatchCmdThreads ** pDispatchThreads)
@@ -3066,11 +3065,14 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 	StringInfoData buffer;
 	bool 		dispatchToMirrors = true;
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"cdbdisp_dispatchUtilityStatement debug_query_string = %s (startTransaction = %s)",
-	     debug_query_string, (startTransaction ? "true" : "false"));
-	
-	/* mark the dtx as dirty */
-	setCurrentDtxDirty();
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"cdbdisp_dispatchUtilityStatement debug_query_string = %s (needTwoPhase = %s)",
+	     debug_query_string, (needTwoPhase ? "true" : "false"));
+
+	if (needTwoPhase)
+	{
+		/* mark the dtx as dirty */
+		setCurrentDtxTwoPhase("cdbdisp_dispatchUtilityStatement", "(none)");
+	}
 	
 	initStringInfo(&buffer);
 
@@ -3101,7 +3103,7 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 
 	Assert(serializedQuerytree != NULL);
 
-	cdbdisp_dispatchCommand(debug_query_string, serializedQuerytree, serializedQuerytree_len, cancelOnError, startTransaction,
+	cdbdisp_dispatchCommand(debug_query_string, serializedQuerytree, serializedQuerytree_len, cancelOnError, needTwoPhase,
 							/* withSnapshot */true, dispatchToMirrors, /* primaries */true, 
 							pPrimaryResults, pMirrorResults, pDispatchThreads);
 
@@ -3122,14 +3124,14 @@ CdbDispatchUtilityStatement(struct Node *stmt)
 	CdbDispatchResults *primaryResults;
 	CdbDispatchResults *mirrorResults;
 	CdbDispatchCmdThreads *dispatchThreads;
-	bool	startTransaction = true;
+	bool	needTwoPhase = true;
 	
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"cdbdisp_dispatchUtilityStatement called");
 	
-	/* Mark the DTX as distributed and reconfigure the cluster if needed. */
-	cdbdisp_markDtxAsDistributed("CdbDispatchUtilityStatement", "(Node)");
+	/* Reconfigure the cluster if needed. */
+	cdbdisp_reconfigureFtsIfNecessary();
 
-	cdbdisp_dispatchUtilityStatement(stmt, true, startTransaction, &primaryResults, &mirrorResults, &dispatchThreads);
+	cdbdisp_dispatchUtilityStatement(stmt, true, needTwoPhase, &primaryResults, &mirrorResults, &dispatchThreads);
 
 
 	/* Wait for all QEs to finish.	Throw up if error. */
@@ -3141,14 +3143,12 @@ CdbDispatchUtilityStatement(struct Node *stmt)
 
 
 char*
-qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions)
+qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions, char* debugCaller)
 {
 	char *serializedDtxContextInfo;
 
 	DistributedSnapshot distributedSnapshot;
 	Snapshot snapshot;
-	int oldQDcid;
-	int oldSnapshotCurcid;
 	int serializedLen;
 	DtxContextInfo *pDtxContextInfo;
 
@@ -3256,8 +3256,8 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions)
 
 	serializeDtxContextInfo(serializedDtxContextInfo, pDtxContextInfo); 
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"qdSerializeDtxContextInfo returning a snapshot of %d bytes (ptr is %s)",
-	     *size, (serializedDtxContextInfo != NULL ? "Non-NULL" : "NULL"));
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"qdSerializeDtxContextInfo (called by %s) returning a snapshot of %d bytes (ptr is %s)",
+	     debugCaller, *size, (serializedDtxContextInfo != NULL ? "Non-NULL" : "NULL"));
 	return serializedDtxContextInfo;
 }
 
@@ -3266,17 +3266,16 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions)
  * segdb QE process to perform any needed transaction commands before or
  * after the statement.
  *
- * statementWantsDtxTransaction - s
- *               specifies whether this statement even wants a transaction to
+ * needTwoPhase - specifies whether this statement even wants a transaction to
  *				 be started.  Certain utility statements dont want to be in a
  *				 distributed transaction.
  */
 static int
-generateTxnOptions(bool statementWantsDtxTransaction)
+generateTxnOptions(bool needTwoPhase)
 {
 	int options;
 	
-	options = mppTxnOptions(statementWantsDtxTransaction);
+	options = mppTxnOptions(needTwoPhase);
 		
 	return options;
 	

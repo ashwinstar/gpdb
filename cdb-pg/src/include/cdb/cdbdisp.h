@@ -66,6 +66,7 @@ typedef struct DispatchCommandQueryParms
 typedef struct DispatchCommandDtxProtocolParms
 {
 	DtxProtocolCommand			dtxProtocolCommand;
+	int							flags;
 	char*						dtxProtocolCommandLoggingStr;
 	char						gid[TMGIDSIZE];
 	DistributedTransactionId	gxid;
@@ -138,9 +139,9 @@ typedef struct CdbDispatchCmdThreads
 
 /*--------------------------------------------------------------------*/
 
-/* Mark the DTX as distributed and reconfigure the cluster if needed. */
+/* Reconfigure the cluster if needed. */
 void
-cdbdisp_markDtxAsDistributed(char* debugCaller, char* debugDetail);
+cdbdisp_reconfigureFtsIfNecessary(void);
 
 /*--------------------------------------------------------------------*/
 
@@ -242,6 +243,7 @@ cdbdisp_dispatchRMCommand(const char   *strCommand,
  */
 struct pg_result **             /* returns ptr to array of PGresult ptrs */
 cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
+						  int						flags,
 						  char*						dtxProtocolCommandLoggingStr,
 						  char*						gid,
 						  DistributedTransactionId	gxid,
@@ -262,7 +264,7 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
  * The number of segdbs handled by any one thread is determined by the
  * guc variable gp_connections_per_thread.
  *
- * The startTransaction flag is used to express intent on whether the command to
+ * The needTwoPhase flag is used to express intent on whether the command to
  * be dispatched should be done inside of a global transaction or not.
  *
  * The CdbDispatchResults objects allocated for the command
@@ -284,7 +286,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 						char				   	   *serializedQuerytree,
 						int							serializedQuerytreelen,
                         bool                        cancelOnError,
-                        bool						startTransaction,
+                        bool						needTwoPhase,
                         bool						withSnapshot,
                         bool						dispatchToMirrors,
 						bool						dispatchToPrimaries,
@@ -330,11 +332,11 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
  * If not all QEs execute the command successfully, throws an error and
  * does not return.
  *
- * startTransaction specifies whether to dispatch within a distributed 
+ * needTwoPhase specifies whether to dispatch within a distributed 
  * transaction or not.
  */
 void
-CdbDoCommand(const char *strCommand, bool cancelOnError, bool startTransaction, bool dispatchToMirrors, bool dispatchToPrimaries);
+CdbDoCommand(const char *strCommand, bool cancelOnError, bool needTwoPhase, bool dispatchToMirrors, bool dispatchToPrimaries);
 
 
 /*
@@ -342,7 +344,7 @@ CdbDoCommand(const char *strCommand, bool cancelOnError, bool startTransaction, 
  * gangs, both reader and writer
  */
 void
-CdbDoCommandOnAllGangs(const char *strCommand, bool cancelOnError, bool startTransaction);
+CdbDoCommandOnAllGangs(const char *strCommand, bool cancelOnError, bool needTwoPhase);
 
 /*--------------------------------------------------------------------*/
 
@@ -376,7 +378,7 @@ cdbdisp_dispatchPlan(struct QueryDesc              *queryDesc,
  * completion.  Does not start a global transaction.
  *
  *
- * The startTransaction flag indicates whether you want the dispatched 
+ * The needTwoPhase flag indicates whether you want the dispatched 
  * statement to participate in a distributed transaction or not.
  *
  * NB: Callers should use PG_TRY()/PG_CATCH() if needed to make
@@ -388,7 +390,7 @@ cdbdisp_dispatchPlan(struct QueryDesc              *queryDesc,
 void
 cdbdisp_dispatchUtilityStatement(struct Node   *stmt,
                                  bool           cancelOnError,
-                                 bool			startTransaction,
+                                 bool			needTwoPhase,
                                  struct CdbDispatchResults    **pPrimaryResults,
                                  struct CdbDispatchResults    **pMirrorResults,
 								 struct CdbDispatchCmdThreads ** pDispatchThreads);
@@ -418,7 +420,7 @@ cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads);
 /* used to take the current Transaction Snapshot and serialized a version of it
  * into the static variable serializedDtxContextInfo */
 char *
-qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions);
+qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions, char* debugCaller);
 
 
 /* this is used for dire cleanup emergencies (in portalmem.c) */
