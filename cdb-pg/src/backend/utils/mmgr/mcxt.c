@@ -9,6 +9,7 @@
  * context's MemoryContextMethods struct.
  *
  *
+ * Portions Copyright (c) 2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -312,6 +313,101 @@ MemoryContextIsEmpty(MemoryContext context)
 	return (*context->methods->is_empty) (context);
 }
 
+
+/*
+ * MemoryContextNoteAlloc
+ *		Update lifetime cumulative statistics upon allocation from host mem mgr.
+ *
+ * Called by the context-type-specific memory manager upon successfully
+ * obtaining a block of size 'nbytes' from its lower-level source (e.g. malloc).
+ */
+void
+MemoryContextNoteAlloc(MemoryContext context, Size nbytes)
+{
+	AssertArg(MemoryContextIsValid(context));
+
+    while (context)
+    {
+        int64   held;
+
+        context->allBytesAlloc += nbytes;
+        held = context->allBytesAlloc - context->allBytesFreed;
+        if (context->maxBytesHeld < held)
+            context->maxBytesHeld = held;
+        context = context->parent;
+    }
+}                               /* MemoryContextNoteAlloc */
+
+/*
+ * MemoryContextNoteFree
+ *		Update lifetime cumulative statistics upon free to host memory manager.
+ *
+ * Called by the context-type-specific memory manager upon relinquishing a
+ * block of size 'nbytes' back to its lower-level source (e.g. free()).
+ */
+void
+MemoryContextNoteFree(MemoryContext context, Size nbytes)
+{
+	AssertArg(MemoryContextIsValid(context));
+
+    while (context)
+    {
+        context->allBytesFreed += nbytes;
+        context = context->parent;
+    }
+}                               /* MemoryContextNoteFree */
+
+
+/*
+ * MemoryContextName
+ *		Format the name of the memory context into the caller's buffer.
+ *
+ * Returns ptr to the name string within the supplied buffer.  (The string
+ * is built at the tail of the buffer from right to left.)
+ */
+char *
+MemoryContextName(MemoryContext context, MemoryContext relativeTo,
+                  char *buf, int bufsize)
+{
+    MemoryContext   ctx;
+    char           *cbp = buf + bufsize - 1;
+
+	AssertArg(MemoryContextIsValid(context));
+
+    if (bufsize <= 0)
+        return buf;
+
+    for (ctx = context; ctx && ctx != relativeTo; ctx = ctx->parent)
+    {
+        const char *name = ctx->name ? ctx->name : "";
+        int         len = strlen(name);
+
+        if (cbp - buf < len + 1)
+        {
+            len = Min(3, cbp - buf);
+            cbp -= len;
+            memcpy(cbp, "...", len);
+            break;
+        }
+        if (ctx != context)
+            *--cbp = '/';
+        cbp -= len;
+        memcpy(cbp, name, len);
+    }
+
+    if (buf < cbp)
+    {
+        if (!ctx)
+            *--cbp = '/';
+        else if (ctx == context)
+            *--cbp = '.';
+    }
+
+    buf[bufsize-1] = '\0';
+    return cbp;
+}                               /* MemoryContextName */
+
+
 /*
  * MemoryContextStats
  *		Print statistics about the named context and all its descendants.
@@ -319,16 +415,36 @@ MemoryContextIsEmpty(MemoryContext context)
  * This is just a debugging utility, so it's not fancy.  The statistics
  * are merely sent to stderr.
  */
-void
-MemoryContextStats(MemoryContext context)
+static void
+MemoryContextStats_recur(MemoryContext context, MemoryContext topcontext,
+                         char *namebuf, int namebufsize)
 {
-	MemoryContext child;
+	MemoryContext   child;
+    char*           name;
 
 	AssertArg(MemoryContextIsValid(context));
 
-	(*context->methods->stats) (context);
+    /* Get name and ancestry of this MemoryContext */
+    name = MemoryContextName(context, topcontext, namebuf, namebufsize);
+
+	(*context->methods->stats)(context, name);
+
 	for (child = context->firstchild; child != NULL; child = child->nextchild)
-		MemoryContextStats(child);
+		MemoryContextStats_recur(child, topcontext, namebuf, namebufsize);
+}
+
+void
+MemoryContextStats(MemoryContext context)
+{
+    char*     name;
+    char      namebuf[200];
+
+	AssertArg(MemoryContextIsValid(context));
+
+    name = MemoryContextName(context, NULL, namebuf, sizeof(namebuf));
+    write_stderr("Memory statistics for %s/\n", name);
+
+    MemoryContextStats_recur(context, context, namebuf, sizeof(namebuf));
 }
 
 

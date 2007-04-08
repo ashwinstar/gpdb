@@ -7,6 +7,7 @@
  *	  of the API of the memory management subsystem.
  *
  *
+ * Portions Copyright (c) 2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -92,12 +93,18 @@ extern void MemoryContextResetAndDeleteChildren(MemoryContext context);
 extern Size GetMemoryChunkSpace(void *pointer);
 extern MemoryContext GetMemoryChunkContext(void *pointer);
 extern bool MemoryContextIsEmpty(MemoryContext context);
+extern char *MemoryContextName(MemoryContext context, MemoryContext relativeTo,
+                               char *buf, int bufsize);
 extern void MemoryContextStats(MemoryContext context);
 
 #ifdef MEMORY_CONTEXT_CHECKING
 extern void MemoryContextCheck(MemoryContext context);
 #endif
 extern bool MemoryContextContains(MemoryContext context, void *pointer);
+
+/* Functions called only by context-type-specific memory managers... */
+extern void MemoryContextNoteAlloc(MemoryContext context, Size nbytes);
+extern void MemoryContextNoteFree(MemoryContext context, Size nbytes);
 
 /*
  * This routine handles the context-type-independent part of memory

@@ -7,6 +7,7 @@
  * type.
  *
  *
+ * Portions Copyright (c) 2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -213,7 +214,7 @@ static void AllocSetReset(MemoryContext context);
 static void AllocSetDelete(MemoryContext context);
 static Size AllocSetGetChunkSpace(MemoryContext context, void *pointer);
 static bool AllocSetIsEmpty(MemoryContext context);
-static void AllocSetStats(MemoryContext context);
+static void AllocSetStats(MemoryContext context, const char* contextName);
 
 #ifdef MEMORY_CONTEXT_CHECKING
 static void AllocSetCheck(MemoryContext context);
@@ -353,6 +354,7 @@ AllocSetContextCreate(MemoryContext parent,
 		context->blocks = block;
 		/* Mark block as not to be released at reset time */
 		context->keeper = block;
+        MemoryContextNoteAlloc(&context->header, blksize);              /*CDB*/
 	}
 
 	context->isReset = true;
@@ -436,6 +438,7 @@ AllocSetReset(MemoryContext context)
 		else
 		{
 			/* Normal case, release the block */
+            MemoryContextNoteFree(&set->header, block->endptr - (char *)block);
 #ifdef CLOBBER_FREED_MEMORY
 			/* Wipe freed memory for debugging purposes */
 			memset(block, 0x7F, block->freeptr - ((char *) block));
@@ -481,6 +484,7 @@ AllocSetDelete(MemoryContext context)
 	{
 		AllocBlock	next = block->next;
 
+        MemoryContextNoteFree(&set->header, block->endptr - (char *)block);
 #ifdef CLOBBER_FREED_MEMORY
 		/* Wipe freed memory for debugging purposes */
 		memset(block, 0x7F, block->freeptr - ((char *) block));
@@ -556,6 +560,7 @@ AllocSetAlloc(MemoryContext context, Size size)
 		}
 
 		set->isReset = false;
+        MemoryContextNoteAlloc(&set->header, blksize);              /*CDB*/
 
 		AllocAllocInfo(set, chunk);
 		return AllocChunkGetPointer(chunk);
@@ -732,6 +737,7 @@ AllocSetAlloc(MemoryContext context, Size size)
 
 		block->next = set->blocks;
 		set->blocks = block;
+        MemoryContextNoteAlloc(&set->header, blksize);              /*CDB*/
 	}
 
 	/*
@@ -804,6 +810,7 @@ AllocSetFree(MemoryContext context, void *pointer)
 			set->blocks = block->next;
 		else
 			prevblock->next = block->next;
+        MemoryContextNoteFree(&set->header, block->endptr - (char *)block);
 #ifdef CLOBBER_FREED_MEMORY
 		/* Wipe freed memory for debugging purposes */
 		memset(block, 0x7F, block->freeptr - ((char *) block));
@@ -909,7 +916,9 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 							   (unsigned long) size,
                                set->header.name) ));
 		}
+        MemoryContextNoteFree(&set->header, block->endptr - (char *)block);
 		block->freeptr = block->endptr = ((char *) block) + blksize;
+        MemoryContextNoteAlloc(&set->header, blksize);                  /*CDB*/
 
 		/* Update pointers since block has likely been moved */
 		chunk = (AllocChunk) (((char *) block) + ALLOC_BLOCKHDRSZ);
@@ -1032,8 +1041,31 @@ AllocSetIsEmpty(MemoryContext context)
  * AllocSetStats
  *		Displays stats about memory consumption of an allocset.
  */
+
+/* Helper to portably right-justify an int64 in a field of specified width. */
+static char *
+aset_rjfmt_int64(int64 v, int width, char **inout_bufpos, char *bufend)
+{
+    char       *bp = *inout_bufpos;
+    char        fmtbuf[32];
+    int         len;
+    int         pad;
+
+    snprintf(fmtbuf, sizeof(fmtbuf), INT64_FORMAT, v);
+    len = strlen(fmtbuf);
+    pad = Max(width - len, 0);
+    if (pad + len >= bufend - bp)
+        return "***";
+    memset(bp, ' ', pad);
+    memcpy(bp+pad, fmtbuf, len);
+    bp[pad+len] = '\0';
+   *inout_bufpos += pad+len+1;
+    return bp;
+}                               /* aset_rjfmt_int64 */
+
+
 static void
-AllocSetStats(MemoryContext context)
+AllocSetStats(MemoryContext context, const char* contextName)
 {
 	AllocSet	set = (AllocSet) context;
 	long		nblocks = 0;
@@ -1043,6 +1075,10 @@ AllocSetStats(MemoryContext context)
 	AllocBlock	block;
 	AllocChunk	chunk;
 	int			fidx;
+    int64       held;
+    char       *cfp;
+    char       *efp;
+    char        fmtbuf[200];
 
 	for (block = set->blocks; block != NULL; block = block->next)
 	{
@@ -1059,10 +1095,21 @@ AllocSetStats(MemoryContext context)
 			freespace += chunk->size + ALLOC_CHUNKHDRSZ;
 		}
 	}
-	fprintf(stderr,
-			"%s: %lu total in %ld blocks; %lu free (%ld chunks); %lu used\n",
-			set->header.name, totalspace, nblocks, freespace, nchunks,
-			totalspace - freespace);
+
+    efp = fmtbuf + sizeof(fmtbuf);
+    cfp = fmtbuf;
+    held = set->header.allBytesAlloc - set->header.allBytesFreed;
+    write_stderr("  Subtree: %s KB held; %s KB peak; %s KB lifetime sum."
+                 "   Node: %8lu KB held in %3ld blocks; %8lu KB in use"
+                 "; %8lu KB free in %3ld chunks)"
+                 "  %s\n",
+                 aset_rjfmt_int64((held + 1023) / 1024, 8, &cfp, efp),
+                 aset_rjfmt_int64((set->header.maxBytesHeld + 1023) / 1024, 8, &cfp, efp),
+                 aset_rjfmt_int64((set->header.allBytesAlloc + 1023) / 1024, 9, &cfp, efp),
+                 (totalspace + 1023) / 1024, nblocks,
+                 (totalspace - freespace + 1023) / 1024,
+                 (freespace + 1023) / 1024, nchunks,
+                 contextName);
 }
 
 
