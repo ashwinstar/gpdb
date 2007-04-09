@@ -613,11 +613,11 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 		DistributedTransactionContext == DTX_CONTEXT_QE_ENTRY_DB_SINGLETON)
 	{
 		int	   	count = 0;
-		/* the pg_usleep() call below is in units of ms, interconnect
+		/* the pg_usleep() call below is in units of us (microsseconds), interconnect
 		 * timeout is in seconds */
-		int     sleep_per_check_ms = 200;
+		uint32     sleep_per_check_us = 200 * 1000;
 		/* Wait for up to 3/4 the timeout period */
-		int		segmate_timeout_ms = (3* interconnect_setup_timeout * 1000) / 4;
+		uint32		segmate_timeout_us = (3* interconnect_setup_timeout * 1000000) / 4;
 
 
 		for (;;)
@@ -683,15 +683,15 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 												   DtxContextToString(DistributedTransactionContext));
 
 				
-				pg_usleep(sleep_per_check_ms);
+				pg_usleep(sleep_per_check_us);
 
 				CHECK_FOR_INTERRUPTS();
 
 				count++;
 
-				segmate_timeout_ms -= sleep_per_check_ms;
+				segmate_timeout_us -= sleep_per_check_us;
 
-				if (segmate_timeout_ms <= 0)
+				if (segmate_timeout_us <= 0)
 					ereport(ERROR,
 							(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 							 errmsg("GetSnapshotData timed out waiting for Writer to set the shared snapshot."),
