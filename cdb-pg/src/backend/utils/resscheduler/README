@@ -70,10 +70,10 @@ Functions
 
 The basic API consists of:
 
-    ResLockPortal(Portal portal);
+    ResLockPortal(Portal portal, Plan* plan);
     ResUnLockPortal(Portal portal);
 
-which are inserted into PortalStart and PortalRun respectively. In PortalStart
+which are inserted into PortalStart and PortalDrop respectively. In PortalStart
 the ResLockPortal call is made after planning is completed, so there is access 
 to all elements of the plan structure, thus controlling resources on the basis 
 of cost is possible.
@@ -103,6 +103,19 @@ subtracted) to the shared counters by:
                       ResPortalIncrement *incrementSet,
                       bool increment);
 
+Commit and Abort handling is mostly handled from the existing ResourceOwner
+code - as dropping portals unlocks them! However for WITH HOLD cursors an
+extra function to unlock any remaining portals at sesion exit is required:
+
+    AtExitCleanup_ResPortals(void);
+
+Some of the standard lock manager code is almost duplicated to handle interrupts
+,sleeping and wait queue removal:
+
+    ResLockWaitCancel(void);
+    ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock):
+    ResRemoveFromWaitQueue(PGPROC *proc, uint32 hashcode);
+
 Deadlocks between standard and resource locks are possible, and are handled
 by the deadlock detector. We pass the lock mode as ExclusiveLock - which 
 results in overly agressive detection and rollback of deadocks. However, safety
@@ -122,7 +135,7 @@ lightweight lock(s):
 
 for lightweight lock operations. 
 
-The queues themselves and their data are protected by a seperate loghtweight 
+The queues themselves and their data are protected by a seperate lightweight 
 lock:
 
   ResQueueLock
@@ -167,13 +180,7 @@ safety feature to prevent unexpected behaviour.
 
 The DROP RESOURCE command does not allow queues to be dropped if there are roles
 assigned to it, It does not allow it to be dropped unless all of the current 
-values for the in-memory queue are zero. The in-memory queue is not destroyed,
-but will be invisible (to new sessions) after the catalog entry for it is gone.
-This is a little pesky too - however there are some subtle scenarios that mean 
-that its not simple to just zap it. In addition the use of an array rather than
- a hash table for the in-memory queues makss deleting and re-using the slot a 
-little messy, and the whole thing is probably best left until we convert to a 
-hash table (TODO).
+values for the in-memory queue are zero. 
 
 Only superuser can create, alter or drop resource queues.
 
@@ -186,6 +193,7 @@ ALTER ROLE <name>  [role options] [RESOURCE QUEUE <name>];
 ALTER ROLE <name>  [role options] [RESOURCE QUEUE none];
 
 The resource queue name 'none' is used to mean 'no resource queue thanks'.
+
 -----------------------------------------------------------------------------
 
 Catalog Changes
