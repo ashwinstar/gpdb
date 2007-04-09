@@ -1019,7 +1019,17 @@ make_two_stage_agg_plan(PlannerInfo *root,
 		List *new_keys = NIL;
 		ListCell *c;
 		int i = 1;
-		Assert( numGroupCols == list_length(current_pathkeys) );
+
+		/*
+		 * There may be duplicate keys in the GroupClause, but
+		 * current_pathkeys only contain non-duplicate keys. So,
+		 * numGroupCols is not necessarily equal to the number
+		 * of keys in current_pathkeys. But we want to make
+		 * sure that numGroupCols is not less than this number.
+		 * (MPP-1348)
+		 */
+		Assert( numGroupCols >= list_length(current_pathkeys) );
+
 		foreach ( c, current_pathkeys )
 		{
 			List *k;
