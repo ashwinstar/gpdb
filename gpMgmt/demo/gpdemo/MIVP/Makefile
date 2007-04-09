@@ -1,5 +1,5 @@
-THIS_PGDATABASE=mpptestdb
-THIS_PGPORT=5432
+THIS_PGDATABASE=gptestdb
+THIS_PGPORT=18501
 DATADIR=$(PWD)/data-generator
 
 .PHONY : create-IVP generate-data load-data drop-IVP query-IVP
