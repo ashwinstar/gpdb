@@ -23,10 +23,10 @@ opt = {}
 opt['-p'] = 8080
 opt['-v'] = False
 opt['-V'] = False
+opt['-h'] = False
 opt['-d'] = '.'
 qc = None
 xc = None
-
 
 def usage(exitarg):
     print __doc__
@@ -39,13 +39,13 @@ def parseInt(val):
 def parseCommandLine():
     global opt, qc, xc
     try:
-	(options, args) = getopt.getopt(sys.argv[1:], '?Vvp:d:q:x:')
+	(options, args) = getopt.getopt(sys.argv[1:], '?Vvhp:d:q:x:')
     except Exception, e:
 	usage('Error: ' + str(e))
 
     for (switch, val) in options:
 	if (switch == '-?'):		usage(0)
-        elif (switch[1] in 'Vv'):	opt[switch] = True
+        elif (switch[1] in 'Vvh'):	opt[switch] = True
         elif (switch[1] in 'dqx'):      opt[switch] = val
         elif (switch[1] in 'p'):	opt[switch] = parseInt(val)
         elif (switch == '-q'):          qc = val; opt['-f'] = False
@@ -73,6 +73,9 @@ def parseCommandLine():
     if not qc and xc: 
 	usage('Error: you must specify -q qchar with -x xchar')
 
+    if not qc and opt['-h']:
+	usage('Error: header may only be used in CSV format. please specify -q switch')
+    
     if len(args) != 0:
 	usage(1)
 
@@ -226,11 +229,16 @@ class GPFDistRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 	    self.send_header("Content-type", "text/plain")
 	    self.end_headers()
 
+	    # parse in CSV format if quote char was specified
 	    if qc:
+		# skip the first line if 'header' option was specified
+		if opt['-h']:
+			line = s.readLine()
 		while 1:
 		    line = s.readLine()
 		    if not line: break
 		    self.wfile.write(line)
+	    # parse in text format otherwise
 	    else:
 		while 1:
 		    chunks = s.readFile()
