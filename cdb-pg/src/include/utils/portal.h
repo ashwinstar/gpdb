@@ -238,5 +238,6 @@ extern void PortalDefineQuery(Portal portal,
 				  MemoryContext queryContext);
 extern Query *PortalListGetPrimaryQuery(List *parseTrees);
 extern void PortalCreateHoldStore(Portal portal);
+extern void AtExitCleanup_ResPortals(void);
 
 #endif   /* PORTAL_H */

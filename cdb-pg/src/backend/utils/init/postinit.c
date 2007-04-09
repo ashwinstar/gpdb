@@ -608,9 +608,9 @@ ShutdownPostgres(int code, Datum arg)
 	/* Make sure we've killed any active transaction */
 	AbortOutOfAnyTransaction();
 
-	/* Final cleanup for any resource locks (holdable cursors). */
+	/* Cleanup for any resource locks on portals (holdable cursors). */
 	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
-		ResLockReleaseAll(true, true, true);
+		AtExitCleanup_ResPortals();
 
 	/*
 	 * User locks are not released by transaction end, so be sure to release

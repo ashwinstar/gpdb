@@ -172,18 +172,6 @@ PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params)
 	verify_shared_snapshot_ready();
 	
 	/*
-	 * If Resource Scheduling is enabled, then record if this portal is
-	 * holdable or not in the portal's increment record.
-	 */
-	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
-	{
-		if (portal->cursorOptions & CURSOR_OPT_HOLD )
-		{
-			ResIncrementUpdate(-1, portal->portalId, true, false);
-		}
-	}
-
-	/*
 	 * Start execution, inserting parameters if any.
 	 */
 	PortalStart(portal, params, ActiveSnapshot);

@@ -52,6 +52,7 @@ bool	ResourceSelectOnly;						/* Only lock SELECT/DECLARE? */
  */
 Oid				MyQueueId;			/* resource queue for current role. */
 static uint32	portalId = 0;		/* id of portal, for tracking cursors. */
+static int32	numHoldPortals = 0;	/* # of holdable cursors tracked. */
 
 
 /*
@@ -558,10 +559,12 @@ ResLockPortal(Portal portal, Plan *plan)
 				incData.portalId = portal->portalId;
 				incData.increments[RES_COUNT_LIMIT] = 1;
 				incData.increments[RES_COST_LIMIT] = plan->total_cost;
+				incData.isHold = portal->cursorOptions & CURSOR_OPT_HOLD;
+
 	
 	
 				takeLock = true;
-				returnReleaseOk = false;
+				returnReleaseOk = true;
 			}
 			break;
 	
@@ -599,6 +602,10 @@ ResLockPortal(Portal portal, Plan *plan)
 				 queueid, portal->portalId);
 			SET_LOCKTAG_RESOURCE_QUEUE(tag, queueid);
 			lockResult = ResLockAcquire(&tag, &incData);
+
+			/* Count holdable cursors.*/
+			if (portal->cursorOptions & CURSOR_OPT_HOLD)
+				numHoldPortals++;
 		}
 
 	}
@@ -630,6 +637,13 @@ ResUnLockPortal(Portal portal)
 
 
 		ResLockRelease(&tag, portal->portalId);
+
+		/* Count holdable cursors.*/
+		if (portal->cursorOptions & CURSOR_OPT_HOLD)
+		{
+			Assert(numHoldPortals > 0);
+			numHoldPortals--;
+		}
 	}
 
 	return;
@@ -819,7 +833,8 @@ AtCommit_ResScheduler(void)
 {
 
 	/* reset the portal id. */
-	portalId = 0;
+	if (numHoldPortals == 0)
+		portalId = 0;
 }
 
 
@@ -832,5 +847,6 @@ AtAbort_ResScheduler(void)
 {
 
 	/* reset the portal id. */
-	portalId = 0;
+	if (numHoldPortals == 0)
+		portalId = 0;
 }

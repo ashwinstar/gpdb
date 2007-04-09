@@ -357,6 +357,15 @@ PortalDrop(Portal portal, bool isTopCommit)
 		elog(ERROR, "cannot drop active portal");
 
 	/*
+	 * If resource scheduling is enabled, release the resource lock here.
+	 */
+	if (portal->releaseResLock)
+    {
+        portal->releaseResLock = false;
+        ResUnLockPortal(portal);
+    }
+
+	/*
 	 * Remove portal from hash table.  Because we do this first, we will not
 	 * come back to try to remove the portal again if there's any error in the
 	 * subsequent steps.  Better to leak a little memory than to get into an
@@ -829,6 +838,27 @@ AtSubCleanup_Portals(SubTransactionId mySubid)
 
 		/* Zap it. */
 		PortalDrop(portal, false);
+	}
+}
+
+/*
+ * At exit ensure all resource locks get released (holdable cursors).
+ */
+void
+AtExitCleanup_ResPortals(void)
+{
+	HASH_SEQ_STATUS status;
+	PortalHashEnt *hentry;
+
+	hash_seq_init(&status, PortalHashTable);
+
+	while ((hentry = (PortalHashEnt *) hash_seq_search(&status)) != NULL)
+	{
+		Portal		portal = hentry->portal;
+
+		if (portal->releaseResLock)
+			ResUnLockPortal(portal);
+
 	}
 }
 

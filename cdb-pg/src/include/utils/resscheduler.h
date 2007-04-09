@@ -18,7 +18,6 @@
 #include "nodes/plannodes.h"
 #include "storage/lock.h"
 #include "tcop/dest.h"
-#include "utils/resowner.h"
 
 /*
  * GUC variables.
@@ -146,11 +145,6 @@ extern void				ResWaitOnLock(LOCALLOCK *locallock,
 extern void				ResProcLockWakeup(LOCK *lock);
 extern PGPROC 			*ResProcWakeup(PGPROC *proc, int waitStatus);
 extern void				ResRemoveFromWaitQueue(PGPROC *proc, uint32 hashcode);
-extern void				ResProcReleaseLocks(bool isCommit, bool releaseHold);
-extern void				ResProcReleaseCurrentOwner(bool isCommit, 
-												   bool releaseHold);
-extern void				ResLockReleaseAll(bool isAllOwners, bool isCommit, 
-										  bool releaseHold);
 extern ResPortalIncrement	*ResIncrementAdd(ResPortalIncrement *incSet,
 											PROCLOCK *proclock,
 											ResourceOwner owner);
@@ -161,8 +155,6 @@ extern bool 			ResQueueHashTableInit(void);
 extern ResQueue			ResQueueHashNew(Oid queueid);
 extern ResQueue			ResQueueHashFind(Oid queueid);
 extern bool				ResQueueHashRemove(Oid queueid);
-extern void				ResIncrementUpdate(int pid, uint32 portalId, 
-										   bool isHold, bool isCommitted);
 
 
 /*

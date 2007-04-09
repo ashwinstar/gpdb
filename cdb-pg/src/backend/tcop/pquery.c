@@ -767,15 +767,6 @@ PortalRun(Portal portal, long count,
 	}
 	PG_END_TRY();
 
-	/*
-	 * If resource scheduling is enabled, release the resource lock here.
-	 */
-	if (portal->releaseResLock)
-    {
-        portal->releaseResLock = false;
-        ResUnLockPortal(portal);
-    }
-
 	if (saveMemoryContext == saveTopTransactionContext)
 		MemoryContextSwitchTo(TopTransactionContext);
 	else
