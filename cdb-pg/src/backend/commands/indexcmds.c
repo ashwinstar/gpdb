@@ -613,7 +613,7 @@ DefineIndex(RangeVar *heapRelation,
 
 	/* 
      * Special code for allowing upgrade from Greenplum Database 2.2 to 2.3.
-     */
+     *
 	if (namespaceId == PG_CATALOG_NAMESPACE && tablespaceId==GLOBALTABLESPACE_OID && relationId == ResQueueRelationId)
 	{
 		if (strcmp(indexRelationName,"pg_resqueue_oid_index")==0)
@@ -628,6 +628,7 @@ DefineIndex(RangeVar *heapRelation,
 			indexRelationId = AuthIdRolResQueueIndexId;
 		allowSystemTableMods = true;
 	}
+	 */
 	
 	indexRelationId =
 		index_create(relationId, indexRelationName, indexRelationId,
