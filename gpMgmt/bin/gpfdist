@@ -2,7 +2,7 @@
 '''
 gpfdist -- file distribution web server 
 
-Usage: gpfdist [-?v] [-p port] [-d dir] [q qchar] [-x xchar]
+Usage: gpfdist [-?v] [-p port] [-d dir] [-q qchar] [-x xchar] [-h]
 
          -?       : print this help screen
          -v       : verbose mode
