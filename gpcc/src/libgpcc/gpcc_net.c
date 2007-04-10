@@ -12,6 +12,13 @@
 
 static unsigned short unique_gen = 1;
 
+typedef struct pkthdr_t pkthdr_t;
+struct pkthdr_t {
+    short pkttype, pktlen;
+    long  cmdidx;
+};
+
+
 typedef struct buf_t buf_t;
 struct buf_t {
     char buf[1024*64];
@@ -21,7 +28,8 @@ struct buf_t {
 typedef struct item_t item_t;
 struct item_t {
     gpcc_net_conn_t conn;
-    apr_socket_t* sock;
+    apr_socket_t*   sock;
+    void*           arg;			/* user supplied data ptr */
     apr_pool_t* pool;
     int is_connecting;
     int is_closing;
@@ -71,7 +79,7 @@ static void mkfd(apr_pollfd_t* fd, apr_socket_t* sock, int idx, int flag)
 }
 
 
-static apr_status_t mkitem(item_t** pitem, apr_socket_t* sock, apr_pool_t* pool)
+static apr_status_t mkitem(item_t** pitem, apr_socket_t* sock, void* arg, apr_pool_t* pool)
 {
     apr_uint32_t* spin;
     int i, e;
@@ -94,6 +102,7 @@ static apr_status_t mkitem(item_t** pitem, apr_socket_t* sock, apr_pool_t* pool)
     item = net.tab.item[i] = apr_palloc(pool, sizeof(*item));
     item->conn = (((int)unique_gen++) << 16) | i;
     item->sock = sock;
+    item->arg = arg;
     item->pool = pool;
     item->is_connecting = 1;
     item->is_closing = 0;
@@ -108,27 +117,46 @@ static apr_status_t mkitem(item_t** pitem, apr_socket_t* sock, apr_pool_t* pool)
 static void do_read(item_t* item)
 {
     buf_t* bb = &item->in;
-    apr_size_t n = sizeof(bb->buf) - bb->top;
+    int avail = sizeof(bb->buf) - bb->top;
+    apr_size_t bcnt;
     int e = 0;
-    short meta[3];
-    int pkttype, reqid, pktlen;
+    pkthdr_t pkthdr;
+    int pkttype, pktlen, cmdidx;
 
-    if (n < sizeof(meta) + 16) {
+    if (avail < sizeof(pkthdr) + 16) {
+	/* compact the buffer */
 	memmove(bb->buf, bb->buf + bb->bot, bb->top - bb->bot);
 	bb->top = bb->top - bb->bot;
 	bb->bot = 0;
-	n = sizeof(bb->buf) - bb->top;
+	avail = sizeof(bb->buf) - bb->top;
     }
-    if (n > 0) {
-	e = apr_socket_recv(item->sock, bb->buf + bb->top, &n);
-	bb->top += n;
+
+    /* drain the network to fill buffer */
+    if (avail > 0) {
+	bcnt = avail;
+	e = apr_socket_recv(item->sock, bb->buf + bb->top, &bcnt);
+	bb->top += bcnt;
+	avail -= bcnt;
     }
-    if (bb->top - bb->bot >= sizeof(meta)) {
-	memcpy(meta, bb->buf + bb->bot, sizeof(meta));
-	pkttype = ntohs(meta[0]), reqid = ntohs(meta[1]), pktlen = ntohs(meta[2]);
-	if (bb->top - bb->bot >= sizeof(meta) + pktlen) {
-	    bb->bot += sizeof(meta);
-	    net.recv(item->conn, pkttype, reqid, bb->buf + bb->bot, pktlen);
+
+    /* if we have more bytes than pkthdr in the buffer, 
+       then peek to check packet size */
+    if (bb->top - bb->bot >= sizeof(pkthdr)) {
+	memcpy(&pkthdr, bb->buf + bb->bot, sizeof(pkthdr));
+	pkttype = ntohs(pkthdr.pkttype);
+	pktlen = ntohs(pkthdr.pktlen);
+	cmdidx = ntohl(pkthdr.cmdidx);
+	/* if the packet (pktlen+pkthdr) is bigger than our buffer size, 
+	   there is no way we will ever be able to read it. */
+	if (sizeof(pkthdr) + pktlen > sizeof(bb->buf)) {
+	    item->is_closing = 1;    /* too big or corrupted packet */
+	    return;
+	}
+	/* if the packet fits, consume it along with pkthdr */
+	if (bb->top - bb->bot >= sizeof(pkthdr) + pktlen) {
+	    bb->bot += sizeof(pkthdr);
+	    net.recv(item->conn, item->arg,
+		     pkttype, cmdidx, bb->buf + bb->bot, pktlen);
 	    bb->bot += pktlen;
 	}
     }
@@ -189,9 +217,10 @@ static void* APR_THREAD_FUNC net_run(apr_thread_t* thread, void* arg)
 	spin = gpcc_spin_secure(net.net_spin);
 	for (i = 0; i < ITEM_MAX; i++) {
 	    item = net.tab.item[i];
+	    if (!item) continue;
 	    if (item->is_closing) {
 		spin = gpcc_spin_release(spin);
-		net.closed(item->conn);
+		net.closed(item->conn, item->arg);
 		spin = gpcc_spin_secure(net.net_spin);
 		apr_pool_destroy(item->pool);
 		net.tab.item[i] = 0;
@@ -208,12 +237,12 @@ static void* APR_THREAD_FUNC net_run(apr_thread_t* thread, void* arg)
 	    exp = now + 1000*1000;
 	}
 	if (fdtop == 0) {
-	    apr_sleep(10000);
+	    apr_sleep(100 * 1000); /* 0.1 second */
 	    continue;
 	}
 	
 	/* poll */
-	if (0 != (e = apr_poll(fd, fdtop, &nsds, 10000))) {
+	if (0 != (e = apr_poll(fd, fdtop, &nsds, 100 * 1000))) {
 	    if (e == APR_TIMEUP || e == APR_EINTR) continue;
 	    gpcc_warning(FLINE, "apr_poll error %d\n", e);
 	    continue;
@@ -238,12 +267,13 @@ static void* APR_THREAD_FUNC net_run(apr_thread_t* thread, void* arg)
 			apr_pool_destroy(pool);
 			continue;
 		    }
-		    if (0 != (e = mkitem(&item, sock, pool))) {
-			gpcc_warning(FLINE, "net_run: unable to accept new connection, error %d\n", e);
+		    if (0 != (e = mkitem(&item, sock, arg, pool))) {
+			gpcc_warning(FLINE, 
+				     "net_run: unable to accept new connection, error %d\n", e);
 			apr_pool_destroy(pool);
 			continue;
 		    }
-		    net.opened(item->conn);
+		    item->arg = net.opened(item->conn, item->arg);
 		    continue;
 		}
 		gpcc_warning(FLINE, "net_run: listen_socket closed\n");
@@ -259,7 +289,7 @@ static void* APR_THREAD_FUNC net_run(apr_thread_t* thread, void* arg)
 		if (rtnevents & APR_POLLIN) {
 		    if (item->is_connecting) {
 			spin = gpcc_spin_release(spin);
-			net.opened(item->conn);
+			item->arg = net.opened(item->conn, item->arg);
 			spin = gpcc_spin_secure(net.net_spin);
 		    }
 		    do_read(item);
@@ -346,7 +376,8 @@ APR_DECLARE(void) gpcc_net_stop(void)
     memset(&net, 0, sizeof(net));
 }
 
-APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* pconn, const char* addr)
+APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* pconn, const char* addr, 
+					void* arg)
 {
     apr_pool_t* pool = 0;
     apr_uint32_t* spin = 0;
@@ -373,7 +404,7 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* pconn, const char* addr
     if (0 != (e = apr_socket_create(&sock, sa->family, SOCK_STREAM, APR_PROTO_TCP, pool)))
 	goto bail;
 
-    if (0 != (e = mkitem(&item, sock, pool))) 
+    if (0 != (e = mkitem(&item, sock, arg, pool))) 
 	goto bail;
 
     *pconn = item->conn;
@@ -407,19 +438,19 @@ APR_DECLARE(apr_status_t) gpcc_net_close(gpcc_net_conn_t conn)
 }
 
 
-APR_DECLARE(apr_status_t) gpcc_net_sendto(gpcc_net_conn_t conn, 
-					  int pkttype, int reqid, 
-					  const char* pkt, int pktlen)
+APR_DECLARE(apr_status_t) gpcc_net_send(gpcc_net_conn_t conn, 
+					int pkttype, int cmdidx,
+					const char* pkt, int pktlen)
 {
     apr_uint32_t* spin;
     int e = 0;
-    short meta[3];
+    pkthdr_t pkthdr;
     item_t* item;
 
     retry:
-    meta[0] = htons((short) pkttype);
-    meta[1] = htons((short) reqid);
-    meta[2] = htons((short) pktlen);
+    pkthdr.pkttype = htons((short) pkttype);
+    pkthdr.pktlen = htons((short) pktlen);
+    pkthdr.cmdidx = htonl(cmdidx);
 
     spin = gpcc_spin_secure(net.net_spin);
     if (! (item = getitem(conn))) {
@@ -428,14 +459,14 @@ APR_DECLARE(apr_status_t) gpcc_net_sendto(gpcc_net_conn_t conn,
     }
 
     /* need to compact out buf? */
-    if (sizeof(item->out.buf) - item->out.top < sizeof(meta) + pktlen) {
+    if (sizeof(item->out.buf) - item->out.top < sizeof(pkthdr) + pktlen) {
 	int n = item->out.top - item->out.bot;
 	if (n > 0) {
 	    memmove(item->out.buf, item->out.buf + item->out.bot, n);
 	    item->out.top = n;
 	    item->out.bot = 0;
 	}
-	if (sizeof(item->out.buf) - item->out.top < sizeof(meta) + pktlen) {
+	if (sizeof(item->out.buf) - item->out.top < sizeof(pkthdr) + pktlen) {
 	    if (n == 0) {	/* packet too big */
 		e = APR_EINVAL;
 		goto bail;
@@ -445,8 +476,8 @@ APR_DECLARE(apr_status_t) gpcc_net_sendto(gpcc_net_conn_t conn,
 	    goto retry;
 	}
     }
-    memcpy(item->out.buf + item->out.top, meta, sizeof(meta));
-    item->out.top += sizeof(meta);
+    memcpy(item->out.buf + item->out.top, &pkthdr, sizeof(pkthdr));
+    item->out.top += sizeof(pkthdr);
     memcpy(item->out.buf + item->out.top, pkt, pktlen);
     item->out.top += pktlen;
     spin = gpcc_spin_release(spin);
