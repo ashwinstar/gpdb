@@ -13,7 +13,9 @@ Usage: gpfdist [-?v] [-p port] [-d dir] [q qchar] [-x xchar]
                     program will not parse for CSV, and will 
                     assume each record is separated by a newline
                     character that never occurs inside a record.
-	 -x xchar : set escape character (default to qchar)
+         -x xchar : set escape character (default to qchar)
+         -h       : first data row in data is a header row. skip 
+                    it (only allowed in CSV format).
 	
 '''
 
