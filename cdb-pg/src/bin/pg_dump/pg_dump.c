@@ -576,7 +576,7 @@ main(int argc, char **argv)
 	 */
 	do_sql_command(g_conn, "BEGIN");
 
-	/*do_sql_command(g_conn, "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE");*/
+	do_sql_command(g_conn, "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE");
 
 	/* Select the appropriate subquery to convert user IDs to names */
 	if (g_fout->remoteVersion >= 80100)
