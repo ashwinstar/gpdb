@@ -612,14 +612,16 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 	if (DistributedTransactionContext == DTX_CONTEXT_QE_READER ||
 		DistributedTransactionContext == DTX_CONTEXT_QE_ENTRY_DB_SINGLETON)
 	{
-		int	   	count = 0;
 		/* the pg_usleep() call below is in units of us (microsseconds), interconnect
-		 * timeout is in seconds */
-		uint32     sleep_per_check_us = 200 * 1000;
-		/* Wait for up to 3/4 the timeout period */
-		uint32		segmate_timeout_us = (3* interconnect_setup_timeout * 1000000) / 4;
+		 * timeout is in seconds.  Start with 1 millisecond. */
+		uint32     sleep_per_check_us = 1 * 1000;
+		
+		uint32		segmate_timeout_us = (3 * interconnect_setup_timeout * 1000* 1000) / 4;
 
-
+		uint32	   	total_sleep_time_us = 0;
+		uint32		warning_sleep_time_us = 0;
+		
+		
 		for (;;)
 		{
 			if (SharedLocalSnapshotSlot == NULL)
@@ -669,29 +671,15 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 				 *
 				 * TODO: is there a semaphore or something better we can do ehre.
 				 */
-				if (count > 5)
-					elog(LOG,"GetSnapshotData did not find shared local snapshot information. "
-							 "We are waiting for the shared snapshot to have XID: %d but the value "
-												   "is currently: %d." 
-												   " waiting for cid to be %d but is currently %d.  ready=%d."
-												   " Our slotindex is: %d \n"
-												   "DistributedTransactionContext = %s.",
-												   QEDtxContextInfo.distributedXid, SharedLocalSnapshotSlot->QDxid,
-												   QEDtxContextInfo.distributedSnapshotData.curcid, SharedLocalSnapshotSlot->QDcid,
-												   SharedLocalSnapshotSlot->ready,
-												   SharedLocalSnapshotSlot->slotindex,
-												   DtxContextToString(DistributedTransactionContext));
-
-				
 				pg_usleep(sleep_per_check_us);
 
 				CHECK_FOR_INTERRUPTS();
 
-				count++;
+				warning_sleep_time_us += sleep_per_check_us;
+				total_sleep_time_us += sleep_per_check_us;
 
-				segmate_timeout_us -= sleep_per_check_us;
-
-				if (segmate_timeout_us <= 0)
+				if (total_sleep_time_us >= segmate_timeout_us)
+				{
 					ereport(ERROR,
 							(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 							 errmsg("GetSnapshotData timed out waiting for Writer to set the shared snapshot."),
@@ -705,6 +693,28 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 									   QEDtxContextInfo.distributedSnapshotData.curcid, SharedLocalSnapshotSlot->QDcid,  SharedLocalSnapshotSlot->ready,
 									   DtxContextToString(DistributedTransactionContext),
 									   SharedLocalSnapshotSlot->slotindex, SharedSnapshotDump())));
+				}
+				else if (warning_sleep_time_us > 1000 * 1000)
+				{
+					/*
+					 * Every second issue warning.
+					 */
+					elog(LOG,"GetSnapshotData did not find shared local snapshot information. "
+							 "We are waiting for the shared snapshot to have XID: %d but the value "
+												   "is currently: %d." 
+												   " waiting for cid to be %d but is currently %d.  ready=%d."
+												   " Our slotindex is: %d \n"
+												   "DistributedTransactionContext = %s.",
+												   QEDtxContextInfo.distributedXid, SharedLocalSnapshotSlot->QDxid,
+												   QEDtxContextInfo.distributedSnapshotData.curcid, SharedLocalSnapshotSlot->QDcid,
+												   SharedLocalSnapshotSlot->ready,
+												   SharedLocalSnapshotSlot->slotindex,
+												   DtxContextToString(DistributedTransactionContext));
+					warning_sleep_time_us = 0;
+				}
+
+				// UNDONE: Back-off from checking every millisecond...
+
 			}
 		}
 	}
