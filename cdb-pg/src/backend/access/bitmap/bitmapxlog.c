@@ -570,7 +570,6 @@ _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
 		if (xlrec->bm_new_lastpage)
 		{
 			Buffer			lovBuffer;
-			OffsetNumber	lovOffset;
 			Page 		lovPage;
 			BMLOVItem	lovItem;
 
@@ -581,7 +580,7 @@ _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
 
 			lovPage = BufferGetPage(lovBuffer);
 			lovItem = (BMLOVItem) PageGetItem(lovPage, 
-				PageGetItemId(lovPage, lovOffset));
+				PageGetItemId(lovPage, xlrec->bm_lov_offset));
 			lovItem->bm_lov_tail = BufferGetBlockNumber(secondBuffer);
 
 			PageSetLSN(lovPage, lsn);

@@ -73,9 +73,14 @@ bmbuild(PG_FUNCTION_ARGS)
 	{
 		IndexInfoOpaque *opaque = (IndexInfoOpaque*)indexInfo->opaque;
 
-		Assert(OidIsValid(opaque->comptypeOid) &&
-			   OidIsValid(opaque->heapOid) &&
-			   OidIsValid(opaque->indexOid));
+		if (!(OidIsValid(opaque->comptypeOid) &&
+			  OidIsValid(opaque->heapOid) &&
+			  OidIsValid(opaque->indexOid)))
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("oids for bitmap index \"%s\" do not exist",
+							RelationGetRelationName(index))));
+
 		comptypeOid = opaque->comptypeOid;
 		heapOid = opaque->heapOid;
 		indexOid = opaque->indexOid;
@@ -174,18 +179,6 @@ bmgetbitmap(PG_FUNCTION_ARGS)
 	BMScanPosition	scanPos;
 	bool res;
 
-	/* perhaps this should be in a special context? */
-	is = (IndexStream *)palloc0(sizeof(IndexStream));
-	is->type = BMS_INDEX;
-	is->pull = pull_stream;
-	is->nextblock = 0;
-	is->free = stream_free;
-    is->set_instrument = NULL;
-    is->upd_instrument = NULL;
-
-	/* create a memory context for the stream */
-
-
 	res = _bitmap_firstbatchwords(scan, ForwardScanDirection);
 
 	scanPos = ((BMScanOpaque)scan->opaque)->bm_currPos;
@@ -196,40 +189,58 @@ bmgetbitmap(PG_FUNCTION_ARGS)
 		BMScanPosition  sp;
 		IndexScanDesc copy = copy_scan_desc(scan);
 		BMStreamOpaque *so;
+		int vec;
+
+		/* perhaps this should be in a special context? */
+		is = (IndexStream *)palloc0(sizeof(IndexStream));
+		is->type = BMS_INDEX;
+		is->pull = pull_stream;
+		is->nextblock = 0;
+		is->free = stream_free;
+		is->set_instrument = NULL;
+		is->upd_instrument = NULL;
+
+		/* create a memory context for the stream */
 
 		so = palloc(sizeof(BMStreamOpaque));
 		sp = ((BMScanOpaque)copy->opaque)->bm_currPos;
 		so->scan = copy;
 		so->entry = NULL;
 		is->opaque = (void *)so;
-	}
-	else
-	{
-		/* there were no matches so our state "invalid" */
-		is->opaque = NULL;
-	}
 
-	if(!bm)
-	{
-		/* 
-		 * We must create the StreamBitmap outside of our temporary
-		 * memory context. The reason is, because we glue all the 
-		 * related streams together, bitmap_stream_free() will
-		 * descend the stream tree and free up all the nodes by
-		 * killing their memory context. If we lose the StreamBitmap
-		 * memory, we'll be reading invalid memory.
+		if(!bm)
+		{
+			/* 
+			 * We must create the StreamBitmap outside of our temporary
+			 * memory context. The reason is, because we glue all the 
+			 * related streams together, bitmap_stream_free() will
+			 * descend the stream tree and free up all the nodes by
+			 * killing their memory context. If we lose the StreamBitmap
+			 * memory, we'll be reading invalid memory.
+			 */
+			StreamBitmap *sb = makeNode(StreamBitmap);
+			sb->streamNode = is;
+			bm = (Node *)sb;
+		}
+		else if(IsA(bm, StreamBitmap))
+		{
+			stream_add_node((StreamBitmap *)bm, is, BMS_OR);
+		}
+		else
+		{
+			elog(ERROR, "non stream bitmap"); 
+		}
+
+		/*
+		 * Since we have made a copy for this scan, we reset the lov buffers
+		 * in the original scan to make sure that these buffers will not
+		 * be released.
 		 */
-		StreamBitmap *sb = makeNode(StreamBitmap);
-		sb->streamNode = is;
-		bm = (Node *)sb;
-	}
-	else if(IsA(bm, StreamBitmap))
-	{
-		stream_add_node((StreamBitmap *)bm, is, BMS_OR);
-	}
-	else
-	{
-		elog(ERROR, "non stream bitmap"); 
+		for (vec = 0; vec < scanPos->nvec; vec++)
+		{
+			BMVector bmvec = &(scanPos->posvecs[vec]);
+			bmvec->bm_lovBuffer = InvalidBuffer;
+		}
 	}
 	PG_RETURN_POINTER(bm);
 }
@@ -275,14 +286,14 @@ bmrescan(PG_FUNCTION_ARGS)
 	if (so->bm_currPos != NULL)
 	{
 		cleanup_pos(so->bm_currPos);
-		so->bm_currPos = NULL;
+		MemSet(so->bm_currPos, 0, sizeof(BMScanPositionData));
 		so->cur_pos_valid = false;
 	}
 
 	if (so->bm_markPos != NULL)
 	{
 		cleanup_pos(so->bm_markPos);
-		so->bm_markPos = NULL;
+		MemSet(so->bm_markPos, 0, sizeof(BMScanPositionData));
 		so->cur_pos_valid = false;
 	}
 	/* reset the scan key */
@@ -429,7 +440,7 @@ bmrestrpos(PG_FUNCTION_ARGS)
 		/* set the current position */
 		if (so->bm_currPos == NULL)
 		{
-			so->bm_currPos = (BMScanPosition) palloc(size);
+			so->bm_currPos = (BMScanPosition) palloc0(size);
 		}
 
 		bmScanPos = so->bm_markPos->posvecs;
@@ -614,6 +625,7 @@ pull_stream(StreamNode *self, PagetableEntry *e)
 
 		found = words_get_match(scanPos->bm_batchWords, &(scanPos->bm_result),
 							   is->nextblock, e, newentry);
+
 		if(found)
 		{
 			res = true;
@@ -644,6 +656,26 @@ pull_stream(StreamNode *self, PagetableEntry *e)
 	if (so->entry == NULL)
 		so->entry = (PagetableEntry *) palloc(sizeof(PagetableEntry));
 	memcpy(so->entry, e, sizeof(PagetableEntry));
+
+	/* XXX cleanup so if this is the last call. */
+	if (is->opaque == NULL && so != NULL)
+	{
+		IndexScanDesc tmp_scan = so->scan;
+		BMScanOpaque tmp_scanopq = (BMScanOpaque)tmp_scan->opaque;
+
+		if(tmp_scanopq->bm_currPos)
+		{
+			/* Do not release the lov buffer */
+			cleanup_pos(tmp_scanopq->bm_currPos);
+			tmp_scanopq->bm_currPos = NULL;
+		}
+		if(tmp_scanopq->bm_markPos)
+		{
+			/* Do not release the lov buffer */
+			cleanup_pos(tmp_scanopq->bm_markPos);
+			tmp_scanopq->bm_markPos = NULL;
+		}
+	}
 	return res;
 }
 
@@ -739,6 +771,7 @@ copy_scan_desc(IndexScanDesc scan)
 		spcopy = NULL;
 
 	((BMScanOpaque)s->opaque)->bm_currPos = spcopy;
+	((BMScanOpaque)s->opaque)->bm_markPos = NULL;
 
 	return s;
 }
@@ -916,6 +949,8 @@ restart:
 
 		if (hrlwordno % nhrlwords == 0)
 		{
+			Assert(newwordno < WORDS_PER_PAGE || newwordno < WORDS_PER_CHUNK);
+
 			entry->words[newwordno] |= newWord;
 			newwordno++;
 
@@ -925,7 +960,10 @@ restart:
 	}
 
 	if (hrlwordno % nhrlwords != 0)
+	{
+		Assert(newwordno < WORDS_PER_PAGE || newwordno < WORDS_PER_CHUNK);
 		entry->words[newwordno] |= newWord;
+	}
 
 	entry->blockno = blockno;
 	if (words->nwords == 0)

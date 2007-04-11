@@ -619,7 +619,7 @@ tbm_iterate(Node *tbm, TBMIterateResult *output)
 			status = bitmap_stream_iterate((void *)s, &(streamBitmap->entry));
 
 			/* XXX: perhaps we should only do this if status == true ? */
- 			tbm_iterate_page(&(streamBitmap->entry), output);
+			tbm_iterate_page(&(streamBitmap->entry), output);
 
 			return status;
 		}
@@ -1121,7 +1121,7 @@ stream_add_node(StreamBitmap *sbm, StreamNode *node, StreamType kind)
 			o->input = lappend(o->input, node);
 		}
 		else if((n->type == BMS_AND && kind != BMS_AND) ||
-				(n->type == BMS_OR && kind == BMS_OR) ||
+				(n->type == BMS_OR && kind != BMS_OR) ||
 				(n->type == BMS_INDEX))
 		{
 			sbm->streamNode = make_opstream(kind, sbm->streamNode, node);

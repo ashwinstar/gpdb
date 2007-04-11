@@ -119,7 +119,6 @@ BitmapHeapNext(BitmapHeapScanState *node)
 			elog(ERROR, "unrecognized result from subplan");
 
 		node->tbm = tbm;
-	//	node->tbmres = tbmres = NULL;
 	}
 
 	for (;;)
@@ -150,7 +149,6 @@ BitmapHeapNext(BitmapHeapScanState *node)
 			{
 				more = false;
 				tbmres->ntuples = 0;
-//				node->tbmres = tbmres = NULL;
 				continue;
 			}
 
@@ -409,7 +407,6 @@ ExecBitmapHeapReScan(BitmapHeapScanState *node, ExprContext *exprCtxt)
 	}
 	node->tbm = NULL;
 	node->tbmres->ntuples = 0;
-//	node->tbmres = NULL;
 
 	/*
 	 * Always rescan the input immediately, to ensure we can pass down any
@@ -453,7 +450,6 @@ ExecEndBitmapHeapScan(BitmapHeapScanState *node)
 	/*
 	 * Free up bitmaps
 	 */
-#ifdef NOT_USED
 	if (node->tbm != NULL)
 	{
 		if(IsA(node->tbm, HashBitmap))
@@ -461,17 +457,12 @@ ExecEndBitmapHeapScan(BitmapHeapScanState *node)
 			tbm_free((HashBitmap *)node->tbm);
 			node->tbm = NULL;
 		}
-		else if(IsA(node->tbm, StreamBitmap))
-		{
-			StreamBitmap *s = (StreamBitmap *)node->tbm;
-			if(s->opaque)
-			{
-				bitmap_stream_free(s->opaque);
-				s->opaque = NULL;
-			}
-		}
+		else
+            tbm_bitmap_free(node->tbm);
 	}
-#endif
+	node->tbm = NULL;
+	pfree(node->tbmres);
+
 	/*
 	 * close heap scan
 	 */
@@ -481,8 +472,6 @@ ExecEndBitmapHeapScan(BitmapHeapScanState *node)
 	 * close the heap relation.
 	 */
 	ExecCloseScanRelation(relation);
-
-	pfree(node->tbmres);
 }
 
 /* ----------------------------------------------------------------
