@@ -73,7 +73,8 @@ tarball :
 mgmtcopy :
 	@#Copy the management utilities
 	@cp -rp $(GPMGMT)/bin $(INSTLOC)
-	@if [ -d $(GPMGMT)/doc ]; then cp -rp $(GPMGMT)/doc $(INSTLOC); fi
+        @if [ ! -d ${INSTLOC}/docs ] ; then mkdir ${INSTLOC}/docs ; fi
+	@if [ -d $(GPMGMT)/doc ]; then cp -rp $(GPMGMT)/doc $(INSTLOC)/docs/cli_help; fi
 	@if [ -d $(GPMGMT)/demo/gpdemo ]; then mkdir $(INSTLOC)/demo; gtar --exclude \*CVS\* -C $(GPMGMT)/demo -czf $(INSTLOC)/demo/gpdemo.tar.gz gpdemo; fi
 	@# Remove unwanted files.
 	@rm -rf $(INSTLOC)/bin/CVS
