@@ -677,8 +677,8 @@ squelchNodeWalker(PlanState *node,
 void
 ExecSquelchNode(PlanState *node)
 {
-	ExecStateTreeWalker(node, squelchNodeWalker, NULL, NULL);
-}	/* ExecSquelchNode */
+    planstate_walk_node(node, squelchNodeWalker, NULL);
+}	                            /* ExecSquelchNode */
 
 static CdbVisitOpt
 transportUpdateNodeWalker(PlanState *node, void *context)
@@ -695,10 +695,10 @@ transportUpdateNodeWalker(PlanState *node, void *context)
 }	/* transportUpdateNodeWalker */
 
 void
-ExecUpdateTransportState(PlanState *node, void *state)
+ExecUpdateTransportState(PlanState *node, struct ChunkTransportState *state)
 {
-	ExecStateTreeWalker(node, transportUpdateNodeWalker, NULL, (void *)state);
-}	/* ExecUpdateTransportState */
+	planstate_walk_node(node, transportUpdateNodeWalker, state);
+}	                            /* ExecUpdateTransportState */
 
 
 /* ----------------------------------------------------------------
@@ -1028,168 +1028,203 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 #endif   /* CDB_TRACE_EXECUTOR */
 
 
-/* ----------------------------------------------------------------
- *		ExecStateTreeWalker
+/* -----------------------------------------------------------------------
+ *                      PlanState Tree Walking Functions
+ * -----------------------------------------------------------------------
  *
- *		Visits the nodes of a plan state tree in depth-first
- *		order, passing each node (including the starting node)
- *		to the given callback function(s).
+ * planstate_walk_node
+ *    Calls a 'walker' function for the given PlanState node; or returns
+ *    CdbVisit_Walk if 'planstate' is NULL.
  *
- *		Returns the result from the last callback.	(If 'node'
- *		is NULL, CdbVisit_Walk is returned.)
+ *    If 'walker' returns CdbVisit_Walk, then this function calls
+ *    planstate_walk_kids() to visit the node's children, and returns
+ *    the result.
  *
- *		The 'visit_preorder' function is called when the walker
- *		reaches a node.
- *		  - If it returns CdbVisit_Walk, or if 'visit_preorder' is
- *			NULL, then the node's subtrees are visited and the
- *			visit_postorder function is called.
- *		  - If it returns CdbVisit_Skip, the walk continues without
- *			visiting the node's subtrees and without calling the
- *			visit_postorder function.
- *		  - If it returns CdbVisit_Stop or another value, the
- *			walk ends immediately with no further callbacks.
+ *    If 'walker' returns CdbVisit_Skip, then this function immediately
+ *    returns CdbVisit_Walk and does not visit the node's children.
  *
- *		The 'visit_postorder' function is called after visiting a
- *		node's subtrees (if any).  If it returns CdbVisit_Walk
- *		or CdbVisit_Skip, or if 'visit_postorder' is NULL, the
- *		walk continues.  If it returns CdbVisit_Stop or another
- *		value, the walk ends immediately with no further callbacks.
- * ----------------------------------------------------------------
+ *    If 'walker' returns CdbVisit_Stop or another value, then this function
+ *    immediately returns that value and does not visit the node's children.
+ *
+ * planstate_walk_array
+ *    Calls planstate_walk_node() for each non-NULL PlanState ptr in
+ *    the given array of pointers to PlanState objects.
+ *
+ *    Quits if the result of planstate_walk_node() is CdbVisit_Stop or another
+ *    value other than CdbVisit_Walk, and returns that result without visiting
+ *    any more nodes.
+ *
+ *    Returns CdbVisit_Walk if 'planstates' is NULL, or if all of the 
+ *    subtrees return CdbVisit_Walk.
+ *
+ *    Note that this function never returns CdbVisit_Skip to its caller.
+ *    Only the caller's 'walker' function can return CdbVisit_Skip.
+ *
+ * planstate_walk_list
+ *    Calls planstate_walk_node() for each PlanState node in the given List.
+ *
+ *    Quits if the result of planstate_walk_node() is CdbVisit_Stop or another
+ *    value other than CdbVisit_Walk, and returns that result without visiting
+ *    any more nodes.
+ *
+ *    Returns CdbVisit_Walk if all of the subtrees return CdbVisit_Walk, or
+ *    if the list is empty.
+ *
+ *    Note that this function never returns CdbVisit_Skip to its caller.
+ *    Only the caller's 'walker' function can return CdbVisit_Skip.
+ *
+ * planstate_walk_kids
+ *    Calls planstate_walk_node() for each child of the given PlanState node.
+ *
+ *    Quits if the result of planstate_walk_node() is CdbVisit_Stop or another
+ *    value other than CdbVisit_Walk, and returns that result without visiting
+ *    any more nodes.
+ *
+ *    Returns CdbVisit_Walk if the given planstate node ptr is NULL, or if 
+ *    all of the children return CdbVisit_Walk, or if there are no children.
+ *
+ *    Note that this function never returns CdbVisit_Skip to its caller.
+ *    Only the 'walker' can return CdbVisit_Skip.
+ *
+ * NB: All CdbVisitOpt values other than CdbVisit_Walk or CdbVisit_Skip are
+ * treated as equivalent to CdbVisit_Stop.  Thus the walker can break out
+ * of a traversal and at the same time return a smidgen of information to the
+ * caller, perhaps to indicate the reason for termination.  For convenience,
+ * a couple of alternative stopping codes are predefined for walkers to use at
+ * their discretion: CdbVisit_Failure and CdbVisit_Success.
+ *
+ * NB: We do not visit the left subtree of a NestLoopState node (NJ) whose
+ * 'shared_outer' flag is set.  This occurs when the NJ is the left child of
+ * an AdaptiveNestLoopState (AJ); the AJ's right child is a HashJoinState (HJ);
+ * and both the NJ and HJ point to the same left subtree.  This way we avoid
+ * visiting the common subtree twice when descending through the AJ node.
+ * The caller's walker function can handle the NJ as a special case to
+ * override this behavior if there is a need to always visit both subtrees.
+ * -----------------------------------------------------------------------
  */
-
-typedef struct ExecStateTreeWalkerContext
+CdbVisitOpt
+planstate_walk_node(PlanState      *planstate,
+			        CdbVisitOpt   (*walker)(PlanState *planstate, void *context),
+			        void           *context)
 {
-	CdbVisitOpt (*visit_preorder) (PlanState *node, void *context);
-	CdbVisitOpt (*visit_postorder) (PlanState *node, void *context);
-	void	   *context;
-	CdbVisitOpt result;
-}	ExecStateTreeWalkerContext;
+    CdbVisitOpt     whatnext;
 
-
-static bool						/* returns true to continue, false to stop */
-stateTreeWalker(PlanState *node,
-				ExecStateTreeWalkerContext * ctx)
-{
-	PlanState  *next;
-	PlanState  *subtree;
-	int			i;
-
-	for (; node; node = next)
-	{
-		next = NULL;
-
-		/* Visit this node ... preorder */
-		if (ctx->visit_preorder)
-		{
-			ctx->result = ctx->visit_preorder(node, ctx->context);
-			if (ctx->result != CdbVisit_Walk)
-				return (ctx->result == CdbVisit_Skip);
-		}
-
-		/* Some node types have their own subtree ptr fields */
-		switch (nodeTag(node))
-		{
-			case T_AppendState:
-				{
-					AppendState *as = (AppendState *) node;
-
-					for (i = 0; i < as->as_nplans; i++)
-					{
-						subtree = as->appendplans[i];
-						if (subtree)
-						{
-							if (next && !stateTreeWalker(next, ctx))
-								return false;
-							next = subtree;
-						}
-					}
-					break;
-				}
-            case T_BitmapAndState:
-                {
-                    BitmapAndState *bas = (BitmapAndState *)node;
-
-					for (i = 0; i < bas->nplans; i++)
-					{
-						subtree = bas->bitmapplans[i];
-						if (subtree)
-						{
-							if (next && !stateTreeWalker(next, ctx))
-								return false;
-							next = subtree;
-						}
-					}
-					break;
-                }
-            case T_BitmapOrState:
-                {
-                    BitmapOrState  *bos = (BitmapOrState *)node;
-
-					for (i = 0; i < bos->nplans; i++)
-					{
-						subtree = bos->bitmapplans[i];
-						if (subtree)
-						{
-							if (next && !stateTreeWalker(next, ctx))
-								return false;
-							next = subtree;
-						}
-					}
-					break;
-                }
-			case T_SubqueryScanState:
-				next = ((SubqueryScanState *) node)->subplan;
-				break;
-			default:
-				break;
-		}
-
-		/* Left subtree */
-		subtree = node->lefttree;
-		if (subtree)
-		{
-			if (next && !stateTreeWalker(next, ctx))
-				return false;
-			next = subtree;
-		}
-
-		/* Right subtree */
-		subtree = node->righttree;
-		if (subtree)
-		{
-			if (next && !stateTreeWalker(next, ctx))
-				return false;
-			next = subtree;
-		}
-
-		/* Visit this node ... postorder */
-		if (ctx->visit_postorder)
-		{
-			if (next && !stateTreeWalker(next, ctx))
-				return false;
-			ctx->result = ctx->visit_postorder(node, ctx->context);
-			return (ctx->result == CdbVisit_Walk ||
-				    ctx->result == CdbVisit_Skip);
-		}
-	}
-	return true;
-}	/* stateTreeWalker */
-
+    if (planstate == NULL)
+        whatnext = CdbVisit_Walk;
+    else
+    {
+        whatnext = walker(planstate, context);
+        if (whatnext == CdbVisit_Walk)
+            whatnext = planstate_walk_kids(planstate, walker, context);
+        else if (whatnext == CdbVisit_Skip)
+            whatnext = CdbVisit_Walk;
+    }
+    Assert(whatnext != CdbVisit_Skip);
+    return whatnext;
+}	                            /* planstate_walk_node */
 
 CdbVisitOpt
-ExecStateTreeWalker(PlanState *node,
-			  CdbVisitOpt (*visit_preorder) (PlanState *node, void *context),
-			 CdbVisitOpt (*visit_postorder) (PlanState *node, void *context),
-					void *context)
+planstate_walk_array(PlanState    **planstates,
+                     int            nplanstate,
+			         CdbVisitOpt  (*walker)(PlanState *planstate, void *context),
+			         void          *context)
 {
-	ExecStateTreeWalkerContext ctx;
+    CdbVisitOpt     whatnext = CdbVisit_Walk;
+    int             i;
 
-	ctx.result = CdbVisit_Walk;
-	ctx.visit_preorder = visit_preorder;
-	ctx.visit_postorder = visit_postorder;
-	ctx.context = context;
+    if (planstates == NULL)
+        return CdbVisit_Walk;
 
-	stateTreeWalker(node, &ctx);
+    for (i = 0; i < nplanstate && whatnext == CdbVisit_Walk; i++)
+        whatnext = planstate_walk_node(planstates[i], walker, context);
 
-	return ctx.result;
-}	/* ExecStateTreeWalker */
+    return whatnext;
+}	                            /* planstate_walk_array */
+
+CdbVisitOpt
+planstate_walk_list(List           *planstatelist,
+			        CdbVisitOpt   (*walker)(PlanState *planstate, void *context),
+			        void           *context)
+{
+    ListCell       *cell;
+    PlanState      *planstate;
+    CdbVisitOpt     v = CdbVisit_Walk;
+
+	foreach(cell, planstatelist)
+	{
+        planstate = (PlanState *)lfirst(cell);
+        v = planstate_walk_node(planstate, walker, context);
+        if (v != CdbVisit_Walk) /* stop */
+            break;
+	}
+	return v;
+}	                            /* planstate_walk_list */
+
+CdbVisitOpt
+planstate_walk_kids(PlanState      *planstate,
+			        CdbVisitOpt   (*walker)(PlanState *planstate, void *context),
+			        void           *context)
+{
+    CdbVisitOpt v;
+
+    if (planstate == NULL)
+        return CdbVisit_Walk;
+
+	switch (nodeTag(planstate))
+	{
+        case T_NestLoopState:
+        {
+            NestLoopState  *nls = (NestLoopState *)planstate;
+
+            /* Don't visit left subtree of NJ if it is shared with brother HJ */
+            if (nls->shared_outer)
+                v = CdbVisit_Walk;
+            else
+                v = planstate_walk_node(planstate->lefttree, walker, context);
+
+            /* Right subtree */
+            if (v == CdbVisit_Walk)
+                v = planstate_walk_node(planstate->righttree, walker, context);
+            break;
+        }
+
+        case T_AppendState:
+		{
+			AppendState *as = (AppendState *)planstate;
+
+            v = planstate_walk_array(as->appendplans, as->as_nplans, walker, context);
+            Assert(!planstate->lefttree && !planstate->righttree);
+			break;
+		}
+        case T_BitmapAndState:
+        {
+            BitmapAndState *bas = (BitmapAndState *)planstate;
+
+            v = planstate_walk_array(bas->bitmapplans, bas->nplans, walker, context);
+            Assert(!planstate->lefttree && !planstate->righttree);
+			break;
+        }
+        case T_BitmapOrState:
+        {
+            BitmapOrState  *bos = (BitmapOrState *)planstate;
+
+            v = planstate_walk_array(bos->bitmapplans, bos->nplans, walker, context);
+            Assert(!planstate->lefttree && !planstate->righttree);
+			break;
+        }
+
+        case T_SubqueryScanState:
+            v = planstate_walk_node(((SubqueryScanState *)planstate)->subplan, walker, context);
+            Assert(!planstate->lefttree && !planstate->righttree);
+			break;
+
+        default:
+            /* Left subtree */
+            v = planstate_walk_node(planstate->lefttree, walker, context);
+
+	        /* Right subtree */
+            if (v == CdbVisit_Walk)
+                v = planstate_walk_node(planstate->righttree, walker, context);
+	}
+    return v;
+}	                            /* planstate_walk_kids */

@@ -20,6 +20,7 @@
 #include "nodes/plannodes.h"
 #include "tcop/dest.h"
 
+struct CdbExplain_ShowStatCtx;  /* private, in "cdb/cdbexplain.c" */
 struct EState;                  /* #include "nodes/execnodes.h" */
 struct PlanState;               /* #include "nodes/execnodes.h" */
 
@@ -54,6 +55,9 @@ typedef struct QueryDesc
 	bool		cursor_query;   /* does this query service a cursor? */
 	char		*portal_name;	/* NULL for unnamed portal */
 	
+    /* CDB: EXPLAIN ANALYZE statistics */
+    struct CdbExplain_ShowStatCtx  *showstatctx;
+
 } QueryDesc;
 
 /* in pquery.c */

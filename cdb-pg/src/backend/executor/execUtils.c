@@ -3,7 +3,7 @@
  * execUtils.c
  *	  miscellaneous executor utility routines
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -196,7 +196,10 @@ CreateExecutorState(void)
 EState *
 CreateSubExecutorState(EState *parent_estate)
 {
-	return InternalCreateExecutorState(parent_estate->es_query_cxt, true);
+    EState *es = InternalCreateExecutorState(parent_estate->es_query_cxt, true);
+
+    es->showstatctx = parent_estate->showstatctx;                   /*CDB*/
+    return es;
 }
 
 /*

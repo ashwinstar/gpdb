@@ -200,6 +200,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	estate->es_snapshot = queryDesc->snapshot;
 	estate->es_crosscheck_snapshot = queryDesc->crosscheck_snapshot;
 	estate->es_instrument = queryDesc->doInstrument;
+    estate->showstatctx = queryDesc->showstatctx;
 
 	/*
 	 * Initialize the motion layer for this query.
@@ -227,10 +228,11 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		{
 			Relation	pg_class_desc;
 			Relation	pg_type_desc;
+            Oid         reltablespace;
 			
 			cdb_sync_oid_to_segments();
 
-			Oid reltablespace = GetDefaultTablespace();
+			reltablespace = GetDefaultTablespace();
 		
 			pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
 			pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
@@ -298,7 +300,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	}
 
 				estate->es_interconnect_is_setup = true;
-				SetupInterconnect((ChunkTransportState **)&estate->interconnect_context,
+				SetupInterconnect(&estate->interconnect_context,
 								  estate->es_sliceTable, estate->es_cur_slice_idx, estate->motionlayer_context);
 			}
 			PG_CATCH();
@@ -458,7 +460,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			if (((PlanState *) motionState)->plan->nMotionNodes > 0)
 			{
 				ExecUpdateTransportState((PlanState *)motionState,
-										 (ChunkTransportState *)estate->interconnect_context);
+										 estate->interconnect_context);
 			}
 		}
 		else if (exec_identity == GP_ROOT_SLICE)
@@ -471,14 +473,14 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			{
 				estate->es_interconnect_is_setup = true;
 
-				SetupInterconnect((ChunkTransportState **)&estate->interconnect_context,
+				SetupInterconnect(&estate->interconnect_context,
 								  estate->es_sliceTable, estate->es_cur_slice_idx,
 								  estate->motionlayer_context);
 			}
 			if (estate->es_interconnect_is_setup)
 			{
 				ExecUpdateTransportState(queryDesc->planstate,
-										 (ChunkTransportState *)estate->interconnect_context);
+										 estate->interconnect_context);
 			}
 		}
 		else if (exec_identity != GP_IGNORE)
@@ -710,6 +712,14 @@ ExecutorEnd(QueryDesc *queryDesc)
 	 */
 	oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
 
+    /*
+     * If EXPLAIN ANALYZE, qExec returns stats to qDisp now.
+     */
+    if (estate->es_sliceTable &&
+        estate->es_sliceTable->doInstrument &&
+        Gp_role == GP_ROLE_EXECUTE)
+        cdbexplain_sendExecStats(queryDesc);
+
 	/*
 	 * if needed, collect mpp dispatch results and tear down 
 	 * all mpp specific resources (interconnect, seq server).
@@ -727,10 +737,6 @@ ExecutorEnd(QueryDesc *queryDesc)
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
-
-    if (queryDesc->estate->es_sliceTable && 
-        queryDesc->estate->es_sliceTable->doInstrument)
-        cdbexplain_sendExecStats(queryDesc);
 
 	ExecEndPlan(queryDesc->planstate, estate);
 

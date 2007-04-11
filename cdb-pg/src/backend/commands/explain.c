@@ -31,6 +31,7 @@
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"             /* AllocSetContextCreate() */
 
 #include "cdb/cdbdisp.h"                /* CheckDispatchResult() */
 #include "cdb/cdbexplain.h"             /* cdbexplain_recvExecStats */
@@ -46,16 +47,20 @@ typedef struct ExplainState
 	List	   *rtable;			/* range table */
 
     /* CDB */
-    QueryDesc  *queryDesc;
-    Slice      *currentSlice;   /* slice whose nodes we are visiting */
-    StringInfo  extratextbuf;   /* -> buffer for extra message text */
-    StringInfoData  workbuf;    /* a scratch buffer */
-	instr_time	starttime;      /* start time of query */
-    struct CdbExplain_ShowStatCtx  *showctx;    /* EXPLAIN ANALYZE info */
+    struct CdbExplain_ShowStatCtx  *showstatctx;    /* EXPLAIN ANALYZE info */
+    Slice          *currentSlice;   /* slice whose nodes we are visiting */
+    MemoryContext   explaincxt;     /* mem pool for palloc()ing buffers etc. */
+    TupOutputState *tupOutputState; /* for sending output to client */
+	StringInfoData  outbuf;         /* the output buffer */
+    StringInfoData  workbuf;        /* a scratch buffer */
 } ExplainState;
 
 static void ExplainOneQuery(Query *query, ExplainStmt *stmt,
 				ParamListInfo params, TupOutputState *tstate);
+static void
+ExplainOnePlan_internal(QueryDesc      *queryDesc,
+                        ExplainStmt    *stmt,
+                        ExplainState   *es);
 static double elapsed_time(instr_time *starttime);
 static void explain_outNode(StringInfo str,
 				Plan *plan, PlanState *planstate,
@@ -249,39 +254,99 @@ void
 ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 			   TupOutputState *tstate)
 {
-	instr_time	starttime;
-	double		totaltime = 0;
+    MemoryContext   oldcxt = CurrentMemoryContext;
+    MemoryContext   explaincxt;
 	ExplainState    explainState;
     ExplainState   *es = &explainState;
-	StringInfoData  buf;
-    StringInfoData  extratextbuf;
+
+    /* Create EXPLAIN memory context. */
+    explaincxt = AllocSetContextCreate(CurrentMemoryContext,
+                                       "EXPLAIN working storage",
+                                       ALLOCSET_DEFAULT_MINSIZE,
+                                       ALLOCSET_DEFAULT_INITSIZE,
+                                       ALLOCSET_DEFAULT_MAXSIZE);
+
+    /* Initialize ExplainState structure. */
+    memset(es, 0, sizeof(*es));
+    es->explaincxt = explaincxt;
+    es->showstatctx = NULL;
+    es->tupOutputState = tstate;
+
+    /* Allocate output buffer and a scratch buffer. */
+    MemoryContextSwitchTo(explaincxt);
+    initStringInfoOfSize(&es->workbuf, 1000);
+	initStringInfoOfSize(&es->outbuf, 16000);
+    MemoryContextSwitchTo(oldcxt);
+
+    PG_TRY();
+    {
+        /* Do the EXPLAIN. */
+        ExplainOnePlan_internal(queryDesc,
+                                stmt,
+                                es);
+
+        /* Send EXPLAIN report to client. */
+        if (es->outbuf.len > 0)
+        {
+            es->outbuf.len = 0;
+            do_text_output_multiline(tstate, es->outbuf.data);
+        }
+    }
+    PG_CATCH();
+    {
+        MemoryContext   savecxt = MemoryContextSwitchTo(oldcxt);
+
+        /* Send EXPLAIN report to client, if didn't attempt it above. */
+        if (es->outbuf.len > 0)
+	        do_text_output_multiline(tstate, es->outbuf.data);
+
+        /* Free the memory we used. */
+        if (savecxt != explaincxt)
+            MemoryContextSwitchTo(savecxt);
+        MemoryContextDelete(explaincxt);
+
+        /* Exit to next error handler. */
+        PG_RE_THROW();
+    }
+    PG_END_TRY();
+
+    /* Free the memory we used. */
+    MemoryContextSwitchTo(oldcxt);
+    MemoryContextDelete(explaincxt);
+}                               /* ExplainOnePlan */
+
+void
+ExplainOnePlan_internal(QueryDesc      *queryDesc,
+                        ExplainStmt    *stmt,
+                        ExplainState   *es)
+{
+    MemoryContext   oldcxt = CurrentMemoryContext;
+	instr_time	starttime;
+	double		totaltime = 0;
+    StringInfo  buf = &es->outbuf;
 	Node	   *saved_es_sliceTable;
 	int			eflags;
     int         nb;
 
-	memset(es, 0, sizeof(*es));
-    es->queryDesc = queryDesc;
-    es->showctx = NULL;
-
-	initStringInfoOfSize(&buf, 16000);
-    initStringInfoOfSize(&es->workbuf, 1000);
-
-    /* Allocate a buffer in which we can collect any extra message text. */
-    es->extratextbuf = &extratextbuf;
-    if (stmt->analyze)
-        initStringInfoOfSize(&extratextbuf, 4000);
-    else
-        memset(&extratextbuf, 0, sizeof(extratextbuf));
-
-    /* 
-     * Start timing. 
+    /*
+     * Start timing.
      */
     INSTR_TIME_SET_CURRENT(starttime);
-	es->starttime = starttime;
 
 	/* If analyzing, we need to cope with queued triggers */
 	if (stmt->analyze)
         AfterTriggerBeginQuery();
+
+    /* Allocate workarea for summary stats. */
+    if (stmt->analyze)
+    {
+        es->showstatctx = cdbexplain_showExecStatsBegin(queryDesc,
+                                                        es->explaincxt,
+                                                        starttime);
+
+        /* Attach workarea to QueryDesc so ExecSetParamPlan() can find it. */
+        queryDesc->showstatctx = es->showstatctx;
+    }
 
 	/* Select execution options */
 	if (stmt->analyze)
@@ -301,6 +366,11 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 		/* run the plan */
 		ExecutorRun(queryDesc, ForwardScanDirection, 0L);
 
+        /* Get local stats if root slice was executed here in the qDisp. */
+        if (!es->currentSlice ||
+            sliceRunsOnQD(es->currentSlice))
+            cdbexplain_localExecStats(queryDesc->planstate, es->showstatctx);
+
         /* Did we delegate (some or all of) the execution to qExecs? */
         if (queryDesc->estate->primaryResults)
         {
@@ -313,22 +383,24 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
             cdbexplain_recvExecStats(queryDesc->planstate,
                                      queryDesc->estate->primaryResults,
                                      queryDesc->estate->es_cur_slice_idx,
-                                     es->extratextbuf);
+                                     es->showstatctx);
         }
 
         /* We can't clean up 'till we're done printing the stats... */
         else
 		    totaltime += elapsed_time(&starttime);
-
-        /* Allocate workarea for summary stats. */
-        es->showctx = cdbexplain_showExecStatsBegin(starttime);
 	}
 
 	es->printNodes = stmt->verbose;
 	es->printAnalyze = stmt->analyze;
 	es->rtable = queryDesc->parsetree->rtable;
 
-	if (es->printNodes)
+    /*
+     * Switch to EXPLAIN memory context.
+     */
+    MemoryContextSwitchTo(es->explaincxt);
+
+    if (es->printNodes)
 	{
 		char	   *s;
 		char	   *f;
@@ -353,14 +425,19 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 			else
 				f = format_node_dump(s);
 			pfree(s);
-			do_text_output_multiline(tstate, f);
+			do_text_output_multiline(es->tupOutputState, f);
 			pfree(f);
-			do_text_output_oneline(tstate, ""); /* separator line */
+			do_text_output_oneline(es->tupOutputState, ""); /* separator line */
 		}
 	}
 
-	explain_outNode(&buf, queryDesc->plantree, queryDesc->planstate,
+	explain_outNode(buf, queryDesc->plantree, queryDesc->planstate,
 					NULL, 0, es);
+
+    /*
+     * Restore caller's memory context.
+     */
+    MemoryContextSwitchTo(oldcxt);
 
 	/*
 	 * If we ran the command, run any AFTER triggers it queued.  (Note this
@@ -407,27 +484,51 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 				if (trig->tgisconstraint &&
 				(conname = GetConstraintNameForTrigger(trig->tgoid)) != NULL)
 				{
-					appendStringInfo(&buf, "Trigger for constraint %s",
+					appendStringInfo(buf, "Trigger for constraint %s",
 									 conname);
 					pfree(conname);
 				}
 				else
-					appendStringInfo(&buf, "Trigger %s", trig->tgname);
+					appendStringInfo(buf, "Trigger %s", trig->tgname);
 
 				if (numrels > 1)
-					appendStringInfo(&buf, " on %s",
+					appendStringInfo(buf, " on %s",
 							RelationGetRelationName(rInfo->ri_RelationDesc));
 
-				appendStringInfo(&buf, ": time=%.3f calls=%.0f\n",
+				appendStringInfo(buf, ": time=%.3f calls=%.0f\n",
 								 1000.0 * instr->total,
 								 instr->ntuples);
 			}
 		}
 	}
 
+    /*
+     * Display per-slice and whole-query statistics.
+     */
+    if (stmt->analyze)
+        cdbexplain_showExecStatsEnd(es->showstatctx, buf);
+
+    /*
+     * Show non-default GUC settings that might have affected the plan.
+     */
+    nb = gp_guc_list_show(buf, "Settings:  ", "%s=%s; ", PGC_S_DEFAULT,
+                           gp_guc_list_for_explain);
+    if (nb > 0)
+    {
+        truncateStringInfo(buf, buf->len - 2);  /* drop final "; " */
+        appendStringInfoChar(buf, '\n');
+    }
+
 	/*
 	 * Close down the query and free resources.  Include time for this in the
 	 * total runtime (although it should be pretty minimal).
+     *
+     * We don't have to pfree() our buffers because the caller frees them by
+     * deleting explaincxt.
+     *
+     * Note that if a qExec failed or gave an error, ExecutorEnd() will
+     * reissue the error locally at this point.  We send our output to
+     * the client before this so it won't get lost due to a qExec error.
 	 */
 	INSTR_TIME_SET_CURRENT(starttime);
 
@@ -439,36 +540,16 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 	if (stmt->analyze)
 		CommandCounterIncrement();
 
-    /*
-     * Stop timing.
-     */
 	totaltime += elapsed_time(&starttime);
 
-    /* CDB: Show non-default GUC settings that might have affected the plan. */
-    nb = gp_guc_list_show(&buf, "Settings:  ", "%s=%s; ", PGC_S_DEFAULT, 
-                           gp_guc_list_for_explain);
-    if (nb > 0)
-    {
-        truncateStringInfo(&buf, buf.len - 2);  /* drop final "; " */
-        appendStringInfoChar(&buf, '\n');
-    }
-
+    /*
+     * Display final elapsed time.
+     */
 	if (stmt->analyze)
-    {
-        cdbexplain_showExecStatsEnd(es->showctx, &buf);
-        es->showctx = NULL;
-
-		appendStringInfo(&buf, "Total runtime: %.3f ms\n",
+		appendStringInfo(buf, "Total runtime: %.3f ms\n",
 						 1000.0 * totaltime);
-    }
+}                               /* ExplainOnePlan_internal */
 
-	do_text_output_multiline(tstate, buf.data);
-
-    if (extratextbuf.data)
-        pfree(extratextbuf.data);
-    pfree(es->workbuf.data);
-    pfree(buf.data);
-}
 
 /* Compute elapsed time in seconds since given timestamp */
 static double
@@ -834,13 +915,6 @@ explain_outNode(StringInfo str,
 					 plan->plan_rows, plan->plan_width);
     appendStringInfoChar(str, '\n');
 
-	/*
-	 * We have to forcibly clean up the instrumentation state because we
-	 * haven't done ExecutorEnd yet.  This is pretty grotty ...
-	 */
-	if (planstate->instrument)
-        InstrEndLoop(planstate->instrument);
-
     /* quals, sort keys, etc */
 	switch (nodeTag(plan))
 	{
@@ -989,7 +1063,7 @@ explain_outNode(StringInfo str,
 						     str, indent, es);
 			break;
 		case T_Sort:
-		{ 
+		{
 			bool bLimit = (((Sort *) plan)->limitCount
 						   || ((Sort *) plan)->limitOffset);
 			
@@ -999,7 +1073,7 @@ explain_outNode(StringInfo str,
 
 			if ((bLimit && bNoDup))
 				SortKeystr = "Sort Key (Limit Distinct)";
-			else if (bLimit) 
+			else if (bLimit)
 				SortKeystr = "Sort Key (Limit)";
 			else if (bNoDup)
 				SortKeystr = "Sort Key (Distinct)";
@@ -1052,13 +1126,11 @@ explain_outNode(StringInfo str,
         cdbexplain_showExecStats(planstate,
                                  str,
                                  indent+1,
-                                 es->showctx,
-                                 es->extratextbuf);
+                                 es->showstatctx);
 
 	/* initPlan-s */
 	if (plan->initPlan)
 	{
-        StringInfo  saved_extratextbuf = es->extratextbuf;
         Slice      *saved_slice = es->currentSlice;
 		List	   *saved_rtable = es->rtable;
 		ListCell   *lst;
@@ -1079,16 +1151,6 @@ explain_outNode(StringInfo str,
 			    appendStringInfo(str, "  ");
 		    appendStringInfo(str, "  InitPlan  (slice%d)\n", sp->qDispSliceId);
 
-            /* 
-             * If subplan was dispatched to qExecs, ExecSetParamPlan() 
-             * should have allocated its own extratextbuf in which to 
-             * receive the qExecs' extra message text when it called 
-             * cdbexplain_recvExecStats().  (This way seemed easier than
-             * passing our own extratextbuf down to ExecSetParamPlan).
-             */
-            if (sps->cdbextratextbuf)
-                es->extratextbuf = sps->cdbextratextbuf;
-
             es->rtable = sp->rtable;
 			for (i = 0; i < indent; i++)
 				appendStringInfo(str, "  ");
@@ -1097,8 +1159,6 @@ explain_outNode(StringInfo str,
 							sps->planstate,
 							NULL,
 							indent + 4, es);
-
-            es->extratextbuf = saved_extratextbuf;
 		}
         es->currentSlice = saved_slice;
 		es->rtable = saved_rtable;
@@ -1256,8 +1316,6 @@ explain_outNode(StringInfo str,
 		{
 			SubPlanState *sps = (SubPlanState *) lfirst(lst);
 			SubPlan    *sp = (SubPlan *) sps->xprstate.expr;
-
-            Assert(!sps->cdbextratextbuf);
 
 			es->rtable = sp->rtable;
 			for (i = 0; i < indent; i++)

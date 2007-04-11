@@ -29,6 +29,8 @@
 #include "utils/tuplesort.h"
 
 struct CdbDispatchResults;              /* in cdbdispatchresult.h */
+struct CdbExplain_ShowStatCtx;          /* private, in "cdb/cdbexplain.c" */
+struct ChunkTransportState;             /* #include "cdb/cdbinterconnect.h" */
 struct IndexInfo;                       /* #include "catalog/index.h" */
 struct StringInfoData;                  /* #include "lib/stringinfo.h" */
 struct Tuplestorestate;                 /* #include "utils/tuplestore.h" */
@@ -455,7 +457,7 @@ typedef struct EState
 	
 	int active_recv_id;
 	void *motionlayer_context;  /* Motion Layer state */
-	void *interconnect_context; /* Interconnect state */
+	struct ChunkTransportState *interconnect_context; /* Interconnect state */
 	
 	/* MPP used resources */
 	bool es_interconnect_is_setup;   /* is interconnect set-up?    */
@@ -471,6 +473,9 @@ typedef struct EState
 
 	/* dispatch threads for this command */
 	struct CdbDispatchCmdThreads  *dispatchThreads;
+
+    /* CDB: EXPLAIN ANALYZE statistics */
+    struct CdbExplain_ShowStatCtx  *showstatctx;
 
 } EState;
 
@@ -710,7 +715,6 @@ typedef struct SubPlanState
 	AttrNumber *keyColIdx;		/* control data for hash tables */
 	FmgrInfo   *eqfunctions;	/* comparison functions for hash tables */
 	FmgrInfo   *hashfunctions;	/* lookup data for hash functions */
-    struct StringInfoData  *cdbextratextbuf;    /* to pass text to cdbexplain */
 } SubPlanState;
 
 /* ----------------

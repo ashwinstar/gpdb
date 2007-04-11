@@ -21,6 +21,8 @@
 
 #include "cdb/cdbdef.h"                 /* CdbVisitOpt */
 
+struct ChunkTransportState;             /* #include "cdb/cdbinterconnect.h" */
+
 /*
  * The "eflags" argument to ExecutorStart and the various ExecInitNode
  * routines is a bitwise OR of the following flag bits, which tell the
@@ -148,7 +150,7 @@ extern int	ExecCountSlotsNode(Plan *node);
 extern void ExecEndNode(PlanState *node);
 
 void ExecSquelchNode(PlanState *node);
-void ExecUpdateTransportState(PlanState *node, void *state);
+void ExecUpdateTransportState(PlanState *node, struct ChunkTransportState *state);
 
 typedef enum
 {
@@ -157,11 +159,24 @@ typedef enum
 	GP_NON_ROOT_ON_QE
 } GpExecIdentity;
 
+/* PlanState tree walking functions in execProcnode.c */
 CdbVisitOpt
-ExecStateTreeWalker(PlanState      *node,
-                    CdbVisitOpt   (*visit_preorder)(PlanState *node, void *context),
-                    CdbVisitOpt   (*visit_postorder)(PlanState *node, void *context),
-                    void           *context);
+planstate_walk_node(PlanState      *planstate,
+			        CdbVisitOpt   (*walker)(PlanState *planstate, void *context),
+			        void           *context);
+CdbVisitOpt
+planstate_walk_array(PlanState    **planstates,
+                     int            nplanstate,
+			         CdbVisitOpt  (*walker)(PlanState *planstate, void *context),
+			         void          *context);
+CdbVisitOpt
+planstate_walk_list(List           *planstatelist,
+			        CdbVisitOpt   (*walker)(PlanState *planstate, void *context),
+			        void           *context);
+CdbVisitOpt
+planstate_walk_kids(PlanState      *planstate,
+			        CdbVisitOpt   (*walker)(PlanState *planstate, void *context),
+			        void           *context);
 
 /*
  * prototypes from functions in execQual.c

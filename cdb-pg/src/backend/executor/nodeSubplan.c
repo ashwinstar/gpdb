@@ -665,7 +665,6 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 	node->keyColIdx = NULL;
 	node->eqfunctions = NULL;
 	node->hashfunctions = NULL;
-    node->cdbextratextbuf = NULL;
 
 	/*
 	 * create an EState for the subplan
@@ -961,8 +960,6 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		planstate->plan->dispatch == DISPATCH_PARALLEL)
 		shouldDispatch = true;
 
-    node->cdbextratextbuf = NULL;
-
 	/*
 	 * Let's initialize 'queryDesc' before our PG_TRY, to ensure the correct
 	 * value will be seen inside the PG_CATCH block without having to declare
@@ -991,7 +988,15 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 									gbl_queryDesc->doInstrument
 			);
 
+        /* 
+         * CDB TODO: Should this use CreateSubExecutorState()?  
+         * Should FreeExecutorState() eventually be called?
+         * Why do we need this at all?    ... kh 4/2007
+         */
 		queryDesc->estate = CreateExecutorState();
+
+        queryDesc->showstatctx = gbl_queryDesc->showstatctx;
+        queryDesc->estate->showstatctx = gbl_queryDesc->showstatctx;
 		queryDesc->estate->es_sliceTable = gbl_queryDesc->estate->es_sliceTable;
 		queryDesc->estate->es_cur_root_idx = gbl_queryDesc->estate->es_cur_root_idx;
 		queryDesc->estate->es_cur_slice_idx = gbl_queryDesc->estate->es_cur_slice_idx;
@@ -1168,6 +1173,10 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			prm->isnull = false;
 		}
 
+        /* If EXPLAIN ANALYZE, collect local execution stats. */
+        if (planstate->instrument)
+            cdbexplain_localExecStats(planstate, econtext->ecxt_estate->showstatctx);
+
         /*
          * If dispatched to QEs, wait for completion and check for errors.
          */
@@ -1179,21 +1188,14 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
             /* If EXPLAIN ANALYZE, collect execution stats from qExecs. */
             if (planstate->instrument)
             {
-                MemoryContext   savecxt;
-
                 /* Wait for all gangs to finish. */
                 CdbCheckDispatchResult(dThreads, false);	
-
-                /* Allocate buffer to pass extra message text to cdbexplain. */
-                savecxt = MemoryContextSwitchTo(gbl_queryDesc->estate->es_query_cxt);
-                node->cdbextratextbuf = makeStringInfo();
-                MemoryContextSwitchTo(savecxt);
 
                 /* Jam stats into subplan's Instrumentation nodes. */
                 cdbexplain_recvExecStats(planstate,
                                          primaryResults,
                                          queryDesc->estate->es_cur_slice_idx,
-                                         node->cdbextratextbuf);
+                                         econtext->ecxt_estate->showstatctx);
             }
 
             /*

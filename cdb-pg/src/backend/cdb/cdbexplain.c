@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * cdbexplain.c
- *    Functions supporting the GP EXPLAIN command
+ *    Functions supporting the Greenplum EXPLAIN ANALYZE command
  *
  * Copyright (c) 2006-2007, greenplum inc
  *
@@ -22,6 +22,7 @@
 #include "libpq-fe.h"                   /* PGresult; prereq for libpq-int.h */
 #include "libpq-int.h"                  /* pg_result */
 #include "libpq/pqformat.h"             /* pq_beginmessage() etc. */
+#include "nodes/memnodes.h"             /* MemoryContextData */
 
 
 /* EXPLAIN ANALYZE statistics for one plan node of a slice */
@@ -43,6 +44,13 @@ typedef struct CdbExplain_StatInst
 } CdbExplain_StatInst;
 
 
+/* EXPLAIN ANALYZE statistics for one process working on one slice */
+typedef struct CdbExplain_SliceWorker
+{
+    double      peakmemused;    /* bytes alloc in per-query mem context tree */
+} CdbExplain_SliceWorker;
+
+
 /* Header of EXPLAIN ANALYZE statistics message sent from qExec to qDisp */
 typedef struct CdbExplain_StatHdr
 {
@@ -50,6 +58,7 @@ typedef struct CdbExplain_StatHdr
     int         nInst;          /* num of StatInst entries following StatHdr */
     int         bnotes;         /* offset to extra text area */
     int         enotes;         /* offset to end of extra text area */
+    CdbExplain_SliceWorker  worker;     /* qExec's overall stats for slice */
 
     /* Array [0..nInst-1] of StatInst entries is appended starting here */
     CdbExplain_StatInst inst[1];
@@ -90,63 +99,218 @@ cdbexplain_agg_init1(CdbExplain_Agg *agg, double v, int segindex)
         cdbexplain_agg_init0(agg);
 }
 
+static inline bool
+cdbexplain_agg_upd(CdbExplain_Agg *agg, double v, int segindex)
+{
+    if (v > 0)
+    {
+        agg->vsum += v;
+        agg->vcnt++;
+
+        if (v > agg->vmax ||
+            agg->vcnt == 0)
+        {
+            agg->vmax = v;
+            agg->segmax = segindex;
+            return true;
+        }
+    }
+    return false;
+}
+
 
 /* One node's EXPLAIN ANALYZE statistics for all the workers of its gang */
 typedef struct CdbExplain_NodeSummary
 {
-    int         segindex0;      /* segment id of inst[0] */
-    int         nInst;          /* num of StatInst entries in inst array */
-
+    /* Summary over all the node's workers */
     CdbExplain_Agg  ntuples;
     CdbExplain_Agg  workmemused;
     CdbExplain_Agg  workmemwanted;
 
-    /* Array [0..nInst-1] of StatInst entries is appended starting here */
-    CdbExplain_StatInst inst[1];    /* variable size - must be last */
+    /* insts array info */
+    int             segindex0;      /* segment id of insts[0] */
+    int             ninst;          /* num of StatInst entries in inst array */
+
+    /* Array [0..ninst-1] of StatInst entries is appended starting here */
+    CdbExplain_StatInst insts[1];   /* variable size - must be last */
 } CdbExplain_NodeSummary;
 
 
-/* State for cdbexplain_sendStatWalker */
+/* One slice's statistics for all the workers of its gang */
+typedef struct CdbExplain_SliceSummary
+{
+    /* worker array */
+    int             nworker;        /* num of SliceWorker slots in worker array */
+    int             segindex0;      /* segment id of workers[0] */
+    CdbExplain_SliceWorker *workers;    /* -> array [0..nworker-1] of SliceWorker */
+
+    /* Summary of SliceWorker stats over all of the slice's workers */
+    CdbExplain_Agg  peakmemused;
+
+    /* Rollup of per-node stats over all of the slice's workers and nodes */
+    double          workmemused_max;
+    double          workmemwanted_max;
+} CdbExplain_SliceSummary;
+
+
+/* State for cdbexplain_showExecStats() */
+typedef struct CdbExplain_ShowStatCtx
+{
+    MemoryContext   explaincxt;         /* alloc all our buffers from this */
+    StringInfoData  extratextbuf;
+    instr_time      querystarttime;
+
+    /* Rollup of per-node stats over the entire query plan */
+    double          workmemused_max;
+    double          workmemwanted_max;
+
+    /* Per-slice statistics are deposited in this SliceSummary array */
+    int             nslice;             /* num of slots in slices array */
+    int             nslice_inuse;       /* num of nonempty slices */
+    CdbExplain_SliceSummary   *slices;  /* -> array[0..nslice-1] of SliceSummary */
+} CdbExplain_ShowStatCtx;
+
+
+/* State for cdbexplain_sendStatWalker() and cdbexplain_collectStatsFromNode() */
 typedef struct CdbExplain_SendStatCtx
 {
-    StringInfoData      buf;
-    StringInfoData      notebuf;
-    CdbExplain_StatHdr  hdr;
+    StringInfoData         *notebuf;
+    StringInfoData          buf;
+    CdbExplain_StatHdr      hdr;
 } CdbExplain_SendStatCtx;
 
 
-/* State for cdbexplain_recvStatWalker */
+/* State for cdbexplain_recvStatWalker() and cdbexplain_depositStatsToNode() */
 typedef struct CdbExplain_RecvStatCtx
 {
     int                     iStatInst;
     int                     nStatInst;
     int                     segindexMin;
     int                     segindexMax;
+    int                     sliceIndex;
     int                     nmsgptr;
     CdbExplain_StatHdr    **msgptrs;
     CdbDispatchResults     *dispatchResults;
     StringInfoData         *extratextbuf;
+    CdbExplain_ShowStatCtx *showstatctx;
+
+    /* Rollup of per-node stats over all of the slice's workers and nodes */
+    double                  workmemused_max;
+    double                  workmemwanted_max;
 } CdbExplain_RecvStatCtx;
 
 
-/* State for cdbexplain_showExecStats */
-typedef struct CdbExplain_ShowStatCtx
+/* State for cdbexplain_localStatWalker() */
+typedef struct CdbExplain_LocalStatCtx
 {
-    instr_time      querystarttime;
-
-    /* Summary over entire query plan */
-    double          workmemused_max;
-    double          workmemwanted_max;
-} CdbExplain_ShowStatCtx;
+    CdbExplain_SendStatCtx  send;
+    CdbExplain_RecvStatCtx  recv;
+    CdbExplain_StatHdr     *msgptrs[1];
+} CdbExplain_LocalStatCtx;
 
 
+static CdbVisitOpt
+cdbexplain_localStatWalker(PlanState *planstate, void *context);
 static CdbVisitOpt
 cdbexplain_sendStatWalker(PlanState *planstate, void *context);
 static CdbVisitOpt
 cdbexplain_recvStatWalker(PlanState *planstate, void *context);
 
+static void
+cdbexplain_collectSliceStats(PlanState                 *planstate,
+                             CdbExplain_SliceWorker    *out_worker);
+static void
+cdbexplain_depositSliceStats(CdbExplain_StatHdr        *hdr,
+                             CdbExplain_RecvStatCtx    *recvstatctx);
+static void
+cdbexplain_collectStatsFromNode(PlanState *planstate, CdbExplain_SendStatCtx *ctx);
+static void
+cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx);
 static int
 cdbexplain_collectExtraText(PlanState *planstate, StringInfo notebuf);
+
+
+/*
+ * cdbexplain_localExecStats
+ *    Called by qDisp to build NodeSummary and SliceSummary blocks
+ *    containing EXPLAIN ANALYZE statistics for a root slice that
+ *    has been executed locally in the qDisp process.  Attaches these
+ *    structures to the PlanState nodes' Instrumentation objects for
+ *    later use by cdbexplain_showExecStats().
+ *
+ * 'planstate' is the top PlanState node of the slice.
+ * 'showstatctx' is a CdbExplain_ShowStatCtx object which was created by
+ *      calling cdbexplain_showExecStatsBegin().
+ */
+void
+cdbexplain_localExecStats(struct PlanState                 *planstate,
+                          struct CdbExplain_ShowStatCtx    *showstatctx)
+{
+    CdbExplain_LocalStatCtx ctx;
+    MemoryContext           oldcxt;
+
+    Assert(Gp_role != GP_ROLE_EXECUTE);
+
+    Insist(planstate && planstate->instrument && showstatctx);
+
+    /* Switch to the EXPLAIN memory context. */
+    oldcxt = MemoryContextSwitchTo(showstatctx->explaincxt);
+
+    memset(&ctx, 0, sizeof(ctx));
+
+    /* Set up send context area. */
+    ctx.send.notebuf = &showstatctx->extratextbuf;
+
+    /* Set up a temporary StatHdr for both collecting and depositing stats. */
+    ctx.msgptrs[0] = &ctx.send.hdr;
+    ctx.send.hdr.segindex = Gp_segment;
+    ctx.send.hdr.nInst = 1;
+
+    /* Set up receive context area referencing our temp StatHdr. */
+    ctx.recv.nStatInst = ctx.send.hdr.nInst;
+    ctx.recv.segindexMin = ctx.recv.segindexMax = ctx.send.hdr.segindex;
+    ctx.recv.sliceIndex = planstate->state->es_cur_slice_idx;
+    ctx.recv.msgptrs = ctx.msgptrs;
+    ctx.recv.nmsgptr = 1;
+    ctx.recv.dispatchResults = NULL;
+    ctx.recv.extratextbuf = NULL;
+    ctx.recv.showstatctx = showstatctx;
+
+    /*
+     * Collect and redeposit statistics from each PlanState node in this slice.
+     * Any extra message text will be appended directly to extratextbuf.
+     */
+    planstate_walk_node(planstate, cdbexplain_localStatWalker, &ctx);
+
+    /* Obtain per-slice stats and put them in SliceSummary. */
+    cdbexplain_collectSliceStats(planstate, &ctx.send.hdr.worker);
+    cdbexplain_depositSliceStats(&ctx.send.hdr, &ctx.recv);
+
+    /* Restore caller's memory context. */
+    MemoryContextSwitchTo(oldcxt);
+}                               /* cdbexplain_localExecStats */
+
+
+/*
+ * cdbexplain_localStatWalker
+ */
+CdbVisitOpt
+cdbexplain_localStatWalker(PlanState *planstate, void *context)
+{
+    CdbExplain_LocalStatCtx    *ctx = (CdbExplain_LocalStatCtx *)context;
+
+    /* Collect stats into our temporary StatInst and caller's extratextbuf. */
+    cdbexplain_collectStatsFromNode(planstate, &ctx->send);
+
+    /* Redeposit stats back into Instrumentation, and attach a NodeSummary. */
+    cdbexplain_depositStatsToNode(planstate, &ctx->recv);
+
+    /* Don't descend across a slice boundary. */
+    if (IsA(planstate, MotionState))
+        return CdbVisit_Skip;
+
+    return CdbVisit_Walk;
+}                               /* cdbexplain_localStatWalker */
 
 
 /*
@@ -160,8 +324,11 @@ cdbexplain_sendExecStats(QueryDesc *queryDesc)
 {
     EState                 *estate;
     PlanState              *planstate;
-    CdbExplain_SendStatCtx   ctx;
+    CdbExplain_SendStatCtx  ctx;
+    StringInfoData          notebuf;
     int                     hoff;
+
+    Assert(Gp_role == GP_ROLE_EXECUTE);
 
     if (!queryDesc ||
         !queryDesc->planstate ||
@@ -190,7 +357,8 @@ cdbexplain_sendExecStats(QueryDesc *queryDesc)
     ctx.hdr.nInst = 0;
 
     /* Allocate a separate buffer where nodes can append extra message text. */
-    initStringInfo(&ctx.notebuf);
+    initStringInfo(&notebuf);
+    ctx.notebuf = &notebuf;
 
     /* Reserve buffer space for the message header (excluding 'inst' array). */
     pq_beginmessage(&ctx.buf, 'Y');
@@ -198,13 +366,16 @@ cdbexplain_sendExecStats(QueryDesc *queryDesc)
     appendBinaryStringInfo(&ctx.buf, (char *)&ctx.hdr, sizeof(ctx.hdr) - sizeof(ctx.hdr.inst));
 
     /* Append statistics from each PlanState node in this slice. */
-    ExecStateTreeWalker(planstate, cdbexplain_sendStatWalker, NULL, &ctx);
+    planstate_walk_node(planstate, cdbexplain_sendStatWalker, &ctx);
+
+    /* Obtain per-slice stats and put them in StatHdr. */
+    cdbexplain_collectSliceStats(planstate, &ctx.hdr.worker);
 
     /* Append the extra message text. */
     ctx.hdr.bnotes = ctx.buf.len - hoff;
-    appendBinaryStringInfo(&ctx.buf, ctx.notebuf.data, ctx.notebuf.len);
+    appendBinaryStringInfo(&ctx.buf, notebuf.data, notebuf.len);
     ctx.hdr.enotes = ctx.buf.len - hoff;
-    pfree(ctx.notebuf.data);
+    pfree(notebuf.data);
 
     /* Move the message header into the buffer. */
     memcpy(ctx.buf.data+hoff, (char *)&ctx.hdr, sizeof(ctx.hdr) - sizeof(ctx.hdr.inst));
@@ -222,36 +393,9 @@ cdbexplain_sendStatWalker(PlanState *planstate, void *context)
 {
     CdbExplain_SendStatCtx *ctx = (CdbExplain_SendStatCtx *)context;
     CdbExplain_StatInst    *si = &ctx->hdr.inst[0];
-    Instrumentation        *instr = planstate->instrument;
 
-    Insist(instr);
-
-    /* We have to finalize statistics, since ExecutorEnd hasn't been called. */
-    InstrEndLoop(instr);
-
-    /* Initialize StatInst slot. */
-    memset(si, 0, sizeof(*si));
-    si->pstype = planstate->type;
-
-    /* Add this node's extra message text to notebuf.  Store final stats. */
-    si->bnotes = cdbexplain_collectExtraText(planstate, &ctx->notebuf);
-    si->enotes = ctx->notebuf.len;
-
-    /* Make sure there is a '\0' between this node's message and the next. */
-    if (si->bnotes < si->enotes)
-        appendStringInfoChar(&ctx->notebuf, '\0');
-
-    /* Get this node's statistics. */
-	si->starttime = instr->starttime;
-	si->counter = instr->counter;
-	si->firsttuple = instr->firsttuple;
-    si->startup = instr->startup;
-    si->total = instr->total;
-    si->ntuples = instr->ntuples;
-    si->nloops = instr->nloops;
-    si->workmemused = instr->workmemused;
-    si->workmemwanted = instr->workmemwanted;
-	si->firststart = instr->firststart;
+    /* Stuff stats into our temporary StatInst.  Add extra text to notebuf. */
+    cdbexplain_collectStatsFromNode(planstate, ctx);
 
     /* Append StatInst instance to message. */
     appendBinaryStringInfo(&ctx->buf, (char *)si, sizeof(*si));
@@ -272,32 +416,43 @@ cdbexplain_sendStatWalker(PlanState *planstate, void *context)
  *    Recursively does the same for slices that are descendants of the
  *    one specified.
  *
- * 'extratextbuf' is a buffer which the caller must provide, to which this
- *      function may append extra message text for later output by
- *      cdbexplain_showExecStats().
+ * 'showstatctx' is a CdbExplain_ShowStatCtx object which was created by
+ *      calling cdbexplain_showExecStatsBegin().
  */
 void
-cdbexplain_recvExecStats(struct PlanState          *planstate,
-                         struct CdbDispatchResults *dispatchResults,
-                         int                        sliceIndex,
-                         struct StringInfoData     *extratextbuf)
+cdbexplain_recvExecStats(struct PlanState              *planstate,
+                         struct CdbDispatchResults     *dispatchResults,
+                         int                            sliceIndex,
+                         struct CdbExplain_ShowStatCtx *showstatctx)
 {
-    CdbDispatchResult      *dispatchResultBeg;
-    CdbDispatchResult      *dispatchResultEnd;
-    CdbExplain_RecvStatCtx  ctx;
-    MemoryContext           oldcxt;
-    int                     gpsegmentCount = getgpsegmentCount();
-    int                     iDispatch;
-    int                     nDispatch;
+    CdbDispatchResult          *dispatchResultBeg;
+    CdbDispatchResult          *dispatchResultEnd;
+    CdbExplain_RecvStatCtx      ctx;
+    MemoryContext   oldcxt;
+    int             gpsegmentCount = getgpsegmentCount();
+    int             iDispatch;
+    int             nDispatch;
+    int             imsgptr;
 
     if (!planstate ||
-        !planstate->instrument)
+        !planstate->instrument ||
+        !showstatctx)
         return;
+
+    /*
+     * Note that the caller may free the CdbDispatchResults upon return, maybe
+     * before EXPLAIN ANALYZE examines the PlanState tree.  Consequently we
+     * must not return ptrs into the dispatch result buffers, but must copy any
+     * needed information into a sufficiently long-lived memory context.
+     */
+    oldcxt = MemoryContextSwitchTo(showstatctx->explaincxt);
 
     /* Initialize treewalk context. */
     memset(&ctx, 0, sizeof(ctx));
     ctx.dispatchResults = dispatchResults;
-    ctx.extratextbuf = extratextbuf;
+    ctx.extratextbuf = &showstatctx->extratextbuf;
+    ctx.showstatctx = showstatctx;
+    ctx.sliceIndex = sliceIndex;
 
     /* Find the slice's CdbDispatchResult objects. */
     dispatchResultBeg = cdbdisp_resultBegin(dispatchResults, sliceIndex);
@@ -362,97 +517,23 @@ cdbexplain_recvExecStats(struct PlanState          *planstate,
         ctx.nmsgptr++;
     }
 
-    /*
-     * Note that the caller may free the CdbDispatchResults upon return, maybe
-     * before EXPLAIN ANALYZE examines the PlanState tree.  Consequently we
-     * must not return ptrs into the dispatch result buffers, but must copy any
-     * needed information into a sufficiently long-lived memory context.
-     */
-    oldcxt = MemoryContextSwitchTo(planstate->state->es_query_cxt);
+    /* Attach NodeSummary to each PlanState node's Instrumentation node. */
+    planstate_walk_node(planstate, cdbexplain_recvStatWalker, &ctx);
 
-    /* Stuff statistics into each PlanState node's Instrumentation node. */
-    ExecStateTreeWalker(planstate, cdbexplain_recvStatWalker, NULL, &ctx);
-
-    /* Restore caller's memory context. */
-    MemoryContextSwitchTo(oldcxt);
+    /* Transfer per-slice stats from message headers to SliceSummary entries. */
+    for (imsgptr = 0; imsgptr < ctx.nmsgptr; imsgptr++)
+        cdbexplain_depositSliceStats(ctx.msgptrs[imsgptr], &ctx);
 
     /* Make sure we visited the right number of PlanState nodes. */
     Insist(ctx.iStatInst == ctx.nStatInst);
+
+    /* Restore caller's memory context. */
+    MemoryContextSwitchTo(oldcxt);
 
     /* Clean up. */
     if (ctx.msgptrs)
         pfree(ctx.msgptrs);
 }                               /* cdbexplain_recvExecStats */
-
-
-/*
- * CdbExplain_RecvStatAcc
- *    Segment statistic accumulator used by cdbexplain_recvStatWalker().
- */
-typedef struct CdbExplain_RecvStatAcc
-{
-    CdbExplain_Agg          agg;            /* vmax, vsum, vcnt, segmax */
-    CdbExplain_StatHdr     *rshmax;         /* max's received StatHdr */
-    CdbExplain_StatInst    *rsimax;         /* max's received inst in StatHdr */
-    CdbExplain_StatInst    *nsimax;         /* max's inst in NodeSummary */
-} CdbExplain_RecvStatAcc;
-
-static void
-cdbexplain_recvStatAcc_init(CdbExplain_RecvStatAcc *acc)
-{
-    cdbexplain_agg_init0(&acc->agg);
-    acc->rshmax = NULL;
-    acc->rsimax = NULL;
-    acc->nsimax = NULL;
-}                               /* cdbexplain_recvStatAcc_init */
-
-static inline void
-cdbexplain_recvStatAcc_upd(CdbExplain_RecvStatAcc  *acc,
-                           double                   v,
-                           CdbExplain_StatHdr      *rsh,
-                           CdbExplain_StatInst     *rsi,
-                           CdbExplain_StatInst     *nsi)
-{
-    if (v > 0)
-    {
-        acc->agg.vsum += v;
-        acc->agg.vcnt++;
-    }
-    if (acc->agg.vmax < v ||
-        acc->rshmax == NULL)
-    {
-        acc->agg.vmax = v;
-        acc->agg.segmax = rsh->segindex;
-        acc->rshmax = rsh;
-        acc->rsimax = rsi;
-        acc->nsimax = nsi;
-    }
-}                               /* cdbexplain_recvStatAcc_upd */
-
-static void
-cdbexplain_recvStatAcc_saveText(CdbExplain_RecvStatAcc *acc,
-                                StringInfoData         *extratextbuf)
-{
-    CdbExplain_StatHdr     *rsh = acc->rshmax;
-    CdbExplain_StatInst    *rsi = acc->rsimax;
-    CdbExplain_StatInst    *nsi = acc->nsimax;
-
-    if (nsi->bnotes == nsi->enotes &&
-        rsi->bnotes < rsi->enotes)
-    {
-        /* Locate extra message text in dispatch result buffer. */
-        int         notelen = rsi->enotes - rsi->bnotes;
-        const char *notes = (const char *)rsh + rsh->bnotes + rsi->bnotes;
-
-        Insist(rsh->bnotes + rsi->enotes < rsh->enotes &&
-               notes[notelen] == '\0');
-
-        /* Append to extratextbuf. */
-        nsi->bnotes = extratextbuf->len;
-        appendBinaryStringInfo(extratextbuf, notes, notelen);
-        nsi->enotes = extratextbuf->len;
-    }
-}                               /* cdbexplain_recvStatAcc_saveText */
 
 
 /*
@@ -469,82 +550,8 @@ cdbexplain_recvStatWalker(PlanState *planstate, void *context)
     /* If slice was dispatched to qExecs, and stats came back, grab 'em. */
     if (ctx->nmsgptr > 0)
     {
-        Instrumentation        *instr = planstate->instrument;
-        CdbExplain_StatHdr     *rsh;
-        CdbExplain_StatInst    *rsi;
-        CdbExplain_StatInst    *nsi;
-        CdbExplain_NodeSummary *ns;
-        CdbExplain_RecvStatAcc  ntuples;
-        CdbExplain_RecvStatAcc  workmemused;
-        CdbExplain_RecvStatAcc  workmemwanted;
-        int                     imsgptr;
-        int                     nInst;
-
-        Insist(instr &&
-               ctx->iStatInst < ctx->nStatInst);
-
-        /* Allocate summary block and attach it to the Instrument node. */
-        nInst = ctx->segindexMax + 1 - ctx->segindexMin;
-        ns = (CdbExplain_NodeSummary *)palloc0(sizeof(*ns) - sizeof(ns->inst) +
-                                               nInst*sizeof(ns->inst[0]));
-        ns->segindex0 = ctx->segindexMin;
-        ns->nInst = nInst;
-        instr->cdbNodeSummary = ns;
-
-        /* Initialize accumulators. */
-        cdbexplain_recvStatAcc_init(&ntuples);
-        cdbexplain_recvStatAcc_init(&workmemused);
-        cdbexplain_recvStatAcc_init(&workmemwanted);
-
-        /* Examine the statistics from each qExec. */
-        for (imsgptr = 0; imsgptr < ctx->nmsgptr; imsgptr++)
-        {
-            /* Locate PlanState node's StatInst received from this qExec. */
-            rsh = ctx->msgptrs[imsgptr];
-            rsi = &rsh->inst[ctx->iStatInst];
-
-            Insist(rsi->pstype == planstate->type &&
-                   ns->segindex0 <= rsh->segindex &&
-                   rsh->segindex < ns->segindex0 + ns->nInst);
-
-            /* Locate this qExec's StatInst slot in node's NodeSummary block. */
-            nsi = &ns->inst[rsh->segindex - ns->segindex0];
-
-            /* Copy the StatInst to NodeSummary from dispatch result buffer. */
-            *nsi = *rsi;
-
-            /* Extra message text won't be copied unless qExec is a winner. */
-            nsi->bnotes = nsi->enotes = 0;
-
-            /* Update accumulators. */
-            cdbexplain_recvStatAcc_upd(&ntuples, rsi->ntuples, rsh, rsi, nsi);
-            cdbexplain_recvStatAcc_upd(&workmemused, rsi->workmemused, rsh, rsi, nsi);
-            cdbexplain_recvStatAcc_upd(&workmemwanted, rsi->workmemwanted, rsh, rsi, nsi);
-        }
-
-        /* Save accumulated stats in summary block. */
-        ns->ntuples = ntuples.agg;
-        ns->workmemused = workmemused.agg;
-        ns->workmemwanted = workmemwanted.agg;
-
-        /* Put winner's stats into qDisp PlanState's Instrument node. */
-        instr->starttime = ntuples.nsimax->starttime;
-		instr->counter = ntuples.nsimax->counter;
-		instr->firsttuple = ntuples.nsimax->firsttuple;
-        instr->startup = ntuples.nsimax->startup;
-        instr->total = ntuples.nsimax->total;
-        instr->ntuples = ntuples.nsimax->ntuples;
-        instr->nloops = ntuples.nsimax->nloops;
-        instr->workmemused = ntuples.nsimax->workmemused;
-        instr->workmemwanted = ntuples.nsimax->workmemwanted;
-		instr->firststart = ntuples.nsimax->firststart;
-
-        /* Save extra message text for the most interesting winners. */
-        cdbexplain_recvStatAcc_saveText(&ntuples, ctx->extratextbuf);
-        if (workmemused.agg.vmax > workmemwanted.agg.vmax)
-            cdbexplain_recvStatAcc_saveText(&workmemused, ctx->extratextbuf);
-        if (workmemwanted.agg.vcnt > 0)
-            cdbexplain_recvStatAcc_saveText(&workmemwanted, ctx->extratextbuf);
+        /* Transfer received stats to Instrumentation, NodeSummary, etc. */
+        cdbexplain_depositStatsToNode(planstate, ctx);
 
         /* Advance to next node's entry in all of the StatInst arrays. */
         ctx->iStatInst++;
@@ -556,12 +563,304 @@ cdbexplain_recvStatWalker(PlanState *planstate, void *context)
         cdbexplain_recvExecStats(planstate->lefttree,
                                  ctx->dispatchResults,
                                  ((Motion *)planstate->plan)->motionID,
-                                 ctx->extratextbuf);
+                                 ctx->showstatctx);
         return CdbVisit_Skip;
     }
 
     return CdbVisit_Walk;
 }                               /* cdbexplain_recvStatWalker */
+
+
+/*
+ * cdbexplain_collectSliceStats
+ *    Obtain per-slice statistical observations from the current slice
+ *    (which has just completed execution in the current process) and
+ *    store the information in the given SliceWorker struct.
+ *
+ * 'planstate' is the top PlanState node of the current slice.
+ */
+static void
+cdbexplain_collectSliceStats(PlanState                 *planstate,
+                             CdbExplain_SliceWorker    *out_worker)
+{
+    EState     *estate = planstate->state;
+
+    /* Max bytes malloc'ed under executor's per-query memory context. */
+    out_worker->peakmemused = (double)estate->es_query_cxt->maxBytesHeld;
+
+}                               /* cdbexplain_collectSliceStats */
+
+
+/*
+ * cdbexplain_depositSliceStats
+ *    Transfer a worker's per-slice stats contribution from StatHdr into the
+ *    SliceSummary array in the ShowStatCtx.  Transfer the rollup of per-node
+ *    stats from the RecvStatCtx into the SliceSummary.
+ */
+static void
+cdbexplain_depositSliceStats(CdbExplain_StatHdr        *hdr,
+                             CdbExplain_RecvStatCtx    *recvstatctx)
+{
+    int                         sliceIndex = recvstatctx->sliceIndex;
+    CdbExplain_ShowStatCtx     *showstatctx = recvstatctx->showstatctx;
+    CdbExplain_SliceSummary    *ss = &showstatctx->slices[sliceIndex];
+    CdbExplain_SliceWorker     *ssw;
+    int                         iworker;
+
+    Insist(sliceIndex >= 0 &&
+           sliceIndex < showstatctx->nslice);
+
+    /* Initialize the SliceSummary if this is its first worker. */
+    if (!ss->workers)
+    {
+        showstatctx->nslice_inuse++;
+
+        /* Caller already switched to EXPLAIN context. */
+        Assert(CurrentMemoryContext == showstatctx->explaincxt);
+
+        /* Allocate SliceWorker array and attach it to the SliceSummary. */
+        ss->segindex0 = recvstatctx->segindexMin;
+        ss->nworker = recvstatctx->segindexMax + 1 - ss->segindex0;
+        ss->workers = (CdbExplain_SliceWorker *)palloc0(ss->nworker * sizeof(ss->workers[0]));
+    }
+
+    /* Save a copy of this SliceWorker instance in the worker array. */
+    iworker = hdr->segindex - ss->segindex0;
+    ssw = &ss->workers[iworker];
+    Insist(iworker >= 0 && iworker < ss->nworker);
+    Insist(ssw->peakmemused == 0);  /* each worker should be seen just once */
+    *ssw = hdr->worker;
+
+    /* Update summary stats. */
+    cdbexplain_agg_upd(&ss->peakmemused, hdr->worker.peakmemused, hdr->segindex);
+
+    /* Rollup of per-node stats over all nodes of the slice into SliceSummary */
+    ss->workmemused_max = recvstatctx->workmemused_max;
+    ss->workmemwanted_max = recvstatctx->workmemwanted_max;
+
+    /* Rollup of per-node stats over the whole query into ShowStatCtx. */
+    showstatctx->workmemused_max = Max(showstatctx->workmemused_max, recvstatctx->workmemused_max);
+    showstatctx->workmemwanted_max = Max(showstatctx->workmemwanted_max, recvstatctx->workmemwanted_max);
+}                               /* cdbexplain_depositSliceStats */
+
+
+/*
+ * cdbexplain_collectStatsFromNode
+ *
+ * Called by sendStatWalker and localStatWalker to obtain a node's statistics
+ * and transfer them into the temporary StatHdr and StatInst in the SendStatCtx.
+ * Also obtains the node's extra message text, which it appends to the caller's
+ * cxt->nodebuf.
+ */
+static void
+cdbexplain_collectStatsFromNode(PlanState *planstate, CdbExplain_SendStatCtx *ctx)
+{
+    CdbExplain_StatInst    *si = &ctx->hdr.inst[0];
+    Instrumentation        *instr = planstate->instrument;
+
+    Insist(instr);
+
+    /* We have to finalize statistics, since ExecutorEnd hasn't been called. */
+    InstrEndLoop(instr);
+
+    /* Initialize the StatInst slot in the temporary StatHdr. */
+    memset(si, 0, sizeof(*si));
+    si->pstype = planstate->type;
+
+    /* Add this node's extra message text to notebuf.  Store final stats. */
+    si->bnotes = cdbexplain_collectExtraText(planstate, ctx->notebuf);
+    si->enotes = ctx->notebuf->len;
+
+    /* Make sure there is a '\0' between this node's message and the next. */
+    if (si->bnotes < si->enotes)
+        appendStringInfoChar(ctx->notebuf, '\0');
+
+    /* Transfer this node's statistics from Instrumentation into StatInst. */
+	si->starttime       = instr->starttime;
+	si->counter         = instr->counter;
+	si->firsttuple      = instr->firsttuple;
+    si->startup         = instr->startup;
+    si->total           = instr->total;
+    si->ntuples         = instr->ntuples;
+    si->nloops          = instr->nloops;
+    si->workmemused     = instr->workmemused;
+    si->workmemwanted   = instr->workmemwanted;
+	si->firststart      = instr->firststart;
+}                               /* cdbexplain_collectStatsFromNode */
+
+
+/*
+ * CdbExplain_DepStatAcc
+ *    Segment statistic accumulator used by cdbexplain_depositStatsToNode().
+ */
+typedef struct CdbExplain_DepStatAcc
+{
+    CdbExplain_Agg          agg;            /* vmax, vsum, vcnt, segmax */
+    CdbExplain_StatHdr     *rshmax;         /* max's received StatHdr */
+    CdbExplain_StatInst    *rsimax;         /* max's received inst in StatHdr */
+    CdbExplain_StatInst    *nsimax;         /* max's inst in NodeSummary */
+} CdbExplain_DepStatAcc;
+
+static void
+cdbexplain_depStatAcc_init0(CdbExplain_DepStatAcc *acc)
+{
+    cdbexplain_agg_init0(&acc->agg);
+    acc->rshmax = NULL;
+    acc->rsimax = NULL;
+    acc->nsimax = NULL;
+}                               /* cdbexplain_depStatAcc_init0 */
+
+static inline void
+cdbexplain_depStatAcc_upd(CdbExplain_DepStatAcc    *acc,
+                          double                    v,
+                          CdbExplain_StatHdr       *rsh,
+                          CdbExplain_StatInst      *rsi,
+                          CdbExplain_StatInst      *nsi)
+{
+    if (cdbexplain_agg_upd(&acc->agg, v, rsh->segindex))
+    {
+        acc->rshmax = rsh;
+        acc->rsimax = rsi;
+        acc->nsimax = nsi;
+    }
+}                               /* cdbexplain_depStatAcc_upd */
+
+static void
+cdbexplain_depStatAcc_saveText(CdbExplain_DepStatAcc   *acc,
+                               StringInfoData          *extratextbuf)
+{
+    CdbExplain_StatHdr     *rsh = acc->rshmax;
+    CdbExplain_StatInst    *rsi = acc->rsimax;
+    CdbExplain_StatInst    *nsi = acc->nsimax;
+
+    if (acc->agg.vcnt > 0 &&
+        nsi->bnotes == nsi->enotes &&
+        rsi->bnotes < rsi->enotes)
+    {
+        /* Locate extra message text in dispatch result buffer. */
+        int         notelen = rsi->enotes - rsi->bnotes;
+        const char *notes = (const char *)rsh + rsh->bnotes + rsi->bnotes;
+
+        Insist(rsh->bnotes + rsi->enotes < rsh->enotes &&
+               notes[notelen] == '\0');
+
+        /* Append to extratextbuf. */
+        nsi->bnotes = extratextbuf->len;
+        appendBinaryStringInfo(extratextbuf, notes, notelen);
+        nsi->enotes = extratextbuf->len;
+    }
+}                               /* cdbexplain_depStatAcc_saveText */
+
+
+/*
+ * cdbexplain_depositStatsToNode
+ *
+ * Called by recvStatWalker and localStatWalker to update the given
+ * PlanState node's Instrument node with statistics received from
+ * workers or collected locally.  Attaches a CdbExplain_NodeSummary
+ * block to the Instrument node.  If top node of slice, per-slice
+ * statistics are transferred from the StatHdr to the SliceSummary.
+ */
+static void
+cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
+{
+    Instrumentation            *instr = planstate->instrument;
+    CdbExplain_StatHdr         *rsh;
+    CdbExplain_StatInst        *rsi;
+    CdbExplain_StatInst        *nsi;
+    CdbExplain_NodeSummary     *ns;
+    CdbExplain_DepStatAcc       ntuples;
+    CdbExplain_DepStatAcc       workmemused;
+    CdbExplain_DepStatAcc       workmemwanted;
+    int                         imsgptr;
+    int                         nInst;
+
+    Insist(instr &&
+           ctx->iStatInst < ctx->nStatInst);
+
+    /* Caller already switched to EXPLAIN context. */
+    Assert(CurrentMemoryContext == ctx->showstatctx->explaincxt);
+
+    /* Allocate NodeSummary block. */
+    nInst = ctx->segindexMax + 1 - ctx->segindexMin;
+    ns = (CdbExplain_NodeSummary *)palloc0(sizeof(*ns) - sizeof(ns->insts) +
+                                           nInst*sizeof(ns->insts[0]));
+    ns->segindex0 = ctx->segindexMin;
+    ns->ninst = nInst;
+
+    /* Attach our new NodeSummary to the Instrumentation node. */
+    instr->cdbNodeSummary = ns;
+
+    /* Initialize per-node accumulators. */
+    cdbexplain_depStatAcc_init0(&ntuples);
+    cdbexplain_depStatAcc_init0(&workmemused);
+    cdbexplain_depStatAcc_init0(&workmemwanted);
+
+    /* Examine the statistics from each qExec. */
+    for (imsgptr = 0; imsgptr < ctx->nmsgptr; imsgptr++)
+    {
+        /* Locate PlanState node's StatInst received from this qExec. */
+        rsh = ctx->msgptrs[imsgptr];
+        rsi = &rsh->inst[ctx->iStatInst];
+
+        Insist(rsi->pstype == planstate->type &&
+               ns->segindex0 <= rsh->segindex &&
+               rsh->segindex < ns->segindex0 + ns->ninst);
+
+        /* Locate this qExec's StatInst slot in node's NodeSummary block. */
+        nsi = &ns->insts[rsh->segindex - ns->segindex0];
+
+        /* Copy the StatInst to NodeSummary from dispatch result buffer. */
+        *nsi = *rsi;
+
+        /*
+         * Drop qExec's extra text.  We rescue it below if qExec is a winner.
+         * For local qDisp slice, ctx->extratextbuf is NULL, which tells us to
+         * leave the extra text undisturbed in its existing buffer.
+         */
+        if (ctx->extratextbuf)
+            nsi->bnotes = nsi->enotes = 0;
+
+        /* Update per-node accumulators. */
+        cdbexplain_depStatAcc_upd(&ntuples, rsi->ntuples, rsh, rsi, nsi);
+        cdbexplain_depStatAcc_upd(&workmemused, rsi->workmemused, rsh, rsi, nsi);
+        cdbexplain_depStatAcc_upd(&workmemwanted, rsi->workmemwanted, rsh, rsi, nsi);
+    }
+
+    /* Save per-node accumulated stats in NodeSummary. */
+    ns->ntuples = ntuples.agg;
+    ns->workmemused = workmemused.agg;
+    ns->workmemwanted = workmemwanted.agg;
+
+    /* Roll up summary over all nodes of slice into RecvStatCtx. */
+    ctx->workmemused_max = Max(ctx->workmemused_max, workmemused.agg.vmax);
+    ctx->workmemwanted_max = Max(ctx->workmemwanted_max, workmemwanted.agg.vmax);
+
+    /* Put winner's stats into qDisp PlanState's Instrument node. */
+    if (ntuples.agg.vcnt > 0)
+    {
+        instr->starttime        = ntuples.nsimax->starttime;
+        instr->counter          = ntuples.nsimax->counter;
+        instr->firsttuple       = ntuples.nsimax->firsttuple;
+        instr->startup          = ntuples.nsimax->startup;
+        instr->total            = ntuples.nsimax->total;
+        instr->ntuples          = ntuples.nsimax->ntuples;
+        instr->nloops           = ntuples.nsimax->nloops;
+        instr->workmemused      = ntuples.nsimax->workmemused;
+        instr->workmemwanted    = ntuples.nsimax->workmemwanted;
+        instr->firststart       = ntuples.nsimax->firststart;
+    }
+
+    /* Save extra message text for the most interesting winning qExecs. */
+    if (ctx->extratextbuf)
+    {
+        cdbexplain_depStatAcc_saveText(&ntuples, ctx->extratextbuf);
+        if (workmemused.agg.vmax > workmemwanted.agg.vmax)
+            cdbexplain_depStatAcc_saveText(&workmemused, ctx->extratextbuf);
+        else
+            cdbexplain_depStatAcc_saveText(&workmemwanted, ctx->extratextbuf);
+    }
+}                               /* cdbexplain_depositStatsToNode */
 
 
 /*
@@ -636,7 +935,13 @@ cdbexplain_formatExtraText(StringInfo   str,
         {
             appendStringInfoFill(str, 2*indent, ' ');
             if (segindex >= 0)
-                appendStringInfo(str, "[seg%d] ", segindex);
+            {
+                appendStringInfo(str, "(seg%d) ", segindex);
+                if (segindex < 10)
+                    appendStringInfoChar(str, ' ');
+                if (segindex < 100)
+                    appendStringInfoChar(str, ' ');
+            }
             appendBinaryStringInfo(str, cp, dp-cp);
             appendStringInfoChar(str, '\n');
         }
@@ -696,96 +1001,74 @@ cdbexplain_formatSeg(char *outbuf, int segindex, int nInst)
  *
  * 'querystarttime' is the timestamp of the start of the query, in a
  *      platform-dependent format.
+ * 'explaincxt' is a MemoryContext from which to allocate the ShowStatCtx as
+ *      well as any needed buffers and the like.  The explaincxt ptr is saved
+ *      in the ShowStatCtx.  The caller is expected to reset or destroy the
+ *      explaincxt not too long after calling cdbexplain_showExecStatsEnd(); so
+ *      we don't bother to pfree() memory that we allocate from this context.
+ *
+ * Note this function is called before ExecutorStart(), so there is no EState
+ * or SliceTable yet.
  */
 struct CdbExplain_ShowStatCtx *
-cdbexplain_showExecStatsBegin(instr_time    querystarttime)
+cdbexplain_showExecStatsBegin(struct QueryDesc *queryDesc,
+                              MemoryContext     explaincxt,
+                              instr_time        querystarttime)
 {
-    CdbExplain_ShowStatCtx *ctx = (CdbExplain_ShowStatCtx *)palloc0(sizeof(*ctx));
+    MemoryContext           oldcontext;
+    CdbExplain_ShowStatCtx *ctx;
+    int                     nslice;
 
+    Assert(Gp_role != GP_ROLE_EXECUTE);
+
+    /* Switch to EXPLAIN memory context. */
+    oldcontext = MemoryContextSwitchTo(explaincxt);
+
+    /* Allocate and zero the ShowStatCtx */
+    ctx = (CdbExplain_ShowStatCtx *)palloc0(sizeof(*ctx));
+
+    ctx->explaincxt = explaincxt;
     ctx->querystarttime = querystarttime;
-    ctx->workmemused_max = 0;
-    ctx->workmemwanted_max = 0;
+
+    /* Determine number of slices.  (SliceTable hasn't been built yet.) */
+    nslice = 1 + queryDesc->plantree->nMotionNodes + queryDesc->plantree->nInitPlans;
+
+    /* Allocate and zero the SliceSummary array. */
+    ctx->nslice = nslice;
+    ctx->slices = (CdbExplain_SliceSummary *)palloc0(nslice * sizeof(ctx->slices[0]));
+
+    /* Allocate a buffer in which we can collect any extra message text. */
+    initStringInfoOfSize(&ctx->extratextbuf, 4000);
+
+    /* Restore caller's MemoryContext. */
+    MemoryContextSwitchTo(oldcontext);
     return ctx;
 }                               /* cdbexplain_showExecStatsBegin */
-
-
-/*
- * cdbexplain_showExecStatsEnd
- *    Called by qDisp process to format the overall statistics for a query
- *    into the caller's buffer and free the CdbExplain_ShowStatCtx object.
- *
- * 'ctx' is the CdbExplain_ShowStatCtx object which was created by a call to
- *      cdbexplain_showExecStatsBegin() and contains statistics which have
- *      been accumulated over a series of calls to cdbexplain_showExecStats().
- *      Invalid on return (it is freed).
- * 'str' is the output buffer.
- */
-void
-cdbexplain_showExecStatsEnd(struct CdbExplain_ShowStatCtx  *ctx,
-                            struct StringInfoData          *str)
-{
-    if (str)
-    {
-        int     startlen = str->len;
-        char    abuf[50];
-        char    bbuf[50];
-
-        if (ctx->workmemwanted_max > 0)
-        {
-            cdbexplain_formatMemory(abuf, ctx->workmemused_max);
-            cdbexplain_formatMemory(bbuf, ctx->workmemwanted_max);
-            appendStringInfo(str,
-                             "Work_mem:  %s used, %s wanted.",
-                             abuf,
-                             bbuf);
-        }
-        else if (ctx->workmemused_max > 0)
-        {
-            cdbexplain_formatMemory(abuf, ctx->workmemused_max);
-            appendStringInfo(str,
-                             "Work_mem:  %s used.",
-                             abuf);
-        }
-
-        if (startlen < str->len)
-            appendStringInfoChar(str, '\n');
-    }
-    pfree(ctx);
-}                               /* cdbexplain_showExecStatsEnd */
 
 
 /*
  * cdbexplain_showExecStats
  *    Called by qDisp process to format a node's EXPLAIN ANALYZE statistics.
  *
+ * 'planstate' is the node whose statistics are to be displayed.
+ * 'str' is the output buffer.
  * 'ctx' is a CdbExplain_ShowStatCtx object which was created by a call to
  *      cdbexplain_showExecStatsBegin().
- * 'str' is the output buffer.
  * 'extratextbuf' is the buffer in which extra message text was saved by
  *      cdbexplain_recvExecStats().  Some more extra message text might be
  *      appended to this buffer.
- *
- * NB: Each PlanState node has an Instrumentation node.  If the operator was
- * dispatched to one or more qExecs which returned statistics, we'll find that
- * a CdbExplain_NodeSummary block has been attached to the Instrumentation
- * node by cdbexplain_recvExecStats(); and the Instrumentation node contains
- * the statistics from whichever qExec produced the most output rows.  There
- * are no CdbExplain_NodeSummary blocks for operators which were assigned to
- * the qDisp process for execution.
  */
 void
 cdbexplain_showExecStats(struct PlanState              *planstate,
                          struct StringInfoData         *str,
                          int                            indent,
-                         struct CdbExplain_ShowStatCtx *ctx,
-                         struct StringInfoData         *extratextbuf)
+                         struct CdbExplain_ShowStatCtx *ctx)
 {
-    Instrumentation        *instr = planstate->instrument;
-    CdbExplain_NodeSummary *ns = instr->cdbNodeSummary;
-    instr_time              timediff;
-    int                     i;
+    Instrumentation            *instr = planstate->instrument;
+    CdbExplain_NodeSummary     *ns = instr->cdbNodeSummary;
+    instr_time                  timediff;
+    int                         i;
 
-    CdbExplain_NodeSummary  nsqd;
     const char *s_row = " row";
     const char *s_rows = " rows";
     char        firstbuf[50];
@@ -795,71 +1078,81 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
     char        segbuf[50];
     char        startbuf[50];		
 
-    /*
-     * If slice was dispatched to a gang of one or more qExec processes,
-     * and statistics were returned from at least one qExec, we expect
-     * cdbexplain_recvExecStats() has attached a CdbExplain_NodeSummary block
-     * to the Instrumentation node.  Otherwise, the slice was probably
-     * executed here in the qDisp process (or not executed); fake up a
-     * NodeSummary using the stats from the Instrumentation node.
-     */
+    /* Might not have received stats from qExecs if they hit errors. */
     if (!ns)
-    {
-        ns = &nsqd;
-        ns->segindex0 = -1;
-        ns->nInst = 1;
-
-        /* Ask the node for its extra message text and final statistics. */
-        memset(&ns->inst[0], 0, sizeof(ns->inst[0]));
-        ns->inst[0].bnotes = cdbexplain_collectExtraText(planstate, extratextbuf);
-        ns->inst[0].enotes = extratextbuf->len;
-
-        /* Copy node's final statistics from Instrumentation to NodeSummary. */
-        cdbexplain_agg_init1(&ns->ntuples, instr->ntuples, -1);
-        cdbexplain_agg_init1(&ns->workmemused, instr->workmemused, -1);
-        cdbexplain_agg_init1(&ns->workmemwanted, instr->workmemwanted, -1);
-    }
+        return;
 
     /*
      * Row counts.  Also, timings from the worker with the most output rows.
      */
     appendStringInfoFill(str, 2*indent, ' ');
+    cdbexplain_formatSeg(segbuf, ns->ntuples.segmax, ns->ninst);
     switch (planstate->type)
     {
         case T_BitmapAndState:
         case T_BitmapOrState:
         case T_BitmapIndexScanState:
-            appendStringInfoString(str, "Bitmaps out:  ");
             s_row = "";
             s_rows = "";
+            if (ns->ntuples.vcnt > 1)
+                appendStringInfo(str,
+                                 "Bitmaps out:  Avg %.1f x %d workers."
+                                 "  Max %.0f%s",
+                                 ns->ntuples.vsum / ns->ntuples.vcnt,
+                                 ns->ntuples.vcnt,
+                                 ns->ntuples.vmax,
+                                 segbuf);
+            else
+                appendStringInfo(str,
+                                 "Bitmaps out:  %.0f%s",
+                                 ns->ntuples.vmax,
+                                 segbuf);
             break;
         case T_HashState:
-            appendStringInfoString(str, "Rows in:  ");
+            if (ns->ntuples.vcnt > 1)
+                appendStringInfo(str,
+                                 "Rows in:  Avg %.1f rows x %d workers."
+                                 "  Max %.0f rows%s",
+                                 ns->ntuples.vsum / ns->ntuples.vcnt,
+                                 ns->ntuples.vcnt,
+                                 ns->ntuples.vmax,
+                                 segbuf);
+            else
+                appendStringInfo(str,
+                                 "Rows in:  %.0f rows%s",
+                                 ns->ntuples.vmax,
+                                 segbuf);
             break;
         case T_MotionState:
-            /* Motion node stats are taken from the receiving (upper) slice. */
-            appendStringInfoString(str, "Rows received:  ");
+            if (ns->ntuples.vcnt > 1)
+                appendStringInfo(str,
+                                 "Rows out:  Avg %.1f rows x %d workers"
+                                 " at destination.  Max %.0f rows%s",
+                                 ns->ntuples.vsum / ns->ntuples.vcnt,
+                                 ns->ntuples.vcnt,
+                                 ns->ntuples.vmax,
+                                 segbuf);
+            else
+                appendStringInfo(str,
+                                 "Rows out:  %.0f rows at destination%s",
+                                 ns->ntuples.vmax,
+                                 segbuf);
             break;
         default:
-            appendStringInfoString(str, "Rows out:  ");
+            if (ns->ntuples.vcnt > 1)
+                appendStringInfo(str,
+                                 "Rows out:  Avg %.1f rows x %d workers."
+                                 "  Max %.0f rows%s",
+                                 ns->ntuples.vsum / ns->ntuples.vcnt,
+                                 ns->ntuples.vcnt,
+                                 ns->ntuples.vmax,
+                                 segbuf);
+            else
+                appendStringInfo(str,
+                                 "Rows out:  %.0f rows%s",
+                                 ns->ntuples.vmax,
+                                 segbuf);
     }
-
-    cdbexplain_formatSeg(segbuf, ns->ntuples.segmax, ns->nInst);
-    if (ns->ntuples.vcnt > 1)
-        appendStringInfo(str,
-                         "Avg %.1f%s x %d workers.  Max %.0f%s%s",
-                         ns->ntuples.vsum / ns->ntuples.vcnt,
-                         s_rows,
-                         ns->ntuples.vcnt,
-                         ns->ntuples.vmax,
-                         s_rows,
-                         segbuf);
-    else
-        appendStringInfo(str,
-                         "%.0f%s%s",
-                         ns->ntuples.vmax,
-                         s_rows,
-                         segbuf);
 
     /* Time from this worker's first InstrStartNode() to its first result row */
     cdbexplain_formatSeconds(firstbuf, instr->startup);
@@ -870,7 +1163,7 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
     /* Show elapsed time just once if they are the same. */
     if (strcmp(firstbuf, totalbuf) != 0)
         appendStringInfo(str,
-                         " with %s to first %s, %s to end",
+                         " with %s to first%s, %s to end",
                          firstbuf,
                          s_row,
                          totalbuf);
@@ -899,7 +1192,6 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
     if (ns->workmemused.vcnt > 0)
     {
         appendStringInfoFill(str, 2*indent, ' ');
-        ctx->workmemused_max = Max(ctx->workmemused_max, ns->workmemused.vmax);
         cdbexplain_formatMemory(maxbuf, ns->workmemused.vmax);
         if (ns->workmemused.vcnt == 1)
             appendStringInfo(str,
@@ -907,7 +1199,7 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
                              maxbuf);
         else
         {
-            cdbexplain_formatSeg(segbuf, ns->workmemused.segmax, ns->nInst);
+            cdbexplain_formatSeg(segbuf, ns->workmemused.segmax, ns->ninst);
             cdbexplain_formatMemory(avgbuf, ns->workmemused.vsum / ns->workmemused.vcnt);
             appendStringInfo(str,
                              "Work_mem used:  %s avg, %s max%s.\n",
@@ -923,16 +1215,15 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
     if (ns->workmemwanted.vcnt > 0)
     {
         appendStringInfoFill(str, 2*indent, ' ');
-        ctx->workmemwanted_max = Max(ctx->workmemwanted_max, ns->workmemwanted.vmax);
         cdbexplain_formatMemory(maxbuf, ns->workmemwanted.vmax);
-        if (ns->nInst == 1)
+        if (ns->ninst == 1)
             appendStringInfo(str,
                 "Work_mem wanted: %s would avert workfile I/O.\n",
                 maxbuf);
         else
         {
             cdbexplain_formatMemory(avgbuf, ns->workmemwanted.vsum / ns->workmemwanted.vcnt);
-            cdbexplain_formatSeg(segbuf, ns->workmemwanted.segmax, ns->nInst);
+            cdbexplain_formatSeg(segbuf, ns->workmemwanted.segmax, ns->ninst);
             appendStringInfo(str,
                              "Work_mem wanted: %s avg, %s max%s "
                              "would avert workfile I/O affecting %d workers.\n",
@@ -946,16 +1237,16 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
     /*
      * Extra message text.
      */
-    for (i = 0; i < ns->nInst; i++)
+    for (i = 0; i < ns->ninst; i++)
     {
-        CdbExplain_StatInst    *nsi = &ns->inst[i];
+        CdbExplain_StatInst    *nsi = &ns->insts[i];
 
         if (nsi->bnotes < nsi->enotes)
             cdbexplain_formatExtraText(str,
                                        indent,
-                                       (ns->nInst == 1) ? -1
+                                       (ns->ninst == 1) ? -1
                                                         : ns->segindex0 + i,
-                                       extratextbuf->data + nsi->bnotes,
+                                       ctx->extratextbuf.data + nsi->bnotes,
                                        nsi->enotes - nsi->bnotes);
     }
 
@@ -963,22 +1254,22 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
      * Dump stats for all workers.
      */
 	if (gp_enable_explain_allstat &&
-        ns->segindex0 >= 0 && 
-        ns->nInst > 0)
+        ns->segindex0 >= 0 &&
+        ns->ninst > 0)
 	{
 		/* create a header for all stats: separate each individual
 		 * stat by an underscore, separate the grouped stats for each
 		 * node by a slash
 		 */
         appendStringInfoFill(str, 2*indent, ' ');
-		appendStringInfoString(str, 
+		appendStringInfoString(str,
                                "allstat: "
         /*	 "seg_starttime_firststart_counter_firsttuple_startup_total_ntuples_nloops" */
 						       "seg_firststart_ntuples");
 
-        for (i = 0; i < ns->nInst; i++)
+        for (i = 0; i < ns->ninst; i++)
 		{
-            CdbExplain_StatInst    *nsi = &ns->inst[i];
+            CdbExplain_StatInst    *nsi = &ns->insts[i];
 
 	        if (INSTR_TIME_IS_ZERO(nsi->firststart))
                 continue;
@@ -987,13 +1278,128 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
             InstrTimeSubtract(&timediff, &nsi->firststart, &ctx->querystarttime);
 	        cdbexplain_formatSeconds(startbuf, INSTR_TIME_GET_DOUBLE(timediff));
 
-			appendStringInfo(str, 
+			appendStringInfo(str,
                              "/%d_%s_%.0f",
                              ns->segindex0 + i,
-							 startbuf, 
+							 startbuf,
                              nsi->ntuples);
 		}
 		appendStringInfoString(str, "//end\n");
 	}
 }                               /* cdbexplain_showExecStats */
 
+
+/*
+ * cdbexplain_showExecStatsEnd
+ *    Called by qDisp process to format the overall statistics for a query
+ *    into the caller's buffer.
+ *
+ * 'ctx' is the CdbExplain_ShowStatCtx object which was created by a call to
+ *      cdbexplain_showExecStatsBegin() and contains statistics which have
+ *      been accumulated over a series of calls to cdbexplain_showExecStats().
+ *      Invalid on return (it is freed).
+ * 'str' is the output buffer.
+ *
+ * This doesn't free the CdbExplain_ShowStatCtx object or buffers, because
+ * shortly afterwards the caller is expected to destroy the 'explaincxt'
+ * MemoryContext which was passed to cdbexplain_showExecStatsBegin(), thus
+ * freeing all at once.
+ */
+void
+cdbexplain_showExecStatsEnd(struct CdbExplain_ShowStatCtx  *showstatctx,
+                            struct StringInfoData          *str)
+{
+    int     sliceIndex;
+    int     startlen;
+    int     tab;
+
+    char    avgbuf[50];
+    char    maxbuf[50];
+    char    segbuf[50];
+
+    /*
+     * Summary by slice
+     */
+    if (showstatctx->nslice_inuse > 0)
+        appendStringInfoString(str, "Slice statistics:\n");
+
+    for (sliceIndex = 0; sliceIndex < showstatctx->nslice; sliceIndex++)
+    {
+        CdbExplain_SliceSummary    *ss = &showstatctx->slices[sliceIndex];
+
+        if (!ss->workers)
+            continue;
+
+        startlen = str->len;
+        appendStringInfo(str, "  (slice%d) ", sliceIndex);
+        if (sliceIndex < 10)
+            appendStringInfoChar(str, ' ');
+        tab = str->len - startlen;
+
+        /* Executor memory high-water mark */
+        cdbexplain_formatMemory(maxbuf, ss->peakmemused.vmax);
+        if (ss->peakmemused.vcnt == 1)
+        {
+            cdbexplain_formatSeg(segbuf, ss->peakmemused.segmax, 999);
+            appendStringInfo(str,
+                             "Executor memory: %s%s.",
+                             maxbuf,
+                             (ss->peakmemused.segmax >= 0) ? segbuf
+                                                           : " (entry db)");
+        }
+        else
+        {
+            cdbexplain_formatMemory(avgbuf, ss->peakmemused.vsum / Max(ss->peakmemused.vcnt, 1));
+            cdbexplain_formatSeg(segbuf, ss->peakmemused.segmax, ss->nworker);
+            appendStringInfo(str,
+                             "Executor memory: %s avg x %d workers, %s max%s.",
+                             avgbuf,
+                             ss->peakmemused.vcnt,
+                             maxbuf,
+                             segbuf);
+        }
+
+        /* Work_mem used/wanted (max over all nodes and workers of slice) */
+        if (ss->workmemused_max + ss->workmemwanted_max > 0)
+        {
+            cdbexplain_formatMemory(maxbuf, ss->workmemused_max);
+            appendStringInfo(str, "  Work_mem: %s max", maxbuf);
+            if (ss->workmemwanted_max > 0)
+            {
+                cdbexplain_formatMemory(maxbuf, ss->workmemwanted_max);
+                appendStringInfo(str, ", %s wanted", maxbuf);
+            }
+            appendStringInfoChar(str, '.');
+       }
+
+       appendStringInfoChar(str, '\n');
+    }
+
+    /*
+     * Summary over the whole query
+     */
+#if 0   /* not used... but if you want whole-query stats, here's an example */
+    startlen = str->len;
+
+    /* Max work_mem used/wanted anywhere in the query */
+    if (showstatctx->workmemwanted_max > 0)
+    {
+        cdbexplain_formatMemory(usedbuf, showstatctx->workmemused_max);
+        cdbexplain_formatMemory(wantedbuf, showstatctx->workmemwanted_max);
+        appendStringInfo(str,
+                         "Work_mem: Max %s used, %s wanted.",
+                         usedbuf,
+                         wantedbuf);
+    }
+    else if (showstatctx->workmemused_max > 0)
+    {
+        cdbexplain_formatMemory(usedbuf, showstatctx->workmemused_max);
+        appendStringInfo(str,
+                         "Work_mem: Max %s used.",
+                         usedbuf);
+    }
+
+    if (startlen < str->len)
+        appendStringInfoChar(str, '\n');
+#endif
+}                               /* cdbexplain_showExecStatsEnd */
