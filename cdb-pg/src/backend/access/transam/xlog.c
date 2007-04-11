@@ -50,6 +50,7 @@
 #include "utils/pg_locale.h"
 
 #include "cdb/cdblink.h"
+#include "cdb/cdbvars.h"
 
 /*
  *	Because O_DIRECT bypasses the kernel buffers, and because we never
@@ -560,6 +561,26 @@ XLogInsert(RmgrId rmid, uint8 info, XLogRecData *rdata)
 	bool		isLogSwitch = (rmid == RM_XLOG_ID && info == XLOG_SWITCH);
 	bool		no_tran = (rmid == RM_XLOG_ID);
 
+    /* Safety check in case our assumption is ever broken. */
+	// NOTE: This is slightly modified from the one in xact.c -- the test for
+ 	// NOTE: seqXlogWrite is omitted...
+ 	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
+ 	{
+ 		/*
+ 	     * we better only do really minor things on the reader that result
+ 	     * in writing to the xlog here at commit.  for now sequences
+ 	     * should be the only one
+ 	     */
+ 		ereport(ERROR,
+ 			(errmsg("Reader qExec had local changes to commit! (rmid = %u)",
+ 			        rmid),
+ 		  errdetail("A Reader qExec tried to commit local changes.  "
+ 					"Only the single Writer qExec can do so. "),
+ 			errhint("This is most likely the result of a feature being turned "
+ 	                "on that violates the single WRITER principle")));	
+ 	}
+
+		
 	if (info & XLR_INFO_MASK)
 	{
 		if ((info & XLR_INFO_MASK) != XLOG_NO_TRAN)

@@ -792,7 +792,8 @@ RecordTransactionCommit(void)
 			 * should be the only one
 			 */
 			ereport(ERROR,
-					(errmsg("Reader qExec had local changes to commit!"),
+					(errmsg("Reader qExec had local changes to commit! (MyXactMadeXLogEntry = %s, MyXactMadeTempRelUpdate = %s, nrels = %d)",
+ 	 	                    (MyXactMadeXLogEntry ? "true" : "false"), (MyXactMadeTempRelUpdate ? "true" : "false"), nrels),
 				  errdetail("A Reader qExec tried to commit local changes.  "
 							"Only the single Writer qExec can do so. "),
 					 errhint("This is most likely the result of a feature being turned "
