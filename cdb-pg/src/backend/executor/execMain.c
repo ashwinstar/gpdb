@@ -560,7 +560,7 @@ ExecutorRun(QueryDesc *queryDesc,
 	/*
      * CDB: Update global slice id for log messages.
      */
-    currentSlice = getCurrentSlice(estate);
+    currentSlice = getCurrentSlice(estate, estate->es_cur_slice_idx);
     if (currentSlice)
     {
         if (Gp_role == GP_ROLE_EXECUTE ||

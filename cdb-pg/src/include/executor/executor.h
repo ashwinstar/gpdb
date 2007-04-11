@@ -332,7 +332,7 @@ extern void mppExecutorFinishup(QueryDesc *queryDesc);
 extern void mppExecutorCleanup(EState *estate);
 
 
-extern Slice *getCurrentSlice(EState* estate);
+extern Slice *getCurrentSlice(EState* estate, int sliceIndex);
 extern bool sliceRunsOnQD(Slice *slice);
 extern bool sliceRunsOnQE(Slice *slice);
 

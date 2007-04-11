@@ -324,7 +324,7 @@ ExplainOnePlan_internal(QueryDesc      *queryDesc,
 	instr_time	starttime;
 	double		totaltime = 0;
     StringInfo  buf = &es->outbuf;
-	Node	   *saved_es_sliceTable;
+    EState     *estate = NULL;
 	int			eflags;
     int         nb;
 
@@ -357,8 +357,10 @@ ExplainOnePlan_internal(QueryDesc      *queryDesc,
 	/* call ExecutorStart to prepare the plan for execution */
 	ExecutorStart(queryDesc, eflags);
 
+    estate = queryDesc->estate;
+
     /* CDB: Find slice table entry for the root slice. */
-    es->currentSlice = getCurrentSlice(queryDesc->estate);
+    es->currentSlice = getCurrentSlice(estate, estate->es_cur_slice_idx);
 
     /* Execute the plan for statistics if asked for */
 	if (stmt->analyze)
@@ -372,17 +374,17 @@ ExplainOnePlan_internal(QueryDesc      *queryDesc,
             cdbexplain_localExecStats(queryDesc->planstate, es->showstatctx);
 
         /* Did we delegate (some or all of) the execution to qExecs? */
-        if (queryDesc->estate->primaryResults)
+        if (estate->primaryResults)
         {
             /* Wait for completion of all qExec processes. */
-            CdbCheckDispatchResult(queryDesc->estate->dispatchThreads ,false);	
+            CdbCheckDispatchResult(estate->dispatchThreads ,false);	
 
 		    totaltime += elapsed_time(&starttime);
 
             /* Fill in the plan's Instrumentation with stats from qExecs. */
             cdbexplain_recvExecStats(queryDesc->planstate,
-                                     queryDesc->estate->primaryResults,
-                                     queryDesc->estate->es_cur_slice_idx,
+                                     estate->primaryResults,
+                                     estate->es_cur_slice_idx,
                                      es->showstatctx);
         }
 
@@ -405,8 +407,10 @@ ExplainOnePlan_internal(QueryDesc      *queryDesc,
 		char	   *s;
 		char	   *f;
 
-		if (queryDesc->plantree && queryDesc->estate && queryDesc->estate->es_sliceTable)
+		if (queryDesc->plantree && estate->es_sliceTable)
 		{
+        	Node   *saved_es_sliceTable;
+
 			/* Little two-step to get EXPLAIN VERBOSE to show slice table. */
 			saved_es_sliceTable = queryDesc->plantree->sliceTable;		/* probably NULL */
 			queryDesc->plantree->sliceTable = (Node *) queryDesc->estate->es_sliceTable;

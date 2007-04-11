@@ -1754,24 +1754,16 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
  * A forgiving slice table indexer that returns the indexed Slice* or NULL
  */
 Slice *
-getCurrentSlice(EState *estate)
+getCurrentSlice(EState *estate, int sliceIndex)
 {
-	SliceTable *sliceTable;
-	int			sliceIdx;
+	SliceTable *sliceTable = estate->es_sliceTable;
 
-	if (estate == NULL)
-		return NULL;
+    if (sliceTable &&
+        sliceIndex >= 0 && 
+        sliceIndex < list_length(sliceTable->slices))
+	    return (Slice *)list_nth(sliceTable->slices, sliceIndex);
 
-	sliceTable = estate->es_sliceTable;
-	sliceIdx = estate->es_cur_slice_idx;
-
-	if (sliceTable == NULL)
-		return NULL;
-
-	if (sliceIdx < 0 || sliceIdx >= list_length(sliceTable->slices))
-		return NULL;
-
-	return (Slice *) list_nth(sliceTable->slices, sliceIdx);
+    return NULL;
 }
 
 /* Should the slice run on the QD?
@@ -1824,7 +1816,7 @@ getGpExecIdentity(QueryDesc *queryDesc,
 {
 	Slice              *currentSlice;
 	
-	currentSlice = getCurrentSlice(estate);
+	currentSlice = getCurrentSlice(estate, estate->es_cur_slice_idx);
 	if (currentSlice)
     {
         if (Gp_role == GP_ROLE_EXECUTE ||
@@ -1866,7 +1858,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 	/* caller must have switched into per-query memory context already */
 	estate = queryDesc->estate;
 
-	currentSlice = getCurrentSlice(estate);
+	currentSlice = getCurrentSlice(estate, estate->es_cur_slice_idx);
 
 	/*
 	 * If QD, wait for QEs to finish and check their results.

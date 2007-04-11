@@ -67,6 +67,17 @@ typedef struct CdbExplain_StatHdr
 } CdbExplain_StatHdr;
 
 
+/* Dispatch status summarized over workers in a slice */
+typedef struct CdbExplain_DispatchSummary
+{
+    int         nDispatch;      /* nOk + nError + nCanceled + nNotDispatched */
+    int         nOk;
+    int         nError;
+    int         nCanceled;
+    int         nNotDispatched;
+} CdbExplain_DispatchSummary;
+
+
 /* Summarization of one statistic */
 typedef struct CdbExplain_Agg
 {
@@ -139,6 +150,8 @@ typedef struct CdbExplain_NodeSummary
 /* One slice's statistics for all the workers of its gang */
 typedef struct CdbExplain_SliceSummary
 {
+    Slice          *slice;
+
     /* worker array */
     int             nworker;        /* num of SliceWorker slots in worker array */
     int             segindex0;      /* segment id of workers[0] */
@@ -150,6 +163,9 @@ typedef struct CdbExplain_SliceSummary
     /* Rollup of per-node stats over all of the slice's workers and nodes */
     double          workmemused_max;
     double          workmemwanted_max;
+
+    /* How many workers were dispatched and returned results? (0 if local) */
+    CdbExplain_DispatchSummary  dispatchSummary;
 } CdbExplain_SliceSummary;
 
 
@@ -193,6 +209,7 @@ typedef struct CdbExplain_RecvStatCtx
     CdbDispatchResults     *dispatchResults;
     StringInfoData         *extratextbuf;
     CdbExplain_ShowStatCtx *showstatctx;
+    Slice                  *slice;
 
     /* Rollup of per-node stats over all of the slice's workers and nodes */
     double                  workmemused_max;
@@ -275,6 +292,7 @@ cdbexplain_localExecStats(struct PlanState                 *planstate,
     ctx.recv.dispatchResults = NULL;
     ctx.recv.extratextbuf = NULL;
     ctx.recv.showstatctx = showstatctx;
+    ctx.recv.slice = getCurrentSlice(planstate->state, ctx.recv.sliceIndex);
 
     /*
      * Collect and redeposit statistics from each PlanState node in this slice.
@@ -428,6 +446,7 @@ cdbexplain_recvExecStats(struct PlanState              *planstate,
     CdbDispatchResult          *dispatchResultBeg;
     CdbDispatchResult          *dispatchResultEnd;
     CdbExplain_RecvStatCtx      ctx;
+    CdbExplain_DispatchSummary  ds;
     MemoryContext   oldcxt;
     int             gpsegmentCount = getgpsegmentCount();
     int             iDispatch;
@@ -453,11 +472,16 @@ cdbexplain_recvExecStats(struct PlanState              *planstate,
     ctx.extratextbuf = &showstatctx->extratextbuf;
     ctx.showstatctx = showstatctx;
     ctx.sliceIndex = sliceIndex;
+    ctx.slice = getCurrentSlice(planstate->state, sliceIndex);
 
     /* Find the slice's CdbDispatchResult objects. */
     dispatchResultBeg = cdbdisp_resultBegin(dispatchResults, sliceIndex);
     dispatchResultEnd = cdbdisp_resultEnd(dispatchResults, sliceIndex);
     nDispatch = dispatchResultEnd - dispatchResultBeg;
+
+    /* Initialize worker counts. */
+    memset(&ds, 0, sizeof(ds));
+    ds.nDispatch = nDispatch;
 
     /* Find and validate the statistics returned from each qExec. */
     if (nDispatch > 0)
@@ -467,6 +491,16 @@ cdbexplain_recvExecStats(struct PlanState              *planstate,
         CdbDispatchResult  *dispatchResult = &dispatchResultBeg[iDispatch];
         PGresult           *pgresult;
         CdbExplain_StatHdr *hdr;
+
+        /* Update worker counts. */
+        if (!dispatchResult->hasDispatched)
+            ds.nNotDispatched++;
+        else if (dispatchResult->wasCanceled)
+            ds.nCanceled++;
+        else if (dispatchResult->errcode)
+            ds.nError++;
+        else
+            ds.nOk++;
 
         /* Find this qExec's last PGresult. */
         pgresult = cdbdisp_getPGresult(dispatchResult, -1);
@@ -520,12 +554,15 @@ cdbexplain_recvExecStats(struct PlanState              *planstate,
     /* Attach NodeSummary to each PlanState node's Instrumentation node. */
     planstate_walk_node(planstate, cdbexplain_recvStatWalker, &ctx);
 
-    /* Transfer per-slice stats from message headers to SliceSummary entries. */
+    /* Make sure we visited the right number of PlanState nodes. */
+    Insist(ctx.iStatInst == ctx.nStatInst);
+
+    /* Transfer per-slice stats from message headers to the SliceSummary. */
     for (imsgptr = 0; imsgptr < ctx.nmsgptr; imsgptr++)
         cdbexplain_depositSliceStats(ctx.msgptrs[imsgptr], &ctx);
 
-    /* Make sure we visited the right number of PlanState nodes. */
-    Insist(ctx.iStatInst == ctx.nStatInst);
+    /* Transfer worker counts to SliceSummary. */
+    showstatctx->slices[sliceIndex].dispatchSummary = ds;
 
     /* Restore caller's memory context. */
     MemoryContextSwitchTo(oldcxt);
@@ -614,6 +651,9 @@ cdbexplain_depositSliceStats(CdbExplain_StatHdr        *hdr,
     if (!ss->workers)
     {
         showstatctx->nslice_inuse++;
+
+        /* Start filling in the SliceSummary. */
+        ss->slice = recvstatctx->slice;
 
         /* Caller already switched to EXPLAIN context. */
         Assert(CurrentMemoryContext == showstatctx->explaincxt);
@@ -1335,6 +1375,29 @@ cdbexplain_showExecStatsEnd(struct CdbExplain_ShowStatCtx  *showstatctx,
         if (sliceIndex < 10)
             appendStringInfoChar(str, ' ');
         tab = str->len - startlen;
+
+        /* Worker counts (if not all were executed successfully) */
+        if (ss->slice &&
+            ss->slice->gangSize > 0 &&
+            ss->slice->gangSize != ss->dispatchSummary.nOk)
+        {
+            appendStringInfo(str,
+                             "Worker status: %d ok",
+                             ss->dispatchSummary.nOk);
+            if (ss->dispatchSummary.nError > 0)
+                appendStringInfo(str,
+                                 ", %d error",
+                                 ss->dispatchSummary.nError);
+            if (ss->dispatchSummary.nCanceled > 0)
+                appendStringInfo(str,
+                                 ", %d canceled",
+                                 ss->dispatchSummary.nCanceled);
+            if (ss->dispatchSummary.nNotDispatched > 0)
+                appendStringInfo(str,
+                                 ", %d not dispatched",
+                                 ss->dispatchSummary.nNotDispatched);
+            appendStringInfoString(str, ".  ");
+        }
 
         /* Executor memory high-water mark */
         cdbexplain_formatMemory(maxbuf, ss->peakmemused.vmax);
