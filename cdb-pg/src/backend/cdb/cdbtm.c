@@ -1916,6 +1916,11 @@ recoverInDoubtTransactions(void)
 	 * matched by a forget committed record, change its state indicating
 	 * committed notification needed.  Attempt a notification.
 	 */
+
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"Going to retry commit notification for distributed transactions (count = %d)",
+	     *shmNumGxacts);
+	dumpAllDtx();
+	
 	skipIndex = 0;
 	while (skipIndex < *shmNumGxacts)
 	{
@@ -1923,6 +1928,7 @@ recoverInDoubtTransactions(void)
 
 		if (currentGxact->state != DTX_STATE_CRASH_COMMITTED)
 		{
+			dumpAllDtx();
 			elog(PANIC, "recoverInDoubtTransactions found transaction in '%s' state and was expecting it to be in '%s' state",
 				 DtxStateToString(currentGxact->state), DtxStateToString(DTX_STATE_CRASH_COMMITTED));
 		}
@@ -2920,7 +2926,7 @@ rememberDtxExplicitBegin(void)
 		return;
 	}
 
-	setCurrentDtxTwoPhase("rememberDtxExplicitBegin", "(none)");
+//	setCurrentDtxTwoPhase("rememberDtxExplicitBegin", "(none)");
 
 	if (!currentGxact->explicitBeginRemembered)
 	{
@@ -2943,6 +2949,8 @@ void
 sendDtxExplicitBegin(void)
 {
 	rememberDtxExplicitBegin();
+	
+	setCurrentDtxTwoPhase("sendDtxExplicitBegin", "(none)");
 	
 	/*
 	 * dispatch a DTX command, in the event of an error, this call
