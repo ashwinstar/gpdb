@@ -1353,7 +1353,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 			/* add offset to each QEs requested contribution. 
 			 * ( MPP-1370: Do it even if no ORDER BY was specified) 
 			 */	
-			if (  /* current_pathkeys && */ precount && parse->limitOffset )
+			if (precount && parse->limitOffset )
 			{
 				precount = (Node*)make_op(NULL,
 										  list_make1(makeString(pstrdup("+"))),
