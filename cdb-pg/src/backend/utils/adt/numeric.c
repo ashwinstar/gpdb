@@ -2685,6 +2685,7 @@ zero_var(NumericVar *var)
  * init_var_from_str()
  *
  *	Parse a string and put the number into a variable
+ *
  */
 static void
 init_var_from_str(const char *str, NumericVar *dest)
@@ -2852,9 +2853,6 @@ init_var_from_str(const char *str, NumericVar *dest)
 
 	if (decdigits != tdd)
 		pfree(decdigits);
-
-	/* Strip any leading/trailing zeroes, and normalize weight if zero */
-	strip_var(dest);
 }
 
 
