@@ -1350,9 +1350,10 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 			Node *precount = copyObject(parse->limitCount);
 			int64 precount_est = count_est;
 			
-			/* If the input is ordered and count was specified, add offset
-			 * to each QEs requested contribution. */			
-			if ( current_pathkeys && precount && parse->limitOffset )
+			/* add offset to each QEs requested contribution. 
+			 * ( MPP-1370: Do it even if no ORDER BY was specified) 
+			 */	
+			if (  /* current_pathkeys && */ precount && parse->limitOffset )
 			{
 				precount = (Node*)make_op(NULL,
 										  list_make1(makeString(pstrdup("+"))),
