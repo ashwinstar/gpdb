@@ -1135,12 +1135,12 @@ ResCheckSelfDeadLock(LOCK *lock)
 	Cost			incrementTotals[NUM_RES_LIMIT_TYPES];
 	bool			result = false;
 
+	/* Get the resource queue lock before checking the increments.*/
+	LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
+
 	/* Get the queue for this lock.*/
 	queue = GetResQueueFromLock(lock);
 	limits = queue->limits;
-
-	/* Get the resource queue lock before checking the increments.*/
-	LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
 
 	/* Get the increment totals for this queue. */
 	TotalResPortalIncrements(MyProc->pid, queue->queueid, incrementTotals);
