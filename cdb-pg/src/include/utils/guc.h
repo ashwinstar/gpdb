@@ -117,6 +117,7 @@ extern bool Debug_print_rewritten;
 extern bool Debug_pretty_print;
 extern bool Explain_pretty_print;
 extern bool	Debug_print_full_dtm;
+extern bool Debug_disable_distributed_snapshot;
 
 extern bool log_parser_stats;
 extern bool log_planner_stats;
@@ -134,6 +135,9 @@ extern int	client_min_messages;
 extern int	log_min_duration_statement;
 
 extern int	num_temp_buffers;
+
+extern int  Debug_delay_commit_broadcast_ms;
+
 
 extern char *ConfigFileName;
 extern char *HbaFileName;

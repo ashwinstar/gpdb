@@ -1536,6 +1536,19 @@ thread_DispatchCommand(void *arg)
 				break;
 				
 			case GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
+
+				if (Debug_delay_commit_broadcast_ms > 0 &&
+					pParms->dtxProtocolParms.dtxProtocolCommand == DTX_PROTOCOL_COMMAND_COMMIT_PREPARED &&
+					dispatchResult->segdbDesc->segindex > 0)
+				{
+					if (Debug_print_full_dtm || log_min_messages <= DEBUG5)
+					{
+						write_stderr("Thread %u: Delaying commit broadcast for %d milliseconds.\n",
+						             mythread(), Debug_delay_commit_broadcast_ms);
+					}
+					pg_usleep(Debug_delay_commit_broadcast_ms * 1000);
+				}
+				
 	            dispatchCommandDtxProtocol(dispatchResult, pParms->query_text, pParms->query_text_len, 
 					                       pParms->dtxProtocolParms.dtxProtocolCommand);
 				break;

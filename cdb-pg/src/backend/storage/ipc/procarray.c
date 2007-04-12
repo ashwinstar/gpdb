@@ -799,67 +799,72 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 
 	xmax = ReadNewTransactionId();
 
-	if (DistributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE &&
-		*distributedSnapshot != NULL)
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"GetSnapshotData finds Debug_disable_distributed_snapshot = %s",
+		 (Debug_disable_distributed_snapshot ? "true" : "false"));
+	if (!Debug_disable_distributed_snapshot)
 	{
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData going to check CurrentDistributedSnapshot in-doubt xids (count = %d)",
-		     distributedSnapshotData->xcnt);
-		for (index = 0; index < distributedSnapshotData->xcnt; index++)
+		if (DistributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE &&
+			*distributedSnapshot != NULL)
 		{
-			DistributedTransactionId dxid = distributedSnapshotData->xip[index];
-			TransactionId xid = GetLocalXidForDistributedTransaction(dxid);
-
-			if (xid != InvalidTransactionId)
+			elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData going to check CurrentDistributedSnapshot in-doubt xids (count = %d)",
+			     distributedSnapshotData->xcnt);
+			for (index = 0; index < distributedSnapshotData->xcnt; index++)
 			{
-				elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData adding CurrentDistributedSnapshot in-doubt xid = %u as local xid = %u",
-					 dxid, xid);
-				
-				if (TransactionIdPrecedes(xid, xmin))
-					xmin = xid;
-				snapshot->xip[count] = xid;
-				count++;
-			}
-			else
-			{
-				elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData found CurrentDistributedSnapshot in-doubt xid = %u was invalid",
-					 dxid);
-			}
+				DistributedTransactionId dxid = distributedSnapshotData->xip[index];
+				TransactionId xid = GetLocalXidForDistributedTransaction(dxid);
 
-			// UNDONE: Unclear how to update globalxmin.
+				if (xid != InvalidTransactionId)
+				{
+					elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData adding CurrentDistributedSnapshot in-doubt xid = %u as local xid = %u",
+						 dxid, xid);
+					
+					if (TransactionIdPrecedes(xid, xmin))
+						xmin = xid;
+					snapshot->xip[count] = xid;
+					count++;
+				}
+				else
+				{
+					elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData found CurrentDistributedSnapshot in-doubt xid = %u was invalid",
+						 dxid);
+				}
+
+				// UNDONE: Unclear how to update globalxmin.
+			}
+		}
+		
+		if (DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER ||
+			DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER||
+			DistributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT)
+		{
+			elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData going to check distributedSnapshot in-doubt xids (count = %d)",
+			     QEDtxContextInfo.distributedSnapshotData.xcnt);
+			for (index = 0; index < QEDtxContextInfo.distributedSnapshotData.xcnt; index++)
+			{
+				TransactionId dxid = QEDtxContextInfo.distributedSnapshotData.xip[index];
+				TransactionId xid = GetLocalXidForDistributedTransaction(dxid);
+
+				if (xid != InvalidTransactionId)
+				{
+					elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData adding distributedSnapshotData in-doubt xid = %u as local xid = %u",
+						 dxid, xid);
+					
+					if (TransactionIdPrecedes(xid, xmin))
+						xmin = xid;
+					snapshot->xip[count] = xid;
+					count++;
+				}
+				else
+				{
+					elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData found distributedSnapshotData in-doubt xid = %u was invalid",
+						 dxid);
+				}
+
+				// UNDONE: Unclear how to update globalxmin.
+			}
 		}
 	}
 	
-	if (DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER ||
-		DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER||
-		DistributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT)
-	{
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData going to check distributedSnapshot in-doubt xids (count = %d)",
-		     QEDtxContextInfo.distributedSnapshotData.xcnt);
-		for (index = 0; index < QEDtxContextInfo.distributedSnapshotData.xcnt; index++)
-		{
-			TransactionId dxid = QEDtxContextInfo.distributedSnapshotData.xip[index];
-			TransactionId xid = GetLocalXidForDistributedTransaction(dxid);
-
-			if (xid != InvalidTransactionId)
-			{
-				elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData adding distributedSnapshotData in-doubt xid = %u as local xid = %u",
-					 dxid, xid);
-				
-				if (TransactionIdPrecedes(xid, xmin))
-					xmin = xid;
-				snapshot->xip[count] = xid;
-				count++;
-			}
-			else
-			{
-				elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData found distributedSnapshotData in-doubt xid = %u was invalid",
-					 dxid);
-			}
-
-			// UNDONE: Unclear how to update globalxmin.
-		}
-	}
-
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
 		PGPROC	   *proc = arrayP->procs[index];
@@ -882,17 +887,24 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 			proc->inVacuum)
 			continue;
 
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData checking proc->pid = %d, xid = %u, mppDistributedTransactionId = %u",
-		     proc->pid, xid, proc->mppDistributedTransactionId);
-		if (proc->mppDistributedTransactionId != InvalidDistributedTransactionId &&
-			(DistributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE ||
-		     DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER ||
-		     DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER ||
-		     DistributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT))
+		if (!Debug_disable_distributed_snapshot)
 		{
-			elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData excluding local xid = %u for distributed xid = %u",
-			     xid, proc->mppDistributedTransactionId);
-			continue;
+			/*
+			 * Exclude distributed transactions since they were added before
+			 * the proc scan for loop.
+			 */
+			elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData checking proc->pid = %d, xid = %u, mppDistributedTransactionId = %u",
+			     proc->pid, xid, proc->mppDistributedTransactionId);
+			if (proc->mppDistributedTransactionId != InvalidDistributedTransactionId &&
+				(DistributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE ||
+			     DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER ||
+			     DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER ||
+			     DistributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT))
+			{
+				elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetSnapshotData excluding local xid = %u for distributed xid = %u",
+				     xid, proc->mppDistributedTransactionId);
+				continue;
+			}
 		}
 		
 		if (TransactionIdPrecedes(xid, xmin))

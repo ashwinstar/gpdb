@@ -180,6 +180,7 @@ bool		Debug_print_rewritten = false;
 bool		Debug_pretty_print = false;
 bool		Explain_pretty_print = true;
 bool		Debug_print_full_dtm = false;
+bool		Debug_disable_distributed_snapshot = false;
 
 
 bool		log_parser_stats = false;
@@ -201,6 +202,8 @@ int			client_min_messages = NOTICE;
 int			log_min_duration_statement = -1;
 
 int			num_temp_buffers = 1000;
+
+int			Debug_delay_commit_broadcast_ms = 0;
 
 char	   *ConfigFileName;
 char	   *HbaFileName;
@@ -1276,6 +1279,15 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_print_full_dtm,
 		false, NULL, NULL
 	},
+
+	{
+		{"debug_disable_distributed_snapshot", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Disables distributed snapshots."),
+			NULL
+		},
+		&Debug_disable_distributed_snapshot,
+		false, NULL, NULL
+	},
 	
 	/* End-of-list marker */
 	{
@@ -1430,6 +1442,16 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&num_temp_buffers,
 		1024, 100, INT_MAX / 2, NULL, show_num_temp_buffers
+	},
+
+	{
+		{"debug_delay_commit_broadcast_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sets the commit broadcast delay in milliseconds."),
+			NULL,
+			GUC_UNIT_BLOCKS
+		},
+		&Debug_delay_commit_broadcast_ms,
+		0, 0, INT_MAX / 1000, NULL, NULL
 	},
 
 	{

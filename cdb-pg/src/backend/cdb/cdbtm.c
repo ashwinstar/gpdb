@@ -544,7 +544,7 @@ doNotifyingCommitted(void)
 	if (!succeeded)
 	{
 		elog(WARNING, "The distributed transaction 'Commit Notification' broadcast to one or more segments failed for gid = %s. "
-			 "The system will retry again later",
+			 "The system will retry again later.",
 			 currentGxact->gid);
 	}
 	else
@@ -1296,7 +1296,7 @@ doDispatchDtxProtocolCommand(
 
 	if (errbuf.len > 0)
 	{
-		ereport((raiseError ? ERROR : WARNING), (errmsg("DTM error (gathered %d results from cmd '%s')", resultCount, dtxProtocolCommandStr),
+		ereport((raiseError ? ERROR : LOG), (errmsg("DTM error (gathered %d results from cmd '%s')", resultCount, dtxProtocolCommandStr),
 						errdetail("%s", errbuf.data)));
 		return false;
 	}
