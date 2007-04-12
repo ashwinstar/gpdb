@@ -3,6 +3,7 @@
  * pquery.c
  *	  POSTGRES process query command code
  *
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -701,22 +702,38 @@ PortalRun(Portal portal, long count,
 
 			case PORTAL_ONE_RETURNING:
 			case PORTAL_UTIL_SELECT:
+                /*
+                 * CDB: If no row limit, let utility command output go
+                 * directly to client, bypassing the tuplestore.  Might
+                 * work for PORTAL_ONE_RETURNING also, but for now this
+                 * is mainly for EXPLAIN so partial output can be given
+                 * even if execution is interrupted by an error.  See
+                 * http://archives.postgresql.org/pgsql-hackers/2006-08/msg00787.php
+                 */
+                if (count == FETCH_ALL &&
+                    portal->strategy == PORTAL_UTIL_SELECT)
+                {
+			        PortalRunUtility(portal, linitial(portal->parseTrees),
+							         dest, completionTag);
+                }
+                else
+                {
+				    /*
+				     * If we have not yet run the command, do so, storing its
+				     * results in the portal's tuplestore.
+				     */
+				    if (!portal->holdStore)
+					    FillPortalStore(portal);
 
-				/*
-				 * If we have not yet run the command, do so, storing its
-				 * results in the portal's tuplestore.
-				 */
-				if (!portal->holdStore)
-					FillPortalStore(portal);
+				    /*
+				     * Now fetch desired portion of results.
+				     */
+				    (void) PortalRunSelect(portal, true, count, dest);
 
-				/*
-				 * Now fetch desired portion of results.
-				 */
-				(void) PortalRunSelect(portal, true, count, dest);
-
-				/* we know the query is supposed to set the tag */
-				if (completionTag && portal->commandTag)
-					strcpy(completionTag, portal->commandTag);
+				    /* we know the query is supposed to set the tag */
+				    if (completionTag && portal->commandTag)
+					    strcpy(completionTag, portal->commandTag);
+                }
 
 				/* Mark portal not active */
 				portal->status = PORTAL_READY;

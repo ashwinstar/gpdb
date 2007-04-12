@@ -113,8 +113,9 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
  * freeing all at once.
  */
 void
-cdbexplain_showExecStatsEnd(struct CdbExplain_ShowStatCtx  *ctx,
-                            struct StringInfoData          *str);
+cdbexplain_showExecStatsEnd(struct CdbExplain_ShowStatCtx  *showstatctx,
+                            struct StringInfoData          *str,
+                            struct EState                  *estate);
 
 
 #endif   /* CDBEXPLAIN_H */

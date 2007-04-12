@@ -671,7 +671,26 @@ ExecutorRun(QueryDesc *queryDesc,
     }
 	PG_CATCH();
 	{
-		mppExecutorCleanup(estate);
+        /* If EXPLAIN ANALYZE, let qExec try to return stats to qDisp. */
+        if (estate->es_sliceTable &&
+            estate->es_sliceTable->doInstrument &&
+            Gp_role == GP_ROLE_EXECUTE)
+        {
+            PG_TRY();
+            {
+                cdbexplain_sendExecStats(queryDesc);
+            }
+            PG_CATCH();
+            {
+                /* Close down interconnect etc. */
+                mppExecutorCleanup(estate);
+		        PG_RE_THROW();
+            }
+            PG_END_TRY();
+        }
+
+        /* Close down interconnect etc. */
+        mppExecutorCleanup(estate);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();

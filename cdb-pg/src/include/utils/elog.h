@@ -297,7 +297,26 @@ extern void EmitErrorReport(void);
 extern ErrorData *CopyErrorData(void);
 extern void FreeErrorData(ErrorData *edata);
 extern void FlushErrorState(void);
-extern void ReThrowError(ErrorData *edata);
+extern void ReThrowError(ErrorData *edata)  __attribute__((__noreturn__));
+
+/*
+ * CDB: elog_demote
+ *
+ * A PG_CATCH() handler can call this to downgrade the error that it is
+ * currently handling to a level lower than ERROR.  The caller should
+ * then do PG_RE_THROW() to proceed to the next error handler.  
+ *
+ * Clients using libpq cannot receive normal output together with an error.
+ * The libpq frontend discards any results already buffered when a command
+ * completes with an error notification of level ERROR or higher.  
+ *
+ * elog_demote() can be used to reduce the error level reported to the client
+ * so that libpq won't suppress normal output, while the backend still frees
+ * resources, aborts the transaction, etc, as usual.
+ *
+ * Returns true if successful, false if the request is disallowed.
+ */
+bool        elog_demote(int downgrade_to_elevel);
 
 /*
  * CDB: elog_dismiss 
@@ -306,9 +325,13 @@ extern void ReThrowError(ErrorData *edata);
  * currently handling to a level lower than ERROR, report it to the log
  * and/or client as appropriate, and purge it from the error system.
  *
- * Returns true if successful, in which case the error has been fully
- * handled and the caller should not do PG_RE_THROW(), but should instead 
- * fall or jump out of the PG_CATCH() handler and resume normal execution.
+ * This shouldn't be attempted unless the caller is certain that the
+ * error does not need the services of upper level error handlers to
+ * release resources, abort the transaction, etc.
+ *
+ * Returns true if successful, in which case the error has been expunged
+ * and the caller should not do PG_RE_THROW(), but should instead fall or
+ * jump out of the PG_CATCH() handler and resume normal execution.
  *
  * Returns false if unsuccessful; then the caller should carry on as 
  * PG_CATCH() handlers ordinarily do, and exit via PG_RE_THROW().  

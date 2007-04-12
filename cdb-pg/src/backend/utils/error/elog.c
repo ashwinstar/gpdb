@@ -1185,7 +1185,7 @@ ReThrowError(ErrorData *edata)
 {
 	ErrorData  *newedata;
 
-	Assert(edata->elevel == ERROR);
+	Assert(edata->elevel <= ERROR); /* CDB: Ok to rethrow elog_demote'd error */
 
 	/* Push the data back into the error context */
 	recursion_depth++;
@@ -1223,15 +1223,54 @@ ReThrowError(ErrorData *edata)
 
 
 /*
+ * CDB: elog_demote
+ *
+ * A PG_CATCH() handler can call this to downgrade the error that it is
+ * currently handling to a level lower than ERROR.  The caller should
+ * then do PG_RE_THROW() to proceed to the next error handler.
+ *
+ * Clients using libpq cannot receive normal output together with an error.
+ * The libpq frontend discards any results already buffered when a command 
+ * completes with an error notification of level ERROR or higher.
+ *
+ * elog_demote() can be used to reduce the error level reported to the client
+ * so that libpq won't suppress normal output, while the backend still frees
+ * resources, aborts the transaction, etc, as usual.
+ *
+ * Returns true if successful, false if the request is disallowed.
+ */
+bool
+elog_demote(int downgrade_to_elevel)
+{
+    ErrorData  *edata = &errordata[errordata_stack_depth];
+
+    if (downgrade_to_elevel >= ERROR ||
+        recursion_depth != 0 ||
+        errordata_stack_depth < 0 ||
+        errordata_stack_depth >= ERRORDATA_STACK_SIZE - 1 ||
+        edata->elevel > ERROR ||
+        edata->elevel < downgrade_to_elevel)
+        return false;
+
+    edata->elevel = downgrade_to_elevel;
+    return true;
+}                               /* elog_demote */
+
+
+/*
  * CDB: elog_dismiss
  *
  * A PG_CATCH() handler can call this to downgrade the error that it is
  * currently handling to a level lower than ERROR, report it to the log
  * and/or client as appropriate, and purge it from the error system.
  *
- * Returns true if successful, in which case the error has been fully
- * handled and the caller should not do PG_RE_THROW(), but should instead
- * fall or jump out of the PG_CATCH() handler and resume normal execution.
+ * This shouldn't be attempted unless the caller is certain that the
+ * error does not need the services of upper level error handlers to
+ * release resources, abort the transaction, etc.
+ *
+ * Returns true if successful, in which case the error has been expunged
+ * and the caller should not do PG_RE_THROW(), but should instead fall or
+ * jump out of the PG_CATCH() handler and resume normal execution.
  *
  * Returns false if unsuccessful; then the caller should carry on as
  * PG_CATCH() handlers ordinarily do, and exit via PG_RE_THROW().
@@ -1247,7 +1286,7 @@ elog_dismiss(int downgrade_to_elevel)
         recursion_depth != 0 ||
         errordata_stack_depth < 0 ||
         errordata_stack_depth >= ERRORDATA_STACK_SIZE - 1 ||
-        edata->elevel != ERROR)
+        edata->elevel > ERROR)
         return false;
 
     /*

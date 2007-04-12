@@ -28,6 +28,7 @@
 #include "optimizer/var.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteHandler.h"
+#include "tcop/utility.h"               /* CreateQueryTag() */
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
@@ -40,15 +41,12 @@
 
 typedef struct ExplainState
 {
-	/* options */
-	bool		printNodes;		/* do nodeToString() too */
-	bool		printAnalyze;	/* print actual times */
-	/* other states */
 	List	   *rtable;			/* range table */
 
     /* CDB */
     struct CdbExplain_ShowStatCtx  *showstatctx;    /* EXPLAIN ANALYZE info */
     Slice          *currentSlice;   /* slice whose nodes we are visiting */
+    ErrorData      *deferredError;  /* caught error to be re-thrown */
     MemoryContext   explaincxt;     /* mem pool for palloc()ing buffers etc. */
     TupOutputState *tupOutputState; /* for sending output to client */
 	StringInfoData  outbuf;         /* the output buffer */
@@ -62,6 +60,7 @@ ExplainOnePlan_internal(QueryDesc      *queryDesc,
                         ExplainStmt    *stmt,
                         ExplainState   *es);
 static double elapsed_time(instr_time *starttime);
+static ErrorData *explain_defer_error(ExplainState *es);
 static void explain_outNode(StringInfo str,
 				Plan *plan, PlanState *planstate,
 				Plan *outer_plan,
@@ -270,6 +269,7 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
     memset(es, 0, sizeof(*es));
     es->explaincxt = explaincxt;
     es->showstatctx = NULL;
+    es->deferredError = NULL;
     es->tupOutputState = tstate;
 
     /* Allocate output buffer and a scratch buffer. */
@@ -278,31 +278,16 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 	initStringInfoOfSize(&es->outbuf, 16000);
     MemoryContextSwitchTo(oldcxt);
 
+    /* Do the EXPLAIN. */
     PG_TRY();
     {
-        /* Do the EXPLAIN. */
-        ExplainOnePlan_internal(queryDesc,
-                                stmt,
-                                es);
-
-        /* Send EXPLAIN report to client. */
-        if (es->outbuf.len > 0)
-        {
-            es->outbuf.len = 0;
-            do_text_output_multiline(tstate, es->outbuf.data);
-        }
+        ExplainOnePlan_internal(queryDesc, stmt, es);
     }
     PG_CATCH();
     {
-        MemoryContext   savecxt = MemoryContextSwitchTo(oldcxt);
-
-        /* Send EXPLAIN report to client, if didn't attempt it above. */
-        if (es->outbuf.len > 0)
-	        do_text_output_multiline(tstate, es->outbuf.data);
-
         /* Free the memory we used. */
-        if (savecxt != explaincxt)
-            MemoryContextSwitchTo(savecxt);
+        if (CurrentMemoryContext == explaincxt)
+            MemoryContextSwitchTo(oldcxt);
         MemoryContextDelete(explaincxt);
 
         /* Exit to next error handler. */
@@ -362,50 +347,60 @@ ExplainOnePlan_internal(QueryDesc      *queryDesc,
     /* CDB: Find slice table entry for the root slice. */
     es->currentSlice = getCurrentSlice(estate, estate->es_cur_slice_idx);
 
-    /* Execute the plan for statistics if asked for */
+    /*
+     * Execute the plan for statistics if asked for.  Attempt to proceed
+     * with our report even if there is an error.
+     */
 	if (stmt->analyze)
 	{
 		/* run the plan */
-		ExecutorRun(queryDesc, ForwardScanDirection, 0L);
+        PG_TRY();
+        {
+		    ExecutorRun(queryDesc, ForwardScanDirection, 0L);
+        }
+        PG_CATCH();
+        {
+            es->deferredError = explain_defer_error(es);
+        }
+        PG_END_TRY();
+
+        /* Wait for completion of all qExec processes. */
+        PG_TRY();
+        {
+            if (estate->primaryResults)
+                CdbCheckDispatchResult(estate->dispatchThreads, false);	
+        }
+        PG_CATCH();
+        {
+            es->deferredError = explain_defer_error(es);
+        }
+        PG_END_TRY();
+
+        /* Suspend timing. */
+	    totaltime += elapsed_time(&starttime);
 
         /* Get local stats if root slice was executed here in the qDisp. */
         if (!es->currentSlice ||
             sliceRunsOnQD(es->currentSlice))
             cdbexplain_localExecStats(queryDesc->planstate, es->showstatctx);
 
-        /* Did we delegate (some or all of) the execution to qExecs? */
+        /* Fill in the plan's Instrumentation with stats from qExecs. */
         if (estate->primaryResults)
-        {
-            /* Wait for completion of all qExec processes. */
-            CdbCheckDispatchResult(estate->dispatchThreads ,false);	
-
-		    totaltime += elapsed_time(&starttime);
-
-            /* Fill in the plan's Instrumentation with stats from qExecs. */
             cdbexplain_recvExecStats(queryDesc->planstate,
                                      estate->primaryResults,
                                      estate->es_cur_slice_idx,
                                      es->showstatctx);
-        }
-
-        /* We can't clean up 'till we're done printing the stats... */
-        else
-		    totaltime += elapsed_time(&starttime);
 	}
 
-	es->printNodes = stmt->verbose;
-	es->printAnalyze = stmt->analyze;
 	es->rtable = queryDesc->parsetree->rtable;
 
-    /*
-     * Switch to EXPLAIN memory context.
-     */
-    MemoryContextSwitchTo(es->explaincxt);
-
-    if (es->printNodes)
+    if (stmt->verbose)
 	{
 		char	   *s;
 		char	   *f;
+
+        /* Switch to EXPLAIN memory context. */
+        MemoryContextSwitchTo(es->explaincxt);
 
 		if (queryDesc->plantree && estate->es_sliceTable)
 		{
@@ -429,39 +424,55 @@ ExplainOnePlan_internal(QueryDesc      *queryDesc,
 			else
 				f = format_node_dump(s);
 			pfree(s);
+
+            /* Restore caller's memory context. */
+            MemoryContextSwitchTo(oldcxt);
+
 			do_text_output_multiline(es->tupOutputState, f);
 			pfree(f);
 			do_text_output_oneline(es->tupOutputState, ""); /* separator line */
 		}
+
+        /* Restore caller's memory context. */
+        MemoryContextSwitchTo(oldcxt);
 	}
 
-	explain_outNode(buf, queryDesc->plantree, queryDesc->planstate,
-					NULL, 0, es);
-
     /*
-     * Restore caller's memory context.
+     * Produce the EXPLAIN report into buf.  (Sometimes we get internal errors
+     * while doing this; try to proceed with a partial report anyway.)
      */
-    MemoryContextSwitchTo(oldcxt);
+    PG_TRY();
+    {
+	    explain_outNode(buf, queryDesc->plantree, queryDesc->planstate,
+					    NULL, 0, es);
+    }
+    PG_CATCH();
+    {
+        es->deferredError = explain_defer_error(es);
+
+        /* Keep a NUL at the end of the output buffer. */
+        buf->data[Min(buf->len, buf->maxlen-1)] = '\0';
+    }
+    PG_END_TRY();
 
 	/*
 	 * If we ran the command, run any AFTER triggers it queued.  (Note this
 	 * will not include DEFERRED triggers; since those don't run until end of
 	 * transaction, we can't measure them.)  Include into total runtime.
+     * Skip triggers if there has been an error.
 	 */
-	if (stmt->analyze)
-	{
-		INSTR_TIME_SET_CURRENT(starttime);
-		AfterTriggerEndQuery(queryDesc->estate);
-		totaltime += elapsed_time(&starttime);
-	}
-
-	/* Print info about runtime of triggers */
-	if (es->printAnalyze)
+	if (stmt->analyze &&
+        !es->deferredError)
 	{
 		ResultRelInfo *rInfo;
 		int			numrels = queryDesc->estate->es_num_result_relations;
 		int			nr;
 
+		INSTR_TIME_SET_CURRENT(starttime);
+		AfterTriggerEndQuery(queryDesc->estate);
+		totaltime += elapsed_time(&starttime);
+
+	    /* Print info about runtime of triggers */
 		rInfo = queryDesc->estate->es_result_relations;
 		for (nr = 0; nr < numrels; rInfo++, nr++)
 		{
@@ -510,7 +521,7 @@ ExplainOnePlan_internal(QueryDesc      *queryDesc,
      * Display per-slice and whole-query statistics.
      */
     if (stmt->analyze)
-        cdbexplain_showExecStatsEnd(es->showstatctx, buf);
+        cdbexplain_showExecStatsEnd(es->showstatctx, buf, estate);
 
     /*
      * Show non-default GUC settings that might have affected the plan.
@@ -523,35 +534,67 @@ ExplainOnePlan_internal(QueryDesc      *queryDesc,
         appendStringInfoChar(buf, '\n');
     }
 
-	/*
-	 * Close down the query and free resources.  Include time for this in the
-	 * total runtime (although it should be pretty minimal).
-     *
-     * We don't have to pfree() our buffers because the caller frees them by
-     * deleting explaincxt.
-     *
-     * Note that if a qExec failed or gave an error, ExecutorEnd() will
-     * reissue the error locally at this point.  We send our output to
-     * the client before this so it won't get lost due to a qExec error.
-	 */
-	INSTR_TIME_SET_CURRENT(starttime);
-
-	ExecutorEnd(queryDesc);
-
-	FreeQueryDesc(queryDesc);
-
-	/* We need a CCI just in case query expanded to multiple plans */
-	if (stmt->analyze)
-		CommandCounterIncrement();
-
-	totaltime += elapsed_time(&starttime);
-
     /*
      * Display final elapsed time.
      */
 	if (stmt->analyze)
 		appendStringInfo(buf, "Total runtime: %.3f ms\n",
 						 1000.0 * totaltime);
+
+    /*
+     * Send EXPLAIN report to client.  Some might have been sent already
+     * by explain_outNode().
+     */
+    if (buf->len > 0)
+        do_text_output_multiline(es->tupOutputState, buf->data);
+
+    /*
+	 * Close down the query and free resources.
+     *
+     * We don't have to pfree() our buffers because the caller frees them by
+     * deleting explaincxt.
+     *
+     * For EXPLAIN ANALYZE, if a qExec failed or gave an error, ExecutorEnd()
+     * will reissue the error locally at this point.  Intercept any such error
+     * and reduce it to a NOTICE so it won't interfere with our output.
+	 */
+    PG_TRY();
+    {
+	    ExecutorEnd(queryDesc);
+    }
+    PG_CATCH();
+    {
+        es->deferredError = explain_defer_error(es);
+    }
+    PG_END_TRY();
+
+    /*
+     * If we intercepted an error, now's the time to re-throw it.
+     * Although we have marked it as a NOTICE instead of an ERROR,
+     * it will still get the same error handling and cleanup treatment.
+     *
+     * We must call EndCommand() to send a successful completion response;
+     * otherwise libpq clients just discard the nice report they have received.
+     * Oddly, the NOTICE will be sent *after* the success response; that
+     * should be good enough for now.
+     */
+    if (es->deferredError)
+    {
+        ErrorData  *edata = es->deferredError;
+
+        /* Tell client the command ended successfully. */
+        EndCommand("EXPLAIN", es->tupOutputState->dest->mydest);
+
+        /* Resume handling the error.  Clean up and send the NOTICE message. */
+        es->deferredError = NULL;
+        ReThrowError(edata);
+    }
+
+    FreeQueryDesc(queryDesc);
+
+	/* We need a CCI just in case query expanded to multiple plans */
+	if (stmt->analyze)
+		CommandCounterIncrement();
 }                               /* ExplainOnePlan_internal */
 
 
@@ -565,6 +608,43 @@ elapsed_time(instr_time *starttime)
     InstrTimeSubtract(&endtime, &endtime, starttime);
 	return INSTR_TIME_GET_DOUBLE(endtime);
 }
+
+
+/*
+ * explain_defer_error
+ *    Called within PG_CATCH handler to demote and save the current error.
+ *
+ * We'll try to postpone the error cleanup until after we have produced
+ * the EXPLAIN ANALYZE report, and then reflect the error to the client as
+ * merely a NOTICE (because an ERROR causes libpq clients to discard the
+ * report).
+ *
+ * If successful, upon return we fall thru the bottom of the PG_CATCH
+ * handler and continue sequentially.  Otherwise we re-throw to the
+ * next outer error handler.
+ */
+ErrorData *
+explain_defer_error(ExplainState *es)
+{
+    ErrorData  *edata;
+
+    /* Already saved an earlier error?  Rethrow it now. */
+    if (es->deferredError)
+        ReThrowError(es->deferredError);    /* does not return */
+
+    /* Try to downgrade the error to a NOTICE.  Rethrow if disallowed. */
+    if (!elog_demote(NOTICE))
+        PG_RE_THROW();
+
+    /* Save the error info and expunge it from the error system. */
+    MemoryContextSwitchTo(es->explaincxt);
+    edata = CopyErrorData();
+    FlushErrorState();
+
+    /* Caller must eventually ReThrowError() for proper cleanup. */
+    return edata;
+}                               /* explain_defer_error */
+
 
 /*
  * explain_outNode -
@@ -1332,6 +1412,13 @@ explain_outNode(StringInfo str,
 		}
 		es->rtable = saved_rtable;
 	}
+
+    /* CDB: Empty the output buffer if it's more than half full. */
+    if (str->len*2 > str->maxlen)
+    {
+        do_text_output_multiline(es->tupOutputState, str->data);
+        truncateStringInfo(str, 0);
+    }
 
     es->currentSlice = currentSlice;    /* restore */
 }                               /* explain_outNode */
