@@ -862,6 +862,59 @@ AtExitCleanup_ResPortals(void)
 	}
 }
 
+
+/*
+ * TotalResPortalIncrements --  Calculate a total increment for all my 
+ * resource portals for a given queueid.
+ *
+ * Note:
+ *	Requires the ResQueueLock to be held before calling.
+ *	We are deliberately obscure about the type of totalIncrements as
+ *	don't want portal.h to need to include ressscheuler.h.
+ */
+void
+TotalResPortalIncrements(int pid, Oid queueid, Cost *totalIncrements)
+{
+	HASH_SEQ_STATUS 	status;
+	PortalHashEnt		*hentry;
+	ResPortalIncrement	*incrementSet;
+	ResPortalTag		portalTag;
+
+	int					i;
+
+	/* ensure the total is initialized to zero */
+	for (i = 0; i < NUM_RES_LIMIT_TYPES; i++)
+		totalIncrements[i] = 0;
+
+	hash_seq_init(&status, PortalHashTable);
+
+	while ((hentry = (PortalHashEnt *) hash_seq_search(&status)) != NULL)
+	{
+		Portal		portal = hentry->portal;
+
+
+		if (portal->queueId == queueid)
+		{
+			/*
+			 * Get the increment for this portal, skip if we can't find an
+			 * increment (should never happen in fact).
+			 */
+			MemSet(&portalTag, 0, sizeof(ResPortalTag));
+			portalTag.pid = pid;
+			portalTag.portalId = portal->portalId;
+
+			incrementSet = ResIncrementFind(&portalTag);
+			if (!incrementSet)
+				continue;
+
+			/* Add its increments to the total. */
+			for (i = 0; i < NUM_RES_LIMIT_TYPES; i++)
+				totalIncrements[i] += incrementSet->increments[i];
+		}
+	}
+}
+
+
 /* Find all available cursors */
 Datum
 pg_cursor(PG_FUNCTION_ARGS)

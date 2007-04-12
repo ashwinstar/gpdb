@@ -145,6 +145,7 @@ extern void				ResWaitOnLock(LOCALLOCK *locallock,
 extern void				ResProcLockWakeup(LOCK *lock);
 extern PGPROC 			*ResProcWakeup(PGPROC *proc, int waitStatus);
 extern void				ResRemoveFromWaitQueue(PGPROC *proc, uint32 hashcode);
+extern bool				ResCheckSelfDeadLock(LOCK *lock);
 extern ResPortalIncrement	*ResIncrementAdd(ResPortalIncrement *incSet,
 											PROCLOCK *proclock,
 											ResourceOwner owner);

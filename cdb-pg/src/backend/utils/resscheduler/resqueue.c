@@ -1120,6 +1120,67 @@ ResRemoveFromWaitQueue(PGPROC *proc, uint32 hashcode)
 
 
 /*
+ * ResCheckSelfDeadLock -- Check to see if I am going to deadlock myself. 
+ *
+ * What happens here is we scan our own set of portals and total up the
+ * increments. If this exceeds any of the thresholds for the queue then
+ * we need to signal that a self deadlock is about to occurr.
+ */
+bool
+ResCheckSelfDeadLock(LOCK *lock)
+{
+	ResQueue		queue;
+	ResLimit		limits;
+	int				i;
+	Cost			incrementTotals[NUM_RES_LIMIT_TYPES];
+	bool			result = false;
+
+	/* Get the queue for this lock.*/
+	queue = GetResQueueFromLock(lock);
+	limits = queue->limits;
+
+	/* Get the resource queue lock before checking the increments.*/
+	LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
+
+	/* Get the increment totals for this queue. */
+	TotalResPortalIncrements(MyProc->pid, queue->queueid, incrementTotals);
+	
+	/* 
+	 * Now check them against the thresholds using the same logic as
+	 * ResLockCheckLimit.
+	 */
+	for (i = 0; i < NUM_RES_LIMIT_TYPES; i++)
+	{
+		if (limits[i].threshold_value == INVALID_RES_LIMIT_THRESHOLD)
+			continue;
+
+		switch (limits[i].type)
+		{
+			case RES_COUNT_LIMIT:
+			{
+				if (incrementTotals[i] > limits[i].threshold_value)
+					result = true;
+			}
+			break;
+
+			case RES_COST_LIMIT:
+			{
+				if (incrementTotals[i] > limits[i].threshold_value)
+					result = true;
+			}
+			break;
+		}
+	
+	}
+
+	LWLockRelease(ResQueueLock);
+
+	return result;
+
+}
+
+
+/*
  * ResPortalIncrementHashTableInit - Initialize the increment hash.
  *
  * Notes:

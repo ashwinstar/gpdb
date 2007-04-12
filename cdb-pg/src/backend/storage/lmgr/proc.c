@@ -1413,10 +1413,6 @@ ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock)
 	uint32		hashcode = locallock->hashcode;
 	LWLockId	partitionLock = LockHashPartitionLock(hashcode);
 
-	/* Variables for self lock check. */
-	SHM_QUEUE	*oprocLocks;
-	PROCLOCK	*oproclock;
-	PGPROC		*oproc;
 	bool		selflock = true;		/* initialize result for error. */
 
 	/*
@@ -1440,41 +1436,8 @@ ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock)
 	/* Mark that we are waiting for a lock */
 	lockAwaited = locallock;
 
-	/*
-	 * Check to see if I am going to deadlock against myself, scan the 
-	 * locks list of proclocks and see if every other holder has 
-	 * pid equal to MyProc->pid or not. 
-	 *
-	 * Note that we start with selflock true, so if there are no holders
-	 * we count this as a self deadlock too (however we trap this situation
-	 * earlier in ResLockAcquire).
-	 */
-	oprocLocks = &(lock->procLocks);
-	oproclock = (PROCLOCK *) SHMQueueNext(oprocLocks, oprocLocks, 
-										  offsetof( PROCLOCK, lockLink));
-
-	while(oproclock)
-	{
-		/* If we hold the lock. */
-		if (oproclock->holdMask & LOCKBIT_ON(lockmode))
-		{
-			/* Get the proc entry for this proclock. */
-			oproc = oproclock->tag.myProc;
-
-			/* If someone else holds the lock, we cannot be self deadlocking.*/
-			if ( oproc->pid != MyProc->pid)
-			{
-				selflock = false;
-				break;				/* seen enough - stop looking. */
-			}
-		}
-
-		/* Get the next proclock. */
-		oproclock = (PROCLOCK *) SHMQueueNext(oprocLocks, &oproclock->lockLink, 
-											  offsetof( PROCLOCK, lockLink));
-	}
-
 	/* Now check the status of the self lock footgun. */
+	selflock = ResCheckSelfDeadLock(lock);
 	if (selflock)
 	{
 		LWLockRelease(partitionLock);
