@@ -1373,6 +1373,11 @@ DoPortalRunFetch(Portal portal,
 			{
 				fdirection = FETCH_BACKWARD;
 				count = -count;
+				
+				/* until we enable backward scan - bail out here */
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+						 errmsg("backward scan is not supported")));				
 			}
 			/* fall out of switch to share code with FETCH_BACKWARD */
 			break;
@@ -1381,6 +1386,13 @@ DoPortalRunFetch(Portal portal,
 			{
 				fdirection = FETCH_FORWARD;
 				count = -count;
+			}
+			else
+			{
+				/* until we enable backward scan - bail out here */
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+						 errmsg("backward scan is not supported")));				
 			}
 			/* fall out of switch to share code with FETCH_FORWARD */
 			break;
@@ -1397,6 +1409,12 @@ DoPortalRunFetch(Portal portal,
 				if (portal->posOverflow || portal->portalPos == LONG_MAX ||
 					count - 1 <= portal->portalPos / 2)
 				{
+					/* until we enable backward scan - bail out here */
+					if(portal->portalPos > 0)
+						ereport(ERROR,
+								(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+								 errmsg("backward scan is not supported")));				
+					
 					DoPortalRewind(portal);
 					if (count > 1)
 						PortalRunSelect(portal, true, count - 1,
@@ -1426,6 +1444,12 @@ DoPortalRunFetch(Portal portal,
 				 * (Is it worth considering case where count > half of size of
 				 * query?  We could rewind once we know the size ...)
 				 */
+				
+				/* until we enable backward scan - bail out here */
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+						 errmsg("backward scan is not supported")));				
+				
 				PortalRunSelect(portal, true, FETCH_ALL, None_Receiver);
 				if (count < -1)
 					PortalRunSelect(portal, false, -count - 1, None_Receiver);
@@ -1434,6 +1458,12 @@ DoPortalRunFetch(Portal portal,
 			else
 			{
 				/* count == 0 */
+				
+				/* until we enable backward scan - bail out here */
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+						 errmsg("backward scan is not supported")));				
+				
 				/* Rewind to start, return zero rows */
 				DoPortalRewind(portal);
 				return PortalRunSelect(portal, true, 0L, dest);
@@ -1455,6 +1485,12 @@ DoPortalRunFetch(Portal portal,
 				 * Definition: back up abs(count)-1 rows, return prior row (if
 				 * any).
 				 */
+				
+				/* until we enable backward scan - bail out here */
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+						 errmsg("backward scan is not supported")));				
+				
 				if (count < -1)
 					PortalRunSelect(portal, false, -count - 1, None_Receiver);
 				return PortalRunSelect(portal, false, 1L, dest);
@@ -1518,6 +1554,11 @@ DoPortalRunFetch(Portal portal,
 	{
 		long		result = portal->portalPos;
 
+		/* until we enable backward scan - bail out here */
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+				 errmsg("backward scan is not supported")));				
+		
 		if (result > 0 && !portal->atEnd)
 			result--;
 		DoPortalRewind(portal);
