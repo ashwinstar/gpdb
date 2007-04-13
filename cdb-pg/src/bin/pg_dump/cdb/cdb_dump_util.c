@@ -505,7 +505,11 @@ void mpp_err_msg(const char *loglevel, const char *prog, const char *fmt,...)
 	va_start(ap, fmt);
 	fprintf(stderr, "%s|%s-[%s]:-", GetTimeNow(), prog, loglevel);
 	vfprintf(stderr, gettext(fmt), ap);
-	vsprintf(predump_errmsg, gettext(fmt), ap); /* cache a copy of the message */
+	va_end(ap);
+	
+	/* cache a copy of the message - we may need it for a report */
+	va_start(ap, fmt);
+	vsprintf(predump_errmsg, gettext(fmt), ap); 
 	va_end(ap);
 }
 
