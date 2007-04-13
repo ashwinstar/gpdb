@@ -914,6 +914,7 @@ ExecCheckXactReadOnly(Query *parsetree)
 {
 	ListCell   *l;
     int         rti;
+    int			changesTempTables = 0;
 
 	/*
 	 * CREATE TABLE AS or SELECT INTO?
@@ -944,7 +945,10 @@ ExecCheckXactReadOnly(Query *parsetree)
 			continue;
 
 		if (isTempNamespace(get_rel_namespace(rte->relid)))
+		{
+			changesTempTables = 1;
 			continue;
+		}
 
         /* CDB: Allow SELECT FOR SHARE/UPDATE * 
          * 
@@ -970,6 +974,8 @@ ExecCheckXactReadOnly(Query *parsetree)
 		
 		goto fail;
 	}
+	if (changesTempTables)
+		setCurrentDtxTwoPhase("ExecCheckXactReadOnly","(none)");
 	return;
 
 fail:
@@ -981,7 +987,7 @@ fail:
 					(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
 					 errmsg("Fault tolerance system has marked array read-only")));
 		else
-			return;
+			goto fail;
 	}
 	else if (XactReadOnly)
 		ereport(ERROR,
