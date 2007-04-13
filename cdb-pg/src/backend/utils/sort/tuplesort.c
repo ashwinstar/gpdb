@@ -987,6 +987,13 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
                     {
                          state->standardsort = true;
                     }
+
+					/* MPP-1342: limit the number of distinct values */
+					if (state->memtupcount > 20000)
+                    {
+                         state->standardsort = true;
+                    }
+
                 }
 			}
 
