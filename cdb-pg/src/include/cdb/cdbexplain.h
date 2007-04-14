@@ -22,6 +22,68 @@ struct StringInfoData;                  /* #include "lib/stringinfo.h" */
 
 struct CdbExplain_ShowStatCtx;          /* private, in "cdb/cdbexplain.c" */
 
+
+/* 
+ * Summarization of one statistic 
+ */
+typedef struct CdbExplain_Agg
+{
+    double      vmax;           /* maximum value of statistic */
+    double      vsum;           /* sum of values */
+    int         vcnt;           /* count of values > 0 */
+    int         imax;           /* id of 1st observation having maximum value */
+} CdbExplain_Agg;
+
+static inline void
+cdbexplain_agg_init0(CdbExplain_Agg *agg)
+{
+    agg->vmax = 0;
+    agg->vsum = 0;
+    agg->vcnt = 0;
+    agg->imax = 0;
+}
+
+static inline void
+cdbexplain_agg_init1(CdbExplain_Agg *agg, double v, int id)
+{
+    if (v > 0)
+    {
+        agg->vmax = v;
+        agg->vsum = v;
+        agg->vcnt = 1;
+        agg->imax = id;
+    }
+    else
+        cdbexplain_agg_init0(agg);
+}
+
+static inline bool
+cdbexplain_agg_upd(CdbExplain_Agg *agg, double v, int id)
+{
+    if (v > 0)
+    {
+        agg->vsum += v;
+        agg->vcnt++;
+
+        if (v > agg->vmax ||
+            agg->vcnt == 0)
+        {
+            agg->vmax = v;
+            agg->imax = id;
+            return true;
+        }
+    }
+    return false;
+}
+
+static inline double
+cdbexplain_agg_avg(CdbExplain_Agg *agg)
+{
+    return (agg->vcnt > 0) ? agg->vsum / agg->vcnt
+                           : 0;
+}
+
+
 /*
  * cdbexplain_localExecStats
  *    Called by qDisp to build NodeSummary and SliceSummary blocks

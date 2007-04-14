@@ -52,6 +52,8 @@ static HashAggEntry *lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *i
 static uint32 calc_hash_value(AggState* aggstate, TupleTableSlot *inputslot);
 static HashAggEntry *makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashkey);
 
+static void agg_hash_table_stat_upd(HashAggTable *ht);
+
 #define HHA_MSG_LVL DEBUG2
 
 /* Function: est_hash_tuple_size
@@ -359,23 +361,11 @@ agg_hash_initial_pass(AggState *aggstate)
     /* CDB: Report statistics for EXPLAIN ANALYZE. */
     if (aggstate->ss.ps.instrument)
     {
-        Instrumentation    *instr = aggstate->ss.ps.instrument;
-        StringInfo          hbuf = aggstate->ss.ps.cdbexplainbuf;
-        Size                workmemused;
-
         ht->num_groups_total = ht->ngroup;
-        if (noverflow > 0)
-            appendStringInfo(hbuf,
-                             "%ld groups made from %ld rows in first batch; "
-                             "%ld rows spilled to workfile\n",
-                             ht->ngroup,
-                             ht->ntuple,
-                             noverflow);
-
-        /* work_mem quota to accommodate number of entries in initial pass */
-        workmemused = ht->ngroup * ht->hats.workmem_per_entry +
-                      ht->hats.workmem_initial;
-        instr->workmemused = Max(instr->workmemused, workmemused);
+        ht->ngroup_initial = ht->ngroup;
+        ht->ntuple_initial = ht->ntuple;
+        ht->noverflow_initial = noverflow;
+        agg_hash_table_stat_upd(ht);
     }
 }
 
@@ -436,30 +426,55 @@ agg_hash_next_pass(AggState *aggstate)
     {
         Instrumentation    *instr = aggstate->ss.ps.instrument;
         StringInfo          hbuf = aggstate->ss.ps.cdbexplainbuf;
+        Size                wmem;
 
+        /* work_mem setting that would suffice to hold all groups in memory */
+        if (ht->ngroup > ht->max_entries)
+        {
+            wmem = ht->ngroup * ht->hats.workmem_per_entry +
+                   ht->hats.workmem_initial;
+            instr->workmemwanted = Max(instr->workmemwanted, wmem);
+        }
+
+        /* work_mem quota to accommodate number of entries in initial pass */
+        wmem = ht->ngroup_initial * ht->hats.workmem_per_entry + 
+               ht->hats.workmem_initial;
+        instr->workmemused = Max(instr->workmemused, wmem);
+
+        /* Summary */
         if (ht->ngroup < ht->num_groups_total ||
-            ht->num_overflow_batches > 0)
+            ht->num_reloads > 0)
         {
             /* Note change in terminology for user consumption: batch vs pass */
             appendStringInfo(hbuf, 
                              "%.0f groups total in %d batches"
                              "; %d respill passes" 
-                             "; %.0f respill rows",
+                             "; %.0f respill rows.",
                              ht->num_groups_total,
                              nbatch,
-                             ht->num_overflow_batches,
+                             1 + ht->num_reloads - nbatch,
                              ht->num_overflow_rows);
             appendStringInfoChar(hbuf, '\n');
         }
 
-        /* work_mem setting that would suffice to hold all groups in memory */
-        if (ht->ngroup > ht->max_entries)
-        {
-            Size    workmemwanted = ht->ngroup * ht->hats.workmem_per_entry +
-                                    ht->hats.workmem_initial;
+        /* Initial pass */
+        if (ht->noverflow_initial > 0)
+            appendStringInfo(hbuf,
+                             "Initial pass:  %ld groups made from %ld rows; "
+                             "%ld rows spilled to workfile.\n",
+                             ht->ngroup_initial,
+                             ht->ntuple_initial,
+                             ht->noverflow_initial);
 
-            instr->workmemwanted = Max(instr->workmemwanted, workmemwanted);
-        }
+        /* Hash chain statistics */
+        if (ht->chainlength.vcnt > 0)
+            appendStringInfo(hbuf,
+                             "Hash chain length %.1f avg, %.0f max,"
+                             " using %d of %d buckets.\n",
+                             cdbexplain_agg_avg(&ht->chainlength),
+                             ht->chainlength.vmax,
+                             ht->chainlength.vcnt,
+                             ht->nbucket * (ht->num_reloads + 1));
     }
 
 	return false;
@@ -605,7 +620,7 @@ agg_hash_reload(AggState *aggstate)
         Instrumentation    *instr = aggstate->ss.ps.instrument;
         Size                workmemused;
 
-        ht->num_overflow_batches++;
+        ht->num_reloads++;
         ht->num_overflow_rows += noverflow;
         ht->num_groups_total += ngroup;
 
@@ -613,6 +628,9 @@ agg_hash_reload(AggState *aggstate)
         workmemused = ngroup * ht->hats.workmem_per_entry +
                       ht->hats.workmem_initial;
         instr->workmemused = Max(instr->workmemused, workmemused);
+
+        /* hash chain statistics */
+        agg_hash_table_stat_upd(ht);
     }
 
 	return true; /* Got some more tuples. */
@@ -1273,3 +1291,27 @@ batch_close(HashAggTable *hashtable, int batch)
 	
 	info->ntuples = 0;
 }
+
+
+/*
+ * agg_hash_table_stat_upd
+ *      collect hash chain statistics for EXPLAIN ANALYZE
+ */
+void
+agg_hash_table_stat_upd(HashAggTable *ht)
+{
+    int     i;
+
+    for (i = 0; i < ht->nbucket; i++)
+    {
+        HashAggEntry   *entry = ht->buckets[i];
+        int             chainlength = 0;
+
+        if (entry)
+        {
+            for (chainlength = 0; entry; chainlength++)
+                entry = entry->next;
+            cdbexplain_agg_upd(&ht->chainlength, chainlength, i);
+        }
+    }
+}                               /* agg_hash_table_stat_upd */

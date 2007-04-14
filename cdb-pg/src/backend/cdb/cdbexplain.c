@@ -70,64 +70,13 @@ typedef struct CdbExplain_StatHdr
 /* Dispatch status summarized over workers in a slice */
 typedef struct CdbExplain_DispatchSummary
 {
-    int         nDispatch;      /* nOk + nError + nCanceled + nNotDispatched */
+    int         nResult;
     int         nOk;
     int         nError;
     int         nCanceled;
     int         nNotDispatched;
+    int         nIgnorableError;
 } CdbExplain_DispatchSummary;
-
-
-/* Summarization of one statistic */
-typedef struct CdbExplain_Agg
-{
-    double      vmax;           /* maximum value of statistic */
-    double      vsum;           /* sum of values */
-    int         vcnt;           /* count of values > 0 */
-    int         segmax;         /* segment id of qExec having maximum value */
-} CdbExplain_Agg;
-
-static inline void
-cdbexplain_agg_init0(CdbExplain_Agg *agg)
-{
-    agg->vmax = 0;
-    agg->vsum = 0;
-    agg->vcnt = 0;
-    agg->segmax = 0;
-}
-
-static inline void
-cdbexplain_agg_init1(CdbExplain_Agg *agg, double v, int segindex)
-{
-    if (v > 0)
-    {
-        agg->vmax = v;
-        agg->vsum = v;
-        agg->vcnt = 1;
-        agg->segmax = segindex;
-    }
-    else
-        cdbexplain_agg_init0(agg);
-}
-
-static inline bool
-cdbexplain_agg_upd(CdbExplain_Agg *agg, double v, int segindex)
-{
-    if (v > 0)
-    {
-        agg->vsum += v;
-        agg->vcnt++;
-
-        if (v > agg->vmax ||
-            agg->vcnt == 0)
-        {
-            agg->vmax = v;
-            agg->segmax = segindex;
-            return true;
-        }
-    }
-    return false;
-}
 
 
 /* One node's EXPLAIN ANALYZE statistics for all the workers of its gang */
@@ -182,7 +131,6 @@ typedef struct CdbExplain_ShowStatCtx
 
     /* Per-slice statistics are deposited in this SliceSummary array */
     int             nslice;             /* num of slots in slices array */
-    int             nslice_inuse;       /* num of nonempty slices */
     CdbExplain_SliceSummary   *slices;  /* -> array[0..nslice-1] of SliceSummary */
 } CdbExplain_ShowStatCtx;
 
@@ -478,7 +426,7 @@ cdbexplain_recvExecStats(struct PlanState              *planstate,
 
     /* Initialize worker counts. */
     memset(&ds, 0, sizeof(ds));
-    ds.nDispatch = nDispatch;
+    ds.nResult = nDispatch;
 
     /* Find and validate the statistics returned from each qExec. */
     if (nDispatch > 0)
@@ -496,8 +444,13 @@ cdbexplain_recvExecStats(struct PlanState              *planstate,
             ds.nCanceled++;
         else if (dispatchResult->errcode)
             ds.nError++;
+        else if (dispatchResult->okindex >= 0)
+            ds.nOk++;               /* qExec returned successful completion */
         else
-            ds.nOk++;
+            ds.nIgnorableError++;   /* qExec returned an error that's likely a
+                                     * side-effect of another qExec's failure,
+                                     * e.g. an interconnect error
+                                     */
 
         /* Find this qExec's last PGresult. */
         pgresult = cdbdisp_getPGresult(dispatchResult, -1);
@@ -647,8 +600,6 @@ cdbexplain_depositSliceStats(CdbExplain_StatHdr        *hdr,
     /* Slice's first worker? */
     if (!ss->workers)
     {
-        showstatctx->nslice_inuse++;
-
         /* Caller already switched to EXPLAIN context. */
         Assert(CurrentMemoryContext == showstatctx->explaincxt);
 
@@ -665,7 +616,7 @@ cdbexplain_depositSliceStats(CdbExplain_StatHdr        *hdr,
     Insist(ssw->peakmemused == 0);  /* each worker should be seen just once */
     *ssw = hdr->worker;
 
-    /* Update summary stats. */
+    /* Rollup of per-worker stats into SliceSummary */
     cdbexplain_agg_upd(&ss->peakmemused, hdr->worker.peakmemused, hdr->segindex);
 
     /* Rollup of per-node stats over all nodes of the slice into SliceSummary */
@@ -806,6 +757,7 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
     CdbExplain_DepStatAcc       ntuples;
     CdbExplain_DepStatAcc       workmemused;
     CdbExplain_DepStatAcc       workmemwanted;
+    CdbExplain_DepStatAcc       peakmemused;
     int                         imsgptr;
     int                         nInst;
 
@@ -829,6 +781,9 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
     cdbexplain_depStatAcc_init0(&ntuples);
     cdbexplain_depStatAcc_init0(&workmemused);
     cdbexplain_depStatAcc_init0(&workmemwanted);
+
+    /* Initialize per-slice accumulators. */
+    cdbexplain_depStatAcc_init0(&peakmemused);
 
     /* Examine the statistics from each qExec. */
     for (imsgptr = 0; imsgptr < ctx->nmsgptr; imsgptr++)
@@ -859,6 +814,9 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
         cdbexplain_depStatAcc_upd(&ntuples, rsi->ntuples, rsh, rsi, nsi);
         cdbexplain_depStatAcc_upd(&workmemused, rsi->workmemused, rsh, rsi, nsi);
         cdbexplain_depStatAcc_upd(&workmemwanted, rsi->workmemwanted, rsh, rsi, nsi);
+
+        /* Update per-slice accumulators. */
+        cdbexplain_depStatAcc_upd(&peakmemused, rsh->worker.peakmemused, rsh, rsi, nsi);
     }
 
     /* Save per-node accumulated stats in NodeSummary. */
@@ -888,11 +846,18 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
     /* Save extra message text for the most interesting winning qExecs. */
     if (ctx->extratextbuf)
     {
+        /* One worker which produced the greatest number of output rows */
         cdbexplain_depStatAcc_saveText(&ntuples, ctx->extratextbuf);
-        if (workmemused.agg.vmax > workmemwanted.agg.vmax)
-            cdbexplain_depStatAcc_saveText(&workmemused, ctx->extratextbuf);
-        else
+
+        /* One worker which used or wanted the most work_mem */
+        if (workmemwanted.agg.vmax >= workmemused.agg.vmax)
             cdbexplain_depStatAcc_saveText(&workmemwanted, ctx->extratextbuf);
+        else if (workmemused.agg.vmax > 1.05 * cdbexplain_agg_avg(&workmemused.agg))
+            cdbexplain_depStatAcc_saveText(&workmemused, ctx->extratextbuf);
+
+        /* A worker which used the most executor memory, if above avg by 5% */
+        if (peakmemused.agg.vmax > 1.05 * cdbexplain_agg_avg(&peakmemused.agg))
+            cdbexplain_depStatAcc_saveText(&peakmemused, ctx->extratextbuf);
     }
 }                               /* cdbexplain_depositStatsToNode */
 
@@ -1101,6 +1066,7 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
     Instrumentation            *instr = planstate->instrument;
     CdbExplain_NodeSummary     *ns = instr->cdbNodeSummary;
     instr_time                  timediff;
+    double                      ntuples_avg;
     int                         i;
 
     const char *s_row = " row";
@@ -1120,7 +1086,8 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
      * Row counts.  Also, timings from the worker with the most output rows.
      */
     appendStringInfoFill(str, 2*indent, ' ');
-    cdbexplain_formatSeg(segbuf, ns->ntuples.segmax, ns->ninst);
+    cdbexplain_formatSeg(segbuf, ns->ntuples.imax, ns->ninst);
+    ntuples_avg = cdbexplain_agg_avg(&ns->ntuples);
     switch (planstate->type)
     {
         case T_BitmapAndState:
@@ -1132,7 +1099,7 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
                 appendStringInfo(str,
                                  "Bitmaps out:  Avg %.1f x %d workers."
                                  "  Max %.0f%s",
-                                 ns->ntuples.vsum / ns->ntuples.vcnt,
+                                 ntuples_avg,
                                  ns->ntuples.vcnt,
                                  ns->ntuples.vmax,
                                  segbuf);
@@ -1147,7 +1114,7 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
                 appendStringInfo(str,
                                  "Rows in:  Avg %.1f rows x %d workers."
                                  "  Max %.0f rows%s",
-                                 ns->ntuples.vsum / ns->ntuples.vcnt,
+                                 ntuples_avg,
                                  ns->ntuples.vcnt,
                                  ns->ntuples.vmax,
                                  segbuf);
@@ -1162,7 +1129,7 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
                 appendStringInfo(str,
                                  "Rows out:  Avg %.1f rows x %d workers"
                                  " at destination.  Max %.0f rows%s",
-                                 ns->ntuples.vsum / ns->ntuples.vcnt,
+                                 ntuples_avg,
                                  ns->ntuples.vcnt,
                                  ns->ntuples.vmax,
                                  segbuf);
@@ -1177,7 +1144,7 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
                 appendStringInfo(str,
                                  "Rows out:  Avg %.1f rows x %d workers."
                                  "  Max %.0f rows%s",
-                                 ns->ntuples.vsum / ns->ntuples.vcnt,
+                                 ntuples_avg,
                                  ns->ntuples.vcnt,
                                  ns->ntuples.vmax,
                                  segbuf);
@@ -1233,8 +1200,8 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
                              maxbuf);
         else
         {
-            cdbexplain_formatSeg(segbuf, ns->workmemused.segmax, ns->ninst);
-            cdbexplain_formatMemory(avgbuf, ns->workmemused.vsum / ns->workmemused.vcnt);
+            cdbexplain_formatSeg(segbuf, ns->workmemused.imax, ns->ninst);
+            cdbexplain_formatMemory(avgbuf, cdbexplain_agg_avg(&ns->workmemused));
             appendStringInfo(str,
                              "Work_mem used:  %s avg, %s max%s.\n",
                              avgbuf,
@@ -1256,8 +1223,8 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
                 maxbuf);
         else
         {
-            cdbexplain_formatMemory(avgbuf, ns->workmemwanted.vsum / ns->workmemwanted.vcnt);
-            cdbexplain_formatSeg(segbuf, ns->workmemwanted.segmax, ns->ninst);
+            cdbexplain_formatMemory(avgbuf, cdbexplain_agg_avg(&ns->workmemwanted));
+            cdbexplain_formatSeg(segbuf, ns->workmemwanted.imax, ns->ninst);
             appendStringInfo(str,
                              "Work_mem wanted: %s avg, %s max%s "
                              "would avert workfile I/O affecting %d workers.\n",
@@ -1348,6 +1315,7 @@ cdbexplain_showExecStatsEnd(struct CdbExplain_ShowStatCtx  *showstatctx,
     int     sliceIndex;
     int     startlen;
     int     tab;
+    int     flag;
 
     char    avgbuf[50];
     char    maxbuf[50];
@@ -1356,54 +1324,58 @@ cdbexplain_showExecStatsEnd(struct CdbExplain_ShowStatCtx  *showstatctx,
     /*
      * Summary by slice
      */
-    if (showstatctx->nslice_inuse > 0)
+    if (showstatctx->nslice > 0)
         appendStringInfoString(str, "Slice statistics:\n");
 
     for (sliceIndex = 0; sliceIndex < showstatctx->nslice; sliceIndex++)
     {
         CdbExplain_SliceSummary    *ss = &showstatctx->slices[sliceIndex];
+        CdbExplain_DispatchSummary *ds = &ss->dispatchSummary;
 
         startlen = str->len;
         appendStringInfo(str, "  (slice%d) ", sliceIndex);
         if (sliceIndex < 10)
             appendStringInfoChar(str, ' ');
+
+        flag = str->len;
+        appendStringInfoString(str, "  ");
         tab = str->len - startlen;
 
         /* Worker counts */
         slice = getCurrentSlice(estate, sliceIndex);
-        if (!slice ||
-            slice->gangSize == 0 ||
-            slice->gangSize == ss->dispatchSummary.nOk)
-            appendStringInfoString(str, "ok  ");
-        else
+        if (slice &&
+            slice->gangSize > 0 &&
+            slice->gangSize != ss->dispatchSummary.nOk)
         {
-            int nNotDispatched = slice->gangSize - ss->dispatchSummary.nDispatch +
-                                 ss->dispatchSummary.nNotDispatched;
+            int nNotDispatched = slice->gangSize - ds->nResult + ds->nNotDispatched;
 
-            if (ss->dispatchSummary.nError > 0)
-                appendStringInfoString(str, "**  Workers:");
-            else
-                appendStringInfoString(str, "..  Workers:");
-            if (ss->dispatchSummary.nError == 1)
+            str->data[flag] = (ss->dispatchSummary.nError > 0) ? 'X' : '_';
+
+            appendStringInfoString(str, "Workers:");
+            if (ds->nError == 1)
                 appendStringInfo(str,
-                                 " %d error,",
-                                 ss->dispatchSummary.nError);
-            else if (ss->dispatchSummary.nError > 1)
+                                 " %d error;",
+                                 ds->nError);
+            else if (ds->nError > 1)
                 appendStringInfo(str,
-                                 " %d errors,",
-                                 ss->dispatchSummary.nError);
-            if (ss->dispatchSummary.nCanceled > 0)
+                                 " %d errors;",
+                                 ds->nError);
+            if (ds->nCanceled > 0)
                 appendStringInfo(str,
-                                 " %d canceled,",
-                                 ss->dispatchSummary.nCanceled);
+                                 " %d canceled;",
+                                 ds->nCanceled);
             if (nNotDispatched > 0)
                 appendStringInfo(str,
-                                 " %d not dispatched,",
+                                 " %d not dispatched;",
                                  nNotDispatched);
-            if (ss->dispatchSummary.nOk > 0)
+            if (ds->nIgnorableError > 0)
                 appendStringInfo(str,
-                                 " %d ok,",
-                                 ss->dispatchSummary.nOk);
+                                 " %d aborted;",
+                                 ds->nIgnorableError);
+            if (ds->nOk > 0)
+                appendStringInfo(str,
+                                 " %d ok;",
+                                 ds->nOk);
             str->len--;
             appendStringInfoString(str, ".  ");
         }
@@ -1412,17 +1384,17 @@ cdbexplain_showExecStatsEnd(struct CdbExplain_ShowStatCtx  *showstatctx,
         cdbexplain_formatMemory(maxbuf, ss->peakmemused.vmax);
         if (ss->peakmemused.vcnt == 1)
         {
-            cdbexplain_formatSeg(segbuf, ss->peakmemused.segmax, 999);
+            cdbexplain_formatSeg(segbuf, ss->peakmemused.imax, 999);
             appendStringInfo(str,
                              "Executor memory: %s%s.",
                              maxbuf,
-                             (ss->peakmemused.segmax >= 0) ? segbuf
+                             (ss->peakmemused.imax >= 0) ? segbuf
                                                            : " (entry db)");
         }
         else if (ss->peakmemused.vcnt > 1)
         {
-            cdbexplain_formatMemory(avgbuf, ss->peakmemused.vsum / ss->peakmemused.vcnt);
-            cdbexplain_formatSeg(segbuf, ss->peakmemused.segmax, ss->nworker);
+            cdbexplain_formatMemory(avgbuf, cdbexplain_agg_avg(&ss->peakmemused));
+            cdbexplain_formatSeg(segbuf, ss->peakmemused.imax, ss->nworker);
             appendStringInfo(str,
                              "Executor memory: %s avg x %d workers, %s max%s.",
                              avgbuf,
@@ -1438,6 +1410,7 @@ cdbexplain_showExecStatsEnd(struct CdbExplain_ShowStatCtx  *showstatctx,
             appendStringInfo(str, "  Work_mem: %s max", maxbuf);
             if (ss->workmemwanted_max > 0)
             {
+                str->data[flag] = '*';  /* draw attention to this slice */
                 cdbexplain_formatMemory(maxbuf, ss->workmemwanted_max);
                 appendStringInfo(str, ", %s wanted", maxbuf);
             }

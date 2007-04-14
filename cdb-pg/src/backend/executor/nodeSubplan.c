@@ -952,7 +952,8 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	struct CdbDispatchCmdThreads  *dispatchThreads = NULL; 
 	bool		needDtxTwoPhase;
 	bool		shouldDispatch = false;
-	volatile	bool shouldTeardownInterconnect = false;
+	volatile bool   shouldTeardownInterconnect = false;
+    volatile bool   explainRecvStats = false;
 
 	if (Gp_role == GP_ROLE_DISPATCH &&
 		planstate != NULL &&
@@ -1173,10 +1174,6 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			prm->isnull = false;
 		}
 
-        /* If EXPLAIN ANALYZE, collect local execution stats. */
-        if (planstate->instrument)
-            cdbexplain_localExecStats(planstate, econtext->ecxt_estate->showstatctx);
-
         /*
          * If dispatched to QEs, wait for completion and check for errors.
          */
@@ -1192,6 +1189,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
                 CdbCheckDispatchResult(dThreads, false);	
 
                 /* Jam stats into subplan's Instrumentation nodes. */
+                explainRecvStats = true;
                 cdbexplain_recvExecStats(planstate,
                                          primaryResults,
                                          queryDesc->estate->es_cur_slice_idx,
@@ -1223,6 +1221,22 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
     }
 	PG_CATCH();
 	{
+        /* If EXPLAIN ANALYZE, collect local and distributed execution stats. */
+        if (planstate->instrument)
+        {
+            cdbexplain_localExecStats(planstate, econtext->ecxt_estate->showstatctx);
+            if (!explainRecvStats)
+            {
+                /* Wait for all gangs to finish.  Cancel slowpokes. */
+                CdbCheckDispatchResult(dispatchThreads, true);
+
+                cdbexplain_recvExecStats(planstate,
+                                         primaryResults,
+                                         queryDesc->estate->es_cur_slice_idx,
+                                         econtext->ecxt_estate->showstatctx);
+            }
+        }
+
         /*
 		 * Request any commands still executing on qExecs to stop.
 		 * Wait for them to finish and clean up the dispatching structures.
@@ -1247,7 +1261,11 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	}
 	PG_END_TRY();
 
-	MemoryContextSwitchTo(oldcontext);
+    /* If EXPLAIN ANALYZE, collect local execution stats. */
+    if (planstate->instrument)
+        cdbexplain_localExecStats(planstate, econtext->ecxt_estate->showstatctx);
+   
+    MemoryContextSwitchTo(oldcontext);
 }
 
 /* ----------------------------------------------------------------

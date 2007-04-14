@@ -18,6 +18,8 @@
 #include "fmgr.h"
 #include "storage/buffile.h"
 
+#include "cdb/cdbexplain.h"                 /* CdbExplain_Agg */
+
 struct StringInfoData;                  /* #include "lib/stringinfo.h" */
 
 
@@ -82,6 +84,10 @@ typedef struct HashJoinBatchStats
 {
     uint64      outerfilesize;
     uint64      innerfilesize;
+    uint64      irdbytes;           /* inner bytes read from workfile */
+    uint64      ordbytes;           /* outer bytes read from workfile */
+    uint64      iwrbytes;           /* inner bytes written (to later batches) */
+    uint64      owrbytes;           /* outer bytes written (to later batches) */
 } HashJoinBatchStats;
 
 typedef struct HashJoinTableStats
@@ -93,11 +99,9 @@ typedef struct HashJoinTableStats
 
     /* These statistics are cumulative over all nontrivial batches... */
     int                     nonemptybatches;    /* num of nontrivial batches */
-    int                     nonemptybuckets;    /* num of hash buckets used */
-    int                     chainlength_max;    /* longest hash chain */
-    double                  chainlength_sum;    /* num of hash tuples */
-    uint64                  innerbytes_sum;     /* work_mem to hold whole rel */
     Size                    workmem_max;        /* work_mem high water mark */
+    uint64                  innerbytes_sum;     /* work_mem to hold whole rel */
+    CdbExplain_Agg          chainlength;        /* hash chain length stats */
 } HashJoinTableStats;
 
 

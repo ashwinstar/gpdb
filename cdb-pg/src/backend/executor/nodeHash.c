@@ -636,6 +636,11 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
         appendStringInfo(buf, "Shifted %ld inner rows (%ldK bytes)",
                          nfreed,
                          (long)((spaceFreed+1023)/1024));
+        if (batchnomin < 0)
+        {
+            batchnomin = oldnbatch;
+            batchnomax = nbatch-1;
+        }
         if (batchnomin < batchnomax)
             appendStringInfo(buf, " to batches %d..%d", batchnomin, batchnomax);
         else if (batchnomax >= 0)
@@ -983,7 +988,6 @@ ExecHashTableExplainEnd(PlanState *planstate, struct StringInfoData *buf)
     HashJoinTableStats *stats;
     Instrumentation    *jinstrument = hjstate->js.ps.instrument;
     StringInfo          jbuf = hjstate->js.ps.cdbexplainbuf;
-    int                 savelen;
     int                 total_buckets;
     int                 i;
 
@@ -1031,22 +1035,120 @@ ExecHashTableExplainEnd(PlanState *planstate, struct StringInfoData *buf)
     /* Report actual work_mem high water mark. */
     jinstrument->workmemused = Max(jinstrument->workmemused, stats->workmem_max);
 
-    /* Report hash bucket statistics. */
-    savelen = jbuf->len;
+    /* Report workfile I/O statistics. */
+    if (hashtable->nbatch > 1)
+    {
+        HashJoinBatchStats *batchstats = stats->batchstats;
+        CdbExplain_Agg      irdbytes;
+        CdbExplain_Agg      iwrbytes;
+        CdbExplain_Agg      ordbytes;
+        CdbExplain_Agg      owrbytes;
+
+        Assert(batchstats &&
+               hashtable->nbatch <= stats->nbatchstats);
+
+        cdbexplain_agg_init0(&irdbytes);
+        cdbexplain_agg_init0(&iwrbytes);
+        cdbexplain_agg_init0(&ordbytes);
+        cdbexplain_agg_init0(&owrbytes);
+
+        /* Add up the batch stats. */
+        for (i = 1; i < stats->nbatchstats; i++)
+        {
+            HashJoinBatchStats *bs = &batchstats[i];
+
+            cdbexplain_agg_upd(&irdbytes, (double)bs->irdbytes, i);
+            cdbexplain_agg_upd(&iwrbytes, (double)bs->iwrbytes, i);
+            cdbexplain_agg_upd(&ordbytes, (double)bs->ordbytes, i);
+            cdbexplain_agg_upd(&owrbytes, (double)bs->owrbytes, i);
+        }
+
+        /* Inner rel bytes spilled and read back in. */
+        if (batchstats[0].iwrbytes > 0)
+        {
+            appendStringInfo(jbuf,
+                             "Wrote %.0fK bytes to inner workfile."
+                             "  Read %.0fK bytes",
+                             ceil(((double)batchstats[0].iwrbytes) / 1024),
+                             ceil(irdbytes.vsum / 1024));
+            if (hashtable->nbatch > 2)
+                appendStringInfo(jbuf,
+                                 ": %.0fK avg x %d batches,"
+                                 " %.0fK max",
+                                 ceil(cdbexplain_agg_avg(&irdbytes)/1024),
+                                 irdbytes.vcnt,
+                                 ceil(irdbytes.vmax / 1024));
+            appendStringInfoString(jbuf, ".\n");
+        }
+
+        /* Outer rel bytes spilled and read back in. */
+        if (batchstats[0].owrbytes > 0)
+        {
+            appendStringInfo(jbuf,
+                             "Wrote %.0fK bytes to outer workfile."
+                             "  Read %.0fK bytes",
+                             ceil(((double)batchstats[0].owrbytes) / 1024),
+                             ceil(ordbytes.vsum / 1024));
+            if (hashtable->nbatch > 2)
+                appendStringInfo(jbuf,
+                                 ": %.0fK avg x %d batches,"
+                                 " %.0fK max",
+                                 ceil(cdbexplain_agg_avg(&ordbytes)/1024),
+                                 ordbytes.vcnt,
+                                 ceil(ordbytes.vmax / 1024));
+            appendStringInfoString(jbuf, ".\n");
+        }
+
+        /* Inner rel bytes respilled. */
+        if (iwrbytes.vcnt > 0)
+        {
+            appendStringInfo(jbuf,
+                             "Rewrote %.0fK bytes to inner workfile",
+                             ceil(iwrbytes.vsum / 1024));
+            if (iwrbytes.vcnt > 1)
+                appendStringInfo(jbuf,
+                                 ": %.0fK avg x %d batches,"
+                                 " %.0fK max",
+                                 ceil(cdbexplain_agg_avg(&iwrbytes)/1024),
+                                 iwrbytes.vcnt,
+                                 ceil(iwrbytes.vmax / 1024));
+            appendStringInfoString(jbuf, ".\n");
+        }
+
+        /* Outer rel bytes respilled. */
+        if (owrbytes.vcnt > 0)
+        {
+            appendStringInfo(jbuf,
+                             "Rewrote %.0fK bytes to outer workfile",
+                             ceil(owrbytes.vsum / 1024));
+            if (owrbytes.vcnt > 1)
+                appendStringInfo(jbuf,
+                                 ": %.0fK avg x %d batches,"
+                                 " %.0fK max",
+                                 ceil(cdbexplain_agg_avg(&owrbytes)/1024),
+                                 owrbytes.vcnt,
+                                 ceil(owrbytes.vmax / 1024));
+            appendStringInfoString(jbuf, ".\n");
+        }
+    }                           /* give workfile I/O statistics */
+
+    /* Report hash chain statistics. */
     total_buckets = stats->nonemptybatches * hashtable->nbuckets;
     if (total_buckets > 0)
-        appendStringInfo(jbuf, "chain length %.1f avg, %d max, using "
-                         "%d of %d buckets.  ",
-                         stats->chainlength_sum / stats->nonemptybuckets,
-                         stats->chainlength_max,
-                         stats->nonemptybuckets,
+    {
+        appendStringInfo(jbuf, 
+                         "Hash chain length"
+                         " %.1f avg, %.0f max, using %d of %d buckets.  ",
+                         cdbexplain_agg_avg(&stats->chainlength),
+                         stats->chainlength.vmax,
+                         stats->chainlength.vcnt,
                          total_buckets);
-    if (hashtable->nbatch > 1)
-        appendStringInfo(jbuf, "%d batches nonempty, %d total.  ",
-                         stats->nonemptybatches,
-                         hashtable->nbatch);
-    if (savelen < jbuf->len)
+        if (hashtable->nbatch > stats->nonemptybatches)
+            appendStringInfo(jbuf,
+                             "Skipped %d empty batches.",
+                             hashtable->nbatch - stats->nonemptybatches);
         appendStringInfoChar(jbuf, '\n');
+    }
 }                               /* ExecHashTableExplainEnd */
 
 
@@ -1058,13 +1160,9 @@ void
 ExecHashTableExplainBatchEnd(HashJoinTable hashtable)
 {
     HashJoinTableStats *stats = hashtable->stats;
-    HashJoinBatchStats *batchstats = stats->batchstats;
-    StringInfo          jbuf = stats->joinexplainbuf;
+    HashJoinBatchStats *batchstats = &stats->batchstats[hashtable->curbatch];
     Size                innerbytes = hashtable->spaceUsed - hashtable->spaceFreed;
     int                 curbatch = hashtable->curbatch;
-    int                 chainlength_max = 0;
-    int                 chainlength_sum = 0;
-    int                 nonemptybuckets = 0;
     int                 i;
 
     /* Already reported on this batch? */
@@ -1080,31 +1178,28 @@ ExecHashTableExplainBatchEnd(HashJoinTable hashtable)
     /* Accumulate work_mem used to hold all hash table batches joined so far. */
     stats->innerbytes_sum += innerbytes;
 
-    /* Report workfile I/O statistics. */
+    /* Collect workfile I/O statistics. */
     if (hashtable->nbatch > 1)
     {
-        uint64          irdbytes = 0;
-        uint64          iwrbytes = 0;
-        uint64          ordbytes = 0;
-        uint64          owrbytes = 0;
-        bool            rdsome;
-        bool            wrsome;
+        uint64      owrbytes = 0;
+        uint64      iwrbytes = 0;
 
-        Assert(batchstats &&
+        Assert(stats->batchstats &&
                hashtable->nbatch <= stats->nbatchstats);
 
-        /* How much was read from workfiles for current batch? */
+        /* How much was read from inner workfile for current batch? */
+        batchstats->irdbytes = batchstats->innerfilesize;
+
+        /* How much was read from outer workfiles for current batch? */
         if (curbatch > 0 &&
             hashtable->outerBatchFile &&
             hashtable->outerBatchFile[curbatch])
-            ordbytes = BufFileTell64(hashtable->outerBatchFile[curbatch]);
-        irdbytes = batchstats[curbatch].innerfilesize;
-        rdsome = (ordbytes > 0 || irdbytes > 0);
+            batchstats->ordbytes = BufFileTell64(hashtable->outerBatchFile[curbatch]);
 
         /* How much was written to workfiles for the remaining batches? */
         for (i = curbatch + 1; i < hashtable->nbatch; i++)
         {
-            HashJoinBatchStats *bs = &batchstats[i];
+            HashJoinBatchStats *bs = &stats->batchstats[i];
             uint64              filebytes = 0;
 
             if (hashtable->outerBatchFile &&
@@ -1122,34 +1217,14 @@ ExecHashTableExplainBatchEnd(HashJoinTable hashtable)
             iwrbytes += filebytes - bs->innerfilesize;
             bs->innerfilesize = filebytes;
         }
-        wrsome = (owrbytes > 0 || iwrbytes > 0);
-
-        if (rdsome || wrsome)
-            appendStringInfo(jbuf, "batch %d: ", curbatch);
-
-        if (rdsome)
-            appendStringInfo(jbuf,
-                             "read "
-                             INT64_FORMAT "K outer, "
-                             INT64_FORMAT "K inner bytes from workfile",
-                             (ordbytes + 1023)/1024,
-                             (irdbytes + 1023)/1024);
-        if (wrsome)
-            appendStringInfo(jbuf,
-                             "%swrote "
-                             INT64_FORMAT "K outer, "
-                             INT64_FORMAT "K inner bytes to workfile",
-                             rdsome ? "; " : "",
-                             (owrbytes + 1023)/1024,
-                             (iwrbytes + 1023)/1024);
-
-        if (rdsome || wrsome)
-            appendStringInfoChar(jbuf, '\n');
+        batchstats->owrbytes = owrbytes;
+        batchstats->iwrbytes = iwrbytes;
     }                           /* give workfile I/O statistics */
 
     /* Collect hash chain statistics. */
     if (hashtable->totalTuples > 0)
     {
+        stats->nonemptybatches++;
         for (i = 0; i < hashtable->nbuckets; i++)
         {
             HashJoinTuple   hashtuple = hashtable->buckets[i];
@@ -1157,22 +1232,10 @@ ExecHashTableExplainBatchEnd(HashJoinTable hashtable)
 
             if (hashtuple)
             {
-                nonemptybuckets++;
                 for (chainlength = 0; hashtuple; hashtuple = hashtuple->next)
                     chainlength++;
-                chainlength_sum += chainlength;
-                if (chainlength_max < chainlength)
-                    chainlength_max = chainlength;
+                cdbexplain_agg_upd(&stats->chainlength, chainlength, i);
             }
         }
-        stats->nonemptybuckets += nonemptybuckets;
-        stats->chainlength_sum += chainlength_sum;
-        if (stats->chainlength_max < chainlength_max)
-            stats->chainlength_max = chainlength_max;
-        stats->nonemptybatches++;
     }
-    stats->nonemptybuckets += nonemptybuckets;
-    stats->chainlength_sum += chainlength_sum;
-    if (stats->chainlength_max < chainlength_max)
-        stats->chainlength_max = chainlength_max;
 }                               /* ExecHashTableExplainBatchEnd */

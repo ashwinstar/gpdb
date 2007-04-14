@@ -19,6 +19,8 @@
 #include "storage/buffile.h"
 #include "executor/nodeAgg.h" /* Must see AggStatePerGroupData. */
 
+#include "cdb/cdbexplain.h"                 /* CdbExplain_Agg */
+
 typedef struct BatchFileInfo
 {
 	long ntuples;
@@ -111,9 +113,13 @@ typedef struct HashAggTable
 
     /* CDB: Statistics for EXPLAIN ANALYZE */
     HashAggTableSizes   hats;
-    int                 num_overflow_batches;
+	unsigned long		ngroup_initial;
+	unsigned long		ntuple_initial;
+    unsigned long       noverflow_initial;
+    int                 num_reloads;
     double              num_overflow_rows;
     double              num_groups_total;
+    CdbExplain_Agg      chainlength;
 } HashAggTable;
 
 extern HashAggTable *create_agg_hash_table(AggState *aggstate);
