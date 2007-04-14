@@ -56,6 +56,7 @@
 #include "storage/procarray.h"
 #include "storage/smgr.h"
 #include "utils/builtins.h"
+#include "utils/guc.h"
 
 
 /*
@@ -363,11 +364,15 @@ LockGXact(const char *gid, Oid user, bool raiseErrorIfNotFound)
 {
 	int			i;
 
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"LockGXact called to lock identifier = %s.",gid);
+
 	LWLockAcquire(TwoPhaseStateLock, LW_EXCLUSIVE);
 
 	for (i = 0; i < TwoPhaseState->numPrepXacts; i++)
 	{
 		GlobalTransaction gxact = TwoPhaseState->prepXacts[i];
+
+		elog((Debug_print_full_dtm ? LOG : DEBUG5),"LockGXact checking identifier = %s.",gxact->gid);
 
 		/* Ignore not-yet-valid GIDs */
 		if (!gxact->valid)

@@ -112,6 +112,7 @@ static void doNotifyingCommitted(void);
 static bool doRetryingNotifyCommitted(void);
 static void doNotifyingAborted(bool noPreparesIssued);
 static void doRetryingNotifyAborted(void);
+static bool doNotifyCommittedInDoubt(char *gid);
 static void doAbortInDoubt(char *gid);
 static void doQEAddLocalXidsForDistributedIndoubt();
 static void doQEDistributedExplicitBegin(int txnOptions);
@@ -239,6 +240,9 @@ char* DtxProtocolCommandToString(DtxProtocolCommand command)
 	case DTX_PROTOCOL_COMMAND_RETRY_ABORT_PREPARED:
 		return "Retry Distributed Abort Prepared";
 
+	case DTX_PROTOCOL_COMMAND_RECOVERY_COMMIT_PREPARED:
+		return "Recovery Commit Prepared";
+		
 	case DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED:
 		return "Recovery Abort Prepared";
 		
@@ -730,6 +734,30 @@ doRetryingNotifyAborted(void)
 	}
 }
 
+
+static bool
+doNotifyCommittedInDoubt(char *gid)
+{
+	bool succeeded;
+
+	// UNDONE: Pass real gxid instead of InvalidDistributedTransactionId.
+	succeeded = doDispatchDtxProtocolCommand(
+					DTX_PROTOCOL_COMMAND_RECOVERY_COMMIT_PREPARED, /* flags */ 0,
+					gid, InvalidDistributedTransactionId,
+					/* dispatchToMirrors */ true, /* raiseError */ false);
+	if (!succeeded)
+	{
+		elog(WARNING, "Crash recovery retry of the distributed transaction 'Commit Prepared' broadcast for gid = %s failed to one or more segments.  System will retry again later", 
+			 gid);
+	}
+	else
+	{
+		elog(INFO, "Crash recovery retry of the distributed transaction 'Commit Prepared' broadcast for gid = %s succeeded", 
+			 gid);
+	}
+
+	return succeeded;
+}
 
 static void
 doAbortInDoubt(char *gid)
@@ -1924,18 +1952,27 @@ recoverInDoubtTransactions(void)
 	skipIndex = 0;
 	while (skipIndex < *shmNumGxacts)
 	{
-		currentGxact = shmGxactArray[skipIndex];
+		TMGXACT *gxact = shmGxactArray[skipIndex];
 
-		if (currentGxact->state != DTX_STATE_CRASH_COMMITTED)
+		if (gxact->state != DTX_STATE_CRASH_COMMITTED)
 		{
 			dumpAllDtx();
 			elog(PANIC, "recoverInDoubtTransactions found transaction in '%s' state and was expecting it to be in '%s' state",
-				 DtxStateToString(currentGxact->state), DtxStateToString(DTX_STATE_CRASH_COMMITTED));
+				 DtxStateToString(gxact->state), DtxStateToString(DTX_STATE_CRASH_COMMITTED));
 		}
-		currentGxact->state = DTX_STATE_NOTIFY_COMMITTED_RETRY_NEEDED;
 
-		if (!doRetryingNotifyCommitted())
+		elog((Debug_print_full_dtm ? LOG : DEBUG5),"Rcovering committed distributed transaction gid = %s at index = %d",
+		     gxact->gid, skipIndex);
+		if (doNotifyCommittedInDoubt(gxact->gid))
 		{
+			currentGxact = gxact;
+			doInsertForgetCommitted();
+		}
+		else
+		{
+			gxact->state = DTX_STATE_NOTIFY_COMMITTED_RETRY_NEEDED;
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),"Leaving distributed transaction gid = %s at index = %d in state = %s",
+			     gxact->gid, skipIndex, DtxStateToString(gxact->state));
 			skipIndex++;
 		}
 	}
@@ -3060,7 +3097,20 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		}
 
 		elog((Debug_print_full_dtm ? LOG : DEBUG5), "performDtxProtocolCommand going to call FinishPreparedTransaction for distributed transaction %s", gid);
-		FinishPreparedTransaction((char *)gid, /* isCommit */ true, /* raiseErrorIfNotFound */ true);
+
+		/*
+		 * Since this call may fail, lets setup a handler.
+		 */
+		PG_TRY();
+		{
+			FinishPreparedTransaction((char *)gid, /* isCommit */ true, /* raiseErrorIfNotFound */ true);
+		}
+		PG_CATCH();
+		{
+			finishDistributedTransactionContext("performDtxProtocolCommand -- Commit Prepared (error case)");
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
 		
 		finishDistributedTransactionContext("performDtxProtocolCommand -- Commit Prepared");
 		break;
@@ -3071,12 +3121,25 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		 */
 		elog((Debug_print_full_dtm ? LOG : DEBUG5), "performDtxProtocolCommand going to call FinishPreparedTransaction for distributed transaction %s", gid);
 
-		FinishPreparedTransaction((char *)gid, /* isCommit */ true, /* raiseErrorIfNotFound */ false);
+		/*
+		 * Since this call may fail, lets setup a handler.
+		 */
+		PG_TRY();
+		{
+			FinishPreparedTransaction((char *)gid, /* isCommit */ true, /* raiseErrorIfNotFound */ false);
+		}
+		PG_CATCH();
+		{
+			finishDistributedTransactionContext("performDtxProtocolCommand -- Retry Commit Prepared (error case)");
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
 
 		finishDistributedTransactionContext("performDtxProtocolCommand -- Retry Commit Prepared");
 		break;
 
 	case DTX_PROTOCOL_COMMAND_ABORT_PREPARED:
+	case DTX_PROTOCOL_COMMAND_RETRY_ABORT_PREPARED:
 		/*
 		 * The QD has directed us to abort an implicit or explict
 		 * distributed transaction that may or may not have been prepared.
@@ -3084,9 +3147,19 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		switch (DistributedTransactionContext)
 		{
 		case DTX_CONTEXT_LOCAL_ONLY:
-			/*
-			 * Spontaneously aborted while we were back at the QD.
-			 */
+			if (dtxProtocolCommand == DTX_PROTOCOL_COMMAND_ABORT_PREPARED)
+			{
+				/*
+				 * Spontaneously aborted while we were back at the QD?
+				 */
+			}
+			else
+			{
+				/*
+				 * We must be doing this on a different connection.
+				 */
+				FinishPreparedTransaction((char *)gid, /* isCommit */ false, /* raiseErrorIfNotFound */ false);
+			}
 			break;
 			
 		case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
@@ -3098,7 +3171,19 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 			break;
 			
 		case DTX_CONTEXT_QE_PREPARED:
-			FinishPreparedTransaction((char *)gid, /* isCommit */ false, /* raiseErrorIfNotFound */ true);
+			/*
+			 * Since this call may fail, lets setup a handler.
+			 */
+			PG_TRY();
+			{
+				FinishPreparedTransaction((char *)gid, /* isCommit */ false, /* raiseErrorIfNotFound */ true);
+			}
+			PG_CATCH();
+			{
+				finishDistributedTransactionContext("performDtxProtocolCommand -- Abort Prepared (error case)");
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
 
 			finishDistributedTransactionContext("performDtxProtocolCommand -- Abort Prepared");
 			break;
@@ -3116,26 +3201,18 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		}
 		break;
 
-	case DTX_PROTOCOL_COMMAND_RETRY_ABORT_PREPARED:
-		/*
-		 * We can be doing this on a different connection, so ignore DistributedTransactionContext
-		 * and try both possibilities.
-		 */
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "performDtxProtocolCommand going to call AbortOutOfAnyTransaction for distributed transaction %s", gid);
-
-		AbortOutOfAnyTransaction();
+	case DTX_PROTOCOL_COMMAND_RECOVERY_COMMIT_PREPARED:
+	case DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED:
+		if (DistributedTransactionContext != DTX_CONTEXT_LOCAL_ONLY)
+		{
+			elog(FATAL, "Expected QE distribute transaction context to be '%s', found '%s'",
+				DtxContextToString(DTX_CONTEXT_LOCAL_ONLY),
+				DtxContextToString(DistributedTransactionContext));
+		}
 		
 		elog((Debug_print_full_dtm ? LOG : DEBUG5), "performDtxProtocolCommand going to call FinishPreparedTransaction for distributed transaction %s", gid);
-
-		FinishPreparedTransaction((char *)gid, /* isCommit */ false, /* raiseErrorIfNotFound */ false);
-
-		finishDistributedTransactionContext("performDtxProtocolCommand -- Retry Abort Prepared");
-		break;
-
-	case DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED:
-		Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "performDtxProtocolCommand going to call FinishPreparedTransaction for distributed transaction %s", gid);
-		FinishPreparedTransaction((char *)gid, /* isCommit */ false, /* raiseErrorIfNotFound */ false);
+		FinishPreparedTransaction((char *)gid, /* isCommit */ (dtxProtocolCommand == DTX_PROTOCOL_COMMAND_RECOVERY_COMMIT_PREPARED),
+			                      /* raiseErrorIfNotFound */ false);
 		break;
 
 	default:
