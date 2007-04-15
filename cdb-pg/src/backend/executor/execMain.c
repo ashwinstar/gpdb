@@ -419,13 +419,15 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 																   queryDesc->plantree->nParamExec);
 			}
 			
-			needDtxTwoPhase = isCurrentDtxTwoPhase();
+			needDtxTwoPhase = ExecutorSaysTransactionDoesWrites();
 			if (needDtxTwoPhase)
 			{
 				/*
 				 * Reconfigure the cluster if needed.
 				 */
 				cdbdisp_reconfigureFtsIfNecessary();
+
+				setCurrentDtxTwoPhase("ExecutorStart", "(none)");
 			}
 						
 			/*
@@ -994,7 +996,7 @@ fail:
 				(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
 				 errmsg("transaction is read-only")));
 	else
-		setCurrentDtxTwoPhase("ExecCheckXactReadOnly","(none)");
+		ExecutorMarkTransactionDoesWrites();
 }
 
 

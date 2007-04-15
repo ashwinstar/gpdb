@@ -370,9 +370,9 @@ notifyCommittedDtxTransaction(void)
 }
 
 
-/* marks the current Distrubuted Transaction as "dirty", meaning that actual
- * work has been performed and we'll need to use 2pc on commit and log to our
- * tmlog.
+/* 
+ * Marks the current Distributed Transaction as needing to use the
+ * 2 phase commit protocol.
  */
 void
 setCurrentDtxTwoPhase(const char* debugCaller, const char* debugDetail)
@@ -397,7 +397,7 @@ setCurrentDtxTwoPhase(const char* debugCaller, const char* debugDetail)
 	}
 	else
 	{
-			elog(ERROR,"DTM transaction is not active (%s, detail = '%s')", debugCaller, debugDetail);
+		elog(ERROR,"DTM transaction is not active (%s, detail = '%s')", debugCaller, debugDetail);
 	}
 }
 
@@ -2962,8 +2962,6 @@ rememberDtxExplicitBegin(void)
 	{
 		return;
 	}
-
-//	setCurrentDtxTwoPhase("rememberDtxExplicitBegin", "(none)");
 
 	if (!currentGxact->explicitBeginRemembered)
 	{

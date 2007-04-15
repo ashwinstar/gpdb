@@ -139,6 +139,7 @@ typedef struct TransactionStateData
 	List	   *childXids;		/* subcommitted child XIDs */
 	Oid			currentUser;	/* subxact start current_user */
 	bool		prevXactReadOnly;		/* entry-time xact r/o state */
+	bool		executorSaysXactDoesWrites;	/* GP executor says xact does writes */
 	struct TransactionStateData *parent;		/* back link to parent */
 } TransactionStateData;
 
@@ -2147,6 +2148,7 @@ CommitTransaction(void)
 	s->subTransactionId = InvalidSubTransactionId;
 	s->nestingLevel = 0;
 	s->childXids = NIL;
+	s->executorSaysXactDoesWrites = false;
 
 	/*
 	 * done with commit processing, set current transaction state back to
@@ -2375,6 +2377,7 @@ PrepareTransaction(void)
 	s->subTransactionId = InvalidSubTransactionId;
 	s->nestingLevel = 0;
 	s->childXids = NIL;
+	s->executorSaysXactDoesWrites = false;
 
 	/*
 	 * done with 1st phase commit processing, set current transaction state
@@ -2571,6 +2574,7 @@ CleanupTransaction(void)
 	s->subTransactionId = InvalidSubTransactionId;
 	s->nestingLevel = 0;
 	s->childXids = NIL;
+	s->executorSaysXactDoesWrites = false;
 
 	/*
 	 * done with abort processing, set current transaction state back to
@@ -4239,6 +4243,23 @@ IsTransactionDirty(void)
 	return result;
 }
 
+void 
+ExecutorMarkTransactionDoesWrites(void)
+{
+	// UNDONE: Verify we are in transaction...
+	if (!TopTransactionStateData.executorSaysXactDoesWrites)
+	{
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "ExecutorMarkTransactionDoesWrites called");
+		TopTransactionStateData.executorSaysXactDoesWrites = true;
+	}
+}
+
+bool
+ExecutorSaysTransactionDoesWrites(void)
+{
+	return TopTransactionStateData.executorSaysXactDoesWrites;
+}
+
 /*
  * TransactionBlockStatusCode - return status code to send in ReadyForQuery
  */
@@ -4648,6 +4669,7 @@ PushTransaction(void)
 	s->blockState = TBLOCK_SUBBEGIN;
 	s->currentUser = currentUser;
 	s->prevXactReadOnly = XactReadOnly;
+	s->executorSaysXactDoesWrites = false;
 
 	CurrentTransactionState = s;
 
