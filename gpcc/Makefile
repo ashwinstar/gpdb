@@ -4,17 +4,26 @@ APU=apr-util-1.2.8
 JSON=json-c-0.6
 INCLUDES=-I$(GPCC)/ext/include $$($(GPCC)/ext/bin/apr-1-config --includes) -I$(GPCC)/src/include
 CPPFLAGS=$$($(GPCC)/ext/bin/apr-1-config --cppflags)
-CFLAGS=-Wall $$($(GPCC)/ext/bin/apr-1-config --cflags)
-LDFLAGS=$$($(GPCC)/ext/bin/apr-1-config --ldflags) $$($(GPCC)/ext/bin/apu-1-config --ldflags)
+CFLAGS=-g -Wall $$($(GPCC)/ext/bin/apr-1-config --cflags)
+APRLIBS=$$($(GPCC)/ext/bin/apr-1-config --link-ld --libs) 
+APULIBS=$$($(GPCC)/ext/bin/apu-1-config --link-ld --libs)
 
 
-all: mkext mklibgpcc 
+all: mkext mklibgpcc mkgpma mkgp
+
+mkgp:
+	@echo --- gp -------------------------------------------------------
+
+mkgpma:
+	@echo --- gpma -----------------------------------------------------
+	@(cd src/gpma; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
+		-o gpma *.c -L../build/lib -lgpcc $(APRLIBS) $(APULIBS))
 
 mklibgpcc:
-	@echo --- mklibgpcc --------------------------------------------------
+	@echo --- libgpcc --------------------------------------------------
 	@mkdir -p src/build/lib src/build/include
 	@echo compiling
-	@(cd src/libgpcc; $(CC) $(INCLUDES) $(CPPFLAS) $(CFLAGS) -c *.c)
+	@(cd src/libgpcc; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -c *.c)
 	@echo creating library
 	@(cd src/libgpcc; rm -f ../build/lib/libgpcc.a; \
 		ar cru ../build/lib/libgpcc.a *.o;	\
@@ -22,8 +31,9 @@ mklibgpcc:
 	@echo copying include files
 	@(cp -r src/include/* src/build/include/ )
 
+
 mkext:
-	@echo --- mkext --------------------------------------------------
+	@echo --- ext ------------------------------------------------------
 	@(cd ext; mkdir -p lib include)
 	@(cd ext; ln -fs $(JSON) json)
 	@if ! [ -a ext/json/Makefile ]; then \

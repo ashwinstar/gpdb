@@ -2,9 +2,10 @@
 #define GPCC_FSM_H
 
 #include <gpcc.h>
+#include <gpcc_event.h>
 
 /** action function */
-typedef apr_status_t gpcc_fsm_func_t(int channel, void* ev);
+typedef apr_status_t gpcc_fsm_func_t(gpcc_event_t* ev, void* arg);
 
 /** 
  *  Create a fsm edge 

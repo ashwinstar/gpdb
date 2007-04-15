@@ -9,12 +9,12 @@
 
 typedef struct gpcc_event_t gpcc_event_t;
 struct gpcc_event_t {
-    short type;			/* event type */
-    short cdatasz;		/* size of content data (cdata[]) */
+    short etype;		/* event type */
+    short edatasz;		/* size of content data (edata[]) */
     int cmdidx;			/* command index */
     void* pdata;		/* if not null, points to something the user allocated */
     void (*pfree)(void*);	/* howto free(pdata) */
-    char  cdata[1];
+    char  edata[1];
 };
 
 /**

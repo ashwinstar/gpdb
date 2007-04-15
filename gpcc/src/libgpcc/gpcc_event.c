@@ -24,8 +24,8 @@ APR_DECLARE(gpcc_event_t*) gpcc_event_alloc(int type, int cmdidx, int datasz)
     GPCC_DO(datasz >= 0);
     GPCC_DO(0 != (ret = malloc(len)));
     memset(ret, 0, len);
-    ret->type = type;
-    ret->cdatasz = datasz;
+    ret->etype = type;
+    ret->edatasz = datasz;
     ret->cmdidx = cmdidx;
     return ret;
 }
@@ -58,7 +58,6 @@ APR_DECLARE(gpcc_evqueue_t*) gpcc_evqueue_create(int qsize,
     GPCC_DO(0 == apr_thread_mutex_create(&qq->mutex, 0, pool));
     GPCC_DO(0 == apr_thread_cond_create(&qq->not_empty, pool));
     GPCC_DO(0 == apr_thread_cond_create(&qq->not_full, pool));
-    GPCC_DO(0 == apr_thread_mutex_lock(qq->mutex));
     return qq;
 }
 
@@ -86,8 +85,9 @@ APR_DECLARE(int) gpcc_evqueue_size(gpcc_evqueue_t* q)
 APR_DECLARE(void) gpcc_evqueue_put(gpcc_evqueue_t* q, const gpcc_event_t* ev)
 {
     GPCC_DO(0 == apr_thread_mutex_lock(q->mutex));
-    while (q->cnt == q->max) 
+    while (q->cnt == q->max) {
 	GPCC_DO(0 == apr_thread_cond_wait(q->not_full, q->mutex));
+    }
     GPCC_DO(q->cnt < q->max);
     q->arr[q->top++] = ev;
     if (q->top == q->max) q->top = 0;
@@ -100,8 +100,9 @@ APR_DECLARE(gpcc_event_t*) gpcc_evqueue_get(gpcc_evqueue_t* q)
 {
     gpcc_event_t* ret = 0;
     GPCC_DO(0 == apr_thread_mutex_lock(q->mutex));
-    while (q->cnt == 0)
+    while (q->cnt == 0) {
 	GPCC_DO(0 == apr_thread_cond_wait(q->not_empty, q->mutex));
+    }
     ret = (gpcc_event_t*) q->arr[q->bot];
     if (++q->bot == q->max) 
 	q->bot = 0;

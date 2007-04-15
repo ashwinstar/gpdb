@@ -6,9 +6,7 @@
 #include <apr_thread_proc.h>
 #include <gpcc_event.h>
 #include <gpcc_net.h>
-#include "config.h"
-
-
+#include <gpcc_fsm.h>
 
 #define DEFAULT_QD_MAX_CONNECT  25
 #define DEFAULT_QE_MAX_CONNECT  25
@@ -18,6 +16,64 @@
 #define DEFAULT_QD_PORT   	12100
 #define DEFAULT_QE_BASEPORT	12200
 
+#define CMDSLOT_MAX    512
+
+#include "config.h"
+#include "enum.h"
+
+
+/* connection info, this is stored in gpcc_net via the conn_arg */
+typedef struct conninfo_t conninfo_t;
+struct conninfo_t {
+    apr_pool_t* pool;
+    gpcc_net_conn_t conn;
+    int    self_origin;
+    role_t role;
+    char*  rolespec;		/* for QE, "0.1", "m.0", etc
+				   for MA, "lead" or "",
+				*/
+    const char* peer_id;
+};
+
+
+
+
+typedef struct conn_opened_event_t conn_opened_event_t;
+struct conn_opened_event_t {
+    conninfo_t*     conninfo;
+};
+
+typedef struct conn_closed_event_t conn_closed_event_t;
+struct conn_closed_event_t {
+    conninfo_t*     conninfo;
+};
+
+typedef struct conn_msg_event_t conn_msg_event_t;
+struct conn_msg_event_t {
+    conninfo_t*       conninfo;
+    gpcc_net_msghdr_t hdr;
+    char              data[1];
+};
+
+
+
+typedef struct cmdslot_t cmdslot_t;
+struct cmdslot_t {
+    int 	cmdidx;
+    const char* cmdname;
+    cmdstate_t  cmdstate;
+    int         countdown;	/* if > 0, will count down to 0 
+				   and generate a TIMEUP_EVENT */
+    conninfo_t* conninfo;
+    union {
+	struct {
+	    
+	} a;
+    } u;
+};
+
+
+/* Control block for GPMA */
 struct {
     apr_pool_t*  pool;
     const char*  guid;		/* GUID */
@@ -29,44 +85,229 @@ struct {
     int          debug;		/* TRUE if debug mode */
     const char*  logfpath;	/* path to log file */
     gpcc_evqueue_t* evq;	/* the event queue */
+    int          system_cmdidx; /* cmdidx of system FSM */
+    apr_uint16_t cmdidx_gen;
+    cmdslot_t    cmdslot[CMDSLOT_MAX];
 } cb = {0};
 
 
-
-typedef struct cmdslot_t cmdslot_t;
-struct cmdslot_t {
-    int 	cmdidx;
-    /*cmdstate_t  cmdstate;*/
-    int         countdown;
-
-    union {
-	struct {
-
-	} a;
-    } u;
-};
-
-
-
-static void* d_net_opened(gpcc_net_conn_t conn, void* arg)
+/* Match a cmdidx to a cmdslot */
+static cmdslot_t* cmdslot_get(int cmdidx)
 {
-    return arg;
-}
-
-static void d_net_closed(gpcc_net_conn_t conn, void* arg)
-{
+    const int idx = cmdidx & 0xffff;
+    if (0 <= idx && idx < CMDSLOT_MAX) {
+	cmdslot_t* cmdslot = &cb.cmdslot[idx];
+	if (cmdslot->cmdidx == cmdidx)
+	    return cmdslot;
+    }
+    return 0;
 }
 
 
-static void d_net_recv(gpcc_net_conn_t conn, void* arg,
-		       int pkttype, int reqid, 
-		       const char* pkt, int pktlen)
+/* Find a free cmdslot */
+static cmdslot_t* cmdslot_alloc(const char* name, 
+				cmdstate_t init_state, conninfo_t* conninfo)
 {
+    int i;
+    cmdslot_t* cmdslot = 0;
+    int seq;
+
+    for (i = 0; i < CMDSLOT_MAX && cb.cmdslot[i].cmdidx; i++);
+    if (i < CMDSLOT_MAX) {
+	cmdslot = &cb.cmdslot[i];
+	memset(cmdslot, 0, sizeof(*cmdslot));
+	seq = (((int)cb.cmdidx_gen++) << 16) & 0x80000000;
+	if (! seq)
+	    seq = 1 << 16;	/* ensure that seq is never 0 */
+	cmdslot->cmdidx = seq | i;
+	cmdslot->cmdstate = init_state;
+	cmdslot->conninfo = conninfo;
+    }
+
+    return cmdslot;
 }
 
 
-static void d_net_tick(apr_time_t now)
+static void cmdslot_free(cmdslot_t* cp)
 {
+    memset(cp, 0, sizeof(*cp));
+}
+
+
+/* 
+ *  This gets called every second. go thru all cmdslot to find anyone that 
+ *  needs a TIMEUP EVENT.
+ */
+static apr_status_t system_tick(gpcc_event_t* ev, void* cmdslot_)
+{
+    cmdslot_t* p = &cb.cmdslot[0];
+    cmdslot_t* q = &cb.cmdslot[CMDSLOT_MAX];
+    gpcc_event_t* nev;
+
+    for ( ; p < q; p++) {
+	if (p->cmdidx && p->countdown > 0) {
+	    if (--p->countdown == 0) {
+		nev = gpcc_event_alloc(TIMEUP_EVENT, p->cmdidx, 0);
+		gpcc_evqueue_put(cb.evq, nev);
+	    }
+	}
+    }
+    return 0;
+}
+
+
+/** handle open request from remote node
+ */
+static apr_status_t system_conn_opened(gpcc_event_t* ev, void* cmdslot_)
+{
+    conn_opened_event_t* cev = (conn_opened_event_t*) ev->edata;
+    conninfo_t* c = cev->conninfo;
+    cmdslot_t* cmdslot;
+    gpcc_net_msghdr_t msghdr;
+    
+    if (c->self_origin) {
+	cmdslot = cmdslot_alloc("GET_PROTO", GET_PROTO_CMDSTATE, c);
+	if (! cmdslot) {
+	    gpcc_net_close(c->conn);
+	    gpcc_warning(FLINE, "cmdslot overflowed");
+	    return 0;
+	}
+
+	cmdslot->countdown = 5;
+
+	GPCC_NET_MSGHDR_FILL(&msghdr, GET_PROTO_MSG, 0, cmdslot->cmdidx, 0);
+	if (gpcc_net_send(c->conn, &msghdr, 0)) {
+	    gpcc_net_close(c->conn);
+	    return 0;
+	}
+    }
+
+    return 0;
+}
+
+
+static apr_status_t cancel_get_proto(gpcc_event_t* ev, void* cmdslot_)
+{
+    cmdslot_t* cmdslot = cmdslot_;
+    gpcc_warning(FLINE, "GET_PROTO timeup");
+    gpcc_net_close(cmdslot->conninfo->conn);
+    return 0;
+}
+
+
+static apr_status_t reply_get_proto(gpcc_event_t* ev, void* cmdslot_)
+{
+    cmdslot_t* cmdslot = cmdslot_;
+    gpcc_net_node_id_t nodeid;
+    char nodeidstr[sizeof(nodeid.opaque) * 2 + 1];
+    gpcc_net_msghdr_t msghdr;
+    int i;
+    char buffer[1024];
+
+    nodeid = gpcc_net_my_node_id();
+    for (i = 0; i < sizeof(nodeid.opaque); i++)
+	sprintf(nodeidstr + i*2, "%x", nodeid.opaque[i]);
+
+    buffer[sizeof(buffer)-2] = 0;
+    apr_snprintf(buffer, sizeof(buffer), "{ "
+		 "protocol: '%s', "
+		 "array_name: '%s', "
+		 "guid: '%s', "
+		 "peer_id: '%s', "
+		 "role: '%s' }", 
+		 GPCC_NET_PROTO,
+		 config_get(cb.cfg, "sys.name"),
+		 config_get(cb.cfg, "sys.guid"),
+		 nodeidstr, 
+		 "ma");
+    GPCC_DO(buffer[sizeof(buffer)-2] == 0); /* make sure buffer not overflowed */
+
+    GPCC_NET_MSGHDR_FILL(&msghdr, PROTO_MSG, strlen(buffer), 0, 0);
+    if (gpcc_net_send(cmdslot->conninfo->conn, &msghdr, buffer)) {
+	gpcc_net_close(cmdslot->conninfo->conn);
+	return 0;
+    }
+    return 0;
+}
+
+
+
+static void d_setup_fsm(void)
+{
+    gpcc_fsm_put(SYSTEM_CMDSTATE, TICK_EVENT, SYSTEM_CMDSTATE, 
+		 system_tick, 0);
+    gpcc_fsm_put(SYSTEM_CMDSTATE, CONN_OPENED_EVENT, SYSTEM_CMDSTATE, 
+		 system_conn_opened, 0);
+    gpcc_fsm_put(GET_PROTO_CMDSTATE, GET_PROTO_MSG_EVENT, NULL_CMDSTATE,
+		 reply_get_proto, 0);
+    gpcc_fsm_put(GET_PROTO_CMDSTATE, TIMEUP_EVENT, NULL_CMDSTATE,
+		 cancel_get_proto, 0);
+}
+
+
+
+
+/* callback from gpcc_net. this runs in the network thread */
+static void* conn_opened_cb(gpcc_net_conn_t conn, void* arg, 
+			    int self_origin, apr_pool_t* pool)
+{
+    conn_opened_event_t* cev;
+    conninfo_t* conninfo;
+    gpcc_event_t* ev = gpcc_event_alloc(CONN_OPENED_EVENT, 0, sizeof(*cev));
+
+    GPCC_DO(arg == 0);
+    conninfo = apr_pcalloc(pool, sizeof(*conninfo));
+    conninfo->pool = pool;
+    conninfo->conn = conn;
+    conninfo->self_origin = self_origin;
+
+    cev = (conn_opened_event_t*) ev->edata;
+    cev->conninfo = conninfo;
+    gpcc_evqueue_put(cb.evq, ev);
+    return conninfo;
+}
+
+/* callback from gpcc_net. this runs in the network thread */
+static void conn_closed_cb(gpcc_net_conn_t conn, void* arg)
+{
+    conn_closed_event_t* cev;
+    gpcc_event_t* ev = gpcc_event_alloc(CONN_CLOSED_EVENT, 0, sizeof(*cev));
+    cev = (conn_closed_event_t*) ev->edata;
+    cev->conninfo = arg;
+    gpcc_evqueue_put(cb.evq, ev);
+}
+
+
+/* callback from gpcc_net. this runs in the network thread */
+static void conn_recv_cb(gpcc_net_conn_t conn, void* arg,
+			 const gpcc_net_msghdr_t* msghdr, 
+			 const char* msgbody)
+{
+    conn_msg_event_t* cev;
+    gpcc_event_t* ev = gpcc_event_alloc(NULL_EVENT, msghdr->rcvidx,
+					sizeof(*cev) + msghdr->mlen - 1);
+    cev = (conn_msg_event_t*) ev->edata;
+    cev->conninfo = arg;
+    cev->hdr = *msghdr;
+    memcpy(cev->data, msgbody, msghdr->mlen);
+
+    switch (msghdr->mtype) {
+    case GET_PROTO_MSG: ev->etype = GET_PROTO_MSG_EVENT; break;
+    case PROTO_MSG:     ev->etype = PROTO_MSG_EVENT; break;
+    default:
+	gpcc_event_free(ev);
+	gpcc_warning(FLINE, "received unknown event: %d\n", msghdr->mtype);
+	return;
+    }
+
+    gpcc_evqueue_put(cb.evq, ev);
+}
+
+/* callback from gpcc_net. this runs in the network thread */
+static void time_tick_cb(apr_time_t now)
+{
+    gpcc_event_t* ev = gpcc_event_alloc(TICK_EVENT, 0, 0);
+    gpcc_evqueue_put(cb.evq, ev);
 }
 
 
@@ -77,6 +318,7 @@ static void d_main(void)
     char date[APR_RFC822_DATE_LEN];
     gpcc_event_t* ev = 0;
     gpcc_evqueue_t* evq;
+    cmdslot_t* cp;
 
     /* create the event queue */
     evq = cb.evq = gpcc_evqueue_create(1000, cb.pool);
@@ -86,22 +328,54 @@ static void d_main(void)
     setlinebuf(stderr);
     freopen(cb.logfpath, "a", stdout);
 
+    /* set up the fsm */
+    d_setup_fsm();
+
     /* greetings */
     apr_rfc822_date(date, apr_time_now());
     gpcc_log_info("[%s] started gpma %s %s %s", date, cb.guid, cb.maid, cb.dir);
 
     /* network up */
     GPCC_DO(0 == gpcc_net_start(config_get_int(cb.cfg, "sys.ma.port"), 
-				d_net_opened,
-				d_net_closed,
-				d_net_recv,
-				d_net_tick));
+				conn_opened_cb,
+				conn_closed_cb,
+				conn_recv_cb,
+				time_tick_cb));
+
     gpcc_log_info("gpma listening to port %d", config_get_int(cb.cfg, "sys.ma.port"));
 
+    cp = cmdslot_alloc("SYSTEM", SYSTEM_CMDSTATE, 0);
+    cb.system_cmdidx = cp->cmdidx;
+
     for ( ; 0 != (ev = gpcc_evqueue_get(evq)); gpcc_event_free(ev)) {
+	int nxtstate;
+	gpcc_fsm_func_t** action;
 	/* map the cmdidx */
+	if (ev->cmdidx == 0) 	/* artificially match 0 to system */
+	    ev->cmdidx = cb.system_cmdidx;
+	if (! (cp = cmdslot_get(ev->cmdidx)))
+	    continue;
 	/* retrieve fsm record */
+	if (0 != gpcc_fsm_get(cp->cmdstate, ev->etype, &nxtstate, &action)) {
+	    continue;
+	}
 	/* dispatch actions */
+	for ( ; *action && 0 == (*action)(ev, cp); action++);
+
+	if (*action == 0) {
+	    if (cb.debug) {
+		gpcc_log_info("FSM[%d]: %s + %s = %s", cp->cmdidx,
+			      cmdstate_str(cp->cmdstate), 
+			      event_str(ev->etype), 
+			      cmdstate_str(nxtstate));
+	    }
+	    cp->cmdstate = nxtstate;
+	}
+	else {
+	}
+
+	if (cp->cmdstate == NULL_CMDSTATE)
+	    cmdslot_free(cp);
     }
 
     fprintf(stderr, "exiting\n");
