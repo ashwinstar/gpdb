@@ -7,6 +7,7 @@
 #include <gpcc_event.h>
 #include <gpcc_net.h>
 #include <gpcc_fsm.h>
+#include <json/json.h>
 
 #define DEFAULT_QD_MAX_CONNECT  25
 #define DEFAULT_QE_MAX_CONNECT  25
@@ -22,6 +23,14 @@
 #include "enum.h"
 
 
+static const char* json_object_object_get_string(struct json_object* dict, char* key)
+{
+    struct json_object* value = json_object_object_get(dict,key);
+    return value ? json_object_get_string(value) : 0;
+}
+
+
+
 /* connection info, this is stored in gpcc_net via the conn_arg */
 typedef struct conninfo_t conninfo_t;
 struct conninfo_t {
@@ -33,6 +42,7 @@ struct conninfo_t {
 				   for MA, "lead" or "",
 				*/
     const char* peer_id;
+    role_t peer_role;
 };
 
 
@@ -51,8 +61,8 @@ struct conn_closed_event_t {
 typedef struct conn_msg_event_t conn_msg_event_t;
 struct conn_msg_event_t {
     conninfo_t*       conninfo;
-    gpcc_net_msghdr_t hdr;
-    char              data[1];
+    gpcc_net_msghdr_t mhdr;
+    char              mbody[1];
 };
 
 
@@ -164,8 +174,10 @@ static apr_status_t system_conn_opened(gpcc_event_t* ev, void* cmdslot_)
     conninfo_t* c = cev->conninfo;
     cmdslot_t* cmdslot;
     gpcc_net_msghdr_t msghdr;
-    
+
+    /* if i opened the connection, start by getting protocol from peer */
     if (c->self_origin) {
+	/* start a GET_PROTO command */
 	cmdslot = cmdslot_alloc("GET_PROTO", GET_PROTO_CMDSTATE, c);
 	if (! cmdslot) {
 	    gpcc_net_close(c->conn);
@@ -173,9 +185,13 @@ static apr_status_t system_conn_opened(gpcc_event_t* ev, void* cmdslot_)
 	    return 0;
 	}
 
+	/* time out in 5 seconds */
 	cmdslot->countdown = 5;
-
-	GPCC_NET_MSGHDR_FILL(&msghdr, GET_PROTO_MSG, 0, cmdslot->cmdidx, 0);
+	
+	/* send to peer */
+	GPCC_NET_MSGHDR_FILL(&msghdr, GET_PROTO_MSG, 0, 
+			     cmdslot->cmdidx, /* sndidx */
+			     0 /* rcvidx */);
 	if (gpcc_net_send(c->conn, &msghdr, 0)) {
 	    gpcc_net_close(c->conn);
 	    return 0;
@@ -186,23 +202,106 @@ static apr_status_t system_conn_opened(gpcc_event_t* ev, void* cmdslot_)
 }
 
 
-static apr_status_t cancel_get_proto(gpcc_event_t* ev, void* cmdslot_)
+static apr_status_t get_proto_cancel(gpcc_event_t* ev, void* cmdslot_)
 {
     cmdslot_t* cmdslot = cmdslot_;
-    gpcc_warning(FLINE, "GET_PROTO timeup");
+    gpcc_warning(FLINE, "GET_PROTO cancelled");
     gpcc_net_close(cmdslot->conninfo->conn);
     return 0;
 }
 
 
-static apr_status_t reply_get_proto(gpcc_event_t* ev, void* cmdslot_)
+
+static void queue_failure_event(cmdslot_t* cmdslot)
+{
+    gpcc_event_t* ev = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+    gpcc_evqueue_put(cb.evq, ev);
+}
+
+
+
+static apr_status_t get_proto_received(gpcc_event_t* ev, void* cmdslot_)
 {
     cmdslot_t* cmdslot = cmdslot_;
+    conn_msg_event_t* res = (conn_msg_event_t*) ev->edata;
+    struct json_object* dict;
+    const char* protocol = 0;
+    const char* array_name = 0;
+    const char* guid = 0;
+    const char* peer_id = 0;
+    const char* role = 0;
+    apr_pool_t* pool = cmdslot->conninfo->pool;
+
+    GPCC_DO(ev->etype == PROTO_MSG);
+    dict = json_tokener_parse(res->mbody);
+    if (is_error(dict)) {
+	queue_failure_event(cmdslot);
+	return APR_EINVAL;
+    }
+
+    protocol = json_object_object_get_string(dict, "protocol");
+    if (!protocol || 0 != strcmp(protocol, GPCC_NET_PROTO))  {
+	gpcc_warning(FLINE, "peer protocol error");
+	goto fail;
+    }
+
+    guid = json_object_object_get_string(dict, "guid");
+    if (!guid || 0 != strcmp(guid, cb.guid)) {
+	gpcc_warning(FLINE, "peer guid mismatch");
+	goto fail;
+    }
+    
+    array_name = json_object_object_get_string(dict, "array_name");
+    if (!array_name || 0 != strcmp(array_name, config_get(cb.cfg, "sys.array_name"))) {
+	gpcc_warning(FLINE, "peer sys.array_name mismatch");
+	goto fail;
+    }
+
+    peer_id = json_object_object_get_string(dict, "peer_id");
+    if (!peer_id) {
+	gpcc_warning(FLINE, "missing peer_id");
+	goto fail;
+    }
+    cmdslot->conninfo->peer_id = apr_pstrdup(pool, peer_id);
+
+    role = json_object_object_get_string(dict, "role");
+    if (!role) {
+	gpcc_warning(FLINE, "missing peer role");
+	goto fail;
+    }
+    if (0 == strcmp("ma", role))
+	cmdslot->conninfo->peer_role = MA_ROLE;
+    else if (0 == strcmp("ha", role))
+	cmdslot->conninfo->peer_role = HA_ROLE;
+    else if (0 == strcmp("qd", role))
+	cmdslot->conninfo->peer_role = QD_ROLE;
+    else if (0 == strcmp("qe", role))
+	cmdslot->conninfo->peer_role = QE_ROLE;
+    else {
+	gpcc_warning(FLINE, "unknown peer role");
+	goto fail;
+    }
+
+    json_object_put(dict);
+
+    return 0;
+
+    fail:
+    queue_failure_event(cmdslot);
+    return APR_EINVAL;
+}
+
+
+static apr_status_t system_send_proto(gpcc_event_t* ev, void* cmdslot_)
+{
+    cmdslot_t* cmdslot = cmdslot_;
+    conn_msg_event_t* req = (conn_msg_event_t*) ev->edata;
     gpcc_net_node_id_t nodeid;
     char nodeidstr[sizeof(nodeid.opaque) * 2 + 1];
-    gpcc_net_msghdr_t msghdr;
+    gpcc_net_msghdr_t replyhdr;
     int i;
     char buffer[1024];
+    
 
     nodeid = gpcc_net_my_node_id();
     for (i = 0; i < sizeof(nodeid.opaque); i++)
@@ -216,14 +315,15 @@ static apr_status_t reply_get_proto(gpcc_event_t* ev, void* cmdslot_)
 		 "peer_id: '%s', "
 		 "role: '%s' }", 
 		 GPCC_NET_PROTO,
-		 config_get(cb.cfg, "sys.name"),
+		 config_get(cb.cfg, "sys.array_name"),
 		 config_get(cb.cfg, "sys.guid"),
 		 nodeidstr, 
 		 "ma");
     GPCC_DO(buffer[sizeof(buffer)-2] == 0); /* make sure buffer not overflowed */
 
-    GPCC_NET_MSGHDR_FILL(&msghdr, PROTO_MSG, strlen(buffer), 0, 0);
-    if (gpcc_net_send(cmdslot->conninfo->conn, &msghdr, buffer)) {
+    GPCC_NET_MSGHDR_FILL(&replyhdr, PROTO_MSG, strlen(buffer),
+			 req->mhdr.rcvidx, req->mhdr.sndidx);
+    if (gpcc_net_send(cmdslot->conninfo->conn, &replyhdr, buffer)) {
 	gpcc_net_close(cmdslot->conninfo->conn);
 	return 0;
     }
@@ -238,10 +338,12 @@ static void d_setup_fsm(void)
 		 system_tick, 0);
     gpcc_fsm_put(SYSTEM_CMDSTATE, CONN_OPENED_EVENT, SYSTEM_CMDSTATE, 
 		 system_conn_opened, 0);
-    gpcc_fsm_put(GET_PROTO_CMDSTATE, GET_PROTO_MSG_EVENT, NULL_CMDSTATE,
-		 reply_get_proto, 0);
+    gpcc_fsm_put(SYSTEM_CMDSTATE, GET_PROTO_MSG_EVENT, SYSTEM_CMDSTATE, 
+		 system_send_proto, 0);
+    gpcc_fsm_put(GET_PROTO_CMDSTATE, PROTO_MSG_EVENT, NULL_CMDSTATE,
+		 get_proto_received, 0);
     gpcc_fsm_put(GET_PROTO_CMDSTATE, TIMEUP_EVENT, NULL_CMDSTATE,
-		 cancel_get_proto, 0);
+		 get_proto_cancel, 0);
 }
 
 
@@ -285,11 +387,12 @@ static void conn_recv_cb(gpcc_net_conn_t conn, void* arg,
 {
     conn_msg_event_t* cev;
     gpcc_event_t* ev = gpcc_event_alloc(NULL_EVENT, msghdr->rcvidx,
-					sizeof(*cev) + msghdr->mlen - 1);
+					sizeof(*cev) + msghdr->mlen);
     cev = (conn_msg_event_t*) ev->edata;
     cev->conninfo = arg;
-    cev->hdr = *msghdr;
-    memcpy(cev->data, msgbody, msghdr->mlen);
+    cev->mhdr = *msghdr;
+    memcpy(cev->mbody, msgbody, msghdr->mlen);
+    cev->mbody[msghdr->mlen] = 0;
 
     switch (msghdr->mtype) {
     case GET_PROTO_MSG: ev->etype = GET_PROTO_MSG_EVENT; break;
@@ -504,8 +607,8 @@ static apr_status_t verify_config(void)
     }
 
     /* name must exist */
-    if (! config_get(cb.cfg, "sys.name")) {
-	gpcc_log_error("config file error: sys.name missing");
+    if (! config_get(cb.cfg, "sys.array_name")) {
+	gpcc_log_error("config file error: sys.array_name missing");
 	gpcc_fatal(FLINE);
     }
 
