@@ -80,6 +80,8 @@ extern char* Safe_strdup( const char* s);
 extern const char* StringNotNull( const char* pszInput, const char* pszDefault );							
 /* writes a formatted message to stderr */
 extern void mpp_err_msg(const char *loglevel, const char *prog, const char *fmt,...);
+/* writes a formatted message to stderr and caches it in a static var for later use */
+extern void mpp_err_msg_cache(const char *loglevel, const char *prog, const char *fmt,...);
 /* writes a formatted message to stdout */
 extern void mpp_msg(const char *loglevel, const char *prog, const char *fmt,...);
 /* writes the contents to the appropriate file on the database server */
@@ -87,7 +89,7 @@ extern void mpp_msg(const char *loglevel, const char *prog, const char *fmt,...)
 /* writes a status message to a status file with naming convention based on instid, segid, and Key */
 /* extern bool WriteStatusToFile( const char* pszMessage, const char* pszDirectory, const char* pszKey, int instid, int segid, bool bIsBackup ); */
 
-extern char* get_predump_error(void);
+extern char* get_early_error(void);
 
 /* Base64 Encoding and Decoding Routines */
 /* Base64 Data is assumed to be in a NULL terminated string */

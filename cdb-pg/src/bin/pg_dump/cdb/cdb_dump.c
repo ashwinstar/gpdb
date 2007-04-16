@@ -272,13 +272,13 @@ bool doInitialActions(PGconn* pMasterConn)
 	pRes = PQexec(pMasterConn, pQry->data);
 	if ( pRes == NULL )
 	{
-		mpp_err_msg(logError, pszProgName, "no result from server: %s", PQerrorMessage(pMasterConn));
+		mpp_err_msg_cache(logError, pszProgName, "no result from server: %s", PQerrorMessage(pMasterConn));
 		goto cleanup;
 	}
 	
 	if (PQresultStatus(pRes) != PGRES_COMMAND_OK)
 	{
-		mpp_err_msg(logError, pszProgName, "bad result from server: %s", PQerrorMessage(pMasterConn));
+		mpp_err_msg_cache(logError, pszProgName, "bad result from server: %s", PQerrorMessage(pMasterConn));
 		goto cleanup;
 	}
 
@@ -318,13 +318,13 @@ bool doInitialActions(PGconn* pMasterConn)
 		pRes = PQexec(pMasterConn, pQry->data);
 		if ( pRes == NULL )
 		{
-			mpp_err_msg(logError, pszProgName,"no result from server: %s", PQerrorMessage(pMasterConn));
+			mpp_err_msg_cache(logError, pszProgName,"no result from server: %s", PQerrorMessage(pMasterConn));
 			goto cleanup;
 		}
 		
 		if (PQresultStatus(pRes) != PGRES_COMMAND_OK)
 		{
-			mpp_err_msg(logError, pszProgName,"bad result from server: %s", PQerrorMessage(pMasterConn));
+			mpp_err_msg_cache(logError, pszProgName,"bad result from server: %s", PQerrorMessage(pMasterConn));
 			goto cleanup;
 		}
         if (g_verbose)
@@ -360,13 +360,13 @@ bool execCommit( PGconn* pConn )
 	pRes = PQexec(pConn, pQry->data);
 	if ( pRes == NULL )
 	{
-		mpp_err_msg(logError, pszProgName, "no result from server: %s\n", PQerrorMessage(pConn));
+		mpp_err_msg_cache(logError, pszProgName, "no result from server: %s\n", PQerrorMessage(pConn));
 		goto cleanup;
 	}
 	
 	if (PQresultStatus(pRes) != PGRES_COMMAND_OK)
 	{
-		mpp_err_msg(logError, pszProgName, "bad result from server: %s\n", PQerrorMessage(pConn));
+		mpp_err_msg_cache(logError, pszProgName, "bad result from server: %s\n", PQerrorMessage(pConn));
 		goto cleanup;
 	}
 	
@@ -483,12 +483,12 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
 		{
 			help(pszProgName);
-			goto cleanup;
+			exit(0);
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
 			puts("gp_dump (Greenplum Database) " PG_VERSION);
-			goto cleanup;
+			exit(0);
 		}
 	}
 	
@@ -507,7 +507,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 	pInputOpts->pszCmdLineParms = (char *)malloc( lenCmdLineParms + 1 );
 	if ( pInputOpts->pszCmdLineParms == NULL )
 	{
-		mpp_err_msg(logError, pszProgName, "error allocating memory for pInputOpts->pszCmdLineParms\n");
+		mpp_err_msg_cache(logError, pszProgName, "error allocating memory for pInputOpts->pszCmdLineParms\n");
 		goto cleanup;
 	}
 	
@@ -749,14 +749,14 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 				}
 				else
 				{
-					mpp_err_msg(logError, pszProgName, "invalid gp-s option %s.  Must be a for \"all\", p for \"primaries only\", or i[dbid list] for \"individual\".\n", optarg);
+					mpp_err_msg_cache(logError, pszProgName, "invalid gp-s option %s.  Must be a for \"all\", p for \"primaries only\", or i[dbid list] for \"individual\".\n", optarg);
 					goto cleanup;
 				}
               
 				break;
 				
 			default:
-				fprintf(stderr, ("Try \"%s --help\" for more information.\n"), pszProgName);
+				mpp_err_msg_cache(logError, pszProgName, "Try \"%s --help\" for more information.", pszProgName);
 				goto cleanup;
 		}
 	}
@@ -800,19 +800,19 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 	 */
 	if (pInputOpts->pszDBName == NULL)
 	{
-		mpp_err_msg(logError, pszProgName, "No database name specified for dump, and PGDATABASE is not set either.\n");
+		mpp_err_msg_cache(logError, pszProgName, "No database name specified for dump, and PGDATABASE is not set either.\n");
 		goto cleanup;
 	}
 	
 	if (dataOnly && schemaOnly)
 	{
-		mpp_err_msg(logError, pszProgName, "options \"schema only\" (-s) and \"data only\" (-a) cannot be used together\n");
+		mpp_err_msg_cache(logError, pszProgName, "options \"schema only\" (-s) and \"data only\" (-a) cannot be used together\n");
 		goto cleanup;
 	}
 	
 	if ((dataOnly || schemaOnly) && pInputOpts->actors == SET_INDIVIDUAL)
 	{
-		mpp_err_msg(logError, pszProgName, "options \"schema only\" (-s) or \"data only\" (-a) cannot be used together with --gp-s=i\n"
+		mpp_err_msg_cache(logError, pszProgName, "options \"schema only\" (-s) or \"data only\" (-a) cannot be used together with --gp-s=i\n"
 										   "If you want to use --gp-i and dump only data, omit dbid number 1 (master) from the individual dbid list.");
 		goto cleanup;
 	}
@@ -820,35 +820,35 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 
 	if (dataOnly && outputClean)
 	{
-		mpp_err_msg(logError, pszProgName, "options \"clean\" (-c) and \"data only\" (-a) cannot be used together\n");
+		mpp_err_msg_cache(logError, pszProgName, "options \"clean\" (-c) and \"data only\" (-a) cannot be used together\n");
 		goto cleanup;
 	}
 
 	if (bOutputBlobs && selectTableName != NULL)
 	{
-		mpp_err_msg(logError, pszProgName, "large-object output not supported for a single table\n");
-		mpp_err_msg(logError, pszProgName, "use a full dump instead\n");
+		mpp_err_msg_cache(logError, pszProgName, "large-object output not supported for a single table\n");
+		mpp_err_msg_cache(logError, pszProgName, "use a full dump instead\n");
 		goto cleanup;
 	}
 
 	if (bOutputBlobs && selectSchemaName != NULL)
 	{
-		mpp_err_msg(logError, pszProgName, "large-object output not supported for a single schema\n");
-		mpp_err_msg(logError, pszProgName, "use a full dump instead\n");
+		mpp_err_msg_cache(logError, pszProgName, "large-object output not supported for a single schema\n");
+		mpp_err_msg_cache(logError, pszProgName, "use a full dump instead\n");
 		goto cleanup;
 	}
 
 	if ( dumpInserts && bOids )
 	{
-		mpp_err_msg(logError, pszProgName, "INSERT (-d, -D) and OID (-o) options cannot be used together\n");
-		mpp_err_msg(logError, pszProgName, "(The INSERT command cannot set OIDs.)\n");
+		mpp_err_msg_cache(logError, pszProgName, "INSERT (-d, -D) and OID (-o) options cannot be used together\n");
+		mpp_err_msg_cache(logError, pszProgName, "(The INSERT command cannot set OIDs.)\n");
 		goto cleanup;
 	}
 
 	if (bOutputBlobs && (pszFormat[0] == 'p' || pszFormat[0] == 'P'))
 	{
-		mpp_err_msg(logError, pszProgName, "large-object output is not supported for plain-text dump files\n");
-		mpp_err_msg(logError, pszProgName, "(Use a different output format.)\n");
+		mpp_err_msg_cache(logError, pszProgName, "large-object output is not supported for plain-text dump files\n");
+		mpp_err_msg_cache(logError, pszProgName, "(Use a different output format.)\n");
 		goto cleanup;
 	}
     	
@@ -962,7 +962,7 @@ void installSignalHandlers(void)
 	// Install SIGINT interrupt handler						
 	if ( sigaction(SIGINT, &act, &oact) < 0 )
 	{
-		mpp_err_msg(logError, pszProgName,"Error trying to set SIGINT interrupt handler\n");
+		mpp_err_msg_cache(logError, pszProgName,"Error trying to set SIGINT interrupt handler\n");
 	}
 
 	act.sa_handler = myHandler;
@@ -973,7 +973,7 @@ void installSignalHandlers(void)
 	// Install SIGTERM interrupt handler						
 	if ( sigaction(SIGTERM, &act, &oact) < 0 )
 	{
-		mpp_err_msg(logError, pszProgName,"Error trying to set SIGTERM interrupt handler\n");
+		mpp_err_msg_cache(logError, pszProgName,"Error trying to set SIGTERM interrupt handler\n");
 	}
 }
 
@@ -1068,11 +1068,11 @@ int reportBackupResults( InputOptions inputopts, ThreadParmArray* pParmAr )
 		pSegDB->dbid = 1; 
 		pSegDB->content	= -1;
 		pSegDB->role = ROLE_MASTER;
-		pSegDB->port = atoi(inputopts.pszPGPort);
+		pSegDB->port = (inputopts.pszPGPort ? atoi(inputopts.pszPGPort) : 0);
+		pSegDB->pszDBName = (inputopts.pszDBName ? inputopts.pszDBName : "unknown");
 		pSegDB->isValid	= true;
 		pSegDB->isPrimary = true;
 		pSegDB->pszHost	= inputopts.pszPGHost;
-        pSegDB->pszDBName = inputopts.pszDBName;
 		pSegDB->pszDBUser = NULL;
 		pSegDB->pszDBPswd = NULL;
 
@@ -1148,7 +1148,7 @@ int reportBackupResults( InputOptions inputopts, ThreadParmArray* pParmAr )
 		if ( pszMsg == NULL )
 		{
 		    /* if we failed pre maturely try to get the predump error */
-		    pszMsg = get_predump_error();
+		    pszMsg = get_early_error();
 			if ( pszMsg == NULL )
 				pszMsg = "";
 		}
@@ -1337,7 +1337,7 @@ void* threadProc(void *arg)
 		g_b_SendCancelMessage = true;
 		pParm->pszErrorMsg = MakeString( "Connection to dbid %d  on host %s failed: %s",
 										pSegDB->dbid, StringNotNull(pSegDB->pszHost, "localhost"), PQerrorMessage(pConn) );
-		mpp_err_msg(logError, pszProgName, pParm->pszErrorMsg );
+		mpp_err_msg_cache(logError, pszProgName, pParm->pszErrorMsg );
 		PQfinish(pConn);
 		decrementFinishedLaunchCount();
 		return NULL;
@@ -1379,7 +1379,7 @@ void* threadProc(void *arg)
 	{
 		g_b_SendCancelMessage = true;
 		pParm->pszErrorMsg = MakeString( "could not start Greenplum Database backup: %s", PQerrorMessage(pConn) );
-		mpp_err_msg(logFatal, pszProgName,pParm->pszErrorMsg);
+		mpp_err_msg_cache(logFatal, pszProgName,pParm->pszErrorMsg);
 		PQfinish( pConn );
 		decrementFinishedLaunchCount();
 		bDidDecrement = true;
@@ -1405,7 +1405,7 @@ void* threadProc(void *arg)
 	{
 		g_b_SendCancelMessage = true;
 		pParm->pszErrorMsg = "error allocating memory for Greenplum Database backup";
-		mpp_err_msg(logError, pszProgName,pParm->pszErrorMsg);
+		mpp_err_msg_cache(logError, pszProgName,pParm->pszErrorMsg);
 		PQfinish( pConn );
 		decrementFinishedLaunchCount();
 		bDidDecrement = true;

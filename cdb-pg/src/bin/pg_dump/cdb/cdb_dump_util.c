@@ -17,7 +17,7 @@
 #include "pqexpbuffer.h"
 #include "cdb_dump_util.h"
 
-static char predump_errmsg[512];
+static char predump_errmsg[1024];
 
 /*
  * DoCancelNotifyListen: This function executes a LISTEN or a NOTIFY command, with 
@@ -49,7 +49,7 @@ void DoCancelNotifyListen( PGconn* pConn,
 	pRes = PQexec(pConn, q->data);
 	if ( pRes == NULL || PQresultStatus(pRes) != PGRES_COMMAND_OK)
 	{
-		mpp_err_msg("%s command failed for for backup key %s, instid %d, segid %d failed : %s",
+		mpp_err_msg_cache("%s command failed for for backup key %s, instid %d, segid %d failed : %s",
 				  pszCmd, pszCDBDumpKey, role_id, db_id, PQerrorMessage(pConn));
 	}
 
@@ -185,7 +185,7 @@ PGconn* GetMasterConnection(const char* progName,
 		pszPassword = simple_prompt("Password: ", 100, false);
 		if (pszPassword == NULL)
 		{
-			mpp_err_msg("ERROR", progName, "out of memory when allocating password");
+			mpp_err_msg_cache("ERROR", progName, "out of memory when allocating password");
 			return NULL;
 		}
 	}
@@ -210,7 +210,7 @@ PGconn* GetMasterConnection(const char* progName,
 
 		if (pConn == NULL)
 		{
-			mpp_err_msg("ERROR", progName, "failed to connect to database");
+			mpp_err_msg_cache("ERROR", progName, "failed to connect to database");
 			return(NULL);
 		}
 
@@ -233,7 +233,7 @@ PGconn* GetMasterConnection(const char* progName,
 	/* check to see that the backend connection was successfully made */
 	if (PQstatus(pConn) == CONNECTION_BAD)
 	{
-		mpp_err_msg("ERROR", progName, "connection to database \"%s\" failed : %s",
+		mpp_err_msg_cache("ERROR", progName, "connection to database \"%s\" failed : %s",
 				   PQdb(pConn), PQerrorMessage(pConn));
 		return(NULL);
 	}
@@ -377,7 +377,7 @@ bool ParseCDBDumpInfo( char *progName, char* pszCDBDumpInfo, char** ppCDBDumpKey
 	regex_t rCDBDumpInfo;
 	if ( 0 != regcomp( &rCDBDumpInfo, "([0-9]+)_([0-9]+)_([0-9]+)_([^[:space:]]*)", REG_EXTENDED ) )
 	{
-		mpp_err_msg("ERROR", progName, "Error compiling regular expression for parsing CDB Dump Info\n" );	
+		mpp_err_msg_cache("ERROR", progName, "Error compiling regular expression for parsing CDB Dump Info\n" );	
 		return false;
 	}
 	
@@ -389,7 +389,7 @@ bool ParseCDBDumpInfo( char *progName, char* pszCDBDumpInfo, char** ppCDBDumpKey
 	{
 		char errbuf[1024];
 		regerror( rtn, &rCDBDumpInfo, errbuf, 1024 );
-		mpp_err_msg( "Error parsing CDBDumpInfo %s: not valid : %s\n", pszCDBDumpInfo, errbuf );
+		mpp_err_msg_cache( "Error parsing CDBDumpInfo %s: not valid : %s\n", pszCDBDumpInfo, errbuf );
 		regfree( &rCDBDumpInfo );
 		return false;
 	}
@@ -399,7 +399,7 @@ bool ParseCDBDumpInfo( char *progName, char* pszCDBDumpInfo, char** ppCDBDumpKey
 	*ppCDBDumpKey = GetMatchString( &matches[1], pszCDBDumpInfo );
 	if ( *ppCDBDumpKey == NULL )
 	{
-		mpp_err_msg("ERROR", progName, "Error parsing CDBDumpInfo %s: CDBDumpKey not valid\n", pszCDBDumpInfo );
+		mpp_err_msg_cache("ERROR", progName, "Error parsing CDBDumpInfo %s: CDBDumpKey not valid\n", pszCDBDumpInfo );
 		return false;
 	}
 	
@@ -410,7 +410,7 @@ bool ParseCDBDumpInfo( char *progName, char* pszCDBDumpInfo, char** ppCDBDumpKey
 	*ppCDBPassThroughCredentials = GetMatchString( &matches[4], pszCDBDumpInfo );
 	if ( *ppCDBPassThroughCredentials == NULL )
 	{
-		mpp_err_msg( "ERROR", progName, "Error parsing CDBDumpInfo %s: CDBDumpKey not valid\n", pszCDBDumpInfo );
+		mpp_err_msg_cache( "ERROR", progName, "Error parsing CDBDumpInfo %s: CDBDumpKey not valid\n", pszCDBDumpInfo );
 		return false;
 	}
 	return true;
@@ -453,7 +453,7 @@ char* ReadBackendBackupFile( PGconn* pConn, const char* pszBackupDirectory, cons
 	pRes = PQexec(pConn, Qry->data ); 
 	if (!pRes || PQresultStatus(pRes) != PGRES_TUPLES_OK || PQntuples(pRes) == 0 )
 	{
-		mpp_err_msg("ERROR", progName, "Error executing query %s : %s\n",
+		mpp_err_msg_cache("ERROR", progName, "Error executing query %s : %s\n",
 					Qry->data,
 					PQerrorMessage(pConn) );
 	}
@@ -492,13 +492,24 @@ const char* StringNotNull( const char* pszInput, const char* pszDefault )
 		return pszInput;
 }
 
-char* get_predump_error(void)
+char* get_early_error(void)
 {
     return predump_errmsg;
 }	
-						
+
 /* Simple error logging to stderr  */
 void mpp_err_msg(const char *loglevel, const char *prog, const char *fmt,...)
+{
+	va_list		ap;
+	
+	va_start(ap, fmt);
+	fprintf(stderr, "%s|%s-[%s]:-", GetTimeNow(), prog, loglevel);
+	vfprintf(stderr, gettext(fmt), ap);
+	va_end(ap);
+}
+
+/* Simple error logging to stderr with msg caching for later re-use */
+void mpp_err_msg_cache(const char *loglevel, const char *prog, const char *fmt,...)
 {
 	va_list		ap;
 
@@ -767,7 +778,7 @@ parseDbidSet(int *dbidset, char *dump_set)
 	   dump_set[1] != '[' || 
 	   dump_set[len - 1] != ']')
 	{
-		mpp_err_msg("ERROR", "gp_dump", "invalid dump set format in %s\n", dump_set);
+		mpp_err_msg_cache("ERROR", "gp_dump", "invalid dump set format in %s\n", dump_set);
 		return -1;		
 	}
 	
@@ -783,7 +794,7 @@ parseDbidSet(int *dbidset, char *dump_set)
 		/* illigal dbid */
 		if(dbid < 1)
 		{
-			mpp_err_msg("ERROR", "gp_dump", "Invalid dump set entry. Each entry must be separeted by comma and be greater than 0\n");
+			mpp_err_msg_cache("ERROR", "gp_dump", "Invalid dump set entry. Each entry must be separeted by comma and be greater than 0\n");
 			return -1;
 		}
 		

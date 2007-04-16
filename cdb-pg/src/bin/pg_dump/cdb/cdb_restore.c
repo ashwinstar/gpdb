@@ -36,14 +36,14 @@ int                     optreset;
 static void freeThreadParmArray( ThreadParmArray* pParmAr );
 static bool createThreadParmArray( int nCount, ThreadParmArray* pParmAr);
 static char* addPassThroughParm( char Parm, const char* pszValue, char* pszPassThroughParmString );
-static void	fillInputOptions(int argc, char** argv, InputOptions* pInputOpts);
+static bool	fillInputOptions(int argc, char** argv, InputOptions* pInputOpts);
 static bool parmValNeedsQuotes( const char* Value );
 static void usage(void);
 static void* threadProc(void *arg);
 static bool restoreMaster( InputOptions* pInputOpts, PGconn *pConn, SegmentDatabase *sSegDB, SegmentDatabase *tSegDB, ThreadParm* pParm );
 static void spinOffThreads(PGconn* pConn, InputOptions* pInputOpts, const const RestorePairArray *restorePair, ThreadParmArray* pParmAr );
 static int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMasterParm, const ThreadParmArray* pParmAr );
-static int reportMasterError( const char* pszReportDirectory, const ThreadParm* pMasterParm, const char *localMsg);
+static int reportMasterError(InputOptions inputopts, const ThreadParm* pMasterParm, const char *localMsg);
 static bool g_b_SendCancelMessage = false;
 typedef struct option optType;
 
@@ -85,7 +85,13 @@ main(int argc, char **argv)
 	memset( &masterParm, 0, sizeof(masterParm) );
 	
 	/* Parse command line for options */
-	fillInputOptions( argc, argv, &inputOpts );
+	if( !fillInputOptions( argc, argv, &inputOpts ))
+	{
+		failCount = reportMasterError(inputOpts, &masterParm, 
+									   get_early_error());
+		goto cleanup;
+	}
+	
 
 	mpp_err_msg(logInfo, pszProgName, "Analyzed command line options.\n" );
 
@@ -101,8 +107,8 @@ main(int argc, char **argv)
 	if ( pConn == NULL )
 	{
 		masterParm.pOptionsData	= &inputOpts;
-		failCount = reportMasterError( inputOpts.pszReportDirectory, &masterParm,
-									   "connection to specified database failed");
+		failCount = reportMasterError(inputOpts, &masterParm,
+									  get_early_error());
 		goto cleanup;
 		
 	}
@@ -136,7 +142,7 @@ main(int argc, char **argv)
 	{
 		if ( !restoreMaster( &inputOpts, pConn, sourceSegDB, targetSegDB, &masterParm ) )
 		{
-			failCount = reportMasterError( inputOpts.pszReportDirectory, &masterParm, NULL);
+			failCount = reportMasterError(inputOpts, &masterParm, NULL);
 			goto cleanup;
 		}
 			
@@ -237,7 +243,7 @@ static void usage(void)
 	//printf(("Report bugs to <pgsql-bugs@postgresql.org>.\n"));
 }
 
-void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
+bool fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 {
 	int			c;
 	//Archive    *AH;
@@ -317,8 +323,8 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 	opts = (RestoreOptions *) calloc(1, sizeof(RestoreOptions));
 	if ( opts == NULL )
 	{
-		mpp_err_msg(logError, pszProgName, "error allocating memory for RestoreOptions");
-		exit(0);
+		mpp_err_msg_cache(logError, pszProgName, "error allocating memory for RestoreOptions");
+		return false;
 	}
 	
 	opts->format = archUnknown;
@@ -363,8 +369,8 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 	pInputOpts->pszCmdLineParms = (char *)malloc( lenCmdLineParms + 1 );
 	if ( pInputOpts->pszCmdLineParms == NULL )
 	{
-		mpp_err_msg(logError, pszProgName,  "error allocating memory for pInputOpts->pszCmdLineParms\n");
-		exit(1);
+		mpp_err_msg_cache(logError, pszProgName,  "error allocating memory for pInputOpts->pszCmdLineParms\n");
+		return false;
 	}
 	
 	memset( pInputOpts->pszCmdLineParms, 0, lenCmdLineParms + 1 );
@@ -638,14 +644,14 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 				}
 				else
 				{
-					mpp_err_msg(logError, pszProgName,  "invalid gp-l option %s.  Must be a (all), p (primaries only), or i[dbid list] for \"individual\".\n", optarg);
-					exit(1);
+					mpp_err_msg_cache(logError, pszProgName,  "invalid gp-l option %s.  Must be a (all), p (primaries only), or i[dbid list] for \"individual\".\n", optarg);
+					return false;
 				}
 				break;
 				
 			default:
-				fprintf(stderr, ("Try \"%s --help\" for more information.\n"), pszProgName );
-				exit(1);
+				mpp_err_msg_cache(logError, pszProgName, "Try \"%s --help\" for more information.", pszProgName );
+				return false;
 		}
 	}
 
@@ -679,28 +685,28 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 	 */
 	if (pInputOpts->pszDBName == NULL)
 	{
-		mpp_err_msg(logError, pszProgName,  "%s command line missing the database parameter (-d)\n", pszProgName  );
-		exit(1);
+		mpp_err_msg_cache(logError, pszProgName,  "%s command line missing the database parameter (-d)\n", pszProgName  );
+		return false;
 	}
 	opts->useDB = 1;
 
 	if (pInputOpts->pszKey == NULL)
 	{
-		mpp_err_msg(logError, pszProgName,  "%s command line missing the date time backup key parameter (--gp-k)\n", pszProgName  );
-		exit(1);
+		mpp_err_msg_cache(logError, pszProgName,  "%s command line missing the date time backup key parameter (--gp-k)\n", pszProgName  );
+		return false;
 	}
 
 	if (pInputOpts->pszMasterDBName == NULL)
 	{
-		mpp_err_msg(logError, pszProgName,  "%s command line missing the master database parameter (--)\n", pszProgName  );
-		exit(1);
+		mpp_err_msg_cache(logError, pszProgName,  "%s command line missing the master database parameter (--)\n", pszProgName  );
+		return false;
 	}
 
 	if ((dataOnly || schemaOnly) && pInputOpts->backupLocation == FILE_ON_INDIVIDUAL)
 	{
-		mpp_err_msg(logError, pszProgName, "options \"schema only\" (-s) or \"data only\" (-a) cannot be used together with --gp-s=i\n"
+		mpp_err_msg_cache(logError, pszProgName, "options \"schema only\" (-s) or \"data only\" (-a) cannot be used together with --gp-s=i\n"
 					"If you want to use --gp-i and dump only data, omit dbid number 1 (master) from the individual dbid list.\n");
-		exit(1);
+		return false;
 	}
 
 
@@ -739,11 +745,14 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 				break;
 				
 			default:
-				mpp_err_msg(logError, pszProgName, "unrecognized archive format '%s'; please specify 'p', 't', or 'c'\n",
+				mpp_err_msg_cache(logError, pszProgName, "unrecognized archive format '%s'; please specify 'p', 't', or 'c'\n",
 						  	opts->formatName);
-				exit(1);
+				return false;
 		}
 	}
+
+	return true;
+
 }
 
 /*
@@ -873,7 +882,7 @@ void* threadProc(void *arg)
 		g_b_SendCancelMessage = true;
 		pParm->pszErrorMsg = MakeString( "Connection to dbid %d on host %s failed: %s",
 										sSegDB->dbid, StringNotNull(sSegDB->pszHost, "localhost"), PQerrorMessage(pConn) );
-		mpp_err_msg(logError, pszProgName,  pParm->pszErrorMsg );
+		mpp_err_msg_cache(logError, pszProgName,  pParm->pszErrorMsg );
 		PQfinish(pConn);
 		return NULL;
 	}
@@ -920,7 +929,7 @@ void* threadProc(void *arg)
 	{
 		g_b_SendCancelMessage = true;
 		pParm->pszErrorMsg = MakeString( "could not start Greenplum Database restore: %s", PQerrorMessage(pConn) );
-		mpp_err_msg(logError, pszProgName, pParm->pszErrorMsg);
+		mpp_err_msg_cache(logError, pszProgName, pParm->pszErrorMsg);
 		PQfinish( pConn );
 		return NULL;
 	}
@@ -1300,7 +1309,7 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMas
 	/* Write to buffer a report showing the timestamp key, what the command line options were,
 	 * which segment databases were backed up, to where, and any errors that occurred.
 	 */
-	appendPQExpBuffer(reportBuf, "Greenplum Database Restore Report\n" );
+	appendPQExpBuffer(reportBuf, "\nGreenplum Database Restore Report\n" );
 	appendPQExpBuffer(reportBuf, "Timestamp Key: %s\n", pOptions->pszKey );
 
 	appendPQExpBuffer(reportBuf, "gp_restore Command Line: %s\n",  
@@ -1381,9 +1390,9 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMas
 /*
  * the same as reportRestoreResults but only for the master. This is a little ugly
  * since we repeat some of the code but we need a majoy overhaul in dump/restore
- * anyone - so it will do for now.
+ * anyhow - so it will do for now.
  */
-int reportMasterError( const char* pszReportDirectory, const ThreadParm* pMasterParm, const char *localMsg)
+int reportMasterError(InputOptions inputopts, const ThreadParm* pMasterParm, const char *localMsg)
 {
 	InputOptions* pOptions;
 	PQExpBuffer	reportBuf = NULL;
@@ -1394,20 +1403,27 @@ int reportMasterError( const char* pszReportDirectory, const ThreadParm* pMaster
 	const ThreadParm* pParm;
 	char* pszStatus;
 	char* pszMsg;
+	char* pszReportDirectory;
 	
 	assert(pMasterParm != NULL );
 	
 	if (pMasterParm->pOptionsData == NULL )
 	{
-		mpp_err_msg(logInfo, pszProgName,  "No results to report." );
-		return 0;
+		pOptions = &inputopts;
+	}
+	else
+	{
+		pOptions = pMasterParm->pOptionsData;			
 	}
 	
-	pOptions = pMasterParm->pOptionsData;	
-	
+	/* generate a timestamp key if we haven't already */
+	if(!pOptions->pszKey)
+		pOptions->pszKey = GenerateTimestampKey(); 
+	   
 	/*
 	 * Set the report directory if not set by user (with --gp-r)
 	 */
+	pszReportDirectory = pOptions->pszReportDirectory;
 	if ( pszReportDirectory == NULL || *pszReportDirectory == '\0' )
 	{
 		
@@ -1442,7 +1458,7 @@ int reportMasterError( const char* pszReportDirectory, const ThreadParm* pMaster
 	/* Write to buffer a report showing the timestamp key, what the command line options were,
 		* which segment databases were backed up, to where, and any errors that occurred.
 		*/
-	appendPQExpBuffer(reportBuf, "Greenplum Database Restore Report\n" );
+	appendPQExpBuffer(reportBuf, "\nGreenplum Database Restore Report\n" );
 	appendPQExpBuffer(reportBuf, "Timestamp Key: %s\n", pOptions->pszKey );
 	
 	appendPQExpBuffer(reportBuf, "gp_restore Command Line: %s\n",  
