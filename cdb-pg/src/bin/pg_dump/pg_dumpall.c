@@ -521,6 +521,7 @@ dumpRoles(PGconn *conn)
 	if (server_version >= 80200)
 	{
 		if (resource_queues)
+		{
 			printfPQExpBuffer(buf,
 							  "SELECT rolname, rolsuper, rolinherit, "
 							  "rolcreaterole, rolcreatedb, rolcatupdate, "
@@ -531,6 +532,18 @@ dumpRoles(PGconn *conn)
 							  "pg_resqueue.oid = rolresqueue) AS rolqueuename "
 							  "FROM pg_authid "
 							  "ORDER BY 1");
+		}
+		else
+		{
+			printfPQExpBuffer(buf,
+							  "SELECT rolname, rolsuper, rolinherit, "
+							  "rolcreaterole, rolcreatedb, rolcatupdate, "
+							  "rolcanlogin, rolconnlimit, rolpassword, "
+							  "rolvaliduntil, "
+							  "pg_catalog.shobj_description(oid, 'pg_authid') as rolcomment "
+							  "FROM pg_authid "
+							  "ORDER BY 1");
+		}
 	}
 	else if (server_version >= 80100)
 	{
