@@ -161,6 +161,15 @@ ResourceOwnerRelease(ResourceOwner owner,
 	/* Rather than PG_TRY at every level of recursion, set it up once */
 	ResourceOwner save;
 
+	/*
+	 * Greenplum: For some reason we've been calling this when the owner is NULL.
+	 */
+	if (owner == NULL)
+	{
+		elog((Debug_print_full_dtm ? LOG : DEBUG5),"ResourceOwnerRelease found owner = NULL");
+		return;
+	}
+
 	save = CurrentResourceOwner;
 	PG_TRY();
 	{

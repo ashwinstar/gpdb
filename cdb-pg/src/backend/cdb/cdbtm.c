@@ -377,6 +377,9 @@ notifyCommittedDtxTransaction(void)
 void
 setCurrentDtxTwoPhase(const char* debugCaller, const char* debugDetail)
 {
+	Assert(debugCaller != NULL);
+	Assert(debugDetail != NULL);
+
 	if (currentGxact != NULL)
 	{
 		if (currentGxact->state == DTX_STATE_ACTIVE_NOT_DISTRIBUTED)
@@ -392,7 +395,8 @@ setCurrentDtxTwoPhase(const char* debugCaller, const char* debugDetail)
 		}
 		else
 		{
-			elog(ERROR,"DTM transaction is not active (%s, detail = '%s')", debugCaller, debugDetail);
+			elog(ERROR,"DTM transaction is not active (state = %s, %s, detail = '%s')", 
+				DtxStateToString(currentGxact->state), debugCaller, debugDetail);
 		}
 	}
 	else
