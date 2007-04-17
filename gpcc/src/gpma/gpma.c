@@ -235,6 +235,7 @@ static apr_status_t get_proto_received(gpcc_event_t* ev, void* cmdslot_)
     GPCC_DO(ev->etype == PROTO_MSG);
     dict = json_tokener_parse(res->mbody);
     if (is_error(dict)) {
+	gpcc_warning(FLINE, "peer protocol packet not valid json");
 	queue_failure_event(cmdslot);
 	return APR_EINVAL;
     }
@@ -343,6 +344,8 @@ static void d_setup_fsm(void)
     gpcc_fsm_put(GET_PROTO_CMDSTATE, PROTO_MSG_EVENT, NULL_CMDSTATE,
 		 get_proto_received, 0);
     gpcc_fsm_put(GET_PROTO_CMDSTATE, TIMEUP_EVENT, NULL_CMDSTATE,
+		 get_proto_cancel, 0);
+    gpcc_fsm_put(GET_PROTO_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
 		 get_proto_cancel, 0);
 }
 
@@ -453,18 +456,29 @@ static void d_main(void)
     for ( ; 0 != (ev = gpcc_evqueue_get(evq)); gpcc_event_free(ev)) {
 	int nxtstate;
 	gpcc_fsm_func_t** action;
+
 	/* map the cmdidx */
-	if (ev->cmdidx == 0) 	/* artificially match 0 to system */
+	if (ev->cmdidx == 0) 	/* artificially match 0 to system_cmdidx */
 	    ev->cmdidx = cb.system_cmdidx;
-	if (! (cp = cmdslot_get(ev->cmdidx)))
-	    continue;
-	/* retrieve fsm record */
-	if (0 != gpcc_fsm_get(cp->cmdstate, ev->etype, &nxtstate, &action)) {
+
+	if (! (cp = cmdslot_get(ev->cmdidx))) {
+	    gpcc_log_info("Event %s contains unknown cmdidx %x", 
+			  event_str(ev->etype), ev->cmdidx);
 	    continue;
 	}
+
+	/* retrieve fsm record */
+	if (0 != gpcc_fsm_get(cp->cmdstate, ev->etype, &nxtstate, &action)) {
+	    gpcc_log_info("FSM[%d]: %s + %s not found", cp->cmdidx,
+			  cmdstate_str(cp->cmdstate), 
+			  event_str(ev->etype));
+	    continue;
+	}
+
 	/* dispatch actions */
 	for ( ; *action && 0 == (*action)(ev, cp); action++);
 
+	/* effect the state transition */
 	if (*action == 0) {
 	    if (cb.debug) {
 		gpcc_log_info("FSM[%d]: %s + %s = %s", cp->cmdidx,
@@ -475,13 +489,18 @@ static void d_main(void)
 	    cp->cmdstate = nxtstate;
 	}
 	else {
+	    gpcc_warning(FLINE, "FSM[%d] FAILED: cancelled %s + %s = %s ", cp->cmdidx,
+			 cmdstate_str(cp->cmdstate), 
+			 event_str(ev->etype), 
+			 cmdstate_str(nxtstate));
 	}
 
+	/* free up the cmdslot if necessary */
 	if (cp->cmdstate == NULL_CMDSTATE)
 	    cmdslot_free(cp);
     }
 
-    fprintf(stderr, "exiting\n");
+    gpcc_log_info("d_main exiting");
 }
 
 

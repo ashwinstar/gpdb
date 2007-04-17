@@ -152,6 +152,7 @@ ExecInitExternalScan(ExternalScan *node, EState *estate, int eflags)
 	
 	
 	currentScanDesc = file_beginscan(currentRelation,
+									 node->scan.scanrelid,
 									 node->uriList,
 									 node->fmtOpts,
 									 node->isText,

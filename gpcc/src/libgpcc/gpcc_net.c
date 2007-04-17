@@ -3,7 +3,7 @@
 #include <apr_network_io.h>
 #include <apr_thread_proc.h>
 #include <apr_poll.h>
-#include <apr_sha1.h>
+
 
 static unsigned short unique_gen = 1;
 
@@ -32,7 +32,6 @@ struct item_t {
 
 static struct {
     apr_uint32_t net_spin[1];
-    gpcc_net_node_id_t my_node_id;
     apr_pool_t* pool;
     apr_thread_t* thread;
     apr_sockaddr_t* sa;
@@ -117,10 +116,67 @@ static gpcc_net_conn_t mkitem(apr_socket_t* sock, void* arg,
 static apr_status_t do_read(item_t* item, apr_uint32_t* spin)
 {
     buf_t* bb = &item->in;
+    int e = 0;
+    int bbfree = sizeof(bb->buf) - bb->top; /* freespace in buf */
+    
+    if (bbfree < 32 && bb->bot != 0) {
+	/* compact buffer */
+	memmove(bb->buf, bb->buf + bb->bot, bb->top - bb->bot);
+	bb->top = bb->top - bb->bot;
+	bb->bot = 0;
+	bbfree = sizeof(bb->buf) - bb->top;
+    }
+
+    /* read from network */
+    if (bbfree > 0) {
+	apr_size_t n = bbfree;
+	e = apr_socket_recv(item->sock, bb->buf + bb->top, &n);
+	bb->top += n;
+	bbfree -= n;
+	if (e) {
+	    if (e == APR_EOF) 
+		return APR_EINVAL;
+	    if (e != APR_EAGAIN) {
+		gpcc_warning(FLINE, "net: recv error %d\n", e);
+		return APR_EINVAL;
+	    }
+	}
+    }
+
+    if (item->is_connecting) {
+	item->is_connecting = 0;
+	item->is_open = 1;
+	gpcc_spin_release(spin);
+	item->arg = net.cb.opened(item->conn, item->arg, 
+				  item->self_origin, item->pool);
+	gpcc_spin_secure(spin);
+	if (item->is_closing) 
+	    return APR_EINVAL;
+    }
+
+    if (bb->bot < bb->top) {
+	const int n = bb->top - bb->bot;
+	int nn = n;
+	gpcc_spin_release(spin);
+	net.cb.recv(item->conn, item->arg, bb->buf + bb->bot, &nn);
+	gpcc_spin_secure(spin);
+	GPCC_DO(0 <= nn && nn < n);
+	bb->bot += nn;
+    }
+    return 0;
+}
+
+
+
+#ifdef UNDEF
+static apr_status_t do_read(item_t* item, apr_uint32_t* spin)
+{
+    buf_t* bb = &item->in;
     gpcc_net_msghdr_t msghdr;
     apr_size_t bcnt;
     int e = 0;
-    int avail = sizeof(bb->buf) - bb->top; /* freespace in buf */
+    int bbfree = sizeof(bb->buf) - bb->top; /* freespace in buf */
+
 
     if (avail < sizeof(msghdr) + 16) {
 	/* compact buffer */
@@ -183,6 +239,7 @@ static apr_status_t do_read(item_t* item, apr_uint32_t* spin)
     }
     return 0;
 }
+#endif
 
 
 static apr_status_t do_write(item_t* item)
@@ -336,8 +393,6 @@ APR_DECLARE(apr_status_t) gpcc_net_start(int port,
     apr_socket_t* sock;
     apr_threadattr_t* ta;
     apr_uint32_t* spin = 0;
-    apr_sha1_ctx_t sha1ctx;
-    char sha1buf[80];
 
     if (port <= 0) return APR_EINVAL;
 
@@ -346,11 +401,6 @@ APR_DECLARE(apr_status_t) gpcc_net_start(int port,
 	spin = gpcc_spin_release(spin);
 	return 0;
     }
-    GPCC_DO(0 == apr_generate_random_bytes((unsigned char*)sha1buf, 20));
-    sprintf(sha1buf + 20, " gpcc %lld ", apr_time_now());
-    apr_sha1_init(&sha1ctx);
-    apr_sha1_update(&sha1ctx, sha1buf, strlen(sha1buf));
-    apr_sha1_final(net.my_node_id.opaque, &sha1ctx);
     GPCC_DO(0 == apr_pool_create(&net.pool, 0));
     GPCC_DO(0 == apr_sockaddr_info_get(&sa, APR_ANYADDR, APR_INET, 
 				       (apr_port_t) port, 0, net.pool));
@@ -454,15 +504,27 @@ APR_DECLARE(apr_status_t) gpcc_net_close(gpcc_net_conn_t conn)
     return 0;
 }
 
-static apr_status_t send_raw(gpcc_net_conn_t conn, 
-			     const char* buf1, int len1,
-			     const char* buf2, int len2)
+APR_DECLARE(apr_status_t) gpcc_net_sendv(gpcc_net_conn_t conn, 
+					 int nbuf,
+					 const char* buf[], int bufsz[])
 {
+    int tot = 0;
+    int i;
     apr_uint32_t* spin;
     int e = 0;
     item_t* item;
     buf_t* bb;
-    int avail;
+    int bbfree;
+
+    for (i = 0; i < nbuf; i++) {
+	if (bufsz[i] < 0) 
+	    return APR_EINVAL;
+	tot += bufsz[i];
+    }
+    if (tot > sizeof(bb->buf)) {
+	gpcc_log_error("gpcc_net_sendv: packet too big (%d, max %d)", tot, sizeof(bb->buf));
+	return APR_EINVAL;
+    }
 
     retry:
     spin = gpcc_spin_secure(net.net_spin);
@@ -471,19 +533,15 @@ static apr_status_t send_raw(gpcc_net_conn_t conn,
 	goto bail;
     }
     bb = &item->out;
-    avail = sizeof(bb->buf) - bb->top; /* freespace in buf */
+    bbfree = sizeof(bb->buf) - bb->top; /* freespace in buf */
 
-    if (avail < len1 + len2) {
+    if (bbfree < tot) {
 	/* compact buffer */
 	memmove(bb->buf, bb->buf + bb->bot, bb->top - bb->bot);
 	bb->top = bb->top - bb->bot;
 	bb->bot = 0;
-	avail = sizeof(bb->buf) - bb->top;
-	if (avail < len1 + len2) {
-	    if (len1 + len2 >= sizeof(bb->buf)) {
-		e = APR_EINVAL;	/* msg too big ... will never fit */
-		goto bail;
-	    }
+	bbfree = sizeof(bb->buf) - bb->top;
+	if (bbfree < tot) {
 	    if (do_write(item)) { /* flush */
 		item->is_closing = 1;
 		e = APR_EINVAL;
@@ -494,10 +552,10 @@ static apr_status_t send_raw(gpcc_net_conn_t conn,
 	}
     }
 
-    memcpy(bb->buf + bb->top, buf1, len1);
-    bb->top += len1;
-    memcpy(bb->buf + bb->top, buf2, len2);
-    bb->top += len2;
+    for (i = 0; i < nbuf; i++) {
+	memcpy(bb->buf + bb->top, buf[i], bufsz[i]);
+	bb->top += bufsz[i];
+    }
     spin = gpcc_spin_release(spin);
     return 0;
 
@@ -507,15 +565,15 @@ static apr_status_t send_raw(gpcc_net_conn_t conn,
 }
 
 
-APR_DECLARE(apr_status_t) gpcc_net_send_raw(gpcc_net_conn_t conn, 
-					    const char* buf, int buflen)
+APR_DECLARE(apr_status_t) gpcc_net_send(gpcc_net_conn_t conn, 
+					const char* buf, int buflen)
 {
-    return send_raw(conn, buf, buflen, "", 0);
-    
+    return gpcc_net_sendv(conn, 1, &buf, &buflen);
 }
 
 
 
+#ifdef UNDEF
 APR_DECLARE(apr_status_t) gpcc_net_send(gpcc_net_conn_t conn, 
 					const gpcc_net_msghdr_t* msghdr, 
 					const char* msgbody)
@@ -529,6 +587,7 @@ APR_DECLARE(apr_status_t) gpcc_net_send(gpcc_net_conn_t conn,
 
     return send_raw(conn, (char*) &nethdr, sizeof(nethdr), msgbody, msghdr->mlen);
 }
+#endif 
 
 
 APR_DECLARE(apr_status_t) gpcc_net_setarg(gpcc_net_conn_t conn, void* arg)
@@ -562,10 +621,6 @@ APR_DECLARE(void*) gpcc_net_getarg(gpcc_net_conn_t conn)
 
 
 
-APR_DECLARE(gpcc_net_node_id_t) gpcc_net_my_node_id(void)
-{
-    return net.my_node_id;
-}
 
 APR_DECLARE(int) gpcc_net_get_conns(gpcc_net_conn_t conns[GPCC_NET_CONN_MAX])
 {
@@ -581,5 +636,20 @@ APR_DECLARE(int) gpcc_net_get_conns(gpcc_net_conn_t conns[GPCC_NET_CONN_MAX])
     }
     spin = gpcc_spin_release(spin);
     return count;
+}
+
+
+
+
+APR_DECLARE(gpcc_net_headers_t*) gpcc_net_parse_headers(const char* buf, int* len, apr_pool_t* pool)
+{
+    const char* q;
+    char* p;
+    int plen = *len;
+
+    *len = 0;
+    while (0 != (q = memchr(buf, plen, '\n'))) {
+	
+	
 }
 

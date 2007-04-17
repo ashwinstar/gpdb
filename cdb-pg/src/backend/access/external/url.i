@@ -80,7 +80,7 @@ struct fcurl_data
 typedef struct fcurl_data URL_FILE;
 
 /* exported functions */
-URL_FILE *url_fopen(char *url, char *filename, const char *operation);
+URL_FILE *url_fopen(char *url, char *filename, const char *operation, const char* XID);
 int url_fclose(URL_FILE *file);
 int url_feof(URL_FILE *file);
 size_t url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file);
@@ -221,12 +221,12 @@ use_buffer(URL_FILE *file,int want)
 
 
 URL_FILE *
-url_fopen(char *url, char *filename, const char *operation)
+url_fopen(char *url, char *filename, const char *operation, const char* XID)
 {
     /* this code checks for URLs or types in the 'url' and
        basicly use the real fopen() for standard files */
     bool  isGpfdist = false;
-	char  sessionIDBuf[80];
+	/*char  sessionIDBuf[80];*/
     URL_FILE *file;
     (void)operation;
 
@@ -263,10 +263,13 @@ url_fopen(char *url, char *filename, const char *operation)
         curl_easy_setopt(file->handle.curl, CURLOPT_WRITEFUNCTION, write_callback);
 		if (isGpfdist) 
 		{
-		    sprintf(sessionIDBuf, "X-GP-TID: %x.%x.%x", 
-					gp_session_id, QEDtxContextInfo.distributedXid, QEDtxContextInfo.distributedSnapshotData.curcid);
+			/*
+		    sprintf(sessionIDBuf, "X-GP-TID: %x.%x.%x.%x", 
+					gp_session_id, QEDtxContextInfo.distributedXid, 
+					QEDtxContextInfo.distributedSnapshotData.curcid);
+					*/
             file->x_httpheader = NULL;
-    		file->x_httpheader = curl_slist_append(file->x_httpheader, sessionIDBuf);
+    		file->x_httpheader = curl_slist_append(file->x_httpheader, XID);
             curl_easy_setopt(file->handle.curl, CURLOPT_HTTPHEADER, file->x_httpheader);
         }
         if(!multi_handle)

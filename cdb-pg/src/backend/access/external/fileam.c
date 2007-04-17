@@ -86,7 +86,7 @@ static char *g_dataSourceName = NULL;
 * ----------------
 */
 FileScanDesc
-file_beginscan(Relation relation, List *uriList, List *fmtOpts,
+file_beginscan(Relation relation, Index scanrelid, List *uriList, List *fmtOpts,
 			   bool isText, int nkeys, ScanKey key)
 {
 	FileScanDesc scan;
@@ -113,6 +113,7 @@ file_beginscan(Relation relation, List *uriList, List *fmtOpts,
 	ItemPointerSetInvalid(&scan->fs_ctup.t_self);
 	scan->fs_cbuf = InvalidBuffer;
 	scan->fs_rd = relation;
+	scan->fs_scanrelid = scanrelid;
 	scan->fs_nkeys = nkeys;
 	scan->fs_noop = false;
 	scan->fs_file = NULL;
@@ -713,6 +714,13 @@ open_external_file(FileScanDesc scan)
 {
     Uri *uri;
     char *filename = NULL;
+	char XID[100];
+
+	sprintf(XID, "X-GP-TID: %x.%x.%x.%x",
+			gp_session_id, QEDtxContextInfo.distributedXid,
+			QEDtxContextInfo.distributedSnapshotData.curcid,
+			scan->fs_scanrelid);
+
     
     /*
      * Open the url with url_open().
@@ -730,7 +738,7 @@ open_external_file(FileScanDesc scan)
     if(uri->protocol == URI_FILE)
         filename = uri->path;
         
-    scan->fs_file = (FILE*) url_fopen(scan->fs_uri, filename, PG_BINARY_R);
+    scan->fs_file = (FILE*) url_fopen(scan->fs_uri, filename, PG_BINARY_R, XID);
 
 	/*
 	 * Get a global reference to the file pointer, so we can free it from

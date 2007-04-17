@@ -5,25 +5,7 @@
 #include <apr_time.h>
 
 #define GPCC_NET_CONN_MAX	256
-#define GPCC_NET_PROTO          "gpcc/3.1"
 
-
-typedef struct gpcc_net_msghdr_t gpcc_net_msghdr_t;
-struct gpcc_net_msghdr_t {
-    apr_uint16_t mtype;		/* packet type */
-    apr_uint16_t mlen;		/* #bytes in packet body */
-    apr_uint32_t sndidx;		/* sender cmdidx */
-    apr_uint32_t rcvidx;		/* receiver cmdidx */
-};
-
-#define GPCC_NET_MSGHDR_FILL(mh, t, l, s, r)	\
-    (mh)->mtype = t, (mh)->mlen = l, (mh)->sndidx = s, (mh)->rcvidx = r
-
-/** identifies this node - a random unique value */
-typedef struct gpcc_net_node_id_t gpcc_net_node_id_t;
-struct gpcc_net_node_id_t {
-    unsigned char opaque[20];
-};
 
 /** identifies a connection, only non-zero values are valid */
 typedef apr_uint32_t gpcc_net_conn_t;
@@ -45,7 +27,8 @@ typedef void gpcc_net_closed_t(gpcc_net_conn_t conn, void* conn_arg);
 
 /** callback when a packet arrives */
 typedef void gpcc_net_recv_t(gpcc_net_conn_t conn, void* conn_arg,
-			     const gpcc_net_msghdr_t* msghdr, const char* msgbody);
+			     const char* buf, 
+			     int* bufsz); /* IN: bytes in buf to consume, OUT: bytes consumed */
 
 /** callback every second */
 typedef void gpcc_net_tick_t(apr_time_t now);
@@ -95,14 +78,25 @@ APR_DECLARE(apr_status_t) gpcc_net_close(gpcc_net_conn_t conn);
 
 
 /**
- *  Send a packet 
+ *  Send a packet
  *  @param conn the connection receiving the packet
- *  @param msghdr the message header
- *  @param msgbody the message body
+ *  @param buf the buffer
+ *  @param bufsz bytes to send
  */
 APR_DECLARE(apr_status_t) gpcc_net_send(gpcc_net_conn_t conn, 
-					const gpcc_net_msghdr_t* msghdr, 
-					const char* msgbody);
+					const char* buf, int bufsz);
+
+
+/**
+ *  Send a packet
+ *  @param conn the connection receiving the packet
+ *  @param nbuf number of buffers
+ *  @param buf the array of buffers containing packet to send
+ *  @param bufsz size of elements in buf[]
+ */
+APR_DECLARE(apr_status_t) gpcc_net_sendv(gpcc_net_conn_t conn, 
+					 int nbuf,
+					 const char* buf[], int bufsz[]);
 
 
 /**
@@ -122,14 +116,6 @@ APR_DECLARE(void*) gpcc_net_getarg(gpcc_net_conn_t conn);
 
 
 
-
-/**
- *  Get the ID of this node
- *  @return the ID 
- */
-APR_DECLARE(gpcc_net_node_id_t) gpcc_net_my_node_id(void);
-
-
 /**
  *  Get active connections.
  *  @param conns OUT: current active connections. This array must have capacity have 
@@ -137,6 +123,16 @@ APR_DECLARE(gpcc_net_node_id_t) gpcc_net_my_node_id(void);
  *  @return number of active connections returned in conns[]
  */
 APR_DECLARE(int) gpcc_net_get_conns(gpcc_net_conn_t conns[GPCC_NET_CONN_MAX]);
+
+
+typedef struct gpcc_net_headers_t gpcc_net_headers_t;
+struct gpcc_net_headers_t {
+    int   hcount;
+    char* hname[];
+    char* hvalue[];
+};
+
+APR_DECLARE(gpcc_net_headers_t*) gpcc_net_parse_headers(const char* buf, int* len, apr_pool_t* pool);
 
 #endif /* GPCC_NET_H */
 
