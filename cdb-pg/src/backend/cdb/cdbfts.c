@@ -397,6 +397,7 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 		 * UNDONE: Since we are always starting a DTX capable transaction
 		 * UNDONE: it is unclear we can do anything here but error out...
 		 */
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "FtsHandleGangConnectionFailure calling AbortCurrentTransaction and returning true.");
 	    AbortCurrentTransaction();
 		return true;
 	}
@@ -426,7 +427,7 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 //	{
 //		setCurrentDtxDirty();
 //	}
-	Assert(false);	// UNDONE
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "FtsHandleGangConnectionFailure returning false.");
 
 	return false;
 }

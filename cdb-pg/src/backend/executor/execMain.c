@@ -977,7 +977,7 @@ ExecCheckXactReadOnly(Query *parsetree)
 		goto fail;
 	}
 	if (changesTempTables)
-		setCurrentDtxTwoPhase("ExecCheckXactReadOnly","(none)");
+		ExecutorMarkTransactionDoesWrites();
 	return;
 
 fail:
