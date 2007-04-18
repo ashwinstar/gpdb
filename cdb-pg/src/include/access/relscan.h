@@ -105,6 +105,7 @@ typedef struct FileScanDescData
 	bool		fs_noop;		/* no op. this segdb has no file to scan */
 	int			fs_nkeys;		/* number of scan keys */
 	ScanKey		fs_key;			/* array of scan key descriptors */
+	uint32      fs_scancounter;	/* copied from struct ExternalScan in plan */
 	
 	/* current file parse state */
 	struct CopyStateData *fs_pstate;

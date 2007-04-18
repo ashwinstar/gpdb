@@ -20,7 +20,7 @@
 #include "utils/rel.h"
 #include "utils/tqual.h"
 
-extern FileScanDesc file_beginscan(Relation relation, Index scanrelid, List *uriList, List *fmtOpts,
+extern FileScanDesc file_beginscan(Relation relation, Index scanrelid, uint32 scancounter, List *uriList, List *fmtOpts,
 			   bool isText, int nkeys, ScanKey key);
 extern void file_rescan(FileScanDesc scan, ScanKey key);
 extern void file_endscan(FileScanDesc scan);

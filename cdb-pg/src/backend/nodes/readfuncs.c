@@ -2133,6 +2133,7 @@ _readExternalScan(void)
 	READ_NODE_FIELD(uriList);
 	READ_NODE_FIELD(fmtOpts);
 	READ_BOOL_FIELD(isText);
+	READ_INT_FIELD(scancounter);
 	
 	READ_DONE();
 }

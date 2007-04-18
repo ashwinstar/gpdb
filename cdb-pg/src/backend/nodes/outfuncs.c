@@ -384,6 +384,7 @@ _outExternalScan(StringInfo str, ExternalScan *node)
 	WRITE_NODE_FIELD(uriList);
 	WRITE_NODE_FIELD(fmtOpts);
 	WRITE_BOOL_FIELD(isText);
+	WRITE_INT_FIELD(scancounter);
 }
 
 static void

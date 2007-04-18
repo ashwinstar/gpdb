@@ -364,6 +364,7 @@ typedef struct ExternalScan
 	List		*uriList;   /* data uri or null for each segment  */
 	List		*fmtOpts;   /* data format options                */
 	bool		isText;     /* true for text false for csv        */
+	uint32      scancounter;	/* counter incr per scan node created */
 	
 } ExternalScan;
 

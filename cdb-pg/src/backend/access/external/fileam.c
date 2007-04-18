@@ -86,7 +86,8 @@ static char *g_dataSourceName = NULL;
 * ----------------
 */
 FileScanDesc
-file_beginscan(Relation relation, Index scanrelid, List *uriList, List *fmtOpts,
+file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
+			   List *uriList, List *fmtOpts,
 			   bool isText, int nkeys, ScanKey key)
 {
 	FileScanDesc scan;
@@ -114,6 +115,7 @@ file_beginscan(Relation relation, Index scanrelid, List *uriList, List *fmtOpts,
 	scan->fs_cbuf = InvalidBuffer;
 	scan->fs_rd = relation;
 	scan->fs_scanrelid = scanrelid;
+	scan->fs_scancounter = scancounter;
 	scan->fs_nkeys = nkeys;
 	scan->fs_noop = false;
 	scan->fs_file = NULL;
@@ -719,7 +721,7 @@ open_external_file(FileScanDesc scan)
 	sprintf(XID, "X-GP-TID: %x.%x.%x.%x",
 			gp_session_id, QEDtxContextInfo.distributedXid,
 			QEDtxContextInfo.distributedSnapshotData.curcid,
-			scan->fs_scanrelid);
+			scan->fs_scancounter);
 
     
     /*

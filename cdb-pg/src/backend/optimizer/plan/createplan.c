@@ -2439,6 +2439,7 @@ make_externalscan(List *qptlist,
 {
 	ExternalScan    *node = makeNode(ExternalScan);
 	Plan	   *plan = &node->scan.plan;
+	static uint32 scancounter = 0;
 	
 	/* cost should be inserted by caller */
 	plan->targetlist = qptlist;
@@ -2451,6 +2452,7 @@ make_externalscan(List *qptlist,
 	node->uriList = urilist;
 	node->fmtOpts = fmtopts;
 	node->isText = istext;
+	node->scancounter = scancounter++;
 	
 	return node;
 }
