@@ -449,10 +449,12 @@ ParseDateTime(const char *timestr, char *workbuf, size_t buflen,
 	 * there is no space left to append a character to the buffer. Note that
 	 * "bufptr" is evaluated twice.
 	 */
+	bufend --;	/* lose one here to avoid (bufptr + 1) in APPEND_CHAR */
+
 #define APPEND_CHAR(bufptr, end, newchar)		\
 	do											\
 	{											\
-		if (((bufptr) + 1) >= (end))			\
+		if ((bufptr) > (end))			\
 			return DTERR_BAD_FORMAT;			\
 		*(bufptr)++ = newchar;					\
 	} while (0)
@@ -2051,6 +2053,8 @@ DecodeDate(char *str, int fmask, int *tmask, struct pg_tm * tm)
 				val,
 				dmask = 0;
 	char	   *field[MAXDATEFIELDS];
+	char	   *fsp = str;
+	int			flen[MAXDATEFIELDS];
 
 	/* parse this string... */
 	while (*str != '\0' && nf < MAXDATEFIELDS)
@@ -2059,6 +2063,7 @@ DecodeDate(char *str, int fmask, int *tmask, struct pg_tm * tm)
 		while (!isalnum((unsigned char) *str))
 			str++;
 
+		fsp = str;
 		field[nf] = str;
 		if (isdigit((unsigned char) *str))
 		{
@@ -2070,6 +2075,8 @@ DecodeDate(char *str, int fmask, int *tmask, struct pg_tm * tm)
 			while (isalpha((unsigned char) *str))
 				str++;
 		}
+
+		flen[nf] = (int)(str - fsp);
 
 		/* Just get rid of any non-digit, non-alpha characters... */
 		if (*str != '\0')
@@ -2126,7 +2133,8 @@ DecodeDate(char *str, int fmask, int *tmask, struct pg_tm * tm)
 		if (field[i] == NULL)
 			continue;
 
-		if ((len = strlen(field[i])) <= 0)
+		len = flen[i];
+		if (len <= 0)
 			return DTERR_BAD_FORMAT;
 
 		dterr = DecodeNumber(len, field[i], haveTextMonth, fmask,
