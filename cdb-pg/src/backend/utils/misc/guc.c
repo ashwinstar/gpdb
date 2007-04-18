@@ -2009,6 +2009,16 @@ static struct config_int ConfigureNamesInt[] =
 		&gp_sort_flags,
 		10000, 0, INT_MAX, NULL, NULL
 	},
+
+	{
+		{"gp_sort_max_distinct", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Experimental feature: max number of distinct values for sort."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_sort_max_distinct,
+		20000, 0, INT_MAX, NULL, NULL
+	},
 	
 	{
 		{"gp_interconnect_setup_timeout", PGC_USERSET, GP_ARRAY_TUNING,

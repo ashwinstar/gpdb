@@ -442,6 +442,14 @@ extern bool gp_enable_sort_distinct;
  */
 extern int gp_sort_flags;
 
+/* If Greenplum is discarding duplicate rows in sort, switch back to 
+ * standard sort if the number of distinct values exceeds max_distinct.
+ * (If the number of distinct values is too large the behavior of the 
+ * insertion sort is inferior to the heapsort)
+ */
+extern int gp_sort_max_distinct;
+
+
 /* The maximum number of times on average that the hybrid hashed aggregation
  * algorithm will plan to spill an input row to disk before including it in
  * an aggregation.  Increasing this parameter will cause the planner to choose 

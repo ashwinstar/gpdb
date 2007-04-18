@@ -110,6 +110,7 @@ bool		gp_enable_explain_allstat = FALSE;
 bool		gp_enable_sort_limit = FALSE;
 bool		gp_enable_sort_distinct = FALSE;
 int			gp_sort_flags = 0;
+int			gp_sort_max_distinct = 20000;
 
 
 /* --------------------------------------------------------------------------------------------------
