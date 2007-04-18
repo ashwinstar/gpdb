@@ -197,6 +197,10 @@ class GPFDistRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     counter = 0
 
+    def log_request(self, code):
+	print "%s - %s" % (self.client_address[0], code)
+
+
     def send400(self, msg):
 	print 'ERROR: %s' % msg
 	self.send_response(400)
