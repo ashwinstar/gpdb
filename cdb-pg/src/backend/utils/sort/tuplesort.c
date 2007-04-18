@@ -258,6 +258,7 @@ struct Tuplesortstate
 	int64  		alltupcount;    /* count of all input tuples */ /*CDB*/
 	bool		noduplicates;   /* discard duplicate rows if true *//* CDB */
 	int			mppsortflags;   /* special sort flags*//* CDB */
+	int64  		gpmaxdistinct;  /* max number of distinct values */ /*CDB*/
 	bool		standardsort;   /* do regular sort if true *//* CDB */
 		
 
@@ -531,6 +532,7 @@ tuplesort_begin_common(int workMem, bool randomAccess)
 	state->alltupcount  = 0; /*CDB*/
 	state->mppsortflags = 0;   /* special sort flags*//* CDB */
 	state->standardsort = true; /* normal sort *//* CDB */
+	state->gpmaxdistinct = 20000; /* maximum distinct values *//* CDB */
 	state->memtuples = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
 
 	USEMEM(state, GetMemoryChunkSpace(state->memtuples));
@@ -561,7 +563,8 @@ tuplesort_begin_common(int workMem, bool randomAccess)
  */
 void
 cdb_tuplesort_init(Tuplesortstate *state, 
-				   int64 offset, int64 limit, int unique, int sort_flags)
+				   int64 offset, int64 limit, int unique, int sort_flags,
+				   int64 maxdistinct)
 {
 	/* set a limit to internal sorts. If the offset is non-zero but
 	 * the limit is not set, then no limit */
@@ -573,6 +576,8 @@ cdb_tuplesort_init(Tuplesortstate *state,
 		state->noduplicates = true;
 
 	state->mppsortflags = sort_flags;
+
+	state->gpmaxdistinct = maxdistinct;
 
 	/* do a standard sort unless performing limit or duplicate
 	 * elimination */
@@ -989,7 +994,7 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
                     }
 
 					/* MPP-1342: limit the number of distinct values */
-					if (state->memtupcount > 20000)
+					if (state->memtupcount > state->gpmaxdistinct)
                     {
                          state->standardsort = true;
                     }

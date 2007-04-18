@@ -103,6 +103,7 @@ ExecSort(SortState *node)
 			int64 		offset = 0;
 			int 		unique = 0;
 			int 		sort_flags = gp_sort_flags; /* get the guc */
+			int         maxdistinct = gp_sort_max_distinct; /* get the guc */
 
 			if (node->limitCount)
 			{
@@ -139,7 +140,7 @@ ExecSort(SortState *node)
 				unique = 1;
 			
 			cdb_tuplesort_init(tuplesortstate, offset, limit, unique, 
-							   sort_flags);
+							   sort_flags, maxdistinct);
 		}
 
         /* If EXPLAIN ANALYZE, share our Instrumentation object with sort. */
