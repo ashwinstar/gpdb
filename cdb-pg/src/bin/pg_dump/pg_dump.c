@@ -7417,7 +7417,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
         /* add FORMAT clause */
         appendPQExpBuffer(q, "FORMAT '%s' (%s);\n", 
                           fmttype[0] == 't' ? "text" : "csv",
-                          fmtopts);
+                          escape_backslashes((const char*) fmtopts));
         
         PQclear(res);
         

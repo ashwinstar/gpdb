@@ -941,3 +941,25 @@ processSQLNamePattern(PGconn *conn, PQExpBuffer buf, const char *pattern,
 
 #undef WHEREAND
 }
+
+/*
+ * Escape any backslashes in given string (from initdb.c)
+ */
+char *
+escape_backslashes(const char *src)
+{
+	int			len = strlen(src),
+				i,
+				j;
+	char	   *result = malloc(len * 2 + 1);
+	
+	for (i = 0, j = 0; i < len; i++)
+	{
+		if ((src[i]) == '\\')
+			result[j++] = src[i];
+		result[j++] = src[i];
+	}
+	result[j] = '\0';
+	return result;
+}
+
