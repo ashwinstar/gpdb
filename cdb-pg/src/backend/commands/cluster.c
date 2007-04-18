@@ -223,7 +223,7 @@ cluster(ClusterStmt *stmt)
 				stmt->relation = makeNode(RangeVar);
 				stmt->relation->schemaname = get_namespace_name(get_rel_namespace(rvtc->tableOid));
 				stmt->relation->relname = get_rel_name(rvtc->tableOid);
-				CdbDispatchUtilityStatement((Node *) stmt);
+				CdbDispatchUtilityStatement_NoTwoPhase((Node *) stmt);
 			}
 			CommitTransactionCommand();
 		}

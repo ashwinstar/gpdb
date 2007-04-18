@@ -404,6 +404,9 @@ cdbdisp_dispatchUtilityStatement(struct Node   *stmt,
 void
 CdbDispatchUtilityStatement(struct Node *stmt);
 
+void
+CdbDispatchUtilityStatement_NoTwoPhase(struct Node *stmt);
+
 /*
  * create a CdbDispatchCmdThreads object that holds the dispatch
  * threads state, and an array of dispatch command params. 

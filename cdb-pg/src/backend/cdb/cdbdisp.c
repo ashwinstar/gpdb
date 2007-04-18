@@ -144,6 +144,9 @@ typedef struct
 static Node *pre_dispatch_function_evaluation_mutator(Node *node,
 						 pre_dispatch_function_evaluation_context * context);
 
+static void
+CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase);
+
 /* ====================================================
  * STATIC STATE VARIABLES should not be declared!
  * global state will break the ability to run cursors.
@@ -3134,12 +3137,24 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 void
 CdbDispatchUtilityStatement(struct Node *stmt)
 {
+	CdbDispatchUtilityStatement_Internal(stmt, /* needTwoPhase */ true);
+}
+
+void
+CdbDispatchUtilityStatement_NoTwoPhase(struct Node *stmt)
+{
+	CdbDispatchUtilityStatement_Internal(stmt, /* needTwoPhase */ false);
+}
+
+static void
+CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase)
+{
 	CdbDispatchResults *primaryResults;
 	CdbDispatchResults *mirrorResults;
 	CdbDispatchCmdThreads *dispatchThreads;
-	bool	needTwoPhase = true;
 	
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"cdbdisp_dispatchUtilityStatement called");
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"cdbdisp_dispatchUtilityStatement called (needTwoPhase = %s)",
+		 (needTwoPhase ? "true" : "false"));
 	
 	/* Reconfigure the cluster if needed. */
 	cdbdisp_reconfigureFtsIfNecessary();

@@ -369,6 +369,17 @@ notifyCommittedDtxTransaction(void)
 	return;
 }
 
+void
+PleaseDebugMe(char *caller)
+{
+	int i;
+	
+	for (i = 0; i < 300;i++)
+	{
+		elog(LOG,"%s  --> Now would be a good time to debug pid = %d",caller, MyProcPid);
+		pg_usleep(1000000L);
+	}
+}
 
 /* 
  * Marks the current Distributed Transaction as needing to use the
