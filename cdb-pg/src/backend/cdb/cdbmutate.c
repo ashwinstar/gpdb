@@ -526,9 +526,12 @@ apply_motion(Plan *plan, Query *query)
 	else
         warn_ctid_without_segid(query, result);
 
-    /* Discard subtrees of Query node that aren't needed for execution. */
+    /* 
+	 * Discard subtrees of Query node that aren't needed for execution. 
+	 * Note the targetlist (query->targetList) is used in execution of
+	 * prepared statements, so we leave that alone.
+	 */
     query->jointree = NULL;
-    query->targetList = NIL;
     query->groupClause = NIL;
     query->havingQual = NULL;
     query->distinctClause = NIL;
