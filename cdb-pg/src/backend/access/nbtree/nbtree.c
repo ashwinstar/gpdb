@@ -278,10 +278,10 @@ btgettuple(PG_FUNCTION_ARGS)
 }
 
 /*
- * btgetbitmap() -- construct a HashBitmap.
+ * btgetmulti() -- construct a HashBitmap.
  */
 Datum
-btgetbitmap(PG_FUNCTION_ARGS)
+btgetmulti(PG_FUNCTION_ARGS)
 {
 	IndexScanDesc scan = (IndexScanDesc) PG_GETARG_POINTER(0);
 	Node *n = (Node *)PG_GETARG_POINTER(1);

@@ -238,10 +238,10 @@ hashgettuple(PG_FUNCTION_ARGS)
 }
 
 /*
- * hashgetbitmap() -- get the next bitmap for the scan.
+ * hashgetmulti() -- get the next bitmap for the scan.
  */
 Datum
-hashgetbitmap(PG_FUNCTION_ARGS)
+hashgetmulti(PG_FUNCTION_ARGS)
 {
 	IndexScanDesc 	scan = (IndexScanDesc) PG_GETARG_POINTER(0);
 	Node		   *n = (Node *) PG_GETARG_POINTER(1);

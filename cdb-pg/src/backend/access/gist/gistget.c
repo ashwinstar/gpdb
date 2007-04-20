@@ -122,7 +122,7 @@ gistgettuple(PG_FUNCTION_ARGS)
 }
 
 Datum
-gistgetbitmap(PG_FUNCTION_ARGS)
+gistgetmulti(PG_FUNCTION_ARGS)
 {
 	IndexScanDesc scan = (IndexScanDesc) PG_GETARG_POINTER(0);
 	Node		   *n = (Node *) PG_GETARG_POINTER(1);

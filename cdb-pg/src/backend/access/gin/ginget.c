@@ -424,7 +424,7 @@ scanGetItem(IndexScanDesc scan, ItemPointerData *item)
 #define GinIsNewKey(s)		( ((GinScanOpaque) scan->opaque)->keys == NULL )
 
 Datum
-gingetbitmap(PG_FUNCTION_ARGS)
+gingetmulti(PG_FUNCTION_ARGS)
 {
 	IndexScanDesc scan = (IndexScanDesc) PG_GETARG_POINTER(0);
 	Node 		   *n = (Node *) PG_GETARG_POINTER(1);

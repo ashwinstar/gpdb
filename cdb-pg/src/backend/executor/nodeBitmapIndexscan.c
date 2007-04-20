@@ -70,7 +70,7 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 	/* Get bitmap from index */
 	while (doscan)
 	{
-		bitmap = index_getbitmap(scandesc, node->bitmap);
+		bitmap = index_getmulti(scandesc, node->bitmap);
 
 		if ((bitmap != NULL) &&
 			!(IsA(bitmap, HashBitmap) ||
@@ -326,10 +326,10 @@ ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate, int eflags)
 	 * Initialize scan descriptor.
 	 */
 	indexstate->biss_ScanDesc =
-		index_beginscan_bitmap(indexstate->biss_RelationDesc,
-							   estate->es_snapshot,
-							   indexstate->biss_NumScanKeys,
-							   indexstate->biss_ScanKeys);
+		index_beginscan_multi(indexstate->biss_RelationDesc,
+							  estate->es_snapshot,
+							  indexstate->biss_NumScanKeys,
+							  indexstate->biss_ScanKeys);
 	/*
 	 * all done.
 	 */

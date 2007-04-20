@@ -65,11 +65,11 @@ WHERE	amgettuple != 0 AND
 ------+------------
 (0 rows)
 
-SELECT	ctid, amgetbitmap 
+SELECT	ctid, amgetmulti 
 FROM	pg_catalog.pg_am fk 
-WHERE	amgetbitmap != 0 AND 
-	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.amgetbitmap);
- ctid | amgetbitmap 
+WHERE	amgetmulti != 0 AND 
+	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc pk WHERE pk.oid = fk.amgetmulti);
+ ctid | amgetmulti 
 ------+-------------
 (0 rows)
 

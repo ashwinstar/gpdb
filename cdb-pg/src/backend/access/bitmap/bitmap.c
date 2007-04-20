@@ -167,10 +167,10 @@ bmgettuple(PG_FUNCTION_ARGS)
 }
 
 /*
- * bmgetbitmap() -- return a stream bitmap.
+ * bmgetmulti() -- return a stream bitmap.
  */
 Datum
-bmgetbitmap(PG_FUNCTION_ARGS)
+bmgetmulti(PG_FUNCTION_ARGS)
 {
 	/* We ignore the second argument as we're returning a hash bitmap */
 	IndexScanDesc scan = (IndexScanDesc) PG_GETARG_POINTER(0);

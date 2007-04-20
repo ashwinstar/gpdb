@@ -57,7 +57,7 @@ CATALOG(pg_am,2601)
 	regproc		aminsert;		/* "insert this tuple" function */
 	regproc		ambeginscan;	/* "start new scan" function */
 	regproc		amgettuple;		/* "next valid tuple" function */
-	regproc		amgetbitmap; 	/* "fetch next bitmap" function */ 
+	regproc		amgetmulti; 	/* "fetch next bitmap" function */ 
 	regproc		amrescan;		/* "restart this scan" function */
 	regproc		amendscan;		/* "end this scan" function */
 	regproc		ammarkpos;		/* "mark current scan position" function */
@@ -95,7 +95,7 @@ typedef FormData_pg_am *Form_pg_am;
 #define Anum_pg_am_aminsert				12
 #define Anum_pg_am_ambeginscan			13
 #define Anum_pg_am_amgettuple			14
-#define Anum_pg_am_amgetbitmap			15
+#define Anum_pg_am_amgetmulti			15
 #define Anum_pg_am_amrescan				16
 #define Anum_pg_am_amendscan			17
 #define Anum_pg_am_ammarkpos			18
@@ -111,19 +111,19 @@ typedef FormData_pg_am *Form_pg_am;
  * ----------------
  */
 
-DATA(insert OID = 403 (  btree	5 1 1 t t t t f t t btinsert btbeginscan btgettuple btgetbitmap btrescan btendscan btmarkpos btrestrpos btbuild btbulkdelete btvacuumcleanup btcostestimate btoptions ));
+DATA(insert OID = 403 (  btree	5 1 1 t t t t f t t btinsert btbeginscan btgettuple btgetmulti btrescan btendscan btmarkpos btrestrpos btbuild btbulkdelete btvacuumcleanup btcostestimate btoptions ));
 DESCR("b-tree index access method");
 #define BTREE_AM_OID 403
-DATA(insert OID = 405 (  hash	1 1 0 f f f f f f t hashinsert hashbeginscan hashgettuple hashgetbitmap hashrescan hashendscan hashmarkpos hashrestrpos hashbuild hashbulkdelete hashvacuumcleanup hashcostestimate hashoptions ));
+DATA(insert OID = 405 (  hash	1 1 0 f f f f f f t hashinsert hashbeginscan hashgettuple hashgetmulti hashrescan hashendscan hashmarkpos hashrestrpos hashbuild hashbulkdelete hashvacuumcleanup hashcostestimate hashoptions ));
 DESCR("hash index access method");
 #define HASH_AM_OID 405
-DATA(insert OID = 783 (  gist	100 7 0 f t t t t t t gistinsert gistbeginscan gistgettuple gistgetbitmap gistrescan gistendscan gistmarkpos gistrestrpos gistbuild gistbulkdelete gistvacuumcleanup gistcostestimate gistoptions ));
+DATA(insert OID = 783 (  gist	100 7 0 f t t t t t t gistinsert gistbeginscan gistgettuple gistgetmulti gistrescan gistendscan gistmarkpos gistrestrpos gistbuild gistbulkdelete gistvacuumcleanup gistcostestimate gistoptions ));
 DESCR("GiST index access method");
 #define GIST_AM_OID 783
-DATA(insert OID = 2742 (  gin	100 4 0 f f f f t f t gininsert ginbeginscan gingettuple gingetbitmap ginrescan ginendscan ginmarkpos ginrestrpos ginbuild ginbulkdelete ginvacuumcleanup gincostestimate ginoptions ));
+DATA(insert OID = 2742 (  gin	100 4 0 f f f f t f t gininsert ginbeginscan gingettuple gingetmulti ginrescan ginendscan ginmarkpos ginrestrpos ginbuild ginbulkdelete ginvacuumcleanup gincostestimate ginoptions ));
 DESCR("GIN index access method");
 #define GIN_AM_OID 2742
-DATA(insert OID = 3013 (  bitmap	5 1 0 f t t t f f f bminsert bmbeginscan bmgettuple bmgetbitmap bmrescan bmendscan bmmarkpos bmrestrpos bmbuild bmbulkdelete bmvacuumcleanup bmcostestimate bmoptions ));
+DATA(insert OID = 3013 (  bitmap	5 1 0 f t t t f f f bminsert bmbeginscan bmgettuple bmgetmulti bmrescan bmendscan bmmarkpos bmrestrpos bmbuild bmbulkdelete bmvacuumcleanup bmcostestimate bmoptions ));
 DESCR("bitmap index access method");
 #define BITMAP_AM_OID 3013
 
