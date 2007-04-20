@@ -180,7 +180,7 @@ GPSTATE=$SCRIPTDIR/gpstate.sh
 GPSTOP=$SCRIPTDIR/gpstop.sh
 MAILFILE=$SCRIPTDIR/mail_contacts
 HMAILFILE=$HOME/mail_contacts
-GPDOCDIR=${GPHOME}/doc
+GPDOCDIR=${GPHOME}/docs/cli_help/
 #******************************************************************************
 # Greenplum Command Variables
 #******************************************************************************
