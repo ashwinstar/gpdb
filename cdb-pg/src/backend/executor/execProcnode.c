@@ -961,7 +961,7 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 			break;
 
 		case T_AdaptiveNestLoopState:
-			nameTag = "AdaptiveNestLoop"
+			nameTag = "AdaptiveNestLoop";
 			break;
 
 			/*
