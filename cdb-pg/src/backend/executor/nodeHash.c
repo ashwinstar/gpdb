@@ -38,6 +38,12 @@
 
 static void ExecHashIncreaseNumBatches(HashJoinTable hashtable);
 static void ExecHashTableExplainEnd(PlanState *planstate, struct StringInfoData *buf);
+static void
+ExecHashTableExplainBatches(HashJoinTable   hashtable,
+                            StringInfo      buf,
+                            int             ibatch_begin,
+                            int             ibatch_end,
+                            const char     *title);
 
 
 /* ----------------------------------------------------------------
@@ -627,31 +633,6 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 		}
 	}
 
-    /* Report the overflow for EXPLAIN ANALYZE. */
-    if (hashtable->stats)
-    {
-        StringInfo  buf = hashtable->stats->joinexplainbuf;
-
-        appendStringInfo(buf, "Hash table > work_mem.  ");
-        appendStringInfo(buf, "Shifted %ld inner rows (%ldK bytes)",
-                         nfreed,
-                         (long)((spaceFreed+1023)/1024));
-        if (batchnomin < 0)
-        {
-            batchnomin = oldnbatch;
-            batchnomax = nbatch-1;
-        }
-        if (batchnomin < batchnomax)
-            appendStringInfo(buf, " to batches %d..%d", batchnomin, batchnomax);
-        else if (batchnomax >= 0)
-            appendStringInfo(buf, " to batch %d", batchnomax);
-        appendStringInfo(buf, " leaving %ld rows (%ldK bytes) in batch %d.\n",
-                         ninmemory - nfreed,
-                         (long)((hashtable->spaceUsed - hashtable->spaceFreed -
-                                    spaceFreed + 1023)/1024),
-                         curbatch);
-    }
-
 #ifdef HJDEBUG
     elog(DEBUG3, "HJ: Freed %ld of %ld tuples, %lu of %lu bytes, space now %lu",
 		 nfreed,
@@ -940,7 +921,6 @@ ExecReScanHash(HashState *node, ExprContext *exprCtxt)
  */
 void
 ExecHashTableExplainInit(HashJoinState *hjstate,
-                         HashState     *hashstate,
                          HashJoinTable  hashtable)
 {
     MemoryContext   oldcxt;
@@ -949,21 +929,11 @@ ExecHashTableExplainInit(HashJoinState *hjstate,
     /* Switch to a memory context that survives until ExecutorEnd. */
     oldcxt = MemoryContextSwitchTo(hjstate->js.ps.state->es_query_cxt);
 
-    /* On first call, set EXPLAIN ANALYZE hooks in the HashJoinState node. */
-    if (!hjstate->js.ps.cdbexplainbuf)
-    {
-        Assert(!hashstate->ps.cdbexplainbuf && !hjstate->js.ps.cdbexplainfun);
-
-	    /* Allocate string buffer. */
-        hjstate->js.ps.cdbexplainbuf = makeStringInfo();
-
-        /* Request a callback at end of query. */
-        hjstate->js.ps.cdbexplainfun = ExecHashTableExplainEnd;
-    }
+    /* Request a callback at end of query. */
+    hjstate->js.ps.cdbexplainfun = ExecHashTableExplainEnd;
 
     /* Create workarea and attach it to the HashJoinTable. */
     hashtable->stats = (HashJoinTableStats *)palloc0(sizeof(*hashtable->stats));
-    hashtable->stats->joinexplainbuf = hjstate->js.ps.cdbexplainbuf;
     hashtable->stats->endedbatch = -1;
 
     /* Create per-batch statistics array. */
@@ -987,7 +957,6 @@ ExecHashTableExplainEnd(PlanState *planstate, struct StringInfoData *buf)
     HashJoinTable       hashtable = hjstate->hj_HashTable;
     HashJoinTableStats *stats;
     Instrumentation    *jinstrument = hjstate->js.ps.instrument;
-    StringInfo          jbuf = hjstate->js.ps.cdbexplainbuf;
     int                 total_buckets;
     int                 i;
 
@@ -1038,105 +1007,29 @@ ExecHashTableExplainEnd(PlanState *planstate, struct StringInfoData *buf)
     /* Report workfile I/O statistics. */
     if (hashtable->nbatch > 1)
     {
-        HashJoinBatchStats *batchstats = stats->batchstats;
-        CdbExplain_Agg      irdbytes;
-        CdbExplain_Agg      iwrbytes;
-        CdbExplain_Agg      ordbytes;
-        CdbExplain_Agg      owrbytes;
-
-        Assert(batchstats &&
-               hashtable->nbatch <= stats->nbatchstats);
-
-        cdbexplain_agg_init0(&irdbytes);
-        cdbexplain_agg_init0(&iwrbytes);
-        cdbexplain_agg_init0(&ordbytes);
-        cdbexplain_agg_init0(&owrbytes);
-
-        /* Add up the batch stats. */
-        for (i = 1; i < stats->nbatchstats; i++)
-        {
-            HashJoinBatchStats *bs = &batchstats[i];
-
-            cdbexplain_agg_upd(&irdbytes, (double)bs->irdbytes, i);
-            cdbexplain_agg_upd(&iwrbytes, (double)bs->iwrbytes, i);
-            cdbexplain_agg_upd(&ordbytes, (double)bs->ordbytes, i);
-            cdbexplain_agg_upd(&owrbytes, (double)bs->owrbytes, i);
-        }
-
-        /* Inner rel bytes spilled and read back in. */
-        if (batchstats[0].iwrbytes > 0)
-        {
-            appendStringInfo(jbuf,
-                             "Wrote %.0fK bytes to inner workfile."
-                             "  Read %.0fK bytes",
-                             ceil(((double)batchstats[0].iwrbytes) / 1024),
-                             ceil(irdbytes.vsum / 1024));
-            if (hashtable->nbatch > 2)
-                appendStringInfo(jbuf,
-                                 ": %.0fK avg x %d batches,"
-                                 " %.0fK max",
-                                 ceil(cdbexplain_agg_avg(&irdbytes)/1024),
-                                 irdbytes.vcnt,
-                                 ceil(irdbytes.vmax / 1024));
-            appendStringInfoString(jbuf, ".\n");
-        }
-
-        /* Outer rel bytes spilled and read back in. */
-        if (batchstats[0].owrbytes > 0)
-        {
-            appendStringInfo(jbuf,
-                             "Wrote %.0fK bytes to outer workfile."
-                             "  Read %.0fK bytes",
-                             ceil(((double)batchstats[0].owrbytes) / 1024),
-                             ceil(ordbytes.vsum / 1024));
-            if (hashtable->nbatch > 2)
-                appendStringInfo(jbuf,
-                                 ": %.0fK avg x %d batches,"
-                                 " %.0fK max",
-                                 ceil(cdbexplain_agg_avg(&ordbytes)/1024),
-                                 ordbytes.vcnt,
-                                 ceil(ordbytes.vmax / 1024));
-            appendStringInfoString(jbuf, ".\n");
-        }
-
-        /* Inner rel bytes respilled. */
-        if (iwrbytes.vcnt > 0)
-        {
-            appendStringInfo(jbuf,
-                             "Rewrote %.0fK bytes to inner workfile",
-                             ceil(iwrbytes.vsum / 1024));
-            if (iwrbytes.vcnt > 1)
-                appendStringInfo(jbuf,
-                                 ": %.0fK avg x %d batches,"
-                                 " %.0fK max",
-                                 ceil(cdbexplain_agg_avg(&iwrbytes)/1024),
-                                 iwrbytes.vcnt,
-                                 ceil(iwrbytes.vmax / 1024));
-            appendStringInfoString(jbuf, ".\n");
-        }
-
-        /* Outer rel bytes respilled. */
-        if (owrbytes.vcnt > 0)
-        {
-            appendStringInfo(jbuf,
-                             "Rewrote %.0fK bytes to outer workfile",
-                             ceil(owrbytes.vsum / 1024));
-            if (owrbytes.vcnt > 1)
-                appendStringInfo(jbuf,
-                                 ": %.0fK avg x %d batches,"
-                                 " %.0fK max",
-                                 ceil(cdbexplain_agg_avg(&owrbytes)/1024),
-                                 owrbytes.vcnt,
-                                 ceil(owrbytes.vmax / 1024));
-            appendStringInfoString(jbuf, ".\n");
-        }
-    }                           /* give workfile I/O statistics */
+        ExecHashTableExplainBatches(hashtable, buf, 0, 1, "Initial");
+        ExecHashTableExplainBatches(hashtable,
+                                    buf,
+                                    1,
+                                    hashtable->nbatch_original,
+                                    "Initial");
+        ExecHashTableExplainBatches(hashtable,
+                                    buf,
+                                    hashtable->nbatch_original,
+                                    hashtable->nbatch_outstart,
+                                    "Overflow");
+        ExecHashTableExplainBatches(hashtable,
+                                    buf,
+                                    hashtable->nbatch_outstart,
+                                    hashtable->nbatch,
+                                    "Secondary Overflow");
+    }
 
     /* Report hash chain statistics. */
     total_buckets = stats->nonemptybatches * hashtable->nbuckets;
     if (total_buckets > 0)
     {
-        appendStringInfo(jbuf, 
+        appendStringInfo(buf,
                          "Hash chain length"
                          " %.1f avg, %.0f max, using %d of %d buckets.  ",
                          cdbexplain_agg_avg(&stats->chainlength),
@@ -1144,12 +1037,135 @@ ExecHashTableExplainEnd(PlanState *planstate, struct StringInfoData *buf)
                          stats->chainlength.vcnt,
                          total_buckets);
         if (hashtable->nbatch > stats->nonemptybatches)
-            appendStringInfo(jbuf,
+            appendStringInfo(buf,
                              "Skipped %d empty batches.",
                              hashtable->nbatch - stats->nonemptybatches);
-        appendStringInfoChar(jbuf, '\n');
+        appendStringInfoChar(buf, '\n');
     }
 }                               /* ExecHashTableExplainEnd */
+
+
+/*
+ * ExecHashTableExplainBatches
+ *      Report summary of EXPLAIN ANALYZE stats for a set of batches.
+ */
+void
+ExecHashTableExplainBatches(HashJoinTable   hashtable,
+                            StringInfo      buf,
+                            int             ibatch_begin,
+                            int             ibatch_end,
+                            const char     *title)
+{
+    HashJoinTableStats *stats = hashtable->stats;
+    CdbExplain_Agg      irdbytes;
+    CdbExplain_Agg      iwrbytes;
+    CdbExplain_Agg      ordbytes;
+    CdbExplain_Agg      owrbytes;
+    int                 i;
+
+    if (ibatch_begin >= ibatch_end)
+        return;
+
+    Assert(ibatch_begin >= 0 &&
+           ibatch_end <= hashtable->nbatch &&
+           hashtable->nbatch <= stats->nbatchstats &&
+           stats->batchstats != NULL);
+
+    cdbexplain_agg_init0(&irdbytes);
+    cdbexplain_agg_init0(&iwrbytes);
+    cdbexplain_agg_init0(&ordbytes);
+    cdbexplain_agg_init0(&owrbytes);
+
+    /* Add up the batch stats. */
+    for (i = ibatch_begin; i < ibatch_end; i++)
+    {
+        HashJoinBatchStats *bs = &stats->batchstats[i];
+
+        cdbexplain_agg_upd(&irdbytes, (double)bs->irdbytes, i);
+        cdbexplain_agg_upd(&iwrbytes, (double)bs->iwrbytes, i);
+        cdbexplain_agg_upd(&ordbytes, (double)bs->ordbytes, i);
+        cdbexplain_agg_upd(&owrbytes, (double)bs->owrbytes, i);
+    }
+
+    if (iwrbytes.vcnt + irdbytes.vcnt + owrbytes.vcnt + ordbytes.vcnt > 0)
+    {
+        if (ibatch_begin == ibatch_end - 1)
+            appendStringInfo(buf,
+                             "%s batch %d:\n",
+                             title,
+                             ibatch_begin);
+        else
+            appendStringInfo(buf,
+                             "%s batches %d..%d:\n",
+                             title,
+                             ibatch_begin,
+                             ibatch_end - 1);
+    }
+
+    /* Inner bytes read from workfile */
+    if (irdbytes.vcnt > 0)
+    {
+        appendStringInfo(buf,
+                         "  Read %.0fK bytes from inner workfile",
+                         ceil(irdbytes.vsum / 1024));
+        if (irdbytes.vcnt > 1)
+            appendStringInfo(buf,
+                             ": %.0fK avg x %d nonempty batches"
+                             ", %.0fK max",
+                             ceil(cdbexplain_agg_avg(&irdbytes)/1024),
+                             irdbytes.vcnt,
+                             ceil(irdbytes.vmax / 1024));
+        appendStringInfoString(buf, ".\n");
+    }
+
+    /* Inner rel bytes spilled to workfile */
+    if (iwrbytes.vcnt > 0)
+    {
+        appendStringInfo(buf,
+                         "  Wrote %.0fK bytes to inner workfile",
+                         ceil(iwrbytes.vsum / 1024));
+        if (iwrbytes.vcnt > 1)
+            appendStringInfo(buf,
+                             ": %.0fK avg x %d overflowing batches"
+                             ", %.0fK max",
+                             ceil(cdbexplain_agg_avg(&iwrbytes)/1024),
+                             iwrbytes.vcnt,
+                             ceil(iwrbytes.vmax / 1024));
+        appendStringInfoString(buf, ".\n");
+    }
+
+    /* Outer bytes read from workfile */
+    if (ordbytes.vcnt > 0)
+    {
+        appendStringInfo(buf,
+                         "  Read %.0fK bytes from outer workfile",
+                         ceil(ordbytes.vsum / 1024));
+        if (ordbytes.vcnt > 1)
+            appendStringInfo(buf,
+                             ": %.0fK avg x %d nonempty batches"
+                             ", %.0fK max",
+                             ceil(cdbexplain_agg_avg(&ordbytes)/1024),
+                             ordbytes.vcnt,
+                             ceil(ordbytes.vmax / 1024));
+        appendStringInfoString(buf, ".\n");
+    }
+
+    /* Outer rel bytes spilled to workfile */
+    if (owrbytes.vcnt > 0)
+    {
+        appendStringInfo(buf,
+                         "  Wrote %.0fK bytes to outer workfile",
+                         ceil(owrbytes.vsum / 1024));
+        if (owrbytes.vcnt > 1)
+            appendStringInfo(buf,
+                             ": %.0fK avg x %d overflowing batches"
+                             ", %.0fK max",
+                             ceil(cdbexplain_agg_avg(&owrbytes)/1024),
+                             owrbytes.vcnt,
+                             ceil(owrbytes.vmax / 1024));
+        appendStringInfoString(buf, ".\n");
+    }
+}                               /* ExecHashTableExplainBatches */
 
 
 /*

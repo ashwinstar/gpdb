@@ -44,7 +44,6 @@ extern void ExecChooseHashTableSize(double ntuples, int tupwidth,
 						int *numbatches);
 
 extern void ExecHashTableExplainInit(HashJoinState *hjstate, 
-                                     HashState     *hashstate,
                                      HashJoinTable  hashtable);
 extern void ExecHashTableExplainBatchEnd(HashJoinTable hashtable);
 

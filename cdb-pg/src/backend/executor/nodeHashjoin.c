@@ -162,7 +162,7 @@ ExecHashJoin(HashJoinState *node)
          * CDB: Offer extra info for EXPLAIN ANALYZE. 
          */
         if (estate->es_instrument)
-            ExecHashTableExplainInit(node, hashNode, hashtable);
+            ExecHashTableExplainInit(node, hashtable);
 
 		/*
 		 * execute the Hash node, to build the hash table
