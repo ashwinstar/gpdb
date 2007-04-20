@@ -377,6 +377,7 @@ PleaseDebugMe(char *caller)
 	for (i = 0; i < 300;i++)
 	{
 		elog(LOG,"%s  --> Now would be a good time to debug pid = %d",caller, MyProcPid);
+		elog(NOTICE,"%s  --> Now would be a good time to debug pid = %d",caller, MyProcPid);
 		pg_usleep(1000000L);
 	}
 }
@@ -905,7 +906,8 @@ rollbackDtxTransaction(void)
 
 		currentGxact->state = DTX_STATE_NOTIFY_ABORTED_RETRY_NEEDED;
 	case DTX_STATE_NOTIFY_ABORTED_RETRY_NEEDED:
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),"rollbackDtxTransaction breaking recursion and returning");
+		elog((Debug_print_full_dtm ? LOG : DEBUG5),"rollbackDtxTransaction breaking recursion and returning (setting currentGxact to NULL)");
+		currentGxact = NULL;
 		return;
 		
 	case DTX_STATE_FORCED_COMMITTED:
@@ -2955,6 +2957,8 @@ finishDistributedTransactionContext (char* debugCaller)
 {
 	if(currentGxact != NULL)
 	{
+//		PleaseDebugMe("finishDistributedTransactionContext currentGxact == NULL");
+	
 		elog(FATAL, "Expected currentGxact to be NULL at this point.  Found gid =%s, gxid = %u (caller = %s)",
 			currentGxact->gid, currentGxact->gxid, debugCaller);
 	}
