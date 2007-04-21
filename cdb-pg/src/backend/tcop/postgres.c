@@ -789,6 +789,8 @@ pg_plan_queries(List *querytrees, ParamListInfo boundParams,
 /*
  * exec_mpp_query
  *
+ * Called in a qExec process to read and execute a query plan sent by
+ * cdbdisp_dispatchPlan().
  */
 static void
 exec_mpp_query(const char *query_string, 
@@ -969,59 +971,55 @@ exec_mpp_query(const char *query_string,
     paramLI = NULL;
     if (serializedParams != NULL && serializedParamslen > 0)
     {
-    	int numParams = 0;
-    	int i;
-    	const char * p = serializedParams;
-    	memcpy(&numParams, serializedParams, sizeof(int)); p += sizeof(int); 
-    	
-    	elog(DEBUG1,"Deserializing %d params",numParams);
-    	Assert(numParams > 0 && numParams < 100000);
-    	
-    	paramLI = palloc0(sizeof(ParamListInfoData) + (numParams-1) * sizeof(ParamExternData));
-    	paramLI->numParams = numParams;    	
-    	
-    	for (i = 0; i < numParams; i++)
+        ParamListInfoData   paramhdr;
+        Size                length;
+    	const char         *cpos;
+        const char         *epos;
+
+        /* Peek at header using an aligned workarea. */
+        length = offsetof(ParamListInfoData, params);
+        Insist(length <= serializedParamslen);
+        memcpy(&paramhdr, serializedParams, length);
+
+        /* Get ParamListInfoData header and ParamExternData array. */
+        length += paramhdr.numParams * sizeof(paramhdr.params[0]);
+        Insist(paramhdr.numParams > 0 &&
+               length <= serializedParamslen);
+    	paramLI = palloc(length);
+        memcpy(paramLI, serializedParams, length);
+
+        /* Get pass-by-reference data. */
+    	cpos = serializedParams + length;
+        epos = serializedParams + serializedParamslen;
+        while (cpos < epos)
     	{
-    		ParamExternData * pxd = &paramLI->params[i];
-			int16 typlen;
-			bool typbyval;
-			Size length;
+    		ParamExternData    *pxd;
+    	    int32               iparam;
 			
-			memcpy(&pxd->ptype, p, sizeof(Oid)); p += sizeof(Oid);
-			memcpy(&pxd->isnull, p, sizeof(bool)); p += sizeof(bool);
-			memcpy(&pxd->pflags, p, sizeof(uint16)); p += sizeof(uint16);
-			pxd->value = 0;
-			elog(DEBUG1,"param %d is type %d, null %d, flags %d", i, pxd->ptype, pxd->isnull, pxd->pflags);
+            /* param index */
+            memcpy(&iparam, cpos, sizeof(iparam));
+            cpos += sizeof(iparam);
+            Insist(cpos <= epos &&
+                   iparam >= 0 &&
+                   iparam < paramhdr.numParams);
 
-			get_typlenbyval(pxd->ptype, &typlen, &typbyval);
+            /* length */
+            pxd = &paramLI->params[iparam];
+            length = DatumGetInt32(pxd->value);
 
-			/* build the Datum */
-			if (!pxd->isnull)
-			{
-				if (typbyval)
-				{
-					length = datumGetSize(pxd->value, typbyval, typlen);
-					memcpy(&pxd->value, p, length); p += length;
-				}
-				else
-				{
-					char *s;
+            /* value */
+            Insist(length >= 0 &&
+                   length <= epos - cpos);
+            if (length > 0)
+            {
+                char   *v = (char *)palloc(length);
 
-					memcpy(&length, p, sizeof(length)); p += sizeof(length);
-					if (length == 0)
-					{
-						pxd->value = (Datum)NULL;
-					}
-					else
-					{
-						s = palloc(length);
-						memcpy(s, p, length); p += length;
-						pxd->value = PointerGetDatum(s);
-					}
-				}
-			}
+                pxd->value = PointerGetDatum(v);
+                memcpy(v, cpos, length);
+                cpos += length;
+            }
     	}
-    	 
+        Insist(cpos == epos);
     }
 	
 

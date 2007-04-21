@@ -2581,9 +2581,9 @@ pre_dispatch_function_evaluation_mutator(Node *node,
  * to an initPlan or to the main plan.)
  *
  * If cancelOnError is true, then any dispatching error, a cancellation
- * request from the client, or an error from any QE in the , may cause
- * the unfinished portion of the plan to be abandoned or canceled; and
- * in the event this occurs before all gangs have been dispatched, this
+ * request from the client, or an error from any of the associated QEs,
+ * may cause the unfinished portion of the plan to be abandoned or canceled;
+ * and in the event this occurs before all gangs have been dispatched, this
  * function does not return, but waits for all QEs to stop and exits to
  * the caller's error catcher via ereport(ERROR,...).  Otherwise this
  * function returns normally and errors are not reported until later.
@@ -2610,6 +2610,9 @@ pre_dispatch_function_evaluation_mutator(Node *node,
  * containing the values of any initplans required by the slice to be run.
  * (This is handled by calls to addRemoteExecParamsToParamList() from the
  * functions preprocess_initplans() and ExecutorRun().)
+ *
+ * Each QE receives its assignment as a message of type 'M' in PostgresMain().
+ * The message is deserialized and processed by exec_mpp_query() in postgres.c.
  */
 void
 cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
@@ -2741,78 +2744,56 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	*/
 	if (queryDesc->params != NULL && queryDesc->params->numParams > 0)
 	{		
-		int i;
-		char * p;
-		Size length;
+        ParamListInfoData  *pli;
+        ParamExternData    *pxd;
+        StringInfoData      parambuf;
+		Size                length;
+        int                 plioff;
+		int32               iparam;
 
-		sparams_len = sizeof(ParamListInfoData) + (queryDesc->params->numParams-1) * sizeof(ParamExternData);
-		
-		elog(DEBUG1,"Serializing %d params",queryDesc->params->numParams);
+        /* Allocate buffer for params */
+        initStringInfo(&parambuf);
 
-		/* We run through the parameters twice: first time adding up the space we'll need */
-		/* figure out how much buffer we need */
-		for (i = 0; i < queryDesc->params->numParams; i++)
+        /* Copy ParamListInfoData header and ParamExternData array */
+        pli = queryDesc->params;
+        length = (char *)&pli->params[pli->numParams] - (char *)pli;
+        plioff = parambuf.len;
+        Assert(plioff == MAXALIGN(plioff));
+        appendBinaryStringInfo(&parambuf, pli, length);
+
+        /* Copy pass-by-reference param values. */
+        for (iparam = 0; iparam < queryDesc->params->numParams; iparam++)
 		{
-			ParamExternData * pxd = &queryDesc->params->params[i];
-			bool isnull = pxd->isnull;
-			int16 typlen;
-			bool typbyval;
+			int16   typlen;
+			bool    typbyval;
 
+            /* Recompute pli each time in case parambuf.data is repalloc'ed */
+            pli = (ParamListInfoData *)(parambuf.data + plioff);
+			pxd = &pli->params[iparam];
+
+            /* Does pxd->value contain the value itself, or a pointer? */
 			get_typlenbyval(pxd->ptype, &typlen, &typbyval);
-			if (!typbyval && typlen < 0 && pxd->value == 0 )
-				isnull = true;
+            if (!typbyval)
+            {
+				char   *s = DatumGetPointer(pxd->value);
 
-			if (!isnull)
-			{
-				length = datumGetSize(pxd->value, typbyval, typlen);
-				if (!typbyval)
-					sparams_len += sizeof(length);
-				sparams_len += length;
-			}
-		}
-		sparams = palloc(sparams_len);
-		p = sparams;
-		memcpy(p, &queryDesc->params->numParams, sizeof(int)); p+=sizeof(int);
-
-		for (i = 0; i < queryDesc->params->numParams; i++)
-		{
-			ParamExternData * pxd = &queryDesc->params->params[i];
-			bool isnull = pxd->isnull;
-			int16 typlen;
-			bool typbyval;
-
-			get_typlenbyval(pxd->ptype, &typlen, &typbyval);
-			if (!typbyval && typlen < 0 && pxd->value == 0)
-				isnull = true;
-			
-			memcpy(p, &pxd->ptype, sizeof(Oid)); p += sizeof(Oid);
-			memcpy(p, &isnull, sizeof(bool)); p += sizeof(bool);
-			memcpy(p, &pxd->pflags, sizeof(uint16)); p += sizeof(uint16);
-
-			if (!isnull)
-			{
-				/* this is much like _outDatum */
-				length = datumGetSize(pxd->value, typbyval, typlen);
-				if (typbyval)
+				if (pxd->isnull ||
+                    !PointerIsValid(s))
+                {
+                    pxd->isnull = true;
+                    pxd->value = 0;
+                }
+				else
 				{
-					memcpy(p, &pxd->value, length); p += length;
+			        length = datumGetSize(pxd->value, typbyval, typlen);
+                    appendBinaryStringInfo(&parambuf, &iparam, sizeof(iparam));
+                    appendBinaryStringInfo(&parambuf, s, length);
+                    pxd->value = Int32GetDatum(length);
 				}
-				else /* passed by ref, possibly VARLEN */
-				{
-					char *s = (char *)DatumGetPointer(pxd->value);
-
-					if (PointerIsValid(s))
-					{
-						memcpy(p, &length, sizeof(length)); p += sizeof(length);
-						memcpy(p, s, length); p += length;
-					}
-					else
-					{
-						memset(p, 0, sizeof(length)); p += sizeof(length);
-					}
-				}
-			}
+            }
 		}
+        sparams = parambuf.data;
+        sparams_len = parambuf.len;
 	}
 	else
 	{
