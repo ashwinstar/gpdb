@@ -138,7 +138,7 @@ extern void appendStringInfoFill(StringInfo str, int occurrences, char ch);
  * if necessary.
  */
 extern void appendBinaryStringInfo(StringInfo str,
-					   const char *data, int datalen);
+					   const void *data, int datalen);
 
 /*------------------------
  * appendStringInfoLiteral

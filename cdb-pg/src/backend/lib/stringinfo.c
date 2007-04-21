@@ -221,7 +221,7 @@ appendStringInfoFill(StringInfo str, int occurrences, char ch)
  * if necessary.
  */
 void
-appendBinaryStringInfo(StringInfo str, const char *data, int datalen)
+appendBinaryStringInfo(StringInfo str, const void *data, int datalen)
 {
 	Assert(str != NULL);
 
