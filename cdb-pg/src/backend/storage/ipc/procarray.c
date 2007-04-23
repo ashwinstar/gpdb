@@ -36,6 +36,7 @@
 #include "access/twophase.h"
 #include "miscadmin.h"
 #include "storage/procarray.h"
+#include "utils/combocid.h"
 #include "utils/tqual.h"
 #include "cdb/cdbtm.h"
 
@@ -511,6 +512,11 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot)
 		memcpy(SharedLocalSnapshotSlot->snapshot.xip, snapshot->xip, snapshot->xcnt * sizeof(TransactionId));
 	}
 	
+	/* combocid stuff */
+	SharedLocalSnapshotSlot->combocidcnt = usedComboCids;	
+	memcpy(SharedLocalSnapshotSlot->combocids, comboCids, usedComboCids );
+	
+	
 	SharedLocalSnapshotSlot->snapshot.curcid = snapshot->curcid;
 
 	SetSharedTransactionId();
@@ -651,6 +657,11 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 
 				snapshot->curcid = SharedLocalSnapshotSlot->snapshot.curcid;
 
+				/* combocid */
+				usedComboCids = ((SharedLocalSnapshotSlot->combocidcnt < MaxComboCids) ? SharedLocalSnapshotSlot->combocidcnt : MaxComboCids  );
+				sizeComboCids = MaxComboCids;
+				comboCids = SharedLocalSnapshotSlot->combocids;								
+				
 				SetSharedTransactionId();
 
 				elog(DEBUG5, "Reader qExec setting shared local snapshot to: xmin: %d xmax: %d curcid: %d",

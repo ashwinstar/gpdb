@@ -19,6 +19,7 @@
 #include "storage/buf.h"
 #include "utils/timestamp.h"  /* TimestampTz */
 #include "access/xact.h"   /* MaxGpSavePoints */
+#include "utils/combocid.h" /*MaxComboCids*/
 #include "cdb/cdbtm.h"
 
 
@@ -102,6 +103,8 @@ typedef struct SharedSnapshotSlot
 	volatile bool			ready;
 	uint32		    subcnt;		/* # of subtransaction ids in subxids[] */
 	TransactionId   subxids[MaxGpSavePoints];
+	uint32			combocidcnt;
+	ComboCidKeyData combocids[MaxComboCids];
 	SnapshotData	snapshot;
 
 } SharedSnapshotSlot;

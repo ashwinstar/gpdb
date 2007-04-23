@@ -43,6 +43,7 @@
 
 #include "access/htup.h"
 #include "access/xact.h"
+#include "cdb/cdbvars.h"
 #include "utils/combocid.h"
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
@@ -51,14 +52,7 @@
 /* Hash table to lookup combo cids by cmin and cmax */
 static HTAB *comboHash = NULL;
 
-/* Key and entry structures for the hash table */
-typedef struct
-{
-	CommandId cmin;
-	CommandId cmax;
-} ComboCidKeyData;
 
-typedef ComboCidKeyData *ComboCidKey;
 
 typedef struct
 {
@@ -76,9 +70,9 @@ typedef ComboCidEntryData *ComboCidEntry;
  * An array of cmin,cmax pairs, indexed by combo command id.
  * To convert a combo cid to cmin and cmax, you do a simple array lookup.
  */
-static ComboCidKey comboCids = NULL;
-static int usedComboCids = 0;			/* number of elements in comboCids */
-static int sizeComboCids = 0;			/* allocated size of array */
+volatile ComboCidKey comboCids = NULL;
+volatile int usedComboCids = 0;			/* number of elements in comboCids */
+volatile int sizeComboCids = 0;			/* allocated size of array */
 
 /* Initial size of the array */
 #define CCID_ARRAY_SIZE			100
@@ -199,7 +193,9 @@ GetComboCommandId(CommandId cmin, CommandId cmax)
 	ComboCidKeyData key;
 	ComboCidEntry entry;
 	bool found;
-
+	if( Gp_segment == -1 && Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer )
+		elog( ERROR, "Reader qExec tried to allocate a Combo Command Id");
+	
 	/*
 	 * Create the hash table and array the first time we need to use
 	 * combo cids in the transaction.
@@ -270,6 +266,9 @@ GetComboCommandId(CommandId cmin, CommandId cmax)
 static CommandId
 GetRealCmin(CommandId combocid)
 {
+	if( combocid >= usedComboCids)
+		elog( ERROR, "Too many updates/deletes within transaction. Reader gang not able to provide correct visibility");
+	
 	Assert(combocid < usedComboCids);
 	return comboCids[combocid].cmin;
 }
@@ -277,6 +276,9 @@ GetRealCmin(CommandId combocid)
 static CommandId
 GetRealCmax(CommandId combocid)
 {
+
+	if( combocid >= usedComboCids)
+		elog( ERROR, "Too many updates/deletes within transaction. Reader gang not able to provide correct visibility");
 	Assert(combocid < usedComboCids);
 	return comboCids[combocid].cmax;
 }
