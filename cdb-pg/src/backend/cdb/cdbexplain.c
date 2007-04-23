@@ -1384,12 +1384,19 @@ cdbexplain_showExecStatsEnd(struct CdbExplain_ShowStatCtx  *showstatctx,
         cdbexplain_formatMemory(maxbuf, ss->peakmemused.vmax);
         if (ss->peakmemused.vcnt == 1)
         {
-            cdbexplain_formatSeg(segbuf, ss->peakmemused.imax, 999);
+            const char *seg = segbuf;
+
+            if (ss->peakmemused.imax >= 0)
+                cdbexplain_formatSeg(segbuf, ss->peakmemused.imax, 999);
+            else if (slice &&
+                     slice->gangSize > 0)
+                seg = " (entry db)";
+            else
+                seg = "";
             appendStringInfo(str,
                              "Executor memory: %s%s.",
                              maxbuf,
-                             (ss->peakmemused.imax >= 0) ? segbuf
-                                                           : " (entry db)");
+                             seg);
         }
         else if (ss->peakmemused.vcnt > 1)
         {
