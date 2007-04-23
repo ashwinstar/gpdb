@@ -1,24 +1,24 @@
 --
 -- Tests for some likely failure cases with combo cmin/cmax mechanism
 --
-CREATE TEMP TABLE combocidtest (foobar int);
+CREATE TEMP TABLE combocidtest (a int, foobar int);
 
 BEGIN;
 
 -- a few dummy ops to push up the CommandId counter
-SELECT 1;
-SELECT 1;
-SELECT 1;
-SELECT 1;
-SELECT 1;
-SELECT 1;
-SELECT 1;
-SELECT 1;
-SELECT 1;
-SELECT 1;
+SELECT count(*) from combocidtest;
+SELECT count(*) from combocidtest;
+SELECT count(*) from combocidtest;
+SELECT count(*) from combocidtest;
+SELECT count(*) from combocidtest;
+SELECT count(*) from combocidtest;
+SELECT count(*) from combocidtest;
+SELECT count(*) from combocidtest;
+SELECT count(*) from combocidtest;
+SELECT count(*) from combocidtest;
 
-INSERT INTO combocidtest VALUES (1);
-INSERT INTO combocidtest VALUES (2);
+INSERT INTO combocidtest VALUES (1,1);
+INSERT INTO combocidtest VALUES (2,2);
 
 SELECT ctid,cmin,* FROM combocidtest;
 
@@ -42,9 +42,9 @@ SELECT ctid,cmin,* FROM combocidtest;
 -- Test combo cids with portals
 BEGIN;
 
-INSERT INTO combocidtest VALUES (333);
+INSERT INTO combocidtest VALUES (3,333);
 
-DECLARE c CURSOR FOR SELECT ctid,cmin,* FROM combocidtest;
+DECLARE c CURSOR FOR SELECT ctid,cmin,* FROM combocidtest ORDER BY a;
 
 DELETE FROM combocidtest;
 
@@ -52,42 +52,42 @@ FETCH ALL FROM c;
 
 ROLLBACK;
 
-SELECT ctid,cmin,* FROM combocidtest;
+SELECT ctid,cmin,* FROM combocidtest ORDER BY a;
 
 -- check behavior with locked tuples
 BEGIN;
 
 -- a few dummy ops to push up the CommandId counter
-SELECT 1;
-SELECT 1;
-SELECT 1;
-SELECT 1;
-SELECT 1;
-SELECT 1;
-SELECT 1;
-SELECT 1;
-SELECT 1;
-SELECT 1;
+SELECT count(*) from combocidtest;
+SELECT count(*) from combocidtest;
+SELECT count(*) from combocidtest;
+SELECT count(*) from combocidtest;
+SELECT count(*) from combocidtest;
+SELECT count(*) from combocidtest;
+SELECT count(*) from combocidtest;
+SELECT count(*) from combocidtest;
+SELECT count(*) from combocidtest;
+SELECT count(*) from combocidtest;
 
-INSERT INTO combocidtest VALUES (444);
+INSERT INTO combocidtest VALUES (3,444);
 
-SELECT ctid,cmin,* FROM combocidtest;
+SELECT ctid,cmin,* FROM combocidtest ORDER BY a;
 
 SAVEPOINT s1;
 
 -- this doesn't affect cmin
-SELECT ctid,cmin,* FROM combocidtest FOR UPDATE;
-SELECT ctid,cmin,* FROM combocidtest;
+SELECT ctid,cmin,* FROM combocidtest ORDER BY a FOR UPDATE;
+SELECT ctid,cmin,* FROM combocidtest ORDER BY a;
 
 -- but this does
 UPDATE combocidtest SET foobar = foobar + 10;
 
-SELECT ctid,cmin,* FROM combocidtest;
+SELECT ctid,cmin,* FROM combocidtest ORDER BY a;
 
 ROLLBACK TO s1;
 
-SELECT ctid,cmin,* FROM combocidtest;
+SELECT ctid,cmin,* FROM combocidtest ORDER BY a;
 
 COMMIT;
 
-SELECT ctid,cmin,* FROM combocidtest;
+SELECT ctid,cmin,* FROM combocidtest ORDER BY a;
