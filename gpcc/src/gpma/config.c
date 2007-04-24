@@ -199,8 +199,7 @@ apr_status_t config_write(const char* dirpath, const char* guid,
 
     f = fopen(tmppath, "w");
     if (! f) {
-	gpcc_log_error("save_config: cannot write file %s", tmppath);
-	gpcc_fatal(FLINE);
+	gpcc_fatal(FLINE, "save_config: cannot write file %s", tmppath);
     }
     for (hi = apr_hash_first(0, cfg->htab); hi; hi = apr_hash_next(hi)) {
 	const char* key;
@@ -211,11 +210,10 @@ apr_status_t config_write(const char* dirpath, const char* guid,
     fclose(f);
 
     if (0 != rename(tmppath, newpath)) {
-	gpcc_log_error("save_config: cannot rename file\n"
+	gpcc_fatal(FLINE, "save_config: cannot rename file\n"
 		       "                 from: %s\n"
 		       "                   to: %s",
 		       tmppath, newpath);
-	gpcc_fatal(FLINE);
     }
     
     return 0;

@@ -22,7 +22,9 @@ APR_DECLARE(gpcc_event_t*) gpcc_event_alloc(int type, int cmdidx, int datasz)
     gpcc_event_t* ret;
 
     GPCC_DO(datasz >= 0);
-    GPCC_DO(0 != (ret = malloc(len)));
+    if (0 == (ret = malloc(len))) 
+	gpcc_fatal(FLINE, "out of memory");
+
     memset(ret, 0, len);
     ret->etype = type;
     ret->edatasz = datasz;

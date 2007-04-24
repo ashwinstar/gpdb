@@ -7,8 +7,6 @@ const char* msg_str(msg_t msg)
 {
     switch (msg) {
 	CASESTR(NULL_MSG);
-	CASESTR(GET_PROTO_MSG);
-	CASESTR(PROTO_MSG);
     case MSG_MAX: break;
     }
     return "UNKNOWN_MSG";
@@ -34,14 +32,15 @@ const char* event_str(event_t event)
 	CASESTR(NULL_EVENT);
 	CASESTR(TICK_EVENT);
 	CASESTR(TIMEUP_EVENT);
+	CASESTR(INIT_EVENT);
 	CASESTR(SUCCESS_EVENT);
 	CASESTR(FAILURE_EVENT);
-	CASESTR(BREAKOUT_EVENT);
-	CASESTR(CONN_OPENED_EVENT);
-	CASESTR(CONN_CLOSED_EVENT);
+	CASESTR(BREAK_EVENT);
 
-	CASESTR(GET_PROTO_MSG_EVENT);
-	CASESTR(PROTO_MSG_EVENT);
+	CASESTR(NET_OPENED_EVENT);
+	CASESTR(NET_CLOSED_EVENT);
+	CASESTR(NET_RECEIVED_EVENT);
+
     case EVENT_MAX: break;
     }
     return "UNKNOWN_EVENT";
@@ -53,7 +52,6 @@ const char* cmdstate_str(cmdstate_t cmdstate)
     switch (cmdstate) {
 	CASESTR(NULL_CMDSTATE);
 	CASESTR(SYSTEM_CMDSTATE);
-	CASESTR(GET_PROTO_CMDSTATE);
     case CMDSTATE_MAX: break;
     }
     return "UNKNOWN_CMDSTATE";

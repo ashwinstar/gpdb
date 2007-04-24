@@ -5,7 +5,7 @@ APR_DECLARE(char*) gpcc_string_trim(char* s)
 {
     char* p;
     s += strspn(s, " \t\r\n");
-    for (p = s + strlen(s); p > s; p--) {
+    for (p = s + strlen(s) - 1; p > s; p--) {
 	if (strchr(" \t\r\n", *p))
 	    *p = 0;
 	else

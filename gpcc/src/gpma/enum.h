@@ -4,8 +4,6 @@
 typedef enum msg_t msg_t;
 enum msg_t {
     NULL_MSG,
-    GET_PROTO_MSG,
-    PROTO_MSG,
 
     MSG_MAX,
 };
@@ -31,14 +29,14 @@ enum event_t {
     NULL_EVENT,
     TICK_EVENT,
     TIMEUP_EVENT,
+    INIT_EVENT,
     SUCCESS_EVENT,
     FAILURE_EVENT,
-    BREAKOUT_EVENT,
-    CONN_OPENED_EVENT,
-    CONN_CLOSED_EVENT,
+    BREAK_EVENT,
 
-    GET_PROTO_MSG_EVENT,
-    PROTO_MSG_EVENT,
+    NET_OPENED_EVENT,
+    NET_CLOSED_EVENT,
+    NET_RECEIVED_EVENT,
 
     EVENT_MAX,
 };
@@ -49,7 +47,6 @@ typedef enum cmdstate_t cmdstate_t;
 enum cmdstate_t {
     NULL_CMDSTATE,
     SYSTEM_CMDSTATE,
-    GET_PROTO_CMDSTATE,
 
     CMDSTATE_MAX,
 };

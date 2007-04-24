@@ -4,9 +4,13 @@
 #include <stdarg.h>
 
 
-APR_DECLARE(int) gpcc_fatal(const char* fline)
+APR_DECLARE(int) gpcc_fatal(const char* fline, const char* fmt, ...)
 {
-    fprintf(stderr, "[INTERNAL ERROR] [%s] exiting\n", fline);
+    va_list ap;
+    va_start(ap, fmt);
+    fprintf(stderr, "[INTERNAL ERROR] [%s] ", fline);
+    vfprintf(stderr, fmt, ap);
+    fprintf(stderr, "\n          ... exiting\n"); 
     exit(1);
     return 0;
 }
