@@ -18,6 +18,7 @@
 #include "access/heapam.h"
 #include "access/nbtree.h"
 #include "access/transam.h"
+#include "cdb/cdbvars.h"  /*Gp_is_primary*/
 #include "miscadmin.h"
 #include "utils/inval.h"
 
@@ -126,7 +127,13 @@ top:
 
 		xwait = _bt_check_unique(rel, itup, heapRel, buf, itup_scankey);
 
-		if (TransactionIdIsValid(xwait))
+		/* MPP: If we are a mirror than we will avoid waiting on XID
+		 * in order to prevent global deadlock.  See MPP-1380.  This should 
+		 * be ok because the primary segment will notice the unique violation
+		 * and error out.
+		 */
+		
+		if (TransactionIdIsValid(xwait) && Gp_is_primary && (Gp_session_role==GP_ROLE_EXECUTE))
 		{
 			/* Have to wait for the other guy ... */
 			_bt_relbuf(rel, buf);
