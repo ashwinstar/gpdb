@@ -3038,6 +3038,8 @@ fillSliceVector(SliceTable *sliceTbl, int rootIdx, sliceVec *sliceVector, int sl
 	return top_count;
 }
 
+extern bool tjk_foo;
+
 /* Dispatch a command - already parsed and in the form of a Node
  * tree - to all primary and mirror segdbs.  Does not wait for
  * completion.	Does not start a global transaction.
@@ -3052,6 +3054,7 @@ void
 cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 								 bool cancelOnError,
 								 bool needTwoPhase,
+								 bool withSnapshot,
 								 struct CdbDispatchResults ** pPrimaryResults,
 								 struct CdbDispatchResults ** pMirrorResults,
 								 struct CdbDispatchCmdThreads ** pDispatchThreads)
@@ -3101,10 +3104,8 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 	Assert(serializedQuerytree != NULL);
 
 	cdbdisp_dispatchCommand(debug_query_string, serializedQuerytree, serializedQuerytree_len, cancelOnError, needTwoPhase,
-							/* withSnapshot */true, dispatchToMirrors, /* primaries */true, 
+							withSnapshot, dispatchToMirrors, /* primaries */true, 
 							pPrimaryResults, pMirrorResults, pDispatchThreads);
-
-
 
 }	/* cdbdisp_dispatchUtilityStatement */
 
@@ -3140,7 +3141,11 @@ CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase)
 	/* Reconfigure the cluster if needed. */
 	cdbdisp_reconfigureFtsIfNecessary();
 
-	cdbdisp_dispatchUtilityStatement(stmt, true, needTwoPhase, &primaryResults, &mirrorResults, &dispatchThreads);
+	cdbdisp_dispatchUtilityStatement(stmt, 
+									 true /* cancelOnError */, 
+									 needTwoPhase, 
+									 true /* withSnapshot */,
+									 &primaryResults, &mirrorResults, &dispatchThreads);
 
 
 	/* Wait for all QEs to finish.	Throw up if error. */

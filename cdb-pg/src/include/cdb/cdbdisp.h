@@ -391,6 +391,7 @@ void
 cdbdisp_dispatchUtilityStatement(struct Node   *stmt,
                                  bool           cancelOnError,
                                  bool			needTwoPhase,
+                                 bool			withSnapshot,
                                  struct CdbDispatchResults    **pPrimaryResults,
                                  struct CdbDispatchResults    **pMirrorResults,
 								 struct CdbDispatchCmdThreads ** pDispatchThreads);

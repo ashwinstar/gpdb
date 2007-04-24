@@ -601,6 +601,7 @@ DefineIndex(RangeVar *heapRelation,
 	        cdbdisp_dispatchUtilityStatement((Node *)stmt,
 	                                         true,      /* cancelOnError */
 	                                         false,      /* startTransaction */
+	                                         true,      /* withSnapshot */
 	                                         &primaryResults,
 	                                         &mirrorResults,
 											 &dispatchThreads);

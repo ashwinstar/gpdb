@@ -110,7 +110,7 @@ createdb(CreatedbStmt *stmt)
 	 */
 	PG_TRY();
 	{
-	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
+		cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
 	}
 	PG_CATCH();
 	{
@@ -136,7 +136,7 @@ gp_cleanup_createdb(const char *dbname)
 	
     PG_TRY();
     {
-		cdbdisp_dispatchUtilityStatement((Node*)stmt, TRUE, FALSE, &primaryResults, &mirrorResults, &dispatchThreads);
+		cdbdisp_dispatchUtilityStatement((Node*)stmt, true, false /* twophase */, false /* snapshot */, &primaryResults, &mirrorResults, &dispatchThreads);
     }
 	PG_CATCH();
 	{
@@ -160,7 +160,6 @@ gp_cleanup_createdb(const char *dbname)
 	if ( ! cleanup_error )
 		cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
 }
-
 
 void
 createdb_int(CreatedbStmt *stmt,
@@ -475,12 +474,11 @@ createdb_int(CreatedbStmt *stmt,
         cdbdisp_dispatchUtilityStatement((Node *)stmt,
                                          true,      /* cancelOnError */
                                          false,      /* startTransaction */
+                                         false,      /* withSnapshot */
                                          pPrimaryResults,
                                          pMirrorResults,
 										 pDispatchThreads);
 	}
-
-
 
 	/*
 	 * Insert a new tuple into pg_database.  This establishes our ownership of
