@@ -142,6 +142,8 @@ installcheck: all
 installcheck-parallel: all
 	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/parallel_schedule --srcdir=$(abs_srcdir) --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE)
 
+installcheck-good: all
+	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/known_good_schedule --srcdir=$(abs_srcdir) --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE)
 
 # old interfaces follow...
 
