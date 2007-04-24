@@ -137,8 +137,8 @@ SELECT a FROM arrtest WHERE a[2] IS NULL;
 
 DELETE FROM arrtest WHERE a[2] IS NULL AND b IS NULL;
 SELECT a,b,c FROM arrtest;
-      a       |           b           |         c         
---------------+-----------------------+-------------------
+      a      |           b           |         c         
+-------------+-----------------------+-------------------
  {1,2,3,4,5}  | {{{113,142},{1,147}}} | {}
  {11,12,23}   | {{3,4},{4,5}}         | {foobar,new_word}
  {}           | {3,4}                 | {foo,new_word}

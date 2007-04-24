@@ -27,11 +27,17 @@ UPDATE tmp
    FROM onek
    WHERE onek.stringu1 = 'JBAAAA' and
 	  onek.stringu1 = tmp.stringu1;
+ERROR:  Cannot parallelize that UPDATE yet
+DETAIL:  Passage of data from one segment to another is not yet supported during UPDATE operations.
+HINT:  The WHERE condition must specify equality between corresponding DISTRIBUTED BY columns of the target table and all joined tables.
 UPDATE tmp
    SET stringu1 = reverse_name(onek2.stringu1)
    FROM onek2
    WHERE onek2.stringu1 = 'JCAAAA' and
 	  onek2.stringu1 = tmp.stringu1;
+ERROR:  Cannot parallelize that UPDATE yet
+DETAIL:  Passage of data from one segment to another is not yet supported during UPDATE operations.
+HINT:  The WHERE condition must specify equality between corresponding DISTRIBUTED BY columns of the target table and all joined tables.
 DROP TABLE tmp;
 --UPDATE person*
 --   SET age = age + 1;
@@ -354,122 +360,54 @@ SELECT class, aa, a FROM a_star* ORDER BY 1,2,3;
 -- everyone else does nothing.
 --
 SELECT p.name, name(p.hobbies) FROM ONLY person p ORDER BY 1,2;
- name  |    name     
--------+-------------
- joe   | basketball
- mike  | posthacking
- sally | basketball
-(3 rows)
-
+ERROR:  Volatile SQL function hobbies cannot be executed from the segment databases (functions.c:315)  (seg0 slice1 jesh.local:10002 pid=25729)
+DETAIL:  SQL function "hobbies" during startup
 --
 -- as above, but jeff also does post_hacking.
 --
 SELECT p.name, name(p.hobbies) FROM person* p ORDER BY 1,2;
- name  |    name     
--------+-------------
- jeff  | posthacking
- joe   | basketball
- mike  | posthacking
- sally | basketball
-(4 rows)
-
+ERROR:  Volatile SQL function hobbies cannot be executed from the segment databases (functions.c:315)  (seg0 slice1 jesh.local:10002 pid=25729)
+DETAIL:  SQL function "hobbies" during startup
 --
 -- the next two queries demonstrate how functions generate bogus duplicates.
 -- this is a "feature" ..
 --
 SELECT DISTINCT hobbies_r.name, name(hobbies_r.equipment) FROM hobbies_r ORDER BY 1,2;
-    name     |     name      
--------------+---------------
- basketball  | hightops
- posthacking | advil
- posthacking | peet's coffee
- skywalking  | guts
-(4 rows)
-
+ERROR:  Volatile SQL function equipment cannot be executed from the segment databases (functions.c:315)  (seg0 slice1 jesh.local:10002 pid=25731)
+DETAIL:  SQL function "equipment" during startup
 SELECT hobbies_r.name, (hobbies_r.equipment).name FROM hobbies_r ORDER BY 1,2;
-    name     |     name      
--------------+---------------
- basketball  | hightops
- basketball  | hightops
- posthacking | advil
- posthacking | advil
- posthacking | peet's coffee
- posthacking | peet's coffee
- skywalking  | guts
-(7 rows)
-
+ERROR:  Volatile SQL function equipment cannot be executed from the segment databases (functions.c:315)  (seg0 slice1 jesh.local:10002 pid=25729)
+DETAIL:  SQL function "equipment" during startup
 --
 -- mike needs advil and peet's coffee,
 -- joe and sally need hightops, and
 -- everyone else is fine.
 --
 SELECT p.name, name(p.hobbies), name(equipment(p.hobbies)) FROM ONLY person p ORDER BY 1,2,3;
- name  |    name     |     name      
--------+-------------+---------------
- joe   | basketball  | hightops
- mike  | posthacking | advil
- mike  | posthacking | peet's coffee
- sally | basketball  | hightops
-(4 rows)
-
+ERROR:  Volatile SQL function hobbies cannot be executed from the segment databases (functions.c:315)  (seg0 slice1 jesh.local:10002 pid=25729)
+DETAIL:  SQL function "hobbies" during startup
 --
 -- as above, but jeff needs advil and peet's coffee as well.
 --
 SELECT p.name, name(p.hobbies), name(equipment(p.hobbies)) FROM person* p ORDER BY 1,2,3;
- name  |    name     |     name      
--------+-------------+---------------
- jeff  | posthacking | advil
- jeff  | posthacking | peet's coffee
- joe   | basketball  | hightops
- mike  | posthacking | advil
- mike  | posthacking | peet's coffee
- sally | basketball  | hightops
-(6 rows)
-
+ERROR:  Volatile SQL function hobbies cannot be executed from the segment databases (functions.c:315)  (seg0 slice1 jesh.local:10002 pid=25729)
+DETAIL:  SQL function "hobbies" during startup
 --
 -- just like the last two, but make sure that the target list fixup and
 -- unflattening is being done correctly.
 --
 SELECT name(equipment(p.hobbies)), p.name, name(p.hobbies) FROM ONLY person p ORDER BY 1,2,3;
-     name      | name  |    name     
----------------+-------+-------------
- advil         | mike  | posthacking
- hightops      | joe   | basketball
- hightops      | sally | basketball
- peet's coffee | mike  | posthacking
-(4 rows)
-
+ERROR:  Volatile SQL function hobbies cannot be executed from the segment databases (functions.c:315)  (seg0 slice1 jesh.local:10002 pid=25729)
+DETAIL:  SQL function "hobbies" during startup
 SELECT (p.hobbies).equipment.name, p.name, name(p.hobbies) FROM person* p ORDER BY 1,2,3;
-     name      | name  |    name     
----------------+-------+-------------
- advil         | jeff  | posthacking
- advil         | mike  | posthacking
- hightops      | joe   | basketball
- hightops      | sally | basketball
- peet's coffee | jeff  | posthacking
- peet's coffee | mike  | posthacking
-(6 rows)
-
+ERROR:  Volatile SQL function hobbies cannot be executed from the segment databases (functions.c:315)  (seg0 slice1 jesh.local:10002 pid=25729)
+DETAIL:  SQL function "hobbies" during startup
 SELECT (p.hobbies).equipment.name, name(p.hobbies), p.name FROM ONLY person p ORDER BY 1,2,3;
-     name      |    name     | name  
----------------+-------------+-------
- advil         | posthacking | mike
- hightops      | basketball  | joe
- hightops      | basketball  | sally
- peet's coffee | posthacking | mike
-(4 rows)
-
+ERROR:  Volatile SQL function hobbies cannot be executed from the segment databases (functions.c:315)  (seg0 slice1 jesh.local:10002 pid=25729)
+DETAIL:  SQL function "hobbies" during startup
 SELECT name(equipment(p.hobbies)), name(p.hobbies), p.name FROM person* p ORDER BY 1,2,3;
-     name      |    name     | name  
----------------+-------------+-------
- advil         | posthacking | jeff
- advil         | posthacking | mike
- hightops      | basketball  | joe
- hightops      | basketball  | sally
- peet's coffee | posthacking | jeff
- peet's coffee | posthacking | mike
-(6 rows)
-
+ERROR:  Volatile SQL function hobbies cannot be executed from the segment databases (functions.c:315)  (seg0 slice1 jesh.local:10002 pid=25729)
+DETAIL:  SQL function "hobbies" during startup
 SELECT user_relns() AS user_relns
    ORDER BY user_relns;
      user_relns      
@@ -585,7 +523,7 @@ SELECT name(equipment(hobby_construct(text 'skywalking', text 'mer'))) ORDER BY 
 SELECT hobbies_by_name('basketball') ORDER BY 1;
  hobbies_by_name 
 -----------------
- joe
+ sally
 (1 row)
 
 SELECT name, overpaid(emp.*) FROM emp ORDER BY 1,2;
@@ -615,33 +553,17 @@ SELECT name(equipment(ROW('skywalking', 'mer'))) ORDER BY 1;
 (1 row)
 
 SELECT *, name(equipment(h.*)) FROM hobbies_r h ORDER BY 1,2;
-    name     | person |     name      
--------------+--------+---------------
- basketball  | joe    | hightops
- basketball  | sally  | hightops
- posthacking | jeff   | peet's coffee
- posthacking | jeff   | advil
- posthacking | mike   | advil
- posthacking | mike   | peet's coffee
- skywalking  |        | guts
-(7 rows)
-
+ERROR:  Volatile SQL function equipment cannot be executed from the segment databases (functions.c:315)  (seg0 slice1 jesh.local:10002 pid=25729)
+DETAIL:  SQL function "equipment" during startup
 SELECT *, (equipment(CAST((h.*) AS hobbies_r))).name FROM hobbies_r h ORDER BY 1,2;
-    name     | person |     name      
--------------+--------+---------------
- basketball  | joe    | hightops
- basketball  | sally  | hightops
- posthacking | jeff   | peet's coffee
- posthacking | jeff   | advil
- posthacking | mike   | advil
- posthacking | mike   | peet's coffee
- skywalking  |        | guts
-(7 rows)
-
+ERROR:  Volatile SQL function equipment cannot be executed from the segment databases (functions.c:315)  (seg0 slice1 jesh.local:10002 pid=25729)
+DETAIL:  SQL function "equipment" during startup
 --
 -- check that old-style C functions work properly with TOASTed values
 --
 create table oldstyle_test(i int4, t text);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into oldstyle_test values(null,null);
 insert into oldstyle_test values(0,'12');
 insert into oldstyle_test values(1000,'12');
