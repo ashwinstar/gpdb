@@ -475,6 +475,7 @@ GetOldestXmin(bool allDbs, bool ignoreVacuum)
 void
 updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot)
 {
+	int combocidSize;
 	Assert(SharedLocalSnapshotSlot != NULL);
 	Assert(snapshot != NULL);
 	
@@ -513,6 +514,8 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot)
 	}
 	
 	/* combocid stuff */
+	combocidSize = ((usedComboCids < MaxComboCids) ? usedComboCids : MaxComboCids );
+
 	SharedLocalSnapshotSlot->combocidcnt = usedComboCids;	
 	memcpy(SharedLocalSnapshotSlot->combocids, comboCids, usedComboCids );
 	
