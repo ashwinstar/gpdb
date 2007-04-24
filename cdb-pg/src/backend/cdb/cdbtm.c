@@ -109,9 +109,7 @@ static void doCommitAllReadOnly(void);
 static void doPrepareTransaction(void);
 static void doInsertForgetCommitted(void);
 static void doNotifyingCommitted(void);
-static bool doRetryingNotifyCommitted(void);
 static void doNotifyingAborted(bool noPreparesIssued);
-static void doRetryingNotifyAborted(void);
 static bool doNotifyCommittedInDoubt(char *gid);
 static void doAbortInDoubt(char *gid);
 static void doQEAddLocalXidsForDistributedIndoubt();
@@ -161,12 +159,6 @@ char* DtxStateToString(DtxState state)
 	case DTX_STATE_NOTIFYING_COMMITTED:
 		return "Notifying Committed";
 		
-	case DTX_STATE_NOTIFY_COMMITTED_RETRY_NEEDED:
-		return "Notify Committed Retry Needed";
-		
-	case DTX_STATE_RETRYING_NOTIFY_COMMITTED:
-		return "Retrying Notify Committed";
-		
 	case DTX_STATE_INSERTING_FORGET_COMMITTED:
 		return "Inserting Forget Committed";
 		
@@ -175,12 +167,6 @@ char* DtxStateToString(DtxState state)
 		
 	case DTX_STATE_NOTIFYING_ABORTED:
 		return "Notifying Aborted";
-		
-	case DTX_STATE_NOTIFY_ABORTED_RETRY_NEEDED:
-		return "Notify Aborted Retry Needed";
-		
-	case DTX_STATE_RETRYING_NOTIFY_ABORTED:
-		return "Retrying Notify Aborted";
 		
 	case DTX_STATE_CRASH_COMMITTED:
 		return "Crash Committed";
@@ -563,8 +549,7 @@ doNotifyingCommitted(void)
 					/* dispatchToMirrors */ true, /* raiseError */ false);
 	if (!succeeded)
 	{
-		elog(WARNING, "The distributed transaction 'Commit Notification' broadcast to one or more segments failed for gid = %s. "
-			 "The system will retry again later.",
+		elog(WARNING, "The distributed transaction 'Commit Notification' broadcast to one or more segments failed for gid = %s.",
 			 currentGxact->gid);
 	}
 	else
@@ -576,64 +561,9 @@ doNotifyingCommitted(void)
 	getTmLock();
 	Assert(currentGxact->state == DTX_STATE_NOTIFYING_COMMITTED);
 
-	if (succeeded)
-	{
-		doInsertForgetCommitted();
-	}
-	else
-	{
-		currentGxact->state = DTX_STATE_NOTIFY_COMMITTED_RETRY_NEEDED;
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "doNotifyingCommitted setting currentGxact to NULL for gid = %s (index = %d)", currentGxact->gid, currentGxact->debugIndex);
-		currentGxact = NULL;	// Let go so another process can retry.
-	}
+	doInsertForgetCommitted();
 	
 	releaseTmLock();
-}
-
-static bool
-doRetryingNotifyCommitted(void)
-{
-	bool succeeded;
-	
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"doRetryingNotifyCommitted entering in state = %s", DtxStateToString(currentGxact->state));
-	
-	getTmLock();
-	Assert(currentGxact->state == DTX_STATE_NOTIFY_COMMITTED_RETRY_NEEDED);
-	currentGxact->state = DTX_STATE_RETRYING_NOTIFY_COMMITTED;
-	releaseTmLock();
-
-	succeeded = doDispatchDtxProtocolCommand(
-					DTX_PROTOCOL_COMMAND_RETRY_COMMIT_PREPARED, /* flags */ 0,
-					currentGxact->gid, currentGxact->gxid,
-					/* dispatchToMirrors */ true, /* raiseError */ false);
-	if (!succeeded)
-	{
-		elog(WARNING, "System retry of the distributed transaction 'Commit Notification' broadcast for gid = %s failed to one or more segments.  System will retry again later", 
-			 currentGxact->gid);
-	}
-	else
-	{
-		elog(INFO, "System retry of the distributed transaction 'Commit Notification' broadcast for gid = %s succeeded", 
-			 currentGxact->gid);
-	}
-	
-	getTmLock();
-	Assert(currentGxact->state == DTX_STATE_RETRYING_NOTIFY_COMMITTED);
-	
-	if (succeeded)
-	{
-		doInsertForgetCommitted();
-	}
-	else
-	{
-		currentGxact->state = DTX_STATE_NOTIFY_COMMITTED_RETRY_NEEDED;
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "doRetryingNotifyCommitted setting currentGxact to NULL for gid = %s (index = %d)", currentGxact->gid, currentGxact->debugIndex);
-		currentGxact = NULL;	// Let go so another process can retry.
-	}
-	
-	releaseTmLock();
-
-	return succeeded;
 }
 
 static void
@@ -658,8 +588,11 @@ doNotifyingAborted(bool noPreparesIssued)
 			elog(WARNING, "The distributed transaction 'Abort' broadcast to one or more segments failed for gid = %s.",
 				 currentGxact->gid);
 		}
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "The distributed transaction 'Abort' broadcast to the segments succeeded for gid = %s.",
-			 currentGxact->gid);
+		else
+		{
+			elog((Debug_print_full_dtm ? LOG : DEBUG5), "The distributed transaction 'Abort' broadcast to the segments succeeded for gid = %s.",
+				 currentGxact->gid);
+		}
 	}
 	else
 	{
@@ -679,77 +612,11 @@ doNotifyingAborted(bool noPreparesIssued)
 	getTmLock();
 	Assert(currentGxact->state == DTX_STATE_NOTIFYING_ABORTED);
 
-	if (succeeded)
-	{
-		releaseGxact();
-	}
-	else
-	{
-		// UNDONE: Should we enter this state when no prepares were issued???
-		currentGxact->state = DTX_STATE_NOTIFY_ABORTED_RETRY_NEEDED;
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "doNotifyingAborted setting currentGxact to NULL for gid = %s (index = %d)", currentGxact->gid, currentGxact->debugIndex);
-		currentGxact = NULL;	// Let go so another process can retry.
-	}
+	releaseGxact();
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"doNotifyingAborted called releaseGxact");
 	
 	releaseTmLock();
-	
-	if (succeeded)
-	{
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),"doNotifyingAborted called releaseGxact");
-	}
 }
-
-
-static void
-doRetryingNotifyAborted(void)
-{
-	bool succeeded;
-	
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"doRetryingNotifyAborted entering in state = %s", 
-		 DtxStateToString(currentGxact->state));
-	
-	getTmLock();
-	Assert(currentGxact->state == DTX_STATE_NOTIFY_ABORTED_RETRY_NEEDED);
-	currentGxact->state = DTX_STATE_RETRYING_NOTIFY_ABORTED;
-	releaseTmLock();
-
-	succeeded = doDispatchDtxProtocolCommand(
-					DTX_PROTOCOL_COMMAND_RETRY_ABORT_PREPARED, /* flags */ 0,
-					currentGxact->gid, currentGxact->gxid,
-					/* dispatchToMirrors */ true, /* raiseError */ false);
-	if (!succeeded)
-	{
-		elog(WARNING, "System retry of the distributed transaction 'Abort Prepared' broadcast for gid = %s failed to one or more segments.  System will retry again later", 
-			 currentGxact->gid);
-	}
-	else
-	{
-		elog(INFO, "System retry of the distributed transaction 'Abort Prepared' broadcast for gid = %s succeeded", 
-			 currentGxact->gid);
-	}
-	
-	getTmLock();
-	Assert(currentGxact->state == DTX_STATE_RETRYING_NOTIFY_ABORTED);
-
-	if (succeeded)
-	{
-		releaseGxact();
-	}
-	else
-	{
-		currentGxact->state = DTX_STATE_NOTIFY_COMMITTED_RETRY_NEEDED;
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "doRetryingNotifyAborted setting currentGxact to NULL for gid = %s (index = %d)", currentGxact->gid, currentGxact->debugIndex);
-		currentGxact = NULL;	// Let go so another process can retry.
-	}
-	
-	releaseTmLock();
-	
-	if (succeeded)
-	{
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),"doRetryingNotifyAborted called releaseGxact");
-	}
-}
-
 
 static bool
 doNotifyCommittedInDoubt(char *gid)
@@ -901,19 +768,9 @@ rollbackDtxTransaction(void)
 		currentGxact->state = DTX_STATE_NOTIFYING_ABORTED;
 		break;
 		
-	case DTX_STATE_NOTIFYING_ABORTED:
-	case DTX_STATE_RETRYING_NOTIFY_ABORTED:
-
-		currentGxact->state = DTX_STATE_NOTIFY_ABORTED_RETRY_NEEDED;
-	case DTX_STATE_NOTIFY_ABORTED_RETRY_NEEDED:
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),"rollbackDtxTransaction breaking recursion and returning (setting currentGxact to NULL)");
-		currentGxact = NULL;
-		return;
-		
 	case DTX_STATE_FORCED_COMMITTED:
 	case DTX_STATE_NOTIFYING_COMMITTED:
-	case DTX_STATE_NOTIFY_COMMITTED_RETRY_NEEDED:
-	case DTX_STATE_RETRYING_NOTIFY_COMMITTED:
+	case DTX_STATE_NOTIFYING_ABORTED:
 	case DTX_STATE_INSERTING_COMMITTED:
 	case DTX_STATE_INSERTED_COMMITTED:
 	case DTX_STATE_INSERTING_FORGET_COMMITTED:
@@ -931,8 +788,7 @@ rollbackDtxTransaction(void)
 	}
 
 
-	Assert(currentGxact->state == DTX_STATE_NOTIFYING_ABORTED ||
-		   currentGxact->state == DTX_STATE_NOTIFY_ABORTED_RETRY_NEEDED);
+	Assert(currentGxact->state == DTX_STATE_NOTIFYING_ABORTED);
 	/*
 	 * if the process is in the middle of blowing up... then we don't do
 	 * anything here.  we can resolve any in-doubt transactions later.
@@ -953,14 +809,7 @@ rollbackDtxTransaction(void)
 		return;
 	}
 
-	if (currentGxact->state == DTX_STATE_NOTIFYING_ABORTED)
-	{
-		doNotifyingAborted(noPreparesIssued);
-	}
-	else
-	{
-		doRetryingNotifyAborted();
-	}
+	doNotifyingAborted(noPreparesIssued);
 
 	return;
 }
@@ -1525,10 +1374,7 @@ createDtxSnapshot(DistributedSnapshot distributedSnapshot)
 		case DTX_STATE_INSERTED_COMMITTED:
 		case DTX_STATE_FORCED_COMMITTED:
 		case DTX_STATE_NOTIFYING_COMMITTED:
-		case DTX_STATE_NOTIFY_COMMITTED_RETRY_NEEDED:
-		case DTX_STATE_RETRYING_NOTIFY_COMMITTED: 
 		case DTX_STATE_NOTIFYING_ABORTED:
-		case DTX_STATE_NOTIFY_ABORTED_RETRY_NEEDED:
 			/*
 			 * Active or commit/abort not complete.  Keep this transaction
 			 * considered for distributed snapshots.
@@ -1572,10 +1418,11 @@ createDtxSnapshot(DistributedSnapshot distributedSnapshot)
 		}
 
 		// UNDONE: Temporary hard coded limit
-		Assert(distributedSnapshot->xcnt < 100);
+		if(distributedSnapshot->xcnt >= MaxGpDistributedInProgress)
+			elog(ERROR,"Too many distributed transactions for snapshot");
 
 		distributedSnapshot->xip[distributedSnapshot->xcnt++] = indoubtxid;
-		elog(LOG,"createDtxSnapshot added gxid = %u to distributed snapshot", indoubtxid);
+		elog((Debug_print_full_dtm ? LOG : DEBUG5),"createDtxSnapshot added gxid = %u to distributed snapshot", indoubtxid);
 	}
 	
 	if (distributedSnapshot->xmin == UINT_MAX)
@@ -1823,13 +1670,10 @@ getDtxCheckPointInfoAndLock(char **result, int *result_size)
 			
 		case DTX_STATE_FORCED_COMMITTED:
 		case DTX_STATE_NOTIFYING_COMMITTED:
-		case DTX_STATE_NOTIFY_COMMITTED_RETRY_NEEDED:
-		case DTX_STATE_RETRYING_NOTIFY_COMMITTED:
 		case DTX_STATE_CRASH_COMMITTED:
 			break;
 						
 		case DTX_STATE_NOTIFYING_ABORTED:
-		case DTX_STATE_NOTIFY_ABORTED_RETRY_NEEDED:
 			/*
 			 * We don't checkpoint abort.
 			 */
@@ -1952,7 +1796,6 @@ static bool
 recoverInDoubtTransactions(void)
 {
 	HTAB *htab;
-	int skipIndex;
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG3),"recover in-doubt distributed transactions");
 	
@@ -1966,10 +1809,9 @@ recoverInDoubtTransactions(void)
 	     *shmNumGxacts);
 	dumpAllDtx();
 	
-	skipIndex = 0;
-	while (skipIndex < *shmNumGxacts)
+	while (*shmNumGxacts > 0)
 	{
-		TMGXACT *gxact = shmGxactArray[skipIndex];
+		TMGXACT *gxact = shmGxactArray[0];
 
 		if (gxact->state != DTX_STATE_CRASH_COMMITTED)
 		{
@@ -1978,20 +1820,16 @@ recoverInDoubtTransactions(void)
 				 DtxStateToString(gxact->state), DtxStateToString(DTX_STATE_CRASH_COMMITTED));
 		}
 
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),"Rcovering committed distributed transaction gid = %s at index = %d",
-		     gxact->gid, skipIndex);
-		if (doNotifyCommittedInDoubt(gxact->gid))
-		{
-			currentGxact = gxact;
-			doInsertForgetCommitted();
-		}
-		else
-		{
-			gxact->state = DTX_STATE_NOTIFY_COMMITTED_RETRY_NEEDED;
-			elog((Debug_print_full_dtm ? LOG : DEBUG5),"Leaving distributed transaction gid = %s at index = %d in state = %s",
-			     gxact->gid, skipIndex, DtxStateToString(gxact->state));
-			skipIndex++;
-		}
+		elog((Debug_print_full_dtm ? LOG : DEBUG5),"Rcovering committed distributed transaction gid = %s",
+		     gxact->gid);
+
+		/*
+		 * What if we encounter an error here???
+		 */
+		doNotifyCommittedInDoubt(gxact->gid);
+
+		currentGxact = gxact;
+		doInsertForgetCommitted();
 	}
 
 	dumpAllDtx();
@@ -2461,7 +2299,7 @@ serializeDtxContextInfo(char *buffer, DtxContextInfo *dtxContextInfo)
 		memcpy(p,&dtxContextInfo->distributedSnapshotData.xcnt,sizeof(uint32)); p += sizeof(uint32);
 
 		// UNDONE: Temporary hard coded limit
-		Assert(dtxContextInfo->distributedSnapshotData.xcnt <= 100);
+		Assert(dtxContextInfo->distributedSnapshotData.xcnt <= MaxGpDistributedInProgress);
 
 		for (i = 0; i < dtxContextInfo->distributedSnapshotData.xcnt; i++)
 		{
@@ -2504,7 +2342,7 @@ clearDistributedSnapshot(DistributedSnapshot distributedSnapshot)
 	distributedSnapshot->xmin = InvalidDistributedTransactionId;		
 	distributedSnapshot->xmax = InvalidDistributedTransactionId;		
 	distributedSnapshot->xcnt = 0;		
-	MemSet(distributedSnapshot->xip, 0, sizeof(DistributedTransactionId)*100);
+	MemSet(distributedSnapshot->xip, 0, sizeof(DistributedTransactionId)*MaxGpDistributedInProgress);
 	distributedSnapshot->curcid = 0;
 }
 
@@ -2545,7 +2383,8 @@ deserializeDtxContextInfo(
 			memcpy(&dtxContextInfo->distributedSnapshotData.xcnt,p,sizeof(uint32)); 	p+=sizeof(uint32);		
 
 			// UNDONE: Temporary hard coded limit check
-			Assert(dtxContextInfo->distributedSnapshotData.xcnt <= 100);
+			if(dtxContextInfo->distributedSnapshotData.xcnt > MaxGpDistributedInProgress)
+				elog(ERROR,"Too many distributed transactions for snapshot");
 
 			xipsize = sizeof(DistributedTransactionId) * dtxContextInfo->distributedSnapshotData.xcnt;
 			memcpy(dtxContextInfo->distributedSnapshotData.xip,p,xipsize); p += xipsize;

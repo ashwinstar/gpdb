@@ -28,13 +28,9 @@ typedef enum
 	DTX_STATE_INSERTED_COMMITTED,
 	DTX_STATE_FORCED_COMMITTED,
 	DTX_STATE_NOTIFYING_COMMITTED,
-	DTX_STATE_NOTIFY_COMMITTED_RETRY_NEEDED,
-	DTX_STATE_RETRYING_NOTIFY_COMMITTED,
 	DTX_STATE_INSERTING_FORGET_COMMITTED,
 	DTX_STATE_INSERTED_FORGET_COMMITTED,
 	DTX_STATE_NOTIFYING_ABORTED,
-	DTX_STATE_NOTIFY_ABORTED_RETRY_NEEDED,
-	DTX_STATE_RETRYING_NOTIFY_ABORTED,
 	DTX_STATE_CRASH_COMMITTED
 }	DtxState;
 
@@ -128,14 +124,21 @@ typedef struct TmControlBlock
 	TMGXACT  			*gxact_array[0];
 }	TmControlBlock;
 
+/*
+ * Maximum number of distributed transactions in progress under MPP until
+ * we can move away from a static length SharedSnaphot structure.
+ */
+#define MaxGpDistributedInProgress 100
+
+
 typedef struct DistributedSnapshotData
 {
 	DistributedTransactionId 	xmin;	/* XID < xmin are visible to me */
 	DistributedTransactionId 	xmax;	/* XID >= xmax are invisible to me */
 	uint32						xcnt;	/* # of xact ids in xip[] */
 	
-	DistributedTransactionId 	xip[100];	/* array of xact IDs in progress */
-										/* UNDONE: Arbitrary limit of 100 for now... */
+	DistributedTransactionId 	xip[MaxGpDistributedInProgress];
+										/* array of xact IDs in progress */
 
 	CommandId					curcid;	/* in my xact, CID < curcid are visible */
 

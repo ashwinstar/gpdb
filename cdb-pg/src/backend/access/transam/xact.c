@@ -1674,21 +1674,6 @@ StartTransaction(void)
 	AtStart_ResourceOwner();
 
 	/*
-	 * MPP currently doesn't support SERIALIZABLE transactions.  it would be
-	 * nice to check it at GUC time or during the BEGIN stmt processing, but
-	 * at GUC time we haven't set up whether we are in MPP mode or not.  So
-	 * instead we'll check the isolation level here and if its SERIALIZABLE
-	 * we'll error out.
-	 *
-	 * @see also variable.c assign_XactIsoLevel()
-	 */
-	if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE)
-	{
-		if (XactIsoLevel == XACT_REPEATABLE_READ)
-			elog(ERROR, "Greenplum Database does not support REPEATABLE READ transactions.");
-	}
-
-	/*
 	 * MPP Modification
 	 *
 	 * only the writer should get an xid the normal way.
