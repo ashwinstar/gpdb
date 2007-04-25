@@ -231,13 +231,13 @@ DECLARE_UNIQUE_INDEX(pg_type_typname_nsp_index, 2704, on pg_type using btree(typ
 #define TypeNameNspIndexId	2704
 
 
-DECLARE_UNIQUE_INDEX(gp_configuration_content_definedprimary_index, 2857, on gp_configuration using btree(content int2_ops, definedprimary bool_ops));
-#define GpConfigurationContentDefinedprimaryIndexId  2857
-DECLARE_UNIQUE_INDEX(gp_configuration_dbid_index, 2858, on gp_configuration using btree(dbid int2_ops));
-#define GpConfigurationDbidIndexId	2858
+DECLARE_UNIQUE_INDEX(gp_configuration_content_definedprimary_index, 6101, on gp_configuration using btree(content int2_ops, definedprimary bool_ops));
+#define GpConfigurationContentDefinedprimaryIndexId  6101
+DECLARE_UNIQUE_INDEX(gp_configuration_dbid_index, 6102, on gp_configuration using btree(dbid int2_ops));
+#define GpConfigurationDbidIndexId	6102
 
-DECLARE_UNIQUE_INDEX(gp_policy_localoid_index, 2859, on gp_distribution_policy using btree(localoid oid_ops));
-#define GpPolicyLocalOidIndexId  2859
+DECLARE_UNIQUE_INDEX(gp_policy_localoid_index, 6103, on gp_distribution_policy using btree(localoid oid_ops));
+#define GpPolicyLocalOidIndexId  6103
 
 DECLARE_UNIQUE_INDEX(pg_window_fnoid_index, 5005, on pg_window using btree(winfnoid oid_ops));
 #define WindowFnoidIndexId  5005
