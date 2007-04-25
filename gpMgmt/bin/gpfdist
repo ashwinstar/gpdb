@@ -263,6 +263,7 @@ class GPFDistRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 class GPFDistServer(SocketServer.ThreadingTCPServer):
     
     allow_reuse_address = 1
+    request_queue_size = 256
 
     def server_bind(self):
 	SocketServer.ThreadingTCPServer.server_bind(self)
