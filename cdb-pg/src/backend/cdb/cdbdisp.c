@@ -2690,10 +2690,9 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 				pcontext.single_row_insert = true;
 	}
 
-	if (queryDesc->operation == CMD_INSERT ||
-		queryDesc->operation == CMD_SELECT ||
-		queryDesc->operation == CMD_UPDATE ||
-		queryDesc->operation == CMD_DELETE)
+	/* This 'if' is dependent on the 'typedef enum CmdType' */
+	if (queryDesc->operation > CMD_UNKNOWN
+	&&	queryDesc->operation < CMD_UTILITY)
 	{
 
 		List * savetargets = NIL;
