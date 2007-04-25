@@ -87,6 +87,7 @@ TransactionIdSetStatus(TransactionId xid, XidStatus status)
 	int			slotno;
 	char	   *byteptr;
 	char		byteval;
+	int			debugStatus;
 
 	Assert(status == TRANSACTION_STATUS_COMMITTED ||
 		   status == TRANSACTION_STATUS_ABORTED ||
@@ -96,6 +97,16 @@ TransactionIdSetStatus(TransactionId xid, XidStatus status)
 
 	slotno = SimpleLruReadPage(ClogCtl, pageno, xid);
 	byteptr = ClogCtl->shared->page_buffer[slotno] + byteno;
+
+	debugStatus = ((*byteptr >> bshift) & CLOG_XACT_BITMASK);
+	if (debugStatus != 0 &&
+		debugStatus != TRANSACTION_STATUS_SUB_COMMITTED &&
+		debugStatus != status)
+	{
+		elog(FATAL,"TransactionIdSetStatus found invalid status = 0x%x (expected 0x%x)",
+			debugStatus, status);
+	}
+
 
 	/* Current state should be 0, subcommitted or target state */
 	Assert(((*byteptr >> bshift) & CLOG_XACT_BITMASK) == 0 ||

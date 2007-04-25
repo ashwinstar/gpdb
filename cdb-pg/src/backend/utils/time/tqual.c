@@ -49,6 +49,8 @@
 #include "miscadmin.h"
 #include "lib/stringinfo.h"
 
+#include "utils/guc.h"
+
 #include "storage/procarray.h"
 #include "utils/tqual.h"
 
@@ -373,8 +375,9 @@ void SharedSnapshotRemove(SharedSnapshotSlot *slot, char *creatorDescription)
 	
 	LWLockRelease(SharedSnapshotLock);
 
-	elog(DEBUG5,"SharedSnapshotRemove removed slot for slotId = %d, creator = %s", 
-		 slotId, creatorDescription);
+	// UNDONE: Temporarily, LOG instead of DEBUG5
+	elog((Debug_print_full_dtm ? LOG : LOG),"SharedSnapshotRemove removed slot for slotId = %d, creator = %s (address %llu)", 
+		 slotId, creatorDescription, (uint64)SharedLocalSnapshotSlot);
 }
 
 void
@@ -395,8 +398,9 @@ addSharedSnaphot(char *creatorDescription, int id)
 	}
 	SharedLocalSnapshotSlot = slot;
 
-	elog(DEBUG5,"%s added Shared Local Snapshot slot for gp_session_id = %d", 
-		 creatorDescription, id);
+	// UNDONE: Temporarily, LOG instead of DEBUG5
+	elog((Debug_print_full_dtm ? LOG : LOG),"%s added Shared Local Snapshot slot for gp_session_id = %d (address %llu)", 
+		 creatorDescription, id, (uint64)SharedLocalSnapshotSlot);
 }
 
 void
@@ -420,8 +424,9 @@ lookupSharedSnaphot(char *lookerDescription, char *creatorDescription, int id)
 	}					
 	SharedLocalSnapshotSlot = slot;
 
-	elog(DEBUG5,"%s found Shared Local Snapshot slot for gp_session_id = %d created by %s",
-		 lookerDescription, id, creatorDescription);
+	// UNDONE: Temporarily, LOG instead of DEBUG5
+	elog((Debug_print_full_dtm ? LOG : LOG),"%s found Shared Local Snapshot slot for gp_session_id = %d created by %s (address %llu)",
+		 lookerDescription, id, creatorDescription, (uint64)SharedLocalSnapshotSlot);
 }
 
 

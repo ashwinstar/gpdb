@@ -505,7 +505,15 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot)
 	if (snapshot->xcnt > 0)
 	{
 		/* Verify xip array pointer to space allocated after slot struct */
-		Assert(SharedLocalSnapshotSlot->snapshot.xip == ((char *)SharedLocalSnapshotSlot) + sizeof(SharedSnapshotSlot));
+		if(SharedLocalSnapshotSlot->snapshot.xip != ((char *)SharedLocalSnapshotSlot) + sizeof(SharedSnapshotSlot))
+		{
+			elog(FATAL,"updateSharedLocalSnapshot found problem with SharedLocalSnapshotSlot (snapshot->xcnt %d, base %llu, xip address = %llu, expected = %llu)",
+				 snapshot->xcnt,
+				 (uint64)SharedLocalSnapshotSlot,
+				 (uint64)SharedLocalSnapshotSlot->snapshot.xip,
+				 (uint64) ((char *)SharedLocalSnapshotSlot) + sizeof(SharedSnapshotSlot));
+				
+		}
 		Assert(snapshot->xip != NULL);
 	
 		elog((Debug_print_full_dtm ? LOG : DEBUG5),"updateSharedLocalSnapshot count of in-doubt ids %u",SharedLocalSnapshotSlot->snapshot.xcnt);

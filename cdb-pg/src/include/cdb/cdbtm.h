@@ -201,7 +201,6 @@ extern bool dispatchDtxCommand(const char *cmd, bool dispatchToMirrors, bool wit
 extern void tmShmemInit(void);
 extern int	tmShmemSize(void);
 extern void initTM(void);
-extern void	shutdownTM(void);
 
 extern void restoreGxact(TMGXACT_LOG * gxact, DtxState state);
 extern void getDtxCheckPointInfoAndLock(char **result, int *result_size);
