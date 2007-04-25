@@ -507,11 +507,24 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot)
 		/* Verify xip array pointer to space allocated after slot struct */
 		if(SharedLocalSnapshotSlot->snapshot.xip != ((char *)SharedLocalSnapshotSlot) + sizeof(SharedSnapshotSlot))
 		{
-			elog(FATAL,"updateSharedLocalSnapshot found problem with SharedLocalSnapshotSlot (snapshot->xcnt %d, base %llu, xip address = %llu, expected = %llu)",
+			elog(FATAL,"updateSharedLocalSnapshot found problem with SharedLocalSnapshotSlot "
+				 "(snapshot {xmin %u, xmax %u, xcnt %d, curcid %d}, "
+				 "base %llu, xip address = %llu, expected = %llu, "
+				 "SharedLocalSnapshotSlot {slotindex %d, slotid %d, combocidcnt %d} "
+			     "SharedLocalSnapshotSlot->snapshot {xmin = %u, xmax = %u, xcnt = %d}",
+				 snapshot->xmin,
+				 snapshot->xmax,
 				 snapshot->xcnt,
+				 snapshot->curcid,
 				 (uint64)SharedLocalSnapshotSlot,
 				 (uint64)SharedLocalSnapshotSlot->snapshot.xip,
-				 (uint64) ((char *)SharedLocalSnapshotSlot) + sizeof(SharedSnapshotSlot));
+				 (uint64) ((char *)SharedLocalSnapshotSlot) + sizeof(SharedSnapshotSlot),
+				 SharedLocalSnapshotSlot->slotindex,
+				 SharedLocalSnapshotSlot->slotid,
+				 SharedLocalSnapshotSlot->combocidcnt,
+				 SharedLocalSnapshotSlot->snapshot.xmin,
+				 SharedLocalSnapshotSlot->snapshot.xmax,
+				 SharedLocalSnapshotSlot->snapshot.xcnt);
 				
 		}
 		Assert(snapshot->xip != NULL);
