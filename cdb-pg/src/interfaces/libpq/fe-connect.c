@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-connect.c,v 1.339 2006/11/21 16:28:00 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-connect.c,v 1.339.2.1 2007/03/08 19:27:48 mha Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -1841,9 +1841,7 @@ makeEmptyPGconn(void)
 #ifdef WIN32
 
 	/*
-	 * Make sure socket support is up and running. Even though this is done in
-	 * libpqdll.c, that is only for MSVC and BCC builds and doesn't work for
-	 * static builds at all, so we have to do it in the main code too.
+	 * Make sure socket support is up and running.
 	 */
 	WSADATA		wsaData;
 
@@ -1854,7 +1852,12 @@ makeEmptyPGconn(void)
 
 	conn = (PGconn *) malloc(sizeof(PGconn));
 	if (conn == NULL)
+	{
+#ifdef WIN32
+		WSACleanup();
+#endif
 		return conn;
+	}
 
 	/* Zero all pointers and booleans */
 	MemSet(conn, 0, sizeof(PGconn));
@@ -1923,10 +1926,6 @@ freePGconn(PGconn *conn)
 {
 	PGnotify   *notify;
 	pgParameterStatus *pstatus;
-
-#ifdef WIN32
-	WSACleanup();
-#endif
 
 	if (!conn)
 		return;
@@ -1997,6 +1996,10 @@ freePGconn(PGconn *conn)
 	termPQExpBuffer(&conn->errorMessage);
 	termPQExpBuffer(&conn->workBuffer);
 	free(conn);
+
+#ifdef WIN32
+	WSACleanup();
+#endif
 }
 
 /*

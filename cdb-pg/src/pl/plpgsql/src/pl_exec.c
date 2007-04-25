@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/pl_exec.c,v 1.180.2.3 2007/02/01 19:23:00 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/pl_exec.c,v 1.180.2.5 2007/04/19 16:33:32 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -856,43 +856,43 @@ exec_stmt_block(PLpgSQL_execstate *estate, PLpgSQL_stmt_block *block)
 				{
 					PLpgSQL_var *var = (PLpgSQL_var *) (estate->datums[n]);
 
+					/* free any old value, in case re-entering block */
 					free_var(var);
-					if (!var->isconst || var->isnull)
-					{
-						if (var->default_val == NULL)
-						{
-							/* Initially it contains a NULL */
-							var->value = (Datum) 0;
-							var->isnull = true;
-							/*
-							 * If needed, give the datatype a chance to reject
-							 * NULLs, by assigning a NULL to the variable.
-							 * We claim the value is of type UNKNOWN, not the
-							 * var's datatype, else coercion will be skipped.
-							 * (Do this before the notnull check to be
-							 * consistent with exec_assign_value.)
-							 */
-							if (!var->datatype->typinput.fn_strict)
-							{
-								bool	valIsNull = true;
 
-								exec_assign_value(estate,
-												  (PLpgSQL_datum *) var,
-												  (Datum) 0,
-												  UNKNOWNOID,
-												  &valIsNull);
-							}
-							if (var->notnull)
-								ereport(ERROR,
+					/* Initially it contains a NULL */
+					var->value = (Datum) 0;
+					var->isnull = true;
+
+					if (var->default_val == NULL)
+					{
+						/*
+						 * If needed, give the datatype a chance to reject
+						 * NULLs, by assigning a NULL to the variable.
+						 * We claim the value is of type UNKNOWN, not the
+						 * var's datatype, else coercion will be skipped.
+						 * (Do this before the notnull check to be
+						 * consistent with exec_assign_value.)
+						 */
+						if (!var->datatype->typinput.fn_strict)
+						{
+							bool	valIsNull = true;
+
+							exec_assign_value(estate,
+											  (PLpgSQL_datum *) var,
+											  (Datum) 0,
+											  UNKNOWNOID,
+											  &valIsNull);
+						}
+						if (var->notnull)
+							ereport(ERROR,
 									(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
 									 errmsg("variable \"%s\" declared NOT NULL cannot default to NULL",
 											var->refname)));
-						}
-						else
-						{
-							exec_assign_expr(estate, (PLpgSQL_datum *) var,
-											 var->default_val);
-						}
+					}
+					else
+					{
+						exec_assign_expr(estate, (PLpgSQL_datum *) var,
+										 var->default_val);
 					}
 				}
 				break;
@@ -950,6 +950,25 @@ exec_stmt_block(PLpgSQL_execstate *estate, PLpgSQL_stmt_block *block)
 
 			/* Run the block's statements */
 			rc = exec_stmts(estate, block->body);
+
+			/*
+			 * If the block ended with RETURN, we may need to copy the return
+			 * value out of the subtransaction eval_context.  This is currently
+			 * only needed for scalar result types --- rowtype values will
+			 * always exist in the function's own memory context.
+			 */
+			if (rc == PLPGSQL_RC_RETURN &&
+				!estate->retisset &&
+				!estate->retisnull &&
+				estate->rettupdesc == NULL)
+			{
+				int16		resTypLen;
+				bool		resTypByVal;
+
+				get_typlenbyval(estate->rettype, &resTypLen, &resTypByVal);
+				estate->retval = datumCopy(estate->retval,
+										   resTypByVal, resTypLen);
+			}
 
 			/* Commit the inner transaction, return to outer xact context */
 			ReleaseCurrentSubTransaction();
@@ -1026,7 +1045,9 @@ exec_stmt_block(PLpgSQL_execstate *estate, PLpgSQL_stmt_block *block)
 					rc = exec_stmts(estate, exception->action);
 
 					free_var(state_var);
+					state_var->value = (Datum) 0;
 					free_var(errm_var);
+					errm_var->value = (Datum) 0;
 					break;
 				}
 			}
@@ -4812,6 +4833,12 @@ plpgsql_subxact_cb(SubXactEvent event, SubTransactionId mySubid,
 	}
 }
 
+/*
+ * free_var --- pfree any pass-by-reference value of the variable.
+ *
+ * This should always be followed by some assignment to var->value,
+ * as it leaves a dangling pointer.
+ */
 static void
 free_var(PLpgSQL_var *var)
 {

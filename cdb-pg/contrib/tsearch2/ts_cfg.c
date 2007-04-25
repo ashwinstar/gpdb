@@ -62,7 +62,9 @@ init_cfg(Oid id, TSCfgInfo * cfg)
 		ts_error(ERROR, "SPI_execp return %d", stat);
 	if (SPI_processed > 0)
 	{
-		prsname = DatumGetTextP(SPI_getbinval(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1, &isnull));
+		prsname = (text *) DatumGetPointer(
+										   SPI_getbinval(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1, &isnull)
+			);
 		oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 		prsname = ptextdup(prsname);
 		MemoryContextSwitchTo(oldcontext);
@@ -222,8 +224,8 @@ findcfg(Oid id)
 		CList.reallen = reallen;
 		CList.list = tmp;
 	}
+	init_cfg(id, &(CList.list[CList.len]) );
 	CList.last_cfg = &(CList.list[CList.len]);
-	init_cfg(id, CList.last_cfg);
 	CList.len++;
 	qsort(CList.list, CList.len, sizeof(TSCfgInfo), comparecfg);
 	return findcfg(id); /* qsort changed order!! */ ;
@@ -553,7 +555,7 @@ genhl(HLPRSTEXT * prs)
 		wrd++;
 	}
 
-	SET_VARSIZE(out, ptr - ((char *) out));
+	VARATT_SIZEP(out) = ptr - ((char *) out);
 	return out;
 }
 

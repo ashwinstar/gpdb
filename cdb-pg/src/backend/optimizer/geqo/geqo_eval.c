@@ -6,7 +6,7 @@
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/backend/optimizer/geqo/geqo_eval.c,v 1.81.2.1 2006/12/12 21:31:09 tgl Exp $
+ * $PostgreSQL: pgsql/src/backend/optimizer/geqo/geqo_eval.c,v 1.81.2.3 2007/02/16 00:14:07 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -183,7 +183,7 @@ gimme_tree(Gene *tour, int num_gene, GeqoEvalData *evaldata)
 	 * tour other than the one given.  To the extent that the heuristics are
 	 * helpful, however, this will be a better plan than the raw tour.
 	 *
-	 * Also, when a join attempt fails (because of IN-clause constraints), we
+	 * Also, when a join attempt fails (because of OJ or IN constraints), we
 	 * may be able to recover and produce a workable plan, where the old code
 	 * just had to give up.  This case acts the same as a false result from
 	 * desirable_join().
@@ -267,47 +267,13 @@ static bool
 desirable_join(PlannerInfo *root,
 			   RelOptInfo *outer_rel, RelOptInfo *inner_rel)
 {
-	ListCell   *l;
-
 	/*
-	 * Join if there is an applicable join clause.
+	 * Join if there is an applicable join clause, or if there is a join
+	 * order restriction forcing these rels to be joined.
 	 */
-	if (have_relevant_joinclause(root, outer_rel, inner_rel))
+	if (have_relevant_joinclause(root, outer_rel, inner_rel) ||
+		have_join_order_restriction(root, outer_rel, inner_rel))
 		return true;
-
-	/*
-	 * Join if the rels are members of the same outer-join side. This is
-	 * needed to ensure that we can find a valid solution in a case where
-	 * an OJ contains a clauseless join.
-	 */
-	foreach(l, root->oj_info_list)
-	{
-		OuterJoinInfo *ojinfo = (OuterJoinInfo *) lfirst(l);
-
-		/* ignore full joins --- other mechanisms preserve their ordering */
-		if (ojinfo->is_full_join)
-			continue;
-		if (bms_is_subset(outer_rel->relids, ojinfo->min_righthand) &&
-			bms_is_subset(inner_rel->relids, ojinfo->min_righthand))
-			return true;
-		if (bms_is_subset(outer_rel->relids, ojinfo->min_lefthand) &&
-			bms_is_subset(inner_rel->relids, ojinfo->min_lefthand))
-			return true;
-	}
-
-	/*
-	 * Join if the rels are members of the same IN sub-select. This is needed
-	 * to ensure that we can find a valid solution in a case where an IN
-	 * sub-select has a clauseless join.
-	 */
-	foreach(l, root->in_info_list)
-	{
-		InClauseInfo *ininfo = (InClauseInfo *) lfirst(l);
-
-		if (bms_is_subset(outer_rel->relids, ininfo->righthand) &&
-			bms_is_subset(inner_rel->relids, ininfo->righthand))
-			return true;
-	}
 
 	/* Otherwise postpone the join till later. */
 	return false;

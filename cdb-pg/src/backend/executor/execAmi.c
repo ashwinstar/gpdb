@@ -6,7 +6,7 @@
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- *	$PostgreSQL: pgsql/src/backend/executor/execAmi.c,v 1.89 2006/08/02 01:59:45 joe Exp $
+ *	$PostgreSQL: pgsql/src/backend/executor/execAmi.c,v 1.89.2.1 2007/02/15 03:07:21 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -261,6 +261,10 @@ ExecMarkPos(PlanState *node)
 		case T_SortState:
 			ExecSortMarkPos((SortState *) node);
 			break;
+
+		case T_ResultState:
+			ExecResultMarkPos((ResultState *) node);
+			break;
 		
 		case T_MotionState:
 			ereport(ERROR, (
@@ -326,6 +330,10 @@ ExecRestrPos(PlanState *node)
 		case T_SortState:
 			ExecSortRestrPos((SortState *) node);
 			break;
+
+		case T_ResultState:
+			ExecResultRestrPos((ResultState *) node);
+			break;
 		
 		case T_MotionState:
 			ereport(ERROR, (
@@ -365,6 +373,16 @@ ExecSupportsMarkRestore(NodeTag plantype)
 		case T_Material:
 		case T_Sort:
 			return true;
+
+		case T_Result:
+			/*
+			 * T_Result only supports mark/restore if it has a child plan
+			 * that does, so we do not have enough information to give a
+			 * really correct answer.  However, for current uses it's
+			 * enough to always say "false", because this routine is not
+			 * asked about gating Result plans, only base-case Results.
+			 */
+			return false;
 
 		default:
 			break;

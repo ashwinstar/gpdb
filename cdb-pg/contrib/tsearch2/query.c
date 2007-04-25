@@ -159,12 +159,14 @@ gettoken_query(QPRS_STATE * state, int4 *val, int4 *lenval, char **strval, int2 
 					(state->buf)++;		/* can safely ++, t_iseq guarantee
 										 * that pg_mblen()==1 */
 					*val = (int4) '!';
+					state->state = WAITOPERAND;
 					return OPR;
 				}
 				else if (t_iseq(state->buf, '('))
 				{
 					state->count++;
 					(state->buf)++;
+					state->state = WAITOPERAND;
 					return OPEN;
 				}
 				else if (t_iseq(state->buf, ':'))
@@ -905,7 +907,7 @@ tsquerytree(PG_FUNCTION_ARGS)
 	if (query->size == 0)
 	{
 		res = (text *) palloc(VARHDRSZ);
-		SET_VARSIZE(res, VARHDRSZ);
+		VARATT_SIZEP(res) = VARHDRSZ;
 		PG_RETURN_POINTER(res);
 	}
 
@@ -914,7 +916,7 @@ tsquerytree(PG_FUNCTION_ARGS)
 	if (!q)
 	{
 		res = (text *) palloc(1 + VARHDRSZ);
-		SET_VARSIZE(res, 1 + VARHDRSZ);
+		VARATT_SIZEP(res) = 1 + VARHDRSZ;
 		*((char *) VARDATA(res)) = 'T';
 	}
 	else
@@ -927,7 +929,7 @@ tsquerytree(PG_FUNCTION_ARGS)
 		infix(&nrm, true);
 
 		res = (text *) palloc(nrm.cur - nrm.buf + VARHDRSZ);
-		SET_VARSIZE(res, nrm.cur - nrm.buf + VARHDRSZ);
+		VARATT_SIZEP(res) = nrm.cur - nrm.buf + VARHDRSZ;
 		strncpy(VARDATA(res), nrm.buf, nrm.cur - nrm.buf);
 		pfree(q);
 	}

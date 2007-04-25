@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/tcop/pquery.c,v 1.111 2006/10/04 00:29:58 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/tcop/pquery.c,v 1.111.2.1 2007/02/18 19:49:30 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -950,6 +950,8 @@ FillPortalStore(Portal portal)
 	PortalCreateHoldStore(portal);
 	treceiver = CreateDestReceiver(DestTuplestore, portal);
 
+	completionTag[0] = '\0';
+
 	switch (portal->strategy)
 	{
 		case PORTAL_ONE_RETURNING:
@@ -960,13 +962,11 @@ FillPortalStore(Portal portal)
 			 * tuplestore. Auxiliary query outputs are discarded.
 			 */
 			PortalRunMulti(portal, treceiver, None_Receiver, completionTag);
-			/* Override default completion tag with actual command result */
-			portal->commandTag = pstrdup(completionTag);
 			break;
 
 		case PORTAL_UTIL_SELECT:
 			PortalRunUtility(portal, linitial(portal->parseTrees),
-							 treceiver, NULL);
+							 treceiver, completionTag);
 			break;
 
 		default:
@@ -974,6 +974,10 @@ FillPortalStore(Portal portal)
 				 (int) portal->strategy);
 			break;
 	}
+
+	/* Override default completion tag with actual command result */
+	if (completionTag[0] != '\0')
+		portal->commandTag = pstrdup(completionTag);
 
 	(*treceiver->rDestroy) (treceiver);
 }
