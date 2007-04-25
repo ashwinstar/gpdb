@@ -715,7 +715,7 @@ LIST_MPP_LOGS () {
 					LOG_MSG "[INFO]:-$HOST $DIR log file tail" 1
 					LOG_MSG "[INFO]:----------START----------------------" 1
 #					$ECHO "$HOST Logfile name ${DIR}.log" | $TEE -a $LOG_FILE
-					if [ x'' == x'$GREP_STRING' ];then
+					if [ x"" == x"$GREP_STRING" ];then
 						$TRUSTED_SHELL $HOST "$TAIL -$TLINES ${DIR}.log"|$TEE -a $LOG_FILE
 					else
 						$TRUSTED_SHELL $HOST "$TAIL -$TLINES ${DIR}.log|$EGREP '$GREP_STRING'"|$TEE -a $LOG_FILE
