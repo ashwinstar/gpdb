@@ -792,6 +792,12 @@ pg_plan_queries(List *querytrees, ParamListInfo boundParams,
  * Called in a qExec process to read and execute a query plan sent by
  * cdbdisp_dispatchPlan().
  */
+static char const *const mpp_cmdtags[CMD_NOTHING + 1] =
+{   /* The order here must match the 'typedef enum CmdType' */
+	"MPPEXEC", "MPPEXEC SELECT", "MPPEXEC UPDATE", "MPPEXEC INSERT",
+	"MPPEXEC DELETE", "MPPEXEC UTILITY"
+};
+
 static void
 exec_mpp_query(const char *query_string, 
 				const char * serializedQuerytree, int serializedQuerytreelen,
@@ -874,11 +880,9 @@ exec_mpp_query(const char *query_string,
     if (!query ||
         !IsA(query, Query))
         elog(ERROR, "MPPEXEC: received invalid query");
-    if (query->commandType != CMD_UTILITY &&
-        query->commandType != CMD_SELECT &&
-        query->commandType != CMD_INSERT &&
-        query->commandType != CMD_UPDATE &&
-        query->commandType != CMD_DELETE)
+	/* This is dependent on the 'typedef enum CmdType' */
+    if (query->commandType < CMD_SELECT
+	||	query->commandType > CMD_UTILITY)
         elog(ERROR, "MPPEXEC: received invalid query");
         
     querytree_list = list_make1(query);
@@ -890,13 +894,12 @@ exec_mpp_query(const char *query_string,
 		/*
 		 * TODO need to log SELECT INTO as DDL
 		 */
-		if (log_statement == LOGSTMT_ALL ||
-			(query->commandType != CMD_UTILITY && log_statement == LOGSTMT_DDL) ||
-			(query->commandType != CMD_INSERT && log_statement >= LOGSTMT_MOD) ||
-			(query->commandType != CMD_UPDATE && log_statement >= LOGSTMT_MOD) ||
-			(query->commandType != CMD_DELETE && log_statement >= LOGSTMT_MOD) ||
-			(query->commandType != CMD_SELECT && log_statement >= LOGSTMT_MOD) )
-		
+		if (log_statement == LOGSTMT_ALL 
+		||	(query->commandType != CMD_UTILITY && log_statement == LOGSTMT_DDL)
+			/* This is dependent on the 'typedef enum CmdType' */
+		||	((query->commandType < CMD_SELECT
+				&& query->commandType > CMD_DELETE)
+			&& log_statement >= LOGSTMT_MOD) )
 		{
 			ereport(LOG, (errmsg("statement: %s", query_string),
 					          errdetail_execute(querytree_list) ));
@@ -1045,19 +1048,8 @@ exec_mpp_query(const char *query_string,
 		 * do any special start-of-SQL-command processing needed by the
 		 * destination.
 		 */
-		if (query->commandType == CMD_UTILITY)
-			commandTag = "MPPEXEC UTILITY";
-		else if (query->commandType == CMD_SELECT)
-			commandTag = "MPPEXEC SELECT";
-		else if (query->commandType == CMD_INSERT)
-			commandTag = "MPPEXEC INSERT";
-		else if (query->commandType == CMD_UPDATE)
-			commandTag = "MPPEXEC UPDATE";
-		else if (query->commandType == CMD_DELETE)
-			commandTag = "MPPEXEC DELETE";
-		else
-			commandTag = "MPPEXEC";
-			
+		/* This is dependent on the 'typedef enum CmdType' */
+		commandTag = mpp_cmdtags[query->commandType];
 
 		set_ps_display(commandTag, false);
 
