@@ -3334,7 +3334,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 	StringInfoData input_message;
 	sigjmp_buf	local_sigjmp_buf;
 	volatile bool send_ready_for_query = true;
-	bool		saveQueryCancelPending;
+	int			topErrCode;
 
 #define PendingConfigOption(name,val) \
 	(guc_names = lappend(guc_names, pstrdup(name)), \
@@ -3939,11 +3939,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 		 * Forget any pending QueryCancel request, since we're returning to
 		 * the idle loop anyway, and cancel the statement timer if running.
 		 */
-		saveQueryCancelPending = QueryCancelPending;
 		QueryCancelPending = false;
 		disable_sig_alarm(true);
-		if (QueryCancelPending)
-			saveQueryCancelPending = true;
 		QueryCancelPending = false;		/* again in case timeout occurred */
 
 		/*
@@ -3967,10 +3964,14 @@ PostgresMain(int argc, char *argv[], const char *username)
 		 */
 		debug_query_string = NULL;
 
-		if (saveQueryCancelPending && Gp_role == GP_ROLE_EXECUTE)
+		topErrCode = elog_geterrcode();
+		if (Gp_role == GP_ROLE_EXECUTE &&
+			(topErrCode == ERRCODE_GP_OPERATION_CANCELED ||
+             topErrCode == ERRCODE_QUERY_CANCELED))
 		{
 			/*
-			 * GP: For QEs, abort the current transaction altogether.
+			 * GP: For QEs, abort and cleanup the current transaction
+			 * altogether on cancel.
 			 */
 			AbortOutOfAnyTransaction();
 		}
