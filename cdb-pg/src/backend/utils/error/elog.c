@@ -329,9 +329,7 @@ errstart(int elevel, const char *filename, int lineno,
 
 #if (!defined(__darwin__))
 #if defined(__GLIBC__) || defined(pg_on_solaris)
-		
 	edata->stacktracesize = backtrace(edata->stacktracearray, 30);
-		
 #endif
 #endif
 
@@ -1009,14 +1007,6 @@ elog_start(const char *filename, int lineno, const char *funcname)
 	edata->funcname = funcname;
 	/* errno is saved now so that error parameter eval can't change it */
 	edata->saved_errno = errno;
-	
-#if (!defined(__darwin__))
-#if defined(__GLIBC__) || defined(pg_on_solaris)
-		
-	edata->stacktracesize = backtrace(edata->stacktracearray, 30);
-		
-#endif
-#endif
 }
 
 /*
