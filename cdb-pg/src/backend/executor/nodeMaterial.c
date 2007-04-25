@@ -92,7 +92,7 @@ ExecMaterial(MaterialState *node)
 				tuplestore_rescan(tuplestorestate);
 				break;
 			}
-			tuplestore_puttuple(tuplestorestate, ExecFetchSlotTuple(outerslot));
+			tuplestore_puttupleslot(tuplestorestate, outerslot);
 		}
 
 	}
