@@ -1,0 +1,393 @@
+#!/usr/bin/env python
+"""
+gpcheckperf -- Check the hardware for Greenplum Database
+
+Usage: gpcheckperf <options>
+
+    -d segdir  : where segdir is a directory on which to test I/O performance. 
+                 Multiple -d flags may be specified for multiple directories
+                 on each host. These will typically be your Greenplum primary
+                 (and/or mirror) data directories. 
+                 e.g. -d /dbfast1 -d /dbfast2
+    -?         : print this help text
+    -v         : enable verbose
+    -V         : enable very verbose
+    -D         : print per host disk stats on disk read/write tests
+    -r flags   : where flags specifies the tests to run [default=ds]. 
+                 Supported test flags are:
+                       d: runs only disk tests
+                       s: runs only stream benchmark
+    -B size    : where size specifies the block size for disk performance tests
+                 [default=8KB] e.g. 1KB, 4MB
+    -S size    : where size specifies the file size for disk performance tests
+                 [default=2X Memory] e.g. 500MB, 16GB
+    -p port    : where port is the ssh port number [default=22]
+    -h host    : the host to connect to (multiple -h is okay)
+    -f file    : a file listing all hosts to connect to
+
+"""
+import os, sys, getopt, math, StringIO, stat
+
+if sys.version_info < (2, 3):
+    sys.exit("Error: gpcheckperf is supported on Python versions 2.3 or greater\n"
+	     + "Please upgrade python installed on this machine.")
+
+def usage(exitarg):
+    help_path = os.path.join(sys.path[0], '..', 'doc', 'gpcheckperf_help');
+    try:
+	f = open(help_path);
+	for line in f: 
+	    print line,
+    except:
+        print __doc__
+    sys.exit(exitarg)
+
+opt = {}
+opt['-d'] = []
+opt['-D'] = False
+opt['-v'] = False
+opt['-V'] = False
+opt['-r'] = 'ds'
+opt['-B'] = 1024 * 8
+opt['-S'] = 0
+opt['-p'] = 22
+opt['-h'] = []
+opt['-f'] = False
+
+def gpssh(cmd):
+    s = 'gpssh -p %d' % opt['-p']
+    if (opt['-f']):
+	s = s + ' -f ' + opt['-f']
+    else:
+	for h in opt['-h']: s = s + ' -h ' + h
+    return s + ' ' + cmd
+
+def gpscp(cmd):
+    s = 'gpscp -p %d' % opt['-p']
+    if (opt['-f']):
+	s = s + ' -f ' + opt['-f']
+    else:
+	for h in opt['-h']: s = s + ' -h ' + h
+    return s + ' ' + cmd
+
+
+################
+def parseMemorySize(line):
+    factor = 1
+    try:
+	line = line.strip().upper()
+	if line.endswith('B'): line = line[:-1]
+	if line.endswith('G'): factor = 1024 * 1024 * 1024
+	elif line.endswith('M'): factor = 1024 * 1024
+	elif line.endswith('K'): factor = 1024
+	if factor > 1: line = line[:-1]
+	return int(line) * factor
+    except:
+	return 0
+
+def parseInt(val): 
+    try: return int(val)
+    except ValueError: return 0
+
+#############
+def parseCommandLine():
+    global opt
+    try:
+	(options, args) = getopt.getopt(sys.argv[1:], '?vVDd:r:B:S:p:h:f:')
+    except Exception, e:
+	usage('Error: ' + str(e))
+
+    for (switch, val) in options:
+	if (switch == '-?'): usage(0)
+	elif (switch[1] in 'vVD'): opt[switch] = True
+	elif (switch[1] in 'dh'): opt[switch].append(val)
+	elif (switch[1] in 'rf'): opt[switch] = val
+	elif (switch == '-p'): opt[switch] = parseInt(val)
+	elif (switch[1] in 'BS'): opt[switch] = parseMemorySize(val)
+
+    if not (opt['-p'] > 0): 
+	usage('Error: please specify port number for -p switch')
+
+    if (len(opt['-d']) == 0): 
+	usage('Error: please specify at least one segdir (-d switch)')
+
+    if not (0 <= opt['-B'] and 0 <= opt['-S']):
+	usage('Error: please enter valid memory sizes for -B or -S switches')
+
+    hf = (len(opt['-h']) and 1) + (opt['-f'] and 1)
+    if hf != 1:
+	usage('Error: please specify at least one of -h or -f args, but not both')
+
+    if opt['-V']: opt['-v'] = True
+
+    if (opt['-B']) > 1024*1024:
+	usage('Error: maximum size for -B parameter is 1MB')
+
+    # strip the last '/' from the dir
+    dd = []
+    for d in opt['-d']:
+	if d and d[-1] == '/': d = d[:-1]
+	dd.append(d)
+    opt['-d'] = dd
+
+#############
+def run(cmd):
+    f = None
+    ok = False
+    out = ''
+    try:
+	try:
+	    if opt['-v']: print '[Info]', cmd
+	    f = os.popen(cmd)
+	    out = f.read()
+	    ok = not f.close()
+	    f = None
+	except KeyboardInterrupt:
+	    raise
+    finally:
+	if f: f.close()
+
+    if opt['-v'] and out and out != '': print out
+
+    if out and out.find('Permission denied') >= 0 and out.find('publickey') >= 0 : 
+	if not opt['-v']: print out
+	print 'Please use gpssh-exkeys to exchange keys ...'
+	sys.exit(1)
+
+    return (ok, out)
+
+#############
+runTeardown_torndown = False
+def runTeardown():
+    global runTeardown_torndown
+    if runTeardown_torndown: return
+    if opt['-v']:
+	print '--------------------'
+	print '  TEARDOWN'
+	print '--------------------'
+    dirs = ''
+    for d in opt['-d']: dirs = '%s %s/gpcheckperf' % (dirs, d)
+    try:
+	cmd = gpssh('rm -rf ' + dirs)
+	(ok, out) = run(cmd)
+    except:
+	pass
+    runTeardown_torndown = True
+
+#############
+def runSetup():
+    if opt['-v']:
+	print '--------------------'
+	print '  SETUP'
+	print '--------------------'
+    okCount = 0
+    try:
+	#check python reachable
+	if opt['-v']: print '[Info] verify python interpreter exists'
+	cmd = gpssh('python -c print')
+	(ok, out) = run(cmd)
+	if not ok:
+	    if not opt['-v']: print out
+	    sys.exit("[Error] unable to find python interpreter on some hosts\n"
+		     +"        verify PATH variables on the hosts")
+
+	#mkdir cperf
+	if opt['-v']: print '[Info] making gpcheckperf directory on all hosts ... '
+	dirs = ''
+	for d in opt['-d']: dirs = '%s %s/gpcheckperf' % (dirs, d)
+	cmd = gpssh('"(rm -rf %s && mkdir -p %s)"' % (dirs, dirs))
+	(ok, out) = run(cmd)
+	if not ok: 
+	    sys.exit("[Error] unable to make gpcheckperf directory. \n"
+		   + "        command failed: " + cmd)
+
+    except:
+	runTeardown()
+	raise
+
+################
+def copyExecOver(fname):
+
+    #copy to this dir
+    d = opt['-d'][0]
+    target = '%s/gpcheckperf/%s' % (d, fname)
+    path = '%s/lib/%s' % (sys.path[0], fname)
+
+    if opt['-v']: print '[Info] copy local %s to remote %s' % (path, target)
+
+    try: pathStat = os.stat(path)
+    except: sys.exit('[Error] cannot stat file ' + path)
+    if not stat.S_ISREG(pathStat.st_mode): sys.exit('[Error] invalid file ' + path)
+    if not pathStat.st_mode & os.X_OK: sys.exit('[Exit] file not executable: ' + path)
+
+    cmd = gpscp('%s %s' % (path, target))
+    (ok, out) = run(cmd)
+    if not ok: sys.exit('[Error] command failed: ' + cmd)
+    
+    #chmod +x file
+    cmd = gpssh('chmod +x %s' % target)
+    (ok, out) = run(cmd)
+    if not ok: sys.exit('[Error] command failed: ' + cmd)
+    
+    return target
+
+
+#############
+def parseMultiDDResult(out):
+    # parse output of "time -p"
+    out = StringIO.StringIO(out)
+    result = {}
+    bytes = 0
+    for line in out:
+	i = line.find(']')
+	if i == -1: continue
+	o = line[i+2:]
+
+	if o.startswith('multidd total bytes '):
+	    h = line[1:i]
+	    o = o.split()
+	    bytes = int(o[-1])
+	    continue
+	    
+	if o.startswith('real'):
+	    h = line[1:i]
+	    o = o.split()
+	    time = float(o[1])
+	    if time < 0.1: time = 0.1 		# avoid division by zero
+	    mbps = bytes / time / 1024 / 1024
+	    result[h] = (mbps, time, bytes)
+	    continue
+
+    return result
+
+
+
+#############
+def runDiskWriteTest(multidd):
+    if opt['-v']:
+	print '--------------------'
+	print '  DISK WRITE TEST'
+	print '--------------------'
+    
+    cmd = 'time -p ' + multidd
+    for d in opt['-d']:
+	cmd = cmd + (' -i /dev/zero -o %s/gpcheckperf/ddfile' % d)
+    if opt['-B']: cmd = cmd + (' -B %d' % opt['-B'])
+    if opt['-S']: cmd = cmd + (' -S %d' % opt['-S'])
+    cmd = gpssh(cmd)
+    (ok, out) = run(cmd)
+    if not ok:
+	sys.exit('[Error] command failed: ' + cmd)
+    return parseMultiDDResult(out)
+
+
+#############
+def runDiskReadTest(multidd):
+    if opt['-v']:
+	print '--------------------'
+	print '  DISK READ TEST'
+	print '--------------------'
+
+    cmd = 'time -p ' + multidd
+    for d in opt['-d']:
+	cmd = cmd + (' -o /dev/null -i %s/gpcheckperf/ddfile' % d)
+    if opt['-B']: cmd = cmd + (' -B %d' % opt['-B'])
+    if opt['-S']: cmd = cmd + (' -S %d' % opt['-S'])
+    cmd = gpssh(cmd)
+    (ok, out) = run(cmd)
+    if not ok:
+	sys.exit('[Error] command failed: ' + cmd)
+    return parseMultiDDResult(out)
+
+
+#############
+def runStreamTest():
+    if opt['-v']:
+	print '--------------------'
+	print '  STREAM TEST'
+	print '--------------------'
+
+    rmtPath = copyExecOver('stream')
+    cmd = gpssh(rmtPath)
+    (ok, out) = run(cmd)
+    if not ok: sys.exit('[Error] command failed: ' + cmd)
+    out = StringIO.StringIO(out)
+    result = {}
+    for line in out:
+	i = line.find(']')
+	o = line[i+2:]
+	if o.startswith('Copy:'): 
+	    h = line[1:i]
+	    o = o.split()
+	    result[h] = (float(o[1]), 0, 0)
+    return result
+
+
+################
+def printResult(title, result):
+    totTime = 0
+    totBytes = 0
+    totMBPS = 0
+    min = 99999999
+    max = 0
+    minHost = maxHost = None
+    for h in result:
+	(mbps, time, bytes) = result[h]
+	totTime += time
+	totBytes += bytes
+	totMBPS += mbps
+	if min > mbps: 
+	    min = mbps
+	    minHost = h
+	if max < mbps: 
+	    max = mbps
+	    maxHost = h
+
+    avgTime = totTime / len(result)
+
+    print
+    if (totTime > 0): print ' %s avg time (sec): %3.2f' % (title, avgTime)
+    if (totBytes > 0): print ' %s tot bytes: %d' % (title, totBytes)
+    print ' %s tot bandwidth (MB/s): %3.2f' % (title, totMBPS)
+    print ' %s min bandwidth (MB/s): %3.2f [%s]' % (title, min, minHost)
+    print ' %s max bandwidth (MB/s): %3.2f [%s]' % (title, max, maxHost)
+    if opt['-D']:
+	print ' -- per host bandwidth --'
+	for h in result:
+	    (mbps, time, bytes) = result[h]
+	    print '    %s bandwidth (MB/s): %3.2f [%s]' % (title, mbps, h)
+    print
+
+
+################
+try:
+    parseCommandLine()
+    runSetup()
+    diskWriteResult = diskReadResult = streamResult = None
+    tornDown = False
+    try:
+	if opt['-r'].find('d') >= 0:
+	    multidd = copyExecOver('multidd')
+	    diskWriteResult = runDiskWriteTest(multidd)
+	    diskReadResult = runDiskReadTest(multidd)
+
+	if opt['-r'].find('s') >= 0:
+	    streamResult = runStreamTest()
+
+	runTeardown()
+
+    finally:
+	if diskWriteResult:
+	    printResult('disk write', diskWriteResult)
+
+	if diskReadResult:
+	    printResult('disk read', diskReadResult)
+
+	if streamResult:
+	    printResult('stream', streamResult)
+
+	runTeardown()
+
+except KeyboardInterrupt:
+    print '[Abort] Keyboard Interrupt ...'
+

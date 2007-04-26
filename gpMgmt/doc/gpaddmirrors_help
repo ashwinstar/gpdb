@@ -1,4 +1,4 @@
-COMMAND NAME: gpaddmirrors.sh
+COMMAND NAME: gpaddmirrors
 
 Adds mirror segments to a Greenplum Database system that was 
 initially configured without mirroring.
@@ -8,7 +8,7 @@ initially configured without mirroring.
 SYNOPSIS
 *****************************************************
 
-gpaddmirrors.sh [-d <master_data_directory>] [-p <port_offset>] [-s] 
+gpaddmirrors [-d <master_data_directory>] [-p <port_offset>] [-s] 
 [-a] [-m <mirror_config_file>] [-l <logfile_directory>] [-D] [-? | -v]
 
 
@@ -16,7 +16,7 @@ gpaddmirrors.sh [-d <master_data_directory>] [-p <port_offset>] [-s]
 DESCRIPTION
 *****************************************************
 
-The gpaddmirrors.sh script configures mirror segment instances for 
+The gpaddmirrors script configures mirror segment instances for 
 an existing Greenplum Database system that was initially configured 
 with primary segment instances only. The script will shut down your 
 Greenplum Database system while it creates the mirrors, and then restart 
@@ -44,7 +44,7 @@ Enter mirror segment instance directory 1 of 2 > /dbfast3/gpmirror
 
 Enter mirror segment instance directory 2 of 2 > /dbfast4/gpmirror
 
-Alternatively, you can run the gpaddmirrors.sh script and supply a 
+Alternatively, you can run the gpaddmirrors script and supply a 
 configuration file containing the mirror host names and data directory 
 locations (-m option). This is useful if you want your mirror segments 
 on a completely different set of hosts than your primary segments. 
@@ -59,10 +59,10 @@ hosts and primary instances. The host names can either be all the same
 as your primary segment host names, or be all different from the 
 primary segment host names.
 
-You must make sure that the user who runs gpaddmirrors.sh (for example, the 
+You must make sure that the user who runs gpaddmirrors (for example, the 
 gpadmin user) has permissions to write to these directories. You may want 
 to create these directories on the segment hosts and chown them to 
-the appropriate user before running gpaddmirrors.sh.
+the appropriate user before running gpaddmirrors.
 
 
 *****************************************************
@@ -139,13 +139,13 @@ EXAMPLES
 Add mirroring to an existing Greenplum Database system using the same 
 set of hosts as your primary data:
 
-gpaddmirrors.sh -d /dbfast1/gp-1 -p 10000
+gpaddmirrors -d /dbfast1/gp-1 -p 10000
 
 
 Add mirroring to an existing Greenplum Database system using a different 
 set of hosts from your primary data:
 
-gpaddmirrors.sh -d /dbfast1/gp-1 -p 10000 -m mirror_config_file
+gpaddmirrors -d /dbfast1/gp-1 -p 10000 -m mirror_config_file
 
 Where the mirror_config_file looks like this:
 
@@ -161,5 +161,5 @@ host3:/dbfast4/mirror
 SEE ALSO
 *****************************************************
 
-gpcreatecluster.sh, gpinitstandby.sh, gpactivatestandby.sh
+gpinitsystem, gpinitstandby, gpactivatestandby
 

@@ -34,8 +34,8 @@ by an gp_dump operation. The use of this script assumes:
    the Greenplum system catalog tables to determine the hosts, ports, 
    and data directories for the segment instances it is restoring. If 
    you want to change any of this information (for example, move the 
-   system to a different array of hosts) you must use the gprebuildcluster.sh 
-   and gprebuildseg.sh scripts to reconfigure your array before restoring.
+   system to a different array of hosts) you must use the gprebuildsystem 
+   and gprebuildseg scripts to reconfigure your array before restoring.
 
 5. The databases you are restoring have been created in the system.
 
@@ -213,6 +213,6 @@ SEE ALSO
 *****************************************************
 
 
-gp_dump, gprebuildcluster.sh, gprebuildseg.sh
+gp_dump, gprebuildsystem, gprebuildseg
 
 

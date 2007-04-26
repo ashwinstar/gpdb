@@ -163,21 +163,21 @@ SCRIPTDIR="`$DIRNAME $PSQLBIN`/bin"
 #******************************************************************************
 # Greenplum Scripts
 #******************************************************************************
-GPACTIVATEMASTER=$SCRIPTDIR/gpactivatemaster.sh
-GPACTIVATESTANDBY=$SCRIPTDIR/gpactivatestandby.sh
-GPADDMIRRORS=$SCRIPTDIR/gpaddmirrors.sh
-GPCREATECLUSTER=$SCRIPTDIR/gpcreatecluster.sh
-GPCRONDUMP=$SCRIPTDIR/gpcrondump.sh
-GPDELETECLUSTER=$SCRIPTDIR/gpdeletecluster.sh
-GPINITSTANDBY=$SCRIPTDIR/gpinitstandby.sh
-GPREBUILDCLUSTER=$SCRIPTDIR/gprebuildcluster.sh
-GPREBUILDSEG=$SCRIPTDIR/gprebuildseg.sh
-GPRECOVERSEG=$SCRIPTDIR/gprecoverseg.sh
-GPSIZECALC=$SCRIPTDIR/gpsizecalc.sh
-GPSKEW=$SCRIPTDIR/gpskew.sh
-GPSTART=$SCRIPTDIR/gpstart.sh
-GPSTATE=$SCRIPTDIR/gpstate.sh
-GPSTOP=$SCRIPTDIR/gpstop.sh
+GPACTIVATEMASTER=$SCRIPTDIR/gpactivatemaster
+GPACTIVATESTANDBY=$SCRIPTDIR/gpactivatestandby
+GPADDMIRRORS=$SCRIPTDIR/gpaddmirrors
+GPINITSYSTEM=$SCRIPTDIR/gpinitsystem
+GPCRONDUMP=$SCRIPTDIR/gpcrondump
+GPDELETESYSTEM=$SCRIPTDIR/gpdeletesystem
+GPINITSTANDBY=$SCRIPTDIR/gpinitstandby
+GPREBUILDCLUSTER=$SCRIPTDIR/gprebuildcluster
+GPREBUILDSEG=$SCRIPTDIR/gprebuildseg
+GPRECOVERSEG=$SCRIPTDIR/gprecoverseg
+GPSIZECALC=$SCRIPTDIR/gpsizecalc
+GPSKEW=$SCRIPTDIR/gpskew
+GPSTART=$SCRIPTDIR/gpstart
+GPSTATE=$SCRIPTDIR/gpstate
+GPSTOP=$SCRIPTDIR/gpstop
 MAILFILE=$SCRIPTDIR/mail_contacts
 HMAILFILE=$HOME/mail_contacts
 GPDOCDIR=${GPHOME}/docs/cli_help/
@@ -616,7 +616,7 @@ CHK_ON_PASSIVE_STANDBY () {
 	if [ $GPSYNC_COUNT -ne 0 ];then
 		LOG_MSG "[FATAL]:-Cannot run this script on the standby instance" 1
 		LOG_MSG "[FATAL]:-Status indicates that standby instance processs not running" 1
-		LOG_MSG "[FATAL]:-Check standby process status via gpstate.sh -f on Master instance" 1
+		LOG_MSG "[FATAL]:-Check standby process status via gpstate -f on Master instance" 1
 		ERROR_EXIT "[FATAL]:-Unable to process requested command" 2
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"

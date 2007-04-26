@@ -15,89 +15,89 @@ otherwise noted.
 
 * gpssh-exkeys - Exchanges SSH public keys between hosts.
 
-* gpactivatestandby.sh - Activates the backup master as the active 
+* gpactivatestandby - Activates the backup master as the active 
                           Greenplum master instance for a Greenplum Database
                           system and optionally specifies a new backup 
                           master host.
 
-* gpaddpart.sh  - Adds new child table partitions to a parent table that was 
-                   previously partitioned using gpcreatepart.sh.
+* gpaddpart  - Adds new child table partitions to a parent table that was 
+                   previously partitioned using gpcreatepart.
 
-* gpaddmirrors.sh - Adds mirror segments to a Greenplum Database system that
+* gpaddmirrors - Adds mirror segments to a Greenplum Database system that
                      was initially configured without mirroring.
 
 * gp_bash_functions.sh - NOT RUN DIRECTLY. This is sourced by the other 
                           management scripts and contains global parameters 
                           and functions.
 
-* gpcreatecluster.sh - Initializes a Greenplum Database system using 
+* gpinitsystem - Initializes a Greenplum Database system using 
 		        values in a configuration file.
 
-* gpcreatepart.sh - Partitions a table by creating inherited child tables, 
+* gpcreatepart - Partitions a table by creating inherited child tables, 
                      defining check constraints, creating rewrite rules, and 
                      moving existing data from the parent table into the 
                      correct child table.
 
-* gpcrondump.sh - A wrapper script for gp_dump, which allows you to schedule
+* gpcrondump - A wrapper script for gp_dump, which allows you to schedule
                    routine database dumps using cron.
 
-* gpdeletecluster.sh - Deletes a Greenplum Database system that was 
-                        initialized using gpcreatecluster.sh.
+* gpdeletesystem - Deletes a Greenplum Database system that was 
+                        initialized using gpinitsystem.
 
-* gpdeletepart.sh - Drops date partitioned child tables from a parent table 
-                     that was previously partitioned using gpdeletepart.sh or 
-                     gpaddpart.sh (used to maintain a rolling window of date 
+* gpdeletepart - Drops date partitioned child tables from a parent table 
+                     that was previously partitioned using gpdeletepart or 
+                     gpaddpart (used to maintain a rolling window of date 
                      partitioned data).
 
 * gp_dump - Located in $GPHOME/bin. Writes out a database to archive files
              or SQL script files, which can then be used to restore the 
              database at a later time.
 
-* gpinitstandby.sh - Adds and/or initializes a standby Greenplum master host
+* gpinitstandby - Adds and/or initializes a standby Greenplum master host
                       for a Greenplum Database system.
 
-* gprebuildcluster.sh - Rebuilds a Greenplum Database master using a SQL 
+* gprebuildsystem - Rebuilds a Greenplum Database master using a SQL 
                          script file containing the Greenplum Database schema 
                          and Greenplum system catalog information, and then 
                          recreates all of the segment instances using the 
                          information found in the Greenplum system catalog 
                          tables.
 
-* gprebuildseg.sh - Rebuilds segment instances from the Greenplum system 
+* gprebuildseg - Rebuilds segment instances from the Greenplum system 
                      catalog tables of a Greenplum Database master.
 
-* gprecoverseg.sh - Recovers a failed primary or mirror segment.
+* gprecoverseg - Recovers a failed primary or mirror segment.
 
 * gp_restore - Located in $GPHOME/bin. Restores Greenplum Database 
                 databases that were backed up using gp_dump.
 
-* gpsegcron - NOT RUN DIRECTLY. Used by gpcrondump.sh for parallel operations.
+* gpsegcron - NOT RUN DIRECTLY. Used by gpcrondump for parallel operations.
 
-* gpsegrec - NOT RUN DIRECTLY. Used by gprecoverseg.sh for parallel operations
+* gpsegrec - NOT RUN DIRECTLY. Used by gprecoverseg for parallel operations
 
-* gpsegsize - NOT RUN DIRECTLY. Used by gpsizecalc.sh for parallel operations.
+* gpsegsize - NOT RUN DIRECTLY. Used by gpsizecalc for parallel operations.
 
-* gpsegskew - NOT RUN DIRECTLY. Used by gpskew.sh for parallel operations.
+* gpsegskew - NOT RUN DIRECTLY. Used by gpskew for parallel operations.
 
-* gpsegstart - NOT RUN DIRECTLY. Used by gpstart.sh for parallel operations.
+* gpsegstart - NOT RUN DIRECTLY. Used by gpstart for parallel operations.
 
-* gpsegstate - NOT RUN DIRECTLY. Used by gpstate.sh for parallel operations.
+* gpsegstate - NOT RUN DIRECTLY. Used by gpstate for parallel operations.
 
-* gpsegstop - NOT RUN DIRECTLY. Used by gpstop.sh for parallel operations.
+* gpsegstop - NOT RUN DIRECTLY. Used by gpstop for parallel operations.
 
-* gpsizecalc.sh - Shows the disk space usage for a given database, table, 
+* gpsizecalc - Shows the disk space usage for a given database, table, 
                    or index.
 
-* gpskew.sh - Shows the distribution of table data and response times for 
+* gpskew - Shows the distribution of table data and response times for 
                segment instances.
 
-* gpstart.sh - Starts the master instance and all segment 
+* gpstart - Starts the master instance and all segment 
 		instances in a Greenplum Database system.
 
-* gpstate.sh - Displays status and system information for a
+* gpstate - Displays status and system information for a
 	        Greenplum Database database system.
 
-* gpstop.sh - Stops and/or restarts the master instance and all 
+* gpstop - Stops and/or restarts the master instance and all 
                segment instances in a Greenplum Database system.
 
 **************************************************
@@ -108,7 +108,7 @@ GPHOME or GPHOME must be set on the Greenplum master host.
 
 MASTER_DATA_DIRECTORY must be set on the Greenplum master host,
 which points to the script-created master data directory
-created by gpcreatecluster.sh (for example: /gpdata/gp-1)
+created by gpinitsystem (for example: /gpdata/gp-1)
 
 Use gpssh-exkeys on the master host to exchange ssh keys 
 between the master and all segment hosts.

@@ -1,4 +1,4 @@
-COMMAND NAME: gprebuildseg.sh
+COMMAND NAME: gprebuildseg
 
 Rebuilds segment instances from the Greenplum system catalog tables of a 
 Greenplum Database master instance.
@@ -8,7 +8,7 @@ Greenplum Database master instance.
 SYNOPSIS
 *****************************************************
 
-gprebuildseg.sh -d <master_data_directory> [-n <locale>] [-a] [-q] 
+gprebuildseg -d <master_data_directory> [-n <locale>] [-a] [-q] 
 [-l <logfile_directory>] [-D] [-? | -v]
 
 
@@ -16,11 +16,11 @@ gprebuildseg.sh -d <master_data_directory> [-n <locale>] [-a] [-q]
 DESCRIPTION
 *****************************************************
 
-The gprebuildseg.sh script builds segment instances using configuration 
+The gprebuildseg script builds segment instances using configuration 
 information contained in the Greenplum system catalog tables of a Greenplum 
 Database master instance. The use of this script assumes that you have:
 
-1. Built a master instance from a backup file using gprebuildcluster.sh -m.
+1. Built a master instance from a backup file using gprebuildsystem -m.
 
 2. Have edited the Greenplum system catalog tables on the Greenplum master 
    instance to reflect your desired system configuration. See the 
@@ -84,12 +84,12 @@ EXAMPLES
 Rebuild the segment instances using the data found in the given Greenplum 
 master:
 
-gprebuildseg.sh -d /dbfast1/master/gp-1
+gprebuildseg -d /dbfast1/master/gp-1
 
 
 *****************************************************
 SEE ALSO
 *****************************************************
 
-gprebuildcluster.sh, gpcreatecluster.sh, gp_dump, gp_restore
+gprebuildsystem, gpinitsystem, gp_dump, gp_restore
 

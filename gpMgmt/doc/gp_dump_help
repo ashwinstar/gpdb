@@ -45,7 +45,7 @@ ON THE MASTER HOST
 * Dumps the Greenplum schema and system catalog information into a SQL 
   file in the master data directory. The default naming convention of 
   this file is gp_catalog_1_<dbid>_<timestamp>. This file can be used 
-  by the gprebuildcluster.sh script to recover a Greenplum Database system in 
+  by the gprebuildsystem script to recover a Greenplum Database system in 
   various situations.
 
 * Dumps CREATE DATABASE SQL statements into a file in the master data 
@@ -292,4 +292,4 @@ gp_dump -n gpdb template1
 SEE ALSO
 *****************************************************
 
-gp_restore, gprebuildcluster.sh, gprebuildseg.sh
+gp_restore, gprebuildsystem, gprebuildseg

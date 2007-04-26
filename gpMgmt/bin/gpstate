@@ -1,0 +1,845 @@
+#!/bin/bash
+#	Filename:-		gpstate
+#	Version:-		$Revision$	
+#	Updated:-		$Date$
+#	Status:-		Released
+#	Author:-		G Coombe
+#	Contact:-		gcoombe@greenplum.com
+#	Release date:-		March 2006
+#	Release stat:-		Greenplum Co internal
+#                               Copyright (c) Metapa 2005. All Rights Reserved.
+#                               Copyright (c) Greenplum 2005. All Rights Reserved
+#	Brief descn:-		Provides state of the Greenplum instance.
+#******************************************************************************
+# Update History
+#******************************************************************************
+# Ver	Date		Who		Update
+#******************************************************************************
+# Detailed Description
+#******************************************************************************
+#
+#******************************************************************************
+# Prep Code
+# Source required functions file, this required for script to run
+# exit if cannot locate this file. Change location of FUNCTIONS variable
+# as required.
+WORKDIR=`dirname $0`
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
+if [ -f $FUNCTIONS ]; then
+		. $FUNCTIONS
+else
+		echo "[FATAL:]-Cannot source $FUNCTIONS file Script Exits!"
+		exit 2
+fi
+#******************************************************************************
+# Location Variables
+#******************************************************************************
+
+#******************************************************************************
+# Command Variables
+#******************************************************************************
+
+#******************************************************************************
+# Script Specific Variables
+#******************************************************************************
+VERBOSE=1
+unset TAIL_LOGS
+PROG_NAME=`$BASENAME $0`
+PROG_NAME=`$BASENAME $0`
+HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
+TIME=`$DATE +%H":"%M":"%S`
+CUR_DATE=`$DATE +%Y%m%d`
+QD_NAME=`hostname`
+EXIT_STATUS=0
+TLINES=10
+WAIT_LIMIT=600
+PARALLEL_STATUS_FILE=/tmp/gpstate_parallel_status_file.$$
+TMP_SORT_FILE=/tmp/gpstate_parallel_tmp_sort.$$
+GPSEGSTATE=gpsegstate.sh
+#******************************************************************************
+# Functions
+#******************************************************************************
+#
+USAGE () {
+	if [ -f ${GPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
+		$MORE ${GPDOCDIR}/$HELP_DOC_NAME
+		exit 0
+	else
+		$ECHO
+		$ECHO "      `basename $0`"
+		$ECHO
+		$ECHO "      Reports on the state of the Greenplum Database instance"
+		$ECHO
+		$ECHO "      Usage:"
+		$ECHO "      $0 [OPTIONS]"
+		$ECHO
+		$ECHO "      General options:"
+		$ECHO "      -?, display this help message & exit"
+		$ECHO "      -v, display version information & exit"
+		$ECHO "      -t, display default parameter settings & exit"
+		$ECHO
+		$ECHO "      Logging options:"
+		$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
+		$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
+		$ECHO "      -D, set log output to debug level, shows all function calls"
+		$ECHO
+		$ECHO "      Connection options:"
+		$ECHO "      -d, <Master instance directory> name of alternative Master instance to report status of [optional]"
+		$ECHO
+		$ECHO "      Status options:"
+		$ECHO "      -s, Display detailed Greenplum instance status"
+		$ECHO "      -m, List mirror segments of Greenplum database"
+		$ECHO "      -c, List primary/mirror segment instance mapping of Greenplum database"
+		$ECHO "      -p, List Greenplum instance ports"
+		$ECHO "      -n, List instance log file names"
+		$ECHO "      -e, Display end of each segment instance log file"
+		$ECHO "          Additional log display options"
+		$ECHO "          -r, <number> Recall <number> of lines of log, with -e option"
+		$ECHO "          default is to display $TLINES lines from log to screen"
+		$ECHO "          -g, <string> Search for <string> in log, enclose space separated words within \" \""
+		$ECHO "          To seach for multiple words, separate each with a pipe (|) symbol"
+		$ECHO "      -b, Display a brief Greenplum instance status summary [default]"
+		$ECHO "      -i, Display system version information"
+		$ECHO "      -f, Display details of standby master host if configured"
+		$ECHO "      -B, <number> run this batch of state segment processes in parallel [default $BATCH_DEFAULT]"
+		$ECHO
+		$ECHO "      Return codes:"
+		$ECHO "      0 No problems encountered with requested operation"
+		$ECHO "      1 Warning generated"
+		$ECHO "      2 Fatal error, unable to complete requested operation"
+		$ECHO
+		exit $EXIT_STATUS
+	fi
+}
+
+UNKNOWN_OPTION () {
+		$ECHO
+		$ECHO "[ERROR]:-Unknown option $1"
+		USAGE
+}
+
+DISPLAY_PARAM () {
+		GET_MASTER_PORT $MASTER_DATA_DIRECTORY
+		$ECHO
+		$ECHO "Current Default State Parameters"
+		$ECHO "--------------------------------"
+		$ECHO "Greenplum Master instance port      = $MASTER_PORT"
+		$ECHO "Greenplum Master instance directory = $MASTER_DATA_DIRECTORY [Override with -d <master instance directory>]"
+		if [ $VERBOSE ]; then
+				$ECHO "Verbose                       = True             [Override with -q]"
+		else
+				$ECHO "Verbose                       = False"
+		fi 
+		$ECHO
+		exit $EXIT_STATUS
+}
+
+GET_FAIL_SETTING () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	FAIL_TYPE=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -R" " -A -t -c"show gp_fault_action;"`
+	ERROR_CHK $? "obtain fault action setting" 2
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+GET_STANDBY_SETTING () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	MASTER_STANDBY_HOSTNAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -R" " -A -t -c"select hostname from $CONFIG_TABLE where content=-1 and dbid<>1;"`
+	ERROR_CHK $? "Obtain standby hostname" 1
+	if [ x"" == x"$MASTER_STANDBY_HOSTNAME" ];then
+		STANDBY_CONFIGURED="No master standby configured"
+	else
+		STANDBY_CONFIGURED="$MASTER_STANDBY_HOSTNAME"
+		if [ `$HOSTNAME` == $MASTER_STANDBY_HOSTNAME ];then
+			STANDBY_STATE="STANDBY HOST ACTIVE INSTANCE MASTER"
+		else
+			STANDBY_STATE="Standby host passive";fi
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+
+SORT_FILE () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	$CAT $PARALLEL_STATUS_FILE|$SORT -t: -k2,5 > $TMP_SORT_FILE
+	$MV $TMP_SORT_FILE $PARALLEL_STATUS_FILE
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+DATABASE_STATUS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	QD_STATE_COUNT=0
+	QD_FAILED_COUNT=0
+	QD_VALID_COUNT=0
+	QD_NOTVALID_COUNT=0
+	GEN_ERROR=0
+	if [ ! -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
+		ERROR_EXIT "[WARN]:-Master instance down" 1
+	else
+		QD_PID=`$HEAD -1 $MASTER_DATA_DIRECTORY/$PG_PID`
+		GET_PG_PID_ACTIVE $MASTER_PORT
+		GET_QE_DETAILS
+		GET_GP_VERSION
+		GET_FAIL_SETTING
+		GET_STANDBY_SETTING
+		QD_PG_VERSION=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"show server_version;"`
+		ERROR_CHK $? "obtain postgres version" 1
+		QD_ROLE=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"show gp_session_role;" 2> /dev/null`
+		if [ $? -ne 0 ];then
+			  QD_ROLE=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"show gp_session_role;"`
+			  ERROR_CHK $? "obtain master current role" 1
+		fi
+		MIRROR_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid)/count(distinct(content)) from $CONFIG_TABLE where content<>-1;" 2> /dev/null `
+		ERROR_CHK $? "obtain mirror count" 1
+		if [ x"" == x"$MIRROR_COUNT" ];then
+			MIRROR_CONFIG=ERROR
+		else
+			if [ $MIRROR_COUNT -ne 2 ]; then
+				MIRROR_CONFIG=Off
+			else
+				MIRROR_CONFIG=on
+			fi
+		fi
+	if [ ${#QE_ARRAY[@]} -ne 0 ]; then
+		PARALLEL_SETUP  $PARALLEL_STATUS_FILE
+		for TNODE in "${QE_ARRAY[@]}"
+		do
+			SET_VAR
+			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
+			$GPSEGSTATE $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $MASTER_PORT 1 &
+			PARALLEL_COUNT ${#QE_ARRAY[@]} $BATCH_DEFAULT
+		done
+		SORT_FILE
+		$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE
+	fi
+	LOG_MSG "[INFO]:-Master Configuration & Status" 1
+	LOG_MSG "[INFO]:--------------------------" 1
+	LOG_MSG "[INFO]:-Master host                   = $QD_NAME"  1
+	LOG_MSG "[INFO]:-Master Postmaster process PID = $QD_PID"  1
+	LOG_MSG "[INFO]:-Master data directory         = $MASTER_DATA_DIRECTORY" 1
+	LOG_MSG "[INFO]:-Database name                 = $QD_DBNAME " 1
+	LOG_MSG "[INFO]:-Master port                   = $MASTER_PORT" 1
+	LOG_MSG "[INFO]:-Master current role           = $QD_ROLE" 1
+	LOG_MSG "[INFO]:-Greenplum initdb version            = $GP_INIT_VERSION" 1
+	LOG_MSG "[INFO]:-Greenplum current version           = $GP_VERSION" 1
+	LOG_MSG "[INFO]:-Postgres version              = $QD_PG_VERSION" 1
+	LOG_MSG "[INFO]:-Greenplum failure action            = $FAIL_TYPE" 1
+	LOG_MSG "[INFO]:-Greenplum mirroring status          = $MIRROR_CONFIG" 1
+	LOG_MSG "[INFO]:-Greenplum master standby            = $STANDBY_CONFIGURED" 1
+	LOG_MSG "[INFO]:-Greenplum master standby state      = $STANDBY_STATE" 1
+	LOG_MSG "[INFO]:-Segment instance status" 1
+	PARALLEL_SUMMARY_STATUS_REPORT $PARALLEL_STATUS_FILE
+	LOG_MSG "[INFO]:------------------------------------------------" 1
+	if [ ${#QE_ARRAY[@]} -ne 0 ]; then
+		LOG_MSG "[INFO]:-Segment Instance Status Report" 1
+		LOG_MSG "[INFO]:------------------------------------------------" 1
+		while read QE_LINE
+		do
+			QE_NAME=`$ECHO $QE_LINE|$AWK -F':' '{print $2}'`
+			QE_PORT=`$ECHO $QE_LINE|$AWK -F':' '{print $3}'`
+			QE_DIR=`$ECHO $QE_LINE|$AWK -F':' '{print $4}'`
+			QE_PRIMARY=`$ECHO $QE_LINE|$AWK -F':' '{print $5}'`
+			if [ "$QE_PRIMARY" == "t" ];then QE_TYPE_TXT=Primary;else QE_TYPE_TXT=Mirror;fi
+			LOG_MSG "[INFO]:------------------------------------------------" 1
+			LOG_MSG "[INFO]:-Segment instance hostname     = $QE_NAME" 1
+			LOG_MSG "[INFO]:-Segment instance port         = $QE_PORT " 1
+			LOG_MSG "[INFO]:-Segment instance datadir      = $QE_DIR Type = $QE_TYPE_TXT" 1
+			QE_VALID=`$ECHO $QE_LINE|$AWK -F':' '{print $6}'`
+			if [ "$QE_VALID" == "t" ];then
+				LOG_MSG "[INFO]:-Master reports status as      = Valid" 1
+			else
+				LOG_MSG "[WARN]:-Master reports status as      = Invalid <<<<<" 1
+				GEN_ERROR=1
+			fi
+			QE_FAILED=`$ECHO $QE_LINE|$AWK -F':' '{print $7}'`
+			if [ $QE_FAILED -eq 0 ];then 
+				LOG_MSG "[INFO]:-Total errors (remote)         = 0" 1
+			else 	
+				LOG_MSG "[WARN]:-Total errors (remote)         = $QE_FAILED <<<<<" 1
+				GEN_ERROR=1
+			fi
+			QE_PID_FILE=`$ECHO $QE_LINE|$AWK -F':' '{print $8}'`
+			if [ $QE_PID_FILE -eq 0 ];then 
+				LOG_MSG "[INFO]:-File postmaster.pid           = Found" 1
+			else
+				LOG_MSG "[WARN]:-File postmaster.pid           = Missing <<<<<" 1
+				GEN_ERROR=1
+			fi
+			QE_PID_FILE_PID_ID=`$ECHO $QE_LINE|$AWK -F':' '{print $9}'`
+			if [ $QE_PID_FILE_PID_ID -ne 1 ];then
+				LOG_MSG "[INFO]:-PID from postmaster.pid file  = $QE_PID_FILE_PID_ID" 1
+			else
+				LOG_MSG "[WARN]:-PID from postmaster.pid file  = Missing <<<<<" 1
+				GEN_ERROR=1
+			fi
+			QE_LOCK_FILE=`$ECHO $QE_LINE|$AWK -F':' '{print $10}'`
+			if [ $QE_LOCK_FILE -eq 0 ];then 
+				LOG_MSG "[INFO]:-Lock files in /tmp status     = Found" 1
+			else
+				LOG_MSG "[WARN]:-Lock files in /tmp status     = Missing" 1
+				GEN_ERROR=1
+			fi
+			QE_ACTIVE_PID=`$ECHO $QE_LINE|$AWK -F':' '{print $11}'`
+			if [ $QE_ACTIVE_PID -ne 1 ];then 
+				LOG_MSG "[INFO]:-Active PID                    = $QE_ACTIVE_PID" 1
+			else
+				LOG_MSG "[WARN]:-Active PID                    = Missing <<<<<" 1
+				GEN_ERROR=1
+			fi
+			QE_MIRROR_ACTIVE=`$ECHO $QE_LINE|$AWK -F':' '{print $12}'`
+			QE_MIRROR_FAILED=`$ECHO $QE_LINE|$AWK -F':' '{print $13}'`
+			QE_PRIMARY_FAILED=`$ECHO $QE_LINE|$AWK -F':' '{print $14}'`
+			if [ "$QE_PRIMARY" == "f" ];then
+				if [ $QE_MIRROR_ACTIVE -eq 0 ];then 
+				LOG_MSG "[INFO]:-Mirror status                 = Passive" 1
+				else 
+				LOG_MSG "[WARN]:-Mirror status                 = Active <<<<<" 1
+				GEN_ERROR=1
+				fi
+				if [ $QE_MIRROR_FAILED -eq 0 ];then 
+				LOG_MSG "[INFO]:-Instance status               = Valid" 1
+				else 
+				LOG_MSG "[WARN]:-Instance status               = Failed <<<<<" 1
+				GEN_ERROR=1
+				fi
+			else
+				if [ $QE_PRIMARY_FAILED -eq 0 ];then 
+				LOG_MSG "[INFO]:-Instance status               = Active" 1
+				else
+				LOG_MSG "[WARN]:-Instance status               = Failed <<<<<" 1
+				GEN_ERROR=1
+				fi
+			fi
+
+		done < $PARALLEL_STATUS_FILE
+		if [ $GEN_ERROR -eq 1 ];then
+			EXIT_STATUS=1
+			LOG_MSG "[INFO]:------------------------------------------------" 1
+			LOG_MSG "[INFO]:-*****************************************************" 1
+			LOG_MSG "[WARN]:-Warnings have been generated during status processing" 1
+			LOG_MSG "[INFO]:-Check log file $LOG_FILE " 1
+			LOG_MSG "[INFO]:-or review screen output" 1
+			LOG_MSG "[INFO]:-*****************************************************" 1
+		fi
+	else
+		LOG_MSG "[WARN]:-Unable to locate segment instance details" 1
+	fi
+fi
+	$RM -f $PARALLEL_STATUS_FILE
+LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+VERSION_INFO () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	GET_QE_DETAILS
+	MASTER_POSTGRES_VERSION=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c"show server_version;"`
+	ERROR_CHK $? "obtain master postgres server version" 1
+	MASTER_INITDB_VERSION=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c"select productversion from $GP_INITDB_VER_TABLE limit 1;"|$TR '$' ' '|$TR -s ' '`
+	ERROR_CHK $? "obtain master initdb version" 1
+	MASTER_VERSION=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c"select version();" `
+	ERROR_CHK $? "obtain master current version" 1
+	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
+	for TNODE in "${QE_ARRAY[@]}"
+	do
+		SET_VAR
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
+		$GPSEGSTATE $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $MASTER_PORT 2 &
+		PARALLEL_COUNT ${#QE_ARRAY[@]} $BATCH_DEFAULT
+	done
+	SORT_FILE
+	LOG_MSG "[INFO]:-Master segment version details" 1
+	LOG_MSG "[INFO]:-------------------------------" 1
+	LOG_MSG "[INFO]:-Master segment                                  = $MASTER_DATA_DIRECTORY" 1
+	LOG_MSG "[INFO]:-Postgres version                                = $MASTER_POSTGRES_VERSION" 1
+	LOG_MSG "[INFO]:-Software application version                    = $MASTER_INITDB_VERSION" 1
+	LOG_MSG "[INFO]:-Greenplum current version                             = $MASTER_VERSION" 1
+	LOG_MSG "[INFO]:-Segment instance version details" 1
+	LOG_MSG "[INFO]:---------------------------------" 1
+	while read QE_LINE
+	do
+		QE_NAME=`$ECHO $QE_LINE|$AWK -F':' '{print $2}'`
+		QE_PORT=`$ECHO $QE_LINE|$AWK -F':' '{print $3}'`
+		QE_DIR=`$ECHO $QE_LINE|$AWK -F':' '{print $4}'`
+		QE_VALID=`$ECHO $QE_LINE|$AWK -F':' '{print $6}'`
+		CUR_VERSION=`$ECHO $QE_LINE|$AWK -F':' '{print $7}'`
+		INIT_VERSION=`$ECHO $QE_LINE|$AWK -F':' '{print $8}'`	
+		QE_VERSION=`$ECHO $QE_LINE|$AWK -F':' '{print $9}'`
+		LOG_MSG "[INFO]:-----------------------------------------" 1
+		if [ "$QE_VALID" == "t" ];then
+		LOG_MSG "[INFO]:-Host $QE_NAME Port = $QE_PORT datadir  = $QE_DIR Status = Active" 1
+		else
+		LOG_MSG "[WARN]:-Host $QE_NAME Port = $QE_PORT datadir  = $QE_DIR Status = Failed <<<<<" 1
+		fi
+		if [ "$CUR_VERSION" == "Failed" ];then
+			LOG_MSG "[WARN]:-Current Postgres version       = $CUR_VERSION <<<<<" 1
+		else
+			LOG_MSG "[INFO]:-Current Postgres version       = $CUR_VERSION" 1
+		fi
+		if [ "$INIT_VERSION" == "Failed" ];then
+			LOG_MSG "[WARN]:-Software application version   = $INIT_VERSION <<<<<" 1
+		else
+			LOG_MSG "[INFO]:-Software application version   = $INIT_VERSION" 1
+		fi
+		if [ "$QE_VERSION" == "Failed" ];then
+			LOG_MSG "[WARN]:-Greenplum current version            = $QE_VERSION <<<<<" 1
+		else
+			LOG_MSG "[INFO]:-Greenplum current version            = $QE_VERSION" 1
+		fi
+		LOG_MSG "[INFO]:-----------------------------------------" 1
+	done < $PARALLEL_STATUS_FILE
+	$RM -f $PARALLEL_STATUS_FILE
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+MIRROR_LIST () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		GET_QE_MIRROR_DETAILS
+		EXIT_STATUS=0
+		LOG_MSG "[INFO]:-Mirror list" 1
+		if [ ${#QE_MIRROR_ARRAY[@]} -ne 0 ]; then
+				for MNODE in "${QE_MIRROR_ARRAY[@]}"
+						do
+						QE_NAME=`$ECHO $MNODE|$CUT -d"|" -f1`
+						QE_DIR=`$ECHO $MNODE|$CUT -d"|" -f2`
+						QE_PORT=`$ECHO $MNODE|$CUT -d"|" -f3`
+						QE_VALID=`$ECHO $MNODE|$CUT -d"|" -f4`
+						QE_PRIMARY=`$ECHO $MNODE|$CUT -d"|" -f5`
+						if [ "$QE_PRIMARY" == "t" ] && [ "$QE_VALID" == 't' ];then
+							STATUS="Active"
+							LM=WARN
+							TAG="<<<<<<<<<<"
+							EXIT_STATUS=1
+						else
+							if [ "$QE_PRIMARY" == "f" ] && [ "$QE_VALID" == 't' ]; then
+								STATUS="Passive"
+								LM=INFO
+								TAG=""
+							else
+								STATUS="Failed"
+								LM=WARN
+								TAG="<<<<<<<<<<"
+								EXIT_STATUS=1
+							fi
+						fi
+						$ECHO "[$LM]:-Mirror  = $QE_NAME data directory = $QE_DIR port = $QE_PORT status = $STATUS $TAG" | $TEE -a $LOG_FILE
+				done
+		else
+				LOG_MSG "[WARN]:-No mirrors defined" 1
+				EXIT_STATUS=1
+		fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+SET_VAR () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		QE_NAME=`$ECHO $TNODE|$CUT -d"|" -f1`
+		QE_DIR=`$ECHO $TNODE|$CUT -d"|" -f2`
+		QE_PORT=`$ECHO $TNODE|$CUT -d"|" -f3`
+		QE_VALID=`$ECHO $TNODE|$CUT -d"|" -f4`
+		QE_PRIMARY=`$ECHO $TNODE|$CUT -d"|" -f5`
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+GET_STATUS_INFORMATION () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	QE_COUNT=0
+	if [ ! -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
+		ERROR_EXIT "[WARN]:-Master instance down" 1
+	else
+		GET_QE_DETAILS
+		GET_TRANS_READ
+	fi
+	LOG_MSG "[INFO]:-Processing status request, please wait..." 1
+	GET_STANDBY_DETAILS
+	if [ ${#STANDBY_ARRAY[@]} -eq 0 ];then
+		STANDBY_TEXT="NOT CONFIGURED"
+	else
+		MASTER_STANDBY_HOSTNAME=`$ECHO $STANDBY_ARRAY|$CUT -d"|" -f1`
+		MASTER_STANDBY_PORT=`$ECHO $STANDBY_ARRAY|$CUT -d"|" -f3`
+		GET_PG_PID_ACTIVE $MASTER_STANDBY_PORT $MASTER_STANDBY_HOSTNAME
+		if [ $PID -eq 0 ];then
+			STANDBY_TEXT="Down <<<<<<<<<<"
+		else
+			STANDBY_TEXT="Passive"
+		fi
+	fi
+	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
+	BATCH_LIMIT=${#QE_ARRAY[@]}
+	for TNODE in "${QE_ARRAY[@]}"
+	do
+		SET_VAR
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
+		$GPSEGSTATE $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $MASTER_PORT 1 & 
+		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
+	done
+	if [ $DEBUG_LEVEL -eq 0 ];then $NOLINE_ECHO;fi
+	$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE
+	SUMMARY_REPORT
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+SUMMARY_REPORT () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	#Now process the temp file
+	KILLED_COUNT=`$GREP -c "KILLED:" $PARALLEL_STATUS_FILE`
+	#Get total reported as completed
+	COMPLETED_COUNT=`$GREP -c "COMPLETED:" $PARALLEL_STATUS_FILE`
+	#Get total number of primary segments 
+	QE_PRIMARY_COUNT=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' '{print $5}'|$GREP -c "t"`
+	#Get total number of mirror segments
+	QE_MIRROR_COUNT=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' '{print $5}'|$GREP -c "f"`
+	#Get total primary segments marked as valid from master
+	AT_MASTER_PRIMARY_VALID=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' '{print $5$6}'|$GREP -c "tt"`
+	#Get total primary segments marked as invalid from master
+	AT_MASTER_PRIMARY_INVALID=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' '{print $5$6}'|$GREP -c "tf"`
+	#Get total mirror segments marked as valid from master
+	AT_MASTER_MIRROR_VALID=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' '{print $5$6}'|$GREP -c "ft"`
+	#Get total mirror segments marked as invalid from master
+	AT_MASTER_MIRROR_INVALID=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' '{print $5$6}'|$GREP -c "ff"`
+	#Get total number of primary errors reported
+	QE_TOTAL_PRIMARY_ERROR_COUNT=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' 'BEGIN {x=0} {if ($7 > 0 && $5 == "t") x=x+$7} END {print x}'`
+	#Get total number of mirror errors reported
+	QE_TOTAL_MIRROR_ERROR_COUNT=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':'  'BEGIN {x=0} {if ($7 > 0 && $5 == "f") x=x+$7} END {print x}'`
+	#Get total number of primary postmaster.pid files missing
+	QE_TOTAL_PRIMARY_POSTMASTER_PID_FILE_MISSING=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' 'BEGIN {x=0} {if ($5 == "t") x += $8} END {print x}'`
+	QE_TOTAL_MIRROR_POSTMASTER_PID_FILE_MISSING=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' 'BEGIN {x=0} {if ($5 == "f") x += $8} END {print x}'`
+	#Get total number of primary postmaster.pid files located
+	QE_TOTAL_PRIMARY_POSTMASTER_PID_FILE_FOUND=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' 'BEGIN {x=0} {if ($5 == "t" && $8 == 0) x=x+1} END {print x}'`
+	#Get total number of mirror postmaster.pid files located
+	QE_TOTAL_MIRROR_POSTMASTER_PID_FILE_FOUND=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' 'BEGIN {x=0} {if ($5 == "f" && $8 == 0) x=x+1} END {print x}'`
+	#Get total primary PID values in error from postmaster.pid file
+	QE_TOTAL_PRIMARY_POSTMASTER_PID_ERROR=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' 'BEGIN {x=0} {if ($5 == "t" && $9 == 1) x=x+1} END {print x}'`
+	#Get total mirror PID values in error from postmaster.pid file
+	QE_TOTAL_MIRROR_POSTMASTER_PID_ERROR=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' 'BEGIN {x=0} {if ($5 == "f" && $9 == 1) x=x+1} END {print x}'`
+	#Get total primary PID values not in error in postmaster.pid file
+	QE_TOTAL_PRIMARY_POSTMASTER_PID_VALID=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' 'BEGIN {x=0} {if ($5 == "t" && $9 > 1) x=x+1} END {print x}'`
+	#Get total mirror PID values not in error in postmaster.pid file
+	QE_TOTAL_MIRROR_POSTMASTER_PID_VALID=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' 'BEGIN {x=0} {if ($5 == "f" && $9 > 1) x=x+1} END {print x}'`
+	#Get total number of primary /tmp lock files missing
+	QE_TOTAL_PRIMARY_LOCK_MISSING=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' 'BEGIN {x=0} {if ($5 == "t") x += $10} END {print x}'`
+	#Get total number of mirror /tmp lock files missing
+	QE_TOTAL_MIRROR_LOCK_MISSING=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' 'BEGIN {x=0} {if ($5 == "f") x += $10} END {print x}'`
+	#Get total number of primary /tmp lock files found
+	QE_TOTAL_PRIMARY_LOCK_FOUND=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' 'BEGIN {x=0} {if ($5 == "t" && $10 == 0) x=x+1} END {print x}'`
+	#Get total number of mirror /tmp lock files found
+	QE_TOTAL_MIRROR_LOCK_FOUND=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' 'BEGIN {x=0} {if ($5 == "f" && $10 == 0) x=x+1} END {print x}'`
+	#Get total number of primary postmaster pid processes missing
+	QE_POST_PRIMARY_PID_MISSING=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' 'BEGIN {x=0} {if ($5 == "t" && $11 == 1) x=x+1} END {print x}'`
+	#Get total number of mirror postmaster pid processes missing
+	QE_POST_MIRROR_PID_MISSING=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' 'BEGIN {x=0} {if ($5 == "f" && $11 == 1) x=x+1} END {print x}'`
+	#Get total number of primary postmaster pid processes found
+	QE_POST_PRIMARY_PID_FOUND=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' 'BEGIN {x=0} {if ($5 == "t" && $11 > 1) x=x+1} END {print x}'`
+	#Get total number of mirror postmaster pid processes found
+	QE_POST_MIRROR_PID_FOUND=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' 'BEGIN {x=0} {if ($5 == "f" && $11 > 1) x=x+1} END {print x}'`
+	#Get total number of mirror segments that are marked as active
+	QE_MIRROR_SEGMENT_ACTIVE=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' '{x += $12} END {print x}'`	
+	#Get total number of mirror segments that are marked as passive
+	QE_MIRROR_SEGMENT_PASSIVE=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' 'BEGIN {x=0} {if ($5 == "f" && $12 == 0) x=x+1 } END {print x}'`
+	#Get total number of mirrors marked as invalid
+	QE_MIRROR_SEGMENT_FAILED=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' 'BEGIN {x=0} {if ($5 == "f" && $13 > 0) x=x+1} END {print x}'`
+	#Get  total number of primaries marked as invalid
+	QE_PRIMARY_SEGMENT_FAILED=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' 'BEGIN {x=0} {if ($5 == "t" && $14 > 0) x=x+1} END {print x}'`
+	$RM -f $PARALLEL_STATUS_FILE	
+	WARN_MARK="<<<<<<"
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
+		LOG_MSG "[INFO]:-Greenplum instance status summary" 1
+		LOG_MSG "[INFO]:------------------------------------------------" 1
+		LOG_MSG "[INFO]:-Master instance                               = Active"  1
+		LOG_MSG "[INFO]:-Master instance read-only                     = $TRANS_STATE" 1
+		LOG_MSG "[INFO]:-Master instance standby                       = $STANDBY_TEXT" 1
+		LOG_MSG "[INFO]:------------------------------------------------" 1
+		LOG_MSG "[INFO]:-Total segment instance count from meta data   = $INST_COUNT" 1
+		LOG_MSG "[INFO]:-Primary Segment Status" 1
+		LOG_MSG "[INFO]:------------------------------------------------" 1
+		LOG_MSG "[INFO]:-Parallel process exit status" 1
+		LOG_MSG "[INFO]:------------------------------------------------" 1
+		LOG_MSG "[INFO]:-Total processes marked as completed           = $COMPLETED_COUNT" 1
+		if [ $KILLED_COUNT -ne 0 ];then
+		LOG_MSG "[WARN]:-Total processes marked as killed              = $KILLED_COUNT $WARN_MARK" 1
+		else
+		LOG_MSG "[INFO]:-Total processes marked as killed              = 0" 1
+		fi
+		LOG_MSG "[INFO]:------------------------------------------------" 1
+		LOG_MSG "[INFO]:-Total primary segments                        = $QE_PRIMARY_COUNT" 1
+		LOG_MSG "[INFO]:-Total primary segment valid (at master)       = $AT_MASTER_PRIMARY_VALID" 1
+		if [ $AT_MASTER_PRIMARY_INVALID -ne 0 ];then
+		LOG_MSG "[WARN]:-Total primary segment failures (at master)    = $AT_MASTER_PRIMARY_INVALID $WARN_MARK" 1
+		else
+		LOG_MSG "[INFO]:-Total primary segment failures (at master)    = 0" 1
+		fi
+		if [ $QE_TOTAL_PRIMARY_ERROR_COUNT -ne 0 ];then
+		LOG_MSG "[WARN]:-Total number of errors generated (remote)     = $QE_TOTAL_PRIMARY_ERROR_COUNT $WARN_MARK" 1
+		else
+		LOG_MSG "[INFO]:-Total number of errors generated (remote)     = 0" 1
+		fi
+		if [ $QE_TOTAL_PRIMARY_POSTMASTER_PID_FILE_MISSING -ne 0 ];then
+		LOG_MSG "[WARN]:-Total number of postmaster.pid files missing  = $QE_TOTAL_PRIMARY_POSTMASTER_PID_FILE_MISSING $WARN_MARK" 1
+		else
+		LOG_MSG "[INFO]:-Total number of postmaster.pid files missing  = 0" 1
+		fi
+		LOG_MSG "[INFO]:-Total number of postmaster.pid files found    = $QE_TOTAL_PRIMARY_POSTMASTER_PID_FILE_FOUND" 1
+		if [ $QE_TOTAL_PRIMARY_POSTMASTER_PID_ERROR -ne 0 ];then
+		LOG_MSG "[WARN]:-Total number of postmaster.pid PID's missing  = $QE_TOTAL_PRIMARY_POSTMASTER_PID_ERROR $WARN_MARK" 1
+		fi
+		LOG_MSG "[INFO]:-Total number of postmaster.pid PID's valid    = $QE_TOTAL_PRIMARY_POSTMASTER_PID_VALID" 1
+		if [ $QE_TOTAL_PRIMARY_LOCK_MISSING -ne 0 ];then
+		LOG_MSG "[WARN]:-Total number /tmp lock files missing          = $QE_TOTAL_PRIMARY_LOCK_MISSING $WARN_MARK" 1
+		else
+		LOG_MSG "[INFO]:-Total number /tmp lock files missing          = 0" 1
+		fi
+		LOG_MSG "[INFO]:-Total number /tmp lock files found            = $QE_TOTAL_PRIMARY_LOCK_FOUND" 1
+		if [ $QE_POST_PRIMARY_PID_MISSING -ne 0 ];then
+		LOG_MSG "[WARN]:-Total number postmaster processes missing     = $QE_POST_PRIMARY_PID_MISSING $WARN_MARK" 1
+		else
+		LOG_MSG "[INFO]:-Total number postmaster processes missing     = 0" 1
+		fi
+		LOG_MSG "[INFO]:-Total number postmaster processes found       = $QE_POST_PRIMARY_PID_FOUND" 1
+		if [ $QE_PRIMARY_SEGMENT_FAILED -ne 0 ];then
+		LOG_MSG "[WARN]:-Total number segments invalid at hosts        = $QE_PRIMARY_SEGMENT_FAILED $WARN_MARK" 1
+		else
+		LOG_MSG "[INFO]:-Total number segments invalid at hosts        = 0" 1
+		fi
+		LOG_MSG "[INFO]:------------------------------------------------" 1
+		LOG_MSG "[INFO]:-Mirror Segment Status" 1
+		LOG_MSG "[INFO]:------------------------------------------------" 1
+		LOG_MSG "[INFO]:-Total mirror segments                         = $QE_MIRROR_COUNT" 1
+		LOG_MSG "[INFO]:-Total mirror segment valid (at master)        = $AT_MASTER_MIRROR_VALID" 1
+		if [ $AT_MASTER_MIRROR_INVALID -ne 0 ];then
+		LOG_MSG "[WARN]:-Total mirror segment failures (at master)     = $AT_MASTER_MIRROR_INVALID $WARN_MARK" 1
+		else
+		LOG_MSG "[INFO]:-Total mirror segment failures (at master)     = 0" 1
+		fi
+		if [ $QE_TOTAL_MIRROR_ERROR_COUNT -ne 0 ];then
+		LOG_MSG "[WARN]:-Total number of errors generated (remote)     = $QE_TOTAL_MIRROR_ERROR_COUNT $WARN_MARK" 1
+		else
+		LOG_MSG "[INFO]:-Total number of errors generated (remote)     = 0" 1
+		fi
+		if [ $QE_TOTAL_MIRROR_POSTMASTER_PID_FILE_MISSING -ne 0 ];then
+		LOG_MSG "[WARN]:-Total number of postmaster.pid files missing  = $QE_TOTAL_MIRROR_POSTMASTER_PID_FILE_MISSING $WARN_MARK" 1
+		else
+		LOG_MSG "[INFO]:-Total number of postmaster.pid files missing  = 0" 1
+		fi
+		LOG_MSG "[INFO]:-Total number of postmaster.pid files found    = $QE_TOTAL_MIRROR_POSTMASTER_PID_FILE_FOUND" 1
+		if [ $QE_TOTAL_MIRROR_POSTMASTER_PID_ERROR -ne 0 ];then
+		LOG_MSG "[WARN]:-Total number of postmaster.pid PID's missing  = $QE_TOTAL_MIRROR_POSTMASTER_PID_ERROR $WARN_MARK" 1
+		fi
+		LOG_MSG "[INFO]:-Total number of postmaster.pid PID's valid    = $QE_TOTAL_MIRROR_POSTMASTER_PID_VALID" 1
+		if [ $QE_TOTAL_MIRROR_LOCK_MISSING -ne 0 ];then
+		LOG_MSG "[WARN]:-Total number /tmp lock files missing          = $QE_TOTAL_MIRROR_LOCK_MISSING $WARN_MARK" 1
+		else
+		LOG_MSG "[INFO]:-Total number /tmp lock files missing          = 0" 1
+		fi
+		LOG_MSG "[INFO]:-Total number /tmp lock files found            = $QE_TOTAL_MIRROR_LOCK_FOUND" 1
+		if [ $QE_POST_MIRROR_PID_MISSING -ne 0 ];then
+		LOG_MSG "[WARN]:-Total number postmaster processes missing     = $QE_POST_MIRROR_PID_MISSING $WARN_MARK" 1
+		else
+		LOG_MSG "[INFO]:-Total number postmaster processes missing     = 0" 1
+		fi
+		LOG_MSG "[INFO]:-Total number postmaster processes found       = $QE_POST_MIRROR_PID_FOUND" 1
+		if [ $QE_MIRROR_SEGMENT_ACTIVE -ne 0 ];then
+		LOG_MSG "[WARN]:-Total number mirror segments active           = $QE_MIRROR_SEGMENT_ACTIVE $WARN_MARK" 1
+		else
+		LOG_MSG "[INFO]:-Total number mirror segments active           = 0" 1
+		fi
+		LOG_MSG "[INFO]:-Total number mirror segments passive          = $QE_MIRROR_SEGMENT_PASSIVE" 1
+		if [ $QE_MIRROR_SEGMENT_FAILED -ne 0 ];then
+		LOG_MSG "[WARN]:-Total number segments invalid at hosts        = $QE_MIRROR_SEGMENT_FAILED $WARN_MARK" 1
+		else
+		LOG_MSG "[INFO]:-Total number segments invalid at hosts        = 0" 1
+		fi
+	$RM -f $PARALLEL_STATUS_FILE
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+CLUSTER_CONFIG () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		GET_QE_PRIMARY_DETAILS
+		GET_QE_MIRROR_DETAILS
+		if [ ${#QE_MIRROR_ARRAY[@]} -ne 0 ]; then
+				LOG_MSG "[INFO]:-Primary to mirror mapping " 1
+				ARRAY_MAX=${#QE_MIRROR_ARRAY[@]}
+				COUNT=0
+				while [ $COUNT -lt $ARRAY_MAX ]
+						do
+						PHOST=`$ECHO ${QE_PRIMARY_ARRAY[$COUNT]}|$CUT -d"|" -f1`
+						PDIR=`$ECHO ${QE_PRIMARY_ARRAY[$COUNT]}|$CUT -d"|" -f2`
+						PPORT=`$ECHO ${QE_PRIMARY_ARRAY[$COUNT]}|$CUT -d"|" -f3`
+						MHOST=`$ECHO ${QE_MIRROR_ARRAY[$COUNT]}|$CUT -d"|" -f1`
+						MDIR=`$ECHO ${QE_MIRROR_ARRAY[$COUNT]}|$CUT -d"|" -f2`
+						MPORT=`$ECHO ${QE_MIRROR_ARRAY[$COUNT]}|$CUT -d"|" -f3`
+						$ECHO "[INFO]:-Primary $PHOST  $PDIR  $PPORT  mirror $MHOST  $MDIR  $MPORT" | $TEE -a $LOG_FILE
+						((COUNT=$COUNT+1))
+				done
+
+		else
+				LOG_MSG "[INFO]:-Primary list [Mirroring not implemented]" 1
+				for PNODE in "${QE_PRIMARY_ARRAY[@]}"
+						do
+						PHOST=`$ECHO $PNODE|$CUT -d "|" -f1`
+						PDIR=`$ECHO $PNODE|$CUT -d "|" -f2`
+						PPORT=`$ECHO $PNODE|$CUT -d "|" -f3`
+						$ECHO "[INFO]:-Primary $PHOST  $PDIR  $PPORT" | $TEE -a $LOG_FILE
+				done
+		fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+LIST_GP_PORTS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		PORT_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, port, datadir from $CONFIG_TABLE where content<>-1;" `)
+		ERROR_CHK $? "obtain port assignments" 2
+		LOG_MSG "[INFO]:-Master segment instance  $MASTER_DATA_DIRECTORY  port = $MASTER_PORT" 1
+		LOG_MSG "[INFO]:-Segment instance port assignments" 1
+		LOG_MSG "[INFO]:----------------------------------" 1
+		for PMODE in "${PORT_ARRAY[@]}"
+				do
+				HOST=`$ECHO $PMODE|$CUT -d"|" -f1`
+				PORT=`$ECHO $PMODE|$CUT -d"|" -f2`
+				DIR=`$ECHO $PMODE|$CUT -d"|" -f3`
+				LOG_MSG "[INFO]:-Segment instance $HOST $DIR  port = $PORT" 1
+		done
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+LIST_MPP_LOGS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		LOG_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select hostname, datadir from $CONFIG_TABLE where content<>-1 ;" 2>|/dev/null`)
+		ERROR_CHK $? "obtain log assignments" 2
+		LOG_MSG "[INFO]:-Master segment instance $MASTER_DATA_DIRECTORY logfile ${MASTER_DATA_DIRECTORY}.log" 1
+		LOG_MSG "[INFO]:-Segment instance database logfiles" 1
+		LOG_MSG "[INFO]:-----------------------------------" 1
+		for LOGCHK in "${LOG_ARRAY[@]}"
+				do
+				HOST=`$ECHO $LOGCHK|$CUT -d"|" -f1`
+				DIR=`$ECHO $LOGCHK|$CUT -d"|" -f2`
+				if [ $TAIL_LOGS ]; then
+					LOG_MSG "[INFO]:-$HOST $DIR log file tail" 1
+					LOG_MSG "[INFO]:----------START----------------------" 1
+#					$ECHO "$HOST Logfile name ${DIR}.log" | $TEE -a $LOG_FILE
+					if [ x"" == x"$GREP_STRING" ];then
+						$TRUSTED_SHELL $HOST "$TAIL -$TLINES ${DIR}.log"|$TEE -a $LOG_FILE
+					else
+						$TRUSTED_SHELL $HOST "$TAIL -$TLINES ${DIR}.log|$EGREP '$GREP_STRING'"|$TEE -a $LOG_FILE
+					fi
+#						$ECHO
+						LOG_MSG "[INFO]:-$HOST $DIR log file tail" 1
+					LOG_MSG "[INFO]:-----------END-----------------------" 1
+				else
+						LOG_MSG "[INFO]:-$HOST $DIR logfile ${DIR}.log" 1
+				fi
+		done	
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+
+STANDBY_HOST_DETAILS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	GET_STANDBY_DETAILS
+	if [ ${#STANDBY_ARRAY[@]} -eq 0 ];then
+		LOG_MSG "[INFO]:-Standby master instance not configured" 1
+	else
+		MASTER_STANDBY_HOSTNAME=`$ECHO $STANDBY_ARRAY|$CUT -d"|" -f1`
+		MASTER_STANDBY_DIR=`$ECHO $STANDBY_ARRAY|$CUT -d"|" -f2`
+		MASTER_STANDBY_PORT=`$ECHO $STANDBY_ARRAY|$CUT -d"|" -f3`
+		if [ `$HOSTNAME` == $MASTER_STANDBY_HOSTNAME ];then
+			STANDBY_STATE="STANDBY HOST ACTIVE INSTANCE MASTER"
+		else
+			STANDBY_STATE="Standby host passive";fi
+		GET_PG_PID_ACTIVE $MASTER_STANDBY_PORT $MASTER_STANDBY_HOSTNAME
+		LOG_MSG "[INFO]:-Standby master details" 1
+		LOG_MSG "[INFO]:-----------------------" 1
+		LOG_MSG "[INFO]:-Standby hostname        = $MASTER_STANDBY_HOSTNAME" 1
+		LOG_MSG "[INFO]:-Standby data directory  = $MASTER_STANDBY_DIR" 1
+		LOG_MSG "[INFO]:-Standby port            = $MASTER_STANDBY_PORT" 1
+		LOG_MSG "[INFO]:-Standby PID             = $PID" 1
+		LOG_MSG "[INFO]:-Standby status          = $STANDBY_STATE" 1
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+GET_GP_VERSION () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		GP_INIT_VERSION=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select * from gp_version_at_initdb limit 1;" 2>/dev/null`
+		ERROR_CHK $? "obtain Greenplum initdb version information" 2
+		GP_VERSION=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select version();" 2>/dev/null`
+		ERROR_CHK $? "obtain Greenplum version information" 2
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+DISPLAY_RO_MASTER () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:----------------------------------------" 1
+	LOG_MSG "[INFO]:-Master read only hostname = `$HOSTNAME`" 1
+	LOG_MSG "[INFO]:-Master read only port     = $MASTER_PORT" 1
+	LOG_MSG "[INFO]:-Master read only status   = Active" 1
+	LOG_MSG "[INFO]:----------------------------------------" 1
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+#******************************************************************************
+# Main Section
+#******************************************************************************
+#Check to see if we have a parameter supplied to script
+trap '$RM -f $PARALLEL_STATUS_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
+SELECT=6
+if [ $# -ne 0 ]; then
+		while getopts ":vtbl:d:nieqsmcpf'?'r:g:!DB:" opt;do
+				case $opt in
+						v ) VERSION_INFO ;;
+						t ) DISPLAY_PARAM ;;
+						'?' ) USAGE ;;
+						! ) SCRIPT_USAGE=1
+						    USAGE ;;
+						d ) MASTER_DATA_DIRECTORY=$OPTARG ;;
+						q ) unset VERBOSE ;;
+						s ) SELECT=1 ;;
+						m ) SELECT=2 ;;
+						c ) SELECT=3 ;;
+						p ) SELECT=4 ;; 
+						n ) SELECT=5 ;;
+						b ) SELECT=6 ;;
+						i ) SELECT=7 ;;
+						f ) SELECT=8 ;;
+						e ) TAIL_LOGS=1 
+						    SELECT=5 ;;
+						r ) TLINES=$OPTARG ;;
+						l ) LOG_DIR=$OPTARG ;;
+						g ) GREP_STRING=$OPTARG ;;
+						D ) DEBUG_LEVEL=1 ;;
+						B ) BATCH_DEFAULT=$OPTARG ;;
+						* ) UNKNOWN_OPTION ;;
+				esac
+		done	
+fi
+if [ x"" != x"$LOG_DIR" ];then
+	CHK_DIR $LOG_DIR
+	if [ $EXISTS -eq 1 ]; then
+		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory" 1
+		EXIT_STATUS=1
+else
+	LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
+	fi
+fi
+CHK_ON_PASSIVE_STANDBY
+LOG_MSG "[INFO]:-Start Main"
+LOG_MSG "[INFO]:-Command line options passed to utility = $*"
+CHK_DB_RUNNING
+GET_MASTER_PORT $MASTER_DATA_DIRECTORY
+GET_QD_DB_NAME
+READ_CHK
+if [ $READ_COUNT -ne 0 ];then
+	DISPLAY_RO_MASTER
+	LOG_MSG "[INFO]:-End Main"
+	exit 0
+fi
+case $SELECT in
+		1 ) DATABASE_STATUS ;; 
+		2 ) MIRROR_LIST ;;
+		3 ) CLUSTER_CONFIG ;;
+		4 ) LIST_GP_PORTS ;;
+		5 ) LIST_MPP_LOGS ;;
+		6 ) GET_STATUS_INFORMATION ;;
+		7 ) VERSION_INFO ;;
+		8 ) STANDBY_HOST_DETAILS ;;
+esac
+$RM -f $PARALLEL_STATUS_FILE
+LOG_MSG "[INFO]:-End Main"
+exit $EXIT_STATUS

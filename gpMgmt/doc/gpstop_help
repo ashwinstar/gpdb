@@ -1,4 +1,4 @@
-COMMAND NAME: gpstop.sh
+COMMAND NAME: gpstop
 
 Stops or restarts a Greenplum Database system. Can also be used to
 reload the postgresql.conf file without a restart.
@@ -7,7 +7,7 @@ reload the postgresql.conf file without a restart.
 SYNOPSIS
 *****************************************************
 
-gpstop.sh [-d master_data_directory] [-B parallel_processes] 
+gpstop [-d master_data_directory] [-B parallel_processes] 
 [-z] [-f | -i | -s] [-r] [-m] [-y] [-u] [-a] [-q] [-l 
 logfile_directory] [-D] [-t | -? | -v]
 
@@ -16,16 +16,16 @@ logfile_directory] [-D] [-t | -? | -v]
 DESCRIPTION
 *****************************************************
 
-The gpstop.sh script is analogous to functionality offered by the 
+The gpstop script is analogous to functionality offered by the 
 PostgreSQL pg_ctl and postmaster commands, which are used to stop the 
 database server. When you stop a Greenplum Database system, you are 
 actually stopping several postmaster database server processes at once 
-(the master and all of the segment instances). The gpstop.sh script 
+(the master and all of the segment instances). The gpstop script 
 handles the shutdown of the individual instances. Each instance is 
 shutdown in parallel.
 
 Before you can stop a Greenplum Database system, you must have started 
-it using gpstart.sh first.
+it using gpstart first.
 
 
 *****************************************************
@@ -140,44 +140,44 @@ EXAMPLES
 
 Stop a Greenplum Database system in smart mode:
 
-gpstop.sh
+gpstop
 
 
 Stop a Greenplum Database system in fast mode:
 
-gpstop.sh -f
+gpstop -f
 
 
 Force shutdown of the system if it has failed segment instances from a 
 previous startup attempt:
 
-gpstop.sh -z
+gpstop -z
 
 
 Stop all segment instances and then restart the system:
 
-gpstop.sh -r
+gpstop -r
 
 
 Stop a master instance that was started in maintenance mode:
 
-gpstop.sh -m
+gpstop -m
 
 
-Display the online help for the gpstop.sh script:
+Display the online help for the gpstop script:
 
-gpstop.sh -?
+gpstop -?
 
 
 Reload the postgresql.conf file after making configuration changes but do 
 not shutdown the Greenplum Database array:
 
-gpstop.sh -u
+gpstop -u
 
 
 *****************************************************
 SEE ALSO
 *****************************************************
 
-gpstart.sh
+gpstart
 

@@ -8,7 +8,7 @@
 #	Release date:-		Dec 2006
 #	Release stat:-		Released
 #                               Copyright (c) Metapa 2005. All Rights Reserved.
-#                               Copyright MPP database cluster
+#                               Copyright (c) 2007 Greenplum Inc
 #******************************************************************************
 # Update History
 #******************************************************************************
@@ -49,7 +49,7 @@ USAGE () {
 		$ECHO
 		$ECHO "      `basename $0`"
 		$ECHO
-		$ECHO "      Script called by gpskew.sh, this should not be run directly"
+		$ECHO "      Script called by gpskew, this should not be run directly"
 		exit $EXIT_STATUS
 }
 
@@ -92,7 +92,7 @@ while getopts ":v'?'" opt
 	esac
 done
 #Now process supplied call parameters
-PARENT_PID=$1;shift		#PID of gpstate.sh process calling this script
+PARENT_PID=$1;shift		#PID of gpstate process calling this script
 CHK_CALL
 QE_NAME=$1;shift		#Hostname holding database segment
 QE_PORT=$1;shift		#Segment port

@@ -1,4 +1,4 @@
-COMMAND NAME: gprebuildcluster.sh
+COMMAND NAME: gprebuildsystem
 
 Rebuilds a master using a SQL script file containing the Greenplum Database 
 schema and Greenplum system catalog information, and then recreates all 
@@ -10,7 +10,7 @@ system catalog tables.
 SYNOPSIS
 *****************************************************
 
-gprebuildcluster.sh -s sql_file -d temp_db_data_directory [-p 
+gprebuildsystem -s sql_file -d temp_db_data_directory [-p 
 temp_db_port] [-m] [-o] [-i] [-c checkpoint_segments] [-x] [-i 
 cidr_address] [-n locale] [-a] [-q] [-l logfile_directory] [-D] 
 [-? | -v]
@@ -20,11 +20,11 @@ cidr_address] [-n locale] [-a] [-q] [-l logfile_directory] [-D]
 DESCRIPTION
 *****************************************************
 
-The gprebuildcluster.sh script will rebuild a Greenplum Database system 
+The gprebuildsystem script will rebuild a Greenplum Database system 
 using a SQL script file. This SQL script file must contain commands for 
 creating the Greenplum Database schema and loading system catalog data from 
 another Greenplum Database installation. There are two ways to get the SQL 
-script file that gprebuildcluster.sh needs:
+script file that gprebuildsystem needs:
 
 * gp_dump  The gp_dump operation creates a file on the master host called 
   gp_catalog_1_<dbid>_<timestamp>.
@@ -35,7 +35,7 @@ script file that gprebuildcluster.sh needs:
   catalog tables. For example, run the following command on the master host:
   pg_dump -n pg_catalog -p 5432 template1
 
-The use of the gprebuildcluster.sh script assumes that you have an existing 
+The use of the gprebuildsystem script assumes that you have an existing 
 or previous Greenplum Database system that you want to recreate. By default 
 this script uses the same hosts, ports, and data directories as the 
 reference Greenplum Database system. You can use the -o option to 
@@ -47,14 +47,14 @@ This option will create the Greenplum master instance only. After the
 Greenplum master is created, you can manually edit the Greenplum system 
 catalog tables to change the system configuration. 
 (see the Greenplum Database Administrator Guide) After editing the system 
-catalog tables, use the gprebuildseg.sh script, which rebuilds 
+catalog tables, use the gprebuildseg script, which rebuilds 
 the segment instances using the information found in the Greenplum 
 masters system catalog tables.
 
 The use of this script also assumes that you have the same number of 
 segment instances as the reference system you are rebuilding. If you are 
 expanding your system or are dramatically changing your system configuration, 
-you should use gpcreatecluster.sh to create a new Greenplum Database 
+you should use gpinitsystem to create a new Greenplum Database 
 system from scratch.
 
 
@@ -68,7 +68,7 @@ Required. A SQL file containing the Greenplum Database schema and system
 catalog information. This is the gp_catalog_0_<dbid>_<timestamp> file 
 created on the Greenplum master host by the gp_dump operation. You can 
 also do a pg_dump operation on a Greenplum master host to get a SQL 
-file that can be used by gprebuildcluster.sh. For example:
+file that can be used by gprebuildsystem. For example:
 pg_dump -n pg_catalog -p 5432 template1
 
 
@@ -102,7 +102,7 @@ Use this option if you want to change any information in your system
 configuration (such as segment hosts, data storage locations, or ports) 
 before rebuilding the segments. After the Greenplum master is created, 
 you can manually edit the system catalog tables to change the configuration. 
-After editing the system catalog tables, use the gprebuildseg.sh script, 
+After editing the system catalog tables, use the gprebuildseg script, 
 which rebuilds the segment instances using the information found in 
 the Greenplum masters system catalog tables.
 
@@ -182,24 +182,24 @@ EXAMPLES
 Rebuild an entire Greenplum Database system (master and segment instances) 
 using the exact same array configuration as in the SQL backup file:
 
-gprebuildcluster.sh -s gp_catalog_0_1_2005103112453 -d /home/gpadmin/tmp
+gprebuildsystem -s gp_catalog_0_1_2005103112453 -d /home/gpadmin/tmp
 
 
 Rebuild an entire Greenplum Database system (master and segment instances) 
 using the same array configuration as in the SQL backup file, but 
 change the master host instance configuration to the current host:
 
-gprebuildcluster.sh -s gp_catalog_0_1_2005103112453 -d /home/gpadmin/tmp -o
+gprebuildsystem -s gp_catalog_0_1_2005103112453 -d /home/gpadmin/tmp -o
 
 
 Rebuild the master host only (the Greenplum Database system catalog):
 
-gprebuildcluster.sh -s gp_catalog_0_1_2005103112453 -d /home/gpadmin/tmp -o -m
+gprebuildsystem -s gp_catalog_0_1_2005103112453 -d /home/gpadmin/tmp -o -m
 
 
 *****************************************************
 SEE ALSO
 *****************************************************
 
-gprebuildseg.sh, gpcreatecluster.sh, gp_dump, gp_restore
+gprebuildseg, gpinitsystem, gp_dump, gp_restore
 

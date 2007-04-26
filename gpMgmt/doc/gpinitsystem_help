@@ -1,0 +1,203 @@
+COMMAND NAME: gpinitsystem
+
+Initializes a Greenplum Database system by using configuration parameters 
+specified in the gp_init_config file of System Initialization Parameters.
+
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+gpinitsystem -c <gp_init_config_file> [-r | -B <parallel_processes>] 
+[-h <host_file>] [-p <postgresql_conf_param_file>] 
+{[-s <standby_master_host>] [-i]} [-o] [-m <max_connections>] 
+[-e <superuser_password>] [-n <locale>] [-a] [-q] [-l <logfile_directory>] 
+[-D] [-? | -v]
+
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+The gpinitsystem script will create a Greenplum Database 
+instance using the values defined in a configuration file. 
+(See 'gp_init_config_example') Before running this script, make sure 
+that you have installed the Greenplum Database software on all the 
+hosts in the array.
+
+The functionality of gpinitsystem is analogous to PostgreSQLs 
+'initdb' utility, which creates the data storage directories, generates 
+the shared catalog tables and configuration files, and creates a 
+template database, which is a template used to create other databases. 
+
+In a Greenplum Database DBMS, each database instance (the master and all 
+segments) must be initialized across all of the hosts in the system in 
+such a way that they can all work together as a unified DBMS. The 
+gpinitsystem script takes care of initializing the database on 
+the master and on each segment instance, and configuring the system 
+as a whole.
+
+Before running gpinitsystem, you must set the $GPHOME environment 
+variable to point to the location of your Greenplum Database server 
+installation on the master host.
+
+This script performs the following tasks:
+
+* Verifies that the parameters in the configuration file are correct.
+
+* Ensures that a connection can be established to each host. If a host 
+  cannot be reached, the script will exit.
+
+* Displays the configuration that will be used and prompts for confirmation.
+
+* Initializes the master instance.
+
+* Initializes the standby master instance (if specified).
+
+* Initializes the primary segment instances.
+
+* Initializes the mirror segment instances (if configured).
+
+* Configures the Greenplum Database system and checks for errors.
+
+* Starts the Greenplum Database system.
+
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+-c <gp_init_config_file>
+
+Required. The full path and filename of the array configuration file. 
+See 'gp_init_config_example'.
+
+
+-r 
+
+Runs in serial mode. The default is to build segments in parallel.
+
+
+-B <parallel_processes>
+
+The number of segments to create in parallel. If not specified, the 
+script will start up to 60 parallel processes depending on how 
+many segment instances it needs to create.
+
+
+-h <host_file>
+
+Optional. The full path and filename of a file that contains the host 
+names of all the segment hosts in the array. If not specified on the 
+command line, you can specify the host file using the MACHINE_LIST_FILE 
+parameter in the gp_init_config file.
+
+
+-p <postgresql_conf_param_file>
+
+Optional. The name of a file that contains global postgresql.conf parameter 
+settings that you want to set for Greenplum Database. These settings will 
+be used when the individual master and segment instances are initialized. 
+For more information about the default server configuration parameters see 
+the Greenplum Database Administrator Guide.
+
+
+-s <standby_master_host>
+
+Optional. If you wish to configure a backup master host, specify the 
+host name using this option. You must have the Greenplum Database 
+software installed and configured on the backup master host.
+
+
+-i (do not start synchronization)
+
+If a standby master host is configured, this will not start the 
+synchronization process between the primary and backup master hosts. 
+The default is to start the synchronization process.
+
+
+-o (create master only)
+
+Creates a master instance only. Does not configure any segment hosts.
+
+
+-m <max_connections>
+
+Sets the maximum number of client connections allowed to the master. 
+The default is 25.
+
+
+-e <superuser_password>
+
+The password to set for the Greenplum Database super user. Defaults to 
+'gparray'. You can always change the super user password at a later 
+time using the ALTER ROLE command. Client connections over the network 
+require a password login for the database super user account (gpadmin).
+
+
+-n <locale>
+
+Sets the default locale (character set encoding) for the Greenplum 
+Database system. Defaults to en_US.utf8 (UNICODE). You must make sure 
+that the locale you specify exists on your operating system 
+(locale -a will show which locales are available). See 
+'Character Set Support' in the PostgreSQL documentation for more 
+information on the supported character set encodings.
+
+
+-a (do not prompt)
+
+Do not prompt the user for confirmation.
+
+
+-q (no screen output)
+
+Run in quiet mode. Command output is not displayed on the screen, 
+but is still written to the log file.
+
+
+-l <logfile_directory>
+
+The directory to write the log file. Defaults to ~/gpAdminLogs.
+
+
+-D (debug)
+
+Sets log output level to debug.
+
+
+-? (help)
+
+Displays the online help.
+
+
+-v (show script version)
+
+Displays the version, status, last updated date, and check sum of this script.
+
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+Initialize a Greenplum Database array:
+
+gpinitsystem -c gp_init_config -e mypassword
+
+
+Initialize a Greenplum Database array with an optional standby master host:
+
+gpinitsystem -c gp_init_config -s host09 -e mypassword
+
+
+Display the online help for the gpinitsystem script:
+
+gpinitsystem -?
+
+
+*****************************************************
+SEE ALSO
+*****************************************************
+
+gprebuildsystem, gprebuildseg, gpdeletesystem
+

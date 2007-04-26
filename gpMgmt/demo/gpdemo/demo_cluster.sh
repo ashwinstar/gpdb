@@ -166,7 +166,7 @@ if [ ! -x "$GPPATH" ]; then
     exit 1
 fi
 GPPATH=`dirname $GPPATH`
-if [ ! -x $GPPATH/gpcreatecluster.sh ]; then
+if [ ! -x $GPPATH/gpinitsystem ]; then
     echo "No mgmt executables found for Greenplum installation in $GPPATH"
     exit 1
 fi
@@ -194,7 +194,7 @@ LOCALHOST=`hostname`
 echo "localhost" > hostfile
 
 #*****************************************************************************************
-# Name of the cluster configuration file.
+# Name of the system configuration file.
 #*****************************************************************************************
 CLUSTER_CONFIG=clusterConfigFile
 rm -f $CLUSTER_CONFIG
@@ -202,12 +202,12 @@ rm -f $CLUSTER_CONFIG
 SEG_PREFIX=demoDataDir
 
 #*****************************************************************************************
-# Create the cluster configuration file
+# Create the system configuration file
 #*****************************************************************************************
 echo "# Set this to anything you like" >> $CLUSTER_CONFIG
 echo "CLUSTER_NAME=\"Demo $HOSTNAME Cluster\"" >> $CLUSTER_CONFIG
 echo "" >> $CLUSTER_CONFIG
-echo "# This file must exist in the same directory that you execute gpcreatecluster.sh in" >> $CLUSTER_CONFIG
+echo "# This file must exist in the same directory that you execute gpinitsystem in" >> $CLUSTER_CONFIG
 echo "MACHINE_LIST_FILE=hostfile" >> $CLUSTER_CONFIG
 echo "" >> $CLUSTER_CONFIG
 echo "# This names the data directories for the Segment Instances and the Entry Postmaster" >> $CLUSTER_CONFIG
@@ -255,4 +255,4 @@ echo "export TRUSTED_SHELL" >> $CLUSTER_CONFIG
 #*****************************************************************************************
 # Create cluster
 #*****************************************************************************************
-$GPPATH/gpcreatecluster.sh -q -a -c $CLUSTER_CONFIG
+$GPPATH/gpinitsystem -q -a -c $CLUSTER_CONFIG

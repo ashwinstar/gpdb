@@ -8,7 +8,7 @@
 #	Release date:-		Dec 2006
 #	Release stat:-		Released
 #                               Copyright (c) Metapa 2005. All Rights Reserved.
-#                               Copyright MPP database cluster
+#                               Copyright (c) 2007 Greenplum Inc
 #******************************************************************************
 # Update History
 #******************************************************************************
@@ -62,7 +62,7 @@ USAGE () {
 		$ECHO
 		$ECHO "      `basename $0`"
 		$ECHO
-		$ECHO "      Script called by gpcreatecluster.sh, this should not"
+		$ECHO "      Script called by gpinitsystem, this should not"
 		$ECHO "      be run directly"
 		exit $EXIT_STATUS
 }
@@ -201,7 +201,7 @@ while getopts ":v'?'aiqe:c:l:p:m:h:on:s:" opt
 	esac
 done
 #Now process supplied call parameters
-PARENT_PID=$1;shift		#PID of calling gpcreatecluster.sh program
+PARENT_PID=$1;shift		#PID of calling gpinitsystem program
 CHK_CALL
 TYPE=$1;shift
 case $TYPE in

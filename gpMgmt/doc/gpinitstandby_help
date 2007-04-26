@@ -1,4 +1,4 @@
-COMMAND NAME: gpinitstandby.sh
+COMMAND NAME: gpinitstandby
 
 Adds and/or initializes a standby master host for a Greenplum Database system.
 
@@ -7,7 +7,7 @@ Adds and/or initializes a standby master host for a Greenplum Database system.
 SYNOPSIS
 *****************************************************
 
-gpinitstandby.sh -s <standby_hostname> [-i] [-n] [-a] [-q] 
+gpinitstandby -s <standby_hostname> [-i] [-n] [-a] [-q] 
 [-l <logfile_directory>] [-D] [-? | -v]
 
 
@@ -15,7 +15,7 @@ gpinitstandby.sh -s <standby_hostname> [-i] [-n] [-a] [-q]
 DESCRIPTION
 *****************************************************
 
-The gpinitstandby.sh script will create a backup master host if one 
+The gpinitstandby script will create a backup master host if one 
 has not already been created for your Greenplum Database system. Before 
 running this script, make sure that the Greenplum Database software is 
 installed on the backup master host and that you have exchanged SSH 
@@ -41,7 +41,7 @@ up to date by a transaction log replication process (gpsyncmaster),
 which runs on the backup master host and keeps the data between the 
 primary and backup master hosts synchronized. If the primary master fails, 
 the log replication process is shutdown, and the backup master can be 
-activated in its place by using the gpactivatestandby.sh script. Upon 
+activated in its place by using the gpactivatestandby script. Upon 
 activation of the backup master, the replicated logs are used to 
 reconstruct the state of the master host at the time of the last 
 successfully committed transaction.
@@ -108,18 +108,18 @@ EXAMPLES
 Add a backup master host to your Greenplum Database system and start the 
 synchronization process:
 
-gpinitstandby.sh -s host09
+gpinitstandby -s host09
 
 
 Start an existing backup master host and synchronize the data with the primary master 
 host - do not add a new Greenplum backup master host to the system catalog:
 
-gpinitstandby.sh -s host09 -n
+gpinitstandby -s host09 -n
 
 
 *****************************************************
 SEE ALSO
 *****************************************************
 
-gpcreatecluster.sh, gpaddmirrors.sh, gpactivatestandby.sh
+gpinitsystem, gpaddmirrors, gpactivatestandby
 

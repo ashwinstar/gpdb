@@ -1,4 +1,4 @@
-COMMAND NAME: gpstate.sh
+COMMAND NAME: gpstate
 
 Shows the status of a running Greenplum Database system.
 
@@ -6,7 +6,7 @@ Shows the status of a running Greenplum Database system.
 SYNOPSIS
 *****************************************************
 
-gpstate.sh [-d <master_data_directory>] [-B <parallel_processes>] 
+gpstate [-d <master_data_directory>] [-B <parallel_processes>] 
             [-s | -b] [-m] [-c] [-p] [-n] 
             {[-e] [-r <number>] [-g "<search_string>" [| "<search_string>"]]} 
             [-i] [-f] [-q] [-l <log_directory>] [-D] [-t | -? | -v]
@@ -16,12 +16,12 @@ gpstate.sh [-d <master_data_directory>] [-B <parallel_processes>]
 DESCRIPTION
 *****************************************************
 
-The gpstate.sh script is analogous to functionality offered by the 
+The gpstate script is analogous to functionality offered by the 
 PostgreSQL pg_controldata command, which displays information about a 
 running database server instance. There is additional information you 
 may want to know about a Greenplum Database system, since it is comprised 
 of multiple PostgreSQL database instances spanning multiple machines. 
-The gpstate.sh script provides additional status information for a 
+The gpstate script provides additional status information for a 
 Greenplum Database system, such as:
 
 * Which segments are down (invalid status).
@@ -132,7 +132,7 @@ Sets logging level to debug.
 
 -t (show default script settings)
 
-Display the default settings used by the gpstate.sh script such as the 
+Display the default settings used by the gpstate script such as the 
 master data directory and port.
 
 
@@ -152,37 +152,37 @@ EXAMPLES
 
 Show the complete status information of a Greenplum Database system:
 
-gpstate.sh
+gpstate
 
 
 Show the status summary of a Greenplum Database system:
 
-gpstate.sh -b
+gpstate -b
 
 
 Show information about mirror segment instances:
 
-gpstate.sh -m -c
+gpstate -m -c
 
 
 Show information about the standby master configuration:
 
-gpstate.sh -f
+gpstate -f
 
 
 Show the last log file message for all segment instances:
 
-gpstate.sh -e
+gpstate -e
 
 
-Display the online help for the gpstate.sh script:
+Display the online help for the gpstate script:
 
-gpstate.sh -?
+gpstate -?
 
 
 *****************************************************
 SEE ALSO
 *****************************************************
 
-gpstart.sh, gpskew.sh, gpsizecalc.sh
+gpstart, gpskew, gpsizecalc
 
