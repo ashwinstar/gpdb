@@ -21,6 +21,7 @@ Usage: gpfdist [-?v] [-p port] [-d dir] [-q qchar] [-x xchar] [-h]
 
 import SocketServer, BaseHTTPServer, os, sys, getopt, threading, time, socket
 
+MAX_CONCURRENT_SESSION = 64
 opt = {}
 opt['-p'] = 8080
 opt['-v'] = False
@@ -94,6 +95,7 @@ class Session:
 	self.m_off = 0
 	self.m_max = 0
 	self.m_linecnt = 0
+	self.m_threadcnt = 0
 
     def readLine(self):
 	line = ''
@@ -206,6 +208,14 @@ class GPFDistRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 	self.send_response(400)
 	return None
 
+    def send200empty(self):
+	if opt['-v']: print '  [ignore] thread %s' % self.client_address[0]
+	self.send_response(200)
+	self.send_header("Content-type", "text/plain")
+	self.send_header("Content-length", "0")
+	self.end_headers()
+	return None
+
     def do_GET(self):
 	try:
 	    GPFDistRequestHandler.counter = GPFDistRequestHandler.counter + 1
@@ -227,6 +237,9 @@ class GPFDistRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 		if not s:
 		    msg = 'unable to serve TID %s' % TID
 		    return self.send400(msg)
+		if s.m_threadcnt >= MAX_CONCURRENT_SESSION:
+		    return send200empty(self)
+		s.m_threadcnt = s.m_threadcnt + 1
 	    except IOError, e:
 		msg = str(e)
 		return self.send400(msg)
@@ -252,8 +265,9 @@ class GPFDistRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 		    for c in chunks:
 			self.wfile.write(c)
 
+	    s.m_threadcnt = s.m_threadcnt - 1
 	    if opt['-V']: print '  %s done' % fname
-	    if TID.find('auto-tid.') == 0:
+	    if TID[0] == 'a' and TID.find('auto-tid.') == 0:
 		del sess[(TID, fname)]
 
 	except socket.error, e:
