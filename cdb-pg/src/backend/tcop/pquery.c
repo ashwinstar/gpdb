@@ -36,7 +36,8 @@
 Portal		ActivePortal = NULL;
 
 
-static void ProcessQuery(Query *parsetree,
+static void ProcessQuery(Portal portal,
+			 Query *parsetree,
 			 Plan *plan,
              ParamListInfo params,
 			 DestReceiver *dest,
@@ -115,6 +116,7 @@ FreeQueryDesc(QueryDesc *qdesc)
  *		Execute a single plannable query within a PORTAL_MULTI_QUERY
  *		or PORTAL_ONE_RETURNING portal
  *
+ *	portal: the portal
  *	parsetree: the query tree
  *	plan: the plan tree for the query
  *	params: any parameters needed
@@ -128,7 +130,8 @@ FreeQueryDesc(QueryDesc *qdesc)
  * error; otherwise the executor's memory usage will be leaked.
  */
 static void
-ProcessQuery(Query *parsetree,
+ProcessQuery(Portal portal,
+			 Query *parsetree,
 			 Plan *plan,
              ParamListInfo params,
 			 DestReceiver *dest,
@@ -152,6 +155,16 @@ ProcessQuery(Query *parsetree,
 	queryDesc = CreateQueryDesc(parsetree, plan,
 								ActiveSnapshot, InvalidSnapshot,
 								dest, params, false);
+
+	/*
+	 * If resource scheduling is enabled and we are locking non SELECT queries,
+	 * then lock the portal here. Skip if this query is added by the rewriter or
+	 * we are superuser.
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH && portal && 
+		ResourceScheduler && !ResourceSelectOnly && 
+		parsetree->canSetTag && !superuser())
+		portal->releaseResLock = ResLockPortal(portal, queryDesc->plantree);
 
 	/*
 	 * Set up to collect AFTER triggers
@@ -1178,14 +1191,14 @@ PortalRunMulti(Portal portal,
 			if (query->canSetTag)
 			{
 				/* statement can set tag string */
-				ProcessQuery(query, plan,
+				ProcessQuery(portal, query, plan,
 							 portal->portalParams,
 							 dest, completionTag);
 			}
 			else
 			{
 				/* stmt added by rewrite cannot set tag */
-				ProcessQuery(query, plan,
+				ProcessQuery(portal, query, plan,
 							 portal->portalParams,
 							 altdest, NULL);
 			}
