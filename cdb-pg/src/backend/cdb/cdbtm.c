@@ -893,13 +893,6 @@ tmShmemInit(void)
 	}
 }
 
-/* shutdown tm, called when process exits */
-void
-shutdownTM(void)
-{
-	elog(LOG, "shutdownTM");
-}
-
 /*
  * restore global transaction during tm log recovery
  */
