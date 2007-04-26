@@ -537,8 +537,9 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot)
 	/* combocid stuff */
 	combocidSize = ((usedComboCids < MaxComboCids) ? usedComboCids : MaxComboCids );
 
-	SharedLocalSnapshotSlot->combocidcnt = usedComboCids;	
-	memcpy(SharedLocalSnapshotSlot->combocids, comboCids, usedComboCids );
+	SharedLocalSnapshotSlot->combocidcnt = combocidSize;	
+	memcpy((void *)SharedLocalSnapshotSlot->combocids, comboCids,
+		   combocidSize * sizeof(ComboCidKeyData));
 	
 	
 	SharedLocalSnapshotSlot->snapshot.curcid = snapshot->curcid;
