@@ -359,7 +359,6 @@ RecvTupleChunkFromAny(MotionLayerState *mlStates,
 	int			n,
 				i,
 				index;
-	bool		skipSelect = false;
 
 	Insist(transportStates && transportStates->activated);
 
@@ -384,23 +383,27 @@ RecvTupleChunkFromAny(MotionLayerState *mlStates,
 		 * short-circuit the select() call (and if we don't do this we may
 		 * wait when we have data ready, since it has already been read)
 		 */
-		for (i = 0; i < pEntry->numConns; i++)
+		index = pEntry->scanStart;
+		for (i = 0; i < pEntry->numConns; i++, index++)
 		{
-			conn = pEntry->conns + i;
+			if (index >= pEntry->numConns)
+				index = 0;
+
+			conn = pEntry->conns + index;
 
 			if (conn->sockfd >= 0 &&
                 MPP_FD_ISSET(conn->sockfd, &rset) &&
                 conn->recvBytes != 0)
 			{
-				/* we have data on this socket, let's short-circuit our select */
-				MPP_FD_ZERO(&rset);
-				MPP_FD_SET(conn->sockfd, &rset);
+				tcItem = RecvTupleChunk(transportStates, conn);
 
-				skipSelect = true;
+				*srcRoute = index;
+
+				pEntry->scanStart = index + 1;
+
+				return tcItem;
 			}
 		}
-		if (skipSelect)
-			break;
 
 		n = select(pEntry->highReadSock + 1, (fd_set *)&rset, NULL, NULL, &timeout);
 		pMNEntry->sel_rd_wait += (tval.tv_sec - timeout.tv_sec) * 1000000 + (tval.tv_usec - timeout.tv_usec);
@@ -425,9 +428,6 @@ RecvTupleChunkFromAny(MotionLayerState *mlStates,
     index = pEntry->scanStart;
 	for (i = 0; i < pEntry->numConns; i++, index++)
 	{
-		/*
-		 * avoid division ? index = ((scanStart + i) % pEntry->numConns);
-		 */
 		if (index >= pEntry->numConns)
 			index = 0;
 
@@ -450,10 +450,6 @@ RecvTupleChunkFromAny(MotionLayerState *mlStates,
 
 			*srcRoute = index;
 
-			/*
-			 * advance start point (avoid doing division/modulus operation
-			 * here)
-			 */
 			pEntry->scanStart = index + 1;
 
 			return tcItem;
@@ -678,8 +674,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 				  int mySliceId,
 				  MotionLayerState *mlStates)
 {
-	int			i,
-		n;
+	int			i, index, n;
 	ListCell   *cell;
 	Slice	   *mySlice;
 	Slice	   *aSlice;
@@ -794,9 +789,15 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
         /* Outgoing connections */
         outgoing_count = 0;
         n = sendingChunkTransportState ? sendingChunkTransportState->numConns : 0;
-        for (i = 0; i < n; i++)
+		/* start connections with our segment-id first */
+        for (i = 0, index = Max(0, Gp_segment);
+			 i < n; 
+			 i++, index++)
 		{                       /* loop to set up outgoing connections */
-			conn = &sendingChunkTransportState->conns[i];
+			if (index >= n)
+				index = 0;
+
+			conn = &sendingChunkTransportState->conns[index];
 
             /* Time to cancel incomplete connect() and retry? */
             if (conn->state == mcsConnecting &&
