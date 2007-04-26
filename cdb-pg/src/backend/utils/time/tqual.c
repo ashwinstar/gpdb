@@ -303,6 +303,12 @@ SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId)
 	return slot;
 }
 
+void
+GetSlotTableDebugInfo(void **snapshotArray, int *maxSlots)
+{
+	*snapshotArray = sharedSnapshotArray;
+	*maxSlots = sharedSnapshotArray->maxSlots;
+}
 
 /* Used by "reader" qExecs to find the slot in the sharedsnapshotArray with the
  * specified slotId.  In general, we shoudl always be able to find the specified

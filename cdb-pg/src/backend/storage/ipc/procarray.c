@@ -504,6 +504,11 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot)
 
 	if (snapshot->xcnt > 0)
 	{
+		void *snapshotArray;
+		int maxSlots;
+		
+		GetSlotTableDebugInfo(&snapshotArray, &maxSlots);
+	
 		/* Verify xip array pointer to space allocated after slot struct */
 		if((void *)SharedLocalSnapshotSlot->snapshot.xip != 
 		   (void *)(SharedLocalSnapshotSlot + sizeof(SharedSnapshotSlot)))
@@ -514,7 +519,8 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot)
 				 "base %p, xip address = %p, expected = %p, "
 				 "SharedLocalSnapshotSlot {slotindex %d, slotid %d, "
 				 "combocidcnt %d} SharedLocalSnapshotSlot->snapshot "
-				 "{xmin = %u, xmax = %u, xcnt = %d}",
+				 "{xmin = %u, xmax = %u, xcnt = %d} "
+				 "snapshotArray %p maxSlots %d)",
 				 snapshot->xmin,
 				 snapshot->xmax,
 				 snapshot->xcnt,
@@ -527,7 +533,9 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot)
 				 SharedLocalSnapshotSlot->combocidcnt,
 				 SharedLocalSnapshotSlot->snapshot.xmin,
 				 SharedLocalSnapshotSlot->snapshot.xmax,
-				 SharedLocalSnapshotSlot->snapshot.xcnt);
+				 SharedLocalSnapshotSlot->snapshot.xcnt,
+				 snapshotArray,
+				 maxSlots);
 				
 		}
 		Assert(snapshot->xip != NULL);
