@@ -506,12 +506,14 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot)
 	{
 		void *snapshotArray;
 		int maxSlots;
+		char* expectedXip;
 		
 		GetSlotTableDebugInfo(&snapshotArray, &maxSlots);
-	
+
+		expectedXip = ((char *)SharedLocalSnapshotSlot) + sizeof(SharedSnapshotSlot);
+		
 		/* Verify xip array pointer to space allocated after slot struct */
-		if((void *)SharedLocalSnapshotSlot->snapshot.xip != 
-		   (void *)(SharedLocalSnapshotSlot + sizeof(SharedSnapshotSlot)))
+		if((char *)SharedLocalSnapshotSlot->snapshot.xip != expectedXip)
 		{
 			elog(FATAL,"updateSharedLocalSnapshot found problem with "
 				 "SharedLocalSnapshotSlot "
@@ -527,7 +529,7 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot)
 				 snapshot->curcid,
 				 SharedLocalSnapshotSlot,
 				 SharedLocalSnapshotSlot->snapshot.xip,
-				 (SharedLocalSnapshotSlot + sizeof(SharedSnapshotSlot)),
+				 expectedXip,
 				 SharedLocalSnapshotSlot->slotindex,
 				 SharedLocalSnapshotSlot->slotid,
 				 SharedLocalSnapshotSlot->combocidcnt,
