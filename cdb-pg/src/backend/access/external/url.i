@@ -42,6 +42,9 @@
  *
  * This example requires libcurl 7.9.7 or later.
  */
+/*
+ * Portions Copyright (c) 2007, greenplum inc
+ */
 
 #include <stdio.h>
 #include <string.h>
@@ -132,7 +135,34 @@ write_callback(char *buffer,
     return size;
 }
 
+
+static int
+is_error(CURL* curl)
+{
+	long response_code;
+	char* effective_url;
+	int e;
+
+	if (0 != (e = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code))) 
+		return -1;
+
+	if (0 != (e = curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &effective_url)))
+		return -1;
+
+	if (! (200 <= response_code && response_code < 300)) {
+		if (response_code == 0) 
+			elog(ERROR, "connection failed while %s", effective_url);
+		else
+			elog(ERROR, "http response code: %d", response_code);
+		return -1;
+	}
+
+	return 0;
+}
+
+
 /* use to attempt to fill the read buffer up to requested number of bytes */
+/* return 0 if successful, -1 otherwise */
 static int
 fill_buffer(URL_FILE *file,int want,int waittime)
 {
@@ -141,16 +171,18 @@ fill_buffer(URL_FILE *file,int want,int waittime)
     fd_set fdexcep;
     int maxfd;
     struct timeval timeout;
-    int rc;
+    int nfds, e, i;
 
     /* only attempt to fill buffer if transactions still running and buffer
      * doesnt exceed required size already
      */
-    if((!file->still_running) || (file->buffer_pos > want))
-        return 0;
+	if (! file->still_running)
+		return 0;
+	if (file->buffer_pos >= want)
+		return 0;
 
     /* attempt to fill buffer */
-    do
+	while (file->still_running && file->buffer_pos < want)
     {
         FD_ZERO(&fdread);
         FD_ZERO(&fdwrite);
@@ -161,33 +193,38 @@ fill_buffer(URL_FILE *file,int want,int waittime)
         timeout.tv_usec = 0;
 
         /* get file descriptors from the transfers */
-        curl_multi_fdset(multi_handle, &fdread, &fdwrite, &fdexcep, &maxfd);
+        if (0 != (e = curl_multi_fdset(multi_handle, &fdread, &fdwrite, &fdexcep, &maxfd)))
+		{
+			elog(ERROR, "internal error: curl_multi_fdset failed (%d)", e);
+			return -1;
+		}
 
-        /* In a real-world program you OF COURSE check the return code of the
-           function calls, *and* you make sure that maxfd is bigger than -1
-           so that the call to select() below makes sense! */
+		if (maxfd <= 0)
+		{
+			elog(ERROR, "internal error: curl_multi_fdset reports no more fd");
+			return -1;
+		}
 
-        rc = select(maxfd+1, &fdread, &fdwrite, &fdexcep, &timeout);
+        if (-1 == (nfds = select(maxfd+1, &fdread, &fdwrite, &fdexcep, &timeout))) 
+		{
+			elog(ERROR, "internal error: select failed on curl_multi_fdset");
+			return -1;
+		}
 
-        switch(rc) {
-        case -1:
-            /* select error */
-            break;
-
-        case 0:
-            break;
-
-        default:
+		if (nfds > 0) 
+		{
             /* timeout or readable/writable sockets */
             /* note we *could* be more efficient and not wait for
              * CURLM_CALL_MULTI_PERFORM to clear here and check it on re-entry
              * but that gets messy */
-            while(curl_multi_perform(multi_handle, &file->still_running) ==
-                  CURLM_CALL_MULTI_PERFORM);
-
-            break;
+			while (CURLM_CALL_MULTI_PERFORM == 
+				   (e = curl_multi_perform(multi_handle, &file->still_running)));
+			if (e != 0) {
+				elog(ERROR, "internal error: curl_multi_perform failed (%d)", e);
+				return 1;
+			}
         }
-    } while(file->still_running && (file->buffer_pos < want));
+    } 
     return 1;
 }
 
@@ -228,6 +265,7 @@ url_fopen(char *url, char *filename, const char *operation, const char* XID)
     bool  isGpfdist = false;
 	/*char  sessionIDBuf[80];*/
     URL_FILE *file;
+	int e;
     (void)operation;
 
     file = (URL_FILE *)malloc(sizeof(URL_FILE));
@@ -255,12 +293,33 @@ url_fopen(char *url, char *filename, const char *operation, const char* XID)
             url += 3;
         }
 
-        file->handle.curl = curl_easy_init();
+        if (! (file->handle.curl = curl_easy_init()))
+		{
+			elog(ERROR, "internal error: curl_easy_init failed");
+			return NULL;
+		}
 
-        curl_easy_setopt(file->handle.curl, CURLOPT_URL, url);
-        curl_easy_setopt(file->handle.curl, CURLOPT_WRITEDATA, file);
-        curl_easy_setopt(file->handle.curl, CURLOPT_VERBOSE, FALSE);
-        curl_easy_setopt(file->handle.curl, CURLOPT_WRITEFUNCTION, write_callback);
+        if (0 != (e = curl_easy_setopt(file->handle.curl, CURLOPT_URL, url))) 
+		{
+			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_URL %s error %d", url, e);
+			return NULL;
+		}
+        if (0 != (e = curl_easy_setopt(file->handle.curl, CURLOPT_VERBOSE, FALSE))) 
+		{
+			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_VERBOSE error %d", e);
+			return NULL;
+		}
+        if (0 != (e = curl_easy_setopt(file->handle.curl, CURLOPT_WRITEFUNCTION, write_callback)))
+		{
+			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEFUNCTION error %d", e);
+			return NULL;
+		}
+        if (0 != (e = curl_easy_setopt(file->handle.curl, CURLOPT_WRITEDATA, file)))
+		{
+			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error %d", e);
+			return NULL;
+		}
+
 		if (isGpfdist) 
 		{
 			/*
@@ -270,18 +329,37 @@ url_fopen(char *url, char *filename, const char *operation, const char* XID)
 					*/
             file->x_httpheader = NULL;
     		file->x_httpheader = curl_slist_append(file->x_httpheader, XID);
-            curl_easy_setopt(file->handle.curl, CURLOPT_HTTPHEADER, file->x_httpheader);
+            if (0 != (e = curl_easy_setopt(file->handle.curl, CURLOPT_HTTPHEADER, file->x_httpheader)))
+			{
+				elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error %d", e);
+				return NULL;
+			}
         }
-        if(!multi_handle)
-            multi_handle = curl_multi_init();
 
-        curl_multi_add_handle(multi_handle, file->handle.curl);
+        if (!multi_handle) 
+		{
+            if (! (multi_handle = curl_multi_init()))
+			{
+				elog(ERROR, "internal error: curl_multi_init failed");
+				return NULL;
+			}
+		}
+
+        if (0 != (e = curl_multi_add_handle(multi_handle, file->handle.curl)))
+		{
+			elog(ERROR, "internal error: curl_multi_add_handle failed (%d)", e);
+			return NULL;
+		}
 
         /* lets start the fetch */
-        while(curl_multi_perform(multi_handle, &file->still_running) ==
-              CURLM_CALL_MULTI_PERFORM );
+		while (CURLM_CALL_MULTI_PERFORM == 
+			   (e = curl_multi_perform(multi_handle, &file->still_running)));
+		if (e != 0) {
+			elog(ERROR, "internal error: curl_multi_perform failed (%d)", e);
+			return NULL;
+		}
 
-        if((file->buffer_pos == 0) && (!file->still_running))
+        if ((file->buffer_pos == 0) && (!file->still_running))
         {
             /* if still_running is 0 now, we should return NULL */
 
@@ -311,7 +389,7 @@ url_fclose(URL_FILE *file)
         break;
 
     case CFTYPE_CURL:
-	curl_slist_free_all(file->x_httpheader);
+		curl_slist_free_all(file->x_httpheader);
 
         /* make sure the easy handle is not in the multi handle anymore */
         curl_multi_remove_handle(multi_handle, file->handle.curl);
@@ -376,8 +454,8 @@ url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file)
 
         /* check if theres data in the buffer - if not fill_buffer()
          * either errored or EOF */
-        if(!file->buffer_pos)
-            return 0;
+        if (!file->buffer_pos)
+            return is_error(file->handle.curl);
 
         /* ensure only available data is considered */
         if(file->buffer_pos < want)
