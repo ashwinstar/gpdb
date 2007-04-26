@@ -505,20 +505,23 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot)
 	if (snapshot->xcnt > 0)
 	{
 		/* Verify xip array pointer to space allocated after slot struct */
-		if(SharedLocalSnapshotSlot->snapshot.xip != ((char *)SharedLocalSnapshotSlot) + sizeof(SharedSnapshotSlot))
+		if((void *)SharedLocalSnapshotSlot->snapshot.xip != 
+		   (void *)(SharedLocalSnapshotSlot + sizeof(SharedSnapshotSlot)))
 		{
-			elog(FATAL,"updateSharedLocalSnapshot found problem with SharedLocalSnapshotSlot "
+			elog(FATAL,"updateSharedLocalSnapshot found problem with "
+				 "SharedLocalSnapshotSlot "
 				 "(snapshot {xmin %u, xmax %u, xcnt %d, curcid %d}, "
-				 "base %llu, xip address = %llu, expected = %llu, "
-				 "SharedLocalSnapshotSlot {slotindex %d, slotid %d, combocidcnt %d} "
-			     "SharedLocalSnapshotSlot->snapshot {xmin = %u, xmax = %u, xcnt = %d}",
+				 "base %p, xip address = %p, expected = %p, "
+				 "SharedLocalSnapshotSlot {slotindex %d, slotid %d, "
+				 "combocidcnt %d} SharedLocalSnapshotSlot->snapshot "
+				 "{xmin = %u, xmax = %u, xcnt = %d}",
 				 snapshot->xmin,
 				 snapshot->xmax,
 				 snapshot->xcnt,
 				 snapshot->curcid,
-				 (uint64)SharedLocalSnapshotSlot,
-				 (uint64)SharedLocalSnapshotSlot->snapshot.xip,
-				 (uint64) ((char *)SharedLocalSnapshotSlot) + sizeof(SharedSnapshotSlot),
+				 SharedLocalSnapshotSlot,
+				 SharedLocalSnapshotSlot->snapshot.xip,
+				 (SharedLocalSnapshotSlot + sizeof(SharedSnapshotSlot)),
 				 SharedLocalSnapshotSlot->slotindex,
 				 SharedLocalSnapshotSlot->slotid,
 				 SharedLocalSnapshotSlot->combocidcnt,
@@ -685,7 +688,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 				/* combocid */
 				usedComboCids = ((SharedLocalSnapshotSlot->combocidcnt < MaxComboCids) ? SharedLocalSnapshotSlot->combocidcnt : MaxComboCids  );
 				sizeComboCids = MaxComboCids;
-				comboCids = SharedLocalSnapshotSlot->combocids;								
+				comboCids = (ComboCidKeyData *)SharedLocalSnapshotSlot->combocids;								
 				
 				SetSharedTransactionId();
 
