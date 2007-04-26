@@ -153,7 +153,7 @@ is_error(CURL* curl)
 		if (response_code == 0) 
 			elog(ERROR, "connection failed while %s", effective_url);
 		else
-			elog(ERROR, "http response code: %d", response_code);
+			elog(ERROR, "http response code: %ld", response_code);
 		return -1;
 	}
 

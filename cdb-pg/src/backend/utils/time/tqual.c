@@ -191,7 +191,7 @@ CreateSharedSnapshotArray(void)
 			tmpSlot->slotid = -1;
 
 			/* Fixup xip array pointer reference space allocated after slot struct */
-			tmpSlot->snapshot.xip = ((char *)tmpSlot) + sizeof(SharedSnapshotSlot);
+			tmpSlot->snapshot.xip = (TransactionId *) (((char *)tmpSlot) + sizeof(SharedSnapshotSlot));
 		}		
 	}
 }
