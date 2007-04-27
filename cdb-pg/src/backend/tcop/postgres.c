@@ -3977,19 +3977,14 @@ PostgresMain(int argc, char *argv[], const char *username)
 			(topErrCode == ERRCODE_GP_OPERATION_CANCELED ||
              topErrCode == ERRCODE_QUERY_CANCELED))
 		{
-			/*
-			 * GP: For QEs, abort and cleanup the current transaction
-			 * altogether on cancel.
-			 */
-			AbortOutOfAnyTransaction();
+			elog((Debug_print_full_dtm ? LOG : DEBUG5), "PostgresMain seeing cancel 0x%x",
+			     topErrCode);
 		}
-		else
-		{
-			/*
-			 * Abort the current transaction in order to recover.
-			 */
-			AbortCurrentTransaction();
-		}
+		
+		/*
+		 * Abort the current transaction in order to recover.
+		 */
+		AbortCurrentTransaction();
 
 		/*
 		 * Now return to normal top-level context and clear ErrorContext for
