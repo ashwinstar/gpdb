@@ -106,6 +106,17 @@ typedef struct DispatchCommandParms
 	 */
 	int			db_count;
 	
+	
+	/*
+	 * Session auth info
+	 */
+	Oid			sessUserId;
+	Oid			outerUserId;
+	Oid			currUserId;
+	bool		sessUserId_is_super;
+	bool		outerUserId_is_super;
+	
+	
 	/*
 	 * dispatchResultPtrArray: Array[0..db_count-1] of CdbDispatchResult*
 	 * Each CdbDispatchResult object points to a SegmentDatabaseDescriptor

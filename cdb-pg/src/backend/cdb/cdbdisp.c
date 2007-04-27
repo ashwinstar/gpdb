@@ -576,6 +576,13 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 				(int) mppDispatchCommandType);
 		}
 		
+		pParms->sessUserId = GetSessionUserId();
+		pParms->outerUserId = GetOuterUserId();
+		pParms->currUserId = GetUserId();
+		pParms->sessUserId_is_super = superuser_arg(GetSessionUserId());
+		pParms->outerUserId_is_super = superuser_arg(GetOuterUserId());
+		
+		
 		pParms->cmdID = gp_command_count;
 		pParms->localSlice = sliceId;
 		pParms->dispatchResultPtrArray =
@@ -1446,8 +1453,8 @@ thread_DispatchCommand(void *arg)
 						pQueryParms->serializedSliceInfo, pQueryParms->serializedSliceInfolen, 
 						pQueryParms->serializedDtxContextInfo, pQueryParms->serializedDtxContextInfolen, 
 						0 /* unused flags*/, pParms->cmdID, pParms->localSlice, 
-						GetSessionUserId(), superuser_arg(GetSessionUserId()),
-						GetOuterUserId(), superuser_arg(GetOuterUserId()), GetUserId(),
+						pParms->sessUserId, pParms->sessUserId_is_super,
+						pParms->outerUserId, pParms->outerUserId_is_super, pParms->currUserId,
 						&pParms->query_text_len);
 		}
 		break;
