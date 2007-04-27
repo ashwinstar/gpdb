@@ -154,7 +154,7 @@ struct Tuplestorestate
 #define WRITETUP(state,tup) ((*(state)->writetup) (state, tup))
 #define READTUP(state,len)	((*(state)->readtup) (state, len))
 #define LACKMEM(state)		((state)->availMem < 0)
-#define USEMEM(state,amt)	((state)->availMem -= (amt))
+#define USEMEM(state,amt)	((state)->availMem -= (amt)) 
 
 static inline void
 FREEMEM(Tuplestorestate *state, int amt)
@@ -249,7 +249,6 @@ tuplestore_begin_common(bool randomAccess, bool interXact, int maxKBytes)
 
 	state->eof_reached = false;
 	state->current = 0;
-
 	return state;
 }
 
@@ -546,6 +545,23 @@ tuplestore_gettuple(Tuplestorestate *state, bool forward,
 				if ((tuplen = getlen(state, true)) != 0)
 				{
 					tup = READTUP(state, tuplen);
+
+					/* CDB XXX XXX XXX XXX */
+					/* MPP-1347: EXPLAIN ANALYZE shows runaway memory usage.
+					 * Readtup does a usemem, but the free happens in
+					 * ExecStoreTuple.  Do a free so state->availMem
+					 * doesn't go massively negative to screw up
+					 * stats.  It would be better to interrogate the
+					 * heap for actual memory usage than use this
+					 * homemade accounting.
+					 */
+					FREEMEM(state, GetMemoryChunkSpace(tup)); 
+					if (0 && LACKMEM(state))
+					{
+						state->availMem = 0;
+					}
+					/* CDB XXX XXX XXX XXX */
+
 					return tup;
 				}
 				else
