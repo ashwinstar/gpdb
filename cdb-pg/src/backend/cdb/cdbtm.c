@@ -1069,6 +1069,8 @@ redoDtxCheckPoint(char *dtxCheckpointBuffer, int dtxCheckpointBufferSize)
 void
 redoDistributedCommitRecord(TMGXACT_LOG * gxact_log)
 {
+
+#ifdef DTM_REDO_READY
 	int			i;
 
 	for (i = 0; i < *shmNumGxacts; i++)
@@ -1097,6 +1099,8 @@ redoDistributedCommitRecord(TMGXACT_LOG * gxact_log)
 	restoreGxact(gxact_log, DTX_STATE_CRASH_COMMITTED);
 
 	elog((Debug_print_full_dtm ? INFO : DEBUG5), "Crash recovery redo added committed distributed transaction gid = %s",currentGxact->gid);
+
+#endif
 }
 
 /*
@@ -1105,6 +1109,7 @@ redoDistributedCommitRecord(TMGXACT_LOG * gxact_log)
 void
 redoDistributedForgetCommitRecord(TMGXACT_LOG * gxact_log)
 {
+#ifdef DTM_REDO_READY
 	int			i;
 
 	for (i = 0; i < *shmNumGxacts; i++)
@@ -1122,6 +1127,7 @@ redoDistributedForgetCommitRecord(TMGXACT_LOG * gxact_log)
 
 	elog((Debug_print_full_dtm ? WARNING : DEBUG5), "Crash recovery redo did not find committed distributed transaction gid = %s for forget",
 		 gxact_log->gid);
+#endif
 }
 
 static void
