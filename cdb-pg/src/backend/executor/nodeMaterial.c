@@ -169,7 +169,7 @@ ExecMaterial(MaterialState *node)
 		 * And return a copy of the tuple.	(XXX couldn't we just return the
 		 * outerslot?)
 		 */
-		return ExecCopySlot(slot, outerslot);
+		return ExecCopySlot(slot, outerslot); 
 	}
 
 	/*
