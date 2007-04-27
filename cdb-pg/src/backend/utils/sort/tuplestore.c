@@ -556,10 +556,6 @@ tuplestore_gettuple(Tuplestorestate *state, bool forward,
 					 * homemade accounting.
 					 */
 					FREEMEM(state, GetMemoryChunkSpace(tup)); 
-					if (0 && LACKMEM(state))
-					{
-						state->availMem = 0;
-					}
 					/* CDB XXX XXX XXX XXX */
 
 					return tup;
