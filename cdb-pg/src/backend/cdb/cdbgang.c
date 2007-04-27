@@ -31,8 +31,6 @@
 extern int	CommitDelay;
 extern int	CommitSiblings;
 extern char *default_tablespace;
-extern char *role_string;
-extern char *session_authorization_string;
 
 #include "cdb/cdbconn.h"		/* SegmentDatabaseDescriptor */
 #include "cdb/cdbfts.h"
@@ -987,18 +985,6 @@ thread_DoConnect(void *arg)
 
 		}
 
-		/*
-		 * Role cannot be set this way, becaused in 8.1.3 the string is truncated to 64 chars.
-		 *
-		if (role_string != NULL && role_string[0]=='x')
-		{
-			char * endptr;
-			Oid savedoid = (Oid) strtoul(role_string + NAMEDATALEN + 1, &endptr, 10);
-
-			if (savedoid != 0 && savedoid == GetCurrentRoleId())
-					appendPQExpBuffer(&buffer," -c role=%s",role_string);
-		}
-		*/
 
 		/*
          * some super-user settable gucs
@@ -1098,21 +1084,7 @@ thread_DoConnect(void *arg)
 				default:;
 			}
 
-			/*
-			 * session_authorization can't be set until AFTER login, and anyway in 8.1.3, the string
-			 * gets truncated to 64 chars before being used, so this can't work.
-			 *
-			if (session_authorization_string != NULL && session_authorization_string[0] == 'x')
-			{
-				char * endptr;
-				Oid savedoid = (Oid) strtoul(session_authorization_string + NAMEDATALEN + 1, &endptr, 10);
 
-				if (savedoid != 0)
-					appendPQExpBuffer(&buffer," -c session_authorization=%s",session_authorization_string);
-			}
-
-			*
-			*/
 
 			if (gp_set_read_only)
 				appendPQExpBuffer(&buffer, " -c gp_set_read_only=true");
