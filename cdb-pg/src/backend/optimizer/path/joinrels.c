@@ -685,36 +685,25 @@ have_join_order_restriction(PlannerInfo *root,
 			return true;
 	}
 
-	/*
-	 * Similarly, we need to allow a join that completes a degenerate
-	 * IN-clause, or one that builds up its LHS or RHS.
-	 */
+    /*
+     * In CDB, unlike PostgreSQL, flattened subqueries do not restrict the
+     * join sequence; we aren't in danger of being unable to join all the
+     * tables.  Still, an early cross-product (clauseless join) might 
+     * sometimes enable the consideration of pre-join duplicate elimination
+     * (JOIN_IN or JOIN_UNIQUE).  Someday we should consider a well-chosen
+     * set of early cross products.  For now, limit the search space by
+     * means of a simple heuristic.
+     */
 	foreach(l, root->in_info_list)
 	{
 		InClauseInfo *ininfo = (InClauseInfo *) lfirst(l);
 
-		/* Can we perform the IN with these rels? */
-		if (/*bms_is_subset(ininfo->lefthand, rel1->relids) &&*/
-			bms_is_subset(ininfo->righthand, rel2->relids))
-			return true;
-		if (/*bms_is_subset(ininfo->lefthand, rel2->relids) &&*/
-			bms_is_subset(ininfo->righthand, rel1->relids))
-			return true;
-
-		/*
-		 * Might we need to join these rels to complete the RHS?  It's
-		 * probably overkill to test "overlap", since we never join part of an
-		 * IN's RHS to anything else, but may as well keep the coding similar
-		 * to the OJ case.
-		 */
-		if (bms_overlap(ininfo->righthand, rel1->relids) &&
-			bms_overlap(ininfo->righthand, rel2->relids))
-			return true;
-
-		/* Likewise for the LHS. */
-		/*if (bms_overlap(ininfo->lefthand, rel1->relids) &&
-			bms_overlap(ininfo->lefthand, rel2->relids))
-			return true;*/
+        /* Does the subquery RHS consist of exactly rel1 + rel2? */
+        if (bms_is_subset(rel1->relids, ininfo->righthand) &&
+            bms_is_subset(rel2->relids, ininfo->righthand) &&
+            bms_num_members(rel1->relids) + bms_num_members(rel2->relids) ==
+                bms_num_members(ininfo->righthand))
+            return true;
 	}
 
 	return false;
@@ -757,14 +746,9 @@ has_join_restriction(PlannerInfo *root, RelOptInfo *rel)
 	{
 		InClauseInfo *ininfo = (InClauseInfo *) lfirst(l);
 
-		/* ignore if IN is already contained in rel */
-		if (/*bms_is_subset(ininfo->lefthand, rel->relids) &&*/
-			bms_is_subset(ininfo->righthand, rel->relids))
-			continue;
-
-		/* restricted if it overlaps LHS or RHS, but doesn't contain IN */
-		if (/*bms_overlap(ininfo->lefthand, rel->relids) ||*/
-			bms_overlap(ininfo->righthand, rel->relids))
+        /* CDB: Consider cross product if subquery RHS = rel + some other rel */
+        if (bms_is_subset(rel->relids, ininfo->righthand) &&
+            !bms_equal(rel->relids, ininfo->righthand))
 			return true;
 	}
 
