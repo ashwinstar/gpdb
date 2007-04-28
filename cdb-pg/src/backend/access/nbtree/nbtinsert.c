@@ -133,7 +133,7 @@ top:
 		 * and error out.
 		 */
 		
-		if (TransactionIdIsValid(xwait) && Gp_is_primary && (Gp_session_role==GP_ROLE_EXECUTE))
+		if (TransactionIdIsValid(xwait) &&  (Gp_session_role!=GP_ROLE_EXECUTE || Gp_is_primary))
 		{
 			/* Have to wait for the other guy ... */
 			_bt_relbuf(rel, buf);
