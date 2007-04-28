@@ -359,7 +359,7 @@ BUILD_MPP_MASTER () {
 		if [ $HOSTNAME_COUNT -eq 0 ];then
 			#We don't have this hostname so update the master hostname that has been loaded
 			LOG_MSG "[INFO]:-This is a new Master hostname, updating mpp catalog" 1
-			env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"update $CONFIG_TABLE set hostname=${MASTER_HOST} where content=-1 and definedprimary='t';"
+			env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"update $CONFIG_TABLE set hostname='${MASTER_HOST}' where content=-1 and definedprimary='t';"
 			ERROR_CHK $? "update $CONFIG_TABLE for ${MASTER_HOST}" 2
 		fi	
 	fi
