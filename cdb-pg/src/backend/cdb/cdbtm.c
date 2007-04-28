@@ -839,7 +839,7 @@ initTM(void)
 int
 tmShmemSize(void)
 {
-	if (Gp_role != GP_ROLE_DISPATCH)
+	if ((Gp_role != GP_ROLE_DISPATCH) && (Gp_role != GP_ROLE_UTILITY))
 		return 0;
 	return MAXALIGN(sizeof(TmControlBlock) +
 					max_tm_gxacts * (sizeof(TMGXACT *) + sizeof(TMGXACT)));
@@ -856,7 +856,7 @@ tmShmemInit(void)
 	bool		found;
 	TmControlBlock *shared;
 
-	if (Gp_role != GP_ROLE_DISPATCH)
+	if ((Gp_role != GP_ROLE_DISPATCH) && (Gp_role != GP_ROLE_UTILITY))
 		return;
 
 	shared = (TmControlBlock *) ShmemInitStruct("Transaction manager", tmShmemSize(), &found);
@@ -1050,6 +1050,12 @@ redoDtxCheckPoint(char *dtxCheckpointBuffer, int dtxCheckpointBufferSize)
 	
 	int i;
 
+	if (Gp_role == GP_ROLE_UTILITY)
+	{
+		elog((Debug_print_full_dtm ? LOG : DEBUG3), "DB in Utility mode.  Defer DTM recovery till later.");
+		return;
+	}
+	
 	gxact_checkpoint = (TMGXACT_CHECKPOINT *)dtxCheckpointBuffer;
 	
 	committedCount = gxact_checkpoint->committedCount;
@@ -1070,9 +1076,14 @@ void
 redoDistributedCommitRecord(TMGXACT_LOG * gxact_log)
 {
 
-#ifdef DTM_REDO_READY
 	int			i;
 
+	if (Gp_role == GP_ROLE_UTILITY)
+	{
+		elog((Debug_print_full_dtm ? LOG : DEBUG3), "DB in Utility mode.  Defer DTM recovery till later.");
+		return;
+	}
+	
 	for (i = 0; i < *shmNumGxacts; i++)
 	{
 		if (strcmp(gxact_log->gid, shmGxactArray[i]->gid) == 0)
@@ -1100,7 +1111,6 @@ redoDistributedCommitRecord(TMGXACT_LOG * gxact_log)
 
 	elog((Debug_print_full_dtm ? INFO : DEBUG5), "Crash recovery redo added committed distributed transaction gid = %s",currentGxact->gid);
 
-#endif
 }
 
 /*
@@ -1109,9 +1119,14 @@ redoDistributedCommitRecord(TMGXACT_LOG * gxact_log)
 void
 redoDistributedForgetCommitRecord(TMGXACT_LOG * gxact_log)
 {
-#ifdef DTM_REDO_READY
 	int			i;
 
+	if (Gp_role == GP_ROLE_UTILITY)
+	{
+		elog((Debug_print_full_dtm ? LOG : DEBUG3), "DB in Utility mode.  Defer DTM recovery till later.");
+		return;
+	}
+	
 	for (i = 0; i < *shmNumGxacts; i++)
 	{
 		if (strcmp(gxact_log->gid, shmGxactArray[i]->gid) == 0)
@@ -1127,7 +1142,7 @@ redoDistributedForgetCommitRecord(TMGXACT_LOG * gxact_log)
 
 	elog((Debug_print_full_dtm ? WARNING : DEBUG5), "Crash recovery redo did not find committed distributed transaction gid = %s for forget",
 		 gxact_log->gid);
-#endif
+
 }
 
 static void
@@ -1767,6 +1782,11 @@ recoverTM(void)
 		return;
 	}
 
+	if (Gp_role == GP_ROLE_UTILITY)
+	{
+		elog((Debug_print_full_dtm ? LOG : DEBUG3), "DB in Utility mode.  Defer DTM recovery till later.");
+		return;
+	}
 
 	/*
 	 * Attempt to recover all in-doubt transactions.

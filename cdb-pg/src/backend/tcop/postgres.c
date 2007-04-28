@@ -3614,6 +3614,18 @@ PostgresMain(int argc, char *argv[], const char *username)
 		}
 	}
 
+	/* MPP:  If we were started in utility mode then we only want to allow incoming sessions that specify
+	 * 		 gp_session_role=utility as well.  This lets the bash scripts start the QD in utility mode
+	 * 		 and connect in but protect ourselves from normal clients who might be trying to connect to the
+	 * 		 system while we startup.
+	 */
+	if ((Gp_role==GP_ROLE_UTILITY) && (Gp_session_role != GP_ROLE_UTILITY))
+	{
+		ereport(FATAL,
+				(errcode(ERRCODE_CANNOT_CONNECT_NOW),
+				 errmsg("the database system is starting up")));
+	}
+	
 	/*
 	 * Process any additional GUC variable settings passed in startup packet.
 	 * These are handled exactly like command-line variables.

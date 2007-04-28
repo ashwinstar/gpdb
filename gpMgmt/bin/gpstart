@@ -207,7 +207,7 @@ GET_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		export PGPORT=$MASTER_PORT
 		LOG_MSG "[INFO]:-Starting Master instance in admin mode" 1
-		$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT"  start >/dev/null 2>&1
+		$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT -c gp_role=utility"  start >/dev/null 2>&1
 		ERROR_CHK $? "startup Master instance" 2
 		READ_CHK
 		if [ $READ_COUNT -ne 0 ];then
@@ -271,7 +271,7 @@ START_ADMIN () {
 		fi
 		LOG_MSG "[INFO]:-Starting master instance in admin mode" 1
 		export PGPORT=$MASTER_PORT
-		env PGOPTIONS="-c gp_session_role=utility" $PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT" start
+		env PGOPTIONS=" " $PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT -c gp_role=utility " start
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				$TAIL ${MASTER_DATA_DIRECTORY}.log|$TEE -a $LOG_FILE
