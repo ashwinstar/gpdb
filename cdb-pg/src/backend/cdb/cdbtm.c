@@ -1109,7 +1109,7 @@ UtilityModeFindOrCreateDtmRedoFile(void)
 	}
 	GetRedoFileName(path);
 	
-	redoFileFD = open(path, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
+	redoFileFD = open(path, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
 	if (redoFileFD < 0)
 	{
 		ereport(ERROR,
