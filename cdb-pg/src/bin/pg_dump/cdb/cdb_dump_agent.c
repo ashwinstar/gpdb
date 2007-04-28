@@ -1360,7 +1360,7 @@ selectDumpableTable(TableInfo *tbinfo)
 		*/
 	if(g_gp_catalog_only)
 	{
-		if(strncmp(tbinfo->dobj.name, "gp_", 4) == 0 && 
+		if(strncmp(tbinfo->dobj.name, "gp_", 3) == 0 && 
 		   strcmp(tbinfo->dobj.name, "gp_distribution_policy") != 0)
 			tbinfo->dobj.dump = true;
 		else
