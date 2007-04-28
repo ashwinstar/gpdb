@@ -801,6 +801,10 @@ restart:
 	newwordno = 0;
 	hrlwordno = 0;
 
+	/* If we have read past the requested block, simple return true. */
+	if (result->nextTid > end)
+		return true;
+
 	if (result->lastScanWordNo >= words->maxNumOfWords)
 	{
 		result->lastScanWordNo = 0;
@@ -865,6 +869,7 @@ restart:
 					blockno = result->nextTid / BM_MAX_HTUP_PER_PAGE;
 					goto restart;
 				}
+				result->nextTid += fillLength * BM_HRL_WORD_SIZE;
 			}
 		}
 		else

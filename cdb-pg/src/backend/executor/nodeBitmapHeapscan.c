@@ -259,6 +259,7 @@ bitgetpage(HeapScanDesc scan, TBMIterateResult *tbmres)
 	scan->rs_cbuf = ReleaseAndReadBuffer(scan->rs_cbuf,
 										 scan->rs_rd,
 										 page);
+
 	buffer = scan->rs_cbuf;
 	snapshot = scan->rs_snapshot;
 
@@ -406,7 +407,8 @@ ExecBitmapHeapReScan(BitmapHeapScanState *node, ExprContext *exprCtxt)
             tbm_bitmap_free(node->tbm);
 	}
 	node->tbm = NULL;
-	node->tbmres->ntuples = 0;
+	MemSet(node->tbmres, 0,
+	       sizeof(TBMIterateResult) + MAX_TUPLES_PER_PAGE * sizeof(OffsetNumber));
 
 	/*
 	 * Always rescan the input immediately, to ensure we can pass down any
@@ -462,6 +464,7 @@ ExecEndBitmapHeapScan(BitmapHeapScanState *node)
 	}
 	node->tbm = NULL;
 	pfree(node->tbmres);
+	node->tbmres = NULL;
 
 	/*
 	 * close heap scan
@@ -503,8 +506,8 @@ ExecInitBitmapHeapScan(BitmapHeapScan *node, EState *estate, int eflags)
 	scanstate->ss.ps.state = estate;
 
 	scanstate->tbm = NULL;
-	scanstate->tbmres = palloc(sizeof(TBMIterateResult) +
-							   MAX_TUPLES_PER_PAGE * sizeof(OffsetNumber));
+	scanstate->tbmres = palloc0(sizeof(TBMIterateResult) +
+				    MAX_TUPLES_PER_PAGE * sizeof(OffsetNumber));
 
 	/*
 	 * Miscellaneous initialization
