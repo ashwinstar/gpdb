@@ -14,6 +14,7 @@
 #include <time.h>
 #include <fcntl.h>
 #include <sys/file.h>
+#include <sys/stat.h>
 
 #include "cdb/cdbtm.h"
 #include "miscadmin.h"
