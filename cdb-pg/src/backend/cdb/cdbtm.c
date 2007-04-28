@@ -12,6 +12,8 @@
 #include "postgres.h"
 
 #include <time.h>
+#include <fcntl.h>
+#include <sys/file.h>
 
 #include "cdb/cdbtm.h"
 #include "miscadmin.h"
