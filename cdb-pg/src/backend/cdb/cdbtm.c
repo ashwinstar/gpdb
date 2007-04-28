@@ -1100,7 +1100,8 @@ UtilityModeFindOrCreateDtmRedoFile(void)
 
 	if (Gp_role != GP_ROLE_UTILITY)
 	{
-		elog((Debug_print_full_dtm ? LOG : DEBUG3),"Not in Utility Mode -- Not finding or creating DTM redo file");
+		elog((Debug_print_full_dtm ? LOG : DEBUG3),"Not in Utility Mode (role = %s) -- skipping finding or creating DTM redo file",
+			 role_to_string(Gp_role));
 		return;
 	}
 	GetRedoFileName(path);
@@ -1151,7 +1152,8 @@ UtilityModeCloseDtmRedoFile(void)
 {
 	if (Gp_role != GP_ROLE_UTILITY)
 	{
-		elog((Debug_print_full_dtm ? LOG : DEBUG3),"Not in Utility Mode -- Not closing DTM redo file");
+		elog((Debug_print_full_dtm ? LOG : DEBUG3),"Not in Utility Mode (role = %s)-- skipping closing DTM redo file",
+			 role_to_string(Gp_role));
 		return;
 	}
 	elog((Debug_print_full_dtm ? LOG : DEBUG3),"Closing DTM redo file");
