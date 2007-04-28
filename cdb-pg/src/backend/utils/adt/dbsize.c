@@ -32,6 +32,7 @@
 #include "cdb/cdbdisp.h"
 #include "utils/int8.h"
 #include "utils/lsyscache.h"
+#include "utils/inval.h"
 
 
 static int64
@@ -374,8 +375,11 @@ pg_relation_size_oid(PG_FUNCTION_ARGS)
 	int64		size = 0;
 
 	rel = relation_open(relOid, AccessShareLock);
-
-	size = calculate_relation_size(&(rel->rd_node));
+	
+	if (relOid == 0 || rel->rd_node.relNode == 0)
+		size = 0;
+	else
+		size = calculate_relation_size(&(rel->rd_node));
 
 	relation_close(rel, AccessShareLock);
 	
@@ -415,18 +419,29 @@ pg_relation_size_name(PG_FUNCTION_ARGS)
 		 * function on relations the user might not have direct access to.
 		 */
 
+		AcceptInvalidationMessages();
+		
 		namespaceId =  GetSysCacheOid(NAMESPACENAME,
 								 CStringGetDatum(relrv->schemaname),
 								 0, 0, 0);
 		relOid = get_relname_relid(relrv->relname, namespaceId);
+		
+		if (relOid == InvalidOid)
+		{
+			size = 0;
+			PG_RETURN_INT64(size);
+		}
 		
 		/* Let relation_open do the rest */
 		rel = relation_open(relOid, AccessShareLock);
 	}
 	else
 		rel = relation_openrv(relrv, AccessShareLock);
-
-	size = calculate_relation_size(&(rel->rd_node));
+	
+	if (rel->rd_node.relNode == 0)
+		size = 0;
+	else
+		size = calculate_relation_size(&(rel->rd_node));
 
 	relation_close(rel, AccessShareLock);
 	
@@ -468,7 +483,10 @@ calculate_total_relation_size(Oid Relid)
 	toastOid = heapRel->rd_rel->reltoastrelid;
 
 	/* Get the heap size */
-	size = calculate_relation_size(&(heapRel->rd_node));
+	if (Relid == 0 || heapRel->rd_node.relNode == 0)
+		size = 0;
+	else
+		size = calculate_relation_size(&(heapRel->rd_node));
 
 	/* Include any dependent indexes */
 	if (heapRel->rd_rel->relhasindex)
@@ -537,6 +555,7 @@ pg_total_relation_size_name(PG_FUNCTION_ARGS)
 		/*
 		 * Do this the hard way to avoid access check we don't want
 		 */
+		AcceptInvalidationMessages();
 
 		namespaceId =  GetSysCacheOid(NAMESPACENAME,
 								 CStringGetDatum(relrv->schemaname),
