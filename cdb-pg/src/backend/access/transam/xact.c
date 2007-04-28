@@ -267,6 +267,7 @@ static void ShowTransactionState(const char *str);
 static void ShowTransactionStateRec(TransactionState state);
 static const char *BlockStateAsString(TBlockState blockState);
 static const char *TransStateAsString(TransState state);
+static void DispatchRollbackToSavepoint(char *name);
 
 extern void FtsCondSetTxnReadOnly(bool *);
 
@@ -2839,6 +2840,11 @@ CommitTransactionCommand(void)
 				AbortSubTransaction();
 				CleanupSubTransaction();
 
+				if (Gp_role == GP_ROLE_DISPATCH)
+				{
+					DispatchRollbackToSavepoint(name);
+				}
+
 				DefineSavepoint(name);
 				s = CurrentTransactionState;	/* changed by push */
 				s->name = name;
@@ -2866,6 +2872,11 @@ CommitTransactionCommand(void)
 				savepointLevel = s->savepointLevel;
 
 				CleanupSubTransaction();
+
+				if (Gp_role == GP_ROLE_DISPATCH)
+				{
+					DispatchRollbackToSavepoint(name);
+				}
 
 				DefineSavepoint(name);
 				s = CurrentTransactionState;	/* changed by push */
@@ -3899,39 +3910,6 @@ RollbackToSavepoint(List *options)
 
 	Assert(PointerIsValid(name));
 
-	if (Gp_role == GP_ROLE_DISPATCH)
-	{
-		char	   *cmd;
-		bool		freecmd;
-
-		if (name != NULL)
-		{
-			cmd = palloc(sizeof("ROLLBACK TO SAVEPOINT ") + strlen(name));
-			Assert(cmd != NULL);
-			if (cmd == NULL)
-				elog(ERROR, "Can't rollback to savepoint, name too long (%s)", name);
-			sprintf(cmd, "ROLLBACK TO SAVEPOINT %s", name);
-			freecmd = true;
-		}
-		else
-		{
-			cmd = "ROLLBACK TO SAVEPOINT";
-			freecmd = false;
-		}
-
-		/*
-		 * dispatch a DTX command, in the event of an error, this call will
-		 * either exit via elog()/ereport() or return false
-		 */
-		if (!dispatchDtxCommand(cmd, /* dispatchToMirrors */ true, /* withSnapshot */ false, /* raiseError */ false))
-		{
-			elog(ERROR, "Could not rollback to savepoint (%s)", cmd);
-		}
-
-		if (freecmd)
-			pfree(cmd);
-	}
-
 	for (target = s; PointerIsValid(target); target = target->parent)
 	{
 		if (PointerIsValid(target->name) && strcmp(target->name, name) == 0)
@@ -3979,6 +3957,41 @@ RollbackToSavepoint(List *options)
 		elog(FATAL, "RollbackToSavepoint: unexpected state %s",
 			 BlockStateAsString(xact->blockState));
 }
+
+static void
+DispatchRollbackToSavepoint(char *name)
+{
+	char	   *cmd;
+	bool		freecmd;
+
+	if (name != NULL)
+	{
+		cmd = palloc(sizeof("ROLLBACK TO SAVEPOINT ") + strlen(name));
+		Assert(cmd != NULL);
+		if (cmd == NULL)
+			elog(ERROR, "Can't rollback to savepoint, name too long (%s)", name);
+		sprintf(cmd, "ROLLBACK TO SAVEPOINT %s", name);
+		freecmd = true;
+	}
+	else
+	{
+		cmd = "ROLLBACK TO SAVEPOINT";
+		freecmd = false;
+	}
+
+	/*
+	 * dispatch a DTX command, in the event of an error, this call will
+	 * either exit via elog()/ereport() or return false
+	 */
+	if (!dispatchDtxCommand(cmd, /* dispatchToMirrors */ true, /* withSnapshot */ false, /* raiseError */ false))
+	{
+		elog(ERROR, "Could not rollback to savepoint (%s)", cmd);
+	}
+
+	if (freecmd)
+		pfree(cmd);
+}
+
 
 /*
  * BeginInternalSubTransaction
