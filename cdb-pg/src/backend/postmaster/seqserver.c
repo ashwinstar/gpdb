@@ -512,9 +512,9 @@ void SeqServerLoop(void)
 		memcpy(&rrset, &rset, sizeof(fd_set));
 		
 		n = select(highsock + 1, &rrset, NULL, NULL, &timeout);
-		if (n == 0)
+		if (n == 0 || (n < 0 && errno == EINTR))
 		{
-			/* timeout: Have we been here too long ? */			
+			/* intr or timeout: Have we been here too long ? */			
 			continue;
 		}
 		

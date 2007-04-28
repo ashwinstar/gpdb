@@ -106,7 +106,19 @@ PostmasterIsAlive(bool amDirectChild)
 		 * If the postmaster is alive, we'll still be its child.  If it's
 		 * died, we'll be reassigned as a child of the init process.
 		 */
+#ifdef __darwin__
+		/*
+		 * When attached w/gdb on OSX, gdb becomes parent of debugged process!
+		 * If we are direct child of postmaster and end up as child of
+		 * init, the postmaster musta died. This, of course, fails to detect
+		 * death of postmaster while this process is attached to gdb - but
+		 * that's easier to deal w/than being difficult to use gdb in the
+		 * normal case.
+		 */
+		return(getppid() != 1 /* init's pid */);
+#else  /* __darwin__ */
 		return (getppid() == PostmasterPid);
+#endif /* __darwin__ */
 	}
 	else
 	{
