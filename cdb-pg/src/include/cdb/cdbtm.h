@@ -84,6 +84,12 @@ typedef struct TMGXACT_CHECKPOINT
 	TMGXACT_LOG				committedGxactArray[0];
 }	TMGXACT_CHECKPOINT;
 
+typedef struct TMGXACT_UTILITY_MODE_REDO
+{
+	bool		committed;
+	TMGXACT_LOG	gxact_log;
+}	TMGXACT_UTILITY_MODE_REDO;
+
 typedef struct TMGXACT
 {
 	/*
@@ -236,5 +242,8 @@ extern void performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 					int flags,
 					const char *loggingStr, const char *gid, 
 					DistributedTransactionId gxid);
+extern void UtilityModeFindOrCreateDtmRedoFile(void);
+extern void UtilityModeCloseDtmRedoFile(void);
+
 
 #endif   /* CDBTM_H */

@@ -2700,6 +2700,7 @@ main(int argc, char *argv[])
 		"pg_multixact/members",
 		"pg_multixact/offsets",
 		"pg_distributedxidmap",
+		"pg_utilitymodedtmredo",
 		"base",
 		"base/1",
 		"pg_tblspc"

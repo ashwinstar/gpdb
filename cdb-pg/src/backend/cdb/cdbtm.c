@@ -28,6 +28,17 @@
 #include "access/twophase.h"
 #include "access/cdbdistributedxidmap.h"
 
+/*
+ * Directory where Utility Mode DTM REDO file reside within PGDATA
+ */
+#define UTILITYMODEDTMREDO_DIR "pg_utilitymodedtmredo"
+
+/*
+ * File name for Utility Mode DTM REDO
+ */
+#define UTILITYMODEDTMREDO_FILE "savedtmredo.file"
+
+
 static LWLockId shmControlLock;
 static bool *shmTmRecoverred;
 static int *shmGIDSeq;
@@ -50,6 +61,9 @@ static bool duringRecovery = false;
 static int	max_tm_gxacts = 100;
 
 static bool resolveDtx = false;
+
+static int	redoFileFD = -1;
+static int  redoFileOffset;
 
 typedef struct InDoubtDtx
 {
@@ -117,6 +131,8 @@ static void doQEDistributedExplicitBegin(int txnOptions);
 
 static void resetDtxContextInfo(DtxContextInfo *dtxContextInfo);
 static bool isDtxQueryDispatcher(void);
+static void PleaseDebugMe(char *caller);
+static void ReplayRedoFromUtilityMode(void);
 
 /*=========================================================================
  * VISIBLE FUNCTIONS
@@ -355,7 +371,7 @@ notifyCommittedDtxTransaction(void)
 	return;
 }
 
-void
+static void
 PleaseDebugMe(char *caller)
 {
 	int i;
@@ -1069,6 +1085,158 @@ redoDtxCheckPoint(char *dtxCheckpointBuffer, int dtxCheckpointBufferSize)
 	}
 }
 
+static void
+GetRedoFileName(char *path)
+{
+	snprintf(path, MAXPGPATH, 
+		     "%s/" UTILITYMODEDTMREDO_DIR "/" UTILITYMODEDTMREDO_FILE, DataDir);
+	elog((Debug_print_full_dtm ? LOG : DEBUG3),"Returning save DTM redo file path = %s",path);
+}
+
+void
+UtilityModeFindOrCreateDtmRedoFile(void)
+{
+	char		path[MAXPGPATH];
+
+	if (Gp_role != GP_ROLE_UTILITY)
+	{
+		elog((Debug_print_full_dtm ? LOG : DEBUG3),"Not in Utility Mode -- Not finding or creating DTM redo file");
+		return;
+	}
+	GetRedoFileName(path);
+	
+	redoFileFD = open(path, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
+	if (redoFileFD < 0)
+	{
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not create save DTM redo file \"%s\"",
+						path)));
+	}
+
+	redoFileOffset = lseek(redoFileFD, 0, SEEK_END);
+	elog((Debug_print_full_dtm ? LOG : DEBUG3),"Succesfully opened DTM redo file %s (end offset %d)",
+		 path, redoFileOffset);
+}
+
+/*
+ *
+ */
+void
+UtilityModeSaveRedo(bool committed, TMGXACT_LOG * gxact_log)
+{
+	TMGXACT_UTILITY_MODE_REDO utilityModeRedo;
+	int write_len;
+
+	utilityModeRedo.committed = committed;
+	memcpy(&utilityModeRedo.gxact_log, gxact_log, sizeof(TMGXACT_LOG));
+
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"Writing {committed = %s, gid = %s, gxid = %u} to DTM redo file",
+	     (utilityModeRedo.committed ? "true" : "false"),
+	     utilityModeRedo.gxact_log.gid,
+	     utilityModeRedo.gxact_log.gxid);
+
+	write_len = write(redoFileFD, &utilityModeRedo, sizeof(TMGXACT_UTILITY_MODE_REDO));
+	if (write_len != sizeof(TMGXACT_UTILITY_MODE_REDO))
+	{
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not write save DTM redo file : %m")));
+	}
+
+}
+
+void
+UtilityModeCloseDtmRedoFile(void)
+{
+	if (Gp_role != GP_ROLE_UTILITY)
+	{
+		elog((Debug_print_full_dtm ? LOG : DEBUG3),"Not in Utility Mode -- Not closing DTM redo file");
+		return;
+	}
+	elog((Debug_print_full_dtm ? LOG : DEBUG3),"Closing DTM redo file");
+	close(redoFileFD);
+}
+
+static void
+ReplayRedoFromUtilityMode(void)
+{
+	TMGXACT_UTILITY_MODE_REDO utilityModeRedo;
+
+	int			fd;
+	int			read_len;
+	int	        errno;
+	char		path[MAXPGPATH];
+	int			entries;
+
+	entries = 0;
+
+	GetRedoFileName(path);
+
+	fd = open(path, O_RDONLY, 0);
+	if (fd < 0)
+	{
+		// UNDONE: Distinquish "not found" from other errors.
+		elog((Debug_print_full_dtm ? LOG : DEBUG3),"Could not open DTM redo file %s for reading",
+		     path);
+		return;
+	}
+
+	elog((Debug_print_full_dtm ? LOG : DEBUG3),"Succesfully opened DTM redo file %s for reading",
+		 path);
+	
+	while(true)
+	{
+		errno = 0;
+		read_len = read(fd, &utilityModeRedo, sizeof(TMGXACT_UTILITY_MODE_REDO));
+
+		if (read_len == 0)
+			break;
+		else if (read_len != sizeof(TMGXACT_UTILITY_MODE_REDO) && errno == 0)
+			elog(ERROR,"Bad redo length (expected %d and found %d)",
+			     (int)sizeof(TMGXACT_UTILITY_MODE_REDO), read_len);
+		else if (errno != 0)
+		{
+			close(fd);
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("error reading DTM redo file: %m")));
+		}
+
+		elog((Debug_print_full_dtm ? LOG : DEBUG5),"Read {committed = %s, gid = %s, gxid = %u} from DTM redo file",
+		     (utilityModeRedo.committed ? "true" : "false"),
+		     utilityModeRedo.gxact_log.gid,
+		     utilityModeRedo.gxact_log.gxid);
+		if (utilityModeRedo.committed)
+		{
+			redoDistributedCommitRecord(&utilityModeRedo.gxact_log);
+		}
+		else
+		{
+			redoDistributedForgetCommitRecord(&utilityModeRedo.gxact_log);
+		}
+
+		entries++;
+	}
+
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"Processed %d entries from DTM redo file",
+		 entries);
+	close(fd);
+
+}
+
+void
+RemoveRedoUtilityModeFile(void)
+{
+	char		path[MAXPGPATH];
+	bool        removed;
+
+	GetRedoFileName(path);
+	removed = (unlink(path) == 0);
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"Removed DTM redo file %s (%s)",
+		 path, (removed ? "true" : "false"));
+}
+
 /*
  * Redo transaction commit log record.
  */
@@ -1080,7 +1248,8 @@ redoDistributedCommitRecord(TMGXACT_LOG * gxact_log)
 
 	if (Gp_role == GP_ROLE_UTILITY)
 	{
-		elog((Debug_print_full_dtm ? LOG : DEBUG3), "DB in Utility mode.  Defer DTM recovery till later.");
+		elog((Debug_print_full_dtm ? LOG : DEBUG3), "DB in Utility mode.  Save DTM disributed commit until later.");
+		UtilityModeSaveRedo(true, gxact_log);
 		return;
 	}
 	
@@ -1123,7 +1292,8 @@ redoDistributedForgetCommitRecord(TMGXACT_LOG * gxact_log)
 
 	if (Gp_role == GP_ROLE_UTILITY)
 	{
-		elog((Debug_print_full_dtm ? LOG : DEBUG3), "DB in Utility mode.  Defer DTM recovery till later.");
+		elog((Debug_print_full_dtm ? LOG : DEBUG3), "DB in Utility mode.  Save DTM disributed forget until later.");
+		UtilityModeSaveRedo(false, gxact_log);
 		return;
 	}
 	
@@ -1817,6 +1987,8 @@ recoverInDoubtTransactions(void)
 	HTAB *htab;
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG3),"recover in-doubt distributed transactions");
+
+	ReplayRedoFromUtilityMode();
 	
 	/*
 	 * For each committed transaction found in the redo pass that was not
@@ -1902,6 +2074,8 @@ recoverInDoubtTransactions(void)
 					" manually.")));
 
 	}
+
+	RemoveRedoUtilityModeFile();
 
 	return true;
 }

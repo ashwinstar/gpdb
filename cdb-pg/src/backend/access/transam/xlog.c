@@ -4958,6 +4958,8 @@ StartupXLOG(void)
 		/* Start up the recovery environment */
 		XLogInitRelationCache();
 
+		UtilityModeFindOrCreateDtmRedoFile();
+
 		for (rmid = 0; rmid <= RM_MAX_ID; rmid++)
 		{
 			if (RmgrTable[rmid].rm_startup != NULL)
@@ -5219,6 +5221,9 @@ StartupXLOG(void)
 		 * Close down recovery environment
 		 */
 		XLogCloseRelationCache();
+
+		UtilityModeCloseDtmRedoFile();
+
 	}
 
 	/*
