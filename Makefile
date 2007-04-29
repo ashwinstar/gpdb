@@ -38,24 +38,24 @@ devel : INSTLOC=$(DEVPATH)
 devel : CONFIGFLAGS+=--enable-cassert --enable-debug
 devel : HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
-	@cd $(GPPGDIR); make install
-	@make groupSession
-	@make mgmtcopy INSTLOC=$(INSTLOC)
-	@make copylibs INSTLOC=$(INSTLOC)
+	@cd $(GPPGDIR); $(MAKE) install
+	@$(MAKE) groupSession
+	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
+	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 
 dist : INSTCFLAGS=$(OPTFLAGS)
 dist : INSTLOC=$(DISTPATH)
 dist : GPROOTDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
-	@cd $(GPPGDIR); make install
-	@make groupSession
-	@make mgmtcopy INSTLOC=$(INSTLOC)
-	@make copydocs INSTLOC=$(INSTLOC)
-	@make copylibs INSTLOC=$(INSTLOC)
-	@rm -f $(TARBALL); make tarball TARBALL=$(TARBALL) INSTLOC=$(INSTLOC)
+	@cd $(GPPGDIR); $(MAKE) install
+	@$(MAKE) groupSession
+	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
+	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
+	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
+	@rm -f $(TARBALL); $(MAKE) tarball TARBALL=$(TARBALL) INSTLOC=$(INSTLOC)
 
 groupSession:
-	@cd $(GPMGMT)/bin; make 
+	@cd $(GPMGMT)/bin; $(MAKE) 
 
 
 copydocs :
@@ -101,11 +101,11 @@ $(ISCONFIG) :
 
 HOMEDEP :
 	@#If the HOME variable isn't set, then execute the usage() path
-	@if [ x"$(HOME)" = x ]; then make HOMEFAIL; fi
+	@if [ x"$(HOME)" = x ]; then $(MAKE) HOMEFAIL; fi
 
 GPROOTDEP :
 	@#If the GPROOT variable isn't set, then execute the usage() path
-	@if [ x"$(GPROOT)" = x ]; then make GPROOTFAIL; fi
+	@if [ x"$(GPROOT)" = x ]; then $(MAKE) GPROOTFAIL; fi
 
 GPROOTFAIL :
 	@echo
@@ -124,14 +124,14 @@ HOMEFAIL :
 
 clean :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, no need to clean"; exit 1; fi
-	@cd $(GPPGDIR); make clean
-	@cd $(GPMGMT)/bin; make clean
+	@cd $(GPPGDIR); $(MAKE) clean
+	@cd $(GPMGMT)/bin; $(MAKE) clean
 	@rm -f $(TARBALL)
 
 distclean :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, no need to clean"; exit 1; fi
-	@cd $(GPPGDIR); make distclean
-	@cd $(GPMGMT)/bin; make clean
+	@cd $(GPPGDIR); $(MAKE) distclean
+	@cd $(GPMGMT)/bin; $(MAKE) clean
 	
 distprep : $(ISCONFIG)
-	@cd $(GPPGDIR); make distprep
+	@cd $(GPPGDIR); $(MAKE) distprep
