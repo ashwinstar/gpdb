@@ -511,8 +511,13 @@ DefineRelation_int(CreateStmt *stmt,
 		Oid			toastIndexId = InvalidOid;
 		MemoryContext oldContext;
 	
-		pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
-		pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
+		/* 
+		 * We use a ShareRowExclusiveLock rather than a RowExclusiveLock so that two
+		 * DDL operations will serialize on the QD, and not deadlock between QEs
+		 */
+		pg_class_desc = heap_open(RelationRelationId, ShareRowExclusiveLock);
+		pg_type_desc = heap_open(TypeRelationId, ShareRowExclusiveLock);
+		LockRelationOid(DependRelationId, ShareRowExclusiveLock);
 		
 		cdb_sync_oid_to_segments();
 	
@@ -545,7 +550,7 @@ DefineRelation_int(CreateStmt *stmt,
 		stmt->relation->schemaname = get_namespace_name(namespaceId);	
 		MemoryContextSwitchTo(oldContext);
 		
-		heap_close(pg_type_desc, RowExclusiveLock);
+		heap_close(pg_type_desc, NoLock);
 	}
 	else if (Gp_role == GP_ROLE_EXECUTE)
 	{
@@ -564,7 +569,7 @@ DefineRelation_int(CreateStmt *stmt,
 	 * If we are creating pg_resqueue, it means we are upgrading a 2.2 system.
 	 * We need to create it with the right OIDs as if it had been created by initdb.
 	 */
-	if (namespaceId == PG_CATALOG_NAMESPACE)
+	/*if (namespaceId == PG_CATALOG_NAMESPACE)
 	{
 		if(tablespaceId==GLOBALTABLESPACE_OID && strcmp(relname,"pg_resqueue")==0)
 		{
@@ -578,16 +583,14 @@ DefineRelation_int(CreateStmt *stmt,
 		
 		if (strcmp(relname,"pg_roles")==0)
 		{
-			/* Important that this number not be used for something else on 2.2 systems */
 			relationId = 10317; 
 		}
 		if (strcmp(relname,"pg_locks")==0)
 		{
-			/* Important that this number not be used for something else on 2.2 systems */
 			relationId = 10348; 
 		}
 		stmt->oidInfo.relOid = relationId;
-	}
+	}*/
 	
     if (stmt->oidInfo.relOid)
         elog(DEBUG4, "DefineRelation relOid=%d schemaname=%s shouldDispatch=%d",
@@ -793,6 +796,13 @@ RemoveRelation(const RangeVar *relation, DropBehavior behavior)
 	object.classId = RelationRelationId;
 	object.objectId = relOid;
 	object.objectSubId = 0;
+	
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		LockRelationOid(RelationRelationId, ShareRowExclusiveLock);
+		LockRelationOid(TypeRelationId, ShareRowExclusiveLock);
+		LockRelationOid(DependRelationId, ShareRowExclusiveLock);
+	}
 
 	performDeletion(&object, behavior);
 }
@@ -1833,7 +1843,7 @@ setRelhassubclassInRelation(Oid relationId, bool relhassubclass)
 	 * If the tuple already has the right relhassubclass setting, we don't
 	 * need to update it, but we still need to issue an SI inval message.
 	 */
-	relationRelation = heap_open(RelationRelationId, RowExclusiveLock);
+	relationRelation = heap_open(RelationRelationId, Gp_role == GP_ROLE_DISPATCH ? ShareRowExclusiveLock : RowExclusiveLock);
 	tuple = SearchSysCacheCopy(RELOID,
 							   ObjectIdGetDatum(relationId),
 							   0, 0, 0);
@@ -1856,7 +1866,7 @@ setRelhassubclassInRelation(Oid relationId, bool relhassubclass)
 	}
 
 	heap_freetuple(tuple);
-	heap_close(relationRelation, RowExclusiveLock);
+	heap_close(relationRelation, Gp_role == GP_ROLE_DISPATCH ? ShareRowExclusiveLock : RowExclusiveLock);
 }
 
 
@@ -2120,7 +2130,7 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 	/*
 	 * Find relation's pg_class tuple, and make sure newrelname isn't in use.
 	 */
-	relrelation = heap_open(RelationRelationId, RowExclusiveLock);
+	relrelation = heap_open(RelationRelationId, Gp_role == GP_ROLE_DISPATCH ? ShareRowExclusiveLock : RowExclusiveLock);
 
 	reltup = SearchSysCacheCopy(RELOID,
 								PointerGetDatum(myrelid),
@@ -2146,7 +2156,7 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 	CatalogUpdateIndexes(relrelation, reltup);
 
 	heap_freetuple(reltup);
-	heap_close(relrelation, RowExclusiveLock);
+	heap_close(relrelation, Gp_role == GP_ROLE_DISPATCH ? ShareRowExclusiveLock :RowExclusiveLock);
 
 	/*
 	 * Also rename the associated type, if any.
@@ -2431,6 +2441,14 @@ AlterTable(AlterTableStmt *stmt)
 				(errcode(ERRCODE_OBJECT_IN_USE),
 				 errmsg("relation \"%s\" is being used by active queries in this session",
 						RelationGetRelationName(rel))));
+	
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		LockRelationOid(RelationRelationId, ShareRowExclusiveLock);
+		LockRelationOid(TypeRelationId, ShareRowExclusiveLock);
+		LockRelationOid(DependRelationId, ShareRowExclusiveLock);
+	}
+	
 	ATController(rel,
 				 stmt->cmds,
 				 interpretInhOption(stmt->relation->inhOpt),
@@ -2784,7 +2802,7 @@ ATAddToastIfNeeded(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 				
 				Assert(m<oidInfoCount);
 				
-				pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
+				pg_class_desc = heap_open(RelationRelationId, ShareRowExclusiveLock);
 				rel = heap_open(tab->relid, AccessExclusiveLock);
 			
 				if (rel->rd_rel->reltoastrelid == InvalidOid)

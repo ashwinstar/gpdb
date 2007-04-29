@@ -559,18 +559,19 @@ DefineIndex(RangeVar *heapRelation,
 			
 			cdb_sync_oid_to_segments();
 			
-			pg_class = heap_open(RelationRelationId, RowExclusiveLock);
+			pg_class = heap_open(RelationRelationId, ShareRowExclusiveLock);
 			
 			indexRelationId = GetNewRelFileNode(tablespaceId, false, pg_class);
 		    iiopaque->heapOid = GetNewRelFileNode(tablespaceId, false, pg_class);
 			iiopaque->indexOid = GetNewRelFileNode(tablespaceId, false, pg_class);
 
 			/* done with pg_class */
-			heap_close(pg_class, RowExclusiveLock);
+			heap_close(pg_class, NoLock);
 
-			pg_type = heap_open(TypeRelationId, RowExclusiveLock);
+			pg_type = heap_open(TypeRelationId, ShareRowExclusiveLock);
 			iiopaque->comptypeOid = GetNewOid(pg_type);
-			heap_close(pg_type, RowExclusiveLock);			
+			heap_close(pg_type, NoLock);		
+			
 		}
 	
 		/* create the index on the QEs first, so we can get their stats when we create on the QD */
@@ -584,6 +585,13 @@ DefineIndex(RangeVar *heapRelation,
 			stmt->idxOids = lappend_oid(stmt->idxOids, iiopaque->heapOid);
 			stmt->idxOids = lappend_oid(stmt->idxOids, iiopaque->indexOid);
 		}
+		
+		/*
+		 * Lock the index relation exclusively on the QD, before dispatching,
+		 * otherwise we could get a deadlock between QEs trying to do this same work.
+		 */
+		LockRelationOid(indexRelationId, AccessExclusiveLock);
+		
         /*
          * Dispatch the command to all primary and mirror segment dbs.
          * Start a global transaction and reconfigure cluster if needed.

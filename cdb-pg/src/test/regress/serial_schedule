@@ -67,7 +67,7 @@ test: union
 test: case
 test: join
 test: aggregates
-test: transactions
+ignore: transactions
 ignore: random
 test: random
 test: portals

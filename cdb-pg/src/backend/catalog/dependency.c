@@ -154,7 +154,7 @@ performDeletion(const ObjectAddress *object,
 	 * We save some cycles by opening pg_depend just once and passing the
 	 * Relation pointer down to all the recursive deletion steps.
 	 */
-	depRel = heap_open(DependRelationId, RowExclusiveLock);
+	depRel = heap_open(DependRelationId, Gp_role == GP_ROLE_DISPATCH? ShareRowExclusiveLock : RowExclusiveLock);
 
 	/*
 	 * Construct a list of objects that are reachable by AUTO or INTERNAL
@@ -176,7 +176,7 @@ performDeletion(const ObjectAddress *object,
 
 	free_object_addresses(oktodelete);
 
-	heap_close(depRel, RowExclusiveLock);
+	heap_close(depRel, Gp_role == GP_ROLE_DISPATCH? ShareRowExclusiveLock : RowExclusiveLock);
 
 	pfree(objDescription);
 }
@@ -209,7 +209,7 @@ performDeletionWithList(const ObjectAddress *object,
 	 * We save some cycles by opening pg_depend just once and passing the
 	 * Relation pointer down to all the recursive deletion steps.
 	 */
-	depRel = heap_open(DependRelationId, RowExclusiveLock);
+	depRel = heap_open(DependRelationId, Gp_role == GP_ROLE_DISPATCH? ShareRowExclusiveLock : RowExclusiveLock);
 
 	/*
 	 * Construct a list of objects that are reachable by AUTO or INTERNAL
@@ -227,7 +227,7 @@ performDeletionWithList(const ObjectAddress *object,
 						objDescription),
 		errhint("Use DROP ... CASCADE to drop the dependent objects too.")));
 
-	heap_close(depRel, RowExclusiveLock);
+	heap_close(depRel, Gp_role == GP_ROLE_DISPATCH? ShareRowExclusiveLock : RowExclusiveLock);
 
 	pfree(objDescription);
 }
@@ -253,7 +253,7 @@ performMultipleDeletions(const ObjectAddresses *objects,
 	implicit = new_object_addresses();
 	alreadyDeleted = new_object_addresses();
 
-	depRel = heap_open(DependRelationId, RowExclusiveLock);
+	depRel = heap_open(DependRelationId, Gp_role == GP_ROLE_DISPATCH? ShareRowExclusiveLock : RowExclusiveLock);
 
 	/*
 	 * Get the list of all objects that would be deleted after deleting the
@@ -302,7 +302,7 @@ performMultipleDeletions(const ObjectAddresses *objects,
 		performDeletionWithList(&obj, implicit, behavior, alreadyDeleted);
 	}
 
-	heap_close(depRel, RowExclusiveLock);
+	heap_close(depRel, Gp_role == GP_ROLE_DISPATCH? ShareRowExclusiveLock : RowExclusiveLock);
 
 	free_object_addresses(implicit);
 	free_object_addresses(alreadyDeleted);
@@ -334,7 +334,7 @@ deleteWhatDependsOn(const ObjectAddress *object,
 	 * We save some cycles by opening pg_depend just once and passing the
 	 * Relation pointer down to all the recursive deletion steps.
 	 */
-	depRel = heap_open(DependRelationId, RowExclusiveLock);
+	depRel = heap_open(DependRelationId, Gp_role == GP_ROLE_DISPATCH? ShareRowExclusiveLock : RowExclusiveLock);
 
 	/*
 	 * Construct a list of objects that are reachable by AUTO or INTERNAL
@@ -366,7 +366,7 @@ deleteWhatDependsOn(const ObjectAddress *object,
 
 	free_object_addresses(oktodelete);
 
-	heap_close(depRel, RowExclusiveLock);
+	heap_close(depRel, Gp_role == GP_ROLE_DISPATCH? ShareRowExclusiveLock : RowExclusiveLock);
 
 	pfree(objDescription);
 }

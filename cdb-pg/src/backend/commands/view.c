@@ -19,6 +19,8 @@
 #include "access/xact.h"
 #include "catalog/dependency.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_depend.h"
+#include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "commands/tablecmds.h"
 #include "commands/view.h"
@@ -483,6 +485,13 @@ RemoveView(const RangeVar *view, DropBehavior behavior)
 	object.classId = RelationRelationId;
 	object.objectId = viewOid;
 	object.objectSubId = 0;
+	
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		LockRelationOid(RelationRelationId, ShareRowExclusiveLock);
+		LockRelationOid(TypeRelationId, ShareRowExclusiveLock);
+		LockRelationOid(DependRelationId, ShareRowExclusiveLock);
+	}
 
 	performDeletion(&object, behavior);
 
