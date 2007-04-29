@@ -2194,6 +2194,8 @@ l1:
 
 		/* must copy state data before unlocking buffer */
 		xwait = HeapTupleHeaderGetXmax(tp.t_data);
+		Assert(TransactionIdIsValid(xid));
+		
 		infomask = tp.t_data->t_infomask;
 
 		LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
@@ -2513,6 +2515,8 @@ l2:
 
 		/* must copy state data before unlocking buffer */
 		xwait = HeapTupleHeaderGetXmax(oldtup.t_data);
+		Assert(TransactionIdIsValid(xid));
+		
 		infomask = oldtup.t_data->t_infomask;
 
 		LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
@@ -2996,6 +3000,8 @@ l3:
 
 		/* must copy state data before unlocking buffer */
 		xwait = HeapTupleHeaderGetXmax(tuple->t_data);
+		Assert(TransactionIdIsValid(xid));
+		
 		infomask = tuple->t_data->t_infomask;
 
 		LockBuffer(*buffer, BUFFER_LOCK_UNLOCK);
