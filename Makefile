@@ -135,3 +135,7 @@ distclean :
 	
 distprep : $(ISCONFIG)
 	@cd $(GPPGDIR); $(MAKE) distprep
+	
+installcheck-good :
+	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, cannot check"; exit 1; fi
+	@cd $(GPPGDIR)/src/test/regress; $(MAKE) installcheck-good
