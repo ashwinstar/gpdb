@@ -48,6 +48,7 @@
 #include "access/twophase.h"
 #include "access/twophase_rmgr.h"
 #include "access/xact.h"
+#include "cdb/cdbvars.h"
 #include "catalog/pg_type.h"
 #include "funcapi.h"
 #include "miscadmin.h"
@@ -384,39 +385,47 @@ LockGXact(const char *gid, Oid user, bool raiseErrorIfNotFound)
 		if (TransactionIdIsValid(gxact->locking_xid))
 		{
 			if (TransactionIdIsActive(gxact->locking_xid))
+			{
+				LWLockRelease(TwoPhaseStateLock);
 				ereport(ERROR,
 						(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				errmsg("prepared transaction with identifier \"%s\" is busy",
 					   gid)));
+			}
 			gxact->locking_xid = InvalidTransactionId;
 		}
 
 		if (user != gxact->owner && !superuser_arg(user))
+		{
+			LWLockRelease(TwoPhaseStateLock);
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				  errmsg("permission denied to finish prepared transaction"),
 					 errhint("Must be superuser or the user that prepared the transaction.")));
-
+		}
+		
 		/*
 		 * Note: it probably would be possible to allow committing from another
 		 * database; but at the moment NOTIFY is known not to work and there
 		 * may be some other issues as well.  Hence disallow until someone
 		 * gets motivated to make it work.
-		 */
-		if (MyDatabaseId != gxact->proc.databaseId)
+		 */		 
+		if (MyDatabaseId != gxact->proc.databaseId &&  (Gp_role != GP_ROLE_EXECUTE))
+		{
+			LWLockRelease(TwoPhaseStateLock);
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("prepared transaction belongs to another database"),
 					 errhint("Connect to the database where the transaction was prepared to finish it.")));
+		}
+		
 
 		/* OK for me to lock it */
 		gxact->locking_xid = GetTopTransactionId();
-
 		LWLockRelease(TwoPhaseStateLock);
 
 		return gxact;
 	}
-
 	LWLockRelease(TwoPhaseStateLock);
 
 	if (raiseErrorIfNotFound)
