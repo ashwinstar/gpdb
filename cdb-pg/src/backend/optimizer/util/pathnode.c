@@ -1503,6 +1503,11 @@ create_append_path(PlannerInfo *root, RelOptInfo *rel, List *subpaths)
 
 	pathnode->path.startup_cost = 0;
 	pathnode->path.total_cost = 0;
+
+    /* If no subpath, any worker can execute this Append.  Result has 0 rows. */
+    if (!subpaths)
+        CdbPathLocus_MakeGeneral(&pathnode->path.locus);
+
 	foreach(l, subpaths)
 	{
 		Path	       *subpath = (Path *) lfirst(l);
