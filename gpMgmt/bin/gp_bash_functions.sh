@@ -181,6 +181,7 @@ GPSTOP=$SCRIPTDIR/gpstop
 MAILFILE=$SCRIPTDIR/mail_contacts
 HMAILFILE=$HOME/mail_contacts
 GPDOCDIR=${GPHOME}/docs/cli_help/
+GPSUBSCRIPTDIR=${SCRIPTDIR}/lib
 #******************************************************************************
 # Greenplum Command Variables
 #******************************************************************************
@@ -889,6 +890,7 @@ GET_PG_PID_ACTIVE () {
 							LOG_MSG "[WARN]:-Unable to access ${PG_LOCK_FILE} on $HOST" 1
 						fi
 						LOG_MSG "[WARN]:-Have lock file $PG_LOCK_FILE but no process running on port $PORT on $HOST" 1
+						PID=1
 						EXIT_STATUS=1
 					fi
 					if [ $PG_LOCK_TMP -eq 1 ] && [ x"" != x"$PG_LOCK_NETSTAT" ];then
