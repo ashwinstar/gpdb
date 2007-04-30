@@ -789,12 +789,16 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
         /* Outgoing connections */
         outgoing_count = 0;
         n = sendingChunkTransportState ? sendingChunkTransportState->numConns : 0;
-		/* start connections with our segment-id first */
-        for (i = 0, index = Max(0, Gp_segment);
+
+		/* start connections with a neighbor first (not a segmate
+		 * since we're racing with them on startup) */
+		index = Gp_segment+2;
+        for (i = 0;
 			 i < n; 
 			 i++, index++)
-		{                       /* loop to set up outgoing connections */
-			if (index >= n)
+		{
+			/* loop to set up outgoing connections */
+			if (index < 0 || index >= n)
 				index = 0;
 
 			conn = &sendingChunkTransportState->conns[index];
