@@ -165,6 +165,7 @@ CHK_QD_DB_RUNNING () {
 		if [  -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
 			LOG_MSG "[INFO]:-$PG_PID file exists on Master" 
 		else
+			EVENT_MAIL "Report from gpcrondump on host $CUR_HOST [FAILED]" "Failed for database $DUMP_DATABASE database not operational. [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
 			ERROR_EXIT "[FATAL]:-No Master segment $PG_PID" 2
 		fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
