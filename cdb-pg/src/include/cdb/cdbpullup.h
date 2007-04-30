@@ -126,6 +126,17 @@ cdbpullup_exprHasSubplanRef(Expr *expr);
  * 'pathkey' is a List of PathKeyItem.
  * 'relids' is the set of relids that may occur in the targetlist exprs.
  * 'targetlist' is a List of TargetEntry or merely a List of Expr.
+ *
+ * NB: We ignore the presence or absence of a RelabelType node atop either 
+ * expr in determining whether a PathKeyItem expr matches a targetlist expr.  
+ *
+ * (A RelabelType node might have been placed atop a PathKeyItem's expr to 
+ * match its type to the sortop's input operand type, when the types are 
+ * binary compatible but not identical... such as VARCHAR and TEXT.  The 
+ * RelabelType node merely documents the representational equivalence but 
+ * does not affect the semantics.  A RelabelType node might also be found 
+ * atop an argument of a function or operator, but generally not atop a 
+ * targetlist expr.)
  */
 PathKeyItem *
 cdbpullup_findPathKeyItemInTargetList(List         *pathkey,
@@ -156,6 +167,10 @@ cdbpullup_findSubplanRefInTargetList(AttrNumber varattno, List *targetlist);
  * some member of the list.
  *
  * 'targetlist' is a List of TargetEntry.
+ *
+ * NB:  A Var in the expr is considered as matching a Var in the targetlist
+ * without regard for whether or not there is a RelabelType node atop the 
+ * targetlist Var.
  *
  * See also: cdbpullup_missing_var_walker
  */
@@ -191,6 +206,10 @@ cdbpullup_makeVar(Index varno, AttrNumber varattno, List *newvarlist, Expr *olde
  *
  * Returns true if some Var in expr is not in targetlist.
  * 'targetlist' is either a List of TargetEntry, or a plain List of Expr.
+ *
+ * NB:  A Var in the expr is considered as matching a Var in the targetlist
+ * without regard for whether or not there is a RelabelType node atop the 
+ * targetlist Var.
  *
  * See also: cdbpullup_isExprCoveredByTargetlist
  */

@@ -1870,6 +1870,7 @@ create_mergejoin_plan(CreatePlanContext *ctx,
 	List	   *joinclauses;
 	List	   *otherclauses;
 	List	   *mergeclauses;
+    Sort       *sort;
 	MergeJoin  *join_plan;
 
 	/* Get the join qual clauses (in plain expression form) */
@@ -1915,19 +1916,27 @@ create_mergejoin_plan(CreatePlanContext *ctx,
 	if (best_path->outersortkeys)
 	{
 		disuse_physical_tlist(outer_plan, best_path->jpath.outerjoinpath);
-		outer_plan = (Plan *)
+		sort =
 			make_sort_from_pathkeys(ctx->root,
 									outer_plan,
-									best_path->outersortkeys);
+									best_path->outersortkeys,
+                                    best_path->jpath.outerjoinpath->parent->relids,
+                                    true);
+        if (sort)
+            outer_plan = (Plan *)sort;
 	}
 
 	if (best_path->innersortkeys)
 	{
 		disuse_physical_tlist(inner_plan, best_path->jpath.innerjoinpath);
-		inner_plan = (Plan *)
+		sort =
 			make_sort_from_pathkeys(ctx->root,
 									inner_plan,
-									best_path->innersortkeys);
+									best_path->innersortkeys,
+                                    best_path->jpath.innerjoinpath->parent->relids,
+                                    true);
+        if (sort)
+            inner_plan = (Plan *)sort;
 	}
 
 	/*
@@ -2869,6 +2878,10 @@ add_sort_column(AttrNumber colIdx, Oid sortOp,
  *
  *	  'lefttree' is the node which yields input tuples
  *	  'pathkeys' is the list of pathkeys by which the result is to be sorted
+ *    'relids' is the set of relids that can be used in Var nodes here.
+ *    'add_keys_to_targetlist' is true if it is ok to append to the subplan's
+ *          targetlist or insert a Result node atop the subplan to evaluate
+ *          sort key exprs that are not already present in the subplan's tlist.
  *
  * We must convert the pathkey information into arrays of sort key column
  * numbers and sort operator OIDs.
@@ -2878,9 +2891,16 @@ add_sort_column(AttrNumber colIdx, Oid sortOp,
  * compute these expressions (since the Sort node itself won't do it).
  * If the input plan type isn't one that can do projections, this means
  * adding a Result node just to do the projection.
+ *
+ * Returns a new Sort node if successful.
+ *
+ * Returns NULL if the sort key is degenerate (0 length after truncating
+ * due to add_keys_to_targetlist==false and/or omitting key cols that are
+ * equal to a constant expr.)
  */
 Sort *
-make_sort_from_pathkeys(PlannerInfo *root, Plan *lefttree, List *pathkeys)
+make_sort_from_pathkeys(PlannerInfo *root, Plan *lefttree, List *pathkeys,
+                        Relids relids, bool add_keys_to_targetlist)
 {
 	List	   *tlist = lefttree->targetlist;
 	ListCell   *i;
@@ -2900,9 +2920,22 @@ make_sort_from_pathkeys(PlannerInfo *root, Plan *lefttree, List *pathkeys)
 	foreach(i, pathkeys)
 	{
 		List	   *keysublist = (List *) lfirst(i);
+        ListCell   *j;
 		PathKeyItem *pathkey = NULL;
 		TargetEntry *tle = NULL;
-		ListCell   *j;
+        AttrNumber  resno;
+
+		/*
+		 * The column might already be selected as a sort key, if the pathkeys
+		 * contain duplicate entries.  (This can happen in scenarios where
+		 * multiple mergejoinable clauses mention the same var, for example.)
+		 * Skip this sort key if it is the same as an earlier one.
+		 */
+        foreach(j, pathkeys)
+            if ((List *)lfirst(j) == keysublist)
+                break;
+        if (j != i)
+            continue;
 
 		/*
 		 * We can sort by any one of the sort key items listed in this
@@ -2916,35 +2949,23 @@ make_sort_from_pathkeys(PlannerInfo *root, Plan *lefttree, List *pathkeys)
 		 * same pathkey sublist...)  Not clear that we ever will have a choice
 		 * in practice, so it may not matter.
 		 */
-		foreach(j, keysublist)
-		{
-			pathkey = (PathKeyItem *) lfirst(j);
-			Assert(IsA(pathkey, PathKeyItem));
-			tle = tlist_member(pathkey->key, tlist);
-			if (tle)
-				break;
-		}
-		if (!tle)
-		{
-			/* No matching Var; look for a computable expression */
-			foreach(j, keysublist)
-			{
-				List	   *exprvars;
-				ListCell   *k;
+        pathkey = cdbpullup_findPathKeyItemInTargetList(keysublist,
+                                                        relids,
+                                                        tlist,
+                                                        &resno);
+        if (!pathkey)
+            elog(ERROR, "could not find pathkey item to sort");
 
-				pathkey = (PathKeyItem *) lfirst(j);
-				exprvars = pull_var_clause(pathkey->key, false);
-				foreach(k, exprvars)
-				{
-					if (!tlist_member(lfirst(k), tlist))
-						break;
-				}
-				list_free(exprvars);
-				if (!k)
-					break;		/* found usable expression */
-			}
-			if (!j)
-				elog(ERROR, "could not find pathkey item to sort");
+        /* Omit this sort key if equivalence class contains a constant expr. */
+        if (pathkey->cdb_num_relids == 0)
+            continue;
+
+        /* If item is not in the tlist, but is computable from tlist vars... */
+        if (resno == 0)
+		{
+            /* CDB: Truncate sort keys if caller said don't extend the tlist. */
+            if (!add_keys_to_targetlist)
+                break;
 
 			/*
 			 * Do we need to insert a Result node?
@@ -2958,25 +2979,23 @@ make_sort_from_pathkeys(PlannerInfo *root, Plan *lefttree, List *pathkeys)
 			/*
 			 * Add resjunk entry to input's tlist
 			 */
+            resno = list_length(tlist) + 1;
 			tle = makeTargetEntry((Expr *) pathkey->key,
-								  list_length(tlist) + 1,
+								  resno,
 								  NULL,
 								  true);
 			tlist = lappend(tlist, tle);
 			lefttree->targetlist = tlist;		/* just in case NIL before */
 		}
 
-		/*
-		 * The column might already be selected as a sort key, if the pathkeys
-		 * contain duplicate entries.  (This can happen in scenarios where
-		 * multiple mergejoinable clauses mention the same var, for example.)
-		 * So enter it only once in the sort arrays.
-		 */
-		numsortkeys = add_sort_column(tle->resno, pathkey->sortop,
-									  numsortkeys, sortColIdx, sortOperators);
+        /* Add column to sort arrays. */
+        sortColIdx[numsortkeys] = resno;
+        sortOperators[numsortkeys] = pathkey->sortop;
+        numsortkeys++;
 	}
 
-	Assert(numsortkeys > 0);
+    if (numsortkeys == 0)
+        return NULL;
 
 	return make_sort(root, lefttree, numsortkeys,
 					 sortColIdx, sortOperators);
@@ -3555,49 +3574,13 @@ plan_pushdown_tlist(Plan *plan, List *tlist)
 {
 	if (is_projection_capable_plan(plan))
     {
-		/* if the plan an project and produces unordered sets, just do it. */
-		if (!plan->flow || plan->flow->numSortCols == 0)
-			plan->targetlist = tlist;
-
-		/* MPP-1107: if we're depending on the sort order, we have to
-		 * fix up the flow to point to the correct columns
-		 * post-projection -- this is probably only used for IndexScan
-		 * nodes (which can project and produce sorted output) which
-		 * have the sort order we want. The sort node doesn't project,
-		 * so that's handled further down. */
-		else
-		{
-			int i;
-			TargetEntry *old_tle, *new_tle;
-
-			for (i=0; i < plan->flow->numSortCols; i++)
-			{
-				old_tle = get_tle_by_resno(plan->targetlist, plan->flow->sortColIdx[i]);
-
-				if (!old_tle)
-					elog(ERROR, "Cannot find sort column in pre-projection targetlist during tlist pullup");
-
-				new_tle = tlist_member((Node *)old_tle->expr, tlist);
-				/* for some datatypes we may not find this ? And that's OK ?! see MPP-1132 */
-				if (!new_tle)
-				{
-					elog(LOG, "Cannot find sort column in post-projection targetlist during tlist pullup");
-					break;
-				}
-
-				plan->flow->sortColIdx[i] = new_tle->resno;
-			}
-
-			/* now we can update the tlist */
-			plan->targetlist = tlist;
-		}
-
-        /*
-         * If the node's Flow is partitioned on an expr that is no longer in
-         * the new targetlist, null out the hash, leaving a strewn flow.
-         */
+        /* Fix up annotation of plan's distribution and ordering properties. */
         if (plan->flow)
-            adapt_flow_to_targetlist(plan);
+            plan->flow = pull_up_Flow((Plan *)make_result(tlist, NULL, plan),
+                                      plan, true);
+
+        /* Install the new targetlist. */
+        plan->targetlist = tlist;
     }
 
     /*
@@ -3633,7 +3616,7 @@ plan_pushdown_tlist(Plan *plan, List *tlist)
         /* Propagate the subplan's distribution and ordering properties. */
 		if (subplan->flow)
             plan->flow = pull_up_Flow(plan, subplan, true);
-	}
+    }
     return plan;
 }                               /* plan_pushdown_tlist */
 

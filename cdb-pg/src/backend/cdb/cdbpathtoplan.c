@@ -71,13 +71,21 @@ cdbpathtoplan_create_flow(PlannerInfo  *root,
     else
         Insist(0);
 	
-    /* Ordering */
+    /*
+     * Describe the ordering of the result rows.  The ordering info will be
+     * truncated upon encountering an expr which is not already present in the
+     * plan's targetlist.  Duplicate cols and constant cols will be omitted.
+     */
     if (pathkeys)
     {
-        Sort   *sort = make_sort_from_pathkeys(root, plan, pathkeys);
-        flow->numSortCols = sort->numCols;
-        flow->sortColIdx = sort->sortColIdx;
-        flow->sortOperators = sort->sortOperators;
+        Sort   *sort = make_sort_from_pathkeys(root, plan, pathkeys, relids, false);
+
+        if (sort)
+        {
+            flow->numSortCols = sort->numCols;
+            flow->sortColIdx = sort->sortColIdx;
+            flow->sortOperators = sort->sortOperators;
+        }
     }
 
     flow->req_move = MOVEMENT_NONE;
@@ -104,18 +112,6 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
     else
         numInputSegs = getgpsegmentCount();
 
-    /*
-     * Decorate the subplan with a Flow node telling the plan slicer
-     * what kind of gang will be needed to execute the subplan.
-     */
-    subplan->flow = cdbpathtoplan_create_flow(root,
-                                              subpath->locus,
-                                              subpath->parent
-                                                ? subpath->parent->relids
-                                                : NULL,
-                                              subpath->pathkeys,
-                                              subplan);
-
     /* Send all tuples to a single process? */
     if (CdbPathLocus_IsBottleneck(path->path.locus))
     {
@@ -126,17 +122,40 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
 
         if (path->path.pathkeys)
         {
+            /*
+             * Build a dummy Sort node.  We'll take its sort key info to
+             * define our Merge Receive keys.  Unchanged subplan ptr is
+             * returned to us if ordering is degenerate (all cols constant).
+             */
             Sort   *sort = make_sort_from_pathkeys(root,
                                                    subplan,
-                                                   path->path.pathkeys);
-            motion = make_sorted_union_motion(subplan,
-                                              false,    /* sendToSecondary */
-                                              numInputSegs,
-                                              destSegIndex,
-                                              sort->numCols,
-                                              sort->sortColIdx,
-                                              sort->sortOperators);
+                                                   path->path.pathkeys,
+                                                   path->path.parent->relids,
+                                                   true);
+
+            /* Merge Receive to preserve ordering */
+            if (sort)
+            {
+                /* Result node might have been added below the Sort */
+                subplan = sort->plan.lefttree; 
+                motion = make_sorted_union_motion(subplan,
+                                                  false,  /* sendToSecondary */
+                                                  numInputSegs,
+                                                  destSegIndex,
+                                                  sort->numCols,
+                                                  sort->sortColIdx,
+                                                  sort->sortOperators);
+            }
+        
+            /* Degenerate ordering... build unordered Union Receive */
+            else
+                motion = make_union_motion(subplan,
+                                           false,           /* sendToSecondary */
+                                           numInputSegs,
+                                           destSegIndex);
         }
+        
+        /* Unordered Union Receive */
         else
             motion = make_union_motion(subplan,
                                        false,           /* sendToSecondary */
@@ -165,6 +184,18 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
     }
     else
         Insist(0);
+
+    /*
+     * Decorate the subplan with a Flow node telling the plan slicer
+     * what kind of gang will be needed to execute the subplan.
+     */
+    subplan->flow = cdbpathtoplan_create_flow(root,
+                                              subpath->locus,
+                                              subpath->parent
+                                                ? subpath->parent->relids
+                                                : NULL,
+                                              subpath->pathkeys,
+                                              subplan);
 
     return motion;
 }                               /* cdbpathtoplan_create_motion_plan */

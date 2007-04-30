@@ -1252,10 +1252,24 @@ build_tlist_index(List *tlist)
 	foreach(l, tlist)
 	{
 		TargetEntry *tle = (TargetEntry *) lfirst(l);
+        Expr   *expr = tle->expr;
 
-		if (tle->expr && IsA(tle->expr, Var))
+        Assert(expr);
+
+        /*
+         * Allow a Var in parent node's expr to find matching Var in tlist 
+         * ignoring any RelabelType nodes atop the tlist Var.  Also set
+         * has_non_vars so tlist expr can be matched as a whole.
+         */
+        while (IsA(expr, RelabelType))
+        {
+            expr = ((RelabelType *)expr)->arg;
+            itlist->has_non_vars = true;
+        }
+
+		if (IsA(expr, Var))
 		{
-			Var		   *var = (Var *) tle->expr;
+			Var		   *var = (Var *)expr;
 
 			vinfo->varno = var->varno;
 			vinfo->varattno = var->varattno;

@@ -4,6 +4,7 @@
  *	  prototypes for tlist.c.
  *
  *
+ * Portions Copyright (c) 2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -18,6 +19,7 @@
 
 
 extern TargetEntry *tlist_member(Node *node, List *targetlist);
+extern TargetEntry *tlist_member_ignoring_RelabelType(Expr *expr, List *targetlist);
 
 extern List *flatten_tlist(List *tlist);
 extern List *add_to_flat_tlist(List *tlist, List *vars);

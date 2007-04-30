@@ -282,10 +282,13 @@ cdbpathlocus_from_subquery(struct PlannerInfo  *root,
             List       *eq = list_make1(makeString("="));
             foreach(hashexprcell, flow->hashExpr)
             {
-                Node           *expr = (Node *)lfirst(hashexprcell);
-                TargetEntry    *tle = tlist_member(expr, subqplan->targetlist);
+                Expr           *expr = (Expr *)lfirst(hashexprcell);
+                TargetEntry    *tle;
                 Var            *var;
                 List           *pathkey;
+
+                /* Look for hash key expr among the subquery result columns. */
+                tle = tlist_member_ignoring_RelabelType(expr, subqplan->targetlist);
                 if (!tle)
                     break;
 

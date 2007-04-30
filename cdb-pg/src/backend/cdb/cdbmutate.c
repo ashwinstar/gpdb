@@ -329,29 +329,21 @@ apply_motion(Plan *plan, Query *query)
                  * specification.  The existing ordering could be stronger 
                  * than required; if so, omit the extra trailing columns 
                  * from the Merge Receive key.
+                 *
+                 * An unordered result is ok if the ORDER BY ordering is
+                 * degenerate (on constant exprs) or the result is known to
+                 * have at most one row. 
                  */
-                if (query->sortClause)
+                if (query->sortClause &&
+                    plan->flow->numSortCols > 0)
                 {
-                    ListCell   *cell;
-                    int         i = 0;
-
-					/* The (claimed) existing order must match the ORDER BY. */
-					foreach (cell, query->sortClause)
-					{
-                        SortClause     *sortcl = (SortClause*)lfirst(cell);
-                        TargetEntry    *tle = get_sortgroupclause_tle(sortcl, plan->targetlist);
-
-                        Insist(i < plan->flow->numSortCols &&
-                               tle->resno == plan->flow->sortColIdx[i]);
-						i++;
-					}
-
-                    /* Drop extra low-order ordering cols for Merge Receive. */
-                    plan->flow->numSortCols = i;
+                    if (plan->flow->numSortCols > list_length(query->sortClause))
+                        plan->flow->numSortCols = list_length(query->sortClause);
 
                     Insist(focusPlan(plan, true, true, false));
-                    Insist(plan->flow->numSortCols == i);
                 }
+
+                /* Use UNION RECEIVE.  Does not preserve ordering. */
                 else
                     Insist(focusPlan(plan, true, false, false));
 			}
@@ -817,7 +809,6 @@ make_motion(Plan       *lefttree,
     Plan   *plan = &node->plan;
     List   *hashDataTypes = NIL;
 
-    Assert(lefttree->flow);
     Assert(validateMotionNodeParms(motionType,	
                                    sendToSecondary,
                                    sendSorted,

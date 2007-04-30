@@ -54,6 +54,24 @@ static List *make_canonical_pathkey(PlannerInfo *root, PathKeyItem *item);
 /*
  * makePathKeyItem
  *		create a PathKeyItem node
+ *
+ * Generally, callers specify 'checkType' as false if they know that 'key'
+ * is the left or right operand of a mergejoinable comparison whose left
+ * (resp. right) sortop is 'sortop'.  In this case, any needed coercions
+ * have already been built in to the 'key' expr so that its result type is
+ * the same as the sortop's input type.
+ *
+ * Callers specify 'checkType' as true if 'key' is known to be binary
+ * compatible with the sortop's input type but might not be exactly the
+ * same... for example, 'key' might be VARCHAR while its sortop expects
+ * TEXT.  By convention, a RelabelType node is added to document the fact
+ * that the sortop can use the expr result directly without change of
+ * representation.
+ *
+ * [Why not simply strip off all RelabelType nodes from atop PathKeyItem and
+ * targetlist exprs?  The benefit of allowing them to remain is still a
+ * mystery to me.  I won't try removing them today because it's late in
+ * our release cycle. kh 4/07]
  */
 static PathKeyItem *
 makePathKeyItem(Node *key, Oid sortop, bool checkType)
@@ -1367,10 +1385,13 @@ cdb_build_distribution_pathkeys(PlannerInfo      *root,
  *      or merely a List of Expr.
  * 'newvarlist' is an optional List of Expr which may contain Var nodes
  *      referencing the result of the projection.  The Var nodes in the
- *      new partkey are copied from ones in this list if possible, to
+ *      new pathkey are copied from ones in this list if possible, to
  *      ensure successful equal() comparison when finding matching pathkeys.
  * 'newrelid' is the RTE index of the projected result, for finding or
  *      building Var nodes that reference the projected columns.
+ *
+ * NB: We ignore the presence or absence of a RelabelType node atop either
+ * expr in determining whether a PathKeyItem expr matches a targetlist expr.
  */
 List *
 cdb_pull_up_pathkey(PlannerInfo    *root,
@@ -1418,11 +1439,24 @@ cdb_pull_up_pathkey(PlannerInfo    *root,
                                      targetlist,
                                      newvarlist,
                                      newrelid);
+
+        /* Pull up RelabelType node too, unless tlist expr has right type. */
+        if (IsA(item->key, RelabelType))
+        {
+            RelabelType    *oldrelabel = (RelabelType *)item->key;
+
+            if (oldrelabel->resulttype != exprType((Node *)newexpr) ||
+                oldrelabel->resulttypmod != exprTypmod((Node *)newexpr))
+                newexpr = (Expr *)makeRelabelType(newexpr,
+                                                  oldrelabel->resulttype,
+                                                  oldrelabel->resulttypmod,
+                                                  oldrelabel->relabelformat);
+        }
     }
     Insist(newexpr);
 
     /* Make new PathKeyItem, keeping same sortop. */
-    item = makePathKeyItem((Node *)newexpr, item->sortop, false);
+    item = makePathKeyItem((Node *)newexpr, item->sortop, true);
 
     /* Find or create the equivalence class for the transformed expr. */
     return make_canonical_pathkey(root, item);

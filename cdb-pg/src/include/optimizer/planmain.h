@@ -4,7 +4,7 @@
  *	  prototypes for various files in optimizer/plan
  *
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -62,7 +62,8 @@ extern SetOp *make_setop(SetOpCmd cmd, Plan *lefttree,
 extern Result *make_result(List *tlist, Node *resconstantqual, Plan *subplan);
 extern bool is_projection_capable_plan(Plan *plan);
 extern Sort *make_sort_from_pathkeys(PlannerInfo *root, Plan *lefttree,
-                                     List *pathkeys);
+                                     List *pathkeys, Relids relids,
+                                     bool add_keys_to_targetlist);
 extern Plan *plan_pushdown_tlist(Plan *plan, List *tlist);      /*CDB*/
 
 /*

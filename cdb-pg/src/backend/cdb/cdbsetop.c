@@ -6,7 +6,7 @@
  *    optimizer/prep/prepunion.c, although some functions are not
  *    externalized.
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -503,36 +503,22 @@ void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort)
 		Index i = 0;
 		
 		/* Make sure all the expressions the flow thinks we're hashed on
-		 * actually occur in the subplan targetlist. 
-		 * 
-		 * We used to demand that the matched hash expression had a resno
-		 * corresponding to the position in the flow's hash list, but this
-		 * is wrong if the expression is duplicated in the tlist, since
-		 * tlist_member finds the earliest occurance.  (MPP-1065)
+		 * occur, in order, at the beginning of the subplan targetlist. 
+         * (Why does it matter that they are in order and at the beginning??)
 		 */
 		foreach( c, subplan->flow->hashExpr )
 		{
 			Node *x = (Node*)lfirst(c);
-			i++;
-			tle = tlist_member(x, subplan->targetlist);
 
-			if ( tle == NULL )
-			{
-				ereport(ERROR, (
-					errcode(ERRCODE_CDB_INTERNAL_ERROR),
-					errmsg("subplan hash expression not found") ));
-			}
+            i++;
+			tle = get_tle_by_resno(subplan->targetlist, i);
+			
+            Insist(tle 
+                   && (equal(x, tle->expr)
+                       || (IsA(x, RelabelType)
+                           && equal(((RelabelType *)x)->arg, tle->expr) )));
 
-			if ( tle->resno != i ) 
-			{
-				tle = get_tle_by_resno(subplan->targetlist, i);
-				
-				if ( tle == NULL || ! equal(x, tle->expr) )
-				ereport(ERROR, (
-					errcode(ERRCODE_CDB_INTERNAL_ERROR),
-					errmsg("unexpected subplan hash expression") ));
-			}
-			hash = lappend(hash, makeVar(1, i,
+            hash = lappend(hash, makeVar(1, i,
 										exprType((Node*)tle->expr),
 										exprTypmod((Node*)tle->expr), 0));
 		}

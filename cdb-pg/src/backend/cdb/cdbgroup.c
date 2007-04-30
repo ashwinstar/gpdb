@@ -6,9 +6,9 @@
  *    optimizer/prep/planner.c, although some functions are not
  *    externalized.
  *
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
- * Portions Copyright (c) 2005, greenplum inc
  *
  * IDENTIFICATION
  *	  $Id$
@@ -1565,29 +1565,4 @@ Oid lookup_agg_transtype(Aggref *aggref)
 	ReleaseSysCache(aggTuple);
 
 	return aggtranstype;
-}
-
-/* Function:  adapt_flow_to_targetlist
- *
- * Sometimes we replace the targetlist (especially subplan of an Agg).
- * In this case, we need to assure that any hash expressions in the
- * node's flow remain in the targetlist OR null out the hash leaving,
- * in effect, a strewn flow.
- */
-void adapt_flow_to_targetlist(Plan *plan)
-{
-	ListCell   *c;
-
-	Assert(plan != NULL);
-	Assert(plan->flow != NULL);
-
-	foreach(c, plan->flow->hashExpr)
-	{
-		Node *expr = (Node*)lfirst(c);
-		if (!tlist_member(expr, plan->targetlist))
-        {
-		    plan->flow->hashExpr = NIL;
-			break;
-        }
-	}
 }
