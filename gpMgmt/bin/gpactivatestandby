@@ -198,15 +198,24 @@ CHK_CATALOG_DATA () {
 	if [ $RETVAL -ne 0 ];then 
 		ADMIN_SHUTDOWN 1
 		ERROR_EXIT "[FATAL]:-Unable to obtain master port" 2;fi
-	PING_HOST $MASTER_HOSTNAME
+	$PING -c 1 $MASTER_HOSTNAME > /dev/null 2>&1
+	RETVAL=$?
 	if [ $RETVAL -eq 0 ];then
 		LOG_MSG "[INFO]:-Master host $MASTER_HOSTNAME can be contacted, making further checks"
 		GET_PG_PID_ACTIVE $MASTER_PORT $MASTER_HOSTNAME
 		if [ $PID -ne 0 ];then
-			LOG_MSG "[FATAL]:-Appears that there is an active postmaster on $MASTER_HOST port=$MASTER_PORT"
+			LOG_MSG "[FATAL]:-Appears that there is an active postmaster on $MASTER_HOST port=$MASTER_PORT" 1
+			LOG_MSG "[INFO]:-This may have been caused by a kill -9 of the master postgres process" 1
+			LOG_MSG "[INFO]:-Traces of this process will need to be removed before this utility can be called again" 1
+			LOG_MSG "[INFO]:-1. Remove /tmp/.s.PGSQL.${MASTER_PORT}.* files on $MASTER_HOSTNAME" 1
+			LOG_MSG "[INFO]:-2. Remove ${MASTER_DATA_DIRECTORY}/postmaster.pid file on $MASTER_HOSTNAME" 1
+			LOG_MSG "[INFO]:-3. Call this utility again" 1
 			ADMIN_SHUTDOWN 1
 			ERROR_EXIT "[FATAL]:-Unable to continue, master instance still appears to be active" 2
 		fi
+	else
+		LOG_MSG "[INFO]:-Unable to establish contact with $MASTER_HOSTNAME" 1
+		LOG_MSG "[INFO]:-Continuing activation of warm master standby" 1
 	fi	
 	MASTER_STANDBY_DBID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select dbid from $CONFIG_TABLE where content=-1 and definedprimary='f' and isprimary='f';"`
 	ERROR_CHK $? "obtain standby dbid" 2
