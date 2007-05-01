@@ -893,7 +893,8 @@ findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, i
 					 errmsg("out of memory")));
 		}
 
-		sprintf(pszRegex, "^gp_dump_[0-9]+_%d_%s(.gz)?$", segid, pszBackupKey);
+		/* dump file can start with gp_ and also mpp_ for 2.3 backward compatibility */
+		sprintf(pszRegex, "^(gp|mpp)_dump_[0-9]+_%d_%s(.gz)?$", segid, pszBackupKey);
 		
 		masklen = strlen(pszRegex);
 		mask = (pg_wchar *) palloc((masklen + 1) * sizeof(pg_wchar));
