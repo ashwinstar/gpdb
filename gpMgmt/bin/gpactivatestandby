@@ -207,14 +207,15 @@ CHK_CATALOG_DATA () {
 		LOG_MSG "[INFO]:-Master host $MASTER_HOSTNAME can be contacted, making further checks"
 		GET_PG_PID_ACTIVE $MASTER_PORT $MASTER_HOSTNAME
 		if [ $PID -ne 0 ];then
-			LOG_MSG "[FATAL]:-Appears that there is an active postmaster on $MASTER_HOST port=$MASTER_PORT" 1
+			LOG_MSG "[WARN]:-Appears that there is an active postmaster on $MASTER_HOST port=$MASTER_PORT" 1
+			EXIT_STATUS=1
 			LOG_MSG "[INFO]:-This may have been caused by a kill -9 of the master postgres process" 1
-			LOG_MSG "[INFO]:-Traces of this process will need to be removed before this utility can be called again" 1
-			LOG_MSG "[INFO]:-1. Remove /tmp/.s.PGSQL.${MASTER_PORT}.* files on $MASTER_HOSTNAME" 1
-			LOG_MSG "[INFO]:-2. Remove ${MASTER_DATA_DIRECTORY}/postmaster.pid file on $MASTER_HOSTNAME" 1
-			LOG_MSG "[INFO]:-3. Call this utility again" 1
-			ADMIN_SHUTDOWN 1
-			ERROR_EXIT "[FATAL]:-Unable to continue, master instance still appears to be active" 2
+			LOG_MSG "[INFO]:-Traces of this process will now be removed" 1
+			LOG_MSG "[INFO]:-Removing ${MASTER_DATA_DIRECTORY}/postmaster.pid on $MASTER_HOSTNAME" 1
+			$TRUSTED_SHELL $MASTER_HOSTNAME "$RM -f ${MASTER_DATA_DIRECTORY}/postmaster.pid"
+			LOG_MSG "[INFO]:-Removing /tmp lock file on MASTER_HOSTNAME" 1
+			$TRUSTED_SHELL $MASTER_HOSTNAME "$RM -f /tmp/.s.PGSQL.$MASTER_PORT"
+			$TRUSTED_SHELL $MASTER_HOSTNAME "$RM -f /tmp/.s.PGSQL.${MASTER_PORT}.lock"
 		fi
 	else
 		LOG_MSG "[INFO]:-Unable to establish contact with $MASTER_HOSTNAME" 1
