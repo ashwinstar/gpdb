@@ -44,7 +44,7 @@ test: create_table
 test: create_function_2
 test: copy
 test: copyselect
-ignore: constraints
+test: constraints
 ignore: triggers
 test: create_misc
 test: create_aggregate
@@ -83,10 +83,10 @@ test: select_views
 test: portals_p2
 ignore: rules
 ignore: foreign_key
-ignore: cluster
+test: cluster
 test: dependency
 test: guc
-ignore: combocid
+test: combocid
 test: limit
 ignore: plpgsql
 ignore: copy2

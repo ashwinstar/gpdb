@@ -12,6 +12,7 @@ CREATE TABLE clstr_tst (a SERIAL PRIMARY KEY,
 	CONSTRAINT clstr_tst_con FOREIGN KEY (b) REFERENCES clstr_tst_s);
 NOTICE:  CREATE TABLE will create implicit sequence "clstr_tst_a_seq" for serial column "clstr_tst.a"
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "clstr_tst_pkey" for table "clstr_tst"
+WARNING:  Referential integrity (FOREIGN KEY) constraints are not supported in Greenplum Database, will not be enforced.
 CREATE INDEX clstr_tst_b ON clstr_tst (b);
 CREATE INDEX clstr_tst_c ON clstr_tst (c);
 CREATE INDEX clstr_tst_c_b ON clstr_tst (c,b);
@@ -23,6 +24,7 @@ INSERT INTO clstr_tst_s (b) SELECT b FROM clstr_tst_s;
 INSERT INTO clstr_tst_s (b) SELECT b FROM clstr_tst_s;
 INSERT INTO clstr_tst_s (b) SELECT b FROM clstr_tst_s;
 CREATE TABLE clstr_tst_inh () INHERITS (clstr_tst);
+NOTICE:  Table has parent, setting distribution columns to match parent table
 INSERT INTO clstr_tst (b, c) VALUES (11, 'once');
 INSERT INTO clstr_tst (b, c) VALUES (10, 'diez');
 INSERT INTO clstr_tst (b, c) VALUES (31, 'treinta y uno');
@@ -247,8 +249,6 @@ SELECT a,b,c,substring(d for 30), length(d) from clstr_tst ORDER BY 1;
 
 -- Verify that foreign key link still works
 INSERT INTO clstr_tst (b, c) VALUES (1111, 'this should fail');
-ERROR:  insert or update on table "clstr_tst" violates foreign key constraint "clstr_tst_con"
-DETAIL:  Key (b)=(1111) is not present in table "clstr_tst_s".
 SELECT conname FROM pg_constraint WHERE conrelid = 'clstr_tst'::regclass;
     conname     
 ----------------

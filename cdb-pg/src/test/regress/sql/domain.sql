@@ -178,7 +178,7 @@ COPY defaulttest(col5) FROM stdin;
 42
 \.
 
-select * from defaulttest ORDER BY 1,2,3;
+select * from defaulttest ORDER BY 1,2,3,4;
 
 drop table defaulttest cascade;
 
