@@ -177,7 +177,10 @@ ADMIN_SHUTDOWN () {
 	ERROR_CHK $? "shutdown standby master instance" 1
 	if [ x"" != x"$1" ];then
 		LOG_MSG "[INFO]:-Re-starting sync process"
-		$GPSYNCMASTER -D $MASTER_STANDBY_DATA_DIRECTORY -p $MASTER_STANDBY_PORT -S
+		$EXPORT_LIB_PATH;exec $GPSYNCMASTER -D $MASTER_STANDBY_DATA_DIRECTORY -p $MASTER_STANDBY_PORT -i >> ${MASTER_STANDBY_DATA_DIRECTORY}.log 2>&1 &
+		if [ $? -ne 0 ];then
+			LOG_MSG "[WARN]:-Issue with restart of sync process" 1
+		fi
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -232,14 +235,14 @@ UPDATE_CATALOG () {
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
 	    ADMIN_SHUTDOWN
-	    ERROR_EXIT "[FATAL]:-Unable to contine, unable to update $CONFIG_TABLE catalog" 2
+	    ERROR_EXIT "[FATAL]:-Unable to continue, unable to update $CONFIG_TABLE catalog" 2
 	fi
 	LOG_MSG "[INFO]:-Deleting original master host details"
 	env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"delete from $CONFIG_TABLE where dbid=$MASTER_STANDBY_DBID;"
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
 		ADMIN_SHUTDOWN
-		ERROR_EXIT "[FATAL]:-Unable to contine, unable to update $CONFIG_TABLE catalog" 2
+		ERROR_EXIT "[FATAL]:-Unable to continue, unable to update $CONFIG_TABLE catalog" 2
 	fi
 	LOG_MSG "[INFO]:-Updating dbid value of standby master instance catalog line"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
