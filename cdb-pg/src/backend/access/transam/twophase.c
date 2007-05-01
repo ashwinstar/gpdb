@@ -219,12 +219,13 @@ MarkAsPreparing(TransactionId xid, const char *gid,
 {
 	GlobalTransaction gxact;
 	int			i;
+	int			idlen = strlen(gid);
 
-	if (strlen(gid) >= GIDSIZE)
+	if (idlen >= GIDSIZE)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("transaction identifier \"%s\" is too long",
-						gid)));
+				 errmsg("transaction identifier \"%s\" is too long (%d > %d max)",
+						gid, idlen, GIDSIZE)));
 
 	LWLockAcquire(TwoPhaseStateLock, LW_EXCLUSIVE);
 
@@ -287,6 +288,9 @@ MarkAsPreparing(TransactionId xid, const char *gid,
 	gxact->proc.lwWaitLink = NULL;
 	gxact->proc.waitLock = NULL;
 	gxact->proc.waitProcLock = NULL;
+
+	gxact->proc.mppDistributedTransactionId = MyProc->mppDistributedTransactionId;
+
 	for (i = 0; i < NUM_LOCK_PARTITIONS; i++)
 		SHMQueueInit(&(gxact->proc.myProcLocks[i]));
 	/* subxid data must be filled later by GXactLoadSubxactData */
@@ -373,7 +377,7 @@ LockGXact(const char *gid, Oid user, bool raiseErrorIfNotFound)
 	{
 		GlobalTransaction gxact = TwoPhaseState->prepXacts[i];
 
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),"LockGXact checking identifier = %s.",gxact->gid);
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "LockGXact checking identifier = %s.",gxact->gid);
 
 		/* Ignore not-yet-valid GIDs */
 		if (!gxact->valid)
@@ -392,6 +396,7 @@ LockGXact(const char *gid, Oid user, bool raiseErrorIfNotFound)
 				errmsg("prepared transaction with identifier \"%s\" is busy",
 					   gid)));
 			}
+
 			gxact->locking_xid = InvalidTransactionId;
 		}
 
@@ -422,7 +427,11 @@ LockGXact(const char *gid, Oid user, bool raiseErrorIfNotFound)
 
 		/* OK for me to lock it */
 		gxact->locking_xid = GetTopTransactionId();
+
 		LWLockRelease(TwoPhaseStateLock);
+
+		/* we *must* have it locked with a valid xid here! */
+		Assert(TransactionIdIsValid(gxact->locking_xid));
 
 		return gxact;
 	}
@@ -684,7 +693,7 @@ TwoPhaseGetDummyProc(TransactionId xid)
 	LWLockRelease(TwoPhaseStateLock);
 
 	if (result == NULL)			/* should not happen */
-		elog(ERROR, "failed to find dummy PGPROC for xid %u", xid);
+		elog(ERROR, "failed to find dummy PGPROC for xid %u (%d entries)", xid, TwoPhaseState->numPrepXacts);
 
 	cached_xid = xid;
 	cached_proc = result;
@@ -996,6 +1005,9 @@ EndPrepare(GlobalTransaction gxact)
 	 */
 	MarkAsPrepared(gxact);
 
+	Assert(gxact->valid);
+	Assert(gxact->locking_xid == MyProc->xid);
+
 	/*
 	 * Now we can release the checkpoint start lock: a checkpoint starting
 	 * after this will certainly see the gxact as a candidate for fsyncing.
@@ -1153,6 +1165,9 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 	}
 	
 	xid = gxact->proc.xid;
+
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), 
+		 "FinishPreparedTransaction(): got xid %d for gid '%s'", xid, gid);
 
 	/*
 	 * Read and validate the state file

@@ -12,6 +12,7 @@
 #include "postgres.h"
 
 #include <time.h>
+#include <unistd.h>
 #include <fcntl.h>
 #include <sys/file.h>
 #include <sys/stat.h>
@@ -3056,57 +3057,117 @@ sendDtxExplicitBegin(void)
 
 void
 performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
-					int flags,
-					const char *loggingStr, const char *gid, 
-					DistributedTransactionId gxid)
+						  int flags,
+						  const char *loggingStr, const char *gid, 
+						  DistributedTransactionId gxid)
 {
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "performDtxProtocolCommand called with DTX protocol = %s, QE distribute transaction context: '%s'",
-		DtxProtocolCommandToString(dtxProtocolCommand), DtxContextToString(DistributedTransactionContext));
+		 DtxProtocolCommandToString(dtxProtocolCommand), DtxContextToString(DistributedTransactionContext));
 	
 	switch (dtxProtocolCommand)
 	{
-	case DTX_PROTOCOL_COMMAND_ABORT:
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "performDtxProtocolCommand going to call AbortOutOfAnyTransaction for distributed transaction %s", gid);
-		AbortOutOfAnyTransaction();
-		break;
-
-	case DTX_PROTOCOL_COMMAND_READ_ONLY_COMMIT:
-	case DTX_PROTOCOL_COMMAND_PREPARE:
-		/*
-		 * The QD has directed us to read-only commit or prepare an implicit or explict
-		 * distributed transaction.
-		 */
-		switch (DistributedTransactionContext)
-		{
-		case DTX_CONTEXT_LOCAL_ONLY:
-			/*
-			 * Spontaneously aborted while we were back at the QD?
-			 */
-			elog(ERROR, "Distributed transaction %s not found", gid);
+		case DTX_PROTOCOL_COMMAND_ABORT:
+			elog((Debug_print_full_dtm ? LOG : DEBUG5), "performDtxProtocolCommand going to call AbortOutOfAnyTransaction for distributed transaction %s", gid);
+			AbortOutOfAnyTransaction();
 			break;
+
+		case DTX_PROTOCOL_COMMAND_READ_ONLY_COMMIT:
+		case DTX_PROTOCOL_COMMAND_PREPARE:
+			/*
+			 * The QD has directed us to read-only commit or prepare an implicit or explict
+			 * distributed transaction.
+			 */
+			switch (DistributedTransactionContext)
+			{
+				case DTX_CONTEXT_LOCAL_ONLY:
+					/*
+					 * Spontaneously aborted while we were back at the QD?
+					 */
+					elog(ERROR, "Distributed transaction %s not found", gid);
+					break;
 			
-		case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
-		case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
+				case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
+				case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
+					StartTransactionCommand();
+
+					if (dtxProtocolCommand == DTX_PROTOCOL_COMMAND_PREPARE)
+					{
+						elog((Debug_print_full_dtm ? LOG : DEBUG5), "performDtxProtocolCommand going to call PrepareTransactionBlock for distributed transaction %s", gid);
+						if (!PrepareTransactionBlock((char *)gid))
+						{
+							elog(ERROR, "Prepare of distributed transaction %s failed", gid);
+							break;
+						}
+					}
+					else
+					{
+						elog((Debug_print_full_dtm ? LOG : DEBUG5), "performDtxProtocolCommand going to call EndTransactionBlock for distributed transaction %s", gid);
+						if (!EndTransactionBlock())
+						{
+							elog(ERROR, "Read only commit of distributed transaction %s failed", gid);
+							break;
+						}
+					}
+
+					/*
+					 * Calling CommitTransactionCommand will cause the actual 
+					 * COMMIT/PREPARE work to be performed.
+					 */
+					CommitTransactionCommand();
+
+					if (dtxProtocolCommand == DTX_PROTOCOL_COMMAND_PREPARE)
+					{
+						elog((Debug_print_full_dtm ? LOG : DEBUG5), "Prepare of distributed transaction %s succeeded", gid);
+				
+						DistributedTransactionContext = DTX_CONTEXT_QE_PREPARED;
+					}
+					else
+					{
+						elog((Debug_print_full_dtm ? LOG : DEBUG5), "Read only commit of distributed transaction %s succeeded", gid);
+				
+						Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
+					}
+					break;
+			
+				case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+				case DTX_CONTEXT_QE_PREPARED:
+				case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
+				case DTX_CONTEXT_QE_READER:
+					elog(FATAL, "Unexpected QE distribute transaction context: '%s'",
+						 DtxContextToString(DistributedTransactionContext));
+
+				default:
+					elog(FATAL, "Unexpected QE distribute transaction context value: %d",
+						 (int) DistributedTransactionContext);
+					break;
+			}
+			break;
+
+		case DTX_PROTOCOL_COMMAND_COMMIT_PREPARED:
+			if (DistributedTransactionContext != DTX_CONTEXT_QE_PREPARED)
+			{
+				elog(FATAL, "Expected QE distribute transaction context to be '%s', found '%s'",
+					 DtxContextToString(DTX_CONTEXT_QE_PREPARED),
+					 DtxContextToString(DistributedTransactionContext));
+			}
+
+			elog((Debug_print_full_dtm ? LOG : DEBUG5), "performDtxProtocolCommand going to call FinishPreparedTransaction for distributed transaction %s", gid);
+
 			StartTransactionCommand();
 
-			if (dtxProtocolCommand == DTX_PROTOCOL_COMMAND_PREPARE)
+			/*
+			 * Since this call may fail, lets setup a handler.
+			 */
+			PG_TRY();
 			{
-				elog((Debug_print_full_dtm ? LOG : DEBUG5), "performDtxProtocolCommand going to call PrepareTransactionBlock for distributed transaction %s", gid);
-				if (!PrepareTransactionBlock((char *)gid))
-				{
-					elog(ERROR, "Prepare of distributed transaction %s failed", gid);
-					break;
-				}
+				FinishPreparedTransaction((char *)gid, /* isCommit */ true, /* raiseErrorIfNotFound */ true);
 			}
-			else
+			PG_CATCH();
 			{
-				elog((Debug_print_full_dtm ? LOG : DEBUG5), "performDtxProtocolCommand going to call EndTransactionBlock for distributed transaction %s", gid);
-				if (!EndTransactionBlock())
-				{
-					elog(ERROR, "Read only commit of distributed transaction %s failed", gid);
-					break;
-				}
+				finishDistributedTransactionContext("performDtxProtocolCommand -- Commit Prepared (error case)");
+				PG_RE_THROW();
 			}
+			PG_END_TRY();
 
 			/*
 			 * Calling CommitTransactionCommand will cause the actual 
@@ -3114,165 +3175,129 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 			 */
 			CommitTransactionCommand();
 
-			if (dtxProtocolCommand == DTX_PROTOCOL_COMMAND_PREPARE)
-			{
-				elog((Debug_print_full_dtm ? LOG : DEBUG5), "Prepare of distributed transaction %s succeeded", gid);
-				
-				DistributedTransactionContext = DTX_CONTEXT_QE_PREPARED;
-			}
-			else
-			{
-				elog((Debug_print_full_dtm ? LOG : DEBUG5), "Read only commit of distributed transaction %s succeeded", gid);
-				
-				Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
-			}
+			finishDistributedTransactionContext("performDtxProtocolCommand -- Commit Prepared");
 			break;
-			
-		case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
-		case DTX_CONTEXT_QE_PREPARED:
-		case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
-		case DTX_CONTEXT_QE_READER:
-			elog(FATAL, "Unexpected QE distribute transaction context: '%s'",
-				DtxContextToString(DistributedTransactionContext));
 
-		default:
-			elog(FATAL, "Unexpected QE distribute transaction context value: %d",
-				(int) DistributedTransactionContext);
-			break;
-		}
-		break;
+		case DTX_PROTOCOL_COMMAND_RETRY_COMMIT_PREPARED:
+			/*
+			 * We can be doing this on a different connection, so ignore DistributedTransactionContext.
+			 */
+			elog((Debug_print_full_dtm ? LOG : DEBUG5), "performDtxProtocolCommand going to call FinishPreparedTransaction for distributed transaction %s", gid);
 
-	case DTX_PROTOCOL_COMMAND_COMMIT_PREPARED:
-		if (DistributedTransactionContext != DTX_CONTEXT_QE_PREPARED)
-		{
-			elog(FATAL, "Expected QE distribute transaction context to be '%s', found '%s'",
-				DtxContextToString(DTX_CONTEXT_QE_PREPARED),
-				DtxContextToString(DistributedTransactionContext));
-		}
+			StartTransactionCommand();
 
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "performDtxProtocolCommand going to call FinishPreparedTransaction for distributed transaction %s", gid);
-
-		/*
-		 * Since this call may fail, lets setup a handler.
-		 */
-		PG_TRY();
-		{
-			FinishPreparedTransaction((char *)gid, /* isCommit */ true, /* raiseErrorIfNotFound */ true);
-		}
-		PG_CATCH();
-		{
-			finishDistributedTransactionContext("performDtxProtocolCommand -- Commit Prepared (error case)");
-			PG_RE_THROW();
-		}
-		PG_END_TRY();
-		
-		finishDistributedTransactionContext("performDtxProtocolCommand -- Commit Prepared");
-		break;
-
-	case DTX_PROTOCOL_COMMAND_RETRY_COMMIT_PREPARED:
-		/*
-		 * We can be doing this on a different connection, so ignore DistributedTransactionContext.
-		 */
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "performDtxProtocolCommand going to call FinishPreparedTransaction for distributed transaction %s", gid);
-
-		/*
-		 * Since this call may fail, lets setup a handler.
-		 */
-		PG_TRY();
-		{
-			FinishPreparedTransaction((char *)gid, /* isCommit */ true, /* raiseErrorIfNotFound */ false);
-		}
-		PG_CATCH();
-		{
-			finishDistributedTransactionContext("performDtxProtocolCommand -- Retry Commit Prepared (error case)");
-			PG_RE_THROW();
-		}
-		PG_END_TRY();
-
-		finishDistributedTransactionContext("performDtxProtocolCommand -- Retry Commit Prepared");
-		break;
-
-	case DTX_PROTOCOL_COMMAND_ABORT_PREPARED:
-	case DTX_PROTOCOL_COMMAND_RETRY_ABORT_PREPARED:
-		/*
-		 * The QD has directed us to abort an implicit or explict
-		 * distributed transaction that may or may not have been prepared.
-		 */
-		switch (DistributedTransactionContext)
-		{
-		case DTX_CONTEXT_LOCAL_ONLY:
-			if (dtxProtocolCommand == DTX_PROTOCOL_COMMAND_ABORT_PREPARED)
-			{
-				/*
-				 * Spontaneously aborted while we were back at the QD?
-				 */
-			}
-			else
-			{
-				/*
-				 * We must be doing this on a different connection.
-				 */
-				FinishPreparedTransaction((char *)gid, /* isCommit */ false, /* raiseErrorIfNotFound */ false);
-			}
-			break;
-			
-		case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
-		case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
-			AbortOutOfAnyTransaction();
-
-			// AbortCurrentTransaction resets DistributedTransactionContext.
-			Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
-			break;
-			
-		case DTX_CONTEXT_QE_PREPARED:
 			/*
 			 * Since this call may fail, lets setup a handler.
 			 */
 			PG_TRY();
 			{
-				FinishPreparedTransaction((char *)gid, /* isCommit */ false, /* raiseErrorIfNotFound */ true);
+				FinishPreparedTransaction((char *)gid, /* isCommit */ true, /* raiseErrorIfNotFound */ false);
 			}
 			PG_CATCH();
 			{
-				finishDistributedTransactionContext("performDtxProtocolCommand -- Abort Prepared (error case)");
+				finishDistributedTransactionContext("performDtxProtocolCommand -- Retry Commit Prepared (error case)");
 				PG_RE_THROW();
 			}
 			PG_END_TRY();
 
-			finishDistributedTransactionContext("performDtxProtocolCommand -- Abort Prepared");
+			CommitTransactionCommand();
+
+			finishDistributedTransactionContext("performDtxProtocolCommand -- Retry Commit Prepared");
 			break;
+
+		case DTX_PROTOCOL_COMMAND_ABORT_PREPARED:
+		case DTX_PROTOCOL_COMMAND_RETRY_ABORT_PREPARED:
+			/*
+			 * The QD has directed us to abort an implicit or explict
+			 * distributed transaction that may or may not have been prepared.
+			 */
+			switch (DistributedTransactionContext)
+			{
+				case DTX_CONTEXT_LOCAL_ONLY:
+					if (dtxProtocolCommand == DTX_PROTOCOL_COMMAND_ABORT_PREPARED)
+					{
+						/*
+						 * Spontaneously aborted while we were back at the QD?
+						 */
+					}
+					else
+					{
+						StartTransactionCommand();
+						/*
+						 * We must be doing this on a different connection.
+						 */
+						FinishPreparedTransaction((char *)gid, /* isCommit */ false, /* raiseErrorIfNotFound */ false);
+
+						CommitTransactionCommand();
+					}
+					break;
 			
-		case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
-		case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
-		case DTX_CONTEXT_QE_READER:
-			elog(FATAL, "Unexpected QE distribute transaction context: '%s'",
-				 DtxContextToString(DistributedTransactionContext));
+				case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
+				case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
+					AbortOutOfAnyTransaction();
+
+					// AbortCurrentTransaction resets DistributedTransactionContext.
+					Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
+					break;
+			
+				case DTX_CONTEXT_QE_PREPARED:
+
+					StartTransactionCommand();
+					/*
+					 * Since this call may fail, lets setup a handler.
+					 */
+					PG_TRY();
+					{
+						FinishPreparedTransaction((char *)gid, /* isCommit */ false, /* raiseErrorIfNotFound */ true);
+					}
+					PG_CATCH();
+					{
+						finishDistributedTransactionContext("performDtxProtocolCommand -- Abort Prepared (error case)");
+						PG_RE_THROW();
+					}
+					PG_END_TRY();
+
+					CommitTransactionCommand();
+
+					finishDistributedTransactionContext("performDtxProtocolCommand -- Abort Prepared");
+					break;
+			
+				case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+				case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
+				case DTX_CONTEXT_QE_READER:
+					elog(FATAL, "Unexpected QE distribute transaction context: '%s'",
+						 DtxContextToString(DistributedTransactionContext));
+
+				default:
+					elog(FATAL, "Unexpected QE distribute transaction context value: %d",
+						 (int) DistributedTransactionContext);
+					break;
+			}
+			break;
+
+		case DTX_PROTOCOL_COMMAND_RECOVERY_COMMIT_PREPARED:
+		case DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED:
+			if (DistributedTransactionContext != DTX_CONTEXT_LOCAL_ONLY)
+			{
+				elog(FATAL, "Expected QE distribute transaction context to be '%s', found '%s'",
+					 DtxContextToString(DTX_CONTEXT_LOCAL_ONLY),
+					 DtxContextToString(DistributedTransactionContext));
+			}
+
+			StartTransactionCommand();
+		
+			elog((Debug_print_full_dtm ? LOG : DEBUG5), "performDtxProtocolCommand going to call FinishPreparedTransaction for distributed transaction %s", gid);
+			FinishPreparedTransaction((char *)gid, 
+									  /* isCommit */ (dtxProtocolCommand == DTX_PROTOCOL_COMMAND_RECOVERY_COMMIT_PREPARED),
+									  /* raiseErrorIfNotFound */ false);
+
+			CommitTransactionCommand();
+			break;
 
 		default:
-			elog(FATAL, "Unexpected QE distribute transaction context value: %d",
-				(int) DistributedTransactionContext);
+			elog(ERROR, "Unrecognized dtx protocol command: %d",
+				 (int) dtxProtocolCommand);
 			break;
-		}
-		break;
-
-	case DTX_PROTOCOL_COMMAND_RECOVERY_COMMIT_PREPARED:
-	case DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED:
-		if (DistributedTransactionContext != DTX_CONTEXT_LOCAL_ONLY)
-		{
-			elog(FATAL, "Expected QE distribute transaction context to be '%s', found '%s'",
-				DtxContextToString(DTX_CONTEXT_LOCAL_ONLY),
-				DtxContextToString(DistributedTransactionContext));
-		}
-		
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "performDtxProtocolCommand going to call FinishPreparedTransaction for distributed transaction %s", gid);
-		FinishPreparedTransaction((char *)gid, /* isCommit */ (dtxProtocolCommand == DTX_PROTOCOL_COMMAND_RECOVERY_COMMIT_PREPARED),
-			                      /* raiseErrorIfNotFound */ false);
-		break;
-
-	default:
-		elog(ERROR, "Unrecognized dtx protocol command: %d",
-			(int) dtxProtocolCommand);
-		break;
 	}
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "performDtxProtocolCommand successful return for distributed transaction %s", gid);
 }

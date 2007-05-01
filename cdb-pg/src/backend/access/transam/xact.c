@@ -1711,6 +1711,7 @@ StartTransaction(void)
 	switch (DistributedTransactionContext)
 	{
 	case DTX_CONTEXT_LOCAL_ONLY:
+	case DTX_CONTEXT_QE_PREPARED:
 		{
 			/*
 			 * MPP: we're in utility-mode or a QE starting a pure-local
