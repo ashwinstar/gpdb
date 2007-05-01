@@ -63,9 +63,9 @@
   * good match for the maximum number of QEs. Slow insert performance will
   * result if it is too low.
   */
-#define LISTEN_BACKLOG 256
-#define MAX_BIND_RETRIES 12
-#define CONNECT_RETRY_MS    5000
+#define LISTEN_BACKLOG		256
+#define MAX_BIND_RETRIES	12
+#define CONNECT_RETRY_MS	4000
 
 #define getInt16(pNetData)	  ntohs(*((int16 *)(pNetData)))
 #define getInt32(pNetData)	  ntohl(*((int32 *)(pNetData)))
@@ -790,17 +790,10 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
         outgoing_count = 0;
         n = sendingChunkTransportState ? sendingChunkTransportState->numConns : 0;
 
-		/* start connections with a neighbor first (not a segmate
-		 * since we're racing with them on startup) */
-		index = Gp_segment+2;
-        for (i = 0;
-			 i < n; 
-			 i++, index++)
+        for (i = 0; i < n; i++)
 		{
-			/* loop to set up outgoing connections */
-			if (index < 0 || index >= n)
-				index = 0;
-
+			index = i;
+			
 			conn = &sendingChunkTransportState->conns[index];
 
             /* Time to cancel incomplete connect() and retry? */
