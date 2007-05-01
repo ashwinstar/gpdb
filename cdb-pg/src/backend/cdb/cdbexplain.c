@@ -54,6 +54,7 @@ typedef struct CdbExplain_SliceWorker
 /* Header of EXPLAIN ANALYZE statistics message sent from qExec to qDisp */
 typedef struct CdbExplain_StatHdr
 {
+    NodeTag     type;           /* T_CdbExplain_StatHdr */
     int         segindex;       /* segment id */
     int         nInst;          /* num of StatInst entries following StatHdr */
     int         bnotes;         /* offset to extra text area */
@@ -317,6 +318,7 @@ cdbexplain_sendExecStats(QueryDesc *queryDesc)
 
     /* Start building the message header in our context area. */
     memset(&ctx, 0, sizeof(ctx));
+    ctx.hdr.type = T_CdbExplain_StatHdr;
     ctx.hdr.segindex = Gp_segment;
     ctx.hdr.nInst = 0;
 
@@ -436,6 +438,7 @@ cdbexplain_recvExecStats(struct PlanState              *planstate,
         CdbDispatchResult  *dispatchResult = &dispatchResultBeg[iDispatch];
         PGresult           *pgresult;
         CdbExplain_StatHdr *hdr;
+        pgCdbStatCell      *statcell;
 
         /* Update worker counts. */
         if (!dispatchResult->hasDispatched)
@@ -452,21 +455,27 @@ cdbexplain_recvExecStats(struct PlanState              *planstate,
                                      * e.g. an interconnect error
                                      */
 
-        /* Find this qExec's last PGresult. */
+        /* Find this qExec's last PGresult.  If none, skip to next qExec. */
         pgresult = cdbdisp_getPGresult(dispatchResult, -1);
+        if (!pgresult)
+            continue;
 
-        /* Skip to next qExec if no statistics. */
-        if (!pgresult ||
-            !pgresult->cdbStatBuf)
+        /* Find our statistics in list of response messages.  If none, skip. */
+        for (statcell = pgresult->cdbstats; statcell; statcell = statcell->next)
+        {
+            if (IsA((Node *)statcell->data, CdbExplain_StatHdr))
+                break;
+        }
+        if (!statcell)
             continue;
 
         /* Validate the message header. */
-        hdr = (CdbExplain_StatHdr *)pgresult->cdbStatBuf;
-        if ((size_t)pgresult->cdbStatLen < sizeof(*hdr) ||
-            (size_t)pgresult->cdbStatLen != sizeof(*hdr) - sizeof(hdr->inst) +
-                                                hdr->nInst * sizeof(hdr->inst) +
-                                                hdr->enotes - hdr->bnotes ||
-            pgresult->cdbStatLen != hdr->enotes ||
+        hdr = (CdbExplain_StatHdr *)statcell->data;
+        if ((size_t)statcell->len < sizeof(*hdr) ||
+            (size_t)statcell->len != (sizeof(*hdr) - sizeof(hdr->inst) +
+                                      hdr->nInst * sizeof(hdr->inst) +
+                                      hdr->enotes - hdr->bnotes) ||
+            statcell->len != hdr->enotes ||
             hdr->segindex < -1 ||
             hdr->segindex >= gpsegmentCount)
         {
@@ -475,7 +484,7 @@ cdbexplain_recvExecStats(struct PlanState              *planstate,
                                             "response returned from seg%d.  "
                                             "length=%d",
                                             hdr->segindex,
-                                            pgresult->cdbStatLen),
+                                            statcell->len),
                             errhint("Please verify that all instances are using "
                                     "the correct %s software version.",
                                     PACKAGE_NAME)

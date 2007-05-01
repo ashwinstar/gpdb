@@ -4,7 +4,7 @@
  *	  Definitions for tagged nodes.
  *
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -356,7 +356,10 @@ typedef enum NodeTag
 	T_TriggerData = 900,		/* in commands/trigger.h */
 	T_ReturnSetInfo,			/* in nodes/execnodes.h */
     T_HashBitmap,                           /* in nodes/tidbitmap.h */
-    T_StreamBitmap                          /* in nodes/tidbitmap.h */
+    T_StreamBitmap,                         /* in nodes/tidbitmap.h */
+
+    /* CDB: tags for random other stuff */
+    T_CdbExplain_StatHdr = 950,             /* in cdb/cdbexplain.c */
 } NodeTag;
 
 /*

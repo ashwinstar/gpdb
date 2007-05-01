@@ -54,6 +54,7 @@ static int	getCopyStart(PGconn *conn, ExecStatusType copytype);
 static int	getQEWriterTransactionInfo(PGconn *conn);
 static int	getReadyForQuery(PGconn *conn);
 static int	getReadyForQuery_QEWriter(PGconn *conn);
+static void saveCdbStatMsg(PGresult *result, char *data, int len);
 static void reportErrorPosition(PQExpBuffer msg, const char *query,
 					int loc, int encoding);
 static int build_startup_packet(const PGconn *conn, char *packet,
@@ -406,31 +407,17 @@ pqParseInput3(PGconn *conn)
 					 * the COPY command.
 					 */
 					break;
-                case 'Y':       /* CDB: execution stats for EXPLAIN ANALYZE */
+                case 'Y':       /* CDB: statistical response from QE to QD */
 					/* for certain queries, the stats may arrive
 					 * before the completion status -- for this case
 					 * we're responsible for allocating the result
 					 * struct */
 					if (conn->result == NULL)
-					{
-						conn->result = PQmakeEmptyPGresult(conn,
-														   PGRES_COMMAND_OK);
-					}
-
-					if (conn->result)
-					{
-						conn->result->cdbStatBuf = pqResultAlloc(conn->result,
-																 msgLength,
-																 true);
-						if (conn->result->cdbStatBuf)
-						{
-							conn->result->cdbStatLen = msgLength;
-							memcpy(conn->result->cdbStatBuf,
-								   conn->inBuffer + conn->inCursor,
-								   msgLength);
-						}
-					}
-
+                        conn->result = PQmakeEmptyPGresult(conn, PGRES_COMMAND_OK);
+                    if (conn->result)
+                        saveCdbStatMsg(conn->result,
+                                       conn->inBuffer + conn->inCursor,
+                                       msgLength);
                     conn->inCursor += msgLength;
                     break;
                 default:
@@ -919,22 +906,30 @@ pqGetErrorNotice3(PGconn *conn, bool isError)
 	 */
 	if (isError)
 	{
-		res->errMsg = pqResultStrdup(res, workBuf.data);
+        res->errMsg = pqResultStrdup(res, workBuf.data);
 		if (!res->errMsg)
 			goto fail;
 
-        /* CDB: Transfer EXPLAIN ANALYZE statistical msg onto the new result. */
+        /* CDB: Transfer statistical messages on to the new result. */
         if (conn->result &&
-            conn->result->cdbStatLen > 0)
+            conn->result->cdbstats)
         {
-		    res->cdbStatBuf = pqResultAlloc(res, conn->result->cdbStatLen, true);
-		    if (res->cdbStatBuf)
-		    {
-			    res->cdbStatLen = conn->result->cdbStatLen;
-			    memcpy(res->cdbStatBuf,
-                       conn->result->cdbStatBuf,
-				       conn->result->cdbStatLen);
-		    }
+            pgCdbStatCell  *cell;
+            pgCdbStatCell  *next;
+            pgCdbStatCell  *prev = NULL;
+
+            /* Copy messages (incidentally reversing the list). */
+            for (cell = conn->result->cdbstats; cell; cell = cell->next)
+                saveCdbStatMsg(res, cell->data, cell->len);
+
+            /* Reverse the list again to restore newest-first ordering. */
+            for (cell = res->cdbstats; cell; cell = next)
+            {
+                next = cell->next;
+                cell->next = prev;
+                prev = cell;
+            }
+            res->cdbstats = prev;
         }
 
 		pqClearAsyncResult(conn);
@@ -1422,6 +1417,36 @@ getReadyForQuery_QEWriter(PGconn *conn)
 
 	return 0;
 }
+
+
+/*
+ * saveCdbStatMsg - attach qExec statistics message to PGresult
+ */
+void
+saveCdbStatMsg(PGresult *result, char *data, int len)
+{
+    pgCdbStatCell  *cell;
+
+    /* Allocate list element. */
+    cell = pqResultAlloc(result, sizeof(*cell), true);
+    if (!cell)
+        return;
+
+    /* Allocate an aligned buffer from the PGresult's memory pool. */
+    cell->data = (char *)pqResultAlloc(result, len, true);
+    if (!cell->data)
+        return;
+
+    /* Copy the message data. */
+    cell->len = len;
+	memcpy(cell->data, data, len);
+
+    /* Add to head of list. */
+    cell->next = result->cdbstats;
+    result->cdbstats = cell;
+    return;
+}                               /* saveCdbStatMsg */
+
 
 /*
  * PQgetCopyData - read a row of data from the backend during COPY OUT

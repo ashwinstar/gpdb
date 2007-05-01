@@ -161,8 +161,7 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 	result->curBlock = NULL;
 	result->curOffset = 0;
 	result->spaceLeft = 0;
-    result->cdbStatBuf = NULL;          /*CDB*/
-    result->cdbStatLen = 0;             /*CDB*/
+    result->cdbstats = NULL;            /*CDB*/
 
 	if (conn)
 	{
