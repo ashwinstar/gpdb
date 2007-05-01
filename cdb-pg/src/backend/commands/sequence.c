@@ -696,8 +696,7 @@ cdb_sequence_nextval(Relation   seqrel,
 		 */
 		LWLockAcquire(SeqServerControlLock, LW_EXCLUSIVE);
 		
-		if (seqServerCtl->lastXlogEntry.xlogid >= recptr.xlogid &&
-			seqServerCtl->lastXlogEntry.xrecoff > recptr.xrecoff)
+		if (XLByteLT(seqServerCtl->lastXlogEntry, recptr))
 		{	
 			seqServerCtl->lastXlogEntry.xlogid = recptr.xlogid;
 			seqServerCtl->lastXlogEntry.xrecoff = recptr.xrecoff;

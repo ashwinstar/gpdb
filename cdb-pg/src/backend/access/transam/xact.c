@@ -902,8 +902,7 @@ RecordTransactionCommit(void)
 		{
 			LWLockAcquire(SeqServerControlLock, LW_EXCLUSIVE);
 			
-			if (seqServerCtl->lastXlogEntry.xlogid >= recptr.xlogid &&
-				seqServerCtl->lastXlogEntry.xrecoff > recptr.xrecoff)
+			if (XLByteLT(recptr, seqServerCtl->lastXlogEntry))
 			{	
 				recptr.xlogid = seqServerCtl->lastXlogEntry.xlogid;
 				recptr.xrecoff = seqServerCtl->lastXlogEntry.xrecoff;
