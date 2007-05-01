@@ -1931,7 +1931,12 @@ void mppExecutorCleanup(EState *estate)
 	 * Replace current error info with QE error info if more interesting.
 	 */
 	if (estate->primaryResults)
+	{
 		cdbdisp_handleError(estate->primaryResults, estate->mirrorResults, estate->dispatchThreads);
+		estate->primaryResults = NULL;
+		estate->mirrorResults = NULL;
+		estate->dispatchThreads = NULL;
+	}
 	
 	/* Clean up the Sequence Server */
 	if (estate->es_seqserver_is_setup)
