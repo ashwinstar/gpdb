@@ -893,6 +893,25 @@ RecordTransactionCommit(void)
 			recptr = ProcLastRecEnd;
 		}
 
+		/* MPP: If we are the QD and we've used sequences (from the sequence server) then we need 
+		 * to make sure that we flush the XLOG entries made by the sequence server.  We do this
+		 * by moving our recptr ahead to where the sequence server is if its later than our own.
+		 * 
+		 */
+		if (Gp_role == GP_ROLE_DISPATCH && seqXlogWrite)
+		{
+			LWLockAcquire(SeqServerControlLock, LW_EXCLUSIVE);
+			
+			if (seqServerCtl->lastXlogEntry.xlogid >= recptr.xlogid &&
+				seqServerCtl->lastXlogEntry.xrecoff > recptr.xrecoff)
+			{	
+				recptr.xlogid = seqServerCtl->lastXlogEntry.xlogid;
+				recptr.xrecoff = seqServerCtl->lastXlogEntry.xrecoff;
+			}
+			
+			LWLockRelease(SeqServerControlLock);
+		}
+		
 		/*
 		 * We must flush our XLOG entries to disk if we made any XLOG entries,
 		 * whether in or out of transaction control.  For example, if we
@@ -4239,6 +4258,13 @@ IsTransactionDirty(void)
 		 GetTopTransactionId(), (result ? "true" : "false"));
 	
 	return result;
+}
+
+void
+ExecutorMarkTransactionUsesSequences(void)
+{
+	seqXlogWrite = true;
+	MyXactMadeXLogEntry = true;
 }
 
 void 

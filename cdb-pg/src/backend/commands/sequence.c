@@ -690,6 +690,20 @@ cdb_sequence_nextval(Relation   seqrel,
 
 		PageSetLSN(page, recptr);
 		PageSetTLI(page, ThisTimeLineID);
+		
+		/* need to update where we've inserted to into shmem so that the QD can flush it
+		 * when necessary
+		 */
+		LWLockAcquire(SeqServerControlLock, LW_EXCLUSIVE);
+		
+		if (seqServerCtl->lastXlogEntry.xlogid >= recptr.xlogid &&
+			seqServerCtl->lastXlogEntry.xrecoff > recptr.xrecoff)
+		{	
+			seqServerCtl->lastXlogEntry.xlogid = recptr.xlogid;
+			seqServerCtl->lastXlogEntry.xrecoff = recptr.xrecoff;
+		}
+		
+		LWLockRelease(SeqServerControlLock);
 	}
 
 	/* update on-disk data */

@@ -18,6 +18,7 @@
 #ifndef GPVARS_H
 #define GPVARS_H
 
+#include "access/xlogdefs.h"  /*XLogRecPtr*/
 #include "utils/guc.h"
 
 /*
@@ -517,6 +518,7 @@ extern int	Gp_listener_port;
 typedef struct SeqServerControlBlock
 {
 	int4		seqServerPort;
+	XLogRecPtr  lastXlogEntry;
 }	SeqServerControlBlock;
 
 extern SeqServerControlBlock *seqServerCtl;

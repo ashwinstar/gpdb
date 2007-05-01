@@ -2406,13 +2406,13 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 				return node;
 			}
 
-			/* Related to MPP-1429 and MPP-1409.  Here we want to mark any statement that is going to 
+			/* Related to MPP-1429.  Here we want to mark any statement that is going to 
 			 * use a sequence as dirty.  Doing this means that the QD will flush the xlog which will
 			 * also flush any xlog writes that the sequence server might do. 
 			 */
 			if (funcid == 1574 || funcid == 1576 || funcid == 1577) /* nextval, setval, setval */
 			{
-				ExecutorMarkTransactionDoesWrites();
+				ExecutorMarkTransactionUsesSequences();
 			}
 
 			if (funcform->provolatile == PROVOLATILE_IMMUTABLE)
