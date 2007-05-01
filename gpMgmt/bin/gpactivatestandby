@@ -177,7 +177,7 @@ ADMIN_SHUTDOWN () {
 	ERROR_CHK $? "shutdown standby master instance" 1
 	if [ x"" != x"$1" ];then
 		LOG_MSG "[INFO]:-Re-starting sync process"
-		$EXPORT_LIB_PATH;exec $GPSYNCMASTER -D $MASTER_STANDBY_DATA_DIRECTORY -p $MASTER_STANDBY_PORT -i >> ${MASTER_STANDBY_DATA_DIRECTORY}.log 2>&1 &
+		$EXPORT_LIB_PATH;exec $GPSYNCMASTER -D $MASTER_STANDBY_DATA_DIRECTORY -p $MASTER_STANDBY_PORT >> ${MASTER_STANDBY_DATA_DIRECTORY}.log 2>&1 &
 		if [ $? -ne 0 ];then
 			LOG_MSG "[WARN]:-Issue with restart of sync process" 1
 		fi
