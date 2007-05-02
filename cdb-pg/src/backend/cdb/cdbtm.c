@@ -3358,6 +3358,7 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 					break;
 			
 				case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+				case DTX_CONTEXT_QD_RETRY_PHASE_2:
 				case DTX_CONTEXT_QE_PREPARED:
 				case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
 				case DTX_CONTEXT_QE_READER:
@@ -3406,14 +3407,6 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 			finishDistributedTransactionContext("performDtxProtocolCommand -- Commit Prepared");
 			break;
 			
-		case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
-		case DTX_CONTEXT_QD_RETRY_PHASE_2:
-		case DTX_CONTEXT_QE_PREPARED:
-		case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
-		case DTX_CONTEXT_QE_READER:
-			elog(FATAL, "Unexpected QE distribute transaction context: '%s'",
-				DtxContextToString(DistributedTransactionContext));
-
 		case DTX_PROTOCOL_COMMAND_RETRY_COMMIT_PREPARED:
 			/*
 			 * We can be doing this on a different connection, so ignore DistributedTransactionContext.
