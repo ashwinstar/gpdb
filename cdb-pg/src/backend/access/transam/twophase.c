@@ -1005,9 +1005,6 @@ EndPrepare(GlobalTransaction gxact)
 	 */
 	MarkAsPrepared(gxact);
 
-	Assert(gxact->valid);
-	Assert(gxact->locking_xid == MyProc->xid);
-
 	/*
 	 * Now we can release the checkpoint start lock: a checkpoint starting
 	 * after this will certainly see the gxact as a candidate for fsyncing.
