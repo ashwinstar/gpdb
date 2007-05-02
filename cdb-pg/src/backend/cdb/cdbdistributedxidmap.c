@@ -185,6 +185,7 @@ GetLocalXidForDistributedTransaction(DistributedTransactionId gxid)
 
 	if (pageno > DistributedXidMapHighestPageNo)
 	{
+		LWLockRelease(DistributedXidMapControlLock);
 		return InvalidTransactionId;
 	}
 
