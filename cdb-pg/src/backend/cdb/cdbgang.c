@@ -105,7 +105,6 @@ static void addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
 
 static char *myDatabaseName = NULL;
 
-
 /*
  * creates a new gang by logging on a session to each segDB involved
  *
@@ -422,10 +421,7 @@ createGang(GangType type, int size, int content, char *portal_name)
 
 		disconnectAndDestroyGang(newGangDefinition);
 
-		if (errorOut)
-		{
-			elog(ERROR, "Greenplum Database detected segment failure(s), system is reconnected in %s mode", isFtsReadOnlySet() ? "read-only" : "read-write");
-		}
+		elog((errorOut ? ERROR : WARNING), "Greenplum Database detected segment failure(s), system is reconnected in %s mode", isFtsReadOnlySet() ? "read-only" : "read-write");
 
 		newGangDefinition = NULL;
 	}
@@ -1318,6 +1314,11 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 	Gang	   *gp = NULL;
 
 	Insist(Gp_role == GP_ROLE_DISPATCH);
+
+	if (!IsTransactionOrTransactionBlock())
+	{
+		elog(ERROR, "allocateGang must be called inside of transaction");
+	}
 
     if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
         elog(DEBUG4, "allocateGang for portal %s: allocatedReaderGangsN %d, availableReaderGangsN %d",

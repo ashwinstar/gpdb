@@ -324,7 +324,6 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 {
 	int			i;
 	bool		dtx_active;
-	bool		dtx_twophase;
 	bool		reportError = false;
     bool		realFaultFound = false;
 
@@ -386,47 +385,32 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 
 	LWLockRelease(ftsControlLock);
 
+	/* 
+	 * KLUDGE: Do not error out if we are attempting a DTM protocol retry 
+	 */
+	if (DistributedTransactionContext == DTX_CONTEXT_QD_RETRY_PHASE_2)
+	{
+		return false;
+	}
+
 	/* is there a transaction active ? */
 	dtx_active = isCurrentDtxActive();
-	dtx_twophase = isCurrentDtxTwoPhase();
 
-    /* rollback current DTM transaction */
+    /* When the error is raised, it will abort the current DTM transaction */
 	if (dtx_active)
 	{
-		/*
-		 * UNDONE: Since we are always starting a DTX capable transaction
-		 * UNDONE: it is unclear we can do anything here but error out...
-		 */
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "FtsHandleGangConnectionFailure calling AbortCurrentTransaction and returning true.");
-	    AbortCurrentTransaction();
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "FtsHandleGangConnectionFailure found an active DTM transaction (returning true).");
 		return true;
 	}
 
 	/*
 	 * error out if this sets read only flag, at this stage the read only
 	 * transaction checking has passed, so error out, but do not error out if
-	 * tm is in recoery
+	 * tm is in recovery
 	 */
 	if ((*ftsReadOnlyFlag && !isTMInRecovery()) || reportError)
 		return true;
 
-	/* we are "reconnected" and may be issuing work to the
-	 * reconfigured system -- make sure that the DTM knows we're
-	 * supposed to be in a transaction.
-	 *
-	 * NOTE: we can only get here if reportError is 'false' which
-	 * would mean that gangs didn't exist; but that we may have been
-	 * dispatching write-statements -- so need to mark the dtx dirty
-	 * so it gets committed on mirrors.
-	 */
-//	if (dtx_active)
-//	{
-//		condStartDtxTransaction();
-//	}
-//	if (dtx_dirty)
-//	{
-//		setCurrentDtxDirty();
-//	}
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "FtsHandleGangConnectionFailure returning false.");
 
 	return false;

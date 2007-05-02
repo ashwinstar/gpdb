@@ -941,7 +941,7 @@ RecordTransactionCommit(void)
 			XLogFlush(recptr);
 			if (isDtxPrepared)
 			{
-				forcedDistributedCommitted();
+				forcedDistributedCommitted(&recptr);
 			}
 		}
 
@@ -1547,8 +1547,13 @@ SetSharedTransactionId(void)
 		     TopTransactionStateData.transactionId, QEDtxContextInfo.distributedXid);
 		break;
 
+	case DTX_CONTEXT_QD_RETRY_PHASE_2:
+	case DTX_CONTEXT_QE_PREPARED:
+		elog(FATAL, "Unexpected distribute transaction context: '%s'",
+			DtxContextToString(DistributedTransactionContext));
+
 	default:
-		elog(FATAL, "Unrecognized or unexpected DTX transaction context: %d",
+		elog(FATAL, "Unrecognized DTX transaction context: %d",
 			(int) DistributedTransactionContext);
 	}
 }
@@ -1711,6 +1716,7 @@ StartTransaction(void)
 	switch (DistributedTransactionContext)
 	{
 	case DTX_CONTEXT_LOCAL_ONLY:
+	case DTX_CONTEXT_QD_RETRY_PHASE_2:
 	case DTX_CONTEXT_QE_PREPARED:
 		{
 			/*

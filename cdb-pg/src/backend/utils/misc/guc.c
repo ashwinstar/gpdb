@@ -179,7 +179,7 @@ bool		Debug_print_parse = false;
 bool		Debug_print_rewritten = false;
 bool		Debug_pretty_print = false;
 bool		Explain_pretty_print = true;
-bool		Debug_print_full_dtm = false;
+bool		Debug_print_full_dtm = true;
 bool		Debug_disable_distributed_snapshot = false;
 
 
@@ -1277,7 +1277,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&Debug_print_full_dtm,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 
 	{

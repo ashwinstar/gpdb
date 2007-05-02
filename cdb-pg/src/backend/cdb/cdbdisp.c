@@ -348,6 +348,8 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 
 		segdbDesc = &gp->db_descriptors[x];
 
+		Assert(segdbDesc != NULL);
+
 //		if (mppDispatchCommandType == GP_DISPATCH_COMMAND_TYPE_QUERY)
 //		{
 //			MarkSendingToSegment(
@@ -794,7 +796,7 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 	/* never want to start a global transaction for these */
 	bool		needTwoPhase = false;
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5), "CdbDoCommandOnAllGangs for command = '%s', withSnapshot = %s",
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "cdbdisp_dispatchRMCommand for command = '%s', withSnapshot = %s",
 	     strCommand, (withSnapshot ? "true" : "false"));
 
 	/* Launch the command.	Don't cancel on error. */
@@ -899,6 +901,8 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	CdbDispatchResults *mirrorResults;
 	CdbDispatchResult *dispatchResult;
 	CdbDispatchCmdThreads  *dispatchThreads;
+
+	bool phase2Retry;
 	
 	PGresult  **resultSets = NULL;
 	int			nslots;
@@ -3270,6 +3274,16 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions, char* d
 
 		pDtxContextInfo = &TempQDDtxContextInfo;
 		break;
+
+	case DTX_CONTEXT_QD_RETRY_PHASE_2:
+	case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
+	case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
+	case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
+	case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
+	case DTX_CONTEXT_QE_READER:
+	case DTX_CONTEXT_QE_PREPARED:
+		elog(FATAL, "Unexpected distribute transaction context: '%s'",
+			 DtxContextToString(DistributedTransactionContext));
 
 	default:
 		elog(FATAL, "Unrecognized DTX transaction context: %d",

@@ -5727,9 +5727,7 @@ CreateCheckPoint(bool shutdown, bool force)
 						XLOG_CHECKPOINT_ONLINE,
 						rdata);
 
-	freeDtxCheckPointInfoAndUnlock(dtxCheckPointInfo, dtxCheckPointInfoSize);
-	
-	// UNDONE: Release DTM Lock on checkpoint generation....
+	freeDtxCheckPointInfoAndUnlock(dtxCheckPointInfo, dtxCheckPointInfoSize, &recptr);
 	
 	XLogFlush(recptr);
 

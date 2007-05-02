@@ -25,7 +25,7 @@
 #include "access/transam.h"
 #include "access/cdbdistributedxidmap.h"
 #include "utils/tqual.h"
-
+#include "utils/guc.h"
 
 /*
  * Defines for DistributedTransactionId page sizes.  A page is the same BLCKSZ as is used
@@ -75,7 +75,7 @@ AllocOrGetLocalXidForDistributedTransaction(DistributedTransactionId gxid, Trans
 	Assert(gxid != InvalidDistributedTransactionId);
 	Assert(xid != NULL);
 
-	elog(DEBUG5, "Entering AllocOrGetLocalXidForDistributedTransaction with distributed xid = %d (pageno = %d, entryno = %d, DistributedXidMapHighestPageNo = %d)",
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "Entering AllocOrGetLocalXidForDistributedTransaction with distributed xid = %d (pageno = %d, entryno = %d, DistributedXidMapHighestPageNo = %d)",
 		 gxid, pageno, entryno, DistributedXidMapHighestPageNo);
 	
 	LWLockAcquire(DistributedXidMapControlLock, LW_EXCLUSIVE);
@@ -87,7 +87,7 @@ AllocOrGetLocalXidForDistributedTransaction(DistributedTransactionId gxid, Trans
 		 */
 		for (newpageno = DistributedXidMapHighestPageNo + 1; newpageno <= pageno; newpageno++)
 		{
-			elog(DEBUG5, "AllocOrGetLocalXidForDistributedTransaction zeroing out page = %d", newpageno);
+			elog((Debug_print_full_dtm ? LOG : DEBUG5), "AllocOrGetLocalXidForDistributedTransaction zeroing out page = %d", newpageno);
 			
 			/* Zero the page */
 			ZeroDistributedXidMapPage(newpageno);
@@ -108,7 +108,7 @@ AllocOrGetLocalXidForDistributedTransaction(DistributedTransactionId gxid, Trans
 		*xid = GetNewTransactionId(false, false);	// NOT subtrans, DO NOT Set PROC struct xid
 		*ptr = *xid;
 		
-		elog(DEBUG5, "AllocOrGetLocalXidForDistributedTransaction allocated local XID = %d", *xid);
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "AllocOrGetLocalXidForDistributedTransaction allocated local XID = %d", *xid);
 
 		DistributedXidMapCtl->shared->page_dirty[slotno] = true;
 	}
@@ -120,7 +120,7 @@ AllocOrGetLocalXidForDistributedTransaction(DistributedTransactionId gxid, Trans
 		 * in its in-doubt list.
 		 */
 		*xid = *ptr;
-		elog(DEBUG5, "AllocOrGetLocalXidForDistributedTransaction found pre-allocated local XID = %d", *xid);
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "AllocOrGetLocalXidForDistributedTransaction found pre-allocated local XID = %d", *xid);
 	}
 
 	SetProcXid(*xid, gxid);
@@ -158,7 +158,7 @@ AddLocalXidsForDistributedTransactions(DistributedTransactionId *gxidArray, uint
 		{
 			*ptr = GetNewTransactionId(false, false);	// NOT subtrans, DO NOT Set PROC struct xid
 			DistributedXidMapCtl->shared->page_dirty[slotno] = true;
-			elog(DEBUG5, "AddLocalXidsForDistributedTransactions: Allocated local XID = %u for global XID = %u",
+			elog((Debug_print_full_dtm ? LOG : DEBUG5), "AddLocalXidsForDistributedTransactions: Allocated local XID = %u for global XID = %u",
 				 *ptr, gxid);
 		}
 	}
@@ -178,7 +178,7 @@ GetLocalXidForDistributedTransaction(DistributedTransactionId gxid)
 	TransactionId *ptr;
 	TransactionId xid;
 
-	elog(DEBUG5, "Entering GetLocalXidForDistributedTransaction with distributed xid = %d (pageno = %d, entryno = %d, DistributedXidMapHighestPageNo = %d)",
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "Entering GetLocalXidForDistributedTransaction with distributed xid = %d (pageno = %d, entryno = %d, DistributedXidMapHighestPageNo = %d)",
 		 gxid, pageno, entryno, DistributedXidMapHighestPageNo);
 	
 	LWLockAcquire(DistributedXidMapControlLock, LW_EXCLUSIVE);
@@ -186,6 +186,9 @@ GetLocalXidForDistributedTransaction(DistributedTransactionId gxid)
 	if (pageno > DistributedXidMapHighestPageNo)
 	{
 		LWLockRelease(DistributedXidMapControlLock);
+		
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetLocalXidForDistributedTransaction returning InvalidTransactionId for local xid for distributed xid = %d (pageno = %d, entryno = %d, DistributedXidMapHighestPageNo = %d)",
+			 gxid, pageno, entryno, DistributedXidMapHighestPageNo);
 		return InvalidTransactionId;
 	}
 
@@ -197,6 +200,8 @@ GetLocalXidForDistributedTransaction(DistributedTransactionId gxid)
 
 	LWLockRelease(DistributedXidMapControlLock);
 
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetLocalXidForDistributedTransaction found local xid = %u for distributed xid = %d (pageno = %d, entryno = %d, DistributedXidMapHighestPageNo = %d)",
+		 xid, gxid, pageno, entryno, DistributedXidMapHighestPageNo);
 	return xid;
 }
 

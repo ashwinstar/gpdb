@@ -10,6 +10,8 @@
 #include "storage/lwlock.h"
 #include "utils/hsearch.h"
 #include "lib/stringinfo.h"
+#include "access/xlogdefs.h"
+
 
 #define TMGIDSIZE 22
 
@@ -31,6 +33,8 @@ typedef enum
 	DTX_STATE_INSERTING_FORGET_COMMITTED,
 	DTX_STATE_INSERTED_FORGET_COMMITTED,
 	DTX_STATE_NOTIFYING_ABORTED,
+	DTX_STATE_RETRY_COMMITTED,
+	DTX_STATE_RETRY_ABORTED,
 	DTX_STATE_CRASH_COMMITTED
 }	DtxState;
 
@@ -63,6 +67,7 @@ typedef enum
 {
 	DTX_CONTEXT_LOCAL_ONLY,
 	DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE,
+	DTX_CONTEXT_QD_RETRY_PHASE_2,
 	DTX_CONTEXT_QE_ENTRY_DB_SINGLETON,
 	DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT,
 	DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER,
@@ -187,7 +192,7 @@ extern void	rollbackDtxTransaction(void);
 
 extern void insertingDistributedCommitted(void);
 extern void insertedDistributedCommitted(void);
-extern void forcedDistributedCommitted(void);
+extern void forcedDistributedCommitted(XLogRecPtr *recptr);
 
 extern bool validateRedoDtxCheckPointSize(char *dtxCheckpointBuffer, int dtxCheckpointBufferSize);
 extern void redoDtxCheckPoint(char *dtxCheckpointBuffer, int dtxCheckpointBufferSize);
@@ -210,7 +215,7 @@ extern void initTM(void);
 
 extern void restoreGxact(TMGXACT_LOG * gxact, DtxState state);
 extern void getDtxCheckPointInfoAndLock(char **result, int *result_size);
-extern void freeDtxCheckPointInfoAndUnlock(char *info, int info_size);
+extern void freeDtxCheckPointInfoAndUnlock(char *info, int info_size, XLogRecPtr *recptr);
 
 extern bool isTMInRecovery(void);
 extern void setRecoverTMOn(void);
@@ -244,6 +249,7 @@ extern void performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 					DistributedTransactionId gxid);
 extern void UtilityModeFindOrCreateDtmRedoFile(void);
 extern void UtilityModeCloseDtmRedoFile(void);
+extern void PleaseDebugMe(char *caller);
 
 
 #endif   /* CDBTM_H */
