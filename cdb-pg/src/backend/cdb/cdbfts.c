@@ -111,6 +111,8 @@ CondSetMPPReadonly(void)
 	if (*ftsAction == FTS_READONLY)
 	{
 		elog(LOG, "FTS: Greenplum system is set read only");
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "Count of DTX transactions between 'PREPARING' and confirmed 'COMMIT' or 'ABORT' is %d",
+			 dtxCurrentPhase1Count());
 
 		assign_gp_set_read_only(true, true, PGC_S_DEFAULT);
 	}

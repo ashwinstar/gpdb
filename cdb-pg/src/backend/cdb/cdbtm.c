@@ -47,6 +47,7 @@ static LWLockId shmControlLock;
 static bool *shmTmRecoverred;
 static int *shmGIDSeq;
 static int *shmNumGxacts;
+static int *shmCurrentPhase1Count;
 
 static int	ControlLockCount = 0;
 
@@ -510,6 +511,15 @@ doPrepareTransaction(void)
 	getTmLock();
 	Assert(currentGxact->state == DTX_STATE_ACTIVE_DISTRIBUTED);
 	currentGxact->state = DTX_STATE_PREPARING;
+
+	/*
+	 * We keep a current count of the number of DTX transactions between
+	 * 'PREPARING' and confirmed 'COMMIT' or 'ABORT'.
+	 *
+	 * To simply bookkeeping, we turn on a flag in the gxact object.
+	 */
+	*shmCurrentPhase1Count++;
+	currentGxact->bumpedPhase1Count = true;
 	releaseTmLock();
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"doPrepareTransaction moved to state = %s", DtxStateToString(currentGxact->state));
@@ -1066,6 +1076,7 @@ tmShmemInit(void)
 	shmSegmentStatesByteLen = &shared->SegmentsStatesByteLen;
 	shmXminAllDistributedSnapshots = &shared->XminAllDistributedSnapshots;
 	shmNumGxacts = &shared->num_active_xacts;
+	shmCurrentPhase1Count = &shared->currentPhase1Count;
 	shmGxactArray = shared->gxact_array;
 
 	if (!IsUnderPostmaster)
@@ -1690,6 +1701,8 @@ initGxact(TMGXACT * gxact)
 	
     gxact->xminDistributedSnapshot = 0;
 
+	gxact->bumpedPhase1Count = false;
+
 	gxact->participationSummary = DTX_PARTICIPATION_SUMMARY_NONE;
 }
 
@@ -1913,6 +1926,12 @@ releaseGxact(void)
 		shmGxactArray[curr] = shmGxactArray[*shmNumGxacts];
 		shmGxactArray[*shmNumGxacts] = currentGxact;
 	}
+
+	if (currentGxact->bumpedPhase1Count)
+	{
+		*shmCurrentPhase1Count--;
+	}
+	
 	currentGxact = NULL;
 	releaseTmLock();
 }
@@ -3239,6 +3258,19 @@ sendDtxExplicitBegin(void)
 	{
 			ereport(ERROR, (errmsg("Global transaction BEGIN failed failed for gid = \"%s\" due to error",
 								   currentGxact->gid)));
+	}
+}
+
+int dtxCurrentPhase1Count(void)
+{
+	if (shmDtmStarted == NULL || !*shmDtmStarted)
+	{
+		return 0;
+	}
+	else
+	{
+		Assert(shmCurrentPhase1Count != NULL);
+		return *shmCurrentPhase1Count;
 	}
 }
 

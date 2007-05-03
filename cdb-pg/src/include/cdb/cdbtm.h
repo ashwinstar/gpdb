@@ -115,6 +115,8 @@ typedef struct TMGXACT
 
 	DistributedTransactionId	xminDistributedSnapshot;
 
+	bool						bumpedPhase1Count;
+
 	DtxParticipationSummary		participationSummary;
 
 	int							debugIndex;
@@ -132,6 +134,11 @@ typedef struct TmControlBlock
 	int							SegmentsStatesByteLen;
 	DistributedTransactionId	XminAllDistributedSnapshots;
 	int							num_active_xacts;
+	int							currentPhase1Count;
+									/* Current count of how many DTX 
+									 * transactions are between 'PREPARING'
+									 * and confirmed 'COMMIT' or 'ABORT'.
+									 */
 	TMGXACT  			*gxact_array[0];
 }	TmControlBlock;
 
@@ -206,6 +213,7 @@ extern bool isCurrentDtxTwoPhase(void);
 extern bool isCurrentDtxActive(void);
 extern void rememberDtxExplicitBegin(void);
 extern void sendDtxExplicitBegin(void);
+extern int dtxCurrentPhase1Count(void);
 
 extern bool dispatchDtxCommand(const char *cmd, bool dispatchToMirrors, bool withSnapshot, bool raiseError);
 
