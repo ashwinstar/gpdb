@@ -39,8 +39,8 @@ mklibgpcc:
 		ranlib ../build/lib/libgpcc.a)
 	@echo copying include files
 	@(cp -r src/include/* src/build/include/ )
-	@echo making test
-	@(cd src/libgpcc/test; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
+	#@echo making test
+	#@(cd src/libgpcc/test; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
 		-o net1 net1.c -L../../build/lib -lgpcc $(APRLIBS) $(APULIBS) -ljson)
 
 
@@ -51,7 +51,7 @@ mkext:
 	@(cd ext; ln -fs $(LIBEVENT) libevent)
 	@if ! [ -a ext/libevent/Makefile ]; then \
 		(cd ext; tar xvfz $(LIBEVENT).tar.gz) ;\
-		(cd ext/libevent; configure --enable-shared=no \
+		(cd ext/libevent; ./configure --enable-shared=no \
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
@@ -60,7 +60,7 @@ mkext:
 	@(cd ext; ln -fs $(JSON) json)
 	@if ! [ -a ext/json/Makefile ]; then \
 		(cd ext; tar xvfz $(JSON).tar.gz) ;\
-		(cd ext/json; configure --enable-shared=no \
+		(cd ext/json; ./configure --enable-shared=no \
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
@@ -69,7 +69,7 @@ mkext:
 	@(cd ext; ln -fs $(APR) apr)
 	@if ! [ -a ext/apr/Makefile ]; then \
 		(cd ext; tar xvfz $(APR).tar.gz) ;\
-		(cd ext/apr; configure --enable-shared=no \
+		(cd ext/apr; ./configure --enable-shared=no \
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
@@ -78,7 +78,7 @@ mkext:
 	@(cd ext; ln -fs $(APU) apu)
 	@if ! [ -a ext/apu/Makefile ]; then \
 		(cd ext; tar xvfz $(APU).tar.gz) ;\
-		(cd ext/apu; configure --enable-shared=no \
+		(cd ext/apu; ./configure --enable-shared=no \
 			--enable-static=yes --enable-threads \
 			--with-apr=../apr \
 			--prefix=$(GPCC)/ext) ;\
