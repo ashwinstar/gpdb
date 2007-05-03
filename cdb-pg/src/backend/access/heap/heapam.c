@@ -129,7 +129,7 @@ heapgetpage(HeapScanDesc scan, BlockNumber page, bool backward)
 
 	/* don't run prefetching code if the table is small. This has the 
 	   side effect of using the full buffer pool to cache the table */
-	bool        do_prefetch = (scan->rs_nblocks <= (NBuffers * 60 / 100));
+	bool        is_small = (scan->rs_nblocks <= (NBuffers * 60 / 100));
 
 	Assert(page < scan->rs_nblocks);
 
@@ -142,7 +142,7 @@ heapgetpage(HeapScanDesc scan, BlockNumber page, bool backward)
 		return;
 	}
 
-	if (! do_prefetch) 
+	if (is_small) 
 	{
 		scan->rs_cbuf = ReleaseAndReadBuffer(scan->rs_cbuf, scan->rs_rd, page);
 		scan->rs_cblock = page;
