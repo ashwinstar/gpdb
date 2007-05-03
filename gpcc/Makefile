@@ -49,7 +49,7 @@ mkext:
 	@echo --- ext ------------------------------------------------------
 	@(cd ext; mkdir -p lib include)
 	@echo     -- libevent
-	@(cd ext; ln -fs $(LIBEVENT) libevent)
+	@(cd ext; rm -f libevent; ln -s $(LIBEVENT) libevent)
 	@if ! [ -a ext/libevent/Makefile ]; then \
 		(cd ext; gzip -d -c $(LIBEVENT).tar.gz | tar xvf -) ;\
 		(cd ext/libevent; ./configure --enable-shared=no \
@@ -58,7 +58,7 @@ mkext:
 	fi
 	@(cd ext/libevent; make all install >> out)
 	@echo     -- json
-	@(cd ext; ln -fs $(JSON) json)
+	@(cd ext; rm -f json; ln -s $(JSON) json)
 	@if ! [ -a ext/json/Makefile ]; then \
 		(cd ext; gzip -d -c $(JSON).tar.gz | tar xvf -) ;\
 		(cd ext/json; ./configure --enable-shared=no \
@@ -67,7 +67,7 @@ mkext:
 	fi
 	@(cd ext/json; make all; make install >> out)
 	@echo     -- apr
-	@(cd ext; ln -fs $(APR) apr)
+	@(cd ext; rm -f apr; ln -s $(APR) apr)
 	@if ! [ -a ext/apr/Makefile ]; then \
 		(cd ext; gzip -d -c $(APR).tar.gz | tar xvf -) ;\
 		(cd ext/apr; ./configure --enable-shared=no \
@@ -76,7 +76,7 @@ mkext:
 	fi
 	@(cd ext/apr; make all install >> out)
 	@echo     -- apu
-	@(cd ext; ln -fs $(APU) apu)
+	@(cd ext; rm -f apu; ln -s $(APU) apu)
 	@if ! [ -a ext/apu/Makefile ]; then \
 		(cd ext; gzip -d -c $(APU).tar.gz | tar xvf -) ;\
 		(cd ext/apu; ./configure --enable-shared=no \
