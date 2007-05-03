@@ -13,9 +13,11 @@
 #include <apr_hash.h>
 #include <apr_file_info.h>
 #include <apr_time.h>
-#include <event.h>
 #include <gpcc_net.h>
 
+#define u_int32_t unsigned long
+#define u_int8_t unsigned char
+#include <event.h>
 #define BLOCKSIZE  (1024 * 32)
 
 /*  Struct of command line options */

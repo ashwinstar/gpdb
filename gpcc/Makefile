@@ -1,4 +1,5 @@
 SHELL=bash
+CC=gcc
 GPCC=$(CURDIR)
 OPT=-O3
 APR=apr-1.2.8
@@ -56,7 +57,7 @@ mkext:
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd ext/libevent; make all install >> out)
+	@(cd ext/libevent; make dist >> out)
 	@echo     -- json
 	@(cd ext; rm -f json; ln -s $(JSON) json)
 	@if ! [ -a ext/json/Makefile ]; then \
@@ -87,7 +88,7 @@ mkext:
 	@(cd ext/apu; make all install >> out)
 
 clean: 
-	@rm -rf ext/lib ext/bin ext/include
-	@rm -rf ext/$(APR) ext/$(APU) ext/$(JSON) ext/$(LIBEVENT)
-	@rm -rf src/build
-	@find src -name '*.o' -exec rm -f {} \;
+	rm -rf ext/lib ext/bin ext/include
+	rm -rf ext/$(APR) ext/$(APU) ext/$(JSON) ext/$(LIBEVENT)
+	rm -rf src/build
+	find src -name '*.o' -exec rm -f {} \;
