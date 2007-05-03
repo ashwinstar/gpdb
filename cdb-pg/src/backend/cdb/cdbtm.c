@@ -2033,6 +2033,7 @@ getDtxCheckPointInfoAndLock(char **result, int *result_size)
 			elog(FATAL, "Cannot also be buffering FORGET COMMITTED from another process with TM lock held");
 			continue;
 			
+		case DTX_STATE_INSERTED_COMMITTED:
 		case DTX_STATE_FORCED_COMMITTED:
 		case DTX_STATE_NOTIFYING_COMMITTED:
 		case DTX_STATE_RETRY_COMMITTED:
