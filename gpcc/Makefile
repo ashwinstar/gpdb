@@ -1,5 +1,6 @@
+SHELL=bash
 GPCC=$(CURDIR)
-OPT=-g -Wall
+OPT=-O3
 APR=apr-1.2.8
 APU=apr-util-1.2.8
 JSON=json-c-0.6
@@ -50,7 +51,7 @@ mkext:
 	@echo     -- libevent
 	@(cd ext; ln -fs $(LIBEVENT) libevent)
 	@if ! [ -a ext/libevent/Makefile ]; then \
-		(cd ext; tar xvfz $(LIBEVENT).tar.gz) ;\
+		(cd ext; gzip -d -c $(LIBEVENT).tar.gz | tar xvf -) ;\
 		(cd ext/libevent; ./configure --enable-shared=no \
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
@@ -59,7 +60,7 @@ mkext:
 	@echo     -- json
 	@(cd ext; ln -fs $(JSON) json)
 	@if ! [ -a ext/json/Makefile ]; then \
-		(cd ext; tar xvfz $(JSON).tar.gz) ;\
+		(cd ext; gzip -d -c $(JSON).tar.gz | tar xvf -) ;\
 		(cd ext/json; ./configure --enable-shared=no \
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
@@ -68,7 +69,7 @@ mkext:
 	@echo     -- apr
 	@(cd ext; ln -fs $(APR) apr)
 	@if ! [ -a ext/apr/Makefile ]; then \
-		(cd ext; tar xvfz $(APR).tar.gz) ;\
+		(cd ext; gzip -d -c $(APR).tar.gz | tar xvf -) ;\
 		(cd ext/apr; ./configure --enable-shared=no \
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
@@ -77,7 +78,7 @@ mkext:
 	@echo     -- apu
 	@(cd ext; ln -fs $(APU) apu)
 	@if ! [ -a ext/apu/Makefile ]; then \
-		(cd ext; tar xvfz $(APU).tar.gz) ;\
+		(cd ext; gzip -d -c $(APU).tar.gz | tar xvf -) ;\
 		(cd ext/apu; ./configure --enable-shared=no \
 			--enable-static=yes --enable-threads \
 			--with-apr=../apr \
