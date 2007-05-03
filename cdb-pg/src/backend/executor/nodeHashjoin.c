@@ -28,8 +28,7 @@
 static TupleTableSlot *ExecHashJoinOuterGetTuple(PlanState *outerNode,
 						  HashJoinState *hjstate,
 						  uint32 *hashvalue);
-static TupleTableSlot *ExecHashJoinGetSavedTuple(HashJoinState *hjstate,
-						  BufFile *file,
+static TupleTableSlot *ExecHashJoinGetSavedTuple(HashJoinBatchSide *side,
 						  uint32 *hashvalue,
 						  TupleTableSlot *tupleSlot);
 static int	ExecHashJoinNewBatch(HashJoinState *hjstate);
@@ -158,8 +157,8 @@ ExecHashJoin(HashJoinState *node)
 										node->hj_HashOperators);
 		node->hj_HashTable = hashtable;
 
-        /* 
-         * CDB: Offer extra info for EXPLAIN ANALYZE. 
+        /*
+         * CDB: Offer extra info for EXPLAIN ANALYZE.
          */
         if (estate->es_instrument)
             ExecHashTableExplainInit(node, hashtable);
@@ -174,23 +173,27 @@ ExecHashJoin(HashJoinState *node)
 		 * If the inner relation is completely empty, and we're not doing an
 		 * outer join, we can quit without scanning the outer relation.
 		 */
-		if (hashtable->totalTuples == 0 && node->js.jointype != JOIN_LEFT)
-		{
-			/*
-			 * CDB: We'll read no more from outer subtree. To keep our sibling
-			 * QEs from being starved, tell source QEs not to clog up the
-			 * pipeline with our never-to-be-consumed data.
-			 */
-			ExecSquelchNode(outerNode);
+		if (node->js.jointype != JOIN_LEFT)
+        {
+            int         i;
 
-			return NULL;
-		}
+            /* Is there a nonempty batch? */
+            for (i = 0; i < hashtable->nbatch; i++)
+                if (hashtable->batches[i]->innertuples)
+                    break;
 
-		/*
-		 * need to remember whether nbatch has increased since we began
-		 * scanning the outer relation
-		 */
-		hashtable->nbatch_outstart = hashtable->nbatch;
+		    if (i == hashtable->nbatch)
+		    {
+			    /*
+			     * CDB: We'll read no more from outer subtree. To keep sibling
+			     * QEs from being starved, tell source QEs not to clog up the
+			     * pipeline with our never-to-be-consumed data.
+			     */
+			    ExecSquelchNode(outerNode);
+
+			    return NULL;
+		    }
+        }
 
 		/*
 		 * Reset OuterNotEmpty for scan.  (It's OK if we fetched a tuple
@@ -250,7 +253,7 @@ ExecHashJoin(HashJoinState *node)
 				Assert(batchno > hashtable->curbatch);
 				ExecHashJoinSaveTuple(ExecFetchSlotMinimalTuple(outerTupleSlot),
 									  hashvalue,
-									  &hashtable->outerBatchFile[batchno]);
+                                      &hashtable->batches[batchno]->outerside);
 				node->hj_NeedNewOuter = true;
 				continue;		/* loop around for a new outer tuple */
 			}
@@ -605,8 +608,7 @@ ExecHashJoinOuterGetTuple(PlanState *outerNode,
 	 */
 	while (curbatch < hashtable->nbatch)
 	{
-		slot = ExecHashJoinGetSavedTuple(hjstate,
-										 hashtable->outerBatchFile[curbatch],
+		slot = ExecHashJoinGetSavedTuple(&hashtable->batches[curbatch]->outerside,
 										 hashvalue,
 										 hjstate->hj_OuterTupleSlot);
 		if (!TupIsNull(slot))
@@ -629,6 +631,7 @@ static int
 ExecHashJoinNewBatch(HashJoinState *hjstate)
 {
 	HashJoinTable hashtable = hjstate->hj_HashTable;
+    HashJoinBatchData  *batch;
 	int			nbatch;
 	int			curbatch;
 	BufFile    *innerFile;
@@ -651,9 +654,10 @@ start_over:
 		 * We no longer need the previous outer batch file; close it right
 		 * away to free disk space.
 		 */
-		if (hashtable->outerBatchFile[curbatch])
-			BufFileClose(hashtable->outerBatchFile[curbatch]);
-		hashtable->outerBatchFile[curbatch] = NULL;
+        batch = hashtable->batches[curbatch];
+		if (batch->outerside.bufFile)
+			BufFileClose(batch->outerside.bufFile);
+		batch->outerside.bufFile = NULL;
 	}
 
 	/*
@@ -674,43 +678,46 @@ start_over:
 	 */
 	curbatch++;
 	while (curbatch < nbatch &&
-		   (hashtable->outerBatchFile[curbatch] == NULL ||
-			hashtable->innerBatchFile[curbatch] == NULL))
+		   (hashtable->batches[curbatch]->outerside.bufFile == NULL ||
+			hashtable->batches[curbatch]->innerside.bufFile == NULL))
 	{
-		if (hashtable->outerBatchFile[curbatch] &&
+        batch = hashtable->batches[curbatch];
+		if (batch->outerside.bufFile &&
 			hjstate->js.jointype == JOIN_LEFT)
 			break;				/* must process due to rule 1 */
-		if (hashtable->innerBatchFile[curbatch] &&
+		if (batch->innerside.bufFile &&
 			nbatch != hashtable->nbatch_original)
 			break;				/* must process due to rule 2 */
-		if (hashtable->outerBatchFile[curbatch] &&
+		if (batch->outerside.bufFile &&
 			nbatch != hashtable->nbatch_outstart)
 			break;				/* must process due to rule 3 */
 		/* We can ignore this batch. */
 		/* Release associated temp files right away. */
-		if (hashtable->innerBatchFile[curbatch])
-			BufFileClose(hashtable->innerBatchFile[curbatch]);
-		hashtable->innerBatchFile[curbatch] = NULL;
-		if (hashtable->outerBatchFile[curbatch])
-			BufFileClose(hashtable->outerBatchFile[curbatch]);
-		hashtable->outerBatchFile[curbatch] = NULL;
+		if (batch->innerside.bufFile)
+			BufFileClose(batch->innerside.bufFile);
+		batch->innerside.bufFile = NULL;
+		if (batch->outerside.bufFile)
+			BufFileClose(batch->outerside.bufFile);
+		batch->outerside.bufFile = NULL;
 		curbatch++;
 	}
 
     hashtable->curbatch = curbatch;     /* CDB: upd before return, even if no
                                          * more data, so stats logic can see
-                                         * whether join was run to completion 
+                                         * whether join was run to completion
                                          */
 
 	if (curbatch >= nbatch)
 		return curbatch;		/* no more batches */
 
-	/*
+    batch = hashtable->batches[curbatch];
+
+    /*
 	 * Reload the hash table with the new inner batch (which could be empty)
 	 */
 	ExecHashTableReset(hashtable);
 
-	innerFile = hashtable->innerBatchFile[curbatch];
+ 	innerFile = batch->innerside.bufFile;
 
 	if (innerFile != NULL)
 	{
@@ -719,11 +726,14 @@ start_over:
 					(errcode_for_file_access(),
 				   errmsg("could not rewind hash-join temporary file: %m")));
 
-		while ((slot = ExecHashJoinGetSavedTuple(hjstate,
-												 innerFile,
-												 &hashvalue,
-												 hjstate->hj_HashTupleSlot)))
+		for (;;)
 		{
+	        slot = ExecHashJoinGetSavedTuple(&batch->innerside,
+									         &hashvalue,
+									         hjstate->hj_HashTupleSlot);
+            if (!slot)
+                break;
+
 			/*
 			 * NOTE: some tuples may be sent to future batches.  Also, it is
 			 * possible for hashtable->nbatch to be increased here!
@@ -736,19 +746,19 @@ start_over:
 		 * needed
 		 */
 		BufFileClose(innerFile);
-		hashtable->innerBatchFile[curbatch] = NULL;
+		batch->innerside.bufFile = NULL;
 	}
 
 	/*
 	 * If there's no outer batch file, advance to next batch.
 	 */
-	if (hashtable->outerBatchFile[curbatch] == NULL)
+	if (batch->outerside.bufFile == NULL)
 		goto start_over;
 
 	/*
 	 * Rewind outer batch file, so that we can start reading it.
 	 */
-	if (BufFileSeek(hashtable->outerBatchFile[curbatch], 0, 0L, SEEK_SET))
+	if (BufFileSeek(batch->outerside.bufFile, 0, 0L, SEEK_SET))
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not rewind hash-join temporary file: %m")));
@@ -769,16 +779,16 @@ start_over:
  */
 void
 ExecHashJoinSaveTuple(MinimalTuple tuple, uint32 hashvalue,
-					  BufFile **fileptr)
+					  struct HashJoinBatchSide *batchside)
 {
-	BufFile    *file = *fileptr;
+	BufFile    *file = batchside->bufFile;
 	size_t		written;
 
 	if (file == NULL)
 	{
 		/* First write to this batch file, so open it. */
 		file = BufFileCreateTemp(false);
-		*fileptr = file;
+		batchside->bufFile = file;
 	}
 
 	written = BufFileWrite(file, (void *) &hashvalue, sizeof(uint32));
@@ -802,11 +812,11 @@ ExecHashJoinSaveTuple(MinimalTuple tuple, uint32 hashvalue,
  * itself is stored in the given slot.
  */
 static TupleTableSlot *
-ExecHashJoinGetSavedTuple(HashJoinState *hjstate,
-						  BufFile *file,
+ExecHashJoinGetSavedTuple(HashJoinBatchSide *batchside,
 						  uint32 *hashvalue,
 						  TupleTableSlot *tupleSlot)
 {
+    BufFile    *file = batchside->bufFile;
 	uint32		header[2];
 	size_t		nread;
 	MinimalTuple tuple;

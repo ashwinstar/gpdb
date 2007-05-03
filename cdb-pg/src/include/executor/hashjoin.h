@@ -88,6 +88,10 @@ typedef struct HashJoinBatchStats
     uint64      ordbytes;           /* outer bytes read from workfile */
     uint64      iwrbytes;           /* inner bytes written (to later batches) */
     uint64      owrbytes;           /* outer bytes written (to later batches) */
+    uint64      hashspace_final;    /* work_mem for tuples kept in hash table */
+    uint64      spillspace_in;      /* work_mem from lower batches to this one */
+    uint64      spillspace_out;     /* work_mem from this batch to higher ones */
+    uint64      spillrows_out;      /* rows spilled from this batch to higher */
 } HashJoinBatchStats;
 
 typedef struct HashJoinTableStats
@@ -100,11 +104,45 @@ typedef struct HashJoinTableStats
     /* These statistics are cumulative over all nontrivial batches... */
     int                     nonemptybatches;    /* num of nontrivial batches */
     Size                    workmem_max;        /* work_mem high water mark */
-    uint64                  innerbytes_sum;     /* work_mem to hold whole rel */
     CdbExplain_Agg          chainlength;        /* hash chain length stats */
 } HashJoinTableStats;
 
 
+/*
+ * HashJoinBatchSide
+ *
+ * State of the outer or inner side of one batch.
+ */
+typedef struct HashJoinBatchSide
+{
+    /*
+     * A file is opened only when we first write a tuple into it
+     * (otherwise its pointer remains NULL).  Note that the zero'th
+     * batch never has files, since we will process rather than dump
+     * out any tuples of batch zero.
+     */
+    BufFile    *bufFile;            /* buffered virtual temp file */
+} HashJoinBatchSide;
+
+
+/*
+ * HashJoinBatchData
+ *
+ * State of one batch.
+ */
+typedef struct HashJoinBatchData
+{
+    Size                innerspace;     /* work_mem bytes for inner tuples */
+    unsigned            innertuples;    /* inner number of tuples */
+
+    HashJoinBatchSide   innerside;
+    HashJoinBatchSide   outerside;
+} HashJoinBatchData;
+
+
+/*
+ * HashJoinTableData
+ */
 typedef struct HashJoinTableData
 {
 	int			nbuckets;		/* # buckets in the in-memory hash table */
@@ -122,15 +160,7 @@ typedef struct HashJoinTableData
 
 	double		totalTuples;	/* # tuples obtained from inner plan */
 
-	/*
-	 * These arrays are allocated for the life of the hash join, but only if
-	 * nbatch > 1.	A file is opened only when we first write a tuple into it
-	 * (otherwise its pointer remains NULL).  Note that the zero'th array
-	 * elements never get used, since we will process rather than dump out any
-	 * tuples of batch zero.
-	 */
-	BufFile   **innerBatchFile; /* buffered virtual temp file per batch */
-	BufFile   **outerBatchFile; /* buffered virtual temp file per batch */
+	HashJoinBatchData **batches;    /* array [0..nbatch-1] of ptr to HJBD */
 
 	/*
 	 * Info about the datatype-specific hash functions for the datatypes being
@@ -140,9 +170,7 @@ typedef struct HashJoinTableData
 	 */
 	FmgrInfo   *hashfunctions;	/* lookup data for hash functions */
 
-	Size		spaceUsed;		/* total memory space used by tuples */
 	Size		spaceAllowed;	/* upper limit for space used */
-    Size        spaceFreed;     /* memory space released by spilling */
 
 	MemoryContext hashCxt;		/* context for whole-hash-join storage */
 	MemoryContext batchCxt;		/* context for this-batch-only storage */

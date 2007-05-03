@@ -17,6 +17,7 @@
 #include "nodes/execnodes.h"
 #include "storage/buffile.h"
 
+struct HashJoinBatchSide;               /* #include "executor/hashjoin.h" */
 struct Instrumentation;                 /* #include "executor/instrument.h" */
 
 extern int	ExecCountSlotsHashJoin(HashJoin *node);
@@ -26,7 +27,7 @@ extern void ExecEndHashJoin(HashJoinState *node);
 extern void ExecReScanHashJoin(HashJoinState *node, ExprContext *exprCtxt);
 
 extern void ExecHashJoinSaveTuple(MinimalTuple tuple, uint32 hashvalue,
-					  BufFile **fileptr);
+					              struct HashJoinBatchSide *batchside);
 
 extern executorTupleQueue *makeTQ(int size, struct Instrumentation *instr);
 extern void enqueueTQ(executorTupleQueue *tq, TupleTableSlot *slot);

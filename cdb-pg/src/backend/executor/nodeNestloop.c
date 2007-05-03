@@ -26,7 +26,6 @@
 #include "executor/nodeNestloop.h"
 #include "executor/nodeHash.h"
 #include "executor/nodeHashjoin.h"
-#include "executor/hashjoin.h"
 
 #include "utils/memutils.h"
 

@@ -107,6 +107,9 @@ MultiExecHash(HashState *node)
 		ExecHashTableInsert(hashtable, slot, hashvalue);
 	}
 
+	/* Now we have set up all the initial batches & primary overflow batches. */
+	hashtable->nbatch_outstart = hashtable->nbatch;
+
 	/* must provide our own instrumentation support */
 	if (node->ps.instrument)
 		InstrStopNode(node->ps.instrument, hashtable->totalTuples);
@@ -253,7 +256,7 @@ ExecHashTableCreate(Hash *node, List *hashOperators)
 	 * The hashtable control block is just palloc'd from the executor's
 	 * per-query memory context.
 	 */
-	hashtable = (HashJoinTable) palloc(sizeof(HashJoinTableData));
+	hashtable = (HashJoinTable)palloc0(sizeof(HashJoinTableData));
 	hashtable->nbuckets = nbuckets;
 	hashtable->buckets = NULL;
 	hashtable->nbatch = nbatch;
@@ -262,11 +265,8 @@ ExecHashTableCreate(Hash *node, List *hashOperators)
 	hashtable->nbatch_outstart = nbatch;
 	hashtable->growEnabled = true;
 	hashtable->totalTuples = 0;
-	hashtable->innerBatchFile = NULL;
-	hashtable->outerBatchFile = NULL;
-	hashtable->spaceUsed = 0;
+	hashtable->batches = NULL;
 	hashtable->spaceAllowed = work_mem * 1024L;
-    hashtable->spaceFreed = 0;
     hashtable->stats = NULL;
 
 	/*
@@ -303,21 +303,19 @@ ExecHashTableCreate(Hash *node, List *hashOperators)
 												ALLOCSET_DEFAULT_INITSIZE,
 												ALLOCSET_DEFAULT_MAXSIZE);
 
-	/* Allocate data that will live for the life of the hashjoin */
-
+	/*
+     * Allocate data that will live for the life of the hashjoin
+     */
 	oldcxt = MemoryContextSwitchTo(hashtable->hashCxt);
 
-	if (nbatch > 1)
-	{
-		/*
-		 * allocate and initialize the file arrays in hashCxt
-		 */
-		hashtable->innerBatchFile = (BufFile **)
-			palloc0(nbatch * sizeof(BufFile *));
-		hashtable->outerBatchFile = (BufFile **)
-			palloc0(nbatch * sizeof(BufFile *));
-		/* The files will not be opened until needed... */
-	}
+    /* array of BatchData ptrs */
+    hashtable->batches =
+        (HashJoinBatchData **)palloc(nbatch * sizeof(hashtable->batches[0]));
+
+    /* one BatchData entry per initial batch */
+    for (i = 0; i < nbatch; i++)
+        hashtable->batches[i] =
+            (HashJoinBatchData *)palloc0(sizeof(HashJoinBatchData));
 
 	/*
 	 * Prepare context for the first-scan space allocations; allocate the
@@ -472,15 +470,16 @@ ExecHashTableDestroy(HashJoinTable hashtable)
 
 	/*
 	 * Make sure all the temp files are closed.  We skip batch 0, since it
-	 * can't have any temp files (and the arrays might not even exist if
-	 * nbatch is only 1).
+	 * can't have any temp files.
 	 */
 	for (i = 1; i < hashtable->nbatch; i++)
 	{
-		if (hashtable->innerBatchFile[i])
-			BufFileClose(hashtable->innerBatchFile[i]);
-		if (hashtable->outerBatchFile[i])
-			BufFileClose(hashtable->outerBatchFile[i]);
+        HashJoinBatchData  *batch = hashtable->batches[i];
+
+		if (batch->innerside.bufFile)
+			BufFileClose(batch->innerside.bufFile);
+		if (batch->outerside.bufFile)
+			BufFileClose(batch->outerside.bufFile);
 	}
 
 	/* Release working memory (batchCxt is a child, so it goes away too) */
@@ -498,6 +497,8 @@ ExecHashTableDestroy(HashJoinTable hashtable)
 static void
 ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 {
+    HashJoinTableStats *stats = hashtable->stats;
+    HashJoinBatchData  *fullbatch = hashtable->batches[hashtable->curbatch];
 	int			oldnbatch = hashtable->nbatch;
 	int			curbatch = hashtable->curbatch;
 	int			nbatch;
@@ -507,8 +508,6 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 	long		nfreed;
     Size        spaceFreed = 0;
     Size        sz;
-    int         batchnomin = -1;
-    int         batchnomax = -1;
 
 	/* do nothing if we've decided to shut off growth */
 	if (!hashtable->growEnabled)
@@ -521,52 +520,34 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 	nbatch = oldnbatch * 2;
 	Assert(nbatch > 1);
 
-    /* Note work_mem high-water mark before freeing anything. */
-    if (hashtable->stats)
-        hashtable->stats->workmem_max =
-            Max(hashtable->stats->workmem_max,
-                hashtable->spaceUsed - hashtable->spaceFreed);
-
-#ifdef HJDEBUG
-    elog(DEBUG3, "HJ: Increasing nbatch to %d because space = %lu",
-		   nbatch, (unsigned long) hashtable->spaceUsed);
-#endif
-
 	oldcxt = MemoryContextSwitchTo(hashtable->hashCxt);
 
-	if (hashtable->innerBatchFile == NULL)
-	{
-		/* we had no file arrays before */
-		hashtable->innerBatchFile = (BufFile **)
-			palloc0(nbatch * sizeof(BufFile *));
-		hashtable->outerBatchFile = (BufFile **)
-			palloc0(nbatch * sizeof(BufFile *));
-	}
-	else
-	{
-		/* enlarge arrays and zero out added entries */
-		hashtable->innerBatchFile = (BufFile **)
-			repalloc(hashtable->innerBatchFile, nbatch * sizeof(BufFile *));
-		hashtable->outerBatchFile = (BufFile **)
-			repalloc(hashtable->outerBatchFile, nbatch * sizeof(BufFile *));
-		MemSet(hashtable->innerBatchFile + oldnbatch, 0,
-			   (nbatch - oldnbatch) * sizeof(BufFile *));
-		MemSet(hashtable->outerBatchFile + oldnbatch, 0,
-			   (nbatch - oldnbatch) * sizeof(BufFile *));
-	}
+	/*
+     * enlarge arrays and zero out added entries
+     */
 
-    if (hashtable->stats &&
-        hashtable->stats->nbatchstats < nbatch)
+    /* array of BatchData ptrs */
+    hashtable->batches = (HashJoinBatchData **)
+		repalloc(hashtable->batches, nbatch * sizeof(hashtable->batches[0]));
+
+    /* one BatchData entry per additional batch */
+    for (i = oldnbatch; i < nbatch; i++)
+        hashtable->batches[i] =
+            (HashJoinBatchData *)palloc0(sizeof(HashJoinBatchData));
+
+    /* EXPLAIN ANALYZE batch statistics */
+    if (stats &&
+        stats->nbatchstats < nbatch)
     {
-        sz = nbatch * sizeof(hashtable->stats->batchstats[0]);
-        hashtable->stats->batchstats =
-            (HashJoinBatchStats *)repalloc(hashtable->stats->batchstats, sz);
-        sz = (nbatch - hashtable->stats->nbatchstats) * sizeof(hashtable->stats->batchstats[0]);
-		memset(hashtable->stats->batchstats + hashtable->stats->nbatchstats, 0, sz);
-        hashtable->stats->nbatchstats = nbatch;
+        sz = nbatch * sizeof(stats->batchstats[0]);
+        stats->batchstats =
+            (HashJoinBatchStats *)repalloc(stats->batchstats, sz);
+        sz = (nbatch - stats->nbatchstats) * sizeof(stats->batchstats[0]);
+		memset(stats->batchstats + stats->nbatchstats, 0, sz);
+        stats->nbatchstats = nbatch;
     }
 
-    MemoryContextSwitchTo(oldcxt);
+	MemoryContextSwitchTo(oldcxt);
 
 	hashtable->nbatch = nbatch;
 
@@ -602,29 +583,26 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 			}
 			else
 			{
+                Size    spaceTuple;
+
 				/* dump it out */
 				Assert(batchno > curbatch);
-
-                /* save lowest and highest new batch number */
-                if (batchnomax < batchno)
-                {
-                    batchnomax = batchno;
-                    if (batchnomin < 0)
-                        batchnomin = batchno;
-                }
-                else if (batchnomin > batchno)
-                    batchnomin = batchno;
-
 				ExecHashJoinSaveTuple(HJTUPLE_MINTUPLE(tuple),
 									  tuple->hashvalue,
-									  &hashtable->innerBatchFile[batchno]);
+                                      &hashtable->batches[batchno]->innerside);
 				/* and remove from hash table */
 				if (prevtuple)
 					prevtuple->next = nexttuple;
 				else
 					hashtable->buckets[i] = nexttuple;
 				/* prevtuple doesn't change */
-				spaceFreed += HJTUPLE_OVERHEAD + HJTUPLE_MINTUPLE(tuple)->t_len;
+
+                spaceTuple =
+					HJTUPLE_OVERHEAD + HJTUPLE_MINTUPLE(tuple)->t_len;
+                spaceFreed += spaceTuple;
+                if (stats)
+                    stats->batchstats[batchno].spillspace_in += spaceTuple;
+
 				pfree(tuple);
 				nfreed++;
 			}
@@ -634,17 +612,26 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 	}
 
 #ifdef HJDEBUG
-    elog(DEBUG3, "HJ: Freed %ld of %ld tuples, %lu of %lu bytes, space now %lu",
+    elog(DEBUG3, "HJ batch %d: Freed %ld of %ld tuples, %lu of %lu bytes, space now %lu",
+         curbatch,
 		 nfreed,
          ninmemory,
          (unsigned long)spaceFreed,
-         (unsigned long)(hashtable->spaceUsed - hashtable->spaceFreed),
-         (unsigned long)(hashtable->spaceUsed - hashtable->spaceFreed - spaceFreed));
+         (unsigned long)fullbatch->innerspace,
+         (unsigned long)(fullbatch->innerspace - spaceFreed));
 #endif
 
+    /* Update work_mem high-water mark and amount spilled. */
+    if (stats)
+    {
+        stats->workmem_max = Max(stats->workmem_max, fullbatch->innerspace);
+        stats->batchstats[curbatch].spillspace_out += spaceFreed;
+        stats->batchstats[curbatch].spillrows_out += nfreed;
+    }
+
     /* Allow reuse of the space that has just been freed. */
-    hashtable->spaceAllowed += spaceFreed;
-    hashtable->spaceFreed += spaceFreed;
+    fullbatch->innerspace -= spaceFreed;
+    fullbatch->innertuples -= nfreed;
 
 	/*
 	 * If we dumped out either all or none of the tuples in the table, disable
@@ -680,11 +667,20 @@ ExecHashTableInsert(HashJoinTable hashtable,
 					uint32 hashvalue)
 {
 	MinimalTuple tuple = ExecFetchSlotMinimalTuple(slot);
+    HashJoinBatchData  *batch;
 	int			bucketno;
 	int			batchno;
+	int			hashTupleSize;
 
 	ExecHashGetBucketAndBatch(hashtable, hashvalue,
 							  &bucketno, &batchno);
+
+    batch = hashtable->batches[batchno];
+	hashTupleSize = HJTUPLE_OVERHEAD + tuple->t_len;
+
+    /* Update batch size. */
+    batch->innertuples++;
+	batch->innerspace += hashTupleSize;
 
 	/*
 	 * decide whether to put the tuple in the hash table or a temp file
@@ -695,17 +691,17 @@ ExecHashTableInsert(HashJoinTable hashtable,
 		 * put the tuple in hash table
 		 */
 		HashJoinTuple hashTuple;
-		int			hashTupleSize;
 
-		hashTupleSize = HJTUPLE_OVERHEAD + tuple->t_len;
 		hashTuple = (HashJoinTuple) MemoryContextAlloc(hashtable->batchCxt,
 													   hashTupleSize);
 		hashTuple->hashvalue = hashvalue;
 		memcpy(HJTUPLE_MINTUPLE(hashTuple), tuple, tuple->t_len);
 		hashTuple->next = hashtable->buckets[bucketno];
 		hashtable->buckets[bucketno] = hashTuple;
-		hashtable->spaceUsed += hashTupleSize;
-		if (hashtable->spaceUsed > hashtable->spaceAllowed)
+
+		/* Double the number of batches when too much data in hash table. */
+		if (batch->innerspace > hashtable->spaceAllowed ||
+			batch->innertuples > UINT_MAX/2)
 			ExecHashIncreaseNumBatches(hashtable);
 	}
 	else
@@ -714,9 +710,7 @@ ExecHashTableInsert(HashJoinTable hashtable,
 		 * put the tuple into a temp file for later batches
 		 */
 		Assert(batchno > hashtable->curbatch);
-		ExecHashJoinSaveTuple(tuple,
-							  hashvalue,
-							  &hashtable->innerBatchFile[batchno]);
+		ExecHashJoinSaveTuple(tuple, hashvalue, &batch->innerside);
 	}
 }
 
@@ -896,9 +890,8 @@ ExecHashTableReset(HashJoinTable hashtable)
 	hashtable->buckets = (HashJoinTuple *)
 		palloc0(nbuckets * sizeof(HashJoinTuple));
 
-    hashtable->spaceAllowed -= hashtable->spaceFreed;
-    hashtable->spaceFreed = 0;
-	hashtable->spaceUsed = 0;
+	hashtable->batches[hashtable->curbatch]->innerspace = 0;
+	hashtable->batches[hashtable->curbatch]->innertuples = 0;
 
 	MemoryContextSwitchTo(oldcxt);
 }
@@ -924,7 +917,7 @@ ExecHashTableExplainInit(HashJoinState *hjstate,
                          HashJoinTable  hashtable)
 {
     MemoryContext   oldcxt;
-    int             nbatch = hashtable->nbatch;
+    int             nbatch = Max(hashtable->nbatch, 1);
 
     /* Switch to a memory context that survives until ExecutorEnd. */
     oldcxt = MemoryContextSwitchTo(hjstate->js.ps.state->es_query_cxt);
@@ -971,38 +964,39 @@ ExecHashTableExplainEnd(PlanState *planstate, struct StringInfoData *buf)
     /* Report on batch in progress, in case the join is being ended early. */
     ExecHashTableExplainBatchEnd(hashtable);
 
-    /* How much work_mem would suffice to eliminate spill I/O? */
-    if (hashtable->nbatch > 1)
-    {
-        /* If quitting before end of join, make an estimate. */
-        if (hashtable->curbatch < hashtable->nbatch)
-        {
-            int64       innerbytes = stats->innerbytes_sum;
-
-            /* Add size of spilled batches not processed yet. */
-            for (i = hashtable->curbatch + 1;
-                 i < hashtable->nbatch && i < stats->nbatchstats;
-                 i++)
-                innerbytes += stats->batchstats[i].innerfilesize;
-
-            /* Don't guess less than the actual high-water mark. */
-            if (innerbytes < stats->workmem_max)
-                innerbytes = stats->workmem_max;
-
-            /* Probably an underestimate because tuples are smaller on disk. */
-            if (innerbytes > 0)
-                jinstrument->workmemwanted =
-                    Max(jinstrument->workmemwanted, innerbytes);
-        }
-
-        /* Exact work_mem requirement is known if join was run to completion. */
-        else if (stats->innerbytes_sum > work_mem * 1024L)
-            jinstrument->workmemwanted =
-                Max(jinstrument->workmemwanted, stats->innerbytes_sum);
-    }
-
     /* Report actual work_mem high water mark. */
     jinstrument->workmemused = Max(jinstrument->workmemused, stats->workmem_max);
+
+    /* How much work_mem would suffice to hold all inner tuples in memory? */
+    if (hashtable->nbatch > 1)
+    {
+        uint64  workmemwanted = 0;
+
+        /* Space actually taken by hash rows in completed batches... */
+        for (i = 0; i <= stats->endedbatch; i++)
+            workmemwanted += stats->batchstats[i].hashspace_final;
+
+        /* ... plus workfile size for original batches not reached, plus... */
+        for (; i < hashtable->nbatch_original; i++)
+            workmemwanted += stats->batchstats[i].innerfilesize;
+
+        /* ... rows spilled to unreached oflo batches, in case quitting early */
+        for (; i < stats->nbatchstats; i++)
+            workmemwanted += stats->batchstats[i].spillspace_in;
+
+        /*
+         * Sometimes workfiles are used even though all the data would fit
+         * in work_mem.  For example, if the planner overestimated the inner
+         * rel size, it might have instructed us to use more initial batches
+         * than were actually needed, causing unnecessary workfile I/O.  To
+         * avoid this I/O, the user would have to increase work_mem based on
+         * the planner's estimate rather than our runtime observations.  For
+         * now, we don't try to second-guess the planner; just keep quiet.
+         */
+        if (workmemwanted > work_mem * 1024L)
+            jinstrument->workmemwanted =
+                Max(jinstrument->workmemwanted, workmemwanted);
+    }
 
     /* Report workfile I/O statistics. */
     if (hashtable->nbatch > 1)
@@ -1175,10 +1169,10 @@ ExecHashTableExplainBatches(HashJoinTable   hashtable,
 void
 ExecHashTableExplainBatchEnd(HashJoinTable hashtable)
 {
-    HashJoinTableStats *stats = hashtable->stats;
-    HashJoinBatchStats *batchstats = &stats->batchstats[hashtable->curbatch];
-    Size                innerbytes = hashtable->spaceUsed - hashtable->spaceFreed;
     int                 curbatch = hashtable->curbatch;
+    HashJoinTableStats *stats = hashtable->stats;
+    HashJoinBatchStats *batchstats = &stats->batchstats[curbatch];
+    HashJoinBatchData  *batch = hashtable->batches[curbatch];
     int                 i;
 
     /* Already reported on this batch? */
@@ -1188,11 +1182,11 @@ ExecHashTableExplainBatchEnd(HashJoinTable hashtable)
     stats->endedbatch = curbatch;
 
     /* Update high-water mark for work_mem actually used at one time. */
-    if (stats->workmem_max < innerbytes)
-        stats->workmem_max = innerbytes;
+    if (stats->workmem_max < batch->innerspace)
+        stats->workmem_max = batch->innerspace;
 
-    /* Accumulate work_mem used to hold all hash table batches joined so far. */
-    stats->innerbytes_sum += innerbytes;
+    /* Final size of hash table for this batch */
+    batchstats->hashspace_final = batch->innerspace;
 
     /* Collect workfile I/O statistics. */
     if (hashtable->nbatch > 1)
@@ -1208,27 +1202,26 @@ ExecHashTableExplainBatchEnd(HashJoinTable hashtable)
 
         /* How much was read from outer workfiles for current batch? */
         if (curbatch > 0 &&
-            hashtable->outerBatchFile &&
-            hashtable->outerBatchFile[curbatch])
-            batchstats->ordbytes = BufFileTell64(hashtable->outerBatchFile[curbatch]);
+            hashtable->batches[curbatch]->outerside.bufFile)
+            batchstats->ordbytes =
+                BufFileTell64(hashtable->batches[curbatch]->outerside.bufFile);
 
         /* How much was written to workfiles for the remaining batches? */
         for (i = curbatch + 1; i < hashtable->nbatch; i++)
         {
+            HashJoinBatchData  *batch = hashtable->batches[i];
             HashJoinBatchStats *bs = &stats->batchstats[i];
             uint64              filebytes = 0;
 
-            if (hashtable->outerBatchFile &&
-                hashtable->outerBatchFile[i])
-                filebytes = BufFileTell64(hashtable->outerBatchFile[i]);
+            if (batch->outerside.bufFile)
+                filebytes = BufFileTell64(batch->outerside.bufFile);
             Assert(filebytes >= bs->outerfilesize);
             owrbytes += filebytes - bs->outerfilesize;
             bs->outerfilesize = filebytes;
 
             filebytes = 0;
-            if (hashtable->innerBatchFile &&
-                hashtable->innerBatchFile[i])
-                filebytes = BufFileTell64(hashtable->innerBatchFile[i]);
+            if (batch->innerside.bufFile)
+                filebytes = BufFileTell64(batch->innerside.bufFile);
             Assert(filebytes >= bs->innerfilesize);
             iwrbytes += filebytes - bs->innerfilesize;
             bs->innerfilesize = filebytes;
@@ -1238,7 +1231,7 @@ ExecHashTableExplainBatchEnd(HashJoinTable hashtable)
     }                           /* give workfile I/O statistics */
 
     /* Collect hash chain statistics. */
-    if (hashtable->totalTuples > 0)
+    if (batch->innertuples > 0)
     {
         stats->nonemptybatches++;
         for (i = 0; i < hashtable->nbuckets; i++)
