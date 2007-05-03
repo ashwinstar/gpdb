@@ -18,23 +18,27 @@
 
 #define BLOCKSIZE  (1024 * 32)
 
-
+/*  Struct of command line options */
 struct {
     int p;			/* port */
     int v;			/* verbose */
+    int V;			/* very verbose */
     int h;			/* skip first-row header */
     const char* d;		/* directory */
     const char* q;		/* quote char */
     const char* x;		/* escape char */
-} opt = { 8080, 0, 0, ".", 0, 0 };
+} opt = { 8080, 0, 0, 0, ".", 0, 0 };
 
+
+/*  A data block */
 typedef struct block_t block_t;
 struct block_t {
     int      bot, top;
-    block_t* __next;
+    block_t* __next;		/* chaining for freelist */
     char     byte[BLOCKSIZE - 16];
 };
 
+/*  Global constrol block */
 struct {
     apr_pool_t* pool;
     int listen_sock;
@@ -50,7 +54,7 @@ struct {
 } gcb = {0};
 
 
-
+/*  A session */
 typedef struct session_t session_t;
 struct session_t {
     const char* key;
@@ -59,36 +63,40 @@ struct session_t {
     int ffd;			/* file input */
     apr_uint64_t fsize, foff;
     int is_error;
+    int first_row_skipped;	/* if opt.h flag is set, we need to skip first row */
 
     int nrequest;		/* # requests attached to this session */
     apr_time_t mtime;		/* time when nrequest was modified */
 
-    block_t* residue_block;
+    block_t* residue_block;	/* left over from last read */
 };
 
 
+/*  A http request */
 typedef struct request_t request_t;
 struct request_t {
-    int sock;
-    apr_pool_t* pool;
-    struct event ev;
-    const char* peer;
-    const char* path;
-    const char* tid;
-    session_t* session;
+    int sock;			/* the socket */
+    apr_pool_t* pool;		/* memory pool container */
+    struct event ev;		/* event we are watching for this request */
+    const char* peer;		/* peer IP:port string */
+    const char* path;		/* path to file */
+    const char* tid;		/* transaction id */
+    session_t* session;		/* the session this request is attached to */
 
     struct {
-	char* hbuf;
-	int   hbuftop, hbufmax;
-	gpcc_net_request_t* req;
+	char* hbuf;		/* buffer for raw incoming HTTP request */
+	int   hbuftop;		/* # bytes used in hbuf */
+	int   hbufmax;		/* size of hbuf[] */
+	gpcc_net_request_t* req; /* a parsed HTTP request, NULL if still incomplete. */
     } in;
 
     struct {
-	block_t* block;
+	block_t* block;		/* next block to send out */
     } out;
 };
 
 
+/* Get a block from freelist if possible, otherwise, malloc */
 block_t* block_get()
 {
     block_t* b;
@@ -107,6 +115,7 @@ block_t* block_get()
 }
 
 
+/* Put the block back into freelist */
 void block_put(block_t* b)
 {
     b->__next = gcb.freelist;
@@ -115,6 +124,7 @@ void block_put(block_t* b)
 }
 
 
+/* Print usage */
 void usage(const char* msg)
 {
     fprintf(stderr, "gpfdist -- file distribution web server\n\n");
@@ -139,6 +149,7 @@ void usage(const char* msg)
 }
 
 
+/* Parse command line */
 void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
 {
     apr_getopt_t* os;
@@ -153,6 +164,7 @@ void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
 	switch (ch) {
 	case '?': usage(0); break;
 	case 'v': opt.v = 1; break;
+	case 'V': opt.V = 1; break;
 	case 'h': opt.h = 1; break;
 	case 'd': opt.d = arg; break;
 	case 'q': opt.q = arg; break;
@@ -180,13 +192,13 @@ void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
 	    p[strlen(p) - 1] = 0;
 
 	opt.d = p;
+
+	/* check that the dir exists */
+	if (0 != apr_filepath_set(opt.d, pool))
+	    usage("Error: please specify a valid directory for -d switch");
     }
 
-
-    /* check that the dir exists */
-    if (0 != apr_filepath_set(opt.d, pool))
-	usage("Error: please specify a valid directory for -d switch");
-
+    /* check quote and escape options */
     if (opt.q && ! (opt.q[0] && !opt.q[1])) 
 	usage("Error: please specify a character for -q switch");
 
@@ -199,6 +211,7 @@ void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
     if (opt.q && !opt.x)
 	opt.x = opt.q;
 
+    /* there should not be any more args left */
     if (os->ind != argc) 
 	usage("Error: illegal arguments");
 }
@@ -213,12 +226,15 @@ void session_end(session_t* s, int error);
 void request_end(request_t* r, int error);
 block_t* session_get_block(session_t* s);
 
+
+/* send an error response */
 void send_error(request_t* r, int code, const char* msg)
 {
     char buf[1024];
     int n;
     printf("%s - %d %s\n", r->peer, code, msg);
     n = apr_snprintf(buf, sizeof(buf), "HTTP/1.0 %d %s\r\n"
+		     "Content-length: 0\r\n"
 		     "Connection: close\r\n\r\n",
 		     code, msg);
 
@@ -226,6 +242,7 @@ void send_error(request_t* r, int code, const char* msg)
 }
 
 
+/* send an empty response */
 void send_empty(request_t* r)
 {
     const char* buf = "HTTP/1.0 200 ok\r\n"
@@ -245,6 +262,7 @@ void send_empty(request_t* r)
 }
 
 
+/* send an OK response */
 void send_ok(request_t* r)
 {
     const char* buf = "HTTP/1.0 200 ok\r\n"
@@ -263,6 +281,7 @@ void send_ok(request_t* r)
 }
 
 
+
 void print_request(gpcc_net_request_t* r)
 {
     int i;
@@ -276,9 +295,13 @@ void print_request(gpcc_net_request_t* r)
 }
 
 
+
+/* Finished a request. Close socket and cleanup. */
 void request_end(request_t* r, int error) 
 {
     session_t* s = r->session;
+
+    /* If we still have a block outstanding, the session is corrupted. */
     if (r->out.block) {
 	gpcc_warning(FLINE, "request failure resulting in session failure");
 	if (s) 
@@ -315,22 +338,22 @@ block_t* block_split(block_t* b, int n)
     return bb;
 }
 
-const char* scan_rec_boundary(const char* p, const char* q)
+/* Scan as many record as possible in [p, q), taking quotes and escapes into account. */
+const char* scan_rec_boundary(const char* p, const char* q, int skipfirst)
 {
     int in_quote, last_was_esc;
     const char* last_complete = 0;
     int xc = opt.x[0];
     int qc = opt.q[0];
 
-    again:
-    in_quote = 0;
-    last_was_esc = 0;
-    
-    while (p < q) {
+    for (in_quote = last_was_esc = 0; p < q; p++) {
 	int ch = *p++;
 	if (ch == '\n' && !in_quote) {
-	    last_complete = p;
-	    goto again;
+	    if (skipfirst)
+		skipfirst = 0;
+	    else
+		last_complete = p;
+	    continue;
 	}
 	if (in_quote && ch == xc) 
 	    last_was_esc = !last_was_esc;
@@ -344,18 +367,19 @@ const char* scan_rec_boundary(const char* p, const char* q)
 }
 
 
-
+/* Get a block out of the session */
 block_t* session_get_block(session_t* s)
 {
     block_t* b;
     int n;
     char* p;
     char* q;
-
+    int skipfirstrow;
 
     if (s->is_error || s->ffd < 0) 
 	return 0;
 
+    /* if we have a residue_block, use it. otherwise, get a new one */
     if (0 != (b = s->residue_block)) {
 	s->residue_block = 0;
     }
@@ -363,7 +387,8 @@ block_t* session_get_block(session_t* s)
 	b = block_get();
     }
 
-    n = sizeof(b->byte) - b->top;
+    /* Fill up b */
+    n = sizeof(b->byte) - b->top;    /* how many bytes are not used in b */
     while (n > 0) {
 	n = read(s->ffd, b->byte + b->top, n);
 	if (n < 0) {
@@ -377,35 +402,49 @@ block_t* session_get_block(session_t* s)
 	b->top += n;
 	s->foff += n;
 	n = sizeof(b->byte) - b->top;
-	if (opt.v) 
+
+	if (opt.V) 
 	    printf("[INFO] %s [%lld/%lld]\n", s->path, s->foff, s->fsize);
     }
 
     /* find the split position */
+    skipfirstrow = opt.h && s->first_row_skipped;
+    if (skipfirstrow) 
+	s->first_row_skipped = 0;
+
     if (opt.q) {
+	/* go slow, scan byte-by-byte for record boundary */
 	p = b->byte + b->bot;
 	q = b->byte + b->top;
-	p = (char*) scan_rec_boundary(p, q);
+	p = (char*) scan_rec_boundary(p, q, skipfirstrow);
     }
     else {
-	/* find the last \n */
+	/* go fast, scan /n for record boundary */
 	p = b->byte + b->bot;
-	q = b->byte + b->top - 1;
-	for ( ; p < q && *q != '\n'; q--);
+	q = b->byte + b->top;
+	if (skipfirstrow) {
+	    for ( ; p < q && *p != '\n'; p++);
+	    p++;
+	}
+	/* find the last \n */
+	for (--q ; p < q && *q != '\n'; q--);
 	p = (p < q ? q + 1: 0);
     }
 
+    /* no record boundary -- record larger than BLOCKSIZE? unacceptable. */
     if (!p) {
 	gpcc_warning(FLINE, "ERROR - %s - line too long", s->path);
 	session_end(s, 1);
 	return 0;
     }
 
+    /* split the block at record boundary */
     s->residue_block = block_split(b, p - b->byte + b->bot);
     return b;
 }
 
 
+/* finish the session - close the file */
 void session_end(session_t* s, int error)
 {
     if (error)
@@ -430,21 +469,26 @@ void session_attach(request_t* req)
     int fd = -1;
     off_t fsize;
     
-
+    /* create the key */
     if (sizeof(key) -1 == apr_snprintf(key, sizeof(key), "%s:%s", req->tid, req->path)) {
 	send_error(req, 400, "path too long");
 	request_end(req, 1);
 	return;
     }
 
+    /* check in session hashtable */
     s = apr_hash_get(gcb.session.tab, key, APR_HASH_KEY_STRING);
     if (s) {
+	/* found a session in hashtable*/
+
+	/* if error, send an error and close */
 	if (s->is_error) {
 	    send_error(req, 500, "session error");
 	    request_end(req, 1);
 	    return;
 	}
 
+	/* session already ended. send an empty response, and close. */
 	if (s->ffd < 0 || s->foff >= s->fsize) {
 	    send_empty(req);
 	    request_end(req, 0);
@@ -456,6 +500,8 @@ void session_attach(request_t* req)
     }
     else {
 	/* not in hashtable - create new session */
+
+	/* try opening the file */
 	if (-1 == (fd = open(req->path, O_RDONLY, 0600))) {
 	    gpcc_warning(FLINE, "reject request from %s, path %s\n", req->peer, req->path);
 	    send_error(req, 404, "not found");
@@ -463,6 +509,7 @@ void session_attach(request_t* req)
 	    return;
 	}
 
+	/* determine file size */
 	if (-1 == (fsize = lseek(fd, 0, SEEK_END))
 	    || -1 == lseek(fd, 0, SEEK_SET)) {
 	    gpcc_warning(FLINE, "reject request from %s, path %s\n", req->peer, req->path);
@@ -471,6 +518,7 @@ void session_attach(request_t* req)
 	    return;
 	}
 
+	/* allocate session */
 	if (0 == (s = malloc(sizeof(session_t)))) 
 	    gpcc_fatal(FLINE, "out of memory");
 
@@ -484,24 +532,32 @@ void session_attach(request_t* req)
 	    gpcc_fatal(FLINE, "out of memory");
 	}
 
+	/* insert into hashtable */
 	apr_hash_set(gcb.session.tab, s->key, APR_HASH_KEY_STRING, s);
 
 	if (opt.v) 
 	    printf("[INFO] new session (%s, %s)\n", s->path, s->tid);
     }
 
+    /* setup so receive EV_WRITE events to write to socket */
     if (setup_write(req)) {
 	send_error(req, 500, "internal error");
 	request_end(req, 1);
 	return;
     }
+
+    /* one more request for session */
     s->nrequest++;
     s->mtime = apr_time_now();
     req->session = s;
+
+    /* finally, tell peer that we are ready to send data */
     send_ok(req);
     return;
 }
 
+
+/* deallocate session, remove from hashtable */
 void session_free(session_t* s)
 {
     if (opt.v) 
@@ -515,6 +571,7 @@ void session_free(session_t* s)
 }
 
 
+/* detach a request from a session */
 void session_detach(request_t* r)
 {
     session_t* s = r->session;
@@ -525,6 +582,7 @@ void session_detach(request_t* r)
 	s->nrequest--;
 	s->mtime = apr_time_now();
 
+	/* for auto-tid sessions, we can free it now */
 	if (0 == strncmp("auto-tid.", s->tid, 9)) {
 	    if (s->nrequest != 0) 
 		gpcc_fatal(FLINE, "assert failed");
@@ -536,7 +594,7 @@ void session_detach(request_t* r)
 
 
 
-
+/* Callback when the socket is ready to be written */
 void do_write(int fd, short event, void* arg)
 {
     request_t* r = (request_t*) arg;
@@ -546,6 +604,7 @@ void do_write(int fd, short event, void* arg)
     if (fd != r->sock) 
 	gpcc_fatal(FLINE, "assert failed");
 
+    /* Loop until we choke on the socket */
     for (;;) {
 	/* get a block (or find a remaining block) */
 	if (! r->out.block) {
@@ -576,25 +635,30 @@ void do_write(int fd, short event, void* arg)
 	r->out.block = 0;
     }
 
+    /* Set up for this routine to be called again */
     if (setup_write(r)) 
 	request_end(r, 1);
     return;
 }
 
 
-
+/* Callback when a socket is ready to be read. Read the 
+ * socket for a complete HTTP request.
+ */
 void do_read(int fd, short event, void* arg)
 {
     request_t* r = (request_t*) arg;
     int n, i;
     char* p;
 
+    /* If we timeout, close the request. */
     if (event & EV_TIMEOUT) {
 	send_error(r, 400, "time out");
 	request_end(r, 1);
 	return;
     }
 
+    /* how many bytes left in the header buf */
     n = r->in.hbufmax - r->in.hbuftop;
     if (n <= 0) {
 	send_error(r, 500, "internal error");
@@ -602,6 +666,7 @@ void do_read(int fd, short event, void* arg)
 	return;
     }
 
+    /* read into header buf */
     n = read(r->sock, r->in.hbuf + r->in.hbuftop, n);
     if (n < 0) {
 	if (errno != EINTR && errno != EAGAIN) {
@@ -610,19 +675,24 @@ void do_read(int fd, short event, void* arg)
 	}
     }
     else if (n == 0) {
+	/* didn't read anything */
 	;
     }
     else {
+	/* check if a complete HTTP request is availble in header buf */
 	r->in.hbuftop += n;
 	n = r->in.hbuftop;
 	r->in.req = gpcc_net_parse_request(r->in.hbuf, &n, r->pool);
 	if (!r->in.req && r->in.hbuftop >= r->in.hbufmax) {
+	    /* not available, but headerbuf is full - send error and close */
 	    send_error(r, 400, "forbidden");
 	    request_end(r, 1);
 	    return;
 	}
     }
 
+    /* if we don't yet have a complete request, set up this function to be
+       called again for */
     if (!r->in.req) {
 	if (setup_read(r)) {
 	    send_error(r, 500, "internal error");
@@ -631,8 +701,12 @@ void do_read(int fd, short event, void* arg)
 	return;
     }
 
-    /* GOT A REQUEST */
+    /* Hurray, got a request !!! */
+
+    /* we don't need to read from the socket anymore */
     shutdown(r->sock, SHUT_RD);
+
+    /* parse the HTTP request. Expect "GET /path HTTP/1.X" */
     if (r->in.req->argc != 3) {
 	gpcc_warning(FLINE, "reject invalid request from %s", r->peer);
 	send_error(r, 400, "invalid request");
@@ -653,7 +727,7 @@ void do_read(int fd, short event, void* arg)
     }
 
     /* scrub the path */
-    /*   - forbid .. */
+    /*   - forbid dot dot  */
     for (p = r->in.req->argv[1]; 0 != (p = strchr(p, '.')); p++) {
 	if (p[1] == '.') {
 	    gpcc_warning(FLINE, "reject invalid request from %s [%s %s]", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
@@ -674,10 +748,8 @@ void do_read(int fd, short event, void* arg)
 	*p = 0;
     if (0 != (p = strchr(r->path, '#')))
 	*p = 0;
-    
-    if (opt.v) 
-	printf("[INFO] %s requests %s\n", r->peer, r->path);
 
+    /* Extract X-GP-TID value from HTTP headers */
     r->tid = 0;
     for (i = 0; i < r->in.req->hc; i++) {
 	if (0 == strcmp("X-GP-TID", r->in.req->hname[i])) {
@@ -689,11 +761,15 @@ void do_read(int fd, short event, void* arg)
     if (!r->tid)
 	r->tid = apr_psprintf(r->pool, "auto-tid.%d", gcb.session.gen++);
 
+    if (opt.v) 
+	printf("[INFO] %s requests %s [TID %s]\n", r->peer, r->path, r->tid);
+
+    /* Attach to a session */
     session_attach(r);
 }
 
 
-
+/* Callback when the listen socket is ready to accept connections. */
 void do_accept(int fd, short event, void* arg)
 {
     struct sockaddr_in a;
@@ -705,11 +781,13 @@ void do_accept(int fd, short event, void* arg)
     int on = 1;
     struct linger linger;
 
+    /* do the accept */
     if ((sock = accept(fd, (void*) &a, &len)) < 0) {
 	gpcc_warning(FLINE, "accept failed");
 	return;
     }
 
+    /* set to non-blocking, and close-on-exec */
     if (fcntl(sock, F_SETFL, O_NONBLOCK) == -1) {
 	gpcc_warning(FLINE, "fcntl(F_SETFL, O_NONBLOCK) failed");
 	close(sock);
@@ -721,20 +799,23 @@ void do_accept(int fd, short event, void* arg)
 	return;
     }
 
+    /* set keepalive, reuseaddr, and linger */
     setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (void*) &on, sizeof(on));
     setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (void*) &on, sizeof(on));
     linger.l_onoff = 1;
     linger.l_linger = 5;
     setsockopt(sock, SOL_SOCKET, SO_LINGER, (void*) &linger, sizeof(linger));
 
+    /* create a pool container for this socket */
     if (apr_pool_create(&pool, gcb.pool)) 
 	gpcc_fatal(FLINE, "out of memory");
 
+    /* create the request in pool */
     r = apr_pcalloc(pool, sizeof(request_t));
     r->pool = pool;
     r->sock = sock;
 
-    r->in.hbufmax = 1024*4;	/* for reading the headers */
+    r->in.hbufmax = 1024*4;	/* 4K for reading the headers */
     r->in.hbuf = apr_palloc(pool, r->in.hbufmax);
 
     addr = ntohl(a.sin_addr.s_addr);
@@ -744,6 +825,8 @@ void do_accept(int fd, short event, void* arg)
 			   (addr >> 8) & 0xff,
 			   addr & 0xff, 
 			   ntohs(a.sin_port));
+
+    /* set up for callback when socket ready for reading */
     if (setup_read(r)) {
 	send_error(r, 500, "internal error");
 	request_end(r, 1);
@@ -767,8 +850,7 @@ int setup_read(request_t* r)
 }
 
 
-
-
+/* Create HTTP port and start to receive request */
 void http_setup(void)
 {
     struct sockaddr_in a;
@@ -776,7 +858,7 @@ void http_setup(void)
     int on = 1;
     struct linger linger;
 
-
+    /* create socket */
     a.sin_addr.s_addr = htonl(INADDR_ANY);
     a.sin_port = htons(opt.p);
     a.sin_family = AF_INET;
@@ -794,23 +876,31 @@ void http_setup(void)
     linger.l_linger = 5;
     setsockopt(f, SOL_SOCKET, SO_LINGER, (void*) &linger, sizeof(linger));
 
+    /* bind */
     if (bind(f, (void*) &a, sizeof(a))) 
 	gpcc_fatal(FLINE, "cannot create socket on port %d", opt.p);
 
-
+    /* listen with a big queue */
     if (listen(f, 256)) 
 	gpcc_fatal(FLINE, "cannot listen on port %d", opt.p);
 
     gcb.listen_sock = f;
-    event_set(&gcb.listen_event, gcb.listen_sock, EV_READ | EV_PERSIST, do_accept, 0);
-    if (event_add(&gcb.listen_event, 0))
-	gpcc_fatal(FLINE, "cannot set up event on listen socket");
 
+    /* setup event priority */
     if (event_priority_init(10)) 
 	gpcc_warning(FLINE, "event_priority_init failed");
 
+    /* when this socket is ready, do accept */
+    event_set(&gcb.listen_event, gcb.listen_sock, EV_READ | EV_PERSIST, do_accept, 0);
+
+    /* high priority so we accept as fast as possible */
     if (event_priority_set(&gcb.listen_event, 0)) 
 	gpcc_warning(FLINE, "event_priority_set failed");
+
+    /* start watching this event */
+    if (event_add(&gcb.listen_event, 0))
+	gpcc_fatal(FLINE, "cannot set up event on listen socket");
+
 }
 
 
