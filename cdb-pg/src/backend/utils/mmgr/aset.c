@@ -877,6 +877,7 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 		AllocBlock	prevblock = NULL;
 		Size		chksize;
 		Size		blksize;
+        Size        oldsize;
 
 		while (block != NULL)
 		{
@@ -892,6 +893,7 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 			   (chunk->size + ALLOC_BLOCKHDRSZ + ALLOC_CHUNKHDRSZ));
 
 		/* Do the realloc */
+        oldsize = block->endptr - (char *)block;
 		chksize = MAXALIGN(size);
 		blksize = chksize + ALLOC_BLOCKHDRSZ + ALLOC_CHUNKHDRSZ;
 		block = (AllocBlock) realloc(block, blksize);
@@ -905,8 +907,8 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 							   (unsigned long) size,
                                set->header.name) ));
 		}
-        MemoryContextNoteFree(&set->header, block->endptr - (char *)block);
 		block->freeptr = block->endptr = ((char *) block) + blksize;
+        MemoryContextNoteFree(&set->header, oldsize);                   /*CDB*/
         MemoryContextNoteAlloc(&set->header, blksize);                  /*CDB*/
 
 		/* Update pointers since block has likely been moved */

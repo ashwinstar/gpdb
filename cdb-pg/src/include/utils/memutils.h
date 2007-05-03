@@ -93,6 +93,11 @@ extern void MemoryContextResetAndDeleteChildren(MemoryContext context);
 extern Size GetMemoryChunkSpace(void *pointer);
 extern MemoryContext GetMemoryChunkContext(void *pointer);
 extern bool MemoryContextIsEmpty(MemoryContext context);
+
+/* Statistics */
+extern Size  MemoryContextGetCurrentSpace(MemoryContext context);
+extern int64 MemoryContextGetPeakSpace(MemoryContext context);
+extern int64 MemoryContextSetPeakSpace(MemoryContext context, int64 nbytes);
 extern char *MemoryContextName(MemoryContext context, MemoryContext relativeTo,
                                char *buf, int bufsize);
 extern void MemoryContextStats(MemoryContext context);

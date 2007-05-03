@@ -1713,13 +1713,19 @@ ExecReScanAgg(AggState *node, ExprContext *exprCtxt)
 void
 ExecAggExplainEnd(PlanState *planstate, struct StringInfoData *buf)
 {
+    AggState   *aggstate = (AggState *)planstate;
+
+    /* Report executor memory used by our memory context. */
+    planstate->instrument->execmemused += 
+        (double)MemoryContextGetPeakSpace(aggstate->aggcontext);
+
     /*
      * Some of the cleanup that ordinarily would occur during ExecEndAgg()
      * needs to be done earlier (i.e. now) in order to report statistics to 
      * EXPLAIN ANALYZE.  Note that ExecEndAgg_internal() may be called twice:
      * first here, and again when ExecEndAgg is called during ExecutorEnd().
      */
-    ExecEndAgg_internal((AggState *)planstate);
+    ExecEndAgg_internal(aggstate);
 }                               /* ExecAggExplainEnd */
 
 

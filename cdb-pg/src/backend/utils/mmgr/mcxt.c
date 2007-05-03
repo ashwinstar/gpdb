@@ -330,6 +330,7 @@ MemoryContextNoteAlloc(MemoryContext context, Size nbytes)
     {
         int64   held;
 
+        Assert(context->allBytesAlloc >= context->allBytesFreed);
         context->allBytesAlloc += nbytes;
         held = context->allBytesAlloc - context->allBytesFreed;
         if (context->maxBytesHeld < held)
@@ -353,9 +354,64 @@ MemoryContextNoteFree(MemoryContext context, Size nbytes)
     while (context)
     {
         context->allBytesFreed += nbytes;
+        Assert(context->allBytesAlloc >= context->allBytesFreed);
         context = context->parent;
     }
 }                               /* MemoryContextNoteFree */
+
+
+/*
+ * MemoryContextGetCurrentSpace
+ *		Return the number of bytes currently occupied by the memory context.
+ *
+ * This is the amount of space obtained from the lower-level source of the
+ * memory (e.g. malloc) and not yet released back to that source.  Includes
+ * overhead and free space held and managed within this context by the 
+ * context-type-specific memory manager.
+ */
+Size
+MemoryContextGetCurrentSpace(MemoryContext context)
+{
+	AssertArg(MemoryContextIsValid(context) &&
+              context->allBytesAlloc >= context->allBytesFreed);
+    return context->allBytesAlloc - context->allBytesFreed;
+}                               /* MemoryContextGetCurrentSpace */
+
+/*
+ * MemoryContextGetPeakSpace
+ *		Return the peak number of bytes occupied by the memory context.
+ *
+ * This is the maximum value reached by MemoryContextGetCurrentSpace() since
+ * the context was created, or since reset by MemoryContextSetPeakSpace().
+ */
+int64 
+MemoryContextGetPeakSpace(MemoryContext context)
+{
+	AssertArg(MemoryContextIsValid(context));
+    return context->maxBytesHeld;
+}                               /* MemoryContextGetPeakSpace */
+
+/*
+ * MemoryContextSetPeakSpace
+ *		Resets the peak space statistic to the space currently occupied or
+ *      the specified value, whichever is greater.  Returns the former peak
+ *      space value.
+ *
+ * Can be used to observe local maximum usage over an interval and then to
+ * restore the overall maximum.
+ */
+int64 
+MemoryContextSetPeakSpace(MemoryContext context, int64 nbytes)
+{
+    int64   oldpeak;
+
+	AssertArg(MemoryContextIsValid(context) &&
+              context->allBytesAlloc >= context->allBytesFreed);
+    oldpeak = context->maxBytesHeld;
+    context->maxBytesHeld = Max(nbytes,
+                                context->allBytesAlloc - context->allBytesFreed);
+    return oldpeak;
+}                               /* MemoryContextSetPeakSpace */
 
 
 /*

@@ -22,7 +22,7 @@
 #include "libpq-fe.h"                   /* PGresult; prereq for libpq-int.h */
 #include "libpq-int.h"                  /* pg_result */
 #include "libpq/pqformat.h"             /* pq_beginmessage() etc. */
-#include "nodes/memnodes.h"             /* MemoryContextData */
+#include "utils/memutils.h"             /* MemoryContextGetPeakSpace() */
 
 
 /* EXPLAIN ANALYZE statistics for one plan node of a slice */
@@ -36,6 +36,7 @@ typedef struct CdbExplain_StatInst
     double      total;          /* Total total time (in seconds) */
     double      ntuples;        /* Total tuples produced */
     double      nloops;         /* # of run cycles for this node */
+    double      execmemused;    /* executor memory used (bytes) */
     double      workmemused;    /* work_mem actually used (bytes) */
     double      workmemwanted;  /* work_mem to avoid workfile i/o (bytes) */
 	instr_time	firststart;		/* Start time of first iteration of node */
@@ -85,6 +86,7 @@ typedef struct CdbExplain_NodeSummary
 {
     /* Summary over all the node's workers */
     CdbExplain_Agg  ntuples;
+    CdbExplain_Agg  execmemused;
     CdbExplain_Agg  workmemused;
     CdbExplain_Agg  workmemwanted;
 
@@ -582,7 +584,8 @@ cdbexplain_collectSliceStats(PlanState                 *planstate,
     EState     *estate = planstate->state;
 
     /* Max bytes malloc'ed under executor's per-query memory context. */
-    out_worker->peakmemused = (double)estate->es_query_cxt->maxBytesHeld;
+    out_worker->peakmemused =
+        (double)MemoryContextGetPeakSpace(estate->es_query_cxt);
 
 }                               /* cdbexplain_collectSliceStats */
 
@@ -677,6 +680,7 @@ cdbexplain_collectStatsFromNode(PlanState *planstate, CdbExplain_SendStatCtx *ct
     si->total           = instr->total;
     si->ntuples         = instr->ntuples;
     si->nloops          = instr->nloops;
+    si->execmemused     = instr->execmemused;
     si->workmemused     = instr->workmemused;
     si->workmemwanted   = instr->workmemwanted;
 	si->firststart      = instr->firststart;
@@ -721,7 +725,8 @@ cdbexplain_depStatAcc_upd(CdbExplain_DepStatAcc    *acc,
 
 static void
 cdbexplain_depStatAcc_saveText(CdbExplain_DepStatAcc   *acc,
-                               StringInfoData          *extratextbuf)
+                               StringInfoData          *extratextbuf,
+                               bool                    *saved_inout)
 {
     CdbExplain_StatHdr     *rsh = acc->rshmax;
     CdbExplain_StatInst    *rsi = acc->rsimax;
@@ -742,6 +747,10 @@ cdbexplain_depStatAcc_saveText(CdbExplain_DepStatAcc   *acc,
         nsi->bnotes = extratextbuf->len;
         appendBinaryStringInfo(extratextbuf, notes, notelen);
         nsi->enotes = extratextbuf->len;
+
+        /* Tell caller that some extra text has been saved. */
+        if (saved_inout)
+            *saved_inout = true;
     }
 }                               /* cdbexplain_depStatAcc_saveText */
 
@@ -764,6 +773,7 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
     CdbExplain_StatInst        *nsi;
     CdbExplain_NodeSummary     *ns;
     CdbExplain_DepStatAcc       ntuples;
+    CdbExplain_DepStatAcc       execmemused;
     CdbExplain_DepStatAcc       workmemused;
     CdbExplain_DepStatAcc       workmemwanted;
     CdbExplain_DepStatAcc       peakmemused;
@@ -788,6 +798,7 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
 
     /* Initialize per-node accumulators. */
     cdbexplain_depStatAcc_init0(&ntuples);
+    cdbexplain_depStatAcc_init0(&execmemused);
     cdbexplain_depStatAcc_init0(&workmemused);
     cdbexplain_depStatAcc_init0(&workmemwanted);
 
@@ -821,6 +832,7 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
 
         /* Update per-node accumulators. */
         cdbexplain_depStatAcc_upd(&ntuples, rsi->ntuples, rsh, rsi, nsi);
+        cdbexplain_depStatAcc_upd(&execmemused, rsi->execmemused, rsh, rsi, nsi);
         cdbexplain_depStatAcc_upd(&workmemused, rsi->workmemused, rsh, rsi, nsi);
         cdbexplain_depStatAcc_upd(&workmemwanted, rsi->workmemwanted, rsh, rsi, nsi);
 
@@ -830,6 +842,7 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
 
     /* Save per-node accumulated stats in NodeSummary. */
     ns->ntuples = ntuples.agg;
+    ns->execmemused = execmemused.agg;
     ns->workmemused = workmemused.agg;
     ns->workmemwanted = workmemwanted.agg;
 
@@ -847,6 +860,7 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
         instr->total            = ntuples.nsimax->total;
         instr->ntuples          = ntuples.nsimax->ntuples;
         instr->nloops           = ntuples.nsimax->nloops;
+        instr->execmemused      = ntuples.nsimax->execmemused;
         instr->workmemused      = ntuples.nsimax->workmemused;
         instr->workmemwanted    = ntuples.nsimax->workmemwanted;
         instr->firststart       = ntuples.nsimax->firststart;
@@ -855,18 +869,36 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
     /* Save extra message text for the most interesting winning qExecs. */
     if (ctx->extratextbuf)
     {
-        /* One worker which produced the greatest number of output rows */
-        cdbexplain_depStatAcc_saveText(&ntuples, ctx->extratextbuf);
+        bool    saved = false;
 
         /* One worker which used or wanted the most work_mem */
         if (workmemwanted.agg.vmax >= workmemused.agg.vmax)
-            cdbexplain_depStatAcc_saveText(&workmemwanted, ctx->extratextbuf);
+            cdbexplain_depStatAcc_saveText(&workmemwanted, ctx->extratextbuf, &saved);
         else if (workmemused.agg.vmax > 1.05 * cdbexplain_agg_avg(&workmemused.agg))
-            cdbexplain_depStatAcc_saveText(&workmemused, ctx->extratextbuf);
+            cdbexplain_depStatAcc_saveText(&workmemused, ctx->extratextbuf, &saved);
 
-        /* A worker which used the most executor memory, if above avg by 5% */
+        /* Worker which used the most executor memory (this node's usage) */
+        if (execmemused.agg.vmax > 1.05 * cdbexplain_agg_avg(&execmemused.agg))
+            cdbexplain_depStatAcc_saveText(&execmemused, ctx->extratextbuf, &saved);
+
+        /*
+         * For the worker which had the highest peak executor memory usage
+         * overall across the whole slice, we'll report the extra message
+         * text from all of the nodes in the slice.  But only if that worker
+         * stands out more than 5% above the average.
+         */
         if (peakmemused.agg.vmax > 1.05 * cdbexplain_agg_avg(&peakmemused.agg))
-            cdbexplain_depStatAcc_saveText(&peakmemused, ctx->extratextbuf);
+            cdbexplain_depStatAcc_saveText(&peakmemused, ctx->extratextbuf, &saved);
+
+        /*
+         * One worker which produced the greatest number of output rows.
+         * (Always give at least one node a chance to have its extra message
+         * text seen.  In case no node stood out above the others, make a
+         * repeatable choice based on the number of output rows.)
+         */
+        if (!saved ||
+            ntuples.agg.vmax > 1.05 * cdbexplain_agg_avg(&ntuples.agg))
+            cdbexplain_depStatAcc_saveText(&ntuples, ctx->extratextbuf, &saved);
     }
 }                               /* cdbexplain_depositStatsToNode */
 
@@ -1197,6 +1229,30 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
     appendStringInfoString(str, ".\n");
 
     /*
+     * Executor memory used by this individual node, if it allocates from a
+     * memory context of its own instead of sharing the per-query context.
+     */
+    if (ns->execmemused.vcnt > 0)
+    {
+        appendStringInfoFill(str, 2*indent, ' ');
+        cdbexplain_formatMemory(maxbuf, ns->execmemused.vmax);
+        if (ns->execmemused.vcnt == 1)
+            appendStringInfo(str,
+                             "Executor memory:  %s.\n",
+                             maxbuf);
+        else
+        {
+            cdbexplain_formatSeg(segbuf, ns->execmemused.imax, ns->ninst);
+            cdbexplain_formatMemory(avgbuf, cdbexplain_agg_avg(&ns->execmemused));
+            appendStringInfo(str,
+                             "Executor memory:  %s avg, %s max%s.\n",
+                             avgbuf,
+                             maxbuf,
+                             segbuf);
+        }
+    }
+
+    /*
      * Actual work_mem used.
      */
     if (ns->workmemused.vcnt > 0)
@@ -1228,15 +1284,15 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
         cdbexplain_formatMemory(maxbuf, ns->workmemwanted.vmax);
         if (ns->ninst == 1)
             appendStringInfo(str,
-                "Work_mem wanted: %s would avert workfile I/O.\n",
+                "Work_mem wanted: %s to lessen workfile I/O.\n",
                 maxbuf);
         else
         {
             cdbexplain_formatMemory(avgbuf, cdbexplain_agg_avg(&ns->workmemwanted));
             cdbexplain_formatSeg(segbuf, ns->workmemwanted.imax, ns->ninst);
             appendStringInfo(str,
-                             "Work_mem wanted: %s avg, %s max%s "
-                             "would avert workfile I/O affecting %d workers.\n",
+                             "Work_mem wanted: %s avg, %s max%s"
+                             " to lessen workfile I/O affecting %d workers.\n",
                              avgbuf,
                              maxbuf,
                              segbuf,

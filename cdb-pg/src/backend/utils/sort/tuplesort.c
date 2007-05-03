@@ -774,6 +774,10 @@ tuplesort_end(Tuplesortstate *state)
         workmemused = state->allowedMem - state->availMemMin;
         if (state->instrument->workmemused < workmemused)
             state->instrument->workmemused = workmemused;
+
+        /* Report executor memory used by our memory context. */
+        state->instrument->execmemused +=
+            (double)MemoryContextGetPeakSpace(state->sortcontext);
     }
 
 #ifdef TRACE_SORT
