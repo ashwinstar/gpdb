@@ -1046,17 +1046,12 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 			n--;
             while ((conn = acceptIncomingConnection()) != NULL)
             {
-                /* Try to read the Register message without waiting. */
-                if (readRegisterMessage(*ppTransportStates, conn))
-                {
-					if (conn->sockfd != -1)
-						incoming_count++;
-                    pfree(conn);
-                }
+				/* get the connection read for a subsequent call to ReadRegisterMessage() */
+				conn->state = mcsRecvRegMsg;
+				conn->msgSize = sizeof(RegisterMessage);
+				conn->msgPos = conn->pBuff;
 
-                /* We'll try again when more data arrives on the socket. */
-                else
-                    (*ppTransportStates)->incompleteConns = lappend((*ppTransportStates)->incompleteConns, conn);
+				(*ppTransportStates)->incompleteConns = lappend((*ppTransportStates)->incompleteConns, conn);
             }
 		}
 
