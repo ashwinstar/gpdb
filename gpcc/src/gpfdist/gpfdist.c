@@ -15,7 +15,7 @@
 #include <apr_time.h>
 #include <gpcc_net.h>
 
-#define u_int32_t unsigned long
+#define u_int32_t unsigned int
 #define u_int8_t unsigned char
 #include <event.h>
 #define BLOCKSIZE  (1024 * 32)
