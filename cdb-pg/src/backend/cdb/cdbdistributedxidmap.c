@@ -57,7 +57,23 @@ static int DistributedXidMapHighestPageNo = 0;
 
 static int	ZeroDistributedXidMapPage(int pageno);
 static bool DistributedXidMapPagePrecedes(int page1, int page2);
+static void DistributedXidMapMakeMorePages(int pageno);
 
+static void
+DistributedXidMapMakeMorePages(int pageno)
+{
+	int			newpageno;
+	
+	for (newpageno = DistributedXidMapHighestPageNo + 1; newpageno <= pageno; newpageno++)
+	{
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "DistributedXidMapMakeMorePages zeroing out page = %d", newpageno);
+		
+		/* Zero the page */
+		ZeroDistributedXidMapPage(newpageno);
+	}
+
+	DistributedXidMapHighestPageNo = pageno;
+}
 
 /*
  * Get the local XID associated with a distributed transaction.  We will
@@ -68,7 +84,6 @@ AllocOrGetLocalXidForDistributedTransaction(DistributedTransactionId gxid, Trans
 {
 	int			pageno = DistributedTransactionIdToPage(gxid);
 	int			entryno = DistributedTransactionIdToEntry(gxid);
-	int			newpageno;
 	int			slotno;
 	TransactionId *ptr;
 
@@ -85,15 +100,7 @@ AllocOrGetLocalXidForDistributedTransaction(DistributedTransactionId gxid, Trans
 		/*
 		 * Zero out the new page(s).
 		 */
-		for (newpageno = DistributedXidMapHighestPageNo + 1; newpageno <= pageno; newpageno++)
-		{
-			elog((Debug_print_full_dtm ? LOG : DEBUG5), "AllocOrGetLocalXidForDistributedTransaction zeroing out page = %d", newpageno);
-			
-			/* Zero the page */
-			ZeroDistributedXidMapPage(newpageno);
-		}
-
-		DistributedXidMapHighestPageNo = pageno;
+		DistributedXidMapMakeMorePages(pageno);
 	}
 
 	slotno = SimpleLruReadPage(DistributedXidMapCtl, pageno, InvalidTransactionId);
@@ -149,6 +156,17 @@ AddLocalXidsForDistributedTransactions(DistributedTransactionId *gxidArray, uint
 		
 		pageno = DistributedTransactionIdToPage(gxid);
 		entryno = DistributedTransactionIdToEntry(gxid);
+
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "AddLocalXidsForDistributedTransactions: gxidArray[%d] is %u (pageno %d, entryno %d)",
+			 i, gxid, pageno, entryno);
+
+		if (pageno > DistributedXidMapHighestPageNo)
+		{
+			/*
+			 * Zero out the new page(s).
+			 */
+			DistributedXidMapMakeMorePages(pageno);
+		}
 		
 		slotno = SimpleLruReadPage(DistributedXidMapCtl, pageno, InvalidTransactionId);
 		ptr = (TransactionId *) DistributedXidMapCtl->shared->page_buffer[slotno];
@@ -271,7 +289,7 @@ StartupDistributedXidMap(void)
 	 */
 	LWLockAcquire(DistributedXidMapControlLock, LW_EXCLUSIVE);
 
-//  SimpleLruDeleteAllSegments(DistributedXidMapCtl);
+//	SimpleLruTruncate(DistributedXidMapCtl, 0);
 
 	/* Zero the first page */
 	ZeroDistributedXidMapPage(0);

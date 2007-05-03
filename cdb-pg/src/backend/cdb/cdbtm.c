@@ -821,30 +821,9 @@ doNotifyCommittedInDoubt(char *gid)
 					/* dispatchToMirrors */ true, /* raiseError */ false);
 	if (!succeeded)
 	{
-		elog(WARNING, "Crash recovery broadcast of the distributed transaction 'Commit Prepared' broadcast failed to one or more segments for gid = %s.", 
+		elog(FATAL, "Crash recovery broadcast of the distributed transaction 'Commit Prepared' broadcast failed to one or more segments for gid = %s.", 
 			 gid);
 		
-		/*
-		 * We must succeed in delivering the commit to all segment instances, or any failed 
-		 * segment instances must be marked INVALID.
-		 */
-
-		/*
-		 * Reset the dispatch logic (i.e. deallocate gang) so we can attempt a retry.
-		 */
-		doResetDispatch();
-		
-		succeeded = doDispatchDtxProtocolCommand(
-						DTX_PROTOCOL_COMMAND_RECOVERY_COMMIT_PREPARED, /* flags */ 0,
-						gid, InvalidDistributedTransactionId,
-						/* dispatchToMirrors */ true, /* raiseError */ false);
-		if (!succeeded)
-		{
-			elog(FATAL, "Second attempt to broadcast crash recovery broadcast of the distributed transaction 'Commit Prepared' broadcast failed to one or more segments for gid = %s.", 
-				 gid);
-		}
-		elog(INFO, "Retry of the crash recovery broadcast of the distributed transaction 'Commit Prepared' broadcast succeeded for gid = %s.", 
-			 gid);
 	}
 	else
 	{
@@ -867,28 +846,7 @@ doAbortInDoubt(char *gid)
 					/* dispatchToMirrors */ true, /* raiseError */ false);
 	if (!succeeded)
 	{
-		elog(WARNING, "Crash recovery retry of the distributed transaction 'Abort Prepared' broadcast failed to one or more segments for gid = %s.  System will retry again later", 
-			 gid);
-		/*
-		 * We must succeed in delivering the abort to all segment instances, or any failed 
-		 * segment instances must be marked INVALID.
-		 */
-
-		/*
-		 * Reset the dispatch logic (i.e. deallocate gang) so we can attempt a retry.
-		 */
-		doResetDispatch();
-		
-		succeeded = doDispatchDtxProtocolCommand(
-						DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED, /* flags */ 0,
-						gid, InvalidDistributedTransactionId,
-						/* dispatchToMirrors */ true, /* raiseError */ false);
-		if (!succeeded)
-		{
-			elog(FATAL, "Second attempt to broadcast crash recovery broadcast of the distributed transaction 'Abort Prepared' broadcast failed to one or more segments for gid = %s.", 
-				 gid);
-		}
-		elog(INFO, "Retry of the crash recovery broadcast of the distributed transaction 'Abort Prepared' broadcast succeeded for gid = %s.", 
+		elog(FATAL, "Crash recovery retry of the distributed transaction 'Abort Prepared' broadcast failed to one or more segments for gid = %s.  System will retry again later", 
 			 gid);
 	}
 	else
@@ -2243,7 +2201,7 @@ recoverInDoubtTransactions(void)
 		     gxact->gid);
 
 		/*
-		 * What if we encounter an error here???
+		 * Can't start system if we  cannot deliiver commits.
 		 */
 		doNotifyCommittedInDoubt(gxact->gid);
 
