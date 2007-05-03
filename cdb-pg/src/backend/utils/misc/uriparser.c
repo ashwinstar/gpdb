@@ -32,6 +32,18 @@ ParseUriString(const char *uri_str)
 	/*
 	 * parse protocol
 	 */
+ 	if (strncmp(uri_str, PROTOCOL_EXEC, strlen(PROTOCOL_EXEC)) == 0)
+ 	{
+ 		/* here since exec: strings aren't valid URIs we need to short circuit
+ 		 * the normal URI parsing and just stuff the entire command to exec in the path
+ 		 */
+ 		uri->protocol = URI_EXEC;
+ 		len = strlen(uri_str) - strlen(PROTOCOL_EXEC);
+ 		uri->path = (char *) palloc(len + 1);
+ 		strncpy(uri->path, uri_str+strlen(PROTOCOL_EXEC), len); 		
+ 		uri->path[len] = '\0';
+ 		return uri;
+ 	}
 	if (strncmp(uri_str, PROTOCOL_FILE, strlen(PROTOCOL_FILE)) == 0)
 	{
 		uri->protocol = URI_FILE;

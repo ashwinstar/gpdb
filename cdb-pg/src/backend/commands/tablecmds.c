@@ -7932,13 +7932,14 @@ static Datum transformLocationUris(List *locs)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("URI protocols must be the same for all data sources"),
-					 errhint("Available protocols are 'http', 'file' and 'gpfdist' ")));
+					 errhint("Available protocols are 'http', 'file' and 'gpfdist' and 'exec' ")));
 		
 		}
 		
 		if(uri->protocol != URI_FILE && 
-		   uri->protocol != URI_HTTP &&
-		   uri->protocol != URI_GPFDIST)
+		   uri->protocol != URI_HTTP &&		   
+		   uri->protocol != URI_GPFDIST &&
+		   uri->protocol != URI_EXEC)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),

@@ -992,7 +992,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	 */
 	first_uri_str = (char *) strVal(lfirst(list_head(rel->locationlist)));
 	uri = ParseUriString(first_uri_str);
-	if(uri->protocol == URI_GPFDIST)
+	if(uri->protocol == URI_GPFDIST || uri->protocol == URI_EXEC)
 	{
 		bool done = false;
 		

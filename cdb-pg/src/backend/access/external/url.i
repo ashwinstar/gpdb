@@ -62,7 +62,7 @@
 #define TRUE 1
 #endif
 
-enum fcurl_type_e { CFTYPE_NONE=0, CFTYPE_FILE=1, CFTYPE_CURL=2 };
+enum fcurl_type_e { CFTYPE_NONE=0, CFTYPE_FILE=1, CFTYPE_CURL=2, CFTYPE_EXEC=3 };
 
 struct fcurl_data
 {
@@ -171,7 +171,7 @@ fill_buffer(URL_FILE *file,int want,int waittime)
     fd_set fdexcep;
     int maxfd;
     struct timeval timeout;
-    int nfds, e, i;
+    int nfds, e;
 
     /* only attempt to fill buffer if transactions still running and buffer
      * doesnt exceed required size already
@@ -274,7 +274,21 @@ url_fopen(char *url, char *filename, const char *operation, const char* XID)
 
     memset(file, 0, sizeof(URL_FILE));
 
-    if(filename && (file->handle.file=fopen(filename,operation)))
+	if (strncmp(url, PROTOCOL_EXEC, strlen(PROTOCOL_EXEC)) == 0)
+	{
+		int len = strlen(url) - strlen(PROTOCOL_EXEC);
+ 		char *cmd = (char *) palloc(len + 1);
+ 		strncpy(cmd, url+strlen(PROTOCOL_EXEC), len); 		
+ 		cmd[len] = '\0';
+ 		
+		file->handle.file= popen(cmd,"r");
+		file->buffer = cmd;
+		if( file->handle.file == NULL)
+			elog( ERROR, "External Table error executing cmd: '%s'", cmd );
+		
+		file->type = CFTYPE_EXEC; /* marked as a EXEC */
+	}
+    else if(filename && (file->handle.file=fopen(filename,operation)))
     {
         file->type = CFTYPE_FILE; /* marked as local FILE */
     }
@@ -387,6 +401,9 @@ url_fclose(URL_FILE *file)
     case CFTYPE_FILE:
         ret=fclose(file->handle.file); /* passthrough */
         break;
+    case CFTYPE_EXEC:
+    	pclose(file->handle.file);
+    	break;
 
     case CFTYPE_CURL:
 		curl_slist_free_all(file->x_httpheader);
@@ -421,9 +438,9 @@ url_feof(URL_FILE *file)
     switch(file->type)
     {
     case CFTYPE_FILE:
+    case CFTYPE_EXEC:
         ret=feof(file->handle.file);
-        break;
-
+        break;    	
     case CFTYPE_CURL:
         if((file->buffer_pos == 0) && (!file->still_running))
             ret = 1;
@@ -444,9 +461,10 @@ url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file)
     switch(file->type)
     {
     case CFTYPE_FILE:
+    case CFTYPE_EXEC:
         want=fread(ptr,size,nmemb,file->handle.file);
         break;
-
+    	
     case CFTYPE_CURL:
         want = nmemb * size;
 
@@ -490,9 +508,10 @@ url_fgets(char *ptr, int size, URL_FILE *file)
     switch(file->type)
     {
     case CFTYPE_FILE:
+    case CFTYPE_EXEC:
         ptr = fgets(ptr,size,file->handle.file);
         break;
-
+    	
     case CFTYPE_CURL:
         fill_buffer(file,want,1);
 
@@ -542,6 +561,13 @@ url_rewind(URL_FILE *file)
     case CFTYPE_FILE:
         rewind(file->handle.file); /* passthrough */
         break;
+       
+    case CFTYPE_EXEC:
+    	/* we'll need to execute the command again */
+    	url_fclose(file);
+    	/* most of these are null fo us. */
+    	url_fopen( file->buffer, NULL, NULL, NULL );    	
+    	break;   
 
     case CFTYPE_CURL:
         /* halt transaction */
