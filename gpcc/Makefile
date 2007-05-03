@@ -1,16 +1,24 @@
 GPCC=$(CURDIR)
+OPT=-g -Wall
 APR=apr-1.2.8
 APU=apr-util-1.2.8
 JSON=json-c-0.6
 LIBEVENT=libevent-1.3b
 INCLUDES=-I$(GPCC)/ext/include $$($(GPCC)/ext/bin/apr-1-config --includes) -I$(GPCC)/src/include
 CPPFLAGS=$$($(GPCC)/ext/bin/apr-1-config --cppflags)
-CFLAGS=-g -Wall $$($(GPCC)/ext/bin/apr-1-config --cflags)
+CFLAGS=$(OPT) $$($(GPCC)/ext/bin/apr-1-config --cflags)
 APRLIBS=$$($(GPCC)/ext/bin/apr-1-config --link-ld --libs) 
 APULIBS=$$($(GPCC)/ext/bin/apu-1-config --link-ld --libs)
 
 
-all: mkext mklibgpcc mkgpma mkgp 
+all: mkext mklibgpcc mkgpfdist 
+
+#mkgpma mkgp 
+
+mkgpfdist: 
+	@echo --- gpfdist --------------------------------------------------
+	@(cd src/gpfdist; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
+		-o gpfdist *.c -L../build/lib -lgpcc $(APRLIBS) $(APULIBS) -ljson -levent)
 
 mkgp:
 	@echo --- gp -------------------------------------------------------
@@ -47,7 +55,7 @@ mkext:
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd ext/libevent; make all; make install >> out)
+	@(cd ext/libevent; make all install >> out)
 	@echo     -- json
 	@(cd ext; ln -fs $(JSON) json)
 	@if ! [ -a ext/json/Makefile ]; then \
@@ -65,7 +73,7 @@ mkext:
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd ext/apr; make all; make install >> out)
+	@(cd ext/apr; make all install >> out)
 	@echo     -- apu
 	@(cd ext; ln -fs $(APU) apu)
 	@if ! [ -a ext/apu/Makefile ]; then \
@@ -75,7 +83,7 @@ mkext:
 			--with-apr=../apr \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd ext/apu; make all; make install >> out)
+	@(cd ext/apu; make all install >> out)
 
 clean: 
 	@rm -rf ext/lib ext/bin ext/include

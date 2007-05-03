@@ -1,7 +1,6 @@
 #ifndef GPCC_H
 #define GPCC_H
 
-#include <gpcc.h>
 #include <apr_general.h>
 #include <apr.h>
 

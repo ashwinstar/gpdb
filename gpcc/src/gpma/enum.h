@@ -4,6 +4,8 @@
 typedef enum msg_t msg_t;
 enum msg_t {
     NULL_MSG,
+    GET_IDENTITY_MSG,
+    IDENTITY_MSG,
 
     MSG_MAX,
 };
@@ -38,6 +40,9 @@ enum event_t {
     NET_CLOSED_EVENT,
     NET_RECEIVED_EVENT,
 
+    GET_IDENTITY_MSG_EVENT,
+    IDENTITY_MSG_EVENT,
+
     EVENT_MAX,
 };
 
@@ -47,6 +52,8 @@ typedef enum cmdstate_t cmdstate_t;
 enum cmdstate_t {
     NULL_CMDSTATE,
     SYSTEM_CMDSTATE,
+
+    GET_IDENTITY_CMDSTATE,
 
     CMDSTATE_MAX,
 };

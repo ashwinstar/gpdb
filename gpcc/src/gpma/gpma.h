@@ -83,6 +83,11 @@ struct gpma_t {
 
 extern gpma_t gpma;
 
+APR_DECLARE(void) fsm_setup(void);
+APR_DECLARE(cmdslot_t*) cmdslot_alloc(const char* name, 
+				      cmdstate_t init_state, conninfo_t* conninfo);
+APR_DECLARE(void) cmdslot_free(cmdslot_t* cp);
+
 
 
 #endif /* GPMA_H */

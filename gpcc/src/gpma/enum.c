@@ -7,6 +7,8 @@ const char* msg_str(msg_t msg)
 {
     switch (msg) {
 	CASESTR(NULL_MSG);
+	CASESTR(GET_IDENTITY_MSG);
+	CASESTR(IDENTITY_MSG);
     case MSG_MAX: break;
     }
     return "UNKNOWN_MSG";
@@ -41,6 +43,8 @@ const char* event_str(event_t event)
 	CASESTR(NET_CLOSED_EVENT);
 	CASESTR(NET_RECEIVED_EVENT);
 
+	CASESTR(GET_IDENTITY_MSG_EVENT);
+	CASESTR(IDENTITY_MSG_EVENT);
     case EVENT_MAX: break;
     }
     return "UNKNOWN_EVENT";

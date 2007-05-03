@@ -37,8 +37,8 @@ static cmdslot_t* cmdslot_get(int cmdidx)
 
 
 /* Find a free cmdslot */
-static cmdslot_t* cmdslot_alloc(const char* name, 
-				cmdstate_t init_state, conninfo_t* conninfo)
+APR_DECLARE(cmdslot_t*) cmdslot_alloc(const char* name, 
+				      cmdstate_t init_state, conninfo_t* conninfo)
 {
     int i;
     cmdslot_t* cmdslot = 0;
@@ -64,7 +64,7 @@ static cmdslot_t* cmdslot_alloc(const char* name,
 }
 
 
-static void cmdslot_free(cmdslot_t* cp)
+APR_DECLARE(void) cmdslot_free(cmdslot_t* cp)
 {
     memset(cp, 0, sizeof(*cp));
 }
@@ -336,6 +336,9 @@ static void d_main(void)
 			 cmdstate_str(cp->cmdstate), 
 			 event_str(ev->etype), 
 			 cmdstate_str(nxtstate));
+
+	    gpcc_evqueue_put(gpma.evq, 
+			     gpcc_event_alloc(FAILURE_EVENT, cp->cmdidx, 0));
 	}
 
 	/* free up the cmdslot if necessary */
