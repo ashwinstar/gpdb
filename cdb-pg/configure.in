@@ -324,11 +324,11 @@ AC_SUBST(GCC)
 # Calculate the Greenplum version string from the CVS tag.
 # If there is no version set, get the name from CVS/Tag,
 # otherwise default to the head of cvs.
-RAW_VERSION=
+RAW_VERSION="$Name$"
 if test -z "$RAW_VERSION" ; then
     if test -r CVS/Tag ; then
         #Source is from a tag
-        GP_VERSION=`cat CVS/Tag | sed 's,^[A-Z],,'`
+        GP_VERSION=`cat CVS/Tag | sed 's,^[[A-Z]],,'`
     else
         #Source is from head
         GP_VERSION="cvs Head"
