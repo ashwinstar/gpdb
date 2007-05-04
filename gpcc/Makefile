@@ -5,7 +5,7 @@ OPT=-O3
 APR=apr-1.2.8
 APU=apr-util-1.2.8
 JSON=json-c-0.6
-LIBEVENT=libevent-1.3b
+LIBEVENT=libevent-1.3b-1
 INCLUDES=-I$(GPCC)/ext/include $$($(GPCC)/ext/bin/apr-1-config --includes) -I$(GPCC)/src/include
 CPPFLAGS=$$($(GPCC)/ext/bin/apr-1-config --cppflags)
 CFLAGS=$(OPT) $$($(GPCC)/ext/bin/apr-1-config --cflags)
@@ -88,7 +88,7 @@ mkext:
 	@(cd ext/apu; make all install >> out)
 
 clean: 
-	rm -rf ext/lib ext/bin ext/include
-	rm -rf ext/$(APR) ext/$(APU) ext/$(JSON) ext/$(LIBEVENT)
+	(cd ext; rm -rf lib bin include build-1 share apr apu json libevent)
+	(cd ext; rm -rf $(APR) $(APU) $(JSON) $(LIBEVENT))
 	rm -rf src/build
 	find src -name '*.o' -exec rm -f {} \;
