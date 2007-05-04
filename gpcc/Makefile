@@ -57,7 +57,7 @@ mkext:
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd ext/libevent; make dist >> out)
+	@(cd ext/libevent; make install >> out)
 	@echo     -- json
 	@(cd ext; rm -f json; ln -s $(JSON) json)
 	@if ! [ -a ext/json/Makefile ]; then \
