@@ -600,19 +600,20 @@ void session_detach(request_t* r)
 void do_write(int fd, short event, void* arg)
 {
     request_t* r = (request_t*) arg;
-    int n;
+    int n, i;
     block_t* b;
 
     if (fd != r->sock) 
 	gpcc_fatal(FLINE, "assert failed");
 
-    /* Loop until we choke on the socket */
-    for (;;) {
+    /* Loop at most 3 blocks or until we choke on the socket */
+    for (i = 0; i < 3; i++) {
+
 	/* get a block (or find a remaining block) */
 	if (! r->out.block) {
 	    r->out.block = session_get_block(r->session);
 	    if (! r->out.block) {
-		request_end(r, 0);
+		request_end(r, r->session->is_error);
 		return;
 	    }
 	}
