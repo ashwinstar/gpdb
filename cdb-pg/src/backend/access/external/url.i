@@ -72,6 +72,7 @@ struct fcurl_data
         FILE *file;
     } handle;                   /* handle */
 
+	char* curl_url;
     struct curl_slist *x_httpheader;
 
     char *buffer;               /* buffer to store cached data*/
@@ -268,11 +269,14 @@ url_fopen(char *url, char *filename, const char *operation, const char* XID)
 	int e;
     (void)operation;
 
-    file = (URL_FILE *)malloc(sizeof(URL_FILE));
+    file = (URL_FILE *)malloc(sizeof(URL_FILE) + strlen(url) + 1);
     if(!file)
         return NULL;
-
     memset(file, 0, sizeof(URL_FILE));
+
+	file->curl_url = ((char*) file) + sizeof(URL_FILE);
+	strcpy(file->curl_url, url);
+
 
 	if (strncmp(url, PROTOCOL_EXEC, strlen(PROTOCOL_EXEC)) == 0)
 	{
@@ -296,15 +300,11 @@ url_fopen(char *url, char *filename, const char *operation, const char* XID)
     {
         file->type = CFTYPE_CURL; /* marked as URL */
 		
-        if(strncmp(url, "gpfdist", 7) == 0)
+        if(strncmp(file->curl_url, "gpfdist", 7) == 0)
         {
 			isGpfdist = true;
-			
-            url[3] = 'h';
-            url[4] = 't';
-            url[5] = 't';
-            url[6] = 'p';
-            url += 3;
+			file->curl_url += 3;
+			memcpy(file->curl_url, "http", 4);
         }
 
         if (! (file->handle.curl = curl_easy_init()))
@@ -313,9 +313,9 @@ url_fopen(char *url, char *filename, const char *operation, const char* XID)
 			return NULL;
 		}
 
-        if (0 != (e = curl_easy_setopt(file->handle.curl, CURLOPT_URL, url))) 
+        if (0 != (e = curl_easy_setopt(file->handle.curl, CURLOPT_URL, file->curl_url))) 
 		{
-			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_URL %s error %d", url, e);
+			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_URL %s error %d", file->curl_url, e);
 			return NULL;
 		}
         if (0 != (e = curl_easy_setopt(file->handle.curl, CURLOPT_VERBOSE, FALSE))) 
@@ -368,25 +368,12 @@ url_fopen(char *url, char *filename, const char *operation, const char* XID)
         /* lets start the fetch */
 		while (CURLM_CALL_MULTI_PERFORM == 
 			   (e = curl_multi_perform(multi_handle, &file->still_running)));
-		if (e != 0) {
-			elog(ERROR, "internal error: curl_multi_perform failed (%d)", e);
+
+		if (e != 0) 
+		{
+			elog(ERROR, "internal error: curl_multi_add_handle failed (%d)", e);
 			return NULL;
 		}
-
-        if ((file->buffer_pos == 0) && (!file->still_running))
-        {
-            /* if still_running is 0 now, we should return NULL */
-
-            /* make sure the easy handle is not in the multi handle anymore */
-            curl_multi_remove_handle(multi_handle, file->handle.curl);
-
-            /* cleanup */
-            curl_easy_cleanup(file->handle.curl);
-
-            free(file);
-
-            file = NULL;
-        }
     }
     return file;
 }
