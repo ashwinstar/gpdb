@@ -63,7 +63,6 @@
   * good match for the maximum number of QEs. Slow insert performance will
   * result if it is too low.
   */
-#define LISTEN_BACKLOG		128
 #define MAX_BIND_RETRIES	12
 #define CONNECT_RETRY_MS	4000
 #define CONNECT_AGGRESSIVERETRY_MS	500
@@ -72,10 +71,12 @@
 #define getInt32(pNetData)	  ntohl(*((int32 *)(pNetData)))
 
 
-
 /*=========================================================================
  * GLOBAL STATE VARIABLES
  */
+
+/* listener backlog is calculated at listener-creation time */
+int			listenerBacklog = 128;
 
 /* Socket file descriptor for the listener. */
 int			listenerFd;
@@ -191,8 +192,12 @@ InitMotionLayerIPC(void)
 	/*activated = false;*/
 	seqserverFd = -1;
 
+#ifdef pg_on_solaris
+	listenerBacklog = Min(1024, Max(GpIdentity.numsegments * 4, listenerBacklog));
+#endif
+
 	/* Listen for connections from qExecs. */
-	setupListeningSocket(LISTEN_BACKLOG, &listenerFd, &Gp_listener_port);
+	setupListeningSocket(listenerBacklog, &listenerFd, &Gp_listener_port);
 
     elog(LOG, "Interconnect listening on tcp port %d", Gp_listener_port);
 }
@@ -1724,7 +1729,7 @@ startOutgoingConnections(ChunkTransportState *transportStates,
 
 	recvSlice = (Slice *) list_nth(transportStates->sliceTable->slices, sendSlice->parentIndex);
 
-	if ((list_length(recvSlice->children) * sendSlice->gangSize) > LISTEN_BACKLOG)
+	if ((list_length(recvSlice->children) * sendSlice->gangSize) > listenerBacklog)
 		transportStates->aggressiveRetry = true;
 	else
 		transportStates->aggressiveRetry = false;
