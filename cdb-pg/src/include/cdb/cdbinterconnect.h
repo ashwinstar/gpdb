@@ -109,6 +109,8 @@ typedef struct ChunkTransportState
 	/* array of per-motion-node chunk transport state */
 	int size;
 	ChunkTransportStateEntry *states;
+
+	bool		aggressiveRetry;
 	
 	/* ChunkTransportState array initial size */
 #define CTS_INITIAL_SIZE (10)

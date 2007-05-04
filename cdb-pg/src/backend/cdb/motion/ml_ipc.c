@@ -63,9 +63,10 @@
   * good match for the maximum number of QEs. Slow insert performance will
   * result if it is too low.
   */
-#define LISTEN_BACKLOG		256
+#define LISTEN_BACKLOG		128
 #define MAX_BIND_RETRIES	12
 #define CONNECT_RETRY_MS	4000
+#define CONNECT_AGGRESSIVERETRY_MS	500
 
 #define getInt16(pNetData)	  ntohs(*((int16 *)(pNetData)))
 #define getInt32(pNetData)	  ntohl(*((int32 *)(pNetData)))
@@ -826,7 +827,10 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
                         break;
                     case mcsConnecting:
                         /* Set time limit for connect() to complete. */
-                        conn->wakeup_ms = CONNECT_RETRY_MS + elapsed_ms;
+						if ((*ppTransportStates)->aggressiveRetry)
+							conn->wakeup_ms = CONNECT_AGGRESSIVERETRY_MS + elapsed_ms;
+						else
+							conn->wakeup_ms = CONNECT_RETRY_MS + elapsed_ms;
                         break;
                     default:
                         conn->wakeup_ms = 0;
@@ -1719,6 +1723,11 @@ startOutgoingConnections(ChunkTransportState *transportStates,
     *pOutgoingCount = 0;
 
 	recvSlice = (Slice *) list_nth(transportStates->sliceTable->slices, sendSlice->parentIndex);
+
+	if ((list_length(recvSlice->children) * sendSlice->gangSize) > LISTEN_BACKLOG)
+		transportStates->aggressiveRetry = true;
+	else
+		transportStates->aggressiveRetry = false;
 
     if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
         elog(DEBUG4, "Interconnect seg%d slice%d setting up sending motion node",
