@@ -2023,7 +2023,8 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"gp_interconnect_setup_timeout", PGC_USERSET, GP_ARRAY_TUNING,
 			gettext_noop("Timeout (in seconds) on interconnect setup that occurs at query start"),
-			gettext_noop("Used by Interconnect to timeout the setup of the communication fabric.")	
+			gettext_noop("Used by Interconnect to timeout the setup of the communication fabric."),
+			GUC_UNIT_S
 		},
 		&interconnect_setup_timeout,
 		10, 0, INT_MAX, assign_interconnect_setup_timeout, show_interconnect_setup_timeout
@@ -2032,7 +2033,8 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"gp_segment_connect_timeout", PGC_USERSET, GP_ARRAY_TUNING,
 			gettext_noop("Maximum time (in seconds) allowed for a new worker process to start."),
-			gettext_noop("0 indicates 'wait forever'.")	
+			gettext_noop("0 indicates 'wait forever'."),
+			GUC_UNIT_S
 		},
 		&gp_segment_connect_timeout,
 		60, 0, INT_MAX, NULL, NULL
