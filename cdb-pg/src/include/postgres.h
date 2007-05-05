@@ -594,6 +594,7 @@ extern DLLIMPORT bool assert_enabled;
 #define AssertArg(condition)
 #define AssertState(condition)
 #define AssertImply(condition1, condition2)
+#define AssertEquivalent(cond1, cond2)
 #else
 #define Assert(condition) \
 		Trap(!(condition), "FailedAssertion")
