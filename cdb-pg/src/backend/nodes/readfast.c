@@ -41,6 +41,10 @@
 #define READ_UINT_FIELD(fldname) \
 	memcpy(&local_node->fldname, *str, sizeof(int)); (*str)+=sizeof(int)
 
+/* Read an uint64 field) */
+#define READ_UINT64_FIELD(fldname) \
+	memcpy(&local_node->fldname, *str, sizeof(uint64)); (*str)+=sizeof(uint64)
+
 /* Read an OID field (don't hard-wire assumption that OID is same as uint) */
 #define READ_OID_FIELD(fldname) \
 	memcpy(&local_node->fldname, *str, sizeof(Oid)); (*str)+=sizeof(Oid)
@@ -157,6 +161,7 @@ _readQuery(const char ** str)
 	READ_ENUM_FIELD(intoOnCommit, OnCommitAction);
 	READ_STRING_FIELD(intoTableSpaceName);
 	READ_BOOL_FIELD(hasAggs);
+	READ_BOOL_FIELD(hasWindFuncs);
 	READ_BOOL_FIELD(hasSubLinks);
 	READ_NODE_FIELD(rtable);
 	READ_NODE_FIELD(jointree);
@@ -164,6 +169,7 @@ _readQuery(const char ** str)
 	READ_NODE_FIELD(returningList);
 	READ_NODE_FIELD(groupClause);
 	READ_NODE_FIELD(havingQual);
+	READ_NODE_FIELD(windowClause);
 	READ_NODE_FIELD(distinctClause);
 	READ_NODE_FIELD(sortClause);
 	READ_NODE_FIELD(limitOffset);
@@ -237,6 +243,99 @@ _readGroupClause(const char ** str)
 
 	READ_UINT_FIELD(tleSortGroupRef);
 	READ_OID_FIELD(sortop);
+
+	READ_DONE();
+}
+
+/*
+ * _readGroupingClause
+ */
+static GroupingClause *
+_readGroupingClause(const char ** str)
+{
+	READ_LOCALS(GroupingClause);
+
+	READ_ENUM_FIELD(groupType, GroupingType);
+	READ_NODE_FIELD(groupsets);
+
+	READ_DONE();
+}
+
+static GroupingFunc *
+_readGroupingFunc(const char ** str)
+{
+	READ_LOCALS(GroupingFunc);
+
+	READ_NODE_FIELD(args);
+	READ_INT_FIELD(ngrpcols);
+	READ_INT_FIELD(nargs);
+	READ_INT_ARRAY(grpargs, nargs, int);
+
+	READ_DONE();
+}
+
+static Grouping *
+_readGrouping(const char ** str)
+{
+	READ_LOCALS(Grouping);
+
+	READ_DONE();
+}
+
+static GroupId *
+_readGroupId(const char ** str)
+{
+	READ_LOCALS(GroupId);
+
+	READ_DONE();
+}
+
+static WindowSpecParse *
+_readWindowSpecParse(const char ** str)
+{
+	READ_LOCALS(WindowSpecParse);
+
+	READ_STRING_FIELD(name);
+	READ_NODE_FIELD(elems);
+
+	READ_DONE();
+}
+
+static WindowSpec *
+_readWindowSpec(const char ** str)
+{
+	READ_LOCALS(WindowSpec);
+
+	READ_STRING_FIELD(name);
+	READ_STRING_FIELD(parent);
+	READ_NODE_FIELD(partition);
+	READ_NODE_FIELD(order);
+	READ_NODE_FIELD(frame);
+
+	READ_DONE();
+}
+
+static WindowFrame *
+_readWindowFrame(const char ** str)
+{
+	READ_LOCALS(WindowFrame);
+
+	READ_BOOL_FIELD(is_rows);
+	READ_BOOL_FIELD(is_between);
+	READ_NODE_FIELD(trail);
+	READ_NODE_FIELD(lead);
+	READ_ENUM_FIELD(exclude, WindowExclusion);
+
+	READ_DONE();
+}
+
+static WindowFrameEdge *
+_readWindowFrameEdge(const char ** str)
+{
+	READ_LOCALS(WindowFrameEdge);
+
+	READ_ENUM_FIELD(kind, WindowBoundingKind);
+	READ_NODE_FIELD(val);
 
 	READ_DONE();
 }
@@ -689,6 +788,7 @@ _readFuncCall(const char ** str)
 	READ_NODE_FIELD(args);
 	READ_BOOL_FIELD(agg_star);
 	READ_BOOL_FIELD(agg_distinct);
+	READ_NODE_FIELD(over);
 	READ_INT_FIELD(location);
 	READ_DONE();
 }
@@ -839,6 +939,26 @@ _readAggref(const char ** str)
 	READ_ENUM_FIELD(aggstage, AggStage);
 
 
+
+	READ_DONE();
+}
+
+/*
+ * _readWindowRef
+ */
+static WindowRef *
+_readWindowRef(const char ** str)
+{
+	READ_LOCALS(WindowRef);
+
+	READ_OID_FIELD(winfnoid);
+	READ_OID_FIELD(restype);
+	READ_NODE_FIELD(args);
+	READ_UINT_FIELD(winlevelsup);
+	READ_UINT_FIELD(winspec);
+	READ_UINT_FIELD(winindex);
+	READ_ENUM_FIELD(winstage, WinStage);
+	READ_UINT_FIELD(winlevel);
 
 	READ_DONE();
 }
@@ -2130,7 +2250,7 @@ _readNestLoop(const char ** str)
 	readJoinInfo(str, (Join *)local_node);
 
     READ_BOOL_FIELD(outernotreferencedbyinner); /*CDB*/
-    READ_BOOL_FIELD(shared_outer);
+	READ_BOOL_FIELD(shared_outer); 
 
     READ_DONE();
 }
@@ -2195,6 +2315,42 @@ _readAgg(const char ** str)
 	READ_INT_ARRAY(grpColIdx, numCols, AttrNumber);
 	READ_LONG_FIELD(numGroups);
 	READ_INT_FIELD(transSpace);
+	READ_INT_FIELD(numNullCols);
+	READ_INT_FIELD(rollupLevel);
+	READ_UINT64_FIELD(grouping);
+	READ_INT_FIELD(rollupGSTimes);
+
+	READ_DONE();
+}
+
+/*
+ * _readWindowKey
+ */
+static WindowKey *
+_readWindowKey(const char ** str)
+{
+	READ_LOCALS(WindowKey);
+
+	READ_INT_FIELD(numSortCols);
+	READ_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
+	READ_NODE_FIELD(frame);
+
+	READ_DONE();
+}
+
+/*
+ * _readWindow
+ */
+static Window *
+_readWindow(const char ** str)
+{
+	READ_LOCALS(Window);
+
+	readPlanInfo(str, (Plan *)local_node);
+
+	READ_INT_FIELD(numPartCols);
+	READ_INT_ARRAY(partColIdx, numPartCols, AttrNumber);
+	READ_NODE_FIELD(windowKeys);
 
 	READ_DONE();
 }
@@ -2212,6 +2368,12 @@ _readGroup(const char ** str)
 	READ_INT_FIELD(numCols);
 
 	READ_INT_ARRAY(grpColIdx, numCols, AttrNumber);
+
+	READ_INT_FIELD(numNullCols);
+	READ_INT_FIELD(rollupLevel);
+	READ_UINT64_FIELD(grouping);
+	READ_INT_FIELD(rollupGSTimes);
+	READ_BOOL_FIELD(lastGroup);
 		
 	READ_DONE();
 }
@@ -2229,6 +2391,19 @@ _readMaterial(const char ** str)
 
 	READ_DONE();
 }
+
+/*
+ * _readShareInputScan
+ */
+static ShareInputScan *
+_readShareInputScan(const char ** str)
+{
+	READ_LOCALS(ShareInputScan);
+	readPlanInfo(str, (Plan *)local_node);
+
+	READ_DONE();
+}
+
 
 /*
  * _readSort
@@ -2323,6 +2498,52 @@ _readHash(const char ** str)
 }
 
 /*
+ * _readFlow
+ */
+static Flow *
+_readFlow(const char ** str)
+{
+	READ_LOCALS(Flow);
+
+	READ_ENUM_FIELD(flotype, FlowType);
+	READ_ENUM_FIELD(req_move, Movement);
+	READ_ENUM_FIELD(locustype, CdbLocusType);
+	READ_INT_FIELD(segindex);
+
+	READ_INT_FIELD(numSortCols);
+	READ_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
+	READ_OID_ARRAY(sortOperators, numSortCols);
+
+	READ_NODE_FIELD(hashExpr);
+	READ_NODE_FIELD(flow_before_req_move);
+
+	READ_DONE();
+}
+
+/* _readMotionSliceEntry */
+static MotionSliceEntry *
+_readMotionSliceEntry(const char ** str)
+{
+	READ_LOCALS(MotionSliceEntry);
+
+	READ_ENUM_FIELD(motionType, MotionType);  
+	Assert(local_node->motionType == MOTIONTYPE_FIXED || local_node->motionType == MOTIONTYPE_HASH);
+
+	READ_INT_FIELD(numHashSegs);
+	READ_INT_ARRAY(hashSegIdx, numHashSegs, int);
+
+	READ_NODE_FIELD(hashExpr);
+	READ_NODE_FIELD(hashDataTypes);
+
+	READ_INT_FIELD(numOutputSegs);
+	READ_INT_ARRAY(outputSegIdx, numOutputSegs, int);
+
+	READ_NODE_FIELD(flow);
+
+	READ_DONE();
+}
+
+/*
  * _readMotion
  */
 static Motion *
@@ -2331,7 +2552,6 @@ _readMotion(const char ** str)
 	READ_LOCALS(Motion);
 
 	READ_INT_FIELD(motionID);
-	READ_ENUM_FIELD(motionType, MotionType);  Assert(local_node->motionType <= MOTIONTYPE_FIXED);
 	READ_BOOL_FIELD(sendToSecondary);
 	READ_BOOL_FIELD(sendSorted);
 	
@@ -2352,14 +2572,7 @@ _readMotion(const char ** str)
     	}
     }
 
-	READ_INT_FIELD(numHashSegs);
-	READ_INT_ARRAY(hashSegIdx, numHashSegs, int);
-
-	READ_NODE_FIELD(hashExpr);
-	READ_NODE_FIELD(hashDataTypes);
-
-	READ_INT_FIELD(numOutputSegs);
-	READ_INT_ARRAY(outputSegIdx, numOutputSegs, int);
+	READ_NODE_FIELD(sliceEntries);
 
 	READ_INT_FIELD(numSortCols);
 	READ_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
@@ -2369,7 +2582,6 @@ _readMotion(const char ** str)
 
 	READ_DONE();
 }
-
 
 /*
  * _readVacuumStmt
@@ -2416,7 +2628,7 @@ _readSlice(const char ** str)
 	READ_INT_FIELD(gangSize);
 	READ_DUMMY_FIELD(primaryGang, NULL);
 	READ_DUMMY_FIELD(mirrorGang, NULL);
-	READ_INT_FIELD(parentIndex);
+	READ_NODE_FIELD(parent); /* List of int index */
 	READ_NODE_FIELD(children); /* List of int index */
 	READ_NODE_FIELD(primaryProcesses); /* List of (CDBProcess *) */
 	READ_NODE_FIELD(mirrorProcesses); /* List of (CDBProcess *) */
@@ -2488,6 +2700,10 @@ void readPlanInfo(const char ** str, Plan *local_node)
      *      flow
      *      dispatch
      */
+
+	READ_INT_FIELD(sliceNum);
+	READ_INT_FIELD(sharing_id);
+	READ_INT_FIELD(shared_id);
 }
 
 void readJoinInfo(const char ** str, Join *local_node)
@@ -2720,11 +2936,20 @@ readNodeBinary(const char ** str)
 			case T_Agg:
 				return_value = _readAgg(str);
 				break;
+			case T_WindowKey:
+				return_value = _readWindowKey(str);
+				break;
+			case T_Window:
+				return_value = _readWindow(str);
+				break;
 			case T_Group:
 				return_value = _readGroup(str);
 				break;
 			case T_Material:
 				return_value = _readMaterial(str);
+				break;
+			case T_ShareInputScan:
+				return_value = _readShareInputScan(str);
 				break;
 			case T_Sort:
 				return_value = _readSort(str);
@@ -2744,6 +2969,9 @@ readNodeBinary(const char ** str)
 			case T_Motion:
 				return_value = _readMotion(str);
 				break;
+			case T_MotionSliceEntry: 
+				return_value = _readMotionSliceEntry(str);
+				break;
 			case T_Alias:
 				return_value = _readAlias(str);
 				break;
@@ -2761,6 +2989,9 @@ readNodeBinary(const char ** str)
 				break;
 			case T_Aggref:
 				return_value = _readAggref(str);
+				break;
+			case T_WindowRef:
+				return_value = _readWindowRef(str);
 				break;
 			case T_ArrayRef:
 				return_value = _readArrayRef(str);
@@ -2852,11 +3083,10 @@ readNodeBinary(const char ** str)
 			case T_FromExpr:
 				return_value = _readFromExpr(str);
 				break;
-#if 0
 			case T_Flow:
 				return_value = _readFlow(str);
 				break;
-
+#if 0
 			case T_Path:
 				return_value = _readPath(str);
 				break;
@@ -3118,6 +3348,30 @@ readNodeBinary(const char ** str)
 				break;
 			case T_GroupClause:
 				return_value = _readGroupClause(str);
+				break;
+			case T_GroupingClause:
+				return_value = _readGroupingClause(str);
+				break;
+		    case T_GroupingFunc:
+				return_value = _readGroupingFunc(str);
+				break;
+		    case T_Grouping:
+				return_value = _readGrouping(str);
+				break;
+		    case T_GroupId:
+				return_value = _readGroupId(str);
+				break;
+			case T_WindowSpecParse:
+				return_value = _readWindowSpecParse(str);
+				break;
+			case T_WindowSpec:
+				return_value = _readWindowSpec(str);
+				break;
+			case T_WindowFrame:
+				return_value = _readWindowFrame(str);
+				break;
+			case T_WindowFrameEdge:
+				return_value = _readWindowFrameEdge(str);
 				break;
 			case T_RowMarkClause:
 				return_value = _readRowMarkClause(str);

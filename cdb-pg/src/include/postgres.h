@@ -593,6 +593,7 @@ extern DLLIMPORT bool assert_enabled;
 #define AssertMacro(condition)	((void)true)
 #define AssertArg(condition)
 #define AssertState(condition)
+#define AssertImply(condition1, condition2)
 #else
 #define Assert(condition) \
 		Trap(!(condition), "FailedAssertion")
@@ -605,6 +606,13 @@ extern DLLIMPORT bool assert_enabled;
 
 #define AssertState(condition) \
 		Trap(!(condition), "BadState")
+
+#define AssertImply(cond1, cond2) \
+		Trap(!(!(cond1) || (cond2)), "AssertImply failed")
+
+#define AssertEquivalent(cond1, cond2) \
+		Trap(!((bool)(cond1) == (bool)(cond2)), "AssertEquivalent failed")
+
 #endif   /* USE_ASSERT_CHECKING */
 
 extern int ExceptionalCondition(const char *conditionName,

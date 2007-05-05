@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/util/clauses.c,v 1.223.2.2 2007/03/06 22:45:23 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/util/clauses.c,v 1.223.2.1 2007/02/02 00:03:17 tgl Exp $
  *
  * HISTORY
  *	  AUTHOR			DATE			MAJOR EVENT
@@ -554,6 +554,12 @@ expression_returns_set_walker(Node *node, void *context)
 	/* Avoid recursion for some cases that can't return a set */
 	if (IsA(node, Aggref))
 		return false;
+	if (IsA(node, Grouping))
+		return false;
+	if (IsA(node, GroupId))
+		return false;
+	if (IsA(node, WindowRef))
+		return false;
 	if (IsA(node, DistinctExpr))
 		return false;
 	if (IsA(node, ScalarArrayOpExpr))
@@ -812,6 +818,11 @@ contain_nonstrict_functions_walker(Node *node, void *context)
 	if (IsA(node, Aggref))
 	{
 		/* an aggregate could return non-null with null input */
+		return true;
+	}
+	if (IsA(node, WindowRef))
+	{
+		/* a window function could return non-null with null input */
 		return true;
 	}
 	if (IsA(node, ArrayRef))
@@ -1161,7 +1172,7 @@ has_distinct_on_clause(Query *query)
 				continue;		/* we can ignore unsorted junk cols */
 			return true;		/* definitely not in DISTINCT list */
 		}
-		if (targetIsInSortList(tle, query->distinctClause))
+		if (targetIsInSortGroupList(tle, query->distinctClause))
 		{
 			if (tle->resjunk)
 				return true;	/* junk TLE in DISTINCT means DISTINCT ON */
@@ -1172,7 +1183,7 @@ has_distinct_on_clause(Query *query)
 			/* This TLE is not in DISTINCT list */
 			if (!tle->resjunk)
 				return true;	/* non-junk, non-DISTINCT, so DISTINCT ON */
-			if (targetIsInSortList(tle, query->sortClause))
+			if (targetIsInSortGroupList(tle, query->sortClause))
 				return true;	/* sorted, non-distinct junk */
 			/* unsorted junk is okay, keep looking */
 		}
@@ -3221,6 +3232,17 @@ expression_tree_walker(Node *node,
 					return true;
 			}
 			break;
+		case T_WindowRef:
+			{
+				WindowRef	   *expr = (WindowRef *) node;
+
+				/* recurse directly on explicit arg List */
+				if (expression_tree_walker((Node *) expr->args,
+										   walker, context))
+					return true;
+				/* don't recurse on implicit args under winspec */
+			}
+			break;
 		case T_ArrayRef:
 			{
 				ArrayRef   *aref = (ArrayRef *) node;
@@ -3442,6 +3464,49 @@ expression_tree_walker(Node *node,
 					return true;
 			}
 			break;
+		case T_GroupingFunc:
+			{
+				GroupingFunc *gfunc = (GroupingFunc *)node;
+
+				if (expression_tree_walker((Node*) gfunc->args, walker, context))
+					return true;
+			}
+			break;
+		case T_Grouping:
+		case T_GroupId:
+			{
+				/* do nothing */
+			}
+			break;
+		case T_WindowSpec:
+			{
+				WindowSpec *wspec = (WindowSpec *)node;
+				
+				if (expression_tree_walker((Node *) wspec->frame,
+										   walker, context))
+					return true;
+			}
+			break;
+		case T_WindowFrame:
+			{
+				WindowFrame *frame = (WindowFrame *)node;
+				
+				if (expression_tree_walker((Node *) frame->trail,
+										   walker, context))
+					return true;
+				if (expression_tree_walker((Node *) frame->lead,
+										   walker, context))
+					return true;
+			}
+			break;
+		case T_WindowFrameEdge:
+			{
+				WindowFrameEdge *edge = (WindowFrameEdge *)node;
+				
+				if (walker((Node *) edge->val, context))
+					return true;
+			}
+			break;
 		default:
             ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
                             errmsg_internal("unrecognized node type: %d",
@@ -3483,6 +3548,8 @@ query_tree_walker(Query *query,
 	if (walker(query->setOperations, context))
 		return true;
 	if (walker(query->havingQual, context))
+		return true;
+	if (walker(query->windowClause, context))
 		return true;
 	if (walker(query->limitOffset, context))
 		return true;
@@ -3684,6 +3751,65 @@ expression_tree_mutator(Node *node,
 
 				FLATCOPY(newnode, aggref, Aggref);
 				MUTATE(newnode->args, aggref->args, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_GroupingFunc:
+			{
+				GroupingFunc *gf = (GroupingFunc*) node;
+				GroupingFunc *newnode;
+
+				FLATCOPY(newnode, gf, GroupingFunc);
+				MUTATE(newnode->args, gf->args, List *);
+				return (Node *)newnode;
+			}
+			break;
+		case T_Grouping:
+			{
+				Grouping *grping = (Grouping *) node;
+				Grouping *newnode;
+
+				FLATCOPY(newnode, grping, Grouping);
+				return (Node *) newnode;
+			}
+			break;
+		case T_GroupId:
+			{
+				GroupId *grpid = (GroupId *) node;
+				GroupId *newnode;
+
+				FLATCOPY(newnode, grpid, GroupId);
+				return (Node *) newnode;
+			}
+			break;
+		case T_WindowRef:
+			{
+				WindowRef   *windowref = (WindowRef *) node;
+				WindowRef   *newnode;
+
+				FLATCOPY(newnode, windowref, WindowRef);
+				MUTATE(newnode->args, windowref->args, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_WindowFrame:
+			{
+				WindowFrame	*frame = (WindowFrame *) node;
+				WindowFrame *newnode;
+				
+				FLATCOPY(newnode, frame, WindowFrame);
+				MUTATE(newnode->trail, frame->trail, WindowFrameEdge *);
+				MUTATE(newnode->lead, frame->lead, WindowFrameEdge *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_WindowFrameEdge:
+			{
+				WindowFrameEdge	*edge = (WindowFrameEdge *) node;
+				WindowFrameEdge *newnode;
+				
+				FLATCOPY(newnode, edge, WindowFrameEdge);
+				MUTATE(newnode->val, edge->val, Node *);
 				return (Node *) newnode;
 			}
 			break;
@@ -4080,6 +4206,7 @@ query_tree_mutator(Query *query,
 	MUTATE(query->jointree, query->jointree, FromExpr *);
 	MUTATE(query->setOperations, query->setOperations, Node *);
 	MUTATE(query->havingQual, query->havingQual, Node *);
+	MUTATE(query->windowClause, query->windowClause, List *);
 	MUTATE(query->limitOffset, query->limitOffset, Node *);
 	MUTATE(query->limitCount, query->limitCount, Node *);
 	query->rtable = range_table_mutator(query->rtable,
@@ -4191,4 +4318,22 @@ query_or_expression_tree_mutator(Node *node,
 										   flags);
 	else
 		return mutator(node, context);
+}
+
+/*
+ * is_grouping_extension -
+ *     Return true if a given grpsets contain multiple grouping sets.
+ */
+bool
+is_grouping_extension(CanonicalGroupingSets *grpsets)
+{
+	if (grpsets == NULL ||
+		grpsets->ngrpsets == 0)
+		return false;
+
+	if (grpsets->ngrpsets == 1 &&
+		grpsets->grpset_counts[0] == 1)
+		return false;
+
+	return true;
 }

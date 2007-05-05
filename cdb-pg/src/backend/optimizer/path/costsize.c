@@ -1144,6 +1144,39 @@ cost_group(Path *path, PlannerInfo *root,
 }
 
 /*
+ * cost_window
+ *		Determines and returns the cost of performing a Window plan node,
+ *		including the cost of its input.
+ *
+ * Note: caller must ensure that input costs are for appropriately-sorted
+ * input.
+ */
+void
+cost_window(Path *path, PlannerInfo *root,
+		   int numOrderCols,
+		   Cost input_startup_cost, Cost input_total_cost,
+		   double input_tuples)
+{
+	Cost		startup_cost;
+	Cost		total_cost;
+
+	startup_cost = input_startup_cost;
+	total_cost = input_total_cost;
+
+	/*
+	 * Charge one cpu_operator_cost per comparison per input tuple. We assume
+	 * all columns get compared at most of the tuples.  
+	 *
+	 * XXX Should we also charge for function calls in the targetlist?
+	 */
+	total_cost += cpu_operator_cost * input_tuples * numOrderCols;
+
+	path->startup_cost = startup_cost;
+	path->total_cost = total_cost;
+}
+
+
+/*
  * If a nestloop's inner path is an indexscan, be sure to use its estimated
  * output row count, which may be lower than the restriction-clause-only row
  * count of its parent.  (We don't include this case in the PATH_ROWS macro

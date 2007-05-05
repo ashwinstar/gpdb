@@ -338,7 +338,7 @@ PortalCreateHoldStore(Portal portal)
 	oldcxt = MemoryContextSwitchTo(portal->holdContext);
 
 	/* XXX: Should maintenance_work_mem be used for the portal size? */
-	portal->holdStore = tuplestore_begin_heap(true, true, work_mem);
+	portal->holdStore = tuplestore_begin_heap(true, true, work_mem); 
 
 	MemoryContextSwitchTo(oldcxt);
 }
@@ -428,7 +428,7 @@ PortalDrop(Portal portal, bool isTopCommit)
 		MemoryContext oldcontext;
 
 		oldcontext = MemoryContextSwitchTo(portal->holdContext);
-		tuplestore_end(portal->holdStore);
+		tuplestore_end(portal->holdStore); 
 		MemoryContextSwitchTo(oldcontext);
 		portal->holdStore = NULL;
 	}
@@ -913,7 +913,6 @@ TotalResPortalIncrements(int pid, Oid queueid, Cost *totalIncrements)
 		}
 	}
 }
-
 
 /* Find all available cursors */
 Datum

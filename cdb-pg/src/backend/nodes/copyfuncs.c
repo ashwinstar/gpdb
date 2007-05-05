@@ -92,6 +92,9 @@ CopyPlanFields(Plan *from, Plan *newnode)
 	COPY_SCALAR_FIELD(nMotionNodes);
 	COPY_SCALAR_FIELD(nInitPlans);
 	COPY_NODE_FIELD(sliceTable);
+	COPY_SCALAR_FIELD(sliceNum);
+	COPY_SCALAR_FIELD(sharing_id);
+	COPY_SCALAR_FIELD(shared_id);
 }
 
 /*
@@ -526,6 +529,19 @@ _copyHashJoin(HashJoin *from)
 	return newnode;
 }
 
+/*
+ * _copyShareInputScan
+ */
+static ShareInputScan *
+_copyShareInputScan(ShareInputScan *from)
+{
+	ShareInputScan *newnode = makeNode(ShareInputScan);
+	
+	/* copy node superclass fields */
+	CopyPlanFields((Plan *) from, (Plan *) newnode);
+	return newnode;
+}
+
 
 /*
  * _copyMaterial
@@ -582,6 +598,11 @@ _copyGroup(Group *from)
 
 	COPY_SCALAR_FIELD(numCols);
 	COPY_POINTER_FIELD(grpColIdx, from->numCols * sizeof(AttrNumber));
+	COPY_SCALAR_FIELD(numNullCols);
+	COPY_SCALAR_FIELD(rollupLevel);
+	COPY_SCALAR_FIELD(grouping);
+	COPY_SCALAR_FIELD(rollupGSTimes);
+	COPY_SCALAR_FIELD(lastGroup);
 
 	return newnode;
 }
@@ -602,9 +623,48 @@ _copyAgg(Agg *from)
 		COPY_POINTER_FIELD(grpColIdx, from->numCols * sizeof(AttrNumber));
 	COPY_SCALAR_FIELD(numGroups);
 	COPY_SCALAR_FIELD(transSpace);
+	COPY_SCALAR_FIELD(numNullCols);
+	COPY_SCALAR_FIELD(rollupLevel);
+	COPY_SCALAR_FIELD(grouping);
+	COPY_SCALAR_FIELD(rollupGSTimes);
 
 	return newnode;
 }
+
+/*
+ * _copyWindowKey
+ */
+static WindowKey *
+_copyWindowKey(WindowKey *from)
+{
+	WindowKey   *newnode = makeNode(WindowKey);
+
+	COPY_SCALAR_FIELD(numSortCols);
+	if (from->numSortCols > 0)
+		COPY_POINTER_FIELD(sortColIdx, from->numSortCols * sizeof(AttrNumber));
+	COPY_NODE_FIELD(frame);
+
+	return newnode;
+}
+
+/*
+ * _copyWindow
+ */
+static Window *
+_copyWindow(Window *from)
+{
+	Window	*newnode = makeNode(Window);
+
+	CopyPlanFields((Plan *) from, (Plan *) newnode);
+
+	COPY_SCALAR_FIELD(numPartCols);
+	if (from->numPartCols > 0)
+		COPY_POINTER_FIELD(partColIdx, from->numPartCols * sizeof(AttrNumber));
+	COPY_NODE_FIELD(windowKeys);
+
+	return newnode;
+}
+
 
 /*
  * _copyUnique
@@ -694,6 +754,31 @@ _copyLimit(Limit *from)
 	return newnode;
 }
 
+/* -----------------------------------------------------------------
+ * _copyMotion and helper function
+ */
+/* 
+ * _copyMotionSliceEntry 
+ */
+static MotionSliceEntry *
+_copyMotionSliceEntry(MotionSliceEntry *from)
+{
+	MotionSliceEntry *newnode = makeNode(MotionSliceEntry);
+
+	COPY_SCALAR_FIELD(motionType);
+	COPY_SCALAR_FIELD(numHashSegs);
+	COPY_POINTER_FIELD(hashSegIdx, from->numHashSegs * sizeof(int));
+	COPY_NODE_FIELD(hashExpr);
+	COPY_NODE_FIELD(hashDataTypes);
+	
+	COPY_SCALAR_FIELD(numOutputSegs);
+	COPY_POINTER_FIELD(outputSegIdx, from->numOutputSegs * sizeof(int));
+
+	COPY_NODE_FIELD(flow);
+
+	return newnode;
+}
+
 /*
  * _copyMotion
  */
@@ -707,7 +792,6 @@ _copyMotion(Motion *from)
 	 */
 	CopyPlanFields((Plan *) from, (Plan *) newnode);
 
-	COPY_SCALAR_FIELD(motionType);
 	COPY_SCALAR_FIELD(sendToSecondary);
 	COPY_SCALAR_FIELD(sendSorted);
 	COPY_SCALAR_FIELD(motionID);
@@ -716,13 +800,7 @@ _copyMotion(Motion *from)
     if (from->inputSegIdx)
         COPY_POINTER_FIELD(inputSegIdx, from->numInputSegs * sizeof(int));
 	
-	COPY_SCALAR_FIELD(numHashSegs);
-	COPY_POINTER_FIELD(hashSegIdx, from->numHashSegs * sizeof(int));
-	COPY_NODE_FIELD(hashExpr);
-	COPY_NODE_FIELD(hashDataTypes);
-	
-	COPY_SCALAR_FIELD(numOutputSegs);
-	COPY_POINTER_FIELD(outputSegIdx, from->numOutputSegs * sizeof(int));
+	COPY_NODE_FIELD(sliceEntries);
 
 	COPY_SCALAR_FIELD(numSortCols);
 	COPY_POINTER_FIELD(sortColIdx, from->numSortCols * sizeof(AttrNumber));
@@ -730,7 +808,6 @@ _copyMotion(Motion *from)
 
 	return newnode;
 }
-
 
 /* ****************************************************************
  *					   primnodes.h copy functions
@@ -861,6 +938,26 @@ _copyAggref(Aggref *from)
 	COPY_SCALAR_FIELD(aggstar);
 	COPY_SCALAR_FIELD(aggdistinct);
 	COPY_SCALAR_FIELD(aggstage);
+
+	return newnode;
+}
+
+/*
+ * _copyWindowRef
+ */
+static WindowRef *
+_copyWindowRef(WindowRef *from)
+{
+	WindowRef	   *newnode = makeNode(WindowRef);
+
+	COPY_SCALAR_FIELD(winfnoid);
+	COPY_SCALAR_FIELD(restype);
+	COPY_NODE_FIELD(args);
+	COPY_SCALAR_FIELD(winlevelsup);
+	COPY_SCALAR_FIELD(winspec);
+	COPY_SCALAR_FIELD(winindex);
+	COPY_SCALAR_FIELD(winstage);
+	COPY_SCALAR_FIELD(winlevel);
 
 	return newnode;
 }
@@ -1557,6 +1654,95 @@ _copyGroupClause(GroupClause *from)
 	return newnode;
 }
 
+static GroupingClause *
+_copyGroupingClause(GroupingClause *from)
+{
+	GroupingClause *newnode = makeNode(GroupingClause);
+	COPY_SCALAR_FIELD(groupType);
+	COPY_NODE_FIELD(groupsets);
+
+	return newnode;
+}
+
+static GroupingFunc *
+_copyGroupingFunc(GroupingFunc *from)
+{
+	GroupingFunc *newnode = makeNode(GroupingFunc);
+
+	COPY_NODE_FIELD(args);
+	COPY_SCALAR_FIELD(ngrpcols);
+	COPY_SCALAR_FIELD(nargs);
+	COPY_POINTER_FIELD(grpargs, from->nargs * sizeof(int));
+
+	return newnode;
+}
+
+static Grouping *
+_copyGrouping(Grouping *from)
+{
+	Grouping *newnode = makeNode(Grouping);
+
+	return newnode;
+}
+
+static GroupId *
+_copyGroupId(GroupId *from)
+{
+	GroupId *newnode = makeNode(GroupId);
+
+	return newnode;
+}
+
+static WindowSpecParse *
+_copyWindowSpecParse(WindowSpecParse *from)
+{
+	WindowSpecParse *newnode = makeNode(WindowSpecParse);
+	
+	COPY_STRING_FIELD(name);
+	COPY_NODE_FIELD(elems);
+
+	return newnode;
+}
+
+static WindowSpec *
+_copyWindowSpec(WindowSpec *from)
+{
+	WindowSpec *newnode = makeNode(WindowSpec);
+
+	COPY_STRING_FIELD(name);
+	COPY_STRING_FIELD(parent);
+	COPY_NODE_FIELD(partition);
+	COPY_NODE_FIELD(order);
+	COPY_NODE_FIELD(frame);
+
+	return newnode;
+}
+
+static WindowFrame *
+_copyWindowFrame(WindowFrame *from)
+{
+	WindowFrame *newnode = makeNode(WindowFrame);
+	
+	COPY_SCALAR_FIELD(is_rows);
+	COPY_SCALAR_FIELD(is_between);
+	COPY_NODE_FIELD(trail);
+	COPY_NODE_FIELD(lead);
+	COPY_SCALAR_FIELD(exclude);
+
+	return newnode;
+}
+
+static WindowFrameEdge *
+_copyWindowFrameEdge(WindowFrameEdge *from)
+{
+	WindowFrameEdge *newnode = makeNode(WindowFrameEdge);
+
+	COPY_SCALAR_FIELD(kind);
+	COPY_NODE_FIELD(val);
+
+	return newnode;
+}
+
 static RowMarkClause *
 _copyRowMarkClause(RowMarkClause *from)
 {
@@ -1644,6 +1830,7 @@ _copyFuncCall(FuncCall *from)
 	COPY_NODE_FIELD(args);
 	COPY_SCALAR_FIELD(agg_star);
 	COPY_SCALAR_FIELD(agg_distinct);
+	COPY_NODE_FIELD(over);
 	COPY_SCALAR_FIELD(location);
 
 	return newnode;
@@ -1830,6 +2017,7 @@ _copyQuery(Query *from)
 	COPY_SCALAR_FIELD(intoOnCommit);
 	COPY_STRING_FIELD(intoTableSpaceName);
 	COPY_SCALAR_FIELD(hasAggs);
+	COPY_SCALAR_FIELD(hasWindFuncs);
 	COPY_SCALAR_FIELD(hasSubLinks);
 	COPY_NODE_FIELD(rtable);
 	COPY_NODE_FIELD(jointree);
@@ -1837,6 +2025,7 @@ _copyQuery(Query *from)
 	COPY_NODE_FIELD(returningList);
 	COPY_NODE_FIELD(groupClause);
 	COPY_NODE_FIELD(havingQual);
+	COPY_NODE_FIELD(windowClause);
 	COPY_NODE_FIELD(distinctClause);
 	COPY_NODE_FIELD(sortClause);
 	COPY_NODE_FIELD(limitOffset);
@@ -1916,6 +2105,7 @@ _copySelectStmt(SelectStmt *from)
 	COPY_NODE_FIELD(whereClause);
 	COPY_NODE_FIELD(groupClause);
 	COPY_NODE_FIELD(havingClause);
+	COPY_NODE_FIELD(windowClause);
 	COPY_NODE_FIELD(valuesLists);
 	COPY_NODE_FIELD(sortClause);
 	COPY_NODE_FIELD(limitOffset);
@@ -2915,7 +3105,7 @@ _copySlice(Slice *from)
 	COPY_SCALAR_FIELD(gangSize);
 	newnode->primaryGang = from->primaryGang;
 	newnode->mirrorGang = from->mirrorGang;
-	COPY_SCALAR_FIELD(parentIndex);
+	COPY_NODE_FIELD(parent);
 	COPY_NODE_FIELD(children);
 	COPY_NODE_FIELD(primaryProcesses);
 	COPY_NODE_FIELD(mirrorProcesses);
@@ -3128,6 +3318,9 @@ copyObject(void *from)
 		case T_HashJoin:
 			retval = _copyHashJoin(from);
 			break;
+		case T_ShareInputScan:
+			retval = _copyShareInputScan(from);
+			break;
 		case T_Material:
 			retval = _copyMaterial(from);
 			break;
@@ -3139,6 +3332,12 @@ copyObject(void *from)
 			break;
 		case T_Agg:
 			retval = _copyAgg(from);
+			break;
+		case T_WindowKey:
+			retval = _copyWindowKey(from);
+			break;
+		case T_Window:
+			retval = _copyWindow(from);
 			break;
 		case T_Unique:
 			retval = _copyUnique(from);
@@ -3154,6 +3353,9 @@ copyObject(void *from)
 			break;
 		case T_Motion:
 			retval = _copyMotion(from);
+			break;
+		case T_MotionSliceEntry:
+			retval = _copyMotionSliceEntry(from);
 			break;
 
 			/*
@@ -3176,6 +3378,9 @@ copyObject(void *from)
 			break;
 		case T_Aggref:
 			retval = _copyAggref(from);
+			break;
+		case T_WindowRef:
+			retval = _copyWindowRef(from);
 			break;
 		case T_ArrayRef:
 			retval = _copyArrayRef(from);
@@ -3623,6 +3828,30 @@ copyObject(void *from)
 			break;
 		case T_GroupClause:
 			retval = _copyGroupClause(from);
+			break;
+		case T_GroupingClause:
+			retval = _copyGroupingClause(from);
+			break;
+		case T_GroupingFunc:
+			retval = _copyGroupingFunc(from);
+			break;
+		case T_Grouping:
+			retval = _copyGrouping(from);
+			break;
+		case T_GroupId:
+			retval = _copyGroupId(from);
+			break;
+		case T_WindowSpecParse:
+			retval = _copyWindowSpecParse(from);
+			break;
+		case T_WindowSpec:
+			retval = _copyWindowSpec(from);
+			break;
+		case T_WindowFrame:
+			retval = _copyWindowFrame(from);
+			break;
+		case T_WindowFrameEdge:
+			retval = _copyWindowFrameEdge(from);
 			break;
 		case T_RowMarkClause:
 			retval = _copyRowMarkClause(from);

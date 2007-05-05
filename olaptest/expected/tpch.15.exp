@@ -1,0 +1,7 @@
+CREATE VIEW
+ s_suppkey |          s_name           |       s_address       |     s_phone     | total_revenue 
+-----------+---------------------------+-----------------------+-----------------+---------------
+         7 | Supplier#000000007        | s,4TicNGB4uO6PaSqNBUq | 33-990-965-2201 | 15506919.3796
+(1 row)
+
+DROP VIEW

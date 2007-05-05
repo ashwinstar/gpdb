@@ -1306,6 +1306,14 @@ find_expr_references_walker(Node *node,
 						   context->addrs);
 		/* fall through to examine arguments */
 	}
+	if (IsA(node, WindowRef))
+	{
+		WindowRef	*windowref = (WindowRef *) node;
+
+		add_object_address(OCLASS_PROC, windowref->winfnoid, 0,
+						   context->addrs);
+		/* fall through to examine arguments */
+	}
 	if (is_subplan(node))
 	{
 		/* Extra work needed here if we ever need this case */

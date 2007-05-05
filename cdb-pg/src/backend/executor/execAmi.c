@@ -372,6 +372,7 @@ ExecSupportsMarkRestore(NodeTag plantype)
 		case T_ValuesScan:
 		case T_Material:
 		case T_Sort:
+		case T_ShareInputScan:
 			return true;
 
 		case T_Result:
@@ -434,6 +435,9 @@ ExecSupportsBackwardScan(Plan *node)
 
 		case T_SubqueryScan:
 			return ExecSupportsBackwardScan(((SubqueryScan *) node)->subplan);
+
+		case T_ShareInputScan:
+			return true;
 
 		case T_Material:
 		case T_Sort:

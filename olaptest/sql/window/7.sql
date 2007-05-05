@@ -1,0 +1,1 @@
+select * from customer window w as (partition by p), wa as (w order by a), wb as (w order by b), waf as (wa rows between 2 preceding and 3 preceding), wbf as (wb range between 2 preceding and 3 preceding); 

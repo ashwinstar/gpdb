@@ -1304,6 +1304,33 @@ ShutdownExprContext(ExprContext *econtext)
 }
 
 
+/* ---------------------------------------------------------------
+ * 		Share Input utilities 
+ * ---------------------------------------------------------------
+ */
+ShareNodeEntry *
+ExecGetShareNodeEntry(EState* estate, int shareidx, bool fCreate)
+{
+	Assert(IS_VALID_SHARE_ID(shareidx));
+	if(!fCreate)
+	{
+		Assert(list_length(estate->es_sharenode) > shareidx);
+	}
+	else
+	{
+		while(list_length(estate->es_sharenode) <= shareidx)
+		{
+			ShareNodeEntry *n = makeNode(ShareNodeEntry);
+			n->sharePlan = NULL;
+			n->shareState = NULL;
+
+			estate->es_sharenode = lappend(estate->es_sharenode, n); 
+		}
+	}
+		
+	return (ShareNodeEntry *) list_nth(estate->es_sharenode, shareidx);
+}
+
 /* ----------------------------------------------------------------
  *		CDB Slice Table utilities
  * ----------------------------------------------------------------
@@ -1344,7 +1371,7 @@ InitSliceTable(EState *estate, int nMotions, int nSubplans)
 		slice->gangSize = 0;
 		slice->primaryGang = NULL;
 		slice->mirrorGang = NULL;
-		slice->parentIndex = -1;
+		slice->parent = NIL;
 		slice->children = NIL;
 		slice->primaryProcesses = NIL;
 		slice->mirrorProcesses = NIL;

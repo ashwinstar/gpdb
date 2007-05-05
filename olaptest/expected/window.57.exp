@@ -1,0 +1,16 @@
+ dense_rank |    cname     |   pname   
+------------+--------------+-----------
+          1 | Macbeth      | Castle
+          2 | Lady Macbeth | Donuts
+          2 | Lady Macbeth | Donuts
+          3 | Macbeth      | Donuts
+          4 | Lady Macbeth | Dream
+          5 | Macbeth      | Dream
+          6 | Witches, Inc | Fries
+          7 | Witches, Inc | Hamburger
+          8 | Duncan       | Justice
+          9 | Macbeth      | Justice
+         10 | Duncan       | Sword
+         11 | Macbeth      | Sword
+(12 rows)
+

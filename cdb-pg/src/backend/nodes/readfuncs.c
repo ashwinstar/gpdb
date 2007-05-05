@@ -72,6 +72,12 @@
 	token = pg_strtok(&length);		/* get field value */ \
 	local_node->fldname = atoui(token)
 
+/* Read an uint64 field (anything written as ":fldname %ll") */
+#define READ_UINT64_FIELD(fldname) \
+	token = pg_strtok(&length);		/* skip :fldname */ \
+	token = pg_strtok(&length);		/* get field value */ \
+	local_node->fldname = atoll(token)
+
 /* Read an OID field (don't hard-wire assumption that OID is same as uint) */
 #define READ_OID_FIELD(fldname) \
 	token = pg_strtok(&length);		/* skip :fldname */ \
@@ -144,7 +150,7 @@
 		for(i=0; i<local_node->count; i++) \
 		{ \
 			token = pg_strtok(&length);		/* get field value */ \
-			local_node->fldname[i] = atoi(token); \
+			local_node->fldname[i] = (Type) atoi(token); \
 		} \
 	}
 
@@ -157,13 +163,45 @@
 	{ \
 		int i; \
 		local_node->fldname = (Type *)palloc(local_node->count * sizeof(Type)); \
-        local_node->fldname[0] = atoi(token); \
+        local_node->fldname[0] = (Type) atoi(token); \
 		for(i=1; i<local_node->count; i++) \
 		{ \
             token = pg_strtok(&length);		/* get field value */ \
-            local_node->fldname[i] = atoi(token); \
+            local_node->fldname[i] = (Type) atoi(token); \
 		} \
 	}
+
+/* Read an unsigned integer array (anything written as ":fldname %u %u ...") */
+#define READ_UINT_ARRAY(fldname, count, Type) \
+	token = pg_strtok(&length);		/* skip :fldname */ \
+	if ( local_node->count > 0 ) \
+	{ \
+		int i; \
+		local_node->fldname = (Type *)palloc(local_node->count * sizeof(Type)); \
+		for(i=0; i<local_node->count; i++) \
+		{ \
+			token = pg_strtok(&length);		/* get field value */ \
+			local_node->fldname[i] = (Type) atoui(token); \
+		} \
+	}
+
+/* Read optional unsigned integer array (":fldname %u %u ..." or ":fldname <>") */
+#define READ_UINT_ARRAY_OR_NULL(fldname, count, Type) \
+	if ( local_node->count > 0 && \
+         NULL != (token = pg_strtok(&length)) &&    /* skip :fldname */ \
+         NULL != (token = pg_strtok(&length)) &&    /* first value or <> */ \
+         length > 0 )                               /* proceed if isn't <> */ \
+	{ \
+		int i; \
+		local_node->fldname = (Type *)palloc(local_node->count * sizeof(Type)); \
+        local_node->fldname[0] = (Type) atoui(token); \
+		for(i=1; i<local_node->count; i++) \
+		{ \
+            token = pg_strtok(&length);		/* get field value */ \
+            local_node->fldname[i] = (Type) atoui(token); \
+		} \
+	}
+
 
 /* Read an Trasnaction ID array (written as ":fldname %u %u ... ") */
 #define READ_XID_ARRAY(fldname, count) \
@@ -232,6 +270,7 @@ _readQuery(void)
 	READ_ENUM_FIELD(intoOnCommit, OnCommitAction);
 	READ_STRING_FIELD(intoTableSpaceName);
 	READ_BOOL_FIELD(hasAggs);
+	READ_BOOL_FIELD(hasWindFuncs);
 	READ_BOOL_FIELD(hasSubLinks);
 	READ_NODE_FIELD(rtable);
 	READ_NODE_FIELD(jointree);
@@ -239,6 +278,7 @@ _readQuery(void)
 	READ_NODE_FIELD(returningList);
 	READ_NODE_FIELD(groupClause);
 	READ_NODE_FIELD(havingQual);
+	READ_NODE_FIELD(windowClause);
 	READ_NODE_FIELD(distinctClause);
 	READ_NODE_FIELD(sortClause);
 	READ_NODE_FIELD(limitOffset);
@@ -333,6 +373,96 @@ _readGroupClause(void)
 
 	READ_UINT_FIELD(tleSortGroupRef);
 	READ_OID_FIELD(sortop);
+
+	READ_DONE();
+}
+
+static GroupingClause *
+_readGroupingClause(void)
+{
+	READ_LOCALS(GroupingClause);
+
+	READ_ENUM_FIELD(groupType, GroupingType);
+	READ_NODE_FIELD(groupsets);
+
+	READ_DONE();
+}
+
+static GroupingFunc *
+_readGroupingFunc(void)
+{
+	READ_LOCALS(GroupingFunc);
+
+	READ_NODE_FIELD(args);
+	READ_INT_FIELD(ngrpcols);
+	READ_INT_FIELD(nargs);
+	READ_INT_ARRAY(grpargs, nargs, int);
+
+	READ_DONE();
+}
+
+static Grouping *
+_readGrouping(void)
+{
+	READ_LOCALS_NO_FIELDS(Grouping);
+
+	READ_DONE();
+}
+
+static GroupId *
+_readGroupId(void)
+{
+	READ_LOCALS_NO_FIELDS(GroupId);
+
+	READ_DONE();
+}
+
+static WindowSpecParse *
+_readWindowSpecParse(const char ** str)
+{
+	READ_LOCALS(WindowSpecParse);
+
+	READ_STRING_FIELD(name);
+	READ_NODE_FIELD(elems);
+
+	READ_DONE();
+}
+
+static WindowSpec *
+_readWindowSpec(const char ** str)
+{
+	READ_LOCALS(WindowSpec);
+
+	READ_STRING_FIELD(name);
+	READ_STRING_FIELD(parent);
+	READ_NODE_FIELD(partition);
+	READ_NODE_FIELD(order);
+	READ_NODE_FIELD(frame);
+
+	READ_DONE();
+}
+
+static WindowFrame *
+_readWindowFrame(const char ** str)
+{
+	READ_LOCALS(WindowFrame);
+
+	READ_BOOL_FIELD(is_rows);
+	READ_BOOL_FIELD(is_between);
+	READ_NODE_FIELD(trail);
+	READ_NODE_FIELD(lead);
+	READ_ENUM_FIELD(exclude, WindowExclusion);
+
+	READ_DONE();
+}
+
+static WindowFrameEdge *
+_readWindowFrameEdge(const char ** str)
+{
+	READ_LOCALS(WindowFrameEdge);
+
+	READ_ENUM_FIELD(kind, WindowBoundingKind);
+	READ_NODE_FIELD(val);
 
 	READ_DONE();
 }
@@ -612,6 +742,10 @@ _readTruncateStmt(void)
 
 	READ_NODE_FIELD(relations);
 	READ_ENUM_FIELD(behavior,DropBehavior);
+	
+	READ_NODE_FIELD(relids);
+	READ_NODE_FIELD(new_heap_oids);
+	READ_NODE_FIELD(new_toast_oids);
 
 	READ_DONE();
 }
@@ -766,6 +900,7 @@ _readFuncCall(void)
 	READ_NODE_FIELD(args);
 	READ_BOOL_FIELD(agg_star);
 	READ_BOOL_FIELD(agg_distinct);
+	READ_NODE_FIELD(over);
 	READ_INT_FIELD(location);
 	READ_DONE();
 }
@@ -949,6 +1084,26 @@ _readAggref(void)
     {                           /* braces required, macro doesn't have 'em */
         READ_ENUM_FIELD(aggstage, AggStage);
     }
+
+	READ_DONE();
+}
+
+/*
+ * _readWindowRef
+ */
+static WindowRef *
+_readWindowRef(void)
+{
+	READ_LOCALS(WindowRef);
+
+	READ_OID_FIELD(winfnoid);
+	READ_OID_FIELD(restype);
+	READ_NODE_FIELD(args);
+	READ_UINT_FIELD(winlevelsup);
+	READ_UINT_FIELD(winspec);
+	READ_UINT_FIELD(winindex);
+    READ_ENUM_FIELD(winstage, WinStage);
+	READ_UINT_FIELD(winlevel);
 
 	READ_DONE();
 }
@@ -2334,6 +2489,42 @@ _readAgg(void)
 	READ_INT_ARRAY(grpColIdx, numCols, AttrNumber);
 	READ_LONG_FIELD(numGroups);
 	READ_INT_FIELD(transSpace);
+	READ_INT_FIELD(numNullCols);
+	READ_INT_FIELD(rollupLevel);
+	READ_UINT64_FIELD(grouping);
+	READ_INT_FIELD(rollupGSTimes);
+
+	READ_DONE();
+}
+
+/*
+ * _readWindowKey
+ */
+static WindowKey *
+_readWindowKey(void)
+{
+	READ_LOCALS(WindowKey);
+
+	READ_INT_FIELD(numSortCols);
+	READ_INT_ARRAY_OR_NULL(sortColIdx, numSortCols, AttrNumber);
+	READ_NODE_FIELD(frame);
+
+	READ_DONE();
+}
+
+/*
+ * _readWindow
+ */
+static Window *
+_readWindow(void)
+{
+	READ_LOCALS(Window);
+
+	readPlanInfo((Plan *)local_node);
+
+	READ_INT_FIELD(numPartCols);
+	READ_INT_ARRAY_OR_NULL(partColIdx, numPartCols, AttrNumber);
+	READ_NODE_FIELD(windowKeys);
 
 	READ_DONE();
 }
@@ -2351,6 +2542,12 @@ _readGroup(void)
 	READ_INT_FIELD(numCols);
 
 	READ_INT_ARRAY(grpColIdx, numCols, AttrNumber);
+
+	READ_INT_FIELD(numNullCols);
+	READ_INT_FIELD(rollupLevel);
+	READ_UINT64_FIELD(grouping);
+	READ_INT_FIELD(rollupGSTimes);
+	READ_BOOL_FIELD(lastGroup);
 		
 	READ_DONE();
 }
@@ -2365,6 +2562,18 @@ _readMaterial(void)
 
     READ_BOOL_FIELD(cdb_strict);
     readPlanInfo((Plan *)local_node);
+
+	READ_DONE();
+}
+
+/*
+ * _readShareInputScan
+ */
+static ShareInputScan *
+_readShareInputScan(void)
+{
+	READ_LOCALS_NO_FIELDS(ShareInputScan);
+	readPlanInfo((Plan *)local_node);
 
 	READ_DONE();
 }
@@ -2461,6 +2670,27 @@ _readHash(void)
 	READ_DONE();
 }
 
+/* _readMotionSliceEntry */
+static MotionSliceEntry *
+_readMotionSliceEntry(void)
+{
+	READ_LOCALS(MotionSliceEntry);
+
+	READ_ENUM_FIELD(motionType, MotionType);
+	READ_INT_FIELD(numHashSegs);
+	READ_INT_ARRAY(hashSegIdx, numHashSegs, int);
+
+	READ_NODE_FIELD(hashExpr);
+	READ_NODE_FIELD(hashDataTypes);
+
+	READ_INT_FIELD(numOutputSegs);
+	READ_INT_ARRAY(outputSegIdx, numOutputSegs, int);
+
+	READ_NODE_FIELD(flow);
+
+	READ_DONE();
+}
+
 /*
  * _readMotion
  */
@@ -2470,21 +2700,13 @@ _readMotion(void)
 	READ_LOCALS(Motion);
 
 	READ_INT_FIELD(motionID);
-	READ_ENUM_FIELD(motionType, MotionType);
 	READ_BOOL_FIELD(sendToSecondary);
 	READ_BOOL_FIELD(sendSorted);
 	
     READ_INT_FIELD(numInputSegs);
     READ_INT_ARRAY_OR_NULL(inputSegIdx, numInputSegs, int);
 
-	READ_INT_FIELD(numHashSegs);
-	READ_INT_ARRAY(hashSegIdx, numHashSegs, int);
-
-	READ_NODE_FIELD(hashExpr);
-	READ_NODE_FIELD(hashDataTypes);
-
-	READ_INT_FIELD(numOutputSegs);
-	READ_INT_ARRAY(outputSegIdx, numOutputSegs, int);
+	READ_NODE_FIELD(sliceEntries);
 
 	READ_INT_FIELD(numSortCols);
 	READ_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
@@ -2495,6 +2717,25 @@ _readMotion(void)
 	READ_DONE();
 }
 
+static Flow *
+_readFlow(void)
+{
+	READ_LOCALS(Flow);
+
+	READ_ENUM_FIELD(flotype, FlowType);
+	READ_ENUM_FIELD(req_move, Movement);
+	READ_ENUM_FIELD(locustype, CdbLocusType);
+	READ_INT_FIELD(segindex);
+
+	READ_INT_FIELD(numSortCols);
+	READ_INT_ARRAY_OR_NULL(sortColIdx, numSortCols, AttrNumber);
+	READ_UINT_ARRAY_OR_NULL(sortOperators, numSortCols, Oid);
+
+	READ_NODE_FIELD(hashExpr);
+	READ_NODE_FIELD(flow_before_req_move);
+
+	READ_DONE();
+}
 
 /*
  * _readVacuumStmt
@@ -2541,7 +2782,7 @@ _readSlice(void)
 	READ_INT_FIELD(gangSize);
 	READ_DUMMY_FIELD(primaryGang, NULL);
 	READ_DUMMY_FIELD(mirrorGang, NULL);
-	READ_INT_FIELD(parentIndex);
+	READ_NODE_FIELD(parent); /* List of int index */
 	READ_NODE_FIELD(children); /* List of int index */
 	READ_NODE_FIELD(primaryProcesses); /* List of (CDBProcess *) */
 	READ_NODE_FIELD(mirrorProcesses); /* List of (CDBProcess *) */
@@ -2564,8 +2805,6 @@ _readSliceTable(void)
 	
 	READ_DONE();
 }
-
-
 
 static VariableResetStmt *
 _readVariableResetStmt(void)
@@ -2599,6 +2838,9 @@ void readPlanInfo(Plan *local_node)
 	READ_BITMAPSET_FIELD(extParam);
 	READ_BITMAPSET_FIELD(allParam);
 	READ_INT_FIELD(nParamExec);
+
+	READ_NODE_FIELD(flow);
+	READ_ENUM_FIELD(dispatch, DispatchMethod);
 	READ_INT_FIELD(nMotionNodes);
 	READ_INT_FIELD(nInitPlans);
 	READ_NODE_FIELD(sliceTable);
@@ -2613,6 +2855,10 @@ void readPlanInfo(Plan *local_node)
      *      flow
      *      dispatch
      */
+
+	READ_INT_FIELD(sliceNum);
+	READ_INT_FIELD(sharing_id);
+	READ_INT_FIELD(shared_id);
 }
 
 void readJoinInfo(Join *local_node)
@@ -2780,6 +3026,7 @@ static ParseNodeInfo infoAr[] =
 	{"FIELDSELECT", (ReadFn)_readFieldSelect},
 	{"FIELDSTORE", (ReadFn)_readFieldStore},
 	{"FKCONSTRAINT", (ReadFn)_outFkConstraint},
+	{"FLOW", (ReadFn)_readFlow},
 	{"FROMEXPR", (ReadFn)_readFromExpr},
 	{"FUNCCALL", (ReadFn)_readFuncCall},
 	{"FUNCEXPR", (ReadFn)_readFuncExpr},
@@ -2790,6 +3037,10 @@ static ParseNodeInfo infoAr[] =
 	{"GRANTSTMT", (ReadFn)_readGrantStmt},
 	{"GROUP", (ReadFn)_readGroup},
 	{"GROUPCLAUSE", (ReadFn)_readGroupClause},
+	{"GROUPINGCLAUSE", (ReadFn)_readGroupingClause},
+	{"GROUPINGFUNC", (ReadFn)_readGroupingFunc},
+	{"GROUPING", (ReadFn)_readGrouping},
+	{"GROUPID", (ReadFn)_readGroupId},
 	{"HASH", (ReadFn)_readHash},
 	{"HASHJOIN", (ReadFn)_readHashJoin},
 	{"INDEXELEM", (ReadFn)_readIndexElem},
@@ -2803,6 +3054,7 @@ static ParseNodeInfo infoAr[] =
 	{"MERGEJOIN", (ReadFn)_readMergeJoin},
 	{"MINMAX", (ReadFn)_readMinMaxExpr},
 	{"MOTION", (ReadFn)_readMotion},
+	{"MOTIONSLICEENTRY", (ReadFn)_readMotionSliceEntry},
 	{"NESTLOOP", (ReadFn)_readNestLoop},
 	{"NOTIFY", (ReadFn)_readNotifyStmt},
 	{"NULLIFEXPR", (ReadFn)_readNullIfExpr},
@@ -2831,6 +3083,7 @@ static ParseNodeInfo infoAr[] =
 	{"SETOP", (ReadFn)_readSetOp},
 	{"SETOPERATIONSTMT", (ReadFn)_readSetOperationStmt},
 	{"SETTODEFAULT", (ReadFn)_readSetToDefault},
+	{"SHAREINPUTSCAN", (ReadFn)_readShareInputScan},
 	{"SLICE", (ReadFn)_readSlice},
 	{"SLICETABLE", (ReadFn)_readSliceTable},
 	{"SORT", (ReadFn)_readSort},
@@ -2849,7 +3102,14 @@ static ParseNodeInfo infoAr[] =
 	{"VAR", (ReadFn)_readVar},
 	{"VARIABLERESETSTMT", (ReadFn)_readVariableResetStmt},
 	{"VIEWSTMT", (ReadFn)_readViewStmt},
-	{"WHEN", (ReadFn)_readCaseWhen}
+	{"WHEN", (ReadFn)_readCaseWhen},
+	{"WINDOW", (ReadFn)_readWindow},
+	{"WINDOWFRAME", (ReadFn)_readWindowFrame},
+	{"WINDOWFRAMEEDGE", (ReadFn)_readWindowFrameEdge},
+	{"WINDOWKEY", (ReadFn)_readWindowKey},
+	{"WINDOWREF", (ReadFn)_readWindowRef},
+	{"WINDOWSPEC", (ReadFn)_readWindowSpec},
+	{"WINDOWSPECPARSE", (ReadFn)_readWindowSpecParse},
 };
 
 /*

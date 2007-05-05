@@ -170,6 +170,8 @@ cdb_pull_up_pathkey(PlannerInfo    *root,
 
 extern List *make_pathkeys_for_sortclauses(List *sortclauses,
 							  List *tlist);
+extern List *make_pathkeys_for_groupclause(List *groupclause,
+										   List *tlist);
 extern void cache_mergeclause_pathkeys(PlannerInfo *root,
 						   RestrictInfo *restrictinfo);
 extern List *find_mergeclauses_for_pathkeys(PlannerInfo *root,

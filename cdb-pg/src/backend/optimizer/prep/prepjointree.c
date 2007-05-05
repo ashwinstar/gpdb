@@ -686,12 +686,14 @@ is_simple_subquery(Query *subquery)
 		return false;
 
 	/*
-	 * Can't pull up a subquery involving grouping, aggregation, sorting, or
-	 * limiting.
+	 * Can't pull up a subquery involving grouping, aggregation, windowing,
+	 * sorting, or limiting.
 	 */
 	if (subquery->hasAggs ||
+	    subquery->hasWindFuncs ||
 		subquery->groupClause ||
 		subquery->havingQual ||
+		subquery->windowClause ||
 		subquery->sortClause ||
 		subquery->distinctClause ||
 		subquery->limitOffset ||

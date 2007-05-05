@@ -111,6 +111,7 @@ bool		gp_enable_sort_limit = FALSE;
 bool		gp_enable_sort_distinct = FALSE;
 int			gp_sort_flags = 0;
 int			gp_sort_max_distinct = 20000;
+bool 	    gp_window_shareinput = TRUE;
 
 
 /* --------------------------------------------------------------------------------------------------
@@ -158,6 +159,7 @@ GpId		GpIdentity = {NULL, 0, -1, -999};
 int cdb_total_slices = 0;
 int cdb_total_plans = 0;
 int cdb_max_slices = 0;
+
 
 /*
  * Local macro to provide string values of numeric defines.

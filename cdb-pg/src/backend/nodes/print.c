@@ -526,12 +526,16 @@ plannode_type(Plan *p)
 			return "MERGEJOIN";
 		case T_HashJoin:
 			return "HASHJOIN";
+		case T_ShareInputScan:
+			return "SHAREINPUTSCAN";
 		case T_Material:
 			return "MATERIAL";
 		case T_Sort:
 			return "SORT";
 		case T_Agg:
 			return "AGG";
+		case T_Window:
+			return "WINDOW";
 		case T_Unique:
 			return "UNIQUE";
 		case T_SetOp:

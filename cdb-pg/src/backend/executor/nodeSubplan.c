@@ -665,6 +665,7 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 	node->keyColIdx = NULL;
 	node->eqfunctions = NULL;
 	node->hashfunctions = NULL;
+    node->cdbextratextbuf = NULL;
 
 	/*
 	 * create an EState for the subplan
@@ -961,6 +962,8 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		planstate->plan->dispatch == DISPATCH_PARALLEL)
 		shouldDispatch = true;
 
+    node->cdbextratextbuf = NULL;
+
 	/*
 	 * Let's initialize 'queryDesc' before our PG_TRY, to ensure the correct
 	 * value will be seen inside the PG_CATCH block without having to declare
@@ -1185,8 +1188,15 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
             /* If EXPLAIN ANALYZE, collect execution stats from qExecs. */
             if (planstate->instrument)
             {
+                MemoryContext   savecxt;
+
                 /* Wait for all gangs to finish. */
                 CdbCheckDispatchResult(dThreads, false);	
+
+                /* Allocate buffer to pass extra message text to cdbexplain. */
+                savecxt = MemoryContextSwitchTo(gbl_queryDesc->estate->es_query_cxt);
+                node->cdbextratextbuf = makeStringInfo();
+                MemoryContextSwitchTo(savecxt);
 
                 /* Jam stats into subplan's Instrumentation nodes. */
                 explainRecvStats = true;

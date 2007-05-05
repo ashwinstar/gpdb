@@ -1102,8 +1102,16 @@ finalize_plan(Plan *plan, List *rtable,
 			break;
 
 		case T_Motion:
-			finalize_primnode((Node *) ((Motion *) plan)->hashExpr,
+			{
+				ListCell *sliceCell;
+				foreach(sliceCell, ((Motion *) plan)->sliceEntries)
+				{
+					MotionSliceEntry *sliceEntry = (MotionSliceEntry *) lfirst(sliceCell);
+					Assert(IsA(sliceEntry, MotionSliceEntry));
+					finalize_primnode((Node *) sliceEntry->hashExpr,
 							  &context);
+				}
+			}
 			break;
 
 		case T_Limit:
@@ -1116,6 +1124,7 @@ finalize_plan(Plan *plan, List *rtable,
 		case T_AdaptiveNestLoop:
 		case T_Hash:
 		case T_Agg:
+		case T_Window:
 		case T_SeqScan:
 		case T_ExternalScan:
 		case T_Material:

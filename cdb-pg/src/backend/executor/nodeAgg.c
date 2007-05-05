@@ -211,9 +211,7 @@ static Bitmapset *find_unaggregated_cols(AggState *aggstate);
 static bool find_unaggregated_cols_walker(Node *node, Bitmapset **colnos);
 static TupleTableSlot *agg_retrieve_direct(AggState *aggstate);
 static TupleTableSlot *agg_retrieve_hash_table(AggState *aggstate);
-static Datum GetAggInitVal(Datum textInitVal, Oid transtype);
 static void ExecAggExplainEnd(PlanState *planstate, struct StringInfoData *buf);
-
 
 /*
  * Initialize all aggregates for a new group of input values.
@@ -331,23 +329,41 @@ advance_transition_function(AggState *aggstate,
 							AggStatePerGroup pergroupstate,
 							FunctionCallInfoData *fcinfo)
 {
-	int			numArguments = peraggstate->numArguments;
+	pergroupstate->transValue = 
+		invoke_agg_trans_func(peraggstate->transfn, 
+							  peraggstate->numArguments,
+							  pergroupstate->transValue,
+							  &(pergroupstate->noTransValue),
+							  &(pergroupstate->transValueIsNull),
+							  peraggstate->transtypeByVal,
+							  peraggstate->transtypeLen,
+							  fcinfo, (void *)aggstate, aggstate->transcontext, 
+							  aggstate->tmpcontext->ecxt_per_tuple_memory);
+}
+
+Datum
+invoke_agg_trans_func(FmgrInfo transfn, int numargs, Datum transValue,
+					  bool *noTransvalue, bool *transValueIsNull,
+					  bool transtypeByVal, int16 transtypeLen, 
+					  FunctionCallInfoData *fcinfo, void *funcctx,
+					  MemoryContext transcontext, MemoryContext tuplecontext)
+{
 	MemoryContext oldContext;
 	Datum		newVal;
 	int			i;
 
-	if (peraggstate->transfn.fn_strict)
+	if (transfn.fn_strict)
 	{
 		/*
 		 * For a strict transfn, nothing happens when there's a NULL input; we
 		 * just keep the prior transValue.
 		 */
-		for (i = 1; i <= numArguments; i++)
+		for (i = 1; i <= numargs; i++)
 		{
 			if (fcinfo->argnull[i])
-				return;
+				return transValue;
 		}
-		if (pergroupstate->noTransValue)
+		if (*noTransvalue)
 		{
 			/*
 			 * transValue has not been initialized. This is the first non-NULL
@@ -358,16 +374,16 @@ advance_transition_function(AggState *aggstate,
 			 * We must copy the datum into transcontext if it is pass-by-ref.
 			 * We do not need to pfree the old transValue, since it's NULL.
 			 */
-			oldContext = MemoryContextSwitchTo(aggstate->transcontext);
-			pergroupstate->transValue = datumCopy(fcinfo->arg[1],
-												  peraggstate->transtypeByVal,
-												  peraggstate->transtypeLen);
-			pergroupstate->transValueIsNull = false;
-			pergroupstate->noTransValue = false;
+			oldContext = MemoryContextSwitchTo(transcontext);
+			newVal = datumCopy(fcinfo->arg[1], transtypeByVal,
+							   transtypeLen);
+			*transValueIsNull = false;
+			*noTransvalue = false;
+			fcinfo->isnull = false;
 			MemoryContextSwitchTo(oldContext);
-			return;
+			return newVal;
 		}
-		if (pergroupstate->transValueIsNull)
+		if (*transValueIsNull)
 		{
 			/*
 			 * Don't call a strict function with NULL inputs.  Note it is
@@ -375,21 +391,22 @@ advance_transition_function(AggState *aggstate,
 			 * strict *and* returned a NULL on a prior cycle. If that happens
 			 * we will propagate the NULL all the way to the end.
 			 */
-			return;
+			fcinfo->isnull = true;
+			return transValue;
 		}
 	}
 
 	/* We run the transition functions in per-input-tuple memory context */
-	oldContext = MemoryContextSwitchTo(aggstate->tmpcontext->ecxt_per_tuple_memory);
+	oldContext = MemoryContextSwitchTo(tuplecontext);
 
 	/*
 	 * OK to call the transition function
 	 */
-	InitFunctionCallInfoData(*fcinfo, &(peraggstate->transfn),
-							 numArguments + 1,
-							 (void *) aggstate, NULL);
-	fcinfo->arg[0] = pergroupstate->transValue;
-	fcinfo->argnull[0] = pergroupstate->transValueIsNull;
+	InitFunctionCallInfoData(*fcinfo, &transfn,
+							 numargs + 1,
+							 (void *) funcctx, NULL);
+	fcinfo->arg[0] = transValue;
+	fcinfo->argnull[0] = *transValueIsNull;
 
 	newVal = FunctionCallInvoke(fcinfo);
 
@@ -398,24 +415,22 @@ advance_transition_function(AggState *aggstate,
 	 * pfree the prior transValue.	But if transfn returned a pointer to its
 	 * first input, we don't need to do anything.
 	 */
-	if (!peraggstate->transtypeByVal &&
-		DatumGetPointer(newVal) != DatumGetPointer(pergroupstate->transValue))
+	if (!transtypeByVal && 
+		DatumGetPointer(newVal) != DatumGetPointer(transValue))
 	{
 		if (!fcinfo->isnull)
 		{
-			MemoryContextSwitchTo(aggstate->transcontext);
-			newVal = datumCopy(newVal,
-							   peraggstate->transtypeByVal,
-							   peraggstate->transtypeLen);
+			MemoryContextSwitchTo(transcontext);
+			newVal = datumCopy(newVal, transtypeByVal, transtypeLen);
 		}
-		if (!pergroupstate->transValueIsNull)
-			pfree(DatumGetPointer(pergroupstate->transValue));
+		if (!(*transValueIsNull))
+			pfree(DatumGetPointer(transValue));
 	}
 
-	pergroupstate->transValue = newVal;
-	pergroupstate->transValueIsNull = fcinfo->isnull;
+	*transValueIsNull = fcinfo->isnull;
 
 	MemoryContextSwitchTo(oldContext);
+	return newVal;
 }
 
 /*
@@ -782,7 +797,7 @@ lookup_hash_entry(AggState *aggstate, TupleTableSlot *inputslot)
 TupleTableSlot *
 ExecAgg(AggState *node)
 {
-	if (node->agg_done)
+	if (node->agg_done && node->num_repeats == 0)
 		return NULL;
 
 	if (((Agg *) node->ss.ps.plan)->aggstrategy == AGG_HASHED)
@@ -854,9 +869,14 @@ agg_retrieve_direct(AggState *aggstate)
 	bool	   *aggnulls;
 	AggStatePerAgg peragg;
 	AggStatePerGroup pergroup;
+	AggStatePerGroup perpassthru;
 	TupleTableSlot *outerslot;
 	TupleTableSlot *firstSlot;
+	HeapTuple       copytuple = NULL;
+	TupleTableSlot *copyslot;
 	int			aggno;
+	int         rollup_level = node->rollupLevel;
+	bool        first_time = true;
 
 	/*
 	 * get state info from node
@@ -871,117 +891,327 @@ agg_retrieve_direct(AggState *aggstate)
 	projInfo = aggstate->ss.ps.ps_ProjInfo;
 	peragg = aggstate->peragg;
 	pergroup = aggstate->pergroup;
+	perpassthru = aggstate->perpassthru;
 	firstSlot = aggstate->ss.ss_ScanTupleSlot;
 
 	/*
-	 * We loop retrieving groups until we find one matching
-	 * aggstate->ss.ps.qual
+	 * If the previous aggregated result needs to be outputed
+	 * several times, we simple return the previous output tuple.
+	 */
+	if (aggstate->num_repeats > 0)
+	{
+		/*
+		 * XXX We do the projection here again. It may be cheaper to simply
+		 * update the GROUP_ID column, but it seems that it is so much easier
+		 * to just do the projection again.
+		 */
+		econtext->ecxt_scantuple = aggstate->prev_aggslot;
+		econtext->group_id = aggstate->num_repeats;
+
+		aggstate->num_repeats--;
+
+		return ExecProject(projInfo, NULL);
+	}
+
+	else
+	{
+		/* Do not need to release the space */
+		aggstate->prev_aggslot = NULL;
+
+		if (aggstate->agg_done)
+			return NULL;
+	}
+
+
+	/*
+	 * We loop retrieving tuples until we find one that matches
+	 * aggstate->ss.ps.qual, or find a pass-through tuple
+	 * in the context of a rollup query.
 	 */
 	while (!aggstate->agg_done)
 	{
+		first_time = TupIsNull(firstSlot);
+
 		/*
-		 * If we don't already have the first tuple of the new group, fetch it
-		 * from the outer plan.
+		 * We want to initialize the working state for a new input
+		 * tuple group. The indicator of a new input group is either
+		 * we are reading the first tuple, or we have read the first
+		 * tuple in a new group, stored in aggstate->grp_firstTuple
+		 * in previous read.
 		 */
-		if (aggstate->grp_firstTuple == NULL)
+		if (first_time || aggstate->grp_firstTuple != NULL)
+		{
+			/*
+			 * Clear the per-output-tuple context for each group
+			 */
+			ResetExprContext(econtext);
+
+			/*
+			 * Initialize working state for a new input tuple group
+			 */
+			initialize_aggregates(aggstate, peragg, pergroup);
+
+			if (aggstate->grp_firstTuple != NULL)
+			{
+				HeapTuple tuple = aggstate->grp_firstTuple;
+
+				/*
+				 * The previous input tuple is stored in grp_firstTuple
+				 * in the form when it was received. For a rollup
+				 * query, we want to modify this tuple before storing
+				 * it to firstSlot. The original input tuple will be
+				 * stored in aggstate->copyslot to be aggregated later
+				 * in this loop.
+				 */
+				if (rollup_level > 1)
+				{
+					copytuple = heap_copytuple(aggstate->grp_firstTuple);
+
+					/* modify this tuple */
+					copytuple =
+						heap_modify_tuple(copytuple,
+										  firstSlot->tts_tupleDescriptor,
+										  aggstate->replValues,
+										  aggstate->replIsnull,
+										  aggstate->doReplace);
+					tuple = copytuple;
+
+					ExecStoreTuple(aggstate->grp_firstTuple,
+								   aggstate->copyslot,
+								   InvalidBuffer,
+								   true);
+				}
+
+				ExecStoreTuple(tuple,
+							   firstSlot,
+							   InvalidBuffer,
+							   true);
+
+				copyslot = firstSlot;
+
+				/*
+				 * We have returned an aggregated tuple previously, and want to
+				 * return the first tuple in a new input group when it is a
+				 * pass-through tuple. We change aggstate->out_state here
+				 * to make sure that this first tuple gets aggregated before
+				 * returning.
+				 */
+				if (aggstate->out_state == PASS_THRU)
+				{
+					outerslot = aggstate->copyslot;
+					aggstate->out_state = PROCESSING;
+				}
+			}
+		}
+
+		/*
+		 * If we don't have a tuple to be aggregated or passed-through,
+		 * we are ready to fetch the next tuple from the outer plan.
+		 */
+		if (aggstate->out_state == PROCESSING &&
+			aggstate->grp_firstTuple == NULL)
 		{
 			outerslot = ExecProcNode(outerPlan);
+
 			if (!TupIsNull(outerslot))
 			{
+				int outer_rollup_level =
+					tuple_rollup_level(outerslot, node->numCols, rollup_level,
+									   node->numCols > 0 ? node->grpColIdx[node->numCols-1]: 0);
+
 				/*
-				 * Make a copy of the first input tuple; we will use this for
-				 * comparisons (in group mode) and for projection.
+				 * For a rollup query, we may need to modify the input tuple
+				 * to match with the current rollup level. We initialize those
+				 * arrays that are needed for this process.
 				 */
-				aggstate->grp_firstTuple = ExecCopySlotTuple(outerslot);
+				if (aggstate->num_attrs == 0 && node->numNullCols > 0)
+				{
+					int num_grpattrs = node->numCols;
+					int attno;
+
+					/* Ignore Grouping column */
+					if (rollup_level > 0)
+						num_grpattrs--;
+					aggstate->num_attrs =
+						outerslot->tts_tupleDescriptor->natts;
+					aggstate->replValues =
+						palloc0(aggstate->num_attrs * sizeof(Datum));
+					aggstate->replIsnull = palloc0(aggstate->num_attrs * sizeof(bool));
+					aggstate->doReplace = palloc0(aggstate->num_attrs * sizeof(bool));
+
+					Assert(num_grpattrs >= node->numNullCols);
+
+					for (attno=num_grpattrs - node->numNullCols; attno<num_grpattrs; attno++)
+					{
+						aggstate->replIsnull[node->grpColIdx[attno] - 1] = true;
+						aggstate->doReplace[node->grpColIdx[attno] - 1] = true;
+					}
+				}
+
+				/*
+				 * This tuple is not from the direct next rollup level of this Agg node.
+				 * We simple needed to pass it through to the parent node.
+				 */
+				if (outer_rollup_level + 1 < rollup_level)
+				{
+					/* simple pass-through */
+					aggstate->out_state = PASS_THRU;
+				}
+
+				/*
+				 * This tuple needs to be aggregated.
+				 */
+				else if (outer_rollup_level + 1 == rollup_level)
+				{
+					/*
+					 * For a rollup query, we modify the input tuple to
+					 * match the rollup level of this node. Store the
+					 * modified tuple in aggstate->copyslot.
+					 */
+					if (node->numNullCols > 0)
+					{
+						copytuple = ExecCopySlotTuple(outerslot);
+						/* modify this tuple */
+						copytuple =
+							heap_modify_tuple(copytuple,
+											  outerslot->tts_tupleDescriptor,
+											  aggstate->replValues,
+											  aggstate->replIsnull,
+											  aggstate->doReplace);
+
+						ExecStoreTuple(copytuple,
+									   aggstate->copyslot,
+									   InvalidBuffer,
+									   true);
+					}
+
+					/*
+					 * Set copyslot to the tuple that will be aggregated in this loop.
+					 */
+					if (node->numNullCols > 0)
+						copyslot = aggstate->copyslot;
+					else
+						copyslot = outerslot;
+
+					/*
+					 * Make a copy of the first input tuple; we will use this for
+					 * comparisons (in group mode) and for projection.
+					 *
+					 * If we are grouping, check whether we've crossed a group
+					 * boundary.
+					 */
+					if (first_time ||
+						(node->aggstrategy == AGG_SORTED &&
+							!execTuplesMatch(firstSlot,
+											 copyslot,
+											 node->numCols, node->grpColIdx,
+											 aggstate->eqfunctions,
+											 tmpcontext->ecxt_per_tuple_memory)))
+					{
+						if (first_time)
+						{
+							if (copytuple == NULL)
+								copytuple = ExecCopySlotTuple(outerslot);
+							else if (node->numNullCols > 0)
+								copytuple = ExecCopySlotTuple(aggstate->copyslot);
+
+							ExecStoreTuple(copytuple,
+										   firstSlot,
+										   InvalidBuffer,
+										   true);
+							
+						}
+						else
+						{
+							if (rollup_level != 0)
+								aggstate->grp_firstTuple = ExecCopySlotTuple(outerslot);
+							else
+								aggstate->grp_firstTuple = ExecCopySlotTuple(copyslot);
+
+							aggstate->out_state = AGG_READY;
+						}
+					}
+				}
 			}
+
 			else
 			{
-				/* outer plan produced no tuples at all */
 				aggstate->agg_done = true;
+				aggstate->out_state = AGG_READY;
+
 				/* If we are grouping, we should produce no tuples too */
-				if (node->aggstrategy != AGG_PLAIN)
+				if (first_time && node->aggstrategy != AGG_PLAIN)
 					return NULL;
 			}
 		}
 
-		/*
-		 * Clear the per-output-tuple context for each group
-		 */
-		ResetExprContext(econtext);
+		/* Aggregate the input tuple when the state is PROCESSING. */
+		if (aggstate->out_state == PROCESSING)
+		{
+			/* Reset per-input-tuple context after each tuple */
+			ResetExprContext(tmpcontext);
+			tmpcontext->ecxt_scantuple = copyslot;
 
-		/*
-		 * Initialize working state for a new input tuple group
-		 */
-		initialize_aggregates(aggstate, peragg, pergroup);
+			advance_aggregates(aggstate, pergroup);
 
-		if (aggstate->grp_firstTuple != NULL)
+			/*
+			 * If this is not a ROLLUP node, we want to continue on
+			 * aggregating the input tuples.
+			 */
+			if (rollup_level <= 1)
+			{
+				aggstate->grp_firstTuple = NULL;
+				continue;
+			}
+
+			/* The input tuple is also a pass-through tuple. */
+			/* econtext->ecxt_scantuple = outerslot;*/
+			aggstate->grp_firstTuple = NULL;
+		}
+
+		if (aggstate->out_state == PASS_THRU)
+			aggstate->out_state = PROCESSING;
+
+		if (aggstate->out_state != AGG_READY)
 		{
 			/*
-			 * Store the copied first input tuple in the tuple table slot
-			 * reserved for it.  The tuple will be deleted when it is cleared
-			 * from the slot.
+			 * If this is not the final stage of a rollup,
+			 * we can simply return 'outerslot' here.
 			 */
-			ExecStoreTuple(aggstate->grp_firstTuple,
-						   firstSlot,
-						   InvalidBuffer,
-						   true);
-			aggstate->grp_firstTuple = NULL;	/* don't keep two pointers */
-
-			/* set up for first advance_aggregates call */
-			tmpcontext->ecxt_scantuple = firstSlot;
+			if (peragg->aggref->aggstage != AGGSTAGE_FINAL)
+				return outerslot;
 
 			/*
-			 * Process each outer-plan tuple, and then fetch the next one,
-			 * until we exhaust the outer plan or cross a group boundary.
+			 * For the top-level of a rollup, we need to finalize
+			 * the aggregate value. First, we reset the context,
+			 * and prepare the aggregate value.
 			 */
-			for (;;)
-			{
-				advance_aggregates(aggstate, pergroup);
+			ResetExprContext(econtext);
+			initialize_aggregates(aggstate, peragg, perpassthru);
 
-				/* Reset per-input-tuple context after each tuple */
-				ResetExprContext(tmpcontext);
+			/* finalize the pass-through tuple */
+			ResetExprContext(tmpcontext);
+			tmpcontext->ecxt_scantuple = outerslot;
 
-				outerslot = ExecProcNode(outerPlan);
-				if (TupIsNull(outerslot))
-				{
-					/* no more outer-plan tuples available */
-					aggstate->agg_done = true;
-					break;
-				}
-				/* set up for next advance_aggregates call */
-				tmpcontext->ecxt_scantuple = outerslot;
-
-				/*
-				 * If we are grouping, check whether we've crossed a group
-				 * boundary.
-				 */
-				if (node->aggstrategy == AGG_SORTED)
-				{
-					if (!execTuplesMatch(firstSlot,
-										 outerslot,
-										 node->numCols, node->grpColIdx,
-										 aggstate->eqfunctions,
-										 tmpcontext->ecxt_per_tuple_memory))
-					{
-						/*
-						 * Save the first input tuple of the next group.
-						 */
-						aggstate->grp_firstTuple = ExecCopySlotTuple(outerslot);
-						break;
-					}
-				}
-			}
+			advance_aggregates(aggstate, perpassthru);
 		}
 
 		/*
-		 * Done scanning input tuple group. Finalize each aggregate
-		 * calculation, and stash results in the per-output-tuple context.
+		 * Here, an aggregate value is ready for output. This aggregate may
+		 * be pergroup or perpassthru, depending on the aggstate->out_state.
 		 */
+
+		/* finalize the aggregate value */
 		for (aggno = 0; aggno < aggstate->numaggs; aggno++)
 		{
 			AggStatePerAgg peraggstate = &peragg[aggno];
-			AggStatePerGroup pergroupstate = &pergroup[aggno];
+			AggStatePerGroup pergroupstate;
 
+			if (aggstate->out_state == AGG_READY)
+				pergroupstate = &pergroup[aggno];
+			else
+				pergroupstate = &perpassthru[aggno];
+			
 			if (peraggstate->aggref->aggdistinct)
 				process_sorted_aggregate(aggstate, peraggstate, pergroupstate);
 
@@ -996,7 +1226,56 @@ agg_retrieve_direct(AggState *aggstate)
 		 * with an empty firstSlot ... but if not grouping, there can't be any
 		 * references to non-aggregated input columns, so no problem.)
 		 */
-		econtext->ecxt_scantuple = firstSlot;
+		if (aggstate->out_state == AGG_READY)
+		{
+			econtext->ecxt_scantuple = firstSlot;
+
+			/* reset the output state */
+			if (rollup_level > 1)
+				aggstate->out_state = PASS_THRU;
+			else
+				aggstate->out_state = PROCESSING;
+
+			if (peragg->aggref->aggstage == AGGSTAGE_FINAL)
+			{
+				aggstate->prev_aggslot = econtext->ecxt_scantuple;
+				aggstate->num_repeats = node->rollupGSTimes - 1;
+			}
+			econtext->group_id = node->rollupGSTimes;
+		}
+
+		else
+		{
+			uint32 gid;
+
+			econtext->ecxt_scantuple = outerslot;
+			gid = get_group_id(econtext->ecxt_scantuple);
+			econtext->group_id = gid;
+
+			if (peragg->aggref->aggstage == AGGSTAGE_FINAL)
+			{
+				aggstate->prev_aggslot = econtext->ecxt_scantuple;
+				aggstate->num_repeats = gid - 1;
+			}
+		}
+
+		if (rollup_level == -1)
+		{
+			bool isnull;
+			Datum grping_datum;
+
+			Assert(node->numCols > 0);
+
+			/* Obtain grouping from input */
+			grping_datum = slot_getattr(econtext->ecxt_scantuple,
+										node->grpColIdx[node->numCols-1],
+										&isnull);
+			Assert(!isnull);
+
+			econtext->grouping = DatumGetInt64(grping_datum);
+		}
+		else
+			econtext->grouping = node->grouping;
 
 		/*
 		 * Check the qual (HAVING clause); if the group does not match, ignore
@@ -1149,6 +1428,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	aggstate->hashfunctions = NULL;
 	aggstate->peragg = NULL;
 	aggstate->agg_done = false;
+	aggstate->out_state = PROCESSING;
 	aggstate->pergroup = NULL;
 	aggstate->grp_firstTuple = NULL;
 	aggstate->hashtable = NULL;
@@ -1397,11 +1677,22 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 			peraggstate->finalfn_oid = finalfn_oid = aggform->aggfinalfn;
 			break;
 			
-		case AGGSTAGE_PARTIAL: /* Two-stage aggregation - preliminary stage */
-			peraggstate->transfn_oid = transfn_oid = aggform->aggtransfn;
-			peraggstate->finalfn_oid = finalfn_oid = InvalidOid;
+		case AGGSTAGE_PARTIAL: /* Two-stage aggregation or rollup - preliminary stage */
+			/* the perliminary stage for two-stage aggregation */
+			if (node->rollupLevel <= 1)
+			{
+				peraggstate->transfn_oid = transfn_oid = aggform->aggtransfn;
+				peraggstate->finalfn_oid = finalfn_oid = InvalidOid;
+			}
+
+			/* the preliminary stage for a rollup aggregation */
+			else
+			{
+				peraggstate->transfn_oid = transfn_oid = aggform->aggprelimfn;
+				peraggstate->finalfn_oid = finalfn_oid = InvalidOid;
+			}
 			break;
-			
+
 		case AGGSTAGE_FINAL: /* Two-stage aggregation - final stage */
 			peraggstate->transfn_oid = transfn_oid = aggform->aggprelimfn;
 			peraggstate->finalfn_oid = finalfn_oid = aggform->aggfinalfn;
@@ -1437,24 +1728,11 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 			}
 		}
 
-		/* resolve actual type of transition state, if polymorphic */
-		aggtranstype = aggform->aggtranstype;
-		if (aggtranstype == ANYARRAYOID || aggtranstype == ANYELEMENTOID)
-		{
-			/* have to fetch the agg's declared input types... */
-			Oid		   *declaredArgTypes;
-			int			agg_nargs;
-
-			(void) get_func_signature(aggref->aggfnoid,
-									  &declaredArgTypes, &agg_nargs);
-			Assert(agg_nargs == numArguments);
-			aggtranstype = enforce_generic_type_consistency(inputTypes,
-															declaredArgTypes,
-															agg_nargs,
-															aggtranstype);
-			pfree(declaredArgTypes);
-		}
-
+		/* check if the transition type is polymorphic and if so resolve it */
+		aggtranstype = resolve_polymorphic_transtype(aggform->aggtranstype, 
+													 aggref->aggfnoid,
+											   		 inputTypes);
+											   
 		/* build expression trees using actual argument & result types */
 		build_aggregate_fnexprs(inputTypes,
 								numArguments,
@@ -1462,8 +1740,12 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 								aggref->aggtype,
 								transfn_oid,
 								finalfn_oid,
+								InvalidOid /* invtrans */,
+								InvalidOid /* invprelim */,
 								&transfnexpr,
-								&finalfnexpr);
+								&finalfnexpr,
+								NULL,
+								NULL);
 
 		fmgr_info(transfn_oid, &peraggstate->transfn);
 		peraggstate->transfn.fn_expr = (Node *) transfnexpr;
@@ -1550,10 +1832,29 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	/* MPP */
 	aggstate->hhashtable = NULL;
 
+	/* ROLLUP */
+	aggstate->perpassthru = NULL;
+
+	if (node->rollupLevel > 1)
+	{
+		AggStatePerGroup perpassthru;
+
+		perpassthru = (AggStatePerGroup) palloc0(sizeof(AggStatePerGroupData) * numaggs);
+		aggstate->perpassthru = perpassthru;
+
+	}
+
+	aggstate->num_attrs = 0;
+	aggstate->copyslot = 
+		MakeSingleTupleTableSlot(aggstate->ss.ss_ScanTupleSlot->tts_tupleDescriptor);
+
+	aggstate->prev_aggslot = NULL;
+	aggstate->num_repeats = 0;
+
 	return aggstate;
 }
 
-static Datum
+Datum
 GetAggInitVal(Datum textInitVal, Oid transtype)
 {
 	Oid			typinput,
@@ -1616,6 +1917,15 @@ ExecEndAgg(AggState *node)
 	/* clean up tuple table */
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
+	if (node->num_attrs > 0)
+	{
+		pfree(node->replValues);
+		pfree(node->replIsnull);
+		pfree(node->doReplace);
+	}
+
+	ExecClearTuple(node->copyslot);
+
 	MemoryContextDelete(node->aggcontext);
 
 	outerPlan = outerPlanState(node);
@@ -1676,6 +1986,11 @@ ExecReScanAgg(AggState *node, ExprContext *exprCtxt)
 		node->grp_firstTuple = NULL;
 	}
 
+	ExecClearTuple(node->ss.ss_ScanTupleSlot);
+	ExecClearTuple(node->copyslot);
+	node->prev_aggslot = NULL;
+	node->num_repeats = 0;
+
 	/* Forget current agg values */
 	MemSet(econtext->ecxt_aggvalues, 0, sizeof(Datum) * node->numaggs);
 	MemSet(econtext->ecxt_aggnulls, 0, sizeof(bool) * node->numaggs);
@@ -1696,6 +2011,14 @@ ExecReScanAgg(AggState *node, ExprContext *exprCtxt)
 		MemSet(node->pergroup, 0,
 			   sizeof(AggStatePerGroupData) * node->numaggs);
 	}
+
+	if (((Agg *) node->ss.ps.plan)->rollupLevel > 1)
+		/*
+		 * Reset the per-passthru state (in particular, mark transvalues null)
+		 */
+		MemSet(node->perpassthru, 0,
+			   sizeof(AggStatePerGroupData) * node->numaggs);
+		
 
 	/*
 	 * if chgParam of subnode is not null then plan will be re-scanned by
@@ -1728,7 +2051,6 @@ ExecAggExplainEnd(PlanState *planstate, struct StringInfoData *buf)
     ExecEndAgg_internal(aggstate);
 }                               /* ExecAggExplainEnd */
 
-
 /*
  * aggregate_dummy - dummy execution routine for aggregate functions
  *
@@ -1745,4 +2067,98 @@ aggregate_dummy(PG_FUNCTION_ARGS)
 	elog(ERROR, "aggregate function %u called as normal function",
 		 fcinfo->flinfo->fn_oid);
 	return (Datum) 0;			/* keep compiler quiet */
+}
+
+/* resolve actual type of transition state, if polymorphic */
+Oid
+resolve_polymorphic_transtype(Oid aggtranstype, Oid aggfnoid,
+							  Oid *inputTypes)
+{
+	if (aggtranstype == ANYARRAYOID || aggtranstype == ANYELEMENTOID)
+	{
+		/* have to fetch the agg's declared input types... */
+		Oid		   *declaredArgTypes;
+		int			agg_nargs;
+
+		(void) get_func_signature(aggfnoid, &declaredArgTypes, &agg_nargs);
+		aggtranstype = enforce_generic_type_consistency(inputTypes,
+														declaredArgTypes,
+														agg_nargs,
+														aggtranstype);
+		pfree(declaredArgTypes);
+	}
+	return aggtranstype;
+}
+
+/*
+ * tuple_rollup_level - return the rollup_level for an input tuple.
+ *
+ * This is used for a ROLLUP.
+ */
+int32
+tuple_rollup_level(TupleTableSlot *outerslot, int numGroupCols, int rollup_level,
+				   int grpingIdx)
+{
+	Datum grping_datum;
+	uint64 grping;
+	bool isnull;
+	int32 result = 1;
+	int attno;
+
+	/* Not a rollup or the first/final Agg node in a rollup, simple return. */
+	if (rollup_level <= 1)
+		return (rollup_level - 1);
+
+	grping_datum = slot_getattr(outerslot, grpingIdx, &isnull);
+
+	if (isnull || grping_datum == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_INTERNAL_ERROR),
+				 errmsg("GROUPING should not be null")));
+
+	grping = DatumGetInt64(grping_datum);
+
+	for (attno=0; attno<numGroupCols; attno++)
+	{
+		if ((grping & (1 << attno)) != 0)
+			result++;
+	}
+
+	return result;
+}
+
+/*
+ * Extract the value for GROUP_ID from the given tupleslot.
+ *
+ * GROUP_ID should always the last column in the given tupleslot.
+ */
+uint32
+get_group_id(TupleTableSlot *tupleslot)
+{
+	Datum gid_datum;
+	uint32 gid;
+	bool isnull;
+	int natts;
+
+	/* GROUP_ID should be the last column in tupleslot. Obtain
+	 * the number of attributes for the given tupleslot.
+	 */
+	natts = tupleslot->tts_tupleDescriptor->natts;
+	if (tupleslot->tts_tuple != NULL &&
+		HeapTupleHeaderGetNatts(tupleslot->tts_tuple->t_data) < natts)
+		natts = HeapTupleHeaderGetNatts(tupleslot->tts_tuple->t_data);
+	
+	/* Obtain GROUP_ID value, which should always the be last column
+	 * in the input tuple.
+	 */
+	gid_datum = slot_getattr(tupleslot, natts, &isnull);
+
+	if (isnull || gid_datum == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_INTERNAL_ERROR),
+				 errmsg("GROUP_ID should not be null")));
+	
+	gid = DatumGetInt32(gid_datum);
+
+	return gid;
 }

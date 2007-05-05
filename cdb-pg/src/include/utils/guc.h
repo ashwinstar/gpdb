@@ -108,7 +108,6 @@ typedef const char *(*GucShowHook) (void);
 extern List    *gp_guc_list_for_explain;
 extern List    *gp_guc_list_for_no_plan;
 
-
 /* GUC vars that are actually declared in guc.c, rather than elsewhere */
 extern bool log_duration;
 extern bool Debug_print_plan;
@@ -137,7 +136,6 @@ extern int	log_min_duration_statement;
 extern int	num_temp_buffers;
 
 extern int  Debug_delay_commit_broadcast_ms;
-
 
 extern char *ConfigFileName;
 extern char *HbaFileName;

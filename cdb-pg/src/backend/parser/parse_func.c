@@ -18,6 +18,7 @@
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_window.h"
 #include "funcapi.h"
 #include "nodes/makefuncs.h"
 #include "parser/parse_agg.h"
@@ -61,7 +62,7 @@ static void unknown_attribute(ParseState *pstate, Node *relref, char *attname,
 Node *
 ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 				  bool agg_star, bool agg_distinct, bool is_column,
-				  int location)
+				  WindowSpec *over, int location)
 {
 	Oid			rettype;
 	Oid			funcid;
@@ -240,7 +241,7 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 	make_fn_arguments(pstate, fargs, actual_arg_types, declared_arg_types);
 
 	/* build the appropriate output structure */
-	if (fdresult == FUNCDETAIL_NORMAL)
+	if (fdresult == FUNCDETAIL_NORMAL && over == NULL)
 	{
 		FuncExpr   *funcexpr = makeNode(FuncExpr);
 
@@ -251,6 +252,81 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		funcexpr->args = fargs;
 
 		retval = (Node *) funcexpr;
+	}
+	else if(over != NULL)
+	{
+		/* must be a window function call */
+		WindowRef  *winref = makeNode(WindowRef);
+		HeapTuple	tuple;	
+		
+		if (retset)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+					 errmsg("window functions may not return sets"),
+					 parser_errposition(pstate, location)));
+
+		/*
+		 * XXX: test for is_win_func later.. could just test for FUNCDETAIL
+		 * now...
+		 */
+		tuple = SearchSysCache(WINFNOID, ObjectIdGetDatum(funcid),
+							   0, 0, 0);
+		if (HeapTupleIsValid(tuple))
+		{
+			Form_pg_window wf;
+			WindowSpec *parent = NULL;
+			ListCell *tmp;
+
+			/*
+			 * OVER() clause specifies a parent, so look it up as the
+			 * ordering clause might be there.
+			 */
+			if (over->parent)
+			{
+				WindowSpec *t;
+				
+				foreach(tmp, pstate->p_win_clauses)
+				{
+					t = (WindowSpec *)lfirst(tmp);
+					if (t->name && strcmp(t->name, over->parent) == 0)
+					{
+						parent = t;
+						break;
+					}
+				}
+			}
+			wf = (Form_pg_window)GETSTRUCT(tuple);
+			if (wf->winrequireorder && !(over->order || 
+										 (parent && parent->order)))
+				ereport(ERROR,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("window function \"%s\" requires a window "
+								"specification with an ordering clause",
+								NameListToString(funcname))));
+
+			/*
+			 * We do not test the parent for a framing clause as parent
+			 * framing clauses are forbidden. This will be picked up by
+			 * transformWindowClause().
+			 */
+			if (!wf->winallowframe && over->frame)
+				ereport(ERROR,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("window function \"%s\" cannot be used with "
+								"a framed window specification",
+								NameListToString(funcname))));
+			
+			ReleaseSysCache(tuple);
+		}
+		pstate->p_win_clauses = lappend(pstate->p_win_clauses, over);
+
+		winref->winfnoid = funcid;
+		winref->restype = rettype;
+		winref->args = fargs;
+		winref->winspec = list_length(pstate->p_win_clauses) - 1;
+
+		transformWindowFuncCall(pstate, winref);
+		retval = (Node *) winref;
 	}
 	else
 	{

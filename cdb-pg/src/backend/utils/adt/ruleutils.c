@@ -71,6 +71,7 @@ typedef struct
 	int			prettyFlags;	/* enabling of pretty-print functions */
 	int			indentLevel;	/* current indent level for prettyprint */
 	bool		varprefix;		/* TRUE to print prefixes on Vars */
+	Query	   *query;
 } deparse_context;
 
 /*
@@ -165,6 +166,12 @@ static void get_oper_expr(OpExpr *expr, deparse_context *context);
 static void get_func_expr(FuncExpr *expr, deparse_context *context,
 			  bool showimplicit);
 static void get_agg_expr(Aggref *aggref, deparse_context *context);
+static void get_windowedge_expr(WindowFrameEdge *edge, 
+								deparse_context *context);
+static void get_sortlist_expr(List *l, deparse_context *context, 
+							  char *keyword_clause);
+static void get_windowspec_expr(WindowSpec *spec, deparse_context *context);
+static void get_windowref_expr(WindowRef *wref, deparse_context *context);
 static void get_const_expr(Const *constval, deparse_context *context);
 static void get_sublink_expr(SubLink *sublink, deparse_context *context);
 static void get_from_clause(Query *query, const char *prefix,
@@ -1400,6 +1407,7 @@ deparse_expression_pretty(Node *expr, List *dpcontext,
 	context.varprefix = forceprefix;
 	context.prettyFlags = prettyFlags;
 	context.indentLevel = startIndent;
+	context.query = NULL;
 
 	get_rule_expr(expr, &context, showimplicit);
 
@@ -1785,6 +1793,7 @@ get_query_def(Query *query, StringInfo buf, List *parentnamespace,
 						 list_length(query->rtable) != 1);
 	context.prettyFlags = prettyFlags;
 	context.indentLevel = startIndent;
+	context.query = query;
 
 	dpns.rtable = query->rtable;
 	dpns.outer_varno = dpns.inner_varno = 0;
@@ -2068,6 +2077,32 @@ get_basic_select_query(Query *query, deparse_context *context,
 		appendContextKeyword(context, " HAVING ",
 							 -PRETTYINDENT_STD, PRETTYINDENT_STD, 0);
 		get_rule_expr(query->havingQual, context, false);
+	}
+
+	/* The WINDOW clause must be last */
+	if (query->windowClause)
+	{
+		bool first = true;
+		foreach(l, query->windowClause)
+		{
+			WindowSpec *spec = (WindowSpec *) lfirst(l);
+
+			/* unnamed windows will be displayed in the target list */
+			if (!spec->name)
+				continue;
+
+			if (first)
+			{
+				appendContextKeyword(context, " WINDOW",
+									 -PRETTYINDENT_STD, PRETTYINDENT_STD, 1);
+				first = false;
+			}
+			else
+				appendStringInfoString(buf, ",");
+
+			appendStringInfo(buf, " %s AS ", quote_identifier(spec->name));
+			get_windowspec_expr(spec, context);
+		}
 	}
 }
 
@@ -3368,8 +3403,21 @@ get_rule_expr(Node *node, deparse_context *context,
 			appendStringInfo(buf, "$%d", ((Param *) node)->paramid);
 			break;
 
+
+		case T_Grouping:
+			appendStringInfo(buf, "Grouping");
+			break;
+
+		case T_GroupId:
+			appendStringInfo(buf, "GroupId");
+			break;
+
 		case T_Aggref:
 			get_agg_expr((Aggref *) node, context);
+			break;
+
+		case T_WindowRef:
+			get_windowref_expr((WindowRef *)node, context);
 			break;
 
 		case T_ArrayRef:
@@ -4137,6 +4185,219 @@ get_agg_expr(Aggref *aggref, deparse_context *context)
 	appendStringInfoChar(buf, ')');
 }
 
+static void
+get_windowedge_expr(WindowFrameEdge *edge, deparse_context *context)
+{
+	StringInfo buf = context->buf;
+
+	switch(edge->kind)
+	{
+		case WINDOW_UNBOUND_PRECEDING:
+			appendStringInfo(buf, " UNBOUNDED PRECEDING");
+			break;
+		case WINDOW_BOUND_PRECEDING:
+			get_rule_expr(edge->val, context, true);
+			appendStringInfo(buf, " PRECEDING");
+			break;
+		case WINDOW_CURRENT_ROW:
+			appendStringInfo(buf, " CURRENT ROW");
+			break;
+		case WINDOW_BOUND_FOLLOWING:
+			get_rule_expr(edge->val, context, true);
+			appendStringInfo(buf, " FOLLOWING");
+			break;
+		case WINDOW_UNBOUND_FOLLOWING:
+			appendStringInfo(buf, " UNBOUNDED FOLLOWING");
+			break;
+		default:
+			elog(ERROR, "unknown frame type");
+			break;
+	}
+}
+
+static void
+get_sortlist_expr(List *l, deparse_context *context, char *keyword_clause)
+{
+	ListCell *cell;
+	char *sep;
+	StringInfo buf = context->buf;
+
+	appendContextKeyword(context, keyword_clause,
+						 -PRETTYINDENT_STD, PRETTYINDENT_STD, 1);
+	sep = "";
+	foreach(cell, l)
+	{
+		SortClause *srt = (SortClause *) lfirst(cell);
+		Node	   *sortexpr;
+		Oid			sortcoltype;
+		TypeCacheEntry *typentry;
+
+		appendStringInfoString(buf, sep);
+		sortexpr = get_rule_sortgroupclause(srt, context->query->targetList,
+											false, context);
+		sortcoltype = exprType(sortexpr);
+		/* See whether operator is default < or > for datatype */
+		typentry = lookup_type_cache(sortcoltype,
+									 TYPECACHE_LT_OPR | TYPECACHE_GT_OPR);
+		if (srt->sortop == typentry->lt_opr)
+			 /* ASC is default, so emit nothing */ ;
+		else if (srt->sortop == typentry->gt_opr)
+			appendStringInfo(buf, " DESC");
+		else
+			appendStringInfo(buf, " USING %s",
+							 generate_operator_name(srt->sortop,
+													sortcoltype,
+													sortcoltype));
+		sep = ", ";
+	}
+}
+
+static void
+get_windowspec_expr(WindowSpec *spec, deparse_context *context)
+{
+	StringInfo buf = context->buf;
+	char *sep = "";
+
+	appendStringInfoChar(buf, '(');
+
+	if (spec->parent)
+	{
+		appendStringInfo(buf, "%s%s", sep, quote_identifier(spec->parent));
+		sep = " ";
+	}
+	else
+	{
+		/* parent and partition are mutually exclusive */
+		appendStringInfoString(buf, sep);
+		sep = " ";
+		if (spec->partition)
+			get_sortlist_expr(spec->partition, context, "PARTITION BY ");
+	}	
+	
+	if (spec->order)
+	{
+		/* 
+		 * If spec has a parent and that parent defines ordering, don't
+		 * display the order here.
+		 */
+		bool display_order = true;
+		
+		if (spec->parent)
+		{
+			ListCell *l;
+			foreach(l, context->query->windowClause)
+			{
+				WindowSpec *tmp = (WindowSpec *)lfirst(l);
+
+				if (tmp->name && strcmp(spec->parent, tmp->name) == 0 &&
+					tmp->order)
+				{
+					display_order = false;
+					break;
+				}
+			}
+		}
+		if (display_order)
+		{
+			appendStringInfoString(buf, sep);
+			sep = " ";
+			get_sortlist_expr(spec->order, context, "ORDER BY ");
+		}
+	}
+	
+	if (spec->frame)
+	{
+		WindowFrame *f = spec->frame;
+		
+		appendStringInfoString(buf, sep);
+		sep = " ";
+
+		appendStringInfo(buf, "%s", f->is_rows ? "ROWS" : "RANGE");
+		if (f->is_between)
+		{
+			appendStringInfo(buf, " BETWEEN");
+			get_windowedge_expr(f->trail, context);
+			appendStringInfo(buf, " AND");
+			get_windowedge_expr(f->lead, context);
+		}
+		else
+		{
+			get_windowedge_expr(f->trail, context);
+		}
+
+		/* exclusion statement */
+		switch(f->exclude)
+		{
+			case WINDOW_EXCLUSION_NULL:
+				break;
+			case WINDOW_EXCLUSION_CUR_ROW:
+				appendStringInfo(buf, " EXCLUDE CURRENT ROW");
+		   		break;
+			case WINDOW_EXCLUSION_GROUP:
+				appendStringInfo(buf, " EXCLUDE GROUP");
+				break;
+			case WINDOW_EXCLUSION_TIES:
+				appendStringInfo(buf, " EXCLUDE TIES");
+				break;
+			case WINDOW_EXCLUSION_NO_OTHERS:
+				appendStringInfo(buf, " EXCLUDE NO OTHERS");
+				break;
+			default:
+				elog(ERROR, "invalid exclusion type: %i", f->exclude);
+		}
+	}
+	appendStringInfoChar(buf, ')');
+}
+
+/*
+ * get_windowref_expr			- Parse back a WindowRef node
+ */
+static void
+get_windowref_expr(WindowRef *wref, deparse_context *context)
+{
+	StringInfo	buf = context->buf;
+	Oid			argtypes[FUNC_MAX_ARGS];
+	int			nargs;
+	ListCell   *l;
+	WindowSpec *spec;
+
+	nargs = 0;
+	foreach(l, wref->args)
+	{
+		if (nargs >= FUNC_MAX_ARGS)
+			ereport(ERROR,
+					(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
+					 errmsg("too many arguments")));
+		argtypes[nargs] = exprType((Node *) lfirst(l));
+		nargs++;
+	}
+
+	appendStringInfo(buf, "%s(",
+					 generate_function_name(wref->winfnoid, nargs, argtypes));
+
+	get_rule_expr((Node *) wref->args, context, true);
+	appendStringInfoChar(buf, ')');
+
+	/* now for the OVER clause */
+	appendStringInfo(buf, " OVER");
+
+	spec = (WindowSpec *)list_nth(context->query->windowClause, wref->winspec);
+
+	/*
+	 * If the spec has a name, it must be in the WINDOW clause, which is
+	 * displayed later. We shouldn't actually encounter such a window
+	 * ref.
+	 */
+	if (spec->name)
+	{
+		/* XXX: change this to an assertion later */
+		elog(ERROR, "internal error");
+	}
+	else
+	{
+		get_windowspec_expr(spec, context);
+	}
+}
 
 /* ----------
  * get_const_expr

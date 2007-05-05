@@ -218,6 +218,11 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	sp_estate->es_sliceTable = estate->es_sliceTable;
 	sp_estate->es_slice_map = estate->es_slice_map;
 	
+	/* 
+	 * also load shared nodes list 
+	 */
+	sp_estate->es_sharenode = estate->es_sharenode;
+
 	/*
 	 * also loan the motion later state.
 	 */
@@ -227,6 +232,11 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	 * Start up the subplan (this is a very cut-down form of InitPlan())
 	 */
 	subquerystate->subplan = ExecInitNode(node->subplan, sp_estate, eflags);
+
+	/* 
+	 * now return sharenode list from subquery to original estate 
+	 */
+	estate->es_sharenode = sp_estate->es_sharenode;
 
 	/*
 	 * Initialize scan tuple type (needed by ExecAssignScanProjectionInfo).

@@ -72,8 +72,7 @@ tstoreDestroyReceiver(DestReceiver *self)
  * Initially create a DestReceiver object.
  */
 DestReceiver *
-CreateTuplestoreDestReceiver(Tuplestorestate *tStore,
-							 MemoryContext tContext)
+CreateTuplestoreDestReceiver(Tuplestorestate *tStore, MemoryContext tContext)
 {
 	TStoreState *self = (TStoreState *) palloc(sizeof(TStoreState));
 

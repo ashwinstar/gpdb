@@ -30,6 +30,15 @@ typedef struct
 	bool		missing_prelimfunc; /* CDB: any agg func w/o a prelim func? */
 } AggClauseCounts;
 
+typedef struct CanonicalGroupingSets
+{
+	int num_distcols;   /* number of distinct grouping columns */
+	int ngrpsets;   /* number of grouping sets */
+	Bitmapset **grpsets;  /* one Bitmapset for each grouping set */
+	int *grpset_counts;  /* one for each grouping set, representing the number of times that
+						  * each grouping set appears
+						  */
+} CanonicalGroupingSets;
 
 extern Expr *make_opclause(Oid opno, Oid opresulttype, bool opretset,
 			  Expr *leftop, Expr *rightop);
@@ -104,5 +113,6 @@ extern bool query_or_expression_tree_walker(Node *node, bool (*walker) (),
 												   void *context, int flags);
 extern Node *query_or_expression_tree_mutator(Node *node, Node *(*mutator) (),
 												   void *context, int flags);
+extern bool is_grouping_extension(CanonicalGroupingSets *grpsets);
 
 #endif   /* CLAUSES_H */

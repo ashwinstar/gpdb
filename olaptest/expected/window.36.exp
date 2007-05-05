@@ -1,0 +1,8 @@
+ row_number | cn |    cname     |     cloc     
+------------+----+--------------+--------------
+          1 |  1 | Macbeth      | Inverness
+          2 |  3 | Lady Macbeth | Inverness
+          3 |  2 | Duncan       | Forres
+          4 |  4 | Witches, Inc | Lonely Heath
+(4 rows)
+

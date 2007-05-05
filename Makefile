@@ -43,6 +43,16 @@ devel : HOMEDEP $(ISCONFIG)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 
+forceplan : INSTCFLAGS=$(DEBUGFLAGS)
+forceplan : INSTLOC=$(DEVPATH)
+forceplan : CONFIGFLAGS+=--enable-cassert --enable-debug --enable-forceplan
+forceplan : HOMEDEP $(ISCONFIG)
+	@rm -rf $(INSTLOC)
+	@cd $(GPPGDIR); $(MAKE) install
+	@$(MAKE) groupSession
+	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
+	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
+
 dist : INSTCFLAGS=$(OPTFLAGS)
 dist : INSTLOC=$(DISTPATH)
 dist : GPROOTDEP RECONFIG $(ISCONFIG)

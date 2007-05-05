@@ -451,6 +451,10 @@ extern int gp_sort_flags;
 extern int gp_sort_max_distinct;
 
 
+/* GP enable window planner to share subplan  
+ */
+extern bool gp_window_shareinput;
+
 /* The maximum number of times on average that the hybrid hashed aggregation
  * algorithm will plan to spill an input row to disk before including it in
  * an aggregation.  Increasing this parameter will cause the planner to choose 

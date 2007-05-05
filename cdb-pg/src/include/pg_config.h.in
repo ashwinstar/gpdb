@@ -623,6 +623,10 @@
 /* Define to 1 to build with Bonjour support. (--with-bonjour) */
 #undef USE_BONJOUR
 
+/* Define to 1 to build with plan forcing capabilities. (--enable-forceplan)
+   */
+#undef USE_FORCE_PLAN
+
 /* Define to 1 if you want 64-bit integer timestamp and interval support.
    (--enable-integer-datetimes) */
 #undef USE_INTEGER_DATETIMES

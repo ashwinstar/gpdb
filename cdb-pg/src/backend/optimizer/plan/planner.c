@@ -42,8 +42,10 @@
 #include "parser/parse_oper.h"
 #include "parser/parsetree.h"
 #include "utils/syscache.h"
+#include "nodes/bitmapset.h"
 
 #include "cdb/cdbllize.h"
+#include "cdb/cdbmutate.h" 	/* apply_shareinput */
 #include "cdb/cdbpath.h"        /* cdbpath_segments */
 #include "cdb/cdbpathtoplan.h"  /* cdbpathtoplan_create_flow() */
 #include "cdb/cdbgroup.h" /* grouping_planner extensions */
@@ -61,7 +63,6 @@ ParamListInfo PlannerBoundParamList = NULL;		/* current boundParams */
 #define EXPRKIND_LIMIT		4
 #define EXPRKIND_ININFO		5
 #define EXPRKIND_APPINFO	6
-
 
 static Node *preprocess_expression(PlannerInfo *root, Node *expr, int kind);
 static void preprocess_qual_conditions(PlannerInfo *root, Node *jtnode);
@@ -83,6 +84,7 @@ static void locate_grouping_columns(PlannerInfo *root,
 						AttrNumber *groupColIdx);
 static List *postprocess_setop_tlist(List *new_tlist, List *orig_tlist);
 
+static CanonicalGroupingSets *make_canonical_groupingsets(List *groupClause);
 
 /*****************************************************************************
  *
@@ -156,8 +158,17 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 			result_plan = materialize_finished_plan(result_plan);
 	}
 
+	/* Fix sharing id and shared id.  
+	 *
+	 * This must be called before set_plan_references and cdbparallelize.  The other mutator
+	 * or tree walker assumes the input is a tree.  If there is plan sharing, we have a DAG. 
+	 *
+	 * apply_shareinput will fix shared_id, and change the DAG to a tree.
+	 */
+	result_plan = apply_shareinput(result_plan, parse); 
+
 	/* final cleanup of the plan */
-	result_plan = set_plan_references(result_plan, parse->rtable);
+	result_plan = set_plan_references(result_plan, parse->rtable, parse->sharedNodes);
 
 	/* executor wants to know total number of Params used overall */
 	result_plan->nParamExec = list_length(PlannerParamList);
@@ -877,6 +888,28 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 													  tlist);
 		sort_pathkeys = canonicalize_pathkeys(root, sort_pathkeys);
 	}
+	else if ( parse->windowClause )
+	{
+		/* TODO Need work here. */
+		
+		/*
+		 * Calculate pathkeys that represent ordering requirements. Stash
+		 * them in PlannerInfo so that query_planner can canonicalize them.
+		 */
+		root->group_pathkeys = NIL;
+		root->sort_pathkeys =
+			make_pathkeys_for_sortclauses(parse->sortClause, tlist);
+
+		
+		result_plan = window_planner(root, tuple_fraction, &current_pathkeys);
+		
+		/* Recover sort pathkeys for use later.  These may or may not
+		 * match the current_pathkeys resulting from the window plan.  
+		 */
+		sort_pathkeys = make_pathkeys_for_sortclauses(parse->sortClause,
+													  tlist);
+		sort_pathkeys = canonicalize_pathkeys(root, sort_pathkeys);
+	}
 	else
 	{
 		/* No set operations, do regular planning */
@@ -889,13 +922,21 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		Path	   *sorted_path;
 		long		numGroups = 0;
 		AggClauseCounts agg_counts;
-		int			numGroupCols = list_length(parse->groupClause);
+		int			numGroupCols;
 		bool		use_hashed_grouping = false;
-
-		MemSet(&agg_counts, 0, sizeof(AggClauseCounts));
+		bool        grpext = false;
+		CanonicalGroupingSets *canonical_grpsets;
 
 		/* Preprocess targetlist */
 		tlist = preprocess_targetlist(root, tlist);
+
+		/* Obtain canonical grouping sets */
+		canonical_grpsets = make_canonical_groupingsets(parse->groupClause);
+		numGroupCols = canonical_grpsets->num_distcols;
+
+		grpext = is_grouping_extension(canonical_grpsets);
+
+		MemSet(&agg_counts, 0, sizeof(AggClauseCounts));
 
 		/*
 		 * Generate appropriate target list for subplan; may be different from
@@ -910,7 +951,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		 * them.
 		 */
 		root->group_pathkeys =
-			make_pathkeys_for_sortclauses(parse->groupClause, tlist);
+			make_pathkeys_for_groupclause(parse->groupClause, tlist);
 		root->sort_pathkeys =
 			make_pathkeys_for_sortclauses(parse->sortClause, tlist);
 
@@ -961,9 +1002,19 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		sort_pathkeys = root->sort_pathkeys;
 
 		/*
+		 * XXX: if this is a grouping extension, we will not choose the hash aggregation.
+		 */
+		if (grpext)
+		{
+			use_hashed_grouping = false;
+		}
+
+		else
+
+		/*
 		 * If grouping, decide whether we want to use hashed grouping.
 		 */
-		if (parse->groupClause)
+	    if (parse->groupClause)
 		{
 			use_hashed_grouping =
 				choose_hashed_grouping(root, tuple_fraction,
@@ -1001,14 +1052,15 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		if ( Gp_role == GP_ROLE_DISPATCH )
 		{
 			result_plan = cdb_grouping_planner(root,
-											&agg_counts,
-											tlist,
-											best_path,
-											cheapest_path,
-											use_hashed_grouping,
-											tuple_fraction,
-											dNumGroups,
-											&current_pathkeys);
+											   &agg_counts,
+											   tlist,
+											   best_path,
+											   cheapest_path,
+											   use_hashed_grouping,
+											   tuple_fraction,
+											   &dNumGroups,
+											   canonical_grpsets,
+											   &current_pathkeys);
 			if ( result_plan != NULL && result_plan->flow->numSortCols == 0 )
 			{
 				/*
@@ -1119,6 +1171,9 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 												numGroupCols,
 												groupColIdx,
 												numGroups,
+												0, /* rollup_level */
+												0, /* grouping_id */
+												0, /* rollup_gs_times */
 												agg_counts.numAggs,
 												agg_counts.transitionSpace,
 												result_plan);
@@ -1139,6 +1194,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 							make_sort_from_groupcols(root,
 													 parse->groupClause,
 													 groupColIdx,
+													 false,
 													 result_plan);
 						current_pathkeys = group_pathkeys;
 
@@ -1159,16 +1215,63 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 					current_pathkeys = NIL;
 				}
 
-				result_plan = (Plan *) make_agg(root,
-												tlist,
-												(List *) parse->havingQual,
-												aggstrategy,
-												numGroupCols,
-												groupColIdx,
-												numGroups,
-												agg_counts.numAggs,
-												agg_counts.transitionSpace,
-												result_plan);
+				/*
+				 * We make a single Agg node if this is not a grouping extension.
+				 */
+				if (!grpext)
+				{
+					result_plan = (Plan *) make_agg(root,
+													tlist,
+													(List *) parse->havingQual,
+													aggstrategy,
+													numGroupCols,
+													groupColIdx,
+													numGroups,
+													0, /* rollup_level */
+													0, /* grouping_id */
+													0, /* rollup_gs_times */
+													agg_counts.numAggs,
+													agg_counts.transitionSpace,
+													result_plan);
+				}
+
+				/* Plan the grouping extension */
+				else
+				{
+					ListCell *lc;
+
+					/*
+					 * Make a copy of tlist. Really need to?
+					 */
+					List *new_tlist = copyObject(tlist);
+
+					/* Make EXPLAIN output look nice */
+					foreach(lc, result_plan->targetlist)
+					{
+						TargetEntry *tle = (TargetEntry*)lfirst(lc);
+
+						if ( IsA(tle->expr, Var) && tle->resname == NULL )
+						{
+							TargetEntry *vartle = tlist_member((Node*)tle->expr, tlist);
+
+							if ( vartle != NULL && vartle->resname != NULL )
+								tle->resname = pstrdup(vartle->resname);
+						}
+					}
+
+					result_plan = plan_grouping_extension(root, best_path,
+														  &new_tlist, result_plan->targetlist,
+														  true, false,
+														  (List *) parse->havingQual,
+														  aggstrategy,
+														  &numGroupCols,
+														  &groupColIdx,
+														  &agg_counts,
+														  canonical_grpsets,
+														  &dNumGroups,
+														  &current_pathkeys,
+														  result_plan);
+				}
 			}
 			else if (parse->groupClause)
 			{
@@ -1185,6 +1288,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 						make_sort_from_groupcols(root,
 												 parse->groupClause,
 												 groupColIdx,
+												 false,
 												 result_plan);
 					current_pathkeys = group_pathkeys;
 					mark_sort_locus(result_plan);
@@ -1197,13 +1301,53 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 					}
 				}
 
-				result_plan = (Plan *) make_group(root,
-												  tlist,
-												  (List *) parse->havingQual,
-												  numGroupCols,
-												  groupColIdx,
-												  dNumGroups,
-												  result_plan);
+				if (!grpext)
+				{
+					result_plan = (Plan *) make_group(root,
+													  tlist,
+													  (List *) parse->havingQual,
+													  numGroupCols,
+													  groupColIdx,
+													  dNumGroups,
+													  0, /* rollup_level */
+													  0, /* grouping_id */
+													  0, /* rollup_gs_times */
+													  result_plan);
+				}
+				else
+				{
+					ListCell *lc;
+
+					List *new_tlist = copyObject(tlist);
+
+					/* Make EXPLAIN output look nice */
+					foreach(lc, result_plan->targetlist)
+					{
+						TargetEntry *tle = (TargetEntry*)lfirst(lc);
+
+						if ( IsA(tle->expr, Var) && tle->resname == NULL )
+						{
+							TargetEntry *vartle = tlist_member((Node*)tle->expr, tlist);
+
+							if ( vartle != NULL && vartle->resname != NULL )
+								tle->resname = pstrdup(vartle->resname);
+						}
+					}
+
+					result_plan = (Plan *)
+						plan_grouping_extension(root, best_path,
+												&new_tlist, result_plan->targetlist,
+												false, false,
+												(List *) parse->havingQual,
+												AGG_SORTED,
+												&numGroupCols,
+												&groupColIdx,
+												&agg_counts,
+												canonical_grpsets,
+												&dNumGroups,
+												&current_pathkeys,
+												result_plan);
+				}
 				/* The Group node won't change sort ordering */
 			}
 			else if (root->hasHavingQual)
@@ -1227,8 +1371,19 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 				current_pathkeys = NIL;
 				mark_plan_general(result_plan);
 			}
-
 		}						/* end of non-minmax-aggregate case */
+
+		/* free canonical_grpsets */
+		{
+			int grpset_no;
+			for (grpset_no=0; grpset_no<canonical_grpsets->ngrpsets; grpset_no++)
+			{
+				bms_free(canonical_grpsets->grpsets[grpset_no]);
+			}
+			pfree(canonical_grpsets->grpsets);
+			pfree(canonical_grpsets->grpset_counts);
+			pfree(canonical_grpsets);
+		}
 	}							/* end of if (setOperations) */
 
     /*
@@ -1911,42 +2066,50 @@ make_subplanTargetList(PlannerInfo *root,
 	 * (GROUP BY items that are simple Vars should be in the list already),
 	 * and make an array showing where the group columns are in the sub_tlist.
 	 */
-	numCols = list_length(parse->groupClause);
+	numCols = num_distcols_in_grouplist(parse->groupClause);
+
 	if (numCols > 0)
 	{
 		int			keyno = 0;
 		AttrNumber *grpColIdx;
-		ListCell   *gl;
+		List       *grouptles;
+		ListCell   *l;
 
 		grpColIdx = (AttrNumber *) palloc(sizeof(AttrNumber) * numCols);
 		*groupColIdx = grpColIdx;
 
-		foreach(gl, parse->groupClause)
+		grouptles = get_sortgroupclauses_tles(parse->groupClause, tlist);
+
+		foreach (l, grouptles)
 		{
-			GroupClause *grpcl = (GroupClause *) lfirst(gl);
-			Node	   *groupexpr = get_sortgroupclause_expr(grpcl, tlist);
-			TargetEntry *te = NULL;
-			ListCell   *sl;
+			Node *groupexpr;
+			TargetEntry	   *tle;
+			TargetEntry *sub_tle = NULL;
+			ListCell   *sl = NULL;
+
+			tle = (TargetEntry *)lfirst(l);
+			groupexpr = (Node*) tle->expr;
 
 			/* Find or make a matching sub_tlist entry */
 			foreach(sl, sub_tlist)
 			{
-				te = (TargetEntry *) lfirst(sl);
-				if (equal(groupexpr, te->expr))
+				sub_tle = (TargetEntry *) lfirst(sl);
+				if (equal(groupexpr, sub_tle->expr))
 					break;
 			}
 			if (!sl)
 			{
-				te = makeTargetEntry((Expr *) groupexpr,
+				sub_tle = makeTargetEntry((Expr *) groupexpr,
 									 list_length(sub_tlist) + 1,
 									 NULL,
 									 false);
-				sub_tlist = lappend(sub_tlist, te);
+				sub_tlist = lappend(sub_tlist, sub_tle);
 				*need_tlist_eval = true;		/* it's not flat anymore */
 			}
 
-			/* and save its resno */
-			grpColIdx[keyno++] = te->resno;
+			/* Set its group reference and save its resno */
+			sub_tle->ressortgroupref = tle->ressortgroupref;
+			grpColIdx[keyno++] = sub_tle->resno;
 		}
 	}
 
@@ -1968,7 +2131,8 @@ locate_grouping_columns(PlannerInfo *root,
 						AttrNumber *groupColIdx)
 {
 	int			keyno = 0;
-	ListCell   *gl;
+	List *grouptles;
+	ListCell *ge;
 
 	/*
 	 * No work unless grouping.
@@ -1980,12 +2144,17 @@ locate_grouping_columns(PlannerInfo *root,
 	}
 	Assert(groupColIdx != NULL);
 
-	foreach(gl, root->parse->groupClause)
+	grouptles = get_sortgroupclauses_tles(root->parse->groupClause, tlist);
+
+	foreach (ge, grouptles)
 	{
-		GroupClause *grpcl = (GroupClause *) lfirst(gl);
-		Node	   *groupexpr = get_sortgroupclause_expr(grpcl, tlist);
+		TargetEntry *groupte = (TargetEntry *)lfirst(ge);
+		Node	*groupexpr;
+
 		TargetEntry *te = NULL;
 		ListCell   *sl;
+
+		groupexpr = (Node *) groupte->expr;
 
 		foreach(sl, sub_tlist)
 		{
@@ -2036,4 +2205,99 @@ postprocess_setop_tlist(List *new_tlist, List *orig_tlist)
 	if (orig_tlist_item != NULL)
 		elog(ERROR, "resjunk output columns are not implemented");
 	return new_tlist;
+}
+
+/*
+ * Canonicalize a given list of GroupClauses or GroupingClauses.
+ *
+ * XXX only support a single ROLLUP now.
+ */
+static CanonicalGroupingSets *
+make_canonical_groupingsets(List *groupClause)
+{
+	CanonicalGroupingSets *canonical_grpsets = 
+		(CanonicalGroupingSets *) palloc0(sizeof(CanonicalGroupingSets));
+	ListCell *l;
+
+	bool one_rollup = false;
+	List *non_rollup = NIL;
+	List *rollup = NIL;
+	int rollup_levels = 0;
+	int col_no;
+	List *col_list;
+
+	foreach (l, groupClause)
+	{
+		Node *node = lfirst(l);
+
+		if (IsA(node, GroupClause))
+		{
+			GroupClause *gc = (GroupClause*) node;
+			non_rollup = lappend_int(non_rollup, gc->tleSortGroupRef);
+		}
+
+		else if (IsA(node, GroupingClause))
+		{
+			GroupingClause *gc = (GroupingClause*) node;
+			ListCell *gcl;
+
+			if (gc->groupType != ROLLUP_TYPE ||
+				one_rollup)
+				ereport(ERROR, (
+							errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							errmsg("Only a single ROLLUP clause is supported.")));
+
+			one_rollup = true;
+
+			foreach(gcl, gc->groupsets)
+			{
+				GroupClause *c = (GroupClause*) lfirst(gcl);
+
+				rollup = lcons_int(c->tleSortGroupRef, rollup);
+			}
+		}
+	}
+
+	col_list = list_union_int(non_rollup, rollup);
+	canonical_grpsets->num_distcols = list_length(col_list);
+	rollup_levels = list_length(rollup) + 1;
+
+	canonical_grpsets->ngrpsets = rollup_levels;
+	canonical_grpsets->grpsets =
+		(Bitmapset **)palloc0(rollup_levels * sizeof(Bitmapset *));
+	canonical_grpsets->grpset_counts =
+		(int *)palloc0(rollup_levels * sizeof(int));
+
+	for (col_no=0; col_no<rollup_levels; col_no++)
+	{
+		int i;
+
+		/*
+		 * col_list represents the unique grouping columns in
+		 * a rollup level.
+		 */
+		int grpset_idx = canonical_grpsets->num_distcols - list_length(col_list);
+
+		if (canonical_grpsets->grpset_counts[grpset_idx] == 0)
+		{
+			for (i=0; i<list_length(col_list); i++)
+			{
+				canonical_grpsets->grpsets[grpset_idx] =
+					bms_add_member(canonical_grpsets->grpsets[grpset_idx],
+								   list_nth_int(col_list, i));
+			}
+		}
+
+		canonical_grpsets->grpset_counts[grpset_idx]++;
+
+		rollup = list_delete_first(rollup);
+
+		if (col_no < rollup_levels - 1)
+			col_list = list_union_int(non_rollup, rollup);
+	}
+
+	list_free(rollup);
+	list_free(non_rollup);
+
+	return canonical_grpsets;
 }

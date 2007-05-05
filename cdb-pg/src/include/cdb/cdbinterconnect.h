@@ -104,17 +104,22 @@ typedef struct ChunkTransportStateEntry
 	
 }	ChunkTransportStateEntry;
 
+/* ChunkTransportMotionState array initial size */
+#define CTS_INITIAL_SIZE (10)
+
+typedef struct ChunkTransportStateMotionEntry
+{
+	int size;
+	ChunkTransportStateEntry *states;
+} ChunkTransportStateMotionEntry;
+
 typedef struct ChunkTransportState
 {
 	/* array of per-motion-node chunk transport state */
 	int size;
+	ChunkTransportStateMotionEntry *motion_states;
+		
 	ChunkTransportStateEntry *states;
-
-	bool		aggressiveRetry;
-	
-	/* ChunkTransportState array initial size */
-#define CTS_INITIAL_SIZE (10)
-	
 	/* keeps track of if we've "activated" connections via SetupInterconnect(). */
 	bool		activated;
 	
@@ -123,9 +128,7 @@ typedef struct ChunkTransportState
 	
 	/*slice table stuff. */
 	struct SliceTable  *sliceTable;
-	int			sliceId;
-	
-	
+	int			sliceId;	
 } ChunkTransportState;
 
 /* This is the entry data-structure for a motion node. */

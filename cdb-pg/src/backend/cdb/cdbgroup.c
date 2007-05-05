@@ -132,7 +132,8 @@ typedef struct MppGroupContext
 	Path *cheapest_path;
 	AggClauseCounts *agg_counts;
 	double tuple_fraction;
-	double dNumGroups;
+	double *p_dNumGroups;
+	CanonicalGroupingSets *canonical_grpsets;
 	
 	List *sub_tlist;
 	int numGroupCols;
@@ -160,7 +161,6 @@ typedef struct two_stage_agg_context
 	Index final_varno;
 	List *refs_tlist; /* Aggref attributes for  prelim_tlist */
 	List *grps_tlist; /* Grouping attributes for prelim_tlist */
-	
 } two_stage_agg_context;
 
 
@@ -168,12 +168,6 @@ static Plan * make_one_stage_agg_plan(PlannerInfo *root, MppGroupContext *ctx);
 static Plan * make_two_stage_agg_plan(PlannerInfo *root, MppGroupContext *ctx);
 static List *make_subplan_tlist(List *tlist, Node *havingQual,
 						List *grp_clauses, int *pnum, AttrNumber **pcols);
-static List *generate_subquery_tlist(Index varno, List *input_tlist);
-static void generate_two_stage_tlists(List *tlist, List *sub_tlist,
-						Node *havingQual,
-						int numGroupCols, AttrNumber *groupColIdx,
-						List **p_prelim_tlist, List **p_final_tlist,
-						List **p_final_qual);
 static Expr *deconstruct_expr(Expr *expr, two_stage_agg_context *ctx);
 static Node* deconstruct_expr_mutator(Node *node, two_stage_agg_context *ctx);
 static Aggref *split_aggref(Aggref *aggref, two_stage_agg_context *ctx);
@@ -204,14 +198,15 @@ static Oid lookup_agg_transtype(Aggref *aggref);
 
 Plan *
 cdb_grouping_planner(PlannerInfo* root,
-					AggClauseCounts *agg_counts,
-					List *tlist,
-					Path *best_path,
-					Path *cheapest_path,
-					bool use_hashed_grouping,
-					double tuple_fraction,
-					double dNumGroups,
-					List **pcurrent_pathkeys)
+		AggClauseCounts *agg_counts,
+		List *tlist,
+		Path *best_path,
+		Path *cheapest_path,
+		bool use_hashed_grouping,
+		double tuple_fraction,
+		double *p_dNumGroups,
+		CanonicalGroupingSets *canonical_grpsets,
+		List **pcurrent_pathkeys)
 {
 	MppGroupContext ctx;
 	Plan * result_plan = NULL;
@@ -220,24 +215,22 @@ cdb_grouping_planner(PlannerInfo* root,
 	bool has_aggs = agg_counts->numAggs > 0;
 	CdbPathLocus input_locus = cheapest_path->locus;
 	ListCell *lc;
-	
+
 	MppGroupPrep group_prep;
 	MppGroupType group_type;
 	CdbPathLocus output_locus;
-	
-	Assert( !has_groups || root->group_pathkeys != NULL );
-	Assert( agg_counts->numDistinctAggs != 1
-			|| agg_counts->distinctExpr != NULL );
 
-    CdbPathLocus_MakeNull(&output_locus);
-	
+	Assert( !has_groups || root->group_pathkeys != NULL );
+
+	CdbPathLocus_MakeNull(&output_locus);
+
 	/*
 	 * First choose a one-stage plan.  Since there's always a way to do this,
 	 * it serves as our default choice.
 	 */
 	group_type = MPP_GRP_TYPE_BASEPLAN;
 	group_prep = MPP_GRP_PREP_NONE;
-	
+
 	if ( !CdbPathLocus_IsPartitioned(input_locus) )
 	{
 		/* Can use base plan with no motion yielding same locus. */
@@ -246,7 +239,8 @@ cdb_grouping_planner(PlannerInfo* root,
 	}
 	else if ( has_groups ) /* and not single or replicated */
 	{
-		if ( cdbpathlocus_collocates(input_locus, root->group_pathkeys) )
+		if (root->group_pathkeys != NULL &&
+				cdbpathlocus_collocates(input_locus, root->group_pathkeys) )
 		{
 			group_prep = MPP_GRP_PREP_NONE;
 			output_locus = input_locus; /* may be less discriminating that group locus */
@@ -255,8 +249,8 @@ cdb_grouping_planner(PlannerInfo* root,
 		{
 			group_prep = MPP_GRP_PREP_HASH_GROUPS;
 			CdbPathLocus_MakeHashed(&output_locus, root->group_pathkeys);
-		}	
-		
+		}
+
 		/* Note that we could explore other approaches to using the base
 		 * plan on a grouped query.  For example, cull a replicated input
 		 * locus to obtain a group-wise hashed one, but it isn't clear that
@@ -268,7 +262,7 @@ cdb_grouping_planner(PlannerInfo* root,
 		group_prep = MPP_GRP_PREP_FOCUS_QE;
 		CdbPathLocus_MakeSingleQE(&output_locus);
 	}
-	
+
 	/*
 	 * If the sequential planner can handle the situation with no Motion
 	 * involved, let it do so.  Don't bother to investigate the 2-stage
@@ -279,7 +273,7 @@ cdb_grouping_planner(PlannerInfo* root,
 		*pcurrent_pathkeys = NIL;
 		return NULL;
 	}
-	
+
 	/*
 	 * At this point, we're committed to producing a one- or two-stage
 	 * plan with motion.  Calculate the subplan target list to use in
@@ -287,11 +281,11 @@ cdb_grouping_planner(PlannerInfo* root,
 	 * in the target list.
 	 */
 	sub_tlist = make_subplan_tlist(tlist,
-									root->parse->havingQual,
-									root->parse->groupClause,
-									&ctx.numGroupCols,
-									&ctx.groupColIdx);
-	
+			root->parse->havingQual,
+			root->parse->groupClause,
+			&ctx.numGroupCols,
+			&ctx.groupColIdx);
+
 	/* Where we need to and we can, add column names to the sub_tlist 
 	 * entries to make EXPLAIN output look nice.  Note that we could dig 
 	 * further than this (if we come up empty handed) by probing the range 
@@ -300,34 +294,34 @@ cdb_grouping_planner(PlannerInfo* root,
 	foreach(lc, sub_tlist)
 	{
 		TargetEntry *tle = (TargetEntry*)lfirst(lc);
-		
+
 		if ( IsA(tle->expr, Var) && tle->resname == NULL )
 		{
 			TargetEntry *vartle = tlist_member((Node*)tle->expr, tlist);
-			
+
 			if ( vartle != NULL && vartle->resname != NULL )
 				tle->resname = pstrdup(vartle->resname);
 		}
 	}
-			
+
 	/*
 	 * Now look into doing a two-stage plan. Sometimes this isn't possible.
 	 */
 	if (has_aggs &&
-		agg_counts->numDistinctAggs<=1 &&
-		!agg_counts->missing_prelimfunc)
+			agg_counts->numDistinctAggs<=1 && 
+			!agg_counts->missing_prelimfunc)
 	{
 		MppGroupPrep group_prep_2s = MPP_GRP_PREP_NONE;
 		MppGroupType group_type_2s = MPP_GRP_TYPE_NONE;
 		CdbPathLocus input_locus_2s, output_locus_2s;
-		
+
 		input_locus_2s = input_locus;
 		CdbPathLocus_MakeNull(&output_locus_2s);
 
 		/* We can to do a two-stage plan.  But do we want to?  If not,
 		 * fall out of the if and stick with the one-stage approach. */
 		if ( ! enable_agg_restruct
-			|| !CdbPathLocus_IsPartitioned(input_locus) )
+				|| !CdbPathLocus_IsPartitioned(input_locus) )
 		{
 			; /* Already collocated, don't bother.  This code is purely
 			   * defensive since we will have taken an early exit above.
@@ -350,26 +344,20 @@ cdb_grouping_planner(PlannerInfo* root,
 		{
 			if ( agg_counts->numDistinctAggs ==  1 )
 			{
-				List *distinct_pathkeys;
-						
-				/* Need collocation on "distincted" argument value. */
-				distinct_pathkeys = cdb_make_pathkey_for_expr(
-										root,
-										(Node*)agg_counts->distinctExpr,
-										list_make1(makeString("=")));
-				distinct_pathkeys = list_make1(distinct_pathkeys);
+				List *distinct_pathkeys = cdb_make_pathkey_for_expr(root,
+						(Node *) agg_counts->distinctExpr,
+						list_make1(makeString("=")));
+				distinct_pathkeys =list_make1(distinct_pathkeys);
 
-				if ( cdbpathlocus_collocates(input_locus, distinct_pathkeys) )
-				{
+				if ( cdbpathlocus_collocates(input_locus, distinct_pathkeys))
 					group_prep_2s = MPP_GRP_PREP_NONE;
-				}
 				else
 				{
 					group_prep_2s = MPP_GRP_PREP_HASH_DISTINCT;
 					CdbPathLocus_MakeHashed(&input_locus_2s, distinct_pathkeys);
 				}
 			}
-			
+
 			if ( has_groups )
 			{
 				group_type_2s = MPP_GRP_TYPE_GROUPED_2STAGE;
@@ -381,7 +369,7 @@ cdb_grouping_planner(PlannerInfo* root,
 				CdbPathLocus_MakeSingleQE(&output_locus_2s);
 			}
 		}
-		
+
 		/* If we found a two-stage approach, compare it to the one-stage
 		 * approach in hand and decide which we prefer.
 		 *
@@ -406,27 +394,27 @@ cdb_grouping_planner(PlannerInfo* root,
 		 */
 		switch ( group_type_2s )
 		{
-		case MPP_GRP_TYPE_GROUPED_2STAGE:		
-		case MPP_GRP_TYPE_PLAIN_2STAGE:
-		 /* TODO: Use cost to decide whether to implement 2 stage.*/
-			group_prep = group_prep_2s;
-			group_type = group_type_2s;
-			output_locus = output_locus_2s;
-			break;
-		
-		case MPP_GRP_TYPE_NONE:
-			break; /* No 2-stage plan, use the 1-stage plan. */
-			
-		case MPP_GRP_TYPE_BASEPLAN:
-		default:
-			ereport(ERROR,
-					(errcode(ERRCODE_CDB_INTERNAL_ERROR),
-					errmsg("unexpected outcome for 2-stage aggregation")));
+			case MPP_GRP_TYPE_GROUPED_2STAGE:		
+			case MPP_GRP_TYPE_PLAIN_2STAGE:
+				/* TODO: Use cost to decide whether to implement 2 stage.*/
+				group_prep = group_prep_2s;
+				group_type = group_type_2s;
+				output_locus = output_locus_2s;
+				break;
 
-			break;
+			case MPP_GRP_TYPE_NONE:
+				break; /* No 2-stage plan, use the 1-stage plan. */
+
+			case MPP_GRP_TYPE_BASEPLAN:
+			default:
+				ereport(ERROR,
+						(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						 errmsg("unexpected outcome for 2-stage aggregation")));
+
+				break;
 		}
 	}
-	
+
 	/*
 	 * Package up byproducts for the actual planner.
 	 */
@@ -441,8 +429,17 @@ cdb_grouping_planner(PlannerInfo* root,
 	ctx.output_locus = output_locus;
 	ctx.agg_counts = agg_counts;
 	ctx.tuple_fraction = tuple_fraction;
-	ctx.dNumGroups = dNumGroups;
+	ctx.p_dNumGroups = p_dNumGroups;
+	ctx.canonical_grpsets = canonical_grpsets;
 	ctx.current_pathkeys = NIL; /* Initialize to be tidy. */
+
+	/*
+	 * XXX We always use sequential plans for distinct-qualified
+	 * rollup queries.
+	 */
+	if (is_grouping_extension(ctx.canonical_grpsets) &&
+		agg_counts->numDistinctAggs > 0)
+		return NULL;
 
 	/* Call appropriate planner. */
 	if (group_type == MPP_GRP_TYPE_BASEPLAN)
@@ -473,7 +470,7 @@ cdb_grouping_planner(PlannerInfo* root,
  */
 static Plan *
 make_one_stage_agg_plan(PlannerInfo *root,
-					   MppGroupContext *ctx)
+		MppGroupContext *ctx)
 {
 	Query	   *parse = root->parse;
 	List	   *tlist = ctx->tlist;
@@ -484,17 +481,20 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	Path       *cheapest_path = ctx->cheapest_path;
 	Path       *path = NULL;
 	bool        use_hashed_grouping = ctx->use_hashed_grouping;
-	long		numGroups = (ctx->dNumGroups < 0) ? 0 :
-	                        (ctx->dNumGroups > LONG_MAX) ? LONG_MAX :
-							(long)ctx->dNumGroups;
-	
+	long		numGroups = (*(ctx->p_dNumGroups) < 0) ? 0 :
+		(*(ctx->p_dNumGroups) > LONG_MAX) ? LONG_MAX :
+		(long)*(ctx->p_dNumGroups);
+
 	List       *groupExprs = NIL;
 	List	   *current_pathkeys;
 	QualCost	tlist_cost;
 	double      motion_cost_per_row;
 	int i;
-	
+
 	Plan       *result_plan;
+	bool       is_grpext;
+
+	is_grpext = is_grouping_extension(ctx->canonical_grpsets);
 	
 
 	/*
@@ -532,7 +532,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	 */
     result_plan = plan_pushdown_tlist(result_plan, sub_tlist);
 
-    Assert(result_plan->flow);
+    Assert(get_plan_flow(result_plan)); 
     
 	/* Account for the cost of evaluation of the sub_tlist. */
 	cost_qual_eval(&tlist_cost, sub_tlist);
@@ -564,6 +564,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 				TargetEntry *tle = get_tle_by_resno(sub_tlist, groupColIdx[i]);
 				groupExprs = lappend(groupExprs, copyObject(tle->expr));
 			}
+
 			result_plan = (Plan*)make_motion_hash(root, result_plan, groupExprs);
 			result_plan->total_cost += motion_cost_per_row * result_plan->plan_rows;
 			current_pathkeys = NIL; /* No longer sorted. */
@@ -590,7 +591,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 			break; /* Never */
 	}
 	
-    Assert(result_plan->flow);
+    Assert(get_plan_flow(result_plan)); 
     
     /*
 	 * Insert AGG or GROUP node if needed, plus an explicit sort step
@@ -608,6 +609,9 @@ make_one_stage_agg_plan(PlannerInfo *root,
 										numGroupCols,
 										groupColIdx,
 										numGroups,
+										0, /* rollup_level */
+										0, /* grouping */
+										0, /* rollup_gs_times */
 										ctx->agg_counts->numAggs,
 										ctx->agg_counts->transitionSpace,
 										result_plan);
@@ -628,6 +632,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 					make_sort_from_groupcols(root,
 											 parse->groupClause,
 											 groupColIdx,
+											 false,
 											 result_plan);
 				current_pathkeys = root->group_pathkeys;
 				mark_sort_locus(result_plan);
@@ -646,16 +651,35 @@ make_one_stage_agg_plan(PlannerInfo *root,
 			current_pathkeys = NIL;
 		}
 
-		result_plan = (Plan *) make_agg(root,
-										tlist,
-										(List *) parse->havingQual,
-										aggstrategy,
-										numGroupCols,
-										groupColIdx,
-										numGroups,
-										ctx->agg_counts->numAggs,
-										ctx->agg_counts->transitionSpace,
-										result_plan);
+		if (!is_grpext)
+			result_plan = (Plan *) make_agg(root,
+											tlist,
+											(List *) parse->havingQual,
+											aggstrategy,
+											numGroupCols,
+											groupColIdx,
+											numGroups,
+											0, /* rollup_level */
+											0, /* grouping */
+											0, /* rollup_gs_times */
+											ctx->agg_counts->numAggs,
+											ctx->agg_counts->transitionSpace,
+											result_plan);
+		else
+		{
+			result_plan = plan_grouping_extension(root, path,
+												  &tlist, sub_tlist,
+												  true, false,
+												  (List *) parse->havingQual,
+												  aggstrategy,
+												  &numGroupCols,
+												  &groupColIdx,
+												  ctx->agg_counts,
+												  ctx->canonical_grpsets,
+												  ctx->p_dNumGroups,
+												  &current_pathkeys,
+												  result_plan);
+		}
 	}
 	else if (parse->groupClause)
 	{
@@ -672,18 +696,39 @@ make_one_stage_agg_plan(PlannerInfo *root,
 				make_sort_from_groupcols(root,
 										 parse->groupClause,
 										 groupColIdx,
+										 false,
 										 result_plan);
 			current_pathkeys = root->group_pathkeys;
 			mark_sort_locus(result_plan);
 		}
 
-		result_plan = (Plan *) make_group(root,
-										  tlist,
-										  (List *) parse->havingQual,
-										  numGroupCols,
-										  groupColIdx,
-										  ctx->dNumGroups,
-										  result_plan);
+		if (!is_grpext)
+			result_plan = (Plan *) make_group(root,
+											  tlist,
+											  (List *) parse->havingQual,
+											  numGroupCols,
+											  groupColIdx,
+											  *(ctx->p_dNumGroups),
+											  0, /* rollup_level */
+											  0, /* grouping */
+											  0, /* rollup_gs_times */
+											  result_plan);
+		else
+		{
+			result_plan = (Plan *) plan_grouping_extension(root, path,
+														   &tlist, sub_tlist,
+														   false, false,
+														   (List *) parse->havingQual,
+														   AGG_SORTED,
+														   &numGroupCols,
+														   &groupColIdx,
+														   ctx->agg_counts,
+														   ctx->canonical_grpsets,
+														   ctx->p_dNumGroups,
+														   &current_pathkeys,
+														   result_plan);
+		}
+
 		/* The Group node won't change sort ordering */
 	}
 	else if (root->hasHavingQual)
@@ -701,10 +746,13 @@ make_one_stage_agg_plan(PlannerInfo *root,
      * (In such cases we require the next-to-top node to have a Flow node 
      * from which we can obtain the distribution info.)
      */
-    if (!result_plan->flow)
+    if (!get_plan_flow(result_plan))
+	{
+		Assert(!IsA(result_plan, Motion)); 
         result_plan->flow = pull_up_Flow(result_plan, 
                                          result_plan->lefttree, 
                                          (current_pathkeys != NIL));
+	}
 
 	/* Marshal implicit results. Return explicit result. */
 	ctx->current_pathkeys = current_pathkeys;
@@ -721,7 +769,6 @@ make_two_stage_agg_plan(PlannerInfo *root,
 					   MppGroupContext *ctx)
 {
 	Query	   *parse = root->parse;
-	Query	   *subquery;
 	List	   *tlist = ctx->tlist;
 	List	   *sub_tlist = ctx->sub_tlist;
 	List	   *prelim_tlist = NIL;
@@ -730,9 +777,6 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	List	   *distinctExpr = NIL;
 	List	   *groupExprs = NIL;
 	List	   *current_pathkeys;
-	List	   *newrtable;
-	RangeTblEntry *newrte;
-	RangeTblRef *newrtref;	
 	Plan       *result_plan;
 	QualCost	tlist_cost;
 	double      motion_cost_per_row;
@@ -743,9 +787,12 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	AttrNumber *prelimGroupColIdx;
 	Path       *path = ctx->best_path; /* no use for ctx->cheapest_path */
 	bool        use_hashed_grouping = ctx->use_hashed_grouping;
-	long		numGroups = (ctx->dNumGroups < 0) ? 0 :
-	                        (ctx->dNumGroups > LONG_MAX) ? LONG_MAX :
-							(long)ctx->dNumGroups;
+	long		numGroups = (*(ctx->p_dNumGroups) < 0) ? 0 :
+	                        (*(ctx->p_dNumGroups) > LONG_MAX) ? LONG_MAX :
+							(long)*(ctx->p_dNumGroups);
+	bool       is_grpext;
+
+	is_grpext = is_grouping_extension(ctx->canonical_grpsets);
 	
 	motion_cost_per_row = (gp_motion_cost_per_row > 0.0) ?
 				gp_motion_cost_per_row :
@@ -864,9 +911,10 @@ make_two_stage_agg_plan(PlannerInfo *root,
 				 */
 				result_plan = (Plan *)
 				make_sort_from_groupcols(root,
-										parse->groupClause,
-										groupColIdx,
-										result_plan);
+										 parse->groupClause,
+										 groupColIdx,
+										 false,
+										 result_plan);
 				current_pathkeys = root->group_pathkeys;
 				mark_sort_locus(result_plan);
 			}
@@ -883,21 +931,49 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	}
 		
 	/*
-	 * Add the Preliminary Agg Node
+	 * Add the Preliminary Agg Node.
+	 *
+	 * When this aggregate is a ROLLUP, we add a sequence of preliminary Agg node.
 	 */
-	result_plan = (Plan *) make_agg(root,
-									prelim_tlist,
-									NIL, /* no havingQual */
-									aggstrategy,
-									numGroupCols,
-									groupColIdx,
-									numGroups,
-									ctx->agg_counts->numAggs,
-									ctx->agg_counts->transitionSpace,
-									result_plan);
-									
-	/* May lose useful locus and sort. Unlikely, but could do better. */
-	mark_plan_strewn(result_plan);
+	if (!is_grpext)
+	{
+		result_plan = (Plan *) make_agg(root,
+										prelim_tlist,
+										NIL, /* no havingQual */
+										aggstrategy,
+										numGroupCols,
+										groupColIdx,
+										numGroups,
+										0, /* rollup_level */
+										0, /* grouping */
+										0, /* rollup_gs_times */
+										ctx->agg_counts->numAggs,
+										ctx->agg_counts->transitionSpace,
+										result_plan);
+		/* May lose useful locus and sort. Unlikely, but could do better. */
+		mark_plan_strewn(result_plan);
+	}
+
+	else
+	{
+		result_plan = plan_grouping_extension(root, path,
+											  &prelim_tlist, sub_tlist,
+											  true, true,
+											  NIL, /* no havingQual */
+											  aggstrategy,
+											  &numGroupCols,
+											  &groupColIdx,
+											  ctx->agg_counts,
+											  ctx->canonical_grpsets,
+											  ctx->p_dNumGroups,
+											  &current_pathkeys,
+											  result_plan);
+		prelimGroupColIdx = (AttrNumber *)
+			repalloc(prelimGroupColIdx, 
+					 numGroupCols * sizeof(AttrNumber));
+		prelimGroupColIdx[numGroupCols-1] = groupColIdx[numGroupCols-1];
+	}
+
 	current_pathkeys = NIL;
 	
 	/*
@@ -929,7 +1005,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 			errmsg("unexpected use of 2-stage aggregation")));	
 		break; /* Never */
 	}
-	
+
 	/*
 	 * Add Sort on Groups if needed for AGG_SORTED strategy
 	 */
@@ -939,139 +1015,68 @@ make_two_stage_agg_plan(PlannerInfo *root,
 			make_sort_from_groupcols(root,
 									 parse->groupClause,
 									 prelimGroupColIdx,
+									 is_grpext,
 									 result_plan);
 		current_pathkeys = root->group_pathkeys;
 		mark_sort_locus(result_plan);
 	}
 
-	/*
-	 * Add a SubqueryScan node to renumber the range of the query.
-	 *
-	 * The result of the preliminary aggregation my contain targets that
-	 * have no representatives in the range of its outer relation.  We
-	 * resolve this be treating the preliminary aggregation as a subquery.
-	 *
-	 * However, this breaks the correspondence between the Plan tree and
-	 * the Query tree that is assumed by the later call to set_plan_references.
-	 * So we also push the Query node from the root structure down into a new
-	 * subquery RTE and scribble over the original Query node to make it into
-	 * Simple SELECT * FROM a Subquery RTE.
-	 *
-	 * Note that the final Agg should refer to the attributes of the result
-	 * SubqueryScan plan node.
-	 */
-	 		
-	/* Move the root query aside into a newly allocated Query node. */
-	subquery = makeNode(Query);
-	memcpy(subquery, parse, sizeof(Query));
-	subquery->targetList = copyObject(prelim_tlist);
-	subquery->havingQual = NULL;
-	
-	/* Subquery attributes shouldn't be marked as junk, else they'll be
-	 * skipped by addRangeTableEntryForSubquery. */
 	{
-		ListCell *cell;
-		
-		foreach ( cell, subquery->targetList )
-		{
-			TargetEntry *tle = (TargetEntry *)lfirst(cell);	
-			tle->resjunk = false;
-			if ( tle->resname == NULL )
-			{
-				const char *fmt = "unnamed_attr_%d";
-				char buf[32]; /* big enuf for fmt */
-				sprintf(buf,fmt,tle->resno);
-				tle->resname = pstrdup(buf);
-			}
-		}
-	}
-	
-	/* Construct a range table entry referring to it. */
-	newrte = addRangeTableEntryForSubquery(NULL,
-										   subquery,
-										   makeAlias("partial_aggregation", NULL),
-										   TRUE);
-	newrtable = list_make1(newrte);
-
-	/* Modify the root query in place to look like a simple Subquery. */
-	parse->querySource = QSRC_PLANNER; /* but remember it's really ours  */
-	parse->rtable = newrtable;
-	parse->jointree = makeNode(FromExpr);
-	newrtref = makeNode(RangeTblRef);
-	newrtref->rtindex = 1;
-	parse->jointree->fromlist = list_make1(newrtref);
-	parse->jointree->quals = NULL;
-	parse->rowMarks = NIL;
-	parse->targetList = generate_subquery_tlist(1, prelim_tlist); /* Query varno is 1 */
-	/* Do we need to fill in more?  I don't think so. */
-	
-	result_plan = (Plan*)make_subqueryscan(parse->targetList,
-										   NIL,
-										   1, /* scanrelid (= varno) */
-										   result_plan);
-	mark_passthru_locus(result_plan, true, true);
-	
-	if ( current_pathkeys != NULL )
-	{
-		/* Generate current_pathkeys with new var numbering.  The added
-		 * SubqueryScan scrambled them.
+		/*
+		 * If this is the final Agg node for a rollup, we will set rollup_level to
+		 * the special value "-1".
 		 */
-		List *new_keys = NIL;
-		ListCell *c;
-		int i = 1;
+		int rollup_level = 0;
+		if (is_grpext)
+			rollup_level = -1;
 
 		/*
-		 * There may be duplicate keys in the GroupClause, but
-		 * current_pathkeys only contain non-duplicate keys. So,
-		 * numGroupCols is not necessarily equal to the number
-		 * of keys in current_pathkeys. But we want to make
-		 * sure that numGroupCols is not less than this number.
-		 * (MPP-1348)
+		 * If this is a rollup, we have to modify the varattno for Vars
+		 * in each Aggrefs, because we add Grouping to the targetlist.
+		 * XXX improve this.
 		 */
-		Assert( numGroupCols >= list_length(current_pathkeys) );
-
-		foreach ( c, current_pathkeys )
+		if (is_grpext)
 		{
-			List *k;
-			PathKeyItem *pki;
-			TargetEntry *tle;
-			Oid sortop;
-			
-			k = (List *)lfirst(c);
-			
-			/* Need the pathkey sortop, use the first on the list. */
-			Assert( IsA(k,List) && list_length(k) > 0 );
-			pki = (PathKeyItem*)linitial(k);
-			sortop = pki->sortop;
-			
-			tle = get_tle_by_resno(parse->targetList, i);
-			pki = makeNode(PathKeyItem);
-			pki->key = copyObject((Node*)tle->expr);
-			pki->sortop = sortop;
-			
-			new_keys = lappend(new_keys, list_make1(pki));
-			i++;
+			ListCell *lc;
+
+			foreach(lc, final_tlist)
+			{
+				TargetEntry *tle = (TargetEntry *)lfirst(lc);
+
+				if (IsA(tle->expr, Aggref))
+				{
+					Aggref *aggref = (Aggref *)tle->expr;
+					ListCell *varlc;
+
+					foreach(varlc, aggref->args)
+					{
+						Var *var = (Var *)lfirst(varlc);
+						var->varattno++;
+						var->varoattno++;
+					}
+				}
+			}
 		}
-		
-		current_pathkeys = new_keys;
+
+		result_plan = add_second_stage_agg(root,
+										   true,
+										   prelim_tlist,
+										   final_tlist,
+										   final_qual,
+										   aggstrategy,
+										   numGroupCols,
+										   prelimGroupColIdx,
+										   rollup_level,
+										   0,
+										   0,
+										   *ctx->p_dNumGroups,
+										   ctx->agg_counts->numAggs,
+										   ctx->agg_counts->transitionSpace,
+										   "partial_aggregation",
+										   &current_pathkeys,
+										   result_plan);
 	}
 	
-	
-	/* Add final Agg */
-	result_plan = (Plan *) make_agg(root,
-									final_tlist,
-									final_qual,
-									aggstrategy,
-									numGroupCols,
-									prelimGroupColIdx,
-									numGroups,
-									ctx->agg_counts->numAggs,
-									ctx->agg_counts->transitionSpace,
-									result_plan);
-    result_plan->flow = pull_up_Flow(result_plan, 
-                                     result_plan->lefttree, 
-                                     (current_pathkeys != NIL));
-
 	/* Marshal implicit results. Return explicit result. */
 	ctx->current_pathkeys = current_pathkeys;
 	return result_plan;
@@ -1112,24 +1117,25 @@ List *make_subplan_tlist(List *tlist, Node *havingQual, List *grp_clauses,
 	sub_tlist = add_to_flat_tlist(sub_tlist, extravars);
 	list_free(extravars);
 	
-	num = list_length(grp_clauses);
+	num = num_distcols_in_grouplist(grp_clauses);
 	if (num > 0)
 	{
 		int			keyno = 0;
-		ListCell   *gl;
+		ListCell   *l;
+		List       *tles;
 
 		cols = (AttrNumber*) palloc(sizeof(AttrNumber) * num);
 
-		foreach(gl, grp_clauses)
+		tles = get_sortgroupclauses_tles(grp_clauses, tlist);
+
+		foreach (l, tles)
 		{
-			SortClause *clause = (SortClause *) lfirst(gl);
 			Node	   *expr;
 			TargetEntry *tle, *sub_tle = NULL;
 			ListCell   *sl;
 
-			Assert( IsA(clause,GroupClause) || IsA(clause,SortClause) );
-			
-			tle = get_sortgroupclause_tle(clause, tlist);
+			tle = (TargetEntry*) lfirst(l);
+
 			expr = (Node*)tle->expr;
 
 			/* Find or make a matching sub_tlist entry. */
@@ -1142,9 +1148,9 @@ List *make_subplan_tlist(List *tlist, Node *havingQual, List *grp_clauses,
 			if (!sl)
 			{
 				sub_tle = makeTargetEntry((Expr*) expr,
-									 list_length(sub_tlist) + 1,
-									 NULL,
-									 false);
+										  list_length(sub_tlist) + 1,
+										  NULL,
+										  false);
 				sub_tlist = lappend(sub_tlist, sub_tle);
 			}
 
@@ -1174,7 +1180,7 @@ List *make_subplan_tlist(List *tlist, Node *havingQual, List *grp_clauses,
  * Result is a "flat" (all simple Var node) targetlist in which
  * varattno and resno match and are sequential.
  */
-static List *
+List *
 generate_subquery_tlist(Index varno, List *input_tlist)
 {
 	List	   *tlist = NIL;
@@ -1289,6 +1295,142 @@ CdbPathLocus cdbpathlocus_from_flow(Flow *flow)
     return locus;
 }
 
+/*
+ * Generate 3 target lists for a sequence of consecutive Agg nodes.
+ *
+ * This is intended for a sequence of consecutive Agg nodes used in 
+ * a ROLLUP. '*p_tlist3' is for the upper Agg node, and '*p_tlist2' is
+ * for any Agg node in the middle, and '*p_tlist1' is for the
+ * bottom Agg node.
+ *
+ * '*p_tlist1' and '*p_tlist2' have similar target lists. '*p_tlist3'
+ * is constructed based on tlist and outputs from *p_tlist2 or
+ * '*p_tlist1' if twostage is true.
+ */
+void generate_three_tlists(List *tlist,
+						   bool twostage,
+						   List *sub_tlist,
+						   Node *havingQual,
+						   int numGroupCols,
+						   AttrNumber *groupColIdx,
+						   List **p_tlist1,
+						   List **p_tlist2,
+						   List **p_tlist3,
+						   List **p_qual2,
+						   List **p_qual3)
+{
+	ListCell *lc;
+	int resno = 1;
+	GroupId *gid;
+
+	/* Similar to the final tlist entries in two-stage aggregation,
+	 * we use consistent varno in the middle tlist entries.
+	 */
+	int middle_varno = 1;
+
+	/* Generate the top and bottom tlists. */
+	generate_two_stage_tlists(tlist,
+							  sub_tlist,
+							  havingQual,
+							  numGroupCols,
+							  groupColIdx,
+							  p_tlist1,
+							  p_tlist3,
+							  p_qual3);
+
+	*p_qual2 = *p_qual3;
+
+	/* We always append GROUP_ID into *p_tlist1 if there is not
+	 * one. It should be included in *p_tlist3 already.
+	 */
+	if (!IsA(llast(*p_tlist1), GroupId))
+	{
+		gid = makeNode(GroupId);
+		*p_tlist1 = lappend(*p_tlist1,
+							makeTargetEntry((Expr *)gid, list_length(*p_tlist1) + 1,
+											"GROUP_ID", false));
+	}
+
+	/*
+	 * Read target entries in '*p_tlist1' one by one, and construct
+	 * the entries for '*p_tlist2'. 
+	 */
+	foreach (lc, *p_tlist1)
+	{
+		TargetEntry *tle = (TargetEntry *)lfirst(lc);
+		Expr *new_expr;
+		TargetEntry *new_tle;
+
+		if (IsA(tle->expr, Aggref))
+		{
+			Aggref *aggref = (Aggref *)tle->expr;
+			Aggref *new_aggref = makeNode(Aggref);
+
+			new_aggref->aggfnoid = aggref->aggfnoid;
+			new_aggref->aggtype = aggref->aggtype;
+			new_aggref->args =
+				list_make1((Expr*)makeVar(middle_varno, tle->resno, aggref->aggtype, -1, 0));
+			new_aggref->agglevelsup = 0;
+			new_aggref->aggstar = false;
+			new_aggref->aggdistinct = false; /* handled in preliminary aggregation */
+			new_aggref->aggstage = AGGSTAGE_PARTIAL;
+
+			new_expr = (Expr *)new_aggref;
+		}
+
+		else if (IsA(tle->expr, Grouping))
+		{
+			new_expr = (Expr *)copyObject(tle->expr);
+		}
+
+		else if (IsA(tle->expr, GroupId))
+		{
+			new_expr = (Expr *)copyObject(tle->expr);
+		}
+
+		else
+		{
+			/* Just make a new Var. */
+			new_expr = (Expr *)makeVar(middle_varno,
+									   tle->resno,
+									   exprType((Node *)tle->expr),
+									   exprTypmod((Node *)tle->expr),
+									   0);
+			
+		}
+
+		new_tle = makeTargetEntry(new_expr, resno,
+								  (tle->resname == NULL) ?
+								  NULL :
+								  pstrdup(tle->resname),
+								  false);
+		*p_tlist2 = lappend(*p_tlist2, new_tle);
+
+		resno++;
+	}
+
+	/*
+	 * This may be called inside a two-stage aggregation. In this case,
+	 * We want to make sure all entries in the '*p_tlist3' are visible.
+	 */
+	foreach (lc, *p_tlist3)
+	{
+		TargetEntry *tle = (TargetEntry *)lfirst(lc);
+
+		if (twostage)
+			tle->resjunk = false;
+
+		/* We also set aggstage to AGGSTAGE_PARTIAL if this is in
+		 * a two-stage aggregation, because the agg node in
+		 * the second stage aggregation will do the finalize.
+		 */
+		if (twostage && IsA(tle->expr, Aggref))
+		{
+			Aggref *aggref = (Aggref *)tle->expr;
+			aggref->aggstage = AGGSTAGE_PARTIAL;
+		}
+	}
+}
 
 /*
  * Function: generate_two_stage_tlists
@@ -1340,7 +1482,7 @@ void generate_two_stage_tlists(List *tlist,
 	 * target list under construction. */
 	ctx_data.grps_tlist = NIL;
 	ctx_data.refs_tlist = NIL;
-	
+
 	/*
 	 * Begin constructing the target list for the preliminary Agg node
 	 * by placing targets for the grouping attributes on the grps_tlist
@@ -1392,7 +1534,7 @@ void generate_two_stage_tlists(List *tlist,
 	
 	/* Glue the grps and refs parts together. (We kept resno current.) */
 	prelim_tlist = list_concat(ctx_data.grps_tlist, ctx_data.refs_tlist);
-	
+
 	/* Set implicit results */
 	*p_prelim_tlist = prelim_tlist;
 	*p_final_tlist = final_tlist;
@@ -1434,9 +1576,15 @@ Node* deconstruct_expr_mutator(Node *node, two_stage_agg_context *ctx)
 	/* If the given expression is a grouping expression, replace it with
 	 * a Var node referring to the (lower) preliminary aggregation's
 	 * target list.
+	 *
+	 * We do not replace GROUPING or GROUP_ID to a Var node since
+	 * these values will be different in each Agg node. Keeping them
+	 * as GROUPING or GROUP_ID will force these to be re-evaluated.
 	 */
 	tle = tlist_member(node, ctx->grps_tlist);
-	if ( tle != NULL )
+	if ( tle != NULL &&
+		 !IsA(tle->expr, Grouping) &&
+		 !IsA(tle->expr, GroupId) )
 	{
 		return  (Node*) makeVar(ctx->final_varno, tle->resno,
 								exprType((Node*)tle->expr),
@@ -1444,7 +1592,6 @@ Node* deconstruct_expr_mutator(Node *node, two_stage_agg_context *ctx)
 	}
 
 	return expression_tree_mutator(node, deconstruct_expr_mutator, (void*)ctx);
-
 }
 
 
@@ -1565,4 +1712,228 @@ Oid lookup_agg_transtype(Aggref *aggref)
 	ReleaseSysCache(aggTuple);
 
 	return aggtranstype;
+}
+
+/* Function:  adapt_flow_to_targetlist
+ *
+ * Sometimes we replace the targetlist (especially subplan of an Agg).
+ * In this case, we need to assure that any hash expressions in the
+ * node's flow remain in the targetlist OR null out the hash leaving,
+ * in effect, a strewn flow.
+ */
+void adapt_flow_to_targetlist(Plan *plan)
+{
+	ListCell   *c;
+	Flow *flow;
+
+	Assert(plan != NULL);
+	flow = get_plan_flow(plan);
+
+	Assert(flow); 
+
+	foreach(c, flow->hashExpr)
+	{
+		Node *expr = (Node*)lfirst(c);
+		if (!tlist_member(expr, plan->targetlist))
+        {
+		    flow->hashExpr = NIL;
+			break;
+        }
+	}
+}
+
+/*
+ * Function: add_second_stage_agg
+ *
+ * Add an Agg/Group node on top of an Agg/Group node. We add a SubquerySan
+ * node on top of the existing Agg/Group node before adding the new Agg/Group
+ * node.
+ *
+ * Params:
+ *  is_agg -- indicate to add an Agg or a Group node.
+ *  prelim_tlist -- the targetlist for the existing Agg/Group node.
+ *  final_tlist -- the targetlist for the new Agg/Group node.
+ */
+Plan *
+add_second_stage_agg(PlannerInfo *root,
+					 bool is_agg,
+					 List *prelim_tlist,
+					 List *final_tlist,
+					 List *final_qual,
+					 AggStrategy aggstrategy,
+					 int numGroupCols,
+					 AttrNumber *prelimGroupColIdx,
+					 int rollup_level,
+					 uint64 grouping,
+					 int rollup_gs_times,
+					 double numGroups,
+					 int numAggs,
+					 int transSpace,
+					 const char *alias,
+					 List **p_current_pathkeys,
+					 Plan *result_plan)
+{
+	Query	   *parse = root->parse;
+	Query	   *subquery;
+	List	   *newrtable;
+	RangeTblEntry *newrte;
+	RangeTblRef *newrtref;
+	Plan         *agg_node;
+
+	/*
+	 * Add a SubqueryScan node to renumber the range of the query.
+	 *
+	 * The result of the preliminary aggregation my contain targets that
+	 * have no representatives in the range of its outer relation.  We
+	 * resolve this be treating the preliminary aggregation as a subquery.
+	 *
+	 * However, this breaks the correspondence between the Plan tree and
+	 * the Query tree that is assumed by the later call to set_plan_references.
+	 * So we also push the Query node from the root structure down into a new
+	 * subquery RTE and scribble over the original Query node to make it into
+	 * Simple SELECT * FROM a Subquery RTE.
+	 *
+	 * Note that the final Agg should refer to the attributes of the result
+	 * SubqueryScan plan node.
+	 */
+	 		
+	/* Move the root query aside into a newly allocated Query node. */
+	subquery = makeNode(Query);
+	memcpy(subquery, parse, sizeof(Query));
+	subquery->targetList = copyObject(prelim_tlist);
+	subquery->havingQual = NULL;
+	
+	/* Subquery attributes shouldn't be marked as junk, else they'll be
+	 * skipped by addRangeTableEntryForSubquery. */
+	{
+		ListCell *cell;
+		
+		foreach ( cell, subquery->targetList )
+		{
+			TargetEntry *tle = (TargetEntry *)lfirst(cell);	
+			tle->resjunk = false;
+			if ( tle->resname == NULL )
+			{
+				const char *fmt = "unnamed_attr_%d";
+				char buf[32]; /* big enuf for fmt */
+				sprintf(buf,fmt,tle->resno);
+				tle->resname = pstrdup(buf);
+			}
+		}
+	}
+	
+	/* Construct a range table entry referring to it. */
+	newrte = addRangeTableEntryForSubquery(NULL,
+										   subquery,
+										   makeAlias(alias, NULL),
+										   TRUE);
+	newrtable = list_make1(newrte);
+
+	/* Modify the root query in place to look like a simple Subquery. */
+	parse->querySource = QSRC_PLANNER; /* but remember it's really ours  */
+	parse->rtable = newrtable;
+	parse->jointree = makeNode(FromExpr);
+	newrtref = makeNode(RangeTblRef);
+	newrtref->rtindex = 1;
+	parse->jointree->fromlist = list_make1(newrtref);
+	parse->jointree->quals = NULL;
+	parse->rowMarks = NIL;
+
+	parse->targetList = generate_subquery_tlist(1, prelim_tlist); /* Query varno is 1 */
+	/* Do we need to fill in more?  I don't think so. */
+	
+	result_plan = (Plan*)make_subqueryscan(parse->targetList,
+										   NIL,
+										   1, /* scanrelid (= varno) */
+										   result_plan);
+	mark_passthru_locus(result_plan, true, true);
+	
+	if ( *p_current_pathkeys != NULL )
+	{
+		/* Generate current_pathkeys with new var numbering.  The added
+		 * SubqueryScan scrambled them.
+		 */
+		List *new_keys = NIL;
+		ListCell *c;
+		int i = 1;
+
+		/*
+		 * There may be duplicate keys in the GroupClause, but
+		 * the pathkeys contain non-duplicate keys. So,
+		 * numGroupCols is not necessarily equal to the number
+		 * of keys in *p_current_pathkeys. But we want to make
+		 * sure that numGroupCols is not less than this number.
+		 */
+		Assert( numGroupCols >= list_length(*p_current_pathkeys) );
+
+		foreach ( c, *p_current_pathkeys )
+		{
+			List *k;
+			PathKeyItem *pki;
+			TargetEntry *tle;
+			Oid sortop;
+			
+			k = (List *)lfirst(c);
+			
+			/* Need the pathkey sortop, use the first on the list. */
+			Assert( IsA(k,List) && list_length(k) > 0 );
+			pki = (PathKeyItem*)linitial(k);
+			sortop = pki->sortop;
+			
+			tle = get_tle_by_resno(parse->targetList, i);
+			pki = makeNode(PathKeyItem);
+			pki->key = copyObject((Node*)tle->expr);
+			pki->sortop = sortop;
+			
+			new_keys = lappend(new_keys, list_make1(pki));
+			i++;
+		}
+		
+		*p_current_pathkeys = new_keys;
+	}
+
+	/* Add an Agg/Group node */
+	if (is_agg)
+	{
+		/* convert current_numGroups to long int */
+		long lNumGroups = (long) Min(numGroups, (double) LONG_MAX);
+
+		agg_node = (Plan *)make_agg(root,
+									final_tlist,
+									final_qual,
+									aggstrategy,
+									numGroupCols,
+									prelimGroupColIdx,
+									lNumGroups,
+									rollup_level,
+									grouping,
+									rollup_gs_times,
+									numAggs,
+									transSpace,
+									result_plan);
+	}
+
+	else
+	{
+		agg_node = (Plan *)make_group(root,
+									  final_tlist,
+									  final_qual,
+									  numGroupCols,
+									  prelimGroupColIdx,
+									  numGroups,
+									  rollup_level,
+									  grouping,
+									  rollup_gs_times,
+									  result_plan);
+	}
+
+	/*
+	 * Agg/Group will not change the sort order, so we pull up
+	 * the Flow here
+	 */
+	agg_node->flow = pull_up_Flow(agg_node, 
+								  agg_node->lefttree, 
+								  (*p_current_pathkeys != NIL));
+
+	return agg_node;
 }

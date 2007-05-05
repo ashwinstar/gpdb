@@ -551,108 +551,119 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	List	   *pathkeys;
 	List	   *subquery_pathkeys;
 
-	/* We need a workspace for keeping track of set-op type coercions */
-	differentTypes = (bool *)
-		palloc0((list_length(subquery->targetList) + 1) * sizeof(bool));
-
-	/*
-	 * If there are any restriction clauses that have been attached to the
-	 * subquery relation, consider pushing them down to become WHERE or HAVING
-	 * quals of the subquery itself.  This transformation is useful because it
-	 * may allow us to generate a better plan for the subquery than evaluating
-	 * all the subquery output rows and then filtering them.
-	 *
-	 * There are several cases where we cannot push down clauses. Restrictions
-	 * involving the subquery are checked by subquery_is_pushdown_safe().
-	 * Restrictions on individual clauses are checked by
-	 * qual_is_pushdown_safe().  Also, we don't want to push down
-	 * pseudoconstant clauses; better to have the gating node above the
-	 * subquery.
-	 *
-	 * Non-pushed-down clauses will get evaluated as qpquals of the
-	 * SubqueryScan node.
-	 *
-	 * XXX Are there any cases where we want to make a policy decision not to
-	 * push down a pushable qual, because it'd result in a worse plan?
-	 */
-	if (rel->baserestrictinfo != NIL &&
-		subquery_is_pushdown_safe(subquery, subquery, differentTypes))
+	/* CDB: Could be a preplanned subquery from window_planner. */
+	if ( rte->subquery_plan == NULL )
 	{
-		/* OK to consider pushing down individual quals */
-		List	   *upperrestrictlist = NIL;
-		ListCell   *l;
+		/* We need a workspace for keeping track of set-op type coercions */
+		differentTypes = (bool *)
+			palloc0((list_length(subquery->targetList) + 1) * sizeof(bool));
 
-		foreach(l, rel->baserestrictinfo)
+		/*
+		 * If there are any restriction clauses that have been attached to the
+		 * subquery relation, consider pushing them down to become WHERE or HAVING
+		 * quals of the subquery itself.  This transformation is useful because it
+		 * may allow us to generate a better plan for the subquery than evaluating
+		 * all the subquery output rows and then filtering them.
+		 *
+		 * There are several cases where we cannot push down clauses. Restrictions
+		 * involving the subquery are checked by subquery_is_pushdown_safe().
+		 * Restrictions on individual clauses are checked by
+		 * qual_is_pushdown_safe().  Also, we don't want to push down
+		 * pseudoconstant clauses; better to have the gating node above the
+		 * subquery.
+		 *
+		 * Non-pushed-down clauses will get evaluated as qpquals of the
+		 * SubqueryScan node.
+		 *
+		 * XXX Are there any cases where we want to make a policy decision not to
+		 * push down a pushable qual, because it'd result in a worse plan?
+		 */
+		if (rel->baserestrictinfo != NIL &&
+			subquery_is_pushdown_safe(subquery, subquery, differentTypes))
 		{
-			RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
-			Node	   *clause = (Node *) rinfo->clause;
+			/* OK to consider pushing down individual quals */
+			List	   *upperrestrictlist = NIL;
+			ListCell   *l;
 
-			if (!rinfo->pseudoconstant &&
-				qual_is_pushdown_safe(subquery, rti, clause, differentTypes))
+			foreach(l, rel->baserestrictinfo)
 			{
-				/* Push it down */
-				subquery_push_qual(subquery, rte, rti, clause);
+				RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
+				Node	   *clause = (Node *) rinfo->clause;
+
+				if (!rinfo->pseudoconstant &&
+					qual_is_pushdown_safe(subquery, rti, clause, differentTypes))
+				{
+					/* Push it down */
+					subquery_push_qual(subquery, rte, rti, clause);
+				}
+				else
+				{
+					/* Keep it in the upper query */
+					upperrestrictlist = lappend(upperrestrictlist, rinfo);
+				}
 			}
-			else
-			{
-				/* Keep it in the upper query */
-				upperrestrictlist = lappend(upperrestrictlist, rinfo);
-			}
+			rel->baserestrictinfo = upperrestrictlist;
 		}
-		rel->baserestrictinfo = upperrestrictlist;
+
+		pfree(differentTypes);
+
+		/*
+		 * CDB: Does the subquery return at most one row?
+		 */
+		rel->onerow = false;
+
+		/* Set-returning function in tlist could give any number of rows. */
+		if (expression_returns_set((Node *)parse->targetList))
+		{}
+
+		/* Always one row if aggregate function without GROUP BY. */
+		else if (!parse->groupClause &&
+				 (parse->hasAggs || parse->havingQual))
+			rel->onerow = true;
+
+		/* Just a targetlist with no FROM clause? */
+		else if (!parse->jointree->fromlist)
+			rel->onerow = true;
+
+		/* LIMIT 1 or less? */
+		else if (parse->limitCount &&
+				 IsA(parse->limitCount, Const) &&
+				 !((Const *)parse->limitCount)->constisnull)
+		{
+			Const  *cnst = (Const *)parse->limitCount;
+
+			if (cnst->consttype == INT8OID &&
+				DatumGetInt64(cnst->constvalue) <= 1)
+				rel->onerow = true;
+		}
+
+		/*
+		 * We can safely pass the outer tuple_fraction down to the subquery if the
+		 * outer level has no joining, aggregation, or sorting to do. Otherwise
+		 * we'd better tell the subquery to plan for full retrieval. (XXX This
+		 * could probably be made more intelligent ...)
+		 */
+		if (parse->hasAggs ||
+			parse->groupClause ||
+			parse->havingQual ||
+			parse->distinctClause ||
+			parse->sortClause ||
+			has_multiple_baserels(root))
+			tuple_fraction = 0.0;	/* default case */
+		else
+			tuple_fraction = root->tuple_fraction;
+
+		/* Generate the plan for the subquery */
+		rel->subplan = subquery_planner(subquery, tuple_fraction,
+										&subquery_pathkeys);
 	}
-
-	pfree(differentTypes);
-
-    /*
-     * CDB: Does the subquery return at most one row?
-     */
-    rel->onerow = false;
-
-    /* Set-returning function in tlist could give any number of rows. */
-    if (expression_returns_set((Node *)parse->targetList))
-    {}
-
-    /* Always one row if aggregate function without GROUP BY. */
-    else if (!parse->groupClause &&
-             (parse->hasAggs || parse->havingQual))
-        rel->onerow = true;
-
-    /* Just a targetlist with no FROM clause? */
-    else if (!parse->jointree->fromlist)
-        rel->onerow = true;
-
-    /* LIMIT 1 or less? */
-    else if (parse->limitCount &&
-             IsA(parse->limitCount, Const) &&
-             !((Const *)parse->limitCount)->constisnull)
-    {
-        Const  *cnst = (Const *)parse->limitCount;
-
-        if (cnst->consttype == INT8OID &&
-            DatumGetInt64(cnst->constvalue) <= 1)
-            rel->onerow = true;
-    }
-
-	/*
-	 * We can safely pass the outer tuple_fraction down to the subquery if the
-	 * outer level has no joining, aggregation, or sorting to do. Otherwise
-	 * we'd better tell the subquery to plan for full retrieval. (XXX This
-	 * could probably be made more intelligent ...)
-	 */
-	if (parse->hasAggs ||
-		parse->groupClause ||
-		parse->havingQual ||
-		parse->distinctClause ||
-		parse->sortClause ||
-		has_multiple_baserels(root))
-		tuple_fraction = 0.0;	/* default case */
 	else
-		tuple_fraction = root->tuple_fraction;
-
-	/* Generate the plan for the subquery */
-	rel->subplan = subquery_planner(subquery, tuple_fraction,
-									&subquery_pathkeys);
+	{
+		/* This is a preplanned sub-query RTE. */
+		rel->subplan = rte->subquery_plan;
+		subquery_pathkeys = rte->subquery_pathkeys;
+		/* XXX rel->onerow = ??? */
+	}
 	
 	/* Copy number of output rows from subplan */
     if (rel->onerow)
@@ -1127,7 +1138,7 @@ qual_is_pushdown_safe(Query *subquery, Index rti, Node *qual,
 
 		/* If subquery uses DISTINCT or DISTINCT ON, check point 4 */
 		if (subquery->distinctClause != NIL &&
-			!targetIsInSortList(tle, subquery->distinctClause))
+			!targetIsInSortGroupList(tle, subquery->distinctClause))
 		{
 			/* non-DISTINCT column, so fail */
 			safe = false;
@@ -1230,7 +1241,6 @@ recurse_push_qual(Node *setOp, Query *topquery,
 			 (int) nodeTag(setOp));
 	}
 }
-
 
 /*
  * cdb_no_path_for_query

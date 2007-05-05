@@ -1,0 +1,1 @@
+SELECT cn, COUNT(*) FROM sale GROUP BY cn ORDER BY cn DESC;

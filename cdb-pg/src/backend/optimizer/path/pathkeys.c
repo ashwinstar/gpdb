@@ -1509,6 +1509,61 @@ make_pathkeys_for_sortclauses(List *sortclauses,
 }
 
 /****************************************************************************
+ *      PATHKEYS AND GROUPCLAUSES AND GROUPINGCLAUSE
+ ***************************************************************************/
+
+/*
+ * make_pathkeys_for_groupclause
+ *   Generate a pathkeys list that represents the sort order specified by
+ *   a list of GroupClauses or GroupingClauses.
+ *
+ * Note: similar to make_pathkeys_for_sortclauses, the result is NOT in
+ * canonical form.
+ */
+List *
+make_pathkeys_for_groupclause(List *groupclause,
+							  List *tlist)
+{
+	List *pathkeys = NIL;
+	ListCell *l;
+
+	List *sub_pathkeys = NIL;
+
+	foreach(l, groupclause)
+	{
+		Node	   *sortkey;
+		PathKeyItem *pathkey;
+
+		Node *node = lfirst(l);
+
+		if (IsA(node, GroupClause))
+		{
+			GroupClause *gc = (GroupClause*) node;
+			sortkey = get_sortgroupclause_expr(gc, tlist);
+			pathkey = makePathKeyItem(sortkey, gc->sortop, true);
+
+			/*
+			 * Similar to SortClauses, the pathkey becomes a one-elment sublist.
+			 * canonicalize_pathkeys() might replace it with a longer sublist later.
+			 */
+			pathkeys = lappend(pathkeys, list_make1(pathkey));
+		}
+
+		else if (IsA(node, GroupingClause))
+		{
+			sub_pathkeys =
+				list_concat(sub_pathkeys,
+							make_pathkeys_for_groupclause(((GroupingClause*)node)->groupsets,
+															 tlist));
+		}
+	}
+
+	pathkeys = list_concat(pathkeys, sub_pathkeys);
+
+	return pathkeys;
+}
+
+/****************************************************************************
  *		PATHKEYS AND MERGECLAUSES
  ****************************************************************************/
 

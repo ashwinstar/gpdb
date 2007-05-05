@@ -103,12 +103,14 @@
 #include "executor/nodeResult.h"
 #include "executor/nodeSeqscan.h"
 #include "executor/nodeSetOp.h"
+#include "executor/nodeShareInputScan.h"
 #include "executor/nodeSort.h"
 #include "executor/nodeSubplan.h"
 #include "executor/nodeSubqueryscan.h"
 #include "executor/nodeTidscan.h"
 #include "executor/nodeUnique.h"
 #include "executor/nodeValuesscan.h"
+#include "executor/nodeWindow.h"
 #include "miscadmin.h"
 #include "tcop/tcopprot.h"
 #include "cdb/cdbvars.h"
@@ -243,6 +245,13 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 			break;
 
 			/*
+			 * share input nodes
+			 */
+		case T_ShareInputScan:
+			result = (PlanState *) ExecInitShareInputScan((ShareInputScan *) node, estate, eflags);
+			break;
+
+			/*
 			 * materialization nodes
 			 */
 		case T_Material:
@@ -262,6 +271,11 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 
 		case T_Agg:
 			result = (PlanState *) ExecInitAgg((Agg *) node,
+											   estate, eflags);
+			break;
+
+		case T_Window:
+			result = (PlanState *) ExecInitWindow((Window *) node,
 											   estate, eflags);
 			break;
 
@@ -431,6 +445,13 @@ ExecProcNode(PlanState *node)
 			break;
 
 			/*
+			 * shareinput nodes
+			 */
+		case T_ShareInputScanState:
+			result = ExecShareInputScan((ShareInputScanState *) node);
+			break;
+
+			/*
 			 * materialization nodes
 			 */
 		case T_MaterialState:
@@ -447,6 +468,10 @@ ExecProcNode(PlanState *node)
 
 		case T_AggState:
 			result = ExecAgg((AggState *) node);
+			break;
+
+		case T_WindowState:
+			result = ExecWindow((WindowState *) node);
 			break;
 
 		case T_UniqueState:
@@ -614,6 +639,12 @@ ExecCountSlotsNode(Plan *node)
 		case T_HashJoin:
 			return ExecCountSlotsHashJoin((HashJoin *) node);
 
+		/*
+		 * share input nodes
+		 */
+		case T_ShareInputScan:
+			return ExecCountSlotsShareInputScan((ShareInputScan *) node);
+
 			/*
 			 * materialization nodes
 			 */
@@ -628,6 +659,9 @@ ExecCountSlotsNode(Plan *node)
 
 		case T_Agg:
 			return ExecCountSlotsAgg((Agg *) node);
+
+		case T_Window:
+			return ExecCountSlotsWindow((Window *) node);
 
 		case T_Unique:
 			return ExecCountSlotsUnique((Unique *) node);
@@ -823,6 +857,13 @@ ExecEndNode(PlanState *node)
 			break;
 
 			/*
+			 * ShareInput nodes
+			 */
+		case T_ShareInputScanState:
+			ExecEndShareInputScan((ShareInputScanState *) node);
+			break;
+
+			/*
 			 * materialization nodes
 			 */
 		case T_MaterialState:
@@ -839,6 +880,10 @@ ExecEndNode(PlanState *node)
 
 		case T_AggState:
 			ExecEndAgg((AggState *) node);
+			break;
+
+		case T_WindowState:
+			ExecEndWindow((WindowState *) node);
 			break;
 
 		case T_UniqueState:
@@ -965,6 +1010,13 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 			break;
 
 			/*
+			 * share inpt nodess
+			 */
+		case T_ShareInputScanState:
+			nameTag = "ShareInputScan";
+			break;
+
+			/*
 			 * materialization nodes
 			 */
 		case T_MaterialState:
@@ -981,6 +1033,10 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 
 		case T_AggState:
 			nameTag = "Agg";
+			break;
+
+		case T_WindowState:
+			nameTag = "Window";
 			break;
 
 		case T_UniqueState:

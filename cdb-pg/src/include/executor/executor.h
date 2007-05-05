@@ -194,7 +194,7 @@ extern Datum ExecMakeFunctionResult(FuncExprState *fcache,
 extern Tuplestorestate *ExecMakeTableFunctionResult(ExprState *funcexpr,
 							ExprContext *econtext,
 							TupleDesc expectedDesc,
-							TupleDesc *returnDesc);
+							TupleDesc *returnDesc); 
 extern Datum ExecEvalExprSwitchContext(ExprState *expression, ExprContext *econtext,
 						  bool *isNull, ExprDoneCond *isDone);
 extern ExprState *ExecInitExpr(Expr *node, PlanState *parent);
@@ -320,6 +320,9 @@ extern void UnregisterExprContextCallback(ExprContext *econtext,
 							  ExprContextCallbackFunction function,
 							  Datum arg);
 
+/* Share input utilities defined in execUtils.c */
+extern ShareNodeEntry * ExecGetShareNodeEntry(EState *estate, int shareid, bool fCreate);
+
 /* Additions for MPP Slice table utilities defined in execUtils.c */
 extern void InitSliceTable(EState *estate, int nMotions, int nSubplans);
 extern void InitRootSlices(QueryDesc *queryDesc);
@@ -335,5 +338,10 @@ extern void mppExecutorCleanup(EState *estate);
 extern Slice *getCurrentSlice(EState* estate, int sliceIndex);
 extern bool sliceRunsOnQD(Slice *slice);
 extern bool sliceRunsOnQE(Slice *slice);
+
+/* prototypes defined in nodeAgg.c for rollup-aware Agg/Group nodes. */
+extern int32 tuple_rollup_level(TupleTableSlot *outerslot, int numGroupCols, int rollup_level,
+								int grpingIdx);
+extern uint32 get_group_id(TupleTableSlot *tupleslot);
 
 #endif   /* EXECUTOR_H  */

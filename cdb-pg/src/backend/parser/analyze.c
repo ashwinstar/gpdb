@@ -93,6 +93,11 @@ typedef struct
 	int			numParams;
 } check_parameter_resolution_context;
 
+typedef struct
+{
+	AttrNumber subattno; /* current attno for sub query */
+	List	  *subtlist; /* target list for sub query */
+} grouped_window_ctx;
 
 static List *do_parse_analyze(Node *parseTree, ParseState *pstate);
 static Query *transformStmt(ParseState *pstate, Node *stmt,
@@ -875,6 +880,10 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt,
 		ereport(ERROR,
 				(errcode(ERRCODE_GROUPING_ERROR),
 				 errmsg("cannot use aggregate function in VALUES")));
+	if (pstate->p_hasWindFuncs)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("cannot use window function in VALUES")));
 
 	return qry;
 }
@@ -2697,6 +2706,12 @@ transformRuleStmt(ParseState *pstate, RuleStmt *stmt,
 				(errcode(ERRCODE_GROUPING_ERROR),
 		   errmsg("cannot use aggregate function in rule WHERE condition")));
 
+	if (pstate->p_hasWindFuncs)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("cannot use window function in rule WHERE condition")));
+
+
 	/* save info about sublinks in where clause */
 	qry->hasSubLinks = pstate->p_hasSubLinks;
 
@@ -2875,6 +2890,282 @@ transformRuleStmt(ParseState *pstate, RuleStmt *stmt,
 	return qry;
 }
 
+/*
+ * We use this mutator to transform queries of the form:
+ * 		SELECT i, win(agg(j)) over (...)
+ * to
+ * 		SELECT i, win(var) over(...) FROM (select i, agg(j) as var ...)
+ *
+ * We perform a complex mutation on the target list: if we have encounter
+ * Aggrefs in the target list, we must replace them with Var references to
+ * the Aggref in the subquery. To do this, we create and save a TargetEntry
+ * representing the Aggref in the context variable and replace the
+ * Aggref with a Var.
+ *
+ * If the input node is a TargetEntry we save this into the sub query
+ * target list and create a Var for the top level query to reference it.
+ */
+
+static Node *
+wingroupmutator(Node *node, void *context)
+{
+	grouped_window_ctx *ctx = (grouped_window_ctx *)context;
+	Node *result;
+
+	if (!node)
+		return NULL;
+	
+	/* We've encountered and Aggref, push it into the sub query */
+	if (IsA(node, Aggref))
+	{
+		ListCell *tmp;
+		TargetEntry *te;
+		Var *v;
+
+		/*
+		 * If there's already a TargetEntry for this Aggref, just return
+		 * a Var pointing to the entry in the sub query.
+		 *
+		 * The code further up the call tree should have been smart enough
+		 * smart enough to produce unique Aggrefs for us but, just in case
+		 * we should do this.
+		 */
+		foreach(tmp, ctx->subtlist)
+		{
+			TargetEntry *te = (TargetEntry *)lfirst(tmp);
+
+			if (equal((Node *)te->expr, (Node *)node))
+			{
+				/* Found a match, time to construct the Var */
+				v = makeVar(1, te->resno, exprType(node), exprTypmod(node), 0);
+
+			}
+		}
+		
+		te = makeTargetEntry((Expr *)node, ctx->subattno,
+							 FigureColname(node), false);
+		/* seems like we should see if we need to update sort group settings */
+		ctx->subtlist = lappend(ctx->subtlist, te);
+		
+		v = makeVar(1, ctx->subattno, exprType(node), exprTypmod(node), 0);
+		ctx->subattno++;
+
+		return (Node *)v;
+	}
+	
+
+	if (IsA(node, TargetEntry))
+	{
+		TargetEntry *te = (TargetEntry *)node;
+		
+		result = expression_tree_mutator((Node *)te->expr, wingroupmutator, 
+										 context);
+		te->expr = (Expr *)result;
+		if (checkExprHasWindFuncs(result))
+		{
+			Assert(!checkExprHasAggs(result));
+
+			/* we received a TE in, so a TE must go out */
+			return (Node *)te;
+		}
+		else
+		{
+			Var *v = makeNode(Var);
+			TargetEntry *subte = te;
+			TargetEntry *topte;
+
+			/* XXX: check if we have an entry already */
+			v = makeVar(1, ctx->subattno, exprType((Node *)subte->expr),
+						exprTypmod((Node *)subte->expr), 0);
+
+			topte = makeTargetEntry((Expr *)v, subte->resno,
+									subte->resname, subte->resjunk);
+			topte->ressortgroupref = subte->ressortgroupref;
+
+			subte->resno = ctx->subattno;
+			ctx->subattno++;
+			ctx->subtlist = lappend(ctx->subtlist, subte);
+
+			return (Node *)topte;
+		}
+	}
+
+	/* if we've reached this point, just pass the node to the walker */
+	return expression_tree_mutator(node, wingroupmutator, context);
+}
+
+/*
+ * ANSI SQL allows users to specify a query of the form:
+ *    SELECT deptno, sum(max(salary)) OVER (order by deptno) FROM employees
+ *    GROUP BY deptno;
+ * 
+ * This is pretty hard for the planner to make sense of, so we rewrite it,
+ * putting the grouped portion of the query in a subquery in the range table:
+ *
+ *    SELECT deptno, sum(max) FROM
+ *      (SELECT deptno, max(salary) FROM employees GROUP BY deptno) AS foo;
+ *
+ * This means moving stuff from qry into a new Query node subq and
+ * making that new node a sub query in the range table of qry. We move
+ * 
+ */ 
+static void
+transformGroupedWindows(Query *qry)
+{
+	Query *subq = makeNode(Query);
+	List *newtl;
+	grouped_window_ctx ctx;
+	RangeTblEntry *rte;
+	RangeTblRef *ref;
+	Alias *a;
+	ListCell *tmp;
+	
+	Assert(qry->commandType == CMD_SELECT);
+	subq->commandType = qry->commandType;
+	subq->canSetTag = false;	/* XXX: is this right? */
+
+	Assert(!PointerIsValid(qry->utilityStmt));
+	subq->utilityStmt = qry->utilityStmt;
+	subq->resultRelation = 0;
+	subq->into = NULL;
+	subq->intoOptions = NIL;
+	subq->intoOnCommit = ONCOMMIT_NOOP;
+	subq->intoTableSpaceName = NULL;
+	subq->hasAggs = true;
+	/* hasWindFuncs is covered later */
+	subq->hasSubLinks = qry->hasSubLinks; /* If qry has them, we do now */
+	subq->rtable = qry->rtable;
+	subq->jointree = qry->jointree;
+	/* target list later */
+	subq->groupClause = qry->groupClause;
+	subq->havingQual = qry->havingQual;
+
+	/*
+	 * Check if there is a window function in the join tree. If so
+	 * we must mark hasWindFuncs in the sub query as well.
+	 */
+	if (checkExprHasWindFuncs((Node *)subq->jointree))
+		subq->hasWindFuncs = true;
+
+	/* 
+	 * Rewrite the top level target list to point to the correct var nos
+	 * in the sub query. Be very careful to update the arguments to
+	 * window functions as well.
+	 *
+	 * The sub query must contain all columns referenced in the original
+	 * target list. So:
+	 *
+	 *      SELECT DISTINCT a , avg(b), 
+	 *      	row_number() over (partition by sum(c)), 
+	 *      	ntile(d) over (order by e)
+	 *          FROM r WHERE f < 10
+	 *          GROUP BY a,d,e
+	 *          HAVING max(f) > 0
+	 *          ORDER BY a, avg(b)
+	 *          OFFSET 10 LIMIT 10;
+	 *
+	 *   gets "rewritten" as
+	 *
+	 *      SELECT DISTINCT v1, v4, row_number() over (partition by v5),  
+	 *          ntile(v2) over (order by v3)
+	 *          FROM (
+	 *            SELECT a, d, e, avg(b), sum(c)
+	 *            FROM r
+	 *            WHERE f < 10
+	 *            GROUP BY a,d,e
+	 *            HAVING max(f) > 0  ) v ( v1, v2, v3, v4, v5)
+	 *          ORDER BY v1, v4
+	 *          OFFSET 10 LIMIT 10;
+	 */
+	ctx.subattno = 1;
+	ctx.subtlist = NIL;
+
+	newtl = (List *)expression_tree_mutator((Node *)qry->targetList, 
+											wingroupmutator, &ctx);
+	Assert(PointerIsValid(newtl));
+	Assert(IsA(newtl, List));
+	qry->targetList = newtl;
+	subq->targetList = ctx.subtlist;
+
+	/* now add a range table entry */
+	rte = makeNode(RangeTblEntry);
+	rte->rtekind = RTE_SUBQUERY;
+	rte->subquery = subq;
+	/* do aliases */
+	a = makeNode(Alias);
+	a->aliasname = pstrdup("Window");
+	
+	foreach(tmp, subq->targetList)
+	{
+		TargetEntry *te = (TargetEntry *)lfirst(tmp);
+		char *resname;
+		
+		Assert(IsA(te, TargetEntry));
+
+		resname = te->resname ? te->resname : "?column?";
+		a->colnames = lappend(a->colnames, makeString(pstrdup(resname)));
+
+		/* 
+	 	 * TEs generated for the purpose of sorting (PARTITION BY and 
+		 * ORDER BY) will have resjunk = false. This is fine in the top query
+		 * but not in the sub query. Change them while we're looping.
+		 *
+		 * This is very inefficient but hey, N is usually small.
+	 	 */
+		if (te->resjunk && te->ressortgroupref)
+		{
+			ListCell *tmp2;
+			foreach(tmp2, qry->windowClause)
+			{
+				ListCell *tmp3;
+				WindowSpec *s = lfirst(tmp2);
+				
+				foreach(tmp3, s->partition)
+				{
+					SortClause *sc = lfirst(tmp3);
+
+					if (sc->tleSortGroupRef == te->ressortgroupref)
+					{
+						te->resjunk = false;
+						break;
+					}
+				}
+				
+				if (!te->resjunk)
+					break;
+				
+				foreach(tmp3, s->order)
+				{
+					SortClause *sc = lfirst(tmp3);
+
+					if (sc->tleSortGroupRef == te->ressortgroupref)
+					{
+						te->resjunk = false;
+						break;
+					}
+				}
+
+				if (!te->resjunk)
+					break;
+			}
+		}
+	}
+	rte->eref = a;
+
+	/* we forget the old rtable by overwriting it with this new RTE */
+	qry->rtable = list_make1(rte);
+
+	/* put a ref in the join tree to the new RTE */
+	ref = makeNode(RangeTblRef);
+	ref->rtindex = 1;
+	qry->jointree->fromlist = list_make1(ref);
+	qry->hasSubLinks = true;
+
+	/* we can also forget about grouping in the top level query */
+	qry->groupClause = NIL; 
+	qry->havingQual = NULL;
+	qry->hasAggs = false;
+}
 
 /*
  * transformSelectStmt -
@@ -2893,6 +3184,12 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 
 	/* make FOR UPDATE/FOR SHARE info available to addRangeTableEntry */
 	pstate->p_locking_clause = stmt->lockingClause;
+
+	/* 
+	 * Put WINDOW clause data into pstate so that window references know
+	 * about them.
+	 */
+	pstate->p_win_clauses = stmt->windowClause;
 
 	/* process the FROM clause */
 	transformFromClause(pstate, stmt->fromClause);
@@ -2926,6 +3223,11 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 											&qry->targetList,
 											qry->sortClause);
 
+	/* 
+	 * Process WINDOW clause.
+	 */
+	transformWindowClause(pstate, qry);
+
 	qry->distinctClause = transformDistinctClause(pstate,
 												  stmt->distinctClause,
 												  &qry->targetList,
@@ -2958,10 +3260,28 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 	if (pstate->p_hasAggs || qry->groupClause || qry->havingQual)
 		parseCheckAggregates(pstate, qry);
 
+	qry->hasWindFuncs = pstate->p_hasWindFuncs;
+	if (pstate->p_hasWindFuncs)
+		parseProcessWindFuncs(pstate, qry);
+	
 	foreach(l, stmt->lockingClause)
 	{
 		transformLockingClause(qry, (LockingClause *) lfirst(l));
 	}
+
+	/*
+	 * If the query mixes window functions and aggregates, we need to
+	 * transform it such that the grouped query appears as a subquery
+	 */
+	if (qry->hasWindFuncs && qry->hasAggs)
+		transformGroupedWindows(qry);
+#if 0
+	if (qry->hasWindFuncs)
+	{
+		elog_node_display(NOTICE, "window clause query", qry, true);
+		elog(ERROR, "window clauses are unsupported");
+	}
+#endif
 
 	return qry;
 }
@@ -3158,6 +3478,11 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 		ereport(ERROR,
 				(errcode(ERRCODE_GROUPING_ERROR),
 				 errmsg("cannot use aggregate function in VALUES")));
+
+	if (pstate->p_hasWindFuncs)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("cannot use window function in VALUES")));
 
 	return qry;
 }
@@ -3687,6 +4012,11 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 				(errcode(ERRCODE_GROUPING_ERROR),
 				 errmsg("cannot use aggregate function in UPDATE")));
 
+	if (pstate->p_hasWindFuncs)
+		ereport(ERROR,
+				(errcode(ERRCODE_GROUPING_ERROR),
+				 errmsg("cannot use aggregate function in UPDATE")));
+
 	/*
 	 * Now we are done with SELECT-like processing, and can get on with
 	 * transforming the target list to match the UPDATE target columns.
@@ -3783,6 +4113,12 @@ transformReturningList(ParseState *pstate, List *returningList)
 		ereport(ERROR,
 				(errcode(ERRCODE_GROUPING_ERROR),
 				 errmsg("cannot use aggregate function in RETURNING")));
+
+	if (pstate->p_hasWindFuncs)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("cannot use window function in RETURNING")));
+
 
 	/* no new relation references please */
 	if (list_length(pstate->p_rtable) != length_rtable)
@@ -4148,6 +4484,11 @@ transformExecuteStmt(ParseState *pstate, ExecuteStmt *stmt)
 				ereport(ERROR,
 						(errcode(ERRCODE_GROUPING_ERROR),
 						 errmsg("cannot use aggregate function in EXECUTE parameter")));
+			if (pstate->p_hasWindFuncs)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+				 		 errmsg("cannot use window function in EXECUTE parameter")));
+
 
 			given_type_id = exprType(expr);
 
@@ -4197,6 +4538,10 @@ CheckSelectLocking(Query *qry)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("SELECT FOR UPDATE/SHARE is not allowed with aggregate functions")));
+	if (qry->hasWindFuncs)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("SELECT FOR UPDATE/SHARE is not allowed with window functions")));
 }
 
 /*

@@ -26,6 +26,7 @@ typedef struct RegisterMessage
 	int32       msgBytes;
     int32       recvSliceIndex;
     int32       sendSliceIndex;
+	int32 		pIncIdx;
 	int32       srcContentId;
 	int32		srcListenerPort;
 	int32		srcPid;
@@ -125,6 +126,7 @@ extern void TeardownSequenceServer(void);
 extern bool SendTupleChunkToAMS(MotionLayerState *mlStates,
 								ChunkTransportState *transportStates, 
 								int16 motNodeID, 
+								int8  targetSlice,
 								int16 targetRoute, 
 								TupleChunkListItem tcItem);
 
@@ -166,6 +168,7 @@ extern void SendEosToAMS(MotionLayerState *mlStates,
 extern TupleChunkListItem RecvTupleChunkFromAny(MotionLayerState *mlStates,
 												ChunkTransportState *transportStates, 
 												int16 motNodeID, 
+												int8  srcSlice,
 												int16 *srcRoute);
 
 
@@ -181,6 +184,7 @@ extern TupleChunkListItem RecvTupleChunkFromAny(MotionLayerState *mlStates,
  */
 extern TupleChunkListItem RecvTupleChunkFrom(ChunkTransportState *transportStates, 
 											 int16 motNodeID, 
+											 int8  srcSlice,
 											 int16 srcRoute);
 
 /* The DeregisterReadInterest() function is used to specify that we are no
@@ -195,7 +199,8 @@ extern TupleChunkListItem RecvTupleChunkFrom(ChunkTransportState *transportState
  */
 void
 DeregisterReadInterest(ChunkTransportState *transportStates, 
-                       int                  motNodeID, 
+                       int                  motNodeID,
+					   int8 				srcSlice,
                        int                  srcRoute,
                        const char          *reason);
 

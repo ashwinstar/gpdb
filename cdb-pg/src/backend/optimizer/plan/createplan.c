@@ -31,6 +31,7 @@
 #include "optimizer/var.h"
 #include "parser/parse_clause.h"
 #include "parser/parse_expr.h"
+#include "parser/parse_relation.h"
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
 #include "utils/uri.h"
@@ -40,7 +41,9 @@
 #include "cdb/cdbpath.h"        /* cdbpath_rows() */
 #include "cdb/cdbpathtoplan.h"  /* cdbpathtoplan_create_flow() etc. */
 #include "cdb/cdbpullup.h"      /* cdbpullup_targetlist() */
+#include "cdb/cdbsetop.h" /* mark_passthru_locus() */
 #include "cdb/cdbutil.h"        /* cdbComponentDatabase */		
+
 typedef struct CreatePlanContext
 {
     PlannerInfo    *root;
@@ -148,6 +151,7 @@ static MergeJoin *make_mergejoin(List *tlist,
 static Sort *make_sort(PlannerInfo *root, Plan *lefttree, int numCols,
 		  AttrNumber *sortColIdx, Oid *sortOperators);
 
+static List *flatten_grouping_list(List *groupcls);
 
 /*
  * create_plan
@@ -714,6 +718,8 @@ create_unique_plan(CreatePlanContext *ctx, UniquePath *best_path)
         limitplan->plan.qual = NIL;
         limitplan->plan.lefttree = subplan;
         limitplan->plan.righttree = NULL;
+		limitplan->plan.sharing_id = ShareNodeId_NotShared;
+		limitplan->plan.shared_id = ShareNodeId_NotShared;
         limitplan->limitOffset = NULL;
         limitplan->limitCount = (Node *)makeConst(INT8OID, sizeof(int64),
                                                   Int64GetDatum(1),
@@ -809,7 +815,11 @@ create_unique_plan(CreatePlanContext *ctx, UniquePath *best_path)
 								 numGroupCols,
 								 groupColIdx,
 								 numGroups,
-								 0, 0,
+								 0, /* rollup_level */
+								 0, /* grouping */
+								 0, /* rollup_gs_times */
+								 0,
+								 0,
 								 subplan);
 	}
 	else
@@ -2433,6 +2443,11 @@ make_seqscan(List *qptlist,
 	plan->qual = qpqual;
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
+
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
+
 	node->scanrelid = scanrelid;
 
 	return node;
@@ -2457,6 +2472,10 @@ make_externalscan(List *qptlist,
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
 	
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
+
 	/* external specifictions */
 	node->uriList = urilist;
 	node->fmtOpts = fmtopts;
@@ -2493,6 +2512,10 @@ make_indexscan(List *qptlist,
 	node->indexsubtype = indexsubtype;
 	node->indexorderdir = indexscandir;
 
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
+
 	return node;
 }
 
@@ -2519,6 +2542,10 @@ make_bitmap_indexscan(Index scanrelid,
 	node->indexstrategy = indexstrategy;
 	node->indexsubtype = indexsubtype;
 
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
+
 	return node;
 }
 
@@ -2540,6 +2567,10 @@ make_bitmap_heapscan(List *qptlist,
 	node->scan.scanrelid = scanrelid;
 	node->bitmapqualorig = bitmapqualorig;
 
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
+
 	return node;
 }
 
@@ -2559,6 +2590,10 @@ make_tidscan(List *qptlist,
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
 	node->tidquals = tidquals;
+
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
 
 	return node;
 }
@@ -2587,6 +2622,10 @@ make_subqueryscan(List *qptlist,
 	node->scan.scanrelid = scanrelid;
 	node->subplan = subplan;
 
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
+
 	return node;
 }
 
@@ -2605,6 +2644,10 @@ make_functionscan(List *qptlist,
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
 
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
+
 	return node;
 }
 
@@ -2622,6 +2665,10 @@ make_valuesscan(List *qptlist,
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
+
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
 
 	return node;
 }
@@ -2661,6 +2708,10 @@ make_append(List *appendplans, bool isTarget, List *tlist)
 	node->appendplans = appendplans;
 	node->isTarget = isTarget;
 
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
+
 	return node;
 }
 
@@ -2677,6 +2728,10 @@ make_bitmap_and(List *bitmapplans)
 	plan->righttree = NULL;
 	node->bitmapplans = bitmapplans;
 
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
+
 	return node;
 }
 
@@ -2692,6 +2747,10 @@ make_bitmap_or(List *bitmapplans)
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
 	node->bitmapplans = bitmapplans;
+
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
 
 	return node;
 }
@@ -2715,6 +2774,10 @@ make_nestloop(List *tlist,
 	node->join.jointype = jointype;
 	node->join.joinqual = joinclauses;
 
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
+
     node->outernotreferencedbyinner = false;    /*CDB*/
 
 	return node;
@@ -2727,6 +2790,11 @@ make_adaptivenestloop(List     *tlist,
                       int       outer_lookahead_rows)
 {
 	AdaptiveNestLoop	*node = makeNode(AdaptiveNestLoop);
+	Plan *plan = &(node->plan);
+
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
 
 	node->plan.targetlist = tlist;
 	node->plan.qual = NIL;
@@ -2759,6 +2827,10 @@ make_hashjoin(List *tlist,
 	node->join.jointype = jointype;
 	node->join.joinqual = joinclauses;
 
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
+
 	return node;
 }
 
@@ -2779,6 +2851,10 @@ make_hash(Plan *lefttree)
 	plan->qual = NIL;
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
+
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
 
 	return node;
 }
@@ -2803,6 +2879,10 @@ make_mergejoin(List *tlist,
 	node->mergeclauses = mergeclauses;
 	node->join.jointype = jointype;
 	node->join.joinqual = joinclauses;
+
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
 
 	return node;
 }
@@ -2838,6 +2918,10 @@ make_sort(PlannerInfo *root, Plan *lefttree, int numCols,
 	node->limitOffset = NULL; /* CDB */
 	node->limitCount  = NULL; /* CDB */
 	node->noduplicates = false; /* CDB */
+
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
 
 	return node;
 }
@@ -3052,6 +3136,8 @@ make_sort_from_sortclauses(PlannerInfo *root, List *sortcls, Plan *lefttree)
  *
  * 'groupcls' is the list of GroupClauses
  * 'grpColIdx' gives the column numbers to use
+ * 'appendGrouping' represents whether to append a Grouping
+ *    as the last sort key, used for grouping extension.
  *
  * This might look like it could be merged with make_sort_from_sortclauses,
  * but presently we *must* use the grpColIdx[] array to locate sort columns,
@@ -3063,6 +3149,7 @@ Sort *
 make_sort_from_groupcols(PlannerInfo *root,
 						 List *groupcls,
 						 AttrNumber *grpColIdx,
+						 bool appendGrouping,
 						 Plan *lefttree)
 {
 	List	   *sub_tlist = lefttree->targetlist;
@@ -3071,20 +3158,29 @@ make_sort_from_groupcols(PlannerInfo *root,
 	int			numsortkeys;
 	AttrNumber *sortColIdx;
 	Oid		   *sortOperators;
+	List       *flat_groupcls;
 
 	/*
 	 * We will need at most list_length(groupcls) sort columns; possibly less
 	 */
-	numsortkeys = list_length(groupcls);
+	numsortkeys = num_distcols_in_grouplist(groupcls);
+
+	if (appendGrouping)
+		numsortkeys ++;
+
 	sortColIdx = (AttrNumber *) palloc(numsortkeys * sizeof(AttrNumber));
 	sortOperators = (Oid *) palloc(numsortkeys * sizeof(Oid));
 
 	numsortkeys = 0;
 
-	foreach(l, groupcls)
+	flat_groupcls = flatten_grouping_list(groupcls);
+
+	foreach(l, flat_groupcls)
 	{
 		GroupClause *grpcl = (GroupClause *) lfirst(l);
 		TargetEntry *tle = get_tle_by_resno(sub_tlist, grpColIdx[grpno]);
+
+		grpno++;
 
 		/*
 		 * Check for the possibility of duplicate group-by clauses --- the
@@ -3093,8 +3189,22 @@ make_sort_from_groupcols(PlannerInfo *root,
 		 */
 		numsortkeys = add_sort_column(tle->resno, grpcl->sortop,
 									  numsortkeys, sortColIdx, sortOperators);
-		grpno++;
 	}
+
+	if (appendGrouping)
+	{
+		Oid sort_op;
+		/* Grouping will be the last entry in grpColIdx */
+		TargetEntry *tle = get_tle_by_resno(sub_tlist, grpColIdx[grpno]);
+
+		Assert(IsA(tle->expr, Grouping));
+
+		sort_op = ordering_oper_opid(exprType((Node *)tle->expr));
+
+		numsortkeys = add_sort_column(tle->resno, sort_op,
+									  numsortkeys, sortColIdx, sortOperators);
+	}
+
 
 	Assert(numsortkeys > 0);
 
@@ -3113,6 +3223,10 @@ make_material(Plan *lefttree)
 	plan->qual = NIL;
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
+
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
 
 	return node;
 }
@@ -3160,7 +3274,9 @@ Agg *
 make_agg(PlannerInfo *root, List *tlist, List *qual,
 		 AggStrategy aggstrategy,
 		 int numGroupCols, AttrNumber *grpColIdx,
-		 long numGroups, int numAggs, int transSpace,
+		 long numGroups, int rollupLevel, uint64 grouping,
+		 int rollupGSTimes,
+		 int numAggs, int transSpace,
 		 Plan *lefttree)
 {
 	Agg		   *node = makeNode(Agg);
@@ -3173,6 +3289,10 @@ make_agg(PlannerInfo *root, List *tlist, List *qual,
 	node->grpColIdx = grpColIdx;
 	node->numGroups = numGroups;
 	node->transSpace = transSpace;
+	node->numNullCols = (rollupLevel > 0 ? (rollupLevel - 1) : 0);
+	node->rollupLevel = rollupLevel;
+	node->grouping = grouping;
+	node->rollupGSTimes = rollupGSTimes;
 
 	copy_plan_costsize(plan, lefttree); /* only care about copying size */
 	cost_agg(&agg_path, root,
@@ -3183,6 +3303,11 @@ make_agg(PlannerInfo *root, List *tlist, List *qual,
 			 lefttree->plan_rows);
 	plan->startup_cost = agg_path.startup_cost;
 	plan->total_cost = agg_path.total_cost;
+
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
+
 
 	/*
 	 * We will produce a single output tuple if not grouping, and a tuple per
@@ -3229,6 +3354,9 @@ make_group(PlannerInfo *root,
 		   int numGroupCols,
 		   AttrNumber *grpColIdx,
 		   double numGroups,
+		   int rollupLevel,
+		   uint64 grouping,
+		   int rollupGSTimes,
 		   Plan *lefttree)
 {
 	Group	   *node = makeNode(Group);
@@ -3238,6 +3366,11 @@ make_group(PlannerInfo *root,
 
 	node->numCols = numGroupCols;
 	node->grpColIdx = grpColIdx;
+	node->numNullCols = (rollupLevel > 0 ? (rollupLevel - 1) : 0);
+	node->rollupLevel = rollupLevel;
+	node->grouping = grouping;
+	node->rollupGSTimes = rollupGSTimes;
+	node->lastGroup = false;
 
 	copy_plan_costsize(plan, lefttree); /* only care about copying size */
 	cost_group(&group_path, root,
@@ -3280,8 +3413,63 @@ make_group(PlannerInfo *root,
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
 
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
+
 	return node;
 }
+
+Window *make_window(PlannerInfo *root, List *tlist,
+		   int numPartCols, AttrNumber *partColIdx, List *windowKeys,
+		   Plan *lefttree)
+{
+	Window *node = makeNode(Window);
+	Plan	   *plan = &node->plan;
+	Path		window_path;		/* dummy for result of cost_window */
+	QualCost	qual_cost;
+	int numOrderCols;
+	ListCell *cell;
+
+	node->numPartCols = numPartCols;
+	node->partColIdx = partColIdx;
+	node->windowKeys = windowKeys;
+	
+	numOrderCols = numPartCols;
+	foreach(cell, windowKeys)
+	{
+		/* TODO Shouldn't we copy? */
+		WindowKey	*key = (WindowKey *)lfirst(cell);
+		numOrderCols += key->numSortCols;
+	}
+
+
+	copy_plan_costsize(plan, lefttree); /* only care about copying size */
+	cost_window(&window_path, root,
+			   numOrderCols,
+			   lefttree->startup_cost,
+			   lefttree->total_cost,
+			   lefttree->plan_rows);
+	plan->startup_cost = window_path.startup_cost;
+	plan->total_cost = window_path.total_cost;
+
+	cost_qual_eval(&qual_cost, tlist);
+	plan->startup_cost += qual_cost.startup;
+	plan->total_cost += qual_cost.startup;
+	plan->total_cost += qual_cost.per_tuple * plan->plan_rows;
+
+	plan->qual = NIL;
+	plan->targetlist = tlist;
+	plan->lefttree = lefttree;
+	plan->righttree = NULL;
+
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
+
+	return node;	
+}
+
 
 /*
  * distinctList is a list of SortClauses, identifying the targetlist items
@@ -3317,6 +3505,10 @@ make_unique(Plan *lefttree, List *distinctList)
 	plan->qual = NIL;
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
+
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
 
 	/*
 	 * convert SortClause list into array of attr indexes, as wanted by exec
@@ -3382,6 +3574,10 @@ make_setop(SetOpCmd cmd, Plan *lefttree,
 	plan->qual = NIL;
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
+
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
 
 	/*
 	 * convert SortClause list into array of attr indexes, as wanted by exec
@@ -3485,6 +3681,10 @@ make_limit(Plan *lefttree, Node *limitOffset, Node *limitCount,
 		pSort->limitCount  = copyObject(limitCount);
 	}
 
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
+
 	return node;
 }
 
@@ -3529,6 +3729,10 @@ make_result(List *tlist,
 	plan->lefttree = subplan;
 	plan->righttree = NULL;
 	node->resconstantqual = resconstantqual;
+
+	plan->sliceNum = -1;
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
 
 	return node;
 }
@@ -3620,3 +3824,24 @@ plan_pushdown_tlist(Plan *plan, List *tlist)
     return plan;
 }                               /* plan_pushdown_tlist */
 
+static List *
+flatten_grouping_list(List *groupcls)
+{
+	List *result = NIL;
+	ListCell *gc;
+
+	foreach (gc, groupcls)
+	{
+		Node *node = (Node*)lfirst(gc);
+		Assert(IsA(node, GroupingClause) || IsA(node, GroupClause));
+
+		if (IsA(node, GroupingClause))
+			result =
+				list_union(result, flatten_grouping_list(((GroupingClause*)node)->groupsets));
+
+		else
+			result = lappend(result, node);
+	}
+
+	return result;
+}

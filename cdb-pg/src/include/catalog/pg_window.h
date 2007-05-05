@@ -87,7 +87,55 @@ typedef FormData_pg_window *Form_pg_window;
  * initial contents of pg_window
  * ---------------
  */
+/*							winfunc		winprefunc	winpretype	winfinfunc */
 
-/* No window functions prior to release 3.0 -- bch 3/17/07 */
+/* row_number */
+DATA(insert ( 7000	f f f f	7100		0			0			0 ));
+
+/* rank */
+DATA(insert ( 7001	t f f f	7101		0			0			0 ));
+
+/* dense_rank */
+DATA(insert ( 7002	t f f f	7102		0			0			0 ));
+
+/* percent_rank */
+DATA(insert ( 7003	t f f t	0			7101		20			7303 ));
+
+/* cume_dist */
+DATA(insert ( 7004	t f t t	0			7204		20			7304 ));
+
+/* ntile(int) */
+DATA(insert ( 7005	t f f t	0			7205		1016		7305 ));
+
+/* ntile(bigint) */
+DATA(insert ( 7006	t f f t	0			7206		1016		7305 ));
+
+/* ntile(numeric) */
+DATA(insert ( 7007	t f f t	0			7207		1016		7305 ));
+
+/* ratio_to_report */
+/* XXX omitted for now; no way to represent auxiliary aggregate SUM(x). */
+
+/* first_value */
+/* DATA(insert ( 70xx	t f f f	0				0			0			0 )); */
+/* ... for many datatypes */
+
+/* last_value */
+/* DATA(insert ( 70xx	t f f f	0				0			0			0 )); */
+/* ... for many datatypes */
+
+/* lag */
+/* DATA(insert ( 70xx	t f f f	0				0			0			0 )); */
+/* ... for many datatypes */
+
+/* lead */
+/* DATA(insert ( 70xx	t f f f	0				0			0			0 )); */
+/* ... for many datatypes */
+
+
+/*
+ * prototypes for functions in pg_window.c
+ */
+
 
 #endif   /* _PG_WINDOW_H */

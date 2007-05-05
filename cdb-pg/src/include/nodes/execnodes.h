@@ -34,6 +34,7 @@ struct ChunkTransportState;             /* #include "cdb/cdbinterconnect.h" */
 struct IndexInfo;                       /* #include "catalog/index.h" */
 struct StringInfoData;                  /* #include "lib/stringinfo.h" */
 struct Tuplestorestate;                 /* #include "utils/tuplestore.h" */
+struct TuplestorePos;                   /* #include "utils/tuplestore.h" */
 
 
 /* ----------------
@@ -98,9 +99,9 @@ typedef struct ExprContext
 	ParamExecData *ecxt_param_exec_vals;		/* for PARAM_EXEC params */
 	ParamListInfo ecxt_param_list_info; /* for other param types */
 
-	/* Values to substitute for Aggref nodes in expression */
-	Datum	   *ecxt_aggvalues; /* precomputed values for Aggref nodes */
-	bool	   *ecxt_aggnulls;	/* null flags for Aggref nodes */
+	/* Values to substitute for Aggref/WindowRef nodes in expression */
+	Datum	   *ecxt_aggvalues; /* precomputed values for ref nodes */
+	bool	   *ecxt_aggnulls;	/* null flags for ref nodes */
 
 	/* Value to substitute for CaseTestExpr nodes in expression */
 	Datum		caseValue_datum;
@@ -115,6 +116,11 @@ typedef struct ExprContext
 
 	/* Functions to call back when ExprContext is shut down */
 	ExprContext_CB *ecxt_callbacks;
+
+	/* Representing the final grouping and group_id for a tuple
+	 * in a grouping extension query. */
+	uint64      grouping;
+	uint32      group_id;
 } ExprContext;
 
 /* ----------------
@@ -322,9 +328,9 @@ typedef struct Slice
 							 * They correspond to the CDBProcessLists below.
 							 */
 							
-	int parentIndex;		/* The index in the global slice table (origin
-							 * 0) of the parent of this slice, or -1 if
-							 * this is a root slice
+	List *parent;			/* The integer list of indices in the global slice table
+							 * (origin 0).  A parent slice corresponds to a target
+							 * slice of the sending motion in this slice
 							 */
 							
 	List *children;			/* An integer list of indices in the global slice
@@ -359,6 +365,8 @@ typedef struct Slice
 							 */
 } Slice;
 
+#define GetPInCIdx(p, c) (list_find_int((c)->parent, (p)->sliceIndex))
+
 /* The SliceTable is a list of Slice structures organized into root slices
  * and motion slices as follows:
  *
@@ -386,6 +394,13 @@ typedef struct SliceTable
 	
 } SliceTable;
 
+typedef struct ShareNodeEntry
+{
+	NodeTag type;
+
+	Node *sharePlan;
+	Node *shareState;
+} ShareNodeEntry;
 
 /* ----------------
  *	  EState information
@@ -455,6 +470,9 @@ typedef struct EState
  	SliceTable *es_sliceTable;
 	struct MotionState **es_slice_map;
 	
+	/* Data structure for node sharing */
+	List *es_sharenode;
+
 	int active_recv_id;
 	void *motionlayer_context;  /* Motion Layer state */
 	struct ChunkTransportState *interconnect_context; /* Interconnect state */
@@ -592,6 +610,34 @@ typedef struct AggrefExprState
 	int			aggno;			/* ID number for agg within its plan node */
 } AggrefExprState;
 
+/*
+ * ----------------
+ *  GroupingFuncExprState node
+ * ----------------
+ */
+typedef struct GroupingFuncExprState
+{
+	ExprState  xprstate;
+	int        ngrpcols;   /* number of unique grouping attributes */
+	int        nargs;      /* number of arguments in a GROUPING function */
+	int       *grpargs;    /* list of positions for arguments appeared in
+							* the GROUP BY clause */
+} GroupingFuncExprState;
+
+/* ----------------
+ *	WindowRefExprState node
+ * ----------------
+ */
+typedef struct WindowRefExprState
+{
+	ExprState	xprstate;
+	struct WindowState *windowstate; /* reflect parent window state */
+	List	   *args;			/* states of argument expressions */
+	int			refno;			/* index in window state's wrxstates list */
+	int			funcno;			/* index in window state's func_state array */
+	bool		isAgg;			/* aggregate-derived? */
+} WindowRefExprState;
+
 /* ----------------
  *		ArrayRefExprState node
  *
@@ -715,6 +761,7 @@ typedef struct SubPlanState
 	AttrNumber *keyColIdx;		/* control data for hash tables */
 	FmgrInfo   *eqfunctions;	/* comparison functions for hash tables */
 	FmgrInfo   *hashfunctions;	/* lookup data for hash functions */
+    struct StringInfoData  *cdbextratextbuf;    /* to pass text to cdbexplain */
 } SubPlanState;
 
 /* ----------------
@@ -1426,11 +1473,6 @@ typedef struct AdaptiveNestLoopState
 	int					nl_strategy;
 } AdaptiveNestLoopState;
 
-/* ----------------------------------------------------------------
- *				 Materialization State Information
- * ----------------------------------------------------------------
- */
-
 /* ----------------
  *	 MaterialState information
  *
@@ -1449,6 +1491,34 @@ typedef struct MaterialState
 } MaterialState;
 
 /* ----------------
+ *	 ShareInputScanState information
+ *
+ *	State of each scanner of the ShareInput node
+ * ----------------
+ */
+typedef struct ShareInputScanState
+{
+	ScanState 	ss;
+	ShareNode_ShareType share_type;
+	
+	/* 
+	 * Depends on share_type, we should have a tuplestore_state, tuplestore_pos
+	 * or tuplesort_state, tuplesort_pos
+	 */
+	void 		*ts_state;
+	void 		*ts_pos;
+
+	/*
+	 * state to evaluate a hash function to see if a tuple is really for this scan.
+	 * This is needed when we scan on top of a material, which is used to buffer 
+	 * multiplexed motion
+	 */
+	List		*hashExpr;		/* state struct used for evaluating the hash expressions */
+	CdbHash		*cdbhash;			/* hash api object */
+	int			*numTuplesByHashSegIdx; /* Distribution of number of tuples from child by hash seg index */
+} ShareInputScanState;
+
+/* ----------------
  *	 SortState information
  * ----------------
  */
@@ -1465,6 +1535,23 @@ typedef struct SortState
 } SortState;
 
 /* ---------------------
+ * AggOutStateCond
+ *
+ *   Represents a state of the output of an Agg node.
+ *
+ *   PROCESSING - the Agg node starting to process inputs,
+ *                no output tuple is ready.
+ *   PASS_THRU - A pass through tuple is ready for output.
+ *   AGG_READY - An aggregated tuple is ready for output.
+ */
+typedef enum
+{
+	PROCESSING,
+	PASS_THRU,
+	AGG_READY
+} AggOutStateCond;
+
+/* ---------------------
  *	GroupState information
  * -------------------------
  */
@@ -1473,6 +1560,29 @@ typedef struct GroupState
 	ScanState	ss;				/* its first field is NodeTag */
 	FmgrInfo   *eqfunctions;	/* per-field lookup data for equality fns */
 	bool		grp_done;		/* indicates completion of Group scan */
+
+	/* for rollup */
+	HeapTuple  grp_firstTuple;      /* the first tuple in a group */
+	AggOutStateCond out_state;      /* the state of previous output tuple */
+	TupleTableSlot *copyslot;       /* copy slot for a modified tuple */
+
+	/*
+	 * For a rollup, one aggregate tuple may need to be outputed several
+	 * times. We use prev_aggslot to indicate if a previous output
+	 * tuple needs to be output again. How many times this tuple
+	 * needs to be outputed is defined in num_repeats.
+	 */
+	TupleTableSlot *prev_aggslot;
+	int             num_repeats;
+
+	/*
+	 * The following are used for modifying an input tuple based
+	 * on the rollup level of this node.
+	 */
+	int num_attrs;
+	Datum *replValues;
+	bool *replIsnull;
+	bool *doReplace;
 } GroupState;
 
 /* ---------------------
@@ -1502,6 +1612,9 @@ typedef struct AggState
 	MemoryContext aggcontext;	/* memory context for long-lived data */
 	ExprContext *tmpcontext;	/* econtext for input expressions */
 	bool		agg_done;		/* indicates completion of Agg scan */
+	AggOutStateCond out_state;  /* indicate the state of the output of
+								   this Agg node */
+
 	/* these fields are used in AGG_PLAIN and AGG_SORTED modes: */
 	AggStatePerGroup pergroup;	/* per-Aggref-per-group working state */
 	HeapTuple	grp_firstTuple; /* copy of first tuple of current group */
@@ -1515,7 +1628,61 @@ typedef struct AggState
 	/* MPP */
 	MemoryContext transcontext;	/* memory context for less long-lived data */
 	struct HashAggTable *hhashtable;
+
+	/* ROLLUP */
+	AggStatePerGroup perpassthru; /* per-Aggref-per-pass-through-tuple working state */
+
+	TupleTableSlot *copyslot;     /* copy of input tuple */
+
+	/*
+	 * For a rollup, one aggregate tuple may need to be outputed several
+	 * times. We use prev_aggslot to indicate if a previous output
+	 * tuple needs to be output again. How many times this tuple
+	 * needs to be outputed is defined in num_repeats.
+	 */
+	TupleTableSlot *prev_aggslot;
+	int             num_repeats;
+
+	/*
+	 * The following are used to define how to truncate input tuples to
+	 * satisfy the rollup level of this Agg node.
+	 */
+	int num_attrs;                /* number of grouping attributes for the Agg node */
+	Datum *replValues;
+	bool *replIsnull;
+	bool *doReplace;
 } AggState;
+
+
+/* ---------------------
+ *	WindowState information
+ * -------------------------
+ */
+typedef struct WindowStatePerLevelData *WindowStatePerLevel;
+typedef struct WindowStatePerFunctionData *WindowStatePerFunction;
+
+typedef struct WindowState
+{
+	PlanState	ps;				/* its first field is NodeTag */
+	List	   *wrxstates;		/* all WindowRefExprState nodes in targetlist */	
+	FmgrInfo   *eqfunctions;	/* equality fns for partition key */
+	TupleTableSlot *priorslot;	/* place for prior tuple */
+	
+	/* Array of working states per distinct window function */
+	int			numfuncs;
+	WindowStatePerFunction  func_state;
+	
+	/* Per row state */
+	int64		row_index;
+	int			numlevels;
+	WindowStatePerLevel level_state;
+
+	/* memory context for transition value processing */
+	/* XXX: we should probably have one context per level, so that we can
+	 * reset it when there's a key change at that level
+	 */
+	MemoryContext transcontext;
+} WindowState;
 
 /* ----------------
  *	 UniqueState information
@@ -1602,6 +1769,21 @@ typedef struct LimitState
 	TupleTableSlot *subSlot;	/* tuple last obtained from subplan */
 } LimitState;
 
+/* ---------------------------------------------------------------------------
+ * Motion target slice 
+ * ---------------------------------------------------------------------------
+ */
+typedef struct MotionStateSliceEntry
+{
+	NodeTag 	type;
+
+	bool		stopRequested;      /* set when we want transfer to stop */
+
+	List		*hashExpr;		/* state struct used for evaluating the hash expressions */
+	CdbHash		*cdbhash;			/* hash api object */
+	int			*numTuplesByHashSegIdx; /* Distribution of number of tuples from child by hash seg index */
+} MotionStateSliceEntry;
+
 /* ----------------
  *	 MotionState information
  * ----------------
@@ -1609,23 +1791,30 @@ typedef struct LimitState
 typedef struct MotionState
 {
 	PlanState			ps;					/* its first field is NodeTag */
+	int8 				sliceEntryIdx;		/* reciever slice id in the motion_send.  -1 for motion send. */
+	bool 				fStopped;
 	bool				isReceiver;			/* true => we receive via this Motion node */
     bool                isSender;           /* true => we send via this Motion node */
-    bool				sentEndOfStream;    /* set when end-of-stream has successfully been sent */
 	bool				stopRequested;      /* set when we want transfer to stop */
 	List				*hashExprState;		/* state struct used for evaluating the hash expressions */
 	CdbHash				*cdbhash;			/* hash api object */
+
+	/* For motion send */
+	List 				*sliceEntries;      /* for each outgoing slices */
+	int8 				nextSlice;          /* the next slices */
+    bool				sentEndOfStream;  	/* set when end-of-stream has successfully been sent */
+	int 				stoppedSliceCount;   /* How many slice has been stoped */
+
+	/* For Motion recv */
 	struct CdbHeap		*tupleheap;			/* data structure for match merge in sorted motion node */
 	int					routeIdNext;		/* for a sorted motion node, the routeId to get next (same as the routeId last returned ) */
 	bool				tupleheapReady;		/* for a sorted motion node, false until we have a tuple from each source segindex */
-
 
 	/* The following can be used for debugging, usage stats, etc.  */
 	int			numTuplesFromChild;	/* Number of tuples received from child */
 	int			numTuplesToAMS;		/* Number of tuples from child that were sent to AMS */
 	int			numTuplesFromAMS;	/* Number of tuples received from AMS */
 	int			numTuplesToParent;	/* Number of tuples either from child or AMS that were sent to parent */
-	int			*numTuplesByHashSegIdx; /* Distribution of number of tuples from child by hash seg index */
 	
 	struct timeval otherTime;  /* time accumulator used in sending motion node to keep track of time
 								 * spent getting the next tuple (not sending). this could mean time spent
@@ -1642,5 +1831,14 @@ typedef struct MotionState
     Slice              *recvSlice;          /* receiving slice */
 
 } MotionState;
+
+#define MOTION_FIRST_SLICEENTRY 0
+#define MOTION_MAX_SLICEENTRY 100
+#define MOTION_SEND_SLICEENTRY -1
+#define MOTION_BAD_SLICEENTRY -2
+#define IS_MOTION_SEND_SLICEENTRY(x) ((x)==MOTION_SEND_SLICEENTRY)
+#define IS_MOTION_RECV_SLICEENTRY(x) ((x)>=MOTION_FIRST_SLICEENTRY && (x)<=MOTION_MAX_SLICEENTRY)
+#define IsMotionSend(m) (IS_MOTION_SEND_SLICEENTRY((m)->sliceEntryIdx))
+#define IsMotionRecv(m) (IS_MOTION_RECV_SLICEENTRY((m)->sliceEntryIdx))
 
 #endif   /* EXECNODES_H */

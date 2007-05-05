@@ -7743,6 +7743,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		
 		PQclear(res);
 	}
+
 	/* START MPP ADDITION */
     else if(tbinfo->relkind == RELKIND_EXTERNAL)
     {

@@ -653,7 +653,7 @@ int8mod(PG_FUNCTION_ARGS)
 Datum
 int8inc(PG_FUNCTION_ARGS)
 {
-	if (fcinfo->context && IsA(fcinfo->context, AggState))
+	if (fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context))
 	{
 		/*
 		 * Special case to avoid palloc overhead for COUNT(): when called from

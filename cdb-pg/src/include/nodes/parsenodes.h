@@ -112,6 +112,7 @@ typedef struct Query
 	char	   *intoTableSpaceName;		/* table space to use, or NULL */
 
 	bool		hasAggs;		/* has aggregates in tlist or havingQual */
+	bool		hasWindFuncs;	/* has window function(s) in target list */
 	bool		hasSubLinks;	/* has subquery SubLink */
 
 	List	   *rtable;			/* list of range table entries */
@@ -121,9 +122,26 @@ typedef struct Query
 
 	List	   *returningList;	/* return-values list (of TargetEntry) */
 
-	List	   *groupClause;	/* a list of GroupClause's */
+	/*
+	 * A list of GroupClauses or GroupingClauses.  The order of
+	 * GroupClauses or GroupingClauses are based on input
+	 * queries. However, in each grouping set, all GroupClauses will
+	 * appear in front of GroupingClauses. See the following GROUP BY
+	 * clause:
+	 *
+	 *   GROUP BY ROLLUP(b,c),a, CUBE(e,d)
+	 *
+	 * the result list can be roughly represented as follows.
+	 *
+	 *    GroupClause(a) -->
+	 *    GroupingClause( ROLLUP, groupsets (GroupClause(b) --> GroupClause(c) ) ) -->
+	 *    GroupingClause( CUBE, groupsets (GroupClause(e) --> GroupClause(d) ) )
+	 */
+	List	   *groupClause;
 
 	Node	   *havingQual;		/* qualifications applied to groups */
+
+	List	   *windowClause;	/* defined window specifications */
 
 	List	   *distinctClause; /* a list of SortClause's */
 
@@ -163,6 +181,7 @@ typedef struct Query
 	 
 	GpPolicy  *intoPolicy;			/* MPP. Used only on the QD... Doesn't need to be serialized */
 
+	List 	*sharedNodes; 	/* Share Input.  List of shared nodes.  No need to be serialized */
 } Query;
 
 
@@ -299,6 +318,7 @@ typedef struct FuncCall
 	bool		agg_star;		/* argument was really '*' */
 	bool		agg_distinct;	/* arguments were labeled DISTINCT */
 	int			location;		/* token location, or -1 if unknown */
+	Node	   *over;			/* over clause */
 } FuncCall;
 
 /*
@@ -582,6 +602,12 @@ typedef struct RangeTblEntry
 	 * Fields valid for a subquery RTE (else NULL):
 	 */
 	Query	   *subquery;		/* the sub-query */
+	
+	/* These are for pre-planned sub-queries only.  They are internal to
+	 * window planning.
+	 */
+	struct Plan *subquery_plan;
+	List	   *subquery_pathkeys;
 
 	/*
 	 * Fields valid for a function RTE (else NULL):
@@ -655,6 +681,56 @@ typedef struct SortClause
  * nodetags...).  We have routines that operate interchangeably on both.
  */
 typedef SortClause GroupClause;
+
+/*
+ * GroupingClause -
+ *     representation of grouping extension clauses,
+ *     such as ROLLUP, CUBE, and GROUPING SETS.
+ */
+typedef struct GroupingClause
+{
+	NodeTag      type;
+	GroupingType groupType;
+	List         *groupsets;
+} GroupingClause;
+
+/*
+ * GroupingFunc -
+ *     representation of a grouping function for grouping extension
+ *     clauses.
+ *
+ * This is used to determine whether a null value for a column in
+ * the output tuple is the result of grouping. For example, a table
+ *
+ *    test (a integer, b integer)
+ *
+ * has two rows:
+ *
+ *    (1,1), (null,1)
+ *
+ * The query "select a,sum(b),grouping_id(a) from test group by rollup(a)"
+ * returns
+ *
+ *    1   ,    1,    0
+ *    null,    1,    0
+ *    null,    2,    1
+ *
+ * The output row "null,1,0" indicates that the 'null' value for 'a' is not
+ * from grouping, while the row "null,2,1" indicates that the 'null' value for
+ * 'a' is from grouping.
+ */
+typedef struct GroupingFunc
+{
+	NodeTag   type;
+	List     *args;  /* arguments provided in the query. */
+	int       ngrpcols; /* the number of grouping attributes */
+	int       nargs;  /* the number of arguments appeared in this function. Note that
+					   * a GROUPING function can take arguments that are subsets
+					   * of grouping attributes, and these arguments are allowed to
+					   * be duplicate to each other. */
+	int      *grpargs; /* the position of each argument appeared in the GROUP
+						* BY clause. */
+} GroupingFunc;
 
 /*
  * RowMarkClause -
@@ -761,6 +837,7 @@ typedef struct SelectStmt
 	Node	   *whereClause;	/* WHERE qualification */
 	List	   *groupClause;	/* GROUP BY clauses */
 	Node	   *havingClause;	/* HAVING conditional-expression */
+	List	   *windowClause;	/* window specification clauses */
 
 	/*
 	 * In a "leaf" node representing a VALUES list, the above fields are all
@@ -793,9 +870,29 @@ typedef struct SelectStmt
 	List       *distributedBy;   /* MPP. what columns we distribute the data by for SELECT INTO or CTAS */
 } SelectStmt;
 
+typedef struct WindowSpec
+{
+	NodeTag type;
+	char *name;	/* name of window specification */
+	char *parent; /* parent window, e.g. OVER(PB, myspec); */
+	List *partition; /* PARTITION BY clause */
+	List *order; /* ORDER BY clause */
+	WindowFrame *frame;
+} WindowSpec;
+
+/*
+ * Due to the complexity of the grammar, we need a basic structure inside
+ * the grammar parser so that we can get data into the analyzer efficiently
+ */
+typedef struct WindowSpecParse
+{
+	NodeTag type;
+	char *name;
+	List *elems;
+} WindowSpecParse;
+	
 
 /* ----------------------
- *		Set Operation node for post-analysis query trees
  *
  * After parse analysis, a SELECT with set operations is represented by a
  * top-level Query node containing the leaf SELECTs as subqueries in its
@@ -804,6 +901,7 @@ typedef struct SelectStmt
  * nodes replaced by SetOperationStmt nodes.
  * ----------------------
  */
+
 typedef struct SetOperationStmt
 {
 	NodeTag		type;
@@ -1865,6 +1963,9 @@ typedef struct ExplainStmt
 	Query	   *query;			/* the query */
 	bool		verbose;		/* print plan info */
 	bool		analyze;		/* get statistics by executing plan */
+#ifdef USE_FORCE_PLAN
+	bool 		force;			/* force a plan from a string format */
+#endif
 } ExplainStmt;
 
 /* ----------------------

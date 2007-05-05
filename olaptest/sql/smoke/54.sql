@@ -1,0 +1,1 @@
+SELECT COUNT(*) FROM sale GROUP BY cn+vn HAVING cn+vn<1000;

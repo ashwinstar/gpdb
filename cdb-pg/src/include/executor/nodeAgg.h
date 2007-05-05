@@ -70,4 +70,16 @@ advance_aggregates(AggState *aggstate, AggStatePerGroup pergroup);
 extern List *
 get_agg_hash_collist(AggState *aggstate);
 
+extern Oid resolve_polymorphic_transtype(Oid aggtranstype, Oid aggfnoid,
+										 Oid *inputTypes);
+
+extern Datum GetAggInitVal(Datum textInitVal, Oid transtype);
+
+extern Datum invoke_agg_trans_func(FmgrInfo transfn, int numargs, 
+								   Datum transValue, bool *noTransvalue, 
+								   bool *transValueIsNull, bool transtypeByVal,
+								   int16 transtypeLen,
+								   FunctionCallInfoData *fcinfo, void *funcctx,
+								   MemoryContext transcontext, 
+								   MemoryContext tuplecontext);
 #endif   /* NODEAGG_H */

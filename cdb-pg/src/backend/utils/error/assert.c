@@ -43,9 +43,10 @@ ExceptionalCondition(const char *conditionName,
 		write_stderr("TRAP: ExceptionalCondition: bad arguments\n");
 	else
 	{
-		write_stderr("TRAP: %s(\"%s\", File: \"%s\", Line: %d)\n",
+		extern int currentSliceId;
+		write_stderr("TRAP: %s(\"%s\", File: \"%s\", Line: %d, sliceNum %d)\n",
 					 errorType, conditionName,
-					 fileName, lineNumber);
+					 fileName, lineNumber, currentSliceId);
 	}
     fflush(stdout);
 	
@@ -71,13 +72,27 @@ ExceptionalCondition(const char *conditionName,
 #endif
 #endif
 
-#ifdef SLEEP_ON_ASSERT
-
+#ifdef SLEEP_ON_ASSERT 
 	/*
 	 * It would be nice to use pg_usleep() here, but only does 2000 sec or 33
 	 * minutes, which seems too short.
 	 */
 	sleep(1000000);
+#endif
+
+#if 0
+	{
+		extern void debug_break();
+		debug_break();
+	}
+#else
+    /* Assert should always be painful.  Force a segment fault.
+     * For reasons, cdb2 does not dump a core without the following
+     * hack.
+     */
+	{
+		*( (int *) NULL ) = 1234;
+	}
 #endif
 
     /* CDB: Try to tell the QD or client what happened. */

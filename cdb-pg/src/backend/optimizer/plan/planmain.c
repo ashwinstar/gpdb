@@ -30,6 +30,8 @@
 
 #include "cdb/cdbpath.h"        /* cdbpath_rows() */
 
+static List *distcols_in_groupingclause(GroupingClause *gc);
+
 /*
  * query_planner
  *	  Generate a path (that is, a simplified plan) for a basic query,
@@ -233,8 +235,8 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 	{
 		List	   *groupExprs;
 
-		groupExprs = get_sortgrouplist_exprs(parse->groupClause,
-											 parse->targetList);
+		groupExprs = get_grouplist_exprs(parse->groupClause,
+										 parse->targetList);
 		*num_groups = estimate_num_groups(root,
 										  groupExprs,
 										  final_rel->rows);
@@ -359,4 +361,62 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 
 	*cheapest_path = cheapestpath;
 	*sorted_path = sortedpath;
+}
+
+
+/*
+ * distcols_in_groupingclause -
+ *     Return all distinct columns/expressions that appear in a GroupingClause.
+ *
+ * If this is a GROUPING_SET, this function is called recursively to
+ * find the underlying columns/expressions.
+ */
+static List *
+distcols_in_groupingclause(GroupingClause *gc)
+{
+	List *result = NIL;
+	ListCell *l;
+
+	foreach(l, gc->groupsets)
+	{
+		Node *node = lfirst(l);
+
+		if (IsA(node, GroupClause) && !list_member(result, node))
+			result = lappend(result, node);
+		else if(IsA(node, GroupingClause))
+			result = list_concat_unique(result,
+										distcols_in_groupingclause((GroupingClause*)node));
+	}
+
+	return result;
+}
+
+/*
+ * num_distcols_in_grouplist -
+ *      Return number of distinct columns/expressions that appeared in
+ *      a list of GroupClauses or GroupingClauses.
+ */
+int
+num_distcols_in_grouplist(List *gc)
+{
+	List *result = NIL;
+	ListCell *l;
+	int num_cols;
+
+	foreach(l, gc)
+	{
+		Node *node = lfirst(l);
+
+		if (IsA(node, GroupClause) && !list_member(result, node))
+			result = lappend(result, node);
+		else if(IsA(node, GroupingClause))
+			result =
+				list_concat_unique(result,
+								   distcols_in_groupingclause((GroupingClause*)node));
+	}
+
+	num_cols = list_length(result);
+	list_free(result);
+
+	return num_cols;
 }

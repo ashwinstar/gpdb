@@ -1,0 +1,1 @@
+SELECT * FROM sale s1 CROSS JOIN sale s2 ORDER BY s1.cn;

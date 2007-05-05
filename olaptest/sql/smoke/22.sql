@@ -1,0 +1,1 @@
+SELECT cn, (SELECT COUNT(*) FROM sale) FROM sale ORDER BY cn;

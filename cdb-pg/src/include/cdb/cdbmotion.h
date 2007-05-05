@@ -87,6 +87,7 @@ extern SendReturnCode SendTuple(MotionLayerState *mlStates,
 								ChunkTransportState *transportStates,
 								int16 motNodeID,
 								HeapTuple tuple,
+								int8 pIncIdx,
 								int16 targetRoute);
 
 
@@ -116,6 +117,7 @@ extern ReceiveReturnCode RecvTupleFrom(MotionLayerState *mlStates,
 									   ChunkTransportState *transportStates,
 									   int16 motNodeID,
 									   HeapTuple *tup_i,
+									   int8 srcpIncIdx,
 									   int16 srcRoute);
 
 extern void SendStopMessage(MotionLayerState *mlStates,

@@ -868,7 +868,9 @@ PortalRunSelect(Portal portal,
 			count = 0;
 
 		if (portal->holdStore)
+		{
 			nprocessed = RunFromStore(portal, direction, count, dest);
+		}
 		else
 		{
 			ActiveSnapshot = queryDesc->snapshot;
@@ -910,7 +912,9 @@ PortalRunSelect(Portal portal,
 			count = 0;
 
 		if (portal->holdStore)
+		{
 			nprocessed = RunFromStore(portal, direction, count, dest);
+		}
 		else
 		{
 			ActiveSnapshot = queryDesc->snapshot;
@@ -1306,7 +1310,9 @@ PortalRunFetch(Portal portal,
 				 * results in the portal's tuplestore.
 				 */
 				if (!portal->holdStore)
+				{
 					FillPortalStore(portal);
+				}
 
 				/*
 				 * Now fetch desired portion of results.
@@ -1597,7 +1603,7 @@ DoPortalRewind(Portal portal)
 		MemoryContext oldcontext;
 
 		oldcontext = MemoryContextSwitchTo(portal->holdContext);
-		tuplestore_rescan(portal->holdStore);
+		tuplestore_rescan(portal->holdStore); 
 		MemoryContextSwitchTo(oldcontext);
 	}
 	if (PortalGetQueryDesc(portal))

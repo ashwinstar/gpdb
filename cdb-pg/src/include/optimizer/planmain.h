@@ -17,6 +17,7 @@
 
 #include "nodes/plannodes.h"
 #include "nodes/relation.h"
+#include "optimizer/clauses.h" /* AggClauseCounts */
 
 /*
  * prototypes for plan/planmain.c
@@ -33,6 +34,39 @@ extern Plan *optimize_minmax_aggregates(PlannerInfo *root, List *tlist,
 						   Path *best_path);
 
 /*
+ * prototype for plan/plangroupexp.c
+ */
+extern Plan *make_distinctaggs_for_rollup(PlannerInfo *root, bool is_agg,
+										  List *tlist, bool twostage, List *sub_tlist,
+										  List *qual, AggStrategy aggstrategy,
+										  int numGroupCols, AttrNumber *grpColIdx,
+										  double numGroups, int *rollup_gs_times,
+										  int numAggs, int transSpace,
+										  double *p_dNumGroups,
+										  List **p_current_pathkeys,
+										  Plan *lefttree);
+
+/*
+ * prototypes for plan/planwindow.c
+ */
+extern Plan *window_planner(PlannerInfo *root, double tuple_fraction, List **pathkeys_ptr);
+
+/*
+ * prototype for plan/plangroupexp.c
+ */
+extern Plan *plan_grouping_extension(PlannerInfo *root,
+									 Path *path,
+									 List **p_tlist, List *sub_tlist,
+									 bool is_agg, bool twostage,
+									 List *qual, AggStrategy aggstrategy,
+									 int *p_numGroupCols, AttrNumber **p_grpColIdx,
+									 AggClauseCounts *agg_counts,
+									 CanonicalGroupingSets *canonical_grpsets,
+									 double *p_dNumGroups,
+									 List **p_current_pathkeys,
+									 Plan *lefttree);
+
+/*
  * prototypes for plan/createplan.c
  */
 extern Plan *create_plan(PlannerInfo *root, Path *path);
@@ -42,15 +76,22 @@ extern Append *make_append(List *appendplans, bool isTarget, List *tlist);
 extern Sort *make_sort_from_sortclauses(PlannerInfo *root, List *sortcls,
 						   Plan *lefttree);
 extern Sort *make_sort_from_groupcols(PlannerInfo *root, List *groupcls,
-						 AttrNumber *grpColIdx, Plan *lefttree);
+									  AttrNumber *grpColIdx, bool appendGrouping,
+									  Plan *lefttree);
 extern Agg *make_agg(PlannerInfo *root, List *tlist, List *qual,
-		 AggStrategy aggstrategy,
-		 int numGroupCols, AttrNumber *grpColIdx,
-		 long numGroups, int numAggs, int transSpace,
-		 Plan *lefttree);
+					 AggStrategy aggstrategy,
+					 int numGroupCols, AttrNumber *grpColIdx,
+					 long numGroups, int rollupLevel, uint64 grouping,
+					 int rollupGSTimes,
+					 int numAggs, int transSpace,
+					 Plan *lefttree);
 extern Group *make_group(PlannerInfo *root, List *tlist, List *qual,
-		   int numGroupCols, AttrNumber *grpColIdx,
-		   double numGroups,
+						 int numGroupCols, AttrNumber *grpColIdx,
+						 double numGroups, int rollupLevel,  uint64 grouping,
+						 int rollupGSTimes,
+						 Plan *lefttree);
+extern Window *make_window(PlannerInfo *root, List *tlist,
+		   int numPartCols, AttrNumber *partColIdx, List *windowKeys,
 		   Plan *lefttree);
 extern Material *make_material(Plan *lefttree);
 extern Plan *materialize_finished_plan(Plan *subplan);
@@ -86,12 +127,14 @@ extern void process_implied_equality(PlannerInfo *root,
 /*
  * prototypes for plan/setrefs.c
  */
-extern Plan *set_plan_references(Plan *plan, List *rtable);
+extern Plan *set_plan_references(Plan *plan, List *rtable, List *sharedNodes);
 extern List *set_returning_clause_references(List *rlist,
 								Plan *topplan,
-								Index resultRelation);
+								Index resultRelation); 
 extern void fix_opfuncids(Node *node);
 extern void set_opfuncid(OpExpr *opexpr);
 extern bool cdb_expr_requires_full_eval(Node *node);
+
+extern int num_distcols_in_grouplist(List *gc);
 
 #endif   /* PLANMAIN_H */

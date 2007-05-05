@@ -17,6 +17,7 @@
 #include "parser/parse_node.h"
 
 extern void transformFromClause(ParseState *pstate, List *frmList);
+extern void transformWindowClause(ParseState *pstate, Query *qry);
 extern int setTargetTable(ParseState *pstate, RangeVar *relation,
 			   bool inh, bool alsoSource, AclMode requiredPerms);
 extern bool interpretInhOption(InhOption inhOpt);
@@ -41,6 +42,6 @@ extern List *addTargetToSortList(ParseState *pstate, TargetEntry *tle,
 					int sortby_kind, List *sortby_opname,
 					bool resolveUnknown);
 extern Index assignSortGroupRef(TargetEntry *tle, List *tlist);
-extern bool targetIsInSortList(TargetEntry *tle, List *sortList);
+extern bool targetIsInSortGroupList(TargetEntry *tle, List *sortList);
 
 #endif   /* PARSE_CLAUSE_H */

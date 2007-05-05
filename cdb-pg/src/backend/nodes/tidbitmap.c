@@ -85,6 +85,7 @@ struct HashBitmap
 	int			spageptr;		/* next spages index */
 	int			schunkptr;		/* next schunks index */
 	int			schunkbit;		/* next bit to check in current schunk */
+
     /* CDB: Statistics for EXPLAIN ANALYZE */
     struct Instrumentation *instrument;
     Size        bytesperentry;

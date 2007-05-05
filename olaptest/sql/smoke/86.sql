@@ -1,0 +1,1 @@
+select positions.position_name, drugs.drug_name, sum(mlb_player_fact.number_of_hrs) from positions, drugs, mlb_player_fact where positions.position_id = mlb_player_fact.position_id and drugs.drug_of_choice_id = mlb_player_fact.drug_of_choice_id group by positions.position_name, drugs.drug_name order by sum(mlb_player_fact.number_of_hrs) desc;

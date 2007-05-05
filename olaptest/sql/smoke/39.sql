@@ -1,0 +1,1 @@
+SELECT cn, VARIANCE(qty) FROM sale GROUP BY cn ORDER BY cn;

@@ -128,7 +128,6 @@ ParseUriString(const char *uri_str)
 						 errmsg("invalid URI \'%s\' : gpfdist must indicate a "
 						        "port number", uri_str)));			
 			}
-
 		}
 	}
 

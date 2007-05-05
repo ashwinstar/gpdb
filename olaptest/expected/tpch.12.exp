@@ -1,0 +1,11 @@
+ l_shipmode | high_line_count | low_line_count 
+------------+-----------------+----------------
+ AIR        |              41 |             51
+ FOB        |              34 |             48
+ MAIL       |              46 |             59
+ RAIL       |              36 |             59
+ REG AIR    |              41 |             60
+ SHIP       |              33 |             49
+ TRUCK      |              47 |             47
+(7 rows)
+

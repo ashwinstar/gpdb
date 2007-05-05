@@ -12,8 +12,16 @@ subdir = src/backend/optimizer/plan
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
-OBJS = createplan.o initsplan.o planagg.o planmain.o planner.o \
-	setrefs.o subselect.o
+OBJS = createplan.o \
+	   initsplan.o \
+	   planagg.o \
+	   plangroupext.o \
+	   planmain.o \
+	   planner.o \
+	   planshare.o \
+	   planwindow.o \
+	   setrefs.o \
+	   subselect.o \
 
 all: SUBSYS.o
 

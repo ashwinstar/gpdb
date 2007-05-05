@@ -1,0 +1,104 @@
+ pn  |        pname        | pn  |        pname        
+-----+---------------------+-----+---------------------
+ 300 | Castle              | 300 | Castle
+ 300 | Castle              | 400 | Justice
+ 300 | Castle              | 402 | Misfortune
+ 300 | Castle              | 404 | Textbooks
+ 300 | Castle              | 406 | Acid Rain
+ 300 | Castle              | 100 | Sword
+ 300 | Castle              | 200 | Dream
+ 300 | Castle              | 401 | Sins
+ 300 | Castle              | 403 | Classified Material
+ 300 | Castle              | 405 | Nuclear Weapons
+ 400 | Justice             | 300 | Castle
+ 400 | Justice             | 400 | Justice
+ 400 | Justice             | 402 | Misfortune
+ 400 | Justice             | 404 | Textbooks
+ 400 | Justice             | 406 | Acid Rain
+ 400 | Justice             | 100 | Sword
+ 400 | Justice             | 200 | Dream
+ 400 | Justice             | 401 | Sins
+ 400 | Justice             | 403 | Classified Material
+ 400 | Justice             | 405 | Nuclear Weapons
+ 402 | Misfortune          | 300 | Castle
+ 402 | Misfortune          | 400 | Justice
+ 402 | Misfortune          | 402 | Misfortune
+ 402 | Misfortune          | 404 | Textbooks
+ 402 | Misfortune          | 406 | Acid Rain
+ 402 | Misfortune          | 100 | Sword
+ 402 | Misfortune          | 200 | Dream
+ 402 | Misfortune          | 401 | Sins
+ 402 | Misfortune          | 403 | Classified Material
+ 402 | Misfortune          | 405 | Nuclear Weapons
+ 404 | Textbooks           | 300 | Castle
+ 404 | Textbooks           | 400 | Justice
+ 404 | Textbooks           | 402 | Misfortune
+ 404 | Textbooks           | 404 | Textbooks
+ 404 | Textbooks           | 406 | Acid Rain
+ 404 | Textbooks           | 100 | Sword
+ 404 | Textbooks           | 200 | Dream
+ 404 | Textbooks           | 401 | Sins
+ 404 | Textbooks           | 403 | Classified Material
+ 404 | Textbooks           | 405 | Nuclear Weapons
+ 406 | Acid Rain           | 300 | Castle
+ 406 | Acid Rain           | 400 | Justice
+ 406 | Acid Rain           | 402 | Misfortune
+ 406 | Acid Rain           | 404 | Textbooks
+ 406 | Acid Rain           | 406 | Acid Rain
+ 406 | Acid Rain           | 100 | Sword
+ 406 | Acid Rain           | 200 | Dream
+ 406 | Acid Rain           | 401 | Sins
+ 406 | Acid Rain           | 403 | Classified Material
+ 406 | Acid Rain           | 405 | Nuclear Weapons
+ 100 | Sword               | 300 | Castle
+ 100 | Sword               | 400 | Justice
+ 100 | Sword               | 402 | Misfortune
+ 100 | Sword               | 404 | Textbooks
+ 100 | Sword               | 406 | Acid Rain
+ 100 | Sword               | 100 | Sword
+ 100 | Sword               | 200 | Dream
+ 100 | Sword               | 401 | Sins
+ 100 | Sword               | 403 | Classified Material
+ 100 | Sword               | 405 | Nuclear Weapons
+ 200 | Dream               | 300 | Castle
+ 200 | Dream               | 400 | Justice
+ 200 | Dream               | 402 | Misfortune
+ 200 | Dream               | 404 | Textbooks
+ 200 | Dream               | 406 | Acid Rain
+ 200 | Dream               | 100 | Sword
+ 200 | Dream               | 200 | Dream
+ 200 | Dream               | 401 | Sins
+ 200 | Dream               | 403 | Classified Material
+ 200 | Dream               | 405 | Nuclear Weapons
+ 401 | Sins                | 300 | Castle
+ 401 | Sins                | 400 | Justice
+ 401 | Sins                | 402 | Misfortune
+ 401 | Sins                | 404 | Textbooks
+ 401 | Sins                | 406 | Acid Rain
+ 401 | Sins                | 100 | Sword
+ 401 | Sins                | 200 | Dream
+ 401 | Sins                | 401 | Sins
+ 401 | Sins                | 403 | Classified Material
+ 401 | Sins                | 405 | Nuclear Weapons
+ 403 | Classified Material | 300 | Castle
+ 403 | Classified Material | 400 | Justice
+ 403 | Classified Material | 402 | Misfortune
+ 403 | Classified Material | 404 | Textbooks
+ 403 | Classified Material | 406 | Acid Rain
+ 403 | Classified Material | 100 | Sword
+ 403 | Classified Material | 200 | Dream
+ 403 | Classified Material | 401 | Sins
+ 403 | Classified Material | 403 | Classified Material
+ 403 | Classified Material | 405 | Nuclear Weapons
+ 405 | Nuclear Weapons     | 300 | Castle
+ 405 | Nuclear Weapons     | 400 | Justice
+ 405 | Nuclear Weapons     | 402 | Misfortune
+ 405 | Nuclear Weapons     | 404 | Textbooks
+ 405 | Nuclear Weapons     | 406 | Acid Rain
+ 405 | Nuclear Weapons     | 100 | Sword
+ 405 | Nuclear Weapons     | 200 | Dream
+ 405 | Nuclear Weapons     | 401 | Sins
+ 405 | Nuclear Weapons     | 403 | Classified Material
+ 405 | Nuclear Weapons     | 405 | Nuclear Weapons
+(100 rows)
+

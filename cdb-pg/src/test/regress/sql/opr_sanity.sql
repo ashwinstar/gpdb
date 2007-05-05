@@ -79,8 +79,10 @@ WHERE p1.oid < p2.oid AND
     p1.prosrc = p2.prosrc AND
     p1.prolang = 12 AND p2.prolang = 12 AND
     (p1.proisagg = false OR p2.proisagg = false) AND
+    (p1.proiswin = false OR p1.proiswin = false) AND
     (p1.prolang != p2.prolang OR
      p1.proisagg != p2.proisagg OR
+     p1.proiswin != p2.proiswin OR
      p1.prosecdef != p2.prosecdef OR
      p1.proisstrict != p2.proisstrict OR
      p1.proretset != p2.proretset OR
@@ -104,6 +106,7 @@ WHERE p1.oid != p2.oid AND
     p1.prosrc = p2.prosrc AND
     p1.prolang = 12 AND p2.prolang = 12 AND
     NOT p1.proisagg AND NOT p2.proisagg AND
+    NOT p1.proiswin AND NOT p2.proiswin AND
     (p1.prorettype < p2.prorettype);
 
 SELECT DISTINCT p1.proargtypes[0], p2.proargtypes[0]
@@ -112,6 +115,7 @@ WHERE p1.oid != p2.oid AND
     p1.prosrc = p2.prosrc AND
     p1.prolang = 12 AND p2.prolang = 12 AND
     NOT p1.proisagg AND NOT p2.proisagg AND
+    NOT p1.proiswin AND NOT p2.proiswin AND
     (p1.proargtypes[0] < p2.proargtypes[0]);
 
 SELECT DISTINCT p1.proargtypes[1], p2.proargtypes[1]
@@ -120,6 +124,7 @@ WHERE p1.oid != p2.oid AND
     p1.prosrc = p2.prosrc AND
     p1.prolang = 12 AND p2.prolang = 12 AND
     NOT p1.proisagg AND NOT p2.proisagg AND
+    NOT p1.proiswin AND NOT p2.proiswin AND
     (p1.proargtypes[1] < p2.proargtypes[1]);
 
 SELECT DISTINCT p1.proargtypes[2], p2.proargtypes[2]
@@ -128,6 +133,7 @@ WHERE p1.oid != p2.oid AND
     p1.prosrc = p2.prosrc AND
     p1.prolang = 12 AND p2.prolang = 12 AND
     NOT p1.proisagg AND NOT p2.proisagg AND
+    NOT p1.proiswin AND NOT p2.proiswin AND
     (p1.proargtypes[2] < p2.proargtypes[2]);
 
 SELECT DISTINCT p1.proargtypes[3], p2.proargtypes[3]
@@ -136,6 +142,7 @@ WHERE p1.oid != p2.oid AND
     p1.prosrc = p2.prosrc AND
     p1.prolang = 12 AND p2.prolang = 12 AND
     NOT p1.proisagg AND NOT p2.proisagg AND
+    NOT p1.proiswin AND NOT p2.proiswin AND
     (p1.proargtypes[3] < p2.proargtypes[3]);
 
 SELECT DISTINCT p1.proargtypes[4], p2.proargtypes[4]
@@ -144,6 +151,7 @@ WHERE p1.oid != p2.oid AND
     p1.prosrc = p2.prosrc AND
     p1.prolang = 12 AND p2.prolang = 12 AND
     NOT p1.proisagg AND NOT p2.proisagg AND
+    NOT p1.proiswin AND NOT p2.proiswin AND
     (p1.proargtypes[4] < p2.proargtypes[4]);
 
 SELECT DISTINCT p1.proargtypes[5], p2.proargtypes[5]
@@ -152,6 +160,7 @@ WHERE p1.oid != p2.oid AND
     p1.prosrc = p2.prosrc AND
     p1.prolang = 12 AND p2.prolang = 12 AND
     NOT p1.proisagg AND NOT p2.proisagg AND
+    NOT p1.proiswin AND NOT p2.proiswin AND
     (p1.proargtypes[5] < p2.proargtypes[5]);
 
 SELECT DISTINCT p1.proargtypes[6], p2.proargtypes[6]
@@ -160,6 +169,7 @@ WHERE p1.oid != p2.oid AND
     p1.prosrc = p2.prosrc AND
     p1.prolang = 12 AND p2.prolang = 12 AND
     NOT p1.proisagg AND NOT p2.proisagg AND
+    NOT p1.proiswin AND NOT p2.proiswin AND
     (p1.proargtypes[6] < p2.proargtypes[6]);
 
 SELECT DISTINCT p1.proargtypes[7], p2.proargtypes[7]
@@ -168,6 +178,7 @@ WHERE p1.oid != p2.oid AND
     p1.prosrc = p2.prosrc AND
     p1.prolang = 12 AND p2.prolang = 12 AND
     NOT p1.proisagg AND NOT p2.proisagg AND
+    NOT p1.proiswin AND NOT p2.proiswin AND
     (p1.proargtypes[7] < p2.proargtypes[7]);
 
 -- Look for functions that return type "internal" and do not have any

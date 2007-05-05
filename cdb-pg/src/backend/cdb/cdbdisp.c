@@ -3020,27 +3020,76 @@ compare_slice_order(const void *aa, const void *bb)
 		return -1;
 }
 
-static int
-count_dependent_children(SliceTable * sliceTable, int sliceIndex, sliceVec *sliceVector, int len)
+/* Quick and dirty bit mask operations */
+static void
+mark_bit(char *bits, int nth)
 {
-	int			res;
-	int			childIndex;
-	ListCell   *sublist;
-	Slice	   *slice = (Slice *) list_nth(sliceTable->slices, sliceIndex);
+	int nthbyte = nth >> 3;
+	char nthbit  = 1 << (nth & 7);
+	bits[nthbyte] |= nthbit;
+}
+static void
+or_bits(char* dest, char* src, int n)
+{
+	int i;
+	for(i=0; i<n;++i)
+		dest[i] |= src[i];
+}
 
-	res = list_length(slice->children);
+static int
+count_bits(char* bits, int nbyte)
+{
+	int bitcount[] = {
+		0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4
+	};
+
+	int i = 0;
+	int nbit = 0;
+	for(; i<nbyte; ++i)
+	{
+		nbit += bitcount[bits[i] & 0xF];
+		nbit += bitcount[(bits[i] >> 4)];
+	}
+	return nbit;
+}
+
+/* We use a bitmask to count the dep. childrens.   
+ * Because of input sharing, the slices now are DAG.  We cannot simply go down the 
+ * tree and add up number of children, which will return too big number.
+ */
+static int markbit_dep_children(SliceTable *sliceTable, int sliceIdx, sliceVec *sliceVec, int bitmasklen, char* bits)
+{
+	ListCell *sublist;
+	Slice *slice = (Slice *) list_nth(sliceTable->slices, sliceIdx);
 
 	foreach(sublist, slice->children)
 	{
-		childIndex = lfirst_int(sublist);
-		res += count_dependent_children(sliceTable, childIndex, sliceVector, len);
+		int childIndex = lfirst_int(sublist);
+		char *newbits = palloc0(bitmasklen);
+
+		markbit_dep_children(sliceTable, childIndex, sliceVec, bitmasklen, newbits);
+		or_bits(bits, newbits, bitmasklen);
+		mark_bit(bits, childIndex);
+		pfree(newbits);
 	}
 
-	sliceVector[sliceIndex].sliceIndex = sliceIndex;
-	sliceVector[sliceIndex].children = res;
-	sliceVector[sliceIndex].slice = slice;
+	sliceVec[sliceIdx].sliceIndex = sliceIdx;
+	sliceVec[sliceIdx].children = count_bits(bits, bitmasklen);
+	sliceVec[sliceIdx].slice = slice;
 
-	return res;
+	return sliceVec[sliceIdx].children;
+}
+
+/* Count how many dependent childrens and fill in the sliceVector of dependent childrens. */
+static int
+count_dependent_children(SliceTable * sliceTable, int sliceIndex, sliceVec *sliceVector, int len)
+{
+	int 		ret = 0;
+	int			bitmasklen = (len+7) >> 3;
+	char 	   *bitmask = palloc0(bitmasklen);
+	ret = markbit_dep_children(sliceTable, sliceIndex, sliceVector, bitmasklen, bitmask);
+	pfree(bitmask);
+	return ret;
 }
 
 static int

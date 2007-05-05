@@ -122,7 +122,6 @@ typedef enum
 	ALTERQUEUE_ERROR				/* Internal error. */
 } ResAlterQueueResult;
 
-
 /*
  * Functions in resqueue.c
  */

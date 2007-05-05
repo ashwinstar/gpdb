@@ -324,11 +324,11 @@ AC_SUBST(GCC)
 # Calculate the Greenplum version string from the CVS tag.
 # If there is no version set, get the name from CVS/Tag,
 # otherwise default to the head of cvs.
-RAW_VERSION="$Name$"
+RAW_VERSION=
 if test -z "$RAW_VERSION" ; then
     if test -r CVS/Tag ; then
         #Source is from a tag
-        GP_VERSION=`cat CVS/Tag | sed 's,^[[A-Z]],,'`
+        GP_VERSION=`cat CVS/Tag | sed 's,^[A-Z],,'`
     else
         #Source is from head
         GP_VERSION="cvs Head"
@@ -384,6 +384,12 @@ PGAC_ARG_BOOL(enable, cassert, no, [  --enable-cassert        enable assertion c
               [AC_DEFINE([USE_ASSERT_CHECKING], 1,
                          [Define to 1 to build with assertion checks. (--enable-cassert)])])
 
+#
+# Enable forced plans
+#
+PGAC_ARG_BOOL(enable, forceplan, no, [  --enable-forceplan        enable forcing of plans via EXPLAIN FORCE (for debugging)],
+              [AC_DEFINE([USE_FORCE_PLAN], 1,
+                         [Define to 1 to build with plan forcing capabilities. (--enable-forceplan)])])
 
 #
 # Include directories

@@ -297,7 +297,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 				for (i=1; i <= queryDesc->plantree->nMotionNodes; i++)
 				{
 					InitMotionLayerNode(estate->motionlayer_context, i);
-	}
+				}
 
 				estate->es_interconnect_is_setup = true;
 				SetupInterconnect(&estate->interconnect_context,

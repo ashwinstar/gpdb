@@ -63,11 +63,13 @@ GpSetOpType choose_setop_type(List *planlist)
 	
 	foreach(cell, planlist)
 	{
+		Flow *subplanflow;
 		subplan = (Plan*)lfirst(cell);		
+		subplanflow = get_plan_flow(subplan);
+
 		Assert(is_plan_node((Node*)subplan));
-		
-		Assert(subplan->flow != NULL);
-		switch ( subplan->flow->locustype )
+		Assert(subplanflow != NULL);
+		switch ( subplanflow->locustype )
 		{
 			case CdbLocusType_Hashed:
 			case CdbLocusType_HashedOJ:
@@ -115,9 +117,12 @@ void adjust_setop_arguments(List *planlist, GpSetOpType setop_type)
 	
 	foreach ( cell, planlist )
 	{
+		Flow* subplanflow;
 		subplan = (Plan*)lfirst(cell);
+		subplanflow = get_plan_flow(subplan);
+
 		Assert(is_plan_node((Node*)subplan));
-		Assert(subplan->flow != NULL);
+		Assert(subplanflow != NULL);
 	
 		adjusted_plan = subplan;
 		switch ( setop_type )
@@ -127,16 +132,16 @@ void adjust_setop_arguments(List *planlist, GpSetOpType setop_type)
 			break;
 
 		case PSETOP_PARALLEL_PARTITIONED:
-			switch ( subplan->flow->locustype )
+			switch ( subplanflow->locustype )
 			{
 				case CdbLocusType_Hashed:
 				case CdbLocusType_HashedOJ:
 				case CdbLocusType_Strewn:
-					Assert( subplan->flow->flotype == FLOW_PARTITIONED );
+					Assert( subplanflow->flotype == FLOW_PARTITIONED );
 					break;
 				case CdbLocusType_SingleQE:
 				case CdbLocusType_General:
-					Assert( subplan->flow->flotype == FLOW_SINGLETON && subplan->flow->segindex > -1 );
+					Assert( subplanflow->flotype == FLOW_SINGLETON && subplanflow->segindex > -1 );
 					/* The setop itself will run on an N-gang, so we need to
 					 * arrange for the singleton input to be separately dispatched
 					 * to a 1-gang and collect its result on one of our N QEs.
@@ -155,17 +160,17 @@ void adjust_setop_arguments(List *planlist, GpSetOpType setop_type)
 			break;
 			
 		case PSETOP_SEQUENTIAL_QD:
-			switch ( subplan->flow->locustype )
+			switch ( subplanflow->locustype )
 			{
 				case CdbLocusType_Hashed:
 				case CdbLocusType_HashedOJ:
 				case CdbLocusType_Strewn:
-					Assert( subplan->flow->flotype == FLOW_PARTITIONED );
+					Assert( subplanflow->flotype == FLOW_PARTITIONED );
 					adjusted_plan = (Plan*)make_motion_gather_to_QD(subplan, false);				
 					break;
 					
 				case CdbLocusType_SingleQE:
-					Assert( subplan->flow->flotype == FLOW_SINGLETON && subplan->flow->segindex == 0 );
+					Assert( subplanflow->flotype == FLOW_SINGLETON && subplanflow->segindex == 0 );
 					adjusted_plan = (Plan*)make_motion_gather_to_QD(subplan, false);				
 					break;
 
@@ -184,18 +189,18 @@ void adjust_setop_arguments(List *planlist, GpSetOpType setop_type)
 			break;
 			
 		case PSETOP_SEQUENTIAL_QE:
-			switch ( subplan->flow->locustype )
+			switch ( subplanflow->locustype )
 			{
 				case CdbLocusType_Hashed:
 				case CdbLocusType_HashedOJ:
 				case CdbLocusType_Strewn:
-					Assert( subplan->flow->flotype == FLOW_PARTITIONED );
+					Assert( subplanflow->flotype == FLOW_PARTITIONED );
 					/* Gather to QE.  No need to keep ordering. */
 					adjusted_plan = (Plan*)make_motion_gather_to_QE(subplan, false);				
 					break;
 					
 				case CdbLocusType_SingleQE:
-					Assert( subplan->flow->flotype == FLOW_SINGLETON && subplan->flow->segindex != -1 );
+					Assert( subplanflow->flotype == FLOW_SINGLETON && subplanflow->segindex != -1 );
 					break;
 
 				case CdbLocusType_General:
@@ -326,7 +331,6 @@ Motion* make_motion_gather_to_QE(Plan *subplan, bool keep_ordering)
 Motion* make_motion_gather(Plan *subplan, int segindex, bool keep_ordering)
 {
 	Motion *motion;
-	Flow *flow;
 	int numInputSegs;				
 
 	Assert(subplan->flow != NULL);
@@ -334,24 +338,10 @@ Motion* make_motion_gather(Plan *subplan, int segindex, bool keep_ordering)
 	
 	numInputSegs =  (subplan->flow->flotype == FLOW_SINGLETON) ? 1 : getgpsegmentCount();
 	
-	flow = makeFlow(FLOW_SINGLETON);
-	flow->segindex = segindex;
-	flow->locustype = (segindex==-1)? CdbLocusType_Entry : CdbLocusType_SingleQE;
-	
 	if ( keep_ordering && subplan->flow->numSortCols > 0 )
 	{
-		Flow *f = subplan->flow;
-		int i;
-		int n = f->numSortCols;
-		flow->numSortCols = n;
-		flow->sortColIdx = palloc(n * sizeof(AttrNumber));
-		flow->sortOperators = palloc (n * sizeof(Oid));
-		for ( i = 0; i < n; i++ )
-		{
-			flow->sortColIdx[i] = f->sortColIdx[i];
-			flow->sortOperators[i] = f->sortOperators[i];
-		}
-		
+		Flow *flow = subplan->flow;
+			
 		motion = make_sorted_union_motion(
 			subplan,
 			false, /* sendToSecondary */
@@ -360,8 +350,6 @@ Motion* make_motion_gather(Plan *subplan, int segindex, bool keep_ordering)
 			flow->numSortCols, /* Motion and Flow can share arrays. */
 			flow->sortColIdx,
 			flow->sortOperators);
-			
-		motion->plan.flow = flow;
 	}
 	else
 	{
@@ -370,8 +358,6 @@ Motion* make_motion_gather(Plan *subplan, int segindex, bool keep_ordering)
 			false, /* sendToSecondary */
 			numInputSegs,
 			segindex);
-
-		motion->plan.flow = flow;
 	}
 	
 	return motion;
@@ -398,25 +384,55 @@ Motion* make_motion_hash_all_targets(PlannerInfo *root, Plan *subplan)
 Motion* make_motion_hash(PlannerInfo *root, Plan *subplan, List *hashexprs)
 {
 	Motion *motion;
-	Flow *flow;
 	int numInputSegs;
 	
 	Assert(subplan->flow != NULL);
 	
 	numInputSegs =  (subplan->flow->flotype == FLOW_SINGLETON) ? 1 : getgpsegmentCount();
 	
-	flow = makeFlow(FLOW_PARTITIONED);
-	flow->hashExpr = hashexprs;
-	flow->locustype = CdbLocusType_Hashed;
-	
 	motion = make_hashed_motion(
 		subplan,
 		false, /* sendToSecondary */
 		numInputSegs,
 		hashexprs);
-	motion->plan.flow = flow;
-	
+
 	return motion;
+}
+
+/* 
+ * make_motion_multiplex
+ *		Add a motion on top of the given subplan.
+ *		This should only be applied on top of a non-replicated, non-root subplan.
+ *		The motion node created here is a multiplex motion, but no slice, route.
+ *		Slice and routes should be added later.  Also, this motion does NOT have a
+ * 		flow in plan.flow.  The flow is also multiplexed for this motion and will be
+ *      constructed later when slice/route are added.
+ */
+Motion *make_motion_multiplex(PlannerInfo *root, Plan *subplan)
+{
+	Motion *motion;
+	int numInputSegs;
+	Assert(subplan->flow != NULL);
+
+	numInputSegs =  (subplan->flow->flotype == FLOW_SINGLETON) ? 1 : getgpsegmentCount();
+
+	motion = make_multiplex_motion(subplan, numInputSegs);
+	return motion;
+}
+
+/* Get flow of a motion node */
+Flow *get_motion_flow(Motion *node, int sliceIdx)
+{
+	MotionSliceEntry *slice = (MotionSliceEntry *) list_nth(node->sliceEntries, sliceIdx);
+	Assert(slice);
+	return slice->flow;
+}
+
+Flow *get_plan_flow(Plan *node)
+{
+	if(IsA(node, Motion))
+		return get_motion_flow((Motion *)node, 0);
+	return node->flow;
 }
 
 /*
@@ -479,7 +495,7 @@ void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort)
 	Plan *subplan = NULL;
 	bool is_subquery = IsA(plan, SubqueryScan);
 
-	Assert( is_plan_node((Node*)plan) && plan->flow == NULL );
+	Assert( is_plan_node((Node*)plan) && get_plan_flow(plan) == NULL );
 	
 	if ( is_subquery )
 	{
@@ -490,9 +506,9 @@ void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort)
 		subplan = plan->lefttree;
 	}
 	
-	Assert( subplan != NULL && subplan->flow != NULL );
+	Assert( subplan != NULL && get_plan_flow(subplan) != NULL); 
 	
-	flow = copyFlow(subplan->flow, with_hash && !is_subquery, with_sort);
+	flow = copyFlow(get_plan_flow(subplan), with_hash && !is_subquery, with_sort);
 	
 	
 	if ( is_subquery && with_hash && flow->flotype == FLOW_PARTITIONED )
@@ -501,12 +517,13 @@ void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort)
 		TargetEntry *tle;
 		List *hash = NIL;
 		Index i = 0;
+		Flow *subplanflow = get_plan_flow(subplan);
 		
 		/* Make sure all the expressions the flow thinks we're hashed on
 		 * occur, in order, at the beginning of the subplan targetlist. 
          * (Why does it matter that they are in order and at the beginning??)
 		 */
-		foreach( c, subplan->flow->hashExpr )
+		foreach( c, subplanflow->hashExpr )
 		{
 			Node *x = (Node*)lfirst(c);
 

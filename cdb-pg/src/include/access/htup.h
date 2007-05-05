@@ -308,7 +308,6 @@ do { \
 	(tup)->t_infomask2 = ((tup)->t_infomask2 & ~HEAP_NATTS_MASK) | (natts) \
 )
 
-
 /*
  * BITMAPLEN(NATTS) -
  *		Computes size of null bitmap given number of data columns.

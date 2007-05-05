@@ -551,9 +551,17 @@ pull_up_Flow(Plan *plan, Plan *subplan, bool withSort)
 	Flow	   *model_flow;
 	Flow	   *new_flow;
 
-	Insist(subplan && subplan->flow);
+	Insist(subplan);
 
-	model_flow = subplan->flow;
+	if(plan->sliceNum > 0)
+	{
+		Assert(IsA(subplan, Motion));
+		model_flow = get_motion_flow((Motion *) subplan, plan->sliceNum);
+	}
+	else
+		model_flow = get_plan_flow(subplan);
+
+	Insist(model_flow);
 
 	new_flow = makeFlow(model_flow->flotype);
 
@@ -654,6 +662,8 @@ is_plan_node(Node *node)
 		case T_SetOp:
 		case T_Limit:
 		case T_Motion:
+		case T_ShareInputScan:
+		case T_Window:
 			return true;
 
 		default:

@@ -143,6 +143,11 @@ typedef struct AllocSetContext
 	Size		maxBlockSize;	/* maximum block size */
 	Size		nextBlockSize;	/* next block size to allocate */
 	AllocBlock	keeper;			/* if not NULL, keep this block over resets */
+
+#ifdef MEMORY_CONTEXT_CHECKING_XXX_FTIAN_LEAKING
+	Size 		totalAllocSize; /* total allocated bytes out of the context */
+#endif
+
 } AllocSetContext;
 
 typedef AllocSetContext *AllocSet;
@@ -329,6 +334,10 @@ AllocSetContextCreate(MemoryContext parent,
 	context->maxBlockSize = maxBlockSize;
 	context->nextBlockSize = initBlockSize;
 
+#ifdef MEMORY_CONTEXT_CHECKING_XXX_FTIAN_LEAKING
+	context->totalAllocSize = 0;
+#endif
+
 	/*
 	 * Grab always-allocated space, if requested
 	 */
@@ -409,6 +418,10 @@ AllocSetReset(MemoryContext context)
 #ifdef MEMORY_CONTEXT_CHECKING
 	/* Check for corruption and leaks before freeing */
 	AllocSetCheck(context);
+#endif
+
+#ifdef MEMORY_CONTEXT_CHECKING_XXX_FTIAN_LEAKING
+	set->totalAllocSize = 0;
 #endif
 
 	/* Clear chunk freelists */
@@ -510,6 +523,11 @@ AllocSetAlloc(MemoryContext context, Size size)
 	Size		blksize;
 
 	AssertArg(AllocSetIsValid(set));
+
+#ifdef MEMORY_CONTEXT_CHECKING_XXX_FTIAN_LEAKING
+	set->totalAllocSize += size;
+	Assert(set->totalAllocSize <= 200 * 1024 * 1024);
+#endif
 
 	/*
 	 * If requested size exceeds maximum for chunks, allocate an entire block

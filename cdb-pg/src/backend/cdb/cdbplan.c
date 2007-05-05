@@ -282,6 +282,12 @@ plan_tree_walker(Node *node,
 			/* Other fields are simple items and lists of simple items. */
 			break;
 
+		case T_Window:
+			if (walk_plan_node_fields((Plan *) node, walker, context))
+				return true;
+			/* Other fields are simple items and lists of simple items. */
+			break;
+
 		case T_Unique:
 			if (walk_plan_node_fields((Plan *) node, walker, context))
 				return true;
@@ -309,19 +315,39 @@ plan_tree_walker(Node *node,
 		case T_Motion:
 			if (walk_plan_node_fields((Plan *) node, walker, context))
 				return true;
+			else
+			{
+				bool allOK = true;
 
-			if (walker((Node *) ((Motion *) node)->hashExpr, context))
-				return true;
+				ListCell *sliceCell;
+				foreach(sliceCell, ((Motion *) node)->sliceEntries)
+				{
+					MotionSliceEntry *sliceEntry = (MotionSliceEntry *) lfirst(sliceCell);
+					Assert(IsA(sliceEntry, MotionSliceEntry));
 
-			if (walker((Node *) ((Motion *) node)->hashDataTypes, context))
-				return true;
+					if (walker((Node *) sliceEntry->hashExpr, context))
+					{
+						if (!walker((Node *) sliceEntry->hashDataTypes, context))
+							allOK = false;
+					}
+					else
+						allOK = false;
+				}
+				if(allOK)
+					return true;
+			}
 
 			break;
 
 		case T_AdaptiveNestLoop:
 			if (walk_plan_node_fields((Plan *) node, walker, context))
 				return true;
-            break;
+			break;
+
+		case T_ShareInputScan:
+			if (walk_plan_node_fields((Plan *) node, walker, context))
+				return true;
+			break;
 
 		case T_Flow:
 			/* Nothing to walk in Flow nodes at present. */
@@ -789,6 +815,17 @@ plan_tree_mutator(Node *node,
 			}
 			break;
 
+		case T_ShareInputScan:
+			{
+				ShareInputScan *sis = (ShareInputScan *) node;
+				ShareInputScan *newsis;
+
+				FLATCOPY(newsis, sis, ShareInputScan);
+				PLANMUTATE(newsis, sis);
+				return (Node *) newsis;
+			}
+			break;
+
 		case T_Material:
 			{
 				Material   *material = (Material *) node;
@@ -834,6 +871,34 @@ plan_tree_mutator(Node *node,
 				PLANMUTATE(newagg, agg);
 				COPYARRAY(newagg, agg, numCols, grpColIdx);
 				return (Node *) newagg;
+			}
+			break;
+
+		case T_Window:
+			{
+				Window	   *window = (Window *) node;
+				Window	   *newwindow;
+
+				FLATCOPY(newwindow, window, Window);
+				PLANMUTATE(newwindow, window);
+				
+				COPYARRAY(newwindow, window, numPartCols, partColIdx);
+				MUTATE(newwindow->windowKeys, window->windowKeys, List *);
+				
+				return (Node *) newwindow;
+			}
+			break;
+		
+		case T_WindowKey:
+			{
+				WindowKey	*key = (WindowKey *)node;
+				WindowKey	*newkey;
+				
+				FLATCOPY(newkey, key, WindowKey);
+				COPYARRAY(newkey, key, numSortCols, sortColIdx);
+				MUTATE(newkey->frame, key->frame, WindowFrame *);
+				
+				return (Node *) newkey;
 			}
 			break;
 
@@ -893,13 +958,25 @@ plan_tree_mutator(Node *node,
 				FLATCOPY(newmotion, motion, Motion);
 				PLANMUTATE(newmotion, motion);
                 COPYARRAY(newmotion, motion, numInputSegs, inputSegIdx);
-				COPYARRAY(newmotion, motion, numHashSegs, hashSegIdx);
-				MUTATE(newmotion->hashExpr, motion->hashExpr, List *);
-				MUTATE(newmotion->hashDataTypes, motion->hashDataTypes, List *);
-				COPYARRAY(newmotion, motion, numOutputSegs, outputSegIdx);
+				MUTATE(newmotion->sliceEntries, motion->sliceEntries, List *);
 				COPYARRAY(newmotion, motion, numSortCols, sortColIdx);
 				COPYARRAY(newmotion, motion, numSortCols, sortOperators);
 				return (Node *) newmotion;
+			}
+			break;
+
+		case T_MotionSliceEntry:
+			{
+				MotionSliceEntry *sliceEntry = (MotionSliceEntry *) node;
+				MotionSliceEntry *newsliceEntry;
+
+				FLATCOPY(newsliceEntry, sliceEntry, MotionSliceEntry);
+				COPYARRAY(newsliceEntry, sliceEntry, numHashSegs, hashSegIdx);
+				MUTATE(newsliceEntry->hashExpr, sliceEntry->hashExpr, List *);
+				MUTATE(newsliceEntry->hashDataTypes, sliceEntry->hashDataTypes, List *);
+				COPYARRAY(newsliceEntry, sliceEntry, numOutputSegs, outputSegIdx);
+			
+				return (Node *) newsliceEntry;
 			}
 			break;
 
@@ -1021,6 +1098,9 @@ plan_tree_mutator(Node *node,
 		case T_SetToDefault:
 		case T_RangeTblRef:
 		case T_Aggref:
+		case T_WindowRef:
+		case T_WindowFrame:
+		case T_WindowFrameEdge:
 		case T_ArrayRef:
 		case T_FuncExpr:
 		case T_OpExpr:

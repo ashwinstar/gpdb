@@ -1,3 +1,4 @@
+
 /*-------------------------------------------------------------------------
  *
  * plannodes.h
@@ -58,6 +59,7 @@ typedef struct Plan
 	 */
 	List	   *targetlist;		/* target list to be computed at this node */
 	List	   *qual;			/* implicitly-ANDed qual conditions */
+
 	struct Plan *lefttree;		/* input plan tree(s) */
 	struct Plan *righttree;
 	List	   *initPlan;		/* Init Plan nodes (un-correlated expr
@@ -124,6 +126,18 @@ typedef struct Plan
 	  */
 	Node *sliceTable;
 	
+	/* 
+	 * CDB: We need to know which slice we need if the underlying
+	 * node is a multiplexed motion
+	 */
+	int sliceNum;
+
+	/* 
+	 * We need to know the sharing_id, if this node is a share node
+	 * We need to know the underlying shared id, if this node use a share node
+	 */
+	int sharing_id;
+	int shared_id;
 } Plan;
 
 /* ----------------
@@ -365,7 +379,7 @@ typedef struct ExternalScan
 	List		*fmtOpts;   /* data format options                */
 	bool		isText;     /* true for text false for csv        */
 	uint32      scancounter;	/* counter incr per scan node created */
-	
+
 } ExternalScan;
 
 /*
@@ -453,6 +467,52 @@ typedef struct Material
     bool        cdb_strict;
 } Material;
 
+/*
+ * Share type of sharing a node.
+ */
+typedef enum ShareNode_ShareType
+{
+	SHARENODE_UNKNOWN, 
+	SHARENODE_MATERIAL, 
+	SHARENODE_SORT, 
+	/* Unsupported yet.  SHARENODE_HASH, */
+	SHARENODE_MOTION,
+} ShareNode_ShareType;
+
+/* Special share ids:
+ * A share id >= 0 means the node is shared, and the share id is set up correctly,
+ * that is, the share id is the index into the ShareNodeEntry of the estate.
+ *
+ * We need some special share ids during planning.  
+ */
+typedef enum ShareNode_SpecialShareId
+{
+	ShareNodeId_NotShared = -1,
+	ShareNodeId_Shared = -2, 
+
+	/* Max share node id.  We do not allow node sharing go beyond some sane limit */
+	ShareNodeId_Max = 100
+} ShareNode_SpecialShareId;
+
+#define IS_VALID_SHARE_ID(shareid) ((shareid) >= 0 && (shareid) < ShareNodeId_Max)
+
+/* ----------------
+ *		shareinputscan node
+ * ----------------
+ */
+typedef struct ShareInputScan
+{
+	Plan 	plan; /* The ShareInput */
+
+	/* If we share scan on a material and a multiplex motion, we need to 
+	 * know if the tuple from Matrial is really for this node.
+	 */
+	int			numHashSegs;		/* number of segindexes in hashSegIdx array */	
+	int			*hashSegIdx;		/* array of segindex values to hash to */
+	List		*hashExpr;			/* list of hash expressions */
+	List		*hashDataTypes;	    /* list of hash expr data type oids */
+} ShareInputScan;
+
 /* ----------------
  *		sort node
  * ----------------
@@ -480,6 +540,41 @@ typedef struct Group
 	Plan		plan;
 	int			numCols;		/* number of grouping columns */
 	AttrNumber *grpColIdx;		/* their indexes in the target list */
+
+	/*
+	 * The following are used by ROLLUP.
+	 */
+
+	/*
+	 * The number of null grouping columns for this node.
+	 */
+	int         numNullCols;
+
+    /*
+	 * Indicate which rollup level will this Group node process, starting from 1.
+	 * Refer to struct Agg for details.
+	 *
+	 * If this is not for a rollup, this value is 0.
+	 */
+	int rollupLevel;
+
+	/* The value of GROUPING for this rollup-aware node. */
+	uint64 grouping;
+
+	/*
+	 * How many times the aggregates in this rollup level will be output
+	 * for a given query. Used only for ROLLUP queries.
+	 */
+	int         rollupGSTimes;
+
+	/*
+	 * Indicate if this Group node is the last one in a rollup.
+	 *
+	 * We need to output tuples for duplicate grouping sets at the final
+	 * Group node. Unlike Agg nodes, we do not have a way to tell if
+	 * a Group node is the final one. We add this value for this purpose.
+	 */
+	bool        lastGroup;
 } Group;
 
 /* ---------------
@@ -511,7 +606,92 @@ typedef struct Agg
 	AttrNumber *grpColIdx;		/* their indexes in the target list */
 	long		numGroups;		/* estimated number of groups in input */
 	int			transSpace;		/* est storage per group for byRef transition values */
+
+	/*
+	 * The following is used by ROLLUP.
+	 */
+
+	/*
+	 * The number of null grouping columns for this node.
+	 */
+	int         numNullCols;
+
+    /*
+	 * Indicate which rollup level will this Agg node process, starting from 1.
+	 * For example of ROLLUP(a,b,c), there are four Agg nodes:
+	 *
+	 *   Agg(a,b,c) ==> Agg(a,b) ==> Agg(a) ==> Agg()
+	 *
+	 * The rollup level for Agg(a,b,c) is 1, and the rollup level for Agg(a,b)
+	 * is 2, and so on.
+	 *
+	 * We also use the value "-1" to indicate an Agg node is the final
+	 * one that brings back all rollup results from different segments. This final
+	 * Agg node is very similar to the non-rollup Agg node, except that we need
+	 * a way to know this to properly set GROUPING_ID value during execution.
+	 *
+	 * For a non-rollup Agg node, this value is 0.
+	 */
+	int rollupLevel;
+
+	/* The value of GROUPING for this rollup-aware node. */
+	uint64 grouping;
+
+	/*
+	 * How many times the aggregates in this rollup level will be output
+	 * for a given query. Used only for ROLLUP queries.
+	 */
+	int         rollupGSTimes;
 } Agg;
+
+/* ---------------
+ *		window node
+ *
+ * A Window node implements window functions over zero or more
+ * ordering/framing specifications within a partition specification on
+ * appropriately ordered input.
+ * 
+ * For example, if there are window functions
+ * 
+ *   over (partition by a,b orderby c) and 
+ *   over (partition by a,b order by c,d,e)
+ * 
+ * then the input (outer plan) of the window node will be sorted by
+ * (a,b,c,d,e) -- the common partition key (a,b) and the partial
+ * ordering keys (c) and (d,e).
+ * 
+ * A Window node contains no direct information about the window
+ * functions it computes.  Those functions are found by scanning
+ * the node's targetlist for WindowRef nodes during executor startup.
+ * There need not be any, but there's no good reason for the planner
+ * to construct a Window node without at least one WindowRef.
+ * 
+ * A WindowRef is related to its Window node by the fact that it is
+ * contained by it.  It may also be related to a particular WindowKey
+ * node in the windowKeys list.  The WindowRef field winlevel is the
+ * position (counting from 0) of its WindowKey.  If winlevel equals
+ * the length of the windowKeys list, than it has not WindowKey an
+ * applied to the unordered partition as a whole.
+ * 
+ * A WindowKey specifies a partial ordering key.  It may optionally
+ * specify framing.  The actual ordering key at a given level is the
+ * concatenation of the partial ordering keys prior to and including
+ * that level.
+ * 
+ * For example, the ordering key for the WindowKey in position 2 of
+ * the windowKeys list is the concatenation of the partial keys found
+ * in positions 0 through 2. *
+ * ---------------
+ */
+typedef struct Window
+{
+	Plan			plan;
+	int				numPartCols;	/* number of partitioning columns */
+	AttrNumber	   *partColIdx;		/* their indexes in the target list
+									   of the window's outer plan.  */
+	List	       *windowKeys;		/* list of WindowKey nodes */
+} Window;
+
 
 /* ----------------
  *		unique node
@@ -577,9 +757,26 @@ typedef struct Limit
 typedef enum MotionType
 {
 	MOTIONTYPE_HASH,		/* Use hashing to select a segindex destination */
-	MOTIONTYPE_FIXED		/* Send tuples to a fixed set of segindexes */
+	MOTIONTYPE_FIXED,		/* Send tuples to a fixed set of segindexes */
 } MotionType;
 
+typedef struct MotionSliceEntry
+{
+	NodeTag 	type;
+	MotionType  motionType;
+
+	/* For Hash */
+	int			numHashSegs;		/* number of segindexes in hashSegIdx array */	
+	int			*hashSegIdx;		/* array of segindex values to hash to */
+	List		*hashExpr;			/* list of hash expressions */
+	List		*hashDataTypes;	    /* list of hash expr data type oids */
+
+	/* For Fixed */
+	int 	  	numOutputSegs;		/* number of seg indexes in outputSegIdx array, 0 for broadcast */
+	int 	 	*outputSegIdx; 	 	/* array of output segindexes */
+
+	Flow 		*flow;				/* flow associated with this route */
+} MotionSliceEntry;
 
 /*
  * Motion Node
@@ -588,7 +785,6 @@ typedef enum MotionType
 typedef struct Motion
 {
 	Plan		plan;
-	MotionType	motionType;
 	bool		sendToSecondary;	/* if true, secondary instances will get sent tuples as well as primary */
 	bool		sendSorted;			/* if true, output should be sorted */
 	int			motionID;			/* required by AMS  */
@@ -596,21 +792,26 @@ typedef struct Motion
     /* The sending gang */
     int			numInputSegs;		/* number of sending processes */
 	int        *inputSegIdx;		/* array of input segids (NULL=>default) */
-	
-	/* The following fields are only used when motionType == MOTIONTYPE_HASH */
-	int			numHashSegs;		/* number of segindexes in hashSegIdx array */	
-	int			*hashSegIdx;		/* array of segindex values to hash to */
-	List		*hashExpr;			/* list of hash expressions */
-	List		*hashDataTypes;	    /* list of hash expr data type oids */
-	
-	/* The following field is only used when motionType == MOTIONTYPE_FIXED */
-	int			numOutputSegs;		/* number of segindexes in outputSegIdx array (0 means broadcast to all) */	
-	int			*outputSegIdx;		/* array of output segindexes */
+
+	List       *sliceEntries;       /* for each output slice */
 
 	/* The following field is only used when sendSorted == true */
 	int			numSortCols;		/* number of sort key columns */
 	AttrNumber	*sortColIdx;		/* their indexes in target list */
 	Oid			*sortOperators;		/* OID of operators to sort them by */
+
+	/* ShareInput related:
+	 * We need flags to indicate if set_plan_references has been called on this node, to prevent 
+	 * calling twice (will error).
+	 *
+	 * so is mutated for mutate.
+	 */
+	bool 		fSetPlanRef;        
+	Plan      	*mutated;
 } Motion;
+
+extern Flow* get_motion_flow(Motion *node, int sliceIdx);
+extern Flow* get_plan_flow(Plan *node);
+
 
 #endif   /* PLANNODES_H */

@@ -70,11 +70,22 @@ FunctionNext(FunctionScanState *node)
 		ExprContext *econtext = node->ss.ps.ps_ExprContext;
 		TupleDesc	funcTupdesc;
 
-		node->tuplestorestate = tuplestorestate =
-			ExecMakeTableFunctionResult(node->funcexpr,
-										econtext,
-										node->tupdesc,
-										&funcTupdesc);
+		tuplestorestate = ExecMakeTableFunctionResult(
+				node->funcexpr,
+				econtext,
+				node->tupdesc,
+				&funcTupdesc);
+		node->tuplestorestate = tuplestorestate;
+
+        /* CDB: Offer extra info for EXPLAIN ANALYZE. */
+        if (node->ss.ps.instrument)
+        {
+            /* Let the tuplestore share our Instrumentation object. */
+            tuplestore_set_instrument(tuplestorestate, node->ss.ps.instrument);
+
+            /* Request a callback at end of query. */
+            node->ss.ps.cdbexplainfun = ExecFunctionScanExplainEnd;
+        }
 
         /* CDB: Offer extra info for EXPLAIN ANALYZE. */
         if (node->ss.ps.instrument)
@@ -99,7 +110,7 @@ FunctionNext(FunctionScanState *node)
 	 * Get the next tuple from tuplestore. Return NULL if no more tuples.
 	 */
 	slot = node->ss.ss_ScanTupleSlot;
-	if (tuplestore_gettupleslot(tuplestorestate,
+	if (tuplestore_gettupleslot(tuplestorestate, 
 								ScanDirectionIsForward(direction),
 								slot))
 	{
@@ -322,7 +333,7 @@ ExecEndFunctionScan(FunctionScanState *node)
 	 * Release tuplestore resources
 	 */
 	if (node->tuplestorestate != NULL)
-		tuplestore_end(node->tuplestorestate);
+		tuplestore_end(node->tuplestorestate); 
 	node->tuplestorestate = NULL;
 }
 
@@ -343,7 +354,7 @@ ExecFunctionMarkPos(FunctionScanState *node)
 
     node->cdb_mark_ctid = node->cdb_fake_ctid;
 
-	tuplestore_markpos(node->tuplestorestate);
+	tuplestore_markpos(node->tuplestorestate); 
 }
 
 /* ----------------------------------------------------------------

@@ -60,11 +60,20 @@ ExecMaterial(MaterialState *node)
 	/*
 	 * If first time through, and we need a tuplestore, initialize it.
 	 */
-	if (tuplestorestate == NULL && node->randomAccess)
+	if (tuplestorestate == NULL && (node->ss.ps.plan->sharing_id >= 0 || node->randomAccess))
 	{
-		tuplestorestate = tuplestore_begin_heap(true, false, work_mem);
-
+		tuplestorestate = tuplestore_begin_heap(true, false, work_mem); 
 		node->tuplestorestate = (void *) tuplestorestate;
+
+        /* CDB: Offer extra info for EXPLAIN ANALYZE. */
+        if (node->ss.ps.instrument)
+        {
+            /* Let the tuplestore share our Instrumentation object. */
+            tuplestore_set_instrument(tuplestorestate, node->ss.ps.instrument);
+
+            /* Request a callback at end of query. */
+            node->ss.ps.cdbexplainfun = ExecMaterialExplainEnd;
+        }
 
         /* CDB: Offer extra info for EXPLAIN ANALYZE. */
         if (node->ss.ps.instrument)
@@ -82,7 +91,13 @@ ExecMaterial(MaterialState *node)
 		 * and sending Motion operators to neutralize a deadlock hazard.
 		 * MPP TODO: Remove when a better solution is implemented.
 		 */
-		while (((Material *) node->ss.ps.plan)->cdb_strict)
+		/*
+		 * ShareInput: if sharing_id is not -1, that is, the material node
+		 * is used to share input, we will need to fetch all rows and put
+		 * them in tuple store
+		 */
+		while (((Material *) node->ss.ps.plan)->cdb_strict 
+				|| node->ss.ps.plan->sharing_id >= 0)
 		{
 			TupleTableSlot *outerslot = ExecProcNode(outerPlanState(node));
 
@@ -94,8 +109,11 @@ ExecMaterial(MaterialState *node)
 			}
 			tuplestore_puttupleslot(tuplestorestate, outerslot);
 		}
-
 	}
+
+	/* for share input, material do not need to return any tuple */
+	if(node->ss.ps.plan->sharing_id >= 0)
+		return NULL;
 
 	/*
 	 * If we are not at the end of the tuplestore, or are going backwards, try
@@ -244,6 +262,16 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 	ExecAssignScanTypeFromOuterPlan(&matstate->ss);
 	matstate->ss.ps.ps_ProjInfo = NULL;
 
+	/*
+	 * If share input, need to register with range table entry
+	 */
+	if(node->plan.sharing_id >= 0)
+	{
+		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, node->plan.sharing_id, true); 
+		snEntry->sharePlan = (Node *) node;
+		snEntry->shareState = (Node *) matstate;
+	}
+
 	return matstate;
 }
 
@@ -283,15 +311,18 @@ void
 ExecEndMaterial(MaterialState *node)
 {
 	/*
-	 * clean out the tuple table
+	 * clean out the tuple table.  Normal case ps_ResultTupleSlot has
+	 * been cleared by Exec.  Only need to clear it for share input
 	 */
+	if(node->ss.ps.plan->sharing_id >= 0)
+		ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
 	/*
 	 * Release tuplestore resources
 	 */
 	if (node->tuplestorestate != NULL)
-		tuplestore_end((Tuplestorestate *) node->tuplestorestate);
+		tuplestore_end((Tuplestorestate *) node->tuplestorestate); 
 	node->tuplestorestate = NULL;
 
 	/*
@@ -310,6 +341,8 @@ void
 ExecMaterialMarkPos(MaterialState *node)
 {
 	Assert(node->randomAccess);
+	/* share input should never call this */
+	Assert(node->ss.ps.plan->sharing_id < 0);
 
 	/*
 	 * if we haven't materialized yet, just return.
@@ -330,6 +363,8 @@ void
 ExecMaterialRestrPos(MaterialState *node)
 {
 	Assert(node->randomAccess);
+	/* share input should never call this */
+	Assert(node->ss.ps.plan->sharing_id < 0);
 
 	/*
 	 * if we haven't materialized yet, just return.
@@ -340,7 +375,7 @@ ExecMaterialRestrPos(MaterialState *node)
 	/*
 	 * restore the scan to the previously marked position
 	 */
-	tuplestore_restorepos((Tuplestorestate *) node->tuplestorestate);
+	tuplestore_restorepos((Tuplestorestate *) node->tuplestorestate); 
 }
 
 /* ----------------------------------------------------------------
@@ -352,6 +387,9 @@ ExecMaterialRestrPos(MaterialState *node)
 void
 ExecMaterialReScan(MaterialState *node, ExprContext *exprCtxt)
 {
+	/* share input should never call this */
+	Assert(node->ss.ps.plan->sharing_id < 0);
+
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 
 	if (node->randomAccess)
@@ -373,12 +411,12 @@ ExecMaterialReScan(MaterialState *node, ExprContext *exprCtxt)
 		 */
 		if (((PlanState *) node)->lefttree->chgParam != NULL)
 		{
-			tuplestore_end((Tuplestorestate *) node->tuplestorestate);
+			tuplestore_end((Tuplestorestate *) node->tuplestorestate); 
 			node->tuplestorestate = NULL;
 			node->eof_underlying = false;
 		}
 		else
-			tuplestore_rescan((Tuplestorestate *) node->tuplestorestate);
+			tuplestore_rescan((Tuplestorestate *) node->tuplestorestate); 
 	}
 	else
 	{

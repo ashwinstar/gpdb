@@ -246,7 +246,7 @@ static void doNegateFloat(Value *v);
 				target_list insert_column_list set_target_list
 				set_clause_list set_clause multiple_set_clause
 				ctext_expr_list ctext_row def_list indirection opt_indirection
-				group_clause TriggerFuncArgs select_limit
+				group_clause group_elem_list group_elem TriggerFuncArgs select_limit
 				opt_select_limit opclass_item_list
 				transaction_mode_list_or_empty
 				TableFuncElementList
@@ -294,7 +294,6 @@ static void doNegateFloat(Value *v);
 %type <istmt>	insert_rest
 
 %type <vsetstmt> set_rest
-
 %type <node>	TableElement ExtTableElement ConstraintElem TableFuncElement
 %type <node>	columnDef ExtcolumnDef
 %type <node>	cdb_string
@@ -302,6 +301,18 @@ static void doNegateFloat(Value *v);
 %type <node>	def_arg columnElem where_clause
 				a_expr b_expr c_expr func_expr AexprConst indirection_el
 				columnref in_expr having_clause func_table array_expr
+%type <list>	window_definition_list window_clause
+%type <boolean>	window_frame_units
+%type <ival>	window_frame_exclusion
+%type <node>	window_spec
+%type <node>	window_frame_extent
+				window_frame_start window_frame_preceding window_frame_between
+				window_frame_bound window_frame_following 
+				window_frame_clause opt_window_frame_clause
+%type <list>	window_partition_clause opt_window_partition_clause
+				opt_window_order_clause
+%type <str>		opt_window_name window_name
+
 %type <list>	row type_list array_expr_list
 %type <node>	case_expr case_arg when_clause case_default
 %type <list>	when_clause_list
@@ -377,20 +388,20 @@ static void doNegateFloat(Value *v);
 	CLUSTER COALESCE COLLATE COLUMN COMMENT COMMIT
 	COMMITTED CONCURRENTLY CONNECTION CONSTRAINT CONSTRAINTS CONVERSION_P CONVERT COPY COST
 	CREATE CREATEDB
-	CREATEROLE CREATEUSER CROSS CSV CURRENT_DATE CURRENT_ROLE CURRENT_TIME
-	CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
+	CREATEROLE CREATEUSER CROSS CSV CUBE CURRENT CURRENT_DATE CURRENT_ROLE 
+	CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
 
 	DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DEFAULT DEFAULTS
 	DEFERRABLE DEFERRED DEFINER DELETE_P DELIMITER DELIMITERS
 	DESC DISABLE_P DISTINCT DISTRIBUTED DO DOMAIN_P DOUBLE_P DROP
 
-	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ESCAPE EXCEPT EXCLUDING
-	EXCLUSIVE EXECUTE EXISTS EXPLAIN EXTERNAL EXTRACT
+	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ESCAPE EXCEPT 
+	EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN EXTERNAL EXTRACT
 
-	FALSE_P FETCH FIRST_P FLOAT_P FOR FORCE FOREIGN FORMAT FORWARD
+	FALSE_P FETCH FIRST_P FLOAT_P FOLLOWING FOR FORCE FOREIGN FORMAT FORWARD
 	FREEZE FROM FULL FUNCTION
 
-	GLOBAL GRANT GRANTED GREATEST GROUP_P
+	GLOBAL GRANT GRANTED GREATEST GROUP_P GROUP_ID GROUPING
 
 	HANDLER HAVING HEADER_P HOLD HOUR_P
 
@@ -414,35 +425,36 @@ static void doNegateFloat(Value *v);
 	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF NUMERIC
 
 	OBJECT_P OF OFF OFFSET OIDS OLD ON ONLY OPERATOR OPTION OR
-	ORDER OUT_P OUTER_P OVERCOMMIT OVERLAPS OVERLAY OWNED OWNER
+	ORDER OTHERS OUT_P OUTER_P OVER OVERCOMMIT OVERLAPS OVERLAY OWNED OWNER
 
-	PARTIAL PASSWORD PLACING POSITION
-	PRECISION PRESERVE PREPARE PREPARED PRIMARY
+	PARTIAL PARTITION PASSWORD PLACING POSITION
+	PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
 	PRIOR PRIVILEGES PROCEDURAL PROCEDURE
 
 	QUEUE QUOTE
 
-	RANDOMLY READ REAL REASSIGN RECHECK REFERENCES REINDEX RELATIVE_P RELEASE RENAME
-	REPEATABLE REPLACE RESET RESOURCE RESTART RESTRICT RETURNING RETURNS REVOKE RIGHT
-	ROLE ROLLBACK ROW ROWS RULE
+	RANDOMLY RANGE READ REAL REASSIGN RECHECK REFERENCES REINDEX RELATIVE_P 
+	RELEASE RENAME REPEATABLE REPLACE RESET RESOURCE RESTART RESTRICT 
+	RETURNING RETURNS REVOKE RIGHT
+	ROLE ROLLBACK ROLLUP ROW ROWS RULE
 
 	SAVEPOINT SCHEMA SCROLL SECOND_P SECURITY SELECT SEQUENCE
-	SERIALIZABLE SESSION SESSION_USER SET SETOF SHARE
+	SERIALIZABLE SESSION SESSION_USER SET SETOF SETS SHARE
 	SHOW SIMILAR SIMPLE SMALLINT SOME STABLE START STATEMENT
 	STATISTICS STDIN STDOUT STORAGE STRICT_P SUBSTRING SUPERUSER_P SYMMETRIC
 	SYSID SYSTEM_P
 
-	TABLE TABLESPACE TEMP TEMPLATE TEMPORARY THEN THRESHOLD TIME TIMESTAMP
+	TABLE TABLESPACE TEMP TEMPLATE TEMPORARY THEN THRESHOLD TIES TIME TIMESTAMP
 	TO TRAILING TRANSACTION TREAT TRIGGER TRIM TRUE_P
 	TRUNCATE TRUSTED TYPE_P
 
-	UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN UNTIL
+	UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN UNTIL
 	UPDATE USER USING
 
 	VACUUM VALID VALIDATOR VALUES VARCHAR VARYING
 	VERBOSE VIEW VOLATILE
 
-	WHEN WHERE WITH WITHOUT WORK WRITE
+	WHEN WHERE WINDOW WITH WITHOUT WORK WRITE
 
 	YEAR_P
 
@@ -5485,12 +5497,20 @@ opt_name_list:
  *
  *****************************************************************************/
 
-ExplainStmt: EXPLAIN opt_analyze opt_verbose ExplainableStmt
+ExplainStmt: EXPLAIN opt_analyze opt_verbose opt_force ExplainableStmt
 				{
 					ExplainStmt *n = makeNode(ExplainStmt);
 					n->analyze = $2;
 					n->verbose = $3;
-					n->query = (Query*)$4;
+#ifdef USE_FORCE_PLAN
+					n->force = $4;
+#else
+					if($4)
+						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR), 
+								errmsg("cannot use force with explain statement")
+							       ));
+#endif
+					n->query = (Query*)$5;
 					$$ = (Node *)n;
 				}
 		;
@@ -5967,7 +5987,7 @@ select_clause:
 simple_select:
 			SELECT opt_distinct target_list
 			into_clause from_clause where_clause
-			group_clause having_clause
+			group_clause having_clause window_clause
 				{
 					SelectStmt *n = makeNode(SelectStmt);
 					n->distinctClause = $2;
@@ -5978,6 +5998,7 @@ simple_select:
 					n->whereClause = $6;
 					n->groupClause = $7;
 					n->havingClause = $8;
+					n->windowClause = $9;
 					$$ = (Node *)n;
 				}
 			| values_clause							{ $$ = $1; }
@@ -6152,13 +6173,197 @@ select_offset_value:
 		;
 
 group_clause:
-			GROUP_P BY expr_list					{ $$ = $3; }
+			GROUP_P BY group_elem_list				{ $$ = $3; }
 			| /*EMPTY*/								{ $$ = NIL; }
 		;
+
+group_elem_list:
+            group_elem                                { $$ = $1; }
+            | group_elem_list ',' group_elem            { $$ = list_concat($1, $3); }
+        ;
+
+group_elem:
+			a_expr                                  { $$ = list_make1($1); }
+			| ROLLUP '(' expr_list ')'
+                {
+					GroupingClause *n = makeNode(GroupingClause);
+					n->groupType = ROLLUP_TYPE;
+					n->groupsets = $3;
+					$$ = list_make1 ((Node*)n);
+				}
+            | CUBE '(' expr_list ')'
+                {
+					GroupingClause *n = makeNode(GroupingClause);
+					n->groupType = CUBE_TYPE;
+					n->groupsets = $3;
+					$$ = list_make1 ((Node*)n);
+				}
+            | GROUPING SETS '(' group_elem_list ')'
+                {
+					GroupingClause *n = makeNode(GroupingClause);
+					n->groupType = GROUPING_SETS_TYPE;
+					n->groupsets = $4;
+					$$ = list_make1 ((Node*)n);
+				}
+            | '(' ')'
+                { $$ = list_make1(NIL); }
+        ;
 
 having_clause:
 			HAVING a_expr							{ $$ = $2; }
 			| /*EMPTY*/								{ $$ = NULL; }
+		;
+
+window_clause:
+			WINDOW window_definition_list			{ $$ = $2; }
+			| /*EMPTY*/								{ $$ = NIL; }
+		;
+
+window_definition_list: 
+			window_name AS '(' window_spec ')'
+				{
+                    ((WindowSpec *)$4)->name = $1;
+					$$ = list_make1($4);
+				}
+			| window_definition_list ',' window_name AS '(' window_spec ')'
+				{
+					((WindowSpec *)$6)->name = $3;
+					$$ = lappend($1, $6);
+				}
+		;
+
+window_spec: opt_window_name opt_window_partition_clause 
+				opt_window_order_clause opt_window_frame_clause
+				{
+					WindowSpec *n = makeNode(WindowSpec);
+					n->parent = $1;
+					n->partition = $2;
+					n->order = $3;
+					n->frame = (WindowFrame *)$4;
+					$$ = (Node *)n;
+				}
+		;
+
+opt_window_name: window_name { $$ = $1; }
+			| /*EMPTY*/ { $$ = NULL; }
+		;
+
+opt_window_partition_clause: window_partition_clause { $$ = $1; }
+			| /*EMPTY*/ { $$ = NIL; }
+		;
+
+window_partition_clause: PARTITION BY sortby_list { $$ = (List *)$3; }
+		;
+
+opt_window_order_clause: sort_clause { $$ = $1; }
+			| /*EMPTY*/ { $$ = NIL; }
+        ;
+
+opt_window_frame_clause: window_frame_clause { $$ = $1; }
+		| /*EMPTY*/ { $$ = NULL; }
+		;
+
+window_frame_clause: window_frame_units window_frame_extent 
+			window_frame_exclusion
+				{
+					WindowFrame *n = makeNode(WindowFrame);
+					n->is_rows = $1;
+					n->exclude = $3;
+
+					if (IsA($2, List))
+					{
+						List *ex = (List *)$2;
+
+						n->trail = (WindowFrameEdge *)linitial(ex);
+						n->lead = (WindowFrameEdge *)lsecond(ex);
+						n->is_between = true;
+					}
+					else
+					{
+						Assert(IsA($2, WindowFrameEdge));
+						n->trail = (WindowFrameEdge *)$2;
+						n->lead = NULL;
+						n->is_between = false;
+					}
+					$$ = (Node *)n;
+				}
+		;
+
+/* units are either rows (true) otherwise false */
+window_frame_units: ROWS { $$ = true; }
+			| RANGE { $$ = false; }
+		;
+
+window_frame_extent:
+			window_frame_start { $$ = $1; }
+			| window_frame_between { $$ = $1; }
+		;
+
+window_frame_start:
+			UNBOUNDED PRECEDING
+				{
+					WindowFrameEdge *n = makeNode(WindowFrameEdge);
+					n->kind = WINDOW_UNBOUND_PRECEDING;
+					n->val = NULL;
+					$$ = (Node *)n;
+				}
+			| window_frame_preceding
+				{
+					WindowFrameEdge *n = makeNode(WindowFrameEdge);
+					n->kind = WINDOW_BOUND_PRECEDING;
+					n->val = $1;
+					$$ = (Node *)n;
+				}
+		;
+
+window_frame_preceding: a_expr PRECEDING 
+				{ 
+					$$ = (Node *)$1;
+				}
+		;
+
+window_frame_between: 
+			BETWEEN window_frame_bound AND window_frame_bound
+				{
+					/* slightly dodgy hack */
+					$$ = (Node *)list_make2($2, $4);
+				}
+		;
+
+/*
+ * Be careful that we don't allow BETWEEN UNBOUND PRECEDING AND
+ * UNBOUND PRECEDING
+ */
+
+window_frame_bound:
+			window_frame_start { $$ = $1; }
+			| UNBOUNDED FOLLOWING 
+				{
+					WindowFrameEdge *n = makeNode(WindowFrameEdge);
+					n->kind = WINDOW_UNBOUND_FOLLOWING;
+					n->val = NULL;
+					$$ = (Node *)n;
+				}
+			| window_frame_following
+				{
+					WindowFrameEdge *n = makeNode(WindowFrameEdge);
+					n->kind = WINDOW_BOUND_FOLLOWING;
+					n->val = $1;
+					$$ = (Node *)n;
+				}
+		;
+
+window_frame_following: a_expr FOLLOWING 
+				{ 
+					$$ = (Node *)$1;
+				}
+		;
+
+window_frame_exclusion: EXCLUDE CURRENT ROW { $$ = WINDOW_EXCLUSION_CUR_ROW; }
+			| EXCLUDE GROUP_P { $$ = WINDOW_EXCLUSION_GROUP; }
+			| EXCLUDE TIES  { $$ = WINDOW_EXCLUSION_TIES; }
+			| EXCLUDE NO OTHERS { $$ = WINDOW_EXCLUSION_NO_OTHERS; }
+			| /*EMPTY*/ { $$ = WINDOW_EXCLUSION_NULL; }
 		;
 
 for_locking_clause:
@@ -7145,6 +7350,7 @@ a_expr:		c_expr									{ $$ = $1; }
 					n->args = list_make2($5, $1);
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @2;
 					$$ = (Node *) n;
 				}
@@ -7203,6 +7409,7 @@ a_expr:		c_expr									{ $$ = $1; }
 					n->args = list_make2($3, $5);
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @4;
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "~~", $1, (Node *) n, @2);
 				}
@@ -7215,6 +7422,7 @@ a_expr:		c_expr									{ $$ = $1; }
 					n->args = list_make2($4, $6);
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @5;
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "!~~", $1, (Node *) n, @2);
 				}
@@ -7227,6 +7435,7 @@ a_expr:		c_expr									{ $$ = $1; }
 					n->args = list_make2($3, $5);
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @4;
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "~~*", $1, (Node *) n, @2);
 				}
@@ -7239,6 +7448,7 @@ a_expr:		c_expr									{ $$ = $1; }
 					n->args = list_make2($4, $6);
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @5;
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "!~~*", $1, (Node *) n, @2);
 				}
@@ -7252,6 +7462,7 @@ a_expr:		c_expr									{ $$ = $1; }
 					n->args = list_make2($4, (Node *) c);
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @2;
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "~", $1, (Node *) n, @2);
 				}
@@ -7262,6 +7473,7 @@ a_expr:		c_expr									{ $$ = $1; }
 					n->args = list_make2($4, $6);
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @5;
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "~", $1, (Node *) n, @2);
 				}
@@ -7274,6 +7486,7 @@ a_expr:		c_expr									{ $$ = $1; }
 					n->args = list_make2($5, (Node *) c);
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @5;
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "!~", $1, (Node *) n, @2);
 				}
@@ -7284,6 +7497,7 @@ a_expr:		c_expr									{ $$ = $1; }
 					n->args = list_make2($5, $7);
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @6;
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_OP, "!~", $1, (Node *) n, @2);
 				}
@@ -7560,6 +7774,7 @@ b_expr:		c_expr
 				{
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_OF, "<>", $1, (Node *) $6, @2);
 				}
+
 		;
 
 /*
@@ -7571,6 +7786,22 @@ b_expr:		c_expr
  * ambiguity to the b_expr syntax.
  */
 c_expr:		columnref								{ $$ = $1; }
+			| func_expr OVER '(' window_spec ')'
+				{
+					/*
+					 * We break out the window function from func_expr
+					 * to avoid shift/reduce errors.
+					 */
+					if (IsA($1, FuncCall))
+						((FuncCall *)$1)->over = $4;
+					else
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("window OVER clause can only be used "
+										"with an aggregate")));
+
+					$$ = (Node *)$1;
+				}
 			| AexprConst							{ $$ = $1; }
 			| PARAM opt_indirection
 				{
@@ -7640,6 +7871,14 @@ c_expr:		columnref								{ $$ = $1; }
 				}
 		;
 
+
+/*
+ * Users can write their own inline specification or refer to a
+ * specification made after the WHERE clause
+ */
+
+window_name: ColId { $$ = $1; }
+		;
 /*
  * func_expr is split out from c_expr just so that we have a classification
  * for "everything that is a function call or looks like one".  This isn't
@@ -7656,6 +7895,7 @@ func_expr:	func_name '(' ')'
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->location = @1;
+					n->over = NULL;
 					$$ = (Node *)n;
 				}
 			| func_name '(' expr_list ')'
@@ -7666,6 +7906,7 @@ func_expr:	func_name '(' ')'
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->location = @1;
+					n->over = NULL;
 					$$ = (Node *)n;
 				}
 			| func_name '(' ALL expr_list ')'
@@ -7680,6 +7921,7 @@ func_expr:	func_name '(' ')'
 					 * for that in FuncCall at the moment.
 					 */
 					n->location = @1;
+					n->over = NULL;
 					$$ = (Node *)n;
 				}
 			| func_name '(' DISTINCT expr_list ')'
@@ -7690,6 +7932,7 @@ func_expr:	func_name '(' ')'
 					n->agg_star = FALSE;
 					n->agg_distinct = TRUE;
 					n->location = @1;
+					n->over = NULL;
 					$$ = (Node *)n;
 				}
 			| func_name '(' '*' ')'
@@ -7710,6 +7953,7 @@ func_expr:	func_name '(' ')'
 					n->agg_star = TRUE;
 					n->agg_distinct = FALSE;
 					n->location = @1;
+					n->over = NULL;
 					$$ = (Node *)n;
 				}
 			| CURRENT_DATE
@@ -7798,6 +8042,7 @@ func_expr:	func_name '(' ')'
 					n->args = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
 				}
@@ -7934,6 +8179,7 @@ func_expr:	func_name '(' ')'
 					n->args = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
 				}
@@ -7944,6 +8190,7 @@ func_expr:	func_name '(' ')'
 					n->args = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
 				}
@@ -7954,6 +8201,7 @@ func_expr:	func_name '(' ')'
 					n->args = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
 				}
@@ -7964,6 +8212,7 @@ func_expr:	func_name '(' ')'
 					n->args = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
 				}
@@ -7976,6 +8225,7 @@ func_expr:	func_name '(' ')'
 					n->args = $3;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
 				}
@@ -7991,6 +8241,7 @@ func_expr:	func_name '(' ')'
 					n->args = $3;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
 				}
@@ -8002,6 +8253,7 @@ func_expr:	func_name '(' ')'
 					n->args = $3;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
 				}
@@ -8015,6 +8267,7 @@ func_expr:	func_name '(' ')'
 					n->args = $3;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
 				}
@@ -8034,6 +8287,7 @@ func_expr:	func_name '(' ')'
 					n->args = list_make1($3);
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
 				}
@@ -8047,6 +8301,7 @@ func_expr:	func_name '(' ')'
 					n->args = $4;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
 				}
@@ -8057,6 +8312,7 @@ func_expr:	func_name '(' ')'
 					n->args = $4;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
 				}
@@ -8067,6 +8323,7 @@ func_expr:	func_name '(' ')'
 					n->args = $4;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
 				}
@@ -8077,6 +8334,7 @@ func_expr:	func_name '(' ')'
 					n->args = $3;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
 				}
@@ -8092,6 +8350,7 @@ func_expr:	func_name '(' ')'
 					n->args = list_make2($3, c);
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
 				}
@@ -8102,6 +8361,7 @@ func_expr:	func_name '(' ')'
 					n->args = $3;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
+					n->over = NULL;
 					n->location = @1;
 					$$ = (Node *)n;
 				}
@@ -8128,6 +8388,18 @@ func_expr:	func_name '(' ')'
 					v->args = $3;
 					v->op = IS_LEAST;
 					$$ = (Node *)v;
+				}
+            | GROUPING '(' expr_list ')'
+                {
+					GroupingFunc *f = makeNode(GroupingFunc);
+					f->args = $3;
+					$$ = (Node*)f;
+				}
+
+			| GROUP_ID '(' ')'
+				{
+					GroupId *gid = makeNode(GroupId);
+					$$ = (Node *)gid;
 				}
 		;
 
@@ -8832,6 +9104,7 @@ unreserved_keyword:
 			| CREATEROLE
 			| CREATEUSER
 			| CSV
+			| CURRENT
 			| CURSOR
 			| CYCLE
 			| DATABASE
@@ -8924,6 +9197,8 @@ unreserved_keyword:
 			| OIDS
 			| OPERATOR
 			| OPTION
+			| OTHERS
+			| OVER
 			| OVERCOMMIT
 			| OWNED
 			| OWNER
@@ -8955,7 +9230,6 @@ unreserved_keyword:
 			| REVOKE
 			| ROLE
 			| ROLLBACK
-			| ROWS
 			| RULE
 			| SAVEPOINT
 			| SCHEMA
@@ -8985,6 +9259,7 @@ unreserved_keyword:
 			| TEMPLATE
 			| TEMPORARY
 			| THRESHOLD
+			| TIES
 			| TRANSACTION
 			| TRIGGER
 			| TRUNCATE
@@ -9028,12 +9303,15 @@ col_name_keyword:
 			| CHARACTER
 			| COALESCE
 			| CONVERT
+			| CUBE
 			| DEC
 			| DECIMAL_P
 			| EXISTS
 			| EXTRACT
 			| FLOAT_P
 			| GREATEST
+			| GROUP_ID
+			| GROUPING
 			| INOUT
 			| INT_P
 			| INTEGER
@@ -9049,8 +9327,10 @@ col_name_keyword:
 			| POSITION
 			| PRECISION
 			| REAL
+			| ROLLUP
 			| ROW
 			| SETOF
+			| SETS
 			| SMALLINT
 			| SUBSTRING
 			| TIME
@@ -9073,7 +9353,6 @@ col_name_keyword:
  */
 func_name_keyword:
 			  AUTHORIZATION
-			| BETWEEN
 			| BINARY
 			| CROSS
 			| FREEZE
@@ -9131,7 +9410,9 @@ reserved_keyword:
 			| ELSE
 			| END_P
 			| EXCEPT
+			| EXCLUDE 
 			| FALSE_P
+			| FOLLOWING
 			| FOR
 			| FOREIGN
 			| FROM
@@ -9156,10 +9437,14 @@ reserved_keyword:
 			| ONLY
 			| OR
 			| ORDER
+			| PARTITION
 			| PLACING
+			| PRECEDING
 			| PRIMARY
+			| RANGE
 			| REFERENCES
 			| RETURNING
+			| ROWS
 			| SELECT
 			| SESSION_USER
 			| SOME
@@ -9169,10 +9454,12 @@ reserved_keyword:
 			| TO
 			| TRAILING
 			| TRUE_P
+			| UNBOUNDED
 			| UNION
 			| UNIQUE
 			| USER
 			| USING
+			| WINDOW
 			| WHEN
 			| WHERE
 		;
@@ -9356,6 +9643,7 @@ makeOverlaps(List *largs, List *rargs, int location)
 	n->args = list_concat(largs, rargs);
 	n->agg_star = FALSE;
 	n->agg_distinct = FALSE;
+	n->over = NULL;
 	n->location = location;
 	return n;
 }

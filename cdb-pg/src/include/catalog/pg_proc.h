@@ -2600,6 +2600,8 @@ DESCR("minus");
 
 DATA(insert OID = 1764 ( numeric_inc			PGNSP PGUID 12 f f t f i 1 1700 f "1700" _null_ _null_ _null_ numeric_inc - _null_ ));
 DESCR("increment by one");
+DATA(insert OID = 1004 ( numeric_dec			PGNSP PGUID 12 f f t f i 1 1700 f "1700" _null_ _null_ _null_ numeric_dec - _null_ ));
+DESCR("increment by one");
 DATA(insert OID = 1766 ( numeric_smaller		PGNSP PGUID 12 f f t f i 2 1700 f "1700 1700" _null_ _null_ _null_	numeric_smaller - _null_ ));
 DESCR("smaller of two numbers");
 DATA(insert OID = 1767 ( numeric_larger			PGNSP PGUID 12 f f t f i 2 1700 f "1700 1700" _null_ _null_ _null_	numeric_larger - _null_ ));
@@ -2704,12 +2706,20 @@ DATA(insert OID = 1832 (  float8_stddev_samp	PGNSP PGUID 12 f f t f i 1 701 f "1
 DESCR("STDDEV_SAMP aggregate final function");
 DATA(insert OID = 1833 (  numeric_accum    PGNSP PGUID 12 f f t f i 2 1231 f "1231 1700" _null_ _null_ _null_ numeric_accum - _null_ ));
 DESCR("aggregate transition function");
+DATA(insert OID = 7309 (  numeric_decum    PGNSP PGUID 12 f f t f i 2 1231 f "1231 1700" _null_ _null_ _null_ numeric_decum - _null_ ));
+DESCR("aggregate inverse transition function");
 DATA(insert OID = 1834 (  int2_accum	   PGNSP PGUID 12 f f t f i 2 1231 f "1231 21" _null_ _null_ _null_ int2_accum - _null_ ));
 DESCR("aggregate transition function");
 DATA(insert OID = 1835 (  int4_accum	   PGNSP PGUID 12 f f t f i 2 1231 f "1231 23" _null_ _null_ _null_ int4_accum - _null_ ));
 DESCR("aggregate transition function");
 DATA(insert OID = 1836 (  int8_accum	   PGNSP PGUID 12 f f t f i 2 1231 f "1231 20" _null_ _null_ _null_ int8_accum - _null_ ));
 DESCR("aggregate transition function");
+DATA(insert OID = 7306 (  int2_decum	   PGNSP PGUID 12 f f t f i 2 1231 f "1231 21" _null_ _null_ _null_ int2_decum - _null_ ));
+DESCR("aggregate inverse transition function");
+DATA(insert OID = 7307 (  int4_decum	   PGNSP PGUID 12 f f t f i 2 1231 f "1231 23" _null_ _null_ _null_ int4_decum - _null_ ));
+DESCR("aggregate inverse transition function");
+DATA(insert OID = 7308 (  int8_decum	   PGNSP PGUID 12 f f t f i 2 1231 f "1231 20" _null_ _null_ _null_ int8_decum - _null_ ));
+DESCR("aggregate inverse transition function");
 DATA(insert OID = 1837 (  numeric_avg	   PGNSP PGUID 12 f f t f i 1 1700 f "1231" _null_ _null_ _null_	numeric_avg - _null_ ));
 DESCR("AVG aggregate final function");
 DATA(insert OID = 2514 (  numeric_var_pop  PGNSP PGUID 12 f f t f i 1 1700 f "1231" _null_ _null_ _null_	numeric_var_pop - _null_ ));
@@ -3278,6 +3288,24 @@ DATA(insert OID = 2163 ( text_pattern_ge	 PGNSP PGUID 12 f f t f i 2 16 f "25 25
 DATA(insert OID = 2164 ( text_pattern_gt	 PGNSP PGUID 12 f f t f i 2 16 f "25 25" _null_ _null_ _null_ text_pattern_gt - _null_ ));
 DATA(insert OID = 2165 ( text_pattern_ne	 PGNSP PGUID 12 f f t f i 2 16 f "25 25" _null_ _null_ _null_ text_pattern_ne - _null_ ));
 DATA(insert OID = 2166 ( bttext_pattern_cmp  PGNSP PGUID 12 f f t f i 2 23 f "25 25" _null_ _null_ _null_ bttext_pattern_cmp - _null_ ));
+
+/* Window functions (similar to aggregates) */
+DATA(insert OID = 7000 ( row_number			PGNSP PGUID 12 f f f f i 0 20 t ""  _null_ _null_ _null_  window_dummy - _null_ ));
+#define ROW_NUMBER_OID 7000
+#define ROW_NUMBER_TYPE 20
+DATA(insert OID = 7001 ( rank				PGNSP PGUID 12 f f f f i 0 20 t ""  _null_ _null_ _null_  window_dummy - _null_ ));
+DATA(insert OID = 7002 ( dense_rank			PGNSP PGUID 12 f f f f i 0 20 t ""  _null_ _null_ _null_  window_dummy - _null_ ));
+DATA(insert OID = 7003 ( percent_rank		PGNSP PGUID 12 f f f f i 0 701 t ""  _null_ _null_ _null_  window_dummy - _null_ ));
+DATA(insert OID = 7004 ( cume_dist			PGNSP PGUID 12 f f f f i 0 701 t ""  _null_ _null_ _null_  window_dummy - _null_ ));
+DATA(insert OID = 7005 ( ntile				PGNSP PGUID 12 f f f f i 1 20 t "23"  _null_ _null_ _null_  window_dummy - _null_ ));
+DATA(insert OID = 7006 ( ntile				PGNSP PGUID 12 f f f f i 1 20 t "20"  _null_ _null_ _null_  window_dummy - _null_ ));
+DATA(insert OID = 7007 ( ntile				PGNSP PGUID 12 f f f f i 1 20 t "1700"  _null_ _null_ _null_  window_dummy - _null_ ));
+
+/* XXX for now, window functions with arguments, just cite numeric = 1700, need to overload. */
+/* DATA(insert OID = 7xxx ( first_value		PGNSP PGUID 12 f f f f i 1 20 "1700"  _null_ _null_ _null_  window_dummy - _null_ )); */
+/* DATA(insert OID = 7xxx ( last_value			PGNSP PGUID 12 f f f f i 1 20 "1700"  _null_ _null_ _null_  window_dummy - _null_ )); */
+/* DATA(insert OID = 7xxx ( lag				PGNSP PGUID 12 f f f f i 3 20 "1700 1700 1700"  _null_ _null_ _null_  window_dummy - _null_ )); */
+/* DATA(insert OID = 7xxx ( lead				PGNSP PGUID 12 f f f f i 3 20 "1700 1700 1700"  _null_ _null_ _null_  window_dummy - _null_ )); */
 
 /* We use the same procedures here as above since the types are binary compatible. */
 DATA(insert OID = 2174 ( bpchar_pattern_lt	  PGNSP PGUID 12 f f t f i 2 16 f "1042 1042" _null_ _null_ _null_ text_pattern_lt - _null_ ));
@@ -3974,10 +4002,34 @@ DATA(insert OID = 6014 (  float8_regr_amalg	   PGNSP PGUID 12 f f t f i 2 1022 f
 DATA(insert OID = 6021 (  int8			   PGNSP PGUID 12 f f t f i 1 20 f "27" _null_ _null_ _null_	tidtoi8 - _null_ ));
 DESCR("convert tid to int8");
 #define CDB_PROC_TIDTOI8    6021
-DATA(insert OID = 6022 (  pg_highest_oid		   PGNSP PGUID 12 f f t f v 0 26 f "" _null_ _null_ _null_ pg_highest_oid - _null_ ));
+DATA(insert OID = 6022 (  gp_execution_segment PGNSP PGUID 12 f f f t v 0 23 f "" _null_ _null_ _null_ mpp_execution_segment - _null_ ));
+DESCR("segment executing function");
+#define MPP_EXECUTION_SEGMENT_OID 6022
+#define MPP_EXECUTION_SEGMENT_TYPE 23
+DATA(insert OID = 6023 (  pg_highest_oid		   PGNSP PGUID 12 f f t f v 0 26 f "" _null_ _null_ _null_ pg_highest_oid - _null_ ));
 DESCR("Highest Oid used so far");
 
-
+/* Greenplum MPP window function implementation */
+DATA(insert OID = 7100 (  row_number_immed   PGNSP PGUID 12 f f t f i 1 20 f "2281" _null_ _null_ _null_ row_number_immed - _null_ ));
+DESCR("window immediate function");
+DATA(insert OID = 7101 (  rank_immed   PGNSP PGUID 12 f f t f i 1 20 f "2281" _null_ _null_ _null_ rank_immed - _null_ ));
+DESCR("window immediate function");
+DATA(insert OID = 7102 (  dense_rank_immed   PGNSP PGUID 12 f f t f i 1 20 f "2281" _null_ _null_ _null_ dense_rank_immed - _null_ ));
+DESCR("window immediate function");
+DATA(insert OID = 7204 (  cume_dist_prelim   PGNSP PGUID 12 f f t f i 1 20 f "2281" _null_ _null_ _null_ cume_dist_prelim - _null_ ));
+DESCR("window preliminary function");
+DATA(insert OID = 7205 (  ntile_prelim_int   PGNSP PGUID 12 f f t f i 2 1016 f "2281 23" _null_ _null_ _null_ ntile_prelim_int - _null_ ));
+DESCR("window preliminary function");
+DATA(insert OID = 7206 (  ntile_prelim_bigint   PGNSP PGUID 12 f f t f i 2 1016 f "2281 20" _null_ _null_ _null_ ntile_prelim_bigint - _null_ ));
+DESCR("window preliminary function");
+DATA(insert OID = 7207 (  ntile_prelim_numeric   PGNSP PGUID 12 f f t f i 2 1016 f "2281 1700" _null_ _null_ _null_ ntile_prelim_numeric - _null_ ));
+DESCR("window preliminary function");
+DATA(insert OID = 7303 (  percent_rank_final   PGNSP PGUID 12 f f t f i 2 701 f "20 20" _null_ _null_ _null_ percent_rank_final - _null_ ));
+DESCR("window final function");
+DATA(insert OID = 7304 (  cume_dist_final   PGNSP PGUID 12 f f t f i 2 701 f "20 20" _null_ _null_ _null_ cume_dist_final - _null_ ));
+DESCR("window final function");
+DATA(insert OID = 7305 (  ntile_final   PGNSP PGUID 12 f f t f i 2 20 f "1016 20" _null_ _null_ _null_ ntile_final - _null_ ));
+DESCR("window final function");
 
 /* GIN array support */
 DATA(insert OID = 2743 (  ginarrayextract	 PGNSP PGUID 12 f f t f i 2 2281 f "2277 2281" _null_ _null_ _null_	ginarrayextract - _null_ ));

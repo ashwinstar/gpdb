@@ -168,6 +168,57 @@ get_sortgroupclause_tle(SortClause *sortClause,
 }
 
 /*
+ * get_sortgroupclauses_tles
+ *      Find a list of unique targetlist entries matching the given list of
+ *      SortClause, GroupClause, or GroupingClauses.
+ *
+ * In each grouping set, targets that do not appear in a GroupingClause
+ * will be put in the front of those that appear in a GroupingClauses.
+ * The targets within the same clause will be appended in the order
+ * of their appearance.
+ */
+List *
+get_sortgroupclauses_tles(List *clauses, List *targetList)
+{
+	List *result = NIL;
+	ListCell *l;
+
+	List *sub_grouping_result = NIL;
+
+	foreach(l, clauses)
+	{
+		Node *node = lfirst(l);
+
+		if (IsA(node, GroupClause) || IsA(node, SortClause))
+		{
+			TargetEntry *tle =
+				get_sortgroupclause_tle((SortClause*)node, targetList);
+
+			if (!list_member(result, tle))
+				result = lappend(result, tle);
+		}
+
+		else
+		{
+			List *sub_list;
+			Assert (IsA(node, GroupingClause));
+
+			sub_list =
+				get_sortgroupclauses_tles(((GroupingClause*)node)->groupsets,
+										  targetList);
+
+			sub_grouping_result =
+				list_concat_unique(sub_grouping_result, sub_list);
+		}
+	}
+
+	/* Put GroupClauses before GroupingClauses. */
+	result = list_concat_unique(result, sub_grouping_result);
+
+	return result;
+}
+
+/*
  * get_sortgroupclause_expr
  *		Find the targetlist entry matching the given SortClause
  *		(or GroupClause) by ressortgroupref, and return its expression.
@@ -202,6 +253,40 @@ get_sortgrouplist_exprs(List *sortClauses, List *targetList)
 		sortexpr = get_sortgroupclause_expr(sortcl, targetList);
 		result = lappend(result, sortexpr);
 	}
+	return result;
+}
+
+/*
+ * get_grouplist_exprs
+ *     Find a list of referenced targetlist expressions used in a given
+ *     list of GroupClauses or a GroupingClauses.
+ *
+ * All expressions will appear in the same order as they appear in the
+ * given list of GroupClauses or a GroupingClauses.
+ */
+List *
+get_grouplist_exprs(List *groupClauses, List *targetList)
+{
+	List *result = NIL;
+	ListCell *l;
+
+	foreach (l, groupClauses)
+	{
+		Node *groupClause = lfirst(l);
+
+		Assert(IsA(groupClause, GroupClause) || IsA(groupClause, GroupingClause));
+
+		if (IsA(groupClause, GroupClause))
+			result = lappend(result,
+							 get_sortgroupclause_expr((GroupClause*)groupClause,
+													  targetList));
+
+		else if (IsA(groupClause, GroupingClause))
+			result = list_concat(result,
+								 get_grouplist_exprs(((GroupingClause*)groupClause)->groupsets,
+													 targetList));
+	}
+
 	return result;
 }
 

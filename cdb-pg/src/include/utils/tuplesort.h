@@ -27,11 +27,10 @@
 struct Instrumentation;                 /* #include "executor/instrument.h" */
 struct StringInfoData;                  /* #include "lib/stringinfo.h" */
 
-
-
-/* Tuplesortstate is an opaque type whose details are not known outside
+/* Tuplesortstate and TuplesortPos are opaque types whose details are not known outside
  * tuplesort.c.
  */
+typedef struct TuplesortPos TuplesortPos;
 typedef struct Tuplesortstate Tuplesortstate;
 
 /*
@@ -48,6 +47,7 @@ typedef struct Tuplesortstate Tuplesortstate;
  *
  * Yet a third slightly different interface supports sorting bare Datums.
  */
+extern void tuplesort_begin_pos(Tuplesortstate *state, TuplesortPos **pos);
 
 extern Tuplesortstate *tuplesort_begin_heap(TupleDesc tupDesc,
 					 int nkeys,
@@ -74,8 +74,11 @@ extern void tuplesort_putdatum(Tuplesortstate *state, Datum val,
 
 extern void tuplesort_performsort(Tuplesortstate *state);
 
+extern bool tuplesort_gettupleslot_pos(Tuplesortstate *state, TuplesortPos *pos, 
+		bool forward, TupleTableSlot *slot);
 extern bool tuplesort_gettupleslot(Tuplesortstate *state, bool forward,
 					   TupleTableSlot *slot);
+
 extern IndexTuple tuplesort_getindextuple(Tuplesortstate *state, bool forward,
 						bool *should_free);
 extern bool tuplesort_getdatum(Tuplesortstate *state, bool forward,
@@ -91,9 +94,48 @@ extern int	tuplesort_merge_order(long allowedMem);
  * randomAccess was specified.
  */
 
+extern void tuplesort_rescan_pos(Tuplesortstate *state, TuplesortPos *pos);
 extern void tuplesort_rescan(Tuplesortstate *state);
 extern void tuplesort_markpos(Tuplesortstate *state);
+extern void tuplesort_markpos_pos(Tuplesortstate *state, TuplesortPos *pos);
 extern void tuplesort_restorepos(Tuplesortstate *state);
+extern void tuplesort_restorepos_pos(Tuplesortstate *state, TuplesortPos *pos);
+
+extern void tuplesort_close_pos(Tuplesortstate *state, TuplesortPos *pos);
+
+/*
+ * tuplesort_set_instrument
+ *
+ * May be called after tuplesort_begin_xxx() to enable reporting of
+ * statistics and events for EXPLAIN ANALYZE.
+ *
+ * The 'instr' and 'explainbuf' ptrs are retained in the 'state' object for
+ * possible use anytime during the sort, up to and including tuplesort_end().
+ * The caller must ensure that the referenced objects remain allocated and
+ * valid for the life of the Tuplestorestate object; or if they are to be
+ * freed early, disconnect them by calling again with NULL pointers.
+ */
+void 
+tuplesort_set_instrument(Tuplesortstate            *state,
+                         struct Instrumentation    *instrument,
+                         struct StringInfoData     *explainbuf);
+
+/*
+ * tuplesort_set_instrument
+ *
+ * May be called after tuplesort_begin_xxx() to enable reporting of
+ * statistics and events for EXPLAIN ANALYZE.
+ *
+ * The 'instr' and 'explainbuf' ptrs are retained in the 'state' object for
+ * possible use anytime during the sort, up to and including tuplesort_end().
+ * The caller must ensure that the referenced objects remain allocated and
+ * valid for the life of the Tuplesortstate object; or if they are to be
+ * freed early, disconnect them by calling again with NULL pointers.
+ */
+void 
+tuplesort_set_instrument(Tuplesortstate            *state,
+                         struct Instrumentation    *instrument,
+                         struct StringInfoData     *explainbuf);
 
 /*
  * tuplesort_set_instrument

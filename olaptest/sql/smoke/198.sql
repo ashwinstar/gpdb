@@ -1,0 +1,1 @@
+SELECT cn FROM sale GROUP BY cn;

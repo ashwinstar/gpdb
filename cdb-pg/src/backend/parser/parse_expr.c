@@ -62,6 +62,7 @@ static Node *transformWholeRowRef(ParseState *pstate, char *schemaname,
 static Node *transformBooleanTest(ParseState *pstate, BooleanTest *b);
 static Node *transformIndirection(ParseState *pstate, Node *basenode,
 					 List *indirection);
+static Node *transformGroupingFunc(ParseState *pstate, GroupingFunc *gf);
 static Node *typecast_expression(ParseState *pstate, Node *expr,
 					TypeName *typname);
 static Node *make_row_comparison_op(ParseState *pstate, List *opname,
@@ -232,6 +233,13 @@ transformExpr(ParseState *pstate, Node *expr)
 			result = transformBooleanTest(pstate, (BooleanTest *) expr);
 			break;
 
+		case T_GroupingFunc:
+			{
+				GroupingFunc *gf = (GroupingFunc *)expr;
+				result = transformGroupingFunc(pstate, gf);
+				break;
+			}
+
 			/*********************************************
 			 * Quietly accept node types that may be presented when we are
 			 * called on an already-transformed tree.
@@ -259,6 +267,7 @@ transformExpr(ParseState *pstate, Node *expr)
 		case T_CoerceToDomain:
 		case T_CoerceToDomainValue:
 		case T_SetToDefault:
+		case T_GroupId:
 			{
 				result = (Node *) expr;
 				break;
@@ -309,7 +318,7 @@ transformIndirection(ParseState *pstate, Node *basenode, List *indirection)
 			result = ParseFuncOrColumn(pstate,
 									   list_make1(n),
 									   list_make1(result),
-									   false, false, true,
+									   false, false, true, NULL,
 									   -1);
 		}
 	}
@@ -432,7 +441,7 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 					node = ParseFuncOrColumn(pstate,
 											 list_make1(makeString(name2)),
 											 list_make1(node),
-											 false, false, true,
+											 false, false, true, NULL,
 											 cref->location);
 				}
 				break;
@@ -462,7 +471,7 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 					node = ParseFuncOrColumn(pstate,
 											 list_make1(makeString(name3)),
 											 list_make1(node),
-											 false, false, true,
+											 false, false, true, NULL,
 											 cref->location);
 				}
 				break;
@@ -503,7 +512,7 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 					node = ParseFuncOrColumn(pstate,
 											 list_make1(makeString(name4)),
 											 list_make1(node),
-											 false, false, true,
+											 false, false, true, NULL,
 											 cref->location);
 				}
 				break;
@@ -962,6 +971,7 @@ transformFuncCall(ParseState *pstate, FuncCall *fn)
 							 fn->agg_star,
 							 fn->agg_distinct,
 							 false,
+							 (WindowSpec *)fn->over,
 							 fn->location);
 }
 
@@ -1507,6 +1517,33 @@ transformWholeRowRef(ParseState *pstate, char *schemaname, char *relname,
 	return result;
 }
 
+static Node *
+transformGroupingFunc(ParseState *pstate, GroupingFunc *gf)
+{
+	List *targs = NIL;
+	ListCell *lc;
+	GroupingFunc *new_gf;
+
+	new_gf = makeNode(GroupingFunc);
+
+	/*
+	 * Transform the list of arguments.
+	 */
+	foreach (lc, gf->args)
+	{
+		targs = lappend(targs, transformExpr(pstate, (Node *)lfirst(lc)));
+	}
+
+	new_gf->args = targs;
+
+	/* These values will be set in transformGroupClause(). */
+	new_gf->ngrpcols = 0;
+	new_gf->nargs = 0;
+	new_gf->grpargs = NULL;
+
+	return (Node *)new_gf;
+}
+
 /*
  *	exprType -
  *	  returns the Oid of the type of the expression. (Used for typechecking.)
@@ -1532,6 +1569,9 @@ exprType(Node *expr)
 			break;
 		case T_Aggref:
 			type = ((Aggref *) expr)->aggtype;
+			break;
+		case T_WindowRef:
+			type = ((WindowRef *) expr)->restype;
 			break;
 		case T_ArrayRef:
 			type = ((ArrayRef *) expr)->refrestype;
@@ -1674,6 +1714,15 @@ exprType(Node *expr)
 			break;
 		case T_SetToDefault:
 			type = ((SetToDefault *) expr)->typeId;
+			break;
+		case T_GroupingFunc:
+			type = INT8OID;
+			break;
+		case T_Grouping:
+			type = INT8OID;
+			break;
+		case T_GroupId:
+			type = INT4OID;
 			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));

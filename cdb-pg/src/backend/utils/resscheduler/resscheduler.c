@@ -562,7 +562,6 @@ ResLockPortal(Portal portal, Plan *plan)
 				incData.isHold = portal->cursorOptions & CURSOR_OPT_HOLD;
 
 	
-	
 				takeLock = true;
 				returnReleaseOk = true;
 			}

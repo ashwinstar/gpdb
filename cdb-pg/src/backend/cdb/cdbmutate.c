@@ -65,24 +65,14 @@ static int *makeDefaultSegIdxArray(int numSegs);
 
 static Motion *
 make_motion(Plan       *lefttree,
-            MotionType  motionType,
             bool        sendToSecondary,
             bool        sendSorted,
             int         numInputSegs,
-            List       *hashExpr,
-            int         numOutputSegs,
-            int        *outputSegIdx,
             int         numSortCols,
             AttrNumber *sortColIdx,
             Oid        *sortOperators);
-			
+	
 static Node *apply_motion_mutator(Node *node, ApplyMotionState * context);
-
-static bool validateMotionNodeParms(MotionType motionType,
-						bool sendToSecondary, bool sendSorted,
-						List *hashExpr,
-						int numOutputSegs, int *outputSegIdx,
-				int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators);
 
 static bool
 doesUpdateAffectPartitionCols(Plan         *plan,
@@ -585,6 +575,13 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
     if (!is_plan_node(node))
 		return plan_tree_mutator(node, apply_motion_mutator, context);
 
+	if(IsA(node, Motion))
+	{
+		Motion *m = (Motion *) node;
+		if(m->mutated)
+			return (Node*) m->mutated;
+	}
+
     plan = (Plan *)node;
     flow = plan->flow;
 
@@ -634,27 +631,51 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
     if (IsA(newnode, Motion))
     {
         Motion *motion = (Motion *)newnode;
+		Motion *oldMotion = (Motion *)node;
 
-        /* Motion node and its subplan are required to have Flow nodes. */
-        Assert(flow && motion->plan.lefttree->flow);
 
-        /* Motion nodes can't specify motion. */
-        Assert(flow->req_move == MOVEMENT_NONE && !flow->flow_before_req_move);
+#ifdef USE_ASSERT_CHECKING
+		ListCell *cell;
+
+		/* Sanity check */
+		/* Sub plan must have flow */
+        Assert(motion->plan.lefttree->flow);
+
+		foreach(cell, motion->sliceEntries)
+		{
+			MotionSliceEntry *sliceEntry = (MotionSliceEntry *) lfirst(cell);
+			Assert(IsA(sliceEntry, MotionSliceEntry));
+
+			/* Each route must have a flow */
+			Assert(sliceEntry->flow);
+			/* route cannot specify motion */
+			Assert(sliceEntry->flow->req_move == MOVEMENT_NONE);
+			Assert(!sliceEntry->flow->flow_before_req_move);
+		}
+#endif
 
         /* Assign unique node number to the new node. */
         assignMotionID(newnode, context, node);
+		oldMotion->mutated = (Plan *) motion;
 
         /* If top slice marked as singleton, make it a dispatcher singleton. */
-        if (motion->motionType == MOTIONTYPE_FIXED &&
-            motion->numOutputSegs == 1 &&
-            motion->outputSegIdx[0] >= 0 &&
-            context->sliceDepth == 0)
-        {
-            Assert(flow->flotype == FLOW_SINGLETON &&
-                   flow->segindex == motion->outputSegIdx[0]);
-            flow->segindex = -1;
-            motion->outputSegIdx[0] = -1;
-        }
+		if (list_length(motion->sliceEntries) == 1)
+		{
+			MotionSliceEntry *sliceEntry = (MotionSliceEntry *) linitial(motion->sliceEntries);
+			Assert(IsA(sliceEntry, MotionSliceEntry));
+
+			if(sliceEntry->motionType == MOTIONTYPE_FIXED)
+			{
+				if (sliceEntry->numOutputSegs == 1 && sliceEntry->outputSegIdx[0] >= 0 
+						&& context->sliceDepth == 0)
+				{
+					Assert(sliceEntry->flow->flotype == FLOW_SINGLETON &&
+							sliceEntry->flow->segindex == sliceEntry->outputSegIdx[0]);
+					sliceEntry->flow->segindex = -1;
+					sliceEntry->outputSegIdx[0] = -1;
+				}
+			}
+		}
         goto done;
     }
 
@@ -791,35 +812,93 @@ assignMotionID(Node *newnode, ApplyMotionState * context, Node *oldnode)
  * and pSortDefn structs already.
  * --------------------------------------------------------------------
  */
+/* XXX TODO: ftian: This function now make a motion node that has one slice, 
+ * one route.
+ *
+ * Need to make this work with multi slice and multi route.  The only tricky thing
+ * is that the flow attached with the motion may have multi slice, multi route as
+ * well.  We may need to extend the Flow data structure to accomodate this.
+ */
 Motion *
 make_motion(Plan       *lefttree,
-            MotionType  motionType,
 			bool        sendToSecondary,
             bool        sendSorted,
             int         numInputSegs,
-			List       *hashExpr,
-			int         numOutputSegs,
-            int        *outputSegIdx,
 			int         numSortCols,
             AttrNumber *sortColIdx,
             Oid        *sortOperators)
 {
-	Flow *flow;
     Motion *node = makeNode(Motion);
     Plan   *plan = &node->plan;
-    List   *hashDataTypes = NIL;
 
-    Assert(validateMotionNodeParms(motionType,	
-                                   sendToSecondary,
-                                   sendSorted,
-                                   hashExpr,
-                                   numOutputSegs,
-                                   outputSegIdx,
-                                   numSortCols,
-                                   sortColIdx,
-                                   sortOperators));
+	Assert(lefttree);
+	Assert(!IsA(lefttree, Motion));
+    /* Assert(lefttree->flow); */ /* olap_merge */
+	AssertImply(sendSorted, (numSortCols > 0 && sortColIdx != NULL && sortOperators != NULL));
+	AssertImply(!sendSorted, (numSortCols == 0 && sortColIdx == NULL && sortOperators == NULL));
 
-    /* Build list of hash key expression data types. */
+	plan->startup_cost = lefttree->startup_cost;
+	plan->total_cost = lefttree->total_cost;
+	plan->plan_rows = lefttree->plan_rows;
+	plan->plan_width = lefttree->plan_width;
+	plan->targetlist = cdbpullup_targetlist(lefttree,
+                        cdbpullup_exprHasSubplanRef((Expr *)lefttree->targetlist));
+	plan->qual = NIL;
+	plan->lefttree = lefttree;
+	plan->righttree = NULL;
+	plan->dispatch = DISPATCH_PARALLEL;
+
+	node->sendToSecondary = sendToSecondary;
+	node->sendSorted = sendSorted;
+
+    node->numInputSegs = numInputSegs;
+    node->inputSegIdx = NULL;
+	node->sliceEntries = NULL;
+
+	node->numSortCols = numSortCols;
+	node->sortColIdx = sortColIdx;
+	node->sortOperators = sortOperators;
+
+	plan->extParam = bms_copy(lefttree->extParam);
+	plan->allParam = bms_copy(lefttree->allParam);
+
+	/* Motion node does not have a flow.  Flow is associated with route */
+	plan->flow = NULL;
+
+	/* By default we set motion to not shared. */
+	plan->sharing_id = ShareNodeId_NotShared;
+	plan->shared_id = ShareNodeId_NotShared;
+
+	return node;
+}
+
+void add_slice_to_motion(Motion *motion,
+		MotionType motionType, List *hashExpr,
+		int numOutputSegs, int *outputSegIdx)
+{
+	MotionSliceEntry *sliceEntry = (MotionSliceEntry *) makeNode(MotionSliceEntry);
+	
+	/* sanity checks */
+	/* check numOutputSegs and outputSegIdx are in sync.  */
+	AssertEquivalent(numOutputSegs == 0, outputSegIdx == NULL);
+
+	/* numOutputSegs are either 0, for hash or broadcast, or 1, for focus */
+	Assert(numOutputSegs == 0 || numOutputSegs == 1);
+	AssertImply(motionType == MOTIONTYPE_HASH, numOutputSegs == 0); 
+	AssertImply(numOutputSegs == 1, (outputSegIdx[0] == -1 || outputSegIdx[0] == gp_singleton_segindex));
+
+	motion->sliceEntries = lappend(motion->sliceEntries, sliceEntry);
+
+	sliceEntry->motionType = motionType;
+	sliceEntry->hashExpr = hashExpr;
+	sliceEntry->hashDataTypes = NULL; 
+	sliceEntry->numOutputSegs = numOutputSegs;
+	sliceEntry->outputSegIdx = outputSegIdx;
+	sliceEntry->numHashSegs = 0;
+	sliceEntry->hashSegIdx = NULL;
+	sliceEntry->flow = NULL;
+
+	/* Build list of hash key expression data types. */
     if (hashExpr)
     {
         List       *eq = list_make1(makeString("="));
@@ -842,112 +921,86 @@ make_motion(Plan       *lefttree,
             /* Get the equality operator's operand type. */
             op_input_types( eqopoid, &lefttype, &righttype );
             Assert( lefttype == righttype );
-            hashDataTypes = lappend_oid(hashDataTypes, lefttype);
+            sliceEntry->hashDataTypes = lappend_oid(sliceEntry->hashDataTypes, lefttype);
         }
         list_free_deep(eq);
     }
 
-	plan->startup_cost = lefttree->startup_cost;
-	plan->total_cost = lefttree->total_cost;
-	plan->plan_rows = lefttree->plan_rows;
-	plan->plan_width = lefttree->plan_width;
-	plan->targetlist = cdbpullup_targetlist(lefttree,
-                        cdbpullup_exprHasSubplanRef((Expr *)lefttree->targetlist));
-	plan->qual = NIL;
-	plan->lefttree = lefttree;
-	plan->righttree = NULL;
-	plan->dispatch = DISPATCH_PARALLEL;
-
-	node->motionType = motionType;
-	node->sendToSecondary = sendToSecondary;
-	node->sendSorted = sendSorted;
-
-    node->numInputSegs = numInputSegs;
-    node->inputSegIdx = NULL;
-
-	node->hashExpr = hashExpr;
-	node->hashDataTypes = hashDataTypes;
-	node->numOutputSegs = numOutputSegs;
-	node->outputSegIdx = outputSegIdx;
-
-	node->numSortCols = numSortCols;
-	node->sortColIdx = sortColIdx;
-	node->sortOperators = sortOperators;
-
-	plan->extParam = bms_copy(lefttree->extParam);
-	plan->allParam = bms_copy(lefttree->allParam);
-
 	/* If hashed redistribution, fill in the receiving segment info. */
-	node->numHashSegs = 0;
-	node->hashSegIdx = NULL;
-	if (motionType == MOTIONTYPE_HASH)
+	if(sliceEntry->motionType == MOTIONTYPE_HASH)
 	{
-		node->numHashSegs = getgpsegmentCount();
-		node->hashSegIdx = makeDefaultSegIdxArray(getgpsegmentCount());
+		sliceEntry->numHashSegs = getgpsegmentCount();
+		sliceEntry->hashSegIdx = makeDefaultSegIdxArray(getgpsegmentCount());
 	}
 
-    /* Attach a descriptive Flow. */
-	switch ( node->motionType )
+	/* Attach a descriptive Flow. */
+	switch(sliceEntry->motionType)
 	{
-	case MOTIONTYPE_HASH:
-		flow = makeFlow(FLOW_PARTITIONED);
-		flow->hashExpr = copyObject(node->hashExpr);
-		flow->locustype = CdbLocusType_Hashed;
-		break;
-	case MOTIONTYPE_FIXED:
-		if ( node->numOutputSegs == 0 )
-		{
-			flow = makeFlow(FLOW_REPLICATED);
-			flow->locustype = CdbLocusType_Replicated;
-		}
-		else if ( node->numOutputSegs == 1 )
-		{
-			flow = makeFlow(FLOW_SINGLETON);
-			flow->segindex = node->outputSegIdx[0];
-			flow->locustype = ( flow->segindex<0 ) ?
-								CdbLocusType_Entry :
-								CdbLocusType_SingleQE;
-		}
-		else
-			flow = NULL;
-		break;
-	default:
-		flow = NULL;
-		break;
+		case MOTIONTYPE_HASH:
+			sliceEntry->flow = makeFlow(FLOW_PARTITIONED);
+			sliceEntry->flow->hashExpr = copyObject(sliceEntry->hashExpr);
+			sliceEntry->flow->locustype = CdbLocusType_Hashed;
+			break;
+		case MOTIONTYPE_FIXED:
+			if (sliceEntry->numOutputSegs == 0 )
+			{
+				/* broadcast */
+				sliceEntry->flow = makeFlow(FLOW_REPLICATED);
+				sliceEntry->flow->locustype = CdbLocusType_Replicated;
+			}
+			else if (sliceEntry->numOutputSegs == 1 )
+			{
+				/* Focus motion */
+				sliceEntry->flow = makeFlow(FLOW_SINGLETON);
+				sliceEntry->flow->segindex = sliceEntry->outputSegIdx[0];
+				sliceEntry->flow->locustype = ( sliceEntry->flow->segindex<0 ) ?
+					CdbLocusType_Entry :
+					CdbLocusType_SingleQE;
+			}
+			else
+			{
+				Assert(!"Invalid numoutputSegs for motion type fixed");
+				sliceEntry->flow = NULL;
+			}
+			break;
+		default:
+			Assert(!"Invalide motion type");
+			sliceEntry->flow = NULL;
+			break;
 	}
-	
-	if ( flow != NULL && node->sendSorted && node->numSortCols > 0 )
+
+	Assert(sliceEntry->flow);
+
+	/* if the motion has a sort order, preserve it in each route */
+	if(motion->sendSorted && motion->numSortCols > 0)
 	{
 		int i, n;
-		n = node->numSortCols;
-		flow->numSortCols = n;
-		flow->sortColIdx = palloc(n * sizeof(AttrNumber));
-		flow->sortOperators = palloc (n * sizeof(Oid));
+		n = motion->numSortCols;
+		sliceEntry->flow->numSortCols = n;
+		sliceEntry->flow->sortColIdx = palloc(n * sizeof(AttrNumber));
+		sliceEntry->flow->sortOperators = palloc (n * sizeof(Oid));
 		for ( i = 0; i < n; i++ )
 		{
-			flow->sortColIdx[i] = node->sortColIdx[i];
-			flow->sortOperators[i] = node->sortOperators[i];
+			sliceEntry->flow->sortColIdx[i] = motion->sortColIdx[i];
+			sliceEntry->flow->sortOperators[i] = motion->sortOperators[i];
 		}
 	}
-	
-	plan->flow = flow;
-
-	return node;
 }
 
 Motion *
 make_union_motion(Plan *lefttree, bool sendToSecondary,
                   int numInputSegs, int destSegIndex)
 {
-	int		   *outputSegIdx = palloc(sizeof(int));
+	Motion 	*motion;
+	int		*outSegIdx = (int *) palloc(sizeof(int)); 
+	outSegIdx[0] = destSegIndex; 
 
-	outputSegIdx[0] = destSegIndex;
-
-	return make_motion(lefttree, MOTIONTYPE_FIXED,
-					   sendToSecondary, false, numInputSegs,
-					   NIL,
-					   1, outputSegIdx,
-					   0, NULL, NULL);
+	motion = make_motion(lefttree, sendToSecondary, false, numInputSegs,
+			0, NULL, NULL /* numSortCols, sortColIdx, sortOperaotrs */
+			);
+	add_slice_to_motion(motion, MOTIONTYPE_FIXED, 
+			NULL, 1, outSegIdx);
+	return motion;
 }
 
 Motion *
@@ -955,37 +1008,60 @@ make_sorted_union_motion(Plan *lefttree, bool sendToSecondary,
                          int numInputSegs, int destSegIndex,
 				 int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators)
 {
-	int		   *outputSegIdx = palloc(sizeof(int));
+	Motion 	*motion;
+	int		*outSegIdx = (int *) palloc(sizeof(int)); 
+	outSegIdx[0] = destSegIndex; 
 
-	outputSegIdx[0] = destSegIndex;
+	motion = make_motion(lefttree, sendToSecondary, true, numInputSegs,
+			numSortCols, sortColIdx, sortOperators);
 
-	return make_motion(lefttree, MOTIONTYPE_FIXED,
-					   sendToSecondary, true, numInputSegs,
-					   NIL,
-					   1, outputSegIdx,
-					   numSortCols, sortColIdx, sortOperators);
+	add_slice_to_motion(motion, MOTIONTYPE_FIXED,
+			NULL, 1, outSegIdx); 
+	return motion;
 }
 
 Motion *
 make_hashed_motion(Plan *lefttree, bool sendToSecondary, int numInputSegs,
 				   List *hashExpr)
 {
-	return make_motion(lefttree, MOTIONTYPE_HASH,
-					   sendToSecondary, false, numInputSegs,
-					   hashExpr,
-					   0, NULL, 0, NULL, NULL);
+	Motion *motion;
+
+	motion = make_motion(lefttree, sendToSecondary, false, numInputSegs,
+			0, NULL, NULL);
+	add_slice_to_motion(motion, MOTIONTYPE_HASH, 
+			hashExpr,
+			0, NULL);
+	return motion;
 }
 
 Motion *
 make_broadcast_motion(Plan *lefttree, bool sendToSecondary, int numInputSegs)
 {
-	return make_motion(lefttree, MOTIONTYPE_FIXED,
-					   sendToSecondary, false, numInputSegs,
-					   NIL,
-					   0, NULL,
-					   0, NULL, NULL);
+	Motion *motion;
+
+	motion = make_motion(lefttree, sendToSecondary, false, numInputSegs,
+			0, NULL, NULL);
+
+	add_slice_to_motion(motion, MOTIONTYPE_FIXED,
+			NULL, 0, NULL);
+	return motion;
 }
 
+/* Create a multiplex motion.  We are really just create a "plain" motion
+ * without any slice.  Other types of motion (the other make_xxx_motion)
+ * have one slice and one route.  For multiplexed motion, we leave the motion
+ * blank and the caller will setup slice and routes later.
+ */
+Motion *
+make_multiplex_motion(Plan *lefttree, int numInputSegs)
+{
+	return make_motion(lefttree, 
+			false, /* sendToSeconday */
+			false, /* sendSorted */
+			numInputSegs,
+			0, NULL, NULL /* numSortCols, sortColIdx, sortOperators */
+			);
+}
 
 /* --------------------------------------------------------------------
  * makeDefaultSegIdxArray -- creates an int array with numSegs elements,
@@ -1014,79 +1090,6 @@ makeDefaultSegIdxArray(int numSegs)
  *	Static Helper routines
  * --------------------------------------------------------------------
  */
-
-/* --------------------------------------------------------------------
- * validateMotionNodeParms -- validates the parameters passed to
- * make_motion
- * --------------------------------------------------------------------
- */
-bool
-validateMotionNodeParms(MotionType motionType,
-						bool sendToSecondary, bool sendSorted,
-						List *hashExpr,
-						int numOutputSegs, int *outputSegIdx,
-				 int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators)
-{
-	/*
-	 *	Perform validation based on motionType.
-	 */
-	switch (motionType)
-	{
-		case MOTIONTYPE_HASH:
-
-			/*
-			 *	A Hash motion node shouldn't have FixedMotionDefn specified.
-			 */
-			Assert(numOutputSegs == 0 && outputSegIdx == NULL);
-			break;
-
-		case MOTIONTYPE_FIXED:
-
-			/*
-			 * Fixed motion node must have output Segs info specified.
-             * Singleton destination must be QD or gp_singleton_segindex.
-			 */
-			Assert((numOutputSegs == 0              /* destination: broadcast */
-                     && outputSegIdx == NULL) ||
-				   (numOutputSegs == 1              /* destination: singleton */
-                     && outputSegIdx != NULL
-                     && (outputSegIdx[0] == -1 ||
-                         outputSegIdx[0] == gp_singleton_segindex)));
-
-			/*
-			 *	A Fixed motion node shouldn't have HashMotionDefn specified.
-			 */
-			Assert(!hashExpr);
-			break;
-
-		default:
-			/*
-			 *	Invalid motion node type.
-			 */
-			Assert(false);
-			break;
-	}
-
-	/*
-	 *	Perform validation based on sendSorted flag
-	 */
-	if (sendSorted)
-	{
-		/*
-		 *	A sorted motion node must have sort Cols specified
-		 */
-		Assert(numSortCols > 0 && sortColIdx && sortOperators);
-	}
-	else
-	{
-		/*
-		 *	A non-sorted motion node should not have SortMotionDefn specified
-		 */
-		Assert(numSortCols == 0 && sortColIdx == NULL && sortOperators == NULL);
-	}
-    return true;
-}
-
 
 /* ----------------------------------------------------------------
  * getExprListFromTargetList
@@ -1521,8 +1524,179 @@ DoesDistributionHaveDependencies(Oid relOid, GpPolicy * policy)
 	}
 
 	heap_close(depRel, RowExclusiveLock);
-	
-	
 
 	return false;
 }
+
+/*
+ * An ApplyShareInputState holds the state for recursively apply shareinput_mutator.
+ */
+typedef struct ApplyShareInputState
+{
+	int nextShareNodeId;
+	List *sharedNodes;
+} ApplyShareInputState;
+
+/* Walk the tree for shareinput.
+ * Shareinput fix sharing_id and shared_id of nodes in place.  We do not want to use
+ * the ordinary tree walker as it is unnecessary to make copies etc.
+ */
+typedef bool (*SHAREINPUT_MUTATOR) (Node *node, Query* qry, ApplyShareInputState *ctxt);
+static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, Query* qry, ApplyShareInputState *ctxt)
+{
+	Plan *plan = NULL; 
+	bool recursive_down;
+
+	if(node == NULL)
+		return;
+
+	if(IsA(node, SubPlan))
+	{
+		SubPlan *subplan = (SubPlan *) node;
+		shareinput_walker(f, (Node *)subplan->plan, qry, ctxt);
+		return;
+	}
+
+	if(!is_plan_node(node))
+		return;
+
+	plan = (Plan *) node;
+	recursive_down = (*f)(node, qry, ctxt);
+
+	if(recursive_down) 
+	{
+		if(IsA(node, Append))
+		{
+			ListCell *cell;
+			Append *app = (Append *) node;
+			foreach(cell, app->appendplans)
+				shareinput_walker(f, (Node *)lfirst(cell), qry, ctxt);
+		}
+
+		if(IsA(node, SubqueryScan))
+		{
+			SubqueryScan *subqscan = (SubqueryScan *) node;
+			shareinput_walker(f, (Node *) subqscan->subplan, qry, ctxt);
+		}
+
+		shareinput_walker(f, (Node *)plan->lefttree, qry, ctxt);
+		shareinput_walker(f, (Node *)plan->righttree, qry, ctxt);
+	}
+}
+
+/* Assign the sharing id.  
+ * Motion, Material and Sort may be shared.  
+ */
+static bool shareinput_mutator_assign_sharing_id(Node *node, Query *qry, ApplyShareInputState *ctxt)
+{
+	Plan *plan = (Plan *) node;
+
+	if(plan->sharing_id >= 0)
+	{
+#ifdef DEBUG
+		Plan *prev_plan = (Plan *) list_nth(qry->sharedNodes, plan->sharing_id);
+		Assert(prev_plan == plan);
+#endif
+		return false;
+	}
+
+	if(IsA(node, Motion))
+	{
+		Motion *m = (Motion *) node;
+		Assert(list_length(m->sliceEntries) > 0);
+		Assert(m->plan.lefttree && !m->plan.righttree);
+		Assert(m->plan.lefttree->sharing_id == ShareNodeId_NotShared);
+
+		m->fSetPlanRef = false;
+		m->mutated = NULL;
+
+		/* if more than one slice, this motion is shared and need an sharing id */
+		if(list_length(m->sliceEntries) > 1)
+		{
+			m->plan.sharing_id = ctxt->nextShareNodeId++;
+			qry->sharedNodes = lappend(qry->sharedNodes, node);
+			Assert(list_length(qry->sharedNodes) == ctxt->nextShareNodeId);
+		}
+		else
+		{
+			m->plan.sharing_id = ShareNodeId_NotShared;
+		}
+	}
+
+	if(IsA(node, Material) || IsA(node, Sort))
+	{
+		/* if I am shared, fix the sharing id */
+		if(plan->sharing_id != ShareNodeId_NotShared)
+		{
+			plan->sharing_id = ctxt->nextShareNodeId++;
+			qry->sharedNodes = lappend(qry->sharedNodes, node);
+			Assert(list_length(qry->sharedNodes) == ctxt->nextShareNodeId);
+		}
+	} 
+	return true;
+}
+
+/* Fix the shared_id of a node.  Also, zap children if I am not the first 
+ * sharer (not recursive down)
+ */
+static bool shareinput_mutator_fix_shared_id(Node *node, Query *qry, ApplyShareInputState *ctxt)
+{
+	Plan *plan = (Plan *) node;
+
+	if(plan->shared_id != ShareNodeId_NotShared)
+	{
+		Plan *subplan = plan->lefttree;
+
+		Assert(plan->lefttree && !plan->righttree);
+		Assert(subplan->sharing_id == ShareNodeId_NotShared || subplan->sharing_id >= 0);
+
+		if(subplan->sharing_id == ShareNodeId_NotShared)
+		{
+			/* It must be a shared motion with just one slice, 
+			 * therefore got adjusted in assign_sharing_id back to
+			 * not shared.
+			 */
+#ifdef DEBUG
+			Motion *m = (Motion *) subplan;
+			Assert(IsA(subplan, Motion));
+			Assert(list_length(m->sliceEntries) == 1);
+#endif
+		}
+
+		plan->shared_id = subplan->sharing_id;
+
+		if(list_member_ptr(ctxt->sharedNodes, subplan))
+		{
+			/* Zap subplan to make the query plan a tree */
+			plan->lefttree = NULL;
+			return false;
+		}
+		else
+		{
+			/* I am the first sharer, mark me in ctxt->sharedNodes */
+			ctxt->sharedNodes = lappend(ctxt->sharedNodes, subplan);
+			return true;
+		}
+	}
+
+	return true;
+}
+
+/* 
+ * Apply the share input mutator.
+ */
+Plan *apply_shareinput(Plan *plan, Query *query)
+{
+	ApplyShareInputState state;
+
+	state.nextShareNodeId = 0;
+	state.sharedNodes = NULL;
+
+	Assert(is_plan_node((Node *) plan) && IsA(query, Query));
+
+	shareinput_walker(shareinput_mutator_assign_sharing_id, (Node *) plan, query, &state);
+	shareinput_walker(shareinput_mutator_fix_shared_id, (Node *) plan, query, &state);
+
+	return plan;
+}
+

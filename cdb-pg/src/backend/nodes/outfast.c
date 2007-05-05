@@ -62,6 +62,10 @@
 #define WRITE_UINT_FIELD(fldname) \
 	appendBinaryStringInfo(str, (const char *)&node->fldname, sizeof(int))
 
+/* Write an uint64 field */
+#define WRITE_UINT64_FIELD(fldname) \
+	appendBinaryStringInfo(str, (const char *)&node->fldname, sizeof(uint64))
+
 /* Write an OID field (don't hard-wire assumption that OID is same as uint) */
 #define WRITE_OID_FIELD(fldname) \
 	appendBinaryStringInfo(str, (const char *)&node->fldname, sizeof(Oid))
@@ -279,6 +283,10 @@ _outPlanInfo(StringInfo str, Plan *node)
      *      flow
      *      dispatch
      */
+
+	WRITE_INT_FIELD(sliceNum);
+	WRITE_INT_FIELD(sharing_id);
+	WRITE_INT_FIELD(shared_id);
 }
 
 /*
@@ -524,7 +532,37 @@ _outAgg(StringInfo str, Agg *node)
 
 	WRITE_LONG_FIELD(numGroups);
 	WRITE_INT_FIELD(transSpace);
+	WRITE_INT_FIELD(numNullCols);
+	WRITE_INT_FIELD(rollupLevel);
+	WRITE_UINT64_FIELD(grouping);
+	WRITE_INT_FIELD(rollupGSTimes);
 }
+
+static void
+_outWindowKey(StringInfo str, WindowKey *node)
+{
+	WRITE_NODE_TYPE("WINDOWKEY");
+	WRITE_INT_FIELD(numSortCols);
+
+	WRITE_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
+	WRITE_NODE_FIELD(frame);
+}
+
+
+static void
+_outWindow(StringInfo str, Window *node)
+{
+	WRITE_NODE_TYPE("WINDOW");
+
+	_outPlanInfo(str, (Plan *) node);
+
+	WRITE_INT_FIELD(numPartCols);
+
+	WRITE_INT_ARRAY(partColIdx, numPartCols, AttrNumber);
+
+	WRITE_NODE_FIELD(windowKeys);
+}
+
 
 static void
 _outGroup(StringInfo str, Group *node)
@@ -537,6 +575,12 @@ _outGroup(StringInfo str, Group *node)
 	WRITE_INT_FIELD(numCols);
 
 	WRITE_INT_ARRAY(grpColIdx, numCols, AttrNumber);
+
+	WRITE_INT_FIELD(numNullCols);
+	WRITE_INT_FIELD(rollupLevel);
+	WRITE_UINT64_FIELD(grouping);
+	WRITE_INT_FIELD(rollupGSTimes);
+	WRITE_BOOL_FIELD(lastGroup);
 }
 
 static void
@@ -545,6 +589,13 @@ _outMaterial(StringInfo str, Material *node)
 	WRITE_NODE_TYPE("MATERIAL");
 
     WRITE_BOOL_FIELD(cdb_strict);
+	_outPlanInfo(str, (Plan *) node);
+}
+
+static void
+_outShareInputScan(StringInfo str, ShareInputScan *node)
+{
+	WRITE_NODE_TYPE("SHAREINPUTSCAN");
 
 	_outPlanInfo(str, (Plan *) node);
 }
@@ -619,13 +670,30 @@ _outHash(StringInfo str, Hash *node)
 }
 
 static void
+_outMotionSliceEntry(StringInfo str, MotionSliceEntry *node)
+{
+	WRITE_NODE_TYPE("MOTIONSLICEENTRY");
+
+	WRITE_ENUM_FIELD(motionType, MotionType);
+	WRITE_INT_FIELD(numHashSegs);
+	WRITE_INT_ARRAY(hashSegIdx, numHashSegs, int);
+
+	WRITE_LIST_FIELD(hashExpr);
+	WRITE_LIST_FIELD(hashDataTypes);
+
+	WRITE_INT_FIELD(numOutputSegs);
+	WRITE_INT_ARRAY(outputSegIdx, numOutputSegs, int);
+
+	WRITE_NODE_FIELD(flow);
+}
+
+static void
 _outMotion(StringInfo str, Motion *node)
 {
 
 	WRITE_NODE_TYPE("MOTION");
 
 	WRITE_INT_FIELD(motionID);	
-	WRITE_ENUM_FIELD(motionType, MotionType);
 	WRITE_BOOL_FIELD(sendToSecondary);
 	WRITE_BOOL_FIELD(sendSorted);
 
@@ -645,14 +713,8 @@ _outMotion(StringInfo str, Motion *node)
         }
     }
 
-	WRITE_INT_FIELD(numHashSegs);
-	WRITE_INT_ARRAY(hashSegIdx, numHashSegs, int);
 
-	WRITE_LIST_FIELD(hashExpr);
-	WRITE_LIST_FIELD(hashDataTypes);
-
-	WRITE_INT_FIELD(numOutputSegs);
-	WRITE_INT_ARRAY(outputSegIdx, numOutputSegs, int);
+	WRITE_LIST_FIELD(sliceEntries);
 
 	WRITE_INT_FIELD(numSortCols);
 	WRITE_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
@@ -747,6 +809,21 @@ _outAggref(StringInfo str, Aggref *node)
 }
 
 static void
+_outWindowRef(StringInfo str, WindowRef *node)
+{
+	WRITE_NODE_TYPE("WINDOWREF");
+
+	WRITE_OID_FIELD(winfnoid);
+	WRITE_OID_FIELD(restype);
+	WRITE_NODE_FIELD(args);
+	WRITE_UINT_FIELD(winlevelsup);
+	WRITE_UINT_FIELD(winspec);
+	WRITE_UINT_FIELD(winindex);
+	WRITE_ENUM_FIELD(winstage, WinStage);
+	WRITE_UINT_FIELD(winlevel);
+}
+
+	static void
 _outArrayRef(StringInfo str, ArrayRef *node)
 {
 	WRITE_NODE_TYPE("ARRAYREF");
@@ -1650,7 +1727,6 @@ _outTruncateStmt(StringInfo str, TruncateStmt *node)
 	WRITE_NODE_FIELD(relids);
 	WRITE_NODE_FIELD(new_heap_oids);
 	WRITE_NODE_FIELD(new_toast_oids);
-	
 }
 
 static void
@@ -2115,6 +2191,7 @@ _outFuncCall(StringInfo str, FuncCall *node)
 	WRITE_NODE_FIELD(args);
 	WRITE_BOOL_FIELD(agg_star);
 	WRITE_BOOL_FIELD(agg_distinct);
+	WRITE_NODE_FIELD(over);
 	WRITE_INT_FIELD(location);
 }
 
@@ -2209,6 +2286,7 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_ENUM_FIELD(intoOnCommit, OnCommitAction);
 	WRITE_STRING_FIELD(intoTableSpaceName);
 	WRITE_BOOL_FIELD(hasAggs);
+	WRITE_BOOL_FIELD(hasWindFuncs);
 	WRITE_BOOL_FIELD(hasSubLinks);
 	WRITE_NODE_FIELD(rtable);
 	WRITE_NODE_FIELD(jointree);
@@ -2216,6 +2294,7 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(returningList);
 	WRITE_NODE_FIELD(groupClause);
 	WRITE_NODE_FIELD(havingQual);
+	WRITE_NODE_FIELD(windowClause);
 	WRITE_NODE_FIELD(distinctClause);
 	WRITE_NODE_FIELD(sortClause);
 	WRITE_NODE_FIELD(limitOffset);
@@ -2250,6 +2329,80 @@ _outGroupClause(StringInfo str, GroupClause *node)
 
 	WRITE_UINT_FIELD(tleSortGroupRef);
 	WRITE_OID_FIELD(sortop);
+}
+
+static void
+_outGroupingClause(StringInfo str, GroupingClause *node)
+{
+	WRITE_NODE_TYPE("GROUPINGCLAUSE");
+
+	WRITE_ENUM_FIELD(groupType, GroupingType);
+	WRITE_NODE_FIELD(groupsets);
+}
+
+static void
+_outGroupingFunc(StringInfo str, GroupingFunc *node)
+{
+	WRITE_NODE_TYPE("GROUPINGFUNC");
+
+	WRITE_NODE_FIELD(args);
+	WRITE_INT_FIELD(ngrpcols);
+	WRITE_INT_FIELD(nargs);
+	WRITE_INT_ARRAY(grpargs, nargs, int);
+}
+
+static void
+_outGrouping(StringInfo str, Grouping *node)
+{
+	WRITE_NODE_TYPE("GROUPING");
+}
+
+static void
+_outGroupId(StringInfo str, GroupId *node)
+{
+	WRITE_NODE_TYPE("GROUP_ID");
+}
+
+static void
+_outWindowSpecParse(StringInfo str, WindowSpecParse *node)
+{
+	WRITE_NODE_TYPE("WINDOWSPECPARSE");
+
+	WRITE_STRING_FIELD(name);
+	WRITE_NODE_FIELD(elems);
+}
+
+static void
+_outWindowSpec(StringInfo str, WindowSpec *node)
+{
+	WRITE_NODE_TYPE("WINDOWSPEC");
+
+	WRITE_STRING_FIELD(name);
+	WRITE_STRING_FIELD(parent);
+	WRITE_NODE_FIELD(partition);
+	WRITE_NODE_FIELD(order);
+	WRITE_NODE_FIELD(frame);
+}
+
+static void
+_outWindowFrame(StringInfo str, WindowFrame *node)
+{
+	WRITE_NODE_TYPE("WINDOWFRAME");
+
+	WRITE_BOOL_FIELD(is_rows);
+	WRITE_BOOL_FIELD(is_between);
+	WRITE_NODE_FIELD(trail);
+	WRITE_NODE_FIELD(lead);
+	WRITE_ENUM_FIELD(exclude, WindowExclusion);
+}
+
+static void
+_outWindowFrameEdge(StringInfo str, WindowFrameEdge *node)
+{
+	WRITE_NODE_TYPE("WINDOWFRAMEEDGE");
+
+	WRITE_ENUM_FIELD(kind, WindowBoundingKind);
+	WRITE_NODE_FIELD(val);
 }
 
 static void
@@ -2588,7 +2741,7 @@ _outSlice(StringInfo str, Slice *node)
 	WRITE_INT_FIELD(gangSize);
 	WRITE_DUMMY_FIELD(primaryGang);
 	WRITE_DUMMY_FIELD(mirrorGang);
-	WRITE_INT_FIELD(parentIndex);
+	WRITE_NODE_FIELD(parent); /* List of int index */
 	WRITE_NODE_FIELD(children); /* List of int index */
 	WRITE_NODE_FIELD(primaryProcesses); /* List of (CDBProcess *) */
 	WRITE_NODE_FIELD(mirrorProcesses); /* List of (CDBProcess *) */
@@ -2718,11 +2871,20 @@ _outNode(StringInfo str, void *obj)
 			case T_Agg:
 				_outAgg(str, obj);
 				break;
+			case T_WindowKey:
+				_outWindowKey(str, obj);
+				break;
+			case T_Window:
+				_outWindow(str, obj);
+				break;
 			case T_Group:
 				_outGroup(str, obj);
 				break;
 			case T_Material:
 				_outMaterial(str, obj);
+				break;
+			case T_ShareInputScan:
+				_outShareInputScan(str, obj);
 				break;
 			case T_Sort:
 				_outSort(str, obj);
@@ -2742,6 +2904,9 @@ _outNode(StringInfo str, void *obj)
 			case T_Motion:
 				_outMotion(str, obj);
 				break;
+			case T_MotionSliceEntry:
+				_outMotionSliceEntry(str, obj);
+				break;
 			case T_Alias:
 				_outAlias(str, obj);
 				break;
@@ -2759,6 +2924,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_Aggref:
 				_outAggref(str, obj);
+				break;
+			case T_WindowRef:
+				_outWindowRef(str, obj);
 				break;
 			case T_ArrayRef:
 				_outArrayRef(str, obj);
@@ -3014,14 +3182,12 @@ _outNode(StringInfo str, void *obj)
 			case T_DropPropertyStmt:
 				_outDropPropertyStmt(str, obj);
 				break;
-				
 			case T_DropOwnedStmt:
 				_outDropOwnedStmt(str, obj);
 				break;
 			case T_ReassignOwnedStmt:
 				_outReassignOwnedStmt(str, obj);
 				break;
-				
 			case T_TruncateStmt:
 				_outTruncateStmt(str, obj);
 				break;
@@ -3116,6 +3282,30 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_GroupClause:
 				_outGroupClause(str, obj);
+				break;
+			case T_GroupingClause:
+				_outGroupingClause(str, obj);
+				break;
+			case T_GroupingFunc:
+				_outGroupingFunc(str, obj);
+				break;
+			case T_Grouping:
+				_outGrouping(str, obj);
+				break;
+			case T_GroupId:
+				_outGroupId(str, obj);
+				break;
+			case T_WindowSpecParse:
+				_outWindowSpecParse(str, obj);
+				break;
+			case T_WindowSpec:
+				_outWindowSpec(str, obj);
+				break;
+			case T_WindowFrame:
+				_outWindowFrame(str, obj);
+				break;
+			case T_WindowFrameEdge:
+				_outWindowFrameEdge(str, obj);
 				break;
 			case T_RowMarkClause:
 				_outRowMarkClause(str, obj);

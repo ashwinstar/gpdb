@@ -19,7 +19,6 @@
 #include "utils/tuplestore.h"
 
 
-extern DestReceiver *CreateTuplestoreDestReceiver(Tuplestorestate *tStore,
-							 MemoryContext tContext);
+extern DestReceiver *CreateTuplestoreDestReceiver(Tuplestorestate *tStore, MemoryContext tContext);
 
 #endif   /* TSTORE_RECEIVER_H */

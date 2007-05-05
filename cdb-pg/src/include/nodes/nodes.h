@@ -41,6 +41,7 @@ typedef enum NodeTag
 	T_CdbProcess,
 	T_Slice,
 	T_SliceTable,
+	T_ShareNodeEntry,
 	
 	/*
 	 * TAGS FOR PLAN NODES (plannodes.h)
@@ -72,8 +73,11 @@ typedef enum NodeTag
 	T_Hash,
 	T_SetOp,
 	T_Limit,
+	T_MotionSliceEntry,
 	T_Motion,
 	T_AdaptiveNestLoop,
+	T_ShareInputScan,
+	T_Window,
 
 	/*
 	 * TAGS FOR PLAN STATE NODES (execnodes.h)
@@ -107,8 +111,11 @@ typedef enum NodeTag
 	T_HashState,
 	T_SetOpState,
 	T_LimitState,
+	T_MotionStateSliceEntry,
 	T_MotionState,
 	T_AdaptiveNestLoopState,
+	T_ShareInputScanState,
+	T_WindowState,
 
 	/*
 	 * TAGS FOR PRIMITIVE NODES (primnodes.h)
@@ -120,6 +127,7 @@ typedef enum NodeTag
 	T_Const,
 	T_Param,
 	T_Aggref,
+	T_WindowRef,
 	T_ArrayRef,
 	T_FuncExpr,
 	T_OpExpr,
@@ -151,6 +159,11 @@ typedef enum NodeTag
 	T_JoinExpr,
 	T_FromExpr,
 	T_Flow,
+	T_WindowFrame,
+	T_WindowFrameEdge,
+	T_WindowKey,
+	T_Grouping,
+	T_GroupId,
 
 	/*
 	 * TAGS FOR EXPRESSION STATE NODES (execnodes.h)
@@ -179,6 +192,8 @@ typedef enum NodeTag
 	T_NullTestState,
 	T_CoerceToDomainState,
 	T_DomainConstraintState,
+	T_WindowRefExprState,
+	T_GroupingFuncExprState,
 
 	/*
 	 * TAGS FOR PLANNER NODES (relation.h)
@@ -313,6 +328,8 @@ typedef enum NodeTag
 	T_AlterOwnerStmt,
 	T_DropOwnedStmt,
 	T_ReassignOwnedStmt,
+	T_WindowSpec,
+	T_WindowSpecParse,
 
 	T_A_Expr = 800,
 	T_ColumnRef,
@@ -334,6 +351,8 @@ typedef enum NodeTag
 	T_RangeTblEntry,
 	T_SortClause,
 	T_GroupClause,
+	T_GroupingClause,
+	T_GroupingFunc,
 	T_FkConstraint,
 	T_PrivGrantee,
 	T_FuncWithArgs,
@@ -543,4 +562,23 @@ typedef enum DispatchMethod
 	
 } DispatchMethod;
 
+/*
+ * ShareInputMethod - how to share results from subplan.
+ *
+ * For starter,  
+ */
+typedef enum ShareInputMethod
+{
+	SHAREINPUT_SIMPLE = 0		/* share input using a simple tuple store */	
+} ShareInputMethod;
+
+/* 
+ * Inside the executor, if a caller to some data type manipulation functions
+ * (e.g., int8inc()) is doing aggregate or window function work, we want to
+ * avoid copying the input datum and just write directly over the input. This
+ * isn't legal if the function is being used outside this context.
+ */
+#define IS_AGG_EXECUTION_NODE(node) \
+	((IsA((Node *)(node), AggState) || IsA((Node *)(node), WindowState)) ? \
+	 true : false)
 #endif   /* NODES_H */

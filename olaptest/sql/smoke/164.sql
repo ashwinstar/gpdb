@@ -1,0 +1,1 @@
+SELECT p.pn, MAX(p.pname), SUM(s.qty), SUM(s.qty * s.prc), CASE WHEN SUM(s.qty) = 0 THEN 0 ELSE CAST( SUM(s.qty * s.prc)/SUM(s.qty) as numeric(10,4) ) end as avg_price FROM product p, sale s WHERE p.pn = s.pn and s.cn in (SELECT s.cn FROM sale s, product p WHERE s.pn = p.pn and p.pname > 'A' ) GROUP BY p.pn;

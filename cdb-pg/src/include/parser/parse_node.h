@@ -75,11 +75,13 @@ typedef struct ParseState
 	Node	   *p_value_substitute;		/* what to replace VALUE with, if any */
 	bool		p_variableparams;
 	bool		p_hasAggs;
+	bool		p_hasWindFuncs;
 	bool		p_hasSubLinks;
 	bool		p_is_insert;
 	bool		p_is_update;
 	Relation	p_target_relation;
 	RangeTblEntry *p_target_rangetblentry;
+	List	   *p_win_clauses;	/* list of window specifications */
 } ParseState;
 
 extern ParseState *make_parsestate(ParseState *parentParseState);

@@ -1,0 +1,14 @@
+ xn  | pn  |        pname        
+-----+-----+---------------------
+     | 100 | Sword
+     | 200 | Dream
+     | 401 | Sins
+     | 403 | Classified Material
+     | 405 | Nuclear Weapons
+ 300 | 300 | Castle
+     | 400 | Justice
+     | 402 | Misfortune
+     | 404 | Textbooks
+     | 406 | Acid Rain
+(10 rows)
+

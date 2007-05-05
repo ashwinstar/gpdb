@@ -25,6 +25,8 @@
 #include "executor/executor.h"
 #include "executor/nodeGroup.h"
 
+static uint64 get_grouping(TupleTableSlot *slot,
+						   int grping_idx);
 
 /*
  *	 ExecGroup -
@@ -37,17 +39,53 @@ ExecGroup(GroupState *node)
 	ExprContext *econtext;
 	int			numCols;
 	AttrNumber *grpColIdx;
+	int rollup_level;
 	TupleTableSlot *firsttupleslot;
 	TupleTableSlot *outerslot;
+	TupleTableSlot *copyslot;
+	HeapTuple copytuple;
+	bool      first_time = true;
+	Group *group_node = (Group *)node->ss.ps.plan;
 
 	/*
 	 * get state info from node
 	 */
-	if (node->grp_done)
-		return NULL;
 	econtext = node->ss.ps.ps_ExprContext;
-	numCols = ((Group *) node->ss.ps.plan)->numCols;
-	grpColIdx = ((Group *) node->ss.ps.plan)->grpColIdx;
+	numCols = group_node->numCols;
+	grpColIdx = group_node->grpColIdx;
+	rollup_level = group_node->rollupLevel;
+
+	/*
+	 * If the previous aggregated result needs to be outputed
+	 * several times, we simple return the previous output tuple.
+	 */
+	if (node->num_repeats > 0)
+	{
+		/*
+		 * XXX We do the projection here again. It may be cheaper to simply
+		 * update the GROUP_ID column, but it seems that it is so much easier
+		 * to just do the projection again.
+		 */
+		econtext->ecxt_scantuple = node->prev_aggslot;
+
+		econtext->group_id = node->num_repeats;
+		econtext->grouping =
+			get_grouping(econtext->ecxt_scantuple,
+						 group_node->grpColIdx[group_node->numCols-1]);
+
+		node->num_repeats--;
+
+		return ExecProject(node->ss.ps.ps_ProjInfo, NULL);
+	}
+
+	else
+	{
+		/* Do not need to release the space */
+		node->prev_aggslot = NULL;
+
+		if (node->grp_done)
+			return NULL;
+	}
 
 	/*
 	 * The ScanTupleSlot holds the (copied) first tuple of each group.
@@ -55,78 +93,251 @@ ExecGroup(GroupState *node)
 	firsttupleslot = node->ss.ss_ScanTupleSlot;
 
 	/*
-	 * We need not call ResetExprContext here because execTuplesMatch will
-	 * reset the per-tuple memory context once per input tuple.
-	 */
-
-	/*
-	 * If first time through, acquire first input tuple and determine whether
-	 * to return it or not.
-	 */
-	if (TupIsNull(firsttupleslot))
-	{
-		outerslot = ExecProcNode(outerPlanState(node));
-		if (TupIsNull(outerslot))
-		{
-			/* empty input, so return nothing */
-			node->grp_done = TRUE;
-			return NULL;
-		}
-		/* Copy tuple, set up as input for qual test and projection */
-		ExecCopySlot(firsttupleslot, outerslot);
-		econtext->ecxt_scantuple = firsttupleslot;
-
-		/*
-		 * Check the qual (HAVING clause); if the group does not match, ignore
-		 * it and fall into scan loop.
-		 */
-		if (ExecQual(node->ss.ps.qual, econtext, false))
-		{
-			/*
-			 * Form and return a projection tuple using the first input tuple.
-			 */
-			return ExecProject(node->ss.ps.ps_ProjInfo, NULL);
-		}
-	}
-
-	/*
-	 * This loop iterates once per input tuple group.  At the head of the
-	 * loop, we have finished processing the first tuple of the group and now
-	 * need to scan over all the other group members.
+	 * This loop reads a new input tuple, and handles several cases:
+	 * (1) If this is a pass-through tuple, simple return it.
+	 * (2) If this is not a rollup Group node, return the first tuple in
+	 *     a new group or loop through tuples in this group.
+	 * (3) If this is a rollup Group node, return the input tuple.
 	 */
 	for (;;)
 	{
+		int outer_rollup_level;
+
 		/*
-		 * Scan over all remaining tuples that belong to this group
+		 * If we have read the first tuple in the next group, we want
+		 * to pass through this tuple if this is a rollup query. We also
+		 * store this tuple, modified when this is a rollup query,
+		 * into firsttupleslot.
 		 */
-		for (;;)
+		if (node->grp_firstTuple != NULL)
 		{
-			outerslot = ExecProcNode(outerPlanState(node));
-			if (TupIsNull(outerslot))
-			{
-				/* no more groups, so we're done */
-				node->grp_done = TRUE;
-				return NULL;
-			}
+			HeapTuple tuple = node->grp_firstTuple;
 
 			/*
-			 * Compare with first tuple and see if this tuple is of the same
-			 * group.  If so, ignore it and keep scanning.
+			 * The previous input tuple is stored in grp_firstTuple in the form
+			 * when it was received. For a rollup query, we want to modify it
+			 * before storing it to firstupleslot. 
 			 */
-			if (!execTuplesMatch(firsttupleslot, outerslot,
+			if (rollup_level > 1)
+			{
+				tuple = heap_copytuple(node->grp_firstTuple);
+				tuple = heap_modify_tuple(tuple,
+										  firsttupleslot->tts_tupleDescriptor,
+										  node->replValues,
+										  node->replIsnull,
+										  node->doReplace);
+				ExecStoreTuple(node->grp_firstTuple,
+							   node->copyslot,
+							   InvalidBuffer,
+							   true);
+			}
+
+			ExecStoreTuple(tuple,
+						   firsttupleslot,
+						   InvalidBuffer,
+						   true);
+
+			node->grp_firstTuple = NULL;
+
+			if (rollup_level > 1 && node->out_state == PASS_THRU)
+			{
+				node->out_state = PROCESSING;
+
+				/* We need to reproject the pass-through tuple */
+				if (group_node->lastGroup)
+				{
+					econtext->ecxt_scantuple = node->copyslot;
+					econtext->group_id = get_group_id(econtext->ecxt_scantuple);
+					econtext->grouping =
+						get_grouping(econtext->ecxt_scantuple,
+									 group_node->grpColIdx[group_node->numCols-1]);
+					return ExecProject(node->ss.ps.ps_ProjInfo, NULL);
+				}
+				else
+					return node->copyslot;
+			}
+
+			node->out_state = PROCESSING;
+		}
+
+		first_time = TupIsNull(firsttupleslot);
+
+		outerslot = ExecProcNode(outerPlanState(node));
+		copyslot = outerslot;
+
+		if (TupIsNull(outerslot))
+		{
+			/* no more input */
+			node->grp_done = TRUE;
+
+			/* empty input, so return nothing */
+			if (first_time)
+				return NULL;
+
+			node->out_state = AGG_READY;
+		}
+
+		else
+		{
+			outer_rollup_level =
+				tuple_rollup_level(outerslot, numCols, rollup_level,
+								   group_node->grpColIdx[group_node->numCols-1]);
+			/*
+			 * For a rollup query, we need to modify the input tuple
+			 * to match with the current rollup level. We initialize those
+			 * arrays that are needed for this process.
+			 */
+			if (node->num_attrs == 0 && rollup_level > 1)
+			{
+				/* Ignore Grouping column */
+				int num_grpattrs = numCols - 1;
+				int attno;
+
+				node->num_attrs =
+					outerslot->tts_tupleDescriptor->natts;
+				node->replValues =
+					palloc0(node->num_attrs * sizeof(Datum));
+				node->replIsnull = palloc0(node->num_attrs * sizeof(bool));
+				node->doReplace = palloc0(node->num_attrs * sizeof(bool));
+				Assert(num_grpattrs >= rollup_level-1);
+				for (attno=0; attno<rollup_level-1; attno++)
+				{
+					node->replIsnull[num_grpattrs-attno-1] = true;
+					node->doReplace[num_grpattrs-attno-1] = true;
+				}
+			}
+
+			if (outer_rollup_level + 1 < rollup_level)
+			{
+				/* simple pass-through */
+				node->out_state = PASS_THRU;
+				return outerslot;
+			}
+
+			Assert(outer_rollup_level + 1 == rollup_level);
+
+			/*
+			 * For a rollup query, we modify the input tuple to
+			 * match the rollup level of this node. The modified tuple
+			 * is stored in node->copyslot.
+			 */
+			if (rollup_level > 1)
+			{
+				copytuple = ExecCopySlotTuple(outerslot);
+				/* modify this tuple */
+				copytuple =
+					heap_modify_tuple(copytuple,
+									  outerslot->tts_tupleDescriptor,
+									  node->replValues,
+									  node->replIsnull,
+									  node->doReplace);
+
+				ExecStoreTuple(copytuple,
+							   node->copyslot,
+							   InvalidBuffer,
+							   true);
+				copyslot = node->copyslot;
+			}
+
+			if (first_time ||
+				!execTuplesMatch(firsttupleslot, copyslot,
 								 numCols, grpColIdx,
 								 node->eqfunctions,
 								 econtext->ecxt_per_tuple_memory))
-				break;
+			{
+			
+				/*
+				 * Copy the first tuple for the new group in its input form, because
+				 * we have to pass through this tuple if this is a rollup query.
+				 */
+				node->grp_firstTuple = ExecCopySlotTuple(outerslot);
+
+				node->out_state = AGG_READY;
+			}
 		}
 
+		if (node->out_state != AGG_READY)
+		{
+			node->out_state = PROCESSING;
+
+			/* return a pass-through tuple if this is a rollup query. */
+			if (rollup_level > 1)
+			{
+				/* We need to reproject the pass-through tuple */
+				if (group_node->lastGroup)
+				{
+					econtext->ecxt_scantuple = outerslot;
+					econtext->group_id = get_group_id(econtext->ecxt_scantuple);
+					econtext->grouping =
+						get_grouping(econtext->ecxt_scantuple,
+									 group_node->grpColIdx[group_node->numCols-1]);
+					return ExecProject(node->ss.ps.ps_ProjInfo, NULL);
+				}
+				else
+					return outerslot;
+			}
+
+			/* Otherwise, read the next tuple */
+			continue;
+		}
+
+		Assert(node->out_state == AGG_READY);
+
 		/*
-		 * We have the first tuple of the next input group.  See if we want to
-		 * return it.
+		 * If this is the first time call, then the grouped result is not
+		 * ready. We simply output the pass-through tuple.
 		 */
-		/* Copy tuple, set up as input for qual test and projection */
-		ExecCopySlot(firsttupleslot, outerslot);
+		if (first_time && rollup_level > 1)
+		{
+			node->out_state = PROCESSING;
+
+			/* We need to reproject the pass-through tuple */
+			if (group_node->lastGroup)
+			{
+				econtext->ecxt_scantuple = outerslot;
+				econtext->group_id = get_group_id(econtext->ecxt_scantuple);
+				econtext->grouping =
+					get_grouping(econtext->ecxt_scantuple,
+								 group_node->grpColIdx[group_node->numCols-1]);
+				return ExecProject(node->ss.ps.ps_ProjInfo, NULL);
+			}
+			else
+				return outerslot;
+		}
+
+		/* We just read the first tuple, so continue to read the next one. */
+		if (first_time)
+			continue;
+
+		/*
+		 * We need not call ResetExprContext here because execTuplesMatch will
+		 * reset the per-tuple memory context once per input tuple.
+		 */
 		econtext->ecxt_scantuple = firsttupleslot;
+
+		if (rollup_level == -1)
+			econtext->grouping =
+				get_grouping(econtext->ecxt_scantuple,
+							 group_node->grpColIdx[group_node->numCols-1]);
+		else
+			econtext->grouping = ((Group *) node->ss.ps.plan)->grouping;
+
+		if (rollup_level > 1)
+		{
+			node->out_state = PASS_THRU;
+			econtext->group_id = get_group_id(econtext->ecxt_scantuple);
+		}
+		else
+		{
+			node->out_state = PROCESSING;
+			econtext->group_id = group_node->rollupGSTimes;
+		}
+
+		if (group_node->lastGroup)
+		{
+			node->prev_aggslot = econtext->ecxt_scantuple;
+			node->num_repeats = econtext->group_id - 1;
+		}
 
 		/*
 		 * Check the qual (HAVING clause); if the group does not match, ignore
@@ -215,6 +426,16 @@ ExecInitGroup(Group *node, EState *estate, int eflags)
 							   node->numCols,
 							   node->grpColIdx);
 
+	/* for rollup */
+	grpstate->out_state = PROCESSING;
+	grpstate->grp_firstTuple = NULL;
+	grpstate->num_attrs = 0;
+	grpstate->replValues = NULL;
+	grpstate->replIsnull = NULL;
+	grpstate->doReplace = NULL;
+
+	grpstate->copyslot = 
+		MakeSingleTupleTableSlot(grpstate->ss.ss_ScanTupleSlot->tts_tupleDescriptor);
 	return grpstate;
 }
 
@@ -239,6 +460,20 @@ ExecEndGroup(GroupState *node)
 	/* clean up tuple table */
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
+	if (node->num_attrs > 0)
+	{
+		pfree(node->replValues);
+		pfree(node->replIsnull);
+		pfree(node->doReplace);
+	}
+	ExecClearTuple(node->copyslot);
+	/* Release first tuple of group, if we have made a copy */
+	if (node->grp_firstTuple != NULL)
+	{
+		heap_freetuple(node->grp_firstTuple);
+		node->grp_firstTuple = NULL;
+	}
+
 	outerPlan = outerPlanState(node);
 	ExecEndNode(outerPlan);
 }
@@ -250,7 +485,26 @@ ExecReScanGroup(GroupState *node, ExprContext *exprCtxt)
 	/* must clear first tuple */
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
+	node->out_state = PROCESSING;
+	ExecClearTuple(node->copyslot);
+
 	if (((PlanState *) node)->lefttree &&
 		((PlanState *) node)->lefttree->chgParam == NULL)
 		ExecReScan(((PlanState *) node)->lefttree, exprCtxt);
+}
+
+static uint64
+get_grouping(TupleTableSlot *slot, int grping_attno)
+{
+	bool isnull;
+	uint64 grouping;
+	
+	/* Obtain grouping from input */
+	Datum grping_datum = slot_getattr(slot,
+									  grping_attno,
+									  &isnull);
+	Assert(!isnull);
+	grouping = DatumGetInt64(grping_datum);
+
+	return grouping;
 }

@@ -220,6 +220,104 @@ ExplainOneQuery(Query *query, ExplainStmt *stmt, ParamListInfo params,
 
 	/* plan the query */
 	plan = planner(query, isCursor, cursorOptions, params);
+	
+#ifdef USE_FORCE_PLAN
+	/* if we force the plan, we will do substitution here */
+	if(stmt->force)
+	{
+		/*
+		 * First, get the string from the plan.  If we force, the plan must
+		 * be SELECT 'parseTree', 'planTree'.  Sanity check 
+		 */
+		bool fErr = FALSE;
+		char *parseStr = NULL;
+		char *planStr = NULL;
+		
+		if(!IsA(plan,Result)
+		    || plan->targetlist == NULL
+		    || plan->targetlist->length != 2
+		    || plan->qual
+		    || plan->lefttree
+		    || plan->righttree
+		    || plan->initPlan
+		    || plan->extParam 
+		    || plan->allParam
+		    || plan->nParamExec != 0
+		    || plan->nMotionNodes != 0
+		    || plan->nInitPlans != 0
+		    || plan->sliceTable
+		  )
+			fErr = TRUE;
+
+		/* The entry in the targelist must be 'parseTree', 'planTree' */
+		if(fErr == FALSE)
+		{
+			ListCell *lc = NULL;
+			void *node = NULL;
+			Expr *expr = NULL;
+			int i=0;
+			foreach(lc, plan->targetlist)
+			{
+				Const *constval;
+				
+				node = lfirst(lc);
+				Assert(IsA(node, TargetEntry));
+				expr = ((TargetEntry*)node)->expr;
+				Assert(expr != NULL);
+
+				constval = (Const *)expr;
+				
+				if(!IsA(expr,Const))
+				{
+					fErr = TRUE;
+					break;
+				}
+
+				if(constval->constisnull || constval->constbyval)
+				{
+					fErr = TRUE;
+					break;
+				}
+
+				switch(i)
+				{
+					case 0:
+						parseStr = (char*) DatumGetPointer(constval->constvalue);			
+						break;
+					case 1:
+						planStr = (char*) DatumGetPointer(constval->constvalue);
+						break;
+					default:
+						fErr = TRUE;
+						break;
+				}
+				++i;
+			}
+		}
+
+		if(fErr == TRUE || parseStr == NULL || planStr == NULL)
+		{
+			ereport(ERROR, 
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("EXPLAIN FORCE expects a SELECT 'parseTree', 'planTree'.")
+				));
+		}
+		else
+		{
+			/* plan substitution */
+			query = stringToNode(parseStr);
+			plan = stringToNode(planStr);
+
+			/* Zap the slice table.  In ExplainOnePlan, we will slice the plan.
+			 * The most common case is we will try to load a plan from a previous
+			 * explain verbose.  The output has a slice table, which will cause 
+			 * trouble in ExplainOnePlan when we slice it again.
+			 */
+			pfree(plan->sliceTable);
+			plan->sliceTable = NULL;
+		}
+	}	
+#endif /* USE_FORCE_PLAN*/
 
 	/*
 	 * Update snapshot command ID to ensure this query sees results of any
@@ -398,6 +496,22 @@ ExplainOnePlan_internal(QueryDesc      *queryDesc,
 	{
 		char	   *s;
 		char	   *f;
+
+#ifdef USE_FORCE_PLAN
+		// First print parse tree.
+		s = nodeToString(queryDesc->parsetree);
+		if(s)
+		{
+			if (Explain_pretty_print)
+				f = pretty_format_node_dump(s);
+			else
+				f = format_node_dump(s);
+			pfree(s);
+			do_text_output_multiline(tstate, f);
+			pfree(f);
+			do_text_output_oneline(tstate, ""); /* separator line */
+		}
+#endif /* USE_FORCE_PLAN */
 
         /* Switch to EXPLAIN memory context. */
         MemoryContextSwitchTo(es->explaincxt);
@@ -597,7 +711,6 @@ ExplainOnePlan_internal(QueryDesc      *queryDesc,
 		CommandCounterIncrement();
 }                               /* ExplainOnePlan_internal */
 
-
 /* Compute elapsed time in seconds since given timestamp */
 static double
 elapsed_time(instr_time *starttime)
@@ -790,6 +903,9 @@ explain_outNode(StringInfo str,
 		case T_ValuesScan:
 			pname = "Values Scan";
 			break;
+		case T_ShareInputScan:
+			pname = "ShareInputScan";
+			break;
 		case T_Material:
 			pname = "Materialize";
 			break;
@@ -815,6 +931,9 @@ explain_outNode(StringInfo str,
 					pname = "Aggregate ???";
 					break;
 			}
+			break;
+		case T_Window:
+			pname = "Window";
 			break;
 		case T_Unique:
 			pname = "Unique";
@@ -849,39 +968,53 @@ explain_outNode(StringInfo str,
 			{
 				Motion	   *pMotion = (Motion *) plan;
                 int         nSenders = pMotion->numInputSegs;
-                int         nReceivers = pMotion->numOutputSegs;
-                bool        senderIsEntryDb = false;
+				int 		nSlices = list_length(pMotion->sliceEntries);
 
-				switch (pMotion->motionType)
+				int         nReceivers; 
+				bool        senderIsEntryDb = false;
+
+				if(nSlices == 1)
 				{
-					case MOTIONTYPE_HASH:
-                        nReceivers = pMotion->numHashSegs;
-					    pname = "Redistribute Motion";
-						break;
-					case MOTIONTYPE_FIXED:
-                        nReceivers = pMotion->numOutputSegs;
-						if (nReceivers == 0)
-                        {
-                            pname = "Broadcast Motion";
-                            nReceivers = getgpsegmentCount();
-                        }
-						else
-                            pname = "Gather Motion";
-						break;
-					default:
-						pname = "Motion ???";
-						break;
+					MotionSliceEntry *slice = (MotionSliceEntry *) linitial(pMotion->sliceEntries);
+
+					switch (slice->motionType)
+					{
+						case MOTIONTYPE_HASH:
+							nReceivers = slice->numHashSegs;
+							pname = "Redistribute Motion";
+							break;
+						case MOTIONTYPE_FIXED:
+							nReceivers = slice->numOutputSegs;
+							if (nReceivers == 0)
+							{
+								pname = "Broadcast Motion";
+								nReceivers = getgpsegmentCount();
+							}
+							else
+								pname = "Gather Motion";
+							break;
+						default:
+							pname = "Motion ???";
+							break;
+					}
 				}
-                if (nSenders == 1 &&
-                    plan->lefttree &&
-                    plan->lefttree->flow &&
-                    plan->lefttree->flow->flotype == FLOW_SINGLETON &&
-                    plan->lefttree->flow->segindex == -1)
-                    senderIsEntryDb = true;
-                appendStringInfo(str, "%s %d:%d  (slice%d%s)", pname,
-                                 nSenders, nReceivers, pMotion->motionID,
-                                 senderIsEntryDb ? " on entry db" : "");
-                pname = "";
+				else
+					pname = "Multi Slice Motion";
+
+				/*
+				 * Only print x:y for single slice motion.  
+				 * XXX TODO: ftian: find a better way to display multi sliced motion
+				 */
+				if (nSenders == 1 && nSlices == 1 && 
+						plan->lefttree &&
+						plan->lefttree->flow &&
+						plan->lefttree->flow->flotype == FLOW_SINGLETON &&
+						plan->lefttree->flow->segindex == -1)
+					senderIsEntryDb = true;
+				appendStringInfo(str, "%s %d:%d  (slice%d%s)", pname,
+						nSenders, nReceivers, pMotion->motionID,
+						senderIsEntryDb ? " on entry db" : "");
+				pname = "";
 			}
 
 			break;
@@ -1138,6 +1271,47 @@ explain_outNode(StringInfo str,
 						       "Group By",
 						       str, indent, es);
 			break;
+		case T_Window:
+			{
+				Window *window = (Window *)plan;
+				ListCell *cell;
+				char orderKeyStr[32]; /* XXX big enough */
+				int i;
+				
+				if ( window->numPartCols > 0 )
+				{
+					show_grouping_keys(outerPlan(plan),
+									   window->numPartCols,
+									   window->partColIdx,
+									   "Partition By",
+									   str, indent, es);
+				}
+
+				if (list_length(window->windowKeys) > 1)
+					i = 0;
+				else
+					i = -1;
+					
+				foreach(cell, window->windowKeys)
+				{
+					WindowKey *key = (WindowKey *) lfirst(cell);
+					
+					if ( i < 0 )
+						sprintf(orderKeyStr, "Order By");
+					else
+					{
+						sprintf(orderKeyStr, "Order By (level %d)", ++i);
+					}
+					
+					show_sort_keys(outerPlan(plan),
+								   key->numSortCols,
+								   key->sortColIdx,
+								   orderKeyStr,
+								   str, indent, es);
+				}
+				/* XXX don't show framing for now */
+			}
+			break;
 		case T_Unique:
 			show_motion_keys(plan,
                              NIL,
@@ -1186,14 +1360,21 @@ explain_outNode(StringInfo str,
 				Motion	   *pMotion = (Motion *) plan;
                 SliceTable *sliceTable = planstate->state->es_sliceTable;
 
-                if (pMotion->sendSorted ||
-                    pMotion->motionType == MOTIONTYPE_HASH)
-				    show_motion_keys(plan,
-                                     pMotion->hashExpr,
-								     pMotion->numSortCols,
-								     pMotion->sortColIdx,
-                                     "Merge Key",
-								     str, indent, es);
+				/* 
+				 * Only show merge key or hash key if this motion have one slice and one route
+				 * XXX TODO: ftian: Find a better way to explain motion
+				 */
+				if (list_length(pMotion->sliceEntries) == 1)
+				{
+					MotionSliceEntry *sliceEntry = (MotionSliceEntry *) linitial(pMotion->sliceEntries);
+					if (pMotion->sendSorted || sliceEntry->motionType == MOTIONTYPE_HASH)
+						show_motion_keys(plan,
+								sliceEntry->hashExpr,
+								pMotion->numSortCols,
+								pMotion->sortColIdx,
+								"Merge Key",
+								str, indent, es);
+				}
 
                 /* Descending into a new slice. */
                 if (sliceTable)
@@ -1401,6 +1582,8 @@ explain_outNode(StringInfo str,
 			SubPlanState *sps = (SubPlanState *) lfirst(lst);
 			SubPlan    *sp = (SubPlan *) sps->xprstate.expr;
 
+            Assert(!sps->cdbextratextbuf);
+
 			es->rtable = sp->rtable;
 			for (i = 0; i < indent; i++)
 				appendStringInfo(str, "  ");
@@ -1523,7 +1706,6 @@ show_upper_qual(List *qual, const char *qlabel,
 	appendStringInfo(str, "  %s: %s\n", qlabel, exprstr);
 }
 
-
 /*
  * CDB: Show GROUP BY keys for an Agg or Group node.
  */
@@ -1540,6 +1722,11 @@ show_grouping_keys(Plan        *plan,
     bool		useprefix = list_length(es->rtable) > 1;
     int			keyno;
     int			i;
+	int         num_null_cols = 0;
+	int         rollup_gs_times = 0;
+	StringInfoData tmpstr;
+
+	initStringInfoOfSize(&tmpstr, 1000);
 
     if (numCols <= 0)
         return;
@@ -1579,25 +1766,74 @@ show_grouping_keys(Plan        *plan,
 										   0, NULL,
 										   es->rtable);
 
+	if (IsA(plan, Agg))
+	{
+		num_null_cols = ((Agg*)plan)->numNullCols;
+		rollup_gs_times = ((Agg*)plan)->rollupGSTimes;
+	}
+
+	else if (IsA(plan, Group))
+	{
+		num_null_cols = ((Group*)plan)->numNullCols;
+		rollup_gs_times = ((Group*)plan)->rollupGSTimes;
+	}
+
     for (keyno = 0; keyno < numCols; keyno++)
     {
 	    /* find key expression in tlist */
 	    AttrNumber      keyresno = subplanColIdx[keyno];
 	    TargetEntry    *target = get_tle_by_resno(subplan->targetlist, keyresno);
+		char grpid_str[50];
+		sprintf(grpid_str, "GROUPING");
 
 	    if (!target)
 		    elog(ERROR, "no tlist entry for key %d", keyresno);
 
-	    /* Deparse the expression, showing any top-level cast */
-	    exprstr = deparse_expr_sweet((Node *) target->expr, context,
-								     useprefix, true);
-	    /* And add to str */
-	    if (keyno > 0)
-		    appendStringInfoString(str, ", ");
-	    appendStringInfoString(str, exprstr);
+		if (IsA(target->expr, Grouping))
+			/* Append "GROUPING" explicitly. */
+			exprstr = grpid_str;
+		else
+			/* Deparse the expression, showing any top-level cast */
+			exprstr = deparse_expr_sweet((Node *) target->expr, context,
+										 useprefix, true);
+
+		/* And add to str */
+		if (keyno > 0)
+			appendStringInfoString(str, ", ");
+		appendStringInfoString(str, exprstr);
+
+		/* Add to tmpstr for grouping sets */
+		if ((num_null_cols > 0) && (numCols - num_null_cols - keyno > 0))
+		{
+			if (keyno > 0)
+				appendStringInfoString(&tmpstr, ", ");
+			if (numCols - num_null_cols - keyno == 1)
+				appendStringInfoString(&tmpstr, grpid_str);
+			else
+				appendStringInfoString(&tmpstr, exprstr);
+		}
     }
 
     appendStringInfoChar(str, '\n');
+
+	if (num_null_cols > 0)
+	{
+		for (i = 0; i < indent; i++)
+			appendStringInfoString(str, "  ");
+
+		appendStringInfoString(str, "  Grouping Set: (");
+		appendStringInfoString(str, tmpstr.data);
+		appendStringInfoString(str, ") ");
+		appendStringInfoString(str, "\n");
+	}
+
+	if (rollup_gs_times > 1)
+	{
+		appendStringInfo(str, "(%d times)", rollup_gs_times);
+		appendStringInfoString(str, "\n");
+	}
+
+	pfree(tmpstr.data);
 }                               /* show_grouping_keys */
 
 

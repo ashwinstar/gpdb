@@ -1944,7 +1944,9 @@ exec_stmt_return_next(PLpgSQL_execstate *estate,
 				 errmsg("cannot use RETURN NEXT in a non-SETOF function")));
 
 	if (estate->tuple_store == NULL)
+	{
 		exec_init_tuple_store(estate);
+	}
 
 	/* rettupdesc will be filled by exec_init_tuple_store */
 	tupdesc = estate->rettupdesc;
@@ -2088,7 +2090,7 @@ exec_init_tuple_store(PLpgSQL_execstate *estate)
 	estate->tuple_store_cxt = rsi->econtext->ecxt_per_query_memory;
 
 	oldcxt = MemoryContextSwitchTo(estate->tuple_store_cxt);
-	estate->tuple_store = tuplestore_begin_heap(true, false, work_mem);
+	estate->tuple_store = tuplestore_begin_heap(true, false, work_mem); 
 	MemoryContextSwitchTo(oldcxt);
 
 	estate->rettupdesc = rsi->expectedDesc;

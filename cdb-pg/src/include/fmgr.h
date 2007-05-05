@@ -35,6 +35,7 @@ typedef struct StringInfoData *fmStringInfo;
 struct ExprContext;                     /* #include "nodes/execnodes.h" */
 struct tupleDesc;                       /* #include "access/tupdesc.h" */
 struct Tuplestorestate;                 /* #include "utils/tuplestore.h" */
+struct TuplestorePos;                   /* #include "utils/tuplestore.h" */
 
 
 /*
@@ -570,3 +571,5 @@ extern void **find_rendezvous_variable(const char *varName);
 extern char *fmgr(Oid procedureId,...);
 
 #endif   /* FMGR_H */
+
+

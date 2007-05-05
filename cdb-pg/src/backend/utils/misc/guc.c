@@ -1128,6 +1128,15 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_window_shareinput", PGC_USERSET, QUERY_TUNING_METHOD,
+            gettext_noop("Enable window function planner sharing subplan using share input."),
+            gettext_noop("Reduces duplicate subplan execution.")
+		},
+		&gp_window_shareinput,
+		true, NULL, NULL
+	},
+
+	{
 		{"gp_enable_motion_deadlock_sanity", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable verbose check at planning time."),
 			NULL,
@@ -6055,6 +6064,11 @@ gp_guc_list_init(void)
     {
         list_free(gp_guc_list_for_explain);
         gp_guc_list_for_explain = NIL;
+    }
+    if (gp_guc_list_for_no_plan)
+    {
+        list_free(gp_guc_list_for_no_plan);
+        gp_guc_list_for_no_plan = NIL;
     }
     if (gp_guc_list_for_no_plan)
     {

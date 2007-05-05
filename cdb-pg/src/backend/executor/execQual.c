@@ -62,6 +62,18 @@ static Datum ExecEvalArrayRef(ArrayRefExprState *astate,
 static Datum ExecEvalAggref(AggrefExprState *aggref,
 			   ExprContext *econtext,
 			   bool *isNull, ExprDoneCond *isDone);
+static Datum ExecEvalGroupingFunc(GroupingFuncExprState *gstate,
+								  ExprContext *econtext,
+								  bool *isNull, ExprDoneCond *isDone);
+static Datum ExecEvalGrouping(ExprState *gstate,
+							  ExprContext *econtext,
+							  bool *isNull, ExprDoneCond *isDone);
+static Datum ExecEvalGroupId(ExprState *gstate,
+							 ExprContext *econtext,
+							 bool *isNull, ExprDoneCond *isDone);
+static Datum ExecEvalWindowRef(WindowRefExprState *winref,
+			   ExprContext *econtext,
+			   bool *isNull, ExprDoneCond *isDone);
 static Datum ExecEvalVar(ExprState *exprstate, ExprContext *econtext,
 			bool *isNull, ExprDoneCond *isDone);
 static Datum ExecEvalScalarVar(ExprState *exprstate, ExprContext *econtext,
@@ -418,6 +430,96 @@ ExecEvalAggref(AggrefExprState *aggref, ExprContext *econtext,
 
 	*isNull = econtext->ecxt_aggnulls[aggref->aggno];
 	return econtext->ecxt_aggvalues[aggref->aggno];
+}
+
+/*----------------------------------------------------------------
+ *		ExecEvalGroupingFunc
+ *
+ *		Returns a Datum whose value is the value of a GROUPING_ID
+ *		with respect to the given context.
+ */
+static Datum ExecEvalGroupingFunc(GroupingFuncExprState *gstate,
+								  ExprContext *econtext,
+								  bool *isNull, ExprDoneCond *isDone)
+{
+	uint64 grpid = 0;
+	int argno;
+
+	if (isDone)
+		*isDone = ExprSingleResult;
+
+	for (argno=0; argno<gstate->nargs; argno++)
+	{
+		bool isnull =
+			(econtext->grouping & (1 << (gstate->ngrpcols - gstate->grpargs[argno] - 1)));
+
+		if (isnull)
+			grpid += (1 << (gstate->nargs - argno - 1));
+	}
+
+	*isNull = false;
+	return Int64GetDatum(grpid);
+}
+
+/*----------------------------------------------------------------
+ *		ExecEvalGrouping
+ *
+ *		Returns a Datum whose value is the value of a GROUPING
+ *		with respect to the given context.
+ */
+static Datum ExecEvalGrouping(ExprState *gstate,
+							  ExprContext *econtext,
+							  bool *isNull, ExprDoneCond *isDone)
+{
+	if (isDone)
+		*isDone = ExprSingleResult;
+
+	*isNull = false;
+	return Int64GetDatum(econtext->grouping);
+}
+
+/*----------------------------------------------------------------
+ *		ExecEvalGroupId
+ *
+ *		Returns a Datum whose value is the value of a GROUP_ID
+ *		with respect to the given context.
+ */
+static Datum ExecEvalGroupId(ExprState *gstate,
+							 ExprContext *econtext,
+							 bool *isNull, ExprDoneCond *isDone)
+{
+	if (isDone)
+		*isDone = ExprSingleResult;
+
+	*isNull = false;
+	return UInt32GetDatum(econtext->group_id);
+}
+
+/* ----------------------------------------------------------------
+ *		ExecEvalWindowRef
+ *
+ *		Returns a Datum whose value is the value of the window
+ *		function with respect to the given context.
+ *
+ * XXX	Note that this routine is essentially the same as
+ *      ExecEvalAggref since we use the same buffers. However,
+ *      since the state structures for WindowRef and Aggref 
+ *      are different, we separate the execution routines, too.
+ * ----------------------------------------------------------------
+ */
+static Datum
+ExecEvalWindowRef(WindowRefExprState *winref, ExprContext *econtext,
+				  bool *isNull, ExprDoneCond *isDone)
+{
+	if (isDone)
+		*isDone = ExprSingleResult;
+	
+	if (econtext->ecxt_aggvalues == NULL)		/* safety check */
+		elog(ERROR, "no window functions in this expression context");
+
+	*isNull = econtext->ecxt_aggnulls[winref->funcno];
+	return econtext->ecxt_aggvalues[winref->funcno];
+
 }
 
 /* ----------------------------------------------------------------
@@ -1388,7 +1490,7 @@ Tuplestorestate *
 ExecMakeTableFunctionResult(ExprState *funcexpr,
 							ExprContext *econtext,
 							TupleDesc expectedDesc,
-							TupleDesc *returnDesc)
+							TupleDesc *returnDesc) 
 {
 	Tuplestorestate *tupstore = NULL;
 	TupleDesc	tupdesc = NULL;
@@ -1589,7 +1691,7 @@ ExecMakeTableFunctionResult(ExprState *funcexpr,
 									   -1,
 									   0);
 				}
-				tupstore = tuplestore_begin_heap(true, false, work_mem);
+				tupstore = tuplestore_begin_heap(true, false, work_mem); 
 				MemoryContextSwitchTo(oldcontext);
 				rsinfo.setResult = tupstore;
 				rsinfo.setDesc = tupdesc;
@@ -1656,8 +1758,8 @@ no_function_result:
 	if (rsinfo.setResult == NULL)
 	{
 		MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
-		tupstore = tuplestore_begin_heap(true, false, work_mem);
-		rsinfo.setResult = tupstore;
+		tupstore = tuplestore_begin_heap(true, false, work_mem); 
+		rsinfo.setResult = tupstore;  
 		if (!returnsSet)
 		{
 			int			natts = expectedDesc->natts;
@@ -3447,6 +3549,62 @@ ExecInitExpr(Expr *node, PlanState *parent)
 					elog(ERROR, "aggref found in non-Agg plan node");
 				}
 				state = (ExprState *) astate;
+			}
+			break;
+		case T_GroupingFunc:
+			{
+				GroupingFunc *gf = (GroupingFunc *)node;
+				GroupingFuncExprState *gstate = makeNode(GroupingFuncExprState);
+
+				gstate->xprstate.evalfunc = (ExprStateEvalFunc) ExecEvalGroupingFunc;
+				gstate->ngrpcols = gf->ngrpcols;
+				gstate->nargs = gf->nargs;
+				gstate->grpargs = gf->grpargs;
+				state = (ExprState *) gstate;
+			}
+			break;
+		case T_Grouping:
+			{
+				ExprState *gstate = makeNode(ExprState);
+				gstate->evalfunc = (ExprStateEvalFunc) ExecEvalGrouping;
+				state = (ExprState *) gstate;
+			}
+			break;
+		case T_GroupId:
+			{
+				ExprState *gstate = makeNode(ExprState);
+				gstate->evalfunc = (ExprStateEvalFunc) ExecEvalGroupId;
+				state = (ExprState *) gstate;
+			}
+			break;
+		case T_WindowRef:
+			{
+				WindowRef *windowref = (WindowRef *)node;
+				WindowRefExprState *wrstate = makeNode(WindowRefExprState);
+				
+				wrstate->xprstate.evalfunc = (ExprStateEvalFunc) ExecEvalWindowRef;
+				if (parent && IsA(parent, WindowState))
+				{
+					int numrefs;
+					WindowState   *winstate = (WindowState *) parent;
+
+					winstate->wrxstates = lcons(wrstate, winstate->wrxstates);
+					numrefs = list_length(winstate->wrxstates);
+
+					wrstate->args = (List *) ExecInitExpr((Expr *) windowref->args,
+														 parent);
+
+					/* Nested window functions are invalid and should not
+					 * have reached this point in processing. */
+					if (numrefs != list_length(winstate->wrxstates))
+						elog(ERRCODE_INTERNAL_ERROR, "nested windowref calls found in Window plan node");
+				}
+				else
+				{
+					/* WindowRef allowed only in Window nodes; planner messed up */
+					elog(ERROR, "windowref found in non-Window plan node");
+				}
+				state = (ExprState *) wrstate;
 			}
 			break;
 		case T_ArrayRef:

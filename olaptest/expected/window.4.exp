@@ -1,0 +1,8 @@
+ cn |    cname     |     cloc     
+----+--------------+--------------
+  1 | Macbeth      | Inverness
+  3 | Lady Macbeth | Inverness
+  2 | Duncan       | Forres
+  4 | Witches, Inc | Lonely Heath
+(4 rows)
+

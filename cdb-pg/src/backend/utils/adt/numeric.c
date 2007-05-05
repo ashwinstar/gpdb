@@ -291,6 +291,7 @@ static void init_var_from_str(const char *str, NumericVar *dest);
 static void set_var_from_var(NumericVar *value, NumericVar *dest);
 static void init_var_from_var(NumericVar *value, NumericVar *dest);
 static void init_ro_var_from_var(NumericVar *value, NumericVar *dest);
+static void set_var_from_num(Numeric value, NumericVar *dest);
 static void init_var_from_num(Numeric value, NumericVar *dest);
 static void init_ro_var_from_num(Numeric value, NumericVar *dest);
 static char *get_str_from_var(NumericVar *var, int dscale);
@@ -743,6 +744,7 @@ numeric_round(PG_FUNCTION_ARGS)
 	 * Unpack the argument and round it at the proper digit position
 	 */
 	init_var_from_num(num, &arg);
+
 	round_var(&arg, scale);
 
 	/* We don't allow negative output dscale */
@@ -789,6 +791,7 @@ numeric_trunc(PG_FUNCTION_ARGS)
 	 * Unpack the argument and truncate it at the proper digit position
 	 */
 	init_var_from_num(num, &arg);
+
 	trunc_var(&arg, scale);
 
 	/* We don't allow negative output dscale */
@@ -1324,7 +1327,6 @@ numeric_mod(PG_FUNCTION_ARGS)
 	PG_RETURN_NUMERIC(res);
 }
 
-
 /*
  * numeric_inc() -
  *
@@ -1350,6 +1352,37 @@ numeric_inc(PG_FUNCTION_ARGS)
 	init_ro_var_from_num(num, &arg);
 
 	add_var(&arg, &const_one, &arg);
+
+	res = make_result(&arg);
+
+	PG_RETURN_NUMERIC(res);
+}
+
+/*
+ * numeric_dec() -
+ *
+ *	decrement a number by one
+ */
+Datum
+numeric_dec(PG_FUNCTION_ARGS)
+{
+	Numeric		num = PG_GETARG_NUMERIC(0);
+	NumericVar	arg;
+	Numeric		res;
+
+	/*
+	 * Handle NaN
+	 */
+	if (NUMERIC_IS_NAN(num))
+		PG_RETURN_NUMERIC(make_result(&const_nan));
+
+	/*
+	 * Compute the result and return it
+	 */
+
+	init_var_from_num(num, &arg);
+
+	sub_var(&arg, &const_one, &arg);
 
 	res = make_result(&arg);
 
@@ -1753,6 +1786,7 @@ numeric_int4(PG_FUNCTION_ARGS)
 	/* Convert to variable format, then convert to int4 */
 	init_var_from_num(num, &x);
 	result = numericvar_to_int4(&x);
+
 	PG_RETURN_INT32(result);
 }
 
@@ -2039,7 +2073,7 @@ numeric_text(PG_FUNCTION_ARGS)
  */
 
 static ArrayType *
-do_numeric_accum(ArrayType *transarray, Numeric newval)
+do_numeric_accum_decum(ArrayType *transarray, Numeric newval, bool accum)
 {
 	Datum	   *transdatums;
 	int			ndatums;
@@ -2058,14 +2092,28 @@ do_numeric_accum(ArrayType *transarray, Numeric newval)
 	sumX = transdatums[1];
 	sumX2 = transdatums[2];
 
-	N = DirectFunctionCall1(numeric_inc, N);
-	sumX = DirectFunctionCall2(numeric_add, sumX,
-							   NumericGetDatum(newval));
-	sumX2 = DirectFunctionCall2(numeric_add, sumX2,
-								DirectFunctionCall2(numeric_mul,
-													NumericGetDatum(newval),
-													NumericGetDatum(newval)));
+	if (accum)
+	{
+		N = DirectFunctionCall1(numeric_inc, N);
+		sumX = DirectFunctionCall2(numeric_add, sumX,
+								   NumericGetDatum(newval));
+		sumX2 = DirectFunctionCall2(numeric_add, sumX2,
+									DirectFunctionCall2(numeric_mul,
+														NumericGetDatum(newval),
+														NumericGetDatum(newval)));
+	}
+	else
+	{
+		N = DirectFunctionCall1(numeric_dec, N);
+		sumX = DirectFunctionCall2(numeric_sub, sumX,
+								   NumericGetDatum(newval));
+		sumX2 = DirectFunctionCall2(numeric_sub, sumX2,
+									DirectFunctionCall2(numeric_mul,
+														NumericGetDatum(newval),
+														NumericGetDatum(newval)));
 
+
+	}
 	transdatums[0] = N;
 	transdatums[1] = sumX;
 	transdatums[2] = sumX2;
@@ -2082,7 +2130,16 @@ numeric_accum(PG_FUNCTION_ARGS)
 	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
 	Numeric		newval = PG_GETARG_NUMERIC(1);
 
-	PG_RETURN_ARRAYTYPE_P(do_numeric_accum(transarray, newval));
+	PG_RETURN_ARRAYTYPE_P(do_numeric_accum_decum(transarray, newval, true));
+}
+
+Datum
+numeric_decum(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
+	Numeric		newval = PG_GETARG_NUMERIC(1);
+
+	PG_RETURN_ARRAYTYPE_P(do_numeric_accum_decum(transarray, newval, false));
 }
 
 /*
@@ -2103,7 +2160,7 @@ int2_accum(PG_FUNCTION_ARGS)
 
 	newval = DatumGetNumeric(DirectFunctionCall1(int2_numeric, newval2));
 
-	PG_RETURN_ARRAYTYPE_P(do_numeric_accum(transarray, newval));
+	PG_RETURN_ARRAYTYPE_P(do_numeric_accum_decum(transarray, newval, true));
 }
 
 Datum
@@ -2115,7 +2172,7 @@ int4_accum(PG_FUNCTION_ARGS)
 
 	newval = DatumGetNumeric(DirectFunctionCall1(int4_numeric, newval4));
 
-	PG_RETURN_ARRAYTYPE_P(do_numeric_accum(transarray, newval));
+	PG_RETURN_ARRAYTYPE_P(do_numeric_accum_decum(transarray, newval, true));
 }
 
 Datum
@@ -2127,7 +2184,46 @@ int8_accum(PG_FUNCTION_ARGS)
 
 	newval = DatumGetNumeric(DirectFunctionCall1(int8_numeric, newval8));
 
-	PG_RETURN_ARRAYTYPE_P(do_numeric_accum(transarray, newval));
+	PG_RETURN_ARRAYTYPE_P(do_numeric_accum_decum(transarray, newval, true));
+}
+
+/*
+ * Integer decumulators for windowing.
+ */
+Datum
+int2_decum(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
+	Datum		newval2 = PG_GETARG_DATUM(1);
+	Numeric		newval;
+
+	newval = DatumGetNumeric(DirectFunctionCall1(int2_numeric, newval2));
+
+	PG_RETURN_ARRAYTYPE_P(do_numeric_accum_decum(transarray, newval, false));
+}
+
+Datum
+int4_decum(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
+	Datum		newval4 = PG_GETARG_DATUM(1);
+	Numeric		newval;
+
+	newval = DatumGetNumeric(DirectFunctionCall1(int4_numeric, newval4));
+
+	PG_RETURN_ARRAYTYPE_P(do_numeric_accum_decum(transarray, newval, false));
+}
+
+Datum
+int8_decum(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
+	Datum		newval8 = PG_GETARG_DATUM(1);
+	Numeric		newval;
+
+	newval = DatumGetNumeric(DirectFunctionCall1(int8_numeric, newval8));
+
+	PG_RETURN_ARRAYTYPE_P(do_numeric_accum_decum(transarray, newval, false));
 }
 
 Datum
@@ -2355,7 +2451,7 @@ int2_sum(PG_FUNCTION_ARGS)
 	 * parameter in-place to avoid palloc overhead. If not, we need to return
 	 * the new value of the transition variable.
 	 */
-	if (fcinfo->context && IsA(fcinfo->context, AggState))
+	if (fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context))
 	{
 		int64	   *oldsum = (int64 *) PG_GETARG_POINTER(0);
 
@@ -2400,7 +2496,7 @@ int4_sum(PG_FUNCTION_ARGS)
 	 * parameter in-place to avoid palloc overhead. If not, we need to return
 	 * the new value of the transition variable.
 	 */
-	if (fcinfo->context && IsA(fcinfo->context, AggState))
+	if (fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context))
 	{
 		int64	   *oldsum = (int64 *) PG_GETARG_POINTER(0);
 
@@ -2492,7 +2588,7 @@ int2_avg_accum(PG_FUNCTION_ARGS)
 	 * parameter in-place to reduce palloc overhead. Otherwise we need to make
 	 * a copy of it before scribbling on it.
 	 */
-	if (fcinfo->context && IsA(fcinfo->context, AggState))
+	if (fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context))
 		transarray = PG_GETARG_ARRAYTYPE_P(0);
 	else
 		transarray = PG_GETARG_ARRAYTYPE_P_COPY(0);
@@ -2520,7 +2616,7 @@ int4_avg_accum(PG_FUNCTION_ARGS)
 	 * parameter in-place to reduce palloc overhead. Otherwise we need to make
 	 * a copy of it before scribbling on it.
 	 */
-	if (fcinfo->context && IsA(fcinfo->context, AggState))
+	if (fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context))
 		transarray = PG_GETARG_ARRAYTYPE_P(0);
 	else
 		transarray = PG_GETARG_ARRAYTYPE_P_COPY(0);
@@ -2857,6 +2953,27 @@ init_var_from_str(const char *str, NumericVar *dest)
 
 
 /*
+ * set_var_from_num() -
+ *
+ *	Convert the packed db format into a variable
+ */
+static void
+set_var_from_num(Numeric num, NumericVar *dest)
+{
+	int			ndigits;
+
+	ndigits = NUMERIC_NDIGITS(num);
+
+	alloc_var(dest, ndigits);
+
+	dest->weight = num->n_weight;
+	dest->sign = NUMERIC_SIGN(num);
+	dest->dscale = NUMERIC_DSCALE(num);
+
+	memcpy(dest->digits, num->n_data, ndigits * sizeof(NumericDigit));
+}
+
+/*
  * init_var_from_num() -
  *
  *	Convert the packed db format into a variable
@@ -2951,7 +3068,6 @@ init_ro_var_from_var(NumericVar *value, NumericVar *dest)
 	dest->digits = value->digits;
 	dest->buf = dest->ndb;
 }
-
 
 /*
  * get_str_from_var() -
@@ -5413,7 +5529,7 @@ int8_avg_amalg(PG_FUNCTION_ARGS)
 	 * parameter in-place to reduce palloc overhead. Otherwise we need to make
 	 * a copy of it before scribbling on it.
 	 */
-	if (fcinfo->context && IsA(fcinfo->context, AggState))
+	if (fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context))
 		aTransArray = PG_GETARG_ARRAYTYPE_P(0);
 	else
 		aTransArray = PG_GETARG_ARRAYTYPE_P_COPY(0);
@@ -5434,3 +5550,32 @@ int8_avg_amalg(PG_FUNCTION_ARGS)
 	PG_RETURN_ARRAYTYPE_P(aTransArray);
 }
 
+/* Helper for MPP, declared here and in nodeWindow.c
+ *
+ * Convert numeric to positive int64 by truncation, if invalid return
+ * -1 (negative num) or 0 (out of range num).
+ */
+extern int64 numeric_to_pos_int8_trunc(Numeric num);
+
+int64
+numeric_to_pos_int8_trunc(Numeric num)
+{
+	NumericVar var;
+	int64 result;
+	
+	/* Truncate ntile_arg to int8, put in result. */
+	set_var_from_num(num, &var);
+	if ( var.sign == NUMERIC_POS )
+	{
+		trunc_var(&var, 0);
+		if ( !numericvar_to_int8(&var, &result) )
+			result = 0; /* out of range */
+	}
+	else
+	{
+		result = -1; /* out of range */
+	}
+	free_var(&var);
+	
+	return result;
+}

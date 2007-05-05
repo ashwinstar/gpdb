@@ -1,0 +1,1 @@
+SELECT * FROM util CROSS JOIN sale;

@@ -205,6 +205,96 @@ typedef struct Aggref
 	AggStage	aggstage;		/* MPP: 2-stage? If so, which stage */
 } Aggref;
 
+
+/*
+ * Grouping: describe the hidden GROUPING column for grouping extensions.
+ *
+ * Defined for making it easily to distinguish this column with others.
+ *
+ * Used with GroupingFunc to distinguish 'null' values that are created
+ * through grouping with those that are in the raw data. See also GroupingFunc
+ * for more details.
+ */
+typedef struct Grouping
+{
+	Expr        xpr;
+} Grouping;
+
+/*
+ * GroupId -
+ *    representation of the hidden GROUP_ID column for grouping extensions.
+ *
+ * Defined for making it easily to distinguish this column with others.
+ *
+ * This is used to determine whether output tuples are coming from
+ * duplicate grouping sets. For example, a table 
+ *
+ *    test (a integer, b integer)
+ *
+ * has two rows:
+ *
+ *       (1,2), (1,2).
+ *
+ * Consider a rollup clause "rollup(a),a", which contains a grouping
+ * set (a) twice. Therefore, the query
+ *
+ *    select a,sum(b),group_id() from test group by rollup(a),a;
+ *
+ * returns two rows:
+ *
+ *    1,4,0
+ *    1,4,1
+ *
+ * The GROUP_ID value 0 indicates this tuple is from the grouping set (a).
+ * The value 1 indicates this tuple is from the first duplicate grouping set of
+ * (a).
+ *
+ * This query can be also re-written to the following:
+ *
+ *    select a,avg(b),0 from test group by a
+ *      union all
+ *    select a,avg(b),1 from test group by a;
+ */
+typedef struct GroupId
+{
+	Expr      xpr;
+} GroupId;
+
+/* WinStage enumeration indicates what stage of the evaluation of a
+ * window function is expressed by a WindowRef.
+ */
+typedef enum WinStage
+{
+	WINSTAGE_IMMEDIATE = 0, /* Evaluate window function. */
+	WINSTAGE_PRELIMINARY, /* Evaluate preliminary function. */
+	WINSTAGE_ROWKEY /* WINSTAGE_IMMEDIATE for row key generation. */
+} WinStage;
+ 
+/*
+ * WindowRef: describes a window function call
+ *
+ * In a query tree, a WindowRef corresponds to a SQL window function
+ * call.  In a plan tree, a WindowRef is an expression the corresponds
+ * to some or all of the calculation of the window function result.
+ * 
+ */
+typedef struct WindowRef
+{
+	Expr		xpr;
+	Oid			winfnoid;		/* pg_proc Oid of the window function */
+	Oid			restype;		/* type Oid of result of the window function */
+	List	   *args;			/* arguments */	
+	Index		winlevelsup;	/* > 0 if win belongs to outer query  */
+	Index		winspec;		/* index into Query window clause */
+	
+	/* Following fields are significant only in a Plan tree. */
+	Index		winindex;		/* RefInfo index during planning. */
+	WinStage	winstage;		/* Stage of execution. */
+	Index		winlevel;		/* Position of corresponding WindowKey in
+								 * the Window node. */
+} WindowRef;
+
+
 /* ----------------
  *	ArrayRef: describes an array subscripting operation
  *
@@ -1065,6 +1155,75 @@ typedef enum GangType
 	GANGTYPE_MIRROR_WRITER      /* the N-gang that updates segment mirror dbs */
 } GangType;
 
+typedef enum GroupingType
+{
+	ROLLUP_TYPE,         /* ROLLUP grouping extension */
+	CUBE_TYPE,           /* CUBE grouping extension */
+	GROUPING_SETS_TYPE   /* GROUPING SETS grouping extension */
+} GroupingType;
+
+typedef enum WindowExclusion
+{
+	WINDOW_EXCLUSION_NULL,
+	WINDOW_EXCLUSION_CUR_ROW, /* exclude current row */
+	WINDOW_EXCLUSION_GROUP, /* exclude rows matching us */
+	WINDOW_EXCLUSION_TIES, /* exclude rows matching us, and current row */
+	WINDOW_EXCLUSION_NO_OTHERS /* don't exclude -- distinct from EMPTY so
+								* that we may dump */
+} WindowExclusion;
+
+typedef enum WindowBoundingKind
+{
+	WINDOW_UNBOUND_PRECEDING,
+	WINDOW_BOUND_PRECEDING,
+	WINDOW_CURRENT_ROW,
+	WINDOW_BOUND_FOLLOWING,
+	WINDOW_UNBOUND_FOLLOWING
+} WindowBoundingKind;
+
+typedef struct WindowFrameEdge
+{
+	NodeTag type;
+	WindowBoundingKind kind;
+	/* XXX: need to restrict to certain datatypes in order by */
+	Node *val; /* an actual value, if provided */
+} WindowFrameEdge;
+
+typedef struct WindowFrame
+{
+	NodeTag type;
+	bool is_rows;	/* true if ROWS was specificied, false if RANGE */
+	bool is_between; /* user specified BETWEEN */
+	
+	/*
+	 * XXX: determine if trail and lead must be mentioned in that order
+	 */
+	WindowFrameEdge *trail; /* trailing edge of the frame */
+	WindowFrameEdge *lead; /* leading edge of the frame */
+	WindowExclusion exclude; /* exclusion clause */
+} WindowFrame;
+
+
+/* ---------------
+ * WindowKey is an auxiliary node of the Window node (a Plan node).  It 
+ * represents one level of the potentially multi-level ordering key of 
+ * the Window node.  The ORDER BY key of the Nth WindowKey of a Window
+ * is the concatenation of the sort keys from WindowKeys 0 thru N.
+ *
+ * Note that, since a window key represents partial sort key, it may be 
+ * empty.  For example (ORDER BY a,b ROWS x) and (ORDER BY a,b ROWS y) 
+ * would be represented by partial key (a,b) with framing ROWS x followed
+ * by partial key () with framing ROWS y.
+ * ---------------
+ */
+typedef struct WindowKey
+{
+	NodeTag			type;
+	int				numSortCols; /* may be zero, see note */
+	AttrNumber	   *sortColIdx;
+	WindowFrame	   *frame;		/* NULL or framing for WindowKey */
+
+} WindowKey;
 
 
 #endif   /* PRIMNODES_H */

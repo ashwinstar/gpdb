@@ -1,0 +1,14 @@
+ position_name | drug_name | sum 
+---------------+-----------+-----
+ Left Field    | Steroids  | 122
+ Short Stop    | Marijuana |  76
+ Right Field   | Alcohol   |  52
+ Center Field  | Alcohol   |  32
+ First Base    | Andro     |  32
+ Short Stop    | Andro     |  31
+ Right Field   | Steroids  |  25
+ Short Stop    | Cocaine   |  23
+ First Base    | Marijuana |   4
+ Center Field  | Cocaine   |   2
+(10 rows)
+

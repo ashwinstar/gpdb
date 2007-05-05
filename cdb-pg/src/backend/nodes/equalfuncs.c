@@ -167,6 +167,21 @@ _equalAggref(Aggref *a, Aggref *b)
 }
 
 static bool
+_equalWindowRef(WindowRef *a, WindowRef *b)
+{
+	COMPARE_SCALAR_FIELD(winfnoid);
+	COMPARE_SCALAR_FIELD(restype);
+	COMPARE_NODE_FIELD(args);
+	COMPARE_SCALAR_FIELD(winlevelsup);
+	COMPARE_SCALAR_FIELD(winspec);
+	COMPARE_SCALAR_FIELD(winindex);
+	COMPARE_SCALAR_FIELD(winstage);
+	COMPARE_SCALAR_FIELD(winlevel);
+
+	return true;
+}
+
+static bool
 _equalArrayRef(ArrayRef *a, ArrayRef *b)
 {
 	COMPARE_SCALAR_FIELD(refrestype);
@@ -680,6 +695,7 @@ _equalQuery(Query *a, Query *b)
 	COMPARE_SCALAR_FIELD(intoOnCommit);
 	COMPARE_STRING_FIELD(intoTableSpaceName);
 	COMPARE_SCALAR_FIELD(hasAggs);
+	COMPARE_SCALAR_FIELD(hasWindFuncs);
 	COMPARE_SCALAR_FIELD(hasSubLinks);
 	COMPARE_NODE_FIELD(rtable);
 	COMPARE_NODE_FIELD(jointree);
@@ -687,6 +703,7 @@ _equalQuery(Query *a, Query *b)
 	COMPARE_NODE_FIELD(returningList);
 	COMPARE_NODE_FIELD(groupClause);
 	COMPARE_NODE_FIELD(havingQual);
+	COMPARE_NODE_FIELD(windowClause);
 	COMPARE_NODE_FIELD(distinctClause);
 	COMPARE_NODE_FIELD(sortClause);
 	COMPARE_NODE_FIELD(limitOffset);
@@ -750,6 +767,7 @@ _equalSelectStmt(SelectStmt *a, SelectStmt *b)
 	COMPARE_NODE_FIELD(whereClause);
 	COMPARE_NODE_FIELD(groupClause);
 	COMPARE_NODE_FIELD(havingClause);
+	COMPARE_NODE_FIELD(windowClause);
 	COMPARE_NODE_FIELD(valuesLists);
 	COMPARE_NODE_FIELD(sortClause);
 	COMPARE_NODE_FIELD(limitOffset);
@@ -1635,6 +1653,7 @@ _equalFuncCall(FuncCall *a, FuncCall *b)
 	COMPARE_NODE_FIELD(args);
 	COMPARE_SCALAR_FIELD(agg_star);
 	COMPARE_SCALAR_FIELD(agg_distinct);
+	COMPARE_NODE_FIELD(over);
 	COMPARE_SCALAR_FIELD(location);
 
 	return true;
@@ -1812,6 +1831,80 @@ _equalSortClause(SortClause *a, SortClause *b)
 }
 
 static bool
+_equalGroupingClause(GroupingClause *a, GroupingClause *b)
+{
+	COMPARE_SCALAR_FIELD(groupType);
+	COMPARE_NODE_FIELD(groupsets);
+
+	return true;
+}
+
+static bool
+_equalGroupingFunc(GroupingFunc *a, GroupingFunc *b)
+{
+	COMPARE_NODE_FIELD(args);
+	COMPARE_SCALAR_FIELD(ngrpcols);
+	COMPARE_SCALAR_FIELD(nargs);
+	COMPARE_POINTER_FIELD(grpargs, a->nargs * sizeof(int));
+
+	return true;
+}
+
+static bool
+_equalGrouping(Grouping *a, Grouping *b)
+{
+	return true;
+}
+
+static bool
+_equalGroupId(GroupId *a, GroupId *b)
+{
+	return true;
+}
+
+static bool
+_equalWindowSpecParse(WindowSpecParse *a, WindowSpecParse *b)
+{
+	COMPARE_STRING_FIELD(name);
+	COMPARE_NODE_FIELD(elems);
+
+	return true;
+}
+
+static bool
+_equalWindowSpec(WindowSpec *a, WindowSpec *b)
+{
+	COMPARE_STRING_FIELD(name);
+	COMPARE_STRING_FIELD(parent);
+	COMPARE_NODE_FIELD(partition);
+	COMPARE_NODE_FIELD(order);
+	COMPARE_NODE_FIELD(frame);
+
+	return true;
+}
+
+static bool
+_equalWindowFrame(WindowFrame *a, WindowFrame *b)
+{
+	COMPARE_SCALAR_FIELD(is_rows);
+	COMPARE_SCALAR_FIELD(is_between);
+	COMPARE_NODE_FIELD(trail);
+	COMPARE_NODE_FIELD(lead);
+	COMPARE_SCALAR_FIELD(exclude);
+
+	return true;
+}
+
+static bool
+_equalWindowFrameEdge(WindowFrameEdge *a, WindowFrameEdge *b)
+{
+	COMPARE_SCALAR_FIELD(kind);
+	COMPARE_NODE_FIELD(val);
+
+	return true;
+}
+
+static bool
 _equalRowMarkClause(RowMarkClause *a, RowMarkClause *b)
 {
 	COMPARE_SCALAR_FIELD(rti);
@@ -1974,6 +2067,9 @@ equal(void *a, void *b)
 			break;
 		case T_Aggref:
 			retval = _equalAggref(a, b);
+			break;
+		case T_WindowRef:
+			retval = _equalWindowRef(a, b);
 			break;
 		case T_ArrayRef:
 			retval = _equalArrayRef(a, b);
@@ -2409,6 +2505,30 @@ equal(void *a, void *b)
 		case T_GroupClause:
 			/* GroupClause is equivalent to SortClause */
 			retval = _equalSortClause(a, b);
+			break;
+		case T_GroupingClause:
+			retval = _equalGroupingClause(a, b);
+			break;
+		case T_GroupingFunc:
+			retval = _equalGroupingFunc(a, b);
+			break;
+		case T_Grouping:
+			retval = _equalGrouping(a, b);
+			break;
+		case T_GroupId:
+			retval = _equalGroupId(a, b);
+			break;
+		case T_WindowSpecParse:
+			retval = _equalWindowSpecParse(a, b);
+			break;
+		case T_WindowSpec:
+			retval = _equalWindowSpec(a, b);
+			break;
+		case T_WindowFrame:
+			retval = _equalWindowFrame(a, b);
+			break;
+		case T_WindowFrameEdge:
+			retval = _equalWindowFrameEdge(a, b);
 			break;
 		case T_RowMarkClause:
 			retval = _equalRowMarkClause(a, b);

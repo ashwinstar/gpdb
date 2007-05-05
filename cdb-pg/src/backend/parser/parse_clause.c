@@ -18,9 +18,11 @@
 
 #include "access/heapam.h"
 #include "catalog/heap.h"
+#include "catalog/pg_namespace.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "nodes/makefuncs.h"
+#include "nodes/print.h" /* XXX: remove after debugging !! */
 #include "optimizer/clauses.h"
 #include "optimizer/tlist.h"
 #include "optimizer/var.h"
@@ -34,6 +36,7 @@
 #include "parser/parse_target.h"
 #include "rewrite/rewriteManip.h"
 #include "utils/guc.h"
+#include "utils/syscache.h"
 
 
 #define ORDER_CLAUSE 0
@@ -65,7 +68,10 @@ static Node *buildMergedJoinVar(ParseState *pstate, JoinType jointype,
 				   Var *l_colvar, Var *r_colvar);
 static TargetEntry *findTargetlistEntry(ParseState *pstate, Node *node,
 					List **tlist, int clause);
-
+static List *findListTargetlistEntries(ParseState *pstate, Node *node,
+									   List **tlist);
+static TargetEntry *getTargetBySortGroupRef(Index ref, List *tl);
+static List *reorderGroupList(List *grouplist);
 
 /*
  * transformFromClause -
@@ -113,6 +119,321 @@ transformFromClause(ParseState *pstate, List *frmList)
 		pstate->p_varnamespace = lappend(pstate->p_varnamespace, rte);
 		bms_free(containedRels);
 	}
+}
+
+static void
+transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e, 
+						 WindowSpec *spec, Query *qry)
+{
+	/* Only bound frame edges will have a value */
+	if (e->kind == WINDOW_BOUND_PRECEDING ||
+		e->kind == WINDOW_BOUND_FOLLOWING)
+	{
+		Node *val;
+		TargetEntry *te;
+		Oid otype;
+		Oid rtype;
+		SortClause *sort;
+					
+		if (list_length(spec->order) != 1)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("only one ORDER BY column may be specified when "
+							"RANGE is used in a window specification")));
+
+		val = transformExpr(pstate, e->val);
+
+		sort = (SortClause *)linitial(spec->order);
+		te = getTargetBySortGroupRef(sort->tleSortGroupRef, qry->targetList);
+		otype = exprType((Node *)te->expr);
+		rtype = exprType(val);
+
+		if (e->kind == WINDOW_BOUND_FOLLOWING)
+		{
+			HeapTuple tup;
+			tup = SearchSysCache(OPERNAMENSP,
+								 CStringGetDatum("+"),
+								 ObjectIdGetDatum(otype),
+								 ObjectIdGetDatum(rtype),
+								 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+			if (!HeapTupleIsValid(tup))
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("ordering column does not support addition")));
+		}
+		else if (e->kind == WINDOW_BOUND_PRECEDING)
+		{
+			HeapTuple tup;
+			tup = SearchSysCache(OPERNAMENSP,
+								 CStringGetDatum("-"),
+								 ObjectIdGetDatum(otype),
+								 ObjectIdGetDatum(rtype),
+								 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+			if (!HeapTupleIsValid(tup))
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("ordering column does not support subtraction")));
+		}
+		e->val = val;
+	}
+}
+
+/*
+ * transformWindowClause
+ * 		Process window clause specifications in a SELECT query
+ *
+ * There's a fair bit to do here: column references in the PARTITION and
+ * ORDER clauses must be valid; the frame clause must be checked to ensure that
+ * the function supports framing, that the framed column is of the right type,
+ * that the offset is sane, that the start and end of the frame are sane,
+ * . Then we translate it to use the proper parse nodes
+ * for the respective part of the clause.
+ */
+void
+transformWindowClause(ParseState *pstate, Query *qry)
+{
+	ListCell *w;
+	List *winout = NIL;
+	List *winin = pstate->p_win_clauses;
+	
+	/*
+	 * Skip processing the window clause if there are no window functions
+	 * -- i.e., foo() OVER (bar) -- in the target list
+	 */
+	if (!pstate->p_hasWindFuncs)
+	{
+		pstate->p_win_clauses = NIL;
+		qry->windowClause = NIL;
+		return;
+	}
+
+	/*
+	 * We have two lists of window specs: one in the ParseState -- put there
+	 * when we find the OVER(...) clause in the targetlist and the other
+	 * is windowClause, a list of named window clauses. So, we concatenate
+	 * them together.
+	 *
+	 * Note that we're careful place those found in the target list at
+	 * the end because the spec might refer to a named clause and we'll
+	 * after to know about those first.
+	 */
+
+	foreach(w, winin)
+	{
+		WindowSpec *ws = lfirst(w);
+		WindowSpec *newspec = makeNode(WindowSpec);
+		ListCell   *tmp;
+		bool		found = false;
+
+		/*
+		 * Loop through those clauses we've already processed to
+		 * a) check that the name passed in is not already taken and
+		 * b) look up the parent window spec.
+		 *
+		 * This is obvious O(n^2) but n is small.
+		 */
+		if (ws->parent || ws->name)
+		{
+			foreach(tmp, winout)
+			{
+				WindowSpec *ws2 = lfirst(tmp);
+		
+				/* Only check if the name exists if wc->name is not NULL */	
+				if (ws->name != NULL && strcmp(ws2->name, ws->name) == 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_DUPLICATE_OBJECT),
+							 errmsg("window name \"%s\" occurs more than once "
+									"in WINDOW clause", ws->name)));
+
+				/*
+				 * If this spec has a parent reference, we need to test that
+				 * the following rules are met. Given the following:
+				 *
+				 * 		OVER (myspec ...) ... WINDOW myspec AS (...)
+				 *
+				 * the OVER clause cannot have a partitioning clause; only
+				 * the OVER clause or myspec can have an ORDER clause; myspec
+				 * cannot have a framing clause.
+				 */
+
+				/*
+				 * XXX: these errors could apply to any number of clauses in the
+				 * query and may be considered ambiguous by the user. Perhaps a 
+				 * location (see FuncCall) would help?
+				 */
+				if (ws->parent && ws2->name && 
+					strcmp(ws->parent, ws2->name) == 0)
+				{
+					found = true;
+					if (ws->partition != NIL)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("PARTITION BY not allowed when "
+										"an existing window name is specified")));
+
+					if (ws->order != NIL && ws2->order != NIL)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("conflicting ORDER BY clauses in window "
+										"specification")));
+
+					if (ws2->frame)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("window specification \"%s\" cannot have "
+										"a framing clause", ws2->name),
+								 errhint("Window specifications which are "
+										 "referenced by other window "
+										 "specifications cannot have framing "
+										 "clauses")));
+
+					/*
+					 * The specifications are valid so just copy the details
+					 * from the parent spec.
+					 */
+					newspec->parent = ws2->name;
+					/* XXX: some parameters might not be processed! */
+					newspec->partition = copyObject(ws2->partition);
+	
+					if (ws->order == NIL && ws2->order != NIL)
+						newspec->order = copyObject(ws2->order);
+				
+					//newspec->frame = copyObject(ws2->frame);
+
+				}
+			}
+
+			if(!found && ws->parent)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						errmsg("window specification \"%s\" not found",
+							   ws->parent)));
+		}
+
+		newspec->name = ws->name;
+		/*
+		 * Process partition, if one is defined and if it isn't already
+		 * in newspec.
+		 */
+		if (!newspec->partition && ws->partition)
+		{
+			newspec->partition = transformSortClause(pstate,
+													 ws->partition,
+													 &qry->targetList,
+													 true);
+		}
+		/* order is just like partition */
+		if (ws->order || newspec->order)
+		{
+			/*
+			 * Only do this if it came from the new definition
+			 */
+			if (ws->order != NIL && newspec->order == NIL)
+			{
+				newspec->order = transformSortClause(pstate,
+													 ws->order,
+													 &qry->targetList,
+													 true);
+			}
+		}
+		
+		/* 
+		 * Finally, process the framing clause. parseProcessWindFunc() will
+		 * have picked up window functions that do not support framing.
+		 * 
+		 * What we do need to do is the following:
+		 * - If BETWEEN has been specified, the trailing bound is not
+		 *   UNBOUNDED FOLLOWING; the leading bound is not UNBOUNDED
+		 *   PRECEDING; if the first bound specifies CURRENT ROW, the
+		 *   second bound shall not specify a PRECEDING bound; if the
+		 *   first bound specifies a FOLLOWING bound, the second bound
+		 *   shall not specify a PRECEDING or CURRENT ROW bound.
+		 *
+		 * - If the user did not specify BETWEEN, the bound is assumed to be
+		 *   a trailing bound and the leading bound is set to CURRENT ROW.
+		 *   We're careful not to set is_between here because the user did not
+		 *   specify it.
+		 *
+		 * - If RANGE is specified: the ORDER BY clause of the window spec
+		 *   may specify only one column; the type of that column must support
+		 *   +/- <integer> operations and must be merge-joinable.
+		 */
+		if (ws->frame)
+		{
+			WindowFrame *nf = copyObject(ws->frame);
+			if (nf->is_between)
+			{
+				Assert(PointerIsValid(nf->trail));
+				Assert(PointerIsValid(nf->lead));
+
+				if (nf->trail->kind == WINDOW_UNBOUND_FOLLOWING)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("conflicting bounds in window framing "
+									"clause"), 
+							 errhint("First bound of BETWEEN clause in window "
+									"specification cannot be UNBOUNDED FOLLOWING")));
+				if (nf->lead->kind == WINDOW_UNBOUND_PRECEDING)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("conflicting bounds in window framing "
+									"clause"),
+							 errhint("Second bound of BETWEEN clause in window "
+									"specification cannot be UNBOUNDED PRECEDING")));
+				if (nf->trail->kind == WINDOW_CURRENT_ROW &&
+					(nf->lead->kind == WINDOW_BOUND_PRECEDING ||
+					 nf->lead->kind == WINDOW_UNBOUND_PRECEDING))
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("conflicting bounds in window framing "
+									"clause"),
+							 errhint("Second bound cannot be PRECEDING "
+									 "when first bound is CURRENT ROW")));
+				if ((nf->trail->kind == WINDOW_BOUND_FOLLOWING ||
+					 nf->trail->kind == WINDOW_UNBOUND_FOLLOWING) &&
+					!(nf->lead->kind == WINDOW_BOUND_FOLLOWING ||
+					  nf->lead->kind == WINDOW_UNBOUND_FOLLOWING))
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("conflicting bounds in window framing "
+									"clause"),
+							 errhint("Second bound must be FOLLOWING if first "
+									 "bound is FOLLOWING")));
+
+			}
+			else
+			{
+				/*
+				 * If only a single bound has been specified, set the 
+				 * leading bound to CURRENT ROW
+				 */
+				WindowFrameEdge *e = makeNode(WindowFrameEdge);
+				
+				Assert(!PointerIsValid(nf->lead));
+
+				e->kind = WINDOW_CURRENT_ROW;
+				nf->lead = e;
+			}
+
+			/*
+			 * RANGE tests
+			 */
+			
+			if (!nf->is_rows)
+			{
+				/*
+				 * Transform the edges. 
+				 */
+				transformWindowFrameEdge(pstate, nf->trail, newspec, qry);
+				transformWindowFrameEdge(pstate, nf->lead, newspec, qry);
+			}
+
+			newspec->frame = nf;
+		}
+		
+		winout = lappend(winout, newspec);
+	}
+	qry->windowClause = winout;
 }
 
 /*
@@ -1145,6 +1466,52 @@ transformLimitClause(ParseState *pstate, Node *clause,
 	return qual;
 }
 
+/*
+ * findListTargetlistEntries -
+ *   Returns a list of targetlist entries matching the given node that
+ *   corresponds to a grouping clause.
+ *
+ * This is similar to findTargetlistEntry(), but works for all
+ * grouping clauses, including both the ordinary grouping clauses and the
+ * grouping extension clauses, including ROLLUP, CUBE, and GROUPING
+ * SETS.
+ *
+ * All targets will be added in the order that they appear in the grouping
+ * clause.
+ */
+static List *findListTargetlistEntries(ParseState *pstate, Node *node,
+									   List **tlist)
+{
+	List *result_list = NIL;
+
+	/*
+	 * In GROUP BY clauses, empty grouping set () is supported as 'NIL'
+	 * in the list. If this is the case, we simply skip it.
+	 */
+	if (node == NULL)
+		return result_list;
+
+	if (IsA(node, GroupingClause))
+	{
+		ListCell *gl;
+		GroupingClause *gc = (GroupingClause*)node;
+		
+		foreach(gl, gc->groupsets)
+		{
+			List *subresult_list;
+			
+			subresult_list = findListTargetlistEntries(pstate, lfirst(gl), tlist);
+
+			result_list = list_concat(result_list, subresult_list);
+		}
+	}
+
+	else
+	    result_list = lappend(result_list, findTargetlistEntry(pstate, node,
+															   tlist, GROUP_CLAUSE));
+
+	return result_list;
+}
 
 /*
  *	findTargetlistEntry -
@@ -1332,8 +1699,58 @@ make_group_clause(TargetEntry *tle, List *targetlist, Oid sortop)
 }
 
 /*
+ * make_grouping_clause -
+ *     Generate a new GroupingClause object from a given one.
+ *
+ * The given GroupingClause object generated by the parser contain either
+ * GroupingClauses or expressions. The returned GroupingClause contains
+ * either GroupingClauses or GroupClauses.
+ */
+static GroupingClause *
+make_grouping_clause(ParseState *pstate, GroupingClause *grpcl, List* targetList)
+{
+	GroupingClause *result;
+	ListCell* gc;
+
+	result = makeNode(GroupingClause);
+	result->groupType = grpcl->groupType;
+	result->groupsets = NIL;
+
+	foreach (gc, grpcl->groupsets)
+	{
+		Node *node = (Node*)lfirst(gc);
+		if (IsA(node, GroupingClause))
+		{
+			result->groupsets =
+				lappend(result->groupsets,
+						make_grouping_clause(pstate, (GroupingClause*)node, targetList));
+		}
+
+		else
+		{
+			TargetEntry *tle = findTargetlistEntry(pstate, node, &targetList, GROUP_CLAUSE);
+			Oid          sort_op;
+
+			/* Unlike ordinary grouping sets, we will create duplicate
+			 * expression entries. For example, rollup(a,a) consists
+			 * of three grouping sets "(a,a), (a), ()".
+			 */
+			sort_op = ordering_oper_opid(exprType((Node *) tle->expr));
+			result->groupsets =
+				lappend(result->groupsets,
+						make_group_clause(tle, targetList, sort_op));
+		}
+	}
+
+	return result;
+}
+
+/*
  * transformGroupClause -
  *	  transform a GROUP BY clause
+ *
+ * The given GROUP BY clause can contain both GroupClauses and
+ * GroupingClauses.
  *
  * GROUP BY items will be added to the targetlist (as resjunk columns)
  * if not already present, so the targetlist must be passed by reference.
@@ -1350,26 +1767,42 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 	List	   *result = NIL;
 	List	   *tle_list = NIL;
 	ListCell   *l;
+	bool       is_grpext = false;
+	List       *reorder_grouplist = NIL;
 
 	/* Preprocess the grouping clause, lookup TLEs */
 	foreach(l, grouplist)
 	{
+		List        *tl;
+		ListCell    *tl_cell;
 		TargetEntry *tle;
 		Oid			restype;
+		Node        *node;
 
-		tle = findTargetlistEntry(pstate, lfirst(l),
-								  targetlist, GROUP_CLAUSE);
+		node = (Node*)lfirst(l);
+		tl = findListTargetlistEntries(pstate, node, targetlist);
 
-		/* if tlist item is an UNKNOWN literal, change it to TEXT */
-		restype = exprType((Node *) tle->expr);
+		foreach(tl_cell, tl)
+		{
+			tle = (TargetEntry*)lfirst(tl_cell);
 
-		if (restype == UNKNOWNOID)
-			tle->expr = (Expr *) coerce_type(pstate, (Node *) tle->expr,
-											 restype, TEXTOID, -1,
-											 COERCION_IMPLICIT,
-											 COERCE_IMPLICIT_CAST);
+			/* if tlist item is an UNKNOWN literal, change it to TEXT */
+			restype = exprType((Node *) tle->expr);
 
-		tle_list = lappend(tle_list, tle);
+			if (restype == UNKNOWNOID)
+				tle->expr = (Expr *) coerce_type(pstate, (Node *) tle->expr,
+												 restype, TEXTOID, -1,
+												 COERCION_IMPLICIT,
+												 COERCE_IMPLICIT_CAST);
+
+			/*
+			 * The tle_list will be used to match with the ORDER by element below.
+			 * We only append the tle to tle_list when node is not a
+			 * GroupingClause.
+			 */
+			 if (node != NULL && !IsA(node, GroupingClause))
+				 tle_list = lappend(tle_list, tle);
+		}
 	}
 
 	/*
@@ -1388,22 +1821,27 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 
 		foreach(tl, tle_list)
 		{
-			TargetEntry *tle = (TargetEntry *) lfirst(tl);
+			Node        *node = (Node*)lfirst(tl);
 
-			if (sc->tleSortGroupRef == tle->ressortgroupref)
+			if (IsA(node, TargetEntry))
 			{
-				GroupClause *gc;
+				TargetEntry *tle = (TargetEntry *) lfirst(tl);
 
-				tle_list = list_delete_cell(tle_list, tl, prev);
+				if (sc->tleSortGroupRef == tle->ressortgroupref)
+				{
+					GroupClause *gc;
 
-				/* Use the sort clause's sorting operator */
-				gc = make_group_clause(tle, *targetlist, sc->sortop);
-				result = lappend(result, gc);
-				found = true;
-				break;
+					tle_list = list_delete_cell(tle_list, tl, prev);
+
+					/* Use the sort clause's sorting operator */
+					gc = make_group_clause(tle, *targetlist, sc->sortop);
+					result = lappend(result, gc);
+					found = true;
+					break;
+				}
+
+				prev = tl;
 			}
-
-			prev = tl;
 		}
 
 		/* As soon as we've failed to match an ORDER BY element, stop */
@@ -1412,28 +1850,144 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 	}
 
 	/*
-	 * Now add any remaining elements of the GROUP BY list in the order we
-	 * received them.
+	 * Now add all remaining elements of the GROUP BY list to the result list.
+	 * The result list is a list of GroupClauses and/or GroupingClauses.
+	 * In each grouping set, all GroupClauses will appear in front of
+	 * GroupingClauses. See the following GROUP BY clause:
 	 *
-	 * XXX: are there any additional criteria to consider when ordering
-	 * grouping clauses?
+	 *   GROUP BY ROLLUP(b,c),a, ROLLUP(e,d)
+	 *
+	 * the result list can be roughly represented as follows.
+	 *
+	 *    GroupClause(a) -->
+	 *    GroupingClause( ROLLUP, groupsets (GroupClause(b) --> GroupClause(c) ) ) -->
+	 *    GroupingClause( CUBE, groupsets (GroupClause(e) --> GroupClause(d) ) )
 	 */
-	foreach(l, tle_list)
+	reorder_grouplist = reorderGroupList(grouplist);
+
+	foreach(l, reorder_grouplist)
 	{
-		TargetEntry *tle = (TargetEntry *) lfirst(l);
-		GroupClause *gc;
-		Oid			sort_op;
+		Node *node = (Node*) lfirst(l);
 
-		/* avoid making duplicate grouplist entries */
-		if (targetIsInSortList(tle, result))
-			continue;
+		if (node == NULL) /* the empty grouping set */
+			result = list_concat(result, list_make1(NIL));
 
-		sort_op = ordering_oper_opid(exprType((Node *) tle->expr));
-		gc = make_group_clause(tle, *targetlist, sort_op);
-		result = lappend(result, gc);
+		else if (IsA(node, GroupingClause))
+		{
+			is_grpext = true;
+			result = lappend(result,
+							 make_grouping_clause(pstate,
+												  (GroupingClause*)node, *targetlist));
+		}
+
+		else
+		{
+			TargetEntry *tle;
+			GroupClause *gc;
+			Oid			sort_op;
+
+			tle = findTargetlistEntry(pstate, node,
+									  targetlist, GROUP_CLAUSE);
+			
+			/* avoid making duplicate expression entries */
+			if (targetIsInSortGroupList(tle, result))
+				continue;
+
+			sort_op = ordering_oper_opid(exprType((Node *) tle->expr));
+			gc = make_group_clause(tle, *targetlist, sort_op);
+			result = lappend(result, gc);
+		}
+	}
+
+	if (is_grpext)
+	{
+		List *grp_tles = NIL;
+		ListCell *lc;
+
+		/* Find all unique target entries appeared in reorder_grouplist. */
+		foreach (lc, reorder_grouplist)
+		{
+			grp_tles = list_union(grp_tles,
+								   findListTargetlistEntries(pstate, lfirst(lc),
+															 targetlist));
+		}
+
+		/*
+		 * For each GROUPING function, check if its argument(s) appear in the
+		 * GROUP BY clause. We also set ngrpcols, nargs and grpargs values for
+		 * each GROUPING function here. These values are used together with
+		 * GROUPING_ID to calculate the final value for each GROUPING function
+		 * in the executor.
+		 */
+		foreach (lc, *targetlist)
+		{
+			TargetEntry *tle = (TargetEntry *)lfirst(lc);
+			GroupingFunc *gf;
+			ListCell *arg_lc;
+			int argno = 0;
+
+			if (!IsA(tle->expr, GroupingFunc))
+				continue;
+
+			gf = (GroupingFunc *)tle->expr;
+
+			gf->ngrpcols = list_length(grp_tles);
+			gf->nargs = list_length(gf->args);
+			gf->grpargs = (int *)palloc0(gf->nargs * sizeof(int));
+
+			/*
+			 * For each argument in gf->args, find its position in grp_tles,
+			 * and increment its counts. Note that this is a O(n^2) algorithm,
+			 * but it should not matter that much.
+			 */
+			foreach (arg_lc, gf->args)
+			{
+				int i = 0;
+				Node *node = lfirst(arg_lc);
+				ListCell *grp_lc = NULL;
+
+				foreach (grp_lc, grp_tles)
+				{
+					TargetEntry *grp_tle = (TargetEntry *)lfirst(grp_lc);
+
+					if (equal(grp_tle->expr, node))
+						break;
+					i++;
+				}
+
+				/* Find a column not in GROUP BY clause */
+				if (grp_lc == NULL)
+				{
+					RangeTblEntry *rte;
+					const char *attname;
+					Var *var = (Var *) node;
+					Assert(var->varno > 0 &&
+						   (int) var->varno <= list_length(pstate->p_rtable));
+					rte = rt_fetch(var->varno, pstate->p_rtable);
+					attname = get_rte_attribute_name(rte, var->varattno);
+
+					ereport(ERROR,
+							(errcode(ERRCODE_GROUPING_ERROR),
+							 errmsg("column \"%s.%s\" is not in GROUP BY",
+									rte->eref->aliasname, attname)));
+				}
+
+				Assert (argno < gf->nargs);
+				gf->grpargs[argno] = i;
+				argno++;
+			}
+
+			/* Free gf->args since we do not need it any more. */
+			list_free_deep(gf->args);
+			gf->args = NULL;
+		}
+
+		pfree(grp_tles);
 	}
 
 	list_free(tle_list);
+	list_free_deep(reorder_grouplist);
+
 	return result;
 }
 
@@ -1645,7 +2199,7 @@ addTargetToSortList(ParseState *pstate, TargetEntry *tle,
 					bool resolveUnknown)
 {
 	/* avoid making duplicate sortlist entries */
-	if (!targetIsInSortList(tle, sortlist))
+	if (!targetIsInSortGroupList(tle, sortlist))
 	{
 		SortClause *sortcl = makeNode(SortClause);
 		Oid			restype = exprType((Node *) tle->expr);
@@ -1717,15 +2271,18 @@ assignSortGroupRef(TargetEntry *tle, List *tlist)
 }
 
 /*
- * targetIsInSortList
- *		Is the given target item already in the sortlist?
+ * targetIsInSortGroupList
+ *		Is the given target item already in the sortlist or grouplist?
  *
- * Works for both SortClause and GroupClause lists.  Note that the main
- * reason we need this routine (and not just a quick test for nonzeroness
- * of ressortgroupref) is that a TLE might be in only one of the lists.
+ * Works for SortClause, GroupClause and GroupingClause lists.  Note
+ * that the main reason we need this routine (and not just a quick
+ * test for nonzeroness of ressortgroupref) is that a TLE might be in
+ * only one of the lists.
+ *
+ * Any GroupingClauses in the list will be skipped during comparison.
  */
 bool
-targetIsInSortList(TargetEntry *tle, List *sortList)
+targetIsInSortGroupList(TargetEntry *tle, List *sortgroupList)
 {
 	Index		ref = tle->ressortgroupref;
 	ListCell   *l;
@@ -1734,12 +2291,90 @@ targetIsInSortList(TargetEntry *tle, List *sortList)
 	if (ref == 0)
 		return false;
 
-	foreach(l, sortList)
+	foreach(l, sortgroupList)
 	{
-		SortClause *scl = (SortClause *) lfirst(l);
+		Node *node = (Node *) lfirst(l);
 
-		if (scl->tleSortGroupRef == ref)
-			return true;
+		if (IsA(node, GroupClause) || IsA(node, SortClause))
+		{
+			GroupClause *gc = (GroupClause*) node;
+			if (gc->tleSortGroupRef == ref)
+				return true;
+		}
 	}
 	return false;
+}
+
+/*
+ * Given a sort group reference, find the TargetEntry for it.
+ */ 
+
+static TargetEntry *
+getTargetBySortGroupRef(Index ref, List *tl)
+{
+	ListCell *tmp;
+
+	foreach(tmp, tl)
+	{
+		TargetEntry *te = (TargetEntry *)lfirst(tmp);
+		
+		if (te->ressortgroupref == ref)
+			return te;
+	}
+	return NULL;
+}
+
+/*
+ * Re-order entries in a given GROUP BY list, which includes expressions or
+ * grouping extension clauses, such as ROLLUP, CUBE, GROUPING_SETS.
+ * 
+ * In each grouping set level, all non grouping extension clauses (or expressions)
+ * will appear in front of grouping extension clauses.
+ * See the following GROUP BY clause:
+ *
+ *   GROUP BY ROLLUP(b,c),a, ROLLUP(e,d)
+ *
+ * The re-ordered list is like below:
+ *
+ *   a,ROLLUP(b,c), ROLLUP(e,d)
+ *
+ * We make a fresh copy for each entries in the result list. The caller
+ * needs to free the list eventually.
+ */ 
+static List *reorderGroupList(List *grouplist)
+{
+	List *result = NIL;
+	ListCell *gl;
+	List *sub_list = NIL;
+
+	foreach(gl, grouplist)
+	{
+		Node *node = (Node*)lfirst(gl);
+
+		if (node == NULL)
+			/* XXX simply delete the empty grouping set */
+			/*result = list_concat(result, list_make1(NIL)); */
+			continue;
+
+		else if (IsA(node, GroupingClause))
+		{
+			GroupingClause *gc = (GroupingClause *)node;
+			GroupingClause *new_gc = makeNode(GroupingClause);
+
+			new_gc->groupType = gc->groupType;
+			new_gc->groupsets = reorderGroupList(gc->groupsets);
+			
+			sub_list = lappend(sub_list, new_gc);
+		}
+
+		else
+		{
+			Node *new_node = (Node *)copyObject(node);
+			result = lappend(result, new_node);
+		}
+	}
+
+	result = list_concat(result, sub_list);
+
+	return result;
 }
