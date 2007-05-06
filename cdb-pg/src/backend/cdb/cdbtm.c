@@ -1697,6 +1697,9 @@ initGxact(TMGXACT * gxact)
 	/*
 	 * Memory only fields.
 	 */
+
+	gxact->sessionId = gp_session_id;
+	
 	gxact->explicitBeginRemembered = false;
 	
     gxact->xminDistributedSnapshot = 0;
@@ -1704,6 +1707,62 @@ initGxact(TMGXACT * gxact)
 	gxact->bumpedPhase1Count = false;
 
 	gxact->participationSummary = DTX_PARTICIPATION_SUMMARY_NONE;
+}
+
+void
+getAllDistributedXactStatus(TMGALLXACTSTATUS **allDistributedXactStatus)
+{
+	TMGALLXACTSTATUS *all;
+	int count;
+
+	all = palloc(sizeof(TMGALLXACTSTATUS));
+	all->next = 0;
+	all->count = 0;
+	all->statusArray = NULL;
+
+	if (shmDtmStarted != NULL && *shmDtmStarted)
+	{
+		getTmLock();
+		count = *shmNumGxacts;
+		if (count > 0)
+		{	
+			int i;
+			
+			all->statusArray = 
+				palloc(MAXALIGN(count * sizeof(TMGXACTSTATUS)));
+			for (i = 0; i < count; i++)
+			{
+				TMGXACT *gxact = shmGxactArray[i];
+
+				all->statusArray[i].gxid = gxact->gxid;
+				memcpy(all->statusArray[i].gid, gxact->gid, TMGIDSIZE);
+				all->statusArray[i].state = gxact->state;
+				all->statusArray[i].sessionId = gxact->sessionId;
+				all->statusArray[i].xminDistributedSnapshot = gxact->xminDistributedSnapshot;
+			}
+
+			all->count = count;
+		}
+
+		releaseTmLock();
+
+	}
+	
+	*allDistributedXactStatus = all;
+}
+
+bool
+getNextDistributedXactStatus(TMGALLXACTSTATUS *allDistributedXactStatus, TMGXACTSTATUS **distributedXactStatus)
+{
+	if (allDistributedXactStatus->next >= allDistributedXactStatus->count)
+	{
+		return false;
+	}
+
+	*distributedXactStatus = &allDistributedXactStatus->statusArray[allDistributedXactStatus->next];
+	allDistributedXactStatus->next++;
+
+	return true;
 }
 
 // UNDONE: Call this from where regular snapshots get created...

@@ -111,6 +111,8 @@ typedef struct TMGXACT
 	 */
  	DtxState				state;
 
+	int							sessionId;
+	
 	bool						explicitBeginRemembered;
 
 	DistributedTransactionId	xminDistributedSnapshot;
@@ -122,6 +124,23 @@ typedef struct TMGXACT
 	int							debugIndex;
 	
 }	TMGXACT;
+
+typedef struct TMGXACTSTATUS
+{
+	DistributedTransactionId	gxid;
+	char						gid[TMGIDSIZE];
+ 	DtxState					state;
+	int							sessionId;
+	DistributedTransactionId	xminDistributedSnapshot;
+} TMGXACTSTATUS;
+
+typedef struct TMGALLXACTSTATUS
+{
+	int		next;
+	int		count;
+
+	TMGXACTSTATUS		*statusArray;
+} TMGALLXACTSTATUS;
 
 
 typedef struct TmControlBlock
@@ -238,6 +257,8 @@ void		unpackMppTxnOptions(int txnOptions, int *isoLevel, bool *readOnly);
 bool		isMppTxOptions_NeedTwoPhase(int txnOptions);
 bool		isMppTxOptions_ExplicitBegin(int txnOptions);
 
+extern void getAllDistributedXactStatus(TMGALLXACTSTATUS **allDistributedXactStatus);
+extern bool getNextDistributedXactStatus(TMGALLXACTSTATUS *allDistributedXactStatus, TMGXACTSTATUS **distributedXactStatus);
 
 extern void qdCreateDtxContextInfo(DtxContextInfo *dtxContextInfo, DistributedSnapshot distributedSnapshot, int txnOptions);
 extern int dtxContextInfoSerializeSize(DtxContextInfo *dtxContextInfo);

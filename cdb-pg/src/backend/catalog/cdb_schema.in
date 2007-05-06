@@ -22,4 +22,11 @@ CREATE VIEW gp_pgdatabase AS
 
 GRANT SELECT ON gp_pgdatabase TO PUBLIC;
 
+
+CREATE VIEW gp_distributed_xacts AS 
+    SELECT *
+      FROM gp_distributed_xacts() AS L(distributed_xid xid, distributed_id text, state text, gp_session_id int, xmin_distributed_snapshot xid);
+
+GRANT SELECT ON gp_distributed_xacts TO PUBLIC;
+
 RESET log_min_messages;
