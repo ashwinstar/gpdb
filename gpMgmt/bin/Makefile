@@ -23,7 +23,7 @@ all: pylib
 #
 # Python Libraries
 #
-pylib : paramiko pycrypto configobj stream
+pylib : paramiko pycrypto stream
 
 
 
@@ -51,35 +51,6 @@ streamClean:
 
 stream:
 
-
-
-#
-# CONFIGOBJ
-#
-CONFIGOBJ_VERSION=4.3.2
-CONFIGOBJ_DIR=configobj-$(CONFIGOBJ_VERSION)
-configobj:
-	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	@echo "Unzipping configobj"
-	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	@cd $(PYLIB_SRC)/; unzip -o $(CONFIGOBJ_DIR).zip ; cd ../ ;
-	@echo " Building configobj "
-	@cd $(PYLIB_SRC)/$(CONFIGOBJ_DIR) ; NO_M64=TRUE python setup.py build ; cd ../../
-	cp -r $(PYLIB_SRC)/$(CONFIGOBJ_DIR)/build/lib/* $(LIB_DIR)/
-
-configobjInstall:
-	@echo "Installing configobj"
-
-configobjClean:
-	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	@echo "Cleaning configobj"
-	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	@cd $(PYLIB_SRC)/$(CONFIGOBJ_DIR) ; NO_M64=TRUE python setup.py clean; cd ../../
-	@echo ""
-	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	@echo " Removing $(CONFIGOBJ_DIR) "
-	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	@echo ""
 #
 # PARAMIKO
 #
@@ -152,7 +123,7 @@ solarisTest:
 	@if [ `uname -s` = 'SunOS' ]; then \
 		echo "SOLARIS" ; \
 	fi
-clean : pycryptoClean paramikoClean configobjClean
+clean : pycryptoClean paramikoClean 
 	rm -rf *.pyc lib/*.pyc
 
     
