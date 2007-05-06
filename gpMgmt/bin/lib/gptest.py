@@ -1,4 +1,4 @@
-import unittest, os, popen2, time, sys
+import unittest, os, popen2, time, sys, getopt
 
 
 def getOutFile(fname):
@@ -39,11 +39,13 @@ def chksumSorted(fname):
 	if f: f.close()
 
 
+
 class GPTestError(Exception): pass
 
 
 class GPTestCase(unittest.TestCase):
 
+    RELOAD_FLAG = False
     DB_NAME = 'gptest'
     PORT = os.getenv('PGPORT')
     if not PORT:
@@ -53,11 +55,6 @@ class GPTestCase(unittest.TestCase):
     except ValueError:
 	sys.exit('Error: PGPORT env variable is not valid (%s)', PORT)
 	
-
-    def reload(self): pass
-
-    def reloadAlways(self): return False
-
     def __init__(self, name):
 	self.lastCommand = ''
 	unittest.TestCase.__init__(self, name)
@@ -108,4 +105,44 @@ class GPTestCase(unittest.TestCase):
 			      + '\nHint: create a result (.s or .v) file for %s' % ifile)
 	chksum = f2[len(f2)-1] == 's' and chksumSorted or chksumUnsorted
 	return chksum(f1) == chksum(f2)
+
+
+class TestProgram(unittest.TestProgram):
+
+    USAGE = '''\
+Usage: %(progName)s [option] [test] [...]
+
+Options: 
+	-?   show this message
+	-r   set reload flag (tests will drop and recreate gptest database)
+
+Examples:
+	%(progName)s                       - run default set of tests
+	%(progName)s mytestsuite           - run suite 'mytestsuite'
+	%(progName)s tpch1.testQuery05     - run tpch1.testQuery05
+	%(progName)s tpch1                 - run all test* methods in tpch1
+'''
+    
+    def usageExit(self, msg = 0):
+	print self.USAGE % self.__dict__
+	sys.exit(msg)
+
+    def parseArgs(self, argv):
+	try:
+	    options, args = getopt.getopt(argv[1:], '?hvqr')
+	    for opt, value in options:
+		if opt == '-r': 
+		    GPTestCase.RELOAD_FLAG = True
+		elif opt == '-h' or opt == '-?':
+		    self.usageExit()
+	except getopt.error, msg:
+	    self.usageExit(msg)
+
+	args.insert(0, argv[0])
+	args.insert(1, '-v')
+	return unittest.TestProgram.parseArgs(self, args)
+
+	
+
+main = TestProgram
 
