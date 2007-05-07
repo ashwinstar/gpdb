@@ -43,9 +43,47 @@ def chksumSorted(fname):
 class GPTestError(Exception): pass
 
 
+class GPTestResult(unittest._TextTestResult):
+    def __init__(self, stream, descriptions):
+	unittest._TextTestResult.__init__(self, stream, descriptions, verbosity=2)
+	self.startTime = 0
+	self.endTime = 0
+	
+    def startTest(self, test):
+	self.startTime = time.time()
+	return unittest._TextTestResult.startTest(self, test)
+
+    def addSuccess(self, test):
+	unittest.TestResult.addSuccess(self, test)
+	self.endTime = time.time()
+	if self.showAll:
+	    self.stream.writeln('ok - %3.2f sec' % (self.endTime - self.startTime))
+	elif self.dots:
+	    self.stream.write('.')
+
+
+class GPTestRunner(unittest.TextTestRunner):
+    def _makeResult(self):
+	return GPTestResult(self.stream, self.descriptions)
+
+
+LOG_FILE = None
+def writeLog(m, m1 = None, m2 = None, m3 = None):
+    global LOG_FILE
+    if not LOG_FILE: LOG_FILE = open('gptest.log', 'a')
+    LOG_FILE.write(m)
+    if m1: 
+	LOG_FILE.write(m1)
+	if m2: 
+	    LOG_FILE.write(m2)
+	    if m3:
+		LOG_FILE.write(m3)
+    LOG_FILE.write('\n')
+    LOG_FILE.flush()
+
+
 class GPTestCase(unittest.TestCase):
 
-    LOG_FILE = None
     LOAD_FLAG = False
     DB_NAME = 'gptest'
     PORT = os.getenv('PGPORT')
@@ -60,18 +98,12 @@ class GPTestCase(unittest.TestCase):
 	self.lastCommand = ''
 	unittest.TestCase.__init__(self, name)
 
+    # override unittest.TestCase.defaultTestResult
+    def defaultTestResult(self):
+	return GPTestResult()
+
     def log(self, m, m1 = None, m2 = None, m3 = None):
-	if not GPTestCase.LOG_FILE:
-	    GPTestCase.LOG_FILE = open('gptest.log', 'a')
-	GPTestCase.LOG_FILE.write(m)
-	if m1: 
-	    GPTestCase.LOG_FILE.write(m1)
-	    if m2: 
-		GPTestCase.LOG_FILE.write(m2)
-		if m3:
-		    GPTestCase.LOG_FILE.write(m3)
-	GPTestCase.LOG_FILE.write('\n')
-	GPTestCase.LOG_FILE.flush()
+	return writeLog(m, m1, m2, m3)
 
     def _execpsql(self, db = None, ifile = None, ofile = None, cmd = None):
 
@@ -126,6 +158,9 @@ class GPTestCase(unittest.TestCase):
 	return chksum(f1) == chksum(f2)
 
 
+defaultTestRunner = GPTestRunner()
+
+
 class TestProgram(unittest.TestProgram):
 
     USAGE = '''\
@@ -141,6 +176,12 @@ Examples:
 	%(progName)s tpch1.testQuery05     - run tpch1.testQuery05
 	%(progName)s tpch1                 - run all test* methods in tpch1
 '''
+
+    def __init__(self, module='__main__', defaultTest=None, argv=None):
+	unittest.TestProgram.__init__(self, module=module, 
+				      defaultTest=defaultTest, 
+				      argv=argv, 
+				      testRunner=defaultTestRunner)
     
     def usageExit(self, msg = 0):
 	print self.USAGE % self.__dict__
@@ -161,7 +202,6 @@ Examples:
 	args.insert(1, '-v')
 	return unittest.TestProgram.parseArgs(self, args)
 
-	
 
 main = TestProgram
 
