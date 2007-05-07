@@ -13,6 +13,7 @@
 #include "nodes/execnodes.h"            /* Slice, SliceTable */
 #include "nodes/pg_list.h"
 #include "nodes/print.h"
+#include "utils/debugbreak.h"
 #include "utils/memutils.h"
 #include "utils/hsearch.h"
 #include "miscadmin.h"
@@ -100,8 +101,6 @@ struct timeval tval;
 
 #define ML_CHECK_FOR_INTERRUPTS(teardownActive) \
 		do {if (!teardownActive && InterruptPending) CHECK_FOR_INTERRUPTS(); } while (0)
-
-extern void debug_break();
 
 /*=========================================================================
  * FUNCTIONS PROTOTYPES

@@ -392,6 +392,13 @@ PGAC_ARG_BOOL(enable, forceplan, no, [  --enable-forceplan        enable forcing
                          [Define to 1 to build with plan forcing capabilities. (--enable-forceplan)])])
 
 #
+# Enable debug_break
+#
+PGAC_ARG_BOOL(enable, debugbreak, no, [  --enable-debugbreak        enable debug_break and debug_break_n (for debugging)],
+              [AC_DEFINE([USE_DEBUG_BREAK], 1,
+                         [Define to 1 to build with debug_break capabilities. (--enable-debugbreak)])])
+
+#
 # Include directories
 #
 ac_save_IFS=$IFS

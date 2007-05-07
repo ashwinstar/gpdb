@@ -627,6 +627,10 @@
    */
 #undef USE_FORCE_PLAN
 
+/* Define to 1 to build with debug break capabilities. (--eanble-debugbreak)
+   */
+#undef USE_DEBUG_BREAK
+
 /* Define to 1 if you want 64-bit integer timestamp and interval support.
    (--enable-integer-datetimes) */
 #undef USE_INTEGER_DATETIMES

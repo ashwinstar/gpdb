@@ -75,8 +75,7 @@
 #include "utils/ps_status.h"    /* get_ps_display_username() */
 
 #include "utils/elog.h" /* backtrace() prototype for solaris */
-
-extern void debug_break();
+#include "utils/debugbreak.h"
 
 /* Global variables */
 ErrorContextCallback *error_context_stack = NULL;
@@ -408,12 +407,11 @@ errfinish(int dummy,...)
 
 		recursion_depth--;
 
-#if 0
 		/*
 		 * feng's debug support
 	     */
-		debug_break();
-#endif
+		debug_break_n(DEBUG_BREAK_POINT_EXCEPTION);
+
 		PG_RE_THROW();
 	}
 

@@ -507,9 +507,9 @@ ExplainOnePlan_internal(QueryDesc      *queryDesc,
 			else
 				f = format_node_dump(s);
 			pfree(s);
-			do_text_output_multiline(tstate, f);
+			do_text_output_multiline(es->tupOutputState, f);
 			pfree(f);
-			do_text_output_oneline(tstate, ""); /* separator line */
+			do_text_output_oneline(es->tupOutputState, ""); /* separator line */
 		}
 #endif /* USE_FORCE_PLAN */
 

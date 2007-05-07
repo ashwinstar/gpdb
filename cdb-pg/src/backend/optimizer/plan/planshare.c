@@ -704,18 +704,3 @@ ShareNode_ShareType add_sharenode(
 	return stype;
 }
 
-
-extern void debug_break();
-
-void debug_break()
-{
-	static volatile int debug_break_flag = 0; 
-	
-	elog(LOG, "Debug break");
-
-	++debug_break_flag; 
-	while(debug_break_flag == 1)
-	{
-		sleep(1);
-	}
-}

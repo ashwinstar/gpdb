@@ -19,6 +19,8 @@
 #include "postgres.h"
 
 #include "utils/elog.h" /* backtrace() prototype for solaris */
+#include "utils/debugbreak.h"
+
 #include <unistd.h>
 
 #if (!defined(__darwin__)) && (!defined(pg_on_solaris))
@@ -80,12 +82,7 @@ ExceptionalCondition(const char *conditionName,
 	sleep(1000000);
 #endif
 
-#if 0
-	{
-		extern void debug_break();
-		debug_break();
-	}
-#endif
+	debug_break_n(DEBUG_BREAK_POINT_ASSERT);
 
 #if 0
     /* Assert should always be painful.  Force a segment fault.
