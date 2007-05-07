@@ -45,7 +45,7 @@ class GPTestError(Exception): pass
 
 class GPTestCase(unittest.TestCase):
 
-    RELOAD_FLAG = False
+    LOAD_FLAG = False
     DB_NAME = 'gptest'
     PORT = os.getenv('PGPORT')
     if not PORT:
@@ -73,14 +73,16 @@ class GPTestCase(unittest.TestCase):
 	self.lastCommand = 'psql -p %d -e %s' % (self.PORT, arg);
 	return os.system(self.lastCommand)
 
+
     def resetDatabase(self):
 	print 'creating database:', self.DB_NAME
-	self._execpsql('template1', cmd = 'drop database ' + self.DB_NAME)
-	rc = self._execpsql('template1', cmd = 'create database ' + self.DB_NAME)
+	rc = self._execpsql('template1', 
+			    cmd = 'drop database if exists %s; create database %s' % (self.DB_NAME, self.DB_NAME))
 	if rc:
-	    raise GPTestError('Error: cannot create database\n' % self.DB
+	    raise GPTestError('Error: cannot create database %s\n' % self.DB_NAME
 			      + 'Last command: %s\n' % self.lastCommand)
-
+	print 'database created'
+	
     def psqlCmd(self, cmd):
 	startTime = time.time()
 	if self._execpsql(cmd=cmd): return False
@@ -114,7 +116,7 @@ Usage: %(progName)s [option] [test] [...]
 
 Options: 
 	-?   show this message
-	-r   set reload flag (tests will drop and recreate gptest database)
+	-l   set reload flag (tests will drop and recreate gptest database)
 
 Examples:
 	%(progName)s                       - run default set of tests
@@ -129,10 +131,10 @@ Examples:
 
     def parseArgs(self, argv):
 	try:
-	    options, args = getopt.getopt(argv[1:], '?hvqr')
+	    options, args = getopt.getopt(argv[1:], '?hvql')
 	    for opt, value in options:
-		if opt == '-r': 
-		    GPTestCase.RELOAD_FLAG = True
+		if opt == '-l': 
+		    GPTestCase.LOAD_FLAG = True
 		elif opt == '-h' or opt == '-?':
 		    self.usageExit()
 	except getopt.error, msg:
