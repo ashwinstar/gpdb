@@ -876,21 +876,6 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
     if (thisSlice &&
         gp_log_interconnect >= GPVARS_VERBOSITY_TERSE)
 	{
-		/* olap_merge */
-#if 0
-        ereport(LOG, (errmsg("Motion node %d in slice%d is %s%s %s slice%d",
-		                     node->motionID,
-                             thisSlice->sliceIndex,
-                             (node->sendSorted ? "sorted " : ""),
-		                     (node->motionType == MOTIONTYPE_HASH ? "hash" :
-                              node->numOutputSegs == 0 ? "broadcast" :
-                              node->numOutputSegs == 1 ? "gather" :
-                              "unknown"),
-                             (motionstate->isReceiver ? "receiver for input from"
-                                                      : "sender for output to"),
-                             thatSlice ? thatSlice->sliceIndex : -1) /* olap_merge */
-                ));
-#endif
 		ereport(LOG, (errmsg("Motion node %d in slice%d is %s %s slice %d",
 		                     node->motionID,
                              thisSlice->sliceIndex,

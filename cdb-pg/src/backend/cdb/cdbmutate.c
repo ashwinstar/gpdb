@@ -810,14 +810,10 @@ assignMotionID(Node *newnode, ApplyMotionState * context, Node *oldnode)
  * make_motion -- creates a Motion node.
  * Caller must have built the pHashDefn, pFixedDefn,
  * and pSortDefn structs already.
- * --------------------------------------------------------------------
- */
-/* XXX TODO: ftian: This function now make a motion node that has one slice, 
- * one route.
  *
- * Need to make this work with multi slice and multi route.  The only tricky thing
- * is that the flow attached with the motion may have multi slice, multi route as
- * well.  We may need to extend the Flow data structure to accomodate this.
+ * This call only make a motion node, without any sliceEntry in it.
+ * After calling this function, caller need to call add_slice_to_motion
+ * --------------------------------------------------------------------
  */
 Motion *
 make_motion(Plan       *lefttree,
@@ -833,7 +829,6 @@ make_motion(Plan       *lefttree,
 
 	Assert(lefttree);
 	Assert(!IsA(lefttree, Motion));
-    /* Assert(lefttree->flow); */ /* olap_merge */
 	AssertImply(sendSorted, (numSortCols > 0 && sortColIdx != NULL && sortOperators != NULL));
 	AssertImply(!sendSorted, (numSortCols == 0 && sortColIdx == NULL && sortOperators == NULL));
 
