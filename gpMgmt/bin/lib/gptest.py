@@ -45,6 +45,7 @@ class GPTestError(Exception): pass
 
 class GPTestCase(unittest.TestCase):
 
+    LOG_FILE = None
     LOAD_FLAG = False
     DB_NAME = 'gptest'
     PORT = os.getenv('PGPORT')
@@ -59,6 +60,19 @@ class GPTestCase(unittest.TestCase):
 	self.lastCommand = ''
 	unittest.TestCase.__init__(self, name)
 
+    def log(self, m, m1 = None, m2 = None, m3 = None):
+	if not GPTestCase.LOG_FILE:
+	    GPTestCase.LOG_FILE = open('gptest.log', 'a')
+	GPTestCase.LOG_FILE.write(m)
+	if m1: 
+	    GPTestCase.LOG_FILE.write(m1)
+	    if m2: 
+		GPTestCase.LOG_FILE.write(m2)
+		if m3:
+		    GPTestCase.LOG_FILE.write(m3)
+	GPTestCase.LOG_FILE.write('\n')
+	GPTestCase.LOG_FILE.flush()
+
     def _execpsql(self, db = None, ifile = None, ofile = None, cmd = None):
 
 	if not db: db = self.DB_NAME
@@ -71,7 +85,10 @@ class GPTestCase(unittest.TestCase):
 	arg = '%s > %s 2>&1' % (arg, ofile)
 
 	self.lastCommand = 'psql -p %d -e %s' % (self.PORT, arg);
-	return os.system(self.lastCommand)
+	self.log('EXEC: ', self.lastCommand)
+	rc = os.system(self.lastCommand)
+	self.log('  RC: ', str(rc))
+	return rc
 
 
     def resetDatabase(self):
