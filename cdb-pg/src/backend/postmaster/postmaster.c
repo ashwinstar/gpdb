@@ -159,12 +159,17 @@ typedef struct bkend
 
 static Dllist *BackendList;
 
+/* #define DO_DDA_SERV 1 */
 /* CDB */
 typedef enum pmsub_type
 {
 	SeqServerProc = 0,
-/*	DdaServerProc = 1,  XXX XXX: disabled for now  */
+#ifdef DO_DDA_SERV
+	DdaServerProc = 1, 
+	MaxPMSubType  = 2 /* must always be last */
+#else
 	MaxPMSubType  = 1 /* must always be last */
+#endif
 } PMSubType;
 
 #ifdef EXEC_BACKEND
@@ -251,11 +256,11 @@ static PMSubProc PMSubProcList[MaxPMSubType] =
 	{0, SeqServerProc, 
 	 (PMSubStartCallback*)&seqserver_start, 
 	 "seqserver process", true, false},
-/* XXX XXX: disabled for now:
+#ifdef DO_DDA_SERV
 	{0, DdaServerProc, 
 	 (PMSubStartCallback*)&ddaserver_start, 
 	 "ddaserver process", true, true},
-*/
+#endif
 };
 
 /* Startup/shutdown state */
