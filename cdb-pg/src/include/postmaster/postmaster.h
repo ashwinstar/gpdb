@@ -49,5 +49,6 @@ extern void ShmemBackendArrayAllocation(void);
 
 /* CDB */
 typedef int (PMSubStartCallback)(void);
+bool GPPostmaster(void);
 
 #endif   /* _POSTMASTER_H */

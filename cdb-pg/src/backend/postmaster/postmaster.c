@@ -118,6 +118,7 @@
 #include "postmaster/pgarch.h"
 #include "postmaster/postmaster.h"
 #include "postmaster/seqserver.h"
+#include "postmaster/ddaserver.h"
 #include "postmaster/syslogger.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
@@ -162,6 +163,7 @@ static Dllist *BackendList;
 typedef enum pmsub_type
 {
 	SeqServerProc = 0,
+/*	DdaServerProc = 1,  XXX XXX: disabled for now  */
 	MaxPMSubType  = 1 /* must always be last */
 } PMSubType;
 
@@ -236,17 +238,24 @@ pid_t			SysLoggerPID = 0; /* Needs to be accessed from elog.c */
 
 typedef struct pmsubproc
 {
-	pid_t		pid;			/* process id */	  
+	pid_t		pid;			/* process id (0 when not running) */	  
 	PMSubType   procType;       /* process type */
 	PMSubStartCallback *serverStart; /* server start function */
 	char       *procName;
+	bool       QDproc;          /* start process on QD */
+	bool       QEproc;          /* start process on all QE's */
 } PMSubProc;
 
 static PMSubProc PMSubProcList[MaxPMSubType] = 
 {
 	{0, SeqServerProc, 
 	 (PMSubStartCallback*)&seqserver_start, 
-	 "seqserver process"}
+	 "seqserver process", true, false},
+/* XXX XXX: disabled for now:
+	{0, DdaServerProc, 
+	 (PMSubStartCallback*)&ddaserver_start, 
+	 "ddaserver process", true, true},
+*/
 };
 
 /* Startup/shutdown state */
@@ -413,6 +422,12 @@ static bool SyncMaster = false;
 
 /* if we are a QD postmaster or not */
 static bool Gp_entry_postmaster = false;
+
+bool GPPostmaster()
+{
+	return (Gp_entry_postmaster);
+}
+
 /*
  * gpsyncMaster main entry point
  */
@@ -1374,7 +1389,9 @@ ServerLoop(void)
 			{
 				PMSubProc *subProc = &PMSubProcList[ii];
 
-				if (subProc->pid == 0 && Gp_entry_postmaster &&
+				if (subProc->pid == 0 && 
+					((Gp_entry_postmaster && subProc->QDproc) ||
+					 (!Gp_entry_postmaster && subProc->QEproc)) &&
 					StartupPID == 0 && 
 					!FatalError && Shutdown == NoShutdown && !SyncMaster)
 						subProc->pid = 
@@ -2295,7 +2312,9 @@ reaper(SIGNAL_ARGS)
 					{
 						PMSubProc *subProc = &PMSubProcList[ii];
 
-						if (subProc->pid == 0 && Gp_entry_postmaster )
+						if (subProc->pid == 0 && 
+							((Gp_entry_postmaster && subProc->QDproc) ||
+							 (!Gp_entry_postmaster && subProc->QEproc)))
 							subProc->pid = 
 								(subProc->serverStart)();
 					}
@@ -2399,10 +2418,12 @@ reaper(SIGNAL_ARGS)
 				PMSubProc *subProc = &PMSubProcList[ii];
 
 				if (subProc->pid != 0 && 
-					pid == subProc->pid && Gp_entry_postmaster )
+					pid == subProc->pid && 
+					((Gp_entry_postmaster && subProc->QDproc) ||
+					 (!Gp_entry_postmaster && subProc->QEproc)))
 				{
 					subProc->pid = 0;
-					if (exitstatus != 0)
+					if (!EXIT_STATUS_0(exitstatus))
 						LogChildExit(LOG, subProc->procName,
 									 pid, exitstatus);
 					if (StartupPID == 0 && 
@@ -2668,7 +2689,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 						(errmsg_internal("sending %s to process %d",
 										 "SIGQUIT",
 										 (int) subProc->pid)));
-				kill(subProc->pid, SIGQUIT);
+				signal_child(subProc->pid, SIGQUIT);
 			}
 		}
 	}

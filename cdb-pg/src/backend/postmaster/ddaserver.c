@@ -75,8 +75,10 @@ NON_EXEC_STATIC void DdaserverMain(int argc, char *argv[]);
 static void DdaserverLoop(void);
 static bool processDdaRequest( int sockfd );
 static int listenerSetup(void);
+/*
 static int64 readInt64(uint8 *buff);
 static void sendInt64(uint8 *buff, int64 i);
+*/
 static void
 setupDdaServerConnection(char *ddaServerHost, int ddaServerPort );
 
@@ -481,10 +483,10 @@ processDdaRequest( int sockfd )
     LockStatStd response;
 	int			saved_err;
 	fd_set		rset,wset;
-	int64 plast;
+/*	int64 plast;
 	int64 pcached;
 	int64 pincrement;
-	
+*/	
 	int n;
 	int bytesRead = 0;
 	int bytesWritten = 0;
@@ -739,7 +741,7 @@ listenerSetup(void)
 }
 
 
-
+/*
 int64 readInt64( uint8 *buff )
 {
 	int64		result;
@@ -754,6 +756,7 @@ void sendInt64(uint8 *buff, int64 i)
 {
 	memcpy( buff, &i, 8);
 }
+*/
 
 /* from ml_ipc.c */
 static void
