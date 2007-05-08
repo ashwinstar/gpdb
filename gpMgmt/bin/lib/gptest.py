@@ -38,35 +38,6 @@ def chksumSorted(fname):
     finally:
 	if f: f.close()
 
-
-
-class GPTestError(Exception): pass
-
-
-class GPTestResult(unittest._TextTestResult):
-    def __init__(self, stream, descriptions):
-	unittest._TextTestResult.__init__(self, stream, descriptions, verbosity=2)
-	self.startTime = 0
-	self.endTime = 0
-	
-    def startTest(self, test):
-	self.startTime = time.time()
-	return unittest._TextTestResult.startTest(self, test)
-
-    def addSuccess(self, test):
-	unittest.TestResult.addSuccess(self, test)
-	self.endTime = time.time()
-	if self.showAll:
-	    self.stream.writeln('ok - %3.2f sec' % (self.endTime - self.startTime))
-	elif self.dots:
-	    self.stream.write('.')
-
-
-class GPTestRunner(unittest.TextTestRunner):
-    def _makeResult(self):
-	return GPTestResult(self.stream, self.descriptions)
-
-
 LOG_FILE = None
 def writeLog(m, m1 = None, m2 = None, m3 = None):
     global LOG_FILE
@@ -82,17 +53,54 @@ def writeLog(m, m1 = None, m2 = None, m3 = None):
     LOG_FILE.flush()
 
 
+class GPTestError(Exception): pass
+
+
+class GPTestResult(unittest._TextTestResult):
+    def __init__(self, stream, descriptions):
+	unittest._TextTestResult.__init__(self, stream, descriptions, verbosity=2)
+	self.startTime = 0
+	self.endTime = 0
+	
+    def startTest(self, test):
+	self.startTime = time.time()
+	writeLog(self.separator1)
+	writeLog(self.getDescription(test), ' STARTED ', time.ctime())
+	writeLog(self.separator2)
+	return unittest._TextTestResult.startTest(self, test)
+
+    def addSuccess(self, test):
+	unittest.TestResult.addSuccess(self, test)
+	elapsed = time.time() - self.startTime
+	if self.showAll:
+	    self.stream.writeln('ok - % 4.2f sec' % elapsed)
+	elif self.dots:
+	    self.stream.write('.')
+
+	writeLog(self.getDescription(test), ' ok - % 4.2f sec' % elapsed)
+
+    def addError(self, test, err):
+	writeLog(self.getDescription(test), ' ERROR')
+	writeLog('\n%s' % str(err))
+	unittest._TextTestResult.addError(self, test, err)
+	
+    def addFailure(self, test, err):
+	writeLog(self.getDescription(test), ' FAILURE')
+	writeLog('\n%s' % str(err))
+	unittest._TextTestResult.addFailure(self, test, err)
+	
+
+class GPTestRunner(unittest.TextTestRunner):
+    def _makeResult(self):
+	return GPTestResult(self.stream, self.descriptions)
+
+
+
 class GPTestCase(unittest.TestCase):
 
     LOAD_FLAG = False
+    SANITY_CHECKED_FLAG = False
     DB_NAME = 'gptest'
-    PORT = os.getenv('PGPORT')
-    if not PORT:
-	sys.exit('Error: PGPORT env variable not set (for psql)')
-    try:
-	PORT = int(PORT)
-    except ValueError:
-	sys.exit('Error: PGPORT env variable is not valid (%s)', PORT)
 	
     def __init__(self, name):
 	self.lastCommand = ''
@@ -107,6 +115,12 @@ class GPTestCase(unittest.TestCase):
 
     def _execpsql(self, db = None, ifile = None, ofile = None, cmd = None):
 
+	if not GPTestCase.SANITY_CHECKED_FLAG:
+	    GPTestCase.SANITY_CHECKED_FLAG = True
+	    rc = self._execpsql("template1", cmd='\l')
+	    if rc:
+		sys.exit('Unable to run psql ...\nPlease check the PGPORT/PGHOST env\n')
+
 	if not db: db = self.DB_NAME
 	arg = db
 
@@ -116,10 +130,10 @@ class GPTestCase(unittest.TestCase):
 	if not ofile: ofile = '/dev/null'
 	arg = '%s > %s 2>&1' % (arg, ofile)
 
-	self.lastCommand = 'psql -p %d -e %s' % (self.PORT, arg);
-	self.log('EXEC: ', self.lastCommand)
+	self.lastCommand = 'psql -e %s' % arg
+	self.log('\tEXEC: ', self.lastCommand)
 	rc = os.system(self.lastCommand)
-	self.log('  RC: ', str(rc))
+	self.log('\t  RC: ', str(rc))
 	return rc
 
 
