@@ -46,16 +46,17 @@
  * so far I did not run into any problem (postgres is not threaded)
  */
 #ifdef USE_DEBUG_BREAK
+
 void debug_break()
 {
-	static volatile int debug_break_flag = 0; 
+	static volatile int debug_break_loop = 0; 
 
-	++debug_break_flag; 
+	++debug_break_loop; 
 
-	if(debug_break_flag == 1)
+	if(debug_break_loop == 1)
 		elog(LOG, "Debug break");
 
-	while(debug_break_flag == 1)
+	while(debug_break_loop == 1)
 		sleep(1);
 }
 
@@ -67,17 +68,22 @@ void debug_break()
 #define DEBUG_BREAK_N_MAX (sizeof(int) * 8)
 
 /* by default, only enable debug_break_point 1, (Assert) */
-static volatile int debug_break_n_flags = 1; 
+static volatile int debug_break_n_flags = 3; 
+
 void debug_break_n(int n)
 {
 	int checkbit = 1;
+	static volatile int debug_break_n_loop = 0;
+
 	Assert(n >= 1 && n<= DEBUG_BREAK_N_MAX);
 	
 	checkbit <<= (n-1);
-	if(debug_break_n_flags & checkbit)
+	++debug_break_n_loop;
+
+	if((debug_break_n_flags & checkbit) && debug_break_n_loop == 1)
 		elog(LOG, "Debug break n: %d", n);
 
-	while(debug_break_n_flags & checkbit)
+	while((debug_break_n_flags & checkbit) && debug_break_n_loop == 1)
 		sleep(1);
 }
 

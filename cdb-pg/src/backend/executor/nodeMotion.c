@@ -28,6 +28,7 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "utils/memutils.h"
+#include "utils/debugbreak.h"
 
 /* #define MEASURE_MOTION_TIME */
 
