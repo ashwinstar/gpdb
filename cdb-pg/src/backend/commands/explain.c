@@ -1724,6 +1724,7 @@ show_grouping_keys(Plan        *plan,
     int			i;
 	int         num_null_cols = 0;
 	int         rollup_gs_times = 0;
+	int         rollup_level = 0;
 	StringInfoData tmpstr;
 
 	initStringInfoOfSize(&tmpstr, 1000);
@@ -1770,12 +1771,14 @@ show_grouping_keys(Plan        *plan,
 	{
 		num_null_cols = ((Agg*)plan)->numNullCols;
 		rollup_gs_times = ((Agg*)plan)->rollupGSTimes;
+		rollup_level = ((Agg*)plan)->rollupLevel;
 	}
 
 	else if (IsA(plan, Group))
 	{
 		num_null_cols = ((Group*)plan)->numNullCols;
 		rollup_gs_times = ((Group*)plan)->rollupGSTimes;
+		rollup_level = ((Group*)plan)->rollupLevel;
 	}
 
     for (keyno = 0; keyno < numCols; keyno++)
@@ -1807,12 +1810,16 @@ show_grouping_keys(Plan        *plan,
 		{
 			if (keyno > 0)
 				appendStringInfoString(&tmpstr, ", ");
-			if (numCols - num_null_cols - keyno == 1)
+			if ((rollup_level == 0 && keyno == numCols - num_null_cols) ||
+				(rollup_level != 0 && keyno == numCols - num_null_cols - 1))
 				appendStringInfoString(&tmpstr, grpid_str);
 			else
 				appendStringInfoString(&tmpstr, exprstr);
 		}
     }
+
+	if (rollup_gs_times > 1)
+		appendStringInfo(str, " (%d times)", rollup_gs_times);
 
     appendStringInfoChar(str, '\n');
 
@@ -1823,14 +1830,7 @@ show_grouping_keys(Plan        *plan,
 
 		appendStringInfoString(str, "  Grouping Set: (");
 		appendStringInfoString(str, tmpstr.data);
-		appendStringInfoString(str, ") ");
-		appendStringInfoString(str, "\n");
-	}
-
-	if (rollup_gs_times > 1)
-	{
-		appendStringInfo(str, "(%d times)", rollup_gs_times);
-		appendStringInfoString(str, "\n");
+		appendStringInfoString(str, ")\n");
 	}
 
 	pfree(tmpstr.data);

@@ -68,7 +68,7 @@ ExecGroup(GroupState *node)
 		 */
 		econtext->ecxt_scantuple = node->prev_aggslot;
 
-		econtext->group_id = node->num_repeats;
+		econtext->group_id = node->num_repeats - 1;
 		econtext->grouping =
 			get_grouping(econtext->ecxt_scantuple,
 						 group_node->grpColIdx[group_node->numCols-1]);
@@ -147,7 +147,7 @@ ExecGroup(GroupState *node)
 				if (group_node->lastGroup)
 				{
 					econtext->ecxt_scantuple = node->copyslot;
-					econtext->group_id = get_group_id(econtext->ecxt_scantuple);
+					econtext->group_id = get_group_id(econtext->ecxt_scantuple) - 1;
 					econtext->grouping =
 						get_grouping(econtext->ecxt_scantuple,
 									 group_node->grpColIdx[group_node->numCols-1]);
@@ -267,7 +267,7 @@ ExecGroup(GroupState *node)
 				if (group_node->lastGroup)
 				{
 					econtext->ecxt_scantuple = outerslot;
-					econtext->group_id = get_group_id(econtext->ecxt_scantuple);
+					econtext->group_id = get_group_id(econtext->ecxt_scantuple) - 1;
 					econtext->grouping =
 						get_grouping(econtext->ecxt_scantuple,
 									 group_node->grpColIdx[group_node->numCols-1]);
@@ -295,7 +295,7 @@ ExecGroup(GroupState *node)
 			if (group_node->lastGroup)
 			{
 				econtext->ecxt_scantuple = outerslot;
-				econtext->group_id = get_group_id(econtext->ecxt_scantuple);
+				econtext->group_id = get_group_id(econtext->ecxt_scantuple) - 1;
 				econtext->grouping =
 					get_grouping(econtext->ecxt_scantuple,
 								 group_node->grpColIdx[group_node->numCols-1]);
@@ -324,19 +324,34 @@ ExecGroup(GroupState *node)
 
 		if (rollup_level > 1)
 		{
+			uint32 gid;
 			node->out_state = PASS_THRU;
-			econtext->group_id = get_group_id(econtext->ecxt_scantuple);
+
+			/* We will output the aggregate value below. The group_id
+			 * for this aggregate value is group_node->rollupGSTimes.
+			 */
+			econtext->group_id = group_node->rollupGSTimes;
 		}
 		else
 		{
 			node->out_state = PROCESSING;
-			econtext->group_id = group_node->rollupGSTimes;
+
+			if (rollup_level == -1)
+			{
+				uint32 gid = get_group_id(econtext->ecxt_scantuple);
+				econtext->group_id = gid;
+			}
+			else
+			{
+				econtext->group_id = group_node->rollupGSTimes;
+			}
 		}
 
 		if (group_node->lastGroup)
 		{
 			node->prev_aggslot = econtext->ecxt_scantuple;
 			node->num_repeats = econtext->group_id - 1;
+			econtext->group_id--;
 		}
 
 		/*

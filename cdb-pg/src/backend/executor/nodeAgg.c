@@ -906,7 +906,7 @@ agg_retrieve_direct(AggState *aggstate)
 		 * to just do the projection again.
 		 */
 		econtext->ecxt_scantuple = aggstate->prev_aggslot;
-		econtext->group_id = aggstate->num_repeats;
+		econtext->group_id = aggstate->num_repeats - 1;
 
 		aggstate->num_repeats--;
 
@@ -1236,27 +1236,28 @@ agg_retrieve_direct(AggState *aggstate)
 			else
 				aggstate->out_state = PROCESSING;
 
-			if (peragg->aggref->aggstage == AGGSTAGE_FINAL)
+			if (rollup_level == -1)
 			{
-				aggstate->prev_aggslot = econtext->ecxt_scantuple;
-				aggstate->num_repeats = node->rollupGSTimes - 1;
+				uint32 gid;
+				gid = get_group_id(econtext->ecxt_scantuple);
+				econtext->group_id = gid;
 			}
-			econtext->group_id = node->rollupGSTimes;
+			else
+				econtext->group_id = node->rollupGSTimes;
 		}
 
 		else
 		{
-			uint32 gid;
-
 			econtext->ecxt_scantuple = outerslot;
-			gid = get_group_id(econtext->ecxt_scantuple);
-			econtext->group_id = gid;
-
-			if (peragg->aggref->aggstage == AGGSTAGE_FINAL)
+			if (rollup_level > 1)
 			{
-				aggstate->prev_aggslot = econtext->ecxt_scantuple;
-				aggstate->num_repeats = gid - 1;
+				uint32 gid;
+				gid = get_group_id(econtext->ecxt_scantuple);
+				econtext->group_id = gid;
 			}
+
+			else
+				econtext->group_id = node->rollupGSTimes;
 		}
 
 		if (rollup_level == -1)
@@ -1276,6 +1277,14 @@ agg_retrieve_direct(AggState *aggstate)
 		}
 		else
 			econtext->grouping = node->grouping;
+
+		if (peragg->aggref->aggstage == AGGSTAGE_FINAL ||
+			peragg->aggref->aggstage == AGGSTAGE_NORMAL)
+		{
+			aggstate->prev_aggslot = econtext->ecxt_scantuple;
+			aggstate->num_repeats = econtext->group_id - 1;
+			econtext->group_id--;
+		}
 
 		/*
 		 * Check the qual (HAVING clause); if the group does not match, ignore

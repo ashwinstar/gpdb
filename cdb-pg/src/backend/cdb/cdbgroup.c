@@ -952,6 +952,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 										result_plan);
 		/* May lose useful locus and sort. Unlikely, but could do better. */
 		mark_plan_strewn(result_plan);
+		current_pathkeys = NIL;
 	}
 
 	else
@@ -968,13 +969,13 @@ make_two_stage_agg_plan(PlannerInfo *root,
 											  ctx->p_dNumGroups,
 											  &current_pathkeys,
 											  result_plan);
+		/* Since we add Grouping as an additional grouping column,
+		 * we need to add it into prelimGroupColIdx. */
 		prelimGroupColIdx = (AttrNumber *)
 			repalloc(prelimGroupColIdx, 
 					 numGroupCols * sizeof(AttrNumber));
 		prelimGroupColIdx[numGroupCols-1] = groupColIdx[numGroupCols-1];
 	}
-
-	current_pathkeys = NIL;
 	
 	/*
 	 * Add Intermediate Motion to Gather or Hash on Groups
@@ -984,9 +985,15 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	case MPP_GRP_TYPE_GROUPED_2STAGE:
 		groupExprs = NIL;
 		Assert(numGroupCols > 0);
-		for ( i = 1; i <= numGroupCols; i++)
+		for ( i = 0; i < numGroupCols; i++)
 		{
-			TargetEntry *tle = get_tle_by_resno(prelim_tlist, i);
+			TargetEntry *tle;
+
+			/* skip Grouping column */
+			if (is_grpext && i == numGroupCols-1)
+				continue;
+
+			tle = get_tle_by_resno(prelim_tlist, prelimGroupColIdx[i]);
 			groupExprs = lappend(groupExprs, copyObject(tle->expr));
 		}
 		result_plan = (Plan*)make_motion_hash(root, result_plan, groupExprs);
@@ -1029,34 +1036,6 @@ make_two_stage_agg_plan(PlannerInfo *root,
 		int rollup_level = 0;
 		if (is_grpext)
 			rollup_level = -1;
-
-		/*
-		 * If this is a rollup, we have to modify the varattno for Vars
-		 * in each Aggrefs, because we add Grouping to the targetlist.
-		 * XXX improve this.
-		 */
-		if (is_grpext)
-		{
-			ListCell *lc;
-
-			foreach(lc, final_tlist)
-			{
-				TargetEntry *tle = (TargetEntry *)lfirst(lc);
-
-				if (IsA(tle->expr, Aggref))
-				{
-					Aggref *aggref = (Aggref *)tle->expr;
-					ListCell *varlc;
-
-					foreach(varlc, aggref->args)
-					{
-						Var *var = (Var *)lfirst(varlc);
-						var->varattno++;
-						var->varoattno++;
-					}
-				}
-			}
-		}
 
 		result_plan = add_second_stage_agg(root,
 										   true,
@@ -1340,17 +1319,6 @@ void generate_three_tlists(List *tlist,
 
 	*p_qual2 = *p_qual3;
 
-	/* We always append GROUP_ID into *p_tlist1 if there is not
-	 * one. It should be included in *p_tlist3 already.
-	 */
-	if (!IsA(llast(*p_tlist1), GroupId))
-	{
-		gid = makeNode(GroupId);
-		*p_tlist1 = lappend(*p_tlist1,
-							makeTargetEntry((Expr *)gid, list_length(*p_tlist1) + 1,
-											"GROUP_ID", false));
-	}
-
 	/*
 	 * Read target entries in '*p_tlist1' one by one, and construct
 	 * the entries for '*p_tlist2'. 
@@ -1376,16 +1344,6 @@ void generate_three_tlists(List *tlist,
 			new_aggref->aggstage = AGGSTAGE_PARTIAL;
 
 			new_expr = (Expr *)new_aggref;
-		}
-
-		else if (IsA(tle->expr, Grouping))
-		{
-			new_expr = (Expr *)copyObject(tle->expr);
-		}
-
-		else if (IsA(tle->expr, GroupId))
-		{
-			new_expr = (Expr *)copyObject(tle->expr);
 		}
 
 		else
@@ -1576,15 +1534,9 @@ Node* deconstruct_expr_mutator(Node *node, two_stage_agg_context *ctx)
 	/* If the given expression is a grouping expression, replace it with
 	 * a Var node referring to the (lower) preliminary aggregation's
 	 * target list.
-	 *
-	 * We do not replace GROUPING or GROUP_ID to a Var node since
-	 * these values will be different in each Agg node. Keeping them
-	 * as GROUPING or GROUP_ID will force these to be re-evaluated.
 	 */
 	tle = tlist_member(node, ctx->grps_tlist);
-	if ( tle != NULL &&
-		 !IsA(tle->expr, Grouping) &&
-		 !IsA(tle->expr, GroupId) )
+	if ( tle != NULL )
 	{
 		return  (Node*) makeVar(ctx->final_varno, tle->resno,
 								exprType((Node*)tle->expr),

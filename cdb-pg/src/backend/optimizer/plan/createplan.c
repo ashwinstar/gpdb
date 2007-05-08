@@ -33,6 +33,7 @@
 #include "parser/parse_expr.h"
 #include "parser/parse_relation.h"
 #include "parser/parsetree.h"
+#include "parser/parse_oper.h"     /* ordering_oper_opid */
 #include "utils/lsyscache.h"
 #include "utils/uri.h"
 
@@ -3198,6 +3199,9 @@ make_sort_from_groupcols(PlannerInfo *root,
 		TargetEntry *tle = get_tle_by_resno(sub_tlist, grpColIdx[grpno]);
 
 		Assert(IsA(tle->expr, Grouping));
+
+		if (tle->resname == NULL)
+			tle->resname = "GROUPING";
 
 		sort_op = ordering_oper_opid(exprType((Node *)tle->expr));
 
