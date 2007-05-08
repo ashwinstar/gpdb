@@ -1606,18 +1606,20 @@ createChunkTransportState(ChunkTransportState *transportStates,
            sendSlice->sliceIndex > 0);
 
     motNodeID = sendSlice->sliceIndex;
-    if (motNodeID >= transportStates->size)
+	Assert(motNodeID > 0);
+
+    if (motNodeID > transportStates->size)
 	{
 		/* increase size of our table */
 		ChunkTransportStateMotionEntry *newTable;
 
-		newTable = repalloc(transportStates->motion_states, (motNodeID+1) * sizeof(ChunkTransportStateMotionEntry));
+		newTable = repalloc(transportStates->motion_states, (motNodeID) * sizeof(ChunkTransportStateMotionEntry));
 		transportStates->motion_states = newTable;
 
-		for(i = transportStates->size; i <= motNodeID; ++i)
+		for(i = transportStates->size; i < motNodeID; ++i)
 			initChunkTransportStateMotionEntry(transportStates->motion_states + i);
 
-		transportStates->size = motNodeID+1;
+		transportStates->size = motNodeID;
 	}
 	
 	pIncIdx = GetPInCIdx(recvSlice, sendSlice);
@@ -1690,7 +1692,7 @@ static inline int8
 getChunkTransportStateEntryCount(ChunkTransportState *transportState, int motNodeID)
 {
 	int8 ret = 0;
-	if(transportState && motNodeID > 0 && motNodeID < transportState->size)
+	if(transportState && motNodeID > 0 && motNodeID <= transportState->size)
 	{
 		ChunkTransportStateEntry *pEntry = transportState->motion_states[motNodeID-1].states;
 		for(; ret < (int8) transportState->motion_states[motNodeID-1].size; ++ret)
@@ -1712,6 +1714,7 @@ getChunkTransportStateEntryCount(ChunkTransportState *transportState, int motNod
 		return ret;
 	}
 
+	Assert(!"Bad motion id");
 	return MOTION_BAD_SLICEENTRY;
 }
 
