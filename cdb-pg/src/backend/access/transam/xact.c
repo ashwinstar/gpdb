@@ -164,6 +164,7 @@ static TransactionStateData TopTransactionStateData = {
 	NIL,						/* subcommitted child Xids */
 	0,							/* entry-time current userid */
 	false,						/* entry-time xact r/o state */
+	false,						/* executorSaysXactDoesWrites */
 	NULL						/* link to parent state block */
 };
 

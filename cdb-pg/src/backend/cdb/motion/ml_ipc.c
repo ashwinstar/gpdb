@@ -701,7 +701,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 				  int mySliceId,
 				  MotionLayerState *mlStates)
 {
-	int			i, index, n;
+	int			i, n;
 	int 		ipInc;
 	int  		npInc;
 	ListCell   *cell;
@@ -1606,18 +1606,18 @@ createChunkTransportState(ChunkTransportState *transportStates,
            sendSlice->sliceIndex > 0);
 
     motNodeID = sendSlice->sliceIndex;
-    if (motNodeID > transportStates->size)
+    if (motNodeID >= transportStates->size)
 	{
 		/* increase size of our table */
 		ChunkTransportStateMotionEntry *newTable;
 
-		newTable = repalloc(transportStates->motion_states, motNodeID * sizeof(ChunkTransportStateMotionEntry));
+		newTable = repalloc(transportStates->motion_states, (motNodeID+1) * sizeof(ChunkTransportStateMotionEntry));
 		transportStates->motion_states = newTable;
 
-		for(i = transportStates->size; i < motNodeID; ++i)
+		for(i = transportStates->size; i <= motNodeID; ++i)
 			initChunkTransportStateMotionEntry(transportStates->motion_states + i);
 
-		transportStates->size = motNodeID;
+		transportStates->size = motNodeID+1;
 	}
 	
 	pIncIdx = GetPInCIdx(recvSlice, sendSlice);
