@@ -1727,6 +1727,7 @@ add_second_stage_agg(PlannerInfo *root,
 	Query	   *parse = root->parse;
 	Query	   *subquery;
 	List	   *newrtable;
+	List	   *subquery_tlist;
 	RangeTblEntry *newrte;
 	RangeTblRef *newrtref;
 	Plan         *agg_node;
@@ -1789,11 +1790,12 @@ add_second_stage_agg(PlannerInfo *root,
 	parse->jointree->fromlist = list_make1(newrtref);
 	parse->jointree->quals = NULL;
 	parse->rowMarks = NIL;
-
-	parse->targetList = generate_subquery_tlist(1, prelim_tlist); /* Query varno is 1 */
+/*  parse->targetList -- used by EXECUTE s to derive portal's tupDesc */
+	
+	subquery_tlist = generate_subquery_tlist(1, prelim_tlist); /* Query varno is 1 */
 	/* Do we need to fill in more?  I don't think so. */
 	
-	result_plan = (Plan*)make_subqueryscan(parse->targetList,
+	result_plan = (Plan*)make_subqueryscan(subquery_tlist,
 										   NIL,
 										   1, /* scanrelid (= varno) */
 										   result_plan);
@@ -1831,7 +1833,7 @@ add_second_stage_agg(PlannerInfo *root,
 			pki = (PathKeyItem*)linitial(k);
 			sortop = pki->sortop;
 			
-			tle = get_tle_by_resno(parse->targetList, i);
+			tle = get_tle_by_resno(subquery_tlist, i);
 			pki = makeNode(PathKeyItem);
 			pki->key = copyObject((Node*)tle->expr);
 			pki->sortop = sortop;
