@@ -345,6 +345,7 @@ bool        elog_dismiss(int downgrade_to_elevel);
  * This is only intended for use in error handlers.
  */
 int         elog_geterrcode(void);      
+int         elog_getelevel(void);      
 
 
 /* GUC-configurable parameters */

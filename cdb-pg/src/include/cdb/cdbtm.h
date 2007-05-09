@@ -122,6 +122,8 @@ typedef struct TMGXACT
 
 	bool						badPrepareGangs;
 
+	bool						retryPhase2RecursionStop;
+	
 	DtxParticipationSummary		participationSummary;
 
 	int							debugIndex;
@@ -279,6 +281,7 @@ extern void performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 					int flags,
 					const char *loggingStr, const char *gid, 
 					DistributedTransactionId gxid);
+extern void doDtxPhase2Retry(void);
 extern void UtilityModeFindOrCreateDtmRedoFile(void);
 extern void UtilityModeCloseDtmRedoFile(void);
 extern void PleaseDebugMe(char *caller);

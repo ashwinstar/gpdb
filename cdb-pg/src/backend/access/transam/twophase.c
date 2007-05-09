@@ -353,6 +353,9 @@ MarkAsPrepared(GlobalTransaction gxact)
 	gxact->valid = true;
 	LWLockRelease(TwoPhaseStateLock);
 
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"MarkAsPrepared marking GXACT gid = %s as valid (prepared)", 
+		gxact->gid);
+
 	/*
 	 * Put it into the global ProcArray so TransactionIdInProgress considers
 	 * the XID as still running.

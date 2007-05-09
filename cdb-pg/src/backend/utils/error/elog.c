@@ -1349,7 +1349,15 @@ elog_geterrcode(void)
     return (errordata_stack_depth < 0)
                 ? 0
                 : errordata[errordata_stack_depth].sqlerrcode;
-}                               /* elog_geterrcode */
+} /* elog_geterrcode */
+
+int
+elog_getelevel(void)
+{
+    return (errordata_stack_depth < 0)
+                ? NOTICE
+                : errordata[errordata_stack_depth].elevel;
+} /* elog_getelevel */
 
 
 /*

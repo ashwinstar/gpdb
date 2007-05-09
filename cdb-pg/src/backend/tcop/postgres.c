@@ -3343,6 +3343,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 	sigjmp_buf	local_sigjmp_buf;
 	volatile bool send_ready_for_query = true;
 	int			topErrCode;
+	int			topErrLevel;
 
 #define PendingConfigOption(name,val) \
 	(guc_names = lappend(guc_names, pstrdup(name)), \
@@ -3992,17 +3993,20 @@ PostgresMain(int argc, char *argv[], const char *username)
 			elog((Debug_print_full_dtm ? LOG : DEBUG5), "PostgresMain seeing cancel 0x%x",
 			     topErrCode);
 		}
-		
+				
 		/*
 		 * Abort the current transaction in order to recover.
 		 */
 		AbortCurrentTransaction();
 
-		/*
-		 * Let's see if the DTM has phase 2 retry work.
-		 * UNDONE: Problems calling something like this in the error handler?
-		 */
-		doDtxPhase2Retry();
+		topErrLevel = elog_getelevel();
+		if (topErrLevel <= ERROR)
+		{
+			/*
+			 * Let's see if the DTM has phase 2 retry work.
+			 */
+			doDtxPhase2Retry();
+		}
 
 		/*
 		 * Now return to normal top-level context and clear ErrorContext for

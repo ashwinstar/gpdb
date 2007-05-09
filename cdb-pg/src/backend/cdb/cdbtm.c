@@ -110,7 +110,6 @@ static void recoverTM(void);
 static bool recoverInDoubtTransactions(void);
 static HTAB *gatherRMInDoubtTransactions(void);
 static void abortRMInDoubtTransactions(HTAB *htab);
-static void removeInDoubtTransaction(HTAB *htab, char *gid);
 static void cleanRMResultSets(PGresult **pgresultSets);
 
 static void dumpAllDtx(void);
@@ -135,7 +134,9 @@ static void doQEDistributedExplicitBegin(int txnOptions);
 
 static void resetDtxContextInfo(DtxContextInfo *dtxContextInfo);
 static bool isDtxQueryDispatcher(void);
+static void UtilityModeSaveRedo(bool committed, TMGXACT_LOG * gxact_log);
 static void ReplayRedoFromUtilityMode(void);
+static void RemoveRedoUtilityModeFile(void);
 static void performDtxProtocolCommitPrepared(const char *gid, bool raiseErrorIfNotFound);
 static void performDtxProtocolAbortPrepared(const char *gid, bool raiseErrorIfNotFound);
 
@@ -704,6 +705,12 @@ doDtxPhase2Retry(void)
 	{
 	case DTX_STATE_RETRY_COMMIT_PREPARED:
 	case DTX_STATE_RETRY_ABORT_PREPARED:
+		if (currentGxact->retryPhase2RecursionStop)
+		{
+			elog(FATAL,"Unable to complete '%s Prepared' broadcast for gid = %s",
+				 (currentGxact->state == DTX_STATE_RETRY_COMMIT_PREPARED ? "Commit" : "Abort"),
+				 currentGxact->gid);
+		}
 		PG_TRY();
 		{
 			bool commit = (currentGxact->state == DTX_STATE_RETRY_COMMIT_PREPARED);
@@ -730,6 +737,8 @@ doDtxPhase2Retry(void)
 						 DtxContextToString(DistributedTransactionContext), prepareKind);
 
 			StartTransactionCommand();
+
+			currentGxact->retryPhase2RecursionStop = true;
 			
 			succeeded = doDispatchDtxProtocolCommand(
 							dtxProtocolCommand, /* flags */ 0,  
@@ -1326,7 +1335,7 @@ UtilityModeFindOrCreateDtmRedoFile(void)
 /*
  *
  */
-void
+static void
 UtilityModeSaveRedo(bool committed, TMGXACT_LOG * gxact_log)
 {
 	TMGXACT_UTILITY_MODE_REDO utilityModeRedo;
@@ -1430,7 +1439,7 @@ ReplayRedoFromUtilityMode(void)
 
 }
 
-void
+static void
 RemoveRedoUtilityModeFile(void)
 {
 	char		path[MAXPGPATH];
@@ -1721,6 +1730,8 @@ initGxact(TMGXACT * gxact)
 	gxact->bumpedPhase1Count = false;
 
 	gxact->badPrepareGangs = false;
+
+	gxact->retryPhase2RecursionStop = false;
 
 	gxact->participationSummary = DTX_PARTICIPATION_SUMMARY_NONE;
 }
@@ -2034,7 +2045,7 @@ void
 insertedDistributedCommitted(void)
 {
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"insertedDistributedCommitted entering in state = %s for gid = %s", 
-	     DtxStateToString(currentGxact->state));
+	     DtxStateToString(currentGxact->state), currentGxact->gid);
 	
 	Assert(currentGxact->state == DTX_STATE_INSERTING_COMMITTED);
 	currentGxact->state = DTX_STATE_INSERTED_COMMITTED;
@@ -2537,23 +2548,6 @@ abortRMInDoubtTransactions(HTAB *htab)
 
 	}
 }
-
-
-/*
- * removeInDoubtTransactions:
- * Used during TM recovery to remove the in-doubt transaction in the provided
- * htab that has the same gid as the one provided.
- */
-static void
-removeInDoubtTransaction(HTAB *htab, char *gid)
-{
-	bool		found;
-	InDoubtDtx *dtx;
-
-	if (htab != NULL && gid != NULL)
-		dtx = hash_search(htab, gid, HASH_REMOVE, &found);
-}
-
 
 /*
  * cleanRMResultSets:
