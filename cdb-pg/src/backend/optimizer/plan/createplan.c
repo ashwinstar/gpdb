@@ -1747,6 +1747,41 @@ create_nestloop_plan(CreatePlanContext *ctx,
 	List		*otherclauses;
 	NestLoop	*join_plan = NULL;
 
+	bool		prefetch = false;
+
+	/* MPP-1459: subqueries are resolved after our deadlock checks in
+	 * pathnode.c; so we have to check here to make sure that we catch
+	 * all motion deadlocks.
+	 *
+	 * NOTE: materialize_finished_plan() does *almost* what we want --
+	 * except we aren't finished. */
+	if (best_path->jpath.innerjoinpath->motionHazard ||
+		!best_path->jpath.innerjoinpath->rescannable)
+	{
+		Material	*mat;
+		Path		matpath; /* dummy for cost fixup */
+
+		mat = make_material(inner_plan);
+		
+		/* Set cost data */
+		cost_material(&matpath,
+					  inner_plan->total_cost,
+					  inner_plan->plan_rows,
+					  inner_plan->plan_width);
+		mat->plan.startup_cost = matpath.startup_cost;
+		mat->plan.total_cost = matpath.total_cost;
+		mat->plan.plan_rows = inner_plan->plan_rows;
+		mat->plan.plan_width = inner_plan->plan_width;
+
+		if (best_path->jpath.outerjoinpath->motionHazard)
+		{
+			mat->cdb_strict = true;
+			prefetch = true;
+		}
+
+		inner_plan = (Plan *)mat;
+	}
+
 	if (IsA(best_path->jpath.innerjoinpath, IndexPath))
 	{
 		/*
@@ -1839,8 +1874,11 @@ create_nestloop_plan(CreatePlanContext *ctx,
 		MaterialPath *mp = (MaterialPath *)best_path->jpath.innerjoinpath;
 
 		if (mp->cdb_strict)
-			join_plan->join.prefetch_inner = true;
+			prefetch = true;
 	}
+
+	if (prefetch)
+		join_plan->join.prefetch_inner = true;
 
     /*
      * Adaptive NJ:  Add AdaptiveNestLoop node above NJ and HJ.
