@@ -2552,7 +2552,7 @@ getlen(Tuplesortstate *state, TuplesortPos *pos, int tapenum, bool eofOK)
 	size_t readSize;
 
 	AssertEquivalent(pos == &state->pos, pos->work_tape == NULL);	
-	if(pos->work_tape != NULL)
+	if(pos->work_tape == NULL)
 		readSize = LogicalTapeRead(state->tapeset, tapenum, (void *)&len, sizeof(len));
 	else
 		readSize = LogicalTapeReadTape(state->tapeset, pos->work_tape, (void *)&len, sizeof(len));

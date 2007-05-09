@@ -52,6 +52,8 @@
 #include "cdb/cdbsetop.h" /* motion utilities */
 #include "cdb/cdbsubselect.h"   /* cdbsubselect_flatten_sublinks() */
 
+#include "utils/debugbreak.h"
+
 ParamListInfo PlannerBoundParamList = NULL;		/* current boundParams */
 
 

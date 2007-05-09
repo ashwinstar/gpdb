@@ -68,7 +68,7 @@ void debug_break()
 #define DEBUG_BREAK_N_MAX (sizeof(int) * 8)
 
 /* by default, only enable debug_break_point 1, (Assert) */
-static volatile int debug_break_n_flags = 3; 
+static volatile int debug_break_n_flags = 1; 
 
 void debug_break_n(int n)
 {
