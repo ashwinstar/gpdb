@@ -3,73 +3,70 @@ GREENPLUM DATABASE MANAGEMENT OVERVIEW
 **************************************************
 
 The following Greenplum Database management scripts and utilities 
-are available. All are located in $GPHOME/gpMgmt/bin unless 
+are available. All are located in $GPHOME/bin unless 
 otherwise noted.
 
-* cperf - Verifies the baseline hardware performance of the specified 
-          hosts. Checks disk I/O and memory bandwidth.
-
-* gpscp - Copies a file from the local host to multiple hosts at once.
-
-* gpssh - Provides ssh access to multiple hosts at once.
-
-* gpssh-exkeys - Exchanges SSH public keys between hosts.
-
 * gpactivatestandby - Activates the backup master as the active 
-                          Greenplum master instance for a Greenplum Database
-                          system and optionally specifies a new backup 
-                          master host.
+                      Greenplum master instance for a Greenplum Database
+                      system and optionally specifies a new backup 
+                      master host.
 
 * gpaddpart  - Adds new child table partitions to a parent table that was 
-                   previously partitioned using gpcreatepart.
+               previously partitioned using gpcreatepart.
 
 * gpaddmirrors - Adds mirror segments to a Greenplum Database system that
-                     was initially configured without mirroring.
+                 was initially configured without mirroring.
 
 * gp_bash_functions.sh - NOT RUN DIRECTLY. This is sourced by the other 
-                          management scripts and contains global parameters 
-                          and functions.
+                         management scripts and contains global parameters 
+                         and functions.
+
+* gpcheckperf - Verifies the baseline hardware performance of the specified 
+                hosts. Checks disk I/O and memory bandwidth.
+
 
 * gpinitsystem - Initializes a Greenplum Database system using 
-		        values in a configuration file.
+		     values in a configuration file.
 
 * gpcreatepart - Partitions a table by creating inherited child tables, 
-                     defining check constraints, creating rewrite rules, and 
-                     moving existing data from the parent table into the 
-                     correct child table.
+                 defining check constraints, creating rewrite rules, and 
+                 moving existing data from the parent table into the 
+                 correct child table.
 
 * gpcrondump - A wrapper script for gp_dump, which allows you to schedule
-                   routine database dumps using cron.
+               routine database dumps using cron.
 
 * gpdeletesystem - Deletes a Greenplum Database system that was 
-                        initialized using gpinitsystem.
+                   initialized using gpinitsystem.
 
 * gpdeletepart - Drops date partitioned child tables from a parent table 
-                     that was previously partitioned using gpdeletepart or 
-                     gpaddpart (used to maintain a rolling window of date 
-                     partitioned data).
+                 that was previously partitioned using gpdeletepart or 
+                 gpaddpart (used to maintain a rolling window of date 
+                 partitioned data).
 
 * gp_dump - Located in $GPHOME/bin. Writes out a database to archive files
-             or SQL script files, which can then be used to restore the 
-             database at a later time.
+            or SQL script files, which can then be used to restore the 
+            database at a later time.
 
 * gpinitstandby - Adds and/or initializes a standby Greenplum master host
-                      for a Greenplum Database system.
+                  for a Greenplum Database system.
 
 * gprebuildsystem - Rebuilds a Greenplum Database master using a SQL 
-                         script file containing the Greenplum Database schema 
-                         and Greenplum system catalog information, and then 
-                         recreates all of the segment instances using the 
-                         information found in the Greenplum system catalog 
-                         tables.
+                    script file containing the Greenplum Database schema 
+                    and Greenplum system catalog information, and then 
+                    recreates all of the segment instances using the 
+                    information found in the Greenplum system catalog 
+                    tables.
 
 * gprebuildseg - Rebuilds segment instances from the Greenplum system 
-                     catalog tables of a Greenplum Database master.
+                 catalog tables of a Greenplum Database master.
 
 * gprecoverseg - Recovers a failed primary or mirror segment.
 
 * gp_restore - Located in $GPHOME/bin. Restores Greenplum Database 
-                databases that were backed up using gp_dump.
+               databases that were backed up using gp_dump.
+
+* gpscp - Copies a file from the local host to multiple hosts at once.
 
 * gpsegcron - NOT RUN DIRECTLY. Used by gpcrondump for parallel operations.
 
@@ -85,28 +82,32 @@ otherwise noted.
 
 * gpsegstop - NOT RUN DIRECTLY. Used by gpstop for parallel operations.
 
+* gpssh - Provides ssh access to multiple hosts at once.
+
+* gpssh-exkeys - Exchanges SSH public keys between hosts.
+
 * gpsizecalc - Shows the disk space usage for a given database, table, 
-                   or index.
+               or index.
 
 * gpskew - Shows the distribution of table data and response times for 
-               segment instances.
+           segment instances.
 
 * gpstart - Starts the master instance and all segment 
 		instances in a Greenplum Database system.
 
 * gpstate - Displays status and system information for a
-	        Greenplum Database database system.
+	      Greenplum Database database system.
 
 * gpstop - Stops and/or restarts the master instance and all 
-               segment instances in a Greenplum Database system.
+           segment instances in a Greenplum Database system.
 
 **************************************************
 ENVIRONMENT SETUP
 **************************************************
 
-GPHOME or GPHOME must be set on the Greenplum master host.
+$GPHOME must be set on the Greenplum master host.
 
-MASTER_DATA_DIRECTORY must be set on the Greenplum master host,
+$MASTER_DATA_DIRECTORY must be set on the Greenplum master host,
 which points to the script-created master data directory
 created by gpinitsystem (for example: /gpdata/gp-1)
 

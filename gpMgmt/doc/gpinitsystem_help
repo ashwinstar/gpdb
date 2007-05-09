@@ -11,8 +11,8 @@ SYNOPSIS
 gpinitsystem -c <gp_init_config_file> [-r | -B <parallel_processes>] 
 [-h <host_file>] [-p <postgresql_conf_param_file>] 
 {[-s <standby_master_host>] [-i]} [-o] [-m <max_connections>] 
-[-e <superuser_password>] [-n <locale>] [-a] [-q] [-l <logfile_directory>] 
-[-D] [-? | -v]
+[-b <shared_buffer_size>] [-e <superuser_password>] [-n <locale>] 
+[-a] [-q] [-l <logfile_directory>] [-D] [-? | -v]
 
 
 *****************************************************
@@ -125,6 +125,13 @@ Creates a master instance only. Does not configure any segment hosts.
 
 Sets the maximum number of client connections allowed to the master. 
 The default is 25.
+
+
+-b <shared_buffer_size>
+
+Sets the amount of memory a Greenplum server instance uses for shared 
+memory buffers. You can specify sizing in kilobytes (kB), megabytes 
+(MB) or gigabytes (GB). The default is 125MB.
 
 
 -e <superuser_password>

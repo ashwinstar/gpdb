@@ -236,11 +236,9 @@ segment instances  it will create the dump files in a centralized location.
 
 --gp-r=<reportfile>
 
-Specifies the full path name where the backup job report files will be 
-placed on each host. If not specified, defaults to the data directory 
-of each instance to be backed up. Using this option may be desirable if 
-each segment host has multiple segment instances  it will create the 
-log files in a centralized location.
+Specifies the full path name where the backup job report file will be 
+placed on the master host. If not specified, defaults to the master 
+data directory or the current directory if running remotely.
 
 
 --gp-s={a|p}

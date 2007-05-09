@@ -66,8 +66,8 @@ declare -a DATA_DIRECTORY=(/dbfast1 /dbfast2)
 MASTER_HOSTNAME=host01
 
 
-# The location where the data directory will be created on the Greenplum 
-# master host. 
+# The location where the data directory will be created on the  
+# Greenplum master host. 
 # You must make sure that the user who runs gpinitsystem
 # has permissions to write to this directory. You may want to 
 # create this directory on the master host before running 
@@ -108,6 +108,16 @@ CHECK_POINT_SEGMENTS=8
 
 ENCODING=UNICODE
 
+# Specifies the IP address(es) of client hosts allowed to connect to 
+# the master. This adds an entry in the pg_hba.conf file for 
+# the master instance. By default, local connections are already 
+# allowed using ident authentication and remote connections are 
+# allowed for the Greenplum superuser account only (gpadmin) using
+# md5 password authentication. The following setting will allow 
+# remote connections from all hosts.
+
+IP_ALLOW=0.0.0.0/0
+
 
 ################################################
 # OPTIONAL PARAMETERS
@@ -118,17 +128,6 @@ ENCODING=UNICODE
 # the CREATE DATABASE command or the createdb script.
 
 #DATABASE_NAME=warehouse
-
-
-# Specifies the IP address(es) of client hosts allowed to connect to 
-# the master. This adds an entry in the pg_hba.conf file for 
-# the master instance. By default, local connections are already 
-# allowed using ident authentication and remote connections are 
-# allowed for the Greenplum superuser account only (gpadmin) using
-# md5 password authentication. The following setting will allow 
-# remote connections from all hosts.
-
-#IP_ALLOW=0.0.0.0/0
 
 
 ################################################

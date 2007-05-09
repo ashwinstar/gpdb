@@ -1,6 +1,28 @@
-gphost01
-gphost02
-gphost03
-gphost04
-gphost05
-gphost06
+# sample host list for exchanging ssh keys (multi-nic configuration)
+
+# segment host 1
+seg1_eth1
+seg1_eth2
+seg1_eth3
+seg1_eth4
+
+# segment host 2
+seg2_eth1
+seg2_eth2
+seg2_eth3
+seg2_eth4
+
+# segment host 3
+seg3_eth1
+seg3_eth2
+seg3_eth3
+seg3_eth4
+
+
+# sample host list for initializing an array (one name per segment host)
+
+seg1_eth1
+seg2_eth1
+seg3_eth1
+
+

@@ -6,7 +6,7 @@ Restores Greenplum Database databases that were backed up using gp_dump.
 SYNOPSIS
 *****************************************************
 
-gp_restore -gp-k=<timestamp_key> -d <database_name> [-i] [-v] 
+gp_restore --gp-k=<timestamp_key> -d <database_name> [-i] [-v] 
 [-a | -s] [-c] [-h <hostname>] [-p <port>] [-U <username>] [-W] 
 [--gp-c] [--gp-i] [--gp-d=<directoryname>] [--gp-r=<reportfile>] 
 [--gp-l=a|p]
@@ -39,7 +39,7 @@ by an gp_dump operation. The use of this script assumes:
 
 5. The databases you are restoring have been created in the system.
 
-The functionality of gp_restore is analogous to PostgreSQLs pg_restore 
+The functionality of gp_restore is analogous to PostgreSQL pg_restore 
 utility, which restores a database from files created by the database 
 backup process. It issues the commands necessary to reconstruct the database 
 to the state it was in at the time it was saved.
@@ -88,7 +88,7 @@ OPTIONS
 *****************************************************
 
 
--gp-k=<timestamp_key>
+--gp-k=<timestamp_key>
 
 Required. The 14 digit timestamp key that uniquely identifies the 
 backup set of data to restore. This timestamp can be found in the gp_dump 
@@ -184,10 +184,8 @@ alternate location when running gp_dump.
 --gp-r=<reportfile>
 
 Specifies the full path name where the restore job report file will 
-be placed on each host. If not specified, defaults to the data directory 
-of each instance being restored. Using this option may be desirable if 
-each segment host has multiple segment instances  it will create the 
-report files in a centralized location.
+be placed on the master host. If not specified, defaults to the 
+master data directory.
 
 
 --gp-l={a|p}
@@ -205,7 +203,7 @@ EXAMPLES
 
 Restore a Greenplum database using backup files created by gp_dump:
 
-gp_restore -gp-k=2005103112453 -d gpdb
+gp_restore --gp-k=2005103112453 -d gpdb
 
 
 *****************************************************

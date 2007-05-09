@@ -53,6 +53,15 @@ host at the time of the last successfully committed transaction. To specify
 a new standby master host after making your current standby 
 master active, use the -c option.
 
+In order to use gpactivatestandby to activate a new primary master host, 
+the master host that was previously serving as the primary master cannot 
+be running. The script checks for a postmaster.pid file in the data 
+directory of the disabled master host, and if it finds it there, it will 
+assume the old master host is still active. In some cases, you may need 
+to remove the postmaster.pid file from the disabled master host data 
+directory before running gpactivatestandby (for example, if the 
+disabled master host process was terminated unexpectedly).
+
 After activating a standby master, run ANALYZE to update the database 
 query statistics. For example:
 
