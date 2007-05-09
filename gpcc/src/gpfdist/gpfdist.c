@@ -13,6 +13,7 @@
 #include <apr_hash.h>
 #include <apr_file_info.h>
 #include <apr_time.h>
+#include <apr_uri.h>
 #include <gpcc_net.h>
 
 #define u_int32_t unsigned int
@@ -81,7 +82,7 @@ struct request_t {
     apr_pool_t* pool;		/* memory pool container */
     struct event ev;		/* event we are watching for this request */
     const char* peer;		/* peer IP:port string */
-    const char* path;		/* path to file */
+    char* path;			/* path to file */
     const char* tid;		/* transaction id */
     session_t* session;		/* the session this request is attached to */
 
@@ -653,6 +654,7 @@ void do_read(int fd, short event, void* arg)
     request_t* r = (request_t*) arg;
     int n, i;
     char* p;
+    char* pp;
 
     /* If we timeout, close the request. */
     if (event & EV_TIMEOUT) {
@@ -730,16 +732,6 @@ void do_read(int fd, short event, void* arg)
     }
 
     /* scrub the path */
-    /*   - forbid dot dot  */
-    for (p = r->in.req->argv[1]; 0 != (p = strchr(p, '.')); p++) {
-	if (p[1] == '.') {
-	    gpcc_warning(FLINE, "reject invalid request from %s [%s %s]", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
-	    send_error(r, 400, "invalid request");
-	    request_end(r, 1);
-	    return;
-	}
-    }
-
     /*   - remove / prefixes */
     for (p = r->in.req->argv[1]; *p == '/'; p++);
 
@@ -749,8 +741,53 @@ void do_read(int fd, short event, void* arg)
     /*   - remove ? and # */
     if (0 != (p = strchr(r->path, '?')))
 	*p = 0;
+
     if (0 != (p = strchr(r->path, '#')))
 	*p = 0;
+
+    /*   - decode %xx to char */
+    for (p = pp = r->path; *pp; p++, pp++) {
+	if ('%' == (*p = *pp)) {
+	    if (pp[1] && pp[2]) {
+		int x = pp[1], y = pp[2];
+		if ('0' <= x && x <= '9') 
+		    x -= '0';
+		else if ('a' <= x && x <= 'f')
+		    x = x - 'a' + 10;
+		else if ('A' <= x && x <= 'F')
+		    x = x - 'A' + 10;
+		else 
+		    x = -1;
+		if ('0' <= y && y <= '9') 
+		    y -= '0';
+		else if ('a' <= y && y <= 'f')
+		    y = y - 'a' + 10;
+		else if ('A' <= y && y <= 'F')
+		    y = y - 'A' + 10;
+		else 
+		    y = -1;
+		if (x >= 0 && y >= 0) {
+		    x = (x << 4) + y;
+		    *p = (char) x;
+		    pp++, pp++;
+		}
+	    }
+	}
+    }
+    *p = 0;
+
+
+    /*   - forbid dot dot  */
+    for (p = r->path; 0 != (p = strchr(p, '.')); p++) {
+	if (p[1] == '.') {
+	    gpcc_warning(FLINE, "reject invalid request from %s [%s %s]", 
+			 r->peer, r->in.req->argv[0], r->in.req->argv[1]);
+	    send_error(r, 400, "invalid request");
+	    request_end(r, 1);
+	    return;
+	}
+    }
+
 
     /* Extract X-GP-TID value from HTTP headers */
     r->tid = 0;
