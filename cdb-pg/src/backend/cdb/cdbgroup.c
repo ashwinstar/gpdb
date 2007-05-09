@@ -1300,7 +1300,6 @@ void generate_three_tlists(List *tlist,
 {
 	ListCell *lc;
 	int resno = 1;
-	GroupId *gid;
 
 	/* Similar to the final tlist entries in two-stage aggregation,
 	 * we use consistent varno in the middle tlist entries.

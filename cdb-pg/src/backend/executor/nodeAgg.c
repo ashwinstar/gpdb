@@ -877,6 +877,7 @@ agg_retrieve_direct(AggState *aggstate)
 	int			aggno;
 	int         rollup_level = node->rollupLevel;
 	bool        first_time = true;
+	bool        tuple_match = false;
 
 	/*
 	 * get state info from node
@@ -990,16 +991,28 @@ agg_retrieve_direct(AggState *aggstate)
 				copyslot = firstSlot;
 
 				/*
-				 * We have returned an aggregated tuple previously, and want to
+				 * We have returned an aggregated tuple previously, and may want to
 				 * return the first tuple in a new input group when it is a
-				 * pass-through tuple. We change aggstate->out_state here
+				 * pass-through tuple. If so, we change aggstate->out_state here
 				 * to make sure that this first tuple gets aggregated before
 				 * returning.
 				 */
 				if (aggstate->out_state == PASS_THRU)
 				{
+					int outer_rollup_level;
 					outerslot = aggstate->copyslot;
-					aggstate->out_state = PROCESSING;
+
+ 					outer_rollup_level =
+ 						tuple_rollup_level(outerslot, node->numCols, rollup_level,
+ 									   node->numCols > 0 ? node->grpColIdx[node->numCols-1]: 0);
+ 					if (outer_rollup_level + 1 >= rollup_level)
+ 						aggstate->out_state = PROCESSING;
+ 					else
+ 					{
+ 						aggstate->grp_firstTuple = NULL;
+ 						ExecClearTuple(firstSlot);
+ 						first_time = true;
+ 					}
 				}
 			}
 		}
@@ -1051,6 +1064,9 @@ agg_retrieve_direct(AggState *aggstate)
 				/*
 				 * This tuple is not from the direct next rollup level of this Agg node.
 				 * We simple needed to pass it through to the parent node.
+				 *
+				 * However, we need to decide if we want to output the current aggregate
+				 * value before outputing this pass-through tuple.
 				 */
 				if (outer_rollup_level + 1 < rollup_level)
 				{
@@ -1059,56 +1075,68 @@ agg_retrieve_direct(AggState *aggstate)
 				}
 
 				/*
-				 * This tuple needs to be aggregated.
+				 * For a rollup query, we modify the input tuple to
+				 * match the rollup level of this node. Store the
+				 * modified tuple in aggstate->copyslot.
 				 */
-				else if (outer_rollup_level + 1 == rollup_level)
+				if (node->numNullCols > 0)
 				{
-					/*
-					 * For a rollup query, we modify the input tuple to
-					 * match the rollup level of this node. Store the
-					 * modified tuple in aggstate->copyslot.
-					 */
-					if (node->numNullCols > 0)
-					{
-						copytuple = ExecCopySlotTuple(outerslot);
-						/* modify this tuple */
-						copytuple =
-							heap_modify_tuple(copytuple,
-											  outerslot->tts_tupleDescriptor,
-											  aggstate->replValues,
-											  aggstate->replIsnull,
-											  aggstate->doReplace);
+					copytuple = ExecCopySlotTuple(outerslot);
+					/* modify this tuple */
+					copytuple =
+						heap_modify_tuple(copytuple,
+										  outerslot->tts_tupleDescriptor,
+										  aggstate->replValues,
+										  aggstate->replIsnull,
+										  aggstate->doReplace);
 
-						ExecStoreTuple(copytuple,
-									   aggstate->copyslot,
-									   InvalidBuffer,
-									   true);
-					}
+					ExecStoreTuple(copytuple,
+								   aggstate->copyslot,
+								   InvalidBuffer,
+								   true);
+				}
 
-					/*
-					 * Set copyslot to the tuple that will be aggregated in this loop.
-					 */
-					if (node->numNullCols > 0)
-						copyslot = aggstate->copyslot;
+				/*
+				 * Set copyslot to the tuple that will be aggregated in this loop.
+				 */
+				if (node->numNullCols > 0)
+					copyslot = aggstate->copyslot;
+				else
+					copyslot = outerslot;
+
+				if (!first_time)
+				{
+					if (outer_rollup_level + 1 < rollup_level)
+						/* ignore Grouping column */
+						tuple_match =
+							execTuplesMatch(firstSlot,
+											copyslot,
+											node->numCols - 1, node->grpColIdx,
+											aggstate->eqfunctions,
+											tmpcontext->ecxt_per_tuple_memory);
 					else
-						copyslot = outerslot;
+						tuple_match =
+							execTuplesMatch(firstSlot,
+											copyslot,
+											node->numCols, node->grpColIdx,
+											aggstate->eqfunctions,
+											tmpcontext->ecxt_per_tuple_memory);
+				}
 
-					/*
-					 * Make a copy of the first input tuple; we will use this for
-					 * comparisons (in group mode) and for projection.
-					 *
-					 * If we are grouping, check whether we've crossed a group
-					 * boundary.
-					 */
-					if (first_time ||
-						(node->aggstrategy == AGG_SORTED &&
-							!execTuplesMatch(firstSlot,
-											 copyslot,
-											 node->numCols, node->grpColIdx,
-											 aggstate->eqfunctions,
-											 tmpcontext->ecxt_per_tuple_memory)))
+				/*
+				 * Make a copy of the first input tuple; we will use this for
+				 * comparisons (in group mode) and for projection.
+				 *
+				 * If we are grouping, check whether we've crossed a group
+				 * boundary.
+				 */
+				if (first_time ||
+					(node->aggstrategy == AGG_SORTED &&
+					 !tuple_match))
+				{
+					if (first_time)
 					{
-						if (first_time)
+						if (outer_rollup_level + 1 >= rollup_level)
 						{
 							if (copytuple == NULL)
 								copytuple = ExecCopySlotTuple(outerslot);
@@ -1119,18 +1147,27 @@ agg_retrieve_direct(AggState *aggstate)
 										   firstSlot,
 										   InvalidBuffer,
 										   true);
-							
-						}
-						else
-						{
-							if (rollup_level != 0)
-								aggstate->grp_firstTuple = ExecCopySlotTuple(outerslot);
-							else
-								aggstate->grp_firstTuple = ExecCopySlotTuple(copyslot);
-
-							aggstate->out_state = AGG_READY;
 						}
 					}
+					else
+					{
+						if (rollup_level != 0)
+							aggstate->grp_firstTuple = ExecCopySlotTuple(outerslot);
+						else
+							aggstate->grp_firstTuple = ExecCopySlotTuple(copyslot);
+						
+						aggstate->out_state = AGG_READY;
+					}
+				}
+
+				/* If this is the first input tuple, and it is a pass-through
+				 * tuple, we don't really have an aggregate value that is needed
+				 * to be outputed first. So we change the out_state back.
+				 */
+				if (first_time && outer_rollup_level + 1 < rollup_level)
+				{
+					aggstate->out_state = PASS_THRU;
+					ExecClearTuple(firstSlot);
 				}
 			}
 
@@ -1165,7 +1202,6 @@ agg_retrieve_direct(AggState *aggstate)
 			}
 
 			/* The input tuple is also a pass-through tuple. */
-			/* econtext->ecxt_scantuple = outerslot;*/
 			aggstate->grp_firstTuple = NULL;
 		}
 
