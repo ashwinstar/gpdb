@@ -40,6 +40,8 @@ extern Gang *allocateGang(GangType type, int size, int content, char *portal_nam
 
 extern List *getCdbProcessList(Gang *gang, int sliceIndex);
 
+extern bool gangOK(Gang * gp);
+
 extern List *getCdbProcessesForQD(int isPrimary);
 
 extern void freeGangsForPortal(char *portal_name);

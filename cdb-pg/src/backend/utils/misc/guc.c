@@ -181,6 +181,7 @@ bool		Debug_pretty_print = false;
 bool		Explain_pretty_print = true;
 bool		Debug_print_full_dtm = false;
 bool		Debug_disable_distributed_snapshot = false;
+bool 		Debug_abort_after_distributed_prepared = false;
 
 
 bool		log_parser_stats = false;
@@ -203,7 +204,9 @@ int			log_min_duration_statement = -1;
 
 int			num_temp_buffers = 1000;
 
+int			Debug_delay_prepare_broadcast_ms = 0;
 int			Debug_delay_commit_broadcast_ms = 0;
+int			Debug_delay_abort_broadcast_ms = 0;
 
 char	   *ConfigFileName;
 char	   *HbaFileName;
@@ -1298,6 +1301,15 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 	
+	{
+		{"debug_abort_after_distributed_prepared", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Cause an abort after all segments are prepared but before the distributed commit is written."),
+			NULL
+		},
+		&Debug_abort_after_distributed_prepared,
+		false, NULL, NULL
+	},
+	
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL
@@ -1454,6 +1466,16 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"debug_delay_prepare_broadcast_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sets the prepare broadcast delay in milliseconds."),
+			NULL,
+			GUC_UNIT_BLOCKS
+		},
+		&Debug_delay_prepare_broadcast_ms,
+		0, 0, INT_MAX / 1000, NULL, NULL
+	},
+
+	{
 		{"debug_delay_commit_broadcast_ms", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Sets the commit broadcast delay in milliseconds."),
 			NULL,
@@ -1462,6 +1484,17 @@ static struct config_int ConfigureNamesInt[] =
 		&Debug_delay_commit_broadcast_ms,
 		0, 0, INT_MAX / 1000, NULL, NULL
 	},
+
+	{
+		{"debug_delay_abort_broadcast_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sets the abort broadcast delay in milliseconds."),
+			NULL,
+			GUC_UNIT_BLOCKS
+		},
+		&Debug_delay_abort_broadcast_ms,
+		0, 0, INT_MAX / 1000, NULL, NULL
+	},
+
 
 	{
 		{"port", PGC_POSTMASTER, CONN_AUTH_SETTINGS,

@@ -3999,6 +3999,12 @@ PostgresMain(int argc, char *argv[], const char *username)
 		AbortCurrentTransaction();
 
 		/*
+		 * Let's see if the DTM has phase 2 retry work.
+		 * UNDONE: Problems calling something like this in the error handler?
+		 */
+		doDtxPhase2Retry();
+
+		/*
 		 * Now return to normal top-level context and clear ErrorContext for
 		 * next time.
 		 */

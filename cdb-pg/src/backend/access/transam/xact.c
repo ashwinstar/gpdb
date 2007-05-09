@@ -2033,6 +2033,12 @@ CommitTransaction(void)
 	 */
 	prepareDtxTransaction();
 
+	if (Debug_abort_after_distributed_prepared &&
+		isPreparedDtxTransaction())
+	{
+		elog(ERROR,"Raise an error as directed by Debug_abort_after_distributed_prepared");
+	}
+
 	/* Prevent cancel/die interrupt while cleaning up, we want to hold off on processing all
 	 * signals until we're in a consistent state. */
 	HOLD_INTERRUPTS();

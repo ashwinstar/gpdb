@@ -54,9 +54,6 @@ static void disconnectAndDestroyAllReaderGangs(void);
 static Gang *buildGangDefinition(GangType type, int size, int content, char *portal_name);
 
 static bool cleanupGang(Gang * gp);
-
-static bool gangOK(Gang * gp);
-
 static bool isTargetPortal(char *p1, char *p2);
 
 
@@ -2146,7 +2143,7 @@ disconnectAndDestroyAllGangs(void)
 		elog(DEBUG3, "disconnectAndDestroyAllGangs done");
 }
 
-static bool
+bool
 gangOK(Gang * gp)
 {
 	int			i;

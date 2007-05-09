@@ -893,7 +893,8 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 						  DistributedTransactionId	gxid,
 						  bool dispatchToMirrors,
 						  StringInfo errmsgbuf,
-						  int *numresults)
+						  int *numresults,
+						  bool *badGangs)
 
 {
 	CdbDispatchResults *gangResults;
@@ -902,8 +903,6 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	CdbDispatchResult *dispatchResult;
 	CdbDispatchCmdThreads  *dispatchThreads;
 
-	bool phase2Retry;
-	
 	PGresult  **resultSets = NULL;
 	int			nslots;
 	int			nresults = 0;
@@ -915,8 +914,10 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	Gang	*mirrorGang;
 	int		nsegdb = getgpsegmentCount();
 	
-	elog((Debug_print_full_dtm ? LOG : DEBUG5), "cdbdisp_dispatchDtxProtocolCommand: %s on gid = %s", 
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "cdbdisp_dispatchDtxProtocolCommand: %s for gid = %s", 
 		 dtxProtocolCommandLoggingStr, gid);
+
+	*badGangs = false;
 
 	memset(&dtxProtocolParms, 0, sizeof(dtxProtocolParms));
 	dtxProtocolParms.dtxProtocolCommand = dtxProtocolCommand;
@@ -970,6 +971,13 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	/* Wait for all QEs to finish.	Don't cancel. */
 	CdbCheckDispatchResult(dispatchThreads, false);
 
+	if (!gangOK(primaryGang) ||
+		(dispatchToMirrors && mirrorGang && !gangOK(mirrorGang)))
+	{
+		*badGangs = true;
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "cdbdisp_dispatchDtxProtocolCommand: Bad gang from dispatch of %s for gid = %s", 
+			 dtxProtocolCommandLoggingStr, gid);
+	}
 	/*
 	 * Allocate result set ptr array. Make room for one PGresult ptr per
 	 * primary or mirror segment db, plus a null terminator slot after the
@@ -1551,6 +1559,18 @@ thread_DispatchCommand(void *arg)
 				
 			case GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
 
+				if (Debug_delay_prepare_broadcast_ms > 0 &&
+					pParms->dtxProtocolParms.dtxProtocolCommand == DTX_PROTOCOL_COMMAND_PREPARE&&
+					dispatchResult->segdbDesc->segindex > 0)
+				{
+					if (Debug_print_full_dtm || log_min_messages <= DEBUG5)
+					{
+						write_stderr("Thread %u: Delaying prepare broadcast for %d milliseconds.\n",
+						             mythread(), Debug_delay_prepare_broadcast_ms);
+					}
+					pg_usleep(Debug_delay_prepare_broadcast_ms * 1000);
+				}
+				
 				if (Debug_delay_commit_broadcast_ms > 0 &&
 					pParms->dtxProtocolParms.dtxProtocolCommand == DTX_PROTOCOL_COMMAND_COMMIT_PREPARED &&
 					dispatchResult->segdbDesc->segindex > 0)
@@ -1561,6 +1581,20 @@ thread_DispatchCommand(void *arg)
 						             mythread(), Debug_delay_commit_broadcast_ms);
 					}
 					pg_usleep(Debug_delay_commit_broadcast_ms * 1000);
+				}
+				
+				if (Debug_delay_abort_broadcast_ms > 0 &&
+					(pParms->dtxProtocolParms.dtxProtocolCommand == DTX_PROTOCOL_COMMAND_ABORT_NO_PREPARED ||
+					 pParms->dtxProtocolParms.dtxProtocolCommand == DTX_PROTOCOL_COMMAND_ABORT_SOME_PREPARED ||
+					 pParms->dtxProtocolParms.dtxProtocolCommand == DTX_PROTOCOL_COMMAND_ABORT_PREPARED) &&
+					dispatchResult->segdbDesc->segindex > 0)
+				{
+					if (Debug_print_full_dtm || log_min_messages <= DEBUG5)
+					{
+						write_stderr("Thread %u: Delaying abort broadcast for %d milliseconds.\n",
+						             mythread(), Debug_delay_abort_broadcast_ms);
+					}
+					pg_usleep(Debug_delay_abort_broadcast_ms * 1000);
 				}
 				
 	            dispatchCommandDtxProtocol(dispatchResult, pParms->query_text, pParms->query_text_len, 

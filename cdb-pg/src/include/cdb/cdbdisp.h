@@ -260,7 +260,8 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 						  DistributedTransactionId	gxid,
 						  bool						dispatchToMirrors,
                           StringInfo    			errmsgbuf,
-                          int						*numresults);
+                          int						*numresults,
+                          bool 						*badGangs);
 
 
 /*--------------------------------------------------------------------*/
