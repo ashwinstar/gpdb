@@ -2966,6 +2966,9 @@ StatementCancelHandler(SIGNAL_ARGS)
 	if (!proc_exit_inprogress)
 	{
 		InterruptPending = true;
+
+		elog(LOG,"Statement cancel handler set 'query cancel pending' to true (old value = %s).",
+			 (QueryCancelPending ? "true" : "false"));
 		QueryCancelPending = true;
 
 		/*
@@ -2976,6 +2979,8 @@ StatementCancelHandler(SIGNAL_ARGS)
 		if (ImmediateInterruptOK && InterruptHoldoffCount == 0 &&
 			CritSectionCount == 0)
 		{
+			elog(LOG,"Statement cancel handler taking action for 'query cancel pending' (cancel lock wait).");
+			
 			/* bump holdoff count to make ProcessInterrupts() a no-op */
 			/* until we are done getting ready for it */
 			InterruptHoldoffCount++;
@@ -3131,6 +3136,8 @@ ProcessInterrupts(void)
 	}
 	if (QueryCancelPending)
 	{
+		elog(LOG,"Process interrupt for 'query cancel pending'.");
+		
 		QueryCancelPending = false;
 		ImmediateInterruptOK = false;	/* not idle anymore */
 		DisableNotifyInterrupt();

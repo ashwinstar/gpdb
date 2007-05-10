@@ -1333,6 +1333,8 @@ CheckStatementTimeout(void)
 		/* Time to die */
 		statement_timeout_active = false;
 		cancel_from_timeout = true;
+		elog(LOG,"Issuing cancel signal (SIGINT) to my self (pid = %d) for statement timeout.",
+			 MyProcPid);
 #ifdef HAVE_SETSID
 		/* try to signal whole process group */
 		kill(-MyProcPid, SIGINT);
