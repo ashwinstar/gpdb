@@ -140,7 +140,9 @@ class GPTestCase(unittest.TestCase):
     def resetDatabase(self):
 	print 'creating database:', self.DB_NAME
 	rc = self._execpsql('template1', 
-			    cmd = 'drop database if exists %s; create database %s' % (self.DB_NAME, self.DB_NAME))
+			    cmd = 'drop database if exists %s' % self.DB_NAME)
+	rc = self._execpsql('template1', 
+			    cmd = 'create database %s' % self.DB_NAME)
 	if rc:
 	    raise GPTestError('Error: cannot create database %s\n' % self.DB_NAME
 			      + 'Last command: %s\n' % self.lastCommand)
