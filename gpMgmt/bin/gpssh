@@ -88,15 +88,25 @@ def parseCommandLine():
 def parseHostLine(line):
     '''Parse line into (user, host, port) tuple'''
     try:
+	user = opt['-u']
+	host = None
+	port = opt['-p']
 	t = line.strip().split('@')
 	cnt = len(t)
 	if t[0][0] == '#': return None
-        if cnt == 1: return (opt['-u'], t[0], opt['-p'])
-	if cnt == 2: 
-	    tt = t[1].split(':')
-	    cnt = len(tt)
-	    if cnt == 1: return (t[0], tt[0], opt['-p'])
-	    elif cnt == 2: return (t[0], tt[0], int(tt[1]))
+        if cnt == 1: 
+	    host = t[0]
+	else:
+	    user = t[0]
+	    host = t[1]
+
+	t = host.split(':')
+	if len(t) > 1:
+	    host = t[0]
+	    port = int(t[1])
+	    
+	return (user, host, port)
+
     except ValueError: pass
     except IndexError: pass
     return None
