@@ -24,7 +24,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_functions.sh
+FUNCTIONS=$WORKDIR/lib/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -55,7 +55,7 @@ TLINES=10
 WAIT_LIMIT=600
 PARALLEL_STATUS_FILE=/tmp/gpstate_parallel_status_file.$$
 TMP_SORT_FILE=/tmp/gpstate_parallel_tmp_sort.$$
-GPSEGSTATE=gpsegstate.sh
+GPSEGSTATE=$WORKDIR/lib/gpsegstate.sh
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -348,10 +348,10 @@ VERSION_INFO () {
 	SORT_FILE
 	LOG_MSG "[INFO]:-Master segment version details" 1
 	LOG_MSG "[INFO]:-------------------------------" 1
-	LOG_MSG "[INFO]:-Master segment                                  = $MASTER_DATA_DIRECTORY" 1
-	LOG_MSG "[INFO]:-Postgres version                                = $MASTER_POSTGRES_VERSION" 1
-	LOG_MSG "[INFO]:-Software application version                    = $MASTER_INITDB_VERSION" 1
-	LOG_MSG "[INFO]:-Greenplum current version                             = $MASTER_VERSION" 1
+	LOG_MSG "[INFO]:-Master segment                    = $MASTER_DATA_DIRECTORY" 1
+	LOG_MSG "[INFO]:-Postgres version                  = $MASTER_POSTGRES_VERSION" 1
+	LOG_MSG "[INFO]:-Software application version      = $MASTER_INITDB_VERSION" 1
+	LOG_MSG "[INFO]:-Greenplum current version         = $MASTER_VERSION" 1
 	LOG_MSG "[INFO]:-Segment instance version details" 1
 	LOG_MSG "[INFO]:---------------------------------" 1
 	while read QE_LINE
@@ -365,24 +365,24 @@ VERSION_INFO () {
 		QE_VERSION=`$ECHO $QE_LINE|$AWK -F':' '{print $9}'`
 		LOG_MSG "[INFO]:-----------------------------------------" 1
 		if [ "$QE_VALID" == "t" ];then
-		LOG_MSG "[INFO]:-Host $QE_NAME Port = $QE_PORT datadir  = $QE_DIR Status = Active" 1
+		LOG_MSG "[INFO]:-Host $QE_NAME Port $QE_PORT datadir $QE_DIR Status = Active" 1
 		else
-		LOG_MSG "[WARN]:-Host $QE_NAME Port = $QE_PORT datadir  = $QE_DIR Status = Failed <<<<<" 1
+		LOG_MSG "[WARN]:-Host $QE_NAME Port $QE_PORT datadir $QE_DIR Status = Failed <<<<<" 1
 		fi
 		if [ "$CUR_VERSION" == "Failed" ];then
-			LOG_MSG "[WARN]:-Current Postgres version       = $CUR_VERSION <<<<<" 1
+			LOG_MSG "[WARN]:-Current Postgres version          = $CUR_VERSION <<<<<" 1
 		else
-			LOG_MSG "[INFO]:-Current Postgres version       = $CUR_VERSION" 1
+			LOG_MSG "[INFO]:-Current Postgres version          = $CUR_VERSION" 1
 		fi
 		if [ "$INIT_VERSION" == "Failed" ];then
-			LOG_MSG "[WARN]:-Software application version   = $INIT_VERSION <<<<<" 1
+			LOG_MSG "[WARN]:-Software application version      = $INIT_VERSION <<<<<" 1
 		else
-			LOG_MSG "[INFO]:-Software application version   = $INIT_VERSION" 1
+			LOG_MSG "[INFO]:-Software application version      = $INIT_VERSION" 1
 		fi
 		if [ "$QE_VERSION" == "Failed" ];then
-			LOG_MSG "[WARN]:-Greenplum current version            = $QE_VERSION <<<<<" 1
+			LOG_MSG "[WARN]:-Greenplum current version         = $QE_VERSION <<<<<" 1
 		else
-			LOG_MSG "[INFO]:-Greenplum current version            = $QE_VERSION" 1
+			LOG_MSG "[INFO]:-Greenplum current version         = $QE_VERSION" 1
 		fi
 		LOG_MSG "[INFO]:-----------------------------------------" 1
 	done < $PARALLEL_STATUS_FILE
@@ -483,6 +483,8 @@ SUMMARY_REPORT () {
 	KILLED_COUNT=`$GREP -c "KILLED:" $PARALLEL_STATUS_FILE`
 	#Get total reported as completed
 	COMPLETED_COUNT=`$GREP -c "COMPLETED:" $PARALLEL_STATUS_FILE`
+	#Get total reported as ping fail
+	PING_FAILED_COUNT=`$GREP -c "PING_FAIL:" $PARALLEL_STATUS_FILE`
 	#Get total number of primary segments 
 	QE_PRIMARY_COUNT=`$CAT $PARALLEL_STATUS_FILE|$AWK -F':' '{print $5}'|$GREP -c "t"`
 	#Get total number of mirror segments
@@ -557,6 +559,11 @@ SUMMARY_REPORT () {
 		LOG_MSG "[WARN]:-Total processes marked as killed              = $KILLED_COUNT $WARN_MARK" 1
 		else
 		LOG_MSG "[INFO]:-Total processes marked as killed              = 0" 1
+		fi
+		if [ $PING_FAILED_COUNT -ne 0 ];then
+		LOG_MSG "[WARN]:-Total processes marked as ping failed         = $PING_FAILED_COUNT $WARN_MARK" 1
+		else
+		LOG_MSG "[INFO]:-Total processes marked as ping failed         = 0" 1
 		fi
 		LOG_MSG "[INFO]:------------------------------------------------" 1
 		LOG_MSG "[INFO]:-Total primary segments                        = $QE_PRIMARY_COUNT" 1

@@ -24,7 +24,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_functions.sh
+FUNCTIONS=$WORKDIR/lib/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -270,21 +270,22 @@ STOP_MASTER_DB () {
 
 DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Greenplum standby master activation parameters"
-	LOG_MSG "[INFO]:-----------------------------------------"
-	LOG_MSG "[INFO]:-Greenplum Master standby hostname       = $MASTER_STANDBY_HOSTNAME"
-	LOG_MSG "[INFO]:-Greenplum Master standby port           = $MASTER_STANDBY_PORT"
-	LOG_MSG "[INFO]:-Greenplum Master standby data directory = $MASTER_STANDBY_DATA_DIRECTORY"
+	LOG_MSG "[INFO]:-----------------------------------------------" 1
+	LOG_MSG "[INFO]:-Greenplum standby Master activation parameters" 1
+	LOG_MSG "[INFO]:-----------------------------------------------" 1
+	LOG_MSG "[INFO]:-Greenplum Master standby hostname       = $MASTER_STANDBY_HOSTNAME" 1
+	LOG_MSG "[INFO]:-Greenplum Master standby port           = $MASTER_STANDBY_PORT" 1
+	LOG_MSG "[INFO]:-Greenplum Master standby data directory = $MASTER_STANDBY_DATA_DIRECTORY" 1
 	if [ x"" == x"$NEW_STANDBY_MASTER" ];then
-		LOG_MSG "[WARN]:-Greenplum Build new Master standby      = Off"
+		LOG_MSG "[WARN]:-Greenplum Build new Master standby      = Off" 1
 	else
-		LOG_MSG "[INFO]:-Greenplum Build new Master standby      = On"
-		LOG_MSG "[INFO]:-Greenplum new Master standby hostname   = $NEW_STANDBY_MASTER"
+		LOG_MSG "[INFO]:-Greenplum Build new Master standby      = On" 1
+		LOG_MSG "[INFO]:-Greenplum new Master standby hostname   = $NEW_STANDBY_MASTER" 1
 	fi
 	if [ $FORCE_ACTIVATE -eq 1 ];then
-		LOG_MSG "[WARN]:-Force Master standby activation   = On"
+		LOG_MSG "[WARN]:-Force Master standby activation         = On" 1
 	else
-		LOG_MSG "[INFO]:-Force Master standby activation   = Off"
+		LOG_MSG "[INFO]:-Force Master standby activation         = Off" 1
 	fi
 	if [ $INTERACTIVE ]; then
 		$ECHO  "Continue with Greenplum Master standby activation Yy/Nn>"

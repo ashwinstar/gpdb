@@ -24,7 +24,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_functions.sh
+FUNCTIONS=$WORKDIR/lib/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -56,7 +56,7 @@ ADMIN=0
 STOP_INVALID=0
 STANDBY_COUNT=0
 STOP_SYNC=1
-GPSEGSTOP=gpsegstop.sh
+GPSEGSTOP=$WORKDIR/lib/gpsegstop.sh
 PARALLEL_STATUS_FILE=/tmp/gpstop_parallel_status_file.$$
 WAIT_LIMIT=600
 BATCH_DEFAULT=60
@@ -149,12 +149,13 @@ DISPLAY_PARAM () {
 
 STOP_ADMIN () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		LOG_MSG "[INFO]:-Stopping the Master instance in admin mode"
+		LOG_MSG "[INFO]:-Stopping the Master instance in admin mode" 1
 		if [ ! -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
 				ERROR_EXIT "[FATAL]:- No $PG_PID file, is instance already stopped?" 1
 		fi
 		env PGOPTIONS="-c gp_session_role=utility" $PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE      >/dev/null 2>&1
 		ERROR_CHK $? "shutdown Master instance from admin mode" 2
+		LOG_MSG "[INFO]:-Successfully shutdown the Master instance in admin mode" 1
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -299,6 +300,11 @@ PROCESS_SHUTDOWN () {
 		LOG_MSG "[WARN]:-Total processes returned pg_ctl shutdown fail = $NO_FORCE_CLEAR $WARN_MARK" 1
 		EXIT_STATUS=1;DUMP_STAT=1
 	fi
+	PING_FAILED_COUNT=`$GREP -c ":PING_FAILED" $PARALLEL_STATUS_FILE`
+	if [ $PING_FAILED_COUNT  -ne 0 ];then
+		LOG_MSG "[WARN]:-Total processes returned a ping fail          = $PING_FAILED_COUNT $WARN_MARK" 1
+		EXIT_STATUS=1;DUMP_STAT=1
+	fi
 	LOG_MSG "[INFO]:-Successfully shutdown $COMPLETED_COUNT of $BATCH_LIMIT segment instances" 1
 	if [ $DUMP_STAT -ne 0 ];then
                 LOG_MSG "[INFO]:-Securing contents of parallel status file to log file" 1
@@ -397,7 +403,7 @@ if [ x"" != x"$RELOAD_PARAM" ];then
 	exit
 fi
 GET_QE_DETAILS
-if [ ! -f ${WORKDIR}/$GPSEGSTOP ];then
+if [ ! -f $GPSEGSTOP ];then
 	ERROR_EXIT "[FATAL]:-No $GPSEGSTOP program" 2
 fi
 if [ $INTERACTIVE ]; then

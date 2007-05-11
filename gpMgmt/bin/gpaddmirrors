@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		gpaddmirrors.bsh
+#	Filename:-		gpaddmirrors
 #	Version:-		$Revision$	
 #	Updated:-		$Date$
 #	Status:-		Released
@@ -21,7 +21,7 @@
 # Prep Code
 #******************************************************************************
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_functions.sh
+FUNCTIONS=$WORKDIR/lib/gp_bash_functions.sh
 if [ -f $FUNCTIONS ];then
 	. $FUNCTIONS
 else

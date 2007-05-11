@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		gpskew.bsh
+#	Filename:-		gpskew
 #	Version:-		$Revision$	
 #	Updated:-		$Date$
 #	Status:-		Released
@@ -29,7 +29,7 @@
 # Prep Code
 #******************************************************************************
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_functions.sh
+FUNCTIONS=$WORKDIR/lib/gp_bash_functions.sh
 if [ -f $FUNCTIONS ];then
 	. $FUNCTIONS
 else
@@ -61,7 +61,7 @@ SEG_TYPE=0
 DO_CHILD=0
 RESPONSE_TIME=0
 PARALLEL_STATUS_FILE=/tmp/gpskew_parallel_status_file.$$
-GPSEGSKEW=gpsegskew.sh
+GPSEGSKEW=$WORKDIR/lib/gpsegskew.sh
 WAIT_LIMIT=300
 #******************************************************************************
 # Functions
@@ -217,6 +217,7 @@ GET_NODE_COUNT () {
 	do
 		((REC_COUNT=$REC_COUNT+$RECS))
 	done
+	REPORT_FAIL=0
 	MinSkew=10000000000000
 	MaxSkew=-1
 	KILLED_COUNT=`$GREP -c KILLED $PARALLEL_STATUS_FILE`
@@ -228,11 +229,13 @@ GET_NODE_COUNT () {
 	LOG_MSG "[INFO]:-Total processes marked as completed  = $COMPLETED_COUNT" 1
 	if [ $KILLED_COUNT -ne 0 ];then
 	LOG_MSG "[WARN]:-Total processes marked as killed     = $KILLED_COUNT $WARN_MARK" 1
+	REPORT_FAIL=1
 	else
 	LOG_MSG "[INFO]:-Total processes marked as killed     = 0" 1
 	fi
 	if [ $FAILED_COUNT -ne 0 ];then
 	LOG_MSG "[WARN]:-Total processes marked as failed     = $FAILED_COUNT $WARN_MARK" 1
+	REPORT_FAIL=1
 	else
 	LOG_MSG "[INFO]:-Total processes marked as failed     = 0" 1
 	fi
@@ -295,22 +298,30 @@ GET_NODE_COUNT () {
 	if [ $TAB_TYPE -eq 1 ];then
 	LOG_MSG "[INFO]:-Parent table list                    = ${TAB_PARENT_NAME[@]}" 1
 	fi
+	if [ $REPORT_FAIL -ne 0 ];then
+		HILITE=$WARN_MARK
+	else
+		HILITE=""
+	fi
 	LOG_MSG "[INFO]:---------------------------------------" 1
 	LOG_MSG "[INFO]:-DDL number of Distribution Column(s) = $DISTRIB_COLS" 1
 	LOG_MSG "[INFO]:-Distribution Column Name(s)          = `$ECHO ${DIS_COL_ARRAY[@]}`" 1
 	LOG_MSG "[INFO]:---------------------------------------" 1
-	LOG_MSG "[INFO]:-Total records $TOTAL_TXT     = $REC_COUNT" 1
+	LOG_MSG "[INFO]:-Total records $TOTAL_TXT     = $REC_COUNT $HILITE" 1
 	LOG_MSG "[INFO]:---------------------------------------" 1
 	LOG_MSG "[INFO]:-Skew calculation target type         = $TYPE_TEXT" 1
 	LOG_MSG "[INFO]:---------------------------------------" 1
 	LOG_MSG "[INFO]:-Skew result" 1
-	LOG_MSG "[INFO]:-Maximum Record Count                 = $MaxSkew" 1
+	LOG_MSG "[INFO]:-Maximum Record Count                 = $MaxSkew $HILITE" 1
 	LOG_MSG "[INFO]:-Segment instance hostname            = $MaxHost" 1
 	LOG_MSG "[INFO]:-Segment instance name                = $MaxSeg" 1
-	LOG_MSG "[INFO]:-Minimum Record Count                 = $MinSkew" 1
+	LOG_MSG "[INFO]:-Minimum Record Count                 = $MinSkew $HILITE" 1
 	LOG_MSG "[INFO]:-Segment instance hostname            = $MinHost" 1
 	LOG_MSG "[INFO]:-Segment instance name                = $MinSeg" 1
-	LOG_MSG "[INFO]:-Record count variance                = $RecDiff" 1
+	LOG_MSG "[INFO]:-Record count variance                = $RecDiff $HILITE" 1
+	if [ $REPORT_FAIL -ne 0 ];then
+	LOG_MSG "[INFO]:-Partial value due to failures" 1
+	fi
 	LOG_MSG "[INFO]:---------------------------------------" 1
 	rm -f $PARALLEL_STATUS_FILE
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"

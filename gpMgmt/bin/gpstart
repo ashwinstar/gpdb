@@ -24,7 +24,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_functions.sh
+FUNCTIONS=$WORKDIR/lib/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -63,7 +63,7 @@ FORCE=0
 START_SYNC=1
 STOP_PROG=$GPSTOP
 PARALLEL_STATUS_FILE=/tmp/gpstart_parallel_status_file.$$
-GPSEGSTART=gpsegstart.sh
+GPSEGSTART=$WORKDIR/lib/gpsegstart.sh
 WAIT_LIMIT=600
 #******************************************************************************
 # Functions
@@ -410,6 +410,12 @@ PROCESS_STARTUP () {
 		EXIT_STATUS=1
 		DUMP_STAT=1
 	fi
+	PING_FAILED_COUNT=`$GREP -c ":PING_FAILED" $PARALLEL_STATUS_FILE`
+	if [ $PING_FAILED_COUNT -ne 0 ];then
+		LOG_MSG "[WARN]:-Total processes returned ping failure         = $PING_FAILED_COUNT $WARN_MARK" 1
+		EXIT_STATUS=1
+		DUMP_STAT=1
+	fi	
 	INVALID_START_FAIL=`$GREP -c ":INVALID_START_FAIL" $PARALLEL_STATUS_FILE`
 	if [ $INVALID_START_FAIL -ne 0 ];then
 		LOG_MSG "[WARN]:-Total processes returned invalid start fail   = $INVALID_START_FAIL $WARN_MARK" 1
@@ -535,8 +541,8 @@ GET_DETAILS
 if [ $INTERACTIVE ]; then
 	PROMPT_CONTINUE
 fi
-if [ ! -f ${WORKDIR}/$GPSEGSTART ];then
-	ERROR_EXIT "[FATAL]:-Parallel mode selected by no ${WORKDIR}/$GPSEGSTART exists" 2
+if [ ! -f $GPSEGSTART ];then
+	ERROR_EXIT "[FATAL]:-Parallel mode selected by no $GPSEGSTART exists" 2
 fi
 PROCESS_STARTUP
 LOG_MSG "[INFO]:-End Main"

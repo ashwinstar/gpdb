@@ -22,7 +22,7 @@
 # Prep Code
 # Source required functions file, this required for script to run
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_functions.sh
+FUNCTIONS=$WORKDIR/lib/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
                 . $FUNCTIONS
 else
@@ -45,7 +45,6 @@ VERBOSE=1
 TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
 PROG_NAME=`$BASENAME $0`
-PROG_NAME=`$BASENAME $0`
 HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
 QD_NAME=`hostname`
 EXIT_STATUS=0
@@ -57,7 +56,7 @@ SIZE_TARGET=0 #0=primary and mirror 1=primary only 2=mirror only
 DO_CHILD=0
 SKIP_INDEX=0
 PARALLEL_STATUS_FILE=/tmp/gpsizecalc_parallel_status_file.$$
-GPSEGSIZE=gpsegsize.sh
+GPSEGSIZE=$WORKDIR/lib/gpsegsize.sh
 #***********************************************************************************
 USAGE () {
 if [ -f ${GPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
@@ -283,24 +282,31 @@ DISPLAY_SIZE () {
 			   LOG_MSG "[INFO]:-Size calculation type = $TYPE_TEXT" 1
 	if [ $VERBOSE ];then
 			   LOG_MSG "[INFO]:-Database name         = $QD_DBNAME" 1
+			   if [ x"" == x"$SIZE_DB" ];then
 			   LOG_MSG "[INFO]:-Schema name           = $SCHEMA_NAME" 1
 			   LOG_MSG "[INFO]:-Table name            = $TABLE_NAME" 1
+			   fi
 		case $SIZE_TYPE in 
 			0) if [ $PARTITIONED = 't' ];then
 			   LOG_MSG "[INFO]:-Table type            = Partitioned and $TAB_TYPE_TXT" 1
 			   else
 		           LOG_MSG "[INFO]:-Table type            = Un-Partitioned and $TAB_TYPE_TXT" 1
 			   fi 
-			   LOG_MSG "[INFO]:-Space type            = Table" 1 ;;
+			   LOG_MSG "[INFO]:-Size type             = Table" 1 ;;
 			1) if [ $PARTITIONED = 't' ];then
 			   LOG_MSG "[INFO]:-Table type            = Partitioned and $TAB_TYPE_TXT" 1
 			   else
 			   LOG_MSG "[INFO]:-Table type            = Un-Partitioned and $TAB_TYPE_TXT" 1
 			   fi 
-			   LOG_MSG "[INFO]:-Space type            = Index" 1 ;;
-			2) LOG_MSG "[INFO]:-Space type            = Database" 1;;
+			   LOG_MSG "[INFO]:-Size type             = Index" 1 ;;
+			2) LOG_MSG "[INFO]:-Size type             = Database" 1;;
 		esac
-		 	   LOG_MSG "[INFO]:-Space used in total   = $TOTAL_SIZE ${TXT_SCALE}" 1
+			   if [ $REPORT_FAIL -ne 0 ];then
+		 	   LOG_MSG "[INFO]:-Space used in total   = $TOTAL_SIZE ${TXT_SCALE} $WARN_MARK" 1
+			   LOG_MSG "[WARN]:-Partial value due to failures" 1
+			   else
+			   LOG_MSG "[INFO]:-Space used in total   = $TOTAL_SIZE ${TXT_SCALE}" 1
+			   fi
 	else
 		$ECHO $TOTAL_SIZE
 		$ECHO $TOTAL_SIZE >> $LOG_FILE

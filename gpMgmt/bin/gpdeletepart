@@ -25,7 +25,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_functions.sh
+FUNCTIONS=$WORKDIR/lib/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -48,7 +48,6 @@ VERBOSE=1
 WAIT="-w"
 TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
-PROG_NAME=`$BASENAME $0`
 PROG_NAME=`$BASENAME $0`
 HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
 QD_NAME=`hostname`
@@ -323,7 +322,8 @@ GATHER_INFO () {
 	CHILD_INDEX_ARRAY_COUNT=${#CHILD_INDEX_ARRAY[@]}
 	#Now get the min and max date ranges from the rules table if number of rules <> 0
 	if [ $CHILD_RULE_ARRAY_COUNT -ne 0 ] && [ $CHILD_RULE_ARRAY_COUNT -eq $CHILD_NAME_ARRAY_COUNT ] ;then
-		MIN_DATE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -d $QD_DBNAME -A -t -c"select definition from pg_rules where tablename='$TABLE_NAME' and schemaname='$SCHEMA_NAME';"|$AWK -F"'" '{print $2}'|$GREP "-"|$SORT|$HEAD -1|$AWK '{print $1}'`
+		#MIN_DATE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -d $QD_DBNAME -A -t -c"select definition from pg_rules where tablename='$TABLE_NAME' and schemaname='$SCHEMA_NAME';"|$AWK -F"'" '{print $2}'|$GREP "-"|$SORT|$HEAD -1|$AWK '{print $1}'`
+		MIN_DATE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -d $QD_DBNAME -A -t -c"select definition from pg_rules where tablename='$TABLE_NAME' and schemaname='$SCHEMA_NAME';"|$TR '\047' '\n'|$GREP "-"|$SORT|$HEAD -1`
 		ERROR_CHK $? "obtain start partition date " 2
 		case $TYPE_NAME in
 			hour|week|month|year )

@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		gpdeletesystem.bsh
+#	Filename:-		gpdeletesystem
 #	Version:-		$Revision$	
 #	Updated:-		$Date$
 #	Status:-		Released
@@ -21,7 +21,7 @@
 # Prep Code
 #******************************************************************************
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_functions.sh
+FUNCTIONS=$WORKDIR/lib/gp_bash_functions.sh
 if [ -f $FUNCTIONS ];then
 	. $FUNCTIONS
 else
@@ -39,7 +39,6 @@ else
 # Script Specific Variables
 #******************************************************************************
 PROG_NAME=`$BASENAME $0`
-PROG_NAME=`$BASENAME $0`
 HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
 TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
@@ -48,7 +47,7 @@ EXIT_STATUS=0
 FULL_DISPLAY=0
 FORCE=0
 PARALLEL_STATUS_FILE=/tmp/gpdeletesystem_parallel_status_file.$$
-GPSEGDELETE=gpsegdelete.sh
+GPSEGDELETE=$WORKDIR/lib/gpsegdelete.sh
 #******************************************************************************
 # Functions
 #******************************************************************************
