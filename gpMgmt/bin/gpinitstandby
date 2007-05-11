@@ -24,7 +24,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_functions.sh
+FUNCTIONS=$WORKDIR/lib/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -49,7 +49,6 @@ MODE=smart
 TIME=`$DATE +%H%M%S`
 CUR_DATE=`$DATE +%Y%m%d`
 PROG_NAME=`$BASENAME $0`
-PROG_NAME=`$BASENAME $0`
 HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
 QD_NAME=`hostname`
 EXIT_STATUS=0
@@ -58,6 +57,9 @@ ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
 START_GPSYNC=1
 UPDATE_CATALOG=1
+TMP_PG_COMMENTS=/tmp/tmp_pga_comments.$$
+TMP_PG_VALUES=/tmp/tmp_pga_values.$$
+TMP_PG_NEW=/tmp/tmp_pga_new.$$
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -119,12 +121,21 @@ CHECK_PARAM () {
 	#Check to see that hostname exists and can be reached
 	PING_HOST $MASTER_STANDBY_HOSTNAME
 	#Check to see if we already have a standby master configured
+	STANDBY_NAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname from $CONFIG_TABLE where content=-1 and dbid<>1 ;"`
+	ERROR_CHK $? "obtained standby master host count" 2
 	if [ $UPDATE_CATALOG -eq 1 ];then
-	    # there is a function to do this in gp_bash_functions.sh
-		STANDBY_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where content=-1 and dbid<>1 ;"`
-		ERROR_CHK $? "obtained standby master host count" 2
-		if [ $STANDBY_COUNT -ne 0 ];then
+		if [ x"" != x"$STANDBY_NAME" ];then
+			#Have requested a catalog update, but, a warm master standby already exists
 			ERROR_EXIT "[FATAL]:-Standby master host already configured" 2
+		fi
+	else
+		if [ x"" == x"$STANDBY_NAME" ];then
+			ERROR_EXIT "[FATAL]:-Standby master not configured and -n option supplied" 2
+		fi
+		if [ x"$STANDBY_NAME" != x"$MASTER_STANDBY_HOSTNAME" ];then	
+			#Have bypassed catalog update, but supplied a different warm master standby hostname
+			LOG_MSG "[FATAL]:-Incorrect standby Master hostname supplied via -s option" 1
+			ERROR_EXIT "[FATAL]:-Expected $STANDBY_NAME got $MASTER_STANDBY_HOSTNAME" 2
 		fi
 	fi
 	#Check to ensure that MASTER_DATA_DIRECTORY is not a file on the standby host
@@ -133,31 +144,37 @@ CHECK_PARAM () {
 		ERROR_EXIT "[FATAL]:-Directory $MASTER_DATA_DIRECTORY is a file on $MASTER_STANDBY_HOSTNAME" 2
 	fi
 	#Now check to see if have a MASTER_DATA_DIRECTORY on new host
-	CHK_DIR $MASTER_DATA_DIRECTORY $MASTER_STANDBY_HOSTNAME
-	if [ $EXISTS -eq 0 ];then
-		LOG_MSG "[WARN]:-Located directory $MASTER_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME" 1
-		#Now see if we have a pid file
-		GET_PG_PID_ACTIVE $MASTER_PORT $MASTER_STANDBY_HOSTNAME
-		if [ $PID -ne 0 ] && [ x"" != x"$FAIL_PRI_SEG" ];then
-			LOG_MSG "[WARN]:-Active read only master detected on $MASTER_STANDBY_HOSTNAME" 1
-			LOG_MSG "[INFO]:-Calling close down routine" 1
-			$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export GPHOME=$GPHOME;$GPSTOP -d $MASTER_DATA_DIRECTORY -m"
-		fi
-	else
-		#Do not have a directory, but check to ensure we do not have a sync process
-		GET_PG_PID_ACTIVE $MASTER_PORT $MASTER_STANDBY_HOSTNAME
-		if [ $PID -ne 0 ];then
-			LOG_MSG "[FATAL]:-Have a warm master standby process PID=$PID on $MASTER_STANDBY_HOSTNAME" 1
-			LOG_MSG "[FATAL]:-But no $MASTER_DATA_DIRECTORY directory on $MASTER_STANDBY_HOSTNAME" 1
-			LOG_MSG "[INFO]:-Manually remove this process on $MASTER_STANDBY_HOSTNAME and re-run this utility" 1
-			ERROR_EXIT "[FATAL]:-Unable to continue" 2
-		fi
-		if [ $PG_LOCK_TMP -ne 0 ] || [ x"" != x"$PG_LOCK_NETSTAT" ];then
-		#Either have a lock file or a netstat entry
-			LOG_MSG "[FATAL]:-No $MASTER_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME but, have a possible" 1
-			LOG_MSG "[FATAL]:-Warm master standby process on $MASTER_STANDBY_HOSTNAME" 1
-			LOG_MSG "[INFO]:-Manually remove this process on $MASTER_STANDBY_HOSTNAME and re-run this utility" 1
-			ERROR_EXIT "[FATAL]:-Unable to continue" 2
+	if [ $UPDATE_CATALOG -eq 1 ];then 
+		CHK_DIR $MASTER_DATA_DIRECTORY $MASTER_STANDBY_HOSTNAME
+		if [ $EXISTS -eq 0 ];then
+			LOG_MSG "[WARN]:-Located directory $MASTER_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME" 1
+			#Now see if we have a pid file
+			GET_PG_PID_ACTIVE $MASTER_PORT $MASTER_STANDBY_HOSTNAME
+			if [ $PID -ne 0 ] && [ x"" != x"$FAIL_PRI_SEG" ];then
+				LOG_MSG "[WARN]:-Active read only master detected on $MASTER_STANDBY_HOSTNAME" 1
+				LOG_MSG "[INFO]:-Calling close down routine" 1
+				$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export GPHOME=$GPHOME;$GPSTOP -d $MASTER_DATA_DIRECTORY -m"
+			fi
+		else
+			#Do not have a directory, but check to ensure we do not have a sync process
+			GET_PG_PID_ACTIVE $MASTER_PORT $MASTER_STANDBY_HOSTNAME
+			if [ $PID -ne 0 ];then
+				LOG_MSG "[FATAL]:-Have a warm master standby process PID=$PID on $MASTER_STANDBY_HOSTNAME" 1
+				LOG_MSG "[FATAL]:-But no $MASTER_DATA_DIRECTORY directory on $MASTER_STANDBY_HOSTNAME" 1
+				LOG_MSG "[INFO]:-Manually remove this process on $MASTER_STANDBY_HOSTNAME" 1
+				LOG_MSG "[INFO]:-Then run gpinitstandby -s $MASTER_STANDBY_HOSTNAME" 1
+				LOG_MSG "[INFO]:-To create the new warm master standby process" 1
+				ERROR_EXIT "[FATAL]:-Unable to continue" 2
+			fi
+			if [ $PG_LOCK_TMP -ne 0 ] || [ x"" != x"$PG_LOCK_NETSTAT" ];then
+			#Either have a lock file or a netstat entry
+				LOG_MSG "[FATAL]:-No $MASTER_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME but, have a possible" 1
+				LOG_MSG "[FATAL]:-Warm master standby process on $MASTER_STANDBY_HOSTNAME" 1
+				LOG_MSG "[INFO]:-Manually remove this process on $MASTER_STANDBY_HOSTNAME" 1
+				LOG_MSG "[INFO]:-Then run gpinitstandby -s $MASTER_STANDBY_HOSTNAME" 1
+				LOG_MSG "[INFO]:-To create the new warm master standby process" 1
+				ERROR_EXIT "[FATAL]:-Unable to continue" 2
+			fi
 		fi
 	fi
 	#Now check to ensure that hostname supplied matches unix hostname output
@@ -187,23 +204,24 @@ CHECK_PARAM () {
 	#Check to see if there are any other MPP host on the proposed standby host
 	IN_USE_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}' ;"`
 	ERROR_CHK $? "obtain standby host in use count" 2
-	if [ $IN_USE_COUNT -ne 0 ];then
-		LOG_MSG "[WARN]:-There are other segment instances active on $MASTER_STANDBY_HOSTNAME" 1
-		LOG_MSG "[WARN]:-This may have an impact on overall MPP instance performance" 1
-		if [ $UPDATE_CATALOG -eq 1 ];then
-		#Check to ensure that port requested not already in use on that host
-			PORT_IN_USE_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}' and port=${MASTER_STANDBY_PORT};"`
-			ERROR_CHK $? "obtain standby port check" 2
-			if [ $PORT_IN_USE_COUNT -ne 0 ];then
-				ERROR_EXIT "[FATAL]:-Port $MASTER_STANDBY_PORT already assigned on ${MASTER_STANDBY_HOSTNAME}" 2
-			fi
+	if [ $UPDATE_CATALOG -eq 1 ];then
+		if [ $IN_USE_COUNT -ne 0 ];then
+			LOG_MSG "[WARN]:-There are other segment instances active on $MASTER_STANDBY_HOSTNAME" 1
+			LOG_MSG "[WARN]:-This may have an impact on overall MPP instance performance" 1
 		fi
-	fi	
+		#Check to ensure that port requested not already in use on that host
+		PORT_IN_USE_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}' and port=${MASTER_STANDBY_PORT};"`
+		ERROR_CHK $? "obtain standby port check" 2
+		if [ $PORT_IN_USE_COUNT -ne 0 ];then
+			ERROR_EXIT "[FATAL]:-Port $MASTER_STANDBY_PORT already assigned on ${MASTER_STANDBY_HOSTNAME}" 2
+		fi
+	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 UPDATE_PG_HBA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Processing Standby IP address checks, Please wait..." 1
 	for TNODE in "${QE_ARRAY[@]}"
 	do
 		GP_HOSTNAME=`$ECHO $TNODE|$CUT -d'|' -f1`
@@ -212,13 +230,41 @@ UPDATE_PG_HBA () {
 		do
 			CHK_COUNT=`$TRUSTED_SHELL $GP_HOSTNAME "$GREP -c \"${STANDBY_IP}/32\" ${GP_DIR}/$PG_HBA"`
 			if [ $CHK_COUNT -eq 0 ];then
-			LOG_MSG "[INFO]:-Adding address of $MASTER_STANDBY_HOSTNAME to $GP_HOSTNAME $PG_HBA file" 1
-			RUN_COMMAND_REMOTE ${GP_HOSTNAME} "$ECHO host  all     all     ${STANDBY_IP}/32        trust >> ${GP_DIR}/$PG_HBA"
+			LOG_MSG "[INFO]:-Adding address of $MASTER_STANDBY_HOSTNAME to $GP_HOSTNAME $PG_HBA file" 
+			RUN_COMMAND_REMOTE ${GP_HOSTNAME} "$ECHO host  all     $USER     ${STANDBY_IP}/32        trust >> ${GP_DIR}/$PG_HBA"
 			else
-			LOG_MSG "[INFO]:-Standby IP address already exists in $GP_HOSTNAME ${GP_DIR}/$PG_HBA" 1
+			LOG_MSG "[INFO]:-Standby IP address already exists in $GP_HOSTNAME ${GP_DIR}/$PG_HBA" 
 			fi
+			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 		done
 	done	
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
+	LOG_MSG "[INFO]:-Processing Standby IP address checks for Master $PG_HBA file" 1
+	CHANGE_REQD=0
+	for STANDBY_IP in "${STANDBY_IP_ADDRESS[@]}"
+	do
+		CHK_COUNT=`$GREP -c "${STANDBY_IP}/" ${MASTER_DATA_DIRECTORY}/$PG_HBA`
+		if [ $CHK_COUNT -eq 0 ];then
+			ADD_STANDBY_IP_ADDRESS=(${ADD_STANDBY_IP_ADDRESS[@]} $STANDBY_IP)
+			CHANGE_REQD=1
+		else
+			LOG_MSG "[INFO]:-Standby IP address already exists in ${MASTER_DATA_DIRECTORY}/$PG_HBA"
+		fi 
+	done
+	if [ $CHANGE_REQD -ne 0 ];then
+		LOG_MSG "[INFO]:-Adding warm Master IP address to Master $PG_HBA" 1
+		$GREP "^#" ${MASTER_DATA_DIRECTORY}/$PG_HBA > $TMP_PG_COMMENTS
+		$GREP -v "^#" ${MASTER_DATA_DIRECTORY}/$PG_HBA > $TMP_PG_VALUES
+		for STANDBY_IP in "${ADD_STANDBY_IP_ADDRESS[@]}"
+		do
+			LOG_MSG "[INFO]:-Adding Standby IP address $STANDBY_IP to Master $PG_HBA file" 1
+			$ECHO host     all     $USER         ${STANDBY_IP}/32        trust >> $TMP_PG_NEW
+		done
+		$CAT $TMP_PG_VALUES >> $TMP_PG_NEW
+		$CAT $TMP_PG_NEW >> $TMP_PG_COMMENTS
+		$RM -f $TMP_PG_VALUES $TMP_PG_NEW
+		$MV $TMP_PG_COMMENTS ${MASTER_DATA_DIRECTORY}/$PG_HBA
+	fi	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -236,8 +282,15 @@ STOP_MASTER_DB () {
 	else
 		LOG_MSG "[INFO]:-Commencing shutdown of Master instance" 1
 		if [ -f $GPSTOP ];then
-			$GPSTOP -d $MASTER_DATA_DIRECTORY -af
-			ERROR_CHK $? "stop Master instance" 1
+			if [ $UPDATE_CATALOG -eq 0 ];then
+			#Shutdown sync process as this is a re-synch of an array with a standby configured
+				$GPSTOP -d $MASTER_DATA_DIRECTORY -af
+				RETVAL=$?
+			else
+				$GPSTOP -d $MASTER_DATA_DIRECTORY -afy
+				RETVAL=$?
+			fi
+			ERROR_CHK $RETVAL "stop Master instance" 1
 		else
 			ERROR_EXIT "[FATAL]:-Unable to locate $GPSTOP" 2
 		fi
@@ -271,7 +324,11 @@ DISPLAY_PARAM () {
 		LOG_MSG "[INFO]:-Greenplum standby build type            = Dual active Read Only" 1
 	fi
 	if [ $INTERACTIVE ]; then
-		$ECHO  "Continue with MPP Master standby initialization Yy/Nn>"
+		if [ $UPDATE_CATALOG -eq 1 ];then
+			$ECHO  "Continue with GP Master standby initialization Yy/Nn>"
+		else
+			$ECHO  "Continue with GP Master standby re-sync Yy/Nn>"
+		fi
 		read REPLY
 		if [ -z $REPLY ]; then
 			LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
@@ -298,12 +355,14 @@ STANDBY_ACTIVATE () {
 	#Check that the proposed master standby directory does not already exist
 	CHK_DIR $MASTER_STANDBY_DATA_DIRECTORY $MASTER_STANDBY_HOSTNAME
 	if [ $EXISTS -eq 0 ];then
-		LOG_MSG "[WARN]:-Directory $MASTER_STANDBY_DATA_DIRECTORY exists on $MASTER_STANDBY_HOSTNAME"  1
-		LOG_MSG "[INFO]:-Deleting the $MASTER_STANDBY_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME" 1
+		if [ $UPDATE_CATALOG -eq 1 ];then
+			LOG_MSG "[WARN]:-Directory $MASTER_STANDBY_DATA_DIRECTORY exists on $MASTER_STANDBY_HOSTNAME"  1
+		fi
+		LOG_MSG "[INFO]:-Deleting directory $MASTER_STANDBY_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME" 1
 		RUN_COMMAND_REMOTE $MASTER_STANDBY_HOSTNAME "$RM -Rf $MASTER_STANDBY_DATA_DIRECTORY"
 		EXIT_STATUS=1
 	fi
-	LOG_MSG "[INFO]:-Starting remote copy of $MASTER_DATA_DIRECTORY to Master standby host" 1
+	LOG_MSG "[INFO]:-Starting remote copy of $MASTER_DATA_DIRECTORY to $MASTER_STANDBY_HOSTNAME please wait..." 1
 	C_DIR=`pwd`;cd ${MASTER_DATA_DIRECTORY};sync;cd $C_DIR
 	$TRUSTED_COPY -pr $MASTER_DATA_DIRECTORY ${MASTER_STANDBY_HOSTNAME}:${MASTER_STANDBY_DATA_DIRECTORY} 2>>$LOG_FILE
 	ERROR_CHK $? "remote copy of $MASTER_DATA_DIRECTORY to $MASTER_STANDBY_HOSTNAME" 2
@@ -431,7 +490,11 @@ else
 	LOG_MSG "[WARN]:-By passing catalog update as -n option passed to script" 1
 	EXIT_STATUS=1
 fi
-UPDATE_PG_HBA
+if [ $UPDATE_CATALOG -eq 1 ];then
+	UPDATE_PG_HBA
+else
+	LOG_MSG "[INFO]:-Bypassing pg_hba.conf updates as -n option supplied" 1
+fi
 STOP_MASTER_DB
 STANDBY_ACTIVATE
 START_ARRAY
@@ -442,7 +505,11 @@ if [ $FAIL_PRI_SEG ];then
 	LOG_MSG "[INFO]:------------------------------------------------" 1
 else
 	LOG_MSG "[INFO]:------------------------------------------------" 1
+	if [ $UPDATE_CATALOG -eq 1 ];then
 	LOG_MSG "[INFO]:-Successfully created master standby host on $MASTER_STANDBY_HOSTNAME " 1
+	else
+	LOG_MSG "[INFO]:-Successfully complete standby re-synch on $MASTER_STANDBY_HOSTNAME " 1
+	fi
 	LOG_MSG "[INFO]:------------------------------------------------" 1
 fi
 LOG_MSG "[INFO]:-End Main" 
