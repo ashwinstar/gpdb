@@ -25,7 +25,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_functions.sh
+FUNCTIONS=$WORKDIR/lib/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -48,7 +48,6 @@ VERBOSE=1
 WAIT="-w"
 TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
-PROG_NAME=`$BASENAME $0`
 PROG_NAME=`$BASENAME $0`
 HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
 QD_NAME=`hostname`
@@ -145,7 +144,7 @@ PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-New list items             " 1
 		for ITEM in ${PART_LIST_ARRAY[@]}
 		do
-		LOG_MSG "[INFO]:-Will add list item         = $ITEM" 1
+		LOG_MSG "[INFO]:-Will add list item         = `$ECHO $ITEM|$TR '_' ' '`" 1
 		done
 		;;
 		esac
@@ -276,7 +275,12 @@ PROCESS_CHILD_CONSTRAINT () {
 	ERROR_CHK $? "obtain child table constraint text" 2
 	#Now process the constraint text to act as a template for new constraints
 	if [ $TYPE_NAME != "range" ];then
-	CHILD_CONSTRAINT_TEXT_TEMPLATE=`$ECHO $CHILD_CONSTRAINT_TEXT|$SED -e 's/AND/~/g'|$TR '~' '\n'|$AWK -F"'" '{print $1"'~SWAP'"NR$3}'|$SED -e 's/^ /AND /g'|$TR '\n' ' '`
+	#CHILD_CONSTRAINT_TEXT_TEMPLATE=`$ECHO $CHILD_CONSTRAINT_TEXT|$SED -e 's/AND/~/g'|$TR '~' '\n'|$AWK -F"'" '{print $1"'~SWAP'"NR$3}'|$SED -e 's/^ /AND /g'|$TR '\n' ' '`
+		if [ $TYPE_NAME == "list" ];then
+			CHILD_CONSTRAINT_TEXT_TEMPLATE=`$ECHO $CHILD_CONSTRAINT_TEXT|$TR '\047' '%'|$AWK -F'%' '{print $1"%~SWAP%"$3}'|$TR '%' '\047'`
+		else
+			CHILD_CONSTRAINT_TEXT_TEMPLATE=`$ECHO $CHILD_CONSTRAINT_TEXT|$SED -e 's/AND/~/g'|$TR '~' '\n'|$SED -e 's/[0-9]*-[0-9]*-[0-9]*/%?%/g'|$AWK -F'%' '{print $1"'~SWAP'"NR$3}'|$SED -e 's/^ /AND /g'|$TR '\n' ' '`
+		fi
 	else
 	CHILD_CONSTRAINT_TEXT_TEMPLATE=`$ECHO $CHILD_CONSTRAINT_TEXT|$SED -e 's/AND/~/g'|$TR '~' '\n'|$SED -e 's/[0-9])/1 )/g'|$AWK '{print $1" "$2" SWAP"NR$4}'|$TR '\n' '~'|$SED -e 's/))~/))/g'|$SED -e 's/~/ AND /g'`
 	fi
@@ -332,11 +336,11 @@ GATHER_INFO () {
 			for CHILD_ITEM in "${CHILD_NAME_ARRAY[@]}"
 			do
 				CHILD_CONSTRAINT_TEXT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select consrc from pg_constraint where conrelid in (select oid from pg_class where relname='$CHILD_ITEM' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME')) order by oid desc limit 1;"`	
-				if [ $TYPE_NAME == "daily" ];then
-					DATE_TEXT=`$ECHO $CHILD_CONSTRAINT_TEXT|$CUT -d"'" -f2|awk '{print $1}'`
-				else
-					DATE_TEXT=`$ECHO $CHILD_CONSTRAINT_TEXT|$CUT -d"'" -f4|awk '{print $1}'`
-				fi
+				#if [ $TYPE_NAME == "daily" ];then
+				#	DATE_TEXT=`$ECHO $CHILD_CONSTRAINT_TEXT|$CUT -d"'" -f2|awk '{print $1}'`
+				#else
+					DATE_TEXT=`$ECHO $CHILD_CONSTRAINT_TEXT|$TR '\047' '\n'|$GREP "[0-9]"|$TAIL -1`
+				#fi
 				if [ `$ECHO $DATE_TEXT|$TR -d '-'` -gt $MAX_DATE_NUMBER ];then
 					MAX_DATE_NUMBER=`$ECHO $DATE_TEXT|$TR -d '-'`
 					MAX_DATE_TEXT=$DATE_TEXT
@@ -410,16 +414,17 @@ VALIDATE_LIST_TYPE () {
 	if [ x"" == x"$PART_LIST" ];then
 		ERROR_EXIT "[FATAL]:-Partition type is list, but no -o option supplied" 2
 	else
-		PART_LIST_ARRAY=(`$ECHO $PART_LIST|$TR ',' ' '`)
+		PART_LIST_ARRAY=(`$ECHO $PART_LIST|$TR ' ' '_'|$TR ',' ' '`)
 	fi
 	for CHILD_LIST_ITEM in ${CHILD_NAME_ARRAY[@]}
 	do
 		CHILD_LIST_ITEM_TEXT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select consrc from pg_constraint where conrelid in (select oid from pg_class where relname='$CHILD_LIST_ITEM'and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME')) order by oid desc limit 1;"`
 		for LIST_ITEM_CHK in ${PART_LIST_ARRAY[@]}
 		do
-			LOG_MSG "[INFO]:-Checking for list item $LIST_ITEM_CHK in $CHILD_LIST_ITEM"
-			if [ `$ECHO $CHILD_LIST_ITEM_TEXT|$GREP -c "'$LIST_ITEM_CHK'"` -ne 0 ];then
-				ERROR_EXIT "[FATAL]:-List item $LIST_ITEM_CHK exists in $CHILD_LIST_ITEM" 2
+			LIST_ITEM_GREP_TXT=`$ECHO $LIST_ITEM_CHK|$TR '_' ' '`
+			LOG_MSG "[INFO]:-Checking for list item $LIST_ITEM_GREP_TXT in $CHILD_LIST_ITEM"
+			if [ `$ECHO $CHILD_LIST_ITEM_TEXT|$GREP -c "'$LIST_ITEM_GREP_TXT'"` -ne 0 ];then
+				ERROR_EXIT "[FATAL]:-List item $LIST_ITEM_GREP_TXT exists in $CHILD_LIST_ITEM" 2
 			fi
 		done
 	done
@@ -464,7 +469,7 @@ PROCESS_HOURLY () {
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
                 SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "`$ECHO $START_DATE|$TR '-' '_'`_${HOUR_ARRAY[$HOUR_VECTOR]}_${TYPE_NAME}")
 		if [ $RULE_GEN -eq 1 ];then
-			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/\'${START_DATE}~${HOUR_ARRAY[$HOUR_VECTOR]}:00:00\'/g|$SED -e s/~SWAP2/\'$START_DATE~${HOUR_ARRAY[$HOUR_VECTOR]}:59:59.99999\'/g|$TR ' ' '~'`
+			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/${START_DATE}~${HOUR_ARRAY[$HOUR_VECTOR]}:00:00/g|$SED -e s/~SWAP2/$START_DATE~${HOUR_ARRAY[$HOUR_VECTOR]}:59:59.99999/g|$TR ' ' '~'`
                 	RULE_ARRAY=(${RULE_ARRAY[@]} "$NEW_RULE")
 		fi
                 ((VECTOR=$VECTOR+1))
@@ -491,9 +496,9 @@ PROCESS_DAILY () {
                 SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "`$ECHO $START_DATE|$TR '-' '_'`_${TYPE_NAME}")
 		if [ $RULE_GEN -eq 1 ];then
 			if [ $DATE_TYPE -eq 0 ];then
-			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/\'$START_DATE~\'/g|$SED -e s/~SWAP2/\'$START_DATE~\'/g|$TR ' ' '~'`
+			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/$START_DATE~/g|$SED -e s/~SWAP2/$START_DATE~/g|$TR ' ' '~'`
 			else
-			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/\'$START_DATE~00:00:00\'/g|$SED -e s/~SWAP2/\'$START_DATE~23:59:59.99999\'/g|$TR ' ' '~'`
+			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/$START_DATE~00:00:00/g|$SED -e s/~SWAP2/$START_DATE~23:59:59.99999/g|$TR ' ' '~'`
 			fi
 			RULE_ARRAY=(${RULE_ARRAY[@]} "$NEW_RULE")
 		fi
@@ -524,9 +529,9 @@ PROCESS_WEEKLY () {
 			if [ $RULE_GEN -eq 1 ];then
 				END_DATE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select date '$START_DATE' +1;"`
 				if [ $DATE_TYPE -eq 0 ];then
-				 NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/\'$WEEK_START_DATE\'/g|$SED -e s/~SWAP2/\'$END_DATE\'/g|$TR ' ' '~'`
+				NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/$WEEK_START_DATE/g|$SED -e s/~SWAP2/$END_DATE/g|$TR ' ' '~'`
 				else
-				 NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/\'$WEEK_START_DATE~00:00:00\'/g|$SED -e s/~SWAP2/\'$END_DATE~00:00:00\'/g|$TR ' ' '~'`
+				NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/$WEEK_START_DATE~00:00:00/g|$SED -e s/~SWAP2/$END_DATE~00:00:00/g|$TR ' ' '~'`
 				fi
                         	RULE_ARRAY=(${RULE_ARRAY[@]} "$NEW_RULE")
 			fi
@@ -560,9 +565,9 @@ PROCESS_MONTHLY () {
                 SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "$START_YEAR"_"$CURRENT_MONTH"_"$TYPE_NAME")
                 if [ `$ECHO $CURRENT_MONTH|$AWK '{print $1}'|$WC -c` -eq 1 ];then CURRENT_MONTH="0$CURRENT_MONTH";fi
 		if [ $DATE_TYPE -eq 0 ];then
-			 NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/\'$START_YEAR-$CURRENT_MONTH-01\'/g|$SED -e s/~SWAP2/\'$END_DATE\'/g|$TR ' ' '~'`
+			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/$START_YEAR-$CURRENT_MONTH-01/g|$SED -e s/~SWAP2/$END_DATE/g|$TR ' ' '~'`
 		else
-			 NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/\'$START_YEAR-$CURRENT_MONTH-01~00:00:00\'/g|$SED -e s/~SWAP2/\'$END_DATE~00:00:00\'/g|$TR ' ' '~'`
+			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/$START_YEAR-$CURRENT_MONTH-01~00:00:00/g|$SED -e s/~SWAP2/$END_DATE~00:00:00/g|$TR ' ' '~'`
 		fi
                 RULE_ARRAY=(${RULE_ARRAY[@]} "$NEW_RULE")
                 CURRENT_MONTH="$NEXT_MONTH"
@@ -584,9 +589,9 @@ PROCESS_YEARLY () {
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 		((RULE_END_YEAR=$START_YEAR+1))
 		if [ $DATE_TYPE -eq 0 ];then
-			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/\'$START_YEAR-01-01\'/g|$SED -e s/~SWAP2/\'$RULE_END_YEAR-01-01\'/g|$TR ' ' '~'`
+			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/$START_YEAR-01-01/g|$SED -e s/~SWAP2/$RULE_END_YEAR-01-01/g|$TR ' ' '~'`
 		else
-			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/\'$START_YEAR-01-01~00:00:00\'/g|$SED -e s/~SWAP2/\'$RULE_END_YEAR-01-01~00:00:00\'/g|$TR ' ' '~'`
+			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/$START_YEAR-01-01~00:00:00/g|$SED -e s/~SWAP2/$RULE_END_YEAR-01-01~00:00:00/g|$TR ' ' '~'`
 		fi
 		RULE_ARRAY=(${RULE_ARRAY[@]} "$NEW_RULE")
 		((START_YEAR=$START_YEAR+1))
@@ -603,7 +608,8 @@ PROCESS_LIST () {
 	do
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "${LIST_ITEM}_${TYPE_NAME}")
-		NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/\'$LIST_ITEM\'/g|$TR ' ' '~'`
+		LIST_ITEM=`$ECHO $LIST_ITEM|$TR '_' '~'`
+		NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP/$LIST_ITEM/g|$TR ' ' '~'`
 		RULE_ARRAY=(${RULE_ARRAY[@]} "$NEW_RULE")
 	done
 	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
@@ -733,6 +739,8 @@ RUN_GENERATE_SQL () {
 	if [ `$GREP -ci ERROR $TMP_OUTPUT_FILE` -ne 0 ];then
 		LOG_MSG "[FATAL]:-Error generated from SQL file, dumping out to log file" 1
 		$CAT $TMP_OUTPUT_FILE >> $LOG_FILE
+		LOG_MSG "[INFO]:-Now dumping SQL file to log file" 1
+		$CAT $TMP_FILE >> $LOG_FILE
 		RM_TMP_FILE
 	else
 		LOG_MSG "[INFO]:-Completed run of generated SQL file" 1

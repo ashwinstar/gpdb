@@ -25,7 +25,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_functions.sh
+FUNCTIONS=$WORKDIR/lib/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -117,7 +117,10 @@ USAGE () {
 		$ECHO "      -m, <conversion command> to be applied to check constraint and insert rule checks"
 		$ECHO "          For example, if a numeric contains timestamp in format 1138576193.697, supplying"
 		$ECHO "          -m to_timestamp will convert the contents of the field to a timestamp format prior"
-		$ECHO "          to check and rules being evaluated"
+		$ECHO "          to check constraints and rules being evaluated"
+		$ECHO "          If there is a requirement to implement a more complex conversion command, for example"
+		$ECHO "          to_date(column name, 'YYYYMMDD') use -m \"to_date(^,'YYYYMMDD')\" the ^ symbol is used"
+		$ECHO "          to indicate the place at which the column name is being used in the conversion command"
 		$ECHO "      -F, force child table creation if parent already has child tables"
 		$ECHO
 		$ECHO "      Date range partitioning options:"
@@ -138,7 +141,8 @@ USAGE () {
 		$ECHO "      List partitioning options:"
 		$ECHO "      Use this partitioning policy for character columns"
 		$ECHO "      -o, <value list> comma separated list of values, example -c CA,MS,NY,WS [mandatory]"
-		$ECHO "          Ensure that no spaces are included in between list items and comma separator"
+		$ECHO "          If spaces are required within list items enclose the list in \" \" "
+		$ECHO "          For example -o \"CA MS,NY WS\""
 		#$ECHO "          To add a null check/rule constraint add text NULL to the list"
 		$ECHO
 		$ECHO "      Return codes:"
@@ -214,7 +218,7 @@ PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-Count child table records  = Off" 1;fi
 		if [ x"" != x"$CONVERSION_CMD" ];then
 		LOG_MSG "[INFO]:-Apply specific conversion  = On" 1
-		LOG_MSG "[INFO]:-Conversion command         = $CONVERSION_CMD" 1
+		LOG_MSG "[INFO]:-Conversion command         = $CONVERT_STRING" 1
 		else
 		LOG_MSG "[INFO]:-Apply specific conversion  = Off" 1;fi
 		if [ x"" == x"$FORCE_CREATE" ];then
@@ -301,7 +305,6 @@ CHK_PARAM () {
 			ERROR_EXIT "[FATAL]:-Mandatory parameter -p has invalid value, must be d,r or l" 2
 			;;
 	esac
-
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -401,7 +404,7 @@ VALIDATE_PARAM () {
 			fi
 			;;
 		l ) #Validate list partitioning options
-			if [ `$ECHO $PART_LIST|$GREP -c ","` -eq 0 ] && [ `$ECHO $PART_LIST|$WC -w` -ne 1 ];then
+			if [ `$ECHO $PART_LIST|$GREP -c ","` -eq 0 ] && [ `$ECHO $PART_LIST|$TR ' ' '~'|$WC -w` -ne 1 ];then
 				ERROR_EXIT "[FATAL]:-No \",\" within partition list for list partitioning" 2
 			fi	
 			;;
@@ -462,7 +465,6 @@ VALIDATE_PROCESS () {
 	#Now set up the number of itterations for range and list partitioning
 	case $PART_TYPE in 
 		r ) #Here the number of itterations is defined by start value, end value and increment value
-		    	#COUNT=0
 			COUNT=$START_DATE_OR_VALUE
 			GENERATION_COUNT=0
 			while [ $COUNT -le $END_VALUE ]
@@ -481,11 +483,12 @@ VALIDATE_PROCESS () {
 	#Check to see if an additional conversion command has been applied and if so it is valid for partition column
 	if [ x"" != x"$CONVERSION_CMD" ];then
 		LOG_MSG "[INFO]:-Checking to ensure that $CONVERSION_CMD can be applied to $PART_COLUMN"  1
-		$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select ${CONVERSION_CMD}(${PART_COLUMN}) from $PARENT_TABLE_NAME limit 1;" >/dev/null 2>&1
+		#$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select ${CONVERSION_CMD}(${PART_COLUMN}) from $PARENT_TABLE_NAME limit 1;" >/dev/null 2>&1
+		$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select $CONVERT_STRING from $PARENT_TABLE_NAME limit 1;" >/dev/null 2>&1
 		if [ $? -ne 0 ];then
-			ERROR_EXIT "[FATAL]:-Conversion $CONVERSION_CMD fails on column $PART_COLUMN" 2
+			ERROR_EXIT "[FATAL]:-Conversion $CONVERT_STRING fails on column $PART_COLUMN" 2
 		else
-			LOG_MSG "[INFO]:-Conversion $CONVERSION_CMD completes on column $PART_COLUMN" 1
+			LOG_MSG "[INFO]:-Conversion $CONVERT_STRING completes on column $PART_COLUMN" 1
 			PROCESS_CONVERSION=1
 		fi
 	fi
@@ -554,7 +557,7 @@ PROCESS_NUMERIC () {
 		((FROM=$COUNT-1))
 		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "${TO}_to_${FROM}_${TYPE_NAME}")
 		if [ $PROCESS_CONVERSION -eq 1 ];then
-			RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERSION_CMD}($PART_COLUMN)~>=$CURRENT_COUNT~AND~${CONVERSION_CMD}($PART_COLUMN)~<=$FROM")
+			RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERT_STRING}~>=$CURRENT_COUNT~AND~${CONVERT_STRING}~<=$FROM")
 		else
 			RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~>=$CURRENT_COUNT~AND~$PART_COLUMN~<=$FROM")
 		fi
@@ -566,14 +569,15 @@ PROCESS_NUMERIC () {
 PROCESS_LIST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Generating list array, please wait..." 1
-	for LIST_ITEM in `$ECHO $PART_LIST|$TR ',' ' '`
+	for LIST_ITEM in `$ECHO $PART_LIST|$TR ' ' '_'|$TR ',' ' '`
 	do
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "${LIST_ITEM}_${TYPE_NAME}")
+		LIST_TXT=`$ECHO $LIST_ITEM|$TR '_' '~'`
 		if [ $PROCESS_CONVERSION -eq 1 ];then
-			RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERSION_CMD}($PART_COLUMN)~=~'${LIST_ITEM}'")
+			RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERT_STRING}~=~'${LIST_TXT}'")
 		else
-			RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~=~'${LIST_ITEM}'")
+			RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~=~'${LIST_TXT}'")
 		fi
 	done 
 	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
@@ -591,7 +595,7 @@ PROCESS_HOURLY () {
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "`$ECHO $START_DATE|$TR '-' '_'`_${HOUR_ARRAY[$HOUR_VECTOR]}_${TYPE_NAME}")
 		if [ $PROCESS_CONVERSION -eq 1 ];then
-			RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERSION_CMD}($PART_COLUMN)~>='$START_DATE~${HOUR_ARRAY[$HOUR_VECTOR]}:00:00'~AND~${CONVERSION_CMD}($PART_COLUMN)~<=~'$START_DATE~${HOUR_ARRAY[$HOUR_VECTOR]}:59:59.99999'")
+			RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERT_STRING}~>='$START_DATE~${HOUR_ARRAY[$HOUR_VECTOR]}:00:00'~AND~${CONVERT_STRING}~<=~'$START_DATE~${HOUR_ARRAY[$HOUR_VECTOR]}:59:59.99999'")
 		else
 			RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~>='$START_DATE~${HOUR_ARRAY[$HOUR_VECTOR]}:00:00'~AND~$PART_COLUMN~<=~'$START_DATE~${HOUR_ARRAY[$HOUR_VECTOR]}:59:59.99999'")
 		fi
@@ -618,13 +622,13 @@ PROCESS_DAILY () {
 		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} `$ECHO $START_DATE|$TR '-' '_'`"_${TYPE_NAME}")
 		if [ $DATE_TYPE -eq 0 ];then
 			if [ $PROCESS_CONVERSION -eq 1 ];then
-				RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERSION_CMD}($PART_COLUMN)~=~'$START_DATE}'")
+				RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERT_STRING}~=~'$START_DATE}'")
 			else
 				RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~=~'$START_DATE}'")	
 			fi
 		else
 			if [ $PROCESS_CONVERSION -eq 1 ];then
-				RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERSION_CMD}($PART_COLUMN)~>='$START_DATE~00:00:00'~AND~${CONVERSION_CMD}($PART_COLUMN)~<=~'$START_DATE~23:59:59.99999'")
+				RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERT_STRING}~>='$START_DATE~00:00:00'~AND~${CONVERT_STRING}~<=~'$START_DATE~23:59:59.99999'")
 			else
 				RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~>='$START_DATE~00:00:00'~AND~$PART_COLUMN~<=~'$START_DATE~23:59:59.99999'")
 			fi
@@ -654,13 +658,13 @@ PROCESS_WEEKLY () {
 			START_WEEK_NUM="$CURRENT_WEEK_NUM"
 			if [ $DATE_TYPE -eq 0 ];then
 				if [ $PROCESS_CONVERSION -eq 1 ];then
-					RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERSION_CMD}($PART_COLUMN)~>=~'$WEEK_START_DATE'~AND~${CONVERSION_CMD}($PART_COLUMN)~<~'$START_DATE'")
+					RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERT_STRING}~>=~'$WEEK_START_DATE'~AND~${CONVERT_STRING}~<~'$START_DATE'")
 				else	
 					RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~>=~'$WEEK_START_DATE'~AND~$PART_COLUMN~<~'$START_DATE'")
 				fi
 			else
 				if [ $PROCESS_CONVERSION -eq 1 ];then
-					RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERSION_CMD}($PART_COLUMN)~>=~'$WEEK_START_DATE~00:00:00'~AND~${CONVERSION_CMD}($PART_COLUMN)~<~'$START_DATE~00:00:00'")
+					RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERT_STRING}~>=~'$WEEK_START_DATE~00:00:00'~AND~${CONVERT_STRING}~<~'$START_DATE~00:00:00'")
 				else
 					RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~>=~'$WEEK_START_DATE~00:00:00'~AND~$PART_COLUMN~<~'$START_DATE~00:00:00'")
 				fi
@@ -695,13 +699,13 @@ PROCESS_MONTHLY () {
 		if [ `$ECHO $CURRENT_MONTH|$AWK '{print $1}'|$WC -c` -eq 1 ];then CURRENT_MONTH="0$CURRENT_MONTH";fi
 		if [ $DATE_TYPE -eq 0 ];then
 			if [ $PROCESS_CONVERSION -eq 1 ];then
-				RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERSION_CMD}(${PART_COLUMN})~>=~'$START_YEAR-$CURRENT_MONTH-01'~AND~${CONVERSION_CMD}($PART_COLUMN)~<~'$END_DATE'")
+				RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERT_STRING}~>=~'$START_YEAR-$CURRENT_MONTH-01'~AND~${CONVERT_STRING}~<~'$END_DATE'")
 			else
 				RULE_ARRAY=(${RULE_ARRAY[@]} "${PART_COLUMN}~>=~'$START_YEAR-$CURRENT_MONTH-01'~AND~$PART_COLUMN~<~'$END_DATE'")
 			fi
 		else
 			if [ $PROCESS_CONVERSION -eq 1 ];then
-				RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERSION_CMD}(${PART_COLUMN})~>=~'$START_YEAR-$CURRENT_MONTH-01~00:00:00'~AND~${CONVERSION_CMD}($PART_COLUMN)~<~'$END_DATE~00:00:00'")
+				RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERT_STRING}~>=~'$START_YEAR-$CURRENT_MONTH-01~00:00:00'~AND~${CONVERT_STRING}~<~'$END_DATE~00:00:00'")
 			else
 				RULE_ARRAY=(${RULE_ARRAY[@]} "${PART_COLUMN}~>=~'$START_YEAR-$CURRENT_MONTH-01~00:00:00'~AND~$PART_COLUMN~<~'$END_DATE~00:00:00'")
 			fi
@@ -725,13 +729,13 @@ PROCESS_YEARLY () {
 		((RULE_END_YEAR=$START_YEAR+1))
 		if [ $DATE_TYPE -eq 0 ];then
 			if [ $PROCESS_CONVERSION -eq 1 ];then
-				RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERSION_CMD}(${PART_COLUMN})~>=~'$START_YEAR-01-01'~AND~${CONVERSION_CMD}($PART_COLUMN)~<~'$RULE_END_YEAR-01-01'")
+				RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERT_STRING}~>=~'$START_YEAR-01-01'~AND~${CONVERT_STRING}~<~'$RULE_END_YEAR-01-01'")
 			else
 				RULE_ARRAY=(${RULE_ARRAY[@]} "${PART_COLUMN}~>=~'$START_YEAR-01-01'~AND~$PART_COLUMN~<~'$RULE_END_YEAR-01-01'")
 			fi
 		else
 			if [ $PROCESS_CONVERSION -eq 1 ];then
-				RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERSION_CMD}(${PART_COLUMN})~>=~'$START_YEAR-01-01~00:00:00'~AND~${CONVERSION_CMD}($PART_COLUMN)~<~'$RULE_END_YEAR-01-01~00:00:00'")
+				RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERT_STRING}~>=~'$START_YEAR-01-01~00:00:00'~AND~${CONVERT_STRING}~<~'$RULE_END_YEAR-01-01~00:00:00'")
 			else
 				RULE_ARRAY=(${RULE_ARRAY[@]} "${PART_COLUMN}~>=~'$START_YEAR-01-01~00:00:00'~AND~$PART_COLUMN~<~'$RULE_END_YEAR-01-01~00:00:00'")
 			fi
@@ -747,14 +751,7 @@ SECURE_DATA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Creating temporary holding table to secure records" 1
 	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "create table ${SECURE_TABLE_NAME} (like $PARENT_TABLE_NAME);" >> $LOG_FILE 2>&1
-	#TAB_OID=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select oid from pg_class where relname='$SECURE_TAB' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
-	#SOURCE_TAB_OID=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select oid from pg_class where relname='$SOURCE_TAB' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
-	#ATTNUM_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select count(attrnums) from gp_distribution_policy where localoid=$SOURCE_TAB_OID ;"`
-	#ERROR_CHK $? "create temporary holding table" 2
 	LOG_MSG "[INFO]:-Commencing record transfer, please wait..." 1
-	#if [ $ATTNUM_COUNT -eq 0 ];then
-	#	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "update gp_distribution_policy set attrnums='{}' where localoid=$TAB_OID;"
-	#fi
 	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "insert into ${SECURE_TABLE_NAME} (select * from only $PARENT_TABLE_NAME);" >> $LOG_FILE 2>&1
 	ERROR_CHK $? "secure records to temporary table" 2
 	SECURE_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select count(*) from only $PARENT_TABLE_NAME;"`
@@ -762,7 +759,7 @@ SECURE_DATA () {
 	SECURE_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select count(*) from ${SECURE_TABLE_NAME};"`
 	LOG_MSG "[INFO]:-Secure table has $SECURE_COUNT records" 1
 	LOG_MSG "[INFO]:-Clearing down $PARENT_TABLE_NAME" 1
-	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "truncate table $PARENT_TABLE_NAME;" # >/dev/null 2>&1
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "truncate table $PARENT_TABLE_NAME;"
 	ERROR_CHK $? "truncate $PARENT_TABLE_NAME" 2
 	STEP_BACK=1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -787,6 +784,10 @@ REVERT_BACK () {
 			do
 			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "drop table ${PARENT_TABLE_NAME}_${SUFFIX} cascade;" >> $LOG_FILE 2>&1
 			ERROR_CHK $? "drop child table ${PARENT_TABLE_NAME}_${SUFFIX}" 1
+			if [ $RULE_GEN -eq 1 ];then
+			#Rules have been requested, drop these of parent table
+				$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "drop rule rule_${PARENT_TABLE_NAME}_${SUFFIX} on ${PARENT_TABLE_NAME};" >> $LOG_FILE 2>&1
+			fi
 			done
 			LOG_MSG "[INFO]:-Copying records back to original table" 1
 			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "insert into $PARENT_TABLE_NAME (select * from ${SECURE_TABLE_NAME});" >> $LOG_FILE 2>&1
@@ -843,7 +844,6 @@ GENERATE_SQL () {
 	for SUFFIX in "${SUFFIX_ARRAY[@]}"
 	do
 		#Check if a table of that name exists
-#		CHK_EXISTS_TABLE ${PARENT_TABLE_NAME}_$SUFFIX $MASTER_PORT $QD_DBNAME 
 		CHILD_TAB_FULL=${SCHEMA_NAME}.${CHILD_STRING}${CHILD_TABLE_ID}${DEPTH}_${CUR_TYPES}_$SUFFIX
 		CHILD_NAME=${CHILD_STRING}${CHILD_TABLE_ID}${DEPTH}_${CUR_TYPES}_$SUFFIX
 		CHK_EXISTS_TABLE $CHILD_TAB_FULL $MASTER_PORT $QD_DBNAME 
@@ -907,6 +907,7 @@ RUN_GENERATE_SQL () {
 	if [ `$GREP -ci ERROR $TMP_OUTPUT_FILE` -ne 0 ];then
 		LOG_MSG "[FATAL]:-Error generated from SQL file, dumping out to log file" 1
 		$CAT $TMP_OUTPUT_FILE >> $LOG_FILE
+		$CAT $TMP_FILE >> $LOG_FILE
 		RM_TMP_FILE
 		if [ $COPY_REC -eq 1 ];then
 			REVERT_BACK
@@ -925,6 +926,7 @@ RUN_INDEX_SQL () {
 	if [ `$GREP -ci ERROR $TMP_OUTPUT_FILE` -ne 0 ];then
 		LOG_MSG "[FATAL]:-Error generated from SQL IDX file, dumping out to log file" 1
 		$CAT $TMP_OUTPUT_FILE >> $LOG_FILE
+		$CAT $IDX_TMP_FILE >> $LOG_FILE
                 RM_TMP_FILE
 		if [ $COPY_REC -eq 1 ];then	
 			REVERT_BACK
@@ -948,7 +950,7 @@ COPY_DATA () {
 	fi	
 	LOG_MSG "[INFO]:-Removing secured table $SECURE_TABLE_NAME" 1
 	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "DROP TABLE ${SECURE_TABLE_NAME};" >> $LOG_FILE 2>&1
-	ERROR_CHK $? "drop of ${SECURE_TABLE_NAME}" 2
+	ERROR_CHK $? "drop of ${SECURE_TABLE_NAME}" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -996,7 +998,7 @@ RM_TMP_FILE () {
 #******************************************************************************
 # Main Section
 #******************************************************************************
-trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
+trap 'RM_TMP_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
 		while getopts ":vt:'?'aql:d:c:x:p:rn:s:f:bi:e:g:o:um:kF!D" opt;do
 			case $opt in
@@ -1049,6 +1051,16 @@ CHK_ON_PASSIVE_STANDBY
 GET_QD_DB_NAME
 if [ x"" != x"$ALT_DB_NAME" ];then 
 		QD_DBNAME=$ALT_DB_NAME
+fi
+if [ x"" != x"$CONVERSION_CMD" ];then
+#Check to see if a complex conversion is being used
+	if [ `$ECHO $CONVERSION_CMD|$GREP -c "^"` -eq 1 ];then
+		STRLEFT=`$ECHO $CONVERSION_CMD|$AWK -F'^' '{print $1}'`
+		STRRIGHT=`$ECHO $CONVERSION_CMD|$AWK -F'^' '{print $2}'`
+		CONVERT_STRING="${STRLEFT}${PART_COLUMN}$STRRIGHT"
+	else
+		CONVERT_STRING="${CONVERSION_CMD}(${PART_COLUMN})"
+	fi
 fi
 CHK_PARAM
 VALIDATE_PARAM
