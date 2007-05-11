@@ -92,7 +92,7 @@ char * url_fgets(char *ptr, int size, URL_FILE *file);
 void url_rewind(URL_FILE *file);
 
 /* we use a global one for convenience */
-CURLM *multi_handle;
+CURLM *multi_handle = 0;
 
 /* curl calls this routine to get more data */
 static size_t
