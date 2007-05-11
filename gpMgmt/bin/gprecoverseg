@@ -1,5 +1,5 @@
 #!/bin/bash
-#	Filename:-		gprecoverseg.bsh
+#	Filename:-		gprecoverseg
 #	Version:-		$Revision$
 #	Updated:-		$Date$
 #	Status:-		Released
@@ -26,7 +26,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_functions.sh
+FUNCTIONS=$WORKDIR/lib/gp_bash_functions.sh
 if [ -f $FUNCTIONS ];then
         . $FUNCTIONS
 else
@@ -50,7 +50,6 @@ declare -a MIRROR_DATADIR_ARRAY
 #******************************************************************************
 INTERACTIVE=1
 VERBOSE=1
-WORKDIR=`pwd`
 TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
 PROG_NAME=`$BASENAME $0`
@@ -59,7 +58,7 @@ EXIT_STATUS=0
 FORCESTOP=0
 TMP_FILE=/tmp/${PROG_NAME}_${CUR_DATE}.$$
 PARALLEL_STATUS_FILE=/tmp/gpstate_parallel_status_file.$$
-GPSEGREC=gpsegrec.sh
+GPSEGREC=$WORKDIR/lib/gpsegrec.sh
 BATCH_DEFAULT=4 #Specific limit for segment recovery
 #******************************************************************************
 # Functions
@@ -398,6 +397,10 @@ TEST_ACCESS () {
 		((COUNT=$COUNT+1))	
 	done
 	LOG_MSG "[INFO]:-Remote access checks completed" 1
+	LOG_MSG "[INFI]:-Obtaining segment size in KB for $MIR_QE_HOST"
+	SEG_DIR_SIZE=`$TRUSTED_SHELL $MIR_QE_HOST "$DU $MIR_QE_DIR"|$TAIL -1|$AWK '{print $1}'`
+	((WAIT_LIMIT=$SEG_DIR_SIZE/100))
+	LOG_MSG "[INFO]:-Set time out limit to $WAIT_LIMIT seconds" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 STOP_DATABASE () { 
