@@ -26,7 +26,7 @@ WORKDIR=`dirname $0`
 # Source required functions file, this required for script to run
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
-FUNCTIONS=$WORKDIR/gp_bash_functions.sh
+FUNCTIONS=$WORKDIR/lib/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -40,7 +40,6 @@ fi
 # Log file that will record script actions
 CUR_DATE=`$DATE +%Y%m%d`
 TIME=`$DATE +%H%M%S`
-PROG_NAME=`$BASENAME $0`
 PROG_NAME=`$BASENAME $0`
 HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
 BACKOUT_FILE=$DEFLOGDIR/backout_gpinitsystem_${USER_NAME}_${CUR_DATE}_$TIME
@@ -70,7 +69,7 @@ TMP_PG_HBA=/tmp/pg_hba_conf_master.$$
 TMP_FILE=/tmp/cluster_tmp_file.$$
 TMP_HOSTNAME_FILE=hostname_test_file.$$
 PARALLEL_STATUS_FILE=/tmp/gpinitsystem_parallel_status_file.$$
-GPCREATESEG=gpcreateseg.sh
+GPCREATESEG=$WORKDIR/lib/gpcreateseg.sh
 ULIMIT_WARN=0
 PARALLEL_BUILD=1
 #******************************************************************************
@@ -200,8 +199,8 @@ CHK_PARAMS () {
 		$LOCALE >> $LOG_FILE
 		LOG_MSG "[INFO]:-End of system locale dump"
 		if [ x"" != x"$PARALLEL_BUILD" ];then
-			if [ ! -f ${WORKDIR}/$GPCREATESEG ];then
-				ERROR_EXIT "[FATAL]:-Parallel mode selected by no ${WORKDIR}/$GPCREATESEG exists" 2
+			if [ ! -f $GPCREATESEG ];then
+				ERROR_EXIT "[FATAL]:-Parallel mode selected by no $GPCREATESEG exists" 2
 			fi
 		fi
 		#Check the other files that are required to be able to continue
@@ -297,11 +296,6 @@ CHK_PARAMS () {
 		else
 				LOG_MSG "[INFO]:-Will create database $DATABASE_NAME"
 		fi
-		#IP_ALLOW
-		if [ ! $IP_ALLOW ]; then
-				ERROR_EXIT "[FATAL]:-IP_ALLOW variable not set" 2
-		fi
-		#TRUSTED_SHELL
 		if [ ! $TRUSTED_SHELL ]; then
 				ERROR_EXIT "[FATAL]:-TRUSTED_SHELL variable not set" 2
 		fi
@@ -725,7 +719,6 @@ DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:-Master Database      = $DATABASE_NAME" 1
 		LOG_MSG "[INFO]:-Master connections   = $MASTER_MAX_CONNECT" 1
 		LOG_MSG "[INFO]:-Master buffers       = $MASTER_SHARED_BUFFERS" 1
-		LOG_MSG "[INFO]:-Master IP allow      = $IP_ALLOW" 1
 		LOG_MSG "[INFO]:-Segment connections  = $QE_MAX_CONNECT" 1
 		LOG_MSG "[INFO]:-Segment buffers      = $QE_SHARED_BUFFERS" 1
 		LOG_MSG "[INFO]:-Checkpoint segments  = $CHECK_POINT_SEGMENTS" 1
@@ -865,7 +858,7 @@ CREATE_QD_DB () {
 				done
 		fi
 		LOG_MSG "[INFO]:-Adding gp_dumpall access to $PG_HBA for master host"
-		BUILD_MASTER_PG_HBA_FILE $GP_DIR $IP_ALLOW
+		BUILD_MASTER_PG_HBA_FILE $GP_DIR 
 		LOG_MSG "[INFO]:-Starting the Master in admin mode" 1
 		export PGPORT=$GP_PORT;$PG_CTL -w -D $GP_DIR -l ${GP_DIR}.log -o "-i -p $GP_PORT" start
 		RET_TEXT="`$PG_CTL status -D $GP_DIR`"
@@ -1186,11 +1179,11 @@ SCAN_LOG () {
 		LOG_MSG "[INFO]:-Please review contents of log file" 1
 		LOG_MSG "[INFO]:-$LOG_FILE" 1
 		LOG_MSG "[INFO]:-To determine level of criticality" 1
-		LOG_MSG "[WARN]:-*******************************************************" 1
 		if [ `$GREP -ci "\[INFO]:-Start Main" $LOG_FILE` -gt 1 ];then
 		LOG_MSG "[INFO]:-These messages could be from a previous run of the utility" 1
-		LOG_MSG "[INFO]:-that was run today!" 1
+		LOG_MSG "[INFO]:-that was called today!" 1
 		fi
+		LOG_MSG "[WARN]:-*******************************************************" 1
 		EXIT_STATUS=1
 	else
 		LOG_MSG "[INFO]:-Log file scan check passed" 1
@@ -1322,19 +1315,24 @@ LOG_MSG "[INFO]:-1. Ensure that the greenplum_path.sh file is sourced" 1
 LOG_MSG "[INFO]:-2. Add \"export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}-1\"" 1
 LOG_MSG "[INFO]:-   to access the Greenplum scripts for this instance:" 1
 LOG_MSG "[INFO]:-   or, use -d ${MASTER_DIRECTORY}/${SEG_PREFIX}-1 option for the Greenplum scripts" 1
-LOG_MSG "[INFO]:-   Example gpstate.sh -d ${MASTER_DIRECTORY}/${SEG_PREFIX}-1" 1
+LOG_MSG "[INFO]:-   Example gpstate -d ${MASTER_DIRECTORY}/${SEG_PREFIX}-1" 1
 LOG_MSG "[INFO]:-Script log file = $LOG_FILE" 1
-LOG_MSG "[INFO]:-To remove instance, run gpdeletecluster.sh script" 1
+LOG_MSG "[INFO]:-To remove instance, run gpdeletesystem utility" 1
 if [ x"" != x"$STANDBY_HOSTNAME" ];then
 LOG_MSG "[INFO]:-Standby Master $STANDBY_HOSTNAME has been configured" 1
 LOG_MSG "[INFO]:-To activate the Standby Master Segment in the event of Master" 1
-LOG_MSG "[INFO]:-failure review options for gpactivatestandby.sh" 1
+LOG_MSG "[INFO]:-failure review options for gpactivatestandby" 1
 else
 LOG_MSG "[INFO]:-To initialize a Standby Master Segment for this Greenplum instance" 1
-LOG_MSG "[INFO]:-Review options for gpinitstandby.sh" 1
+LOG_MSG "[INFO]:-Review options for gpinitstandby" 1
 fi
+LOG_MSG "[INFO}:-------------------------------------------------------" 1
+LOG_MSG "[INFO]:-The Master ${MASTER_DATA_DIRECTORY}/$PG_HBA post gpinitsystem" 1
+LOG_MSG "[INFO]:-has been configured to allow all hosts within this new" 1
+LOG_MSG "[INFO]:-array to intercommunicate. Any hosts external to this" 1
+LOG_MSG "[INFO]:-new array must be explicitly added to this file" 1
+LOG_MSG "[INFO]:-Refer to the Greenplum Admin support guide which is" 1
+LOG_MSG "[INFO]:-located in the $GPHOME/docs directory" 1
 LOG_MSG "[INFO]:-------------------------------------------------------" 1
-
 LOG_MSG "[INFO]:-End Main"
-
 exit $EXIT_STATUS
