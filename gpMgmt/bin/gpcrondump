@@ -24,7 +24,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/gp_bash_functions.sh
+FUNCTIONS=$WORKDIR/lib/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
@@ -47,7 +47,7 @@ VERBOSE=1
 TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
 DUMP_DATE=`$DATE +%Y%m%d`
-PROG_NAME=`$BASENAME $0`
+FILE_TIMESTAMP=`$DATE +%Y%m%d%H%M%S`
 PROG_NAME=`$BASENAME $0`
 HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
 EXIT_STATUS=0
@@ -65,13 +65,13 @@ CUR_HOST=`$HOSTNAME`
 VACUUM_MODE=0 # 1=run before dump starts, 2=run after dump has completed.
 TRY_COMPRESSION=0
 IS_RUNNING_FLAG=/tmp/${PROG_NAME}_is_running_flag
-CONFIG_BACKUP_FILE=master_config_files_${DUMP_DATE}.tar
+CONFIG_BACKUP_FILE=gp_master_config_files_${FILE_TIMESTAMP}.tar
 DUMP_CONFIG=0
 DUMP_PG_DUMP=0
 CATALOG=pg_catalog
 RUN_PROG=0
 PARALLEL_STATUS_FILE=/tmp/gpcrondump_parallel_status_file.$$
-GPSEGCRON=gpsegcron.sh
+GPSEGCRON=$WORKDIR/lib/gpsegcron.sh
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -130,6 +130,8 @@ USAGE () {
 		$ECHO "          Data will be dumped to ${DUMP_SUB_DIR}/$DUMP_DATE/<database name>_${CATALOG}_$DUMP_DATE"
 		$ECHO "      -C, clean (drop) schema prior to create [default do not clean]"
 		$ECHO "      -R, <program name> run named program after successful dump completed, include full path name"
+		$ECHO "          if program name not in path. Note, program will only be called once if multi database"
+		$ECHO "          dump requested"
 		$ECHO "      -B, <number> run this batch of state segment processes in parallel [default $BATCH_DEFAULT]"
 		$ECHO
 		$ECHO "      Crontab entry (example):"
@@ -480,61 +482,65 @@ SET_VAC_TXT () {
 PROMPT_CONTINUE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		LOG_MSG "[INFO]:-Master Greenplum Instance dump parameters:" 1
-		LOG_MSG "[INFO]:-------------------------------------" 1
+		LOG_MSG "[INFO]:------------------------------------------------" 1
 		if [ $MULTIDB -eq 1 ];then
-		LOG_MSG "[INFO]:-Dump type                  = Multiple database" 1
+		LOG_MSG "[INFO]:-Dump type                        = Multiple database" 1
 		else
-		LOG_MSG "[INFO]:-Dump type                  = Single database" 1
+		LOG_MSG "[INFO]:-Dump type                        = Single database" 1
 		fi
-		LOG_MSG "[INFO]:-Database to be dumped      = $DUMP_DATABASE" 1
+		LOG_MSG "[INFO]:-Database to be dumped            = $DUMP_DATABASE" 1
 		if [ x"" != x"$SCHEMA_NAME" ];then
-		LOG_MSG "[INFO]:-Schema to dump             = $SCHEMA_NAME" 1
+		LOG_MSG "[INFO]:-Schema to dump                   = $SCHEMA_NAME" 1
 		fi
-		LOG_MSG "[INFO]:-Master Port                = $MASTER_PORT" 1
-		LOG_MSG "[INFO]:-Master directory           = $MASTER_DATA_DIRECTORY" 1
+		LOG_MSG "[INFO]:-Master Port                      = $MASTER_PORT" 1
+		LOG_MSG "[INFO]:-Master directory                 = $MASTER_DATA_DIRECTORY" 1
 		SET_DUMP_TYPE_TEXT
 		LOG_MSG "[INFO]:-Greenplum Instance dump type     = $TYPE" 1
 		if [ $RUN_PROG != "0" ];then
-		LOG_MSG "[INFO]:-Run post dump program      = $RUN_PROG" 1
+		LOG_MSG "[INFO]:-Run post dump program            = $RUN_PROG" 1
 		else
-		LOG_MSG "[INFO]:-Run post dump program      = Off" 1
+		LOG_MSG "[INFO]:-Run post dump program            = Off" 1
 		fi
 		if [ $FAILED_PRIMARY_COUNT -ne 0 ];then
-			LOG_MSG "[WARN]:-Failed primary count       = $FAILED_PRIMARY_COUNT" 1
+			LOG_MSG "[WARN]:-Failed primary count             = $FAILED_PRIMARY_COUNT $WARN_MARK" 1
 		else
-			LOG_MSG "[INFO]:-Failed primary count       = $FAILED_PRIMARY_COUNT" 1
+			LOG_MSG "[INFO]:-Failed primary count             = $FAILED_PRIMARY_COUNT" 1
 		fi
 		if [ $FAILED_MIRROR_COUNT -ne 0 ];then
-			LOG_MSG "[WARN]:-Failed mirror count        = $FAILED_MIRROR_COUNT" 1
+			LOG_MSG "[WARN]:-Failed mirror count              = $FAILED_MIRROR_COUNT $WARN_MARK" 1
 		else
-			LOG_MSG "[INFO]:-Failed mirror count        = $FAILED_MIRROR_COUNT" 1
+			LOG_MSG "[INFO]:-Failed mirror count              = $FAILED_MIRROR_COUNT" 1
 		fi	
 		if [ $ROLLBACK -eq 0 ];then
-			LOG_MSG "[INFO]:-Rollback dumps             = Off" 1
+			LOG_MSG "[INFO]:-Rollback dumps                   = Off" 1
 		else
-			LOG_MSG "[INFO]:-Rollback dumps             = On" 1
+			LOG_MSG "[INFO]:-Rollback dumps                   = On" 1
 		fi
 		if [ $COMPRESSION ];then
-			LOG_MSG "[INFO]:-Dump file compression      = On" 1
+			LOG_MSG "[INFO]:-Dump file compression            = On" 1
 		else
-			LOG_MSG "[INFO]:-Dump file compression      = Off" 1
+			LOG_MSG "[INFO]:-Dump file compression            = Off" 1
 		fi
 		if [ $TRY_COMPRESSION -eq 1 ];then
-			LOG_MSG "[INFO]:-Compression override       = On" 1
+			LOG_MSG "[INFO]:-Compression override             = On" 1
 		else
-			LOG_MSG "[INFO]:-Compression override       = Off" 1
+			LOG_MSG "[INFO]:-Compression override             = Off" 1
 		fi
 		if [ $CLEAR_DUMPS -eq 1 ];then
-			LOG_MSG "[INFO]:-Clear old dump files       = On" 1
+			LOG_MSG "[INFO]:-Clear old dump files             = On" 1
 		else
-			LOG_MSG "[INFO]:-Clear old dump files       = Off" 1
+			LOG_MSG "[INFO]:-Clear old dump files             = Off" 1
 		fi	
+		if [ $DUMP_CONFIG -eq 1 ];then SWITCH_TXT=On;else SWITCH_TXT=Off;fi
+		LOG_MSG "[INFO]:-Secure config files              = $SWITCH_TXT" 1
+		if [ $DUMP_PG_DUMP -eq 1 ];then SWITCH_TXT=On;else SWITCH_TXT=Off;fi
+		LOG_MSG "[INFO]:-Dump catalog via pg_dump         = $SWITCH_TXT" 1
 		if [ x"" != x"$ADD_DUMP_OPTIONS" ];then
-			LOG_MSG "[INFO]:-Additional options         = $ADD_DUMP_OPTIONS" 1
+			LOG_MSG "[INFO]:-Additional options               = $ADD_DUMP_OPTIONS" 1
 		fi
 		SET_VAC_TXT
-		LOG_MSG "[INFO]:-Vacuum mode type           = $VAC_TXT" 1
-		LOG_MSG "[INFO]:-Disk free percent value    = $FREE_SPACE_PERCENT %" 1
+		LOG_MSG "[INFO]:-Vacuum mode type                 = $VAC_TXT" 1
+		LOG_MSG "[INFO]:-Disk free percent value          = $FREE_SPACE_PERCENT %" 1
 		$ECHO
 		$ECHO "Continue with Greenplum instance dump yY|nN >"
 		read REPLY
@@ -552,7 +558,7 @@ PROMPT_CONTINUE () {
 PROCESS_DUMP_CONFIG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Securing master configuration files" 1
-	$TAR cf ${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/${DUMP_DATE}/${CONFIG_BACKUP_FILE} ${MASTER_DATA_DIRECTORY}/*.conf
+	$TAR cf ${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/${DUMP_DATE}/${CONFIG_BACKUP_FILE} ${MASTER_DATA_DIRECTORY}/*.conf  >> $LOG_FILE 2>&1
 	ERROR_CHK $? "dump config files" 1
 	DUMP_CONFIG=0
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -561,7 +567,7 @@ PROCESS_DUMP_CONFIG () {
 PROCESS_DUMP_PG_DUMP () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Commencing pg_catalog dump for database $DUMP_DATABASE" 1
-	$PG_DUMP -f ${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/${DUMP_DATE}/${DUMP_DATABASE}_${CATALOG}_$DUMP_DATE -n $CATALOG $DUMP_DATABASE
+	$PG_DUMP -f ${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/${DUMP_DATE}/gp_${DUMP_DATABASE}_database_${CATALOG}_dump_$FILE_TIMESTAMP -n $CATALOG $DUMP_DATABASE
 	ERROR_CHK $? "dump $CATALOG" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -852,19 +858,26 @@ if [ `$ECHO $DUMP_DATABASE|$GREP -c ","` -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Cannot supply schema name if multiple database dump requested" 2
 	fi
 	DUMP_DATABASE_LIST=(`$ECHO $DUMP_DATABASE|$TR ',' ' '`)
+	LOG_MSG "[INFO]:-Configuring for multiple database dump" 1
 else
 	MULTIDB=0
-	LOG_MSG "[INFO]:-Configuring for multiple database dump" 1
 	DUMP_DATABASE_LIST=($DUMP_DATABASE)
+	LOG_MSG "[INFO]:-Configuring for single database dump" 1
 fi
 #Check if RUN_PROG has been set
 if [ $RUN_PROG != "0" ];then
 	#Check to see if the file exists
-	if [ -f $RUN_PROG ];then
-		LOG_MSG "[INFO]:-Located $RUN_PROG, will call after dump completed"
+	which $RUN_PROG >> $LOG_FILE 2>&1
+	if [ $? -ne 0 ];then
+	#Could not find program in path, see if exists with any path name supplied
+		if [ -f $RUN_PROG ];then
+			LOG_MSG "[INFO]:-Located $RUN_PROG, will call after dump completed" 1
+		else
+			LOG_MSG "[WARN]:-Could not locate $RUN_PROG" 1
+			RUN_PROG=0
+		fi
 	else
-		LOG_MSG "[WARN]:-Could not locate $RUN_PROG" 1
-		RUN_PROG=0
+		LOG_MSG "[INFO]:-Located $RUN_PROG, will call after dump completed" 1
 	fi
 fi	
 #Check that all databases exist
@@ -905,14 +918,11 @@ do
 		LOG_MSG "[INFO]:-Vacuum before database dump option selected" 1
 		VACUUM_PROCESS
 	fi
-	if [ $DUMP_CONFIG -eq 1 ];then
-		PROCESS_DUMP_CONFIG
-	fi
+	PROCESS_DUMP
+	CHK_POST_DUMP
 	if [ $DUMP_PG_DUMP -eq 1 ];then
 		PROCESS_DUMP_PG_DUMP
 	fi
-	PROCESS_DUMP
-	CHK_POST_DUMP
 	if [ $ROLLBACK_DUMPS ];then
 		if [ $ROLLBACK -eq 1 ];then
 			LOG_MSG "[WARN]:-Dump request was incomplete, rolling back dump" 1
@@ -934,10 +944,14 @@ do
 	fi
 	STATUS_REPORT
 	EVENT_MAIL "Report from gpcrondump on host $CUR_HOST[COMPLETED]" "Completed for database $DUMP_DATABASE with return code $EXIT_STATUS [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
-	if [ $RUN_PROG != "0" ];then
-		LOG_MSG "[INFO]:-Calling $RUN_PROG"
-		$RUN_PROG
-	fi
 done
+if [ $DUMP_CONFIG -eq 1 ];then
+	PROCESS_DUMP_CONFIG
+fi
+if [ $RUN_PROG != "0" ];then
+	LOG_MSG "[INFO]:-Calling $RUN_PROG" 1
+	LOG_MSG "[INFO]:-Program screen output will be directed to $LOG_FILE" 1
+	$RUN_PROG >> $LOG_FILE 2>&1
+fi
 LOG_MSG "[INFO]:-End Main"
 exit $FINAL_EXIT_STATUS
