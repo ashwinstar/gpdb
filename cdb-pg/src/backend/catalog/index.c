@@ -771,7 +771,7 @@ index_create(Oid heapRelationId,
 	 * on a shared index that already exists.  If so, we don't need or want to recreate it.
 	 * 
 	 * Does the index data already exist?
-	 */
+	
 	 if (indexRelationId == ResQueueOidIndexId || 
 			indexRelationId == ResQueueRsqnameIndexId || 
 			indexRelationId == AuthIdRolResQueueIndexId)
@@ -779,6 +779,7 @@ index_create(Oid heapRelationId,
 	 	if (RelationGetNumberOfBlocks(indexRelation) > 0)
 	 		skip_build = true;
 	 }
+	 */
 	 
 	/*
 	 * If this is bootstrap (initdb) time, then we don't actually fill in the
@@ -1080,6 +1081,10 @@ index_update_stats(Relation rel, bool hasindex, bool isprimary,
 	Form_pg_class rd_rel;
 	bool		dirty;
 
+	if (Gp_role == GP_ROLE_DISPATCH && !IsBootstrapProcessingMode())
+		if (rel->rd_id > 15000)
+			cdbanalyze_get_relstats(rel, &relpages, &reltuples);
+	
 	/*
 	 * We always update the pg_class row using a non-transactional,
 	 * overwrite-in-place update.  There are several reasons for this:
@@ -1351,137 +1356,6 @@ setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode)
 	return newrelfilenode;
 }
 
-#if 0
-static void
-UpdateStats(Oid relid, double reltuples)
-{
-	Relation	whichRel;
-	Relation	pg_class;
-	HeapTuple	tuple;
-	BlockNumber relpages;
-	Form_pg_class rd_rel;
-	HeapScanDesc pg_class_scan = NULL;
-	bool		in_place_upd;
-
-	/*
-	 * This routine handles updates for both the heap and index relation
-	 * statistics.	In order to guarantee that we're able to *see* the index
-	 * relation tuple, we bump the command counter id here.  The index
-	 * relation tuple was created in the current transaction.
-	 */
-	CommandCounterIncrement();
-
-	/*
-	 * CommandCounterIncrement() flushes invalid cache entries, including
-	 * those for the heap and index relations for which we're updating
-	 * statistics.	Now that the cache is flushed, it's safe to open the
-	 * relation again.	We need the relation open in order to figure out how
-	 * many blocks it contains.
-	 */
-
-	/*
-	 * Grabbing lock here is probably redundant ...
-	 */
-	whichRel = relation_open(relid, ShareLock);
-
-	/*
-	 * Find the tuple to update in pg_class.  Normally we make a copy of the
-	 * tuple using the syscache, modify it, and apply heap_update. But in
-	 * bootstrap mode we can't use heap_update, so we cheat and overwrite the
-	 * tuple in-place.	(Note: as of PG 8.0 this isn't called during
-	 * bootstrap, but leave the code here for possible future use.)
-	 *
-	 * We also must cheat if reindexing pg_class itself, because the target
-	 * index may presently not be part of the set of indexes that
-	 * CatalogUpdateIndexes would update (see reindex_relation).  In this case
-	 * the stats updates will not be WAL-logged and so could be lost in a
-	 * crash.  This seems OK considering VACUUM does the same thing.
-	 */
-	pg_class = heap_open(RelationRelationId, RowExclusiveLock);
-
-	in_place_upd = IsBootstrapProcessingMode() ||
-		ReindexIsProcessingHeap(RelationRelationId);
-
-	if (!in_place_upd)
-	{
-		tuple = SearchSysCacheCopy(RELOID,
-								   ObjectIdGetDatum(relid),
-								   0, 0, 0);
-	}
-	else
-	{
-		ScanKeyData key[1];
-
-		ScanKeyInit(&key[0],
-					ObjectIdAttributeNumber,
-					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(relid));
-
-		pg_class_scan = heap_beginscan(pg_class, SnapshotNow, 1, key);
-		tuple = heap_getnext(pg_class_scan, ForwardScanDirection);
-	}
-
-	if (!HeapTupleIsValid(tuple))
-		elog(ERROR, "could not find tuple for relation %u", relid);
-	rd_rel = (Form_pg_class) GETSTRUCT(tuple);
-
-	/*
-	 * Update statistics in pg_class, if they changed.	(Avoiding an
-	 * unnecessary update is not just a tiny performance improvement; it also
-	 * reduces the window wherein concurrent CREATE INDEX commands may
-	 * conflict.)
-	 */
-	relpages = RelationGetNumberOfBlocks(whichRel);
-	
-	/*
-	 * CDB: Query the segment db local catalogs to get summary statistics.
-	 */
-	if (Gp_role == GP_ROLE_DISPATCH)
-		cdbanalyze_get_relstats(whichRel, &relpages, &reltuples);
-	
-
-	if (rd_rel->relpages != (int32) relpages ||
-		rd_rel->reltuples != (float4) reltuples)
-	{
-		if (in_place_upd)
-		{
-			/* Bootstrap or reindex case: overwrite fields in place. */
-			LockBuffer(pg_class_scan->rs_cbuf, BUFFER_LOCK_EXCLUSIVE);
-			rd_rel->relpages = (int32) relpages;
-			rd_rel->reltuples = (float4) reltuples;
-			LockBuffer(pg_class_scan->rs_cbuf, BUFFER_LOCK_UNLOCK);
-			WriteNoReleaseBuffer(pg_class_scan->rs_cbuf);
-			if (!IsBootstrapProcessingMode())
-				CacheInvalidateHeapTuple(pg_class, tuple);
-		}
-		else
-		{
-			/* During normal processing, must work harder. */
-			rd_rel->relpages = (int32) relpages;
-			rd_rel->reltuples = (float4) reltuples;
-			simple_heap_update(pg_class, &tuple->t_self, tuple);
-			CatalogUpdateIndexes(pg_class, tuple);
-		}
-	}
-
-	if (in_place_upd)
-		heap_endscan(pg_class_scan);
-	else
-		heap_freetuple(tuple);
-
-	/*
-	 * We shouldn't have to do this, but we do...  Modify the reldesc in place
-	 * with the new values so that the cache contains the latest copy.	(XXX
-	 * is this really still necessary?	The relcache will get fixed at next
-	 * CommandCounterIncrement, so why bother here?)
-	 */
-	whichRel->rd_rel->relpages = (int32) relpages;
-	whichRel->rd_rel->reltuples = (float4) reltuples;
-
-	heap_close(pg_class, RowExclusiveLock);
-	relation_close(whichRel, NoLock);
-}
-#endif
 
 /*
  * index_build - invoke access-method-specific index build procedure
