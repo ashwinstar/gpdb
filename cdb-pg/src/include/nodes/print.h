@@ -23,6 +23,7 @@ struct TupleTableSlot;                  /* #include "executor/tuptable.h" */
 
 #define nodeDisplay(x)		pprint(x)
 
+extern char * plannode_type(struct Plan *p);
 extern void print(void *obj);
 extern void pprint(void *obj);
 extern void elog_node_display(int lev, const char *title,

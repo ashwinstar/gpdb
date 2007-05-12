@@ -93,8 +93,8 @@ CopyPlanFields(Plan *from, Plan *newnode)
 	COPY_SCALAR_FIELD(nInitPlans);
 	COPY_NODE_FIELD(sliceTable);
 	COPY_SCALAR_FIELD(sliceNum);
-	COPY_SCALAR_FIELD(sharing_id);
-	COPY_SCALAR_FIELD(shared_id);
+	COPY_SCALAR_FIELD(shared_as_id);
+	COPY_SCALAR_FIELD(underlying_share_id); 
 }
 
 /*

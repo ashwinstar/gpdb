@@ -15,6 +15,7 @@ extern void debug_break();
 extern void debug_break_n(int n);
 extern void enable_debug_break_n(int n);
 extern void disable_debug_break_n(int n);
+
 #else
 #define debug_break
 #define debug_break_n(n)
@@ -22,6 +23,7 @@ extern void disable_debug_break_n(int n);
 #define disable_debug_break_n(n)
 #endif
 
+extern char * dotnode(void *);
 #endif /* _DEBUG_BREAK_H_ */
 
 

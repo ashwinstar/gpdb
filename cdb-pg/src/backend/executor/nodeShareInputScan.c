@@ -61,7 +61,7 @@ ShareInputNext(ShareInputScanState *node)
 	/* if first time call, need to init underlying material node */
 	if(node->ts_state == NULL)
 	{
-		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, node->ss.ps.plan->shared_id, false);
+		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, node->ss.ps.plan->underlying_share_id, false);
 		PlanState* snState = (PlanState *)snEntry->shareState;
 		/* 
 		 * set up underlying material node properly.  In case of shared node, 
@@ -154,7 +154,7 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 	ExecAssignResultTypeFromTL(&sisstate->ss.ps);
 
 	/* Assign scan type from shared node */
-	snEntry = ExecGetShareNodeEntry(estate, node->plan.shared_id, false);
+	snEntry = ExecGetShareNodeEntry(estate, node->plan.underlying_share_id, false);
 	Assert(snEntry);
 	snState = (PlanState *) snEntry->shareState;
 	Assert(snState); 

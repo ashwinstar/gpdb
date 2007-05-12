@@ -861,8 +861,8 @@ make_motion(Plan       *lefttree,
 	plan->flow = NULL;
 
 	/* By default we set motion to not shared. */
-	plan->sharing_id = ShareNodeId_NotShared;
-	plan->shared_id = ShareNodeId_NotShared;
+	plan->shared_as_id = ShareNodeId_NotShared;
+	plan->underlying_share_id = ShareNodeId_NotShared;
 
 	return node;
 }
@@ -1533,7 +1533,7 @@ typedef struct ApplyShareInputState
 } ApplyShareInputState;
 
 /* Walk the tree for shareinput.
- * Shareinput fix sharing_id and shared_id of nodes in place.  We do not want to use
+ * Shareinput fix shared_as_id and underlying_share_id of nodes in place.  We do not want to use
  * the ordinary tree walker as it is unnecessary to make copies etc.
  */
 typedef bool (*SHAREINPUT_MUTATOR) (Node *node, Query* qry, ApplyShareInputState *ctxt);
@@ -1582,14 +1582,14 @@ static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, Query* qry, Appl
 /* Assign the sharing id.  
  * Motion, Material and Sort may be shared.  
  */
-static bool shareinput_mutator_assign_sharing_id(Node *node, Query *qry, ApplyShareInputState *ctxt)
+static bool shareinput_mutator_assign_shared_as_id(Node *node, Query *qry, ApplyShareInputState *ctxt)
 {
 	Plan *plan = (Plan *) node;
 
-	if(plan->sharing_id >= 0)
+	if(plan->shared_as_id >= 0)
 	{
 #ifdef DEBUG
-		Plan *prev_plan = (Plan *) list_nth(qry->sharedNodes, plan->sharing_id);
+		Plan *prev_plan = (Plan *) list_nth(qry->sharedNodes, plan->shared_as_id);
 		Assert(prev_plan == plan);
 #endif
 		return false;
@@ -1600,7 +1600,7 @@ static bool shareinput_mutator_assign_sharing_id(Node *node, Query *qry, ApplySh
 		Motion *m = (Motion *) node;
 		Assert(list_length(m->sliceEntries) > 0);
 		Assert(m->plan.lefttree && !m->plan.righttree);
-		Assert(m->plan.lefttree->sharing_id == ShareNodeId_NotShared);
+		Assert(m->plan.lefttree->shared_as_id == ShareNodeId_NotShared);
 
 		m->fSetPlanRef = false;
 		m->mutated = NULL;
@@ -1608,22 +1608,22 @@ static bool shareinput_mutator_assign_sharing_id(Node *node, Query *qry, ApplySh
 		/* if more than one slice, this motion is shared and need an sharing id */
 		if(list_length(m->sliceEntries) > 1)
 		{
-			m->plan.sharing_id = ctxt->nextShareNodeId++;
+			m->plan.shared_as_id = ctxt->nextShareNodeId++;
 			qry->sharedNodes = lappend(qry->sharedNodes, node);
 			Assert(list_length(qry->sharedNodes) == ctxt->nextShareNodeId);
 		}
 		else
 		{
-			m->plan.sharing_id = ShareNodeId_NotShared;
+			m->plan.shared_as_id = ShareNodeId_NotShared;
 		}
 	}
 
 	if(IsA(node, Material) || IsA(node, Sort))
 	{
 		/* if I am shared, fix the sharing id */
-		if(plan->sharing_id != ShareNodeId_NotShared)
+		if(plan->shared_as_id != ShareNodeId_NotShared)
 		{
-			plan->sharing_id = ctxt->nextShareNodeId++;
+			plan->shared_as_id = ctxt->nextShareNodeId++;
 			qry->sharedNodes = lappend(qry->sharedNodes, node);
 			Assert(list_length(qry->sharedNodes) == ctxt->nextShareNodeId);
 		}
@@ -1631,24 +1631,24 @@ static bool shareinput_mutator_assign_sharing_id(Node *node, Query *qry, ApplySh
 	return true;
 }
 
-/* Fix the shared_id of a node.  Also, zap children if I am not the first 
+/* Fix the underlying_share_id of a node.  Also, zap children if I am not the first 
  * sharer (not recursive down)
  */
-static bool shareinput_mutator_fix_shared_id(Node *node, Query *qry, ApplyShareInputState *ctxt)
+static bool shareinput_mutator_fix_underlying_share_id(Node *node, Query *qry, ApplyShareInputState *ctxt)
 {
 	Plan *plan = (Plan *) node;
 
-	if(plan->shared_id != ShareNodeId_NotShared)
+	if(plan->underlying_share_id != ShareNodeId_NotShared)
 	{
 		Plan *subplan = plan->lefttree;
 
 		Assert(plan->lefttree && !plan->righttree);
-		Assert(subplan->sharing_id == ShareNodeId_NotShared || subplan->sharing_id >= 0);
+		Assert(subplan->shared_as_id == ShareNodeId_NotShared || subplan->shared_as_id >= 0);
 
-		if(subplan->sharing_id == ShareNodeId_NotShared)
+		if(subplan->shared_as_id == ShareNodeId_NotShared)
 		{
 			/* It must be a shared motion with just one slice, 
-			 * therefore got adjusted in assign_sharing_id back to
+			 * therefore got adjusted in assign_shared_as_id back to
 			 * not shared.
 			 */
 #ifdef DEBUG
@@ -1658,7 +1658,7 @@ static bool shareinput_mutator_fix_shared_id(Node *node, Query *qry, ApplyShareI
 #endif
 		}
 
-		plan->shared_id = subplan->sharing_id;
+		plan->underlying_share_id = subplan->shared_as_id;
 
 		if(list_member_ptr(ctxt->sharedNodes, subplan))
 		{
@@ -1689,8 +1689,8 @@ Plan *apply_shareinput(Plan *plan, Query *query)
 
 	Assert(is_plan_node((Node *) plan) && IsA(query, Query));
 
-	shareinput_walker(shareinput_mutator_assign_sharing_id, (Node *) plan, query, &state);
-	shareinput_walker(shareinput_mutator_fix_shared_id, (Node *) plan, query, &state);
+	shareinput_walker(shareinput_mutator_assign_shared_as_id, (Node *) plan, query, &state);
+	shareinput_walker(shareinput_mutator_fix_underlying_share_id, (Node *) plan, query, &state);
 
 	return plan;
 }

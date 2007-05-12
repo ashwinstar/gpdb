@@ -8,6 +8,9 @@
 #include "postgres.h"
 #include "utils/debugbreak.h"
 
+#include "lib/stringinfo.h"
+#include "nodes/plannodes.h"
+
 /* How to use debug_break
  *
  * Greenplum DB will spawn many processes to execute a query in parallel.
@@ -114,3 +117,106 @@ void disable_debug_break_n(int n)
 }
 
 #endif
+
+extern char *plannode_type(Plan *p);
+
+static void drawnode(StringInfo str, Plan *plan, List *nodelist)
+{
+	if(!plan)
+		return;
+
+	/* print out the node */
+	appendStringInfo(str, "\"Node_0x%p\" [\n", plan);
+	appendStringInfo(str, "label=\"%s 0x%p\"\n", plannode_type(plan), plan);
+	appendStringInfo(str, "];\n");
+
+	if(IsA(plan, Append))
+	{
+		Append *app = (Append *) plan;
+		ListCell *cell;
+		foreach(cell, app->appendplans)
+		{
+			Plan *child = (Plan *) lfirst(cell);
+			if(!list_member_ptr(nodelist, child))
+			{
+				nodelist = lappend(nodelist, child);
+				drawnode(str, child, nodelist);
+			}
+
+			appendStringInfo(str, "\"Node_0x%p\" -> \"Node_0x%p\" [\n", plan, child);
+			appendStringInfo(str, "];\n");
+		}
+	}
+	else if (IsA(plan, SubqueryScan))
+	{
+		SubqueryScan *subq = (SubqueryScan *) plan;
+		Plan *child = subq->subplan;
+		if(!list_member_ptr(nodelist, child))
+		{
+			nodelist = lappend(nodelist, child);
+			drawnode(str, child, nodelist);
+		}
+
+		appendStringInfo(str, "\"Node_0x%p\" -> \"Node_0x%p\" [\n", plan, child);
+		appendStringInfo(str, "];\n");
+	}
+	else
+	{
+		Plan *child = plan->lefttree;
+		if(child)
+		{
+			if(!list_member_ptr(nodelist, child))
+			{
+				nodelist = lappend(nodelist, child);
+				drawnode(str, child, nodelist);
+			}
+
+			appendStringInfo(str, "\"Node_0x%p\" -> \"Node_0x%p\" [\n", plan, child);
+			appendStringInfo(str, "];\n");
+		}
+		child = plan->righttree;
+		if(child)
+		{
+			if(!list_member_ptr(nodelist, child))
+			{
+				nodelist = lappend(nodelist, child);
+				drawnode(str, child, nodelist);
+			}
+
+			appendStringInfo(str, "\"Node_0x%p\" -> \"Node_0x%p\" [\n", plan, child);
+			appendStringInfo(str, "];\n");
+		}
+	}
+}
+
+char* dotnode(void * node)
+{
+	Plan *plan = (Plan *) node;
+	StringInfo str = makeStringInfo(); 
+	List *nodelist = NULL;
+
+	/* Print dot header */
+	appendStringInfo(str, "digraph g {\n");
+	appendStringInfo(str, "graph [\n");
+	appendStringInfo(str, "];\n");
+
+	appendStringInfo(str, "node [\n");
+	appendStringInfo(str, "fontsize = \"14\"\n");
+	appendStringInfo(str, "shape = \"box\"\n");
+	appendStringInfo(str, "];\n");
+	appendStringInfo(str, "edge [\n");
+	appendStringInfo(str, "fontsize = \"14\"\n");
+	appendStringInfo(str, "];\n");
+
+	if(node)
+	{
+		nodelist = lappend(nodelist, node);
+		drawnode(str, (Plan *) node, nodelist);
+	}
+
+	appendStringInfo(str, "}\n");
+	return str->data;
+}
+
+
+	

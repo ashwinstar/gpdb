@@ -133,11 +133,11 @@ typedef struct Plan
 	int sliceNum;
 
 	/* 
-	 * We need to know the sharing_id, if this node is a share node
+	 * We need to know the shared_as_id, if this node is a share node
 	 * We need to know the underlying shared id, if this node use a share node
 	 */
-	int sharing_id;
-	int shared_id;
+	int shared_as_id;
+	int underlying_share_id;
 } Plan;
 
 /* ----------------
@@ -815,3 +815,4 @@ extern Flow* get_plan_flow(Plan *node);
 
 
 #endif   /* PLANNODES_H */
+

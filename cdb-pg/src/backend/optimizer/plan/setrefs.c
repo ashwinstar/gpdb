@@ -318,8 +318,8 @@ set_plan_references(Plan *plan, List *rtable, List *sharedNodes)
 
 				if(!childPlan)
 				{
-					Assert(plan->shared_id >= 0 && sharedNodes);
-					childPlan = list_nth(sharedNodes, plan->shared_id);
+					Assert(plan->underlying_share_id >= 0 && sharedNodes);
+					childPlan = list_nth(sharedNodes, plan->underlying_share_id);
 				}
 
 				Assert(childPlan);
@@ -335,8 +335,8 @@ set_plan_references(Plan *plan, List *rtable, List *sharedNodes)
 				Plan *childPlan = plan->lefttree;
 				if(!childPlan)
 				{
-					Assert(plan->shared_id >= 0 && sharedNodes);
-					childPlan = list_nth(sharedNodes, plan->shared_id);
+					Assert(plan->underlying_share_id >= 0 && sharedNodes);
+					childPlan = list_nth(sharedNodes, plan->underlying_share_id);
 				}
 				Assert(childPlan);
 				plan->targetlist = cdb_build_identity_tlist(NIL, childPlan, OUTER);

@@ -218,7 +218,7 @@ static ShareInputScan *make_shareinputscan(Plan *inputplan)
 {
 	ShareInputScan *sisc = NULL;
 	Assert(IsA(inputplan, Material) || IsA(inputplan, Sort) || IsA(inputplan, Motion));
-	Assert(inputplan->sharing_id == ShareNodeId_Shared);
+	Assert(inputplan->shared_as_id == ShareNodeId_Shared);
 	
 	sisc = makeNode(ShareInputScan);
 
@@ -234,8 +234,8 @@ static ShareInputScan *make_shareinputscan(Plan *inputplan)
 	
 	/* Set up shared id. */
 	sisc->plan.sliceNum = -1;
-	sisc->plan.sharing_id = ShareNodeId_NotShared;
-	sisc->plan.shared_id = ShareNodeId_Shared; 
+	sisc->plan.shared_as_id = ShareNodeId_NotShared;
+	sisc->plan.underlying_share_id = ShareNodeId_Shared; 
 
 	return sisc;
 }
@@ -371,8 +371,8 @@ static Plan * addsm_for_single_share_motion(
 		if(sort_pathkeys != NULL && !pathkeys_contained_in(sort_pathkeys, *pathkeys_ptr))
 		{
 			slice->plan = (Plan *) make_sort_from_sortclauses(root, sortclause, (Plan *) sharedMotion);
-			slice->plan->sharing_id = ShareNodeId_Shared; 
-			slice->plan->shared_id = ShareNodeId_NotShared;
+			slice->plan->shared_as_id = ShareNodeId_Shared; 
+			slice->plan->underlying_share_id = ShareNodeId_NotShared;
 			slice->plan->sliceNum = slice->sliceIdx;
 
 			slice->sort_pathkeys = sort_pathkeys;
@@ -385,8 +385,8 @@ static Plan * addsm_for_single_share_motion(
 		{
 			Path matpath;
 			slice->plan = (Plan *) make_material((Plan *) sharedMotion); 
-			slice->plan->sharing_id = ShareNodeId_Shared; 
-			slice->plan->shared_id = ShareNodeId_NotShared;
+			slice->plan->shared_as_id = ShareNodeId_Shared; 
+			slice->plan->underlying_share_id = ShareNodeId_NotShared;
 			slice->plan->sliceNum = slice->sliceIdx;
 
 			cost_material(&matpath, sharedMotion->plan.total_cost, sharedMotion->plan.plan_rows, sharedMotion->plan.plan_width);
@@ -395,8 +395,8 @@ static Plan * addsm_for_single_share_motion(
 			slice->plan->plan_rows = sharedMotion->plan.plan_rows;
 			slice->plan->plan_width = sharedMotion->plan.plan_width;
 			slice->plan->flow = copyObject(slice->slice->flow);
-			slice->plan->sharing_id = sisc->plan.sharing_id;
-			slice->plan->shared_id = sisc->plan.shared_id;
+			slice->plan->shared_as_id = sisc->plan.shared_as_id;
+			slice->plan->underlying_share_id = sisc->plan.underlying_share_id;
 			slice->sort_pathkeys = sort_pathkeys;
 			sisc->plan.lefttree = slice->plan;
 			sisc->plan.flow = copyObject(get_plan_flow(slice->plan));
@@ -470,8 +470,8 @@ static Plan * addsm_for_dist_share_motion(
 		if(sort_pathkeys != NULL && !pathkeys_contained_in(sort_pathkeys, *pathkeys_ptr))
 		{
 			slice->plan = (Plan *) make_sort_from_sortclauses(root, sortclause, (Plan *) sharedMotion);
-			slice->plan->sharing_id = ShareNodeId_Shared; 
-			slice->plan->shared_id = ShareNodeId_NotShared;
+			slice->plan->shared_as_id = ShareNodeId_Shared; 
+			slice->plan->underlying_share_id = ShareNodeId_NotShared;
 			slice->plan->sliceNum = slice->sliceIdx;
 
 			slice->sort_pathkeys = sort_pathkeys;
@@ -483,8 +483,8 @@ static Plan * addsm_for_dist_share_motion(
 		{
 			Path matpath;
 			slice->plan = (Plan *) make_material((Plan *) sharedMotion);
-			slice->plan->sharing_id = ShareNodeId_Shared; 
-			slice->plan->shared_id = ShareNodeId_NotShared;
+			slice->plan->shared_as_id = ShareNodeId_Shared; 
+			slice->plan->underlying_share_id = ShareNodeId_NotShared;
 			slice->plan->sliceNum = slice->sliceIdx;
 
 			cost_material(&matpath, sharedMotion->plan.total_cost, sharedMotion->plan.plan_rows, sharedMotion->plan.plan_width);
@@ -493,8 +493,8 @@ static Plan * addsm_for_dist_share_motion(
 			slice->plan->plan_rows = sharedMotion->plan.plan_rows;
 			slice->plan->plan_width = sharedMotion->plan.plan_width;
 			slice->plan->flow = copyObject(slice->slice->flow);
-			slice->plan->sharing_id = sisc->plan.sharing_id;
-			slice->plan->shared_id = sisc->plan.shared_id;
+			slice->plan->shared_as_id = sisc->plan.shared_as_id;
+			slice->plan->underlying_share_id = sisc->plan.underlying_share_id;
 			slice->sort_pathkeys = sort_pathkeys;
 			sisc->plan.lefttree = slice->plan;
 			sisc->plan.flow = copyObject(get_plan_flow(slice->plan));
@@ -580,7 +580,7 @@ ShareNode_ShareType add_sharenode(
 		(*subplan)->plan_width = oldplan->plan_width;
 		(*subplan)->dispatch = oldplan->dispatch;
 		(*subplan)->flow = copyObject(get_plan_flow(oldplan));
-		(*subplan)->sharing_id = ShareNodeId_Shared;
+		(*subplan)->shared_as_id = ShareNodeId_Shared;
 
 		/* XXX Do we need to do parameter kluge ? */
 		/*
@@ -611,7 +611,7 @@ ShareNode_ShareType add_sharenode(
 				 * to share this as share motion
 				 */
 				*subplan = (Plan *) make_motion_multiplex(root, *subplan);
-				(*subplan)->sharing_id = ShareNodeId_Shared;
+				(*subplan)->shared_as_id = ShareNodeId_Shared;
 				return SHARENODE_MOTION;
 			}
 
@@ -647,7 +647,7 @@ ShareNode_ShareType add_sharenode(
 			{
 				/* Wrong hash path keys, need to redistribute */
 				*subplan = (Plan *) make_motion_multiplex(root, *subplan);
-				(*subplan)->sharing_id = ShareNodeId_Shared;
+				(*subplan)->shared_as_id = ShareNodeId_Shared;
 				return SHARENODE_MOTION;
 			}
 
@@ -682,7 +682,7 @@ ShareNode_ShareType add_sharenode(
 		(*subplan)->plan_width = oldplan->plan_width;
 		(*subplan)->dispatch = oldplan->dispatch;
 		(*subplan)->flow = copyObject(oldplan->flow);
-		(*subplan)->sharing_id = ShareNodeId_Shared;
+		(*subplan)->shared_as_id = ShareNodeId_Shared;
 
 		/* XXX Do we need to do parameter kluge ? */
 		/*
@@ -696,7 +696,7 @@ ShareNode_ShareType add_sharenode(
 		Assert(stype == SHARENODE_SORT);
 
 		*subplan = (Plan *) make_sort_from_sortclauses(root, saved_sortclause, oldplan);
-		(*subplan)->sharing_id = ShareNodeId_Shared;
+		(*subplan)->shared_as_id = ShareNodeId_Shared;
 		*subplan_pathkeys = saved_pathkeys;
 		mark_sort_locus(*subplan);
 	}

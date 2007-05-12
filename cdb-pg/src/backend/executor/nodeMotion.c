@@ -641,9 +641,9 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	 * First check if this is multiplexed.  For multiplexed motion, just create motion
 	 * once
 	 */
-	if(node->plan.sharing_id >= 0)
+	if(node->plan.shared_as_id >= 0)
 	{
-		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, node->plan.sharing_id, true);
+		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, node->plan.shared_as_id, true);
 		motionstate = (MotionState *) snEntry->shareState; 
 
 		if(motionstate)
@@ -673,7 +673,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 				sendSlice->parent = lappend_int(sendSlice->parent, estate->es_cur_slice_idx);
 
 				elog(LOG, "InitMotion has a share: mySlice %d, Motion Id %d, sharing id %d: send slice %d, recv slice %d",
-						currentSliceId, node->motionID, node->plan.sharing_id, sendSlice->sliceIndex, estate->es_cur_slice_idx);
+						currentSliceId, node->motionID, node->plan.shared_as_id, sendSlice->sliceIndex, estate->es_cur_slice_idx);
 
 				/* XXX Why we need a mem context switch ? */
 				/* MemoryContextSwitchTo(oldcxt); */
@@ -980,9 +980,9 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 #endif
 
 	/* For multiplexed node, register with estate */
-	if(node->plan.sharing_id >= 0) 
+	if(node->plan.shared_as_id >= 0) 
 	{
-		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, node->plan.sharing_id, true);
+		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, node->plan.shared_as_id, true);
 		snEntry->sharePlan = (Node *) node;
 		snEntry->shareState = (Node *) motionstate;
 	}

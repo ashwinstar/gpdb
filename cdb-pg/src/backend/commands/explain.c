@@ -904,13 +904,24 @@ explain_outNode(StringInfo str,
 			pname = "Values Scan";
 			break;
 		case T_ShareInputScan:
-			pname = "ShareInputScan";
+			appendStringInfo(str, "ShareInputScan (shares %d)", plan->underlying_share_id);
+			pname = "";
 			break;
 		case T_Material:
 			pname = "Materialize";
+			if(plan->shared_as_id >= 0)
+			{
+				appendStringInfo(str, "%s (shared as %d)", pname, plan->shared_as_id);
+				pname = "";
+			}
 			break;
 		case T_Sort:
 			pname = "Sort";
+			if(plan->shared_as_id >= 0)
+			{
+				appendStringInfo(str, "%s (shared as %d)", pname, plan->shared_as_id);
+				pname = "";
+			}
 			break;
 		case T_Group:
 			pname = "Group";

@@ -285,8 +285,8 @@ _outPlanInfo(StringInfo str, Plan *node)
      */
 
 	WRITE_INT_FIELD(sliceNum);
-	WRITE_INT_FIELD(sharing_id);
-	WRITE_INT_FIELD(shared_id);
+	WRITE_INT_FIELD(shared_as_id);
+	WRITE_INT_FIELD(underlying_share_id);
 }
 
 /*

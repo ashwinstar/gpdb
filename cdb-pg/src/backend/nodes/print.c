@@ -26,8 +26,6 @@
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
 
-static char *plannode_type(Plan *p);
-
 /*
  * print
  *	  print contents of Node to stdout
@@ -483,8 +481,7 @@ print_slot(struct TupleTableSlot *slot)
 	fflush(stdout);
 }
 
-static char *
-plannode_type(Plan *p)
+char * plannode_type(Plan *p)
 {
 	switch (nodeTag(p))
 	{

@@ -180,7 +180,7 @@ ExecSort(SortState *node)
 	}
 
 	/* for share input, do not need to return any tuple */
-	if(node->ss.ps.plan->sharing_id >= 0)
+	if(node->ss.ps.plan->shared_as_id >= 0)
 		return NULL;
 
 	SO1_printf("ExecSort: %s\n",
@@ -229,7 +229,7 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 										 EXEC_FLAG_MARK)) != 0;
 
 	/* If the sort is shared, we need random access */
-	if(node->plan.sharing_id >= 0)
+	if(node->plan.shared_as_id >= 0)
 		sortstate->randomAccess = true;
 
 	sortstate->sort_Done = false;
@@ -300,9 +300,9 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	ExecAssignScanTypeFromOuterPlan(&sortstate->ss);
 	sortstate->ss.ps.ps_ProjInfo = NULL;
 
-	if(node->plan.sharing_id >= 0) 
+	if(node->plan.shared_as_id >= 0) 
 	{
-		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, node->plan.sharing_id, true);
+		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, node->plan.shared_as_id, true);
 		snEntry->sharePlan = (Node *)node;
 		snEntry->shareState = (Node *)sortstate;
 	}

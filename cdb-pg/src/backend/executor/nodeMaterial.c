@@ -60,7 +60,7 @@ ExecMaterial(MaterialState *node)
 	/*
 	 * If first time through, and we need a tuplestore, initialize it.
 	 */
-	if (tuplestorestate == NULL && (node->ss.ps.plan->sharing_id >= 0 || node->randomAccess))
+	if (tuplestorestate == NULL && (node->ss.ps.plan->shared_as_id >= 0 || node->randomAccess))
 	{
 		tuplestorestate = tuplestore_begin_heap(true, false, work_mem); 
 		node->tuplestorestate = (void *) tuplestorestate;
@@ -92,12 +92,12 @@ ExecMaterial(MaterialState *node)
 		 * MPP TODO: Remove when a better solution is implemented.
 		 */
 		/*
-		 * ShareInput: if sharing_id is not -1, that is, the material node
+		 * ShareInput: if shared_as_id is not -1, that is, the material node
 		 * is used to share input, we will need to fetch all rows and put
 		 * them in tuple store
 		 */
 		while (((Material *) node->ss.ps.plan)->cdb_strict 
-				|| node->ss.ps.plan->sharing_id >= 0)
+				|| node->ss.ps.plan->shared_as_id >= 0)
 		{
 			TupleTableSlot *outerslot = ExecProcNode(outerPlanState(node));
 
@@ -112,7 +112,7 @@ ExecMaterial(MaterialState *node)
 	}
 
 	/* for share input, material do not need to return any tuple */
-	if(node->ss.ps.plan->sharing_id >= 0)
+	if(node->ss.ps.plan->shared_as_id >= 0)
 		return NULL;
 
 	/*
@@ -265,9 +265,9 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 	/*
 	 * If share input, need to register with range table entry
 	 */
-	if(node->plan.sharing_id >= 0)
+	if(node->plan.shared_as_id >= 0)
 	{
-		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, node->plan.sharing_id, true); 
+		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, node->plan.shared_as_id, true); 
 		snEntry->sharePlan = (Node *) node;
 		snEntry->shareState = (Node *) matstate;
 	}
@@ -314,7 +314,7 @@ ExecEndMaterial(MaterialState *node)
 	 * clean out the tuple table.  Normal case ps_ResultTupleSlot has
 	 * been cleared by Exec.  Only need to clear it for share input
 	 */
-	if(node->ss.ps.plan->sharing_id >= 0)
+	if(node->ss.ps.plan->shared_as_id >= 0)
 		ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
@@ -342,7 +342,7 @@ ExecMaterialMarkPos(MaterialState *node)
 {
 	Assert(node->randomAccess);
 	/* share input should never call this */
-	Assert(node->ss.ps.plan->sharing_id < 0);
+	Assert(node->ss.ps.plan->shared_as_id < 0);
 
 	/*
 	 * if we haven't materialized yet, just return.
@@ -364,7 +364,7 @@ ExecMaterialRestrPos(MaterialState *node)
 {
 	Assert(node->randomAccess);
 	/* share input should never call this */
-	Assert(node->ss.ps.plan->sharing_id < 0);
+	Assert(node->ss.ps.plan->shared_as_id < 0);
 
 	/*
 	 * if we haven't materialized yet, just return.
@@ -388,7 +388,7 @@ void
 ExecMaterialReScan(MaterialState *node, ExprContext *exprCtxt)
 {
 	/* share input should never call this */
-	Assert(node->ss.ps.plan->sharing_id < 0);
+	Assert(node->ss.ps.plan->shared_as_id < 0);
 
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 

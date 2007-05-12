@@ -2702,8 +2702,8 @@ void readPlanInfo(const char ** str, Plan *local_node)
      */
 
 	READ_INT_FIELD(sliceNum);
-	READ_INT_FIELD(sharing_id);
-	READ_INT_FIELD(shared_id);
+	READ_INT_FIELD(shared_as_id);
+	READ_INT_FIELD(underlying_share_id);
 }
 
 void readJoinInfo(const char ** str, Join *local_node)
