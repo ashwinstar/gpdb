@@ -19,6 +19,7 @@
 #include "optimizer/tlist.h"
 #include "optimizer/var.h"
 #include "parser/parse_agg.h"
+#include "parser/parse_expr.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteManip.h"
 #include "utils/lsyscache.h"
@@ -654,6 +655,54 @@ checkExprHasWindFuncs(Node *node)
 	return query_or_expression_tree_walker(node,
 										   checkExprHasWindFuncs_walker,
 										   (void *) &context, 0);
+}
+
+/*
+ * transformWindowSpecExprs
+ *
+ * Do a quick pre-process of WindowSpecs to transform expressions into
+ * something the rest of the parser is going to recognise.
+ */
+void
+transformWindowSpecExprs(ParseState *pstate)
+{
+	ListCell *lc;
+
+	foreach(lc, pstate->p_win_clauses)
+	{
+		WindowSpec *s = (WindowSpec *)lfirst(lc);
+		ListCell *lc2;
+		List *new = NIL;
+
+		foreach(lc2, s->partition)
+		{
+			Node *n = (Node *)lfirst(lc2);
+			SortBy *sb;
+
+			Assert(IsA(n, SortBy));
+
+			sb = (SortBy *)n;
+
+			sb->node = (Node *)transformExpr(pstate, sb->node);
+			new = lappend(new, (void *)sb);
+		}
+		s->partition = new;
+		
+		new = NIL;
+		foreach(lc2, s->order)
+		{
+			Node *n = (Node *)lfirst(lc2);
+			SortBy *sb;
+
+			Assert(IsA(n, SortBy));
+
+			sb = (SortBy *)n;
+
+			sb->node = (Node *)transformExpr(pstate, sb->node);
+			new = lappend(new, (void *)sb);
+		}
+		s->order = new;
+	}
 }
 
 /*

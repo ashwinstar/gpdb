@@ -99,6 +99,14 @@ typedef struct
 	List	  *subtlist; /* target list for sub query */
 } grouped_window_ctx;
 
+typedef struct
+{
+	Index *sortref;
+	Index size;
+	int level;
+	int levelsup;
+} sortref_ctx;
+
 static List *do_parse_analyze(Node *parseTree, ParseState *pstate);
 static Query *transformStmt(ParseState *pstate, Node *stmt,
 			  List **extras_before, List **extras_after);
@@ -2994,6 +3002,138 @@ wingroupmutator(Node *node, void *context)
 	return expression_tree_mutator(node, wingroupmutator, context);
 }
 
+static bool
+record_sortrefs_walker(Node *node, void *context)
+{
+	sortref_ctx *ctx = (sortref_ctx *)context;
+
+	if (node == NULL)
+		return true;
+	
+#define RECORD(ref) \
+do \
+{ \
+	if (ref >= ctx->size) \
+	{ \
+		Index newsz = ref + 1; \
+		Assert(ref > 0); /* check overflow */ \
+		ctx->sortref = realloc(ctx->sortref, sizeof(Index) * newsz); \
+		MemSet(&(ctx->sortref[ctx->size]), \
+			   0, (newsz - ctx->size) * sizeof(Index)); \
+		ctx->size = newsz; \
+	} \
+	ctx->sortref[ref] = ref; \
+} \
+while(0)
+	
+	if (IsA(node, SortClause))
+	{
+		Index ref = ((SortClause *)node)->tleSortGroupRef;
+		RECORD(ref);
+		return false;
+	}
+	else if (IsA(node, GroupClause))
+	{
+		/* 
+		 * Could be okay to just cast this to SortClause in the above block
+		 * as GroupClause is just an alias for SortClause. But, this might
+		 * not always be so!
+		 */
+		Index ref = ((GroupClause *)node)->tleSortGroupRef;
+		RECORD(ref);
+		return false;	
+	}
+	else if(IsA(node, GroupingClause))
+	{
+		GroupingClause *g = (GroupingClause *)node;
+			
+		return expression_tree_walker((Node *)g->groupsets,
+									  record_sortrefs_walker,
+								   	  context);
+	}
+	return expression_tree_walker(node, record_sortrefs_walker, context);
+}
+
+static bool
+rewrite_sortrefs_walker(Node *node, void *context)
+{
+	sortref_ctx *ctx = (sortref_ctx *)context; 
+	
+	if (node == NULL)
+		return false;
+	else if(IsA(node, GroupingClause))
+	{
+		GroupingClause *g = (GroupingClause *)node;
+			
+		return expression_tree_walker((Node *)g->groupsets, 
+								      rewrite_sortrefs_walker,
+								      context);
+	}
+	ctx->level++;
+	if (ctx->level == ctx->levelsup)
+	{
+		if (IsA(node, TargetEntry))
+		{
+			TargetEntry *te = (TargetEntry *)node;
+			te->ressortgroupref = ctx->sortref[te->ressortgroupref];
+			ctx->level--;
+			return false;
+		}
+		else if(IsA(node, SortClause))
+		{
+			SortClause *cl = (SortClause *)node;
+			cl->tleSortGroupRef = ctx->sortref[cl->tleSortGroupRef];
+			ctx->level--;
+			return false;
+		}
+		else if(IsA(node, GroupClause))
+		{
+			SortClause *cl = (SortClause *)node;
+			cl->tleSortGroupRef = ctx->sortref[cl->tleSortGroupRef];
+			ctx->level--;
+			return false;
+		}
+	}
+	ctx->level--;
+	return expression_tree_walker(node, rewrite_sortrefs_walker, context);
+}
+
+static void
+rewrite_sortrefs(Query *qry)
+{
+	/*
+	 * We must build up a mapping of sort refs from the old values to
+	 * contiguous values. To do this, we build an array of the refs 
+	 * registered in the relevant sort clauses in the query and then we map
+	 * them to new references, from 1..N. Then we rewrite the target list
+	 * using this.
+	 */
+	sortref_ctx ctx;
+	Index max, i;
+	
+	ctx.size = 8; /* seems like this would cover most cases */
+	ctx.sortref = (Index *)palloc0(ctx.size * sizeof(Index));
+	ctx.levelsup = 1;
+	ctx.level = 0;
+	
+	expression_tree_walker((Node *)qry->sortClause, record_sortrefs_walker, 
+						   &ctx);
+	expression_tree_walker((Node *)qry->distinctClause, record_sortrefs_walker,
+						   &ctx);
+	expression_tree_walker((Node *)qry->groupClause, record_sortrefs_walker,
+						   &ctx);
+	expression_tree_walker((Node *)qry->windowClause, record_sortrefs_walker,
+						   &ctx);
+
+	for (i = 0, max = 1; i < ctx.size; i++)
+	{
+		if (ctx.sortref[i])
+			ctx.sortref[i] = max++;
+	}
+	query_tree_walker(qry, rewrite_sortrefs_walker, &ctx, 0);
+	pfree(ctx.sortref);
+}
+
 /*
  * ANSI SQL allows users to specify a query of the form:
  *    SELECT deptno, sum(max(salary)) OVER (order by deptno) FROM employees
@@ -3019,14 +3159,17 @@ transformGroupedWindows(Query *qry)
 	RangeTblRef *ref;
 	Alias *a;
 	ListCell *tmp;
+	Index *sortrefmap;
+	Index mapsize;
 	
 	Assert(qry->commandType == CMD_SELECT);
 	subq->commandType = qry->commandType;
-	subq->canSetTag = false;	/* XXX: is this right? */
+	subq->canSetTag = qry->canSetTag;
 
 	Assert(!PointerIsValid(qry->utilityStmt));
 	subq->utilityStmt = qry->utilityStmt;
 	subq->resultRelation = 0;
+	subq->canSetTag = true;
 	subq->into = NULL;
 	subq->intoOptions = NIL;
 	subq->intoOnCommit = ONCOMMIT_NOOP;
@@ -3091,19 +3234,22 @@ transformGroupedWindows(Query *qry)
 	rte = makeNode(RangeTblEntry);
 	rte->rtekind = RTE_SUBQUERY;
 	rte->subquery = subq;
+	rte->inFromCl = true;
+	rte->requiredPerms |= ACL_SELECT;
+	
 	/* do aliases */
 	a = makeNode(Alias);
 	a->aliasname = pstrdup("Window");
-	
+
+	mapsize = 8;
+	sortrefmap = (Index *)palloc0(mapsize * sizeof(Index));
+
 	foreach(tmp, subq->targetList)
 	{
 		TargetEntry *te = (TargetEntry *)lfirst(tmp);
 		char *resname;
 		
 		Assert(IsA(te, TargetEntry));
-
-		resname = te->resname ? te->resname : "?column?";
-		a->colnames = lappend(a->colnames, makeString(pstrdup(resname)));
 
 		/* 
 	 	 * TEs generated for the purpose of sorting (PARTITION BY and 
@@ -3149,9 +3295,12 @@ transformGroupedWindows(Query *qry)
 					break;
 			}
 		}
+
+		resname = te->resname ? te->resname : "?column?";
+		a->colnames = lappend(a->colnames, makeString(pstrdup(resname)));
 	}
 	rte->eref = a;
-
+	
 	/* we forget the old rtable by overwriting it with this new RTE */
 	qry->rtable = list_make1(rte);
 
@@ -3159,12 +3308,15 @@ transformGroupedWindows(Query *qry)
 	ref = makeNode(RangeTblRef);
 	ref->rtindex = 1;
 	qry->jointree->fromlist = list_make1(ref);
-	qry->hasSubLinks = true;
+	qry->hasSubLinks = false;
 
 	/* we can also forget about grouping in the top level query */
 	qry->groupClause = NIL; 
 	qry->havingQual = NULL;
 	qry->hasAggs = false;
+	
+	rewrite_sortrefs(subq);
+	rewrite_sortrefs(qry);
 }
 
 /*
@@ -3199,6 +3351,9 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 
 	/* mark column origins */
 	markTargetListOrigins(pstate, qry->targetList);
+
+	/* tidy up expressions in window clauses */
+	transformWindowSpecExprs(pstate);
 
 	/* transform WHERE */
 	qual = transformWhereClause(pstate, stmt->whereClause, "WHERE");
@@ -3264,6 +3419,7 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 	if (pstate->p_hasWindFuncs)
 		parseProcessWindFuncs(pstate, qry);
 	
+
 	foreach(l, stmt->lockingClause)
 	{
 		transformLockingClause(qry, (LockingClause *) lfirst(l));
