@@ -2347,8 +2347,6 @@ _outGroupingFunc(StringInfo str, GroupingFunc *node)
 
 	WRITE_NODE_FIELD(args);
 	WRITE_INT_FIELD(ngrpcols);
-	WRITE_INT_FIELD(nargs);
-	WRITE_INT_ARRAY(grpargs, nargs, int);
 }
 
 static void

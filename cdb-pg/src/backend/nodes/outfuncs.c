@@ -115,17 +115,6 @@
 	(appendStringInfo(str, " :" CppAsString(fldname) " "), \
 	 _outToken(str, NULL))
 
-/* Write an integer array */
-#define WRITE_INT_ARRAY(fldname, count, Type) \
-	if ( node->count > 0 ) \
-	{ \
-		int i; \
-		for(i=0; i<node->count; i++) \
-		{ \
-			appendStringInfo(str, (const char *)&node->fldname[i], sizeof(Type)); \
-		} \
-	}
-
 #define booltostr(x)  ((x) ? "true" : "false")
 
 static void _outNode(StringInfo str, void *obj);
@@ -2506,8 +2495,6 @@ _outGroupingFunc(StringInfo str, GroupingFunc *node)
 
 	WRITE_NODE_FIELD(args);
 	WRITE_INT_FIELD(ngrpcols);
-	WRITE_INT_FIELD(nargs);
-	WRITE_INT_ARRAY(grpargs, nargs, int);
 }
 
 static void

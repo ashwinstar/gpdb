@@ -618,10 +618,8 @@ typedef struct AggrefExprState
 typedef struct GroupingFuncExprState
 {
 	ExprState  xprstate;
+	List	  *args;
 	int        ngrpcols;   /* number of unique grouping attributes */
-	int        nargs;      /* number of arguments in a GROUPING function */
-	int       *grpargs;    /* list of positions for arguments appeared in
-							* the GROUP BY clause */
 } GroupingFuncExprState;
 
 /* ----------------

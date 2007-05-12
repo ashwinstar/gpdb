@@ -73,6 +73,12 @@ static List *findListTargetlistEntries(ParseState *pstate, Node *node,
 static TargetEntry *getTargetBySortGroupRef(Index ref, List *tl);
 static List *reorderGroupList(List *grouplist);
 
+typedef struct grouping_rewrite_ctx
+{
+	List *grp_tles;
+	ParseState *pstate;
+} grouping_rewrite_ctx;
+
 /*
  * transformFromClause -
  *	  Process the FROM clause and add items to the query's range table,
@@ -1745,6 +1751,79 @@ make_grouping_clause(ParseState *pstate, GroupingClause *grpcl, List* targetList
 	return result;
 }
 
+static bool
+grouping_rewrite_walker(Node *node, void *context)
+{
+	grouping_rewrite_ctx *ctx = (grouping_rewrite_ctx *)context;
+
+	if (IsA(node, GroupingFunc))
+	{
+		GroupingFunc *gf = (GroupingFunc *)node;
+		ListCell *arg_lc;
+		List *newargs = NIL;
+
+		gf->ngrpcols = list_length(ctx->grp_tles);
+
+		/*
+		 * For each argument in gf->args, find its position in grp_tles,
+		 * and increment its counts. Note that this is a O(n^2) algorithm,
+		 * but it should not matter that much.
+		 */
+		foreach (arg_lc, gf->args)
+		{
+			long i = 0;
+			Node *node = lfirst(arg_lc);
+			ListCell *grp_lc = NULL;
+
+			foreach (grp_lc, ctx->grp_tles)
+			{
+				TargetEntry *grp_tle = (TargetEntry *)lfirst(grp_lc);
+
+				if (equal(grp_tle->expr, node))
+					break;
+				i++;
+			}
+
+			/* Find a column not in GROUP BY clause */
+			if (grp_lc == NULL)
+			{
+				RangeTblEntry *rte;
+				const char *attname;
+				Var *var = (Var *) node;
+				
+				Assert(IsA(node, Var));
+				Assert(var->varno > 0);
+				Assert(var->varno <= list_length(ctx->pstate->p_rtable));
+
+				rte = rt_fetch(var->varno, ctx->pstate->p_rtable);
+				attname = get_rte_attribute_name(rte, var->varattno);
+
+				ereport(ERROR,
+						(errcode(ERRCODE_GROUPING_ERROR),
+						 errmsg("column \"%s\".\"%s\" is not in GROUP BY",
+								rte->eref->aliasname, attname)));
+			}
+
+			newargs = lappend(newargs, makeInteger(i));
+		}
+
+		/* Free gf->args since we do not need it any more. */
+		list_free_deep(gf->args);
+		gf->args = newargs;
+	}
+	else if(IsA(node, SortBy))
+	{
+		/* 
+		 * When WindowSpec leaves the main parser, partition and order
+		 * clauses will be lists of SortBy structures. Process them here to
+		 * avoid muddying up the expression_tree_walker().
+		 */
+		SortBy *s = (SortBy *)node;
+		return grouping_rewrite_walker(s->node, context);
+	}
+	return expression_tree_walker(node, grouping_rewrite_walker, context);
+}
+
 /*
  * transformGroupClause -
  *	  transform a GROUP BY clause
@@ -1859,9 +1938,11 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 	 *
 	 * the result list can be roughly represented as follows.
 	 *
-	 *    GroupClause(a) -->
-	 *    GroupingClause( ROLLUP, groupsets (GroupClause(b) --> GroupClause(c) ) ) -->
-	 *    GroupingClause( CUBE, groupsets (GroupClause(e) --> GroupClause(d) ) )
+	 *    GroupClause(a),
+	 *    GroupingClause(ROLLUP,groupsets(GroupClause(b),GroupClause(c))),
+	 *    GroupingClause(CUBE,groupsets(GroupClause(e),GroupClause(d)))
+	 *
+	 *   XXX: the above transformation doesn't make sense -gs
 	 */
 	reorder_grouplist = reorderGroupList(grouplist);
 
@@ -1874,12 +1955,13 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 
 		else if (IsA(node, GroupingClause))
 		{
+			GroupingClause *tmp = make_grouping_clause(pstate,
+													   (GroupingClause*)node,
+													   *targetlist);
+			/* mark that we're doing extended grouping */
 			is_grpext = true;
-			result = lappend(result,
-							 make_grouping_clause(pstate,
-												  (GroupingClause*)node, *targetlist));
+			result = lappend(result, tmp);
 		}
-
 		else
 		{
 			TargetEntry *tle;
@@ -1899,10 +1981,12 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 		}
 	}
 
+	/* we're doing extended grouping */
 	if (is_grpext)
 	{
 		List *grp_tles = NIL;
 		ListCell *lc;
+		grouping_rewrite_ctx ctx;
 
 		/* Find all unique target entries appeared in reorder_grouplist. */
 		foreach (lc, reorder_grouplist)
@@ -1919,12 +2003,24 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 		 * GROUPING_ID to calculate the final value for each GROUPING function
 		 * in the executor.
 		 */
+
+		ctx.grp_tles = grp_tles;
+		ctx.pstate = pstate;
+		expression_tree_walker((Node *)*targetlist, grouping_rewrite_walker,
+							   (void *)&ctx);
+		/*
+		 * The expression might be present in a window clause as well
+		 * so process those.
+		 */
+		expression_tree_walker((Node *)pstate->p_win_clauses,
+							   grouping_rewrite_walker, (void *)&ctx);
+#if 0		
 		foreach (lc, *targetlist)
 		{
 			TargetEntry *tle = (TargetEntry *)lfirst(lc);
 			GroupingFunc *gf;
 			ListCell *arg_lc;
-			int argno = 0;
+			List *newargs = NIL;
 
 			if (!IsA(tle->expr, GroupingFunc))
 				continue;
@@ -1932,8 +2028,6 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 			gf = (GroupingFunc *)tle->expr;
 
 			gf->ngrpcols = list_length(grp_tles);
-			gf->nargs = list_length(gf->args);
-			gf->grpargs = (int *)palloc0(gf->nargs * sizeof(int));
 
 			/*
 			 * For each argument in gf->args, find its position in grp_tles,
@@ -1968,21 +2062,20 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 
 					ereport(ERROR,
 							(errcode(ERRCODE_GROUPING_ERROR),
-							 errmsg("column \"%s.%s\" is not in GROUP BY",
+							 errmsg("column \"%s\".\"%s\" is not in GROUP BY",
 									rte->eref->aliasname, attname)));
 				}
 
-				Assert (argno < gf->nargs);
-				gf->grpargs[argno] = i;
-				argno++;
+				newargs = lappend_int(newargs, i);
 			}
 
 			/* Free gf->args since we do not need it any more. */
 			list_free_deep(gf->args);
-			gf->args = NULL;
+			gf->args = newargs;
 		}
 
 		pfree(grp_tles);
+#endif
 	}
 
 	list_free(tle_list);
@@ -2328,8 +2421,8 @@ getTargetBySortGroupRef(Index ref, List *tl)
  * Re-order entries in a given GROUP BY list, which includes expressions or
  * grouping extension clauses, such as ROLLUP, CUBE, GROUPING_SETS.
  * 
- * In each grouping set level, all non grouping extension clauses (or expressions)
- * will appear in front of grouping extension clauses.
+ * In each grouping set level, all non grouping extension clauses (or 
+ * expressions) will appear in front of grouping extension clauses.
  * See the following GROUP BY clause:
  *
  *   GROUP BY ROLLUP(b,c),a, ROLLUP(e,d)
@@ -2341,7 +2434,8 @@ getTargetBySortGroupRef(Index ref, List *tl)
  * We make a fresh copy for each entries in the result list. The caller
  * needs to free the list eventually.
  */ 
-static List *reorderGroupList(List *grouplist)
+static List *
+reorderGroupList(List *grouplist)
 {
 	List *result = NIL;
 	ListCell *gl;
@@ -2352,10 +2446,11 @@ static List *reorderGroupList(List *grouplist)
 		Node *node = (Node*)lfirst(gl);
 
 		if (node == NULL)
+		{
 			/* XXX simply delete the empty grouping set */
 			/*result = list_concat(result, list_make1(NIL)); */
 			continue;
-
+		}
 		else if (IsA(node, GroupingClause))
 		{
 			GroupingClause *gc = (GroupingClause *)node;
@@ -2366,7 +2461,6 @@ static List *reorderGroupList(List *grouplist)
 			
 			sub_list = lappend(sub_list, new_gc);
 		}
-
 		else
 		{
 			Node *new_node = (Node *)copyObject(node);
@@ -2375,6 +2469,5 @@ static List *reorderGroupList(List *grouplist)
 	}
 
 	result = list_concat(result, sub_list);
-
 	return result;
 }

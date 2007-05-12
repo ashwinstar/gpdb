@@ -1671,8 +1671,6 @@ _copyGroupingFunc(GroupingFunc *from)
 
 	COPY_NODE_FIELD(args);
 	COPY_SCALAR_FIELD(ngrpcols);
-	COPY_SCALAR_FIELD(nargs);
-	COPY_POINTER_FIELD(grpargs, from->nargs * sizeof(int));
 
 	return newnode;
 }

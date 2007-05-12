@@ -1844,8 +1844,6 @@ _equalGroupingFunc(GroupingFunc *a, GroupingFunc *b)
 {
 	COMPARE_NODE_FIELD(args);
 	COMPARE_SCALAR_FIELD(ngrpcols);
-	COMPARE_SCALAR_FIELD(nargs);
-	COMPARE_POINTER_FIELD(grpargs, a->nargs * sizeof(int));
 
 	return true;
 }

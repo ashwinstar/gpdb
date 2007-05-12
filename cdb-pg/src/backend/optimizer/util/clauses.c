@@ -3408,6 +3408,9 @@ expression_tree_walker(Node *node,
 					return true;
 			}
 			break;
+		case T_IntList:
+			/* do nothing */
+			break;
 		case T_FromExpr:
 			{
 				FromExpr   *from = (FromExpr *) node;
@@ -3464,16 +3467,27 @@ expression_tree_walker(Node *node,
 					return true;
 			}
 			break;
+		case T_GroupingClause:
+			{
+				GroupingClause *g = (GroupingClause *) node;
+				if (expression_tree_walker((Node *)g->groupsets, walker,
+					context))
+					return true;
+			}
+			break;
 		case T_GroupingFunc:
 			{
+#if 0
 				GroupingFunc *gfunc = (GroupingFunc *)node;
 
 				if (expression_tree_walker((Node*) gfunc->args, walker, context))
 					return true;
+#endif
 			}
 			break;
 		case T_Grouping:
 		case T_GroupId:
+		case T_GroupClause:
 			{
 				/* do nothing */
 			}
@@ -3482,9 +3496,16 @@ expression_tree_walker(Node *node,
 			{
 				WindowSpec *wspec = (WindowSpec *)node;
 				
+				if (expression_tree_walker((Node *) wspec->partition, walker,
+										   context))
+					return true;
+				if (expression_tree_walker((Node *) wspec->order, walker,
+										   context))
+					return true;
 				if (expression_tree_walker((Node *) wspec->frame,
 										   walker, context))
 					return true;
+				return false;
 			}
 			break;
 		case T_WindowFrame:
@@ -3548,6 +3569,8 @@ query_tree_walker(Query *query,
 	if (walker(query->setOperations, context))
 		return true;
 	if (walker(query->havingQual, context))
+		return true;
+	if (walker(query->groupClause, context))
 		return true;
 	if (walker(query->windowClause, context))
 		return true;
@@ -3756,11 +3779,13 @@ expression_tree_mutator(Node *node,
 			break;
 		case T_GroupingFunc:
 			{
-				GroupingFunc *gf = (GroupingFunc*) node;
 				GroupingFunc *newnode;
 
+#if 0
 				FLATCOPY(newnode, gf, GroupingFunc);
 				MUTATE(newnode->args, gf->args, List *);
+#endif
+				newnode = copyObject(node);
 				return (Node *)newnode;
 			}
 			break;

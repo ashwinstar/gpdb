@@ -1319,6 +1319,10 @@ FigureColnameInternal(Node *node, char **name)
 					return 2;
 			}
 			break;
+		case T_GroupingFunc:
+			*name = "grouping";
+			return 2;
+			break;
 		default:
 			break;
 	}

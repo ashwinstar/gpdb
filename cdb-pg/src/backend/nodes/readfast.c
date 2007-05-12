@@ -268,8 +268,6 @@ _readGroupingFunc(const char ** str)
 
 	READ_NODE_FIELD(args);
 	READ_INT_FIELD(ngrpcols);
-	READ_INT_FIELD(nargs);
-	READ_INT_ARRAY(grpargs, nargs, int);
 
 	READ_DONE();
 }

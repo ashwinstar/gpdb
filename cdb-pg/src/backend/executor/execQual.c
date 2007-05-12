@@ -438,23 +438,24 @@ ExecEvalAggref(AggrefExprState *aggref, ExprContext *econtext,
  *		Returns a Datum whose value is the value of a GROUPING_ID
  *		with respect to the given context.
  */
-static Datum ExecEvalGroupingFunc(GroupingFuncExprState *gstate,
-								  ExprContext *econtext,
-								  bool *isNull, ExprDoneCond *isDone)
+static Datum 
+ExecEvalGroupingFunc(GroupingFuncExprState *gstate,
+					 ExprContext *econtext,
+					 bool *isNull, ExprDoneCond *isDone)
 {
 	uint64 grpid = 0;
-	int argno;
+	ListCell *tmp;
 
 	if (isDone)
 		*isDone = ExprSingleResult;
 
-	for (argno=0; argno<gstate->nargs; argno++)
+	foreach(tmp, gstate->args)
 	{
-		bool isnull =
-			(econtext->grouping & (1 << (gstate->ngrpcols - gstate->grpargs[argno] - 1)));
+		int arg = (int)intVal(lfirst(tmp));
+		int pos = gstate->ngrpcols - arg - 1;
 
-		if (isnull)
-			grpid += (1 << (gstate->nargs - argno - 1));
+		if (econtext->grouping & (1 << pos))
+			grpid |= (1 << pos);
 	}
 
 	*isNull = false;
@@ -467,9 +468,9 @@ static Datum ExecEvalGroupingFunc(GroupingFuncExprState *gstate,
  *		Returns a Datum whose value is the value of a GROUPING
  *		with respect to the given context.
  */
-static Datum ExecEvalGrouping(ExprState *gstate,
-							  ExprContext *econtext,
-							  bool *isNull, ExprDoneCond *isDone)
+static Datum
+ExecEvalGrouping(ExprState *gstate, ExprContext *econtext,
+				 bool *isNull, ExprDoneCond *isDone)
 {
 	if (isDone)
 		*isDone = ExprSingleResult;
@@ -484,9 +485,9 @@ static Datum ExecEvalGrouping(ExprState *gstate,
  *		Returns a Datum whose value is the value of a GROUP_ID
  *		with respect to the given context.
  */
-static Datum ExecEvalGroupId(ExprState *gstate,
-							 ExprContext *econtext,
-							 bool *isNull, ExprDoneCond *isDone)
+static Datum
+ExecEvalGroupId(ExprState *gstate, ExprContext *econtext,
+				bool *isNull, ExprDoneCond *isDone)
 {
 	if (isDone)
 		*isDone = ExprSingleResult;
@@ -3557,9 +3558,8 @@ ExecInitExpr(Expr *node, PlanState *parent)
 				GroupingFuncExprState *gstate = makeNode(GroupingFuncExprState);
 
 				gstate->xprstate.evalfunc = (ExprStateEvalFunc) ExecEvalGroupingFunc;
+				gstate->args = gf->args;
 				gstate->ngrpcols = gf->ngrpcols;
-				gstate->nargs = gf->nargs;
-				gstate->grpargs = gf->grpargs;
 				state = (ExprState *) gstate;
 			}
 			break;
