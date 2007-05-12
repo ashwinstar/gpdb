@@ -724,12 +724,6 @@ typedef struct GroupingFunc
 	NodeTag   type;
 	List     *args;  /* arguments provided in the query. */
 	int       ngrpcols; /* the number of grouping attributes */
-	int       nargs;  /* the number of arguments appeared in this function. Note that
-					   * a GROUPING function can take arguments that are subsets
-					   * of grouping attributes, and these arguments are allowed to
-					   * be duplicate to each other. */
-	int      *grpargs; /* the position of each argument appeared in the GROUP
-						* BY clause. */
 } GroupingFunc;
 
 /*

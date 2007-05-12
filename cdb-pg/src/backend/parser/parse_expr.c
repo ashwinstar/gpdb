@@ -1530,16 +1530,11 @@ transformGroupingFunc(ParseState *pstate, GroupingFunc *gf)
 	 * Transform the list of arguments.
 	 */
 	foreach (lc, gf->args)
-	{
 		targs = lappend(targs, transformExpr(pstate, (Node *)lfirst(lc)));
-	}
 
 	new_gf->args = targs;
 
-	/* These values will be set in transformGroupClause(). */
-	new_gf->ngrpcols = 0;
-	new_gf->nargs = 0;
-	new_gf->grpargs = NULL;
+	new_gf->ngrpcols = gf->ngrpcols;
 
 	return (Node *)new_gf;
 }
