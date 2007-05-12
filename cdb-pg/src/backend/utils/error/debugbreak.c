@@ -5,10 +5,10 @@
  */
 
 #include <unistd.h>
+#include <stdio.h>
 #include "postgres.h"
 #include "utils/debugbreak.h"
 
-#include "lib/stringinfo.h"
 #include "nodes/plannodes.h"
 
 /* How to use debug_break
@@ -120,15 +120,15 @@ void disable_debug_break_n(int n)
 
 extern char *plannode_type(Plan *p);
 
-static void drawnode(StringInfo str, Plan *plan, List *nodelist)
+static void drawnode(FILE *ofile, Plan *plan, List *nodelist)
 {
 	if(!plan)
 		return;
 
 	/* print out the node */
-	appendStringInfo(str, "\"Node_0x%p\" [\n", plan);
-	appendStringInfo(str, "label=\"%s 0x%p\"\n", plannode_type(plan), plan);
-	appendStringInfo(str, "];\n");
+	fprintf(ofile, "\"Node_0x%p\" [\n", plan);
+	fprintf(ofile, "label=\"%s 0x%p\"\n", plannode_type(plan), plan);
+	fprintf(ofile, "];\n");
 
 	if(IsA(plan, Append))
 	{
@@ -140,11 +140,11 @@ static void drawnode(StringInfo str, Plan *plan, List *nodelist)
 			if(!list_member_ptr(nodelist, child))
 			{
 				nodelist = lappend(nodelist, child);
-				drawnode(str, child, nodelist);
+				drawnode(ofile, child, nodelist);
 			}
 
-			appendStringInfo(str, "\"Node_0x%p\" -> \"Node_0x%p\" [\n", plan, child);
-			appendStringInfo(str, "];\n");
+			fprintf(ofile, "\"Node_0x%p\" -> \"Node_0x%p\" [\n", plan, child);
+			fprintf(ofile, "];\n");
 		}
 	}
 	else if (IsA(plan, SubqueryScan))
@@ -154,11 +154,11 @@ static void drawnode(StringInfo str, Plan *plan, List *nodelist)
 		if(!list_member_ptr(nodelist, child))
 		{
 			nodelist = lappend(nodelist, child);
-			drawnode(str, child, nodelist);
+			drawnode(ofile, child, nodelist);
 		}
 
-		appendStringInfo(str, "\"Node_0x%p\" -> \"Node_0x%p\" [\n", plan, child);
-		appendStringInfo(str, "];\n");
+		fprintf(ofile, "\"Node_0x%p\" -> \"Node_0x%p\" [\n", plan, child);
+		fprintf(ofile, "];\n");
 	}
 	else
 	{
@@ -168,11 +168,11 @@ static void drawnode(StringInfo str, Plan *plan, List *nodelist)
 			if(!list_member_ptr(nodelist, child))
 			{
 				nodelist = lappend(nodelist, child);
-				drawnode(str, child, nodelist);
+				drawnode(ofile, child, nodelist);
 			}
 
-			appendStringInfo(str, "\"Node_0x%p\" -> \"Node_0x%p\" [\n", plan, child);
-			appendStringInfo(str, "];\n");
+			fprintf(ofile, "\"Node_0x%p\" -> \"Node_0x%p\" [\n", plan, child);
+			fprintf(ofile, "];\n");
 		}
 		child = plan->righttree;
 		if(child)
@@ -180,42 +180,43 @@ static void drawnode(StringInfo str, Plan *plan, List *nodelist)
 			if(!list_member_ptr(nodelist, child))
 			{
 				nodelist = lappend(nodelist, child);
-				drawnode(str, child, nodelist);
+				drawnode(ofile, child, nodelist);
 			}
 
-			appendStringInfo(str, "\"Node_0x%p\" -> \"Node_0x%p\" [\n", plan, child);
-			appendStringInfo(str, "];\n");
+			fprintf(ofile, "\"Node_0x%p\" -> \"Node_0x%p\" [\n", plan, child);
+			fprintf(ofile, "];\n");
 		}
 	}
 }
 
-char* dotnode(void * node)
+void dotnode(void * node, const char* fname)
 {
 	Plan *plan = (Plan *) node;
-	StringInfo str = makeStringInfo(); 
 	List *nodelist = NULL;
+	FILE *ofile = fopen(fname, "w+");
 
 	/* Print dot header */
-	appendStringInfo(str, "digraph g {\n");
-	appendStringInfo(str, "graph [\n");
-	appendStringInfo(str, "];\n");
 
-	appendStringInfo(str, "node [\n");
-	appendStringInfo(str, "fontsize = \"14\"\n");
-	appendStringInfo(str, "shape = \"box\"\n");
-	appendStringInfo(str, "];\n");
-	appendStringInfo(str, "edge [\n");
-	appendStringInfo(str, "fontsize = \"14\"\n");
-	appendStringInfo(str, "];\n");
+	fprintf(ofile, "digraph g {\n");
+	fprintf(ofile, "graph [\n");
+	fprintf(ofile, "];\n");
+
+	fprintf(ofile, "node [\n");
+	fprintf(ofile, "fontsize = \"14\"\n");
+	fprintf(ofile, "shape = \"box\"\n");
+	fprintf(ofile, "];\n");
+	fprintf(ofile, "edge [\n");
+	fprintf(ofile, "fontsize = \"14\"\n");
+	fprintf(ofile, "];\n");
 
 	if(node)
 	{
 		nodelist = lappend(nodelist, node);
-		drawnode(str, (Plan *) node, nodelist);
+		drawnode(ofile, (Plan *) node, nodelist);
 	}
 
-	appendStringInfo(str, "}\n");
-	return str->data;
+	fprintf(ofile, "}\n");
+	fclose(ofile);
 }
 
 

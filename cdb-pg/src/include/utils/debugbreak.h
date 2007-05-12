@@ -23,7 +23,7 @@ extern void disable_debug_break_n(int n);
 #define disable_debug_break_n(n)
 #endif
 
-extern char * dotnode(void *);
+extern void dotnode(void *, const char*);
 #endif /* _DEBUG_BREAK_H_ */
 
 
