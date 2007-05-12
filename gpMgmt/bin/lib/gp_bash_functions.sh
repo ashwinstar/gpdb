@@ -944,7 +944,12 @@ PING_HOST () {
 	TARGET_HOST=$1;shift
 	PING_EXIT=$1
 	if [ x"" == x"$PING_EXIT" ];then PING_EXIT=0;fi
-	$PING $TARGET_HOST $PING_TIME > /dev/null 2>&1
+	case $OS_TYPE in
+		darwin )
+			$PING $PING_TIME $TARGET_HOST > /dev/null 2>&1 ;;
+		* )
+			$PING $TARGET_HOST $PING_TIME > /dev/null 2>&1
+	esac
 	RETVAL=$?
 	case $RETVAL in
 		0) LOG_MSG "[INFO]:-$TARGET_HOST contact established" ;;
