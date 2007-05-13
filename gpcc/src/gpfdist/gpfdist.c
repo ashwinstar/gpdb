@@ -57,21 +57,30 @@ struct {
 } gcb = {0};
 
 
+/* A file stream - data may come from several files */
+typedef struct fstream_t fstream_t;
+struct fstream_t {
+    const char** fpath;		/* array of fpath */
+    int*         ffd;		/* array of fd */
+    int          fn;		/* #elements in ffd[] and fpath[] */
+    int		 fidx;		/* current index in ffd[] */
+    apr_uint64_t foff;		/* current offset in ffd[fidx] */
+    int          fskip;		/* reflect opt.h (skip first line) */
+    block_t*     fblock;	/* residue block */
+    int 	 ferror;	/* error flag */
+};
+
+
 /*  A session */
 typedef struct session_t session_t;
 struct session_t {
     const char* key;
     const char* tid;
     const char* path;
-    int ffd;			/* file input */
-    apr_uint64_t fsize, foff;
-    int is_error;
-    int first_row_skipped;	/* if opt.h flag is set, we need to skip first row */
-
-    int nrequest;		/* # requests attached to this session */
-    apr_time_t mtime;		/* time when nrequest was modified */
-
-    block_t* residue_block;	/* left over from last read */
+    fstream_t*  fstream;
+    int         is_error; 	/* error flag */
+    int         nrequest;	/* # requests attached to this session */
+    apr_time_t  mtime;		/* time when nrequest was modified */
 };
 
 
@@ -126,6 +135,200 @@ void block_put(block_t* b)
     gcb.freecnt++;
 }
 
+/* split the block at byte n (relative to bot) */
+block_t* block_split(block_t* b, int n)
+{
+    block_t* bb;
+    int m = b->top - b->bot - n;
+    if (m < 0)
+	gpcc_fatal(FLINE, "assert failed, n = %d, bot %d, top %d", n, b->bot, b->top);
+
+    if (m == 0)
+	return 0;
+    
+    bb = block_get();
+    memcpy(bb->byte, b->byte + b->bot + n, m);
+    b->top = b->bot + n;
+    bb->top = m;
+    return bb;
+}
+
+
+/* Scan as many record as possible in [p, q), taking quotes and escapes into account. */
+const char* scan_rec_boundary(const char* p, const char* q, int skipfirst)
+{
+    int in_quote, last_was_esc;
+    const char* last_complete = 0;
+    int xc = opt.x[0];
+    int qc = opt.q[0];
+
+    for (in_quote = last_was_esc = 0; p < q; p++) {
+	int ch = *p++;
+	if (ch == '\n' && !in_quote) {
+	    if (skipfirst)
+		skipfirst = 0;
+	    else
+		last_complete = p;
+	    continue;
+	}
+	if (in_quote && ch == xc) 
+	    last_was_esc = !last_was_esc;
+	if (ch == qc && !last_was_esc)
+	    in_quote = !in_quote;
+	if (ch != xc)
+	    last_was_esc = 0;
+    }
+
+    return last_complete;
+}
+
+
+void fstream_free(fstream_t* fs)
+{
+    int i;
+    for (i = 0; i < fs->fn; i++) {
+	if (fs->ffd[i] >= 0) {
+	    close(fs->ffd[i]);
+	    fs->ffd[i] = 0;
+	}
+	free((char*)fs->fpath[i]);
+    }
+    if (fs->fblock) {
+	block_put(fs->fblock);
+	fs->fblock = 0;
+    }
+    
+    free(fs->fpath);
+    free(fs->ffd);
+    free(fs);
+}
+
+
+
+fstream_t* fstream_alloc(char** path, int npath)
+{
+    int i;
+    fstream_t* fs;
+
+    if (0 == (fs = malloc(sizeof(fstream_t))))
+	gpcc_fatal(FLINE, "out of memory");
+    
+    memset(fs, 0, sizeof(*fs));
+
+    fs->fn = npath;
+    fs->fpath = malloc(sizeof(char*) * npath);
+    fs->ffd = malloc(sizeof(int) * npath);
+    if (0 == fs->fpath || 0 == fs->ffd) 
+	gpcc_fatal(FLINE, "out of memory");
+	
+    for (i = 0; i < npath; i++) {
+	if (0 == (fs->fpath[i] = strdup(path[i])))
+	    gpcc_fatal(FLINE, "out of memory");
+
+	if (-1 == (fs->ffd[i] = open(path[i], O_RDONLY, 0600))) {
+	    gpcc_warning(FLINE, "unable to open file %s", path[i]);
+	    fstream_free(fs);
+	    return 0;
+	}
+    }
+    fs->fidx = 0;
+    fs->foff = 0;
+    fs->fskip = opt.h;
+
+    return fs;
+}
+
+
+block_t* fstream_get_block(fstream_t* fs)
+{
+    block_t* b;
+    int n;
+    char* p; 
+    char* q;
+    int skipfirst;
+    
+    if (fs->ferror || fs->fidx >= fs->fn)
+	return 0;
+
+
+    /* use residue block if available */
+    if (0 != (b = fs->fblock)) 
+	fs->fblock = 0;
+    else
+	b = block_get();
+
+    /* fill up b */
+    while (0 != (n = sizeof(b->byte) - b->top)) {
+
+	/* read into b */
+	n = read(fs->ffd[fs->fidx], b->byte + b->top, n);
+	if (n < 0) {
+	    fs->ferror = 1;
+	    return 0;
+	}
+	if (n == 0) {		/* current file EOF */
+	    /* close this file */
+	    close(fs->ffd[fs->fidx]);
+	    fs->ffd[fs->fidx] = -1;
+
+	    /* move to new file */
+	    fs->fidx++;
+	    fs->foff = 0;
+	    fs->fskip = opt.h;
+	    if (fs->fidx >= fs->fn)  /* stream EOF */
+		return b;
+
+	    /* if need to skip first line, break to return 
+	       last block of previous file */
+	    if (opt.h) 
+		break;
+
+	    /* continue to fill up b */
+	    continue;
+	}
+	b->top += n;
+	fs->foff += n;
+
+	if (opt.V)
+	    printf("[INFO] %s [off %lld]\n", fs->fpath[fs->fidx], fs->foff);
+    }
+
+    skipfirst = fs->fskip;
+    if (skipfirst)
+	fs->fskip = 0;
+
+    /* find the split position */
+    p = b->byte + b->bot;
+    q = b->byte + b->top;
+    if (opt.q) {
+	/* go slow, scan byte-by-byte for record boundary */
+	p = (char*) scan_rec_boundary(p, q, skipfirst);
+    }
+    else {
+	/* go fast, scan for \n for record boundary */
+	if (skipfirst) {
+	    for ( ; p < q && *p != '\n'; p++);
+	    p++;
+	}
+	/* find the last \n from the back */
+	for (--q; p < q && *q != '\n'; q--);
+	p = (p < q ? q + 1 : 0);
+    }
+    
+    /* no record boundary 
+       -> record larger than BLOCKSIZE? unacceptable */
+    if (!p) {
+	gpcc_warning(FLINE, "ERROR: line too long (%s)", fs->fpath[fs->fidx]);
+	fs->ferror = 1;
+	return 0;
+    }
+
+    /* split the block at record boundary */
+    fs->fblock = block_split(b, p - b->byte + b->bot);
+    return b;
+}
+
+
 
 /* Print usage */
 void usage(const char* msg)
@@ -163,7 +366,7 @@ void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
     if (0 != apr_getopt_init(&os, pool, argc, argv)) 
 	gpcc_fatal(FLINE, "apt_getopt_init failed");
 
-    while (0 == (e = apr_getopt(os, "?vp:d:q:x:h", &ch, &arg))) {
+    while (0 == (e = apr_getopt(os, "?Vvp:d:q:x:h", &ch, &arg))) {
 	switch (ch) {
 	case '?': usage(0); break;
 	case 'v': opt.v = 1; break;
@@ -228,6 +431,7 @@ void session_detach(request_t* r);
 void session_end(session_t* s, int error);
 void request_end(request_t* r, int error);
 block_t* session_get_block(session_t* s);
+char* basename(const char* path, apr_pool_t* pool);
 
 
 /* send an error response */
@@ -323,126 +527,22 @@ void request_end(request_t* r, int error)
 
 
 
-/* split the block at byte n (relative to bot) */
-block_t* block_split(block_t* b, int n)
-{
-    block_t* bb;
-    int m = b->top - b->bot - n;
-    if (m < 0)
-	gpcc_fatal(FLINE, "assert failed, n = %d, bot %d, top %d", n, b->bot, b->top);
-
-    if (m == 0)
-	return 0;
-    
-    bb = block_get();
-    memcpy(bb->byte, b->byte + b->bot + n, m);
-    b->top = b->bot + n;
-    bb->top = m;
-    return bb;
-}
-
-/* Scan as many record as possible in [p, q), taking quotes and escapes into account. */
-const char* scan_rec_boundary(const char* p, const char* q, int skipfirst)
-{
-    int in_quote, last_was_esc;
-    const char* last_complete = 0;
-    int xc = opt.x[0];
-    int qc = opt.q[0];
-
-    for (in_quote = last_was_esc = 0; p < q; p++) {
-	int ch = *p++;
-	if (ch == '\n' && !in_quote) {
-	    if (skipfirst)
-		skipfirst = 0;
-	    else
-		last_complete = p;
-	    continue;
-	}
-	if (in_quote && ch == xc) 
-	    last_was_esc = !last_was_esc;
-	if (ch == qc && !last_was_esc)
-	    in_quote = !in_quote;
-	if (ch != xc)
-	    last_was_esc = 0;
-    }
-
-    return last_complete;
-}
-
 
 /* Get a block out of the session */
 block_t* session_get_block(session_t* s)
 {
     block_t* b;
-    int n;
-    char* p;
-    char* q;
-    int skipfirstrow;
 
-    if (s->is_error || s->ffd < 0) 
+    if (s->is_error || 0 == s->fstream)
 	return 0;
 
-    /* if we have a residue_block, use it. otherwise, get a new one */
-    if (0 != (b = s->residue_block)) {
-	s->residue_block = 0;
-    }
-    else {
-	b = block_get();
-    }
-
-    /* Fill up b */
-    n = sizeof(b->byte) - b->top;    /* how many bytes are not used in b */
-    while (n > 0) {
-	n = read(s->ffd, b->byte + b->top, n);
-	if (n < 0) {
+    if (0 == (b = fstream_get_block(s->fstream))) {
+	if (s->fstream->ferror)
 	    session_end(s, 1);
-	    return 0;
-	}
-	if (n == 0) {		/* EOF */
+	else
 	    session_end(s, 0);
-	    return b;
-	}
-	b->top += n;
-	s->foff += n;
-	n = sizeof(b->byte) - b->top;
-
-	if (opt.V) 
-	    printf("[INFO] %s [%lld/%lld]\n", s->path, s->foff, s->fsize);
-    }
-
-    /* find the split position */
-    skipfirstrow = opt.h && s->first_row_skipped;
-    if (skipfirstrow) 
-	s->first_row_skipped = 0;
-
-    if (opt.q) {
-	/* go slow, scan byte-by-byte for record boundary */
-	p = b->byte + b->bot;
-	q = b->byte + b->top;
-	p = (char*) scan_rec_boundary(p, q, skipfirstrow);
-    }
-    else {
-	/* go fast, scan /n for record boundary */
-	p = b->byte + b->bot;
-	q = b->byte + b->top;
-	if (skipfirstrow) {
-	    for ( ; p < q && *p != '\n'; p++);
-	    p++;
-	}
-	/* find the last \n */
-	for (--q ; p < q && *q != '\n'; q--);
-	p = (p < q ? q + 1: 0);
-    }
-
-    /* no record boundary -- record larger than BLOCKSIZE? unacceptable. */
-    if (!p) {
-	gpcc_warning(FLINE, "ERROR - %s - line too long", s->path);
-	session_end(s, 1);
 	return 0;
     }
-
-    /* split the block at record boundary */
-    s->residue_block = block_split(b, p - b->byte + b->bot);
     return b;
 }
 
@@ -452,72 +552,108 @@ void session_end(session_t* s, int error)
 {
     if (error)
 	s->is_error = error;
-    if (s->residue_block) {
-	block_put(s->residue_block);
-	s->residue_block = 0;
-    }
-    if (s->ffd >= 0) {
-	close(s->ffd);
-	s->ffd = -1;
+
+    if (s->fstream) {
+	fstream_free(s->fstream);
+	s->fstream = 0;
     }
 }
 
 
+char** glob(char* path, int* retcnt, apr_pool_t* pool)
+{
+    apr_array_header_t* arr;
+    char** elts;
+    int i, n;
+    char** fpath = 0;
+    char* bname = basename(path, pool);
+    char** p;
+
+    if (apr_match_glob(path, &arr, pool)) 
+	return 0;
+    n = arr->nelts;
+    fpath = apr_pcalloc(pool, sizeof(char*) * (n + 1));
+    elts = (char**) arr->elts;
+    p = fpath;
+    for (i = 0; i < n; i++) {
+	if (elts[i][0] == '.') 	/* skip '.' & '..' & '.xxx'  */
+	    continue;
+	*p++ = apr_pstrcat(pool, bname, "/", elts[i], 0);
+    }
+    
+    if (retcnt) 
+	*retcnt = p - fpath;
+    return fpath;
+}
 
 
-void session_attach(request_t* req)
+
+void session_attach(request_t* r)
 {
     char key[1024];
     session_t* s = 0;
-    int fd = -1;
-    off_t fsize;
+    fstream_t* fstream = 0;
     
     /* create the key */
-    if (sizeof(key) -1 == apr_snprintf(key, sizeof(key), "%s:%s", req->tid, req->path)) {
-	send_error(req, 400, "path too long");
-	request_end(req, 1);
+    if (sizeof(key) -1 == apr_snprintf(key, sizeof(key), "%s:%s", r->tid, r->path)) {
+	send_error(r, 400, "path too long");
+	request_end(r, 1);
 	return;
     }
 
     /* check in session hashtable */
     s = apr_hash_get(gcb.session.tab, key, APR_HASH_KEY_STRING);
-    if (s) {
-	/* found a session in hashtable*/
-
-	/* if error, send an error and close */
-	if (s->is_error) {
-	    send_error(req, 500, "session error");
-	    request_end(req, 1);
-	    return;
-	}
-
-	/* session already ended. send an empty response, and close. */
-	if (s->ffd < 0 || s->foff >= s->fsize) {
-	    send_empty(req);
-	    request_end(req, 0);
-	    return;
-	}
-
-	if (opt.v) 
-	    printf("[INFO] joined session (%s, %s)\n", s->path, s->tid);
-    }
-    else {
+    if (! s) {
 	/* not in hashtable - create new session */
+	int n = 0;
+	char** fpath = 0;
+	fstream_t* fstream = 0;
 
-	/* try opening the file */
-	if (-1 == (fd = open(req->path, O_RDONLY, 0600))) {
-	    gpcc_warning(FLINE, "reject request from %s, path %s\n", req->peer, req->path);
-	    send_error(req, 404, "not found");
-	    request_end(req, 1);
-	    return;
+	/* do we have a pattern in r->path? */
+	if (! apr_fnmatch_test(r->path)) {
+	    n = 1;
+	    fpath = &r->path;
+	}
+	else {
+	    /* glob for all files matching r->path pattern */
+	    fpath = glob(r->path, &n, r->pool);
+	    if (!fpath || n == 0) {
+		gpcc_warning(FLINE, "bad path: %s", r->path);
+		send_error(r, 404, "not found");
+		request_end(r, 1);
+		return;
+	    }
 	}
 
-	/* determine file size */
-	if (-1 == (fsize = lseek(fd, 0, SEEK_END))
-	    || -1 == lseek(fd, 0, SEEK_SET)) {
-	    gpcc_warning(FLINE, "reject request from %s, path %s\n", req->peer, req->path);
-	    send_error(req, 500, "internal error");
-	    request_end(req, 1);
+	if (n == 1) {
+	    /* check if fpath is a directory */
+	    apr_finfo_t finfo;
+	    if (apr_stat(&finfo, r->path, APR_FINFO_TYPE, r->pool)) {
+		/* error in stat. assume non-directory */
+		; 
+	    }
+	    else if (finfo.filetype != APR_DIR) {
+		/* not a directory */
+		; 
+	    }
+	    else {
+		/* this is a directory - glob for all files in the dir */
+		fpath = glob(apr_pstrcat(r->pool, fpath[0], "/*", 0), &n, r->pool);
+		if (!fpath || n == 0) {
+		    gpcc_warning(FLINE, "bad path: %s", r->path);
+		    send_error(r, 404, "not found");
+		    request_end(r, 1);
+		    return;
+		}
+	    }
+	}
+
+	/* try opening the fstream */
+	fstream = fstream_alloc(fpath, n);
+	if (! fstream) {
+	    gpcc_warning(FLINE, "reject request from %s, path %s\n", r->peer, r->path);
+	    send_error(r, 404, "not found");
+	    request_end(r, 1);
 	    return;
 	}
 
@@ -526,14 +662,14 @@ void session_attach(request_t* req)
 	    gpcc_fatal(FLINE, "out of memory");
 
 	memset(s, 0, sizeof(*s));
-	s->ffd = fd;
-	s->fsize = fsize;
 
-	if (0 == (s->tid = strdup(req->tid)) 
-	    || 0 == (s->path = strdup(req->path))
+	if (0 == (s->tid = strdup(r->tid)) 
+	    || 0 == (s->path = strdup(r->path))
 	    || 0 == (s->key = strdup(key))) {
 	    gpcc_fatal(FLINE, "out of memory");
 	}
+
+	s->fstream = fstream;
 
 	/* insert into hashtable */
 	apr_hash_set(gcb.session.tab, s->key, APR_HASH_KEY_STRING, s);
@@ -542,20 +678,39 @@ void session_attach(request_t* req)
 	    printf("[INFO] new session (%s, %s)\n", s->path, s->tid);
     }
 
+    /* found a session in hashtable*/
+
+    /* if error, send an error and close */
+    if (s->is_error) {
+	send_error(r, 500, "session error");
+	request_end(r, 1);
+	return;
+    }
+
+    /* session already ended. send an empty response, and close. */
+    if (0 == s->fstream) {
+	send_empty(r);
+	request_end(r, 0);
+	return;
+    }
+
+    if (opt.v) 
+	printf("[INFO] joined session (%s, %s)\n", s->path, s->tid);
+
     /* setup so receive EV_WRITE events to write to socket */
-    if (setup_write(req)) {
-	send_error(req, 500, "internal error");
-	request_end(req, 1);
+    if (setup_write(r)) {
+	send_error(r, 500, "internal error");
+	request_end(r, 1);
 	return;
     }
 
     /* one more request for session */
     s->nrequest++;
     s->mtime = apr_time_now();
-    req->session = s;
+    r->session = s;
 
     /* finally, tell peer that we are ready to send data */
-    send_ok(req);
+    send_ok(r);
     return;
 }
 
@@ -776,7 +931,6 @@ void do_read(int fd, short event, void* arg)
     }
     *p = 0;
 
-
     /*   - forbid dot dot  */
     for (p = r->path; 0 != (p = strchr(p, '.')); p++) {
 	if (p[1] == '.') {
@@ -787,7 +941,6 @@ void do_read(int fd, short event, void* arg)
 	    return;
 	}
     }
-
 
     /* Extract X-GP-TID value from HTTP headers */
     r->tid = 0;
@@ -802,7 +955,7 @@ void do_read(int fd, short event, void* arg)
 	r->tid = apr_psprintf(r->pool, "auto-tid.%d", gcb.session.gen++);
 
     if (opt.v) 
-	printf("[INFO] %s requests %s [TID %s]\n", r->peer, r->path, r->tid);
+	printf("[INFO] %s requests %s\n\tTID %s\n", r->peer, r->path, r->tid);
 
     /* Attach to a session */
     session_attach(r);
@@ -969,5 +1122,14 @@ int main(int argc, const char* const argv[])
     event_dispatch();
 
     return 0;
+}
+
+char* basename(const char* path, apr_pool_t* pool)
+{
+    char* idx = strrchr(path, '/');
+    if (! idx) 
+	return apr_pstrdup(pool, ".");
+
+    return apr_pstrndup(pool, path, idx - path);
 }
 
