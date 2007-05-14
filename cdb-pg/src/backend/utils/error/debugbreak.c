@@ -15,28 +15,34 @@
  *
  * Greenplum DB will spawn many processes to execute a query in parallel.
  * In order to debug, one may need to first run a query that will successfully
- * create enough process (slice), attach gdb to these slices, and set break points
- * in all GDB sessions.  This is quite tedious.
+ * create enough process (slice), attach gdb to these slices, and set break
+ * points in all GDB sessions.  This is quite tedious.
  *
- * Alternatively, you can put a sleep somewhere in the code, so the process running
- * the interesting code will sleep and you will have enough time to attach gdb.
- * The problem is that it is a tedious process to "unfreeze" the sleeped process,
- * and, you cannot disable the "sleep point".
+ * Alternatively, you can put a sleep somewhere in the code, so the process
+ * running the interesting code will sleep and you will have enough time to
+ * attach gdb. The problem is that it is a tedious process to "unfreeze" the
+ * sleeped process, and, you cannot disable the "sleep point".
  *
  * Here is the more convinient debugging facilities.
- * Suppose you want to inspecting some code in slice 3 (from logging, or crash, etc).
- * At the point you want to break in, add the follwing
+ * Suppose you want to inspecting some code in slice 3 (from logging, or crash,
+ * etc). At the point you want to break in, add the follwing
+ * 
  * 		if(currentSliceId == 3) 
  * 			debug_break();
+ * 			
  * Run the query, slice 3 will sleep here.  You can find the process id from 
- * log and attach debugger.  In order to "unfreeze" the process, you go to the frame
- * of debug_break, and in gdb, do,
+ * log and attach debugger.  In order to "unfreeze" the process, you go to the
+ * frame of debug_break, and in gdb, do,
+ *
  * 		gdb> p debug_break_flag = 0
  *		gdb> c
- * this will unfreeze the process.  If you just want the process keep running and 
- * do not hit any debug_break any more, do
+ *
+ * this will unfreeze the process.  If you just want the process keep running
+ * and do not hit any debug_break any more, do
+ *
  * 		gdb> p debug_break_flag = 2
  *		gdb> c
+ *		
  * Now debug_break will not hit again.
  *
  * Two very good place to put debug break are,
@@ -50,7 +56,8 @@
  */
 #ifdef USE_DEBUG_BREAK
 
-void debug_break()
+void
+debug_break()
 {
 	static volatile int debug_break_loop = 0; 
 
@@ -63,17 +70,19 @@ void debug_break()
 		sleep(1);
 }
 
-/* debug_break_n
- * debug_break will turn on/off all debug_breaks, the _n version will turn on/off
- * a debug_break point controlled by number n.
- */
-
 #define DEBUG_BREAK_N_MAX (sizeof(int) * 8)
 
 /* by default, only enable debug_break_point 1, (Assert) */
 static volatile int debug_break_n_flags = 1; 
 
-void debug_break_n(int n)
+/*
+ * debug_break_n
+ *
+ * debug_break will turn on/off all debug_breaks, the _n version will turn
+ * on/off a debug_break point controlled by number n.
+ */
+void
+debug_break_n(int n)
 {
 	int checkbit = 1;
 	static volatile int debug_break_n_loop = 0;
@@ -90,7 +99,8 @@ void debug_break_n(int n)
 		sleep(1);
 }
 
-void enable_debug_break_n(int n)
+void
+enable_debug_break_n(int n)
 {
 	if(n == 0)
 		debug_break_n_flags = ~0;
@@ -103,7 +113,8 @@ void enable_debug_break_n(int n)
 	}
 }
 
-void disable_debug_break_n(int n)
+void
+disable_debug_break_n(int n)
 {
 	if(n == 0)
 		debug_break_n_flags = 0;
@@ -120,7 +131,8 @@ void disable_debug_break_n(int n)
 
 extern char *plannode_type(Plan *p);
 
-static void drawnode(FILE *ofile, Plan *plan, List *nodelist)
+static void
+drawnode(FILE *ofile, Plan *plan, List *nodelist)
 {
 	if(!plan)
 		return;
@@ -189,9 +201,9 @@ static void drawnode(FILE *ofile, Plan *plan, List *nodelist)
 	}
 }
 
-void dotnode(void * node, const char* fname)
+void
+dotnode(void * node, const char* fname)
 {
-	Plan *plan = (Plan *) node;
 	List *nodelist = NULL;
 	FILE *ofile = fopen(fname, "w+");
 
@@ -218,6 +230,3 @@ void dotnode(void * node, const char* fname)
 	fprintf(ofile, "}\n");
 	fclose(ofile);
 }
-
-
-	
