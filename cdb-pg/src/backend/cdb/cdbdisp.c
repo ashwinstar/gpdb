@@ -686,7 +686,17 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 		{						/* loop over QEs managed by one thread */
 			dispatchResult = pParms->dispatchResultPtrArray[j];
 
-			Assert(dispatchResult && dispatchResult->segdbDesc);
+			if (dispatchResult == NULL)
+			{
+				elog(LOG, "CheckDispatchResult: result object is NULL ? skipping.");
+				continue;
+			}
+
+			if (dispatchResult->segdbDesc == NULL)
+			{
+				elog(LOG, "CheckDispatchResult: result object segment descriptor is NULL ? skipping.");
+				continue;
+			}
 
 			segdbDesc = dispatchResult->segdbDesc;
 
