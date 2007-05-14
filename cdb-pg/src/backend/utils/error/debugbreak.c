@@ -4,12 +4,8 @@
  * Copyright (c) 2007, greenplum inc
  */
 
-#include <unistd.h>
-#include <stdio.h>
 #include "postgres.h"
 #include "utils/debugbreak.h"
-
-#include "nodes/plannodes.h"
 
 /* How to use debug_break
  *
@@ -128,105 +124,3 @@ disable_debug_break_n(int n)
 }
 
 #endif
-
-extern char *plannode_type(Plan *p);
-
-static void
-drawnode(FILE *ofile, Plan *plan, List *nodelist)
-{
-	if(!plan)
-		return;
-
-	/* print out the node */
-	fprintf(ofile, "\"Node_0x%p\" [\n", plan);
-	fprintf(ofile, "label=\"%s 0x%p\"\n", plannode_type(plan), plan);
-	fprintf(ofile, "];\n");
-
-	if(IsA(plan, Append))
-	{
-		Append *app = (Append *) plan;
-		ListCell *cell;
-		foreach(cell, app->appendplans)
-		{
-			Plan *child = (Plan *) lfirst(cell);
-			if(!list_member_ptr(nodelist, child))
-			{
-				nodelist = lappend(nodelist, child);
-				drawnode(ofile, child, nodelist);
-			}
-
-			fprintf(ofile, "\"Node_0x%p\" -> \"Node_0x%p\" [\n", plan, child);
-			fprintf(ofile, "];\n");
-		}
-	}
-	else if (IsA(plan, SubqueryScan))
-	{
-		SubqueryScan *subq = (SubqueryScan *) plan;
-		Plan *child = subq->subplan;
-		if(!list_member_ptr(nodelist, child))
-		{
-			nodelist = lappend(nodelist, child);
-			drawnode(ofile, child, nodelist);
-		}
-
-		fprintf(ofile, "\"Node_0x%p\" -> \"Node_0x%p\" [\n", plan, child);
-		fprintf(ofile, "];\n");
-	}
-	else
-	{
-		Plan *child = plan->lefttree;
-		if(child)
-		{
-			if(!list_member_ptr(nodelist, child))
-			{
-				nodelist = lappend(nodelist, child);
-				drawnode(ofile, child, nodelist);
-			}
-
-			fprintf(ofile, "\"Node_0x%p\" -> \"Node_0x%p\" [\n", plan, child);
-			fprintf(ofile, "];\n");
-		}
-		child = plan->righttree;
-		if(child)
-		{
-			if(!list_member_ptr(nodelist, child))
-			{
-				nodelist = lappend(nodelist, child);
-				drawnode(ofile, child, nodelist);
-			}
-
-			fprintf(ofile, "\"Node_0x%p\" -> \"Node_0x%p\" [\n", plan, child);
-			fprintf(ofile, "];\n");
-		}
-	}
-}
-
-void
-dotnode(void * node, const char* fname)
-{
-	List *nodelist = NULL;
-	FILE *ofile = fopen(fname, "w+");
-
-	/* Print dot header */
-
-	fprintf(ofile, "digraph g {\n");
-	fprintf(ofile, "graph [\n");
-	fprintf(ofile, "];\n");
-
-	fprintf(ofile, "node [\n");
-	fprintf(ofile, "fontsize = \"14\"\n");
-	fprintf(ofile, "shape = \"box\"\n");
-	fprintf(ofile, "];\n");
-	fprintf(ofile, "edge [\n");
-	fprintf(ofile, "fontsize = \"14\"\n");
-	fprintf(ofile, "];\n");
-
-	if(node)
-	{
-		nodelist = lappend(nodelist, node);
-		drawnode(ofile, (Plan *) node, nodelist);
-	}
-
-	fprintf(ofile, "}\n");
-	fclose(ofile);
-}
