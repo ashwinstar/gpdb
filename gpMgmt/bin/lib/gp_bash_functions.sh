@@ -294,7 +294,15 @@ ERROR_EXIT () {
 READ_CHK () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	READ_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c" select count(*) from $CONFIG_TABLE where port<0;"`
-	LOG_MSG "[INFO]:-Obtained -ve port read count $READ_COUNT"
+	RETVAL=$?
+	if [ $RETVAL -ne 0 ];then
+		READ_COUNT=0
+		#Could not connect to database so set read count to zero
+		LOG_MSG "[WARN]:-Could not obtain read count from database"
+		EXIT_STATUS=1
+	else
+		LOG_MSG "[INFO]:-Obtained -ve port read count $READ_COUNT"
+	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
