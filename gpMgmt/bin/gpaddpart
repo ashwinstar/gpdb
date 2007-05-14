@@ -150,6 +150,9 @@ PROMPT_CONTINUE () {
 		esac
 		LOG_MSG "[INFO]:-Partition depth            = $DEPTH" 1
 		LOG_MSG "[INFO]:-Number of new child tables = ${#SUFFIX_ARRAY[@]}" 1
+		if [ x"" != x"$CHILD_DISTRIBUTION" ];then
+		LOG_MSG "[INFO]:-Distribution column(s)     = $CHILD_DISTRIBUTION" 1
+		fi
 		if [ $RULE_GEN -eq 0 ];then
 		LOG_MSG "[INFO]:-Rule generation            = Off" 1
 		else
@@ -284,6 +287,18 @@ PROCESS_CHILD_CONSTRAINT () {
 	else
 	CHILD_CONSTRAINT_TEXT_TEMPLATE=`$ECHO $CHILD_CONSTRAINT_TEXT|$SED -e 's/AND/~/g'|$TR '~' '\n'|$SED -e 's/[0-9])/1 )/g'|$AWK '{print $1" "$2" SWAP"NR$4}'|$TR '\n' '~'|$SED -e 's/))~/))/g'|$SED -e 's/~/ AND /g'`
 	fi
+	CHILD_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_class where relname='$CHILD_NAME'and relkind='r' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+	ERROR_CHK $? "obtain child table OID value" 2
+	GET_DISTRIB_COLS ${SCHEMA_NAME}.$CHILD_NAME $MASTER_PORT $QD_DBNAME
+	if [ x"" != x"$DISTRIB_COLS" ];then
+		for ATT_NUM in `echo $DISTRIB_COLS|$TR -d '{'|$TR -d '}'|$TR ',' ' '`
+		do
+			DIS_COL_NAME=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select attname from pg_attribute where attrelid=${CHILD_OID} and attnum=${ATT_NUM};"`
+			ERROR_CHK $? "obtain child table distribution column name" 2
+			CHILD_DIS_COL="$CHILD_DIS_COL $DIS_COL_NAME"
+		done
+		CHILD_DISTRIBUTION=`$ECHO $CHILD_DIS_COL|$TR ' ' ','`
+	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -360,6 +375,7 @@ GATHER_INFO () {
 			done
 			RANGE_OP=`$ECHO $CHILD_CONSTRAINT_TEXT|$TR -d ')'|$AWK '{print $(NF-1)}'`
 			RANGE_GAP=`$ECHO $CHILD_CONSTRAINT_TEXT|$TR -d ')'|$AWK '{print $NF-$3}'`
+			((RANGE_GAP=$RANGE_GAP+1))
 			LOG_MSG "[INFO]:-Obtained max range value as $MAX_RANGE" 1
 			LOG_MSG "[INFO]:-Obtained max range operator as $RANGE_OP"	 1
 			LOG_MSG "[INFO]:-Obtained range step count as $RANGE_GAP" 1
@@ -651,7 +667,11 @@ GENERATE_SQL () {
                 if [ $EXISTS -gt 0 ];then
                         $ECHO "CREATE TABLE $CHILD_TAB_FULL" >> $TMP_FILE
                         $ECHO "(CHECK ( `$ECHO ${RULE_ARRAY[$VECTOR]}|$TR '~' ' '` ) )" >> $TMP_FILE
-                        $ECHO "INHERITS (${PARENT_TABLE_NAME});" >> $TMP_FILE
+			if [ x"" != x"$CHILD_DISTRIBUTION" ];then
+                        	$ECHO "INHERITS (${PARENT_TABLE_NAME}) distributed by ($CHILD_DISTRIBUTION);" >> $TMP_FILE
+			else
+                        	$ECHO "INHERITS (${PARENT_TABLE_NAME});" >> $TMP_FILE
+			fi
                         $ECHO >> $TMP_FILE
                         if [ $INDEX_GEN -eq 1 ];then
 				for INDEX_ITEM in ${CHILD_INDEX_COL_ARRAY[@]}
