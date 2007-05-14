@@ -185,6 +185,14 @@ GET_NODE_COUNT () {
 	DIS_COL_ARRAY=(`$PSQL -p $MASTER_PORT  $QD_DBNAME -R" " -A -t -c "select  a.attname from pg_class c,  gp_distribution_policy d, pg_attribute a where c.oid = d.localoid and a.attrelid = d.localoid and  a.attnum = ANY ( d.attrnums ) and c.relname='$T_NAME' and c.relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`)
 	NUM_SEGMENTS=`$PSQL -p $MASTER_PORT  $QD_DBNAME -A -t -c "select count(*) from $CONFIG_TABLE where content<>-1 and isprimary='t';"`
 	ERROR_CHK $? "obtain number of segment instances" 2
+	RELPAGE_NUM_PER_SEG_WAIT=`$PSQL -p $MASTER_PORT  $QD_DBNAME -R" " -A -t -c "select relpages/${NUM_SEGMENTS}/800 from pg_class where relname='$T_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+	ERROR_CHK $? "obtain relpages for $T_NAME" 2
+	if [ $RELPAGE_NUM_PER_SEG_WAIT -ge $WAIT_LIMIT ];then
+		LOG_MSG "[INFO]:-Reset default time out from $WAIT_LIMIT to $RELPAGE_NUM_PER_SEG_WAIT seconds" 1
+		WAIT_LIMIT=$RELPAGE_NUM_PER_SEG_WAIT
+	else
+		LOG_MSG "[INFO]:-Using default time out value of $WAIT_LIMIT seconds"
+	fi
 	if [ $NUM_SEGMENTS = 1 ];then
 		ERROR_EXIT "[FATAL]:-Only one node in instance, skew not applicable" 2
 	fi 
