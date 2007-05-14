@@ -268,6 +268,7 @@ transformExpr(ParseState *pstate, Node *expr)
 		case T_CoerceToDomainValue:
 		case T_SetToDefault:
 		case T_GroupId:
+		case T_Integer:
 			{
 				result = (Node *) expr;
 				break;
