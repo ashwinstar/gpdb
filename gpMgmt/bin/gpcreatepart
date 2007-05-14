@@ -121,6 +121,7 @@ USAGE () {
 		$ECHO "          If there is a requirement to implement a more complex conversion command, for example"
 		$ECHO "          to_date(column name, 'YYYYMMDD') use -m \"to_date(^,'YYYYMMDD')\" the ^ symbol is used"
 		$ECHO "          to indicate the place at which the column name is being used in the conversion command"
+		$ECHO "      -A, <column name1, column name2, ...> Alternative distribution column(s) for child tables"
 		$ECHO "      -F, force child table creation if parent already has child tables"
 		$ECHO
 		$ECHO "      Date range partitioning options:"
@@ -196,6 +197,11 @@ PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-Suffix start               = ${SUFFIX_ARRAY[0]}"  1
 		LOG_MSG "[INFO]:-Suffix end                 = ${SUFFIX_ARRAY[$SUFFIX_COUNT-1]}"  1
 		LOG_MSG "[INFO]:-Number of partition tables = ${#SUFFIX_ARRAY[@]}" 1
+		if [ x"" != x"$NEW_DIST_COL" ];then
+		LOG_MSG "[INFO]:-Alternative distribution   = $NEW_DIST_COL" 1
+		else
+		LOG_MSG "[INFO]:-Alternative distribution   = Off" 1
+		fi
 		if [ $RULE_GEN -eq 0 ];then
 		LOG_MSG "[INFO]:-Rule generation            = Off" 1
 		else
@@ -348,6 +354,26 @@ VALIDATE_PARAM () {
 	if [ $COL_THERE -ne 1 ];then
 		ERROR_EXIT "[FATAL]:-Column $PART_COLUMN does not exist in $PARENT_TABLE_NAME" 2
 	fi
+	#Check for new distribution column(s)
+	if [ x"" != x"$NEW_DIST_COL" ];then
+		NUM_DIST_COL=`$ECHO $NEW_DIST_COL|$TR ',' ' '|$WC -w`
+		if [ $NUM_DIST_COL -gt 1 ];then
+			((COMMA_COUNT=$NUM_DIST_COL-1))
+			if [ `$ECHO $NEW_DIST_COL|$GREP -c ","` -ne $COMMA_COUNT ];then
+				ERROR_EXIT "[FATAL]:-Problem with text supplied to -A option" 2
+			fi
+		fi
+		LOG_MSG "[INFO]:-Checking new distribution columns"
+		NEW_DIST_ARRAY=(`$ECHO $NEW_DIST_COL|$TR ',' ' '`)
+		for COL_DIST in ${NEW_DIST_ARRAY[@]}
+		do
+			COL_THERE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from pg_attribute where attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}')) and attname='${COL_DIST}' and attnum > 0;"`
+			ERROR_CHK $? "check for \"$COL_DIST\" column" 2
+			if [ $COL_THERE -ne 1 ];then
+				ERROR_EXIT "[FATAL]:-New distribution column $COL_DIST does not exist in $PARENT_TABLE_NAME" 2
+			fi
+		done
+	fi	
 	#Now check if alternative columns have been provided for indexing
 	if [ x"" != x"$INDEX_COLUMN" ];then
 		if [ `$ECHO $INDEX_COLUMN|$GREP -c ","` -ne 0 ];then
@@ -850,7 +876,11 @@ GENERATE_SQL () {
 		if [ $EXISTS -gt 0 ];then	
 			$ECHO "CREATE TABLE ${CHILD_TAB_FULL}" >> $TMP_FILE
 			$ECHO "(CHECK ( `$ECHO ${RULE_ARRAY[$VECTOR]}|$TR '~' ' '` ) )" >> $TMP_FILE
-			$ECHO "INHERITS (${PARENT_TABLE_NAME});" >> $TMP_FILE
+			if [ x"" != x"$NEW_DIST_COL" ];then
+				$ECHO "INHERITS (${PARENT_TABLE_NAME}) distributed by ($NEW_DIST_COL);" >> $TMP_FILE
+			else
+				$ECHO "INHERITS (${PARENT_TABLE_NAME});" >> $TMP_FILE
+			fi
 			$ECHO >> $TMP_FILE
 			if [ $CREATE_PART_INDEX -eq 1 ];then
 				COL_ATT_NUM=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select attnum from pg_attribute where attname='$PART_COLUMN' and attrelid in (select oid from pg_class where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME'));"` >> $LOG_FILE 2>&1
@@ -1000,7 +1030,7 @@ RM_TMP_FILE () {
 #******************************************************************************
 trap 'RM_TMP_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":vt:'?'aql:d:c:x:p:rn:s:f:bi:e:g:o:um:kF!D" opt;do
+		while getopts ":vt:'?'aql:d:c:x:p:rn:s:f:bi:e:g:o:um:kF!DA:" opt;do
 			case $opt in
 				v ) VERSION_INFO ;;
 				'?' ) USAGE ;;
@@ -1028,6 +1058,7 @@ if [ $# -ne 0 ]; then
 				k ) KEEP_TMP=1 ;;
 				F ) FORCE_CREATE=1 ;;
 				D ) DEBUG_LEVEL=1 ;;
+				A ) NEW_DIST_COL=$OPTARG ;;
 				* ) USAGE ;;
 				esac
 		done	
