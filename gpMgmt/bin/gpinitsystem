@@ -39,10 +39,10 @@ fi
 #******************************************************************************
 # Log file that will record script actions
 CUR_DATE=`$DATE +%Y%m%d`
-TIME=`$DATE +%H%M%S`
+FILE_TIME=`$DATE +%H%M%S`
 PROG_NAME=`$BASENAME $0`
 HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
-BACKOUT_FILE=$DEFLOGDIR/backout_gpinitsystem_${USER_NAME}_${CUR_DATE}_$TIME
+BACKOUT_FILE=$DEFLOGDIR/backout_gpinitsystem_${USER_NAME}_${CUR_DATE}_$FILE_TIME
 # Level of script feedback 0=small 1=verbose
 VERBOSE=1
 INTERACTIVE=1
@@ -1236,13 +1236,13 @@ if [ x"" != x"$LOG_DIR" ];then
         if [ $EXISTS -eq 1 ]; then
                 LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory" 1
                 EXIT_STATUS=1
-                BACKOUT_FILE=$DEFLOGDIR/backout_${PROG_NAME}_${USER_NAME}_${CUR_DATE}_$TIME
+                BACKOUT_FILE=$DEFLOGDIR/backout_${PROG_NAME}_${USER_NAME}_${CUR_DATE}_$FILE_TIME
         else
                 LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
-                BACKOUT_FILE=$LOG_DIR/backout_${PROG_NAME}_${USER_NAME}_${CUR_DATE}_$TIME
+                BACKOUT_FILE=$LOG_DIR/backout_${PROG_NAME}_${USER_NAME}_${CUR_DATE}_$FILE_TIME
         fi
 else
-        BACKOUT_FILE=$DEFLOGDIR/backout_${PROG_NAME}_${USER_NAME}_${CUR_DATE}_$TIME
+        BACKOUT_FILE=$DEFLOGDIR/backout_${PROG_NAME}_${USER_NAME}_${CUR_DATE}_$FILE_TIME
 fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
@@ -1272,7 +1272,7 @@ if [ x"" != x"$PARALLEL_BUILD" ];then
 		LOG_MSG "[INFO]:-Dumped contents of status file to the log file" 1
 		#Need to build a central backout file
 		LOG_MSG "[INFO]:-Building composite backout file" 1
-		for I in ls /tmp/gpsegcreate.sh_backout*
+		for I in /tmp/gpsegcreate.sh_backout*
 		do
 			$CAT $I >> $BACKOUT_FILE
 			$RM -f $I
