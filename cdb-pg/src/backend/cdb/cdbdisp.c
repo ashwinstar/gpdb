@@ -957,26 +957,28 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
      * Dispatch the command.
      */
     dispatchThreads = NULL;
-	
+
 	primaryResults = cdbdisp_makeDispatchResults(nsegdb, 0, /* cancelOnError */ false);
+	if (dispatchToMirrors && mirrorGang)
+	{
+        mirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, /* cancelOnError */ false);
+	}
+	else
+		mirrorResults = NULL;
+	
+
 	cdbdisp_dispatchToGang(&dispatchThreads, 
 						   GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL,
 						   &dtxProtocolParms,
 						   primaryGang, primaryResults, -1, 1);
 	
-	if (dispatchToMirrors && mirrorGang)
-    {
-        mirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, /* cancelOnError */ false);
-        cdbdisp_dispatchToGang(&dispatchThreads, 
+	if (mirrorResults != NULL)
+	{
+		cdbdisp_dispatchToGang(&dispatchThreads, 
 							   GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL,
 							   &dtxProtocolParms,
 							   mirrorGang, mirrorResults, -1, 1);
-    }
-	else
-	{
-		mirrorResults = NULL;
 	}
-
 
 	/* Wait for all QEs to finish.	Don't cancel. */
 	CdbCheckDispatchResult(dispatchThreads, false);

@@ -467,6 +467,10 @@ doPrepareTransaction(void)
 	
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"doPrepareTransaction entering in state = %s", 
 	     DtxStateToString(currentGxact->state));
+
+	/* Don't allow a cancel while we're dispatching our prepare (we wrap our
+	 * state change as well; for good measure. */
+	HOLD_INTERRUPTS();
 	
 	getTmLock();
 	Assert(currentGxact->state == DTX_STATE_ACTIVE_DISTRIBUTED);
@@ -488,6 +492,10 @@ doPrepareTransaction(void)
 					DTX_PROTOCOL_COMMAND_PREPARE, /* flags */ 0, 
 					currentGxact->gid, currentGxact->gxid,
 					/* dispatchToMirrors */ true, &currentGxact->badPrepareGangs, /* raiseError */ false);
+
+	/* Now we've cleaned up our dispatched statement, cancels are allowed again. */
+	RESUME_INTERRUPTS();
+
 	if (!succeeded)
 	{
 		elog((Debug_print_full_dtm ? LOG : DEBUG5), "doPrepareTransaction error finds badPrimaryGangs = %s",
