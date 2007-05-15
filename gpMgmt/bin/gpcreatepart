@@ -122,6 +122,7 @@ USAGE () {
 		$ECHO "          to_date(column name, 'YYYYMMDD') use -m \"to_date(^,'YYYYMMDD')\" the ^ symbol is used"
 		$ECHO "          to indicate the place at which the column name is being used in the conversion command"
 		$ECHO "      -A, <column name1, column name2, ...> Alternative distribution column(s) for child tables"
+		$ECHO "          For random (strewn) distribution use -A randomly"
 		$ECHO "      -F, force child table creation if parent already has child tables"
 		$ECHO
 		$ECHO "      Date range partitioning options:"
@@ -355,7 +356,7 @@ VALIDATE_PARAM () {
 		ERROR_EXIT "[FATAL]:-Column $PART_COLUMN does not exist in $PARENT_TABLE_NAME" 2
 	fi
 	#Check for new distribution column(s)
-	if [ x"" != x"$NEW_DIST_COL" ];then
+	if [ x"" != x"$NEW_DIST_COL" ] && [ `$ECHO $NEW_DIST_COL|$TR '[:upper:]' '[:lower:]'` != "randomly" ];then
 		NUM_DIST_COL=`$ECHO $NEW_DIST_COL|$TR ',' ' '|$WC -w`
 		if [ $NUM_DIST_COL -gt 1 ];then
 			((COMMA_COUNT=$NUM_DIST_COL-1))
@@ -877,7 +878,11 @@ GENERATE_SQL () {
 			$ECHO "CREATE TABLE ${CHILD_TAB_FULL}" >> $TMP_FILE
 			$ECHO "(CHECK ( `$ECHO ${RULE_ARRAY[$VECTOR]}|$TR '~' ' '` ) )" >> $TMP_FILE
 			if [ x"" != x"$NEW_DIST_COL" ];then
-				$ECHO "INHERITS (${PARENT_TABLE_NAME}) distributed by ($NEW_DIST_COL);" >> $TMP_FILE
+				if [ `$ECHO $NEW_DIST_COL|$TR '[:upper:]' '[:lower:]'` == "randomly" ];then
+					$ECHO "INHERITS (${PARENT_TABLE_NAME}) distributed ${NEW_DIST_COL};" >> $TMP_FILE
+				else
+					$ECHO "INHERITS (${PARENT_TABLE_NAME}) distributed by ($NEW_DIST_COL);" >> $TMP_FILE
+				fi
 			else
 				$ECHO "INHERITS (${PARENT_TABLE_NAME});" >> $TMP_FILE
 			fi
