@@ -150,9 +150,7 @@ PROMPT_CONTINUE () {
 		esac
 		LOG_MSG "[INFO]:-Partition depth            = $DEPTH" 1
 		LOG_MSG "[INFO]:-Number of new child tables = ${#SUFFIX_ARRAY[@]}" 1
-		if [ x"" != x"$CHILD_DISTRIBUTION" ];then
 		LOG_MSG "[INFO]:-Distribution column(s)     = $CHILD_DISTRIBUTION" 1
-		fi
 		if [ $RULE_GEN -eq 0 ];then
 		LOG_MSG "[INFO]:-Rule generation            = Off" 1
 		else
@@ -298,6 +296,8 @@ PROCESS_CHILD_CONSTRAINT () {
 			CHILD_DIS_COL="$CHILD_DIS_COL $DIS_COL_NAME"
 		done
 		CHILD_DISTRIBUTION=`$ECHO $CHILD_DIS_COL|$TR ' ' ','`
+	else
+		CHILD_DISTRIBUTION="randomly"
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -375,7 +375,6 @@ GATHER_INFO () {
 			done
 			RANGE_OP=`$ECHO $CHILD_CONSTRAINT_TEXT|$TR -d ')'|$AWK '{print $(NF-1)}'`
 			RANGE_GAP=`$ECHO $CHILD_CONSTRAINT_TEXT|$TR -d ')'|$AWK '{print $NF-$3}'`
-			((RANGE_GAP=$RANGE_GAP+1))
 			LOG_MSG "[INFO]:-Obtained max range value as $MAX_RANGE" 1
 			LOG_MSG "[INFO]:-Obtained max range operator as $RANGE_OP"	 1
 			LOG_MSG "[INFO]:-Obtained range step count as $RANGE_GAP" 1
@@ -668,7 +667,11 @@ GENERATE_SQL () {
                         $ECHO "CREATE TABLE $CHILD_TAB_FULL" >> $TMP_FILE
                         $ECHO "(CHECK ( `$ECHO ${RULE_ARRAY[$VECTOR]}|$TR '~' ' '` ) )" >> $TMP_FILE
 			if [ x"" != x"$CHILD_DISTRIBUTION" ];then
-                        	$ECHO "INHERITS (${PARENT_TABLE_NAME}) distributed by ($CHILD_DISTRIBUTION);" >> $TMP_FILE
+				if [ `$ECHO $CHILD_DISTRIBUTION|$TR '[:upper:]' '[:lower:]'` == "randomly" ];then
+                        		$ECHO "INHERITS (${PARENT_TABLE_NAME}) distributed ${CHILD_DISTRIBUTION};" >> $TMP_FILE
+				else
+                        		$ECHO "INHERITS (${PARENT_TABLE_NAME}) distributed by ($CHILD_DISTRIBUTION);" >> $TMP_FILE
+				fi
 			else
                         	$ECHO "INHERITS (${PARENT_TABLE_NAME});" >> $TMP_FILE
 			fi
