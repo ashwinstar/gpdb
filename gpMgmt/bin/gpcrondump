@@ -47,7 +47,6 @@ VERBOSE=1
 TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
 DUMP_DATE=`$DATE +%Y%m%d`
-FILE_TIMESTAMP=`$DATE +%Y%m%d%H%M%S`
 PROG_NAME=`$BASENAME $0`
 HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
 EXIT_STATUS=0
@@ -65,7 +64,6 @@ CUR_HOST=`$HOSTNAME`
 VACUUM_MODE=0 # 1=run before dump starts, 2=run after dump has completed.
 TRY_COMPRESSION=0
 IS_RUNNING_FLAG=/tmp/${PROG_NAME}_is_running_flag
-CONFIG_BACKUP_FILE=gp_master_config_files_${FILE_TIMESTAMP}.tar
 DUMP_CONFIG=0
 DUMP_PG_DUMP=0
 CATALOG=pg_catalog
@@ -558,6 +556,7 @@ PROMPT_CONTINUE () {
 PROCESS_DUMP_CONFIG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Securing master configuration files" 1
+	CONFIG_BACKUP_FILE=gp_master_config_files_${TIMESTAMP_KEY}.tar
 	$TAR cf ${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/${DUMP_DATE}/${CONFIG_BACKUP_FILE} ${MASTER_DATA_DIRECTORY}/*.conf  >> $LOG_FILE 2>&1
 	ERROR_CHK $? "dump config files" 1
 	DUMP_CONFIG=0
@@ -567,7 +566,7 @@ PROCESS_DUMP_CONFIG () {
 PROCESS_DUMP_PG_DUMP () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Commencing pg_catalog dump for database $DUMP_DATABASE" 1
-	$PG_DUMP -f ${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/${DUMP_DATE}/gp_${DUMP_DATABASE}_database_${CATALOG}_dump_$FILE_TIMESTAMP -n $CATALOG $DUMP_DATABASE
+	$PG_DUMP -f ${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/${DUMP_DATE}/gp_${DUMP_DATABASE}_database_${CATALOG}_dump_$TIMESTAMP_KEY -n $CATALOG $DUMP_DATABASE
 	ERROR_CHK $? "dump $CATALOG" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
