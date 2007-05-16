@@ -57,11 +57,13 @@ INDEX_GEN=0
 TMP_FILE=/tmp/${PROG_NAME}_${CUR_DATE}_TMP.$$
 TMP_OUTPUT_FILE=/tmp/${PROG_NAME}_${CUR_DATE}_TMP_SQL_OUT.$$
 IDX_TMP_FILE=/tmp/${PROG_NAME}_${CUR_DATE}_TMP_IDX.$$
+PERM_TMP_FILE=/tmp/${PROG_NAME}_${CUR_DATE}_PERM_TMP_OUT.$$
 CHILD_COUNT_REC=0
 ABORT=0
 COPY_REC=0
 PROCESS_COPY_REC=0
 CHILD_TABLE_ID="_child_depth_"
+CASCADE_PERMS=0
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -151,6 +153,11 @@ PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-Partition depth            = $DEPTH" 1
 		LOG_MSG "[INFO]:-Number of new child tables = ${#SUFFIX_ARRAY[@]}" 1
 		LOG_MSG "[INFO]:-Distribution column(s)     = $CHILD_DISTRIBUTION" 1
+		if [ $CASCADE_PERMS -eq 0 ];then
+		LOG_MSG "[INFO]:-Transfer child permissions = On" 1
+		else
+		LOG_MSG "[INFO]:-Transfer child permissions = Off" 1
+		fi
 		if [ $RULE_GEN -eq 0 ];then
 		LOG_MSG "[INFO]:-Rule generation            = Off" 1
 		else
@@ -255,6 +262,11 @@ PROCESS_CHILD_NAME () {
 				ERROR_EXIT "[FATAL]:-Obtained type as $TYPE_NAME expected hour, daily, week, month, year, range or list" 2
 				;;
 		esac
+	#Check to see if specific permissions have been applied to child table
+	PARSE_PERMISSIONS ${SCHEMA_NAME}.$CHILD_NAME $MASTER_PORT $QD_DBNAME
+	if [ ${#PERM_ARRAY[@]} -eq 0 ];then
+		CASCADE_PERMS=1
+	fi 
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -676,6 +688,15 @@ GENERATE_SQL () {
                         	$ECHO "INHERITS (${PARENT_TABLE_NAME});" >> $TMP_FILE
 			fi
                         $ECHO >> $TMP_FILE
+			#Now set up permissions if CASCADE_PERMS=0
+			if [ $CASCADE_PERMS -eq 0 ];then
+				ICOUNT=0
+				while [ $ICOUNT -lt $PERM_COUNT ]
+				do
+					$ECHO ${PERM_ARRAY[$ICOUNT]}|$SED -e s/~/${CHILD_TAB_FULL}/g >> $PERM_TMP_FILE
+					((ICOUNT=$ICOUNT+1))
+				done
+			fi
                         if [ $INDEX_GEN -eq 1 ];then
 				for INDEX_ITEM in ${CHILD_INDEX_COL_ARRAY[@]}
 				do
@@ -771,6 +792,22 @@ RUN_GENERATE_SQL () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+RUN_CASCADE_PERMS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Running generated permissions file" 1
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -f $PERM_TMP_FILE > $TMP_OUTPUT_FILE 2>&1
+	if [ `$GREP -ci ERROR $TMP_OUTPUT_FILE` -ne 0 ];then
+		LOG_MSG "[FATAL]:-Error generated from permissions file, dumping out to log file" 1
+		$CAT $TMP_OUTPUT_FILE >> $LOG_FILE
+		$CAT $PERM_TMP_FILE >> $LOG_FILE
+		RM_TMP_FILE
+		ERROR_EXIT "[FATAL]:-Failed to run permissions file, check log file for error messages." 2
+        else
+		LOG_MSG "[INFO]:-Completed run of generated permissions file" 1
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 RUN_INDEX_SQL () {
         LOG_MSG "[INFO]:-Start Function $FUNCNAME"
         LOG_MSG "[INFO]:-Running generated index creation SQL file" 1
@@ -789,6 +826,7 @@ RM_TMP_FILE () {
         $RM -f $TMP_FILE
         $RM -f $IDX_TMP_FILE
 	$RM -f $TMP_OUTPUT_FILE
+	$RM -f $PERM_TMP_FILE
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -868,6 +906,9 @@ if [ $PROCESS_COPY_REC -eq 1 ];then
 	RESTORE_PARENT_REC
 else
 	RUN_GENERATE_SQL
+fi
+if [ $CASCADE_PERMS -eq 0 ];then
+	RUN_CASCADE_PERMS
 fi
 if [ $INDEX_GEN -eq 1 ];then
         RUN_INDEX_SQL
