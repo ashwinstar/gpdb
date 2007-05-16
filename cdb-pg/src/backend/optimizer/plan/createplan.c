@@ -1753,10 +1753,14 @@ create_nestloop_plan(CreatePlanContext *ctx,
 	 * pathnode.c; so we have to check here to make sure that we catch
 	 * all motion deadlocks.
 	 *
+	 * MPP-1487: if there is already a materialize node here, we don't
+	 * want to insert another one. :-)
+	 *
 	 * NOTE: materialize_finished_plan() does *almost* what we want --
 	 * except we aren't finished. */
-	if (best_path->jpath.innerjoinpath->motionHazard ||
-		!best_path->jpath.innerjoinpath->rescannable)
+	if (!IsA(best_path->jpath.innerjoinpath, MaterialPath) &&
+		(best_path->jpath.innerjoinpath->motionHazard ||
+		 !best_path->jpath.innerjoinpath->rescannable))
 	{
 		Material	*mat;
 		Path		matpath; /* dummy for cost fixup */
