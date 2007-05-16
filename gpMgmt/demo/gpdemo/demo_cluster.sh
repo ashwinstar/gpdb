@@ -255,4 +255,4 @@ echo "export TRUSTED_SHELL" >> $CLUSTER_CONFIG
 #*****************************************************************************************
 # Create cluster
 #*****************************************************************************************
-$GPPATH/gpinitsystem -q -a -c $CLUSTER_CONFIG
+$GPPATH/gpinitsystem -q -a -c $CLUSTER_CONFIG "$@"
