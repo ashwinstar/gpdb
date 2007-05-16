@@ -58,6 +58,7 @@ COPY_REC=0
 TMP_FILE=/tmp/${PROG_NAME}_${CUR_DATE}_TMP.$$
 IDX_TMP_FILE=/tmp/${PROG_NAME}_${CUR_DATE}_TMP_IDX.$$
 TMP_OUTPUT_FILE=/tmp/${PROG_NAME}_${CUR_DATE}_TMP_SQL_OUT.$$
+PERM_TMP_FILE=/tmp/${PROG_NAME}_${CUR_DATE}_PERM_TMP_OUT.$$
 CHILD_COUNT_REC=0
 ABORT=0
 CREATE_PART_INDEX=0
@@ -67,6 +68,7 @@ CHILD_TABLE_ID="_child_depth_"
 REQD_CHAR=30
 MAX_CHAR=64
 KEEP_TMP=0
+CASCADE_PERMS=0
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -124,6 +126,12 @@ USAGE () {
 		$ECHO "      -A, <column name1, column name2, ...> Alternative distribution column(s) for child tables"
 		$ECHO "          For random (strewn) distribution use -A randomly"
 		$ECHO "      -F, force child table creation if parent already has child tables"
+		$ECHO "          Use this option where the partition sequence consists of a number of discrete"
+		$ECHO "          ranges which are not contiguous. For example creating a range on a integer column"
+		$ECHO "          which contains partial date information i.e. YMMDD. Under these circumstances using"
+		$ECHO "          gpaddpart would result in a large number of redundant child tables" 
+		$ECHO "      -N, do not cascade parent table permissions down to child tables"
+		$ECHO "          [default:-cascade permissions]"
 		$ECHO
 		$ECHO "      Date range partitioning options:"
 		$ECHO "      Use this partitioning policy for date, timestamp and timestamp with time zone columns"
@@ -202,6 +210,11 @@ PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-Alternative distribution   = $NEW_DIST_COL" 1
 		else
 		LOG_MSG "[INFO]:-Alternative distribution   = Off" 1
+		fi
+		if [ $CASCADE_PERMS -eq 0 ];then
+		LOG_MSG "[INFO]:-Cascade parent permissions = On" 1
+		else
+		LOG_MSG "[INFO]:-Cascade parent permissions = Off" 1
 		fi
 		if [ $RULE_GEN -eq 0 ];then
 		LOG_MSG "[INFO]:-Rule generation            = Off" 1
@@ -798,12 +811,14 @@ REVERT_BACK () {
 #This function needs to be re-written due to changes in previous function. (26/09/2006)
 	case $STEP_BACK in
 		1 )
+			if [ $COPY_REC -eq 1 ];then
 			LOG_MSG "[INFO]:-Copying records back to original table" 1
 			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "insert into $PARENT_TABLE_NAME (select * from ${SECURE_TABLE_NAME});" >> $LOG_FILE 2>&1
 			ERROR_CHK $? "copy back records to original table" 2
 			LOG_MSG "[INFO]:-Removing temporary holding table" 1
 			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "drop table ${SECURE_TABLE_NAME};" >> $LOG_FILE 2>&1
 			ERROR_CHK $? "drop table ${SECURE_TABLE_NAME}" 1
+			fi
 			;;
 		2 )
 			LOG_MSG "[INFO]:-Removing child tables" 1
@@ -816,12 +831,14 @@ REVERT_BACK () {
 				$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "drop rule rule_${PARENT_TABLE_NAME}_${SUFFIX} on ${PARENT_TABLE_NAME};" >> $LOG_FILE 2>&1
 			fi
 			done
+			if [ $COPY_REC -eq 1 ];then
 			LOG_MSG "[INFO]:-Copying records back to original table" 1
 			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "insert into $PARENT_TABLE_NAME (select * from ${SECURE_TABLE_NAME});" >> $LOG_FILE 2>&1
 			ERROR_CHK $? "copy back records to original table" 2
 			LOG_MSG "[INFO]:-Removing temporary holding table" 1
 			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "drop table ${SECURE_TABLE_NAME};" >> $LOG_FILE 2>&1
 			ERROR_CHK $? "drop table ${SECURE_TABLE_NAME}" 1
+			fi
 			LOG_MSG "[INFO]:-Removing reference for subclass for $PARENT_TABLE_NAME" 1
 			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "update pg_class set relhassubclass='f' where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');" >> $LOG_FILE 2>&1
 			ERROR_CHK $? "updated relhassubclass in pg_class" 1
@@ -836,6 +853,9 @@ GENERATE_SQL () {
 	TAB_OID=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select oid from pg_class where relname='$SECURE_TAB' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
 	SOURCE_TAB_OID=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select oid from pg_class where relname='$SOURCE_TAB' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
 	#ATTNUM_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select count(attrnums) from gp_distribution_policy where localoid=$SOURCE_TAB_OID ;"`
+	if [ $CASCADE_PERMS -eq 0 ];then
+		PARSE_PERMISSIONS $PARENT_TABLE_NAME $MASTER_PORT $QD_DBNAME
+	fi	
 	LOG_MSG "[INFO]:-Generating SQL file to build child tables, please wait" 1
 	VECTOR=0
 	((COL_COUNT=${#PARENT_COLUMN_LIST[@]}-1))
@@ -887,6 +907,15 @@ GENERATE_SQL () {
 				$ECHO "INHERITS (${PARENT_TABLE_NAME});" >> $TMP_FILE
 			fi
 			$ECHO >> $TMP_FILE
+			#Now set up permissions if CASCADE_PERMS=0
+			if [ $CASCADE_PERMS -eq 0 ];then
+				ICOUNT=0
+				while [ $ICOUNT -lt $PERM_COUNT ]
+				do
+					$ECHO ${PERM_ARRAY[$ICOUNT]}|$SED -e s/~/${CHILD_TAB_FULL}/g >> $PERM_TMP_FILE
+					((ICOUNT=$ICOUNT+1))
+				done
+			fi
 			if [ $CREATE_PART_INDEX -eq 1 ];then
 				COL_ATT_NUM=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select attnum from pg_attribute where attname='$PART_COLUMN' and attrelid in (select oid from pg_class where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME'));"` >> $LOG_FILE 2>&1
 				ERROR_CHK $? "obtain column attribute number" 2
@@ -926,9 +955,8 @@ GENERATE_SQL () {
 		if [ $CREATE_PART_INDEX -eq 1 ] || [ x"" != x"$INDEX_COLUMN" ];then $ECHO "COMMIT;" >> $IDX_TMP_FILE;fi
 	if [ $ABORT -eq 1 ];then
 		RM_TMP_FILE
-		if [ $COPY_REC -eq 1 ];then
-			REVERT_BACK
-		fi
+		STEP_BACK=1
+		REVERT_BACK
 		ERROR_EXIT "[FATAL]:-Unable to contine, some child tables already exist." 2
 	fi	
 	LOG_MSG "[INFO]:-Completed generation of SQL file to build child tables" 1
@@ -944,12 +972,28 @@ RUN_GENERATE_SQL () {
 		$CAT $TMP_OUTPUT_FILE >> $LOG_FILE
 		$CAT $TMP_FILE >> $LOG_FILE
 		RM_TMP_FILE
-		if [ $COPY_REC -eq 1 ];then
-			REVERT_BACK
-		fi
+		REVERT_BACK
 		ERROR_EXIT "[FATAL]:-Failed to run SQL file, check log file for error messages." 2
 	else
 		LOG_MSG "[INFO]:-Completed run of generated SQL file" 1
+	fi			
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+RUN_CASCADE_PERMS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Running generated permissions file" 1
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -f $PERM_TMP_FILE > $TMP_OUTPUT_FILE 2>&1
+	if [ `$GREP -ci ERROR $TMP_OUTPUT_FILE` -ne 0 ];then
+		LOG_MSG "[FATAL]:-Error generated from permissions file, dumping out to log file" 1
+		$CAT $TMP_OUTPUT_FILE >> $LOG_FILE
+		$CAT $PERM_TMP_FILE >> $LOG_FILE
+		RM_TMP_FILE
+		STEP_BACK=2
+		REVERT_BACK
+		ERROR_EXIT "[FATAL]:-Failed to run permissions file, check log file for error messages." 2
+	else
+		LOG_MSG "[INFO]:-Completed run of generated permissions file" 1
 	fi			
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -963,9 +1007,8 @@ RUN_INDEX_SQL () {
 		$CAT $TMP_OUTPUT_FILE >> $LOG_FILE
 		$CAT $IDX_TMP_FILE >> $LOG_FILE
                 RM_TMP_FILE
-		if [ $COPY_REC -eq 1 ];then	
-			REVERT_BACK
-		fi
+		STEP_BACK=2
+		REVERT_BACK
 		ERROR_EXIT "[FATAL]:-Failed to run index creation SQL file, check log file for error messages." 2
 	else
 		LOG_MSG "[INFO]:-Completed run of generated index creation SQL file" 1
@@ -979,6 +1022,9 @@ COPY_DATA () {
 	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "INSERT into $PARENT_TABLE_NAME (select * from $SECURE_TABLE_NAME);" >> $LOG_FILE 2>&1
 	if [ $? -ne 0 ];then
 		LOG_MSG "[WARN]:-Failed to copy records to new partitioned master table" 1
+		LOG_MSG "[INFO]:-Will leave $SECURE_TABLE_NAME with records from $PARENT_TABLE_NAME available" 1
+		STEP_BACK=2
+		COPY_REC=0
 		REVERT_BACK
 	else
 		LOG_MSG "[INFO]:-Successfully copied records to new partitioned master table" 1
@@ -1025,6 +1071,7 @@ RM_TMP_FILE () {
 		$RM -f $TMP_FILE
 		$RM -f $IDX_TMP_FILE
 		$RM -f $TMP_OUTPUT_FILE
+		$RM -f $PERM_TMP_FILE
 	else
 		LOG_MSG "[INFO]:-Keeping temporary files in /tmp as -k option supplied" 1
 	fi
@@ -1035,7 +1082,7 @@ RM_TMP_FILE () {
 #******************************************************************************
 trap 'RM_TMP_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":vt:'?'aql:d:c:x:p:rn:s:f:bi:e:g:o:um:kF!DA:" opt;do
+		while getopts ":vt:'?'aql:d:c:x:p:rn:s:f:bi:e:g:o:um:kF!DA:N" opt;do
 			case $opt in
 				v ) VERSION_INFO ;;
 				'?' ) USAGE ;;
@@ -1064,6 +1111,7 @@ if [ $# -ne 0 ]; then
 				F ) FORCE_CREATE=1 ;;
 				D ) DEBUG_LEVEL=1 ;;
 				A ) NEW_DIST_COL=$OPTARG ;;
+				N ) CASCADE_PERMS=1 ;;
 				* ) USAGE ;;
 				esac
 		done	
@@ -1110,6 +1158,12 @@ if [ $COPY_REC -eq 1 ];then
 	SECURE_DATA
 fi
 RUN_GENERATE_SQL
+if [ $CASCADE_PERMS -eq 0 ];then
+	RUN_CASCADE_PERMS
+else
+	LOG_MSG "[WARN]:-Parent table permissions not cascaded down to child tables, -N option supplied"
+	EXIT_STATUS=1
+fi
 if [ $COPY_REC -eq 1 ];then
 	COPY_DATA
 	if [ $CHILD_COUNT_REC -eq 1 ];then
