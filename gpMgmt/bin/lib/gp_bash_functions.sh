@@ -1111,6 +1111,43 @@ PARALLEL_SUMMARY_STATUS_REPORT () {
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
+
+PARSE_PERMISSIONS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	#Expect 3 parameters schema.tablename port database
+	if [ $# -ne 3 ];then
+		ERROR_EXIT "[FATAL]:-Got $# parameters, expected 3" 2
+	fi
+	T_NAME=$1;shift
+	PORT=$1;shift
+	DB=$1
+	#Check to ensure that we have schema_name.tablename
+	if [ `$ECHO $T_NAME|grep -c "."` -ne 1 ];then
+		ERROR_EXIT "[FATAL]:-Schema name not supplied" 2
+	else
+		SCHEMA_NAME=`$ECHO $T_NAME|$AWK -F"." '{print $1}'`
+		TABLENAME=`$ECHO $T_NAME|$AWK -F"." '{print $2}'`
+	fi
+	#Get relacl information
+	PERM_COUNT=0
+	for PERM_LINE in `$PSQL -p $PORT -d $DB -A -t -c "select relacl from pg_class where relname='${TABLENAME}' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"|$TR -d '{'|$TR -d '}'|$TR ',' '\n'|$GREP -v "${USER}="|$TR '/' '\n'|$GREP -v "${USER}" `
+	do
+		DB_ACCOUNTNAME=`$ECHO $PERM_LINE|$AWK -F"=" '{print $1}'`
+		PERM_ALLOW=`$ECHO $PERM_LINE|$AWK -F"=" '{print $2}'`
+		if [ `$ECHO $PERM_ALLOW|$GREP -c "r"` -eq 1 ];then PERM_TEXT="$PERM_TEXT select";fi
+		if [ `$ECHO $PERM_ALLOW|$GREP -c "w"` -eq 1 ];then PERM_TEXT="$PERM_TEXT update";fi
+		if [ `$ECHO $PERM_ALLOW|$GREP -c "d"` -eq 1 ];then PERM_TEXT="$PERM_TEXT delete";fi
+		if [ `$ECHO $PERM_ALLOW|$GREP -c "a"` -eq 1 ];then PERM_TEXT="$PERM_TEXT insert";fi
+		if [ `$ECHO $PERM_ALLOW|$GREP -c "R"` -eq 1 ];then PERM_TEXT="$PERM_TEXT rule";fi
+		if [ `$ECHO $PERM_ALLOW|$GREP -c "x"` -eq 1 ];then PERM_TEXT="$PERM_TEXT references";fi
+		if [ `$ECHO $PERM_ALLOW|$GREP -c "t"` -eq 1 ];then PERM_TEXT="$PERM_TEXT trigger";fi
+		PERM_TEXT=`$ECHO $PERM_TEXT|$TR ' ' ','`
+		PERM_ARRAY[$PERM_COUNT]="grant $PERM_TEXT on ~ to $DB_ACCOUNTNAME;"
+		PERM_TEXT=''
+		((PERM_COUNT=$PERM_COUNT+1))
+	done
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
 #******************************************************************************
 # Main Section
 #******************************************************************************
