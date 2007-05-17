@@ -71,7 +71,7 @@ dist : GPROOTDEP RECONFIG $(ISCONFIG)
 groupSession:
 	@cd $(GPMGMT)/bin; $(MAKE) 
 
-mkgpcc : 
+mkgpcc:
 	@cd $(GPCC); $(MAKE)
 
 
@@ -93,6 +93,7 @@ mgmtcopy :
 	@#Copy the management utilities
 	@cp -rp $(GPMGMT)/bin $(INSTLOC)
 	@cp -rp $(GPCC)/build/bin $(INSTLOC)
+	@cp $(GPPGDIR)/src/test/regress/*.pl $(INSTLOC)/bin
 	@if [ ! -d ${INSTLOC}/docs ] ; then mkdir ${INSTLOC}/docs ; fi
 	@if [ -d $(GPMGMT)/doc ]; then cp -rp $(GPMGMT)/doc $(INSTLOC)/docs/cli_help; fi
 	@if [ -d $(GPMGMT)/demo/gpdemo ]; then mkdir $(INSTLOC)/demo; gtar --exclude \*CVS\* -C $(GPMGMT)/demo -czf $(INSTLOC)/demo/gpdemo.tar.gz gpdemo; fi
