@@ -122,6 +122,8 @@ typedef struct ChunkTransportState
 	ChunkTransportStateEntry *states;
 	/* keeps track of if we've "activated" connections via SetupInterconnect(). */
 	bool		activated;
+
+	bool		aggressiveRetry;
 	
 	bool		teardownActive;
 	List	   *incompleteConns;

@@ -72,7 +72,8 @@ serializeNode(Node *node, int *size)
 			PG_RE_THROW();
 		}
 		PG_END_TRY();
-		if (strcmp( nodeToString(node), nodeToString(newnode)) != 0)
+
+		if (strcmp(nodeToString(node), nodeToString(newnode)) != 0)
 		{
 			elog_node_display(NOTICE,"Before serialization",node,true);
 

@@ -1620,7 +1620,7 @@ createChunkTransportState(ChunkTransportState *transportStates,
 	Assert(IS_MOTION_RECV_SLICEENTRY(pIncIdx));
 
 	elog(LOG, "CreateChunkTransportState: motNodeId %d, send %d, recv %d, pincIdx %d",
-		 motNodeID, sendSlice->sliceIndex, recvSlice->sliceIndex, pIncIdxP);
+		 motNodeID, sendSlice->sliceIndex, recvSlice->sliceIndex, pIncIdx);
 	if (pIncIdx >= transportStates->motion_states[motNodeID-1].size)
 	{
 		int nsize = pIncIdx + 3;
