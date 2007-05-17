@@ -944,6 +944,13 @@ make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels)
  * component queries to see if any of them have different output types;
  * differentTypes[k] is set true if column k has different type in any
  * component.
+ *
+ * 4. If the subquery target list has expressions containing calls to
+ * window functions, we must not push down any quals since this could
+ * change the meaning of the query.  At runtime, window functions refer
+ * to the executor state of their Window node.  If a pushed-down qual 
+ * removed a tuple, the state seen by later tuples (hence the values
+ * of window functions) could be affected.
  */
 static bool
 subquery_is_pushdown_safe(Query *subquery, Query *topquery,
@@ -953,6 +960,10 @@ subquery_is_pushdown_safe(Query *subquery, Query *topquery,
 
 	/* Check point 1 */
 	if (subquery->limitOffset != NULL || subquery->limitCount != NULL)
+		return false;
+	
+	/* Check point 4 */
+	if ( contain_window_functions(subquery->targetList) )
 		return false;
 
 	/* Are we at top level, or looking at a setop component? */

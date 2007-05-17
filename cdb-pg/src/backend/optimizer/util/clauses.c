@@ -68,6 +68,7 @@ static bool expression_returns_set_walker(Node *node, void *context);
 static bool contain_subplans_walker(Node *node, void *context);
 static bool contain_mutable_functions_walker(Node *node, void *context);
 static bool contain_volatile_functions_walker(Node *node, void *context);
+static bool contain_window_functions_walker(Node *node, void *context);
 static bool contain_nonstrict_functions_walker(Node *node, void *context);
 static Relids find_nonnullable_rels_walker(Node *node, bool top_level);
 static bool is_strict_saop(ScalarArrayOpExpr *expr, bool falseOK);
@@ -784,6 +785,42 @@ contain_volatile_functions_walker(Node *node, void *context)
 		/* else fall through to check args */
 	}
 	return expression_tree_walker(node, contain_volatile_functions_walker,
+								  context);
+}
+
+
+/*****************************************************************************
+ *		Check clauses for calls to window functions
+ *****************************************************************************/
+
+/*
+ * contain_window_functions
+ *	  Recursively search for window functions within a clause.
+ *
+ * Returns true if any window function is found.
+ *
+ * Window function calls are only allowed in the target list of window
+ * queries and may not be nested. We do not examine sub-selects for uses of
+ * window functions because if there are any, they pertain to a different
+ * planning level.
+ */
+bool
+contain_window_functions(Node *clause)
+{
+	return contain_window_functions_walker(clause, NULL);
+}
+
+static bool
+contain_window_functions_walker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+	if (IsA(node, WindowRef))
+	{
+		return true;
+		/* else fall through to check args */
+	}
+	return expression_tree_walker(node, contain_window_functions_walker,
 								  context);
 }
 
