@@ -72,13 +72,17 @@ static pid_t ddaserver_forkexec(void);
 #endif
 NON_EXEC_STATIC void DdaserverMain(int argc, char *argv[]);
 
+void
+sendDdaRequest(int     sockfd, 
+			   LockStatStd *pLk);
+
 static void DdaserverLoop(void);
 static bool processDdaRequest( int sockfd );
 static int listenerSetup(void);
-/*
+
 static int64 readInt64(uint8 *buff);
 static void sendInt64(uint8 *buff, int64 i);
-*/
+
 static void
 setupDdaServerConnection(char *ddaServerHost, int ddaServerPort );
 
@@ -159,7 +163,168 @@ ddaserver_start(void)
 }
 
 
+/*
+ * Used by QE ddaservers to send lock status to the QD ddaserver
+ */
+void
+sendDdaRequest(int     sockfd, 
+			   LockStatStd *pLk)
+{	
+	int		n;
+	int    bytesWritten = 0;
+	int	   bytesRead = 0;
+	int			saved_err;
+	fd_set		rset,wset;
+	
+	/* request message */
+    LockStatStd  request;
+	int     reqlen = sizeof(request);
+	
+	/* response message */
+	int64   response;
+	int     resplen = sizeof(response);
+	
+	
+	if (sockfd == -1)
+		elog( ERROR, "Lost Connection to ddaserver");
+		
+	/*
+	 * send the sequence request to the sequence server
+	 */
+    memset(&request, 0, sizeof(request));	
+	memcpy((void*)&request, (void*)pLk, sizeof(request));
+	
+	/*
+	 * write the request
+	 */	
+	while( bytesWritten < reqlen )
+	{
+		
+		CHECK_FOR_INTERRUPTS();
+					
+		n = write(sockfd, ((char *)&request)+bytesWritten, reqlen - bytesWritten);
+		saved_err = errno;
+	
+		if (n == 0)
+		{
+			elog(ERROR, "Error: ddaserver socket closed.");
+			return;
+		}
+		
+		if (n < 0)
+		{
+			if (saved_err != EINTR && saved_err != EWOULDBLOCK)
+			{
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
+								errmsg("Error: Could not write()  message to ddaserver: %s",
+								strerror(errno)),
+								errdetail("error during write() call (error:%d) to ddaserver on sockfd: %d ",
+											errno, sockfd)));
+			}
 
+			if (saved_err == EWOULDBLOCK)
+			{
+				/* we shouldn't really get here since we are dealing with
+				 * small messages, but once we've read a bit of data we
+				 * need to finish out reading till we get the message (or error)
+				 */
+				do
+				{
+					struct timeval timeout = tval;
+					
+					CHECK_FOR_INTERRUPTS();
+					
+					FD_ZERO(&wset);
+					FD_SET(sockfd, &wset);
+					n = select(sockfd + 1, NULL, &wset, NULL, &timeout);
+					if (n == 0 || (n < 0 && errno == EINTR))
+						continue;
+					else if (n < 0)
+					{
+						saved_err = errno;
+
+						ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
+										errmsg("Error: Could not write()  message to ddaserver: %s",
+										strerror(errno)),
+										errdetail("error during write() call (error:%d) to ddaserver on sockfd: %d ",
+												  errno, sockfd)));
+						return;
+					}
+				}
+				while (n < 1);
+			}
+			/* else saved_err == EINTR */
+
+			continue;
+		}
+
+		bytesWritten += n;
+	}
+	
+	/*
+	 * read the response
+	 */	
+	while (bytesRead < resplen)
+	{
+		
+		CHECK_FOR_INTERRUPTS();
+			
+		n = read(sockfd, ((char *)&response)+bytesRead, resplen - bytesRead);
+		saved_err = errno;
+		
+		if (n == 0)
+		{
+			elog( ERROR, "ddaserver socket is closed");
+			return;
+		}
+		
+		if (n < 0)
+		{
+			if (saved_err != EINTR && saved_err != EWOULDBLOCK)
+			{
+				elog( ERROR, "Error: Could not read() message from ddaserver."
+							  "(error:%d). Closing connection.", saved_err);
+			}
+
+			if (saved_err == EWOULDBLOCK)
+			{
+				/* we shouldn't really get here since we are dealing with
+				 * small messages, but once we've read a bit of data we
+				 * need to finish out reading till we get the message (or error)
+				 */
+				do
+				{
+					struct timeval timeout = tval;
+					
+					CHECK_FOR_INTERRUPTS();
+					
+					FD_ZERO(&rset);
+					FD_SET(sockfd, &rset);
+					n = select(sockfd + 1, &rset, NULL, NULL, &timeout);
+					if (n == 0 || (n < 0 && errno == EINTR))
+						continue;
+					else if (n < 0)
+					{
+						saved_err = errno;
+
+						ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
+									    errmsg("Error: Could not read() message from ddaserver"),
+										errdetail("error during read() call (error:%d) from remote"
+												  "sockfd = %d", errno, sockfd)));
+						return;		
+					}
+				}
+				while (n < 1);
+			}
+			/* else saved_err == EINTR */
+
+			continue;
+		}
+		else
+			bytesRead += n;
+	}
+	
+}
 
 /*=========================================================================
  * HELPER FUNCTIONS
@@ -356,14 +521,6 @@ void DdaserverLoop(void)
 			pLk = GetLockStatusData();
 			MemSet(&lf, 0, sizeof(lf));
 
-			while (ii >= 0)
-			{
-				ii = LockStatStuff(&lf, ii, pLk);
-				MemSet(&lf, 0, sizeof(lf));
-			}
-
-			doit = 0;
-
 			if (!bPM)
 			{
 				if (ddaserverFd < 0)
@@ -374,8 +531,21 @@ void DdaserverLoop(void)
 							"127.0.0.1", /* localhost */
 							ddaport);
 				}
-				/* send lock to qd dda */
 			}
+
+			while (ii >= 0)
+			{
+				ii = LockStatStuff(&lf, ii, pLk);
+
+				/* send lock to qd dda */
+				sendDdaRequest(ddaserverFd,
+							   &lf);
+
+				MemSet(&lf, 0, sizeof(lf));
+			}
+
+			doit = 0;
+
 
 		}
 
@@ -480,13 +650,9 @@ static bool
 processDdaRequest( int sockfd )
 {
 	LockStatStd ddaRequest;
-    LockStatStd response;
+    int64       ddaResponse;
 	int			saved_err;
 	fd_set		rset,wset;
-/*	int64 plast;
-	int64 pcached;
-	int64 pincrement;
-*/	
 	int n;
 	int bytesRead = 0;
 	int bytesWritten = 0;
@@ -590,19 +756,17 @@ processDdaRequest( int sockfd )
 	/*
 	 * Send the response
 	 */
-/*	sendInt64((uint8 *)&response.plast, plast);
-	sendInt64((uint8 *)&response.pcached, pcached);
-	sendInt64((uint8 *)&response.pincrement, pincrement);
-*/
+	sendInt64((uint8 *)&ddaResponse, 42);
+
 	/*
 	 * Write the response
 	 */
-	while(0) /* bytesWritten < outputBuffLength ) */
+	while(bytesWritten < outputBuffLength )
 	{
 		
 		CHECK_FOR_INTERRUPTS();
 					
-		n = write(sockfd, ((uint8 *)&response)+bytesWritten, outputBuffLength - bytesWritten);
+		n = write(sockfd, ((uint8 *)&ddaResponse)+bytesWritten, outputBuffLength - bytesWritten);
 		saved_err = errno;
 	
 		if (n == 0)
@@ -740,8 +904,6 @@ listenerSetup(void)
 	return listenerPort;
 }
 
-
-/*
 int64 readInt64( uint8 *buff )
 {
 	int64		result;
@@ -756,7 +918,7 @@ void sendInt64(uint8 *buff, int64 i)
 {
 	memcpy( buff, &i, 8);
 }
-*/
+
 
 /* from ml_ipc.c */
 static void
