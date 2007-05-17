@@ -431,7 +431,7 @@ void session_detach(request_t* r);
 void session_end(session_t* s, int error);
 void request_end(request_t* r, int error);
 block_t* session_get_block(session_t* s);
-char* basename(const char* path, apr_pool_t* pool);
+char* path_basename(const char* path, apr_pool_t* pool);
 
 
 /* send an error response */
@@ -566,7 +566,7 @@ char** glob(char* path, int* retcnt, apr_pool_t* pool)
     char** elts;
     int i, n;
     char** fpath = 0;
-    char* bname = basename(path, pool);
+    char* bname = path_basename(path, pool);
     char** p;
 
     if (apr_match_glob(path, &arr, pool)) 
@@ -1124,7 +1124,7 @@ int main(int argc, const char* const argv[])
     return 0;
 }
 
-char* basename(const char* path, apr_pool_t* pool)
+char* path_basename(const char* path, apr_pool_t* pool)
 {
     char* idx = strrchr(path, '/');
     if (! idx) 
