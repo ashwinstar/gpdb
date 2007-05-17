@@ -715,7 +715,10 @@ doDtxPhase2Retry(void)
 	case DTX_STATE_RETRY_ABORT_PREPARED:
 		if (currentGxact->retryPhase2RecursionStop)
 		{
-			elog(FATAL,"Unable to complete '%s Prepared' broadcast for gid = %s",
+			/*
+			 * Take down GP Array.
+			 */
+			elog(PANIC,"Unable to complete '%s Prepared' broadcast for gid = %s",
 				 (currentGxact->state == DTX_STATE_RETRY_COMMIT_PREPARED ? "Commit" : "Abort"),
 				 currentGxact->gid);
 		}
@@ -3354,11 +3357,18 @@ int dtxCurrentPhase1Count(void)
 static void
 performDtxProtocolPrepare(const char *gid)
 {
+	/*
+	 * Temporarily serialize prepare work in-order to compensate for
+	 * the Postgres parallelism bug described in MPP-1484.
+	 */
+	LWLockAcquire(TemporarySerializePreparesLock, LW_EXCLUSIVE);
+
 	StartTransactionCommand();
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "performDtxProtocolCommand going to call PrepareTransactionBlock for distributed transaction (id = '%s')", gid);
 	if (!PrepareTransactionBlock((char *)gid))
 	{
+		LWLockRelease(TemporarySerializePreparesLock);
 		elog(ERROR, "Prepare of distributed transaction %s failed", gid);
 		return;
 	}
@@ -3372,6 +3382,8 @@ performDtxProtocolPrepare(const char *gid)
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "Prepare of distributed transaction succeeded (id = '%s')", gid);
 
 	DistributedTransactionContext = DTX_CONTEXT_QE_PREPARED;
+	
+	LWLockRelease(TemporarySerializePreparesLock);
 }
 
 static void
