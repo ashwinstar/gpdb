@@ -102,7 +102,7 @@ sub getatm
 
 sub gpdiff_files
 {
-    my ($f1, $f2) = @_;
+    my ($f1, $f2, $d2d) = @_;
 
     my @tmpfils;
 
@@ -134,6 +134,13 @@ sub gpdiff_files
 
     my $outi =`diff $args`;
 
+    # prefix the diff output with the files names for a "directory to
+    # directory" diff
+    if (defined($d2d) && length($outi))
+    {
+        $outi = "diff $f1 $f2\n" . $outi;
+    }
+
     # replace temp file name references with actual file names
     $outi =~ s/$newf1/$f1/gm;
     $outi =~ s/$newf2/$f2/gm;
@@ -152,11 +159,11 @@ sub gpdiff_files
 
 sub filefunc
 {
-    my ($f1, $f2) = @_;
+    my ($f1, $f2, $d2d) = @_;
 
     if ((-f $f1) && (-f $f2))
     {
-        return (gpdiff_files($f1, $f2));
+        return (gpdiff_files($f1, $f2, $d2d));
     }
 
     # if f1 is a directory, do the filefunc of every file in that directory
@@ -181,7 +188,7 @@ sub filefunc
                                                             $fnam
                                                             ));
 
-                $stat = filefunc($absname, $f2);
+                $stat = filefunc($absname, $f2, 1);
             } # end while
             closedir $dir_h;
         } # end if open
@@ -205,7 +212,7 @@ sub filefunc
                                                     $basenam
                                                     ));
 
-        $stat = filefunc($f1, $fnam);
+        $stat = filefunc($f1, $fnam, $d2d);
 
         return $stat;
     }
@@ -227,7 +234,7 @@ sub filefunc
                                                     $basenam
                                                     ));
 
-        $stat = filefunc($fnam, $f2);
+        $stat = filefunc($fnam, $f2, $d2d);
 
         return $stat;
     }
