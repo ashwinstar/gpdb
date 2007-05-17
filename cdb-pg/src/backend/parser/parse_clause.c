@@ -1756,6 +1756,9 @@ grouping_rewrite_walker(Node *node, void *context)
 {
 	grouping_rewrite_ctx *ctx = (grouping_rewrite_ctx *)context;
 
+	if (node == NULL)
+		return false;
+
 	if (IsA(node, GroupingFunc))
 	{
 		GroupingFunc *gf = (GroupingFunc *)node;
@@ -1846,7 +1849,6 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 	List	   *result = NIL;
 	List	   *tle_list = NIL;
 	ListCell   *l;
-	bool       is_grpext = false;
 	List       *reorder_grouplist = NIL;
 
 	/* Preprocess the grouping clause, lookup TLEs */
@@ -1958,8 +1960,6 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 			GroupingClause *tmp = make_grouping_clause(pstate,
 													   (GroupingClause*)node,
 													   *targetlist);
-			/* mark that we're doing extended grouping */
-			is_grpext = true;
 			result = lappend(result, tmp);
 		}
 		else
@@ -1981,8 +1981,9 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 		}
 	}
 
-	/* we're doing extended grouping */
-	if (is_grpext)
+	/* We're doing extended grouping for both ordinary grouping and grouping
+	 * extensions.
+	 */
 	{
 		List *grp_tles = NIL;
 		ListCell *lc;
@@ -2014,68 +2015,6 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 		 */
 		expression_tree_walker((Node *)pstate->p_win_clauses,
 							   grouping_rewrite_walker, (void *)&ctx);
-#if 0		
-		foreach (lc, *targetlist)
-		{
-			TargetEntry *tle = (TargetEntry *)lfirst(lc);
-			GroupingFunc *gf;
-			ListCell *arg_lc;
-			List *newargs = NIL;
-
-			if (!IsA(tle->expr, GroupingFunc))
-				continue;
-
-			gf = (GroupingFunc *)tle->expr;
-
-			gf->ngrpcols = list_length(grp_tles);
-
-			/*
-			 * For each argument in gf->args, find its position in grp_tles,
-			 * and increment its counts. Note that this is a O(n^2) algorithm,
-			 * but it should not matter that much.
-			 */
-			foreach (arg_lc, gf->args)
-			{
-				int i = 0;
-				Node *node = lfirst(arg_lc);
-				ListCell *grp_lc = NULL;
-
-				foreach (grp_lc, grp_tles)
-				{
-					TargetEntry *grp_tle = (TargetEntry *)lfirst(grp_lc);
-
-					if (equal(grp_tle->expr, node))
-						break;
-					i++;
-				}
-
-				/* Find a column not in GROUP BY clause */
-				if (grp_lc == NULL)
-				{
-					RangeTblEntry *rte;
-					const char *attname;
-					Var *var = (Var *) node;
-					Assert(var->varno > 0 &&
-						   (int) var->varno <= list_length(pstate->p_rtable));
-					rte = rt_fetch(var->varno, pstate->p_rtable);
-					attname = get_rte_attribute_name(rte, var->varattno);
-
-					ereport(ERROR,
-							(errcode(ERRCODE_GROUPING_ERROR),
-							 errmsg("column \"%s\".\"%s\" is not in GROUP BY",
-									rte->eref->aliasname, attname)));
-				}
-
-				newargs = lappend_int(newargs, i);
-			}
-
-			/* Free gf->args since we do not need it any more. */
-			list_free_deep(gf->args);
-			gf->args = newargs;
-		}
-
-		pfree(grp_tles);
-#endif
 	}
 
 	list_free(tle_list);
