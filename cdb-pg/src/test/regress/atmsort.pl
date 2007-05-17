@@ -46,7 +46,9 @@ all SELECT statements that do *not* have an ORDER BY, writing the
 result to STDOUT.  This change to the log facilitates diff comparison,
 since unORDERed query output does not have a guaranteed order.  Note
 that for diff to work correctly, statements that do use ORDER BY must
-have a fully-specified order.
+have a fully-specified order.  The utility gpdiff.pl invokes atmsort
+in order to compare the Greenplum test results against standard
+Postgresql.
 
 The log content must look something like:
 
@@ -68,6 +70,57 @@ unambiguous, eg no embedded SQL keywords like INSERT, UPDATE, or
 DELETE, and it must be terminated with a semicolon.  Normally, the
 query output is sorted, but if the statement contains an ORDER BY
 clause the query output for that query is not sorted,
+
+=head2 Advanced Usage 
+
+atmsort supports several "commands" that allow finer-grained control
+over the comparison process for SELECT queries.  These commands are
+specified in comments in the following form:
+
+ --
+ -- order 1
+ --
+ SELECT a, b, c, d 
+   from foo 
+   ORDER BY 1;
+
+or
+
+ SELECT a, b, c, d 
+   from foo 
+   ORDER BY 1; -- order 1
+
+The supported commands are:
+
+=over 12
+
+=item -- order column number[, column number...]
+
+  The order directive is used to compare 
+  "partially-ordered" query
+  output.  The specified columns are assumed 
+  to be ordered, and the  remaining columns are 
+  sorted to allow for deterministic comparison.
+
+=item -- ignore
+
+  The ignore directive prefixes the SELECT output 
+  with GP_IGNORE.  The diff command can use the -I flag 
+  to ignore lines with this prefix.
+
+=item -- mvd colnum[, colnum...] -> colnum[, colnum...] [; <additional specs>]
+
+  mvd is designed to support Multi-Value Dependencies for 
+  OLAP queries.  The syntax "col1,col2->col3,col4" indicates
+  that the col1 and col2 values determine the col3, col4 
+  result order.
+
+=back
+
+Note that you can combine the directives for a single query, but each
+directive must be on a separate line.  Multiple mvd specifications
+must be on a single mvd line, separated by semicolons.
+
 
 =head1 AUTHORS
 
@@ -111,7 +164,7 @@ BEGIN {
 # convert a postgresql psql formatted table into an array of hashes
 sub tablelizer
 {
-    my $ini = shift;
+    my ($ini, $got_line1) = @_;
 
     # first, split into separate lines, the find all the column headings
 
@@ -120,7 +173,12 @@ sub tablelizer
     return undef
         unless (scalar(@lines));
 
-    my $line1 = shift @lines;
+    # if the first line is supplied, then it has the column headers,
+    # so don't try to find them (or the ---+---- separator) in
+    # "lines"
+    my $line1 = $got_line1;
+    $line1 = shift @lines
+        unless (defined($got_line1));
 
     # look for <space>|<space>
     my @colheads = split(/\s+\|\s+/, $line1);
@@ -135,8 +193,9 @@ sub tablelizer
     return undef
         unless (scalar(@lines));
     
-    shift @lines; # skip dashed separator
-
+    shift @lines # skip dashed separator (unless it was skipped already)
+        unless (defined($got_line1));
+    
     my @rows;
 
     for my $lin (@lines)
@@ -147,14 +206,15 @@ sub tablelizer
 
         my $rowh = {};
 
-        for my $colhd (@colheads)
+        for my $colhdcnt (0..(scalar(@colheads)-1))
         {
             my $rawcol = shift @cols;
 
             $rawcol =~ s/^\s+//;
             $rawcol =~ s/\s+$//;
 
-            $rowh->{$colhd} = $rawcol;
+            my $colhd = $colheads[$colhdcnt];
+            $rowh->{($colhdcnt+1)} = $rawcol;
         }
         push @rows, $rowh;
     }
@@ -163,6 +223,227 @@ sub tablelizer
 }
 
 
+sub format_query_output
+{
+    my ($has_order, $outarr, $directive) = @_;
+    my $prefix = "";
+
+    $directive = {} unless (defined($directive));
+
+    $prefix = "GP_IGNORE:"
+        if (exists($directive->{ignore}));
+
+    if (exists($directive->{firstline}))
+    {
+        my $firstline = $directive->{firstline};
+        my $ordercols = $directive->{order};
+        my $mvdlist   = $directive->{mvd};
+
+        # lines already have newline terminator, so just rejoin them.
+        my $lines = join ("", @{$outarr});
+
+        my $ah1 = tablelizer($lines, $firstline);
+
+        return
+            unless (scalar(@{$ah1}));
+
+        my @allcols = sort (keys(%{$ah1->[0]}));
+
+        my @presortcols;
+        if (defined($ordercols) && length($ordercols))
+        {
+#        $ordercols =~ s/^.*order\s*//;
+            $ordercols =~ s/\n//gm;
+            $ordercols =~ s/\s//gm;
+
+            @presortcols = split(/\s*\,\s*/, $ordercols);
+        }
+
+        my @mvdcols;
+        my @mvdspec;
+        if (defined($mvdlist) && length($mvdlist))
+        {
+            $mvdlist  =~ s/\n//gm;
+            $mvdlist  =~ s/\s//gm;
+
+            my @allspecs = split(/\;/, $mvdlist);
+
+#            print "allspecs:", Data::Dumper->Dump(\@allspecs);
+
+            for my $item (@allspecs)
+            {
+                my $realspec;
+                my @colset = split(/\-\>/, $item, 2);
+                unless (scalar(@colset) == 2)
+                {
+                    print "invalid colset for $item\n";
+                    next;
+                }
+                my @scols = split(/\,/, $colset[0]);
+                unless (scalar(@scols))
+                {
+                    print "invalid dependency specification: $colset[0]\n";
+                    next;
+                }
+                my @dcols = split(/\,/, $colset[1]);
+                unless (scalar(@dcols))
+                {
+                    print "invalid specified dependency: $colset[1]\n";
+                    next;
+                }
+                $realspec = {};
+                my $scol2 = [];
+                my $dcol2 = [];
+                my $sdcol = [];
+                $realspec->{spec} = $item;
+                push @{$scol2}, @scols;
+                push @{$dcol2}, @dcols;
+                push @{$sdcol}, @scols, @dcols;
+                $realspec->{scol} = $scol2;
+                $realspec->{dcol} = $dcol2;
+                $realspec->{allcol} = $sdcol;
+
+                push @mvdcols, @scols, @dcols;
+                push @mvdspec, $realspec;
+            }
+
+#            print "mvdspec:", Data::Dumper->Dump(\@mvdspec);
+        }
+
+        my %unsorth;
+        
+        for my $col (@allcols)
+        {
+            $unsorth{$col} = 1;
+        }
+        for my $col (@presortcols)
+        {
+            if (exists($unsorth{$col}))
+            {
+                delete $unsorth{$col};
+            }
+        }
+        for my $col (@mvdcols)
+        {
+            if (exists($unsorth{$col}))
+            {
+                delete $unsorth{$col};
+            }
+        }
+        my @unsortcols = sort(keys(%unsorth));
+
+#        print Data::Dumper->Dump([$ah1]);
+
+        if (scalar(@presortcols))
+        {
+            my $hd1 = "sorted columns " . join(", ", @presortcols);
+
+            print $hd1, "\n", "-"x(length($hd1)), "\n";
+
+            for my $h_row (@{$ah1})
+            {
+                my @collist;
+
+                @collist = ();
+
+#            print "hrow:",Data::Dumper->Dump([$h_row]), "\n";            
+
+                for my $col (@presortcols)
+                {
+#                print "col: ($col)\n";
+                    push @collist, $h_row->{$col};
+                }
+                print $prefix, join(' | ', @collist), "\n";
+            }
+        }
+
+        if (scalar(@mvdspec))
+        {
+            my @outi;
+
+            my $hd1 = "multivalue dependency specifications";
+
+            print $hd1, "\n", "-"x(length($hd1)), "\n";
+
+            for my $mspec (@mvdspec)
+            {
+                $hd1 = $mspec->{spec};
+                print $hd1, "\n", "-"x(length($hd1)), "\n";
+
+                for my $h_row (@{$ah1})
+                {
+                    my @collist;
+
+                    @collist = ();
+
+#            print "hrow:",Data::Dumper->Dump([$h_row]), "\n";            
+
+                    for my $col (@{$mspec->{allcol}})
+                    {
+#                print "col: ($col)\n";
+                        push @collist, $h_row->{$col};
+                    }
+                    push @outi, join(' | ', @collist);
+                }
+                my @ggg= sort @outi;
+
+                for my $line (@ggg)
+                {
+                    print $prefix, $line, "\n";
+                }
+                @outi = ();
+            }
+        }
+        my $hd2 = "unsorted columns " . join(", ", @unsortcols);
+
+        print $hd2, "\n", "-"x(length($hd2)), "\n";
+
+        my @finalunsort;
+
+        if (scalar(@unsortcols))
+        {
+            for my $h_row (@{$ah1})
+            {
+                my @collist;
+
+                @collist = ();
+
+                for my $col (@unsortcols)
+                {
+                    push @collist, $h_row->{$col};
+                }
+                push @finalunsort, join(' | ', @collist);
+            }
+            my @ggg= sort @finalunsort;
+
+            for my $line (@ggg)
+            {
+                print $prefix, $line, "\n";
+            }
+        }
+
+        return;
+    } # end order
+
+
+    if ($has_order)
+    {
+        for my $line (@{$outarr})
+        {
+            print $dpref, $prefix, $line;
+        }
+    }
+    else
+    {
+        my @ggg= sort @{$outarr};
+        for my $line (@ggg)
+        {
+            print $bpref, $prefix, $line;
+        }
+    }
+
+
+}
 
 
 if (1)
@@ -174,6 +455,7 @@ if (1)
     my $getstatement = 0;
     my $has_order = 0;
     my $copy_select = 0;
+    my $directive = {};
 
   L_bigwhile:
     while (<>) # big while
@@ -203,21 +485,10 @@ if (1)
             # regex example: (5 rows)
             if ($ini =~ m/^\s*\(\d+\s+row(s)*\)\s*$/)
             {
-                if ($has_order)
-                {
-                    for my $line (@outarr)
-                    {
-                        print $dpref, $line;
-                    }
-                }
-                else
-                {
-                    my @ggg= sort @outarr;
-                    for my $line (@ggg)
-                    {
-                        print $bpref, $line;
-                    }
-                }
+
+                format_query_output($has_order, \@outarr, $directive);
+
+                $directive = {};
                 @outarr = ();
                 $getrows = 0;
                 $has_order = 0;
@@ -225,13 +496,30 @@ if (1)
         }
         else # finding SQL statement or start of SELECT output
         { 
-
             if ($ini =~ m/(insert|update|delete|select|\\d|copy)/i)
             {                
                 $copy_select = 0;
                 $has_order = 0;
                 $sql_statement = "";
             }
+
+            if ($ini =~ m/\-\-\s*ignore\s*$/i)
+            { 
+                $directive->{ignore} = "ignore";
+            }
+            if ($ini =~ m/\-\-\s*order\s+\d+.*$/i)
+            { 
+                my $olist = $ini;
+                $olist =~ s/^.*\-\-\s*order//;
+                $directive->{order} = $olist;
+            }
+            if ($ini =~ m/\-\-\s*mvd\s+\d+.*$/i)
+            { 
+                my $olist = $ini;
+                $olist =~ s/^.*\-\-\s*mvd//;
+                $directive->{mvd} = $olist;
+            }
+
             if ($ini =~ m/select/i)
             {
                 $getstatement = 1;
@@ -293,6 +581,12 @@ if (1)
                 || (($ini =~ m/^\s*copy\s*\(\s*select.*to stdout\;/i)
                     && ($ini !~ m/order\s+by/i)))
             { # sort this region
+
+                if (exists($directive->{order}) ||
+                    exists($directive->{mvd}))
+                {
+                    $directive->{firstline} = $outarr[-1];
+                }
 
                 # special case for copy select
                 if ($ini =~ m/^\s*copy\s*\(\s*select.*to stdout\;/i)
