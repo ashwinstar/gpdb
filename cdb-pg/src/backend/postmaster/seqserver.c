@@ -159,7 +159,7 @@ seqserver_start(void)
 
 
 /*
- * Used by clients to seqeuence server to send a Sequence Request
+ * Used by clients to sequence server to send a Sequence Request
  */
 void
 sendSequenceRequest(int     sockfd, 
