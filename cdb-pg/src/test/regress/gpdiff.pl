@@ -6,10 +6,76 @@
 # Author: Jeffrey I Cohen
 #
 #
+use Pod::Usage;
 use strict;
 use warnings;
 use POSIX;
 use File::Spec;
+
+=head1 NAME
+
+B<gpdiff.pl> - GreenPlum diff 
+
+=head1 SYNOPSIS
+
+B<gpdiff.pl> [options] logfile [logfile...]
+
+Options:
+
+Normally, gpdiff takes the standard "diff" options and passes them 
+directly to the diff program.  Try `diff --help' for more information
+on the standard options.  The following options are specific to gpdiff:
+
+    -help            brief help message
+    -man             full documentation
+
+=head1 OPTIONS
+
+=over 8
+
+=item B<-help>
+
+    Print a brief help message and exits.
+
+=item B<-man>
+    
+    Prints the manual page and exits.
+
+=back
+
+=head1 DESCRIPTION
+
+gpdiff compares files using diff after processing them with atmsort.pl. 
+This comparison is designed to ignore certain Greenplum-specific 
+informational messages, as well as handle the cases where query output
+order may differ for a multi-segment Greenplum database versus a
+single Postgresql instance.  Type "atmsort.pl --man" for more details.
+gpdiff is invoked by pg_regress as part of "make install-check".  
+In this case the diff options are something like: 
+
+ "-w -I NOTICE: -I HINT: -I CONTEXT: -I GP_IGNORE:".
+
+Like diff, gpdiff can compare two files, a file and directory, a 
+directory and file, and two directories.  However, when gpdiff compares
+two directories, it only returns the exit status of the diff
+comparison of the final two files.  
+
+=head1 BUGS
+
+While the exit status is set correctly for most cases,
+STDERR messages from diff are not displayed.
+
+
+=head1 AUTHORS
+
+Jeffrey I Cohen
+
+Copyright (c) 2007 GreenPlum.  All rights reserved.  
+
+Address bug reports and comments to: jcohen@greenplum.com
+
+
+=cut
 
 our $ATMSORT = "atmsort.pl";
 
@@ -171,7 +237,41 @@ sub filefunc
 
 if (1)
 {
+    my $man  = 0;
+    my $help = 0;
+    my $pmsg = "";
+
     getatm();
+
+    # check for man or help args
+    if (scalar(@ARGV))
+    {
+        if ($ARGV[0] =~ m/^\-(\-)*(man|help|\?)$/i)
+        {
+            if ($ARGV[0] =~ m/man/i)
+            {
+                $man = 1;
+            }
+            else
+            {
+                $help = 1;
+            }
+        }
+    }
+    else
+    {
+        $pmsg = "missing an operand after \`gpdiff\'";
+        $help = 1;
+    }
+
+    if ((1 == scalar(@ARGV)) && (!($help || $man)))
+    {
+        $pmsg = "unknown operand: $ARGV[0]";
+        $help = 1;
+    }
+
+    pod2usage(-msg => $pmsg, -exitstatus => 1) if $help;
+    pod2usage(-msg => $pmsg, -exitstatus => 0, -verbose => 2) if $man;
 
     my $f2 = pop @ARGV;
     my $f1 = pop @ARGV;
