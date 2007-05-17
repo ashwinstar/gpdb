@@ -104,3 +104,4 @@ test: rowtypes
 ignore: returning
 ignore: stats
 ignore: tablespace
+test: gpdiffcheck
