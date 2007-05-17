@@ -77,8 +77,8 @@ static char *shellprog = SHELLPROG;
 
 /* currently we can use the same diff switches on all platforms */
 /* MPP:  Add stuff to ignore all the extra NOTICE messages we give */
-static const char *basic_diff_opts = "-w -I NOTICE: -I HINT: -I CONTEXT: ";
-static const char *pretty_diff_opts = "-w -I NOTICE: -I HINT: -I CONTEXT: -C3";
+static const char *basic_diff_opts = "-w -I NOTICE: -I HINT: -I CONTEXT: -I GP_IGNORE:";
+static const char *pretty_diff_opts = "-w -I NOTICE: -I HINT: -I CONTEXT: -I GP_IGNORE: -C3";
 
 /* options settable from command line */
 static char *dbname = "regression";
