@@ -1,5 +1,6 @@
 GPPGDIR=cdb-pg
 GPMGMT=gpMgmt
+GPCC=gpcc
 ISCONFIG=$(GPPGDIR)/GNUmakefile
 
 RELEASE=`$(CURDIR)/releasetag`
@@ -40,6 +41,7 @@ devel : HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR); $(MAKE) install
 	@$(MAKE) groupSession
+	@$(MAKE) mkgpcc
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 
@@ -50,6 +52,7 @@ forceplan : HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR); $(MAKE) install
 	@$(MAKE) groupSession
+	@$(MAKE) mkgpcc
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 
@@ -59,6 +62,7 @@ dist : GPROOTDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR); $(MAKE) install
 	@$(MAKE) groupSession
+	@$(MAKE) mkgpcc
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
@@ -66,6 +70,9 @@ dist : GPROOTDEP RECONFIG $(ISCONFIG)
 
 groupSession:
 	@cd $(GPMGMT)/bin; $(MAKE) 
+
+mkgpcc : 
+	@cd $(GPCC); $(MAKE)
 
 
 copydocs :
@@ -85,6 +92,7 @@ tarball :
 mgmtcopy :
 	@#Copy the management utilities
 	@cp -rp $(GPMGMT)/bin $(INSTLOC)
+	@cp -rp $(GPCC)/build/bin $(INSTLOC)
 	@if [ ! -d ${INSTLOC}/docs ] ; then mkdir ${INSTLOC}/docs ; fi
 	@if [ -d $(GPMGMT)/doc ]; then cp -rp $(GPMGMT)/doc $(INSTLOC)/docs/cli_help; fi
 	@if [ -d $(GPMGMT)/demo/gpdemo ]; then mkdir $(INSTLOC)/demo; gtar --exclude \*CVS\* -C $(GPMGMT)/demo -czf $(INSTLOC)/demo/gpdemo.tar.gz gpdemo; fi
@@ -149,3 +157,5 @@ distprep : $(ISCONFIG)
 installcheck-good :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, cannot check"; exit 1; fi
 	@cd $(GPPGDIR)/src/test/regress; $(MAKE) installcheck-good
+
+

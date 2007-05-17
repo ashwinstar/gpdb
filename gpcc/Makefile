@@ -21,6 +21,8 @@ mkgpfdist:
 	@echo --- gpfdist --------------------------------------------------
 	@(cd src/gpfdist; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
 		-o gpfdist *.c -L../build/lib -lgpcc $(APRLIBS) $(APULIBS) -ljson -levent)
+	@mkdir -p build/bin
+	@cp src/gpfdist/gpfdist build/bin/
 
 mkgp:
 	@echo --- gp -------------------------------------------------------
