@@ -3123,7 +3123,7 @@ setupQEDtxContext (DtxContextInfo *dtxContextInfo)
 	 */
 	memcpy(&QEDtxContextInfo, dtxContextInfo, sizeof(DtxContextInfo));
 	
-	if (haveDistributedSnapshot)
+	if (haveDistributedSnapshot && !isReaderQE)
 	{
 		/*
 		 * Compensate for the fact that distribute work arrives at the QEs
