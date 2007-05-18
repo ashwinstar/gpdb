@@ -3525,6 +3525,7 @@ expression_tree_walker(Node *node,
 		case T_Grouping:
 		case T_GroupId:
 		case T_GroupClause:
+		case T_SortClause: /* occurs in WindowSpec lists */
 			{
 				/* do nothing */
 			}
