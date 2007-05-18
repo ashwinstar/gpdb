@@ -321,28 +321,18 @@ fi
 AC_PROG_CPP
 AC_SUBST(GCC)
 
-# Calculate the Greenplum version string from the CVS tag.
-# If there is no version set, get the name from CVS/Tag,
-# otherwise default to the head of cvs.
-RAW_VERSION=
-if test -z "$RAW_VERSION" ; then
-    if test -r CVS/Tag ; then
-        #Source is from a tag
-        GP_VERSION=`cat CVS/Tag | sed 's,^[A-Z],,'`
-    else
-        #Source is from head
-        GP_VERSION="cvs Head"
-    fi
-    #Set the buildnumber to a dev build
-    GP_BUILDNUMBER="dev"
+# Get the Greenplum version string from ../VERSION
+# If there is no VERSION file, set the version to devel
+if [[ -f ../VERSION ]] ; then
+    GP_VERSION=`cat ../VERSION`
 else
-    GP_VERSION=`echo $RAW_VERSION | sed -e 's,Release-,,' -e 's,-build-.*,,' -e 's,_,.,g'`
-    GP_BUILDNUMBER=`echo $RAW_VERSION | sed -e 's,.*build-,,'`
-fi
+    GP_VERSION="devel"
+fi 
+
 GP_VERSION_IN="src/include/catalog/gp_version.in"
 GP_VERSION_HEADER="src/include/catalog/gp_version.h"
 if grep '\$\$' $GP_VERSION_IN > /dev/null 2>&1 ; then
-    sed "s,\\$.*\\$\\$,$GP_VERSION build $GP_BUILDNUMBER," $GP_VERSION_IN > $GP_VERSION_HEADER
+    sed "s,\\$.*\\$\\$,$GP_VERSION," $GP_VERSION_IN > $GP_VERSION_HEADER
 fi
 
 # Create compiler version string
