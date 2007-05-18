@@ -573,17 +573,13 @@ if (1)
 
             } # end if pruning notices
 
-            # allow:
+            # MPP-1492 allow:
             #  copy (select ...) to stdout
             #  \copy (select ...) to stdout
             # and special case these guys:
             #  copy test1 to stdout
             #  \copy test1 to stdout
             my $copysel_regex = 
-#            '^\s*(.)?copy((\s*\(\s*select.*))|(\s+test.*\s+))to stdout\;';
-#            '^\s*((copy((\s*\(\s*select.*)|(\s+test.*\s+))to stdout\;)|' .
-#            '(\\copy((\s*\(\s*select.*)|(\s+test.*\s+))to stdout))';
-#            '^\s*.?copy.*test1.*to stdout';
             '^\s*((.copy.*test1.*to stdout)|(copy.*test1.*to stdout\;))';
 
             # regex example: ---- or ---+---
@@ -603,7 +599,7 @@ if (1)
                 # special case for copy select
                 if ($ini =~ m/$copysel_regex/i)
                 {
-                    print "copy select: $ini\n";
+#                    print "copy select: $ini\n";
                     $copy_select = 1;
                     $sql_statement = "";
                 }
