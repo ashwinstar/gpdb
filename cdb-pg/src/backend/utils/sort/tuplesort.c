@@ -2378,7 +2378,7 @@ tuplesort_sorted_insert(Tuplesortstate *state, SortTuple *tuple,
 	if (comparestat >= 0)
 	{
 		memtuples[j] = *tuple;
-		return;
+		goto L_checklimit;
 	}
 
 	if (j > 1)
@@ -2472,6 +2472,7 @@ tuplesort_sorted_insert(Tuplesortstate *state, SortTuple *tuple,
 		memtuples[searchpoint] = *tuple;		
 	}
 
+ L_checklimit:
 	/* CDB: always add new value if never dumped or no limit, else
 	 * drop the last value if it exceeds the limit 
 	 */
