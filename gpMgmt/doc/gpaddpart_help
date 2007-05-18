@@ -33,8 +33,8 @@ range, or list) as was originally defined when the parent table was
 first partitioned. It performs the following tasks:
 
 * Creates new child tables that inherit all attributes from the parent 
-  table (columns, constraints, distribution key, etc.), as well as the 
-  original partitioning attributes. Note that permissions are not inherited. 
+  table (columns, constraints, permissions, distribution key, etc.), 
+  as well as the original partitioning attributes.
  
 * Defines CHECK constraints on the child tables based on the new date 
   range, numeric range, or list value specified. The child table names 

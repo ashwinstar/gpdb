@@ -11,19 +11,24 @@ SYNOPSIS
 
 gpcreatepart -t <schema>.<parent_table> -f <partition_column> -p d 
 -c {m|d|h} -s YYYY-MM-DD -n <number_children> [-m <conversion>] [-r] 
-[-b] [-u] [-i <column1>[,<column2>,...]] [-q] [-a] [-l <log_dir>] [-D] 
-[-k] [-F] [-d <master_data_directory>] [-x <database>]
+[-b] [-u] [-i <ixcolumn1>[,<ixcolumn2>,...]]
+[-A {<distcolumn1>[,<distcolumn2>,...] | 'DISTRIBUTED RANDOMLY'}] 
+[-q] [-a] [-l <log_dir>] [-D] [-k] [-F] [-d <master_data_directory>] 
+[-x <database>]
 
 gpcreatepart -t <schema>.<parent_table> -f <partition_column> -p r 
 -s <range_start_value> -e <range_end_value> -g <range_increment> 
-[-m <conversion>] [-r] [-b] [-u] [-i <column1>[,<column2>,...]] [-q] 
-[-a] [-l <log_dir>] [-D] [-k] [-F] [-d <master_data_directory>] 
+[-m <conversion>] [-r] [-b] [-u] [-i <ixcolumn1>[,<ixcolumn2>,...]]
+[-A {<distcolumn1>[,<distcolumn2>,...] | 'DISTRIBUTED RANDOMLY'}]  
+[-q] [-a] [-l <log_dir>] [-D] [-k] [-F] [-d <master_data_directory>] 
 [-x <database>]
 
 gpcreatepart -t <schema>.<parent_table> -f <partition_column> -p l 
 -o <list_value1>,<list_value2>[,<list_value3>,...] [-m <conversion>] [-r] 
-[-b] [-u] [-i <column1>[,<column2>,...]] [-q] [-a] [-l <log_dir>] [-D] 
-[-k] [-F] [-d <master_data_directory>] [-x <database>]
+[-b] [-u] [-i <ixcolumn1>[,<ixcolumn2>,...]] 
+[-A {<distcolumn1>[,<distcolumn2>,...] | 'DISTRIBUTED RANDOMLY'}] 
+[-q] [-a] [-l <log_dir>] [-D] [-k] [-F] [-d <master_data_directory>] 
+[-x <database>]
 
 gpcreatepart -? | -v
 
@@ -37,8 +42,7 @@ partitioning a large parent table into several smaller child tables.
 It performs the following tasks:
 
 * Creates child tables that inherit all attributes from the parent table 
-  (columns, constraints, distribution key, etc.). Note that permissions 
-  and indexes are not inherited. 
+  (columns, constraints, permissions, distribution key, etc.).
 
 * Defines CHECK constraints on the child tables based on the date range, 
   numeric range, or list value specified. The child table names are 
@@ -182,6 +186,14 @@ declared with the -f option.
 -i <additional_index_columns>
 
 Creates an index on each of the child tables for the specified column(s).
+
+
+-A <distribution_policy>
+
+Specifies a comma-separated list of columns to use as the Greenplum 
+distribution key on the child tables. You can also specify 'DISTRUBUTED RANDOMLY' 
+to use a random (round-robin) distribution policy. If not specified, the 
+child tables will use the same distribution policy as the parent table.
 
 
 -q (no output)
