@@ -28,7 +28,7 @@ endif
 
 all : devel
 
-.PHONY : RECONFIG GPROOTDEP HOMEDEP clean distclean tarball distprep
+.PHONY : RECONFIG GPROOTDEP HOMEDEP clean distclean tarball distprep version
 
 test2 :
 	echo "CWD ="$(CURDIR)
@@ -159,4 +159,7 @@ installcheck-good :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, cannot check"; exit 1; fi
 	@cd $(GPPGDIR)/src/test/regress; $(MAKE) installcheck-good
 
-
+version :
+	@if [ ! -f getversion ] ; then echo "getversion is not present, cannot create VERSION file"; exit 1; fi
+	@echo "Creating VERSION file"
+	@bash getversion > VERSION

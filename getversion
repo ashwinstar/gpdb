@@ -1,0 +1,25 @@
+#!/bin/bash
+
+#Return the version string for GPDB depending on if this is a tagged build.
+#If this is an untagged head build, return "cvs Head build dev"
+
+RAW_VERSION="$Name$"
+
+if test -z "$RAW_VERSION" ; then
+    if test -r CVS/Tag ; then
+        #Source is from a tag
+        GP_VERSION=`cat CVS/Tag | sed 's,^[A-Z],,'`
+    else
+        #Source is from head
+        GP_VERSION="cvs Head"
+    fi
+    #Set the buildnumber to a dev build
+    GP_BUILDNUMBER="dev"
+else
+    GP_VERSION=`echo $RAW_VERSION | sed -e 's,Release-,,' -e 's,-build-.*,,' -e 's,_,.,g'`
+    GP_BUILDNUMBER=`echo $RAW_VERSION | sed -e 's,.*build-,,'`
+fi
+
+echo "${GP_VERSION} build ${GP_BUILDNUMBER}"
+
+exit 0
