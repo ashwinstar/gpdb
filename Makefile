@@ -37,7 +37,7 @@ test2 :
 devel : INSTCFLAGS=$(DEBUGFLAGS)
 devel : INSTLOC=$(DEVPATH)
 devel : CONFIGFLAGS+=--enable-cassert --enable-debug
-devel : HOMEDEP $(ISCONFIG)
+devel : version HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR); $(MAKE) install
 	@$(MAKE) groupSession
@@ -58,7 +58,7 @@ forceplan : HOMEDEP $(ISCONFIG)
 
 dist : INSTCFLAGS=$(OPTFLAGS)
 dist : INSTLOC=$(DISTPATH)
-dist : GPROOTDEP RECONFIG $(ISCONFIG)
+dist : version GPROOTDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR); $(MAKE) install
 	@$(MAKE) groupSession
