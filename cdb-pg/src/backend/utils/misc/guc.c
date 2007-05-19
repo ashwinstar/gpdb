@@ -183,6 +183,8 @@ bool		Debug_print_full_dtm = false;
 bool		Debug_disable_distributed_snapshot = false;
 bool 		Debug_abort_after_distributed_prepared = false;
 
+#define DEBUG_DTM_ACTION_PRIMARY_DEFAULT true
+bool		Debug_dtm_action_primary = DEBUG_DTM_ACTION_PRIMARY_DEFAULT;
 
 bool		log_parser_stats = false;
 bool		log_planner_stats = false;
@@ -207,6 +209,18 @@ int			num_temp_buffers = 1000;
 int			Debug_delay_prepare_broadcast_ms = 0;
 int			Debug_delay_commit_broadcast_ms = 0;
 int			Debug_delay_abort_broadcast_ms = 0;
+
+int			Debug_dtm_action = DEBUG_DTM_ACTION_NONE;
+
+#define DEBUG_DTM_ACTION_PROTOCOL_DEFAULT DTX_PROTOCOL_COMMAND_COMMIT_PREPARED
+
+int			Debug_dtm_action_protocol = DEBUG_DTM_ACTION_PROTOCOL_DEFAULT;
+
+#define DEBUG_DTM_ACTION_DELAY_MS_DEFAULT 5000
+#define DEBUG_DTM_ACTION_SEGMENT_DEFAULT 1
+
+int			Debug_dtm_action_delay_ms = DEBUG_DTM_ACTION_DELAY_MS_DEFAULT;
+int			Debug_dtm_action_segment = DEBUG_DTM_ACTION_SEGMENT_DEFAULT;
 
 char	   *ConfigFileName;
 char	   *HbaFileName;
@@ -1310,6 +1324,15 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 	
+	{
+		{"debug_dtm_action_primary", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Specify if the primary or mirror segment is the target of the debug DTM action."),
+			NULL
+		},
+		&Debug_dtm_action_primary,
+		DEBUG_DTM_ACTION_PRIMARY_DEFAULT, NULL, NULL
+	},
+	
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL
@@ -1466,35 +1489,44 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"debug_delay_prepare_broadcast_ms", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Sets the prepare broadcast delay in milliseconds."),
+		{"debug_dtm_action", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sets the debug DTM action."),
 			NULL,
 			GUC_UNIT_BLOCKS
 		},
-		&Debug_delay_prepare_broadcast_ms,
-		0, 0, INT_MAX / 1000, NULL, NULL
+		&Debug_dtm_action,
+		DEBUG_DTM_ACTION_NONE, 0, DEBUG_DTM_ACTION_LAST, NULL, NULL
 	},
 
 	{
-		{"debug_delay_commit_broadcast_ms", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Sets the commit broadcast delay in milliseconds."),
+		{"debug_dtm_action_protocol", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sets the debug DTM action protocol."),
 			NULL,
 			GUC_UNIT_BLOCKS
 		},
-		&Debug_delay_commit_broadcast_ms,
-		0, 0, INT_MAX / 1000, NULL, NULL
+		&Debug_dtm_action_protocol,
+		DEBUG_DTM_ACTION_PROTOCOL_DEFAULT, 0, DTX_PROTOCOL_COMMAND_LAST, NULL, NULL
 	},
 
 	{
-		{"debug_delay_abort_broadcast_ms", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Sets the abort broadcast delay in milliseconds."),
+		{"debug_dtm_action_delay_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sets the debug DTM action delay in milliseconds."),
 			NULL,
 			GUC_UNIT_BLOCKS
 		},
-		&Debug_delay_abort_broadcast_ms,
-		0, 0, INT_MAX / 1000, NULL, NULL
+		&Debug_dtm_action_delay_ms,
+		DEBUG_DTM_ACTION_DELAY_MS_DEFAULT, 0, INT_MAX / 1000, NULL, NULL
 	},
 
+	{
+		{"debug_dtm_segment", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sets the debug DTM action segment."),
+			NULL,
+			GUC_UNIT_BLOCKS
+		},
+		&Debug_dtm_action_segment,
+		DEBUG_DTM_ACTION_SEGMENT_DEFAULT, 0, 1000, NULL, NULL
+	},
 
 	{
 		{"port", PGC_POSTMASTER, CONN_AUTH_SETTINGS,

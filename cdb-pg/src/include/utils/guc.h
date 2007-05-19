@@ -118,6 +118,7 @@ extern bool Explain_pretty_print;
 extern bool	Debug_print_full_dtm;
 extern bool Debug_disable_distributed_snapshot;
 extern bool Debug_abort_after_distributed_prepared;
+extern bool	Debug_dtm_action_primary;
 
 extern bool log_parser_stats;
 extern bool log_planner_stats;
@@ -136,9 +137,22 @@ extern int	log_min_duration_statement;
 
 extern int	num_temp_buffers;
 
-extern int  Debug_delay_prepare_broadcast_ms;
-extern int  Debug_delay_commit_broadcast_ms;
-extern int  Debug_delay_abort_broadcast_ms;
+/* Debug DTM Action */
+typedef enum
+{
+	DEBUG_DTM_ACTION_NONE = 0,
+	DEBUG_DTM_ACTION_DELAY = 1,
+	DEBUG_DTM_ACTION_FAIL_BEGIN_COMMAND = 2,
+	DEBUG_DTM_ACTION_FAIL_END_COMMAND = 3,
+	DEBUG_DTM_ACTION_PANIC_BEGIN_COMMAND = 4,
+  
+	DEBUG_DTM_ACTION_LAST = 4
+}	DebugDtmAction;
+  
+extern int Debug_dtm_action;
+extern int Debug_dtm_action_protocol;
+extern int Debug_dtm_action_delay_ms;
+extern int Debug_dtm_action_segment;
 
 extern char *ConfigFileName;
 extern char *HbaFileName;

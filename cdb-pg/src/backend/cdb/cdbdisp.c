@@ -31,6 +31,7 @@
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
 #include "utils/datum.h"
+#include "utils/guc.h"
 #include "executor/executor.h"
 #include "optimizer/clauses.h"
 #include "optimizer/planmain.h"
@@ -1571,42 +1572,18 @@ thread_DispatchCommand(void *arg)
 				
 			case GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
 
-				if (Debug_delay_prepare_broadcast_ms > 0 &&
-					pParms->dtxProtocolParms.dtxProtocolCommand == DTX_PROTOCOL_COMMAND_PREPARE&&
-					dispatchResult->segdbDesc->segindex > 0)
+				if (Debug_dtm_action == DEBUG_DTM_ACTION_DELAY &&
+					Debug_dtm_action_protocol == pParms->dtxProtocolParms.dtxProtocolCommand &&
+					Debug_dtm_action_segment == dispatchResult->segdbDesc->segment_database_info->segindex &&
+					Debug_dtm_action_primary == dispatchResult->segdbDesc->segment_database_info->isprimary)
 				{
-					if (Debug_print_full_dtm || log_min_messages <= DEBUG5)
-					{
-						write_stderr("Thread %u: Delaying prepare broadcast for %d milliseconds.\n",
-						             mythread(), Debug_delay_prepare_broadcast_ms);
-					}
-					pg_usleep(Debug_delay_prepare_broadcast_ms * 1000);
-				}
-				
-				if (Debug_delay_commit_broadcast_ms > 0 &&
-					pParms->dtxProtocolParms.dtxProtocolCommand == DTX_PROTOCOL_COMMAND_COMMIT_PREPARED &&
-					dispatchResult->segdbDesc->segindex > 0)
-				{
-					if (Debug_print_full_dtm || log_min_messages <= DEBUG5)
-					{
-						write_stderr("Thread %u: Delaying commit broadcast for %d milliseconds.\n",
-						             mythread(), Debug_delay_commit_broadcast_ms);
-					}
-					pg_usleep(Debug_delay_commit_broadcast_ms * 1000);
-				}
-				
-				if (Debug_delay_abort_broadcast_ms > 0 &&
-					(pParms->dtxProtocolParms.dtxProtocolCommand == DTX_PROTOCOL_COMMAND_ABORT_NO_PREPARED ||
-					 pParms->dtxProtocolParms.dtxProtocolCommand == DTX_PROTOCOL_COMMAND_ABORT_SOME_PREPARED ||
-					 pParms->dtxProtocolParms.dtxProtocolCommand == DTX_PROTOCOL_COMMAND_ABORT_PREPARED) &&
-					dispatchResult->segdbDesc->segindex > 0)
-				{
-					if (Debug_print_full_dtm || log_min_messages <= DEBUG5)
-					{
-						write_stderr("Thread %u: Delaying abort broadcast for %d milliseconds.\n",
-						             mythread(), Debug_delay_abort_broadcast_ms);
-					}
-					pg_usleep(Debug_delay_abort_broadcast_ms * 1000);
+					write_stderr("Thread %u: Delaying '%s' broadcast for segment %d (%s) by %d milliseconds.\n",
+					             mythread(),
+					             DtxProtocolCommandToString(Debug_dtm_action_protocol),
+					             Debug_dtm_action_segment,
+					             (Debug_dtm_action_primary ? "primary" : "mirror"),
+					             Debug_dtm_action_delay_ms);
+					pg_usleep(Debug_dtm_action_delay_ms * 1000);
 				}
 				
 	            dispatchCommandDtxProtocol(dispatchResult, pParms->query_text, pParms->query_text_len, 

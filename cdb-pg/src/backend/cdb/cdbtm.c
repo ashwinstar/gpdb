@@ -512,6 +512,8 @@ doPrepareTransaction(void)
 	releaseTmLock();
 	
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"doPrepareTransaction leaving in state = %s", DtxStateToString(currentGxact->state));
+
+	CHECK_FOR_INTERRUPTS();
 }
 
 /*
@@ -570,6 +572,7 @@ doNotifyingCommitPrepared(void)
 		 * Reset the dispatch logic (i.e. deallocate gang) so later we can attempt a retry 
 		 * at the top in PostgresMain.
 		 */
+		elog(NOTICE,"Releasing gangs for retry broadcast.");
 		disconnectAndDestroyAllGangs();
 
 		getTmLock();
@@ -670,6 +673,7 @@ doNotifyingAbort(void)
 			/*
 			 * Reset the dispatch logic (i.e. deallocate gang) so we can attempt a retry.
 			 */
+			elog(NOTICE,"Releasing gangs for retry broadcast.");
 			disconnectAndDestroyAllGangs();
 			
 			getTmLock();

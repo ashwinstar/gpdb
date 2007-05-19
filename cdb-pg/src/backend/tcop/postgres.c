@@ -1243,6 +1243,16 @@ exec_mpp_query(const char *query_string,
 	debug_query_string = NULL;
 }
 
+static bool
+CheckDebugDtmAction(DebugDtmAction debugDtmAction, DtxProtocolCommand dtxProtocolCommand)
+{
+	return (Debug_dtm_action == debugDtmAction &&
+			Debug_dtm_action_protocol == dtxProtocolCommand &&
+			Debug_dtm_action_segment == Gp_segment &&
+			Debug_dtm_action_primary == Gp_is_primary);
+}
+
+
 /*
  * exec_mpp_query
  *
@@ -1263,12 +1273,30 @@ exec_mpp_dtx_protocol_command(
 
 	set_ps_display(commandTag, false);
 
+	if (CheckDebugDtmAction(DEBUG_DTM_ACTION_FAIL_BEGIN_COMMAND, dtxProtocolCommand))
+	{
+		elog(ERROR,"Raise ERROR for debug_dtm_action = %d, debug_dtm_action_protocol = %s",
+			 Debug_dtm_action, DtxProtocolCommandToString(dtxProtocolCommand));
+	}
+	if (CheckDebugDtmAction(DEBUG_DTM_ACTION_PANIC_BEGIN_COMMAND, dtxProtocolCommand))
+	{
+		elog(PANIC,"PANIC for debug_dtm_action = %d, debug_dtm_action_protocol = %s",
+			 Debug_dtm_action, DtxProtocolCommandToString(dtxProtocolCommand));
+	}
+
 	BeginCommand(commandTag, dest);
 
 	performDtxProtocolCommand(dtxProtocolCommand, flags, loggingStr, gid, gxid);
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"exec_mpp_dtx_protocol_command calling EndCommand for dtxProtocolCommand = %d (%s) gid = %s",
 		 dtxProtocolCommand, loggingStr, gid);
+
+	if (CheckDebugDtmAction(DEBUG_DTM_ACTION_FAIL_END_COMMAND, dtxProtocolCommand))
+	{
+		elog(ERROR,"Raise error for debug_dtm_action = %d, debug_dtm_action_protocol = %s",
+			 Debug_dtm_action, DtxProtocolCommandToString(dtxProtocolCommand));
+	}
+
 	EndCommand(commandTag, dest);
 }
 
