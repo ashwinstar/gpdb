@@ -16,10 +16,14 @@
 #include <apr_uri.h>
 #include <gpcc_net.h>
 
-#define u_int32_t unsigned int
-#define u_int8_t unsigned char
 #include <event.h>
 #define BLOCKSIZE  (1024 * 32)
+
+#ifndef GP_VERSION
+#define GP_VERSION unknown
+#endif
+
+#define GP_VERSIONX APR_STRINGIFY(GP_VERSION)
 
 /*  Struct of command line options */
 struct {
@@ -1110,6 +1114,9 @@ int main(int argc, const char* const argv[])
 
     parse_command_line(argc, argv, gcb.pool);
 
+    if (opt.v) 
+	printf("gpfdist version \"%s\"\n", GP_VERSIONX);
+
 #ifdef SIGPIPE
     signal(SIGPIPE, SIG_IGN);
 #endif
@@ -1118,7 +1125,7 @@ int main(int argc, const char* const argv[])
 
     http_setup();
 
-    printf("Serving HTTP on port %d, directory %s ...\n", opt.p, opt.d);
+    printf("Serving HTTP on port %d, directory %s\n", opt.p, opt.d);
     event_dispatch();
 
     return 0;
