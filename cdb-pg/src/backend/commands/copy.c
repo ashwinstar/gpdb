@@ -241,13 +241,13 @@ CopySendData(CopyState cstate, const void *databuf, int datasize)
 static void
 CopySendString(CopyState cstate, const char *str)
 {
-	appendBinaryStringInfo(cstate->fe_msgbuf, str, strlen(str));
+	CopySendData(cstate, (void *) str, strlen(str));
 }
 
 static void
 CopySendChar(CopyState cstate, char c)
 {
-	appendStringInfoCharMacro(cstate->fe_msgbuf, c);
+	CopySendData(cstate, &c, 1);
 }
 
 /* AXG: Note that this will both add a newline AND flush the data.
