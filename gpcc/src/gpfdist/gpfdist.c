@@ -229,6 +229,8 @@ fstream_t* fstream_alloc(char** path, int npath)
 	if (0 == (fs->fpath[i] = strdup(path[i])))
 	    gpcc_fatal(FLINE, "out of memory");
 
+	if (opt.V) 
+	    printf("   opening %s\n", path[i]);
 	if (-1 == (fs->ffd[i] = open(path[i], O_RDONLY, 0600))) {
 	    gpcc_warning(FLINE, "unable to open file %s", path[i]);
 	    fstream_free(fs);
@@ -293,8 +295,10 @@ block_t* fstream_get_block(fstream_t* fs)
 	b->top += n;
 	fs->foff += n;
 
+	/* way too verbose
 	if (opt.V)
 	    printf("[INFO] %s [off %lld]\n", fs->fpath[fs->fidx], fs->foff);
+	*/
     }
 
     skipfirst = fs->fskip;
@@ -582,7 +586,9 @@ char** glob(char* path, int* retcnt, apr_pool_t* pool)
     for (i = 0; i < n; i++) {
 	if (elts[i][0] == '.') 	/* skip '.' & '..' & '.xxx'  */
 	    continue;
-	*p++ = apr_pstrcat(pool, bname, "/", elts[i], 0);
+	if (apr_filepath_merge(p, bname, elts[i], 0, pool))
+	    return 0;
+	p++;
     }
     
     if (retcnt) 
@@ -642,7 +648,14 @@ void session_attach(request_t* r)
 	    }
 	    else {
 		/* this is a directory - glob for all files in the dir */
-		fpath = glob(apr_pstrcat(r->pool, fpath[0], "/*", 0), &n, r->pool);
+		char* newpath = 0;
+		if (apr_filepath_merge(&newpath, fpath[0], "*", 0, r->pool)) {
+		    gpcc_warning(FLINE, "bad path: %s (filepathmerge)", r->path);
+		    send_error(r, 404, "not found");
+		    request_end(r, 1);
+		    return;
+		}
+		fpath = glob(newpath, &n, r->pool);
 		if (!fpath || n == 0) {
 		    gpcc_warning(FLINE, "bad path: %s", r->path);
 		    send_error(r, 404, "not found");
@@ -894,10 +907,16 @@ void do_read(int fd, short event, void* arg)
     /*   - remove / prefixes */
     for (p = r->in.req->argv[1]; *p == '/'; p++);
 
-    /*   - make the new path relative to opt.d */
-    r->path = apr_psprintf(r->pool, "%s/%s", opt.d, p);
 
-    /*   - remove ? and # */
+    /*   - make the new path relative to opt.d */
+    if (apr_filepath_merge(&r->path, opt.d, p, 0, r->pool)) {
+	gpcc_warning(FLINE, "reject invalid request from %s [%s %s]", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
+	send_error(r, 400, "invalid request");
+	request_end(r, 1);
+	return;
+    }
+
+    /*   - remove query (after ?) and fragment (after #) */
     if (0 != (p = strchr(r->path, '?')))
 	*p = 0;
 
