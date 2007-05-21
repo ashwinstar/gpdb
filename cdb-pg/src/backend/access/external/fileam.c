@@ -716,12 +716,13 @@ open_external_file(FileScanDesc scan)
 {
     Uri *uri;
     char *filename = NULL;
-	char XID[100];
+	char XID[20];
+	char CID[20];
+	char SN[20];
 
-	sprintf(XID, "X-GP-TID: %x.%x.%x.%x",
-			gp_session_id, QEDtxContextInfo.distributedXid,
-			QEDtxContextInfo.distributedSnapshotData.curcid,
-			scan->fs_scancounter);
+	sprintf(XID, "%x", QEDtxContextInfo.distributedXid);
+	sprintf(CID, "%x", QEDtxContextInfo.distributedSnapshotData.curcid);
+	sprintf(SN, "%x", scan->fs_scancounter);
 
     
     /*
@@ -740,7 +741,8 @@ open_external_file(FileScanDesc scan)
     if(uri->protocol == URI_FILE || uri->protocol == URI_EXEC)
         filename = uri->path;
         
-    scan->fs_file = (FILE*) url_fopen(scan->fs_uri, filename, PG_BINARY_R, XID);
+    scan->fs_file = (FILE*) url_fopen(scan->fs_uri, filename, PG_BINARY_R, 
+									  XID, CID, SN);
 
 	/*
 	 * Get a global reference to the file pointer, so we can free it from

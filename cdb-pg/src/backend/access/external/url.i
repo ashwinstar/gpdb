@@ -84,7 +84,10 @@ struct fcurl_data
 typedef struct fcurl_data URL_FILE;
 
 /* exported functions */
-URL_FILE *url_fopen(char *url, char *filename, const char *operation, const char* XID);
+URL_FILE *url_fopen(char *url, char *filename, const char *operation, 
+					const char* XID, 
+					const char* CID,
+					const char* SN);
 int url_fclose(URL_FILE *file);
 int url_feof(URL_FILE *file);
 size_t url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file);
@@ -259,7 +262,8 @@ use_buffer(URL_FILE *file,int want)
 
 
 URL_FILE *
-url_fopen(char *url, char *filename, const char *operation, const char* XID)
+url_fopen(char *url, char *filename, const char *operation, 
+		  const char* XID, const char* CID, const char* SN)
 {
     /* this code checks for URLs or types in the 'url' and
        basicly use the real fopen() for standard files */
@@ -336,13 +340,14 @@ url_fopen(char *url, char *filename, const char *operation, const char* XID)
 
 		if (isGpfdist) 
 		{
-			/*
-		    sprintf(sessionIDBuf, "X-GP-TID: %x.%x.%x.%x", 
-					gp_session_id, QEDtxContextInfo.distributedXid, 
-					QEDtxContextInfo.distributedSnapshotData.curcid);
-					*/
+			char tmp[100];
             file->x_httpheader = NULL;
-    		file->x_httpheader = curl_slist_append(file->x_httpheader, XID);
+			sprintf(tmp, "X-GP-XID: %s", XID);
+    		file->x_httpheader = curl_slist_append(file->x_httpheader, tmp);
+			sprintf(tmp, "X-GP-CID: %s", CID);
+    		file->x_httpheader = curl_slist_append(file->x_httpheader, tmp);
+			sprintf(tmp, "X-GP-SN: %s", SN);
+    		file->x_httpheader = curl_slist_append(file->x_httpheader, tmp);
             if (0 != (e = curl_easy_setopt(file->handle.curl, CURLOPT_HTTPHEADER, file->x_httpheader)))
 			{
 				elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error %d", e);
@@ -553,7 +558,7 @@ url_rewind(URL_FILE *file)
     	/* we'll need to execute the command again */
     	url_fclose(file);
     	/* most of these are null fo us. */
-    	url_fopen( file->buffer, NULL, NULL, NULL );    	
+    	url_fopen( file->buffer, NULL, NULL, NULL, NULL, NULL ); 
     	break;   
 
     case CFTYPE_CURL:
