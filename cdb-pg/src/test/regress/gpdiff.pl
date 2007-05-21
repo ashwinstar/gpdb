@@ -80,7 +80,7 @@ Address bug reports and comments to: jcohen@greenplum.com
 our $ATMSORT = "atmsort.pl";
 
 # assume atmsort.pl in same directory
-sub getatm
+BEGIN
 {
     my $plname = $0;
 
@@ -248,7 +248,7 @@ if (1)
     my $help = 0;
     my $pmsg = "";
 
-    getatm();
+#    getatm();
 
     # check for man or help args
     if (scalar(@ARGV))
