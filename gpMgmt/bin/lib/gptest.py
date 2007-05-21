@@ -5,38 +5,12 @@ def getOutFile(fname):
     return os.path.splitext(fname)[0] + '.out'
 
 
-def getResultFile(fname):
-    fname = os.path.splitext(fname)[0]
-
-    v = fname + '.v'
-    if not os.access(v, os.R_OK): v = None
-
-    s = fname + '.s'
-    if not os.access(s, os.R_OK): s = None
-
-    if v and s:
-	print 'Warning: both %s and %s exist' % (v, s)
-	print '   - picking %s as result file' % v
-
-    return v or s
+def getAnswerFile(fname):
+    return os.path.splitext(fname)[0] + '.ans'
 
 
-def chksumUnsorted(fname):
-    f = None
-    try:
-	f = os.popen('cat %s | md5' % fname)
-	return f.readlines()
-    finally:
-	if f: f.close()
-
-
-def chksumSorted(fname):
-    f = None
-    try:
-	f = os.popen('cat %s | sort | md5' % fname)
-	return f.readlines()
-    finally:
-	if f: f.close()
+def chkDiff(f1, f2):
+    return os.system('gpdiff.pl %s %s' % (f1, f2))
 
 LOG_FILE = None
 def writeLog(m, m1 = None, m2 = None, m3 = None):
@@ -165,13 +139,14 @@ class GPTestCase(unittest.TestCase):
 
     def checkResult(self, ifile):
 	f1 = getOutFile(ifile)
-	f2 = getResultFile(ifile)
-	if not f2:
-	    raise GPTestError('Error: cannot find result file for %s' % ifile
+	f2 = getAnswerFile(ifile)
+	if not os.access(f1, os.R_OK):
+	    raise GPTestError('Error: cannot find out file for %s' % ifile)
+	if not os.access(f2, os.R_OK):
+	    raise GPTestError('Error: cannot find answer file for %s' % ifile
 			      + '\nHint: output can be found in %s' % f1
-			      + '\nHint: create a result (.s or .v) file for %s' % ifile)
-	chksum = f2[len(f2)-1] == 's' and chksumSorted or chksumUnsorted
-	return chksum(f1) == chksum(f2)
+			      + '\nHint: create an answer (%s) file for %s' % (f2, ifile))
+	return 0 == chkDiff(f1, f2)
 
 
 defaultTestRunner = GPTestRunner()
