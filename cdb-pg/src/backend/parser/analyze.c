@@ -3178,7 +3178,10 @@ transformGroupedWindows(Query *qry)
 	/* hasWindFuncs is covered later */
 	subq->hasSubLinks = qry->hasSubLinks; /* If qry has them, we do now */
 	subq->rtable = qry->rtable;
-	subq->jointree = qry->jointree;
+	subq->jointree = (FromExpr *)makeNode(FromExpr);
+	subq->jointree->fromlist = qry->jointree->fromlist;
+	subq->jointree->quals = qry->jointree->quals;
+
 	/* target list later */
 	subq->groupClause = qry->groupClause;
 	subq->havingQual = qry->havingQual;
@@ -3308,6 +3311,7 @@ transformGroupedWindows(Query *qry)
 	ref = makeNode(RangeTblRef);
 	ref->rtindex = 1;
 	qry->jointree->fromlist = list_make1(ref);
+	qry->jointree->quals = NULL;
 	qry->hasSubLinks = false;
 
 	/* we can also forget about grouping in the top level query */
