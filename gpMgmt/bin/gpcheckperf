@@ -105,6 +105,10 @@ def parseCommandLine():
 	elif (switch == '-p'): opt[switch] = parseInt(val)
 	elif (switch[1] in 'BS'): opt[switch] = parseMemorySize(val)
 
+    if opt['-V']: opt['-v'] = True
+
+    if opt['-v']: print '$Revision$'
+
     if not (opt['-p'] > 0): 
 	usage('Error: please specify port number for -p switch')
 
@@ -118,7 +122,6 @@ def parseCommandLine():
     if hf != 1:
 	usage('Error: please specify at least one of -h or -f args, but not both')
 
-    if opt['-V']: opt['-v'] = True
 
     if (opt['-B']) > 1024*1024:
 	usage('Error: maximum size for -B parameter is 1MB')

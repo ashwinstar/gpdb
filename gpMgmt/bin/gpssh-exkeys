@@ -160,6 +160,8 @@ def parseCommandLine():
 	elif (switch == '-h'):    opt[switch].append(val)
 	elif (switch == '-p'):    opt[switch] = parsePort(val)
 
+    if opt['-v']: print '$Revision$'
+
     if not (opt['-p'] > 0): 
 	usage('[ERROR] please specify valid port number for -p switch')
     hf = (len(opt['-h']) and 1) + (opt['-f'] and 1)
