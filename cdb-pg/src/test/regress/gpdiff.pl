@@ -283,5 +283,15 @@ if (1)
     my $f2 = pop @ARGV;
     my $f1 = pop @ARGV;
 
+    for my $fname ($f1, $f2)
+    {
+        unless (-e $fname)
+        {
+            print STDERR "gpdiff: $fname: No such file or directory\n";
+        }
+    }
+    exit(2)
+        unless ((-e $f1) && (-e $f2));
+
     exit(filefunc($f1, $f2));
 }

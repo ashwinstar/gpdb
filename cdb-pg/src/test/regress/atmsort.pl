@@ -654,6 +654,12 @@ if (1)
             $ini =~ s/\s+of this segment db input data//;
         }
 
+#        if ($ini =~ m/(ERROR|WARNING|CONTEXT|NOTICE):.*gid\s+=\s+(\d+)/)
+        if ($ini =~ m/gid/)
+        {
+            $ini =~ s/gid.*/gid DUMMY/;
+        }
+
         # XXX XXX: note the discrepancy in the NOTICE messages
         # 'distributed by' vs 'DISTRIBUTED BY'
         if ($ini =~ m/NOTICE:\s+Table doesn\'t have \'distributed by\' clause\, and no column type is suitable/i)
@@ -680,8 +686,6 @@ if (1)
         {
             next;
         }
-
-
 
         if ($ini =~ m/^\s*Distributed by:\s+\(.*\)\s*$/)
         {
