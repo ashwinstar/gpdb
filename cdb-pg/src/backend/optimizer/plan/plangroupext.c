@@ -822,16 +822,21 @@ generate_list_subplans(PlannerInfo *root, GroupExtContext *context)
 	List *subplans = NIL;
 	int group_no;
 
-	ShareNode_ShareType stype = add_sharenode(root,
-											  &context->subplan,
-											  &context->pathkeys,
-											  context->input_locus,
-											  (void *) context,
-											  context->numGroupCols + 1,
-											  NULL,
-											  NULL);
+	ShareNode_ShareType stype = SHARENODE_UNKNOWN;
+
+	if(gp_window_shareinput && context->numGroupCols > 0)
+	{
+		stype = add_sharenode(root,
+				&context->subplan,
+				&context->pathkeys,
+				context->input_locus,
+				(void *) context,
+				context->numGroupCols + 1,
+				NULL,
+				NULL);
+	}
  
-	if(stype == SHARENODE_UNKNOWN || !gp_window_shareinput)
+	if(stype == SHARENODE_UNKNOWN)
 		for (group_no = 0; group_no < context->numGroupCols + 1; group_no++)
 			subplans = lappend(subplans, copyObject(context->subplan));
 

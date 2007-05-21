@@ -2083,7 +2083,13 @@ static List * plan_window_rtable_share(ISHAREPLAN *share,
  */
 List *plan_window_rtable(PlannerInfo *root, WindowContext *ctxt)
 {
-	if(!gp_window_shareinput)
+	if(!gp_window_shareinput ||
+	   ctxt->nwindowinfos == 0 ||
+	   (ctxt->nwindowinfos == 1 && 
+			(ctxt->windowinfos[0].window_coplan == NULL ||
+			 ctxt->windowinfos[0].agg_coplan == NULL)
+	   )
+	  )
 		return plan_window_rtable_share(&shareplan_simple, root, ctxt);
 	else
 	{

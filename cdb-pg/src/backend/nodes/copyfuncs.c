@@ -766,6 +766,8 @@ _copyMotionSliceEntry(MotionSliceEntry *from)
 	MotionSliceEntry *newnode = makeNode(MotionSliceEntry);
 
 	COPY_SCALAR_FIELD(motionType);
+	COPY_SCALAR_FIELD(recvSliceId);
+
 	COPY_SCALAR_FIELD(numHashSegs);
 	COPY_POINTER_FIELD(hashSegIdx, from->numHashSegs * sizeof(int));
 	COPY_NODE_FIELD(hashExpr);
@@ -783,30 +785,36 @@ _copyMotionSliceEntry(MotionSliceEntry *from)
  * _copyMotion
  */
 static Motion *
-_copyMotion(Motion *from)
+_copyMotion(Motion *from) 
 {
-	Motion	   *newnode = makeNode(Motion);
+	if(from->mutated && from->fCopyUseMutated)
+		return from->mutated;
+	else
+	{
+		Motion	   *newnode = makeNode(Motion);
 
-	/*
-	 * copy node superclass fields
-	 */
-	CopyPlanFields((Plan *) from, (Plan *) newnode);
+		/*
+		 * copy node superclass fields
+		 */
+		CopyPlanFields((Plan *) from, (Plan *) newnode);
 
-	COPY_SCALAR_FIELD(sendToSecondary);
-	COPY_SCALAR_FIELD(sendSorted);
-	COPY_SCALAR_FIELD(motionID);
+		COPY_SCALAR_FIELD(sendToSecondary);
+		COPY_SCALAR_FIELD(sendSorted);
+		COPY_SCALAR_FIELD(motionID);
 
-    COPY_SCALAR_FIELD(numInputSegs);
-    if (from->inputSegIdx)
-        COPY_POINTER_FIELD(inputSegIdx, from->numInputSegs * sizeof(int));
-	
-	COPY_NODE_FIELD(sliceEntries);
+		COPY_SCALAR_FIELD(numInputSegs);
+		if (from->inputSegIdx)
+			COPY_POINTER_FIELD(inputSegIdx, from->numInputSegs * sizeof(int));
 
-	COPY_SCALAR_FIELD(numSortCols);
-	COPY_POINTER_FIELD(sortColIdx, from->numSortCols * sizeof(AttrNumber));
-	COPY_POINTER_FIELD(sortOperators, from->numSortCols * sizeof(Oid));
+		COPY_NODE_FIELD(sliceEntries);
 
-	return newnode;
+		COPY_SCALAR_FIELD(numSortCols);
+		COPY_POINTER_FIELD(sortColIdx, from->numSortCols * sizeof(AttrNumber));
+		COPY_POINTER_FIELD(sortOperators, from->numSortCols * sizeof(Oid));
+
+		from->mutated = newnode;
+		return newnode;
+	}
 }
 
 /* ****************************************************************
@@ -3244,7 +3252,7 @@ _copyValue(Value *from)
  * substructure is copied too, recursively.
  */
 void *
-copyObject(void *from)
+copyObject(void *from) 
 {
 	void	   *retval;
 

@@ -556,9 +556,6 @@ ShareNode_ShareType add_sharenode(
 	Assert(subplan && *subplan);
 	Assert(ctxt);
 
-	if(nsharer <= 1)
-		return SHARENODE_UNKNOWN;
-
 	if(IsA(*subplan, Motion))
 	{
 		/* If the subplan is a motion, we assume that the caller knows what to do

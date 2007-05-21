@@ -235,6 +235,8 @@ execMotionSender(MotionState * node)
 	gettimeofday(&time1, NULL);
 #endif
 
+	Assert(node->ps.state->interconnect_context);
+
 	while (!done)
 	{
 		/* grab TupleTableSlot from our child. */
@@ -309,6 +311,9 @@ execMotionUnsortedReceiver(MotionState * node)
 	HeapTuple	tuple;
 	Motion	   *motion = (Motion *) node->ps.plan;
 	ReceiveReturnCode recvRC;
+
+	Assert(node->ps.state->motionlayer_context);
+	Assert(node->ps.state->interconnect_context);
 
 	if (node->fStopped) 
 	{
@@ -648,16 +653,9 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 
 		if(motionstate)
 		{
+#ifdef DEBUG
 			if (Gp_role == GP_ROLE_DISPATCH)
 			{
-				/* 
-				 * XXX Code copied from none multiplexed motion.
-				 * XXX why do we need to switch memory context?  
-				 */
-				/*
-				 * MemoryContext oldctxt = MemoryContextSwitchTo(estate->es_query_cxt);
-				 */
-
 				/* get recv slice */ 
 				recvSlice = (Slice *) list_nth(sliceTable->slices, estate->es_cur_slice_idx);
 
@@ -668,16 +666,10 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 						(recvSlice->rootIndex > sliceTable->nMotions &&
 						 recvSlice->rootIndex < list_length(sliceTable->slices)));
 
-				/* Sending slice becomes a child of receiving slice. */
-				recvSlice->children = lappend_int(recvSlice->children, sendSlice->sliceIndex);
-				sendSlice->parent = lappend_int(sendSlice->parent, estate->es_cur_slice_idx);
-
-				elog(LOG, "InitMotion has a share: mySlice %d, Motion Id %d, sharing id %d: send slice %d, recv slice %d",
-						currentSliceId, node->motionID, node->plan.shared_as_id, sendSlice->sliceIndex, estate->es_cur_slice_idx);
-
-				/* XXX Why we need a mem context switch ? */
-				/* MemoryContextSwitchTo(oldcxt); */
+				Assert(list_member_int(recvSlice->children, sendSlice->sliceIndex));
+				Assert(list_member_int(sendSlice->parent, estate->es_cur_slice_idx));
 			}
+#endif
 			return motionstate;
 		}
 	}
@@ -731,11 +723,8 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
                (recvSlice->rootIndex > sliceTable->nMotions &&
                 recvSlice->rootIndex < list_length(sliceTable->slices)));
 
-        /* Sending slice becomes a child of receiving slice. */
-        recvSlice->children = lappend_int(recvSlice->children, sendSlice->sliceIndex);
-		sendSlice->parent = lappend_int(sendSlice->parent, estate->es_cur_slice_idx);
+		/* XXX what is rootIndex for? */
         sendSlice->rootIndex = recvSlice->rootIndex;
-
 		/* The gang beneath a Motion will be a reader. */
 		sendSlice->gangType = GANGTYPE_PRIMARY_READER;
         sendSlice->gangSize = node->numInputSegs;
@@ -747,7 +736,13 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 
 		if(list_length(node->sliceEntries) == 1)
 		{
+
 			MotionSliceEntry *sliceEntry = (MotionSliceEntry *) linitial(node->sliceEntries);
+
+			/* Sending slice becomes a child of receiving slice. */
+			recvSlice->children = lappend_int(recvSlice->children, sendSlice->sliceIndex);
+			sendSlice->parent = lappend_int(sendSlice->parent, estate->es_cur_slice_idx);
+
 			if(sliceEntry->motionType == MOTIONTYPE_FIXED)
 			{
 				if(sliceEntry->numOutputSegs == 1)
@@ -772,6 +767,24 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 								: recvSlice->gangType == GANGTYPE_ENTRYDB_READER);
 					}
 				}
+			}
+		}
+		else
+		{
+			/* Set up parent/child list */
+			ListCell *sliceCell;
+			Slice *rSlice;
+			foreach(sliceCell, node->sliceEntries)
+			{
+				MotionSliceEntry *sliceEntry = (MotionSliceEntry *) lfirst(sliceCell);
+				rSlice = (Slice *)list_nth(sliceTable->slices, sliceEntry->recvSliceId);
+				Assert(rSlice && rSlice->sliceIndex == sliceEntry->recvSliceId);
+
+				Assert(!rSlice->children || !list_member_int(rSlice->children, sendSlice->sliceIndex));
+				rSlice->children = lappend_int(rSlice->children, sendSlice->sliceIndex);
+				
+				Assert(!sendSlice->parent || !list_member_int(sendSlice->parent, rSlice->sliceIndex));
+				sendSlice->parent = lappend_int(sendSlice->parent, rSlice->sliceIndex);
 			}
 		}
 
@@ -841,7 +854,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 
     if (thisSlice &&
         gp_log_interconnect >= GPVARS_VERBOSITY_TERSE)
-        ereport(LOG, (errmsg("Motion node %d in slice%d is %s %s slice %d",
+        ereport(LOG, (errmsg("Motion node %d in slice%d is %s%s slice %d",
 		                     node->motionID,
                              thisSlice->sliceIndex,
                              (node->sendSorted ? "sorted " : ""),
@@ -873,19 +886,6 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	 */
 	estate->es_cur_slice_idx = prior_es_cur_slice_idx;
 	estate->es_cur_root_idx = prior_es_cur_root_idx;
-
-    if (thisSlice &&
-        gp_log_interconnect >= GPVARS_VERBOSITY_TERSE)
-	{
-		ereport(LOG, (errmsg("Motion node %d in slice%d is %s %s slice %d",
-		                     node->motionID,
-                             thisSlice->sliceIndex,
-                             (node->sendSorted ? "sorted " : ""),
-                             (IsMotionRecv(motionstate) ? "receiver for input from"
-                                                      : "sender for output to"),
-                             thatSlice ? thatSlice->sliceIndex : -1)
-                ));
-	}
 
 	/*
 	 * initialize tuple type.  no need to initialize projection info

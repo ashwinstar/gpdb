@@ -51,6 +51,9 @@ typedef struct ExplainState
     TupOutputState *tupOutputState; /* for sending output to client */
 	StringInfoData  outbuf;         /* the output buffer */
     StringInfoData  workbuf;        /* a scratch buffer */
+
+	/* Share input */
+	List 		*sharedNodes;		/* List of shared nodes */
 } ExplainState;
 
 static void ExplainOneQuery(Query *query, ExplainStmt *stmt,
@@ -369,6 +372,8 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
     es->showstatctx = NULL;
     es->deferredError = NULL;
     es->tupOutputState = tstate;
+
+	es->sharedNodes = queryDesc->parsetree->sharedNodes;
 
     /* Allocate output buffer and a scratch buffer. */
     MemoryContextSwitchTo(explaincxt);
@@ -1008,26 +1013,26 @@ explain_outNode(StringInfo str,
 							pname = "Motion ???";
 							break;
 					}
+
+					if(nSenders == 1 &&
+							plan->lefttree &&
+							plan->lefttree->flow &&
+							plan->lefttree->flow->flotype == FLOW_SINGLETON &&
+							plan->lefttree->flow->segindex == -1)
+						senderIsEntryDb = true;
+
+					appendStringInfo(str, "%s %d:%d  (slice%d%s)", pname,
+							nSenders, nReceivers, pMotion->motionID,
+							senderIsEntryDb ? " on entry db" : "");
+					pname = "";
+
 				}
 				else
-					pname = "Multi Slice Motion";
-
-				/*
-				 * Only print x:y for single slice motion.  
-				 * XXX TODO: ftian: find a better way to display multi sliced motion
-				 */
-				if (nSenders == 1 && nSlices == 1 && 
-						plan->lefttree &&
-						plan->lefttree->flow &&
-						plan->lefttree->flow->flotype == FLOW_SINGLETON &&
-						plan->lefttree->flow->segindex == -1)
-					senderIsEntryDb = true;
-				appendStringInfo(str, "%s %d:%d  (slice%d%s)", pname,
-						nSenders, nReceivers, pMotion->motionID,
-						senderIsEntryDb ? " on entry db" : "");
-				pname = "";
+				{
+					appendStringInfo(str, "Multi Slice Motion (shared_as_id = %d)", plan->shared_as_id);
+					pname = ""; 
+				}
 			}
-
 			break;
 		default:
 			pname = "???";
@@ -1373,7 +1378,6 @@ explain_outNode(StringInfo str,
 
 				/* 
 				 * Only show merge key or hash key if this motion have one slice and one route
-				 * XXX TODO: ftian: Find a better way to explain motion
 				 */
 				if (list_length(pMotion->sliceEntries) == 1)
 				{
@@ -1385,6 +1389,55 @@ explain_outNode(StringInfo str,
 								pMotion->sortColIdx,
 								"Merge Key",
 								str, indent, es);
+				}
+				else {
+					ListCell *sliceCell;
+					const char* pslicename = NULL;
+
+					foreach(sliceCell, pMotion->sliceEntries)
+					{
+						MotionSliceEntry *slice = (MotionSliceEntry *) lfirst(sliceCell);
+						int i = 0;
+						int nReceivers;
+						
+						for(; i<=indent; ++i)
+							appendStringInfo(str, "  ");
+
+						switch(slice->motionType)
+						{
+							case MOTIONTYPE_HASH:
+								pslicename = "Restribute Motion Slice";
+								nReceivers = slice->numHashSegs;
+								break;
+							case MOTIONTYPE_FIXED:
+								nReceivers = slice->numOutputSegs;
+								if(nReceivers == 0)
+								{
+									pslicename = "Broadcase Motion Slice";
+									nReceivers = getgpsegmentCount();
+								}
+								else
+									pslicename = "Gather Motion Slice";
+								break;
+							default:
+								pslicename = "Motion ??? Slice";
+								break;
+						}
+
+						appendStringInfo(str, "%s %d:%d (slice %d to slice %d)\n",
+								pslicename, pMotion->numInputSegs, nReceivers,
+								pMotion->motionID, 
+								slice->recvSliceId
+								);
+
+						if (pMotion->sendSorted || slice->motionType == MOTIONTYPE_HASH)
+							show_motion_keys(plan,
+									slice->hashExpr,
+									pMotion->numSortCols,
+									pMotion->sortColIdx,
+									"Merge Key",
+									str, indent, es);
+					}
 				}
 
                 /* Descending into a new slice. */
@@ -1746,6 +1799,15 @@ show_grouping_keys(Plan        *plan,
     for (i = 0; i < indent; i++)
         appendStringInfoString(str, "  ");
     appendStringInfo(str, "  %s: ", qlabel);
+
+	/* First fix the subplan if shared */
+	if(!subplan)
+	{
+		Assert(plan->underlying_share_id != ShareNodeId_NotShared);
+		Assert(es->sharedNodes);
+		subplan = (Plan *) list_nth(es->sharedNodes, plan->underlying_share_id);
+		Assert(subplan);
+	}
 
     /* Generate deparse context */
 	if (cdbpullup_exprHasSubplanRef((Expr *)subplan->targetlist))

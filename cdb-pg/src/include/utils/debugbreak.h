@@ -17,7 +17,7 @@ extern void enable_debug_break_n(int n);
 extern void disable_debug_break_n(int n);
 
 #else
-#define debug_break
+#define debug_break()
 #define debug_break_n(n)
 #define enable_debug_break_n(n)
 #define disable_debug_break_n(n)

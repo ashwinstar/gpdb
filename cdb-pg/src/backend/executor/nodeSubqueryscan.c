@@ -224,9 +224,11 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	sp_estate->es_sharenode = estate->es_sharenode;
 
 	/*
-	 * also loan the motion later state.
+	 * also loan the motion later state and interconnect state
 	 */
 	sp_estate->motionlayer_context = estate->motionlayer_context;
+	sp_estate->interconnect_context = estate->interconnect_context;
+
 
 	/*
 	 * Start up the subplan (this is a very cut-down form of InitPlan())

@@ -885,6 +885,7 @@ void add_slice_to_motion(Motion *motion,
 	motion->sliceEntries = lappend(motion->sliceEntries, sliceEntry);
 
 	sliceEntry->motionType = motionType;
+	sliceEntry->recvSliceId = -1;
 	sliceEntry->hashExpr = hashExpr;
 	sliceEntry->hashDataTypes = NULL; 
 	sliceEntry->numOutputSegs = numOutputSegs;
@@ -1523,21 +1524,13 @@ DoesDistributionHaveDependencies(Oid relOid, GpPolicy * policy)
 	return false;
 }
 
-/*
- * An ApplyShareInputState holds the state for recursively apply shareinput_mutator.
- */
-typedef struct ApplyShareInputState
-{
-	int nextShareNodeId;
-	List *sharedNodes;
-} ApplyShareInputState;
 
 /* Walk the tree for shareinput.
  * Shareinput fix shared_as_id and underlying_share_id of nodes in place.  We do not want to use
  * the ordinary tree walker as it is unnecessary to make copies etc.
  */
-typedef bool (*SHAREINPUT_MUTATOR) (Node *node, Query* qry, ApplyShareInputState *ctxt);
-static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, Query* qry, ApplyShareInputState *ctxt)
+typedef bool (*SHAREINPUT_MUTATOR) (Node *node, Query* qry, void *ctxt, bool fPop);
+static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, Query* qry, void *ctxt)
 {
 	Plan *plan = NULL; 
 	bool recursive_down;
@@ -1556,7 +1549,7 @@ static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, Query* qry, Appl
 		return;
 
 	plan = (Plan *) node;
-	recursive_down = (*f)(node, qry, ctxt);
+	recursive_down = (*f)(node, qry, ctxt, false);
 
 	if(recursive_down) 
 	{
@@ -1577,14 +1570,29 @@ static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, Query* qry, Appl
 		shareinput_walker(f, (Node *)plan->lefttree, qry, ctxt);
 		shareinput_walker(f, (Node *)plan->righttree, qry, ctxt);
 	}
+
+	(*f)(node, qry, ctxt, true);
 }
+
+/*
+ * An ApplyShareInputState holds the state for recursively apply shareinput_mutator.
+ */
+typedef struct ApplyShareInputState
+{
+	int nextShareNodeId;
+	List *sharedNodes;
+} ApplyShareInputState;
 
 /* Assign the sharing id.  
  * Motion, Material and Sort may be shared.  
  */
-static bool shareinput_mutator_assign_shared_as_id(Node *node, Query *qry, ApplyShareInputState *ctxt)
+static bool shareinput_mutator_assign_shared_as_id(Node *node, Query *qry, void *vptr, bool fPop)
 {
 	Plan *plan = (Plan *) node;
+	ApplyShareInputState *ctxt = (ApplyShareInputState *) vptr;
+
+	if(fPop)
+		return true;
 
 	if(plan->shared_as_id >= 0)
 	{
@@ -1603,6 +1611,7 @@ static bool shareinput_mutator_assign_shared_as_id(Node *node, Query *qry, Apply
 		Assert(m->plan.lefttree->shared_as_id == ShareNodeId_NotShared);
 
 		m->fSetPlanRef = false;
+		m->fCopyUseMutated = true;
 		m->mutated = NULL;
 
 		/* if more than one slice, this motion is shared and need an sharing id */
@@ -1634,9 +1643,13 @@ static bool shareinput_mutator_assign_shared_as_id(Node *node, Query *qry, Apply
 /* Fix the underlying_share_id of a node.  Also, zap children if I am not the first 
  * sharer (not recursive down)
  */
-static bool shareinput_mutator_fix_underlying_share_id(Node *node, Query *qry, ApplyShareInputState *ctxt)
+static bool shareinput_mutator_fix_underlying_share_id(Node *node, Query *qry, void *vptr, bool fPop)
 {
 	Plan *plan = (Plan *) node;
+	ApplyShareInputState *ctxt = (ApplyShareInputState *) vptr;
+
+	if(fPop)
+		return true;
 
 	if(plan->underlying_share_id != ShareNodeId_NotShared)
 	{
@@ -1689,9 +1702,349 @@ Plan *apply_shareinput(Plan *plan, Query *query)
 
 	Assert(is_plan_node((Node *) plan) && IsA(query, Query));
 
-	shareinput_walker(shareinput_mutator_assign_shared_as_id, (Node *) plan, query, &state);
-	shareinput_walker(shareinput_mutator_fix_underlying_share_id, (Node *) plan, query, &state);
+	shareinput_walker(shareinput_mutator_assign_shared_as_id, (Node *) plan, query, (void *) &state);
+	shareinput_walker(shareinput_mutator_fix_underlying_share_id, (Node *) plan, query, (void *) &state);
 
 	return plan;
 }
 
+/* Context state for ApplyShareInputSplit */
+typedef struct SISCNodeInfo
+{
+	Plan *plan;
+	int motId;
+	int share_count;
+} SISCNodeInfo;
+
+typedef struct ApplyShareInputSplitState
+{
+	int nextShareNodeId;
+	List *motStack;
+	List *siscNodes;
+} ApplyShareInputSplitState;
+
+/* Some helper: implements a stack using List. */
+static void shareinput_pushmot(ApplyShareInputSplitState *ctxt, int motid)
+{
+	ctxt->motStack = lcons_int(motid, ctxt->motStack);
+}
+static void shareinput_popmot(ApplyShareInputSplitState *ctxt)
+{
+	list_delete_first(ctxt->motStack);
+}
+static int shareinput_peekmot(ApplyShareInputSplitState *ctxt)
+{
+	return linitial_int(ctxt->motStack);
+}
+
+/* Some helper: find/add sisc nodes to context */
+static SISCNodeInfo *find_sisc(ApplyShareInputSplitState *ctxt, int underlying_share, int motId)
+{
+	ListCell *cell;
+	foreach(cell, ctxt->siscNodes)
+	{
+		SISCNodeInfo *sisc = (SISCNodeInfo *) lfirst(cell);
+		if(sisc->plan->underlying_share_id == underlying_share
+				&& /* either want to find same motId or we don't care */
+				(motId == -1 || motId == sisc->motId)
+		  )
+			return sisc;
+	}
+
+	return NULL;
+}
+
+static int count_sisc_share(ApplyShareInputSplitState *ctxt, int underlying_share)
+{
+	int total_sharecount = 0;
+	SISCNodeInfo *sisc = NULL;
+	ListCell *cell;
+	foreach(cell, ctxt->siscNodes)
+	{
+		sisc = (SISCNodeInfo *) lfirst(cell);
+		if(sisc->plan->underlying_share_id == underlying_share)
+			total_sharecount += sisc->share_count;
+	}
+
+	return total_sharecount;
+}
+
+static void add_sisc(ApplyShareInputSplitState *ctxt, Plan *plan, int motId)
+{
+	SISCNodeInfo *sisc = (SISCNodeInfo *) palloc(sizeof(SISCNodeInfo));
+	sisc->plan = plan;
+	sisc->motId = motId;
+	sisc->share_count = 1;
+
+	ctxt->siscNodes = lappend(ctxt->siscNodes, sisc);
+}
+
+/* Split one motion slice entry */
+static void shareinput_split_motion1(ApplyShareInputSplitState* ctxt, Query *qry, Motion *motion, int sliceNum, int motId)
+{
+	MotionSliceEntry *sliceEntry = (MotionSliceEntry *) list_nth(motion->sliceEntries, sliceNum);
+
+	Assert(sliceEntry); 
+#ifdef DEBUG
+	/* Check motId has not beed added to the slices */
+	{
+		ListCell *cell = NULL;
+		foreach(cell, motion->sliceEntries)
+		{
+			MotionSliceEntry *tmp = (MotionSliceEntry *) lfirst(cell);
+			Assert(tmp->recvSliceId != motId);
+		}
+	}
+#endif
+
+	if(sliceEntry->recvSliceId == -1)
+	{
+		sliceEntry->recvSliceId = motId;
+	}
+	else
+	{
+		MotionSliceEntry *newSlice = (MotionSliceEntry *) copyObject(sliceEntry);
+		newSlice->recvSliceId = motId;
+		motion->sliceEntries = lappend(motion->sliceEntries, newSlice);
+	
+		/* If the motion was not a shared motion before, now it is.  Need to put it
+		 * on the shared node list
+		 */
+		if(motion->plan.shared_as_id == ShareNodeId_NotShared)
+		{
+			motion->plan.shared_as_id = ctxt->nextShareNodeId++;
+			qry->sharedNodes = lappend(qry->sharedNodes, (Node *) motion);
+			Assert(list_length(qry->sharedNodes) == ctxt->nextShareNodeId);
+		}
+	}
+}
+
+/* Split a slice.
+ * We call this function when we find that a ShareInputScan span slices.  
+ * We need to walk down the tree, untill we hit a motion node and add a slice there
+ */
+static bool shareinput_split_to_motion_mutator(Node* node, Query *qry, void *vpctxt, bool fPop)
+{
+	Plan *plan = (Plan *) node;
+	ApplyShareInputSplitState *ctxt = (ApplyShareInputSplitState *) vpctxt;
+
+	if(fPop)
+		return false;
+
+	if(plan->lefttree)
+	{
+		int motId = shareinput_peekmot(ctxt);
+
+		if(IsA(plan->lefttree, Motion))
+		{
+			Motion *motion = (Motion *) plan->lefttree;
+			int sliceNum = plan->sliceNum > 0 ? plan->sliceNum : 0;
+
+			shareinput_split_motion1(ctxt, qry, motion, sliceNum, motId);
+		}
+		else
+			shareinput_walker(shareinput_split_to_motion_mutator, (Node *) plan->lefttree, qry, vpctxt);
+
+
+		if(plan->righttree)
+		{
+			if(IsA(plan->righttree, Motion))
+			{
+				Motion *motion = (Motion *) plan->righttree;
+				int sliceNum = plan->sliceNum > 0 ? plan->sliceNum : 0;
+
+				shareinput_split_motion1(ctxt, qry, motion, sliceNum, motId);
+			}
+			else
+				shareinput_walker(shareinput_split_to_motion_mutator, (Node *) plan->righttree, qry, vpctxt);
+		}
+
+		return false;
+	}
+
+	return true;
+}
+
+/* 
+ * Split a slice
+ * After sharing input, the plan is handed to planner for further optimization.  It is possible
+ * for optmizer to put additional motion nodes, so that the ShareInputScan actually span slices.
+ * The plan will looks like,
+ *
+ *  Some nodes
+ * 		<-- Motion 
+ *  		<-- Some other node
+ *				<-- ShareInputScan (shares 1)
+ *					<-- Sort/Material (shared_as 1)
+ *						<-- Motion (*)
+ *		<-- some nodes
+ *			<-- ShareInputScan (shares 1)
+ *
+ * Here we have two ShareInputScan nodes, that shares one sort node, but the two shareinput nodes
+ * are in different slices.  This OK, because the ShareInputNode, sort, etc will be executed in both
+ * slices, but the problem lies with the Motion (*) node.  Now this motion node will need to send tuples
+ * to both slices.  Therefore, we will need to make it a multi slice motion.
+ */
+static bool shareinput_mutator_split(Node *node, Query *qry, void *vpctxt, bool fPop)
+{
+	Plan *plan = (Plan *) node;
+	ApplyShareInputSplitState *ctxt = (ApplyShareInputSplitState *) vpctxt;
+
+	if(fPop)
+	{
+		if(IsA(plan, Motion))
+			shareinput_popmot(ctxt);
+		return false;
+	}
+
+	if(IsA(plan, Motion))
+	{
+		Motion *motion = (Motion *) plan;
+
+		/* Fix recvSliceId of non shared motion as well, because this motion may be
+		 * shared, later.
+		 */
+		Assert(list_length(motion->sliceEntries) >= 1);
+		if(list_length(motion->sliceEntries) == 1)
+		{
+			MotionSliceEntry *sliceEntry = linitial(motion->sliceEntries);
+			if(sliceEntry->recvSliceId == -1)
+				sliceEntry->recvSliceId = shareinput_peekmot(ctxt);
+		}
+
+		shareinput_pushmot(ctxt, motion->motionID);
+		return true;
+	}
+	else if(IsA(plan, ShareInputScan))
+	{
+		int motId = shareinput_peekmot(ctxt);
+		SISCNodeInfo *cosisc = NULL; 
+
+		Assert(motId >= 0);
+		cosisc = find_sisc(ctxt, plan->underlying_share_id, motId);
+
+		if(!cosisc)
+		{
+			Plan *subtree = NULL;
+			cosisc = find_sisc(ctxt, plan->underlying_share_id, -1);
+			AssertEquivalent(cosisc!=NULL, plan->lefttree==NULL);
+
+			subtree = (cosisc == NULL) ? plan->lefttree : cosisc->plan->lefttree;
+			Assert(subtree);
+
+			shareinput_walker(shareinput_split_to_motion_mutator, (Node *) subtree, qry, vpctxt);
+			add_sisc(ctxt, plan, motId);
+
+			/* only need to do recursive down if we run into the shareinput the very first time */
+			return (cosisc == NULL) ? true : false;
+		}
+		else
+		{
+			/* Found cosisc, with same motion id.  Keep the share */
+			Assert(plan->lefttree == NULL);
+			Assert(cosisc->plan->lefttree != NULL);
+			++cosisc->share_count;
+			return false;
+		}
+	}
+
+	return true;
+}
+
+/* 
+ * If a ShareInputScan is the only sharer, zap it
+ */
+static Plan * shareinput_zap1(ApplyShareInputSplitState *ctxt, Plan *plan)
+{
+	if(!plan)
+		return NULL;
+
+	if(IsA(plan, ShareInputScan))
+	{
+		int sharecount = count_sisc_share(ctxt, plan->underlying_share_id);
+
+		Assert(sharecount >= 1);
+		if(sharecount == 1)
+		{
+			Assert(plan->lefttree && !plan->righttree);
+			Assert(IsA(plan->lefttree, Material) || IsA(plan->lefttree, Sort));
+
+			plan->lefttree->shared_as_id = ShareNodeId_NotShared;
+			return plan->lefttree;
+		}
+	}
+	return plan;
+}
+
+static bool shareinput_mutator_zap(Node *node, Query *qry, void *vpctxt, bool fPop)
+{
+	ApplyShareInputSplitState *ctxt = (ApplyShareInputSplitState *) vpctxt;
+	Plan *plan = (Plan *) node;
+
+	if(fPop)
+		return false;
+
+	if(IsA(node, Append))
+	{
+		ListCell *cell;
+		Append *app = (Append *) node;
+		foreach(cell, app->appendplans)
+		{
+			Plan *subp = shareinput_zap1(ctxt, (Plan *)lfirst(cell));
+			cell->data.ptr_value = (void *) subp;
+		}
+	}
+	else if(IsA(node, SubqueryScan))
+	{
+		SubqueryScan *subqscan = (SubqueryScan *) node;
+		subqscan->subplan = shareinput_zap1(ctxt, subqscan->subplan);
+	}
+	else if(IsA(node, Motion))
+	{
+		Motion *motion = (Motion *) node;
+		motion->fCopyUseMutated = false;
+		motion->mutated = NULL;
+#ifdef DEBUG
+		ListCell *cell;
+
+		/* Assert the sliceEntries are sorted */
+		foreach(cell, motion->sliceEntries)
+		{
+			MotionSliceEntry *slice = (MotionSliceEntry *) lfirst(cell);
+			Assert(slice->recvSliceId >= 0);
+		}
+
+		/* Multi slice entries are shared nodes */
+		AssertEquivalent(list_length(motion_sliceEntries) == 1, motion->shared_as_id == ShareNodeId_NotShared);
+
+		plan->lefttree = shareinput_zap1(ctxt, plan->lefttree);
+		plan->righttree = shareinput_zap1(ctxt, plan->righttree);
+#endif
+	}
+	else
+	{
+		plan->lefttree = shareinput_zap1(ctxt, plan->lefttree);
+		plan->righttree = shareinput_zap1(ctxt, plan->righttree);
+	}
+	return true;
+}
+
+Plan *apply_shareinput_split(Plan *plan, Query *query)
+{
+	ApplyShareInputSplitState state;
+	state.nextShareNodeId = query->sharedNodes ? list_length(query->sharedNodes) : 0;
+	state.siscNodes = NULL;
+	state.motStack = NULL;
+
+	Assert(is_plan_node((Node *) plan) && IsA(query, Query));
+	shareinput_pushmot(&state, 0);
+	
+	/* If we have shared nodes, we need to walk the tree */
+	if(state.nextShareNodeId > 0)
+	{
+		shareinput_walker(shareinput_mutator_split, (Node *) plan, query, (void *) &state);
+		shareinput_walker(shareinput_mutator_zap, (Node *) plan, query, (void *) &state);
+	}
+
+	return plan;
+}

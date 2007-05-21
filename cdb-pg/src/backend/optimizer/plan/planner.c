@@ -182,6 +182,11 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 		result_plan = cdbparallelize(result_plan, parse,
 									isCursor, cursorOptions,
 									boundParams, uses_correlation);
+
+		/* cdbparallelize may create additional slices that may affect share input.
+		 * need to split shared plan if they are not in the same slice
+		 */
+		result_plan = apply_shareinput_split(result_plan, parse);
 	}
 
 	/* restore state for outer planner, if any */

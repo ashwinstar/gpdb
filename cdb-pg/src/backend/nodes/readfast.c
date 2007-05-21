@@ -2527,6 +2527,8 @@ _readMotionSliceEntry(const char ** str)
 	READ_ENUM_FIELD(motionType, MotionType);  
 	Assert(local_node->motionType == MOTIONTYPE_FIXED || local_node->motionType == MOTIONTYPE_HASH);
 
+	READ_INT_FIELD(recvSliceId);
+
 	READ_INT_FIELD(numHashSegs);
 	READ_INT_ARRAY(hashSegIdx, numHashSegs, int);
 

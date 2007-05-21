@@ -2675,6 +2675,8 @@ _readMotionSliceEntry(void)
 	READ_LOCALS(MotionSliceEntry);
 
 	READ_ENUM_FIELD(motionType, MotionType);
+	READ_INT_FIELD(recvSliceId);
+
 	READ_INT_FIELD(numHashSegs);
 	READ_INT_ARRAY(hashSegIdx, numHashSegs, int);
 

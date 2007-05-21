@@ -741,6 +741,8 @@ _outMotionSliceEntry(StringInfo str, MotionSliceEntry *node)
 	WRITE_NODE_TYPE("MOTIONSLICEENTRY");
 
 	WRITE_ENUM_FIELD(motionType, MotionType);
+	WRITE_INT_FIELD(recvSliceId);
+
 	WRITE_INT_FIELD(numHashSegs);
 	appendStringInfoLiteral(str, " :hashSegIdx");
 	for (i = 0; i < node->numHashSegs; i++)

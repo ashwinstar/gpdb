@@ -765,6 +765,9 @@ typedef struct MotionSliceEntry
 	NodeTag 	type;
 	MotionType  motionType;
 
+	/* dest slice id */
+	int 		recvSliceId;		/* Recv slice id */
+
 	/* For Hash */
 	int			numHashSegs;		/* number of segindexes in hashSegIdx array */	
 	int			*hashSegIdx;		/* array of segindex values to hash to */
@@ -804,15 +807,16 @@ typedef struct Motion
 	 * We need flags to indicate if set_plan_references has been called on this node, to prevent 
 	 * calling twice (will error).
 	 *
-	 * so is mutated for mutate.
+	 * so is mutated for copy and mutate.
 	 */
-	bool 		fSetPlanRef;        
+	bool 		fSetPlanRef;
+	bool        fCopyUseMutated;
 	Plan      	*mutated;
 } Motion;
 
 extern Flow* get_motion_flow(Motion *node, int sliceIdx);
 extern Flow* get_plan_flow(Plan *node);
 
-
 #endif   /* PLANNODES_H */
+
 

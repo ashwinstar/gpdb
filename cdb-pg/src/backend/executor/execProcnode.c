@@ -117,6 +117,8 @@
 
 #include "cdb/ml_ipc.h" /* interconnect context */
 
+#include "utils/debugbreak.h"
+
 #ifdef CDB_TRACE_EXECUTOR
 #include "nodes/print.h"
 static void ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result);
@@ -679,6 +681,7 @@ ExecCountSlotsNode(Plan *node)
 			return ExecCountSlotsMotion((Motion *) node);
 
 		default:
+			debug_break();
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			break;
 	}

@@ -23,6 +23,7 @@
 #include "postgres.h"
 
 #include "utils/memutils.h"
+#include "utils/debugbreak.h"
 
 
 /*****************************************************************************
@@ -694,8 +695,11 @@ MemoryContextAllocZero(MemoryContext context, Size size)
 	AssertArg(MemoryContextIsValid(context));
 
 	if (!AllocSizeIsValid(size))
+	{
+		debug_break();
 		elog(ERROR, "invalid memory alloc request size %lu",
 			 (unsigned long) size);
+	}
 
 	ret = (*context->methods->alloc) (context, size);
 

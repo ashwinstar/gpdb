@@ -675,6 +675,8 @@ _outMotionSliceEntry(StringInfo str, MotionSliceEntry *node)
 	WRITE_NODE_TYPE("MOTIONSLICEENTRY");
 
 	WRITE_ENUM_FIELD(motionType, MotionType);
+	WRITE_INT_FIELD(recvSliceId);
+
 	WRITE_INT_FIELD(numHashSegs);
 	WRITE_INT_ARRAY(hashSegIdx, numHashSegs, int);
 
