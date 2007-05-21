@@ -7,10 +7,11 @@ APU=apr-util-1.2.8
 JSON=json-c-0.6
 LIBEVENT=libevent-1.3b-1
 INCLUDES=-I$(GPCC)/ext/include $$($(GPCC)/ext/bin/apr-1-config --includes) -I$(GPCC)/src/include
-CPPFLAGS=$$($(GPCC)/ext/bin/apr-1-config --cppflags)
 CFLAGS=$(OPT) $$($(GPCC)/ext/bin/apr-1-config --cflags)
 APRLIBS=$$($(GPCC)/ext/bin/apr-1-config --link-ld --libs) 
 APULIBS=$$($(GPCC)/ext/bin/apu-1-config --link-ld --libs)
+GP_VERSION=$$(< $(GPCC)/../VERSION)
+CPPFLAGS=$$($(GPCC)/ext/bin/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)"
 
 
 all: mkext mklibgpcc mkgpfdist 
@@ -19,7 +20,7 @@ all: mkext mklibgpcc mkgpfdist
 
 mkgpfdist: 
 	@echo --- gpfdist --------------------------------------------------
-	@(cd src/gpfdist; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
+	(cd src/gpfdist; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
 		-o gpfdist *.c -L../build/lib -lgpcc $(APRLIBS) $(APULIBS) -ljson -levent)
 	@mkdir -p build/bin
 	@cp src/gpfdist/gpfdist build/bin/
