@@ -378,7 +378,7 @@ void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
 	switch (ch) {
 	case '?': usage(0); break;
 	case 'v': opt.v = 1; break;
-	case 'V': opt.V = 1; break;
+	case 'V': opt.v = opt.V = 1; break;
 	case 'h': opt.h = 1; break;
 	case 'd': opt.d = arg; break;
 	case 'q': opt.q = arg; break;
@@ -966,16 +966,32 @@ void do_read(int fd, short event, void* arg)
     }
 
     /* Extract X-GP-TID value from HTTP headers */
-    r->tid = 0;
-    for (i = 0; i < r->in.req->hc; i++) {
-	if (0 == strcmp("X-GP-TID", r->in.req->hname[i])) {
-	    r->tid = r->in.req->hvalue[i];
-	    break;
+    {
+	const char* xid = 0;
+	const char* cid = 0;
+	const char* sn = 0;
+	for (i = 0; i < r->in.req->hc; i++) {
+	    if (0 == strcmp("X-GP-XID", r->in.req->hname[i])) 
+		xid = r->in.req->hvalue[i];
+	    else if (0 == strcmp("X-GP-CID", r->in.req->hname[i]))
+		cid = r->in.req->hvalue[i];
+	    else if (0 == strcmp("X-GP-SN", r->in.req->hname[i]))
+		sn = r->in.req->hvalue[i];
+	}
+	if (xid && cid && sn) {
+	    r->tid = apr_psprintf(r->pool, "%s.%s.%s", xid, cid, sn);
+	}
+	else if (xid || cid || sn) {
+	    gpcc_warning(FLINE, "reject invalid request from %s [%s %s] - missing X-GP-* header", 
+			 r->peer, r->in.req->argv[0], r->in.req->argv[1]);
+	    send_error(r, 400, "invalid request");
+	    request_end(r, 1);
+	    return;
+	}
+	else {
+	    r->tid = apr_psprintf(r->pool, "auto-tid.%d", gcb.session.gen++);
 	}
     }
-
-    if (!r->tid)
-	r->tid = apr_psprintf(r->pool, "auto-tid.%d", gcb.session.gen++);
 
     if (opt.v) 
 	printf("[INFO] %s requests %s\n\tTID %s\n", r->peer, r->path, r->tid);
