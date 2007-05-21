@@ -654,8 +654,7 @@ if (1)
             $ini =~ s/\s+of this segment db input data//;
         }
 
-#        if ($ini =~ m/(ERROR|WARNING|CONTEXT|NOTICE):.*gid\s+=\s+(\d+)/)
-        if ($ini =~ m/gid/)
+        if ($ini =~ m/(ERROR|WARNING|CONTEXT|NOTICE):.*gid\s+=\s+(\d+)/)
         {
             $ini =~ s/gid.*/gid DUMMY/;
         }
