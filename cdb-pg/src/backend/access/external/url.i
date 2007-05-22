@@ -168,7 +168,7 @@ is_error(CURL* curl)
 /* use to attempt to fill the read buffer up to requested number of bytes */
 /* return 0 if successful, -1 otherwise */
 static int
-fill_buffer(URL_FILE *file,int want,int waittime)
+fill_buffer(URL_FILE *file,int want)
 {
     fd_set fdread;
     fd_set fdwrite;
@@ -371,8 +371,11 @@ url_fopen(char *url, char *localfilename, const char *operation,
 
         if (0 != (e = curl_multi_add_handle(multi_handle, file->handle.curl)))
 		{
-			elog(ERROR, "internal error: curl_multi_add_handle failed (%d)", e);
-			return NULL;
+			if (CURLM_CALL_MULTI_PERFORM != e)
+			{
+				elog(ERROR, "internal error: curl_multi_add_handle failed (%d)", e);
+				return NULL;
+			}
 		}
 
         /* lets start the fetch */
@@ -381,7 +384,14 @@ url_fopen(char *url, char *localfilename, const char *operation,
 
 		if (e != 0) 
 		{
-			elog(ERROR, "internal error: curl_multi_add_handle failed (%d)", e);
+			elog(ERROR, "internal error: curl_multi_perform failed (%d)", e);
+			return NULL;
+		}
+
+		fill_buffer(file, 1);
+		if (!file->buffer_pos && is_error(file->handle.curl)) 
+		{
+			url_fclose(file);
 			return NULL;
 		}
     }
@@ -465,7 +475,7 @@ url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file)
     case CFTYPE_CURL:
         want = nmemb * size;
 
-        fill_buffer(file,want,1);
+        fill_buffer(file,want);
 
         /* check if theres data in the buffer - if not fill_buffer()
          * either errored or EOF */
@@ -510,7 +520,7 @@ url_fgets(char *ptr, int size, URL_FILE *file)
         break;
     	
     case CFTYPE_CURL:
-        fill_buffer(file,want,1);
+        fill_buffer(file,want);
 
         /* check if theres data in the buffer - if not fill either errored or
          * EOF */
