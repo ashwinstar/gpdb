@@ -262,7 +262,7 @@ use_buffer(URL_FILE *file,int want)
 
 
 URL_FILE *
-url_fopen(char *url, char *filename, const char *operation, 
+url_fopen(char *url, char *localfilename, const char *operation, 
 		  const char* XID, const char* CID, const char* SN)
 {
     /* this code checks for URLs or types in the 'url' and
@@ -296,9 +296,14 @@ url_fopen(char *url, char *filename, const char *operation,
 		
 		file->type = CFTYPE_EXEC; /* marked as a EXEC */
 	}
-    else if(filename && (file->handle.file=fopen(filename,operation)))
+    else if(localfilename)
     {
-        file->type = CFTYPE_FILE; /* marked as local FILE */
+		file->type = CFTYPE_FILE; /* marked as local FILE */
+		file->handle.file=fopen(localfilename,operation);
+		
+		/* couldn't open local file. return NULL to display proper error */
+		if(!file->handle.file)
+			return NULL;
     }
     else
     {
