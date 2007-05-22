@@ -437,7 +437,7 @@ int setup_write(request_t* r);
 void session_attach(request_t* r);
 void session_detach(request_t* r);
 void session_end(session_t* s, int error);
-void request_end(request_t* r, int error);
+void request_end(request_t* r);
 block_t* session_get_block(session_t* s);
 char* path_basename(const char* path, apr_pool_t* pool);
 
@@ -512,7 +512,7 @@ void print_request(gpcc_net_request_t* r)
 
 
 /* Finished a request. Close socket and cleanup. */
-void request_end(request_t* r, int error) 
+void request_end(request_t* r)
 {
     session_t* s = r->session;
 
@@ -607,7 +607,7 @@ void session_attach(request_t* r)
     /* create the key */
     if (sizeof(key) -1 == apr_snprintf(key, sizeof(key), "%s:%s", r->tid, r->path)) {
 	send_error(r, 400, "path too long");
-	request_end(r, 1);
+	request_end(r);
 	return;
     }
 
@@ -630,7 +630,7 @@ void session_attach(request_t* r)
 	    if (!fpath || n == 0) {
 		gpcc_warning(FLINE, "bad path: %s", r->path);
 		send_error(r, 404, "not found");
-		request_end(r, 1);
+		request_end(r);
 		return;
 	    }
 	}
@@ -652,14 +652,14 @@ void session_attach(request_t* r)
 		if (apr_filepath_merge(&newpath, fpath[0], "*", 0, r->pool)) {
 		    gpcc_warning(FLINE, "bad path: %s (filepathmerge)", r->path);
 		    send_error(r, 404, "not found");
-		    request_end(r, 1);
+		    request_end(r);
 		    return;
 		}
 		fpath = glob(newpath, &n, r->pool);
 		if (!fpath || n == 0) {
 		    gpcc_warning(FLINE, "bad path: %s", r->path);
 		    send_error(r, 404, "not found");
-		    request_end(r, 1);
+		    request_end(r);
 		    return;
 		}
 	    }
@@ -670,7 +670,7 @@ void session_attach(request_t* r)
 	if (! fstream) {
 	    gpcc_warning(FLINE, "reject request from %s, path %s\n", r->peer, r->path);
 	    send_error(r, 404, "not found");
-	    request_end(r, 1);
+	    request_end(r);
 	    return;
 	}
 
@@ -700,14 +700,14 @@ void session_attach(request_t* r)
     /* if error, send an error and close */
     if (s->is_error) {
 	send_error(r, 500, "session error");
-	request_end(r, 1);
+	request_end(r);
 	return;
     }
 
     /* session already ended. send an empty response, and close. */
     if (0 == s->fstream) {
 	send_empty(r);
-	request_end(r, 0);
+	request_end(r);
 	return;
     }
 
@@ -717,7 +717,7 @@ void session_attach(request_t* r)
     /* setup so receive EV_WRITE events to write to socket */
     if (setup_write(r)) {
 	send_error(r, 500, "internal error");
-	request_end(r, 1);
+	request_end(r);
 	return;
     }
 
@@ -786,7 +786,7 @@ void do_write(int fd, short event, void* arg)
 	if (! r->out.block) {
 	    r->out.block = session_get_block(r->session);
 	    if (! r->out.block) {
-		request_end(r, r->session->is_error);
+		request_end(r);
 		return;
 	    }
 	}
@@ -798,7 +798,9 @@ void do_write(int fd, short event, void* arg)
 	if (n < 0) {
 	    if (errno != EINTR && errno != EAGAIN) {
 		perror("write");
-		request_end(r, 1);
+		block_put(r->out.block);
+		r->out.block = 0;
+		request_end(r);
 		return;
 	    }
 	    n = 0;
@@ -813,7 +815,7 @@ void do_write(int fd, short event, void* arg)
 
     /* Set up for this routine to be called again */
     if (setup_write(r)) 
-	request_end(r, 1);
+	request_end(r);
     return;
 }
 
@@ -831,7 +833,7 @@ void do_read(int fd, short event, void* arg)
     /* If we timeout, close the request. */
     if (event & EV_TIMEOUT) {
 	send_error(r, 400, "time out");
-	request_end(r, 1);
+	request_end(r);
 	return;
     }
 
@@ -839,7 +841,7 @@ void do_read(int fd, short event, void* arg)
     n = r->in.hbufmax - r->in.hbuftop;
     if (n <= 0) {
 	send_error(r, 500, "internal error");
-	request_end(r, 1);
+	request_end(r);
 	return;
     }
 
@@ -847,7 +849,7 @@ void do_read(int fd, short event, void* arg)
     n = read(r->sock, r->in.hbuf + r->in.hbuftop, n);
     if (n < 0) {
 	if (errno != EINTR && errno != EAGAIN) {
-	    request_end(r, 1);
+	    request_end(r);
 	    return;
 	}
     }
@@ -863,7 +865,7 @@ void do_read(int fd, short event, void* arg)
 	if (!r->in.req && r->in.hbuftop >= r->in.hbufmax) {
 	    /* not available, but headerbuf is full - send error and close */
 	    send_error(r, 400, "forbidden");
-	    request_end(r, 1);
+	    request_end(r);
 	    return;
 	}
     }
@@ -873,7 +875,7 @@ void do_read(int fd, short event, void* arg)
     if (!r->in.req) {
 	if (setup_read(r)) {
 	    send_error(r, 500, "internal error");
-	    request_end(r, 1);
+	    request_end(r);
 	}
 	return;
     }
@@ -887,19 +889,19 @@ void do_read(int fd, short event, void* arg)
     if (r->in.req->argc != 3) {
 	gpcc_warning(FLINE, "reject invalid request from %s", r->peer);
 	send_error(r, 400, "invalid request");
-	request_end(r, 1);
+	request_end(r);
 	return;
     }
     if (0 != strncmp("HTTP/1.", r->in.req->argv[2], 7)) {
 	gpcc_warning(FLINE, "reject invalid protocol from %s [%s]", r->peer, r->in.req->argv[2]);
 	send_error(r, 400, "invalid request");
-	request_end(r, 1);
+	request_end(r);
 	return;
     }
     if (0 != strcmp("GET", r->in.req->argv[0])) {
 	gpcc_warning(FLINE, "reject invalid request from %s [%s %s]", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
 	send_error(r, 400, "invalid request");
-	request_end(r, 1);
+	request_end(r);
 	return;
     }
 
@@ -912,7 +914,7 @@ void do_read(int fd, short event, void* arg)
     if (apr_filepath_merge(&r->path, opt.d, p, 0, r->pool)) {
 	gpcc_warning(FLINE, "reject invalid request from %s [%s %s]", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
 	send_error(r, 400, "invalid request");
-	request_end(r, 1);
+	request_end(r);
 	return;
     }
 
@@ -960,7 +962,7 @@ void do_read(int fd, short event, void* arg)
 	    gpcc_warning(FLINE, "reject invalid request from %s [%s %s]", 
 			 r->peer, r->in.req->argv[0], r->in.req->argv[1]);
 	    send_error(r, 400, "invalid request");
-	    request_end(r, 1);
+	    request_end(r);
 	    return;
 	}
     }
@@ -985,7 +987,7 @@ void do_read(int fd, short event, void* arg)
 	    gpcc_warning(FLINE, "reject invalid request from %s [%s %s] - missing X-GP-* header", 
 			 r->peer, r->in.req->argv[0], r->in.req->argv[1]);
 	    send_error(r, 400, "invalid request");
-	    request_end(r, 1);
+	    request_end(r);
 	    return;
 	}
 	else {
@@ -1061,7 +1063,7 @@ void do_accept(int fd, short event, void* arg)
     /* set up for callback when socket ready for reading */
     if (setup_read(r)) {
 	send_error(r, 500, "internal error");
-	request_end(r, 1);
+	request_end(r);
     }
 }
 
