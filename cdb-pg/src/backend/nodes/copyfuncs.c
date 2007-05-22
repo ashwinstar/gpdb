@@ -788,7 +788,7 @@ static Motion *
 _copyMotion(Motion *from) 
 {
 	if(from->mutated && from->fCopyUseMutated)
-		return from->mutated;
+		return (Motion *)from->mutated;
 	else
 	{
 		Motion	   *newnode = makeNode(Motion);
@@ -812,7 +812,7 @@ _copyMotion(Motion *from)
 		COPY_POINTER_FIELD(sortColIdx, from->numSortCols * sizeof(AttrNumber));
 		COPY_POINTER_FIELD(sortOperators, from->numSortCols * sizeof(Oid));
 
-		from->mutated = newnode;
+		from->mutated = (Plan *)newnode;
 		return newnode;
 	}
 }
