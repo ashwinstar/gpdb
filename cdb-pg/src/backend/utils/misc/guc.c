@@ -1258,6 +1258,16 @@ static struct config_bool ConfigureNamesBool[] =
     	&gp_reraise_signal,
     	true, NULL, NULL
     },
+	
+	{
+		{"gp_external_enable_exec", PGC_POSTMASTER, EXTERNAL_TABLES,
+			gettext_noop("Enable selecting from an external table with an EXECUTE clause."),
+			NULL
+		},
+		&gp_external_enable_exec,
+		true, NULL, NULL
+    },
+	
 
 	{
 		{"resource_scheduler", PGC_POSTMASTER, RESOURCES_MGM,

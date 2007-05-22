@@ -195,6 +195,15 @@ extern bool Debug_print_prelim_plan;
  */
 extern bool Debug_print_slice_table;
 
+/*
+ * gp_external_enable_exec
+ *
+ * when set to 'true' external tables that were defined with an EXECUTE
+ * clause (will execute OS level commands) are allowed to be SELECTed from.
+ * When set to 'false' trying to SELECT from such a table will result in an
+ * error. Default is 'true'
+ */
+extern bool gp_external_enable_exec;
 
 /*
  * gp_command_count

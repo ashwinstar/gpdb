@@ -65,6 +65,8 @@ bool		Debug_print_prelim_plan;	/* Shall we log argument of
 
 bool		Debug_print_slice_table;	/* Shall we log the slice table? */
 
+bool		gp_external_enable_exec = true; /* allow ext tables with EXECUTE */
+
 int			gp_connections_per_thread; /* How many libpq connections are
 										 * handled in each thread */
 

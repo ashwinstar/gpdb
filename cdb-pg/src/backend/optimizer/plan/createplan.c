@@ -989,9 +989,20 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	
 	Assert(rel->locationlist != NIL);
 	
-	/* use rel->locationlis (but this may get overidden if gpfdist is used) */
+	/* use rel->locationlist (but this may get overidden if gpfdist is used) */
 	finalUriList = rel->locationlist;
 	
+	/* take a peek at the first URI so we know which protocol deal with */
+	first_uri_str = (char *) strVal(lfirst(list_head(rel->locationlist)));
+	uri = ParseUriString(first_uri_str);
+	
+	if(uri->protocol == URI_EXEC && !gp_external_enable_exec)
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_FEATURE_NOT_CONFIGURED), /* any better errcode? */
+				 errmsg("Using external tables with OS level commands "
+						"(EXECUTE clause) is disabled"),
+				 errhint("To enable set gp_external_enable_exec=on")));
+
 	/*
 	 * If we happen to be dealing with URI's with the 'gpfdist' protocol
 	 * we do an extra step here. We modify the locationlist so that every
@@ -1001,8 +1012,6 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	 * If however we have 'http' or 'file' protocols to begin with, we
 	 * just skip this step and go straight to URI->segdb mapping.
 	 */
-	first_uri_str = (char *) strVal(lfirst(list_head(rel->locationlist)));
-	uri = ParseUriString(first_uri_str);
 	if(uri->protocol == URI_GPFDIST || uri->protocol == URI_EXEC)
 	{
 		bool done = false;
