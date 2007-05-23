@@ -68,6 +68,7 @@ test: case
 test: join
 test: aggregates
 ignore: transactions
+test: distributed_transactions
 test: random
 ignore: portals
 ignore: arrays
