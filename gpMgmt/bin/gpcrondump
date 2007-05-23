@@ -540,7 +540,7 @@ PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-Vacuum mode type                 = $VAC_TXT" 1
 		LOG_MSG "[INFO]:-Disk free percent value          = $FREE_SPACE_PERCENT %" 1
 		$ECHO
-		$ECHO "Continue with Greenplum instance dump yY|nN >"
+		$ECHO "Continue with Greenplum Database system dump yY|nN >"
 		read REPLY
 		if [ -z $REPLY ]; then
 				LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1

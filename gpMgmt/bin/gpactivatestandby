@@ -70,9 +70,9 @@ USAGE () {
 		$ECHO	
 		$ECHO "      `basename $0 `"
 		$ECHO
-		$ECHO "      Activates a standby master segment instance when the primary instance has"
-		$ECHO "      failed. Will stop the gpsyncprocess, update the system catalog tables and"
-		$ECHO "      start the instance with the standby master segment instance as the new master."
+		$ECHO "      Activates a standby master instance when the primary master instance has"
+		$ECHO "      failed. Will stop the gpsyncmaster process, update the system catalog tables and"
+		$ECHO "      start the instance with the standby master instance as the new master."
 		$ECHO
 		$ECHO "      Usage:"
 		$ECHO "      $0 [OPTIONS]"
@@ -90,14 +90,14 @@ USAGE () {
 		$ECHO "      -d, <standby MASTER_DATA_DIRECTORY> [mandatory]"
 		$ECHO "      -f, force activation if gpsyncmaster process not running [optional]"
 		$ECHO "          Only use this option if it is known that the gpsyncmaster process is not"
-		$ECHO "          running AND the standby master segment is upto date AND consistent"
+		$ECHO "          running AND the standby master is upto date AND consistent"
 		$ECHO "      -c, <new standby master hostname> create a new standby master instance following"
 		$ECHO "          successful activation of the standby master instance"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
-		$ECHO "      1 Warning generated, but standby master segment instance operational"
-		$ECHO "      2 Fatal error, standby master segment instance not operational, or in an inconsistent state"
+		$ECHO "      1 Warning generated, but standby master instance operational"
+		$ECHO "      2 Fatal error, standby master instance not operational, or in an inconsistent state"
 		$ECHO
 		exit $EXIT_STATUS
 	fi
@@ -115,10 +115,10 @@ CHECK_PARAM () {
 	CHK_FILE $MASTER_STANDBY_DATA_DIRECTORY/$PG_OPT
 	if [ $EXISTS -eq 0 ];then
 		if [ `$GREP -c postmaster $MASTER_STANDBY_DATA_DIRECTORY/$PG_OPT` -ne 0 ];then
-			LOG_MSG "[FATAL]:-Have located a postmaster process on this host"
-			LOG_MSG "[FATAL]:-Has the Master standby instance already been activated"
-			LOG_MSG "[FATAL]:-Check output of gpstate to check"
-			ERROR_EXIT "[FATAL]:-Possible Standby master instance active" 2
+			LOG_MSG "[FATAL]:-Have located a postgres process on this host"
+			LOG_MSG "[FATAL]:-Has the master standby instance already been activated"
+			LOG_MSG "[FATAL]:-Run the gpstate utility to check"
+			ERROR_EXIT "[FATAL]:-Possible standby master instance active" 2
 		else
 			LOG_MSG "[INFO]:-No postmaster text found in $PG_OPT"
 		fi
@@ -207,7 +207,7 @@ CHK_CATALOG_DATA () {
 		LOG_MSG "[INFO]:-Master host $MASTER_HOSTNAME can be contacted, making further checks"
 		GET_PG_PID_ACTIVE $MASTER_PORT $MASTER_HOSTNAME
 		if [ $PID -ne 0 ];then
-			LOG_MSG "[WARN]:-Appears that there is an active postmaster on $MASTER_HOST port=$MASTER_PORT" 1
+			LOG_MSG "[WARN]:-Appears that there is an active postgres process on $MASTER_HOST port=$MASTER_PORT" 1
 			EXIT_STATUS=1
 			LOG_MSG "[INFO]:-This may have been caused by a kill -9 of the master postgres process" 1
 			LOG_MSG "[INFO]:-Traces of this process will need to be removed" 1
@@ -225,7 +225,7 @@ CHK_CATALOG_DATA () {
 		fi
 	else
 		LOG_MSG "[INFO]:-Unable to establish contact with $MASTER_HOSTNAME" 1
-		LOG_MSG "[INFO]:-Continuing activation of warm master standby" 1
+		LOG_MSG "[INFO]:-Continuing activation of standby master" 1
 	fi	
 	MASTER_STANDBY_DBID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select dbid from $CONFIG_TABLE where content=-1 and definedprimary='f' and isprimary='f';"`
 	ERROR_CHK $? "obtain standby dbid" 2
@@ -235,7 +235,7 @@ CHK_CATALOG_DATA () {
 
 UPDATE_CATALOG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Master standby: $MASTER_STANDBY_HOSTNAME"
+	LOG_MSG "[INFO]:-Standby Master: $MASTER_STANDBY_HOSTNAME"
 	MASTER_DBID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select dbid from $CONFIG_TABLE where content=-1 and definedprimary='t' and isprimary='t';"`
 	LOG_MSG "[INFO}:-Obtained MASTER_DBID as $MASTER_DBID"
 	env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"update $CONFIG_TABLE set hostname='$MASTER_STANDBY_HOSTNAME' where dbid=$MASTER_DBID ;"
@@ -260,7 +260,7 @@ STOP_MASTER_DB () {
 	if [ ! -f ${MASTER_STANDBY_DATA_DIRECTORY}/$PG_PID ];then
 		ERROR_EXIT "[FATAL]:-Appears standby instance shutdown during this process, check standby instance log file" 2
 	else
-		LOG_MSG "[INFO]:-Commencing shutdown of standby instance, including a call to shutdown segment instances"
+		LOG_MSG "[INFO]:-Commencing shutdown of standby master instance, including a call to shutdown segment instances"
 		LOG_MSG "[INFO]:-Ignore any warning messages if gpstop reports problems with shutdown of segment instances"
 		$GPSTOP -qfbya -d $MASTER_STANDBY_DATA_DIRECTORY
 	fi
@@ -271,24 +271,24 @@ STOP_MASTER_DB () {
 DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-----------------------------------------------" 1
-	LOG_MSG "[INFO]:-Greenplum standby Master activation parameters" 1
+	LOG_MSG "[INFO]:-Greenplum standby master activation parameters" 1
 	LOG_MSG "[INFO]:-----------------------------------------------" 1
-	LOG_MSG "[INFO]:-Greenplum Master standby hostname       = $MASTER_STANDBY_HOSTNAME" 1
-	LOG_MSG "[INFO]:-Greenplum Master standby port           = $MASTER_STANDBY_PORT" 1
-	LOG_MSG "[INFO]:-Greenplum Master standby data directory = $MASTER_STANDBY_DATA_DIRECTORY" 1
+	LOG_MSG "[INFO]:-Greenplum standby master hostname       = $MASTER_STANDBY_HOSTNAME" 1
+	LOG_MSG "[INFO]:-Greenplum standby master port           = $MASTER_STANDBY_PORT" 1
+	LOG_MSG "[INFO]:-Greenplum standby master data directory = $MASTER_STANDBY_DATA_DIRECTORY" 1
 	if [ x"" == x"$NEW_STANDBY_MASTER" ];then
-		LOG_MSG "[WARN]:-Greenplum Build new Master standby      = Off" 1
+		LOG_MSG "[WARN]:-Greenplum initialize new standby master = Off" 1
 	else
-		LOG_MSG "[INFO]:-Greenplum Build new Master standby      = On" 1
-		LOG_MSG "[INFO]:-Greenplum new Master standby hostname   = $NEW_STANDBY_MASTER" 1
+		LOG_MSG "[INFO]:-Greenplum initialize new standby master = On" 1
+		LOG_MSG "[INFO]:-Greenplum new standby master hostname   = $NEW_STANDBY_MASTER" 1
 	fi
 	if [ $FORCE_ACTIVATE -eq 1 ];then
-		LOG_MSG "[WARN]:-Force Master standby activation         = On" 1
+		LOG_MSG "[WARN]:-Force standby master activation         = On" 1
 	else
-		LOG_MSG "[INFO]:-Force Master standby activation         = Off" 1
+		LOG_MSG "[INFO]:-Force standby master activation         = Off" 1
 	fi
 	if [ $INTERACTIVE ]; then
-		$ECHO  "Continue with Greenplum Master standby activation Yy/Nn>"
+		$ECHO  "Continue with Greenplum standby master activation Yy/Nn>"
 		read REPLY
 		if [ -z $REPLY ]; then
 			LOG_MSG "[WARN]:-User abort requested, Script Exits!"
@@ -313,19 +313,19 @@ START_ARRAY () {
 
 DISPLAY_INFO () {
 	LOG_MSG "[INFO]:-The activation of the standby master has completed successfully."
-	LOG_MSG "[INFO]:-$MASTER_STANDBY_HOSTNAME is now the new master master."
+	LOG_MSG "[INFO]:-$MASTER_STANDBY_HOSTNAME is now the new primary master."
 	LOG_MSG "[INFO]:-You will need to update your user access mechanism to reflect"
 	LOG_MSG "[INFO]:-the change of master hostname."
-	LOG_MSG "[INFO]:-Do not re-start the failed master whilst the fail-over master is"
+	LOG_MSG "[INFO]:-Do not re-start the failed master while the fail-over master is"
 	LOG_MSG "[INFO]:-operational, this could result in database corruption!"
 	LOG_MSG "[INFO]:-MASTER_DATA_DIRECTORY is now $MASTER_STANDBY_DATA_DIRECTORY if"
 	LOG_MSG "[INFO]:-this has changed as a result of the standby master activation, rememeber"
 	LOG_MSG "[INFO]:-to change this in any startup scripts etc, that may be configured"
 	LOG_MSG "[INFO]:-to set this value." 
 	if [ x"" == x"$NEW_STANDBY_MASTER" ];then
-	LOG_MSG "[WARN]:-New standby master not built"
+	LOG_MSG "[WARN]:-New standby master not initialized"
 	else
-	LOG_MSG "[INFO]:-New standby Master Instance $NEW_STANDBY_MASTER"
+	LOG_MSG "[INFO]:-New standby master instance $NEW_STANDBY_MASTER"
 	fi
 	LOG_MSG "[INFO]:-MASTER_PORT is now $MASTER_STANDBY_PORT, if this has changed, you"
 	LOG_MSG "[INFO]:-may need to make additional configuration changes to allow access"
@@ -333,9 +333,9 @@ DISPLAY_INFO () {
 	LOG_MSG "[INFO]:-When the failed master becomes available, run gpactivatemaster"
 	LOG_MSG "[INFO]:-to re-activate the master and return the standby master to its previous"
 	LOG_MSG "[INFO]:-state."
-	LOG_MSG "[INFO]:-Statistics will need to be run against the database"
+	LOG_MSG "[INFO]:-Query planner statistics must be updated on all databases"
 	LOG_MSG "[INFO]:-Following standby master activation"
-	LOG_MSG "[INFO]:-When convenient, run analyze against the user databases"
+	LOG_MSG "[INFO]:-When convenient, run ANALYZE against all user databases"
 }
 #******************************************************************************
 # Main Section
@@ -388,9 +388,9 @@ UPDATE_CATALOG
 STOP_MASTER_DB
 START_ARRAY
 if [ x"" == x"$NEW_STANDBY_MASTER" ];then
-	LOG_MSG "[WARN]:-New master standby host build request not provided via -c option"
-	LOG_MSG "[WARN]:-Greenplum Master Instance does not have a fail-over"
-	LOG_MSG "[INFO]:-Run gpinitstandby to create a standby master instance"
+	LOG_MSG "[WARN]:-New standby master host to initialize not provided via -c option"
+	LOG_MSG "[WARN]:-Greenplum master instance does not have a standby"
+	LOG_MSG "[INFO]:-Run gpinitstandby to create a new standby master instance"
 	EXIT_STATUS=1
 else
 	LOG_MSG "[INFO]:-Processing request to create a new standby master instance"

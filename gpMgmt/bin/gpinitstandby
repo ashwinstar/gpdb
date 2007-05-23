@@ -9,7 +9,7 @@
 #	Release stat:-		Greenplum Co internal
 #                               Copyright (c) Metapa 2005. All Rights Reserved.
 #                               Copyright (c) Greenplum 2005. All Rights Reserved
-#	Brief descn:-		Creates a MPP master instance warm standby.
+#	Brief descn:-		Creates a Greenplum master instance warm standby.
 #******************************************************************************
 # Update History
 #******************************************************************************
@@ -94,7 +94,7 @@ USAGE () {
 		$ECHO "      -s, <standby hostname> [mandatory]" 
 		$ECHO "      -i, do not initialize gpsynchmaster process on standby master host [default:- initialize]"
 		$ECHO "      -n, do not update system catalog tables [default:- add standby host details]"
-		$ECHO "          Only use this option if standby host already recorded in MPP system catalog"
+		$ECHO "          Only use this option if standby host already recorded in the Greenplum Database system catalog"
 		$ECHO "          tables and only need to re-sync the standby master data directory"
 		$ECHO
 		$ECHO "      Return codes:"
@@ -201,13 +201,13 @@ CHECK_PARAM () {
 	STANDBY_IP_ADDRESS=(`$ECHO ${STANDBY_IP_ADDRESS_ALL[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`)
 	MASTER_MPP_NAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select gpname from $GP_ID_TABLE;"`
 	ERROR_CHK $? "obtain master array name" 2
-	#Check to see if there are any other MPP host on the proposed standby host
+	#Check to see if there are any other Greenplum instances on the proposed standby host
 	IN_USE_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}' ;"`
 	ERROR_CHK $? "obtain standby host in use count" 2
 	if [ $UPDATE_CATALOG -eq 1 ];then
 		if [ $IN_USE_COUNT -ne 0 ];then
 			LOG_MSG "[WARN]:-There are other segment instances active on $MASTER_STANDBY_HOSTNAME" 1
-			LOG_MSG "[WARN]:-This may have an impact on overall MPP instance performance" 1
+			LOG_MSG "[WARN]:-This may have an impact on overall Greenplum Database segment instance performance" 1
 		fi
 		#Check to ensure that port requested not already in use on that host
 		PORT_IN_USE_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}' and port=${MASTER_STANDBY_PORT};"`
@@ -303,17 +303,17 @@ DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Greenplum standby master initialization parameters" 1
 	LOG_MSG "[INFO]:---------------------------------------------" 1
-	LOG_MSG "[INFO]:-Greenplum Master hostname               = $MASTER_HOSTNAME" 1
-	LOG_MSG "[INFO]:-Greenplum Master data directory         = $MASTER_DATA_DIRECTORY" 1
-	LOG_MSG "[INFO]:-Greenplum Master port                   = $MASTER_PORT" 1
-	LOG_MSG "[INFO]:-Greenplum Master standby hostname       = $MASTER_STANDBY_HOSTNAME" 1
-	LOG_MSG "[INFO]:-Greenplum Master standby port           = $MASTER_STANDBY_PORT" 1
-	LOG_MSG "[INFO]:-Greenplum Array name                    = $MASTER_MPP_NAME" 1
-	LOG_MSG "[INFO]:-Greenplum Master standby data directory = $MASTER_STANDBY_DATA_DIRECTORY" 1
+	LOG_MSG "[INFO]:-Greenplum master hostname               = $MASTER_HOSTNAME" 1
+	LOG_MSG "[INFO]:-Greenplum master data directory         = $MASTER_DATA_DIRECTORY" 1
+	LOG_MSG "[INFO]:-Greenplum master port                   = $MASTER_PORT" 1
+	LOG_MSG "[INFO]:-Greenplum standby master hostname       = $MASTER_STANDBY_HOSTNAME" 1
+	LOG_MSG "[INFO]:-Greenplum standby master port           = $MASTER_STANDBY_PORT" 1
+	LOG_MSG "[INFO]:-Greenplum array name                    = $MASTER_MPP_NAME" 1
+	LOG_MSG "[INFO]:-Greenplum standby master data directory = $MASTER_STANDBY_DATA_DIRECTORY" 1
 	if [ x"" == x"$START_GPSYNC" ];then
-		LOG_MSG "[INFO]:-Greenplum Start mppsynmaster process    = Off" 1
+		LOG_MSG "[INFO]:-Greenplum Start gpsyncmaster process    = Off" 1
 	else
-		LOG_MSG "[INFO]:-Greenplum Start mppsynmaster process    = On" 1
+		LOG_MSG "[INFO]:-Greenplum Start gpsyncmaster process    = On" 1
 	fi
 	if [ $UPDATE_CATALOG -eq 1 ];then
 		LOG_MSG "[INFO]:-Greenplum update system catalog         = On" 1
@@ -325,9 +325,9 @@ DISPLAY_PARAM () {
 	fi
 	if [ $INTERACTIVE ]; then
 		if [ $UPDATE_CATALOG -eq 1 ];then
-			$ECHO  "Continue with GP Master standby initialization Yy/Nn>"
+			$ECHO  "Continue with Greenplum standby master initialization Yy/Nn>"
 		else
-			$ECHO  "Continue with GP Master standby re-sync Yy/Nn>"
+			$ECHO  "Continue with Greenplum standby master re-sync Yy/Nn>"
 		fi
 		read REPLY
 		if [ -z $REPLY ]; then
@@ -379,9 +379,9 @@ START_ARRAY () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	CHK_FILE $GPSTART
 	if [ $EXISTS -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Could not locate $GPSTART to start MPP instance" 2
+		ERROR_EXIT "[FATAL]:-Could not locate $GPSTART to start Greenplum Database instance" 2
 	else
-		LOG_MSG "[INFO]:-Starting the MPP instance" 1
+		LOG_MSG "[INFO]:-Starting the Greenplum Database instance" 1
 		$GPSTART -d $MASTER_DATA_DIRECTORY -a
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -501,14 +501,14 @@ START_ARRAY
 if [ $FAIL_PRI_SEG ];then
 	FAIL_PRIMARY_SEGMENTS
 	LOG_MSG "[INFO]:------------------------------------------------" 1
-	LOG_MSG "[INFO]:-Successfully created a read only master standby" 1
+	LOG_MSG "[INFO]:-Successfully created a read only standby master" 1
 	LOG_MSG "[INFO]:------------------------------------------------" 1
 else
 	LOG_MSG "[INFO]:------------------------------------------------" 1
 	if [ $UPDATE_CATALOG -eq 1 ];then
-	LOG_MSG "[INFO]:-Successfully created master standby host on $MASTER_STANDBY_HOSTNAME " 1
+	LOG_MSG "[INFO]:-d1
 	else
-	LOG_MSG "[INFO]:-Successfully complete standby re-synch on $MASTER_STANDBY_HOSTNAME " 1
+	LOG_MSG "[INFO]:-Successfully completed standby master re-synch on host $MASTER_STANDBY_HOSTNAME " 1
 	fi
 	LOG_MSG "[INFO]:------------------------------------------------" 1
 fi

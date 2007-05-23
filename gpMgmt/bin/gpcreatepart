@@ -247,7 +247,7 @@ PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-Force child create         = On" 1
 		fi
 		$ECHO
-		$ECHO "Continue with child generation process yY|nN >"
+		$ECHO "Continue with child table generation process yY|nN >"
 		read REPLY
 		if [ -z $REPLY ]; then
 				LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1

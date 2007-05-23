@@ -75,7 +75,7 @@ else
 	$ECHO
         $ECHO "      `basename $0`"
 	$ECHO
-        $ECHO "      Reports the data skew for a table within an MPP database."
+        $ECHO "      Reports the data skew for a table within a Greenplum database."
 	$ECHO "      Displays the segments with the most and least number of records,"
 	$ECHO "      calculates the variance of records between these two segments,"
 	$ECHO "      and reports the elapsed response time for the segment host."
@@ -312,7 +312,7 @@ GET_NODE_COUNT () {
 		HILITE=""
 	fi
 	LOG_MSG "[INFO]:---------------------------------------" 1
-	LOG_MSG "[INFO]:-DDL number of Distribution Column(s) = $DISTRIB_COLS" 1
+	LOG_MSG "[INFO]:-Number of Distribution Column(s)     = $DISTRIB_COLS" 1
 	LOG_MSG "[INFO]:-Distribution Column Name(s)          = `$ECHO ${DIS_COL_ARRAY[@]}`" 1
 	LOG_MSG "[INFO]:---------------------------------------" 1
 	LOG_MSG "[INFO]:-Total records $TOTAL_TXT     = $REC_COUNT $HILITE" 1
@@ -380,7 +380,7 @@ LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 READ_CHK
 if [ $READ_COUNT -ne 0 ];then
-        ERROR_EXIT "[FATAL]:-This script cannot be used on a Master read only segment instance" 2
+        ERROR_EXIT "[FATAL]:-This script cannot be used on a read-only Master instance" 2
 fi
 if [ $SEG_TYPE -eq 1 ];then
 	#Check to see that mirrors are configured

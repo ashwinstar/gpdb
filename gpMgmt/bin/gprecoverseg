@@ -67,7 +67,7 @@ USAGE () {
         	$ECHO
 		$ECHO "      `basename $0`"
 		$ECHO
-		$ECHO "      Recovers mpp segment instances that are marked as invalid, if"
+		$ECHO "      Recovers Greenplum segment instances that are marked as invalid, if"
 		$ECHO "      mirroring is configured and operational"
 		$ECHO
         	$ECHO "      Usage: "
@@ -93,10 +93,10 @@ USAGE () {
 		$ECHO "         5. Greenplum superuser account configured"
 		$ECHO "         6. Sufficient capacity left to accommodate recovered segments"
 		$ECHO "      -s <Primary segment directory,Mirror segment directory>"
-		$ECHO "         example -p /data_p4/pri,/data_m4/mir, this assumes that the MPP array was"
+		$ECHO "         example -p /data_p4/pri,/data_m4/mir, this assumes that the Greenplum array was"
 		$ECHO "         configured with spare pool segment instance directories on each segment"
 		$ECHO "         instance host"
-		$ECHO "      -f, force MPP instance shutdown and restart"
+		$ECHO "      -f, force Greenplum Database instance shutdown and restart"
         	$ECHO "      -z, <failed_segment_instance_directory_name:failed_hostname> force a recovery,"
 		$ECHO "          even though no instance segments are marked as invalid on the Master"
 		$ECHO "          CAUTION:-USE THIS OPTION WITH CARE!"
@@ -126,7 +126,7 @@ GET_SETTING () {
 		#Get a list of dbid's that are marked as invalid
 		CHK_MIRRORS_CONFIGURED
 		if [ $MIRROR_COUNT -eq 1 ];then
-			LOG_MSG "[FATAL]:-There are no mirrors configured for this MPP instance" 1
+			LOG_MSG "[FATAL]:-There are no mirrors configured for this Greenplum Database instance" 1
 			LOG_MSG "[FATAL]:-The failed segment(s) with dbid's ${FAILED_INST_LIST[@]} will" 1
 			LOG_MSG "[FATAL]:-need to be recovered manually, or a complete database restore" 1
 			LOG_MSG "[FATAL]:-will need to be undertaken" 1
@@ -146,9 +146,9 @@ GET_SETTING () {
 		LOG_MSG "[INFO]:-Fault tolerance is set to $FAIL_TYPE" 1
 		CHK_MIRRORS_CONFIGURED
 		if [ $MIRROR_COUNT -eq 1 ];then
-			LOG_MSG "[FATAL]:-There are no mirrors configured for this MPP instance" 1
-			LOG_MSG "[FATAL]:-The MPP instance will need to be recovered manually" 1
-			LOG_MSG "[FATAL]:-See gp_restore command" 1
+			LOG_MSG "[FATAL]:-There are no mirrors configured for this Greenplum Database instance" 1
+			LOG_MSG "[FATAL]:-The Greenplum Database instance will need to be recovered manually" 1
+			LOG_MSG "[FATAL]:-Try gp_stop -r -z or see the gp_restore command" 1
 			ERROR_EXIT "[FATAL]:-No further progress can be made" 2
 		fi
 		FAILED_INST_LIST=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $GP_PG_VIEW where valid='f';"`)
@@ -157,7 +157,7 @@ GET_SETTING () {
 		LOG_MSG "[INFO]:-There are ${#FAILED_INST_LIST[@]} failed segment(s)" 1
 		if [ $FAIL_TYPE != "readonly" ] && [ $FAIL_TYPE != "continue" ];then
 			LOG_MSG "[FATAL]:-Parameter gp_fault_action is not set to either readonly or continue" 1
-			LOG_MSG "[FATAL]:-MPP fault tolerance is not set" 1
+			LOG_MSG "[FATAL]:-Greenplum fault tolerance is not set" 1
 			LOG_MSG "[FATAL]:-Unable to determine if there are actual segment failures" 1
 			INFO_TEXT
 			ERROR_EXIT "[FATAL]:-Unable to continue" 2
@@ -224,9 +224,9 @@ GET_SETTING () {
 INFO_TEXT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-To be able to progress this issue, complete the following steps" 1
-	LOG_MSG "[INFO]:-Step 1 Shutdown the MPP instance with gpstop -zfa" 1
+	LOG_MSG "[INFO]:-Step 1 Shutdown the Greenplum Database instance with gpstop -zfa" 1
 	LOG_MSG "[INFO]:-Step 2 Edit the Master postgresql.conf file and set gp_fault_action=readonly" 1
-	LOG_MSG "[INFO]:-Step 3 Restart the MPP instance gpstart -a" 1
+	LOG_MSG "[INFO]:-Step 3 Restart the Greenplum Database instance gpstart -a" 1
 	LOG_MSG "[INFO]:-Step 4 Re-run this utility" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -329,14 +329,14 @@ DISPLAY_PARAM () {
 		LOG_MSG "[INFO]:-Procedure will STOP database as gp_fault_action=$FAIL_TYPE" 1
 	else
 		if [ $FORCESTOP -eq 1 ];then
-			LOG_MSG "[INFO]:-Procedure will STOP database as -f option supplied" 1
+			LOG_MSG "[INFO]:-Procedure will STOP Greenplum Database as -f option supplied" 1
 		else
 			LOG_MSG "[INFO]:-Procedure can continue without database interruption" 1
 			LOG_MSG "[INFO]:-as gp_fault_action=$FAIL_TYPE" 1
 		fi
 	fi
 	$ECHO
-        $ECHO "Continue with recovery procedure yY|nN >"
+        $ECHO "Continue with segment recovery procedure?  yY|nN >"
         read REPLY
 	if [ x"" == x"$REPLY" ];then
 		LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
@@ -417,7 +417,7 @@ STOP_DATABASE () {
 		else
 			LOG_MSG "[INFO]:-Ignoring shutdown errors as force option selected" 1
 		fi
-        	LOG_MSG "[INFO]:-Successfully shutdown the MPP instance" 1
+        	LOG_MSG "[INFO]:-Successfully shutdown the Greenplum Database instance" 1
 	else
 		COUNT=0
 		while [ $COUNT -lt $FAILED_INST_COUNT ]
@@ -514,19 +514,19 @@ RESET_QE_CONNECT () {
 
 START_DATABASE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Starting up the MPP instance in admin mode... Please wait..." 1
+	LOG_MSG "[INFO]:-Starting up the Greenplum Database instance in admin mode... Please wait..." 1
 	$GPSTART -m
-	ERROR_CHK $? "start MPP instance in admin mode" 2
+	ERROR_CHK $? "start Greenplum Database in admin mode" 2
 	LOG_MSG "[INFO]:-Resetting invalid segment status values" 1
 	for DBID in ${FAILED_INST_LIST[@]}
 	do
 		env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"update $CONFIG_TABLE set valid='t' where dbid=${DBID}"
 		ERROR_CHK $? "reset dbid $DBID as valid" 1
 	done
-	LOG_MSG "[INFO]:-Commencing shutdown of the MPP instance from admin mode... Please wait..." 1
+	LOG_MSG "[INFO]:-Commencing shutdown of the Greenplum Database instance from admin mode... Please wait..." 1
 	$GPSTOP -m
-	ERROR_CHK $? "stop MPP instance from admin mode" 2
-        LOG_MSG "[INFO]:-Starting up the MPP instance... Please wait..." 1
+	ERROR_CHK $? "stop Greenplum Database in admin mode" 2
+        LOG_MSG "[INFO]:-Starting up the Greenplum Database instance... Please wait..." 1
         $GPSTART -a
         RETVAL=$?
         if [ $RETVAL -ne 0 ];then
@@ -621,7 +621,7 @@ CHK_POOL_DIR_AVAILABLE () {
 	#Maximum pool directory usage will be defined by number of primary QE hosts in the array
 	POOL_DIR_LIMIT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(distinct(hostname)) from $CONFIG_TABLE where content<>-1 and definedprimary='t';"`
 	ERROR_CHK $? "obtain pool directory maximum limit" 2
-	LOG_MSG "[INFO]:-Maximum pool usage limit is $POOL_DIR_LIMIT for this MPP instance" 1
+	LOG_MSG "[INFO]:-Maximum pool usage limit is $POOL_DIR_LIMIT for this Greenplum instance" 1
 	#Now see if we can continue
 	GET_FAIL_COUNT_TYPE
 	if [ $PRI_FAIL_COUNT -ne 0 ];then
@@ -865,7 +865,7 @@ POOL_CATALOG_UPDATE () {
 	if [ ! -f $TMP_FILE ];then
 		ERROR_EXIT "[FATAL]:-SQL update file $TMP_FILE deleted" 2
 	fi	
-	LOG_MSG "[INFO]:-Dumping MPP configuration to log file" 1
+	LOG_MSG "[INFO]:-Dumping Greenplum Database configuration to log file" 1
 	$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -c"select * from gp_configuration;" >> $LOG_FILE
 	LOG_MSG "[INFO]:-Configuration dump complete" 1
 	LOG_MSG "[INFO]:-Commencing system catalog update" 1

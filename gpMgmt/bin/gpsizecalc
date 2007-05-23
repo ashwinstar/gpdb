@@ -71,7 +71,7 @@ else
 	$ECHO 
 	$ECHO "      `basename $0`"
 	$ECHO
-	$ECHO "      Provides actual disk space usage for a postgres table/index or database name supplied"
+	$ECHO "      Provides actual disk space usage for a Greenplum table/index or database name supplied"
 	$ECHO "      as a parameter to this script"
 	$ECHO 
 	$ECHO "      Usage:"
@@ -373,7 +373,7 @@ LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 GET_QD_DB_NAME
 READ_CHK
 if [ $READ_COUNT -ne 0 ];then
-	ERROR_EXIT "[FATAL]:-This script cannot be used on a Master read only segment instance" 2
+	ERROR_EXIT "[FATAL]:-This script cannot be used on a Master read only instance" 2
 fi
 case $SIZE_TARGET in 
 	0) GET_QE_DETAILS 

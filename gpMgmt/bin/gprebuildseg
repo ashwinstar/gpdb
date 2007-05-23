@@ -160,10 +160,10 @@ GET_SEGMENT_INFO () {
 	MASTER_HOST=`$HOSTNAME`
 	STANDBY_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select count(*) from gp_configuration where content=-1 and hostname<>'$MASTER_HOST';"`
 	if [ $STANDBY_COUNT -eq 1 ];then
-		LOG_MSG "[INFO]:-Master standby found, will process details" 1
+		LOG_MSG "[INFO]:-Standby master found, will process details" 1
 		STANDBY_MASTER_HOSTNAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select hostname from gp_configuration where content=-1 and hostname<>'$MASTER_HOST';"`
 	else
-		LOG_MSG "[INFO]:-No Master standby host found" 1
+		LOG_MSG "[INFO]:-No standby master host found" 1
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -186,24 +186,24 @@ CHK_QES () {
 
 DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "MPP segment instance rebuild parameters" 1
+	LOG_MSG "Segment instance rebuild parameters" 1
 	LOG_MSG "---------------------------------------" 1
-	LOG_MSG "MPP Master hostname            = $MASTER_HOST" 1
-	LOG_MSG "MPP Master data directory      = $MASTER_DATA_DIRECTORY" 1
-	LOG_MSG "MPP Master port                = $MASTER_PORT" 1
-	LOG_MSG "MPP Array name                 = $MASTER_MPP_NAME"
+	LOG_MSG "Master hostname            = $MASTER_HOST" 1
+	LOG_MSG "Master data directory      = $MASTER_DATA_DIRECTORY" 1
+	LOG_MSG "Master port                = $MASTER_PORT" 1
+	LOG_MSG "Greenplum Array name       = $MASTER_MPP_NAME"
 	if [ $STANDBY_COUNT -eq 1 ];then
-		LOG_MSG "MPP Master standy hostname     = $STANDBY_MASTER_HOSTNAME" 1
+		LOG_MSG "Standy master hostname     = $STANDBY_MASTER_HOSTNAME" 1
 	else
-		LOG_MSG "MPP Build Master standby       = Off" 1
+		LOG_MSG "Initialize standby master  = Off" 1
 	fi
 	for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
 	do
-		LOG_MSG "MPP Master IP addr             = $MASTER_IP" 1
+		LOG_MSG "Master IP addr             = $MASTER_IP" 1
 		IP_ALLOW="`$ECHO $MASTER_IP|$CUT -d. -f1-3`.0/24"
-		LOG_MSG "MPP Master IP allow            = $IP_ALLOW" 1
+		LOG_MSG "Master IP allow            = $IP_ALLOW" 1
 	done
-	LOG_MSG "MPP Segment instance rebuild list" 1
+	LOG_MSG "Segment instance rebuild list" 1
 	LOG_MSG "---------------------------------" 1
 	for I in "${REBUILD_ARRAY[@]}"
 	do
@@ -216,7 +216,7 @@ DISPLAY_PARAM () {
 		LOG_MSG "[INFO]:-$SEG_HOSTNAME $SEG_DATADIR $SEG_PORT  $SEG_DBID $SEG_DEFINED" 1
 	done
 	if [ $INTERACTIVE ]; then
-		$ECHO  "Continue with MPP rebuild Yy/Nn>"
+		$ECHO  "Continue with Greenplum segment rebuild Yy/Nn>"
 		read REPLY
 		if [ -z $REPLY ]; then
 			LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
@@ -263,7 +263,7 @@ BUILD_SEGMENT_INSTANCES () {
 		do
 			RUN_COMMAND_REMOTE ${SEG_HOSTNAME} "$ECHO host  all     all     ${MASTER_IP}/32 trust >> ${SEG_DATADIR}/$PG_HBA"
 		done
-		LOG_MSG "[INFO]:-Starting Functioning instance on segment ${SEG_HOSTNAME}" 1
+		LOG_MSG "[INFO]:-Starting instance on segment ${SEG_HOSTNAME}" 1
 		$TRUSTED_SHELL ${SEG_HOSTNAME} "${EXPORT_LIB_PATH};export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" start" 
 		if [ $? -ne 0 ]; then
 			BACKOUT_COMMAND "$TRUSTED_SHELL $SEG_HOSTNAME \"$RM -f ${SEG_DATADIR}.log\""
@@ -297,7 +297,7 @@ START_ARRAY () {
 	if [ $EXISTS -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Could not locate $GPSTART to start MPP instance" 2
 	else
-		LOG_MSG "[INFO]:-Starting the MPP instance" 1
+		LOG_MSG "[INFO]:-Starting the Greenplum Database instance" 1
 		$GPSTART -d $MASTER_DATA_DIRECTORY -a
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -305,7 +305,7 @@ START_ARRAY () {
 
 DISPLAY_INFO () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-The MPP instance has now been successfully rebuilt and is now operational" 1
+	LOG_MSG "[INFO]:-The Greenplum Database instance has now been successfully rebuilt and is now operational" 1
 	LOG_MSG "[INFO]:-Rebuild details" 1
 	LOG_MSG "[INFO]:-Master database host       = $MASTER_HOST" 1
 	LOG_MSG "[INFO]:-Master data directory      = $MASTER_DATA_DIRECTORY" 1

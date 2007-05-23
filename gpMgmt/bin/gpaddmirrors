@@ -63,8 +63,8 @@ USAGE () {
 	$ECHO
         $ECHO "      `basename $0`"
 	$ECHO
-	$ECHO "      Configures mirror segments for an MPP Instance which has primary"
-	$ECHO "      segment instances only. Process will stop the MPP Instance to be"
+	$ECHO "      Configures mirror segments for Greenplum Database instance which has primary"
+	$ECHO "      segment instances only. Process will stop the Greenplum Database Instance to be"
 	$ECHO "      able to generate mirror copies of primary segments."
         $ECHO
         $ECHO "      Usage:"
@@ -187,10 +187,10 @@ OBTAIN_PARAM () {
 	PRI_SEGMENT_ARRAY_COUNT=${#PRI_SEGMENT_ARRAY[@]}
 	if [ $BALANCE -eq 1 ];then
 		if [ $PRI_HOST_COUNT -eq 1 ] || [ $PRI_SEG_PER_HOST -eq $PRI_HOST_COUNT ];then
-			LOG_MSG "[FATAL]:-Number of segment hosts must be > number of segments per hosts"  1
-			ERROR_EXIT "[FATAL]:-Insufficient MPP hosts for -s mirroring option" 2
+			LOG_MSG "[FATAL]:-Number of segment hosts must be greater than the number of segment instances per host"  1
+			ERROR_EXIT "[FATAL]:-Insufficient Greenplum segment hosts for -s mirroring option" 2
 		fi
-		LOG_MSG "[INFO]:-Sufficient MPP segment hosts for -s option" 1
+		LOG_MSG "[INFO]:-Sufficient Greenplum segment hosts for -s option" 1
 		BAL_PORT_BASE=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select max(port)-$PRI_SEG_PER_HOST from $CONFIG_TABLE where content<>-1;"`
 		ERROR_CHK $? "obtain current port base" 2
 		LOG_MSG "[INFO]:-Obtained current port base = $BAL_PORT_BASE" 1
@@ -200,10 +200,10 @@ OBTAIN_PARAM () {
 		while [ $DIR_COUNT -lt $PRI_SEG_PER_HOST ]
 		do
 			((COUNTER=$DIR_COUNT+1))
-			$ECHO "Enter mirror segment instance directory name $COUNTER of $PRI_SEG_PER_HOST >"
+			$ECHO "Enter mirror segment data directory location $COUNTER of $PRI_SEG_PER_HOST >"
 			read MIRROR_DATADIRECTORY[$DIR_COUNT]
 			if [ x"" == x"$MIRROR_DATADIRECTORY" ];then
-				ERROR_EXIT "[FATAL]:-Null value entered for mirror directory" 2
+				ERROR_EXIT "[FATAL]:-Null value entered for mirror data directory" 2
 			fi
 			((DIR_COUNT=$DIR_COUNT+1))
 		done
@@ -266,7 +266,7 @@ CALC_MIRROR_PORT_BASE () {
 	fi
 	#Now to ensure that calculated MIRROR_PORT_BASE lies between MAX_MIRROR_PORT and MIN_MIRROR_PORT
 	if [ $MIRROR_PORT_BASE -ge $MAX_MIR_PORT ] || [ $MIRROR_PORT_BASE -le $MIN_MIR_PORT ];then
-		LOG_MSG "[FATAL]:-Value of MIRROR_OFFSET supplied via -p option out of range" 1
+		LOG_MSG "[FATAL]:-Value of MIRROR_OFFSET supplied via -p option is out of valid port range" 1
 		LOG_MSG "[FATAL]:-With value supplied, calculated a mirror port base of $MIRROR_PORT_BASE" 1
 		ERROR_EXIT "[FATAL]:-Mirror port base range must be between $MIN_MIR_PORT and $MAX_MIR_PORT" 2
 	fi
@@ -391,7 +391,7 @@ CHK_MIRROR_DIR () {
 		SET_VAR $MIRROR_SEG
 		LOG_MSG "[INFO]:-Checking if can see $MIRROR_HOSTNAME on network"
 		PING_HOST $MIRROR_HOSTNAME
-		LOG_MSG "[INFO]:-Checking $MIRROR_HOSTNAME for Data directory $MIRROR_DATADIR"
+		LOG_MSG "[INFO]:-Checking $MIRROR_HOSTNAME for data directory $MIRROR_DATADIR"
 		CHK_DIR $MIRROR_DATADIR $MIRROR_HOSTNAME
 		if [ $EXISTS -eq 0 ];then
 			ERROR_EXIT "[FATAL:-Directory $MIRROR_DATADIR already exists on $MIRROR_HOSTNAME" 2
@@ -420,13 +420,13 @@ CHK_MIRROR_DIR () {
 
 CONFIG_CATALOG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Commencing shutdown of Master Instance" 1
+	LOG_MSG "[INFO]:-Commencing shutdown of master instance" 1
 	if [ -f $GPSTOP ];then
 		$GPSTOP -qfa -d $MASTER_DATA_DIRECTORY	
 	else
 		ERROR_EXIT "[FATAL]:-Could not locate $GPSTOP" 2
 	fi
-	LOG_MSG "[INFO]:-Starting Master instance in admin mode" 1
+	LOG_MSG "[INFO]:-Starting master instance in admin mode" 1
 	if [ -f $GPSTART ];then
 		$GPSTART -qam -d $MASTER_DATA_DIRECTORY
 	else
@@ -444,11 +444,11 @@ CONFIG_CATALOG () {
 
 DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Greenplum Instance Mirror Parameters" 1
+	LOG_MSG "[INFO]:-Greenplum Database Mirror Parameters" 1
 	LOG_MSG "[INFO]:------------------------------" 1
-	LOG_MSG "[INFO]:-Greenplum Master hostname               = $MASTER_HOSTNAME" 1
-	LOG_MSG "[INFO]:-Greenplum Master data directory         = $MASTER_DATA_DIRECTORY" 1
-	LOG_MSG "[INFO]:-Greenplum Master port                   = $MASTER_PORT" 1
+	LOG_MSG "[INFO]:-Greenplum master hostname               = $MASTER_HOSTNAME" 1
+	LOG_MSG "[INFO]:-Greenplum master data directory         = $MASTER_DATA_DIRECTORY" 1
+	LOG_MSG "[INFO]:-Greenplum master port                   = $MASTER_PORT" 1
 	if [ x"" != x"$MIRROR_MACHINE_LIST_FILE" ];then
 	LOG_MSG "[INFO]:-Greenplum mirror type                   = Separate Hosts" 1
 	else
@@ -459,16 +459,16 @@ DISPLAY_PARAM () {
 	fi
 	fi
 	LOG_MSG "[INFO]:-------------------------------" 1
-	LOG_MSG "[INFO]:-Mirror segment Instance List" 1
+	LOG_MSG "[INFO]:-Mirror segment instance list" 1
 	LOG_MSG "[INFO]:-------------------------------" 1
 	for MIRROR_SEG in "${MIRROR_ARRAY[@]}"
 	do
 		SET_VAR $MIRROR_SEG
 ##		MIRROR_HOSTNAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where dbid=${MIRROR_DBID};"`
-	LOG_MSG "[INFO]:-Host $MIRROR_HOSTNAME Segment directory $MIRROR_DATADIR Port $MIRROR_PORT" 1
+	LOG_MSG "[INFO]:-Host $MIRROR_HOSTNAME Segment data directory $MIRROR_DATADIR Port $MIRROR_PORT" 1
 	done
 	if [ $INTERACTIVE ];then
-		$ECHO  "Continue with MPP Instance mirror creation Yy/Nn>"
+		$ECHO  "Continue with Greenplum Database mirror creation Yy/Nn>"
 		read REPLY
 		CHK_REPLY
 	fi
@@ -577,10 +577,10 @@ CONFIG_CATALOG
 CREATE_MIRRORS
 GET_STANDBY_COUNT
 if [ $STANDBY_COUNT -ne 0 ];then
-	LOG_MSG "[INFO]:-Standby host is configured on the MPP Instance, will sync standby host" 1
+	LOG_MSG "[INFO]:-Standby master is configured for Greenplum Database, will sync standby master" 1
 	GET_STANDBY_DETAILS
 	STANDBY_HOSTNAME=`$ECHO $STANDBY_ARRAY|$CUT -d'|' -f1`
-	LOG_MSG "[INFO]:-Obtained standby hostname as $STANDBY_HOSTNAME" 1
+	LOG_MSG "[INFO]:-Obtained standby master hostname as $STANDBY_HOSTNAME" 1
 	if [ -f $GPINITSTANDBY ];then
 		$GPSTOP -qam -d $MASTER_DATA_DIRECTORY
 		$GPSTART -qa -d $MASTER_DATA_DIRECTORY
@@ -589,9 +589,9 @@ if [ $STANDBY_COUNT -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Could not locate $GPINITSTANDBY" 2
 	fi
 else
-	LOG_MSG "[INFO]:-Commencing shutdown of Master instance from admin mode" 1
+	LOG_MSG "[INFO]:-Commencing shutdown of master instance from admin mode" 1
 	$GPSTOP -qam -d $MASTER_DATA_DIRECTORY
-	LOG_MSG "[INFO]:-Commencing startup of mirrored Instance" 1
+	LOG_MSG "[INFO]:-Commencing startup Greenplum Database with mirrors enabled" 1
 	$GPSTART -qa -d $MASTER_DATA_DIRECTORY
 fi
 LOG_MSG "[INFO]:-------------------------------------------------" 1

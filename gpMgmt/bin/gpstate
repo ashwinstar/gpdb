@@ -214,18 +214,18 @@ DATABASE_STATUS () {
 	LOG_MSG "[INFO]:-Master Configuration & Status" 1
 	LOG_MSG "[INFO]:--------------------------" 1
 	LOG_MSG "[INFO]:-Master host                   = $QD_NAME"  1
-	LOG_MSG "[INFO]:-Master Postmaster process PID = $QD_PID"  1
+	LOG_MSG "[INFO]:-Master postgres process ID    = $QD_PID"  1
 	LOG_MSG "[INFO]:-Master data directory         = $MASTER_DATA_DIRECTORY" 1
 	LOG_MSG "[INFO]:-Database name                 = $QD_DBNAME " 1
 	LOG_MSG "[INFO]:-Master port                   = $MASTER_PORT" 1
 	LOG_MSG "[INFO]:-Master current role           = $QD_ROLE" 1
-	LOG_MSG "[INFO]:-Greenplum initdb version            = $GP_INIT_VERSION" 1
-	LOG_MSG "[INFO]:-Greenplum current version           = $GP_VERSION" 1
+	LOG_MSG "[INFO]:-Greenplum initsystem version  = $GP_INIT_VERSION" 1
+	LOG_MSG "[INFO]:-Greenplum current version     = $GP_VERSION" 1
 	LOG_MSG "[INFO]:-Postgres version              = $QD_PG_VERSION" 1
-	LOG_MSG "[INFO]:-Greenplum failure action            = $FAIL_TYPE" 1
-	LOG_MSG "[INFO]:-Greenplum mirroring status          = $MIRROR_CONFIG" 1
-	LOG_MSG "[INFO]:-Greenplum master standby            = $STANDBY_CONFIGURED" 1
-	LOG_MSG "[INFO]:-Greenplum master standby state      = $STANDBY_STATE" 1
+	LOG_MSG "[INFO]:-Greenplum fault mode            = $FAIL_TYPE" 1
+	LOG_MSG "[INFO]:-Greenplum mirroring status      = $MIRROR_CONFIG" 1
+	LOG_MSG "[INFO]:-Greenplum master standby        = $STANDBY_CONFIGURED" 1
+	LOG_MSG "[INFO]:-Greenplum standby master state  = $STANDBY_STATE" 1
 	LOG_MSG "[INFO]:-Segment instance status" 1
 	PARALLEL_SUMMARY_STATUS_REPORT $PARALLEL_STATUS_FILE
 	LOG_MSG "[INFO]:------------------------------------------------" 1

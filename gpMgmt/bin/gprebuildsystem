@@ -140,7 +140,7 @@ CREATE_TEMP_DB () {
 	LOG_MSG "[INFO]:-Starting temporary database" 1
 	export PGPORT=$TEMP_PORT;$PG_CTL -w -D ${TEMP_DATA_DIRECTORY}/parsetemp -l ${TEMP_DATA_DIRECTORY}/parsetemp.log -o "-i -p $TEMP_PORT" start 
 	ERROR_CHK $? "start of temporary database ${TEMP_DATA_DIRECTORY} port = $TEMP_PORT" 2
-	LOG_MSG "[INFO]:-Loading MPP metadata" 1
+	LOG_MSG "[INFO]:-Loading Greenplum Database metadata" 1
 	env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -f $SQL_FILE
 	ERROR_CHK $? "load schema file $SQL_FILE into $DEFAULTDB database" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -160,7 +160,7 @@ PARSE_SQL_FILE () {
 	LOG_MSG "[INFO]:-Obtained Master instance port $MASTER_PORT" 1
 	MASTER_MPP_NAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select gpname from $GP_ID_TABLE ;"`
 	if [ $? -ne 0 ] || [ ! "$MASTER_MPP_NAME" ];then STOP_BUILD=1;MASTER_MPP_NAME=FAILED;fi
-	LOG_MSG "[INFO]:-Obtained Master instance array name $MASTER_MPP_NAME" 1
+	LOG_MSG "[INFO]:-Obtained Greenplum array name $MASTER_MPP_NAME" 1
 	REBUILD_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select hostname, port, datadir, dbid, content, definedprimary from $CONFIG_TABLE where content<>-1;"`)
 	if [ $? -ne 0 ] || [ ! $REBUILD_ARRAY ];then STOP_BUILD=1;fi
 	MASTER_IP_ADDRESS_ALL=(`$IFCONFIG -a |$GREP "inet "|$GREP -v "127."|$AWK '{print $2}'|$CUT -d: -f2`)	
@@ -175,7 +175,7 @@ PARSE_SQL_FILE () {
 	STANDBY_HOST_DETAILS=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c"select hostname, datadir, port from $CONFIG_TABLE where content=-1 and dbid<>1 ;"`
 	if [ $? -ne 0 ] || [ x"" = x"$STANDBY_HOST_DETAILS" ];then STOP_BUILD=1;STANDBY_HOST_DETAILS=FAILED;fi
 	fi
-	LOG_MSG "[INFO]:-Obtained standby master instace details $STANDBY_HOST_DETAILS" 1
+	LOG_MSG "[INFO]:-Obtained standby master details $STANDBY_HOST_DETAILS" 1
 	REBUILD_KEY=`$BASENAME $SQL_FILE|$AWK -F"_" '{print $NF}'`
 	RECOVER_FILE_DIR=`$DIRNAME $SQL_FILE`
 	CREATE_DB=`$LS ${RECOVER_FILE_DIR}/*cdatabase*${REBUILD_KEY}|$WC -l` 
@@ -265,14 +265,14 @@ DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Greenplum array name                 = $MASTER_MPP_NAME" 1
 	LOG_MSG "[INFO]:-Greenplum total primary segments     = $MASTER_TOTAL_SEG" 1
 	if [ $STANDBY_ACTIVE -ne 0 ];then
-		LOG_MSG "[INFO]:-Greenplum Master Standby             = Configured" 1
+		LOG_MSG "[INFO]:-Greenplum Standby Master             = Configured" 1
 		if [ x"" == x"$START_GPSYNC" ];then
 			LOG_MSG "[INFO]:-Greenplum start sync process         = Off" 1
 		else
 			LOG_MSG "[INFO]:-Greenplum start sync process         = On" 1
 		fi
 	else
-		LOG_MSG "[INFO]:-Greenplum Master Standby             = Not Configured" 1
+		LOG_MSG "[INFO]:-Greenplum Standby Master             = Not Configured" 1
 	fi 
 		LOG_MSG "[INFO]:-Greenplum Master IP Allow            = $DEFAULT_IP_ALLOW" 1
 	if [ x"" != x"$MASTER_ONLY" ];then
@@ -299,7 +299,7 @@ DISPLAY_PARAM () {
 		LOG_MSG "[INFO]:-$SEG_HOSTNAME $SEG_DATADIR $SEG_PORT $SEG_DEFINED" 1
 	done
 	if [ $INTERACTIVE ]; then
-		$ECHO  "Continue with MPP rebuild Yy/Nn>"
+		$ECHO  "Continue with Greenplum Database system rebuild Yy/Nn>"
 		read REPLY
 		if [ -z $REPLY ]; then
 			LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
@@ -319,7 +319,7 @@ DISPLAY_PARAM () {
 
 BUILD_MPP_MASTER () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Commencing rebuild of MPP instance" 1
+	LOG_MSG "[INFO]:-Commencing rebuild of Greenplum Database instance" 1
 	LOG_MSG "[INFO]:-Creating Master database" 1
 	RUN_COMMAND "$INITDB -E $ENCODING --locale=$LOCALE_SETTING  -D $MASTER_DATA_DIRECTORY"
 	BACKOUT_COMMAND "$RM -Rf $MASTER_DATA_DIRECTORY"
@@ -345,19 +345,19 @@ BUILD_MPP_MASTER () {
 	BACKOUT_COMMAND "$ECHO Removing Master lock files"
 	BACKOUT_COMMAND "export PGPORT=$MASTER_PORT;$PG_CTL -D $MASTER_DATA_DIRECTORY stop"
 	BACKOUT_COMMAND "$ECHO Commencing shutdown of Master instance"
-	LOG_MSG "[INFO]:-Loading Master MPP metadata" 1
+	LOG_MSG "[INFO]:-Loading Greenplum metadata" 1
 	env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -f $SQL_FILE
 	ERROR_CHK $? "loading mpp catalog data into $DEFAULTDB on master instance" 2
 	LOG_MSG "[INFO]:-Deleting temporary database" 1
 	DELETE_TEMP_DB
 	if [ x"" != x"$OVERRIDE_MASTER_HOSTNAME" ];then
-		LOG_MSG "[INFO]:-Changing master hostname to $MASTER_HOST in mpp.host table" 1
+		LOG_MSG "[INFO]:-Changing master hostname to $MASTER_HOST in gp_configuration table" 1
 		#Check to see if we have a hostname in $CONFIG_TABLE with the new hostname
 		HOSTNAME_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${MASTER_HOST}' and content=-1 and definedprimary='t';"`
 		ERROR_CHK $? "obtain hostname count for ${MASTER_HOST}" 2
 		if [ $HOSTNAME_COUNT -eq 0 ];then
 			#We don't have this hostname so update the master hostname that has been loaded
-			LOG_MSG "[INFO]:-This is a new Master hostname, updating mpp catalog" 1
+			LOG_MSG "[INFO]:-This is a new Master hostname, updating gp_configuration catalog" 1
 			env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"update $CONFIG_TABLE set hostname='${MASTER_HOST}' where content=-1 and definedprimary='t';"
 			ERROR_CHK $? "update $CONFIG_TABLE for ${MASTER_HOST}" 2
 		fi	
@@ -400,7 +400,7 @@ BUILD_SEGMENT_INSTANCES () {
 		do
 			RUN_COMMAND_REMOTE ${SEG_HOSTNAME} "$ECHO host  all     all     ${MASTER_IP}/32 trust >> ${SEG_DATADIR}/$PG_HBA"
 		done
-		LOG_MSG "[INFO]:-Starting Functioning instance on segment ${SEG_HOSTNAME}" 1
+		LOG_MSG "[INFO]:-Starting instance on segment ${SEG_HOSTNAME}" 1
 		$TRUSTED_SHELL ${SEG_HOSTNAME} "${EXPORT_LIB_PATH};export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" start" >> $LOG_FILE 2>&1
 		if [ $? -ne 0 ]; then
 			BACKOUT_COMMAND "$TRUSTED_SHELL $SEG_HOSTNAME \"$RM -f ${SEG_DATADIR}.log\""
@@ -417,9 +417,9 @@ BUILD_SEGMENT_INSTANCES () {
 		BACKOUT_COMMAND "$TRUSTED_SHELL $SEG_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" -m immediate  stop\""
 		BACKOUT_COMMAND "$ECHO \"Stopping segment instance\""
 		LOG_MSG "[INFO]:-Successfully started segment instance on $SEG_HOSTNAME" 1
-		LOG_MSG "[INFO]:-Updating segment mpp.mpp system table" 1
+		LOG_MSG "[INFO]:-Updating segment gp_id system table" 1
 		RUN_COMMAND_REMOTE $SEG_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $SEG_PORT $DEFAULTDB -c \"insert into $GP_ID_TABLE values ('${MASTER_MPP_NAME}',${MASTER_TOTAL_SEG},${SEG_DBID},${SEG_CONTENT});\"" 
-		LOG_MSG "[INFO]:-Successfully updated $SEG_HOSTNAME mpp.mpp system table" 1
+		LOG_MSG "[INFO]:-Successfully updated $SEG_HOSTNAME gp_id system table" 1
 		LOG_MSG "[INFO]:-Commencing shutdown of segment instance on $SEG_HOSTNAME" 1
 		$TRUSTED_SHELL ${SEG_HOSTNAME} "${EXPORT_LIB_PATH};export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" stop" 
 		ERROR_CHK $? "shutdown of instance on port $SEG_PORT data directory $SEG_DATADIR host $SEG_HOSTNAME" 2
@@ -488,7 +488,7 @@ START_ARRAY () {
 	if [ $EXISTS -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Could not locate $GPSTART to start MPP instance" 2
 	else
-		LOG_MSG "[INFO]:-Starting the MPP Instance" 1
+		LOG_MSG "[INFO]:-Starting the Greenplum Database instance" 1
 		$GPSTART -d $MASTER_DATA_DIRECTORY -a
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -498,12 +498,12 @@ DISPLAY_INFO () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ x"" = x"$MASTER_ONLY" ];then
 		LOG_MSG "[INFO]:-------------------------------------------------" 1
-		LOG_MSG "[INFO]:-The MPP Instance has been successfully rebuilt" 1
+		LOG_MSG "[INFO]:-The Greenplum Database instance has been successfully rebuilt" 1
 		LOG_MSG "[INFO]:-Status information reports it is now operational" 1
 	else
 		LOG_MSG "[INFO]:-------------------------------------------------" 1
-		LOG_MSG "[INFO]:-The MPP master database has been rebuilt" 1
-		LOG_MSG "[INFO]:-Use gprebuildseg to continue rebuild process" 1
+		LOG_MSG "[INFO]:-The Greenplum master instance has been rebuilt" 1
+		LOG_MSG "[INFO]:-Use gprebuildseg to continue the rebuild process" 1
 		LOG_MSG "[INFO]:-To shutdown the master use gpstop -m" 1
 		LOG_MSG "[INFO]:-To start the master use gpstart -m" 1
 		LOG_MSG "[INFO]:-To access the instance set PGOPTIONS for utility mode" 1
@@ -512,7 +512,7 @@ DISPLAY_INFO () {
 	LOG_MSG "[INFO]:-Master database host       = $MASTER_HOST" 1
 	LOG_MSG "[INFO]:-Master data directory      = $MASTER_DATA_DIRECTORY" 1
 	LOG_MSG "[INFO]:-Master database port       = $MASTER_PORT" 1
-	LOG_MSG "[INFO]:-To remove this Instance run gpdeletesystem.sh" 1
+	LOG_MSG "[INFO]:-To remove this Greenplum instance run gpdeletesystem.sh" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 

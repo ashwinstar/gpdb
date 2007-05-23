@@ -241,10 +241,10 @@ CHK_PARAMS () {
 					$RM -f $TMP_HOSTNAME_FILE
 				else
 					$TRUSTED_SHELL $MASTER_HOSTNAME "$RM -f $TMP_HOSTNAME_FILE"
-					LOG_MSG "[FATAL]:-Instance master hostname in configuration file is ${MASTER_HOSTNAME}" 1
+					LOG_MSG "[FATAL]:-Master hostname in configuration file is ${MASTER_HOSTNAME}" 1
 					LOG_MSG "[FATAL]:-Operating system command returns `$HOSTNAME`" 1
 					LOG_MSG "[FATAL]:-Unable to resolve $MASTER_HOSTNAME on this host" 1
-					ERROR_EXIT "[FATAL]:-This script must be executed on the Master host $MASTER_HOSTNAME" 2
+					ERROR_EXIT "[FATAL]:-Master hostname in gpinitsystem configuration file must be $MASTER_HOSTNAME" 2
 				fi
 		fi
 
@@ -277,18 +277,18 @@ CHK_PARAMS () {
 		fi
 		# Check that we have write access to the proposed master data directory
                 W_DIR=$MASTER_DIRECTORY
-                LOG_MSG "[INFO]:-Checking write access to $W_DIR on Master Segment host"
+                LOG_MSG "[INFO]:-Checking write access to $W_DIR on master host"
                 $TOUCH ${W_DIR}/tmp_file_test
                 RETVAL=$?
                 if [ $RETVAL -ne 0 ];then
-                        ERROR_EXIT "[FATAL]:-Cannot write to $W_DIR on Master Segment host " 2
+                        ERROR_EXIT "[FATAL]:-Cannot write to $W_DIR on master host " 2
                 else
                         $RM -f ${W_DIR}/tmp_file_test
-                        LOG_MSG "[INFO]:-Write test passed $W_DIR directory on Master Segment host"
+                        LOG_MSG "[INFO]:-Write test passed $W_DIR directory on master host"
 		fi	
 		#Check that the master segment directory does not exist
 		if [ -d ${MASTER_DIRECTORY}/${SEG_PREFIX}-1 ];then
-			ERROR_EXIT "[FATAL]:-Master segment directory ${MASTER_DIRECTORY}/${SEG_PREFIX}-1 exists" 2
+			ERROR_EXIT "[FATAL]:-Master host data directory ${MASTER_DIRECTORY}/${SEG_PREFIX}-1 already exists" 2
 		fi
 		#DATABASE_PREFIX
 		if [ x"" = x"$DATABASE_NAME" ]; then
@@ -347,7 +347,7 @@ CHK_PARAMS () {
 		#Check open files value
 		MASTER_OPEN=`ulimit -n`
 		if [ $MASTER_OPEN -lt $OS_OPENFILES ];then
-			LOG_MSG "[WARN]:-Master open file is $MASTER_OPEN should be >= $OS_OPENFILES" 1
+			LOG_MSG "[WARN]:-Master open file limit is $MASTER_OPEN should be >= $OS_OPENFILES" 1
 			EXIT_STATUS=1
 			ULIMIT_WARN=1
 		fi
@@ -366,7 +366,7 @@ CHK_PARAMS () {
 		#Check open files value
 		STANDBY_MASTER_OPEN=`$TRUSTED_SHELL $STANDBY_HOSTNAME "ulimit -n"`
 		if [ $STANDBY_MASTER_OPEN -lt $OS_OPENFILES ];then
-			LOG_MSG "[WARN]:-Standby Master open file is $STANDBY_MASTER_OPEN should be >= $OS_OPENFILES" 1
+			LOG_MSG "[WARN]:-Standby Master open file limit is $STANDBY_MASTER_OPEN should be >= $OS_OPENFILES" 1
 			EXIT_STATUS=1
 			ULIMIT_WARN=1
 		fi
@@ -708,7 +708,7 @@ DISPLAY_CONFIG () {
 		SET_VAR $QD_PRIMARY_ARRAY
 		LOG_MSG "[INFO]:-Greenplum Database Creation Parameters" 1
 		LOG_MSG "[INFO]:------------------------" 1
-		LOG_MSG "[INFO]:-Master Primary Greenplum Database Configuration" 1
+		LOG_MSG "[INFO]:-Master Configuration" 1
 		LOG_MSG "[INFO]:---------------------------------" 1
 		LOG_MSG "[INFO]:-Master instance name = $ARRAY_NAME" 1
 		LOG_MSG "[INFO]:-Master hostname      = $GP_HOSTNAME" 1
@@ -723,7 +723,7 @@ DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:-Segment buffers      = $QE_SHARED_BUFFERS" 1
 		LOG_MSG "[INFO]:-Checkpoint segments  = $CHECK_POINT_SEGMENTS" 1
 		LOG_MSG "[INFO]:-Encoding             = $ENCODING" 1
-		LOG_MSG "[INFO]:-Pg Conf add file     = $PG_ADD" 1
+		LOG_MSG "[INFO]:-postgres param file  = $PG_ADD" 1
 		LOG_MSG "[INFO]:-Initdb to be used    = $INITDB" 1
 		LOG_MSG "[INFO]:-GP_LIBRARY_PATH is  = $GP_LIBRARY_PATH" 1
 		if [ $ULIMIT_WARN -eq 1 ];then
@@ -824,7 +824,7 @@ SET_VAR () {
 
 CREATE_QD_DB () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		LOG_MSG "[INFO]:-Building the Master segment database, please wait..." 1
+		LOG_MSG "[INFO]:-Building the Master instance database, please wait..." 1
 		SET_VAR $QD_PRIMARY_ARRAY
 		LOG_MSG "[INFO]:-Initializing Master Postgres instance $GP_DIR"
 		$EXPORT_LIB_PATH
@@ -1307,7 +1307,7 @@ else
 	START_QD_PRODUCTION
 fi
 SCAN_LOG
-LOG_MSG "[INFO]:-Greenplum instance successfully created" 1
+LOG_MSG "[INFO]:-Greenplum Database instance successfully created" 1
 LOG_MSG "[INFO]:-------------------------------------------------------" 1
 LOG_MSG "[INFO]:-To complete the environment configuration, please " 1
 LOG_MSG "[INFO]:-update $USER_NAME .bashrc file with the following" 1
