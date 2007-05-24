@@ -1281,8 +1281,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_external_enable_exec,
 		true, NULL, NULL
     },
-	
-
+		
 	{
 		{"resource_scheduler", PGC_POSTMASTER, RESOURCES_MGM,
 			gettext_noop("Enable resource scheduling."),
@@ -2019,6 +2018,15 @@ static struct config_int ConfigureNamesInt[] =
 		64, 0, INT_MAX, NULL, NULL
 	},
 
+	{
+		{"gp_external_max_segs", PGC_USERSET, EXTERNAL_TABLES,
+			gettext_noop("Maximum number of segments that connect to a single gpfdist URL."),
+			NULL
+		},
+		&gp_external_max_segs,
+		64, 1, INT_MAX, NULL, NULL
+    },
+	
 	{
 		{"gp_max_packet_size", PGC_BACKEND, GP_ARRAY_TUNING,
             gettext_noop("Sets the max packet size for the Interconnect."),

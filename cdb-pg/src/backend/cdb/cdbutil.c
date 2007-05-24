@@ -23,6 +23,7 @@
 #include "funcapi.h"
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
+#include "optimizer/geqo_random.h"
 #include "parser/parse_oper.h"
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
@@ -708,4 +709,51 @@ CdbComponentDatabaseInfoCompare(const void *p1, const void *p2)
 		cmp = (int) obj2->isprimary - (int) obj1->isprimary;
 
 	return cmp;
+}
+
+/*
+ * Given total number of primary segment databases and a number of segments
+ * to "skip" - this routine creates a boolean map (array) the size of total
+ * number of segments and randomly selects several entries (total number of
+ * total_to_skip) to be marked as "skipped". This is used for external tables
+ * with the 'gpfdist' protocol where we want to get a number of *random* segdbs
+ * to connect to a gpfdist client.
+ *
+ * Caller of this function should pfree skip_map when done with it.
+ */
+bool *makeRandomSegMap(int total_primaries, int total_to_skip)
+{
+	int			randint;     /* some random int representing a seg    */
+	int			skipped = 0; /* num segs already marked to be skipped */
+	bool		*skip_map;
+	
+	skip_map = (bool *) palloc(total_primaries * sizeof(bool));
+	MemSet(skip_map, false, total_primaries * sizeof(bool));
+	
+	while(total_to_skip != skipped)
+	{
+		/*
+		 * create a random int between 0 and (total_primaries - 1).
+		 * 
+		 * NOTE that the lower and upper limits in geqo_randint() 
+		 * are inclusive so we take them into account. In reality
+		 * the chance of those limits to get selected by the random
+		 * generator is extremely small, so we may want to find a 
+		 * better random generator some time (not critical though).
+		 */
+		randint = geqo_randint(0, total_primaries - 1);
+		
+		/*
+		 * mark this random index 'true' in the skip map (marked to 
+		 * be skipped) unless it was already marked.
+		 */
+		if(skip_map[randint] == false)
+		{
+			skip_map[randint] = true;
+			skipped++;
+		}
+		
+	}	
+	
+	return skip_map;
 }

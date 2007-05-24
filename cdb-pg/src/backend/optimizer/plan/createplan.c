@@ -23,6 +23,7 @@
 #include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
+#include "optimizer/geqo_random.h"
 #include "optimizer/plancat.h"
 #include "optimizer/planmain.h"
 #include "optimizer/predtest.h"
@@ -43,7 +44,7 @@
 #include "cdb/cdbpathtoplan.h"  /* cdbpathtoplan_create_flow() etc. */
 #include "cdb/cdbpullup.h"      /* cdbpullup_targetlist() */
 #include "cdb/cdbsetop.h" /* mark_passthru_locus() */
-#include "cdb/cdbutil.h"        /* cdbComponentDatabase */		
+#include "cdb/cdbutil.h"        /* cdbComponentDatabase, makeRandomSegMap() */		
 
 typedef struct CreatePlanContext
 {
@@ -935,8 +936,24 @@ create_seqscan_plan(CreatePlanContext *ctx, Path *best_path,
  *   location specification. Here is where we do the mapping of external file
  *   to segment database and add it to the plan (or bail out of the mapping
  *   rules are broken)
- */
-
+ *
+ *   Mapping rules
+ *   -------------
+ *   - 'file' protocol: each location (URI of local file) gets mapped to one 
+ *                      and one only primary segdb.
+ *   - 'http' protocol: each location (URI of http server) gets mapped to one 
+ *                      and one only primary segdb.
+ *   - 'gpfdist' protocol: all locations (URI of gpfdist client) are mapped 
+ *                      to all primary segdbs. If there are less URIs than
+ *                      segdbs (usually the case) the URIs are duplicated
+ *                      so that there will be one for each segdb. However, if
+ *                      the GUC variable gp_external_max_segs is set to a num
+ *                      less than (total segdbs/total URIs) then we make sure
+ *                      that no URI gets mapped to more than this GUC number by
+ *                      skipping some segdbs randomly.
+ *   - 'exec' protocol: all segdbs get mapped to execute the command (this is
+ *                      soon to be changed though).
+ */                     
 static ExternalScan *
 create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 						 List *tlist, List *scan_clauses)
@@ -956,6 +973,15 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	bool			istext;
 	int				total_primaries = 0;
 	int				i;
+	
+	/* gpfdist specific variables */
+	int				total_to_skip = 0;
+	int				max_participants_allowed;
+	bool			num_segs_participating;
+	bool			*skip_map;
+	bool			should_skip_randomly = false;
+
+	
 	
 	/* it should be an external rel... */
 	Assert(scan_relid > 0);
@@ -992,7 +1018,9 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	/* use rel->locationlist (but this may get overidden if gpfdist is used) */
 	finalUriList = rel->locationlist;
 	
-	/* take a peek at the first URI so we know which protocol deal with */
+	/* 
+	 * take a peek at the first URI so we know which protocol deal with 
+	 */
 	first_uri_str = (char *) strVal(lfirst(list_head(rel->locationlist)));
 	uri = ParseUriString(first_uri_str);
 	
@@ -1004,10 +1032,31 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 				 errhint("To enable set gp_external_enable_exec=on")));
 
 	/*
+	 * Re-write the location list for GPFDIST and EXECUTE
+	 *
 	 * If we happen to be dealing with URI's with the 'gpfdist' protocol
-	 * we do an extra step here. We modify the locationlist so that every
+	 * or we are executing an external table with an EXECUTE clause, we do 
+	 * an extra step here. 
+	 *
+	 * (*) We modify the locationlist so that every
 	 * primary segdb will get a URI (therefore we duplicate the existing
-	 * URI's until the list is of size = total_primaries.
+	 * URI's until the list is of size = total_primaries). 
+	 * Example: 2 URIs, 7 total segdbs.
+	 * Original LocationList: URI1->URI2
+	 * Modified LocationList: URI1->URI2->URI1->URI2->URI1->URI2->URI1
+	 *
+	 * (**) In the case of 'gpfdist' we also make sure that we don't allocate
+	 * more segdbs than (# of URIs x gp_external_max_segs). 
+	 * Example: 2 URIs, 7 total segdbs, gp_external_max_segs = 3
+	 * Original LocationList: URI1->URI2
+	 * Modified LocationList: URI1->URI2->URI1->URI2->URI1->URI2 (6 total).
+	 *
+	 * (***) In that case that we need to allocate only a subset of primary 
+	 * segdbs and not all we then also create a random map of segments to skip.
+	 * Using the previous example a we create a map of 7 entries and need to
+	 * randomly select 1 segdb to skip (7 - 6 = 1). so it may look like this:
+	 * [F F T F F F F] - in which case we know to skip the 3rd segment only.
+	 *
 	 *
 	 * If however we have 'http' or 'file' protocols to begin with, we
 	 * just skip this step and go straight to URI->segdb mapping.
@@ -1016,9 +1065,29 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	{
 		bool done = false;
 		
+		/* total num of segs that will participate in the external operation */
+		num_segs_participating = total_primaries;
+		
+		/* max num of segs that are allowed to participate in the operation */
+		max_participants_allowed = list_length(rel->locationlist) * 
+										gp_external_max_segs;
+		
+		/* see (**) above */
+		if(uri->protocol == URI_GPFDIST && (num_segs_participating > max_participants_allowed))
+		{
+			total_to_skip = num_segs_participating - max_participants_allowed;
+			num_segs_participating = max_participants_allowed;
+			should_skip_randomly = true;
+			
+			elog(NOTICE, "External scan from gpfdist client will utilize %d out "
+						 "of %d segment databases", num_segs_participating,
+						 total_primaries);
+		}
+			
 		/* 
 		 * restart location list and fill in new list until number of
-		 * locations equals the number of primary segment databases 
+		 * locations equals the number of segments participating in this
+		 * action (see (*) above for more details).
 		 */
 	    while(!done)
 	    {
@@ -1029,19 +1098,23 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 				/* append to a list of Value nodes, size nelems */
 				modifiedloclist = lappend(modifiedloclist, makeString(pstrdup(uri_str)));				
 			
-				if(list_length(modifiedloclist) == total_primaries)
+				if(list_length(modifiedloclist) == num_segs_participating)
 				{
 					done = true;
 					break;
 				}
-					
 			}
 		}
 		
 		/* use the modified list in the URI to segdb mapping */
 		finalUriList = modifiedloclist;
+		
+		/* See (***) above for details */
+		if(should_skip_randomly)
+			skip_map = makeRandomSegMap(total_primaries, total_to_skip);
 	}
 	
+
 	/* 
 	 * extract file path and name from URI strings and assign them a primary segdb 
 	 */
@@ -1086,8 +1159,21 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 						continue;
 				}
 				
+				/*
+				 * skip this segdb if 'gpfdist' and skip_map for this seg
+				 * index tells us to skip it (set to 'true').
+				 */
+				if(should_skip_randomly)
+				{
+					Assert(segind < total_primaries);
+					
+					if(skip_map[segind])
+						continue; /* skip it */					
+				}
+					
 				/* a valid primary segdb exist on this host */
 				found_candidate = true;
+				
 				if(segdb_file_map[segind] == NULL)
 				{
 					/* segdb not taken yet. assign this URI to this segdb */
@@ -1100,7 +1186,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		}
 		
 		/*
-		 * We failed to find a segdb for this external file.
+		 * We failed to find a segdb for this URI.
 		 */
 		if(!found_match)
 		{
@@ -1130,6 +1216,15 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 						 errmsg("Could not assign a segment database for \"%s\". "
 								"There are more URIs than total primary segment "
 								"databases", uri_str)));				
+			}
+			else if(uri->protocol == URI_GPFDIST)
+			{
+				elog(LOG, "external tables gpfdist allocation error. "
+					 "total_primaries: %d, num_segs_participating %d "
+					 "max_participants_allowed %d, total_to_skip %d", 
+					 total_primaries, num_segs_participating, 
+					 max_participants_allowed, total_to_skip);
+				Assert(0); /* should never happen */
 			}
 			else
 			{
@@ -1166,6 +1261,10 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 
 	pfree(segdb_file_map);
 	pfree(finalUriList);
+
+	if(skip_map)
+		pfree(skip_map);
+
 	freeCdbComponentDatabases(db_info);
 
 	return scan_plan;

@@ -127,5 +127,15 @@ extern void freeGpId(void);
  */
 extern CdbComponentDatabases *getCdbComponentInfo(void);
 
+/*
+ * Given total number of primary segment databases and a number of segments
+ * to "skip" - this routine creates a boolean map (array) the size of total
+ * number of segments and randomly selects several entries (total number of
+ * total_to_skip) to be marked as "skipped". This is used for external tables
+ * with the 'gpfdist' protocol where we want to get a number of *random* segdbs
+ * to connect to a gpfdist client.
+ */
+extern bool *makeRandomSegMap(int total_primaries, int total_to_skip);
+
 
 #endif   /* CDBUTIL_H */

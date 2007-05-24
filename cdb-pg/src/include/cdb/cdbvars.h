@@ -205,6 +205,17 @@ extern bool Debug_print_slice_table;
  */
 extern bool gp_external_enable_exec;
 
+/* gp_external_max_segs
+ *
+ * The maximum number of segment databases that will get assigned to  
+ * connect to a specific gpfdist client (1 gpfdist:// URI). The limit
+ * is good to have as there is a number of segdbs that as we increase
+ * it won't add to performance but may actually decrease it, while
+ * occupying unneeded resources. By having a limit we can control our
+ * server resources better while not harming performance.
+ */
+extern int gp_external_max_segs;
+
 /*
  * gp_command_count
  *
