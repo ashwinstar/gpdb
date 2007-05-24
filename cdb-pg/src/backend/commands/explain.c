@@ -786,6 +786,9 @@ explain_outNode(StringInfo str,
     Slice      *currentSlice = es->currentSlice;    /* save */
 	int			i;
 	bool		skip_outer=false;
+	char       *skip_outer_msg = NULL;
+
+	MotionSliceEntry *motionSlice = NULL;
 
 	if (plan == NULL)
 	{
@@ -812,7 +815,11 @@ explain_outNode(StringInfo str,
 			break;
 		case T_NestLoop:
 			if (((NestLoop *)plan)->shared_outer)
+			{
 				skip_outer = true;
+				skip_outer_msg = "See first subplan of Hash join";
+			}
+
 			switch (((NestLoop *) plan)->join.jointype)
 			{
 				case JOIN_INNER:
@@ -909,24 +916,16 @@ explain_outNode(StringInfo str,
 			pname = "Values Scan";
 			break;
 		case T_ShareInputScan:
-			appendStringInfo(str, "ShareInputScan (shares %d)", plan->underlying_share_id);
+			appendStringInfo(str, "ShareInputScan (share slice:id %d:%d)", 
+					currentSlice->sliceIndex,
+					plan->underlying_share_id);
 			pname = "";
 			break;
 		case T_Material:
 			pname = "Materialize";
-			if(plan->shared_as_id >= 0)
-			{
-				appendStringInfo(str, "%s (shared as %d)", pname, plan->shared_as_id);
-				pname = "";
-			}
 			break;
 		case T_Sort:
 			pname = "Sort";
-			if(plan->shared_as_id >= 0)
-			{
-				appendStringInfo(str, "%s (shared as %d)", pname, plan->shared_as_id);
-				pname = "";
-			}
 			break;
 		case T_Group:
 			pname = "Group";
@@ -990,48 +989,63 @@ explain_outNode(StringInfo str,
 				bool        senderIsEntryDb = false;
 
 				if(nSlices == 1)
-				{
-					MotionSliceEntry *slice = (MotionSliceEntry *) linitial(pMotion->sliceEntries);
-
-					switch (slice->motionType)
-					{
-						case MOTIONTYPE_HASH:
-							nReceivers = slice->numHashSegs;
-							pname = "Redistribute Motion";
-							break;
-						case MOTIONTYPE_FIXED:
-							nReceivers = slice->numOutputSegs;
-							if (nReceivers == 0)
-							{
-								pname = "Broadcast Motion";
-								nReceivers = getgpsegmentCount();
-							}
-							else
-								pname = "Gather Motion";
-							break;
-						default:
-							pname = "Motion ???";
-							break;
-					}
-
-					if(nSenders == 1 &&
-							plan->lefttree &&
-							plan->lefttree->flow &&
-							plan->lefttree->flow->flotype == FLOW_SINGLETON &&
-							plan->lefttree->flow->segindex == -1)
-						senderIsEntryDb = true;
-
-					appendStringInfo(str, "%s %d:%d  (slice%d%s)", pname,
-							nSenders, nReceivers, pMotion->motionID,
-							senderIsEntryDb ? " on entry db" : "");
-					pname = "";
-
-				}
+					motionSlice = (MotionSliceEntry *) linitial(pMotion->sliceEntries);
 				else
 				{
-					appendStringInfo(str, "Multi Slice Motion (shared_as_id = %d)", plan->shared_as_id);
-					pname = ""; 
+					int i = 0;
+					ListCell *cell;
+					foreach(cell, pMotion->sliceEntries)
+					{
+						motionSlice = (MotionSliceEntry *) lfirst(cell);
+						if(motionSlice->recvSliceId == currentSlice->sliceIndex)
+						{
+							if(i != 0)
+							{
+								skip_outer = true;
+								skip_outer_msg = "See first subplan of the Motion";
+							}
+							break;
+						}
+						++i;
+						motionSlice = NULL;
+					}
 				}
+
+				Assert(motionSlice);
+
+				switch (motionSlice->motionType)
+				{
+					case MOTIONTYPE_HASH:
+						nReceivers = motionSlice->numHashSegs;
+						pname = "Redistribute Motion";
+						break;
+					case MOTIONTYPE_FIXED:
+						nReceivers = motionSlice->numOutputSegs;
+						if (nReceivers == 0)
+						{
+							pname = "Broadcast Motion";
+							nReceivers = getgpsegmentCount();
+						}
+						else
+							pname = "Gather Motion";
+						break;
+					default:
+						pname = "Motion ???";
+						break;
+				}
+
+				if(nSenders == 1 &&
+						plan->lefttree &&
+						plan->lefttree->flow &&
+						plan->lefttree->flow->flotype == FLOW_SINGLETON &&
+						plan->lefttree->flow->segindex == -1)
+					senderIsEntryDb = true;
+
+				appendStringInfo(str, "%s %d:%d  (slice%d%s)", pname,
+						nSenders, nReceivers, pMotion->motionID,
+						senderIsEntryDb ? " on entry db" : "");
+				pname = "";
+
 			}
 			break;
 		default:
@@ -1376,69 +1390,15 @@ explain_outNode(StringInfo str,
 				Motion	   *pMotion = (Motion *) plan;
                 SliceTable *sliceTable = planstate->state->es_sliceTable;
 
-				/* 
-				 * Only show merge key or hash key if this motion have one slice and one route
-				 */
-				if (list_length(pMotion->sliceEntries) == 1)
-				{
-					MotionSliceEntry *sliceEntry = (MotionSliceEntry *) linitial(pMotion->sliceEntries);
-					if (pMotion->sendSorted || sliceEntry->motionType == MOTIONTYPE_HASH)
-						show_motion_keys(plan,
-								sliceEntry->hashExpr,
-								pMotion->numSortCols,
-								pMotion->sortColIdx,
-								"Merge Key",
-								str, indent, es);
-				}
-				else {
-					ListCell *sliceCell;
-					const char* pslicename = NULL;
+				Assert(motionSlice);
 
-					foreach(sliceCell, pMotion->sliceEntries)
-					{
-						MotionSliceEntry *slice = (MotionSliceEntry *) lfirst(sliceCell);
-						int i = 0;
-						int nReceivers;
-						
-						for(; i<=indent; ++i)
-							appendStringInfo(str, "  ");
-
-						switch(slice->motionType)
-						{
-							case MOTIONTYPE_HASH:
-								pslicename = "Restribute Motion Slice";
-								nReceivers = slice->numHashSegs;
-								break;
-							case MOTIONTYPE_FIXED:
-								nReceivers = slice->numOutputSegs;
-								if(nReceivers == 0)
-								{
-									pslicename = "Broadcase Motion Slice";
-									nReceivers = getgpsegmentCount();
-								}
-								else
-									pslicename = "Gather Motion Slice";
-								break;
-							default:
-								pslicename = "Motion ??? Slice";
-								break;
-						}
-
-						appendStringInfo(str, "%s %d:%d (slice %d to slice %d)\n",
-								pslicename, pMotion->numInputSegs, nReceivers,
-								pMotion->motionID, 
-								slice->recvSliceId
-								);
-
-						if (pMotion->sendSorted || slice->motionType == MOTIONTYPE_HASH)
-							show_motion_keys(plan,
-									slice->hashExpr,
-									pMotion->numSortCols,
-									pMotion->sortColIdx,
-									"Merge Key",
-									str, indent, es);
-					}
-				}
+				if (pMotion->sendSorted || motionSlice->motionType == MOTIONTYPE_HASH)
+					show_motion_keys(plan,
+							motionSlice->hashExpr,
+							pMotion->numSortCols,
+							pMotion->sortColIdx,
+							"Merge Key",
+							str, indent, es);
 
                 /* Descending into a new slice. */
                 if (sliceTable)
@@ -1515,7 +1475,8 @@ explain_outNode(StringInfo str,
 		for (i = 0; i < indent; i++)
 			appendStringInfo(str, "  ");
 		appendStringInfo(str, "  ->  ");
-		appendStringInfo(str, "See first subplan of Hash Join\n");
+		appendStringInfo(str, skip_outer_msg); 
+		appendStringInfo(str, "\n");
     }
 
 	/* righttree */
