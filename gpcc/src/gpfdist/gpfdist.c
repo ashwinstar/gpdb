@@ -602,7 +602,6 @@ void session_attach(request_t* r)
 {
     char key[1024];
     session_t* s = 0;
-    fstream_t* fstream = 0;
     
     /* create the key */
     if (sizeof(key) -1 == apr_snprintf(key, sizeof(key), "%s:%s", r->tid, r->path)) {
