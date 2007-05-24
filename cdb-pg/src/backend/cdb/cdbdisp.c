@@ -1573,6 +1573,7 @@ thread_DispatchCommand(void *arg)
 			case GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
 
 				if (Debug_dtm_action == DEBUG_DTM_ACTION_DELAY &&
+					Debug_dtm_action_target == DEBUG_DTM_ACTION_TARGET_PROTOCOL &&
 					Debug_dtm_action_protocol == pParms->dtxProtocolParms.dtxProtocolCommand &&
 					Debug_dtm_action_segment == dispatchResult->segdbDesc->segment_database_info->segindex &&
 					Debug_dtm_action_primary == dispatchResult->segdbDesc->segment_database_info->isprimary)

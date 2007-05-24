@@ -196,6 +196,8 @@ static bool IsTransactionExitStmtList(List *parseTrees);
 static bool IsTransactionStmtList(List *parseTrees);
 static void SigHupHandler(SIGNAL_ARGS);
 static void log_disconnections(int code, Datum arg);
+static bool CheckDebugDtmActionSqlCommandTag(char *sqlCommandTag);
+static bool CheckDebugDtmActionProtocol(DtxProtocolCommand dtxProtocolCommand);
 
 
 /* ----------------------------------------------------------------
@@ -1063,6 +1065,13 @@ exec_mpp_query(const char *query_string,
 
 		BeginCommand(commandTag, dest);
 
+		if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_BEGIN_COMMAND &&
+			CheckDebugDtmActionSqlCommandTag(commandTag))
+		{
+			elog(ERROR,"Raise ERROR for debug_dtm_action = %d, commandTag = %s",
+				 Debug_dtm_action, commandTag);
+		}
+
 		/*
 		 * If we are in an aborted transaction, reject all commands except
 		 * COMMIT/ABORT.  It is important that this test occur before we try
@@ -1199,6 +1208,14 @@ exec_mpp_query(const char *query_string,
 		}
 #endif
 
+
+		if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_END_COMMAND &&
+			CheckDebugDtmActionSqlCommandTag(commandTag))
+		{
+			elog(ERROR,"Raise ERROR for debug_dtm_action = %d, commandTag = %s",
+				 Debug_dtm_action, commandTag);
+		}
+		
 		/*
 		 * Tell client that we're done with this query.  Note we emit exactly
 		 * one EndCommand report for each raw parsetree, thus one for each SQL
@@ -1206,6 +1223,7 @@ exec_mpp_query(const char *query_string,
 		 * aborted by error will not send an EndCommand report at all.)
 		 */
 		EndCommand(completionTag, dest);
+
 	}							/* end loop over parsetrees */
 
 	/*
@@ -1244,9 +1262,9 @@ exec_mpp_query(const char *query_string,
 }
 
 static bool
-CheckDebugDtmAction(DebugDtmAction debugDtmAction, DtxProtocolCommand dtxProtocolCommand)
+CheckDebugDtmActionProtocol(DtxProtocolCommand dtxProtocolCommand)
 {
-	return (Debug_dtm_action == debugDtmAction &&
+	return (Debug_dtm_action_target == DEBUG_DTM_ACTION_TARGET_PROTOCOL &&
 			Debug_dtm_action_protocol == dtxProtocolCommand &&
 			Debug_dtm_action_segment == Gp_segment &&
 			Debug_dtm_action_primary == Gp_is_primary);
@@ -1273,12 +1291,14 @@ exec_mpp_dtx_protocol_command(
 
 	set_ps_display(commandTag, false);
 
-	if (CheckDebugDtmAction(DEBUG_DTM_ACTION_FAIL_BEGIN_COMMAND, dtxProtocolCommand))
+	if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_BEGIN_COMMAND &&
+		CheckDebugDtmActionProtocol(dtxProtocolCommand))
 	{
 		elog(ERROR,"Raise ERROR for debug_dtm_action = %d, debug_dtm_action_protocol = %s",
 			 Debug_dtm_action, DtxProtocolCommandToString(dtxProtocolCommand));
 	}
-	if (CheckDebugDtmAction(DEBUG_DTM_ACTION_PANIC_BEGIN_COMMAND, dtxProtocolCommand))
+	if (Debug_dtm_action == DEBUG_DTM_ACTION_PANIC_BEGIN_COMMAND &&
+		CheckDebugDtmActionProtocol(dtxProtocolCommand))
 	{
 		elog(PANIC,"PANIC for debug_dtm_action = %d, debug_dtm_action_protocol = %s",
 			 Debug_dtm_action, DtxProtocolCommandToString(dtxProtocolCommand));
@@ -1291,7 +1311,8 @@ exec_mpp_dtx_protocol_command(
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"exec_mpp_dtx_protocol_command calling EndCommand for dtxProtocolCommand = %d (%s) gid = %s",
 		 dtxProtocolCommand, loggingStr, gid);
 
-	if (CheckDebugDtmAction(DEBUG_DTM_ACTION_FAIL_END_COMMAND, dtxProtocolCommand))
+	if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_END_COMMAND && 
+		CheckDebugDtmActionProtocol(dtxProtocolCommand))
 	{
 		elog(ERROR,"Raise error for debug_dtm_action = %d, debug_dtm_action_protocol = %s",
 			 Debug_dtm_action, DtxProtocolCommandToString(dtxProtocolCommand));
@@ -1299,6 +1320,26 @@ exec_mpp_dtx_protocol_command(
 
 	EndCommand(commandTag, dest);
 }
+
+static bool
+CheckDebugDtmActionSqlCommandTag(char *sqlCommandTag)
+{
+	bool result;
+
+	result = (Debug_dtm_action_target == DEBUG_DTM_ACTION_TARGET_SQL &&
+			strcmp(Debug_dtm_action_sql_command_tag, sqlCommandTag) == 0 &&
+			Debug_dtm_action_segment == Gp_segment &&
+			Debug_dtm_action_primary == Gp_is_primary);
+	
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"CheckDebugDtmActionSqlCommandTag Debug_dtm_action_target = %d, Debug_dtm_action_sql_command_tag = '%s' check '%s', Debug_dtm_action_segment = %d, Debug_dtm_action_primary = %s, result = %s.",
+		Debug_dtm_action_target, 
+		Debug_dtm_action_sql_command_tag, (sqlCommandTag == NULL ? "<NULL>" : sqlCommandTag),
+		Debug_dtm_action_segment, (Debug_dtm_action_primary ? "true" : "false"),
+		(result ? "true" : "false"));
+
+	return result;
+}
+
 
 /*
  * exec_simple_query
@@ -1404,6 +1445,13 @@ exec_simple_query(const char *query_string)
 		set_ps_display(commandTag, false);
 
 		BeginCommand(commandTag, dest);
+
+		if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_BEGIN_COMMAND &&
+			CheckDebugDtmActionSqlCommandTag(commandTag))
+		{
+			elog(ERROR,"Raise ERROR for debug_dtm_action = %d, commandTag = %s",
+				 Debug_dtm_action, commandTag);
+		}
 
 		/*
 		 * If we are in an aborted transaction, reject all commands except
@@ -1540,6 +1588,13 @@ exec_simple_query(const char *query_string)
 			CommandCounterIncrement();
 		}
 
+		if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_END_COMMAND &&
+			CheckDebugDtmActionSqlCommandTag(commandTag))
+		{
+			elog(ERROR,"Raise ERROR for debug_dtm_action = %d, commandTag = %s",
+				 Debug_dtm_action, commandTag);
+		}
+		
 		/*
 		 * Tell client that we're done with this query.  Note we emit exactly
 		 * one EndCommand report for each raw parsetree, thus one for each SQL

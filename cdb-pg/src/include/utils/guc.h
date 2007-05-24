@@ -149,7 +149,18 @@ typedef enum
 	DEBUG_DTM_ACTION_LAST = 4
 }	DebugDtmAction;
   
+/* Debug DTM Action */
+typedef enum
+{
+	DEBUG_DTM_ACTION_TARGET_NONE = 0,
+	DEBUG_DTM_ACTION_TARGET_PROTOCOL = 1,
+	DEBUG_DTM_ACTION_TARGET_SQL = 2,
+  
+	DEBUG_DTM_ACTION_TARGET_LAST = 2
+}	DebugDtmActionTarget;
+  
 extern int Debug_dtm_action;
+extern int Debug_dtm_action_target;
 extern int Debug_dtm_action_protocol;
 extern int Debug_dtm_action_delay_ms;
 extern int Debug_dtm_action_segment;
@@ -158,6 +169,11 @@ extern char *ConfigFileName;
 extern char *HbaFileName;
 extern char *IdentFileName;
 extern char *external_pid_file;
+extern char *Debug_dtm_action_sql_command_tag;
+extern char *Debug_dtm_action_str;
+extern char *Debug_dtm_action_target_str;
+extern char *Debug_dtm_action_protocol_str;
+
 
 extern int	tcp_keepalives_idle;
 extern int	tcp_keepalives_interval;

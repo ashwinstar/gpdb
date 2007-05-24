@@ -164,6 +164,12 @@ static bool assign_tcp_keepalives_count(int newval, bool doit, GucSource source)
 static const char *show_tcp_keepalives_idle(void);
 static const char *show_tcp_keepalives_interval(void);
 static const char *show_tcp_keepalives_count(void);
+static const char *assign_debug_dtm_action(const char *newval,
+						bool doit, GucSource source);
+static const char *assign_debug_dtm_action_target(const char *newval,
+						bool doit, GucSource source);
+static const char *assign_debug_dtm_action_protocol(const char *newval,
+						bool doit, GucSource source);
 
 /*
  * GUC option variables that are exported from this module
@@ -212,6 +218,10 @@ int			Debug_delay_abort_broadcast_ms = 0;
 
 int			Debug_dtm_action = DEBUG_DTM_ACTION_NONE;
 
+#define DEBUG_DTM_ACTION_TARGET_DEFAULT DEBUG_DTM_ACTION_TARGET_NONE
+
+int			Debug_dtm_action_target = DEBUG_DTM_ACTION_TARGET_DEFAULT;
+
 #define DEBUG_DTM_ACTION_PROTOCOL_DEFAULT DTX_PROTOCOL_COMMAND_COMMIT_PREPARED
 
 int			Debug_dtm_action_protocol = DEBUG_DTM_ACTION_PROTOCOL_DEFAULT;
@@ -226,6 +236,10 @@ char	   *ConfigFileName;
 char	   *HbaFileName;
 char	   *IdentFileName;
 char	   *external_pid_file;
+char	   *Debug_dtm_action_sql_command_tag;
+char       *Debug_dtm_action_str;
+char       *Debug_dtm_action_target_str;
+char       *Debug_dtm_action_protocol_str;
 
 int			tcp_keepalives_idle;
 int			tcp_keepalives_interval;
@@ -1496,26 +1510,6 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&num_temp_buffers,
 		1024, 100, INT_MAX / 2, NULL, show_num_temp_buffers
-	},
-
-	{
-		{"debug_dtm_action", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Sets the debug DTM action."),
-			NULL,
-			GUC_UNIT_BLOCKS
-		},
-		&Debug_dtm_action,
-		DEBUG_DTM_ACTION_NONE, 0, DEBUG_DTM_ACTION_LAST, NULL, NULL
-	},
-
-	{
-		{"debug_dtm_action_protocol", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Sets the debug DTM action protocol."),
-			NULL,
-			GUC_UNIT_BLOCKS
-		},
-		&Debug_dtm_action_protocol,
-		DEBUG_DTM_ACTION_PROTOCOL_DEFAULT, 0, DTX_PROTOCOL_COMMAND_LAST, NULL, NULL
 	},
 
 	{
@@ -2878,6 +2872,46 @@ static struct config_string ConfigureNamesString[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
 		&gp_qd_callback_info,
+		"", NULL, NULL
+	},
+
+	{
+		{"debug_dtm_action", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sets the debug DTM action."),
+			NULL,
+			GUC_DISALLOW_IN_FILE | GUC_SUPERUSER_ONLY
+		},
+		&Debug_dtm_action_str,
+		"none", assign_debug_dtm_action, NULL
+	},
+
+	{
+		{"debug_dtm_action_target", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sets the debug DTM action target."),
+			NULL,
+			GUC_DISALLOW_IN_FILE | GUC_SUPERUSER_ONLY
+		},
+		&Debug_dtm_action_target_str,
+		"none", assign_debug_dtm_action_target, NULL
+	},
+
+	{
+		{"debug_dtm_action_protocol", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sets the debug DTM action protocol."),
+			NULL,
+			GUC_DISALLOW_IN_FILE | GUC_SUPERUSER_ONLY
+		},
+		&Debug_dtm_action_protocol_str,
+		"none", assign_debug_dtm_action_protocol, NULL
+	},
+
+	{
+		{"debug_dtm_action_sql_command_tag", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sets the debug DTM action sql command tag."),
+			NULL,
+			GUC_DISALLOW_IN_FILE | GUC_SUPERUSER_ONLY
+		},
+		&Debug_dtm_action_sql_command_tag,
 		"", NULL, NULL
 	},
 
@@ -7320,5 +7354,116 @@ show_tcp_keepalives_count(void)
 	return nbuf;
 }
 
+static const char *
+assign_debug_dtm_action(const char *newval,
+						bool doit, GucSource source)
+{
+	if (pg_strcasecmp(newval, "none") == 0)
+	{
+		if (doit)
+			Debug_dtm_action = DEBUG_DTM_ACTION_NONE;
+	}
+	else if (pg_strcasecmp(newval, "fail_begin_command") == 0)
+	{
+		if (doit)
+			Debug_dtm_action = DEBUG_DTM_ACTION_FAIL_BEGIN_COMMAND;
+	}
+	else if (pg_strcasecmp(newval, "fail_end_command") == 0)
+	{
+		if (doit)
+			Debug_dtm_action = DEBUG_DTM_ACTION_FAIL_END_COMMAND;
+	}
+	else if (pg_strcasecmp(newval, "panic_begin_command") == 0)
+	{
+		if (doit)
+			Debug_dtm_action = DEBUG_DTM_ACTION_PANIC_BEGIN_COMMAND;
+	}
+	else
+		return NULL;			/* fail */
+	return newval;				/* OK */
+}
+
+static const char *
+assign_debug_dtm_action_target(const char *newval,
+						bool doit, GucSource source)
+{
+	if (pg_strcasecmp(newval, "none") == 0)
+	{
+		if (doit)
+			Debug_dtm_action_target = DEBUG_DTM_ACTION_TARGET_NONE;
+	}
+	else if (pg_strcasecmp(newval, "protocol") == 0)
+	{
+		if (doit)
+			Debug_dtm_action_target = DEBUG_DTM_ACTION_TARGET_PROTOCOL;
+	}
+	else if (pg_strcasecmp(newval, "sql") == 0)
+	{
+		if (doit)
+			Debug_dtm_action_target = DEBUG_DTM_ACTION_TARGET_SQL;
+	}
+	else
+		return NULL;			/* fail */
+	return newval;				/* OK */
+}
+
+static const char *
+assign_debug_dtm_action_protocol(const char *newval,
+						bool doit, GucSource source)
+{
+	if (pg_strcasecmp(newval, "none") == 0)
+	{
+		if (doit)
+			Debug_dtm_action_protocol = DTX_PROTOCOL_COMMAND_NONE;
+	}
+	else if (pg_strcasecmp(newval, "abort_no_prepared") == 0)
+	{
+		if (doit)
+			Debug_dtm_action_protocol = DTX_PROTOCOL_COMMAND_ABORT_NO_PREPARED;
+	}
+	else if (pg_strcasecmp(newval, "prepare") == 0)
+	{
+		if (doit)
+			Debug_dtm_action_protocol = DTX_PROTOCOL_COMMAND_PREPARE;
+	}
+	else if (pg_strcasecmp(newval, "abort_some_prepared") == 0)
+	{
+		if (doit)
+			Debug_dtm_action_protocol = DTX_PROTOCOL_COMMAND_ABORT_SOME_PREPARED;
+	}
+	else if (pg_strcasecmp(newval, "commit_prepared") == 0)
+	{
+		if (doit)
+			Debug_dtm_action_protocol = DTX_PROTOCOL_COMMAND_COMMIT_PREPARED;
+	}
+	else if (pg_strcasecmp(newval, "abort_prepared") == 0)
+	{
+		if (doit)
+			Debug_dtm_action_protocol = DTX_PROTOCOL_COMMAND_ABORT_PREPARED;
+	}
+	else if (pg_strcasecmp(newval, "retry_commit_prepared") == 0)
+	{
+		if (doit)
+			Debug_dtm_action_protocol = DTX_PROTOCOL_COMMAND_RETRY_COMMIT_PREPARED;
+	}
+	else if (pg_strcasecmp(newval, "retry_abort_prepared") == 0)
+	{
+		if (doit)
+			Debug_dtm_action_protocol = DTX_PROTOCOL_COMMAND_RETRY_ABORT_PREPARED;
+	}
+	else if (pg_strcasecmp(newval, "recovery_commit_prepared") == 0)
+	{
+		if (doit)
+			Debug_dtm_action_protocol = DTX_PROTOCOL_COMMAND_RECOVERY_COMMIT_PREPARED;
+	}
+	else if (pg_strcasecmp(newval, "recovery_abort_prepared") == 0)
+	{
+		if (doit)
+			Debug_dtm_action_protocol = DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED;
+	}
+	else
+		return NULL;			/* fail */
+	return newval;				/* OK */
+}
 
 #include "guc-file.c"
