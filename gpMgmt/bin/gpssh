@@ -13,8 +13,6 @@ Usage: gpssh [-?v] [-p port] [-u user] [-h host] [-f hostfile] [cmd]
 	     -h host : the host to connect to (multiple -h is okay)
 	     -f file : a file listing all hosts to connect to
 	     cmd     : the command to execute. If not present, go into interactive mode
-
-Author: cktan@greenplum.com
 '''
 
 import os, sys, getopt, popen2, cmd, signal, time, atexit, threading
@@ -45,7 +43,7 @@ session = []
 
 ################
 def usage(exitarg):
-    help_path = os.path.join(sys.path[0], '..', 'doc', 'gpssh_help');
+    help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', os.path.split(__file__)[-1] + '_help');
     try:
 	f = open(help_path);
 	for line in f: 

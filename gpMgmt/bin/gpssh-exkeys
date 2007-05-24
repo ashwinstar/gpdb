@@ -10,8 +10,6 @@ Usage: gpssh-exkeys [-?v] [-p port] [-u user] [-h host] [-f hostfile]
 	     -u user : the user to run command
 	     -h host : the host to connect to (multiple -h is okay)
 	     -f file : a file listing all hosts to connect to
-
-Author: cktan@greenplum.com
 '''
 
 import os, sys, getopt, time, getpass, logging
@@ -28,7 +26,7 @@ except ImportError, e:
 
 
 def usage(exitarg):
-    help_path = os.path.join(sys.path[0], '..', 'doc', 'gpssh-exkeys_help');
+    help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', os.path.split(__file__)[-1] + '_help');
     try:
 	f = open(help_path);
 	for line in f: 

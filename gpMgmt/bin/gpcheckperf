@@ -33,7 +33,7 @@ if sys.version_info < (2, 3):
 	     + "Please upgrade python installed on this machine.")
 
 def usage(exitarg):
-    help_path = os.path.join(sys.path[0], '..', 'doc', 'gpcheckperf_help');
+    help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', os.path.split(__file__)[-1] + '_help');
     try:
 	f = open(help_path);
 	for line in f: 

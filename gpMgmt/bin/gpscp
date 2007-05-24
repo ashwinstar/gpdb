@@ -12,8 +12,6 @@ Usage: gpscp [-?v] [-p port] [-u user]
 	     -u user : ssh user to run command
 	     -h host : ssh host to connect to (multiple -h is okay)
 	     -f file : a file listing all hosts to connect to
-
-Author: cktan@greenplum.com
 '''
 
 import sys, getopt, popen2, os
@@ -38,7 +36,7 @@ session = []
 
 ################
 def usage(exitarg):
-    help_path = os.path.join(sys.path[0], '..', 'doc', 'gpscp_help');
+    help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', os.path.split(__file__)[-1] + '_help');
     try:
 	f = open(help_path);
 	for line in f: 

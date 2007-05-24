@@ -24,22 +24,28 @@ opt['-a'] = False
 opt['-m'] = False
 opt['-p'] = False
 
+def usage(exitarg):
+    help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', os.path.split(__file__)[-1] + '_help');
+    try:
+	f = open(help_path);
+	for line in f: 
+	    print line,
+    except:
+        print __doc__
+    sys.exit(exitarg)
+
+
 ################
 def parseCommandLine():
     global opt
     try:
 	(options, args) = getopt.getopt(sys.argv[1:], '?amp')
     except Exception, e:
-	print __doc__
-	print 'Error:', e
-	raise SystemExit, 1
+	usage('Error: ' + str(e))
 
     for (switch, val) in options:
-	if (switch == '-?'):
-	    print __doc__
-	    sys.exit(0)
-	else:
-	    opt[switch] = True
+	if (switch == '-?'): usage(0)
+	opt[switch] = True
 
     val = False
     for k in opt: 
