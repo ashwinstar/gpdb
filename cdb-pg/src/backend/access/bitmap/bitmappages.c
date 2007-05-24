@@ -50,9 +50,44 @@ _bitmap_getbuf(Relation rel, BlockNumber blkno, int access)
 {
 	Buffer buf;
 
-	buf = ReadBuffer(rel, blkno);
-	if (access != BM_NOLOCK)
-		LockBuffer(buf, access);
+	if (blkno != P_NEW)
+	{
+		buf = ReadBuffer(rel, blkno);
+		if (access != BM_NOLOCK)
+			LockBuffer(buf, access);
+	}
+
+	else
+	{
+		bool		needLock;
+
+		Assert(access == BM_WRITE);
+
+		/*
+		 * Extend the relation by one page.
+		 *
+		 * We have to use a lock to ensure no one else is extending the rel at
+		 * the same time, else we will both try to initialize the same new
+		 * page.  We can skip locking for new or temp relations, however,
+		 * since no one else could be accessing them.
+		 */
+		needLock = !RELATION_IS_LOCAL(rel);
+
+		if (needLock)
+			LockRelationForExtension(rel, ExclusiveLock);
+
+		buf = ReadBuffer(rel, P_NEW);
+
+		/* Acquire buffer lock on new page */
+		LockBuffer(buf, BM_WRITE);
+
+		/*
+		 * Release the file-extension lock; it's now OK for someone else to
+		 * extend the relation some more.
+		 */
+		if (needLock)
+			UnlockRelationForExtension(rel, ExclusiveLock);
+	}
 
 	return buf;
 }
