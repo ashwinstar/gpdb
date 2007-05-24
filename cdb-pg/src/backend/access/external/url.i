@@ -280,6 +280,7 @@ static int set_httpheader(struct fcurl_data* fcurl, const char* name, const char
 static int make_export(char* name, const char* value, char* buf)
 {
 	char* p = buf;
+	int ch;
 
 	if (buf)
 		strcpy(p, name);
@@ -289,16 +290,16 @@ static int make_export(char* name, const char* value, char* buf)
 		strcpy(p, "='");
 	p += 2;
 
-	for ( ; *value; value++) 
+	for ( ; 0 != (ch = *value); value++) 
 	{
-		if (*value == '\'') 
+		if (ch == '\'' || ch == '\\')
 		{
 			if (buf)
-				*p = '\'';
+				*p = '\\';
 			p++;
 		}
 		if (buf)
-			*p = *value;
+			*p = ch;
 		p++;
 	}
 
