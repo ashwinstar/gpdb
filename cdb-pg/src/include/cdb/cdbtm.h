@@ -193,6 +193,9 @@ typedef DistributedSnapshotData *DistributedSnapshot;
 typedef struct DtxContextInfo
 {
 	DistributedTransactionId distributedXid;
+	
+	char					 distributedId[TMGIDSIZE];
+
 	DistributedTransactionId xminAllDistributedSnapshots;
 
 	DistributedSnapshotData distributedSnapshotData;
@@ -214,6 +217,8 @@ extern char* DtxParticipationSummaryToString(DtxParticipationSummary summary);
 extern char* DtxProtocolCommandToString(DtxProtocolCommand command);
 extern char* DtxContextToString(DtxContext context);
 extern DistributedTransactionId getDistributedTransactionId(void);
+extern bool getDistributedTransactionIdentifier(char *id);
+
 extern void createDtx(TransactionId *pLocalXid);
 extern bool createDtxSnapshot(DistributedSnapshot distributedSnapshot);
 extern void	prepareDtxTransaction(void);

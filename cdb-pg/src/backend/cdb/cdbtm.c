@@ -323,6 +323,38 @@ getDistributedTransactionId(void)
 	}
 }
 
+bool
+getDistributedTransactionIdentifier(char *id)
+{
+	MemSet(id, 0, TMGIDSIZE);
+
+    switch (DistributedTransactionContext)
+	{
+	case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+	case DTX_CONTEXT_QD_RETRY_PHASE_2:
+		if (currentGxact != NULL) 
+			{
+				memcpy(id, currentGxact->gid, TMGIDSIZE);
+				return true;
+			}
+
+	case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
+	case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
+	case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
+	case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
+		if (QEDtxContextInfo.distributedXid != InvalidDistributedTransactionId)
+		{
+			memcpy(id, QEDtxContextInfo.distributedId, TMGIDSIZE);
+			return true;
+		}
+
+	default:
+		break;
+	}
+
+	return false;
+}
+
 
 /*
  * Called by prepareDtxTransaction.
@@ -2703,6 +2735,8 @@ qdCreateDtxContextInfo(DtxContextInfo *dtxContextInfo, DistributedSnapshot distr
 
 			if (dtxContextInfo->distributedXid != InvalidDistributedTransactionId)
 			{
+				memcpy(dtxContextInfo->distributedId,currentGxact->gid,TMGIDSIZE);		
+
 				getTmLock();
 				dtxContextInfo->xminAllDistributedSnapshots = 
 						(*shmXminAllDistributedSnapshots == UINT_MAX ? 0 : *shmXminAllDistributedSnapshots);
@@ -2758,7 +2792,8 @@ dtxContextInfoSerializeSize(DtxContextInfo *dtxContextInfo)
 
 	if (dtxContextInfo->distributedXid != InvalidDistributedTransactionId)
 	{
-		size += sizeof(DistributedTransactionId) +	  // xminAllDistributedSnapshots
+		size += TMGIDSIZE +							  // distributedId
+			    sizeof(DistributedTransactionId) +	  // xminAllDistributedSnapshots
 		        sizeof(CommandId) +					  // curcid
 	            2 * sizeof(DistributedTransactionId); // xmin, max
 
@@ -2784,6 +2819,8 @@ serializeDtxContextInfo(char *buffer, DtxContextInfo *dtxContextInfo)
 	memcpy(p,&dtxContextInfo->distributedXid,sizeof(DistributedTransactionId)); p += sizeof(DistributedTransactionId);
 	if (dtxContextInfo->distributedXid != InvalidDistributedTransactionId)
 	{
+		memcpy(p, dtxContextInfo->distributedId,TMGIDSIZE); 	p+=TMGIDSIZE;		
+
 		memcpy(p,&dtxContextInfo->xminAllDistributedSnapshots,sizeof(DistributedTransactionId)); p += sizeof(DistributedTransactionId);
 		
 		memcpy(p,&dtxContextInfo->distributedSnapshotData.xmin,sizeof(DistributedTransactionId)); p += sizeof(DistributedTransactionId);
@@ -2842,6 +2879,7 @@ static void
 resetDtxContextInfo(DtxContextInfo *dtxContextInfo)
 {
 	dtxContextInfo->distributedXid = InvalidDistributedTransactionId;
+	MemSet(dtxContextInfo->distributedId, 0, TMGIDSIZE);
 	dtxContextInfo->xminAllDistributedSnapshots = InvalidDistributedTransactionId;
 	
 	clearDistributedSnapshot(&dtxContextInfo->distributedSnapshotData);
@@ -2869,6 +2907,7 @@ deserializeDtxContextInfo(
 		memcpy(&dtxContextInfo->distributedXid,p,sizeof(DistributedTransactionId)); 	p+=sizeof(DistributedTransactionId);		
 		if (dtxContextInfo->distributedXid != InvalidDistributedTransactionId)
 		{
+			memcpy(dtxContextInfo->distributedId,p,TMGIDSIZE); 	p+=TMGIDSIZE;		
 			memcpy(&dtxContextInfo->xminAllDistributedSnapshots,p,sizeof(DistributedTransactionId)); 	p+=sizeof(DistributedTransactionId);		
 			memcpy(&dtxContextInfo->distributedSnapshotData.xmin,p,sizeof(DistributedTransactionId)); 	p+=sizeof(DistributedTransactionId);		
 			memcpy(&dtxContextInfo->distributedSnapshotData.xmax,p,sizeof(DistributedTransactionId)); 	p+=sizeof(DistributedTransactionId);		
@@ -2883,10 +2922,11 @@ deserializeDtxContextInfo(
 
 			memcpy(&dtxContextInfo->distributedSnapshotData.curcid,p,sizeof(CommandId)); 	p+=sizeof(CommandId);	
 
-			elog((Debug_print_full_dtm ? LOG : DEBUG5),"deserializeDtxContextInfo distributedXid = %u, "
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),"deserializeDtxContextInfo distributedXid = %u, distributedId = %s, "
 			     "xminAllDistributedSnapshots = %u, "
 			     "distributedSnapshotData (xmin = %u, xmax = %u, xcnt = %u)",
 				dtxContextInfo->distributedXid, 
+				dtxContextInfo->distributedId,
 				dtxContextInfo->xminAllDistributedSnapshots, 
 				dtxContextInfo->distributedSnapshotData.xmin, 
 				dtxContextInfo->distributedSnapshotData.xmax,
