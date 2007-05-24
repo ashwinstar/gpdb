@@ -304,13 +304,22 @@ char* DtxContextToString(DtxContext context)
 DistributedTransactionId
 getDistributedTransactionId(void)
 {
-	if (currentGxact == NULL)
+    switch (DistributedTransactionContext)
 	{
+	case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+	case DTX_CONTEXT_QD_RETRY_PHASE_2:
+		return (currentGxact == NULL) 
+			? InvalidDistributedTransactionId
+			: currentGxact->gxid;
+
+	case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
+	case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
+	case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
+	case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
+		return QEDtxContextInfo.distributedXid;
+
+	default:
 		return InvalidDistributedTransactionId;
-	}
-	else
-	{
-		return currentGxact->gxid;
 	}
 }
 
