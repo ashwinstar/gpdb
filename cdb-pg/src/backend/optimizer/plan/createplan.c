@@ -967,18 +967,18 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	List			*fmtopts = NIL;
 	List			*modifiedloclist = NIL;
 	List			*finalUriList = NIL;
-	ListCell		*c;
-	char			**segdb_file_map;
-	char			*first_uri_str;
-	bool			istext;
+	ListCell		*c = NULL;
+	char			**segdb_file_map = NULL;
+	char			*first_uri_str = NULL;
+	bool			istext = false;
 	int				total_primaries = 0;
 	int				i;
 	
 	/* gpfdist specific variables */
 	int				total_to_skip = 0;
-	int				max_participants_allowed;
-	bool			num_segs_participating;
-	bool			*skip_map;
+	int				max_participants_allowed = 0;
+	bool			num_segs_participating = 0;
+	bool			*skip_map = NULL;
 	bool			should_skip_randomly = false;
 
 	
