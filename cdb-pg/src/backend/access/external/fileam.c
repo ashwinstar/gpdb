@@ -44,6 +44,26 @@
 
 #include "cdb/cdbvars.h"
 
+typedef struct extvar_t extvar_t;
+struct extvar_t
+{
+	char* GP_QDHOST;
+	char* GP_QDPORT;
+	char* GP_QEHOST;
+	char* GP_QEPORT;
+	char* GP_ARRAY;
+	char* GP_DATABASE;
+	char* GP_SCHEMA;
+	char* GP_TABLE;
+	char* GP_SEGPREFIX;
+	char* GP_DATADIR;
+	char GP_DATE[9];		/* YYYYMMDD */
+	char GP_TIME[7];		/* HHMMSS */
+	char GP_XID[10];		/* global transaction id */
+	char GP_CID[10];		/* command id */
+	char GP_SN[10];		/* scan number */
+};
+
 #include "url.i"
 
 static HeapTuple filegettup(FileScanDesc scan, ScanDirection dir, int nkeys, ScanKey key);
@@ -706,6 +726,7 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, 
 
 }
 
+
 /*
  * open the external source for scanning.
  *
@@ -716,13 +737,30 @@ open_external_file(FileScanDesc scan)
 {
     Uri *uri;
     char *localfilename = NULL;
-	char XID[20];
-	char CID[20];
-	char SN[20];
+	extvar_t extvar;
+	time_t now = time(0);
+	struct tm* tm = localtime(&now);
 
-	sprintf(XID, "%x", QEDtxContextInfo.distributedXid);
-	sprintf(CID, "%x", QEDtxContextInfo.distributedSnapshotData.curcid);
-	sprintf(SN, "%x", scan->fs_scancounter);
+	/* set up extvar */
+#define UNKNOWN "unknown"
+	memset(&extvar, 0, sizeof(extvar));
+	extvar.GP_QDHOST = UNKNOWN;
+	extvar.GP_QDPORT = UNKNOWN;
+	extvar.GP_QEHOST = UNKNOWN;
+	extvar.GP_QEPORT = UNKNOWN;
+	extvar.GP_ARRAY = UNKNOWN;
+	extvar.GP_DATABASE = UNKNOWN;
+	extvar.GP_SCHEMA = UNKNOWN;
+	extvar.GP_TABLE = UNKNOWN;
+	extvar.GP_SEGPREFIX = UNKNOWN;
+	extvar.GP_DATADIR = UNKNOWN;
+	sprintf(extvar.GP_DATE, "%04d%02d%02d",
+			1900 + tm->tm_year, 1 + tm->tm_mon, tm->tm_mday);
+	sprintf(extvar.GP_TIME, "%02d%02d%02d", 
+			tm->tm_hour, tm->tm_min, tm->tm_sec);
+	sprintf(extvar.GP_XID, "%x", QEDtxContextInfo.distributedXid);
+	sprintf(extvar.GP_CID, "%x", QEDtxContextInfo.distributedSnapshotData.curcid);
+	sprintf(extvar.GP_SN, "%x", scan->fs_scancounter);
 
     
     /*
@@ -741,8 +779,7 @@ open_external_file(FileScanDesc scan)
     if(uri->protocol == URI_FILE)
         localfilename = uri->path;
         
-    scan->fs_file = (FILE*) url_fopen(scan->fs_uri, localfilename, PG_BINARY_R, 
-									  XID, CID, SN);
+    scan->fs_file = (FILE*) url_fopen(scan->fs_uri, localfilename, PG_BINARY_R, &extvar);
 
 	/*
 	 * Get a global reference to the file pointer, so we can free it from
