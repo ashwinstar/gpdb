@@ -316,6 +316,7 @@ getDistributedTransactionId(void)
 	case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
 	case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
 	case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
+	case DTX_CONTEXT_QE_READER:
 		return QEDtxContextInfo.distributedXid;
 
 	default:
@@ -342,6 +343,7 @@ getDistributedTransactionIdentifier(char *id)
 	case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
 	case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
 	case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
+	case DTX_CONTEXT_QE_READER:
 		if (QEDtxContextInfo.distributedXid != InvalidDistributedTransactionId)
 		{
 			memcpy(id, QEDtxContextInfo.distributedId, TMGIDSIZE);
