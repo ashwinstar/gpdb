@@ -1,0 +1,120 @@
+COMMAND NAME: gpfdist
+
+Serves external table files to Greenplum Database segments.
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+
+gpfdist -d <directory> [-p <http_port>] [-q <quote_character>] 
+        [-x <escape_character>] [-h] [-v]
+
+gpfdist -? | --version
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+
+gpfdist is a utility that serves external table files to all 
+Greenplum Database segments in parallel. The benefit of using 
+gpfdist over other file protocols is that you are guaranteed maximum 
+parallelism while reading from external tables, thereby offering the 
+best performance as well as easier administration of external tables.
+
+In order for gpfdist to be used to serve external table files, the 
+external table definition (as defined by CREATE EXTERNAL TABLE) must 
+specify the directory and files (wildcards OK) that contains the external 
+table data using the gpfdist:// protocol. 
+
+When Greenplum Database users select from an external table, gpfdist 
+parses and serves the data files evenly to all the segment instances in 
+the Greenplum Database system.
+
+Most likely, you will want to run gpfdist on your ETL machines rather 
+than the hosts where Greenplum Database is installed. To install gpfidist 
+on another host, simply copy the utility over to that host and add gpfdist 
+to your $PATH.
+
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+
+-d <directory>
+
+The directory from which gpfdist will serve files. If not specified, 
+defaults to the current directory.
+
+
+-p <http_port>
+
+The HTTP port on which gpfdist will serve files. Defaults to 8080.
+
+
+-q <quote_character>
+
+Specifies the quote character for files in CSV (comma-separated values) 
+format. If not specified, gpfdist will not parse for CSV and assume that 
+each record in a file is separated by a newline character.
+
+
+-x <escape_character>
+
+Sets the escape character to use when parsing files. The default is 
+quote_character.
+
+-h (files have header row)
+
+Specifies that each file being served has a header row. The first row 
+of each file will be skipped. This option is only allowed for files 
+in CSV format. 
+
+
+-v (verbose mode)
+
+Runs gpfdist in verbose mode.
+
+
+--version 
+
+Prints out the version of this utility.
+
+
+-? 
+
+Displays online help.
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+Serve files from a specified directory using port 8081 (and start 
+gpfdist in the background):
+
+gpfdist -d /var/load_files -p 8081 &
+
+
+Serve files that are in CSV format and have a header row:
+
+gpfdist -d /var/load_files -p 8081 -q '"' -h &
+
+
+To stop gpfdist when its running in the background:
+
+--First find its process id:
+
+ps ax | grep gpfdist
+
+--Then kill the process, for example:
+
+kill 3456
+
+
+*****************************************************
+SEE ALSO
+*****************************************************
+
+CREATE EXTERNAL TABLE
