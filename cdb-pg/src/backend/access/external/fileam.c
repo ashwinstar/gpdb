@@ -59,7 +59,7 @@ struct extvar_t
 	char* GP_DATADIR;
 	char GP_DATE[9];		/* YYYYMMDD */
 	char GP_TIME[7];		/* HHMMSS */
-	char GP_XID[10];		/* global transaction id */
+	char GP_XID[TMGIDSIZE];		/* global transaction id */
 	char GP_CID[10];		/* command id */
 	char GP_SN[10];		/* scan number */
 };
@@ -303,7 +303,7 @@ file_getnext(FileScanDesc scan, ScanDirection direction)
 {
 	HeapTuple	tuple;
 	
-	if(scan->fs_noop)
+	if (scan->fs_noop)
 		return NULL;
 	
 	/* 
@@ -317,7 +317,7 @@ file_getnext(FileScanDesc scan, ScanDirection direction)
 	 * they are not expected (see MPP-1261). Therefore we instead do it here on the 
 	 * first time around only.
 	 */
-	if(!scan->fs_file)
+	if (!scan->fs_file)
 		open_external_file(scan);
 
 	/* Note: no locking manipulations needed */
@@ -735,8 +735,6 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, 
 static void
 open_external_file(FileScanDesc scan)
 {
-    Uri *uri;
-    char *localfilename = NULL;
 	extvar_t extvar;
 	time_t now = time(0);
 	struct tm* tm = localtime(&now);
@@ -758,28 +756,20 @@ open_external_file(FileScanDesc scan)
 			1900 + tm->tm_year, 1 + tm->tm_mon, tm->tm_mday);
 	sprintf(extvar.GP_TIME, "%02d%02d%02d", 
 			tm->tm_hour, tm->tm_min, tm->tm_sec);
-	sprintf(extvar.GP_XID, "%x", QEDtxContextInfo.distributedXid);
+	if (! getDistributedTransactionIdentifier(extvar.GP_XID)) 
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("cannot get distributed transaction identifier while %s", 
+						scan->fs_uri)));
+
 	sprintf(extvar.GP_CID, "%x", QEDtxContextInfo.distributedSnapshotData.curcid);
 	sprintf(extvar.GP_SN, "%x", scan->fs_scancounter);
 
     
     /*
      * Open the url with url_open().
-     *
-     * NOTE: If this happens to be a local file we pass only the path
-     * and name of the file and not the complete url ("file://...").
-     * We *could* actually pass the complete url but then the file
-     * will be treated with more complexity and the external scan
-     * will be much slower. By passing the path+filename only we
-     * let url_fopen use fopen() successfully and declare this url
-     * as CFTYPE_FILE instead of CFTYPE_CURL, which makes data 
-     * processing much faster.
      */
-    uri = ParseUriString(scan->fs_uri);
-    if(uri->protocol == URI_FILE)
-        localfilename = uri->path;
-        
-    scan->fs_file = (FILE*) url_fopen(scan->fs_uri, localfilename, PG_BINARY_R, &extvar);
+    scan->fs_file = (FILE*) url_fopen(scan->fs_uri, PG_BINARY_R, &extvar);
 
 	/*
 	 * Get a global reference to the file pointer, so we can free it from
@@ -789,8 +779,6 @@ open_external_file(FileScanDesc scan)
 	g_dataSource = scan->fs_file;
 	g_dataSourceName = scan->fs_uri;
 	
-    pfree(uri);
-    
 	if (scan->fs_file == NULL)
 		ereport(ERROR,
 				(errcode_for_file_access(),

@@ -92,8 +92,7 @@ struct fcurl_data
 typedef struct fcurl_data URL_FILE;
 
 /* exported functions */
-URL_FILE *url_fopen(char *url, char *filename, const char *operation, 
-					extvar_t* ev);
+URL_FILE *url_fopen(char *url, const char *operation, extvar_t* ev);
 int url_fclose(URL_FILE *file);
 int url_feof(URL_FILE *file);
 size_t url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file);
@@ -442,8 +441,7 @@ static int make_url(const char* url, extvar_t* ev, char* buf)
 
 
 URL_FILE *
-url_fopen(char *url, char *localfilename, const char *operation, 
-		  extvar_t* ev)
+url_fopen(char *url, const char *operation, extvar_t* ev)
 {
     /* this code checks for URLs or types in the 'url' and
        basicly use the real fopen() for standard files */
@@ -475,10 +473,17 @@ url_fopen(char *url, char *localfilename, const char *operation,
 		if (file->u.exec.fp == NULL)
 			elog( ERROR, "External Table error executing cmd: '%s'", cmd );
 	}
-    else if (localfilename)
+    else if (strncmp(url, PROTOCOL_FILE, strlen(PROTOCOL_FILE)) == 0)
     {
+		char* path = strchr(url + strlen(PROTOCOL_FILE), '/');
+		if (!path) 
+		{
+			elog(ERROR, "External Table error opening file: '%s'", url);
+			return NULL;
+		}
+
 		file->type = CFTYPE_FILE; /* marked as local FILE */
-		file->u.file.fp = fopen(localfilename,operation);
+		file->u.file.fp = fopen(path, operation);
 		
 		/* couldn't open local file. return NULL to display proper error */
 		if (!file->u.file.fp)
@@ -801,7 +806,7 @@ url_rewind(URL_FILE *file)
     	url_fclose(file);
 
     	/* most of these are null fo us. */
-    	url_fopen(url, NULL, NULL, NULL);
+    	url_fopen(url, NULL, NULL);
     	break; 
 
     case CFTYPE_CURL:
