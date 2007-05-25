@@ -145,12 +145,14 @@ clean :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, no need to clean"; exit 1; fi
 	@cd $(GPPGDIR); $(MAKE) clean
 	@cd $(GPMGMT)/bin; $(MAKE) clean
+	@cd $(GPCC); $(MAKE) clean
 	@rm -f $(TARBALL)
 
 distclean :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, no need to clean"; exit 1; fi
 	@cd $(GPPGDIR); $(MAKE) distclean
 	@cd $(GPMGMT)/bin; $(MAKE) clean
+	@cd $(GPCC); $(MAKE) clean
 	
 distprep : $(ISCONFIG)
 	@cd $(GPPGDIR); $(MAKE) distprep
