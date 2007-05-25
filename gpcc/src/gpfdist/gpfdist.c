@@ -416,7 +416,7 @@ void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
     if (0 != apr_getopt_init(&os, pool, argc, argv)) 
 	gpcc_fatal(FLINE, "apt_getopt_init failed");
 
-    while (0 == (e = apr_getopt_long(os, option, &ch, (const char**) argv))) {
+    while (0 == (e = apr_getopt_long(os, option, &ch, &arg))) {
 	switch (ch) {
 	case '?': usage(0); break;
 	case 'v': opt.v = 1; break;
@@ -442,7 +442,7 @@ void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
 
 	/* disallow / */
 	if (0 == strcmp(p, "/")) 
-	    usage("Error: cannot run under root (/) directory");
+	    usage("Security Error: cannot run under root (/) directory");
 
 	/* strip ending / */
 	while (p[0] && p[strlen(p) - 1] == '/')
