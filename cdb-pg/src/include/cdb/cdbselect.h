@@ -15,7 +15,9 @@
 #ifndef CDBSELECT_H
 #define CDBSELECT_H
 
-#ifndef _WIN32
+#if !defined(_WIN32) && \
+	!(defined(pg_on_solaris) && defined(__sparc) && defined(_LP64))
+
 /* 8-bit bytes 32 or 64-bit ints */
 
 typedef struct
@@ -32,7 +34,9 @@ typedef struct
 #define MPP_FD_CLR(fd, set) ((set)->__fds_bits[MPP_FD_WORD(fd)] &= ~MPP_FD_BIT(fd))
 
 #define MPP_FD_ISSET(fd, set) (((set)->__fds_bits[MPP_FD_WORD(fd)] & MPP_FD_BIT(fd)) ? 1 : 0)
+
 #else
+
 #define mpp_fd_set fd_set
 #define MPP_FD_ZERO(setp) FD_ZERO(setp)
 
@@ -40,6 +44,7 @@ typedef struct
 #define MPP_FD_CLR(fd, set) FD_CLR(fd, set)
 
 #define MPP_FD_ISSET(fd, set) FD_ISSET(fd, set)
+
 #endif
 
 #endif

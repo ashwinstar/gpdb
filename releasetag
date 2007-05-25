@@ -1,14 +1,16 @@
 #!/bin/sh
 
-#For Solaris, set the SYSV3 flag to get a '-n' option
-SYSV3=1
-export SYSV3
+ECHOCMD=echo
+# make certain we get the desired echo on Solaris
+if [ `uname` = 'SunOS' ]; then
+  ECHOCMD=/usr/ucb/echo
+fi
 
-TMP=`echo '$Name:  $' | awk 'BEGIN {FS = ":"} {print $2}' | awk '{print $1}'`
-echo -n '-'
+TMP=`$ECHOCMD '$Name:  $' | awk 'BEGIN {FS = ":"} {print $2}' | awk '{print $1}'`
+$ECHOCMD -n '-'
 if [ x"$TMP" != x"$" ]; then
-  echo -n $TMP
+  $ECHOCMD -n $TMP
 else
-  echo -n devel
+  $ECHOCMD -n devel
 fi
 
