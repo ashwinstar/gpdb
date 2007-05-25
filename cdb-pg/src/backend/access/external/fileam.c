@@ -66,7 +66,7 @@ struct extvar_t
 
 #include "url.i"
 
-static HeapTuple filegettup(FileScanDesc scan, ScanDirection dir, int nkeys, ScanKey key);
+static HeapTuple filegettup(FileScanDesc scan, ScanDirection dir);
 static void initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, char *uri);
 static void open_external_file(FileScanDesc scan);
 static int	file_getdata(URL_FILE *extfile, CopyState pstate, int maxread);
@@ -81,8 +81,8 @@ void readHeaderLine(CopyState pstate);
 
 #ifdef FILEDEBUGALL
 #define FILEDEBUG_1 \
-elog(DEBUG2, "file_getnext([%s,nkeys=%d],dir=%d) called", \
-	 RelationGetRelationName(scan->fs_rd), scan->fs_nkeys, (int) direction)
+elog(DEBUG2, "file_getnext([%s],dir=%d) called", \
+	 RelationGetRelationName(scan->fs_rd), (int) direction)
 #define FILEDEBUG_2 \
 elog(DEBUG2, "file_getnext returning EOS")
 #define FILEDEBUG_3 \
@@ -108,7 +108,7 @@ static char *g_dataSourceName = NULL;
 FileScanDesc
 file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 			   List *uriList, List *fmtOpts,
-			   bool isText, int nkeys, ScanKey key)
+			   bool isText)
 {
 	FileScanDesc scan;
 	TupleDesc	tupDesc = NULL;
@@ -136,7 +136,6 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 	scan->fs_rd = relation;
 	scan->fs_scanrelid = scanrelid;
 	scan->fs_scancounter = scancounter;
-	scan->fs_nkeys = nkeys;
 	scan->fs_noop = false;
 	scan->fs_file = NULL;
 
@@ -147,7 +146,7 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 		uri = (char *) strVal(list_nth(uriList, GpIdentity.segindex));
 	
 	/*
-	 * if a uri is assigned to us - save a copy of it. Some executors
+	 * if a uri is assigned to us - get a reference to it. Some executors
 	 * don't have a uri to scan (if # of uri's < # of primary segdbs). 
 	 * in which case uri will be NULL. If that's the case for this 
 	 * segdb set to no-op.
@@ -155,10 +154,9 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 	if(uri)
 	{
 		/* set external source (uri) */
-		scan->fs_uri = (char *) palloc(strlen(uri) + 1);
 		scan->fs_uri = uri;
 		
-		/* NOTE: we delayactually opening the data source until file_getnext() */
+		/* NOTE: we delay actually opening the data source until file_getnext() */
 	}
 	else
 	{
@@ -169,11 +167,6 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 			
 	/* we only need to set this up once */
 	scan->fs_ctup.t_tableOid = RelationGetRelid(relation);
-
-	if (nkeys > 0)
-		scan->fs_key = (ScanKey) palloc(sizeof(ScanKeyData) * nkeys);
-	else
-		scan->fs_key = NULL;
 	
 	tupDesc = RelationGetDescr(relation);
 	scan->fs_tupDesc = tupDesc;
@@ -224,7 +217,7 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 * ----------------
 */
 void
-file_rescan(FileScanDesc scan, ScanKey key)
+file_rescan(FileScanDesc scan)
 {
 	
 	/* seek to beginning of data source so we can start over */
@@ -253,8 +246,6 @@ file_endscan(FileScanDesc scan)
 	 */
 	RelationDecrementReferenceCount(scan->fs_rd);
 
-	if (scan->fs_key)
-		pfree(scan->fs_key);
 	if (scan->values)
 		pfree(scan->values);
 	if (scan->nulls)
@@ -323,7 +314,7 @@ file_getnext(FileScanDesc scan, ScanDirection direction)
 	/* Note: no locking manipulations needed */
 	FILEDEBUG_1;
 
-	tuple = filegettup(scan, direction, scan->fs_nkeys, scan->fs_key);
+	tuple = filegettup(scan, direction);
 
 	if (tuple == NULL)
 	{
@@ -355,12 +346,9 @@ file_getnext(FileScanDesc scan, ScanDirection direction)
 */
 static HeapTuple
 filegettup(FileScanDesc scan,
-		   ScanDirection dir,
-		   int nkeys,
-		   ScanKey key)
+		   ScanDirection dir)
 {
 	HeapTuple	tuple = NULL;
-	bool		valid;
 	bool		isnull;
 	ListCell   *cur;
 	CopyState	pstate = scan->fs_pstate;
@@ -470,21 +458,7 @@ filegettup(FileScanDesc scan,
 
                 MemoryContextReset(pstate->rowcontext);
 
-                /*
-				 * We ignore anything that has to do with tuple visibility and
-				 * snapshot. Each external tuple will always have one version.
-				 */
-				valid = true;
-
-				if (key != NULL)
-					HeapKeyTest(tuple, scan->fs_tupDesc,
-								nkeys, key, valid);
-
-				/* If this tuple qualified we are done for now */
-				if (valid)
-					return tuple;
-
-				/* otherwise move to the next data row */
+				return tuple;
 			}
 
 		}

@@ -156,9 +156,7 @@ ExecInitExternalScan(ExternalScan *node, EState *estate, int eflags)
 									 node->scancounter,
 									 node->uriList,
 									 node->fmtOpts,
-									 node->isText,
-									 0,
-									 NULL);
+									 node->isText);
 	
 	externalstate->ss.ss_currentRelation = currentRelation;
 	externalstate->ess_ScanDesc = currentScanDesc;
@@ -254,6 +252,5 @@ ExecExternalReScan(ExternalScanState *node, ExprContext *exprCtxt)
 	
 	fileScan = node->ess_ScanDesc;
 	
-	file_rescan(fileScan,			/* scan desc */
-				NULL);			/* new scan keys */
+	file_rescan(fileScan);
 }

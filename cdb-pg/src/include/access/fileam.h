@@ -21,8 +21,8 @@
 #include "utils/tqual.h"
 
 extern FileScanDesc file_beginscan(Relation relation, Index scanrelid, uint32 scancounter, List *uriList, List *fmtOpts,
-			   bool isText, int nkeys, ScanKey key);
-extern void file_rescan(FileScanDesc scan, ScanKey key);
+			   bool isText);
+extern void file_rescan(FileScanDesc scan);
 extern void file_endscan(FileScanDesc scan);
 extern HeapTuple file_getnext(FileScanDesc scan, ScanDirection direction);
 extern void close_external_file(FILE *dataSource, char *dataSourceName);
