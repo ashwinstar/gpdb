@@ -963,7 +963,7 @@ subquery_is_pushdown_safe(Query *subquery, Query *topquery,
 		return false;
 	
 	/* Check point 4 */
-	if ( contain_window_functions(subquery->targetList) )
+	if ( contain_window_functions((Node*)subquery->targetList) )
 		return false;
 
 	/* Are we at top level, or looking at a setop component? */
