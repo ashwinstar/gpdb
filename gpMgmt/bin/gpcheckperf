@@ -4,6 +4,7 @@ gpcheckperf -- Check the hardware for Greenplum Database
 
 Usage: gpcheckperf <options>
 
+    --version  : print version information
     -d segdir  : where segdir is a directory on which to test I/O performance. 
                  Multiple -d flags may be specified for multiple directories
                  on each host. These will typically be your Greenplum primary
@@ -42,6 +43,7 @@ def usage(exitarg):
         print __doc__
     sys.exit(exitarg)
 
+script_name = os.path.split(__file__)[-1]
 opt = {}
 opt['-d'] = []
 opt['-D'] = False
@@ -54,6 +56,7 @@ opt['-p'] = 22
 opt['-h'] = []
 opt['-f'] = False
 
+#############
 def gpssh(cmd):
     s = 'gpssh -p %d' % opt['-p']
     if (opt['-f']):
@@ -62,6 +65,7 @@ def gpssh(cmd):
 	for h in opt['-h']: s = s + ' -h ' + h
     return s + ' ' + cmd
 
+#############
 def gpscp(cmd):
     s = 'gpscp -p %d' % opt['-p']
     if (opt['-f']):
@@ -85,15 +89,21 @@ def parseMemorySize(line):
     except:
 	return 0
 
+#############
 def parseInt(val): 
     try: return int(val)
     except ValueError: return 0
 
 #############
+def print_version():
+    print '%s version $Revision$' % script_name
+    sys.exit(0)
+
+#############
 def parseCommandLine():
     global opt
     try:
-	(options, args) = getopt.getopt(sys.argv[1:], '?vVDd:r:B:S:p:h:f:')
+	(options, args) = getopt.getopt(sys.argv[1:], '?vVDd:r:B:S:p:h:f:', ['version'])
     except Exception, e:
 	usage('Error: ' + str(e))
 
@@ -104,10 +114,9 @@ def parseCommandLine():
 	elif (switch[1] in 'rf'): opt[switch] = val
 	elif (switch == '-p'): opt[switch] = parseInt(val)
 	elif (switch[1] in 'BS'): opt[switch] = parseMemorySize(val)
+	elif (switch == '--version'): print_version()
 
     if opt['-V']: opt['-v'] = True
-
-    if opt['-v']: print '$Revision$'
 
     if not (opt['-p'] > 0): 
 	usage('Error: please specify port number for -p switch')

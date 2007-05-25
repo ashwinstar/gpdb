@@ -1,14 +1,15 @@
 #!/usr/bin/env python
 """
-gpsys -- print system info on a host
+gpsys1 -- print system info on a host
 
 Usage:
-	gpsys [-?amp]
+	gpsys1 [--version] [-?amp]
 
-	   -?   print this help screen
-	   -a   [default] print "platform memory" 
-	   -m   print "memory"
-	   -p   print "platform"
+	   --version : print version information
+	   -?        : print this help screen
+	   -a        : [default] print "platform memory" 
+	   -m        : print "memory"
+	   -p        : print "platform"
 
 Output:
 	platform: can be 'linux', 'darwin' or 'sunos5'
@@ -19,13 +20,15 @@ Output:
 
 import sys, os, getopt
 
+script_name = os.path.split(__file__)[-1]
 opt = {}
 opt['-a'] = False
 opt['-m'] = False
 opt['-p'] = False
 
+################
 def usage(exitarg):
-    help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', os.path.split(__file__)[-1] + '_help');
+    help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', script_name + '_help');
     try:
 	f = open(help_path);
 	for line in f: 
@@ -34,18 +37,23 @@ def usage(exitarg):
         print __doc__
     sys.exit(exitarg)
 
+#############
+def print_version():
+    print '%s version $Revision$' % script_name
+    sys.exit(0)
 
 ################
 def parseCommandLine():
     global opt
     try:
-	(options, args) = getopt.getopt(sys.argv[1:], '?amp')
+	(options, args) = getopt.getopt(sys.argv[1:], '?amp', ['version'])
     except Exception, e:
 	usage('Error: ' + str(e))
 
     for (switch, val) in options:
 	if (switch == '-?'): usage(0)
-	opt[switch] = True
+	elif switch == '--version': print_version()
+	else: opt[switch] = True
 
     val = False
     for k in opt: 

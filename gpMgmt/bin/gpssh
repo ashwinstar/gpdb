@@ -3,16 +3,18 @@
 '''
 gpssh -- ssh access to multiple hosts at once
 
-Usage: gpssh [-?v] [-p port] [-u user] [-h host] [-f hostfile] [cmd]
+Usage: gpssh [--version] [-?v] [-p port] [-u user] [-h host] [-f hostfile] [cmd]
 
-             -?      : print this help screen
-	     -v	     : verbose mode
-	     -e	     : echo commands as they are executed
-	     -p port : ssh port to use 
-	     -u user : the user to run command
-	     -h host : the host to connect to (multiple -h is okay)
-	     -f file : a file listing all hosts to connect to
-	     cmd     : the command to execute. If not present, go into interactive mode
+          --version : print version information
+          -?        : print this help screen
+          -v        : verbose mode
+          -e        : echo commands as they are executed
+          -p port   : ssh port to use 
+          -u user   : the user to run command
+          -h host   : the host to connect to (multiple -h is okay)
+          -f file   : a file listing all hosts to connect to
+          cmd       : the command to execute. If not present, 
+                      go into interactive mode
 '''
 
 import os, sys, getopt, popen2, cmd, signal, time, atexit, threading
@@ -31,6 +33,7 @@ except ImportError, e:
 #
 # all the command line options
 #
+script_name = os.path.split(__file__)[-1]
 opt = {}
 opt['-v'] = False
 opt['-e'] = False
@@ -43,7 +46,7 @@ session = []
 
 ################
 def usage(exitarg):
-    help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', os.path.split(__file__)[-1] + '_help');
+    help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', script_name + '_help');
     try:
 	f = open(help_path);
 	for line in f: 
@@ -52,27 +55,32 @@ def usage(exitarg):
         print __doc__
     sys.exit(exitarg)
 
+#############
 def parsePort(val): 
     try: return int(val)
     except ValueError: return 0
 
 
 #############
+def print_version():
+    print '%s version $Revision$' % script_name
+    sys.exit(0)
+
+#############
 def parseCommandLine():
     global opt, argcmd
     try:
-	(options, args) = getopt.getopt(sys.argv[1:], '?evp:u:h:f:')
+	(options, args) = getopt.getopt(sys.argv[1:], '?evp:u:h:f:', ['version'])
     except Exception, e:
 	usage('Error: ' + str(e))
 
     for (switch, val) in options:
-	if (switch == '-?'):	     usage(0)
-	elif (switch[1] in 'ev'):    opt[switch] = True
-	elif (switch[1] in 'uf'):    opt[switch] = val
-	elif (switch == '-h'):       opt[switch].append(val)
-	elif (switch == '-p'):       opt[switch] = parsePort(val)
-
-    if opt['-v']: print '$Revision$'
+	if (switch == '-?'):	      usage(0)
+	elif (switch[1] in 'ev'):     opt[switch] = True
+	elif (switch[1] in 'uf'):     opt[switch] = val
+	elif (switch == '-h'):        opt[switch].append(val)
+	elif (switch == '-p'):        opt[switch] = parsePort(val)
+        elif (switch == '--version'): print_version()
 
     if not opt['-p'] > 0: usage('Error: please specify port number for -p switch')
 

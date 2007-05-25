@@ -2,14 +2,16 @@
 '''
 gpssh-exkeys -- exchange ssh public keys among friends
 
-Usage: gpssh-exkeys [-?v] [-p port] [-u user] [-h host] [-f hostfile]
+Usage: gpssh-exkeys [--version] [-?v] [-p port] [-u user] 
+                    [-h host] [-f hostfile]
 
-             -?      : print this help screen
-	     -v	     : verbose mode
-	     -p port : ssh port to use 
-	     -u user : the user to run command
-	     -h host : the host to connect to (multiple -h is okay)
-	     -f file : a file listing all hosts to connect to
+             --version : print version information
+             -?        : print this help screen
+	     -v	       : verbose mode
+	     -p port   : ssh port to use 
+	     -u user   : the user to run command
+	     -h host   : the host to connect to (multiple -h is okay)
+	     -f file   : a file listing all hosts to connect to
 '''
 
 import os, sys, getopt, time, getpass, logging
@@ -25,16 +27,10 @@ except ImportError, e:
     sys.exit('[ERROR] unable to import module: ' + str(e))
 
 
-def usage(exitarg):
-    help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', os.path.split(__file__)[-1] + '_help');
-    try:
-	f = open(help_path);
-	for line in f: 
-	    print line,
-    except:
-        print __doc__
-    sys.exit(exitarg)
-
+#
+# all the command line options
+#
+script_name = os.path.split(__file__)[-1]
 opt = {}
 opt['-v'] = False
 opt['-p'] = 22
@@ -49,9 +45,27 @@ id_rsa_fname = '%s/.ssh/id_rsa' % homeDir
 id_rsa_pub_fname = id_rsa_fname + '.pub'
 hostList = []
 
+################
+def usage(exitarg):
+    help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', script_name + '_help');
+    try:
+	f = open(help_path);
+	for line in f: 
+	    print line,
+    except:
+        print __doc__
+    sys.exit(exitarg)
+
+#############
 def parsePort(val): 
     try: return int(val)
     except ValueError: return 0
+
+#############
+def print_version():
+    print '%s version $Revision$' % script_name
+    sys.exit(0)
+
 
 class Host: 
     def __init__(self, user, host, port):
@@ -147,18 +161,17 @@ class Host:
 def parseCommandLine():
     global opt
     try:
-	(options, args) = getopt.getopt(sys.argv[1:], '?vp:u:h:f:')
+	(options, args) = getopt.getopt(sys.argv[1:], '?vp:u:h:f:', ['version'])
     except Exception, e:
 	usage('[ERROR] ' + str(e))
 
     for (switch, val) in options:
-	if (switch == '-?'):      usage(0)
-	elif (switch == '-v'):    opt[switch] = True
-	elif (switch[1] in 'uf'): opt[switch] = val
-	elif (switch == '-h'):    opt[switch].append(val)
-	elif (switch == '-p'):    opt[switch] = parsePort(val)
-
-    if opt['-v']: print '$Revision$'
+	if (switch == '-?'):          usage(0)
+	elif (switch == '-v'):        opt[switch] = True
+	elif (switch[1] in 'uf'):     opt[switch] = val
+	elif (switch == '-h'):        opt[switch].append(val)
+	elif (switch == '-p'):        opt[switch] = parsePort(val)
+	elif (switch == '--version'): print_version()
 
     if not (opt['-p'] > 0): 
 	usage('[ERROR] please specify valid port number for -p switch')
