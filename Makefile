@@ -97,6 +97,31 @@ mgmtcopy :
 	@if [ ! -d ${INSTLOC}/docs ] ; then mkdir ${INSTLOC}/docs ; fi
 	@if [ -d $(GPMGMT)/doc ]; then cp -rp $(GPMGMT)/doc $(INSTLOC)/docs/cli_help; fi
 	@if [ -d $(GPMGMT)/demo/gpdemo ]; then mkdir $(INSTLOC)/demo; gtar --exclude \*CVS\* -C $(GPMGMT)/demo -czf $(INSTLOC)/demo/gpdemo.tar.gz gpdemo; fi
+	@# Set version
+	@perl -pi -e "s/\\\$$Revision$$/$$(< VERSION)/" \
+		$(INSTLOC)/bin/gpactivatestandby \
+		$(INSTLOC)/bin/gpaddmirrors \
+		$(INSTLOC)/bin/gpaddpart \
+		$(INSTLOC)/bin/gpcheckperf \
+		$(INSTLOC)/bin/gpcreatepart \
+		$(INSTLOC)/bin/gpcrondump \
+		$(INSTLOC)/bin/gpdbrestore \
+		$(INSTLOC)/bin/gpdeletepart \
+		$(INSTLOC)/bin/gpdeletesystem \
+		$(INSTLOC)/bin/gpinitstandby \
+		$(INSTLOC)/bin/gpinitsystem \
+		$(INSTLOC)/bin/gprebuildseg \
+		$(INSTLOC)/bin/gprebuildsystem \
+		$(INSTLOC)/bin/gprecoverseg \
+		$(INSTLOC)/bin/gpscp \
+		$(INSTLOC)/bin/gpsizecalc \
+		$(INSTLOC)/bin/gpskew \
+		$(INSTLOC)/bin/gpssh \
+		$(INSTLOC)/bin/gpssh-exkeys \
+		$(INSTLOC)/bin/gpstart \
+		$(INSTLOC)/bin/gpstate \
+		$(INSTLOC)/bin/gpstop \
+		$(INSTLOC)/bin/gpsys1
 	@# Remove unwanted files.
 	@rm -rf $(INSTLOC)/bin/CVS
 	@rm -rf $(INSTLOC)/doc/CVS
