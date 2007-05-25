@@ -341,25 +341,55 @@ block_t* fstream_get_block(fstream_t* fs)
 /* Print usage */
 void usage(const char* msg)
 {
-    fprintf(stderr, "gpfdist -- file distribution web server\n\n");
-    fprintf(stderr, "usage: gpfdist [-?v] [-p port] [-d dir] [-q qchar] [-x xchar] [-h]\n\n");
-    fprintf(stderr, 
-	    "        -?       : print this screen\n"
-	    "        -v       : verbose mode\n"
-	    "        -p port  : which port to serve HTTP. Default to 8080.\n"
-	    "        -d dir   : serve files under the specified directory.\n"
-	    "                   Default to '.'\n"
-	    "        -q qchar : set quote character. If not specified, the\n"
-	    "                   program will not parse for CSV, and will\n"
-	    "                   assume each record is separated by newline\n"
-	    "                   character that never occurs inside a record.\n"
-	    "        -x xchar : set escape character (default to qchar)\n"
-	    "        -h       : flag indicates first data row in all files is\n"
-	    "                   a header row. skip it.\n\n");
+    char* GPHOME = 0;
+    FILE* fp = 0;
+
+    if (gcb.pool && apr_env_get(&GPHOME, "GPHOME", &gcb.pool))
+	GPHOME = 0;
+
+    if (GPHOME) {
+	char* path = apr_psprintf(gcb.pool, "%s/docs/cli_help/gpfdist_help", GPHOME);
+	if (path) 
+	    fp = fopen(path, "r");
+    }
+    
+    if (fp) {
+	char buf[1000];
+	while (0 != fgets(buf, sizeof(buf) - 1, fp)) {
+	    buf[sizeof(buf)-1] = 0;
+	    puts(buf);
+	}
+	fclose(fp);
+    }
+    else {
+	fprintf(stderr, "gpfdist -- file distribution web server\n\n");
+	fprintf(stderr, "usage: gpfdist [-?v] [-p port] [-d dir] [-q qchar] [-x xchar] [-h]\n\n");
+	fprintf(stderr, 
+		"        -?        : print this screen\n"
+		"        -v        : verbose mode\n"
+		"        -p port   : which port to serve HTTP. Default to 8080.\n"
+		"        -d dir    : serve files under the specified directory.\n"
+		"                    Default to '.'\n"
+		"        -q qchar  : set quote character. If not specified, the\n"
+		"                    program will not parse for CSV, and will\n"
+		"                    assume each record is separated by newline\n"
+		"                    character that never occurs inside a record.\n"
+		"        -x xchar  : set escape character (default to qchar)\n"
+		"        -h        : flag indicates first data row in all files is\n"
+		"                    a header row. skip it.\n"
+		"        --version : print version information.\n\n");
+    }
+
     if (msg)
 	fprintf(stderr, "%s\n", msg);
 
     exit(msg ? 1 : 0);
+}
+
+void print_version()
+{
+    printf("gpfdist version \"%s\"\n", GP_VERSIONX);
+    exit(0);
 }
 
 
@@ -367,14 +397,26 @@ void usage(const char* msg)
 void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
 {
     apr_getopt_t* os;
-    char ch;
+    int ch;
     const char* arg;
     int e;
+    static apr_getopt_option_t option[10] = {
+	{      NULL, '?', 0, "print help screen" },
+	{      NULL, 'V', 0, "very verbose" },
+	{      NULL, 'v', 0, "verbose mode" },
+	{      NULL, 'p', 1, "which port to serve HTTP" },
+	{      NULL, 'd', 1, "serve files under this directory" },
+	{      NULL, 'q', 1, "set quote character" },
+	{      NULL, 'x', 1, "set escape character" },
+	{      NULL, 'h', 0, "flag to skip first row in data files" },
+	{ "version", 256, 0, "print version number" }
+    };
+    
     
     if (0 != apr_getopt_init(&os, pool, argc, argv)) 
 	gpcc_fatal(FLINE, "apt_getopt_init failed");
 
-    while (0 == (e = apr_getopt(os, "?Vvp:d:q:x:h", &ch, &arg))) {
+    while (0 == (e = apr_getopt_long(os, option, &ch, (const char**) argv))) {
 	switch (ch) {
 	case '?': usage(0); break;
 	case 'v': opt.v = 1; break;
@@ -384,6 +426,7 @@ void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
 	case 'q': opt.q = arg; break;
 	case 'x': opt.x = arg; break;
 	case 'p': opt.p = atoi(arg); break;
+	case 256: print_version(); break;
 	}
     }
     if (e != APR_EOF) 
@@ -1149,9 +1192,6 @@ int main(int argc, const char* const argv[])
     gcb.session.tab = apr_hash_make(gcb.pool);
 
     parse_command_line(argc, argv, gcb.pool);
-
-    if (opt.v) 
-	printf("gpfdist version \"%s\"\n", GP_VERSIONX);
 
 #ifdef SIGPIPE
     signal(SIGPIPE, SIG_IGN);
