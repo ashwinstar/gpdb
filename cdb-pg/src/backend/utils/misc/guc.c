@@ -2113,7 +2113,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_S
 		},
 		&interconnect_setup_timeout,
-		10, 0, INT_MAX, assign_interconnect_setup_timeout, show_interconnect_setup_timeout
+		10, 0, INT_MAX, NULL, NULL
 	},
 
 	{

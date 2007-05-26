@@ -370,24 +370,7 @@ assign_gp_connections_per_thread(int newval, bool doit, GucSource source)
 	return true;
 }
 
-/*
- * Assign hook routine for "gp_interconnect_setup_timeout" option.
- *
- */
-bool
-assign_interconnect_setup_timeout(int newval, bool doit, GucSource source)
-{
 
-	if (doit)
-	{
-		if (newval < 0)
-			return false;
-
-		interconnect_setup_timeout = newval;
-
-	}
-	return true;
-}
 
 
 
@@ -435,27 +418,6 @@ show_gp_connections_per_thread(void)
 	return buffer.data;
 }
 
-/*
- * Show hook routine for "gp_interconnect_setup_timeout" option.
- *
- * See guc.c for option definition.
- *
- */
-const char *
-show_interconnect_setup_timeout(void)
-{
-	/*
-	 * We rely on the fact that the memory context will clean up the memory
-	 * for the buffer.data.
-	 */
-	StringInfoData buffer;
-
-	initStringInfo(&buffer);
-
-	appendStringInfo(&buffer, "%d", interconnect_setup_timeout);
-
-	return buffer.data;
-}
 
 
 /* --------------------------------------------------------------------------------------------------

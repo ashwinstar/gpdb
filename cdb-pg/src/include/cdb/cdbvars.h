@@ -262,8 +262,7 @@ extern bool Gp_write_shared_snapshot;
 extern int	gp_connections_per_thread; /* GUC var - server operating mode.  */
 extern bool assign_gp_connections_per_thread(int newval, bool doit, GucSource source);
 extern const char *show_gp_connections_per_thread(void);
-extern bool assign_interconnect_setup_timeout(int newval, bool doit, GucSource source);
-extern const char *show_interconnect_setup_timeout(void);
+
 extern bool assign_gp_write_shared_snapshot(bool newval, bool doit, GucSource source);
 
 extern char *gp_fault_action_string;	/* Use by guc.c as user defined fault
