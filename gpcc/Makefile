@@ -46,7 +46,7 @@ mklibgpcc:
 	@(cp -r src/include/* src/build/include/ )
 	#@echo making test
 	#@(cd src/libgpcc/test; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
-		-o net1 net1.c -L../../build/lib -lgpcc $(APRLIBS) $(APULIBS) -ljson)
+	#	-o net1 net1.c -L../../build/lib -lgpcc $(APRLIBS) $(APULIBS) -ljson)
 
 
 mkext:
