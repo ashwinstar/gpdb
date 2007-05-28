@@ -17,7 +17,7 @@
 #include <gpcc_net.h>
 
 #include <event.h>
-#define BLOCKSIZE  (1024 * 32)
+#define BLOCKSIZE  (1024 * 64)
 
 #ifndef GP_VERSION
 #define GP_VERSION unknown
@@ -159,20 +159,23 @@ block_t* block_split(block_t* b, int n)
 
 
 /* Scan as many record as possible in [p, q), taking quotes and escapes into account. */
-const char* scan_rec_boundary(const char* p, const char* q, int skipfirst)
+const char* scan_rec(const char* p, const char* q, int cnt)
 {
-    int in_quote, last_was_esc;
+    int in_quote = 0, last_was_esc = 0;
     const char* last_complete = 0;
     int xc = opt.x[0];
     int qc = opt.q[0];
+    int ch;
+    
+    if (xc == qc) 
+	xc = 0;
 
-    for (in_quote = last_was_esc = 0; p < q; p++) {
-	int ch = *p++;
+    while (p < q && 0 < cnt) {
+	ch = *p++;
 	if (ch == '\n' && !in_quote) {
-	    if (skipfirst)
-		skipfirst = 0;
-	    else
-		last_complete = p;
+	    cnt--;
+	    last_complete = p;
+	    last_was_esc = 0;
 	    continue;
 	}
 	if (in_quote && ch == xc) 
@@ -187,6 +190,7 @@ const char* scan_rec_boundary(const char* p, const char* q, int skipfirst)
 }
 
 
+/* free the file stream */
 void fstream_free(fstream_t* fs)
 {
     int i;
@@ -208,7 +212,7 @@ void fstream_free(fstream_t* fs)
 }
 
 
-
+/* alloc a new file stream */
 fstream_t* fstream_alloc(char** path, int npath)
 {
     int i;
@@ -245,6 +249,8 @@ fstream_t* fstream_alloc(char** path, int npath)
 }
 
 
+
+/* get a block from the file stream */
 block_t* fstream_get_block(fstream_t* fs)
 {
     block_t* b;
@@ -282,10 +288,10 @@ block_t* fstream_get_block(fstream_t* fs)
 	    fs->foff = 0;
 	    fs->fskip = opt.h;
 	    if (fs->fidx >= fs->fn)  /* stream EOF */
-		return b;
+		return b;	     /* return the residue block */
 
-	    /* if need to skip first line, break to return 
-	       last block of previous file */
+	    /* if need to skip first line of new file, 
+	       then break to return last block of previous file */
 	    if (opt.h) 
 		break;
 
@@ -310,7 +316,12 @@ block_t* fstream_get_block(fstream_t* fs)
     q = b->byte + b->top;
     if (opt.q) {
 	/* go slow, scan byte-by-byte for record boundary */
-	p = (char*) scan_rec_boundary(p, q, skipfirst);
+	if (skipfirst) {
+	    if (0 != (p = (char*) scan_rec(p, q, 1)))
+		b->bot = p - b->byte;
+	}
+	if (p) 
+	    p = (char*) scan_rec(p, q, sizeof(b->byte) /*artificial max */);
     }
     else {
 	/* go fast, scan for \n for record boundary */
@@ -326,13 +337,14 @@ block_t* fstream_get_block(fstream_t* fs)
     /* no record boundary 
        -> record larger than BLOCKSIZE? unacceptable */
     if (!p) {
-	gpcc_warning(FLINE, "ERROR: line too long (%s)", fs->fpath[fs->fidx]);
+	gpcc_warning(FLINE, "ERROR: line too long in file %s (%d bytes)", 
+		     fs->fpath[fs->fidx], b->top - b->bot);
 	fs->ferror = 1;
 	return 0;
     }
 
     /* split the block at record boundary */
-    fs->fblock = block_split(b, p - b->byte + b->bot);
+    fs->fblock = block_split(b, p - (b->byte + b->bot));
     return b;
 }
 
