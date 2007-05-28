@@ -17,7 +17,7 @@
 #include <gpcc_net.h>
 
 #include <event.h>
-#define BLOCKSIZE  (1024 * 64)
+#define BLOCKSIZE  (1024 * 32)
 
 #ifndef GP_VERSION
 #define GP_VERSION unknown
