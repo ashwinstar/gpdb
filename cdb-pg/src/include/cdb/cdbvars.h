@@ -157,6 +157,12 @@ extern bool Gp_is_writer;
  */
 extern int gp_session_id;
 
+/* The Hostname where this segment's QD is located. This variable is NULL for the QD itself */
+extern char * qdHostname;
+
+/* The Postmaster listener port for the QD.  This variable is 0 for the QD itself.*/
+extern int qdPostmasterPort;
+
 
 /* Parameter gp_qd_callback_info
  *

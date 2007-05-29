@@ -50,6 +50,9 @@ bool		Gp_is_writer; 		/* is this qExec a "writer" process. */
 
 int 		gp_session_id;    /* global unique id for session. */
 
+
+char		*qdHostname;		/*QD hostname */
+int			qdPostmasterPort;	/*Master Segment Postmaster port. */
 char       *gp_qd_callback_info;	/* info for QE to call back to QD */
 
 bool		gp_enable_functions; 	/* allow functions that call back from QE to QD */

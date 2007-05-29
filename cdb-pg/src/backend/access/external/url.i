@@ -323,14 +323,9 @@ static int make_command(const char* cmd, extvar_t* ev, char* buf)
 	int sz = 0;
 	sz += make_export("GP_QDHOST", ev->GP_QDHOST, buf ? buf + sz : 0);
 	sz += make_export("GP_QDPORT", ev->GP_QDPORT, buf ? buf + sz : 0);
-	sz += make_export("GP_QEHOST", ev->GP_QEHOST, buf ? buf + sz : 0);
-	sz += make_export("GP_QEPORT", ev->GP_QEPORT, buf ? buf + sz : 0);
-	sz += make_export("GP_ARRAY", ev->GP_ARRAY, buf ? buf + sz : 0);
+	sz += make_export("GP_SEG_PG_CONF", ev->GP_SEG_PG_CONF, buf ? buf + sz : 0);
+	sz += make_export("GP_SEG_DATADIR", ev->GP_SEG_DATADIR, buf ? buf + sz : 0);
 	sz += make_export("GP_DATABASE", ev->GP_DATABASE, buf ? buf + sz : 0);
-	sz += make_export("GP_SCHEMA", ev->GP_SCHEMA, buf ? buf + sz : 0);
-	sz += make_export("GP_TABLE", ev->GP_TABLE, buf ? buf + sz : 0);
-	sz += make_export("GP_SEGPREFIX", ev->GP_SEGPREFIX, buf ? buf + sz : 0);
-	sz += make_export("GP_DATADIR", ev->GP_DATADIR, buf ? buf + sz : 0);
 	sz += make_export("GP_DATE", ev->GP_DATE, buf ? buf + sz : 0);
 	sz += make_export("GP_TIME", ev->GP_TIME, buf ? buf + sz : 0);
 	sz += make_export("GP_XID", ev->GP_XID, buf ? buf + sz : 0);
@@ -398,22 +393,12 @@ static int make_url(const char* url, extvar_t* ev, char* buf)
 				p += encode_url(ev->GP_QDHOST, p);
 			else if (0 == strcmp(url, "GP_QDPORT"))
 				p += encode_url(ev->GP_QDPORT, p);
-			else if (0 == strcmp(url, "GP_QEHOST"))
-				p += encode_url(ev->GP_QEHOST, p);
-			else if (0 == strcmp(url, "GP_QEPORT"))
-				p += encode_url(ev->GP_QEPORT, p);
-			else if (0 == strcmp(url, "GP_ARRAY"))
-				p += encode_url(ev->GP_ARRAY, p);
+			else if (0 == strcmp(url, "GP_SEG_PG_CONF"))
+				p += encode_url(ev->GP_SEG_PG_CONF, p);
+			else if (0 == strcmp(url, "GP_SEG_DATADIR"))
+				p += encode_url(ev->GP_SEG_DATADIR, p);
 			else if (0 == strcmp(url, "GP_DATABASE"))
 				p += encode_url(ev->GP_DATABASE, p);
-			else if (0 == strcmp(url, "GP_SCHEMA"))
-				p += encode_url(ev->GP_SCHEMA, p);
-			else if (0 == strcmp(url, "GP_TABLE"))
-				p += encode_url(ev->GP_TABLE, p);
-			else if (0 == strcmp(url, "GP_SEGPREFIX"))
-				p += encode_url(ev->GP_SEGPREFIX, p);
-			else if (0 == strcmp(url, "GP_DATADIR"))
-				p += encode_url(ev->GP_DATADIR, p);
 			else if (0 == strcmp(url, "GP_DATE"))
 				p += encode_url(ev->GP_DATE, p);
 			else if (0 == strcmp(url, "GP_TIME"))
@@ -545,18 +530,13 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 			url_fclose(file);
 			return NULL;
 		}
-
+	
 		file->u.curl.x_httpheader = 0;
 		if (set_httpheader(file, "X-GP-QDHOST", ev->GP_QDHOST)
 			|| set_httpheader(file, "X-GP-QDPORT", ev->GP_QDPORT)
-			|| set_httpheader(file, "X-GP-QEHOST", ev->GP_QEHOST)
-			|| set_httpheader(file, "X-GP-QEPORT", ev->GP_QEPORT)
-			|| set_httpheader(file, "X-GP-ARRAY", ev->GP_ARRAY)
+			|| set_httpheader(file, "X-GP_SEG_PG_CONF", ev->GP_SEG_PG_CONF)
+			|| set_httpheader(file, "X-GP_SEG_DATADIR", ev->GP_SEG_DATADIR)
 			|| set_httpheader(file, "X-GP-DATABASE", ev->GP_DATABASE)
-			|| set_httpheader(file, "X-GP-SCHEMA", ev->GP_SCHEMA)
-			|| set_httpheader(file, "X-GP-TABLE", ev->GP_TABLE)
-			|| set_httpheader(file, "X-GP-SEGPREFIX", ev->GP_SEGPREFIX)
-			|| set_httpheader(file, "X-GP-DATADIR", ev->GP_DATADIR)
 			|| set_httpheader(file, "X-GP-XID", ev->GP_XID)
 			|| set_httpheader(file, "X-GP-CID", ev->GP_CID)
 			|| set_httpheader(file, "X-GP-SN", ev->GP_SN))  

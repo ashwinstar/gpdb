@@ -244,6 +244,7 @@ char       *Debug_dtm_action_protocol_str;
 int			tcp_keepalives_idle;
 int			tcp_keepalives_interval;
 int			tcp_keepalives_count;
+char 	   *data_directory;
 
 /*
  * These variables are all dummies that don't do anything, except in some
@@ -277,7 +278,6 @@ static int	server_version_num;
 static char *timezone_string;
 static char *timezone_abbreviations_string;
 static char *XactIsoLevel_string;
-static char *data_directory;
 static char *custom_variable_classes;
 static int	max_function_args;
 static int	max_index_keys;
@@ -2087,6 +2087,17 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"gp_qd_port", PGC_BACKEND, GP_WORKER_IDENTITY,
+			gettext_noop("Shows the Master Postmaster port."),
+			gettext_noop("0 for a session's entry process (qDisp)"),
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&qdPostmasterPort,
+		0, INT_MIN, INT_MAX, NULL, NULL
+	},
+
+
+	{
 		{"gp_sort_flags", PGC_USERSET, QUERY_TUNING_OTHER,
 			gettext_noop("Experimental feature: Generic sort flags."),
 			NULL,
@@ -2883,6 +2894,15 @@ static struct config_string ConfigureNamesString[] =
 		"", NULL, NULL
 	},
 
+	{
+		{"gp_qd_hostname", PGC_BACKEND, GP_WORKER_IDENTITY,
+			gettext_noop("Shows the QD Hostname. Blank when run on the QD"),
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&qdHostname,
+		"", NULL, NULL
+	},
+		
 	{
 		{"debug_dtm_action", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Sets the debug DTM action."),

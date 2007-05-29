@@ -33,15 +33,17 @@
 #include "access/fileam.h"
 #include "access/heapam.h"
 #include "access/valid.h"
+#include "commands/dbcommands.h"
 #include "pgstat.h"
+#include "miscadmin.h"
 #include "utils/relcache.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/uri.h"
 #include "mb/pg_wchar.h"
-#include "miscadmin.h"
 #include "commands/copy.h"
-
+#include "utils/guc.h"
+#include "utils/builtins.h"
 #include "cdb/cdbvars.h"
 
 typedef struct extvar_t extvar_t;
@@ -49,14 +51,9 @@ struct extvar_t
 {
 	char* GP_QDHOST;
 	char* GP_QDPORT;
-	char* GP_QEHOST;
-	char* GP_QEPORT;
-	char* GP_ARRAY;
 	char* GP_DATABASE;
-	char* GP_SCHEMA;
-	char* GP_TABLE;
-	char* GP_SEGPREFIX;
-	char* GP_DATADIR;
+	char* GP_SEG_PG_CONF;   /*location of the segments pg_conf file*/
+	char* GP_SEG_DATADIR;   /*location of the segments datadirectory*/
 	char GP_DATE[9];		/* YYYYMMDD */
 	char GP_TIME[7];		/* HHMMSS */
 	char GP_XID[TMGIDSIZE];		/* global transaction id */
@@ -712,21 +709,19 @@ open_external_file(FileScanDesc scan)
 	extvar_t extvar;
 	time_t now = time(0);
 	struct tm* tm = localtime(&now);
-
+	char       *result = (char *) palloc(7);        /* sign, 5 digits, '\0' */
+	
 	/* set up extvar */
-#define UNKNOWN "unknown"
+
 	memset(&extvar, 0, sizeof(extvar));
-	extvar.GP_QDHOST = UNKNOWN;
-	extvar.GP_QDPORT = UNKNOWN;
-	extvar.GP_QEHOST = UNKNOWN;
-	extvar.GP_QEPORT = UNKNOWN;
-	extvar.GP_ARRAY = UNKNOWN;
-	extvar.GP_DATABASE = UNKNOWN;
-	extvar.GP_SCHEMA = UNKNOWN;
-	extvar.GP_TABLE = UNKNOWN;
-	extvar.GP_SEGPREFIX = UNKNOWN;
-	extvar.GP_DATADIR = UNKNOWN;
-	sprintf(extvar.GP_DATE, "%04d%02d%02d",
+	extvar.GP_QDHOST = qdHostname;
+	
+	pg_itoa(qdPostmasterPort, result);
+	extvar.GP_QDPORT = result;
+	extvar.GP_DATABASE = get_database_name(MyDatabaseId);
+	extvar.GP_SEG_PG_CONF = ConfigFileName;   /*location of the segments pg_conf file*/
+	extvar.GP_SEG_DATADIR = data_directory;   /*location of the segments datadirectory*/
+   	sprintf(extvar.GP_DATE, "%04d%02d%02d",
 			1900 + tm->tm_year, 1 + tm->tm_mon, tm->tm_mday);
 	sprintf(extvar.GP_TIME, "%02d%02d%02d", 
 			tm->tm_hour, tm->tm_min, tm->tm_sec);

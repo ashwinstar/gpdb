@@ -775,6 +775,7 @@ thread_DoConnect(void *arg)
 {
 	DoConnectParms *pParms;
 	SegmentDatabaseDescriptor **segdbDescPtrArray;
+	CdbComponentDatabaseInfo  *qdinfo;
 	int			db_count;
 	int			i,
 				j,
@@ -788,6 +789,8 @@ thread_DoConnect(void *arg)
 	segdbDescPtrArray = pParms->segdbDescPtrArray;
 	db_count = pParms->db_count;
 
+	qdinfo = &cdb_component_dbs->entry_db_info[0];
+	
 	/*
 	 * The pParms contains an array of SegmentDatabaseDescriptors
 	 * to connect to.
@@ -833,7 +836,11 @@ thread_DoConnect(void *arg)
 		appendPQExpBuffer(&buffer, " -c gp_qd_callback_info=port=%d",PostPortNumber);
 		
 		appendPQExpBuffer(&buffer, " -c gp_is_callback=%d",gp_is_callback);
-		appendPQExpBuffer(&buffer, " -c gp_qd_proc_offset=%ld",(long)MAKE_OFFSET(MyProc));
+		appendPQExpBuffer(&buffer, " -c gp_qd_proc_offset=%ld",(long)MAKE_OFFSET(MyProc));		
+		
+		appendPQExpBuffer(&buffer, " -c gp_qd_hostname=%s", qdinfo->hostip);
+		appendPQExpBuffer(&buffer, " -c gp_qd_port=%d", qdinfo->port);
+		
 		
 		/*
          * user-settable GUC variables
