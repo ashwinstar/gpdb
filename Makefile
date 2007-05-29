@@ -98,7 +98,7 @@ mgmtcopy :
 	@if [ -d $(GPMGMT)/doc ]; then cp -rp $(GPMGMT)/doc $(INSTLOC)/docs/cli_help; fi
 	@if [ -d $(GPMGMT)/demo/gpdemo ]; then mkdir $(INSTLOC)/demo; gtar --exclude \*CVS\* -C $(GPMGMT)/demo -czf $(INSTLOC)/demo/gpdemo.tar.gz gpdemo; fi
 	@# Set version
-	@perl -pi -e "s/\\\$$[R]evision:.*\\\$$/$$(< VERSION)/" \
+	@perl putversion \
 		$(INSTLOC)/bin/gpactivatestandby \
 		$(INSTLOC)/bin/gpaddmirrors \
 		$(INSTLOC)/bin/gpaddpart \
