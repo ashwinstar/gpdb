@@ -551,15 +551,20 @@ typedef struct Group
 	int         numNullCols;
 
     /*
-	 * Indicate which rollup level will this Group node process, starting from 1.
+	 * Indicate the GROUPING value of input tuples for this Group node.
 	 * Refer to struct Agg for details.
 	 *
 	 * If this is not for a rollup, this value is 0.
 	 */
-	int rollupLevel;
+	uint64 inputGrouping;
 
 	/* The value of GROUPING for this rollup-aware node. */
 	uint64 grouping;
+
+	/*
+	 * Indicate if input tuples contain values for GROUPING column.
+	 */
+	bool inputHasGrouping;
 
 	/*
 	 * How many times the aggregates in this rollup level will be output
@@ -612,30 +617,42 @@ typedef struct Agg
 	 */
 
 	/*
-	 * The number of null grouping columns for this node.
+	 * The number of grouping columns for this node whose values should be null for
+	 * this Agg node.
 	 */
 	int         numNullCols;
 
     /*
-	 * Indicate which rollup level will this Agg node process, starting from 1.
+	 * Indicate the GROUPING value of input tuples for this Agg node.
 	 * For example of ROLLUP(a,b,c), there are four Agg nodes:
 	 *
 	 *   Agg(a,b,c) ==> Agg(a,b) ==> Agg(a) ==> Agg()
 	 *
-	 * The rollup level for Agg(a,b,c) is 1, and the rollup level for Agg(a,b)
-	 * is 2, and so on.
+	 * The GROUPING value of input tuples for Agg(a,b,c) is 0, and the values
+	 * for Agg(a,b), Agg(a), Agg() are 0, 1, 3, respectively.
 	 *
 	 * We also use the value "-1" to indicate an Agg node is the final
 	 * one that brings back all rollup results from different segments. This final
 	 * Agg node is very similar to the non-rollup Agg node, except that we need
-	 * a way to know this to properly set GROUPING_ID value during execution.
+	 * a way to know this to properly set GROUPING value during execution.
 	 *
 	 * For a non-rollup Agg node, this value is 0.
 	 */
-	int rollupLevel;
+	uint64 inputGrouping;
 
 	/* The value of GROUPING for this rollup-aware node. */
 	uint64 grouping;
+
+	/*
+	 * Indicate if input tuples contain values for GROUPING column.
+	 *
+	 * This is used to determine if the node that generates inputs
+	 * for this Agg node is also an Agg node. That is, this Agg node
+	 * is one of the list of Agg nodes for a ROLLUP. One exception is
+	 * the first Agg node in the list, whose inputs do not have a
+	 * GROUPING column.
+	 */
+	bool inputHasGrouping;
 
 	/*
 	 * How many times the aggregates in this rollup level will be output

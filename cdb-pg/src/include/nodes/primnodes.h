@@ -1157,9 +1157,9 @@ typedef enum GangType
 
 typedef enum GroupingType
 {
-	ROLLUP_TYPE,         /* ROLLUP grouping extension */
-	CUBE_TYPE,           /* CUBE grouping extension */
-	GROUPING_SETS_TYPE   /* GROUPING SETS grouping extension */
+	GROUPINGTYPE_ROLLUP,         /* ROLLUP grouping extension */
+	GROUPINGTYPE_CUBE,           /* CUBE grouping extension */
+	GROUPINGTYPE_GROUPING_SETS   /* GROUPING SETS grouping extension */
 } GroupingType;
 
 typedef enum WindowExclusion

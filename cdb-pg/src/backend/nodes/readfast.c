@@ -2314,8 +2314,9 @@ _readAgg(const char ** str)
 	READ_LONG_FIELD(numGroups);
 	READ_INT_FIELD(transSpace);
 	READ_INT_FIELD(numNullCols);
-	READ_INT_FIELD(rollupLevel);
+	READ_UINT64_FIELD(inputGrouping);
 	READ_UINT64_FIELD(grouping);
+	READ_BOOL_FIELD(inputHasGrouping);
 	READ_INT_FIELD(rollupGSTimes);
 
 	READ_DONE();
@@ -2368,8 +2369,9 @@ _readGroup(const char ** str)
 	READ_INT_ARRAY(grpColIdx, numCols, AttrNumber);
 
 	READ_INT_FIELD(numNullCols);
-	READ_INT_FIELD(rollupLevel);
+	READ_UINT64_FIELD(inputGrouping);
 	READ_UINT64_FIELD(grouping);
+	READ_BOOL_FIELD(inputHasGrouping);
 	READ_INT_FIELD(rollupGSTimes);
 	READ_BOOL_FIELD(lastGroup);
 		

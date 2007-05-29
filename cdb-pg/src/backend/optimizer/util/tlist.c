@@ -189,6 +189,9 @@ get_sortgroupclauses_tles(List *clauses, List *targetList)
 	{
 		Node *node = lfirst(l);
 
+		if (node == NULL)
+			continue;
+
 		if (IsA(node, GroupClause) || IsA(node, SortClause))
 		{
 			TargetEntry *tle =
@@ -196,6 +199,13 @@ get_sortgroupclauses_tles(List *clauses, List *targetList)
 
 			if (!list_member(result, tle))
 				result = lappend(result, tle);
+		}
+
+		else if (IsA(node, List))
+		{
+			result = list_concat_unique(result,
+										get_sortgroupclauses_tles((List *)node,
+																  targetList));
 		}
 
 		else
@@ -274,14 +284,23 @@ get_grouplist_exprs(List *groupClauses, List *targetList)
 	{
 		Node *groupClause = lfirst(l);
 
-		Assert(IsA(groupClause, GroupClause) || IsA(groupClause, GroupingClause));
+		if (groupClause == NULL)
+			continue;
+
+		Assert(IsA(groupClause, GroupClause) ||
+			   IsA(groupClause, GroupingClause) ||
+			   IsA(groupClause, List));
 
 		if (IsA(groupClause, GroupClause))
 			result = lappend(result,
 							 get_sortgroupclause_expr((GroupClause*)groupClause,
 													  targetList));
 
-		else if (IsA(groupClause, GroupingClause))
+		else if (IsA(groupClause, List))
+			result = list_concat(result,
+								 get_grouplist_exprs((List *)groupClause, targetList));
+
+		else
 			result = list_concat(result,
 								 get_grouplist_exprs(((GroupingClause*)groupClause)->groupsets,
 													 targetList));

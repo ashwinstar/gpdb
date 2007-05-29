@@ -1046,6 +1046,10 @@ explain_outNode(StringInfo str,
 						senderIsEntryDb ? " on entry db" : "");
 				pname = "";
 
+#ifdef DEBUG_EXPLAIN
+				appendStringInfo(str, "plan->targetlist=%s\n", nodeToString(plan->targetlist));
+#endif
+
 			}
 			break;
 		default:
@@ -1749,13 +1753,21 @@ show_grouping_keys(Plan        *plan,
     int			i;
 	int         num_null_cols = 0;
 	int         rollup_gs_times = 0;
-	int         rollup_level = 0;
+	uint64      input_grouping = 0;
+	bool        input_has_grouping = false;
 	StringInfoData tmpstr;
 
 	initStringInfoOfSize(&tmpstr, 1000);
 
     if (numCols <= 0)
         return;
+
+#ifdef DEBUG_EXPLAIN
+	if (plan)
+		appendStringInfo(str, "plan->targetlist=%s\n", nodeToString(plan->targetlist));
+	if (subplan)
+		appendStringInfo(str, "subplan->targetlist=%s\n", nodeToString(subplan->targetlist));
+#endif
 
     for (i = 0; i < indent; i++)
         appendStringInfoString(str, "  ");
@@ -1805,14 +1817,16 @@ show_grouping_keys(Plan        *plan,
 	{
 		num_null_cols = ((Agg*)plan)->numNullCols;
 		rollup_gs_times = ((Agg*)plan)->rollupGSTimes;
-		rollup_level = ((Agg*)plan)->rollupLevel;
+		input_grouping = ((Agg*)plan)->inputGrouping;
+		input_has_grouping = ((Agg*)plan)->inputHasGrouping;
 	}
 
 	else if (IsA(plan, Group))
 	{
 		num_null_cols = ((Group*)plan)->numNullCols;
 		rollup_gs_times = ((Group*)plan)->rollupGSTimes;
-		rollup_level = ((Group*)plan)->rollupLevel;
+		input_grouping = ((Group*)plan)->inputGrouping;
+		input_has_grouping = ((Agg*)plan)->inputHasGrouping;
 	}
 
     for (keyno = 0; keyno < numCols; keyno++)
@@ -1820,15 +1834,15 @@ show_grouping_keys(Plan        *plan,
 	    /* find key expression in tlist */
 	    AttrNumber      keyresno = subplanColIdx[keyno];
 	    TargetEntry    *target = get_tle_by_resno(subplan->targetlist, keyresno);
-		char grpid_str[50];
-		sprintf(grpid_str, "GROUPING");
+		char grping_str[50];
+		sprintf(grping_str, "grouping");
 
 	    if (!target)
 		    elog(ERROR, "no tlist entry for key %d", keyresno);
 
 		if (IsA(target->expr, Grouping))
-			/* Append "GROUPING" explicitly. */
-			exprstr = grpid_str;
+			/* Append "grouping" explicitly. */
+			exprstr = grping_str;
 		else
 			/* Deparse the expression, showing any top-level cast */
 			exprstr = deparse_expr_sweet((Node *) target->expr, context,
@@ -1844,9 +1858,9 @@ show_grouping_keys(Plan        *plan,
 		{
 			if (keyno > 0)
 				appendStringInfoString(&tmpstr, ", ");
-			if ((rollup_level == 0 && keyno == numCols - num_null_cols) ||
-				(rollup_level != 0 && keyno == numCols - num_null_cols - 1))
-				appendStringInfoString(&tmpstr, grpid_str);
+			if ((input_grouping == 0 && keyno == numCols - num_null_cols) ||
+				(input_has_grouping && keyno == numCols - num_null_cols - 1))
+				appendStringInfoString(&tmpstr, grping_str);
 			else
 				appendStringInfoString(&tmpstr, exprstr);
 		}
@@ -1887,6 +1901,11 @@ show_sort_keys(Plan *sortplan, int nkeys, AttrNumber *keycols,
 
 	if (nkeys <= 0)
 		return;
+
+#ifdef DEBUG_EXPLAIN
+	appendStringInfo(str, "plan->targetlist=%s\n", nodeToString(sortplan->targetlist));
+	appendStringInfo(str, "subplan->targetlist=%s\n", nodeToString(sortplan->lefttree->targetlist));
+#endif
 
 	for (i = 0; i < indent; i++)
 		appendStringInfo(str, "  ");
@@ -1952,6 +1971,10 @@ show_motion_keys(Plan *plan, List *hashExpr, int nkeys, AttrNumber *keycols,
     if (!nkeys &&
         !hashExpr)
         return;
+
+#ifdef DEBUG_EXPLAIN
+	appendStringInfo(str, "plan->targetlist=%s\b", nodeToString(plan->targetlist));
+#endif
 
     /* Generate deparse context */
 	if (cdbpullup_exprHasSubplanRef((Expr *)plan->targetlist) ||

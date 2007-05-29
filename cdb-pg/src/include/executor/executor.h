@@ -340,8 +340,9 @@ extern bool sliceRunsOnQD(Slice *slice);
 extern bool sliceRunsOnQE(Slice *slice);
 
 /* prototypes defined in nodeAgg.c for rollup-aware Agg/Group nodes. */
-extern int32 tuple_rollup_level(TupleTableSlot *outerslot, int numGroupCols, int rollup_level,
-								int grpingIdx);
+extern int64 tuple_grouping(TupleTableSlot *outerslot, int numGroupCols,
+							int input_grouping, bool input_has_grouping,
+							int grpingIdx);
 extern uint32 get_group_id(TupleTableSlot *tupleslot);
 
 #endif   /* EXECUTOR_H  */

@@ -39,7 +39,10 @@ ExecGroup(GroupState *node)
 	ExprContext *econtext;
 	int			numCols;
 	AttrNumber *grpColIdx;
-	int rollup_level;
+	uint64 input_grouping;
+	bool   input_has_grouping;
+	bool   is_final_rollup_agg;
+	bool   is_middle_rollup_agg;
 	TupleTableSlot *firsttupleslot;
 	TupleTableSlot *outerslot;
 	TupleTableSlot *copyslot;
@@ -53,7 +56,13 @@ ExecGroup(GroupState *node)
 	econtext = node->ss.ps.ps_ExprContext;
 	numCols = group_node->numCols;
 	grpColIdx = group_node->grpColIdx;
-	rollup_level = group_node->rollupLevel;
+	input_grouping = group_node->inputGrouping;
+	input_has_grouping = group_node->inputHasGrouping;
+	is_final_rollup_agg =
+		(input_has_grouping && group_node->numNullCols == 0);
+	is_middle_rollup_agg =
+		(input_has_grouping && group_node->numNullCols > 0);
+
 
 	/*
 	 * If the previous aggregated result needs to be outputed
@@ -101,7 +110,7 @@ ExecGroup(GroupState *node)
 	 */
 	for (;;)
 	{
-		int outer_rollup_level;
+		int outer_grouping;
 
 		/*
 		 * If we have read the first tuple in the next group, we want
@@ -118,7 +127,7 @@ ExecGroup(GroupState *node)
 			 * when it was received. For a rollup query, we want to modify it
 			 * before storing it to firstupleslot. 
 			 */
-			if (rollup_level > 1)
+			if (is_middle_rollup_agg)
 			{
 				tuple = heap_copytuple(node->grp_firstTuple);
 				tuple = heap_modify_tuple(tuple,
@@ -139,7 +148,8 @@ ExecGroup(GroupState *node)
 
 			node->grp_firstTuple = NULL;
 
-			if (rollup_level > 1 && node->out_state == PASS_THRU)
+			if (is_middle_rollup_agg &&
+				node->out_state == PASS_THRU)
 			{
 				node->out_state = PROCESSING;
 
@@ -179,15 +189,15 @@ ExecGroup(GroupState *node)
 
 		else
 		{
-			outer_rollup_level =
-				tuple_rollup_level(outerslot, numCols, rollup_level,
-								   group_node->grpColIdx[group_node->numCols-1]);
+			outer_grouping =
+				tuple_grouping(outerslot, numCols, input_grouping, input_has_grouping,
+							   group_node->grpColIdx[group_node->numCols-1]);
 			/*
 			 * For a rollup query, we need to modify the input tuple
 			 * to match with the current rollup level. We initialize those
 			 * arrays that are needed for this process.
 			 */
-			if (node->num_attrs == 0 && rollup_level > 1)
+			if (node->num_attrs == 0 && is_middle_rollup_agg)
 			{
 				/* Ignore Grouping column */
 				int num_grpattrs = numCols - 1;
@@ -199,29 +209,29 @@ ExecGroup(GroupState *node)
 					palloc0(node->num_attrs * sizeof(Datum));
 				node->replIsnull = palloc0(node->num_attrs * sizeof(bool));
 				node->doReplace = palloc0(node->num_attrs * sizeof(bool));
-				Assert(num_grpattrs >= rollup_level-1);
-				for (attno=0; attno<rollup_level-1; attno++)
+
+				for (attno=0; attno<group_node->numNullCols; attno++)
 				{
 					node->replIsnull[num_grpattrs-attno-1] = true;
 					node->doReplace[num_grpattrs-attno-1] = true;
 				}
 			}
 
-			if (outer_rollup_level + 1 < rollup_level)
+			if (outer_grouping < input_grouping)
 			{
 				/* simple pass-through */
 				node->out_state = PASS_THRU;
 				return outerslot;
 			}
 
-			Assert(outer_rollup_level + 1 == rollup_level);
+			Assert(outer_grouping == input_grouping);
 
 			/*
 			 * For a rollup query, we modify the input tuple to
 			 * match the rollup level of this node. The modified tuple
 			 * is stored in node->copyslot.
 			 */
-			if (rollup_level > 1)
+			if (is_middle_rollup_agg)
 			{
 				copytuple = ExecCopySlotTuple(outerslot);
 				/* modify this tuple */
@@ -261,7 +271,7 @@ ExecGroup(GroupState *node)
 			node->out_state = PROCESSING;
 
 			/* return a pass-through tuple if this is a rollup query. */
-			if (rollup_level > 1)
+			if (is_middle_rollup_agg)
 			{
 				/* We need to reproject the pass-through tuple */
 				if (group_node->lastGroup)
@@ -287,7 +297,7 @@ ExecGroup(GroupState *node)
 		 * If this is the first time call, then the grouped result is not
 		 * ready. We simply output the pass-through tuple.
 		 */
-		if (first_time && rollup_level > 1)
+		if (first_time && is_middle_rollup_agg)
 		{
 			node->out_state = PROCESSING;
 
@@ -315,16 +325,15 @@ ExecGroup(GroupState *node)
 		 */
 		econtext->ecxt_scantuple = firsttupleslot;
 
-		if (rollup_level == -1)
+		if (is_final_rollup_agg)
 			econtext->grouping =
 				get_grouping(econtext->ecxt_scantuple,
 							 group_node->grpColIdx[group_node->numCols-1]);
 		else
 			econtext->grouping = ((Group *) node->ss.ps.plan)->grouping;
 
-		if (rollup_level > 1)
+		if (is_middle_rollup_agg)
 		{
-			uint32 gid;
 			node->out_state = PASS_THRU;
 
 			/* We will output the aggregate value below. The group_id
@@ -336,7 +345,7 @@ ExecGroup(GroupState *node)
 		{
 			node->out_state = PROCESSING;
 
-			if (rollup_level == -1)
+			if (is_final_rollup_agg)
 			{
 				uint32 gid = get_group_id(econtext->ecxt_scantuple);
 				econtext->group_id = gid;

@@ -1536,6 +1536,9 @@ make_pathkeys_for_groupclause(List *groupclause,
 
 		Node *node = lfirst(l);
 
+		if (node == NULL)
+			continue;
+
 		if (IsA(node, GroupClause))
 		{
 			GroupClause *gc = (GroupClause*) node;
@@ -1547,6 +1550,13 @@ make_pathkeys_for_groupclause(List *groupclause,
 			 * canonicalize_pathkeys() might replace it with a longer sublist later.
 			 */
 			pathkeys = lappend(pathkeys, list_make1(pathkey));
+		}
+
+		else if (IsA(node, List))
+		{
+			pathkeys = list_concat(pathkeys,
+								   make_pathkeys_for_groupclause((List *)node,
+																 tlist));
 		}
 
 		else if (IsA(node, GroupingClause))

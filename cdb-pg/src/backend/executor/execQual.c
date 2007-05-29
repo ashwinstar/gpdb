@@ -445,6 +445,8 @@ ExecEvalGroupingFunc(GroupingFuncExprState *gstate,
 {
 	uint64 grpid = 0;
 	ListCell *tmp;
+	int num_args = list_length(gstate->args);
+	int argno = 0;
 
 	if (isDone)
 		*isDone = ExprSingleResult;
@@ -452,10 +454,13 @@ ExecEvalGroupingFunc(GroupingFuncExprState *gstate,
 	foreach(tmp, gstate->args)
 	{
 		int arg = (int)intVal(lfirst(tmp));
-		int pos = gstate->ngrpcols - arg - 1;
+		int pos_in_grpcols = gstate->ngrpcols - arg - 1;
+		int pos_in_grpingfunc = num_args - argno - 1;
 
-		if (econtext->grouping & (1 << pos))
-			grpid |= (1 << pos);
+		if (econtext->grouping & (1 << pos_in_grpcols))
+			grpid |= (1 << pos_in_grpingfunc);
+
+		argno++;
 	}
 
 	*isNull = false;

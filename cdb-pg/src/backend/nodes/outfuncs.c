@@ -540,8 +540,9 @@ _outAgg(StringInfo str, Agg *node)
 	WRITE_LONG_FIELD(numGroups);
 	WRITE_INT_FIELD(transSpace);
 	WRITE_INT_FIELD(numNullCols);
-	WRITE_INT_FIELD(rollupLevel);
+	WRITE_UINT64_FIELD(inputGrouping);
 	WRITE_UINT64_FIELD(grouping);
+	WRITE_BOOL_FIELD(inputHasGrouping);
 	WRITE_INT_FIELD(rollupGSTimes);
 }
 
@@ -595,8 +596,9 @@ _outGroup(StringInfo str, Group *node)
 		appendStringInfo(str, " %d", node->grpColIdx[i]);
 
 	WRITE_INT_FIELD(numNullCols);
-	WRITE_INT_FIELD(rollupLevel);
+	WRITE_UINT64_FIELD(inputGrouping);
 	WRITE_UINT64_FIELD(grouping);
+	WRITE_BOOL_FIELD(inputHasGrouping);
 	WRITE_INT_FIELD(rollupGSTimes);
 	WRITE_BOOL_FIELD(lastGroup);
 }

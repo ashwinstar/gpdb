@@ -1,4 +1,4 @@
- ?column? | ?column? | ?column? | cn | vn | pn  | count 
+ grouping | grouping | grouping | cn | vn | pn  | count 
 ----------+----------+----------+----+----+-----+-------
         0 |        0 |        0 |  4 | 40 | 800 |     1
         0 |        0 |        0 |  3 | 30 | 600 |     1

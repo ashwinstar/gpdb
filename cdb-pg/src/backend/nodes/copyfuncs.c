@@ -599,8 +599,9 @@ _copyGroup(Group *from)
 	COPY_SCALAR_FIELD(numCols);
 	COPY_POINTER_FIELD(grpColIdx, from->numCols * sizeof(AttrNumber));
 	COPY_SCALAR_FIELD(numNullCols);
-	COPY_SCALAR_FIELD(rollupLevel);
+	COPY_SCALAR_FIELD(inputGrouping);
 	COPY_SCALAR_FIELD(grouping);
+	COPY_SCALAR_FIELD(inputHasGrouping);
 	COPY_SCALAR_FIELD(rollupGSTimes);
 	COPY_SCALAR_FIELD(lastGroup);
 
@@ -624,8 +625,9 @@ _copyAgg(Agg *from)
 	COPY_SCALAR_FIELD(numGroups);
 	COPY_SCALAR_FIELD(transSpace);
 	COPY_SCALAR_FIELD(numNullCols);
-	COPY_SCALAR_FIELD(rollupLevel);
+	COPY_SCALAR_FIELD(inputGrouping);
 	COPY_SCALAR_FIELD(grouping);
+	COPY_SCALAR_FIELD(inputHasGrouping);
 	COPY_SCALAR_FIELD(rollupGSTimes);
 
 	return newnode;

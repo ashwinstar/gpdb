@@ -30,7 +30,7 @@
 
 #include "cdb/cdbpath.h"        /* cdbpath_rows() */
 
-static List *distcols_in_groupingclause(GroupingClause *gc);
+static List *distcols_in_groupclause(List *gc);
 
 /*
  * query_planner
@@ -365,27 +365,48 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 
 
 /*
- * distcols_in_groupingclause -
- *     Return all distinct columns/expressions that appear in a GroupingClause.
+ * distcols_in_groupclause -
+ *     Return all distinct columns/expressions that appear in a GROUP BY clause.
  *
  * If this is a GROUPING_SET, this function is called recursively to
  * find the underlying columns/expressions.
  */
 static List *
-distcols_in_groupingclause(GroupingClause *gc)
+distcols_in_groupclause(List *gc)
 {
 	List *result = NIL;
 	ListCell *l;
 
-	foreach(l, gc->groupsets)
+	foreach(l, gc)
 	{
 		Node *node = lfirst(l);
 
-		if (IsA(node, GroupClause) && !list_member(result, node))
-			result = lappend(result, node);
-		else if(IsA(node, GroupingClause))
+		if (node == NULL)
+			continue;
+
+		Assert(IsA(node, GroupClause) ||
+			   IsA(node, List) ||
+			   IsA(node, GroupingClause));
+
+		if (IsA(node, GroupClause))
+		{
+			if (!list_member(result, node))
+				result = lappend(result, node);
+		}
+
+		else if (IsA(node, List))
+		{
 			result = list_concat_unique(result,
-										distcols_in_groupingclause((GroupingClause*)node));
+										distcols_in_groupclause((List *)node));
+		}
+
+		else if (IsA(node, GroupingClause))
+		{
+			List *groupsets = ((GroupingClause *)node)->groupsets;
+			result =
+				list_concat_unique(result,
+								   distcols_in_groupclause(groupsets));
+		}
 	}
 
 	return result;
@@ -400,20 +421,9 @@ int
 num_distcols_in_grouplist(List *gc)
 {
 	List *result = NIL;
-	ListCell *l;
 	int num_cols;
 
-	foreach(l, gc)
-	{
-		Node *node = lfirst(l);
-
-		if (IsA(node, GroupClause) && !list_member(result, node))
-			result = lappend(result, node);
-		else if(IsA(node, GroupingClause))
-			result =
-				list_concat_unique(result,
-								   distcols_in_groupingclause((GroupingClause*)node));
-	}
+	result = distcols_in_groupclause(gc);
 
 	num_cols = list_length(result);
 	list_free(result);

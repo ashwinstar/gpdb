@@ -1,0 +1,1 @@
+select count(*),pn,dt from sale group by grouping sets ((dt), (pn,dt));

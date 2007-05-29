@@ -1951,7 +1951,8 @@ static RangeTblEntry *rte_for_coplan(
 						 AGG_SORTED,
 						 winfo->partkey_len, winfo->partkey_attrs,
 						 num_groups,
-						 0, /* rollup level */
+						 0, /* num_nullcols */
+						 0, /* input_grouping */
 						 0, /* grouping_id */
 						 0, /* rollup_gs_times */
 						 coplan->num_aggs, coplan->trans_space,
@@ -1965,7 +1966,8 @@ static RangeTblEntry *rte_for_coplan(
 						 AGG_PLAIN,
 						 0, NULL,
 						 1, /* number of groups */
-						 0, /* rollup level */
+						 0, /* num_nullcols */
+						 0, /* input_grouping */
 						 0, /* grouping_id */
 						 0, /* rollup_gs_times */
 						 coplan->num_aggs, coplan->trans_space,

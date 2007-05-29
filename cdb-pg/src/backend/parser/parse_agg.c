@@ -537,7 +537,9 @@ get_groupclause_exprs(Node *grpcl, List *targetList)
 {
 	List *result = NIL;
 
-	Assert(IsA(grpcl, GroupClause) || IsA(grpcl, GroupingClause));
+	Assert(IsA(grpcl, GroupClause) ||
+		   IsA(grpcl, GroupingClause) ||
+		   IsA(grpcl, List));
 
 	if (IsA(grpcl, GroupClause))
 	{
@@ -545,7 +547,7 @@ get_groupclause_exprs(Node *grpcl, List *targetList)
 		result = lappend(result, node);
 	}
 
-	else
+	else if (IsA(grpcl, GroupingClause))
 	{
 		ListCell* l;
 		GroupingClause *gc = (GroupingClause*)grpcl;
@@ -554,6 +556,18 @@ get_groupclause_exprs(Node *grpcl, List *targetList)
 		{
 			result = list_concat(result,
 								 get_groupclause_exprs((Node*)lfirst(l), targetList));
+		}
+	}
+
+	else
+	{
+		List *exprs = (List *)grpcl;
+		ListCell *lc;
+
+		foreach (lc, exprs)
+		{
+			result = list_concat(result, get_groupclause_exprs((Node *)lfirst(lc),
+															   targetList));
 		}
 	}
 

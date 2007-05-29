@@ -6187,21 +6187,21 @@ group_elem:
 			| ROLLUP '(' expr_list ')'
                 {
 					GroupingClause *n = makeNode(GroupingClause);
-					n->groupType = ROLLUP_TYPE;
+					n->groupType = GROUPINGTYPE_ROLLUP;
 					n->groupsets = $3;
 					$$ = list_make1 ((Node*)n);
 				}
             | CUBE '(' expr_list ')'
                 {
 					GroupingClause *n = makeNode(GroupingClause);
-					n->groupType = CUBE_TYPE;
+					n->groupType = GROUPINGTYPE_CUBE;
 					n->groupsets = $3;
 					$$ = list_make1 ((Node*)n);
 				}
             | GROUPING SETS '(' group_elem_list ')'
                 {
 					GroupingClause *n = makeNode(GroupingClause);
-					n->groupType = GROUPING_SETS_TYPE;
+					n->groupType = GROUPINGTYPE_GROUPING_SETS;
 					n->groupsets = $4;
 					$$ = list_make1 ((Node*)n);
 				}

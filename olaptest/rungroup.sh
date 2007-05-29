@@ -34,7 +34,7 @@ do
 	fi
 done
 
-for ((n=1; n <= 81; n++))
+for ((n=1; n <= 90; n++))
 do
 	echo "Running group test $n ... "
 	psql -p $OLAPTEST_PORT -d $OLAPTEST_DB -f sql/$TESTSUITE/${n}.sql -o result/${TESTSUITE}.${n}.out

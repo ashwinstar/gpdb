@@ -875,9 +875,14 @@ agg_retrieve_direct(AggState *aggstate)
 	HeapTuple       copytuple = NULL;
 	TupleTableSlot *copyslot;
 	int			aggno;
-	int         rollup_level = node->rollupLevel;
+	uint64      input_grouping = node->inputGrouping;
+	bool        input_has_grouping = node->inputHasGrouping;
 	bool        first_time = true;
 	bool        tuple_match = false;
+	bool        is_final_rollup_agg =
+		(input_has_grouping && node->numNullCols == 0);
+	bool        is_middle_rollup_agg =
+		(input_has_grouping && node->numNullCols > 0);
 
 	/*
 	 * get state info from node
@@ -964,7 +969,7 @@ agg_retrieve_direct(AggState *aggstate)
 				 * stored in aggstate->copyslot to be aggregated later
 				 * in this loop.
 				 */
-				if (rollup_level > 1)
+				if (is_middle_rollup_agg)
 				{
 					copytuple = heap_copytuple(aggstate->grp_firstTuple);
 
@@ -999,13 +1004,14 @@ agg_retrieve_direct(AggState *aggstate)
 				 */
 				if (aggstate->out_state == PASS_THRU)
 				{
-					int outer_rollup_level;
+					int outer_grouping;
 					outerslot = aggstate->copyslot;
 
- 					outer_rollup_level =
- 						tuple_rollup_level(outerslot, node->numCols, rollup_level,
+ 					outer_grouping =
+ 						tuple_grouping(outerslot, node->numCols,
+									   input_grouping, input_has_grouping,
  									   node->numCols > 0 ? node->grpColIdx[node->numCols-1]: 0);
- 					if (outer_rollup_level + 1 >= rollup_level)
+ 					if (input_grouping == outer_grouping)
  						aggstate->out_state = PROCESSING;
  					else
  					{
@@ -1028,9 +1034,10 @@ agg_retrieve_direct(AggState *aggstate)
 
 			if (!TupIsNull(outerslot))
 			{
-				int outer_rollup_level =
-					tuple_rollup_level(outerslot, node->numCols, rollup_level,
-									   node->numCols > 0 ? node->grpColIdx[node->numCols-1]: 0);
+				int outer_grouping =
+					tuple_grouping(outerslot, node->numCols,
+								   input_grouping, input_has_grouping,
+								   node->numCols > 0 ? node->grpColIdx[node->numCols-1]: 0);
 
 				/*
 				 * For a rollup query, we may need to modify the input tuple
@@ -1043,7 +1050,7 @@ agg_retrieve_direct(AggState *aggstate)
 					int attno;
 
 					/* Ignore Grouping column */
-					if (rollup_level > 0)
+					if (is_middle_rollup_agg)
 						num_grpattrs--;
 					aggstate->num_attrs =
 						outerslot->tts_tupleDescriptor->natts;
@@ -1068,7 +1075,7 @@ agg_retrieve_direct(AggState *aggstate)
 				 * However, we need to decide if we want to output the current aggregate
 				 * value before outputing this pass-through tuple.
 				 */
-				if (outer_rollup_level + 1 < rollup_level)
+				if (outer_grouping < input_grouping)
 				{
 					/* simple pass-through */
 					aggstate->out_state = PASS_THRU;
@@ -1106,7 +1113,7 @@ agg_retrieve_direct(AggState *aggstate)
 
 				if (!first_time)
 				{
-					if (outer_rollup_level + 1 < rollup_level)
+					if (outer_grouping < input_grouping)
 						/* ignore Grouping column */
 						tuple_match =
 							execTuplesMatch(firstSlot,
@@ -1136,7 +1143,7 @@ agg_retrieve_direct(AggState *aggstate)
 				{
 					if (first_time)
 					{
-						if (outer_rollup_level + 1 >= rollup_level)
+						if (outer_grouping == input_grouping)
 						{
 							if (copytuple == NULL)
 								copytuple = ExecCopySlotTuple(outerslot);
@@ -1151,7 +1158,7 @@ agg_retrieve_direct(AggState *aggstate)
 					}
 					else
 					{
-						if (rollup_level != 0)
+						if (input_has_grouping)
 							aggstate->grp_firstTuple = ExecCopySlotTuple(outerslot);
 						else
 							aggstate->grp_firstTuple = ExecCopySlotTuple(copyslot);
@@ -1164,7 +1171,7 @@ agg_retrieve_direct(AggState *aggstate)
 				 * tuple, we don't really have an aggregate value that is needed
 				 * to be outputed first. So we change the out_state back.
 				 */
-				if (first_time && outer_rollup_level + 1 < rollup_level)
+				if (first_time && outer_grouping < input_grouping)
 				{
 					aggstate->out_state = PASS_THRU;
 					ExecClearTuple(firstSlot);
@@ -1195,7 +1202,7 @@ agg_retrieve_direct(AggState *aggstate)
 			 * If this is not a ROLLUP node, we want to continue on
 			 * aggregating the input tuples.
 			 */
-			if (rollup_level <= 1)
+			if (!is_middle_rollup_agg)
 			{
 				aggstate->grp_firstTuple = NULL;
 				continue;
@@ -1267,12 +1274,15 @@ agg_retrieve_direct(AggState *aggstate)
 			econtext->ecxt_scantuple = firstSlot;
 
 			/* reset the output state */
-			if (rollup_level > 1)
+			if (is_middle_rollup_agg)
 				aggstate->out_state = PASS_THRU;
 			else
 				aggstate->out_state = PROCESSING;
 
-			if (rollup_level == -1)
+			/* If this is the final Agg node in a ROLLUP, we want
+			 * to obtain GROUP_ID from the input tuples.
+			 */
+			if (is_final_rollup_agg)
 			{
 				uint32 gid;
 				gid = get_group_id(econtext->ecxt_scantuple);
@@ -1285,7 +1295,7 @@ agg_retrieve_direct(AggState *aggstate)
 		else
 		{
 			econtext->ecxt_scantuple = outerslot;
-			if (rollup_level > 1)
+			if (is_middle_rollup_agg)
 			{
 				uint32 gid;
 				gid = get_group_id(econtext->ecxt_scantuple);
@@ -1296,7 +1306,7 @@ agg_retrieve_direct(AggState *aggstate)
 				econtext->group_id = node->rollupGSTimes;
 		}
 
-		if (rollup_level == -1)
+		if (is_final_rollup_agg)
 		{
 			bool isnull;
 			Datum grping_datum;
@@ -1724,7 +1734,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 			
 		case AGGSTAGE_PARTIAL: /* Two-stage aggregation or rollup - preliminary stage */
 			/* the perliminary stage for two-stage aggregation */
-			if (node->rollupLevel <= 1)
+			if (!node->inputHasGrouping || node->numNullCols == 0)
 			{
 				peraggstate->transfn_oid = transfn_oid = aggform->aggtransfn;
 				peraggstate->finalfn_oid = finalfn_oid = InvalidOid;
@@ -1880,7 +1890,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	/* ROLLUP */
 	aggstate->perpassthru = NULL;
 
-	if (node->rollupLevel > 1)
+	if (node->inputHasGrouping)
 	{
 		AggStatePerGroup perpassthru;
 
@@ -2057,7 +2067,7 @@ ExecReScanAgg(AggState *node, ExprContext *exprCtxt)
 			   sizeof(AggStatePerGroupData) * node->numaggs);
 	}
 
-	if (((Agg *) node->ss.ps.plan)->rollupLevel > 1)
+	if (((Agg *) node->ss.ps.plan)->inputHasGrouping)
 		/*
 		 * Reset the per-passthru state (in particular, mark transvalues null)
 		 */
@@ -2136,23 +2146,22 @@ resolve_polymorphic_transtype(Oid aggtranstype, Oid aggfnoid,
 }
 
 /*
- * tuple_rollup_level - return the rollup_level for an input tuple.
+ * tuple_grouping - return the GROUPING value for an input tuple.
  *
  * This is used for a ROLLUP.
  */
-int32
-tuple_rollup_level(TupleTableSlot *outerslot, int numGroupCols, int rollup_level,
-				   int grpingIdx)
+int64
+tuple_grouping(TupleTableSlot *outerslot, int numGroupCols,
+			   int input_grouping, bool input_has_grouping,
+			   int grpingIdx)
 {
 	Datum grping_datum;
 	uint64 grping;
 	bool isnull;
-	int32 result = 1;
-	int attno;
 
-	/* Not a rollup or the first/final Agg node in a rollup, simple return. */
-	if (rollup_level <= 1)
-		return (rollup_level - 1);
+	/* Simple return 0 if input_grouping is 0. */
+	if (input_grouping == 0)
+		return 0;
 
 	grping_datum = slot_getattr(outerslot, grpingIdx, &isnull);
 
@@ -2163,13 +2172,7 @@ tuple_rollup_level(TupleTableSlot *outerslot, int numGroupCols, int rollup_level
 
 	grping = DatumGetInt64(grping_datum);
 
-	for (attno=0; attno<numGroupCols; attno++)
-	{
-		if ((grping & (1 << attno)) != 0)
-			result++;
-	}
-
-	return result;
+	return grping;
 }
 
 /*

@@ -817,7 +817,8 @@ create_unique_plan(CreatePlanContext *ctx, UniquePath *best_path)
 								 numGroupCols,
 								 groupColIdx,
 								 numGroups,
-								 0, /* rollup_level */
+								 0, /* num_nullcols */
+								 0, /* input_grouping */
 								 0, /* grouping */
 								 0, /* rollup_gs_times */
 								 0,
@@ -3428,7 +3429,8 @@ Agg *
 make_agg(PlannerInfo *root, List *tlist, List *qual,
 		 AggStrategy aggstrategy,
 		 int numGroupCols, AttrNumber *grpColIdx,
-		 long numGroups, int rollupLevel, uint64 grouping,
+		 long numGroups, int num_nullcols,
+		 uint64 input_grouping, uint64 grouping,
 		 int rollupGSTimes,
 		 int numAggs, int transSpace,
 		 Plan *lefttree)
@@ -3443,9 +3445,10 @@ make_agg(PlannerInfo *root, List *tlist, List *qual,
 	node->grpColIdx = grpColIdx;
 	node->numGroups = numGroups;
 	node->transSpace = transSpace;
-	node->numNullCols = (rollupLevel > 0 ? (rollupLevel - 1) : 0);
-	node->rollupLevel = rollupLevel;
+	node->numNullCols = num_nullcols;
+	node->inputGrouping = input_grouping;
 	node->grouping = grouping;
+	node->inputHasGrouping = false;
 	node->rollupGSTimes = rollupGSTimes;
 
 	copy_plan_costsize(plan, lefttree); /* only care about copying size */
@@ -3508,7 +3511,8 @@ make_group(PlannerInfo *root,
 		   int numGroupCols,
 		   AttrNumber *grpColIdx,
 		   double numGroups,
-		   int rollupLevel,
+		   int numNullCols,
+		   uint64 inputGrouping,
 		   uint64 grouping,
 		   int rollupGSTimes,
 		   Plan *lefttree)
@@ -3520,8 +3524,8 @@ make_group(PlannerInfo *root,
 
 	node->numCols = numGroupCols;
 	node->grpColIdx = grpColIdx;
-	node->numNullCols = (rollupLevel > 0 ? (rollupLevel - 1) : 0);
-	node->rollupLevel = rollupLevel;
+	node->numNullCols = numNullCols;
+	node->inputGrouping = inputGrouping;
 	node->grouping = grouping;
 	node->rollupGSTimes = rollupGSTimes;
 	node->lastGroup = false;
@@ -3987,14 +3991,31 @@ flatten_grouping_list(List *groupcls)
 	foreach (gc, groupcls)
 	{
 		Node *node = (Node*)lfirst(gc);
-		Assert(IsA(node, GroupingClause) || IsA(node, GroupClause));
+
+		if (node == NULL)
+			continue;
+
+		Assert(IsA(node, GroupingClause) ||
+			   IsA(node, GroupClause) ||
+			   IsA(node, List));
 
 		if (IsA(node, GroupingClause))
+		{
+			List *groupsets = ((GroupingClause*)node)->groupsets;
 			result =
-				list_union(result, flatten_grouping_list(((GroupingClause*)node)->groupsets));
-
+				list_concat_unique(result,
+								   flatten_grouping_list(groupsets));
+		}
+		else if (IsA(node, List))
+		{
+			result = list_concat_unique(result,
+										flatten_grouping_list((List *)node));
+		}
 		else
-			result = lappend(result, node);
+		{
+			if (!list_member(result, node))
+				result = lappend(result, node);
+		}
 	}
 
 	return result;

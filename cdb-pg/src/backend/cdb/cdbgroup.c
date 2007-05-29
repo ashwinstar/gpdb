@@ -609,7 +609,8 @@ make_one_stage_agg_plan(PlannerInfo *root,
 										numGroupCols,
 										groupColIdx,
 										numGroups,
-										0, /* rollup_level */
+										0, /* num_nullcols */
+										0, /* input_grouping */
 										0, /* grouping */
 										0, /* rollup_gs_times */
 										ctx->agg_counts->numAggs,
@@ -620,38 +621,39 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	}
 	else if (parse->hasAggs)
 	{
-		/* Plain aggregate plan --- sort if needed */
-		AggStrategy aggstrategy;
-
-		if (parse->groupClause)
-		{
-			if (!pathkeys_contained_in(root->group_pathkeys,
-									   current_pathkeys))
-			{
-				result_plan = (Plan *)
-					make_sort_from_groupcols(root,
-											 parse->groupClause,
-											 groupColIdx,
-											 false,
-											 result_plan);
-				current_pathkeys = root->group_pathkeys;
-				mark_sort_locus(result_plan);
-			}
-			aggstrategy = AGG_SORTED;
-
-			/*
-			 * The AGG node will not change the sort ordering of its
-			 * groups, so current_pathkeys describes the result too.
-			 */
-		}
-		else
-		{
-			aggstrategy = AGG_PLAIN;
-			/* Result will be only one row anyway; no sort order */
-			current_pathkeys = NIL;
-		}
-
 		if (!is_grpext)
+		{
+			/* Plain aggregate plan --- sort if needed */
+			AggStrategy aggstrategy;
+
+			if (parse->groupClause)
+			{
+				if (!pathkeys_contained_in(root->group_pathkeys,
+										   current_pathkeys))
+				{
+					result_plan = (Plan *)
+						make_sort_from_groupcols(root,
+												 parse->groupClause,
+												 groupColIdx,
+												 false,
+												 result_plan);
+					current_pathkeys = root->group_pathkeys;
+					mark_sort_locus(result_plan);
+				}
+				aggstrategy = AGG_SORTED;
+
+				/*
+				 * The AGG node will not change the sort ordering of its
+				 * groups, so current_pathkeys describes the result too.
+				 */
+			}
+			else
+			{
+				aggstrategy = AGG_PLAIN;
+				/* Result will be only one row anyway; no sort order */
+				current_pathkeys = NIL;
+			}
+
 			result_plan = (Plan *) make_agg(root,
 											tlist,
 											(List *) parse->havingQual,
@@ -659,19 +661,21 @@ make_one_stage_agg_plan(PlannerInfo *root,
 											numGroupCols,
 											groupColIdx,
 											numGroups,
-											0, /* rollup_level */
+											0, /* num_nullcols */
+											0, /* input_grouping */
 											0, /* grouping */
 											0, /* rollup_gs_times */
 											ctx->agg_counts->numAggs,
 											ctx->agg_counts->transitionSpace,
 											result_plan);
+		}
+
 		else
 		{
 			result_plan = plan_grouping_extension(root, path,
 												  &tlist, sub_tlist,
 												  true, false,
 												  (List *) parse->havingQual,
-												  aggstrategy,
 												  &numGroupCols,
 												  &groupColIdx,
 												  ctx->agg_counts,
@@ -683,43 +687,46 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	}
 	else if (parse->groupClause)
 	{
-		/*
-		 * GROUP BY without aggregation, so insert a group node (plus
-		 * the appropriate sort node, if necessary).
-		 *
-		 * Add an explicit sort if we couldn't make the path come out
-		 * the way the GROUP node needs it.
-		 */
-		if (!pathkeys_contained_in(root->group_pathkeys, current_pathkeys))
-		{
-			result_plan = (Plan *)
-				make_sort_from_groupcols(root,
-										 parse->groupClause,
-										 groupColIdx,
-										 false,
-										 result_plan);
-			current_pathkeys = root->group_pathkeys;
-			mark_sort_locus(result_plan);
-		}
-
 		if (!is_grpext)
+		{
+			/*
+			 * GROUP BY without aggregation, so insert a group node (plus
+			 * the appropriate sort node, if necessary).
+			 *
+			 * Add an explicit sort if we couldn't make the path come out
+			 * the way the GROUP node needs it.
+			 */
+			if (!pathkeys_contained_in(root->group_pathkeys, current_pathkeys))
+			{
+				result_plan = (Plan *)
+					make_sort_from_groupcols(root,
+											 parse->groupClause,
+											 groupColIdx,
+											 false,
+											 result_plan);
+				current_pathkeys = root->group_pathkeys;
+				mark_sort_locus(result_plan);
+			}
+
 			result_plan = (Plan *) make_group(root,
 											  tlist,
 											  (List *) parse->havingQual,
 											  numGroupCols,
 											  groupColIdx,
 											  *(ctx->p_dNumGroups),
-											  0, /* rollup_level */
+											  0, /* num_nullcols */
+											  0, /* input_grouping */
 											  0, /* grouping */
 											  0, /* rollup_gs_times */
 											  result_plan);
+		}
+
 		else
 		{
 			result_plan = (Plan *) plan_grouping_extension(root, path,
 														   &tlist, sub_tlist,
 														   false, false,
 														   (List *) parse->havingQual,
-														   AGG_SORTED,
 														   &numGroupCols,
 														   &groupColIdx,
 														   ctx->agg_counts,
@@ -886,6 +893,11 @@ make_two_stage_agg_plan(PlannerInfo *root,
 			prelimGroupColIdx[i] = i+1;
 	}
 	
+	/*
+	 * Add the Preliminary Agg Node.
+	 *
+	 * When this aggregate is a ROLLUP, we add a sequence of preliminary Agg node.
+	 */
 	/* Determine the aggregation strategy to use. */
 	if ( use_hashed_grouping )
 	{
@@ -896,8 +908,8 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	{
 		if (parse->groupClause)
 		{
-			if (!pathkeys_contained_in(root->group_pathkeys,
-									   current_pathkeys))
+			if (!is_grpext && !pathkeys_contained_in(root->group_pathkeys,
+													 current_pathkeys))
 			{
 				/* TODO -- Investigate WHY we might sort here!
 				 *
@@ -910,11 +922,11 @@ make_two_stage_agg_plan(PlannerInfo *root,
 				 * the ordering.)
 				 */
 				result_plan = (Plan *)
-				make_sort_from_groupcols(root,
-										 parse->groupClause,
-										 groupColIdx,
-										 false,
-										 result_plan);
+					make_sort_from_groupcols(root,
+											 parse->groupClause,
+											 groupColIdx,
+											 false,
+											 result_plan);
 				current_pathkeys = root->group_pathkeys;
 				mark_sort_locus(result_plan);
 			}
@@ -929,12 +941,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 			current_pathkeys = NIL; /* One row, no sort order */
 		}
 	}
-		
-	/*
-	 * Add the Preliminary Agg Node.
-	 *
-	 * When this aggregate is a ROLLUP, we add a sequence of preliminary Agg node.
-	 */
+	
 	if (!is_grpext)
 	{
 		result_plan = (Plan *) make_agg(root,
@@ -944,7 +951,8 @@ make_two_stage_agg_plan(PlannerInfo *root,
 										numGroupCols,
 										groupColIdx,
 										numGroups,
-										0, /* rollup_level */
+										0, /* num_nullcols */
+										0, /* input_grouping */
 										0, /* grouping */
 										0, /* rollup_gs_times */
 										ctx->agg_counts->numAggs,
@@ -961,7 +969,6 @@ make_two_stage_agg_plan(PlannerInfo *root,
 											  &prelim_tlist, sub_tlist,
 											  true, true,
 											  NIL, /* no havingQual */
-											  aggstrategy,
 											  &numGroupCols,
 											  &groupColIdx,
 											  ctx->agg_counts,
@@ -1028,33 +1035,26 @@ make_two_stage_agg_plan(PlannerInfo *root,
 		mark_sort_locus(result_plan);
 	}
 
-	{
-		/*
-		 * If this is the final Agg node for a rollup, we will set rollup_level to
-		 * the special value "-1".
-		 */
-		int rollup_level = 0;
-		if (is_grpext)
-			rollup_level = -1;
-
-		result_plan = add_second_stage_agg(root,
-										   true,
-										   prelim_tlist,
-										   final_tlist,
-										   final_qual,
-										   aggstrategy,
-										   numGroupCols,
-										   prelimGroupColIdx,
-										   rollup_level,
-										   0,
-										   0,
-										   *ctx->p_dNumGroups,
-										   ctx->agg_counts->numAggs,
-										   ctx->agg_counts->transitionSpace,
-										   "partial_aggregation",
-										   &current_pathkeys,
-										   result_plan);
-	}
+	result_plan = add_second_stage_agg(root,
+									   true,
+									   prelim_tlist,
+									   final_tlist,
+									   final_qual,
+									   aggstrategy,
+									   numGroupCols,
+									   prelimGroupColIdx,
+									   0, /* num_nullcols */
+									   0, /* input_grouping */
+									   0, /* grouping */
+									   0, /* rollup_gs_times */
+									   *ctx->p_dNumGroups,
+									   ctx->agg_counts->numAggs,
+									   ctx->agg_counts->transitionSpace,
+									   "partial_aggregation",
+									   &current_pathkeys,
+									   result_plan);
+	if (is_grpext)
+		((Agg *)result_plan)->inputHasGrouping = true;
 	
 	/* Marshal implicit results. Return explicit result. */
 	ctx->current_pathkeys = current_pathkeys;
@@ -1714,7 +1714,8 @@ add_second_stage_agg(PlannerInfo *root,
 					 AggStrategy aggstrategy,
 					 int numGroupCols,
 					 AttrNumber *prelimGroupColIdx,
-					 int rollup_level,
+					 int num_nullcols,
+					 uint64 input_grouping,
 					 uint64 grouping,
 					 int rollup_gs_times,
 					 double numGroups,
@@ -1817,7 +1818,10 @@ add_second_stage_agg(PlannerInfo *root,
 		 * of keys in *p_current_pathkeys. But we want to make
 		 * sure that numGroupCols is not less than this number.
 		 */
-		Assert( numGroupCols >= list_length(*p_current_pathkeys) );
+		if ( numGroupCols < list_length(*p_current_pathkeys) )
+			ereport(ERROR, (
+						errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("current_pathkeys has more entries than expected.")));
 
 		foreach ( c, *p_current_pathkeys )
 		{
@@ -1858,7 +1862,8 @@ add_second_stage_agg(PlannerInfo *root,
 									numGroupCols,
 									prelimGroupColIdx,
 									lNumGroups,
-									rollup_level,
+									num_nullcols,
+									input_grouping,
 									grouping,
 									rollup_gs_times,
 									numAggs,
@@ -1874,7 +1879,8 @@ add_second_stage_agg(PlannerInfo *root,
 									  numGroupCols,
 									  prelimGroupColIdx,
 									  numGroups,
-									  rollup_level,
+									  num_nullcols,
+									  input_grouping,
 									  grouping,
 									  rollup_gs_times,
 									  result_plan);
