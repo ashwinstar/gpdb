@@ -394,9 +394,8 @@ static Plan * addsm_for_single_share_motion(
 			slice->plan->total_cost = matpath.total_cost;
 			slice->plan->plan_rows = sharedMotion->plan.plan_rows;
 			slice->plan->plan_width = sharedMotion->plan.plan_width;
+
 			slice->plan->flow = copyObject(slice->slice->flow);
-			slice->plan->shared_as_id = sisc->plan.shared_as_id;
-			slice->plan->underlying_share_id = sisc->plan.underlying_share_id;
 			slice->sort_pathkeys = sort_pathkeys;
 			sisc->plan.lefttree = slice->plan;
 			sisc->plan.flow = copyObject(get_plan_flow(slice->plan));
@@ -492,9 +491,8 @@ static Plan * addsm_for_dist_share_motion(
 			slice->plan->total_cost = matpath.total_cost;
 			slice->plan->plan_rows = sharedMotion->plan.plan_rows;
 			slice->plan->plan_width = sharedMotion->plan.plan_width;
+
 			slice->plan->flow = copyObject(slice->slice->flow);
-			slice->plan->shared_as_id = sisc->plan.shared_as_id;
-			slice->plan->underlying_share_id = sisc->plan.underlying_share_id;
 			slice->sort_pathkeys = sort_pathkeys;
 			sisc->plan.lefttree = slice->plan;
 			sisc->plan.flow = copyObject(get_plan_flow(slice->plan));
