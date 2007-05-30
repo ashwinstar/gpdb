@@ -599,7 +599,11 @@ void request_end(request_t* r)
 	session_detach(r);
     }
     event_del(&r->ev);
+#ifdef WIN32
+	closesocket(r->sock);
+#else
     close(r->sock);
+#endif
     apr_pool_destroy(r->pool);
 }
 
@@ -1192,8 +1196,16 @@ void http_setup(void)
     if (f < 0) 
 	gpcc_fatal(FLINE, "cannot create socket on port %d", opt.p);
 
+#ifndef WIN32
     if (fcntl(f, F_SETFD, 1) == -1) 
 	gpcc_fatal(FLINE, "cannot create socket on port %d - fcntl(F_SETFD) failed", opt.p);
+
+	/* For the Windows case, we could use SetHandleInformation to remove
+       the HANDLE_INHERIT property from fd.  
+       But for our purposes this does not matter,
+       as by default handles are *not* inherited. */
+
+#endif
 
     setsockopt(f, SOL_SOCKET, SO_KEEPALIVE, (void*) &on, sizeof(on));
     setsockopt(f, SOL_SOCKET, SO_REUSEADDR, (void*) &on, sizeof(on));
