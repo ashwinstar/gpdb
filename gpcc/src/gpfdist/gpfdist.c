@@ -38,6 +38,7 @@
 
 #ifndef WIN32
 #define SOCKET int
+#define closesocket(x)   close(x)
 #endif
 
 /*  Struct of command line options */
@@ -865,8 +866,15 @@ void do_write(int fd, short event, void* arg)
 	n = b->top - b->bot;
 	n = send(fd, b->byte + b->bot, n, 0);
 	if (n < 0) {
-	    if (errno != EINTR && errno != EAGAIN) {
-		perror("write");
+#ifdef WIN32
+	    int e = WSAGetLastError();
+	    int ok = (e == WSAEINTR || e == WSAEWOULDBLOCK);
+#else
+	    int e = errno;
+	    int ok = (e == EINTR || e == EAGAIN);
+#endif
+	    if (! ok) {
+		perror("send");
 		block_put(r->out.block);
 		r->out.block = 0;
 		request_end(r);
@@ -915,9 +923,16 @@ void do_read(int fd, short event, void* arg)
     }
 
     /* read into header buf */
-    n = read(r->sock, r->in.hbuf + r->in.hbuftop, n);
+    n = recv(r->sock, r->in.hbuf + r->in.hbuftop, n, 0);
     if (n < 0) {
-	if (errno != EINTR && errno != EAGAIN) {
+#ifdef WIN32
+	int e = WSAGetLastError();
+	int ok = (e == WSAEINTR || e == WSAEWOULDBLOCK);
+#else
+	int e = errno;
+	int ok = (e == EINTR || e == EAGAIN);
+#endif
+	if (! ok) {
 	    request_end(r);
 	    return;
 	}
@@ -1091,24 +1106,23 @@ void do_accept(int fd, short event, void* arg)
     }
 
     /* set to non-blocking, and close-on-exec */
+#ifdef WIN32
+    {
+	unsigned long nonblocking = 1;
+	ioctlsocket(sock, FIONBIO, &nonblocking);
+    }
+#else
     if (fcntl(sock, F_SETFL, O_NONBLOCK) == -1) {
 	gpcc_warning(FLINE, "fcntl(F_SETFL, O_NONBLOCK) failed");
-#ifdef WIN32
 	closesocket(sock);
-#else
-	close(sock);
-#endif
 	return;
     }
     if (fcntl(sock, F_SETFD, 1) == -1) {
 	gpcc_warning(FLINE, "fcntl(F_SETFD) failed");
-#ifdef WIN32
 	closesocket(sock);
-#else
-	close(sock);
-#endif
 	return;
     }
+#endif
 
     /* set keepalive, reuseaddr, and linger */
     setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (void*) &on, sizeof(on));
