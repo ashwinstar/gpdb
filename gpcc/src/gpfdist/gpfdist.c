@@ -527,7 +527,7 @@ void send_error(request_t* r, int code, const char* msg)
 		     "Connection: close\r\n\r\n",
 		     code, msg);
 
-    write(r->sock, buf, n);
+    send(r->sock, buf, n, 0);
 }
 
 
@@ -545,7 +545,7 @@ void send_empty(request_t* r)
 
     if (n == 0) 
 	n = strlen(buf);
-    m = write(r->sock, buf, n);
+    m = send(r->sock, buf, n, 0);
     if (m != n) 
 	gpcc_fatal(FLINE, "assert failed");
 }
@@ -564,7 +564,7 @@ void send_ok(request_t* r)
 
     if (n == 0) 
 	n = strlen(buf);
-    m = write(r->sock, buf, n);
+    m = send(r->sock, buf, n, 0);
     if (m != n) 
 	gpcc_fatal(FLINE, "assert failed");
 }
@@ -867,7 +867,7 @@ void do_write(int fd, short event, void* arg)
 	/* write out the block */
 	b = r->out.block;
 	n = b->top - b->bot;
-	n = write(fd, b->byte + b->bot, n);
+	n = send(fd, b->byte + b->bot, n, 0);
 	if (n < 0) {
 	    if (errno != EINTR && errno != EAGAIN) {
 		perror("write");
