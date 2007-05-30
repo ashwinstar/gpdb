@@ -36,6 +36,10 @@
 
 #define GP_VERSIONX APR_STRINGIFY(GP_VERSION)
 
+#ifndef WIN32
+#define SOCKET int
+#endif
+
 /*  Struct of command line options */
 struct {
     int p;			/* port */
@@ -59,11 +63,7 @@ struct block_t {
 /*  Global constrol block */
 struct {
     apr_pool_t* pool;
-#ifdef WIN32
-	SOCKET listen_sock;
-#else
-    int listen_sock;
-#endif
+    SOCKET listen_sock;
     struct event listen_event;
 
     block_t* freelist;
@@ -106,11 +106,7 @@ struct session_t {
 /*  A http request */
 typedef struct request_t request_t;
 struct request_t {
-#ifdef WIN32
-	SOCKET sock;
-#else
-    int sock;			/* the socket */
-#endif
+    SOCKET sock;		/* the socket */
     apr_pool_t* pool;		/* memory pool container */
     struct event ev;		/* event we are watching for this request */
     const char* peer;		/* peer IP:port string */
@@ -1081,11 +1077,7 @@ void do_accept(int fd, short event, void* arg)
 {
     struct sockaddr_in a;
     socklen_t len = sizeof(a);
-#ifdef WIN32
-	SOCKET sock;
-#else
-    int sock;
-#endif
+    SOCKET sock;
     request_t* r;
     apr_pool_t* pool;
     int addr;
@@ -1173,11 +1165,7 @@ int setup_read(request_t* r)
 void http_setup(void)
 {
     struct sockaddr_in a;
-#ifdef WIN32
-	SOCKET f;
-#else
-    int f;
-#endif
+    SOCKET f;
     int on = 1;
     struct linger linger;
 
