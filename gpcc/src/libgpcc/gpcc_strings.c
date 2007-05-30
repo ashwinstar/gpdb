@@ -14,6 +14,10 @@ APR_DECLARE(char*) gpcc_string_trim(char* s)
     return s;
 }
 
+#if defined(WIN32)&&defined(_MSC_VER)
+#define strtoll _strtoi64
+#endif
+
 APR_DECLARE(apr_int64_t) gpcc_string_parse_memory(const char* s)
 {
     const char* p = s + strspn(s, " \t");

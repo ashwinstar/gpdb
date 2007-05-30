@@ -66,7 +66,7 @@ static item_t* getitem(gpcc_net_conn_t conn)
 }
 
 
-static void mkfd(apr_pollfd_t* fd, apr_socket_t* sock, int idx, int flag)
+static void mkfd(apr_pollfd_t* fd, apr_socket_t* sock, intptr_t idx, int flag)
 {
     fd->p = net.pool;
     fd->desc_type = APR_POLL_SOCKET;

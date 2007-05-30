@@ -1,10 +1,19 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
+#ifndef WIN32
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#else
+#define WIN32_LEAN_AND_MEAN
+#include <winsock2.h>
+#include <windows.h>
+#include <io.h>
+#define SHUT_RD SD_RECEIVE
+#endif
+
 #include <signal.h>
 #include <gpcc.h>
 #include <apr_getopt.h>
@@ -14,6 +23,8 @@
 #include <apr_file_info.h>
 #include <apr_time.h>
 #include <apr_uri.h>
+#include <apr_env.h>
+#include <apr_fnmatch.h>
 #include <gpcc_net.h>
 
 #include <event.h>
@@ -48,7 +59,11 @@ struct block_t {
 /*  Global constrol block */
 struct {
     apr_pool_t* pool;
+#ifdef WIN32
+	SOCKET listen_sock;
+#else
     int listen_sock;
+#endif
     struct event listen_event;
 
     block_t* freelist;
@@ -91,7 +106,11 @@ struct session_t {
 /*  A http request */
 typedef struct request_t request_t;
 struct request_t {
+#ifdef WIN32
+	SOCKET sock;
+#else
     int sock;			/* the socket */
+#endif
     apr_pool_t* pool;		/* memory pool container */
     struct event ev;		/* event we are watching for this request */
     const char* peer;		/* peer IP:port string */
@@ -1062,7 +1081,11 @@ void do_accept(int fd, short event, void* arg)
 {
     struct sockaddr_in a;
     socklen_t len = sizeof(a);
+#ifdef WIN32
+	SOCKET sock;
+#else
     int sock;
+#endif
     request_t* r;
     apr_pool_t* pool;
     int addr;
@@ -1078,12 +1101,20 @@ void do_accept(int fd, short event, void* arg)
     /* set to non-blocking, and close-on-exec */
     if (fcntl(sock, F_SETFL, O_NONBLOCK) == -1) {
 	gpcc_warning(FLINE, "fcntl(F_SETFL, O_NONBLOCK) failed");
+#ifdef WIN32
+	closesocket(sock);
+#else
 	close(sock);
+#endif
 	return;
     }
     if (fcntl(sock, F_SETFD, 1) == -1) {
 	gpcc_warning(FLINE, "fcntl(F_SETFD) failed");
+#ifdef WIN32
+	closesocket(sock);
+#else
 	close(sock);
+#endif
 	return;
     }
 
@@ -1142,7 +1173,11 @@ int setup_read(request_t* r)
 void http_setup(void)
 {
     struct sockaddr_in a;
+#ifdef WIN32
+	SOCKET f;
+#else
     int f;
+#endif
     int on = 1;
     struct linger linger;
 
