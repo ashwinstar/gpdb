@@ -375,7 +375,7 @@ void usage(const char* msg)
     char* GPHOME = 0;
     FILE* fp = 0;
 
-    if (gcb.pool && apr_env_get(&GPHOME, "GPHOME", &gcb.pool))
+    if (gcb.pool && apr_env_get(&GPHOME, "GPHOME", gcb.pool))
 	GPHOME = 0;
 
     if (GPHOME) {
