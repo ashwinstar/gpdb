@@ -222,7 +222,7 @@ sub tablelizer
     return \@rows;
 }
 
-
+# reformat the query output according to the directive hash
 sub format_query_output
 {
     my ($has_order, $outarr, $directive) = @_;
@@ -244,8 +244,13 @@ sub format_query_output
 
         my $ah1 = tablelizer($lines, $firstline);
 
-        return
-            unless (scalar(@{$ah1}));
+        unless (scalar(@{$ah1}))
+        {
+#            print "No tablelizer hash for $lines, $firstline\n";
+#            print STDERR "No tablelizer hash for $lines, $firstline\n";
+
+            return;
+        }
 
         my @allcols = sort (keys(%{$ah1->[0]}));
 
@@ -276,22 +281,31 @@ sub format_query_output
             for my $item (@allspecs)
             {
                 my $realspec;
+                # split the specification list, separating the
+                # specification columns on the left hand side (LHS)
+                # from the "dependent" columns on the right hand side (RHS)
                 my @colset = split(/\-\>/, $item, 2);
                 unless (scalar(@colset) == 2)
                 {
                     print "invalid colset for $item\n";
+                    print STDERR "invalid colset for $item\n";
                     next;
                 }
+                # specification columns (LHS)
                 my @scols = split(/\,/, $colset[0]);
                 unless (scalar(@scols))
                 {
                     print "invalid dependency specification: $colset[0]\n";
+                    print STDERR 
+                        "invalid dependency specification: $colset[0]\n";
                     next;
                 }
+                # dependent columns (RHS)
                 my @dcols = split(/\,/, $colset[1]);
                 unless (scalar(@dcols))
                 {
                     print "invalid specified dependency: $colset[1]\n";
+                    print STDERR "invalid specified dependency: $colset[1]\n";
                     next;
                 }
                 $realspec = {};
@@ -315,7 +329,8 @@ sub format_query_output
             # find all the mvd cols which are *not* dependent.  Need
             # to handle the case of self-dependency, eg "mvd 1->1", so
             # must build set of all columns, then strip out the
-            # "dependent" cols.
+            # "dependent" cols.  So this is the set of all LHS columns
+            # which are never on the RHS.
             my %get_nodeps;
 
             for my $col (@mvdcols)
@@ -378,7 +393,19 @@ sub format_query_output
                 for my $col (@presortcols)
                 {
 #                print "col: ($col)\n";
-                    push @collist, $h_row->{$col};
+                    if (exists($h_row->{$col}))
+                    {
+                        push @collist, $h_row->{$col};
+                    }
+                    else
+                    {
+                        my $maxcol = scalar(@allcols);
+                        my $errstr = 
+                            "specified ORDER column out of range: $col vs $maxcol\n";
+                        print $errstr;
+                        print STDERR $errstr;
+                        last;
+                    }
                 }
                 print $prefix, join(' | ', @collist), "\n";
             }
@@ -408,7 +435,20 @@ sub format_query_output
                     for my $col (@{$mspec->{allcol}})
                     {
 #                print "col: ($col)\n";
-                        push @collist, $h_row->{$col};
+                        if (exists($h_row->{$col}))
+                        {
+                            push @collist, $h_row->{$col};
+                        }
+                        else
+                        {
+                            my $maxcol = scalar(@allcols);
+                            my $errstr = 
+                            "specified MVD column out of range: $col vs $maxcol\n";
+                            print $errstr;
+                            print STDERR $errstr;
+                            last;
+                        }
+
                     }
                     push @outi, join(' | ', @collist);
                 }
@@ -432,9 +472,33 @@ sub format_query_output
         {
             if (scalar(@presortcols))
             {
-                $hd2 .= " ( " . join(", ", @presortcols) . ")";
-                # have to compare all columns as unsorted 
-                push @unsortcols, @presortcols;
+                if (scalar(@mvd_deps))
+                {
+                    my %get_presort;
+
+                    for my $col (@presortcols)
+                    {
+                        $get_presort{$col} = 1;
+                    }
+                    # remove "dependent" (RHS) columns
+                    for my $col (@mvd_deps)
+                    {
+                        if (exists($get_presort{$col}))
+                        {
+                            delete $get_presort{$col};
+                        }
+                    }
+                    # now sorted and unique, minus all mvd dependent cols
+                    @presortcols = sort (keys(%get_presort));
+
+                }
+
+                if (scalar(@presortcols))
+                {
+                    $hd2 .= " ( " . join(", ", @presortcols) . ")";
+                    # have to compare all columns as unsorted 
+                    push @unsortcols, @presortcols;
+                }
             }
             if (scalar(@mvd_nodeps))
             {
@@ -479,7 +543,20 @@ sub format_query_output
 
                 for my $col (@unsortcols)
                 {
-                    push @collist, $h_row->{$col};
+                    if (exists($h_row->{$col}))
+                    {
+                        push @collist, $h_row->{$col};
+                    }
+                    else
+                    {
+                        my $maxcol = scalar(@allcols);
+                        my $errstr = 
+                            "specified UNSORT column out of range: $col vs $maxcol\n";
+                        print $errstr;
+                        print STDERR $errstr;
+                        last;
+                    }
+
                 }
                 push @finalunsort, join(' | ', @collist);
             }
