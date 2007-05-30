@@ -260,12 +260,15 @@ sub format_query_output
         }
 
         my @mvdcols;
+        my @mvd_deps;
+        my @mvd_nodeps;
         my @mvdspec;
         if (defined($mvdlist) && length($mvdlist))
         {
             $mvdlist  =~ s/\n//gm;
             $mvdlist  =~ s/\s//gm;
 
+            # find all the mvd specifications (separated by semicolons)
             my @allspecs = split(/\;/, $mvdlist);
 
 #            print "allspecs:", Data::Dumper->Dump(\@allspecs);
@@ -304,10 +307,34 @@ sub format_query_output
                 $realspec->{allcol} = $sdcol;
 
                 push @mvdcols, @scols, @dcols;
+                # find all the dependent columns
+                push @mvd_deps, @dcols;
                 push @mvdspec, $realspec;
             }
 
+            # find all the mvd cols which are *not* dependent.  Need
+            # to handle the case of self-dependency, eg "mvd 1->1", so
+            # must build set of all columns, then strip out the
+            # "dependent" cols.
+            my %get_nodeps;
+
+            for my $col (@mvdcols)
+            {
+                $get_nodeps{$col} = 1;
+            }
+
+            # remove dependent cols
+            for my $col (@mvd_deps)
+            {
+                if (exists($get_nodeps{$col}))
+                {
+                    delete $get_nodeps{$col};
+                }
+            }
+            # now sorted and unique, with no dependents
+            @mvd_nodeps = sort (keys(%get_nodeps));
 #            print "mvdspec:", Data::Dumper->Dump(\@mvdspec);
+#            print "mvd no deps:", Data::Dumper->Dump(\@mvd_nodeps);
         }
 
         my %unsorth;
@@ -395,6 +422,48 @@ sub format_query_output
             }
         }
         my $hd2 = "unsorted columns " . join(", ", @unsortcols);
+
+        # the "unsorted" comparison must include all columns which are
+        # not sorted or part of an mvd specification, plus the sorted
+        # columns, plus the non-dependent mvd columns which aren't
+        # already in the list
+        if ((scalar(@presortcols))
+            || scalar(@mvd_nodeps))
+        {
+            if (scalar(@presortcols))
+            {
+                $hd2 .= " ( " . join(", ", @presortcols) . ")";
+                # have to compare all columns as unsorted 
+                push @unsortcols, @presortcols;
+            }
+            if (scalar(@mvd_nodeps))
+            {
+                my %get_nodeps;
+
+                for my $col (@mvd_nodeps)
+                {
+                    $get_nodeps{$col} = 1;
+                }
+                # remove "nodeps" which are already in the output list
+                for my $col (@unsortcols)
+                {
+                    if (exists($get_nodeps{$col}))
+                    {
+                        delete $get_nodeps{$col};
+                    }
+                }
+                # now sorted and unique, minus all unsorted/sorted cols
+                @mvd_nodeps = sort (keys(%get_nodeps));
+                if (scalar(@mvd_nodeps))
+                {
+                    $hd2 .= " (( " . join(", ", @mvd_nodeps) . "))";
+                    # have to compare all columns as unsorted 
+                    push @unsortcols, @mvd_nodeps;
+                }
+
+            }
+            
+        }
 
         print $hd2, "\n", "-"x(length($hd2)), "\n";
 

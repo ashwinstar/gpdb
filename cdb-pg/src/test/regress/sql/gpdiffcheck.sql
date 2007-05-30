@@ -35,6 +35,22 @@ select c1, c1, c2, c3 from gpd1 order by 1,2;
 --
 select c1, c2, c3, c1, c1, c2 from gpd1 order by 4;
 
+--  Brian: the contents of column 1 are not determined by any other 
+--  column -- the column "specifies itself"
+--
+--  mvd 1->1
+--
+select row_number() over (), c1, c2, c3 from gpd1;
+
+-- Brian: 1 specifies 2
+--  
+--
+    select -- mvd 1 -> 2
+        x,
+        row_number() over (partition by x) as y,
+        z 
+    from (values (1,'A'),(1,'B'),(2,'C'),(2,'D')) r(x,z);
+
 
 
 --

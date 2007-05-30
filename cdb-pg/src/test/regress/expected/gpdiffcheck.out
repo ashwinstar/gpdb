@@ -93,6 +93,40 @@ select c1, c2, c3, c1, c1, c2 from gpd1 order by 4;
  d  |  4 |  3 | d  | d  |  4
 (8 rows)
 
+--  Brian: the contents of column 1 are not determined by any other 
+--  column -- the column "specifies itself"
+--
+--  mvd 1->1
+--
+select row_number() over (), c1, c2, c3 from gpd1;
+ row_number | c1 | c2 | c3 
+------------+----+----+----
+          1 | b  |  2 |  1
+          2 | d  |  4 |  3
+          3 | d  |  4 |  4
+          4 | b  |  1 |  2
+          5 | a  |  1 |  1
+          6 | c  |  2 |  3
+          7 | c  |  3 |  2
+          8 | a  |  1 |  2
+(8 rows)
+
+-- Brian: 1 specifies 2
+--  
+--
+    select -- mvd 1 -> 2
+        x,
+        row_number() over (partition by x) as y,
+        z 
+    from (values (1,'A'),(1,'B'),(2,'C'),(2,'D')) r(x,z);
+ x | y | z 
+---+---+---
+ 1 | 1 | A
+ 1 | 2 | B
+ 2 | 1 | C
+ 2 | 2 | D
+(4 rows)
+
 --
 -- Clean up
 --
