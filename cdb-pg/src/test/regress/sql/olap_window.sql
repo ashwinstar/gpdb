@@ -119,34 +119,34 @@ select row_number() over (order by pn, cn desc), cn, pn
 from sale; -- mvd 2,3->1
 
 select rank() over (order by cn), cn, pn 
-from sale; -- mvd 1->2 3
+from sale; -- mvd 1->-- mvd
 
 select rank() over (order by pn desc), cn, pn 
-from sale; -- mvd 1->2 3
+from sale; -- mvd 1->2,3
 
 select rank() over (order by pn, cn desc), cn, pn 
-from sale; -- mvd 1->2 3
+from sale; -- mvd 1->2,3
 
 select dense_rank() over (order by cn), cn, pn 
-from sale; -- mvd 1->2 3
+from sale; -- mvd 1->2,3
 
 select dense_rank() over (order by pn desc), cn, pn 
-from sale; -- mvd 1->2 3
+from sale; -- mvd 1->2,3
 
 select dense_rank() over (order by pn, cn desc), cn, pn 
-from sale; -- mvd 1->2 3
+from sale; -- mvd 1->2,3
 
 select rank() over (w), cn, pn 
 from sale 
-window w as (order by cn) -- mvd 1->2 3;
+window w as (order by cn) -- mvd 1->2,3;
 
 select rank() over (w), cn, pn 
 from sale 
-window w as (order by pn desc); -- mvd 1->2 3
+window w as (order by pn desc); -- mvd 1->2,3
 
 select rank() over (w), cn, pn 
 from sale 
-window w as (order by pn, cn desc); -- mvd 1->2 3
+window w as (order by pn, cn desc); -- mvd 1->2,3
 
 select row_number() over (order by pname, cname)
 from sale s, customer c, product p 
@@ -163,7 +163,11 @@ group by vn; -- mvd 3->1
 
 ---- X -- Miscellaneous (e.g. old bugs, etc.) ----
 
-select cn*100 + row_number() over (), cname, row_number() over () - 1, cn 
+select 
+    cn*100 + row_number() over (), 
+    cname, 
+    row_number() over () - 1, 
+    cn 
 from customer; -- mvd 4->1,3
 
 select row_number() over (), a,b 
@@ -181,17 +185,13 @@ from (
     from sale ) s(a) 
 where s.a = r.a;
 
-
---begin equivalent  xxxmvd 4->1 xxxmvd 4->2 xxxmvd 4->3
-
-select row_number() over (w), rank() over (w), dense_rank() over (w), * 
+select 
+    row_number() over (w), 
+    rank() over (w), 
+    dense_rank() over (w), 
+    * 
 from sale 
 window w as (order by cn); -- mvd 4->1; 4->2; 4->3
-
-select row_number() over (order by cn), count(*) over (order by cn) 
-from sale; -- mvd 4->1; 4->2; 4->3
-
---end
 
 select cn, row_number() over (w), count(*) over (w), rank() over (w), dense_rank() over (w), vn 
 from sale 
