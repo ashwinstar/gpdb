@@ -1,16 +1,10 @@
-#!/bin/sh
+#!/bin/bash
 
-ECHOCMD=echo
-# make certain we get the desired echo on Solaris
-if [ `uname` = 'SunOS' ]; then
-  ECHOCMD=/usr/ucb/echo
-fi
-
-TMP=`$ECHOCMD '$Name:  $' | awk 'BEGIN {FS = ":"} {print $2}' | awk '{print $1}'`
-$ECHOCMD -n '-'
+TMP=`echo '$Name:  $' | awk 'BEGIN {FS = ":"} {print $2}' | awk '{print $1}'`
+echo -e "-\c"
 if [ x"$TMP" != x"$" ]; then
-  $ECHOCMD -n $TMP
+  echo -e "$TMP\c"
 else
-  $ECHOCMD -n devel
+  echo -e "devel\c"
 fi
 
