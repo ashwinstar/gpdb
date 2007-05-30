@@ -450,74 +450,56 @@ static Plan * addsm_for_dist_share_motion(
 
 	if(!slice)
 	{
+		Path matpath;
+
 		slice = palloc(sizeof(ShareMotionContextSlice));
 		Assert(dist_exprs);
-		{
-			add_slice_to_motion(sharedMotion, MOTIONTYPE_HASH, dist_exprs, 0, NULL);
-			slice->sliceIdx = list_length(sharedMotion->sliceEntries) - 1;
-			slice->slice = list_nth(sharedMotion->sliceEntries, slice->sliceIdx);
-			slice->sort_pathkeys = NULL;
-			slice->dist_exprs = dist_exprs;
-			slice->plan = NULL;
-			slice->isFocus = false;
 
-			smctxt->siblings = lappend(smctxt->siblings, slice);
-			*pathkeys_ptr = NIL;
-			Assert(get_motion_flow(sharedMotion, slice->sliceIdx));
-		}
+		add_slice_to_motion(sharedMotion, MOTIONTYPE_HASH, dist_exprs, 0, NULL);
+		slice->sliceIdx = list_length(sharedMotion->sliceEntries) - 1;
+		slice->slice = list_nth(sharedMotion->sliceEntries, slice->sliceIdx);
+		slice->sort_pathkeys = NULL;
+		slice->dist_exprs = dist_exprs;
+		slice->plan = NULL;
+		slice->isFocus = false;
 
-		if(sort_pathkeys != NULL && !pathkeys_contained_in(sort_pathkeys, *pathkeys_ptr))
-		{
-			slice->plan = (Plan *) make_sort_from_sortclauses(root, sortclause, (Plan *) sharedMotion);
-			slice->plan->shared_as_id = ShareNodeId_Shared; 
-			slice->plan->underlying_share_id = ShareNodeId_NotShared;
-			slice->plan->sliceNum = slice->sliceIdx;
+		smctxt->siblings = lappend(smctxt->siblings, slice);
+		Assert(get_motion_flow(sharedMotion, slice->sliceIdx));
 
-			slice->sort_pathkeys = sort_pathkeys;
-			mark_sort_locus(slice->plan);
-			sisc->plan.lefttree = slice->plan;
-			sisc->plan.flow = copyObject(get_plan_flow(slice->plan));
-		}
-		else
-		{
-			Path matpath;
-			slice->plan = (Plan *) make_material((Plan *) sharedMotion);
-			slice->plan->shared_as_id = ShareNodeId_Shared; 
-			slice->plan->underlying_share_id = ShareNodeId_NotShared;
-			slice->plan->sliceNum = slice->sliceIdx;
+		slice->plan = (Plan *) make_material((Plan *) sharedMotion);
+		slice->plan->shared_as_id = ShareNodeId_Shared; 
+		slice->plan->underlying_share_id = ShareNodeId_NotShared;
+		slice->plan->sliceNum = slice->sliceIdx;
 
-			cost_material(&matpath, sharedMotion->plan.total_cost, sharedMotion->plan.plan_rows, sharedMotion->plan.plan_width);
-			slice->plan->startup_cost = matpath.startup_cost;
-			slice->plan->total_cost = matpath.total_cost;
-			slice->plan->plan_rows = sharedMotion->plan.plan_rows;
-			slice->plan->plan_width = sharedMotion->plan.plan_width;
+		cost_material(&matpath, sharedMotion->plan.total_cost, sharedMotion->plan.plan_rows, sharedMotion->plan.plan_width);
+		slice->plan->startup_cost = matpath.startup_cost;
+		slice->plan->total_cost = matpath.total_cost;
+		slice->plan->plan_rows = sharedMotion->plan.plan_rows;
+		slice->plan->plan_width = sharedMotion->plan.plan_width;
 
-			slice->plan->flow = copyObject(slice->slice->flow);
-			slice->sort_pathkeys = sort_pathkeys;
-			sisc->plan.lefttree = slice->plan;
-			sisc->plan.flow = copyObject(get_plan_flow(slice->plan));
-		}
-
-		return (Plan *) sisc;
+		slice->plan->flow = copyObject(slice->slice->flow);
+		slice->sort_pathkeys = *pathkeys_ptr;
+		sisc->plan.lefttree = slice->plan;
+		sisc->plan.flow = copyObject(get_plan_flow(slice->plan));
 	}
 	else
 	{
 		sisc->plan.lefttree = slice->plan;
 		sisc->plan.flow = copyObject(get_plan_flow(slice->plan));
-
-		if(pathkeys_contained_in(sort_pathkeys, slice->sort_pathkeys))
-			return (Plan *) sisc;
-		else
-		{
-			Plan *sortplan = (Plan *) make_sort_from_sortclauses(root, sortclause, (Plan *) sisc);
-			*pathkeys_ptr = sort_pathkeys;
-			mark_sort_locus(sortplan);
-			return sortplan;
-		}
 	}
 
-	Assert(!"Unreachable");
-	return NULL;
+	if(sort_pathkeys == NULL || pathkeys_contained_in(sort_pathkeys, slice->sort_pathkeys))
+	{
+		*pathkeys_ptr = slice->sort_pathkeys;
+		return (Plan *) sisc;
+	}
+	else
+	{
+		Plan *sortplan = (Plan *) make_sort_from_sortclauses(root, sortclause, (Plan *) sisc);
+		*pathkeys_ptr = sort_pathkeys;
+		mark_sort_locus(sortplan);
+		return sortplan;
+	}
 }
 
 /* 

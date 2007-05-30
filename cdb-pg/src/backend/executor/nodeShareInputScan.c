@@ -63,11 +63,12 @@ ShareInputNext(ShareInputScanState *node)
 	{
 		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, node->ss.ps.plan->underlying_share_id, false);
 		PlanState* snState = (PlanState *)snEntry->shareState;
+
 		/* 
 		 * set up underlying material node properly.  In case of shared node, 
 		 * ExecProcNode does not return a tuple, it just build the material or sort.
 		 */
-		ExecProcNode(snState);
+		slot = ExecProcNode(snState);
 
 		if(node->share_type == SHARENODE_MATERIAL)
 		{
@@ -75,12 +76,16 @@ ShareInputNext(ShareInputScanState *node)
 			tuplestore_begin_pos((Tuplestorestate *) node->ts_state, (TuplestorePos **)(&node->ts_pos));
 			tuplestore_rescan_pos((Tuplestorestate *) node->ts_state, (TuplestorePos *)node->ts_pos); 
 		}
-		else 
+		else if(node->share_type == SHARENODE_SORT)
 		{
-			Assert(node->share_type == SHARENODE_SORT);
 			node->ts_state = ((SortState *)snState)->tuplesortstate;
 			tuplesort_begin_pos((Tuplesortstate *) node->ts_state, (TuplesortPos **)(&node->ts_pos));
 			tuplesort_rescan_pos((Tuplesortstate *) node->ts_state, (TuplesortPos *)node->ts_pos);
+		}
+		else
+		{
+			Assert(node->share_type == SHARENODE_MOTION);
+			return slot;
 		}
 	}
 
@@ -94,7 +99,7 @@ ShareInputNext(ShareInputScanState *node)
 
 		return ExecClearTuple(slot);
 	} 
-	else 
+	else if(node->share_type == SHARENODE_SORT) 
 	{
 		/* read next from Sort node */
 		Assert(node->share_type == SHARENODE_SORT);
@@ -162,6 +167,8 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 		sisstate->share_type = SHARENODE_MATERIAL;
 	else if(IsA(snState, SortState))
 		sisstate->share_type = SHARENODE_SORT;
+	else if(IsA(snState, MotionState))
+		sisstate->share_type = SHARENODE_MOTION;
 	else
 		Assert(!"Not supported share node");
 
@@ -227,17 +234,16 @@ void ExecEndShareInputScan(ShareInputScanState *node)
  */
 void ExecShareInputScanMarkPos(ShareInputScanState *node)
 {
-	if(!node->ts_state)
-		return;
+	Assert(node->ts_state); 
 
 	if(node->share_type == SHARENODE_MATERIAL)
 		tuplestore_markpos_pos((Tuplestorestate *) node->ts_state,
 			(TuplestorePos *) node->ts_pos);
-	else {
-		Assert(node->share_type == SHARENODE_SORT);
+	else if(node->share_type == SHARENODE_SORT) 
 		tuplesort_markpos_pos((Tuplesortstate *)node->ts_state,
 				(TuplesortPos *) node->ts_pos);
-	}
+	else
+		Assert(!"ExecShareInputScanMarkPos: invalid share type");
 }
 
 /* ------------------------------------------------------------------
@@ -246,17 +252,16 @@ void ExecShareInputScanMarkPos(ShareInputScanState *node)
  */
 void ExecShareInputScanRestrPos(ShareInputScanState *node)
 {
-	if(!node->ts_state)
-		return;
+	Assert(node->ts_state); 
 
 	if(node->share_type == SHARENODE_MATERIAL)
 		tuplestore_restorepos_pos((Tuplestorestate *) node->ts_state,
 				(TuplestorePos *) node->ts_pos);
-	else {
-		Assert(node->share_type == SHARENODE_SORT);
+	else if(node->share_type == SHARENODE_SORT) 
 		tuplesort_restorepos_pos((Tuplesortstate *) node->ts_state,
 				(TuplesortPos *) node->ts_pos);
-	}
+	else
+		Assert(!"ExecShareInputScanRestrPos: invalid share type");
 }
 
 /* ------------------------------------------------------------------
@@ -265,14 +270,15 @@ void ExecShareInputScanRestrPos(ShareInputScanState *node)
  */
 void ExecShareInputScanReScan(ShareInputScanState *node, ExprContext *exprCtxt)
 {
+	Assert(node->ts_state);
+
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 	if(node->share_type == SHARENODE_MATERIAL)
 		tuplestore_rescan_pos((Tuplestorestate *) node->ts_state,
 				(TuplestorePos *) node->ts_pos);
-	else
-	{
-		Assert(node->share_type == SHARENODE_SORT);
+	else if (node->share_type == SHARENODE_SORT)
 		tuplesort_rescan_pos((Tuplesortstate *)node->ts_state,
 				(TuplesortPos *) node->ts_pos);
-	}
+	else
+		Assert(!"ExecShareInputScanReScan: invalid share type ");
 }
