@@ -90,12 +90,17 @@ USAGE () {
 		$ECHO "      Database restore options:"
 		$ECHO "      -t, <timestamp> timestamp key of backup file set that should be used for restore"
 		$ECHO "          Mandatory if -b and -R options not supplied"
-		$ECHO "      -b, <YYYYMMDD> db_dumps/<YYYYMMDD> directory where dump files located"
+		$ECHO "          Expects dump file set to be on the Greenplum Array"
+		$ECHO "      -b, <YYYYMMDD> db_dumps/<YYYYMMDD> directory where dump files located on the GP Array"
 		$ECHO "          Mandatory if -t and -R options not supplied"
-		$ECHO "      -R  <hostname:dir_path> hostname and full directory path where backup set located"
+		$ECHO "          Expects dump file set to be on the Greenplum Array"
+		$ECHO "      -R, <hostname:dir_path> hostname and full directory path where backup set located"
 		$ECHO "          Utility will recover files to Master and segment hosts and then start restore"
 		$ECHO "          process"	
 		$ECHO "          Mandatory if -t and -b options not supplied"
+		$ECHO "      -s, <database name> search for lastest backup set for the named database"
+		$ECHO "          Overrides -t -b and -R  options"
+		$ECHO "          Expects dump file set to be on the Greenplum Array"
 		$ECHO "      -e, Drop (erase) restore database before recovery commences"
 		$ECHO
 		$ECHO "      Return codes:"
@@ -133,6 +138,12 @@ PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-Remote recovery path       = $DB_HOST_PATH" 1
 		else
 		LOG_MSG "[INFO]:-Restore method             = Local" 1
+		fi
+		if [ x"" != "$SEARCH_FOR_LATEST_DUMP_SET" ];then
+		LOG_MSG "[INFO]:-Restore time type          = Search for latest" 1
+		LOG_MSG "[INFO]:-Latest timestamp found     = $RESTORE_TIMESTAMP" 1
+		else
+		LOG_MSG "[INFO]:-Restore time type          = User specified" 1
 		fi
 		if [ x"" != x"$DB_DATE_DIR" ];then
 		LOG_MSG "[INFO]:-Dump restore date          = $DB_DATE_DIR" 1
@@ -172,8 +183,8 @@ CHK_PARAM () {
 		ERROR_EXIT "[FATAL]:-Cannot supply both -R and -b options" 2
 	fi	
 	#See if neither -t , -R or -b have been supplied
-	if [ x"" == x"$DB_TIMESTAMP" ] && [ x"" == x"$DB_DATE_DIR" ] && [ x"" == x"$DB_FILE_HOST" ];then
-		ERROR_EXIT "[FATAL]:-Must supply either -t <timestamp> ,-b <YYYYMMDD> or -R <hostname:dir_path> option" 2
+	if [ x"" == x"$DB_TIMESTAMP" ] && [ x"" == x"$DB_DATE_DIR" ] && [ x"" == x"$DB_FILE_HOST" ] && [ x"" == x"$SEARCH_FOR_DBNAME" ];then
+		ERROR_EXIT "[FATAL]:-Must supply at least one of either -t, -b, -R or -s options or valid combination" 2
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -183,13 +194,13 @@ VALIDATE_PARAMS () {
 	#Check timestamp if supplied
 	if [ x"" != x"$DB_TIMESTAMP" ];then
 		if [ `$ECHO $DB_TIMESTAMP|$TR -d '\n'|$WC -c` -ne $TS_LEN ];then
-			ERROR_EXIT "[FATAL]:-Invalid -t<timestamp> value, expected $TS_LEN numbers" 2
+			ERROR_EXIT "[FATAL]:-Invalid -t<timestamp> value, expected $TS_LEN digits" 2
 		fi
 		I=1
 		while [ $I -le $TS_LEN ]
 		do
 			if [ `$ECHO $DB_TIMESTAMP|$TR -d '\n'|$CUT -b$I|$GREP -c "[0-9]"` -ne 1 ];then
-			 	ERROR_EXIT "[FATAL]:-Invalid -t<timestamp> value, contains a none numeric character" 2
+			 	ERROR_EXIT "[FATAL]:-Invalid -t<timestamp> value, contains a none numeric value" 2
 			fi
 			((I=$I+1))
 		done
@@ -454,6 +465,44 @@ VALIDATE_DBID_LIST () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+SEARCH_FOR_LATEST_DUMP_SET () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Scanning Master host for lastest dump file set for database $SEARCH_FOR_DBNAME" 1
+	#Build an array of gp_cdatabase_1_1 files
+	CDATABASE_ARRAY=(`$FIND ${MASTER_DATA_DIRECTORY}/db_dumps -name ${CREATEDB_PREFIX}*`)
+	if [ ${#CDATABASE_ARRAY[@]} -eq 0 ];then
+		ERROR_EXIT "[FATAL]:-No ${CREATEDB_PREFIX}* files located" 2
+	fi
+	for CFILE in ${CDATABASE_ARRAY[@]}
+	do
+		DB_LOCATED=`$CAT $CFILE|$GREP -ic "create database $SEARCH_FOR_DBNAME"`
+		if [ $DB_LOCATED -ne 0 ];then
+			TO_CHECK=(${TO_CHECK[@]} $CFILE)
+		fi
+	done
+	if [ ${#TO_CHECK[@]} -eq 0 ];then
+		ERROR_EXIT "[FATAL]:-No ${CREATEDB_PREFIX}* files located with database $SEARCH_FOR_DBNAME" 2
+	else
+		LOG_MSG "[INFO]:-Located ${#TO_CHECK[@]} ${CREATEDB_PREFIX}* files with database $SEARCH_FOR_DBNAME" 1
+	fi
+	CMAX_DATE=0
+	for CFILE in ${TO_CHECK[@]}
+	do
+		CDATE=`$ECHO $CFILE|$AWK -F"/" '{print $NF}'|$AWK -F"_" '{print $NF}'`
+		if [ $CDATE -gt $CMAX_DATE ];then
+			CMAX_DATE=$CDATE
+		fi
+	done
+	RESTORE_TIMESTAMP=$CMAX_DATE
+	DB_DATE_DIR=`$ECHO $CMAX_DATE|$CUT -b1-8`
+	RESTORE_DIR_DATE=$DB_DATE_DIR
+	GP_RESTORE_DIR=db_dumps/$DB_DATE_DIR	
+	RESTORE_DIR=${MASTER_DATA_DIRECTORY}/db_dumps/$DB_DATE_DIR
+	COMPRESS=`ls ${MASTER_DATA_DIRECTORY}/db_dumps/$DB_DATE_DIR/${MASTER_DBDUMP_PREFIX}_${RESTORE_TIMESTAMP}*|$AWK -F"." '{print $2}'`
+	LOG_MSG "[INFO]:-Identified latest dump timestamp for $SEARCH_FOR_DBNAME as $CMAX_DATE" 1
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 GATHER_INFO () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	GET_MIRROR_TYPE
@@ -466,6 +515,9 @@ GATHER_INFO () {
 	if [ x"" != x"$DB_FILE_HOST" ];then
 		VALIDATE_DB_FILE_HOST
 	fi
+	if [ x"" != x"$SEARCH_FOR_DBNAME" ];then
+		SEARCH_FOR_LATEST_DUMP_SET
+	fi	
 	#Get the current gp_fault_action setting
 	FAIL_TYPE=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"show gp_fault_action;"`
 	#Now get name of database we are going to restore
@@ -557,7 +609,7 @@ GP_RESTORE_DATABASE () {
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":vt:'?'aql:d:!Dt:b:R:e" opt;do
+		while getopts ":vt:'?'aql:d:!Dt:b:R:es:" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						'?' ) USAGE ;;
@@ -572,6 +624,7 @@ if [ $# -ne 0 ]; then
 						b ) DB_DATE_DIR=$OPTARG ;;
 						R ) DB_FILE_HOST=$OPTARG ;;
 						e ) DROP_DB=1 ;;
+						s ) SEARCH_FOR_DBNAME=$OPTARG ;;
 						* ) USAGE ;;
 				esac
 		done	
@@ -594,6 +647,11 @@ fi
 #Check to ensure mandatory parameters have been supplied
 CHK_ON_PASSIVE_STANDBY
 #GET_QD_DB_NAME
+if [ x"" != x"$SEARCH_FOR_DBNAME" ];then
+	unset DB_TIMESTAMP
+	unset DB_DATE_DIR
+	unset DB_FILE_HOST
+fi
 CHK_PARAM
 VALIDATE_PARAMS
 GATHER_INFO
