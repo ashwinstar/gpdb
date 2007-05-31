@@ -53,7 +53,6 @@ LOG_STATEMENT_TXT="#log_statement ="
 LISTEN_ADR_TXT="listen_addresses"
 CHKPOINT_SEG_TXT="checkpoint_segments"
 LOG_STATS_TXT="stats_command_string="
-
 TMP_PG_HBA=/tmp/pg_hba_conf_master.$$
 #******************************************************************************
 # Functions
@@ -102,7 +101,7 @@ PROCESS_QE () {
 		LOG_MSG "[INFO][$INST_COUNT]:-Processing segment $GP_HOSTNAME"
 		$TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;$INITDB -E $ENCODING -D $GP_DIR --locale=$LOCALE_SETTING --max_connections=$QE_MAX_CONNECT --shared_buffers=$QE_SHARED_BUFFERS" >> $LOG_FILE 2>&1
 		RETVAL=$?
-		BACKOUT_COMMAND "$TRUSTED_SHELL ${GP_HOSTNAME} \"$RM -rf $GP_DIR\""
+		BACKOUT_COMMAND "$TRUSTED_SHELL ${GP_HOSTNAME} \"$RM -rf $GP_DIR > /dev/null 2>&1\""
 		BACKOUT_COMMAND "$ECHO \"removing directory $GP_DIR on $GP_HOSTNAME\""
 		PARA_EXIT $RETVAL "to start segment instance database $GP_HOSTNAME $GP_DIR"
 		LOG_MSG "[INFO][$INST_COUNT]:-Configuring segment $PG_CONF"
@@ -149,13 +148,14 @@ PROCESS_QE () {
 		done
 		LOG_MSG "[INFO][$INST_COUNT]:-Starting Functioning instance on segment ${GP_HOSTNAME}"
 		$TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -l ${GP_DIR}.log -o \"-i -p ${GP_PORT}\" start" >> $LOG_FILE 2>&1
-		if [ $? -ne 0 ]; then
+		RETVAL=$?
+		if [ $RETVAL -ne 0 ]; then
+			BACKOUT_COMMAND "$TRUSTED_SHELL ${GP_HOSTNAME} \"$RM -f ${GP_DIR}.log\""
 			BACKOUT_COMMAND "$ECHO \"Removing segment log file ${GP_DIR}.log on segment $GP_HOSTNAME\""
 			BACKOUT_COMMAND "$TRUSTED_SHELL $GP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -l ${GP_DIR}.log -o \"-i -p ${GP_PORT}\" -m immediate  stop\""
+			BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $GP_HOSTNAME\""
 			$TRUSTED_SHELL ${GP_HOSTNAME} "$CAT ${GP_DIR}.log "|$TEE -a $LOG_FILE
-			$ECHO "FAILED:$SEGMENT_LINE" >> $PARALLEL_STATUS_FILE
-			LOG_MSG "[FATAL][$INST_COUNT]:-to start segment Mirror instance database"
-			exit 2
+			PARA_EXIT $RETVAL "Start segment Mirror instance database"
 		fi	
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${GP_HOSTNAME} \"$RM -f ${GP_DIR}.log\""
 		BACKOUT_COMMAND "$ECHO \"Removing segment log file ${GP_DIR}.log on segment $GP_HOSTNAME\""
@@ -184,7 +184,7 @@ UPDATE_MPP () {
                                 $TRUSTED_SHELL $U_HOST "$EXPORT_LIB_PATH;env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $GP_TBL (gpname, numsegments, dbid, content) values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" " >> $LOG_FILE 2>&1
 				PARA_EXIT $? "add $U_DBID to Master gp_id"
                 fi
-                LOG_MSG "[INFO][$INST_COUNT]:-Successfully updated mpp system table"
+                LOG_MSG "[INFO][$INST_COUNT]:-Successfully updated GPDB system table"
                 LOG_MSG "[INFO][$INST_COUNT]:-End Function $FUNCNAME"
 }
 #******************************************************************************
