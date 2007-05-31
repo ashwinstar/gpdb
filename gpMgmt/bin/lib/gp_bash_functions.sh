@@ -549,12 +549,23 @@ GET_TABLE_TYPE () {
 CHK_FILE () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		FILENAME=$1
-		LOG_MSG "[INFO]:-Checking file $FILENAME"
-		if [ ! -s $FILENAME ] || [ ! -r $FILENAME ]
-				then
-				EXISTS=1
+		FILE_HOST=$2
+		if [ x"" == x"$FILE_HOST" ];then
+			LOG_MSG "[INFO]:-Checking file $FILENAME"
+			if [ ! -s $FILENAME ] || [ ! -r $FILENAME ]
+					then
+					EXISTS=1
+			else
+					EXISTS=0
+			fi
 		else
-				EXISTS=0
+			EXISTS=`$TRUSTED_SHELL $FILE_HOST "if [ ! -s $FILENAME ] || [ ! -r $FILENAME ];then $ECHO 1;else $ECHO 0;fi"`
+			RETVAL=$?
+			if [ $RETVAL -ne 0 ];then
+				LOG_MSG "[WARN]:-Failed to obtain details of $FILENAME on $FILE_HOST"
+				EXIT_STATUS=1
+				EXISTS=1
+			fi
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
