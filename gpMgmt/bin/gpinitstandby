@@ -506,7 +506,7 @@ if [ $FAIL_PRI_SEG ];then
 else
 	LOG_MSG "[INFO]:------------------------------------------------" 1
 	if [ $UPDATE_CATALOG -eq 1 ];then
-	LOG_MSG "[INFO]:-d1
+	LOG_MSG "[INFO]:-Successfully created master standby host on $MASTER_STANDBY_HOSTNAME " 1
 	else
 	LOG_MSG "[INFO]:-Successfully completed standby master re-synch on host $MASTER_STANDBY_HOSTNAME " 1
 	fi
