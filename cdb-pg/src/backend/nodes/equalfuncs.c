@@ -934,11 +934,22 @@ _equalCreateStmt(CreateStmt *a, CreateStmt *b)
 }
 
 static bool
+_equalExtTableTypeDesc(ExtTableTypeDesc *a, ExtTableTypeDesc *b)
+{
+	COMPARE_SCALAR_FIELD(exttabletype);
+	COMPARE_NODE_FIELD(location_list);
+	COMPARE_NODE_FIELD(on_clause);
+	COMPARE_STRING_FIELD(command_string);
+	
+	return true;
+}
+
+static bool
 _equalCreateExternalStmt(CreateExternalStmt *a, CreateExternalStmt *b)
 {
 	COMPARE_NODE_FIELD(relation);
 	COMPARE_NODE_FIELD(tableElts);
-	COMPARE_NODE_FIELD(locations);
+	COMPARE_NODE_FIELD(exttypedesc);
 	COMPARE_STRING_FIELD(format);
 	COMPARE_NODE_FIELD(formatOpts);
 	
@@ -2245,6 +2256,9 @@ equal(void *a, void *b)
 			break;
 		case T_CreateStmt:
 			retval = _equalCreateStmt(a, b);
+			break;
+		case T_ExtTableTypeDesc:
+			retval = _equalExtTableTypeDesc(a, b);
 			break;
 		case T_CreateExternalStmt:
 			retval = _equalCreateExternalStmt(a, b);

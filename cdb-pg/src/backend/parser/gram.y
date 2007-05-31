@@ -159,7 +159,8 @@ static void doNegateFloat(Value *v);
 		CreatedbStmt DeclareCursorStmt DefineStmt DeleteStmt
 		DropGroupStmt DropOpClassStmt DropPLangStmt DropQueueStmt DropStmt
 		DropAssertStmt DropTrigStmt DropRuleStmt DropCastStmt DropRoleStmt
-		DropUserStmt DropdbStmt DropTableSpaceStmt ExplainStmt FetchStmt
+		DropUserStmt DropdbStmt DropTableSpaceStmt ExplainStmt 
+		ExtTypedesc FetchStmt
 		GrantStmt GrantRoleStmt IndexStmt InsertStmt ListenStmt LoadStmt
 		LockStmt NotifyStmt ExplainableStmt PreparableStmt
 		CreateFunctionStmt AlterFunctionStmt ReindexStmt RemoveAggrStmt
@@ -184,9 +185,9 @@ static void doNegateFloat(Value *v);
 %type <dbehavior>	opt_drop_behavior
 
 %type <list>	createdb_opt_list alterdb_opt_list copy_opt_list
-				format_opt_list transaction_mode_list
+				ext_on_clause_list format_opt_list transaction_mode_list
 %type <defelt>	createdb_opt_item alterdb_opt_item copy_opt_item
-				format_opt_item transaction_mode_item
+				ext_on_clause_item format_opt_item transaction_mode_item
 
 %type <ival>	opt_lock lock_type cast_context
 %type <boolean>	opt_force opt_or_replace
@@ -403,7 +404,7 @@ static void doNegateFloat(Value *v);
 
 	GLOBAL GRANT GRANTED GREATEST GROUP_P GROUP_ID GROUPING
 
-	HANDLER HAVING HEADER_P HOLD HOUR_P
+	HANDLER HAVING HEADER_P HOLD HOST HOUR_P
 
 	IF_P  ILIKE IMMEDIATE IMMUTABLE IMPLICIT_P IN_P INCLUDING INCREMENT
 	INDEX INDEXES INHERIT INHERITS INITIALLY INNER_P INOUT INPUT_P
@@ -438,7 +439,7 @@ static void doNegateFloat(Value *v);
 	RETURNING RETURNS REVOKE RIGHT
 	ROLE ROLLBACK ROLLUP ROW ROWS RULE
 
-	SAVEPOINT SCHEMA SCROLL SECOND_P SECURITY SELECT SEQUENCE
+	SAVEPOINT SCHEMA SCROLL SECOND_P SECURITY SEGMENT SELECT SEQUENCE
 	SERIALIZABLE SESSION SESSION_USER SET SETOF SETS SHARE
 	SHOW SIMILAR SIMPLE SMALLINT SOME STABLE START STATEMENT
 	STATISTICS STDIN STDOUT STORAGE STRICT_P SUBSTRING SUPERUSER_P SYMMETRIC
@@ -2438,19 +2439,69 @@ CreateAsElement:
  *****************************************************************************/
 	
 CreateExternalStmt:	CREATE EXTERNAL OptTemp TABLE qualified_name '(' OptExtTableElementList ')' 
-					LOCATION '(' location_list ')' FORMAT Sconst '(' format_opt_list ')'
+					ExtTypedesc FORMAT Sconst '(' format_opt_list ')'
 						{
 							CreateExternalStmt *n = makeNode(CreateExternalStmt);
 							$5->istemp = $3;
 							n->relation = $5;
 							n->tableElts = $7;
-							n->locations = $11;
-							n->format = $14;
-							n->formatOpts = $16;
+							n->exttypedesc = $9;
+							n->format = $11;
+							n->formatOpts = $13;
 							$$ = (Node *)n;							
 						}
 						;
 
+ExtTypedesc:
+			LOCATION '(' location_list ')'		
+			{
+				ExtTableTypeDesc *n = makeNode(ExtTableTypeDesc);
+				n->exttabletype = EXTTBL_TYPE_LOCATION;
+				n->location_list = $3; 
+				n->on_clause = NIL;
+				n->command_string = NULL;
+				$$ = (Node *)n;
+	
+			}
+			| EXECUTE Sconst ext_on_clause_list
+			{
+				ExtTableTypeDesc *n = makeNode(ExtTableTypeDesc);
+				n->exttabletype = EXTTBL_TYPE_EXECUTE;
+				n->location_list = NIL; 
+				n->on_clause = $3;
+				n->command_string = $2;
+				$$ = (Node *)n;
+			}
+			;
+
+ext_on_clause_list:
+			ext_on_clause_list ext_on_clause_item		{ $$ = lappend($1, $2); }
+			| /* EMPTY */								{ $$ = NIL; }
+			;
+	
+ext_on_clause_item:
+			ON ALL	
+			{
+				$$ = makeDefElem("all", (Node *)makeInteger(TRUE));
+			}
+			| ON HOST Sconst
+			{
+				$$ = makeDefElem("hostname", (Node *)makeString($3));
+			}
+			| ON HOST
+			{
+				$$ = makeDefElem("eachhost", (Node *)makeInteger(TRUE));
+			}
+			| ON SEGMENT Iconst
+			{
+				$$ = makeDefElem("segment", (Node *)makeInteger($3));
+			}
+			| ON Iconst
+			{
+				$$ = makeDefElem("random", (Node *)makeInteger($2));
+			}
+			;
+	
 location_list:  	
 			Sconst								{ $$ = list_make1($1); }
 			| location_list ',' Sconst			{ $$ = lappend($1, $3); }
@@ -9142,6 +9193,7 @@ unreserved_keyword:
 			| HANDLER
 			| HEADER_P
 			| HOLD
+			| HOST
 			| HOUR_P
 			| IF_P
 			| IMMEDIATE
@@ -9236,6 +9288,7 @@ unreserved_keyword:
 			| SCROLL
 			| SECOND_P
 			| SECURITY
+			| SEGMENT
 			| SEQUENCE
 			| SERIALIZABLE
 			| SESSION

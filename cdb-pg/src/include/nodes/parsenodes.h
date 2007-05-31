@@ -1186,15 +1186,30 @@ typedef struct CreateStmt
 } CreateStmt;
 
 /* ----------------------
- *		Create External Table Statement
+ *	Definitions for external tables
  * ----------------------
  */
+typedef enum ExtTableType
+{
+	EXTTBL_TYPE_LOCATION,		/* table defined with LOCATION clause */
+	EXTTBL_TYPE_EXECUTE			/* table defined with EXECUTE clause */
+} ExtTableType;
+
+typedef struct ExtTableTypeDesc
+{
+	NodeTag			type;
+	ExtTableType	exttabletype;
+	List			*location_list;
+	List			*on_clause;
+	char			*command_string;
+} ExtTableTypeDesc;
+
 typedef struct CreateExternalStmt
 {
 	NodeTag		type;
 	RangeVar   *relation;		/* exteranl relation to create */
 	List	   *tableElts;		/* column definitions (list of ColumnDef) */
-	List	   *locations;      /* LOCATION uri list */
+	Node	   *exttypedesc;    /* LOCATION or EXECUTE information */
 	char	   *format;			/* data format name */
 	List	   *formatOpts;		/* List of DefElem nodes for data format */
 } CreateExternalStmt;

@@ -310,6 +310,7 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 	ScanKeyData	key;
 	SysScanDesc	extscan;
 	Datum		locations;
+	Datum		execcommand;
 	Datum		fmttype;
 	Datum		fmtopts;
 	bool		isNull;
@@ -362,9 +363,6 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 							 pg_exttable_rel->rd_att, 
 							 &isNull);
 	
-	/*
-	 * Get distribution keys only if this table has a policy.
-	 */
 	if (isNull)
 	{
 		/* should not happen, TODO: error */
@@ -384,6 +382,19 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 		}
 	}
 	
+	/* 
+	 * get the exec command string (or NULL if doesn't exist)
+	 */
+	execcommand = heap_getattr(tuple,
+							   Anum_pg_exttable_command,
+							   pg_exttable_rel->rd_att, 
+							   &isNull);
+							   
+	if(isNull)
+		rel->execcommand = NULL; /* tell planner no EXECUTE for this ext table */
+	else
+		rel->execcommand = DatumGetCString(DirectFunctionCall1(textout, execcommand));
+		
 	/*
 	 * Now get the format type
 	 */

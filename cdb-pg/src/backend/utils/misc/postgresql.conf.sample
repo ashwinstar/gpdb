@@ -505,7 +505,7 @@
 #---------------------------------------------------------------------------
 # EXTERNAL TABLES
 #---------------------------------------------------------------------------
-#gp_external_enable_exec = on
+#gp_external_enable_exec = on   # enable external tables with EXECUTE.
 
 #---------------------------------------------------------------------------
 # VERSION/PLATFORM COMPATIBILITY

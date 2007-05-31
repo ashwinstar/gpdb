@@ -279,8 +279,11 @@ static void update_ri_trigger_args(Oid relid,
 					   const char *newname,
 					   bool fk_scan,
 					   bool update_relname);
-static void StoreExternalRelation(Oid tbloid, Datum locations, Datum formatopts, char formattype);
+static void StoreExternalRelation(Oid tbloid, Datum locations, Datum locationExec, 
+								  char *commandString, Datum formatopts, 
+								  char formattype);
 static Datum transformLocationUris(List *locs);
+static Datum transformExecOnClause(List	*on_clause);
 static char transformFormatType(char *formatname);
 static Datum transformFormatOpts(char formattype, List *formatOpts);
 static Oid
@@ -712,10 +715,13 @@ extern void	DefineExternalRelation(CreateExternalStmt *stmt)
 {
 	
 	CreateStmt *createStmt = makeNode(CreateStmt);
+	ExtTableTypeDesc *exttypeDesc;
 	Oid			extRelOid;
 	Datum		locationUris;
 	Datum		formatOptStr;
+	Datum		locationExec;
 	char		formattype;
+	char		*commandString = NULL;
 	
 	/*
 	 * Only superusers allowed to create an external table
@@ -754,11 +760,27 @@ extern void	DefineExternalRelation(CreateExternalStmt *stmt)
 		createStmt->policy = NULL;
 	}
 	
+	exttypeDesc = (ExtTableTypeDesc *)stmt->exttypedesc;
 	
-	/*
-	 * Parse and validate URI strings (LOCATION clause).
-	 */
-	locationUris = transformLocationUris(stmt->locations);
+	switch(exttypeDesc->exttabletype)
+	{
+		case EXTTBL_TYPE_LOCATION:
+			
+			/* Parse and validate URI strings (LOCATION clause) */
+			locationUris = transformLocationUris(exttypeDesc->location_list);
+			break;
+			
+		case EXTTBL_TYPE_EXECUTE:
+			locationExec = transformExecOnClause(exttypeDesc->on_clause);
+			commandString = exttypeDesc->command_string;
+			
+			break;
+		
+		default:
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("Internal error: unknown external table type")));
+	}
 	
 	/*
 	 * Parse and validate FORMAT clause.
@@ -774,8 +796,12 @@ extern void	DefineExternalRelation(CreateExternalStmt *stmt)
 	/*
 	 * add an entry into pg_exttable using the reloid from DefineRelation.
 	 */
-	StoreExternalRelation(extRelOid, locationUris, formatOptStr, formattype);
-	
+	StoreExternalRelation(extRelOid, 
+						  locationUris, 
+						  locationExec, 
+						  commandString, 
+						  formatOptStr, 
+						  formattype);
 }
 
 /*
@@ -7832,7 +7858,8 @@ AtEOSubXact_on_commit_actions(bool isCommit, SubTransactionId mySubid,
  * in pg_class and a text array of external location URIs.
  */
 static void
-StoreExternalRelation(Oid tbloid, Datum locations, Datum formatopts, char formattype)
+StoreExternalRelation(Oid tbloid, Datum uri_locations, Datum exec_locations, 
+					  char *commandString, Datum formatopts, char formattype)
 {
 	Relation	pg_exttable_rel;
 	HeapTuple	pg_exttable_tuple = NULL;
@@ -7843,15 +7870,32 @@ StoreExternalRelation(Oid tbloid, Datum locations, Datum formatopts, char format
 	MemSet(nulls, ' ', sizeof(nulls));
 	
     /*
-     * Open and lock the gp_distribution_policy catalog.
+     * Open and lock the pg_exttable catalog.
      */
 	pg_exttable_rel = heap_open(ExtTableRelationId, RowExclusiveLock);
 	
 	values[Anum_pg_exttable_reloid - 1] = ObjectIdGetDatum(tbloid);
-	values[Anum_pg_exttable_location - 1] = locations;
 	values[Anum_pg_exttable_fmtcode - 1] = CharGetDatum(formattype);
 	values[Anum_pg_exttable_fmtopts - 1] = formatopts;
 	
+	if(commandString)
+	{
+		/* EXECUTE type table - store command and command location */
+		
+		values[Anum_pg_exttable_command - 1] = 
+		DirectFunctionCall1(textin, CStringGetDatum(commandString));
+		values[Anum_pg_exttable_location - 1] = exec_locations;
+		
+	}
+	else
+	{
+		/* LOCATION type table - store uri locations. command is NULL */
+		
+		values[Anum_pg_exttable_location - 1] = uri_locations;
+		values[Anum_pg_exttable_command - 1] = 0;
+		nulls[Anum_pg_exttable_command - 1] = 'n';
+	}
+
 	pg_exttable_tuple = heap_formtuple(RelationGetDescr(pg_exttable_rel), 
 									   values, nulls);
 	
@@ -7938,8 +7982,7 @@ static Datum transformLocationUris(List *locs)
 		
 		if(uri->protocol != URI_FILE && 
 		   uri->protocol != URI_HTTP &&		   
-		   uri->protocol != URI_GPFDIST &&
-		   uri->protocol != URI_EXEC)
+		   uri->protocol != URI_GPFDIST)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -7969,6 +8012,95 @@ static Datum transformLocationUris(List *locs)
 		
 	return result;	
 	
+}
+
+static Datum transformExecOnClause(List	*on_clause)
+{
+	ArrayBuildState *astate;
+	Datum		result;
+
+	ListCell   *exec_location_opt;
+	char	   *exec_location_str = NULL;
+	char	   *value_str = NULL;
+	int			value_int;
+	Size		len;
+	text		*t;
+	
+	/* 
+	 * Extract options from the statement node tree
+	 * NOTE: as of now we only support one option in the ON clause
+	 * and therefore more than one is an error (check here in case 
+	 * the sql parser isn't strict enough).
+	 */
+	foreach(exec_location_opt, on_clause)
+	{
+		DefElem    *defel = (DefElem *) lfirst(exec_location_opt);
+	
+		/* only one element is allowed! */
+		if(exec_location_str)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("ON clause must not have more than one element.")));
+		
+		if (strcmp(defel->defname, "all") == 0)
+		{
+			/* result: "ALL_SEGMENTS" */
+			exec_location_str = (char *) palloc(12 + 1);
+			exec_location_str = "ALL_SEGMENTS";			
+		}
+		else if (strcmp(defel->defname, "hostname") == 0)
+		{
+			/* result: "HOST:<hostname>" */
+			value_str = strVal(defel->arg);
+			exec_location_str = (char *) palloc(5 + 1 + strlen(value_str) + 1);
+			sprintf((char *) exec_location_str, "HOST:%s", value_str);			
+		}
+		else if (strcmp(defel->defname, "eachhost") == 0)
+		{
+			/* result: "PER_HOST" */
+			exec_location_str = (char *) palloc(8 + 1);
+			exec_location_str = "PER_HOST";			
+		}
+		else if (strcmp(defel->defname, "segment") == 0)
+		{			
+			/* result: "SEGMENT_ID:<segid>" */
+			value_int = intVal(defel->arg);
+			exec_location_str = (char *) palloc(10 + 1 + 8 + 1);
+			sprintf((char *) exec_location_str, "SEGMENT_ID:%d", value_int);			
+		}
+		else if (strcmp(defel->defname, "random") == 0)
+		{
+			/* result: "TOTAL_SEGS:<number>" */
+			value_int = intVal(defel->arg);
+			exec_location_str = (char *) palloc(10 + 1 + 8 + 1);
+			sprintf((char *) exec_location_str, "TOTAL_SEGS:%d", value_int);			
+		}
+		else
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("Unknown location code for EXECUTE in tablecmds.")));
+		}
+	}
+	
+	/* convert to text[] */
+	astate = NULL;
+	len = VARHDRSZ + strlen(exec_location_str);
+	t = (text *) palloc(len + 1);
+	SET_VARSIZE(t, len);
+	sprintf((char *) VARDATA(t), "%s", exec_location_str);
+	
+	
+	astate = accumArrayResult(astate, PointerGetDatum(t),
+							  false, TEXTOID,
+							  CurrentMemoryContext);
+	
+	if (astate)
+		result = makeArrayResult(astate, CurrentMemoryContext);
+	else
+		result = (Datum) 0;
+	
+	return result;	
 }
 
 /*

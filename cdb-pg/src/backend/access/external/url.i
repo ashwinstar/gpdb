@@ -429,11 +429,19 @@ URL_FILE *
 url_fopen(char *url, const char *operation, extvar_t* ev)
 {
     /* this code checks for URLs or types in the 'url' and
-       basicly use the real fopen() for standard files */
+     * basicly use the real fopen() for standard files, or
+	 * if the url happens to be a command to execute it uses
+	 * popen to execute it.
+	 */
+	
+	/* an EXECUTE string will always be prefixed like this */
+	const char *exec_prefix = "execute:";
+	
 	/*char  sessionIDBuf[80];*/
 	URL_FILE *file;
 	int e;
     (void)operation;
+	
 
     if (! (file = (URL_FILE *)malloc(sizeof(URL_FILE) + strlen(url) + 1)))
 	{
@@ -445,9 +453,13 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 	file->url = ((char*) file) + sizeof(URL_FILE);
 	strcpy(file->url, url);
 
-	if (strncmp(url, PROTOCOL_EXEC, strlen(PROTOCOL_EXEC)) == 0)
+	/* 
+	 * if 'url' starts with "execute:" then it's a command to execute and 
+	 * not a url (the command specified in CREATE EXTERNAL TABLE .. EXECUTE) 
+	 */
+	if (strncmp(url, exec_prefix, strlen(exec_prefix)) == 0)
 	{
-		char* cmd = url + strlen(PROTOCOL_EXEC);
+		char* cmd = url + strlen(exec_prefix);
 		int sz = make_command(cmd, ev, 0);
 		char *shexec = palloc(sz);
 		make_command(cmd, ev, shexec);

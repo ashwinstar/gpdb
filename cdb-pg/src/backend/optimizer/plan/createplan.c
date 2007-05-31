@@ -967,7 +967,6 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	List			*filenames = NIL;
 	List			*fmtopts = NIL;
 	List			*modifiedloclist = NIL;
-	List			*finalUriList = NIL;
 	ListCell		*c = NULL;
 	char			**segdb_file_map = NULL;
 	char			*first_uri_str = NULL;
@@ -975,7 +974,14 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	int				total_primaries = 0;
 	int				i;
 	
-	/* gpfdist specific variables */
+	/* various processing flags */
+	bool			using_execute = false; /* true if EXECUTE is used */
+	bool			using_location = false; /* true if LOCATION is used */
+	bool			found_candidate = false;
+	bool			found_match = false;
+	bool			done = false;
+	
+	/* gpfdist or EXECUTE specific variables */
 	int				total_to_skip = 0;
 	int				max_participants_allowed = 0;
 	bool			num_segs_participating = 0;
@@ -1015,90 +1021,229 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	MemSet(segdb_file_map, 0, total_primaries * sizeof(char *));
 	
 	Assert(rel->locationlist != NIL);
-	
-	/* use rel->locationlist (but this may get overidden if gpfdist is used) */
-	finalUriList = rel->locationlist;
-	
-	/* 
-	 * take a peek at the first URI so we know which protocol deal with 
-	 */
-	first_uri_str = (char *) strVal(lfirst(list_head(rel->locationlist)));
-	uri = ParseUriString(first_uri_str);
-	
-	if(uri->protocol == URI_EXEC && !gp_external_enable_exec)
+
+	/* is this an EXECUTE table or a LOCATION (URI) table */
+	if(rel->execcommand)
+	{
+		using_execute = true;
+		using_location = false;
+	}
+	else
+	{
+		using_execute = false;
+		using_location = true;
+	}
+		
+
+	if(using_execute && !gp_external_enable_exec)
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_FEATURE_NOT_CONFIGURED), /* any better errcode? */
-				 errmsg("Using external tables with OS level commands "
-						"(EXECUTE clause) is disabled"),
-				 errhint("To enable set gp_external_enable_exec=on")));
+				errmsg("Using external tables with OS level commands "
+					   "(EXECUTE clause) is disabled"),
+				errhint("To enable set gp_external_enable_exec=on")));
+
+	/* 
+	 * take a peek at the first URI so we know which protocol we'll deal with 
+	 */
+	if(!using_execute)
+	{
+		first_uri_str = (char *) strVal(lfirst(list_head(rel->locationlist)));
+		uri = ParseUriString(first_uri_str);		
+	}
+	
 
 	/*
-	 * Re-write the location list for GPFDIST and EXECUTE
+	 * Now we do the actual assignment of work to the segment databases (where 
+	 * work is either a URI to open or a command to execute). Due to the 
+	 * big differences between the different protocols we handle each one
+	 * separately. Unfortunately this means some code duplication, but keeping
+	 * this separation makes the code much more understandable and (even) 
+	 * more maintainable.
 	 *
-	 * If we happen to be dealing with URI's with the 'gpfdist' protocol
-	 * or we are executing an external table with an EXECUTE clause, we do 
-	 * an extra step here. 
+	 * Outline of the following code blocks (from simplest to most complex):
+	 * (only one of these will get executed for a statement)
 	 *
-	 * (*) We modify the locationlist so that every
-	 * primary segdb will get a URI (therefore we duplicate the existing
-	 * URI's until the list is of size = total_primaries). 
-	 * Example: 2 URIs, 7 total segdbs.
-	 * Original LocationList: URI1->URI2
-	 * Modified LocationList: URI1->URI2->URI1->URI2->URI1->URI2->URI1
+	 * 1) segment mapping for tables with LOCATION http:// or file:// . 
 	 *
-	 * (**) In the case of 'gpfdist' we also make sure that we don't allocate
-	 * more segdbs than (# of URIs x gp_external_max_segs). 
-	 * Example: 2 URIs, 7 total segdbs, gp_external_max_segs = 3
-	 * Original LocationList: URI1->URI2
-	 * Modified LocationList: URI1->URI2->URI1->URI2->URI1->URI2 (6 total).
+	 * These two protocols are very similar in that they enforce a 1-URI:1-segdb
+	 * relationship. The only difference between them is that file:// URI must 
+	 * be assigned to a segdb on a host that is local to that URI.
 	 *
-	 * (***) In that case that we need to allocate only a subset of primary 
-	 * segdbs and not all we then also create a random map of segments to skip.
-	 * Using the previous example a we create a map of 7 entries and need to
-	 * randomly select 1 segdb to skip (7 - 6 = 1). so it may look like this:
-	 * [F F T F F F F] - in which case we know to skip the 3rd segment only.
+	 * 2) segment mapping for tables with LOCATION gpfdist://
 	 *
+	 * This protocol is more complicated - in here we usually duplicate the user
+	 * supplied gpfdist:// URIs until there is one available to every segdb. 
+	 * However, in some cases (as determined by gp_external_max_segs GUC) we
+	 * don't want to use *all* segdbs but instead figure out how many and pick
+	 * them randomly (this is mainly for better performance and resource mgmt).
 	 *
-	 * If however we have 'http' or 'file' protocols to begin with, we
-	 * just skip this step and go straight to URI->segdb mapping.
+	 * 3) segment mapping for tables with EXECUTE 'cmd' ON.
+	 *
+	 * In here we don't have URI's. We have a single command string and a
+	 * specification of the segdb granularity it should get executed on (the
+	 * ON clause). Depending on the ON clause specification we could go many
+	 * different ways, for example: assign the command to all segdb, or one
+	 * command per host, or assign to 5 random segments, etc...
+	 *
 	 */
-	if(uri->protocol == URI_GPFDIST || uri->protocol == URI_EXEC)
+
+	/* (1) */
+	if(using_location && (uri->protocol == URI_FILE || uri->protocol == URI_HTTP))
 	{
-		bool done = false;
+		/* 
+		 * extract file path and name from URI strings and assign them a primary segdb 
+		 */
+		foreach(c, rel->locationlist)
+		{
+			const char	*uri_str = (char *) strVal(lfirst(c));
+			
+			uri = ParseUriString(uri_str);
+			
+			found_candidate = false;
+			found_match = false;
+
+			
+			/*
+			 * look through our segment database list and try to find
+			 * a database that can handle this uri.
+			 */
+			for (i = 0; i < db_info->total_segment_dbs && !found_match; i++)
+			{
+				CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
+				int segind = p->segindex;
+				
+				/* 
+				 * Assign mapping of external file to this segdb only if:
+				 * 1) This segdb is a valid primary.
+				 * 2) An external file wasn't already assigned to it. 
+				 * 3) If 'file' protocol, host of segdb and file must be 
+				 *    the same.
+				 *
+				 * This logic also guarantees that file that appears first in 
+				 * the external location list for the same host gets assigned
+				 * the segdb with the lowest index for this host.
+				 */			
+				if(p->isprimary && p->valid)	
+				{
+					if(uri->protocol == URI_FILE)
+					{
+						if(pg_strcasecmp(uri->hostname, p->hostname) != 0)
+							continue;
+					}
+										
+					/* a valid primary segdb exist on this host */
+					found_candidate = true;
+					
+					if(segdb_file_map[segind] == NULL)
+					{
+						/* segdb not taken yet. assign this URI to this segdb */
+						segdb_file_map[segind] = pstrdup(uri_str);
+						found_match = true;					
+					}
+					
+					/* too bad. this segdb already has an external source assigned */
+				}
+			}
+			
+			/*
+			 * We failed to find a segdb for this URI.
+			 */
+			if(!found_match)
+			{
+				if(uri->protocol == URI_FILE)
+				{
+					if(found_candidate)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("Could not assign a segment database for \"%s\". "
+										"There are more external files than primary segment "
+										"databases on host \"%s\"", uri_str, uri->hostname)));				
+					}
+					else
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("Could not assign a segment database for \"%s\". "
+										"There isn't a valid primary segment database "
+										"on host \"%s\"", uri_str, uri->hostname)));
+					}
+				}
+				else /* HTTP */
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("Could not assign a segment database for \"%s\". "
+									"There are more URIs than total primary segment "
+									"databases", uri_str)));				
+				}
+			}		
+		}		
+		
+	
+	}
+	/* (2) */
+	else if(using_location && uri->protocol == URI_GPFDIST)
+	{
+		/*
+		 * Re-write the location list for GPFDIST before mapping to segments.
+		 *
+		 * If we happen to be dealing with URI's with the 'gpfdist' protocol
+		 * we do an extra step here. 
+		 *
+		 * (*) We modify the locationlist so that every
+		 * primary segdb will get a URI (therefore we duplicate the existing
+		 * URI's until the list is of size = total_primaries). 
+		 * Example: 2 URIs, 7 total segdbs.
+		 * Original LocationList: URI1->URI2
+		 * Modified LocationList: URI1->URI2->URI1->URI2->URI1->URI2->URI1
+		 *
+		 * (**) We also make sure that we don't allocate more segdbs than 
+		 * (# of URIs x gp_external_max_segs). 
+		 * Example: 2 URIs, 7 total segdbs, gp_external_max_segs = 3
+		 * Original LocationList: URI1->URI2
+		 * Modified LocationList: URI1->URI2->URI1->URI2->URI1->URI2 (6 total).
+		 *
+		 * (***) In that case that we need to allocate only a subset of primary 
+		 * segdbs and not all we then also create a random map of segments to skip.
+		 * Using the previous example a we create a map of 7 entries and need to
+		 * randomly select 1 segdb to skip (7 - 6 = 1). so it may look like this:
+		 * [F F T F F F F] - in which case we know to skip the 3rd segment only.
+		 */
 		
 		/* total num of segs that will participate in the external operation */
 		num_segs_participating = total_primaries;
 		
 		/* max num of segs that are allowed to participate in the operation */
 		max_participants_allowed = list_length(rel->locationlist) * 
-										gp_external_max_segs;
+			gp_external_max_segs;
 		
 		/* see (**) above */
-		if(uri->protocol == URI_GPFDIST && (num_segs_participating > max_participants_allowed))
+		if(num_segs_participating > max_participants_allowed)
 		{
 			total_to_skip = num_segs_participating - max_participants_allowed;
 			num_segs_participating = max_participants_allowed;
 			should_skip_randomly = true;
 			
 			elog(NOTICE, "External scan from gpfdist client will utilize %d out "
-						 "of %d segment databases", num_segs_participating,
-						 total_primaries);
+				 "of %d segment databases", num_segs_participating,
+				 total_primaries);
 		}
-			
+		
 		/* 
 		 * restart location list and fill in new list until number of
 		 * locations equals the number of segments participating in this
 		 * action (see (*) above for more details).
 		 */
-	    while(!done)
-	    {
+		while(!done)
+		{
 			foreach(c, rel->locationlist)
 			{
 				char *uri_str = (char *) strVal(lfirst(c));
-						
+				
 				/* append to a list of Value nodes, size nelems */
 				modifiedloclist = lappend(modifiedloclist, makeString(pstrdup(uri_str)));				
-			
+				
 				if(list_length(modifiedloclist) == num_segs_participating)
 				{
 					done = true;
@@ -1107,132 +1252,269 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 			}
 		}
 		
-		/* use the modified list in the URI to segdb mapping */
-		finalUriList = modifiedloclist;
-		
 		/* See (***) above for details */
 		if(should_skip_randomly)
 			skip_map = makeRandomSegMap(total_primaries, total_to_skip);
-	}
-	
 
-	/* 
-	 * extract file path and name from URI strings and assign them a primary segdb 
-	 */
-	foreach(c, finalUriList)
-	{
-		const char	*uri_str = (char *) strVal(lfirst(c));
-		bool		found_candidate = false;
-		bool		found_match = false;
-		
-		uri = ParseUriString(uri_str);
-		
-		/*
-		 * look through our segment database list and try to find
-		 * a database that can handle this uri.
+		/* 
+		 * assign each URI from the new location list a primary segdb 
 		 */
-		for (i = 0; i < db_info->total_segment_dbs && !found_match; i++)
+		foreach(c, modifiedloclist)
 		{
-			CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
-			int segind = p->segindex;
+			const char	*uri_str = (char *) strVal(lfirst(c));
 			
-			/* 
-			 * Assign mapping of external file to this segdb only if:
-			 * 1) This segdb is a valid primary.
-			 * 2) An external file wasn't already assigned to it. 
-			 * 3) If 'file' protocol, host of segdb and file must be 
-			 *    the same.
-			 *
-			 * This logic also guarantees that file that appears first in 
-			 * the external location list for the same host gets assigned
-			 * the segdb with the lowest index for this host.
-			 */			
-			if(p->isprimary && p->valid)	
+			uri = ParseUriString(uri_str);
+			
+			found_candidate = false;
+			found_match = false;
+			
+			/*
+			 * look through our segment database list and try to find
+			 * a database that can handle this uri.
+			 */
+			for (i = 0; i < db_info->total_segment_dbs && !found_match; i++)
 			{
-			    if(uri->protocol == URI_FILE)
-			    {
-			        /*
-			         * For local data ('file' protocol) we must make sure
-			         * that the host of the external file is the host of 
-			         * this segdb.
-			         */
-			        if(pg_strcasecmp(uri->hostname, p->hostname) != 0)
-						continue;
-				}
+				CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
+				int segind = p->segindex;
 				
-				/*
-				 * skip this segdb if 'gpfdist' and skip_map for this seg
-				 * index tells us to skip it (set to 'true').
-				 */
-				if(should_skip_randomly)
+				/* 
+				 * Assign mapping of external file to this segdb only if:
+				 * 1) This segdb is a valid primary.
+				 * 2) An external file wasn't already assigned to it. 
+				 */			
+				if(p->isprimary && p->valid)	
 				{
-					Assert(segind < total_primaries);
+					/*
+					 * skip this segdb if skip_map for this seg
+					 * index tells us to skip it (set to 'true').
+					 */
+					if(should_skip_randomly)
+					{
+						Assert(segind < total_primaries);
+						
+						if(skip_map[segind])
+							continue; /* skip it */					
+					}
 					
-					if(skip_map[segind])
-						continue; /* skip it */					
-				}
+					/* a valid primary segdb exist on this host */
+					found_candidate = true;
 					
-				/* a valid primary segdb exist on this host */
-				found_candidate = true;
-				
-				if(segdb_file_map[segind] == NULL)
-				{
-					/* segdb not taken yet. assign this URI to this segdb */
-					segdb_file_map[segind] = pstrdup(uri_str);
-					found_match = true;					
-				}
-
-				/* too bad. this segdb already has an external source assigned */
-			}
-		}
-		
-		/*
-		 * We failed to find a segdb for this URI.
-		 */
-		if(!found_match)
-		{
-		    if(uri->protocol == URI_FILE)
-		    {
-				if(found_candidate)
-				{
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-							 errmsg("Could not assign a segment database for \"%s\". "
-									"There are more external files than primary segment "
-									"databases on host \"%s\"", uri_str, uri->hostname)));				
-				}
-				else
-				{
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-							 errmsg("Could not assign a segment database for \"%s\". "
-									"There isn't a valid primary segment database "
-									"on host \"%s\"", uri_str, uri->hostname)));
+					if(segdb_file_map[segind] == NULL)
+					{
+						/* segdb not taken yet. assign this URI to this segdb */
+						segdb_file_map[segind] = pstrdup(uri_str);
+						found_match = true;					
+					}
+					
+					/* too bad. this segdb already has an external source assigned */
 				}
 			}
-			else if(uri->protocol == URI_HTTP)
+			
+			/* We failed to find a segdb for this gpfdist URI */
+			if(!found_match)
 			{
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-						 errmsg("Could not assign a segment database for \"%s\". "
-								"There are more URIs than total primary segment "
-								"databases", uri_str)));				
-			}
-			else if(uri->protocol == URI_GPFDIST)
-			{
+				/* should never happen */
 				elog(LOG, "external tables gpfdist allocation error. "
 					 "total_primaries: %d, num_segs_participating %d "
 					 "max_participants_allowed %d, total_to_skip %d", 
 					 total_primaries, num_segs_participating, 
 					 max_participants_allowed, total_to_skip);
-				Assert(0); /* should never happen */
-			}
-			else
-			{
-			    Assert(0); /* should never happen */
-			}
-		}		
+				
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_INTERNAL_ERROR),
+						 errmsg("Internal error in createplan for external tables"
+								" when trying to assign segments for gpfdist")));				
+			}		
+		}
+		
 	}
+	/* (3) */
+	else if(using_execute)
+	{
+		const char  *command = rel->execcommand;
+		const char  *prefix = "execute:";
+		char		*prefixed_command = NULL;
+		char		*on_clause = NULL;
+		bool		match_found = false;
+		
+		/* allocate space for "execute:<cmd>" + 1 for null in sprintf */
+		prefixed_command = (char *) palloc((strlen(prefix) + 
+											strlen(rel->execcommand)) * 
+										   sizeof(char) + 1);
+		
+		/* build the command string for the executor - 'execute:command' */
+		sprintf((char *) prefixed_command, "%s%s", prefix, command);
+
+		/* get the ON clause (execute location) information */
+		on_clause = (char *) strVal(lfirst(list_head(rel->locationlist)));
+			
+		/*
+		 * Now we handle each one of the ON locations separately:
+		 *
+		 * 1) all segs
+		 * 2) one per host
+		 * 3) all segs on host <foo>
+		 * 4) seg <n> only
+		 * 5) <n> random segs
+		 */
+		if(strcmp(on_clause, "ALL_SEGMENTS") == 0)
+		{
+			/* all segments get a copy of the command to execute */
+			
+			for (i = 0; i < db_info->total_segment_dbs; i++)
+			{
+				CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
+				int segind = p->segindex;
+				
+				if(p->isprimary && p->valid)	
+					segdb_file_map[segind] = pstrdup(prefixed_command);					
+			}
+			
+		}
+		else if(strcmp(on_clause, "PER_HOST") == 0)
+		{
+			/* 1 seg per host */
+			
+			List	 *visited_hosts = NIL;
+			ListCell *lc = NULL;
+			
+			for (i = 0; i < db_info->total_segment_dbs; i++)
+			{
+				CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
+				int segind = p->segindex;
+				
+				if(p->isprimary && p->valid)	
+				{
+					bool	host_taken = false;
+					
+					foreach(lc, visited_hosts)
+					{
+						const char	*hostname = (char *) strVal(lfirst(lc));
+						
+						if(pg_strcasecmp(hostname, p->hostname) == 0)
+						{
+							host_taken = true;
+							break;
+						}
+					}
+					
+					/* 
+					 * if not assigned to a seg on this host before - do it now
+					 * and add this hostname to the list so that we don't use
+					 * segs on this host again.
+					 */
+					if(!host_taken)
+					{
+						segdb_file_map[segind] = pstrdup(prefixed_command);
+						visited_hosts = lappend(visited_hosts, 
+												makeString(pstrdup(p->hostname)));				
+
+					}
+				}
+				
+			}
+			
+		}
+		else if(strncmp(on_clause, "HOST:", strlen("HOST:")) == 0)
+		{
+			/* all segs on the specified host get copy of the command */
+			
+			char	*hostname = on_clause + strlen("HOST:");
+
+			for (i = 0; i < db_info->total_segment_dbs; i++)
+			{
+				CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
+				int segind = p->segindex;
+				
+				if(p->isprimary && p->valid && 
+				   pg_strcasecmp(hostname, p->hostname) == 0)	
+				{
+					segdb_file_map[segind] = pstrdup(prefixed_command);
+					match_found = true;
+				}
+			}
+				
+			if(!match_found)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("Could not assign a segment database for "
+								"command \"%s\". No valid primary segment was "
+								"found in the requested host name \"%s\" ",
+								command, hostname)));
+		}
+		else if(strncmp(on_clause, "SEGMENT_ID:", strlen("SEGMENT_ID:")) == 0)
+		{
+			/* 1 seg with specified id gets a copy of the command */
+			
+			int		target_segid = atoi(on_clause + strlen("SEGMENT_ID:"));
+		
+			for (i = 0; i < db_info->total_segment_dbs; i++)
+			{
+				CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
+				int segind = p->segindex;
+				
+				if(p->isprimary && p->valid && segind == target_segid)	
+				{
+					segdb_file_map[segind] = pstrdup(prefixed_command);
+					match_found = true;
+				}
+			}
+			
+			if(!match_found)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("Could not assign a segment database for "
+								"command \"%s\". The requested segment id "
+								"%d is not a valid primary segment or doesn't "
+								"exist in the database", command, target_segid)));				
+		}
+		else if(strncmp(on_clause, "TOTAL_SEGS:", strlen("TOTAL_SEGS:")) == 0)
+		{
+			/* total n segments selected randomly */
+			
+			int		num_segs_to_use = atoi(on_clause + strlen("TOTAL_SEGS:"));
+						
+			if(num_segs_to_use > total_primaries)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("Table defined with EXECUTE ON %d but there "
+								"are only %d valid primary segments in the "
+								"database.", num_segs_to_use, total_primaries)));				
+			
+			total_to_skip = total_primaries - num_segs_to_use;
+			skip_map = makeRandomSegMap(total_primaries, total_to_skip);
+			
+			for (i = 0; i < db_info->total_segment_dbs; i++)
+			{
+				CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
+				int segind = p->segindex;
+				
+				if(p->isprimary && p->valid)	
+				{
+					Assert(segind < total_primaries);
+					if(skip_map[segind])
+						continue; /* skip it */					
+										
+					segdb_file_map[segind] = pstrdup(prefixed_command);					
+				}
+			}
+		}
+		else
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("Internal error in createplan for external tables: "
+							"got invalid ON clause code %s", on_clause)));							
+		}
+	}
+	else
+	{
+		/* should never get here */
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_INTERNAL_ERROR),
+				 errmsg("Internal error in createplan for external tables")));				
+	}
+
 
    /* 
     * convert array map to a list so it can be serialized as part of the plan
@@ -1261,7 +1543,6 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	copy_path_costsize(&scan_plan->scan.plan, best_path);
 
 	pfree(segdb_file_map);
-	pfree(finalUriList);
 
 	if(skip_map)
 		pfree(skip_map);

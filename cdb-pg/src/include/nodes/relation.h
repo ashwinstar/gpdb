@@ -291,6 +291,7 @@ typedef struct RelOptInfo
 
 	/* used by external scan */
 	List		*locationlist;
+	char		*execcommand;
 	char		fmttype;
 	char		*fmtopts;
 	

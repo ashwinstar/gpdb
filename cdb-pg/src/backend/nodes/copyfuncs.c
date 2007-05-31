@@ -2312,6 +2312,19 @@ _copyCreateStmt(CreateStmt *from)
 	return newnode;
 }
 
+static ExtTableTypeDesc *
+_copyExtTableTypeDesc(ExtTableTypeDesc *from)
+{
+	ExtTableTypeDesc *newnode = makeNode(ExtTableTypeDesc);
+
+	COPY_SCALAR_FIELD(exttabletype);
+	COPY_NODE_FIELD(location_list);
+	COPY_NODE_FIELD(on_clause);
+	COPY_STRING_FIELD(command_string);
+	
+	return newnode;	
+}
+
 static CreateExternalStmt *
 _copyCreateExternalStmt(CreateExternalStmt *from)
 {
@@ -2319,7 +2332,7 @@ _copyCreateExternalStmt(CreateExternalStmt *from)
 	
 	COPY_NODE_FIELD(relation);
 	COPY_NODE_FIELD(tableElts);
-	COPY_NODE_FIELD(locations);
+	COPY_NODE_FIELD(exttypedesc);
 	COPY_STRING_FIELD(format);
 	COPY_NODE_FIELD(formatOpts);
 	
@@ -3580,6 +3593,9 @@ copyObject(void *from)
 			break;
 		case T_CreateStmt:
 			retval = _copyCreateStmt(from);
+			break;
+		case T_ExtTableTypeDesc:
+			retval = _copyExtTableTypeDesc(from);
 			break;
 		case T_CreateExternalStmt:
 			retval = _copyCreateExternalStmt(from);

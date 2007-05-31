@@ -1603,13 +1603,24 @@ _outCreateStmt(StringInfo str, CreateStmt *node)
 }
 
 static void
+_outExtTableTypeDesc(StringInfo str, ExtTableTypeDesc *node)
+{
+	WRITE_NODE_TYPE("EXTTABLETYPEDESC");
+	
+	WRITE_ENUM_FIELD(exttabletype, ExtTableType);
+	WRITE_NODE_FIELD(location_list);
+	WRITE_NODE_FIELD(on_clause);
+	WRITE_STRING_FIELD(command_string);	
+}
+
+static void
 _outCreateExternalStmt(StringInfo str, CreateExternalStmt *node)
 {
 	WRITE_NODE_TYPE("CREATEEXTERNALSTMT");
 	
 	WRITE_NODE_FIELD(relation);
 	WRITE_NODE_FIELD(tableElts);
-	WRITE_NODE_FIELD(locations);
+	WRITE_NODE_FIELD(exttypedesc);
 	WRITE_STRING_FIELD(format);
 	WRITE_NODE_FIELD(formatOpts);
 }
@@ -3116,6 +3127,9 @@ _outNode(StringInfo str, void *obj)
 
 			case T_CreateStmt:
 				_outCreateStmt(str, obj);
+				break;
+			case T_ExtTableTypeDesc:
+				_outExtTableTypeDesc(str, obj);
 				break;
             case T_CreateExternalStmt:
 				_outCreateExternalStmt(str, obj);
