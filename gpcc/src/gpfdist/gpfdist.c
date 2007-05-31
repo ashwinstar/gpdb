@@ -538,7 +538,7 @@ void send_empty(request_t* r)
     static int n = 0;
     int m;
 
-    printf("%s - 200 empty\n", r->peer);
+    printf("%s - EMPTY\n", r->peer);
 
     if (n == 0) 
 	n = strlen(buf);
@@ -557,7 +557,7 @@ void send_ok(request_t* r)
     static int n = 0;
     static int m;
 
-    printf("%s - 200 ok\n", r->peer);
+    printf("%s - OK\n", r->peer);
 
     if (n == 0) 
 	n = strlen(buf);
@@ -599,11 +599,7 @@ void request_end(request_t* r)
 	session_detach(r);
     }
     event_del(&r->ev);
-#ifdef WIN32
-	closesocket(r->sock);
-#else
-    close(r->sock);
-#endif
+    closesocket(r->sock);
     apr_pool_destroy(r->pool);
 }
 
@@ -973,6 +969,13 @@ void do_read(int fd, short event, void* arg)
     /* we don't need to read from the socket anymore */
     shutdown(r->sock, SHUT_RD);
 
+    if (opt.V) {
+	printf("[INFO] request");
+	for (i = 0; i < r->in.req->argc; i++)
+	    printf(" %s", r->in.req->argv[i]);
+	printf("\n");
+    }
+
     /* parse the HTTP request. Expect "GET /path HTTP/1.X" */
     if (r->in.req->argc != 3) {
 	gpcc_warning(FLINE, "reject invalid request from %s", r->peer);
@@ -1148,12 +1151,11 @@ void do_accept(int fd, short event, void* arg)
     r->in.hbuf = apr_palloc(pool, r->in.hbufmax);
 
     addr = ntohl(a.sin_addr.s_addr);
-    r->peer = apr_psprintf(r->pool, "%d.%d.%d.%d:%d", 
+    r->peer = apr_psprintf(r->pool, "%d.%d.%d.%d", 
 			   (addr >> 24) & 0xff, 
 			   (addr >> 16) & 0xff,
 			   (addr >> 8) & 0xff,
-			   addr & 0xff, 
-			   ntohs(a.sin_port));
+			   addr & 0xff);
 
     /* set up for callback when socket ready for reading */
     if (setup_read(r)) {
