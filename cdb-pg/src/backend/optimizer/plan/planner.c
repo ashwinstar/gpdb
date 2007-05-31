@@ -2439,7 +2439,11 @@ static Bitmapset* canonicalize_colref_list(Node * node)
 	foreach (lc, (List*)node)
 	{
 		Node *cr = lfirst(lc);
-		if ( cr == NULL || !IsA(cr, GroupClause) )
+		
+		if ( cr == NULL )
+			continue;
+			
+		if ( !IsA(cr, GroupClause) )
 			elog(ERROR,"invalid column reference list");
 
 		gc = (GroupClause*)cr;

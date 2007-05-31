@@ -536,6 +536,9 @@ List*
 get_groupclause_exprs(Node *grpcl, List *targetList)
 {
 	List *result = NIL;
+	
+	if ( !grpcl )
+		return result;
 
 	Assert(IsA(grpcl, GroupClause) ||
 		   IsA(grpcl, GroupingClause) ||
