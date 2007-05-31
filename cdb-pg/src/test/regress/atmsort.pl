@@ -800,9 +800,14 @@ if (1)
             $ini =~ s/\s+of this segment db input data//;
         }
 
+        # distributed transactions
         if ($ini =~ m/(ERROR|WARNING|CONTEXT|NOTICE):.*gid\s+=\s+(\d+)/)
         {
             $ini =~ s/gid.*/gid DUMMY/;
+        }
+        if ($ini =~ m/(ERROR|WARNING|CONTEXT|NOTICE):.*DTM error.*gathered (\d+) results from cmd.*/)
+        {
+            $ini =~ s/gathered.*results/gathered SOME_NUMBER_OF results/;
         }
 
         # XXX XXX: note the discrepancy in the NOTICE messages
