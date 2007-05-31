@@ -352,6 +352,11 @@ _bitmap_init(Relation rel, Oid comptypeOid,
 	page = BufferGetPage(metabuf);
 	Assert(PageIsNew(page));
 
+	/* initialize the LOV metadata */
+	_bitmap_create_lov_heapandindex(rel, comptypeOid,
+									&(heapOid),
+									&(indexOid));
+
 	START_CRIT_SECTION();
 
 	MarkBufferDirty(metabuf);
@@ -362,11 +367,6 @@ _bitmap_init(Relation rel, Oid comptypeOid,
 
 	metapage->bm_lov_heapId = heapOid;
 	metapage->bm_lov_indexId = indexOid;
-
-	/* initialize the LOV metadata */
-	_bitmap_create_lov_heapandindex(rel, comptypeOid,
-									&(metapage->bm_lov_heapId),
-									&(metapage->bm_lov_indexId));
 
 	if (use_wal)
 		_bitmap_log_metapage(rel, page);
