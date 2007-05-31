@@ -2468,8 +2468,16 @@ ExtTypedesc:
 				ExtTableTypeDesc *n = makeNode(ExtTableTypeDesc);
 				n->exttabletype = EXTTBL_TYPE_EXECUTE;
 				n->location_list = NIL; 
-				n->on_clause = $3;
 				n->command_string = $2;
+				n->on_clause = $3;
+		
+				/* if no ON clause specified, default to "ON ALL" */
+				if(n->on_clause == NIL)
+				{
+					n->on_clause = lappend(n->on_clause, 
+										   makeDefElem("all", (Node *)makeInteger(TRUE)));
+				}
+				
 				$$ = (Node *)n;
 			}
 			;
