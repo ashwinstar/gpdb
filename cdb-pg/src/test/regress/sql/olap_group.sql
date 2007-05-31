@@ -108,7 +108,7 @@ select cn, vn, pn, sum(qty*prc) from sale group by grouping sets((), (cn), (cn,v
 --begin equivalent order 3,4,1
 select pn, sum(qty*prc), cn, vn from sale group by cn, vn, pn
 union all
-select null, sum(qty*prc), cn, null from sale group by cn, vn
+select null, sum(qty*prc), cn, vn from sale group by cn, vn
 union all
 select null, sum(qty*prc), cn, null from sale group by cn
 union all
@@ -139,6 +139,7 @@ select cn, vn, pn, sum(qty*prc) from sale group by cube (cn, vn, pn) order by 1,
 select cn, vn, pn, sum(qty*prc) from sale group by grouping sets ((), (cn), (vn), (pn), (cn,vn), (cn,pn), (vn,pn), (cn,vn,pn)) order by 1,2,3;
 --end equivalent
 
+-- ***BUG*** The extended groupings aren't correctly ordered! Maybe they wrongly parallel sorted!
 --begin equivalent order 1,2,3
 select cn, vn, pn, count(distinct dt) from sale group by cn, vn, pn
 union all
@@ -178,19 +179,22 @@ select cn, vn, pn, count(distinct dt) from sale group by grouping sets ((), (cn)
 
 select cn, count(*) from sale group by cn;
 select cn, count(*) from sale group by (cn);
+
 select cn,pn,count(*) from sale group by cn,pn;
 select cn,pn,count(*) from sale group by (cn),pn;
 select cn,pn,count(*) from sale group by cn,(pn);
 select cn,pn,count(*) from sale group by (cn),(pn);
+
 select cn+vn as a, vn+pn as b, count(*) from sale group by (cn+vn), (vn+pn);
 select cn+vn as a, vn+pn as b, count(*) from sale group by (1), (2);
 select cn+vn as a, vn+pn as b, count(*) from sale group by (a), (b);
 select cn+vn as a, vn+pn as b, count(*) from sale group by a, b;
-select cn,pn,count(*) from sale group by (cn,pn);
 select cn+vn as a, vn+pn as b, count(*) from sale group by (cn+vn, vn+pn);
 select cn+vn as a, vn+pn as b, count(*) from sale group by (1, 2);
 select cn+vn as a, vn+pn as b, count(*) from sale group by (a, b);
+
 select cn,vn,pn,count(*) from sale group by cn,(vn,pn);
+
 select count(*) from sale group by rollup((cn,vn),(pn,dt));
 
 
