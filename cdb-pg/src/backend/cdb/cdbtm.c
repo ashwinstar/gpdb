@@ -525,7 +525,7 @@ doPrepareTransaction(void)
 	 *
 	 * To simply bookkeeping, we turn on a flag in the gxact object.
 	 */
-	*shmCurrentPhase1Count++;
+	(*shmCurrentPhase1Count)++;
 	currentGxact->bumpedPhase1Count = true;
 	releaseTmLock();
 
@@ -2073,7 +2073,7 @@ releaseGxact(void)
 
 	if (currentGxact->bumpedPhase1Count)
 	{
-		*shmCurrentPhase1Count--;
+		(*shmCurrentPhase1Count)--;
 	}
 	
 	currentGxact = NULL;
