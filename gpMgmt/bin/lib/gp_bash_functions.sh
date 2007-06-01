@@ -226,7 +226,7 @@ QE_CONNECT_FACTOR=5
 DEFAULT_BUFFERS=128000kB
 DEBUG_LEVEL=0
 BATCH_DEFAULT=60
-WAIT_LIMIT=300
+WAIT_LIMIT=1800
 WARN_MARK="<<<<<"
 #******************************************************************************
 # Functions
