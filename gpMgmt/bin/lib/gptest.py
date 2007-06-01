@@ -10,7 +10,7 @@ def getAnswerFile(fname):
 
 
 def chkDiff(f1, f2):
-    return os.system('gpdiff.pl %s %s' % (f1, f2))
+    return os.system('gpdiff.pl %s %s > /dev/null 2>&1' % (f1, f2))
 
 LOG_FILE = None
 def writeLog(m, m1 = None, m2 = None, m3 = None):
@@ -94,6 +94,10 @@ class GPTestCase(unittest.TestCase):
 	    rc = self._execpsql("template1", cmd='\l')
 	    if rc:
 		sys.exit('Unable to run psql ...\nPlease check the PGPORT/PGHOST env\n')
+	    self._execpsql("template1", cmd="create database %s" % self.DB_NAME)
+	    rc = self._execpsql(cmd = "select version()", ofile="VERSION")
+	    if rc:
+		sys.exit("Unable to connect to database %s", self.DB_NAME)
 
 	if not db: db = self.DB_NAME
 	arg = db
