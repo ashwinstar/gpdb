@@ -7976,7 +7976,7 @@ static Datum transformLocationUris(List *locs)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("URI protocols must be the same for all data sources"),
-					 errhint("Available protocols are 'http', 'file' and 'gpfdist' and 'exec' ")));
+					 errhint("Available protocols are 'http', 'file' and 'gpfdist'")));
 		
 		}
 		
