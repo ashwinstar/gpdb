@@ -420,7 +420,11 @@ static int make_url(const char* url, extvar_t* ev, char* buf)
 		}
 	}
 
-	return p - buf + 1; 		/* include NUL terminator */
+	if (buf)
+		*p = 0;					/* NUL terminator */
+	p++;
+
+	return p - buf;
 }
 
 
