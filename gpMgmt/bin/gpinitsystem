@@ -175,6 +175,11 @@ CHK_PARAMS () {
 		if [ x"" != x"$MACHINE_LIST_FILE_ALT" ];then
                         MACHINE_LIST_FILE=$MACHINE_LIST_FILE_ALT
                 fi
+		#Now check to see if MACHINE_LIST_FILE is still empty
+		if [ x"" == x"$MACHINE_LIST_FILE" ];then
+			LOG_MSG "[FATAL]:-MACHINE_LIST_FILE variable is unset, and -h option not supplied" 1
+			ERROR_EXIT "[FATAL]:-Unable to continue" 2
+		fi
 		#Check for required definitions in the CLUSTER_CONFIG file
 		if [ x"" = x"$PORT_BASE" ]; then
 				ERROR_EXIT "[FATAL]:-PORT_BASE not specified in $CLUSTER_CONFIG file, is this the correct instance configuration file." 2
