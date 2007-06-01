@@ -10,7 +10,7 @@ def getAnswerFile(fname):
 
 
 def chkDiff(f1, f2):
-    return os.system('gpdiff.pl %s %s > /dev/null 2>&1' % (f1, f2))
+    return os.system('gpdiff.pl -w -I NOTICE: -I HINT: -I CONTEXT: -I GP_IGNORE: %s %s > /dev/null 2>&1' % (f1, f2))
 
 LOG_FILE = None
 def writeLog(m, m1 = None, m2 = None, m3 = None):
