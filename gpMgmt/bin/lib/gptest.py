@@ -8,9 +8,13 @@ def getOutFile(fname):
 def getAnswerFile(fname):
     return os.path.splitext(fname)[0] + '.ans'
 
+def getDiffFile(fname):
+    return os.path.splitext(fname)[0] + '.diff'
 
-def chkDiff(f1, f2):
-    return os.system('gpdiff.pl -w -I NOTICE: -I HINT: -I CONTEXT: -I GP_IGNORE: %s %s > /dev/null 2>&1' % (f1, f2))
+
+def isFileEqual(f1, f2, diffFile):
+    return 0 == os.system('gpdiff.pl -w -I NOTICE: -I HINT: -I CONTEXT: -I GP_IGNORE: %s %s > %s 2>&1' 
+			  % (f1, f2, diffFile))
 
 LOG_FILE = None
 def writeLog(m, m1 = None, m2 = None, m3 = None):
@@ -144,13 +148,18 @@ class GPTestCase(unittest.TestCase):
     def checkResult(self, ifile):
 	f1 = getOutFile(ifile)
 	f2 = getAnswerFile(ifile)
+	f3 = getDiffFile(ifile)
 	if not os.access(f1, os.R_OK):
 	    raise GPTestError('Error: cannot find out file for %s' % ifile)
 	if not os.access(f2, os.R_OK):
 	    raise GPTestError('Error: cannot find answer file for %s' % ifile
 			      + '\nHint: output can be found in %s' % f1
 			      + '\nHint: create an answer (%s) file for %s' % (f2, ifile))
-	return 0 == chkDiff(f1, f2)
+	if not isFileEqual(f1, f2, f3):
+	    return False
+
+	os.unlink(f3)
+	return True
 
 
 defaultTestRunner = GPTestRunner()
