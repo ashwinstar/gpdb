@@ -1,0 +1,16 @@
+--
+-- external tables 1
+--
+
+create external table 
+region(
+    r_regionkey integer, 
+    r_name char(25), 
+    r_comment varchar(152)
+    ) 
+    location ('file://@hostname@@abs_srcdir@/data/region.tbl' )
+     FORMAT 'text' (delimiter '|');
+
+select * from region;
+
+drop external table region;

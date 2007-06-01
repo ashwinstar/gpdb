@@ -106,3 +106,4 @@ ignore: returning
 ignore: stats
 ignore: tablespace
 test: gpdiffcheck
+test: exttab1

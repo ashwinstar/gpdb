@@ -120,6 +120,9 @@ directory_exists(const char *dir);
 static void
 make_directory(const char *dir);
 
+static int
+run_diff(const char *cmd, const char *filename);
+
 static void
 header(const char *fmt,...)
 /* This extension allows gcc to check the format string for consistency with
@@ -471,6 +474,17 @@ convert_sourcefiles_in(char *source, char *dest, char *suffix)
 		}
 		fclose(infile);
 		fclose(outfile);
+		{
+			char		cmd[MAXPGPATH * 3];
+			snprintf(cmd, sizeof(cmd),
+					 SYSTEMQUOTE "./gpstringsubs.pl %s" SYSTEMQUOTE, destfile);
+			if (run_diff(cmd, destfile) != 0)
+			{
+				fprintf(stderr, _("%s: could not convert %s\n"),
+						progname, destfile);
+			}
+		}
+
 	}
 
 	/*
