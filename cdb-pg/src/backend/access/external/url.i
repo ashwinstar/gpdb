@@ -379,6 +379,10 @@ static int encode_url(const char* s, char* buf)
 			p += 3;
 		}
 	}
+	if (buf)
+		*p = 0;
+	p++;
+
 	return p - buf;
 }
 
