@@ -480,15 +480,19 @@ void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
 
 	/* check that the dir exists */
 	if (0 != apr_filepath_set(opt.d, pool))
-	    usage("Error: please specify a valid directory for -d switch");
+	    usage(apr_psprintf(pool, 
+			       "Error: cannot access directory '%s'\n"
+			       "Please specify a valid directory for -d switch", opt.d));
     }
 
     /* check quote and escape options */
     if (opt.q && ! (opt.q[0] && !opt.q[1])) 
-	usage("Error: please specify a character for -q switch");
+	usage("Error: please specify a character for -q switch\n"
+	      "       e.g. gpfdist -q '\"'");
 
     if (opt.x && ! (opt.x[0] && !opt.x[1]))
-	usage("Error: please specify a character for -x switch");
+	usage("Error: please specify a character for -x switch\n"
+	      "       e.g. gpfdist -q '\"' -x '\\'");
 
     if (!opt.q && opt.x)
 	usage("Error: you must specify -q qchar with -x xchar");
