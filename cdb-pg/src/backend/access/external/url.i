@@ -321,8 +321,8 @@ static int make_export(char* name, const char* value, char* buf)
 static int make_command(const char* cmd, extvar_t* ev, char* buf)
 {
 	int sz = 0;
-	sz += make_export("GP_MHOST", ev->GP_MHOST, buf ? buf + sz : 0);
-	sz += make_export("GP_MPORT", ev->GP_MPORT, buf ? buf + sz : 0);
+	sz += make_export("GP_MASTER_HOST", ev->GP_MASTER_HOST, buf ? buf + sz : 0);
+	sz += make_export("GP_MASTER_PORT", ev->GP_MASTER_PORT, buf ? buf + sz : 0);
 	sz += make_export("GP_SEG_PG_CONF", ev->GP_SEG_PG_CONF, buf ? buf + sz : 0);
 	sz += make_export("GP_SEG_DATADIR", ev->GP_SEG_DATADIR, buf ? buf + sz : 0);
 	sz += make_export("GP_DATABASE", ev->GP_DATABASE, buf ? buf + sz : 0);
@@ -393,10 +393,10 @@ static int make_url(const char* url, extvar_t* ev, char* buf)
 	{
 		if (strncmp(url, "GP_", 3) == 0)
 		{
-			if (0 == strcmp(url, "GP_MHOST"))
-				p += encode_url(ev->GP_MHOST, p);
-			else if (0 == strcmp(url, "GP_MPORT"))
-				p += encode_url(ev->GP_MPORT, p);
+			if (0 == strcmp(url, "GP_MASTER_HOST"))
+				p += encode_url(ev->GP_MASTER_HOST, p);
+			else if (0 == strcmp(url, "GP_MASTER_PORT"))
+				p += encode_url(ev->GP_MASTER_PORT, p);
 			else if (0 == strcmp(url, "GP_SEG_PG_CONF"))
 				p += encode_url(ev->GP_SEG_PG_CONF, p);
 			else if (0 == strcmp(url, "GP_SEG_DATADIR"))
@@ -552,8 +552,8 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 		}
 	
 		file->u.curl.x_httpheader = 0;
-		if (set_httpheader(file, "X-GP-MHOST", ev->GP_MHOST)
-			|| set_httpheader(file, "X-GP-MPORT", ev->GP_MPORT)
+		if (set_httpheader(file, "X-GP-MASTER_HOST", ev->GP_MASTER_HOST)
+			|| set_httpheader(file, "X-GP-MASTER_PORT", ev->GP_MASTER_PORT)
 			|| set_httpheader(file, "X-GP_SEG_PG_CONF", ev->GP_SEG_PG_CONF)
 			|| set_httpheader(file, "X-GP_SEG_DATADIR", ev->GP_SEG_DATADIR)
 			|| set_httpheader(file, "X-GP-DATABASE", ev->GP_DATABASE)

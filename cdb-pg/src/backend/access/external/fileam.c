@@ -49,8 +49,8 @@
 typedef struct extvar_t extvar_t;
 struct extvar_t
 {
-	char* GP_MHOST;
-	char* GP_MPORT;
+	char* GP_MASTER_HOST;
+	char* GP_MASTER_PORT;
 	char* GP_DATABASE;
 	char* GP_SEG_PG_CONF;   /*location of the segments pg_conf file*/
 	char* GP_SEG_DATADIR;   /*location of the segments datadirectory*/
@@ -714,10 +714,10 @@ open_external_file(FileScanDesc scan)
 	/* set up extvar */
 
 	memset(&extvar, 0, sizeof(extvar));
-	extvar.GP_MHOST = qdHostname;
+	extvar.GP_MASTER_HOST = qdHostname;
 	
 	pg_itoa(qdPostmasterPort, result);
-	extvar.GP_MPORT = result;
+	extvar.GP_MASTER_PORT = result;
 	extvar.GP_DATABASE = get_database_name(MyDatabaseId);
 	extvar.GP_SEG_PG_CONF = ConfigFileName;   /*location of the segments pg_conf file*/
 	extvar.GP_SEG_DATADIR = data_directory;   /*location of the segments datadirectory*/
