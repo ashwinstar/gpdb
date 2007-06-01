@@ -47,6 +47,9 @@ Options:
 
     -connect '-p 11000 template1'
 
+    If the connect string is not defined gpstringsubs uses 
+    PGPORT and template1.  If the PGPORT is undefined then 
+    the port number defaults to 11000.
         
 =back
 
@@ -56,13 +59,15 @@ gpstringsubs find tokens in an input file and replaces them (in place)
 with specified or environmental values, supplementing the pg_regress
 "convert_sourcefiles_in" function.
 
+The tokens are:
+
 =over 8
 
 =item hostname
 
-gpstringsubs finds the hostname for segment 0 from the
-gp_configuration table and replaces all instances of the token
-B<@hostname@>.
+ gpstringsubs finds the hostname for segment 0 
+ from the gp_configuration table and replaces all 
+ instances of the token @hostname@.
 
 =back
 
@@ -101,8 +106,8 @@ BEGIN {
 
     my $porti = $PGPORT;
 
-#    $porti = 11000
-#        unless (defined($porti));
+    $porti = 11000
+        unless (defined($porti));
 
     $glob_connect = "-p $porti template1"
         unless (defined($glob_connect));
@@ -175,6 +180,18 @@ sub tablelizer
 
 if (1)
 {
+    exit(-1)
+        unless (scalar(@ARGV));
+
+    my $filnam = $ARGV[0];
+
+    unless (-f $filnam)
+    {
+        die "invalid filename: $filnam";
+        exit(-1);
+    }
+
+
     my $psql_str = "psql ";
     
     $psql_str .= $glob_connect
@@ -208,8 +225,6 @@ if (1)
         }
         
     }
-
-    my $filnam = $ARGV[0];
 
     my $hostexp = '\\@hostname\\@';
 
