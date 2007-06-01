@@ -725,6 +725,9 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 	result_plan = (Plan *)make_append(agg_plans, false, targetlist);
 	mark_append_locus(result_plan, optype); /* CDB: Mark the plan result locus. */
 
+	/* set the final pathkey to NIL */
+	*context->p_current_pathkeys = NIL;
+
 	return result_plan;
 }
 
