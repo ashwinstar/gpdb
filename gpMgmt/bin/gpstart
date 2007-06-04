@@ -453,15 +453,23 @@ PROCESS_STARTUP () {
 			LOG_MSG "[INFO]:-Successfully started the Master standby instance" 1
 		fi
 	fi
+	if [ $COMPLETED_COUNT -eq $BATCH_LIMIT ];then
+		LOG_MSG "[INFO]:-Successfully started $COMPLETED_COUNT of $BATCH_LIMIT segment instances" 1
+	else
+		LOG_MSG "[INFO]:-Successfully started $COMPLETED_COUNT of $BATCH_LIMIT segment instances     $WARN_MARK" 1
+	fi
 	if [ $DUMP_STAT -ne 0 ];then
+		LOG_MSG "[INFO]:------------------------------------------------" 1
+		LOG_MSG "[WARN]:-Segment instance startup failures reported" 1	
+		LOG_MSG "[WARN]:-Failed to start $TOTAL_FAILED_COUNT of $BATCH_LIMIT segment instances          $WARN_MARK" 1
 		LOG_MSG "[INFO]:-Securing contents of parallel status file to log file" 1
 		$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE
-		LOG_MSG "[INFO]:--------------------------------------------------------" 1
-		LOG_MSG "[INFO]:-Error messages contained within status file" 1
-		$CAT $PARALLEL_STATUS_FILE|$GREP -v "COMPLETED:"
-		LOG_MSG "[INFO]:--------------------------------------------------------" 1
+		LOG_MSG "[INFO]:-Review $LOG_FILE" 1
+		LOG_MSG "[INFO]:-For more details on segment startup failure(s)" 1
+		LOG_MSG "[INFO]:-Run gpstate to review current segment instance status" 1
+		LOG_MSG "[INFO]:------------------------------------------------" 1
+		EXIT_STATUS=1
 	fi
-	LOG_MSG "[INFO]:-Successfully started $COMPLETED_COUNT of $BATCH_LIMIT segment instances" 1
 	$RM -f $PARALLEL_STATUS_FILE
 	LOG_MSG "[INFO]:-Starting Master instance $QD_NAME directory $MASTER_DATA_DIRECTORY" 1
 	export PGPORT=${MASTER_PORT}
@@ -480,7 +488,7 @@ PROCESS_STARTUP () {
 	if [ $DUMP_STAT -ne 1 ] && [ $EXIT_STATUS -eq 0 ];then
 		LOG_MSG "[INFO]:-Database successfully started with no errors reported" 1
 	else
-		LOG_MSG "[WARN]:-Database started but warnings, please check log file" 1
+		LOG_MSG "[WARN]:-Database started but warnings generated            $WARN_MARK" 1
 	fi 
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
