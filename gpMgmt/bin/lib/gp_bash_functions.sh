@@ -1100,6 +1100,7 @@ PARALLEL_SUMMARY_STATUS_REPORT () {
 	        KILLED_COUNT=`$GREP -c "KILLED:" $PARALLEL_STATUS_FILE`
                 COMPLETED_COUNT=`$GREP -c "COMPLETED:" $PARALLEL_STATUS_FILE`
                 FAILED_COUNT=`$GREP -c "FAILED:" $PARALLEL_STATUS_FILE`
+		((TOTAL_FAILED_COUNT=$KILLED_COUNT+$FAILED_COUNT))
                 LOG_MSG "[INFO]:------------------------------------------------" 1
                 LOG_MSG "[INFO]:-Parallel process exit status" 1
                 LOG_MSG "[INFO]:------------------------------------------------" 1
