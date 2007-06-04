@@ -51,8 +51,13 @@ select row_number() over (), c1, c2, c3 from gpd1;
         z 
     from (values (1,'A'),(1,'B'),(2,'C'),(2,'D')) r(x,z);
 
-
-
+-- start_ignore
+--
+-- whatever is here is ignored until we reach end_ignore
+--
+-- end_ignore
+--
+--
 --
 -- Clean up
 --

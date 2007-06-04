@@ -115,11 +115,24 @@ The supported commands are:
   that the col1 and col2 values determine the col3, col4 
   result order.
 
+=item -- start_ignore
+
+  Ignore all results until the next "end_ignore" directive.
+  The start_ignore directive prefixes all subsequent output 
+  with GP_IGNORE, and all other formatting directives are 
+  ignored as well.  The diff command can use the -I flag 
+  to ignore lines with this prefix.
+
+=item -- end_ignore
+
+  Ends the ignored region that started with "start_ignore"
+
 =back
 
 Note that you can combine the directives for a single query, but each
 directive must be on a separate line.  Multiple mvd specifications
-must be on a single mvd line, separated by semicolons.
+must be on a single mvd line, separated by semicolons.  Note that 
+start_ignore overrides all directives until the next end_ignore.
 
 
 =head1 AUTHORS
@@ -602,11 +615,22 @@ if (1)
     my $has_order = 0;
     my $copy_select = 0;
     my $directive = {};
+    my $big_ignore = 0;
 
   L_bigwhile:
     while (<>) # big while
     {
         my $ini = $_;
+
+        if ($big_ignore)
+        {
+            if ($ini =~ m/\-\-\s*end\_ignore\s*$/i)
+            { 
+                $big_ignore = 0;
+            }
+            print "GP_IGNORE:", $ini;
+            next;
+        }
 
         if ($getrows) # getting rows from SELECT output
         {
@@ -642,6 +666,20 @@ if (1)
         }
         else # finding SQL statement or start of SELECT output
         { 
+            if ($ini =~ m/\-\-\s*start\_ignore\s*$/i)
+            { 
+                $big_ignore = 1;
+
+                for my $line (@outarr)
+                {
+                    print $apref, $line;
+                }
+                @outarr = ();
+
+                print "GP_IGNORE:", $ini;
+                next;
+            }
+
             if ($ini =~ m/(insert|update|delete|select|\\d|copy)/i)
             {                
                 $copy_select = 0;

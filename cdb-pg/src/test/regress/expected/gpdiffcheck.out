@@ -127,6 +127,17 @@ select row_number() over (), c1, c2, c3 from gpd1;
  2 | 2 | D
 (4 rows)
 
+-- start_ignore
+
+-- whatever is here is ignored until we reach end_ignore
+
+-- because here is a line which is not in the sql file
+
+-- and another one
+
+-- end_ignore
+--
+--
 --
 -- Clean up
 --
