@@ -167,6 +167,15 @@ MultiExecBitmapAnd(BitmapAndState *node)
 			{
 				tbm_intersect(hbm, (HashBitmap *)subresult);
 				tbm_free((HashBitmap *)subresult);
+
+				/* Since we release the space for subresult, we want to
+				 * set the bitmap of subnode to NULL if the child node
+				 * is BitmapIndexScan.
+				 */
+				if (IsA(subnode, BitmapIndexScanState))
+				{
+					((BitmapIndexScanState *)subnode)->bitmap = NULL;
+				}
 			}
 
 			/* If tbm is empty, short circuit, per logic outlined above */
