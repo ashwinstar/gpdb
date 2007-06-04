@@ -21,7 +21,13 @@ PostgreSQL documentation
  <refsynopsisdiv>
 <synopsis>
 CREATE EXTERNAL TABLE <replaceable class="PARAMETER">table_name</replaceable> (<replaceable class="PARAMETER">column_name</replaceable> <replaceable class="PARAMETER">data_type</replaceable> [, ...])
-      LOCATION ('<replaceable class="PARAMETER">protocol</replaceable>://[<replaceable class="PARAMETER">host</replaceable>][:<replaceable class="PARAMETER">port</replaceable>]<replaceable class="PARAMETER">/path/file</replaceable>' [, ...])
+      LOCATION ('<replaceable class="PARAMETER">file</replaceable>://[<replaceable class="PARAMETER">seghost</replaceable>][:<replaceable class="PARAMETER">port</replaceable>]<replaceable class="PARAMETER">/path/file</replaceable>' [, ...])
+             | ('<replaceable class="PARAMETER">gpfdist</replaceable>://[<replaceable class="PARAMETER">filehost</replaceable>][:<replaceable class="PARAMETER">port</replaceable>]<replaceable class="PARAMETER">/file_pattern</replaceable>' [, ...])
+             | ('<replaceable class="PARAMETER">http</replaceable>://[<replaceable class="PARAMETER">webhost</replaceable>][:<replaceable class="PARAMETER">port</replaceable>]<replaceable class="PARAMETER">/path/file</replaceable>' [, ...])
+    | EXECUTE '<replaceable class="PARAMETER">command</replaceable>' [ ON ALL 
+              | <replaceable class="PARAMETER">number</replaceable>  
+              | HOST ['<replaceable class="PARAMETER">segment_hostname</replaceable>'] 
+              | SEGMENT <replaceable class="PARAMETER">segment_dbid</replaceable> ]
       FORMAT 'TEXT | CSV' 
              ( [DELIMITER [AS] '<replaceable class="PARAMETER">delimiter</replaceable>']
                [NULL [AS] '<replaceable class="PARAMETER">null_string</replaceable>']
