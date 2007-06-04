@@ -2897,6 +2897,7 @@ static struct config_string ConfigureNamesString[] =
 	{
 		{"gp_qd_hostname", PGC_BACKEND, GP_WORKER_IDENTITY,
 			gettext_noop("Shows the QD Hostname. Blank when run on the QD"),
+		    NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
 		&qdHostname,
