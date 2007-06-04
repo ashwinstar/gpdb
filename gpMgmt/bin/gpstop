@@ -412,19 +412,24 @@ fi
 PROCESS_SHUTDOWN
 if [ $RESTART ]; then
 	if [ -f $GPSTART ]; then
+	#Build command line options to be passed to gpstart
+		GPSTART_OPTIONS="-"
 		if [ x"" == x"$VERBOSE" ];then
-			if [ x"" == x"$STOP_SYNC" ];then
-			$GPSTART -aqy -B $BATCH_DEFAULT
-			else
-			$GPSTART -aq -B $BATCH_DEFAULT
-			fi
-		else
-			if [ x"" == x"$STOP_SYNC" ];then
-			$GPSTART -ay -B $BATCH_DEFAULT
-			else
-			$GPSTART -a -B $BATCH_DEFAULT
-			fi
+			GPSTART_OPTIONS=$GPSTART_OPTIONS"q"
 		fi
+		if [ x"" == x"$STOP_SYNC" ];then
+			GPSTART_OPTIONS=$GPSTART_OPTIONS"y"
+		fi
+		if [ x"" == x"$INTERACTIVE" ];then
+			GPSTART_OPTIONS=$GPSTART_OPTIONS"a"
+		fi
+		if [ $STOP_INVALID -eq 1 ];then
+			GPSTART_OPTIONS=$GPSTART_OPTIONS"z"
+		fi
+		if [ $DEBUG_LEVEL -eq 1 ];then
+			GPSTART_OPTIONS=$GPSTART_OPTIONS"D"
+		fi
+		$GPSTART $GPSTART_OPTIONS -B $BATCH_DEFAULT -d $MASTER_DATA_DIRECTORY
 	else
 		ERROR_EXIT "[FATAL]:-No $GPSTART" 2
 	fi
