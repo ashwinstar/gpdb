@@ -514,3 +514,47 @@ DROP EXTERNAL TABLE EXT_PARTSUPP;
 DROP EXTERNAL TABLE EXT_CUSTOMER;
 DROP EXTERNAL TABLE EXT_ORDERS;
 DROP EXTERNAL TABLE EXT_LINEITEM;
+--
+-- gpfdist
+--
+CREATE EXTERNAL TABLE gpfdist_start (x text)
+execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_srcdir@/data  </dev/null >/dev/null 2>&1 &); echo "starting...") '
+on SEGMENT 0
+FORMAT 'text' (delimiter '|');
+CREATE EXTERNAL TABLE gpfdist_stop (x text)
+execute E'(@ps_pidfirst@ | grep gpfdist |  grep \'@abs_srcdir@/data\' | 
+grep -v grep | awk \'{print "kill "$1}\' | sh ) ; echo "stopping..."'
+on SEGMENT 0
+FORMAT 'text' (delimiter '|');
+select * from gpfdist_stop;
+      x      
+-------------
+ stopping...
+(1 row)
+
+select * from gpfdist_start;
+      x      
+-------------
+ starting...
+(1 row)
+
+CREATE EXTERNAL TABLE EXT_NATION  ( N_NATIONKEY  INTEGER ,
+                            N_NAME       CHAR(25) ,
+                            N_REGIONKEY  INTEGER ,
+                            N_COMMENT    VARCHAR(152))
+location ('gpfdist://@hostname@:8080/nation.tbl' )
+FORMAT 'text' (delimiter '|');
+select count(*) from ext_nation;
+ count 
+-------
+    25
+(1 row)
+
+select * from gpfdist_stop;
+      x      
+-------------
+ stopping...
+(1 row)
+
+-- drop tables
+DROP EXTERNAL TABLE EXT_NATION;

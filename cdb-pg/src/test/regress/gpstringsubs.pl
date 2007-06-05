@@ -69,6 +69,16 @@ The tokens are:
  from the gp_configuration table and replaces all 
  instances of the token @hostname@.
 
+=item ps_pidfirst
+
+ generate a long ps listing with the pid first, equivalent to 
+ ps -axww on osx
+
+=item gpwhich_(executable)
+
+ Find the full path for the executable and substitute.  For example, 
+ @gpwhich_gpfdist@ is replaced with the full path for "gpfdist".
+
 =back
 
 
@@ -227,9 +237,58 @@ if (1)
     }
 
     my $hostexp = '\\@hostname\\@';
+    my $psexp   = '\\@ps_pidfirst\\@';
+    my $locps   = 'ps axww';
+
+    if ($^O !~ /darwin|mac|osx|linux/i)
+    {
+        # error!
+    }
+
+    my $gpwhich_all = `grep gpwhich_ $filnam`;
 
 #    print "$filnam\n";
-    system "perl -i -ple \' s/$hostexp/$hostname/gm\' $filnam\n";
+    system "perl -i -ple \' s/$hostexp/$hostname/gm; s/$psexp/$locps/gm\' $filnam\n";
+
+    # replace all "which" expressions with binary
+    if (defined($gpwhich_all) && length($gpwhich_all))
+    {
+        my @foo = split(/\@/, $gpwhich_all);
+
+#        print Data::Dumper->Dump(\@foo);
+
+        my @gpwhich_list;
+
+        if (scalar(@foo))
+        {
+            for my $gpw (@foo)
+            {
+                my @exe_thing;
+
+                next
+                    unless (($gpw =~ m/gpwhich\_\w/));
+
+                @exe_thing = ($gpw =~ m/gpwhich\_(.*)/);
+
+                next
+                    unless (scalar(@exe_thing));
+
+                my $binloc = `which $exe_thing[0]`;
+
+                next
+                    unless (length($binloc));
+
+                chomp $binloc;
+                $binloc = quotemeta($binloc);
+
+                my $whichexp = '\\@gpwhich_' . $exe_thing[0] . '\\@';
+
+                system "perl -i -ple \' s/$whichexp/$binloc/gm;\' $filnam\n";
+
+            } # end for
+        }
+
+    }
 
     exit(0);
 }
