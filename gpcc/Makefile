@@ -9,7 +9,7 @@ LIBEVENT=libevent-1.3b-1
 INCLUDES=-I$(GPCC)/ext/include $$($(GPCC)/ext/apr/apr-1-config --includes) $$($(GPCC)/ext/apu/apu-1-config --includes) -I$(GPCC)/ext/$(LIBEVENT) -I$(GPCC)/ext/$(JSON) -I$(GPCC)/src/include
 CFLAGS=$(OPT) $$($(GPCC)/ext/apr/apr-1-config --cflags)
 APRLIBS=-L$(GPCC)/ext/apr/.libs $$($(GPCC)/ext/apr/apr-1-config --link-ld --libs) 
-APULIBS=-L$(GPCC)/ext/apu/.libs -L$(GPCC)/ext/apu/xml/expat/lib/.libs -laprutil-1 -lexpat -liconv
+APULIBS=-L$(GPCC)/ext/apu/.libs -L$(GPCC)/ext/apu/xml/expat/lib/.libs -laprutil-1 -lexpat
 GP_VERSION=$$(< $(GPCC)/../VERSION)
 CPPFLAGS=$$($(GPCC)/ext/apr/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)"
 
