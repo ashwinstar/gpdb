@@ -169,13 +169,9 @@ MultiExecBitmapAnd(BitmapAndState *node)
 				tbm_free((HashBitmap *)subresult);
 
 				/* Since we release the space for subresult, we want to
-				 * set the bitmap of subnode to NULL if the child node
-				 * is BitmapIndexScan.
+				 * reset the bitmaps in subnode tree to NULL.
 				 */
-				if (IsA(subnode, BitmapIndexScanState))
-				{
-					((BitmapIndexScanState *)subnode)->bitmap = NULL;
-				}
+				tbm_reset_bitmaps(subnode);
 			}
 
 			/* If tbm is empty, short circuit, per logic outlined above */
@@ -277,5 +273,52 @@ ExecReScanBitmapAnd(BitmapAndState *node, ExprContext *exprCtxt)
 		 * any outer tuple that might be used in index quals.
 		 */
 		ExecReScan(subnode, exprCtxt);
+	}
+}
+
+/*
+ * tbm_reset_bitmaps -- reset the bitmap fields for the given plan
+ * state and all its subplan states to NULL.
+ */
+void
+tbm_reset_bitmaps(PlanState *pstate)
+{
+	if (pstate == NULL)
+		return;
+
+	Assert (IsA(pstate, BitmapIndexScanState) ||
+			IsA(pstate, BitmapAndState) ||
+			IsA(pstate, BitmapOrState));
+
+	if (IsA(pstate, BitmapIndexScanState))
+	{
+		((BitmapIndexScanState *)pstate)->bitmap = NULL;
+	}
+	
+
+	else if (IsA(pstate, BitmapAndState))
+	{
+		PlanState **bitmapplans;
+		int i;
+
+		bitmapplans = ((BitmapAndState *)pstate)->bitmapplans;
+		for (i=0; i<((BitmapAndState *)pstate)->nplans; i++)
+		{
+			tbm_reset_bitmaps(bitmapplans[i]);
+		}
+		((BitmapAndState *)pstate)->bitmap = NULL;
+	}
+	
+
+	else {
+		PlanState **bitmapplans;
+		int i;
+
+		bitmapplans = ((BitmapOrState *)pstate)->bitmapplans;
+		for (i=0; i<((BitmapOrState *)pstate)->nplans; i++)
+		{
+			tbm_reset_bitmaps(bitmapplans[i]);
+		}
+		((BitmapOrState *)pstate)->bitmap = NULL;		
 	}
 }

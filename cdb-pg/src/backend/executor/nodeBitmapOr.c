@@ -155,13 +155,9 @@ MultiExecBitmapOr(BitmapOrState *node)
 				tbm_free((HashBitmap *)subresult);
 
 				/* Since we release the space for subresult, we want to
-				 * set the bitmap of subnode to NULL if the child node
-				 * is BitmapIndexScan.
+				 * reset the bitmaps in subnode tree to NULL.
 				 */
-				if (IsA(subnode, BitmapIndexScanState))
-				{
-					((BitmapIndexScanState *)subnode)->bitmap = NULL;
-				}
+				tbm_reset_bitmaps(subnode);
 			}
 		}
 		else
