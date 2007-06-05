@@ -6,12 +6,12 @@ APR=apr-1.2.8
 APU=apr-util-1.2.8
 JSON=json-c-0.6
 LIBEVENT=libevent-1.3b-1
-INCLUDES=-I$(GPCC)/ext/include $$($(GPCC)/ext/bin/apr-1-config --includes) -I$(GPCC)/src/include
-CFLAGS=$(OPT) $$($(GPCC)/ext/bin/apr-1-config --cflags)
-APRLIBS=$$($(GPCC)/ext/bin/apr-1-config --link-ld --libs) 
-APULIBS=$$($(GPCC)/ext/bin/apu-1-config --link-ld --libs)
+INCLUDES=-I$(GPCC)/ext/include $$($(GPCC)/ext/apr/apr-1-config --includes) $$($(GPCC)/ext/apu/apu-1-config --includes) -I$(GPCC)/ext/$(LIBEVENT) -I$(GPCC)/ext/$(JSON) -I$(GPCC)/src/include
+CFLAGS=$(OPT) $$($(GPCC)/ext/apr/apr-1-config --cflags)
+APRLIBS=-L$(GPCC)/ext/apr/.libs $$($(GPCC)/ext/apr/apr-1-config --link-ld --libs) 
+APULIBS=-L$(GPCC)/ext/apu/.libs -L$(GPCC)/ext/apu/xml/expat/lib/.libs -laprutil-1 -lsqlite3 -lexpat -liconv
 GP_VERSION=$$(< $(GPCC)/../VERSION)
-CPPFLAGS=$$($(GPCC)/ext/bin/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)"
+CPPFLAGS=$$($(GPCC)/ext/apr/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)"
 
 
 all: mkext mklibgpcc mkgpfdist 
@@ -21,7 +21,7 @@ all: mkext mklibgpcc mkgpfdist
 mkgpfdist: 
 	@echo --- gpfdist --------------------------------------------------
 	(cd src/gpfdist; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
-		-o gpfdist *.c -L../build/lib -lgpcc $(APRLIBS) $(APULIBS) -ljson -levent)
+		-o gpfdist *.c -L../build/lib -lgpcc $(APRLIBS) $(APULIBS) -L$(GPCC)/ext/$(JSON)/.libs -L$(GPCC)/ext/$(LIBEVENT)/.libs -ljson -levent)
 	@mkdir -p build/bin
 	@cp src/gpfdist/gpfdist build/bin/
 
@@ -31,7 +31,7 @@ mkgp:
 mkgpma:
 	@echo --- gpma -----------------------------------------------------
 	@(cd src/gpma; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
-		-o gpma *.c -L../build/lib -lgpcc $(APRLIBS) $(APULIBS) -ljson)
+		-o gpma *.c -L../build/lib -lgpcc $(APRLIBS) $(APULIBS) -L$(GPCC)/ext/$(JSON)/.libs -ljson)
 
 mklibgpcc:
 	@echo --- libgpcc --------------------------------------------------
@@ -60,7 +60,7 @@ mkext:
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd ext/libevent; make install >> out)
+	@(cd ext/libevent; make >> out)
 	@echo     -- json
 	@(cd ext; rm -f json; ln -s $(JSON) json)
 	@if ! [ -a ext/json/Makefile ]; then \
@@ -69,7 +69,7 @@ mkext:
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd ext/json; make all; make install >> out)
+	@(cd ext/json; make all >> out)
 	@echo     -- apr
 	@(cd ext; rm -f apr; ln -s $(APR) apr)
 	@if ! [ -a ext/apr/Makefile ]; then \
@@ -78,7 +78,7 @@ mkext:
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd ext/apr; make all install >> out)
+	@(cd ext/apr; make all >> out)
 	@echo     -- apu
 	@(cd ext; rm -f apu; ln -s $(APU) apu)
 	@if ! [ -a ext/apu/Makefile ]; then \
@@ -88,7 +88,7 @@ mkext:
 			--with-apr=../apr \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd ext/apu; make all install >> out)
+	@(cd ext/apu; make all >> out)
 
 clean: 
 	(cd ext; rm -rf lib bin include build-1 share apr apu json libevent)
