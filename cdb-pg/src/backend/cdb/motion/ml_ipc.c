@@ -1881,6 +1881,11 @@ startOutgoingConnections(ChunkTransportState *transportStates,
 	parentSliceId = list_nth_int(sendSlice->parent, pIncIdx);
 	recvSlice = (Slice *) list_nth(transportStates->sliceTable->slices, parentSliceId);
 
+	if ((list_length(recvSlice->children) * sendSlice->gangSize) > listenerBacklog)
+		transportStates->aggressiveRetry = true;
+	else
+		transportStates->aggressiveRetry = false;
+
     if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
         elog(DEBUG4, "Interconnect seg%d slice%d setting up sending motion node",
              Gp_segment, sendSlice->sliceIndex);
