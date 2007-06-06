@@ -1208,14 +1208,18 @@ mppTxnOptions(bool needTwoPhase)
 {
 	int options = 0;
 
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"mppTxnOptions DefaultXactIsoLevel = %s, DefaultXactReadOnly = %s, XactIsoLevel = %s, XactReadOnly = %s.", 
+		 IsoLevelAsUpperString(DefaultXactIsoLevel), (DefaultXactReadOnly ? "true" : "false"), 
+		 IsoLevelAsUpperString(XactIsoLevel), (XactReadOnly ? "true" : "false")); 
+
 	if (needTwoPhase)
 		options |= GP_OPT_NEED_TWO_PHASE;
 
 	if (XactIsoLevel == XACT_READ_COMMITTED)
 		options |= GP_OPT_READ_COMMITTED;
-	else if (XactIsoLevel == GP_OPT_REPEATABLE_READ)
+	else if (XactIsoLevel == XACT_REPEATABLE_READ)
 		options |= GP_OPT_REPEATABLE_READ;
-	else if (XactIsoLevel == GP_OPT_SERIALIZABLE)
+	else if (XactIsoLevel == XACT_SERIALIZABLE)
 		options |= GP_OPT_SERIALIZABLE;
 
 	if (XactReadOnly)
@@ -1224,9 +1228,35 @@ mppTxnOptions(bool needTwoPhase)
 	if (currentGxact != NULL && currentGxact->explicitBeginRemembered)
 		options |= GP_OPT_EXPLICT_BEGIN;
 
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"mppTxnOptions txnOptions = 0x%x, needTwoPhase = %s, explicitBegin = %s, isoLevel = %s, readOnly = %s.", 
+		 options, 
+		 (isMppTxOptions_NeedTwoPhase(options) ? "true" : "false"), (isMppTxOptions_ExplicitBegin(options) ? "true" : "false"),
+		 IsoLevelAsUpperString(mppTxOptions_IsoLevel(options)), (isMppTxOptions_ReadOnly(options) ? "true" : "false")); 
+
 	return options;
 	
 }
+
+int
+mppTxOptions_IsoLevel(int txnOptions)
+{
+	if (txnOptions & GP_OPT_READ_COMMITTED)
+		return XACT_READ_COMMITTED;
+	else if (txnOptions & GP_OPT_SERIALIZABLE)
+		return XACT_SERIALIZABLE;
+	else if( txnOptions & GP_OPT_REPEATABLE_READ)
+		return XACT_REPEATABLE_READ;
+	else
+		return XACT_READ_UNCOMMITTED;
+}
+
+bool
+isMppTxOptions_ReadOnly(int txnOptions)
+{
+	return ((txnOptions & GP_OPT_READ_ONLY) != 0);
+}
+
+
 
 /* unpackMppTxnOptions:
  * Unpack an int containing the appropriate flags to direct the remote
@@ -1236,21 +1266,9 @@ mppTxnOptions(bool needTwoPhase)
 void
 unpackMppTxnOptions(int txnOptions, int *isoLevel, bool *readOnly)
 {
+	*isoLevel = mppTxOptions_IsoLevel(txnOptions);
 
-	if (txnOptions & GP_OPT_READ_COMMITTED)
-		*isoLevel = XACT_READ_COMMITTED;
-	else if (txnOptions & GP_OPT_SERIALIZABLE)
-		*isoLevel = XACT_SERIALIZABLE;
-	else if( txnOptions & GP_OPT_REPEATABLE_READ)
-		*isoLevel = XACT_REPEATABLE_READ;
-	else
-		*isoLevel = XACT_READ_UNCOMMITTED;
-
-	if (txnOptions & GP_OPT_READ_ONLY)
-		*readOnly = true;
-	else
-		*readOnly = false;
-
+	*readOnly = isMppTxOptions_ReadOnly(txnOptions);
 }
 
 /* isMppTxOptions_StatementWantsDtxTransaction:
@@ -2782,7 +2800,10 @@ qdCreateDtxContextInfo(DtxContextInfo *dtxContextInfo, DistributedSnapshot distr
 	}
 
 	dtxContextInfo->distributedTxnOptions = txnOptions;
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"qdCreateDtxContextInfo txnOptions = 0x%x", txnOptions); 
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"qdCreateDtxContextInfo txnOptions = 0x%x, needTwoPhase = %s, explicitBegin = %s, isoLevel = %s, readOnly = %s.", 
+		 txnOptions, 
+		 (isMppTxOptions_NeedTwoPhase(txnOptions) ? "true" : "false"), (isMppTxOptions_ExplicitBegin(txnOptions) ? "true" : "false"),
+		 IsoLevelAsUpperString(mppTxOptions_IsoLevel(txnOptions)), (isMppTxOptions_ReadOnly(txnOptions) ? "true" : "false")); 
 }
 
 int 
@@ -3003,6 +3024,9 @@ doQEDistributedExplicitBegin(int txnOptions)
 	XactIsoLevel = ExplicitIsoLevel;
 	XactReadOnly = ExplicitReadOnly;
 
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "doQEDistributedExplicitBegin setting XactIsoLevel = %s and XactReadOnly = %s",
+		 IsoLevelAsUpperString(XactIsoLevel), (XactReadOnly ? "true" : "false"));
+	
 	/*
 	 * Finish the BEGIN command.  It will leave the explict transaction
 	 * in-progress.
@@ -3101,9 +3125,10 @@ setupQEDtxContext (DtxContextInfo *dtxContextInfo)
 		(dtxContextInfo->distributedXid!= InvalidDistributedTransactionId);
 	isSharedLocalSnapshotSlotPresent = (SharedLocalSnapshotSlot != NULL);
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5), "setupQEDtxContext inputs (part 1): Gp_role = %s, Gp_is_writer = %s, txnOptions = 0x%x, needTwoPhase = %s, explicitBegin = %s, haveDistributedSnapshot = %s.",
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "setupQEDtxContext inputs (part 1): Gp_role = %s, Gp_is_writer = %s, txnOptions = 0x%x, needTwoPhase = %s, explicitBegin = %s, isoLevel = %s, readOnly = %s, haveDistributedSnapshot = %s.",
 		 role_to_string(Gp_role), (Gp_is_writer ? "true" : "false"), txnOptions,
-		 (needTwoPhase ? "true" : "false"), (explicitBegin ? "true" : "false"), 
+		 (needTwoPhase ? "true" : "false"), (explicitBegin ? "true" : "false"),
+		 IsoLevelAsUpperString(mppTxOptions_IsoLevel(txnOptions)), (isMppTxOptions_ReadOnly(txnOptions) ? "true" : "false"),
 		 (haveDistributedSnapshot ? "true" : "false")); 
     elog((Debug_print_full_dtm ? LOG : DEBUG5), "setupQEDtxContext inputs (part 2): distributedXid = %u, isSharedLocalSnapshotSlotPresent = %s.",
 		 dtxContextInfo->distributedXid,

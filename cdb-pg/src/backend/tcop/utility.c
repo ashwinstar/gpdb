@@ -428,11 +428,13 @@ ProcessUtility(Node *parsetree,
 								if (strcmp(item->defname, "transaction_isolation") == 0)
 									SetPGVariable("transaction_isolation",
 												  list_make1(item->arg),
-												  true);
+												  true,
+												  /* gp_dispatch */ false);
 								else if (strcmp(item->defname, "transaction_read_only") == 0)
 									SetPGVariable("transaction_read_only",
 												  list_make1(item->arg),
-												  true);
+												  true,
+												  /* gp_dispatch */ false);
 							}
 
 							rememberDtxExplicitBegin();
@@ -1055,10 +1057,12 @@ ProcessUtility(Node *parsetree,
 
 						if (strcmp(item->defname, "transaction_isolation") == 0)
 							SetPGVariable("transaction_isolation",
-										  list_make1(item->arg), n->is_local);
+										  list_make1(item->arg), n->is_local,
+										  /* gp_dispatch */ true);
 						else if (strcmp(item->defname, "transaction_read_only") == 0)
 							SetPGVariable("transaction_read_only",
-										  list_make1(item->arg), n->is_local);
+										  list_make1(item->arg), n->is_local,
+									      /* gp_dispatch */ true);
 					}
 				}
 				else if (strcmp(n->name, "SESSION CHARACTERISTICS") == 0)
@@ -1071,14 +1075,16 @@ ProcessUtility(Node *parsetree,
 
 						if (strcmp(item->defname, "transaction_isolation") == 0)
 							SetPGVariable("default_transaction_isolation",
-										  list_make1(item->arg), n->is_local);
+										  list_make1(item->arg), n->is_local,
+									      /* gp_dispatch */ true);
 						else if (strcmp(item->defname, "transaction_read_only") == 0)
 							SetPGVariable("default_transaction_read_only",
-										  list_make1(item->arg), n->is_local);
+										  list_make1(item->arg), n->is_local,
+										  /* gp_dispatch */ true);
 					}
 				}
 				else
-					SetPGVariable(n->name, n->args, n->is_local);
+					SetPGVariable(n->name, n->args, n->is_local, /* gp_dispatch */ true);
 			}
 			break;
 

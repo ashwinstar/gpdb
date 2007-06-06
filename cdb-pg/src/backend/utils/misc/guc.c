@@ -5251,7 +5251,7 @@ flatten_set_variable_args(const char *name, List *args)
  * SET command
  */
 void
-SetPGVariable(const char *name, List *args, bool is_local)
+SetPGVariable(const char *name, List *args, bool is_local, bool gp_dispatch)
 {
 	char	   *argstring = flatten_set_variable_args(name, args);
 
@@ -5326,8 +5326,10 @@ SetPGVariable(const char *name, List *args, bool is_local)
 			}
 		}
 		
-		
-        CdbDoCommandOnAllGangs( buffer.data, false, /*no txn*/ false );
+		if (gp_dispatch)
+		{
+	        CdbDoCommandOnAllGangs( buffer.data, false, /*no txn*/ false );
+		}
 		
 	}
 }
