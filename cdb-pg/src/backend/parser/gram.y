@@ -185,7 +185,7 @@ static void doNegateFloat(Value *v);
 %type <dbehavior>	opt_drop_behavior
 
 %type <list>	createdb_opt_list alterdb_opt_list copy_opt_list
-				ext_on_clause_list format_opt_list transaction_mode_list
+				ext_on_clause_list format_opt format_opt_list transaction_mode_list
 %type <defelt>	createdb_opt_item alterdb_opt_item copy_opt_item
 				ext_on_clause_item format_opt_item transaction_mode_item
 
@@ -2439,7 +2439,7 @@ CreateAsElement:
  *****************************************************************************/
 	
 CreateExternalStmt:	CREATE EXTERNAL OptTemp TABLE qualified_name '(' OptExtTableElementList ')' 
-					ExtTypedesc FORMAT Sconst '(' format_opt_list ')'
+					ExtTypedesc FORMAT Sconst format_opt
 						{
 							CreateExternalStmt *n = makeNode(CreateExternalStmt);
 							$5->istemp = $3;
@@ -2447,7 +2447,7 @@ CreateExternalStmt:	CREATE EXTERNAL OptTemp TABLE qualified_name '(' OptExtTable
 							n->tableElts = $7;
 							n->exttypedesc = $9;
 							n->format = $11;
-							n->formatOpts = $13;
+							n->formatOpts = $12;
 							$$ = (Node *)n;							
 						}
 						;
@@ -2513,6 +2513,11 @@ ext_on_clause_item:
 location_list:  	
 			Sconst								{ $$ = list_make1($1); }
 			| location_list ',' Sconst			{ $$ = lappend($1, $3); }
+			;
+
+format_opt: 
+			'(' format_opt_list ')'				{ $$ = $2; }
+			| /* EMPTY */						{ $$ = NIL; }
 			;
 
 format_opt_list:
