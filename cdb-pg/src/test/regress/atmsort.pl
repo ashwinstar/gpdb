@@ -616,11 +616,18 @@ if (1)
     my $copy_select = 0;
     my $directive = {};
     my $big_ignore = 0;
+    my $error_detail_exttab_trifecta_skip = 0; # don't ask!
 
   L_bigwhile:
     while (<>) # big while
     {
         my $ini = $_;
+
+        if ($error_detail_exttab_trifecta_skip)
+        {
+            $error_detail_exttab_trifecta_skip = 0;
+            next;
+        }
 
         if ($big_ignore)
         {
@@ -753,7 +760,9 @@ if (1)
                         next L_bigwhile;
                     }
                     $lastguy--;
-                }
+                } # end for
+
+
 
             } # end if pruning notices
 
@@ -851,9 +860,29 @@ if (1)
         {
             $ini =~ s|connection.*failed.*http.*|connection failed http://DUMMY_LOCATION|;
         }
-        if ($ini =~ m/DETAIL:.*External table .*line (\d)+/)
+        if ($ini =~ m/External table .*line (\d)+/)
         {
             $ini =~ s/External table .*line (\d)+.*/External table DUMMY_EX, line DUMMY_LINE of DUMMY_LOCATION/;
+              $ini =~ s/\s+/ /;
+             # MPP-1557,AUTO-3: horrific ERROR DETAIL External Table trifecta
+             if ($ini !~ m/^DETAIL/)
+             {
+                # find a "blank" DETAIL tag preceding current line
+                if (scalar(@outarr) && ($outarr[-1] =~ m/^DETAIL:\s+$/))
+                {
+                   pop @outarr;
+                   $ini = "DETAIL: " . $ini;
+                   $ini =~ s/\s+/ /;
+                   # need to skip the next record
+                   $error_detail_exttab_trifecta_skip = 1;
+                }
+             }
+             if (scalar(@outarr) && 
+                 ($outarr[-1] =~ m/^ERROR:\s+missing\s+data\s+for\s+column/))
+             {
+                $outarr[-1] = "ERROR:  missing data for column DUMMY_COL\n";
+             }
+
         }
 
         # XXX XXX: note the discrepancy in the NOTICE messages
