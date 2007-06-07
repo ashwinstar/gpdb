@@ -824,6 +824,39 @@ dumpXLogRecord(XLogRecord *record)
 				else
 					printf("abort: %u\n", record->xl_xid);
 			}
+			else if (info == XLOG_XACT_PREPARE)
+			{
+ 				printf("prepare\n");
+			}
+			else if (info == XLOG_XACT_COMMIT_PREPARED)
+			{
+				xl_xact_commit_prepared	xlrec;
+
+				memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
+				printf("commit-prepared: %u\n", record->xl_xid);
+			}
+			else if (info == XLOG_XACT_ABORT_PREPARED)
+			{
+				xl_xact_abort_prepared	xlrec;
+
+				memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
+				printf("abort-prepared: %u\n", record->xl_xid);
+			}
+			else if (info == XLOG_XACT_DISTRIBUTED_COMMIT)
+			{
+				xl_xact_commit	xlrec;
+
+				memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
+				printf("distributed-commit: %u\n", record->xl_xid);
+			}
+			else if (info == XLOG_XACT_DISTRIBUTED_FORGET)
+			{
+				xl_xact_distributed_forget	xlrec;
+
+				memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
+				printf("distributed-forget: %u, gid = %s, gxid = %u\n", record->xl_xid,
+					       xlrec.gxact_log.gid, xlrec.gxact_log.gxid);
+			}
 			break;
 		case RM_SMGR_ID:
 			if (info == XLOG_SMGR_CREATE)
