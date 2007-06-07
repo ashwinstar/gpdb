@@ -1,4 +1,4 @@
--- begin_ignore
+-- start_ignore
 
 drop database if exists regressbkuptest1;
 drop database if exists regressrestoretest1;

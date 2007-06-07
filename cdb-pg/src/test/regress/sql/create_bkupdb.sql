@@ -1,8 +1,7 @@
+-- start_ignore
 --
 -- Greenplum DB backup test
 --
-
--- begin_ignore
 
 -- Check database version and gp_dump, pg_dump
 select version();

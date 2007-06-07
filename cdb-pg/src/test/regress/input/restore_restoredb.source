@@ -1,4 +1,4 @@
--- begin_ignore
+-- start_ignore
 -- find version info
 select version();
 \! gp_restore --version

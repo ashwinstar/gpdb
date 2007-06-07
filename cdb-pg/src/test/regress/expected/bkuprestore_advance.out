@@ -1,12 +1,12 @@
+-- start_ignore
 --
 -- Greenplum DB backup test : Advanced features
 --
--- begin_ignore
 -- Check database version and gp_dump, pg_dump
 select version();
                                                                                                                     version                                                                                                                    
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- PostgreSQL 8.2.4 (Greenplum Database cvs Head build dev build ) on i386-apple-darwin8.9.1, compiled by GCC i686-apple-darwin8-gcc-4.0.1 (GCC) 4.0.1 (Apple Computer, Inc. build 5367) compiled on May 29 2007 10:49:26 (with assert checking)
+ PostgreSQL 8.2.4 (Greenplum Database cvs Head build dev build ) on i386-apple-darwin8.9.1, compiled by GCC i686-apple-darwin8-gcc-4.0.1 (GCC) 4.0.1 (Apple Computer, Inc. build 5367) compiled on Jun  5 2007 12:29:58 (with assert checking)
 (1 row)
 
 \! gp_dump --version
@@ -164,46 +164,46 @@ insert into trig1 values (1, 1), (2, 2);
 \! rm -fr /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_adv
 \! mkdir /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_adv
 \! gp_dump regressbkuptestadv --gp-d=/Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_adv
-20070604:15:45:14|gp_dump-[INFO]:-Preparing to dump the following segments:
-20070604:15:45:14|gp_dump-[INFO]:-Master (dbid 1)
-20070604:15:45:14|gp_dump-[INFO]:-Primary segment 0 (dbid 2)
-20070604:15:45:14|gp_dump-[INFO]:-Primary segment 1 (dbid 3)
-20070604:15:45:14|gp_dump-[INFO]:-Command line options analyzed.
-20070604:15:45:14|gp_dump-[INFO]:-Connecting to master database on host localhost port 13000 database regressbkuptestadv.
-20070604:15:45:14|gp_dump-[INFO]:-Reading Greenplum Database configuration info from master database.
-20070604:15:45:14|gp_dump-[INFO]:-Starting a transaction on master database regressbkuptestadv.
-20070604:15:45:14|gp_dump-[INFO]:-Getting a list of Greenplum Database managed tables for database regressbkuptestadv.
-20070604:15:45:14|gp_dump-[INFO]:-Issuing "LOCK IN EXCLUSIVE MODE" for managed tables on database regressbkuptestadv.
-20070604:15:45:14|gp_dump-[INFO]:-About to spin off 3 threads with timestamp key 20070604154514
-20070604:15:45:14|gp_dump-[INFO]:-Creating thread to backup dbid 1: host localhost port 13000 database regressbkuptestadv
-20070604:15:45:14|gp_dump-[INFO]:-Creating thread to backup dbid 2: host localhost port 13002 database regressbkuptestadv
-20070604:15:45:14|gp_dump-[INFO]:-Creating thread to backup dbid 3: host localhost port 13003 database regressbkuptestadv
-20070604:15:45:14|gp_dump-[INFO]:-Waiting for remote gp_dump_agent processes to start transactions in serializable isolation level
-20070604:15:45:14|gp_dump-[INFO]:-Listening for messages from server on dbid 1 connection
-20070604:15:45:14|gp_dump-[INFO]:-Successfully launched Greenplum Database backup on dbid 1 server
-20070604:15:45:14|gp_dump-[INFO]:-Listening for messages from server on dbid 3 connection
-20070604:15:45:14|gp_dump-[INFO]:-Successfully launched Greenplum Database backup on dbid 3 server
-20070604:15:45:14|gp_dump-[INFO]:-Listening for messages from server on dbid 2 connection
-20070604:15:45:14|gp_dump-[INFO]:-Successfully launched Greenplum Database backup on dbid 2 server
-20070604:15:45:18|gp_dump-[INFO]:-backup succeeded for dbid 3 on host localhost
-20070604:15:45:18|gp_dump-[INFO]:-backup succeeded for dbid 2 on host localhost
-20070604:15:45:18|gp_dump-[INFO]:-All remote gp_dump_agent processes have set transacactions in serializable isolation level
-20070604:15:45:18|gp_dump-[INFO]:-Committing transaction on the master database, thereby releasing locks.
-20070604:15:45:18|gp_dump-[INFO]:-Waiting for all remote gp_dump_agent programs to finish.
-20070604:15:45:20|gp_dump-[INFO]:-backup succeeded for dbid 1 on host localhost
-20070604:15:45:20|gp_dump-[INFO]:-All remote gp_dump_agent programs are finished.
-20070604:15:45:20|gp_dump-[INFO]:-Report results also written to /Users/ftian/demo/main_data/testdb-1/gp_dump_20070604154514.rpt.
+20070607:14:58:14|gp_dump-[INFO]:-Preparing to dump the following segments:
+20070607:14:58:14|gp_dump-[INFO]:-Master (dbid 1)
+20070607:14:58:14|gp_dump-[INFO]:-Primary segment 0 (dbid 2)
+20070607:14:58:14|gp_dump-[INFO]:-Primary segment 1 (dbid 3)
+20070607:14:58:14|gp_dump-[INFO]:-Command line options analyzed.
+20070607:14:58:14|gp_dump-[INFO]:-Connecting to master database on host localhost port 13000 database regressbkuptestadv.
+20070607:14:58:14|gp_dump-[INFO]:-Reading Greenplum Database configuration info from master database.
+20070607:14:58:14|gp_dump-[INFO]:-Starting a transaction on master database regressbkuptestadv.
+20070607:14:58:14|gp_dump-[INFO]:-Getting a list of Greenplum Database managed tables for database regressbkuptestadv.
+20070607:14:58:14|gp_dump-[INFO]:-Issuing "LOCK IN EXCLUSIVE MODE" for managed tables on database regressbkuptestadv.
+20070607:14:58:14|gp_dump-[INFO]:-About to spin off 3 threads with timestamp key 20070607145814
+20070607:14:58:14|gp_dump-[INFO]:-Creating thread to backup dbid 1: host localhost port 13000 database regressbkuptestadv
+20070607:14:58:14|gp_dump-[INFO]:-Creating thread to backup dbid 2: host localhost port 13002 database regressbkuptestadv
+20070607:14:58:14|gp_dump-[INFO]:-Creating thread to backup dbid 3: host localhost port 13003 database regressbkuptestadv
+20070607:14:58:14|gp_dump-[INFO]:-Waiting for remote gp_dump_agent processes to start transactions in serializable isolation level
+20070607:14:58:14|gp_dump-[INFO]:-Listening for messages from server on dbid 1 connection
+20070607:14:58:14|gp_dump-[INFO]:-Successfully launched Greenplum Database backup on dbid 1 server
+20070607:14:58:14|gp_dump-[INFO]:-Listening for messages from server on dbid 3 connection
+20070607:14:58:14|gp_dump-[INFO]:-Successfully launched Greenplum Database backup on dbid 3 server
+20070607:14:58:14|gp_dump-[INFO]:-Listening for messages from server on dbid 2 connection
+20070607:14:58:14|gp_dump-[INFO]:-Successfully launched Greenplum Database backup on dbid 2 server
+20070607:14:58:18|gp_dump-[INFO]:-backup succeeded for dbid 3 on host localhost
+20070607:14:58:19|gp_dump-[INFO]:-backup succeeded for dbid 2 on host localhost
+20070607:14:58:19|gp_dump-[INFO]:-All remote gp_dump_agent processes have set transacactions in serializable isolation level
+20070607:14:58:19|gp_dump-[INFO]:-Committing transaction on the master database, thereby releasing locks.
+20070607:14:58:19|gp_dump-[INFO]:-Waiting for all remote gp_dump_agent programs to finish.
+20070607:14:58:20|gp_dump-[INFO]:-backup succeeded for dbid 1 on host localhost
+20070607:14:58:20|gp_dump-[INFO]:-All remote gp_dump_agent programs are finished.
+20070607:14:58:20|gp_dump-[INFO]:-Report results also written to /Users/ftian/demo/main_data/testdb-1/gp_dump_20070607145814.rpt.
 
 Greenplum Database Backup Report
-Timestamp Key: 20070604154514
+Timestamp Key: 20070607145814
 gp_dump Command Line: regressbkuptestadv --gp-d=/Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_adv
 Pass through Command Line Options: None
 Compression Program: None
 
 Individual Results
-	Master (dbid 1) Host localhost Port 13000 Database regressbkuptestadv BackupFile /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_adv/gp_dump_1_1_20070604154514: Succeeded 
-	Primary segment 0 (dbid 2) Host localhost Port 13002 Database regressbkuptestadv BackupFile /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_adv/gp_dump_0_2_20070604154514: Succeeded 
-	Primary segment 1 (dbid 3) Host localhost Port 13003 Database regressbkuptestadv BackupFile /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_adv/gp_dump_0_3_20070604154514: Succeeded 
+	Master (dbid 1) Host localhost Port 13000 Database regressbkuptestadv BackupFile /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_adv/gp_dump_1_1_20070607145814: Succeeded 
+	Primary segment 0 (dbid 2) Host localhost Port 13002 Database regressbkuptestadv BackupFile /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_adv/gp_dump_0_2_20070607145814: Succeeded 
+	Primary segment 1 (dbid 3) Host localhost Port 13003 Database regressbkuptestadv BackupFile /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_adv/gp_dump_0_3_20070607145814: Succeeded 
 
 gp_dump utility finished successfully.
 \! rm -fr /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/pgdump_adv
@@ -215,44 +215,44 @@ drop database if exists regressrestoretesadv1;
 NOTICE:  database "regressrestoretesadv1" does not exist, skipping
 create database regressrestoretestadv1;
 \! gp_restore --gp-d=/Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_adv --gp-k=`find /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_adv/gp* -exec basename '{}' \; | head -1 | cut -f 1 -d '.' | cut -f 5 -d '_'` -d regressrestoretestadv1
-20070604:15:45:27|gp_restore-[INFO]:-Analyzed command line options.
-20070604:15:45:27|gp_restore-[INFO]:-Connecting to master segment on host localhost port 13000 database regressrestoretestadv1.
-20070604:15:45:27|gp_restore-[INFO]:-Reading Greenplum Database configuration info from master segment database.
-20070604:15:45:27|gp_restore-[INFO]:-Preparing to restore the following segments:
-20070604:15:45:27|gp_restore-[INFO]:-Master (dbid 1)
-20070604:15:45:27|gp_restore-[INFO]:-Primary segment 0 (dbid 2)
-20070604:15:45:27|gp_restore-[INFO]:-Primary segment 1 (dbid 3)
-20070604:15:45:27|gp_restore-[INFO]:-Starting to restore the master database.
-20070604:15:45:27|gp_restore-[INFO]:-Creating thread to restore master database: host localhost port 13000 database regressrestoretestadv1
-20070604:15:45:27|gp_restore-[INFO]:-Listening for messages from dbid 1 server (source) for dbid 1 restore
-20070604:15:45:27|gp_restore-[INFO]:-Successfully launched Greenplum Database restore on dbid 1 to restore dbid 1
-20070604:15:45:31|gp_restore-[INFO]:-restore started for source dbid 1, target dbid 1 on host localhost
-20070604:15:45:31|gp_restore-[INFO]:-restore succeeded for source dbid 1, target dbid 1 on host localhost
-20070604:15:45:31|gp_restore-[INFO]:-Successfully restored master database: host localhost port 13000 database regressrestoretestadv1
-20070604:15:45:31|gp_restore-[INFO]:-Creating thread to restore dbid 2 (localhost:13002) from backup file on dbid 2 (localhost:13002)
-20070604:15:45:31|gp_restore-[INFO]:-Creating thread to restore dbid 3 (localhost:13003) from backup file on dbid 3 (localhost:13003)
-20070604:15:45:31|gp_restore-[INFO]:-Waiting for all remote gp_restore_agent programs to finish.
-20070604:15:45:31|gp_restore-[INFO]:-Listening for messages from dbid 2 server (source) for dbid 2 restore
-20070604:15:45:31|gp_restore-[INFO]:-Listening for messages from dbid 3 server (source) for dbid 3 restore
-20070604:15:45:31|gp_restore-[INFO]:-Successfully launched Greenplum Database restore on dbid 3 to restore dbid 3
-20070604:15:45:31|gp_restore-[INFO]:-Successfully launched Greenplum Database restore on dbid 2 to restore dbid 2
-20070604:15:45:35|gp_restore-[INFO]:-restore started for source dbid 3, target dbid 3 on host localhost
-20070604:15:45:35|gp_restore-[INFO]:-restore succeeded for source dbid 3, target dbid 3 on host localhost
-20070604:15:45:35|gp_restore-[INFO]:-restore started for source dbid 2, target dbid 2 on host localhost
-20070604:15:45:35|gp_restore-[INFO]:-restore succeeded for source dbid 2, target dbid 2 on host localhost
-20070604:15:45:35|gp_restore-[INFO]:-All remote gp_restore_agent programs are finished.
-20070604:15:45:35|gp_restore-[INFO]:-Report results also written to /Users/ftian/demo/main_data/testdb-1/gp_restore_20070604154514.rpt.
+20070607:14:58:26|gp_restore-[INFO]:-Analyzed command line options.
+20070607:14:58:26|gp_restore-[INFO]:-Connecting to master segment on host localhost port 13000 database regressrestoretestadv1.
+20070607:14:58:26|gp_restore-[INFO]:-Reading Greenplum Database configuration info from master segment database.
+20070607:14:58:26|gp_restore-[INFO]:-Preparing to restore the following segments:
+20070607:14:58:26|gp_restore-[INFO]:-Master (dbid 1)
+20070607:14:58:26|gp_restore-[INFO]:-Primary segment 0 (dbid 2)
+20070607:14:58:26|gp_restore-[INFO]:-Primary segment 1 (dbid 3)
+20070607:14:58:26|gp_restore-[INFO]:-Starting to restore the master database.
+20070607:14:58:26|gp_restore-[INFO]:-Creating thread to restore master database: host localhost port 13000 database regressrestoretestadv1
+20070607:14:58:26|gp_restore-[INFO]:-Listening for messages from dbid 1 server (source) for dbid 1 restore
+20070607:14:58:26|gp_restore-[INFO]:-Successfully launched Greenplum Database restore on dbid 1 to restore dbid 1
+20070607:14:58:30|gp_restore-[INFO]:-restore started for source dbid 1, target dbid 1 on host localhost
+20070607:14:58:30|gp_restore-[INFO]:-restore succeeded for source dbid 1, target dbid 1 on host localhost
+20070607:14:58:30|gp_restore-[INFO]:-Successfully restored master database: host localhost port 13000 database regressrestoretestadv1
+20070607:14:58:30|gp_restore-[INFO]:-Creating thread to restore dbid 2 (localhost:13002) from backup file on dbid 2 (localhost:13002)
+20070607:14:58:30|gp_restore-[INFO]:-Creating thread to restore dbid 3 (localhost:13003) from backup file on dbid 3 (localhost:13003)
+20070607:14:58:30|gp_restore-[INFO]:-Waiting for all remote gp_restore_agent programs to finish.
+20070607:14:58:30|gp_restore-[INFO]:-20070607:14:58:30|gp_restore-[INFO]:-Listening for messages from dbid 3 server (source) for dbid 3 restore
+Listening for messages from dbid 2 server (source) for dbid 2 restore
+20070607:14:58:30|gp_restore-[INFO]:-Successfully launched Greenplum Database restore on dbid 2 to restore dbid 2
+20070607:14:58:30|gp_restore-[INFO]:-Successfully launched Greenplum Database restore on dbid 3 to restore dbid 3
+20070607:14:58:34|gp_restore-[INFO]:-20070607:14:58:34|gp_restore-[INFO]:-restore started for source dbid 2, target dbid 2 on host localhost
+restore started for source dbid 3, target dbid 3 on host localhost
+20070607:14:58:34|gp_restore-[INFO]:-20070607:14:58:34|gp_restore-[INFO]:-restore succeeded for source dbid 2, target dbid 2 on host localhost
+restore succeeded for source dbid 3, target dbid 3 on host localhost
+20070607:14:58:34|gp_restore-[INFO]:-All remote gp_restore_agent programs are finished.
+20070607:14:58:34|gp_restore-[INFO]:-Report results also written to /Users/ftian/demo/main_data/testdb-1/gp_restore_20070607145814.rpt.
 
 Greenplum Database Restore Report
-Timestamp Key: 20070604154514
-gp_restore Command Line: --gp-d=/Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_adv --gp-k=20070604154514 -d regressrestoretestadv1
+Timestamp Key: 20070607145814
+gp_restore Command Line: --gp-d=/Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_adv --gp-k=20070607145814 -d regressrestoretestadv1
 Pass through Command Line Options: None
 Compression Program: None
 
 Individual Results
-	Restore of regressrestoretestadv1 on dbid 1 (localhost:13000) from file on dbid 1 (localhost:13000) /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_adv/gp_dump_1_1_20070604154514: Succeeded 
-	Restore of regressrestoretestadv1 on dbid 2 (localhost:13002) from file on dbid 2 (localhost:13002) /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_adv/gp_dump_0_2_20070604154514: Succeeded 
-	Restore of regressrestoretestadv1 on dbid 3 (localhost:13003) from file on dbid 3 (localhost:13003) /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_adv/gp_dump_0_3_20070604154514: Succeeded 
+	Restore of regressrestoretestadv1 on dbid 1 (localhost:13000) from file on dbid 1 (localhost:13000) /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_adv/gp_dump_1_1_20070607145814: Succeeded 
+	Restore of regressrestoretestadv1 on dbid 2 (localhost:13002) from file on dbid 2 (localhost:13002) /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_adv/gp_dump_0_2_20070607145814: Succeeded 
+	Restore of regressrestoretestadv1 on dbid 3 (localhost:13003) from file on dbid 3 (localhost:13003) /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_adv/gp_dump_0_3_20070607145814: Succeeded 
 
 gp_restore  utility finished successfully.
 drop database if exists regressrestoretestadv2;
@@ -306,46 +306,46 @@ vacuum t5;
 \! rm -fr /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_misc
 \! mkdir /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_misc
 \! gp_dump regressbkuptestmisc --gp-d=/Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_misc
-20070604:15:45:44|gp_dump-[INFO]:-Preparing to dump the following segments:
-20070604:15:45:44|gp_dump-[INFO]:-Master (dbid 1)
-20070604:15:45:44|gp_dump-[INFO]:-Primary segment 0 (dbid 2)
-20070604:15:45:44|gp_dump-[INFO]:-Primary segment 1 (dbid 3)
-20070604:15:45:44|gp_dump-[INFO]:-Command line options analyzed.
-20070604:15:45:44|gp_dump-[INFO]:-Connecting to master database on host localhost port 13000 database regressbkuptestmisc.
-20070604:15:45:44|gp_dump-[INFO]:-Reading Greenplum Database configuration info from master database.
-20070604:15:45:44|gp_dump-[INFO]:-Starting a transaction on master database regressbkuptestmisc.
-20070604:15:45:44|gp_dump-[INFO]:-Getting a list of Greenplum Database managed tables for database regressbkuptestmisc.
-20070604:15:45:44|gp_dump-[INFO]:-Issuing "LOCK IN EXCLUSIVE MODE" for managed tables on database regressbkuptestmisc.
-20070604:15:45:44|gp_dump-[INFO]:-About to spin off 3 threads with timestamp key 20070604154544
-20070604:15:45:44|gp_dump-[INFO]:-Creating thread to backup dbid 1: host localhost port 13000 database regressbkuptestmisc
-20070604:15:45:44|gp_dump-[INFO]:-Creating thread to backup dbid 2: host localhost port 13002 database regressbkuptestmisc
-20070604:15:45:44|gp_dump-[INFO]:-Creating thread to backup dbid 3: host localhost port 13003 database regressbkuptestmisc
-20070604:15:45:44|gp_dump-[INFO]:-Waiting for remote gp_dump_agent processes to start transactions in serializable isolation level
-20070604:15:45:44|gp_dump-[INFO]:-Listening for messages from server on dbid 1 connection
-20070604:15:45:44|gp_dump-[INFO]:-Listening for messages from server on dbid 2 connection
-20070604:15:45:44|gp_dump-[INFO]:-Successfully launched Greenplum Database backup on dbid 2 server
-20070604:15:45:44|gp_dump-[INFO]:-Successfully launched Greenplum Database backup on dbid 1 server
-20070604:15:45:44|gp_dump-[INFO]:-Listening for messages from server on dbid 3 connection
-20070604:15:45:44|gp_dump-[INFO]:-Successfully launched Greenplum Database backup on dbid 3 server
-20070604:15:45:48|gp_dump-[INFO]:-backup succeeded for dbid 2 on host localhost
-20070604:15:45:48|gp_dump-[INFO]:-backup succeeded for dbid 1 on host localhost
-20070604:15:45:48|gp_dump-[INFO]:-backup succeeded for dbid 3 on host localhost
-20070604:15:45:48|gp_dump-[INFO]:-All remote gp_dump_agent processes have set transacactions in serializable isolation level
-20070604:15:45:48|gp_dump-[INFO]:-Committing transaction on the master database, thereby releasing locks.
-20070604:15:45:48|gp_dump-[INFO]:-Waiting for all remote gp_dump_agent programs to finish.
-20070604:15:45:48|gp_dump-[INFO]:-All remote gp_dump_agent programs are finished.
-20070604:15:45:48|gp_dump-[INFO]:-Report results also written to /Users/ftian/demo/main_data/testdb-1/gp_dump_20070604154544.rpt.
+20070607:14:58:46|gp_dump-[INFO]:-Preparing to dump the following segments:
+20070607:14:58:46|gp_dump-[INFO]:-Master (dbid 1)
+20070607:14:58:46|gp_dump-[INFO]:-Primary segment 0 (dbid 2)
+20070607:14:58:46|gp_dump-[INFO]:-Primary segment 1 (dbid 3)
+20070607:14:58:46|gp_dump-[INFO]:-Command line options analyzed.
+20070607:14:58:46|gp_dump-[INFO]:-Connecting to master database on host localhost port 13000 database regressbkuptestmisc.
+20070607:14:58:46|gp_dump-[INFO]:-Reading Greenplum Database configuration info from master database.
+20070607:14:58:46|gp_dump-[INFO]:-Starting a transaction on master database regressbkuptestmisc.
+20070607:14:58:46|gp_dump-[INFO]:-Getting a list of Greenplum Database managed tables for database regressbkuptestmisc.
+20070607:14:58:46|gp_dump-[INFO]:-Issuing "LOCK IN EXCLUSIVE MODE" for managed tables on database regressbkuptestmisc.
+20070607:14:58:46|gp_dump-[INFO]:-About to spin off 3 threads with timestamp key 20070607145846
+20070607:14:58:46|gp_dump-[INFO]:-Creating thread to backup dbid 1: host localhost port 13000 database regressbkuptestmisc
+20070607:14:58:46|gp_dump-[INFO]:-Creating thread to backup dbid 2: host localhost port 13002 database regressbkuptestmisc
+20070607:14:58:46|gp_dump-[INFO]:-Creating thread to backup dbid 3: host localhost port 13003 database regressbkuptestmisc
+20070607:14:58:46|gp_dump-[INFO]:-Waiting for remote gp_dump_agent processes to start transactions in serializable isolation level
+20070607:14:58:46|gp_dump-[INFO]:-Listening for messages from server on dbid 1 connection
+20070607:14:58:46|gp_dump-[INFO]:-Successfully launched Greenplum Database backup on dbid 1 server
+20070607:14:58:46|gp_dump-[INFO]:-Listening for messages from server on dbid 3 connection
+20070607:14:58:46|gp_dump-[INFO]:-Listening for messages from server on dbid 2 connection
+20070607:14:58:46|gp_dump-[INFO]:-Successfully launched Greenplum Database backup on dbid 3 server
+20070607:14:58:46|gp_dump-[INFO]:-Successfully launched Greenplum Database backup on dbid 2 server
+20070607:14:58:50|gp_dump-[INFO]:-backup succeeded for dbid 1 on host localhost
+20070607:14:58:50|gp_dump-[INFO]:-backup succeeded for dbid 3 on host localhost
+20070607:14:58:50|gp_dump-[INFO]:-backup succeeded for dbid 2 on host localhost
+20070607:14:58:50|gp_dump-[INFO]:-All remote gp_dump_agent processes have set transacactions in serializable isolation level
+20070607:14:58:50|gp_dump-[INFO]:-Committing transaction on the master database, thereby releasing locks.
+20070607:14:58:50|gp_dump-[INFO]:-Waiting for all remote gp_dump_agent programs to finish.
+20070607:14:58:50|gp_dump-[INFO]:-All remote gp_dump_agent programs are finished.
+20070607:14:58:50|gp_dump-[INFO]:-Report results also written to /Users/ftian/demo/main_data/testdb-1/gp_dump_20070607145846.rpt.
 
 Greenplum Database Backup Report
-Timestamp Key: 20070604154544
+Timestamp Key: 20070607145846
 gp_dump Command Line: regressbkuptestmisc --gp-d=/Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_misc
 Pass through Command Line Options: None
 Compression Program: None
 
 Individual Results
-	Master (dbid 1) Host localhost Port 13000 Database regressbkuptestmisc BackupFile /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_misc/gp_dump_1_1_20070604154544: Succeeded 
-	Primary segment 0 (dbid 2) Host localhost Port 13002 Database regressbkuptestmisc BackupFile /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_misc/gp_dump_0_2_20070604154544: Succeeded 
-	Primary segment 1 (dbid 3) Host localhost Port 13003 Database regressbkuptestmisc BackupFile /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_misc/gp_dump_0_3_20070604154544: Succeeded 
+	Master (dbid 1) Host localhost Port 13000 Database regressbkuptestmisc BackupFile /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_misc/gp_dump_1_1_20070607145846: Succeeded 
+	Primary segment 0 (dbid 2) Host localhost Port 13002 Database regressbkuptestmisc BackupFile /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_misc/gp_dump_0_2_20070607145846: Succeeded 
+	Primary segment 1 (dbid 3) Host localhost Port 13003 Database regressbkuptestmisc BackupFile /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_misc/gp_dump_0_3_20070607145846: Succeeded 
 
 gp_dump utility finished successfully.
 \! rm -fr /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/pgdump_misc
@@ -356,44 +356,44 @@ drop database if exists regressrestoretesmisc1;
 NOTICE:  database "regressrestoretesmisc1" does not exist, skipping
 create database regressrestoretestmisc1;
 \! gp_restore --gp-d=/Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_misc --gp-k=`find /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_misc/gp* -exec basename '{}' \; | head -1 | cut -f 1 -d '.' | cut -f 5 -d '_'` -d regressrestoretestmisc1
-20070604:15:45:50|gp_restore-[INFO]:-Analyzed command line options.
-20070604:15:45:50|gp_restore-[INFO]:-Connecting to master segment on host localhost port 13000 database regressrestoretestmisc1.
-20070604:15:45:50|gp_restore-[INFO]:-Reading Greenplum Database configuration info from master segment database.
-20070604:15:45:50|gp_restore-[INFO]:-Preparing to restore the following segments:
-20070604:15:45:50|gp_restore-[INFO]:-Master (dbid 1)
-20070604:15:45:50|gp_restore-[INFO]:-Primary segment 0 (dbid 2)
-20070604:15:45:50|gp_restore-[INFO]:-Primary segment 1 (dbid 3)
-20070604:15:45:50|gp_restore-[INFO]:-Starting to restore the master database.
-20070604:15:45:50|gp_restore-[INFO]:-Creating thread to restore master database: host localhost port 13000 database regressrestoretestmisc1
-20070604:15:45:50|gp_restore-[INFO]:-Listening for messages from dbid 1 server (source) for dbid 1 restore
-20070604:15:45:50|gp_restore-[INFO]:-Successfully launched Greenplum Database restore on dbid 1 to restore dbid 1
-20070604:15:45:54|gp_restore-[INFO]:-restore started for source dbid 1, target dbid 1 on host localhost
-20070604:15:45:54|gp_restore-[INFO]:-restore succeeded for source dbid 1, target dbid 1 on host localhost
-20070604:15:45:54|gp_restore-[INFO]:-Successfully restored master database: host localhost port 13000 database regressrestoretestmisc1
-20070604:15:45:54|gp_restore-[INFO]:-Creating thread to restore dbid 2 (localhost:13002) from backup file on dbid 2 (localhost:13002)
-20070604:15:45:54|gp_restore-[INFO]:-Creating thread to restore dbid 3 (localhost:13003) from backup file on dbid 3 (localhost:13003)
-20070604:15:45:54|gp_restore-[INFO]:-Waiting for all remote gp_restore_agent programs to finish.
-20070604:15:45:54|gp_restore-[INFO]:-Listening for messages from dbid 3 server (source) for dbid 3 restore
-20070604:15:45:54|gp_restore-[INFO]:-Listening for messages from dbid 2 server (source) for dbid 2 restore
-20070604:15:45:54|gp_restore-[INFO]:-20070604:15:45:54|gp_restore-[INFO]:-Successfully launched Greenplum Database restore on dbid 3 to restore dbid 3
-Successfully launched Greenplum Database restore on dbid 2 to restore dbid 2
-20070604:15:45:58|gp_restore-[INFO]:-restore started for source dbid 2, target dbid 2 on host localhost
-20070604:15:45:58|gp_restore-[INFO]:-restore succeeded for source dbid 2, target dbid 2 on host localhost
-20070604:15:45:58|gp_restore-[INFO]:-restore started for source dbid 3, target dbid 3 on host localhost
-20070604:15:45:58|gp_restore-[INFO]:-restore succeeded for source dbid 3, target dbid 3 on host localhost
-20070604:15:45:58|gp_restore-[INFO]:-All remote gp_restore_agent programs are finished.
-20070604:15:45:58|gp_restore-[INFO]:-Report results also written to /Users/ftian/demo/main_data/testdb-1/gp_restore_20070604154544.rpt.
+20070607:14:58:52|gp_restore-[INFO]:-Analyzed command line options.
+20070607:14:58:52|gp_restore-[INFO]:-Connecting to master segment on host localhost port 13000 database regressrestoretestmisc1.
+20070607:14:58:52|gp_restore-[INFO]:-Reading Greenplum Database configuration info from master segment database.
+20070607:14:58:52|gp_restore-[INFO]:-Preparing to restore the following segments:
+20070607:14:58:52|gp_restore-[INFO]:-Master (dbid 1)
+20070607:14:58:52|gp_restore-[INFO]:-Primary segment 0 (dbid 2)
+20070607:14:58:52|gp_restore-[INFO]:-Primary segment 1 (dbid 3)
+20070607:14:58:52|gp_restore-[INFO]:-Starting to restore the master database.
+20070607:14:58:52|gp_restore-[INFO]:-Creating thread to restore master database: host localhost port 13000 database regressrestoretestmisc1
+20070607:14:58:52|gp_restore-[INFO]:-Listening for messages from dbid 1 server (source) for dbid 1 restore
+20070607:14:58:52|gp_restore-[INFO]:-Successfully launched Greenplum Database restore on dbid 1 to restore dbid 1
+20070607:14:58:56|gp_restore-[INFO]:-restore started for source dbid 1, target dbid 1 on host localhost
+20070607:14:58:56|gp_restore-[INFO]:-restore succeeded for source dbid 1, target dbid 1 on host localhost
+20070607:14:58:56|gp_restore-[INFO]:-Successfully restored master database: host localhost port 13000 database regressrestoretestmisc1
+20070607:14:58:56|gp_restore-[INFO]:-Creating thread to restore dbid 2 (localhost:13002) from backup file on dbid 2 (localhost:13002)
+20070607:14:58:56|gp_restore-[INFO]:-Creating thread to restore dbid 3 (localhost:13003) from backup file on dbid 3 (localhost:13003)
+20070607:14:58:56|gp_restore-[INFO]:-Waiting for all remote gp_restore_agent programs to finish.
+20070607:14:58:56|gp_restore-[INFO]:-Listening for messages from dbid 2 server (source) for dbid 2 restore
+20070607:14:58:56|gp_restore-[INFO]:-Listening for messages from dbid 3 server (source) for dbid 3 restore
+20070607:14:58:56|gp_restore-[INFO]:-Successfully launched Greenplum Database restore on dbid 2 to restore dbid 2
+20070607:14:58:56|gp_restore-[INFO]:-Successfully launched Greenplum Database restore on dbid 3 to restore dbid 3
+20070607:14:59:00|gp_restore-[INFO]:-20070607:14:59:00|gp_restore-[INFO]:-restore started for source dbid 2, target dbid 2 on host localhost
+restore started for source dbid 3, target dbid 3 on host localhost
+20070607:14:59:00|gp_restore-[INFO]:-20070607:14:59:00|gp_restore-[INFO]:-restore succeeded for source dbid 2, target dbid 2 on host localhost
+restore succeeded for source dbid 3, target dbid 3 on host localhost
+20070607:14:59:00|gp_restore-[INFO]:-All remote gp_restore_agent programs are finished.
+20070607:14:59:00|gp_restore-[INFO]:-Report results also written to /Users/ftian/demo/main_data/testdb-1/gp_restore_20070607145846.rpt.
 
 Greenplum Database Restore Report
-Timestamp Key: 20070604154544
-gp_restore Command Line: --gp-d=/Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_misc --gp-k=20070604154544 -d regressrestoretestmisc1
+Timestamp Key: 20070607145846
+gp_restore Command Line: --gp-d=/Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_misc --gp-k=20070607145846 -d regressrestoretestmisc1
 Pass through Command Line Options: None
 Compression Program: None
 
 Individual Results
-	Restore of regressrestoretestmisc1 on dbid 1 (localhost:13000) from file on dbid 1 (localhost:13000) /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_misc/gp_dump_1_1_20070604154544: Succeeded 
-	Restore of regressrestoretestmisc1 on dbid 2 (localhost:13002) from file on dbid 2 (localhost:13002) /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_misc/gp_dump_0_2_20070604154544: Succeeded 
-	Restore of regressrestoretestmisc1 on dbid 3 (localhost:13003) from file on dbid 3 (localhost:13003) /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_misc/gp_dump_0_3_20070604154544: Succeeded 
+	Restore of regressrestoretestmisc1 on dbid 1 (localhost:13000) from file on dbid 1 (localhost:13000) /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_misc/gp_dump_1_1_20070607145846: Succeeded 
+	Restore of regressrestoretestmisc1 on dbid 2 (localhost:13002) from file on dbid 2 (localhost:13002) /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_misc/gp_dump_0_2_20070607145846: Succeeded 
+	Restore of regressrestoretestmisc1 on dbid 3 (localhost:13003) from file on dbid 3 (localhost:13003) /Users/ftian/work/crashburn/cdb2/cdb-pg/src/test/regress/results/gpdump_misc/gp_dump_0_3_20070607145846: Succeeded 
 
 gp_restore  utility finished successfully.
 drop database if exists regressrestoretestmisc2;
