@@ -84,7 +84,7 @@ DROP EXTERNAL TABLE [ IF EXISTS ] <replaceable class="PARAMETER">name</replaceab
   <title>Examples</title>
 
   <para>
-   Remove the external table named <literal>staging</literal> if it exists::
+   Remove the external table named <literal>staging</literal> if it exists:
 
 <programlisting>
 DROP EXTERNAL TABLE IF EXISTS staging;
@@ -104,7 +104,7 @@ DROP EXTERNAL TABLE IF EXISTS staging;
   <title>See Also</title>
 
   <simplelist type="inline">
-   <member><xref linkend="sql-createexternaltable" endterm="sql-createtable-title"></member>
+   <member><xref linkend="sql-createexternaltable" endterm="sql-createexternaltable-title"></member>
   </simplelist>
  </refsect1>
 

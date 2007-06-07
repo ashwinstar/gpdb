@@ -3,7 +3,7 @@ $PostgreSQL: pgsql/doc/src/sgml/ref/create_external_table.sgml,v 1.105 2006/09/1
 PostgreSQL documentation
 -->
 
-<refentry id="SQL-CREATETABLE">
+<refentry id="SQL-CREATEEXTERNALTABLE">
  <refmeta>
   <refentrytitle id="sql-createexternaltable-title">CREATE EXTERNAL TABLE</refentrytitle>
   <refmiscinfo>SQL - Language Statements</refmiscinfo>
@@ -261,70 +261,8 @@ CREATE EXTERNAL TABLE <replaceable class="PARAMETER">table_name</replaceable> (<
     </listitem>
    </varlistentry>
 </variablelist>
-
-
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-
-  
-
-  
-    
    
-
-  
-
-  
-
-     
-
-   
-  <refsect2 id="SQL-CREATETABLE-storage-parameters">
-   <title id="SQL-CREATETABLE-storage-parameters-title">Storage Parameters</title>
-
-   <para>
-    The <literal>WITH</> clause can specify <firstterm>storage parameters</>
-    for tables, and for indexes associated with a <literal>UNIQUE</literal> or
-    <literal>PRIMARY KEY</literal> constraint.  Storage parameters for
-    indexes are documented in <xref linkend="SQL-CREATEINDEX"
-    endterm="sql-createindex-title">.  The only storage parameter currently
-    available for tables is:
-   </para>
-
-   <variablelist>
-
-   <varlistentry>
-    <term><literal>FILLFACTOR</></term>
-    <listitem>
-     <para>
-      The fillfactor for a table is a percentage between 10 and 100.
-      100 (complete packing) is the default.  When a smaller fillfactor
-      is specified, <command>INSERT</> operations pack table pages only
-      to the indicated percentage; the remaining space on each page is
-      reserved for updating rows on that page.  This gives <command>UPDATE</>
-      a chance to place the updated copy of a row on the same page as the
-      original, which is more efficient than placing it on a different page.
-      For a table whose entries are never updated, complete packing is the
-      best choice, but in heavily updated tables smaller fillfactors are
-      appropriate.
-     </para>
-    </listitem>
-   </varlistentry>
-
-   </variablelist>
-
-  </refsect2>
- </refsect1>
+   </refsect1>
 
  <refsect1 id="SQL-CREATEEXTERNALTABLE-notes">
   <title>Notes</title>
@@ -374,7 +312,7 @@ CREATE EXTERNAL TABLE <replaceable class="PARAMETER">table_name</replaceable> (<
 	column delimiter and an empty space as null:
    <programlisting>
      CREATE EXTERNAL TABLE ext_customer (id int, name text, sponsor text) 
-     LOCATION ( 'gpfdist://gpmasterhost:8081/home/staging/customers.txt' ) 
+     LOCATION ( 'gpfdist://*.txt' ) 
      FORMAT 'TEXT' ( DELIMITER '|' NULL ' ');
   <programlisting>
   </para>
