@@ -847,6 +847,14 @@ if (1)
         {
             $ini =~ s/gathered.*results/gathered SOME_NUMBER_OF results/;
         }
+        if ($ini =~ m/(ERROR|WARNING|CONTEXT|NOTICE):.*connection.*failed.*http/)
+        {
+            $ini =~ s|connection.*failed.*http.*|connection failed http://DUMMY_LOCATION|;
+        }
+        if ($ini =~ m/DETAIL:.*External table .*line (\d)+/)
+        {
+            $ini =~ s/External table .*line (\d)+.*/External table DUMMY_EX, line DUMMY_LINE of DUMMY_LOCATION/;
+        }
 
         # XXX XXX: note the discrepancy in the NOTICE messages
         # 'distributed by' vs 'DISTRIBUTED BY'
