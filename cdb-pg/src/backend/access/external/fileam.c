@@ -740,20 +740,23 @@ open_external_file(FileScanDesc scan)
      */
     scan->fs_file = (FILE*) url_fopen(scan->fs_uri, PG_BINARY_R, &extvar);
 
-	/*
-	 * Get a global reference to the file pointer, so we can free it from
-	 * AbortTransaction in the case of an error or abort. We don't use it 
-	 * for anything else.
-	 */
-	g_dataSource = scan->fs_file;
-	g_dataSourceName = scan->fs_uri;
-	
 	if (scan->fs_file == NULL)
+	{
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("could not open file \"%s\" for reading: %m",
+				 errmsg("could not open \"%s\" for reading: %m",
 						scan->fs_uri)));
-
+	}
+	else 
+	{
+		/*
+		 * Get a global reference to the file pointer, so we can free it from
+		 * AbortTransaction in the case of an error or abort. We don't use it 
+		 * for anything else.
+		 */
+		g_dataSource = scan->fs_file;
+		g_dataSourceName = scan->fs_uri;
+	}
 }
 
 /*
