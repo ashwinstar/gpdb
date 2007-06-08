@@ -995,6 +995,11 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 
 			if (do_standardsort)
 			{
+				tuple->tupindex = 0; /* MPP-1561: always safe to set
+									  * the index to zero, which
+									  * matches the behavior of
+									  * tuplesort_sorted_insert and
+									  * inittapes */
 				state->memtuples[state->memtupcount++] = *tuple;
 			}
 			else
