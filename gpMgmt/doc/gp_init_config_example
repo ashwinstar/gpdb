@@ -104,19 +104,9 @@ CHECK_POINT_SEGMENTS=8
 # same character sets as PostgreSQL. See 'Character Set Support'
 # in the PostgreSQL documentation for allowed character sets.
 # Should correspond to the OS locale specified with the 
-# gpcreatecluster -n option. 
+# gpinitsystem -n option. 
 
 ENCODING=UNICODE
-
-# Specifies the IP address(es) of client hosts allowed to connect to 
-# the master. This adds an entry in the pg_hba.conf file for 
-# the master instance. By default, local connections are already 
-# allowed using ident authentication and remote connections are 
-# allowed for the Greenplum superuser account only (gpadmin) using
-# md5 password authentication. The following setting will allow 
-# remote connections from all hosts.
-
-IP_ALLOW=0.0.0.0/0
 
 
 ################################################
@@ -138,7 +128,6 @@ IP_ALLOW=0.0.0.0/0
 # If you are using multiple network interfaces per segment host, 
 # do NOT set up mirrors at initialization time. Do so afterwards 
 # using gpaddmirrors
-
 
 
 # The base port number on which mirror segment instances will be 
