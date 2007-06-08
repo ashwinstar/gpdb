@@ -206,7 +206,16 @@ MultiExecBitmapAnd(BitmapAndState *node)
         InstrStopNode(node->ps.instrument, empty ? 0 : 1);
 
 	if (empty)
+	{
+		/* Free node->bitmap */
+		if (node->bitmap)
+		{
+			tbm_bitmap_free(node->bitmap);
+			node->bitmap = NULL;
+		}
+		
 		return (Node*) NULL;
+	}
 
 	/* check to see if we have any hash bitmaps */
 	if (hbm != NULL)
