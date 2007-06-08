@@ -10,7 +10,7 @@ SYNOPSIS
 gpssh-exkeys { -f <host_file> | - h <hostname> [-h <hostname> ...] } 
              [-p <ssh_port>] [-u <os_user>]
 
-gpssh-exkeys -?
+gpssh-exkeys -? | --version
 
 
 *****************************************************
@@ -81,6 +81,10 @@ host file, if any).
 -? (help)
 
 Displays the online help.
+
+--version
+
+Displays the version of this utility.
 
 
 *****************************************************

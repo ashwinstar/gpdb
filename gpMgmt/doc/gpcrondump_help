@@ -30,12 +30,21 @@ run gpcrondump.
 
 SHELL=/bin/bash
 PATH=/sbin:/bin:/usr/sbin:/usr/bin:$GPHOME/gpMgmt/bin
-MAILTO=gpadmin
 HOME=/home/gpadmin
 
 # Greenplum Database nightly database dump job
 01 0 * * * gpadmin gpcrondump -x customers -a -q >> 
 gp_custdump.log
+
+EMAIL NOTIFICATIONS
+To have gpcrondump send out status email notifications, you must 
+place a file named mail_contacts in the home directory of the 
+Greenplum superuser (gpadmin) or in the same directory as the 
+gpcrondump utility ($GPHOME/bin). This file should contain one 
+email address per line. gpcrondump will issue a warning if it 
+cannot locate a mail_contacts file in either location. If both 
+locations have a mail_contacts file, then the one in $HOME is 
+takes precedence. 
 
 
 *****************************************************

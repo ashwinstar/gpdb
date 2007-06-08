@@ -9,7 +9,7 @@ SYNOPSIS
 *****************************************************
 
 gpdeletesystem -d <master_data_directory> [-B <parallel_processes>] 
-[-f] [-r] [-l <logfile_directory>] [-D] [-? | -v]
+[-f] [-l <logfile_directory>] [-D] [-? | -v]
 
 
 *****************************************************

@@ -44,9 +44,10 @@ otherwise noted.
                  gpaddpart (used to maintain a rolling window of date 
                  partitioned data).
 
-* gp_dump - Located in $GPHOME/bin. Writes out a database to archive files
-            or SQL script files, which can then be used to restore the 
-            database at a later time.
+* gpfdist - Serves external table files to Greenplum Database segments.
+
+* gp_dump - Writes out a database to archive files or SQL script files, 
+            which can then be used to restore the database at a later time.
 
 * gpinitstandby - Adds and/or initializes a standby Greenplum master host
                   for a Greenplum Database system.
@@ -100,6 +101,8 @@ otherwise noted.
 
 * gpstop - Stops and/or restarts the master instance and all 
            segment instances in a Greenplum Database system.
+
+* gpsys1 - Displays information about your operating system.
 
 **************************************************
 ENVIRONMENT SETUP

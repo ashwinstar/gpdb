@@ -10,7 +10,7 @@ SYNOPSIS
 gpssh { -f <host_file> | - h <hostname> [-h <hostname> ...] } 
       [-p <ssh_port>] [-u <os_user>] [-v] [-e] [<bash_command>]
 
-gpssh -?
+gpssh -? | --version
 
 
 *****************************************************
@@ -111,6 +111,11 @@ will start an interactive session.
 -? (help)
 
 Displays the online help.
+
+--version
+
+Displays the version of this utility.
+
 
 
 *****************************************************

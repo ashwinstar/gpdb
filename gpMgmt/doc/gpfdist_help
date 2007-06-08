@@ -7,8 +7,8 @@ SYNOPSIS
 *****************************************************
 
 
-gpfdist -d <directory> [-p <http_port>] [-q <quote_character>] 
-        [-x <escape_character>] [-h] [-v]
+gpfdist -d <directory> [-p <http_port>] [-x <escape_character>] 
+        {[-q <quote_character>] [-h]} [-v]
 
 gpfdist -? | --version
 

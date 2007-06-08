@@ -10,7 +10,7 @@ SYNOPSIS
 gpscp { -f <host_file> | - h <hostname> [-h <hostname> ...] } 
       [-p <scp_port>] [-u <os_user>] [-v] <local_file> <remote_path>
 
-gpscp -?
+gpscp -? | --version
 
 
 *****************************************************
@@ -91,6 +91,10 @@ copied relative to $HOME of the session user.
 -? (help)
 
 Displays the online help.
+
+--version
+
+Displays the version of this utility.
 
 
 *****************************************************
