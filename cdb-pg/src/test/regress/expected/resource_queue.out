@@ -1,0 +1,77 @@
+-- SQL coverage of RESOURCE QUEUE
+CREATE RESOURCE QUEUE regressq ACTIVE THRESHOLD 1;
+SELECT * FROM pg_resqueue WHERE rsqname='regressq';
+ rsqname  | rsqcountlimit | rsqcostlimit | rsqovercommit 
+----------+---------------+--------------+---------------
+ regressq |             1 |           -1 | f
+(1 row)
+
+ALTER RESOURCE QUEUE regressq ACTIVE THRESHOLD 2 COST THRESHOLD 2000.00;
+SELECT * FROM pg_resqueue WHERE rsqname='regressq';
+ rsqname  | rsqcountlimit | rsqcostlimit | rsqovercommit 
+----------+---------------+--------------+---------------
+ regressq |             2 |         2000 | f
+(1 row)
+
+ALTER RESOURCE QUEUE regressq COST THRESHOLD 3000.00 OVERCOMMIT;
+SELECT * FROM pg_resqueue WHERE rsqname='regressq';
+ rsqname  | rsqcountlimit | rsqcostlimit | rsqovercommit 
+----------+---------------+--------------+---------------
+ regressq |             2 |         3000 | t
+(1 row)
+
+ALTER RESOURCE QUEUE regressq COST THRESHOLD 4e+3 NOOVERCOMMIT;
+SELECT * FROM pg_resqueue WHERE rsqname='regressq';
+ rsqname  | rsqcountlimit | rsqcostlimit | rsqovercommit 
+----------+---------------+--------------+---------------
+ regressq |             2 |         4000 | f
+(1 row)
+
+DROP RESOURCE QUEUE regressq;
+SELECT * FROM pg_resqueue WHERE rsqname='regressq';
+ rsqname | rsqcountlimit | rsqcostlimit | rsqovercommit 
+---------+---------------+--------------+---------------
+(0 rows)
+
+-- negative
+CREATE RESOURCE QUEUE regressq2;
+ERROR:  at least one threshold must be specified
+CREATE RESOURCE QUEUE regressq2 ACTIVE THRESHOLD 2;
+ALTER RESOURCE QUEUE regressq2 ACTIVE THRESHOLD -10;
+ERROR:  active threshold cannot be less than -1 or equal to 0
+ALTER RESOURCE QUEUE regressq2 COST THRESHOLD -1000.00;
+ERROR:  cost threshold must be equal to -1 or greater than 0
+DROP RESOURCE QUEUE regressq2;
+-- SQL coverage of ROLE -> RESOURCE QUEUE
+CREATE RESOURCE QUEUE reg_activeq ACTIVE THRESHOLD 2;
+CREATE RESOURCE QUEUE reg_costq COST THRESHOLD 30000.00;
+CREATE USER reg_u1 RESOURCE QUEUE reg_costq;
+SELECT u.rolname, u.rolsuper, r.rsqname FROM pg_roles as u, pg_resqueue as r WHERE u.rolresqueue=r.oid and rolname='reg_u1';
+ rolname | rolsuper |  rsqname  
+---------+----------+-----------
+ reg_u1  | f        | reg_costq
+(1 row)
+
+ALTER USER reg_u1 RESOURCE QUEUE reg_activeq;
+SELECT u.rolname, u.rolsuper, r.rsqname FROM pg_roles as u, pg_resqueue as r WHERE u.rolresqueue=r.oid and rolname='reg_u1';
+ rolname | rolsuper |   rsqname   
+---------+----------+-------------
+ reg_u1  | f        | reg_activeq
+(1 row)
+
+CREATE USER reg_u2 RESOURCE QUEUE reg_activeq;
+SELECT u.rolname, u.rolsuper, r.rsqname FROM pg_roles as u, pg_resqueue as r WHERE u.rolresqueue=r.oid and r.rsqname='reg_activeq';
+ rolname | rolsuper |   rsqname   
+---------+----------+-------------
+ reg_u1  | f        | reg_activeq
+ reg_u2  | f        | reg_activeq
+(2 rows)
+
+-- negative
+CREATE USER reg_u3 RESOURCE QUEUE bogusq;
+ERROR:  resource queue "bogusq" does not exist
+-- cleanup
+DROP USER reg_u1;
+DROP USER reg_u2;
+DROP RESOURCE QUEUE reg_activeq;
+DROP RESOURCE QUEUE reg_costq;

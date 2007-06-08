@@ -105,3 +105,4 @@ test: rowtypes
 test: returning
 test: stats
 ignore: tablespace
+test: resource_queue
