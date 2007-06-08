@@ -64,7 +64,8 @@
 
 enum fcurl_type_e { CFTYPE_NONE=0, CFTYPE_FILE=1, CFTYPE_CURL=2, CFTYPE_EXEC=3 };
 
-struct fcurl_data
+typedef struct URL_FILE URL_FILE;
+struct URL_FILE
 {
     enum fcurl_type_e type;     /* type of handle */
 	char* url;
@@ -89,7 +90,6 @@ struct fcurl_data
 	} u;
 };
 
-typedef struct fcurl_data URL_FILE;
 
 /* exported functions */
 URL_FILE *url_fopen(char *url, const char *operation, extvar_t* ev);
@@ -146,11 +146,12 @@ write_callback(char *buffer,
 
 
 static int
-is_error(CURL* curl)
+is_error(URL_FILE* file)
 {
 	long response_code;
 	char* effective_url;
 	int e;
+	CURL* curl = file->u.curl.handle;
 
 	if (0 != (e = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code))) 
 		return -1;
@@ -160,9 +161,9 @@ is_error(CURL* curl)
 
 	if (! (200 <= response_code && response_code < 300)) {
 		if (response_code == 0) 
-			elog(ERROR, "connection failed while %s", effective_url);
+			elog(ERROR, "connection failed while %s", file->url);
 		else
-			elog(ERROR, "http response code: %ld", response_code);
+			elog(ERROR, "http response code %ld while %s", response_code, file->url);
 		return -1;
 	}
 
@@ -265,7 +266,7 @@ use_buffer(URL_FILE *file,int want)
 }
 
 
-static int set_httpheader(struct fcurl_data* fcurl, const char* name, const char* value)
+static int set_httpheader(URL_FILE* fcurl, const char* name, const char* value)
 {
 	char tmp[100];
 	if (strlen(name) + strlen(value) + 5 > sizeof(tmp))
@@ -605,7 +606,7 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 		}
 
 		fill_buffer(file, 1);
-		if (is_error(file->u.curl.handle))
+		if (is_error(file))
 		{
 			url_fclose(file);
 			return NULL;
@@ -708,7 +709,7 @@ url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file)
         /* check if theres data in the buffer - if not fill_buffer()
          * either errored or EOF */
         if (!file->u.curl.buffer_pos)
-            return is_error(file->u.curl.handle);
+            return is_error(file);
 
         /* ensure only available data is considered */
         if(file->u.curl.buffer_pos < want)
