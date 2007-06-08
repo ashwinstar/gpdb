@@ -605,7 +605,7 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 		}
 
 		fill_buffer(file, 1);
-		if (!file->u.curl.buffer_pos && is_error(file->u.curl.handle)) 
+		if (0 == file->u.curl.buffer_pos || is_error(file->u.curl.handle)) 
 		{
 			url_fclose(file);
 			return NULL;
