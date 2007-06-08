@@ -17,7 +17,7 @@ DEBUGFLAGS="-O0 -g"
 DISTPATH=$(GPROOT)/$(GPDIR)
 DEVPATH=$(HOME)/$(GPDIR)
 
-CONFIGFLAGS=--enable-thread-safety --enable-integer-datetimes --with-pgport=$(DEFPORT) --enable-depend 
+CONFIGFLAGS=--enable-thread-safety --enable-integer-datetimes --with-pgport=$(DEFPORT) 
 
 ifeq (true, ${PG_LANG})
 CONFIGFLAGS+=--with-perl
