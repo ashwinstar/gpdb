@@ -856,9 +856,9 @@ if (1)
         {
             $ini =~ s/gathered.*results/gathered SOME_NUMBER_OF results/;
         }
-        if ($ini =~ m/(ERROR|WARNING|CONTEXT|NOTICE):.*connection.*failed.*http/)
+        if ($ini =~ m/(ERROR|WARNING|CONTEXT|NOTICE):.*connection.*failed.*(http|gpfdist)/)
         {
-            $ini =~ s|connection.*failed.*http.*|connection failed http://DUMMY_LOCATION|;
+            $ini =~ s/connection.*failed.*(http|gpfdist).*/connection failed dummy_protocol\:\/\/DUMMY_LOCATION/;
         }
         if ($ini =~ m/External table .*line (\d)+/)
         {

@@ -114,9 +114,9 @@ BEGIN {
 
     $glob_connect = $conn;
 
-    my $porti = $PGPORT;
+    my $porti = $ENV{PGPORT} if (exists($ENV{PGPORT}));
 
-    $porti = 11000
+    $porti = 5432                 # 11000
         unless (defined($porti));
 
     $glob_connect = "-p $porti template1"

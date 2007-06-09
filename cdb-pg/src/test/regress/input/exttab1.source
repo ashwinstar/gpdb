@@ -573,15 +573,21 @@ select count(*) from cpy_whois where domain_name like '%viagra%';
 
 create table v_w as select * from cpy_whois where domain_name like '%viagra%';
 
--- variations on mpp-1247
+-- mpp-1561: sort distinct spill to disk/external sort
 select count(*) from (select * from v_w union select * from cpy_whois) as foo;
 select count(*) from (select * from v_w union all select * from cpy_whois) as foo;
-select count(*) from (select * from v_w intersect select * from cpy_whois) as foo;
-select count(*) from (select * from v_w intersect all select * from cpy_whois) as foo;
-select count(*) from (select * from v_w except select * from cpy_whois) as foo;
-select count(*) from (select * from v_w except all select * from cpy_whois) as foo;
-select count(*) from (select * from cpy_whois except select * from v_w) as foo;
-select count(*) from (select * from cpy_whois except all select * from v_w) as foo;
+select count(*) from (select distinct * from cpy_whois) as foo;
+
+
+-- variations on mpp-1247
+select count(*) from (select * from v_w union select * from ext_whois) as foo;
+select count(*) from (select * from v_w union all select * from ext_whois) as foo;
+select count(*) from (select * from v_w intersect select * from ext_whois) as foo;
+select count(*) from (select * from v_w intersect all select * from ext_whois) as foo;
+select count(*) from (select * from v_w except select * from ext_whois) as foo;
+select count(*) from (select * from v_w except all select * from ext_whois) as foo;
+select count(*) from (select * from ext_whois except select * from v_w) as foo;
+select count(*) from (select * from ext_whois except all select * from v_w) as foo;
 
 --
 -- bad csv (quote must be a single char)

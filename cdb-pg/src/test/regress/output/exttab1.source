@@ -1316,7 +1316,7 @@ select count(*) from cpy_whois where domain_name like '%viagra%';
 create table v_w as select * from cpy_whois where domain_name like '%viagra%';
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'source_lineno' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
--- variations on mpp-1247
+-- mpp-1561: sort distinct spill to disk/external sort
 select count(*) from (select * from v_w union select * from cpy_whois) as foo;
  count 
 -------
@@ -1329,37 +1329,56 @@ select count(*) from (select * from v_w union all select * from cpy_whois) as fo
  24985
 (1 row)
 
-select count(*) from (select * from v_w intersect select * from cpy_whois) as foo;
+select count(*) from (select distinct * from cpy_whois) as foo;
+ count 
+-------
+ 24979
+(1 row)
+
+-- variations on mpp-1247
+select count(*) from (select * from v_w union select * from ext_whois) as foo;
+ count 
+-------
+ 24979
+(1 row)
+
+select count(*) from (select * from v_w union all select * from ext_whois) as foo;
+ count 
+-------
+ 24985
+(1 row)
+
+select count(*) from (select * from v_w intersect select * from ext_whois) as foo;
  count 
 -------
      6
 (1 row)
 
-select count(*) from (select * from v_w intersect all select * from cpy_whois) as foo;
+select count(*) from (select * from v_w intersect all select * from ext_whois) as foo;
  count 
 -------
      6
 (1 row)
 
-select count(*) from (select * from v_w except select * from cpy_whois) as foo;
+select count(*) from (select * from v_w except select * from ext_whois) as foo;
  count 
 -------
      0
 (1 row)
 
-select count(*) from (select * from v_w except all select * from cpy_whois) as foo;
+select count(*) from (select * from v_w except all select * from ext_whois) as foo;
  count 
 -------
      0
 (1 row)
 
-select count(*) from (select * from cpy_whois except select * from v_w) as foo;
+select count(*) from (select * from ext_whois except select * from v_w) as foo;
  count 
 -------
  24973
 (1 row)
 
-select count(*) from (select * from cpy_whois except all select * from v_w) as foo;
+select count(*) from (select * from ext_whois except all select * from v_w) as foo;
  count 
 -------
  24973
@@ -1611,7 +1630,7 @@ create external table badt1 (x text)
 location ('file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl' )
 format 'text' (delimiter '|');
 select * from badt1;
-ERROR:  could not open file "file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl" for reading: No such file or directory  (seg0 slice1 localhost:11002 pid=7340)
+ERROR:  could not open "file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl" for reading: No such file or directory  (seg0 slice1 localhost:11002 pid=7340)
 drop external table badt1;
 --
 -- try a bad protocol
@@ -1624,7 +1643,7 @@ ERROR:  invalid URI 'bad_protocol://@hostname@@abs_srcdir@/data/no/such/place/ba
 -- get an error for missing gpfdist
 --
 select count(*) from ext_whois;
-ERROR:  connection failed while http://@hostname@:8080/whois.csv (url.i:163)  (seg0 slice1 localhost:11002 pid=7340)
+ERROR:  connection failed while gpfdist://@hostname@:8080/whois.csv (url.i:163)  (seg0 slice1 localhost:11002 pid=7340)
 drop external table ext_whois;
 drop table cpy_whois;
 drop table v_w;
