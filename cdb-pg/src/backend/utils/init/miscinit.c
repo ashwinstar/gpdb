@@ -535,6 +535,10 @@ SetSessionAuthorization(Oid userid, bool is_superuser)
 
 	SetSessionUserId(userid, is_superuser);
 
+	/* If resource scheduling enabled, set the cached queue for the new role.*/
+	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
+		SetResQueueId();
+
 	SetConfigOption("is_superuser",
 					is_superuser ? "on" : "off",
 					PGC_INTERNAL, PGC_S_OVERRIDE);
