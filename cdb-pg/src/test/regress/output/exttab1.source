@@ -1299,7 +1299,7 @@ select count(*) from ext_whois where domain_name like '%viagra%';
      6
 (1 row)
 
-copy cpy_whois FROM '/Users/jcohen/projects/cdb2/cdb-pg/src/test/regress/data/whois.csv' csv header quote '"';
+copy cpy_whois FROM '@abs_srcdir@/data/whois.csv' csv header quote '"';
 -- "
 select count(*) from cpy_whois;
  count 
