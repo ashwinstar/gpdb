@@ -3064,35 +3064,49 @@ isDtxQueryDispatcher(void)
 void
 setupRegularDtxContext(void)
 {
-	if (DistributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE)
-	{
-		// Continue in this context.  Do not touch QEDtxContextInfo, etc.
-	}
-	else if (DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER)
-	{
-		// Allow this for copy...???  Do not touch QEDtxContextInfo, etc.
-	}
-	else if (DistributedTransactionContext != DTX_CONTEXT_LOCAL_ONLY)
-	{
-		elog(ERROR, "setupRegularDtxContext finds unexpected DistributedTransactionContext = '%s'",
-			 DtxContextToString(DistributedTransactionContext));
-	}
-	else
-	{
-		Assert(QEDtxContextInfo.distributedXid == InvalidDistributedTransactionId);
-		
-		/*
-		 * Determine if we are strictly local or a distributed capable QD.
-		 */
-		Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
 
-		if (isDtxQueryDispatcher())
-		{
-			DistributedTransactionContext = DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE;
-		}
+	switch(DistributedTransactionContext)
+	{
+		case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+			// Continue in this context.  Do not touch QEDtxContextInfo, etc.
+			/* fallthrough */
+		case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
+			// Allow this for copy...???  Do not touch QEDtxContextInfo, etc.
+			break;
+
+		default:
+			if (DistributedTransactionContext != DTX_CONTEXT_LOCAL_ONLY)
+			{
+				/* we must be one of:
+
+				   DTX_CONTEXT_QD_RETRY_PHASE_2,
+				   DTX_CONTEXT_QE_ENTRY_DB_SINGLETON,
+				   DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT,
+				   DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER,
+				   DTX_CONTEXT_QE_READER,
+				   DTX_CONTEXT_QE_PREPARED
+				*/
+
+				elog(ERROR, "setupRegularDtxContext finds unexpected DistributedTransactionContext = '%s'",
+					 DtxContextToString(DistributedTransactionContext));
+			}
+
+			/* DistributedTransactionContext is DTX_CONTEXT_LOCAL_ONLY */
+
+			Assert(QEDtxContextInfo.distributedXid == InvalidDistributedTransactionId);
+		
+			/*
+			 * Determine if we are strictly local or a distributed capable QD.
+			 */
+			Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
+
+			if (isDtxQueryDispatcher())
+			{
+				DistributedTransactionContext = DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE;
+			}
+			break;
 	}
-	
-	
+
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "setupRegularDtxContext leaving with DistributedTransactionContext = '%s'.",
 		 DtxContextToString(DistributedTransactionContext));
 }
