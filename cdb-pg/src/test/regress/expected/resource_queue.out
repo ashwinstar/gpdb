@@ -70,6 +70,45 @@ SELECT u.rolname, u.rolsuper, r.rsqname FROM pg_roles as u, pg_resqueue as r WHE
 -- negative
 CREATE USER reg_u3 RESOURCE QUEUE bogusq;
 ERROR:  resource queue "bogusq" does not exist
+-- feature must be on for tests to be valid
+show resource_scheduler;
+ resource_scheduler 
+--------------------
+ on
+(1 row)
+
+-- switch to a non privileged user for next tests
+SET SESSION AUTHORIZATION reg_u1;
+-- self deadlock (active queue threshold 2)
+BEGIN;
+DECLARE c1 CURSOR FOR SELECT 1;
+DECLARE c2 CURSOR FOR SELECT 2;
+DECLARE c3 CURSOR FOR SELECT 3; -- should detect deadlock
+ERROR:  deadlock detected, locking against self
+END;
+-- track cursor open/close count (should not deadlock)
+BEGIN;
+DECLARE c1 CURSOR FOR SELECT 1;
+CLOSE c1;
+DECLARE c2 CURSOR FOR SELECT 2;
+DECLARE c3 CURSOR FOR SELECT 3;
+CLOSE c3;
+DECLARE c4 CURSOR FOR SELECT 4;
+FETCH c4;
+ ?column? 
+----------
+        4
+(1 row)
+
+END;
+-- return to the super user
+RESET SESSION AUTHORIZATION;
+-- reset session to super user. make sure no longer queued
+BEGIN;
+DECLARE c1 CURSOR FOR SELECT 1;
+DECLARE c2 CURSOR FOR SELECT 2;
+DECLARE c3 CURSOR FOR SELECT 3; -- should not deadlock, we are SU.
+END;
 -- cleanup
 DROP USER reg_u1;
 DROP USER reg_u2;
