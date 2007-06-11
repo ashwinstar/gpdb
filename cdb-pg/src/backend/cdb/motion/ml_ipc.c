@@ -2309,6 +2309,7 @@ sendRegisterMessage(ChunkTransportState *transportStates, ChunkTransportStateEnt
 
     /* Sent it all. */
     conn->state = mcsStarted;
+	conn->wakeup_ms = -1; /* no more retry stuff now that we're "started" */
     conn->msgPos = NULL;
 	conn->msgSize = PACKET_HEADER_SIZE;
     conn->stillActive = true;
@@ -2534,6 +2535,7 @@ readRegisterMessage(ChunkTransportState *transportStates,
      * Prepare to begin reading tuples.
      */
     newConn->state = mcsStarted;
+	newConn->wakeup_ms = -1; /* no more retry stuff now that we're "started" */
     newConn->msgPos = NULL;
     newConn->msgSize = 0;
     newConn->stillActive = true;
