@@ -7751,6 +7751,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
         char       *location;
         char       *fmttype;
         char       *fmtopts;
+		char	   *command = NULL;
         
         reltypename = "TABLE";
         /*
@@ -7791,7 +7792,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
         
         /* Now get required information from pg_exttable */
         appendPQExpBuffer(query,
-                          "SELECT x.location, x.fmttype, x.fmtopts "
+                          "SELECT x.location, x.fmttype, x.fmtopts, x.command "
                           "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c "
                           "WHERE x.reloid = c.oid AND c.oid = '%u'::oid",
                           tbinfo->dobj.catId.oid);
@@ -7816,17 +7817,49 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
         locations = PQgetvalue(res, 0, 0);
         fmttype = PQgetvalue(res, 0, 1);
         fmtopts = PQgetvalue(res, 0, 2);
+		command = PQgetvalue(res, 0, 3);
 		
-        /* add LOCATION clause */
-        locations[strlen(locations)-1] = '\0';
-        locations++;
-        location = nextToken(&locations, ",");
-        appendPQExpBuffer(q, " LOCATION (\n    '%s'", location);
-        for (; (location = nextToken(&locations, ",")) != NULL;)
-        {
-            appendPQExpBuffer(q, ",\n    '%s'", location);
-        }
-        appendPQExpBuffer(q, "\n) ");
+		if(command && strlen(command) > 0)
+		{
+			char *on_clause = locations;
+			
+			/* remove curly braces */
+			on_clause[strlen(on_clause)-1] = '\0';
+			on_clause++;
+
+			/* add EXECUTE clause */
+			appendPQExpBuffer(q, " EXECUTE '%s' ", command);
+			
+			/* add ON clause */
+			if(strncmp(on_clause, "HOST:", strlen("HOST:")) == 0)
+				appendPQExpBuffer(q, "ON HOST '%s' ", on_clause + strlen("HOST:"));
+			else if(strncmp(on_clause, "PER_HOST", strlen("PER_HOST")) == 0)
+				appendPQExpBuffer(q, "ON HOST ");
+			else if(strncmp(on_clause, "SEGMENT_ID:", strlen("SEGMENT_ID:")) == 0)
+				appendPQExpBuffer(q, "ON SEGMENT %s ", on_clause + strlen("SEGMENT_ID:"));
+			else if(strncmp(on_clause, "TOTAL_SEGS:", strlen("TOTAL_SEGS:")) == 0)
+				appendPQExpBuffer(q, "ON %s ", on_clause + strlen("TOTAL_SEGS:"));
+			else if(strncmp(on_clause, "ALL_SEGMENTS", strlen("ALL_SEGMENTS")) == 0)
+				appendPQExpBuffer(q, "ON ALL ");
+			else
+				mpp_err_msg(logError, progname, "illigal ON clause catalog information \"%s\""
+							"for command '%s'\n", on_clause, command);
+			
+			appendPQExpBuffer(q, "\n ");
+		}
+		else
+		{
+			/* add LOCATION clause */
+			locations[strlen(locations)-1] = '\0';
+			locations++;
+			location = nextToken(&locations, ",");
+			appendPQExpBuffer(q, " LOCATION (\n    '%s'", location);
+			for (; (location = nextToken(&locations, ",")) != NULL;)
+			{
+				appendPQExpBuffer(q, ",\n    '%s'", location);
+			}
+			appendPQExpBuffer(q, "\n) ");
+		}
 		
         /* add FORMAT clause */
         appendPQExpBuffer(q, "FORMAT '%s' (%s);\n", 
