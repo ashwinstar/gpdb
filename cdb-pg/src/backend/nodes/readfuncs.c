@@ -317,7 +317,10 @@ _readQuery(void)
 	Assert(local_node->intoOidInfo.relOid == InvalidOid);
 	
 	local_node->intoOidInfo.relOid = InvalidOid;
-
+	local_node->intoOidInfo.comptypeOid = InvalidOid;
+	local_node->intoOidInfo.toastOid = InvalidOid;
+	local_node->intoOidInfo.toastIndexOid = InvalidOid;
+	local_node->intoOidInfo.toastComptypeOid = InvalidOid;
 	READ_DONE();
 }
 
@@ -740,10 +743,6 @@ _readTruncateStmt(void)
 
 	READ_NODE_FIELD(relations);
 	READ_ENUM_FIELD(behavior,DropBehavior);
-	
-	READ_NODE_FIELD(relids);
-	READ_NODE_FIELD(new_heap_oids);
-	READ_NODE_FIELD(new_toast_oids);
 
 	READ_DONE();
 }
@@ -1788,6 +1787,7 @@ _readCreateStmt(void)
 	READ_OID_FIELD(oidInfo.toastComptypeOid);
 	READ_CHAR_FIELD(relKind);
 	local_node->policy = NULL;
+	Assert(local_node->oidInfo.relOid == InvalidOid);
 
 	READ_DONE();
 }
