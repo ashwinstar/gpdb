@@ -103,8 +103,8 @@ TransactionIdSetStatus(TransactionId xid, XidStatus status)
 		debugStatus != TRANSACTION_STATUS_SUB_COMMITTED &&
 		debugStatus != status)
 	{
-		elog(FATAL,"TransactionIdSetStatus found invalid status = 0x%x (expected 0x%x)",
-			debugStatus, status);
+		elog(FATAL,"TransactionIdSetStatus found invalid for xid %d status = 0x%x (expected 0x%x)",
+			 xid, debugStatus, status);
 	}
 
 
