@@ -3056,24 +3056,26 @@ static void
 or_bits(char* dest, char* src, int n)
 {
 	int i;
-	for(i=0; i<n;++i)
+
+	for(i=0; i<n; i++)
 		dest[i] |= src[i];
 }
 
 static int
 count_bits(char* bits, int nbyte)
 {
+	int i;
+	int nbit = 0;
 	int bitcount[] = {
 		0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4
 	};
 
-	int i = 0;
-	int nbit = 0;
-	for(; i<nbyte; ++i)
+	for(i=0; i<nbyte; i++)
 	{
-		nbit += bitcount[bits[i] & 0xF];
-		nbit += bitcount[(bits[i] >> 4)];
+		nbit += bitcount[bits[i] & 0x0F];
+		nbit += bitcount[(bits[i] >> 4) & 0x0F];
 	}
+
 	return nbit;
 }
 
@@ -3111,8 +3113,10 @@ count_dependent_children(SliceTable * sliceTable, int sliceIndex, sliceVec *slic
 	int 		ret = 0;
 	int			bitmasklen = (len+7) >> 3;
 	char 	   *bitmask = palloc0(bitmasklen);
+
 	ret = markbit_dep_children(sliceTable, sliceIndex, sliceVector, bitmasklen, bitmask);
 	pfree(bitmask);
+
 	return ret;
 }
 
@@ -3128,8 +3132,6 @@ fillSliceVector(SliceTable *sliceTbl, int rootIdx, sliceVec *sliceVector, int sl
 
 	return top_count;
 }
-
-extern bool tjk_foo;
 
 /* Dispatch a command - already parsed and in the form of a Node
  * tree - to all primary and mirror segdbs.  Does not wait for
