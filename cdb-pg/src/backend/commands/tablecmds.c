@@ -8223,7 +8223,7 @@ static Datum transformFormatOpts(char formattype, List *formatOpts)
 	}
 	
 	if (!csv_mode && !escape)
-		escape = "off";			/* default escape for text mode */
+		escape = "\\";			/* default escape for text mode */
 	
 	/*
 	 * Only single-character delimiter strings are supported.
