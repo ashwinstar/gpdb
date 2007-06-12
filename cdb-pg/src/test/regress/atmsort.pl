@@ -234,6 +234,52 @@ sub tablelizer
 
     return \@rows;
 }
+# reformat the EXPLAIN output according to the directive hash
+sub format_explain
+{
+    my ($outarr, $directive) = @_;
+    my $prefix = "";
+
+    $directive = {} unless (defined($directive));
+
+    $prefix = "GP_IGNORE:"
+        if (exists($directive->{ignore}));
+
+    {
+        use IO::File;
+        use POSIX qw(tmpnam);
+
+        my ($tmpnam, $tmpfh);
+
+        for (;;) {
+            $tmpnam = tmpnam();
+            sysopen($tmpfh, $tmpnam, O_RDWR | O_CREAT | O_EXCL) && last;
+        }
+
+        if (scalar(@{$outarr}))
+        {
+            print $tmpfh "QUERY PLAN\n-----------------\n";
+            for my $lin (@{$outarr})
+            {
+                print $tmpfh $lin;
+            }
+            print $tmpfh "(111 rows)\n";
+        }
+
+        close $tmpfh;
+
+        my $xplan = `explain.pl -opt perl -prune stat < $tmpnam`;
+
+        unlink $tmpnam;
+
+        if (defined($prefix) && length($prefix))
+        {
+            $xplan =~ s/^/$prefix/gm;
+        }
+
+        print $xplan;
+    }
+}    
 
 # reformat the query output according to the directive hash
 sub format_query_output
@@ -242,6 +288,11 @@ sub format_query_output
     my $prefix = "";
 
     $directive = {} unless (defined($directive));
+
+    if (exists($directive->{explain}))
+    {
+        return format_explain($outarr, $directive);
+    }
 
     $prefix = "GP_IGNORE:"
         if (exists($directive->{ignore}));
@@ -692,6 +743,12 @@ if (1)
                 $copy_select = 0;
                 $has_order = 0;
                 $sql_statement = "";
+
+                if ($ini =~ m/explain.*(insert|update|delete|select)/i)
+                { 
+                   $directive->{explain} = 1;
+                }
+
             }
 
             if ($ini =~ m/\-\-\s*ignore\s*$/i)

@@ -58,6 +58,15 @@ select row_number() over (), c1, c2, c3 from gpd1;
 -- end_ignore
 --
 --
+-- explain testing
+--
+explain analyze select a.* from gpd1 as a, gpd1 as b where b.c1 in (select max(c1) from gpd1);
+explain select a.* from gpd1 as a, gpd1 as b where b.c1 in (select max(c1) from gpd1);
+-- start_ignore
+-- ignore an explain
+explain analyze select a.* from gpd1 as a, gpd1 as b where b.c1 in (select max(c1) from gpd1);
+-- end_ignore
+--
 --
 -- Clean up
 --

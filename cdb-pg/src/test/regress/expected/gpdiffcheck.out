@@ -138,6 +138,115 @@ select row_number() over (), c1, c2, c3 from gpd1;
 -- end_ignore
 --
 --
+-- explain testing
+--
+explain analyze select a.* from gpd1 as a, gpd1 as b where b.c1 in (select max(c1) from gpd1);
+                                                                                QUERY PLAN                                                                                
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice4)  (cost=27.62..48.74 rows=330 width=69)
+   Rows out:  16 rows at destination with 22 ms to end, start offset by 444 ms.
+   ->  Hash Join  (cost=27.62..48.74 rows=330 width=69)
+         Hash Cond: "IN_subquery".max = b.c1
+         Rows out:  Avg 8.0 rows x 2 workers.  Max 8 rows (seg0) with 1.214 ms to first row, 1.613 ms to end, start offset by 461 ms.
+         Executor memory:  273K bytes avg, 273K bytes max (seg0).
+         Work_mem used:  1K bytes avg, 1K bytes max (seg0).
+         (seg0)   Hash chain length 2.0 avg, 2 max, using 4 of 65539 buckets.
+         ->  Nested Loop  (cost=5.17..20.43 rows=330 width=101)
+               Rows out:  Avg 4.0 rows x 2 workers.  Max 4 rows (seg0) with 0.062 ms to first row, 0.068 ms to end, start offset by 462 ms.
+               ->  Broadcast Motion 1:2  (slice2)  (cost=5.17..5.23 rows=2 width=32)
+                     Rows out:  Avg 1.0 rows x 2 workers at destination.  Max 1 rows (seg0) with 0.047 ms to first row, 0.048 ms to end, start offset by 462 ms.
+                     ->  Aggregate  (cost=5.17..5.18 rows=1 width=5)
+                           Rows out:  1 rows with 0.305 ms to end, start offset by 460 ms.
+                           Executor memory:  8K bytes.
+                           ->  Gather Motion 2:1  (slice1)  (cost=5.13..5.16 rows=1 width=5)
+                                 Rows out:  2 rows at destination with 0.149 ms to first row, 0.204 ms to end, start offset by 460 ms.
+                                 ->  Aggregate  (cost=5.13..5.14 rows=1 width=5)
+                                       Rows out:  Avg 1.0 rows x 2 workers.  Max 1 rows (seg0) with 0.143 ms to end, start offset by 459 ms.
+                                       Executor memory:  8K bytes avg, 8K bytes max (seg0).
+                                       ->  Seq Scan on gpd1  (cost=0.00..4.30 rows=330 width=5)
+                                             Rows out:  Avg 4.0 rows x 2 workers.  Max 4 rows (seg0) with 0.038 ms to first row, 0.042 ms to end, start offset by 459 ms.
+               ->  Seq Scan on gpd1 a  (cost=0.00..4.30 rows=330 width=69)
+                     Rows out:  Avg 4.0 rows x 2 workers.  Max 4 rows (seg0) with 0.005 ms to first row, 0.008 ms to end, start offset by 462 ms.
+         ->  Hash  (cost=14.20..14.20 rows=660 width=5)
+               Rows in:  Avg 8.0 rows x 2 workers.  Max 8 rows (seg0) with 0.202 ms to end, start offset by 462 ms.
+               ->  Broadcast Motion 2:2  (slice3)  (cost=0.00..14.20 rows=660 width=5)
+                     Rows out:  Avg 8.0 rows x 2 workers at destination.  Max 8 rows (seg0) with 0.099 ms to first row, 0.157 ms to end, start offset by 462 ms.
+                     ->  Seq Scan on gpd1 b  (cost=0.00..4.30 rows=330 width=5)
+                           Rows out:  Avg 4.0 rows x 2 workers.  Max 4 rows (seg0) with 0.034 ms to first row, 0.038 ms to end, start offset by 462 ms.
+ Slice statistics:
+   (slice0)    Executor memory: 275K bytes.
+   (slice1)    Executor memory: 227K bytes avg x 2 workers, 227K bytes max (seg0).
+   (slice2)    Executor memory: 307K bytes (seg0).
+   (slice3)    Executor memory: 213K bytes avg x 2 workers, 213K bytes max (seg0).
+   (slice4)    Executor memory: 571K bytes avg x 2 workers, 571K bytes max (seg0).  Work_mem: 1K bytes max.
+ Total runtime: 469.492 ms
+(37 rows)
+
+explain select a.* from gpd1 as a, gpd1 as b where b.c1 in (select max(c1) from gpd1);
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice4)  (cost=27.62..48.74 rows=330 width=69)
+   ->  Hash Join  (cost=27.62..48.74 rows=330 width=69)
+         Hash Cond: "IN_subquery".max = b.c1
+         ->  Nested Loop  (cost=5.17..20.43 rows=330 width=101)
+               ->  Broadcast Motion 1:2  (slice2)  (cost=5.17..5.23 rows=2 width=32)
+                     ->  Aggregate  (cost=5.17..5.18 rows=1 width=5)
+                           ->  Gather Motion 2:1  (slice1)  (cost=5.13..5.16 rows=1 width=5)
+                                 ->  Aggregate  (cost=5.13..5.14 rows=1 width=5)
+                                       ->  Seq Scan on gpd1  (cost=0.00..4.30 rows=330 width=5)
+               ->  Seq Scan on gpd1 a  (cost=0.00..4.30 rows=330 width=69)
+         ->  Hash  (cost=14.20..14.20 rows=660 width=5)
+               ->  Broadcast Motion 2:2  (slice3)  (cost=0.00..14.20 rows=660 width=5)
+                     ->  Seq Scan on gpd1 b  (cost=0.00..4.30 rows=330 width=5)
+(13 rows)
+
+-- start_ignore
+-- ignore an explain
+explain analyze select a.* from gpd1 as a, gpd1 as b where b.c1 in (select max(c1) from gpd1);
+
+-- this line isn't in the sql file but it gets ignored too
+                                                                               QUERY PLAN                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice4)  (cost=27.62..48.74 rows=330 width=69)
+   Rows out:  16 rows at destination with 12 ms to end, start offset by 3.265 ms.
+   ->  Hash Join  (cost=27.62..48.74 rows=330 width=69)
+         Hash Cond: "IN_subquery".max = b.c1
+         Rows out:  Avg 8.0 rows x 2 workers.  Max 8 rows (seg0) with 9.821 ms to first row, 10 ms to end, start offset by 4.923 ms.
+         Executor memory:  273K bytes avg, 273K bytes max (seg0).
+         Work_mem used:  1K bytes avg, 1K bytes max (seg0).
+         (seg0)   Hash chain length 2.0 avg, 2 max, using 4 of 65539 buckets.
+         ->  Nested Loop  (cost=5.17..20.43 rows=330 width=101)
+               Rows out:  Avg 4.0 rows x 2 workers.  Max 4 rows (seg0) with 9.139 ms to first row, 9.144 ms to end, start offset by 5.570 ms.
+               ->  Broadcast Motion 1:2  (slice2)  (cost=5.17..5.23 rows=2 width=32)
+                     Rows out:  Avg 1.0 rows x 2 workers at destination.  Max 1 rows (seg0) with 9.113 ms to end, start offset by 5.571 ms.
+                     ->  Aggregate  (cost=5.17..5.18 rows=1 width=5)
+                           Rows out:  1 rows with 0.124 ms to end, start offset by 14 ms.
+                           Executor memory:  8K bytes.
+                           ->  Gather Motion 2:1  (slice1)  (cost=5.13..5.16 rows=1 width=5)
+                                 Rows out:  2 rows at destination with 0.079 ms to first row, 0.113 ms to end, start offset by 14 ms.
+                                 ->  Aggregate  (cost=5.13..5.14 rows=1 width=5)
+                                       Rows out:  Avg 1.0 rows x 2 workers.  Max 1 rows (seg0) with 0.040 ms to end, start offset by 13 ms.
+                                       Executor memory:  8K bytes avg, 8K bytes max (seg0).
+                                       ->  Seq Scan on gpd1  (cost=0.00..4.30 rows=330 width=5)
+                                             Rows out:  Avg 4.0 rows x 2 workers.  Max 4 rows (seg0) with 0.015 ms to first row, 0.018 ms to end, start offset by 13 ms.
+               ->  Seq Scan on gpd1 a  (cost=0.00..4.30 rows=330 width=69)
+                     Rows out:  Avg 4.0 rows x 2 workers.  Max 4 rows (seg0) with 0.010 ms to first row, 0.012 ms to end, start offset by 15 ms.
+         ->  Hash  (cost=14.20..14.20 rows=660 width=5)
+               Rows in:  Avg 8.0 rows x 2 workers.  Max 8 rows (seg0) with 0.154 ms to end, start offset by 5.416 ms.
+               ->  Broadcast Motion 2:2  (slice3)  (cost=0.00..14.20 rows=660 width=5)
+                     Rows out:  Avg 8.0 rows x 2 workers at destination.  Max 8 rows (seg0) with 0.076 ms to first row, 0.114 ms to end, start offset by 5.416 ms.
+                     ->  Seq Scan on gpd1 b  (cost=0.00..4.30 rows=330 width=5)
+                           Rows out:  Avg 4.0 rows x 2 workers.  Max 4 rows (seg0) with 0.014 ms to first row, 0.018 ms to end, start offset by 4.310 ms.
+ Slice statistics:
+   (slice0)    Executor memory: 275K bytes.
+   (slice1)    Executor memory: 227K bytes avg x 2 workers, 227K bytes max (seg0).
+   (slice2)    Executor memory: 307K bytes (seg0).
+   (slice3)    Executor memory: 203K bytes avg x 2 workers, 203K bytes max (seg0).
+   (slice4)    Executor memory: 571K bytes avg x 2 workers, 571K bytes max (seg0).  Work_mem: 1K bytes max.
+ Total runtime: 17.348 ms
+(37 rows)
+-- end_ignore
+--
 --
 -- Clean up
 --
