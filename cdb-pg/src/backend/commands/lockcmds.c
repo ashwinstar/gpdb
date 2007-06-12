@@ -78,6 +78,6 @@ LockTableCommand(LockStmt *lockstmt)
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) lockstmt);
+		CdbDispatchUtilityStatement((Node *) lockstmt, "LockTableCommand");
 	}
 }

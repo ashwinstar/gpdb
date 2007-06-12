@@ -706,7 +706,7 @@ ProcessUtility(Node *parsetree,
 				if (Gp_role == GP_ROLE_DISPATCH)
 				{
 					stmt->missing_ok=true;
-					CdbDispatchUtilityStatement((Node *) stmt);
+					CdbDispatchUtilityStatement((Node *) stmt, "ProcessUtility");
 				}
 			}
 			break;
@@ -807,7 +807,7 @@ ProcessUtility(Node *parsetree,
 
 				if (Gp_role == GP_ROLE_DISPATCH)
 				{
-					CdbDispatchUtilityStatement((Node *) stmt);
+					CdbDispatchUtilityStatement((Node *) stmt, "ProcessUtility");
 				}
 			}
 			break;
@@ -908,7 +908,7 @@ ProcessUtility(Node *parsetree,
 			DefineQueryRewrite((RuleStmt *) parsetree);
 			if (Gp_role == GP_ROLE_DISPATCH)
 			{
-				CdbDispatchUtilityStatement((Node *) parsetree);
+				CdbDispatchUtilityStatement((Node *) parsetree, "ProcessUtility");
 			}
 			break;
 
@@ -1124,7 +1124,7 @@ ProcessUtility(Node *parsetree,
 			CreateTrigger((CreateTrigStmt *) parsetree, false);
 			if (Gp_role == GP_ROLE_DISPATCH)
 			{
-				CdbDispatchUtilityStatement((Node *) parsetree);
+				CdbDispatchUtilityStatement((Node *) parsetree, "ProcessUtility");
 			}
 			
 			break;
@@ -1155,7 +1155,7 @@ ProcessUtility(Node *parsetree,
 				}
 				if (Gp_role == GP_ROLE_DISPATCH)
 				{
-					CdbDispatchUtilityStatement((Node *) parsetree);
+					CdbDispatchUtilityStatement((Node *) parsetree, "ProcessUtility");
 				}
 			}
 			break;
@@ -1262,7 +1262,7 @@ ProcessUtility(Node *parsetree,
 				if (Gp_role == GP_ROLE_DISPATCH)
 				{
 					if (stmt->kind != OBJECT_DATABASE)
-						CdbDispatchUtilityStatement((Node *) stmt);
+						CdbDispatchUtilityStatement((Node *) stmt, "ProcessUtility");
 					else
 					{
 						/*

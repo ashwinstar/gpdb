@@ -146,7 +146,7 @@ static Node *pre_dispatch_function_evaluation_mutator(Node *node,
 						 pre_dispatch_function_evaluation_context * context);
 
 static void
-CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase);
+CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase, char* debugCaller);
 
 /* ====================================================
  * STATIC STATE VARIABLES should not be declared!
@@ -3150,7 +3150,8 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 								 bool withSnapshot,
 								 struct CdbDispatchResults ** pPrimaryResults,
 								 struct CdbDispatchResults ** pMirrorResults,
-								 struct CdbDispatchCmdThreads ** pDispatchThreads)
+								 struct CdbDispatchCmdThreads ** pDispatchThreads,
+								 char* debugCaller)
 {
 	char	   *serializedQuerytree;
 	int			serializedQuerytree_len;
@@ -3158,8 +3159,8 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 	StringInfoData buffer;
 	bool 		dispatchToMirrors = true;
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"cdbdisp_dispatchUtilityStatement debug_query_string = %s (needTwoPhase = %s)",
-	     debug_query_string, (needTwoPhase ? "true" : "false"));
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"cdbdisp_dispatchUtilityStatement debug_query_string = %s (needTwoPhase = %s, debugCaller = %s)",
+	     debug_query_string, (needTwoPhase ? "true" : "false"), debugCaller);
 
 	if (needTwoPhase)
 	{
@@ -3210,26 +3211,26 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
  * throws an error and does not return.
  */
 void
-CdbDispatchUtilityStatement(struct Node *stmt)
+CdbDispatchUtilityStatement(struct Node *stmt, char* debugCaller)
 {
-	CdbDispatchUtilityStatement_Internal(stmt, /* needTwoPhase */ true);
+	CdbDispatchUtilityStatement_Internal(stmt, /* needTwoPhase */ true, "CdbDispatchUtilityStatement");
 }
 
 void
-CdbDispatchUtilityStatement_NoTwoPhase(struct Node *stmt)
+CdbDispatchUtilityStatement_NoTwoPhase(struct Node *stmt, char* debugCaller)
 {
-	CdbDispatchUtilityStatement_Internal(stmt, /* needTwoPhase */ false);
+	CdbDispatchUtilityStatement_Internal(stmt, /* needTwoPhase */ false, "CdbDispatchUtilityStatement_NoTwoPhase");
 }
 
 static void
-CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase)
+CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase, char* debugCaller)
 {
 	CdbDispatchResults *primaryResults;
 	CdbDispatchResults *mirrorResults;
 	CdbDispatchCmdThreads *dispatchThreads;
 	
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"cdbdisp_dispatchUtilityStatement called (needTwoPhase = %s)",
-		 (needTwoPhase ? "true" : "false"));
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"cdbdisp_dispatchUtilityStatement called (needTwoPhase = %s, debugCaller = %s)",
+		 (needTwoPhase ? "true" : "false"), debugCaller);
 	
 	/* Reconfigure the cluster if needed. */
 	cdbdisp_reconfigureFtsIfNecessary();
@@ -3238,7 +3239,8 @@ CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase)
 									 true /* cancelOnError */, 
 									 needTwoPhase, 
 									 true /* withSnapshot */,
-									 &primaryResults, &mirrorResults, &dispatchThreads);
+									 &primaryResults, &mirrorResults, &dispatchThreads,
+									 debugCaller);
 
 
 	/* Wait for all QEs to finish.	Throw up if error. */

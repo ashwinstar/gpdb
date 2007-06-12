@@ -446,7 +446,7 @@ CreateRole(CreateRoleStmt *stmt)
 	{
 		Assert(stmt->type == T_CreateRoleStmt);
 		Assert(stmt->type < 1000);
-		CdbDispatchUtilityStatement((Node *) stmt);
+		CdbDispatchUtilityStatement((Node *) stmt, "CreateRole");
 	}
 }
 
@@ -811,7 +811,7 @@ AlterRole(AlterRoleStmt *stmt)
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt);
+		CdbDispatchUtilityStatement((Node *) stmt, "AlterRole");
 	}
 }
 
@@ -1135,7 +1135,7 @@ DropRole(DropRoleStmt *stmt)
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt);
+		CdbDispatchUtilityStatement((Node *) stmt, "DropRole");
 
 	}
 }
@@ -1321,7 +1321,7 @@ GrantRole(GrantRoleStmt *stmt)
 
     if (Gp_role == GP_ROLE_DISPATCH)
     {
-        CdbDispatchUtilityStatement((Node *) stmt);
+        CdbDispatchUtilityStatement((Node *) stmt, "GrantRole");
     }
 }
 
@@ -1349,7 +1349,7 @@ DropOwnedObjects(DropOwnedStmt *stmt)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
     {
-        CdbDispatchUtilityStatement((Node *) stmt);
+        CdbDispatchUtilityStatement((Node *) stmt, "DropOwnedObjects");
     }
     
 	/* Ok, do it */
@@ -1389,7 +1389,7 @@ ReassignOwnedObjects(ReassignOwnedStmt *stmt)
 				 
 	if (Gp_role == GP_ROLE_DISPATCH)
     {
-        CdbDispatchUtilityStatement((Node *) stmt);
+        CdbDispatchUtilityStatement((Node *) stmt, "ReassignOwnedObjects");
     }
 
 	/* Ok, do it */

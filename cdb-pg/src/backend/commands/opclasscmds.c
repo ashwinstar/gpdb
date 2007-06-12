@@ -430,7 +430,7 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt);
+		CdbDispatchUtilityStatement((Node *) stmt, "DefineOpClass");
 	}
 }
 
@@ -767,7 +767,7 @@ RemoveOpClass(RemoveOpClassStmt *stmt)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt);
+		CdbDispatchUtilityStatement((Node *) stmt, "RemoveOpClass");
 	}
 }
 

@@ -2012,7 +2012,7 @@ createDtx(TransactionId *pLocalXid)
 	initGxact(gxact);
 	generateGID(gxact->gid, &gxact->gxid);
 	
-	AllocOrGetLocalXidForDistributedTransaction(gxact->gxid,pLocalXid);
+	AllocOrGetLocalXidForStartDistributedTransaction(gxact->gxid,pLocalXid);
 
 	/*
 	 * Until we get our first distributed snapshot, we use our
@@ -2986,8 +2986,8 @@ deserializeDtxContextInfo(
 static void
 doQEAddLocalXidsForDistributedIndoubt()
 {
-	elog((Debug_print_full_dtm ? LOG : DEBUG5), "Calling AddLocalXidsForDistributedTransactions to map distributed in-doubt XIDs to local XIDs.");
-	AddLocalXidsForDistributedTransactions(
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "Calling PreallocLocalXidsForOpenDistributedTransactions to map distributed in-doubt XIDs to local XIDs.");
+	PreallocLocalXidsForOpenDistributedTransactions(
 		QEDtxContextInfo.distributedSnapshotData.xip, 
 		QEDtxContextInfo.distributedSnapshotData.xcnt);
 
@@ -3365,8 +3365,10 @@ setupQEDtxContext (DtxContextInfo *dtxContextInfo)
 }
 
 void
-finishDistributedTransactionContext (char* debugCaller)
+finishDistributedTransactionContext (char* debugCaller, bool aborted)
 {
+	DistributedTransactionId gxid;
+	
 	/*
 	 * We let the 2 retry states go up to PostgresMain.c, otherwise
 	 * everything MUST be complete.
@@ -3381,10 +3383,48 @@ finishDistributedTransactionContext (char* debugCaller)
 			currentGxact->gid, currentGxact->gxid, DtxStateToString(currentGxact->state), debugCaller);
 	}
 	
-	elog((Debug_print_full_dtm ? LOG : DEBUG5), "finishDistributedTransactionContext called to change DistributedTransactionContext from %s to %s (caller = %s)",
+	gxid = getDistributedTransactionId();
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "finishDistributedTransactionContext called to change DistributedTransactionContext from %s to %s (caller = %s, gxid = %u)",
 		 DtxContextToString(DistributedTransactionContext), 
 		 DtxContextToString(DTX_CONTEXT_LOCAL_ONLY), 
-		 debugCaller);
+		 debugCaller,
+		 gxid);
+
+	/*
+	 * For distributed two-phase commit transactions we need to update the 
+	 * status of the Distributed XID Map entry to indicated we've finished 
+	 * using the entry.
+	 */
+	switch (DistributedTransactionContext)
+	{
+	case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+	case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
+	case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
+		if (gxid != InvalidDistributedTransactionId)
+		{
+			UpdateDistributedXidMapState(
+									gxid, 
+									(aborted ? DISTRIBUTEDXIDMAP_STATE_ABORTED :
+									           DISTRIBUTEDXIDMAP_STATE_COMMITTED));
+		}
+		break;
+		
+	case DTX_CONTEXT_LOCAL_ONLY:
+	case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
+	case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
+	case DTX_CONTEXT_QE_READER:
+	case DTX_CONTEXT_QE_PREPARED:
+	case DTX_CONTEXT_QD_RETRY_PHASE_2:
+		break;
+
+		elog(FATAL, "Unexpected distribute transaction context: '%s'",
+			 DtxContextToString(DistributedTransactionContext));
+
+	default:
+		elog(FATAL, "Unrecognized DTX transaction context: %d",
+			(int) DistributedTransactionContext);
+	}
+
 	
 	DistributedTransactionContext = DTX_CONTEXT_LOCAL_ONLY;
 
@@ -3496,7 +3536,7 @@ performDtxProtocolCommitPrepared(const char *gid, bool raiseErrorIfNotFound)
 	}
 	PG_CATCH();
 	{
-		finishDistributedTransactionContext("performDtxProtocolCommitPrepared -- Commit Prepared (error case)");
+		finishDistributedTransactionContext("performDtxProtocolCommitPrepared -- Commit Prepared (error case)", false);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -3507,7 +3547,7 @@ performDtxProtocolCommitPrepared(const char *gid, bool raiseErrorIfNotFound)
 	 */
 	CommitTransactionCommand();
 
-	finishDistributedTransactionContext("performDtxProtocolCommitPrepared -- Commit Prepared");
+	finishDistributedTransactionContext("performDtxProtocolCommitPrepared -- Commit Prepared", false);
 }
 
 static void
@@ -3526,7 +3566,7 @@ performDtxProtocolAbortPrepared(const char *gid, bool raiseErrorIfNotFound)
 	}
 	PG_CATCH();
 	{
-		finishDistributedTransactionContext("performDtxProtocolAbortPrepared -- Commit Prepared (error case)");
+		finishDistributedTransactionContext("performDtxProtocolAbortPrepared -- Commit Prepared (error case)", true);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -3537,7 +3577,7 @@ performDtxProtocolAbortPrepared(const char *gid, bool raiseErrorIfNotFound)
 	 */
 	CommitTransactionCommand();
 
-	finishDistributedTransactionContext("performDtxProtocolAbortPrepared -- Commit Prepared");
+	finishDistributedTransactionContext("performDtxProtocolAbortPrepared -- Commit Prepared", true);
 }
 
 void

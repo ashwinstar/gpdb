@@ -253,7 +253,7 @@ DefineSequence(CreateSeqStmt *seq)
 	if (shouldDispatch)
 	{
 		seq->comptypeOid = stmt->oidInfo.comptypeOid;
-		CdbDispatchUtilityStatement((Node *)seq);
+		CdbDispatchUtilityStatement((Node *)seq, "DefineSequence");
 	}
 
 	/* Initialize first page of relation with special magic number */
@@ -445,7 +445,7 @@ AlterSequence(AlterSeqStmt *stmt)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *)stmt);
+		CdbDispatchUtilityStatement((Node *)stmt, "AlterSequence");
 	}
 }
 

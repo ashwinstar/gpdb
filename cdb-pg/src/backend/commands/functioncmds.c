@@ -682,7 +682,7 @@ CreateFunction(CreateFunctionStmt *stmt)
 					
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt);
+		CdbDispatchUtilityStatement((Node *) stmt, "CreateFunction");
 	}
 }
 
@@ -757,7 +757,7 @@ RemoveFunction(RemoveFuncStmt *stmt)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt);
+		CdbDispatchUtilityStatement((Node *) stmt, "RemoveFunction");
 	}
 }
 
@@ -1090,7 +1090,7 @@ AlterFunction(AlterFunctionStmt *stmt)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt);
+		CdbDispatchUtilityStatement((Node *) stmt, "AlterFunction");
 	}
 }
 
@@ -1404,7 +1404,7 @@ CreateCast(CreateCastStmt *stmt)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt);
+		CdbDispatchUtilityStatement((Node *) stmt, "CreateCast");
 	}
 	
 }
@@ -1469,7 +1469,7 @@ DropCast(DropCastStmt *stmt)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt);
+		CdbDispatchUtilityStatement((Node *) stmt, "DropCast");
 	}
 }
 

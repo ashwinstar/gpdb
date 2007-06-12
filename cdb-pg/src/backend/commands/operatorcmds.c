@@ -208,7 +208,7 @@ DefineOperator(List *names, List *parameters, Oid newOid)
 		stmt->definition = parameters;
 		stmt->newOid = opOid;
 		stmt->shadowOid = 0;
-		CdbDispatchUtilityStatement((Node *) stmt);
+		CdbDispatchUtilityStatement((Node *) stmt, "DefineOperator");
 	}
 }
 
@@ -266,7 +266,7 @@ RemoveOperator(RemoveFuncStmt *stmt)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt);
+		CdbDispatchUtilityStatement((Node *) stmt, "RemoveOperator");
 	}
 }
 

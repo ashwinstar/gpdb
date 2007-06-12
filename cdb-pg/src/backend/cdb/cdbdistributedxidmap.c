@@ -21,6 +21,8 @@
  */
 #include "postgres.h"
 
+#include "miscadmin.h"
+
 #include "access/slru.h"
 #include "access/transam.h"
 #include "access/cdbdistributedxidmap.h"
@@ -35,11 +37,20 @@
  * be generated during one greenplum array start.
  */
 
-/* We need four bytes per xact */
-#define LOCAL_XACTS_PER_PAGE (BLCKSZ / sizeof(TransactionId))
 
-#define DistributedTransactionIdToPage(gxid) ((gxid) / (DistributedTransactionId) LOCAL_XACTS_PER_PAGE)
-#define DistributedTransactionIdToEntry(gxid) ((gxid) % (DistributedTransactionId) LOCAL_XACTS_PER_PAGE)
+typedef struct DISTRIBUTEDXIDMAP_ENTRY
+{
+	DistributedMapState	state;
+
+	int				    pid;
+	TransactionId		xid;
+}	DISTRIBUTEDXIDMAP_ENTRY;
+
+/* We need four bytes per xact */
+#define ENTRIES_PER_PAGE (BLCKSZ / sizeof(TransactionId))
+
+#define DistributedTransactionIdToPage(gxid) ((gxid) / (DistributedTransactionId) ENTRIES_PER_PAGE)
+#define DistributedTransactionIdToEntry(gxid) ((gxid) % (DistributedTransactionId) ENTRIES_PER_PAGE)
 
 
 /*
@@ -58,6 +69,28 @@ static int DistributedXidMapHighestPageNo = 0;
 static int	ZeroDistributedXidMapPage(int pageno);
 static bool DistributedXidMapPagePrecedes(int page1, int page2);
 static void DistributedXidMapMakeMorePages(int pageno);
+static char* DistributedMapStateToString(DistributedMapState state);
+
+static char* DistributedMapStateToString(DistributedMapState state)
+{
+	switch (state)
+	{
+	case DISTRIBUTEDXIDMAP_STATE_NONE:	
+		return "None";
+	case DISTRIBUTEDXIDMAP_STATE_PREALLOC_FOR_OPEN_TRANS:	
+		return "Preallocated for Open Transaction";
+	case DISTRIBUTEDXIDMAP_STATE_IN_PROGRESS:	
+		return "In-Progress";
+	case DISTRIBUTEDXIDMAP_STATE_PREPARED:	
+		return "Prepared";
+	case DISTRIBUTEDXIDMAP_STATE_COMMITTED:	
+		return "Committed";
+	case DISTRIBUTEDXIDMAP_STATE_ABORTED:	
+		return "Aborted";
+	default:
+		return "Unknown";
+	}
+}
 
 static void
 DistributedXidMapMakeMorePages(int pageno)
@@ -80,17 +113,17 @@ DistributedXidMapMakeMorePages(int pageno)
  * allocate the local XID and assign its value in the map if necessary.
  */
 void
-AllocOrGetLocalXidForDistributedTransaction(DistributedTransactionId gxid, TransactionId *xid)
+AllocOrGetLocalXidForStartDistributedTransaction(DistributedTransactionId gxid, TransactionId *xid)
 {
 	int			pageno = DistributedTransactionIdToPage(gxid);
 	int			entryno = DistributedTransactionIdToEntry(gxid);
 	int			slotno;
-	TransactionId *ptr;
+	DISTRIBUTEDXIDMAP_ENTRY *ptr;
 
 	Assert(gxid != InvalidDistributedTransactionId);
 	Assert(xid != NULL);
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5), "Entering AllocOrGetLocalXidForDistributedTransaction with distributed xid = %d (pageno = %d, entryno = %d, DistributedXidMapHighestPageNo = %d)",
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "Entering AllocOrGetLocalXidForStartDistributedTransaction with distributed xid = %d (pageno = %d, entryno = %d, DistributedXidMapHighestPageNo = %d)",
 		 gxid, pageno, entryno, DistributedXidMapHighestPageNo);
 	
 	LWLockAcquire(DistributedXidMapControlLock, LW_EXCLUSIVE);
@@ -104,30 +137,46 @@ AllocOrGetLocalXidForDistributedTransaction(DistributedTransactionId gxid, Trans
 	}
 
 	slotno = SimpleLruReadPage(DistributedXidMapCtl, pageno, InvalidTransactionId);
-	ptr = (TransactionId *) DistributedXidMapCtl->shared->page_buffer[slotno];
+	ptr = (DISTRIBUTEDXIDMAP_ENTRY *) DistributedXidMapCtl->shared->page_buffer[slotno];
 	ptr += entryno;
 
-	if(*ptr == InvalidTransactionId)
+	if (ptr->state == DISTRIBUTEDXIDMAP_STATE_NONE)
 	{
 		/*
 		 * Need to allocate a local XID and assign the map entry.
 		 */
 		*xid = GetNewTransactionId(false, false);	// NOT subtrans, DO NOT Set PROC struct xid
-		*ptr = *xid;
+		ptr->state = DISTRIBUTEDXIDMAP_STATE_IN_PROGRESS;
+		ptr->pid = MyProcPid;
+		ptr->xid = *xid;
 		
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "AllocOrGetLocalXidForDistributedTransaction allocated local XID = %d", *xid);
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "AllocOrGetLocalXidForStartDistributedTransaction allocated local XID = %d", *xid);
 
 		DistributedXidMapCtl->shared->page_dirty[slotno] = true;
 	}
-	else
+	else if (ptr->state == DISTRIBUTEDXIDMAP_STATE_PREALLOC_FOR_OPEN_TRANS)
 	{
 		/*
 		 * The local XID was pre-allocated by another QE when it
 		 * received a distributed snapshot that listed the distributed transaction
 		 * in its in-doubt list.
 		 */
-		*xid = *ptr;
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "AllocOrGetLocalXidForDistributedTransaction found pre-allocated local XID = %d", *xid);
+		ptr->state = DISTRIBUTEDXIDMAP_STATE_IN_PROGRESS;
+		ptr->pid = MyProcPid;
+		*xid = ptr->xid;
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "AllocOrGetLocalXidForStartDistributedTransaction found pre-allocated local XID = %d", *xid);
+
+		DistributedXidMapCtl->shared->page_dirty[slotno] = true;
+	}
+	else
+	{
+		int pid = ptr->pid;
+		TransactionId reuseXid = ptr->xid;
+		DistributedMapState state = ptr->state;
+		LWLockRelease(DistributedXidMapControlLock);
+
+		elog(ERROR,"Attempting re-use local xid %u and distributed xid %u again (original start pid was %d, state = %s)",
+			 reuseXid, gxid, pid, DistributedMapStateToString(state));
 	}
 
 	SetProcXid(*xid, gxid);
@@ -139,14 +188,14 @@ AllocOrGetLocalXidForDistributedTransaction(DistributedTransactionId gxid, Trans
  * Add local XID for any new distributed transactions.
  */
 void
-AddLocalXidsForDistributedTransactions(DistributedTransactionId *gxidArray, uint32 count)
+PreallocLocalXidsForOpenDistributedTransactions(DistributedTransactionId *gxidArray, uint32 count)
 {
 	int							i;
 	DistributedTransactionId 	gxid;
 	int							pageno;
 	int							entryno;
 	int							slotno;
-	TransactionId 				*ptr;
+	DISTRIBUTEDXIDMAP_ENTRY		*ptr;
 
 	LWLockAcquire(DistributedXidMapControlLock, LW_EXCLUSIVE);
 	
@@ -157,7 +206,7 @@ AddLocalXidsForDistributedTransactions(DistributedTransactionId *gxidArray, uint
 		pageno = DistributedTransactionIdToPage(gxid);
 		entryno = DistributedTransactionIdToEntry(gxid);
 
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "AddLocalXidsForDistributedTransactions: gxidArray[%d] is %u (pageno %d, entryno %d)",
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "PreallocLocalXidsForOpenDistributedTransactions: gxidArray[%d] is %u (pageno %d, entryno %d)",
 			 i, gxid, pageno, entryno);
 
 		if (pageno > DistributedXidMapHighestPageNo)
@@ -169,15 +218,17 @@ AddLocalXidsForDistributedTransactions(DistributedTransactionId *gxidArray, uint
 		}
 		
 		slotno = SimpleLruReadPage(DistributedXidMapCtl, pageno, InvalidTransactionId);
-		ptr = (TransactionId *) DistributedXidMapCtl->shared->page_buffer[slotno];
+		ptr = (DISTRIBUTEDXIDMAP_ENTRY *) DistributedXidMapCtl->shared->page_buffer[slotno];
 		ptr += entryno;
 
-		if (*ptr == InvalidTransactionId)
+		if (ptr->state == DISTRIBUTEDXIDMAP_STATE_NONE)
 		{
-			*ptr = GetNewTransactionId(false, false);	// NOT subtrans, DO NOT Set PROC struct xid
+			ptr->state = DISTRIBUTEDXIDMAP_STATE_PREALLOC_FOR_OPEN_TRANS;
+			ptr->pid = MyProcPid;
+			ptr->xid = GetNewTransactionId(false, false);	// NOT subtrans, DO NOT Set PROC struct xid
 			DistributedXidMapCtl->shared->page_dirty[slotno] = true;
-			elog((Debug_print_full_dtm ? LOG : DEBUG5), "AddLocalXidsForDistributedTransactions: Allocated local XID = %u for global XID = %u",
-				 *ptr, gxid);
+			elog((Debug_print_full_dtm ? LOG : DEBUG5), "PreallocLocalXidsForOpenDistributedTransactions: Allocated local XID = %u for global XID = %u",
+				 ptr->xid, gxid);
 		}
 	}
 	
@@ -193,8 +244,9 @@ GetLocalXidForDistributedTransaction(DistributedTransactionId gxid)
 	int			pageno = DistributedTransactionIdToPage(gxid);
 	int			entryno = DistributedTransactionIdToEntry(gxid);
 	int			slotno;
-	TransactionId *ptr;
+	DISTRIBUTEDXIDMAP_ENTRY *ptr;
 	TransactionId xid;
+	DistributedMapState state;
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "Entering GetLocalXidForDistributedTransaction with distributed xid = %d (pageno = %d, entryno = %d, DistributedXidMapHighestPageNo = %d)",
 		 gxid, pageno, entryno, DistributedXidMapHighestPageNo);
@@ -211,18 +263,68 @@ GetLocalXidForDistributedTransaction(DistributedTransactionId gxid)
 	}
 
 	slotno = SimpleLruReadPage(DistributedXidMapCtl, pageno, InvalidTransactionId);
-	ptr = (TransactionId *) DistributedXidMapCtl->shared->page_buffer[slotno];
+	ptr = (DISTRIBUTEDXIDMAP_ENTRY *) DistributedXidMapCtl->shared->page_buffer[slotno];
 	ptr += entryno;
 
-	xid = *ptr;
+	xid = ptr->xid;
+	state = ptr->state;
 
 	LWLockRelease(DistributedXidMapControlLock);
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetLocalXidForDistributedTransaction found local xid = %u for distributed xid = %d (pageno = %d, entryno = %d, DistributedXidMapHighestPageNo = %d)",
-		 xid, gxid, pageno, entryno, DistributedXidMapHighestPageNo);
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetLocalXidForDistributedTransaction found local xid = %u for distributed xid = %d in state %s (pageno = %d, entryno = %d, DistributedXidMapHighestPageNo = %d)",
+		 xid, gxid, DistributedMapStateToString(state), pageno, entryno, DistributedXidMapHighestPageNo);
 	return xid;
 }
 
+void
+UpdateDistributedXidMapState(DistributedTransactionId gxid, DistributedMapState newState)
+{
+	int			pageno = DistributedTransactionIdToPage(gxid);
+	int			entryno = DistributedTransactionIdToEntry(gxid);
+	int			slotno;
+	DISTRIBUTEDXIDMAP_ENTRY *ptr;
+	DistributedMapState oldState;
+	TransactionId xid;
+
+	Assert(newState == DISTRIBUTEDXIDMAP_STATE_PREPARED ||
+		   newState == DISTRIBUTEDXIDMAP_STATE_COMMITTED ||
+		   newState == DISTRIBUTEDXIDMAP_STATE_ABORTED);
+
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "Entering UpdateDistributedXidMapState with distributed xid = %d (pageno = %d, entryno = %d, DistributedXidMapHighestPageNo = %d)",
+		 gxid, pageno, entryno, DistributedXidMapHighestPageNo);
+	
+	LWLockAcquire(DistributedXidMapControlLock, LW_EXCLUSIVE);
+
+	if (pageno > DistributedXidMapHighestPageNo)
+	{
+		LWLockRelease(DistributedXidMapControlLock);
+		
+		elog(ERROR, "UpdateDistributedXidMapState distributed xid = %d invalid (pageno = %d, entryno = %d, DistributedXidMapHighestPageNo = %d)",
+			 gxid, pageno, entryno, DistributedXidMapHighestPageNo);
+	}
+
+	slotno = SimpleLruReadPage(DistributedXidMapCtl, pageno, InvalidTransactionId);
+	ptr = (TransactionId *) DistributedXidMapCtl->shared->page_buffer[slotno];
+	ptr += entryno;
+
+	oldState = ptr->state;
+	if (oldState == DISTRIBUTEDXIDMAP_STATE_IN_PROGRESS)
+	{
+		ptr->state = newState;
+	}
+	else if (oldState == DISTRIBUTEDXIDMAP_STATE_PREPARED)
+	{
+		Assert(newState != DISTRIBUTEDXIDMAP_STATE_PREPARED);
+		ptr->state = newState;
+	}
+	xid = ptr->xid;
+	DistributedXidMapCtl->shared->page_dirty[slotno] = true;
+	LWLockRelease(DistributedXidMapControlLock);
+
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "UpdateDistributedXidMapState state for local xid = %u and distributed xid = %d from state %s to new state %s (pageno = %d, entryno = %d, DistributedXidMapHighestPageNo = %d)",
+		 xid, gxid, DistributedMapStateToString(oldState), DistributedMapStateToString(newState),pageno, entryno, DistributedXidMapHighestPageNo);
+	return xid;
+}
 
 /*
  * Initialization of shared memory for DistributedXidMap

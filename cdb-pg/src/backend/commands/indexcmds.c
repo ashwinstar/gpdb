@@ -612,12 +612,13 @@ DefineIndex(RangeVar *heapRelation,
 	                                         true,      /* withSnapshot */
 	                                         &primaryResults,
 	                                         &mirrorResults,
-											 &dispatchThreads);
+											 &dispatchThreads,
+											 "DefineIndex");
 			/* Wait for all QEs to finish.	Throw up if error. */
 			cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
         }
         else
-        	CdbDispatchUtilityStatement((Node *)stmt);
+        	CdbDispatchUtilityStatement((Node *)stmt, "DefineIndex");
 	}
 
 	/* 

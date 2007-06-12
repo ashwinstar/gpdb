@@ -98,7 +98,7 @@ CreateConversionCommand(CreateConversionStmt *stmt)
 					 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt);
+		CdbDispatchUtilityStatement((Node *) stmt, "CreateConversionCommand");
 	}
 }
 
@@ -141,7 +141,7 @@ DropConversionCommand(List *name, DropBehavior behavior, bool missing_ok)
 		stmt->removeType = OBJECT_CONVERSION;
 		stmt->behavior=behavior;
 		stmt->missing_ok = true;
-		CdbDispatchUtilityStatement((Node *) stmt);
+		CdbDispatchUtilityStatement((Node *) stmt, "DropConversionCommand");
 	}
 }
 

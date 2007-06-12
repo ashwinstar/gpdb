@@ -441,7 +441,7 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 		stmt->definition = parameters;
 		stmt->newOid = typoid;
 		stmt->shadowOid = shadowOid;
-		CdbDispatchUtilityStatement((Node *) stmt);
+		CdbDispatchUtilityStatement((Node *) stmt, "DefineType");
 	}
 }
 
@@ -835,7 +835,7 @@ DefineDomain(CreateDomainStmt *stmt)
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt);
+		CdbDispatchUtilityStatement((Node *) stmt, "DefineDomain");
 	}
 }
 

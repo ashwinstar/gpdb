@@ -1779,10 +1779,28 @@ StartTransaction(void)
 			 */
 			if (QEDtxContextInfo.distributedXid != InvalidDistributedTransactionId)
 			{
-				/*
-				 * Use local xid that is mapped to distributed xid.
-				 */
-				AllocOrGetLocalXidForDistributedTransaction(QEDtxContextInfo.distributedXid,&s->transactionId);
+
+				if (DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER ||
+					DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER)
+				{
+					/*
+					 * Use local xid that is mapped to distributed xid.
+					 */
+					AllocOrGetLocalXidForStartDistributedTransaction(QEDtxContextInfo.distributedXid,&s->transactionId);
+				}
+				else
+				{
+					/*
+					 * We don't use the distributed xid map since this may be one of funny
+					 * distributed queries the executor uses behind the scenes for estimation
+					 * work.  This transaction will auto-commit, and then we will follow it with the
+					 * real user command.
+					 *
+					 * Generate a new transaction id.
+					 */
+					Assert(DistributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT);
+					s->transactionId = GetNewTransactionId(false, true);
+				}
 				
 			  	/*
 			 	 * now() and statement_timestamp() should be the same time
@@ -2181,7 +2199,7 @@ CommitTransaction(void)
 	 */
 	notifyCommittedDtxTransaction();
 
-	finishDistributedTransactionContext("CommitTransaction");
+	finishDistributedTransactionContext("CommitTransaction", false);
 
 	/* we're now in a consistent state to handle an interrupt. */
 	RESUME_INTERRUPTS();
@@ -2600,7 +2618,7 @@ CleanupTransaction(void)
 	 */
 	s->state = TRANS_DEFAULT;
 
-	finishDistributedTransactionContext("CleanupTransaction");
+	finishDistributedTransactionContext("CleanupTransaction", true);
 
 }
 

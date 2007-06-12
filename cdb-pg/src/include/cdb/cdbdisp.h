@@ -406,7 +406,8 @@ cdbdisp_dispatchUtilityStatement(struct Node   *stmt,
                                  bool			withSnapshot,
                                  struct CdbDispatchResults    **pPrimaryResults,
                                  struct CdbDispatchResults    **pMirrorResults,
-								 struct CdbDispatchCmdThreads ** pDispatchThreads);
+								 struct CdbDispatchCmdThreads ** pDispatchThreads,
+								 char* debugCaller);
 
 /* Dispatch a command - already parsed and in the form of a Node
  * tree - to all primary and mirror segdbs, and wait for completion.
@@ -415,10 +416,10 @@ cdbdisp_dispatchUtilityStatement(struct Node   *stmt,
  * throws an error and does not return.
  */
 void
-CdbDispatchUtilityStatement(struct Node *stmt);
+CdbDispatchUtilityStatement(struct Node *stmt, char* debugCaller);
 
 void
-CdbDispatchUtilityStatement_NoTwoPhase(struct Node *stmt);
+CdbDispatchUtilityStatement_NoTwoPhase(struct Node *stmt, char* debugCaller);
 
 /*
  * create a CdbDispatchCmdThreads object that holds the dispatch

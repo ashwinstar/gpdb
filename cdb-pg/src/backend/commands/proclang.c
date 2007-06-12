@@ -237,7 +237,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt);
+		CdbDispatchUtilityStatement((Node *) stmt, "CreateProceduralLanguage");
 	}
 }
 
@@ -435,7 +435,7 @@ DropProceduralLanguage(DropPLangStmt *stmt)
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt);
+		CdbDispatchUtilityStatement((Node *) stmt, "DropProceduralLanguage");
 	}
 }
 

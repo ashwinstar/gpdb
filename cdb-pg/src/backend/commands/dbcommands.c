@@ -136,7 +136,7 @@ gp_cleanup_createdb(const char *dbname)
 	
     PG_TRY();
     {
-		cdbdisp_dispatchUtilityStatement((Node*)stmt, true, false /* twophase */, false /* snapshot */, &primaryResults, &mirrorResults, &dispatchThreads);
+		cdbdisp_dispatchUtilityStatement((Node*)stmt, true, false /* twophase */, false /* snapshot */, &primaryResults, &mirrorResults, &dispatchThreads, "gp_cleanup_createdb");
     }
 	PG_CATCH();
 	{
@@ -477,7 +477,8 @@ createdb_int(CreatedbStmt *stmt,
                                          false,      /* withSnapshot */
                                          pPrimaryResults,
                                          pMirrorResults,
-										 pDispatchThreads);
+										 pDispatchThreads,
+										 "createdb_int");
 	}
 
 	/*

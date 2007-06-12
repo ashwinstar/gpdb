@@ -215,7 +215,7 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters, Oid new
 		stmt->definition = parameters;
 		stmt->newOid = aggOid;
 		stmt->shadowOid = 0;
-		CdbDispatchUtilityStatement((Node *) stmt);
+		CdbDispatchUtilityStatement((Node *) stmt, "DefineAggregate");
 	}
 }
 
@@ -275,7 +275,7 @@ RemoveAggregate(RemoveFuncStmt *stmt)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt);
+		CdbDispatchUtilityStatement((Node *) stmt, "RemoveAggregate");
 	}
 }
 

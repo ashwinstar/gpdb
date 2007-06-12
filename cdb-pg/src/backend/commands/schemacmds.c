@@ -115,7 +115,7 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
              * Starts a global transaction and reconfigures cluster if needed.
              * Waits for QEs to finish.  Exits via ereport(ERROR,...) if error.
              */
-            CdbDispatchUtilityStatement((Node *)stmt);
+            CdbDispatchUtilityStatement((Node *)stmt, "CreateSchemaCommand");
 		}
 
 	}

@@ -283,7 +283,7 @@ extern void deserializeDtxContextInfo(const char *serializedSnapshot, int serial
 							 DtxContextInfo *dtxContextInfo);
 extern void setupRegularDtxContext (void);
 extern void setupQEDtxContext (DtxContextInfo *dtxContextInfo);
-extern void finishDistributedTransactionContext (char* debugCaller);
+extern void finishDistributedTransactionContext (char* debugCaller, bool aborted);
 extern void rememberDtxExplicitBegin();
 extern void performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 					int flags,

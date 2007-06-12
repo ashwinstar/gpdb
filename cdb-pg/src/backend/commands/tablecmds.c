@@ -699,7 +699,8 @@ DefineRelation_int(CreateStmt *stmt,
 										 true,      /* withSnapshot */
 										 pPrimaryResults,
 										 pMirrorResults,
-										 pDispatchThreads);
+										 pDispatchThreads,
+										 "DefineRelation_int");
 	}
 
 	/*
@@ -1056,7 +1057,7 @@ ExecuteTruncate(TruncateStmt *stmt)
 			stmt->new_heap_oids = new_heap_oids;
 			stmt->new_toast_oids = new_toast_oids;
 			
-			CdbDispatchUtilityStatement((Node *) stmt);
+			CdbDispatchUtilityStatement((Node *) stmt, "ExecuteTruncate");
 		}
 	}
 	else /* role=execute */
@@ -2482,7 +2483,7 @@ AlterTable(AlterTableStmt *stmt)
 				 &stmt->oidInfo);
 
 	if (Gp_role == GP_ROLE_DISPATCH)
-		CdbDispatchUtilityStatement((Node *) stmt);
+		CdbDispatchUtilityStatement((Node *) stmt, "AlterTable");
 }
 
 /*
