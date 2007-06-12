@@ -94,19 +94,21 @@ typedef int16 NumericDigit;
  * by NBASE ** weight.	Another way to say it is that there are weight+1
  * digits before the decimal point.  It is possible to have weight < 0.
  *
- * buf points at the physical start of the palloc'd digit buffer for the
- * NumericVar.	digits points at the first digit in actual use (the one
- * with the specified weight).	We normally leave an unused digit or two
+ * buf: points at the physical start of the digit buffer for the NumericVar.
+ * This is either the local buffer (ndb) or a palloc'd buffer.
+ *
+ * digits: points at the first digit in actual use (the one with the
+ * specified weight).	We normally leave an unused digit or two
  * (preset to zeroes) between buf and digits, so that there is room to store
  * a carry out of the top digit without special pushups.  We just need to
  * decrement digits (and increment weight) to make room for the carry digit.
  * (There is no such extra space in a numeric value stored in the database,
  * only in a NumericVar in memory.)
  *
- * If buf is NULL then the digit buffer isn't actually palloc'd and should
- * not be freed --- see the constants below for an example.
+ * If buf is set to ndb, then the digit buffer isn't actually palloc'd and
+ * should not be freed --- see the constants below for an example.
  *
- * dscale, or display scale, is the nominal precision expressed as number
+ * dscale: display scale, is the nominal precision expressed as number
  * of digits after the decimal point (it must always be >= 0 at present).
  * dscale may be more than the number of physically stored fractional digits,
  * implying that we have suppressed storage of significant trailing zeroes.
@@ -123,7 +125,7 @@ typedef int16 NumericDigit;
  *
  * NB: All the variable-level functions are written in a style that makes it
  * possible to give one and the same variable as argument and destination.
- * This is feasible because the digit buffer is separate from the variable.
+ *
  * ----------
  */
 #define	NUMERIC_LOCAL_NDIG	36		/* number of 'digits' in local digits[] */
@@ -2966,11 +2968,11 @@ set_var_from_num(Numeric num, NumericVar *dest)
 
 	alloc_var(dest, ndigits);
 
-	dest->weight = num->n_weight;
+	dest->weight = NUMERIC_WEIGHT(num);
 	dest->sign = NUMERIC_SIGN(num);
 	dest->dscale = NUMERIC_DSCALE(num);
 
-	memcpy(dest->digits, num->n_data, ndigits * sizeof(NumericDigit));
+	memcpy(dest->digits, NUMERIC_DIGITS(num), ndigits * sizeof(NumericDigit));
 }
 
 /*
@@ -3275,9 +3277,15 @@ make_result(NumericVar *var)
 	/* Check for overflow of int16 fields */
 	if (NUMERIC_WEIGHT(result) != weight ||
 		NUMERIC_DSCALE(result) != var->dscale)
+	{
+		char *ntp = get_str_from_var(var, var->dscale);
+
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-				 errmsg("value overflows numeric format")));
+				 errmsg("value overflows numeric format"),
+				 errdetail("Overflowing value: %s", ntp)
+				));
+	}
 
 	free_var(var);
 	dump_numeric("make_result()", result);
@@ -3346,15 +3354,20 @@ apply_typmod(NumericVar *var, int32 typmod)
 #error unsupported NBASE
 #endif
 				if (ddigits > maxdigits)
+				{
+					char *ntp = get_str_from_var(var, scale);
+
 					ereport(ERROR,
 							(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 							 errmsg("numeric field overflow"),
-							 errdetail("A field with precision %d, scale %d must round to an absolute value less than %s%d.",
+							 errdetail("A field with precision %d, scale %d must round to an absolute value less than %s%d. Rounded overflowing value: %s",
 									   precision, scale,
 					/* Display 10^0 as 1 */
 									   maxdigits ? "10^" : "",
-									   maxdigits ? maxdigits : 1
+									   maxdigits ? maxdigits : 1,
+									   ntp
 									   )));
+				}
 				break;
 			}
 			ddigits -= DEC_DIGITS;
@@ -5564,7 +5577,7 @@ numeric_to_pos_int8_trunc(Numeric num)
 	int64 result;
 	
 	/* Truncate ntile_arg to int8, put in result. */
-	set_var_from_num(num, &var);
+	init_var_from_num(num, &var);
 	if ( var.sign == NUMERIC_POS )
 	{
 		trunc_var(&var, 0);
