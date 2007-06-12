@@ -97,6 +97,7 @@ int			Gp_max_packet_size;	/* max Interconnect packet size */
 
 int			interconnect_setup_timeout;
 
+bool		gp_interconnect_aggressive_retry=true; /* fast-track app-level retry */
 
 /*
  * Greenplum Database Optimizer GUCs

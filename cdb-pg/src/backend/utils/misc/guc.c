@@ -1178,6 +1178,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_enable_interconnect_aggressive_retry", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable application-level fast-track interconnect retries"),
+			NULL,
+            GUC_NO_RESET_ALL | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_interconnect_aggressive_retry,
+		true, NULL, NULL
+	},
+
+	{
 		{"gp_is_primary", PGC_BACKEND, GP_WORKER_IDENTITY,
 			gettext_noop("Reports session type as primary or mirror."),
 			NULL,

@@ -301,6 +301,15 @@ extern int	Gp_max_packet_size;	/* GUC var */
 #define MAX_PACKET_SIZE 65536
 
 /*
+ * Parameter gp_interconnect_aggressive_retry
+ *
+ * The run-time parameter gp_interconnect_aggressive_retry controls the
+ * activation of the application-level retry (which acts much faster than the OS-level
+ * TCP retries); In most cases this should stay enabled.
+ */
+extern bool gp_interconnect_aggressive_retry; /* fast-track app-level retry */
+
+/*
  * Parameter gp_segment
  *
  * The segment (content) controlled by this QE

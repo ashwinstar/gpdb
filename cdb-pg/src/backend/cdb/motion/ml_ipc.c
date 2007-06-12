@@ -1881,14 +1881,18 @@ startOutgoingConnections(ChunkTransportState *transportStates,
 	parentSliceId = list_nth_int(sendSlice->parent, pIncIdx);
 	recvSlice = (Slice *) list_nth(transportStates->sliceTable->slices, parentSliceId);
 
-	if ((list_length(recvSlice->children) * sendSlice->gangSize) > listenerBacklog)
-		transportStates->aggressiveRetry = true;
+	if (gp_interconnect_aggressive_retry)
+	{
+		if ((list_length(recvSlice->children) * sendSlice->gangSize) > listenerBacklog)
+			transportStates->aggressiveRetry = true;
+	}
 	else
 		transportStates->aggressiveRetry = false;
 
     if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-        elog(DEBUG4, "Interconnect seg%d slice%d setting up sending motion node",
-             Gp_segment, sendSlice->sliceIndex);
+        elog(DEBUG4, "Interconnect seg%d slice%d setting up sending motion node (aggressive retry is %s)",
+             Gp_segment, sendSlice->sliceIndex,
+			 (transportStates->aggressiveRetry ? "active" : "inactive"));
 
 	pEntry = createChunkTransportState(transportStates,
 									   sendSlice,
@@ -2356,18 +2360,24 @@ readRegisterMessage(ChunkTransportState *transportStates,
     {
 	    bytesToReceive = conn->pBuff + conn->msgSize - conn->msgPos;
         bytesReceived = recv(conn->sockfd, conn->msgPos, bytesToReceive, 0);
+
         if (bytesReceived == bytesToReceive)
             break;
         else if (bytesReceived > 0)
             conn->msgPos += bytesReceived;
  		else if (bytesReceived == 0)
 		{
-            ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-                            errmsg("Interconnect error reading register message "
-                                   "from %s: connection closed",
-                                   conn->remoteHostAndPort),
-                            errdetail("recv() sockfd=%d local=%s",
-                                      conn->sockfd, conn->localHostAndPort)));
+			elog(LOG,"Interconnect error reading register message "
+				 "from %s: connection closed",
+				 conn->remoteHostAndPort);
+
+			/* this shouldn't block or anything, our peer is already
+			 * done. (no shutdown() required) */
+			closesocket(conn->sockfd);
+			conn->sockfd = -1;
+
+			pfree(conn->pBuff);
+			return true;
 		}
         else if (errno == EWOULDBLOCK)
             return false;       /* call me again to receive the rest */
