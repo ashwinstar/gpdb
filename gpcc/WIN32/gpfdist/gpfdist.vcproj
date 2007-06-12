@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="Windows-1252"?>
+<?xml version="1.0" encoding="big5"?>
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="8.00"
@@ -118,7 +118,7 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalIncludeDirectories="../../src/include;../src/include;&quot;/src/apr-1.2.8/include&quot;;&quot;/src/apr-iconv-1.1.1/include&quot;;&quot;/src/apr-util-1.2.8/include&quot;;&quot;/src/libevent-1.3b&quot;"
+				AdditionalIncludeDirectories="../../src/include;../src/include;../../ext/apr/include;&quot;../../ext/apr-util/include&quot;;&quot;../../ext/libevent-1.3b-1&quot;;&quot;../../ext/json-c-0.6&quot;"
 				PreprocessorDefinitions="WIN32,APR_DECLARE_STATIC,APU_DECLARE_STATIC"
 				RuntimeLibrary="0"
 				UsePrecompiledHeader="0"
@@ -139,7 +139,7 @@
 				Name="VCLinkerTool"
 				AdditionalDependencies="libgpcc.lib apr-1.lib aprutil-1.lib libevent.lib ws2_32.lib mswsock.lib Rpcrt4.lib"
 				LinkIncremental="1"
-				AdditionalLibraryDirectories="&quot;\src\apr-1.2.8\LibR&quot;;&quot;/src/apr-util-1.2.8/LibR&quot;;&quot;\src\libevent-1.3b\win32-prj\release&quot;;\gp\cdb2\gpcc\WIN32\release"
+				AdditionalLibraryDirectories="../../ext/apr\LibR;&quot;../../ext/apr-util/LibR&quot;;&quot;../../ext/libevent-1.3b-1/win32-prj/release&quot;;../libgpcc/release"
 				GenerateDebugInformation="true"
 				SubSystem="1"
 				OptimizeReferences="2"

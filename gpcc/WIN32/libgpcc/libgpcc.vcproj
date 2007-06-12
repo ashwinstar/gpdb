@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="Windows-1252"?>
+<?xml version="1.0" encoding="big5"?>
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="8.00"
@@ -101,7 +101,7 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalIncludeDirectories="../../src/include;../src/include;/src/apr-1.2.8/include;/src/apr-iconv-1.1.1/include;/src/apr-util-1.2.8/include"
+				AdditionalIncludeDirectories="../../src/include;../src/include;../../ext/apr/include;&quot;../../ext/apr-util/include&quot;"
 				PreprocessorDefinitions="WIN32,APR_DECLARE_STATIC,APU_DECLARE_STATIC"
 				RuntimeLibrary="0"
 				WarningLevel="3"
@@ -121,7 +121,7 @@
 				Name="VCLibrarianTool"
 				LinkLibraryDependencies="true"
 				AdditionalDependencies="apr-1.lib aprutil-1.lib libevent.lib"
-				AdditionalLibraryDirectories="&quot;\src\apr-1.2.8\LibR&quot;;&quot;/src/apr-util-1.2.8/LibR&quot;;&quot;\src\libevent-1.3b\win32-prj\release&quot;"
+				AdditionalLibraryDirectories="../../ext/apr/LibR;&quot;../../ext/apr-util/LibR&quot;;&quot;../../ext/libevent-1.3b-1/win32-prj/release&quot;"
 			/>
 			<Tool
 				Name="VCALinkTool"
