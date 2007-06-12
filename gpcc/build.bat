@@ -1,0 +1,101 @@
+@echo off
+
+set GPCC=%CD%
+set EXT=%GPCC%\ext
+set APR128=%GPCC%\ext\apr-1.2.8
+set APU128=%GPCC%\ext\apr-util-1.2.8
+set APR=%GPCC%\ext\apr
+set APU=%GPCC%\ext\apr-util
+set JSON=%GPCC%\ext\json-c-0.6
+set LIBEVENT=%GPCC%\ext\libevent-1.3b-1
+set LIBGPCC=%GPCC%\WIN32\libgpcc
+set GPFDIST=%GPCC%\WIN32\gpfdist
+
+copy %GPCC%\ext\WIN32\apr\*.vcproj %APR%
+copy %GPCC%\ext\WIN32\apr\*.sln %APR%
+copy %GPCC%\ext\WIN32\apr\*.hw %APR%\include
+
+copy %GPCC%\ext\WIN32\apr-util\aprutil.vcproj %APU%
+copy %GPCC%\ext\WIN32\apr-util\xml\expat\lib\xml.vcproj %APU%\xml\expat\lib
+copy %GPCC%\ext\WIN32\apr-util\*.sln %APU%
+copy %GPCC%\ext\WIN32\apr-util\*.hw %APU%\include
+
+copy %GPCC%\ext\WIN32\json\*.* %JSON%
+copy %JSON%\config.h.win32 %JSON%\config.h
+
+copy %GPCC%\ext\WIN32\libevent\*.* %LIBEVENT%\WIN32-Prj
+
+
+cd %EXT%
+
+echo ---------- build apr and apr-util ----------------------
+rem rename apr-1.2.2 to apr
+rem rename apr-util-1.2.2 to apr-util
+rem 1. cd into ext/apr-util and open aprutil.dsw using visual studio
+rem 
+rem 2. open aprutil | Generated Files | apu.hw
+rem 3. edit ext/apr-util/include/apu.hw
+rem    add line: #define HAVE_ICONV_H           1
+rem      
+rem    redefine: #define APU_HAVE_APR_ICONV     0
+rem              #define APU_HAVE_ICONV         0
+rem  4. edit ext/apr-util/include/apr_ldap.hw
+rem     redefine: #define APR_HAS_LDAP	0
+
+
+
+pushd %APR%
+
+vcbuild /u apr.vcproj /clean
+vcbuild /u apr.vcproj "Release|Win32"
+
+popd
+
+pushd %APU%\xml\expat\lib
+
+vcbuild /u xml.vcproj /clean
+vcbuild /u xml.vcproj "Release|Win32"
+
+popd
+
+pushd %APU%
+
+vcbuild /u aprutil.vcproj /clean
+vcbuild /u aprutil.vcproj "Release|Win32"
+
+popd
+
+
+
+echo ---------------------- json ----------------------------
+pushd %JSON%
+
+vcbuild /u json-c.vcproj /clean
+vcbuild /u json-c.vcproj "Release|Win32"
+
+popd
+
+
+echo ---------------------- libevent ----------------------------
+pushd %LIBEVENT%\WIN32-Prj
+
+vcbuild /u libevent.vcproj /clean
+vcbuild /u libevent.vcproj "Release|Win32"
+
+popd
+
+echo --------------------- libgpcc ------------------------------
+pushd %LIBGPCC%
+
+vcbuild /u libgpcc.vcproj /clean
+vcbuild /u libgpcc.vcproj "Release|Win32"
+
+popd
+
+echo --------------------- gpfdist ------------------------------
+pushd %GPFDIST%
+
+vcbuild /u gpfdist.vcproj /clean
+vcbuild /u gpfdist.vcproj "Release|Win32"
+
+popd
