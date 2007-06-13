@@ -207,10 +207,6 @@ OBTAIN_PARAM () {
 			fi
 			((DIR_COUNT=$DIR_COUNT+1))
 		done
-		#Check to ensure that we have no duplicate dir names
-		if [ `$ECHO ${MIRROR_DATADIRECTORY[@]}|$TR ' ' '\n'|$SORT -u|$WC -l` -ne ${#MIRROR_DATADIRECTORY[@]} ];then
-			ERROR_EXIT "[FATAL]:-Duplicate segment instance directory names entered" 2
-		fi
 	else
 		#Check that number of lines in file match number of primay segment instances
 		if [ $MIRROR_COUNT_FILE -ne $PRI_SEGMENT_ARRAY_COUNT ];then
