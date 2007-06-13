@@ -247,6 +247,7 @@ GET_DETAILS () {
 		else
 			BATCH_LIMIT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $GP_PG_VIEW where valid ='t' and content<>-1;"`
 		fi
+		TOTAL_BATCH_LIMIT=$QE_ARRAY_COUNT
 		#Gather locale information MPP-972
 		LC_COLLATE=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"show lc_collate;"`
 		ERROR_CHK $? "obtain lc_collate info" 1
@@ -375,6 +376,7 @@ PROCESS_STARTUP () {
 	if [ x"" == x"$SWITCH_QE_LOG" ];then
 		SWITCH_QE_LOG=0
 	fi
+	INVALID_START_COUNT=0
 	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
 	for QNODE in "${QE_ARRAY[@]}"
 	do
@@ -386,7 +388,8 @@ PROCESS_STARTUP () {
 		#If valid is false and no request to start invalis segment skip this instance
 		if [ $START_INVALID -eq 0 ] && [ $QE_VALID == 'f' ];then
 			if [ $DEBUG_LEVEL -eq 0 ];then $ECHO;fi
-			LOG_MSG "[INFO]:-Skipping startup of $QE_NAME $QE_DIR as marked as invalid" 1
+			LOG_MSG "[WARN]:-Skipping startup of $QE_NAME $QE_DIR as marked as invalid" 1
+			((INVALID_START_COUNT=$INVALID_START_COUNT+1))
 		else
 			if [ $START_INVALID -eq 1 ] && [ $QE_VALID == 'f' ];then
 				VALID_SETTING=1
@@ -453,15 +456,16 @@ PROCESS_STARTUP () {
 			LOG_MSG "[INFO]:-Successfully started the Master standby instance" 1
 		fi
 	fi
-	if [ $COMPLETED_COUNT -eq $BATCH_LIMIT ];then
-		LOG_MSG "[INFO]:-Successfully started $COMPLETED_COUNT of $BATCH_LIMIT segment instances" 1
+	if [ $COMPLETED_COUNT -eq $TOTAL_BATCH_LIMIT ];then
+		LOG_MSG "[INFO]:-Successfully started $COMPLETED_COUNT of $TOTAL_BATCH_LIMIT segment instances" 1
 	else
-		LOG_MSG "[INFO]:-Successfully started $COMPLETED_COUNT of $BATCH_LIMIT segment instances     $WARN_MARK" 1
+		LOG_MSG "[WARN]:-Successfully started $COMPLETED_COUNT of $TOTAL_BATCH_LIMIT segment instances    $WARN_MARK" 1
+		EXIT_STATUS=1
 	fi
 	if [ $DUMP_STAT -ne 0 ];then
 		LOG_MSG "[INFO]:------------------------------------------------" 1
 		LOG_MSG "[WARN]:-Segment instance startup failures reported" 1	
-		LOG_MSG "[WARN]:-Failed to start $TOTAL_FAILED_COUNT of $BATCH_LIMIT segment instances          $WARN_MARK" 1
+		LOG_MSG "[WARN]:-Failed to start $TOTAL_FAILED_COUNT of $TOTAL_BATCH_LIMIT segment instances        $WARN_MARK" 1
 		LOG_MSG "[INFO]:-Securing contents of parallel status file to log file" 1
 		$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE
 		LOG_MSG "[INFO]:-Review $LOG_FILE" 1
@@ -489,6 +493,7 @@ PROCESS_STARTUP () {
 		LOG_MSG "[INFO]:-Database successfully started with no errors reported" 1
 	else
 		LOG_MSG "[WARN]:-Database started but warnings generated            $WARN_MARK" 1
+		LOG_MSG "[INFO]:-Check status of database with gpstate utility " 1
 	fi 
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
