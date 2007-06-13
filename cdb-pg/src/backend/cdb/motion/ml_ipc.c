@@ -68,10 +68,6 @@
 #define CONNECT_RETRY_MS	4000
 #define CONNECT_AGGRESSIVERETRY_MS	500
 
-#define getInt16(pNetData)	  ntohs(*((int16 *)(pNetData)))
-#define getInt32(pNetData)	  ntohl(*((int32 *)(pNetData)))
-
-
 /*=========================================================================
  * GLOBAL STATE VARIABLES
  */
@@ -2761,7 +2757,7 @@ flushBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates, Mo
 	pMNEntry = getMotionNodeEntry(mlStates, motionId, "flushBuffer");
 
 	/* first set header length */
-	*(uint32 *) conn->pBuff = htonl(conn->msgSize);
+	*(uint32 *) conn->pBuff = conn->msgSize;
 
 	/* now send message */
 	sendptr = (char *) conn->pBuff;
@@ -2918,7 +2914,7 @@ readPacket(ChunkTransportState *transportStates, MotionConn * conn)
 	/* do we have a complete message waiting to be processed ? */
 	if (conn->recvBytes >= PACKET_HEADER_SIZE)
 	{
-		conn->msgSize = getInt32(conn->msgPos);
+		conn->msgSize = *((int32 *)(conn->msgPos));
 		gotHeader = true;
 		if (conn->recvBytes >= conn->msgSize)
 		{
@@ -3012,7 +3008,7 @@ readPacket(ChunkTransportState *transportStates, MotionConn * conn)
 			if (!gotHeader && bytesRead >= PACKET_HEADER_SIZE)
 			{
 				/* got the header */
-				conn->msgSize = getInt32(conn->msgPos);
+				conn->msgSize = *((int32 *)(conn->msgPos));
 				gotHeader = true;
 			}
 			conn->recvBytes = bytesRead;
