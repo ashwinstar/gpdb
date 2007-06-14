@@ -1561,8 +1561,7 @@ HeapTupleSatisfiesVacuum(HeapTupleHeader tuple, TransactionId OldestXmin,
 Snapshot
 GetTransactionSnapshot(void)
 {
-	/* First call in transaction? */
-	if (SerializableSnapshot == NULL)
+ 	if (SerializableSnapshot == NULL)
 	{
 		/*
 		 * Verify SerializableSnapshot and LatestSnapshot are a bound pair.
@@ -1572,15 +1571,42 @@ GetTransactionSnapshot(void)
 		SerializableSnapshot = GetSnapshotData(&SerializableSnapshotData, true,
 			                                   &SerializableDistributedSnapshot,
 			                                   &SerializableDistributedSnapshotData);
+		if (SerializableDistributedSnapshot != NULL)
+	 	{
+			elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Set Serializable* currcid = %d (gxid = %u, %s)", 
+			 	  SerializableDistributedSnapshot->snapshotId,
+			 	  SerializableDistributedSnapshot->curcid,
+			 	  getDistributedTransactionId(),
+			 	  DtxContextToString(DistributedTransactionContext));
+	 	}
+
 		return SerializableSnapshot;
 	}
 
 	if (IsXactIsoLevelSerializable)
+	{
+		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Serializable Skip* (gxid = %u, '%s')", 
+		 	  (SerializableDistributedSnapshot == NULL ? 0 : SerializableDistributedSnapshot->snapshotId),
+		 	  getDistributedTransactionId(),
+			  DtxContextToString(DistributedTransactionContext));
+		
+		UpdateSerializableCommandId();
+		
 		return SerializableSnapshot;
+	}
 
 	LatestSnapshot = GetSnapshotData(&LatestSnapshotData, false,
 		                             &LatestDistributedSnapshot,
 		                             &LatestDistributedSnapshotData);
+
+	if (LatestDistributedSnapshot != NULL)
+ 	{
+		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Set Latest* currcid = %d (GetTransactionSnapshot, gxid = %u, '%s')", 
+		 	  LatestDistributedSnapshot->snapshotId,
+		 	  LatestDistributedSnapshot->curcid,
+		 	  getDistributedTransactionId(),
+			  DtxContextToString(DistributedTransactionContext));
+ 	}
 
 	return LatestSnapshot;
 }
@@ -1601,6 +1627,15 @@ GetLatestSnapshot(void)
 		                             &LatestDistributedSnapshot,
 		                             &LatestDistributedSnapshotData);
 
+	if (LatestDistributedSnapshot != NULL)
+ 	{
+		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Set Latest* currcid = %d (GetLatestSnapshot, gxid = %u, '%s')", 
+		 	  LatestDistributedSnapshot->snapshotId,
+		 	  LatestDistributedSnapshot->curcid,
+		 	  getDistributedTransactionId(),
+			  DtxContextToString(DistributedTransactionContext));
+ 	}
+	
 	return LatestSnapshot;
 }
 

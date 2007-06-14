@@ -197,6 +197,6 @@ extern void FreeXactSnapshot(void);
 extern Snapshot GetSnapshotData(Snapshot snapshot, bool serializable,
  			                    DistributedSnapshot *distributedSnapshot,
  			                    DistributedSnapshotData *distributedSnapshotData);
-extern void updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot);
+extern void updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, char* debugCaller);
 
 #endif   /* TQUAL_H */

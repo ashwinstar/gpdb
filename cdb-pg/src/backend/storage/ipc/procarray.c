@@ -39,7 +39,7 @@
 #include "utils/combocid.h"
 #include "utils/tqual.h"
 #include "cdb/cdbtm.h"
-
+#include "utils/guc.h"
 
 #include "access/xact.h"		/* setting the shared xid */
 
@@ -473,7 +473,7 @@ GetOldestXmin(bool allDbs, bool ignoreVacuum)
 }
 
 void
-updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot)
+updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, char* debugCaller)
 {
 	int combocidSize;
 	Assert(SharedLocalSnapshotSlot != NULL);
@@ -572,6 +572,16 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot)
 		 SharedLocalSnapshotSlot->snapshot.curcid,
 		 SharedLocalSnapshotSlot->QDxid,
 		 SharedLocalSnapshotSlot->QDcid);
+
+	elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Writer Set Shared* gxid %u, currcid %d (gxid = %u, slot #%d, '%s', '%s')", 
+		QEDtxContextInfo.distributedSnapshotData.snapshotId,
+		SharedLocalSnapshotSlot->QDxid,
+		SharedLocalSnapshotSlot->QDcid,
+		getDistributedTransactionId(),
+		SharedLocalSnapshotSlot->slotid,
+		debugCaller,
+		DtxContextToString(DistributedTransactionContext));
+
 }
 	
 
@@ -666,6 +676,12 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 		uint32		warning_sleep_time_us = 0;
 		
 		
+		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Start Reader Match* gxid = %u and currcid %d (%s)", 
+			QEDtxContextInfo.distributedSnapshotData.snapshotId,
+			QEDtxContextInfo.distributedXid,
+			QEDtxContextInfo.distributedSnapshotData.curcid,
+			DtxContextToString(DistributedTransactionContext));
+		
 		for (;;)
 		{
 			if (SharedLocalSnapshotSlot == NULL)
@@ -748,6 +764,15 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 					/*
 					 * Every second issue warning.
 					 */
+					elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *No Match* gxid %u = %u and currcid %d = %d (%s)", 
+						QEDtxContextInfo.distributedSnapshotData.snapshotId,
+						QEDtxContextInfo.distributedXid,
+						SharedLocalSnapshotSlot->QDxid,
+						QEDtxContextInfo.distributedSnapshotData.curcid,
+						SharedLocalSnapshotSlot->QDcid,
+						DtxContextToString(DistributedTransactionContext));
+
+
 					elog(LOG,"GetSnapshotData did not find shared local snapshot information. "
 							 "We are waiting for the shared snapshot to have XID: %d but the value "
 												   "is currently: %d." 
@@ -1034,10 +1059,49 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 		 DistributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT) &&
 		 SharedLocalSnapshotSlot != NULL)
 	{
-		updateSharedLocalSnapshot(&QEDtxContextInfo, snapshot);
+		updateSharedLocalSnapshot(&QEDtxContextInfo, snapshot, "GetSnapshotData");
 	}
 
 	return snapshot;
+}
+
+/*
+ * MPP: Special code to update the command id in the SharedLocalSnapshot
+ * when we are in SERIALIZABLE isolation mode.
+ */
+void UpdateSerializableCommandId(void)
+{
+	if ((DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER ||
+		 DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER) &&
+		 SharedLocalSnapshotSlot != NULL &&
+		 SerializableSnapshot != NULL)
+	{
+		if (SharedLocalSnapshotSlot->QDxid != QEDtxContextInfo.distributedXid)
+		{
+			elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Can't Update Serializable Command Id* QDxid = %u (gxid = %u, '%s')", 
+			 	  QEDtxContextInfo.distributedSnapshotData.snapshotId,
+			 	  SharedLocalSnapshotSlot->QDxid,
+			 	  getDistributedTransactionId(),
+			 	  DtxContextToString(DistributedTransactionContext));
+			return;
+		}
+
+		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Update Serializable Command Id* QE currcid = %d, QDcid = %d, SerializableSnapshot currcid = %d, Shared currcid = %d (gxid = %u, '%s')", 
+		 	  QEDtxContextInfo.distributedSnapshotData.snapshotId,
+		 	  QEDtxContextInfo.distributedSnapshotData.curcid,
+		 	  SharedLocalSnapshotSlot->QDcid,
+		 	  SerializableSnapshot->curcid,
+		 	  SharedLocalSnapshotSlot->snapshot.curcid,
+		 	  getDistributedTransactionId(),
+		 	  DtxContextToString(DistributedTransactionContext));
+
+		SharedLocalSnapshotSlot->ready = false;
+
+		SharedLocalSnapshotSlot->snapshot.curcid = SerializableSnapshot->curcid;
+		SharedLocalSnapshotSlot->QDcid = QEDtxContextInfo.distributedSnapshotData.curcid;
+
+		SharedLocalSnapshotSlot->ready = true;
+	}
 }
 
 /*

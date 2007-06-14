@@ -116,6 +116,7 @@ extern bool Debug_print_rewritten;
 extern bool Debug_pretty_print;
 extern bool Explain_pretty_print;
 extern bool	Debug_print_full_dtm;
+extern bool	Debug_print_snapshot_dtm;
 extern bool Debug_disable_distributed_snapshot;
 extern bool Debug_abort_after_distributed_prepared;
 extern bool	Debug_dtm_action_primary;

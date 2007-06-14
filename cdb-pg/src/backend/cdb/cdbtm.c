@@ -55,6 +55,7 @@ int 		*shmSegmentCount;
 int 		*shmSegmentStatesByteLen;
 
 DistributedTransactionId *shmXminAllDistributedSnapshots;
+uint32 					 *shmNextSnapshotId;
 
 bool 		*shmDtmStarted;
 
@@ -523,7 +524,7 @@ doPrepareTransaction(void)
 	 * We keep a current count of the number of DTX transactions between
 	 * 'PREPARING' and confirmed 'COMMIT' or 'ABORT'.
 	 *
-	 * To simply bookkeeping, we turn on a flag in the gxact object.
+	 * To simplify bookkeeping, we turn on a flag in the gxact object.
 	 */
 	(*shmCurrentPhase1Count)++;
 	currentGxact->bumpedPhase1Count = true;
@@ -1156,6 +1157,7 @@ tmShmemInit(void)
 	shmSegmentCount = &shared->SegmentCount;
 	shmSegmentStatesByteLen = &shared->SegmentsStatesByteLen;
 	shmXminAllDistributedSnapshots = &shared->XminAllDistributedSnapshots;
+	shmNextSnapshotId = &shared->NextSnapshotId;
 	shmNumGxacts = &shared->num_active_xacts;
 	shmCurrentPhase1Count = &shared->currentPhase1Count;
 	shmGxactArray = shared->gxact_array;
@@ -1868,7 +1870,6 @@ getNextDistributedXactStatus(TMGALLXACTSTATUS *allDistributedXactStatus, TMGXACT
 	return true;
 }
 
-// UNDONE: Call this from where regular snapshots get created...
 bool
 createDtxSnapshot(DistributedSnapshot distributedSnapshot)
 {
@@ -1894,6 +1895,8 @@ createDtxSnapshot(DistributedSnapshot distributedSnapshot)
 	distributedSnapshot->xmax = 0;
 	distributedSnapshot->xcnt = 0;
 	distributedSnapshot->xmin = UINT_MAX;
+	distributedSnapshot->curcid = 0;
+	distributedSnapshot->snapshotId = (*shmNextSnapshotId)++;
 	
 	for (i = 0; i < count; i++)
 	{
@@ -1982,6 +1985,12 @@ createDtxSnapshot(DistributedSnapshot distributedSnapshot)
 
 
 	releaseTmLock();
+
+	elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Create* currcid = %d (gxid = %u, '%s')", 
+	 	  distributedSnapshot->snapshotId,
+	 	  distributedSnapshot->curcid,
+	 	  currentGxact->gxid,
+		  DtxContextToString(DistributedTransactionContext));
 
 	return true;
 }
@@ -2818,6 +2827,7 @@ dtxContextInfoSerializeSize(DtxContextInfo *dtxContextInfo)
 		size += TMGIDSIZE +							  // distributedId
 			    sizeof(DistributedTransactionId) +	  // xminAllDistributedSnapshots
 		        sizeof(CommandId) +					  // curcid
+		        sizeof(uint32) +					  // snapshotId
 	            2 * sizeof(DistributedTransactionId); // xmin, max
 
 		size += sizeof(uint32) + 					  // xcnt
@@ -2859,6 +2869,7 @@ serializeDtxContextInfo(char *buffer, DtxContextInfo *dtxContextInfo)
 		}
 
 		memcpy(p,&dtxContextInfo->distributedSnapshotData.curcid, sizeof(CommandId)); p += sizeof(CommandId);
+		memcpy(p,&dtxContextInfo->distributedSnapshotData.snapshotId, sizeof(uint32)); p += sizeof(CommandId);
 		
 		elog((Debug_print_full_dtm ? LOG : DEBUG5),"serializeDtxContextInfo distributedXid = %u, "
 		     "xminAllDistributedSnapshots = %u, "
@@ -2875,6 +2886,12 @@ serializeDtxContextInfo(char *buffer, DtxContextInfo *dtxContextInfo)
 		}
 		elog((Debug_print_full_dtm ? LOG : DEBUG5),"serializeDtxContextInfo curcid = %u", dtxContextInfo->distributedSnapshotData.curcid);
 
+		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Serialize* currcid = %d (gxid = %u, '%s')", 
+		 	  dtxContextInfo->distributedSnapshotData.snapshotId,
+		 	  dtxContextInfo->distributedSnapshotData.curcid,
+		 	  getDistributedTransactionId(),
+			  DtxContextToString(DistributedTransactionContext));
+		
 	}
 	else
 	{
@@ -2896,6 +2913,7 @@ clearDistributedSnapshot(DistributedSnapshot distributedSnapshot)
 	distributedSnapshot->xcnt = 0;		
 	MemSet(distributedSnapshot->xip, 0, sizeof(DistributedTransactionId)*MaxGpDistributedInProgress);
 	distributedSnapshot->curcid = 0;
+	distributedSnapshot->snapshotId = 0;
 }
 
 static void
@@ -2944,6 +2962,7 @@ deserializeDtxContextInfo(
 			memcpy(dtxContextInfo->distributedSnapshotData.xip,p,xipsize); p += xipsize;
 
 			memcpy(&dtxContextInfo->distributedSnapshotData.curcid,p,sizeof(CommandId)); 	p+=sizeof(CommandId);	
+			memcpy(&dtxContextInfo->distributedSnapshotData.snapshotId,p,sizeof(uint32)); 	p+=sizeof(CommandId);	
 
 			elog((Debug_print_full_dtm ? LOG : DEBUG5),"deserializeDtxContextInfo distributedXid = %u, distributedId = %s, "
 			     "xminAllDistributedSnapshots = %u, "
@@ -2960,6 +2979,12 @@ deserializeDtxContextInfo(
 				     i, dtxContextInfo->distributedSnapshotData.xip[i]);
 			}
 			elog((Debug_print_full_dtm ? LOG : DEBUG5),"....distributedCommandId = %u", dtxContextInfo->distributedSnapshotData.curcid);
+
+			elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Deserialize* currcid = %d (gxid = %u, '%s')", 
+			 	  dtxContextInfo->distributedSnapshotData.snapshotId,
+			 	  dtxContextInfo->distributedSnapshotData.curcid,
+			 	  getDistributedTransactionId(),
+				  DtxContextToString(DistributedTransactionContext));
 
 		}
 		else
@@ -3362,6 +3387,16 @@ setupQEDtxContext (DtxContextInfo *dtxContextInfo)
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "setupQEDtxContext final result: DistributedTransactionContext = '%s'.", 
 		 DtxContextToString(DistributedTransactionContext));
+
+	if (haveDistributedSnapshot)
+	{
+		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Set QE* currcid = %d (gxid = %u, '%s')", 
+		 	  dtxContextInfo->distributedSnapshotData.snapshotId,
+		 	  dtxContextInfo->distributedSnapshotData.curcid,
+		 	  getDistributedTransactionId(),
+			  DtxContextToString(DistributedTransactionContext));
+	}
+
 }
 
 void

@@ -158,6 +158,7 @@ typedef struct TmControlBlock
 	int							SegmentCount;
 	int							SegmentsStatesByteLen;
 	DistributedTransactionId	XminAllDistributedSnapshots;
+	uint32						NextSnapshotId;
 	int							num_active_xacts;
 	int							currentPhase1Count;
 									/* Current count of how many DTX 
@@ -185,6 +186,9 @@ typedef struct DistributedSnapshotData
 
 	CommandId					curcid;	/* in my xact, CID < curcid are visible */
 
+	uint32						snapshotId;
+										/* Unique number identifying this
+										   particular snapshot */
 										
 } DistributedSnapshotData;
 

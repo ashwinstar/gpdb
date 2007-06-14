@@ -186,6 +186,7 @@ bool		Debug_print_rewritten = false;
 bool		Debug_pretty_print = false;
 bool		Explain_pretty_print = true;
 bool		Debug_print_full_dtm = false;
+bool		Debug_print_snapshot_dtm = false;
 bool		Debug_disable_distributed_snapshot = false;
 bool 		Debug_abort_after_distributed_prepared = false;
 
@@ -1336,6 +1337,15 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&Debug_print_full_dtm,
+		false, NULL, NULL
+	},
+
+	{
+		{"debug_print_snapshot_dtm", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Prints snapshot DTM information to server log."),
+			NULL
+		},
+		&Debug_print_snapshot_dtm,
 		false, NULL, NULL
 	},
 

@@ -3323,6 +3323,12 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions, char* d
 			
 			distributedSnapshot = LatestDistributedSnapshot;
 
+			elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *QD Use Latest* currcid = %d (gxid = %u, '%s')", 
+			 	  LatestDistributedSnapshot->snapshotId,
+			 	  LatestDistributedSnapshot->curcid,
+			 	  getDistributedTransactionId(),
+			 	  DtxContextToString(DistributedTransactionContext));
+
 			Assert(LatestSnapshot != NULL);
 			snapshot = LatestSnapshot;
 		}
@@ -3331,6 +3337,12 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions, char* d
 			elog((Debug_print_full_dtm ? LOG : DEBUG5),"qdSerializeDtxContextInfo using SerializableDistributedSnapshot");
 			
 			distributedSnapshot = SerializableDistributedSnapshot;
+			
+			elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *QD Use Serializable* currcid = %d (gxid = %u, '%s')", 
+			 	  SerializableDistributedSnapshot->snapshotId,
+			 	  SerializableDistributedSnapshot->curcid,
+			 	  getDistributedTransactionId(),
+			 	  DtxContextToString(DistributedTransactionContext));
 
 			Assert(SerializableSnapshot != NULL);
 			snapshot = SerializableSnapshot;
@@ -3346,7 +3358,7 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions, char* d
 
 		if (snapshot != NULL)
 		{
-			updateSharedLocalSnapshot(&TempQDDtxContextInfo, snapshot);
+			updateSharedLocalSnapshot(&TempQDDtxContextInfo, snapshot, "qdSerializeDtxContextInfo");
 		}
 
 		pDtxContextInfo = &TempQDDtxContextInfo;

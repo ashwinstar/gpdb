@@ -1874,6 +1874,16 @@ StartTransaction(void)
 			{
 				Assert(SharedLocalSnapshotSlot != NULL);
 
+				elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Reader Match?* gxid %u == %u allow currcid %d ~~ %d (StartTransaction, gxid = %u, slot #%d, '%s')", 
+					QEDtxContextInfo.distributedSnapshotData.snapshotId,
+					QEDtxContextInfo.distributedXid,
+					SharedLocalSnapshotSlot->QDxid,
+					QEDtxContextInfo.distributedSnapshotData.curcid,
+					SharedLocalSnapshotSlot->QDcid,
+					getDistributedTransactionId(),
+					SharedLocalSnapshotSlot->slotid,
+					DtxContextToString(DistributedTransactionContext));
+				
 				/*
 				 * If the QDxid in the SharedLocalSnapshotSlot is the same
 				 * one that the QD sent us... then we know we are both on
