@@ -71,10 +71,7 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 	int			port;
 	char	   *pszKeyParm;		/* dispatch node */
 	int			segid;
-	int			len,
-				len_name;
-	text	   *result;
-	char	   *ptr;
+	int			len;
 	int			instid;			/* dispatch node */
 	bool		is_compress;		
 
@@ -267,24 +264,8 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 	}
 
 	assert(pszBackupFileName != NULL && pszBackupFileName[0] != '\0');
-	len_name = strlen(pszBackupFileName);
-	len = len_name + VARHDRSZ;
-	result = (text *) palloc(len);
-	if (result == NULL)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
-	}
 
-	/* Set size of result string... */
-	SET_VARSIZE(result, len);
-
-	/* Fill data field of result string... */
-	ptr = VARDATA(result);
-	memcpy(ptr, pszBackupFileName, len_name);
-
-	PG_RETURN_TEXT_P(result);
+	PG_RETURN_TEXT_P(DirectFunctionCall1(textin, CStringGetDatum(pszBackupFileName)));
 }
 
 /*
@@ -319,8 +300,6 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 	char	   *pszKeyParm;
 	int			len,
 				len_name;
-	text	   *result;
-	char	   *ptr;
 	bool		is_decompress;
 	bool		is_file_compressed; /* is the dump file ending with '.gz'*/
 	getGpId();
@@ -536,24 +515,7 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 
 	assert(pszBackupFileName != NULL && pszBackupFileName[0] != '\0');
 
-
-	len = len_name + VARHDRSZ;
-	result = (text *) palloc(len);
-	if (result == NULL)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
-	}
-
-	/* Set size of result string... */
-	SET_VARSIZE(result, len);
-
-	/* Fill data field of result string... */
-	ptr = VARDATA(result);
-	memcpy(ptr, pszBackupFileName, len_name);
-
-	PG_RETURN_TEXT_P(result);
+	PG_RETURN_TEXT_P(DirectFunctionCall1(textin, CStringGetDatum(pszBackupFileName)));
 }
 
 /*
@@ -572,10 +534,6 @@ gp_read_backup_file__(PG_FUNCTION_ARGS)
 	struct stat info;
 	char	   *pszBackup;
 	FILE	   *f;
-	int			len,
-				len_status;
-	text	   *result;
-	char	   *ptr;
 
 	if (!PG_ARGISNULL(0))
 	{
@@ -667,24 +625,7 @@ gp_read_backup_file__(PG_FUNCTION_ARGS)
 	f = NULL;
 	pszBackup[info.st_size] = '\0';
 
-	len_status = strlen(pszBackup);
-	len = len_status + VARHDRSZ;
-	result = (text *) palloc(len);
-	if (result == NULL)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
-	}
-
-	/* Set size of result string... */
-	SET_VARSIZE(result, len);
-
-	/* Fill data field of result string... */
-	ptr = VARDATA(result);
-	memcpy(ptr, pszBackup, len_status);
-
-	PG_RETURN_TEXT_P(result);
+	PG_RETURN_TEXT_P(DirectFunctionCall1(textin, CStringGetDatum(pszBackup)));
 }
 
 /*
@@ -716,10 +657,6 @@ gp_write_backup_file__(PG_FUNCTION_ARGS)
 	char	   *pszFileName;
 	FILE	   *f;
 	int			nBytes;
-	int			len,
-		len_name;
-	text	   *result;
-	char	   *ptr;
 	
 	if (!PG_ARGISNULL(0))
 	{
@@ -772,24 +709,8 @@ gp_write_backup_file__(PG_FUNCTION_ARGS)
 	f = NULL;
 	
 	assert(pszFileName != NULL && pszFileName[0] != '\0');
-	len_name = strlen(pszFileName);
-	len = len_name + VARHDRSZ;
-	result = (text *) palloc(len);
-	if (result == NULL)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
-	}
 	
-	/* Set size of result string... */
-	SET_VARSIZE(result, len);
-	
-	/* Fill data field of result string... */
-	ptr = VARDATA(result);
-	memcpy(ptr, pszFileName, len_name);
-	
-	PG_RETURN_TEXT_P(result);
+	PG_RETURN_TEXT_P(DirectFunctionCall1(textin, CStringGetDatum(pszFileName)));
 }
 
 /*
