@@ -8,7 +8,7 @@ previously partitioned using gpcreatepart.
 SYNOPSIS
 *****************************************************
 
-gpaddpart -t <parent_table> -n <new_child_count> [-c] [-q] [-a] 
+gpaddpart -t <parent_table> -n <add_child_count> [-c] [-q] [-a] 
 [-l <log_dir>] [-D] [-d <master_data_directory>] [-x <database>]
 
 gpaddpart -t <parent_table> -s <new_start_value> [-c] [-q] [-a] 
@@ -52,9 +52,9 @@ first partitioned. It performs the following tasks:
   with a predefined naming convention of:
   idx_<column_number>_<child_table_name>
 
-* If the parent table contains data, it moves partitioned records 
-  from the parent table and inserts them into the correct child table 
-  based on the CHECK constraints.
+* If the parent table contains data, use the -c option to move
+  partitioned records from the parent table into the correct child 
+  table based on the CHECK constraints.
 
 
 *****************************************************
@@ -88,12 +88,11 @@ no spaces between list values and comma separators. To add a null check
 constraint add the text NULL to the list.
 
 
--c (leave data in parent table)
+-c (move data to child table)
 
-Copies the newly partitioned records back into the parent table after 
-the child tables have been created. The default behavior is to remove 
-records from the parent table and put them into the correct child table.
-
+Copies the newly partitioned records into the new child tables 
+after they have been created. The default behavior is to leave 
+records in the parent table.
 
 -q (no output)
 
