@@ -389,6 +389,7 @@ BufferAlloc(Relation reln,
 	for (;;)
 	{
 		bool unlockBufFreeList = false;
+
 		if (availBufHdr) 
 		{
 			/*
@@ -397,6 +398,13 @@ BufferAlloc(Relation reln,
 			buf = availBufHdr;
 			LockBufHdr(buf);	/* PinBuffer_Locked will unlock this */
 			availBufHdr = NULL;
+
+			/* did the victim work out ? */
+			if (buf->refcount > 0)
+			{
+				UnlockBufHdr(buf);
+				continue;
+			}
 		}
 		else 
 		{
@@ -411,6 +419,7 @@ BufferAlloc(Relation reln,
 		}
 
 		Assert(buf->refcount == 0);
+
 
 		/* Must copy buffer flags while we still hold the spinlock */
 		oldFlags = buf->flags;
