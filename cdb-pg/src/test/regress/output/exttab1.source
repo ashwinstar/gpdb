@@ -1763,3 +1763,272 @@ ERROR:  connection failed while gpfdist://@hostname@:8080/whois.csv (url.i:163) 
 drop external table ext_whois;
 drop table cpy_whois;
 drop table v_w;
+select * from gpfdist_stop;
+      x      
+-------------
+ stopping...
+(1 row)
+
+drop external table gpfdist_start;
+drop external table gpfdist_csv_start;
+drop external table gpfdist_stop;
+-- do the csv copy tests (adapted from copy.source)
+--- test copying in CSV mode with various styles
+--- of embedded line ending characters
+CREATE EXTERNAL TABLE gpfdist_start (x text)
+execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_builddir@/results -q \'z\' -x \'Z\' </dev/null >/dev/null 2>&1 &); echo "starting...") '
+on SEGMENT 0
+FORMAT 'text' (delimiter '|');
+CREATE EXTERNAL TABLE gpfdist_stop (x text)
+execute E'(@ps_pidfirst@ | grep gpfdist |  grep \'@abs_builddir@/results\' |
+grep -v grep | awk \'{print "kill "$1}\' | sh ) ; echo "stopping..."'
+on SEGMENT 0
+FORMAT 'text' (delimiter '|');
+select * from gpfdist_stop;
+      x      
+-------------
+ stopping...
+(1 row)
+
+select * from gpfdist_start;
+      x      
+-------------
+ starting...
+(1 row)
+
+create temp table extcpytest (
+	style	text,
+	test 	text,
+	filler	int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'style' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+insert into extcpytest values('DOS',E'abc\r\ndef',1);
+insert into extcpytest values('Unix',E'abc\ndef',2);
+insert into extcpytest values('Mac',E'abc\rdef',3);
+insert into extcpytest values(E'esc\\ape',E'a\\r\\\r\\\n\\nb',4);
+copy extcpytest to '@abs_builddir@/results/extcpytest.csv' csv;
+---- create temp table extcpytest2 (like extcpytest);
+---- copy extcpytest2 from '@abs_builddir@/results/extcpytest.csv' csv;
+---- select * from extcpytest except select * from extcpytest2 order by 1,2,3;
+----- same test but with an escape char different from quote char
+copy extcpytest to '@abs_builddir@/results/extcpytest.csv' csv quote 'z' escape E'Z';
+create external table  extcpytest2 (
+	style	text,
+	test 	text,
+	filler	int)
+location ('gpfdist://@hostname@:8080/extcpytest.csv')
+format 'csv' ( quote as 'z' escape as 'Z');
+select * from extcpytest except select * from extcpytest2 order by 1,2,3;
+ style | test | filler 
+-------+------+--------
+(0 rows)
+
+drop external table extcpytest2;
+-- test header line feature
+select * from gpfdist_stop;
+      x      
+-------------
+ stopping...
+(1 row)
+
+DROP EXTERNAL TABLE gpfdist_start;
+-- recreate gpfdist with header (-h) option
+--CREATE EXTERNAL TABLE gpfdist_start (x text)
+--execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_builddir@/results -x \'Z\' -q \'z\' -h </dev/null >/dev/null 2>&1 &); echo "starting...") '
+CREATE EXTERNAL TABLE gpfdist_start (x text)
+execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_builddir@/results -q \'"\' -h </dev/null >/dev/null 2>&1 &); echo "starting...") '
+on SEGMENT 0
+FORMAT 'text' (delimiter '|');
+select * from gpfdist_stop;
+      x      
+-------------
+ stopping...
+(1 row)
+
+select * from gpfdist_start;
+      x      
+-------------
+ starting...
+(1 row)
+
+create temp table extcpytest3 (
+	c1 int, 
+--	"col with , comma" text, 
+--	"col with "" quote"  int);
+	c2 text, 
+	c3 int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'c1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+copy extcpytest3 from stdin csv header;
+copy extcpytest3 to '@abs_builddir@/results/extcpytest3.csv' csv header quote 'z' escape E'Z'  ;
+--
+-- MPP-1584: we used -h on the gpfdist, so why do we have header problems?
+--
+create external table extcpytest4 (
+c1 int,
+c2 text,
+c3 int)
+location ('gpfdist://@hostname@:8080/extcpytest3.csv')
+format 'csv' ( quote as 'z' escape as 'Z');
+-- no header because is specified by gpfdist
+select * from extcpytest4;
+ERROR:  invalid input syntax for integer: "c1"  (seg1 slice1 localhost:11003 pid=2471)
+DETAIL:  External table extcpytest4, line 1 of gpfdist://localhost:8080/extcpytest3.csv, column c1
+create external table extcpytest5 (
+c1 int,
+c2 text,
+c3 int)
+location ('file://@hostname@@abs_builddir@/results/extcpytest3.csv')
+format 'csv' ( header quote as 'z' escape as 'Z');
+NOTICE:  HEADER means that each one of the data files has a header row. Also, if you are using a file distribution utility such as gpfdist re-create this table without HEADER and specify the header option in the utility itself (since the header row will be distributed to only one segment database)
+select * from extcpytest5;
+ c1 | c2 | c3 
+----+----+----
+  1 | a  |  1
+  2 | b  |  2
+(2 rows)
+
+drop external table extcpytest4;
+drop external table extcpytest5;
+select * from gpfdist_stop;
+      x      
+-------------
+ stopping...
+(1 row)
+
+--
+-- table splitting
+--
+DROP EXTERNAL TABLE gpfdist_start;
+DROP EXTERNAL TABLE gpfdist_stop;
+CREATE EXTERNAL TABLE splitsetup (x text)
+execute E'((rm -rf @abs_builddir@/results/exttab1dir; mkdir  @abs_builddir@/results/exttab1dir;  mkdir @abs_builddir@/results/exttab1dir/splitlineitem; cp @abs_srcdir@/data/lineitem.tbl @abs_builddir@/results/exttab1dir; ( cd @abs_builddir@/results/exttab1dir; split -l 1000 lineitem.tbl x; mv x* splitlineitem )); echo "setup...") '
+on SEGMENT 0
+FORMAT 'text' (delimiter '|');
+-- point gpfdist at the results directory, not the data directory
+CREATE EXTERNAL TABLE gpfdist_start (x text)
+execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_builddir@/results  </dev/null >/dev/null 2>&1 &); echo "starting...") '
+on SEGMENT 0
+FORMAT 'text' (delimiter '|');
+CREATE EXTERNAL TABLE gpfdist_stop (x text)
+execute E'(@ps_pidfirst@ | grep gpfdist |  grep \'@abs_builddir@/results\' | 
+grep -v grep | awk \'{print "kill "$1}\' | sh ) ; echo "stopping..."'
+on SEGMENT 0
+FORMAT 'text' (delimiter '|');
+select * from splitsetup;
+    x     
+----------
+ setup...
+(1 row)
+
+select * from gpfdist_stop;
+      x      
+-------------
+ stopping...
+(1 row)
+
+select * from gpfdist_start;
+      x      
+-------------
+ starting...
+(1 row)
+
+--
+-- look at lineitem 3 ways, and check that always get the same answer
+--
+CREATE EXTERNAL TABLE EXT_LINEITEM ( L_ORDERKEY    INTEGER ,
+                             L_PARTKEY     INTEGER ,
+                             L_SUPPKEY     INTEGER ,
+                             L_LINENUMBER  INTEGER ,
+                             L_QUANTITY    DECIMAL(15,2) ,
+                             L_EXTENDEDPRICE  DECIMAL(15,2) ,
+                             L_DISCOUNT    DECIMAL(15,2) ,
+                             L_TAX         DECIMAL(15,2) ,
+                             L_RETURNFLAG  CHAR(1) ,
+                             L_LINESTATUS  CHAR(1) ,
+                             L_SHIPDATE    DATE ,
+                             L_COMMITDATE  DATE ,
+                             L_RECEIPTDATE DATE ,
+                             L_SHIPINSTRUCT CHAR(25) ,
+                             L_SHIPMODE     CHAR(10) ,
+                             L_COMMENT      VARCHAR(44) )
+location ('file://@hostname@@abs_srcdir@/data/lineitem.tbl' )
+FORMAT 'text' (delimiter '|');
+CREATE EXTERNAL TABLE EXT_LINEITEM1 ( L_ORDERKEY    INTEGER ,
+                             L_PARTKEY     INTEGER ,
+                             L_SUPPKEY     INTEGER ,
+                             L_LINENUMBER  INTEGER ,
+                             L_QUANTITY    DECIMAL(15,2) ,
+                             L_EXTENDEDPRICE  DECIMAL(15,2) ,
+                             L_DISCOUNT    DECIMAL(15,2) ,
+                             L_TAX         DECIMAL(15,2) ,
+                             L_RETURNFLAG  CHAR(1) ,
+                             L_LINESTATUS  CHAR(1) ,
+                             L_SHIPDATE    DATE ,
+                             L_COMMITDATE  DATE ,
+                             L_RECEIPTDATE DATE ,
+                             L_SHIPINSTRUCT CHAR(25) ,
+                             L_SHIPMODE     CHAR(10) ,
+                             L_COMMENT      VARCHAR(44) )
+execute E'(@gpwhich_curl@ http://@hostname@:8080/exttab1dir/splitlineitem) '
+on SEGMENT 0
+FORMAT 'text' (delimiter '|');
+CREATE EXTERNAL TABLE EXT_LINEITEM2 ( L_ORDERKEY    INTEGER ,
+                             L_PARTKEY     INTEGER ,
+                             L_SUPPKEY     INTEGER ,
+                             L_LINENUMBER  INTEGER ,
+                             L_QUANTITY    DECIMAL(15,2) ,
+                             L_EXTENDEDPRICE  DECIMAL(15,2) ,
+                             L_DISCOUNT    DECIMAL(15,2) ,
+                             L_TAX         DECIMAL(15,2) ,
+                             L_RETURNFLAG  CHAR(1) ,
+                             L_LINESTATUS  CHAR(1) ,
+                             L_SHIPDATE    DATE ,
+                             L_COMMITDATE  DATE ,
+                             L_RECEIPTDATE DATE ,
+                             L_SHIPINSTRUCT CHAR(25) ,
+                             L_SHIPMODE     CHAR(10) ,
+                             L_COMMENT      VARCHAR(44) )
+execute E'(@gpwhich_curl@ http://@hostname@:8080/exttab1dir/splitlineitem/x*) '
+on SEGMENT 0
+FORMAT 'text' (delimiter '|');
+select count(*) from ext_lineitem;
+ count 
+-------
+ 60175
+(1 row)
+
+select count(*) from ext_lineitem1;
+ count 
+-------
+ 60175
+(1 row)
+
+select count(*) from ext_lineitem2;
+ count 
+-------
+ 60175
+(1 row)
+
+select * from ext_lineitem except select * from ext_lineitem1;
+ l_orderkey | l_partkey | l_suppkey | l_linenumber | l_quantity | l_extendedprice | l_discount | l_tax | l_returnflag | l_linestatus | l_shipdate | l_commitdate | l_receiptdate | l_shipinstruct | l_shipmode | l_comment 
+------------+-----------+-----------+--------------+------------+-----------------+------------+-------+--------------+--------------+------------+--------------+---------------+----------------+------------+-----------
+(0 rows)
+
+select * from ext_lineitem except select * from ext_lineitem2;
+ l_orderkey | l_partkey | l_suppkey | l_linenumber | l_quantity | l_extendedprice | l_discount | l_tax | l_returnflag | l_linestatus | l_shipdate | l_commitdate | l_receiptdate | l_shipinstruct | l_shipmode | l_comment 
+------------+-----------+-----------+--------------+------------+-----------------+------------+-------+--------------+--------------+------------+--------------+---------------+----------------+------------+-----------
+(0 rows)
+
+select * from gpfdist_stop;
+      x      
+-------------
+ stopping...
+(1 row)
+
+DROP EXTERNAL TABLE splitsetup;
+DROP EXTERNAL TABLE gpfdist_start;
+DROP EXTERNAL TABLE gpfdist_stop;
+DROP EXTERNAL TABLE ext_lineitem;
+DROP EXTERNAL TABLE ext_lineitem1;
+DROP EXTERNAL TABLE ext_lineitem2;
