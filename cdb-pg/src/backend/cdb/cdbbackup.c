@@ -806,7 +806,7 @@ findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, i
 		int			wmasklen,
 						masklen;
 			pg_wchar   *mask;
-		pszRegex = (char *) palloc(19 + 10 + strlen(pszBackupKey) + 1);
+		pszRegex = (char *) palloc(34 + strlen(pszBackupKey) + 1);
 		if (pszRegex == NULL)
 		{
 			ereport(ERROR,
