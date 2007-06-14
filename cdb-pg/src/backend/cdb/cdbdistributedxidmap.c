@@ -28,6 +28,8 @@
 #include "access/cdbdistributedxidmap.h"
 #include "utils/tqual.h"
 #include "utils/guc.h"
+#include "storage/shmem.h"
+
 
 /*
  * Defines for DistributedTransactionId page sizes.  A page is the same BLCKSZ as is used
@@ -52,6 +54,18 @@ typedef struct DISTRIBUTEDXIDMAP_ENTRY
 #define DistributedTransactionIdToPage(gxid) ((gxid) / (DistributedTransactionId) ENTRIES_PER_PAGE)
 #define DistributedTransactionIdToEntry(gxid) ((gxid) % (DistributedTransactionId) ENTRIES_PER_PAGE)
 
+/*
+ * Shared memory variables.
+ */
+typedef struct DISTRIBUTEDXIDMAP_SHARED
+{
+	int DistributedXidMapHighestPageNo;
+	
+	DistributedTransactionId MaxDistributedXid;
+
+} DISTRIBUTEDXIDMAP_SHARED;
+
+
 
 /*
  * Link to shared-memory data structures for DistributedTransactionId control
@@ -64,12 +78,19 @@ static SlruCtlData DistributedXidMapCtlData;
  * We initialize the highest page to 0 since we allocate the first page
  * when starting.
  */
-static int DistributedXidMapHighestPageNo = 0;
+static int *shmDistributedXidMapHighestPageNo = NULL;
+static DistributedTransactionId *shmMaxDistributedXid = NULL;
 
 static int	ZeroDistributedXidMapPage(int pageno);
 static bool DistributedXidMapPagePrecedes(int page1, int page2);
 static void DistributedXidMapMakeMorePages(int pageno);
 static char* DistributedMapStateToString(DistributedMapState state);
+
+DistributedTransactionId GetMaxDistributedXid(void)
+{
+	return (shmMaxDistributedXid == NULL ? 0 : *shmMaxDistributedXid);
+
+}
 
 static char* DistributedMapStateToString(DistributedMapState state)
 {
@@ -97,7 +118,7 @@ DistributedXidMapMakeMorePages(int pageno)
 {
 	int			newpageno;
 	
-	for (newpageno = DistributedXidMapHighestPageNo + 1; newpageno <= pageno; newpageno++)
+	for (newpageno = *shmDistributedXidMapHighestPageNo + 1; newpageno <= pageno; newpageno++)
 	{
 		elog((Debug_print_full_dtm ? LOG : DEBUG5), "DistributedXidMapMakeMorePages zeroing out page = %d", newpageno);
 		
@@ -105,7 +126,7 @@ DistributedXidMapMakeMorePages(int pageno)
 		ZeroDistributedXidMapPage(newpageno);
 	}
 
-	DistributedXidMapHighestPageNo = pageno;
+	*shmDistributedXidMapHighestPageNo = pageno;
 }
 
 /*
@@ -124,16 +145,21 @@ AllocOrGetLocalXidForStartDistributedTransaction(DistributedTransactionId gxid, 
 	Assert(xid != NULL);
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "Entering AllocOrGetLocalXidForStartDistributedTransaction with distributed xid = %d (pageno = %d, entryno = %d, DistributedXidMapHighestPageNo = %d)",
-		 gxid, pageno, entryno, DistributedXidMapHighestPageNo);
+		 gxid, pageno, entryno, *shmDistributedXidMapHighestPageNo);
 	
 	LWLockAcquire(DistributedXidMapControlLock, LW_EXCLUSIVE);
 
-	if (pageno > DistributedXidMapHighestPageNo)
+	if (pageno > *shmDistributedXidMapHighestPageNo)
 	{
 		/*
 		 * Zero out the new page(s).
 		 */
 		DistributedXidMapMakeMorePages(pageno);
+	}
+
+	if (*shmMaxDistributedXid < gxid)
+	{
+		*shmMaxDistributedXid = gxid;
 	}
 
 	slotno = SimpleLruReadPage(DistributedXidMapCtl, pageno, InvalidTransactionId);
@@ -209,12 +235,17 @@ PreallocLocalXidsForOpenDistributedTransactions(DistributedTransactionId *gxidAr
 		elog((Debug_print_full_dtm ? LOG : DEBUG5), "PreallocLocalXidsForOpenDistributedTransactions: gxidArray[%d] is %u (pageno %d, entryno %d)",
 			 i, gxid, pageno, entryno);
 
-		if (pageno > DistributedXidMapHighestPageNo)
+		if (pageno > *shmDistributedXidMapHighestPageNo)
 		{
 			/*
 			 * Zero out the new page(s).
 			 */
 			DistributedXidMapMakeMorePages(pageno);
+		}
+		
+		if (*shmMaxDistributedXid < gxid)
+		{
+			*shmMaxDistributedXid = gxid;
 		}
 		
 		slotno = SimpleLruReadPage(DistributedXidMapCtl, pageno, InvalidTransactionId);
@@ -249,16 +280,16 @@ GetLocalXidForDistributedTransaction(DistributedTransactionId gxid)
 	DistributedMapState state;
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "Entering GetLocalXidForDistributedTransaction with distributed xid = %d (pageno = %d, entryno = %d, DistributedXidMapHighestPageNo = %d)",
-		 gxid, pageno, entryno, DistributedXidMapHighestPageNo);
+		 gxid, pageno, entryno, *shmDistributedXidMapHighestPageNo);
 	
 	LWLockAcquire(DistributedXidMapControlLock, LW_EXCLUSIVE);
 
-	if (pageno > DistributedXidMapHighestPageNo)
+	if (pageno > *shmDistributedXidMapHighestPageNo)
 	{
 		LWLockRelease(DistributedXidMapControlLock);
 		
 		elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetLocalXidForDistributedTransaction returning InvalidTransactionId for local xid for distributed xid = %d (pageno = %d, entryno = %d, DistributedXidMapHighestPageNo = %d)",
-			 gxid, pageno, entryno, DistributedXidMapHighestPageNo);
+			 gxid, pageno, entryno, *shmDistributedXidMapHighestPageNo);
 		return InvalidTransactionId;
 	}
 
@@ -272,7 +303,7 @@ GetLocalXidForDistributedTransaction(DistributedTransactionId gxid)
 	LWLockRelease(DistributedXidMapControlLock);
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "GetLocalXidForDistributedTransaction found local xid = %u for distributed xid = %d in state %s (pageno = %d, entryno = %d, DistributedXidMapHighestPageNo = %d)",
-		 xid, gxid, DistributedMapStateToString(state), pageno, entryno, DistributedXidMapHighestPageNo);
+		 xid, gxid, DistributedMapStateToString(state), pageno, entryno, *shmDistributedXidMapHighestPageNo);
 	return xid;
 }
 
@@ -291,20 +322,20 @@ UpdateDistributedXidMapState(DistributedTransactionId gxid, DistributedMapState 
 		   newState == DISTRIBUTEDXIDMAP_STATE_ABORTED);
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "Entering UpdateDistributedXidMapState with distributed xid = %d (pageno = %d, entryno = %d, DistributedXidMapHighestPageNo = %d)",
-		 gxid, pageno, entryno, DistributedXidMapHighestPageNo);
+		 gxid, pageno, entryno, *shmDistributedXidMapHighestPageNo);
 	
 	LWLockAcquire(DistributedXidMapControlLock, LW_EXCLUSIVE);
 
-	if (pageno > DistributedXidMapHighestPageNo)
+	if (pageno > *shmDistributedXidMapHighestPageNo)
 	{
 		LWLockRelease(DistributedXidMapControlLock);
 		
 		elog(ERROR, "UpdateDistributedXidMapState distributed xid = %d invalid (pageno = %d, entryno = %d, DistributedXidMapHighestPageNo = %d)",
-			 gxid, pageno, entryno, DistributedXidMapHighestPageNo);
+			 gxid, pageno, entryno, *shmDistributedXidMapHighestPageNo);
 	}
 
 	slotno = SimpleLruReadPage(DistributedXidMapCtl, pageno, InvalidTransactionId);
-	ptr = (TransactionId *) DistributedXidMapCtl->shared->page_buffer[slotno];
+	ptr = (DISTRIBUTEDXIDMAP_ENTRY *) DistributedXidMapCtl->shared->page_buffer[slotno];
 	ptr += entryno;
 
 	oldState = ptr->state;
@@ -322,27 +353,53 @@ UpdateDistributedXidMapState(DistributedTransactionId gxid, DistributedMapState 
 	LWLockRelease(DistributedXidMapControlLock);
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "UpdateDistributedXidMapState state for local xid = %u and distributed xid = %d from state %s to new state %s (pageno = %d, entryno = %d, DistributedXidMapHighestPageNo = %d)",
-		 xid, gxid, DistributedMapStateToString(oldState), DistributedMapStateToString(newState),pageno, entryno, DistributedXidMapHighestPageNo);
-	return xid;
+		 xid, gxid, DistributedMapStateToString(oldState), DistributedMapStateToString(newState),pageno, entryno, *shmDistributedXidMapHighestPageNo);
 }
 
 /*
- * Initialization of shared memory for DistributedXidMap
+ * Initialization of shared memory for DistributedXidMap SLRU
  */
 Size
-DistributedXidMapShmemSize(void)
+DistributedXidMapShmemSize_SLru(void)
 {
 	return SimpleLruShmemSize(NUM_DISTRIBUTEDXIDMAP_BUFFERS);
 }
 
+/*
+ * Initialization of shared memory for DistributedXidMap shared memory.
+ */
+Size
+DistributedXidMapShmemSize(void)
+{
+	return MAXALIGN(sizeof(DISTRIBUTEDXIDMAP_SHARED));
+}
+
 void
-DistributedXidMapShmemInit(void)
+DistributedXidMapShmemInit_SLru(void)
 {
 	DistributedXidMapCtl->PagePrecedes = DistributedXidMapPagePrecedes;
 	SimpleLruInit(DistributedXidMapCtl, "DistributedXidMap Ctl", NUM_DISTRIBUTEDXIDMAP_BUFFERS,
 				  DistributedXidMapControlLock, "pg_distributedxidmap");
 	/* Override default assumption that writes should be fsync'd */
 	DistributedXidMapCtl->do_fsync = false;
+}
+
+void
+DistributedXidMapShmemInit(void)
+{
+	bool		found;
+	DISTRIBUTEDXIDMAP_SHARED *shared;
+	
+	shared = (DISTRIBUTEDXIDMAP_SHARED *) ShmemInitStruct("DistributedXidMap Shared", tmShmemSize(), &found);
+	if (!shared)
+		elog(FATAL, "Could not initialize Distributed XIP Map shared memory");
+
+	if (!found)
+	{
+		MemSet(shared, 0, sizeof(DISTRIBUTEDXIDMAP_SHARED));
+	}
+	shmDistributedXidMapHighestPageNo = &shared->DistributedXidMapHighestPageNo;
+	shmMaxDistributedXid = &shared->MaxDistributedXid;
 }
 
 /*

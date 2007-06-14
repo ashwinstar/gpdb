@@ -282,6 +282,7 @@ extern struct varlena *pg_detoast_datum_slice(struct varlena * datum,
 #define PG_RETURN_BPCHAR_P(x)  PG_RETURN_POINTER(x)
 #define PG_RETURN_VARCHAR_P(x) PG_RETURN_POINTER(x)
 #define PG_RETURN_HEAPTUPLEHEADER(x)  PG_RETURN_POINTER(x)
+#define PG_RETURN_XID(x)	 return TransactionIdGetDatum(x)
 
 /*-------------------------------------------------------------------------
  *		Support for functions that might return sets (multiple rows)

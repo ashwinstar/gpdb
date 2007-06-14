@@ -140,6 +140,7 @@ static void ReplayRedoFromUtilityMode(void);
 static void RemoveRedoUtilityModeFile(void);
 static void performDtxProtocolCommitPrepared(const char *gid, bool raiseErrorIfNotFound);
 static void performDtxProtocolAbortPrepared(const char *gid, bool raiseErrorIfNotFound);
+static DistributedTransactionId determineSegmentMaxDistributedXid(void);
 
 /*=========================================================================
  * VISIBLE FUNCTIONS
@@ -2309,7 +2310,8 @@ generateGID(char *gid, DistributedTransactionId *gxid)
 static void
 recoverTM(void)
 {
-
+	DistributedTransactionId segmentMaxDistributedTransactionId = 0;
+	
 	/* intialize fts sync count */
 	verifyFtsSyncCount();
 
@@ -2347,6 +2349,15 @@ recoverTM(void)
 
 	/* finished recovery successfully. */
 
+	segmentMaxDistributedTransactionId = determineSegmentMaxDistributedXid();
+	if (segmentMaxDistributedTransactionId >= *shmGIDSeq)
+	{
+		*shmGIDSeq = segmentMaxDistributedTransactionId + 1;
+	}
+
+	elog(LOG, "Next distributed transaction id is %u",
+		 *shmGIDSeq);
+	
 	*shmDtmStarted = true;
 	elog(LOG,"DTM Started");
 
@@ -2455,6 +2466,69 @@ recoverInDoubtTransactions(void)
 	RemoveRedoUtilityModeFile();
 
 	return true;
+}
+
+/*
+ * determineSegmentMaxDistributedXid:
+ *
+ * Since we don't know whether the Segment Databases were left over from
+ * an earlier start or left over from a postmaster system reset due to
+ * a server process failure, we must go out and determine the maximum
+ * distributed transaction id currently in-use.
+ */
+static DistributedTransactionId
+determineSegmentMaxDistributedXid(void)
+{
+
+	DistributedTransactionId max = 0;
+	int		i;
+	int 	resultCount = 0;
+	struct pg_result **results = NULL;
+	StringInfoData buffer;
+	StringInfoData errbuf;
+		
+	initStringInfo(&buffer);
+	
+	appendStringInfo(&buffer, "select gp_max_distributed_xid()");
+	
+	initStringInfo(&errbuf);
+
+	results = cdbdisp_dispatchRMCommand(buffer.data, 
+		                                /* Snapshot */ false, 
+		                                /* DispatchToMirrors */ true, 
+		                                &errbuf, &resultCount);
+
+	if (errbuf.len > 0)
+		ereport(ERROR, (errmsg("gp_max_distributed_xid error (gathered %d results from cmd '%s')", resultCount, buffer.data),
+						errdetail("%s", errbuf.data)));
+
+
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"determineSegmentMaxDistributedXid resultCount = %d",resultCount);
+	
+	for (i = 0; i < resultCount; i++)
+	{
+		if (PQresultStatus(results[i]) != PGRES_TUPLES_OK)
+		{
+			elog(ERROR,"gp_max_distributed_xid: resultStatus not tuples_Ok");
+		}
+		else
+		{
+			DistributedTransactionId temp = 0;
+			temp  =  atol(PQgetvalue(results[i], 0, 0));
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),"determineSegmentMaxDistributedXid value = %d",temp);
+			if (temp  > max)
+				max = temp;
+		}
+	}
+
+	pfree(errbuf.data);
+
+	for (i = 0; i < resultCount; i++)
+		PQclear(results[i]);
+
+	free(results);
+	
+	return max;
 }
 
 

@@ -115,6 +115,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, SUBTRANSShmemSize());
 		size = add_size(size, TwoPhaseShmemSize());
 		size = add_size(size, MultiXactShmemSize());
+		size = add_size(size, DistributedXidMapShmemSize_SLru());
 		size = add_size(size, DistributedXidMapShmemSize());
 		size = add_size(size, LWLockShmemSize());
 		size = add_size(size, ProcArrayShmemSize());
@@ -193,6 +194,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	SUBTRANSShmemInit();
 	TwoPhaseShmemInit();
 	MultiXactShmemInit();
+	DistributedXidMapShmemInit_SLru();
 	DistributedXidMapShmemInit();
     FtsShmemInit();
     tmShmemInit();

@@ -27,13 +27,16 @@ extern void PreallocLocalXidsForOpenDistributedTransactions(DistributedTransacti
 extern TransactionId GetLocalXidForDistributedTransaction(DistributedTransactionId gxid);
 extern void UpdateDistributedXidMapState(DistributedTransactionId gxid, DistributedMapState newState);
 
+extern Size DistributedXidMapShmemSize_SLru(void);
 extern Size DistributedXidMapShmemSize(void);
+extern void DistributedXidMapShmemInit_SLru(void);
 extern void DistributedXidMapShmemInit(void);
 extern void BootStrapDistributedXidMap(void);
 extern void StartupDistributedXidMap(void);
 extern void ShutdownDistributedXidMap(void);
 extern void CheckPointDistributedXidMap(void);
 extern void TruncateDistributedXidMap(DistributedTransactionId oldestXact);
+extern DistributedTransactionId GetMaxDistributedXid(void);
 
 #endif   /* DISTRIBUTEDXIDMAP_H */
 
