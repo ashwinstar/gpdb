@@ -37,6 +37,6 @@ extern void ShutdownDistributedXidMap(void);
 extern void CheckPointDistributedXidMap(void);
 extern void TruncateDistributedXidMap(DistributedTransactionId oldestXact);
 extern DistributedTransactionId GetMaxDistributedXid(void);
-
+extern void RecordMaxDistributedXid(DistributedTransactionId gxid);
 #endif   /* DISTRIBUTEDXIDMAP_H */
 

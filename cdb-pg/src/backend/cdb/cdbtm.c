@@ -2486,6 +2486,8 @@ determineSegmentMaxDistributedXid(void)
 	struct pg_result **results = NULL;
 	StringInfoData buffer;
 	StringInfoData errbuf;
+
+#define FUNCTION_DOES_NOT_EXIST "function gp_max_distributed_xid() does not exist"
 		
 	initStringInfo(&buffer);
 	
@@ -2499,25 +2501,39 @@ determineSegmentMaxDistributedXid(void)
 		                                &errbuf, &resultCount);
 
 	if (errbuf.len > 0)
-		ereport(ERROR, (errmsg("gp_max_distributed_xid error (gathered %d results from cmd '%s')", resultCount, buffer.data),
-						errdetail("%s", errbuf.data)));
-
-
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"determineSegmentMaxDistributedXid resultCount = %d",resultCount);
-	
-	for (i = 0; i < resultCount; i++)
 	{
-		if (PQresultStatus(results[i]) != PGRES_TUPLES_OK)
+		int cmplen = strlen(FUNCTION_DOES_NOT_EXIST);
+		
+		if (strlen(errbuf.data) >= cmplen &&
+			strncmp(errbuf.data, FUNCTION_DOES_NOT_EXIST, cmplen ) == 0)
 		{
-			elog(ERROR,"gp_max_distributed_xid: resultStatus not tuples_Ok");
+			elog(LOG,"The function gp_max_distributed_xid is missing on one or more segments.  The beta 3.0 upgrade steps are necessary");
+			
 		}
 		else
 		{
-			DistributedTransactionId temp = 0;
-			temp  =  atol(PQgetvalue(results[i], 0, 0));
-			elog((Debug_print_full_dtm ? LOG : DEBUG5),"determineSegmentMaxDistributedXid value = %d",temp);
-			if (temp  > max)
-				max = temp;
+			ereport(ERROR, (errmsg("gp_max_distributed_xid error (gathered %d results from cmd '%s')", resultCount, buffer.data),
+							errdetail("%s", errbuf.data)));
+		}
+	}
+	else
+	{
+		elog((Debug_print_full_dtm ? LOG : DEBUG5),"determineSegmentMaxDistributedXid resultCount = %d",resultCount);
+		
+		for (i = 0; i < resultCount; i++)
+		{
+			if (PQresultStatus(results[i]) != PGRES_TUPLES_OK)
+			{
+				elog(ERROR,"gp_max_distributed_xid: resultStatus not tuples_Ok");
+			}
+			else
+			{
+				DistributedTransactionId temp = 0;
+				temp  =  atol(PQgetvalue(results[i], 0, 0));
+				elog((Debug_print_full_dtm ? LOG : DEBUG5),"determineSegmentMaxDistributedXid value = %d",temp);
+				if (temp  > max)
+					max = temp;
+			}
 		}
 	}
 

@@ -356,6 +356,18 @@ UpdateDistributedXidMapState(DistributedTransactionId gxid, DistributedMapState 
 		 xid, gxid, DistributedMapStateToString(oldState), DistributedMapStateToString(newState),pageno, entryno, *shmDistributedXidMapHighestPageNo);
 }
 
+void 
+RecordMaxDistributedXid(DistributedTransactionId gxid)
+{
+	LWLockAcquire(DistributedXidMapControlLock, LW_EXCLUSIVE);
+
+	if (*shmMaxDistributedXid < gxid)
+	{
+		*shmMaxDistributedXid = gxid;
+	}
+	LWLockRelease(DistributedXidMapControlLock);
+}
+
 /*
  * Initialization of shared memory for DistributedXidMap SLRU
  */
