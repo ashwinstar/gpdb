@@ -274,16 +274,25 @@ block_t* fstream_get_block(fstream_t* fs)
     char* p; 
     char* q;
     int skipfirst;
+    int localEOF = 0;
     
     if (fs->ferror || fs->fidx >= fs->fn)
 	return 0;
-
 
     /* use residue block if available */
     if (0 != (b = fs->fblock)) 
 	fs->fblock = 0;
     else
 	b = block_get();
+
+    /* on to next file? */
+    if (fs->ffd[fs->fidx] < 0) {
+	fs->fidx++;
+	fs->foff = 0;
+	fs->fskip = opt.h;
+	if (fs->fidx >= fs->fn)
+	    return b;		/* return the residue block */
+    }
 
     /* fill up b */
     while (0 != (n = sizeof(b->byte) - b->top)) {
@@ -295,24 +304,11 @@ block_t* fstream_get_block(fstream_t* fs)
 	    return 0;
 	}
 	if (n == 0) {		/* current file EOF */
+	    localEOF = 1;
 	    /* close this file */
 	    close(fs->ffd[fs->fidx]);
 	    fs->ffd[fs->fidx] = -1;
-
-	    /* move to new file */
-	    fs->fidx++;
-	    fs->foff = 0;
-	    fs->fskip = opt.h;
-	    if (fs->fidx >= fs->fn)  /* stream EOF */
-		return b;	     /* return the residue block */
-
-	    /* if need to skip first line of new file, 
-	       then break to return last block of previous file */
-	    if (opt.h) 
-		break;
-
-	    /* continue to fill up b */
-	    continue;
+	    break;
 	}
 	b->top += n;
 	fs->foff += n;
@@ -343,12 +339,17 @@ block_t* fstream_get_block(fstream_t* fs)
 	/* go fast, scan for \n for record boundary */
 	if (skipfirst) {
 	    for ( ; p < q && *p != '\n'; p++);
-	    p++;
+	    p = (p < q) ? p + 1 : 0;
+	    if (p) 
+		b->bot = p - b->byte;
 	}
 	/* find the last \n from the back */
-	for (--q; p < q && *q != '\n'; q--);
-	p = (p < q ? q + 1 : 0);
+	if (p) {
+	    for (--q; p < q && *q != '\n'; q--);
+	    p = (p < q ? q + 1 : 0);
+	}
     }
+
     
     /* no record boundary 
        -> record larger than BLOCKSIZE? unacceptable */
