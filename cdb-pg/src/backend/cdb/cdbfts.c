@@ -893,7 +893,9 @@ convertFaultActionValue(char *action)
 		return FTS_NONE;
 	else
 	{
-		elog(LOG, "FTS: Invalid Fault Tolerance Action: %s", gp_fault_action_string);
+		elog(FATAL, "FTS: Invalid Fault Tolerance Action: %s (valid actions: \"readonly\" or \"continue\")", gp_fault_action_string);
+
+		/* not reached */
 		gp_fault_action_string = "continue";
 		return FTS_CONTINUE;
 	}
