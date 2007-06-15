@@ -249,7 +249,7 @@ CHK_PARAMS () {
 					LOG_MSG "[FATAL]:-Master hostname in configuration file is ${MASTER_HOSTNAME}" 1
 					LOG_MSG "[FATAL]:-Operating system command returns `$HOSTNAME`" 1
 					LOG_MSG "[FATAL]:-Unable to resolve $MASTER_HOSTNAME on this host" 1
-					ERROR_EXIT "[FATAL]:-Master hostname in gpinitsystem configuration file must be $MASTER_HOSTNAME" 2
+					ERROR_EXIT "[FATAL]:-Master hostname in gpinitsystem configuration file must be `$HOSTNAME`" 2
 				fi
 		fi
 
