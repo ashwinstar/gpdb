@@ -218,7 +218,7 @@ char *SharedSnapshotDump(void)
 		
 		if (testSlot->slotid != -1)
 		{
-			appendStringInfo(&str, "(SLOT index: %d slotid: %d QDxid: %u QDcid: %u )", 
+			appendStringInfo(&str, "(SLOT index: %d slotid: %d QDxid: %u QDcid: %u)", 
 				testSlot->slotindex, testSlot->slotid, testSlot->QDxid, testSlot->QDcid);
 		}
 		
@@ -246,6 +246,29 @@ SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId)
 	int i;
 	
 	LWLockAcquire(SharedSnapshotLock, LW_EXCLUSIVE);
+
+	for (i=0; i < arrayP->maxSlots; i++)
+	{
+		SharedSnapshotSlot *testSlot;
+		
+		/* need to do byte addressing to find the right slot */
+		testSlot = (SharedSnapshotSlot*)((char*)&arrayP->slots + (i*slotSize));
+		
+		if(testSlot->slotindex > arrayP->maxSlots)
+			elog( ERROR, "Shared Local Snapshots Array appears corrupted: %s", SharedSnapshotDump());
+
+		if (testSlot->slotid == slotId)
+		{
+			slot = testSlot;
+			break;
+		}
+	}
+
+	if (slot != NULL)
+	{
+		elog(LOG, "SharedSnapshotAdd: found existing entry for our session-id. index %d", slot->slotindex);
+		goto found;
+	}
 		
 	if (arrayP->numSlots >= arrayP->maxSlots || arrayP->nextSlot == -1)
 	{
@@ -281,7 +304,7 @@ SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId)
 	}
 	
 	/* mark that there isn't a nextSlot if the above loop didn't find one */
-	if( nextSlot == arrayP->nextSlot )
+	if (nextSlot == arrayP->nextSlot)
 		arrayP->nextSlot = -1;
 	else
 		arrayP->nextSlot = nextSlot;
@@ -289,7 +312,7 @@ SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId)
 	arrayP->numSlots++;
 	
 	/* initialize some things. */
-
+found:
 	slot->slotid = slotId;
 	slot->xid = 0;
 	slot->pid = 0;
@@ -311,7 +334,7 @@ GetSlotTableDebugInfo(void **snapshotArray, int *maxSlots)
 }
 
 /* Used by "reader" qExecs to find the slot in the sharedsnapshotArray with the
- * specified slotId.  In general, we shoudl always be able to find the specified
+ * specified slotId.  In general, we should always be able to find the specified
  * slot unless something unexpected.  If the slot is not found, then NULL is 
  * returned.
  */
@@ -330,8 +353,8 @@ SharedSnapshotSlot *SharedSnapshotLookup(int4 slotId)
 		/* need to do byte addressing to find the right slot */
 		testSlot = (SharedSnapshotSlot*)((char*)&arrayP->slots + (index*slotSize));
 		
-		if( testSlot->slotindex > arrayP->maxSlots )
-			elog( ERROR, "Shared Local Snapshots Array appears corrupted: %s", SharedSnapshotDump() );
+		if (testSlot->slotindex > arrayP->maxSlots)
+			elog(ERROR, "Shared Local Snapshots Array appears corrupted: %s", SharedSnapshotDump());
 			
 		
 		if (testSlot->slotid == slotId)
@@ -359,11 +382,11 @@ void SharedSnapshotRemove(SharedSnapshotSlot *slot, char *creatorDescription)
 	/* determine if we need to modify the next available slot to use.  we
 	 * only do this is our slotindex is lower then the existing one.
 	 */
-	if( sharedSnapshotArray->nextSlot == -1 || slot->slotindex < sharedSnapshotArray->nextSlot )
+	if (sharedSnapshotArray->nextSlot == -1 || slot->slotindex < sharedSnapshotArray->nextSlot)
 	{
-		if( slot->slotindex > sharedSnapshotArray->maxSlots )
-			elog( ERROR, "Shared Local Snapshots slot has a bogus slotindex: %d. slot array dump: %s", 
-					slot->slotindex, SharedSnapshotDump() );
+		if (slot->slotindex > sharedSnapshotArray->maxSlots)
+			elog(ERROR, "Shared Local Snapshots slot has a bogus slotindex: %d. slot array dump: %s", 
+					slot->slotindex, SharedSnapshotDump());
 			
 		sharedSnapshotArray->nextSlot = slot->slotindex;  
 	}
