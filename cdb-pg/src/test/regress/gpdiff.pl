@@ -65,6 +65,12 @@ comparison of the final two files.
 While the exit status is set correctly for most cases,
 STDERR messages from diff are not displayed.
 
+Also, atmsort cannot handle "unsorted" SELECT queries where the output
+has strings with embedded newlines or pipe ("|") characters due to
+limitations with the parser in the "tablelizer" function.  Queries
+with these characteristics must have an ORDER BY clause to avoid
+potential erroneous comparison.
+
 
 =head1 AUTHORS
 

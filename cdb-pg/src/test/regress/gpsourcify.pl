@@ -27,9 +27,9 @@ Options:
 
     -help            brief help message
     -man             full documentation
-    -token_file      file with list of tokens and replacement values 
-                     (gptokencheck by default)
-    -nodlsuffix      do not replace DLSUFFIX (true by default)
+    -token_file      (optional) file with list of tokens and 
+                     replacement values (gptokencheck by default)
+    -dlsuffix        if flag is set, replace DLSUFFIX (false by default)
 
 =head1 OPTIONS
 
@@ -43,10 +43,18 @@ Options:
     
     Prints the manual page and exits.
 
-=item B<-token_file> (gptokencheck by default)
+=item B<-token_file> (optional: gptokencheck by default)
 
-    File which contains a list of token/value pairs.   
-        
+    File which contains a list of token/value pairs.  If a filename is
+    not specified, gpsourcify looks for gptokencheck.out under
+    $PWD/results. 
+
+=item B<-dlsuffix> (false by default)
+
+    Because the DLSUFFIX is so small (".so" on unix), there is the
+    potential for erroneous replacement.  Only replace if -dlsuffix is
+    specified.  Do not replace by default, or if -nodlsuffix is specified.
+
 =back
 
 =head1 DESCRIPTION
@@ -57,6 +65,14 @@ tokens.  The output is a candidate for a pg_regress ".source" file.
 gpsourcify is the complement to the gpstringsubs and pg_regress
 "convert_sourcefiles_in" functions.  
 
+=head1 CAVEATS/LIMITATIONS
+
+In general, gpsourcify always replaces the longest string values
+first, so you don't have to worry about some type of string
+replacement collision.  However, if abs_srcdir and abs_builddir are
+identical values (like on unix), gpsourcify uses the heuristic that
+source directory references are less common, and usually followed by
+"/data".  This may not do what you want.
 
 =head1 AUTHORS
 
@@ -72,13 +88,18 @@ Address bug reports and comments to: jcohen@greenplum.com
     my $glob_id = "";
 
 my $glob_token_file;
+my $glob_dlsuffix;
 
 BEGIN {
     my $man  = 0;
     my $help = 0;
+    my $tokenf = '';
+    my $dlsuf = ''; # negatable, ie -dlsuffix or -nodlsuffix
 
     GetOptions(
-               'help|?' => \$help, man => \$man
+               'help|?' => \$help, man => \$man,
+               'dlsuffix!' => \$dlsuf,
+               'token_file:s' => \$tokenf
                )
         or pod2usage(2);
 
@@ -86,8 +107,14 @@ BEGIN {
     pod2usage(-msg => $glob_id, -exitstatus => 1) if $help;
     pod2usage(-msg => $glob_id, -exitstatus => 0, -verbose => 2) if $man;
 
-    $glob_token_file = "results/gptokencheck.out";
+    $glob_dlsuffix = $dlsuf;
+    $glob_token_file = length($tokenf) ? $tokenf : "results/gptokencheck.out";
 
+    unless (-f $glob_token_file)
+    {
+        $glob_id = "ERROR - invalid file: $glob_token_file\n";
+        pod2usage(-msg => $glob_id, -exitstatus => 1, -verbose => 0);
+    }
 #    print "loading...\n";                                                     
 }
 
@@ -137,6 +164,16 @@ if (1)
     @sortlen = 
         sort {length($bigh->{$b}) <=> length($bigh->{$a})} keys %{$bigh};
 
+    my $src_eq_build = 0;
+        
+    if (exists($bigh->{abs_srcdir})
+        && exists($bigh->{abs_builddir}))
+    {
+        # see if build directory and source directory are the same...
+        $src_eq_build = ($bigh->{abs_srcdir} eq $bigh->{abs_builddir});
+
+    }
+
 #    print Data::Dumper->Dump(\@sortlen);
 
     while (<>)
@@ -148,20 +185,20 @@ if (1)
             my $vv = $bigh->{$kk};
             my $k2 = '@' . $kk . '@';
 
-            if ($kk =~ m/DLSUFFIX/)
+            if ($kk =~ m/DLSUFFIX/ && !$glob_dlsuffix)
             {
-                # ignore for now...
+                # ignore if -nodlsuffix
                 next;
             }
 
-            if ($kk =~ m/abs_srcdir/)
+            if (($kk =~ m/abs_srcdir/) && $src_eq_build)
             {
                 my $v2 = $vv . "/data";
                 my $k3 = $k2 . "/data";
                 # replace the srcdir only if followed by "/data"
                 $ini =~ s/$v2/$k3/g;                
             }
-            elsif ($kk =~ m/abs_builddir/)
+            elsif (($kk =~ m/abs_builddir/) && $src_eq_build)
             {
                 # replace buildir if not followed by "/data"
                 $ini =~ s/$vv(?!\/data)/$k2/g;

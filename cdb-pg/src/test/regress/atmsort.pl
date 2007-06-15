@@ -134,6 +134,13 @@ directive must be on a separate line.  Multiple mvd specifications
 must be on a single mvd line, separated by semicolons.  Note that 
 start_ignore overrides all directives until the next end_ignore.
 
+=head1 CAVEATS/LIMITATIONS
+
+atmsort cannot handle "unsorted" SELECT queries where the output has
+strings with embedded newlines or pipe ("|") characters due to
+limitations with the parser in the "tablelizer" function.  Queries
+with these characteristics must have an ORDER BY clause to avoid
+potential erroneous comparison.
 
 =head1 AUTHORS
 
