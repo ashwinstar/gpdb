@@ -108,4 +108,4 @@ ignore: tablespace
 test: gpdiffcheck
 test: exttab1
 test: resource_queue
-
+test: gptokencheck

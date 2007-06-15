@@ -1862,7 +1862,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 copy extcpytest3 from stdin csv header;
 copy extcpytest3 to '@abs_builddir@/results/extcpytest3.csv' csv header quote 'z' escape E'Z'  ;
 --
--- MPP-1584: we used -h on the gpfdist, so why do we have header problems?
+-- MPP-1584: make -h work with small files
 --
 create external table extcpytest4 (
 c1 int,
@@ -1872,8 +1872,12 @@ location ('gpfdist://@hostname@:8080/extcpytest3.csv')
 format 'csv' ( quote as 'z' escape as 'Z');
 -- no header because is specified by gpfdist
 select * from extcpytest4;
-ERROR:  invalid input syntax for integer: "c1"  (seg1 slice1 localhost:11003 pid=2471)
-DETAIL:  External table extcpytest4, line 1 of gpfdist://localhost:8080/extcpytest3.csv, column c1
+ c1 | c2 | c3 
+----+----+----
+  1 | a  |  1
+  2 | b  |  2
+(2 rows)
+
 create external table extcpytest5 (
 c1 int,
 c2 text,

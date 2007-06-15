@@ -1019,7 +1019,7 @@ this is just a line full of junk that would error out if parsed
 copy extcpytest3 to '@abs_builddir@/results/extcpytest3.csv' csv header quote 'z' escape E'Z'  ;
 
 --
--- MPP-1584: we used -h on the gpfdist, so why do we have header problems?
+-- MPP-1584: make -h work with small files
 --
 create external table extcpytest4 (
 c1 int,
