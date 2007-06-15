@@ -415,7 +415,7 @@ GATHER_INFO () {
 	case $TYPE_NAME in 
 		hour|daily|week|month|year)
 		DATE_TYPE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select definition from pg_rules where tablename='$TABLE_NAME' limit 1;"|$GREP -ci "::timestamp"`
-		ERROR_CHK $? "timestamp PSQL check" 1
+		LOG_MSG "[INFO]:-Column data type timestamp check returned $DATE_TYPE"
 		;;
 	esac
 	LOG_MSG	"[INFO]:-End Function $FUNCNAME"
