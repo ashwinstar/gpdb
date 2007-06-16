@@ -96,13 +96,18 @@ else
 	$ECHO "      -D, set log output to debug level, shows all function calls"
 	$ECHO
 	$ECHO "      Skew options:"
-	$ECHO "      -t, <table name> [mandatory]"
+	$ECHO "      -t, <schema name>.<table name> [mandatory]"
 	$ECHO "      -a, <database name> alternative database name [default ${QD_DBNAME}]"
 	$ECHO "      -f, display full results output [default summary]"
 	$ECHO "      -c, display information for table, do not compute skew"
 	$ECHO "      -m, use mirror segment hosts for skew analysis [default primary segments]"
 	$ECHO "      -h, display skew of child tables if -t <table name> is a partitioned table"
 	$ECHO "      -r, display segment instance response times"
+	$ECHO "      -w, \"<where clause text>\" apply a where clause to the count on each segment"
+	$ECHO "          Note use of \" to surround text"
+	$ECHO "          Example -w \"invoice_date >= '2007-01-01' and invoice_date < '2007-02-1'\""
+	$ECHO "          The text must be syntatically correct, otherwise will fail to execute"
+	$ECHO "          The utility will automatically build the complete line of SQL"
 	$ECHO "      -B, <number> run this batch of skew segment processes in parallel [default $BATCH_DEFAULT]"
         $ECHO
         $ECHO "      Return codes:"
@@ -112,6 +117,24 @@ else
 	$ECHO
         exit $EXIT_STATUS
 fi
+}
+
+BUILD_QUERY () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	QUERY_TEXT="select count(*) from $1 where ${WHERE_CLAUSE};"
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+VALIDATE_QUERY () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	$PSQL -q -p $MASTER_PORT $QD_DBNAME  -A -t -c"explain $QUERY_TEXT" > /dev/null 2>&1
+	if [ $? -ne 0 ];then
+		LOG_MSG "[FATAL]:-Validation of $WHERE_CLAUSE failed" 1
+		ERROR_EXIT "[FATAL]:-Unable to continue" 2
+	else
+		LOG_MSG "[INFO]:-Where clause $WHERE_CLAUSE validated" 1
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 GET_DISTRIB_INFO () {
@@ -218,7 +241,11 @@ GET_NODE_COUNT () {
 		QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
 		QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$GPSEGSKEW $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $QD_DBNAME $TARGETTBL &
+		if [ x"" == x"$QUERY_TEXT" ];then
+		$GPSEGSKEW $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $QD_DBNAME $TARGETTBL 0 &
+		else
+		$GPSEGSKEW $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $QD_DBNAME $TARGETTBL "${WHERE_CLAUSE}" &
+		fi	
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done
 	for RECS in `cat $PARALLEL_STATUS_FILE|$CUT -d'|' -f2`
@@ -293,6 +320,11 @@ GET_NODE_COUNT () {
 	fi
 	LOG_MSG "[INFO]:---------------------------------------" 1
 	LOG_MSG "[INFO]:-Results for table name               = $TARGETTBL" 1
+	if [ x"" == x"$WHERE_CLAUSE" ];then
+	LOG_MSG "[INFO]:-Where clause                         = Off" 1
+	else
+	LOG_MSG "[INFO]:-Where clause                         = $WHERE_CLAUSE" 1
+	fi
 	LOG_MSG "[INFO]:-Database                             = $QD_DBNAME" 1
 	if [ $PARTITIONED == 't' ];then
 	LOG_MSG "[INFO]:-Table type                           = Partitioned and $TAB_TYPE_TXT"
@@ -340,7 +372,7 @@ GET_NODE_COUNT () {
 trap '$RM -f $TMPFILE $PARALLEL_STATUS_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 CHK_DB_QD_SET
 if [ $# -ne 0 ];then
-        while getopts ":a:vmcqft:'?'d:l:!hrDB:" opt;do
+        while getopts ":a:vmcqft:'?'d:l:!hrDB:w:" opt;do
         case $opt in
                 v ) VERSION_INFO ;;
                 t ) TARGETTBL=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
@@ -358,6 +390,7 @@ if [ $# -ne 0 ];then
 		r ) RESPONSE_TIME=1 ;;
 		D ) DEBUG_LEVEL=1 ;;
 		B ) BATCH_DEFAULT=$OPTARG ;;
+		w ) WHERE_CLAUSE="$OPTARG" ;;
                 * ) USAGE ;;
         esac
         done
@@ -403,6 +436,10 @@ if [ x"" != x"$TARGETTBL" ];then
 	if [ $EXISTS -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Table $TARGETTBL does not exist" 2
 	else
+		if [ x"" != x"$WHERE_CLAUSE" ];then
+			BUILD_QUERY $TARGETTBL
+			VALIDATE_QUERY
+		fi
 		GET_DISTRIB_COLS $TARGETTBL $MASTER_PORT $QD_DBNAME
 		if [ $DISTRIB -eq 1 ];then
 			GET_DISTRIB_INFO
