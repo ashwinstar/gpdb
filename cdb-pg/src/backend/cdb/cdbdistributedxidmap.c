@@ -48,8 +48,7 @@ typedef struct DISTRIBUTEDXIDMAP_ENTRY
 	TransactionId		xid;
 }	DISTRIBUTEDXIDMAP_ENTRY;
 
-/* We need four bytes per xact */
-#define ENTRIES_PER_PAGE (BLCKSZ / sizeof(TransactionId))
+#define ENTRIES_PER_PAGE (BLCKSZ / sizeof(DISTRIBUTEDXIDMAP_ENTRY))
 
 #define DistributedTransactionIdToPage(gxid) ((gxid) / (DistributedTransactionId) ENTRIES_PER_PAGE)
 #define DistributedTransactionIdToEntry(gxid) ((gxid) % (DistributedTransactionId) ENTRIES_PER_PAGE)
@@ -201,8 +200,8 @@ AllocOrGetLocalXidForStartDistributedTransaction(DistributedTransactionId gxid, 
 		DistributedMapState state = ptr->state;
 		LWLockRelease(DistributedXidMapControlLock);
 
-		elog(ERROR,"Attempting re-use local xid %u and distributed xid %u again (original start pid was %d, state = %s)",
-			 reuseXid, gxid, pid, DistributedMapStateToString(state));
+		elog(ERROR,"Attempting re-use local xid %u and distributed xid %u again (original start pid was %d, state = %s, pageno %d, entryno %d, slotno %d)",
+			 reuseXid, gxid, pid, DistributedMapStateToString(state), pageno, entryno, slotno);
 	}
 
 	SetProcXid(*xid, gxid);
