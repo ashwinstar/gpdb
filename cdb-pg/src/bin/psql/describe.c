@@ -1139,7 +1139,8 @@ describeOneTableDetails(const char *schemaname,
 				   *result4 = NULL,
 				   *result5 = NULL,
 				   *result6 = NULL,
-				   *result7 = NULL;
+				   *result7 = NULL,
+				   *result8 = NULL;
 		int			check_count = 0,
 					index_count = 0,
 					foreignkey_count = 0,
@@ -1441,23 +1442,55 @@ describeOneTableDetails(const char *schemaname,
 				{
 					char *col;
 					char *dist_columns = PQgetvalue(result7, 0, 0);
+					char *dist_colname;
 					if(dist_columns && strlen(dist_columns) > 0)  
 					{
+						PQExpBufferData tempbuf;
+
+						initPQExpBuffer(&tempbuf);
 						dist_columns[strlen(dist_columns)-1] = '\0'; /* remove '}' */
 						dist_columns++;  /* skip '{' */
 				 
-						printfPQExpBuffer(&buf, "Distributed by: (%s",
-										  cells[(atoi(dist_columns)-1) * cols]);
+						/* Get the attname for the first distribution column.*/
+						printfPQExpBuffer(&tempbuf,
+							"SELECT attname FROM pg_attribute \n"
+							"WHERE attrelid = '%s' \n"
+							"AND attnum = '%d' ",
+							oid,
+							atoi(dist_columns));
+						result8 = PSQLexec(tempbuf.data, false);
+						if (!result8)
+							goto error_return;
+						dist_colname = PQgetvalue(result8, 0, 0);
+						if (!dist_colname)
+							goto error_return;
+						printfPQExpBuffer(&buf, "Distributed by: (%s", 
+										  dist_colname);
+						PQclear(result8);
+						dist_colname = NULL;
 						col = strchr(dist_columns,',');
 						
 						while(col!=NULL)
 						{
 							col++;
-							appendPQExpBuffer(&buf, ", %s",
-											  cells[(atoi(col)-1) * cols]);
+							/* Get the attname for next distribution columns.*/
+							printfPQExpBuffer(&tempbuf,
+								"SELECT attname FROM pg_attribute \n"
+								"WHERE attrelid = '%s' \n"
+								"AND attnum = '%d' ",
+								oid,
+								atoi(col));
+							result8 = PSQLexec(tempbuf.data, false);
+							if (!result8)
+								goto error_return;
+							dist_colname = PQgetvalue(result8, 0, 0);
+							if (!dist_colname)
+								goto error_return;
+							appendPQExpBuffer(&buf, ", %s", dist_colname);
 							col = strchr(col,',');
 						}
 						appendPQExpBuffer(&buf, ")");
+						termPQExpBuffer(&tempbuf);
 					}
 					else
 					{
@@ -1483,6 +1516,7 @@ describeOneTableDetails(const char *schemaname,
 		PQclear(result5);
 		PQclear(result6);
 		PQclear(result7);
+		PQclear(result8);
 	}
 
 	printTable(title.data, headers,
