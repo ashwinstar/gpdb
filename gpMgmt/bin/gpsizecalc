@@ -90,11 +90,8 @@ else
 	$ECHO "      -d, <Master instance directory> name of alternative Master instance to run against [optional]"
 	$ECHO
 	$ECHO "      Size options:"
-	$ECHO "      -t, <table name> name of table to obtain size data [mandatory if -x not supplied]"
-	$ECHO "      -s, <scale> valid values b (Bytes) k (KBytes) m (MBytes) g (GBytes) [default:- ${SCALE}]"
-	$ECHO "          Size obtained via ls ,if k specified, value will be divided by 1024, if m"
-	$ECHO "          specified, value will again be divided by 1024, and again further divided by 1024"
-	$ECHO "          for value g"
+	$ECHO "      -t, <schema name>.<table name> name of table to obtain size data [mandatory if -x not supplied]"
+	$ECHO "      -s, <scale> valid values b (Bytes) k (KBytes) m (MBytes) g (GBytes) t (TBytes) [default:- ${SCALE}]"
 	$ECHO "      -f, display full size information [default:-display total only]"
 	$ECHO "      -a, <database name> alternative database name [default ${QD_DBNAME}]"
 	$ECHO "      -i, obtain index size for <table name> [default:- table size]"
@@ -102,7 +99,7 @@ else
 	$ECHO "      -p, obtain size details for primary segment instance only [default both]"
 	$ECHO "      -m, obtain size details for mirror segment instances only [default both]"
 	$ECHO "      -h, display size of child tables if -t <table name> is a partitioned table"
-	$ECHO "      -B, <number> run this batch of stop segment processes in parallel [default $BATCH_DEFAULT]"
+	$ECHO "      -B, <number> run this batch of size segment processes in parallel [default $BATCH_DEFAULT]"
 	$ECHO
 	$ECHO "      Return codes:"
 	$ECHO "      0 No problems encountered with requested operation"
@@ -221,6 +218,8 @@ CHK_SCHEMA_PREFIX () {
 		TMP_TABLE_NAME=`$ECHO $TABLE_NAME|$CUT -d"." -f2`
 		SCHEMA_NAME=`$ECHO $TABLE_NAME|$CUT -d"." -f1`
 		TABLE_NAME=$TMP_TABLE_NAME
+	else
+		ERROR_EXIT "[FATAL]:-Must supply a schema name, -t <schema>.<table>" 2
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -248,10 +247,11 @@ CALC_TOTAL_SIZE () {
 	do
 		BSIZE=`$ECHO $I|$CUT -d'|' -f4`
 		case $SCALE in
-			k) ((SIZE=$BSIZE/1024)) ;;
-			m) ((SIZE=$BSIZE/1024/1024)) ;;
-			g) ((SIZE=$BSIZE/1024/1024/1024)) ;;
-			b) ((SIZE=$BSIZE)) ;;
+			k) SIZE=`$ECHO $BSIZE|$AWK '{print ($1/1024)}'` ;;
+			m) SIZE=`$ECHO $BSIZE|$AWK '{print ($1/1024/1024)}'` ;;
+			g) SIZE=`$ECHO $BSIZE|$AWK '{print ($1/1024/1024/1024)}'` ;;
+			t) SIZE=`$ECHO $BSIZE|$AWK '{print ($1/1024/1024/1024/1024)}'` ;;
+			b) SIZE=$BSIZE ;;
 		esac
 		HOST=`$ECHO $I|$CUT -d'|' -f1`
 		SEG=`$ECHO $I|$CUT -d'|' -f2`
@@ -264,7 +264,7 @@ CALC_TOTAL_SIZE () {
 				$ECHO $I >> $LOG_FILE
 			fi
 		fi
-		((TOTAL_SIZE=$TOTAL_SIZE+$SIZE))	
+		TOTAL_SIZE=`$ECHO "${TOTAL_SIZE}|${SIZE}"|$AWK -F"|" '{print ($1+$2)}'`
 	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -278,6 +278,7 @@ DISPLAY_SIZE () {
 		k ) TXT_SCALE=KBytes ;;
 		m ) TXT_SCALE=MBytes ;;
 		g ) TXT_SCALE=GBytes ;;
+		t ) TXT_SCALE=TBytes ;;
 	esac
 			   LOG_MSG "[INFO]:-Size calculation type = $TYPE_TEXT" 1
 	if [ $VERBOSE ];then
@@ -351,7 +352,8 @@ if [ $SCALE != "k" ];then
 		m ) ;;
 		b ) ;;
 		g ) ;;
-		* ) ERROR_EXIT "[FATAL]:-Parameter -s must be either b, k, m or g" 2 ;;
+		t ) ;;
+		* ) ERROR_EXIT "[FATAL]:-Parameter -s must be either b, k, m, g or t" 2 ;;
 	esac
 fi
 if [ x"" == x"$TABLE_NAME" ] && [ x"" == x"$SIZE_DB" ];then
