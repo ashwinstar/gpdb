@@ -293,8 +293,16 @@ ReadBuffer_Ex(Relation reln, BlockNumber blockNum, BufferDesc* availBufHdr)
 	if (VacuumCostActive)
 		VacuumCostBalance += VacuumCostPageMiss;
 
-	if (availBufHdr && availBufHdr != bufHdr)
-		StrategyFreeBuffer(availBufHdr, true);
+	if (availBufHdr && availBufHdr != bufHdr) 
+	{
+		int freebuf;
+		LockBufHdr(availBufHdr);
+		freebuf = (availBufHdr->refcount == 0 && availBufHdr->usage_count == 0 
+				   && availBufHdr->flags == 0);
+		UnlockBufHdr(availBufHdr);
+		if (freebuf)
+			StrategyFreeBuffer(availBufHdr, true);
+	}
 
 	return BufferDescriptorGetBuffer(bufHdr);
 }
@@ -400,7 +408,7 @@ BufferAlloc(Relation reln,
 			availBufHdr = NULL;
 
 			/* did the victim work out ? */
-			if (buf->refcount > 0)
+			if (! (buf->refcount == 0 && buf->usage_count == 0 && buf->flags == 0)) 
 			{
 				UnlockBufHdr(buf);
 				continue;
