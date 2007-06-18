@@ -231,7 +231,7 @@ void fstream_free(fstream_t* fs)
 /* alloc a new file stream */
 fstream_t* fstream_alloc(char** path, int npath)
 {
-    int i;
+    int i, fd;
     fstream_t* fs;
 
     if (0 == (fs = malloc(sizeof(fstream_t))))
@@ -249,12 +249,13 @@ fstream_t* fstream_alloc(char** path, int npath)
 	if (0 == (fs->fpath[i] = strdup(path[i])))
 	    gpcc_fatal(FLINE, "out of memory");
 
-	if (opt.V) 
-	    printf("   opening %s\n", path[i]);
-	if (-1 == (fs->ffd[i] = open(path[i], O_RDONLY, 0600))) {
+	/* check READ access right */
+	if (-1 == (fd = open(path[i], O_RDONLY, 0600))) {
 	    gpcc_warning(FLINE, "unable to open file %s", path[i]);
 	    fstream_free(fs);
 	    return 0;
+	} else {
+	    close(fd);
 	}
     }
     fs->fidx = 0;
@@ -293,6 +294,17 @@ block_t* fstream_get_block(fstream_t* fs)
 	if (fs->fidx >= fs->fn)
 	    return b;		/* return the residue block */
     }
+
+    if (fs->ffd[fs->fidx] == 0) {
+	if (opt.V) 
+	    printf("   opening %s\n", fs->fpath[fs->fidx]);
+	if (-1 == (fs->ffd[fs->fidx] = open(fs->fpath[fs->fidx], O_RDONLY, 0600))) {
+	    gpcc_warning(FLINE, "unable to open file %s", fs->fpath[fs->fidx]);
+	    fs->ferror = 1;
+	    return 0;
+	}	
+    }
+
 
     /* fill up b */
     while (0 != (n = sizeof(b->byte) - b->top)) {
