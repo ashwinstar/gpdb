@@ -5227,6 +5227,7 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 			/* distributed randomly */
 			qry->intoPolicy = policy;
 		}
+		else
 		foreach(keys, stmt->distributedBy)
 		{
 			char	   *key = strVal(lfirst(keys));
