@@ -1,0 +1,352 @@
+--
+-- This test suite tests COPY code that is unique to greenplum db. 
+--
+-- ######################################################
+-- different distribution columns and distribution types
+-- ######################################################
+CREATE TABLE copy_regression_hash1(a text, b text, c text) distributed by (b);
+CREATE TABLE copy_regression_hash2(a text, b text, c text) distributed by (a,c);
+CREATE TABLE copy_regression_hash3(a varchar, b int, c int, d text) distributed by (a,c,d);
+CREATE TABLE copy_regression_hash4(a int[], b text) distributed by (a);
+CREATE TABLE copy_regression_hash5(a text[][]) distributed by (a);
+CREATE TABLE copy_regression_hash6(a int[], b text[]) distributed by (a,b);
+CREATE TABLE copy_regression_hash7(a text,b text) distributed randomly;
+-- single key, not first
+COPY copy_regression_hash1 from stdin;
+COPY copy_regression_hash1(b,c,a) from stdin;
+SELECT * FROM copy_regression_hash1;
+   a    |   b    |   c    
+--------+--------+--------
+ a data | b data | c data
+ a data | b data | c data
+(2 rows)
+
+-- two keys
+COPY copy_regression_hash2 from stdin;
+COPY copy_regression_hash2(b,c,a) from stdin;
+SELECT * FROM copy_regression_hash2;
+   a    |   b    |   c    
+--------+--------+--------
+ a data | b data | c data
+ a data | b data | c data
+(2 rows)
+
+-- three keys
+COPY copy_regression_hash3 from stdin;
+COPY copy_regression_hash3(c,d,b,a) from stdin;
+COPY copy_regression_hash3(a,c) from stdin;
+COPY copy_regression_hash3(d) from stdin;
+SELECT * FROM copy_regression_hash3;
+   a    | b | c |   d    
+--------+---+---+--------
+ a data |   | 3 | 
+ a data | 2 | 3 | d data
+ a data | 2 | 3 | d data
+        |   |   | d data
+(4 rows)
+
+-- hash on int array
+COPY copy_regression_hash4 from stdin;
+SELECT * FROM copy_regression_hash4;
+        a         |             b              
+------------------+----------------------------
+ {1,2,3,4,5}      | hashed on an integer array
+ {10,20,30,40,50} | hashed on an integer array
+(2 rows)
+
+-- hash on 2 dim varchar array
+COPY copy_regression_hash5 from stdin;
+SELECT * FROM copy_regression_hash5;
+                        a                        
+-------------------------------------------------
+ {{hashing,on},{"two dimentional","text array"}}
+(1 row)
+
+-- hash on int array and varchar array
+COPY copy_regression_hash6 from stdin;
+SELECT * FROM copy_regression_hash6;
+      a      |                   b                    
+-------------+----------------------------------------
+ {1,2,3,4,5} | {hashing,on,intarray,and,varchararray}
+(1 row)
+
+-- hash randomly
+COPY copy_regression_hash7 from stdin;
+SELECT * FROM copy_regression_hash7;
+   a    |   b    
+--------+--------
+ a data | b data
+ a data | b data
+(2 rows)
+
+DROP TABLE copy_regression_hash1;
+DROP TABLE copy_regression_hash2;
+DROP TABLE copy_regression_hash3;
+DROP TABLE copy_regression_hash4;
+DROP TABLE copy_regression_hash5;
+DROP TABLE copy_regression_hash6;
+DROP TABLE copy_regression_hash7;
+-- ######################################################
+-- default values and default functions
+-- ######################################################
+CREATE TABLE copy_regression_default1(a text not null default 'a default data', b text not null default 'b default data') distributed by(a);
+CREATE TABLE copy_regression_default2(a text, b serial, c text) distributed by(a);
+NOTICE:  CREATE TABLE will create implicit sequence "copy_regression_default2_b_seq" for serial column "copy_regression_default2.b"
+CREATE TABLE copy_regression_default3(a serial, b text, c text) distributed by(a);
+NOTICE:  CREATE TABLE will create implicit sequence "copy_regression_default3_a_seq" for serial column "copy_regression_default3.a"
+-- constant defaults on key and non key attributes
+COPY copy_regression_default1(a) from stdin;
+COPY copy_regression_default1(b) from stdin;
+SELECT * FROM copy_regression_default1;
+       a        |       b        
+----------------+----------------
+ a data         | b default data
+ a default data | b data
+(2 rows)
+
+-- non constant default on non hash key in both text and csv
+COPY copy_regression_default2(a,c) from stdin;
+COPY copy_regression_default2(a,c) from stdin csv;
+SELECT * FROM copy_regression_default2;
+   a    | b |    c    
+--------+---+---------
+ a data | 1 | c data
+ a data | 2 | c data 
+ a data | 3 | c data
+ a data | 4 | c data
+ a data | 5 | c data
+ a data | 6 | c data
+(6 rows)
+
+-- non constant default on hash key in both text and csv
+COPY copy_regression_default3(b,c) from stdin;
+COPY copy_regression_default3(b,c) from stdin csv;
+SELECT * FROM copy_regression_default2;
+   a    | b |    c    
+--------+---+---------
+ a data | 1 | c data
+ a data | 2 | c data 
+ a data | 3 | c data
+ a data | 4 | c data
+ a data | 5 | c data
+ a data | 6 | c data
+(6 rows)
+
+DROP TABLE copy_regression_default1;
+DROP TABLE copy_regression_default2;
+DROP TABLE copy_regression_default3;
+-- ######################################################
+-- COPY with OIDS
+-- ######################################################
+CREATE TABLE copy_regression_oids(a text) WITH OIDS;
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+COPY copy_regression_oids from stdin with oids delimiter '|';
+COPY copy_regression_oids from stdin with oids csv;
+SELECT * FROM copy_regression_oids;
+      a      
+-------------
+ a text data
+ a text data
+ a text data
+ a text data
+(4 rows)
+
+DROP TABLE copy_regression_oids;
+-- ######################################################
+-- COPY OUT
+-- ######################################################
+CREATE TABLE copy_regression_out1(a text, b varchar, c int[], d bool) distributed by(a);
+-- populating table with data for copy out tests
+COPY copy_regression_out1 from stdin null 'nullval';
+-- copy out default parameters text format..
+COPY copy_regression_out1 to stdout;
+a copyout data line 1	b copyout data line 1	{1,1,1}	t
+a copyout data line 2	\N	{2,2,2}	t
+a copyout data line 3	b copyout data line 3	{3,3,3}	t
+-- copy out '|' delimiter 'mynull' null..
+COPY copy_regression_out1 to stdout with delimiter '|' null 'mynull';
+a copyout data line 1|b copyout data line 1|{1,1,1}|t
+a copyout data line 2|mynull|{2,2,2}|t
+a copyout data line 3|b copyout data line 3|{3,3,3}|t
+-- copy out '|' delimiter "i'm null" null..
+COPY copy_regression_out1 to stdout with delimiter '|' null 'i''m null';
+a copyout data line 1|b copyout data line 1|{1,1,1}|t
+a copyout data line 2|i'm null|{2,2,2}|t
+a copyout data line 3|b copyout data line 3|{3,3,3}|t
+-- copy out default parameters csv format..
+COPY copy_regression_out1 to stdout with csv;
+a copyout data line 1,b copyout data line 1,"{1,1,1}",t
+a copyout data line 2,,"{2,2,2}",t
+a copyout data line 3,b copyout data line 3,"{3,3,3}",t
+-- copy out default parameters csv format with header..
+COPY copy_regression_out1 to stdout with csv header;
+a,b,c,d
+a copyout data line 1,b copyout data line 1,"{1,1,1}",t
+a copyout data line 2,,"{2,2,2}",t
+a copyout data line 3,b copyout data line 3,"{3,3,3}",t
+-- copy out partial and mixed column list (c,a,b)..
+COPY copy_regression_out1(c,a,b) to stdout;
+{1,1,1}	a copyout data line 1	b copyout data line 1
+{2,2,2}	a copyout data line 2	\N
+{3,3,3}	a copyout data line 3	b copyout data line 3
+-- copy out csv default quotes and escapes and special cases..
+COPY copy_regression_out1 to stdout with csv quote ''''; -- escape should be the same as quote
+a copyout data line 1,b copyout data line 1,'{1,1,1}',t
+a copyout data line 2,,'{2,2,2}',t
+a copyout data line 3,b copyout data line 3,'{3,3,3}',t
+COPY copy_regression_out1 to stdout with csv escape '''';
+a copyout data line 1,b copyout data line 1,"{1,1,1}",t
+a copyout data line 2,,"{2,2,2}",t
+a copyout data line 3,b copyout data line 3,"{3,3,3}",t
+COPY copy_regression_out1 to stdout with csv quote '''' escape E'\\'; -- make sure E'' is accepted
+a copyout data line 1,b copyout data line 1,'{1,1,1}',t
+a copyout data line 2,,'{2,2,2}',t
+a copyout data line 3,b copyout data line 3,'{3,3,3}',t
+DROP TABLE copy_regression_out1;
+-- ######################################################
+-- Zero column table
+-- ######################################################
+CREATE TABLE copy_regression_nocol();
+NOTICE:  Table has no attributes to distribute on.
+-- copy in and out of zero column table..
+COPY copy_regression_nocol from stdin;
+COPY copy_regression_nocol from stdin;
+ERROR:  extra data after last expected column
+CONTEXT:  COPY copy_regression_nocol, line 2: "we should get an "extra data" error here"
+COPY copy_regression_nocol from stdin with csv;
+COPY copy_regression_nocol from stdin with csv; -- should fail
+ERROR:  extra data after last expected column
+CONTEXT:  COPY copy_regression_nocol, line 2: "we should get an "extra data" error here"
+COPY copy_regression_nocol to stdout;
+COPY copy_regression_nocol to stdout with csv;
+DROP TABLE copy_regression_nocol;
+-- ######################################################
+-- Various text format escape and default format tests
+-- ######################################################
+-- for text format
+CREATE TABLE copy_regression_text1(a varchar ,b varchar, c text, d text, e text) distributed by(a);
+CREATE TABLE copy_regression_text2(a varchar ,b varchar, c text, d text, e text) distributed by(a);
+CREATE TABLE copy_regression_text3(a varchar ,b varchar, c text, d text, e text) distributed by(a);
+-- column order tests
+COPY copy_regression_text1 from stdin; 
+COPY copy_regression_text1(a,b,c,d,e) from stdin;
+COPY copy_regression_text1(e,d,c,b,a) from stdin;
+COPY copy_regression_text1(c,a,b,e,d) from stdin;
+COPY copy_regression_text1(a,c) from stdin;
+SELECT * FROM copy_regression_text1;
+      a      |      b      |      c      |      d      |      e      
+-------------+-------------+-------------+-------------+-------------
+ a text data | b text data | c text data | d text data | e text data
+ a text data | b text data | c text data | d text data | e text data
+ a text data | b text data | c text data | d text data | e text data
+ a text data | b text data | c text data | d text data | e text data
+ a text data |             | c text data |             | 
+(5 rows)
+
+-- null print tests
+COPY copy_regression_text2 from stdin;
+COPY copy_regression_text2 from stdin with null 'nullvalue';
+COPY copy_regression_text2 from stdin with delimiter '|' null '';
+COPY copy_regression_text2 from stdin with delimiter '|' null 'i''m null';
+SELECT * FROM copy_regression_text2;
+      a      |      b      |      c      | d |      e      
+-------------+-------------+-------------+---+-------------
+             | b text data | c text data |   | e text data
+ a text data |             | c text data |   | e text data
+ a text data |             | c text data |   | 
+ a text data |             | c text data |   | e text data
+ a text data | b text data |             |   | e text data
+(5 rows)
+
+-- escape tests
+COPY copy_regression_text3 from stdin with delimiter '|' escape '#';
+COPY copy_regression_text3 from stdin with delimiter '|' escape 'off';
+COPY copy_regression_text3 from stdin with delimiter '|';
+SELECT * FROM copy_regression_text3;
+                 a                  |      b      |      c      |      d      |      e       
+------------------------------------+-------------+-------------+-------------+--------------
+ the at sign: @                     | b text data | c text data | d text data | e text data 
+ an embedded delimiter | character  | b text data | c text data | d text data | e text data
+ a single backslash \ in col a      | b text data | c text data | d text data | e text data
+ a single backslash \ in col a      | b text data | c text data | d text data | e text data
+ c:\\file\data\neew\path            | b text data | c text data | d text data | e text data
+ the at sign: @                     | b text data | c text data | d text data | e text data
+ an embedded linefeed               | b text data | c text data | d text data | e text data
+ and another one                                                                
+ in column a                                                                    
+ a single backslash \ in col a      | b text data | c text data | d text data | e text data
+(8 rows)
+
+DROP TABLE copy_regression_text1;
+DROP TABLE copy_regression_text2;
+DROP TABLE copy_regression_text3;
+-- ######################################################
+-- Various text format escape and default format tests
+-- ######################################################
+-- for csv format
+CREATE TABLE copy_regression_csv1(a varchar ,b varchar, c text, d text, e text) distributed by(a);
+CREATE TABLE copy_regression_csv2(a varchar ,b varchar, c text, d text, e text) distributed by(a);
+CREATE TABLE copy_regression_csv3(a varchar ,b varchar, c text, d text, e text) distributed by(a);
+-- column order tests
+COPY copy_regression_csv1 from stdin with csv; 
+COPY copy_regression_csv1(a,b,c,d,e) from stdin with csv;
+COPY copy_regression_csv1(e,d,c,b,a) from stdin with csv;
+COPY copy_regression_csv1(c,a,b,e,d) from stdin with csv;
+COPY copy_regression_csv1(a,c) from stdin with csv;
+SELECT * FROM copy_regression_csv1;
+      a      |      b      |      c      |      d      |      e      
+-------------+-------------+-------------+-------------+-------------
+ a  csv data | b  csv data | c  csv data | d  csv data | e  csv data
+ a  csv data | b  csv data | c  csv data | d  csv data | e csv  data
+ a  csv data | b  csv data | c  csv data | d  csv data | e  csv data
+ a  csv data | b  csv data | c  csv data | d  csv data | e  csv data
+ a  csv data |             | c  csv data |             | 
+(5 rows)
+
+-- null print tests
+COPY copy_regression_csv2 from stdin with null E'\\N' csv ;
+COPY copy_regression_csv2 from stdin with null 'nullvalue' csv;
+COPY copy_regression_csv2 from stdin with delimiter '|' null '' csv;
+SELECT * FROM copy_regression_csv2;
+      a      |      b      |      c      | d |      e      
+-------------+-------------+-------------+---+-------------
+ a  csv data |             | c  csv data |   | e  csv data
+ a  csv data |             | c  csv data |   | 
+ a  csv data |             | c  csv data |   | e  csv data
+             | b  csv data | c  csv data |   | e  csv data
+(4 rows)
+
+-- escape tests
+COPY copy_regression_csv3 from stdin with csv escape E'\\';
+COPY copy_regression_csv3 from stdin with delimiter E'\t' csv; --default quote and escape - "
+COPY copy_regression_csv3 from stdin with delimiter '|' csv quote ';' escape '*';
+-- check defaults
+COPY copy_regression_csv3 from stdin with csv quote ''''; -- escape should be the same as quote
+COPY copy_regression_csv3 from stdin with csv escape '''';
+COPY copy_regression_csv3 from stdin with csv quote '''' escape E'\\'; -- make sure E'' is accepted
+SELECT * FROM copy_regression_csv3;
+                         a                         |      b      |      c      |      d      |      e       
+---------------------------------------------------+-------------+-------------+-------------+--------------
+ an embedded line feed                             | b  csv data | c  csv data | d  csv data | e  csv data
+ is printed                                                                                    
+ an embedded delimiter (tab)\x09 is printed        | b  csv data | c  csv data | d  csv data | e  csv data 
+ an embedded line feed                             | b  csv data | c  csv data | d  csv data | e  csv data
+ is printed                                                                                    
+ an embedded delimiter (pipe)| is printed          | b  csv data | c  csv data | d  csv data | e  csv data 
+ an embedded escape (asterisk)* is printed         | b  csv data | c  csv data | d  csv data | e  csv data
+ an embedded line feed                             | b  csv data | c  csv data | d  csv data | e  csv data
+ is printed                                                                                    
+ an embedded backslash \ here                      | b csv data  | c csv data  | d csv data  | e csv data 
+ an embedded delimiter (comma), is printed         | b  csv data | c  csv data | d  csv data | e  csv data 
+ an embedded quote (doubleq)" is printed           | b  csv data | c  csv data | d  csv data | e  csv data 
+ an embedded escape \ is printed                   | b  csv data | c  csv data | d  csv data | e  csv data
+ an embedded quote or escape (doubleq)" is printed | b  csv data | c  csv data | d  csv data | e  csv data 
+ an embedded quote (semicolon); is printed         | b  csv data | c  csv data | d  csv data | e  csv data 
+ an embedded single quote ' here                   | b csv data  | c csv data  | d csv data  | e csv data 
+ an embedded single quote ' here                   | b csv data  | c csv data  | d csv data  | e csv data 
+(14 rows)
+
+DROP TABLE copy_regression_csv1;
+DROP TABLE copy_regression_csv2;
+DROP TABLE copy_regression_csv3;

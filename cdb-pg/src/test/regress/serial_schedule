@@ -106,3 +106,5 @@ test: returning
 test: stats
 ignore: tablespace
 test: resource_queue
+test: gpcopy
+
