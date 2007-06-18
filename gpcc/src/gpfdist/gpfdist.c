@@ -249,6 +249,7 @@ fstream_t* fstream_alloc(char** path, int npath)
 	if (0 == (fs->fpath[i] = strdup(path[i])))
 	    gpcc_fatal(FLINE, "out of memory");
 
+	fs->ffd[i] = 0;
 	/* check READ access right */
 	if (-1 == (fd = open(path[i], O_RDONLY, 0600))) {
 	    gpcc_warning(FLINE, "unable to open file %s", path[i]);
