@@ -1484,6 +1484,7 @@ describeOneTableDetails(const char *schemaname,
 							if (!result8)
 								goto error_return;
 							dist_colname = PQgetvalue(result8, 0, 0);
+							PQclear(result8);
 							if (!dist_colname)
 								goto error_return;
 							appendPQExpBuffer(&buf, ", %s", dist_colname);
@@ -1516,7 +1517,6 @@ describeOneTableDetails(const char *schemaname,
 		PQclear(result5);
 		PQclear(result6);
 		PQclear(result7);
-		PQclear(result8);
 	}
 
 	printTable(title.data, headers,
