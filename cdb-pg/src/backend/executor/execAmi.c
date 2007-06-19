@@ -495,6 +495,8 @@ ExecMayReturnRawTuples(PlanState *node)
 
 			/* Non-projecting nodes */
 		case T_MotionState:
+			if (node->lefttree == NULL)
+				return false;
 		case T_HashState:
 		case T_MaterialState:
 		case T_UniqueState:

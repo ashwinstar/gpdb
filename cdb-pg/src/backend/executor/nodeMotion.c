@@ -886,9 +886,15 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	ExecInitResultTupleSlot(estate, &motionstate->ps);
 
 	/*
-	 * initializes child nodes
+	 * initializes child nodes; but this is only required if this
+	 * slice is going to execute anything in the child.
+	 *
+	 * Dispatcher needs to descend regardless (to support explain).
 	 */
-	outerPlanState(motionstate) = ExecInitNode(outerPlan(node), estate, eflags);
+	if (Gp_role == GP_ROLE_DISPATCH || !thisSlice || IsMotionSend(motionstate))
+	{
+		outerPlanState(motionstate) = ExecInitNode(outerPlan(node), estate, eflags);
+	}
 
 	/*
 	 * restore state that might have changed in recursion for our caller
