@@ -60,8 +60,13 @@ select row_number() over (), c1, c2, c3 from gpd1;
 --
 -- explain testing
 --
+set gp_segments_for_planner=4;
 explain analyze select a.* from gpd1 as a, gpd1 as b where b.c1 in (select max(c1) from gpd1);
 explain select a.* from gpd1 as a, gpd1 as b where b.c1 in (select max(c1) from gpd1);
+select a.* from gpd1 as a, gpd1 as b where b.c1 in (select max(c1) from gpd1);
+set gp_segments_for_planner=40;
+explain select a.* from gpd1 as a, gpd1 as b where b.c1 in (select max(c1) from gpd1);
+select a.* from gpd1 as a, gpd1 as b where b.c1 in (select max(c1) from gpd1);
 -- start_ignore
 -- ignore an explain
 explain analyze select a.* from gpd1 as a, gpd1 as b where b.c1 in (select max(c1) from gpd1);
