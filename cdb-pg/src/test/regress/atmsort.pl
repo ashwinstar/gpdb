@@ -275,7 +275,7 @@ sub format_explain
 
         close $tmpfh;
 
-        my $xplan = `explain.pl -opt perl -prune stat < $tmpnam`;
+        my $xplan = `explain.pl -opt perl -prune heavily < $tmpnam`;
 
         unlink $tmpnam;
 
