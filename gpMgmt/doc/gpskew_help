@@ -6,9 +6,10 @@ Shows data distribution information for a Greenplum Database table.
 SYNOPSIS
 *****************************************************
 
-gpskew -t <schema>.<table_name> [-h] [-a <database_name>] [-c] [-r] 
-           [-B <parallel_processes>] [-d <master_data_directory>] [-f ] 
-           [-m] [-l <logfile_directory>] [-D] [-? | -v]
+gpskew -t <schema>.<table_name> [-w "<WHERE_constraint>"] [-h] 
+      [-a <database_name>] [-c] [-r] [-B <parallel_processes>] 
+      [-d <master_data_directory>] [-f ] [-m] [-l <logfile_directory>] 
+      [-D] [-? | -v]
 
 
 *****************************************************
@@ -42,6 +43,13 @@ OPTIONS
 
 Required. The schema qualified table name for which you want to see the 
 data distribution.
+
+-w "<WHERE_constraint>"
+
+Allows a WHERE constraint to be applied when the utility does a 
+SELECT count(*) to count the records on a segment. This is useful 
+for checking child tables that are partitioned by date. For example: 
+gpskew –t schema.table –w "date between '2007-01-01' and '2007-01-12'"
 
 
 -h (show child table hierarchy)

@@ -8,7 +8,7 @@ SYNOPSIS
 
 gpsizecalc {-x <database_name> [-p | -m] | {-t <schema>.<table_name> [-h] 
                [-i] [-a <database_name>]}} [-B <parallel_processes>] 
-               [-d <data_directory>] [-s b|k|m|g] [-f] [-l <logfile_directory>] 
+               [-d <data_directory>] [-s b|k|m|g|t] [-f] [-l <logfile_directory>] 
                [-D] [-q] [-? | -v]
 
 
@@ -99,10 +99,10 @@ Optional. The master host data directory. If not specified, the value set for
 $MASTER_DATA_DIRECTORY will be used.
 
 
--s b | k | m| g (bytes, kilobytes, megabytes, or gigabytes)
+-s b | k | m| g | t (bytes, kilobytes, megabytes, gigabytes, terabytes)
 
 Optional. Display disk usage size information in bytes (b), kilobytes (k), 
-megabytes (m) or gigabytes (g). The default is kilobytes (k).
+megabytes (m), gigabytes (g), or terabytes (t). The default is kilobytes (k).
 
 
 -f (per segment results)
