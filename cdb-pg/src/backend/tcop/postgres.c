@@ -2218,9 +2218,9 @@ exec_bind_message(StringInfo input_message)
 					  pstmt->query_string,
 					  pstmt->sourceTag,
 					  pstmt->commandTag,
-					  pstmt->query_list,
-					  pstmt->plan_list,
-					  pstmt->context);
+					  query_list,
+					  plan_list,
+					  qContext);
 	
 	/*
 	 * If this is a cursor query - before starting the portal, we need to 
