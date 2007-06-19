@@ -1659,6 +1659,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	bool		is_named;
 	bool		save_log_statement_stats = log_statement_stats;
 	char		msec_str[32];
+	NodeTag		sourceTag = T_Query;
 
 	/*
 	 * Report query to various monitoring facilities.
@@ -1809,6 +1810,12 @@ exec_parse_message(const char *query_string,	/* string to execute */
 			plantree_list = NIL;
 		else
 			plantree_list = pg_plan_queries(querytree_list, NULL, true);
+		
+		if (parsetree_list)
+		{	
+			Node	   *parsetree = (Node *) linitial(parsetree_list); 
+			sourceTag = nodeTag(parsetree);
+		}
 	}
 	else
 	{
@@ -1827,11 +1834,10 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	 */
 	if (is_named)
 	{
-		Node	   *parsetree = (Node *) linitial(parsetree_list);
 
 		StorePreparedStatement(stmt_name,
 							   query_string,
-							   nodeTag(parsetree),
+							   sourceTag,
 							   commandTag,
 							   querytree_list,
 							   plantree_list,
@@ -1841,14 +1847,13 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	else
 	{
 		PreparedStatement	*pstmt;
-		Node				*parsetree = (Node *) linitial(parsetree_list);
 
 		pstmt = (PreparedStatement *) palloc0(sizeof(PreparedStatement));
 		/* query_string needs to be copied into unnamed_stmt_context */
 		pstmt->query_string = pstrdup(query_string);
 		/* the rest is there already */
 		pstmt->commandTag = commandTag;
-		pstmt->sourceTag = nodeTag(parsetree);
+		pstmt->sourceTag = sourceTag;
 		pstmt->query_list = querytree_list;
 		pstmt->plan_list = plantree_list;
 		pstmt->argtype_list = param_list;
