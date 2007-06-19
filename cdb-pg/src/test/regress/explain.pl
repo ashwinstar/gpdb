@@ -1159,7 +1159,7 @@ if (1)
 
         if (defined($glob_prune))
         {
-            if ($glob_prune =~ m/stat/i)
+            if ($glob_prune =~ m/stat|heavy|heavily/i)
             {
                 my $map_expr = 'delete $node->{to_end};';
                 treeMap($plantree, undef, $map_expr);
@@ -1173,6 +1173,10 @@ if (1)
                 treeMap($plantree, undef, $map_expr);
                 $map_expr = 'delete $node->{statistics};';
                 treeMap($plantree, undef, $map_expr);
+            }
+            if ($glob_prune =~ m/heavy|heavily/i)
+            {
+                treeMap($plantree, 'prune_heavily($node);');
             }
         }
 
@@ -1409,9 +1413,15 @@ sub addslice
 {
     my ($node, $ctx) = @_;
 
-    if ($node->{txt} =~ m/(slice(\d+))/) 
+    # AUTO-6: find nodes with "(slice1)" info where the slice numbers aren't
+    # part of the "Slice statistics" 
+
+    my $txt1 = $node->{txt};
+    $txt1 =~ s/Slice statistics.*//gs;
+
+    if ($txt1 =~ /(slice(\d+))/) 
     { 
-        my @ggg = ($node->{txt} =~ m/(slice(\d+))/) ; 
+        my @ggg = ($txt1 =~ m/(slice(\d+))/) ; 
         $node->{slice} = shift @ggg; 
 
         # check if we have explain analyze stats for the slice
@@ -1456,6 +1466,25 @@ sub doyaml
         die("Fatal Error: The required package YAML is not installed -- please download it from www.cpan.org\n");
         exit(1)
     }
+
+}
+
+# remove slice numbering information to construct even more generic plans
+sub prune_heavily
+{
+    my $node = shift;
+
+    return 
+        unless (exists($node->{short}) &&
+                ($node->{short} =~ m/\d+\:\d+/));
+
+    # example: Gather Motion 8:1 (slice4);
+
+    # strip the number of nodes and slice information
+    $node->{short} =~ s/\s+\d+\:\d+.*//;
+
+    # Note: don't worry about removing "(slice1)" info from the
+    # "short" because addslice processes node->{text}
 
 }
 
