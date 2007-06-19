@@ -21,9 +21,9 @@ CATALOG(pg_exttable,6040) BKI_WITHOUT_OIDS
 {
 	Oid			reloid;			/* refers to this relation's oid in pg_class */
 	text		location[1];	/* array of URI strings */
-	text		command;		/* the command string to EXECUTE */
 	char		fmttype;		/* 't' (text) or 'c' (csv) */
 	text		fmtopts;		/* the data format options */
+	text		command;		/* the command string to EXECUTE */
 } FormData_pg_exttable;
 
 
@@ -37,9 +37,9 @@ typedef FormData_pg_exttable *Form_pg_exttable;
 #define Natts_pg_exttable			5
 #define Anum_pg_exttable_reloid		1
 #define Anum_pg_exttable_location	2
-#define Anum_pg_exttable_command    3
-#define Anum_pg_exttable_fmtcode	4
-#define Anum_pg_exttable_fmtopts	5
+#define Anum_pg_exttable_fmtcode	3
+#define Anum_pg_exttable_fmtopts	4
+#define Anum_pg_exttable_command    5
 
 /* No initial contents. */
 
