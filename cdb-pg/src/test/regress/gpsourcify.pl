@@ -200,7 +200,8 @@ if (1)
             }
             elsif (($kk =~ m/abs_builddir/) && $src_eq_build)
             {
-                # replace buildir if not followed by "/data"
+                # replace buildir if not followed by "/data" 
+                # (negative look-ahead)
                 $ini =~ s/$vv(?!\/data)/$k2/g;
             }
             else
