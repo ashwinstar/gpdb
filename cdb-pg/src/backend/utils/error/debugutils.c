@@ -6,11 +6,11 @@
  * Copyright (c) 2007, Greenplum
  */
 
-#include <stdio.h>
-#include <unistd.h>
-
 #include "postgres.h"
 #include "fmgr.h"
+
+#include <stdio.h>
+#include <unistd.h>
 
 #include "nodes/plannodes.h"
 #include "utils/debugutils.h"
