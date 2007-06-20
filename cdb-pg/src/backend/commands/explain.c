@@ -817,7 +817,7 @@ explain_outNode(StringInfo str,
 			if (((NestLoop *)plan)->shared_outer)
 			{
 				skip_outer = true;
-				skip_outer_msg = "See first subplan of Hash join";
+				skip_outer_msg = "See first subplan of Hash Join";
 			}
 
 			switch (((NestLoop *) plan)->join.jointype)
