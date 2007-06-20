@@ -3630,10 +3630,8 @@ make_sort_from_groupcols(PlannerInfo *root,
 		/* Grouping will be the last entry in grpColIdx */
 		TargetEntry *tle = get_tle_by_resno(sub_tlist, grpColIdx[grpno]);
 
-		Assert(IsA(tle->expr, Grouping));
-
 		if (tle->resname == NULL)
-			tle->resname = "GROUPING";
+			tle->resname = "grouping";
 
 		sort_op = ordering_oper_opid(exprType((Node *)tle->expr));
 

@@ -245,6 +245,46 @@ select grouping(cn,vn,pn) from sale group by rollup(cn,vn,pn) order by 1 desc;
 select grouping(cn), grouping(vn), grouping(pn) from sale group by rollup(cn,vn,pn) order by 1 desc, 2 desc, 3 desc;
 select cn+vn,pn, grouping(cn+vn,pn), count(*) from sale group by rollup(cn+vn,pn);
 
+--begin equivalent
+select cn,vn,0 as grouping from sale group by cn,vn
+union all select cn,null,1 as grouping from sale group by cn
+union all (select null,null,3 as grouping from sale limit 1)
+union all select null,vn,2 as grouping from sale group by vn;
+select cn,vn,grouping(cn,vn) from sale group by cube(cn,vn);
+select cn,vn,grouping(cn,vn) from sale group by cube(vn,cn);
+select cn,vn,grouping(cn,vn) from sale group by grouping sets ((vn,cn), (vn), (cn), ());
+select cn,vn,grouping(cn,vn) from sale group by grouping sets ((),(vn,cn), (vn), (cn));
+--end equivalent
+
+--begin equivalent
+select cn,vn,0 as grouping from sale group by cn,vn
+union all select cn,null,2 as grouping from sale group by cn
+union all (select null,null,3 as grouping from sale limit 1)
+union all select null,vn,1 as grouping from sale group by vn;
+select cn,vn,grouping(vn,cn) from sale group by cube(cn,vn);
+select cn,vn,grouping(vn,cn) from sale group by cube(vn,cn);
+select cn,vn,grouping(vn,cn) from sale group by grouping sets ((vn,cn), (vn), (cn), ());
+select cn,vn,grouping(vn,cn) from sale group by grouping sets ((vn), (cn), (), (cn,vn));
+--end equivalent
+
+--begin equivalent
+select cn,dt,0 as grouping from sale group by cn,dt
+union all select cn,null,1 as grouping from sale group by cn
+union all (select null,null,3 as grouping from sale limit 1)
+union all select null,dt,2 as grouping from sale group by dt;
+select cn,dt,grouping(cn,dt) from sale group by cube(cn,dt);
+select cn,dt,grouping(cn,dt) from sale group by cube(dt,cn);
+--end equivalent
+
+--begin equivalent
+select cn,dt,count(vn),0 as grouping from sale group by cn,dt
+union all select cn,null,count(vn),1 as grouping from sale group by cn
+union all (select null,null,count(vn),3 as grouping from sale limit 1)
+union all select null,dt,count(vn),2 as grouping from sale group by dt;
+select cn,dt,count(vn),grouping(cn,dt) from sale group by cube(cn,dt);
+select cn,dt,count(vn),grouping(cn,dt) from sale group by cube(dt,cn);
+--end equivalent
+
 -- Ungrouped attributes in GROUPING function --
 
 select grouping(cn,vn,pn) from sale group by cn; --error
@@ -254,3 +294,19 @@ select grouping(cn,vn,pn) from sale group by rollup(cn); --error
 
 select pn, sum(qty), group_id() from sale group by rollup(pn);
 select pn, sum(qty), group_id() from sale group by rollup(pn),pn;
+
+--begin equivalent
+select pn, sum(qty), 0 from sale group by cn,pn
+union all select pn, sum(qty), 1 from sale group by cn,pn
+union all select pn, sum(qty), 2 from sale group by cn,pn
+union all select pn, sum(qty), 3 from sale group by cn,pn
+union all select pn, sum(qty), 4 from sale group by cn,pn
+union all select pn, sum(qty), 5 from sale group by cn,pn
+union all select pn, sum(qty), 6 from sale group by cn,pn
+union all select null, sum(qty), 0 from sale group by cn
+union all select null, sum(qty), 1 from sale group by cn
+union all select null, sum(qty), 2 from sale group by cn
+union all select pn, sum(qty), 0 from sale group by pn
+union all select null, sum(qty), 0 from sale;
+select pn, sum(qty), group_id() from sale group by rollup(cn,pn), cube(cn,pn);
+--end equivalent

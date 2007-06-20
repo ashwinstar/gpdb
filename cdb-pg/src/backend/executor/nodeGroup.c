@@ -127,7 +127,7 @@ ExecGroup(GroupState *node)
 			 * when it was received. For a rollup query, we want to modify it
 			 * before storing it to firstupleslot. 
 			 */
-			if (is_middle_rollup_agg)
+			if (group_node->numNullCols > 0)
 			{
 				tuple = heap_copytuple(node->grp_firstTuple);
 				tuple = heap_modify_tuple(tuple,
@@ -197,12 +197,15 @@ ExecGroup(GroupState *node)
 			 * to match with the current rollup level. We initialize those
 			 * arrays that are needed for this process.
 			 */
-			if (node->num_attrs == 0 && is_middle_rollup_agg)
+			if (node->num_attrs == 0 && group_node->numNullCols > 0)
 			{
 				/* Ignore Grouping column */
-				int num_grpattrs = numCols - 1;
+				int num_grpattrs = numCols;
 				int attno;
 
+				/* Ignore Grouping Column */
+				if (is_middle_rollup_agg)
+					num_grpattrs--;
 				node->num_attrs =
 					outerslot->tts_tupleDescriptor->natts;
 				node->replValues =
@@ -210,10 +213,11 @@ ExecGroup(GroupState *node)
 				node->replIsnull = palloc0(node->num_attrs * sizeof(bool));
 				node->doReplace = palloc0(node->num_attrs * sizeof(bool));
 
-				for (attno=0; attno<group_node->numNullCols; attno++)
+				for (attno=num_grpattrs - group_node->numNullCols; attno<num_grpattrs; attno++)
+					/* for (attno=0; attno<group_node->numNullCols; attno++)*/
 				{
-					node->replIsnull[num_grpattrs-attno-1] = true;
-					node->doReplace[num_grpattrs-attno-1] = true;
+					node->replIsnull[group_node->grpColIdx[attno] - 1] = true;
+					node->doReplace[group_node->grpColIdx[attno] - 1] = true;
 				}
 			}
 
@@ -231,7 +235,7 @@ ExecGroup(GroupState *node)
 			 * match the rollup level of this node. The modified tuple
 			 * is stored in node->copyslot.
 			 */
-			if (is_middle_rollup_agg)
+			if (group_node->numNullCols > 0)
 			{
 				copytuple = ExecCopySlotTuple(outerslot);
 				/* modify this tuple */

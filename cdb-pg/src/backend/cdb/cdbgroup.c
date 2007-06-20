@@ -1361,6 +1361,7 @@ void generate_three_tlists(List *tlist,
 								  NULL :
 								  pstrdup(tle->resname),
 								  false);
+		new_tle->ressortgroupref = tle->ressortgroupref;
 		*p_tlist2 = lappend(*p_tlist2, new_tle);
 
 		resno++;
@@ -1727,8 +1728,8 @@ add_second_stage_agg(PlannerInfo *root,
 {
 	Query	   *parse = root->parse;
 	Query	   *subquery;
-	List	   *newrtable;
 	List	   *subquery_tlist;
+	List	   *newrtable;
 	RangeTblEntry *newrte;
 	RangeTblRef *newrtref;
 	Plan         *agg_node;
@@ -1791,7 +1792,8 @@ add_second_stage_agg(PlannerInfo *root,
 	parse->jointree->fromlist = list_make1(newrtref);
 	parse->jointree->quals = NULL;
 	parse->rowMarks = NIL;
-/*  parse->targetList -- used by EXECUTE s to derive portal's tupDesc */
+
+	/*  parse->targetList -- used by EXECUTE s to derive portal's tupDesc */
 	
 	subquery_tlist = generate_subquery_tlist(1, prelim_tlist); /* Query varno is 1 */
 	/* Do we need to fill in more?  I don't think so. */
@@ -1818,10 +1820,7 @@ add_second_stage_agg(PlannerInfo *root,
 		 * of keys in *p_current_pathkeys. But we want to make
 		 * sure that numGroupCols is not less than this number.
 		 */
-		if ( numGroupCols < list_length(*p_current_pathkeys) )
-			ereport(ERROR, (
-						errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						errmsg("current_pathkeys has more entries than expected.")));
+		Assert( numGroupCols >= list_length(*p_current_pathkeys) );
 
 		foreach ( c, *p_current_pathkeys )
 		{

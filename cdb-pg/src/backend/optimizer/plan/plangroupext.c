@@ -21,6 +21,7 @@
 #include "optimizer/tlist.h"
 #include "optimizer/paths.h"
 #include "optimizer/planshare.h"
+#include "parser/parse_relation.h" /* addRangeTableEntryForSubquery */
 
 #include "cdb/cdbsetop.h"					/* make_motion... routines */
 #include "cdb/cdbvars.h"
@@ -28,6 +29,13 @@
 #include "cdb/cdbgroup.h" 					/* generate_three_tlists */
 #include "cdb/cdbllize.h"                   /* pull_up_Flow */
 
+/*
+ * Define a canonical form of a ROLLUP.
+ *
+ * This can be used to represent a complete or partial ROLLUP, from
+ * the user requested ROLLUP clause, or part of user requested CUBE
+ * or GROUPING SETS clauases.
+ */
 typedef struct CanonicalRollup
 {
 	/* Define the number of columns in a rollup. The maximum number of
@@ -38,8 +46,37 @@ typedef struct CanonicalRollup
 	/* The column index for this rollup */
 	AttrNumber *colIdx;
 
+	/* This rollup may be part of a GROUPING SETS or a CUBE. This value
+	 * is used to record the relative position of columns in the original
+	 * grouping extension clause.
+	 *
+	 * For example, the original grouping extension is
+	 *
+	 *    CUBE (a,b,c)
+	 *
+	 * which can be converted into the following rollups:
+	 *    (a,b,c) ==> (a,b) ==> (a) ==> ()
+	 *    (c,a) ==> (c)
+	 *    (b,a) ==> (b)
+	 *
+	 * Assume that this canonical rollup wants to represent the second
+	 * rollup "(c,a) ==> (c)". We want to record the position of "c" and
+	 * "a" in the original CUBE clause. This is used to calculate
+	 * the GROUPING value.
+	 *
+	 * Note that the value for positions starts with 0.
+	 */
+	int *grping_pos;
+
+	/* Since this rollup can be a partial rollup, we record the number
+	 * of grouping sets that are really appeared in this rollup.
+	 */
+	int ngrpsets;
+
 	/* Represent the number of times that each grouping set appears
-	 * in a rollup. This should be the last one in this structure.
+	 * in a rollup. There should be 'numcols+1' elements in this array.
+	 *
+	 * Note that this should be the last one in this structure.
 	 */
 	int grpset_counts[1];
 } CanonicalRollup;
@@ -47,7 +84,7 @@ typedef struct CanonicalRollup
 typedef struct GroupExtContext
 {
 	Path *path; /* the path before grouping planning */
-	List **p_tlist;
+	List *tlist;
 	List *sub_tlist;
 	List *qual;
 
@@ -56,14 +93,14 @@ typedef struct GroupExtContext
 	AttrNumber *grpColIdx;
 	AggClauseCounts *agg_counts;
 	double *p_dNumGroups;
-	List **p_current_pathkeys;
+	List *current_pathkeys;
 	
 	bool is_agg; /* indicate whether to create Agg/Group nodes. */
 	bool twostage; /* indicate if this appears in a two-stage aggregation. */
 
 	List *canonical_rollups; /* list of CanonicalRollups */
 
-	/* the rollup this is currently being processed */
+	/* the rollup which is currently being processed */
 	CanonicalRollup *current_rollup;
 
 	/* The following are intended for input sharing */
@@ -90,7 +127,7 @@ static Plan *make_list_aggs_for_rollup(PlannerInfo *root,
 static Plan*make_append_aggs_for_rollup(PlannerInfo *root,
 										GroupExtContext *context,
 										Plan *lefttree);
-static List *generate_append_tlist(List *tlist);
+static List *generate_append_tlist(List *tlist, int varno);
 static List *plan_list_aggs(PlannerInfo *root,
 							GroupExtContext *context,
 							Plan *lefttree);
@@ -108,16 +145,21 @@ static Plan *add_first_agg(PlannerInfo *root,
 static List *generate_list_subplans(PlannerInfo *root, GroupExtContext *context);
 static List *add_grouping_groupid(List *tlist);
 static void append_colIdx(AttrNumber *colIdx, int numcols, int colno,
-						  Bitmapset *bms, AttrNumber *grpColIdx,
+						  int *grping_pos, Bitmapset *bms, AttrNumber *grpColIdx,
 						  Index *sortrefs_new_to_orig);
-static List *adjust_tlist(AttrNumber *orig_grpColIdx, AttrNumber *grpColIdx,
-						  int numCols, List *tlist);
+static Plan *plan_list_rollup_plans(PlannerInfo *root,
+									GroupExtContext *context,
+									Plan *lefttree);
+static List *make_pathkeys_for_rollup(List *groupclause,
+									  List *tlist,
+									  AttrNumber *grpColIdx,
+									  CanonicalRollup *rollup);
 
 /*
  * Create the plan for grouping extensions
  *
  * Most of the arguments are straightforward and similar to make_agg().
- * Exceptions are is_agg, p_tlist, twostage and sub_tlist.
+ * Exceptions are twostage, is_agg, p_tlist and sub_tlist.
  *
  * 'twostage' is used to tell if this function is called within a
  * two-stage aggregation.  If this is the case, we want to make sure
@@ -150,7 +192,7 @@ plan_grouping_extension(PlannerInfo *root,
 	List *tlist = copyObject(*p_tlist);
 
 	context.path = path;
-	context.p_tlist = &tlist;
+	context.tlist = tlist;
 	context.sub_tlist = copyObject(sub_tlist);
 	context.qual = qual;
 	context.numGroupCols = *p_numGroupCols;
@@ -159,13 +201,14 @@ plan_grouping_extension(PlannerInfo *root,
 		   context.numGroupCols * sizeof(AttrNumber));
 	context.agg_counts = agg_counts;
 	context.p_dNumGroups = p_dNumGroups;
-	context.p_current_pathkeys = p_current_pathkeys;
+	context.current_pathkeys = *p_current_pathkeys;
 	context.is_agg = is_agg;
 	context.twostage = twostage;
 	context.canonical_rollups = NIL;
 
 	/*
-	 * Set ressortgroupref in all target entries in sub_tlist.
+	 * Set ressortgroupref in all target entries in sub_tlist solely
+	 * based on existing grpColidx.
 	 */
 	foreach (lc, context.sub_tlist)
 	{
@@ -186,35 +229,10 @@ plan_grouping_extension(PlannerInfo *root,
 	context.canonical_rollups =
 		convert_gs_to_rollups(context.grpColIdx, context.numGroupCols,
 							  canonical_grpsets, context.canonical_rollups,
-							  context.sub_tlist, *context.p_tlist);
+							  context.sub_tlist, context.tlist);
 
-	foreach (lc, context.canonical_rollups)
-	{
-		int group_no;
-		ListCell *sub_lc;
-
-		context.current_rollup = (CanonicalRollup *)lfirst(lc);
-
-		/* Reset ressortgroupref in sub_tlist for each rollup. */
-		foreach (sub_lc, context.sub_tlist)
-		{
-			TargetEntry *tle = (TargetEntry *)lfirst(sub_lc);
-			for (group_no=0; group_no<context.numGroupCols; group_no++)
-			{
-				if (tle->resno == context.current_rollup->colIdx[group_no])
-				{
-					tle->ressortgroupref = group_no + 1;
-				}
-			}
-		}
-
-
-		/*
-		 * XXX We need to plan for multiple rollups eventually. Currently,
-		 * we know there is only one rollup.
-		 */
-		result_plan = make_aggs_for_rollup(root, &context, lefttree);
-	}
+	/* Construct a plan for a list of rollups. */
+	result_plan = plan_list_rollup_plans(root, &context, lefttree);
 
 	/* destroy the context */
 	destroyGroupExtContext(&context);
@@ -226,8 +244,10 @@ plan_grouping_extension(PlannerInfo *root,
 							   (*p_numGroupCols + 1) * sizeof(AttrNumber));
 	(*p_numGroupCols)++;
 
-	*p_tlist = *(context.p_tlist);
+	*p_tlist = context.tlist;
 	(*p_grpColIdx)[(*p_numGroupCols)-1] = list_length(*p_tlist) - 1;
+
+	*p_current_pathkeys = context.current_pathkeys;
 
 	return result_plan;
 }
@@ -285,22 +305,19 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 	List *qual2 = NIL;
 	List *qual3 = NIL;
 	int last_group_no = 0;
-	bool use_tlist2 = false; /* used to tell if we should free tlist2. */
 
 	AttrNumber *groupColIdx;
 	List *current_tlist;
 	List *current_qual;
-	bool need_finalagg = false;
 	double current_numGroups;
 	uint64 grouping = 0;
 	double numGroups = *context->p_dNumGroups; /* make a copy of the original number */
 
 	TargetEntry *tle;
 	Grouping *grping;
-	bool      only_oneagg = false;
 	uint64    input_grouping;
 
-	generate_three_tlists(*context->p_tlist, context->twostage,
+	generate_three_tlists(context->tlist, context->twostage,
 						  context->sub_tlist, (Node *)context->qual,
 						  context->numGroupCols,
 						  context->grpColIdx,
@@ -356,9 +373,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 
 
 	/*
-	 * Find the index position for the last rollup level. This is used
-	 * to determine if we want to use tlist3 or tlist2 for the intermediate
-	 * Agg node in a complete rollup.
+	 * Find the index position for the last rollup level.
 	 */
 	for (group_no=0; group_no < context->current_rollup->numcols + 1; group_no++)
 	{
@@ -370,7 +385,8 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 	for (group_no=0; group_no <= last_group_no; group_no++)
 	{
 		if (group_no > 0)
-			grouping += (1 << (group_no-1));
+			grouping += (1 << context->current_rollup->grping_pos[
+							 context->current_rollup->numcols - group_no]);
 
 		if (context->current_rollup->grpset_counts[group_no] > 0)
 		{
@@ -378,27 +394,11 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 			groupColIdx = context->grpColIdx;
 			current_qual = context->qual;
 
-			if (group_no == last_group_no)
-			{
-				*(context->p_tlist) = add_grouping_groupid(*(context->p_tlist));
-				current_tlist = *context->p_tlist;
-				prelimGroupColIdx[context->numGroupCols-1] = list_length(current_tlist) - 1;
-
-				/* We know that we only have one rollup level for this query.
-				 * If later in this function, we find out that we need another
-				 * Agg node to bring back the aggregate results, we want to make
-				 * sure that all Aggrefs in context->p_tlist are AGGSTAGE_PARTIAL.
-				 */
-				only_oneagg = true;
-			}
-			else
-				current_tlist = tlist1;
-
 			/* Add sort node if needed, and set AggStrategy */
 			if (root->parse->groupClause)
 			{
 				if (!pathkeys_contained_in(root->group_pathkeys,
-										   *(context->p_current_pathkeys)))
+										   context->current_pathkeys))
 				{
 					current_lefttree = (Plan *)
 						make_sort_from_groupcols(root,
@@ -406,7 +406,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 												 groupColIdx,
 												 false,
 												 current_lefttree);
-					*(context->p_current_pathkeys) = root->group_pathkeys;
+					context->current_pathkeys = root->group_pathkeys;
 					mark_sort_locus(current_lefttree);
 
 					if (!context->is_agg)
@@ -430,10 +430,20 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 			{
 				aggstrategy = AGG_PLAIN;
 				/* Result will be only one row anyway; no sort order */
-				*(context->p_current_pathkeys) = NIL;
+				context->current_pathkeys = NIL;
 			}
 
 			context->aggstrategy = aggstrategy;
+
+			if (context->twostage && group_no == last_group_no)
+			{
+				context->tlist = add_grouping_groupid(context->tlist);
+				current_tlist = context->tlist;
+				prelimGroupColIdx[context->numGroupCols-1] = list_length(current_tlist) - 1;
+			}
+			else
+				current_tlist = tlist1;
+
 
 			/* Add an Agg node */
 			agg_node = add_first_agg(root, context,
@@ -448,73 +458,12 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 									 current_lefttree);
 
 			current_lefttree = agg_node;
-			*context->p_tlist = current_tlist;
+			context->tlist = current_tlist;
 
 			input_grouping = grouping;
 			group_no++;
 
-			/* XXX Do we want to add Grouping into pathkey? */
-
 			break;
-		}
-	}
-
-	/*
-	 * Check if the attributes appeared in the final rollup level match
-	 * the distribution attributes. If not, we need to add on another
-	 * aggregate node to aggregate results from different segments.
-	 */
-	if (agg_node->flow->hashExpr != NULL)
-	{
-		/*
-		 * If agg_node->flow is FLOW_SINGLETON, we do not need the final
-		 * aggregation.
-		 */
-		if (agg_node->flow->flotype == FLOW_SINGLETON)
-			need_finalagg = false;
-		else
-		{
-
-			ListCell *lc;
-			TargetEntry *tle;
-
-			foreach (lc, agg_node->flow->hashExpr)
-				{
-					Node *x = (Node *)lfirst(lc);
-
-					tle = tlist_member(x, current_tlist);
-					if (tle == NULL)
-						ereport(ERROR, (
-									errcode(ERRCODE_CDB_INTERNAL_ERROR),
-									errmsg("target not found") ));
-					if (tle->resno > context->numGroupCols-1-last_group_no)
-					{
-						need_finalagg = true;
-						break;
-					}
-				}
-		}
-	}
-
-	else
-		need_finalagg = true;
-
-	/*
-	 * We have to make sure all Aggrefs in context->p_tlist are AGGSTAGE_PARTIAL.
-	 */
-	if (only_oneagg && need_finalagg)
-	{
-		ListCell *lc;
-
-		foreach (lc, *context->p_tlist)
-		{
-			TargetEntry *tle = (TargetEntry *)lfirst(lc);
-			if (IsA(tle->expr, Aggref))
-			{
-				Aggref *aggref = (Aggref *)tle->expr;
-
-				aggref->aggstage = AGGSTAGE_PARTIAL;
-			}
 		}
 	}
 
@@ -522,27 +471,15 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 	for (; group_no <= last_group_no; group_no++)
 	{
 		if (group_no > 0)
-			grouping += (1 << (group_no-1));
+			grouping += (1 << context->current_rollup->grping_pos[
+							 context->current_rollup->numcols - group_no]);
 
 		if (context->current_rollup->grpset_counts[group_no] <= 0)
 			continue;
 
-		if ((group_no == context->numGroupCols ||
-			 group_no == last_group_no) &&
-			!need_finalagg &&
-			!context->twostage)
-		{
-			groupColIdx = prelimGroupColIdx;
-			current_tlist = tlist3;
-			current_qual = qual3;
-		}
-		else
-		{
-			groupColIdx = prelimGroupColIdx;
-			current_tlist = tlist2;
-			current_qual = qual2;
-			use_tlist2 = true;
-		}
+		groupColIdx = prelimGroupColIdx;
+		current_tlist = tlist2;
+		current_qual = qual2;
 
 		current_numGroups =
 			(((double)(context->numGroupCols-group_no))/((double)(context->numGroupCols))) *
@@ -552,15 +489,16 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 
 		*context->p_dNumGroups += current_numGroups;
 
-		agg_node = add_second_stage_agg(root, context->is_agg, *context->p_tlist, current_tlist,
+		agg_node = add_second_stage_agg(root, context->is_agg, context->tlist, current_tlist,
 										current_qual, context->aggstrategy,
 										context->numGroupCols, groupColIdx,
 										group_no, input_grouping, grouping,
 										context->current_rollup->grpset_counts[group_no],
 										current_numGroups,
-										context->agg_counts->numAggs, context->agg_counts->transitionSpace,
+										context->agg_counts->numAggs,
+										context->agg_counts->transitionSpace,
 										"rollup",
-										context->p_current_pathkeys,
+										&context->current_pathkeys,
 										agg_node);
 
 		/* Set inputHasGrouping */
@@ -570,7 +508,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 			((Group *)agg_node)->inputHasGrouping = true;
 
 		current_lefttree = agg_node;
-		*context->p_tlist = current_tlist;
+		context->tlist = current_tlist;
 		input_grouping = grouping;
 	}
 
@@ -579,7 +517,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 	 * we add a Gather motion node on top of the top Agg node to do the
 	 * final aggregation.
 	 */
-	if (need_finalagg && !context->twostage)
+	if (!context->twostage)
 	{
 		long lNumGroups;
 		Flow *flow;
@@ -615,7 +553,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 		lNumGroups = (long) Min(*context->p_dNumGroups, (double) LONG_MAX);
 
 		/* Add a Agg/Group node */
-		agg_node = add_second_stage_agg(root, context->is_agg, *context->p_tlist, tlist3,
+		agg_node = add_second_stage_agg(root, context->is_agg, context->tlist, tlist3,
 										qual3, context->aggstrategy,
 										context->numGroupCols, prelimGroupColIdx,
 										0,  /* num_nullcols */
@@ -624,23 +562,21 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 										0, /* rollup_gs_times */
 										lNumGroups, context->agg_counts->numAggs,
 										context->agg_counts->transitionSpace,
-										"rollup", context->p_current_pathkeys, agg_node);
+										"rollup", &context->current_pathkeys,
+										agg_node);
 
 		if (context->is_agg)
 			((Agg *)agg_node)->inputHasGrouping = true;
 		else
 			((Group *)agg_node)->inputHasGrouping = true;
 
-		*context->p_tlist = tlist3;
+		context->tlist = tlist3;
 	}
 
 	if (!context->is_agg)
 	{
 		((Group*)agg_node)->lastGroup = true;
 	}
-
-	if (!use_tlist2)
-		list_free_deep(tlist2);
 
 	return agg_node;
 }
@@ -662,11 +598,14 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 	Plan *common_source_plan;
 	double      motion_cost_per_row;
 
+	pfree(context->grpColIdx);
+	context->grpColIdx = context->current_rollup->colIdx;
+
 	/* Add an explicit sort if we couldn't make the path
 	 * come out the way the Agg/Group node needs it.
 	 */
 	if (!pathkeys_contained_in(root->group_pathkeys,
-							   *context->p_current_pathkeys))
+							   context->current_pathkeys))
 	{
 		lefttree = (Plan *)
 			make_sort_from_groupcols(root,
@@ -674,7 +613,7 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 									 context->grpColIdx,
 									 false,
 									 lefttree);
-		*context->p_current_pathkeys = root->group_pathkeys;
+		context->current_pathkeys = root->group_pathkeys;
 		mark_sort_locus(lefttree);
 
 		/* If this is a Group node, pass DISTINCT to sort */
@@ -704,14 +643,14 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 	 * subplan
 	 */
 	common_source_plan =
-		(Plan *)make_motion_gather_to_QE(lefttree, (*context->p_current_pathkeys != NIL));
+		(Plan *)make_motion_gather_to_QE(lefttree, (context->current_pathkeys != NIL));
 	common_source_plan->total_cost +=
 		motion_cost_per_row * common_source_plan->plan_rows;
 
 	/* Plan a list of Agg/Group nodes with the common source plan */
 	agg_plans = plan_list_aggs(root, context, common_source_plan);
 
-	/* CDB: Decide on approach, condition argument plans to suit. */
+	/* Decide on approach, condition argument plans to suit. */
 	if ( Gp_role == GP_ROLE_DISPATCH )
 	{
 		optype = choose_setop_type(agg_plans);
@@ -719,14 +658,14 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 	}
 
 	/* Generate the targetlist for Append node */
-	targetlist = generate_append_tlist(*context->p_tlist);
+	targetlist = generate_append_tlist(context->tlist, 1);
 
 	/* Append all agg_plans together */
 	result_plan = (Plan *)make_append(agg_plans, false, targetlist);
-	mark_append_locus(result_plan, optype); /* CDB: Mark the plan result locus. */
+	mark_append_locus(result_plan, optype); /* Mark the plan result locus. */
 
 	/* set the final pathkey to NIL */
-	*context->p_current_pathkeys = NIL;
+	context->current_pathkeys = NIL;
 
 	return result_plan;
 }
@@ -736,11 +675,10 @@ make_append_aggs_for_rollup(PlannerInfo *root,
  *
  * The entries in the Append's targetlist should always be simple Vars;
  * we just have to make sure they have the right datatypes and typmods.
- * The Vars are always generated with varno OUTER (CDB/MPP change for
- * EXPLAIN; varno 0 was used in PostgreSQL), right?
+ * The Vars are always generated with the given varno.
  */
 static List *
-generate_append_tlist(List *tlist)
+generate_append_tlist(List *tlist, int varno)
 {
 	List *targetlist = NIL;
 	ListCell *lc;
@@ -752,7 +690,7 @@ generate_append_tlist(List *tlist)
 		Expr *new_expr;
 		TargetEntry *new_tle;
 
-		new_expr = (Expr *)makeVar(OUTER,
+		new_expr = (Expr *)makeVar(varno,
 								   resno,
 								   exprType((Node *) tle->expr),
 								   exprTypmod((Node *) tle->expr),
@@ -761,11 +699,10 @@ generate_append_tlist(List *tlist)
 								  (AttrNumber)resno,
 								  tle->resname ? pstrdup(tle->resname) : NULL,
 								  tle->resjunk);
-		resno++;
-
-		/* Keep the resortgroupref */
+		/* Keep the ressortgroupref */
 		new_tle->ressortgroupref = tle->ressortgroupref;
 
+		resno++;
 		targetlist = lappend(targetlist, new_tle);
 	}
 
@@ -802,13 +739,13 @@ plan_list_aggs(PlannerInfo *root,
 		 * Agg node does have different sorting requirements.
 		 */
 		context->pathkeys = lappend(context->pathkeys,
-									*context->p_current_pathkeys);
+									context->current_pathkeys);
 	}
 
 	subplans = generate_list_subplans(root, context);
 
-	/* Append Grouping and GroupId into context->p_tlist */
-	*(context->p_tlist) = add_grouping_groupid(*(context->p_tlist));
+	/* Append Grouping and GroupId into context->tlist */
+	context->tlist = add_grouping_groupid(context->tlist);
 
 	/* Generate an Agg/Group node for each rollup level */
 	for (group_no=0; group_no<context->current_rollup->numcols + 1; group_no++)
@@ -816,7 +753,8 @@ plan_list_aggs(PlannerInfo *root,
 		Plan *subplan = (Plan *)list_nth(subplans, group_no);
 
 		if (group_no > 0)
-			grouping += (1 << (group_no-1));
+			grouping += (1 << context->current_rollup->grping_pos[
+							 context->current_rollup->numcols - group_no]);
 
 		if (context->current_rollup->grpset_counts[group_no] > 0)
 		{
@@ -826,7 +764,7 @@ plan_list_aggs(PlannerInfo *root,
 			 * come out the way the Agg/Group node needs it.
 			 */
 			if (!pathkeys_contained_in(root->group_pathkeys,
-									   *context->p_current_pathkeys))
+									   context->current_pathkeys))
 			{
 				subplan = (Plan *)
 					make_sort_from_groupcols(root,
@@ -834,7 +772,7 @@ plan_list_aggs(PlannerInfo *root,
 											 context->grpColIdx,
 											 false,
 											 subplan);
-				*context->p_current_pathkeys = root->group_pathkeys;
+				context->current_pathkeys = root->group_pathkeys;
 				mark_sort_locus(subplan);
 
 				/* If this is a Group node, pass DISTINCT to sort */
@@ -855,7 +793,7 @@ plan_list_aggs(PlannerInfo *root,
 									 context->current_rollup->grpset_counts[group_no],
 									 context->numGroupCols,
 									 context->grpColIdx,
-									 *context->p_tlist,
+									 context->tlist,
 									 context->qual,
 									 subplan);
 
@@ -870,13 +808,17 @@ plan_list_aggs(PlannerInfo *root,
  * Create the first Agg node whose subplan is not an Agg node.
  *
  * Params:
- *    current_tlist: the targetlist for the Agg node to be generated.
- *    current_qual: the qual for the Agg node.
- *    current_lefttree: the subplan for the Agg node.
- *    rollup_level: the rollup_level for the Agg node.
+ *    num_nullcols: the number of grouping colummns should not be considered
+ *                  as a grouping column in this Agg node. For an input tuple
+ *                  in this Agg node, the values for these grouping columns
+ *                  will be set to NULL.
+ *    input_grouping: the grouping value for input tuples.
  *    grouping: the grouping value for the Agg node.
  *    rollup_gs_times: the times that each aggregate result is outputed.
  *    groupColIdx: the grouping column.
+ *    current_tlist: the targetlist for the Agg node to be generated.
+ *    current_qual: the qual for the Agg node.
+ *    current_lefttree: the subplan for the Agg node.
  *
  * Note that we always assume that groupColIdx includes GROUPING column
  * at the end, and context->numGroupCols specifies the number of grouping
@@ -988,8 +930,20 @@ generate_list_subplans(PlannerInfo *root, GroupExtContext *context)
 	}
  
 	if(stype == SHARENODE_UNKNOWN)
+	{
 		for (group_no = 0; group_no < context->numGroupCols + 1; group_no++)
 			subplans = lappend(subplans, copyObject(context->subplan));
+
+		/* set all pathkeys to context->current_pathkeys */
+		list_free(context->pathkeys);
+		context->pathkeys = NIL;
+		for (group_no = 0; group_no < context->numGroupCols + 1; group_no++)
+		{
+			List *pathkeys = copyObject(context->current_pathkeys);
+			context->pathkeys = lappend(context->pathkeys, pathkeys);
+		}
+	}
+	
 
 	else
 	{
@@ -1053,8 +1007,6 @@ convert_gs_to_rollups(AttrNumber *grpColIdx,
 {
 	bool *used;
 	bool more = true;
-	int size_rollup = sizeof(CanonicalRollup) +
-		canonical_grpsets->num_distcols * sizeof(int);
 	Index *sortrefs_new_to_orig = (Index *)
 		palloc0(numGroupCols * sizeof(Index));
 	ListCell *sub_lc;
@@ -1066,13 +1018,13 @@ convert_gs_to_rollups(AttrNumber *grpColIdx,
 	used = (bool *)palloc0(canonical_grpsets->ngrpsets * sizeof(bool));
 
 	/* In canonical grouping sets, we use tleSortGroupRef to represent
-	 * a grouping column. These tleSortGroupRefs are also affected by
-	 * ORDER BY clauses. However, for sub_tlist, we may re-order
-	 * grouping columns since we only consider GROUP BY clauses.
-	 * So we construct a mapping from new ressortgrouprefs to
-	 * original tleSortGroupRefs -- the array indexes representing
-	 * new ressortgrouprefs, while the array elements representing
-	 * orginal tleSortGroupRefs.
+	 * a grouping column. These tleSortGroupRefs are also computed
+	 * based on both GROUP BY and ORDER BY clauses. However, for
+	 * sub_tlist, only GROUP BY clause is considered, so that
+	 * tleSortGroupRefs may be different. Here, we construct a mapping
+	 * from new ressortgrouprefs to original tleSortGroupRefs -- the array
+	 * indexes representing new ressortgrouprefs, while the array
+	 * elements representing orginal tleSortGroupRefs.
 	 */
 	foreach (sub_lc, sub_tlist)
 	{
@@ -1106,11 +1058,6 @@ convert_gs_to_rollups(AttrNumber *grpColIdx,
 	 * we pick up the maximum length of grouping sets for a
 	 * single rollup. The grouping sets have been picked in the
 	 * previous rounds are ignored in this round.
-	 *
-	 * Note that we also ignore some variation of possible single
-	 * rollups for grouping sets. For example,
-	 *     GROUPING SETS ((vn,cn), (cn), ())
-	 * is a single rollup, but we ignore it here for now.
 	 */
 	while (more)
 	{
@@ -1119,11 +1066,15 @@ convert_gs_to_rollups(AttrNumber *grpColIdx,
 		List *list_grpsetnos = NIL;
 		ListCell *lc;
 		int colno = 0;
+		int size_rollup = sizeof(CanonicalRollup) +
+			canonical_grpsets->num_distcols * sizeof(int);
 
 		CanonicalRollup *rollup = (CanonicalRollup *)
 			palloc0(size_rollup);
 		rollup->numcols = canonical_grpsets->num_distcols;
 		rollup->colIdx = (AttrNumber *)palloc0(rollup->numcols * sizeof(AttrNumber));
+		rollup->grping_pos = (int *)palloc0(rollup->numcols * sizeof(int));
+		rollup->ngrpsets = 0;
 
 		more = false;
 
@@ -1143,6 +1094,7 @@ convert_gs_to_rollups(AttrNumber *grpColIdx,
 
 				rollup->grpset_counts[curr_grpset] =
 					canonical_grpsets->grpset_counts[grpsetno];
+				rollup->ngrpsets++;
 				used[grpsetno] = true;
 
 				list_grpsetnos = lcons_int(grpsetno, list_grpsetnos);
@@ -1163,7 +1115,7 @@ convert_gs_to_rollups(AttrNumber *grpColIdx,
 			if (prev_grpsetno == -1)
 			{
 				append_colIdx(rollup->colIdx, rollup->numcols, colno,
-							  canonical_grpsets->grpsets[grpsetno],
+							  rollup->grping_pos, canonical_grpsets->grpsets[grpsetno],
 							  grpColIdx, sortrefs_new_to_orig);
 				prev_grpsetno = grpsetno;
 				colno += bms_num_members(canonical_grpsets->grpsets[grpsetno]);
@@ -1175,10 +1127,38 @@ convert_gs_to_rollups(AttrNumber *grpColIdx,
 					bms_difference(canonical_grpsets->grpsets[grpsetno],
 								   canonical_grpsets->grpsets[prev_grpsetno]);
 				append_colIdx(rollup->colIdx, rollup->numcols, colno,
-							  bms_diff, grpColIdx, sortrefs_new_to_orig);
+							  rollup->grping_pos, bms_diff, grpColIdx, sortrefs_new_to_orig);
 				colno += bms_num_members(bms_diff);
 				prev_grpsetno = grpsetno;
 							  
+			}
+		}
+
+		/* This rollup may not use all grouping columns in the user-defined
+		 * grouping sets, we fill the blanks in colIdx with not-used columns.
+		 */
+		if (colno < rollup->numcols)
+		{
+			int grpcol_no;
+			
+			for (grpcol_no=0; grpcol_no<rollup->numcols && colno < rollup->numcols; grpcol_no++)
+			{
+				int rollup_colno;
+				for (rollup_colno=0; rollup_colno<colno; rollup_colno++)
+				{
+					if (grpColIdx[grpcol_no] == rollup->colIdx[rollup_colno])
+					{
+						rollup->grping_pos[rollup_colno] = rollup->numcols - 1 - grpcol_no;
+						break;
+					}
+				}
+				
+				if (rollup_colno == colno)
+				{
+					rollup->colIdx[colno] = grpColIdx[grpcol_no];
+					rollup->grping_pos[colno] = rollup->numcols - 1 - grpcol_no;
+					colno++;
+				}
 			}
 		}
 
@@ -1186,15 +1166,6 @@ convert_gs_to_rollups(AttrNumber *grpColIdx,
 	}
 
 	pfree(sortrefs_new_to_orig);
-
-	/*
-	 * XXX Only consider a single rollup now.
-	 */
-	if (list_length(canonical_rollups) > 1)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Grouping extensions \"CUBE\" or "
-						"\"GROUPING SETS\" not supported.")));
 
 	return canonical_rollups;
 }
@@ -1205,7 +1176,7 @@ convert_gs_to_rollups(AttrNumber *grpColIdx,
  */
 static void
 append_colIdx(AttrNumber *colIdx, int numcols, int colno,
-			  Bitmapset *bms, AttrNumber *grpColIdx,
+			  int *grping_pos, Bitmapset *bms, AttrNumber *grpColIdx,
 			  Index *sortrefs_new_to_orig)
 {
 	int x;
@@ -1227,49 +1198,196 @@ append_colIdx(AttrNumber *colIdx, int numcols, int colno,
 
 		Assert(pos < numcols);
 
-		colIdx[colno++] = grpColIdx[pos];
+		colIdx[colno] = grpColIdx[pos];
+		grping_pos[colno] = numcols - 1 - pos;
+		colno++;
 		x = bms_first_from(bms, x + 1);
 	}
 }
 
-static List *
-adjust_tlist(AttrNumber *orig_grpColIdx, AttrNumber *grpColIdx,
-			 int numCols, List *tlist)
+static Plan *
+plan_list_rollup_plans(PlannerInfo *root,
+					   GroupExtContext *context,
+					   Plan *lefttree)
 {
-	List *new_tlist = NIL;
-	int entry_no;
+	Plan *result_plan;
+	GpSetOpType optype = PSETOP_NONE;
+	List *targetlist = NIL;
+	List *rollup_plans = NIL;
+	int rollup_no;
+	List *subplans = NIL;
+	List *orig_tlist = context->tlist;
+	AttrNumber *orig_grpColIdx = context->grpColIdx;
+	int orig_numGroupCols = context->numGroupCols;
+	Query *orig_query = root->parse;
 
-	for (entry_no=0; entry_no<list_length(tlist); entry_no++)
+	Query *final_query;
+	int max_num_rollup_levels = 0;
+
+	for (rollup_no=0; rollup_no<list_length(context->canonical_rollups); rollup_no++)
 	{
-		TargetEntry *new_tle;
+		CanonicalRollup *rollup = (CanonicalRollup *)
+			list_nth(context->canonical_rollups, rollup_no);
+		if (rollup->ngrpsets > max_num_rollup_levels)
+			max_num_rollup_levels = rollup->ngrpsets;
+	}
 
-		/* the resno in the orig_grpColIdx */
-		int resno = orig_grpColIdx[entry_no];
-
-		/* Find the index position of resno in grpColIdx */
-		int pos;
-		for (pos=0; pos<numCols; pos++)
-		{
-			if (grpColIdx[pos] == resno)
-				break;
-		}
+	/* Generate the shared input subplans for all rollups. */
+	context->subplan = lefttree;
+	context->input_locus = context->path->locus;
+	context->pathkeys = NIL;
+	for (rollup_no=0; rollup_no<list_length(context->canonical_rollups); rollup_no++)
+	{
+		List *pathkeys = NIL;
+		/* Make pathkeys for each rollup */
+		pathkeys = make_pathkeys_for_rollup(root->parse->groupClause,
+											context->tlist,
+											context->grpColIdx,
+											(CanonicalRollup *)list_nth(
+												context->canonical_rollups, rollup_no));
 		
-		if (pos < numCols)
+		context->pathkeys =	lappend(context->pathkeys, pathkeys);
+	}
+
+	if (list_length(context->canonical_rollups) > 1)
+	{
+		/* XXX: disable shareinput */
+		gp_window_shareinput = false;
+		subplans = generate_list_subplans(root, context);
+	}
+	else
+		subplans = lappend(subplans, lefttree);
+
+	context->tlist = NIL;
+
+	for (rollup_no=0; rollup_no<list_length(context->canonical_rollups); rollup_no++)
+	{
+		Plan *subplan = (Plan *)list_nth(subplans, rollup_no);
+		Plan *rollup_plan;
+
+		context->current_rollup = (CanonicalRollup *)
+			list_nth(context->canonical_rollups, rollup_no);
+
+		context->current_pathkeys = list_nth(context->pathkeys, rollup_no);
+
+		context->tlist = copyObject(orig_tlist);
+		context->numGroupCols = orig_numGroupCols;
+		context->grpColIdx =
+			(AttrNumber *)palloc0(context->numGroupCols * sizeof(AttrNumber));
+		memcpy(context->grpColIdx, orig_grpColIdx,
+			   context->numGroupCols * sizeof(AttrNumber));
+		root->parse = copyObject(orig_query);
+
+		rollup_plan = make_aggs_for_rollup(root, context, subplan);
+
+		if (rollup_no > 0 && list_length(context->canonical_rollups) > 1)
 		{
-			TargetEntry *tle = (TargetEntry *)list_nth(tlist, pos);
-			new_tle = makeTargetEntry(copyObject(tle->expr),
-									  list_length(new_tlist) + 1,
-									  tle->resname, tle->resjunk);
+			RangeTblEntry *newrte;
+			List *subquery_tlist = NIL;
+			ListCell *lc;
+
+			/* addRangeTableEntryForSubquery requires the resnames in 
+			 * the targetlist to be not NULL.
+			 */
+			foreach (lc, root->parse->targetList)
+			{
+				TargetEntry *tle = (TargetEntry *)lfirst(lc);
+				if (tle->resname == NULL)
+				{
+					const char *fmt = "unnamed_attr_%d";
+					char buf[32]; /* big enuf for fmt */
+					sprintf(buf,fmt,tle->resno);
+					tle->resname = pstrdup(buf);
+				}
+			}
+
+			/* Since the range table for each rollup plan may be different,
+			 * we build a new range table to include all range table entries.
+			 */
+			newrte = addRangeTableEntryForSubquery(NULL, root->parse,
+												   makeAlias("rollup", NULL),
+												   TRUE);
+			final_query->rtable = lappend(final_query->rtable, newrte);
+			subquery_tlist = generate_subquery_tlist(rollup_no + 1,
+													 rollup_plan->targetlist);
+			rollup_plan = (Plan *)make_subqueryscan(subquery_tlist,
+													NIL,
+													rollup_no + 1,
+													rollup_plan);
+			mark_passthru_locus(rollup_plan, true, true);
 		}
 
 		else
 		{
-			TargetEntry *tle = (TargetEntry *)list_nth(tlist, entry_no);
-			Assert(tle->resno == entry_no+1);
-			new_tle = copyObject(tle);
+			final_query = root->parse;
 		}
-		new_tlist = lappend(new_tlist, new_tle);
+
+		rollup_plans = lappend(rollup_plans, rollup_plan);
 	}
 
-	return new_tlist;
+	if (list_length(rollup_plans) > 1)
+	{
+		/* Decide on approach, condition argument plans to suit. */
+		if ( Gp_role == GP_ROLE_DISPATCH )
+		{
+			optype = choose_setop_type(rollup_plans);
+			adjust_setop_arguments(rollup_plans, optype);
+		}
+
+		/* Generate the targetlist for Append node */
+		targetlist = generate_append_tlist(context->tlist, rollup_no + 1);
+
+		/* Append all rollup_plans together */
+		result_plan = (Plan *)make_append(rollup_plans, false, targetlist);
+		mark_append_locus(result_plan, optype); /* Mark the plan result locus. */
+
+		/* Set the final targetlist to Append's targetlist */
+		context->tlist = targetlist;
+
+		/* set the final pathkey to NIL */
+		context->current_pathkeys = NIL;
+	}
+	
+	else
+	{
+		Assert (list_length(rollup_plans) == 1);
+		result_plan = (Plan *)linitial(rollup_plans);
+	}
+
+	/* Update the original Query node */
+	root->parse = orig_query;
+	memcpy(root->parse, final_query, sizeof(Query));
+
+	return result_plan;
+}
+
+/*
+ * Construct a new pathkeys for a given rollup.
+ */
+static List *
+make_pathkeys_for_rollup(List *groupclause,
+						 List *tlist,
+						 AttrNumber *grpColIdx,
+						 CanonicalRollup *rollup)
+{
+	int pos;
+	int colno;
+	List *pathkeys = NIL;
+	List *current_pathkeys;
+	current_pathkeys = make_pathkeys_for_groupclause(groupclause, tlist);
+	
+	for (colno=0; colno<rollup->numcols; colno++)
+	{
+		/* Find the position of rollup->colIdx[colno] in grpColIdx */
+	    for (pos=0; pos<rollup->numcols; pos++)
+		{
+			if (rollup->colIdx[colno] == grpColIdx[pos])
+				break;
+		}
+
+		Assert (pos < rollup->numcols);
+		pathkeys = lappend(pathkeys, list_nth(current_pathkeys, pos));
+	}
+
+	return pathkeys;
 }

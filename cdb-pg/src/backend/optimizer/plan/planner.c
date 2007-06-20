@@ -2398,9 +2398,7 @@ make_canonical_groupingsets(List *groupClause)
 
 	/* Release spaces */
 	list_free_deep(ord_grping);
-	list_free_deep(rollups);
-	list_free_deep(cubes);
-	list_free_deep(grpingsets);
+	list_free_deep(list_grpingsets);
 	list_free(final_grpingsets);
 	
 	return canonical_grpsets;

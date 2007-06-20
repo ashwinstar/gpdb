@@ -1826,7 +1826,7 @@ show_grouping_keys(Plan        *plan,
 		num_null_cols = ((Group*)plan)->numNullCols;
 		rollup_gs_times = ((Group*)plan)->rollupGSTimes;
 		input_grouping = ((Group*)plan)->inputGrouping;
-		input_has_grouping = ((Agg*)plan)->inputHasGrouping;
+		input_has_grouping = ((Group*)plan)->inputHasGrouping;
 	}
 
     for (keyno = 0; keyno < numCols; keyno++)
