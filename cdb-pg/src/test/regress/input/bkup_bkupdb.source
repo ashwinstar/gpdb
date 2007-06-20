@@ -83,3 +83,10 @@ select version();
 \! pg_dump -Fc --gp-syntax -f @abs_builddir@/results/pgdump_datatype/regressbkuptest1_fc_gpsyntax regressbkuptest1
 
 -- end_ignore
+
+-- test pg_dumpall.  Use diff to check
+
+\! pg_dumpall -g -r | sed s/`whoami`/__USER_LOGIN__/g 
+\! pg_dumpall -D | sed s/`whoami`/__USER_LOGIN__/g 
+\! pg_dumpall --gp-syntax | sed s/`whoami`/__USER_LOGIN__/g 
+
