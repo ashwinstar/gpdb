@@ -1484,10 +1484,10 @@ describeOneTableDetails(const char *schemaname,
 							if (!result8)
 								goto error_return;
 							dist_colname = PQgetvalue(result8, 0, 0);
-							PQclear(result8);
 							if (!dist_colname)
 								goto error_return;
 							appendPQExpBuffer(&buf, ", %s", dist_colname);
+							PQclear(result8);
 							col = strchr(col,',');
 						}
 						appendPQExpBuffer(&buf, ")");
