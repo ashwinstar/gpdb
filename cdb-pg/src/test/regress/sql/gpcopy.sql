@@ -56,21 +56,21 @@ COPY copy_regression_hash4 from stdin;
 {1,2,3,4,5}	hashed on an integer array
 {10,20,30,40,50}	hashed on an integer array
 \.
-SELECT * FROM copy_regression_hash4;
+SELECT * FROM copy_regression_hash4 ORDER BY a;
 
 -- hash on 2 dim varchar array
 
 COPY copy_regression_hash5 from stdin;
 {{hashing,on},{two dimentional,text array}}
 \.
-SELECT * FROM copy_regression_hash5;
+SELECT * FROM copy_regression_hash5 ORDER BY a;
 
 -- hash on int array and varchar array
 
 COPY copy_regression_hash6 from stdin;
 {1,2,3,4,5}	{hashing,on,intarray,and,varchararray}
 \.
-SELECT * FROM copy_regression_hash6;
+SELECT * FROM copy_regression_hash6 ORDER BY a;
 
 -- hash randomly
 
@@ -152,7 +152,7 @@ COPY copy_regression_oids from stdin with oids csv;
 60000,a text data
 60001,a text data
 \.
-SELECT * FROM copy_regression_oids;
+SELECT * FROM copy_regression_oids ORDER BY oid;
 
 DROP TABLE copy_regression_oids;
 
@@ -164,12 +164,11 @@ DROP TABLE copy_regression_oids;
 
 CREATE TABLE copy_regression_out1(a text, b varchar, c int[], d bool) distributed by(a);
 
--- populating table with data for copy out tests
+-- populating table with data for copy out tests. NOTE: since we can't control the order
+-- of rows COPY OUT produces from the segdb, we must have only one row for each test table.
 
 COPY copy_regression_out1 from stdin null 'nullval';
-a copyout data line 1	b copyout data line 1	{1,1,1}	true
 a copyout data line 2	nullval	{2,2,2}	true
-a copyout data line 3	b copyout data line 3	{3,3,3}	true
 \.
 
 -- copy out default parameters text format..
@@ -284,7 +283,7 @@ and another one \
 in column a|b text data|c text data|d text data|e text data
 a single backslash \\ in col a|b text data|c text data|d text data|e text data
 \.
-SELECT * FROM copy_regression_text3;
+SELECT * FROM copy_regression_text3 ORDER BY a;
 
 DROP TABLE copy_regression_text1;
 DROP TABLE copy_regression_text2;
@@ -367,7 +366,7 @@ COPY copy_regression_csv3 from stdin with csv escape '''';
 COPY copy_regression_csv3 from stdin with csv quote '''' escape E'\\'; -- make sure E'' is accepted
 'an embedded backslash \\ here',b csv data,c csv data,d csv data,e csv data 
 \.
-SELECT * FROM copy_regression_csv3;
+SELECT * FROM copy_regression_csv3 ORDER BY a;
 
 DROP TABLE copy_regression_csv1;
 DROP TABLE copy_regression_csv2;
