@@ -1533,7 +1533,7 @@ thread_DispatchCommand(void *arg)
             /* Don't dispatch if cancellation pending or no connection. */
             dispatchResult->stillRunning = false;
             if (PQisBusy(dispatchResult->segdbDesc->conn))
-				write_stderr("Thread %u: We thought we were done, because !shouldStillDispatchCommand(), but libpq says we are still busy\n",mythread());
+				write_stderr("Thread %u: We thought we were done, because !shouldStillDispatchCommand(), but libpq says we are still busy\n", mythread());
         }
         else
         {
@@ -1652,7 +1652,6 @@ thread_DispatchCommand(void *arg)
 				/* Free the PGconn object. */
 				PQfinish(segdbDesc->conn);
 				segdbDesc->conn = NULL;
-
 				dispatchResult->stillRunning = false;	/* he's dead, Jim */
 			}
 		}						/* loop to check connection status */
@@ -1775,6 +1774,7 @@ shouldStillDispatchCommand(CdbDispatchResult * dispatchResult)
 		/* Free the PGconn object at once whenever we notice it's gone bad. */
 		PQfinish(segdbDesc->conn);
 		segdbDesc->conn = NULL;
+		dispatchResult->stillRunning = false;
 
 		return false;
 	}
@@ -1843,7 +1843,7 @@ dispatchCommandQuery(CdbDispatchResult  *dispatchResult,
 	if (PQsendGpQuery_shared(conn, (char *)query_text, query_text_len) == 0)
 	{
 		if (DEBUG3 >= log_min_messages)
-			write_stderr("Thread %u: PQsendMPPQuery_shared error %s %s \n", mythread(),segdbDesc->whoami,
+			write_stderr("Thread %u: PQsendMPPQuery_shared error %s %s \n", mythread(), segdbDesc->whoami,
 							  PQerrorMessage(conn));
 		/* Note the error. */
 		cdbdisp_appendMessage(dispatchResult, LOG,
@@ -1853,6 +1853,7 @@ dispatchCommandQuery(CdbDispatchResult  *dispatchResult,
 							  PQerrorMessage(conn));
 		PQfinish(conn);
 		segdbDesc->conn = NULL;
+		dispatchResult->stillRunning = false;
 	}
 
 	/*
@@ -1870,9 +1871,9 @@ dispatchCommandQuery(CdbDispatchResult  *dispatchResult,
  */
 static void
 dispatchCommandDtxProtocol(CdbDispatchResult  *dispatchResult,
-                const char		   *query_text,
-                int				   query_text_len,
-                DtxProtocolCommand dtxProtocolCommand)
+						   const char		   *query_text,
+						   int				   query_text_len,
+						   DtxProtocolCommand dtxProtocolCommand)
 {
 	SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
 	PGconn	   *conn = segdbDesc->conn;
@@ -1890,15 +1891,16 @@ dispatchCommandDtxProtocol(CdbDispatchResult  *dispatchResult,
 	{
 		if (DEBUG3 >= log_min_messages)
 			write_stderr("Thread %u: PQsendMPPQuery_shared error %s %s \n", mythread(),segdbDesc->whoami,
-							  PQerrorMessage(conn));
+						 PQerrorMessage(conn));
 		/* Note the error. */
 		cdbdisp_appendMessage(dispatchResult, LOG,
 							  ERRCODE_GP_INTERCONNECTION_ERROR,
-						   "Command could not be sent to segment db %s;  %s",
+							  "Command could not be sent to segment db %s;  %s",
 							  segdbDesc->whoami,
 							  PQerrorMessage(conn));
 		PQfinish(conn);
 		segdbDesc->conn = NULL;
+		dispatchResult->stillRunning = false;
 	}
 
 	/*
@@ -1954,7 +1956,7 @@ handleSelectError(DispatchCommandParms * pParms,
 		/* We're done with this QE, sadly. */
 		dispatchResult->stillRunning = false;
 		if (PQisBusy(dispatchResult->segdbDesc->conn))
-				write_stderr("Thread %u: We thought we were done, because of an error, but we are still busy\n",mythread());
+				write_stderr("Thread %u: We thought we were done, because of an error, but we are still busy\n", mythread());
 	}
 
 	/* No point in trying to cancel the other QEs with select() broken. */
@@ -2156,6 +2158,7 @@ processResults(CdbDispatchResult * dispatchResult)
 		/* Can't recover, so drop the connection. */
 		PQfinish(segdbDesc->conn);
 		segdbDesc->conn = NULL;
+		dispatchResult->stillRunning = false;
 
 		return true;			/* done; stick a fork in it */
 	}							/* handle PQconsumeInput error */
