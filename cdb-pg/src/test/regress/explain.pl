@@ -32,6 +32,7 @@ Options:
     -prune           prune tree attributes
     -output          output filename (else output to STDOUT).
     -statcolor       statistics coloring (experimental)
+    -edge            edge decorations
 
 =head1 OPTIONS
 
@@ -126,6 +127,19 @@ Options:
     by slice color.  For statcolor=st, the color scheme is reversed.  
     For statcolor=t (timing only), the entire node is colored according 
     to the time spent.
+
+=item B<-edge>
+
+    Decorate graph edges with row count if available. Valid entries are:
+
+=over 12
+
+=item long   - print average rows and number of workers
+
+=item short  - print total row counts
+
+=back
+
 
 =back
 
@@ -285,6 +299,7 @@ my $glob_timeline;
 my $glob_prune;
 my $glob_outi;
 my $glob_statcolor;
+my $glob_edge;
 
 my $GV_formats; # graphviz output formats
 
@@ -496,6 +511,7 @@ BEGIN {
     my $prune;
     my $outfile;
     my $statcol;
+    my $edgescheme; 
 
     my @qlst;
 
@@ -508,7 +524,8 @@ BEGIN {
                "timeline" => \$timeline,
                "prune:s" => \$prune,
                "output:s" => \$outfile,
-               "statcolor:s" => \$statcol)
+               "statcolor:s" => \$statcol,
+               "edge:s" => \$edgescheme)
         or pod2usage(2);
 
     
@@ -518,10 +535,13 @@ BEGIN {
     $glob_optn = $optn;
     $glob_optn = "jpg" if ($glob_optn =~ m/^jpeg/i);
 
-    $glob_timeline = $timeline;
-    $glob_prune = $prune;
-    $glob_outi  = $outfile;
+    $glob_timeline  = $timeline;
+    $glob_prune     = $prune;
+    $glob_outi      = $outfile;
     $glob_statcolor = $statcol;
+
+    $edgescheme = "long" unless ($edgescheme =~ m/short/i);
+    $glob_edge  = $edgescheme;
 
     if ($dir !~ m/^(TB|BT|LR|RL)$/i)
     {
@@ -1595,6 +1615,91 @@ sub shareinputscan_fixup
 
 }
 
+# label left and right for nest loops
+sub nestedloop_fixup
+{
+    my ($node, $ctx) = @_;
+
+    return
+        unless (exists($node->{short}) &&
+                ($node->{short} =~ m/Nested Loop/));
+
+    my @kidlist;
+
+    if (exists($node->{child}))
+    {
+        for my $kid (@{$node->{child}})
+        {
+            push @kidlist, $kid;
+        }
+    }
+
+    return 
+        unless (2 == scalar(@kidlist));
+
+    if ($kidlist[0]->{id} < $kidlist[1]->{id})
+    {
+        $kidlist[0]->{nested_loop_position} = "left";
+        $kidlist[1]->{nested_loop_position} = "right";
+    }
+    else
+    {
+        $kidlist[1]->{nested_loop_position} = "left";
+        $kidlist[0]->{nested_loop_position} = "right";
+    }
+
+}
+
+# find rows out information
+sub get_rows_out
+{
+    my ($node, $ctx, $edge) = @_;
+
+    return 
+        unless ($node->{txt} =~ m/Rows out\:/);
+
+    my $long = ($edge =~ m/long/i);
+
+    if ($node->{txt} =~ m/Rows out\:\s+Avg.*\s+rows\s+x\s+.*\s+workers/)
+    {
+        if (!$long)
+        {
+            # short result
+            my @foo = 
+                ($node->{txt} =~ 
+                 m/Rows out\:\s+Avg\s+(.*)\s+rows\s+x\s+(.*)\s+workers/);
+        
+            return unless (2 == scalar(@foo));
+
+            # avg x num workers
+            $node->{rows_out} = $foo[0] * $foo[1];
+        }
+        else
+        {
+            my @foo = 
+                ($node->{txt} =~ 
+                 m/Rows out\:\s+(Avg.*workers)/);
+        
+            return unless (1 == scalar(@foo));
+
+            # avg x num workers
+            $node->{rows_out} = $foo[0];
+
+        }
+    }
+    elsif ($node->{txt} =~ m/Rows out\:\s+.*\s+rows/)
+    {
+        my @foo = 
+            ($node->{txt} =~ 
+             m/Rows out\:\s+(.*)\s+rows/);
+        
+        return unless (1 == scalar(@foo));
+
+        $node->{rows_out} = $foo[0];
+    }
+
+}
+
 sub calc_color_rank
 {
     my $ctx = shift;
@@ -1706,6 +1811,19 @@ sub dodotfile
             undef,
             $ctx);
 
+   if (defined($glob_edge) && length($glob_edge))
+   {
+       treeMap($plantree, 
+               'nestedloop_fixup($node, $ctx); ',
+               undef,
+               $ctx);
+
+       treeMap($plantree, 
+               'get_rows_out($node, $ctx, $glob_edge); ',
+               undef,
+               $ctx);
+   }
+
     my $dotimeline = $glob_timeline;
 
     makedotfile($plantree, $time_list, $dotimeline, $plan_num, $parse_ctx,
@@ -1758,7 +1876,29 @@ sub dotkid
 
         for my $kid (@{$node->{child}})
         {
-            print '"' . $kid->{id} . '" -> "' . $node->{id} . '"' . ";\n";
+            my $edge_label = "";
+
+            print '"' . $kid->{id} . '" -> "' . $node->{id} . '"';
+
+            if (exists($kid->{nested_loop_position}))
+            {
+                $edge_label .= $kid->{nested_loop_position};
+            }
+
+            if (exists($kid->{rows_out}))
+            {
+                $edge_label .= " ";
+                $edge_label .= " "
+                    if (length($edge_label));
+                $edge_label .= $kid->{rows_out};
+            }
+
+            if (length($edge_label))
+            {
+                print ' [label="' . $edge_label . '" ] ';
+            }
+
+            print ";\n";
         }
 
         for my $kid (@{$node->{child}})
