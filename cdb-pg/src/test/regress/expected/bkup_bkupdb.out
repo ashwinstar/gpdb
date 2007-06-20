@@ -509,6 +509,9 @@ Finished gp_dump, now test pg_dump
 -- end_ignore
 -- test pg_dumpall.  Use diff to check
 \! pg_dumpall -g -r | sed s/`whoami`/__USER_LOGIN__/g 
+
+BugBug: Jira 1606.
+
 pg_dumpall: query failed: ERROR:  syntax error at or near "("
 LINE 1: ...shobj_description(oid, 'pg_authid') as rolcomment (SELECT rs...
                                                              ^
