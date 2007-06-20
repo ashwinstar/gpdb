@@ -527,7 +527,7 @@ dumpRoles(PGconn *conn)
 							  "rolcreaterole, rolcreatedb, rolcatupdate, "
 							  "rolcanlogin, rolconnlimit, rolpassword, "
 							  "rolvaliduntil, "
-							  "pg_catalog.shobj_description(oid, 'pg_authid') as rolcomment "
+							  "pg_catalog.shobj_description(oid, 'pg_authid') as rolcomment, "
 							  "(SELECT rsqname FROM pg_resqueue WHERE "
 							  "pg_resqueue.oid = rolresqueue) AS rolqueuename "
 							  "FROM pg_authid "
