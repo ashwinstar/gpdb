@@ -1,7 +1,15 @@
 package Solution;
+
+#
+# Package that encapsulates a Visual C++ solution file generation
+#
+# $PostgreSQL: pgsql/src/tools/msvc/Solution.pm,v 1.26 2007/05/27 11:16:41 meskes Exp $
+#
 use Carp;
 use strict;
 use warnings;
+
+use Genbki;
 
 sub new
 {
@@ -96,15 +104,15 @@ sub GenerateFiles
 s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY(z)\n#define PG_VERSION_STR "PostgreSQL $self->{strver} (Greenplum Database) on Windows, compiled by Visual C++ build " __STRINGIFY2(_MSC_VER)};
             print O;
         }
+        print O "#define LOCALEDIR \"/share/locale\"\n" if ($self->{options}->{nls});
         print O "/* defines added by config steps */\n";
+        print O "#ifndef IGNORE_CONFIGURED_SETTINGS\n";
         print O "#define USE_ASSERT_CHECKING 1\n" if ($self->{options}->{asserts});
         print O "#define USE_INTEGER_DATETIMES 1\n" if ($self->{options}->{integer_datetimes});
         print O "#define USE_LDAP 1\n" if ($self->{options}->{ldap});
         print O "#define HAVE_LIBZ 1\n" if ($self->{options}->{zlib});
         print O "#define USE_SSL 1\n" if ($self->{options}->{openssl});
         print O "#define ENABLE_NLS 1\n" if ($self->{options}->{nls});
-        print O "#define LOCALEDIR \"/usr/local/pgsql/share/locale\"\n"
-          if ($self->{options}->{nls});
 
         if ($self->{options}->{xml})
         {
@@ -118,6 +126,13 @@ s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY
             print O "#define HAVE_KRB5_TICKET_ENC_PART2 1\n";
             print O "#define PG_KRB_SRVNAM \"postgres\"\n";
         }
+		if (my $port = $self->{options}->{"--with-pgport"})
+		{
+			print O "#define DEF_PGPORT $port\n";
+			print O "#define DEF_PGPORT_STR \"$port\"\n";
+		}
+        print O "#define VAL_CONFIGURE \"" . $self->GetFakeConfigure() . "\"\n";
+        print O "#endif /* IGNORE_CONFIGURED_SETTINGS */\n";
         close(O);
         close(I);
     }
@@ -232,8 +247,11 @@ s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY
         print O <<EOF;
 #if (_MSC_VER > 1200)
 #define HAVE_LONG_LONG_INT_64
+#define ENABLE_THREAD_SAFETY 1
 #endif
 EOF
+	print O "#define USE_INTEGER_DATETIMES 1\n" if ($self->{options}->{integer_datetimes});
+	print O "#endif\n";
         close(O);
     }
 
@@ -268,8 +286,11 @@ EOF
         if (IsNewer('src/backend/catalog/postgres.bki', "src/include/catalog/$bki"))
         {
             print "Generating postgres.bki...\n";
-            system("perl src/tools/msvc/genbki.pl $self->{majorver} src/backend/catalog/postgres "
-                  . join(' src/include/catalog/',@allbki));
+            Genbki::genbki(
+                $self->{majorver},
+                "src/backend/catalog/postgres",
+                split(/ /,join(' src/include/catalog/',@allbki))
+            );
             last;
         }
     }
@@ -304,7 +325,7 @@ sub AddProject
     if ($self->{options}->{nls})
     {
         $proj->AddIncludeDir($self->{options}->{nls} . '\include');
-        $proj->AddLibrary($self->{options}->{nls} . '\lib\intl.lib');
+        $proj->AddLibrary($self->{options}->{nls} . '\lib\libintl.lib');
     }
     if ($self->{options}->{krb5})
     {
@@ -404,6 +425,27 @@ EOF
 EndGlobal
 EOF
     close(SLN);
+}
+
+sub GetFakeConfigure
+{
+    my $self = shift;
+
+    my $cfg = '--enable-thread-safety';
+    $cfg .= ' --enable-cassert' if ($self->{options}->{asserts});
+    $cfg .= ' --enable-integer-datetimes' if ($self->{options}->{integer_datetimes});
+    $cfg .= ' --enable-nls' if ($self->{options}->{nls});
+    $cfg .= ' --with-ldap' if ($self->{options}->{ldap});
+    $cfg .= ' --without-zlib' unless ($self->{options}->{zlib});
+    $cfg .= ' --with-openssl' if ($self->{options}->{ssl});
+    $cfg .= ' --with-libxml' if ($self->{options}->{xml});
+    $cfg .= ' --with-libxslt' if ($self->{options}->{xslt});
+    $cfg .= ' --with-krb5' if ($self->{options}->{krb5});
+    $cfg .= ' --with-tcl' if ($self->{options}->{tcl});
+    $cfg .= ' --with-perl' if ($self->{options}->{perl});
+    $cfg .= ' --with-python' if ($self->{options}->{python});
+
+    return $cfg;
 }
 
 1;

@@ -1,4 +1,9 @@
 my @def;
+#
+# Script that generates a .DEF file for all objects in a directory
+# 
+# $PostgreSQL: pgsql/src/tools/msvc/gendef.pl,v 1.6 2007/05/03 14:04:03 mha Exp $
+#
 
 die "Usage: gendef.pl <modulepath>\n" unless ($ARGV[0] =~ /\\([^\\]+$)/);
 my $defname = uc $1;
@@ -31,6 +36,7 @@ while (<$ARGV[0]/*.obj>)
         next if $pieces[6] =~ /NULL_THUNK_DATA$/;
         next if $pieces[6] =~ /^__IMPORT_DESCRIPTOR/;
         next if $pieces[6] =~ /^__NULL_IMPORT/;
+        next if $pieces[6] =~ /^\?\?_C/;
 
         push @def, $pieces[6];
     }
