@@ -48,8 +48,7 @@ extern void generate_three_tlists(List *tlist,
 								  List **p_tlist1,
 								  List **p_tlist2,
 								  List **p_tlist3,
-								  List **p_qual2,
-								  List **p_qual3);
+								  List **p_final_qual);
 extern Plan *add_second_stage_agg(PlannerInfo *root,
 								  bool is_agg,
 								  List *prelim_tlist,

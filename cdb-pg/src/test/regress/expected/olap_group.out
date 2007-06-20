@@ -2879,3 +2879,195 @@ select pn, sum(qty), group_id() from sale group by rollup(cn,pn), cube(cn,pn);
 (105 rows)
 
 --end equivalent
+-- Having clause --
+--begin equivalent
+select cn, vn, pn, count(dt) from sale group by cn, vn, pn having count(dt) <=2
+union all
+select cn, vn, null, count(dt) from sale group by cn, vn having count(dt) <=2
+union all
+select cn, null, null, count(dt) from sale group by cn having count(dt) <=2
+union all
+select null, null, null, count(dt) from sale having count(dt) <=2;    
+ cn | vn | pn  | count 
+----+----+-----+-------
+  4 | 40 | 800 |     1
+  3 | 30 | 600 |     1
+  2 | 50 | 400 |     1
+  1 | 10 | 200 |     1
+  3 | 40 | 200 |     1
+  1 | 20 | 100 |     1
+  1 | 10 |     |     1
+  1 | 20 |     |     1
+  3 | 30 |     |     2
+  1 | 30 |     |     2
+  3 | 40 |     |     1
+  1 | 50 |     |     1
+  4 | 40 | 700 |     1
+  1 | 50 | 400 |     1
+  1 | 30 | 500 |     1
+  3 | 30 | 500 |     1
+  1 | 30 | 300 |     1
+  2 | 40 | 100 |     1
+  4 | 40 |     |     2
+  2 | 40 |     |     1
+  2 | 50 |     |     1
+  4 |    |     |     2
+  2 |    |     |     2
+(23 rows)
+
+select cn, vn, pn, count(dt) from sale group by rollup (cn,vn,pn) having count(dt) <=2;
+ cn | vn | pn  | count 
+----+----+-----+-------
+  4 | 40 | 800 |     1
+  3 | 30 | 600 |     1
+  2 | 50 | 400 |     1
+  1 | 10 | 200 |     1
+  3 | 40 | 200 |     1
+  1 | 20 | 100 |     1
+  1 | 10 |     |     1
+  1 | 20 |     |     1
+  3 | 30 |     |     2
+  1 | 30 |     |     2
+  3 | 40 |     |     1
+  1 | 50 |     |     1
+  4 | 40 | 700 |     1
+  1 | 50 | 400 |     1
+  1 | 30 | 500 |     1
+  3 | 30 | 500 |     1
+  1 | 30 | 300 |     1
+  2 | 40 | 100 |     1
+  4 | 40 |     |     2
+  2 | 40 |     |     1
+  2 | 50 |     |     1
+  4 |    |     |     2
+  2 |    |     |     2
+(23 rows)
+
+--end equivalent
+--begin equivalent
+select cn, vn, pn, count(distinct dt) from sale group by cn, vn, pn having count(distinct dt) <=2
+union all
+select cn, vn, null, count(distinct dt) from sale group by cn, vn having count(distinct dt) <=2
+union all
+select cn, null, null, count(distinct dt) from sale group by cn having count(distinct dt) <=2
+union all
+select null, null, null, count(distinct dt) from sale having count(distinct dt) <=2;    
+ cn | vn | pn  | count 
+----+----+-----+-------
+  1 | 10 | 200 |     1
+  1 | 20 | 100 |     1
+  2 | 50 | 400 |     1
+  3 | 30 | 600 |     1
+  3 | 40 | 200 |     1
+  4 | 40 | 800 |     1
+  1 | 10 |     |     1
+  1 | 20 |     |     1
+  1 | 30 |     |     2
+  1 | 50 |     |     1
+  3 | 30 |     |     1
+  3 | 40 |     |     1
+  3 |    |     |     2
+  1 | 30 | 300 |     1
+  1 | 30 | 500 |     1
+  1 | 50 | 400 |     1
+  2 | 40 | 100 |     1
+  3 | 30 | 500 |     1
+  4 | 40 | 700 |     1
+  2 | 40 |     |     1
+  2 | 50 |     |     1
+  4 | 40 |     |     1
+  2 |    |     |     2
+  4 |    |     |     1
+(24 rows)
+
+select cn, vn, pn, count(distinct dt) from sale group by rollup (cn,vn,pn) having count(distinct dt) <=2;
+ cn | vn | pn  | count 
+----+----+-----+-------
+  1 | 10 | 200 |     1
+  1 | 20 | 100 |     1
+  2 | 50 | 400 |     1
+  3 | 30 | 600 |     1
+  3 | 40 | 200 |     1
+  4 | 40 | 800 |     1
+  1 | 10 |     |     1
+  1 | 20 |     |     1
+  1 | 30 |     |     2
+  1 | 50 |     |     1
+  3 | 30 |     |     1
+  3 | 40 |     |     1
+  3 |    |     |     2
+  1 | 30 | 300 |     1
+  1 | 30 | 500 |     1
+  1 | 50 | 400 |     1
+  2 | 40 | 100 |     1
+  3 | 30 | 500 |     1
+  4 | 40 | 700 |     1
+  2 | 40 |     |     1
+  2 | 50 |     |     1
+  4 | 40 |     |     1
+  2 |    |     |     2
+  4 |    |     |     1
+(24 rows)
+
+--end equivalent
+--begin equivalent
+select cn,dt,count(vn),0 as grouping from sale group by cn,dt having count(vn) > 2
+union all select cn,null,count(vn),1 as grouping from sale group by cn having count(vn) > 2
+union all (select null,null,count(vn),3 as grouping from sale  having count(vn) > 2 limit 1)
+union all select null,dt,count(vn),2 as grouping from sale group by dt having count(vn) > 2;
+ cn |     dt     | count | grouping 
+----+------------+-------+----------
+  3 |            |     3 |        1
+  1 |            |     5 |        1
+    |            |    12 |        3
+    | 06-01-1401 |     7 |        2
+(4 rows)
+
+select cn,dt,count(vn),grouping(cn,dt) from sale group by cube(cn,dt) having count(vn) > 2;
+ cn |     dt     | count | grouping 
+----+------------+-------+----------
+  3 |            |     3 |        1
+  1 |            |     5 |        1
+    |            |    12 |        3
+    | 06-01-1401 |     7 |        2
+(4 rows)
+
+select cn,dt,count(vn),grouping(cn,dt) from sale group by cube(dt,cn) having count(vn) > 2;
+ cn |     dt     | count | grouping 
+----+------------+-------+----------
+  3 |            |     3 |        1
+  1 |            |     5 |        1
+    |            |    12 |        3
+    | 06-01-1401 |     7 |        2
+(4 rows)
+
+--end equivalent
+--begin equivalent
+select cn,dt,count(distinct vn),0 as grouping from sale group by cn,dt having count(distinct vn) > 2
+union all select cn,null,count(distinct vn),1 as grouping from sale group by cn having count(distinct vn) > 2
+union all (select null,null,count(distinct vn),3 as grouping from sale  having count(distinct vn) > 2 limit 1)
+union all select null,dt,count(distinct vn),2 as grouping from sale group by dt having count(distinct vn) > 2;
+ cn |     dt     | count | grouping 
+----+------------+-------+----------
+  1 |            |     4 |        1
+    | 06-01-1401 |     3 |        2
+    |            |     5 |        3
+(3 rows)
+
+select cn,dt,count(distinct vn),grouping(cn,dt) from sale group by cube(cn,dt) having count(distinct vn) > 2;
+ cn |     dt     | count | grouping 
+----+------------+-------+----------
+  1 |            |     4 |        1
+    | 06-01-1401 |     3 |        2
+    |            |     5 |        3
+(3 rows)
+
+select cn,dt,count(distinct vn),grouping(cn,dt) from sale group by cube(dt,cn) having count(distinct vn) > 2;
+ cn |     dt     | count | grouping 
+----+------------+-------+----------
+  1 |            |     4 |        1
+    | 06-01-1401 |     3 |        2
+    |            |     5 |        3
+(3 rows)
+
+--end equivalent

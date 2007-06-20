@@ -310,3 +310,45 @@ union all select pn, sum(qty), 0 from sale group by pn
 union all select null, sum(qty), 0 from sale;
 select pn, sum(qty), group_id() from sale group by rollup(cn,pn), cube(cn,pn);
 --end equivalent
+
+-- Having clause --
+
+--begin equivalent
+select cn, vn, pn, count(dt) from sale group by cn, vn, pn having count(dt) <=2
+union all
+select cn, vn, null, count(dt) from sale group by cn, vn having count(dt) <=2
+union all
+select cn, null, null, count(dt) from sale group by cn having count(dt) <=2
+union all
+select null, null, null, count(dt) from sale having count(dt) <=2;    
+select cn, vn, pn, count(dt) from sale group by rollup (cn,vn,pn) having count(dt) <=2;
+--end equivalent
+
+--begin equivalent
+select cn, vn, pn, count(distinct dt) from sale group by cn, vn, pn having count(distinct dt) <=2
+union all
+select cn, vn, null, count(distinct dt) from sale group by cn, vn having count(distinct dt) <=2
+union all
+select cn, null, null, count(distinct dt) from sale group by cn having count(distinct dt) <=2
+union all
+select null, null, null, count(distinct dt) from sale having count(distinct dt) <=2;    
+select cn, vn, pn, count(distinct dt) from sale group by rollup (cn,vn,pn) having count(distinct dt) <=2;
+--end equivalent
+
+--begin equivalent
+select cn,dt,count(vn),0 as grouping from sale group by cn,dt having count(vn) > 2
+union all select cn,null,count(vn),1 as grouping from sale group by cn having count(vn) > 2
+union all (select null,null,count(vn),3 as grouping from sale  having count(vn) > 2 limit 1)
+union all select null,dt,count(vn),2 as grouping from sale group by dt having count(vn) > 2;
+select cn,dt,count(vn),grouping(cn,dt) from sale group by cube(cn,dt) having count(vn) > 2;
+select cn,dt,count(vn),grouping(cn,dt) from sale group by cube(dt,cn) having count(vn) > 2;
+--end equivalent
+
+--begin equivalent
+select cn,dt,count(distinct vn),0 as grouping from sale group by cn,dt having count(distinct vn) > 2
+union all select cn,null,count(distinct vn),1 as grouping from sale group by cn having count(distinct vn) > 2
+union all (select null,null,count(distinct vn),3 as grouping from sale  having count(distinct vn) > 2 limit 1)
+union all select null,dt,count(distinct vn),2 as grouping from sale group by dt having count(distinct vn) > 2;
+select cn,dt,count(distinct vn),grouping(cn,dt) from sale group by cube(cn,dt) having count(distinct vn) > 2;
+select cn,dt,count(distinct vn),grouping(cn,dt) from sale group by cube(dt,cn) having count(distinct vn) > 2;
+--end equivalent

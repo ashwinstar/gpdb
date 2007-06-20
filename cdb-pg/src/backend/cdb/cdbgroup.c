@@ -1295,8 +1295,7 @@ void generate_three_tlists(List *tlist,
 						   List **p_tlist1,
 						   List **p_tlist2,
 						   List **p_tlist3,
-						   List **p_qual2,
-						   List **p_qual3)
+						   List **p_final_qual)
 {
 	ListCell *lc;
 	int resno = 1;
@@ -1314,9 +1313,7 @@ void generate_three_tlists(List *tlist,
 							  groupColIdx,
 							  p_tlist1,
 							  p_tlist3,
-							  p_qual3);
-
-	*p_qual2 = *p_qual3;
+							  p_final_qual);
 
 	/*
 	 * Read target entries in '*p_tlist1' one by one, and construct
@@ -1551,7 +1548,7 @@ Node* deconstruct_expr_mutator(Node *node, two_stage_agg_context *ctx)
  * Function: split_aggref
  *
  * Find or add a partial-stage Aggref expression for the argument in the
- * preliminary target list under construction.  Return the final-starge
+ * preliminary target list under construction.  Return the final-stage
  * Aggref with a single Var node argument referring to the partial-stage
  * Aggref.
  *

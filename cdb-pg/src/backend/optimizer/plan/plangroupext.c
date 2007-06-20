@@ -321,7 +321,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 						  context->sub_tlist, (Node *)context->qual,
 						  context->numGroupCols,
 						  context->grpColIdx,
-						  &tlist1, &tlist2, &tlist3, &qual2, &qual3);
+						  &tlist1, &tlist2, &tlist3, &qual3);
 
 	/* Even though we use context->grpColIdx to generate
 	 * these tlists, but the order of grouping columns are defined
@@ -392,7 +392,6 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 		{
 			AggStrategy aggstrategy;
 			groupColIdx = context->grpColIdx;
-			current_qual = context->qual;
 
 			/* Add sort node if needed, and set AggStrategy */
 			if (root->parse->groupClause)
@@ -437,13 +436,16 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 
 			if (context->twostage && group_no == last_group_no)
 			{
+				current_qual = context->qual;
 				context->tlist = add_grouping_groupid(context->tlist);
 				current_tlist = context->tlist;
 				prelimGroupColIdx[context->numGroupCols-1] = list_length(current_tlist) - 1;
 			}
 			else
+			{
+				current_qual = NIL;
 				current_tlist = tlist1;
-
+			}
 
 			/* Add an Agg node */
 			agg_node = add_first_agg(root, context,
