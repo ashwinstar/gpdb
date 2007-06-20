@@ -198,6 +198,13 @@ FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *username, char *
 			break;
 		}
 
+		if (strstr(errorMsg, "too many clients already") != NULL)
+		{
+			/* don't consider this a failure, essentially we want to force a retry here */
+			ret = true;
+			break;
+		}
+
 		if (strstr(errorMsg, "the database system is starting up") != NULL)
 		{
 			/* don't consider this a failure, essentially we want to force a retry here */
