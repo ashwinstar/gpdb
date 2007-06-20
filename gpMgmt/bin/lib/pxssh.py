@@ -32,10 +32,10 @@ class pxssh (spawn):
         # we eliminate the problem. To make the set command different we add a
         # backslash in front of $. The $ doesn't need to be escaped, but it doesn't
         # hurt and serves to make the set command different than the regex.
-        self.PROMPT = "\[PEXPECT\][\$\#] " # used to match the command-line prompt.
+        self.PROMPT = "\[PEXPECT\]: " # used to match the command-line prompt.
         # used to set shell command-line prompt to something more unique.
-        self.PROMPT_SET_SH = "PS1='[PEXPECT]\$ '"
-        self.PROMPT_SET_CSH = "set prompt='[PEXPECT]\$ '"
+        self.PROMPT_SET_SH = "PS1='[PEXPECT]: '"
+        self.PROMPT_SET_CSH = "set prompt='[PEXPECT]: '"
 
     ### cktan: spawn login process, but don't wait on it
     def loginAsync (self,server,username,login_timeout=10, port=22):
@@ -119,9 +119,13 @@ class pxssh (spawn):
             self.prompt = optional_prompt
         self.sendline (self.PROMPT_SET_SH) # sh-style
         i = self.expect ([TIMEOUT, self.PROMPT], timeout=10)
+        if i == 1:
+            i = self.expect ([TIMEOUT, self.PROMPT], timeout=10)
         if i == 0: # csh-style
             self.sendline (self.PROMPT_SET_CSH)
             i = self.expect ([TIMEOUT, self.PROMPT], timeout=10)
+            if i == 1:
+                i = self.expect ([TIMEOUT, self.PROMPT], timeout=10)
             if i == 0:
                 return 0
         return 1
