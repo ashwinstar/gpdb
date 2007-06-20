@@ -249,12 +249,12 @@ PROCESS_SHUTDOWN () {
 		else
 			BATCH_LIMIT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $GP_PG_VIEW where valid ='t' and content<>-1;"`
 		fi
-		if [ $MODE == "smart" ]; then
 #		count connected processes, but don't count ourself.
 		CONNECTED=` env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c "select count(*) from pg_stat_activity where procpid != pg_backend_pid();"`
+		if [ $MODE == "smart" ]; then
 		if [ $CONNECTED -gt 0 ];then
 			LOG_MSG "[WARN]:-There are other connections to this instance, shutdown mode smart aborted" 1
-			LOG_MSG "[WARN]:-Either remove connections, or use gpstop -f or -i." 1
+			LOG_MSG "[WARN]:-Either remove connections, or use gpstop -f or -i options" 1
 			LOG_MSG "[WARN]:-See gpstop -? for all options" 1
 			ERROR_EXIT "[FATAL]:-Shutdown options will not close instance database" 2
 		else
@@ -265,9 +265,32 @@ PROCESS_SHUTDOWN () {
 		if [ x"" != x"$STOP_SYNC" ];then
 			STOP_STANDBY_SERVER
 		fi
-		LOG_MSG "[INFO]:-Stopping Master $QD_NAME directory $MASTER_DATA_DIRECTORY"
-		$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE -l ${MASTER_DATA_DIRECTORY}.log >/dev/null 2>&1
-		ERROR_CHK $? "shutdown Master instance on $QD_NAME" 2
+		LOG_MSG "[INFO]:-Commencing Master instance shutdown with mode=$MODE" 1
+		LOG_MSG "[INFO]:-Master host=$QD_NAME" 1
+		LOG_MSG "[INFO]:-Master segment instance directory=$MASTER_DATA_DIRECTORY" 1
+		case $MODE in 
+			smart )
+				$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE -l ${MASTER_DATA_DIRECTORY}.log >/dev/null 2>&1
+				ERROR_CHK $? "shutdown Master instance on $QD_NAME" 2 ;;
+			fast )
+				if [ $CONNECTED -gt 0 ];then
+					LOG_MSG "[INFO]:-Detected $CONNECTED connection(s) to database" 1
+					LOG_MSG "[INFO]:-Switching to WAIT mode" 1
+					LOG_MSG "[INFO]:-Will wait for shutdown to complete, this may take some time if there are" 1
+					LOG_MSG "[INFO]:-a large number of active complex transactions, please wait..." 1	
+					$PG_CTL -W stop -D $MASTER_DATA_DIRECTORY -m $MODE -l ${MASTER_DATA_DIRECTORY}.log >/dev/null 2>&1
+					wait
+					ERROR_CHK $? "shutdown Master instance on $QD_NAME" 2 
+				else
+					LOG_MSG "[INFO]:-Detected $CONNECTED connection(s) to database" 1
+					LOG_MSG "[INFO]:-Using standard WAIT mode of 60 seconds" 1
+					$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE -l ${MASTER_DATA_DIRECTORY}.log >/dev/null 2>&1
+					ERROR_CHK $? "shutdown Master instance on $QD_NAME" 2 
+				fi ;;
+			immediate )
+				$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE -l ${MASTER_DATA_DIRECTORY}.log >/dev/null 2>&1
+				ERROR_CHK $? "shutdown Master instance on $QD_NAME" 2 ;;
+		esac
 		PARALLEL_SETUP  $PARALLEL_STATUS_FILE
 		for QNODE in "${QE_ARRAY[@]}"
 				do
