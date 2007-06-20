@@ -1,6 +1,18 @@
 This directory contains the tools required to build PostgreSQL using
-Microsoft Visual Studio 2005.
+Microsoft Visual Studio 2005. This builds the whole backend, not just
+the libpq frontend library. For more information, see the documentation
+chapter "Installation on Windows".
 
+
+Notes about code indention
+--------------------------
+If the perl code is modified, use perltidy on it since pgindent won't
+touch perl code. Use the following commandline:
+perltidy -b -bl -nsfs -naws -l=100 -ole=unix *.pl *.pm
+
+
+Build Notes
+-----------
 
 Note that PostgreSQL builds natively with Visual C++. You must therefore
 make sure that you do *NOT* have any tools from Cygwin or Mingw present
@@ -15,7 +27,7 @@ by all scripts before anything is done, so the environment can be set up.
 (for example, include SET PATH=%PATH%;c:\some\where\bison\bin)
 
 Then, to build all of PostgreSQL in debug configuration, run the command
-	build
+	build DEBUG
 from a Visual Studio Command Prompt (to get all environment
 variables set correctly).
 
@@ -33,7 +45,7 @@ Dependencies
 
 The following packages are needed for the different config options:
 
-pthreads - always required
+pthreads - always required by Greenplum DB
 Download from ftp://sources.redhat.com/pub/pthreads-win32
 
 perl - always required
@@ -41,7 +53,7 @@ Get ActiveState Perl from www.activestate.com
 
 flex & bison - required to build from CVS (as opposed to a release tarball)
 Download from http://gnuwin32.sourceforge.net.  Note that bison version 2.0
-will not work.  Use either version 1.875, or version 2.1 or newer.
+will not work.  Use either version 1.875, or version 2.2 or newer.
 For flex, use version 2.5.4.
 
 python - required for pl/python
@@ -57,9 +69,11 @@ from source from www.openssl.org.
 Kerberos - required for Kerberos support
 Get from http://web.mit.edu/Kerberos/dist/index.html
 
-zlib - required for compression support in pg_dump/pg_restore
+zlib - required for Greenplum Database
 Get from http://www.zlib.net
 
 libxml2 and libxslt - required for XML support
 Get from http://www.zlatkovic.com/pub/libxml or build from source from
 http://xmlsoft.org. Note that libxml2 requires iconv.
+
+curl - required by Greenplum Database
