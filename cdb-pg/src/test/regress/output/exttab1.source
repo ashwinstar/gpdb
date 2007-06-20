@@ -1,6 +1,18 @@
 --
 -- external tables 1
 --
+-- unzip the data files for whois, lineitem
+CREATE EXTERNAL TABLE gpfdist_init (x text)
+execute E'((cd @abs_srcdir@/data; @gpwhich_gunzip@ -c whois.csv.gz > whois.csv ; @gpwhich_gunzip@ -c lineitem.tbl.gz > lineitem.tbl); echo "gunzip...") '
+on SEGMENT 0
+FORMAT 'text' (delimiter '|');
+select * from gpfdist_init;
+     x     
+-----------
+ gunzip...
+(1 row)
+
+drop external table gpfdist_init;
 CREATE EXTERNAL TABLE EXT_NATION  ( N_NATIONKEY  INTEGER ,
                             N_NAME       CHAR(25) ,
                             N_REGIONKEY  INTEGER ,
@@ -1614,7 +1626,7 @@ NOTICE:  HEADER means that each one of the data files has a header row. Also, if
 -- ignore quoting (use g vs double quote)
 --
 select count(*) from bad_whois;
-ERROR:  missing data for column "subdomain"  (seg0 slice1 localhost:11002 pid=7294)
+ERROR:  missing data for column "subdomain"  (seg0 slice1 @hostname@:11002 pid=21328)
 DETAIL:  
 	 External table bad_whois, line 3 of gpfdist://@hostname@:8080/whois.csv: "is provided by WEBCC for information purposes, and to assist in obtaining 
 information about or rela..."
@@ -1715,7 +1727,7 @@ location ('gpfdist://@hostname@:8080/whois.csv' )
 format 'csv' ( quote as '"');
 -- "
 select count(rec_path) from bad2_whois;
-ERROR:  extra data after last expected column  (seg0 slice1 localhost:11002 pid=7340)
+ERROR:  extra data after last expected column  (seg0 slice1 @hostname@:11002 pid=21328)
 DETAIL:  External table bad2_whois, line 58 of gpfdist://@hostname@:8080/whois.csv: "2,00111.net,net,net,,,,,,,,2006-06-16 19:33:12.11421,2006-02-17,2006-02-18 01:19:53,2007-02-17,3,,,n..."
 drop external table bad2_whois;
 --
@@ -1730,7 +1742,7 @@ reverse_dns			varchar(512)
 location ('gpfdist://@hostname@:8080/whois.csv' )
 format 'text' (delimiter '|');
 select count(*) from bad3_whois;
-ERROR:  extra data after last expected column  (seg0 slice1 localhost:11002 pid=7340)
+ERROR:  extra data after last expected column  (seg1 slice1 @hostname@:11003 pid=21388)
 DETAIL:  External table bad3_whois, line 1 of gpfdist://@hostname@:8080/whois.csv: "2,00111.net,net,net,,,,,,,,2006-06-16 19:33:12.11421,2006-02-17,2006-02-18 01:19:53,2007-02-17,3,,,n..."
 drop external table bad3_whois;
 select * from gpfdist_stop;
@@ -1746,7 +1758,7 @@ create external table badt1 (x text)
 location ('file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl' )
 format 'text' (delimiter '|');
 select * from badt1;
-ERROR:  could not open "file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl" for reading: No such file or directory  (seg0 slice1 localhost:11002 pid=7340)
+ERROR:  could not open "file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl" for reading: No such file or directory  (seg0 slice1 @hostname@:11002 pid=21387)
 drop external table badt1;
 --
 -- try a bad protocol
@@ -1759,7 +1771,7 @@ ERROR:  invalid URI 'bad_protocol://@hostname@@abs_srcdir@/data/no/such/place/ba
 -- get an error for missing gpfdist
 --
 select count(*) from ext_whois;
-ERROR:  connection failed while gpfdist://@hostname@:8080/whois.csv (url.i:163)  (seg0 slice1 localhost:11002 pid=7340)
+ERROR:  connection failed while gpfdist://@hostname@:8080/whois.csv (url.i:164)  (seg1 slice1 @hostname@:11003 pid=21388)
 drop external table ext_whois;
 drop table cpy_whois;
 drop table v_w;

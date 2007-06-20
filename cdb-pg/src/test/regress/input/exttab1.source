@@ -2,6 +2,17 @@
 -- external tables 1
 --
 
+-- unzip the data files for whois, lineitem
+CREATE EXTERNAL TABLE gpfdist_init (x text)
+execute E'((cd @abs_srcdir@/data; @gpwhich_gunzip@ -c whois.csv.gz > whois.csv ; @gpwhich_gunzip@ -c lineitem.tbl.gz > lineitem.tbl); echo "gunzip...") '
+on SEGMENT 0
+FORMAT 'text' (delimiter '|');
+
+select * from gpfdist_init;
+
+drop external table gpfdist_init;
+
+
 CREATE EXTERNAL TABLE EXT_NATION  ( N_NATIONKEY  INTEGER ,
                             N_NAME       CHAR(25) ,
                             N_REGIONKEY  INTEGER ,

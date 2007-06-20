@@ -6,3 +6,4 @@
 -- ps_pidfirst    #is_transformed_to# @ps_pidfirst@
 -- gpwhich_gpfdist #is_transformed_to# @gpwhich_gpfdist@
 -- gpwhich_curl    #is_transformed_to# @gpwhich_curl@
+-- gpwhich_gunzip  #is_transformed_to# @gpwhich_gunzip@
