@@ -25,7 +25,7 @@ information:
 
 * The primary disk space usage for a specified table. Note that for 
   partitioned parent tables, you must use the -h option to inquire about 
-  child tables.
+  child tables. Only one level of inheritance is shown.
 
 * The primary disk space usage for a specified table index.
 
@@ -70,8 +70,9 @@ space usage is shown for active segments only by default.
 -h (show child table hierarchy)
 
 Optional. If the table supplied with the -t option has child tables associated 
-with it, this option will show information for the inherited child tables as 
-well.
+with it, this option will show information for inherited child tables as 
+well. For a nested partitioning design, only the first level of the hierarchy 
+is shown.
 
 
 -i (show index size)
