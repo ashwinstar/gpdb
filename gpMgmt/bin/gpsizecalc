@@ -118,10 +118,8 @@ GET_DB_OID_DATA () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-GET_TABLE_OID_DATA () {
+GET_TABLE_RELN_DATA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	if [ x"" != x"$SCHEMA_NAME" ]; then
-		#Schema name has been supplied
 		#Get schema oid
 		SCHEMA_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_namespace where nspname='${SCHEMA_NAME}';"`
 		ERROR_CHK $? "obtain schema oid value" 2
@@ -129,29 +127,19 @@ GET_TABLE_OID_DATA () {
 			ERROR_EXIT "[FATAL]:-Schema $SCHEMA_NAME does not exist";fi
 		#Get table oid
 		TABLE_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_class where relname='$TABLE_NAME' and relnamespace=${SCHEMA_OID};"`
-		ERROR_CHK $? "obtain table oid value" 2
-		if [ x"" == x"$TABLE_OID" ];then
-			ERROR_EXIT "[FATAL]:Table OID is NULL" 2
+		TABLE_RELN=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select relfilenode from pg_class where relname='$TABLE_NAME' and relnamespace=${SCHEMA_OID};"`
+		ERROR_CHK $? "obtain table relfilenode value" 2
+		if [ x"" == x"$TABLE_RELN" ];then
+			ERROR_EXIT "[FATAL]:Table relfilenode is NULL" 2
 		fi
-	else
-		#No schema name supplied, make sure no duplicate tables
-		TABLE_NAME_COUNT=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from pg_class where relname='${TABLE_NAME}';"`
-		case $TABLE_NAME_COUNT in
-			0) ERROR_EXIT "[FATAL]:-Could not locate $TABLE_NAME in pg_class" 2 ;;
-			1) ;;
-			*) ERROR_EXIT "[FATAL]:-Duplicates found for $TABLE_NAME in pg_class, use -n <schema name> option" 2 ;;
-		esac
-		TABLE_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_class where relname='${TABLE_NAME}';"`
-		ERROR_CHK $? "obtain access to pg_class table in $QD_DBNAME" 2	
-	fi
-	LOG_MSG "[INFO]:-Obtained OID value $TABLE_OID"
+	LOG_MSG "[INFO]:-Obtained relfilenode value $TABLE_RELN"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 GET_OID_DATA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	GET_DB_OID_DATA
-	GET_TABLE_OID_DATA
+	GET_TABLE_RELN_DATA
 	if [ $SIZE_TYPE -eq 1 ]; then
 		INDEX_OID=(`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select indexrelid from pg_index where indrelid=${TABLE_OID};"`)
 		INDEX_COUNT=${#INDEX_OID[@]}
@@ -164,6 +152,13 @@ GET_OID_DATA () {
 				SKIP_INDEX=1
 			fi
 		else
+			#Get additional index data
+			for IDX_OID in ${INDEX_OID[@]}
+			do
+				IDX_NAME=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select relname from pg_class where oid=${IDX_OID}"`
+				IDX_SIZE=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select * from pg_relation_size ('${IDX_NAME}');"`
+				IDX_DATA="$IDX_DATA ${IDX_NAME}:${IDX_SIZE}"
+			done	
 			SKIP_INDEX=0
 		fi
 	fi
@@ -172,13 +167,15 @@ GET_OID_DATA () {
 
 SEND_TABLE_SIZE_REQUEST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	PG_REL_SIZEB=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select * from pg_relation_size ('${SCHEMA_NAME}.${TABLE_NAME}');"`
 	BATCH_LIMIT=${#QE_ARRAY[@]}
 	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
 	for I in "${QE_ARRAY[@]}"
 	do
 		SET_VAR
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$GPSEGSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE $TABLE_OID ${DB_OID} 1 $TMPFILE &
+		#$GPSEGSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE $TABLE_RELN ${DB_OID} 1 $TMPFILE &
+		$GPSEGSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE ${SCHEMA_NAME}.$TABLE_NAME ${QD_DBNAME} 1 $TMPFILE $QD_DBNAME &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -198,7 +195,7 @@ SEND_INDEX_SIZE_REQUEST () {
 	do
 		SET_VAR
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$GPSEGSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE $TABLE_OID ${DB_OID} 1 $TMPFILE $QD_DBNAME &
+		$GPSEGSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE ${SCHEMA_NAME}.$TABLE_NAME ${QD_DBNAME} 2 $TMPFILE $QD_DBNAME &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -280,33 +277,41 @@ DISPLAY_SIZE () {
 		g ) TXT_SCALE=GBytes ;;
 		t ) TXT_SCALE=TBytes ;;
 	esac
-			   LOG_MSG "[INFO]:-Size calculation type = $TYPE_TEXT" 1
+			   LOG_MSG "[INFO]:-Size calculation type      = $TYPE_TEXT" 1
 	if [ $VERBOSE ];then
-			   LOG_MSG "[INFO]:-Database name         = $QD_DBNAME" 1
+			   LOG_MSG "[INFO]:-Database name              = $QD_DBNAME" 1
 			   if [ x"" == x"$SIZE_DB" ];then
-			   LOG_MSG "[INFO]:-Schema name           = $SCHEMA_NAME" 1
-			   LOG_MSG "[INFO]:-Table name            = $TABLE_NAME" 1
+			   LOG_MSG "[INFO]:-Schema name                = $SCHEMA_NAME" 1
+			   LOG_MSG "[INFO]:-Table name                 = $TABLE_NAME" 1
 			   fi
 		case $SIZE_TYPE in 
 			0) if [ $PARTITIONED = 't' ];then
-			   LOG_MSG "[INFO]:-Table type            = Partitioned and $TAB_TYPE_TXT" 1
+			   LOG_MSG "[INFO]:-Table type                 = Partitioned and $TAB_TYPE_TXT" 1
 			   else
-		           LOG_MSG "[INFO]:-Table type            = Un-Partitioned and $TAB_TYPE_TXT" 1
+		           LOG_MSG "[INFO]:-Table type                 = Un-Partitioned and $TAB_TYPE_TXT" 1
 			   fi 
-			   LOG_MSG "[INFO]:-Size type             = Table" 1 ;;
+			   LOG_MSG "[INFO]:-Size type                  = Table" 1 
+			   LOG_MSG "[INFO]:-Size from pg_relation_size = $PG_REL_SIZEB Bytes" 1 ;;
 			1) if [ $PARTITIONED = 't' ];then
-			   LOG_MSG "[INFO]:-Table type            = Partitioned and $TAB_TYPE_TXT" 1
+			   LOG_MSG "[INFO]:-Table type                 = Partitioned and $TAB_TYPE_TXT" 1
 			   else
-			   LOG_MSG "[INFO]:-Table type            = Un-Partitioned and $TAB_TYPE_TXT" 1
+			   LOG_MSG "[INFO]:-Table type                 = Un-Partitioned and $TAB_TYPE_TXT" 1
 			   fi 
-			   LOG_MSG "[INFO]:-Size type             = Index" 1 ;;
-			2) LOG_MSG "[INFO]:-Size type             = Database" 1;;
+			   LOG_MSG "[INFO]:-Size type                  = Index" 1
+			   for IDX_LINE in $IDX_DATA
+			   do
+				IDX_NAME=`$ECHO $IDX_LINE|$AWK -F":" '{print $1}'`
+				IDX_BYTES=`$ECHO $IDX_LINE|$AWK -F":" '{print $2}'`
+				LOG_MSG "[INFO]:-Index name                 = $IDX_NAME" 1 
+			   	LOG_MSG "[INFO]:-Size from pg_relation_size = $IDX_BYTES Bytes" 1
+			   done ;;	
+			2) LOG_MSG "[INFO]:-Size type                  = Database" 1;;
 		esac
 			   if [ $REPORT_FAIL -ne 0 ];then
-		 	   LOG_MSG "[INFO]:-Space used in total   = $TOTAL_SIZE ${TXT_SCALE} $WARN_MARK" 1
+		 	   LOG_MSG "[INFO]:-Space used in total        = $TOTAL_SIZE ${TXT_SCALE} $WARN_MARK" 1
 			   LOG_MSG "[WARN]:-Partial value due to failures" 1
 			   else
-			   LOG_MSG "[INFO]:-Space used in total   = $TOTAL_SIZE ${TXT_SCALE}" 1
+			   LOG_MSG "[INFO]:-Space used in total (Disk) = $TOTAL_SIZE ${TXT_SCALE}" 1
 			   fi
 	else
 		$ECHO $TOTAL_SIZE
@@ -358,7 +363,8 @@ if [ $SCALE != "k" ];then
 fi
 if [ x"" == x"$TABLE_NAME" ] && [ x"" == x"$SIZE_DB" ];then
 	ERROR_EXIT "[FATAL]:-Must supply a table name via -t option, or use -x <database name> option" 2
-else
+fi
+if [ x"" != x"$TABLE_NAME" ];then
 	CHK_SCHEMA_PREFIX
 fi
 if [ x"" != x"$LOG_DIR" ];then
