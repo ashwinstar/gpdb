@@ -21,7 +21,7 @@ SUBDIROBJS := $(SUBDIRS:%=%/SUBSYS.o)
 OBJS = cdbanalyze.o \
 	   cdbbackup.o \
 	   cdbcat.o cdbconn.o cdbcopy.o \
-	   cdbdisp.o cdbdispatchresult.o cdbdistributedxidmap.o cdbdistributedxacts.o cdbmaxdistributedxid.o \
+	   cdbdisp.o cdbdispatchresult.o cdbdistributedxidmap.o cdbdistributedxacts.o cdbmaxdistributedxid.o cdbdistributedxid.o \
 	   cdbexplain.o \
 	   cdbfts.o \
 	   cdbgang.o cdbgroup.o \

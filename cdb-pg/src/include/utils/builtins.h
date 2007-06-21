@@ -383,7 +383,8 @@ extern Datum float84ge(PG_FUNCTION_ARGS);
 extern Datum float8_amalg(PG_FUNCTION_ARGS); /* MPP */
 extern Datum float8_regr_amalg(PG_FUNCTION_ARGS); /* MPP */
 extern Datum pg_highest_oid(PG_FUNCTION_ARGS); /* MPP */
-extern Datum gp_max_distributed_xid__(PG_FUNCTION_ARGS); /* MPP */
+extern Datum gp_max_distributed_xid(PG_FUNCTION_ARGS); /* MPP */
+extern Datum gp_distributed_xid(PG_FUNCTION_ARGS); /* MPP */
 
 /* dbsize.c */
 extern Datum pg_tablespace_size_oid(PG_FUNCTION_ARGS);
