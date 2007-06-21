@@ -53,13 +53,24 @@ sub mkvcbuild
     $libpgport->AddDefine('FRONTEND');
     $libpgport->AddFiles('src\port',@pgportfiles);
 
+    $libpq = $solution->AddProject('libpq','dll','interfaces','src\interfaces\libpq');
+    $libpq->AddDefine('FRONTEND');
+    $libpq->AddIncludeDir('src\port');
+    $libpq->AddLibrary('wsock32.lib ws2_32.lib');
+    $libpq->AddLibrary('wldap32.lib') if ($solution->{options}->{ldap});
+    $libpq->AddLibrary($config->{'pthread'} . '\pthreadVC2.lib');
+    $libpq->UseDef('src\interfaces\libpq\libpqdll.def');
+    $libpq->ReplaceFile('src\interfaces\libpq\libpqrc.c','src\interfaces\libpq\libpq.rc');
+    $libpq->AddReference($libpgport);
+
+
     $postgres = $solution->AddProject('postgres','exe','','src\backend');
     $postgres->AddIncludeDir('src\backend');
     $postgres->AddDir('src\backend\port\win32');
     $postgres->AddFile('src\backend\utils\fmgrtab.c');
     $postgres->ReplaceFile('src\backend\port\dynloader.c','src\backend\port\dynloader\win32.c');
     $postgres->ReplaceFile('src\backend\port\pg_sema.c','src\backend\port\win32_sema.c');
-    $postgres->ReplaceFile('src\backend\port\pg_shmem.c','src\backend\port\win32_shmem.c');
+    $postgres->ReplaceFile('src\backend\port\pg_shmem.c','src\backend\port\shmem.c');
     $postgres->AddFiles('src\port',@pgportfiles);
     $postgres->AddDir('src\timezone');
     $postgres->AddFiles('src\backend\parser','scan.l','gram.y');
@@ -67,7 +78,8 @@ sub mkvcbuild
     $postgres->AddFiles('src\backend\utils\misc','guc-file.l');
     $postgres->AddIncludeDir('src\interfaces\libpq');
     $postgres->AddIncludeDir('src\port');
-    $postgres->AddReference($libpq,$libpgport);
+    $postgres->AddReference($libpgport);
+    $postgres->AddReference($libpq);
     $postgres->AddDefine('BUILDING_DLL');
     $postgres->AddLibrary('wsock32.lib ws2_32.lib');
     $postgres->AddLibrary('wldap32.lib') if ($solution->{options}->{ldap});
@@ -122,16 +134,7 @@ sub mkvcbuild
         $pltcl->AddLibrary($solution->{options}->{tcl} . '\lib\tcl84.lib');
     }
 
-    $libpq = $solution->AddProject('libpq','dll','interfaces','src\interfaces\libpq');
-    $libpq->AddDefine('FRONTEND');
-    $libpq->AddIncludeDir('src\port');
-    $libpq->AddLibrary('wsock32.lib ws2_32.lib');
-    $libpq->AddLibrary('wldap32.lib') if ($solution->{options}->{ldap});
-    $libpq->AddLibrary($config->{'pthread'} . '\pthreadVC2.lib');
-    $libpq->UseDef('src\interfaces\libpq\libpqdll.def');
-    $libpq->ReplaceFile('src\interfaces\libpq\libpqrc.c','src\interfaces\libpq\libpq.rc');
-    $libpq->AddReference($libpgport);
-
+   
     my $pgtypes =
       $solution->AddProject('libpgtypes','dll','interfaces','src\interfaces\ecpg\pgtypeslib');
     $pgtypes->AddDefine('FRONTEND');
