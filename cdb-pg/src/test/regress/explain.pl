@@ -136,6 +136,8 @@ Options:
 
 =item long   - print average rows and number of workers
 
+=item medium - print average rows and number of workers compactly
+
 =item short  - print total row counts
 
 =back
@@ -224,7 +226,12 @@ each query followed by the EXPLAIN output delineated by vertical bars
  
  Time was 1295.33 seconds.  Query ended at Thu Oct 12 12:09:27 2006
  
+=head1 CAVEATS/LIMITATIONS
 
+If explain.pl uses Graphviz to graph the query plan, it may flip the
+left and right children of a join to obtain a more balanced pictorial
+representation.  Use the -edge option to label graph edges to
+correctly identify the left and right children.
 
 =head1 AUTHORS
 
