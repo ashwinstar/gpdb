@@ -540,7 +540,6 @@ BEGIN {
     $glob_outi      = $outfile;
     $glob_statcolor = $statcol;
 
-    $edgescheme = "long" unless ($edgescheme =~ m/short/i);
     $glob_edge  = $edgescheme;
 
     if ($dir !~ m/^(TB|BT|LR|RL)$/i)
@@ -1658,7 +1657,7 @@ sub get_rows_out
     return 
         unless ($node->{txt} =~ m/Rows out\:/);
 
-    my $long = ($edge =~ m/long/i);
+    my $long = ($edge =~ m/long|med/i);
 
     if ($node->{txt} =~ m/Rows out\:\s+Avg.*\s+rows\s+x\s+.*\s+workers/)
     {
@@ -1671,7 +1670,7 @@ sub get_rows_out
         
             return unless (2 == scalar(@foo));
 
-            # avg x num workers
+            # calculate row count as avg x num workers
             $node->{rows_out} = $foo[0] * $foo[1];
         }
         else
@@ -1682,8 +1681,15 @@ sub get_rows_out
         
             return unless (1 == scalar(@foo));
 
-            # avg x num workers
+            # just print the string
             $node->{rows_out} = $foo[0];
+
+            if ($edge =~ m/med/i)
+            {
+                $node->{rows_out} =~ s/Avg\s+//;
+                $node->{rows_out} =~ s/rows\s+//;
+                $node->{rows_out} =~ s/\s*workers\s*//;
+            }
 
         }
     }
