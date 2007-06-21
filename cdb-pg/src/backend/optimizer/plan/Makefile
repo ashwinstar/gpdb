@@ -21,7 +21,7 @@ OBJS = createplan.o \
 	   planshare.o \
 	   planwindow.o \
 	   setrefs.o \
-	   subselect.o \
+	   subselect.o
 
 all: SUBSYS.o
 
