@@ -215,6 +215,7 @@ struct Tuplesortstate
 	bool		randomAccess;	/* did caller request random access? */
 	long		availMem;		/* remaining memory available, in bytes */
     long        availMemMin;    /* CDB: availMem low water mark (bytes) */
+    long        availMemMin01;  /* MPP-1559: initial low water mark */
 	long		allowedMem;		/* total memory allowed, in bytes */
 	int			maxTapes;		/* number of tapes (Knuth's T) */
 	int			tapeRange;		/* maxTapes-1 (Knuth's P) */
@@ -530,6 +531,7 @@ tuplesort_begin_common(int workMem, bool randomAccess)
 	state->randomAccess = randomAccess;
 	state->allowedMem = workMem * 1024L;
 	state->availMemMin = state->availMem = state->allowedMem;
+	state->availMemMin01 = state->availMemMin;
 	state->sortcontext = sortcontext;
 	state->tapeset = NULL;
 
@@ -793,7 +795,7 @@ tuplesort_end(Tuplesortstate *state)
 
         /* How close did we come to the work_mem limit? */
         FREEMEM(state, 0);              /* update low-water mark */
-        workmemused = state->allowedMem - state->availMemMin;
+        workmemused = state->allowedMem - state->availMemMin01;
         if (state->instrument->workmemused < workmemused)
             state->instrument->workmemused = workmemused;
 
@@ -1161,6 +1163,9 @@ tuplesort_performsort(Tuplesortstate *state)
 				 pg_rusage_show(&state->ru_start));
 	}
 #endif
+
+	/* MPP-1559 */
+    state->availMemMin01 = state->availMemMin;
 
 	MemoryContextSwitchTo(oldcontext);
 }
