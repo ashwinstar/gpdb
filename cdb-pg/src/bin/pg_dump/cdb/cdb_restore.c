@@ -1296,7 +1296,7 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMas
 	else
 		pszFormat = "%sgp_restore_%s.rpt";
 	
-	pszReportPathName = MakeString( pszFormat, pszReportDirectory, pParmAr->pData[0].pOptionsData->pszKey );
+	pszReportPathName = MakeString( pszFormat, pszReportDirectory, pOptions->pszKey );
 	
 	fRptFile = fopen( pszReportPathName, "w" );
 	if ( fRptFile == NULL )
