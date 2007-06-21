@@ -1568,6 +1568,35 @@ HeapTupleSatisfiesVacuum(HeapTupleHeader tuple, TransactionId OldestXmin,
 	return HEAPTUPLE_DEAD;
 }
 
+char* DebugGetDistributedSnapshotString(DistributedSnapshot snapshot)
+{
+	static char buffer[200];
+
+	int index;
+	int len;
+
+	sprintf(buffer, "Distributed snapshot xmin %u, xmax %u, xcnt %d (", 
+		    snapshot->xmin, snapshot->xmax, snapshot->xcnt);
+	for (index = 0; index < snapshot->xcnt; index++)
+	{
+		if (index > 0)
+			strcat(buffer, ", ");
+		len = strlen(buffer);
+		sprintf(&buffer[len], 
+			    "%u => %u",
+			    snapshot->xip[index], 
+			    snapshot->debugLocalXip[index]);
+
+		if (len > sizeof(buffer) - 25)
+		{
+			strcat(buffer, " ... ");
+			break;
+		}
+	}
+	strcat(buffer, ")");
+
+	return buffer;
+}
 
 /*
  * GetTransactionSnapshot
@@ -1601,6 +1630,9 @@ GetTransactionSnapshot(void)
 			 	  SerializableDistributedSnapshot->curcid,
 			 	  getDistributedTransactionId(),
 			 	  DtxContextToString(DistributedTransactionContext));
+			elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Dump Mapping* %s)", 
+			 	  SerializableDistributedSnapshot->snapshotId,
+			 	  DebugGetDistributedSnapshotString(SerializableDistributedSnapshot));
 	 	}
 
 		return SerializableSnapshot;
@@ -1629,6 +1661,9 @@ GetTransactionSnapshot(void)
 		 	  LatestDistributedSnapshot->curcid,
 		 	  getDistributedTransactionId(),
 			  DtxContextToString(DistributedTransactionContext));
+		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Dump Mapping* %s)", 
+		 	  LatestDistributedSnapshot->snapshotId,
+		 	  DebugGetDistributedSnapshotString(LatestDistributedSnapshot));
  	}
 
 	return LatestSnapshot;

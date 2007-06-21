@@ -54,7 +54,7 @@ int64 cdbRelSize(Oid relOid)
 	 * In the future, it would be better to send the command to only one QE for the optimizer's needs,
 	 * but for ALTER TABLE, we need to be sure if the table has any rows at all.
 	 */
-	results = cdbdisp_dispatchRMCommand(buffer.data, false, false, &errbuf, &resultCount);
+	results = cdbdisp_dispatchRMCommand(buffer.data, true, false, &errbuf, &resultCount);
 
 	if (errbuf.len > 0)
 	{

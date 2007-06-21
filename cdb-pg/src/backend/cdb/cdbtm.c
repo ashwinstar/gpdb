@@ -1898,7 +1898,9 @@ createDtxSnapshot(DistributedSnapshot distributedSnapshot)
 	distributedSnapshot->xmin = UINT_MAX;
 	distributedSnapshot->curcid = 0;
 	distributedSnapshot->snapshotId = (*shmNextSnapshotId)++;
-	
+	MemSet(distributedSnapshot->xip, 0, sizeof(DistributedTransactionId)*MaxGpDistributedInProgress);
+    MemSet(distributedSnapshot->debugLocalXip, 0, sizeof(TransactionId)*MaxGpDistributedInProgress);
+	   
 	for (i = 0; i < count; i++)
 	{
 		gxact_candidate = shmGxactArray[i];
@@ -3002,6 +3004,7 @@ clearDistributedSnapshot(DistributedSnapshot distributedSnapshot)
 	distributedSnapshot->xmax = InvalidDistributedTransactionId;		
 	distributedSnapshot->xcnt = 0;		
 	MemSet(distributedSnapshot->xip, 0, sizeof(DistributedTransactionId)*MaxGpDistributedInProgress);
+    MemSet(distributedSnapshot->debugLocalXip, 0, sizeof(TransactionId)*MaxGpDistributedInProgress);	
 	distributedSnapshot->curcid = 0;
 	distributedSnapshot->snapshotId = 0;
 }

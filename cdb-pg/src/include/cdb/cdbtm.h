@@ -190,6 +190,11 @@ typedef struct DistributedSnapshotData
 										/* Unique number identifying this
 										   particular snapshot */
 										
+	TransactionId 				debugLocalXip[MaxGpDistributedInProgress];
+										/* array of local xact IDs in progress
+										   that coorespond to the distributed IDs
+										   inthe xip array. */
+
 } DistributedSnapshotData;
 
 typedef DistributedSnapshotData *DistributedSnapshot;

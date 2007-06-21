@@ -807,7 +807,7 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 	/* never want to start a global transaction for these */
 	bool		needTwoPhase = false;
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5), "cdbdisp_dispatchRMCommand for command = '%s', withSnapshot = %s",
+	elog(((Debug_print_full_dtm | Debug_print_snapshot_dtm) ? LOG : DEBUG5), "cdbdisp_dispatchRMCommand for command = '%s', withSnapshot = %s",
 	     strCommand, (withSnapshot ? "true" : "false"));
 
 	/* Launch the command.	Don't cancel on error. */

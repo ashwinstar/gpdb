@@ -1952,6 +1952,12 @@ StartTransaction(void)
 		break;
 	}
 
+	elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *StartTransaction* (gxid = %u, xid = %u, '%s')", 
+	 	  (SerializableDistributedSnapshot == NULL ? 0 : SerializableDistributedSnapshot->snapshotId),
+	 	  getDistributedTransactionId(),
+	 	  s->transactionId,
+		  DtxContextToString(DistributedTransactionContext));
+
 	/*
 	 * initialize current transaction state fields
 	 */

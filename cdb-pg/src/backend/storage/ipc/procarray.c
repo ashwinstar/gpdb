@@ -472,6 +472,35 @@ GetOldestXmin(bool allDbs, bool ignoreVacuum)
 	return result;
 }
 
+char* DebugGetSnapshotString(Snapshot snapshot)
+{
+	static char buffer[200];
+
+	int index;
+	int len;
+
+	sprintf(buffer, "Local snapshot xmin %u, xmax %u, xcnt %d (", 
+		    snapshot->xmin, snapshot->xmax, snapshot->xcnt);
+	for (index = 0; index < snapshot->xcnt; index++)
+	{
+		if (index > 0)
+			strcat(buffer, ", ");
+		len = strlen(buffer);
+		sprintf(&buffer[len], 
+			    "%u",
+			    snapshot->xip[index]);
+
+		if (len > sizeof(buffer) - 25)
+		{
+			strcat(buffer, " ... ");
+			break;
+		}
+	}
+	strcat(buffer, ")");
+
+	return buffer;
+}
+
 void
 updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, char* debugCaller)
 {
@@ -581,9 +610,12 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, cha
 		SharedLocalSnapshotSlot->slotid,
 		debugCaller,
 		DtxContextToString(DistributedTransactionContext));
+	elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Dump Local* %s)", 
+	 	  QEDtxContextInfo.distributedSnapshotData.snapshotId,
+	 	  DebugGetSnapshotString(&SharedLocalSnapshotSlot->snapshot));
 
 }
-	
+
 
 /*----------
  * GetSnapshotData -- returns information about running transactions.
@@ -896,6 +928,8 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 						xmin = xid;
 					snapshot->xip[count] = xid;
 					count++;
+
+					distributedSnapshotData->debugLocalXip[index] = xid;
 				}
 				else
 				{
@@ -927,6 +961,8 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 						xmin = xid;
 					snapshot->xip[count] = xid;
 					count++;
+
+					QEDtxContextInfo.distributedSnapshotData.debugLocalXip[index] = xid;
 				}
 				else
 				{
@@ -1047,6 +1083,10 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 	if (*distributedSnapshot != NULL)
 	{
 		distributedSnapshotData->curcid = snapshot->curcid;
+		
+		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Dump Local* %s)", 
+		 	  distributedSnapshotData->snapshotId,
+		 	  DebugGetSnapshotString(snapshot));
 	}
 
 	/*
@@ -1054,6 +1094,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 	 * into the shared snapshot.  Note: we need to use the shared local
 	 * snapshot for the "Local Implicit using Distributed Snapshot" case, too.
 	 */
+	
 	if ((DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER ||
 		 DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER ||
 		 DistributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT) &&
