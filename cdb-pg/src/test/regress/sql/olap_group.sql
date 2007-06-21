@@ -290,6 +290,17 @@ select cn,dt,count(vn),grouping(cn,dt) from sale group by cube(dt,cn);
 select grouping(cn,vn,pn) from sale group by cn; --error
 select grouping(cn,vn,pn) from sale group by rollup(cn); --error
 
+-- Using in View --
+
+-- start_ignore
+create view cube_view as select cn,vn,grouping(vn,cn) from sale group by cube(cn,vn);
+\d cube_view;
+create view rollup_view as select cn,vn,pn,grouping(cn,vn,pn) from sale group by rollup(cn),vn,pn;
+\d rollup_view;
+create view gs_view as select cn,vn,grouping(vn,cn) from sale group by grouping sets ((vn), (cn), (), (cn,vn));
+\d gs_view;
+-- end_ignore
+
 -- GROUP_ID function --
 
 select pn, sum(qty), group_id() from sale group by rollup(pn);

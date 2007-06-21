@@ -2521,7 +2521,7 @@ _outGrouping(StringInfo str, Grouping *node)
 static void
 _outGroupId(StringInfo str, GroupId *node)
 {
-	WRITE_NODE_TYPE("GROUP_ID");
+	WRITE_NODE_TYPE("GROUPID");
 }
 
 static void
