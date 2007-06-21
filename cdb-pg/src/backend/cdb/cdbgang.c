@@ -391,11 +391,6 @@ createGang(GangType type, int size, int content, char *portal_name)
 			if (segdbDesc->conn != NULL)
 				continue;
 
-			/*
-			 * cleanup and rollback current DTM transaction
-			 */
-			AbortCurrentTransaction();
-
 			/* clean the gang before error out */
 			disconnectAndDestroyGang(newGangDefinition);
 
