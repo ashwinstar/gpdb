@@ -1286,6 +1286,12 @@ exec_mpp_dtx_protocol_command(
 	CommandDest dest = whereToSendOutput;
 	const char *commandTag = loggingStr;
 
+	if (log_statement == LOGSTMT_ALL)
+	{
+		elog(LOG,"DTM protocol command '%s' for gid = %s",
+			 loggingStr, gid);
+	}
+	
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"exec_mpp_dtx_protocol_command received the dtxProtocolCommand = %d (%s) gid = %s (gxid = %u, flags = 0x%x)",
 		 dtxProtocolCommand, loggingStr, gid, gxid, flags);
 
