@@ -1,0 +1,172 @@
+This file provides high-level installation steps for Greenplum
+Database. For detailed installation, configuration and setup 
+information see the 'Greenplum Database Administrator Guide'
+located in $GPHOME/docs following installation.
+
+
+***********************************************************
+RUNNING THE GREENPLUM DATABASE INSTALLER
+***********************************************************
+
+
+1. Open a command-line terminal.
+
+2. Execute the installer using bash:
+
+   /bin/sh greenplum-db-3.0.0.0-PLATFORM.bin 
+
+3. When prompted, type 'yes' to accept the license agreement.
+
+4. When prompted, provide an installation path. For example:
+
+   /usr/local/greenplum-db-3.0.0.0
+
+
+***********************************************************
+REQUIRED OS SYSTEM SETTINGS FOR GREENPLUM DATABASE
+***********************************************************
+
+These must be set on all Greenplum hosts (master and segments).
+
+----------------
+MAC OS X
+----------------
+
+In OS X 10.3.9 and later, add all of the following to 
+/etc/sysctl.conf:
+
+kern.sysv.shmall=268435456
+kern.sysv.shmmax=268435456
+kern.sysv.shmmin=1
+kern.sysv.shmmni=32
+kern.sysv.shmseg=8
+net.inet.tcp.msl=60
+
+
+----------------
+LINUX
+----------------
+
+In /etc/sysctl.conf:
+
+kernel.shmmax = 500000000
+kernel.shmmni = 4096
+kernel.shmall = 4000000000
+kernel.sem = 250 64000 100 512
+net.ipv4.tcp_tw_recycle=1 
+net.ipv4.tcp_max_syn_backlog=4096 
+net.core.netdev_max_backlog=10000
+vm.overcommit_memory=2
+
+In /etc/security/limits.conf:
+
+* soft nofile 65536 
+* hard nofile 65536 
+* soft nproc 131072
+* hard nproc 131072
+
+
+----------------
+SOLARIS 10
+----------------
+
+In /etc/system:
+
+set rlim_fd_max=262144
+set rlim_fd_cur=65536
+set shmsys:shminfo_shmmax=0x2000000
+set semsys:seminfo_semmni=1024
+
+In /etc/rc2.d add the following lines to a script file named 
+S<##>gpdb_ndd where <##> is any two numbers:
+
+/usr/sbin/ndd -set /dev/tcp tcp_conn_req_max_q 4096
+/usr/sbin/ndd -set /dev/tcp tcp_conn_req_max_q0 4096
+/usr/sbin/ndd -set /dev/tcp tcp_largest_anon_port 65535
+/usr/sbin/ndd -set /dev/tcp tcp_smallest_anon_port 4096
+/usr/sbin/ndd -set /dev/tcp tcp_time_wait_interval 1000
+
+
+***********************************************************
+POST INSTALLATION STEPS
+***********************************************************
+
+These are the high-level steps to configure and initialize a 
+Greenplum Database instance. For detailed instructions, please 
+see the 'Greenplum Database Administrator Guide' located in
+$GPHOME/docs.
+
+
+1. Allocate a 'gpadmin' user to own and run your installation.
+   This user must exist on all Greenplum hosts.
+
+2. Source the greenplum_path.sh file in your 'gpadmin' user 
+   profile (.bashrc). This sets the environment variables 
+   needed by Greenplum Database.
+
+3. Create your data directory locations on all Greenplum hosts.
+
+4. (multi-host configuration only) Use the gpssh-exkeys utility 
+   to exchange SSH keys between all hosts.
+
+5. (multi-host configuration only) Use the gpscp and gpssh 
+   utilities to copy and install the Greenplum Database software 
+   on all segment hosts.
+
+6. Use the gpinitsystem utility to initialize and start your 
+   Greenplum Database system.
+
+
+************************************************
+ABOUT YOUR INSTALLATION
+************************************************
+
+The Greenplum Database installer installs the following files and 
+directories:
+
+* greenplum_path.sh  Greenplum Database 3.0 environment variables.
+
+* bin - Greenplum Database server programs, client programs, and 
+        management tools.
+
+* demo  Greenplum Database demonstration programs. 
+
+* docs  Greenplum Database documentation.
+
+* include  Greenplum Database and PostgreSQL header files.
+
+* share - PostgreSQL sample files and templates.
+
+* lib - Greenplum Database and PostgreSQL library files.
+
+
+************************************************
+GREENPLUM DATABASE DOCUMENTATION
+************************************************
+
+The following Greenplum Database documentation is available in the
+$GPHOME/docs directory of your Greenplum installation, or you 
+can go to gpn.greenplum.com to get the latest documentation:
+
+* GPAdminGuide.pdf - Greenplum Database Administrator Guide 
+  (Installation / Configuration / Management)
+
+* GPUserGuide.pdf - Greenplum Database User Guide 
+  (SQL Commands / Common DBA Tasks)
+
+* GPPerfTuning - Greenplum Database Performance Tuning Guide
+  (Tips and Strategies for Performance Tuning)
+
+* GPOverview.pdf - Greenplum Database Overview Guide 
+  (Architecture / Concepts) 
+
+
+
+
+
+
+
+
+
+
+
