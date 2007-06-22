@@ -33,7 +33,7 @@ sub genbki
     $version =~ /^(\d+\.\d+)/ || die "Bad format verison $version\n";
     my $majorversion = $1;
 
-    my $pgext = read_file("src/include/pg_config_manual.h");
+    my $pgext = read_file("src/include/postgres_ext.h");
     $pgext =~ /^#define\s+NAMEDATALEN\s+(\d+)$/mg
       || die "Could not read NAMEDATALEN from pg_config_manual.h\n";
     my $namedatalen = $1;
