@@ -298,6 +298,9 @@ char* DtxContextToString(DtxContext context)
 	case DTX_CONTEXT_QE_PREPARED:
 		return "QE Prepared";
 		
+	case DTX_CONTEXT_QE_FINISH_PREPARED:
+		return "QE Finish Prepared";
+		
 	default:
 		return "Unknown";
 	}
@@ -3468,6 +3471,7 @@ setupQEDtxContext (DtxContextInfo *dtxContextInfo)
 		break;
 
 	case DTX_CONTEXT_QE_PREPARED:
+	case DTX_CONTEXT_QE_FINISH_PREPARED:
 		elog(ERROR, "We should not be trying to execute a query in state '%s'",
 			 DtxContextToString(DistributedTransactionContext));
 		break;
@@ -3542,6 +3546,7 @@ finishDistributedTransactionContext (char* debugCaller, bool aborted)
 	case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
 	case DTX_CONTEXT_QE_READER:
 	case DTX_CONTEXT_QE_PREPARED:
+	case DTX_CONTEXT_QE_FINISH_PREPARED:
 	case DTX_CONTEXT_QD_RETRY_PHASE_2:
 		break;
 
@@ -3746,6 +3751,7 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 				case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
 				case DTX_CONTEXT_QD_RETRY_PHASE_2:
 				case DTX_CONTEXT_QE_PREPARED:
+				case DTX_CONTEXT_QE_FINISH_PREPARED:
 				case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
 				case DTX_CONTEXT_QE_READER:
 					elog(FATAL, "Unexpected QE distribute transaction context: '%s'",
@@ -3774,6 +3780,7 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 					break;
 			
 				case DTX_CONTEXT_QE_PREPARED:
+					DistributedTransactionContext = DTX_CONTEXT_QE_FINISH_PREPARED;
 					performDtxProtocolAbortPrepared(gid, /* raiseErrorIfNotFound */ true);
 					break;
 					
@@ -3798,7 +3805,7 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 					 DtxContextToString(DTX_CONTEXT_QE_PREPARED),
 					 DtxContextToString(DistributedTransactionContext));
 			}
-
+			DistributedTransactionContext = DTX_CONTEXT_QE_FINISH_PREPARED;
 			performDtxProtocolCommitPrepared(gid, /* raiseErrorIfNotFound */ true);
 			break;
 			
@@ -3809,7 +3816,7 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 					 DtxContextToString(DTX_CONTEXT_QE_PREPARED),
 					 DtxContextToString(DistributedTransactionContext));
 			}
-
+			DistributedTransactionContext = DTX_CONTEXT_QE_FINISH_PREPARED;
 			performDtxProtocolAbortPrepared(gid, /* raiseErrorIfNotFound */ true);
 			break;
 			

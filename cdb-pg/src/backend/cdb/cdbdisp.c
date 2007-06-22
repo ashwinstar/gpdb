@@ -3374,6 +3374,7 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions, char* d
 	case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
 	case DTX_CONTEXT_QE_READER:
 	case DTX_CONTEXT_QE_PREPARED:
+	case DTX_CONTEXT_QE_FINISH_PREPARED:
 		elog(FATAL, "Unexpected distribute transaction context: '%s'",
 			 DtxContextToString(DistributedTransactionContext));
 

@@ -1550,6 +1550,7 @@ SetSharedTransactionId(void)
 
 	case DTX_CONTEXT_QD_RETRY_PHASE_2:
 	case DTX_CONTEXT_QE_PREPARED:
+	case DTX_CONTEXT_QE_FINISH_PREPARED:
 		elog(FATAL, "Unexpected distribute transaction context: '%s'",
 			DtxContextToString(DistributedTransactionContext));
 
@@ -1718,7 +1719,7 @@ StartTransaction(void)
 	{
 	case DTX_CONTEXT_LOCAL_ONLY:
 	case DTX_CONTEXT_QD_RETRY_PHASE_2:
-	case DTX_CONTEXT_QE_PREPARED:
+	case DTX_CONTEXT_QE_FINISH_PREPARED:
 		{
 			/*
 			 * MPP: we're in utility-mode or a QE starting a pure-local
@@ -1944,6 +1945,15 @@ StartTransaction(void)
 				}
 			}
 		}
+		break;
+	
+	case DTX_CONTEXT_QE_PREPARED:
+		{
+			int *p = NULL;
+			*p = 1;	// Intentionally trap out for debugging purposes...
+		}
+		elog(FATAL, "Unexpected QE distribute transaction context: '%s'",
+			 DtxContextToString(DistributedTransactionContext));
 		break;
 	
 	default:
