@@ -177,13 +177,8 @@ OBTAIN_PARAM () {
 	ERROR_CHK $? "obtain primary hostname list" 2
 	BAL_HOSTNAME_ARRAY=$PRI_HOSTNAME_ARRAY" "`$ECHO $PRI_HOSTNAME_ARRAY|$CUT -d" " -f1`
 	PRI_HOST_COUNT=`$ECHO $PRI_HOSTNAME_ARRAY|$WC -w`
-	if [ $BALANCE -ne 1 ];then
 	PRI_SEGMENT_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select datadir, port, hostname, content from $CONFIG_TABLE where content<>-1 order by hostname;"`)
 	ERROR_CHK $? "obtain segment instance directory suffix" 2
-	else
-	PRI_SEGMENT_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select datadir, port, hostname, content from $CONFIG_TABLE where content<>-1 order by port;"`)
-	ERROR_CHK $? "obtain segment instance directory suffix" 2
-	fi
 	PRI_SEGMENT_ARRAY_COUNT=${#PRI_SEGMENT_ARRAY[@]}
 	if [ $BALANCE -eq 1 ];then
 		if [ $PRI_HOST_COUNT -eq 1 ] || [ $PRI_SEG_PER_HOST -eq $PRI_HOST_COUNT ];then
@@ -279,6 +274,48 @@ POSTGRES_PORT_CHK () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+CREATE_SPREAD_ARRAY () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	HOST_ARRAY=(`$ECHO ${PRI_SEGMENT_ARRAY[@]}|$TR ' ' '\n'|$AWK -F'|' '{print $3}'|$TR '\n' ' '`)
+	((MAX_ARRAY=${#HOST_ARRAY[@]}-1))
+	J=0
+	MIR_COUNT=0
+	PROCESSED=0
+	for HOST in ${HOST_ARRAY[@]}
+	do
+		CUR_SEGMENT=`$ECHO ${PRI_SEGMENT_ARRAY[$DIR_VECTOR]}|$CUT -d"|" -f1|$AWK -F"/" '{print $NF}'`
+		#CUR_PORT=`$ECHO ${PRI_SEGMENT_ARRAY[$MIR_COUNT]}|$CUT -d"|" -f2`
+		CUR_PORT=`$ECHO ${PRI_SEGMENT_ARRAY[$PROCESSED]}|$CUT -d"|" -f2`
+		((MIRROR_PORT=$CUR_PORT+$MIRROR_OFFSET))
+		while [ $HOST == ${HOST_ARRAY[$J]} ] || [ `$ECHO ${USED_LIST[@]}|$GREP -c ${HOST_ARRAY[$J]}` -gt 0 ] || [ `$ECHO ${MIRROR_ARRAY[@]}|$TR ' ' '\n'|$GREP ${HOST_ARRAY[$J]}|$AWK -F'|' '{print $2}'|$GREP -c $MIRROR_PORT` -gt 0 ]
+		do
+			if [ $J == $MAX_ARRAY ];then
+				J=0
+			else
+				((J=$J+1))
+			fi
+		done
+		USED_LIST=(${USED_LIST[@]} ${HOST_ARRAY[$J]})
+		#Mirror host contained in ${HOST_ARRAY[$J]} process this as the mirror
+		if [ $MIR_COUNT -eq $PRI_SEG_PER_HOST ];then
+			MIR_COUNT=0
+		fi
+		MIRROR_DIR=${MIRROR_DATADIRECTORY[$MIR_COUNT]}/$CUR_SEGMENT
+		MIRROR_CONTENT=`$ECHO ${PRI_SEGMENT_ARRAY[$DIR_VECTOR]}|$CUT -d"|" -f4`
+		((MIRROR_DBID=$MAX_DBID+$DIR_VECTOR))
+		MIRROR_ARRAY=(${MIRROR_ARRAY[@]} $MIRROR_DIR"|"$MIRROR_PORT"|"$MIRROR_DBID"|"$MIRROR_CONTENT"|"${HOST_ARRAY[$J]})
+		((DIR_VECTOR=$DIR_VECTOR+1))
+		((MIR_COUNT=$MIR_COUNT+1))
+		((PROCESSED=$PROCESSED+1))
+		if [ ${#USED_LIST[@]} -eq $PRI_SEG_PER_HOST ];then
+			USED_LIST=()
+			((USED_COUNT=$USED_COUNT+$PRI_SEG_PER_HOST))
+			J=$USED_COUNT
+		fi
+	done
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 CREATE_MIRROR_ARRAY () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	BALANCE_COUNT=2
@@ -298,73 +335,43 @@ CREATE_MIRROR_ARRAY () {
                 MIRROR_LIST=(${MIRROR_LIST[@]} ${MIRROR_DATADIRECTORY[@]})
                 ((HOST_COUNT=$HOST_COUNT+1))
         done
-	for PRIDETAILS in "${PRI_SEGMENT_ARRAY[@]}"
-	do
-		CUR_HOST=`$ECHO $PRIDETAILS|$CUT -d"|" -f3`
-		CUR_SEGMENT=`$ECHO $PRIDETAILS|$CUT -d"|" -f1|$AWK -F"/" '{print $NF}'`
-		CUR_PORT=`$ECHO $PRIDETAILS|$CUT -d"|" -f2`
-		if [ $BALANCE -eq 1 ];then
-			CHOICE_ARRAY=(`$ECHO ${USE_BALANCE_ARRAY[@]}|$TR ' ' '\n'|$GREP -v $CUR_HOST|tr '\n' ' '`)
-			MIRROR_HOSTNAME=${CHOICE_ARRAY[$LOOP]}
-			while [ `$ECHO ${USED_HOSTNAME[@]}|$TR ' ' '\n'|$GREP -c $MIRROR_HOSTNAME` -eq $PRI_SEG_PER_HOST ]
-			do
-				if [ $LOOP -lt $LOOP_MAX ] || [ $LOOP -lt $HOST_MAX ];then
-					((LOOP=$LOOP+1))
-				else
-					LOOP=0
-				fi
-				MIRROR_HOSTNAME=${CHOICE_ARRAY[$LOOP]}
-			done
-			if [ $LOOP -lt $LOOP_MAX ] || [ $LOOP -lt $HOST_MAX ];then
-				((LOOP=$LOOP+1))
-			else
-				LOOP=0
-			fi
-			USED_HOSTNAME=("${USED_HOSTNAME[@]}" "$MIRROR_HOSTNAME")
-			((COUNT=$COUNT+1))
-			((MIRROR_PORT=$CUR_PORT+$MIRROR_OFFSET))
-			MIRROR_CHK=${MIRROR_HOSTNAME}${MIRROR_DATADIRECTORY[$MIR_COUNT]}
-			while [ `$ECHO ${MIRROR_USED[@]}|$TR ' ' '\n'|$GREP -c $MIRROR_CHK` -eq 1 ]
-			do
-				if [ $MIR_COUNT -eq $LOOP_MAX ];then
-					MIR_COUNT=0
-				else
-					((MIR_COUNT=$MIR_COUNT+1))
-				fi 	
-				MIRROR_CHK=${MIRROR_HOSTNAME}${MIRROR_DATADIRECTORY[$MIR_COUNT]}
-			done	
-			MIRROR_DIR=${MIRROR_DATADIRECTORY[$MIR_COUNT]}/$CUR_SEGMENT
-			MIRROR_USED=(${MIRROR_USED[@]} ${MIRROR_CHK})
-                else
+	if [ $BALANCE -eq 1 ];then
+		CREATE_SPREAD_ARRAY
+	else	
+		for PRIDETAILS in "${PRI_SEGMENT_ARRAY[@]}"
+		do
+			CUR_HOST=`$ECHO $PRIDETAILS|$CUT -d"|" -f3`
+			CUR_SEGMENT=`$ECHO $PRIDETAILS|$CUT -d"|" -f1|$AWK -F"/" '{print $NF}'`
+			CUR_PORT=`$ECHO $PRIDETAILS|$CUT -d"|" -f2`
 			if [ x"" == x"$MIRROR_MACHINE_LIST_FILE" ];then
-				MIRROR_HOSTNAME=`$ECHO $BAL_HOSTNAME_ARRAY|$CUT -d" " -f$BALANCE_COUNT`
-			else
-				((MIRIDX=$MIRIDX+1))
-				MIRROR_HOSTNAME=`$ECHO ${ALL_MIR_SEGMENT_NAMES[@]}|$CUT -d" " -f$MIRIDX`
-			fi	
-                        ((ARRAY_VECTOR=$ARRAY_VECTOR+1))
-                        if [ $ARRAY_VECTOR -eq $PRI_SEG_PER_HOST ];then
-                                ((BALANCE_COUNT=$BALANCE_COUNT+1))
-                                ARRAY_VECTOR=0
-                        fi
+	 			MIRROR_HOSTNAME=`$ECHO $BAL_HOSTNAME_ARRAY|$CUT -d" " -f$BALANCE_COUNT`
+	 		else
+	 			((MIRIDX=$MIRIDX+1))
+	 			MIRROR_HOSTNAME=`$ECHO ${ALL_MIR_SEGMENT_NAMES[@]}|$CUT -d" " -f$MIRIDX`
+	 		fi	
+                	((ARRAY_VECTOR=$ARRAY_VECTOR+1))
+                	if [ $ARRAY_VECTOR -eq $PRI_SEG_PER_HOST ];then
+                        	((BALANCE_COUNT=$BALANCE_COUNT+1))
+                         	ARRAY_VECTOR=0
+                	fi
 			MIRROR_DIR=${MIRROR_LIST[$DIR_VECTOR]}/`$ECHO $PRIDETAILS|$CUT -d"|" -f1|$AWK -F"/" '{print $NF}'`
-                fi
-		((MIRROR_DBID=$MAX_DBID+$DIR_VECTOR))
-		((DIR_VECTOR=$DIR_VECTOR+1))
-		MIRROR_CONTENT=`$ECHO $PRIDETAILS|$CUT -d"|" -f4`
-		if [ $BALANCE -ne 1 ];then
-			PRI_PORT=`$ECHO $PRIDETAILS|$CUT -d"|" -f2`
-			((MIRROR_PORT=$MIRROR_OFFSET+$PRI_PORT))
-		fi
-		if [ $PRI_HOST_COUNT -eq 1 ];then
-			if [ x"" == x"$MIRROR_MACHINE_LIST_FILE" ];then
-				MIRROR_HOSTNAME=`$ECHO $PRIDETAILS|$CUT -d"|" -f3`
-			else
-				MIRROR_HOSTNAME=$MIRROR_HOSTNAME
+			((MIRROR_DBID=$MAX_DBID+$DIR_VECTOR))
+			((DIR_VECTOR=$DIR_VECTOR+1))
+			MIRROR_CONTENT=`$ECHO $PRIDETAILS|$CUT -d"|" -f4`
+			if [ $BALANCE -ne 1 ];then
+				PRI_PORT=`$ECHO $PRIDETAILS|$CUT -d"|" -f2`
+				((MIRROR_PORT=$MIRROR_OFFSET+$PRI_PORT))
 			fi
-		fi
-		MIRROR_ARRAY=(${MIRROR_ARRAY[@]} $MIRROR_DIR"|"$MIRROR_PORT"|"$MIRROR_DBID"|"$MIRROR_CONTENT"|"$MIRROR_HOSTNAME)
-	done
+			if [ $PRI_HOST_COUNT -eq 1 ];then
+				if [ x"" == x"$MIRROR_MACHINE_LIST_FILE" ];then
+					MIRROR_HOSTNAME=`$ECHO $PRIDETAILS|$CUT -d"|" -f3`
+				else
+					MIRROR_HOSTNAME=$MIRROR_HOSTNAME
+				fi
+			fi
+			MIRROR_ARRAY=(${MIRROR_ARRAY[@]} $MIRROR_DIR"|"$MIRROR_PORT"|"$MIRROR_DBID"|"$MIRROR_CONTENT"|"$MIRROR_HOSTNAME)
+		done
+	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"	
 }
 
