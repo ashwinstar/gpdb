@@ -268,7 +268,7 @@ use_buffer(URL_FILE *file,int want)
 
 static int set_httpheader(URL_FILE* fcurl, const char* name, const char* value)
 {
-	char tmp[256];
+	char tmp[1024];
 	if (strlen(name) + strlen(value) + 5 > sizeof(tmp)) {
 	   elog(ERROR, "internal error: set_httpheader name/value is too long. name = %s", name);
 	   elog(ERROR, "internal error: set_httpheader name/value is too long. value = %s", value);
