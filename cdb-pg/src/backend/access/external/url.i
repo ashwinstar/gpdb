@@ -270,8 +270,7 @@ static int set_httpheader(URL_FILE* fcurl, const char* name, const char* value)
 {
 	char tmp[1024];
 	if (strlen(name) + strlen(value) + 5 > sizeof(tmp)) {
-	   elog(ERROR, "internal error: set_httpheader name/value is too long. name = %s", name);
-	   elog(ERROR, "internal error: set_httpheader name/value is too long. value = %s", value);
+	   elog(ERROR, "set_httpheader name/value is too long. name = %s, value=%s", name, value);
 	   return -1;
 	}
 	sprintf(tmp, "%s: %s", name, value);
