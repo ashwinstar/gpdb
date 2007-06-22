@@ -2390,11 +2390,19 @@ make_canonical_groupingsets(List *groupClause)
 	/* Reset ngrpsets to eliminate duplicate groupint sets */
 	canonical_grpsets->ngrpsets = prev_setno + 1;
 
-	/* The first Bitmapset should contain the largest number
-	 * of distinct columns.
+	/* Obtain the number of distinct columns appeared in these
+	 * grouping sets.
 	 */
-	canonical_grpsets->num_distcols =
-		bms_num_members(canonical_grpsets->grpsets[0]);
+	{
+		Bitmapset *distcols = NULL;
+		for (setno =0; setno < canonical_grpsets->ngrpsets; setno++)
+			distcols =
+				bms_add_members(distcols, canonical_grpsets->grpsets[setno]);
+		
+		canonical_grpsets->num_distcols = bms_num_members(distcols);
+		bms_free(distcols);
+	}
+	
 
 	/* Release spaces */
 	list_free_deep(ord_grping);
@@ -2517,7 +2525,7 @@ static List *canonicalize_gs_list(List *gsl, bool ordinary)
 				default:
 					elog(ERROR,"invalid grouping set");
 			}
-			list = lappend(list,gs);
+			list = list_concat(list,gs);
 		}
 		else
 		{

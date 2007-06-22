@@ -169,6 +169,8 @@ static void get_rule_expr(Node *node, deparse_context *context,
 static void get_oper_expr(OpExpr *expr, deparse_context *context);
 static void get_func_expr(FuncExpr *expr, deparse_context *context,
 			  bool showimplicit);
+static void get_groupingfunc_expr(GroupingFunc *grpfunc,
+								  deparse_context *context);
 static void get_agg_expr(Aggref *aggref, deparse_context *context);
 static void get_windowedge_expr(WindowFrameEdge *edge, 
 								deparse_context *context);
@@ -3493,11 +3495,11 @@ get_rule_expr(Node *node, deparse_context *context,
 			break;
 
 		case T_GroupId:
-			appendStringInfo(buf, "GroupId");
+			appendStringInfo(buf, "group_id()");
 			break;
 
 		case T_GroupingFunc:
-			appendStringInfo(buf, "GroupingFunc");
+			get_groupingfunc_expr((GroupingFunc *)node, context);
 			break;
 
 		case T_Aggref:
@@ -4238,6 +4240,35 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 					 generate_function_name(funcoid, nargs, argtypes));
 	get_rule_expr((Node *) expr->args, context, true);
 	appendStringInfoChar(buf, ')');
+}
+
+/*
+ * get_groupingfunc_expr - Parse back a grouping function node.
+ */
+static void
+get_groupingfunc_expr(GroupingFunc *grpfunc, deparse_context *context)
+{
+	StringInfo buf = context->buf;
+	ListCell *lc;
+	char *sep = "";
+	List *group_exprs;
+	group_exprs = get_grouplist_exprs(context->query->groupClause,
+									  context->query->targetList);
+
+	appendStringInfoString(buf, "grouping(");
+	foreach (lc, grpfunc->args)
+	{
+		int entry_no = (int)intVal(lfirst(lc));
+		Node *expr;
+		Assert (entry_no < list_length(context->query->targetList));
+
+		expr = (Node *)list_nth(group_exprs, entry_no);
+		appendStringInfoString(buf, sep);
+		get_rule_expr(expr, context, true);
+		sep = ", ";
+	}
+	
+	appendStringInfoString(buf, ")");
 }
 
 /*

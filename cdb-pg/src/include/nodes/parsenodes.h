@@ -708,7 +708,7 @@ typedef struct GroupingClause
  *
  *    (1,1), (null,1)
  *
- * The query "select a,sum(b),grouping_id(a) from test group by rollup(a)"
+ * The query "select a,sum(b),grouping(a) from test group by rollup(a)"
  * returns
  *
  *    1   ,    1,    0

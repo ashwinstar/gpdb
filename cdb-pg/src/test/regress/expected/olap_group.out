@@ -1883,6 +1883,131 @@ select * from (values (1,1,1), (1,2,2), (1,null,1), (1,null,4), (2,1,1), (2,2,1)
 
 --end equivalent
 drop table olap_tmp; --ignore
+-- Grouping extension combination
+--begin equivalent
+select cn,vn,sum(qty) from sale group by cn,vn union all
+select cn,null,sum(qty) from sale group by cn union all
+select cn,null,sum(qty) from sale group by cn union all
+select null,null,sum(qty) from sale;
+ cn | vn | sum  
+----+----+------
+  1 | 10 |    1
+  1 | 20 |    1
+  3 | 30 |   24
+  1 | 30 |   13
+  3 | 40 |    1
+  1 | 50 |    1
+  3 |    |   25
+  1 |    |   16
+  3 |    |   25
+  1 |    |   16
+  4 | 40 |    2
+  2 | 40 | 1100
+  2 | 50 |    1
+  4 |    |    2
+  2 |    | 1101
+  4 |    |    2
+  2 |    | 1101
+    |    | 1144
+(18 rows)
+
+select cn,vn,sum(qty) from sale group by grouping sets (rollup(cn,vn), cn);
+ cn | vn | sum  
+----+----+------
+  1 | 10 |    1
+  1 | 20 |    1
+  3 | 30 |   24
+  1 | 30 |   13
+  3 | 40 |    1
+  1 | 50 |    1
+  3 |    |   25
+  1 |    |   16
+  3 |    |   25
+  1 |    |   16
+  4 | 40 |    2
+  2 | 40 | 1100
+  2 | 50 |    1
+  4 |    |    2
+  2 |    | 1101
+  4 |    |    2
+  2 |    | 1101
+    |    | 1144
+(18 rows)
+
+--end equivalent
+--begin equivalent
+select cn,vn,sum(qty) from sale group by cn,vn union all
+select cn,null,sum(qty) from sale group by cn union all
+select null,null,sum(qty) from sale;
+ cn | vn | sum  
+----+----+------
+  1 | 10 |    1
+  1 | 20 |    1
+  3 | 30 |   24
+  1 | 30 |   13
+  3 | 40 |    1
+  1 | 50 |    1
+  3 |    |   25
+  1 |    |   16
+  4 | 40 |    2
+  2 | 40 | 1100
+  2 | 50 |    1
+  4 |    |    2
+  2 |    | 1101
+    |    | 1144
+(14 rows)
+
+select cn,vn,sum(qty) from sale group by grouping sets (rollup(cn,vn));
+ cn | vn | sum  
+----+----+------
+  1 | 10 |    1
+  1 | 20 |    1
+  3 | 30 |   24
+  1 | 30 |   13
+  3 | 40 |    1
+  1 | 50 |    1
+  3 |    |   25
+  1 |    |   16
+  4 | 40 |    2
+  2 | 40 | 1100
+  2 | 50 |    1
+  4 |    |    2
+  2 |    | 1101
+    |    | 1144
+(14 rows)
+
+--end equivalent
+--begin equivalent
+select cn,null as vn,sum(qty) from sale group by cn union all
+select null as cn,vn,sum(qty) from sale group by vn;
+ cn | vn | sum  
+----+----+------
+  2 |    | 1101
+  4 |    |    2
+    | 10 |    1
+    | 20 |    1
+    | 30 |   37
+    | 40 | 1103
+    | 50 |    2
+  1 |    |   16
+  3 |    |   25
+(9 rows)
+
+select cn,vn,sum(qty) from sale group by grouping sets((cn),(vn));
+ cn | vn | sum  
+----+----+------
+  2 |    | 1101
+  4 |    |    2
+    | 10 |    1
+    | 20 |    1
+    | 30 |   37
+    | 40 | 1103
+    | 50 |    2
+  1 |    |   16
+  3 |    |   25
+(9 rows)
+
+--end equivalent
 -- GROUPING function -- 
 select grouping(cn,vn,pn) from sale;
 ERROR:  column "sale"."cn" is not in GROUP BY
@@ -2611,7 +2736,7 @@ ERROR:  column "sale"."vn" is not in GROUP BY
 select grouping(cn,vn,pn) from sale group by rollup(cn); --error
 ERROR:  column "sale"."vn" is not in GROUP BY
 -- Using in View --
--- start_ignore
+--start_ignore
 create view cube_view as select cn,vn,grouping(vn,cn) from sale group by cube(cn,vn);
 \d cube_view;
    View "public.cube_view"
@@ -2621,7 +2746,7 @@ create view cube_view as select cn,vn,grouping(vn,cn) from sale group by cube(cn
  vn       | integer | 
  grouping | bigint  | 
 View definition:
- SELECT sale.cn, sale.vn, GroupingFunc AS "grouping"
+ SELECT sale.cn, sale.vn, grouping(sale.vn, sale.cn) AS "grouping"
    FROM sale
   GROUP BY CUBE (sale.cn, sale.vn);
 
@@ -2635,7 +2760,7 @@ create view rollup_view as select cn,vn,pn,grouping(cn,vn,pn) from sale group by
  pn       | integer | 
  grouping | bigint  | 
 View definition:
- SELECT sale.cn, sale.vn, sale.pn, GroupingFunc AS "grouping"
+ SELECT sale.cn, sale.vn, sale.pn, grouping(sale.cn, sale.vn, sale.pn) AS "grouping"
    FROM sale
   GROUP BY sale.vn, sale.pn, ROLLUP (sale.cn);
 
@@ -2648,11 +2773,11 @@ create view gs_view as select cn,vn,grouping(vn,cn) from sale group by grouping 
  vn       | integer | 
  grouping | bigint  | 
 View definition:
- SELECT sale.cn, sale.vn, GroupingFunc AS "grouping"
+ SELECT sale.cn, sale.vn, grouping(sale.vn, sale.cn) AS "grouping"
    FROM sale
   GROUP BY GROUPING SETS ((sale.vn), (sale.cn), (), (sale.cn, sale.vn));
 
--- end_ignore
+--end_ignore
 -- GROUP_ID function --
 select pn, sum(qty), group_id() from sale group by rollup(pn);
  pn  | sum  | ?column? 

@@ -230,6 +230,27 @@ select * from (values (1,1,1), (1,2,2), (1,null,1), (1,null,4), (2,1,1), (2,2,1)
 
 drop table olap_tmp; --ignore
 
+-- Grouping extension combination
+--begin equivalent
+select cn,vn,sum(qty) from sale group by cn,vn union all
+select cn,null,sum(qty) from sale group by cn union all
+select cn,null,sum(qty) from sale group by cn union all
+select null,null,sum(qty) from sale;
+select cn,vn,sum(qty) from sale group by grouping sets (rollup(cn,vn), cn);
+--end equivalent
+
+--begin equivalent
+select cn,vn,sum(qty) from sale group by cn,vn union all
+select cn,null,sum(qty) from sale group by cn union all
+select null,null,sum(qty) from sale;
+select cn,vn,sum(qty) from sale group by grouping sets (rollup(cn,vn));
+--end equivalent
+
+--begin equivalent
+select cn,null as vn,sum(qty) from sale group by cn union all
+select null as cn,vn,sum(qty) from sale group by vn;
+select cn,vn,sum(qty) from sale group by grouping sets((cn),(vn));
+--end equivalent
 
 -- GROUPING function -- 
 
@@ -292,14 +313,14 @@ select grouping(cn,vn,pn) from sale group by rollup(cn); --error
 
 -- Using in View --
 
--- start_ignore
+--start_ignore
 create view cube_view as select cn,vn,grouping(vn,cn) from sale group by cube(cn,vn);
 \d cube_view;
 create view rollup_view as select cn,vn,pn,grouping(cn,vn,pn) from sale group by rollup(cn),vn,pn;
 \d rollup_view;
 create view gs_view as select cn,vn,grouping(vn,cn) from sale group by grouping sets ((vn), (cn), (), (cn,vn));
 \d gs_view;
--- end_ignore
+--end_ignore
 
 -- GROUP_ID function --
 
