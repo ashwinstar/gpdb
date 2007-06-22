@@ -741,6 +741,12 @@ markSegDBPersistentState(int dbid, bool state)
 
 	free(user);
 
+	if (hasmirror && !partnervalid)
+	{
+		elog(LOG, "FTS: mirror partner is already invalid.");
+		return;
+	}
+
 	/*
 	 * Call libpq to connect
 	 */
