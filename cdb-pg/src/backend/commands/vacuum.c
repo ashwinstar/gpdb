@@ -808,16 +808,15 @@ vacuum_set_xid_limits(VacuumStmt *vacstmt, bool sharedRel,
  *		vacuuming pg_class might think they could delete a tuple marked with
  *		xmin = our xid.
  *
- *		MPP: In the case of a QD update of a table *other* than pg_class, we
- *		don't violate the no-overwrite semantics; because to do so bypasses
- *		the WAL -- and so bypasses mirroring to our standby-QD.
+ *		MPP: 8.2 introduced XLOG entries for "inplace" stats updates so we
+ *		no longer need the out-of-place hack.
  *
  *		This routine is shared by full VACUUM, lazy VACUUM, and stand-alone
  *		ANALYZE.
  */
 void
 vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
-					bool hasindex, bool inplace, TransactionId frozenxid)
+					bool hasindex, TransactionId frozenxid)
 {
 	Relation	rd;
 	HeapTuple	ctup;
@@ -830,74 +829,9 @@ vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
 	/*
 	 * CDB: Query the segment db local catalogs to get summary statistics.
 	 */
-	if (!inplace && Gp_role == GP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		elog(DEBUG5, "vac_update_relstats(): doing out-of-place update for vacuum");
-
 		cdbanalyze_get_relstats(rel, &num_pages, &num_tuples);
-
-		/* See comment above, we can use the 'normal' tuple update
-		 * mechanism (which will happily get mirrored out to the
-		 * warm-QD) provided that we're not analyzing pg_class
-		 * itself */
-		if (relid != RelationRelationId)
-		{
-			int			i;
-			HeapTuple	stup, oldtup;
-			Datum		values[Natts_pg_class];
-			char		nulls[Natts_pg_class];
-			char		replaces[Natts_pg_class];
-
-			/*
-			 * update number of tuples and number of pages in pg_class
-			 */
-			rd = heap_open(RelationRelationId, RowExclusiveLock);
-
-			oldtup = SearchSysCache(RELOID,
-								  ObjectIdGetDatum(relid),
-								  0, 0, 0);
-
-			if (!HeapTupleIsValid(oldtup))
-				elog(ERROR, "pg_class entry for relid %u vanished during vacuuming",
-					 relid);
-
-			for (i = 0; i < Natts_pg_class; ++i)
-			{
-				if (i == (Anum_pg_class_reltuples - 1))
-					replaces[i] = 'r';
-				else if (i == (Anum_pg_class_relpages - 1))
-					replaces[i] = 'r';
-				else if (i == (Anum_pg_class_relhasindex - 1))
-				       /* Update relhasindex column here because it is not
-					* updated after dropping indexes.
-					*/ 
-					replaces[i] = 'r';
-				else
-					replaces[i] = ' ';
-				nulls[i] = ' ';
-			}
-
-			values[Anum_pg_class_relpages - 1] = Int32GetDatum(num_pages);
-			values[Anum_pg_class_reltuples - 1] = Float4GetDatum(num_tuples);
-			values[Anum_pg_class_relhasindex - 1] = BoolGetDatum(hasindex);
-
-			stup = heap_modifytuple(oldtup,
-									RelationGetDescr(rd),
-									values,
-									nulls,
-									replaces);
-			ReleaseSysCache(oldtup);
-			simple_heap_update(rd, &stup->t_self, stup);
-
-			/* update indexes too */
-			CatalogUpdateIndexes(rd, stup);
-
-			heap_freetuple(stup);
-			heap_close(rd, RowExclusiveLock);
-
-			/* done with this relation */
-			return;
-		}
 	}
 
 	/*
@@ -1458,7 +1392,6 @@ full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 	/* update statistics in pg_class */
 	vac_update_relstats(onerel, vacrelstats->rel_pages,
 						vacrelstats->rel_tuples, vacrelstats->hasindex,
-						true,
 						FreezeLimit);
 
 	/* report results to the stats collector, too */
@@ -3266,7 +3199,7 @@ scan_index(Relation indrel, double num_tuples)
 	/* now update statistics in pg_class */
 	vac_update_relstats(indrel,
 						stats->num_pages, stats->num_index_tuples,
-						false, true, InvalidTransactionId);
+						false, InvalidTransactionId);
 
 	ereport(elevel,
 			(errmsg("index \"%s\" now contains %.0f row versions in %u pages",
@@ -3335,7 +3268,7 @@ vacuum_index(VacPageList vacpagelist, Relation indrel,
 	/* now update statistics in pg_class */
 	vac_update_relstats(indrel,
 						stats->num_pages, stats->num_index_tuples,
-						false, true, InvalidTransactionId);
+						false, InvalidTransactionId);
 
 	ereport(elevel,
 			(errmsg("index \"%s\" now contains %.0f row versions in %u pages",

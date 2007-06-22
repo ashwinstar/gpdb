@@ -436,7 +436,7 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	{
 		vac_update_relstats(onerel,
 							RelationGetNumberOfBlocks(onerel),
-							totalrows, hasindex, false,
+							totalrows, hasindex,
 							InvalidTransactionId);
 
 		for (ind = 0; ind < nindexes; ind++)
@@ -447,7 +447,7 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 			totalindexrows = ceil(thisdata->tupleFract * totalrows);
 			vac_update_relstats(Irel[ind],
 								RelationGetNumberOfBlocks(Irel[ind]),
-								totalindexrows, false, false,
+								totalindexrows, false,
 								InvalidTransactionId);
 		}
 

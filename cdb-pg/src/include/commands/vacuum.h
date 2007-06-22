@@ -119,7 +119,6 @@ extern void vac_update_relstats(Relation rel,
 					BlockNumber num_pages,
 					double num_tuples,
 					bool hasindex,
-					bool inplace,
 					TransactionId frozenxid);
 extern void vacuum_set_xid_limits(VacuumStmt *vacstmt, bool sharedRel,
 					  TransactionId *oldestXmin,

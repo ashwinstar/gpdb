@@ -189,7 +189,6 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 						vacrelstats->rel_pages,
 						vacrelstats->rel_tuples,
 						vacrelstats->hasindex, 
-						false,
 						FreezeLimit);
 
 	/* report results to the stats collector, too */
@@ -691,7 +690,7 @@ lazy_cleanup_index(Relation indrel,
 						stats->num_pages,
 						stats->num_index_tuples,
 						false,
-						false, InvalidTransactionId);
+						InvalidTransactionId);
 
 	ereport(elevel,
 			(errmsg("index \"%s\" now contains %.0f row versions in %u pages",
