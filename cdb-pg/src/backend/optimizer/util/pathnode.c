@@ -1233,7 +1233,16 @@ create_external_path(PlannerInfo *root, RelOptInfo *rel)
 	
     pathnode->path.locus = cdbpathlocus_from_baserel(root, rel); 
     pathnode->path.motionHazard = false;
-	pathnode->path.rescannable = true;
+
+	/* Someday we'll use something like this, for now it isn't
+	 * safe. Some queries might return bad results */
+#if 0
+	if (rel->execcommand != NULL)
+		pathnode->path.rescannable = false;
+	else
+		pathnode->path.rescannable = true;
+#endif
+	pathnode->path.rescannable = false;
 
 	cost_externalscan(pathnode, root, rel);
 	
