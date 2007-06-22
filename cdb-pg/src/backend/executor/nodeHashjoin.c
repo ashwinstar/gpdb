@@ -878,6 +878,9 @@ ExecReScanHashJoin(HashJoinState *node, ExprContext *exprCtxt)
 			 * through.)
 			 */
 			node->hj_OuterNotEmpty = false;
+
+			/* MPP-1600: reset the batch number */
+			node->hj_HashTable->curbatch = 0;
 		}
 		else
 		{
