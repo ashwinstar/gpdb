@@ -95,7 +95,7 @@ int			Gp_listener_port;
 
 int			Gp_max_packet_size;	/* max Interconnect packet size */
 
-int			interconnect_setup_timeout;
+int			interconnect_setup_timeout=20;
 
 bool		gp_interconnect_aggressive_retry=true; /* fast-track app-level retry */
 
