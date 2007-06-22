@@ -346,6 +346,11 @@ select pn, sum(qty), group_id() from sale group by rollup(cn,pn), cube(cn,pn);
 -- Having clause --
 
 --begin equivalent
+select cn,sum(qty) from sale group by cn,vn having vn=10;
+select cn,sum(qty) from sale group by rollup(cn,vn) having vn=10;
+--end equivalent
+
+--begin equivalent
 select cn, vn, pn, count(dt) from sale group by cn, vn, pn having count(dt) <=2
 union all
 select cn, vn, null, count(dt) from sale group by cn, vn having count(dt) <=2
