@@ -71,7 +71,7 @@ findMppPath() {
 
 		for pathel in ${GPPATH[@]}
 				do
-				CMD=`find $pathel -name $cmdtofind | tail -1`
+				CMD=`find -follow $pathel -name $cmdtofind | tail -1`
 				if [ x"$CMD" != x"" ] && [ -f $CMD ]; then
 						echo $CMD
 						return
