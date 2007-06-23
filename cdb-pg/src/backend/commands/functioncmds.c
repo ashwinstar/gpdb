@@ -657,11 +657,9 @@ CreateFunction(CreateFunctionStmt *stmt)
 	}
 	
 	/* double check that we really have a function body */
-	if (prosrc_str == NULL || strlen(prosrc_str)==0)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-				 errmsg("no function body specified")));
-	
+	if (prosrc_str == NULL)
+		prosrc_str = strdup("");
+
 	/*
 	 * And now that we have all the parameters, and know we're permitted to do
 	 * so, go ahead and create the function.
