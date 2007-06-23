@@ -321,6 +321,7 @@ static void
 ProcessCatchupEvent(void)
 {
 	bool		notify_enabled;
+	DtxContext  saveDistributedTransactionContext;
 
 	/* Must prevent SIGUSR2 interrupt while I am running */
 	notify_enabled = DisableNotifyInterrupt();
@@ -352,8 +353,16 @@ ProcessCatchupEvent(void)
 			disconnectAndDestroyAllGangs();
 		}
 
+		/*
+		 * Save distributed transaction context first.
+		 */
+		saveDistributedTransactionContext = DistributedTransactionContext;
+		DistributedTransactionContext = DTX_CONTEXT_LOCAL_ONLY;
+
 		StartTransactionCommand();
 		CommitTransactionCommand();
+
+		DistributedTransactionContext = saveDistributedTransactionContext;
 	}
 
 	if (notify_enabled)

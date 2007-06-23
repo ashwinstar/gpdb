@@ -388,6 +388,7 @@ typedef uint32 MultiXactOffset;
 typedef uint32 DistributedTransactionId;
 #define InvalidDistributedTransactionId	((DistributedTransactionId) 0)
 #define FirstDistributedTransactionId	((DistributedTransactionId) 1)
+#define LastDistributedTransactionId	((DistributedTransactionId) 4294967295)
 
 typedef uint32 CommandId;
 

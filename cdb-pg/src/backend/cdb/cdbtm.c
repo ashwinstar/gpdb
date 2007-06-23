@@ -1574,6 +1574,11 @@ redoDistributedCommitRecord(TMGXACT_LOG * gxact_log)
 	
 	restoreGxact(gxact_log, DTX_STATE_CRASH_COMMITTED);
 
+	/*
+	 * Don't leave the currentGxact point in-use.
+	 */
+    currentGxact = NULL;
+
 	elog((Debug_print_full_dtm ? INFO : DEBUG5), "Crash recovery redo added committed distributed transaction gid = %s",currentGxact->gid);
 
 }
@@ -2294,6 +2299,11 @@ generateGID(char *gid, DistributedTransactionId *gxid)
 	}
 
 	/* tm lock acquired by caller */
+	if (*shmGIDSeq >= LastDistributedTransactionId)
+	{
+		ereport(ERROR,
+				(errmsg("reached limit of global transactions per start")));
+	}
 	*gxid = (*shmGIDSeq)++;
 	sprintf(gid, "%ld-%.10d", t, (*gxid));
 }

@@ -1948,10 +1948,6 @@ StartTransaction(void)
 		break;
 	
 	case DTX_CONTEXT_QE_PREPARED:
-		{
-			int *p = NULL;
-			*p = 1;	// Intentionally trap out for debugging purposes...
-		}
 		elog(FATAL, "Unexpected QE distribute transaction context: '%s'",
 			 DtxContextToString(DistributedTransactionContext));
 		break;
