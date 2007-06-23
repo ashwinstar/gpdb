@@ -1545,7 +1545,7 @@ thread_DispatchCommand(void *arg)
 				PGresult   *pRes;
 				ExecStatusType resultStatus;
 				
-				write_stderr("Thread %u: Trying to send to busy connection %s  %d %d asyncStatus %d\n",mythread(),dispatchResult->segdbDesc->whoami,i,db_count,dispatchResult->segdbDesc->conn->asyncStatus);
+				write_stderr("Thread %u: Trying to send to busy connection %s  %d %d asyncStatus %d\n", mythread(), dispatchResult->segdbDesc->whoami, i, db_count, dispatchResult->segdbDesc->conn->asyncStatus);
 				/*
 				 * We weren't expecting the session to be in use!, let's see what it says 
 				 */
@@ -1553,13 +1553,13 @@ thread_DispatchCommand(void *arg)
 				if (pRes != NULL) /* null is OK ? */
 				{
 					resultStatus = PQresultStatus(pRes);
-					write_stderr("Thread %u: ResultStatus = %s\n",mythread(),PQresStatus(resultStatus));
-					write_stderr("%s",PQerrorMessage(dispatchResult->segdbDesc->conn));
+					write_stderr("Thread %u: ResultStatus = %s\n", mythread(), PQresStatus(resultStatus));
+					write_stderr("%s", PQerrorMessage(dispatchResult->segdbDesc->conn));
 				}
 				else
 				{
-					write_stderr("Thread %u: result was null\n",mythread());
-					write_stderr("%s",PQerrorMessage(dispatchResult->segdbDesc->conn));
+					write_stderr("Thread %u: result was null\n", mythread());
+					write_stderr("%s", PQerrorMessage(dispatchResult->segdbDesc->conn));
 					Assert(!PQisBusy(dispatchResult->segdbDesc->conn));
 				}
 			}
@@ -1842,15 +1842,16 @@ dispatchCommandQuery(CdbDispatchResult  *dispatchResult,
 	
 	if (PQsendGpQuery_shared(conn, (char *)query_text, query_text_len) == 0)
 	{
+		char	   *msg = PQerrorMessage(segdbDesc->conn);
+
 		if (DEBUG3 >= log_min_messages)
 			write_stderr("Thread %u: PQsendMPPQuery_shared error %s %s \n", mythread(), segdbDesc->whoami,
-							  PQerrorMessage(conn));
+						 msg ? msg : "");
 		/* Note the error. */
 		cdbdisp_appendMessage(dispatchResult, LOG,
 							  ERRCODE_GP_INTERCONNECTION_ERROR,
 						   "Command could not be sent to segment db %s;  %s",
-							  segdbDesc->whoami,
-							  PQerrorMessage(conn));
+							  segdbDesc->whoami, msg ? msg : "");
 		PQfinish(conn);
 		segdbDesc->conn = NULL;
 		dispatchResult->stillRunning = false;
@@ -1889,15 +1890,17 @@ dispatchCommandDtxProtocol(CdbDispatchResult  *dispatchResult,
 	// UNDONE: Is it ok to use PQsendGpQuery_shared???
 	if (PQsendGpQuery_shared(conn, (char *)query_text, query_text_len) == 0)
 	{
+		char *msg = PQerrorMessage(segdbDesc->conn);
+
 		if (DEBUG3 >= log_min_messages)
 			write_stderr("Thread %u: PQsendMPPQuery_shared error %s %s \n", mythread(),segdbDesc->whoami,
-						 PQerrorMessage(conn));
+						 msg ? msg : "");
 		/* Note the error. */
 		cdbdisp_appendMessage(dispatchResult, LOG,
 							  ERRCODE_GP_INTERCONNECTION_ERROR,
 							  "Command could not be sent to segment db %s;  %s",
 							  segdbDesc->whoami,
-							  PQerrorMessage(conn));
+							  msg ? msg : "");
 		PQfinish(conn);
 		segdbDesc->conn = NULL;
 		dispatchResult->stillRunning = false;
@@ -2015,7 +2018,11 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 				
 				char errbuf[256];
 				PGcancel * cn = PQgetCancel(segdbDesc->conn);
-				
+
+				/* PQcancel uses some strcpy/strcat functions; let's
+				 * clear this for safety */
+				memset(errbuf, 0, sizeof(errbuf));
+
 				if (DEBUG4 >= log_min_messages)
 					write_stderr("Calling PQcancel for %s\n",
 							     segdbDesc->whoami);
@@ -2028,7 +2035,7 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 				 */
 				dispatchResult->requestedCancel = true;
 				
-				if (PQcancel(cn, errbuf, 256)==0)
+				if (PQcancel(cn, errbuf, 256) == 0)
 				{	
 					if (LOG >= log_min_messages)
 						write_stderr("Unable to cancel: %s\n", errbuf);
@@ -2108,16 +2115,19 @@ void
 CollectQEWriterTransactionInformation(SegmentDatabaseDescriptor *segdbDesc, CdbDispatchResult * dispatchResult)
 {
 	PGconn *conn = segdbDesc->conn;
+
 	if (conn->QEWriter_HaveInfo)
 	{
-//		write_stderr("Thread %u: %s -> Collected QE Writer transaction info (segment %d (%s), DistributedTransactionId = %u, CommandId = %u, pRes->QEDirty = %s, dispatchResult->QEDirty = %s) \n", 
-//			mythread(), segdbDesc->whoami,
-//			segdbDesc->segment_database_info->segindex,
-//			(segdbDesc->segment_database_info->isprimary ? "primary" : "mirror"),
-//			conn->QEWriter_DistributedTransactionId,
-//			conn->QEWriter_CommandId,
-//			(conn->QEWriter_Dirty ? "true" : "false"),
-//			(dispatchResult->QEWriter_Dirty ? "true" : "false"));
+#if 0
+		write_stderr("Thread %u: %s -> Collected QE Writer transaction info (segment %d (%s), DistributedTransactionId = %u, CommandId = %u, pRes->QEDirty = %s, dispatchResult->QEDirty = %s) \n", 
+			mythread(), segdbDesc->whoami,
+			segdbDesc->segment_database_info->segindex,
+			(segdbDesc->segment_database_info->isprimary ? "primary" : "mirror"),
+			conn->QEWriter_DistributedTransactionId,
+			conn->QEWriter_CommandId,
+			(conn->QEWriter_Dirty ? "true" : "false"),
+			(dispatchResult->QEWriter_Dirty ? "true" : "false"));
+#endif
 		dispatchResult->QEIsPrimary = segdbDesc->segment_database_info->isprimary;
 		dispatchResult->QEWriter_HaveInfo = true;
 		dispatchResult->QEWriter_DistributedTransactionId = conn->QEWriter_DistributedTransactionId;
@@ -2133,11 +2143,11 @@ bool							/* returns true if command complete */
 processResults(CdbDispatchResult * dispatchResult)
 {
 	SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
-	char	   *errorMessage;
+	char	   *msg;
 	int			rc;
 
 	if (DEBUG5 >= log_min_messages)
-		write_stderr("Thread %u: processResults.  isBusy = %d\n",mythread(),PQisBusy(segdbDesc->conn));
+		write_stderr("Thread %u: processResults.  isBusy = %d\n", mythread(), PQisBusy(segdbDesc->conn));
 
 	/* Receive input from QE. */
 	rc = PQconsumeInput(segdbDesc->conn);
@@ -2145,15 +2155,15 @@ processResults(CdbDispatchResult * dispatchResult)
 	/* If PQconsumeInput fails, we're hosed. */
 	if (rc == 0)
 	{							/* handle PQconsumeInput error */
-		write_stderr("Thread %u: PQconsumeInput failed\n",mythread());
-		errorMessage = PQerrorMessage(segdbDesc->conn);
+		msg = PQerrorMessage(segdbDesc->conn);
+		write_stderr("Thread %u: PQconsumeInput failed %s\n", mythread(), msg ? msg : "unknown error");
 
 		/* Save error info for later. */
 		cdbdisp_appendMessage(dispatchResult, LOG,
 							  ERRCODE_GP_INTERCONNECTION_ERROR,
 							  "Error on receive from %s: %s",
 							  segdbDesc->whoami,
-							  errorMessage ? errorMessage : "unknown error");
+							  msg ? msg : "unknown error");
 
 		/* Can't recover, so drop the connection. */
 		PQfinish(segdbDesc->conn);
@@ -2164,7 +2174,7 @@ processResults(CdbDispatchResult * dispatchResult)
 	}							/* handle PQconsumeInput error */
 
 	if (DEBUG4 >= log_min_messages && PQisBusy(segdbDesc->conn))
-		write_stderr("Thread %u: PQisBusy\n",mythread());
+		write_stderr("Thread %u: PQisBusy\n", mythread());
 			
 	/* If we have received one or more complete messages, process them. */
 	while (!PQisBusy(segdbDesc->conn))
@@ -2229,7 +2239,7 @@ processResults(CdbDispatchResult * dispatchResult)
 			char	   *sqlstate = PQresultErrorField(pRes, PG_DIAG_SQLSTATE);
 			int			errcode = 0;
 
-			errorMessage = PQresultErrorMessage(pRes);
+			msg = PQresultErrorMessage(pRes);
 
 			if (DEBUG2 >= log_min_messages)
 			{
@@ -2238,7 +2248,7 @@ processResults(CdbDispatchResult * dispatchResult)
                              segdbDesc->whoami,
 						     PQresStatus(resultStatus),
 						     sqlstate ? sqlstate : "(no SQLSTATE)",
-						     errorMessage ? errorMessage : "\n");
+						     msg ? msg : "\n");
 			}
 
 			/*
@@ -2366,6 +2376,7 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 	
 	if (node == NULL)
 		return NULL;
+
 	if (IsA(node, Param))
 	{
 		Param	   *param = (Param *) node;
@@ -2373,6 +2384,7 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 		/* Not replaceable, so just copy the Param (no need to recurse) */
 		return (Node *) copyObject(param);
 	}
+
 	if (IsA(node, FuncExpr))
 	{
 		FuncExpr   *expr = (FuncExpr *) node;
@@ -3541,7 +3553,6 @@ cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads)
     dThreads->threadCount = 0;
 		
 	pfree(dThreads);
-	
 }                               /* cdbdisp_destroyDispatchThreads */
 
 
