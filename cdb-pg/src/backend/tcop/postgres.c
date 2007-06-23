@@ -4514,6 +4514,8 @@ PostgresMain(int argc, char *argv[], const char *username)
                 if (Gp_role != GP_ROLE_EXECUTE)
                     gp_command_count++;
 
+                setupRegularDtxContext();
+                
 				/*
 				 * this message is complex enough that it seems best to put
 				 * the field extraction out-of-line
