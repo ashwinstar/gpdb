@@ -674,6 +674,15 @@ inheritance_planner(PlannerInfo *root)
 		/* Generate plan */
 		subplan = grouping_planner(&subroot, 0.0 /* retrieve all tuples */ );
 
+		/*
+		 * If this child rel was excluded by constraint exclusion, exclude it
+		 * from the plan.
+		 *
+		 * MPP-1544: perform this check before testing for loci compatibility
+		 * we might have inserted a dummy table with incorrect locus
+		 */
+		if (is_dummy_plan(subplan))
+			continue;
 		
 		/* MPP needs target loci to match. */
 		if ( Gp_role == GP_ROLE_DISPATCH )
@@ -719,13 +728,6 @@ inheritance_planner(PlannerInfo *root)
 					errmsg("incompatible loci in target inheritance set") ));
 			}
 		}
-
-		/*
-		 * If this child rel was excluded by constraint exclusion, exclude it
-		 * from the plan.
-		 */
-		if (is_dummy_plan(subplan))
-			continue;
 
 		/* Save rtable and tlist from first rel for use below */
 		if (subplans == NIL)
