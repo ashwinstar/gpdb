@@ -59,7 +59,7 @@ select cn, vn, pn, sum(qty*prc) from sale group by cube (cn, vn, pn);
 select cn, vn, pn, sum(qty*prc) from sale group by grouping sets ((), (cn), (vn), (pn), (cn,vn), (cn,pn), (vn,pn), (cn,vn,pn));
 --end equivalent
 
---begin equivalent
+-- begin equivalent
 select cn, vn, pn, count(distinct dt) from sale group by cn, vn, pn
 union all
 select cn, vn, null, count(distinct dt) from sale group by cn, vn
@@ -69,7 +69,7 @@ union all
 select null, null, null, count(distinct dt) from sale;    
 select cn, vn, pn, count(distinct dt) from sale group by rollup(cn,vn,pn);
 select cn, vn, pn, count(distinct dt) from sale group by grouping sets((), (cn), (cn,vn), (cn,vn,pn));
---end equivalent
+-- end equivalent
 
 --begin equivalent order 1,2,3
 select cn, vn, pn, count(distinct dt) from sale group by cn, vn, pn
@@ -87,9 +87,9 @@ union all
 select null, vn, null, count(distinct dt) from sale group by vn
 union all
 select null, null, pn, count(distinct dt) from sale group by pn
-order by 1,2,3;
-select cn, vn, pn, count(distinct dt) from sale group by cube (cn, vn, pn) order by 1,2,3;
-select cn, vn, pn, count(distinct dt) from sale group by grouping sets ((), (cn), (vn), (pn), (cn,vn), (cn,pn), (vn,pn), (cn,vn,pn)) order by 1,2,3;
+order by 1,2,3; -- order 1,2,3
+select cn, vn, pn, count(distinct dt) from sale group by cube (cn, vn, pn) order by 1,2,3; -- order 1,2,3
+select cn, vn, pn, count(distinct dt) from sale group by grouping sets ((), (cn), (vn), (pn), (cn,vn), (cn,pn), (vn,pn), (cn,vn,pn)) order by 1,2,3; -- order 1,2,3
 --end equivalent
 
 --begin equivalent order 1,2,3
@@ -100,9 +100,9 @@ union all
 select cn, null, null, sum(qty*prc) from sale group by cn
 union all
 select null, null, null, sum(qty*prc) from sale 
-order by 1,2,3;    
-select cn, vn, pn, sum(qty*prc) from sale group by rollup(cn,vn,pn) order by 1,2,3;
-select cn, vn, pn, sum(qty*prc) from sale group by grouping sets((), (cn), (cn,vn), (cn,vn,pn)) order by 1,2,3;
+order by 1,2,3; -- order 1,2,3    
+select cn, vn, pn, sum(qty*prc) from sale group by rollup(cn,vn,pn) order by 1,2,3; -- order 1,2,3
+select cn, vn, pn, sum(qty*prc) from sale group by grouping sets((), (cn), (cn,vn), (cn,vn,pn)) order by 1,2,3; -- order 1,2,3
 --end equivalent
 
 --begin equivalent order 3,4,1
@@ -113,9 +113,9 @@ union all
 select null, sum(qty*prc), cn, null from sale group by cn
 union all
 select null, sum(qty*prc), null, null from sale 
-order by cn, vn, pn;    
-select pn, sum(qty*prc), cn, vn from sale group by rollup(cn,vn,pn) order by cn, vn, pn;
-select pn, sum(qty*prc), cn, vn from sale group by grouping sets((), (cn), (cn,vn), (cn,vn,pn)) order by cn, vn, pn;
+order by cn, vn, pn; -- order 3,4,1
+select pn, sum(qty*prc), cn, vn from sale group by rollup(cn,vn,pn) order by cn, vn, pn; -- order 3,4,1
+select pn, sum(qty*prc), cn, vn from sale group by grouping sets((), (cn), (cn,vn), (cn,vn,pn)) order by cn, vn, pn; -- order 3,4,1
 --end equivalent
 
 --begin equivalent order 1,2,3
@@ -134,9 +134,9 @@ union all
 select null, vn, null, sum(qty*prc) from sale group by vn
 union all
 select null, null, pn, sum(qty*prc) from sale group by pn 
-order by 1,2,3;
-select cn, vn, pn, sum(qty*prc) from sale group by cube (cn, vn, pn) order by 1,2,3;
-select cn, vn, pn, sum(qty*prc) from sale group by grouping sets ((), (cn), (vn), (pn), (cn,vn), (cn,pn), (vn,pn), (cn,vn,pn)) order by 1,2,3;
+order by 1,2,3; -- order 1,2,3
+select cn, vn, pn, sum(qty*prc) from sale group by cube (cn, vn, pn) order by 1,2,3; -- order 1,2,3
+select cn, vn, pn, sum(qty*prc) from sale group by grouping sets ((), (cn), (vn), (pn), (cn,vn), (cn,pn), (vn,pn), (cn,vn,pn)) order by 1,2,3; -- order 1,2,3
 --end equivalent
 
 -- ***BUG*** The extended groupings aren't correctly ordered! Maybe they wrongly parallel sorted!
@@ -148,9 +148,9 @@ union all
 select cn, null, null, count(distinct dt) from sale group by cn
 union all
 select null, null, null, count(distinct dt) from sale 
-order by 1,2,3;    
-select cn, vn, pn, count(distinct dt) from sale group by rollup(cn,vn,pn) order by 1,2,3;
-select cn, vn, pn, count(distinct dt) from sale group by grouping sets((), (cn), (cn,vn), (cn,vn,pn)) order by 1,2,3;
+order by 1,2,3; -- order 1,2,3  
+select cn, vn, pn, count(distinct dt) from sale group by rollup(cn,vn,pn) order by 1,2,3; -- order 1,2,3  
+select cn, vn, pn, count(distinct dt) from sale group by grouping sets((), (cn), (cn,vn), (cn,vn,pn)) order by 1,2,3; -- order 1,2,3  
 --end equivalent
 
 --begin equivalent order 1,2,3
@@ -169,9 +169,9 @@ union all
 select null, vn, null, count(distinct dt) from sale group by vn
 union all
 select null, null, pn, count(distinct dt) from sale group by pn 
-order by 1,2,3;
-select cn, vn, pn, count(distinct dt) from sale group by cube (cn, vn, pn) order by 1,2,3;
-select cn, vn, pn, count(distinct dt) from sale group by grouping sets ((), (cn), (vn), (pn), (cn,vn), (cn,pn), (vn,pn), (cn,vn,pn)) order by 1,2,3;
+order by 1,2,3; -- order 1,2,3  
+select cn, vn, pn, count(distinct dt) from sale group by cube (cn, vn, pn) order by 1,2,3; -- order 1,2,3  
+select cn, vn, pn, count(distinct dt) from sale group by grouping sets ((), (cn), (vn), (pn), (cn,vn), (cn,pn), (vn,pn), (cn,vn,pn)) order by 1,2,3; -- order 1,2,3  
 --end equivalent
 
 
@@ -262,8 +262,8 @@ select cn,vn,pn,grouping(cn,vn,pn) from sale group by rollup(cn,vn,pn);
 select cn,vn,pn,grouping(cn,vn,pn) from sale group by cn, rollup(vn,pn);
 select cn,vn,pn,grouping(cn,vn,pn) from sale group by vn, rollup(cn, pn);
 select grouping(cn), grouping(vn), grouping(pn), cn, vn, pn, count(*) from sale group by rollup(cn,vn,pn);
-select grouping(cn,vn,pn) from sale group by rollup(cn,vn,pn) order by 1 desc;
-select grouping(cn), grouping(vn), grouping(pn) from sale group by rollup(cn,vn,pn) order by 1 desc, 2 desc, 3 desc;
+select grouping(cn,vn,pn) from sale group by rollup(cn,vn,pn) order by 1 desc; -- order 1
+select grouping(cn), grouping(vn), grouping(pn) from sale group by rollup(cn,vn,pn) order by 1 desc, 2 desc, 3 desc; -- order 1,2,3
 select cn+vn,pn, grouping(cn+vn,pn), count(*) from sale group by rollup(cn+vn,pn);
 
 --begin equivalent
