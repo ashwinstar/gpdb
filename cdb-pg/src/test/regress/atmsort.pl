@@ -69,7 +69,49 @@ followed by an "(N rows)" row count.  The SELECT statement must be
 unambiguous, eg no embedded SQL keywords like INSERT, UPDATE, or
 DELETE, and it must be terminated with a semicolon.  Normally, the
 query output is sorted, but if the statement contains an ORDER BY
-clause the query output for that query is not sorted,
+clause the query output for that query is not sorted.
+
+=head2 EXPLAIN PLAN
+
+atmsort can also use explain.pl to process EXPLAIN and EXPLAIN ANALYZE
+output in a configuration-independent way.  It strips out all timing,
+segment, and slice information, reducing the plan to a simple nested
+perl structure.  For example, for the following plan:
+
+explain analyze select * from customer;
+
+                                     QUERY PLAN                              
+-----------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1)  (cost=0.00..698.88 rows=25088 width=550)
+   Rows out:  150000 rows at destination with 0.230 ms to first row, 
+   386 ms to end, start offset by 8.254 ms.
+   ->  Seq Scan on customer  (cost=0.00..698.88 rows=25088 width=550)
+         Rows out:  Avg 75000.0 rows x 2 workers.  Max 75001 rows (seg0) 
+         with 0.056 ms to first row, 26 ms to end, start offset by 7.332 ms.
+ Slice statistics:
+   (slice0)    Executor memory: 186K bytes.
+   (slice1)    Executor memory: 130K bytes avg x 2 workers, 
+               130K bytes max (seg0).
+ Total runtime: 413.401 ms
+(8 rows)
+
+atmsort reduces the plan to:
+
+                                     QUERY PLAN                              
+-----------------------------------------------------------------------------
+{
+  'child' => [
+              {
+      'id' => 2,
+      'parent' => 1,
+      'short' => 'Seq Scan on customer'
+      }
+  ],
+  'id' => 1,
+  'short' => 'Gather Motion'
+  }
+(8 rows)
+
 
 =head2 Advanced Usage 
 
