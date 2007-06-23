@@ -468,7 +468,7 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 	 * Do we want to do it all the time?  Or only for tables that have never had analyze run?
 	 */
 	 
-	if (relpages > 1 && reltuples > 1.0)
+	if (relpages > 0 && reltuples > 1.0)
 	{
 		
 		/*
