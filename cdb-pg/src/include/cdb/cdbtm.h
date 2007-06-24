@@ -251,7 +251,6 @@ extern void descDistributedForgetCommitRecord(StringInfo buf, TMGXACT_LOG * gxac
 extern void setCurrentDtxTwoPhase(const char* debugCaller, const char* debugDetail);
 extern bool isCurrentDtxTwoPhase(void);
 extern bool isCurrentDtxActive(void);
-extern void rememberDtxExplicitBegin(void);
 extern void sendDtxExplicitBegin(void);
 extern int dtxCurrentPhase1Count(void);
 
@@ -294,7 +293,6 @@ extern void deserializeDtxContextInfo(const char *serializedSnapshot, int serial
 extern void setupRegularDtxContext (void);
 extern void setupQEDtxContext (DtxContextInfo *dtxContextInfo);
 extern void finishDistributedTransactionContext (char* debugCaller, bool aborted);
-extern void rememberDtxExplicitBegin();
 extern void performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 					int flags,
 					const char *loggingStr, const char *gid, 

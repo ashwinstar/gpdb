@@ -3575,7 +3575,7 @@ finishDistributedTransactionContext (char* debugCaller, bool aborted)
 
 }
 
-void
+static void
 rememberDtxExplicitBegin(void)
 {
 	if (currentGxact == NULL)

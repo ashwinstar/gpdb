@@ -437,7 +437,7 @@ ProcessUtility(Node *parsetree,
 												  /* gp_dispatch */ false);
 							}
 
-							rememberDtxExplicitBegin();
+							sendDtxExplicitBegin();
 						}
 						break;
 
@@ -522,7 +522,7 @@ ProcessUtility(Node *parsetree,
 								 * that the BEGIN has been dispatched
 								 * before we start dispatching our savepoint.
 								 */
-								rememberDtxExplicitBegin();
+								sendDtxExplicitBegin();
 							}
 
 							DefineSavepoint(name);
