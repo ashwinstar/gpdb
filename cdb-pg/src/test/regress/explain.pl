@@ -715,12 +715,51 @@ sub analyze_node
             $node->{short} = shift @short;
 
             # handle case where dashed line might have wrapped...
-            unless (defined($node->{short}))
+            unless (defined($node->{short}) && length($node->{short}))
             {
                 # might not be first line...
                 @short = $node->{txt} =~ m/\s*\|\s*(.*)\s*\(cost\=/;
                 $node->{short} = shift @short;
             }
+
+
+        }
+
+        # handle case of "cost-free" txt (including a double ||
+        # and not first line, or screwed-up parse of short as a single bar
+        #
+        # example: weird initplan like:
+        # ||                       ->  InitPlan  (slice49)
+        if (defined($node->{short}) && length($node->{short})
+            && ($node->{short} =~ m/\s*\|\s*/))
+        {
+            $node->{short} = "";
+        }
+
+        unless (defined($node->{short}) && length($node->{short}))
+        {
+            @short = $node->{txt} =~ m/\s*\|(\|)?\s*(\w*)\s*/;
+            $node->{short} = shift @short;
+
+            if (defined($node->{short}) && length($node->{short})
+                && ($node->{short} =~ m/\s*\|\s*/))
+            {
+                $node->{short} = "";
+            }
+        
+            # last try!!
+            unless (defined($node->{short}) && length($node->{short}))
+            {
+                my $foo = $node->{txt};
+                $foo =~ s/\-\>//gm;
+                $foo =~ s/\|//gm;
+                $foo =~ s/^\s+//gm;
+                $foo =~ s/\s+$//gm;
+                $node->{short} = $foo;
+            }
+
+#            print "long: $node->{txt}\n";
+#            print "short: $node->{short}\n";
         }
 
         $node->{short} =~ s/\s*$//;
