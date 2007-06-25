@@ -35,12 +35,19 @@ MAC OS X
 In OS X 10.3.9 and later, add all of the following to 
 /etc/sysctl.conf:
 
-kern.sysv.shmall=268435456
-kern.sysv.shmmax=268435456
+kern.sysv.shmmax=2147483648
 kern.sysv.shmmin=1
-kern.sysv.shmmni=32
-kern.sysv.shmseg=8
+kern.sysv.shmmni=64
+kern.sysv.shmseg=16
+kern.sysv.shmall=524288
 net.inet.tcp.msl=60
+
+If using DHCP with MAC OS X, add the following line to /etc/hostconfig:
+
+HOSTNAME="<your_hostname>"
+
+You would then use this host name when exchanging ssh keys and 
+when initializing your Greenplum Database system.
 
 
 ----------------
@@ -106,15 +113,25 @@ $GPHOME/docs.
 
 3. Create your data directory locations on all Greenplum hosts.
 
-4. (multi-host configuration only) Use the gpssh-exkeys utility 
-   to exchange SSH keys between all hosts.
+4. Use the gpssh-exkeys utility to exchange SSH keys between all 
+   hosts in your Greenplum array. Note that for a single host 
+   configuration you still must exchange ssh keys between the 
+   current host and itself.
 
 5. (multi-host configuration only) Use the gpscp and gpssh 
    utilities to copy and install the Greenplum Database software 
    on all segment hosts.
 
 6. Use the gpinitsystem utility to initialize and start your 
-   Greenplum Database system.
+   Greenplum Database system. This utility requires a 
+   configuration file. For example:
+
+   gpinitsystem -c gp_init_config
+
+   A sample gp_init_config configuration file can be found in
+   $GPHOME/docs/cli_help/gp_init_config_example. Edit this file
+   to reflect your desired Greenplum Database array configuration.
+   
 
 
 ************************************************
@@ -146,7 +163,7 @@ GREENPLUM DATABASE DOCUMENTATION
 
 The following Greenplum Database documentation is available in the
 $GPHOME/docs directory of your Greenplum installation, or you 
-can go to gpn.greenplum.com to get the latest documentation:
+can go to http://gpn.greenplum.com to get the latest documentation:
 
 * GPAdminGuide.pdf - Greenplum Database Administrator Guide 
   (Installation / Configuration / Management)
@@ -154,7 +171,7 @@ can go to gpn.greenplum.com to get the latest documentation:
 * GPUserGuide.pdf - Greenplum Database User Guide 
   (SQL Commands / Common DBA Tasks)
 
-* GPPerfTuning - Greenplum Database Performance Tuning Guide
+* GPPerfTuning.pdf - Greenplum Database Performance Tuning Guide
   (Tips and Strategies for Performance Tuning)
 
 * GPOverview.pdf - Greenplum Database Overview Guide 
