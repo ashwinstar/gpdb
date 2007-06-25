@@ -313,6 +313,7 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 	Datum		execcommand;
 	Datum		fmttype;
 	Datum		fmtopts;
+	char	   *loc_str = NULL;
 	bool		isNull;
 	Datum	   *elems;
 	int			nelems;
@@ -375,10 +376,10 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 		
 		for (i = 0; i < nelems; i++)
 		{
-			char *uri_str = DatumGetCString(DirectFunctionCall1(textout, elems[i]));
+			loc_str = DatumGetCString(DirectFunctionCall1(textout, elems[i]));
 			
 			/* append to a list of Value nodes, size nelems */
-			rel->locationlist = lappend(rel->locationlist, makeString(pstrdup(uri_str)));
+			rel->locationlist = lappend(rel->locationlist, makeString(pstrdup(loc_str)));
 		}
 	}
 	
@@ -395,6 +396,16 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 	else
 		rel->execcommand = DatumGetCString(DirectFunctionCall1(textout, execcommand));
 		
+	/*
+	 * external web tables are non rescannable, regular ext tables are
+	 */
+	if(loc_str && 
+	   (strncmp(loc_str, "file", strlen("file")) == 0 ||
+	   strncmp(loc_str, "gpfdist", strlen("gpfdist")) == 0))
+		rel->isrescannable = true;
+	else
+		rel->isrescannable = false; /* ext web table */
+	
 	/*
 	 * Now get the format type
 	 */

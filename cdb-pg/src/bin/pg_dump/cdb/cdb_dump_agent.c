@@ -7763,33 +7763,6 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
         appendPQExpBuffer(delq, "%s;\n",
                           fmtId(tbinfo->dobj.name));
         
-        appendPQExpBuffer(q, "CREATE EXTERNAL TABLE %s (",
-                          fmtId(tbinfo->dobj.name));
-        actual_atts = 0;
-        for (j = 0; j < tbinfo->numatts; j++)
-        {
-            /* Is this one of the table's own attrs, and not dropped ? */
-            if (!tbinfo->inhAttrs[j] && !tbinfo->attisdropped[j])
-            {
-                /* Format properly if not first attr */
-                if (actual_atts > 0)
-                    appendPQExpBuffer(q, ",");
-                appendPQExpBuffer(q, "\n    ");
-                
-                /* Attribute name */
-                appendPQExpBuffer(q, "%s ",
-                                  fmtId(tbinfo->attnames[j]));
-                
-                /* Attribute type */
-                appendPQExpBuffer(q, "%s",
-                                  tbinfo->atttypnames[j]);
-                
-                actual_atts++;
-            }
-        }
-        
-        appendPQExpBuffer(q, "\n)");
-        
         /* Now get required information from pg_exttable */
         appendPQExpBuffer(query,
                           "SELECT x.location, x.fmttype, x.fmtopts, x.command "
@@ -7818,6 +7791,43 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
         fmttype = PQgetvalue(res, 0, 1);
         fmtopts = PQgetvalue(res, 0, 2);
 		command = PQgetvalue(res, 0, 3);
+		
+		if((command && strlen(command) > 0) ||
+		   (strncmp(locations + 1, "http", strlen("http")) == 0))
+		{
+			appendPQExpBuffer(q, "CREATE EXTERNAL WEB TABLE %s (",
+							  fmtId(tbinfo->dobj.name));			
+		}
+		else
+		{
+			appendPQExpBuffer(q, "CREATE EXTERNAL TABLE %s (",
+							  fmtId(tbinfo->dobj.name));			
+		}
+
+        actual_atts = 0;
+        for (j = 0; j < tbinfo->numatts; j++)
+        {
+            /* Is this one of the table's own attrs, and not dropped ? */
+            if (!tbinfo->inhAttrs[j] && !tbinfo->attisdropped[j])
+            {
+                /* Format properly if not first attr */
+                if (actual_atts > 0)
+                    appendPQExpBuffer(q, ",");
+                appendPQExpBuffer(q, "\n    ");
+                
+                /* Attribute name */
+                appendPQExpBuffer(q, "%s ",
+                                  fmtId(tbinfo->attnames[j]));
+                
+                /* Attribute type */
+                appendPQExpBuffer(q, "%s",
+                                  tbinfo->atttypnames[j]);
+                
+                actual_atts++;
+            }
+        }
+        
+        appendPQExpBuffer(q, "\n)");
 		
 		if(command && strlen(command) > 0)
 		{

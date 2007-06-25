@@ -3,7 +3,7 @@
 --
 
 -- unzip the data files for whois, lineitem
-CREATE EXTERNAL TABLE gpfdist_init (x text)
+CREATE EXTERNAL WEB TABLE gpfdist_init (x text)
 execute E'((cd @abs_srcdir@/data; @gpwhich_gunzip@ -c whois.csv.gz > whois.csv ; @gpwhich_gunzip@ -c lineitem.tbl.gz > lineitem.tbl); echo "gunzip...") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
@@ -189,12 +189,12 @@ DROP EXTERNAL TABLE EXT_LINEITEM;
 -- gpfdist
 --
 
-CREATE EXTERNAL TABLE gpfdist_start (x text)
+CREATE EXTERNAL WEB TABLE gpfdist_start (x text)
 execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_srcdir@/data  </dev/null >/dev/null 2>&1 &); echo "starting...") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 
-CREATE EXTERNAL TABLE gpfdist_stop (x text)
+CREATE EXTERNAL WEB TABLE gpfdist_stop (x text)
 execute E'(@ps_pidfirst@ | grep gpfdist |  grep \'@abs_srcdir@/data\' | 
 grep -v grep | awk \'{print "kill "$1}\' | sh ) ; echo "stopping..."'
 on SEGMENT 0
@@ -375,7 +375,7 @@ DROP EXTERNAL TABLE EXT_LINEITEM;
 --
 -- csv (mpp-1519, etc)
 --
-CREATE EXTERNAL TABLE gpfdist_csv_start (x text)
+CREATE EXTERNAL WEB TABLE gpfdist_csv_start (x text)
 execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_srcdir@/data  -q \'"\' -h  </dev/null >/dev/null 2>&1 &); echo "starting...") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
@@ -949,12 +949,12 @@ drop external table gpfdist_stop;
 --- test copying in CSV mode with various styles
 --- of embedded line ending characters
 
-CREATE EXTERNAL TABLE gpfdist_start (x text)
+CREATE EXTERNAL WEB TABLE gpfdist_start (x text)
 execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_builddir@/results -q \'z\' -x \'Z\' </dev/null >/dev/null 2>&1 &); echo "starting...") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 
-CREATE EXTERNAL TABLE gpfdist_stop (x text)
+CREATE EXTERNAL WEB TABLE gpfdist_stop (x text)
 execute E'(@ps_pidfirst@ | grep gpfdist |  grep \'@abs_builddir@/results\' |
 grep -v grep | awk \'{print "kill "$1}\' | sh ) ; echo "stopping..."'
 on SEGMENT 0
@@ -1004,9 +1004,9 @@ DROP EXTERNAL TABLE gpfdist_start;
 
 -- recreate gpfdist with header (-h) option
 
---CREATE EXTERNAL TABLE gpfdist_start (x text)
+--CREATE EXTERNAL WEB TABLE gpfdist_start (x text)
 --execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_builddir@/results -x \'Z\' -q \'z\' -h </dev/null >/dev/null 2>&1 &); echo "starting...") '
-CREATE EXTERNAL TABLE gpfdist_start (x text)
+CREATE EXTERNAL WEB TABLE gpfdist_start (x text)
 execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_builddir@/results -q \'"\' -h </dev/null >/dev/null 2>&1 &); echo "starting...") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
@@ -1064,18 +1064,18 @@ select * from gpfdist_stop;
 DROP EXTERNAL TABLE gpfdist_start;
 DROP EXTERNAL TABLE gpfdist_stop;
 
-CREATE EXTERNAL TABLE splitsetup (x text)
+CREATE EXTERNAL WEB TABLE splitsetup (x text)
 execute E'((rm -rf @abs_builddir@/results/exttab1dir; mkdir  @abs_builddir@/results/exttab1dir;  mkdir @abs_builddir@/results/exttab1dir/splitlineitem; cp @abs_srcdir@/data/lineitem.tbl @abs_builddir@/results/exttab1dir; ( cd @abs_builddir@/results/exttab1dir; split -l 1000 lineitem.tbl x; mv x* splitlineitem )); echo "setup...") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 
 -- point gpfdist at the results directory, not the data directory
-CREATE EXTERNAL TABLE gpfdist_start (x text)
+CREATE EXTERNAL WEB TABLE gpfdist_start (x text)
 execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_builddir@/results  </dev/null >/dev/null 2>&1 &); echo "starting...") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 
-CREATE EXTERNAL TABLE gpfdist_stop (x text)
+CREATE EXTERNAL WEB TABLE gpfdist_stop (x text)
 execute E'(@ps_pidfirst@ | grep gpfdist |  grep \'@abs_builddir@/results\' | 
 grep -v grep | awk \'{print "kill "$1}\' | sh ) ; echo "stopping..."'
 on SEGMENT 0
@@ -1108,7 +1108,7 @@ location ('file://@hostname@@abs_srcdir@/data/lineitem.tbl' )
 FORMAT 'text' (delimiter '|');
 
 
-CREATE EXTERNAL TABLE EXT_LINEITEM1 ( L_ORDERKEY    INTEGER ,
+CREATE EXTERNAL WEB TABLE EXT_LINEITEM1 ( L_ORDERKEY    INTEGER ,
                              L_PARTKEY     INTEGER ,
                              L_SUPPKEY     INTEGER ,
                              L_LINENUMBER  INTEGER ,
@@ -1128,7 +1128,7 @@ execute E'(@gpwhich_curl@ http://@hostname@:8080/exttab1dir/splitlineitem) '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 
-CREATE EXTERNAL TABLE EXT_LINEITEM2 ( L_ORDERKEY    INTEGER ,
+CREATE EXTERNAL WEB TABLE EXT_LINEITEM2 ( L_ORDERKEY    INTEGER ,
                              L_PARTKEY     INTEGER ,
                              L_SUPPKEY     INTEGER ,
                              L_LINENUMBER  INTEGER ,

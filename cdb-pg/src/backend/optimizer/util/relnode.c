@@ -84,8 +84,10 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 	rel->tuples = 0;
 	rel->subplan = NULL;
 	rel->locationlist = NIL;
+	rel->execcommand = NULL;
 	rel->fmttype = '\0';
 	rel->fmtopts = NULL;	
+	rel->isrescannable = true;
 	rel->baserestrictinfo = NIL;
 	rel->baserestrictcost.startup = 0;
 	rel->baserestrictcost.per_tuple = 0;

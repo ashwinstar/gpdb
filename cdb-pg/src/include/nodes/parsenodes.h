@@ -1212,6 +1212,7 @@ typedef struct CreateExternalStmt
 	Node	   *exttypedesc;    /* LOCATION or EXECUTE information */
 	char	   *format;			/* data format name */
 	List	   *formatOpts;		/* List of DefElem nodes for data format */
+	bool		isweb;
 } CreateExternalStmt;
 
 /* ----------

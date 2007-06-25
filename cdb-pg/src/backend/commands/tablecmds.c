@@ -282,7 +282,7 @@ static void update_ri_trigger_args(Oid relid,
 static void StoreExternalRelation(Oid tbloid, Datum locations, Datum locationExec, 
 								  char *commandString, Datum formatopts, 
 								  char formattype);
-static Datum transformLocationUris(List *locs);
+static Datum transformLocationUris(List *locs, bool isweb);
 static Datum transformExecOnClause(List	*on_clause);
 static char transformFormatType(char *formatname);
 static Datum transformFormatOpts(char formattype, List *formatOpts);
@@ -768,7 +768,8 @@ extern void	DefineExternalRelation(CreateExternalStmt *stmt)
 		case EXTTBL_TYPE_LOCATION:
 			
 			/* Parse and validate URI strings (LOCATION clause) */
-			locationUris = transformLocationUris(exttypeDesc->location_list);
+			locationUris = transformLocationUris(exttypeDesc->location_list,
+												 stmt->isweb);
 			break;
 			
 		case EXTTBL_TYPE_EXECUTE:
@@ -7920,7 +7921,7 @@ StoreExternalRelation(Oid tbloid, Datum uri_locations, Datum exec_locations,
  * The result is a text array but we declare it as Datum to avoid 
  * including array.h in analyze.h.
  */
-static Datum transformLocationUris(List *locs)
+static Datum transformLocationUris(List *locs, bool isweb)
 {
 	ListCell   *cell;
 	ArrayBuildState *astate;
@@ -7990,6 +7991,20 @@ static Datum transformLocationUris(List *locs)
 					 errmsg("unsupported URI protocol for \'%s\'", uri_str),
 					 errhint("Use 'file', 'http' or 'gpfdist' protocol instead.")));
 		}
+		
+		if(uri->protocol != URI_HTTP && isweb)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("an EXTERNAL WEB TABLE may only use http URI\'s, problem in: \'%s\'", uri_str),
+					 errhint("Use CREATE EXTERNAL TABLE instead.")));
+
+		if(uri->protocol == URI_HTTP && !isweb)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					errmsg("http URI\'s can only be used in an external web table"),
+					errhint("Use CREATE EXTERNAL WEB TABLE instead.")));
+
+
 		
 		len = VARHDRSZ + strlen(uri_str);
 		

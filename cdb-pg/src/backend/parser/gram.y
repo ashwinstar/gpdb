@@ -261,7 +261,7 @@ static void doNegateFloat(Value *v);
 %type <fun_param_mode> arg_class
 %type <typnam>	func_return func_type
 
-%type <boolean>  TriggerForType OptTemp
+%type <boolean>  TriggerForType OptTemp OptWeb
 %type <oncommit> OnCommitOption
 
 %type <node>	for_locking_item
@@ -455,7 +455,7 @@ static void doNegateFloat(Value *v);
 	VACUUM VALID VALIDATOR VALUES VARCHAR VARYING
 	VERBOSE VIEW VOLATILE
 
-	WHEN WHERE WINDOW WITH WITHOUT WORK WRITE
+	WEB WHEN WHERE WINDOW WITH WITHOUT WORK WRITE
 
 	YEAR_P
 
@@ -2434,22 +2434,35 @@ CreateAsElement:
 /*****************************************************************************
  *
  *		QUERY :
- *				CREATE EXTERNAL TABLE relname
+ *				CREATE EXTERNAL [WEB] TABLE relname
  *
  *****************************************************************************/
 	
-CreateExternalStmt:	CREATE EXTERNAL OptTemp TABLE qualified_name '(' OptExtTableElementList ')' 
+CreateExternalStmt:	CREATE EXTERNAL OptWeb OptTemp TABLE qualified_name '(' OptExtTableElementList ')' 
 					ExtTypedesc FORMAT Sconst format_opt
 						{
 							CreateExternalStmt *n = makeNode(CreateExternalStmt);
-							$5->istemp = $3;
-							n->relation = $5;
-							n->tableElts = $7;
-							n->exttypedesc = $9;
-							n->format = $11;
-							n->formatOpts = $12;
+							n->isweb = $3;
+							$6->istemp = $4;
+							n->relation = $6;
+							n->tableElts = $8;
+							n->exttypedesc = $10;
+							n->format = $12;
+							n->formatOpts = $13;
+							
+							if(((ExtTableTypeDesc *) n->exttypedesc)->exttabletype == EXTTBL_TYPE_EXECUTE &&
+							   !(n->isweb))
+								ereport(ERROR,
+										(errcode(ERRCODE_SYNTAX_ERROR),
+										 errmsg("EXECUTE may not be used with a regular external table"),
+										 errhint("Use CREATE EXTERNAL WEB TABLE instead")));							
+								
 							$$ = (Node *)n;							
 						}
+						;
+
+OptWeb:		WEB						{ $$ = TRUE; }
+			| /* empty */			{ $$ = FALSE; }
 						;
 
 ExtTypedesc:

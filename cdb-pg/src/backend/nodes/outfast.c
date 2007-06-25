@@ -1447,6 +1447,11 @@ _outRelOptInfo(StringInfo str, RelOptInfo *node)
 	WRITE_UINT_FIELD(pages);
 	WRITE_FLOAT_FIELD(tuples, "%.0f");
 	WRITE_NODE_FIELD(subplan);
+	WRITE_NODE_FIELD(locationlist);
+	WRITE_STRING_FIELD(execcommand);	
+	WRITE_CHAR_FIELD(fmttype);
+	WRITE_STRING_FIELD(fmtopts);
+	WRITE_BOOL_FIELD(isrescannable);
 	WRITE_NODE_FIELD(baserestrictinfo);
 	WRITE_NODE_FIELD(joininfo);
 	WRITE_BITMAPSET_FIELD(index_outer_relids);
@@ -1623,6 +1628,7 @@ _outCreateExternalStmt(StringInfo str, CreateExternalStmt *node)
 	WRITE_NODE_FIELD(exttypedesc);
 	WRITE_STRING_FIELD(format);
 	WRITE_NODE_FIELD(formatOpts);
+	WRITE_BOOL_FIELD(isweb);
 }
 
 static void

@@ -391,6 +391,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"verbose", VERBOSE},
 	{"view", VIEW},
 	{"volatile", VOLATILE},
+	{"web", WEB},
 	{"when", WHEN},
 	{"where", WHERE},
 	{"window", WINDOW},

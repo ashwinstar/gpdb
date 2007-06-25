@@ -2335,6 +2335,8 @@ _copyCreateExternalStmt(CreateExternalStmt *from)
 	COPY_NODE_FIELD(exttypedesc);
 	COPY_STRING_FIELD(format);
 	COPY_NODE_FIELD(formatOpts);
+	COPY_SCALAR_FIELD(isweb);
+
 	
 	return newnode;
 }

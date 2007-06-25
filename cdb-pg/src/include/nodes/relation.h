@@ -294,6 +294,7 @@ typedef struct RelOptInfo
 	char		*execcommand;
 	char		fmttype;
 	char		*fmtopts;
+	bool		isrescannable; /* true for ext tables false for ext web tables */
 	
 	/* used by various scans and joins: */
 	List	   *baserestrictinfo;		/* RestrictInfo structures (if base
