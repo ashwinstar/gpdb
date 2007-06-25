@@ -366,7 +366,37 @@ seqserver_forkexec(void)
 }
 #endif   /* EXEC_BACKEND */
 
+bool shutdown_requested=false;
 
+static void
+RequestShutdown(SIGNAL_ARGS)
+{
+	shutdown_requested = true;
+}
+
+/*
+ * ss_quickdie() occurs when signalled SIGQUIT by the postmaster.
+ *
+ * Some backend has bought the farm,
+ * so we need to stop what we're doing and exit.
+ */
+static void
+ss_quickdie(SIGNAL_ARGS)
+{
+	PG_SETMASK(&BlockSig);
+
+	/*
+	 * DO NOT proc_exit() -- we're here because shared memory may be
+	 * corrupted, so we don't want to try to clean up our transaction. Just
+	 * nail the windows shut and get out of town.
+	 *
+	 * Note we do exit(2) not exit(0).	This is to force the postmaster into a
+	 * system reset cycle if some idiot DBA sends a manual SIGQUIT to a random
+	 * backend.  This is necessary precisely because we don't clean up our
+	 * shared memory state.
+	 */
+	exit(2);
+}
 
 /*
  * AutoVacMain
@@ -375,7 +405,6 @@ NON_EXEC_STATIC void
 SeqServerMain(int argc, char *argv[])
 {
 	sigjmp_buf	local_sigjmp_buf;
-
 
 	IsUnderPostmaster = true;
 	am_seqserver = true;
@@ -407,13 +436,13 @@ SeqServerMain(int argc, char *argv[])
 	 */
 	pqsignal(SIGINT, StatementCancelHandler);
 	pqsignal(SIGTERM, die);
-	pqsignal(SIGQUIT, quickdie);
+	pqsignal(SIGQUIT, ss_quickdie);
 	pqsignal(SIGALRM, handle_sig_alarm);
 
 	pqsignal(SIGPIPE, SIG_IGN);
 	pqsignal(SIGUSR1, CatchupInterruptHandler);
 	/* We don't listen for async notifies */
-	pqsignal(SIGUSR2, SIG_IGN);
+	pqsignal(SIGUSR2, RequestShutdown);
 	pqsignal(SIGFPE, FloatExceptionHandler);
 	pqsignal(SIGCHLD, SIG_DFL);
 
@@ -459,18 +488,14 @@ SeqServerMain(int argc, char *argv[])
 	/*
 	 * setup scratch buffers
 	 */
-	inputBuff = palloc( sizeof(NextValRequest) );	
-	
+	inputBuff = palloc(sizeof(NextValRequest));
 	
 	/* main loop */
 	SeqServerLoop();
-	
 
 	/* One iteration done, go away */
 	proc_exit(0);
 }
-
-
 
 void SeqServerLoop(void)
 {
@@ -489,11 +514,9 @@ void SeqServerLoop(void)
 	tval.tv_sec = 3;
 	tval.tv_usec = 500000;
 	
-				
 	FD_ZERO(&rset);
 	FD_SET(listenerFd, &rset);
 	highsock = listenerFd + 1;
-	
 	
 	/* we'll handle many incoming sockets but keep the sockets in blocking
 	 * mode since we are dealing with very small messages.
@@ -501,9 +524,11 @@ void SeqServerLoop(void)
 	while(true)
 	{
 		struct timeval timeout = tval;
-		
-		
+				
 		CHECK_FOR_INTERRUPTS();
+
+		if (shutdown_requested)
+			break;
 		
 		/* no need to live on if postmaster has died */
 		if (!PostmasterIsAlive(true))
@@ -517,8 +542,7 @@ void SeqServerLoop(void)
 			/* intr or timeout: Have we been here too long ? */			
 			continue;
 		}
-		
-		
+
 		if (n < 0)
 		{
 			/* this may be a little severe, but if we error on select() 
@@ -588,10 +612,9 @@ void SeqServerLoop(void)
 				}							
 			}	
 		}
-		
-		
 	} /* end server loop */
-	
+
+	return;
 }
 
 
@@ -599,7 +622,7 @@ void SeqServerLoop(void)
  * Used by sequenceServer to process incoming Sequence Requests
  */
 static bool
-processSequenceRequest( int sockfd )
+processSequenceRequest(int sockfd )
 {
 	NextValRequest nextValRequest;
     NextValResponse response;
@@ -617,17 +640,16 @@ processSequenceRequest( int sockfd )
 	
 	
 	/* Read in the incoming request message */
-	while( bytesRead < reqlen )
+	while (bytesRead < reqlen)
 	{
-		
 		CHECK_FOR_INTERRUPTS();
-			
+
 		n = read(sockfd, inputBuff + bytesRead, reqlen - bytesRead);
 		saved_err = errno;
-		
+
 		if (n == 0)
 		{
-			elog( DEBUG3, "client socket is closed");
+			elog(DEBUG3, "client socket is closed");
 			return false;
 		}
 		
@@ -635,7 +657,7 @@ processSequenceRequest( int sockfd )
 		{
 			if (saved_err != EINTR && saved_err != EWOULDBLOCK)
 			{
-				elog( DEBUG3, "Error: Could not read() message from client."
+				elog(DEBUG3, "Error: Could not read() message from client."
 					  "(error:%d). Closing connection.", saved_err);
 				return false;
 			}
@@ -687,7 +709,7 @@ processSequenceRequest( int sockfd )
 	nextValRequest.isTemp       = ntohl(nextValRequest.isTemp);
     nextValRequest.session_id   = ntohl(nextValRequest.session_id);
 	
-	elog( DEBUG5, "Received nextval request for dbid: %ld tablespaceid: %ld seqoid: "
+	elog(DEBUG5, "Received nextval request for dbid: %ld tablespaceid: %ld seqoid: "
 				  "%ld isTemp: %s session_id: %ld",
 				  (long int)nextValRequest.dbid,
 				  (long int)nextValRequest.tablespaceid,
@@ -718,7 +740,7 @@ processSequenceRequest( int sockfd )
 	/*
 	 * Write the response
 	 */
-	while( bytesWritten < outputBuffLength )
+	while (bytesWritten < outputBuffLength )
 	{
 		
 		CHECK_FOR_INTERRUPTS();
@@ -728,7 +750,7 @@ processSequenceRequest( int sockfd )
 	
 		if (n == 0)
 		{
-			elog( DEBUG3, "client socket is closed");
+			elog(DEBUG3, "client socket is closed");
 			return false;
 		}
 		
@@ -736,7 +758,7 @@ processSequenceRequest( int sockfd )
 		{
 			if (saved_err != EINTR && saved_err != EWOULDBLOCK)
 			{
-				elog( DEBUG3, "Error: Could not write() message from client."
+				elog(DEBUG3, "Error: Could not write() message from client."
 					  "(error:%d). Closing connection.", sockfd);
 				return false;
 			}
@@ -762,7 +784,7 @@ processSequenceRequest( int sockfd )
 					{
 						saved_err = errno;
 
-						elog( DEBUG3, "error writing incoming message from client. (errno: %d)", saved_err);
+						elog(DEBUG3, "error writing incoming message from client. (errno: %d)", saved_err);
 						return false;
 					}
 				}
@@ -864,7 +886,7 @@ listenerSetup(void)
 
 
 
-int64 readInt64( uint8 *buff )
+int64 readInt64(uint8 *buff)
 {
 	int64		result;
 

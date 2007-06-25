@@ -2090,7 +2090,7 @@ pmdie(SIGNAL_ARGS)
 					PMSubProc *subProc = &PMSubProcList[ii];
 
 					if (subProc->pid != 0)
-						signal_child(subProc->pid, SIGQUIT);
+						signal_child(subProc->pid, SIGUSR2);
 				}
 			}
 			/* Tell pgstat to shut down too; nothing left for it to do */
