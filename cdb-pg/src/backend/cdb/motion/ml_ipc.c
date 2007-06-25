@@ -755,9 +755,9 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 
     	if (parentIndex != -1)
 		{
-			elog(LOG, "Setup sending connection: sender %d, parentIdx %d, nPinc %d",
-				 mySlice->sliceIndex, parentIndex, npInc
-				);
+			if (gp_log_interconnect >= GPVARS_VERBOSITY_VERBOSE)
+				elog(LOG, "Setup sending connection: sender %d, parentIdx %d, nPinc %d",
+					 mySlice->sliceIndex, parentIndex, npInc);
 
 			sendingChunkTransportState[npInc] = startOutgoingConnections(
 				*ppTransportStates, 
