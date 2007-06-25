@@ -344,6 +344,8 @@ extern int64 tuple_grouping(TupleTableSlot *outerslot, int numGroupCols,
 							int input_grouping, bool input_has_grouping,
 							int grpingIdx);
 extern uint32 get_group_id(TupleTableSlot *tupleslot);
+extern uint64 get_grouping(TupleTableSlot *slot,
+						   int grping_idx);
 
 /* prototypes defined in nodeBitmapAnd.c */
 extern void tbm_reset_bitmaps(PlanState *pstate);

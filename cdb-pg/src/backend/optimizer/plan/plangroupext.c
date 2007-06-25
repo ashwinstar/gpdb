@@ -316,6 +316,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 	TargetEntry *tle;
 	Grouping *grping;
 	uint64    input_grouping;
+	bool need_finalagg = !context->twostage;
 
 	generate_three_tlists(context->tlist, context->twostage,
 						  context->sub_tlist, (Node *)context->qual,
@@ -434,7 +435,11 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 
 			context->aggstrategy = aggstrategy;
 
-			if (context->twostage && group_no == last_group_no)
+			if (current_lefttree->flow != NULL &&
+				current_lefttree->flow->flotype == FLOW_SINGLETON)
+				need_finalagg = false;
+
+			if (!need_finalagg && group_no == last_group_no)
 			{
 				current_qual = context->qual;
 				context->tlist = add_grouping_groupid(context->tlist);
@@ -519,7 +524,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 	 * we add a Gather motion node on top of the top Agg node to do the
 	 * final aggregation.
 	 */
-	if (!context->twostage)
+	if (need_finalagg)
 	{
 		long lNumGroups;
 		Flow *flow;

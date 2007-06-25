@@ -2118,6 +2118,12 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 		 */
 		expression_tree_walker((Node *)pstate->p_win_clauses,
 							   grouping_rewrite_walker, (void *)&ctx);
+
+		/*
+		 * The expression might be present in the having clause as well.
+		 */
+		expression_tree_walker(pstate->having_qual,
+							   grouping_rewrite_walker, (void *)&ctx);
 	}
 
 	list_free(tle_list);

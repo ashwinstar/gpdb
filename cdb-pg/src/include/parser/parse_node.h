@@ -82,6 +82,7 @@ typedef struct ParseState
 	Relation	p_target_relation;
 	RangeTblEntry *p_target_rangetblentry;
 	List	   *p_win_clauses;	/* list of window specifications */
+	Node       *having_qual; /* Having clause */
 } ParseState;
 
 extern ParseState *make_parsestate(ParseState *parentParseState);

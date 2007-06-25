@@ -912,11 +912,19 @@ agg_retrieve_direct(AggState *aggstate)
 		 * to just do the projection again.
 		 */
 		econtext->ecxt_scantuple = aggstate->prev_aggslot;
-		econtext->group_id = aggstate->num_repeats - 1;
+		econtext->group_id = aggstate->num_repeats;
+		econtext->grouping =
+			get_grouping(econtext->ecxt_scantuple,
+						 node->grpColIdx[node->numCols-1]);
 
-		aggstate->num_repeats--;
+		while (econtext->group_id > 0)
+		{
+			econtext->group_id--;
+			aggstate->num_repeats--;
 
-		return ExecProject(projInfo, NULL);
+			if (ExecQual(aggstate->ss.ps.qual, econtext, false))
+				return ExecProject(projInfo, NULL);
+		}
 	}
 
 	else
@@ -1308,6 +1316,7 @@ agg_retrieve_direct(AggState *aggstate)
 
 		if (is_final_rollup_agg)
 		{
+#if 0
 			bool isnull;
 			Datum grping_datum;
 
@@ -1320,6 +1329,10 @@ agg_retrieve_direct(AggState *aggstate)
 			Assert(!isnull);
 
 			econtext->grouping = DatumGetInt64(grping_datum);
+#endif
+			econtext->grouping =
+				get_grouping(econtext->ecxt_scantuple,
+							 node->grpColIdx[node->numCols-1]);
 		}
 		else
 			econtext->grouping = node->grouping;
@@ -1329,7 +1342,8 @@ agg_retrieve_direct(AggState *aggstate)
 		{
 			aggstate->prev_aggslot = econtext->ecxt_scantuple;
 			aggstate->num_repeats = econtext->group_id - 1;
-			econtext->group_id--;
+			if (econtext->group_id > 0)
+				econtext->group_id--;
 		}
 
 		/*
@@ -1344,6 +1358,24 @@ agg_retrieve_direct(AggState *aggstate)
 			 * aggregates returning sets ...
 			 */
 			return ExecProject(projInfo, NULL);
+		}
+
+		/*
+		 * Okay, the qual check fails. However, this may be one of multiple
+		 * same tuples to be outputted. We change group_id and retry.
+		 */
+		else if (peragg->aggref->aggstage == AGGSTAGE_FINAL ||
+				 peragg->aggref->aggstage == AGGSTAGE_NORMAL)
+		{
+			while (econtext->group_id > 0)
+			{
+				econtext->group_id --;
+				aggstate->num_repeats--;
+
+				if (ExecQual(aggstate->ss.ps.qual, econtext, false))
+					return ExecProject(projInfo, NULL);
+			}
+			
 		}
 	}
 
@@ -2165,10 +2197,7 @@ tuple_grouping(TupleTableSlot *outerslot, int numGroupCols,
 
 	grping_datum = slot_getattr(outerslot, grpingIdx, &isnull);
 
-	if (isnull || grping_datum == 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_GP_INTERNAL_ERROR),
-				 errmsg("GROUPING should not be null")));
+	Assert(!isnull && grping_datum != 0);
 
 	grping = DatumGetInt64(grping_datum);
 
@@ -2201,12 +2230,25 @@ get_group_id(TupleTableSlot *tupleslot)
 	 */
 	gid_datum = slot_getattr(tupleslot, natts, &isnull);
 
-	if (isnull || gid_datum == 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_GP_INTERNAL_ERROR),
-				 errmsg("GROUP_ID should not be null")));
+	Assert(!isnull && gid_datum != 0);
 	
 	gid = DatumGetInt32(gid_datum);
 
 	return gid;
+}
+
+uint64
+get_grouping(TupleTableSlot *slot, int grping_attno)
+{
+	bool isnull;
+	uint64 grouping;
+	
+	/* Obtain grouping from input */
+	Datum grping_datum = slot_getattr(slot,
+									  grping_attno,
+									  &isnull);
+	Assert(!isnull);
+	grouping = DatumGetInt64(grping_datum);
+
+	return grouping;
 }

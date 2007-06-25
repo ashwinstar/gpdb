@@ -2378,7 +2378,8 @@ make_canonical_groupingsets(List *groupClause)
 					  canonical_grpsets->grpsets[prev_setno]))
 		{
 			canonical_grpsets->grpset_counts[prev_setno]++;
-			pfree(canonical_grpsets->grpsets[setno]);
+			if (canonical_grpsets->grpsets[setno])
+				pfree(canonical_grpsets->grpsets[setno]);
 		}
 
 		else

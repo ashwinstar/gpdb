@@ -4252,6 +4252,12 @@ get_groupingfunc_expr(GroupingFunc *grpfunc, deparse_context *context)
 	ListCell *lc;
 	char *sep = "";
 	List *group_exprs;
+	if (context->query == NULL)
+	{
+		appendStringInfoString(buf, "grouping");
+		return;
+	}
+
 	group_exprs = get_grouplist_exprs(context->query->groupClause,
 									  context->query->targetList);
 

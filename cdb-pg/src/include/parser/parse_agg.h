@@ -36,5 +36,6 @@ extern void build_aggregate_fnexprs(Oid *agg_input_types,
 						Expr **invprelimfnexpr);
 
 extern bool checkExprHasWindFuncs(Node *node);
+extern bool checkExprHasGroupExtFuncs(Node *node);
 
 #endif   /* PARSE_AGG_H */

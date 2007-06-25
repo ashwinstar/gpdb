@@ -313,14 +313,12 @@ select grouping(cn,vn,pn) from sale group by rollup(cn); --error
 
 -- Using in View --
 
---start_ignore
 create view cube_view as select cn,vn,grouping(vn,cn) from sale group by cube(cn,vn);
 \d cube_view;
 create view rollup_view as select cn,vn,pn,grouping(cn,vn,pn) from sale group by rollup(cn),vn,pn;
 \d rollup_view;
 create view gs_view as select cn,vn,grouping(vn,cn) from sale group by grouping sets ((vn), (cn), (), (cn,vn));
 \d gs_view;
---end_ignore
 
 -- GROUP_ID function --
 
@@ -388,4 +386,26 @@ union all (select null,null,count(distinct vn),3 as grouping from sale  having c
 union all select null,dt,count(distinct vn),2 as grouping from sale group by dt having count(distinct vn) > 2;
 select cn,dt,count(distinct vn),grouping(cn,dt) from sale group by cube(cn,dt) having count(distinct vn) > 2;
 select cn,dt,count(distinct vn),grouping(cn,dt) from sale group by cube(dt,cn) having count(distinct vn) > 2;
+--end equivalent
+
+--begin equivalent
+select cn, null as vn, null as pn, count(dt), 1 as grouping from sale group by cn;
+select cn, vn, pn, count(dt),grouping(cn,vn) from sale group by rollup (cn,vn,pn) having grouping(cn,vn)=1;
+--end equivalent
+
+--begin equivalent
+select cn, vn, pn, count(dt) from sale group by cn,vn,pn
+union all select cn, null, null, count(dt) from sale group by cn;
+select cn, vn, pn, count(dt) from sale group by grouping sets ((cn,vn,pn), (cn));
+select cn, vn, pn, count(dt) from sale group by grouping sets ((cn,vn,pn), (cn), (cn), (cn))
+having group_id()=0;
+--end equivalent
+
+--begin equivalent
+select cn,vn,pn,count(dt),0,0 as grouping from sale group by cn,vn,pn
+union all select cn,null,null,count(dt),0,3 from sale group by cn
+union all select cn,null,null,count(dt),1,3 from sale group by cn
+order by 6;
+-- order 6
+select cn, vn, pn, count(dt),group_id(),grouping(cn,vn,pn) from sale group by grouping sets ((cn,vn,pn), (cn), (cn)) order by grouping(cn,vn,pn);
 --end equivalent

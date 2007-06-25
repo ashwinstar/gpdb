@@ -3365,7 +3365,7 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 	/*
 	 * Initial processing of HAVING clause is just like WHERE clause.
 	 */
-	qry->havingQual = transformWhereClause(pstate, stmt->havingClause,
+	pstate->having_qual = transformWhereClause(pstate, stmt->havingClause,
 										   "HAVING");
 
 	/*
@@ -3381,6 +3381,9 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 											stmt->groupClause,
 											&qry->targetList,
 											qry->sortClause);
+
+	qry->havingQual = pstate->having_qual;
+	pstate->having_qual = NULL;
 
 	/* 
 	 * Process WINDOW clause.

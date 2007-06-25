@@ -25,9 +25,6 @@
 #include "executor/executor.h"
 #include "executor/nodeGroup.h"
 
-static uint64 get_grouping(TupleTableSlot *slot,
-						   int grping_idx);
-
 /*
  *	 ExecGroup -
  *
@@ -77,14 +74,18 @@ ExecGroup(GroupState *node)
 		 */
 		econtext->ecxt_scantuple = node->prev_aggslot;
 
-		econtext->group_id = node->num_repeats - 1;
 		econtext->grouping =
 			get_grouping(econtext->ecxt_scantuple,
 						 group_node->grpColIdx[group_node->numCols-1]);
 
-		node->num_repeats--;
+		while (econtext->group_id > 0)
+		{
+			econtext->group_id --;
+			node->num_repeats--;
 
-		return ExecProject(node->ss.ps.ps_ProjInfo, NULL);
+			if (ExecQual(node->ss.ps.qual, econtext, false))
+				return ExecProject(node->ss.ps.ps_ProjInfo, NULL);
+		}
 	}
 
 	else
@@ -364,7 +365,8 @@ ExecGroup(GroupState *node)
 		{
 			node->prev_aggslot = econtext->ecxt_scantuple;
 			node->num_repeats = econtext->group_id - 1;
-			econtext->group_id--;
+			if (econtext->group_id > 0)
+				econtext->group_id--;
 		}
 
 		/*
@@ -377,6 +379,18 @@ ExecGroup(GroupState *node)
 			 * Form and return a projection tuple using the first input tuple.
 			 */
 			return ExecProject(node->ss.ps.ps_ProjInfo, NULL);
+		}
+
+		else if (group_node->lastGroup)
+		{
+			while (econtext->group_id > 0)
+			{
+				econtext->group_id --;
+				node->num_repeats--;
+
+				if (ExecQual(node->ss.ps.qual, econtext, false))
+					return ExecProject(node->ss.ps.ps_ProjInfo, NULL);
+			}
 		}
 	}
 
@@ -519,20 +533,4 @@ ExecReScanGroup(GroupState *node, ExprContext *exprCtxt)
 	if (((PlanState *) node)->lefttree &&
 		((PlanState *) node)->lefttree->chgParam == NULL)
 		ExecReScan(((PlanState *) node)->lefttree, exprCtxt);
-}
-
-static uint64
-get_grouping(TupleTableSlot *slot, int grping_attno)
-{
-	bool isnull;
-	uint64 grouping;
-	
-	/* Obtain grouping from input */
-	Datum grping_datum = slot_getattr(slot,
-									  grping_attno,
-									  &isnull);
-	Assert(!isnull);
-	grouping = DatumGetInt64(grping_datum);
-
-	return grouping;
 }

@@ -457,6 +457,8 @@ ExecEvalGroupingFunc(GroupingFuncExprState *gstate,
 		int pos_in_grpcols = gstate->ngrpcols - arg - 1;
 		int pos_in_grpingfunc = num_args - argno - 1;
 
+		Assert(pos_in_grpcols >= 0 && pos_in_grpingfunc >= 0);
+
 		if (econtext->grouping & (1 << pos_in_grpcols))
 			grpid |= (1 << pos_in_grpingfunc);
 
