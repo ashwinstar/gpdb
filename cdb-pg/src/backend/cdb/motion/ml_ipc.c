@@ -782,9 +782,9 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 		aSlice = (Slice *) list_nth((*ppTransportStates)->sliceTable->slices, childId);
 		numProcs = list_length(aSlice->primaryProcesses);
 
-		elog(LOG, "Setup recving connections: my slice %d, childId %d",
-			 mySlice->sliceIndex, childId
-			);
+		if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+			elog(LOG, "Setup recving connections: my slice %d, childId %d",
+				 mySlice->sliceIndex, childId);
 		pEntry = createChunkTransportState(*ppTransportStates, aSlice, mySlice, numProcs, 0);
 
 		Assert(pEntry && pEntry->valid);
@@ -1615,8 +1615,10 @@ createChunkTransportState(ChunkTransportState *transportStates,
 	pIncIdx = GetPInCIdx(recvSlice, sendSlice);
 	Assert(IS_MOTION_RECV_SLICEENTRY(pIncIdx));
 
-	elog(LOG, "CreateChunkTransportState: motNodeId %d, send %d, recv %d, pincIdx %d",
-		 motNodeID, sendSlice->sliceIndex, recvSlice->sliceIndex, pIncIdx);
+	if (gp_log_interconnect >= GPVARS_VERBOSITY_VERBOSE)
+		elog(LOG, "CreateChunkTransportState: motNodeId %d, send %d, recv %d, pincIdx %d",
+			 motNodeID, sendSlice->sliceIndex, recvSlice->sliceIndex, pIncIdx);
+
 	if (pIncIdx >= transportStates->motion_states[motNodeID-1].size)
 	{
 		int nsize = pIncIdx + 3;
@@ -1776,9 +1778,9 @@ removeChunkTransportState(ChunkTransportState *transportStates,
 {
 	ChunkTransportStateEntry *pEntry = NULL;
 
-	elog(LOG, "RemoveChunkTransportState: MotionId %d, pIncIdx %d", 
-		 motNodeID, pIncIdx
-		);
+	if (gp_log_interconnect >= GPVARS_VERBOSITY_VERBOSE)
+		elog(LOG, "RemoveChunkTransportState: MotionId %d, pIncIdx %d", 
+			 motNodeID, pIncIdx);
 
 	if (motNodeID > transportStates->size ||
 		pIncIdx >= transportStates->motion_states[motNodeID - 1].size ||
