@@ -9,10 +9,11 @@
 */
 
 #include "postgres.h"
+#include "utils/uri.h"
 
 #include <ctype.h>
+#include <arpa/inet.h>	 /* inet_ntoa() */ 
 
-#include "utils/uri.h"
 
 /*
  * This routines converts a string to URI object.
@@ -79,7 +80,12 @@ ParseUriString(const char *uri_str)
 		if(uri->protocol == URI_GPFDIST)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("invalid URI \'%s\' : must specify host name with gpfdist", uri_str)));
+					 errmsg("invalid URI \'%s\' : must specify host name with gpfdist protocol", uri_str)));
+		
+		if(uri->protocol == URI_HTTP)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("invalid URI \'%s\' : localhost is not allowed with http protocol", uri_str)));
 		
 		len = strlen(lh);
 
@@ -101,23 +107,65 @@ ParseUriString(const char *uri_str)
 		}
 		else
 		{
-			char* colon;
+			char   *colon;
+			char   *resolvedAddr; 
+			struct hostent *lookup; 
 
 			len = end - start;
 
+			/*
+			 * host
+			 */
 			uri->hostname = (char *) palloc(len + 1);
 			strncpy(uri->hostname, start, len);
 			uri->hostname[len] = '\0';
 			
+			/*
+			 * port
+			 */
 			colon = strchr(uri->hostname, ':');
-			if (colon) {
+			if (colon) 
+			{
+				int portlen = 0;
+				
 				uri->port = atoi(colon + 1);
+				portlen = strlen(colon);
+				
+				/* now truncate ":<port>" from hostname */
+				uri->hostname[len - portlen] = '\0';
+
 				*colon = 0;
 			}
-			else if(uri->protocol == URI_GPFDIST)
+			else
 			{
-				uri->port = -1; /* no port was indicated. will use default */
+				uri->port = -1; /* no port was indicated. will use default if needed */
 			}
+						
+			
+			/* 
+			 * We want to disallow anything that resolves to localhost as it 
+			 * is WAY too ambiguous in a distributed system. For now we do 
+			 * allow it for "file" protocol as the matchup with segdb hostnames
+			 * is done against gp_configuration, which could include "localhost"
+			 * entries in a 1 machine GPDB.
+			 */
+			if(uri->protocol != URI_FILE)
+			{
+				lookup = gethostbyname(uri->hostname); 
+				if (lookup == NULL) 
+				{ 
+					elog(ERROR, "Cannot resolve specified hostname '%s'", uri->hostname); 
+				} 
+				
+				resolvedAddr = inet_ntoa(*(struct in_addr *) (lookup->h_addr_list[0])); 
+				if( strlen(resolvedAddr) >= 3 && (strncmp(resolvedAddr, "127", 3) == 0 ))	
+				{ 
+					ereport(ERROR, 
+							(errcode(ERRCODE_SYNTAX_ERROR), 
+							 errmsg("invalid URI \'%s\' : 'localhost' is not allowed. It is too ambiguous in a GPDB Array", uri_str))); 
+				} 				
+			}
+			
 		}
 	}
 
