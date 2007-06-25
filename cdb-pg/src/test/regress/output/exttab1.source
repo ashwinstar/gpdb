@@ -1863,6 +1863,18 @@ select * from gpfdist_start;
  starting...
 (1 row)
 
+CREATE EXTERNAL WEB TABLE gpfdist_curl (c1 text)
+execute E'(@gpwhich_curl@ http://@hostname@:8080/extcpytest3.csv)'
+on SEGMENT 0
+FORMAT 'text' (delimiter '|');
+select * from gpfdist_curl;
+  c1   
+-------
+ 1,a,1
+ 2,b,2
+(2 rows)
+
+DROP EXTERNAL TABLE gpfdist_curl;
 create temp table extcpytest3 (
 	c1 int, 
 --	"col with , comma" text, 
