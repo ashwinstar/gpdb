@@ -76,6 +76,11 @@ ParseUriString(const char *uri_str)
 		/* the default is "localhost" */
 		const char *lh = "localhost";
 
+		if(uri->protocol == URI_GPFDIST)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("invalid URI \'%s\' : must specify host name with gpfdist", uri_str)));
+		
 		len = strlen(lh);
 
 		uri->hostname = (char *) palloc(len + 1);
@@ -111,10 +116,7 @@ ParseUriString(const char *uri_str)
 			}
 			else if(uri->protocol == URI_GPFDIST)
 			{
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("invalid URI \'%s\' : gpfdist must indicate a "
-						        "port number", uri_str)));			
+				uri->port = -1; /* no port was indicated. will use default */
 			}
 		}
 	}

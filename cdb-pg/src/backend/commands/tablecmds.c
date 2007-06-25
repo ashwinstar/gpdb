@@ -7928,7 +7928,9 @@ static Datum transformLocationUris(List *locs, bool isweb)
 	Datum		result;
 	UriProtocol first_protocol = URI_FILE; /* initialize to keep gcc quiet */
 	bool		first_uri = true;
-	
+
+#define FDIST_DEF_PORT 8080
+
 	/* Parser should not let this happen */
 	Assert(locs != NIL);
 	
@@ -7962,11 +7964,43 @@ static Datum transformLocationUris(List *locs, bool isweb)
 	{
 		Uri			*uri;
 		text		*t;
-		const char	*uri_str = (char *) lfirst(cell);
+		const char	*uri_str_orig = (char *) lfirst(cell);
+		char		*uri_str_final = (char *) palloc(strlen(uri_str_orig) * 
+												   sizeof(char) + 
+												   1 + 4 + 1 /* default port if added */);
 		Size		len;
 		
-		uri = ParseUriString(uri_str);
+		uri = ParseUriString(uri_str_orig);
 		
+		/* 
+		 * in here edit the uri string if needed 
+		 */
+
+		/* no port was specified for gpfdist. add the default */
+		if(uri->protocol == URI_GPFDIST && uri->port == -1)
+		{
+			char *at_hostname = (char *) uri_str_orig + strlen("gpfdist://");
+			char *after_hostname = strchr(at_hostname, '/');
+			int  len = after_hostname - at_hostname;
+			char *hostname = pstrdup(at_hostname);
+			
+			hostname[len] = '\0';
+			
+			/* add the default port number to the uri string */
+			sprintf(uri_str_final, "%s%s:%d%s", PROTOCOL_GPFDIST, hostname,
+					FDIST_DEF_PORT, after_hostname);
+			
+			pfree(hostname);
+		}
+		else
+		{
+			/* no changes to original uri string */
+			uri_str_final = (char *) uri_str_orig;
+		}
+		
+		/*
+		 * check for various errors
+		 */
 		if(first_uri)
 		{
 		    first_protocol = uri->protocol;
@@ -7988,14 +8022,14 @@ static Datum transformLocationUris(List *locs, bool isweb)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("unsupported URI protocol for \'%s\'", uri_str),
+					 errmsg("unsupported URI protocol for \'%s\'", uri_str_final),
 					 errhint("Use 'file', 'http' or 'gpfdist' protocol instead.")));
 		}
 		
 		if(uri->protocol != URI_HTTP && isweb)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("an EXTERNAL WEB TABLE may only use http URI\'s, problem in: \'%s\'", uri_str),
+					 errmsg("an EXTERNAL WEB TABLE may only use http URI\'s, problem in: \'%s\'", uri_str_final),
 					 errhint("Use CREATE EXTERNAL TABLE instead.")));
 
 		if(uri->protocol == URI_HTTP && !isweb)
@@ -8006,12 +8040,12 @@ static Datum transformLocationUris(List *locs, bool isweb)
 
 
 		
-		len = VARHDRSZ + strlen(uri_str);
+		len = VARHDRSZ + strlen(uri_str_final);
 		
 		/* +1 leaves room for sprintf's trailing null */
 		t = (text *) palloc(len + 1);
 		SET_VARSIZE(t, len);
-		sprintf((char *) VARDATA(t), "%s", uri_str);
+		sprintf((char *) VARDATA(t), "%s", uri_str_final);
 		
 		
 		astate = accumArrayResult(astate, PointerGetDatum(t),
@@ -8019,6 +8053,7 @@ static Datum transformLocationUris(List *locs, bool isweb)
 								  CurrentMemoryContext);
 		
 		pfree(uri);
+		pfree(uri_str_final);
 	}
 	
 	if (astate)
