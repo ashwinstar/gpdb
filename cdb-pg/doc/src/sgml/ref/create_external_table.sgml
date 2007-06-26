@@ -21,21 +21,30 @@ PostgreSQL documentation
  <refsynopsisdiv>
 <synopsis>
 CREATE EXTERNAL TABLE <replaceable class="PARAMETER">table_name</replaceable> (<replaceable class="PARAMETER">column_name</replaceable> <replaceable class="PARAMETER">data_type</replaceable> [, ...])
-      LOCATION ('<replaceable class="PARAMETER">file</replaceable>://[<replaceable class="PARAMETER">seghost</replaceable>][:<replaceable class="PARAMETER">port</replaceable>]<replaceable class="PARAMETER">/path/file</replaceable>' [, ...])
-             | ('<replaceable class="PARAMETER">gpfdist</replaceable>://[<replaceable class="PARAMETER">filehost</replaceable>][:<replaceable class="PARAMETER">port</replaceable>]<replaceable class="PARAMETER">/file_pattern</replaceable>' [, ...])
-             | ('<replaceable class="PARAMETER">http</replaceable>://[<replaceable class="PARAMETER">webhost</replaceable>][:<replaceable class="PARAMETER">port</replaceable>]<replaceable class="PARAMETER">/path/file</replaceable>' [, ...])
-    | EXECUTE '<replaceable class="PARAMETER">command</replaceable>' [ ON ALL 
-              | <replaceable class="PARAMETER">number</replaceable>  
-              | HOST ['<replaceable class="PARAMETER">segment_hostname</replaceable>'] 
-              | SEGMENT <replaceable class="PARAMETER">segment_dbid</replaceable> ]
+      LOCATION ('file://<replaceable class="PARAMETER">seghost</replaceable>[:<replaceable class="PARAMETER">port</replaceable>]<replaceable class="PARAMETER">/path/file</replaceable>' [, ...])
+          | ('gpfdist://<replaceable class="PARAMETER">filehost</replaceable>[:<replaceable class="PARAMETER">port</replaceable>]<replaceable class="PARAMETER">/file_pattern</replaceable>' [, ...])
       FORMAT 'TEXT | CSV' 
-             ( [DELIMITER [AS] '<replaceable class="PARAMETER">delimiter</replaceable>']
-               [NULL [AS] '<replaceable class="PARAMETER">null_string</replaceable>']
-               [ESCAPE [AS] '<replaceable class="PARAMETER">escape</replaceable>' | OFF]
+             [( [DELIMITER [AS] '<replaceable class="PARAMETER">delimiter</replaceable>']
+               [NULL [AS] '<replaceable class="PARAMETER">null string</replaceable>']
+               [ESCAPE [AS] '<replaceable class="PARAMETER">escape</replaceable>' | 'OFF']
                [HEADER]
                [QUOTE [AS] '<replaceable class="PARAMETER">quote</replaceable>'] 
-               [FORCE NOT NULL <replaceable class="PARAMETER">column</replaceable> [, ...] )
+               [FORCE NOT NULL <replaceable class="PARAMETER">column</replaceable> [, ...] )]
 
+CREATE EXTERNAL WEB TABLE <replaceable class="PARAMETER">table_name</replaceable> (<replaceable class="PARAMETER">column_name</replaceable> <replaceable class="PARAMETER">data_type</replaceable> [, ...])
+      LOCATION ('http://<replaceable class="PARAMETER">webhost</replaceable>[:<replaceable class="PARAMETER">port</replaceable>]<replaceable class="PARAMETER">/path/file</replaceable>' [, ...])
+    | EXECUTE '<replaceable class="PARAMETER">command</replaceable>' 
+	                  [ ON ALL 
+                          | <replaceable class="PARAMETER">number_of_segments</replaceable> 
+                          | HOST ['<replaceable class="PARAMETER">segment_hostname</replaceable>'] 
+                          | SEGMENT <replaceable class="PARAMETER">segment_dbid</replaceable> ]
+      FORMAT 'TEXT | CSV' 
+             [( [DELIMITER [AS] '<replaceable class="PARAMETER">delimiter</replaceable>']
+               [NULL [AS] '<replaceable class="PARAMETER">null string</replaceable>']
+               [ESCAPE [AS] '<replaceable class="PARAMETER">escape</replaceable>' | 'OFF']
+               [HEADER]
+               [QUOTE [AS] '<replaceable class="PARAMETER">quote</replaceable>'] 
+               [FORCE NOT NULL <replaceable class="PARAMETER">column</replaceable> [, ...] )]
 </synopsis>
 
  </refsynopsisdiv>
