@@ -128,7 +128,8 @@ START_SEG () {
 	#Have attempted to start an invalid segment which did not start
 	#So exit with a warning as opposed to a fatal
 		LOG_MSG "[WARN][$INST_COUNT]:-Unable to start invalid segment $QE_HOST $DE_DIR $QE_PORT" 1
-		QE_LINE="${QE_LINE}:INVALID_START_FAIL"
+		#QE_LINE="${QE_LINE}:INVALID_START_FAIL"
+		QE_LINE="FAILED:${QE_LINE}:INVALID_START_FAIL"
 		$ECHO "WARN:$QE_LINE" >> $PARALLEL_STATUS_FILE			
 		exit 1
 	fi
@@ -151,7 +152,7 @@ START_SEG () {
 			LOG_MSG "[INFO][$INST_COUNT]:-------------------------------------------------" 1
 		fi
 		LOG_MSG "[FATAL][$INST_COUNT]:-Failed to start segment $QE_HOST $DE_DIR $QE_PORT" 1
-		QE_LINE="${QE_LINE}:VALID_START_FAIL"
+		QE_LINE="FAILED:${QE_LINE}:VALID_START_FAIL"
 		$ECHO "FATAL:$QE_LINE" >> $PARALLEL_STATUS_FILE
 		exit 2
 	else
@@ -177,7 +178,7 @@ START_SEG () {
 	fi
 	if [ $RUNNING -eq 0 ] && [ $RETVAL -ne 0 ]; then		
 		LOG_MSG "[WARN][$INST_COUNT]:-Could not start instance, BUT pg_ctl reports instance active, check instance log file via gpstate -e" 1
-		QE_LINE="${QE_LINE}:PG_CTL_THERE_START_FAILED"
+		QE_LINE="FAILED:${QE_LINE}:PG_CTL_THERE_START_FAILED"
 		$ECHO "WARN:$QE_LINE" >> $PARALLEL_STATUS_FILE
 		exit 1
 	fi
