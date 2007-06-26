@@ -307,7 +307,9 @@ sub format_explain
 
         if (scalar(@{$outarr}))
         {
-            print $tmpfh "QUERY PLAN\n-----------------\n";
+            print $tmpfh "QUERY PLAN\n";
+            # explain.pl expects a long string of dashes
+            print $tmpfh "-" x 71, "\n";
             for my $lin (@{$outarr})
             {
                 print $tmpfh $lin;
@@ -901,6 +903,15 @@ if (1)
 #                    print "copy select: $ini\n";
                     $copy_select = 1;
                     $sql_statement = "";
+                }
+                # special case for explain
+               if (exists($directive->{explain}) &&
+                   ($ini =~ m/^\s*((\-\-)(\-)+(\+(\-)+)*)+\s*$/) &&
+                   ($outarr[-1] =~ m/QUERY PLAN/))
+                {
+                   # ENGINF-88: fixup explain headers
+                   $outarr[-1] = "QUERY PLAN\n";
+                   $ini = ("_" x length($outarr[-1])) . "\n";
                 }
 
                 $getstatement = 0;

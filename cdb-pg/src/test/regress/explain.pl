@@ -697,7 +697,7 @@ sub analyze_node
                 $statstuff->{settings} = $sett;
                 $statstuff->{runtime}  = $runt;
                 $parse_ctx->{explain_analyze_stats} = $statstuff;
-            $node->{statistics} = $statstuff;
+                $node->{statistics} = $statstuff;
             }
         }
 
@@ -766,6 +766,10 @@ sub analyze_node
 
         # remove quotes which mess up dot file
         $node->{short} =~ s/\"//gm;
+
+#            print "long: $node->{txt}\n";
+#            print "short: $node->{short}\n";
+
 
         {
             if ($node->{txt} =~ m/(\d+(\.\d*)?)(\s*ms\s*to\s*end)/i)
