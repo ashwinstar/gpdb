@@ -1851,7 +1851,7 @@ disconnectAndDestroyGang(Gang * gp)
                         ts = "invalid transaction status";
                         break;
                 }
-                elog(LOG, "Finishing connection with %s; %s",
+                elog(DEBUG1, "Finishing connection with %s; %s",
 				     segdbDesc->whoami, ts);
             }
 
