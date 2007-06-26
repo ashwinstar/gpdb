@@ -151,7 +151,7 @@ GET_SEGMENT_INFO () {
 	ERROR_CHK $? "get master instance instance name" 2
 	REBUILD_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select hostname, port, datadir, dbid, content, definedprimary from $CONFIG_TABLE where content<>-1;"`)
 	ERROR_CHK $? "get instance segment instance details " 2
-	MASTER_IP_ADDRESS_ALL=(`$IFCONFIG |$GREP "inet addr"|$GREP -v addr:127|$AWK '{print $2}'|$CUT -d: -f2`)	
+	MASTER_IP_ADDRESS_ALL=(`$IFCONFIG -a|$GREP "inet "|$GREP -v "127."|$AWK '{print $2}'|$CUT -d: -f2`)	
 	ERROR_CHK $? "get master host IP details" 2
 	MASTER_IP_ADDRESS=(`$ECHO ${MASTER_IP_ADDRESS_ALL[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`)
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
