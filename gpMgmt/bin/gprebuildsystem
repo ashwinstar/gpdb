@@ -1,6 +1,6 @@
 #!/bin/bash
 #	Filename:-		gprebuildsystem
-#	Version:-		$Revision$
+#	Version:-               $Revision$
 #	Updated:-		$Date$
 #	Status:-		Released.
 #	Author:-		G Coombe
@@ -165,6 +165,8 @@ PARSE_SQL_FILE () {
 	if [ $? -ne 0 ] || [ ! $REBUILD_ARRAY ];then STOP_BUILD=1;fi
 	MASTER_IP_ADDRESS_ALL=(`$IFCONFIG -a |$GREP "inet "|$GREP -v "127."|$AWK '{print $2}'|$CUT -d: -f2`)	
 	ERROR_CHK $? "get master host IP details" 2
+	MASTER_IPV6_LOCAL_ADDRESS_ALL=(`$IFCONFIG -a |$GREP "inet6 "|$AWK '{print $2}'`)
+	ERROR_CHK $? "get master host IPV6 details" 2
 	MASTER_IP_ADDRESS=(`$ECHO ${MASTER_IP_ADDRESS_ALL[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`)
 	MASTER_TOTAL_SEG=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select numsegments from $GP_ID_TABLE;"`
 	if [ $? -ne 0 ] || [ ! $MASTER_TOTAL_SEG ];then STOP_BUILD=1;fi
