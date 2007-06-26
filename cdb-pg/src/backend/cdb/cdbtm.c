@@ -3626,7 +3626,7 @@ sendDtxExplicitBegin(void)
 	 * dispatch a DTX command, in the event of an error, this call
 	 * will either exit via elog()/ereport() or return false
 	 */
-	if (!dispatchDtxCommand("BEGIN", /* dispatchToMirrors */ true, /* withSnapshot */ false, /* raiseError */ false))
+	if (!dispatchDtxCommand(cmdbuf, /* dispatchToMirrors */ true, /* withSnapshot */ false, /* raiseError */ false))
 	{
 			ereport(ERROR, (errmsg("Global transaction BEGIN failed failed for gid = \"%s\" due to error",
 								   currentGxact->gid)));
