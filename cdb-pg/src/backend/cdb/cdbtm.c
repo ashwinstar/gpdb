@@ -3605,6 +3605,11 @@ sendDtxExplicitBegin(void)
 {
 	char		cmdbuf[100];
 
+	if (currentGxact == NULL)
+	{
+		return;
+	}
+	
 	rememberDtxExplicitBegin();
 	
 	setCurrentDtxTwoPhase("sendDtxExplicitBegin", "(none)");
