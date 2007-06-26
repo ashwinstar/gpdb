@@ -484,6 +484,9 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 		
 		/*
 		 * Let's trust the values we had from analyze, even though they might be out of date.
+		 * 
+		 * NOTE: external tables are created with estimated larger than zero values. therefore
+		 * we will get here too even though we can never analyze them.
 		 */
 		 
 		curpages = relpages;
@@ -495,10 +498,11 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 		 * Let's ask the QEs for the size of the relation.
 		 * In the future, it would be better to send the command to only one QE.
 		 *
-		 * NOTE: External tables (flat files external to the database) have 
-		 * no support for size calculation yet. Skip cdbRelSize as it's 
-		 * expensive and instead use a rough (and usually bad) estimate. This is
-		 * better for the time being.
+		 * NOTE: External tables should always have >0 values in pg_class
+		 * (created this way). Therefore we should never get here. However, as
+		 * a security measure (if values in pg_class were somehow changed) we
+		 * plug in our 1K pages 1M tuples estimate here as well, and skip 
+		 * cdbRelSize as we can't calculate ext table size.
 		 */
 		if(rel->rd_rel->relkind != RELKIND_EXTERNAL)
 		{
@@ -507,10 +511,10 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 		else
 		{
 			/* 
-			 * Estimate a default of 10 pages. Suggestion taken from
-			 * estimate_rel_size() below (better ideas are welcome...) 
+			 * Estimate a default of 1000 pages - see comment above. 
+			 * NOTE: if you change this look at AddNewRelationTuple in heap.c).
 			 */
-			size = 10 * BLCKSZ;
+			size = 1000 * BLCKSZ;
 		}
 		
 		

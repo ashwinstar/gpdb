@@ -176,7 +176,8 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 		if (!vacstmt->vacuum)
 			if (Gp_role != GP_ROLE_EXECUTE)
 			ereport(WARNING,
-					(errmsg("skipping \"%s\" --- cannot analyze indexes, views, or special system tables",
+					(errmsg("skipping \"%s\" --- cannot analyze indexes, views, "
+							"external tables or special system tables",
 							RelationGetRelationName(onerel))));
 		relation_close(onerel, ShareUpdateExclusiveLock);
 		return;

@@ -671,6 +671,12 @@ AddNewRelationTuple(Relation pg_class_desc,
 			new_rel_reltup->relpages = 1;
 			new_rel_reltup->reltuples = 1;
 			break;
+		case RELKIND_EXTERNAL:
+			/* Estimated stats for external tables */
+			/* NOTE: look at cdb_estimate_rel_size() if changing these values */
+			new_rel_reltup->relpages = 1000;
+			new_rel_reltup->reltuples = 1000000;
+			break;			
 		default:
 			/* Views, etc, have no disk storage */
 			new_rel_reltup->relpages = 0;
