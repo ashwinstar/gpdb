@@ -3603,15 +3603,25 @@ rememberDtxExplicitBegin(void)
 void
 sendDtxExplicitBegin(void)
 {
+	char		cmdbuf[100];
+
 	rememberDtxExplicitBegin();
 	
 	setCurrentDtxTwoPhase("sendDtxExplicitBegin", "(none)");
 	
+	/* 
+	 * Be explicit about both the isolation level and the access mode
+	 * since in MPP our QEs are in a another process.
+	 */
+	sprintf(cmdbuf, "BEGIN ISOLATION LEVEL %s, READ %s", 
+			IsoLevelAsUpperString(XactIsoLevel),
+			(XactReadOnly ? "ONLY" : "WRITE"));
+
 	/*
 	 * dispatch a DTX command, in the event of an error, this call
 	 * will either exit via elog()/ereport() or return false
 	 */
-	if (!dispatchDtxCommand("BEGIN", /* dispatchToMirrors */ true, /* withSnapshot */ true, /* raiseError */ false))
+	if (!dispatchDtxCommand("BEGIN", /* dispatchToMirrors */ true, /* withSnapshot */ false, /* raiseError */ false))
 	{
 			ereport(ERROR, (errmsg("Global transaction BEGIN failed failed for gid = \"%s\" due to error",
 								   currentGxact->gid)));

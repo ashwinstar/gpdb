@@ -4372,7 +4372,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 							
 						if (serializedQuerytreelen==0 && serializedPlantreelen==0)
 							{
-								if (strcmp(query_string, "BEGIN") == 0)
+								if (strncmp(query_string, "BEGIN", 5) == 0)
 								{
 									CommandDest dest = whereToSendOutput;
 
@@ -4380,7 +4380,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 									 * Special explicit BEGIN for COPY, etc.
 									 * We've already begun it as part of setting up the context.
 									 */
-									elog((Debug_print_full_dtm ? LOG : DEBUG5), "PostgresMain special explicit BEGIN for COPY");
+									elog((Debug_print_full_dtm ? LOG : DEBUG5), "PostgresMain explicit %s", query_string);
 
 									// UNDONE: HACK
 									set_ps_display("BEGIN", false);
