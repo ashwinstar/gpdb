@@ -97,6 +97,7 @@ static Node *substitute_actual_parameters_mutator(Node *node,
 							  substitute_actual_parameters_context *context);
 static void sql_inline_error_callback(void *arg);
 static Expr *evaluate_expr(Expr *expr, Oid result_type);
+static bool contain_grouping_clause_walker(Node *node, void *context);
 
 
 /*****************************************************************************
@@ -4385,6 +4386,29 @@ query_or_expression_tree_mutator(Node *node,
 										   flags);
 	else
 		return mutator(node, context);
+}
+
+/* 
+ * Does grp contain GroupingClause or not? Useful for indentifying use of
+ * ROLLUP, CUBE and grouping sets.
+ */
+bool
+contain_extended_grouping(List *grp)
+{
+	return contain_grouping_clause_walker((Node *)grp, NULL);
+}
+
+static bool
+contain_grouping_clause_walker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+	else if (IsA(node, GroupingClause))
+		return true;			/* abort the tree traversal and return true */
+	
+	Assert(!IsA(node, SubLink));
+	return expression_tree_walker(node, contain_grouping_clause_walker, 
+								  context);
 }
 
 /*

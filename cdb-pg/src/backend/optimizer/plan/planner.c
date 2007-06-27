@@ -425,7 +425,8 @@ subquery_planner(Query *parse, double tuple_fraction,
 			/* keep it in HAVING */
 			newHaving = lappend(newHaving, havingclause);
 		}
-		else if (parse->groupClause)
+		else if (parse->groupClause && 
+				 !contain_extended_grouping(parse->groupClause))
 		{
 			/* move it to WHERE */
 			parse->jointree->quals = (Node *)

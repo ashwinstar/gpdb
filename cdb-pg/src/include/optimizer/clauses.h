@@ -115,5 +115,6 @@ extern bool query_or_expression_tree_walker(Node *node, bool (*walker) (),
 extern Node *query_or_expression_tree_mutator(Node *node, Node *(*mutator) (),
 												   void *context, int flags);
 extern bool is_grouping_extension(CanonicalGroupingSets *grpsets);
+extern bool contain_extended_grouping(List *grp);
 
 #endif   /* CLAUSES_H */
