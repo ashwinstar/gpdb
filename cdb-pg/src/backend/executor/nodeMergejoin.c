@@ -1145,7 +1145,10 @@ ExecMergeJoin(MergeJoinState *node)
 					 *	no more inners, we are done.
 					 * ----------------
 					 */
-					Assert(compareResult > 0);
+					if (compareResult > 0)
+						ereport(ERROR,
+								(errcode(ERRCODE_GP_INTERNAL_ERROR),
+								 errmsg("Mergejoin: compareResult > 0, bad plan ?")));
 					innerTupleSlot = node->mj_InnerTupleSlot;
 					if (TupIsNull(innerTupleSlot))
 					{
