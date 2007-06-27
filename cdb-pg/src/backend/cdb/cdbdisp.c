@@ -2843,9 +2843,16 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 				else
 				{
 			        length = datumGetSize(pxd->value, typbyval, typlen);
+
+					/* MPP-1637: we *must* set this before we
+					 * append. Appending may realloc, which will
+					 * invalidate our pxd ptr. (obviously we could
+					 * append first if we recalculate pxd from the new
+					 * base address) */
+                    pxd->value = Int32GetDatum(length);
+
                     appendBinaryStringInfo(&parambuf, &iparam, sizeof(iparam));
                     appendBinaryStringInfo(&parambuf, s, length);
-                    pxd->value = Int32GetDatum(length);
 				}
             }
 		}
