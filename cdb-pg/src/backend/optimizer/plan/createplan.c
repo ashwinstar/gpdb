@@ -2175,6 +2175,17 @@ create_nestloop_plan(CreatePlanContext *ctx,
 
 		inner_plan = (Plan *)mat;
 	}
+	/* MPP-1657: if there is already a materialize here, we may need
+	 * to update its strictness. */
+	else if (IsA(best_path->jpath.innerjoinpath, MaterialPath) &&
+			 best_path->jpath.innerjoinpath->motionHazard &&
+			 best_path->jpath.outerjoinpath->motionHazard)
+	{
+		Material	*mat=inner_plan;
+
+		prefetch = true;
+		mat->cdb_strict = true;
+	}
 
 	if (IsA(best_path->jpath.innerjoinpath, IndexPath))
 	{
