@@ -963,7 +963,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	Index			scan_relid = best_path->parent->relid;
 	RelOptInfo		*rel = best_path->parent;
 	CdbComponentDatabases *db_info;
-	Uri				*uri;
+	Uri				*uri = NULL;
 	List			*filenames = NIL;
 	List			*fmtopts = NIL;
 	List			*modifiedloclist = NIL;
@@ -2181,7 +2181,7 @@ create_nestloop_plan(CreatePlanContext *ctx,
 			 best_path->jpath.innerjoinpath->motionHazard &&
 			 best_path->jpath.outerjoinpath->motionHazard)
 	{
-		Material	*mat=inner_plan;
+		Material   *mat = (Material *)inner_plan;
 
 		prefetch = true;
 		mat->cdb_strict = true;
@@ -3482,7 +3482,12 @@ make_sort_from_pathkeys(PlannerInfo *root, Plan *lefttree, List *pathkeys,
                                                         tlist,
                                                         &resno);
         if (!pathkey)
+        {
+            /* CDB: Truncate sort keys if caller said don't extend the tlist. */
+            if (!add_keys_to_targetlist)
+                break;
             elog(ERROR, "could not find pathkey item to sort");
+        }
 
         /* Omit this sort key if equivalence class contains a constant expr. */
         if (pathkey->cdb_num_relids == 0)
@@ -4234,30 +4239,6 @@ plan_pushdown_tlist(Plan *plan, List *tlist)
         /* Install the new targetlist. */
         plan->targetlist = tlist;
     }
-
-    /*
-     * Adaptive NJ doesn't do projection, but left (NJ) & right (HJ) kids do.
-     *
-     * Let kids evaluate the targetlist.  But if the expr is so complex as to
-     * require a Result node, insert that above the Adaptive NJ; otherwise,
-     * setPlanReferences() later would put a Result node above each of the
-     * kids, which would make navigation slightly more complicated.  Also,
-     * don't insert SubPlan nodes in the kids' targetlists, because we don't
-     * want them to be duplicated or multiply referenced.
-     */
-    else if (IsA(plan, AdaptiveNestLoop) &&
-             !cdb_expr_requires_full_eval((Node *)tlist) &&
-             !contain_subplans((Node *)tlist))
-    {
-		plan->targetlist = tlist;
-        plan->lefttree = plan_pushdown_tlist(plan->lefttree, tlist);
-        plan->righttree = plan_pushdown_tlist(plan->righttree, tlist);
-
-        /* Copy kid's distribution. Left & right are same. Ordering is lost. */
-		if (plan->lefttree->flow)
-            plan->flow = pull_up_Flow(plan, plan->lefttree, false);
-    }
-
     else
     {
         Plan   *subplan = plan;
