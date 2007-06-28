@@ -1068,6 +1068,8 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		 */
 		if ( Gp_role == GP_ROLE_DISPATCH )
 		{
+			bool querynode_changed = false;
+
 			result_plan = cdb_grouping_planner(root,
 											   &agg_counts,
 											   tlist,
@@ -1077,7 +1079,8 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 											   tuple_fraction,
 											   &dNumGroups,
 											   canonical_grpsets,
-											   &current_pathkeys);
+											   &current_pathkeys,
+											   &querynode_changed);
 			if ( result_plan != NULL && result_plan->flow->numSortCols == 0 )
 			{
 				/*
@@ -1085,6 +1088,17 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 				 * the right tlist.  And it has no sort order
 				 */
 				current_pathkeys = NIL;
+			}
+
+ 			if (result_plan != NULL && querynode_changed)
+ 			{
+ 				/* We want to re-write sort_pathkeys here since the 2-stage
+				 * aggregation subplan or grouping extension subplan may change
+				 * the previous root->parse Query node, which makes the current
+				 * sort_pathkeys invalid.
+ 				 */
+ 				sort_pathkeys = make_pathkeys_for_sortclauses(parse->sortClause,
+															  result_plan->targetlist);
 			}
 		}
 		else /* Not GP_ROLE_DISPATCH */
@@ -1258,6 +1272,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 				else
 				{
 					ListCell *lc;
+					bool querynode_changed = false;
 
 					/*
 					 * Make a copy of tlist. Really need to?
@@ -1287,8 +1302,19 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 														  &agg_counts,
 														  canonical_grpsets,
 														  &dNumGroups,
+														  &querynode_changed,
 														  &current_pathkeys,
 														  result_plan);
+					if (querynode_changed)
+					{
+						/* We want to re-write sort_pathkeys here since the 2-stage
+						 * aggregation subplan or grouping extension subplan may change
+						 * the previous root->parse Query node, which makes the current
+						 * sort_pathkeys invalid.
+						 */
+						sort_pathkeys = make_pathkeys_for_sortclauses(parse->sortClause,
+																	  result_plan->targetlist);
+					}
 				}
 			}
 			else if (parse->groupClause)
@@ -1336,6 +1362,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 				else
 				{
 					ListCell *lc;
+					bool querynode_changed = false;
 
 					List *new_tlist = copyObject(tlist);
 
@@ -1363,8 +1390,19 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 												&agg_counts,
 												canonical_grpsets,
 												&dNumGroups,
+												&querynode_changed,
 												&current_pathkeys,
 												result_plan);
+					if (querynode_changed)
+					{
+						/* We want to re-write sort_pathkeys here since the 2-stage
+						 * aggregation subplan or grouping extension subplan may change
+						 * the previous root->parse Query node, which makes the current
+						 * sort_pathkeys invalid.
+						 */
+						sort_pathkeys = make_pathkeys_for_sortclauses(parse->sortClause,
+																	  result_plan->targetlist);
+					}
 				}
 				/* The Group node won't change sort ordering */
 			}

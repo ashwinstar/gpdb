@@ -142,6 +142,9 @@ typedef struct MppGroupContext
 	CdbPathLocus input_locus;
 	CdbPathLocus output_locus;
 	List *current_pathkeys;
+
+	/* Indicate if root->parse has been changed during planning */
+	bool querynode_changed;
 	
 } MppGroupContext;
 
@@ -198,15 +201,16 @@ static Oid lookup_agg_transtype(Aggref *aggref);
 
 Plan *
 cdb_grouping_planner(PlannerInfo* root,
-		AggClauseCounts *agg_counts,
-		List *tlist,
-		Path *best_path,
-		Path *cheapest_path,
-		bool use_hashed_grouping,
-		double tuple_fraction,
-		double *p_dNumGroups,
-		CanonicalGroupingSets *canonical_grpsets,
-		List **pcurrent_pathkeys)
+					 AggClauseCounts *agg_counts,
+					 List *tlist,
+					 Path *best_path,
+					 Path *cheapest_path,
+					 bool use_hashed_grouping,
+					 double tuple_fraction,
+					 double *p_dNumGroups,
+					 CanonicalGroupingSets *canonical_grpsets,
+					 List **pcurrent_pathkeys,
+					 bool *querynode_changed)
 {
 	MppGroupContext ctx;
 	Plan * result_plan = NULL;
@@ -223,6 +227,8 @@ cdb_grouping_planner(PlannerInfo* root,
 	Assert( !has_groups || root->group_pathkeys != NULL );
 
 	CdbPathLocus_MakeNull(&output_locus);
+
+	*querynode_changed = false;
 
 	/*
 	 * First choose a one-stage plan.  Since there's always a way to do this,
@@ -432,6 +438,7 @@ cdb_grouping_planner(PlannerInfo* root,
 	ctx.p_dNumGroups = p_dNumGroups;
 	ctx.canonical_grpsets = canonical_grpsets;
 	ctx.current_pathkeys = NIL; /* Initialize to be tidy. */
+	ctx.querynode_changed = false;
 
 	/*
 	 * XXX We always use sequential plans for distinct-qualified
@@ -456,7 +463,8 @@ cdb_grouping_planner(PlannerInfo* root,
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
 				errmsg("no parallel plan for aggregation")));	
-	
+
+	*querynode_changed = ctx.querynode_changed;
 	*pcurrent_pathkeys = ctx.current_pathkeys;
 	return result_plan;
 }
@@ -681,6 +689,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 												  ctx->agg_counts,
 												  ctx->canonical_grpsets,
 												  ctx->p_dNumGroups,
+												  &(ctx->querynode_changed),
 												  &current_pathkeys,
 												  result_plan);
 		}
@@ -732,6 +741,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 														   ctx->agg_counts,
 														   ctx->canonical_grpsets,
 														   ctx->p_dNumGroups,
+														   &(ctx->querynode_changed),
 														   &current_pathkeys,
 														   result_plan);
 		}
@@ -974,6 +984,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 											  ctx->agg_counts,
 											  ctx->canonical_grpsets,
 											  ctx->p_dNumGroups,
+											  &(ctx->querynode_changed),
 											  &current_pathkeys,
 											  result_plan);
 		/* Since we add Grouping as an additional grouping column,
@@ -1058,6 +1069,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	
 	/* Marshal implicit results. Return explicit result. */
 	ctx->current_pathkeys = current_pathkeys;
+	ctx->querynode_changed = true;
 	return result_plan;
 }
 

@@ -29,7 +29,8 @@ cdb_grouping_planner(PlannerInfo* root,
 					 double tuple_fraction,
 					 double *p_dNumGroups,
 					 CanonicalGroupingSets *canonical_grpsets,
-					 List **pcurrent_pathkeys);
+					 List **pcurrent_pathkeys,
+					 bool *querynode_changed);
 
 extern bool cdbpathlocus_collocates(CdbPathLocus locus, List *pathkeys);
 extern CdbPathLocus cdbpathlocus_from_flow(Flow *flow);

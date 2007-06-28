@@ -63,6 +63,7 @@ extern Plan *plan_grouping_extension(PlannerInfo *root,
 									 AggClauseCounts *agg_counts,
 									 CanonicalGroupingSets *canonical_grpsets,
 									 double *p_dNumGroups,
+									 bool *querynode_changed,
 									 List **p_current_pathkeys,
 									 Plan *lefttree);
 

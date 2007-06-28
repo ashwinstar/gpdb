@@ -97,6 +97,7 @@ typedef struct GroupExtContext
 	
 	bool is_agg; /* indicate whether to create Agg/Group nodes. */
 	bool twostage; /* indicate if this appears in a two-stage aggregation. */
+	bool querynode_changed; /* indicate if root->parse is changed. */
 
 	List *canonical_rollups; /* list of CanonicalRollups */
 
@@ -183,6 +184,7 @@ plan_grouping_extension(PlannerInfo *root,
 						AggClauseCounts *agg_counts,
 						CanonicalGroupingSets *canonical_grpsets,
 						double *p_dNumGroups,
+						bool *querynode_changed,
 						List **p_current_pathkeys,
 						Plan *lefttree)
 {
@@ -204,6 +206,7 @@ plan_grouping_extension(PlannerInfo *root,
 	context.current_pathkeys = *p_current_pathkeys;
 	context.is_agg = is_agg;
 	context.twostage = twostage;
+	context.querynode_changed = false;
 	context.canonical_rollups = NIL;
 
 	/*
@@ -248,6 +251,8 @@ plan_grouping_extension(PlannerInfo *root,
 	(*p_grpColIdx)[(*p_numGroupCols)-1] = list_length(*p_tlist) - 1;
 
 	*p_current_pathkeys = context.current_pathkeys;
+
+	*querynode_changed = context.querynode_changed;
 
 	return result_plan;
 }
@@ -514,6 +519,8 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 		else
 			((Group *)agg_node)->inputHasGrouping = true;
 
+		context->querynode_changed = true;
+
 		current_lefttree = agg_node;
 		context->tlist = current_tlist;
 		input_grouping = grouping;
@@ -577,6 +584,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 		else
 			((Group *)agg_node)->inputHasGrouping = true;
 
+		context->querynode_changed = true;
 		context->tlist = tlist3;
 	}
 
