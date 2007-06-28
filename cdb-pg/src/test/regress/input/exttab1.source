@@ -1007,7 +1007,7 @@ DROP EXTERNAL TABLE gpfdist_start;
 --CREATE EXTERNAL WEB TABLE gpfdist_start (x text)
 --execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_builddir@/results -x \'Z\' -q \'z\' -h </dev/null >/dev/null 2>&1 &); echo "starting...") '
 CREATE EXTERNAL WEB TABLE gpfdist_start (x text)
-execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_builddir@/results -q \'"\' -h </dev/null >/dev/null 2>&1 &); echo "starting...") '
+execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_builddir@/results -q \'"\' -h </dev/null >/dev/null 2>&1 &); sleep 5; echo "starting...") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 
