@@ -49,14 +49,14 @@ extern bool LogicalTapeBackspace(LogicalTapeSet *lts, int tapenum,
 					 size_t size);
 
 extern bool LogicalTapeSeekTape(LogicalTapeSet *lts, LogicalTape *lt,
-				long blocknum, int offset);
+				long blocknum, long offset);
 extern bool LogicalTapeSeek(LogicalTapeSet *lts, int tapenum,
-				long blocknum, int offset);
+				long blocknum, long offset);
 
 extern void LogicalTapeTellTape(LogicalTapeSet *lts, LogicalTape *lt,
-				long *blocknum, int *offset);
+				long *blocknum, long *offset);
 extern void LogicalTapeTell(LogicalTapeSet *lts, int tapenum,
-				long *blocknum, int *offset);
+				long *blocknum, long *offset);
 
 extern long LogicalTapeSetBlocks(LogicalTapeSet *lts);
 

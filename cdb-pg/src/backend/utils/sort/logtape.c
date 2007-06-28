@@ -163,8 +163,8 @@ struct LogicalTapeSet
 	bool		forgetFreeSpace;	/* are we remembering free blocks? */
 	bool		blocksSorted;	/* is freeBlocks[] currently in order? */
 	long	   *freeBlocks;		/* resizable array */
-	int			nFreeBlocks;	/* # of currently free blocks */
-	int			freeBlocksLen;	/* current allocated length of freeBlocks[] */
+	long		nFreeBlocks;	/* # of currently free blocks */
+	long		freeBlocksLen;	/* current allocated length of freeBlocks[] */
 
 	/*
 	 * tapes[] is declared size 1 since C wants a fixed size, but actually it
@@ -284,7 +284,7 @@ ltsGetFreeBlock(LogicalTapeSet *lts)
 static void
 ltsReleaseBlock(LogicalTapeSet *lts, long blocknum)
 {
-	int			ndx;
+	long		ndx;
 
 	/*
 	 * Do nothing if we're no longer interested in remembering free space.
@@ -967,17 +967,19 @@ LogicalTapeBackspaceTape(LogicalTapeSet *lts, LogicalTape *lt, size_t size)
  */
 bool
 LogicalTapeSeek(LogicalTapeSet *lts, int tapenum,
-				long blocknum, int offset)
+				long blocknum, long offset)
 {
 	Assert(tapenum >= 0 && tapenum < lts->nTapes);
 	return LogicalTapeSeekTape(lts, &lts->tapes[tapenum], blocknum, offset);
 }
 
 bool
-LogicalTapeSeekTape(LogicalTapeSet *lts, LogicalTape *lt, long blocknum, int offset)
+LogicalTapeSeekTape(LogicalTapeSet *lts, LogicalTape *lt, long blocknum, long loffset)
 {
+    int         offset = (int)loffset;
+
 	Assert(lt->frozen);
-	Assert(offset >= 0 && offset <= BLCKSZ);
+	Assert(loffset >= 0 && loffset <= BLCKSZ);
 
 	/*
 	 * Easy case for seek within current block.
@@ -1033,7 +1035,7 @@ LogicalTapeSeekTape(LogicalTapeSet *lts, LogicalTape *lt, long blocknum, int off
  */
 void
 LogicalTapeTell(LogicalTapeSet *lts, int tapenum,
-				long *blocknum, int *offset)
+				long *blocknum, long *offset)
 {
 	LogicalTape *lt;
 
@@ -1043,7 +1045,7 @@ LogicalTapeTell(LogicalTapeSet *lts, int tapenum,
 	*offset = lt->pos;
 }
 void 
-LogicalTapeTellTape(LogicalTapeSet *lts, LogicalTape *lt, long *blocknum, int *offset)
+LogicalTapeTellTape(LogicalTapeSet *lts, LogicalTape *lt, long *blocknum, long *offset)
 {
 	*blocknum = lt->curBlockNumber;
 	*offset = lt->pos;

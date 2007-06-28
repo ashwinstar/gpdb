@@ -198,7 +198,7 @@ struct TuplesortPos
 
 	/* markpos_xxx holds marked position for mark and restore */
 	long		markpos_block;	/* tape block# (only used if SORTEDONTAPE) */
-	int			markpos_offset; /* saved "current", or offset in tape block */
+	long		markpos_offset; /* saved "current", or offset in tape block */
 	bool		markpos_eof;	/* saved "eof_reached" */
 
 	LogicalTape *work_tape;      /* current tape that I am working on */
@@ -272,8 +272,8 @@ struct Tuplesortstate
 	 * SORTEDONTAPE, the array is not used.
 	 */
 	SortTuple  *memtuples;		/* array of SortTuple structs */
-	int			memtupcount;	/* number of tuples currently present */
-	int			memtupsize;		/* allocated length of memtuples array */
+	long		memtupcount;	/* number of tuples currently present */
+	long		memtupsize;		/* allocated length of memtuples array */
 	int64		memtupLIMIT;	/* LIMIT of memtuples array */ /*CDB*/
 	bool		memtupblimited; /* true when hit the limit */
 	int64  		dumpcount;	    /* count of dumps */ /*CDB*/
@@ -1497,6 +1497,9 @@ tuplesort_merge_order(long allowedMem)
 
 	/* Even in minimum memory, use at least a MINORDER merge */
 	mOrder = Max(mOrder, MINORDER);
+
+    /* CDB: Don't be ridiculous.  And don't call me Shirley. */
+    mOrder = Min(mOrder, 1000);
 
 	return mOrder;
 }
