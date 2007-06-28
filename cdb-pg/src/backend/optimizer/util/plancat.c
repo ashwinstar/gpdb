@@ -400,8 +400,8 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 	 * external web tables are non rescannable, regular ext tables are
 	 */
 	if(loc_str && 
-	   (strncmp(loc_str, "file", strlen("file")) == 0 ||
-	   strncmp(loc_str, "gpfdist", strlen("gpfdist")) == 0))
+	   (strncasecmp(loc_str, "file", strlen("file")) == 0 ||
+	   strncasecmp(loc_str, "gpfdist", strlen("gpfdist")) == 0))
 		rel->isrescannable = true;
 	else
 		rel->isrescannable = false; /* ext web table */
