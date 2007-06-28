@@ -103,14 +103,12 @@ static bool addChunkToSorter(MotionLayerState *mlStates,
 							 MotionNodeEntry * pMNEntry,
 							 TupleChunkListItem tcItem,
 							 int16 motNodeID,
-							 int8 srcpIncIdx,
 							 int16 srcRoute);
 
 static void processIncomingChunks(MotionLayerState *mlStates,
 								  ChunkTransportState *transportStates,
 								  MotionNodeEntry * pMNEntry,
 								  int16 motNodeID,
-								  int8  srcpIncIdx,
 								  int16 srcRoute);
 
 static inline void reconstructTuple(MotionNodeEntry * pMNEntry, ChunkSorterEntry * pCSEntry);
@@ -436,7 +434,6 @@ SendTuple(MotionLayerState *mlStates,
 		  ChunkTransportState *transportStates,
 		  int16 motNodeID,
 		  HeapTuple tuple,
-		  int8  targetpIncIdx, 
 		  int16 targetRoute)
 {
 	MotionNodeEntry *pMNEntry;
@@ -475,7 +472,7 @@ SendTuple(MotionLayerState *mlStates,
 #endif
 
 	/* do the send. */
-	if (!SendTupleChunkToAMS(mlStates, transportStates, motNodeID, targetpIncIdx, targetRoute, tcList->p_first))
+	if (!SendTupleChunkToAMS(mlStates, transportStates, motNodeID, targetRoute, tcList->p_first))
 	{
 		pMNEntry->stopped = true;
 		rc = STOP_SENDING;
@@ -544,7 +541,6 @@ RecvTupleFrom(MotionLayerState *mlStates,
 			  ChunkTransportState *transportStates,
 			  int16 motNodeID,
 			  HeapTuple *tup_i,
-			  int8  srcpIncIdx,
 			  int16 srcRoute)
 {
 	MotionNodeEntry *pMNEntry;
@@ -607,7 +603,7 @@ RecvTupleFrom(MotionLayerState *mlStates,
 			}
 		}
 
-		processIncomingChunks(mlStates, transportStates, pMNEntry, motNodeID, srcpIncIdx, srcRoute);
+		processIncomingChunks(mlStates, transportStates, pMNEntry, motNodeID, srcRoute);
 
 		if (srcRoute == ANY_ROUTE)
 			*tup_i = htfifo_gettuple(pMNEntry->ready_tuples);
@@ -661,7 +657,6 @@ processIncomingChunks(MotionLayerState *mlStates,
 					  ChunkTransportState *transportStates,
 					  MotionNodeEntry * pMNEntry,
 					  int16 motNodeID,
-					  int8  srcpIncIdx,
 					  int16 srcRoute)
 {
 	TupleChunkListItem tcItem,
@@ -680,9 +675,9 @@ processIncomingChunks(MotionLayerState *mlStates,
 	 * the chunk-sorter.
 	 */
 	if (srcRoute == ANY_ROUTE)
-		tcItem = RecvTupleChunkFromAny(mlStates, transportStates, motNodeID, srcpIncIdx, &srcRoute);
+		tcItem = RecvTupleChunkFromAny(mlStates, transportStates, motNodeID, &srcRoute);
 	else
-		tcItem = RecvTupleChunkFrom(transportStates, motNodeID, srcpIncIdx, srcRoute);
+		tcItem = RecvTupleChunkFrom(transportStates, motNodeID, srcRoute);
 
 	numChunks = 0;
 	chunkBytes = 0;
@@ -710,7 +705,7 @@ processIncomingChunks(MotionLayerState *mlStates,
 		}
 
 		/* Stick the chunk into the sorter. */
-		addChunkToSorter(mlStates, transportStates, pMNEntry, tcItem, motNodeID, srcpIncIdx, srcRoute);
+		addChunkToSorter(mlStates, transportStates, pMNEntry, tcItem, motNodeID, srcRoute);
 
 		tcItem = tcNext;
 	}
@@ -1032,7 +1027,6 @@ addChunkToSorter(MotionLayerState *mlStates,
 				 MotionNodeEntry * pMNEntry,
 				 TupleChunkListItem tcItem,
 				 int16 motNodeID,
-				 int8 srcpIncIdx,
 				 int16 srcRoute)
 {
 	MemoryContext oldCtxt;
@@ -1159,7 +1153,7 @@ addChunkToSorter(MotionLayerState *mlStates,
 			 * Since we received an end-of-stream.	Then we no longer need
 			 * read interest in the interconnect.
 			 */
-			DeregisterReadInterest(transportStates, motNodeID, srcpIncIdx, srcRoute,
+			DeregisterReadInterest(transportStates, motNodeID, srcRoute,
                                    "end of stream");
 			break;
 

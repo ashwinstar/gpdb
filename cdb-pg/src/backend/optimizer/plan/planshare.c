@@ -23,7 +23,7 @@
 /*
  * Plan sharing:
  *
- * OLAP components that need to share a common subplan will need to first determine
+ * OLAP components that need to share a common subplan will need to firsetermine
  * that HOW to share the subplan, by calling add_sharenode implemented in this file.
  *
  * Once we decided how to share a subplan, then for each consumer of the subplan,
@@ -217,7 +217,7 @@ ISHAREPLAN shareplan_simple =
 static ShareInputScan *make_shareinputscan(Plan *inputplan)
 {
 	ShareInputScan *sisc = NULL;
-	Assert(IsA(inputplan, Material) || IsA(inputplan, Sort) || IsA(inputplan, Motion));
+	Assert(IsA(inputplan, Material) || IsA(inputplan, Motion));
 	Assert(inputplan->shared_as_id == ShareNodeId_Shared);
 	
 	sisc = makeNode(ShareInputScan);
@@ -237,6 +237,14 @@ static ShareInputScan *make_shareinputscan(Plan *inputplan)
 	sisc->plan.shared_as_id = ShareNodeId_NotShared;
 	sisc->plan.underlying_share_id = ShareNodeId_Shared; 
 
+	sisc->hashExpr = NULL;
+	sisc->hashDataTypes = NULL;
+
+	if(IsA(inputplan, Material))
+	{
+		Material *m = (Material *) inputplan;
+		m->scanner_count += 1;
+	}
 	return sisc;
 }
 
@@ -273,9 +281,9 @@ typedef struct ShareMotionContextSlice
 	int sliceIdx;
 	List *sort_pathkeys;
 	List *dist_exprs;
-	Plan *plan;
 	bool isFocus;
 } ShareMotionContextSlice ;
+
 typedef struct ShareMotionContext
 {
 	List *siblings;
@@ -287,6 +295,10 @@ static void init_share_motion_context(void *ctxt)
 	ShareMotionContext *smctxt = (ShareMotionContext *) ctxt;
 	smctxt->siblings = NULL;
 }
+
+/* Helper function.
+ * find the focusing motion slice entry, if there is one.
+ */
 static ShareMotionContextSlice *find_smc_focus_slice(ShareMotionContext *ctxt)
 {
 	ListCell *lc;
@@ -298,6 +310,10 @@ static ShareMotionContextSlice *find_smc_focus_slice(ShareMotionContext *ctxt)
 	}
 	return NULL;
 }
+
+/* Helper function.
+ * find the distribute motion slice entry, if there is one.
+ */
 static ShareMotionContextSlice *find_smc_dist_slice(ShareMotionContext *ctxt, List *dist_exprs)
 {
 	ListCell *lc;
@@ -321,8 +337,13 @@ static Plan * newplan_for_subplan_share_motion(void *ctxt, PlannerInfo *root, Pl
 	return (Plan *) sisc; 
 }
 
-/* Helper functions.
- * find the focusing motion slice entry, if there is one.
+/* 
+ * Plan share for focus flow.
+ *
+ * 1. we need to check if we already has a focus motion slice.  We install one if
+ *    necessary.
+ * 2. now, we know the flow info.  Update the flow in shareinputscan node.
+ * 3. we check if we need to sort.  
  */
 static Plan * addsm_for_single_share_motion(
 			void *ctxt,
@@ -338,6 +359,7 @@ static Plan * addsm_for_single_share_motion(
 	ShareMotionContext *smctxt = (ShareMotionContext *) ctxt;
 	ShareInputScan *sisc = NULL;
 	ShareMotionContextSlice *slice = NULL;
+	Material *sharedMaterial = NULL;
 	Motion *sharedMotion = NULL;
 
 	Assert(smctxt);
@@ -345,7 +367,11 @@ static Plan * addsm_for_single_share_motion(
 	Assert(!dist_exprs);
 
 	sisc = (ShareInputScan *) oldplan;
-	Assert(sisc->plan.lefttree && IsA(sisc->plan.lefttree, Motion));
+
+	Assert(sisc->plan.lefttree && IsA(sisc->plan.lefttree, Material));
+	sharedMaterial = (Material *) oldplan->lefttree;
+
+	Assert(IsA(sharedMaterial->plan.lefttree, Motion));
 	sharedMotion = (Motion *) oldplan->lefttree;
 
 	slice = find_smc_focus_slice(smctxt);
@@ -363,69 +389,38 @@ static Plan * addsm_for_single_share_motion(
 		slice->slice = list_nth(sharedMotion->sliceEntries, slice->sliceIdx);
 		slice->sort_pathkeys = NULL;
 		slice->dist_exprs = NULL;
-		slice->plan = NULL;
 		slice->isFocus = true;
 
 		smctxt->siblings = lappend(smctxt->siblings, slice);
-
-		if(sort_pathkeys != NULL && !pathkeys_contained_in(sort_pathkeys, *pathkeys_ptr))
-		{
-			slice->plan = (Plan *) make_sort_from_sortclauses(root, sortclause, (Plan *) sharedMotion);
-			slice->plan->shared_as_id = ShareNodeId_Shared; 
-			slice->plan->underlying_share_id = ShareNodeId_NotShared;
-			slice->plan->sliceNum = slice->sliceIdx;
-
-			slice->sort_pathkeys = sort_pathkeys;
-			*pathkeys_ptr = sort_pathkeys;
-			mark_sort_locus(slice->plan);
-			sisc->plan.lefttree = slice->plan;
-			sisc->plan.flow = copyObject(get_plan_flow(slice->plan));
-		}
-		else
-		{
-			Path matpath;
-			slice->plan = (Plan *) make_material((Plan *) sharedMotion); 
-			slice->plan->shared_as_id = ShareNodeId_Shared; 
-			slice->plan->underlying_share_id = ShareNodeId_NotShared;
-			slice->plan->sliceNum = slice->sliceIdx;
-
-			cost_material(&matpath, sharedMotion->plan.total_cost, sharedMotion->plan.plan_rows, sharedMotion->plan.plan_width);
-			slice->plan->startup_cost = matpath.startup_cost;
-			slice->plan->total_cost = matpath.total_cost;
-			slice->plan->plan_rows = sharedMotion->plan.plan_rows;
-			slice->plan->plan_width = sharedMotion->plan.plan_width;
-
-			slice->plan->flow = copyObject(slice->slice->flow);
-			slice->sort_pathkeys = sort_pathkeys;
-			sisc->plan.lefttree = slice->plan;
-			sisc->plan.flow = copyObject(get_plan_flow(slice->plan));
-		}
-
-		return (Plan *) sisc;
 	}
-	else
+
+	/* Update flow.
+	 * For focus, shareinputscan does not need to filter on hash functions.
+	 */
+	sisc->plan.flow = copyObject(get_motion_flow(sharedMotion, slice->sliceIdx));
+	
+	/* Next, plan sort if necessary. */
+	if(sort_pathkeys!=NULL)
 	{
-		/* if we have already addes another node on top of motion (Material or Sort),
-		 * we don't have any choice but to use it.
-		 */
-		sisc->plan.lefttree = slice->plan;
-		sisc->plan.flow = copyObject(get_plan_flow(slice->plan));
-
-		if(pathkeys_contained_in(sort_pathkeys, slice->sort_pathkeys))
-			return (Plan *) sisc;
-		else
-		{
-			Plan *sortplan = (Plan *) make_sort_from_sortclauses(root, sortclause, (Plan *)sisc);
-			*pathkeys_ptr = sort_pathkeys;
-			mark_sort_locus(sortplan);
-			return sortplan;
-		}
+		Plan *sortplan = (Plan *) make_sort_from_sortclauses(root, sortclause, (Plan *)sisc);
+		*pathkeys_ptr = sort_pathkeys;
+		mark_sort_locus(sortplan);
+		return sortplan;
 	}
 
-	Assert(!"Unreachable");
-	return NULL;
+	return (Plan *) sisc;
 }
 
+/* 
+ * Plan share for distribute flow.
+ *
+ * 1. we need to check if we already has a good motion slice.  We install one if
+ *    necessary.
+ * 2. we check if we need to sort.  
+ * 3. we need to fix the hash function in shareinputscan, because there may be tuples
+ *    that is not intented for this shareinputscan.  And by now we know the flow, so update
+ *    the flow of shareinputscan.
+ */
 static Plan * addsm_for_dist_share_motion(
 			void *ctxt,
 			PlannerInfo *root, 
@@ -439,67 +434,55 @@ static Plan * addsm_for_dist_share_motion(
 {
 	ShareMotionContext *smctxt = (ShareMotionContext *) ctxt;
 	ShareMotionContextSlice *slice = find_smc_dist_slice(smctxt, dist_exprs);
+
 	ShareInputScan *sisc = NULL;
+	Material *sharedMaterial = NULL;
 	Motion *sharedMotion = NULL;
 
 	Assert(smctxt);
 	Assert(IsA(oldplan, ShareInputScan));
-	Assert(oldplan->lefttree && IsA(oldplan->lefttree, Motion));
 	sisc = (ShareInputScan *) oldplan;
-	sharedMotion = (Motion *) oldplan->lefttree;
+
+	Assert(oldplan->lefttree && IsA(oldplan->lefttree, Material));
+	sharedMaterial = (Material *) oldplan->lefttree;
+
+	Assert(IsA(sharedMaterial->plan.lefttree, Motion));
+	sharedMotion = (Motion *) sharedMaterial->plan.lefttree;
 
 	if(!slice)
 	{
-		Path matpath;
-
 		slice = palloc(sizeof(ShareMotionContextSlice));
 		Assert(dist_exprs);
 
 		add_slice_to_motion(sharedMotion, MOTIONTYPE_HASH, dist_exprs, 0, NULL);
+
 		slice->sliceIdx = list_length(sharedMotion->sliceEntries) - 1;
 		slice->slice = list_nth(sharedMotion->sliceEntries, slice->sliceIdx);
 		slice->sort_pathkeys = NULL;
 		slice->dist_exprs = dist_exprs;
-		slice->plan = NULL;
 		slice->isFocus = false;
 
 		smctxt->siblings = lappend(smctxt->siblings, slice);
-		Assert(get_motion_flow(sharedMotion, slice->sliceIdx));
-
-		slice->plan = (Plan *) make_material((Plan *) sharedMotion);
-		slice->plan->shared_as_id = ShareNodeId_Shared; 
-		slice->plan->underlying_share_id = ShareNodeId_NotShared;
-		slice->plan->sliceNum = slice->sliceIdx;
-
-		cost_material(&matpath, sharedMotion->plan.total_cost, sharedMotion->plan.plan_rows, sharedMotion->plan.plan_width);
-		slice->plan->startup_cost = matpath.startup_cost;
-		slice->plan->total_cost = matpath.total_cost;
-		slice->plan->plan_rows = sharedMotion->plan.plan_rows;
-		slice->plan->plan_width = sharedMotion->plan.plan_width;
-
-		slice->plan->flow = copyObject(slice->slice->flow);
-		slice->sort_pathkeys = *pathkeys_ptr;
-		sisc->plan.lefttree = slice->plan;
-		sisc->plan.flow = copyObject(get_plan_flow(slice->plan));
-	}
-	else
-	{
-		sisc->plan.lefttree = slice->plan;
-		sisc->plan.flow = copyObject(get_plan_flow(slice->plan));
 	}
 
-	if(sort_pathkeys == NULL || pathkeys_contained_in(sort_pathkeys, slice->sort_pathkeys))
+	/* Now update sisc flow */
+	Assert(get_motion_flow(sharedMotion, slice->sliceIdx));
+	sisc->plan.flow = copyObject(get_motion_flow(sharedMotion, slice->sliceIdx));
+	
+	/* need to set up distexpr in sisc, so we can later filter on hash */
+	sisc->hashExpr = copyObject(slice->slice->hashExpr);
+	sisc->hashDataTypes = copyObject(slice->slice->hashDataTypes);
+
+	/* Now let's add the sort order if necessary */
+	if(sort_pathkeys!=NULL)
 	{
-		*pathkeys_ptr = slice->sort_pathkeys;
-		return (Plan *) sisc;
-	}
-	else
-	{
-		Plan *sortplan = (Plan *) make_sort_from_sortclauses(root, sortclause, (Plan *) sisc);
+		Plan *sortplan = (Plan *) make_sort_from_sortclauses(root, sortclause, (Plan *)sisc);
 		*pathkeys_ptr = sort_pathkeys;
 		mark_sort_locus(sortplan);
 		return sortplan;
 	}
+
+	return (Plan *) sisc;
 }
 
 /* 
@@ -584,12 +567,9 @@ ShareNode_ShareType add_sharenode(
 		{
 			if(CdbPathLocus_IsPartitioned(subplan_locus))
 			{
-				/* Must bring everything to single process.  Therefore, we need 
-				 * to share this as share motion
-				 */
 				*subplan = (Plan *) make_motion_multiplex(root, *subplan);
-				(*subplan)->shared_as_id = ShareNodeId_Shared;
-				return SHARENODE_MOTION;
+				stype = SHARENODE_MATERIAL;
+				break;
 			}
 
 			if(stype != SHARENODE_MATERIAL && sc != NIL)
@@ -624,8 +604,8 @@ ShareNode_ShareType add_sharenode(
 			{
 				/* Wrong hash path keys, need to redistribute */
 				*subplan = (Plan *) make_motion_multiplex(root, *subplan);
-				(*subplan)->shared_as_id = ShareNodeId_Shared;
-				return SHARENODE_MOTION;
+				stype = SHARENODE_MATERIAL;
+				break;
 			}
 
 			if(stype != SHARENODE_MATERIAL && sc != NIL)
@@ -658,7 +638,7 @@ ShareNode_ShareType add_sharenode(
 		(*subplan)->plan_rows = oldplan->plan_rows;
 		(*subplan)->plan_width = oldplan->plan_width;
 		(*subplan)->dispatch = oldplan->dispatch;
-		(*subplan)->flow = copyObject(oldplan->flow);
+		(*subplan)->flow = copyObject(get_plan_flow(oldplan)); 
 		(*subplan)->shared_as_id = ShareNodeId_Shared;
 
 		/* XXX Do we need to do parameter kluge ? */

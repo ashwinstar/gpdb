@@ -107,8 +107,6 @@ static void execMotionSortedReceiverFirstTime(MotionState * node);
 static int
 CdbMergeComparator(void *lhs, void *rhs, void *context);
 
-extern uint32 evalHashKey(ExprContext *econtext, List *hashkeys, List *hashtypes, CdbHash * h);
-
 static void doSendEndOfStream(Motion * motion, MotionState * node);
 static void doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot);
 
@@ -163,7 +161,7 @@ ExecMotion(MotionState * node)
 	 * at the top here we basically decide: -- SENDER vs. RECEIVER and --
 	 * SORTED vs. UNSORTED
 	 */
-	if (IsMotionRecv(node)) 
+	if (node->mstype == MOTIONSTATE_RECV)
 	{
 		TupleTableSlot *tuple;
 #ifdef MEASURE_MOTION_TIME
@@ -210,13 +208,16 @@ ExecMotion(MotionState * node)
 			node->motionTime.tv_sec++;
 		}
 #endif
-
 		return tuple;
 	}
-	else
+	else if(node->mstype == MOTIONSTATE_SEND)
+	{
 		return execMotionSender(node);
-}
+	}
 
+	Assert(!"Non-active motion is executed");
+	return NULL;
+}
 
 static TupleTableSlot *
 execMotionSender(MotionState * node)
@@ -271,7 +272,7 @@ execMotionSender(MotionState * node)
 			doSendTuple(motion, node, outerTupleSlot);
 			/* doSendTuple() may have set node->stopRequested as a side-effect */
 
-			if (node->fStopped) 
+			if (node->stopRequested)
 			{
 				/* propagate stop notification to our children */
 				ExecSquelchNode(outerNode);
@@ -298,6 +299,8 @@ execMotionSender(MotionState * node)
 #endif
 	}
 
+	Assert(node->stopRequested || node->numTuplesFromChild == node->numTuplesToAMS);
+
 	/* nothing else to send out, so we return NULL up the tree. */
 	return NULL;
 }
@@ -315,7 +318,7 @@ execMotionUnsortedReceiver(MotionState * node)
 	Assert(node->ps.state->motionlayer_context);
 	Assert(node->ps.state->interconnect_context);
 
-	if (node->fStopped) 
+	if (node->stopRequested) 
 	{
 		SendStopMessage(node->ps.state->motionlayer_context,
 						node->ps.state->interconnect_context,
@@ -325,8 +328,7 @@ execMotionUnsortedReceiver(MotionState * node)
 
 	recvRC = RecvTupleFrom(node->ps.state->motionlayer_context,
 						   node->ps.state->interconnect_context,
-						   motion->motionID, &tuple, node->sliceEntryIdx,
-						   ANY_ROUTE);
+						   motion->motionID, &tuple, ANY_ROUTE);
 
 	if (recvRC == END_OF_STREAM)
 	{
@@ -412,7 +414,7 @@ execMotionSortedReceiver(MotionState * node)
 	CdbTupleHeapInfo *tupHeapInfo;
 
 	/* Notify senders and return EOS if caller doesn't want any more data. */
-    if (node->fStopped)
+    if (node->stopRequested)
 	{
 		
 		SendStopMessage(node->ps.state->motionlayer_context,
@@ -443,7 +445,6 @@ execMotionSortedReceiver(MotionState * node)
 							   node->ps.state->interconnect_context,
 							   motion->motionID, 
 							   &inputTuple,
-							   node->sliceEntryIdx,
 							   node->routeIdNext);
 
         /* Substitute it in the pq for its predecessor. */
@@ -562,8 +563,7 @@ execMotionSortedReceiverFirstTime(MotionState * node)
 		 */
 		recvRC = RecvTupleFrom(node->ps.state->motionlayer_context,
 							   node->ps.state->interconnect_context,
-							   motion->motionID, &inputTuple, 
-							   node->sliceEntryIdx, iSegIdx);
+							   motion->motionID, &inputTuple, iSegIdx);
 
 		if (recvRC == GOT_TUPLE)
 		{
@@ -667,7 +667,6 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 						 recvSlice->rootIndex < list_length(sliceTable->slices)));
 
 				Assert(list_member_int(recvSlice->children, sendSlice->sliceIndex));
-				Assert(list_member_int(sendSlice->parent, estate->es_cur_slice_idx));
 			}
 #endif
 			return motionstate;
@@ -680,8 +679,8 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	motionstate = makeNode(MotionState);
 	motionstate->ps.plan = (Plan *) node;
 	motionstate->ps.state = estate;
-	motionstate->sliceEntryIdx = MOTION_BAD_SLICEENTRY;
-	motionstate->fStopped = false;
+	motionstate->mstype = MOTIONSTATE_NONE;
+	motionstate->stopRequested = false;
 	motionstate->sliceEntries = NULL;
 
 	foreach(sliceCell, node->sliceEntries)
@@ -691,8 +690,6 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 		Assert(IsA(sliceEntry, MotionSliceEntry));
 
 		stateSlice = makeNode(MotionStateSliceEntry);
-		stateSlice->stopRequested = false;
-
 		stateSlice->hashExpr = NULL;
 		stateSlice->cdbhash = NULL;
 
@@ -702,7 +699,6 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	/* QD must fill in the global slice table. */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		/* XXX ftian: can someone explain why we need switch memory context? */
 		MemoryContext   oldcxt = MemoryContextSwitchTo(estate->es_query_cxt);
         Flow           *sendFlow;
 
@@ -714,8 +710,8 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
         Assert(sendSlice->rootIndex == -1);
 		Assert(sendSlice->gangSize == 0);
 
-        /* Look up the receiving (parent) gang's slice table entry. */
-        recvSlice = (Slice *)list_nth(sliceTable->slices, estate->es_cur_slice_idx);
+		/* Look up the receiving (parent) gang's slice table entry. */
+		recvSlice = (Slice *)list_nth(sliceTable->slices, estate->es_cur_slice_idx);
 
 		Assert(IsA(recvSlice, Slice));
 		Assert(recvSlice->sliceIndex == estate->es_cur_slice_idx);
@@ -723,8 +719,11 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
                (recvSlice->rootIndex > sliceTable->nMotions &&
                 recvSlice->rootIndex < list_length(sliceTable->slices)));
 
-		/* XXX what is rootIndex for? */
+		/* Sending slice become a children of recv slice */
+		recvSlice->children = lappend_int(recvSlice->children, sendSlice->sliceIndex);
+		sendSlice->parentIndex = estate->es_cur_slice_idx;
         sendSlice->rootIndex = recvSlice->rootIndex;
+
 		/* The gang beneath a Motion will be a reader. */
 		sendSlice->gangType = GANGTYPE_PRIMARY_READER;
         sendSlice->gangSize = node->numInputSegs;
@@ -739,10 +738,6 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 
 			MotionSliceEntry *sliceEntry = (MotionSliceEntry *) linitial(node->sliceEntries);
 
-			/* Sending slice becomes a child of receiving slice. */
-			recvSlice->children = lappend_int(recvSlice->children, sendSlice->sliceIndex);
-			sendSlice->parent = lappend_int(sendSlice->parent, estate->es_cur_slice_idx);
-
 			if (sliceEntry->motionType == MOTIONTYPE_FIXED)
 			{
 				if (sliceEntry->numOutputSegs == 1)
@@ -751,9 +746,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 					/* Is receiving slice a root slice that runs here in the qDisp? */
 					if (recvSlice->sliceIndex == recvSlice->rootIndex)
 					{
-						/* QD is always the receiver when executing a Motion node. */
-						motionstate->sliceEntryIdx = list_find_int(sendSlice->parent, recvSlice->sliceIndex);
-						Assert(IsMotionRecv(motionstate));
+						motionstate->mstype = MOTIONSTATE_RECV; 
 						thisSlice = recvSlice;
 						thatSlice = sendSlice;
 						Assert(recvSlice->gangType == GANGTYPE_UNALLOCATED);
@@ -769,25 +762,6 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 				}
 			}
 		}
-		else
-		{
-			/* Set up parent/child list */
-			ListCell *sliceCell;
-			Slice *rSlice;
-			foreach(sliceCell, node->sliceEntries)
-			{
-				MotionSliceEntry *sliceEntry = (MotionSliceEntry *) lfirst(sliceCell);
-				rSlice = (Slice *)list_nth(sliceTable->slices, sliceEntry->recvSliceId);
-				Assert(rSlice);
-				Assert(rSlice->sliceIndex == sliceEntry->recvSliceId);
-
-				Assert(!rSlice->children || !list_member_int(rSlice->children, sendSlice->sliceIndex));
-				rSlice->children = lappend_int(rSlice->children, sendSlice->sliceIndex);
-				
-				Assert(!sendSlice->parent || !list_member_int(sendSlice->parent, rSlice->sliceIndex));
-				sendSlice->parent = lappend_int(sendSlice->parent, rSlice->sliceIndex);
-			}
-		}
 
 		estate->es_cur_slice_idx = sendSlice->sliceIndex;
 		MemoryContextSwitchTo(oldcxt);
@@ -801,53 +775,23 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 		Assert(estate->es_slice_map[0] == NULL);
 
 		estate->es_slice_map[node->motionID] = motionstate;
+		recvSlice = (Slice *)list_nth(sliceTable->slices, sendSlice->parentIndex);
 
-		if (sendSlice->sliceIndex == sliceTable->localSlice)
+		if(recvSlice->sliceIndex == sliceTable->localSlice)
+		{
+			/* this is recv */
+			motionstate->mstype = MOTIONSTATE_RECV;
+			thisSlice = recvSlice;
+			thatSlice = sendSlice;
+		}
+		else if (sendSlice->sliceIndex == sliceTable->localSlice)
 		{
 			/* this is send */
-            motionstate->sliceEntryIdx = MOTION_SEND_SLICEENTRY;
+			motionstate->mstype = MOTIONSTATE_SEND;
             thisSlice = sendSlice;
-
-			/* recvSlice is NULL ? */
             thatSlice = recvSlice;
-
-			if (thisSlice && thisSlice->parent)
-			{
-				int peerSliceIdx = linitial_int(thisSlice->parent);
-
-				thatSlice = (Slice *)list_nth(sliceTable->slices, peerSliceIdx);
-			}
         }
-		else
-		{
-			ListCell *cell;	
-			int sliceEntryIdx = 0;
-			int recvSliceIdx;
-
-			foreach(cell, sendSlice->parent)
-			{
-        		recvSliceIdx = lfirst_int(cell); 
-
-				if (recvSliceIdx == sliceTable->localSlice)
-				{
-    				recvSlice = (Slice *)list_nth(sliceTable->slices, recvSliceIdx);
-					/* this is recv */
-					motionstate->sliceEntryIdx = sliceEntryIdx;
-					Assert(IsMotionRecv(motionstate));
-					thisSlice = recvSlice;
-					thatSlice = sendSlice;
-					break;
-				}
-				sliceEntryIdx++;
-			}
-
-			/* 
-			 * either IsMotionRecv(motionstate), or 
-			 * motion->sliceEntryIdx = MOTION_BAD_SLICEENTRY, which
-			 * means this motion is neither sending or recving
-			 */
-			/* TODO: If neither sending nor receiving, don't bother to initialize. */
-		}
+		/* TODO: If neither sending nor receiving, don't bother to initialize. */
 	}
 
     motionstate->tupleheapReady = false;
@@ -863,15 +807,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	motionstate->numTuplesFromAMS = 0;
 	motionstate->numTuplesToParent = 0;
 
-    if (thisSlice &&
-        gp_log_interconnect >= GPVARS_VERBOSITY_TERSE)
-        ereport(LOG, (errmsg("Motion node %d in slice%d is %s%s slice %d",
-		                     node->motionID,
-                             thisSlice->sliceIndex,
-                             (node->sendSorted ? "sorted " : ""),
-                             (IsMotionRecv(motionstate) ? "receiver for input from"
-                                                      : "sender for output to"),
-                             thatSlice ? thatSlice->sliceIndex : -1)));
+	motionstate->stopRequested = false;
 
 	/*
 	 * Miscellaneous initialization
@@ -885,16 +821,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	 */
 	ExecInitResultTupleSlot(estate, &motionstate->ps);
 
-	/*
-	 * initializes child nodes; but this is only required if this
-	 * slice is going to execute anything in the child.
-	 *
-	 * Dispatcher needs to descend regardless (to support explain).
-	 */
-	if (Gp_role == GP_ROLE_DISPATCH || !thisSlice || IsMotionSend(motionstate))
-	{
-		outerPlanState(motionstate) = ExecInitNode(outerPlan(node), estate, eflags);
-	}
+	outerPlanState(motionstate) = ExecInitNode(outerPlan(node), estate, eflags);
 
 	/*
 	 * restore state that might have changed in recursion for our caller
@@ -911,8 +838,8 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	motionstate->ps.ps_ProjInfo = NULL;
     tupDesc = ExecGetResultType(&motionstate->ps);
 
-	/* Set up motion send data structures for non-multiplexed motion. */
-	if (IsMotionSend(motionstate))
+	/* Set up motion send data structures */
+	if (motionstate->mstype == MOTIONSTATE_SEND) 
 	{
 		int			nkeys;
 		ListCell 	*sliceCell, *stateSliceCell;
@@ -938,8 +865,6 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 					stateSliceEntry->hashExpr = (List *) ExecInitExpr((Expr *) sliceEntry->hashExpr,
 							(PlanState *) motionstate);
 
-
-
 				/*
 				 * Create hash API reference
 				 */
@@ -960,7 +885,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
     }
 
 	/* Merge Receive: Set up the key comparator and priority queue. */
-    if (node->sendSorted && IsMotionRecv(motionstate))
+    if (node->sendSorted && motionstate->mstype == MOTIONSTATE_RECV) 
 	{
         CdbMergeComparatorContext  *mcContext;
 
@@ -1048,7 +973,7 @@ ExecEndMotion(MotionState * node)
 #ifdef MEASURE_MOTION_TIME
 	motionTimeSec = (double) node->motionTime.tv_sec + (double) node->motionTime.tv_usec / 1000000.0;
 
-	if (IsMotionRecv(node)) 
+	if (node->mstype == MOTIONSTATE_RECV) 
 	{
 		elog(DEBUG1,
 			 "Motion Node %d (RECEIVER) Statistics:\n"
@@ -1067,7 +992,7 @@ ExecEndMotion(MotionState * node)
 			 node->numTuplesToParent
 			);
 	}
-	else
+	else if(node->mstype == MOTIONSTATE_SEND)
 	{
 		otherTimeSec = (double) node->otherTime.tv_sec + (double) node->otherTime.tv_usec / 1000000.0;
 		elog(DEBUG1,
@@ -1125,6 +1050,11 @@ ExecEndMotion(MotionState * node)
 	foreach(sliceCell, node->sliceEntries)
 	{
 		MotionStateSliceEntry *sliceEntry = lfirst(sliceCell);
+		if(sliceEntry->cdbhash != NULL)
+		{
+			pfree(sliceEntry->cdbhash);
+			sliceEntry->cdbhash = NULL;
+		}
 		pfree(sliceEntry);
 	}
 
@@ -1250,11 +1180,14 @@ CdbMergeComparator_DestroyContext(CdbMergeComparatorContext *ctx)
  * Experimental code that will be replaced later with new hashing mechanism
  */
 uint32
-evalHashKey(ExprContext *econtext, List *hashkeys, List *hashtypes, CdbHash * h)
+evalHashKey(void *vp_econtext, List *hashkeys, List *hashtypes, CdbHash * h)
 {
 	ListCell   *hk;
 	ListCell   *ht;
 	MemoryContext oldContext;
+	ExprContext *econtext = (ExprContext *) vp_econtext;
+
+	Assert(IsA(econtext, ExprContext));
 
 	ResetExprContext(econtext);
 
@@ -1350,13 +1283,13 @@ doSendEndOfStream(Motion * motion, MotionState * node)
 void
 doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 {
-	int8 			targetSlice;
 	int16		    targetRoute;
     HeapTuple       tuple;
     SendReturnCode  sendRC;
 	ListCell       *sliceCell; 
 	ListCell 	   *stateSliceCell;
 	ExprContext    *econtext = node->ps.ps_ExprContext;
+	List 		   *seenTarget = NULL;
 	
 	/* We got a tuple from the child-plan. */
 	node->numTuplesFromChild++;
@@ -1364,7 +1297,6 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 	tuple = ExecFetchSlotTuple(outerTupleSlot);
 
 	/* initialize to the first slice */
-	targetSlice = 0;
 	sliceCell = list_head(motion->sliceEntries);
 	stateSliceCell = list_head(node->sliceEntries);
 	
@@ -1375,15 +1307,6 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 
 		Assert(IsA(sliceEntry, MotionSliceEntry));
 		Assert(IsA(stateSliceEntry, MotionStateSliceEntry));
-
-		/* If I am requested to stop, go on to next slice */
-		if (stateSliceEntry->stopRequested)
-		{
-			++targetSlice; 
-			sliceCell = lnext(sliceCell);
-			stateSliceCell = lnext(stateSliceCell);
-			continue;
-		}
 
 		if (sliceEntry->motionType == MOTIONTYPE_FIXED)
 		{
@@ -1403,43 +1326,6 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 				 */
 				targetRoute = 0;
 			}
-
-				/* send the tuple out. */
-			sendRC = SendTuple(node->ps.state->motionlayer_context,
-					node->ps.state->interconnect_context,
-					motion->motionID,
-					tuple,
-					targetSlice,
-					targetRoute);
-
-			Assert(sendRC == SEND_COMPLETE || sendRC == STOP_SENDING);
-			if (sendRC == SEND_COMPLETE)
-				node->numTuplesToAMS++;
-			else
-			{
-				stateSliceEntry->stopRequested = true;
-				++node->stoppedSliceCount;
-				if (node->stoppedSliceCount == list_length(node->sliceEntries))
-					node->fStopped = true;
-			}
-
-#ifdef CDB_MOTION_DEBUG
-			if (sendRC == SEND_COMPLETE && node->numTuplesToAMS <= 20)
-			{
-				StringInfoData  buf;
-
-				initStringInfo(&buf);
-				appendStringInfo(&buf, "   motion%-3d snd->%-3d %-3d, %5d.",
-						motion->motionID,
-						targetSlice,
-						targetRoute,
-						node->numTuplesToAMS);
-				formatTuple(&buf, tuple, ExecGetResultType(&node->ps),
-						node->outputFunArray);
-				elog(DEBUG3, buf.data);
-				pfree(buf.data);
-			}
-#endif
 		}
 		else /* Hash motion node */
 		{
@@ -1457,46 +1343,47 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 			hval = evalHashKey(econtext, stateSliceEntry->hashExpr,
 						sliceEntry->hashDataTypes, stateSliceEntry->cdbhash);
 			targetRoute = sliceEntry->hashSegIdx[hval];
+		}
 
+		if(seenTarget==NULL || list_find_int(seenTarget, targetRoute) < 0)
+		{
 			/* send the tuple out. */
 			sendRC = SendTuple(node->ps.state->motionlayer_context,
 					node->ps.state->interconnect_context,
 					motion->motionID,
 					tuple,
-					targetSlice,
 					targetRoute);
 
 			Assert(sendRC == SEND_COMPLETE || sendRC == STOP_SENDING);
 			if (sendRC == SEND_COMPLETE)
-				node->numTuplesToAMS++;
-			else
 			{
-				stateSliceEntry->stopRequested = true;
-				++node->stoppedSliceCount;
-				if (node->stoppedSliceCount == list_length(node->sliceEntries))
-					node->fStopped = true;
-			}
+				if(!seenTarget)
+					node->numTuplesToAMS++;
 
 #ifdef CDB_MOTION_DEBUG
-			if (sendRC == SEND_COMPLETE && node->numTuplesToAMS <= 20)
-			{
-				StringInfoData  buf;
+				if (node->numTuplesToAMS <= 20)
+				{
+					StringInfoData  buf;
 
-				initStringInfo(&buf);
-				appendStringInfo(&buf, "   motion%-3d snd->%-3d %-3d, %5d.",
-						motion->motionID,
-						targetSlice,
-						targetRoute,
-						node->numTuplesToAMS);
-				formatTuple(&buf, tuple, ExecGetResultType(&node->ps),
-						node->outputFunArray);
-				elog(DEBUG3, buf.data);
-				pfree(buf.data);
-			}
+					initStringInfo(&buf);
+					appendStringInfo(&buf, "   motion%-3d snd->%-3d, %5d.",
+							motion->motionID,
+							targetRoute,
+							node->numTuplesToAMS);
+					formatTuple(&buf, tuple, ExecGetResultType(&node->ps),
+							node->outputFunArray);
+					elog(DEBUG3, buf.data);
+					pfree(buf.data);
+				}
 #endif
-		}  /* end if else switch on FIXED/HASH */
+			}
+			else
+				node->stopRequested = true;
 
-		++targetSlice;
+			/* Add to the seen target list */
+			seenTarget = lappend_int(seenTarget, targetRoute);
+		}
+
 		sliceCell = lnext(sliceCell);
 		stateSliceCell = lnext(stateSliceCell);
 	}  /* end of loop for slice entries */
@@ -1518,7 +1405,7 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 void
 ExecReScanMotion(MotionState *node, ExprContext *exprCtxt)
 {
-	if (!IsMotionRecv(node) ||
+	if (node->mstype != MOTIONSTATE_RECV || 
 		node->numTuplesToParent != 0)
 	{
 		ereport(ERROR,
@@ -1547,7 +1434,7 @@ ExecStopMotion(MotionState * node)
 	AssertArg(node != NULL);
 
 	motion = (Motion *) node->ps.plan;
-	node->fStopped = true;
+	node->stopRequested = true;
 
 	/* pass down */
 	SendStopMessage(node->ps.state->motionlayer_context,

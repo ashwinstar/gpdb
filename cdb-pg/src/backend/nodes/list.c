@@ -436,7 +436,7 @@ list_nth_oid(List *list, int n)
 }
 
 /* 
- * find if datum's position in list.  If not in list return 0.
+ * find if datum's position in list (0 based).  If not in list return -1.
  * find predicate is equal(), int==, oid==, ptr== respecitively.
  */
 int list_find(List *list, void *datum)

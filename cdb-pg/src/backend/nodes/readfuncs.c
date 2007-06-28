@@ -2568,6 +2568,9 @@ _readMaterial(void)
 	READ_LOCALS(Material);
 
     READ_BOOL_FIELD(cdb_strict);
+	READ_INT_FIELD(slice_mark);
+	READ_INT_FIELD(scanner_count);
+
     readPlanInfo((Plan *)local_node);
 
 	READ_DONE();
@@ -2579,7 +2582,11 @@ _readMaterial(void)
 static ShareInputScan *
 _readShareInputScan(void)
 {
-	READ_LOCALS_NO_FIELDS(ShareInputScan);
+	READ_LOCALS(ShareInputScan);
+
+	READ_NODE_FIELD(hashExpr);
+	READ_NODE_FIELD(hashDataTypes);
+
 	readPlanInfo((Plan *)local_node);
 
 	READ_DONE();
@@ -2791,7 +2798,7 @@ _readSlice(void)
 	READ_INT_FIELD(gangSize);
 	READ_DUMMY_FIELD(primaryGang, NULL);
 	READ_DUMMY_FIELD(mirrorGang, NULL);
-	READ_NODE_FIELD(parent); /* List of int index */
+	READ_INT_FIELD(parentIndex); /* List of int index */
 	READ_NODE_FIELD(children); /* List of int index */
 	READ_NODE_FIELD(primaryProcesses); /* List of (CDBProcess *) */
 	READ_NODE_FIELD(mirrorProcesses); /* List of (CDBProcess *) */

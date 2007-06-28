@@ -2631,6 +2631,8 @@ elog_debug_linger(ErrorData *edata)
     int     seconds_to_linger = gp_debug_linger;
     int     seconds_lingered = 0;
 
+	debug_break(); 
+
     /* Don't linger again in the event of another error. */
     gp_debug_linger = 0;
 

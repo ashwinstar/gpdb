@@ -1371,7 +1371,7 @@ InitSliceTable(EState *estate, int nMotions, int nSubplans)
 		slice->gangSize = 0;
 		slice->primaryGang = NULL;
 		slice->mirrorGang = NULL;
-		slice->parent = NIL;
+		slice->parentIndex = -1; 
 		slice->children = NIL;
 		slice->primaryProcesses = NIL;
 		slice->mirrorProcesses = NIL;

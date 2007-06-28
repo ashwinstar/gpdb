@@ -36,7 +36,6 @@ struct StringInfoData;                  /* #include "lib/stringinfo.h" */
 struct Tuplestorestate;                 /* #include "utils/tuplestore.h" */
 struct TuplestorePos;                   /* #include "utils/tuplestore.h" */
 
-
 /* ----------------
  *	  IndexInfo information
  *
@@ -327,10 +326,9 @@ typedef struct Slice
 							 * factory during gang allocation.
 							 * They correspond to the CDBProcessLists below.
 							 */
-							
-	List *parent;			/* The integer list of indices in the global slice table
-							 * (origin 0).  A parent slice corresponds to a target
-							 * slice of the sending motion in this slice
+
+	int 	parentIndex; 	/* the index of parent in global slice table (origin 0)
+							 * or -1 if this is root slice.
 							 */
 							
 	List *children;			/* An integer list of indices in the global slice
@@ -364,8 +362,6 @@ typedef struct Slice
 							 * or NIL if no mirroring is needed in this slice.
 							 */
 } Slice;
-
-#define GetPInCIdx(p, c) (list_find_int((c)->parent, (p)->sliceIndex))
 
 /* The SliceTable is a list of Slice structures organized into root slices
  * and motion slices as follows:
@@ -1513,7 +1509,6 @@ typedef struct ShareInputScanState
 	 */
 	List		*hashExpr;		/* state struct used for evaluating the hash expressions */
 	CdbHash		*cdbhash;			/* hash api object */
-	int			*numTuplesByHashSegIdx; /* Distribution of number of tuples from child by hash seg index */
 } ShareInputScanState;
 
 /* ----------------
@@ -1774,13 +1769,19 @@ typedef struct LimitState
 typedef struct MotionStateSliceEntry
 {
 	NodeTag 	type;
-
-	bool		stopRequested;      /* set when we want transfer to stop */
-
 	List		*hashExpr;		/* state struct used for evaluating the hash expressions */
 	CdbHash		*cdbhash;			/* hash api object */
 	int			*numTuplesByHashSegIdx; /* Distribution of number of tuples from child by hash seg index */
 } MotionStateSliceEntry;
+
+typedef enum MotionStateType
+{
+	MOTIONSTATE_NONE,			/* The motion state is not decided, or non active in a slice
+								 * (neither send nor recv)
+								 */
+	MOTIONSTATE_SEND,			/* The motion is sender */
+	MOTIONSTATE_RECV,			/* The motion is recver */
+} MotionStateType;
 
 /* ----------------
  *	 MotionState information
@@ -1788,25 +1789,18 @@ typedef struct MotionStateSliceEntry
  */
 typedef struct MotionState
 {
-	PlanState			ps;					/* its first field is NodeTag */
-	int8 				sliceEntryIdx;		/* reciever slice id in the motion_send.  -1 for motion send. */
-	bool 				fStopped;
-	bool				isReceiver;			/* true => we receive via this Motion node */
-    bool                isSender;           /* true => we send via this Motion node */
-	bool				stopRequested;      /* set when we want transfer to stop */
-	List				*hashExprState;		/* state struct used for evaluating the hash expressions */
-	CdbHash				*cdbhash;			/* hash api object */
+	PlanState	ps;				/* its first field is NodeTag */
+	MotionStateType mstype;     /* Motion state type */
+	bool		stopRequested;  /* set when we want transfer to stop */
 
 	/* For motion send */
-	List 				*sliceEntries;      /* for each outgoing slices */
-	int8 				nextSlice;          /* the next slices */
-    bool				sentEndOfStream;  	/* set when end-of-stream has successfully been sent */
-	int 				stoppedSliceCount;   /* How many slice has been stoped */
+	List 		*sliceEntries;      /* for each outgoing slices */
+	bool		sentEndOfStream;  	/* set when end-of-stream has successfully been sent */
 
 	/* For Motion recv */
-	struct CdbHeap		*tupleheap;			/* data structure for match merge in sorted motion node */
-	int					routeIdNext;		/* for a sorted motion node, the routeId to get next (same as the routeId last returned ) */
-	bool				tupleheapReady;		/* for a sorted motion node, false until we have a tuple from each source segindex */
+	struct CdbHeap		*tupleheap;		/* data structure for match merge in sorted motion node */
+	int					routeIdNext;    /* for a sorted motion node, the routeId to get next (same as the routeId last returned ) */
+	bool				tupleheapReady;	/* for a sorted motion node, false until we have a tuple from each source segindex */
 
 	/* The following can be used for debugging, usage stats, etc.  */
 	int			numTuplesFromChild;	/* Number of tuples received from child */
@@ -1815,28 +1809,18 @@ typedef struct MotionState
 	int			numTuplesToParent;	/* Number of tuples either from child or AMS that were sent to parent */
 	
 	struct timeval otherTime;  /* time accumulator used in sending motion node to keep track of time
-								 * spent getting the next tuple (not sending). this could mean time spent
-								 * in another motion node receiving. */
+								* spent getting the next tuple (not sending). this could mean time spent
+								* in another motion node receiving. */
 							
 	struct timeval motionTime;  /* time accumulator for time spent in motion node.  For sending motion node
-							     * it is just the amount of time actually sending the tuple thru the
+								 * it is just the amount of time actually sending the tuple thru the
 								 * interconnect.  For receiving motion node, it is the time spent waiting
 								 * and processing of the next incoming tuple.
 								 */
 		
-    Oid                *outputFunArray;     /* output functions for each column (debug only) */
-    Slice              *sendSlice;          /* sending slice */
-    Slice              *recvSlice;          /* receiving slice */
-
+	Oid                *outputFunArray;     /* output functions for each column (debug only) */
+	Slice              *sendSlice;          /* sending slice */
+	Slice              *recvSlice;          /* receiving slice */
 } MotionState;
-
-#define MOTION_FIRST_SLICEENTRY 0
-#define MOTION_MAX_SLICEENTRY 100
-#define MOTION_SEND_SLICEENTRY -1
-#define MOTION_BAD_SLICEENTRY -2
-#define IS_MOTION_SEND_SLICEENTRY(x) ((x)==MOTION_SEND_SLICEENTRY)
-#define IS_MOTION_RECV_SLICEENTRY(x) ((x)>=MOTION_FIRST_SLICEENTRY && (x)<=MOTION_MAX_SLICEENTRY)
-#define IsMotionSend(m) (IS_MOTION_SEND_SLICEENTRY((m)->sliceEntryIdx))
-#define IsMotionRecv(m) (IS_MOTION_RECV_SLICEENTRY((m)->sliceEntryIdx))
 
 #endif   /* EXECNODES_H */

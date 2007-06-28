@@ -3678,6 +3678,10 @@ make_material(Plan *lefttree)
 	plan->shared_as_id = ShareNodeId_NotShared;
 	plan->underlying_share_id = ShareNodeId_NotShared;
 
+	node->cdb_strict = false;
+	node->slice_mark = SliceMark_NotMarked;
+	node->scanner_count = 0;
+
 	return node;
 }
 

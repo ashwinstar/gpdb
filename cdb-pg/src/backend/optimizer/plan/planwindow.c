@@ -2106,23 +2106,28 @@ List *plan_window_rtable(PlannerInfo *root, WindowContext *ctxt)
 				get_windowctxt_sortclause
 				);
 
-		switch(stype)
+		if(stype == SHARENODE_MATERIAL)
 		{
-			case SHARENODE_MATERIAL:
-			case SHARENODE_SORT:
-				return plan_window_rtable_share(&shareplan_ms, root, ctxt);
-			case SHARENODE_MOTION:
+			Assert(IsA(ctxt->subplan, Material));
+			Assert(get_plan_flow(ctxt->subplan));
+			if(get_plan_flow(ctxt->subplan)->flotype == FLOW_MULTIPLEXED)
 				return plan_window_rtable_share(&shareplan_motion, root, ctxt);
-			default:
-				{
-					Assert(stype == SHARENODE_UNKNOWN);
-					return plan_window_rtable_share(&shareplan_simple, root, ctxt);
-				}
+			else
+				return plan_window_rtable_share(&shareplan_ms, root, ctxt);
 		}
-		Assert(!"Not reachable");
-		return NULL;
+		else if(stype == SHARENODE_SORT)
+			return plan_window_rtable_share(&shareplan_ms, root, ctxt);
+		else
+		{
+			Assert(stype == SHARENODE_UNKNOWN);
+			return plan_window_rtable_share(&shareplan_simple, root, ctxt);
+		}
 	}
+
+	Assert(!"Should never reach");
+	return NULL;
 }
+
 
 /* Plan the FROM-WHERE clauses to rejoin the coplans.
  */

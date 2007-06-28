@@ -546,7 +546,8 @@ typedef enum FlowType
 	FLOW_UNDEFINED,		/* used prior to calculation of type of derived flow */
 	FLOW_SINGLETON,		/* flow has single stream */
 	FLOW_REPLICATED,	/* flow is replicated across IOPs */
-	FLOW_PARTITIONED	/* flow is partitioned across IOPs */
+	FLOW_PARTITIONED,	/* flow is partitioned across IOPs */
+	FLOW_MULTIPLEXED,   /* several flow is multiplexed over one, used by plan sharing only */
 } FlowType;
 
 /*

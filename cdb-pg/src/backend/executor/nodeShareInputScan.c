@@ -22,6 +22,7 @@
 
 #include "postgres.h"
 
+#include "cdb/cdbvars.h"
 #include "executor/executor.h"
 #include "executor/nodeShareInputScan.h"
 #include "miscadmin.h"
@@ -42,7 +43,6 @@ TupleTableSlot *ExecShareInputScan(ShareInputScanState *node)
  * 	Retrieve a tuple from the ShareInputScan
  * ------------------------------------------------------------------
  */
-
 TupleTableSlot * 
 ShareInputNext(ShareInputScanState *node)
 {
@@ -50,6 +50,9 @@ ShareInputNext(ShareInputScanState *node)
 	ScanDirection dir;
 	bool forward;
 	TupleTableSlot *slot;
+
+	ExprContext *econtext = node->ss.ps.ps_ExprContext;
+	ShareInputScan * sisc = (ShareInputScan *) node->ss.ps.plan;
 
 	/* 
 	 * get state info from node
@@ -76,40 +79,68 @@ ShareInputNext(ShareInputScanState *node)
 			tuplestore_begin_pos((Tuplestorestate *) node->ts_state, (TuplestorePos **)(&node->ts_pos));
 			tuplestore_rescan_pos((Tuplestorestate *) node->ts_state, (TuplestorePos *)node->ts_pos); 
 		}
-		else if(node->share_type == SHARENODE_SORT)
+		else 
 		{
+			Assert(node->share_type == SHARENODE_SORT);
 			node->ts_state = ((SortState *)snState)->tuplesortstate;
 			tuplesort_begin_pos((Tuplesortstate *) node->ts_state, (TuplesortPos **)(&node->ts_pos));
 			tuplesort_rescan_pos((Tuplesortstate *) node->ts_state, (TuplesortPos *)node->ts_pos);
-		}
-		else
-		{
-			Assert(node->share_type == SHARENODE_MOTION);
-			return slot;
 		}
 	}
 
 	slot = node->ss.ps.ps_ResultTupleSlot;
 
-	if(node->share_type == SHARENODE_MATERIAL)
+	Assert(node->share_type == SHARENODE_MATERIAL || node->share_type == SHARENODE_SORT);
+
+	while(1)
 	{
-		/* read next from Material node */
-		if(tuplestore_gettupleslot_pos( (Tuplestorestate *)node->ts_state, (TuplestorePos *)node->ts_pos, forward, slot))
+		bool gotOK = false;
+
+		if(node->share_type == SHARENODE_MATERIAL) 
+			gotOK = tuplestore_gettupleslot_pos( (Tuplestorestate *)node->ts_state, (TuplestorePos *)node->ts_pos, forward, slot);
+		else
+			gotOK = tuplesort_gettupleslot_pos((Tuplesortstate *)node->ts_state, (TuplesortPos *)node->ts_pos, forward, slot);
+
+		if(!gotOK)
+		{
+			/* tuplesort_gettupleslot_pos will clear the tuple, so no need to do ExecClearTuple */ 
+			if(node->share_type == SHARENODE_MATERIAL)
+				return ExecClearTuple(slot);
+			else 
+				return slot;
+		}
+
+		if(sisc->hashDataTypes)
+		{
+			uint32 hval = 0;
+
+			Assert(node->cdbhash && node->hashExpr);
+			econtext->ecxt_outertuple = slot;
+			hval = evalHashKey(econtext, node->hashExpr,
+					sisc->hashDataTypes, node->cdbhash);
+
+			/* Check hval to see if it is for this segment.
+			 * The check works because the following assumption:
+			 * 	1. In Motion code, we determin targetRoute using sliceEntry->hashSegIdx.
+			 *  2. The hashSegIdx, is constructed makeDefaultSegIdxArray, which is simply
+			 * 		hashSegIdx[i] = i;
+			 *  3. targetRoute, is really an index into the conns (ml_ipc.c)
+			 *  4. which is really the Gp_segment
+			 *
+			 * All these are quite twisted way of saying hval == Gp_segment.  However, 
+			 * if the assumption changed, so should be changed here
+			 */
+			if(hval == Gp_segment)
+				return slot;
+		} 
+		else
+		{
+			Assert(!node->cdbhash && !node->hashExpr);
 			return slot;
-
-		return ExecClearTuple(slot);
-	} 
-	else if(node->share_type == SHARENODE_SORT) 
-	{
-		/* read next from Sort node */
-		Assert(node->share_type == SHARENODE_SORT);
-		tuplesort_gettupleslot_pos((Tuplesortstate *)node->ts_state, (TuplesortPos *)node->ts_pos, forward, slot);
-
-		/* Note: tuplesort_gettupleslot_pos will clear the tuple, so no need to do ExecClearTuple */
-		return slot;
+		}
 	}
 
-	/* should not be here */
+	Assert(!"should not be here");
 	return NULL;
 }
 
@@ -135,6 +166,15 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 	
 	sisstate->ts_state = NULL;
 	sisstate->ts_pos = NULL;
+
+	sisstate->hashExpr = NULL;
+	sisstate->cdbhash = NULL;
+
+	if(node->hashDataTypes)
+	{
+		sisstate->hashExpr = (List *) ExecInitExpr((Expr *) node->hashExpr, (PlanState *) sisstate);
+		sisstate->cdbhash = makeCdbHash(getgpsegmentCount(), HASH_FNV_1);
+	}
 
 	/* 
 	 * init child node.  
@@ -167,8 +207,6 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 		sisstate->share_type = SHARENODE_MATERIAL;
 	else if(IsA(snState, SortState))
 		sisstate->share_type = SHARENODE_SORT;
-	else if(IsA(snState, MotionState))
-		sisstate->share_type = SHARENODE_MOTION;
 	else
 		Assert(!"Not supported share node");
 

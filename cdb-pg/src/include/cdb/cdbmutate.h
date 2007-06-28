@@ -40,5 +40,5 @@ extern void add_slice_to_motion(Motion *m,
 		);
 
 extern Plan *apply_shareinput(Plan *plan, Query *query);
-extern Plan *apply_shareinput_split(Plan *plan, Query *query);
+extern Plan *apply_shareinput_markslice(Plan *plan, Query *query);
 #endif   /* CDBMUTATE_H */

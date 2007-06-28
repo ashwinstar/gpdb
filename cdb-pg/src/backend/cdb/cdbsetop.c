@@ -431,7 +431,18 @@ Flow *get_motion_flow(Motion *node, int sliceIdx)
 Flow *get_plan_flow(Plan *node)
 {
 	if(IsA(node, Motion))
-		return get_motion_flow((Motion *)node, 0);
+	{
+		Motion *m = (Motion *) node;
+		if(node->flow)
+		{
+			Assert(node->flow->flotype == FLOW_MULTIPLEXED);
+			return node->flow;
+		}
+
+		Assert(list_length(m->sliceEntries) == 1);
+		return get_motion_flow(m, 0);
+	}
+
 	return node->flow;
 }
 

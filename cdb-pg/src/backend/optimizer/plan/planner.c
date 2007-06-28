@@ -191,9 +191,9 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 									boundParams, uses_correlation);
 
 		/* cdbparallelize may create additional slices that may affect share input.
-		 * need to split shared plan if they are not in the same slice
+		 * need to mark material nodes that are split acrossed multi slices.
 		 */
-		result_plan = apply_shareinput_split(result_plan, parse);
+		result_plan = apply_shareinput_markslice(result_plan, parse);
 	}
 
 	/* restore state for outer planner, if any */

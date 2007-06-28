@@ -88,6 +88,9 @@ extern unsigned int cdbhashreduce(CdbHash *h);
  */
 extern bool isGreenplumDbHashable(Oid typid);
 
-
+/* 
+ * Compute hash 
+ */
+extern uint32 evalHashKey(void *econtext, List *hashkeys, List *hashtypes, CdbHash * h);
 
 #endif   /* CDBHASH_H */

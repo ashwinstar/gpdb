@@ -98,7 +98,7 @@ drawnode(FILE *ofile, Plan *plan, List *nodelist)
 
 	/* print out the node */
 	fprintf(ofile, "\"Node_0x%p\" [\n", plan);
-	fprintf(ofile, "label=\"%s 0x%p\"\n", plannode_type(plan), plan);
+	fprintf(ofile, "label=\"%s %p flow %p\"\n", plannode_type(plan), plan, get_plan_flow(plan));
 	fprintf(ofile, "];\n");
 
 	if(IsA(plan, Append))

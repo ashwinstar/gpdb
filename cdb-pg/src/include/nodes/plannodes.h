@@ -461,10 +461,18 @@ typedef struct AdaptiveNestLoop
  *		materialization node
  * ----------------
  */
+typedef enum SliceMark 
+{
+	SliceMark_NotMarked = -1,
+	SliceMark_CrossSlice = -2,
+} SliceMark;
+
 typedef struct Material
 {
 	Plan		plan;
     bool        cdb_strict;
+	int         slice_mark;
+	int 		scanner_count;
 } Material;
 
 /*
@@ -476,7 +484,6 @@ typedef enum ShareNode_ShareType
 	SHARENODE_MATERIAL, 
 	SHARENODE_SORT, 
 	/* Unsupported yet.  SHARENODE_HASH, */
-	SHARENODE_MOTION,
 } ShareNode_ShareType;
 
 /* Special share ids:
@@ -491,7 +498,7 @@ typedef enum ShareNode_SpecialShareId
 	ShareNodeId_Shared = -2, 
 
 	/* Max share node id.  We do not allow node sharing go beyond some sane limit */
-	ShareNodeId_Max = 100
+	ShareNodeId_Max = 100,
 } ShareNode_SpecialShareId;
 
 #define IS_VALID_SHARE_ID(shareid) ((shareid) >= 0 && (shareid) < ShareNodeId_Max)
@@ -507,8 +514,6 @@ typedef struct ShareInputScan
 	/* If we share scan on a material and a multiplex motion, we need to 
 	 * know if the tuple from Matrial is really for this node.
 	 */
-	int			numHashSegs;		/* number of segindexes in hashSegIdx array */	
-	int			*hashSegIdx;		/* array of segindex values to hash to */
 	List		*hashExpr;			/* list of hash expressions */
 	List		*hashDataTypes;	    /* list of hash expr data type oids */
 } ShareInputScan;
@@ -835,5 +840,6 @@ extern Flow* get_motion_flow(Motion *node, int sliceIdx);
 extern Flow* get_plan_flow(Plan *node);
 
 #endif   /* PLANNODES_H */
+
 
 

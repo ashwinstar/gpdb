@@ -591,6 +591,9 @@ _outMaterial(StringInfo str, Material *node)
 	WRITE_NODE_TYPE("MATERIAL");
 
     WRITE_BOOL_FIELD(cdb_strict);
+	WRITE_INT_FIELD(slice_mark);
+	WRITE_INT_FIELD(scanner_count);
+
 	_outPlanInfo(str, (Plan *) node);
 }
 
@@ -598,6 +601,9 @@ static void
 _outShareInputScan(StringInfo str, ShareInputScan *node)
 {
 	WRITE_NODE_TYPE("SHAREINPUTSCAN");
+
+	WRITE_NODE_FIELD(hashExpr);
+	WRITE_NODE_FIELD(hashDataTypes);
 
 	_outPlanInfo(str, (Plan *) node);
 }
@@ -2760,7 +2766,7 @@ _outSlice(StringInfo str, Slice *node)
 	WRITE_INT_FIELD(gangSize);
 	WRITE_DUMMY_FIELD(primaryGang);
 	WRITE_DUMMY_FIELD(mirrorGang);
-	WRITE_NODE_FIELD(parent); /* List of int index */
+	WRITE_INT_FIELD(parentIndex); /* List of int index */
 	WRITE_NODE_FIELD(children); /* List of int index */
 	WRITE_NODE_FIELD(primaryProcesses); /* List of (CDBProcess *) */
 	WRITE_NODE_FIELD(mirrorProcesses); /* List of (CDBProcess *) */
