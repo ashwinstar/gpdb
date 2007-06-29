@@ -11,6 +11,7 @@ use strict;
 use warnings;
 use POSIX;
 use File::Spec;
+use Config;
 
 =head1 NAME
 
@@ -84,6 +85,7 @@ Address bug reports and comments to: jcohen@greenplum.com
 =cut
 
 our $ATMSORT = "atmsort.pl";
+our $ATMDIFF = "diff";
 
 # assume atmsort.pl in same directory
 BEGIN
@@ -104,6 +106,11 @@ BEGIN
                                                 "atmsort.pl"
                                                 ));
 
+    # need gnu diff on solaris
+    if ($Config{'osname'} =~ m/solaris/i)
+    {
+        $ATMDIFF = "gdiff";
+    }
 }
 
 sub gpdiff_files
@@ -144,7 +151,7 @@ sub gpdiff_files
     # directory" diff
     if (defined($d2d) && length($outi))
     {
-        $outi = "diff $f1 $f2\n" . $outi;
+        $outi = "$ATMDIFF $f1 $f2\n" . $outi;
     }
 
     # replace temp file name references with actual file names
