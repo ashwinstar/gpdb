@@ -145,7 +145,7 @@ sub gpdiff_files
 
     my $args = join(" ", @ARGV, $newf1, $newf2);
 
-    my $outi =`diff $args`;
+    my $outi =`$ATMDIFF $args`;
 
     # prefix the diff output with the files names for a "directory to
     # directory" diff
