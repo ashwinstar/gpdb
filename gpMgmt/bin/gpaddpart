@@ -679,7 +679,7 @@ GENERATE_SQL () {
                         $ECHO "CREATE TABLE $CHILD_TAB_FULL" >> $TMP_FILE
                         $ECHO "(CHECK ( `$ECHO ${RULE_ARRAY[$VECTOR]}|$TR '~' ' '` ) )" >> $TMP_FILE
 			if [ x"" != x"$CHILD_DISTRIBUTION" ];then
-				if [ `$ECHO $CHILD_DISTRIBUTION|$TR '[:upper:]' '[:lower:]'` == "randomly" ];then
+				if [ `$ECHO $CHILD_DISTRIBUTION|$TR '[A-Z]' '[a-z]'` == "randomly" ];then
                         		$ECHO "INHERITS (${PARENT_TABLE_NAME}) distributed ${CHILD_DISTRIBUTION};" >> $TMP_FILE
 				else
                         		$ECHO "INHERITS (${PARENT_TABLE_NAME}) distributed by ($CHILD_DISTRIBUTION);" >> $TMP_FILE
