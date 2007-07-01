@@ -288,7 +288,6 @@ PROCESS_CHILD_CONSTRAINT () {
 	ERROR_CHK $? "obtain child table constraint text" 2
 	#Now process the constraint text to act as a template for new constraints
 	if [ $TYPE_NAME != "range" ];then
-	#CHILD_CONSTRAINT_TEXT_TEMPLATE=`$ECHO $CHILD_CONSTRAINT_TEXT|$SED -e 's/AND/~/g'|$TR '~' '\n'|$AWK -F"'" '{print $1"'~SWAP'"NR$3}'|$SED -e 's/^ /AND /g'|$TR '\n' ' '`
 		if [ $TYPE_NAME == "list" ];then
 			CHILD_CONSTRAINT_TEXT_TEMPLATE=`$ECHO $CHILD_CONSTRAINT_TEXT|$TR '\047' '%'|$AWK -F'%' '{print $1"%~SWAP%"$3}'|$TR '%' '\047'`
 		else
@@ -366,7 +365,8 @@ GATHER_INFO () {
 				#if [ $TYPE_NAME == "daily" ];then
 				#	DATE_TEXT=`$ECHO $CHILD_CONSTRAINT_TEXT|$CUT -d"'" -f2|awk '{print $1}'`
 				#else
-					DATE_TEXT=`$ECHO $CHILD_CONSTRAINT_TEXT|$TR '\047' '\n'|$GREP "[0-9]"|$TAIL -1`
+					#DATE_TEXT=`$ECHO $CHILD_CONSTRAINT_TEXT|$TR '\047' '\n'|$GREP "[0-9]"|$TAIL -1`
+					DATE_TEXT=`$ECHO $CHILD_CONSTRAINT_TEXT|$TR '\047' '\n'|$GREP "[0-9]"|$TAIL -1|$AWK '{print $1}'`
 				#fi
 				if [ `$ECHO $DATE_TEXT|$TR -d '-'` -gt $MAX_DATE_NUMBER ];then
 					MAX_DATE_NUMBER=`$ECHO $DATE_TEXT|$TR -d '-'`
@@ -415,7 +415,7 @@ GATHER_INFO () {
 	case $TYPE_NAME in 
 		hour|daily|week|month|year)
 		DATE_TYPE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select definition from pg_rules where tablename='$TABLE_NAME' limit 1;"|$GREP -ci "::timestamp"`
-		LOG_MSG "[INFO]:-Column data type timestamp check returned $DATE_TYPE"
+		LOG_MSG "[INFO]:-Column data type timestamp check returned $DATE_TYPE" 
 		;;
 	esac
 	LOG_MSG	"[INFO]:-End Function $FUNCNAME"
@@ -496,7 +496,7 @@ PROCESS_HOURLY () {
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
                 SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "`$ECHO $START_DATE|$TR '-' '_'`_${HOUR_ARRAY[$HOUR_VECTOR]}_${TYPE_NAME}")
 		if [ $RULE_GEN -eq 1 ];then
-			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/${START_DATE}~${HOUR_ARRAY[$HOUR_VECTOR]}:00:00/g|$SED -e s/~SWAP2/$START_DATE~${HOUR_ARRAY[$HOUR_VECTOR]}:59:59.99999/g|$TR ' ' '~'`
+			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/[0-9][0-9]:[0-9][0-9]:[0-9][0-9]//g|$SED -e s/.[0-9][0-9][0-9][0-9][0-9]//g|$SED -e s/~SWAP1/${START_DATE}~${HOUR_ARRAY[$HOUR_VECTOR]}:00:00/g|$SED -e s/~SWAP2/$START_DATE~${HOUR_ARRAY[$HOUR_VECTOR]}:59:59.99999/g|$TR ' ' '~'`
                 	RULE_ARRAY=(${RULE_ARRAY[@]} "$NEW_RULE")
 		fi
                 ((VECTOR=$VECTOR+1))
@@ -525,7 +525,7 @@ PROCESS_DAILY () {
 			if [ $DATE_TYPE -eq 0 ];then
 			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/$START_DATE~/g|$SED -e s/~SWAP2/$START_DATE~/g|$TR ' ' '~'`
 			else
-			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/$START_DATE~00:00:00/g|$SED -e s/~SWAP2/$START_DATE~23:59:59.99999/g|$TR ' ' '~'`
+			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/$START_DATE/g|$SED -e s/~SWAP2/$START_DATE/g|$TR ' ' '~'`
 			fi
 			RULE_ARRAY=(${RULE_ARRAY[@]} "$NEW_RULE")
 		fi
@@ -558,7 +558,7 @@ PROCESS_WEEKLY () {
 				if [ $DATE_TYPE -eq 0 ];then
 				NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/$WEEK_START_DATE/g|$SED -e s/~SWAP2/$END_DATE/g|$TR ' ' '~'`
 				else
-				NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/$WEEK_START_DATE~00:00:00/g|$SED -e s/~SWAP2/$END_DATE~00:00:00/g|$TR ' ' '~'`
+				NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/$WEEK_START_DATE/g|$SED -e s/~SWAP2/$END_DATE/g|$TR ' ' '~'`
 				fi
                         	RULE_ARRAY=(${RULE_ARRAY[@]} "$NEW_RULE")
 			fi
@@ -594,7 +594,7 @@ PROCESS_MONTHLY () {
 		if [ $DATE_TYPE -eq 0 ];then
 			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/$START_YEAR-$CURRENT_MONTH-01/g|$SED -e s/~SWAP2/$END_DATE/g|$TR ' ' '~'`
 		else
-			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/$START_YEAR-$CURRENT_MONTH-01~00:00:00/g|$SED -e s/~SWAP2/$END_DATE~00:00:00/g|$TR ' ' '~'`
+			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/$START_YEAR-$CURRENT_MONTH-01/g|$SED -e s/~SWAP2/$END_DATE/g|$TR ' ' '~'`
 		fi
                 RULE_ARRAY=(${RULE_ARRAY[@]} "$NEW_RULE")
                 CURRENT_MONTH="$NEXT_MONTH"
@@ -618,7 +618,7 @@ PROCESS_YEARLY () {
 		if [ $DATE_TYPE -eq 0 ];then
 			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/$START_YEAR-01-01/g|$SED -e s/~SWAP2/$RULE_END_YEAR-01-01/g|$TR ' ' '~'`
 		else
-			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/$START_YEAR-01-01~00:00:00/g|$SED -e s/~SWAP2/$RULE_END_YEAR-01-01~00:00:00/g|$TR ' ' '~'`
+			NEW_RULE=`$ECHO $CHILD_CONSTRAINT_TEXT_TEMPLATE|$SED -e s/~SWAP1/$START_YEAR-01-01/g|$SED -e s/~SWAP2/$RULE_END_YEAR-01-01/g|$TR ' ' '~'`
 		fi
 		RULE_ARRAY=(${RULE_ARRAY[@]} "$NEW_RULE")
 		((START_YEAR=$START_YEAR+1))
