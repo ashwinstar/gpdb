@@ -39,6 +39,8 @@
 #include "storage/sinval.h"
 #include "tcop/tcopprot.h"
 #include "utils/ps_status.h"
+#include "utils/inet.h"
+#include "utils/builtins.h"
 
 
 
@@ -552,7 +554,7 @@ void DdaserverLoop(void)
 
 		if (!bPM)
 		{
-			sleep(10);
+			pg_usleep(10 * 1000000L);
 			continue; /* XXX XXX XXX XXX */
 		}		
 
