@@ -1905,21 +1905,24 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 		{
 			WindowKey *key;
 			int level;
-			WindowFrame *frame;
+			WindowFrame *frame = NULL;
 			WindowFrameState fs;
 
-			level = funcstate->wlevel->level;
+			if (PointerIsValid(funcstate->wlevel))
+			{
+				level = funcstate->wlevel->level;
 
-			key = (WindowKey *)list_nth(node->windowKeys, level);
+				key = (WindowKey *)list_nth(node->windowKeys, level);
 			
-			frame = key->frame;
-			Assert(level >= 0);
+				frame = key->frame;
+				Assert(level >= 0);
+			}
 
-			fs = &wstate->frame_states[level];
 			if (!frame)
 				funcstate->trivial_frame = true;
 			else
 			{
+				fs = &wstate->frame_states[level];
 				if (frame->is_rows)
 				{
 					if (EDGE_IS_BOUND(frame->trail))
