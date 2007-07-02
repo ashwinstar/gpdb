@@ -391,7 +391,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 	for (group_no=0; group_no <= last_group_no; group_no++)
 	{
 		if (group_no > 0)
-			grouping += (1 << context->current_rollup->grping_pos[
+			grouping += ( ((uint64)1) << context->current_rollup->grping_pos[
 							 context->current_rollup->numcols - group_no]);
 
 		if (context->current_rollup->grpset_counts[group_no] > 0)
@@ -483,7 +483,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 	for (; group_no <= last_group_no; group_no++)
 	{
 		if (group_no > 0)
-			grouping += (1 << context->current_rollup->grping_pos[
+			grouping += ( ((uint64)1) << context->current_rollup->grping_pos[
 							 context->current_rollup->numcols - group_no]);
 
 		if (context->current_rollup->grpset_counts[group_no] <= 0)
@@ -768,7 +768,7 @@ plan_list_aggs(PlannerInfo *root,
 		Plan *subplan = (Plan *)list_nth(subplans, group_no);
 
 		if (group_no > 0)
-			grouping += (1 << context->current_rollup->grping_pos[
+			grouping += ( ((uint64)1) << context->current_rollup->grping_pos[
 							 context->current_rollup->numcols - group_no]);
 
 		if (context->current_rollup->grpset_counts[group_no] > 0)
