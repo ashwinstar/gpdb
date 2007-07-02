@@ -2558,6 +2558,144 @@ int8_sum(PG_FUNCTION_ARGS)
 										NumericGetDatum(oldsum), newval));
 }
 
+/*
+ * SUM inverse transition functions for integer types. We essentially do the
+ * opposite of the above routines.
+ */
+Datum
+int2_invsum(PG_FUNCTION_ARGS)
+{
+	int64		newval;
+
+	if (PG_ARGISNULL(0))
+	{
+		/* No non-null input seen so far... */
+		if (PG_ARGISNULL(1))
+			PG_RETURN_NULL();	/* still no non-null */
+		/* 
+		 * We shouldn't be called with non-null input if the transition value
+		 * is NULL
+		 */
+		elog(ERROR, "internal error: inversion function called with NULL "
+			 "transition value but non-NULL argument");
+	}
+
+	/*
+	 * If we're invoked by nodeAgg, we can cheat and modify out first
+	 * parameter in-place to avoid palloc overhead. If not, we need to return
+	 * the new value of the transition variable.
+	 */
+	if (fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context))
+	{
+		int64	   *oldsum = (int64 *) PG_GETARG_POINTER(0);
+
+		/* Leave the running sum unchanged in the new input is null */
+		if (!PG_ARGISNULL(1))
+			*oldsum = *oldsum - (int64) PG_GETARG_INT16(1);
+
+		PG_RETURN_POINTER(oldsum);
+	}
+	else
+	{
+		int64		oldsum = PG_GETARG_INT64(0);
+
+		/* Leave sum unchanged if new input is null. */
+		if (PG_ARGISNULL(1))
+			PG_RETURN_INT64(oldsum);
+
+		/* OK to do the addition. */
+		newval = oldsum - (int64) PG_GETARG_INT16(1);
+
+		PG_RETURN_INT64(newval);
+	}
+}
+
+Datum
+int4_invsum(PG_FUNCTION_ARGS)
+{
+	int64		newval;
+
+	if (PG_ARGISNULL(0))
+	{
+		/* No non-null input seen so far... */
+		if (PG_ARGISNULL(1))
+			PG_RETURN_NULL();	/* still no non-null */
+		/* 
+		 * We shouldn't be called with non-null input if the transition value
+		 * is NULL
+		 */
+		elog(ERROR, "internal error: inversion function called with NULL "
+			 "transition value but non-NULL argument");
+	}
+
+	/*
+	 * If we're invoked by nodeAgg, we can cheat and modify out first
+	 * parameter in-place to avoid palloc overhead. If not, we need to return
+	 * the new value of the transition variable.
+	 */
+	if (fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context))
+	{
+		int64	   *oldsum = (int64 *) PG_GETARG_POINTER(0);
+
+		/* Leave the running sum unchanged in the new input is null */
+		if (!PG_ARGISNULL(1))
+			*oldsum = *oldsum - (int64) PG_GETARG_INT32(1);
+
+		PG_RETURN_POINTER(oldsum);
+	}
+	else
+	{
+		int64		oldsum = PG_GETARG_INT64(0);
+
+		/* Leave sum unchanged if new input is null. */
+		if (PG_ARGISNULL(1))
+			PG_RETURN_INT64(oldsum);
+
+		/* OK to do the addition. */
+		newval = oldsum - (int64) PG_GETARG_INT32(1);
+
+		PG_RETURN_INT64(newval);
+	}
+}
+
+Datum
+int8_invsum(PG_FUNCTION_ARGS)
+{
+	Numeric		oldsum;
+	Datum		newval;
+
+	if (PG_ARGISNULL(0))
+	{
+		/* No non-null input seen so far... */
+		if (PG_ARGISNULL(1))
+			PG_RETURN_NULL();	/* still no non-null */
+
+		/* 
+		 * We shouldn't be called with non-null input if the transition value
+		 * is NULL
+		 */
+		elog(ERROR, "internal error: inversion function called with NULL "
+			 "transition value but non-NULL argument");
+	}
+
+	/*
+	 * Note that we cannot special-case the nodeAgg case here, as we do for
+	 * int2_sum and int4_sum: numeric is of variable size, so we cannot modify
+	 * our first parameter in-place.
+	 */
+
+	oldsum = PG_GETARG_NUMERIC(0);
+
+	/* Leave sum unchanged if new input is null. */
+	if (PG_ARGISNULL(1))
+		PG_RETURN_NUMERIC(oldsum);
+
+	/* OK to do the addition. */
+	newval = DirectFunctionCall1(int8_numeric, PG_GETARG_DATUM(1));
+
+	PG_RETURN_DATUM(DirectFunctionCall2(numeric_sub,
+										NumericGetDatum(oldsum), newval));
+}
 
 /*
  * Routines for avg(int2) and avg(int4).  The transition datatype

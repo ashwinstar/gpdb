@@ -98,9 +98,9 @@ DATA(insert ( 2105	float8_accum	- float8_amalg		- float8_avg	0	1022	"{0,0,0}" ))
 DATA(insert ( 2106	interval_accum	- interval_amalg	- interval_avg	0	1187	"{0 second,0 second}" ));
 
 /* sum */
-DATA(insert ( 2107	int8_sum		- numeric_add		- -				0	1700	_null_ ));
-DATA(insert ( 2108	int4_sum		- int8pl			- -				0	20		_null_ ));
-DATA(insert ( 2109	int2_sum		- int8pl			- -				0	20		_null_ ));
+DATA(insert ( 2107	int8_sum		int8_invsum 	numeric_add		- -				0	1700	_null_ ));
+DATA(insert ( 2108	int4_sum		int4_invsum 	int8pl			- -				0	20		_null_ ));
+DATA(insert ( 2109	int2_sum		int2_invsum		int8pl			- -				0	20		_null_ ));
 DATA(insert ( 2110	float4pl		- float4pl			- -				0	700		_null_ ));
 DATA(insert ( 2111	float8pl		- float8pl			- -				0	701		_null_ ));
 DATA(insert ( 2112	cash_pl			- cash_pl			- -				0	790		_null_ ));

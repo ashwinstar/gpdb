@@ -2736,6 +2736,12 @@ DATA(insert OID = 1841 (  int4_sum		   PGNSP PGUID 12 f f f f i 2 20 f "20 23" _
 DESCR("SUM(int4) transition function");
 DATA(insert OID = 1842 (  int8_sum		   PGNSP PGUID 12 f f f f i 2 1700 f "1700 20" _null_ _null_ _null_ int8_sum - _null_ ));
 DESCR("SUM(int8) transition function");
+DATA(insert OID = 7008 (  int2_invsum	   PGNSP PGUID 12 f f f f i 2 20 f "20 21" _null_ _null_ _null_ int2_invsum - _null_ ));
+DESCR("SUM(int2) inverse transition function");
+DATA(insert OID = 7009 (  int4_invsum	   PGNSP PGUID 12 f f f f i 2 20 f "20 23" _null_ _null_ _null_ int4_invsum - _null_ ));
+DESCR("SUM(int4) inverse transition function");
+DATA(insert OID = 7010 (  int8_invsum	   PGNSP PGUID 12 f f f f i 2 1700 f "1700 20" _null_ _null_ _null_ int8_invsum - _null_ ));
+DESCR("SUM(int8) inverse transition function");
 DATA(insert OID = 1843 (  interval_accum   PGNSP PGUID 12 f f t f i 2 1187 f "1187 1186" _null_ _null_ _null_ interval_accum - _null_ ));
 DESCR("aggregate transition function");
 DATA(insert OID = 1844 (  interval_avg	   PGNSP PGUID 12 f f t f i 1 1186 f "1187" _null_ _null_ _null_	interval_avg - _null_ ));
