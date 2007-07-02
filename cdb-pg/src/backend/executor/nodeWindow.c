@@ -1313,7 +1313,7 @@ invokeWindowFuncs(WindowState *wstate)
 						continue;
 
 					elog(DEBUG1, "found my level at %li", lvl);
-					elog(DEBUG1, "trail field: %i, edge %i, lt = %i, eq = %i",
+					elog(DEBUG1, "trail field: %li, edge %li, lt = %i, eq = %i",
 						 framefield, fs->trail_edge_d, fieldlt, fieldeq);
 
 					if (EDGE_IS_BOUND(key->frame->trail) &&
@@ -1444,7 +1444,7 @@ invokeWindowFuncs(WindowState *wstate)
 				{
 					fieldlt = DatumGetBool(FunctionCall2(&fs->lt_fn, framefield,
 										   				 fs->lead_edge_d));
-					elog(DEBUG1, "framefield = %i, lead = %i",
+					elog(DEBUG1, "framefield = %li, lead = %li",
 						 framefield, fs->lead_edge_d);
 					fieldeq = DatumGetBool(
 								FunctionCall2(&level_state->eqfunctions[0],
@@ -1707,8 +1707,37 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 
 		if (!key->frame)
 		{
-			elog(DEBUG1, "key %i has null window frame", i);
-			continue;
+			/* 
+			 * User didn't specify a frame, so we add the default. We do not
+			 * do this in the parser because otherwise we cannot handle
+			 * situation such as the following query being turned into a view:
+			 * 
+			 *   SELECT sum(...) OVER (w1), RANK() OVER (w1) ...
+			 *     WINDOW w1 AS (ORDER BY foo);
+			 *
+			 * When transformed to a view, we'd add the default framing clause
+			 * and then the parser would barf when it encountered a 
+			 * window clause for a RANK function. So, we do it here.
+			 */
+			f = key->frame = (WindowFrame *)makeNode(WindowFrame);
+			key->default_frame = true;
+
+			f->trail = (WindowFrameEdge *)makeNode(WindowFrameEdge);
+			f->lead = (WindowFrameEdge *)makeNode(WindowFrameEdge);
+
+			/* 
+			 * The default frame is:
+			 *
+			 *   RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+			 */
+			f->trail->kind = WINDOW_UNBOUND_PRECEDING;
+			f->lead->kind = WINDOW_CURRENT_ROW;
+
+			/* 
+			 * Note: we haven't set is_rows or exclude but the use of palloc0()
+			 * inside of makeNode() ensures all fields of the struct are 
+			 * zeros so we're golden.
+			 */
 		}
 		else
 			f = key->frame;
@@ -1883,121 +1912,126 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 
 			key = (WindowKey *)list_nth(node->windowKeys, level);
 			
-			if (!key->frame)
-				continue;
-
 			frame = key->frame;
-
 			Assert(level >= 0);
 
 			fs = &wstate->frame_states[level];
-			if (frame->is_rows)
-			{
-				if (EDGE_IS_BOUND(frame->trail))
-					fs->trail_rows = 
-						((Const *)key->frame->trail->val)->constvalue;
-				else
-					fs->trail_rows = 0L;
-
-				if (EDGE_IS_BOUND(frame->lead))
-					fs->lead_rows = 
-						((Const *)key->frame->lead->val)->constvalue;
-				else
-					fs->lead_rows = 0L;
-			}
+			if (!frame)
+				funcstate->trivial_frame = true;
 			else
 			{
-				ExprState *e;
-				bool isNull;
-				TupleDesc desc = ExecGetResultType(wstate->ps.lefttree); 
-				HeapTuple tup;
-				AttrNumber attnum;
-				Oid ltype, rtype;
-
-				if (EDGE_IS_BOUND(frame->trail))
+				if (frame->is_rows)
+				{
+					if (EDGE_IS_BOUND(frame->trail))
+						fs->trail_rows = 
+							((Const *)key->frame->trail->val)->constvalue;
+					else
+						fs->trail_rows = 0L;
+	
+					if (EDGE_IS_BOUND(frame->lead))
+						fs->lead_rows = 
+							((Const *)key->frame->lead->val)->constvalue;
+					else
+						fs->lead_rows = 0L;
+				}
+				else
 				{
 					ExprState *e;
-		
-					e = ExecInitExpr((Expr *)key->frame->trail->val,
-									  (PlanState *) wstate);
-
-					fs->trail_range = ExecEvalExpr(e, econtext, &isNull, 
-												   NULL);
+					bool isNull;
+					TupleDesc desc = ExecGetResultType(wstate->ps.lefttree); 
+					HeapTuple tup;
+					AttrNumber attnum;
+					Oid ltype, rtype;
 
 					Assert(key->numSortCols == 1);
 					attnum = key->sortColIdx[0];
-
 					ltype = desc->attrs[attnum - 1]->atttypid;
-					rtype = exprType(frame->lead->val);
-					tup = SearchSysCache(OPERNAMENSP,
-										 CStringGetDatum("-"),
-										 ObjectIdGetDatum(ltype),
-										 ObjectIdGetDatum(rtype),
-										 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
 	
-					Insist(HeapTupleIsValid(tup));
-					
-					fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode, 
-							  &fs->sub_fn);
-					ReleaseSysCache(tup);
-					/* 
-					 * XXX: we should actually use the result from the above as
-					 * the LHS of this...
-					 */
-					tup = SearchSysCache(OPERNAMENSP,
-										 CStringGetDatum(">"),
-										 ObjectIdGetDatum(rtype),
-										 ObjectIdGetDatum(rtype),
-										 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
-
-					Insist(HeapTupleIsValid(tup));
-					
-					fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode,
-							  &fs->gt_fn);
-					ReleaseSysCache(tup);
-				}
-
-				if (EDGE_IS_BOUND(frame->lead))
-				{
-					e = ExecInitExpr((Expr *)key->frame->lead->val,
-									 (PlanState *) wstate);
-
-					fs->lead_range = ExecEvalExpr(e, econtext, &isNull, 
-												  NULL);
-
-					Assert(key->numSortCols == 1);
-					attnum = key->sortColIdx[0];
-					
-					ltype = desc->attrs[attnum - 1]->atttypid;
-					rtype = exprType(frame->lead->val);
-					tup = SearchSysCache(OPERNAMENSP,
-										 CStringGetDatum("+"),
-										 ObjectIdGetDatum(ltype),
-										 ObjectIdGetDatum(rtype),
-										 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
-
-					Insist(HeapTupleIsValid(tup));
-					
-					fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode,
-							  &fs->add_fn);
-					ReleaseSysCache(tup);
-					
-					/* now for greater-than */
-					/* 
-					 * XXX: we should actually use the result from the above as
-					 * the LHS of this...
-					 */
-					tup = SearchSysCache(OPERNAMENSP,
-										 CStringGetDatum("<"),
-										 ObjectIdGetDatum(rtype),
-										 ObjectIdGetDatum(rtype),
-										 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
-
-					Insist(HeapTupleIsValid(tup));
-					
-					fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode,
-							  &fs->lt_fn);
-					ReleaseSysCache(tup);
+					if (EDGE_IS_BOUND(frame->trail) ||
+						frame->trail->kind == WINDOW_CURRENT_ROW)
+					{
+						ExprState *e;
+			
+						e = ExecInitExpr((Expr *)key->frame->trail->val,
+										  (PlanState *) wstate);
+	
+						fs->trail_range = ExecEvalExpr(e, econtext, &isNull, 
+													   NULL);
+	
+						rtype = exprType(frame->lead->val);
+						tup = SearchSysCache(OPERNAMENSP,
+											 CStringGetDatum("-"),
+											 ObjectIdGetDatum(ltype),
+											 ObjectIdGetDatum(rtype),
+											 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+		
+						Insist(HeapTupleIsValid(tup));
+						
+						fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode, 
+								  &fs->sub_fn);
+						ReleaseSysCache(tup);
+						/* 
+						 * XXX: we should actually use the result from the above as
+						 * the LHS of this...
+						 */
+						tup = SearchSysCache(OPERNAMENSP,
+											 CStringGetDatum(">"),
+											 ObjectIdGetDatum(rtype),
+											 ObjectIdGetDatum(rtype),
+											 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+	
+						Insist(HeapTupleIsValid(tup));
+						
+						fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode,
+								  &fs->gt_fn);
+						ReleaseSysCache(tup);
+					}
+	
+					if (EDGE_IS_BOUND(frame->lead) ||
+						frame->lead->kind == WINDOW_CURRENT_ROW)
+					{
+						
+						if (EDGE_IS_BOUND(frame->lead))
+						{
+							e = ExecInitExpr((Expr *)key->frame->lead->val,
+											 (PlanState *) wstate);
+	
+							fs->lead_range = ExecEvalExpr(e, econtext, &isNull, 
+														  NULL);
+	
+							rtype = exprType(frame->lead->val);
+							tup = SearchSysCache(OPERNAMENSP,
+											 CStringGetDatum("+"),
+											 ObjectIdGetDatum(ltype),
+											 ObjectIdGetDatum(rtype),
+											 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+	
+							Insist(HeapTupleIsValid(tup));
+						
+							fmgr_info(
+								((Form_pg_operator) GETSTRUCT(tup))->oprcode,
+								&fs->add_fn);
+							
+							ReleaseSysCache(tup);
+						}
+						
+						/* now for greater-than */
+						/* 
+						 * XXX: we should actually use the result from the above as
+						 * the LHS of this...
+						 */
+						tup = SearchSysCache(OPERNAMENSP,
+											 CStringGetDatum("<"),
+											 ObjectIdGetDatum(ltype),
+											 ObjectIdGetDatum(ltype),
+											 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+	
+						Insist(HeapTupleIsValid(tup));
+						
+						fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode,
+								  &fs->lt_fn);
+						ReleaseSysCache(tup);
+					}
 				}
 			}
 			
