@@ -468,7 +468,7 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 	 * if 'url' starts with "execute:" then it's a command to execute and 
 	 * not a url (the command specified in CREATE EXTERNAL TABLE .. EXECUTE) 
 	 */
-	if (strncasecmp(url, exec_prefix, strlen(exec_prefix)) == 0)
+	if (pg_strncasecmp(url, exec_prefix, strlen(exec_prefix)) == 0)
 	{
 		char* cmd = url + strlen(exec_prefix);
 		int sz = make_command(cmd, ev, 0);
@@ -481,7 +481,7 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 		if (file->u.exec.fp == NULL)
 			elog( ERROR, "External Table error executing cmd: '%s'", cmd );
 	}
-    else if (strncasecmp(url, PROTOCOL_FILE, strlen(PROTOCOL_FILE)) == 0)
+    else if (pg_strncasecmp(url, PROTOCOL_FILE, strlen(PROTOCOL_FILE)) == 0)
     {
 		char* path = strchr(url + strlen(PROTOCOL_FILE), '/');
 		if (!path) 
@@ -500,8 +500,8 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 			return NULL;
 		}
     }
-    else if (strncasecmp(url, PROTOCOL_GPFDIST, strlen(PROTOCOL_GPFDIST)) == 0
-			 || strncasecmp(url, PROTOCOL_HTTP, strlen(PROTOCOL_HTTP)) == 0)
+    else if (pg_strncasecmp(url, PROTOCOL_GPFDIST, strlen(PROTOCOL_GPFDIST)) == 0
+			 || pg_strncasecmp(url, PROTOCOL_HTTP, strlen(PROTOCOL_HTTP)) == 0)
     {
 		int sz = make_url(file->url, ev, 0);
 
@@ -515,7 +515,7 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 
 		file->u.curl.curl_url = palloc(sz);
 		make_url(file->url, ev, file->u.curl.curl_url);
-		if (0 == strncasecmp(file->u.curl.curl_url, "gpfdist://", strlen("gpfdist://")))
+		if (0 == pg_strncasecmp(file->u.curl.curl_url, "gpfdist://", strlen("gpfdist://")))
 		{
 			/* replace gpfdist:// with http:// */
 			file->u.curl.curl_url += 3;
