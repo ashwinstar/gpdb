@@ -135,58 +135,79 @@ transformFromClause(ParseState *pstate, List *frmList)
 
 static void
 transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e, 
-						 WindowSpec *spec, Query *qry)
+						 WindowSpec *spec, Query *qry, bool is_rows)
 {
 	/* Only bound frame edges will have a value */
 	if (e->kind == WINDOW_BOUND_PRECEDING ||
 		e->kind == WINDOW_BOUND_FOLLOWING)
 	{
-		Node *val;
-		TargetEntry *te;
-		Oid otype;
-		Oid rtype;
-		SortClause *sort;
-					
-		if (list_length(spec->order) != 1)
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("only one ORDER BY column may be specified when "
-							"RANGE is used in a window specification")));
-
-		val = transformExpr(pstate, e->val);
-
-		sort = (SortClause *)linitial(spec->order);
-		te = getTargetBySortGroupRef(sort->tleSortGroupRef, qry->targetList);
-		otype = exprType((Node *)te->expr);
-		rtype = exprType(val);
-
-		if (e->kind == WINDOW_BOUND_FOLLOWING)
+		if (is_rows)
 		{
-			HeapTuple tup;
-			tup = SearchSysCache(OPERNAMENSP,
-								 CStringGetDatum("+"),
-								 ObjectIdGetDatum(otype),
-								 ObjectIdGetDatum(rtype),
-								 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
-			if (!HeapTupleIsValid(tup))
+			Value *val;
+			if (!IsA(e->val, A_Const))
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("ordering column does not support addition")));
-		}
-		else if (e->kind == WINDOW_BOUND_PRECEDING)
-		{
-			HeapTuple tup;
-			tup = SearchSysCache(OPERNAMENSP,
-								 CStringGetDatum("-"),
-								 ObjectIdGetDatum(otype),
-								 ObjectIdGetDatum(rtype),
-								 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
-			if (!HeapTupleIsValid(tup))
+						 errmsg("ROWS parameter must be an integer constant")));
+			
+			val = &((A_Const *)e->val)->val;
+
+			if (!IsA(val, Integer))
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("ordering column does not support subtraction")));
+						 errmsg("ROWS parameter must be an integer constant")));
+			e->val = (Node *)make_const(val);
 		}
-		e->val = val;
+		else
+		{
+			Node *val;
+			TargetEntry *te;
+			Oid otype;
+			Oid rtype;
+			SortClause *sort;
+						
+			if (list_length(spec->order) != 1)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("only one ORDER BY column may be specified when "
+								"RANGE is used in a window specification")));
+	
+			val = transformExpr(pstate, e->val);
+	
+			sort = (SortClause *)linitial(spec->order);
+			te = getTargetBySortGroupRef(sort->tleSortGroupRef, qry->targetList);
+			otype = exprType((Node *)te->expr);
+			rtype = exprType(val);
+	
+			if (e->kind == WINDOW_BOUND_FOLLOWING)
+			{
+				HeapTuple tup;
+				tup = SearchSysCache(OPERNAMENSP,
+									 CStringGetDatum("+"),
+									 ObjectIdGetDatum(otype),
+									 ObjectIdGetDatum(rtype),
+									 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+				if (!HeapTupleIsValid(tup))
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("ordering column does not support addition")));
+				ReleaseSysCache(tup);
+			}
+			else if (e->kind == WINDOW_BOUND_PRECEDING)
+			{
+				HeapTuple tup;
+				tup = SearchSysCache(OPERNAMENSP,
+									 CStringGetDatum("-"),
+									 ObjectIdGetDatum(otype),
+									 ObjectIdGetDatum(rtype),
+									 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+				if (!HeapTupleIsValid(tup))
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("ordering column does not support subtraction")));
+				ReleaseSysCache(tup);
+			}
+			e->val = val;
+		}
 	}
 }
 
@@ -427,19 +448,10 @@ transformWindowClause(ParseState *pstate, Query *qry)
 				nf->lead = e;
 			}
 
-			/*
-			 * RANGE tests
-			 */
-			
-			if (!nf->is_rows)
-			{
-				/*
-				 * Transform the edges. 
-				 */
-				transformWindowFrameEdge(pstate, nf->trail, newspec, qry);
-				transformWindowFrameEdge(pstate, nf->lead, newspec, qry);
-			}
-
+			transformWindowFrameEdge(pstate, nf->trail, newspec, qry,
+									 nf->is_rows);
+			transformWindowFrameEdge(pstate, nf->lead, newspec, qry,
+									 nf->is_rows);
 			newspec->frame = nf;
 		}
 		
@@ -1846,7 +1858,11 @@ grouping_rewrite_walker(Node *node, void *context)
 	if (node == NULL)
 		return false;
 
-	if (IsA(node, GroupingFunc))
+	if (IsA(node, A_Const))
+	{
+		return true;
+	}
+	else if (IsA(node, GroupingFunc))
 	{
 		GroupingFunc *gf = (GroupingFunc *)node;
 		ListCell *arg_lc;
