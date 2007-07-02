@@ -2999,8 +2999,7 @@ l3:
 		uint16		infomask;
 
 		/* must copy state data before unlocking buffer */
-		xwait = HeapTupleHeaderGetXmax(tuple->t_data);
-		Assert(TransactionIdIsValid(xid));
+		xwait = HeapTupleHeaderGetXmax(tuple->t_data);;
 		
 		infomask = tuple->t_data->t_infomask;
 
