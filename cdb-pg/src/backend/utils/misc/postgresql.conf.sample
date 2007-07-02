@@ -342,7 +342,8 @@
 					#   %% = '%'
 					# e.g. '<%u%%%d> '
 					#
-					# MPP specific substitutions allowed in log_line_prefix:
+					# Greenplum specific substitutions allowed 
+					# in log_line_prefix:
 					#   %C  content id (or segment index)
 					#   %I  process description and status.  For example:
 					#		'con99 cmd42'			   QD (query dispatcher or entry process) for
@@ -370,11 +371,13 @@
 					#		  empty if other.
 #log_statement = 'none'			# none, mod, ddl, all
 
-#gp_log_gang = terse                   # off, terse, verbose, debug
-                                        #  logging of qExec worker process
-                                        #  creation and reallocation events
-#gp_log_interconnect = terse           # off, terse, verbose, debug
-                                        #  logging of MPP interconnect events
+#gp_log_gang = terse                    # off, terse, verbose, debug
+                                        # logging of qExec worker process
+                                        # creation and reallocation events
+
+#gp_log_interconnect = terse            # off, terse, verbose, debug
+                                        # logging of Greenplum interconnect 
+										# events
 
 
 #---------------------------------------------------------------------------
