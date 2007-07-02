@@ -33,22 +33,22 @@ ParseUriString(const char *uri_str)
 	/*
 	 * parse protocol
 	 */
-	if (strncasecmp(uri_str, PROTOCOL_FILE, strlen(PROTOCOL_FILE)) == 0)
+	if (pg_strncasecmp(uri_str, PROTOCOL_FILE, strlen(PROTOCOL_FILE)) == 0)
 	{
 		uri->protocol = URI_FILE;
 		protocol_len = strlen(PROTOCOL_FILE);
 	}
-	else if (strncasecmp(uri_str, PROTOCOL_FTP, strlen(PROTOCOL_FTP)) == 0)
+	else if (pg_strncasecmp(uri_str, PROTOCOL_FTP, strlen(PROTOCOL_FTP)) == 0)
 	{
 		uri->protocol = URI_FTP;
 		protocol_len = strlen(PROTOCOL_FTP);
 	}
-	else if (strncasecmp(uri_str, PROTOCOL_HTTP, strlen(PROTOCOL_HTTP)) == 0)
+	else if (pg_strncasecmp(uri_str, PROTOCOL_HTTP, strlen(PROTOCOL_HTTP)) == 0)
 	{
 		uri->protocol = URI_HTTP;
 		protocol_len = strlen(PROTOCOL_HTTP);
 	}
-	else if (strncasecmp(uri_str, PROTOCOL_GPFDIST, strlen(PROTOCOL_GPFDIST)) == 0)
+	else if (pg_strncasecmp(uri_str, PROTOCOL_GPFDIST, strlen(PROTOCOL_GPFDIST)) == 0)
 	{
 		uri->protocol = URI_GPFDIST;
 		protocol_len = strlen(PROTOCOL_GPFDIST);
