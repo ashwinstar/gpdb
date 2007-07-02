@@ -6392,6 +6392,12 @@ window_frame_start:
 					n->val = $1;
 					$$ = (Node *)n;
 				}
+			| CURRENT ROW
+				{
+					WindowFrameEdge *n = makeNode(WindowFrameEdge);
+					n->kind = WINDOW_CURRENT_ROW;
+					$$ = (Node *)n;
+				}
 		;
 
 window_frame_preceding: a_expr PRECEDING 
