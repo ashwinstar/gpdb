@@ -348,11 +348,6 @@ ProcessCatchupEvent(void)
 	{
 		elog(DEBUG4, "ProcessCatchupEvent outside transaction");
 
-		if (Gp_role == GP_ROLE_DISPATCH)
-		{
-			disconnectAndDestroyAllGangs();
-		}
-
 		/*
 		 * Save distributed transaction context first.
 		 */
