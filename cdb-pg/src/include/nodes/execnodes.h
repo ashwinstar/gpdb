@@ -22,6 +22,7 @@
 #include "access/relscan.h"
 #include "cdb/cdbhash.h"
 #include "fmgr.h"                       /* ExprDoneCond, SetFunctionReturnMode */
+#include "lib/dllist.h"
 #include "nodes/params.h"
 #include "nodes/plannodes.h"
 #include "nodes/tidbitmap.h"
@@ -1653,6 +1654,7 @@ typedef struct AggState
  */
 typedef struct WindowStatePerLevelData *WindowStatePerLevel;
 typedef struct WindowStatePerFunctionData *WindowStatePerFunction;
+typedef struct WindowFrameStateData *WindowFrameState;
 
 typedef struct WindowState
 {
@@ -1660,6 +1662,8 @@ typedef struct WindowState
 	List	   *wrxstates;		/* all WindowRefExprState nodes in targetlist */	
 	FmgrInfo   *eqfunctions;	/* equality fns for partition key */
 	TupleTableSlot *priorslot;	/* place for prior tuple */
+	TupleTableSlot *curslot;	/* current tuple */
+	TupleTableSlot *spare;	/* current tuple */
 	
 	/* Array of working states per distinct window function */
 	int			numfuncs;
@@ -1675,6 +1679,37 @@ typedef struct WindowState
 	 * reset it when there's a key change at that level
 	 */
 	MemoryContext transcontext;
+
+	/* frame buffers */
+	Dllist *trail;
+	Dllist *lead;
+
+	/* frame processing data */
+
+	/* key levels which have a ROWS/RANGE trailing edge to their window */
+	List *frame_levels[4];
+
+	/* 
+	 * Position relative to current row of the "most trailing edge" of any
+	 * frame defined.
+	 */
+	long int frame_trail_edge;
+	/* position of leading edge, as above */
+	long int frame_lead_edge;
+#if 0
+	List *levels_rows_trail;
+	List *levels_range_trail;
+	/* 
+	 * Funcs which have bounded preceding frames, in descending 
+	 * order of range value. This is because we want to process the function
+	 * furthest from the current row, first.
+	 */
+	List *levels_rows_lead;
+	List *levels_range_lead;
+#endif
+
+	/* state variables for window frames at each key level */
+	WindowFrameState frame_states;
 } WindowState;
 
 /* ----------------

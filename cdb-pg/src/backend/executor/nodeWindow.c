@@ -13,10 +13,13 @@
  */
 
 #include "postgres.h"
+#include "miscadmin.h"
 
 /* XXX include list is speculative -- bhagenbuch */
 #include "access/heapam.h"
 #include "catalog/pg_aggregate.h"
+#include "catalog/pg_namespace.h"
+#include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_window.h"
@@ -24,15 +27,17 @@
 #include "executor/executor.h"
 #include "executor/nodeAgg.h"
 #include "executor/nodeWindow.h"
-#include "miscadmin.h"
+#include "lib/dllist.h"
 #include "optimizer/clauses.h"
 #include "parser/parse_agg.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
+#include "parser/parse_oper.h"
 #include "utils/acl.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
+#include "utils/debugutils.h"
 #include "utils/int8.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -46,6 +51,7 @@ typedef struct WindowStatePerLevelData
 {
 	Index	    level;			/* index of WindowKey for this level */
 	FmgrInfo   *eqfunctions;	/* equality fns for partial key */
+	bool		need_peer_count;
 
 	int64		group_index;
 	int64		prior_non_peer_count;
@@ -55,6 +61,7 @@ typedef struct WindowStatePerLevelData
 	int64		dense_rank;
 	int64		prior_rank;
 	int64		prior_dense_rank;
+
 } WindowStatePerLevelData;
 
 /* 
@@ -71,8 +78,11 @@ typedef struct WindowStatePerFunctionData
 	bool				resulttypeByVal;
 	
 	/* Ordinary window function */
+	Datum				win_value;
+	bool				win_value_is_null;
 	Oid					windowfn_oid;
 	FmgrInfo			windowfn;
+	bool				need_peercount;
 	
 	/* Aggregate-derived window function */
 	Oid					transfn_oid;
@@ -95,13 +105,115 @@ typedef struct WindowStatePerFunctionData
 	Datum				aggTransValue;
 	bool				aggTransValueIsNull;
 	bool				aggNoTransValue;
+
+	/* 
+	 * When calculating RANGE frames, we continue to emit the same
+	 * transition value for all peers. We keep the peer field in 
+	 * peer_value to test inside the framing code.
+	 */
+	Datum 				peer_value;
+
+	bool				frame_tuple_processed;
+	/* frame does not require buffering and complexity of invokeWindowFuncs() */
+	bool				trivial_frame;
+	/* 
+	 * Frame is contradictory and no tuples will fall into the frame, for
+	 * example: BETWEEN 10 FOLLOWING and 10 PRECEDING
+	 */
+	bool				empty_frame;
 } WindowStatePerFunctionData;
+
+typedef struct WindowFrameStateData
+{
+	/* state for rows frame is simple (for now) */
+	long int trail_rows;
+	long int lead_rows;
+
+	/* state for range frame is more complex */
+	Datum trail_range;
+	Datum lead_range;
+
+	/* 
+	 * RANGE frames also need to do addition and subtraction of the above
+	 * for each new row so we must lookup and remember the relevant functions.
+	 */
+	FmgrInfo add_fn;
+	FmgrInfo sub_fn;
+
+	/*
+	 * We also need less than and greater than.
+	 */
+	FmgrInfo gt_fn;
+	FmgrInfo lt_fn;
+
+	/* state for frame edges */
+	Datum trail_edge_d;
+	bool trail_edge_set;
+	
+	Datum lead_edge_d;
+	bool lead_edge_set;
+
+	Datum prev_trail_d;
+	bool prev_trail_set;
+	
+	Datum prev_lead_d;
+	bool prev_lead_set;
+	/* 
+	 * For RANGE frames, all peers must emit the same result. We store the
+	 * peer, as it store last time we emitted a row, in last_peer_value. We
+	 * store the value to be emitted for all peers in peer_result.
+	 *
+	 * These values are uninitialised at the time we process the first row and
+	 * so we look at row_index in the WindowState to handle that special case.
+	 *
+	 * Be careful to free saved datums and to copy them in the relevant
+	 * context!
+	 */
+	Datum last_peer_value;
+	Datum peer_result;
+} WindowFrameStateData;
+
+/*
+ * We need to buffer tuples and meta data inside the framing code. We use
+ * this structure for that purpose.
+ */
+typedef struct WindowTuple
+{
+	HeapTuple 	tup;
+	bool		part_break;
+	int			min_key_break;
+} WindowTuple;
+
+#define FRAME_TRAIL_ROWS 	0
+#define FRAME_TRAIL_RANGE	1
+#define FRAME_LEAD_ROWS		2
+#define FRAME_LEAD_RANGE	3
+
+#define EDGE_IS_BOUND(e) \
+	(e->kind == WINDOW_BOUND_PRECEDING || \
+	 e->kind == WINDOW_BOUND_FOLLOWING)
+
+#define FRAME_NEEDS_FILL(wstate, key, funcstate) \
+	((wstate->row_index == 0 && EDGE_IS_BOUND(key->frame->lead)) \
+	 || FUNC_HAS_MAN_FRAME(funcstate))
+	
+#define FRAME_IS_COMPLEX(f) (!(f->trivial_frame || f->empty_frame))
+
+#define FUNC_HAS_MAN_FRAME(f) \
+	(funcstate->isAgg && !OidIsValid(funcstate->invtransfn_oid))
+
+#define ABS(x) (x < 0 ? -x : x)
+#define MIN(x, y) (x =< y ? x : y)
 
 static WindowState *makeWindowState(Window *window, EState *estate);
 static void initializePartition(WindowState *wstate);
-static void advanceKeyLevelState(WindowState *wstate, int level, bool key_changed);
+static void advanceKeyLevelState(WindowState *wstate, int min_level); 
 static void resetPerFunctionAggStates(WindowState *wstate, Index minlevel);
+static void resetManagedFrameAggStates(WindowState *wstate);
 static TupleTableSlot *nextRow(WindowState *wstate, ExprContext *econtext);
+static WindowTuple *fetchTupleThroughBuf(WindowState *wstate);
+static void moveFrameBuf(WindowState *wstate, long int ntuples);
+static void freeFrameBuf(WindowState *wstate);
 
 /* WindowState constructor.
  */
@@ -136,6 +248,7 @@ makeWindowState(Window *window, EState *estate)
 												 ALLOCSET_DEFAULT_MINSIZE,
 												 ALLOCSET_DEFAULT_INITSIZE,
 												 ALLOCSET_DEFAULT_MAXSIZE);
+
 	return wstate;
 }
 
@@ -145,6 +258,8 @@ static void
 initializePartition(WindowState *wstate)
 {
 	int level;
+	
+	elog(DEBUG1, "initializing partition");
 	
 	/* Reset partition primitive values. Note row_index is -1 to flag 
 	 * "before first row of partition" and so that it increments to 0.
@@ -159,7 +274,7 @@ initializePartition(WindowState *wstate)
 		
 		level_state->group_index = 0;
 		level_state->prior_non_peer_count = 0;
-		level_state->peer_index = -1;
+		level_state->peer_index = 0;
 		level_state->peer_count = -1;
 		level_state->rank = 1;
 		level_state->dense_rank = 1;
@@ -170,9 +285,334 @@ initializePartition(WindowState *wstate)
 	}
 	
 	/* Per-partition buffer management reinitialzation. */
+	freeFrameBuf(wstate);
+	wstate->trail = DLNewList();
+	wstate->lead = DLNewList();
+	wstate->frame_trail_edge = 0;
+	wstate->frame_lead_edge = 0;
 	
-	if ( wstate->numlevels > 0 )
-		resetPerFunctionAggStates(wstate,0);
+	if (wstate->numlevels > 0)
+		resetPerFunctionAggStates(wstate, 0);
+}
+
+
+static void
+processPeerCounts(WindowState *wstate, int min_level, 
+				  TupleTableSlot *cur_slot, MemoryContext eval_ctx)
+{
+	int i;
+	uint64 peer_count = 1;
+	long int nfetches = 0;
+	Window *window = (Window *)wstate->ps.plan;
+	TupleTableSlot *priorslot = NULL;
+	WindowTuple *priorwt = NULL;
+	char *buf;
+	bool seen_null = false;
+	
+	elog(DEBUG1, "called %s", PG_FUNCNAME_MACRO);
+
+
+#if 0 /* temporarily disabled */	
+	Assert(ExecSupportsMarkRestore(nodeTag(outerPlan->plan)));
+	ExecMarkPos(outerPlan);
+#endif
+	
+	buf = tup2str(cur_slot);
+	elog(DEBUG1, "first = %s", buf);
+	pfree(buf);
+
+	/* 
+	 * We start from the upper most level because peer counts will get
+	 * larger as we descend.
+	 */
+	for (i = wstate->numlevels - 1; i >= min_level; i--)
+	{
+		WindowStatePerLevel level_state = &wstate->level_state[i];
+
+		/*
+	 	 * If there is a function at this level which needs a peer count, we
+	 	 * must pull tuples from the outer plan, incrementing the peer_count,
+	 	 * until there is a key change.
+	 	 */
+
+		if (level_state->need_peer_count)
+		{
+			WindowKey  *key;
+//			char *buf;
+
+			/* we already have one peer in cur_slot, so adjust */
+			Assert(level_state->peer_count == -1);
+			level_state->peer_count = peer_count;
+
+#if 0
+			elog(DEBUG1, "level %i needs peer", i);
+			buf = tup2str(cur_slot);
+			elog(DEBUG1, "first peer: %s", buf);
+			pfree(buf);
+#endif
+			if (!seen_null)
+			{
+				Assert(list_length(window->windowKeys) > i);
+
+				key = (WindowKey *)list_nth(window->windowKeys, i);
+
+
+				for (;;)
+				{
+					bool match;
+					TupleTableSlot *slot;
+					WindowTuple *wt;
+	
+					if (priorslot)
+					{
+						slot = priorslot;
+						priorslot = NULL;
+						wt = priorwt;
+						priorwt = NULL;
+					}
+					else
+					{
+						//slot = ExecProcNode(outerPlan);
+						wt = fetchTupleThroughBuf(wstate);
+						slot = wstate->curslot;
+						nfetches++;
+					}
+	
+					if (!PointerIsValid(wt) || TupIsNull(slot))
+					{
+						priorslot = slot;
+						priorwt = wt;
+						nfetches--;
+						seen_null = true;
+						elog(DEBUG1, "slot is null");
+						break;
+					}
+					else
+					{
+					}
+	
+					/* XXX: shouldn't this be priorslot instead of cur_slot */
+					match = execTuplesMatch(cur_slot, slot, 
+											key->numSortCols, key->sortColIdx,
+											level_state->eqfunctions,
+											eval_ctx);
+	
+					if (!match)
+					{
+						priorslot = slot;
+						break;
+					}
+	
+					peer_count++;
+				}
+			}
+			level_state->peer_count = peer_count;
+			
+	//		peer_count++; /* update to reflect the tuple we just pulled */
+
+			elog(DEBUG1, "peer count = %llu", level_state->peer_count);
+		}
+	}
+	elog(DEBUG1, "total peer count %llu, %li", peer_count, nfetches);
+	if (nfetches)
+	{
+	//	ExecRestrPos(outerPlan);
+		elog(DEBUG1, "rewinding %li", nfetches);
+		moveFrameBuf(wstate, -nfetches);
+	}
+}
+
+static void
+freeFrameBuf(WindowState *wstate)
+{
+	/* TODO: free manually, to free HeapTuples */
+	if (wstate->trail)
+	{
+		DLFreeList(wstate->trail);
+		wstate->trail = NULL;
+	}
+	if (wstate->lead)
+	{
+		DLFreeList(wstate->lead);
+		wstate->lead = NULL;
+	}
+}
+	
+/*
+ * Fetch a tuple in a frame buffer aware way. If set_cur_row is true, the 
+ * row fetched is the current row the window is focussed around.
+ */
+static WindowTuple *
+fetchTupleThroughBuf(WindowState *wstate)
+{
+	WindowTuple *wt;
+	Window *window = (Window *)wstate->ps.plan;	
+	ExprContext *econtext = wstate->ps.ps_ExprContext;
+	//MemoryContext oldcxt;
+
+//	oldcxt = MemoryContextSwitchTo(QueryContext);
+
+	if (!DLGetHead(wstate->lead))
+	{
+		TupleTableSlot *slot = ExecProcNode(outerPlanState(wstate));	
+		WindowTuple *prev_wt = NULL;
+
+		if (TupIsNull(slot))
+		{
+	//		MemoryContextSwitchTo(oldcxt);
+			return NULL;
+		}
+
+		if (wstate->spare->tts_tupleDescriptor == NULL)
+		{
+			ExecSetSlotDescriptor(wstate->spare, 
+								  slot->tts_tupleDescriptor);
+		}
+
+		wt = palloc(sizeof(WindowTuple) * 10);
+		
+		/* get prior tuple */
+		if (DLGetTail(wstate->trail))
+			prev_wt = (WindowTuple *) DLE_VAL(DLGetTail(wstate->trail));
+#if 0
+			tup = (HeapTuple) DLE_VAL(DLGetTail(wstate->trail));
+#endif
+		
+		wt->min_key_break = -1;		
+		
+		if (PointerIsValid(prev_wt))
+#if 0
+		if (PointerIsValid(tup))
+#endif
+		{
+#if 0
+			save = ExecFetchSlotTuple(wstate->priorslot);
+			ExecClearTuple(wstate->priorslot);
+			ExecStoreTuple(prev_wt->tup, wstate->priorslot, 
+#endif
+			ExecStoreTuple(prev_wt->tup, wstate->spare,
+						   InvalidBuffer, false);
+
+			wt->part_break = (window->numPartCols && 
+							  (!execTuplesMatch(wstate->spare, slot, 
+								window->numPartCols, window->partColIdx, 
+								wstate->eqfunctions,
+								econtext->ecxt_per_tuple_memory)));
+		
+			if (!wt->part_break)
+			{
+				ListCell *lc;
+				int level = 0;
+				bool match = true;
+			
+				/* Process ordering partial key that breaks. */
+				foreach (lc, window->windowKeys)
+				{
+					WindowKey *key = (WindowKey *)lfirst(lc);
+					/* XXX: should just put the eqfunctions in WindowKey */
+					WindowStatePerLevel ls = &wstate->level_state[level];
+				
+					if (match)
+					{
+						match = execTuplesMatch(wstate->spare, slot, 
+												key->numSortCols, 
+												key->sortColIdx,
+												ls->eqfunctions,
+												econtext->ecxt_per_tuple_memory);
+						elog(DEBUG1, "here, match is %s", match ? "true" : "false");
+						if (!match)
+							wt->min_key_break = level;
+					}
+
+					level++;
+				}
+			}
+#if 0
+			ExecClearTuple(wstate->priorslot);
+			ExecStoreTuple(save, wstate->priorslot, InvalidBuffer, false);
+#endif
+		}
+		else
+		{
+			/* must be the first tuple. */
+			wt->part_break = window->numPartCols > 0;
+			wt->min_key_break = -1;
+			wstate->curslot = slot;
+		}
+	
+		wstate->curslot = slot;
+		wt->tup = ExecCopySlotTuple(wstate->curslot);
+		DLAddTail(wstate->trail, DLNewElem(wt));
+#if 0		
+		tup = ExecCopySlotTuple(wstate->curslot);
+		DLAddTail(wstate->trail, DLNewElem(tup));
+#endif
+		elog(DEBUG1, "%s: added to buf", PG_FUNCNAME_MACRO);
+	}
+	else
+	{
+		Dlelem *el = DLRemHead(wstate->lead);
+		wt = (WindowTuple *)DLE_VAL(el);
+		
+		DLAddTail(wstate->trail, el);
+
+		ExecStoreTuple(wt->tup, 
+					   wstate->curslot, InvalidBuffer,
+					   false);
+#if 0
+		tup = (HeapTuple)DLE_VAL(el);
+		
+		DLAddTail(wstate->trail, el);
+
+		ExecClearTuple(wstate->curslot);
+		ExecStoreTuple(tup, 
+					   wstate->curslot, InvalidBuffer,
+					   false);
+		wt->part_break = false;
+		wt->min_key_break = -1;
+		wt->tup = tup;
+#endif
+	}
+
+//	MemoryContextSwitchTo(oldcxt);
+	return wt;
+}
+
+static void
+moveFrameBuf(WindowState *wstate, long int ntuples)
+{
+	long int tup = 0;
+	bool forward = ntuples >= 0 ? true : false;
+	long int tupcount = forward ? ntuples : -ntuples;
+	elog(DEBUG1, "moving from %li", ntuples);
+
+	if (ntuples == 0)
+		return;
+	
+	if (wstate->lead == NULL)
+		wstate->lead = DLNewList();
+	
+	while (tupcount-- > 0)
+	{
+		Dlelem *el;
+	   
+		if (forward)
+			el = DLRemHead(wstate->lead);
+		else
+			el = DLRemTail(wstate->trail);
+
+		if (el == NULL)
+			elog(ERROR, "edge is null, direction = %s, tups %li, moved %li",
+				 forward ? "forward" : "back", ntuples, tup);
+
+		if (forward)
+			DLAddTail(wstate->trail, el);
+		else
+			DLAddHead(wstate->lead, el);
+
+		tup++;
+	}
+	elog(DEBUG1, "moved %li", tup);
 }
 
 /* Advance the "primitive" values that drive the calculation of window
@@ -192,39 +632,102 @@ initializePartition(WindowState *wstate)
  */
 
 static void
-advanceKeyLevelState(WindowState *wstate, int level, bool key_changed)
+advanceKeyLevelState(WindowState *wstate, int min_level)
 {
 	WindowStatePerLevel level_state;
 	int64 cur_row_index;
+	int i;
 	
-	Assert(0 <= level && level <= wstate->numlevels);
+	Assert(-1 <= min_level && min_level < wstate->numlevels);
 
-	level_state = &wstate->level_state[level];
 	cur_row_index = 1 + wstate->row_index;
 
-	if (key_changed)
+	for (i = 0; i < wstate->numlevels; i++)
 	{
-		/* The level data is still set for the previous row. 
-		 * Remember the rank and dense_rank values.
-		 */
-		level_state->prior_rank = level_state->rank;
-		level_state->prior_dense_rank = level_state->dense_rank;
+		level_state = &wstate->level_state[i];
+		
+		if (i >= min_level)
+		{
+			/* The level data is still set for the previous row. 
+			 * Remember the rank and dense_rank values.
+			 */
+			level_state->prior_rank = level_state->rank;
+			level_state->prior_dense_rank = level_state->dense_rank;
 		
 		/* Advance level data for first peer in next group. */
-		level_state->prior_non_peer_count += level_state->peer_index + 1;
-		level_state->group_index++;
-		level_state->peer_index = 0;
-		level_state->peer_count = -1; /* flags "not set" */
-		level_state->rank = 1 + cur_row_index; 
-		level_state->dense_rank = 1 + level_state->group_index;
+#if 0
+		elog(DEBUG1, "== prior %llu, index = %lli",
+			 level_state->prior_non_peer_count, level_state->peer_index);
+#endif
+			level_state->prior_non_peer_count += level_state->peer_index + 1;
+			level_state->group_index++;
+			level_state->peer_index = 0;
+			level_state->peer_count = -1; /* flags "not set" */
+			level_state->rank = 1 + cur_row_index; 
+			level_state->dense_rank = 1 + level_state->group_index;
+		}
+		else
+			/* Advance level data for next peer in current group. */
+			level_state->peer_index++;
 	}
-	else
-		/* Advance level data for next peer in current group. */
-		level_state->peer_index++;
 }
 
+/*
+ * Restore a given aggregate function's state to its initial value.
+ */
+static void
+resetAggState(WindowState *wstate, WindowStatePerFunction funcstate)
+{
+	Assert(funcstate->isAgg);
 
-/* Reset the per-function aggregate states at or beyond the specified
+	/* free existing value, if any */
+	if (!funcstate->aggTranstypeByVal &&
+		!funcstate->aggTransValueIsNull &&
+		DatumGetPointer(funcstate->aggTransValue) != NULL)
+	{
+		pfree(DatumGetPointer(funcstate->aggTransValue));
+	}
+
+	if (funcstate->aggInitValueIsNull)
+		funcstate->aggTransValue = funcstate->aggInitValue;
+	else
+	{
+		MemoryContext oldcxt;
+
+		oldcxt = MemoryContextSwitchTo(wstate->transcontext);
+		funcstate->aggTransValue = datumCopy(funcstate->aggInitValue,
+											 funcstate->aggTranstypeByVal,
+											 funcstate->aggTranstypeLen);
+		MemoryContextSwitchTo(oldcxt);
+	}
+	funcstate->aggTransValueIsNull = funcstate->aggInitValueIsNull;
+	funcstate->aggNoTransValue = funcstate->aggInitValueIsNull;
+}
+
+/*
+ * Aggregates which do not support inversion must be reset before processing
+ * a new frame.
+ */
+static void
+resetManagedFrameAggStates(WindowState *wstate)
+{
+	int funcno;
+
+	for (funcno = 0; funcno < wstate->numfuncs; funcno++)
+	{
+		WindowStatePerFunction funcstate = &wstate->func_state[funcno];
+		
+		if (funcstate->isAgg && !OidIsValid(funcstate->invtransfn_oid) &&
+			FRAME_IS_COMPLEX(funcstate))
+		{
+			elog(DEBUG1, "resetting managed agg");
+			resetAggState(wstate, funcstate);
+		}
+	}
+}
+
+/* 
+ * Reset the per-function aggregate states at or beyond the specified
  * key level.  This function should be called once per partition-start
  * and once per row that causes a key break.
  */
@@ -233,38 +736,14 @@ resetPerFunctionAggStates(WindowState *wstate, Index minlevel)
 {
 	int funcno;
 	
-	
+	elog(DEBUG1, "saw keybreak at %u, resetting", minlevel);
 	/* reset transition values for each aggregate */
-
 	for ( funcno = 0; funcno < wstate->numfuncs; funcno++ )
 	{
 		WindowStatePerFunction funcstate = &wstate->func_state[funcno];
 		
 		if (funcstate->isAgg && funcstate->wlevel->level >= minlevel)
-		{
-			/* free existing value, if any */
-			if (!funcstate->aggTranstypeByVal &&
-				!funcstate->aggTransValueIsNull &&
-				DatumGetPointer(funcstate->aggTransValue) != NULL)
-			{
-	            pfree(DatumGetPointer(funcstate->aggTransValue));
-			}
-
-			if (funcstate->aggInitValueIsNull)
-				funcstate->aggTransValue = funcstate->aggInitValue;
-			else
-			{
-				MemoryContext oldcxt;
-
-				oldcxt = MemoryContextSwitchTo(wstate->transcontext);
-				funcstate->aggTransValue = datumCopy(funcstate->aggInitValue,
-												  funcstate->aggTranstypeByVal,
-												  funcstate->aggTranstypeLen);
-				MemoryContextSwitchTo(oldcxt);
-			}
-			funcstate->aggTransValueIsNull = funcstate->aggInitValueIsNull;
-			funcstate->aggNoTransValue = funcstate->aggInitValueIsNull;
-		}
+			resetAggState(wstate, funcstate);
 	}
 }
 
@@ -274,161 +753,787 @@ resetPerFunctionAggStates(WindowState *wstate, Index minlevel)
 static TupleTableSlot *
 nextRow(WindowState *wstate, ExprContext *econtext)
 {
-	Window *window = (Window *)wstate->ps.plan;
-	PlanState  *outerPlan = outerPlanState(wstate);
 	TupleTableSlot *outerTupleSlot;
 	TupleTableSlot *priorTupleSlot = wstate->priorslot;
-	bool part_break;
 	int min_key_break = -1;
+	WindowTuple *wt;
 
-	/* Get the new current row into the outer tuple slot. 
-	 *
-	 * For now, that just means fetch a row from the outer plan. 
-	 * 
-	 * TODO Support buffering, etc for framing and fetch ahead for
-	 *      peer count when specified.
-	 */
-	outerTupleSlot = ExecProcNode(outerPlan);	
-	
-	if ( TupIsNull(outerTupleSlot) )
-		return outerTupleSlot;
-	
+	/* Get the new current row into the outer tuple slot. */
+	wt = fetchTupleThroughBuf(wstate);
+
+	if (!PointerIsValid(wt))
+		return NULL;
+
 	/* If first call, initialize priorslot. */
-	if (priorTupleSlot->tts_tupleDescriptor == NULL)
+	if (wstate->priorslot->tts_tupleDescriptor == NULL)
 	{
-		ExecSetSlotDescriptor(priorTupleSlot, outerTupleSlot->tts_tupleDescriptor);
+		ExecSetSlotDescriptor(wstate->priorslot, 
+							  wstate->curslot->tts_tupleDescriptor);
 	}
+	
+	outerTupleSlot = wstate->curslot;
 
-	/*
-	 * Process state information for window functions (unless we are at the
-	 * start of a partition).
-	 */
-	if ( wstate->row_index >= 0 )
-	{
-		part_break = (window->numPartCols && 
-					  (!execTuplesMatch(priorTupleSlot, outerTupleSlot, 
-										window->numPartCols, window->partColIdx, 
-										wstate->eqfunctions,
-										econtext->ecxt_per_tuple_memory)));
-		if (part_break)
-			initializePartition(wstate);
-		else
-		{
-			ListCell *lc;
-			int level = 0;
-			bool match = true;
-			
-			/* Process ordering partial key that breaks. */
-			foreach (lc, window->windowKeys)
-			{
-				WindowKey *key = (WindowKey *)lfirst(lc);
-				/* XXX: should just put the eqfunctions in WindowKey */
-				WindowStatePerLevel ls = &wstate->level_state[level];
-				
-				if ( match )
-				{
-					match = execTuplesMatch(priorTupleSlot, outerTupleSlot, 
-											key->numSortCols, key->sortColIdx,
-											ls->eqfunctions,
-											econtext->ecxt_per_tuple_memory);
-					if ( !match )
-						min_key_break = level;
-				}
+	if (wt->part_break)
+		initializePartition(wstate);
+	else
+		advanceKeyLevelState(wstate, wt->min_key_break);
 
-				advanceKeyLevelState(wstate, level, !match);
-
-				level++;
-			}
-		}
-	}
 	wstate->row_index++;
 	
-	if ( min_key_break > 0 )
-		resetPerFunctionAggStates(wstate, min_key_break);
+	/* 
+	 * If we saw a key change, reset the aggregates. If we didn't, reset any
+	 * aggregates with "managed frames".
+	 */
+	if (wt->min_key_break > 0)
+		resetPerFunctionAggStates(wstate, wt->min_key_break);
+	else
+		resetManagedFrameAggStates(wstate);
 
 	ExecCopySlot(priorTupleSlot, outerTupleSlot); /* for next time through */
+
+	if (wt->min_key_break >= 0 || wstate->row_index == 0 /* first row */
+		|| wt->part_break)
+	{
+		int level = min_key_break != -1 ? min_key_break : 0;
+		processPeerCounts(wstate, level, priorTupleSlot,
+						  econtext->ecxt_per_tuple_memory);
+	}
+
+	return priorTupleSlot;
+}
+
+static void
+invert_tuple_from_trans(WindowStatePerFunction funcstate, WindowState *wstate,
+					    ExprContext *econtext)
+{
+	WindowRefExprState *wrxstate = funcstate->wrxstate;
+	FunctionCallInfoData fcinfo;
+	ListCell   *lcarg;
+	int			argno;
+
+	funcstate->frame_tuple_processed = true;
+
+	/* only aggs are inverted */
+	if (!funcstate->isAgg || !OidIsValid(funcstate->invtransfn_oid))
+		return;
+
+	/* Evaluate function arguments, save in fcinfo. */
+
+	/* If this is an agg, the first arg will be the trans value */
+	argno = 1;
 	
-	return outerTupleSlot;
+	foreach (lcarg, wrxstate->args)
+	{
+		ExprState  *argstate = (ExprState *) lfirst(lcarg);
+		fcinfo.arg[argno] = ExecEvalExpr(argstate, econtext,
+										 fcinfo.argnull + argno, NULL);
+		argno++;
+	}
+			
+	funcstate->aggTransValue = 
+		invoke_agg_trans_func(funcstate->invtransfn,
+							  funcstate->numargs,
+							  funcstate->aggTransValue,
+							  &(funcstate->aggNoTransValue),
+							  &(funcstate->aggTransValueIsNull),
+							  funcstate->aggTranstypeByVal,
+							  funcstate->aggTranstypeLen,
+							  &fcinfo, (void *)wstate,
+							  wstate->transcontext,
+							  econtext->ecxt_per_tuple_memory);
+}
+
+static void
+add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
+				   ExprContext *econtext)
+{
+	WindowRefExprState *wrxstate = funcstate->wrxstate;
+	FunctionCallInfoData fcinfo;
+	ListCell   *lcarg;
+	int argno;
+			
+	funcstate->frame_tuple_processed = true;
+	/* Evaluate function arguments, save in fcinfo. */
+	
+	/* If this is an agg, the first arg will be the trans value */
+	if (funcstate->isAgg)
+		argno = 1;
+	else
+		argno = 0;
+	
+	foreach (lcarg, wrxstate->args)
+	{
+		ExprState  *argstate = (ExprState *) lfirst(lcarg);
+		fcinfo.arg[argno] = ExecEvalExpr(argstate, econtext,
+										 fcinfo.argnull + argno, NULL);
+		argno++;
+	}
+	
+	if (funcstate->isAgg)
+	{
+		funcstate->aggTransValue =
+			invoke_agg_trans_func(funcstate->transfn,
+								  funcstate->numargs,
+								  funcstate->aggTransValue,
+								  &(funcstate->aggNoTransValue),
+								  &(funcstate->aggTransValueIsNull),
+								  funcstate->aggTranstypeByVal,
+								  funcstate->aggTranstypeLen,
+								  &fcinfo, (void *)wstate,
+								  wstate->transcontext,
+								  econtext->ecxt_per_tuple_memory);
+		
+	}
+	else /* ordinary window function */
+	{
+		/* XXX: fix me to stop temporarily in state */
+		InitFunctionCallInfoData(fcinfo, 
+								 &funcstate->windowfn,
+								 argno,
+								 (void *) wrxstate, 
+								 NULL);
+		{
+			
+			funcstate->win_value = FunctionCallInvoke(&fcinfo);
+			funcstate->win_value_is_null = fcinfo.isnull;
+		}
+	}
+
+}
+
+static void
+resetFrameEdgeState(WindowState *wstate)
+{
+	int level;
+	Window *window = (Window *)wstate->ps.plan;
+
+	for (level = 0; level < list_length(window->windowKeys); level++)
+	{
+		WindowFrameState fs = &wstate->frame_states[level];
+
+		/* might not be ROWS, do it anyway */
+		fs->trail_edge_set = false;
+		fs->lead_edge_set = false;
+	}
+}
+
+static void
+resetFuncProcessed(WindowState *wstate)
+{
+	int funcno;
+
+	for (funcno = 0; funcno < wstate->numfuncs; funcno++)
+	{
+		WindowStatePerFunction funcstate = &wstate->func_state[funcno];
+		funcstate->frame_tuple_processed = false;
+	}
+}
+
+static void
+invokeTrivialFuncs(WindowState *wstate)
+{
+	int funcno;
+	ExprContext *econtext = wstate->ps.ps_ExprContext;
+
+	econtext->ecxt_outertuple = wstate->priorslot;
+	econtext->ecxt_scantuple = wstate->priorslot;
+
+	for (funcno = 0; funcno < wstate->numfuncs; funcno++)
+	{
+		WindowStatePerFunction funcstate = &wstate->func_state[funcno];
+		if (!FRAME_IS_COMPLEX(funcstate))
+			add_tuple_to_trans(funcstate, wstate, econtext);
+	}
 }
 
 /*
- * ExecWindow
+ * We must evaluate functions in a 'frame aware' way.
  *
+ * UNBOUNDED PRECEDING frame edges are managed by passing the transition value 
+ * from the last call to the function. In this way, we trivially evaluate
+ * all rows in the frame which have already passed. It gets more complex
+ * for RANGE UNBOUNDED PRECEDING frames because all peers must emit the same
+ * value -- so, we remember this in our state.
+ *
+ * Bounded PRECEDING and FOLLOWING edges are harder. We have two cases.
+ * 
+ * With ROWS bounded frames, we must detect our position from the current
+ * rows. If we are earlier on in the tuple count than the frame edge, those
+ * tuples must be removed from the the transition value using the inversion
+ * method for the function. If one doesn't exist, we do something even more
+ * complex. See below. Once in the frame, we only care about the leading
+ * frame edge (it could be the current row or some rows from it). So, we must
+ * be careful about that.
+ *
+ * With RANGE bounded frames, we determine the edge with the equality
+ * function(s) of the key level. Before and after the frame edges, we do the 
+ * same as for ROWS frames but remember, we must emit the same value for
+ * all peers.
+ *
+ * If inversion functions do exist for a function, we must evaluate the frame
+ * every single time it moves.
  */
-TupleTableSlot *
-ExecWindow(WindowState *wstate)
-{
-	TupleTableSlot *outerTupleSlot;
-	TupleTableSlot *resultSlot;
-	ExprContext *econtext;
-	ExprDoneCond isDone;
+static void
+invokeWindowFuncs(WindowState *wstate)
+{	
+	long int pos;
+	long int trail_edge = 0;
+	long int lead_edge = 0;
+	Window *window = (Window *)wstate->ps.plan;
 	int funcno;
+	ExprContext *econtext = wstate->ps.ps_ExprContext;
+	bool found_lower_edge = false;
 
-	econtext = wstate->ps.ps_ExprContext;
+	elog(DEBUG1, "======= START FRAME PROCESS =====");
+	elog(DEBUG1, "row index %lli, trail edge = %li", wstate->row_index,
+		 wstate->frame_trail_edge);
 	
-	/* Next input tuple. */
-	outerTupleSlot = nextRow(wstate, econtext);
-	
-	if (TupIsNull(outerTupleSlot))
-		return NULL;
-	
-	wstate->ps.ps_OuterTupleSlot = outerTupleSlot;
-
-	/* BORROWED FROM nodeResult.c for now :-(
-	 *
-	 * XXX gross hack. use outer tuple as scan tuple for projection
+	/*
+	 * Process any functions with trivial frames.
 	 */
-	econtext->ecxt_outertuple = outerTupleSlot;
-	econtext->ecxt_scantuple = outerTupleSlot;
-		
-	/* Evaluate the function underlying each WindowRef and put its
-	 * result in the aggvalues/aggnulls array of the expression
-	 * context. 
-	 */
-	for ( funcno = 0; funcno < wstate->numfuncs; funcno++ )
+#if 0
+	for (funcno = 0; funcno < wstate->numfuncs; funcno++)
 	{
 		WindowStatePerFunction funcstate = &wstate->func_state[funcno];
-		WindowRefExprState *wrxstate = funcstate->wrxstate;
-		FunctionCallInfoData fcinfo;
-		ListCell   *lcarg;
-		int			argno;
-		
-		/* Evaluate function arguments, save in fcinfo. */
-
-		/* If this is an agg, the first arg will be the trans value */
-		if (funcstate->isAgg)
-			argno = 1;
-		else
-			argno = 0;
-
-		foreach ( lcarg, wrxstate->args )
+			
+		if (!FRAME_IS_COMPLEX(funcstate))
 		{
-			ExprState  *argstate = (ExprState *) lfirst(lcarg);
-			fcinfo.arg[argno] = ExecEvalExpr(argstate, econtext,
-										 fcinfo.argnull + argno, NULL);
-			argno++;
+			elog(DEBUG1, "processing trivial frame");
+			add_tuple_to_trans(funcstate, wstate, econtext);
+		}
+	}
+#endif
+	invokeTrivialFuncs(wstate);
+	
+	resetFrameEdgeState(wstate);
+
+	/* rewind to the beginning of the frame */
+	pos = wstate->frame_trail_edge;
+	moveFrameBuf(wstate, pos - 1);
+	
+	for (;;)
+	{
+		WindowTuple *wt = fetchTupleThroughBuf(wstate); 
+		bool passed_all_edges = true;
+		TupleTableSlot *frameslot;
+
+		frameslot = wstate->curslot;
+
+		if (!PointerIsValid(wt) || TupIsNull(frameslot))
+			break;
+		else if (wt->part_break == true)
+			break;
+
+		{
+#if 0
+			char *buf;
+
+			buf = tup2str(frameslot);
+			elog(DEBUG1, "processing framed tuple %s", buf);
+			pfree(buf);
+#endif
 		}
 		
+		/* reset frame_tuple_processed for all funcs */
+		resetFuncProcessed(wstate);
+
+		econtext->ecxt_outertuple = frameslot;
+		econtext->ecxt_scantuple = frameslot;	
+		
+		/*
+		 * We must evaluate bound frames first.
+		 */
+
+		if (wstate->frame_levels[FRAME_TRAIL_ROWS] != NIL)
+		{
+			ListCell *lc;
+
+			foreach(lc, wstate->frame_levels[FRAME_TRAIL_ROWS])
+			{
+				long int lvl = lfirst_int(lc);
+				long int rows_param;
+				WindowFrameState fs;
+				WindowKey *key;
+				
+				key = (WindowKey *)list_nth(window->windowKeys, lvl);
+				if (!key->frame)
+				{
+					elog(DEBUG1, "key %li has null window frame", lvl);
+					continue;
+				}
+
+				fs = &wstate->frame_states[lvl];
+
+				if (key->frame->trail->kind == WINDOW_CURRENT_ROW)
+					rows_param = 0L;
+				else if (key->frame->trail->kind == WINDOW_UNBOUND_PRECEDING)
+				{
+					/* This will be picked up by the other edge of the frame */
+					continue;
+				}
+				else
+				{
+					rows_param = fs->trail_rows;
+
+					if (key->frame->trail->kind == WINDOW_BOUND_PRECEDING)
+						rows_param = -rows_param;
+
+				}
+				
+				elog(DEBUG1, "param = %li, pos = %li", rows_param, pos);
+				for (funcno = 0; funcno < wstate->numfuncs; funcno++)
+				{
+					WindowStatePerFunction funcstate = 
+						&wstate->func_state[funcno];
+
+					if (funcstate->wlevel->level != lvl || 
+						funcstate->frame_tuple_processed ||
+						!FRAME_IS_COMPLEX(funcstate))
+						continue;
+
+					elog(DEBUG1, "found my level at %li", lvl);
+
+					if (pos < rows_param - 1)
+					{
+						/*
+						 * If we haven't filled the frame yet OR if an
+						 * EXCLUDING clause means the row will have never
+						 * appeared in the frame, do not do anything with
+						 * the row.
+						 */
+						funcstate->frame_tuple_processed = true;
+					}
+					else if (rows_param - 1 == pos)
+					{
+						/* 
+						 * Don't invert a datum from a transition value until 
+						 * we've actually initialised the trasition value.
+						 * We wont be inverting any values at the time we 
+						 * process the first row of the frame.
+						 */
+						if (wstate->row_index == 0)
+							funcstate->frame_tuple_processed = true;
+						else if (wstate->row_index == 1 && 
+								 key->frame->exclude == WINDOW_EXCLUSION_CUR_ROW)
+						{
+							/* we never saw the first row, so don't invert */
+							funcstate->frame_tuple_processed = true;
+						}
+						else
+						{
+							elog(DEBUG1, "inverting value");
+							if (OidIsValid(funcstate->invtransfn_oid))
+								invert_tuple_from_trans(funcstate, wstate,
+														econtext);
+							else
+								elog(DEBUG1, "manage frame manually");
+						}
+
+						if (!found_lower_edge)
+						{
+							wstate->frame_trail_edge = pos;
+							found_lower_edge = true;
+						}
+					}
+				}
+			}
+		}
+
+		if (wstate->frame_levels[FRAME_LEAD_ROWS] != NIL)
+		{
+			ListCell *lc;
+
+			foreach(lc, wstate->frame_levels[FRAME_LEAD_ROWS])
+			{
+				long int lvl = lfirst_int(lc);
+				long int rows_param;
+				WindowKey *key;
+				WindowFrameState fs;
+
+				key = (WindowKey *)list_nth(window->windowKeys, lvl);
+				
+				if (!key->frame)
+				{
+					elog(DEBUG1, "key %li has null window frame", lvl);
+					continue;
+				}
+
+				fs = &wstate->frame_states[lvl];
+				
+				if (key->frame->lead->kind == WINDOW_CURRENT_ROW)
+					rows_param = 0L;
+				else if (key->frame->lead->kind == WINDOW_BOUND_PRECEDING ||
+						 key->frame->lead->kind == WINDOW_BOUND_FOLLOWING)
+				{
+					rows_param = fs->lead_rows;
+				}
+
+				if (key->frame->lead->kind == WINDOW_BOUND_PRECEDING)
+					rows_param = -rows_param;
+
+				elog(DEBUG1, "lead: param = %li, pos = %li", rows_param, pos);
+
+				for (funcno = 0; funcno < wstate->numfuncs; funcno++)
+				{
+					WindowStatePerFunction funcstate = 
+						&wstate->func_state[funcno];
+
+					if (funcstate->wlevel->level != lvl ||
+						!FRAME_IS_COMPLEX(funcstate))
+						continue;
+
+					elog(DEBUG1, "found lead level");
+					
+					/* 
+					 * If we haven't filled the frame yet, just add this
+					 * value to the transition value.
+					 */
+					if (FRAME_NEEDS_FILL(wstate, key, funcstate))
+					{
+						elog(DEBUG1, "frame needs a fill");
+						
+						if (!funcstate->frame_tuple_processed)
+						{	
+							WindowFrameEdge *e = key->frame->lead;
+							
+							if (FUNC_HAS_MAN_FRAME(funcstate) ||
+								((EDGE_IS_BOUND(e) && pos <= rows_param)) ||
+								e->kind == WINDOW_UNBOUND_FOLLOWING)
+							{
+								elog(DEBUG1, "adding value to transition on lead - 1");
+								add_tuple_to_trans(funcstate, wstate, econtext);
+							}
+						}
+						passed_all_edges = false;
+					}
+					else if (pos == rows_param)
+					{
+						if (!funcstate->frame_tuple_processed)
+						{
+							elog(DEBUG1, "adding value to transition on lead");
+							add_tuple_to_trans(funcstate, wstate, econtext);
+							funcstate->frame_tuple_processed = true;
+						}
+						passed_all_edges = false;
+					}
+					else if (pos < rows_param)
+						passed_all_edges = false;
+				}
+				if (passed_all_edges)
+					break;
+			}
+		}
+
+		if (wstate->frame_levels[FRAME_TRAIL_RANGE] != NIL)
+		{
+			ListCell *lc;
+
+			foreach(lc, wstate->frame_levels[FRAME_TRAIL_RANGE])
+			{
+				long int lvl = lfirst_int(lc);
+				WindowFrameState fs;
+				WindowKey *key;
+				Datum framefield;
+				bool fieldeq; /* field is equal to edge value */
+				bool fieldlt; /* field is lt edge value */
+				WindowStatePerLevel level_state = &wstate->level_state[lvl];
+				bool fieldisnull;
+
+				key = (WindowKey *)list_nth(window->windowKeys, lvl);
+				if (!key->frame)
+				{
+					elog(DEBUG1, "key %li has null window frame", lvl);
+					continue;
+				}
+
+				framefield = slot_getattr(wstate->curslot,
+									 	  key->sortColIdx[0],
+										  &fieldisnull);
+				
+				fs = &wstate->frame_states[lvl];
+
+				if (!fs->trail_edge_set)
+				{
+					if (EDGE_IS_BOUND(key->frame->trail))
+					{
+						Datum result;
+
+						/* initial frame edge can be either kind */
+						if (key->frame->trail->kind == WINDOW_BOUND_FOLLOWING)
+						{
+							result = FunctionCall2(&fs->add_fn, framefield, 
+												   fs->trail_range); 
+							fs->trail_edge_d = result;
+							fs->trail_edge_set = true;
+						}
+						else
+						{
+							result = FunctionCall2(&fs->sub_fn, framefield, 
+												   fs->trail_range); 
+							fs->trail_edge_d = result;
+							fs->trail_edge_set = true;
+						}
+					}
+					else if (key->frame->trail->kind == WINDOW_CURRENT_ROW)
+					{
+						bool isnull;
+						fs->trail_edge_d = slot_getattr(wstate->curslot,
+														key->sortColIdx[0],
+														&isnull);
+						fs->trail_edge_set = true;
+					}
+				}
+
+				if (EDGE_IS_BOUND(key->frame->trail) ||
+					key->frame->trail->kind == WINDOW_CURRENT_ROW)
+				{
+					fieldlt = DatumGetBool(FunctionCall2(&fs->lt_fn, framefield,
+										   				 fs->trail_edge_d));
+					fieldeq = DatumGetBool(
+								FunctionCall2(&level_state->eqfunctions[0],
+										      framefield,
+										      fs->trail_edge_d));
+				}
+
+				if (key->frame->trail->kind == WINDOW_UNBOUND_PRECEDING)
+				{
+					/* This will be picked up by the other edge of the frame */
+					continue;
+				}
+			
+				//elog(DEBUG1, "param = %li, pos = %li", rows_param, pos);
+				for (funcno = 0; funcno < wstate->numfuncs; funcno++)
+				{
+					WindowStatePerFunction funcstate = 
+						&wstate->func_state[funcno];
+
+					if (funcstate->wlevel->level != lvl || 
+						funcstate->frame_tuple_processed ||
+						!FRAME_IS_COMPLEX(funcstate))
+						continue;
+
+					elog(DEBUG1, "found my level at %li", lvl);
+					elog(DEBUG1, "trail field: %i, edge %i, lt = %i, eq = %i",
+						 framefield, fs->trail_edge_d, fieldlt, fieldeq);
+
+					if (EDGE_IS_BOUND(key->frame->trail) &&
+						!fs->prev_trail_set && fieldlt)
+					{
+						funcstate->frame_tuple_processed = true;
+					}
+#if 0
+					if (pos < rows_param - 1)
+					{
+						/*
+						 * If we haven't filled the frame yet OR if an
+						 * EXCLUDING clause means the row will have never
+						 * appeared in the frame, do not do anything with
+						 * the row.
+						 */
+						funcstate->frame_tuple_processed = true;
+					}
+					else if (rows_param - 1 == pos)
+					{
+						/* 
+						 * Don't invert a datum from a transition value until 
+						 * we've actually initialised the trasition value.
+						 * We wont be inverting any values at the time we 
+						 * process the first row of the frame.
+						 */
+						if (wstate->row_index == 0)
+							funcstate->frame_tuple_processed = true;
+						else if (wstate->row_index == 1 && 
+								 key->frame->exclude == WINDOW_EXCLUSION_CUR_ROW)
+						{
+							/* we never saw the first row, so don't invert */
+							funcstate->frame_tuple_processed = true;
+						}
+						else
+						{
+							elog(DEBUG1, "inverting value");
+							if (OidIsValid(funcstate->invtransfn_oid))
+								invert_tuple_from_trans(funcstate, wstate,
+														econtext);
+							else
+								elog(DEBUG1, "manage frame manually");
+						}
+
+						if (!found_lower_edge)
+						{
+							wstate->frame_trail_edge = pos;
+							found_lower_edge = true;
+						}
+					}
+#endif
+				}
+			}
+		}
+
+		if (wstate->frame_levels[FRAME_LEAD_RANGE] != NIL)
+		{
+			ListCell *lc;
+
+			foreach(lc, wstate->frame_levels[FRAME_LEAD_RANGE])
+			{
+				long int lvl = lfirst_int(lc);
+				WindowKey *key;
+				WindowFrameState fs;
+				Datum framefield;
+				bool fieldisnull;
+				bool fieldeq; /* field is equal to edge value */
+				bool fieldlt; /* field is lt edge value */
+				WindowStatePerLevel level_state = &wstate->level_state[lvl];
+
+				key = (WindowKey *)list_nth(window->windowKeys, lvl);
+				if (!key->frame)
+				{
+					elog(DEBUG1, "key %li has null window frame", lvl);
+					continue;
+				}
+
+				framefield = slot_getattr(wstate->curslot,
+									 	  key->sortColIdx[0],
+										  &fieldisnull);
+
+				fs = &wstate->frame_states[lvl];
+
+				if (!fs->lead_edge_set)
+				{
+					if (EDGE_IS_BOUND(key->frame->lead))
+					{
+						bool isnull;
+						Datum field;
+						Datum result;
+
+						field = slot_getattr(wstate->curslot,
+											 key->sortColIdx[0],
+										 	&isnull);
+
+						/*
+						 * Remember, second frame edge doesn't have to be
+						 * FOLLOWING
+						 */
+						if (key->frame->lead->kind == WINDOW_BOUND_FOLLOWING)
+						{
+							result = FunctionCall2(&fs->add_fn, field, 
+												   fs->lead_range); 
+							fs->lead_edge_d = result;
+							fs->lead_edge_set = true;
+						}
+						else
+						{
+							result = FunctionCall2(&fs->sub_fn, field, 
+												   fs->lead_range); 
+							fs->lead_edge_d = result;
+							fs->lead_edge_set = true;
+						}
+					}
+					else if (key->frame->lead->kind == WINDOW_CURRENT_ROW)
+					{
+						bool isnull;
+						fs->lead_edge_d = slot_getattr(wstate->curslot,
+														key->sortColIdx[0],
+														&isnull);
+						fs->lead_edge_set = true;
+					}
+				}
+
+				
+				if (EDGE_IS_BOUND(key->frame->lead) ||
+					key->frame->lead->kind == WINDOW_CURRENT_ROW)
+				{
+					fieldlt = DatumGetBool(FunctionCall2(&fs->lt_fn, framefield,
+										   				 fs->lead_edge_d));
+					elog(DEBUG1, "framefield = %i, lead = %i",
+						 framefield, fs->lead_edge_d);
+					fieldeq = DatumGetBool(
+								FunctionCall2(&level_state->eqfunctions[0],
+										   	  framefield,
+										      fs->lead_edge_d));
+				}
+
+				for (funcno = 0; funcno < wstate->numfuncs; funcno++)
+				{
+					WindowStatePerFunction funcstate = 
+						&wstate->func_state[funcno];
+
+					if (funcstate->wlevel->level != lvl ||
+						!FRAME_IS_COMPLEX(funcstate))
+						continue;
+
+					elog(DEBUG1, "found lead level");
+					
+					/* 
+					 * If we haven't filled the frame yet, just add this
+					 * value to the transition value.
+					 */
+					if (FRAME_NEEDS_FILL(wstate, key, funcstate))
+					{
+						elog(DEBUG1, "frame needs a fill");
+						
+						if (!funcstate->frame_tuple_processed)
+						{	
+							WindowFrameEdge *e = key->frame->lead;
+							elog(DEBUG1, "key break level %li, %i, %i", 
+								 lvl, fieldlt, fieldeq);
+							
+							if (FUNC_HAS_MAN_FRAME(funcstate) ||
+								((EDGE_IS_BOUND(e) || key->frame->lead->kind == WINDOW_CURRENT_ROW)
+								 && (fieldlt || fieldeq)) ||
+								e->kind == WINDOW_UNBOUND_FOLLOWING)
+							{
+								elog(DEBUG1, "adding value to transition on lead - 1");
+								add_tuple_to_trans(funcstate, wstate, econtext);
+							}
+						}
+						passed_all_edges = false;
+					}
+					else if (fieldeq)
+					{
+						if (!funcstate->frame_tuple_processed)
+						{
+							elog(DEBUG1, "adding value to transition on lead");
+							add_tuple_to_trans(funcstate, wstate, econtext);
+							funcstate->frame_tuple_processed = true;
+						}
+						passed_all_edges = false;
+					}
+					else if (fieldlt)
+						passed_all_edges = false;
+				}
+				if (passed_all_edges)
+					break;
+			}
+		}
+		pos++;
+		ExecClearTuple(frameslot);
+		if (passed_all_edges)
+		{
+			elog(DEBUG1, "pos = %li, lead edge passed", pos);
+			break;
+		}
+
+	}
+	/* for each func */
+
+	/*
+	 * Put the current transition value into the econtext
+	 */
+	elog(DEBUG1, "finalising %i", wstate->numfuncs);
+	for (funcno = 0; funcno < wstate->numfuncs; funcno++)
+	{
+		WindowStatePerFunction funcstate = &wstate->func_state[funcno];
+		FunctionCallInfoData fcinfo;
+			
+		/* Evaluate function arguments, save in fcinfo. */
+	
 		if (funcstate->isAgg)
 		{
 			Datum *vals = econtext->ecxt_aggvalues;
 			bool *isnulls = econtext->ecxt_aggnulls;
-
-			funcstate->aggTransValue =
-				invoke_agg_trans_func(funcstate->transfn,
-									  funcstate->numargs,
-									  funcstate->aggTransValue,
-									  &(funcstate->aggNoTransValue),
-									  &(funcstate->aggTransValueIsNull),
-									  funcstate->aggTranstypeByVal,
-									  funcstate->aggTranstypeLen,
-									  &fcinfo, (void *)wstate,
-									  wstate->transcontext,
-									  econtext->ecxt_per_tuple_memory);
-			
+	
 			if (OidIsValid(funcstate->finalfn_oid))
 			{
-				FunctionCallInfoData fcinfo;
 
 				InitFunctionCallInfoData(fcinfo, &(funcstate->finalfn), 1,
 										 (void *) wstate, NULL);
@@ -449,26 +1554,63 @@ ExecWindow(WindowState *wstate)
 			else
 			{
 				vals[funcno] = funcstate->aggTransValue;
-				isnulls[funcno] = fcinfo.isnull;
+				isnulls[funcno] = funcstate->aggTransValueIsNull;
 			}
 		}
 		else /* ordinary window function */
 		{
-			InitFunctionCallInfoData(fcinfo, 
-									 &funcstate->windowfn,
-									 argno,
-									 (void *) wrxstate, 
-									 NULL);
-			{
-				Datum *vals = econtext->ecxt_aggvalues;
-				bool *isnulls = econtext->ecxt_aggnulls;
+			Datum *vals = econtext->ecxt_aggvalues;
+			bool *isnulls = econtext->ecxt_aggnulls;
 				
-				vals[funcno] = FunctionCallInvoke(&fcinfo);
-				isnulls[funcno] = fcinfo.isnull;
-			}
+			vals[funcno] = funcstate->win_value;
+			isnulls[funcno] = funcstate->win_value_is_null;
 		}
 	}
+	econtext->ecxt_outertuple = wstate->priorslot;
+    econtext->ecxt_scantuple = wstate->priorslot;
+
+	elog(DEBUG1, "out of loop, pos = %li", pos);
+//	moveFrameBuf(wstate, (pos > 0) ? (-pos + 1 ) : (pos - 1));
+	moveFrameBuf(wstate, -pos + 1);
 	
+	if (!found_lower_edge)
+	{
+		wstate->frame_trail_edge--;
+	}
+	elog(DEBUG1, "======== END OF FRAME PROCESSING =======");
+}
+
+/*
+ * ExecWindow
+ *
+ */
+TupleTableSlot *
+ExecWindow(WindowState *wstate)
+{
+	TupleTableSlot *outerTupleSlot;
+	TupleTableSlot *resultSlot;
+	ExprContext *econtext;
+	ExprDoneCond isDone;
+
+	econtext = wstate->ps.ps_ExprContext;
+	
+	/* Next input tuple. */
+	outerTupleSlot = nextRow(wstate, econtext);
+	
+	if (TupIsNull(outerTupleSlot))
+		return NULL;
+	
+	wstate->ps.ps_OuterTupleSlot = outerTupleSlot;
+
+	/* BORROWED FROM nodeResult.c for now :-(
+	 *
+	 * XXX gross hack. use outer tuple as scan tuple for projection
+	 */
+	econtext->ecxt_outertuple = outerTupleSlot;
+	econtext->ecxt_scantuple = outerTupleSlot;
+		
+	invokeWindowFuncs(wstate);
+
 	/*
 	 * Form the result tuple using ExecProject(), and return it.
 	 */
@@ -492,6 +1634,10 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 	ExprContext  *econtext;
 	int i, refno, numrefs;
 	ListCell *lc;
+	List *frame_trail_rows, 
+		 *frame_trail_range, 
+		 *frame_lead_rows, 
+		 *frame_lead_range;
 
 	/* Check for unsupported flags. */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
@@ -502,11 +1648,13 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 	/* Create expression context. */
 	ExecAssignExprContext(estate, &wstate->ps);
 
-#define WINDOW_NSLOTS 2
+	/* XXX: temporarily high for debugging purposes */
+#define WINDOW_NSLOTS 4
 
 	/* Initialize tuple table. */
 	ExecInitResultTupleSlot(estate, &wstate->ps);
 	wstate->priorslot = ExecInitExtraTupleSlot(estate);
+	wstate->spare = ExecInitExtraTupleSlot(estate);
 
 	/* Initialize child expressions.
 	 *
@@ -520,8 +1668,9 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 
 	/* Initialize child nodes. */
 	outerPlan = outerPlan(node);
-	outerPlanState(wstate) = ExecInitNode(outerPlan, estate, eflags);
-	Assert( innerPlan(node) == NULL );
+	outerPlanState(wstate) = ExecInitNode(outerPlan, estate,
+										  eflags | EXEC_FLAG_MARK);
+	Assert(innerPlan(node) == NULL);
 
 	/* Initialize result tuple type and projection info. */
 	ExecAssignResultTypeFromTL(&wstate->ps);
@@ -529,7 +1678,7 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 
 
 	/* Precompute fmgr lookup data for partition key equality function. */
-	if ( node->numPartCols > 0 )
+	if (node->numPartCols > 0)
 	{
 		wstate->eqfunctions =
 			execTuplesMatchPrepare(ExecGetResultType(wstate->ps.lefttree),
@@ -541,15 +1690,62 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 		
 	/* Need equality functions for window ordering partial keys as well. */
 	i = -1;
+
+	frame_trail_rows = frame_trail_range = frame_lead_rows 
+		= frame_lead_range = NIL;
+	
 	foreach(lc, node->windowKeys)
 	{
 		WindowKey *key = (WindowKey *) lfirst(lc);
+		WindowFrame *f;
 		WindowStatePerLevel lvl = &wstate->level_state[++i];
+		
 		lvl->eqfunctions = 
 			execTuplesMatchPrepare(ExecGetResultType(wstate->ps.lefttree),
 								   key->numSortCols,
 								   key->sortColIdx);
+
+		if (!key->frame)
+		{
+			elog(DEBUG1, "key %i has null window frame", i);
+			continue;
+		}
+		else
+			f = key->frame;
+
+		Assert(PointerIsValid(f->trail));
+		Assert(PointerIsValid(f->lead));
+
+		if (f->is_rows)
+		{
+			frame_trail_rows = lappend_int(frame_trail_rows, i);
+			frame_lead_rows = lappend_int(frame_lead_rows, i);
+		}
+		else
+		{
+			frame_trail_range = lappend_int(frame_trail_range, i);
+			frame_lead_range = lappend_int(frame_lead_range, i);
+		}
 	}
+
+	/* 
+	 * Now, sort the frames in terms of their position relative to the 
+	 * "current row". For example, the following frames are correctly ordered:
+	 *
+	 * ROWS UNBOUNDED PRECEDING
+	 * ROWS 10 PRECEDING
+	 * ROWS CURRENT ROW
+	 * ROWS 10 FOLLOWING
+	 *
+	 * Things get a little more complex with RANGE frames.
+	 *
+	 * TODO: actually implement. For now, just assume they're in order!
+	 */
+
+	wstate->frame_levels[FRAME_TRAIL_ROWS] = frame_trail_rows;
+	wstate->frame_levels[FRAME_LEAD_ROWS] = frame_lead_rows;
+	wstate->frame_levels[FRAME_TRAIL_RANGE] = frame_trail_range;
+	wstate->frame_levels[FRAME_LEAD_RANGE] = frame_lead_range;
 	
 	/* Allocate result storage and working storage per window ref.
 	 * (Later we may shrink this if we notice duplicate function
@@ -563,7 +1759,14 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 	
 	wstate->numfuncs = 0;
 	wstate->func_state = palloc0(sizeof(WindowStatePerFunctionData) *  numrefs);
+
+	elog(DEBUG1, "allocating %i func states", numrefs);
+
+	wstate->frame_states = palloc0(sizeof(WindowFrameStateData) *
+								   list_length(node->windowKeys) * 10);
 	
+	elog(DEBUG1, "allocating %i frame_states", 
+		 list_length(node->windowKeys));
 
 	/* Initialize per window ref (both ordinary and aggregate derived). */
 	refno = -1;
@@ -611,10 +1814,13 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 		funcstate = &wstate->func_state[funcno];
 		funcstate->wrxstate = wrxstate;
 		funcstate->wref = winref;
-		if ( winref->winlevel < wstate->numlevels )
+
+		if (winref->winlevel < wstate->numlevels)
 			funcstate->wlevel = &wstate->level_state[winref->winlevel];
 		else
 			funcstate->wlevel = NULL;
+
+		
 		wrxstate->funcno = funcno;
 		wstate->numfuncs = funcno + 1;
 		
@@ -662,6 +1868,227 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 		funcstate->numargs = list_length(winref->args);
 	
 		funcstate->isAgg = isAgg;
+
+		/* 
+		 * Determine if this function has a frame which is trivial to
+		 * evaluate or is contradirtory and therefore "empty".
+		 */
+		{
+			WindowKey *key;
+			int level;
+			WindowFrame *frame;
+			WindowFrameState fs;
+
+			level = funcstate->wlevel->level;
+
+			key = (WindowKey *)list_nth(node->windowKeys, level);
+			
+			if (!key->frame)
+				continue;
+
+			frame = key->frame;
+
+			Assert(level >= 0);
+
+			fs = &wstate->frame_states[level];
+			if (frame->is_rows)
+			{
+				if (EDGE_IS_BOUND(frame->trail))
+					fs->trail_rows = 
+						((Const *)key->frame->trail->val)->constvalue;
+				else
+					fs->trail_rows = 0L;
+
+				if (EDGE_IS_BOUND(frame->lead))
+					fs->lead_rows = 
+						((Const *)key->frame->lead->val)->constvalue;
+				else
+					fs->lead_rows = 0L;
+			}
+			else
+			{
+				ExprState *e;
+				bool isNull;
+				TupleDesc desc = ExecGetResultType(wstate->ps.lefttree); 
+				HeapTuple tup;
+				AttrNumber attnum;
+				Oid ltype, rtype;
+
+				if (EDGE_IS_BOUND(frame->trail))
+				{
+					ExprState *e;
+		
+					e = ExecInitExpr((Expr *)key->frame->trail->val,
+									  (PlanState *) wstate);
+
+					fs->trail_range = ExecEvalExpr(e, econtext, &isNull, 
+												   NULL);
+
+					Assert(key->numSortCols == 1);
+					attnum = key->sortColIdx[0];
+
+					ltype = desc->attrs[attnum - 1]->atttypid;
+					rtype = exprType(frame->lead->val);
+					tup = SearchSysCache(OPERNAMENSP,
+										 CStringGetDatum("-"),
+										 ObjectIdGetDatum(ltype),
+										 ObjectIdGetDatum(rtype),
+										 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+	
+					Insist(HeapTupleIsValid(tup));
+					
+					fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode, 
+							  &fs->sub_fn);
+					ReleaseSysCache(tup);
+					/* 
+					 * XXX: we should actually use the result from the above as
+					 * the LHS of this...
+					 */
+					tup = SearchSysCache(OPERNAMENSP,
+										 CStringGetDatum(">"),
+										 ObjectIdGetDatum(rtype),
+										 ObjectIdGetDatum(rtype),
+										 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+
+					Insist(HeapTupleIsValid(tup));
+					
+					fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode,
+							  &fs->gt_fn);
+					ReleaseSysCache(tup);
+				}
+
+				if (EDGE_IS_BOUND(frame->lead))
+				{
+					e = ExecInitExpr((Expr *)key->frame->lead->val,
+									 (PlanState *) wstate);
+
+					fs->lead_range = ExecEvalExpr(e, econtext, &isNull, 
+												  NULL);
+
+					Assert(key->numSortCols == 1);
+					attnum = key->sortColIdx[0];
+					
+					ltype = desc->attrs[attnum - 1]->atttypid;
+					rtype = exprType(frame->lead->val);
+					tup = SearchSysCache(OPERNAMENSP,
+										 CStringGetDatum("+"),
+										 ObjectIdGetDatum(ltype),
+										 ObjectIdGetDatum(rtype),
+										 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+
+					Insist(HeapTupleIsValid(tup));
+					
+					fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode,
+							  &fs->add_fn);
+					ReleaseSysCache(tup);
+					
+					/* now for greater-than */
+					/* 
+					 * XXX: we should actually use the result from the above as
+					 * the LHS of this...
+					 */
+					tup = SearchSysCache(OPERNAMENSP,
+										 CStringGetDatum("<"),
+										 ObjectIdGetDatum(rtype),
+										 ObjectIdGetDatum(rtype),
+										 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+
+					Insist(HeapTupleIsValid(tup));
+					
+					fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode,
+							  &fs->lt_fn);
+					ReleaseSysCache(tup);
+				}
+			}
+			
+			/* 
+			 * We say the function is trivial to invoke if its frame is defined
+			 * as ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW with no
+			 * exclusion clause OR it is a window function without a frame.
+			 */
+			if (!funcstate->isAgg && !frame)
+				funcstate->trivial_frame = true;
+			else if (frame && frame->trail->kind == WINDOW_UNBOUND_PRECEDING && 
+					 frame->lead->kind == WINDOW_CURRENT_ROW &&
+					 frame->exclude == WINDOW_EXCLUSION_NULL)
+			{
+				funcstate->trivial_frame = true;
+			}
+			else
+			{
+				/* look for empty frames */
+				if (frame->trail->kind == WINDOW_UNBOUND_FOLLOWING ||
+					frame->lead->kind == WINDOW_UNBOUND_PRECEDING ||
+					(frame->trail->kind == WINDOW_BOUND_FOLLOWING &&
+					 frame->lead->kind == WINDOW_BOUND_PRECEDING))
+				{
+					funcstate->empty_frame = true;
+				}
+				else if ((frame->trail->kind == WINDOW_BOUND_PRECEDING &&
+						 frame->lead->kind == WINDOW_BOUND_PRECEDING) ||
+						 (frame->trail->kind == WINDOW_BOUND_FOLLOWING &&
+						 frame->lead->kind == WINDOW_BOUND_FOLLOWING))
+				{
+					bool is_pre = 
+						(frame->trail->kind == WINDOW_BOUND_PRECEDING &&
+						 frame->lead->kind == WINDOW_BOUND_PRECEDING);
+					
+					if (frame->is_rows)
+					{
+						if (is_pre)
+						{
+							if (fs->lead_rows > fs->trail_rows)
+								funcstate->empty_frame = true;
+						}
+						else
+						{
+							if (fs->lead_rows < fs->trail_rows)
+								funcstate->empty_frame = true;
+						}
+					}
+					else
+					{
+						Oid ordfuncid;
+						TupleDesc tup = ExecGetResultType(wstate->ps.lefttree); 
+						AttrNumber attnum;
+						Datum datum;
+						FmgrInfo fcinfo;
+						Operator optup;
+
+
+						attnum = key->sortColIdx[0];
+						optup = ordering_oper(tup->attrs[attnum - 1]->atttypid,
+											  false);
+						
+						ordfuncid = oprfuncid(optup); 
+						elog(DEBUG1, "found operator %u", oprid(optup));
+						ReleaseSysCache(optup);
+
+						fmgr_info(ordfuncid, &fcinfo);
+						
+						/* is trail less than lead */
+						Assert(PointerIsValid(fs->trail_range));
+						Assert(PointerIsValid(fs->lead_range));
+							   
+						datum = FunctionCall2(&fcinfo, fs->trail_range,
+											  fs->lead_range);
+
+						if (is_pre)
+						{
+							if (DatumGetBool(datum))
+								funcstate->empty_frame = true;
+						}
+						else
+						{
+							if (!DatumGetBool(datum))
+								funcstate->empty_frame = true;
+						}
+					}
+				}
+				if (!FRAME_IS_COMPLEX(funcstate))
+					elog(DEBUG1, "NON_COMPLEX_FRAME");
+			}
+		}
 				
 		/* The rest depends on the type (agg-derived or ordinary). */
 		if ( isAgg )
@@ -751,9 +2178,6 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 				funcstate->invprelimfn.fn_expr = (Node *) invprelimfnexpr;
 			}
 
-			/*
-			 * TODO: add invtransfn
-			 */
 			get_typlenbyval(winref->restype,
 							&funcstate->resulttypeLen,
 							&funcstate->resulttypeByVal);
@@ -794,7 +2218,7 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 			}
 			ReleaseSysCache(agg_tuple);
 		}
-		else if ( isWin )
+		else if (isWin)
 		{
 			HeapTuple win_tuple;
 			Form_pg_window winform;
@@ -808,19 +2232,20 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 			if (!HeapTupleIsValid(win_tuple))
 				elog(ERROR, "cache lookup failed for window function %u",
 					 winref->winfnoid);
+
 			winform = (Form_pg_window) GETSTRUCT(win_tuple);
 
 			/* Lookup ordinary window implementation function info.
 			 */			
 			switch ( winref->winstage)
 			{
-			case WINSTAGE_IMMEDIATE:
-			case WINSTAGE_ROWKEY:
-				windowfn_oid = winform->winfunc;
-				break;
-			case WINSTAGE_PRELIMINARY:
-				windowfn_oid  = winform->winprefunc;
-				break;
+				case WINSTAGE_IMMEDIATE:
+				case WINSTAGE_ROWKEY:
+					windowfn_oid = winform->winfunc;
+					break;
+				case WINSTAGE_PRELIMINARY:
+					windowfn_oid  = winform->winprefunc;
+					break;
 			}
 			Assert(OidIsValid(windowfn_oid));
 
@@ -853,6 +2278,10 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 			
 			wrxstate->args = lcons(xtrastate, wrxstate->args);
 			fmgr_info(funcstate->windowfn_oid, &funcstate->windowfn);			
+
+			/* TODO: make this a bit cleaner */
+			if (PointerIsValid(funcstate->wlevel))
+				funcstate->wlevel->need_peer_count = winform->winpeercount;
 		}
 		else
 		{
@@ -888,6 +2317,8 @@ ExecEndWindow(WindowState *node)
 
 	/* shut down subplans */
 	ExecEndNode(outerPlanState(node));
+
+	freeFrameBuf(node);
 }
 
 void
@@ -1050,6 +2481,13 @@ cume_dist_prelim(PG_FUNCTION_ARGS)
 	
 	result = level_state->prior_non_peer_count + level_state->peer_count;
 
+#ifdef DEBUG_CUME_DIST
+	elog(DEBUG1, "--prior = %llu, peercount = %lli, result %llu",
+		 level_state->prior_non_peer_count,
+		 level_state->peer_count,
+		 result);
+#endif
+
 	PG_RETURN_INT64(result);
 }
 
@@ -1059,7 +2497,7 @@ cume_dist_final(PG_FUNCTION_ARGS)
 	int64 arg1 = PG_GETARG_INT64(0); /* prior_non_peer_count + peer_count */
 	int64 arg2 = PG_GETARG_INT64(1); /* partition row count */
 	double result;
-	
+
 	if (arg1 < 1 || arg2 < 1)
 	{
 		ereport(ERROR,
