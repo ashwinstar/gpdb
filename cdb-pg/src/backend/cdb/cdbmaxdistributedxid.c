@@ -11,6 +11,7 @@
 
 #include "funcapi.h"
 #include "access/heapam.h"
+#include "access/cdbdistributedxidmap.h"
 #include "catalog/pg_type.h"
 #include "utils/builtins.h"
 #include "cdb/cdbutil.h"
