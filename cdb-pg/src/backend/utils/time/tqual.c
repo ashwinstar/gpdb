@@ -244,7 +244,9 @@ SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId)
 	SharedSnapshotStruct *arrayP = sharedSnapshotArray;
 	int nextSlot = -1;
 	int i;
-	
+	int retryCount=0;
+
+retry:
 	LWLockAcquire(SharedSnapshotLock, LW_EXCLUSIVE);
 
 	for (i=0; i < arrayP->maxSlots; i++)
@@ -254,8 +256,8 @@ SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId)
 		/* need to do byte addressing to find the right slot */
 		testSlot = (SharedSnapshotSlot*)((char*)&arrayP->slots + (i*slotSize));
 		
-		if(testSlot->slotindex > arrayP->maxSlots)
-			elog( ERROR, "Shared Local Snapshots Array appears corrupted: %s", SharedSnapshotDump());
+		if (testSlot->slotindex > arrayP->maxSlots)
+			elog(ERROR, "Shared Local Snapshots Array appears corrupted: %s", SharedSnapshotDump());
 
 		if (testSlot->slotid == slotId)
 		{
@@ -266,8 +268,19 @@ SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId)
 
 	if (slot != NULL)
 	{
-		elog(LOG, "SharedSnapshotAdd: found existing entry for our session-id. index %d", slot->slotindex);
-		goto found;
+		elog(LOG, "SharedSnapshotAdd: found existing entry for our session-id. id %d retry %d", slotId, retryCount);
+		LWLockRelease(SharedSnapshotLock);
+
+		if (retryCount < 5)
+		{
+			retryCount++;
+
+			pg_usleep(100000); /* 100ms, wait .5s max. */
+			goto retry;
+		}
+		else
+			elog(ERROR, "SharedSnapshotAdd: writer gang collision on id %d", slotId);
+		/* not reached */
 	}
 		
 	if (arrayP->numSlots >= arrayP->maxSlots || arrayP->nextSlot == -1)
