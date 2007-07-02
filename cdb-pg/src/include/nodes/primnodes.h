@@ -224,7 +224,7 @@ typedef struct Grouping
  * GroupId -
  *    representation of the hidden GROUP_ID column for grouping extensions.
  *
- * Defined for making it easily to distinguish this column with others.
+ * Defined to make it easy to distinguish this column from others.
  *
  * This is used to determine whether output tuples are coming from
  * duplicate grouping sets. For example, a table 
@@ -1164,7 +1164,7 @@ typedef enum GroupingType
 
 typedef enum WindowExclusion
 {
-	WINDOW_EXCLUSION_NULL,
+	WINDOW_EXCLUSION_NULL = 0,
 	WINDOW_EXCLUSION_CUR_ROW, /* exclude current row */
 	WINDOW_EXCLUSION_GROUP, /* exclude rows matching us */
 	WINDOW_EXCLUSION_TIES, /* exclude rows matching us, and current row */
@@ -1222,7 +1222,7 @@ typedef struct WindowKey
 	int				numSortCols; /* may be zero, see note */
 	AttrNumber	   *sortColIdx;
 	WindowFrame	   *frame;		/* NULL or framing for WindowKey */
-
+	bool			default_frame; /* frame was empty, go for the default */
 } WindowKey;
 
 
