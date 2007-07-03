@@ -1668,8 +1668,7 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 
 	/* Initialize child nodes. */
 	outerPlan = outerPlan(node);
-	outerPlanState(wstate) = ExecInitNode(outerPlan, estate,
-										  eflags | EXEC_FLAG_MARK);
+	outerPlanState(wstate) = ExecInitNode(outerPlan, estate, eflags);
 	Assert(innerPlan(node) == NULL);
 
 	/* Initialize result tuple type and projection info. */
