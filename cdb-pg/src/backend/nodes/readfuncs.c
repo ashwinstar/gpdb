@@ -2569,7 +2569,7 @@ _readMaterial(void)
 
     READ_BOOL_FIELD(cdb_strict);
 	READ_INT_FIELD(slice_mark);
-	READ_INT_FIELD(scanner_count);
+	READ_INT_FIELD(driver_slice);
 
     readPlanInfo((Plan *)local_node);
 
@@ -2691,7 +2691,6 @@ _readMotionSliceEntry(void)
 	READ_LOCALS(MotionSliceEntry);
 
 	READ_ENUM_FIELD(motionType, MotionType);
-	READ_INT_FIELD(recvSliceId);
 
 	READ_INT_FIELD(numHashSegs);
 	READ_INT_ARRAY(hashSegIdx, numHashSegs, int);

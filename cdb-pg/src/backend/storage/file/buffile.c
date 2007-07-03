@@ -35,6 +35,7 @@
 
 #include "postgres.h"
 
+#include <fcntl.h>
 #include "storage/fd.h"
 #include "storage/buffile.h"
 
@@ -44,6 +45,7 @@
  * is defined, although md.c ignores it when that symbol is defined.
  */
 #define MAX_PHYSICAL_FILESIZE  (RELSEG_SIZE * BLCKSZ)
+#define MAX_RWFILE_PREFIX_SIZE 64
 
 /*
  * This data structure represents a buffered file that consists of one or
@@ -75,14 +77,19 @@ struct BufFile
 	int			pos;			/* next read/write position in buffer */
 	int			nbytes;			/* total # of valid bytes in buffer */
 	char		buffer[BLCKSZ];
+
+	/* 
+	 * "common" prefix.  Used by shareinput reader/writer
+	 * It takes form SIRW_%d_%d_%d, pid, address, fileSeqNum.  
+	 */
+	bool 		rwfile_iswriter;
+	char* 		rwfile_prefix;
 };
 
 static BufFile *makeBufFile(File firstfile);
-static void extendBufFile(BufFile *file);
+static File extendBufFile(BufFile *file);
 static void BufFileLoadBuffer(BufFile *file);
 static void BufFileDumpBuffer(BufFile *file);
-static int	BufFileFlush(BufFile *file);
-
 
 /*
  * Create a BufFile given the first underlying physical file.
@@ -91,7 +98,7 @@ static int	BufFileFlush(BufFile *file);
 static BufFile *
 makeBufFile(File firstfile)
 {
-	BufFile    *file = (BufFile *) palloc(sizeof(BufFile));
+	BufFile    *file = (BufFile *) palloc0(sizeof(BufFile));
 
 	file->numFiles = 1;
 	file->files = (File *) palloc(sizeof(File));
@@ -100,10 +107,13 @@ makeBufFile(File firstfile)
 	file->offsets[0] = 0L;
 	file->isTemp = false;
 	file->dirty = false;
+
 	file->curFile = 0;
 	file->curOffset = 0L;
 	file->pos = 0;
 	file->nbytes = 0;
+
+	file->rwfile_prefix = NULL;
 
 	return file;
 }
@@ -122,16 +132,42 @@ sizeBufFile(BufFile * file)
 	return sizeof(BufFile) + n * ( sizeof(File) + sizeof(long) );
 }
 
+int 
+BufFileNumFiles(BufFile *file)
+{
+	return file->numFiles;
+}
+
 /*
  * Add another component temp file.
  */
-static void
+static File 
 extendBufFile(BufFile *file)
 {
 	File		pfile;
 
 	Assert(file->isTemp);
-	pfile = OpenTemporaryFile(file->isInterXact);
+
+	if(file->rwfile_prefix)
+	{
+		/* next rw file name.  Append the seq number to rwfile_prefix.
+		 */
+		int fileFlags = O_RDWR | PG_BINARY;
+		if(file->rwfile_iswriter)
+			fileFlags |= O_TRUNC | O_CREAT;
+
+		char rwfile_next[MAX_RWFILE_PREFIX_SIZE + 20];
+		snprintf(rwfile_next, sizeof(rwfile_next),
+				"%s.%d", file->rwfile_prefix, file->numFiles
+				);
+		pfile = OpenTemporaryFileName(rwfile_next, fileFlags, file->isInterXact, file->rwfile_iswriter);
+
+		if(pfile < 0)
+			return pfile;
+	}
+	else
+		pfile = OpenTemporaryFile(file->isInterXact);
+
 	Assert(pfile >= 0);
 
 	file->files = (File *) repalloc(file->files,
@@ -141,6 +177,8 @@ extendBufFile(BufFile *file)
 	file->files[file->numFiles] = pfile;
 	file->offsets[file->numFiles] = 0L;
 	file->numFiles++;
+
+	return pfile;
 }
 
 /*
@@ -163,6 +201,39 @@ BufFileCreateTemp(bool interXact)
 	file = makeBufFile(pfile);
 	file->isTemp = true;
 	file->isInterXact = interXact;
+
+	return file;
+}
+
+BufFile *
+BufFileCreateTemp_ReaderWriter(const char* fileName, bool isWriter)
+{
+	BufFile *file;
+	File pfile;
+
+	int fileFlags = O_RDWR | PG_BINARY;
+	if(isWriter)
+		fileFlags |= O_TRUNC | O_CREAT;
+
+	pfile = OpenTemporaryFileName(fileName, 
+					fileFlags,
+					true, /* interXact */
+					isWriter /* del on close */);
+	Assert(pfile >= 0);
+
+	file = makeBufFile(pfile);
+	file->isTemp = true;
+	file->isInterXact = true;
+	file->rwfile_iswriter = isWriter;
+	file->rwfile_prefix = palloc(MAX_RWFILE_PREFIX_SIZE);
+	snprintf(file->rwfile_prefix, MAX_RWFILE_PREFIX_SIZE, "%s", fileName);
+
+	if(!isWriter)
+	{
+		/* For readers, we need to call extendBufFile to all the files */
+		while(extendBufFile(file) >= 0)
+			;
+	}
 
 	return file;
 }
@@ -436,7 +507,7 @@ BufFileWrite(BufFile *file, void *ptr, size_t size)
  *
  * Like fflush()
  */
-static int
+int
 BufFileFlush(BufFile *file)
 {
 	if (file->dirty)

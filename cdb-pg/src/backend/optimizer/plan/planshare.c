@@ -239,12 +239,6 @@ static ShareInputScan *make_shareinputscan(Plan *inputplan)
 
 	sisc->hashExpr = NULL;
 	sisc->hashDataTypes = NULL;
-
-	if(IsA(inputplan, Material))
-	{
-		Material *m = (Material *) inputplan;
-		m->scanner_count += 1;
-	}
 	return sisc;
 }
 
@@ -368,11 +362,11 @@ static Plan * addsm_for_single_share_motion(
 
 	sisc = (ShareInputScan *) oldplan;
 
-	Assert(sisc->plan.lefttree && IsA(sisc->plan.lefttree, Material));
 	sharedMaterial = (Material *) oldplan->lefttree;
+	Assert(sharedMaterial && IsA(sharedMaterial, Material));
 
-	Assert(IsA(sharedMaterial->plan.lefttree, Motion));
-	sharedMotion = (Motion *) oldplan->lefttree;
+	sharedMotion = (Motion *) sharedMaterial->plan.lefttree;
+	Assert(sharedMotion && IsA(sharedMotion, Motion));
 
 	slice = find_smc_focus_slice(smctxt);
 	

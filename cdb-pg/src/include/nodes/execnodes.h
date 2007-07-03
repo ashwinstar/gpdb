@@ -1512,6 +1512,9 @@ typedef struct ShareInputScanState
 	CdbHash		*cdbhash;			/* hash api object */
 } ShareInputScanState;
 
+extern void sisc_material_notify(int shared_id);
+extern void sisc_material_wait(int shared_id);
+extern void sisc_material_bufname(char* p, int size, int shared_id);
 /* ----------------
  *	 SortState information
  * ----------------

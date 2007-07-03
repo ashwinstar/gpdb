@@ -26,6 +26,8 @@
 #include "executor/nodeMaterial.h"
 #include "miscadmin.h"
 
+#include "cdb/cdbvars.h"
+
 static void ExecMaterialExplainEnd(PlanState *planstate, struct StringInfoData *buf);
 
 
@@ -62,7 +64,33 @@ ExecMaterial(MaterialState *node)
 	 */
 	if (tuplestorestate == NULL && (node->ss.ps.plan->shared_as_id >= 0 || node->randomAccess))
 	{
-		tuplestorestate = tuplestore_begin_heap(true, false, work_mem); 
+		Material* ma = (Material *) node->ss.ps.plan;
+
+		/* 
+		 * For cross slice material, we only run ExecMaterial on DriverSlice 
+		 */
+		if(ma->slice_mark == SliceMark_CrossSlice)
+		{
+			MotionState *mostate = (MotionState *) node->ss.ps.lefttree;
+			char rwfile_prefix[60];
+
+			if(ma->driver_slice != currentSliceId)
+			{
+				elog(LOG, "Material Exec on CrossSlice, current slice %d", currentSliceId);
+				return NULL;
+			}
+			
+			Assert(mostate && IsA(mostate, MotionState));
+			Assert(mostate->mstype == MOTIONSTATE_RECV);
+
+			sisc_material_bufname(rwfile_prefix, sizeof(rwfile_prefix), ma->plan.shared_as_id); 
+			elog(LOG, "Material node creates shareinput rwfile %s", rwfile_prefix);
+			tuplestorestate = tuplestore_begin_heap_file_readerwriter(rwfile_prefix, true);
+		}
+		else
+			tuplestorestate = tuplestore_begin_heap(true, false, work_mem); 
+		
+		Assert(tuplestorestate);
 		node->tuplestorestate = (void *) tuplestorestate;
 
         /* CDB: Offer extra info for EXPLAIN ANALYZE. */
@@ -90,8 +118,7 @@ ExecMaterial(MaterialState *node)
 		 * in the tuplestore.  This decouples a middle slice's receiving
 		 * and sending Motion operators to neutralize a deadlock hazard.
 		 * MPP TODO: Remove when a better solution is implemented.
-		 */
-		/*
+		 *
 		 * ShareInput: if shared_as_id is not -1, that is, the material node
 		 * is used to share input, we will need to fetch all rows and put
 		 * them in tuple store
@@ -109,11 +136,25 @@ ExecMaterial(MaterialState *node)
 			}
 			tuplestore_puttupleslot(tuplestorestate, outerslot);
 		}
+
 	}
 
 	/* for share input, material do not need to return any tuple */
 	if(node->ss.ps.plan->shared_as_id >= 0)
+	{
+		/* 
+		 * if the material is shared across slice, notify consumers that
+		 * it is ready.
+		 */
+		Material *ma = (Material *) node->ss.ps.plan;
+		if(ma->slice_mark == SliceMark_CrossSlice && ma->driver_slice == currentSliceId)
+		{
+			tuplestore_flush(tuplestorestate);
+			sisc_material_notify(ma->plan.shared_as_id);
+		}
+
 		return NULL;
+	}
 
 	/*
 	 * If we are not at the end of the tuplestore, or are going backwards, try
@@ -322,8 +363,14 @@ ExecEndMaterial(MaterialState *node)
 	 * Release tuplestore resources
 	 */
 	if (node->tuplestorestate != NULL)
-		tuplestore_end((Tuplestorestate *) node->tuplestorestate); 
-	node->tuplestorestate = NULL;
+	{
+		Material *ma = (Material *) node->ss.ps.plan;
+		if(ma->slice_mark != SliceMark_CrossSlice)
+		{
+			tuplestore_end((Tuplestorestate *) node->tuplestorestate); 
+			node->tuplestorestate = NULL;
+		}
+	}
 
 	/*
 	 * shut down the subplan

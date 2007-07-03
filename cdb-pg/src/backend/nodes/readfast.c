@@ -89,6 +89,10 @@
 #define READ_BITMAPSET_FIELD(fldname) \
 	 local_node->fldname = bitmapsetRead(str)
 
+/* Read in a binary field */
+#define READ_BINARY_FIELD(fldname, sz) \
+	memcpy(&local_node->fldname, *str, (sz)); (*str) += (sz)
+
 /* Read a dummy field */
 #define READ_DUMMY_FIELD(fldname,fldvalue) \
 	{ local_node->fldname = (0); /*(*str) += sizeof(int*);*/ }
@@ -2388,7 +2392,7 @@ _readMaterial(const char ** str)
 
     READ_BOOL_FIELD(cdb_strict);
 	READ_INT_FIELD(slice_mark);
-	READ_INT_FIELD(scanner_count);
+	READ_INT_FIELD(driver_slice);
 
     readPlanInfo(str, (Plan *)local_node);
 
@@ -2535,8 +2539,6 @@ _readMotionSliceEntry(const char ** str)
 
 	READ_ENUM_FIELD(motionType, MotionType);  
 	Assert(local_node->motionType == MOTIONTYPE_FIXED || local_node->motionType == MOTIONTYPE_HASH);
-
-	READ_INT_FIELD(recvSliceId);
 
 	READ_INT_FIELD(numHashSegs);
 	READ_INT_ARRAY(hashSegIdx, numHashSegs, int);

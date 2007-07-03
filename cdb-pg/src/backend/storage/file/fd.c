@@ -51,6 +51,7 @@
 #include "storage/fd.h"
 #include "storage/ipc.h"
 
+#include "utils/debugbreak.h"
 
 /*
  * We must leave some file descriptors free for system(), the dynamic loader,
@@ -861,6 +862,119 @@ FileNameOpenFile(FileName fileName, int fileFlags, int fileMode)
 	return fd;
 }
 
+void 
+CreateTempFifo(const char* fileName)
+{
+	char tempfilepath[MAXPGPATH];
+	char *fname = NULL;
+	int err;
+
+	snprintf(tempfilepath, sizeof(tempfilepath),
+			"%s/%s", PG_TEMP_FILES_DIR, fileName
+			);
+
+	fname = make_database_relative(tempfilepath);
+	Assert(fname);
+
+	err = mkfifo(fname, 0600);
+	if(err < 0 && errno != EEXIST)
+	{
+		char	   *dirpath;
+
+		/*
+		 * We might need to create the pg_tempfiles subdirectory, if no one
+		 * has yet done so.
+		 *
+		 * Don't check for error from mkdir; it could fail if someone else
+		 * just did the same thing.  If it doesn't work then we'll bomb out on
+		 * the second create attempt, instead.
+		 */
+		dirpath = make_database_relative(PG_TEMP_FILES_DIR);
+		mkdir(dirpath, S_IRWXU);
+		pfree(dirpath);
+
+		err = mkfifo(fname, 0600);
+
+		pfree(fname);
+		fname = NULL;
+		if(err < 0 && errno != EEXIST)
+			elog(ERROR, "Cannot create temp fifo %s", fname);
+	}
+
+	if(fname != NULL)
+		pfree(fname);
+}
+
+File 
+OpenTemporaryFileName(const char* fileName, int fileFlags, bool interXact, bool delOnClose)
+{
+	File file;
+	char		tempfilepath[MAXPGPATH];
+
+	if(fileName)
+	{
+		snprintf(tempfilepath, sizeof(tempfilepath),
+				"%s/%s", PG_TEMP_FILES_DIR, fileName
+				);
+	}
+	else
+	{
+		/*
+		 * Generate a tempfile name that should be unique within the current
+		 * database instance.
+		 */
+		snprintf(tempfilepath, sizeof(tempfilepath),
+				"%s/%s%d.%ld", PG_TEMP_FILES_DIR, PG_TEMP_FILE_PREFIX,
+				MyProcPid, tempFileCounter++);
+	}
+
+	file = FileNameOpenFile(tempfilepath, fileFlags, 0600);
+
+	if (file < 0) 
+	{
+		if((fileFlags & O_CREAT) == 0)
+			return file;
+		else
+		{
+			char	   *dirpath;
+
+			/*
+			 * We might need to create the pg_tempfiles subdirectory, if no one
+			 * has yet done so.
+			 *
+			 * Don't check for error from mkdir; it could fail if someone else
+			 * just did the same thing.  If it doesn't work then we'll bomb out on
+			 * the second create attempt, instead.
+			 */
+			dirpath = make_database_relative(PG_TEMP_FILES_DIR);
+			mkdir(dirpath, S_IRWXU);
+			pfree(dirpath);
+
+			file = FileNameOpenFile(tempfilepath, fileFlags, 0600);
+			if (file < 0)
+			{
+				debug_break();
+				elog(ERROR, "could not create temporary file \"%s\": %m",
+						tempfilepath);
+			}
+		}
+	}
+
+	/* Mark it for deletion at close */
+	if(delOnClose)
+		VfdCache[file].fdstate |= FD_TEMPORARY;
+
+	/* Mark it for deletion at EOXact */
+	if (!interXact)
+	{
+		VfdCache[file].fdstate |= FD_XACT_TEMPORARY;
+		VfdCache[file].create_subid = GetCurrentSubTransactionId();
+	}
+
+	return file;
+}
+
+
 /*
  * Open a temporary file that will disappear when we close it.
  *
@@ -877,59 +991,12 @@ FileNameOpenFile(FileName fileName, int fileFlags, int fileMode)
 File
 OpenTemporaryFile(bool interXact)
 {
-	char		tempfilepath[MAXPGPATH];
-	File		file;
-
 	/*
-	 * Generate a tempfile name that should be unique within the current
-	 * database instance.
-	 */
-	snprintf(tempfilepath, sizeof(tempfilepath),
-			 "%s/%s%d.%ld", PG_TEMP_FILES_DIR, PG_TEMP_FILE_PREFIX,
-			 MyProcPid, tempFileCounter++);
-
-	/*
-	 * Open the file.  Note: we don't use O_EXCL, in case there is an orphaned
+	 * File flags when open the file.  Note: we don't use O_EXCL, in case there is an orphaned
 	 * temp file that can be reused.
 	 */
-	file = FileNameOpenFile(tempfilepath,
-							O_RDWR | O_CREAT | O_TRUNC | PG_BINARY,
-							0600);
-	if (file <= 0)
-	{
-		char	   *dirpath;
-
-		/*
-		 * We might need to create the pg_tempfiles subdirectory, if no one
-		 * has yet done so.
-		 *
-		 * Don't check for error from mkdir; it could fail if someone else
-		 * just did the same thing.  If it doesn't work then we'll bomb out on
-		 * the second create attempt, instead.
-		 */
-		dirpath = make_database_relative(PG_TEMP_FILES_DIR);
-		mkdir(dirpath, S_IRWXU);
-		pfree(dirpath);
-
-		file = FileNameOpenFile(tempfilepath,
-								O_RDWR | O_CREAT | O_TRUNC | PG_BINARY,
-								0600);
-		if (file <= 0)
-			elog(ERROR, "could not create temporary file \"%s\": %m",
-				 tempfilepath);
-	}
-
-	/* Mark it for deletion at close */
-	VfdCache[file].fdstate |= FD_TEMPORARY;
-
-	/* Mark it for deletion at EOXact */
-	if (!interXact)
-	{
-		VfdCache[file].fdstate |= FD_XACT_TEMPORARY;
-		VfdCache[file].create_subid = GetCurrentSubTransactionId();
-	}
-
-	return file;
+	int fileFlags = O_RDWR | PG_BINARY | O_TRUNC | O_CREAT;
+	return OpenTemporaryFileName(NULL, fileFlags, interXact, true);
 }
 
 /*

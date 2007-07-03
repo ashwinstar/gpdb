@@ -31,6 +31,8 @@
 #include "nodes/value.h"		/* for makeString() */
 #include "utils/relcache.h"     /* RelationGetPartitioningKey() */
 
+#include "utils/debugbreak.h"
+
 #include "cdb/cdbvars.h"
 #include "cdb/cdbplan.h"
 #include "cdb/cdbpullup.h"
@@ -321,6 +323,7 @@ prescan(Plan *plan, PlanProfile * context)
 {
 	if ( prescan_walker((Node *) plan, context) )
 	{
+		debug_break();
 		Insist(0);
 	}
 }

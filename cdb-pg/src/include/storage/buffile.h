@@ -36,6 +36,7 @@ typedef struct BufFile BufFile;
  */
 
 extern BufFile *BufFileCreateTemp(bool interXact);
+extern BufFile *BufFileCreateTemp_ReaderWriter(const char* fileName, bool isWriter);
 extern void BufFileClose(BufFile *file);
 extern size_t BufFileRead(BufFile *file, void *ptr, size_t size);
 extern size_t BufFileWrite(BufFile *file, void *ptr, size_t size);
@@ -43,7 +44,9 @@ extern int	BufFileSeek(BufFile *file, int fileno, long offset, int whence);
 extern void BufFileTell(BufFile *file, int *fileno, long *offset);
 extern uint64 BufFileTell64(BufFile *file);
 extern int	BufFileSeekBlock(BufFile *file, long blknum);
+extern int BufFileFlush(BufFile *file);
 
 extern size_t sizeBufFile(BufFile * file); /* MPP */
 
+extern int BufFileNumFiles(BufFile *file); 
 #endif   /* BUFFILE_H */

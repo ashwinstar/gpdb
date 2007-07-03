@@ -68,6 +68,7 @@
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
 #include "utils/datum.h"
+#include "utils/debugbreak.h"
 #include "mb/pg_wchar.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdblogsync.h"
@@ -3100,6 +3101,7 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
 	if (Gp_role == GP_ROLE_DISPATCH &&
 		!pthread_equal(main_tid, pthread_self()))
 	{
+		debug_break();
 #ifndef _WIN32
 		write_stderr("\nUnexpected internal error: QD %d received signal %d in worker thread 0x%x (forwarding signal to main thread)\n\n",
 					 MyProcPid, postgres_signal_arg, (unsigned int)pthread_self());
@@ -3151,6 +3153,7 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
     else
         pts = "Process";
 
+	debug_break();
     write_stderr("\nUnexpected internal error: %s %d received signal %s\n\n",
                  pts, MyProcPid, signame);
 

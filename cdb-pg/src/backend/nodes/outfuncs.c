@@ -610,7 +610,7 @@ _outMaterial(StringInfo str, Material *node)
 
     WRITE_BOOL_FIELD(cdb_strict);
 	WRITE_INT_FIELD(slice_mark);
-	WRITE_INT_FIELD(scanner_count);
+	WRITE_INT_FIELD(driver_slice);
 
 	_outPlanInfo(str, (Plan *) node);
 }
@@ -749,7 +749,6 @@ _outMotionSliceEntry(StringInfo str, MotionSliceEntry *node)
 	WRITE_NODE_TYPE("MOTIONSLICEENTRY");
 
 	WRITE_ENUM_FIELD(motionType, MotionType);
-	WRITE_INT_FIELD(recvSliceId);
 
 	WRITE_INT_FIELD(numHashSegs);
 	appendStringInfoLiteral(str, " :hashSegIdx");

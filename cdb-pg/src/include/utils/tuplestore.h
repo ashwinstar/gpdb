@@ -63,6 +63,9 @@ extern Tuplestorestate* tuplestore_begin_heap(bool randomAccess,
 					  bool interXact,
 					  int maxKBytes);
 
+extern Tuplestorestate* tuplestore_begin_heap_file_readerwriter(const char* fileName, bool isWriter);
+extern int tuplestore_readerwriter_filebuf_getnumfile(Tuplestorestate* state);
+
 extern void tuplestore_puttupleslot_pos(Tuplestorestate *state, TuplestorePos *pos, TupleTableSlot *slot);
 extern void tuplestore_puttupleslot(Tuplestorestate *state, TupleTableSlot *slot);
 
@@ -94,5 +97,7 @@ extern void tuplestore_markpos(Tuplestorestate *state);
 
 extern void tuplestore_restorepos_pos(Tuplestorestate *state, TuplestorePos *pos);
 extern void tuplestore_restorepos(Tuplestorestate *state);
+
+extern void tuplestore_flush(Tuplestorestate *state);
 
 #endif   /* TUPLESTORE_H */

@@ -418,8 +418,7 @@ extern DLLIMPORT Node *newNodeMacroHolder;
 	newNodeMacroHolder \
 )
 
-
-#define makeNode(_type_)		((_type_ *) newNode(sizeof(_type_),T_##_type_))
+#define makeNode(_type_) 		((_type_ *) newNode(sizeof(_type_),T_##_type_))
 #define NodeSetTag(nodeptr,t)	(((Node*)(nodeptr))->type = (t))
 
 #define IsA(nodeptr,_type_)		(nodeTag(nodeptr) == T_##_type_)

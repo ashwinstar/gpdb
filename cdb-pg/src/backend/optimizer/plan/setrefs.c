@@ -57,12 +57,20 @@ typedef struct
 	Index		subvarno;
 } replace_vars_with_subplan_refs_context;
 
-static Plan *set_subqueryscan_references(SubqueryScan *plan, List *rtable, List *sharedNodes);
+typedef struct
+{
+	List *rtable;
+	List *sharedNodes;
+	indexed_tlist **shared_itlist;
+} set_plan_ref_context;
+
+static Plan *set_plan_references(Plan *plan, set_plan_ref_context *ctxt);
+static Plan *set_subqueryscan_references(SubqueryScan *plan, set_plan_ref_context *ctxt);
 static bool trivial_subqueryscan(SubqueryScan *plan);
 static void adjust_plan_varnos(Plan *plan, int rtoffset);
 static void adjust_expr_varnos(Node *node, int rtoffset);
 static bool adjust_expr_varnos_walker(Node *node, int *context);
-static void fix_expr_references(Plan *plan, Node *node, List *sharedNodes);
+static void fix_expr_references(Plan *plan, Node *node, set_plan_ref_context* ctxt); 
 static bool fix_expr_references_walker(Node *node, void *context);
 static void set_join_references(Join *join);
 static void set_inner_join_references(Plan *inner_plan,
@@ -90,8 +98,44 @@ static bool fix_opfuncids_walker(Node *node, void *context);
 static void set_sa_opfuncid(ScalarArrayOpExpr *opexpr);
 
 static List *cdb_build_identity_tlist(List *newtlist, Plan *subplan, Index subvarno);
-static Plan *cdb_insert_result_node(Plan *plan, List *rtable, List *sharedNodes);
+static Plan *cdb_insert_result_node(Plan *plan, set_plan_ref_context* ctxt); 
 
+
+/* 
+ * set_plan_references_qry: set the references for a query.
+ *
+ * It is a simple driver over the set_plan_references.
+ */
+Plan *set_plan_references_qry(Plan *plan, Query *qry)
+{
+	set_plan_ref_context ctxt;
+	int nshared = qry->sharedNodes ? list_length(qry->sharedNodes) : 0;
+	int i = 0;
+	Plan *result = NULL;
+
+	ctxt.rtable = qry->rtable;
+	ctxt.sharedNodes = qry->sharedNodes;
+
+	if(nshared == 0)
+		ctxt.shared_itlist = NULL;
+	else
+		ctxt.shared_itlist = (indexed_tlist **) palloc0(sizeof(indexed_tlist *) * nshared);
+
+	result = set_plan_references(plan, &ctxt);
+	qry->rtable = ctxt.rtable;
+	qry->sharedNodes = ctxt.sharedNodes;
+
+	for(i=0; i<nshared; ++i)
+	{
+		if(ctxt.shared_itlist[i])
+			pfree(ctxt.shared_itlist[i]);
+	}
+
+	if(ctxt.shared_itlist)
+		pfree(ctxt.shared_itlist);
+
+	return result;
+}
 
 /*****************************************************************************
  *
@@ -131,7 +175,7 @@ static Plan *cdb_insert_result_node(Plan *plan, List *rtable, List *sharedNodes)
  * address won't change when we append a subquery rangetable.)
  */
 Plan *
-set_plan_references(Plan *plan, List *rtable, List *sharedNodes)
+set_plan_references(Plan *plan, set_plan_ref_context *ctxt) 
 {
 	ListCell   *l;
 
@@ -151,7 +195,7 @@ set_plan_references(Plan *plan, List *rtable, List *sharedNodes)
             (List *)replace_vars_with_subplan_refs((Node *)plan->flow->hashExpr,
                                                    plan_itlist,
                                                    OUTER);
-        fix_expr_references(plan, (Node *) plan->flow->hashExpr, sharedNodes);
+        fix_expr_references(plan, (Node *) plan->flow->hashExpr, ctxt);
         pfree(plan_itlist);
     }
 
@@ -163,61 +207,60 @@ set_plan_references(Plan *plan, List *rtable, List *sharedNodes)
 		case T_SeqScan:
 		case T_ExternalScan:
             if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
-                return cdb_insert_result_node(plan, rtable, sharedNodes);
-			fix_expr_references(plan, (Node *) plan->targetlist, sharedNodes);
-			fix_expr_references(plan, (Node *) plan->qual, sharedNodes);
+                return cdb_insert_result_node(plan, ctxt); 
+			fix_expr_references(plan, (Node *) plan->targetlist, ctxt); 
+			fix_expr_references(plan, (Node *) plan->qual, ctxt); 
 			break;
 		case T_IndexScan:
             if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
-                return cdb_insert_result_node(plan, rtable, sharedNodes);
-			fix_expr_references(plan, (Node *) plan->targetlist, sharedNodes);
-			fix_expr_references(plan, (Node *) plan->qual, sharedNodes);
+                return cdb_insert_result_node(plan, ctxt); 
+			fix_expr_references(plan, (Node *) plan->targetlist, ctxt); 
+			fix_expr_references(plan, (Node *) plan->qual, ctxt); 
 			fix_expr_references(plan,
-								(Node *) ((IndexScan *) plan)->indexqual, sharedNodes);
+								(Node *) ((IndexScan *) plan)->indexqual, ctxt); 
 			fix_expr_references(plan,
-								(Node *) ((IndexScan *) plan)->indexqualorig, sharedNodes);
+								(Node *) ((IndexScan *) plan)->indexqualorig, ctxt); 
 			break;
 		case T_BitmapIndexScan:
 			/* no need to fix targetlist and qual */
 			Assert(plan->targetlist == NIL);
 			Assert(plan->qual == NIL);
 			fix_expr_references(plan,
-							 (Node *) ((BitmapIndexScan *) plan)->indexqual, sharedNodes);
+							 (Node *) ((BitmapIndexScan *) plan)->indexqual, ctxt); 
 			fix_expr_references(plan,
-						 (Node *) ((BitmapIndexScan *) plan)->indexqualorig, sharedNodes);
+						 (Node *) ((BitmapIndexScan *) plan)->indexqualorig, ctxt);
 			break;
 		case T_BitmapHeapScan:
             if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
-                return cdb_insert_result_node(plan, rtable, sharedNodes);
-			fix_expr_references(plan, (Node *) plan->targetlist, sharedNodes);
-			fix_expr_references(plan, (Node *) plan->qual, sharedNodes);
+                return cdb_insert_result_node(plan, ctxt); 
+			fix_expr_references(plan, (Node *) plan->targetlist, ctxt); 
+			fix_expr_references(plan, (Node *) plan->qual, ctxt); 
 			fix_expr_references(plan,
-						 (Node *) ((BitmapHeapScan *) plan)->bitmapqualorig, sharedNodes);
+						 (Node *) ((BitmapHeapScan *) plan)->bitmapqualorig, ctxt); 
 			break;
 		case T_TidScan:
             if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
-                return cdb_insert_result_node(plan, rtable, sharedNodes);
-			fix_expr_references(plan, (Node *) plan->targetlist, sharedNodes);
-			fix_expr_references(plan, (Node *) plan->qual, sharedNodes);
-			fix_expr_references(plan, (Node *) ((TidScan *) plan)->tidquals, sharedNodes);
+                return cdb_insert_result_node(plan, ctxt); 
+			fix_expr_references(plan, (Node *) plan->targetlist, ctxt); 
+			fix_expr_references(plan, (Node *) plan->qual, ctxt);
+			fix_expr_references(plan, (Node *) ((TidScan *) plan)->tidquals, ctxt);
 			break;
 		case T_SubqueryScan:
             if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
-                return cdb_insert_result_node(plan, rtable, sharedNodes);
+                return cdb_insert_result_node(plan, ctxt); 
 			/* Needs special treatment, see comments below */
-			return set_subqueryscan_references((SubqueryScan *) plan, rtable, sharedNodes);
+			return set_subqueryscan_references((SubqueryScan *) plan, ctxt); 
 		case T_FunctionScan:
 			{
 				RangeTblEntry *rte;
 
                 if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
-                    return cdb_insert_result_node(plan, rtable, sharedNodes);
-				fix_expr_references(plan, (Node *) plan->targetlist, sharedNodes);
-				fix_expr_references(plan, (Node *) plan->qual, sharedNodes);
-				rte = rt_fetch(((FunctionScan *) plan)->scan.scanrelid,
-							   rtable);
+                    return cdb_insert_result_node(plan, ctxt); 
+				fix_expr_references(plan, (Node *) plan->targetlist, ctxt); 
+				fix_expr_references(plan, (Node *) plan->qual, ctxt); 
+				rte = rt_fetch(((FunctionScan *) plan)->scan.scanrelid, ctxt->rtable);
 				Assert(rte->rtekind == RTE_FUNCTION);
-				fix_expr_references(plan, rte->funcexpr, sharedNodes);
+				fix_expr_references(plan, rte->funcexpr, ctxt); 
 			}
 			break;
 		case T_ValuesScan:
@@ -225,22 +268,21 @@ set_plan_references(Plan *plan, List *rtable, List *sharedNodes)
 				RangeTblEntry *rte;
 
                 if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
-                    return cdb_insert_result_node(plan, rtable, sharedNodes);
-				fix_expr_references(plan, (Node *) plan->targetlist, sharedNodes);
-				fix_expr_references(plan, (Node *) plan->qual, sharedNodes);
-				rte = rt_fetch(((ValuesScan *) plan)->scan.scanrelid,
-							   rtable);
+                    return cdb_insert_result_node(plan, ctxt); 
+				fix_expr_references(plan, (Node *) plan->targetlist, ctxt); 
+				fix_expr_references(plan, (Node *) plan->qual, ctxt);
+				rte = rt_fetch(((ValuesScan *) plan)->scan.scanrelid, ctxt->rtable);
 				Assert(rte->rtekind == RTE_VALUES);
-				fix_expr_references(plan, (Node *) rte->values_lists, sharedNodes);
+				fix_expr_references(plan, (Node *) rte->values_lists, ctxt); 
 			}
 			break;
 		case T_NestLoop:
             if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
-                return cdb_insert_result_node(plan, rtable, sharedNodes);
+                return cdb_insert_result_node(plan, ctxt); 
 			set_join_references((Join *) plan);
-			fix_expr_references(plan, (Node *) plan->targetlist, sharedNodes);
-			fix_expr_references(plan, (Node *) plan->qual, sharedNodes);
-			fix_expr_references(plan, (Node *) ((Join *) plan)->joinqual, sharedNodes);
+			fix_expr_references(plan, (Node *) plan->targetlist, ctxt); 
+			fix_expr_references(plan, (Node *) plan->qual, ctxt);
+			fix_expr_references(plan, (Node *) ((Join *) plan)->joinqual, ctxt);
 			break;
 		case T_AdaptiveNestLoop:
         {
@@ -277,29 +319,28 @@ set_plan_references(Plan *plan, List *rtable, List *sharedNodes)
             return NULL;
 		case T_MergeJoin:
             if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
-                return cdb_insert_result_node(plan, rtable, sharedNodes);
+                return cdb_insert_result_node(plan, ctxt); 
 			set_join_references((Join *) plan);
-			fix_expr_references(plan, (Node *) plan->targetlist, sharedNodes);
-			fix_expr_references(plan, (Node *) plan->qual, sharedNodes);
-			fix_expr_references(plan, (Node *) ((Join *) plan)->joinqual, sharedNodes);
+			fix_expr_references(plan, (Node *) plan->targetlist, ctxt); 
+			fix_expr_references(plan, (Node *) plan->qual, ctxt); 
+			fix_expr_references(plan, (Node *) ((Join *) plan)->joinqual, ctxt);
 			fix_expr_references(plan,
-								(Node *) ((MergeJoin *) plan)->mergeclauses, sharedNodes);
+								(Node *) ((MergeJoin *) plan)->mergeclauses, ctxt);
 			break;
 		case T_HashJoin:
             if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
-                return cdb_insert_result_node(plan, rtable, sharedNodes);
+                return cdb_insert_result_node(plan, ctxt);
 			set_join_references((Join *) plan);
-			fix_expr_references(plan, (Node *) plan->targetlist, sharedNodes);
-			fix_expr_references(plan, (Node *) plan->qual, sharedNodes);
-			fix_expr_references(plan, (Node *) ((Join *) plan)->joinqual, sharedNodes);
+			fix_expr_references(plan, (Node *) plan->targetlist, ctxt);
+			fix_expr_references(plan, (Node *) plan->qual, ctxt);
+			fix_expr_references(plan, (Node *) ((Join *) plan)->joinqual, ctxt);
 			fix_expr_references(plan,
-								(Node *) ((HashJoin *) plan)->hashclauses, sharedNodes);
+								(Node *) ((HashJoin *) plan)->hashclauses, ctxt);
 			break;
 		case T_Hash:
 		case T_Material:
 		case T_Unique:
 		case T_SetOp:
-		case T_ShareInputScan:
 			{
 				/*
 				 * These plan types don't actually bother to evaluate their
@@ -316,32 +357,51 @@ set_plan_references(Plan *plan, List *rtable, List *sharedNodes)
 				 */
 				Plan *childPlan = plan->lefttree;
 
-				if(!childPlan)
-				{
-					Assert(plan->underlying_share_id >= 0 && sharedNodes);
-					childPlan = list_nth(sharedNodes, plan->underlying_share_id);
-				}
-
 				Assert(childPlan);
 				Assert(plan->qual == NIL);
 
 				plan->targetlist = cdb_build_identity_tlist(NIL, childPlan, OUTER);
 			}
 			break;
+
+		case T_ShareInputScan:
+			{
+				ShareInputScan *sisc = (ShareInputScan *) plan;
+				Plan *childPlan = plan->lefttree;
+
+				if(childPlan == NULL)
+				{
+					Assert(plan->underlying_share_id >= 0 && ctxt->sharedNodes && ctxt->shared_itlist);
+					Assert(ctxt->shared_itlist[plan->underlying_share_id] != NULL);
+					childPlan = list_nth(ctxt->sharedNodes, plan->underlying_share_id);
+				}
+				else
+				{
+					Assert(plan->underlying_share_id >= 0 && ctxt->sharedNodes && ctxt->shared_itlist);
+					Assert(ctxt->shared_itlist[plan->underlying_share_id] == NULL);
+					ctxt->shared_itlist[plan->underlying_share_id] = build_tlist_index(childPlan->targetlist);
+				} 
+
+				sisc->hashExpr = (List *) replace_vars_with_subplan_refs(
+						(Node *) sisc->hashExpr,
+						ctxt->shared_itlist[plan->underlying_share_id],
+						OUTER);
+
+				fix_expr_references(plan, (Node *) sisc->hashExpr, ctxt); 
+			
+				plan->targetlist = cdb_build_identity_tlist(NIL, childPlan, OUTER);
+			}
+			break;
+
 			/* CDB: Sort now has live expressions which it has to fix up. */
 		case T_Sort:
 			Assert(plan->qual == NIL);
 			{
 				Plan *childPlan = plan->lefttree;
-				if(!childPlan)
-				{
-					Assert(plan->underlying_share_id >= 0 && sharedNodes);
-					childPlan = list_nth(sharedNodes, plan->underlying_share_id);
-				}
 				Assert(childPlan);
 				plan->targetlist = cdb_build_identity_tlist(NIL, childPlan, OUTER);
-				fix_expr_references(plan, ((Sort *) plan)->limitOffset, sharedNodes);
-				fix_expr_references(plan, ((Sort *) plan)->limitCount, sharedNodes);
+				fix_expr_references(plan, ((Sort *) plan)->limitOffset, ctxt);
+				fix_expr_references(plan, ((Sort *) plan)->limitCount, ctxt);
 			}
 			break;
 		case T_Limit:
@@ -353,22 +413,22 @@ set_plan_references(Plan *plan, List *rtable, List *sharedNodes)
 			 */
 			Assert(plan->qual == NIL);
             plan->targetlist = cdb_build_identity_tlist(NIL, plan->lefttree, OUTER);
-			fix_expr_references(plan, ((Limit *) plan)->limitOffset, sharedNodes);
-			fix_expr_references(plan, ((Limit *) plan)->limitCount, sharedNodes);
+			fix_expr_references(plan, ((Limit *) plan)->limitOffset, ctxt);
+			fix_expr_references(plan, ((Limit *) plan)->limitCount, ctxt);
 			break;
 		case T_Agg:
 		case T_Group:
 			set_uppernode_references(plan, (Index) 0);
-			fix_expr_references(plan, (Node *) plan->targetlist, sharedNodes);
-			fix_expr_references(plan, (Node *) plan->qual, sharedNodes);
+			fix_expr_references(plan, (Node *) plan->targetlist, ctxt);
+			fix_expr_references(plan, (Node *) plan->qual, ctxt);
 			break;
 		case T_Window:
 			set_uppernode_references(plan, (Index) 0);
 			if ( plan->targetlist == NIL )
 				plan->targetlist = cdb_build_identity_tlist(NIL, plan->lefttree, OUTER);
 			else
-				fix_expr_references(plan, (Node *) plan->targetlist, sharedNodes);
-			fix_expr_references(plan, (Node *) plan->qual, sharedNodes);
+				fix_expr_references(plan, (Node *) plan->targetlist, ctxt);
+			fix_expr_references(plan, (Node *) plan->qual, ctxt);
  			/* TODO: Should we walk into the keys to fix vals in frame edges? */
 			break;
 		case T_Result:
@@ -381,9 +441,9 @@ set_plan_references(Plan *plan, List *rtable, List *sharedNodes)
 			 */
 			if (plan->lefttree != NULL)
 				set_uppernode_references(plan, (Index) OUTER);
-			fix_expr_references(plan, (Node *) plan->targetlist, sharedNodes);
-			fix_expr_references(plan, (Node *) plan->qual, sharedNodes);
-			fix_expr_references(plan, ((Result *) plan)->resconstantqual, sharedNodes);
+			fix_expr_references(plan, (Node *) plan->targetlist, ctxt);
+			fix_expr_references(plan, (Node *) plan->qual, ctxt);
+			fix_expr_references(plan, ((Result *) plan)->resconstantqual, ctxt);
 			break;
 		case T_Append:
 
@@ -395,21 +455,21 @@ set_plan_references(Plan *plan, List *rtable, List *sharedNodes)
 			 */
 			Assert(plan->qual == NIL);
 			foreach(l, ((Append *) plan)->appendplans)
-				lfirst(l) = set_plan_references((Plan *) lfirst(l), rtable, sharedNodes);
+				lfirst(l) = set_plan_references((Plan *) lfirst(l), ctxt); 
 			break;
 		case T_BitmapAnd:
 			/* BitmapAnd works like Append, but has no tlist */
 			Assert(plan->targetlist == NIL);
 			Assert(plan->qual == NIL);
 			foreach(l, ((BitmapAnd *) plan)->bitmapplans)
-				lfirst(l) = set_plan_references((Plan *) lfirst(l), rtable, sharedNodes);
+				lfirst(l) = set_plan_references((Plan *) lfirst(l), ctxt); 
 			break;
 		case T_BitmapOr:
 			/* BitmapOr works like Append, but has no tlist */
 			Assert(plan->targetlist == NIL);
 			Assert(plan->qual == NIL);
 			foreach(l, ((BitmapOr *) plan)->bitmapplans)
-				lfirst(l) = set_plan_references((Plan *) lfirst(l), rtable, sharedNodes);
+				lfirst(l) = set_plan_references((Plan *) lfirst(l), ctxt);
 			break;
 
         case T_Motion:
@@ -417,40 +477,27 @@ set_plan_references(Plan *plan, List *rtable, List *sharedNodes)
             	Motion         *motion = (Motion *)plan;
 
 				/* test flag to prevent processing the node multi times */
-				if(!motion->fSetPlanRef)
+				indexed_tlist  *subplan_itlist =
+					build_tlist_index(plan->lefttree->targetlist);
+
+				ListCell *sliceCell;
+				foreach(sliceCell, motion->sliceEntries)
 				{
-					indexed_tlist  *subplan_itlist =
-						build_tlist_index(plan->lefttree->targetlist);
+					MotionSliceEntry *sliceEntry = (MotionSliceEntry *) lfirst(sliceCell);
+					Assert(IsA(sliceEntry, MotionSliceEntry));
 
-					ListCell *sliceCell;
-					foreach(sliceCell, motion->sliceEntries)
-					{
-						MotionSliceEntry *sliceEntry = (MotionSliceEntry *) lfirst(sliceCell);
-						Assert(IsA(sliceEntry, MotionSliceEntry));
-
-						sliceEntry->hashExpr =
-							(List *)replace_vars_with_subplan_refs((Node *)sliceEntry->hashExpr,
-									subplan_itlist,
-									OUTER);
-						fix_expr_references(plan, (Node *) sliceEntry->hashExpr, sharedNodes);
-					}
+					sliceEntry->hashExpr =
+						(List *)replace_vars_with_subplan_refs((Node *)sliceEntry->hashExpr,
+								subplan_itlist,
+								OUTER);
+					fix_expr_references(plan, (Node *) sliceEntry->hashExpr, ctxt); 
+				}
 				
-					pfree(subplan_itlist);
+				pfree(subplan_itlist);
     			
-					/* no need to fix targetlist and qual */
-					Assert(plan->qual == NIL);
-					plan->targetlist = cdb_build_identity_tlist(NIL, plan->lefttree, OUTER);
-
-					/* processed.  set flag so we will not call set_plan_refs on this 
-					 * motion again.
-					 */
-					motion->fSetPlanRef = true;
-				}
-				else
-				{
-					/* has done with this one before.  Just return */
-					return plan;
-				}
+				/* no need to fix targetlist and qual */
+				Assert(plan->qual == NIL);
+				plan->targetlist = cdb_build_identity_tlist(NIL, plan->lefttree, OUTER);
             }
             break;
 
@@ -470,15 +517,19 @@ set_plan_references(Plan *plan, List *rtable, List *sharedNodes)
 	 * Fortunately, that consideration doesn't apply to SubPlan nodes; else
 	 * we'd need two passes over the expression trees.
 	 */
-	plan->lefttree = set_plan_references(plan->lefttree, rtable, sharedNodes);
-	plan->righttree = set_plan_references(plan->righttree, rtable, sharedNodes);
+	plan->lefttree = set_plan_references(plan->lefttree, ctxt); 
+	plan->righttree = set_plan_references(plan->righttree, ctxt); 
 
 	foreach(l, plan->initPlan)
 	{
 		SubPlan    *sp = (SubPlan *) lfirst(l);
+		List *oldrtable = ctxt->rtable;
 
 		Assert(IsA(sp, SubPlan));
-		sp->plan = set_plan_references(sp->plan, sp->rtable, sharedNodes);
+		ctxt->rtable = sp->rtable;
+		sp->plan = set_plan_references(sp->plan, ctxt);
+		sp->rtable = ctxt->rtable;
+		ctxt->rtable = oldrtable;
 	}
 
 	return plan;
@@ -537,7 +588,7 @@ cdb_expr_requires_full_eval(Node *node)
  * given node's targetlist.  Returns the new Result node.
  */
 Plan *
-cdb_insert_result_node(Plan *plan, List *rtable, List *sharedNodes)
+cdb_insert_result_node(Plan *plan, set_plan_ref_context* ctxt)
 {
     Plan   *resultplan;
     Flow   *flow;
@@ -556,7 +607,7 @@ cdb_insert_result_node(Plan *plan, List *rtable, List *sharedNodes)
     plan->targetlist = flatten_tlist(plan->targetlist);
 
     /* Fix up the Result node and the Plan tree below it. */
-    resultplan = set_plan_references(resultplan, rtable, sharedNodes);
+    resultplan = set_plan_references(resultplan, ctxt);
 
     /* Reattach the Flow node. */
     resultplan->flow = flow;
@@ -573,18 +624,19 @@ cdb_insert_result_node(Plan *plan, List *rtable, List *sharedNodes)
  * to do the normal processing on it.
  */
 static Plan *
-set_subqueryscan_references(SubqueryScan *plan, List *rtable, List *sharedNodes)
+set_subqueryscan_references(SubqueryScan *plan, set_plan_ref_context* ctxt) 
 {
 	Plan	   *result;
 	RangeTblEntry *rte;
 	ListCell   *l;
-
+	List *oldrtable = ctxt->rtable;
 	/* First, recursively process the subplan */
-	rte = rt_fetch(plan->scan.scanrelid, rtable);
+	rte = rt_fetch(plan->scan.scanrelid, oldrtable);
 	Assert(rte->rtekind == RTE_SUBQUERY);
-	plan->subplan = set_plan_references(plan->subplan,
-										rte->subquery->rtable, 
-										sharedNodes);
+
+	ctxt->rtable = rte->subquery->rtable;
+	plan->subplan = set_plan_references(plan->subplan, ctxt);
+	rte->subquery->rtable = ctxt->rtable;
 
 	/*
 	 * We have to process any initplans too; set_plan_references can't do it
@@ -595,7 +647,9 @@ set_subqueryscan_references(SubqueryScan *plan, List *rtable, List *sharedNodes)
 		SubPlan    *sp = (SubPlan *) lfirst(l);
 
 		Assert(IsA(sp, SubPlan));
-		sp->plan = set_plan_references(sp->plan, sp->rtable, sharedNodes);
+		ctxt->rtable = sp->rtable;
+		sp->plan = set_plan_references(sp->plan, ctxt); 
+		sp->rtable = ctxt->rtable;
 	}
 
 	if (trivial_subqueryscan(plan))
@@ -605,7 +659,7 @@ set_subqueryscan_references(SubqueryScan *plan, List *rtable, List *sharedNodes)
 		 * have to merge its rtable into the outer rtable, which means
 		 * adjusting varnos throughout the subtree.
 		 */
-		int			rtoffset = list_length(rtable);
+		int			rtoffset = list_length(oldrtable);
 		List	   *sub_rtable;
 		ListCell   *lp,
 				   *lc;
@@ -615,7 +669,8 @@ set_subqueryscan_references(SubqueryScan *plan, List *rtable, List *sharedNodes)
 						   adjust_expr_varnos_walker,
 						   (void *) &rtoffset,
 						   QTW_IGNORE_RT_SUBQUERIES);
-		rtable = list_concat(rtable, sub_rtable);
+		oldrtable = list_concat(oldrtable, sub_rtable);
+		ctxt->rtable = oldrtable;
 
 		/*
 		 * we have to copy the subplan to make sure there are no duplicately
@@ -655,9 +710,10 @@ set_subqueryscan_references(SubqueryScan *plan, List *rtable, List *sharedNodes)
 		 * outputs to begin with.
 		 */
 		result = (Plan *) plan;
+		ctxt->rtable = oldrtable;
 
-		fix_expr_references(result, (Node *) result->targetlist, sharedNodes);
-		fix_expr_references(result, (Node *) result->qual, sharedNodes);
+		fix_expr_references(result, (Node *) result->targetlist, ctxt); 
+		fix_expr_references(result, (Node *) result->qual, ctxt); 
 	}
 
 	return result;
@@ -954,10 +1010,10 @@ adjust_expr_varnos_walker(Node *node, int *context)
  * The Plan argument is currently unused, but might be needed again someday.
  */
 static void
-fix_expr_references(Plan *plan, Node *node, List *sharedNodes)
+fix_expr_references(Plan *plan, Node *node, set_plan_ref_context* ctxt)
 {
 	/* This tree walk requires no special setup, so away we go... */
-	fix_expr_references_walker(node, (void *) sharedNodes);
+	fix_expr_references_walker(node, (void *) ctxt); 
 }
 
 static bool
@@ -980,9 +1036,12 @@ fix_expr_references_walker(Node *node, void *context)
 	else if (IsA(node, SubPlan))
 	{
 		SubPlan    *sp = (SubPlan *) node;
-		List *sharedNodes = (List *) context;
+		set_plan_ref_context *oldctxt = (set_plan_ref_context *) context;
+		List *oldrtable = oldctxt->rtable;
+		oldctxt->rtable = sp->rtable;
 
-		sp->plan = set_plan_references(sp->plan, sp->rtable, sharedNodes);
+		sp->plan = set_plan_references(sp->plan, oldctxt);
+		oldctxt->rtable = oldrtable; 
 	}
 	return expression_tree_walker(node, fix_expr_references_walker, context);
 }

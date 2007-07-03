@@ -60,6 +60,12 @@
 		memcpy(newnode->fldname, from->fldname, _size); \
 	} while (0)
 
+#define COPY_BINARY_FIELD(fldname, sz) \
+	do { \
+		Size _size = (sz); \
+		memcpy(&newnode->fldname, &from->fldname, _size); \
+	} while (0)
+
 
 /* ****************************************************************
  *					 plannodes.h copy functions
@@ -556,6 +562,9 @@ _copyMaterial(Material *from)
 	 */
 	CopyPlanFields((Plan *) from, (Plan *) newnode);
     COPY_SCALAR_FIELD(cdb_strict);
+	COPY_SCALAR_FIELD(slice_mark);
+	COPY_SCALAR_FIELD(driver_slice);
+	
     return newnode;
 }
 
@@ -768,7 +777,6 @@ _copyMotionSliceEntry(MotionSliceEntry *from)
 	MotionSliceEntry *newnode = makeNode(MotionSliceEntry);
 
 	COPY_SCALAR_FIELD(motionType);
-	COPY_SCALAR_FIELD(recvSliceId);
 
 	COPY_SCALAR_FIELD(numHashSegs);
 	COPY_POINTER_FIELD(hashSegIdx, from->numHashSegs * sizeof(int));
@@ -789,34 +797,28 @@ _copyMotionSliceEntry(MotionSliceEntry *from)
 static Motion *
 _copyMotion(Motion *from) 
 {
-	if(from->mutated && from->fCopyUseMutated)
-		return (Motion *)from->mutated;
-	else
-	{
-		Motion	   *newnode = makeNode(Motion);
+	Motion	   *newnode = makeNode(Motion);
 
-		/*
-		 * copy node superclass fields
-		 */
-		CopyPlanFields((Plan *) from, (Plan *) newnode);
+	/*
+	 * copy node superclass fields
+	 */
+	CopyPlanFields((Plan *) from, (Plan *) newnode);
 
-		COPY_SCALAR_FIELD(sendToSecondary);
-		COPY_SCALAR_FIELD(sendSorted);
-		COPY_SCALAR_FIELD(motionID);
+	COPY_SCALAR_FIELD(sendToSecondary);
+	COPY_SCALAR_FIELD(sendSorted);
+	COPY_SCALAR_FIELD(motionID);
 
-		COPY_SCALAR_FIELD(numInputSegs);
-		if (from->inputSegIdx)
-			COPY_POINTER_FIELD(inputSegIdx, from->numInputSegs * sizeof(int));
+	COPY_SCALAR_FIELD(numInputSegs);
+	if (from->inputSegIdx)
+		COPY_POINTER_FIELD(inputSegIdx, from->numInputSegs * sizeof(int));
 
-		COPY_NODE_FIELD(sliceEntries);
+	COPY_NODE_FIELD(sliceEntries);
 
-		COPY_SCALAR_FIELD(numSortCols);
-		COPY_POINTER_FIELD(sortColIdx, from->numSortCols * sizeof(AttrNumber));
-		COPY_POINTER_FIELD(sortOperators, from->numSortCols * sizeof(Oid));
+	COPY_SCALAR_FIELD(numSortCols);
+	COPY_POINTER_FIELD(sortColIdx, from->numSortCols * sizeof(AttrNumber));
+	COPY_POINTER_FIELD(sortOperators, from->numSortCols * sizeof(Oid));
 
-		from->mutated = (Plan *)newnode;
-		return newnode;
-	}
+	return newnode;
 }
 
 /* ****************************************************************

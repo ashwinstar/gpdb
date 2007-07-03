@@ -7,6 +7,7 @@
 #include "postgres.h"
 #include "utils/debugbreak.h"
 
+#include <unistd.h>
 /* How to use debug_break
  *
  * Greenplum DB will spawn many processes to execute a query in parallel.
@@ -124,3 +125,4 @@ disable_debug_break_n(int n)
 }
 
 #endif
+

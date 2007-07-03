@@ -174,10 +174,11 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 	 *
 	 * apply_shareinput will fix shared_id, and change the DAG to a tree.
 	 */
+
 	result_plan = apply_shareinput(result_plan, parse); 
 
 	/* final cleanup of the plan */
-	result_plan = set_plan_references(result_plan, parse->rtable, parse->sharedNodes);
+	result_plan = set_plan_references_qry(result_plan, parse);
 
 	/* executor wants to know total number of Params used overall */
 	result_plan->nParamExec = list_length(PlannerParamList);

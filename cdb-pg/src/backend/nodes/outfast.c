@@ -112,6 +112,10 @@
 #define WRITE_BITMAPSET_FIELD(fldname) \
 	 _outBitmapset(str, node->fldname)
 
+/* Write a binary field */
+#define WRITE_BINARY_FIELD(fldname, sz) \
+{ appendBinaryStringInfo(str, (const char *) &node->fldname, (sz)); }
+
 /* Write a dummy field -- value not displayable or copyable */
 #define WRITE_DUMMY_FIELD(fldname) \
 	{ /*int * dummy = 0; appendBinaryStringInfo(str,(const char *)&dummy, sizeof(int *)) ;*/ }
@@ -592,7 +596,7 @@ _outMaterial(StringInfo str, Material *node)
 
     WRITE_BOOL_FIELD(cdb_strict);
 	WRITE_INT_FIELD(slice_mark);
-	WRITE_INT_FIELD(scanner_count);
+	WRITE_INT_FIELD(driver_slice);
 
 	_outPlanInfo(str, (Plan *) node);
 }
@@ -683,7 +687,6 @@ _outMotionSliceEntry(StringInfo str, MotionSliceEntry *node)
 	WRITE_NODE_TYPE("MOTIONSLICEENTRY");
 
 	WRITE_ENUM_FIELD(motionType, MotionType);
-	WRITE_INT_FIELD(recvSliceId);
 
 	WRITE_INT_FIELD(numHashSegs);
 	WRITE_INT_ARRAY(hashSegIdx, numHashSegs, int);

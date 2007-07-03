@@ -184,7 +184,6 @@ typedef struct Query
 	List 	*sharedNodes; 	/* Share Input.  List of shared nodes.  No need to be serialized */
 } Query;
 
-
 /****************************************************************************
  *	Supporting data structures for Parse Trees
  *

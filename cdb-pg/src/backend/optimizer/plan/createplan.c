@@ -3680,7 +3680,7 @@ make_material(Plan *lefttree)
 
 	node->cdb_strict = false;
 	node->slice_mark = SliceMark_NotMarked;
-	node->scanner_count = 0;
+	node->driver_slice = SliceMark_NotMarked;
 
 	return node;
 }

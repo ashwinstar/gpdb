@@ -66,16 +66,24 @@ ShareInputNext(ShareInputScanState *node)
 	{
 		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, node->ss.ps.plan->underlying_share_id, false);
 		PlanState* snState = (PlanState *)snEntry->shareState;
-
-		/* 
-		 * set up underlying material node properly.  In case of shared node, 
-		 * ExecProcNode does not return a tuple, it just build the material or sort.
-		 */
+		
 		slot = ExecProcNode(snState);
 
 		if(node->share_type == SHARENODE_MATERIAL)
 		{
-			node->ts_state = ((MaterialState *)snState)->tuplestorestate;
+			Material *ma = (Material *) snState->plan;
+			if(ma->slice_mark == SliceMark_CrossSlice)
+			{
+				char rwfile_prefix[60];
+				sisc_material_bufname(rwfile_prefix, sizeof(rwfile_prefix), ma->plan.shared_as_id);
+				sisc_material_wait(ma->plan.shared_as_id);
+				node->ts_state = tuplestore_begin_heap_file_readerwriter(rwfile_prefix, false);
+			}
+			else
+			{
+				node->ts_state = ((MaterialState *)snState)->tuplestorestate;
+			}
+
 			tuplestore_begin_pos((Tuplestorestate *) node->ts_state, (TuplestorePos **)(&node->ts_pos));
 			tuplestore_rescan_pos((Tuplestorestate *) node->ts_state, (TuplestorePos *)node->ts_pos); 
 		}
@@ -188,6 +196,12 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 		ExecInitExpr((Expr *) node->plan.targetlist, (PlanState *) sisstate);
 	Assert(node->plan.qual == NULL);
 	sisstate->ss.ps.qual = NULL;
+
+	/* Misc initialization 
+	 * 
+	 * Create expression context 
+	 */
+	ExecAssignExprContext(estate, &sisstate->ss.ps);
 
 	/* tuple table init */
 	ExecInitResultTupleSlot(estate, &sisstate->ss.ps);
@@ -319,4 +333,59 @@ void ExecShareInputScanReScan(ShareInputScanState *node, ExprContext *exprCtxt)
 				(TuplesortPos *) node->ts_pos);
 	else
 		Assert(!"ExecShareInputScanReScan: invalid share type ");
+}
+
+/*************************************************************************
+ * XXX 
+ * we need some IPC mechanism for sisc_material_wait/notify.  Semaphore is
+ * the first thing come to mind but it turns out postgres is very picky about
+ * how to use semaphore and we do not want to mess up with it.
+ *
+ * Here we use the fact the for FIFO (named pipe), we can make reader block till
+ * writer create the FIFO.  mkfifo is Posix.1 and should be available on any
+ * reasonable Unix like system.
+ * 
+ * XXX However, it is always better to have this kind of stuff abstracted out
+ * by the system.  
+ **************************************************************************/
+
+#include "fcntl.h"
+#include "storage/fd.h"
+
+void sisc_material_bufname(char* p, int size, int shared_id)
+{
+	Assert(size >=50);
+	snprintf(p, size, "SIRW_%d_%d_%d", gp_session_id, gp_command_count, shared_id);
+}
+
+static void sisc_lockname(char* p, int size, int shared_id)
+{
+	snprintf(p, size,
+			"gpcdb2.sisc_%d_%d_%d_%d",
+			Gp_segment, gp_session_id, gp_command_count, shared_id
+			);
+}
+
+void sisc_material_wait(int shared_id)
+{
+	char lkname[100];
+
+	sisc_lockname(lkname, 100, shared_id);
+
+	CreateTempFifo(lkname);
+
+	elog(LOG, "sisc_material wait on %s", lkname);
+	OpenTemporaryFileName(lkname, O_RDONLY, true, true);
+}
+
+void sisc_material_notify(int shared_id)
+{
+	char lkname[100];
+
+	sisc_lockname(lkname, 100, shared_id);
+
+	CreateTempFifo(lkname);
+
+	elog(LOG, "sisc_material notify %s", lkname);
+	OpenTemporaryFileName(lkname, O_WRONLY, true, true);
 }

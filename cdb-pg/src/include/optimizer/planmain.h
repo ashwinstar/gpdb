@@ -130,7 +130,7 @@ extern void process_implied_equality(PlannerInfo *root,
 /*
  * prototypes for plan/setrefs.c
  */
-extern Plan *set_plan_references(Plan *plan, List *rtable, List *sharedNodes);
+extern Plan *set_plan_references_qry(Plan *plan, Query *qry); 
 extern List *set_returning_clause_references(List *rlist,
 								Plan *topplan,
 								Index resultRelation); 

@@ -2372,7 +2372,7 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 						  pre_dispatch_function_evaluation_context * context)
 {
 	List * savetargets = NIL;
-	Node * newNode = 0;
+	Node * new_node = 0;
 	
 	if (node == NULL)
 		return NULL;
@@ -2619,17 +2619,17 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 		((Plan *)node)->targetlist = NIL;
 	}
 
-	newNode =  plan_tree_mutator(node, pre_dispatch_function_evaluation_mutator,
+	new_node =  plan_tree_mutator(node, pre_dispatch_function_evaluation_mutator,
 													 (void *) context);
 
 	if (savetargets != NIL)
 	{
 		((Plan *)node)->targetlist = savetargets;
-		((Plan *)newNode)->targetlist = savetargets;
+		((Plan *)new_node)->targetlist = savetargets;
 	}
 			
 		
-	return newNode;
+	return new_node;
 }
 
 /*

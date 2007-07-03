@@ -336,6 +336,28 @@ tuplestore_begin_heap(bool randomAccess, bool interXact, int maxKBytes)
 	return state;
 }
 
+Tuplestorestate *
+tuplestore_begin_heap_file_readerwriter(const char* fileName, bool isWriter)
+{
+	Tuplestorestate *state;
+	
+	state = tuplestore_begin_common(true, true, 1); 
+	
+	state->myfile = BufFileCreateTemp_ReaderWriter(fileName, isWriter); 
+	state->status = isWriter ? TSS_WRITEFILE : TSS_READFILE;
+
+	state->copytup = copytup_heap;
+	state->writetup = writetup_heap;
+	state->readtup = readtup_heap;
+
+	return state;
+}
+
+int tuplestore_readerwriter_filebuf_getnumfile(Tuplestorestate* state)
+{
+	Assert(state->myfile);
+	return BufFileNumFiles(state->myfile);
+}
 
 /*
  * tuplestore_set_instrument
@@ -792,6 +814,14 @@ dumptuples(Tuplestorestate *state, TuplestorePos *pos)
 		WRITETUP(state, pos, state->memtuples[i]);
 	}
 	state->memtupcount = 0;
+}
+
+/* flush underlying file */
+void tuplestore_flush(Tuplestorestate *state)
+{
+	if(!state->myfile)
+		return;
+	BufFileFlush(state->myfile);
 }
 
 /*

@@ -575,13 +575,6 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
     if (!is_plan_node(node))
 		return plan_tree_mutator(node, apply_motion_mutator, context);
 
-	if(IsA(node, Motion))
-	{
-		Motion *m = (Motion *) node;
-		if(m->mutated)
-			return (Node*) m->mutated;
-	}
-
     plan = (Plan *)node;
     flow = plan->flow;
 
@@ -631,8 +624,6 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
     if (IsA(newnode, Motion))
     {
         Motion *motion = (Motion *)newnode;
-		Motion *oldMotion = (Motion *)node;
-
 
 #ifdef USE_ASSERT_CHECKING
 		ListCell *cell;
@@ -656,7 +647,6 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
 
         /* Assign unique node number to the new node. */
         assignMotionID(newnode, context, node);
-		oldMotion->mutated = (Plan *) motion;
 
         /* If top slice marked as singleton, make it a dispatcher singleton. */
 		if (list_length(motion->sliceEntries) == 1)
@@ -885,7 +875,6 @@ void add_slice_to_motion(Motion *motion,
 	motion->sliceEntries = lappend(motion->sliceEntries, sliceEntry);
 
 	sliceEntry->motionType = motionType;
-	sliceEntry->recvSliceId = -1;
 	sliceEntry->hashExpr = hashExpr;
 	sliceEntry->hashDataTypes = NULL; 
 	sliceEntry->numOutputSegs = numOutputSegs;
@@ -1692,6 +1681,25 @@ static int shareinput_peekmot(ApplyShareInput_MotStack *ctxt)
 	return linitial_int(ctxt->motStack);
 }
 
+static bool shareinput_markslice_fixsharednodes(Node *node, Query *qry, void *vpctxt, bool fPop)
+{
+	Plan *plan = (Plan *) node;
+	
+	if(fPop)
+		return false;
+
+	if(plan->shared_as_id >= 0)
+	{
+		ListCell *lc;
+		Assert(IsA(plan, Material) || IsA(plan, Sort));
+
+		lc = list_nth_cell(qry->sharedNodes, plan->shared_as_id);
+		lc->data.ptr_value = (void *) plan;
+	}
+
+	return true;
+}
+	
 static bool shareinput_markslice_mutator(Node* node, Query *qry, void *vpctxt, bool fPop)
 {
 	Plan *plan = (Plan *) node;
@@ -1711,22 +1719,38 @@ static bool shareinput_markslice_mutator(Node* node, Query *qry, void *vpctxt, b
 		return true;
 	}
 
-	if(IsA(plan, Material))
+	if(IsA(plan, ShareInputScan))
 	{
 		int motId = shareinput_peekmot(ctxt);
-		Material *material = (Material *) plan;
+		Plan *shared = (Plan *) list_nth(qry->sharedNodes, plan->underlying_share_id);
 
-		if(material->slice_mark < 0) 
+		Assert(shared);
+		Assert(plan->lefttree == NULL || plan->lefttree == shared);
+
+		if(IsA(shared, Material))
 		{
-			/* slice_mark < 0 means it cannot be a normal motion id. */
-			Assert(material->slice_mark == SliceMark_NotMarked || material->slice_mark == SliceMark_CrossSlice);
-			if(material->slice_mark == SliceMark_NotMarked)
-				material->slice_mark = motId;
+			Material *material = (Material *) shared;
+
+			if(material->slice_mark < 0) 
+			{
+				/* slice_mark < 0 means it cannot be a normal motion id. */
+				Assert(material->slice_mark == SliceMark_NotMarked || material->slice_mark == SliceMark_CrossSlice);
+				if(material->slice_mark == SliceMark_NotMarked)
+					material->slice_mark = motId;
+			}
+			else if(material->slice_mark != motId)
+			{
+				material->slice_mark = SliceMark_CrossSlice;
+			}
+
+			if(plan->lefttree)
+			{
+				material->driver_slice = motId;
+			}
 		}
 		else
 		{
-			if(material->slice_mark != motId)
-				material->slice_mark = SliceMark_CrossSlice;
+			Assert(IsA(shared, Sort));
 		}
 	}
 	return true;
@@ -1740,8 +1764,9 @@ Plan *apply_shareinput_markslice(Plan *plan, Query *query)
 	Assert(is_plan_node((Node *) plan) && IsA(query, Query));
 	shareinput_pushmot(&state, 0);
 	
+	shareinput_walker(shareinput_markslice_fixsharednodes, (Node *) plan, query, NULL);
 	shareinput_walker(shareinput_markslice_mutator, (Node *) plan, query, (void *) &state);
-
+	
 	return plan;
 }
 

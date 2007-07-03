@@ -788,8 +788,6 @@ explain_outNode(StringInfo str,
 	bool		skip_outer=false;
 	char       *skip_outer_msg = NULL;
 
-	MotionSliceEntry *motionSlice = NULL;
-
 	if (plan == NULL)
 	{
 		appendStringInfoChar(str, '\n');
@@ -989,49 +987,35 @@ explain_outNode(StringInfo str,
 				bool        senderIsEntryDb = false;
 
 				if(nSlices == 1)
-					motionSlice = (MotionSliceEntry *) linitial(pMotion->sliceEntries);
-				else
 				{
-					int i = 0;
-					ListCell *cell;
-					foreach(cell, pMotion->sliceEntries)
+					MotionSliceEntry *motionSlice = (MotionSliceEntry *) linitial(pMotion->sliceEntries);
+
+					Assert(motionSlice);
+
+					switch (motionSlice->motionType)
 					{
-						motionSlice = (MotionSliceEntry *) lfirst(cell);
-						if(motionSlice->recvSliceId == currentSlice->sliceIndex)
-						{
-							if(i != 0)
-							{
-								skip_outer = true;
-								skip_outer_msg = "See first subplan of the Motion";
-							}
+						case MOTIONTYPE_HASH:
+							nReceivers = motionSlice->numHashSegs;
+							pname = "Redistribute Motion";
 							break;
-						}
-						++i;
-						motionSlice = NULL;
+						case MOTIONTYPE_FIXED:
+							nReceivers = motionSlice->numOutputSegs;
+							if (nReceivers == 0)
+							{
+								pname = "Broadcast Motion";
+								nReceivers = getgpsegmentCount();
+							}
+							else
+								pname = "Gather Motion";
+							break;
+						default:
+							pname = "Motion ???";
+							break;
 					}
 				}
-
-				Assert(motionSlice);
-
-				switch (motionSlice->motionType)
+				else
 				{
-					case MOTIONTYPE_HASH:
-						nReceivers = motionSlice->numHashSegs;
-						pname = "Redistribute Motion";
-						break;
-					case MOTIONTYPE_FIXED:
-						nReceivers = motionSlice->numOutputSegs;
-						if (nReceivers == 0)
-						{
-							pname = "Broadcast Motion";
-							nReceivers = getgpsegmentCount();
-						}
-						else
-							pname = "Gather Motion";
-						break;
-					default:
-						pname = "Motion ???";
-						break;
+					pname = "MultiSlice Motion";
 				}
 
 				if(nSenders == 1 &&
@@ -1394,15 +1378,19 @@ explain_outNode(StringInfo str,
 				Motion	   *pMotion = (Motion *) plan;
                 SliceTable *sliceTable = planstate->state->es_sliceTable;
 
-				Assert(motionSlice);
+				if(list_length(pMotion->sliceEntries) == 1)
+				{
+					MotionSliceEntry *motionSlice = (MotionSliceEntry *) linitial(pMotion->sliceEntries);
+					Assert(motionSlice);
 
-				if (pMotion->sendSorted || motionSlice->motionType == MOTIONTYPE_HASH)
-					show_motion_keys(plan,
-							motionSlice->hashExpr,
-							pMotion->numSortCols,
-							pMotion->sortColIdx,
-							"Merge Key",
-							str, indent, es);
+					if (pMotion->sendSorted || motionSlice->motionType == MOTIONTYPE_HASH)
+						show_motion_keys(plan,
+								motionSlice->hashExpr,
+								pMotion->numSortCols,
+								pMotion->sortColIdx,
+								"Merge Key",
+								str, indent, es);
+				}
 
                 /* Descending into a new slice. */
                 if (sliceTable)
@@ -2037,4 +2025,6 @@ show_motion_keys(Plan *plan, List *hashExpr, int nkeys, AttrNumber *keycols,
 	    appendStringInfo(str, "  %s: %s\n", "Hash Key", exprstr);
     }
 }                               /* show_motion_keys */
+
+
 

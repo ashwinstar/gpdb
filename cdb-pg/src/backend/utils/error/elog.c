@@ -407,11 +407,6 @@ errfinish(int dummy,...)
 
 		recursion_depth--;
 
-		/*
-		 * feng's debug support
-	     */
-		debug_break_n(DEBUG_BREAK_POINT_EXCEPTION);
-
 		PG_RE_THROW();
 	}
 
