@@ -646,7 +646,7 @@ advanceKeyLevelState(WindowState *wstate, int min_level)
 	{
 		level_state = &wstate->level_state[i];
 		
-		if (i >= min_level)
+		if (i >= min_level && min_level != -1)
 		{
 			/* The level data is still set for the previous row. 
 			 * Remember the rank and dense_rank values.
