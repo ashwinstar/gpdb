@@ -1093,7 +1093,7 @@ expandRecordVariable(ParseState *pstate, Var *var, int levelsup)
 			char	   *label = strVal(lfirst(lname));
 			Node	   *varnode = (Node *) lfirst(lvar);
 
-			TupleDescInitEntry(tupleDesc, i,
+			TupleDescInitEntry(tupleDesc, (AttrNumber) i,
 							   label,
 							   exprType(varnode),
 							   exprTypmod(varnode),
