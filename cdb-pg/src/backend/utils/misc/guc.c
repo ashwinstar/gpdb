@@ -1334,7 +1334,8 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"debug_print_full_dtm", PGC_SUSET, LOGGING_WHAT,
 			gettext_noop("Prints full DTM information to server log."),
-			NULL
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_print_full_dtm,
 		false, NULL, NULL
@@ -1343,7 +1344,8 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"debug_print_snapshot_dtm", PGC_SUSET, LOGGING_WHAT,
 			gettext_noop("Prints snapshot DTM information to server log."),
-			NULL
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_print_snapshot_dtm,
 		false, NULL, NULL
@@ -1352,7 +1354,8 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"debug_disable_distributed_snapshot", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Disables distributed snapshots."),
-			NULL
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_disable_distributed_snapshot,
 		false, NULL, NULL
@@ -1361,7 +1364,8 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"debug_abort_after_distributed_prepared", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Cause an abort after all segments are prepared but before the distributed commit is written."),
-			NULL
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_abort_after_distributed_prepared,
 		false, NULL, NULL
@@ -1370,7 +1374,8 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"debug_dtm_action_primary", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Specify if the primary or mirror segment is the target of the debug DTM action."),
-			NULL
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_dtm_action_primary,
 		DEBUG_DTM_ACTION_PRIMARY_DEFAULT, NULL, NULL
@@ -1532,20 +1537,20 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"debug_dtm_action_delay_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"debug_dtm_action_delay_ms", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Sets the debug DTM action delay in milliseconds."),
 			NULL,
-			GUC_UNIT_BLOCKS
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_UNIT_MS
 		},
 		&Debug_dtm_action_delay_ms,
 		DEBUG_DTM_ACTION_DELAY_MS_DEFAULT, 0, INT_MAX / 1000, NULL, NULL
 	},
 
 	{
-		{"debug_dtm_segment", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"debug_dtm_action_segment", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Sets the debug DTM action segment."),
 			NULL,
-			GUC_UNIT_BLOCKS
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_dtm_action_segment,
 		DEBUG_DTM_ACTION_SEGMENT_DEFAULT, 0, 1000, NULL, NULL
@@ -2925,40 +2930,40 @@ static struct config_string ConfigureNamesString[] =
 	},
 		
 	{
-		{"debug_dtm_action", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"debug_dtm_action", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Sets the debug DTM action."),
 			NULL,
-			GUC_DISALLOW_IN_FILE | GUC_SUPERUSER_ONLY
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_dtm_action_str,
 		"none", assign_debug_dtm_action, NULL
 	},
 
 	{
-		{"debug_dtm_action_target", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"debug_dtm_action_target", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Sets the debug DTM action target."),
 			NULL,
-			GUC_DISALLOW_IN_FILE | GUC_SUPERUSER_ONLY
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_dtm_action_target_str,
 		"none", assign_debug_dtm_action_target, NULL
 	},
 
 	{
-		{"debug_dtm_action_protocol", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"debug_dtm_action_protocol", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Sets the debug DTM action protocol."),
 			NULL,
-			GUC_DISALLOW_IN_FILE | GUC_SUPERUSER_ONLY
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_dtm_action_protocol_str,
 		"none", assign_debug_dtm_action_protocol, NULL
 	},
 
 	{
-		{"debug_dtm_action_sql_command_tag", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"debug_dtm_action_sql_command_tag", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Sets the debug DTM action sql command tag."),
 			NULL,
-			GUC_DISALLOW_IN_FILE | GUC_SUPERUSER_ONLY
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_dtm_action_sql_command_tag,
 		"", NULL, NULL
