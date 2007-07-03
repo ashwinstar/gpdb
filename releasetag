@@ -5,6 +5,6 @@ echo -e "-\c"
 if [ x"$TMP" != x"$" ]; then
   echo -e "$TMP\c"
 else
-  echo -e "devel\c"
+  echo -e "crashburn\c"
 fi
 
