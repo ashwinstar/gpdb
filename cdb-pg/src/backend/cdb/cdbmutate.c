@@ -82,7 +82,9 @@ warn_ctid_without_segid(Query *query, Plan *plan);
 
 static bool has_ctid_outside_tlist_walker(Node *node, void* unused);
 
+#if 0
 static bool DoesDistributionHaveDependencies(Oid relOid, GpPolicy * policy);
+#endif
 
 /* ------------------------------------------------------------------------- *
  * Function apply_motion() and apply_motion_mutator() add motion nodes to
@@ -1382,6 +1384,7 @@ has_ctid_outside_tlist_walker(Node *node, void* unused)
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 
+#if 0
 bool
 DoesDistributionHaveDependencies(Oid relOid, GpPolicy * policy)
 {
@@ -1514,6 +1517,7 @@ DoesDistributionHaveDependencies(Oid relOid, GpPolicy * policy)
 
 	return false;
 }
+#endif 
 
 
 /* Walk the tree for shareinput.
