@@ -773,10 +773,14 @@ nextRow(WindowState *wstate, ExprContext *econtext)
 	
 	outerTupleSlot = wstate->curslot;
 
-	if (wt->part_break)
-		initializePartition(wstate);
-	else
-		advanceKeyLevelState(wstate, wt->min_key_break);
+	/* At the first row of a partition, we're already initialised. */
+	if (wstate->row_index >= 0)
+	{
+		if (wt->part_break)
+			initializePartition(wstate);
+		else
+			advanceKeyLevelState(wstate, wt->min_key_break);
+	}
 
 	wstate->row_index++;
 	
@@ -2517,12 +2521,10 @@ cume_dist_prelim(PG_FUNCTION_ARGS)
 	
 	result = level_state->prior_non_peer_count + level_state->peer_count;
 
-#ifdef DEBUG_CUME_DIST
 	elog(DEBUG1, "--prior = %llu, peercount = %lli, result %llu",
 		 level_state->prior_non_peer_count,
 		 level_state->peer_count,
 		 result);
-#endif
 
 	PG_RETURN_INT64(result);
 }
