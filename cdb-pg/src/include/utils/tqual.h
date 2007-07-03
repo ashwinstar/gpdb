@@ -199,6 +199,8 @@ extern Snapshot GetSnapshotData(Snapshot snapshot, bool serializable,
  			                    DistributedSnapshotData *distributedSnapshotData);
 extern void updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, char* debugCaller);
 extern char* DebugGetDistributedSnapshotString(DistributedSnapshot snapshot);
-extern char* DebugGetSnapshotString(Snapshot snapshot);
+extern char* DebugGetSnapshotString(const Snapshot snapshot);
+
+extern void GetSlotTableDebugInfo(void **snapshotArray, int *maxSlots);
 
 #endif   /* TQUAL_H */

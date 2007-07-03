@@ -1622,7 +1622,7 @@ CheckSharedSnapshotForSubtransaction(TransactionId xid)
 /* MPP debug routine for showing currently active subtransaction ids.
  */
 void
-ShowSubtransactionsForSharedSnapshot(uint32 subcnt, TransactionId *subxids)
+ShowSubtransactionsForSharedSnapshot(uint32 subcnt,const TransactionId *subxids)
 {
     uint32 sub;
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"Reader qExec count of subtransaction ids %u",SharedLocalSnapshotSlot->subcnt);

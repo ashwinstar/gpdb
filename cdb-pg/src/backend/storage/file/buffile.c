@@ -153,10 +153,11 @@ extendBufFile(BufFile *file)
 		/* next rw file name.  Append the seq number to rwfile_prefix.
 		 */
 		int fileFlags = O_RDWR | PG_BINARY;
+		char rwfile_next[MAX_RWFILE_PREFIX_SIZE + 20];
+		
 		if(file->rwfile_iswriter)
 			fileFlags |= O_TRUNC | O_CREAT;
 
-		char rwfile_next[MAX_RWFILE_PREFIX_SIZE + 20];
 		snprintf(rwfile_next, sizeof(rwfile_next),
 				"%s.%d", file->rwfile_prefix, file->numFiles
 				);

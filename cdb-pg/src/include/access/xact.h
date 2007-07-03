@@ -206,6 +206,6 @@ extern void xact_redo(XLogRecPtr lsn, XLogRecord *record);
 extern void xact_desc(StringInfo buf, uint8 xl_info, char *rec);
 extern const char *IsoLevelAsUpperString(int IsoLevel);
 
-extern void ShowSubtransactionsForSharedSnapshot(uint32 subcnt, TransactionId *subxids);
+extern void ShowSubtransactionsForSharedSnapshot(uint32 subcnt, const TransactionId *subxids);
 
 #endif   /* XACT_H */

@@ -293,7 +293,7 @@ static void init_var_from_str(const char *str, NumericVar *dest);
 static void set_var_from_var(NumericVar *value, NumericVar *dest);
 static void init_var_from_var(NumericVar *value, NumericVar *dest);
 static void init_ro_var_from_var(NumericVar *value, NumericVar *dest);
-static void set_var_from_num(Numeric value, NumericVar *dest);
+/*static void set_var_from_num(Numeric value, NumericVar *dest);*/
 static void init_var_from_num(Numeric value, NumericVar *dest);
 static void init_ro_var_from_num(Numeric value, NumericVar *dest);
 static char *get_str_from_var(NumericVar *var, int dscale);
@@ -3097,6 +3097,7 @@ init_var_from_str(const char *str, NumericVar *dest)
  *
  *	Convert the packed db format into a variable
  */
+/*
 static void
 set_var_from_num(Numeric num, NumericVar *dest)
 {
@@ -3112,6 +3113,7 @@ set_var_from_num(Numeric num, NumericVar *dest)
 
 	memcpy(dest->digits, NUMERIC_DIGITS(num), ndigits * sizeof(NumericDigit));
 }
+*/
 
 /*
  * init_var_from_num() -

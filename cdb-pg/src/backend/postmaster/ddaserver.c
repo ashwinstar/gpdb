@@ -82,7 +82,7 @@ static void DdaserverLoop(void);
 static bool processDdaRequest( int sockfd );
 static int listenerSetup(void);
 
-static int64 readInt64(uint8 *buff);
+/*static int64 readInt64(uint8 *buff);*/
 static void sendInt64(uint8 *buff, int64 i);
 
 static void
@@ -906,6 +906,7 @@ listenerSetup(void)
 	return listenerPort;
 }
 
+/*
 int64 readInt64( uint8 *buff )
 {
 	int64		result;
@@ -914,7 +915,7 @@ int64 readInt64( uint8 *buff )
 		
 	return result;
 }
-
+*/
 
 void sendInt64(uint8 *buff, int64 i)
 {

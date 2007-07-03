@@ -472,7 +472,7 @@ GetOldestXmin(bool allDbs, bool ignoreVacuum)
 	return result;
 }
 
-char* DebugGetSnapshotString(Snapshot snapshot)
+char* DebugGetSnapshotString(const Snapshot snapshot)
 {
 	static char buffer[200];
 

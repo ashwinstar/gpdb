@@ -325,7 +325,7 @@ retry:
 	arrayP->numSlots++;
 	
 	/* initialize some things. */
-found:
+/*found: */
 	slot->slotid = slotId;
 	slot->xid = 0;
 	slot->pid = 0;
