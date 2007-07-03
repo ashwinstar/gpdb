@@ -481,7 +481,7 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 		if (file->u.exec.fp == NULL)
 			elog( ERROR, "External Table error executing cmd: '%s'", cmd );
 	}
-    else if (pg_strncasecmp(url, PROTOCOL_FILE, strlen(PROTOCOL_FILE)) == 0)
+    else if (IS_FILE_URI(url))
     {
 		char* path = strchr(url + strlen(PROTOCOL_FILE), '/');
 		if (!path) 
@@ -500,8 +500,7 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 			return NULL;
 		}
     }
-    else if (pg_strncasecmp(url, PROTOCOL_GPFDIST, strlen(PROTOCOL_GPFDIST)) == 0
-			 || pg_strncasecmp(url, PROTOCOL_HTTP, strlen(PROTOCOL_HTTP)) == 0)
+    else if (IS_HTTP_URI(url) || IS_GPFDIST_URI(url))
     {
 		int sz = make_url(file->url, ev, 0);
 
@@ -515,7 +514,7 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 
 		file->u.curl.curl_url = palloc(sz);
 		make_url(file->url, ev, file->u.curl.curl_url);
-		if (0 == pg_strncasecmp(file->u.curl.curl_url, "gpfdist://", strlen("gpfdist://")))
+		if (IS_GPFDIST_URI(file->u.curl.curl_url))
 		{
 			/* replace gpfdist:// with http:// */
 			file->u.curl.curl_url += 3;

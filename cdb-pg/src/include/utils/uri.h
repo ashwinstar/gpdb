@@ -23,6 +23,15 @@ typedef enum UriProtocol
 #define PROTOCOL_HTTP	"http://"
 #define PROTOCOL_GPFDIST	"gpfdist://"
 
+/* 
+ * sometimes we don't want to parse the whole URI but just take a peek at
+ * which protocol it is. We can use these macros to do just that.
+ */
+#define IS_FILE_URI(uri_str) (pg_strncasecmp(uri_str, PROTOCOL_FILE, strlen(PROTOCOL_FILE)) == 0)
+#define IS_HTTP_URI(uri_str) (pg_strncasecmp(uri_str, PROTOCOL_HTTP, strlen(PROTOCOL_HTTP)) == 0)
+#define IS_GPFDIST_URI(uri_str) (pg_strncasecmp(uri_str, PROTOCOL_GPFDIST, strlen(PROTOCOL_GPFDIST)) == 0)
+#define IS_FTP_URI(uri_str) (pg_strncasecmp(uri_str, PROTOCOL_FTP, strlen(PROTOCOL_FTP)) == 0)
+
 typedef struct Uri
 {
 	UriProtocol protocol;

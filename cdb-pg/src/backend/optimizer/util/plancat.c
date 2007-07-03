@@ -40,6 +40,7 @@
 #include "utils/array.h"
 #include "utils/fmgroids.h"
 #include "utils/builtins.h"
+#include "utils/uri.h"
 #include "catalog/catalog.h"
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
@@ -399,9 +400,7 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 	/*
 	 * external web tables are non rescannable, regular ext tables are
 	 */
-	if(loc_str && 
-	   (pg_strncasecmp(loc_str, "file", strlen("file")) == 0 ||
-	   pg_strncasecmp(loc_str, "gpfdist", strlen("gpfdist")) == 0))
+	if(loc_str && (IS_FILE_URI(loc_str) || IS_GPFDIST_URI(loc_str)) ) 
 		rel->isrescannable = true;
 	else
 		rel->isrescannable = false; /* ext web table */
