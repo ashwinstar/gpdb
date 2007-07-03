@@ -1332,7 +1332,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"debug_print_full_dtm", PGC_USERSET, LOGGING_WHAT,
+		{"debug_print_full_dtm", PGC_SUSET, LOGGING_WHAT,
 			gettext_noop("Prints full DTM information to server log."),
 			NULL
 		},
@@ -1341,7 +1341,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"debug_print_snapshot_dtm", PGC_USERSET, LOGGING_WHAT,
+		{"debug_print_snapshot_dtm", PGC_SUSET, LOGGING_WHAT,
 			gettext_noop("Prints snapshot DTM information to server log."),
 			NULL
 		},
@@ -1350,7 +1350,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"debug_disable_distributed_snapshot", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"debug_disable_distributed_snapshot", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Disables distributed snapshots."),
 			NULL
 		},
@@ -1359,7 +1359,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 	
 	{
-		{"debug_abort_after_distributed_prepared", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"debug_abort_after_distributed_prepared", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Cause an abort after all segments are prepared but before the distributed commit is written."),
 			NULL
 		},
@@ -1368,7 +1368,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 	
 	{
-		{"debug_dtm_action_primary", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"debug_dtm_action_primary", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Specify if the primary or mirror segment is the target of the debug DTM action."),
 			NULL
 		},
