@@ -142,8 +142,10 @@ static inline int doBroadcast(MotionLayerState *mlStates, ChunkTransportState *t
 
 static bool flushBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates, MotionConn * conn, int16 motionId);
 
+#ifdef AMS_VERBOSE_LOGGING
 static void	dumpEntryConnections(int elevel, ChunkTransportStateEntry *pEntry);
 static void	print_connection(ChunkTransportState *transportStates, int fd, const char *msg);
+#endif 
 static void format_fd_set(StringInfo buf, int nfds, mpp_fd_set fds, char* pfx, char *sfx);
 static char *format_sockaddr(struct sockaddr *sa, char* buf, int bufsize);
 
@@ -2924,7 +2926,7 @@ doBroadcast(MotionLayerState *mlStates, ChunkTransportState *transportStates, Ch
 	return inactive;
 }
 
-
+#ifdef AMS_VERBOSE_LOGGING
 void
 dumpEntryConnections(int elevel, ChunkTransportStateEntry *pEntry)
 {
@@ -2950,6 +2952,7 @@ dumpEntryConnections(int elevel, ChunkTransportStateEntry *pEntry)
                          conn->localHostAndPort);
 	}
 }
+#endif
 
 
 /* declared in cdbmotion.h */
@@ -3017,6 +3020,7 @@ doSendStopMessage(ChunkTransportState *transportStates, int16 motNodeID)
 	}
 }
 
+#ifdef AMS_VERBOSE_LOGGING
 void
 print_connection(ChunkTransportState *transportStates, int fd, const char *msg)
 {
@@ -3042,6 +3046,7 @@ print_connection(ChunkTransportState *transportStates, int fd, const char *msg)
 	elog(DEBUG2, "%s: w/ports (%d/%d)",
 		 msg, ntohs(local.sin_port), ntohs(remote.sin_port));
 }
+#endif 
 
 
 void
