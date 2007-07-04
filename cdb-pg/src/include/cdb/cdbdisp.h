@@ -57,6 +57,8 @@ typedef struct DispatchCommandQueryParms
 	 */
 	char		*serializedDtxContextInfo;
 	int			serializedDtxContextInfolen;
+	
+	int			rootIdx;
 
 } DispatchCommandQueryParms;
 
@@ -216,6 +218,11 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 
 /*--------------------------------------------------------------------*/
 
+struct pg_result **
+cdbdisp_returnResults(struct CdbDispatchResults *primaryResults,
+						struct CdbDispatchResults *mirrorResults,
+						StringInfo errmsgbuf,
+						int *numresults);
 /*
  * cdbdisp_dispatchRMCommand:
  * Sends a non-cancelable command to all segment dbs, primary (and mirrors
@@ -359,6 +366,18 @@ void
 CdbDoCommandOnAllGangs(const char *strCommand, bool cancelOnError, bool needTwoPhase);
 
 /*--------------------------------------------------------------------*/
+#include "nodes/execnodes.h"	/* SliceTable */
+
+void
+cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
+					 bool cancelOnError,
+					 SliceTable *sliceTbl,
+					 //GpDispatchCommandType		mppDispatchCommandType,
+					 //void						   *commandTypeParms,
+					 struct CdbDispatchResults ** pPrimaryResults,		/* OUT */
+					 struct CdbDispatchResults ** pMirrorResults,       /* OUT */
+					 struct CdbDispatchCmdThreads ** pDispatchThreads);		/* OUT */
+
 
 /* Compose and dispatch the MPPEXEC commands corresponding to a plan tree
  * within a complete parallel plan.
@@ -443,6 +462,7 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions, char* d
 /* this is used for dire cleanup emergencies (in portalmem.c) */
 void
 CdbShutdownPortals(void);
+
 /*--------------------------------------------------------------------*/
 
 #endif   /* CDBDISP_H */

@@ -276,6 +276,10 @@ cdbdisp_errcode_to_sqlstate(int errcode, char outbuf[6]);
 int
 cdbdisp_sqlstate_to_errcode(const char *sqlstate);
 
+char *
+cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
+					 CdbDispatchResults *pMirrorResults);
+
 /*--------------------------------------------------------------------*/
 
 #endif   /* CDBDISPATCHRESULT_H */

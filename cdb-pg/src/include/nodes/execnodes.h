@@ -327,7 +327,14 @@ typedef struct Slice
 							 * factory during gang allocation.
 							 * They correspond to the CDBProcessLists below.
 							 */
-
+	
+	int	  primary_gang_id;
+	int   mirror_gang_id;
+							/*
+							 * So the Dispatch Agent can know what gang we are
+							 * talking about
+							 */
+							
 	int 	parentIndex; 	/* the index of parent in global slice table (origin 0)
 							 * or -1 if this is root slice.
 							 */

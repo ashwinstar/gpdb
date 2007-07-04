@@ -106,6 +106,7 @@ typedef enum
 	GP_ROLE_UTILITY = 0,		/* Operating as a simple database engine */
 	GP_ROLE_DISPATCH,			/* Operating as the parallel query dispatcher */
 	GP_ROLE_EXECUTE,			/* Operating as a parallel query executor */
+	GP_ROLE_DISPATCHAGENT,		/* A dispatch relay agent */
 	GP_ROLE_UNDEFINED			/* Should never see this role in use */
 } GpRoleValue;
 
@@ -181,6 +182,11 @@ extern bool gp_enable_functions;
  * Are we executing a callback query?
  */
 extern bool gp_is_callback;
+
+/*
+ * Use query dispatch agents?
+ */
+extern bool gp_use_dispatch_agent;
 
 /* Parameter debug_print_prelim_plan
  *
@@ -275,6 +281,7 @@ extern char *gp_fault_action_string;	/* Use by guc.c as user defined fault
 										 * action */
 extern bool gp_set_read_only;
 extern bool assign_gp_set_read_only(bool newval, bool doit, GucSource source);
+extern bool assign_gp_use_dispatch_agent(bool newval, bool doit, GucSource source);
 extern const char *show_gp_set_read_only(void);
 extern const char *role_to_string(GpRoleValue role);
 

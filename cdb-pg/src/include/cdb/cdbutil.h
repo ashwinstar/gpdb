@@ -43,6 +43,7 @@ typedef struct CdbComponentDatabaseInfo
 	
 } CdbComponentDatabaseInfo;
 
+
 /* --------------------------------------------------------------------------------------------------
  * Structure for return value from getCdbSegmentDatabases()
  *

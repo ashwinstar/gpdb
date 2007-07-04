@@ -60,6 +60,7 @@ typedef struct SegmentDatabaseDescriptor
     char                   *dbname;         /* database name */
     char                   *username;         /* user name */
     int4		            motionListener; /* interconnect listener port */
+    int4					backendPid;
     char                   *whoami;         /* QE identifier for msgs */
 
 } SegmentDatabaseDescriptor;
@@ -83,6 +84,9 @@ bool                            /* returns true if connected */
 cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
                   const char                   *options);
 
+bool                            /* returns true if connected */
+cdbconn_doDispatchAgentConnect(SegmentDatabaseDescriptor    *segdbDesc,
+                  const char                   *options);
 
 /* Set the slice index for error messages related to this QE. */
 void
