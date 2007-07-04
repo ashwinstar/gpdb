@@ -202,6 +202,9 @@ struct pg_result
 
     /* CDB: List of statistical response messages ('Y') from qExec. */
     pgCdbStatCell  *cdbstats;   /* ordered from newest to oldest */
+    
+    void * extras;				/* used for gang management commands */
+    int	   extraslen;
 };
 
 /* PGAsyncStatusType defines the state of the query-execution state machine */
@@ -295,6 +298,7 @@ struct pg_conn
 #endif
     char       *gpqeid;        /* MPP: session id & startup info for qExec */
     char       *gpqdid;        /* MPP: session id & startup info for QD callback */
+    char       *gpdaid;        /* MPP: session id & startup info for QDA relay */
 
 	/* Optional file to write trace info to */
 	FILE	   *Pfdebug;

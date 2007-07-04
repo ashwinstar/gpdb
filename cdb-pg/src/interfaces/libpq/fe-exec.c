@@ -162,6 +162,8 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 	result->curOffset = 0;
 	result->spaceLeft = 0;
     result->cdbstats = NULL;            /*CDB*/
+    result->extras = NULL;
+    result->extraslen = 0;
 
 	if (conn)
 	{
@@ -718,6 +720,7 @@ PQbuildGpQueryString(const char  *command,
 					  int          flags,
 					  int          gp_command_count,
 					  int		   localSlice,
+					  int		   rootIdx,
 					  Oid			sessionUserId,
 					  bool			sessionUserIsSuper,
 					  Oid			outerUserId,
@@ -733,7 +736,7 @@ PQbuildGpQueryString(const char  *command,
 
 	total_query_len = 5 /* overhead */ + 14 /* userids */ + 24 /* lengths */ +
 		4 /* comamnd count */ + snapshotInfo_len +
-		4 /* flags */ + command_len + querytree_len + plantree_len + params_len + sliceinfo_len + 4;
+		4 /* flags */ + command_len + querytree_len + plantree_len + params_len + sliceinfo_len + 4 + 4;
 
 	shared_query = malloc(total_query_len);
 	if (shared_query == NULL)
@@ -778,6 +781,10 @@ PQbuildGpQueryString(const char  *command,
 	pos += 4;
 	
 	tmp = htonl(localSlice);
+	memcpy(pos, &tmp, 4);
+	pos += 4;
+	
+	tmp = htonl(rootIdx);
 	memcpy(pos, &tmp, 4);
 	pos += 4;
 	
@@ -3227,4 +3234,52 @@ PQunescapeBytea(const unsigned char *strtext, size_t *retbuflen)
 
 	*retbuflen = buflen;
 	return tmpbuf;
+}
+
+int PQsendCreateGang(PGconn * conn, int size, void * binaryGangInfo)
+{
+	char * query = "create gang";
+	
+	if (!PQexecStart(conn))
+		return 0;
+
+
+	PQsendQueryStart(conn);
+	
+	/* construct the outgoing Query message */
+	if (pqPutMsgStart('G', false, conn) < 0 ||
+		pqPuts(query, conn) < 0 ||
+		pqPutInt(size, 4, conn) < 0 ||
+		pqPutnchar(binaryGangInfo, size, conn) < 0 ||
+		pqPutMsgEnd(conn) < 0)
+	{
+		pqHandleSendFailure(conn);
+		return 0;
+	}
+	
+	/* remember we are using simple query protocol */
+	conn->queryclass = PGQUERY_SIMPLE;
+
+	/* and remember the query text too, if possible */
+	/* if insufficient memory, last_query just winds up NULL */
+	if (conn->last_query)
+		free(conn->last_query);
+	conn->last_query = strdup(query);
+
+	/*
+	 * Give the data a push.  In nonblock mode, don't complain if we're unable
+	 * to send it all; PQgetResult() will do any additional flushing needed.
+	 */
+	if (pqFlush(conn) < 0)
+	{
+		pqHandleSendFailure(conn);
+		return 0;
+	}
+
+	/* OK, it's launched! */
+	conn->asyncStatus = PGASYNC_BUSY;
+	
+	return 1;
+
+
 }

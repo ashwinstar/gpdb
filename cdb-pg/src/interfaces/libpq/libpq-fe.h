@@ -344,6 +344,7 @@ extern char *PQbuildGpQueryString(const char  *command,
 								   int          flags,
 								   int          gp_command_count,
 								   int			localSlice,
+								   int			rootIdx,
 								   Oid			sessionUserId,
 								   pqbool		sessionUserIsSuper,
 					  			   Oid			outerUserId,
@@ -548,6 +549,11 @@ extern int	PQenv2encoding(void);
 /* === in fe-auth.c === */
 
 extern char *PQencryptPassword(const char *passwd, const char *user);
+
+/*
+ * special routine for sending gang management commands to dispatch agent
+ */
+extern int PQsendCreateGang(PGconn * conn, int size, void * binaryGangInfo);
 
 #ifdef __cplusplus
 }

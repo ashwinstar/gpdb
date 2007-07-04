@@ -195,6 +195,9 @@ static const PQconninfoOption PQconninfoOptions[] = {
 	{"gpqdid", NULL, "", NULL,
 	"gp-debug-qdid", "D", 40},
 	
+	{"gpdaid", NULL, "", NULL,
+	"gp-debug-daid", "D", 40},
+	
 
 	/* Terminating entry --- MUST BE LAST */
 	{NULL, NULL, NULL, NULL,
@@ -430,6 +433,9 @@ connectOptions1(PGconn *conn, const char *conninfo)
 	
 	tmp = conninfo_getval(connOptions, "gpqdid");
 	conn->gpqdid = tmp ? strdup(tmp) : NULL;
+	
+	tmp = conninfo_getval(connOptions, "gpdaid");
+	conn->gpdaid = tmp ? strdup(tmp) : NULL;
 
 	/*
 	 * Free the option info - all is in conn now
@@ -1966,6 +1972,8 @@ freePGconn(PGconn *conn)
         free(conn->gpqeid);
     if (conn->gpqdid)          /* CDB */
         free(conn->gpqdid);
+    if (conn->gpdaid)          /* CDB */
+        free(conn->gpdaid);
 
 	/* Note that conn->Pfdebug is not ours to close or free */
 	if (conn->last_query)

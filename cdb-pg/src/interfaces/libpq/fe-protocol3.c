@@ -420,6 +420,29 @@ pqParseInput3(PGconn *conn)
                                        msgLength);
                     conn->inCursor += msgLength;
                     break;
+                case 'y':       
+                	if (pqGets(&conn->workBuffer, conn))
+						return;
+					if (conn->result == NULL)
+					{
+						conn->result = PQmakeEmptyPGresult(conn,
+														   PGRES_COMMAND_OK);
+						if (!conn->result)
+							return;
+					}
+					strncpy(conn->result->cmdStatus, conn->workBuffer.data,
+							CMDSTATUS_LEN);
+					
+					
+					if (pqGetInt(&conn->result->extraslen, 4, conn))
+						return;
+					conn->result->extras = malloc(conn->result->extraslen);
+					if (pqGetnchar((char *)conn->result->extras, conn->result->extraslen, conn))
+						return;
+					conn->asyncStatus = PGASYNC_READY;
+
+                    break;
+
                 default:
 					printfPQExpBuffer(&conn->errorMessage,
 									  libpq_gettext(
@@ -2043,6 +2066,16 @@ build_startup_packet(const PGconn *conn, char *packet,
 		if (packet)
 			strcpy(packet + packet_len, conn->gpqdid);
 		packet_len += strlen(conn->gpqdid) + 1;
+	}
+	/* CDB: Add qExec startup data */
+	if (conn->gpdaid && conn->gpdaid[0])
+	{
+		if (packet)
+			strcpy(packet + packet_len, "gpdaid");
+		packet_len += strlen("gpdaid") + 1;
+		if (packet)
+			strcpy(packet + packet_len, conn->gpdaid);
+		packet_len += strlen(conn->gpdaid) + 1;
 	}
 
 	/* Add any environment-driven GUC settings needed */
