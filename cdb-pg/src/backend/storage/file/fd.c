@@ -867,7 +867,9 @@ CreateTempFifo(const char* fileName)
 {
 	char tempfilepath[MAXPGPATH];
 	char *fname = NULL;
+#ifndef WIN32
 	int err;
+#endif
 
 	snprintf(tempfilepath, sizeof(tempfilepath),
 			"%s/%s", PG_TEMP_FILES_DIR, fileName
@@ -875,6 +877,10 @@ CreateTempFifo(const char* fileName)
 
 	fname = make_database_relative(tempfilepath);
 	Assert(fname);
+
+#ifdef WIN32
+	elog(ERROR,"mkfifo not supported on win32");
+#else
 
 	err = mkfifo(fname, 0600);
 	if(err < 0 && errno != EEXIST)
@@ -900,7 +906,7 @@ CreateTempFifo(const char* fileName)
 		if(err < 0 && errno != EEXIST)
 			elog(ERROR, "Cannot create temp fifo %s", fname);
 	}
-
+#endif
 	if(fname != NULL)
 		pfree(fname);
 }
