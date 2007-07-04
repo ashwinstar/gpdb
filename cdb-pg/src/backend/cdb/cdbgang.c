@@ -1793,6 +1793,7 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
 	 * We allocate enough memory for this many DoConnectParms structures,
 	 * even though we may not use them all.
 	 */
+	segdb_count = conninfo->nsegs;
 	max_threads = 1 + (segdb_count - 1) / gp_connections_per_thread;
 	Assert(max_threads > 0);
 	doConnectParmsAr = (DoConnectParms *)
