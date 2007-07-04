@@ -128,6 +128,8 @@ s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY
         }
 		if (my $port = $self->{options}->{"--with-pgport"})
 		{
+			print O "#undef DEF_PGPORT\n";
+			print O "#undef DEF_PGPORT_STR\n";
 			print O "#define DEF_PGPORT $port\n";
 			print O "#define DEF_PGPORT_STR \"$port\"\n";
 		}
@@ -251,7 +253,7 @@ s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY
 #endif
 EOF
 	print O "#define USE_INTEGER_DATETIMES 1\n" if ($self->{options}->{integer_datetimes});
-	print O "#endif\n";
+	#print O "#endif\n";
         close(O);
     }
 
