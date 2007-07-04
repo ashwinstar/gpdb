@@ -58,7 +58,7 @@
 
 /* Write an uint64 field (anything written as ":fldname %u") */
 #define WRITE_UINT64_FIELD(fldname) \
-	appendStringInfo(str, " :" CppAsString(fldname) " %lld", node->fldname)
+	appendStringInfo(str, " :" CppAsString(fldname) " %lld", (long long)node->fldname)
 
 /* Write an OID field (don't hard-wire assumption that OID is same as uint) */
 #define WRITE_OID_FIELD(fldname) \

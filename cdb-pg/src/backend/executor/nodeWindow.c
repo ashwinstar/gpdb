@@ -410,10 +410,10 @@ processPeerCounts(WindowState *wstate, int min_level,
 			
 	//		peer_count++; /* update to reflect the tuple we just pulled */
 
-			elog(DEBUG1, "peer count = %llu", level_state->peer_count);
+			elog(DEBUG1, "peer count = %lld", (long long)level_state->peer_count);
 		}
 	}
-	elog(DEBUG1, "total peer count %llu, %li", peer_count, nfetches);
+	elog(DEBUG1, "total peer count %lld, %li", (long long)peer_count, nfetches);
 	if (nfetches)
 	{
 	//	ExecRestrPos(outerPlan);
@@ -989,7 +989,7 @@ invokeWindowFuncs(WindowState *wstate)
 	bool found_lower_edge = false;
 
 	elog(DEBUG1, "======= START FRAME PROCESS =====");
-	elog(DEBUG1, "row index %lli, trail edge = %li", wstate->row_index,
+	elog(DEBUG1, "row index %lli, trail edge = %li", (long long int) wstate->row_index,
 		 wstate->frame_trail_edge);
 	
 	/*
@@ -2522,9 +2522,9 @@ cume_dist_prelim(PG_FUNCTION_ARGS)
 	result = level_state->prior_non_peer_count + level_state->peer_count;
 
 	elog(DEBUG1, "--prior = %llu, peercount = %lli, result %llu",
-		 level_state->prior_non_peer_count,
-		 level_state->peer_count,
-		 result);
+		(long long unsigned int) level_state->prior_non_peer_count,
+		(long long int) level_state->peer_count,
+		(long long unsigned int) result);
 
 	PG_RETURN_INT64(result);
 }

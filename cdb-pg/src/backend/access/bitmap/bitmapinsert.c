@@ -940,8 +940,8 @@ findbitmappage(Relation rel, BMLOVItem lovitem,
 	elog(ERROR, "Can not find the bitmap page containing tid=%lld, nextBlockNo=%d,"
 		 " lov_head=%d, lov_tail=%d, firstTidNumber=%lld, last_tid_location=%lld,"
 		 " last_setbit=%lld, last_compword=%d, last_word=%d, headerbits=%d",
-		 tidnum, nextBlockNo, lovitem->bm_lov_head, lovitem->bm_lov_tail,
-		 *firstTidNumberP, lovitem->bm_last_tid_location, lovitem->bm_last_setbit,
+		 (long long)tidnum, nextBlockNo, lovitem->bm_lov_head, lovitem->bm_lov_tail,
+		 (long long) *firstTidNumberP,  (long long)lovitem->bm_last_tid_location, (long long) lovitem->bm_last_setbit,
 		 lovitem->bm_last_compword, lovitem->bm_last_word, lovitem->lov_words_header);
 }
 
