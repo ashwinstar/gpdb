@@ -1222,7 +1222,6 @@ typedef struct WindowKey
 	int				numSortCols; /* may be zero, see note */
 	AttrNumber	   *sortColIdx;
 	WindowFrame	   *frame;		/* NULL or framing for WindowKey */
-	bool			default_frame; /* frame was empty, go for the default */
 } WindowKey;
 
 

@@ -73,6 +73,7 @@ typedef struct WindowStatePerFunctionData
 	WindowRef		   *wref;
 	WindowStatePerLevelData *wlevel;
 	bool				isAgg;
+	bool				allowframe;
 	int					numargs; /* explicit, caller-supplied args */
 	int16				resulttypeLen;
 	bool				resulttypeByVal;
@@ -116,15 +117,19 @@ typedef struct WindowStatePerFunctionData
 	bool				frame_tuple_processed;
 	/* frame does not require buffering and complexity of invokeWindowFuncs() */
 	bool				trivial_frame;
-	/* 
-	 * Frame is contradictory and no tuples will fall into the frame, for
-	 * example: BETWEEN 10 FOLLOWING and 10 PRECEDING
-	 */
-	bool				empty_frame;
 } WindowStatePerFunctionData;
 
 typedef struct WindowFrameStateData
 {
+	/* if the user didn't specify a frame, we use the default */
+	bool default_frame;
+
+	/* 
+	 * Frame is contradictory and no tuples will fall into the frame, for
+	 * example: BETWEEN 10 FOLLOWING AND 10 PRECEDING.
+	 */
+	bool				empty_frame;
+
 	/* state for rows frame is simple (for now) */
 	long int trail_rows;
 	long int lead_rows;
@@ -197,7 +202,7 @@ typedef struct WindowTuple
 	((wstate->row_index == 0 && EDGE_IS_BOUND(key->frame->lead)) \
 	 || FUNC_HAS_MAN_FRAME(funcstate))
 	
-#define FRAME_IS_COMPLEX(f) (!(f->trivial_frame || f->empty_frame))
+#define FRAME_IS_COMPLEX(f, fs) (!(f->trivial_frame || fs->empty_frame))
 
 #define FUNC_HAS_MAN_FRAME(f) \
 	(funcstate->isAgg && !OidIsValid(funcstate->invtransfn_oid))
@@ -214,6 +219,7 @@ static TupleTableSlot *nextRow(WindowState *wstate, ExprContext *econtext);
 static WindowTuple *fetchTupleThroughBuf(WindowState *wstate);
 static void moveFrameBuf(WindowState *wstate, long int ntuples);
 static void freeFrameBuf(WindowState *wstate);
+static void init_frames(WindowState *wstate);
 
 /* WindowState constructor.
  */
@@ -716,12 +722,19 @@ resetManagedFrameAggStates(WindowState *wstate)
 	for (funcno = 0; funcno < wstate->numfuncs; funcno++)
 	{
 		WindowStatePerFunction funcstate = &wstate->func_state[funcno];
-		
-		if (funcstate->isAgg && !OidIsValid(funcstate->invtransfn_oid) &&
-			FRAME_IS_COMPLEX(funcstate))
+
+		/* only continue if we're framed */
+		if (PointerIsValid(funcstate->wlevel))
 		{
-			elog(DEBUG1, "resetting managed agg");
-			resetAggState(wstate, funcstate);
+			WindowFrameState fs = 
+				&wstate->frame_states[funcstate->wlevel->level];
+
+			if (funcstate->isAgg && !OidIsValid(funcstate->invtransfn_oid) &&
+				FRAME_IS_COMPLEX(funcstate, fs))
+			{
+				elog(DEBUG1, "resetting managed agg");
+				resetAggState(wstate, funcstate);
+			}
 		}
 	}
 }
@@ -945,7 +958,12 @@ invokeTrivialFuncs(WindowState *wstate)
 	for (funcno = 0; funcno < wstate->numfuncs; funcno++)
 	{
 		WindowStatePerFunction funcstate = &wstate->func_state[funcno];
-		if (!FRAME_IS_COMPLEX(funcstate))
+		WindowFrameState fs = NULL;
+
+		if (PointerIsValid(funcstate->wlevel))
+			fs = &wstate->frame_states[funcstate->wlevel->level];
+		
+		if (!fs || !FRAME_IS_COMPLEX(funcstate, fs))
 			add_tuple_to_trans(funcstate, wstate, econtext);
 	}
 }
@@ -1092,7 +1110,7 @@ invokeWindowFuncs(WindowState *wstate)
 
 					if (funcstate->wlevel->level != lvl || 
 						funcstate->frame_tuple_processed ||
-						!FRAME_IS_COMPLEX(funcstate))
+						!FRAME_IS_COMPLEX(funcstate, fs))
 						continue;
 
 					elog(DEBUG1, "found my level at %li", lvl);
@@ -1183,7 +1201,7 @@ invokeWindowFuncs(WindowState *wstate)
 						&wstate->func_state[funcno];
 
 					if (funcstate->wlevel->level != lvl ||
-						!FRAME_IS_COMPLEX(funcstate))
+						!FRAME_IS_COMPLEX(funcstate, fs))
 						continue;
 
 					elog(DEBUG1, "found lead level");
@@ -1291,8 +1309,10 @@ invokeWindowFuncs(WindowState *wstate)
 				if (EDGE_IS_BOUND(key->frame->trail) ||
 					key->frame->trail->kind == WINDOW_CURRENT_ROW)
 				{
+#if 0
 					fieldlt = DatumGetBool(FunctionCall2(&fs->lt_fn, framefield,
 										   				 fs->trail_edge_d));
+#endif
 					fieldeq = DatumGetBool(
 								FunctionCall2(&level_state->eqfunctions[0],
 										      framefield,
@@ -1313,7 +1333,7 @@ invokeWindowFuncs(WindowState *wstate)
 
 					if (funcstate->wlevel->level != lvl || 
 						funcstate->frame_tuple_processed ||
-						!FRAME_IS_COMPLEX(funcstate))
+						!FRAME_IS_COMPLEX(funcstate, fs))
 						continue;
 
 					elog(DEBUG1, "found my level at %li", lvl);
@@ -1446,8 +1466,10 @@ invokeWindowFuncs(WindowState *wstate)
 				if (EDGE_IS_BOUND(key->frame->lead) ||
 					key->frame->lead->kind == WINDOW_CURRENT_ROW)
 				{
+#if 0
 					fieldlt = DatumGetBool(FunctionCall2(&fs->lt_fn, framefield,
 										   				 fs->lead_edge_d));
+#endif
 					elog(DEBUG1, "framefield = %li, lead = %li",
 						 framefield, fs->lead_edge_d);
 					fieldeq = DatumGetBool(
@@ -1462,7 +1484,7 @@ invokeWindowFuncs(WindowState *wstate)
 						&wstate->func_state[funcno];
 
 					if (funcstate->wlevel->level != lvl ||
-						!FRAME_IS_COMPLEX(funcstate))
+						!FRAME_IS_COMPLEX(funcstate, fs))
 						continue;
 
 					elog(DEBUG1, "found lead level");
@@ -1623,6 +1645,266 @@ ExecWindow(WindowState *wstate)
 	return resultSlot;
 }
 
+/*
+ * Initialise frame specific state.
+ */
+
+static void
+init_frames(WindowState *wstate)
+{
+	Window *node = (Window *)wstate->ps.plan;
+	int level = -1;
+	ListCell *lc;
+	ExprContext  *econtext = wstate->ps.ps_ExprContext;;
+
+	foreach(lc, node->windowKeys)
+	{
+		WindowKey *key = lfirst(lc);
+		WindowFrame *frame;
+		WindowFrameState fs;
+		int funcno;
+		List *lvl_funcs = NIL;
+
+		level++;
+		fs = &wstate->frame_states[level];
+		frame = key->frame;
+
+		for (funcno = 0; funcno < wstate->numfuncs; funcno++)
+		{
+			WindowStatePerFunction funcstate = &wstate->func_state[funcno];
+
+			/* 
+			 * No level means null window specification -- i.e., OVER () --
+			 * so mark it as trivial.
+			 */
+			if (!PointerIsValid(funcstate->wlevel))
+			{
+				funcstate->trivial_frame = true;
+				continue;
+			}
+
+			if (level == funcstate->wlevel->level)
+			{
+				lvl_funcs = lappend_int(lvl_funcs, funcno);
+				
+				if (!frame || (fs->default_frame && !funcstate->allowframe))
+					funcstate->trivial_frame = true;
+			}
+	
+			/* 
+			 * We say the function is trivial to invoke if its frame is defined
+			 * as ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW with no
+			 * exclusion clause OR it is a window function without a frame.
+			 */
+			if (frame && frame->trail->kind == WINDOW_UNBOUND_PRECEDING && 
+				 frame->lead->kind == WINDOW_CURRENT_ROW &&
+				 frame->exclude == WINDOW_EXCLUSION_NULL)
+			{
+				funcstate->trivial_frame = true;
+			}
+			else
+			{
+				/* look for empty frames */
+				if (frame->trail->kind == WINDOW_UNBOUND_FOLLOWING ||
+					frame->lead->kind == WINDOW_UNBOUND_PRECEDING ||
+					(frame->trail->kind == WINDOW_BOUND_FOLLOWING &&
+					 frame->lead->kind == WINDOW_BOUND_PRECEDING))
+				{
+					fs->empty_frame = true;
+				}
+			}
+		}
+
+		/* now, initialize the actual frame */
+		if (frame)
+		{
+			if (frame->is_rows)
+			{
+				if (EDGE_IS_BOUND(frame->trail))
+					fs->trail_rows = 
+						((Const *)key->frame->trail->val)->constvalue;
+				else
+					fs->trail_rows = 0L;
+
+				if (EDGE_IS_BOUND(frame->lead))
+					fs->lead_rows = 
+						((Const *)key->frame->lead->val)->constvalue;
+				else
+					fs->lead_rows = 0L;
+			}
+			else
+			{
+				ExprState *e;
+				bool isNull;
+				TupleDesc desc = ExecGetResultType(wstate->ps.lefttree); 
+				HeapTuple tup;
+				AttrNumber attnum;
+				Oid ltype, rtype;
+
+				/* we only need the subtraction function for bound frames */
+				if (EDGE_IS_BOUND(frame->trail))
+				{
+					ExprState *e;
+		
+					e = ExecInitExpr((Expr *)key->frame->trail->val,
+									  (PlanState *) wstate);
+
+					fs->trail_range = ExecEvalExpr(e, econtext, &isNull, 
+												   NULL);
+
+					Insist(key->numSortCols == 1);
+					attnum = key->sortColIdx[0];
+					ltype = desc->attrs[attnum - 1]->atttypid;
+					rtype = exprType(frame->lead->val);
+					tup = SearchSysCache(OPERNAMENSP,
+										 CStringGetDatum("-"),
+										 ObjectIdGetDatum(ltype),
+										 ObjectIdGetDatum(rtype),
+										 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+	
+					Insist(HeapTupleIsValid(tup));
+					
+					fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode, 
+							  &fs->sub_fn);
+					ReleaseSysCache(tup);
+					/* 
+					 * XXX: we should actually use the result from the above as
+					 * the LHS of this...
+					 */
+					tup = SearchSysCache(OPERNAMENSP,
+										 CStringGetDatum(">"),
+										 ObjectIdGetDatum(rtype),
+										 ObjectIdGetDatum(rtype),
+										 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+
+					Insist(HeapTupleIsValid(tup));
+					
+					fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode,
+							  &fs->gt_fn);
+					ReleaseSysCache(tup);
+				}
+
+				if (EDGE_IS_BOUND(frame->lead))
+				{
+					Insist(key->numSortCols == 1);
+					attnum = key->sortColIdx[0];
+					ltype = desc->attrs[attnum - 1]->atttypid;
+
+					e = ExecInitExpr((Expr *)key->frame->lead->val,
+									 (PlanState *) wstate);
+
+					fs->lead_range = ExecEvalExpr(e, econtext, &isNull, 
+													  NULL);
+
+					rtype = exprType(frame->lead->val);
+					tup = SearchSysCache(OPERNAMENSP,
+										 CStringGetDatum("+"),
+										 ObjectIdGetDatum(ltype),
+										 ObjectIdGetDatum(rtype),
+										 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+
+					Insist(HeapTupleIsValid(tup));
+					
+					fmgr_info(
+							((Form_pg_operator) GETSTRUCT(tup))->oprcode,
+							&fs->add_fn);
+						
+					ReleaseSysCache(tup);
+					
+					/* now for greater-than */
+					/* 
+					 * XXX: we should actually use the result from the above as
+					 * the LHS of this...
+					 */
+					tup = SearchSysCache(OPERNAMENSP,
+										 CStringGetDatum("<"),
+										 ObjectIdGetDatum(ltype),
+										 ObjectIdGetDatum(ltype),
+										 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+
+					Insist(HeapTupleIsValid(tup));
+					
+					fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode,
+							  &fs->lt_fn);
+					ReleaseSysCache(tup);
+				}
+			}
+		}
+		
+		{
+			/* look for empty frames */
+			if (frame->trail->kind == WINDOW_UNBOUND_FOLLOWING ||
+				frame->lead->kind == WINDOW_UNBOUND_PRECEDING ||
+				(frame->trail->kind == WINDOW_BOUND_FOLLOWING &&
+				 frame->lead->kind == WINDOW_BOUND_PRECEDING))
+			{
+				fs->empty_frame = true;
+			}
+			else if ((frame->trail->kind == WINDOW_BOUND_PRECEDING &&
+					 frame->lead->kind == WINDOW_BOUND_PRECEDING) ||
+					 (frame->trail->kind == WINDOW_BOUND_FOLLOWING &&
+					 frame->lead->kind == WINDOW_BOUND_FOLLOWING))
+			{
+				bool is_pre = 
+					(frame->trail->kind == WINDOW_BOUND_PRECEDING &&
+					 frame->lead->kind == WINDOW_BOUND_PRECEDING);
+				
+				if (frame->is_rows)
+				{
+					if (is_pre)
+					{
+						if (fs->lead_rows > fs->trail_rows)
+							fs->empty_frame = true;
+					}
+					else
+					{
+						if (fs->lead_rows < fs->trail_rows)
+							fs->empty_frame = true;
+					}
+				}
+				else
+				{
+					Oid ordfuncid;
+					TupleDesc tup = ExecGetResultType(wstate->ps.lefttree); 
+					AttrNumber attnum;
+					Datum datum;
+					FmgrInfo fcinfo;
+					Operator optup;
+
+
+					attnum = key->sortColIdx[0];
+					optup = ordering_oper(tup->attrs[attnum - 1]->atttypid,
+										  false);
+					
+					ordfuncid = oprfuncid(optup); 
+					elog(DEBUG1, "found operator %u", oprid(optup));
+					ReleaseSysCache(optup);
+
+					fmgr_info(ordfuncid, &fcinfo);
+					
+					/* is trail less than lead */
+					Assert(PointerIsValid(fs->trail_range));
+					Assert(PointerIsValid(fs->lead_range));
+						   
+					datum = FunctionCall2(&fcinfo, fs->trail_range,
+										  fs->lead_range);
+
+					if (is_pre)
+					{
+						if (DatumGetBool(datum))
+							fs->empty_frame = true;
+					}
+					else
+					{
+						if (!DatumGetBool(datum))
+							fs->empty_frame = true;
+					}
+				}
+			}
+		}
+	}
+}
+
 /* -----------------
  * ExecInitWindow
  *
@@ -1697,6 +1979,12 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 	frame_trail_rows = frame_trail_range = frame_lead_rows 
 		= frame_lead_range = NIL;
 	
+	wstate->frame_states = palloc0(sizeof(WindowFrameStateData) *
+								   list_length(node->windowKeys) * 10);
+	
+	elog(DEBUG1, "allocating %i frame_states", 
+		 list_length(node->windowKeys));
+
 	foreach(lc, node->windowKeys)
 	{
 		WindowKey *key = (WindowKey *) lfirst(lc);
@@ -1722,9 +2010,12 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 			 * and then the parser would barf when it encountered a 
 			 * window clause for a RANK function. So, we do it here.
 			 */
-			f = key->frame = (WindowFrame *)makeNode(WindowFrame);
-			key->default_frame = true;
+			WindowFrameState fs = &wstate->frame_states[lvl->level];
 
+			/* tell others the user didn't specify a frame */
+			fs->default_frame = true;
+
+			f = key->frame = (WindowFrame *)makeNode(WindowFrame);
 			f->trail = (WindowFrameEdge *)makeNode(WindowFrameEdge);
 			f->lead = (WindowFrameEdge *)makeNode(WindowFrameEdge);
 
@@ -1794,11 +2085,6 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 
 	elog(DEBUG1, "allocating %i func states", numrefs);
 
-	wstate->frame_states = palloc0(sizeof(WindowFrameStateData) *
-								   list_length(node->windowKeys) * 10);
-	
-	elog(DEBUG1, "allocating %i frame_states", 
-		 list_length(node->windowKeys));
 
 	/* Initialize per window ref (both ordinary and aggregate derived). */
 	refno = -1;
@@ -1901,235 +2187,7 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 	
 		funcstate->isAgg = isAgg;
 
-		/* 
-		 * Determine if this function has a frame which is trivial to
-		 * evaluate or is contradirtory and therefore "empty".
-		 */
-		{
-			WindowKey *key;
-			int level;
-			WindowFrame *frame = NULL;
-			WindowFrameState fs;
 
-			if (PointerIsValid(funcstate->wlevel))
-			{
-				level = funcstate->wlevel->level;
-
-				key = (WindowKey *)list_nth(node->windowKeys, level);
-			
-				frame = key->frame;
-				Assert(level >= 0);
-			}
-
-			if (!frame)
-				funcstate->trivial_frame = true;
-			else
-			{
-				fs = &wstate->frame_states[level];
-				if (frame->is_rows)
-				{
-					if (EDGE_IS_BOUND(frame->trail))
-						fs->trail_rows = 
-							((Const *)key->frame->trail->val)->constvalue;
-					else
-						fs->trail_rows = 0L;
-	
-					if (EDGE_IS_BOUND(frame->lead))
-						fs->lead_rows = 
-							((Const *)key->frame->lead->val)->constvalue;
-					else
-						fs->lead_rows = 0L;
-				}
-				else
-				{
-					ExprState *e;
-					bool isNull;
-					TupleDesc desc = ExecGetResultType(wstate->ps.lefttree); 
-					HeapTuple tup;
-					AttrNumber attnum;
-					Oid ltype, rtype;
-
-					Assert(key->numSortCols == 1);
-					attnum = key->sortColIdx[0];
-					ltype = desc->attrs[attnum - 1]->atttypid;
-	
-					if (EDGE_IS_BOUND(frame->trail) ||
-						frame->trail->kind == WINDOW_CURRENT_ROW)
-					{
-						ExprState *e;
-			
-						e = ExecInitExpr((Expr *)key->frame->trail->val,
-										  (PlanState *) wstate);
-	
-						fs->trail_range = ExecEvalExpr(e, econtext, &isNull, 
-													   NULL);
-	
-						rtype = exprType(frame->lead->val);
-						tup = SearchSysCache(OPERNAMENSP,
-											 CStringGetDatum("-"),
-											 ObjectIdGetDatum(ltype),
-											 ObjectIdGetDatum(rtype),
-											 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
-		
-						Insist(HeapTupleIsValid(tup));
-						
-						fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode, 
-								  &fs->sub_fn);
-						ReleaseSysCache(tup);
-						/* 
-						 * XXX: we should actually use the result from the above as
-						 * the LHS of this...
-						 */
-						tup = SearchSysCache(OPERNAMENSP,
-											 CStringGetDatum(">"),
-											 ObjectIdGetDatum(rtype),
-											 ObjectIdGetDatum(rtype),
-											 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
-	
-						Insist(HeapTupleIsValid(tup));
-						
-						fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode,
-								  &fs->gt_fn);
-						ReleaseSysCache(tup);
-					}
-	
-					if (EDGE_IS_BOUND(frame->lead) ||
-						frame->lead->kind == WINDOW_CURRENT_ROW)
-					{
-						
-						if (EDGE_IS_BOUND(frame->lead))
-						{
-							e = ExecInitExpr((Expr *)key->frame->lead->val,
-											 (PlanState *) wstate);
-	
-							fs->lead_range = ExecEvalExpr(e, econtext, &isNull, 
-														  NULL);
-	
-							rtype = exprType(frame->lead->val);
-							tup = SearchSysCache(OPERNAMENSP,
-											 CStringGetDatum("+"),
-											 ObjectIdGetDatum(ltype),
-											 ObjectIdGetDatum(rtype),
-											 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
-	
-							Insist(HeapTupleIsValid(tup));
-						
-							fmgr_info(
-								((Form_pg_operator) GETSTRUCT(tup))->oprcode,
-								&fs->add_fn);
-							
-							ReleaseSysCache(tup);
-						}
-						
-						/* now for greater-than */
-						/* 
-						 * XXX: we should actually use the result from the above as
-						 * the LHS of this...
-						 */
-						tup = SearchSysCache(OPERNAMENSP,
-											 CStringGetDatum("<"),
-											 ObjectIdGetDatum(ltype),
-											 ObjectIdGetDatum(ltype),
-											 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
-	
-						Insist(HeapTupleIsValid(tup));
-						
-						fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode,
-								  &fs->lt_fn);
-						ReleaseSysCache(tup);
-					}
-				}
-			}
-			
-			/* 
-			 * We say the function is trivial to invoke if its frame is defined
-			 * as ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW with no
-			 * exclusion clause OR it is a window function without a frame.
-			 */
-			if (!funcstate->isAgg && !frame)
-				funcstate->trivial_frame = true;
-			else if (frame && frame->trail->kind == WINDOW_UNBOUND_PRECEDING && 
-					 frame->lead->kind == WINDOW_CURRENT_ROW &&
-					 frame->exclude == WINDOW_EXCLUSION_NULL)
-			{
-				funcstate->trivial_frame = true;
-			}
-			else
-			{
-				/* look for empty frames */
-				if (frame->trail->kind == WINDOW_UNBOUND_FOLLOWING ||
-					frame->lead->kind == WINDOW_UNBOUND_PRECEDING ||
-					(frame->trail->kind == WINDOW_BOUND_FOLLOWING &&
-					 frame->lead->kind == WINDOW_BOUND_PRECEDING))
-				{
-					funcstate->empty_frame = true;
-				}
-				else if ((frame->trail->kind == WINDOW_BOUND_PRECEDING &&
-						 frame->lead->kind == WINDOW_BOUND_PRECEDING) ||
-						 (frame->trail->kind == WINDOW_BOUND_FOLLOWING &&
-						 frame->lead->kind == WINDOW_BOUND_FOLLOWING))
-				{
-					bool is_pre = 
-						(frame->trail->kind == WINDOW_BOUND_PRECEDING &&
-						 frame->lead->kind == WINDOW_BOUND_PRECEDING);
-					
-					if (frame->is_rows)
-					{
-						if (is_pre)
-						{
-							if (fs->lead_rows > fs->trail_rows)
-								funcstate->empty_frame = true;
-						}
-						else
-						{
-							if (fs->lead_rows < fs->trail_rows)
-								funcstate->empty_frame = true;
-						}
-					}
-					else
-					{
-						Oid ordfuncid;
-						TupleDesc tup = ExecGetResultType(wstate->ps.lefttree); 
-						AttrNumber attnum;
-						Datum datum;
-						FmgrInfo fcinfo;
-						Operator optup;
-
-
-						attnum = key->sortColIdx[0];
-						optup = ordering_oper(tup->attrs[attnum - 1]->atttypid,
-											  false);
-						
-						ordfuncid = oprfuncid(optup); 
-						elog(DEBUG1, "found operator %u", oprid(optup));
-						ReleaseSysCache(optup);
-
-						fmgr_info(ordfuncid, &fcinfo);
-						
-						/* is trail less than lead */
-						Assert(PointerIsValid(fs->trail_range));
-						Assert(PointerIsValid(fs->lead_range));
-							   
-						datum = FunctionCall2(&fcinfo, fs->trail_range,
-											  fs->lead_range);
-
-						if (is_pre)
-						{
-							if (DatumGetBool(datum))
-								funcstate->empty_frame = true;
-						}
-						else
-						{
-							if (!DatumGetBool(datum))
-								funcstate->empty_frame = true;
-						}
-					}
-				}
-				if (!FRAME_IS_COMPLEX(funcstate))
-					elog(DEBUG1, "NON_COMPLEX_FRAME");
-			}
-		}
-				
 		/* The rest depends on the type (agg-derived or ordinary). */
 		if ( isAgg )
 		{
@@ -2331,7 +2389,10 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 
 		}
 	} /* next WindowRefExprState */
-	
+
+	/* Frame initialisation can take place now */	
+	init_frames(wstate);
+
 	initializePartition(wstate);
 	
 	return wstate;
