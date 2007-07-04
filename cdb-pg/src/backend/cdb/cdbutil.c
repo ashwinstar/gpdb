@@ -405,9 +405,7 @@ getCdbComponentInfo(void)
 			lookup = gethostbyname(pRow->hostname);
 
 			if (lookup == NULL)
-			{
-				elog(FATAL, "getCdbComponentInfo: gethostbyname() failed for host '%s'", pRow->hostname);
-			}
+				elog(ERROR, "host \"%s\" lookup failed", pRow->hostname);
 
 			/* save in the cache context */
 			oldContext = MemoryContextSwitchTo(TopMemoryContext);
