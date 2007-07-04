@@ -1371,6 +1371,8 @@ InitSliceTable(EState *estate, int nMotions, int nSubplans)
 		slice->gangSize = 0;
 		slice->primaryGang = NULL;
 		slice->mirrorGang = NULL;
+		slice->primary_gang_id = 0;
+		slice->mirror_gang_id = 0;
 		slice->parentIndex = -1; 
 		slice->children = NIL;
 		slice->primaryProcesses = NIL;
@@ -1722,6 +1724,7 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 		case GANGTYPE_ENTRYDB_READER:
 			slice->primaryGang = req->vec1gangs_entrydb_reader[req->nxt1gang_entrydb_reader];
 			Assert(slice->primaryGang != NULL);
+			slice->primary_gang_id = slice->primaryGang->gang_id;
 			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
                                                         slice->sliceIndex);
 			req->nxt1gang_entrydb_reader++;
@@ -1734,12 +1737,16 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 
 			slice->primaryGang = req->vecNgangs[req->nxtNgang];
 			Assert(slice->primaryGang != NULL);
+			slice->primary_gang_id = slice->primaryGang->gang_id;
 			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
                                                         slice->sliceIndex);
 			slice->mirrorGang = req->mirrorWriterGang;
 			if (slice->mirrorGang != NULL)
+			{
+				slice->mirror_gang_id = slice->mirrorGang->gang_id;
 				slice->mirrorProcesses = getCdbProcessList(slice->mirrorGang,
                                                         slice->sliceIndex);
+			}
 			else
 				slice->mirrorProcesses = NIL;
 
@@ -1759,6 +1766,7 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 				req->nxtNgang++;
 			}
 			Assert(slice->primaryGang != NULL);
+			slice->primary_gang_id = slice->primaryGang->gang_id;
 			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
                                                         slice->sliceIndex);
 			break;

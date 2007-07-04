@@ -76,7 +76,7 @@ getGpId(void)
 	if (Gp_role == GP_ROLE_UTILITY)
 		elog(DEBUG1, "WARNING: called getGpId when in utility mode");
 
-	if (Gp_role == GP_ROLE_DISPATCH && Gp_segment < -1)
+	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && Gp_segment < -1)
 		Gp_segment = -1;
 
 	/*

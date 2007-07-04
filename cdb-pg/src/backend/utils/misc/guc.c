@@ -1273,6 +1273,16 @@ static struct config_bool ConfigureNamesBool[] =
     	&gp_is_callback,
     	false, NULL, NULL
     },
+    
+    {
+    	{"gp_use_dispatch_agent", PGC_USERSET, DEVELOPER_OPTIONS,
+    		gettext_noop("True says to use Query Dispatch Agents to improve dispatching."),
+    		NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_RESET_ALL
+    	},
+    	&gp_use_dispatch_agent,
+    	false, assign_gp_use_dispatch_agent, NULL
+    },
 
     {
     	{"gp_reraise_signal", PGC_SUSET, DEVELOPER_OPTIONS,
@@ -5288,7 +5298,8 @@ SetPGVariable(const char *name, List *args, bool is_local, bool gp_dispatch)
 					  is_local,
 					  true);
 					
-	if (Gp_role == GP_ROLE_DISPATCH && !IsBootstrapProcessingMode())
+	if (Gp_role == GP_ROLE_DISPATCH && !IsBootstrapProcessingMode() &&
+			strcmp(name,"gp_use_dispatch_agent")!=0)
 	{
 
 		ListCell * l;

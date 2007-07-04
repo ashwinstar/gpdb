@@ -2923,6 +2923,8 @@ _outSlice(StringInfo str, Slice *node)
 	WRITE_INT_FIELD(gangSize);
 	WRITE_DUMMY_FIELD(primaryGang);
 	WRITE_DUMMY_FIELD(mirrorGang);
+	WRITE_INT_FIELD(primary_gang_id);
+	WRITE_INT_FIELD(mirror_gang_id);
 	WRITE_INT_FIELD(parentIndex); /* List of int index */
 	WRITE_NODE_FIELD(children); /* List of int index */
 	WRITE_NODE_FIELD(primaryProcesses); /* List of (CDBProcess *) */

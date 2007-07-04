@@ -49,7 +49,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbtm.h"
 #include "cdb/cdbllize.h"
-
+#include "libpq-fe.h"
 //#undef socket
 //#undef accept
 //#undef connect
@@ -238,10 +238,12 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 		segdbs_in_thread_pool = 0,
 		x,
 		newThreads = 0;	
+	int db_descriptors_size;
+	SegmentDatabaseDescriptor *db_descriptors;
 
 	MemoryContext oldContext;
 
-	Assert(Gp_role == GP_ROLE_DISPATCH &&
+	Assert((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) &&
 		   gp &&
 		   gp->size > 0 &&
 		   dispatchResults &&
@@ -291,6 +293,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 			(int) mppDispatchCommandType);
 	}
 
+	
 	/*
 	 * The most threads we could have is segdb_count / gp_connections_per_thread, rounded up.
 	 * This is equivalent to 1 + (segdb_count-1) / gp_connections_per_thread.
@@ -336,18 +339,26 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 	}
 
 	MemoryContextSwitchTo(oldContext);
-
+	
+	db_descriptors_size = gp->size;
+	db_descriptors = gp->db_descriptors;
+	
+	if (gp_use_dispatch_agent && gp->dispatchagents != NULL)
+	{
+		db_descriptors_size = gp->dispatchagents->size;
+		db_descriptors = gp->dispatchagents->db_descriptors;
+	}
 	/*
 	 * Create the thread parms structures based targetSet parameter.
 	 * This will add the segdbDesc pointers appropriate to the
 	 * targetSet into the thread Parms structures, making sure that each thread
 	 * handles gp_connections_per_thread segdbs.
 	 */
-	for (x = 0; x < gp->size; x++)
+	for (x = 0; x < db_descriptors_size; x++)
 	{
 		CdbDispatchResult *qeResult;
 
-		segdbDesc = &gp->db_descriptors[x];
+		segdbDesc = &db_descriptors[x];
 
 		Assert(segdbDesc != NULL);
 
@@ -660,6 +671,7 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 		elog(DEBUG4, "CheckDispatchResult: Joining to thread %d of %d",
 			 i + 1, dispatchThreads->threadCount);
 
+
 		if (pParms->thread_valid)
 		{
 			pthread_err = pthread_join(pParms->thread, NULL);
@@ -771,55 +783,26 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 
 /*--------------------------------------------------------------------*/
 
-
 /*
- * cdbdisp_dispatchRMCommand:
- * Sends a non-cancelable command to all segment dbs, primary and mirror.
- *
- * Returns a malloc'ed array containing the PGresult objects thus
- * produced; the caller must PQclear() them and free() the array.
- * A NULL entry follows the last used entry in the array.
- *
- * Any error messages - whether or not they are associated with
- * PGresult objects - are appended to a StringInfo buffer provided
- * by the caller.
+ * I refactored this code out of the two routines
+ *    cdbdisp_dispatchRMCommand  and  cdbdisp_dispatchDtxProtocolCommand
+ * when I thought I might need it in a third place.
+ * 
+ * Not sure if this makes things cleaner or not
  */
-struct pg_result **				/* returns ptr to array of PGresult ptrs */
-cdbdisp_dispatchRMCommand(const char *strCommand,
-						  bool withSnapshot,
-						  bool dispatchToMirrors,
-						  StringInfo errmsgbuf,
-						  int *numresults)
-
+struct pg_result **
+cdbdisp_returnResults(CdbDispatchResults *primaryResults,
+						CdbDispatchResults *mirrorResults,
+						StringInfo errmsgbuf,
+						int *numresults)
 {
 	CdbDispatchResults *gangResults;
-	CdbDispatchResults *primaryResults;
-	CdbDispatchResults *mirrorResults;
 	CdbDispatchResult *dispatchResult;
-	CdbDispatchCmdThreads  *dispatchThreads;
-	
 	PGresult  **resultSets = NULL;
 	int			nslots;
 	int			nresults = 0;
 	int			i;
 	int			totalResultCount=0;
-	
-	/* never want to start a global transaction for these */
-	bool		needTwoPhase = false;
-
-	elog(((Debug_print_full_dtm | Debug_print_snapshot_dtm) ? LOG : DEBUG5), "cdbdisp_dispatchRMCommand for command = '%s', withSnapshot = %s",
-	     strCommand, (withSnapshot ? "true" : "false"));
-
-	/* Launch the command.	Don't cancel on error. */
-	cdbdisp_dispatchCommand(strCommand, NULL, 0,
-							/* cancelOnError */false,
-							needTwoPhase, withSnapshot, 
-							dispatchToMirrors, /* disp to primaries*/ true,
-							&primaryResults, &mirrorResults, &dispatchThreads);
-
-	/* Wait for all QEs to finish.	Don't cancel. */
-	CdbCheckDispatchResult(dispatchThreads, false);
-
 	/*
 	 * Allocate result set ptr array. Make room for one PGresult ptr per
 	 * primary or mirror segment db, plus a null terminator slot after the
@@ -870,8 +853,6 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 		cdbdisp_destroyDispatchResults(gangResults);
 	}
 
-	/* free memory allocated for the dispatch threads struct */
-	cdbdisp_destroyDispatchThreads(dispatchThreads);
 	
 	/* Put a stopper at the end of the array. */
 	Assert(nresults < nslots);
@@ -881,6 +862,58 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 	if (numresults != NULL)
 		*numresults = totalResultCount;
 
+	return resultSets;
+}
+/*
+ * cdbdisp_dispatchRMCommand:
+ * Sends a non-cancelable command to all segment dbs, primary and mirror.
+ *
+ * Returns a malloc'ed array containing the PGresult objects thus
+ * produced; the caller must PQclear() them and free() the array.
+ * A NULL entry follows the last used entry in the array.
+ *
+ * Any error messages - whether or not they are associated with
+ * PGresult objects - are appended to a StringInfo buffer provided
+ * by the caller.
+ */
+struct pg_result **				/* returns ptr to array of PGresult ptrs */
+cdbdisp_dispatchRMCommand(const char *strCommand,
+						  bool withSnapshot,
+						  bool dispatchToMirrors,
+						  StringInfo errmsgbuf,
+						  int *numresults)
+
+{
+
+	CdbDispatchResults *primaryResults;
+	CdbDispatchResults *mirrorResults;
+
+	CdbDispatchCmdThreads  *dispatchThreads;
+	
+	PGresult  **resultSets = NULL;
+
+	
+	/* never want to start a global transaction for these */
+	bool		needTwoPhase = false;
+
+	elog(((Debug_print_full_dtm | Debug_print_snapshot_dtm) ? LOG : DEBUG5), "cdbdisp_dispatchRMCommand for command = '%s', withSnapshot = %s",
+	     strCommand, (withSnapshot ? "true" : "false"));
+
+	/* Launch the command.	Don't cancel on error. */
+	cdbdisp_dispatchCommand(strCommand, NULL, 0,
+							/* cancelOnError */false,
+							needTwoPhase, withSnapshot, 
+							dispatchToMirrors, /* disp to primaries*/ true,
+							&primaryResults, &mirrorResults, &dispatchThreads);
+
+	/* Wait for all QEs to finish.	Don't cancel. */
+	CdbCheckDispatchResult(dispatchThreads, false);
+
+	resultSets = cdbdisp_returnResults(primaryResults,mirrorResults,errmsgbuf,numresults);
+	
+	/* free memory allocated for the dispatch threads struct */
+	cdbdisp_destroyDispatchThreads(dispatchThreads);
+	
 	return resultSets;
 }	/* cdbdisp_dispatchRMCommand */
 
@@ -908,17 +941,11 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 						  bool *badGangs)
 
 {
-	CdbDispatchResults *gangResults;
 	CdbDispatchResults *primaryResults;
 	CdbDispatchResults *mirrorResults;
-	CdbDispatchResult *dispatchResult;
 	CdbDispatchCmdThreads  *dispatchThreads;
 
 	PGresult  **resultSets = NULL;
-	int			nslots;
-	int			nresults = 0;
-	int			i;
-	int			totalResultCount=0;
 	
 	DispatchCommandDtxProtocolParms dtxProtocolParms;
 	Gang	*primaryGang;
@@ -991,67 +1018,12 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		elog((Debug_print_full_dtm ? LOG : DEBUG5), "cdbdisp_dispatchDtxProtocolCommand: Bad gang from dispatch of %s for gid = %s", 
 			 dtxProtocolCommandLoggingStr, gid);
 	}
-	/*
-	 * Allocate result set ptr array. Make room for one PGresult ptr per
-	 * primary or mirror segment db, plus a null terminator slot after the
-	 * last entry. The caller must PQclear() each PGresult and free() the
-	 * array.
-	 */
-	nslots = 2 * getgpsegmentCount() + 1;
-	resultSets = (struct pg_result **) calloc(nslots, sizeof(*resultSets));
 
-	/* Collect results from primary gang. */
-	gangResults = primaryResults;
-	if (gangResults)
-	{
-		totalResultCount = gangResults->resultCount;
-
-		for (i = 0; i < gangResults->resultCount; ++i)
-		{
-			dispatchResult = &gangResults->resultArray[i];
-
-			/* Append error messages to caller's buffer. */
-			cdbdisp_dumpDispatchResult(dispatchResult, false, errmsgbuf);
-
-			/* Take ownership of this QE's PGresult object(s). */
-			nresults += cdbdisp_snatchPGresults(dispatchResult,
-												resultSets + nresults,
-												nslots - nresults - 1);
-		}
-		cdbdisp_destroyDispatchResults(gangResults);
-	}
-
-	/* Collect results from mirror gang. */
-	gangResults = mirrorResults;
-	if (gangResults)
-	{
-		totalResultCount += gangResults->resultCount;
-		for (i = 0; i < gangResults->resultCount; ++i)
-		{
-			dispatchResult = &gangResults->resultArray[i];
-
-			/* Append error messages to caller's buffer. */
-			cdbdisp_dumpDispatchResult(dispatchResult, false, errmsgbuf);
-
-			/* Take ownership of this QE's PGresult object(s). */
-			nresults += cdbdisp_snatchPGresults(dispatchResult,
-												resultSets + nresults,
-												nslots - nresults - 1);
-		}
-		cdbdisp_destroyDispatchResults(gangResults);
-	}
-
+	resultSets = cdbdisp_returnResults(primaryResults,mirrorResults,errmsgbuf,numresults);
+	
 	/* free memory allocated for the dispatch threads struct */
 	cdbdisp_destroyDispatchThreads(dispatchThreads);
 	
-	/* Put a stopper at the end of the array. */
-	Assert(nresults < nslots);
-	resultSets[nresults] = NULL;
-
-	/* If our caller is interested, tell them how many sets we're returning. */
-	if (numresults != NULL)
-		*numresults = totalResultCount;
-
 	return resultSets;
 }	/* cdbdisp_dispatchRMCommand */
 
@@ -1477,7 +1449,7 @@ thread_DispatchCommand(void *arg)
 						pQueryParms->serializedParams, pQueryParms->serializedParamslen, 
 						pQueryParms->serializedSliceInfo, pQueryParms->serializedSliceInfolen, 
 						pQueryParms->serializedDtxContextInfo, pQueryParms->serializedDtxContextInfolen, 
-						0 /* unused flags*/, pParms->cmdID, pParms->localSlice, 
+						0 /* unused flags*/, pParms->cmdID, pParms->localSlice, pQueryParms->rootIdx,
 						pParms->sessUserId, pParms->sessUserId_is_super,
 						pParms->outerUserId, pParms->outerUserId_is_super, pParms->currUserId,
 						&pParms->query_text_len);
@@ -1521,8 +1493,15 @@ thread_DispatchCommand(void *arg)
 		
 		/* Don't use elog, it's not thread-safe */
 		if (DEBUG5 >= log_min_messages)
-			write_stderr("Thread %u: thread_DispatchCommand working on %d of %d commands.  asyncStatus %d\n",mythread(),
-                         i + 1, db_count, dispatchResult->segdbDesc->conn->asyncStatus);
+		{
+			if (dispatchResult->segdbDesc->conn)
+			{
+				if (Gp_role == GP_ROLE_DISPATCHAGENT)
+					write_stderr("*DA* ");
+				write_stderr("Thread %u: thread_DispatchCommand working on %d of %d commands.  asyncStatus %d\n",mythread(),
+	                         i + 1, db_count, dispatchResult->segdbDesc->conn->asyncStatus);
+			}
+		}
 
         dispatchResult->hasDispatched = false;
         dispatchResult->requestedCancel = false;
@@ -2119,6 +2098,7 @@ CollectQEWriterTransactionInformation(SegmentDatabaseDescriptor *segdbDesc, CdbD
 	if (conn->QEWriter_HaveInfo)
 	{
 #if 0
+		if (conn)
 		write_stderr("Thread %u: %s -> Collected QE Writer transaction info (segment %d (%s), DistributedTransactionId = %u, CommandId = %u, pRes->QEDirty = %s, dispatchResult->QEDirty = %s) \n", 
 			mythread(), segdbDesc->whoami,
 			segdbDesc->segment_database_info->segindex,
@@ -2132,7 +2112,7 @@ CollectQEWriterTransactionInformation(SegmentDatabaseDescriptor *segdbDesc, CdbD
 		dispatchResult->QEWriter_HaveInfo = true;
 		dispatchResult->QEWriter_DistributedTransactionId = conn->QEWriter_DistributedTransactionId;
 		dispatchResult->QEWriter_CommandId = conn->QEWriter_CommandId;
-		if (conn->QEWriter_Dirty)
+		if (conn && conn->QEWriter_Dirty)
 		{
 			dispatchResult->QEWriter_Dirty = true;
 		}
@@ -2633,6 +2613,234 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 }
 
 /*
+ * This code was refactored out of cdbdisp_dispatchPlan.  It's
+ * used both for dispatching plans when we are using normal gangs,
+ * and for dispatching all statements from Query Dispatch Agents
+ * when we are using dispatch agents.
+ */
+
+void
+cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
+					 bool cancelOnError,
+					 SliceTable *sliceTbl,
+					 /*GpDispatchCommandType		mppDispatchCommandType,
+					 //void						   *commandTypeParms,*/
+					 struct CdbDispatchResults ** pPrimaryResults,		/* OUT */
+					 struct CdbDispatchResults ** pMirrorResults,       /* OUT */
+					 struct CdbDispatchCmdThreads ** pDispatchThreads)		/* OUT */
+{
+	
+	
+	int			oldLocalSlice;
+	sliceVec	*sliceVector = NULL;
+	int			nSlices = 1;
+	int			sliceLim = 1;
+	int			iSlice;
+	int			rootIdx = pQueryParms->rootIdx;
+
+
+	*pPrimaryResults = NULL;
+	if (pMirrorResults)
+		*pMirrorResults = NULL;
+	
+	*pDispatchThreads = NULL;
+
+	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT);
+	
+	if (sliceTbl)
+	{
+		Assert(rootIdx == 0
+			   || (rootIdx > sliceTbl->nMotions
+				   && rootIdx <= sliceTbl->nMotions + sliceTbl->nSubplans));
+	
+		/*
+		 * Keep old value so we can restore it.  We use this field as a parameter.
+		 */
+		oldLocalSlice = sliceTbl->localSlice;
+	
+	
+	 
+		/*
+		 * Traverse the slice tree in sliceTbl rooted at rootIdx and build a
+		 * vector of slice indexes specifying the order of [potential] dispatch.
+		 */
+		sliceLim = list_length(sliceTbl->slices);
+		sliceVector = palloc0(sliceLim * sizeof(sliceVec));
+	
+		nSlices = fillSliceVector(sliceTbl, rootIdx, sliceVector, sliceLim);
+	}
+
+	/* Allocate result array with enough slots for QEs of primary gangs. */
+	*pPrimaryResults = cdbdisp_makeDispatchResults(nSlices * getgpsegmentCount(),
+												   sliceLim,
+												   cancelOnError);
+
+	/* Allocate result array for mirror gang. */
+	//if (queryDesc->operation != CMD_SELECT || queryDesc->parsetree->into != NULL)
+	if (sliceTbl && sliceTbl->slices)
+	{
+		Slice	   *slice = (Slice *) list_nth(sliceTbl->slices, rootIdx);
+
+		if (slice->mirror_gang_id > 0)
+		{
+			*pMirrorResults = cdbdisp_makeDispatchResults(getgpsegmentCount(),
+														  sliceLim,
+														  cancelOnError);
+		}
+	}
+
+	cdb_total_plans++;
+	cdb_total_slices += nSlices;
+	if (nSlices > cdb_max_slices)
+		cdb_max_slices = nSlices;
+	
+	/*
+	 * Now we need to call CDBDispatchCommand once per slice.  Each such
+	 * call dispatches a MPPEXEC command to each of the QEs assigned to
+	 * the slice.
+	 *
+	 * The QE information goes in two places: (1) in the argument to the
+	 * function CDBDispatchCommand, and (2) in the serialized
+	 * command sent to the QEs.
+	 *
+	 * So, for each slice in the tree...
+	 */
+	for (iSlice = 0; iSlice < nSlices; iSlice++)
+	{
+		Gang	   *primaryGang = NULL;
+		Gang	   *mirrorGang = NULL;
+		Slice *slice = NULL;
+		int si = -1;
+		if (sliceVector)
+		{
+			slice = sliceVector[iSlice].slice;
+			si = slice->sliceIndex;
+			
+			
+			/*
+			 * Is this a slice we should dispatch?
+			 */
+			if (slice && slice->gangType == GANGTYPE_UNALLOCATED)
+			{
+				/*
+				 * Most slices are dispatched, however, in many  cases the
+				 * root runs only on the QD and is not dispatched to the QEs.
+				 */
+				continue;
+			}
+			
+			primaryGang = slice->primaryGang;
+			mirrorGang = slice->mirrorGang;
+			
+			if (primaryGang == NULL)
+			{
+				elog(DEBUG2,"Gangs are %d and %d, type=%d",slice->primary_gang_id,slice->mirror_gang_id,slice->gangType);
+				primaryGang = findGangById(slice->primary_gang_id);
+				if (slice->mirror_gang_id > 0)
+					mirrorGang = findGangById(slice->mirror_gang_id);
+				
+				Assert(primaryGang != NULL);
+				Assert(primaryGang->type == slice->gangType || primaryGang->type == GANGTYPE_PRIMARY_WRITER);
+				if (slice->mirror_gang_id >0)
+					Assert(mirrorGang != NULL);
+				
+			}
+		}
+		if (primaryGang == NULL)
+		{
+			elog(DEBUG1,"Using default writer gang");
+			primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, getgpsegmentCount(), -1, NULL);
+
+			mirrorGang = NULL;
+		}
+	 
+		
+		
+
+		
+
+		Assert(primaryGang != NULL);	/* Must have a gang to dispatch to */
+
+		/* Bail out if already got an error or cancellation request. */
+		if (cancelOnError)
+		{
+			if ((*pPrimaryResults)->errcode)
+				break;
+			if (pMirrorResults && *pMirrorResults && (*pMirrorResults)->errcode)
+				break;
+			if (InterruptPending)
+				break;
+		}
+			
+		/*
+		 * Dispatch the plan to our primaryGang.
+		 * Doesn't wait for it to finish.
+		 */
+		cdbdisp_dispatchToGang(pDispatchThreads,
+							   GP_DISPATCH_COMMAND_TYPE_QUERY,
+							   pQueryParms,
+                               primaryGang,
+                               *pPrimaryResults,
+                               si, sliceLim);
+
+
+		/*
+		 * dispatch the plan to our mirrorGang if we have one.
+		 */
+		if (mirrorGang != NULL /*&& (queryDesc->operation != CMD_SELECT || queryDesc->parsetree->into != NULL)*/)
+		{
+            cdbdisp_dispatchToGang(pDispatchThreads,
+								   GP_DISPATCH_COMMAND_TYPE_QUERY,
+								   pQueryParms,
+                                   mirrorGang,
+                                   *pMirrorResults,
+                                   si, sliceLim);
+		}
+	}
+
+	
+
+	if (sliceVector)
+		pfree(sliceVector);
+
+	if(sliceTbl)
+		sliceTbl->localSlice = oldLocalSlice;
+
+	/*
+	 * If bailed before completely dispatched, stop QEs and throw error.
+	 */
+	if (iSlice < nSlices)
+	{
+		CdbDispatchResults *pr = *pPrimaryResults;
+		CdbDispatchResults *mr = pMirrorResults ? *pMirrorResults : NULL;
+		CdbDispatchCmdThreads *dThreads = *pDispatchThreads;
+
+		elog(DEBUG2, "Plan dispatch canceled; dispatched %d of %d slices",
+			 iSlice, nSlices);
+
+		/* Cancel any QEs still running, and wait for them to terminate. */
+		CdbCheckDispatchResult(dThreads, true);
+
+		/*
+		 * Check and free the results of all gangs. If any QE had an
+		 * error, report it and exit via PG_THROW.
+		 */
+		*pPrimaryResults = NULL;
+		if (mr)
+			*pMirrorResults = NULL;
+		*pDispatchThreads = NULL;
+		cdbdisp_finishCommand(pr, mr, dThreads);
+
+		/* Wasn't an error, must have been an interrupt. */
+		CHECK_FOR_INTERRUPTS();
+
+		/* Strange!  Not an interrupt either. */
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+						errmsg_internal("Unable to dispatch plan.")));
+	}
+}	/* cdbdisp_dispatchX */
+
+/*
  * Compose and dispatch the MPPEXEC commands corresponding to a plan tree
  * within a complete parallel plan.  (A plan tree will correspond either
  * to an initPlan or to the main plan.)
@@ -2694,7 +2902,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	sliceVec	*sliceVector = NULL;
 	int			nSlices,
 				sliceLim;
-	int			iSlice;
+
 	
 	DispatchCommandQueryParms queryParms;
  
@@ -2706,7 +2914,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	
 	*pDispatchThreads = NULL;
 
-	Assert(Gp_role == GP_ROLE_DISPATCH);
+	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT);
 	Assert(queryDesc != NULL && queryDesc->estate != NULL);
 
 	/*
@@ -2905,6 +3113,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	queryParms.serializedParamslen = sparams_len;
 	queryParms.serializedSliceInfo = ssliceinfo;
 	queryParms.serializedSliceInfolen= ssliceinfo_len;
+	queryParms.rootIdx = rootIdx;
 
 	/* serialized a version of our snapshot */
 	/* 
@@ -2921,111 +3130,16 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	if (nSlices > cdb_max_slices)
 		cdb_max_slices = nSlices;
 	
-	/*
-	 * Now we need to call CDBDispatchCommand once per slice.  Each such
-	 * call dispatches a MPPEXEC command to each of the QEs assigned to
-	 * the slice.
-	 *
-	 * The QE information goes in two places: (1) in the argument to the
-	 * function CDBDispatchCommand, and (2) in the serialized
-	 * command sent to the QEs.
-	 *
-	 * So, for each slice in the tree...
-	 */
-	for (iSlice = 0; iSlice < nSlices; iSlice++)
-	{
-		Slice	   *slice = sliceVector[iSlice].slice;
-		Gang	   *primaryGang = slice->primaryGang;
-		Gang	   *mirrorGang = slice->mirrorGang;
-
-		/*
-		 * Is this a slice we should dispatch?
-		 */
-		if (slice->gangType == GANGTYPE_UNALLOCATED)
-		{
-			/*
-			 * Most slices are dispatched, however, in many  cases the
-			 * root runs only on the QD and is not dispatched to the QEs.
-			 */
-			continue;
-		}
-
-		Assert(primaryGang != NULL);	/* Must have a gang to dispatch to */
-
-		/* Bail out if already got an error or cancellation request. */
-		if (cancelOnError)
-		{
-			if ((*pPrimaryResults)->errcode)
-				break;
-			if (pMirrorResults && *pMirrorResults && (*pMirrorResults)->errcode)
-				break;
-			if (InterruptPending)
-				break;
-		}
-			
-		/*
-		 * Dispatch the plan to our primaryGang.
-		 * Doesn't wait for it to finish.
-		 */
-		cdbdisp_dispatchToGang(pDispatchThreads,
-							   GP_DISPATCH_COMMAND_TYPE_QUERY,
-							   &queryParms,
-                               primaryGang,
-                               *pPrimaryResults,
-                               slice->sliceIndex, sliceLim);
-
-
-		/*
-		 * dispatch the plan to our mirrorGang if we have one.
-		 */
-		if (mirrorGang != NULL && (queryDesc->operation != CMD_SELECT || queryDesc->parsetree->into != NULL))
-		{
-            cdbdisp_dispatchToGang(pDispatchThreads,
-								   GP_DISPATCH_COMMAND_TYPE_QUERY,
-							       &queryParms,
-                                   mirrorGang,
-                                   *pMirrorResults,
-                                   slice->sliceIndex, sliceLim);
-		}
-	}
-
-
-    pfree(sliceVector);
-
-	sliceTbl->localSlice = oldLocalSlice;
-
-	/*
-	 * If bailed before completely dispatched, stop QEs and throw error.
-	 */
-	if (iSlice < nSlices)
-	{
-		CdbDispatchResults *pr = *pPrimaryResults;
-		CdbDispatchResults *mr = pMirrorResults ? *pMirrorResults : NULL;
-		CdbDispatchCmdThreads *dThreads = *pDispatchThreads;
-
-		elog(DEBUG2, "Plan dispatch canceled; dispatched %d of %d slices",
-			 iSlice, nSlices);
-
-		/* Cancel any QEs still running, and wait for them to terminate. */
-		CdbCheckDispatchResult(dThreads, true);
-
-		/*
-		 * Check and free the results of all gangs. If any QE had an
-		 * error, report it and exit via PG_THROW.
-		 */
-		*pPrimaryResults = NULL;
-		if (mr)
-			*pMirrorResults = NULL;
-		*pDispatchThreads = NULL;
-		cdbdisp_finishCommand(pr, mr, dThreads);
-
-		/* Wasn't an error, must have been an interrupt. */
-		CHECK_FOR_INTERRUPTS();
-
-		/* Strange!  Not an interrupt either. */
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-						errmsg_internal("Unable to dispatch plan.")));
-	}
+	cdbdisp_dispatchX(&queryParms,
+			 cancelOnError,
+			 sliceTbl,
+			 /*GpDispatchCommandType		mppDispatchCommandType,
+			 //void						   *commandTypeParms,*/
+			 pPrimaryResults,		/* OUT */
+			 pMirrorResults,       /* OUT */
+			 pDispatchThreads)	;	/* OUT */
+	
+	
 }	/* cdbdisp_dispatchPlan */
 
 
@@ -3142,7 +3256,7 @@ count_dependent_children(SliceTable * sliceTable, int sliceIndex, sliceVec *slic
 	return ret;
 }
 
-static int
+int
 fillSliceVector(SliceTable *sliceTbl, int rootIdx, sliceVec *sliceVector, int sliceLim)
 {
 	int top_count;
@@ -3561,5 +3675,4 @@ cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads)
 		
 	pfree(dThreads);
 }                               /* cdbdisp_destroyDispatchThreads */
-
 

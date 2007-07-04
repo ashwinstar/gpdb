@@ -3130,6 +3130,8 @@ _copySlice(Slice *from)
 	COPY_SCALAR_FIELD(gangSize);
 	newnode->primaryGang = from->primaryGang;
 	newnode->mirrorGang = from->mirrorGang;
+	COPY_SCALAR_FIELD(primary_gang_id);
+	COPY_SCALAR_FIELD(mirror_gang_id);
 	COPY_SCALAR_FIELD(parentIndex);
 	COPY_NODE_FIELD(children);
 	COPY_NODE_FIELD(primaryProcesses);

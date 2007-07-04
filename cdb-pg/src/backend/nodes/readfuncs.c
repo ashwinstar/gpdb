@@ -2797,6 +2797,8 @@ _readSlice(void)
 	READ_INT_FIELD(gangSize);
 	READ_DUMMY_FIELD(primaryGang, NULL);
 	READ_DUMMY_FIELD(mirrorGang, NULL);
+	READ_INT_FIELD(primary_gang_id);
+	READ_INT_FIELD(mirror_gang_id);
 	READ_INT_FIELD(parentIndex); /* List of int index */
 	READ_NODE_FIELD(children); /* List of int index */
 	READ_NODE_FIELD(primaryProcesses); /* List of (CDBProcess *) */

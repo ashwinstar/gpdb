@@ -75,6 +75,7 @@
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbtm.h"
 #include "cdb/cdbdisp.h"
+#include "cdb/cdbdispatchresult.h"
 
 #include <pthread.h>
 
@@ -197,7 +198,7 @@ static bool IsTransactionExitStmtList(List *parseTrees);
 static bool IsTransactionStmtList(List *parseTrees);
 static void SigHupHandler(SIGNAL_ARGS);
 static void log_disconnections(int code, Datum arg);
-static bool CheckDebugDtmActionSqlCommandTag(char *sqlCommandTag);
+static bool CheckDebugDtmActionSqlCommandTag(const char *sqlCommandTag);
 static bool CheckDebugDtmActionProtocol(DtxProtocolCommand dtxProtocolCommand);
 
 
@@ -380,6 +381,9 @@ SocketBackend(StringInfo inBuf)
 							 errmsg("Greenplum Database dispatch unsupported for old FrontendProtocols.")));	
 
 		
+			break;
+		case 'G':				/* Greenplum Gang Management */
+			doing_extended_query_message = false;
 			break;
 		
 		case 'F':				/* fastpath function call */
@@ -1329,7 +1333,7 @@ exec_mpp_dtx_protocol_command(
 }
 
 static bool
-CheckDebugDtmActionSqlCommandTag(char *sqlCommandTag)
+CheckDebugDtmActionSqlCommandTag(const char *sqlCommandTag)
 {
 	bool result;
 
@@ -3098,7 +3102,7 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
     char       *signame;
     char       *pts = "process";
 
-	if (Gp_role == GP_ROLE_DISPATCH &&
+	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) &&
 		!pthread_equal(main_tid, pthread_self()))
 	{
 		debug_break();
@@ -3150,6 +3154,8 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
         pts = "QD process";
     else if (Gp_role == GP_ROLE_EXECUTE)
         pts = "QE process";
+    else if (Gp_role == GP_ROLE_DISPATCHAGENT)
+    	pts = "DA process";
     else
         pts = "Process";
 
@@ -3409,6 +3415,376 @@ get_stats_option_name(const char *arg)
 	}
 
 	return NULL;
+}
+
+#include "cdb/cdbgang.h"
+
+/*
+ * This code is used by the dispatch agent (Gp_role == GP_ROLE_DISPATCHAGENT)
+ */
+ 
+static bool dispatchAgent(int firstchar, StringInfo input_message)
+{
+	elog(LOG, "Message type %c received by Dispatch Agent", firstchar);
+	SetClientEncoding(GetDatabaseEncoding(), true);	
+	switch (firstchar)
+	{
+		case 'G': /* Gang management */
+		{
+			int size ;
+			int connrespsize;
+			const char *query_string;
+			const char * completionTag = "GANG";
+			GpSegmentConnectionInfoSet * conninfo;
+			GpSegmentConnectionResponse * connresp;
+			StringInfoData buf;
+
+			if (Gp_role != GP_ROLE_EXECUTE)
+				gp_command_count++;
+
+			SetCurrentStatementStartTimestamp();
+
+			query_string = pq_getmsgstring(input_message);
+
+			size = pq_getmsgint(input_message,4);
+			conninfo = (GpSegmentConnectionInfoSet *) pq_getmsgbytes(input_message, size);
+
+			/* Unpack the gang information from the message */
+			pq_getmsgend(input_message);
+
+			elog(LOG, "Gang create stmt: %s.",query_string);
+			debug_query_string = query_string;
+			pgstat_report_activity("GANG");
+
+			set_ps_display("creating gang", false);
+
+			start_xact_command();
+
+			connresp = createGangFragment(conninfo, &connrespsize);
+
+			initStringInfo(&buf);
+
+			/* Replaces EndCommand */
+
+			pq_beginmessage(&buf, 'y');
+			pq_sendstring(&buf, completionTag);
+			pq_sendint(&buf, connrespsize, 4);
+			pq_sendbytes(&buf, (char *)connresp, connrespsize);
+			pq_endmessage(&buf);
+
+			finish_xact_command();
+
+			return true;
+		}
+		break;
+		case 'Q': /* simple query */
+		{
+			const char *query_string;
+
+			if (Gp_role != GP_ROLE_EXECUTE)
+				gp_command_count++;
+
+			/* Set statement_timestamp() */
+			SetCurrentStatementStartTimestamp();
+
+			query_string = pq_getmsgstring(input_message);
+			pq_getmsgend(input_message);
+
+			elog(LOG, "Simple query stmt: %s.",query_string);
+			elog(ERROR,"Can't dispatch simple query yet");
+
+			setupRegularDtxContext();
+
+			exec_simple_query(query_string);
+
+			return true;
+		}
+		break;
+
+		case 'M': /* MPP dispatched stmt from QD */
+		{
+			/* This is exactly like 'Q' above except we peel off and
+			 * set the snapshot information right away.
+			 */
+			const char *query_string;
+
+			const char *serializedSnapshot;
+			const char *serializedQuerytree;
+			const char *serializedPlantree;
+			const char *serializedParams;
+			const char *serializedSliceInfo;
+
+			int query_string_len;
+			int serializedSnapshotlen;
+			int serializedQuerytreelen;
+			int serializedPlantreelen;
+			int serializedParamslen;
+			int serializedSliceInfolen;
+
+			int localSlice;
+			int rootIdx;
+			Oid suid;
+			Oid ouid;
+			Oid cuid;
+			bool suid_is_super = false;
+			bool ouid_is_super = false;
+			SliceTable * sliceTable = NULL;
+
+			char * completionTag = NULL;
+			
+
+			struct CdbDispatchResults *pPrimaryResults = NULL;
+			struct CdbDispatchResults *pMirrorResults = NULL;
+			CdbDispatchCmdThreads *dispatchThreads;
+
+			int unusedFlags;
+
+			/* Set statement_timestamp() */
+			SetCurrentStatementStartTimestamp();
+			start_xact_command();
+
+			/* get the client command serial# */
+			gp_command_count = pq_getmsgint(input_message, 4);
+
+			/* Get the userid info  (session, outer, current) */
+			suid = pq_getmsgint(input_message, 4);
+			if(pq_getmsgbyte(input_message) == 1)
+				suid_is_super = true;
+
+			ouid = pq_getmsgint(input_message, 4);
+			if(pq_getmsgbyte(input_message) == 1)
+				ouid_is_super = true;
+			cuid = pq_getmsgint(input_message, 4);
+
+			/* get the slice number# */
+			localSlice = pq_getmsgint(input_message, 4);
+			
+			rootIdx = pq_getmsgint(input_message, 4);
+
+			/* read ser string lengths */
+			query_string_len = pq_getmsgint(input_message, 4);
+			serializedQuerytreelen = pq_getmsgint(input_message, 4);
+			serializedPlantreelen = pq_getmsgint(input_message, 4);
+			serializedParamslen = pq_getmsgint(input_message, 4);
+			serializedSliceInfolen = pq_getmsgint(input_message, 4);
+			serializedSnapshotlen = pq_getmsgint(input_message, 4);
+
+			/* read in the snapshot info */
+			if (serializedSnapshotlen == 0)
+				serializedSnapshot = NULL;
+			else
+				serializedSnapshot = pq_getmsgbytes(input_message,serializedSnapshotlen);
+
+			deserializeDtxContextInfo(
+					serializedSnapshot, serializedSnapshotlen,
+					&TempDtxContextInfo);
+
+			/* get the transaction options */
+			unusedFlags = pq_getmsgint(input_message, 4);
+
+			/* get the query string and kick off processing. */
+			if (query_string_len == 0)
+				query_string = pstrdup("");
+			else
+				query_string = pq_getmsgbytes(input_message,query_string_len);
+
+			if (serializedQuerytreelen == 0)
+				serializedQuerytree = NULL;
+			else
+				serializedQuerytree = pq_getmsgbytes(input_message,serializedQuerytreelen);
+
+			if (serializedPlantreelen == 0)
+				serializedPlantree = NULL;
+			else
+				serializedPlantree = pq_getmsgbytes(input_message,serializedPlantreelen);
+
+			if (serializedParamslen == 0)
+				serializedParams = NULL;
+			else
+				serializedParams = pq_getmsgbytes(input_message,serializedParamslen);
+
+			if (serializedSliceInfolen == 0)
+				serializedSliceInfo = NULL;
+			else
+				serializedSliceInfo = pq_getmsgbytes(input_message,serializedSliceInfolen);
+
+			pq_getmsgend(input_message);
+
+			debug_query_string = query_string;
+			pgstat_report_activity("DISPATCH");
+
+			set_ps_display(query_string, false);
+
+			elog((Debug_print_full_dtm ? LOG : DEBUG5), "MPP dispatched stmt from QD: %s.",query_string);
+
+			if (suid > 0)
+				SetSessionAuthorization(suid, suid_is_super); /* Set the session UserId */
+
+			if (ouid > 0 && ouid != GetSessionUserId())
+				SetCurrentRoleId(ouid, ouid_is_super); /* Set the outer UserId */
+
+			setupQEDtxContext(&TempDtxContextInfo);
+
+			//Gang * primaryGang = NULL;
+			//primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, getgpsegmentCount(), -1, NULL);
+
+
+			dispatchThreads = NULL;
+
+			if (serializedSliceInfo != NULL && serializedSliceInfolen > 0)
+			{
+				sliceTable = (SliceTable *) deserializeNode(serializedSliceInfo, serializedSliceInfolen);
+			}
+			
+
+			//PG_TRY();
+
+			{
+
+				DispatchCommandQueryParms queryParms;
+				if (cuid > 0)
+					SetUserId(cuid); /* Set current userid */
+
+				memset(&queryParms, 0, sizeof(queryParms));
+				/*
+				 * Ugh... Some of the QueryParms fields are char *, not const char *.
+				 * 
+				 * We need to cast away the constness for now, and avoid the usual
+				 * routine to destroy the queryParms, since it wants to pfree those 
+				 * strings.
+				 */
+				queryParms.strCommand = query_string;
+				queryParms.serializedQuerytree = (char *) serializedQuerytree;
+				queryParms.serializedQuerytreelen = serializedQuerytreelen;
+				queryParms.serializedPlantree = (char *)serializedPlantree;
+				queryParms.serializedPlantreelen = serializedPlantreelen;
+				queryParms.serializedParams = (char *)serializedParams;
+				queryParms.serializedParamslen = serializedParamslen;
+				queryParms.serializedSliceInfo = (char *)serializedSliceInfo;
+				queryParms.serializedSliceInfolen= serializedSliceInfolen;
+				queryParms.rootIdx = rootIdx;
+				//queryParms.serializedSnapshot = serializedSnapshot;
+				//queryParms.serializedSnapshotlen = serializedSnapshotlen;
+
+ 
+				cdbdisp_dispatchX(&queryParms,
+						 true,
+						 sliceTable,
+						 /*GpDispatchCommandType		mppDispatchCommandType,
+						 //void						   *commandTypeParms,*/
+						 &pPrimaryResults,		/* OUT */
+						 &pMirrorResults,       /* OUT */
+						 &dispatchThreads)	;	/* OUT */
+				
+				
+				 
+			}
+			elog(DEBUG1,"Checking dispatch results");
+
+			CdbCheckDispatchResult(dispatchThreads, false);
+			
+			completionTag = cdbdisp_relayresults(pPrimaryResults, pMirrorResults);
+			
+			/* free memory allocated for the dispatch threads struct */
+			/*
+			 * Don't use this:
+					cdbdisp_destroyDispatchThreads(dispatchThreads);
+			 * because it wants to pfree the things in the queryParms struct
+			 */
+			
+			if (dispatchThreads)
+			{
+				int i;
+				for (i = 0; i < dispatchThreads->dispatchCommandParmsArSize; i++)
+				{
+					DispatchCommandParms *pParms;
+					pParms = &(dispatchThreads->dispatchCommandParmsAr[i]);
+					if (pParms->dispatchResultPtrArray)
+					{
+						pfree(pParms->dispatchResultPtrArray);
+						pParms->dispatchResultPtrArray = NULL;
+					}
+				}
+				
+				pfree(dispatchThreads->dispatchCommandParmsAr);	
+				dispatchThreads->dispatchCommandParmsAr = NULL;
+
+				dispatchThreads->dispatchCommandParmsArSize = 0;
+				dispatchThreads->threadCount = 0;
+					
+				pfree(dispatchThreads);
+			}
+			dispatchThreads = NULL;
+			 
+			/*if (errmsgbuf.len > 0)
+			//	ereport(ERROR, (errmsg("dispatch error (gathered %d results from cmd '%s')", nresults, query_string),
+			//					errdetail("%s", errmsgbuf.data)));*/
+			
+			SetUserId(GetOuterUserId());
+			
+			if (completionTag == NULL)
+			{
+				completionTag = "ERROR";
+			}
+			elog(LOG,"Dispatch agent says we are done with this command %s",completionTag);
+			
+			pq_putmessage('C', completionTag, strlen(completionTag)+1);
+		
+			debug_query_string = NULL;
+			finish_xact_command();
+			 
+
+			return true;
+		}
+		break;
+		case 'T':
+			elog(ERROR,"Dispatch Agent doesn't do transaction commands yet");
+		break;
+		
+		case 'H':			/* flush */
+			pq_getmsgend(input_message);
+			if (whereToSendOutput == DestRemote)
+				pq_flush();
+			break;
+
+		case 'S':			/* sync */
+			pq_getmsgend(input_message);
+			finish_xact_command();
+			return true;
+			break;
+
+
+		/*
+		 * 'X' means that the frontend is closing down the socket. EOF
+		 * means unexpected loss of frontend connection. Either way,
+		 * perform normal shutdown.
+		 */
+		case 'X':
+		case EOF:
+
+			/*
+			 * Reset whereToSendOutput to prevent ereport from attempting
+			 * to send any more messages to client.
+			 */
+			if (whereToSendOutput == DestRemote)
+				whereToSendOutput = DestNone;
+
+			/*
+			 * NOTE: if you are tempted to add more code here, DON'T!
+			 * Whatever you had in mind to do should be set up as an
+			 * on_proc_exit or on_shmem_exit callback, instead. Otherwise
+			 * it will fail to be called during other backend-shutdown
+			 * scenarios.
+			 */
+			proc_exit(0);
+
+		default:
+		ereport(FATAL,
+				(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						errmsg("invalid frontend message for Dispatch Agent, message type %d ('%c')",
+								firstchar,firstchar)));
+	}
+	return false;
 }
 
 
@@ -4188,7 +4564,10 @@ PostgresMain(int argc, char *argv[], const char *username)
 				pgstat_report_tabstat();
 				pgstat_report_queuestat();
 
-				set_ps_display("idle", false);
+				if (Gp_role == GP_ROLE_DISPATCHAGENT)
+					set_ps_display("idle dispatch agent",false);
+				else
+					set_ps_display("idle", false);
 				pgstat_report_activity("<IDLE>");
 			}
 
@@ -4236,9 +4615,14 @@ PostgresMain(int argc, char *argv[], const char *username)
 		 */
 		if (ignore_till_sync && firstchar != EOF)
 			continue;
-
+		
 		elog((Debug_print_full_dtm ? LOG : DEBUG5), "First char: '%c'; gp_role = '%s'.",firstchar,role_to_string(Gp_role));
 
+		if (Gp_role == GP_ROLE_DISPATCHAGENT)
+		{
+			send_ready_for_query = dispatchAgent(firstchar,&input_message);
+		}
+		else
 		switch (firstchar)
 		{
 			case 'Q':			/* simple query */
@@ -4284,6 +4668,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					int serializedSliceInfolen;
 					
 					int		localSlice;
+					int		rootIdx;
 					Oid 	suid;
 					Oid 	ouid;
 					Oid 	cuid;
@@ -4310,6 +4695,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 					
 					/* get the slice number# */
 					localSlice = pq_getmsgint(&input_message, 4);
+					
+					rootIdx = pq_getmsgint(&input_message, 4);
 					
 					/* read ser string lengths */
 					query_string_len = pq_getmsgint(&input_message, 4);
@@ -4388,6 +4775,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 									elog((Debug_print_full_dtm ? LOG : DEBUG5), "PostgresMain explicit %s", query_string);
 
 									// UNDONE: HACK
+									pgstat_report_activity("BEGIN");
+									
 									set_ps_display("BEGIN", false);
 
 									BeginCommand("BEGIN", dest);
@@ -4732,8 +5121,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 			default:
 				ereport(FATAL,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("invalid frontend message type %d",
-								firstchar)));
+						 errmsg("invalid frontend message type %d ('%c')",
+								firstchar,firstchar)));
 		}
 	}							/* end of input-reading loop */
 

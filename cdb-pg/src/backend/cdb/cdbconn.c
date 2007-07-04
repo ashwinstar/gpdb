@@ -360,6 +360,7 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
          * where it listens for connections from the gang below.
          */
         segdbDesc->motionListener = PQmotionListener(segdbDesc->conn);
+        segdbDesc->backendPid = PQbackendPID(segdbDesc->conn);
 
         /* Don't use elog, it's not thread-safe */
         if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
@@ -373,6 +374,106 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
     return segdbDesc->conn != NULL;
 }                               /* cdbconn_doConnect */
 
+/* Connect to a DA as a client via libpq. */
+/*
+ * Almost the same as doConnect, but dispatch agents don't have
+ * motion listeners
+ */
+bool                            /* returns true if connected */
+cdbconn_doDispatchAgentConnect(SegmentDatabaseDescriptor    *segdbDesc,
+                  const char                   *options)
+{
+    CdbComponentDatabaseInfo   *q = segdbDesc->segment_database_info;
+    PQExpBufferData             buffer;
+
+    /*
+     * We use PQExpBufferData instead of StringInfoData
+     * because the former uses malloc, the latter palloc.
+     * We are in a thread, and we CANNOT use palloc since it's not
+     * thread safe.  We cannot call elog or ereport either for the
+     * same reason.
+     */
+    initPQExpBuffer(&buffer);
+
+    /*
+     * Build the connection string
+     */
+    if (options)
+    {
+        appendPQExpBufferStr(&buffer, options);
+        appendPQExpBufferChar(&buffer, ' ');
+    }
+
+    if ( q->hostname == NULL )
+        appendPQExpBufferStr(&buffer, "host='' " );
+    else if ( isdigit(q->hostname[0]) )
+        appendPQExpBuffer(&buffer, "hostaddr=%s ", q->hostname );
+    else
+        appendPQExpBuffer(&buffer, "host=%s ", q->hostname );
+
+    appendPQExpBuffer(&buffer, "port=%u ", q->port);
+
+    if (segdbDesc->dbname)
+        appendPQExpBuffer(&buffer, "dbname=%s ", segdbDesc->dbname);
+
+    appendPQExpBuffer(&buffer, "user=%s ", segdbDesc->username);
+
+    appendPQExpBuffer(&buffer, "connect_timeout=%d ", gp_segment_connect_timeout);
+
+    /*
+     * Call libpq to connect
+     */
+    segdbDesc->conn = PQconnectdb(buffer.data);
+
+
+    /* Build whoami string to identify the QE for use in messages. */
+    cdbconn_setSliceIndex(segdbDesc, -1);
+
+    
+    /*
+     * Check for connection failure.
+     */
+    if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)
+    {
+        if (!segdbDesc->errcode)
+            segdbDesc->errcode = ERRCODE_GP_INTERCONNECTION_ERROR;
+        appendPQExpBuffer(&segdbDesc->error_message,
+                          "QD unable to connect to DA  %s with options %s: %s\n",
+                          segdbDesc->whoami,
+                          buffer.data,
+                          PQerrorMessage(segdbDesc->conn));
+
+        /* Don't use elog, it's not thread-safe */
+        if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
+            write_stderr("%s\n", segdbDesc->error_message.data);
+
+        PQfinish(segdbDesc->conn);
+        segdbDesc->conn = NULL;
+    }
+    /*
+     * Successfully connected.
+     */
+    else
+    {
+    	PQsetNoticeReceiver(segdbDesc->conn, &MPPnoticeReceiver, segdbDesc);
+        /* Command the QE to initialize its motion layer.
+         * Wait for it to respond giving us the TCP port number
+         * where it listens for connections from the gang below.
+         */
+
+        segdbDesc->backendPid = PQbackendPID(segdbDesc->conn);
+
+        /* Don't use elog, it's not thread-safe */
+        if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
+            write_stderr("Connected to %s motionListener=%d with options %s\n",
+						 segdbDesc->whoami,
+						 segdbDesc->motionListener,
+						 buffer.data);
+    }
+
+    free(buffer.data);
+    return segdbDesc->conn != NULL;
+}                               
 
 /* Build text to identify this QE in error messages. */
 void
@@ -396,6 +497,10 @@ cdbconn_setSliceIndex(SegmentDatabaseDescriptor    *segdbDesc,
             appendPQExpBuffer(scratchbuf, " slice%d", sliceIndex);
     }
     else
+    	if (q->segindex == -2)
+    		appendPQExpBuffer(scratchbuf,
+                    q->isprimary ? "*DA*" : "mirror *DA*???");
+    	else
         appendPQExpBuffer(scratchbuf,
                           q->isprimary ? "entry db" : "mirror entry db");
 

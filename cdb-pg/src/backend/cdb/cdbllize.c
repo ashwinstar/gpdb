@@ -167,6 +167,7 @@ cdbparallelize(Plan *plan,
 	switch ( Gp_role )
 	{
 	case GP_ROLE_DISPATCH:
+	case GP_ROLE_DISPATCHAGENT:
 		break;
 	case GP_ROLE_UTILITY:
 		return plan;

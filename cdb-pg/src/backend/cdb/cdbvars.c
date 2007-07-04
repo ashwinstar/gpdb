@@ -59,6 +59,8 @@ bool		gp_enable_functions; 	/* allow functions that call back from QE to QD */
 
 bool 		gp_is_callback;		/* are we executing a callback query? */
 
+bool		gp_use_dispatch_agent;	/* Use experimental code for Query Dispatch Agent */
+
 unsigned long gp_qd_proc_offset;	/* the proc entry for the original backend on the QD */
 
 int         gp_command_count;          /* num of commands from client */
@@ -199,6 +201,10 @@ string_to_role(const char *string)
 	{
 		role = GP_ROLE_EXECUTE;
 	}
+	else if (pg_strcasecmp(string, "dispatchagent") == 0 || pg_strcasecmp(string, "qda") == 0)
+	{
+		role = GP_ROLE_DISPATCHAGENT;
+	}
 	else if (pg_strcasecmp(string, "utility") == 0)
 	{
 		role = GP_ROLE_UTILITY;
@@ -221,6 +227,8 @@ role_to_string(GpRoleValue role)
 			return "dispatch";
 		case GP_ROLE_EXECUTE:
 			return "execute";
+		case GP_ROLE_DISPATCHAGENT:
+			return "dispatchagent";
 		case GP_ROLE_UTILITY:
 			return "utility";
 		case GP_ROLE_UNDEFINED:
@@ -261,6 +269,9 @@ assign_gp_session_role(const char *newval, bool doit, GucSource source)
 
 		if (Gp_role == GP_ROLE_DISPATCH)
 			Gp_segment = -1;
+		
+		if (Gp_role == GP_ROLE_DISPATCHAGENT)
+			gp_log_gang = GPVARS_VERBOSITY_VERBOSE;
 	}
 	return newval;
 }
@@ -374,7 +385,40 @@ assign_gp_connections_per_thread(int newval, bool doit, GucSource source)
 	return true;
 }
 
+/*
+ * Assign hook routine for "assign_gp_use_dispatch_agent" option.  This variable has context
+ * PGC_USERSET
+ *
+ * See src/backend/util/misc/guc.c for option definition.
+ */
+void disconnectAndDestroyAllGangs(void);
 
+bool
+assign_gp_use_dispatch_agent(bool newval, bool doit, GucSource source)
+{
+
+
+	elog(LOG, "assign_gp_use_dispatch_agent: gp_use_dispatch_agent old=%s, newval=%s, doit=%s",
+			(gp_use_dispatch_agent ? "true" : "false"), (newval ? "true" : "false"), (doit ? "true" : "false"));
+
+
+	if (doit)
+	{
+		/*
+		 * If we are switching, we must get rid of all existing gangs.
+		 */
+		disconnectAndDestroyAllGangs();
+		gp_use_dispatch_agent = newval;
+		/*
+		 * If we are now going to be using dispatch agents, we do this 
+		 * just to help debugging.  This should come out later.
+		 */
+		if (gp_use_dispatch_agent)
+			gp_log_gang = GPVARS_VERBOSITY_VERBOSE;
+	}
+
+	return true;
+}
 
 
 

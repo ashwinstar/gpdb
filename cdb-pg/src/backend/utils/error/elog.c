@@ -1951,6 +1951,8 @@ log_line_prefix(StringInfo buf)
                                      Gp_segment);
                 if (currentSliceId > 0)
                     appendStringInfo(buf, "slice%d ", currentSliceId);
+                if (Gp_role == GP_ROLE_DISPATCHAGENT)
+                	 appendStringInfo(buf, "*DA* ");
                 if (j < buf->len &&
                     buf->data[buf->len - 1] == ' ')
                     buf->len--;
@@ -1983,6 +1985,8 @@ log_line_prefix(StringInfo buf)
                         appendStringInfo(buf, "qe");
                     else if (Gp_role == GP_ROLE_DISPATCH)
                         appendStringInfo(buf, "qd");
+                    else if (Gp_role == GP_ROLE_DISPATCHAGENT)
+                        appendStringInfo(buf, "da");
                 }
 				break;	
 			case '%':

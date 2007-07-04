@@ -72,7 +72,7 @@ int64 cdbRelSize(Oid relOid)
 		{
 			if (PQresultStatus(results[i]) != PGRES_TUPLES_OK)
 			{
-				elog(ERROR,"cdbRelSize: resultStatus not tuples_Ok");
+				elog(ERROR,"cdbRelSize: resultStatus not tuples_Ok: %s   %s",PQresStatus(PQresultStatus(results[i])),PQresultErrorMessage(results[i]));
 			}
 			else
 			{

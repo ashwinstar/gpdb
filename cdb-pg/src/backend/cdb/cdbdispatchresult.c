@@ -839,6 +839,180 @@ cdbdisp_sqlstate_to_errcode(const char *sqlstate)
 }                               /* cdbdisp_sqlstate_to_errcode */
 
 
+#include "libpq/pqformat.h"
+#include "access/printtup.h"
+char *
+cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
+					 CdbDispatchResults *pMirrorResults)
+{
+	
+	int i;
+	int nfields = 0;
+	TupleDesc typeinfo;
+	CdbDispatchResults *gangResults;
+	CdbDispatchResult *dispatchResult;
+	struct pg_result * p;
+	char * completionTag = NULL;
+	StringInfoData buf;
+	
+	StringInfoData errmsgbuf;
+	initStringInfo(&errmsgbuf);
+
+	/*
+	 * Let's hope that everybody has the same completion tag, or we are in trouble.
+	 * 
+	 * Grab the first result from the first gang member of the primary gang,
+	 * get it's tag, and use that to send back to the QD.
+	 * 
+	 */
+
+	dispatchResult = &pPrimaryResults->resultArray[0];
+	p = ((struct pg_result **)dispatchResult->resultbuf->data)[0];
+	completionTag = pstrdup(PQcmdStatus(p));
+
+	
+	/* Collect results from primary gang. */
+	
+	/*
+	 * In normal queries, the results are flowing back to the end-user, so we don't get them here, but
+	 * for internal queries, we do get results, and those results need to go back to the QD.
+	 */
+	gangResults = pPrimaryResults;
+	if (gangResults)
+	{
+		
+		for (i = 0; i < gangResults->resultCount; ++i)
+		{
+			dispatchResult = &gangResults->resultArray[i];
+			p = ((struct pg_result **)dispatchResult->resultbuf->data)[0];
+
+			// Find first one with tuples (if one has tuples, they all have either tuples or errors)
+			if (PQresultStatus(p) == PGRES_TUPLES_OK)
+			{
+				int j;
+				nfields = PQnfields(p);
+				typeinfo = CreateTemplateTupleDesc(nfields,false);
+
+				// Get description of the row.  We make the assumtion that all the QEs must send
+				// data in the same format
+				for (j = 0; j<nfields; j++)
+				{
+					TupleDescInitEntry(typeinfo, (AttrNumber) (j+1), PQfname(p,j), PQftype(p, j), PQfmod(p,j), 0);
+				}
+				// Send results back to our QD
+				SendRowDescriptionMessage(typeinfo,
+						NULL, /*((Query *) linitial(parseTrees))->targetList,*/
+						NULL);
+				break;
+			}
+		}
+
+		for (i = 0; i < gangResults->resultCount; ++i)
+		{
+			int nr;
+			int j;
+			dispatchResult = &gangResults->resultArray[i];
+
+			/* Append error messages. */
+			cdbdisp_dumpDispatchResult(dispatchResult, false, &errmsgbuf);
+			
+			nr = dispatchResult->resultbuf->len/sizeof(struct pg_result *);
+			
+			for (j = 0; j<nr; j++)
+			{
+				p = ((struct pg_result **)dispatchResult->resultbuf->data)[j];
+				if (PQresultStatus(p) == PGRES_TUPLES_OK)
+				{
+					int j,k;
+					int nRows = PQntuples(p);
+					for (k=0; k<nRows; k++)
+					{
+						initStringInfo(&buf);
+						/*
+						 * Prepare a DataRow message
+						 */
+						pq_beginmessage(&buf, 'D');
+
+						pq_sendint(&buf, nfields, 2);
+
+						for (j=0; j<nfields; j++)
+						{
+							char * v = PQgetvalue(p, k, j);
+							elog(LOG," result %s",v);
+							pq_sendcountedtext(&buf, v, strlen(v), false);
+						}
+						
+						pq_endmessage(&buf);
+					}
+
+				}
+				
+			}
+
+		}
+		cdbdisp_destroyDispatchResults(gangResults);
+	}
+
+	/* Collect results from mirror gang. */
+	gangResults = pMirrorResults;
+	if (gangResults)
+	{
+		for (i = 0; i < gangResults->resultCount; ++i)
+		{
+			int nr;
+			int j;
+			dispatchResult = &gangResults->resultArray[i];
+
+			/* Append error messages. */
+			cdbdisp_dumpDispatchResult(dispatchResult, false, &errmsgbuf);
+			
+			nr = dispatchResult->resultbuf->len/sizeof(struct pg_result *);
+			
+			for (j = 0; j<nr; j++)
+			{
+				p = ((struct pg_result **)dispatchResult->resultbuf->data)[j];
+				if (PQresultStatus(p) == PGRES_TUPLES_OK)
+				{
+					int j,k;
+					int nRows = PQntuples(p);
+					for (k=0; k<nRows; k++)
+					{
+						initStringInfo(&buf);
+						/*
+						 * Prepare a DataRow message
+						 */
+						pq_beginmessage(&buf, 'D');
+
+						pq_sendint(&buf, nfields, 2);
+
+						for (j=0; j<nfields; j++)
+						{
+							char * v = PQgetvalue(p, k, j);
+							elog(LOG," result %s",v);
+							pq_sendcountedtext(&buf, v, strlen(v), false);
+						}
+						
+						pq_endmessage(&buf);
+					}
+
+				}
+				
+			}
+
+		}
+		cdbdisp_destroyDispatchResults(gangResults);
+	}
+	
+
+	if (errmsgbuf.len > 0)
+		ereport(ERROR, (errmsg("dispatch error)"),
+						errdetail("%s", errmsgbuf.data)));
+
+	return completionTag;
+}
+
+
+
 /*--------------------------------------------------------------------*/
 
 

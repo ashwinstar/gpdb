@@ -1466,6 +1466,7 @@ ProcessStartupPacket(Port *port, bool SSLdone)
 	MemoryContext oldcontext;
     char       *gpqeid = NULL;
     char       *gpqdid = NULL;
+    char       *gpdaid = NULL;
 
 	if (pq_getbytes((char *) &len, 4) == EOF)
 	{
@@ -1624,6 +1625,8 @@ retry1:
 				gpqeid = valptr;
 			else if (strcmp(nameptr, "gpqdid") == 0)
 				gpqdid = valptr;
+			else if (strcmp(nameptr, "gpdaid") == 0)
+				gpdaid = valptr;
 			else
 			{
 				/* Assume it's a generic GUC option */
@@ -1715,6 +1718,8 @@ retry1:
         cdbgang_parse_gpqeid_params(port, gpqeid);
     else if (gpqdid)
     	cdbgang_parse_gpqdid_params(port, gpqdid);
+    else if (gpdaid)
+    	cdbgang_parse_gpdaid_params(port, gpdaid);
 
 	/*
 	 * Done putting stuff in TopMemoryContext.

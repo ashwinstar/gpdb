@@ -38,6 +38,8 @@ extern char *default_tablespace;
 #include "cdb/cdbtm.h"			/* discardDtxTransaction() */
 #include "cdb/cdbutil.h"		/* CdbComponentDatabaseInfo */
 #include "cdb/cdbvars.h"		/* Gp_role, etc. */
+#include "libpq-fe.h"
+#include "libpq-int.h"
 
 
 /*
@@ -45,16 +47,21 @@ extern char *default_tablespace;
  */
 static void *thread_DoConnect(void *arg);
 static void build_gpqeid_params(PQExpBuffer buf);
+static void build_gpdaid_params(PQExpBuffer buf);
 
-static Gang *createGang(GangType type, int size, int content, char *portal_name);
+static Gang *createGang(GangType type, int gang_id, int size, int content, char *portal_name);
 
 static void disconnectAndDestroyGang(Gang * gp);
 static void disconnectAndDestroyAllReaderGangs(void);
 
-static Gang *buildGangDefinition(GangType type, int size, int content, char *portal_name);
+static Gang *buildGangDefinition(GangType type, int gang_id, int size, int content, char *portal_name);
+static Gang *
+buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo);
 
 static bool cleanupGang(Gang * gp);
 static bool isTargetPortal(char *p1, char *p2);
+
+static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bool isprimary);
 
 
 /*
@@ -101,13 +108,121 @@ static void addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
 
 
 static char *myDatabaseName = NULL;
+ 
 
+DispatchAgentSet * dispatchagents = NULL;
+
+/*
+ * create Dispatch Agents for this portal
+ */
+static DispatchAgentSet *
+createDispatchAgents(void)
+{
+	MemoryContext oldContext;
+
+	CdbComponentDatabaseInfo *q;
+
+	PQExpBufferData buffer;
+	int			size = getgpsegmentCount()/4+1;
+
+	elog(DEBUG1,"createDispatchAgents");
+	
+	/*
+	 * Perhaps someday we will have a multi-level tree of dispatch agents, but right now
+	 * we only allow the QD to create dispatch agents
+	 */
+	Assert(Gp_role == GP_ROLE_DISPATCH);
+	/*
+	 * We can't allocate more dispatch agents than segments than we know about
+	 */
+	Assert(size <= getgpsegmentCount());
+
+	/*
+	 * MemoryContexts used in this routine.
+	 */
+
+	oldContext = MemoryContextSwitchTo(TopMemoryContext);
+
+	/*
+	 * get_database_name allocated memory with palloc, so remember we must pfree it later
+	 * (not free)
+	 */
+	if (myDatabaseName == NULL)
+		myDatabaseName = get_database_name(MyDatabaseId);
+	
+	cdb_component_dbs = getCdbComponentDatabases();
+
+	if (cdb_component_dbs == NULL || cdb_component_dbs->total_segments <= 0
+		|| cdb_component_dbs->total_segment_dbs <= 0)
+	{
+		elog(ERROR, "create Dispatch Agent:  GP schema not populated");
+		return NULL;
+	}
+
+	/*
+	 * for now, grab a random postmaster out of the segDBs, and create a 
+	 * dispatch agent there.
+	 * // q = &cdb_component_dbs->entry_db_info[0]; // to test on entry db
+	 */
+	q = &cdb_component_dbs->segment_db_info[0];
+	if (!q->isprimary  || !q->valid)
+		q = &cdb_component_dbs->segment_db_info[1];
+		
+	elog(LOG,"Using dispatch agent on %s %d segindex %d",q->hostname,q->port,q->segindex);
+
+	/*
+	 * For now, create exactly one dispatch agent
+	 */
+	dispatchagents = palloc0(sizeof(DispatchAgentSet));
+	dispatchagents->size = 1;
+	dispatchagents->db_descriptors = palloc0(sizeof(SegmentDatabaseDescriptor));
+	cdbconn_initSegmentDescriptor(dispatchagents->db_descriptors,
+			  q,
+			  myDatabaseName,
+			  GetUserNameFromId(GetAuthenticatedUserId()));
+	
+	//dispatchagents->db_descriptors->segindex = -2;
+
+
+	initPQExpBuffer(&buffer);
+	
+	/*
+	 * Build the connection string
+	 */
+	build_gpdaid_params(&buffer);
+
+	addOptions(&buffer,
+			true /* writer? */, q->segindex /* segindex */,true /* primary? */ );
+
+
+	if (!cdbconn_doDispatchAgentConnect(dispatchagents->db_descriptors, buffer.data))
+	{      
+    	elog(LOG,"createDispatchAgents failed %s",dispatchagents->db_descriptors->error_message.data);
+    }
+    /*
+     * Successfully connected.
+     */
+    else
+    {
+    	elog(DEBUG1,"createDispatchAgents success %s", buffer.data);
+    }
+
+    free(buffer.data);
+	
+	MemoryContextSwitchTo(oldContext);
+	
+	return dispatchagents;
+}
+
+
+
+static int gang_id_counter = 1;
 /*
  * creates a new gang by logging on a session to each segDB involved
  *
  */
 static Gang *
-createGang(GangType type, int size, int content, char *portal_name)
+createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 {
 	Gang	   *newGangDefinition;
 	MemoryContext oldContext;
@@ -121,6 +236,7 @@ createGang(GangType type, int size, int content, char *portal_name)
 	int			max_threads;
 	int			segdbs_in_thread_pool;
 	int			segdb_count;
+	
 
 	Assert(size == 1 || size == getgpsegmentCount());
 
@@ -129,6 +245,11 @@ createGang(GangType type, int size, int content, char *portal_name)
 	 */
 	Assert(size <= getgpsegmentCount());
 
+	/*
+	 * If we are going to use Dispatch Agents, we need to make sure they are running
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent && dispatchagents==NULL)
+		createDispatchAgents();
 
 	/*
 	 * MemoryContexts used in this routine.
@@ -144,7 +265,7 @@ createGang(GangType type, int size, int content, char *portal_name)
 	if (myDatabaseName == NULL)
 		myDatabaseName = get_database_name(MyDatabaseId);
 
-	newGangDefinition = buildGangDefinition(type, size, content, portal_name);
+	newGangDefinition = buildGangDefinition(type, gang_id, size, content, portal_name);
 
 	if (type == GANGTYPE_MIRROR_WRITER && newGangDefinition == NULL)
 	{
@@ -153,7 +274,6 @@ createGang(GangType type, int size, int content, char *portal_name)
 	}
 
 	Assert(newGangDefinition != NULL);
-
 
 	/*
 	 * Loop through the segment_database_descriptors items inside newGangDefinition.
@@ -167,6 +287,84 @@ createGang(GangType type, int size, int content, char *portal_name)
 
 	Assert(gp_connections_per_thread > 0);
 	Assert(segdb_count > 0);
+	
+	/*
+	 * If we are using Dispatch Agents, assign the segDBs to the agents, and ask them to set 
+	 * up the gang.
+	 * 
+	 * NOTE:  Entry DB gangs do NOT use dispatch agents.
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent && type != GANGTYPE_ENTRYDB_READER)
+	{
+		PGresult   *result;
+		int i;
+		GpSegmentConnectionResponse *gresp;
+		
+		
+		int		conninfosize = sizeof(GpSegmentConnectionInfoSet) + size*sizeof(GpSegmentConnectionInfo);
+		GpSegmentConnectionInfoSet * conninfo = palloc0(conninfosize);
+		
+		Assert(Gp_role == GP_ROLE_DISPATCH);
+		
+		for (i=0;i<newGangDefinition->size;i++)
+		{
+			conninfo->seginfo[i].segindex = newGangDefinition->db_descriptors[i].segindex;
+			conninfo->seginfo[i].isprimary = newGangDefinition->db_descriptors[i].segment_database_info->isprimary;
+			strncpy(conninfo->seginfo[i].hostname, newGangDefinition->db_descriptors[i].segment_database_info->hostname,NAMEDATALEN);
+			conninfo->seginfo[i].port = newGangDefinition->db_descriptors[i].segment_database_info->port;
+		}
+		conninfo->nsegs = newGangDefinition->size;
+		conninfo->type = type;
+		conninfo->gang_id = gang_id;
+		conninfo->content = content;
+		
+		newGangDefinition->active = true;
+
+		// Cheat:  Send to just one Dispatch Agent
+		PQsendCreateGang(dispatchagents->db_descriptors[0].conn, conninfosize, conninfo );
+		
+		result = PQgetResult(dispatchagents->db_descriptors[0].conn);
+		
+		if (PQresultStatus(result)!=PGRES_COMMAND_OK)
+		{
+			elog(ERROR,"Dispatch Agent unable to create gang, %s %s",PQresStatus(PQresultStatus(result)),
+					PQresultErrorMessage(result));
+		}
+		
+		elog(LOG,"Result extraslen %d ",result->extraslen); 
+		gresp = result->extras;
+		
+		for (i = 0; i< conninfo->nsegs; i++)
+		{
+			elog(LOG,"Result %d MotionListener %d  pid %d",i, gresp[i].motionListener, gresp[i].pid); 
+		}
+
+		Assert(conninfo->nsegs == newGangDefinition->size);
+		
+		for (i=0;i<newGangDefinition->size;i++)
+		{
+			newGangDefinition->db_descriptors[i].motionListener = gresp[i].motionListener;
+			newGangDefinition->db_descriptors[i].backendPid = gresp[i].pid;
+			
+		}
+		
+		free(result->extras);		/* malloc'd, so use free */
+		result->extras = NULL;
+		
+		PQclear(result);
+		
+		newGangDefinition->dispatchagents = dispatchagents;
+		newGangDefinition->all_valid_segdbs_connected = true;
+		newGangDefinition->active = false;
+		
+		MemoryContextSwitchTo(oldContext);
+		
+		return newGangDefinition;
+	}
+	
+	/*
+	 * If we get here, this gang creation isn't going to use Dispatch Agents
+	 */
 
 	/*
 	 * The most threads we could have is segdb_count / gp_connections_per_thread, rounded up.
@@ -181,6 +379,7 @@ createGang(GangType type, int size, int content, char *portal_name)
 	segdbs_in_thread_pool = 0;
 
 	newGangDefinition->active = true;
+
 
 	/*
 	 * In this loop, we check each segdb.  If it's marked as valid, and is not
@@ -398,6 +597,7 @@ createGang(GangType type, int size, int content, char *portal_name)
 							errmsg("All segment databases are unavailable")));
 		}
 	}
+	 
 
 	MemoryContextSwitchTo(oldContext);
 
@@ -422,12 +622,145 @@ createGang(GangType type, int size, int content, char *portal_name)
 
 
 /*
+ *	buildGangDefinitionFromConninfo: uses information sent to use by the QD and
+ *	It then converts this to a Gang structure and initializes
+ *	all the non-connection related fields.
+ */
+static Gang *
+buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo)
+{
+	Gang	   *newGangDefinition = NULL;
+
+	SegmentDatabaseDescriptor *segdbDesc;
+
+	int			i;
+	int			size = conninfo->nsegs;
+	GangType	type = conninfo->type;
+
+	char	   *username = GetUserNameFromId(GetAuthenticatedUserId());
+
+    Assert(CurrentMemoryContext == TopMemoryContext);
+    Assert(size > 0);
+
+    /*
+	 * Get the structure representing the configured segment
+	 * databases.  This structure is fetched into a permanent memory
+	 * context -- probably the TopMemoryContext. We also allocate
+	 * space for and partially construct the data structure pointed to
+	 * by ClusterDefn and headed by CdbClusterDescriptor.
+	 */
+	newGangDefinition = (Gang *) palloc0(sizeof(Gang));
+
+	newGangDefinition->type = conninfo->type;
+	newGangDefinition->size = conninfo->nsegs;
+	newGangDefinition->segdb_count = conninfo->nsegs;
+	newGangDefinition->gang_id = conninfo->gang_id;
+	newGangDefinition->allocated = false;
+	newGangDefinition->active = false;
+	newGangDefinition->portal_name = NULL; // (portal_name ? pstrdup(portal_name) : (char *) NULL);
+
+    if (gp_log_gang >= GPVARS_VERBOSITY_VERBOSE)
+    {
+        const char *pn1 = "";
+        const char *pn2 = "";
+        const char *pn3 = "";
+
+         
+        switch (type)
+	    {
+		    case GANGTYPE_PRIMARY_WRITER:
+			    elog(LOG, "Starting %d qExec processes for primary writer gang%s%s%s",
+			    		conninfo->nsegs, pn1, pn2, pn3);
+			    break;
+		    case GANGTYPE_MIRROR_WRITER:
+			    elog(LOG, "Starting %d qExec processes for mirror writer gang%s%s%s",
+			    		conninfo->nsegs, pn1, pn2, pn3);
+			    break;
+		    case GANGTYPE_ENTRYDB_READER:
+			    elog(LOG, "Starting 1 qExec process for entry db reader gang%s%s%s",
+                     pn1, pn2, pn3);
+                break;
+		    case GANGTYPE_PRIMARY_READER:
+			    /* Must be size 1 or size numsegments */
+                if (size == 1)
+			        elog(LOG, "Starting 1 qExec process for seg%d reader gang%s%s%s",
+			        		conninfo->content, pn1, pn2, pn3);
+                else
+			        elog(LOG, "Starting %d qExec processes for reader gang%s%s%s",
+			        		conninfo->nsegs, pn1, pn2, pn3);
+			    break;
+		    default:
+			    Insist(0);
+	    }
+    }
+
+	newGangDefinition->all_valid_segdbs_connected = false;
+
+
+
+	Assert(newGangDefinition->segdb_count > 0);
+
+
+	newGangDefinition->db_descriptors =
+		(SegmentDatabaseDescriptor *) palloc0(conninfo->nsegs *
+											  sizeof
+											  (SegmentDatabaseDescriptor));
+
+
+	for (i = 0; i<conninfo->nsegs; i++)
+	{
+		
+		CdbComponentDatabaseInfo  *cdbinfo = palloc0(sizeof(CdbComponentDatabaseInfo));
+		segdbDesc = &newGangDefinition->db_descriptors[i];
+		memset(segdbDesc, 0, sizeof(*segdbDesc));
+
+		cdbinfo->segindex = conninfo->seginfo[i].segindex;
+		cdbinfo->isprimary = conninfo->seginfo[i].isprimary;
+		cdbinfo->valid = true;
+		cdbinfo->definedprimary = conninfo->seginfo[i].isprimary;
+		cdbinfo->hostname = pstrdup(conninfo->seginfo[i].hostname);
+		{
+		struct hostent * lookup = gethostbyname(conninfo->seginfo[i].hostname);
+		if (lookup == NULL)
+		{
+			elog(FATAL, "gethostbyname() failed for host '%s'", conninfo->seginfo[i].hostname);
+		}
+
+		cdbinfo->hostip = pstrdup(inet_ntoa(*(struct in_addr *) (lookup->h_addr_list[0])));
+		}
+		 
+		cdbinfo->port = conninfo->seginfo[i].port;
+	    /* Segment db info */
+	    segdbDesc->segment_database_info = cdbinfo;
+	    segdbDesc->segindex = conninfo->seginfo[i].segindex;
+	    segdbDesc->dbname = myDatabaseName ? strdup(myDatabaseName) : NULL;
+		segdbDesc->username = username ? strdup(username) : NULL;
+
+	    /* Connection info */
+	    segdbDesc->conn = NULL;
+	    segdbDesc->motionListener = 0;
+	    segdbDesc->whoami = NULL;
+
+	    /* Connection error info */
+	    segdbDesc->errcode = 0;
+	    initPQExpBuffer(&segdbDesc->error_message);
+		
+	}
+	
+
+	pfree(username);
+	return newGangDefinition;
+}
+
+
+
+/*
  *	buildGangDefinition: reads the GP catalog tables and build a CdbComponentDatabases structure.
  *	It then converts this to a Gang structure and initializes
  *	all the non-connection related fields.
  */
 static Gang *
-buildGangDefinition(GangType type, int size, int content, char *portal_name)
+buildGangDefinition(GangType type, int gang_id, int size, int content, char *portal_name)
 {
 	Gang	   *newGangDefinition = NULL;
 
@@ -441,6 +774,7 @@ buildGangDefinition(GangType type, int size, int content, char *portal_name)
 	char	   *username = GetUserNameFromId(GetAuthenticatedUserId());
 
     Assert(CurrentMemoryContext == TopMemoryContext);
+    Assert(size > 0);
 
     /*
 	 * Get the structure representing the configured segment
@@ -452,6 +786,8 @@ buildGangDefinition(GangType type, int size, int content, char *portal_name)
 	newGangDefinition = (Gang *) palloc0(sizeof(Gang));
 
 	newGangDefinition->type = type;
+	newGangDefinition->size = size;
+	newGangDefinition->gang_id = gang_id;
 	newGangDefinition->allocated = false;
 	newGangDefinition->active = false;
 	newGangDefinition->portal_name = (portal_name ? pstrdup(portal_name) : (char *) NULL);
@@ -707,6 +1043,8 @@ buildGangDefinition(GangType type, int size, int content, char *portal_name)
 		}
 	}
 
+	
+	Assert(newGangDefinition->size = seg_count || type == GANGTYPE_MIRROR_WRITER);
 	newGangDefinition->size = seg_count;
 	pfree(username);
 	return newGangDefinition;
@@ -762,6 +1100,298 @@ addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
 	(*segdbCount)++;
 }
 
+static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bool isprimary)
+{
+	int		j, start, end;
+	char		temp[256];
+	
+	
+	
+	appendPQExpBufferStr(buffer, "options='");
+
+	if (iswriter)
+		appendPQExpBufferStr(buffer, "-c gp_is_writer=true ");
+
+	appendPQExpBuffer(buffer,
+					  "-c gp_segment=%d -c gp_max_packet_size=%d",
+					  segindex, Gp_max_packet_size);
+
+	if (!isprimary)
+		appendPQExpBuffer(buffer, " -c gp_is_primary=false");
+	
+	appendPQExpBuffer(buffer, " -c gp_enable_functions=%d",gp_enable_functions);
+	appendPQExpBuffer(buffer, " -c gp_qd_callback_info=port=%d",PostPortNumber);
+	
+	appendPQExpBuffer(buffer, " -c gp_is_callback=%d",gp_is_callback);
+	appendPQExpBuffer(buffer, " -c gp_qd_proc_offset=%ld",(long)MAKE_OFFSET(MyProc));		
+	
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		CdbComponentDatabaseInfo  *qdinfo;
+		
+		qdinfo = &cdb_component_dbs->entry_db_info[0];
+		appendPQExpBuffer(buffer, " -c gp_qd_hostname=%s", qdinfo->hostip);
+		appendPQExpBuffer(buffer, " -c gp_qd_port=%d", qdinfo->port);
+	}
+	else
+	{
+		appendPQExpBuffer(buffer, " -c gp_qd_hostname=%s", qdHostname);
+		appendPQExpBuffer(buffer, " -c gp_qd_port=%d", qdPostmasterPort);
+	}
+	
+	
+	/*
+     * user-settable GUC variables
+     */
+
+#ifdef USE_ASSERT_CHECKING
+	appendPQExpBuffer(buffer, " -c gp_debug_linger=%d", gp_debug_linger);
+#endif
+
+	/*
+	 * It doesn't seem to work to quote the entire search path,
+	 * so we need to remove any spaces so it's treated as one parameter.
+	 * and remove any quotes surrounding the whole thing.
+	 *
+	 */
+	temp[0] = '\0';
+	j = 0;
+	start = 0;				/* start */
+	end = strlen(namespace_search_path);	/* end */
+	if ((namespace_search_path[0] == '\"' && namespace_search_path[strlen(namespace_search_path) - 1] == '\"') ||
+		(namespace_search_path[0] == '\'' && namespace_search_path[strlen(namespace_search_path) - 1] == '\''))
+	{
+		start = 1;
+		end = strlen(namespace_search_path) - 1;
+	}
+	for (; start < end; start++)
+	{
+		if (namespace_search_path[start] != ' ')
+			temp[j++] = namespace_search_path[start];
+	}
+	temp[j] = '\0';
+
+	appendPQExpBuffer(buffer, " -c search_path=%s", temp);
+
+	switch (client_min_messages)
+	{
+		case DEBUG5:
+			appendPQExpBuffer(buffer, " -c client_min_messages=DEBUG5");
+			break;
+		case DEBUG4:
+			appendPQExpBuffer(buffer, " -c client_min_messages=DEBUG4");
+			break;
+		case DEBUG3:
+			appendPQExpBuffer(buffer, " -c client_min_messages=DEBUG3");
+			break;
+		case DEBUG2:
+			appendPQExpBuffer(buffer, " -c client_min_messages=DEBUG2");
+			break;
+		case DEBUG1:
+			appendPQExpBuffer(buffer, " -c client_min_messages=DEBUG1");
+			break;
+		case LOG:
+			appendPQExpBuffer(buffer, " -c client_min_messages=LOG");
+			break;
+		case INFO:
+			appendPQExpBuffer(buffer, " -c client_min_messages=INFO");
+			break;
+		case NOTICE:
+			appendPQExpBuffer(buffer, " -c client_min_messages=NOTICE");
+			break;
+		case WARNING:
+			appendPQExpBuffer(buffer, " -c client_min_messages=WARNING");
+			break;
+		case ERROR:
+			appendPQExpBuffer(buffer, " -c client_min_messages=ERROR");
+			break;
+		case FATAL:
+			appendPQExpBuffer(buffer, " -c client_min_messages=FATAL");
+			break;
+		case PANIC:
+			appendPQExpBuffer(buffer, " -c client_min_messages=PANIC");
+			break;
+		default:;
+	}
+
+	appendPQExpBuffer(buffer, " -c work_mem=%d", work_mem);
+	appendPQExpBuffer(buffer, " -c maintenance_work_mem=%d", maintenance_work_mem);
+	appendPQExpBuffer(buffer, " -c temp_buffers=%d", num_temp_buffers);
+    appendPQExpBuffer(buffer, " -c gp_log_interconnect=%s",
+                       gpvars_show_gp_log_interconnect());
+
+    if (gp_use_snapshop_during_callback)
+    	appendPQExpBuffer(buffer, " -c gp_use_snapshop_during_callback=true");
+    else
+    	appendPQExpBuffer(buffer, " -c gp_use_snapshop_during_callback=false");
+
+	if (StatementTimeout != 0)
+		appendPQExpBuffer(buffer, " -c statement_timeout=%d", StatementTimeout);
+	if (CommitDelay != 0)
+		appendPQExpBuffer(buffer, " -c commit_delay=%d", CommitDelay);
+	if (CommitSiblings != 5)
+		appendPQExpBuffer(buffer, " -c commit_siblings=%d", CommitSiblings);
+	if (interconnect_setup_timeout != 10)
+		appendPQExpBuffer(buffer, " -c gp_interconnect_setup_timeout=%d", interconnect_setup_timeout);
+	if (gp_hashagg_rewrite_limit != 1.0)
+		appendPQExpBuffer(buffer, " -c gp_hashagg_rewrite_limit=%f", gp_hashagg_rewrite_limit);
+
+	appendPQExpBuffer(buffer, " -c DateStyle=");
+	switch (DateStyle)
+	{
+		case USE_ISO_DATES:
+			appendPQExpBuffer(buffer, "ISO");
+			break;
+		case USE_SQL_DATES:
+			appendPQExpBuffer(buffer, "SQL");
+			break;
+		case USE_GERMAN_DATES:
+			appendPQExpBuffer(buffer, "German");
+			break;
+		default:
+			appendPQExpBuffer(buffer, "Postgres");
+			break;
+	}
+	switch (DateOrder)
+	{
+		case DATEORDER_YMD:
+			appendPQExpBuffer(buffer, ",YMD");
+			break;
+		case DATEORDER_DMY:
+			appendPQExpBuffer(buffer, ",DMY");
+			break;
+		default:
+			appendPQExpBuffer(buffer, ",MDY");
+			break;
+	}
+
+	if (strcmp(show_timezone(), "unknown") != 0)
+	{
+		appendPQExpBuffer(buffer, " -c TimeZone=%s", show_timezone());
+	}
+
+	if (DefaultXactIsoLevel != XACT_READ_COMMITTED)
+	{
+		if (DefaultXactIsoLevel == XACT_SERIALIZABLE)
+			appendPQExpBuffer(buffer, " -c default_transaction_isolation=serializable");
+
+	}
+	if (XactIsoLevel != XACT_READ_COMMITTED)
+	{
+		if (XactIsoLevel == XACT_SERIALIZABLE)
+			appendPQExpBuffer(buffer, " -c transaction_isolation=serializable");
+
+	}
+
+
+	/*
+     * some super-user settable gucs
+     */
+	if (superuser())
+	{
+		switch (log_min_messages)
+		{
+			case DEBUG5:
+				appendPQExpBuffer(buffer, " -c log_min_messages=DEBUG5");
+				break;
+			case DEBUG4:
+				appendPQExpBuffer(buffer, " -c log_min_messages=DEBUG4");
+				break;
+			case DEBUG3:
+				appendPQExpBuffer(buffer, " -c log_min_messages=DEBUG3");
+				break;
+			case DEBUG2:
+				appendPQExpBuffer(buffer, " -c log_min_messages=DEBUG2");
+				break;
+			case DEBUG1:
+				appendPQExpBuffer(buffer, " -c log_min_messages=DEBUG1");
+				break;
+			case LOG:
+				appendPQExpBuffer(buffer, " -c log_min_messages=LOG");
+				break;
+			case INFO:
+				appendPQExpBuffer(buffer, " -c log_min_messages=INFO");
+				break;
+
+			case WARNING:
+				appendPQExpBuffer(buffer, " -c log_min_messages=WARNING");
+				break;
+			case ERROR:
+				appendPQExpBuffer(buffer, " -c log_min_messages=ERROR");
+				break;
+			case FATAL:
+				appendPQExpBuffer(buffer, " -c log_min_messages=FATAL");
+				break;
+			case PANIC:
+				appendPQExpBuffer(buffer, " -c log_min_messages=PANIC");
+				break;
+			default:;
+		}
+
+		if (Log_error_verbosity != PGERROR_DEFAULT)
+		{
+			if (Log_error_verbosity == PGERROR_VERBOSE)
+				appendPQExpBuffer(buffer, " -c log_error_verbosity=verbose");
+			if (Log_error_verbosity == PGERROR_TERSE)
+				appendPQExpBuffer(buffer, " -c log_error_verbosity=terse");
+		}
+
+		if (log_duration)
+			appendPQExpBuffer(buffer, " -c log_duration=true");
+
+		if (log_min_duration_statement >= 0)
+			appendPQExpBuffer(buffer, " -c log_min_duration_statement=%d", log_min_duration_statement);
+
+
+		switch (log_min_error_statement)
+		{
+			case DEBUG5:
+				appendPQExpBuffer(buffer, " -c log_min_error_statement=DEBUG5");
+				break;
+			case DEBUG4:
+				appendPQExpBuffer(buffer, " -c log_min_error_statement=DEBUG4");
+				break;
+			case DEBUG3:
+				appendPQExpBuffer(buffer, " -c log_min_error_statement=DEBUG3");
+				break;
+			case DEBUG2:
+				appendPQExpBuffer(buffer, " -c log_min_error_statement=DEBUG2");
+				break;
+			case DEBUG1:
+				appendPQExpBuffer(buffer, " -c log_min_error_statement=DEBUG1");
+				break;
+			case LOG:
+				appendPQExpBuffer(buffer, " -c log_min_error_statement=LOG");
+				break;
+			case INFO:
+				appendPQExpBuffer(buffer, " -c log_min_error_statement=INFO");
+				break;
+			case NOTICE:
+				appendPQExpBuffer(buffer, " -c log_min_error_statement=NOTICE");
+				break;
+			case WARNING:
+				appendPQExpBuffer(buffer, " -c log_min_error_statement=WARNING");
+				break;
+			case ERROR:
+				appendPQExpBuffer(buffer, " -c log_min_error_statement=ERROR");
+				break;
+			case FATAL:
+				appendPQExpBuffer(buffer, " -c log_min_error_statement=FATAL");
+				break;
+
+			default:;
+		}
+
+
+
+		if (gp_set_read_only)
+			appendPQExpBuffer(buffer, " -c gp_set_read_only=true");
+
+    }                       /* some super-user settable gucs */
+
+	appendPQExpBuffer(buffer, "' ");
+}
+
 /*
  *	thread_DoConnect is the thread proc used to perform the connection to one of the qExecs.
  */
@@ -770,12 +1400,9 @@ thread_DoConnect(void *arg)
 {
 	DoConnectParms *pParms;
 	SegmentDatabaseDescriptor **segdbDescPtrArray;
-	CdbComponentDatabaseInfo  *qdinfo;
+
 	int			db_count;
-	int			i,
-				j,
-				start,
-				end;
+	int			i;
 
 	SegmentDatabaseDescriptor *segdbDesc;
 	CdbComponentDatabaseInfo *q;
@@ -784,8 +1411,6 @@ thread_DoConnect(void *arg)
 	segdbDescPtrArray = pParms->segdbDescPtrArray;
 	db_count = pParms->db_count;
 
-	qdinfo = &cdb_component_dbs->entry_db_info[0];
-	
 	/*
 	 * The pParms contains an array of SegmentDatabaseDescriptors
 	 * to connect to.
@@ -793,7 +1418,6 @@ thread_DoConnect(void *arg)
 	for (i = 0; i < db_count; i++)
 	{
 
-		char		temp[256];
 		PQExpBufferData buffer;
 
 		segdbDesc = segdbDescPtrArray[i];
@@ -812,281 +1436,13 @@ thread_DoConnect(void *arg)
 		/*
 		 * Build the connection string
 		 */
+
 		build_gpqeid_params(&buffer);
 
-		appendPQExpBufferStr(&buffer, "options='");
 
-		if (pParms->type == GANGTYPE_PRIMARY_WRITER ||
-            pParms->type == GANGTYPE_MIRROR_WRITER)
-			appendPQExpBufferStr(&buffer, "-c gp_is_writer=true ");
-
-		appendPQExpBuffer(&buffer,
-						  "-c gp_segment=%d -c gp_max_packet_size=%d",
-						  q->segindex, Gp_max_packet_size);
-
-		if (!q->isprimary)
-			appendPQExpBuffer(&buffer, " -c gp_is_primary=false");
-
-		appendPQExpBuffer(&buffer, " -c gp_enable_functions=%d",gp_enable_functions);
-		appendPQExpBuffer(&buffer, " -c gp_qd_callback_info=port=%d",PostPortNumber);
-		
-		appendPQExpBuffer(&buffer, " -c gp_is_callback=%d",gp_is_callback);
-		appendPQExpBuffer(&buffer, " -c gp_qd_proc_offset=%ld",(long)MAKE_OFFSET(MyProc));		
-		
-		appendPQExpBuffer(&buffer, " -c gp_qd_hostname=%s", qdinfo->hostip);
-		appendPQExpBuffer(&buffer, " -c gp_qd_port=%d", qdinfo->port);
-		
-		
-		/*
-         * user-settable GUC variables
-         */
-
-#ifdef USE_ASSERT_CHECKING
-		appendPQExpBuffer(&buffer, " -c gp_debug_linger=%d", gp_debug_linger);
-#endif
-
-		/*
-		 * It doesn't seem to work to quote the entire search path,
-		 * so we need to remove any spaces so it's treated as one parameter.
-		 * and remove any quotes surrounding the whole thing.
-		 *
-		 */
-		temp[0] = '\0';
-		j = 0;
-		start = 0;				/* start */
-		end = strlen(namespace_search_path);	/* end */
-		if ((namespace_search_path[0] == '\"' && namespace_search_path[strlen(namespace_search_path) - 1] == '\"') ||
-			(namespace_search_path[0] == '\'' && namespace_search_path[strlen(namespace_search_path) - 1] == '\''))
-		{
-			start = 1;
-			end = strlen(namespace_search_path) - 1;
-		}
-		for (; start < end; start++)
-		{
-			if (namespace_search_path[start] != ' ')
-				temp[j++] = namespace_search_path[start];
-		}
-		temp[j] = '\0';
-
-		appendPQExpBuffer(&buffer, " -c search_path=%s", temp);
-
-		switch (client_min_messages)
-		{
-			case DEBUG5:
-				appendPQExpBuffer(&buffer, " -c client_min_messages=DEBUG5");
-				break;
-			case DEBUG4:
-				appendPQExpBuffer(&buffer, " -c client_min_messages=DEBUG4");
-				break;
-			case DEBUG3:
-				appendPQExpBuffer(&buffer, " -c client_min_messages=DEBUG3");
-				break;
-			case DEBUG2:
-				appendPQExpBuffer(&buffer, " -c client_min_messages=DEBUG2");
-				break;
-			case DEBUG1:
-				appendPQExpBuffer(&buffer, " -c client_min_messages=DEBUG1");
-				break;
-			case LOG:
-				appendPQExpBuffer(&buffer, " -c client_min_messages=LOG");
-				break;
-			case INFO:
-				appendPQExpBuffer(&buffer, " -c client_min_messages=INFO");
-				break;
-			case NOTICE:
-				appendPQExpBuffer(&buffer, " -c client_min_messages=NOTICE");
-				break;
-			case WARNING:
-				appendPQExpBuffer(&buffer, " -c client_min_messages=WARNING");
-				break;
-			case ERROR:
-				appendPQExpBuffer(&buffer, " -c client_min_messages=ERROR");
-				break;
-			case FATAL:
-				appendPQExpBuffer(&buffer, " -c client_min_messages=FATAL");
-				break;
-			case PANIC:
-				appendPQExpBuffer(&buffer, " -c client_min_messages=PANIC");
-				break;
-			default:;
-		}
-
-		appendPQExpBuffer(&buffer, " -c work_mem=%d", work_mem);
-		appendPQExpBuffer(&buffer, " -c maintenance_work_mem=%d", maintenance_work_mem);
-		appendPQExpBuffer(&buffer, " -c temp_buffers=%d", num_temp_buffers);
-        appendPQExpBuffer(&buffer, " -c gp_log_interconnect=%s",
-                           gpvars_show_gp_log_interconnect());
-
-        if (gp_use_snapshop_during_callback)
-        	appendPQExpBuffer(&buffer, " -c gp_use_snapshop_during_callback=true");
-        else
-        	appendPQExpBuffer(&buffer, " -c gp_use_snapshop_during_callback=false");
-
-		if (StatementTimeout != 0)
-			appendPQExpBuffer(&buffer, " -c statement_timeout=%d", StatementTimeout);
-		if (CommitDelay != 0)
-			appendPQExpBuffer(&buffer, " -c commit_delay=%d", CommitDelay);
-		if (CommitSiblings != 5)
-			appendPQExpBuffer(&buffer, " -c commit_siblings=%d", CommitSiblings);
-		if (interconnect_setup_timeout != 10)
-			appendPQExpBuffer(&buffer, " -c gp_interconnect_setup_timeout=%d", interconnect_setup_timeout);
-		if (gp_hashagg_rewrite_limit != 1.0)
-			appendPQExpBuffer(&buffer, " -c gp_hashagg_rewrite_limit=%f", gp_hashagg_rewrite_limit);
-
-		appendPQExpBuffer(&buffer, " -c DateStyle=");
-		switch (DateStyle)
-		{
-			case USE_ISO_DATES:
-				appendPQExpBuffer(&buffer, "ISO");
-				break;
-			case USE_SQL_DATES:
-				appendPQExpBuffer(&buffer, "SQL");
-				break;
-			case USE_GERMAN_DATES:
-				appendPQExpBuffer(&buffer, "German");
-				break;
-			default:
-				appendPQExpBuffer(&buffer, "Postgres");
-				break;
-		}
-		switch (DateOrder)
-		{
-			case DATEORDER_YMD:
-				appendPQExpBuffer(&buffer, ",YMD");
-				break;
-			case DATEORDER_DMY:
-				appendPQExpBuffer(&buffer, ",DMY");
-				break;
-			default:
-				appendPQExpBuffer(&buffer, ",MDY");
-				break;
-		}
-
-		if (strcmp(show_timezone(), "unknown") != 0)
-		{
-			appendPQExpBuffer(&buffer, " -c TimeZone=%s", show_timezone());
-		}
-
-		if (DefaultXactIsoLevel != XACT_READ_COMMITTED)
-		{
-			if (DefaultXactIsoLevel == XACT_SERIALIZABLE)
-				appendPQExpBuffer(&buffer, " -c default_transaction_isolation=serializable");
-
-		}
-		if (XactIsoLevel != XACT_READ_COMMITTED)
-		{
-			if (XactIsoLevel == XACT_SERIALIZABLE)
-				appendPQExpBuffer(&buffer, " -c transaction_isolation=serializable");
-
-		}
-
-
-		/*
-         * some super-user settable gucs
-         */
-		if (superuser())
-		{
-			switch (log_min_messages)
-			{
-				case DEBUG5:
-					appendPQExpBuffer(&buffer, " -c log_min_messages=DEBUG5");
-					break;
-				case DEBUG4:
-					appendPQExpBuffer(&buffer, " -c log_min_messages=DEBUG4");
-					break;
-				case DEBUG3:
-					appendPQExpBuffer(&buffer, " -c log_min_messages=DEBUG3");
-					break;
-				case DEBUG2:
-					appendPQExpBuffer(&buffer, " -c log_min_messages=DEBUG2");
-					break;
-				case DEBUG1:
-					appendPQExpBuffer(&buffer, " -c log_min_messages=DEBUG1");
-					break;
-				case LOG:
-					appendPQExpBuffer(&buffer, " -c log_min_messages=LOG");
-					break;
-				case INFO:
-					appendPQExpBuffer(&buffer, " -c log_min_messages=INFO");
-					break;
-
-				case WARNING:
-					appendPQExpBuffer(&buffer, " -c log_min_messages=WARNING");
-					break;
-				case ERROR:
-					appendPQExpBuffer(&buffer, " -c log_min_messages=ERROR");
-					break;
-				case FATAL:
-					appendPQExpBuffer(&buffer, " -c log_min_messages=FATAL");
-					break;
-				case PANIC:
-					appendPQExpBuffer(&buffer, " -c log_min_messages=PANIC");
-					break;
-				default:;
-			}
-
-			if (Log_error_verbosity != PGERROR_DEFAULT)
-			{
-				if (Log_error_verbosity == PGERROR_VERBOSE)
-					appendPQExpBuffer(&buffer, " -c log_error_verbosity=verbose");
-				if (Log_error_verbosity == PGERROR_TERSE)
-					appendPQExpBuffer(&buffer, " -c log_error_verbosity=terse");
-			}
-
-			if (log_duration)
-				appendPQExpBuffer(&buffer, " -c log_duration=true");
-
-			if (log_min_duration_statement >= 0)
-				appendPQExpBuffer(&buffer, " -c log_min_duration_statement=%d", log_min_duration_statement);
-
-
-			switch (log_min_error_statement)
-			{
-				case DEBUG5:
-					appendPQExpBuffer(&buffer, " -c log_min_error_statement=DEBUG5");
-					break;
-				case DEBUG4:
-					appendPQExpBuffer(&buffer, " -c log_min_error_statement=DEBUG4");
-					break;
-				case DEBUG3:
-					appendPQExpBuffer(&buffer, " -c log_min_error_statement=DEBUG3");
-					break;
-				case DEBUG2:
-					appendPQExpBuffer(&buffer, " -c log_min_error_statement=DEBUG2");
-					break;
-				case DEBUG1:
-					appendPQExpBuffer(&buffer, " -c log_min_error_statement=DEBUG1");
-					break;
-				case LOG:
-					appendPQExpBuffer(&buffer, " -c log_min_error_statement=LOG");
-					break;
-				case INFO:
-					appendPQExpBuffer(&buffer, " -c log_min_error_statement=INFO");
-					break;
-				case NOTICE:
-					appendPQExpBuffer(&buffer, " -c log_min_error_statement=NOTICE");
-					break;
-				case WARNING:
-					appendPQExpBuffer(&buffer, " -c log_min_error_statement=WARNING");
-					break;
-				case ERROR:
-					appendPQExpBuffer(&buffer, " -c log_min_error_statement=ERROR");
-					break;
-				case FATAL:
-					appendPQExpBuffer(&buffer, " -c log_min_error_statement=FATAL");
-					break;
-
-				default:;
-			}
-
-
-
-			if (gp_set_read_only)
-				appendPQExpBuffer(&buffer, " -c gp_set_read_only=true");
-
-        }                       /* some super-user settable gucs */
-
-		appendPQExpBuffer(&buffer, "' ");
+		addOptions(&buffer,
+				(pParms->type == GANGTYPE_PRIMARY_WRITER || pParms->type == GANGTYPE_MIRROR_WRITER),
+				q->segindex,q->isprimary);
 
 		if (cdbconn_doConnect(segdbDesc, buffer.data))
 		{
@@ -1136,6 +1492,36 @@ build_gpqeid_params(PQExpBuffer buf)
 	Assert(buf->data[buf->len - 1] == ';');
 	buf->data[buf->len - 1] = ' ';
 }	/* build_gpqeid_params */
+
+
+/*
+ * build_gpdaid_params
+ *
+ * Called from the qDisp process to create the "gpdaid" parameter string
+ * to be passed to a QDA that is being started.  NB: Can be called in a
+ * thread, so mustn't use palloc/elog/ereport/etc.
+ */
+static void
+build_gpdaid_params(PQExpBuffer buf)
+{
+	appendPQExpBufferStr(buf, "gpdaid=");
+
+	appendPQExpBuffer(buf, "%d;", gp_session_id);
+
+#ifdef HAVE_INT64_TIMESTAMP
+	appendPQExpBuffer(buf, INT64_FORMAT ";", PgStartTime);
+#else
+#ifndef _WIN32
+	appendPQExpBuffer(buf, "%.14a;", PgStartTime);
+#else
+	appendPQExpBuffer(buf, "%g;", PgStartTime);
+#endif 
+#endif
+
+	/* change last semicolon to space */
+	Assert(buf->data[buf->len - 1] == ';');
+	buf->data[buf->len - 1] = ' ';
+}	/* build_gpdaid_params */
 
 
 /*
@@ -1248,9 +1634,53 @@ cdbgang_parse_gpqdid_params(struct Port *port, const char *gpqdid_value)
 
 bad:
 	elog(FATAL, "QD callback dispatched with invalid option: 'gpqdid=%s'", gpqdid_value);
-}	/* cdbgang_parse_gpqeid_params */
+}	/* cdbgang_parse_gpqdid_params */
 
+void
+cdbgang_parse_gpdaid_params(struct Port *port, const char *gpdaid_value)
+{
+	char	   *gpdaid = pstrdup(gpdaid_value);
+	char	   *cp;
+	char	   *np = gpdaid;
+	
+	/* The presence of an gpdaid string means this backend is a Query Dispatch Agent (QDA). */
+	SetConfigOption("gp_session_role", "dispatchagent",
+					PGC_POSTMASTER, PGC_S_OVERRIDE);
 
+	/* gp_session_id */
+	if (gpqeid_next_param(&cp, &np))
+		SetConfigOption("gp_session_id", cp,
+						PGC_POSTMASTER, PGC_S_OVERRIDE);
+
+	/* PgStartTime */
+	if (gpqeid_next_param(&cp, &np))
+	{
+#ifdef HAVE_INT64_TIMESTAMP
+		if (!scanint8(cp, true, &PgStartTime))
+			goto bad;
+#else
+		PgStartTime = strtod(cp, NULL);
+#endif
+	}
+
+	/* Too few items, or too many? */
+	if (!cp || np)
+		goto bad;
+
+	if (gp_session_id <= 0 ||
+		PgStartTime <= 0)
+		goto bad;
+
+	pfree(gpdaid);
+	
+	/* TEMP */
+	log_min_messages = DEBUG5;
+	elog(DEBUG1," Dispatch Agent Started");
+	return;
+
+bad:
+	elog(FATAL, "Query Dispatch Agent dispatched with invalid option: 'gpdaid=%s'", gpdaid_value);
+}	/* cdbgang_parse_gpdaid_params */
 
 /*
  * This is the main routine.   It allocates a gang to a query.
@@ -1299,6 +1729,308 @@ getAllReaderGangs()
 	return res;
 }
 
+/*
+ * create a gang fragment via list of gang members
+ */
+GpSegmentConnectionResponse *
+createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
+{
+	Gang	   *newGangDefinition;
+	MemoryContext oldContext;
+	int			successful_connections = 0;
+
+	SegmentDatabaseDescriptor *segdbDesc;
+	CdbComponentDatabaseInfo *q;
+	int			i;
+	DoConnectParms *doConnectParmsAr = NULL;
+	int			threadCount = 0;
+	int			max_threads;
+	int			segdbs_in_thread_pool;
+	int			segdb_count;
+
+	GpSegmentConnectionResponse *r;
+ 
+	
+	Assert(conninfo->nsegs > 0 && conninfo->nsegs < 10000);
+	
+
+	/*
+	 * MemoryContexts used in this routine.
+	 */
+
+	oldContext = MemoryContextSwitchTo(TopMemoryContext);
+
+
+	/*
+	 * get_database_name allocated memory with palloc, so remember we must pfree it later
+	 * (not free)
+	 */
+	if (myDatabaseName == NULL)
+		myDatabaseName = get_database_name(MyDatabaseId);
+	
+	
+	elog(LOG,"Gang create fragment, id = %d",conninfo->gang_id);
+	
+	for (i = 0 ; i<conninfo->nsegs;i++)
+    {
+    	elog(LOG,"Gang connect segindex=%d, isprimary=%d, host=%s, port=%d",
+    			conninfo->seginfo[i].segindex,
+    			conninfo->seginfo[i].isprimary,
+    			conninfo->seginfo[i].hostname,
+    			conninfo->seginfo[i].port
+    			);
+    }
+	
+	if (Gp_role == GP_ROLE_DISPATCHAGENT)
+		Assert(conninfo->type != GANGTYPE_ENTRYDB_READER);
+	
+
+	newGangDefinition = buildGangDefinitionFromConninfo(conninfo);
+	
+	/*
+	 * The most threads we could have is segdb_count / gp_connections_per_thread, rounded up.
+	 * This is equivalent to 1 + (segdb_count-1) / gp_connections_per_thread.
+	 * We allocate enough memory for this many DoConnectParms structures,
+	 * even though we may not use them all.
+	 */
+	max_threads = 1 + (segdb_count - 1) / gp_connections_per_thread;
+	Assert(max_threads > 0);
+	doConnectParmsAr = (DoConnectParms *)
+		palloc0(max_threads * sizeof(DoConnectParms));
+	segdbs_in_thread_pool = 0;
+	
+	segdb_count = conninfo->nsegs;
+
+	newGangDefinition->active = true;
+
+	/*
+	 * In this loop, we check each segdb.  If it's marked as valid, and is not
+	 * ourself, we prepare a thread Parm struct for connecting to it.
+	 * If a segment has no valid segdbs, we recognize that here and give
+	 * an error message.
+	 */
+	for (i = 0; i < segdb_count; i++)
+	{
+		/*
+		 * Create the connection requests.	If we find a segment without a valid segdb
+		 * we error out.  Also, if this segdb is invalid, we msut fail the connection.
+		 */
+		segdbDesc = &newGangDefinition->db_descriptors[i];
+
+		/*
+		 * This function handles putting the segdbDesc into the proper thread's Parms
+		 * structure, based on gp_connections_per_thread.
+		 * It does this based on the value of segdbs_in_thread_pool,
+		 * which it increments each time it is called.
+		 */
+		addSegDBToConnThreadPool(doConnectParmsAr, &segdbs_in_thread_pool,
+								 segdbDesc);
+
+	}
+
+	/*
+	 * Spin off the threads we've prepared.
+	 */
+	if (segdbs_in_thread_pool == 0)
+		threadCount = 0;
+	else
+		threadCount = 1 + (segdbs_in_thread_pool - 1) / gp_connections_per_thread;
+
+	for (i = 0; i < threadCount; i++)
+	{
+		int pthread_err;
+		DoConnectParms *pParms = &doConnectParmsAr[i];
+
+		/* attributes of the thread we're creating */
+		pthread_attr_t t_atts;
+
+		/* set the gangType. */
+		pParms->type = conninfo->type;
+
+        if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
+		    elog(DEBUG5, "createGang creating thread %d of %d for libpq connections",
+			     i + 1, threadCount);
+        
+
+
+		/* save ourselves some memory: the defaults for thread stack
+		 * size are large (1M+) */
+		pthread_attr_init(&t_atts);
+#ifdef pg_on_solaris
+		/* Solaris doesn't have PTHREAD_STACK_MIN ? */
+		pthread_attr_setstacksize(&t_atts, (64*1024));
+#else
+		pthread_attr_setstacksize(&t_atts, Max(PTHREAD_STACK_MIN, (64*1024)));
+#endif
+		 
+		pthread_err = pthread_create(&pParms->thread, NULL, thread_DoConnect, pParms);
+
+		pthread_attr_destroy(&t_atts);
+		if (pthread_err != 0)
+		{
+			int j;
+
+			/* Error during thread create (this should be caused by
+			 * resource constraints). If we leave the threads running,
+			 * they'll immediately have some problems -- so we need to
+			 * join them, and *then* we can issue our FATAL error */
+
+			for (j = 0; j < threadCount + (i - 1); j++)
+			{
+				DoConnectParms *pParms;
+
+				pParms = &doConnectParmsAr[j];
+				pthread_join(pParms->thread, NULL);
+			}
+
+			ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
+							errmsg("CreateGang: failed to create thread %d of %d", i + 1, threadCount),
+							errdetail("pthread_create() failed with err %d gp_connections_per_thread %d", pthread_err, gp_connections_per_thread),
+							errhint("gp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", gp_connections_per_thread)));
+		}
+
+	}
+
+	/*
+	 * wait for all of the DoConnect threads to complete.
+	 */
+	for (i = 0; i < threadCount; i++)
+	{
+		DoConnectParms *pParms = &doConnectParmsAr[i];
+
+        if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
+    		elog(DEBUG5, "createGang joining to thread %d of %d for libpq connections",
+			     i + 1, threadCount);
+
+		if (0 != pthread_join(pParms->thread, NULL))
+			elog(FATAL, "createGang: pthread_join failed on thread %d of %d",
+				 i + 1, threadCount);
+	}
+
+	/*
+	 * Free the memory allocated for the threadParms array
+	 */
+	if (doConnectParmsAr != NULL)
+	{
+		for (i = 0; i < threadCount; i++)
+		{
+			DoConnectParms *pParms = &doConnectParmsAr[i];
+
+			pfree(pParms->segdbDescPtrArray);
+			pParms->segdbDescPtrArray = NULL;
+		}
+		pfree(doConnectParmsAr);
+		doConnectParmsAr = NULL;
+	}
+
+	newGangDefinition->active = false;
+
+	/*
+	 * For now, set all_valid_segdbs_connected to true.
+	 * Reset to false if we get fail to connect to a valid segdb
+	 */
+	newGangDefinition->all_valid_segdbs_connected = true;
+
+	/*
+	 * In this loop, we check whether the connections were successful.
+	 * If not, we recreate the error message with palloc and show it as
+	 * a warning.
+	 */
+	for (i = 0; i < segdb_count; i++)
+	{
+		segdbDesc = &newGangDefinition->db_descriptors[i];
+		q = segdbDesc->segment_database_info;
+
+		/*
+		 * check connection established or not,
+		 * * if not, we may have to re-build this gang.
+		 */
+		if (!segdbDesc->conn)
+		{
+			/*
+			 * Log failed connections.	Complete failures
+			 * are taken care of later.
+			 */
+			//ereport(LOG, (errcode(segdbDesc->errcode),
+			//		  errmsg("Warning: %s", segdbDesc->error_message.data)));
+			ereport(ERROR, (errcode(ERRCODE_WARNING_GP_INTERCONNECTION),
+							  errmsg("%s", segdbDesc->error_message.data)));
+			if (segdbDesc->errcode == 0 && segdbDesc->error_message.len == 0)
+				elog(ERROR, "Connection is null, but no error code or error message, for segDB %d", i);
+			Assert(segdbDesc->errcode != 0 &&
+				   segdbDesc->error_message.len > 0);
+			segdbDesc->errcode = 0;
+			resetPQExpBuffer(&segdbDesc->error_message);
+
+			newGangDefinition->all_valid_segdbs_connected = false;
+		}
+		else
+		{
+			Assert(PQstatus(segdbDesc->conn) != CONNECTION_BAD &&
+				   segdbDesc->errcode == 0 &&
+				   segdbDesc->error_message.len == 0);
+
+            if (gp_log_gang >= GPVARS_VERBOSITY_TERSE)
+                elog(LOG, "Connected to %s motionListenerPort=%d with options %s",
+				     segdbDesc->whoami,
+				     segdbDesc->motionListener,
+				     PQoptions(segdbDesc->conn));
+
+			/*
+			 * We should have retrieved the IP from our cache
+			 */
+			Assert(q->hostip != NULL);
+
+			/*
+			 * We have a live connection!
+			 */
+			successful_connections++;
+		}
+
+	}
+
+    if (conninfo->nsegs != successful_connections ||
+    		conninfo->nsegs != newGangDefinition->size)
+    {
+        elog(LOG, "createGang: %d processes requested; %d segments online; "
+             "%d successful connections", conninfo->nsegs, newGangDefinition->size,
+             successful_connections);
+    }
+
+	
+
+
+	
+	
+	*outsize = sizeof(GpSegmentConnectionResponse)*conninfo->nsegs;
+	r = palloc0(*outsize);
+	
+	for (i = 0 ; i<conninfo->nsegs;i++)
+	{
+		r[i].motionListener = newGangDefinition->db_descriptors[i].motionListener;
+		r[i].pid = PQbackendPID(newGangDefinition->db_descriptors[i].conn);
+		//strncpy(r[i].hostip, ?);	// Do we need this?
+		elog(LOG,"Gang response motionListener %d, pid %d",r[i].motionListener,r[i].pid);
+	}
+	
+	if (conninfo->type == GANGTYPE_PRIMARY_WRITER)
+		primaryWriterGang = newGangDefinition;
+	if (conninfo->type == GANGTYPE_MIRROR_WRITER)
+		mirrorWriterGang = newGangDefinition;
+		
+	if (conninfo->type == GANGTYPE_PRIMARY_READER)
+	{
+		if (conninfo->nsegs==1)
+			availableReaderGangs1 = lappend(availableReaderGangs1, newGangDefinition);
+		else
+			availableReaderGangsN = lappend(availableReaderGangsN, newGangDefinition);
+	}
+	
+	MemoryContextSwitchTo(oldContext);
+	
+	return r;
+}
+
 Gang *
 allocateGang(GangType type, int size, int content, char *portal_name)
 {
@@ -1312,7 +2044,7 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 
 	Gang	   *gp = NULL;
 
-	Insist(Gp_role == GP_ROLE_DISPATCH);
+	Insist(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT);
 
 	if (!IsTransactionOrTransactionBlock())
 	{
@@ -1345,9 +2077,9 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 				/*
 				 * try twice for creating gang
 				 */
-				gp = primaryWriterGang = createGang(type, size, content, portal_name);
+				gp = primaryWriterGang = createGang(type, gang_id_counter++, size, content, portal_name);
 				if (gp == NULL)
-					gp = primaryWriterGang = createGang(type, size, content, portal_name);
+					gp = primaryWriterGang = createGang(type, gang_id_counter++, size, content, portal_name);
 			}
 			else
 			{
@@ -1363,9 +2095,9 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 				/*
 				 * try twice for creating gang
 				 */
-				gp = mirrorWriterGang = createGang(type, size, content, portal_name);
+				gp = mirrorWriterGang = createGang(type, gang_id_counter++, size, content, portal_name);
 				if (gp == NULL && !mirroringNotConfigured)
-					gp = mirrorWriterGang = createGang(type, size, content, portal_name);
+					gp = mirrorWriterGang = createGang(type, gang_id_counter++, size, content, portal_name);
 			}
 			else
 			{
@@ -1412,10 +2144,10 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 				{
                     if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 					    elog(DEBUG4, "Creating a new reader N-gang for %s", (portal_name ? portal_name : "unnamed portal"));
-					gp = createGang(type, size, content, portal_name);
+					gp = createGang(type, gang_id_counter++, size, content, portal_name);
 					/* try again */
 					if (gp == NULL)
-						gp = createGang(type, size, content, portal_name);
+						gp = createGang(type, gang_id_counter++, size, content, portal_name);
 				}
 				if (gp == NULL)
 					elog(ERROR, "No reader gang allocated");
@@ -1471,10 +2203,10 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 				{
                     if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 					    elog(DEBUG4, "creating a new reader 1-gang for seg%d, portal: %s", content, (portal_name ? portal_name : "unnamed"));
-					gp = createGang(type, size, content, portal_name);
+					gp = createGang(type, gang_id_counter++, size, content, portal_name);
 					/* try again */
 					if (gp == NULL || gp->size != size)
-						gp = createGang(type, size, content, portal_name);
+						gp = createGang(type, gang_id_counter++, size, content, portal_name);
 				}
 				if (gp == NULL || gp->size != size)
                 {
@@ -1523,6 +2255,75 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 	return gp;
 }
 
+/*
+ * When we are the dispatch agent, we get told which gang to use by its "gang_id"
+ * We need to find the gang in our lists.
+ */
+
+Gang * findGangById(int gang_id)
+{
+	if (primaryWriterGang->gang_id == gang_id)
+		return primaryWriterGang;
+	if (mirrorWriterGang->gang_id == gang_id)
+		return mirrorWriterGang;
+	
+	/*
+	 * Now we iterate through the list of reader gangs
+	 * to find the one that matches
+	 */
+	if (availableReaderGangsN != NIL)
+	{
+		ListCell   *cur_item;
+		ListCell   *prev_item = NULL;
+		
+		cur_item = list_head(availableReaderGangsN);
+		
+		while (cur_item != NULL)
+		{
+			Gang	   *gp = (Gang *) lfirst(cur_item);
+			
+			if (gp->gang_id == gang_id)
+			{
+				return gp;
+			}
+		
+			/* cur_item must be preserved */
+			prev_item = cur_item;
+			cur_item = lnext(prev_item);
+			 
+		}
+	}
+	if (availableReaderGangs1 != NIL)
+	{
+		ListCell   *cur_item;
+		ListCell   *prev_item = NULL;
+		
+		cur_item = list_head(availableReaderGangs1);
+		
+		while (cur_item != NULL)
+		{
+			Gang	   *gp = (Gang *) lfirst(cur_item);
+			
+			if (gp->gang_id == gang_id)
+			{
+				return gp;
+			}
+		
+			/* cur_item must be preserved */
+			prev_item = cur_item;
+			cur_item = lnext(prev_item);
+			 
+		}
+	}
+	
+	
+	elog(ERROR,"Could not find gang_id %d",gang_id);
+	
+	return NULL;
+ 
+	
+}
+
 struct SegmentDatabaseDescriptor *
 getSegmentDescriptorFromGang(const Gang * gp, int seg)
 {
@@ -1548,7 +2349,7 @@ getCdbProcessList(Gang *gang, int sliceIndex)
 	List	   *list = NIL;
 
 
-	Assert(Gp_role == GP_ROLE_DISPATCH && Gp_is_primary);
+	Assert((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && Gp_is_primary);
 	Assert(gang != NULL);
     if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 	    elog(DEBUG3, "getCdbProcessList slice%d gangtype=%d gangsize=%d",
@@ -1605,7 +2406,7 @@ getCdbProcessList(Gang *gang, int sliceIndex)
 
 			process->listenerAddr = pstrdup(qeinfo->hostip);
 			process->listenerPort = segdbDesc->motionListener;
-			process->pid = PQbackendPID(segdbDesc->conn);
+			process->pid = segdbDesc->backendPid;
 			process->contentid = segdbDesc->segindex;
 			process->routeid = k++;
 
@@ -1656,7 +2457,7 @@ getCdbProcessesForQD(int isPrimary)
 	CdbComponentDatabaseInfo *qdinfo;
 	CdbProcess *proc;
 
-	Assert(Gp_role == GP_ROLE_DISPATCH && Gp_is_primary);
+	Assert((Gp_role == GP_ROLE_DISPATCH) && Gp_is_primary);
 	if (!isPrimary)
 	{
 		elog(FATAL, "getCdbProcessesForQD: unsupported request for QD mirror process");
@@ -1738,6 +2539,9 @@ cleanupGang(Gang * gp)
 		 * Note, we cancel all "still running" queries
 		 */
 		/* PQstatus() is smart enough to handle NULL */
+		
+		if (!gp_use_dispatch_agent || Gp_role == GP_ROLE_DISPATCHAGENT)
+		{
 		if (PQstatus(segdbDesc->conn) == CONNECTION_OK)
 		{
 			PGresult   *pRes;
@@ -1775,6 +2579,7 @@ cleanupGang(Gang * gp)
 			elog(LOG, "cleanupGang: lost connection with gang member. Disconnecting");
 			disconnectAndDestroyGang(gp);
 			return false;
+		}
 		}
 
 		/* QE is no longer associated with a slice. */
@@ -2157,6 +2962,7 @@ gangOK(Gang * gp)
 	 * Loop through the segment_database_descriptors array looking for
 	 * invalid connections
 	 */
+	if (!gp_use_dispatch_agent || Gp_role == GP_ROLE_DISPATCHAGENT)
 	for (i = 0; i < gp->size; i++)
 	{
 		SegmentDatabaseDescriptor *segdbDesc = &(gp->db_descriptors[i]);
@@ -2290,6 +3096,7 @@ detectFailedConnections(void)
 CdbComponentDatabases *
 getComponentDatabases(void)
 {
+	Assert(Gp_role == GP_ROLE_DISPATCH);
 	return (cdb_component_dbs == NULL) ? getCdbComponentDatabases() : cdb_component_dbs;
 }
 
