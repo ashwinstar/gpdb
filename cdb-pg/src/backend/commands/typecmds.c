@@ -519,7 +519,7 @@ RemoveTypeById(Oid typeOid)
 	Relation	relation;
 	HeapTuple	tup;
 
-	relation = heap_open(TypeRelationId, Gp_role == GP_ROLE_DISPATCH ? ShareRowExclusiveLock : RowExclusiveLock);
+	relation = heap_open(TypeRelationId, RowExclusiveLock);
 
 	tup = SearchSysCache(TYPEOID,
 						 ObjectIdGetDatum(typeOid),
