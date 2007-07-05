@@ -121,7 +121,8 @@ bool		gp_enable_sort_limit = FALSE;
 bool		gp_enable_sort_distinct = FALSE;
 int			gp_sort_flags = 0;
 int			gp_sort_max_distinct = 20000;
-bool 	    gp_window_shareinput = TRUE;
+bool 	    gp_window_shareinput = FALSE;
+bool 		gp_window_share_initplan = TRUE;
 
 
 /* --------------------------------------------------------------------------------------------------
