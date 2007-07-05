@@ -91,6 +91,7 @@ sub mkvcbuild
     $plpgsql->AddReference($postgres);
     $plpgsql->AddIncludeDir('src\interfaces\libpq');
     $plpgsql->AddReference($libpq,$libpgport);
+    $plpgsql->AddLibrary('wsock32.lib ws2_32.lib');
 
     if ($solution->{options}->{perl})
     {
@@ -147,6 +148,7 @@ sub mkvcbuild
     $libecpg->AddIncludeDir('src\interfaces\libpq');
     $libecpg->AddIncludeDir('src\port');
     $libecpg->AddLibrary('wsock32.lib');
+    $libecpg->AddLibrary($config->{'pthread'} . '\pthreadVC2.lib');
     $libecpg->AddReference($libpq,$pgtypes,$libpgport);
 
     my $libecpgcompat =
@@ -331,6 +333,7 @@ sub mkvcbuild
     # Regression DLL and EXE
     my $regress = $solution->AddProject('regress','dll','misc');
     $regress->AddFile('src\test\regress\regress.c');
+    $regress->AddLibrary('wsock32.lib ws2_32.lib');
     $regress->AddReference($postgres);
 
     my $pgregress = $solution->AddProject('pg_regress','exe','misc');
@@ -339,6 +342,7 @@ sub mkvcbuild
     $pgregress->AddIncludeDir('src\port');
     $pgregress->AddDefine('HOST_TUPLE="i686-pc-win32vc"');
     $pgregress->AddDefine('FRONTEND');
+    $pgregress->AddLibrary('wsock32.lib ws2_32.lib');
     $pgregress->AddReference($libpgport);
 
     $solution->Save();
@@ -521,6 +525,7 @@ sub AdjustContribProj
     {
         $proj->AddFiles('contrib\\' . $n, @{$contrib_extrasource->{$n}});
     }
+    $proj->AddLibrary('wsock32.lib ws2_32.lib');
 }
 
 1;
