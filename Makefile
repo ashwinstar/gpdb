@@ -186,6 +186,10 @@ installcheck-good :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, cannot check"; exit 1; fi
 	@cd $(GPPGDIR)/src/test/regress; $(MAKE) installcheck-good
 
+installcheck-olaptest :
+	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, cannot check"; exit 1; fi
+	@cd $(GPPGDIR)/src/test/regress; $(MAKE) installcheck-olaptest
+
 version :
 	@if [ ! -f getversion ] ; then echo "getversion is not present, cannot create VERSION file"; exit 1; fi
 	@echo "Creating VERSION file"

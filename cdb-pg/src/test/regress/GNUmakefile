@@ -160,7 +160,7 @@ bigcheck: all
 bkuprestore: all
 	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/bkuprestore_schedule --srcdir=$(abs_srcdir) --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE)
 
-olap: all
+installcheck-olaptest: all
 	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/olap_schedule --srcdir=$(abs_srcdir) --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE)
 
 ##
