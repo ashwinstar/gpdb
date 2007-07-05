@@ -1,1 +1,0 @@
-SELECT xn, COUNT(*) FROM util GROUP BY xn;

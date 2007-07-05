@@ -1,1 +1,0 @@
- SELECT pn, COUNT(*) FROM product GROUP BY pn ORDER BY pn DESC;

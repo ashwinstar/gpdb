@@ -1,1 +1,0 @@
-SELECT cn, COUNT(*) FROM sale GROUP BY cn;

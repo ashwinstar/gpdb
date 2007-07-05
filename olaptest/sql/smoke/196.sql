@@ -1,1 +1,0 @@
-SELECT xn FROM util GROUP BY xn;

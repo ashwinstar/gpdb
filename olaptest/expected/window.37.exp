@@ -1,8 +1,0 @@
- ?column? |    cname     | ?column? 
-----------+--------------+----------
-      101 | Macbeth      |        0
-      302 | Lady Macbeth |        1
-      203 | Duncan       |        2
-      404 | Witches, Inc |        3
-(4 rows)
-

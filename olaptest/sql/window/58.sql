@@ -1,1 +1,0 @@
-select pn, cn, prc*qty, row_number() over (partition by pn), avg(prc*qty) over (partition by pn), avg(prc*qty) over (partition by pn order by cn), percent_rank() over (partition by pn order by cn), rank() over (partition by pn order by cn) from sale;

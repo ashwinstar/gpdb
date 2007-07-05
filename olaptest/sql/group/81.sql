@@ -1,1 +1,0 @@
-select cn,vn,pn, count(*), sum(prc*qty) from sale group by rollup (cn,vn,pn);

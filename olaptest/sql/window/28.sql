@@ -1,1 +1,0 @@
-select dense_rank() over (order by pn, cn desc), cn, pn from sale;

@@ -1,9 +1,0 @@
- row_number |     name     |     loc      
-------------+--------------+--------------
-          1 | Duncan       | Forres
-          2 | Macduff      | Fife
-          3 | Witches, Inc | Lonely Heath
-          4 | Lady Macbeth | Inverness
-          5 | Macbeth      | Inverness
-(5 rows)
-

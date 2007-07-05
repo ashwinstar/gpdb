@@ -1,1 +1,0 @@
- SELECT * FROM (SELECT * FROM sale) s ORDER BY cn;

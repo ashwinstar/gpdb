@@ -1,1 +1,0 @@
-Select Col_1, Col_2, Col_3, Col_4, Col_5, Col_6, Col_7, Col_8, Col_9, Col_10, Col_11, Col_12, Col_13, Col_14, Col_15, Col_16, Col_17, Col_18, Col_19, Col_20, Col_21, Col_22, Col_23, Col_24, Col_25, Col_26, Col_27, Col_28, Col_29, Col_30, Col_31, Col_32 from max_cols;

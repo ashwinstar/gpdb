@@ -1,1 +1,0 @@
-SELECT * FROM product WHERE pn in (SELECT pn FROM product);
