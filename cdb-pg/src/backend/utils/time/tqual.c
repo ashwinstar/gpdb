@@ -383,10 +383,13 @@ SharedSnapshotSlot *SharedSnapshotLookup(int4 slotId)
 }
 
 
-/* Used by the "writer" qExec to "release" the slot it had been using.
+/* 
+ * Used by the "writer" qExec to "release" the slot it had been using.
  *
  */
-void SharedSnapshotRemove(SharedSnapshotSlot *slot, char *creatorDescription)
+void 
+SharedSnapshotRemove(volatile SharedSnapshotSlot *slot,
+					 char *creatorDescription)
 {
 	int slotId = slot->slotid;
 	

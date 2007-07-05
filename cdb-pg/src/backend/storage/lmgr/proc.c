@@ -618,7 +618,8 @@ ProcKill(int code, Datum arg)
 	{
 		if(Gp_role == GP_ROLE_DISPATCH)
 		{
-			SharedSnapshotRemove(SharedLocalSnapshotSlot, "Query Dispatcher");
+			SharedSnapshotRemove(SharedLocalSnapshotSlot,
+								 "Query Dispatcher");
 		}
 	    else if (Gp_segment == -1 && Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
 	    {
@@ -628,7 +629,8 @@ ProcKill(int code, Datum arg)
 	    }
 		else if (Gp_role == GP_ROLE_EXECUTE && Gp_is_writer)
 		{
-			SharedSnapshotRemove(SharedLocalSnapshotSlot, "Writer qExec");
+			SharedSnapshotRemove(SharedLocalSnapshotSlot,
+								 "Writer qExec");
 		}
 		SharedLocalSnapshotSlot = NULL;
 	}

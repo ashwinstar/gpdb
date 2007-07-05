@@ -172,7 +172,7 @@ extern void CreateSharedSnapshotArray(void);
 extern char *SharedSnapshotDump(void);
 extern SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId);
 extern SharedSnapshotSlot *SharedSnapshotLookup(int4 slotId);
-extern void SharedSnapshotRemove(SharedSnapshotSlot *slot, char *creatorDescription);
+extern void SharedSnapshotRemove(volatile SharedSnapshotSlot *slot, char *creatorDescription);
 extern void addSharedSnaphot(char *creatorDescription, int id);
 extern void lookupSharedSnaphot(char *lookerDescription, char *creatorDescription, int id);
 
