@@ -2263,9 +2263,9 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 
 Gang * findGangById(int gang_id)
 {
-	if (primaryWriterGang->gang_id == gang_id)
+	if (primaryWriterGang && primaryWriterGang->gang_id == gang_id)
 		return primaryWriterGang;
-	if (mirrorWriterGang->gang_id == gang_id)
+	if (mirrorWriterGang && mirrorWriterGang->gang_id == gang_id)
 		return mirrorWriterGang;
 	
 	/*
@@ -2283,7 +2283,7 @@ Gang * findGangById(int gang_id)
 		{
 			Gang	   *gp = (Gang *) lfirst(cur_item);
 			
-			if (gp->gang_id == gang_id)
+			if (gp && gp->gang_id == gang_id)
 			{
 				return gp;
 			}
@@ -2305,7 +2305,7 @@ Gang * findGangById(int gang_id)
 		{
 			Gang	   *gp = (Gang *) lfirst(cur_item);
 			
-			if (gp->gang_id == gang_id)
+			if (gp && gp->gang_id == gang_id)
 			{
 				return gp;
 			}

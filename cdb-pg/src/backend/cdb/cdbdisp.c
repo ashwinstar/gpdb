@@ -2647,7 +2647,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 
 	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT);
 	
-	if (sliceTbl)
+	if (sliceTbl && (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent))
 	{
 		Assert(rootIdx == 0
 			   || (rootIdx > sliceTbl->nMotions
@@ -2677,7 +2677,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 
 	/* Allocate result array for mirror gang. */
 	//if (queryDesc->operation != CMD_SELECT || queryDesc->parsetree->into != NULL)
-	if (sliceTbl && sliceTbl->slices)
+	if (sliceTbl && sliceTbl->slices && (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent))
 	{
 		Slice	   *slice = (Slice *) list_nth(sliceTbl->slices, rootIdx);
 
@@ -2787,6 +2787,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		/*
 		 * dispatch the plan to our mirrorGang if we have one.
 		 */
+		if (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent)
 		if (mirrorGang != NULL /*&& (queryDesc->operation != CMD_SELECT || queryDesc->parsetree->into != NULL)*/)
 		{
             cdbdisp_dispatchToGang(pDispatchThreads,
