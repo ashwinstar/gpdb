@@ -562,8 +562,9 @@ XLogInsert(RmgrId rmid, uint8 info, XLogRecData *rdata)
 	bool		no_tran = (rmid == RM_XLOG_ID);
 
     /* Safety check in case our assumption is ever broken. */
-	// NOTE: This is slightly modified from the one in xact.c -- the test for
- 	// NOTE: seqXlogWrite is omitted...
+	/* NOTE: This is slightly modified from the one in xact.c -- the test for */
+ 	/* NOTE: seqXlogWrite is omitted... */
+	/* NOTE: some local-only changes are OK */
  	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
  	{
  		/*
@@ -571,16 +572,24 @@ XLogInsert(RmgrId rmid, uint8 info, XLogRecData *rdata)
  	     * in writing to the xlog here at commit.  for now sequences
  	     * should be the only one
  	     */
- 		ereport(ERROR,
- 			(errmsg("Reader qExec had local changes to commit! (rmid = %u)",
- 			        rmid),
- 		  errdetail("A Reader qExec tried to commit local changes.  "
- 					"Only the single Writer qExec can do so. "),
- 			errhint("This is most likely the result of a feature being turned "
- 	                "on that violates the single WRITER principle")));	
+		if (DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY)
+		{
+			/* MPP-1687: readers may under some circumstances extend the CLOG
+			 * rmid == RM_CLOG_ID and info having CLOG_ZEROPAGE set */
+			elog(LOG, "Reader qExec committing LOCAL_ONLY changes. (%d %d)", rmid, info);
+		}
+		else
+		{
+			ereport(ERROR,
+					(errmsg("Reader qExec had local changes to commit! (rmid = %u)",
+							rmid),
+					 errdetail("A Reader qExec tried to commit local changes.  "
+							   "Only the single Writer qExec can do so. "),
+					 errhint("This is most likely the result of a feature being turned "
+							 "on that violates the single WRITER principle")));	
+		}
  	}
 
-		
 	if (info & XLR_INFO_MASK)
 	{
 		if ((info & XLR_INFO_MASK) != XLOG_NO_TRAN)

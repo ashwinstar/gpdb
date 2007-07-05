@@ -785,23 +785,32 @@ RecordTransactionCommit(void)
 		bool		madeTCentries;
 		XLogRecPtr	recptr;
 
-
 		/* Safety check in case our assumption is ever broken. */
 		if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer && !seqXlogWrite)
 		{
-			/*
-			 * we better only do really minor things on the reader that result
-			 * in writing to the xlog here at commit.  for now sequences
-			 * should be the only one
-			 */
-			ereport(ERROR,
-					(errmsg("Reader qExec had local changes to commit! (MyXactMadeXLogEntry = %s, MyXactMadeTempRelUpdate = %s, nrels = %d)",
- 	 	                    (MyXactMadeXLogEntry ? "true" : "false"), (MyXactMadeTempRelUpdate ? "true" : "false"), nrels),
-				  errdetail("A Reader qExec tried to commit local changes.  "
-							"Only the single Writer qExec can do so. "),
-					 errhint("This is most likely the result of a feature being turned "
-						   "on that violates the single WRITER principle")));
-
+			/* with the introduction of the new DTM system, we have
+			 * more coherent state information, local-only changes
+			 * should be OK. */
+			if (DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY)
+			{
+				/* MPP-1687: readers may under some circumstances extend the CLOG */
+				elog(LOG, "Reader qExec committing LOCAL-ONLY changes.");
+			}
+			else
+			{
+				/*
+				 * we better only do really minor things on the reader that result
+				 * in writing to the xlog here at commit.  for now sequences
+				 * should be the only one
+				 */
+				ereport(ERROR,
+						(errmsg("Reader qExec had local changes to commit! (MyXactMadeXLogEntry = %s, MyXactMadeTempRelUpdate = %s, nrels = %d)",
+								(MyXactMadeXLogEntry ? "true" : "false"), (MyXactMadeTempRelUpdate ? "true" : "false"), nrels),
+						 errdetail("A Reader qExec tried to commit local changes.  "
+								   "Only the single Writer qExec can do so. "),
+						 errhint("This is most likely the result of a feature being turned "
+								 "on that violates the single WRITER principle")));
+			}
 		}
 
 		/* Tell bufmgr and smgr to prepare for commit */
