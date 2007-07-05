@@ -60,7 +60,7 @@ mkext:
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd ext/libevent; make >> out)
+	@(cd ext/libevent; $(MAKE) >> out)
 	@echo     -- json
 	@(cd ext; rm -f json; ln -s $(JSON) json)
 	@if ! [ -a ext/json/Makefile ]; then \
@@ -69,7 +69,7 @@ mkext:
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd ext/json; make all >> out)
+	@(cd ext/json; $(MAKE) all >> out)
 	@echo     -- apr
 	@(cd ext; rm -f apr; ln -s $(APR) apr)
 	@if ! [ -a ext/apr/Makefile ]; then \
@@ -78,7 +78,7 @@ mkext:
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd ext/apr; make all >> out)
+	@(cd ext/apr; $(MAKE) all >> out)
 	@echo     -- apu
 	@(cd ext; rm -f apu; ln -s $(APU) apu)
 	@if ! [ -a ext/apu/Makefile ]; then \
@@ -88,7 +88,7 @@ mkext:
 			--with-apr=../apr \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd ext/apu; make all >> out)
+	@(cd ext/apu; $(MAKE) all >> out)
 
 clean: 
 	(cd ext; rm -rf lib bin include build-1 share apr apu json libevent)
