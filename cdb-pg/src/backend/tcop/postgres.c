@@ -3240,7 +3240,7 @@ ProcessInterrupts(void)
 		ImmediateInterruptOK = false;	/* not idle anymore */
 		DisableNotifyInterrupt();
 		DisableCatchupInterrupt();
-        if (Gp_role == GP_ROLE_EXECUTE)
+        if (Gp_role == GP_ROLE_EXECUTE || Gp_role == GP_ROLE_DISPATCHAGENT)
 		    ereport(ERROR,
 			    	(errcode(ERRCODE_GP_OPERATION_CANCELED),
 				     errmsg("canceling MPP operation")));
@@ -3425,6 +3425,7 @@ get_stats_option_name(const char *arg)
  
 static bool dispatchAgent(int firstchar, StringInfo input_message)
 {
+	Assert(Gp_role == GP_ROLE_DISPATCHAGENT);
 	elog(LOG, "Message type %c received by Dispatch Agent", firstchar);
 	SetClientEncoding(GetDatabaseEncoding(), true);	
 	switch (firstchar)
@@ -3628,11 +3629,9 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			if (ouid > 0 && ouid != GetSessionUserId())
 				SetCurrentRoleId(ouid, ouid_is_super); /* Set the outer UserId */
 
-			setupQEDtxContext(&TempDtxContextInfo);
+			//setupQEDtxContext(&TempDtxContextInfo);
 
-			//Gang * primaryGang = NULL;
-			//primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, getgpsegmentCount(), -1, NULL);
-
+			
 
 			dispatchThreads = NULL;
 
@@ -3733,6 +3732,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			{
 				completionTag = "ERROR";
 			}
+			finish_xact_command();
 			elog(LOG,"Dispatch agent says we are done with this command %s",completionTag);
 			
 			//pq_putmessage('C', completionTag, strlen(completionTag)+1);
@@ -3740,7 +3740,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			EndCommand(completionTag,whereToSendOutput);
 		
 			debug_query_string = NULL;
-			finish_xact_command();
+
 			 
 
 			return true;
@@ -3827,11 +3827,11 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				/*
 				 * Allocate a primary and mirror QE for every available segDB in the system.
 				 */
-				primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, 0, -1, NULL);
+				primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, getgpsegmentCount(), -1, NULL);
 
 				Assert(primaryGang);
 
-				mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, 0, -1, NULL);
+				mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, getgpsegmentCount(), -1, NULL);
 
 
 				/*
@@ -3866,12 +3866,13 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				
 				completionTag = cdbdisp_relayresults(primaryResults, mirrorResults);
 
+				finish_xact_command();
 				
 				//pq_putmessage('C', completionTag, strlen(completionTag)+1);
 				EndCommand(completionTag,whereToSendOutput);
 				
 				debug_query_string = NULL;
-				finish_xact_command();
+				
 				
 				return true;
 			}
@@ -4709,6 +4710,11 @@ PostgresMain(int argc, char *argv[], const char *username)
 
 			if (Gp_role == GP_ROLE_EXECUTE && Gp_is_writer)
 			{
+				ReadyForQuery_QEWriter(whereToSendOutput);
+			}
+			else if (Gp_role == GP_ROLE_DISPATCHAGENT)
+			{
+				// We need to fill in the info from the QEs!!!
 				ReadyForQuery_QEWriter(whereToSendOutput);
 			}
 			else
