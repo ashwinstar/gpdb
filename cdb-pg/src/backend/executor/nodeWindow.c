@@ -999,8 +999,8 @@ static void
 invokeWindowFuncs(WindowState *wstate)
 {	
 	long int pos;
-	long int trail_edge = 0;
-	long int lead_edge = 0;
+	//long int trail_edge = 0;
+	//long int lead_edge = 0;
 	Window *window = (Window *)wstate->ps.plan;
 	int funcno;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
