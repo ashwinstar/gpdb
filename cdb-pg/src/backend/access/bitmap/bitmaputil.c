@@ -1026,6 +1026,9 @@ _bitmap_log_updatewords(Relation rel,
 	}
 
 	xlBitmapWords.bm_node = rel->rd_node;
+	xlBitmapWords.bm_lov_blkno = BufferGetBlockNumber(lovBuffer);
+	xlBitmapWords.bm_lov_offset = lovOffset;
+	xlBitmapWords.bm_new_lastpage = new_lastpage;
 
 	rdata[0].buffer = InvalidBuffer;
 	rdata[0].data = (char*)&xlBitmapWords;

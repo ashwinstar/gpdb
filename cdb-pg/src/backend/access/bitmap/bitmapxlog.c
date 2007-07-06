@@ -581,6 +581,9 @@ _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
 			lovPage = BufferGetPage(lovBuffer);
 			lovItem = (BMLOVItem) PageGetItem(lovPage, 
 				PageGetItemId(lovPage, xlrec->bm_lov_offset));
+
+			Assert(BufferIsValid(secondBuffer));
+			
 			lovItem->bm_lov_tail = BufferGetBlockNumber(secondBuffer);
 
 			PageSetLSN(lovPage, lsn);
