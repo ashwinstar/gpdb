@@ -364,6 +364,7 @@ check_root(const char *progname)
 		exit(1);
 	}
 #else							/* WIN32 */
+#if 0
 	if (pgwin32_is_admin())
 	{
 		write_stderr("Execution of PostgreSQL by a user with administrative permissions is not\n"
@@ -373,6 +374,7 @@ check_root(const char *progname)
 				  "more information on how to properly start the server.\n");
 		exit(1);
 	}
+#endif
 #endif   /* WIN32 */
 }
 
