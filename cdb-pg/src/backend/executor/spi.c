@@ -40,7 +40,6 @@
 uint32		SPI_processed = 0;
 Oid			SPI_lastoid = InvalidOid;
 SPITupleTable *SPI_tuptable = NULL;
-int			SPI_result;
 
 static _SPI_connection *_SPI_stack = NULL;
 static _SPI_connection *_SPI_current = NULL;
@@ -2327,7 +2326,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 				query, strlen(query)+1, 
 				NULL, 0, NULL, 0, NULL, 0, NULL, 0,
 				serializedSnapshot, serializedSnapshotlen, 
-				0 /* unused flag */, gp_command_count, -1, 0,
+				0 /* unused flag */, gp_command_count, -1, 0, 0, 0,
 				GetSessionUserId(), superuser_arg(GetSessionUserId()), GetOuterUserId(), superuser_arg(GetOuterUserId()), GetUserId(),
 				&query_text_len);
 			 
