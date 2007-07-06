@@ -3523,6 +3523,8 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 
 			int localSlice;
 			int rootIdx;
+			int primary_gang_id;
+			int mirror_gang_id;
 			Oid suid;
 			Oid ouid;
 			Oid cuid;
@@ -3560,6 +3562,9 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			localSlice = pq_getmsgint(input_message, 4);
 			
 			rootIdx = pq_getmsgint(input_message, 4);
+			
+			primary_gang_id = pq_getmsgint(input_message, 4);
+			mirror_gang_id = pq_getmsgint(input_message, 4);
 
 			/* read ser string lengths */
 			query_string_len = pq_getmsgint(input_message, 4);
@@ -3663,6 +3668,8 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				queryParms.serializedSliceInfo = (char *)serializedSliceInfo;
 				queryParms.serializedSliceInfolen= serializedSliceInfolen;
 				queryParms.rootIdx = rootIdx;
+				queryParms.primary_gang_id = primary_gang_id;
+				queryParms.mirror_gang_id = mirror_gang_id;
 				//queryParms.serializedSnapshot = serializedSnapshot;
 				//queryParms.serializedSnapshotlen = serializedSnapshotlen;
 
@@ -3728,7 +3735,9 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			}
 			elog(LOG,"Dispatch agent says we are done with this command %s",completionTag);
 			
-			pq_putmessage('C', completionTag, strlen(completionTag)+1);
+			//pq_putmessage('C', completionTag, strlen(completionTag)+1);
+			
+			EndCommand(completionTag,whereToSendOutput);
 		
 			debug_query_string = NULL;
 			finish_xact_command();
@@ -3738,7 +3747,134 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 		}
 		break;
 		case 'T':
-			elog(ERROR,"Dispatch Agent doesn't do transaction commands yet");
+			{
+				char * completionTag = NULL;
+				DtxProtocolCommand dtxProtocolCommand;
+
+				int flags;
+				
+				int loggingStrLen;
+				const char *loggingStr;
+				
+				int gidLen;
+				const char *gid;
+
+				DistributedTransactionId gxid;
+				
+
+
+
+
+				
+				CdbDispatchResults *primaryResults;
+				CdbDispatchResults *mirrorResults;
+				CdbDispatchCmdThreads  *dispatchThreads;
+
+				 
+				
+				DispatchCommandDtxProtocolParms dtxProtocolParms;
+				Gang	*primaryGang;
+				Gang	*mirrorGang;
+				
+				/* get the transaction protocol command # */
+				dtxProtocolCommand = (DtxProtocolCommand) pq_getmsgint(input_message, 4);
+
+				/* get the flags */
+				flags = pq_getmsgint(input_message, 4);
+				
+				/* get the logging string length */
+				loggingStrLen = pq_getmsgint(input_message, 4);
+				
+				/* get the logging string */
+				loggingStr = pq_getmsgbytes(input_message,loggingStrLen);
+
+				/* get the logging string length */
+				gidLen = pq_getmsgint(input_message, 4);
+				
+				/* get the logging string */
+				gid = pq_getmsgbytes(input_message,gidLen);
+
+				/* get the distributed transaction id */
+				gxid = (DistributedTransactionId) pq_getmsgint(input_message, 4);
+
+				pq_getmsgend(input_message);
+				
+				debug_query_string = loggingStr;
+				pgstat_report_activity("DISPATCH DTX");
+
+				set_ps_display(loggingStr, false);
+				
+
+				/* Set statement_timestamp() */
+				SetCurrentStatementStartTimestamp();
+				start_xact_command();
+
+				// Do not touch DTX context.
+
+				//int		nsegdb = getgpsegmentCount();
+				
+				//elog((Debug_print_full_dtm ? LOG : DEBUG5), "cdbdisp_dispatchDtxProtocolCommand: %s for gid = %s", 
+				//	 dtxProtocolCommandLoggingStr, gid);
+
+
+				memset(&dtxProtocolParms, 0, sizeof(dtxProtocolParms));
+				dtxProtocolParms.dtxProtocolCommand = dtxProtocolCommand;
+				dtxProtocolParms.flags = flags;
+				dtxProtocolParms.dtxProtocolCommandLoggingStr = (char *)loggingStr;
+				memcpy(dtxProtocolParms.gid, gid, TMGIDSIZE);
+				dtxProtocolParms.gxid = gxid;
+				
+				/*
+				 * Allocate a primary and mirror QE for every available segDB in the system.
+				 */
+				primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, 0, -1, NULL);
+
+				Assert(primaryGang);
+
+				mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, 0, -1, NULL);
+
+
+				/*
+			     * Dispatch the command.
+			     */
+			    dispatchThreads = NULL;
+
+				primaryResults = cdbdisp_makeDispatchResults(primaryGang->size, 0, /* cancelOnError */ false);
+				if (/*dispatchToMirrors &&*/ mirrorGang)
+				{
+			        mirrorResults = cdbdisp_makeDispatchResults(mirrorGang->size, 0, /* cancelOnError */ false);
+				}
+				else
+					mirrorResults = NULL;
+				
+
+				cdbdisp_dispatchToGang(&dispatchThreads, 
+									   GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL,
+									   &dtxProtocolParms,
+									   primaryGang, primaryResults, -1, 1);
+				
+				if (mirrorResults != NULL)
+				{
+					cdbdisp_dispatchToGang(&dispatchThreads, 
+										   GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL,
+										   &dtxProtocolParms,
+										   mirrorGang, mirrorResults, -1, 1);
+				}
+
+				/* Wait for all QEs to finish.	Don't cancel. */
+				CdbCheckDispatchResult(dispatchThreads, false);
+				
+				completionTag = cdbdisp_relayresults(primaryResults, mirrorResults);
+
+				
+				//pq_putmessage('C', completionTag, strlen(completionTag)+1);
+				EndCommand(completionTag,whereToSendOutput);
+				
+				debug_query_string = NULL;
+				finish_xact_command();
+				
+				return true;
+			}
 		break;
 		
 		case 'H':			/* flush */
@@ -4669,6 +4805,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 					
 					int		localSlice;
 					int		rootIdx;
+					int		primary_gang_id;
+					int		mirror_gang_id;
 					Oid 	suid;
 					Oid 	ouid;
 					Oid 	cuid;
@@ -4697,6 +4835,9 @@ PostgresMain(int argc, char *argv[], const char *username)
 					localSlice = pq_getmsgint(&input_message, 4);
 					
 					rootIdx = pq_getmsgint(&input_message, 4);
+					
+					primary_gang_id = pq_getmsgint(&input_message, 4);
+					mirror_gang_id = pq_getmsgint(&input_message, 4);
 					
 					/* read ser string lengths */
 					query_string_len = pq_getmsgint(&input_message, 4);

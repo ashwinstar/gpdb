@@ -140,7 +140,10 @@ getgpsegmentCount(void)
 	{
 		elog(LOG, "getgpsegmentCount called BEFORE gp_id record has been read in.");
 		/* log_backtrace(); */
+		return 0;
 	}
+	
+	Assert(GpIdentity.numsegments > 0);
 
 	/* Assert( Gp_role != GP_ROLE_UTILITY ); */
 

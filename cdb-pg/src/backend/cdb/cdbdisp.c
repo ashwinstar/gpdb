@@ -954,6 +954,8 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "cdbdisp_dispatchDtxProtocolCommand: %s for gid = %s", 
 		 dtxProtocolCommandLoggingStr, gid);
+	
+	Assert(dispatchToMirrors);	/* Dispatch agent assumes this for now */
 
 	*badGangs = false;
 
@@ -987,6 +989,11 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
     dispatchThreads = NULL;
 
 	primaryResults = cdbdisp_makeDispatchResults(nsegdb, 0, /* cancelOnError */ false);
+	
+	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent)
+		dispatchToMirrors = false;	/* The dispatch agent will handle sending to the mirrors */
+
+	
 	if (dispatchToMirrors && mirrorGang)
 	{
         mirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, /* cancelOnError */ false);
@@ -1000,7 +1007,7 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 						   &dtxProtocolParms,
 						   primaryGang, primaryResults, -1, 1);
 	
-	if (mirrorResults != NULL)
+	if (mirrorResults != NULL && mirrorGang != NULL && (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent))
 	{
 		cdbdisp_dispatchToGang(&dispatchThreads, 
 							   GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL,
@@ -1010,6 +1017,7 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 
 	/* Wait for all QEs to finish.	Don't cancel. */
 	CdbCheckDispatchResult(dispatchThreads, false);
+	
 
 	if (!gangOK(primaryGang) ||
 		(dispatchToMirrors && mirrorGang && !gangOK(mirrorGang)))
@@ -1101,6 +1109,12 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	Assert(primaryGang);
 
 	mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, nsegdb, -1, NULL);
+	
+	if (dispatchToPrimaries)
+		queryParms.primary_gang_id = primaryGang->gang_id;
+		
+	if (dispatchToMirrors && mirrorGang)
+		queryParms.mirror_gang_id = mirrorGang->gang_id;
 
 	if (mirrorGang &&
 		(mirrorGang->segdb_count < nsegdb || mirrorGang->size < nsegdb))
@@ -1126,6 +1140,9 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	queryParms.serializedDtxContextInfo = 
 			qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, withSnapshot, generateTxnOptions(needTwoPhase), "cdbdisp_dispatchCommand");
 
+	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent)
+		dispatchToPrimaries = true;
+	
 	/*
      * Dispatch the command.
      */
@@ -1138,7 +1155,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 							   primaryGang, *pPrimaryResults, -1, 1);
 	}
 	
-	if (dispatchToMirrors && mirrorGang)
+	if (dispatchToMirrors && mirrorGang && (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent))
     {
         *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
         cdbdisp_dispatchToGang(pDispatchThreads, 
@@ -1348,8 +1365,14 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 	primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, nsegdb, -1, NULL);
 
 	Assert(primaryGang);
+	
+	queryParms.primary_gang_id = primaryGang->gang_id;
 
 	mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, nsegdb, -1, NULL);
+	
+	if (mirrorGang)
+		queryParms.mirror_gang_id = mirrorGang->gang_id;
+	
 
 	if (mirrorGang &&
 		(mirrorGang->segdb_count < nsegdb || mirrorGang->size < nsegdb))
@@ -1389,7 +1412,7 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 	    &queryParms,
 	    primaryGang, *pPrimaryResults, -1, gangCount);
 
-	if (mirrorGang)
+	if (mirrorGang && (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent))
     {
         *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
         cdbdisp_dispatchToGang(pDispatchThreads, 
@@ -1398,7 +1421,7 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 	    	mirrorGang, *pMirrorResults, -1, gangCount);
     }
 
-
+	if (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent)
     foreach(le, readerGangs)
     {
     	Gang  *rg = lfirst(le);
@@ -1450,6 +1473,7 @@ thread_DispatchCommand(void *arg)
 						pQueryParms->serializedSliceInfo, pQueryParms->serializedSliceInfolen, 
 						pQueryParms->serializedDtxContextInfo, pQueryParms->serializedDtxContextInfolen, 
 						0 /* unused flags*/, pParms->cmdID, pParms->localSlice, pQueryParms->rootIdx,
+						pQueryParms->primary_gang_id, pQueryParms->mirror_gang_id,
 						pParms->sessUserId, pParms->sessUserId_is_super,
 						pParms->outerUserId, pParms->outerUserId_is_super, pParms->currUserId,
 						&pParms->query_text_len);
@@ -2746,7 +2770,17 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				
 			}
 		}
-		if (primaryGang == NULL)
+		else
+		{
+			/* Non-sliced, used specified gangs
+			 */
+			if (pQueryParms->primary_gang_id > 0)
+				primaryGang = findGangById(pQueryParms->primary_gang_id);
+			if (pQueryParms->mirror_gang_id > 0)
+				primaryGang = findGangById(pQueryParms->mirror_gang_id);
+			 
+		}
+		if (primaryGang == NULL && mirrorGang == NULL)
 		{
 			elog(DEBUG1,"Using default writer gang");
 			primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, getgpsegmentCount(), -1, NULL);
@@ -2754,7 +2788,10 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			mirrorGang = NULL;
 		}
 	 
-		
+		if (primaryGang == NULL && mirrorGang != NULL && Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent)
+		{
+			primaryGang = mirrorGang;
+		}
 		
 
 		
@@ -3115,6 +3152,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	queryParms.serializedSliceInfo = ssliceinfo;
 	queryParms.serializedSliceInfolen= ssliceinfo_len;
 	queryParms.rootIdx = rootIdx;
+	queryParms.primary_gang_id = 0;
+	queryParms.mirror_gang_id = 0;
 
 	/* serialized a version of our snapshot */
 	/* 

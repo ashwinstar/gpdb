@@ -721,6 +721,8 @@ PQbuildGpQueryString(const char  *command,
 					  int          gp_command_count,
 					  int		   localSlice,
 					  int		   rootIdx,
+					  int		   primary_gang_id,
+					  int		   mirror_gang_id,
 					  Oid			sessionUserId,
 					  bool			sessionUserIsSuper,
 					  Oid			outerUserId,
@@ -736,7 +738,7 @@ PQbuildGpQueryString(const char  *command,
 
 	total_query_len = 5 /* overhead */ + 14 /* userids */ + 24 /* lengths */ +
 		4 /* comamnd count */ + snapshotInfo_len +
-		4 /* flags */ + command_len + querytree_len + plantree_len + params_len + sliceinfo_len + 4 + 4;
+		4 /* flags */ + command_len + querytree_len + plantree_len + params_len + sliceinfo_len + 4 + 4 + 4 + 4;
 
 	shared_query = malloc(total_query_len);
 	if (shared_query == NULL)
@@ -785,6 +787,14 @@ PQbuildGpQueryString(const char  *command,
 	pos += 4;
 	
 	tmp = htonl(rootIdx);
+	memcpy(pos, &tmp, 4);
+	pos += 4;
+	
+	tmp = htonl(primary_gang_id);
+	memcpy(pos, &tmp, 4);
+	pos += 4;
+	
+	tmp = htonl(mirror_gang_id);
 	memcpy(pos, &tmp, 4);
 	pos += 4;
 	

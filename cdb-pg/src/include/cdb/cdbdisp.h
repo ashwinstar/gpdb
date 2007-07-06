@@ -59,6 +59,12 @@ typedef struct DispatchCommandQueryParms
 	int			serializedDtxContextInfolen;
 	
 	int			rootIdx;
+	
+	/*
+	 * Used by dispatch agent if NOT using sliced execution
+	 */
+	int			primary_gang_id;
+	int			mirror_gang_id;
 
 } DispatchCommandQueryParms;
 
