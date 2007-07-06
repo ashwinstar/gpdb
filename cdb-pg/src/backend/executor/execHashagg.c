@@ -927,31 +927,30 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
  *
  * The actual estimate is a little more complex.
  */
-#define NGROUP_PER_BUCKET 10.0
+#define NGROUP_PER_BUCKET 7.0
 #define OVERHEAD_PER_ENTRY ((double)sizeof(uint32))/NGROUP_PER_BUCKET
 
 bool
 calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
-					   double ngroups,	/* Est # of groups. */
-					   int numaggs,		/* Est # of aggregate functions */
-					   int keywidth,	/* Est per entry size of hash key. */
-					   int transpace,	/* Est per entry size of by-ref values. */
-                       bool force,      /* true => succeed even if work_mem too small */
-                       HashAggTableSizes   *out_hats
-					   )
+					  double ngroups,	/* Est # of groups. */
+					  int numaggs,		/* Est # of aggregate functions */
+					  int keywidth,	/* Est per entry size of hash key. */
+					  int transpace,	/* Est per entry size of by-ref values. */
+					  bool force,      /* true => succeed even if work_mem too small */
+					  HashAggTableSizes   *out_hats
+	)
 {
-	double rewrite_fudge = 1.0;
-	
 	int entrywidth = sizeof(HashAggEntry)
-					+ numaggs * sizeof(AggStatePerGroupData)
-					+ keywidth
-					+ transpace;
+		+ numaggs * sizeof(AggStatePerGroupData)
+		+ keywidth
+		+ transpace;
 	
 	double nK = ceil(ngroups/NGROUP_PER_BUCKET); /* Buckets */
 	
 	double nH, zH = OVERHEAD_PER_ENTRY + entrywidth; /* Hash Entries */
 	
-	double nB, zB = sizeBufFile(NULL); /* Passes = overflow batches */
+	double nB=2.0;
+	double zB = sizeBufFile(NULL); /* Passes = overflow batches */
 	
 	elog(DEBUG2, "hashagg ngroups = %g, numaggs = %d, keywidth = %d, transpace = %d", ngroups, numaggs, keywidth, transpace);
 	elog(DEBUG2, "hashagg memquota = %g, zH = %g, zB = %g", memquota, zH, zB);
@@ -961,58 +960,25 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 		elog(DEBUG2, "hashagg table size bigger than int type!");
 		return false;
 	}
-	
-	if ( memquota >= ngroups*zH + 2*zB )
-	{
-		/* Use default strategy when we expect the whole operation to
-		 * fit in memory.  This strategy hedges its bet by allocating
-		 * 2 batches in case the estimate is low and we overflow anyway.
-		 */		
-		nB = 2;
-	}
-	else
-	{
-		/* The normal stategy expects to spill to disk, so we estimate
-		 * how many passes we expect to need and allocate that many
-		 * batches.  Since the first pass will load the hash table
-		 * rather than a batch file, this leaves a batch file for
-		 * overflow within a subsequent pass.
-		 */
-		double d = memquota*memquota - 4 * zB * ngroups * zH;
-		
-		/* By default we plan on writing input tuples back to disk
-		 * once, but the user can increase this.  We creep up to
-		 * user's limit in order the choose the smallest rewrite
-		 * limit that will work.  (This tends to minimize the number
-		 * of rewrites at the expense of a larger number of passes.
-		 */
-		while ( d < 0 && rewrite_fudge < gp_hashagg_rewrite_limit )
-		{
-			rewrite_fudge++;
-			rewrite_fudge = ( rewrite_fudge > gp_hashagg_rewrite_limit ) ?
-				gp_hashagg_rewrite_limit :
-				rewrite_fudge;
-			
-			d = memquota*memquota - (4 * zB * ngroups * zH)/rewrite_fudge;
-		}
-		
-		/* The optimizer can decide against the strategy, but the executor
-		 * has to go with the choice even if it doesn't look so good.
-		 */
-		if ( d < 0 )
-		{
-			if ( force )
-				d = 0;
-			else
-			{
-				elog(DEBUG2, "hashagg can't calculate memory usage!");
-				return false;
-			}
-		}
 
-		nB = ceil((memquota-sqrt(d))/(2*zB));
-		
-		nB = ( nB < 2 ) ? 2 : nB;
+	/* Use default strategy when we expect the whole operation to
+	 * fit in memory.  This strategy hedges its bet by allocating
+	 * 2 batches in case the estimate is low and we overflow anyway.
+	 *
+	 * If we don't fit in memory we pick the number of batches such
+	 * that each batch will fit in memory.
+	 *
+	 * Mq - 2zB >= zH * ngroups/nB
+	 * solve for nB:
+	 *    nB >= zH * ngroups / (Mq - 2zB)
+	 */			
+	if (memquota < ngroups*zH + 2*zB)
+	{
+		/* 1.5 safety factor, batches are cheap; passes are
+		 * expensive */
+		nB = 1.5 * (ngroups * zH) / (memquota - (2.0 * zB));
+
+		nB = Max(2.0, nB);
 	}
 	
 	nH = floor((memquota - nB*zB)/zH);
@@ -1022,13 +988,13 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 
 	nK = ceil(nH/NGROUP_PER_BUCKET);
 
-	if ( nB > INT_MAX || nH > INT_MAX || nK > INT_MAX )
+	if (nB > INT_MAX || nH > INT_MAX || nK > INT_MAX)
 	{
-		if ( force )
+		if (force)
 		{
 			ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("hybrid hash aggregation faillure - too many passes or hash entries")));
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("hybrid hash aggregation faillure - too many passes or hash entries")));
 		}
 		else
 		{
@@ -1047,9 +1013,8 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
     }
 	
 	elog(DEBUG2, "hashagg nbuckets = %d, nentries = %d, nbatches = %d", (int)nK, (int)nH, (int)nB);
-	elog(DEBUG1, "hashagg rewrite fudge = %f, expected memory footprint = %d",
-		rewrite_fudge,
-		(int)( nH*entrywidth + nK*sizeof(HashAggEntry*) + nB*zB));
+	elog(DEBUG1, "expected memory footprint = %d",
+		 (int)(nH*entrywidth + nK*sizeof(HashAggEntry*) + nB*zB));
 	
 	return true;
 }
