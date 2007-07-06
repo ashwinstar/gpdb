@@ -3394,3 +3394,11 @@ select cn, vn, pn, count(dt),group_id(),grouping(cn,vn,pn) from sale group by gr
 (20 rows)
 
 --end equivalent
+select a,b from (select 1 as a , 2 as b) r(a,b) group by rollup(a,b);
+ a | b 
+---+---
+ 1 | 2
+ 1 |  
+   |  
+(3 rows)
+

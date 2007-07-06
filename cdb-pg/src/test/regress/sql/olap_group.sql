@@ -409,3 +409,5 @@ order by 6;
 -- order 6
 select cn, vn, pn, count(dt),group_id(),grouping(cn,vn,pn) from sale group by grouping sets ((cn,vn,pn), (cn), (cn)) order by grouping(cn,vn,pn);
 --end equivalent
+
+select a,b from (select 1 as a , 2 as b) r(a,b) group by rollup(a,b);

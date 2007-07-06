@@ -1539,23 +1539,6 @@ typedef struct SortState
 } SortState;
 
 /* ---------------------
- * AggOutStateCond
- *
- *   Represents a state of the output of an Agg node.
- *
- *   PROCESSING - the Agg node starting to process inputs,
- *                no output tuple is ready.
- *   PASS_THRU - A pass through tuple is ready for output.
- *   AGG_READY - An aggregated tuple is ready for output.
- */
-typedef enum
-{
-	PROCESSING,
-	PASS_THRU,
-	AGG_READY
-} AggOutStateCond;
-
-/* ---------------------
  *	GroupState information
  * -------------------------
  */
@@ -1565,18 +1548,28 @@ typedef struct GroupState
 	FmgrInfo   *eqfunctions;	/* per-field lookup data for equality fns */
 	bool		grp_done;		/* indicates completion of Group scan */
 
-	/* for rollup */
-	HeapTuple  grp_firstTuple;      /* the first tuple in a group */
-	AggOutStateCond out_state;      /* the state of previous output tuple */
-	TupleTableSlot *copyslot;       /* copy slot for a modified tuple */
+	HeapTuple	grp_firstTuple; /* copy of first tuple of current group */
+	/* Indicate that we've read the first tuple in the current group. */
+	bool        has_firsttuple;
+
+	/* The modified version of a input tuple.
+	 *
+	 * When the Group appears in a ROLLUP, it may require to modify
+	 * an input tuple to generate a real group tuple. We can't simply
+	 * rewrite the original input tuple slot for this purpose since the orignal
+	 * input tuple may also be a pass-thru tuple. This slot is used to store
+	 * the modified tuple.
+	 */
+	TupleTableSlot *modified_slot;
 
 	/*
-	 * For a rollup, one aggregate tuple may need to be outputed several
-	 * times. We use prev_aggslot to indicate if a previous output
+	 * This Group node may require to output each group tuple multiple times
+	 * since it may represent a grouping set which appears multiple times
+	 * in a grouping set. We use prev_groupslot to indicate if a previous output
 	 * tuple needs to be output again. How many times this tuple
 	 * needs to be outputed is defined in num_repeats.
 	 */
-	TupleTableSlot *prev_aggslot;
+	TupleTableSlot *prev_groupslot;
 	int             num_repeats;
 
 	/*
@@ -1616,8 +1609,9 @@ typedef struct AggState
 	MemoryContext aggcontext;	/* memory context for long-lived data */
 	ExprContext *tmpcontext;	/* econtext for input expressions */
 	bool		agg_done;		/* indicates completion of Agg scan */
-	AggOutStateCond out_state;  /* indicate the state of the output of
-								   this Agg node */
+	bool        has_partial_agg;/* indicate if a partial aggregate result
+								 * has been calculated in the previous call.
+								  */
 
 	/* these fields are used in AGG_PLAIN and AGG_SORTED modes: */
 	AggStatePerGroup pergroup;	/* per-Aggref-per-group working state */
@@ -1636,11 +1630,20 @@ typedef struct AggState
 	/* ROLLUP */
 	AggStatePerGroup perpassthru; /* per-Aggref-per-pass-through-tuple working state */
 
-	TupleTableSlot *copyslot;     /* copy of input tuple */
+	/* The modified version of a input tuple.
+	 *
+	 * When the Agg appears in a ROLLUP, it may require to modify
+	 * an input tuple before aggregating its value. We can't simply
+	 * rewrite the original input tuple slot for this purpose since the orignal
+	 * input tuple may also be a pass-thru tuple. This slot is used to store
+	 * the modified tuple.
+	 */
+	TupleTableSlot *modified_slot;
 
 	/*
-	 * For a rollup, one aggregate tuple may need to be outputed several
-	 * times. We use prev_aggslot to indicate if a previous output
+	 * This Agg node may require to output each aggregate tuple multiple times
+	 * since it may represent a grouping set which appears multiple times
+	 * in a grouping set. We use prev_aggslot to indicate if a previous output
 	 * tuple needs to be output again. How many times this tuple
 	 * needs to be outputed is defined in num_repeats.
 	 */
@@ -1648,7 +1651,7 @@ typedef struct AggState
 	int             num_repeats;
 
 	/*
-	 * The following are used to define how to truncate input tuples to
+	 * The following are used to define how to modify input tuples to
 	 * satisfy the rollup level of this Agg node.
 	 */
 	int num_attrs;                /* number of grouping attributes for the Agg node */
