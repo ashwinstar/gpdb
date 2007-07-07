@@ -557,6 +557,8 @@ extern char *PQencryptPassword(const char *passwd, const char *user);
  */
 extern int PQsendCreateGang(PGconn * conn, int size, void * binaryGangInfo);
 
+extern int PQsendControlGang(PGconn * conn, int gang_id, const char * query);
+
 #ifdef __cplusplus
 }
 #endif

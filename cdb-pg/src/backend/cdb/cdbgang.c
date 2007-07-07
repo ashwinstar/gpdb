@@ -51,14 +51,13 @@ static void build_gpdaid_params(PQExpBuffer buf);
 
 static Gang *createGang(GangType type, int gang_id, int size, int content, char *portal_name);
 
-static void disconnectAndDestroyGang(Gang * gp);
 static void disconnectAndDestroyAllReaderGangs(void);
 
 static Gang *buildGangDefinition(GangType type, int gang_id, int size, int content, char *portal_name);
 static Gang *
 buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo);
 
-static bool cleanupGang(Gang * gp);
+
 static bool isTargetPortal(char *p1, char *p2);
 
 static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bool isprimary);
@@ -216,7 +215,7 @@ createDispatchAgents(void)
 
 
 
-static int gang_id_counter = 1;
+static int gang_id_counter = 3;
 /*
  * creates a new gang by logging on a session to each segDB involved
  *
@@ -282,6 +281,9 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	 * If the connection fails, mark it (locally) as unavailable
 	 * If no database serving a segindex is available, fail the user's connection request.
 	 */
+	elog(LOG,"createGang type = %d, gang_id %d, size %d",type,gang_id,size);
+	if (type == GANGTYPE_PRIMARY_WRITER)
+		Assert(gang_id == 1);
 
 	segdb_count = newGangDefinition->size;
 
@@ -1769,7 +1771,7 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
 		myDatabaseName = get_database_name(MyDatabaseId);
 	
 	
-	elog(LOG,"Gang create fragment, id = %d",conninfo->gang_id);
+	elog(LOG,"Gang create fragment, id = %d, type = %d",conninfo->gang_id, conninfo->type);
 	
 	for (i = 0 ; i<conninfo->nsegs;i++)
     {
@@ -1800,8 +1802,7 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
 		palloc0(max_threads * sizeof(DoConnectParms));
 	segdbs_in_thread_pool = 0;
 	
-	segdb_count = conninfo->nsegs;
-
+ 
 	newGangDefinition->active = true;
 
 	/*
@@ -1999,21 +2000,6 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
     }
 
 	
-
-
-	
-	
-	*outsize = sizeof(GpSegmentConnectionResponse)*conninfo->nsegs;
-	r = palloc0(*outsize);
-	
-	for (i = 0 ; i<conninfo->nsegs;i++)
-	{
-		r[i].motionListener = newGangDefinition->db_descriptors[i].motionListener;
-		r[i].pid = PQbackendPID(newGangDefinition->db_descriptors[i].conn);
-		//strncpy(r[i].hostip, ?);	// Do we need this?
-		elog(LOG,"Gang response motionListener %d, pid %d",r[i].motionListener,r[i].pid);
-	}
-	
 	if (conninfo->type == GANGTYPE_PRIMARY_WRITER)
 		primaryWriterGang = newGangDefinition;
 	if (conninfo->type == GANGTYPE_MIRROR_WRITER)
@@ -2027,6 +2013,21 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
 			availableReaderGangsN = lappend(availableReaderGangsN, newGangDefinition);
 	}
 	
+
+
+    MemoryContextSwitchTo(MessageContext);
+	
+	*outsize = sizeof(GpSegmentConnectionResponse)*conninfo->nsegs;
+	r = palloc0(*outsize);
+	
+	for (i = 0 ; i<conninfo->nsegs;i++)
+	{
+		r[i].motionListener = newGangDefinition->db_descriptors[i].motionListener;
+		r[i].pid = PQbackendPID(newGangDefinition->db_descriptors[i].conn);
+		//strncpy(r[i].hostip, ?);	// Do we need this?
+		elog(LOG,"Gang response motionListener %d, pid %d",r[i].motionListener,r[i].pid);
+	}
+
 	MemoryContextSwitchTo(oldContext);
 	
 	return r;
@@ -2078,9 +2079,9 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 				/*
 				 * try twice for creating gang
 				 */
-				gp = primaryWriterGang = createGang(type, gang_id_counter++, size, content, portal_name);
+				gp = primaryWriterGang = createGang(type, 1, size, content, portal_name);
 				if (gp == NULL)
-					gp = primaryWriterGang = createGang(type, gang_id_counter++, size, content, portal_name);
+					gp = primaryWriterGang = createGang(type, 1, size, content, portal_name);
 			}
 			else
 			{
@@ -2096,9 +2097,9 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 				/*
 				 * try twice for creating gang
 				 */
-				gp = mirrorWriterGang = createGang(type, gang_id_counter++, size, content, portal_name);
+				gp = mirrorWriterGang = createGang(type, 2, size, content, portal_name);
 				if (gp == NULL && !mirroringNotConfigured)
-					gp = mirrorWriterGang = createGang(type, gang_id_counter++, size, content, portal_name);
+					gp = mirrorWriterGang = createGang(type, 2, size, content, portal_name);
 			}
 			else
 			{
@@ -2499,13 +2500,15 @@ getCdbProcessesForQD(int isPrimary)
  * gang has been disconnected (and so should not be put back onto the
  * available list).
  */
-static bool
+bool
 cleanupGang(Gang * gp)
 {
 	int			i;
 
 	if (gp == NULL)
 		return true;
+	
+	elog(LOG,"Freeing gang %d",gp->gang_id);
 
     if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
         elog(DEBUG4, "cleanupGang: cleaning gang type %d size %d, was used for portal: %s", gp->type, gp->size, (gp->portal_name ? gp->portal_name : "(unnamed)"));
@@ -2526,6 +2529,25 @@ cleanupGang(Gang * gp)
 	 */
 	if (proc_exit_inprogress)
 		return true;
+	
+	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent && gp->dispatchagents)
+	{
+		PGresult * result;
+		int i;
+
+		for (i = 0; i < gp->dispatchagents->size; i++)
+		{
+			PQsendControlGang(gp->dispatchagents->db_descriptors[i].conn, gp->gang_id, "clean gang");
+			
+			result = PQgetResult(gp->dispatchagents->db_descriptors[i].conn);
+			
+			if (PQresultStatus(result)!=PGRES_COMMAND_OK)
+			{
+				elog(ERROR,"Dispatch Agent unable to clean gang, %s %s",PQresStatus(PQresultStatus(result)),
+						PQresultErrorMessage(result));
+			}
+		}
+	}
 
 	/*
 	 * Loop through the segment_database_descriptors array and, for each
@@ -2595,7 +2617,7 @@ cleanupGang(Gang * gp)
 }
 
 
-static void
+void
 disconnectAndDestroyGang(Gang * gp)
 {
 	int			i;
@@ -2610,6 +2632,25 @@ disconnectAndDestroyGang(Gang * gp)
 		gp->allocated)
 		elog(DEBUG2, "Warning: disconnectAndDestroyGang called on an %s gang",
 			 gp->active ? "active" : "allocated");
+	
+	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent && gp->dispatchagents)
+	{
+		PGresult * result;
+		int i;
+
+		for (i = 0; i < gp->dispatchagents->size; i++)
+		{
+			PQsendControlGang(gp->dispatchagents->db_descriptors[i].conn, gp->gang_id, "destroy gang");
+			
+			result = PQgetResult(gp->dispatchagents->db_descriptors[i].conn);
+			
+			if (PQresultStatus(result)!=PGRES_COMMAND_OK)
+			{
+				elog(ERROR,"Dispatch Agent unable to destroy gang, %s %s",PQresStatus(PQresultStatus(result)),
+						PQresultErrorMessage(result));
+			}
+		}
+	}
 
 	/*
 	 * Loop through the segment_database_descriptors array and, for each

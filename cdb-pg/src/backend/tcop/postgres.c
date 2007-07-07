@@ -3225,7 +3225,7 @@ ProcessInterrupts(void)
 		 * to call CdbCheckDispatchResult(). Also we're about to
 		 * yank the carpet out from under any dispatched threads!
 		 */
-		if (Gp_role == GP_ROLE_DISPATCH)
+		if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)
 			CdbShutdownPortals();
 
 		ereport(FATAL,
@@ -3439,6 +3439,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			GpSegmentConnectionInfoSet * conninfo;
 			GpSegmentConnectionResponse * connresp;
 			StringInfoData buf;
+			int gang_id;
 
 			if (Gp_role != GP_ROLE_EXECUTE)
 				gp_command_count++;
@@ -3446,34 +3447,65 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			SetCurrentStatementStartTimestamp();
 
 			query_string = pq_getmsgstring(input_message);
+			
+			if (strcmp(query_string,"create gang")==0)
+			{
 
-			size = pq_getmsgint(input_message,4);
-			conninfo = (GpSegmentConnectionInfoSet *) pq_getmsgbytes(input_message, size);
+				size = pq_getmsgint(input_message,4);
+				conninfo = (GpSegmentConnectionInfoSet *) pq_getmsgbytes(input_message, size);
+			}
+			else
+			{
+				gang_id = pq_getmsgint(input_message,4);
+			}
 
 			/* Unpack the gang information from the message */
 			pq_getmsgend(input_message);
 
-			elog(LOG, "Gang create stmt: %s.",query_string);
+		 
 			debug_query_string = query_string;
 			pgstat_report_activity("GANG");
 
-			set_ps_display("creating gang", false);
+			set_ps_display(query_string, false);
 
 			start_xact_command();
-
-			connresp = createGangFragment(conninfo, &connrespsize);
-
-			initStringInfo(&buf);
-
-			/* Replaces EndCommand */
-
-			pq_beginmessage(&buf, 'y');
-			pq_sendstring(&buf, completionTag);
-			pq_sendint(&buf, connrespsize, 4);
-			pq_sendbytes(&buf, (char *)connresp, connrespsize);
-			pq_endmessage(&buf);
+			
+			if (strcmp(query_string,"create gang")==0)
+			{
+				gang_id = conninfo->gang_id; /* just for debugging */
+				elog(LOG, "Gang stmt: %s gang_id %d.",query_string, conninfo->gang_id);
+				connresp = createGangFragment(conninfo, &connrespsize);
+	
+				initStringInfo(&buf);
+	
+				/* Replaces EndCommand */
+	
+				pq_beginmessage(&buf, 'y');
+				pq_sendstring(&buf, completionTag);
+				pq_sendint(&buf, connrespsize, 4);
+				pq_sendbytes(&buf, (char *)connresp, connrespsize);
+				pq_endmessage(&buf);
+			}
+			else
+			{
+				Gang * gp = NULL;
+				elog(LOG, "Gang stmt: %s gang_id %d.",query_string, gang_id);
+				
+				gp = findGangById(gang_id);
+				
+				if (strcmp(query_string,"clean gang")==0)
+					cleanupGang(findGangById(gang_id));
+				else if (strcmp(query_string,"destroy gang")==0 && gp)
+					disconnectAndDestroyGang(gp);
+				else
+					elog(ERROR,"Didn't understand gang command");
+				
+				pq_putmessage('C', completionTag, strlen(completionTag)+1);
+			}
 
 			finish_xact_command();
+			
+			debug_query_string = NULL;
 
 			return true;
 		}
@@ -3491,7 +3523,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			query_string = pq_getmsgstring(input_message);
 			pq_getmsgend(input_message);
 
-			elog(LOG, "Simple query stmt: %s.",query_string);
+			elog(NOTICE, "Simple query stmt: %s.",query_string);
 			elog(ERROR,"Can't dispatch simple query yet");
 
 			setupRegularDtxContext();
@@ -3621,7 +3653,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 
 			set_ps_display(query_string, false);
 
-			elog((Debug_print_full_dtm ? LOG : DEBUG5), "MPP dispatched stmt from QD: %s.",query_string);
+			elog((Debug_print_full_dtm ? LOG : DEBUG5), "redispatched stmt from QD: %s.",query_string);
 
 			if (suid > 0)
 				SetSessionAuthorization(suid, suid_is_super); /* Set the session UserId */
@@ -3669,15 +3701,11 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				queryParms.rootIdx = rootIdx;
 				queryParms.primary_gang_id = primary_gang_id;
 				queryParms.mirror_gang_id = mirror_gang_id;
-				//queryParms.serializedSnapshot = serializedSnapshot;
-				//queryParms.serializedSnapshotlen = serializedSnapshotlen;
 
  
 				cdbdisp_dispatchX(&queryParms,
 						 true,
 						 sliceTable,
-						 /*GpDispatchCommandType		mppDispatchCommandType,
-						 //void						   *commandTypeParms,*/
 						 &pPrimaryResults,		/* OUT */
 						 &pMirrorResults,       /* OUT */
 						 &dispatchThreads)	;	/* OUT */
@@ -3688,6 +3716,8 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			elog(DEBUG1,"Checking dispatch results");
 
 			CdbCheckDispatchResult(dispatchThreads, false);
+			
+			MemoryContextSwitchTo(MessageContext);
 			
 			completionTag = cdbdisp_relayresults(pPrimaryResults, pMirrorResults);
 			
@@ -3732,16 +3762,15 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			{
 				completionTag = "ERROR";
 			}
-			finish_xact_command();
-			elog(LOG,"Dispatch agent says we are done with this command %s",completionTag);
 			
-			//pq_putmessage('C', completionTag, strlen(completionTag)+1);
 			
 			EndCommand(completionTag,whereToSendOutput);
+			
+			finish_xact_command();
+			
+			elog(LOG,"Dispatch agent says we are done with this command %s",completionTag);
 		
 			debug_query_string = NULL;
-
-			 
 
 			return true;
 		}
@@ -3762,10 +3791,6 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				DistributedTransactionId gxid;
 				
 
-
-
-
-				
 				CdbDispatchResults *primaryResults;
 				CdbDispatchResults *mirrorResults;
 				CdbDispatchCmdThreads  *dispatchThreads;
@@ -3813,8 +3838,8 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 
 				//int		nsegdb = getgpsegmentCount();
 				
-				//elog((Debug_print_full_dtm ? LOG : DEBUG5), "cdbdisp_dispatchDtxProtocolCommand: %s for gid = %s", 
-				//	 dtxProtocolCommandLoggingStr, gid);
+				elog((Debug_print_full_dtm ? LOG : DEBUG5), "redispatch DtxProtocolCommand: %s for gid = %s.  Dist Txn Id %u", 
+						loggingStr, gid, gxid);
 
 
 				memset(&dtxProtocolParms, 0, sizeof(dtxProtocolParms));
@@ -3864,11 +3889,12 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				/* Wait for all QEs to finish.	Don't cancel. */
 				CdbCheckDispatchResult(dispatchThreads, false);
 				
+				MemoryContextSwitchTo(MessageContext);
+				
 				completionTag = cdbdisp_relayresults(primaryResults, mirrorResults);
 
 				finish_xact_command();
 				
-				//pq_putmessage('C', completionTag, strlen(completionTag)+1);
 				EndCommand(completionTag,whereToSendOutput);
 				
 				debug_query_string = NULL;
@@ -4598,7 +4624,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 		debug_query_string = NULL;
 
 		topErrCode = elog_geterrcode();
-		if (Gp_role == GP_ROLE_EXECUTE &&
+		if ((Gp_role == GP_ROLE_EXECUTE || Gp_role == GP_ROLE_DISPATCHAGENT) &&
 			(topErrCode == ERRCODE_GP_OPERATION_CANCELED ||
              topErrCode == ERRCODE_QUERY_CANCELED))
 		{
@@ -4674,7 +4700,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 
         /* Reset elog globals */
         currentSliceId = UNSET_SLICE_ID;
-        if (Gp_role == GP_ROLE_EXECUTE)
+        if (Gp_role == GP_ROLE_EXECUTE || Gp_role == GP_ROLE_DISPATCHAGENT)
             gp_command_count = 0;
 
 		/*

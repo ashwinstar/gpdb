@@ -76,8 +76,10 @@ getGpId(void)
 	if (Gp_role == GP_ROLE_UTILITY)
 		elog(DEBUG1, "WARNING: called getGpId when in utility mode");
 
-	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && Gp_segment < -1)
+	if (Gp_role == GP_ROLE_DISPATCH && Gp_segment < -1)
 		Gp_segment = -1;
+	else if (Gp_role == GP_ROLE_DISPATCHAGENT && Gp_segment < -2)
+		Gp_segment = -2;
 
 	/*
 	 * Release storage for the cdbname if not NULL
@@ -638,7 +640,7 @@ cdb_setup(void)
 	cdblink_setup();
 
 	/* If gp_role is UTILITY, skip this call. */
-	if (Gp_role != GP_ROLE_UTILITY)
+	if (Gp_role != GP_ROLE_UTILITY  && Gp_role != GP_ROLE_DISPATCHAGENT)
 	{
 		/* Initialize the Motion Layer IPC subsystem. */
 		InitMotionLayerIPC();

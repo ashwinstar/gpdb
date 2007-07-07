@@ -105,6 +105,12 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize);
 extern Gang * 
 findGangById(int gang_id);
 
+extern bool
+cleanupGang(Gang * gp);
+
+extern void
+disconnectAndDestroyGang(Gang * gp);
+
 /*
  * cdbgang_parse_gpqeid_params
  *

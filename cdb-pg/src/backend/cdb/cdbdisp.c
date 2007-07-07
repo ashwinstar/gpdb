@@ -2118,6 +2118,8 @@ void
 CollectQEWriterTransactionInformation(SegmentDatabaseDescriptor *segdbDesc, CdbDispatchResult * dispatchResult)
 {
 	PGconn *conn = segdbDesc->conn;
+	
+	write_stderr("QEWriter_HaveInfo = %d",conn->QEWriter_HaveInfo);
 
 	if (conn->QEWriter_HaveInfo)
 	{

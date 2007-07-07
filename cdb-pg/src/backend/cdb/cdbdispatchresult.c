@@ -841,6 +841,8 @@ cdbdisp_sqlstate_to_errcode(const char *sqlstate)
 
 #include "libpq/pqformat.h"
 #include "access/printtup.h"
+#include "cdb/cdbtm.h"
+#include "utils/tqual.h"
 char *
 cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 					 CdbDispatchResults *pMirrorResults)
@@ -865,11 +867,29 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 	 * get it's tag, and use that to send back to the QD.
 	 * 
 	 */
+	
+	elog(LOG,"relayResults");
 
 	dispatchResult = &pPrimaryResults->resultArray[0];
+	Assert(dispatchResult);
 	p = ((struct pg_result **)dispatchResult->resultbuf->data)[0];
-	completionTag = pstrdup(PQcmdStatus(p));
+	Assert(p);
+	completionTag = pstrdup(p->cmdStatus);
+	elog(LOG,"completionTag %s",completionTag);
+	elog(LOG,"HaveInfo? %d",p->QEWriter_HaveInfo);
 
+	if (p->QEWriter_HaveInfo)
+	{
+		elog(LOG,"First result: distributedXid %d, curcid %d, is dirty %d",p->QEWriter_DistributedTransactionId,
+				p->QEWriter_CommandId,p->QEWriter_Dirty);
+		
+		QEDtxContextInfo.distributedXid = p->QEWriter_DistributedTransactionId;
+		QEDtxContextInfo.distributedSnapshotData.curcid = p->QEWriter_CommandId;
+		if (p->QEWriter_Dirty)
+		{
+			MyXactMadeXLogEntry = true;   // marks our transaction as dirty
+		}
+	}
 	
 	/* Collect results from primary gang. */
 	
@@ -946,6 +966,21 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 					}
 
 				}
+				elog(LOG,"HaveInfo (other res)? %d",p->QEWriter_HaveInfo);
+				if (p->QEWriter_HaveInfo)
+				{
+					if (QEDtxContextInfo.distributedXid != p->QEWriter_DistributedTransactionId ||
+							QEDtxContextInfo.distributedSnapshotData.curcid != p->QEWriter_CommandId)
+					{
+						elog(LOG,"other result: distributedXid %d, curcid %d, is dirty %d",p->QEWriter_DistributedTransactionId,
+								p->QEWriter_CommandId,p->QEWriter_Dirty);
+						
+					}
+					if (p->QEWriter_Dirty)
+					{
+						MyXactMadeXLogEntry = true;   // marks our transaction as dirty
+					}
+				}
 				
 			}
 
@@ -996,6 +1031,20 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 					}
 
 				}
+				if (p->QEWriter_HaveInfo)
+				{
+					if (QEDtxContextInfo.distributedXid != p->QEWriter_DistributedTransactionId ||
+							QEDtxContextInfo.distributedSnapshotData.curcid != p->QEWriter_CommandId)
+					{
+						elog(LOG,"mirror result: distributedXid %d, curcid %d, is dirty %d",p->QEWriter_DistributedTransactionId,
+								p->QEWriter_CommandId,p->QEWriter_Dirty);
+						
+					}
+					if (p->QEWriter_Dirty)
+					{
+						MyXactMadeXLogEntry = true;   // marks our transaction as dirty
+					}
+				}
 				
 			}
 
@@ -1004,10 +1053,12 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 	}
 	
 
+	elog(LOG,"relayresults is done.  errmsgbuf.len=%d",errmsgbuf.len);
 	if (errmsgbuf.len > 0)
 		ereport(ERROR, (errmsg("dispatch error)"),
 						errdetail("%s", errmsgbuf.data)));
 
+	
 	return completionTag;
 }
 
