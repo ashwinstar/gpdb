@@ -333,12 +333,12 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 					PQresultErrorMessage(result));
 		}
 		
-		elog(LOG,"Result extraslen %d ",result->extraslen); 
+		 
 		gresp = result->extras;
 		
 		for (i = 0; i< conninfo->nsegs; i++)
 		{
-			elog(LOG,"Result %d MotionListener %d  pid %d",i, gresp[i].motionListener, gresp[i].pid); 
+			elog(LOG,"Gang_id %d Result %d MotionListener %d  pid %d",gang_id,i, gresp[i].motionListener, gresp[i].pid); 
 		}
 
 		Assert(conninfo->nsegs == newGangDefinition->size);
@@ -2413,7 +2413,8 @@ getCdbProcessList(Gang *gang, int sliceIndex)
 			process->routeid = k++;
 
             if (gp_log_gang >= GPVARS_VERBOSITY_VERBOSE)
-                elog(LOG, "Gang assignment: slice%d %s%d %s:%d pid=%d",
+                elog(LOG, "Gang assignment (gang_id %d): slice%d %s%d %s:%d pid=%d",
+                	 gang->gang_id,
                      sliceIndex,
                      gang->type == GANGTYPE_MIRROR_WRITER ? "mir" : "seg",
 				     process->contentid,
