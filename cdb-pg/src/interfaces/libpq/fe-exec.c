@@ -162,6 +162,11 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 	result->curOffset = 0;
 	result->spaceLeft = 0;
     result->cdbstats = NULL;            /*CDB*/
+    result->QEWriter_HaveInfo = 0;
+    result->QEWriter_DistributedTransactionId = 0;
+    result->QEWriter_CommandId = 0;
+    result->QEWriter_Dirty = 0;
+	
     result->extras = NULL;
     result->extraslen = 0;
 
@@ -386,6 +391,15 @@ PQclear(PGresult *res)
 	res->paramDescs = NULL;
 	res->errFields = NULL;
 	/* res->curBlock was zeroed out earlier */
+	
+	
+	res->QEWriter_HaveInfo = 0;
+	res->QEWriter_DistributedTransactionId = 0;
+	res->QEWriter_CommandId = 0;
+	res->QEWriter_Dirty = 0;
+	
+	res->extraslen = 0;
+	res->extras = NULL;
 
 	/* Free the PGresult structure itself */
 	free(res);
