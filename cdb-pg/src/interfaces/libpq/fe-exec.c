@@ -909,6 +909,8 @@ PQbuildGpDtxProtocolCommand(
 					  char*						dtxProtocolCommandLoggingStr,
 					  char*						gid,
 					  int   					gxid,
+					  int						primary_gang_id,
+					  int						mirror_gang_id,
 					  int         		    	*final_len)
 {
 	int loggingStrLen;
@@ -922,7 +924,7 @@ PQbuildGpDtxProtocolCommand(
 
 	total_query_len = 5 /* overhead */ + 4 /* dtxProtocolCommand */ + 
 		   4 /*flags */ + 8 /* lengths */ +
-		   loggingStrLen + gidLen + 4 /* gxid */;
+		   loggingStrLen + gidLen + 4 /* gxid */ + 8 /* gang ids */;
 
 	shared_query = malloc(total_query_len);
 	if (shared_query == NULL)
@@ -962,6 +964,14 @@ PQbuildGpDtxProtocolCommand(
 	pos += gidLen;
 	
 	tmp = htonl(gxid);
+	memcpy(pos, &tmp, 4);
+	pos += 4;
+	
+	tmp = htonl(primary_gang_id);
+	memcpy(pos, &tmp, 4);
+	pos += 4;
+	
+	tmp = htonl(mirror_gang_id);
 	memcpy(pos, &tmp, 4);
 	pos += 4;
 	

@@ -2046,7 +2046,7 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 
 	Gang	   *gp = NULL;
 
-	Insist(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT);
+	Insist(Gp_role == GP_ROLE_DISPATCH);
 
 	if (!IsTransactionOrTransactionBlock())
 	{

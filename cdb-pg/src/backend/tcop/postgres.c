@@ -3789,6 +3789,8 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				const char *gid;
 
 				DistributedTransactionId gxid;
+				int primary_gang_id;
+				int mirror_gang_id;
 				
 
 				CdbDispatchResults *primaryResults;
@@ -3798,8 +3800,8 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				 
 				
 				DispatchCommandDtxProtocolParms dtxProtocolParms;
-				Gang	*primaryGang;
-				Gang	*mirrorGang;
+				Gang	*primaryGang = NULL;
+				Gang	*mirrorGang = NULL;
 				
 				/* get the transaction protocol command # */
 				dtxProtocolCommand = (DtxProtocolCommand) pq_getmsgint(input_message, 4);
@@ -3821,6 +3823,10 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 
 				/* get the distributed transaction id */
 				gxid = (DistributedTransactionId) pq_getmsgint(input_message, 4);
+				
+				primary_gang_id = pq_getmsgint(input_message, 4);
+				
+				mirror_gang_id = pq_getmsgint(input_message, 4);
 
 				pq_getmsgend(input_message);
 				
@@ -3848,15 +3854,18 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				dtxProtocolParms.dtxProtocolCommandLoggingStr = (char *)loggingStr;
 				memcpy(dtxProtocolParms.gid, gid, TMGIDSIZE);
 				dtxProtocolParms.gxid = gxid;
+				dtxProtocolParms.primary_gang_id = primary_gang_id;
+				dtxProtocolParms.mirror_gang_id = mirror_gang_id;
 				
 				/*
 				 * Allocate a primary and mirror QE for every available segDB in the system.
 				 */
-				primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, getgpsegmentCount(), -1, NULL);
+				primaryGang = findGangById(primary_gang_id);
 
 				Assert(primaryGang);
 
-				mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, getgpsegmentCount(), -1, NULL);
+				if (mirror_gang_id > 0)
+					mirrorGang = findGangById(mirror_gang_id);
 
 
 				/*
@@ -3865,7 +3874,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			    dispatchThreads = NULL;
 
 				primaryResults = cdbdisp_makeDispatchResults(primaryGang->size, 0, /* cancelOnError */ false);
-				if (/*dispatchToMirrors &&*/ mirrorGang)
+				if (mirrorGang)
 				{
 			        mirrorResults = cdbdisp_makeDispatchResults(mirrorGang->size, 0, /* cancelOnError */ false);
 				}
@@ -3892,10 +3901,10 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				MemoryContextSwitchTo(MessageContext);
 				
 				completionTag = cdbdisp_relayresults(primaryResults, mirrorResults);
-
-				finish_xact_command();
 				
 				EndCommand(completionTag,whereToSendOutput);
+				
+				finish_xact_command();
 				
 				debug_query_string = NULL;
 				
@@ -4996,6 +5005,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 					const char *gid;
 
 					DistributedTransactionId gxid;
+					int	primary_gang_id;
+					int mirror_gang_id;
 					
 					/* get the transaction protocol command # */
 					dtxProtocolCommand = (DtxProtocolCommand) pq_getmsgint(&input_message, 4);
@@ -5017,6 +5028,10 @@ PostgresMain(int argc, char *argv[], const char *username)
 
 					/* get the distributed transaction id */
 					gxid = (DistributedTransactionId) pq_getmsgint(&input_message, 4);
+					
+					primary_gang_id = pq_getmsgint(&input_message, 4);
+					
+					mirror_gang_id = pq_getmsgint(&input_message, 4);
 
 					pq_getmsgend(&input_message);
 

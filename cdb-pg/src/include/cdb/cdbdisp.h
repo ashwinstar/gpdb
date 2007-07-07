@@ -78,6 +78,8 @@ typedef struct DispatchCommandDtxProtocolParms
 	char*						dtxProtocolCommandLoggingStr;
 	char						gid[TMGIDSIZE];
 	DistributedTransactionId	gxid;
+	int							primary_gang_id;
+	int							mirror_gang_id;
 } DispatchCommandDtxProtocolParms;
 
 /*

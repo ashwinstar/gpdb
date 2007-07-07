@@ -360,6 +360,8 @@ extern char *PQbuildGpDtxProtocolCommand(
 					  char*						dtxProtocolCommandLoggingStr,
 					  char*						gid,
 					  int   					gxid,
+					  int						primary_gang_id,
+					  int						mirror_gang_id,
 					  int         		    	*final_len);
 
 extern int PQsendGpQuery_shared(PGconn       *conn,

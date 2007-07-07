@@ -582,6 +582,8 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 				pParms->dtxProtocolParms.dtxProtocolCommandLoggingStr = pDtxProtocolParms->dtxProtocolCommandLoggingStr;
 				memcpy(pParms->dtxProtocolParms.gid, pDtxProtocolParms->gid, TMGIDSIZE);
 				pParms->dtxProtocolParms.gxid = pDtxProtocolParms->gxid;
+				pParms->dtxProtocolParms.primary_gang_id = pDtxProtocolParms->primary_gang_id;
+				pParms->dtxProtocolParms.mirror_gang_id = pDtxProtocolParms->mirror_gang_id;
 			}
 			break;
 
@@ -966,12 +968,15 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	memcpy(dtxProtocolParms.gid, gid, TMGIDSIZE);
 	dtxProtocolParms.gxid = gxid;
 	
+	
 	/*
 	 * Allocate a primary and mirror QE for every available segDB in the system.
 	 */
 	primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, nsegdb, -1, NULL);
 
 	Assert(primaryGang);
+	
+	dtxProtocolParms.primary_gang_id = primaryGang->gang_id;
 
 	mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, nsegdb, -1, NULL);
 
@@ -982,6 +987,9 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		elog(LOG, "                       PRIMARY nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d", nsegdb, primaryGang->segdb_count, primaryGang->size);
 		elog(LOG, "Some segments are down.  Dispatching command %s to remaining segments only", dtxProtocolCommandLoggingStr);
 	}
+	
+	if (mirrorGang && dispatchToMirrors)
+		dtxProtocolParms.mirror_gang_id = mirrorGang->gang_id;
 
 	/*
      * Dispatch the command.
@@ -1141,7 +1149,10 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 			qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, withSnapshot, generateTxnOptions(needTwoPhase), "cdbdisp_dispatchCommand");
 
 	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent)
+	{
 		dispatchToPrimaries = true;
+		dispatchToMirrors = false;
+	}
 	
 	/*
      * Dispatch the command.
@@ -1488,6 +1499,8 @@ thread_DispatchCommand(void *arg)
 						pParms->dtxProtocolParms.dtxProtocolCommandLoggingStr,
 						pParms->dtxProtocolParms.gid,
 						pParms->dtxProtocolParms.gxid,
+						pParms->dtxProtocolParms.primary_gang_id,
+						pParms->dtxProtocolParms.mirror_gang_id,
 						&pParms->query_text_len);
 		}
 		break;
