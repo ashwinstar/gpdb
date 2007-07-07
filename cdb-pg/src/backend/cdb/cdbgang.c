@@ -2558,6 +2558,8 @@ cleanupGang(Gang * gp)
 	for (i = 0; i < gp->size; i++)
 	{
 		SegmentDatabaseDescriptor *segdbDesc = &(gp->db_descriptors[i]);
+		if (segdbDesc == NULL)
+			return false;
 
 		/*
 		 * Note, we cancel all "still running" queries
@@ -2592,6 +2594,7 @@ cleanupGang(Gang * gp)
 				{
 					elog(LOG, "cleanupGang called when a gang member is still busy, waiting didn't help, trying to destroy the gang");
 					disconnectAndDestroyGang(gp);
+					gp = NULL;
 					elog(FATAL, "cleanupGang called when a gang member is still busy.  Fatal error.");
 					return false;
 				}
@@ -2634,6 +2637,12 @@ disconnectAndDestroyGang(Gang * gp)
 		elog(DEBUG2, "Warning: disconnectAndDestroyGang called on an %s gang",
 			 gp->active ? "active" : "allocated");
 	
+	if (gp->gang_id < 1 || gp->gang_id > 100000000)
+	{
+		elog(LOG,"disconnectAndDestroyGang on bad gang");
+		return;
+	}
+	
 	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent && gp->dispatchagents)
 	{
 		PGresult * result;
@@ -2663,6 +2672,8 @@ disconnectAndDestroyGang(Gang * gp)
 	for (i = 0; i < gp->size; i++)
 	{
 		SegmentDatabaseDescriptor *segdbDesc = &(gp->db_descriptors[i]);
+		if (segdbDesc == NULL)
+			continue;
 
 		if (segdbDesc->conn && PQstatus(segdbDesc->conn) != CONNECTION_BAD)
 		{
@@ -2999,6 +3010,9 @@ gangOK(Gang * gp)
 	int			i;
 
 	if (gp == NULL)
+		return false;
+	
+	if (gp->gang_id < 1 || gp->gang_id > 100000000)
 		return false;
 
 	/*
