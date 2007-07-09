@@ -311,6 +311,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 	List *qual3 = NIL;
 	int last_group_no = 0;
 
+	AttrNumber *orig_grpColIdx;
 	AttrNumber *groupColIdx;
 	List *current_tlist;
 	List *current_qual;
@@ -349,7 +350,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 		prelimGroupColIdx[group_no] = pos+1;
 	}
 
-	pfree(context->grpColIdx);
+	orig_grpColIdx = context->grpColIdx;
 	context->grpColIdx = context->current_rollup->colIdx;
 
 	/*
@@ -377,7 +378,35 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 		repalloc(prelimGroupColIdx, context->numGroupCols * sizeof(AttrNumber));
 	prelimGroupColIdx[context->numGroupCols - 1] = list_length(tlist2) - 1;
 
+#if 0
+	/*
+	 * XXX The sortgrouprefs for current_lefttree->targetlist may not be accurate
+	 * anymore since context->grpColIdx may be different with orig_grpColIdx.
+	 * However, we don't really use this information during planner here.
+	 * I comment this out for now.
+	 */
+	{
+		ListCell *lc;
 
+		/*
+		 * Set ressortgroupref in all target entries in current_lefttree->targtlist
+		 * solely based on existing grpColidx.
+		 */
+		foreach (lc, current_lefttree->targetlist)
+		{
+			int group_no;
+			TargetEntry *grp_tle = (TargetEntry *)lfirst(lc);
+			for (group_no=0; group_no<context->numGroupCols; group_no++)
+			{
+				if (grp_tle->resno == context->grpColIdx[group_no])
+				{
+					grp_tle->ressortgroupref = group_no + 1;
+				}
+			}
+		}
+	}
+#endif
+	
 	/*
 	 * Find the index position for the last rollup level.
 	 */
@@ -406,11 +435,12 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 										   context->current_pathkeys))
 				{
 					current_lefttree = (Plan *)
-						make_sort_from_groupcols(root,
-												 root->parse->groupClause,
-												 groupColIdx,
-												 false,
-												 current_lefttree);
+						make_sort_from_reordered_groupcols(root,
+														   root->parse->groupClause,
+														   orig_grpColIdx,
+														   groupColIdx,
+														   false,
+														   current_lefttree);
 					context->current_pathkeys = root->group_pathkeys;
 					mark_sort_locus(current_lefttree);
 
@@ -593,6 +623,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 		((Group*)agg_node)->lastGroup = true;
 	}
 
+	pfree(orig_grpColIdx);
 	return agg_node;
 }
 

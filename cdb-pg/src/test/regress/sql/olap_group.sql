@@ -306,6 +306,15 @@ select cn,dt,count(vn),grouping(cn,dt) from sale group by cube(cn,dt);
 select cn,dt,count(vn),grouping(cn,dt) from sale group by cube(dt,cn);
 --end equivalent
 
+--begin equivalent
+select cn,sum(qty) from sale group by prc,cn
+union all select null,sum(qty) from sale group by prc
+union all select cn,sum(qty) from sale group by cn
+union all select null,sum(qty) from sale;
+select cn,sum(qty) from sale group by cube(prc,cn);
+select cn,sum(qty) from sale group by grouping sets (cube(prc,cn));
+--end equivalent
+
 -- Ungrouped attributes in GROUPING function --
 
 select grouping(cn,vn,pn) from sale group by cn; --error

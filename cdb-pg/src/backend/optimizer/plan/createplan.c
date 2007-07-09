@@ -3662,6 +3662,100 @@ make_sort_from_groupcols(PlannerInfo *root,
 					 sortColIdx, sortOperators);
 }
 
+
+/*
+ * make_sort_from_reordered_groupcols
+ *	  Create sort plan to sort based on re-ordered grouping columns.
+ *
+ * 'groupcls' is the list of GroupClauses
+ * 'orig_groupColIdx' is the original columns numbers for groupcls
+ * 'new_grpColIdx' gives the re-ordered column numbers to use
+ * 'appendGrouping' represents whether to append a Grouping
+ *    as the last sort key, used for grouping extension.
+ */
+Sort*
+make_sort_from_reordered_groupcols(PlannerInfo *root,
+								   List *groupcls,
+								   AttrNumber *orig_grpColIdx,
+								   AttrNumber *new_grpColIdx,
+								   bool appendGrouping,
+								   Plan *lefttree)
+{
+	List	   *sub_tlist = lefttree->targetlist;
+	int			grpno = 0;
+	int			numgrpkeys, numsortkeys;
+	AttrNumber *sortColIdx;
+	Oid		   *sortOperators;
+	List       *flat_groupcls;
+
+	/*
+	 * We will need at most list_length(groupcls) sort columns; possibly less
+	 */
+	numgrpkeys = num_distcols_in_grouplist(groupcls);
+
+	if (appendGrouping)
+		numgrpkeys ++;
+
+	sortColIdx = (AttrNumber *) palloc(numgrpkeys * sizeof(AttrNumber));
+	sortOperators = (Oid *) palloc(numgrpkeys * sizeof(Oid));
+
+	numsortkeys = 0;
+
+	flat_groupcls = flatten_grouping_list(groupcls);
+
+	for (grpno=0; grpno < numgrpkeys; grpno++)
+	{
+		GroupClause *grpcl;
+		TargetEntry *tle;
+		int pos;
+
+		/* Find the index position in orig_grpColIdx, in which 
+		 * the element is equal to new_grpColIdx[grpno]. This index
+		 * position points to the place that the corresponding
+		 * GroupClause in flat_groupcls.
+		 */
+		for (pos=0; pos < numgrpkeys; pos++)
+		{
+			if (orig_grpColIdx[pos] == new_grpColIdx[grpno])
+				break;
+		}
+		
+		Assert (pos < numgrpkeys);
+
+		grpcl = (GroupClause *)list_nth(flat_groupcls, pos);
+		tle = get_tle_by_resno(sub_tlist, new_grpColIdx[grpno]);
+
+		/*
+		 * Check for the possibility of duplicate group-by clauses --- the
+		 * parser should have removed 'em, but no point in sorting
+		 * redundantly.
+		 */
+		numsortkeys = add_sort_column(tle->resno, grpcl->sortop,
+									  numsortkeys, sortColIdx, sortOperators);
+	}
+
+	if (appendGrouping)
+	{
+		Oid sort_op;
+		/* Grouping will be the last entry in grpColIdx */
+		TargetEntry *tle = get_tle_by_resno(sub_tlist, new_grpColIdx[grpno]);
+
+		if (tle->resname == NULL)
+			tle->resname = "grouping";
+
+		sort_op = ordering_oper_opid(exprType((Node *)tle->expr));
+
+		numsortkeys = add_sort_column(tle->resno, sort_op,
+									  numsortkeys, sortColIdx, sortOperators);
+	}
+
+
+	Assert(numsortkeys > 0);
+
+	return make_sort(root, lefttree, numsortkeys,
+					 sortColIdx, sortOperators);
+}
+
 Material *
 make_material(Plan *lefttree)
 {
