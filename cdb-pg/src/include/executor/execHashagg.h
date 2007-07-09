@@ -64,6 +64,7 @@ typedef struct HashAggTableSizes
     int             nbatches;   /* Calculated # of passes. */
     int             workmem_initial;    /* estimated work_mem bytes at #entries=0 */
     int             workmem_per_entry;  /* additional work_mem bytes per entry */
+    bool            spill;      /* do we expect to spill ? */
 } HashAggTableSizes;
 
 

@@ -937,9 +937,12 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 					  int keywidth,	/* Est per entry size of hash key. */
 					  int transpace,	/* Est per entry size of by-ref values. */
 					  bool force,      /* true => succeed even if work_mem too small */
-					  HashAggTableSizes   *out_hats
-	)
+					  HashAggTableSizes   *out_hats)
 {
+	bool expectSpill = false;
+
+	double rewrite_fudge = 1.0;
+
 	int entrywidth = sizeof(HashAggEntry)
 		+ numaggs * sizeof(AggStatePerGroupData)
 		+ keywidth
@@ -955,7 +958,7 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 	elog(DEBUG2, "hashagg ngroups = %g, numaggs = %d, keywidth = %d, transpace = %d", ngroups, numaggs, keywidth, transpace);
 	elog(DEBUG2, "hashagg memquota = %g, zH = %g, zB = %g", memquota, zH, zB);
 
-	if ( nK > INT_MAX || ngroups > INT_MAX )
+	if (nK > INT_MAX || ngroups > INT_MAX)
 	{
 		elog(DEBUG2, "hashagg table size bigger than int type!");
 		return false;
@@ -974,10 +977,48 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 	 */			
 	if (memquota < ngroups*zH + 2*zB)
 	{
-		/* 1.5 safety factor, batches are cheap; passes are
-		 * expensive */
-		nB = 1.5 * (ngroups * zH) / (memquota - (2.0 * zB));
+		/* The normal stategy expects to spill to disk, so we estimate
+		 * how many passes we expect to need and allocate that many
+		 * batches.  Since the first pass will load the hash table
+		 * rather than a batch file, this leaves a batch file for
+		 * overflow within a subsequent pass.
+		 */
+		double d = memquota*memquota - 4 * zB * ngroups * zH;
 
+		expectSpill = true;
+		
+		/* By default we plan on writing input tuples back to disk
+		 * once, but the user can increase this.  We creep up to
+		 * user's limit in order the choose the smallest rewrite
+		 * limit that will work.  (This tends to minimize the number
+		 * of rewrites at the expense of a larger number of passes.
+		 */
+		while (d < 0 && rewrite_fudge < gp_hashagg_rewrite_limit)
+		{
+			rewrite_fudge++;
+			rewrite_fudge = ( rewrite_fudge > gp_hashagg_rewrite_limit ) ?
+				gp_hashagg_rewrite_limit :
+				rewrite_fudge;
+			
+			d = memquota*memquota - (4 * zB * ngroups * zH)/rewrite_fudge;
+		}
+		
+		/* The optimizer can decide against the strategy, but the executor
+		 * has to go with the choice even if it doesn't look so good.
+		 */
+		if (d < 0)
+		{
+			if (force)
+				d = 0;
+			else
+			{
+				elog(DEBUG2, "hashagg can't calculate memory usage!");
+				return false;
+			}
+		}
+
+		nB = ceil((memquota-sqrt(d))/(2*zB));
+		
 		nB = Max(2.0, nB);
 	}
 	
@@ -1007,18 +1048,19 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
     {
         out_hats->nbuckets = (int)nK;
         out_hats->nentries = (int)nH;
-        out_hats->nbatches = (int)nB;
+		out_hats->nbatches = (int)nB;
+		out_hats->spill = expectSpill;
         out_hats->workmem_initial = (int)(nB*zB);
         out_hats->workmem_per_entry = (int)zH;
     }
 	
 	elog(DEBUG2, "hashagg nbuckets = %d, nentries = %d, nbatches = %d", (int)nK, (int)nH, (int)nB);
-	elog(DEBUG1, "expected memory footprint = %d",
-		 (int)(nH*entrywidth + nK*sizeof(HashAggEntry*) + nB*zB));
+	elog(DEBUG1, "hashagg rewrite fudge = %f, expected memory footprint = %d",
+		rewrite_fudge,
+		(int)( nH*entrywidth + nK*sizeof(HashAggEntry*) + nB*zB));
 	
 	return true;
 }
-
 
 /* Function: create_batches
  *
