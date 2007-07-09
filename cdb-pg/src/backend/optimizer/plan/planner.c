@@ -1885,6 +1885,8 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 	Path		hashed_p;
 	Path		sorted_p;
 
+	HashAggTableSizes   hash_info;
+
 	/*
 	 * Check can't-do-it conditions, including whether the grouping operators
 	 * are hashjoinable.
@@ -1929,16 +1931,14 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 	/* plus the per-hash-entry overhead */
 	hashentrysize += hash_agg_entry_size(agg_counts->numAggs);
 
-	if (!calcHashAggTableSizes(
-			1024.0 * (double)work_mem,
-			dNumGroups,
-			agg_counts->numAggs,
-			/* The following estimate is very rough but good enough for planning. */
-			sizeof(HeapTupleData) + sizeof(HeapTupleHeaderData) + cheapest_path_width,
-			agg_counts->transitionSpace,
-            false,
-			NULL )
-		)
+	if (!calcHashAggTableSizes(1024.0 * (double)work_mem,
+							   dNumGroups,
+							   agg_counts->numAggs,
+							   /* The following estimate is very rough but good enough for planning. */
+							   sizeof(HeapTupleData) + sizeof(HeapTupleHeaderData) + cheapest_path_width,
+							   agg_counts->transitionSpace,
+							   false,
+							   &hash_info))
 		return false;
 
 	/*
@@ -1960,7 +1960,8 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 	cost_agg(&hashed_p, root, AGG_HASHED, agg_counts->numAggs,
 			 numGroupCols, dNumGroups,
 			 cheapest_path->startup_cost, cheapest_path->total_cost,
-			 cheapest_path_rows);
+			 cheapest_path_rows, hash_info.workmem_per_entry,
+			 hash_info.spill ? hash_info.nbatches : 1.0);
 	/* Result of hashed agg is always unsorted */
 	if (root->sort_pathkeys)
 		cost_sort(&hashed_p, root, root->sort_pathkeys, hashed_p.total_cost,
@@ -1989,7 +1990,7 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 		cost_agg(&sorted_p, root, AGG_SORTED, agg_counts->numAggs,
 				 numGroupCols, dNumGroups,
 				 sorted_p.startup_cost, sorted_p.total_cost,
-				 cheapest_path_rows);
+				 cheapest_path_rows, 0.0, 0.0);
 	else
 		cost_group(&sorted_p, root, numGroupCols, dNumGroups,
 				   sorted_p.startup_cost, sorted_p.total_cost,

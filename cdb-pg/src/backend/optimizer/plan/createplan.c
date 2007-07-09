@@ -19,8 +19,11 @@
 
 #include <limits.h>
 
+#include "miscadmin.h" /* work_mem */
+
 #include "catalog/pg_type.h"    /* INT8OID */
 #include "nodes/makefuncs.h"
+#include "executor/execHashagg.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/geqo_random.h"
@@ -3833,6 +3836,8 @@ make_agg(PlannerInfo *root, List *tlist, List *qual,
 	Path		agg_path;		/* dummy for result of cost_agg */
 	QualCost	qual_cost;
 
+	HashAggTableSizes   hash_info;
+
 	node->aggstrategy = aggstrategy;
 	node->numCols = numGroupCols;
 	node->grpColIdx = grpColIdx;
@@ -3845,12 +3850,37 @@ make_agg(PlannerInfo *root, List *tlist, List *qual,
 	node->rollupGSTimes = rollupGSTimes;
 
 	copy_plan_costsize(plan, lefttree); /* only care about copying size */
-	cost_agg(&agg_path, root,
-			 aggstrategy, numAggs,
-			 numGroupCols, numGroups,
-			 lefttree->startup_cost,
-			 lefttree->total_cost,
-			 lefttree->plan_rows);
+
+	if (aggstrategy == AGG_HASHED)
+	{
+		if (!calcHashAggTableSizes(1024.0 * (double)work_mem,
+								   numGroups,
+								   numAggs,
+								   /* The following estimate is very rough but good enough for planning. */
+								   sizeof(HeapTupleData) + sizeof(HeapTupleHeaderData) + lefttree->plan_width,
+								   transSpace,
+								   true,
+								   &hash_info))
+		{
+			elog(ERROR, "Planner committed to impossible hash aggregate.");
+		}
+
+		cost_agg(&agg_path, root,
+				 aggstrategy, numAggs,
+				 numGroupCols, numGroups,
+				 lefttree->startup_cost,
+				 lefttree->total_cost,
+				 lefttree->plan_rows, hash_info.workmem_per_entry,
+				 hash_info.spill ? hash_info.nbatches : 1.0);
+	}
+	else
+		cost_agg(&agg_path, root,
+				 aggstrategy, numAggs,
+				 numGroupCols, numGroups,
+				 lefttree->startup_cost,
+				 lefttree->total_cost,
+				 lefttree->plan_rows, 0.0, 0.0);
+
 	plan->startup_cost = agg_path.startup_cost;
 	plan->total_cost = agg_path.total_cost;
 

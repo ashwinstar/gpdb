@@ -1056,7 +1056,7 @@ cost_agg(Path *path, PlannerInfo *root,
 		 AggStrategy aggstrategy, int numAggs,
 		 int numGroupCols, double numGroups,
 		 Cost input_startup_cost, Cost input_total_cost,
-		 double input_tuples)
+		 double input_tuples, double input_width, double hash_batches)
 {
 	Cost		startup_cost;
 	Cost		total_cost;
@@ -1100,13 +1100,31 @@ cost_agg(Path *path, PlannerInfo *root,
 	}
 	else
 	{
+		double spilled_bytes = 0.0;
+
 		/* must be AGG_HASHED */
 		startup_cost = input_total_cost;
 		startup_cost += cpu_operator_cost * input_tuples * numGroupCols;
 		startup_cost += cpu_operator_cost * input_tuples * numAggs;
+
+		/* account for some disk I/O if we expect to spill */
+		if (hash_batches > 2)
+		{
+			spilled_bytes = ((hash_batches - 1) / hash_batches) * input_tuples * input_width;
+
+			/* startup gets charged the write-cost */
+			startup_cost += seq_page_cost * (spilled_bytes / BLCKSZ);
+		}
+
 		total_cost = startup_cost;
 		total_cost += cpu_operator_cost * numGroups * numAggs;
 		total_cost += cpu_tuple_cost * numGroups;
+
+		if (hash_batches > 2)
+		{
+			/* total gets charged the read-cost */
+			total_cost += seq_page_cost * (spilled_bytes / BLCKSZ);
+		}
 	}
 
 	path->startup_cost = startup_cost;
