@@ -89,7 +89,7 @@ typedef FormData_pg_aggregate *Form_pg_aggregate;
  */
 
 /* avg */
-DATA(insert ( 2100	int8_accum		int8_decum 	numeric_amalg		- numeric_avg	0	1231	"{0,0,0}" ));
+DATA(insert ( 2100	int8_accum		int8_decum 	numeric_amalg		numeric_demalg	 numeric_avg	0	1231	"{0,0,0}" ));
 DATA(insert ( 2101	int4_avg_accum	- int8_avg_amalg	- int8_avg		0	1016	"{0,0}" ));
 DATA(insert ( 2102	int2_avg_accum	- int8_avg_amalg	- int8_avg		0	1016	"{0,0}" ));
 DATA(insert ( 2103	numeric_accum	numeric_decum	 numeric_amalg		- numeric_avg	0	1231	"{0,0,0}" ));

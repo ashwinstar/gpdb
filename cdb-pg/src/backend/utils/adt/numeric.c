@@ -354,7 +354,8 @@ static void compute_bucket(Numeric operand, Numeric bound1, Numeric bound2,
 			   NumericVar *count_var, NumericVar *result_var);
 
 static ArrayType *do_numeric_amalg(ArrayType *aTransArray, 
-									ArrayType *bTransArray); /* MPP */
+								   ArrayType *bTransArray,
+								   bool is_amalg); /* MPP */
 
 
 /* ----------------------------------------------------------------------
@@ -5617,7 +5618,8 @@ strip_var(NumericVar *var)
  */
 
 static ArrayType *
-do_numeric_amalg(ArrayType *aTransArray, ArrayType *bTransArray)
+do_numeric_amalg_demalg(ArrayType *aTransArray, ArrayType *bTransArray,
+						bool is_amalg)
 {
 	Datum	   *transdatums;
 	int			ndatums;
@@ -5625,6 +5627,7 @@ do_numeric_amalg(ArrayType *aTransArray, ArrayType *bTransArray)
 				aSumX, bSumX,
 				aSumX2, bSumX2;
 	ArrayType  *result;
+	PGFunction	malgfunc;
 	
 	/* We assume the input is array of numeric */
 	deconstruct_array(aTransArray,
@@ -5645,9 +5648,14 @@ do_numeric_amalg(ArrayType *aTransArray, ArrayType *bTransArray)
 	bSumX = transdatums[1];
 	bSumX2 = transdatums[2];
 
-	aN = DirectFunctionCall2(numeric_add, aN, bN);
-	aSumX = DirectFunctionCall2(numeric_add, aSumX, bSumX);
-	aSumX2 = DirectFunctionCall2(numeric_add, aSumX2, bSumX2);
+	if (is_amalg)
+		malgfunc = numeric_add;
+	else
+		malgfunc = numeric_sub;
+
+	aN = DirectFunctionCall2(malgfunc, aN, bN);
+	aSumX = DirectFunctionCall2(malgfunc, aSumX, bSumX);
+	aSumX2 = DirectFunctionCall2(malgfunc, aSumX2, bSumX2);
 
 	transdatums[0] = aN;
 	transdatums[1] = aSumX;
@@ -5665,10 +5673,19 @@ numeric_amalg(PG_FUNCTION_ARGS)
 	ArrayType  *aTransArray = PG_GETARG_ARRAYTYPE_P(0);
 	ArrayType  *bTransArray = PG_GETARG_ARRAYTYPE_P(1);
 
-	PG_RETURN_ARRAYTYPE_P(do_numeric_amalg(aTransArray, bTransArray));
+	PG_RETURN_ARRAYTYPE_P(do_numeric_amalg_demalg(aTransArray, bTransArray,
+												  true));
 }
 
+Datum
+numeric_demalg(PG_FUNCTION_ARGS)
+{
+	ArrayType  *aTransArray = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType  *bTransArray = PG_GETARG_ARRAYTYPE_P(1);
 
+	PG_RETURN_ARRAYTYPE_P(do_numeric_amalg_demalg(aTransArray, bTransArray,
+												  false));
+}
 
 Datum
 int8_avg_amalg(PG_FUNCTION_ARGS)

@@ -867,6 +867,7 @@ extern Datum int8_avg(PG_FUNCTION_ARGS);
 extern Datum width_bucket_numeric(PG_FUNCTION_ARGS);
 extern Datum numeric_amalg(PG_FUNCTION_ARGS); /* MPP */
 extern Datum int8_avg_amalg(PG_FUNCTION_ARGS); /* MPP */
+extern Datum numeric_demalg(PG_FUNCTION_ARGS); /* MPP */ 
 
 /* ri_triggers.c */
 extern Datum RI_FKey_check_ins(PG_FUNCTION_ARGS);
