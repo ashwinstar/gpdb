@@ -123,8 +123,10 @@ createDispatchAgents(void)
 	CdbComponentDatabaseInfo *q;
 
 	PQExpBufferData buffer;
+	int i, j;
 	
-	int			size = getgpsegmentCount()/4+1;
+	//int			size = getgpsegmentCount()/4+1;
+	int			size = 2;
 
 	elog(DEBUG1,"createDispatchAgents");
 	
@@ -161,54 +163,68 @@ createDispatchAgents(void)
 	}
 
 	/*
-	 * for now, grab a random postmaster out of the segDBs, and create a 
+	 * for now, grab a few random postmasters out of the segDBs, and create a 
 	 * dispatch agent there.
+	 * 
 	 * // q = &cdb_component_dbs->entry_db_info[0]; // to test on entry db
+	 * 
 	 */
-	q = &cdb_component_dbs->segment_db_info[0];
-	if (!q->isprimary  || !q->valid)
-		q = &cdb_component_dbs->segment_db_info[1];
-		
-	elog(LOG,"Using dispatch agent on %s %d segindex %d",q->hostname,q->port,q->segindex);
-
-	/*
-	 * For now, create exactly one dispatch agent
-	 */
+	
 	dispatchagents = palloc0(sizeof(DispatchAgentSet));
-	dispatchagents->size = 1;
-	dispatchagents->db_descriptors = palloc0(sizeof(SegmentDatabaseDescriptor));
-	cdbconn_initSegmentDescriptor(dispatchagents->db_descriptors,
-			  q,
-			  myDatabaseName,
-			  GetUserNameFromId(GetAuthenticatedUserId()));
+	dispatchagents->size = size;
+	dispatchagents->db_descriptors = (SegmentDatabaseDescriptor *) palloc0(size * sizeof(SegmentDatabaseDescriptor));
 	
-	//dispatchagents->db_descriptors->segindex = -2;
-
-
-	initPQExpBuffer(&buffer);
 	
-	/*
-	 * Build the connection string
-	 */
-	build_gpdaid_params(&buffer);
+	j = 0;	/* Starting point for the search */
+	
+	for (i = 0; i < size; i++)
+	{
+		q = &cdb_component_dbs->segment_db_info[j++];
+		if (!q->isprimary  || !q->valid)
+			q = &cdb_component_dbs->segment_db_info[j++];
+	 
+		
+		elog(LOG,"Using dispatch agent on %s %d segindex %d",q->hostname,q->port,q->segindex);
+		 
+		/*
+		 * For now, create exactly one dispatch agent
+		 */
 
-	addOptions(&buffer,
-			true /* writer? */, q->segindex /* segindex */,true /* primary? */ );
-
-
-	if (!cdbconn_doDispatchAgentConnect(dispatchagents->db_descriptors, buffer.data))
-	{      
-    	elog(LOG,"createDispatchAgents failed %s",dispatchagents->db_descriptors->error_message.data);
-    }
-    /*
-     * Successfully connected.
-     */
-    else
-    {
-    	elog(DEBUG1,"createDispatchAgents success %s", buffer.data);
-    }
+		
+		cdbconn_initSegmentDescriptor(&dispatchagents->db_descriptors[i],
+				  q,
+				  myDatabaseName,
+				  GetUserNameFromId(GetAuthenticatedUserId()));
+		
+		//dispatchagents->db_descriptors[i]->segindex = -2;
+	
+	
+		initPQExpBuffer(&buffer);
+		
+		/*
+		 * Build the connection string
+		 */
+		build_gpdaid_params(&buffer);
+	
+		addOptions(&buffer,
+				true /* writer? */, q->segindex /* segindex */,true /* primary? */ );
+	
+	
+		if (!cdbconn_doDispatchAgentConnect(&dispatchagents->db_descriptors[i], buffer.data))
+		{      
+	    	elog(ERROR,"createDispatchAgents failed %s",dispatchagents->db_descriptors[i].error_message.data);
+	    }
+	    /*
+	     * Successfully connected.
+	     */
+	    else
+	    {
+	    	elog(DEBUG1,"createDispatchAgent %i success %s", i, buffer.data);
+	    }
+	}
 
     free(buffer.data);
+    elog(DEBUG1, "createDispatchAgent completed successfully");
 	
 	MemoryContextSwitchTo(oldContext);
 	
@@ -309,61 +325,97 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent && type != GANGTYPE_ENTRYDB_READER)
 	{
 		PGresult   *result;
-		int i;
+		int i, j;
+		int whichagent = 0;
 		GpSegmentConnectionResponse *gresp;
+		GpSegmentConnectionInfoSet * conninfo;
+		GpSegmentConnectionInfoSet ** conninfoarray = palloc0(sizeof(void*)*dispatchagents->size);
 		
 		
-		int		conninfosize = sizeof(GpSegmentConnectionInfoSet) + size*sizeof(GpSegmentConnectionInfo);
-		GpSegmentConnectionInfoSet * conninfo = palloc0(conninfosize);
 		
 		Assert(Gp_role == GP_ROLE_DISPATCH);
 		
-		for (i=0;i<newGangDefinition->size;i++)
+		/*
+		 * make one conninfo structure per dispatch agent
+		 */
+		for (whichagent=0;whichagent<dispatchagents->size;whichagent++)
 		{
-			conninfo->seginfo[i].segindex = newGangDefinition->db_descriptors[i].segindex;
-			conninfo->seginfo[i].isprimary = newGangDefinition->db_descriptors[i].segment_database_info->isprimary;
-			strncpy(conninfo->seginfo[i].hostname, newGangDefinition->db_descriptors[i].segment_database_info->hostname,NAMEDATALEN);
-			conninfo->seginfo[i].port = newGangDefinition->db_descriptors[i].segment_database_info->port;
+			// size should be reduced by number of dispatch agents
+			int		conninfosize = sizeof(GpSegmentConnectionInfoSet) + size*sizeof(GpSegmentConnectionInfo);
+			conninfo = palloc0(conninfosize);
+			conninfo->nsegs = 0;				/* how many QEs this dispatch agent will control */
+			conninfoarray[whichagent] = conninfo;
+
 		}
-		conninfo->nsegs = newGangDefinition->size;
-		conninfo->type = type;
-		conninfo->gang_id = gang_id;
-		conninfo->content = content;
+		
+		
+		for (j=0;j<newGangDefinition->size;j++)
+		{
+			whichagent = j % dispatchagents->size;
+			conninfo = conninfoarray[whichagent];
+			Assert(conninfo);
+			i = conninfo->nsegs;
+			conninfo->seginfo[i].segindex = newGangDefinition->db_descriptors[j].segindex;
+			conninfo->seginfo[i].isprimary = newGangDefinition->db_descriptors[j].segment_database_info->isprimary;
+			strncpy(conninfo->seginfo[i].hostname, newGangDefinition->db_descriptors[j].segment_database_info->hostname,NAMEDATALEN);
+			conninfo->seginfo[i].port = newGangDefinition->db_descriptors[j].segment_database_info->port;
+			conninfo->nsegs ++; 
+		}
+		
+		
+		for (whichagent=0;whichagent<dispatchagents->size;whichagent++)
+		{
+			conninfo = conninfoarray[whichagent];
+			conninfo->type = type;
+			conninfo->gang_id = gang_id;
+			conninfo->content = content;
+		}
 		
 		newGangDefinition->active = true;
 
-		// Cheat:  Send to just one Dispatch Agent
-		PQsendCreateGang(dispatchagents->db_descriptors[0].conn, conninfosize, conninfo );
-		
-		result = PQgetResult(dispatchagents->db_descriptors[0].conn);
-		
-		if (PQresultStatus(result)!=PGRES_COMMAND_OK)
+		for (whichagent=0;whichagent<dispatchagents->size;whichagent++)
 		{
-			elog(ERROR,"Dispatch Agent unable to create gang, %s %s",PQresStatus(PQresultStatus(result)),
-					PQresultErrorMessage(result));
-		}
-		
-		 
-		gresp = result->extras;
-		
-		for (i = 0; i< conninfo->nsegs; i++)
-		{
-			elog(LOG,"Gang_id %d Result %d MotionListener %d  pid %d",gang_id,i, gresp[i].motionListener, gresp[i].pid); 
-		}
-
-		Assert(conninfo->nsegs == newGangDefinition->size);
-		
-		for (i=0;i<newGangDefinition->size;i++)
-		{
-			newGangDefinition->db_descriptors[i].motionListener = gresp[i].motionListener;
-			newGangDefinition->db_descriptors[i].backendPid = gresp[i].pid;
+			conninfo = conninfoarray[whichagent];
+			if (conninfo->nsegs == 0)
+				continue;
 			
+			PQsendCreateGang(dispatchagents->db_descriptors[whichagent].conn, sizeof(GpSegmentConnectionInfoSet) + conninfo->nsegs*sizeof(GpSegmentConnectionInfo), conninfo );
+			
+			result = PQgetResult(dispatchagents->db_descriptors[whichagent].conn);
+			
+			if (PQresultStatus(result)!=PGRES_COMMAND_OK)
+			{
+				elog(ERROR,"Dispatch Agent unable to create gang, %s %s",PQresStatus(PQresultStatus(result)),
+						PQresultErrorMessage(result));
+			}
+			
+			 
+			gresp = result->extras;
+			
+			for (i = 0; i< conninfo->nsegs; i++)
+			{
+				elog(LOG,"DA %d: Gang_id %d Result %d MotionListener %d  pid %d",whichagent, gang_id,i, gresp[i].motionListener, gresp[i].pid); 
+			}
+	
+			i = 0;	
+			for (j=0;j<newGangDefinition->size;j++)
+			{
+				if (whichagent == j % dispatchagents->size)
+				{
+					conninfo = conninfoarray[whichagent];
+					Assert(i < conninfo->nsegs);
+					newGangDefinition->db_descriptors[j].motionListener = gresp[i].motionListener;
+					newGangDefinition->db_descriptors[j].backendPid = gresp[i].pid;
+					i++;
+				}
+				 
+			}
+			
+			free(result->extras);		/* malloc'd, so use free */
+			result->extras = NULL;
+			
+			PQclear(result);
 		}
-		
-		free(result->extras);		/* malloc'd, so use free */
-		result->extras = NULL;
-		
-		PQclear(result);
 		
 		newGangDefinition->dispatchagents = dispatchagents;
 		newGangDefinition->all_valid_segdbs_connected = true;
