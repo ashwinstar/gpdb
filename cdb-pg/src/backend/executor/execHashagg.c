@@ -54,6 +54,8 @@ static HashAggEntry *makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputs
 
 static void agg_hash_table_stat_upd(HashAggTable *ht);
 
+static double calcBatchCount(double memquota, double ngroups, double zH, double zB, bool force);
+
 #define HHA_MSG_LVL DEBUG2
 
 /* Function: est_hash_tuple_size
@@ -125,13 +127,13 @@ create_agg_hash_table(AggState *aggstate)
 	Agg *agg = (Agg*)aggstate->ss.ps.plan;
 	
 	
-	if ( !calcHashAggTableSizes( 1024.0 * (double)work_mem,
-								(double)agg->numGroups,
-								aggstate->numaggs,
-								est_hash_tuple_size(aggstate->ss.ss_ScanTupleSlot, aggstate->hash_needed),
-								agg->transSpace,
-                                true,
-								&hats ) )
+	if (!calcHashAggTableSizes(1024.0 * (double)work_mem,
+							   (double)agg->numGroups,
+							   aggstate->numaggs,
+							   est_hash_tuple_size(aggstate->ss.ss_ScanTupleSlot, aggstate->hash_needed),
+							   agg->transSpace,
+							   true,
+							   &hats))
 	{
 		elog(ERROR, "unable to implement hashed aggregation strategy");
 	}
@@ -281,7 +283,7 @@ agg_hash_initial_pass(AggState *aggstate)
 	Assert(ht && ht->state == HASHAGG_BEFORE_FIRST_PASS);
 
 	elog(HHA_MSG_LVL,
-		"hybrid hash aggregation: initial pass -- beginning to load hash table");
+		 "hybrid hash aggregation: initial pass -- beginning to load hash table");
 
 	/*
 	 * Process outer-plan tuples, until we exhaust the outer plan.
@@ -300,9 +302,9 @@ agg_hash_initial_pass(AggState *aggstate)
 		 * input tuple's group. */
 		entry = lookup_agg_hash_entry(aggstate, outerslot, &hashkey, &isNew);
 
-		if ( entry != NULL )
+		if (entry != NULL)
 		{
-			if ( isNew )
+			if (isNew)
 			{
 				initialize_aggregates(aggstate, aggstate->peragg, entry->pergroup);
 				ht->ngroup++;
@@ -318,30 +320,72 @@ agg_hash_initial_pass(AggState *aggstate)
 		else
 		{
 			/* No room for a new entry, write entry to overflow batch. */
-			uint32 rotkey = hashkey << ht->lshift | hashkey >> ht->rshift;
-			unsigned batch = 1 + rotkey % (ht->nbatch-1);
-			
-			Assert( 0 < batch && batch < ht->nbatch );
-			
-			if ( ! spilling )
+			uint32 rotkey;
+			unsigned batch;
+
+			if (!spilling)
 			{
-				/* TODO:  HERE'S A GOOD PLACE TO REEVALUATE DENSITY AND,
-				 *        MAYBE, SHRINK NUMBER OF BATCHES.
-				
-				 double act_tuples_per_group = ((double)ht->ntuple)/(double)ht->ngroup;
-				 int bs = (int)ceil(ht->ntuple / act_tuples_per_group);
-				
-				 if ( bs < ht->nbatch )
-				 {
-					ht->nbatch = ( bs > 2 )? bs: 2;
-				 }
-				
-				 */	
-				elog(HHA_MSG_LVL,
-					"hybrid hash aggregation: initial pass -- beginning to spill to disk");
+				double act_tuples_per_group;
+				double groups, new_batches;
+				double entry_size;
+
+				PlanState *outer = outerPlanState(aggstate);
+				double est_tuples_per_group;
+
 				spilling = true;
+
+				elog(HHA_MSG_LVL,
+					 "hybrid hash aggregation: initial pass -- beginning to spill to disk");
+
+				/* We can re-evaluate density, and may decide to
+				 * increase/decrease the number of batches.
+				 * 
+				 * NOTE: increasing the number of batches *will*
+				 * exceed the memory quota.
+				 */
+				if (gp_hashagg_recalc_density)
+				{
+					act_tuples_per_group = ((double)ht->ntuple)/(double)ht->ngroup;
+
+					est_tuples_per_group = outer->plan->plan_rows / aggstate->ss.ps.plan->plan_rows;
+
+					/* assume that we're halfway ? */
+					groups = Max((outer->plan->plan_rows /* est_tuples */ / act_tuples_per_group),
+								 (2.0 * (double)ht->ntuple / act_tuples_per_group));
+
+					elog(HHA_MSG_LVL,
+						 "hybrid hash aggregation: recalculate batch count using %f groups (est density %f act density %f)",
+						 groups, est_tuples_per_group, act_tuples_per_group);
+
+					entry_size = ceil(((work_mem * 1024.0) - (ht->nbatch * sizeBufFile(NULL))) / ht->nentries);
+
+					new_batches = calcBatchCount(work_mem * 1024.0, 
+												 groups,
+												 entry_size,
+												 sizeBufFile(NULL),
+												 true);
+
+					if (new_batches > ht->nbatch)
+					{
+						/* Don't use more than 1024 batches if we weren't already using lots of batches */
+						if (new_batches > 1024 && ht->nbatch <= 512)
+							new_batches = 1024;
+
+						elog(HHA_MSG_LVL,
+							 "hybrid hash aggregation: increasing batch count from %d -> %f",
+							 ht->nbatch, new_batches);
+						destroy_batches(ht);
+						create_batches(ht, new_batches);
+					}
+				}
+				/* NOTE: we never reduce the number of batches, respill passes are too risky */
 			}
 			noverflow++;
+
+			rotkey = hashkey << ht->lshift | hashkey >> ht->rshift;
+			batch = 1 + rotkey % (ht->nbatch-1);
+
+			Assert(batch > 0 && batch < ht->nbatch);
 			
 			/* Write the tuple to the appropriate overflow batch. */
 			batch_put_tuple(ht, batch, outerslot);
@@ -352,11 +396,11 @@ agg_hash_initial_pass(AggState *aggstate)
 	init_agg_hash_iter(aggstate->hhashtable);
 	
 	elog(HHA_MSG_LVL,
-		"hybrid hash aggregation: %ld tuples loaded to %ld hash table entries",
-		ht->ntuple, ht->ngroup);
+		 "hybrid hash aggregation: %ld tuples loaded to %ld hash table entries",
+		 ht->ntuple, ht->ngroup);
 	elog(HHA_MSG_LVL,
-		"hybrid hash aggregation: %ld tuples spilled to disk",
-		noverflow);
+		 "hybrid hash aggregation: %ld tuples spilled to disk",
+		 noverflow);
 
     /* CDB: Report statistics for EXPLAIN ANALYZE. */
     if (aggstate->ss.ps.instrument)
@@ -927,6 +971,60 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
  *
  * The actual estimate is a little more complex.
  */
+
+static double
+calcBatchCount(double memquota, double ngroups, double zH, double zB, bool force)
+{
+	double nB = 2.0;
+	double rewrite_fudge = 1.0;
+
+	/* The normal stategy expects to spill to disk, so we estimate
+	 * how many passes we expect to need and allocate that many
+	 * batches.  Since the first pass will load the hash table
+	 * rather than a batch file, this leaves a batch file for
+	 * overflow within a subsequent pass.
+	 */
+	double d = memquota*memquota - 4 * zB * ngroups * zH;
+		
+	/* By default we plan on writing input tuples back to disk
+	 * once, but the user can increase this.  We creep up to
+	 * user's limit in order the choose the smallest rewrite
+	 * limit that will work.  (This tends to minimize the number
+	 * of rewrites at the expense of a larger number of passes.
+	 */
+	while (d < 0 && rewrite_fudge < gp_hashagg_rewrite_limit)
+	{
+		rewrite_fudge++;
+		rewrite_fudge = ( rewrite_fudge > gp_hashagg_rewrite_limit ) ?
+			gp_hashagg_rewrite_limit :
+			rewrite_fudge;
+			
+		d = memquota*memquota - (4 * zB * ngroups * zH)/rewrite_fudge;
+	}
+		
+	/* The optimizer can decide against the strategy, but the executor
+	 * has to go with the choice even if it doesn't look so good.
+	 */
+	if (d < 0)
+	{
+		if (force)
+			d = 0;
+		else
+		{
+			elog(DEBUG2, "hashagg can't calculate memory usage!");
+			return 0.0;
+		}
+	}
+
+	nB = ceil((memquota-sqrt(d))/(2*zB));
+		
+	nB = Max(2.0, nB);
+
+	elog(DEBUG1, "hashagg rewrite-fudge %f", rewrite_fudge);
+
+	return nB;
+}
+
 #define NGROUP_PER_BUCKET 7.0
 #define OVERHEAD_PER_ENTRY ((double)sizeof(uint32))/NGROUP_PER_BUCKET
 
@@ -941,8 +1039,6 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 {
 	bool expectSpill = false;
 
-	double rewrite_fudge = 1.0;
-
 	int entrywidth = sizeof(HashAggEntry)
 		+ numaggs * sizeof(AggStatePerGroupData)
 		+ keywidth
@@ -952,7 +1048,7 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 	
 	double nH, zH = OVERHEAD_PER_ENTRY + entrywidth; /* Hash Entries */
 	
-	double nB=2.0;
+	double nB = 2.0;
 	double zB = sizeBufFile(NULL); /* Passes = overflow batches */
 	
 	elog(DEBUG2, "hashagg ngroups = %g, numaggs = %d, keywidth = %d, transpace = %d", ngroups, numaggs, keywidth, transpace);
@@ -977,49 +1073,10 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 	 */			
 	if (memquota < ngroups*zH + 2*zB)
 	{
-		/* The normal stategy expects to spill to disk, so we estimate
-		 * how many passes we expect to need and allocate that many
-		 * batches.  Since the first pass will load the hash table
-		 * rather than a batch file, this leaves a batch file for
-		 * overflow within a subsequent pass.
-		 */
-		double d = memquota*memquota - 4 * zB * ngroups * zH;
+		nB = calcBatchCount(memquota, ngroups, zH, zB, force);
 
-		expectSpill = true;
-		
-		/* By default we plan on writing input tuples back to disk
-		 * once, but the user can increase this.  We creep up to
-		 * user's limit in order the choose the smallest rewrite
-		 * limit that will work.  (This tends to minimize the number
-		 * of rewrites at the expense of a larger number of passes.
-		 */
-		while (d < 0 && rewrite_fudge < gp_hashagg_rewrite_limit)
-		{
-			rewrite_fudge++;
-			rewrite_fudge = ( rewrite_fudge > gp_hashagg_rewrite_limit ) ?
-				gp_hashagg_rewrite_limit :
-				rewrite_fudge;
-			
-			d = memquota*memquota - (4 * zB * ngroups * zH)/rewrite_fudge;
-		}
-		
-		/* The optimizer can decide against the strategy, but the executor
-		 * has to go with the choice even if it doesn't look so good.
-		 */
-		if (d < 0)
-		{
-			if (force)
-				d = 0;
-			else
-			{
-				elog(DEBUG2, "hashagg can't calculate memory usage!");
-				return false;
-			}
-		}
-
-		nB = ceil((memquota-sqrt(d))/(2*zB));
-		
-		nB = Max(2.0, nB);
+		if (nB < 2.0)
+			return false;
 	}
 	
 	nH = floor((memquota - nB*zB)/zH);
@@ -1055,8 +1112,7 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
     }
 	
 	elog(DEBUG2, "hashagg nbuckets = %d, nentries = %d, nbatches = %d", (int)nK, (int)nH, (int)nB);
-	elog(DEBUG1, "hashagg rewrite fudge = %f, expected memory footprint = %d",
-		rewrite_fudge,
+	elog(DEBUG1, "hashagg expected memory footprint = %d",
 		(int)( nH*entrywidth + nK*sizeof(HashAggEntry*) + nB*zB));
 	
 	return true;
@@ -1071,7 +1127,7 @@ create_batches(HashAggTable *hashtable, int nbatch)
 {
 	size_t sz;
 	
-	Assert( nbatch > 1 && hashtable->batches == NULL );
+	Assert(nbatch > 1 && hashtable->batches == NULL);
 
 	sz = nbatch * sizeof(BatchFileInfo);	
 	hashtable->batches = (BatchFileInfo*)palloc0(sz);
@@ -1087,7 +1143,7 @@ destroy_batches(HashAggTable * hashtable)
 {
 	int i;
 	
-	for ( i = 0; i < hashtable->nbatch; i++ )
+	for (i = 0; i < hashtable->nbatch; i++)
 	{
 		batch_close(hashtable, i);
 	}

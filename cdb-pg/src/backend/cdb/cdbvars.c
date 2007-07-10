@@ -108,8 +108,9 @@ bool		gp_interconnect_aggressive_retry=true; /* fast-track app-level retry */
 bool        enable_adaptive_nestloop = true;
 double      gp_motion_cost_per_row = 0;
 int         gp_segments_for_planner = 0;
-bool		enable_agg_restruct = TRUE;
+bool		enable_agg_restruct = true;
 double		gp_hashagg_rewrite_limit = 1;
+bool		gp_hashagg_recalc_density = true;
 
 bool		gp_enable_motion_deadlock_sanity = FALSE; /* planning time sanity check */
 

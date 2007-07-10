@@ -1112,6 +1112,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_hashagg_recalc_density", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Executor can recalculate grouping density based on pre-spill real density."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_hashagg_recalc_density,
+		true, NULL, NULL
+	},
+
+	{
 		{"gp_enable_agg_distinct", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Experimental feature: 2-phase aggregation with single distinct-qualified aggregate."),
 			NULL,

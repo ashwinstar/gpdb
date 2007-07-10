@@ -132,8 +132,6 @@ extern HashAggEntry *agg_hash_iter(HashAggTable* ht);
 
 extern void destroy_agg_hash_table(AggState *aggstate);
 
-
-
 extern bool 
 calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 					   double ngroups,	/* Est # of groups. */

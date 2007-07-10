@@ -505,6 +505,10 @@ extern bool gp_window_share_initplan;
  */
 extern double gp_hashagg_rewrite_limit;
 
+/* Before the hybrid hash aggregator starts to spill it can
+ * re-evaluate the density of groups in its input to come up with a
+ * (possibly better) batching scheme */
+extern bool gp_hashagg_recalc_density;
 
 /* --------------------------------------------------------------------------------------------------
  * Server debugging
