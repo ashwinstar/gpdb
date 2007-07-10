@@ -344,6 +344,9 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 			int		conninfosize = sizeof(GpSegmentConnectionInfoSet) + size*sizeof(GpSegmentConnectionInfo);
 			conninfo = palloc0(conninfosize);
 			conninfo->nsegs = 0;				/* how many QEs this dispatch agent will control */
+			conninfo->type = type;
+			conninfo->gang_id = gang_id;
+			conninfo->content = content;
 			conninfoarray[whichagent] = conninfo;
 
 		}
@@ -351,6 +354,20 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 		
 		for (j=0;j<newGangDefinition->size;j++)
 		{
+			/*
+			 * We need to assign each QE that will be in the gang to a Dispatch Agent.
+			 * 
+			 * For now, this is an easy, but sub-optimal way:  Just round robin them to the agents.
+			 * 
+			 * There are several important optimizations missing:  First, any QEs on the same host
+			 * as a Dispatch Agent should be controlled by that agent.  But, we don't have any info
+			 * about which QEs are on which hosts.
+			 * 
+			 * Second, any QE that is from the same Postmaster as a Dispatch Agent should be 
+			 * controlled by that dispatch agent.  This is especially useful when we are dealing
+			 * with 1-gangs.
+			 * 
+			 */
 			whichagent = j % dispatchagents->size;
 			conninfo = conninfoarray[whichagent];
 			Assert(conninfo);
@@ -363,19 +380,20 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 		}
 		
 		
-		for (whichagent=0;whichagent<dispatchagents->size;whichagent++)
-		{
-			conninfo = conninfoarray[whichagent];
-			conninfo->type = type;
-			conninfo->gang_id = gang_id;
-			conninfo->content = content;
-		}
-		
 		newGangDefinition->active = true;
+		
+		/*
+		 * Now we must send a "create gang" message to the dispatch agents
+		 */
 
 		for (whichagent=0;whichagent<dispatchagents->size;whichagent++)
 		{
 			conninfo = conninfoarray[whichagent];
+			
+			/*
+			 * If we are creating a 1-gang, only 1 of the conninfo structs will
+			 * have anything in it.  Skip the ones that don't.
+			 */
 			if (conninfo->nsegs == 0)
 				continue;
 			
@@ -392,14 +410,26 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 			 
 			gresp = result->extras;
 			
+			/*
+			 * this loop is just for debugging
+			 */
 			for (i = 0; i< conninfo->nsegs; i++)
 			{
 				elog(LOG,"DA %d: Gang_id %d Result %d MotionListener %d  pid %d",whichagent, gang_id,i, gresp[i].motionListener, gresp[i].pid); 
 			}
+			
+			/*
+			 * Get the response from the agent, and fill in the gang with the motionListener and backendPid
+			 * information.
+			 */
 	
 			i = 0;	
 			for (j=0;j<newGangDefinition->size;j++)
 			{
+				/*
+				 * This IF statement relys on how the QEs where assigned to the agents above.
+				 * If that method changes, this needs to change too.
+				 */
 				if (whichagent == j % dispatchagents->size)
 				{
 					conninfo = conninfoarray[whichagent];
@@ -417,6 +447,10 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 			PQclear(result);
 		}
 		
+		/*
+		 * By filling in the Gang->dispatchagents, we let dispatch know that it is supposed
+		 * to use the dispatch agents (and what those dispatch agents are).
+		 */
 		newGangDefinition->dispatchagents = dispatchagents;
 		newGangDefinition->all_valid_segdbs_connected = true;
 		newGangDefinition->active = false;
@@ -686,9 +720,13 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 
 
 /*
- *	buildGangDefinitionFromConninfo: uses information sent to use by the QD and
- *	It then converts this to a Gang structure and initializes
+ *	buildGangDefinitionFromConninfo: uses information sent to dispatch agent by the QD and
+ *	it then converts this to a Gang structure and initializes
  *	all the non-connection related fields.
+ * 
+ *  Because I was in a hurry, and wanted to re-use the maximum amount of code, we use the
+ *  normal Gang structure that we have always used.  I think we should eventually clean this
+ *  up and make it a bit better.
  */
 static Gang *
 buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo)
@@ -1747,9 +1785,11 @@ bad:
 }	/* cdbgang_parse_gpdaid_params */
 
 /*
- * This is the main routine.   It allocates a gang to a query.
- * If we have a previously created but unallocated gang lying around, we use that.
- * otherwise, we create a new gang
+ * This is where we keep track of all the gangs that exist for this session.
+ * On a QD, gangs can either be "available" (not currently in use), or "allocated".
+ * 
+ * On a Dispatch Agent, we just store them in the "available" lists, as the DA doesn't
+ * keep track of allocations (it assumes the QD will keep track of what is allocated or not).
  *
  */
 
@@ -2095,6 +2135,14 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
 	return r;
 }
 
+/*
+ * This is the main routine.   It allocates a gang to a query.
+ * If we have a previously created but unallocated gang lying around, we use that.
+ * otherwise, we create a new gang
+ * 
+ * This is only used on the QD.
+ *
+ */
 Gang *
 allocateGang(GangType type, int size, int content, char *portal_name)
 {
@@ -2322,6 +2370,11 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 /*
  * When we are the dispatch agent, we get told which gang to use by its "gang_id"
  * We need to find the gang in our lists.
+ * 
+ * keeping the gangs in the "available" lists on the Dispatch Agent is a hack,
+ * as the dispatch agent doesn't differentiate allocated from available, or 1 gangs
+ * from n-gangs.  It assumes the QD keeps track of all that.
+ * 
  */
 
 Gang * findGangById(int gang_id)
@@ -2571,7 +2624,7 @@ cleanupGang(Gang * gp)
 	if (gp == NULL)
 		return true;
 	
-	elog(LOG,"Freeing gang %d",gp->gang_id);
+	elog(LOG,"cleaning up gang %d",gp->gang_id);
 
     if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
         elog(DEBUG4, "cleanupGang: cleaning gang type %d size %d, was used for portal: %s", gp->type, gp->size, (gp->portal_name ? gp->portal_name : "(unnamed)"));
@@ -2682,6 +2735,10 @@ cleanupGang(Gang * gp)
 	return true;
 }
 
+/*
+ * This not only disconnects and destroys the gang, it also first removes the gang from
+ * the available lists (if it exists in those lists).
+ */
 
 void
 disconnectAndDestroyGangById(int gang_id)
@@ -3173,12 +3230,37 @@ gangOK(Gang * gp)
 	 * invalid connections
 	 */
 	if (!gp_use_dispatch_agent || Gp_role == GP_ROLE_DISPATCHAGENT)
-	for (i = 0; i < gp->size; i++)
 	{
-		SegmentDatabaseDescriptor *segdbDesc = &(gp->db_descriptors[i]);
-
-		if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)
-			return false;
+		/*
+		 * Gang is direct-connect (no agents).
+		 */
+	 
+		for (i = 0; i < gp->size; i++)
+		{
+			SegmentDatabaseDescriptor *segdbDesc = &(gp->db_descriptors[i]);
+	
+			if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)
+				return false;
+		}
+	}
+	else
+	{
+		/*
+		 * Gang is indirect via dispatch agents.
+		 */
+	 
+		for (i = 0; i < gp->dispatchagents->size; i++)
+		{
+			SegmentDatabaseDescriptor *segdbDesc = &(gp->dispatchagents->db_descriptors[i]);
+	
+			if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)
+				return false;
+		}
+		/*
+		 * TODO:  Should we send a message to the dispatch agent, asking that it verify the
+		 * integrity of the gang?
+		 */
+		
 	}
 
 	return true;

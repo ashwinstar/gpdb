@@ -1015,6 +1015,11 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 						   &dtxProtocolParms,
 						   primaryGang, primaryResults, -1, 1);
 	
+	/*
+	 * If we are the QD, and are relying on Dispatch Agents, we let the DA send the request to the
+	 * mirror gang.  So, we don't need to send it ourselves.
+	 */
+	
 	if (mirrorResults != NULL && mirrorGang != NULL && (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent))
 	{
 		cdbdisp_dispatchToGang(&dispatchThreads, 
@@ -1150,6 +1155,10 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 
 	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent)
 	{
+		/*
+		 * If we are the QD, and sending via Dispatch Agents, we want to send only
+		 * once.  The DA will send to the primary and/or mirror gang based on what we tell it.
+		 */
 		dispatchToPrimaries = true;
 		dispatchToMirrors = false;
 	}
@@ -1165,6 +1174,11 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 							   &queryParms,
 							   primaryGang, *pPrimaryResults, -1, 1);
 	}
+	
+	/*
+	 * If we are the QD, and are relying on Dispatch Agents, we let the DA send the request to the
+	 * mirror gang.  So, we don't need to send it ourselves.
+	 */
 	
 	if (dispatchToMirrors && mirrorGang && (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent))
     {
@@ -1423,6 +1437,10 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 	    &queryParms,
 	    primaryGang, *pPrimaryResults, -1, gangCount);
 
+    /*
+	 * If we are the QD, and are relying on Dispatch Agents, we let the DA send the request to the
+	 * mirror gang.  So, we don't need to send it ourselves.
+	 */
 	if (mirrorGang && (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent))
     {
         *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
@@ -1431,6 +1449,11 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 	    	&queryParms,
 	    	mirrorGang, *pMirrorResults, -1, gangCount);
     }
+	
+	/*
+	 * TODO: Uh oh... We don't yet have a way to send to all the reader gangs
+	 * when we are using Dispatch Agents.
+	 */
 
 	if (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent)
     foreach(le, readerGangs)
@@ -2751,6 +2774,12 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		int si = -1;
 		if (sliceVector)
 		{
+			/*
+			 * Sliced dispatch, and we are either the dispatch agent, or we are
+			 * the QD and are not using Dispatch Agents.
+			 * 
+			 * So, dispatch to each slice.
+			 */
 			slice = sliceVector[iSlice].slice;
 			si = slice->sliceIndex;
 			
@@ -2770,9 +2799,13 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			primaryGang = slice->primaryGang;
 			mirrorGang = slice->mirrorGang;
 			
+			/*
+			 * If we are on the dispatch agent, the gang pointers aren't filled in.
+			 * We must look them up by ID
+			 */
 			if (primaryGang == NULL)
 			{
-				elog(DEBUG2,"Gangs are %d and %d, type=%d",slice->primary_gang_id,slice->mirror_gang_id,slice->gangType);
+				elog(DEBUG1,"Gangs are %d and %d, type=%d",slice->primary_gang_id,slice->mirror_gang_id,slice->gangType);
 				primaryGang = findGangById(slice->primary_gang_id);
 				if (slice->mirror_gang_id > 0)
 					mirrorGang = findGangById(slice->mirror_gang_id);
@@ -2786,17 +2819,28 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		}
 		else
 		{
-			/* Non-sliced, used specified gangs
+			/*
+			 *  Non-sliced, used specified gangs
 			 */
 			if (pQueryParms->primary_gang_id > 0)
 				primaryGang = findGangById(pQueryParms->primary_gang_id);
 			if (pQueryParms->mirror_gang_id > 0)
-				primaryGang = findGangById(pQueryParms->mirror_gang_id);
+				mirrorGang = findGangById(pQueryParms->mirror_gang_id);
 			 
 		}
 		if (primaryGang == NULL && mirrorGang == NULL)
 		{
-			elog(DEBUG1,"Using default writer gang");
+			if (Gp_role == GP_ROLE_DISPATCHAGENT)
+				elog(ERROR,"Using default writer gang");
+			if (sliceTbl == NULL)
+				elog(WARNING,"Using default writer gang");
+			/*
+			 * When using dispatch agents, and we are on the QD, we just send the 
+			 * request to the dispatch agents... To get a list of dispatch agents,
+			 * just look in the primaryGang.
+			 * 
+			 * The dispatch agent will handle sending out based on the slice table.
+			 */
 			primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, getgpsegmentCount(), -1, NULL);
 
 			mirrorGang = NULL;
@@ -2804,6 +2848,11 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	 
 		if (primaryGang == NULL && mirrorGang != NULL && Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent)
 		{
+			/*
+			 * If we are the QD, and relying on dispatch agents, we only send once to the 
+			 * dispath agents, and let them send to the primaries or mirrors or both, as
+			 * appropriate.
+			 */
 			primaryGang = mirrorGang;
 		}
 		
@@ -2837,6 +2886,11 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 
 		/*
 		 * dispatch the plan to our mirrorGang if we have one.
+		 * 
+		 *  
+		 * If we are the QD, and are relying on Dispatch Agents, we let the DA send the request to the
+		 * mirror gang.  So, we don't need to send it ourselves.
+		 * 
 		 */
 		if (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent)
 		if (mirrorGang != NULL /*&& (queryDesc->operation != CMD_SELECT || queryDesc->parsetree->into != NULL)*/)
@@ -3166,7 +3220,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	queryParms.serializedSliceInfo = ssliceinfo;
 	queryParms.serializedSliceInfolen= ssliceinfo_len;
 	queryParms.rootIdx = rootIdx;
-	queryParms.primary_gang_id = 0;
+	queryParms.primary_gang_id = 0;	/* We are relying on the slice table to provide gang ids */
 	queryParms.mirror_gang_id = 0;
 
 	/* serialized a version of our snapshot */

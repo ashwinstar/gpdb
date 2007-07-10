@@ -843,6 +843,10 @@ cdbdisp_sqlstate_to_errcode(const char *sqlstate)
 #include "access/printtup.h"
 #include "cdb/cdbtm.h"
 #include "utils/tqual.h"
+/*
+ * If we are a dispatch agent, we need to relay any results from the QEs back
+ * up to the QD.
+ */
 char *
 cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 					 CdbDispatchResults *pMirrorResults)
@@ -879,11 +883,22 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 	completionTag = palloc0(COMPLETION_TAG_BUFSIZE);
 	strcpy(completionTag,p->cmdStatus);
 	 
+	/*
+	 * Not only the results need to get relayed.  Also the DTX info
+	 */
 
 	if (p->QEWriter_HaveInfo)
 	{
 		elog(DEBUG1,"First result: distributedXid %d, curcid %d, is dirty %d",p->QEWriter_DistributedTransactionId,
 				p->QEWriter_CommandId,p->QEWriter_Dirty);
+		
+		/*
+		 * This is a hack.  Copy the QEs DTX info into our DTX context, so that when
+		 * we send our completion tag (via EndCommand), the information will go back to the QD.
+		 * 
+		 * Hopefully, the DTX code won't take notice of us doing this, as we don't want the
+		 * TM doing anything with the dispatch agents.
+		 */
 		
 		QEDtxContextInfo.distributedXid = p->QEWriter_DistributedTransactionId;
 		QEDtxContextInfo.distributedSnapshotData.curcid = p->QEWriter_CommandId;
@@ -902,7 +917,10 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 	gangResults = pPrimaryResults;
 	if (gangResults)
 	{
-		
+		/*
+		 * if there are tuples to be sent back, they need to be preceeded with 
+		 * a row description message.
+		 */
 		for (i = 0; i < gangResults->resultCount; ++i)
 		{
 			dispatchResult = &gangResults->resultArray[i];
@@ -921,7 +939,7 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 				{
 					TupleDescInitEntry(typeinfo, (AttrNumber) (j+1), PQfname(p,j), PQftype(p, j), PQfmod(p,j), 0);
 				}
-				// Send results back to our QD
+				// Send row descriptor results back to our QD
 				SendRowDescriptionMessage(typeinfo,
 						NULL, /*((Query *) linitial(parseTrees))->targetList,*/
 						NULL);
@@ -938,7 +956,18 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 			/* Append error messages. */
 			cdbdisp_dumpDispatchResult(dispatchResult, false, &errmsgbuf);
 			
+			/*
+			 * Now this is a problem.  We might have multiple result sets from this QE
+			 * (presumably, if one QE has multiple result sets, they all do).
+			 * 
+			 * But we aren't really equiped yet to do the right thing.
+			 * 
+			 * Lets just hope we get one result set back for now.
+			 */
 			nr = dispatchResult->resultbuf->len/sizeof(struct pg_result *);
+			
+			if (nr > 1)
+				elog(WARNING,"multiple result sets can't be relayed properly yet");
 			
 			for (j = 0; j<nr; j++)
 			{
@@ -946,6 +975,10 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 				
 				p = ((struct pg_result **)dispatchResult->resultbuf->data)[j];
 				
+				/*
+				 * if the command completed OK, we want to collect the number of tuples and lastOid
+				 * information to relay back to the QD.
+				 */
 				if (PQresultStatus(p) == PGRES_TUPLES_OK || PQresultStatus(p) == PGRES_COMMAND_OK)
 				{
 					char   *cmdTuples;
@@ -960,6 +993,9 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 		            		lastOid = cmdLastOid;
 				}
 				
+				/*
+				 * If there are any tuples, we need to send them back to the QD
+				 */
 				if (PQresultStatus(p) == PGRES_TUPLES_OK)
 				{
 					int j,k;
@@ -986,6 +1022,12 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 
 				}
  
+				/*
+				 * the DTX info that was send with the EndCommand from the QE needs to be relayed
+				 * back to the QD.
+				 * 
+				 * Apparently, we only get this info IF the QE has done some work.
+				 */
 				if (p->QEWriter_HaveInfo)
 				{
 					if (QEDtxContextInfo.distributedXid != p->QEWriter_DistributedTransactionId ||
@@ -1027,6 +1069,10 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 			for (j = 0; j<nr; j++)
 			{
 				p = ((struct pg_result **)dispatchResult->resultbuf->data)[j];
+				/*
+				 * if the command was sent to the mirrors, we need to relay any
+				 * result tuples back from the mirror gangs as well
+				 */
 				if (PQresultStatus(p) == PGRES_TUPLES_OK)
 				{
 					int j,k;
@@ -1075,6 +1121,10 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 		cdbdisp_destroyDispatchResults(gangResults);
 	}
 	
+	/*
+	 * If any of the QEs say they modified tuples, we need to relay that
+	 * back to the QD as part of the completionTag.
+	 */
 	if (sum > 0)
 	{
 		if (strncmp(completionTag,"INSERT ",7)==0)

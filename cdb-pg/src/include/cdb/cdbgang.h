@@ -39,7 +39,7 @@ typedef struct Gang
 	bool		allocated;
 	bool		active;
 	char		*portal_name; /* the named portal that owns this gang, NULL if none */
-	struct DispatchAgentSet * dispatchagents;
+	struct DispatchAgentSet * dispatchagents;		/* NULL if gang is directly connected */
 	struct SegmentDatabaseDescriptor *db_descriptors;	/* Array of QEs/segDBs
 														 * that make up this
 														 * gang */
