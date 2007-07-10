@@ -54,6 +54,9 @@ static Timestamp dt2local(Timestamp dt, int timezone);
 static void AdjustTimestampForTypmod(Timestamp *time, int32 typmod);
 static void AdjustIntervalForTypmod(Interval *interval, int32 typmod);
 static TimestampTz timestamp2timestamptz(Timestamp timestamp);
+static ArrayType *interval_amalg_demalg(ArrayType  *aTransArray,
+										ArrayType  *bTransArray,
+										bool is_amalg);
 
 
 /*****************************************************************************
@@ -4503,11 +4506,31 @@ interval_amalg(PG_FUNCTION_ARGS)
 {
 	ArrayType  *aTransArray = PG_GETARG_ARRAYTYPE_P(0);
 	ArrayType  *bTransArray = PG_GETARG_ARRAYTYPE_P(1);
+	
+	PG_RETURN_ARRAYTYPE_P(interval_amalg_demalg(aTransArray, bTransArray,
+												true));
+}
+
+Datum
+interval_demalg(PG_FUNCTION_ARGS)
+{
+	ArrayType  *aTransArray = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType  *bTransArray = PG_GETARG_ARRAYTYPE_P(1);
+	
+	PG_RETURN_ARRAYTYPE_P(interval_amalg_demalg(aTransArray, bTransArray,
+												false));
+}
+
+static ArrayType *
+interval_amalg_demalg(ArrayType  *aTransArray,
+					  ArrayType  *bTransArray,
+					  bool is_amalg)
+{
 	Datum	   *transdatums;
 	int			ndatums;
-	Interval	aSumX, bSumX,
+	Interval	aSumMiX, bSumMiX,
 				aN, bN;
-	Interval   *newsum;
+	Interval   *newsummi;
 	ArrayType  *result;
 
 	deconstruct_array(aTransArray,
@@ -4525,7 +4548,7 @@ interval_amalg(PG_FUNCTION_ARGS)
 	 * Note: must use DatumGetPointer here, not DatumGetIntervalP, else some
 	 * compilers optimize into double-aligned load/store anyway.
 	 */
-	memcpy((void *) &aSumX, DatumGetPointer(transdatums[0]), sizeof(Interval));
+	memcpy((void *) &aSumMiX, DatumGetPointer(transdatums[0]), sizeof(Interval));
 	memcpy((void *) &aN, DatumGetPointer(transdatums[1]), sizeof(Interval));
 
 	deconstruct_array(bTransArray,
@@ -4534,21 +4557,31 @@ interval_amalg(PG_FUNCTION_ARGS)
 	if (ndatums != 2)
 		elog(ERROR, "expected 2-element interval array");
 
-	memcpy((void *) &bSumX, DatumGetPointer(transdatums[0]), sizeof(Interval));
+	memcpy((void *) &bSumMiX, DatumGetPointer(transdatums[0]), sizeof(Interval));
 	memcpy((void *) &bN, DatumGetPointer(transdatums[1]), sizeof(Interval));
 
 
-	newsum = DatumGetIntervalP(DirectFunctionCall2(interval_pl,
-												   IntervalPGetDatum(&aSumX),
-												   IntervalPGetDatum(&bSumX)));
+	if (is_amalg)
+	{
+		newsummi = DatumGetIntervalP(DirectFunctionCall2(interval_pl,
+														 IntervalPGetDatum(&aSumMiX),
+														 IntervalPGetDatum(&bSumMiX)));
+		aN.time += bN.time;
+	}
+	
+	else
+	{
+		newsummi = DatumGetIntervalP(DirectFunctionCall2(interval_mi,
+														 IntervalPGetDatum(&aSumMiX),
+														 IntervalPGetDatum(&bSumMiX)));
+		aN.time -= bN.time;
+	}
 
-	aN.time += bN.time;
-
-	transdatums[0] = IntervalPGetDatum(newsum);
+	transdatums[0] = IntervalPGetDatum(newsummi);
 	transdatums[1] = IntervalPGetDatum(&aN);
 
 	result = construct_array(transdatums, 2,
 							 INTERVALOID, sizeof(Interval), false, 'd');
 
-	PG_RETURN_ARRAYTYPE_P(result);
+    return result;
 }

@@ -113,6 +113,8 @@ static int	float8_cmp_internal(float8 a, float8 b);
 static double cbrt(double x);
 #endif   /* HAVE_CBRT */
 
+static ArrayType *float8_amalg_demalg(ArrayType *aTransArray, ArrayType *bTransArray,
+									  FunctionCallInfo fcinfo, bool is_amalg);
 
 /*
  * Routines to provide reasonably platform-independent handling of
@@ -2867,24 +2869,58 @@ float8_amalg(PG_FUNCTION_ARGS)
 {
 	ArrayType  *aTransArray = PG_GETARG_ARRAYTYPE_P(0);
 	ArrayType  *bTransArray = PG_GETARG_ARRAYTYPE_P(1);
+
+	PG_RETURN_ARRAYTYPE_P(float8_amalg_demalg(aTransArray, bTransArray,
+											  fcinfo, true));
+}
+
+Datum
+float8_demalg(PG_FUNCTION_ARGS)
+{
+	ArrayType  *aTransArray = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType  *bTransArray = PG_GETARG_ARRAYTYPE_P(1);
+
+	PG_RETURN_ARRAYTYPE_P(float8_amalg_demalg(aTransArray, bTransArray,
+											  fcinfo, false));	
+}
+
+static ArrayType *
+float8_amalg_demalg(ArrayType *aTransArray, ArrayType *bTransArray,
+					FunctionCallInfo fcinfo, bool is_amalg)
+{
 	float8	   *transvalues;
 	float8		aN, bN,
 				aSumX, bSumX,
 				aSumX2, bSumX2;
 
-	transvalues = check_float8_array(bTransArray, "float8_amalg", 3);
+	if (is_amalg)
+		transvalues = check_float8_array(bTransArray, "float8_amalg", 3);
+	else
+		transvalues = check_float8_array(bTransArray, "float8_demalg", 3);
 	bN = transvalues[0];
 	bSumX = transvalues[1];
 	bSumX2 = transvalues[2];
 
-	transvalues = check_float8_array(aTransArray, "float8_amalg", 3);
+	if (is_amalg)
+		transvalues = check_float8_array(aTransArray, "float8_amalg", 3);
+	else
+		transvalues = check_float8_array(aTransArray, "float8_demalg", 3);
 	aN = transvalues[0];
 	aSumX = transvalues[1];
 	aSumX2 = transvalues[2];
 
-	aN += bN;
-	aSumX += bSumX;
-	aSumX2 += bSumX2;
+	if (is_amalg)
+	{
+		aN += bN;
+		aSumX += bSumX;
+		aSumX2 += bSumX2;
+	}
+	else
+	{
+		aN -= bN;
+		aSumX -= bSumX;
+		aSumX2 -= bSumX2;
+	}
 
 	/*
 	 * If we're invoked by nodeAgg, we can cheat and modify our first
@@ -2897,7 +2933,7 @@ float8_amalg(PG_FUNCTION_ARGS)
 		transvalues[1] = aSumX;
 		transvalues[2] = aSumX2;
 
-		PG_RETURN_ARRAYTYPE_P(aTransArray);
+		return aTransArray;
 	}
 	else
 	{
@@ -2912,7 +2948,7 @@ float8_amalg(PG_FUNCTION_ARGS)
 								 FLOAT8OID,
 							 sizeof(float8), false /* float8 byval */ , 'd');
 
-		PG_RETURN_ARRAYTYPE_P(result);
+		return result;
 	}
 }
 

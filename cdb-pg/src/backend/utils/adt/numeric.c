@@ -353,9 +353,13 @@ static void strip_var(NumericVar *var);
 static void compute_bucket(Numeric operand, Numeric bound1, Numeric bound2,
 			   NumericVar *count_var, NumericVar *result_var);
 
-static ArrayType *do_numeric_amalg(ArrayType *aTransArray, 
-								   ArrayType *bTransArray,
-								   bool is_amalg); /* MPP */
+static ArrayType *do_numeric_amalg_demalg(ArrayType *aTransArray, 
+										  ArrayType *bTransArray,
+										  bool is_amalg); /* MPP */
+static ArrayType *int8_avg_amalg_demalg(ArrayType *aTransArray,
+										ArrayType *bTransArray,
+										FunctionCallInfo fcinfo, 
+										bool is_amalg);
 
 
 /* ----------------------------------------------------------------------
@@ -5690,8 +5694,27 @@ numeric_demalg(PG_FUNCTION_ARGS)
 Datum
 int8_avg_amalg(PG_FUNCTION_ARGS)
 {
-	ArrayType  *aTransArray;
+	ArrayType  *aTransArray = PG_GETARG_ARRAYTYPE_P(0);
 	ArrayType  *bTransArray = PG_GETARG_ARRAYTYPE_P(1);
+
+	PG_RETURN_ARRAYTYPE_P(int8_avg_amalg_demalg(aTransArray, bTransArray,
+												fcinfo, true));
+}
+
+Datum
+int8_avg_demalg(PG_FUNCTION_ARGS)
+{
+	ArrayType  *aTransArray = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType  *bTransArray = PG_GETARG_ARRAYTYPE_P(1);
+
+	PG_RETURN_ARRAYTYPE_P(int8_avg_amalg_demalg(aTransArray, bTransArray,
+												fcinfo, false));
+}
+
+static ArrayType *
+int8_avg_amalg_demalg(ArrayType *aTransArray, ArrayType *bTransArray,
+					  FunctionCallInfo fcinfo, bool is_amalg)
+{
 	Int8TransTypeData *atransdata, *btransdata;
 
 	/*
@@ -5714,10 +5737,19 @@ int8_avg_amalg(PG_FUNCTION_ARGS)
 
 	atransdata = (Int8TransTypeData *) ARR_DATA_PTR(aTransArray);
 	btransdata = (Int8TransTypeData *) ARR_DATA_PTR(bTransArray);
-	atransdata->count += btransdata->count;
-	atransdata->sum += btransdata->sum;
 
-	PG_RETURN_ARRAYTYPE_P(aTransArray);
+	if (is_amalg)
+	{
+		atransdata->count += btransdata->count;
+		atransdata->sum += btransdata->sum;
+	}
+	else
+	{
+		atransdata->count -= btransdata->count;
+		atransdata->sum -= btransdata->sum;
+	}
+
+	return aTransArray;
 }
 
 /* Helper for MPP, declared here and in nodeWindow.c
