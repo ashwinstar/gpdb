@@ -143,7 +143,9 @@ static Plan *add_first_agg(PlannerInfo *root,
 						   List *current_tlist,
 						   List *current_qual,
 						   Plan *current_lefttree);
-static List *generate_list_subplans(PlannerInfo *root, GroupExtContext *context);
+static List *generate_list_subplans(PlannerInfo *root,
+									int num_subplans,
+									GroupExtContext *context);
 static List *add_grouping_groupid(List *tlist);
 static void append_colIdx(AttrNumber *colIdx, int numcols, int colno,
 						  int *grping_pos, Bitmapset *bms, AttrNumber *grpColIdx,
@@ -788,7 +790,9 @@ plan_list_aggs(PlannerInfo *root,
 									context->current_pathkeys);
 	}
 
-	subplans = generate_list_subplans(root, context);
+	subplans = generate_list_subplans(root,
+									  context->current_rollup->numcols + 1,
+									  context);
 
 	/* Append Grouping and GroupId into context->tlist */
 	context->tlist = add_grouping_groupid(context->tlist);
@@ -956,34 +960,35 @@ add_first_agg(PlannerInfo *root,
  * from context->subplan.
  */
 static List *
-generate_list_subplans(PlannerInfo *root, GroupExtContext *context)
+generate_list_subplans(PlannerInfo *root, int num_subplans,
+					   GroupExtContext *context)
 {
 	List *subplans = NIL;
 	int group_no;
 
 	ShareNode_ShareType stype = SHARENODE_UNKNOWN;
 
-	if(gp_window_shareinput && context->numGroupCols > 0)
+	if(gp_window_shareinput && num_subplans > 0)
 	{
 		stype = add_sharenode(root,
 				&context->subplan,
 				&context->pathkeys,
 				context->input_locus,
 				(void *) context,
-				context->numGroupCols + 1,
+				num_subplans,
 				NULL,
 				NULL);
 	}
  
 	if(stype == SHARENODE_UNKNOWN)
 	{
-		for (group_no = 0; group_no < context->numGroupCols + 1; group_no++)
+		for (group_no = 0; group_no < num_subplans; group_no++)
 			subplans = lappend(subplans, copyObject(context->subplan));
 
 		/* set all pathkeys to context->current_pathkeys */
 		list_free(context->pathkeys);
 		context->pathkeys = NIL;
-		for (group_no = 0; group_no < context->numGroupCols + 1; group_no++)
+		for (group_no = 0; group_no < num_subplans; group_no++)
 		{
 			List *pathkeys = copyObject(context->current_pathkeys);
 			context->pathkeys = lappend(context->pathkeys, pathkeys);
@@ -994,7 +999,7 @@ generate_list_subplans(PlannerInfo *root, GroupExtContext *context)
 	else
 	{
 		Assert(stype == SHARENODE_MATERIAL);
-		for(group_no = 0; group_no < context->numGroupCols + 1; group_no++)
+		for(group_no = 0; group_no < num_subplans; group_no++)
 		{
 			Plan *newplan = (*(shareplan_ms.newplan_for_subplan)) (NULL, root, context->subplan);
 			subplans = lappend(subplans, newplan);
@@ -1299,7 +1304,9 @@ plan_list_rollup_plans(PlannerInfo *root,
 	{
 		/* XXX: disable shareinput */
 		gp_window_shareinput = false;
-		subplans = generate_list_subplans(root, context);
+		subplans = generate_list_subplans(root,
+										  list_length(context->canonical_rollups),
+										  context);
 	}
 	else
 		subplans = lappend(subplans, lefttree);
