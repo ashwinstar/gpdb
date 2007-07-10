@@ -1664,6 +1664,33 @@ sub shareinputscan_fixup
 
 }
 
+sub human_num
+{
+    my $esti = shift;
+
+    my @suffix = qw(K M G T P E Z Y);
+    my $suff = "";
+
+    # try to shorten estimate specification
+    while (length(POSIX::ceil($esti)) > 3)
+    {
+        $suff = shift @suffix;
+
+        $esti = $esti/1000;
+    }
+
+    if (length($suff))
+    {
+        $esti *= 100;
+        $esti = POSIX::floor($esti+0.5);
+        $esti = $esti/100;
+
+        $esti .= $suff;
+    }
+
+    return $esti;
+}
+
 # label left and right for nest loops
 sub nestedloop_fixup
 {
@@ -1753,6 +1780,52 @@ sub get_rows_out
 
         $node->{rows_out} = $foo[0];
     }
+
+    if (($node->{rows_out} !~ m/avg/i) &&
+        ($node->{rows_out} =~ m/x/))
+    {
+        my @foo = ($node->{rows_out} =~ m/(x.*)$/);
+
+        my $tail = $foo[0];
+        
+        @foo = ($node->{rows_out} =~ m/(.*)\s+x.*/);
+
+        my $head = $foo[0];
+
+        if (defined($tail) && defined($head))
+        {
+            $head = human_num($head);
+
+            $node->{rows_out} = $head . " " . $tail;
+        }
+
+    }
+    elsif ($node->{rows_out} =~ m/^\d+$/)
+    {
+        $node->{rows_out} = human_num($node->{rows_out});
+    }
+
+    # add row estimates
+    if ($long && 
+        exists($node->{rows_out}) &&
+        length($node->{rows_out}) &&
+        ($node->{txt} =~ m/\(cost\=.*\s+rows=.*\s+width\=.*\)/))
+    {
+        my @foo = ($node->{txt} =~ m/cost\=.*\s+rows=(\d+)\s+width\=.*/);
+
+        if (scalar(@foo))
+        {
+            use POSIX;
+
+            my $esti = $foo[0];
+
+            $esti = human_num($esti);
+
+            $node->{rows_out} .= " (est $esti)";
+        }
+    }
+
+
 
 }
 
