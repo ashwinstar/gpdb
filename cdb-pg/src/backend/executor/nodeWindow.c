@@ -220,6 +220,7 @@ static WindowTuple *fetchTupleThroughBuf(WindowState *wstate);
 static void moveFrameBuf(WindowState *wstate, long int ntuples);
 static void freeFrameBuf(WindowState *wstate);
 static void init_frames(WindowState *wstate);
+static void resetPartFrameBuf(WindowState *wstate);
 
 /* WindowState constructor.
  */
@@ -291,11 +292,7 @@ initializePartition(WindowState *wstate)
 	}
 	
 	/* Per-partition buffer management reinitialzation. */
-	freeFrameBuf(wstate);
-	wstate->trail = DLNewList();
-	wstate->lead = DLNewList();
-	wstate->frame_trail_edge = 0;
-	wstate->frame_lead_edge = 0;
+	resetPartFrameBuf(wstate);
 	
 	if (wstate->numlevels > 0)
 		resetPerFunctionAggStates(wstate, 0);
@@ -428,6 +425,51 @@ processPeerCounts(WindowState *wstate, int min_level,
 	}
 }
 
+/*
+ * Reset a frame buffer after a partition boundary has been passed. We
+ * must keep the last tuple fetched -- it is the tuple which caused the
+ * key break -- and put it in the new buffer.
+ *
+ * Of course, we could get called to initialise the buffer as well.
+ */
+
+static void
+resetPartFrameBuf(WindowState *wstate)
+{
+	if (wstate->trail)
+	{
+    	Dlelem *curr;
+		Dlelem *save;
+		WindowTuple *wt;
+
+		save = DLRemTail(wstate->trail);
+		Insist(PointerIsValid(save));
+	
+		/* there shouldn't be any elements in the lead list */
+		Insist(!PointerIsValid(DLGetHead(wstate->lead)));
+		
+	    while ((curr = DLRemHead(wstate->trail)) != NULL)
+		{
+			WindowTuple *wt = DLE_VAL(curr);
+	
+			pfree(wt->tup);
+			pfree(wt);
+			free(curr);
+		}
+	
+		wt = DLE_VAL(save);
+		wt->part_break = false; /* new tuple, therefore not a break */
+		DLAddTail(wstate->trail, save);
+	}
+	else
+	{
+		wstate->trail = DLNewList();
+		wstate->lead = DLNewList();
+	}
+	wstate->frame_trail_edge = 0;
+	wstate->frame_lead_edge = 0;
+}
+
 static void
 freeFrameBuf(WindowState *wstate)
 {
@@ -475,7 +517,7 @@ fetchTupleThroughBuf(WindowState *wstate)
 								  slot->tts_tupleDescriptor);
 		}
 
-		wt = palloc(sizeof(WindowTuple) * 10);
+		wt = palloc(sizeof(WindowTuple));
 		
 		/* get prior tuple */
 		if (DLGetTail(wstate->trail))
@@ -541,7 +583,7 @@ fetchTupleThroughBuf(WindowState *wstate)
 		else
 		{
 			/* must be the first tuple. */
-			wt->part_break = window->numPartCols > 0;
+			//wt->part_break = window->numPartCols > 0;
 			wt->min_key_break = -1;
 			wstate->curslot = slot;
 		}
@@ -947,7 +989,7 @@ resetFuncProcessed(WindowState *wstate)
 }
 
 static void
-invokeTrivialFuncs(WindowState *wstate)
+invokeTrivialFuncs(WindowState *wstate, bool *found)
 {
 	int funcno;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
@@ -965,79 +1007,33 @@ invokeTrivialFuncs(WindowState *wstate)
 		
 		if (!fs || !FRAME_IS_COMPLEX(funcstate, fs))
 			add_tuple_to_trans(funcstate, wstate, econtext);
+		else
+			*found = true;
 	}
 }
 
-/*
- * We must evaluate functions in a 'frame aware' way.
- *
- * UNBOUNDED PRECEDING frame edges are managed by passing the transition value 
- * from the last call to the function. In this way, we trivially evaluate
- * all rows in the frame which have already passed. It gets more complex
- * for RANGE UNBOUNDED PRECEDING frames because all peers must emit the same
- * value -- so, we remember this in our state.
- *
- * Bounded PRECEDING and FOLLOWING edges are harder. We have two cases.
- * 
- * With ROWS bounded frames, we must detect our position from the current
- * rows. If we are earlier on in the tuple count than the frame edge, those
- * tuples must be removed from the the transition value using the inversion
- * method for the function. If one doesn't exist, we do something even more
- * complex. See below. Once in the frame, we only care about the leading
- * frame edge (it could be the current row or some rows from it). So, we must
- * be careful about that.
- *
- * With RANGE bounded frames, we determine the edge with the equality
- * function(s) of the key level. Before and after the frame edges, we do the 
- * same as for ROWS frames but remember, we must emit the same value for
- * all peers.
- *
- * If inversion functions do exist for a function, we must evaluate the frame
- * every single time it moves.
- */
 static void
-invokeWindowFuncs(WindowState *wstate)
-{	
-	long int pos;
-	//long int trail_edge = 0;
-	//long int lead_edge = 0;
+invokeNonTrivialFuncs(WindowState *wstate)
+{
+	long int pos, tuples_processed;
 	Window *window = (Window *)wstate->ps.plan;
 	int funcno;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 	bool found_lower_edge = false;
-
-	elog(DEBUG1, "======= START FRAME PROCESS =====");
-	elog(DEBUG1, "row index %lli, trail edge = %li", (long long int) wstate->row_index,
-		 wstate->frame_trail_edge);
-	
-	/*
-	 * Process any functions with trivial frames.
-	 */
-#if 0
-	for (funcno = 0; funcno < wstate->numfuncs; funcno++)
-	{
-		WindowStatePerFunction funcstate = &wstate->func_state[funcno];
-			
-		if (!FRAME_IS_COMPLEX(funcstate))
-		{
-			elog(DEBUG1, "processing trivial frame");
-			add_tuple_to_trans(funcstate, wstate, econtext);
-		}
-	}
-#endif
-	invokeTrivialFuncs(wstate);
-	
 	resetFrameEdgeState(wstate);
 
 	/* rewind to the beginning of the frame */
 	pos = wstate->frame_trail_edge;
 	moveFrameBuf(wstate, pos - 1);
-	
+	tuples_processed = 0;
+
 	for (;;)
 	{
 		WindowTuple *wt = fetchTupleThroughBuf(wstate); 
 		bool passed_all_edges = true;
 		TupleTableSlot *frameslot;
+
+		tuples_processed++;
 
 		frameslot = wstate->curslot;
 
@@ -1541,6 +1537,27 @@ invokeWindowFuncs(WindowState *wstate)
 
 	}
 	/* for each func */
+	elog(DEBUG1, "out of loop, pos = %li", pos);
+//	moveFrameBuf(wstate, (pos > 0) ? (-pos + 1 ) : (pos - 1));
+
+	if (!(pos == 0 && tuples_processed == 1))
+		moveFrameBuf(wstate, /* (pos == 0) ? 0 : */ -pos + 1);
+
+	econtext->ecxt_outertuple = wstate->priorslot;
+    econtext->ecxt_scantuple = wstate->priorslot;
+	
+	if (!found_lower_edge)
+	{
+		wstate->frame_trail_edge--;
+	}
+
+}
+
+static void
+finaliseFuncs(WindowState *wstate)
+{
+	int funcno;
+	ExprContext *econtext = wstate->ps.ps_ExprContext;
 
 	/*
 	 * Put the current transition value into the econtext
@@ -1592,17 +1609,57 @@ invokeWindowFuncs(WindowState *wstate)
 			isnulls[funcno] = funcstate->win_value_is_null;
 		}
 	}
-	econtext->ecxt_outertuple = wstate->priorslot;
-    econtext->ecxt_scantuple = wstate->priorslot;
+}
 
-	elog(DEBUG1, "out of loop, pos = %li", pos);
-//	moveFrameBuf(wstate, (pos > 0) ? (-pos + 1 ) : (pos - 1));
-	moveFrameBuf(wstate, -pos + 1);
+/*
+ * We must evaluate functions in a 'frame aware' way.
+ *
+ * UNBOUNDED PRECEDING frame edges are managed by passing the transition value 
+ * from the last call to the function. In this way, we trivially evaluate
+ * all rows in the frame which have already passed. It gets more complex
+ * for RANGE UNBOUNDED PRECEDING frames because all peers must emit the same
+ * value -- so, we remember this in our state.
+ *
+ * Bounded PRECEDING and FOLLOWING edges are harder. We have two cases.
+ * 
+ * With ROWS bounded frames, we must detect our position from the current
+ * rows. If we are earlier on in the tuple count than the frame edge, those
+ * tuples must be removed from the the transition value using the inversion
+ * method for the function. If one doesn't exist, we do something even more
+ * complex. See below. Once in the frame, we only care about the leading
+ * frame edge (it could be the current row or some rows from it). So, we must
+ * be careful about that.
+ *
+ * With RANGE bounded frames, we determine the edge with the equality
+ * function(s) of the key level. Before and after the frame edges, we do the 
+ * same as for ROWS frames but remember, we must emit the same value for
+ * all peers.
+ *
+ * If inversion functions do exist for a function, we must evaluate the frame
+ * every single time it moves.
+ */
+static void
+invokeWindowFuncs(WindowState *wstate)
+{	
+	bool found_complex_func = false;
+
+	elog(DEBUG1, "======= START FRAME PROCESS =====");
+	elog(DEBUG1, "row index %lli, trail edge = %li",
+		 (long long int) wstate->row_index,
+		 wstate->frame_trail_edge);
 	
-	if (!found_lower_edge)
-	{
-		wstate->frame_trail_edge--;
-	}
+	invokeTrivialFuncs(wstate, &found_complex_func);
+
+	/* 
+	 * If there are no functions/frames which need non-trivial window
+	 * management, we're done.
+	 */
+	if (found_complex_func)
+		invokeNonTrivialFuncs(wstate);
+
+	finaliseFuncs(wstate);
+		
+
 	elog(DEBUG1, "======== END OF FRAME PROCESSING =======");
 }
 
