@@ -267,6 +267,16 @@ transformWindowClause(ParseState *pstate, Query *qry)
 		 */
 		if (ws->parent || ws->name)
 		{
+			/* 
+			 * Firstly, check that the parent is not a reference to this
+			 * window specification.
+			 */
+			if (ws->parent && ws->name && strcmp(ws->parent, ws->name) == 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("window \"%s\" cannot reference itself",
+								ws->name)));
+
 			foreach(tmp, winout)
 			{
 				WindowSpec *ws2 = lfirst(tmp);
