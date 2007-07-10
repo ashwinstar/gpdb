@@ -3441,12 +3441,14 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			StringInfoData buf;
 			int gang_id;
 
-			if (Gp_role != GP_ROLE_EXECUTE)
-				gp_command_count++;
-
 			SetCurrentStatementStartTimestamp();
 
 			query_string = pq_getmsgstring(input_message);
+			
+			/*
+			 * Right now, we only have a few simple gang management calls
+			 * such as create, destroy, clean up for re-use.
+			 */
 			
 			if (strcmp(query_string,"create gang")==0)
 			{
@@ -3468,12 +3470,22 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 
 			set_ps_display(query_string, false);
 
+			/* 
+			 * We need to start a local transaction if we are going to 
+			 * do any catalog table lookups, even for error handling
+			 */
 			start_xact_command();
 			
 			if (strcmp(query_string,"create gang")==0)
 			{
 				gang_id = conninfo->gang_id; /* just for debugging */
 				elog(LOG, "Gang stmt: %s gang_id %d.",query_string, conninfo->gang_id);
+				
+				/*
+				 * create a fragment of a gang based on the info passed to 
+				 * us from the QD.  This fragment is all of the QEs that we control for 
+				 * this particular gang.
+				 */
 				connresp = createGangFragment(conninfo, &connrespsize);
 	
 				initStringInfo(&buf);
@@ -3488,15 +3500,12 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			}
 			else
 			{
-				Gang * gp = NULL;
 				elog(LOG, "Gang stmt: %s gang_id %d.",query_string, gang_id);
-				
-				gp = findGangById(gang_id);
 				
 				if (strcmp(query_string,"clean gang")==0)
 					cleanupGang(findGangById(gang_id));
-				else if (strcmp(query_string,"destroy gang")==0 && gp)
-					disconnectAndDestroyGang(gp);
+				else if (strcmp(query_string,"destroy gang")==0)
+					disconnectAndDestroyGangById(gang_id);
 				else
 					elog(ERROR,"Didn't understand gang command");
 				
@@ -3513,9 +3522,6 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 		case 'Q': /* simple query */
 		{
 			const char *query_string;
-
-			if (Gp_role != GP_ROLE_EXECUTE)
-				gp_command_count++;
 
 			/* Set statement_timestamp() */
 			SetCurrentStatementStartTimestamp();
@@ -3607,12 +3613,15 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			serializedSliceInfolen = pq_getmsgint(input_message, 4);
 			serializedSnapshotlen = pq_getmsgint(input_message, 4);
 
-			/* read in the snapshot info */
+			/* read in the snapshot info/ DtxContext */
 			if (serializedSnapshotlen == 0)
 				serializedSnapshot = NULL;
 			else
 				serializedSnapshot = pq_getmsgbytes(input_message,serializedSnapshotlen);
 
+			/*
+			 * This is for debugging.  Otherwise we don't need to deserialize this
+			 */
 			deserializeDtxContextInfo(
 					serializedSnapshot, serializedSnapshotlen,
 					&TempDtxContextInfo);
@@ -3653,15 +3662,25 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 
 			set_ps_display(query_string, false);
 
-			elog((Debug_print_full_dtm ? LOG : DEBUG5), "redispatched stmt from QD: %s.",query_string);
+			elog(DEBUG1, "stmt to be redispatched received from QD: %s.",query_string);
 
+			/*
+			 * The appropriate UserIDs must be set, because they are picked up by dispatch
+			 * and relayed to the QE
+			 */
 			if (suid > 0)
 				SetSessionAuthorization(suid, suid_is_super); /* Set the session UserId */
 
 			if (ouid > 0 && ouid != GetSessionUserId())
 				SetCurrentRoleId(ouid, ouid_is_super); /* Set the outer UserId */
 
-			//setupQEDtxContext(&TempDtxContextInfo);
+			/*
+			 * I don't currently call this, as I'm afraid it would cause DTM to try to 
+			 * get involved in Dispatch Agent work... We only act as a relay, and don't want
+			 * the DTM to take notice of our local transactions.
+			  
+				setupQEDtxContext(&TempDtxContextInfo);
+			 */
 
 			
 
@@ -3698,10 +3717,15 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				queryParms.serializedParamslen = serializedParamslen;
 				queryParms.serializedSliceInfo = (char *)serializedSliceInfo;
 				queryParms.serializedSliceInfolen= serializedSliceInfolen;
+				queryParms.serializedDtxContextInfo = (char *)serializedSnapshot;
+				queryParms.serializedDtxContextInfolen = serializedSnapshotlen;
 				queryParms.rootIdx = rootIdx;
 				queryParms.primary_gang_id = primary_gang_id;
 				queryParms.mirror_gang_id = mirror_gang_id;
 
+				/*
+				 * re-dispatch the command to all the QEs we are controlling.
+				 */
  
 				cdbdisp_dispatchX(&queryParms,
 						 true,
@@ -3713,15 +3737,19 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				
 				 
 			}
-			elog(DEBUG1,"Checking dispatch results");
+			elog(DEBUG1,"Dispatch Agent checking dispatch results");
 
 			CdbCheckDispatchResult(dispatchThreads, false);
 			
 			MemoryContextSwitchTo(MessageContext);
 			
+			/*
+			 * relay the results back to the QD
+			 */
 			completionTag = cdbdisp_relayresults(pPrimaryResults, pMirrorResults);
 			
 			/* free memory allocated for the dispatch threads struct */
+			
 			/*
 			 * Don't use this:
 					cdbdisp_destroyDispatchThreads(dispatchThreads);
@@ -3752,12 +3780,14 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			}
 			dispatchThreads = NULL;
 			 
-			/*if (errmsgbuf.len > 0)
-			//	ereport(ERROR, (errmsg("dispatch error (gathered %d results from cmd '%s')", nresults, query_string),
-			//					errdetail("%s", errmsgbuf.data)));*/
-			
+			/*
+			 * Not really necessary to reset this, but let's play it safe
+			 */
 			SetUserId(GetOuterUserId());
 			
+			/*
+			 * make sure we have some kind of completion tag.
+			 */
 			if (completionTag == NULL)
 			{
 				completionTag = "ERROR";
@@ -3768,14 +3798,14 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			
 			finish_xact_command();
 			
-			elog(LOG,"Dispatch agent says we are done with this command %s",completionTag);
+			elog(DEBUG1,"Dispatch agent says we are done with this command %s",completionTag);
 		
 			debug_query_string = NULL;
 
 			return true;
 		}
 		break;
-		case 'T':
+		case 'T':	/* Transaction management commands */
 			{
 				char * completionTag = NULL;
 				DtxProtocolCommand dtxProtocolCommand;
@@ -3838,13 +3868,14 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 
 				/* Set statement_timestamp() */
 				SetCurrentStatementStartTimestamp();
-				start_xact_command();
-
-				// Do not touch DTX context.
-
-				//int		nsegdb = getgpsegmentCount();
 				
-				elog((Debug_print_full_dtm ? LOG : DEBUG5), "redispatch DtxProtocolCommand: %s for gid = %s.  Dist Txn Id %u", 
+				/*
+				 * We need a local transaction to be able to do anything like catalog lookups,
+				 * even for error logging.
+				 */
+				start_xact_command();
+				
+				elog(DEBUG1, "redispatch DtxProtocolCommand: %s for gid = %s.  Dist Txn Id %u", 
 						loggingStr, gid, gxid);
 
 
@@ -3863,6 +3894,12 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				primaryGang = findGangById(primary_gang_id);
 
 				Assert(primaryGang);
+				
+				/*
+				 * Allocate the mirror gang only if requested (mirror_gang_id > 0).
+				 * Right now, I believe we ALWAYS allocate the mirror gang, as all transaction 
+				 * commands are sent both to primary and mirror gangs.
+				 */
 
 				if (mirror_gang_id > 0)
 					mirrorGang = findGangById(mirror_gang_id);

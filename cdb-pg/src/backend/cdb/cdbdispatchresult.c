@@ -856,6 +856,8 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 	struct pg_result * p;
 	char * completionTag = NULL;
 	StringInfoData buf;
+	long sum = 0;
+	Oid lastOid = InvalidOid;
 	
 	StringInfoData errmsgbuf;
 	initStringInfo(&errmsgbuf);
@@ -868,19 +870,19 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 	 * 
 	 */
 	
-	elog(LOG,"relayResults");
+	elog(DEBUG1,"relayResults is starting");
 
 	dispatchResult = &pPrimaryResults->resultArray[0];
 	Assert(dispatchResult);
 	p = ((struct pg_result **)dispatchResult->resultbuf->data)[0];
 	Assert(p);
-	completionTag = pstrdup(p->cmdStatus);
-	elog(LOG,"completionTag %s",completionTag);
-	elog(LOG,"HaveInfo? %d",p->QEWriter_HaveInfo);
+	completionTag = palloc0(COMPLETION_TAG_BUFSIZE);
+	strcpy(completionTag,p->cmdStatus);
+	 
 
 	if (p->QEWriter_HaveInfo)
 	{
-		elog(LOG,"First result: distributedXid %d, curcid %d, is dirty %d",p->QEWriter_DistributedTransactionId,
+		elog(DEBUG1,"First result: distributedXid %d, curcid %d, is dirty %d",p->QEWriter_DistributedTransactionId,
 				p->QEWriter_CommandId,p->QEWriter_Dirty);
 		
 		QEDtxContextInfo.distributedXid = p->QEWriter_DistributedTransactionId;
@@ -940,7 +942,24 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 			
 			for (j = 0; j<nr; j++)
 			{
+				
+				
 				p = ((struct pg_result **)dispatchResult->resultbuf->data)[j];
+				
+				if (PQresultStatus(p) == PGRES_TUPLES_OK || PQresultStatus(p) == PGRES_COMMAND_OK)
+				{
+					char   *cmdTuples;
+					Oid    cmdLastOid;
+					cmdTuples = PQcmdTuples(p);
+		            if (cmdTuples)
+		                sum += atol(cmdTuples);
+		            
+		            cmdLastOid = PQoidValue(p);
+		            if (cmdLastOid)
+		            	if (lastOid < cmdLastOid)
+		            		lastOid = cmdLastOid;
+				}
+				
 				if (PQresultStatus(p) == PGRES_TUPLES_OK)
 				{
 					int j,k;
@@ -958,7 +977,7 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 						for (j=0; j<nfields; j++)
 						{
 							char * v = PQgetvalue(p, k, j);
-							elog(LOG," result %s",v);
+							elog(DEBUG2," result %s",v);
 							pq_sendcountedtext(&buf, v, strlen(v), false);
 						}
 						
@@ -966,13 +985,13 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 					}
 
 				}
-				elog(LOG,"HaveInfo (other res)? %d",p->QEWriter_HaveInfo);
+ 
 				if (p->QEWriter_HaveInfo)
 				{
 					if (QEDtxContextInfo.distributedXid != p->QEWriter_DistributedTransactionId ||
 							QEDtxContextInfo.distributedSnapshotData.curcid != p->QEWriter_CommandId)
 					{
-						elog(LOG,"other result: distributedXid %d, curcid %d, is dirty %d",p->QEWriter_DistributedTransactionId,
+						elog(DEBUG1,"other result: distributedXid %d, curcid %d, is dirty %d",p->QEWriter_DistributedTransactionId,
 								p->QEWriter_CommandId,p->QEWriter_Dirty);
 						QEDtxContextInfo.distributedXid = p->QEWriter_DistributedTransactionId;
 						QEDtxContextInfo.distributedSnapshotData.curcid = p->QEWriter_CommandId;
@@ -1025,7 +1044,7 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 						for (j=0; j<nfields; j++)
 						{
 							char * v = PQgetvalue(p, k, j);
-							elog(LOG," result %s",v);
+							elog(DEBUG2," result %s",v);
 							pq_sendcountedtext(&buf, v, strlen(v), false);
 						}
 						
@@ -1038,7 +1057,7 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 					if (QEDtxContextInfo.distributedXid != p->QEWriter_DistributedTransactionId ||
 							QEDtxContextInfo.distributedSnapshotData.curcid != p->QEWriter_CommandId)
 					{
-						elog(LOG,"mirror result: distributedXid %d, curcid %d, is dirty %d",p->QEWriter_DistributedTransactionId,
+						elog(DEBUG2,"mirror result: distributedXid %d, curcid %d, is dirty %d",p->QEWriter_DistributedTransactionId,
 								p->QEWriter_CommandId,p->QEWriter_Dirty);
 						QEDtxContextInfo.distributedXid = p->QEWriter_DistributedTransactionId;
 						QEDtxContextInfo.distributedSnapshotData.curcid = p->QEWriter_CommandId;
@@ -1056,10 +1075,29 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 		cdbdisp_destroyDispatchResults(gangResults);
 	}
 	
-
-	elog(LOG,"relayresults is done.  errmsgbuf.len=%d",errmsgbuf.len);
+	if (sum > 0)
+	{
+		if (strncmp(completionTag,"INSERT ",7)==0)
+		{
+			completionTag[0] = '\0';
+			snprintf(completionTag, COMPLETION_TAG_BUFSIZE, "INSERT %u %ld",lastOid,sum);
+		}
+		else if (strncmp(completionTag,"UPDATE ",7)==0)
+		{
+			completionTag[0] = '\0';
+			snprintf(completionTag, COMPLETION_TAG_BUFSIZE, "UPDATE %ld",sum);
+		}
+		else if (strncmp(completionTag,"DELETE ",7)==0)
+		{
+			completionTag[0] = '\0';
+			snprintf(completionTag, COMPLETION_TAG_BUFSIZE, "DELETE %ld",sum);
+		}
+	}
+	
+	elog(DEBUG1,"relayresults is done. completionTag %s  errmsgbuf.len=%d",completionTag, errmsgbuf.len);
+	
 	if (errmsgbuf.len > 0)
-		ereport(ERROR, (errmsg("dispatch error)"),
+		ereport(ERROR, (errmsg("replay results dispatch error"),
 						errdetail("%s", errmsgbuf.data)));
 
 	

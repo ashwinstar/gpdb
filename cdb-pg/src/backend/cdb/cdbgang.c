@@ -51,6 +51,7 @@ static void build_gpdaid_params(PQExpBuffer buf);
 
 static Gang *createGang(GangType type, int gang_id, int size, int content, char *portal_name);
 
+static void disconnectAndDestroyGang(Gang * gp);
 static void disconnectAndDestroyAllReaderGangs(void);
 
 static Gang *buildGangDefinition(GangType type, int gang_id, int size, int content, char *portal_name);
@@ -109,10 +110,10 @@ static void addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
 static char *myDatabaseName = NULL;
  
 
-DispatchAgentSet * dispatchagents = NULL;
+static DispatchAgentSet * dispatchagents = NULL;
 
 /*
- * create Dispatch Agents for this portal
+ * create Dispatch Agents for this session
  */
 static DispatchAgentSet *
 createDispatchAgents(void)
@@ -122,6 +123,7 @@ createDispatchAgents(void)
 	CdbComponentDatabaseInfo *q;
 
 	PQExpBufferData buffer;
+	
 	int			size = getgpsegmentCount()/4+1;
 
 	elog(DEBUG1,"createDispatchAgents");
@@ -213,7 +215,15 @@ createDispatchAgents(void)
 	return dispatchagents;
 }
 
-
+/*
+ * Every gang created must have a unique identifier, so the QD and Dispatch Agents can agree
+ * about what they are talking about.
+ * 
+ * Since there can only be one primary writer gang, and only one mirror writer gang, we 
+ * use id 1 and 2 for those two (helps in debugging).
+ * 
+ * Reader gang ids start at 3
+ */
 
 static int gang_id_counter = 3;
 /*
@@ -2622,6 +2632,97 @@ cleanupGang(Gang * gp)
 
 
 void
+disconnectAndDestroyGangById(int gang_id)
+{
+	MemoryContext oldContext;
+	
+	oldContext = MemoryContextSwitchTo(TopMemoryContext);
+
+	/*
+	 * Now we iterate through the list of available reader gangs
+	 * and we destroy the gang that was specified.
+	 */
+	if (availableReaderGangsN != NIL)
+	{
+		ListCell   *cur_item;
+		ListCell   *prev_item = NULL;
+		
+		cur_item = list_head(availableReaderGangsN);
+		
+		while (cur_item != NULL)
+		{
+			Gang	   *gp = (Gang *) lfirst(cur_item);
+			
+			if (gp->gang_id == gang_id)
+			{
+                		
+				/* cur_item must be removed */
+				availableReaderGangsN = list_delete_cell(availableReaderGangsN, cur_item, prev_item);
+				
+				disconnectAndDestroyGang(gp);
+				
+				if (prev_item)
+					cur_item = lnext(prev_item);
+				else
+					cur_item = list_head(availableReaderGangsN);
+			}
+			else
+			{
+				
+				/* cur_item must be preserved */
+				prev_item = cur_item;
+				cur_item = lnext(prev_item);
+			}
+		}
+	}
+	
+	if (availableReaderGangs1 != NIL)
+	{
+		ListCell   *cur_item;
+		ListCell   *prev_item = NULL;
+		
+		cur_item = list_head(availableReaderGangs1);
+		
+		while (cur_item != NULL)
+		{
+			Gang	   *gp = (Gang *) lfirst(cur_item);
+			
+			if (gp->gang_id == gang_id)
+			{
+				
+				/* cur_item must be removed */
+				availableReaderGangs1 = list_delete_cell(availableReaderGangs1, cur_item, prev_item);
+				
+				disconnectAndDestroyGang(gp);
+				
+				if (prev_item)
+					cur_item = lnext(prev_item);
+				else
+					cur_item = list_head(availableReaderGangs1);
+			}
+			else
+			{
+				prev_item = cur_item;
+				cur_item = lnext(prev_item);
+			}
+		}
+	}
+	
+	MemoryContextSwitchTo(oldContext);
+
+    if (primaryWriterGang && primaryWriterGang->gang_id == gang_id)
+    {
+    	disconnectAndDestroyGang(primaryWriterGang);
+    	primaryWriterGang = NULL;
+    }
+    else if (mirrorWriterGang && mirrorWriterGang->gang_id == gang_id)
+    {
+    	disconnectAndDestroyGang(mirrorWriterGang);
+    	mirrorWriterGang = NULL;
+    }
+}
+
+void
 disconnectAndDestroyGang(Gang * gp)
 {
 	int			i;
@@ -2637,7 +2738,7 @@ disconnectAndDestroyGang(Gang * gp)
 		elog(DEBUG2, "Warning: disconnectAndDestroyGang called on an %s gang",
 			 gp->active ? "active" : "allocated");
 	
-	if (gp->gang_id < 1 || gp->gang_id > 100000000)
+	if (gp->gang_id < 1 || gp->gang_id > 100000000 || gp->type > 10 || gp->size > 100000)
 	{
 		elog(LOG,"disconnectAndDestroyGang on bad gang");
 		return;
@@ -3012,7 +3113,7 @@ gangOK(Gang * gp)
 	if (gp == NULL)
 		return false;
 	
-	if (gp->gang_id < 1 || gp->gang_id > 100000000)
+	if (gp->gang_id < 1 || gp->gang_id > 100000000 || gp->type > 10 || gp->size > 100000)
 		return false;
 
 	/*

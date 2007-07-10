@@ -2132,12 +2132,11 @@ CollectQEWriterTransactionInformation(SegmentDatabaseDescriptor *segdbDesc, CdbD
 {
 	PGconn *conn = segdbDesc->conn;
 	
-	write_stderr("QEWriter_HaveInfo = %d",conn->QEWriter_HaveInfo);
+	write_stderr("QEWriter_HaveInfo = %d \n",conn->QEWriter_HaveInfo);
 
-	if (conn->QEWriter_HaveInfo)
+	if (conn && conn->QEWriter_HaveInfo)
 	{
 #if 0
-		if (conn)
 		write_stderr("Thread %u: %s -> Collected QE Writer transaction info (segment %d (%s), DistributedTransactionId = %u, CommandId = %u, pRes->QEDirty = %s, dispatchResult->QEDirty = %s) \n", 
 			mythread(), segdbDesc->whoami,
 			segdbDesc->segment_database_info->segindex,

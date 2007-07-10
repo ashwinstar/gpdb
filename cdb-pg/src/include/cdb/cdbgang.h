@@ -109,7 +109,7 @@ extern bool
 cleanupGang(Gang * gp);
 
 extern void
-disconnectAndDestroyGang(Gang * gp);
+disconnectAndDestroyGangById(int gang_id);
 
 /*
  * cdbgang_parse_gpqeid_params
