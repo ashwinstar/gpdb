@@ -46,17 +46,17 @@ select row_number() over (w), * from sale
 order by 1 desc
 window w as (); --error - window can't follow order by
 
-select * from customer
+select  count(*) over (w2) from customer
 window
     w1 as (),
     w2 as (w1 partition by cn); --error - can't partition if referencing ordering window
 
-select * from customer
+select count(*) over (w2) from customer
 window
     w1 as (partition by a order by b),
     w2 as (w1 order by cn); --error - can't reorder the ordering window
 
-select * from customer
+select  count(*) over (w2) from customer
 window 
     w1 as (order by cn rows unbounded preceding),
     w2 as (w1); --error - ordering window can't specify framing
@@ -81,6 +81,7 @@ window w as (w order by cname); --error - can't refer to window in its definitio
 
 ---- 4 -- Partitioned, non-ordered window specifications -- OVER (PARTTION BY ...) ----
 
+-- !
 select row_number() over (partition by cn), cn, pn 
 from sale; -- mvd 2->1
 
@@ -170,6 +171,7 @@ select
     cn 
 from customer; -- mvd 4->1,3
 
+-- !
 select row_number() over (), a,b 
 from (
     select cn, count(*) 
@@ -200,6 +202,7 @@ window w as (partition by cn order by vn); -- mvd 1,4->2
 select cn,vn, rank() over (order by cn), rank() over (order by cn,vn) 
 from sale;
 
+-- !
 select cn,vn,pn, 
   row_number() over (partition by cn), 
   rank() over (partition by cn order by vn), 
@@ -236,6 +239,7 @@ from sale; -- mvd 1->2
 select cn, row_number() over (partition by cn) 
 from sale; -- mvd 1->2
 
+-- !
 select cn, vn, pn, 
     row_number() over (partition by cn), 
     row_number() over (partition by vn), 
@@ -248,6 +252,7 @@ from sale;
 select cn, vn, pn, avg(qty) over (partition by vn) 
 from sale;
 
+-- !
 select avg(qty) over (partition by cn) 
 from sale;
 
@@ -257,14 +262,17 @@ from sale;
 select dt, ntile(5) over (order by dt) 
 from sale;
 
+-- !
 select cn, dt, ntile(3) over (partition by cn order by dt) 
 from sale;
 
+-- !
 select cn, dt, 
     ntile(3) over (partition by cn order by dt), 
     sum(prc) over (order by cn, dt) 
 from sale;
 
+-- !
 select cn, dt, 
     percent_rank() over (partition by cn order by dt), 
     sum(prc) over (order by cn, dt) 
