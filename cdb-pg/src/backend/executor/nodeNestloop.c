@@ -394,7 +394,8 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
     /* CDB: Set flag if empty inner implies empty join result. */
     nlstate->nl_QuitIfEmptyInner = false;
     if (node->outernotreferencedbyinner &&
-        node->join.jointype != JOIN_INNER)
+        (node->join.jointype == JOIN_INNER ||
+		 node->join.jointype == JOIN_RIGHT))
         nlstate->nl_QuitIfEmptyInner = true;
 
 	NL1_printf("ExecInitNestLoop: %s\n",
