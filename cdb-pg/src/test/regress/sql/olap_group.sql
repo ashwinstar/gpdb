@@ -429,3 +429,4 @@ select vn,cn,dt,0,REGR_COUNT(prc*qty,prc*qty) FROM sale GROUP BY pn,qty,vn,cn,dt
 union all select vn,cn,dt,1,REGR_COUNT(prc*qty,prc*qty) FROM sale GROUP BY pn,qty,vn,cn,dt;
 select vn,cn,dt,GROUP_ID(), REGR_COUNT(prc*qty,prc*qty) FROM sale GROUP BY (pn,qty),(vn),ROLLUP((qty)),cn,dt;
 --end equivalent
+SELECT cn,pn,GROUPING(cn),GROUP_ID(), SUM(qty) FROM sale GROUP BY ROLLUP((cn,prc)),(cn,prc,dt),(pn,qty,vn) HAVING GROUP_ID() < 0 AND STDDEV_SAMP(pn) = 9.23708093366322 ORDER BY pn,cn desc;

@@ -30,7 +30,7 @@
 
 #include "cdb/cdbpath.h"        /* cdbpath_rows() */
 
-static List *distcols_in_groupclause(List *gc);
+static Bitmapset *distcols_in_groupclause(List *gc, Bitmapset *bms);
 
 /*
  * query_planner
@@ -366,15 +366,14 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 
 /*
  * distcols_in_groupclause -
- *     Return all distinct columns/expressions that appear in a GROUP BY clause.
+ *     Return all distinct tleSortGroupRef values in a GROUP BY clause.
  *
  * If this is a GROUPING_SET, this function is called recursively to
- * find the underlying columns/expressions.
+ * find the tleSortGroupRef values for underlying grouping columns.
  */
-static List *
-distcols_in_groupclause(List *gc)
+static Bitmapset *
+distcols_in_groupclause(List *gc, Bitmapset *bms)
 {
-	List *result = NIL;
 	ListCell *l;
 
 	foreach(l, gc)
@@ -390,26 +389,22 @@ distcols_in_groupclause(List *gc)
 
 		if (IsA(node, GroupClause))
 		{
-			if (!list_member(result, node))
-				result = lappend(result, node);
+			bms = bms_add_member(bms, ((GroupClause *)node)->tleSortGroupRef);
 		}
 
 		else if (IsA(node, List))
 		{
-			result = list_concat_unique(result,
-										distcols_in_groupclause((List *)node));
+			bms = distcols_in_groupclause((List *)node, bms);
 		}
 
 		else if (IsA(node, GroupingClause))
 		{
 			List *groupsets = ((GroupingClause *)node)->groupsets;
-			result =
-				list_concat_unique(result,
-								   distcols_in_groupclause(groupsets));
+			bms = distcols_in_groupclause(groupsets, bms);
 		}
 	}
 
-	return result;
+	return bms;
 }
 
 /*
@@ -420,13 +415,13 @@ distcols_in_groupclause(List *gc)
 int
 num_distcols_in_grouplist(List *gc)
 {
-	List *result = NIL;
+	Bitmapset *bms = NULL;
 	int num_cols;
 
-	result = distcols_in_groupclause(gc);
+	bms = distcols_in_groupclause(gc, bms);
 
-	num_cols = list_length(result);
-	list_free(result);
+	num_cols = bms_num_members(bms);
+	bms_free(bms);
 
 	return num_cols;
 }
