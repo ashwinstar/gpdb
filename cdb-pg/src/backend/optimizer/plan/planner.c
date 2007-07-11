@@ -175,7 +175,7 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 	 * apply_shareinput will fix shared_id, and change the DAG to a tree.
 	 */
 
-	result_plan = apply_shareinput(result_plan, parse); 
+	result_plan = apply_shareinput_dag_to_tree(result_plan, parse); 
 
 	/* final cleanup of the plan */
 	result_plan = set_plan_references_qry(result_plan, parse);
@@ -194,7 +194,7 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 		/* cdbparallelize may create additional slices that may affect share input.
 		 * need to mark material nodes that are split acrossed multi slices.
 		 */
-		result_plan = apply_shareinput_markslice(result_plan, parse);
+		result_plan = apply_shareinput_xslice(result_plan, parse);
 	}
 
 	/* restore state for outer planner, if any */

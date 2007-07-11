@@ -51,8 +51,12 @@ ShareInputNext(ShareInputScanState *node)
 	bool forward;
 	TupleTableSlot *slot;
 
-	ExprContext *econtext = node->ss.ps.ps_ExprContext;
 	ShareInputScan * sisc = (ShareInputScan *) node->ss.ps.plan;
+
+	ShareType share_type = sisc->share_type;
+	Material *sharedMaterial = NULL;
+	Sort *sharedSort = NULL;
+	
 
 	/* 
 	 * get state info from node
@@ -61,35 +65,61 @@ ShareInputNext(ShareInputScanState *node)
 	dir = estate->es_direction;
 	forward = ScanDirectionIsForward(dir);
 
+	Assert(sisc->share_type == SHARE_MATERIAL || sisc->share_type == SHARE_SORT);
+
 	/* if first time call, need to init underlying material node */
 	if(node->ts_state == NULL)
 	{
-		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, node->ss.ps.plan->underlying_share_id, false);
-		PlanState* snState = (PlanState *)snEntry->shareState;
 		
-		slot = ExecProcNode(snState);
-
-		if(node->share_type == SHARENODE_MATERIAL)
+		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, sisc->share_id, false); 
+		PlanState* snState = NULL;
+		
+		if(snEntry) 
 		{
-			Material *ma = (Material *) snState->plan;
-			if(ma->slice_mark == SliceMark_CrossSlice)
+			snState = (PlanState *)snEntry->shareState;
+			slot = ExecProcNode(snState);
+
+			Assert(snState->plan != NULL);
+
+			if(share_type == SHARE_MATERIAL)
 			{
-				char rwfile_prefix[60];
-				sisc_material_bufname(rwfile_prefix, sizeof(rwfile_prefix), ma->plan.shared_as_id);
-				sisc_material_wait(ma->plan.shared_as_id);
-				node->ts_state = tuplestore_begin_heap_file_readerwriter(rwfile_prefix, false);
+				sharedMaterial = (Material *) snState->plan;
+				Assert(IsA(sharedMaterial, Material));
+				Assert(sisc->share_id == sharedMaterial->share_id);
+				share_type = sharedMaterial->share_type;
 			}
 			else
 			{
-				node->ts_state = ((MaterialState *)snState)->tuplestorestate;
+				sharedSort = (Sort *) snState->plan;
+				Assert(IsA(sharedSort, Sort));
+				Assert(sisc->share_id == sharedSort->share_id);
+				/* We cannot share sort across slice yet */
+				Assert(sharedSort->share_type == SHARE_SORT);
 			}
+		}
+
+		if(share_type == SHARE_MATERIAL_XSLICE)
+		{
+			char rwfile_prefix[60];
+			sisc_material_bufname(rwfile_prefix, sizeof(rwfile_prefix), sisc->share_id);
+			
+			sisc_material_wait(sisc->share_id);
+			node->ts_state = tuplestore_begin_heap_file_readerwriter(rwfile_prefix, false);
+			tuplestore_begin_pos((Tuplestorestate *) node->ts_state, (TuplestorePos **)(&node->ts_pos));
+			tuplestore_rescan_pos((Tuplestorestate *) node->ts_state, (TuplestorePos *)node->ts_pos); 
+		}
+		else if(share_type == SHARE_MATERIAL)
+		{
+			Assert(snState != NULL && sharedMaterial != NULL);
+			node->ts_state = ((MaterialState *)snState)->tuplestorestate;
 
 			tuplestore_begin_pos((Tuplestorestate *) node->ts_state, (TuplestorePos **)(&node->ts_pos));
 			tuplestore_rescan_pos((Tuplestorestate *) node->ts_state, (TuplestorePos *)node->ts_pos); 
 		}
 		else 
 		{
-			Assert(node->share_type == SHARENODE_SORT);
+			Assert(sisc->share_type == SHARE_SORT);
+			Assert(sharedSort != NULL && snState != NULL);
 			node->ts_state = ((SortState *)snState)->tuplesortstate;
 			tuplesort_begin_pos((Tuplesortstate *) node->ts_state, (TuplesortPos **)(&node->ts_pos));
 			tuplesort_rescan_pos((Tuplesortstate *) node->ts_state, (TuplesortPos *)node->ts_pos);
@@ -98,13 +128,11 @@ ShareInputNext(ShareInputScanState *node)
 
 	slot = node->ss.ps.ps_ResultTupleSlot;
 
-	Assert(node->share_type == SHARENODE_MATERIAL || node->share_type == SHARENODE_SORT);
-
 	while(1)
 	{
 		bool gotOK = false;
 
-		if(node->share_type == SHARENODE_MATERIAL) 
+		if(share_type == SHARE_MATERIAL || share_type == SHARE_MATERIAL_XSLICE) 
 			gotOK = tuplestore_gettupleslot_pos( (Tuplestorestate *)node->ts_state, (TuplestorePos *)node->ts_pos, forward, slot);
 		else
 			gotOK = tuplesort_gettupleslot_pos((Tuplesortstate *)node->ts_state, (TuplesortPos *)node->ts_pos, forward, slot);
@@ -112,40 +140,11 @@ ShareInputNext(ShareInputScanState *node)
 		if(!gotOK)
 		{
 			/* tuplesort_gettupleslot_pos will clear the tuple, so no need to do ExecClearTuple */ 
-			if(node->share_type == SHARENODE_MATERIAL)
+			if(sisc->share_type == SHARE_MATERIAL)
 				return ExecClearTuple(slot);
-			else 
-				return slot;
 		}
 
-		if(sisc->hashDataTypes)
-		{
-			uint32 hval = 0;
-
-			Assert(node->cdbhash && node->hashExpr);
-			econtext->ecxt_outertuple = slot;
-			hval = evalHashKey(econtext, node->hashExpr,
-					sisc->hashDataTypes, node->cdbhash);
-
-			/* Check hval to see if it is for this segment.
-			 * The check works because the following assumption:
-			 * 	1. In Motion code, we determin targetRoute using sliceEntry->hashSegIdx.
-			 *  2. The hashSegIdx, is constructed makeDefaultSegIdxArray, which is simply
-			 * 		hashSegIdx[i] = i;
-			 *  3. targetRoute, is really an index into the conns (ml_ipc.c)
-			 *  4. which is really the Gp_segment
-			 *
-			 * All these are quite twisted way of saying hval == Gp_segment.  However, 
-			 * if the assumption changed, so should be changed here
-			 */
-			if(hval == Gp_segment)
-				return slot;
-		} 
-		else
-		{
-			Assert(!node->cdbhash && !node->hashExpr);
-			return slot;
-		}
+		return slot;
 	}
 
 	Assert(!"should not be here");
@@ -159,10 +158,8 @@ ShareInputNext(ShareInputScanState *node)
 ShareInputScanState *
 ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 {
-	ShareNodeEntry *snEntry;
 	ShareInputScanState *sisstate;
 	Plan *outerPlan;
-	PlanState* snState;	
 	TupleDesc tupDesc;
 
 	Assert(innerPlan(node) == NULL);
@@ -174,15 +171,6 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 	
 	sisstate->ts_state = NULL;
 	sisstate->ts_pos = NULL;
-
-	sisstate->hashExpr = NULL;
-	sisstate->cdbhash = NULL;
-
-	if(node->hashDataTypes)
-	{
-		sisstate->hashExpr = (List *) ExecInitExpr((Expr *) node->hashExpr, (PlanState *) sisstate);
-		sisstate->cdbhash = makeCdbHash(getgpsegmentCount(), HASH_FNV_1);
-	}
 
 	/* 
 	 * init child node.  
@@ -212,19 +200,14 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 	 */
 	ExecAssignResultTypeFromTL(&sisstate->ss.ps);
 
-	/* Assign scan type from shared node */
-	snEntry = ExecGetShareNodeEntry(estate, node->plan.underlying_share_id, false);
-	Assert(snEntry);
-	snState = (PlanState *) snEntry->shareState;
-	Assert(snState); 
-	if(IsA(snState, MaterialState))
-		sisstate->share_type = SHARENODE_MATERIAL;
-	else if(IsA(snState, SortState))
-		sisstate->share_type = SHARENODE_SORT;
-	else
-		Assert(!"Not supported share node");
+	{
+		bool hasoid;
+		if (!ExecContextForcesOids(&sisstate->ss.ps, &hasoid))
+			hasoid = false;
 
-	tupDesc = ExecGetResultType(snState);
+		tupDesc = ExecTypeFromTL(node->plan.targetlist, hasoid);
+	}
+		
 	ExecAssignScanType(&sisstate->ss, tupDesc);
 
 	sisstate->ss.ps.ps_ProjInfo = NULL;
@@ -249,6 +232,8 @@ ExecCountSlotsShareInputScan(ShareInputScan* node)
  */
 void ExecEndShareInputScan(ShareInputScanState *node)
 {
+	ShareInputScan *sisc = (ShareInputScan *) node->ss.ps.plan;
+
 	/* clean up tuple table */
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
@@ -260,7 +245,7 @@ void ExecEndShareInputScan(ShareInputScanState *node)
 	 * XXX Do we need to pfree the tuplestore_state and pos? 
 	 * XXX nodeMaterial.c does not, need to find out why
 	 */
-	if(node->share_type == SHARENODE_SORT)
+	if(sisc->share_type == SHARE_SORT)
 	{
 		if(node->ts_pos)
 		{
@@ -286,12 +271,13 @@ void ExecEndShareInputScan(ShareInputScanState *node)
  */
 void ExecShareInputScanMarkPos(ShareInputScanState *node)
 {
+	ShareInputScan *sisc = (ShareInputScan *) node->ss.ps.plan;
 	Assert(node->ts_state); 
 
-	if(node->share_type == SHARENODE_MATERIAL)
+	if(sisc->share_type == SHARE_MATERIAL)
 		tuplestore_markpos_pos((Tuplestorestate *) node->ts_state,
 			(TuplestorePos *) node->ts_pos);
-	else if(node->share_type == SHARENODE_SORT) 
+	else if(sisc->share_type == SHARE_SORT) 
 		tuplesort_markpos_pos((Tuplesortstate *)node->ts_state,
 				(TuplesortPos *) node->ts_pos);
 	else
@@ -304,12 +290,13 @@ void ExecShareInputScanMarkPos(ShareInputScanState *node)
  */
 void ExecShareInputScanRestrPos(ShareInputScanState *node)
 {
+	ShareInputScan *sisc = (ShareInputScan *) node->ss.ps.plan;
 	Assert(node->ts_state); 
 
-	if(node->share_type == SHARENODE_MATERIAL)
+	if(sisc->share_type == SHARE_MATERIAL)
 		tuplestore_restorepos_pos((Tuplestorestate *) node->ts_state,
 				(TuplestorePos *) node->ts_pos);
-	else if(node->share_type == SHARENODE_SORT) 
+	else if(sisc->share_type == SHARE_SORT) 
 		tuplesort_restorepos_pos((Tuplesortstate *) node->ts_state,
 				(TuplesortPos *) node->ts_pos);
 	else
@@ -322,13 +309,14 @@ void ExecShareInputScanRestrPos(ShareInputScanState *node)
  */
 void ExecShareInputScanReScan(ShareInputScanState *node, ExprContext *exprCtxt)
 {
+	ShareInputScan *sisc = (ShareInputScan *) node->ss.ps.plan;
 	Assert(node->ts_state);
 
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
-	if(node->share_type == SHARENODE_MATERIAL)
+	if(sisc->share_type == SHARE_MATERIAL)
 		tuplestore_rescan_pos((Tuplestorestate *) node->ts_state,
 				(TuplestorePos *) node->ts_pos);
-	else if (node->share_type == SHARENODE_SORT)
+	else if (sisc->share_type == SHARE_SORT)
 		tuplesort_rescan_pos((Tuplesortstate *)node->ts_state,
 				(TuplesortPos *) node->ts_pos);
 	else

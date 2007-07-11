@@ -46,6 +46,7 @@ ExecSort(SortState *node)
 	ScanDirection dir;
 	Tuplesortstate *tuplesortstate;
 	TupleTableSlot *slot;
+	Sort 		*plannode;
 
 	/*
 	 * get state info from node
@@ -56,6 +57,7 @@ ExecSort(SortState *node)
 	estate = node->ss.ps.state;
 	dir = estate->es_direction;
 	tuplesortstate = (Tuplesortstate *) node->tuplesortstate;
+	plannode = (Sort *) node->ss.ps.plan;
 
 	/*
 	 * If first time through, read all tuples from outer plan and pass them to
@@ -64,7 +66,6 @@ ExecSort(SortState *node)
 
 	if (!node->sort_Done)
 	{
-		Sort	   *plannode = (Sort *) node->ss.ps.plan;
 		PlanState  *outerNode;
 		TupleDesc	tupDesc;
 
@@ -180,7 +181,7 @@ ExecSort(SortState *node)
 	}
 
 	/* for share input, do not need to return any tuple */
-	if(node->ss.ps.plan->shared_as_id >= 0)
+	if(plannode->share_type != SHARE_NOTSHARED) 
 		return NULL;
 
 	SO1_printf("ExecSort: %s\n",
@@ -229,7 +230,7 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 										 EXEC_FLAG_MARK)) != 0;
 
 	/* If the sort is shared, we need random access */
-	if(node->plan.shared_as_id >= 0)
+	if(node->share_type != SHARE_NOTSHARED) 
 		sortstate->randomAccess = true;
 
 	sortstate->sort_Done = false;
@@ -300,9 +301,9 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	ExecAssignScanTypeFromOuterPlan(&sortstate->ss);
 	sortstate->ss.ps.ps_ProjInfo = NULL;
 
-	if(node->plan.shared_as_id >= 0) 
+	if(node->share_type != SHARE_NOTSHARED)
 	{
-		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, node->plan.shared_as_id, true);
+		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, node->share_id, true);
 		snEntry->sharePlan = (Node *)node;
 		snEntry->shareState = (Node *)sortstate;
 	}

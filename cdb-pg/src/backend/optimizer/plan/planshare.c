@@ -12,6 +12,7 @@
 #include "optimizer/paths.h"
 #include "optimizer/planmain.h"
 #include "optimizer/tlist.h"
+#include "optimizer/subselect.h"
 #include "optimizer/planshare.h"
 
 #include "cdb/cdbgroup.h"					/* cdbpathlocus_collocates() */
@@ -51,7 +52,6 @@ Plan *condition_input(
 	List *sort_pathkeys = NULL;	
 	
 	Assert( input_plan);
-	AssertImply( !input_plan->flow, IsA(input_plan, Motion) );
 	Assert( !CdbPathLocus_IsNull(input_locus));
 	Assert( pathkeys_ptr && (*pathkeys_ptr == NIL || IsA(*pathkeys_ptr, List)) );
 	Assert( iSharePlan);
@@ -59,13 +59,13 @@ Plan *condition_input(
 	if(iSharePlan->newplan_for_subplan)
 		new_plan = (*(iSharePlan->newplan_for_subplan))(iSharePlan->ctxt, root, input_plan);
 	else
-		new_plan = input_plan;
+		new_plan = (Plan *) input_plan;
 
 	pathkeys = *pathkeys_ptr;
 	
 	if ( sortclause != NIL )
 	{
-		sort_pathkeys = make_pathkeys_for_sortclauses(sortclause, input_plan->targetlist);
+		sort_pathkeys = make_pathkeys_for_sortclauses(sortclause, new_plan->targetlist);
 		sort_pathkeys = canonicalize_pathkeys(root, sort_pathkeys);
 		Assert(sort_pathkeys != NULL);
 	}
@@ -96,7 +96,7 @@ Plan *condition_input(
 			if ( 0 >= n-- ) break;
 			dist_keys = lappend(dist_keys, lfirst(lc));
 		}
-		dist_pathkeys = make_pathkeys_for_sortclauses(dist_keys, input_plan->targetlist);
+		dist_pathkeys = make_pathkeys_for_sortclauses(dist_keys, new_plan->targetlist);
 		dist_pathkeys = canonicalize_pathkeys(root, dist_pathkeys);
 		
 		if ( ! cdbpathlocus_collocates(input_locus, dist_pathkeys ) )
@@ -105,7 +105,7 @@ Plan *condition_input(
 			foreach (lc, dist_keys)
 			{
 				SortClause *sc = (SortClause*)lfirst(lc);
-				TargetEntry *tle =  get_sortgroupclause_tle(sc,input_plan->targetlist);
+				TargetEntry *tle =  get_sortgroupclause_tle(sc, new_plan->targetlist);
 				dist_exprs = lappend(dist_exprs, tle->expr);
 			}
 		}
@@ -162,7 +162,7 @@ static Plan * add_sort_motion_single_simple(
 		new_plan->total_cost += motion_cost_per_row * new_plan->plan_rows;
 	}
 
-	Assert(get_plan_flow(new_plan));
+	Assert(new_plan->flow); 
 	return new_plan;
 }
 
@@ -190,7 +190,7 @@ static Plan * add_sort_motion_dist_simple(
 		new_plan = (Plan *) make_motion_hash(root, new_plan, dist_exprs);
 		new_plan->total_cost += motion_cost_per_row * new_plan->plan_rows;
 		*pathkeys_ptr = NIL; /* no longer sorted */
-		Assert(get_plan_flow(new_plan));
+		Assert(new_plan->flow);
 	}
 
 	if(sortclause != NIL)
@@ -214,31 +214,43 @@ ISHAREPLAN shareplan_simple =
 	NULL, NULL /* No need for context */
 };
 
-static ShareInputScan *make_shareinputscan(Plan *inputplan)
+static ShareInputScan *make_shareinputscan(Plan *inputplan) 
 {
 	ShareInputScan *sisc = NULL;
-	Assert(IsA(inputplan, Material) || IsA(inputplan, Motion));
-	Assert(inputplan->shared_as_id == ShareNodeId_Shared);
-	
+	Plan *oldplan = NULL;
+
 	sisc = makeNode(ShareInputScan);
 
-	sisc->plan.targetlist = copyObject(inputplan->targetlist);
+	oldplan = (Plan *) inputplan;
+	Assert(IsA(inputplan, Material) || IsA(inputplan, Sort));
+
+	sisc->plan.targetlist = copyObject(oldplan->targetlist);
+	sisc->plan.lefttree = oldplan;
+	sisc->plan.flow = NULL;
+
+	if(IsA(inputplan, Material))
+	{
+		Material *ma = (Material *) inputplan;
+		Assert(ma->share_type == SHARE_MATERIAL && ma->share_id >= 0);
+		sisc->share_type = SHARE_MATERIAL;
+		sisc->share_id = ma->share_id;
+	}
+	else 
+	{
+		Sort *s = (Sort *) inputplan;
+		Assert(s->share_type == SHARE_SORT && s->share_id >= 0);
+		sisc->share_type = SHARE_SORT;
+		sisc->share_id = s->share_id;
+	}
+
 	sisc->plan.qual = NIL;
-	sisc->plan.lefttree = inputplan;
 	sisc->plan.righttree = NULL;
 
-	sisc->plan.startup_cost = inputplan->startup_cost;
-	sisc->plan.total_cost = inputplan->total_cost;
-	sisc->plan.plan_rows = inputplan->plan_rows;
-	sisc->plan.plan_width = inputplan->plan_width;
+	sisc->plan.startup_cost = oldplan->startup_cost;
+	sisc->plan.total_cost = oldplan->total_cost;
+	sisc->plan.plan_rows = oldplan->plan_rows;
+	sisc->plan.plan_width = oldplan->plan_width;
 	
-	/* Set up shared id. */
-	sisc->plan.sliceNum = -1;
-	sisc->plan.shared_as_id = ShareNodeId_NotShared;
-	sisc->plan.underlying_share_id = ShareNodeId_Shared; 
-
-	sisc->hashExpr = NULL;
-	sisc->hashDataTypes = NULL;
 	return sisc;
 }
 
@@ -249,13 +261,13 @@ static ShareInputScan *make_shareinputscan(Plan *inputplan)
  */
 static Plan * newplan_for_subplan_share_ms(void *ctxt, PlannerInfo *root, Plan *inputplan)
 {
-	ShareInputScan *sisc = make_shareinputscan(inputplan);
+	ShareInputScan *sisc = make_shareinputscan(inputplan); 
 	
 	/* no need for context */
 	Assert(!ctxt);
 
 	/* Copy the flow.  ShareInputScan will not change the flow of its subplan */
-	sisc->plan.flow = copyObject(get_plan_flow(inputplan));
+	sisc->plan.flow = copyObject(inputplan->flow); 
 	return (Plan *) sisc;
 }
 
@@ -268,6 +280,7 @@ ISHAREPLAN shareplan_ms =
 	NULL, NULL /* no need for context */
 };
 
+#if 0
 /* Routine and context for share Motion */
 typedef struct ShareMotionContextSlice
 {
@@ -323,9 +336,9 @@ static ShareMotionContextSlice *find_smc_dist_slice(ShareMotionContext *ctxt, Li
 /* Create new plan for subplan. For share motion, we add a ShareInputScan on top.
  * At this point, we do not know anything about the flow yet.   
  */
-static Plan * newplan_for_subplan_share_motion(void *ctxt, PlannerInfo *root, Plan *inputplan)
+static Plan * newplan_for_subplan_share_motion(void *ctxt, PlannerInfo *root, Node *inputplan)
 {
-	ShareInputScan *sisc = make_shareinputscan(inputplan);
+	ShareInputScan *sisc = make_shareinputscan(inputplan, false);
 
 	Assert(ctxt);
 	return (Plan *) sisc; 
@@ -493,8 +506,12 @@ ISHAREPLAN shareplan_motion =
 	init_share_motion_context, &share_motion_context,
 };
 
-/* Determine the sharing type and put a node on top if necessary. */
-ShareNode_ShareType add_sharenode(
+#endif
+
+/* XXX Just add a material.  Let's just do share material for now.  Once
+ * I fixed the deadlock issue, we will revisist share sort
+ */
+ShareType add_sharenode(
 		PlannerInfo *root, 
 		Plan **subplan,
 		List **subplan_pathkeys,
@@ -505,153 +522,50 @@ ShareNode_ShareType add_sharenode(
 		GET_SORT_CLAUSE fget_sc
 		)
 {
-	int i;
-	ShareNode_ShareType stype = SHARENODE_UNKNOWN;
-	List *saved_sortclause = NULL;
-	List *saved_pathkeys = NULL;
+	Query *qry = root->parse;
 
 	Assert(subplan && *subplan);
 	Assert(ctxt);
+	Assert(qry); 
 
-	if(IsA(*subplan, Motion))
+	if(!IsA(*subplan, Material))
 	{
-		/* If the subplan is a motion, we assume that the caller knows what to do
-		 * about moiton, we just put a material node on top
-		 */
 		Plan *oldplan = *subplan; 
 		Path matpath;
-#ifdef DEBUG
-		Motion *motion = (Motion *) motion;
-		Assert(list_length(motion->sliceEntries) == 1);
-		Assert(get_plan_flow(oldplan));
-#endif
+		Material *ma = make_material(oldplan);
+		*subplan = (Plan *) ma;
 
-		*subplan = (Plan *) make_material(oldplan);
 		cost_material(&matpath, oldplan->total_cost, oldplan->plan_rows, oldplan->plan_width);
 		(*subplan)->startup_cost = matpath.startup_cost;
 		(*subplan)->total_cost = matpath.total_cost;
 		(*subplan)->plan_rows = oldplan->plan_rows;
 		(*subplan)->plan_width = oldplan->plan_width;
 		(*subplan)->dispatch = oldplan->dispatch;
-		(*subplan)->flow = copyObject(get_plan_flow(oldplan));
-		(*subplan)->shared_as_id = ShareNodeId_Shared;
+		(*subplan)->flow = copyObject(oldplan->flow); 
+
+		ma->share_type = SHARE_MATERIAL;
+		ma->share_id = list_length(qry->sharedNodes); 
+		qry->sharedNodes = lappend(qry->sharedNodes, *subplan);
 
 		/* XXX Do we need to do parameter kluge ? */
 		/*
 		(*subplan)->extParam = bms_copy(oldplan->extParam);
 		(*subplan)->allParam = bms_cppy(oldplan->allParam);
 		*/
-		return SHARENODE_MATERIAL;
-	}
-
-	for(i=0; i<nsharer; ++i)
-	{
-		int pklen = fget_pklen(ctxt, i);
-		List *sc = fget_sc(ctxt, i);
-
-		List* sort_pathkeys = NIL;
-
-		if(sc != NIL)
-		{
-			sort_pathkeys = make_pathkeys_for_sortclauses(sc, (*subplan)->targetlist);
-			sort_pathkeys = canonicalize_pathkeys(root, sort_pathkeys);
-		}
-
-		if(pklen == 0)
-		{
-			if(CdbPathLocus_IsPartitioned(subplan_locus))
-			{
-				*subplan = (Plan *) make_motion_multiplex(root, *subplan);
-				stype = SHARENODE_MATERIAL;
-				break;
-			}
-
-			if(stype != SHARENODE_MATERIAL && sc != NIL)
-			{
-				bool fOrderGood = pathkeys_contained_in(sort_pathkeys, *subplan_pathkeys);
-				if(fOrderGood)
-					stype = SHARENODE_MATERIAL;
-				else
-				{
-					saved_sortclause = sc;
-					saved_pathkeys = sort_pathkeys;
-					stype = SHARENODE_SORT;
-				}
-			}
-		}
-		else
-		{
-			List *dist_keys = NIL;
-			List *dist_pathkeys = NIL;
-			ListCell *lc;
-			int n = pklen;
-
-			foreach(lc, sc)
-			{
-				if(0>=n--) break;
-				dist_keys = lappend(dist_keys, lfirst(lc));
-			}
-			dist_pathkeys = make_pathkeys_for_sortclauses(dist_keys, (*subplan)->targetlist);
-			dist_pathkeys = canonicalize_pathkeys(root, dist_pathkeys);
-
-			if(! cdbpathlocus_collocates(subplan_locus, dist_pathkeys))
-			{
-				/* Wrong hash path keys, need to redistribute */
-				*subplan = (Plan *) make_motion_multiplex(root, *subplan);
-				stype = SHARENODE_MATERIAL;
-				break;
-			}
-
-			if(stype != SHARENODE_MATERIAL && sc != NIL)
-			{
-				bool fOrderGood = pathkeys_contained_in(sort_pathkeys, *subplan_pathkeys);
-				if(fOrderGood)
-					stype = SHARENODE_MATERIAL;
-				else
-				{
-					saved_sortclause = sc;
-					saved_pathkeys = sort_pathkeys;
-					stype = SHARENODE_SORT;
-				}
-			}
-		}
-	}
-
-	if(stype == SHARENODE_UNKNOWN)
-		stype = SHARENODE_MATERIAL;
-
-	if(stype == SHARENODE_MATERIAL)
-	{
-		Plan *oldplan = *subplan; 
-		Path matpath;
-
-		*subplan = (Plan *) make_material(oldplan);
-		cost_material(&matpath, oldplan->total_cost, oldplan->plan_rows, oldplan->plan_width);
-		(*subplan)->startup_cost = matpath.startup_cost;
-		(*subplan)->total_cost = matpath.total_cost;
-		(*subplan)->plan_rows = oldplan->plan_rows;
-		(*subplan)->plan_width = oldplan->plan_width;
-		(*subplan)->dispatch = oldplan->dispatch;
-		(*subplan)->flow = copyObject(get_plan_flow(oldplan)); 
-		(*subplan)->shared_as_id = ShareNodeId_Shared;
-
-		/* XXX Do we need to do parameter kluge ? */
-		/*
-		(*subplan)->extParam = bms_copy(oldplan->extParam);
-		(*subplan)->allParam = bms_cppy(oldplan->allParam);
-		*/
+		return SHARE_MATERIAL;
 	}
 	else
 	{
-		Plan *oldplan = *subplan;
-		Assert(stype == SHARENODE_SORT);
+		Material *ma = (Material *) *subplan;
+		Assert(ma->share_type == SHARE_NOTSHARED);
 
-		*subplan = (Plan *) make_sort_from_sortclauses(root, saved_sortclause, oldplan);
-		(*subplan)->shared_as_id = ShareNodeId_Shared;
-		*subplan_pathkeys = saved_pathkeys;
-		mark_sort_locus(*subplan);
+		ma->share_type = SHARE_MATERIAL;
+
+		ma->share_id = list_length(qry->sharedNodes); 
+		qry->sharedNodes = lappend(qry->sharedNodes, *subplan);
+
+		return SHARE_MATERIAL;
 	}
 
-	return stype;
+	return SHARE_NOTSHARED;
 }
-

@@ -49,7 +49,6 @@ typedef struct ISHAREPLAN
 
 extern ISHAREPLAN shareplan_simple; 
 extern ISHAREPLAN shareplan_ms; 
-extern ISHAREPLAN shareplan_motion; 
 
 /* Add a shared node on top of the common subplan and return the sharing type
  * Params:
@@ -61,7 +60,7 @@ extern ISHAREPLAN shareplan_motion;
  *  nsharer: number of sharer.
  *  fget_pklen and fget_sc: routines to retrieve info from context
  */
-extern ShareNode_ShareType add_sharenode(
+extern ShareType add_sharenode(
 		PlannerInfo *root, 
 		Plan **subplan,
 		List **subplan_pathkeys,

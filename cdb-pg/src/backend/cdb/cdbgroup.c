@@ -540,7 +540,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	 */
     result_plan = plan_pushdown_tlist(result_plan, sub_tlist);
 
-    Assert(get_plan_flow(result_plan)); 
+    Assert(result_plan->flow); 
     
 	/* Account for the cost of evaluation of the sub_tlist. */
 	cost_qual_eval(&tlist_cost, sub_tlist);
@@ -599,7 +599,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 			break; /* Never */
 	}
 	
-    Assert(get_plan_flow(result_plan)); 
+    Assert(result_plan->flow); 
     
     /*
 	 * Insert AGG or GROUP node if needed, plus an explicit sort step
@@ -763,7 +763,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
      * (In such cases we require the next-to-top node to have a Flow node 
      * from which we can obtain the distribution info.)
      */
-    if (!get_plan_flow(result_plan))
+    if (!result_plan->flow)
 	{
 		Assert(!IsA(result_plan, Motion)); 
         result_plan->flow = pull_up_Flow(result_plan, 
@@ -1688,7 +1688,7 @@ void adapt_flow_to_targetlist(Plan *plan)
 	Flow *flow;
 
 	Assert(plan != NULL);
-	flow = get_plan_flow(plan);
+	flow = plan->flow;
 
 	Assert(flow); 
 

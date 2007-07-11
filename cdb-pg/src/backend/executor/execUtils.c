@@ -1311,10 +1311,11 @@ ShutdownExprContext(ExprContext *econtext)
 ShareNodeEntry *
 ExecGetShareNodeEntry(EState* estate, int shareidx, bool fCreate)
 {
-	Assert(IS_VALID_SHARE_ID(shareidx));
+	Assert(shareidx >= 0);
 	if(!fCreate)
 	{
-		Assert(list_length(estate->es_sharenode) > shareidx);
+		if(shareidx >= list_length(estate->es_sharenode))
+			return NULL;
 	}
 	else
 	{

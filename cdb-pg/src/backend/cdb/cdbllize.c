@@ -403,7 +403,7 @@ prescan_walker(Node *node, PlanProfile * context)
 					return true;
 
                 Assert(subplan->plan->flow &&
-                       subplan->plan->flow->flotype != FLOW_UNDEFINED);
+						subplan->plan->flow->flotype != FLOW_UNDEFINED);
 
 				/*
                  * Subquery result needs to be brought back to the QD.
@@ -557,13 +557,7 @@ pull_up_Flow(Plan *plan, Plan *subplan, bool withSort)
 
 	Insist(subplan);
 
-	if(plan->sliceNum > 0)
-	{
-		Assert(IsA(subplan, Motion));
-		model_flow = get_motion_flow((Motion *) subplan, plan->sliceNum);
-	}
-	else
-		model_flow = get_plan_flow(subplan);
+	model_flow = subplan->flow;
 
 	Insist(model_flow);
 
@@ -776,7 +770,7 @@ repartitionPlan(Plan *plan, bool live, bool stable, bool rescannable, List *hash
 {
     Movement    req_move = MOVEMENT_REPARTITION;
 
-    Assert(plan->flow);
+    Assert(plan->flow); 
     Assert(plan->flow->flotype == FLOW_PARTITIONED ||
            plan->flow->flotype == FLOW_SINGLETON);
 
@@ -807,7 +801,7 @@ adjustPlanFlow(Plan        *plan,
                Movement     req_move,
                List        *hashExpr)
 {
-    Flow       *flow = plan->flow;
+    Flow       *flow = plan->flow; 
     bool        disorder = false;
     bool		recur = false;
     bool        reorder = false;

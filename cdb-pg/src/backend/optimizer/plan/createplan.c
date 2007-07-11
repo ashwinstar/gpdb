@@ -723,8 +723,6 @@ create_unique_plan(CreatePlanContext *ctx, UniquePath *best_path)
         limitplan->plan.qual = NIL;
         limitplan->plan.lefttree = subplan;
         limitplan->plan.righttree = NULL;
-		limitplan->plan.shared_as_id = ShareNodeId_NotShared;
-		limitplan->plan.underlying_share_id = ShareNodeId_NotShared;
         limitplan->limitOffset = NULL;
         limitplan->limitCount = (Node *)makeConst(INT8OID, sizeof(int64),
                                                   Int64GetDatum(1),
@@ -2891,10 +2889,6 @@ make_seqscan(List *qptlist,
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
 
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
-
 	node->scanrelid = scanrelid;
 
 	return node;
@@ -2919,10 +2913,6 @@ make_externalscan(List *qptlist,
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
 	
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
-
 	/* external specifictions */
 	node->uriList = urilist;
 	node->fmtOpts = fmtopts;
@@ -2959,10 +2949,6 @@ make_indexscan(List *qptlist,
 	node->indexsubtype = indexsubtype;
 	node->indexorderdir = indexscandir;
 
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
-
 	return node;
 }
 
@@ -2989,10 +2975,6 @@ make_bitmap_indexscan(Index scanrelid,
 	node->indexstrategy = indexstrategy;
 	node->indexsubtype = indexsubtype;
 
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
-
 	return node;
 }
 
@@ -3014,10 +2996,6 @@ make_bitmap_heapscan(List *qptlist,
 	node->scan.scanrelid = scanrelid;
 	node->bitmapqualorig = bitmapqualorig;
 
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
-
 	return node;
 }
 
@@ -3037,10 +3015,6 @@ make_tidscan(List *qptlist,
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
 	node->tidquals = tidquals;
-
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
 
 	return node;
 }
@@ -3069,10 +3043,6 @@ make_subqueryscan(List *qptlist,
 	node->scan.scanrelid = scanrelid;
 	node->subplan = subplan;
 
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
-
 	return node;
 }
 
@@ -3091,10 +3061,6 @@ make_functionscan(List *qptlist,
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
 
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
-
 	return node;
 }
 
@@ -3112,10 +3078,6 @@ make_valuesscan(List *qptlist,
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
-
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
 
 	return node;
 }
@@ -3155,10 +3117,6 @@ make_append(List *appendplans, bool isTarget, List *tlist)
 	node->appendplans = appendplans;
 	node->isTarget = isTarget;
 
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
-
 	return node;
 }
 
@@ -3175,10 +3133,6 @@ make_bitmap_and(List *bitmapplans)
 	plan->righttree = NULL;
 	node->bitmapplans = bitmapplans;
 
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
-
 	return node;
 }
 
@@ -3194,10 +3148,6 @@ make_bitmap_or(List *bitmapplans)
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
 	node->bitmapplans = bitmapplans;
-
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
 
 	return node;
 }
@@ -3221,10 +3171,6 @@ make_nestloop(List *tlist,
 	node->join.jointype = jointype;
 	node->join.joinqual = joinclauses;
 
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
-
     node->outernotreferencedbyinner = false;    /*CDB*/
 
 	return node;
@@ -3237,11 +3183,6 @@ make_adaptivenestloop(List     *tlist,
                       int       outer_lookahead_rows)
 {
 	AdaptiveNestLoop	*node = makeNode(AdaptiveNestLoop);
-	Plan *plan = &(node->plan);
-
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
 
 	node->plan.targetlist = tlist;
 	node->plan.qual = NIL;
@@ -3274,10 +3215,6 @@ make_hashjoin(List *tlist,
 	node->join.jointype = jointype;
 	node->join.joinqual = joinclauses;
 
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
-
 	return node;
 }
 
@@ -3298,10 +3235,6 @@ make_hash(Plan *lefttree)
 	plan->qual = NIL;
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
-
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
 
 	return node;
 }
@@ -3326,10 +3259,6 @@ make_mergejoin(List *tlist,
 	node->mergeclauses = mergeclauses;
 	node->join.jointype = jointype;
 	node->join.joinqual = joinclauses;
-
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
 
 	return node;
 }
@@ -3366,9 +3295,8 @@ make_sort(PlannerInfo *root, Plan *lefttree, int numCols,
 	node->limitCount  = NULL; /* CDB */
 	node->noduplicates = false; /* CDB */
 
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
+	node->share_type = SHARE_NOTSHARED;
+	node->share_id = -1;
 
 	return node;
 }
@@ -3771,13 +3699,10 @@ make_material(Plan *lefttree)
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
 
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
-
 	node->cdb_strict = false;
-	node->slice_mark = SliceMark_NotMarked;
-	node->driver_slice = SliceMark_NotMarked;
+	node->share_type = SHARE_NOTSHARED;
+	node->share_id = -1;
+	node->driver_slice = -1; 
 
 	return node;
 }
@@ -3883,10 +3808,6 @@ make_agg(PlannerInfo *root, List *tlist, List *qual,
 
 	plan->startup_cost = agg_path.startup_cost;
 	plan->total_cost = agg_path.total_cost;
-
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
 
 
 	/*
@@ -3994,10 +3915,6 @@ make_group(PlannerInfo *root,
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
 
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
-
 	return node;
 }
 
@@ -4044,10 +3961,6 @@ Window *make_window(PlannerInfo *root, List *tlist,
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
 
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
-
 	return node;	
 }
 
@@ -4086,10 +3999,6 @@ make_unique(Plan *lefttree, List *distinctList)
 	plan->qual = NIL;
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
-
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
 
 	/*
 	 * convert SortClause list into array of attr indexes, as wanted by exec
@@ -4155,10 +4064,6 @@ make_setop(SetOpCmd cmd, Plan *lefttree,
 	plan->qual = NIL;
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
-
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
 
 	/*
 	 * convert SortClause list into array of attr indexes, as wanted by exec
@@ -4262,10 +4167,6 @@ make_limit(Plan *lefttree, Node *limitOffset, Node *limitCount,
 		pSort->limitCount  = copyObject(limitCount);
 	}
 
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
-
 	return node;
 }
 
@@ -4310,10 +4211,6 @@ make_result(List *tlist,
 	plan->lefttree = subplan;
 	plan->righttree = NULL;
 	node->resconstantqual = resconstantqual;
-
-	plan->sliceNum = -1;
-	plan->shared_as_id = ShareNodeId_NotShared;
-	plan->underlying_share_id = ShareNodeId_NotShared;
 
 	return node;
 }

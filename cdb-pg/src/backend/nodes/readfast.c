@@ -2391,7 +2391,9 @@ _readMaterial(const char ** str)
 	READ_LOCALS(Material);
 
     READ_BOOL_FIELD(cdb_strict);
-	READ_INT_FIELD(slice_mark);
+
+	READ_ENUM_FIELD(share_type, ShareType);
+	READ_INT_FIELD(share_id);
 	READ_INT_FIELD(driver_slice);
 
     readPlanInfo(str, (Plan *)local_node);
@@ -2407,8 +2409,8 @@ _readShareInputScan(const char ** str)
 {
 	READ_LOCALS(ShareInputScan);
 
-	READ_NODE_FIELD(hashExpr);
-	READ_NODE_FIELD(hashDataTypes);
+	READ_ENUM_FIELD(share_type, ShareType);
+	READ_INT_FIELD(share_id);
 
 	readPlanInfo(str, (Plan *)local_node);
 
@@ -2437,6 +2439,9 @@ _readSort(const char ** str)
 	READ_NODE_FIELD(limitOffset);
 	READ_NODE_FIELD(limitCount);
 	READ_BOOL_FIELD(noduplicates);
+
+	READ_ENUM_FIELD(share_type, ShareType);
+	READ_INT_FIELD(share_id);
 
 	READ_DONE();
 }
@@ -2531,29 +2536,6 @@ _readFlow(const char ** str)
 	READ_DONE();
 }
 
-/* _readMotionSliceEntry */
-static MotionSliceEntry *
-_readMotionSliceEntry(const char ** str)
-{
-	READ_LOCALS(MotionSliceEntry);
-
-	READ_ENUM_FIELD(motionType, MotionType);  
-	Assert(local_node->motionType == MOTIONTYPE_FIXED || local_node->motionType == MOTIONTYPE_HASH);
-
-	READ_INT_FIELD(numHashSegs);
-	READ_INT_ARRAY(hashSegIdx, numHashSegs, int);
-
-	READ_NODE_FIELD(hashExpr);
-	READ_NODE_FIELD(hashDataTypes);
-
-	READ_INT_FIELD(numOutputSegs);
-	READ_INT_ARRAY(outputSegIdx, numOutputSegs, int);
-
-	READ_NODE_FIELD(flow);
-
-	READ_DONE();
-}
-
 /*
  * _readMotion
  */
@@ -2563,6 +2545,10 @@ _readMotion(const char ** str)
 	READ_LOCALS(Motion);
 
 	READ_INT_FIELD(motionID);
+	READ_ENUM_FIELD(motionType, MotionType);  
+	
+	Assert(local_node->motionType == MOTIONTYPE_FIXED || local_node->motionType == MOTIONTYPE_HASH);
+
 	READ_BOOL_FIELD(sendToSecondary);
 	READ_BOOL_FIELD(sendSorted);
 	
@@ -2583,7 +2569,15 @@ _readMotion(const char ** str)
     	}
     }
 
-	READ_NODE_FIELD(sliceEntries);
+	READ_INT_FIELD(numHashSegs);
+	READ_INT_ARRAY(hashSegIdx, numHashSegs, int);
+
+	READ_NODE_FIELD(hashExpr);
+	READ_NODE_FIELD(hashDataTypes);
+
+	READ_INT_FIELD(numOutputSegs);
+	READ_INT_ARRAY(outputSegIdx, numOutputSegs, int);
+
 
 	READ_INT_FIELD(numSortCols);
 	READ_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
@@ -2713,10 +2707,6 @@ void readPlanInfo(const char ** str, Plan *local_node)
      *      flow
      *      dispatch
      */
-
-	READ_INT_FIELD(sliceNum);
-	READ_INT_FIELD(shared_as_id);
-	READ_INT_FIELD(underlying_share_id);
 }
 
 void readJoinInfo(const char ** str, Join *local_node)
@@ -2981,9 +2971,6 @@ readNodeBinary(const char ** str)
 				break;
 			case T_Motion:
 				return_value = _readMotion(str);
-				break;
-			case T_MotionSliceEntry: 
-				return_value = _readMotionSliceEntry(str);
 				break;
 			case T_Alias:
 				return_value = _readAlias(str);

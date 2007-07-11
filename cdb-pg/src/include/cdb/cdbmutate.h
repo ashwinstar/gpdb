@@ -32,13 +32,12 @@ extern Motion *make_hashed_motion(Plan *lefttree, bool sendToSecondary,
 
 extern Motion *make_broadcast_motion(Plan *lefttree, bool sendToSecondary,
                                      int numInputSegs);
-extern Motion *make_multiplex_motion(Plan *lefttree, int numInputSegs);
 
 extern void add_slice_to_motion(Motion *m,
 		MotionType motionType, List *hashExpr, 
 		int numOutputSegs, int *outputSegIdx 
 		);
 
-extern Plan *apply_shareinput(Plan *plan, Query *query);
-extern Plan *apply_shareinput_markslice(Plan *plan, Query *query);
+extern Plan *apply_shareinput_dag_to_tree(Plan *plan, Query *query);
+extern Plan *apply_shareinput_xslice(Plan *plan, Query *query);
 #endif   /* CDBMUTATE_H */

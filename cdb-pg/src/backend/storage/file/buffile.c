@@ -220,7 +220,11 @@ BufFileCreateTemp_ReaderWriter(const char* fileName, bool isWriter)
 					fileFlags,
 					true, /* interXact */
 					isWriter /* del on close */);
-	Assert(pfile >= 0);
+
+	if(pfile < 0)
+	{
+		elog(ERROR, "BufFileCreateTmp_ReaderWriter failed to open tmp file");
+	}
 
 	file = makeBufFile(pfile);
 	file->isTemp = true;

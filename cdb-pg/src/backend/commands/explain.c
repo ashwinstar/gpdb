@@ -51,9 +51,6 @@ typedef struct ExplainState
     TupOutputState *tupOutputState; /* for sending output to client */
 	StringInfoData  outbuf;         /* the output buffer */
     StringInfoData  workbuf;        /* a scratch buffer */
-
-	/* Share input */
-	List 		*sharedNodes;		/* List of shared nodes */
 } ExplainState;
 
 static void ExplainOneQuery(Query *query, ExplainStmt *stmt,
@@ -372,8 +369,6 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
     es->showstatctx = NULL;
     es->deferredError = NULL;
     es->tupOutputState = tstate;
-
-	es->sharedNodes = queryDesc->parsetree->sharedNodes;
 
     /* Allocate output buffer and a scratch buffer. */
     MemoryContextSwitchTo(explaincxt);
@@ -914,10 +909,12 @@ explain_outNode(StringInfo str,
 			pname = "Values Scan";
 			break;
 		case T_ShareInputScan:
-			appendStringInfo(str, "ShareInputScan (share slice:id %d:%d)", 
-					currentSlice->sliceIndex,
-					plan->underlying_share_id);
-			pname = "";
+			{
+				ShareInputScan *sisc = (ShareInputScan *) plan;
+				appendStringInfo(str, "ShareInputScan (share slice:id %d:%d)", 
+						currentSlice->sliceIndex, sisc->share_id);
+				pname = "";
+			}
 			break;
 		case T_Material:
 			pname = "Materialize";
@@ -981,41 +978,29 @@ explain_outNode(StringInfo str,
 			{
 				Motion	   *pMotion = (Motion *) plan;
                 int         nSenders = pMotion->numInputSegs;
-				int 		nSlices = list_length(pMotion->sliceEntries);
 
 				int         nReceivers; 
 				bool        senderIsEntryDb = false;
 
-				if(nSlices == 1)
+				switch (pMotion->motionType)
 				{
-					MotionSliceEntry *motionSlice = (MotionSliceEntry *) linitial(pMotion->sliceEntries);
-
-					Assert(motionSlice);
-
-					switch (motionSlice->motionType)
-					{
-						case MOTIONTYPE_HASH:
-							nReceivers = motionSlice->numHashSegs;
-							pname = "Redistribute Motion";
-							break;
-						case MOTIONTYPE_FIXED:
-							nReceivers = motionSlice->numOutputSegs;
-							if (nReceivers == 0)
-							{
-								pname = "Broadcast Motion";
-								nReceivers = getgpsegmentCount();
-							}
-							else
-								pname = "Gather Motion";
-							break;
-						default:
-							pname = "Motion ???";
-							break;
-					}
-				}
-				else
-				{
-					pname = "MultiSlice Motion";
+					case MOTIONTYPE_HASH:
+						nReceivers = pMotion->numHashSegs;
+						pname = "Redistribute Motion";
+						break;
+					case MOTIONTYPE_FIXED:
+						nReceivers = pMotion->numOutputSegs;
+						if (nReceivers == 0)
+						{
+							pname = "Broadcast Motion";
+							nReceivers = getgpsegmentCount();
+						}
+						else
+							pname = "Gather Motion";
+						break;
+					default:
+						pname = "Motion ???";
+						break;
 				}
 
 				if(nSenders == 1 &&
@@ -1378,19 +1363,13 @@ explain_outNode(StringInfo str,
 				Motion	   *pMotion = (Motion *) plan;
                 SliceTable *sliceTable = planstate->state->es_sliceTable;
 
-				if(list_length(pMotion->sliceEntries) == 1)
-				{
-					MotionSliceEntry *motionSlice = (MotionSliceEntry *) linitial(pMotion->sliceEntries);
-					Assert(motionSlice);
-
-					if (pMotion->sendSorted || motionSlice->motionType == MOTIONTYPE_HASH)
-						show_motion_keys(plan,
-								motionSlice->hashExpr,
-								pMotion->numSortCols,
-								pMotion->sortColIdx,
-								"Merge Key",
-								str, indent, es);
-				}
+				if (pMotion->sendSorted || pMotion->motionType == MOTIONTYPE_HASH)
+					show_motion_keys(plan,
+							pMotion->hashExpr,
+							pMotion->numSortCols,
+							pMotion->sortColIdx,
+							"Merge Key",
+							str, indent, es);
 
                 /* Descending into a new slice. */
                 if (sliceTable)
@@ -1760,15 +1739,6 @@ show_grouping_keys(Plan        *plan,
     for (i = 0; i < indent; i++)
         appendStringInfoString(str, "  ");
     appendStringInfo(str, "  %s: ", qlabel);
-
-	/* First fix the subplan if shared */
-	if(!subplan)
-	{
-		Assert(plan->underlying_share_id != ShareNodeId_NotShared);
-		Assert(es->sharedNodes);
-		subplan = (Plan *) list_nth(es->sharedNodes, plan->underlying_share_id);
-		Assert(subplan);
-	}
 
     /* Generate deparse context */
 	if (cdbpullup_exprHasSubplanRef((Expr *)subplan->targetlist))

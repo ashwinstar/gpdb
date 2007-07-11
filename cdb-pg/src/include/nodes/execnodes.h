@@ -1501,27 +1501,19 @@ typedef struct MaterialState
 typedef struct ShareInputScanState
 {
 	ScanState 	ss;
-	ShareNode_ShareType share_type;
-	
 	/* 
 	 * Depends on share_type, we should have a tuplestore_state, tuplestore_pos
 	 * or tuplesort_state, tuplesort_pos
 	 */
 	void 		*ts_state;
 	void 		*ts_pos;
-
-	/*
-	 * state to evaluate a hash function to see if a tuple is really for this scan.
-	 * This is needed when we scan on top of a material, which is used to buffer 
-	 * multiplexed motion
-	 */
-	List		*hashExpr;		/* state struct used for evaluating the hash expressions */
-	CdbHash		*cdbhash;			/* hash api object */
 } ShareInputScanState;
 
+/* XXX Should move into buf file */
 extern void sisc_material_notify(int shared_id);
 extern void sisc_material_wait(int shared_id);
 extern void sisc_material_bufname(char* p, int size, int shared_id);
+
 /* ----------------
  *	 SortState information
  * ----------------
@@ -1810,18 +1802,6 @@ typedef struct LimitState
 	TupleTableSlot *subSlot;	/* tuple last obtained from subplan */
 } LimitState;
 
-/* ---------------------------------------------------------------------------
- * Motion target slice 
- * ---------------------------------------------------------------------------
- */
-typedef struct MotionStateSliceEntry
-{
-	NodeTag 	type;
-	List		*hashExpr;		/* state struct used for evaluating the hash expressions */
-	CdbHash		*cdbhash;			/* hash api object */
-	int			*numTuplesByHashSegIdx; /* Distribution of number of tuples from child by hash seg index */
-} MotionStateSliceEntry;
-
 typedef enum MotionStateType
 {
 	MOTIONSTATE_NONE,			/* The motion state is not decided, or non active in a slice
@@ -1844,6 +1824,8 @@ typedef struct MotionState
 	/* For motion send */
 	List 		*sliceEntries;      /* for each outgoing slices */
 	bool		sentEndOfStream;  	/* set when end-of-stream has successfully been sent */
+	List		*hashExpr;		/* state struct used for evaluating the hash expressions */
+	CdbHash		*cdbhash;			/* hash api object */
 
 	/* For Motion recv */
 	struct CdbHeap		*tupleheap;		/* data structure for match merge in sorted motion node */
@@ -1855,6 +1837,7 @@ typedef struct MotionState
 	int			numTuplesToAMS;		/* Number of tuples from child that were sent to AMS */
 	int			numTuplesFromAMS;	/* Number of tuples received from AMS */
 	int			numTuplesToParent;	/* Number of tuples either from child or AMS that were sent to parent */
+	int			*numTuplesByHashSegIdx; /* Distribution of number of tuples from child by hash seg index */
 	
 	struct timeval otherTime;  /* time accumulator used in sending motion node to keep track of time
 								* spent getting the next tuple (not sending). this could mean time spent

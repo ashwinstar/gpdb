@@ -467,7 +467,7 @@ make_subplan(SubLink *slink, Node *testexpr, bool isTopQual)
 
 	return result;
 }
-
+	
 /*
  * convert_testexpr: convert the testexpr given by the parser into
  * actually executable form.  This entails replacing PARAM_SUBLINK Params
@@ -1102,16 +1102,9 @@ finalize_plan(Plan *plan, List *rtable,
 			break;
 
 		case T_Motion:
-			{
-				ListCell *sliceCell;
-				foreach(sliceCell, ((Motion *) plan)->sliceEntries)
-				{
-					MotionSliceEntry *sliceEntry = (MotionSliceEntry *) lfirst(sliceCell);
-					Assert(IsA(sliceEntry, MotionSliceEntry));
-					finalize_primnode((Node *) sliceEntry->hashExpr,
+
+			finalize_primnode((Node *) ((Motion *) plan)->hashExpr,
 							  &context);
-				}
-			}
 			break;
 
 		case T_Limit:

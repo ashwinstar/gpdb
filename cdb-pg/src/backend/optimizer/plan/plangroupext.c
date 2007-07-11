@@ -975,7 +975,7 @@ generate_list_subplans(PlannerInfo *root, int num_subplans,
 	List *subplans = NIL;
 	int group_no;
 
-	ShareNode_ShareType stype = SHARENODE_UNKNOWN;
+	ShareType stype = SHARE_NOTSHARED;
 
 	if(gp_window_shareinput && num_subplans > 0)
 	{
@@ -989,7 +989,7 @@ generate_list_subplans(PlannerInfo *root, int num_subplans,
 				NULL);
 	}
  
-	if(stype == SHARENODE_UNKNOWN)
+	if(stype == SHARE_NOTSHARED)
 	{
 		for (group_no = 0; group_no < num_subplans; group_no++)
 			subplans = lappend(subplans, copyObject(context->subplan));
@@ -1007,7 +1007,7 @@ generate_list_subplans(PlannerInfo *root, int num_subplans,
 
 	else
 	{
-		Assert(stype == SHARENODE_MATERIAL);
+		Assert(stype == SHARE_MATERIAL);
 		for(group_no = 0; group_no < num_subplans; group_no++)
 		{
 			Plan *newplan = (*(shareplan_ms.newplan_for_subplan)) (NULL, root, context->subplan);

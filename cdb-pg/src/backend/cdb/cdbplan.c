@@ -315,27 +315,12 @@ plan_tree_walker(Node *node,
 		case T_Motion:
 			if (walk_plan_node_fields((Plan *) node, walker, context))
 				return true;
-			else
-			{
-				bool allOK = true;
+			
+			if (walker((Node *) ((Motion *)node)->hashExpr, context))
+				return true;
 
-				ListCell *sliceCell;
-				foreach(sliceCell, ((Motion *) node)->sliceEntries)
-				{
-					MotionSliceEntry *sliceEntry = (MotionSliceEntry *) lfirst(sliceCell);
-					Assert(IsA(sliceEntry, MotionSliceEntry));
-
-					if (walker((Node *) sliceEntry->hashExpr, context))
-					{
-						if (!walker((Node *) sliceEntry->hashDataTypes, context))
-							allOK = false;
-					}
-					else
-						allOK = false;
-				}
-				if(allOK)
-					return true;
-			}
+			if (walker((Node *) ((Motion *)node)->hashDataTypes, context))
+				return true;
 
 			break;
 
@@ -958,6 +943,12 @@ plan_tree_mutator(Node *node,
 				FLATCOPY(newmotion, motion, Motion);
 				PLANMUTATE(newmotion, motion);
                 COPYARRAY(newmotion, motion, numInputSegs, inputSegIdx);
+
+				COPYARRAY(newmotion, motion, numHashSegs, hashSegIdx);
+				MUTATE(newmotion->hashExpr, motion->hashExpr, List *);
+				MUTATE(newmotion->hashDataTypes, motion->hashDataTypes, List *);
+				COPYARRAY(newmotion, motion, numOutputSegs, outputSegIdx);
+
 				MUTATE(newmotion->sliceEntries, motion->sliceEntries, List *);
 				COPYARRAY(newmotion, motion, numSortCols, sortColIdx);
 				COPYARRAY(newmotion, motion, numSortCols, sortOperators);
@@ -965,20 +956,6 @@ plan_tree_mutator(Node *node,
 			}
 			break;
 
-		case T_MotionSliceEntry:
-			{
-				MotionSliceEntry *sliceEntry = (MotionSliceEntry *) node;
-				MotionSliceEntry *newsliceEntry;
-
-				FLATCOPY(newsliceEntry, sliceEntry, MotionSliceEntry);
-				COPYARRAY(newsliceEntry, sliceEntry, numHashSegs, hashSegIdx);
-				MUTATE(newsliceEntry->hashExpr, sliceEntry->hashExpr, List *);
-				MUTATE(newsliceEntry->hashDataTypes, sliceEntry->hashDataTypes, List *);
-				COPYARRAY(newsliceEntry, sliceEntry, numOutputSegs, outputSegIdx);
-			
-				return (Node *) newsliceEntry;
-			}
-			break;
 
 		case T_Flow:
 			{

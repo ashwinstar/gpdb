@@ -98,9 +98,6 @@ CopyPlanFields(Plan *from, Plan *newnode)
 	COPY_SCALAR_FIELD(nMotionNodes);
 	COPY_SCALAR_FIELD(nInitPlans);
 	COPY_NODE_FIELD(sliceTable);
-	COPY_SCALAR_FIELD(sliceNum);
-	COPY_SCALAR_FIELD(shared_as_id);
-	COPY_SCALAR_FIELD(underlying_share_id); 
 }
 
 /*
@@ -545,6 +542,8 @@ _copyShareInputScan(ShareInputScan *from)
 	
 	/* copy node superclass fields */
 	CopyPlanFields((Plan *) from, (Plan *) newnode);
+	COPY_SCALAR_FIELD(share_type);
+	COPY_SCALAR_FIELD(share_id);
 	return newnode;
 }
 
@@ -562,7 +561,8 @@ _copyMaterial(Material *from)
 	 */
 	CopyPlanFields((Plan *) from, (Plan *) newnode);
     COPY_SCALAR_FIELD(cdb_strict);
-	COPY_SCALAR_FIELD(slice_mark);
+	COPY_SCALAR_FIELD(share_type);
+	COPY_SCALAR_FIELD(share_id);
 	COPY_SCALAR_FIELD(driver_slice);
 	
     return newnode;
@@ -590,6 +590,9 @@ _copySort(Sort *from)
 	COPY_NODE_FIELD(limitOffset);
 	COPY_NODE_FIELD(limitCount);
 	COPY_SCALAR_FIELD(noduplicates);
+
+	COPY_SCALAR_FIELD(share_type);
+	COPY_SCALAR_FIELD(share_id);
 
 	return newnode;
 }
@@ -765,32 +768,6 @@ _copyLimit(Limit *from)
 	return newnode;
 }
 
-/* -----------------------------------------------------------------
- * _copyMotion and helper function
- */
-/* 
- * _copyMotionSliceEntry 
- */
-static MotionSliceEntry *
-_copyMotionSliceEntry(MotionSliceEntry *from)
-{
-	MotionSliceEntry *newnode = makeNode(MotionSliceEntry);
-
-	COPY_SCALAR_FIELD(motionType);
-
-	COPY_SCALAR_FIELD(numHashSegs);
-	COPY_POINTER_FIELD(hashSegIdx, from->numHashSegs * sizeof(int));
-	COPY_NODE_FIELD(hashExpr);
-	COPY_NODE_FIELD(hashDataTypes);
-	
-	COPY_SCALAR_FIELD(numOutputSegs);
-	COPY_POINTER_FIELD(outputSegIdx, from->numOutputSegs * sizeof(int));
-
-	COPY_NODE_FIELD(flow);
-
-	return newnode;
-}
-
 /*
  * _copyMotion
  */
@@ -808,11 +785,19 @@ _copyMotion(Motion *from)
 	COPY_SCALAR_FIELD(sendSorted);
 	COPY_SCALAR_FIELD(motionID);
 
+	COPY_SCALAR_FIELD(motionType);
+
 	COPY_SCALAR_FIELD(numInputSegs);
 	if (from->inputSegIdx)
 		COPY_POINTER_FIELD(inputSegIdx, from->numInputSegs * sizeof(int));
 
-	COPY_NODE_FIELD(sliceEntries);
+	COPY_SCALAR_FIELD(numHashSegs);
+	COPY_POINTER_FIELD(hashSegIdx, from->numHashSegs * sizeof(int));
+	COPY_NODE_FIELD(hashExpr);
+	COPY_NODE_FIELD(hashDataTypes);
+	
+	COPY_SCALAR_FIELD(numOutputSegs);
+	COPY_POINTER_FIELD(outputSegIdx, from->numOutputSegs * sizeof(int));
 
 	COPY_SCALAR_FIELD(numSortCols);
 	COPY_POINTER_FIELD(sortColIdx, from->numSortCols * sizeof(AttrNumber));
@@ -3380,9 +3365,6 @@ copyObject(void *from)
 			break;
 		case T_Motion:
 			retval = _copyMotion(from);
-			break;
-		case T_MotionSliceEntry:
-			retval = _copyMotionSliceEntry(from);
 			break;
 
 			/*

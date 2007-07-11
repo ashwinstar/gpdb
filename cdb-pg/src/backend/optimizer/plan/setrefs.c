@@ -61,7 +61,6 @@ typedef struct
 {
 	List *rtable;
 	List *sharedNodes;
-	indexed_tlist **shared_itlist;
 } set_plan_ref_context;
 
 static Plan *set_plan_references(Plan *plan, set_plan_ref_context *ctxt);
@@ -109,30 +108,14 @@ static Plan *cdb_insert_result_node(Plan *plan, set_plan_ref_context* ctxt);
 Plan *set_plan_references_qry(Plan *plan, Query *qry)
 {
 	set_plan_ref_context ctxt;
-	int nshared = qry->sharedNodes ? list_length(qry->sharedNodes) : 0;
-	int i = 0;
 	Plan *result = NULL;
 
 	ctxt.rtable = qry->rtable;
 	ctxt.sharedNodes = qry->sharedNodes;
 
-	if(nshared == 0)
-		ctxt.shared_itlist = NULL;
-	else
-		ctxt.shared_itlist = (indexed_tlist **) palloc0(sizeof(indexed_tlist *) * nshared);
-
 	result = set_plan_references(plan, &ctxt);
 	qry->rtable = ctxt.rtable;
 	qry->sharedNodes = ctxt.sharedNodes;
-
-	for(i=0; i<nshared; ++i)
-	{
-		if(ctxt.shared_itlist[i])
-			pfree(ctxt.shared_itlist[i]);
-	}
-
-	if(ctxt.shared_itlist)
-		pfree(ctxt.shared_itlist);
 
 	return result;
 }
@@ -371,24 +354,27 @@ set_plan_references(Plan *plan, set_plan_ref_context *ctxt)
 
 				if(childPlan == NULL)
 				{
-					Assert(plan->underlying_share_id >= 0 && ctxt->sharedNodes && ctxt->shared_itlist);
-					Assert(ctxt->shared_itlist[plan->underlying_share_id] != NULL);
-					childPlan = list_nth(ctxt->sharedNodes, plan->underlying_share_id);
+					Assert(sisc->share_type != SHARE_NOTSHARED 
+							&& sisc->share_id >= 0 
+							&& ctxt->sharedNodes); 
+					childPlan = list_nth(ctxt->sharedNodes, sisc->share_id);
+				}
+
+#ifdef DEBUG
+				Assert(childPlan && IsA(childPlan,Material) || IsA(childPlan, Sort));
+				if(IsA(childPlan, Material))
+				{
+					Material *shared = (Material *) childPlan;
+					Assert(shared->share_type != SHARE_NOTSHARED
+							&& shared->share_id == sisc->share_id);
 				}
 				else
 				{
-					Assert(plan->underlying_share_id >= 0 && ctxt->sharedNodes && ctxt->shared_itlist);
-					Assert(ctxt->shared_itlist[plan->underlying_share_id] == NULL);
-					ctxt->shared_itlist[plan->underlying_share_id] = build_tlist_index(childPlan->targetlist);
-				} 
-
-				sisc->hashExpr = (List *) replace_vars_with_subplan_refs(
-						(Node *) sisc->hashExpr,
-						ctxt->shared_itlist[plan->underlying_share_id],
-						OUTER);
-
-				fix_expr_references(plan, (Node *) sisc->hashExpr, ctxt); 
-			
+					Sort *shared = (Sort *) childPlan;
+					Assert(shared->share_type != SHARE_NOTSHARED
+							&& shared->share_id == sisc->share_id);
+				}
+#endif
 				plan->targetlist = cdb_build_identity_tlist(NIL, childPlan, OUTER);
 			}
 			break;
@@ -480,21 +466,11 @@ set_plan_references(Plan *plan, set_plan_ref_context *ctxt)
 				indexed_tlist  *subplan_itlist =
 					build_tlist_index(plan->lefttree->targetlist);
 
-				ListCell *sliceCell;
-				foreach(sliceCell, motion->sliceEntries)
-				{
-					MotionSliceEntry *sliceEntry = (MotionSliceEntry *) lfirst(sliceCell);
-					Assert(IsA(sliceEntry, MotionSliceEntry));
-
-					sliceEntry->hashExpr =
-						(List *)replace_vars_with_subplan_refs((Node *)sliceEntry->hashExpr,
+				motion->hashExpr = (List *)replace_vars_with_subplan_refs((Node *)motion->hashExpr,
 								subplan_itlist,
 								OUTER);
-					fix_expr_references(plan, (Node *) sliceEntry->hashExpr, ctxt); 
-				}
+				fix_expr_references(plan, (Node *) motion->hashExpr, ctxt); 
 				
-				pfree(subplan_itlist);
-    			
 				/* no need to fix targetlist and qual */
 				Assert(plan->qual == NIL);
 				plan->targetlist = cdb_build_identity_tlist(NIL, plan->lefttree, OUTER);
@@ -938,13 +914,7 @@ adjust_plan_varnos(Plan *plan, int rtoffset)
 			break;
         case T_Motion:
             adjust_expr_varnos((Node *) plan->targetlist, rtoffset);
-			foreach(l, ((Motion *)plan)->sliceEntries)
-			{
-				MotionSliceEntry *sliceEntry = (MotionSliceEntry *) lfirst(l);
-				Assert(IsA(sliceEntry, MotionSliceEntry));
-				
-				adjust_expr_varnos((Node *) (sliceEntry->hashExpr), rtoffset);
-			}
+			adjust_expr_varnos((Node *) ((Motion *) plan)->hashExpr, rtoffset);
             Assert(plan->qual == NIL);
             break;
 		default:

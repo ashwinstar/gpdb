@@ -2085,19 +2085,19 @@ static List * plan_window_rtable_share(ISHAREPLAN *share,
  */
 List *plan_window_rtable(PlannerInfo *root, WindowContext *ctxt)
 {
-	if(!gp_window_shareinput ||
-	   ctxt->nwindowinfos == 0 ||
-	   (ctxt->nwindowinfos == 1 && 
-			(ctxt->windowinfos[0].window_coplan == NULL ||
-			 ctxt->windowinfos[0].agg_coplan == NULL)
-	   )
+	if((!gp_window_shareinput)
+		|| ctxt->nwindowinfos == 0 
+		|| (ctxt->nwindowinfos == 1 && 
+				(ctxt->windowinfos[0].window_coplan == NULL ||
+			 	 ctxt->windowinfos[0].agg_coplan == NULL)
+	  	   )
 	  )
 		return plan_window_rtable_share(&shareplan_simple, root, ctxt);
-	else
+	else 
 	{
-		ShareNode_ShareType stype = add_sharenode(
+		ShareType stype = add_sharenode(
 				root, 
-				&ctxt->subplan, 
+				(Plan **) &ctxt->subplan, 
 				&ctxt->subplan_pathkeys,
 				ctxt->subplan_locus,
 				(void *) ctxt,
@@ -2106,22 +2106,9 @@ List *plan_window_rtable(PlannerInfo *root, WindowContext *ctxt)
 				get_windowctxt_sortclause
 				);
 
-		if(stype == SHARENODE_MATERIAL)
-		{
-			Assert(IsA(ctxt->subplan, Material));
-			Assert(get_plan_flow(ctxt->subplan));
-			if(get_plan_flow(ctxt->subplan)->flotype == FLOW_MULTIPLEXED)
-				return plan_window_rtable_share(&shareplan_motion, root, ctxt);
-			else
-				return plan_window_rtable_share(&shareplan_ms, root, ctxt);
-		}
-		else if(stype == SHARENODE_SORT)
-			return plan_window_rtable_share(&shareplan_ms, root, ctxt);
-		else
-		{
-			Assert(stype == SHARENODE_UNKNOWN);
-			return plan_window_rtable_share(&shareplan_simple, root, ctxt);
-		}
+		Assert(stype == SHARE_MATERIAL);
+		Assert(IsA(ctxt->subplan, Material));
+		return plan_window_rtable_share(&shareplan_ms, root, ctxt);
 	}
 
 	Assert(!"Should never reach");
@@ -2166,7 +2153,7 @@ static FromExpr *plan_window_jointree(PlannerInfo *root, WindowContext *context)
 			{
 				Assert( winfo->window_coplan != NULL );
 				base_window_coplan = winfo->window_coplan;
-				rowkey_types = get_window_attr_types(context->subplan->targetlist, context->rowkey_len, context->rowkey_attrs);
+				rowkey_types = get_window_attr_types(((Plan *)(context->subplan))->targetlist, context->rowkey_len, context->rowkey_attrs);
 			}
 			else if ( winfo->window_coplan != NULL )
 			{

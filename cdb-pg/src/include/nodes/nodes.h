@@ -73,7 +73,6 @@ typedef enum NodeTag
 	T_Hash,
 	T_SetOp,
 	T_Limit,
-	T_MotionSliceEntry,
 	T_Motion,
 	T_AdaptiveNestLoop,
 	T_ShareInputScan,
@@ -111,7 +110,6 @@ typedef enum NodeTag
 	T_HashState,
 	T_SetOpState,
 	T_LimitState,
-	T_MotionStateSliceEntry,
 	T_MotionState,
 	T_AdaptiveNestLoopState,
 	T_ShareInputScanState,
@@ -546,7 +544,6 @@ typedef enum FlowType
 	FLOW_SINGLETON,		/* flow has single stream */
 	FLOW_REPLICATED,	/* flow is replicated across IOPs */
 	FLOW_PARTITIONED,	/* flow is partitioned across IOPs */
-	FLOW_MULTIPLEXED,   /* several flow is multiplexed over one, used by plan sharing only */
 } FlowType;
 
 /*
@@ -562,16 +559,6 @@ typedef enum DispatchMethod
 	DISPATCH_PARALLEL			/* Dispatch on query executor and entry processes. */
 	
 } DispatchMethod;
-
-/*
- * ShareInputMethod - how to share results from subplan.
- *
- * For starter,  
- */
-typedef enum ShareInputMethod
-{
-	SHAREINPUT_SIMPLE = 0		/* share input using a simple tuple store */	
-} ShareInputMethod;
 
 /* 
  * Inside the executor, if a caller to some data type manipulation functions

@@ -50,6 +50,8 @@ ExecMaterial(MaterialState *node)
 	Tuplestorestate *tuplestorestate;
 	bool		eof_tuplestore;
 	TupleTableSlot *slot;
+	Material *ma;
+	
 
 	/*
 	 * get state info from node
@@ -59,17 +61,18 @@ ExecMaterial(MaterialState *node)
 	forward = ScanDirectionIsForward(dir);
 	tuplestorestate = (Tuplestorestate *) node->tuplestorestate;
 
+	ma = (Material *) node->ss.ps.plan;
+	Assert(IsA(ma, Material));
+
 	/*
 	 * If first time through, and we need a tuplestore, initialize it.
 	 */
-	if (tuplestorestate == NULL && (node->ss.ps.plan->shared_as_id >= 0 || node->randomAccess))
+	if (tuplestorestate == NULL && (ma->share_type != SHARE_NOTSHARED || node->randomAccess))
 	{
-		Material* ma = (Material *) node->ss.ps.plan;
-
 		/* 
 		 * For cross slice material, we only run ExecMaterial on DriverSlice 
 		 */
-		if(ma->slice_mark == SliceMark_CrossSlice)
+		if(ma->share_type == SHARE_MATERIAL_XSLICE)
 		{
 			MotionState *mostate = (MotionState *) node->ss.ps.lefttree;
 			char rwfile_prefix[60];
@@ -83,12 +86,14 @@ ExecMaterial(MaterialState *node)
 			Assert(mostate && IsA(mostate, MotionState));
 			Assert(mostate->mstype == MOTIONSTATE_RECV);
 
-			sisc_material_bufname(rwfile_prefix, sizeof(rwfile_prefix), ma->plan.shared_as_id); 
+			sisc_material_bufname(rwfile_prefix, sizeof(rwfile_prefix), ma->share_id); 
 			elog(LOG, "Material node creates shareinput rwfile %s", rwfile_prefix);
 			tuplestorestate = tuplestore_begin_heap_file_readerwriter(rwfile_prefix, true);
 		}
 		else
+		{
 			tuplestorestate = tuplestore_begin_heap(true, false, work_mem); 
+		}
 		
 		Assert(tuplestorestate);
 		node->tuplestorestate = (void *) tuplestorestate;
@@ -119,12 +124,12 @@ ExecMaterial(MaterialState *node)
 		 * and sending Motion operators to neutralize a deadlock hazard.
 		 * MPP TODO: Remove when a better solution is implemented.
 		 *
-		 * ShareInput: if shared_as_id is not -1, that is, the material node
+		 * ShareInput: if the material node
 		 * is used to share input, we will need to fetch all rows and put
 		 * them in tuple store
 		 */
 		while (((Material *) node->ss.ps.plan)->cdb_strict 
-				|| node->ss.ps.plan->shared_as_id >= 0)
+				|| ma->share_type != SHARE_NOTSHARED)
 		{
 			TupleTableSlot *outerslot = ExecProcNode(outerPlanState(node));
 
@@ -140,17 +145,21 @@ ExecMaterial(MaterialState *node)
 	}
 
 	/* for share input, material do not need to return any tuple */
-	if(node->ss.ps.plan->shared_as_id >= 0)
+	if(ma->share_type != SHARE_NOTSHARED)
 	{
+		Assert(ma->share_type == SHARE_MATERIAL || ma->share_type == SHARE_MATERIAL_XSLICE);
 		/* 
 		 * if the material is shared across slice, notify consumers that
 		 * it is ready.
 		 */
-		Material *ma = (Material *) node->ss.ps.plan;
-		if(ma->slice_mark == SliceMark_CrossSlice && ma->driver_slice == currentSliceId)
+		if(ma->share_type == SHARE_MATERIAL_XSLICE) 
 		{
 			tuplestore_flush(tuplestorestate);
-			sisc_material_notify(ma->plan.shared_as_id);
+		}
+		else if (ma->driver_slice == currentSliceId)
+		{
+			tuplestore_flush(tuplestorestate);
+			sisc_material_notify(ma->share_id);
 		}
 
 		return NULL;
@@ -306,9 +315,9 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 	/*
 	 * If share input, need to register with range table entry
 	 */
-	if(node->plan.shared_as_id >= 0)
+	if(node->share_type != SHARE_NOTSHARED) 
 	{
-		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, node->plan.shared_as_id, true); 
+		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, node->share_id, true); 
 		snEntry->sharePlan = (Node *) node;
 		snEntry->shareState = (Node *) matstate;
 	}
@@ -351,11 +360,12 @@ ExecMaterialExplainEnd(PlanState *planstate, struct StringInfoData *buf)
 void
 ExecEndMaterial(MaterialState *node)
 {
+	Material *ma = (Material *) node->ss.ps.plan;
 	/*
 	 * clean out the tuple table.  Normal case ps_ResultTupleSlot has
 	 * been cleared by Exec.  Only need to clear it for share input
 	 */
-	if(node->ss.ps.plan->shared_as_id >= 0)
+	if(ma->share_type != SHARE_NOTSHARED) 
 		ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
@@ -364,8 +374,11 @@ ExecEndMaterial(MaterialState *node)
 	 */
 	if (node->tuplestorestate != NULL)
 	{
-		Material *ma = (Material *) node->ss.ps.plan;
-		if(ma->slice_mark != SliceMark_CrossSlice)
+		/* We do not release resource here.  If the material is cross slice
+		 * other slice may require it to exist.  The underlying resource is 
+		 * marked to be released at transaction commit time.
+		 */
+		if(ma->share_type != SHARE_MATERIAL_XSLICE) 
 		{
 			tuplestore_end((Tuplestorestate *) node->tuplestorestate); 
 			node->tuplestorestate = NULL;
@@ -388,8 +401,14 @@ void
 ExecMaterialMarkPos(MaterialState *node)
 {
 	Assert(node->randomAccess);
-	/* share input should never call this */
-	Assert(node->ss.ps.plan->shared_as_id < 0);
+
+#ifdef DEBUG
+	{
+		/* share input should never call this */
+		Material *ma = (Material *) node->ss.ps.plan;
+		Assert(ma->share_type == SHARE_NOTSHARED);
+	}
+#endif
 
 	/*
 	 * if we haven't materialized yet, just return.
@@ -410,8 +429,14 @@ void
 ExecMaterialRestrPos(MaterialState *node)
 {
 	Assert(node->randomAccess);
-	/* share input should never call this */
-	Assert(node->ss.ps.plan->shared_as_id < 0);
+
+#ifdef DEBUG
+	{
+		/* share input should never call this */
+		Material *ma = (Material *) node->ss.ps.plan;
+		Assert(ma->share_type == SHARE_NOTSHARED);
+	}
+#endif
 
 	/*
 	 * if we haven't materialized yet, just return.
@@ -434,8 +459,13 @@ ExecMaterialRestrPos(MaterialState *node)
 void
 ExecMaterialReScan(MaterialState *node, ExprContext *exprCtxt)
 {
-	/* share input should never call this */
-	Assert(node->ss.ps.plan->shared_as_id < 0);
+#ifdef DEBUG
+	{
+		/* share input should never call this */
+		Material *ma = (Material *) node->ss.ps.plan;
+		Assert(ma->share_type == SHARE_NOTSHARED);
+	}
+#endif
 
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 

@@ -287,10 +287,6 @@ _outPlanInfo(StringInfo str, Plan *node)
      *      flow
      *      dispatch
      */
-
-	WRITE_INT_FIELD(sliceNum);
-	WRITE_INT_FIELD(shared_as_id);
-	WRITE_INT_FIELD(underlying_share_id);
 }
 
 /*
@@ -595,7 +591,9 @@ _outMaterial(StringInfo str, Material *node)
 	WRITE_NODE_TYPE("MATERIAL");
 
     WRITE_BOOL_FIELD(cdb_strict);
-	WRITE_INT_FIELD(slice_mark);
+
+	WRITE_ENUM_FIELD(share_type, ShareType);
+	WRITE_INT_FIELD(share_id);
 	WRITE_INT_FIELD(driver_slice);
 
 	_outPlanInfo(str, (Plan *) node);
@@ -606,8 +604,8 @@ _outShareInputScan(StringInfo str, ShareInputScan *node)
 {
 	WRITE_NODE_TYPE("SHAREINPUTSCAN");
 
-	WRITE_NODE_FIELD(hashExpr);
-	WRITE_NODE_FIELD(hashDataTypes);
+	WRITE_ENUM_FIELD(share_type, ShareType);
+	WRITE_INT_FIELD(share_id);
 
 	_outPlanInfo(str, (Plan *) node);
 }
@@ -630,6 +628,9 @@ _outSort(StringInfo str, Sort *node)
 	WRITE_NODE_FIELD(limitOffset);
 	WRITE_NODE_FIELD(limitCount);
     WRITE_BOOL_FIELD(noduplicates);
+
+	WRITE_ENUM_FIELD(share_type, ShareType);
+	WRITE_INT_FIELD(share_id);
 }
 
 static void
@@ -682,31 +683,13 @@ _outHash(StringInfo str, Hash *node)
 }
 
 static void
-_outMotionSliceEntry(StringInfo str, MotionSliceEntry *node)
-{
-	WRITE_NODE_TYPE("MOTIONSLICEENTRY");
-
-	WRITE_ENUM_FIELD(motionType, MotionType);
-
-	WRITE_INT_FIELD(numHashSegs);
-	WRITE_INT_ARRAY(hashSegIdx, numHashSegs, int);
-
-	WRITE_LIST_FIELD(hashExpr);
-	WRITE_LIST_FIELD(hashDataTypes);
-
-	WRITE_INT_FIELD(numOutputSegs);
-	WRITE_INT_ARRAY(outputSegIdx, numOutputSegs, int);
-
-	WRITE_NODE_FIELD(flow);
-}
-
-static void
 _outMotion(StringInfo str, Motion *node)
 {
 
 	WRITE_NODE_TYPE("MOTION");
 
 	WRITE_INT_FIELD(motionID);	
+	WRITE_ENUM_FIELD(motionType, MotionType);
 	WRITE_BOOL_FIELD(sendToSecondary);
 	WRITE_BOOL_FIELD(sendSorted);
 
@@ -726,8 +709,15 @@ _outMotion(StringInfo str, Motion *node)
         }
     }
 
+	WRITE_INT_FIELD(numHashSegs);
+	WRITE_INT_ARRAY(hashSegIdx, numHashSegs, int);
 
-	WRITE_LIST_FIELD(sliceEntries);
+	WRITE_LIST_FIELD(hashExpr);
+	WRITE_LIST_FIELD(hashDataTypes);
+
+	WRITE_INT_FIELD(numOutputSegs);
+	WRITE_INT_ARRAY(outputSegIdx, numOutputSegs, int);
+
 
 	WRITE_INT_FIELD(numSortCols);
 	WRITE_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
@@ -2340,7 +2330,6 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_OID_FIELD(intoOidInfo.toastIndexOid);
 	WRITE_OID_FIELD(intoOidInfo.toastComptypeOid);
 	
-	
 }
 
 static void
@@ -2933,9 +2922,6 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_Motion:
 				_outMotion(str, obj);
-				break;
-			case T_MotionSliceEntry:
-				_outMotionSliceEntry(str, obj);
 				break;
 			case T_Alias:
 				_outAlias(str, obj);

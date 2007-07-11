@@ -328,6 +328,8 @@ _readQuery(void)
 	local_node->intoOidInfo.toastOid = InvalidOid;
 	local_node->intoOidInfo.toastIndexOid = InvalidOid;
 	local_node->intoOidInfo.toastComptypeOid = InvalidOid;
+
+
 	READ_DONE();
 }
 
@@ -2568,7 +2570,9 @@ _readMaterial(void)
 	READ_LOCALS(Material);
 
     READ_BOOL_FIELD(cdb_strict);
-	READ_INT_FIELD(slice_mark);
+
+	READ_ENUM_FIELD(share_type, ShareType);
+	READ_INT_FIELD(share_id);
 	READ_INT_FIELD(driver_slice);
 
     readPlanInfo((Plan *)local_node);
@@ -2584,8 +2588,8 @@ _readShareInputScan(void)
 {
 	READ_LOCALS(ShareInputScan);
 
-	READ_NODE_FIELD(hashExpr);
-	READ_NODE_FIELD(hashDataTypes);
+	READ_ENUM_FIELD(share_type, ShareType);
+	READ_INT_FIELD(share_id);
 
 	readPlanInfo((Plan *)local_node);
 
@@ -2613,6 +2617,9 @@ _readSort(void)
 	READ_NODE_FIELD(limitOffset);
 	READ_NODE_FIELD(limitCount);
 	READ_BOOL_FIELD(noduplicates);
+
+	READ_ENUM_FIELD(share_type, ShareType);
+	READ_INT_FIELD(share_id);
 
 	READ_DONE();
 }
@@ -2684,28 +2691,6 @@ _readHash(void)
 	READ_DONE();
 }
 
-/* _readMotionSliceEntry */
-static MotionSliceEntry *
-_readMotionSliceEntry(void)
-{
-	READ_LOCALS(MotionSliceEntry);
-
-	READ_ENUM_FIELD(motionType, MotionType);
-
-	READ_INT_FIELD(numHashSegs);
-	READ_INT_ARRAY(hashSegIdx, numHashSegs, int);
-
-	READ_NODE_FIELD(hashExpr);
-	READ_NODE_FIELD(hashDataTypes);
-
-	READ_INT_FIELD(numOutputSegs);
-	READ_INT_ARRAY(outputSegIdx, numOutputSegs, int);
-
-	READ_NODE_FIELD(flow);
-
-	READ_DONE();
-}
-
 /*
  * _readMotion
  */
@@ -2715,13 +2700,22 @@ _readMotion(void)
 	READ_LOCALS(Motion);
 
 	READ_INT_FIELD(motionID);
+	READ_ENUM_FIELD(motionType, MotionType);
+
 	READ_BOOL_FIELD(sendToSecondary);
 	READ_BOOL_FIELD(sendSorted);
 	
     READ_INT_FIELD(numInputSegs);
     READ_INT_ARRAY_OR_NULL(inputSegIdx, numInputSegs, int);
 
-	READ_NODE_FIELD(sliceEntries);
+	READ_INT_FIELD(numHashSegs);
+	READ_INT_ARRAY(hashSegIdx, numHashSegs, int);
+
+	READ_NODE_FIELD(hashExpr);
+	READ_NODE_FIELD(hashDataTypes);
+
+	READ_INT_FIELD(numOutputSegs);
+	READ_INT_ARRAY(outputSegIdx, numOutputSegs, int);
 
 	READ_INT_FIELD(numSortCols);
 	READ_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
@@ -2872,10 +2866,6 @@ void readPlanInfo(Plan *local_node)
      *      flow
      *      dispatch
      */
-
-	READ_INT_FIELD(sliceNum);
-	READ_INT_FIELD(shared_as_id);
-	READ_INT_FIELD(underlying_share_id);
 }
 
 void readJoinInfo(Join *local_node)
@@ -3071,7 +3061,6 @@ static ParseNodeInfo infoAr[] =
 	{"MERGEJOIN", (ReadFn)_readMergeJoin},
 	{"MINMAX", (ReadFn)_readMinMaxExpr},
 	{"MOTION", (ReadFn)_readMotion},
-	{"MOTIONSLICEENTRY", (ReadFn)_readMotionSliceEntry},
 	{"NESTLOOP", (ReadFn)_readNestLoop},
 	{"NOTIFY", (ReadFn)_readNotifyStmt},
 	{"NULLIFEXPR", (ReadFn)_readNullIfExpr},

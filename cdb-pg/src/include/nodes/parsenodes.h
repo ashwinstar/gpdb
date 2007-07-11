@@ -181,7 +181,8 @@ typedef struct Query
 	 
 	GpPolicy  *intoPolicy;			/* MPP. Used only on the QD... Doesn't need to be serialized */
 
-	List 	*sharedNodes; 	/* Share Input.  List of shared nodes.  No need to be serialized */
+	List 	*sharedNodes;	 	/* plan sharing.  List of shared nodes */
+
 } Query;
 
 /****************************************************************************

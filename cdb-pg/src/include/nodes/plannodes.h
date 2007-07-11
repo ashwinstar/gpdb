@@ -123,19 +123,6 @@ typedef struct Plan
 	  * the slice table in the plan as required there.
 	  */
 	Node *sliceTable;
-	
-	/* 
-	 * CDB: We need to know which slice we need if the underlying
-	 * node is a multiplexed motion
-	 */
-	int sliceNum;
-
-	/* 
-	 * We need to know the shared_as_id, if this node is a share node
-	 * We need to know the underlying shared id, if this node use a share node
-	 */
-	int shared_as_id;
-	int underlying_share_id;
 } Plan;
 
 /* ----------------
@@ -455,51 +442,18 @@ typedef struct AdaptiveNestLoop
 	int			nl_strategy_threshold; /* how many outer tuples before we change join strategy */
 } AdaptiveNestLoop;
 
-/* ----------------
- *		materialization node
- * ----------------
- */
-typedef enum SliceMark 
-{
-	SliceMark_NotMarked = -1,
-	SliceMark_CrossSlice = -2,
-} SliceMark;
-
-typedef struct Material
-{
-	Plan		plan;
-    bool        cdb_strict;
-	int 		slice_mark;
-	int         driver_slice;
-} Material;
-
 /*
  * Share type of sharing a node.
  */
-typedef enum ShareNode_ShareType
+typedef enum ShareType
 {
-	SHARENODE_UNKNOWN, 
-	SHARENODE_MATERIAL, 
-	SHARENODE_SORT, 
-	/* Unsupported yet.  SHARENODE_HASH, */
-} ShareNode_ShareType;
-
-/* Special share ids:
- * A share id >= 0 means the node is shared, and the share id is set up correctly,
- * that is, the share id is the index into the ShareNodeEntry of the estate.
- *
- * We need some special share ids during planning.  
- */
-typedef enum ShareNode_SpecialShareId
-{
-	ShareNodeId_NotShared = -1,
-	ShareNodeId_Shared = -2, 
-
-	/* Max share node id.  We do not allow node sharing go beyond some sane limit */
-	ShareNodeId_Max = 100,
-} ShareNode_SpecialShareId;
-
-#define IS_VALID_SHARE_ID(shareid) ((shareid) >= 0 && (shareid) < ShareNodeId_Max)
+	SHARE_NOTSHARED, 
+	SHARE_MATERIAL,          	/* Sharing a material node */
+	SHARE_MATERIAL_XSLICE,		/* Sharing a material node, across slice */
+	SHARE_SORT,					/* Sharing a sort */
+	SHARE_SORT_XSLICE,			/* Sharing a sort, across slice */
+	/* Other types maybe added later, like sharing a hash */
+} ShareType;
 
 /* ----------------
  *		shareinputscan node
@@ -507,14 +461,27 @@ typedef enum ShareNode_SpecialShareId
  */
 typedef struct ShareInputScan
 {
-	Plan 	plan; /* The ShareInput */
+	Plan 		plan; /* The ShareInput */
 
-	/* If we share scan on a material and a multiplex motion, we need to 
-	 * know if the tuple from Matrial is really for this node.
-	 */
-	List		*hashExpr;			/* list of hash expressions */
-	List		*hashDataTypes;	    /* list of hash expr data type oids */
+	ShareType 	share_type; 
+	int 		share_id;
 } ShareInputScan;
+
+/* ----------------
+ * 		Material node 
+ * ----------------
+ */
+typedef struct Material
+{
+	Plan		plan;
+    bool        cdb_strict;
+
+	/* Material can be shared */
+	ShareType 	share_type;
+	int 		share_id;
+	int         driver_slice;
+} Material;
+
 
 /* ----------------
  *		sort node
@@ -530,6 +497,10 @@ typedef struct Sort
 	Node	   *limitOffset;	/* OFFSET parameter, or NULL if none */
 	Node	   *limitCount;		/* COUNT parameter, or NULL if none */
 	bool		noduplicates;   /* TRUE if sort should discard duplicates */
+
+	/* Sort node can be shared */
+	ShareType 	share_type;
+	int 		share_id;
 } Sort;
 
 /* ---------------
@@ -780,10 +751,18 @@ typedef enum MotionType
 	MOTIONTYPE_FIXED,		/* Send tuples to a fixed set of segindexes */
 } MotionType;
 
-typedef struct MotionSliceEntry
+/*
+ * Motion Node
+ *
+ */
+typedef struct Motion
 {
-	NodeTag 	type;
+	Plan		plan;
+
 	MotionType  motionType;
+	bool		sendToSecondary;	/* if true, secondary instances will get sent tuples as well as primary */
+	bool		sendSorted;			/* if true, output should be sorted */
+	int			motionID;			/* required by AMS  */
 
 	/* For Hash */
 	int			numHashSegs;		/* number of segindexes in hashSegIdx array */	
@@ -795,19 +774,6 @@ typedef struct MotionSliceEntry
 	int 	  	numOutputSegs;		/* number of seg indexes in outputSegIdx array, 0 for broadcast */
 	int 	 	*outputSegIdx; 	 	/* array of output segindexes */
 
-	Flow 		*flow;				/* flow associated with this route */
-} MotionSliceEntry;
-
-/*
- * Motion Node
- *
- */
-typedef struct Motion
-{
-	Plan		plan;
-	bool		sendToSecondary;	/* if true, secondary instances will get sent tuples as well as primary */
-	bool		sendSorted;			/* if true, output should be sorted */
-	int			motionID;			/* required by AMS  */
 
     /* The sending gang */
     int			numInputSegs;		/* number of sending processes */
@@ -821,10 +787,4 @@ typedef struct Motion
 	Oid			*sortOperators;		/* OID of operators to sort them by */
 } Motion;
 
-extern Flow* get_motion_flow(Motion *node, int sliceIdx);
-extern Flow* get_plan_flow(Plan *node);
-
 #endif   /* PLANNODES_H */
-
-
-

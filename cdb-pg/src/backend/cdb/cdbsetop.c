@@ -65,7 +65,7 @@ GpSetOpType choose_setop_type(List *planlist)
 	{
 		Flow *subplanflow;
 		subplan = (Plan*)lfirst(cell);		
-		subplanflow = get_plan_flow(subplan);
+		subplanflow = subplan->flow; 
 
 		Assert(is_plan_node((Node*)subplan));
 		Assert(subplanflow != NULL);
@@ -119,7 +119,7 @@ void adjust_setop_arguments(List *planlist, GpSetOpType setop_type)
 	{
 		Flow* subplanflow;
 		subplan = (Plan*)lfirst(cell);
-		subplanflow = get_plan_flow(subplan);
+		subplanflow = subplan->flow; 
 
 		Assert(is_plan_node((Node*)subplan));
 		Assert(subplanflow != NULL);
@@ -399,53 +399,6 @@ Motion* make_motion_hash(PlannerInfo *root, Plan *subplan, List *hashexprs)
 	return motion;
 }
 
-/* 
- * make_motion_multiplex
- *		Add a motion on top of the given subplan.
- *		This should only be applied on top of a non-replicated, non-root subplan.
- *		The motion node created here is a multiplex motion, but no slice, route.
- *		Slice and routes should be added later.  Also, this motion does NOT have a
- * 		flow in plan.flow.  The flow is also multiplexed for this motion and will be
- *      constructed later when slice/route are added.
- */
-Motion *make_motion_multiplex(PlannerInfo *root, Plan *subplan)
-{
-	Motion *motion;
-	int numInputSegs;
-	Assert(subplan->flow != NULL);
-
-	numInputSegs =  (subplan->flow->flotype == FLOW_SINGLETON) ? 1 : getgpsegmentCount();
-
-	motion = make_multiplex_motion(subplan, numInputSegs);
-	return motion;
-}
-
-/* Get flow of a motion node */
-Flow *get_motion_flow(Motion *node, int sliceIdx)
-{
-	MotionSliceEntry *slice = (MotionSliceEntry *) list_nth(node->sliceEntries, sliceIdx);
-	Assert(slice);
-	return slice->flow;
-}
-
-Flow *get_plan_flow(Plan *node)
-{
-	if(IsA(node, Motion))
-	{
-		Motion *m = (Motion *) node;
-		if(node->flow)
-		{
-			Assert(node->flow->flotype == FLOW_MULTIPLEXED);
-			return node->flow;
-		}
-
-		Assert(list_length(m->sliceEntries) == 1);
-		return get_motion_flow(m, 0);
-	}
-
-	return node->flow;
-}
-
 /*
  * makeHashExprsFromNonjunkTargets
  *		Make a list of hash expressions over all non-resjunk targets in
@@ -506,7 +459,7 @@ void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort)
 	Plan *subplan = NULL;
 	bool is_subquery = IsA(plan, SubqueryScan);
 
-	Assert( is_plan_node((Node*)plan) && get_plan_flow(plan) == NULL );
+	Assert( is_plan_node((Node*)plan) && plan->flow == NULL );
 	
 	if ( is_subquery )
 	{
@@ -517,9 +470,9 @@ void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort)
 		subplan = plan->lefttree;
 	}
 	
-	Assert( subplan != NULL && get_plan_flow(subplan) != NULL); 
+	Assert( subplan != NULL && subplan->flow != NULL); 
 	
-	flow = copyFlow(get_plan_flow(subplan), with_hash && !is_subquery, with_sort);
+	flow = copyFlow(subplan->flow, with_hash && !is_subquery, with_sort);
 	
 	
 	if ( is_subquery && with_hash && flow->flotype == FLOW_PARTITIONED )
@@ -528,7 +481,7 @@ void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort)
 		TargetEntry *tle;
 		List *hash = NIL;
 		Index i = 0;
-		Flow *subplanflow = get_plan_flow(subplan);
+		Flow *subplanflow = subplan->flow; 
 		
 		/* Make sure all the expressions the flow thinks we're hashed on
 		 * occur, in order, at the beginning of the subplan targetlist. 
