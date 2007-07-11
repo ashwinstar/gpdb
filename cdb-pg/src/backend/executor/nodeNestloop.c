@@ -395,7 +395,8 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
     nlstate->nl_QuitIfEmptyInner = false;
     if (node->outernotreferencedbyinner &&
         (node->join.jointype == JOIN_INNER ||
-		 node->join.jointype == JOIN_RIGHT))
+		 node->join.jointype == JOIN_RIGHT ||
+		 node->join.jointype == JOIN_IN))
         nlstate->nl_QuitIfEmptyInner = true;
 
 	NL1_printf("ExecInitNestLoop: %s\n",
