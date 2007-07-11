@@ -112,7 +112,8 @@ ExecNestLoop(NestLoopState *node)
 		if (TupIsNull(innerTupleSlot))
 		{
             /* CDB: Quit if empty inner implies no outer rows can match. */
-            if (!IS_OUTER_JOIN(node->js.jointype))
+			/* See MPP-1146 and MPP-1694 */
+			if (node->nl_QuitIfEmptyInner)
             {
                 ExecSquelchNode(outerPlan);
                 return NULL;
