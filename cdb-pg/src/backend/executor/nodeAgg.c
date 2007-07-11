@@ -932,9 +932,14 @@ agg_retrieve_direct(AggState *aggstate)
 		 */
 		econtext->ecxt_scantuple = aggstate->prev_aggslot;
 		econtext->group_id = aggstate->num_repeats;
-		econtext->grouping =
-			get_grouping(econtext->ecxt_scantuple,
-						 node->grpColIdx[node->numCols-1]);
+
+		/* Get grouping from the input tuple or the Agg node. */
+		if (is_final_rollup_agg ||is_middle_rollup_agg)
+			econtext->grouping =
+				get_grouping(econtext->ecxt_scantuple,
+							 node->grpColIdx[node->numCols-1]);
+		else
+			econtext->grouping = node->grouping;
 
 		while (econtext->group_id > 0)
 		{

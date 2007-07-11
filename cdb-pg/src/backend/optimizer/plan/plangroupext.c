@@ -698,22 +698,31 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 	/* Plan a list of Agg/Group nodes with the common source plan */
 	agg_plans = plan_list_aggs(root, context, common_source_plan);
 
-	/* Decide on approach, condition argument plans to suit. */
-	if ( Gp_role == GP_ROLE_DISPATCH )
+	/* Add 'Append' if there are more than one subplan. */
+	if (list_length(agg_plans) > 1)
 	{
-		optype = choose_setop_type(agg_plans);
-		adjust_setop_arguments(agg_plans, optype);
+		/* Decide on approach, condition argument plans to suit. */
+		if ( Gp_role == GP_ROLE_DISPATCH )
+		{
+			optype = choose_setop_type(agg_plans);
+			adjust_setop_arguments(agg_plans, optype);
+		}
+
+		/* Generate the targetlist for Append node */
+		targetlist = generate_append_tlist(context->tlist, 1);
+
+		/* Append all agg_plans together */
+		result_plan = (Plan *)make_append(agg_plans, false, targetlist);
+		mark_append_locus(result_plan, optype); /* Mark the plan result locus. */
+
+		/* set the final pathkey to NIL */
+		context->current_pathkeys = NIL;
 	}
-
-	/* Generate the targetlist for Append node */
-	targetlist = generate_append_tlist(context->tlist, 1);
-
-	/* Append all agg_plans together */
-	result_plan = (Plan *)make_append(agg_plans, false, targetlist);
-	mark_append_locus(result_plan, optype); /* Mark the plan result locus. */
-
-	/* set the final pathkey to NIL */
-	context->current_pathkeys = NIL;
+	
+	else
+	{
+		result_plan = (Plan *)linitial(agg_plans);
+	}
 
 	return result_plan;
 }

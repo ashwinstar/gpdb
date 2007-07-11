@@ -81,9 +81,12 @@ ExecGroup(GroupState *node)
 		 */
 		econtext->ecxt_scantuple = node->prev_groupslot;
 
-		econtext->grouping =
-			get_grouping(econtext->ecxt_scantuple,
-						 group_node->grpColIdx[group_node->numCols-1]);
+		if (is_final_rollup_group ||is_middle_rollup_group)
+			econtext->grouping =
+				get_grouping(econtext->ecxt_scantuple,
+							 group_node->grpColIdx[group_node->numCols-1]);
+		else
+			econtext->grouping = group_node->grouping;
 
 		while (econtext->group_id > 0)
 		{
