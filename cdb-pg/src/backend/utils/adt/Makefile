@@ -16,6 +16,8 @@ override CFLAGS+= -mieee
 endif
 endif
 
+.PHONY: version.c
+
 OBJS = acl.o arrayfuncs.o array_userfuncs.o arrayutils.o bool.o \
 	cash.o char.o date.o datetime.o datum.o domains.o \
 	float.o format_type.o \
