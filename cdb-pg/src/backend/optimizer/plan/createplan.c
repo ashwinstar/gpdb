@@ -3297,6 +3297,7 @@ make_sort(PlannerInfo *root, Plan *lefttree, int numCols,
 
 	node->share_type = SHARE_NOTSHARED;
 	node->share_id = -1;
+	node->driver_slice = -1;
 
 	return node;
 }

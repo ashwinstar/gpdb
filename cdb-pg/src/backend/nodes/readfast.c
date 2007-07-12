@@ -2442,6 +2442,7 @@ _readSort(const char ** str)
 
 	READ_ENUM_FIELD(share_type, ShareType);
 	READ_INT_FIELD(share_id);
+	READ_INT_FIELD(driver_slice);
 
 	READ_DONE();
 }

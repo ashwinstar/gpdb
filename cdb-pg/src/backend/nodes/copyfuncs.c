@@ -593,6 +593,7 @@ _copySort(Sort *from)
 
 	COPY_SCALAR_FIELD(share_type);
 	COPY_SCALAR_FIELD(share_id);
+	COPY_SCALAR_FIELD(driver_slice);
 
 	return newnode;
 }

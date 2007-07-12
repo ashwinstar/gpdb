@@ -87,12 +87,38 @@ ExecSort(SortState *node)
 		outerNode = outerPlanState(node);
 		tupDesc = ExecGetResultType(outerNode);
 
-		tuplesortstate = tuplesort_begin_heap(tupDesc,
+		if(plannode->share_type == SHARE_SORT_XSLICE)
+		{
+			char rwfile_prefix[60];
+			if(plannode->driver_slice != currentSliceId)
+			{
+				elog(LOG, "Sort exec on CrossSlice, current slice %d", currentSliceId);
+				return NULL;
+			}
+
+			shareinput_create_bufname_prefix(rwfile_prefix, sizeof(rwfile_prefix), plannode->share_id);
+			elog(LOG, "Sort node create shareinput rwfile %s", rwfile_prefix);
+			tuplesortstate = tuplesort_begin_heap_file_readerwriter(
+					rwfile_prefix, true,
+					tupDesc,
+					plannode->numCols,
+					plannode->sortOperators,
+					plannode->sortColIdx,
+					work_mem,
+					true
+					); 
+		}
+		else
+		{
+			tuplesortstate = tuplesort_begin_heap(tupDesc,
 											  plannode->numCols,
 											  plannode->sortOperators,
 											  plannode->sortColIdx,
 											  work_mem,
 											  node->randomAccess);
+		}
+
+		Assert(tuplesortstate);
 		node->tuplesortstate = (void *) tuplesortstate;
 
 		/* CDB */
@@ -182,8 +208,21 @@ ExecSort(SortState *node)
 
 	/* for share input, do not need to return any tuple */
 	if(plannode->share_type != SHARE_NOTSHARED) 
-		return NULL;
+	{
+		Assert(plannode->share_type == SHARE_SORT || plannode->share_type == SHARE_SORT_XSLICE);
 
+		if(plannode->share_type == SHARE_SORT_XSLICE)
+		{
+			if(plannode->driver_slice != currentSliceId)
+			{
+				tuplesort_flush(tuplesortstate);
+				shareinput_writer_notify(plannode->share_id);
+			}
+		}
+
+		return NULL;
+	}
+				
 	SO1_printf("ExecSort: %s\n",
 			   "retrieving tuple from tuplesort");
 
@@ -329,6 +368,8 @@ ExecCountSlotsSort(Sort *node)
 static void
 ExecEndSort_internal(SortState *node)
 {
+
+	Sort *sort = (Sort *) node->ss.ps.plan;
 	SO1_printf("ExecEndSort: %s\n",
 			   "shutting down sort node");
 
@@ -346,7 +387,11 @@ ExecEndSort_internal(SortState *node)
      * Instrumentation object via a ptr saved by tuplesort_set_instrument().
 	 */
 	if (node->tuplesortstate != NULL)
-		tuplesort_end((Tuplesortstate *) node->tuplesortstate);
+	{
+		if(sort->share_type != SHARE_SORT_XSLICE)
+			tuplesort_end((Tuplesortstate *) node->tuplesortstate);
+	}
+
 	node->tuplesortstate = NULL;
 }
 

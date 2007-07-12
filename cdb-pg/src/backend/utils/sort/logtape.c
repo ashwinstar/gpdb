@@ -193,6 +193,64 @@ static long ltsRecallPrevBlockNum(LogicalTapeSet *lts,
 static void ltsDumpBuffer(LogicalTapeSet *lts, LogicalTape *lt);
 
 
+static void DumpLogicalTapeSetState(BufFile *pfile, LogicalTapeSet *lts, LogicalTape *lt)
+{
+
+	Assert(lts && lt);
+	Assert(lt->frozen && !lt->dirty);
+
+	BufFileWrite(pfile, &(lts->nFileBlocks), sizeof(lts->nFileBlocks));
+	BufFileWrite(pfile, &(lt->numFullBlocks), sizeof(lt->numFullBlocks));
+	BufFileWrite(pfile, &(lt->lastBlockBytes), sizeof(lt->lastBlockBytes));
+	BufFileWrite(pfile, &(lt->nbytes), sizeof(lt->nbytes));
+}
+
+LogicalTapeSet *LoadLogicalTapeSetState(BufFile *pfile, const char* rwfile_prefix)
+{
+	LogicalTapeSet *lts;
+	LogicalTape *lt;
+	size_t readSize;
+
+	lts = (LogicalTapeSet *) palloc(sizeof(LogicalTapeSet));
+
+	lts->pfile = BufFileCreateTemp_ReaderWriter(rwfile_prefix, false);
+	lts->nTapes = 1;
+	lt = &lts->tapes[0];
+
+	readSize = BufFileRead(pfile, &(lts->nFileBlocks), sizeof(lts->nFileBlocks));
+	if(readSize != sizeof(lts->nFileBlocks))
+		elog(ERROR, "Load logicaltapeset failed to read nFileBlocks");
+
+	lts->forgetFreeSpace = false;
+	lts->blocksSorted = true;
+	lts->freeBlocksLen = 0;
+	lts->freeBlocks = NULL;
+	lts->nFreeBlocks = 0;
+	
+	lt->indirect = NULL;
+	lt->writing = false;
+	lt->frozen = true;
+	lt->dirty = false;
+
+	readSize = BufFileRead(pfile, &(lt->numFullBlocks), sizeof(lt->numFullBlocks));
+	if(readSize != sizeof(lt->numFullBlocks))
+		elog(ERROR, "Load logicaltapeset failed to read tape numFullBlocks");
+
+	readSize = BufFileRead(pfile, &(lt->lastBlockBytes), sizeof(lt->lastBlockBytes));
+	if(readSize != sizeof(lt->lastBlockBytes))
+		elog(ERROR, "Load logicaltapeset failed to read tape lastBlockBytes");
+
+	readSize = BufFileRead(pfile, &(lt->nbytes), sizeof(lt->nbytes));
+	if(readSize != sizeof(lt->nbytes))
+		elog(ERROR, "Load logicaltapeset failed to read tape nbytes");
+
+	lt->buffer = NULL;
+	lt->curBlockNumber = 0;
+	lt->pos = 0;
+
+	return lts;
+}
+	
 /*
  * Write a block-sized buffer to the specified block of the underlying file.
  *
@@ -534,8 +592,8 @@ LogicalTapeCreate(LogicalTapeSet *lts, LogicalTape *lt)
  *
  * Each tape is initialized in write state.
  */
-LogicalTapeSet *
-LogicalTapeSetCreate(int ntapes)
+static LogicalTapeSet *
+LogicalTapeSetCreate_Internal(int ntapes)
 {
 	LogicalTapeSet *lts;
 	int			i;
@@ -547,7 +605,7 @@ LogicalTapeSetCreate(int ntapes)
 	Assert(ntapes > 0);
 	lts = (LogicalTapeSet *) palloc(sizeof(LogicalTapeSet) +
 									(ntapes - 1) *sizeof(LogicalTape));
-	lts->pfile = BufFileCreateTemp(false);
+	lts->pfile = NULL; 
 	lts->nFileBlocks = 0L;
 	lts->forgetFreeSpace = false;
 	lts->blocksSorted = true;	/* a zero-length array is sorted ... */
@@ -565,6 +623,20 @@ LogicalTapeSetCreate(int ntapes)
 	for (i = 0; i < ntapes; i++)
 		LogicalTapeCreate(lts, &lts->tapes[i]);
 
+	return lts;
+}
+
+LogicalTapeSet *LogicalTapeSetCreate(int ntapes)
+{
+	LogicalTapeSet *lts = LogicalTapeSetCreate_Internal(ntapes);
+	lts->pfile = BufFileCreateTemp(false);
+	return lts;
+}
+
+LogicalTapeSet *LogicalTapeSetCreate_ReaderWriter(const char* rwfile_prefix, int ntapes)
+{
+	LogicalTapeSet *lts = LogicalTapeSetCreate_Internal(ntapes);
+	lts->pfile = BufFileCreateTemp_ReaderWriter(rwfile_prefix, true);
 	return lts;
 }
 
@@ -882,6 +954,20 @@ LogicalTapeFreeze(LogicalTapeSet *lts, int tapenum)
 		lt->nbytes = (lt->curBlockNumber < lt->numFullBlocks) ?
 			BLCKSZ : lt->lastBlockBytes;
 	}
+}
+
+void LogicalTapeFlush(LogicalTapeSet *lts, int ntape, BufFile *pstatefile)
+{
+	LogicalTape *lt;
+
+	Assert(lts && lts->pfile);
+	Assert(ntape >= 0 && ntape < lts->nTapes);
+
+	lt = &lts->tapes[ntape];
+
+	BufFileFlush(lts->pfile);
+
+	DumpLogicalTapeSetState(pstatefile, lts, lt);
 }
 
 /*

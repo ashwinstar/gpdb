@@ -101,9 +101,9 @@ ShareInputNext(ShareInputScanState *node)
 		if(share_type == SHARE_MATERIAL_XSLICE)
 		{
 			char rwfile_prefix[60];
-			sisc_material_bufname(rwfile_prefix, sizeof(rwfile_prefix), sisc->share_id);
+			shareinput_create_bufname_prefix(rwfile_prefix, sizeof(rwfile_prefix), sisc->share_id);
 			
-			sisc_material_wait(sisc->share_id);
+			shareinput_reader_wait(sisc->share_id);
 			node->ts_state = tuplestore_begin_heap_file_readerwriter(rwfile_prefix, false);
 			tuplestore_begin_pos((Tuplestorestate *) node->ts_state, (TuplestorePos **)(&node->ts_pos));
 			tuplestore_rescan_pos((Tuplestorestate *) node->ts_state, (TuplestorePos *)node->ts_pos); 
@@ -115,6 +115,18 @@ ShareInputNext(ShareInputScanState *node)
 
 			tuplestore_begin_pos((Tuplestorestate *) node->ts_state, (TuplestorePos **)(&node->ts_pos));
 			tuplestore_rescan_pos((Tuplestorestate *) node->ts_state, (TuplestorePos *)node->ts_pos); 
+		}
+		else if(share_type == SHARE_SORT_XSLICE)
+		{
+			char rwfile_prefix[60];
+			shareinput_create_bufname_prefix(rwfile_prefix, sizeof(rwfile_prefix), sisc->share_id);
+			
+			shareinput_reader_wait(sisc->share_id);
+			node->ts_state = tuplesort_begin_heap_file_readerwriter(
+					rwfile_prefix, false,
+					NULL, 0, NULL, NULL, 0, true);
+			tuplesort_begin_pos((Tuplesortstate *) node->ts_state, (TuplesortPos **)(&node->ts_pos));
+			tuplesort_rescan_pos((Tuplesortstate *) node->ts_state, (TuplesortPos *)node->ts_pos); 
 		}
 		else 
 		{
@@ -325,7 +337,7 @@ void ExecShareInputScanReScan(ShareInputScanState *node, ExprContext *exprCtxt)
 
 /*************************************************************************
  * XXX 
- * we need some IPC mechanism for sisc_material_wait/notify.  Semaphore is
+ * we need some IPC mechanism for shareinptu_read_wait/writer_notify.  Semaphore is
  * the first thing come to mind but it turns out postgres is very picky about
  * how to use semaphore and we do not want to mess up with it.
  *
@@ -340,9 +352,8 @@ void ExecShareInputScanReScan(ShareInputScanState *node, ExprContext *exprCtxt)
 #include "fcntl.h"
 #include "storage/fd.h"
 
-void sisc_material_bufname(char* p, int size, int shared_id)
+void shareinput_create_bufname_prefix(char* p, int size, int shared_id)
 {
-	Assert(size >=50);
 	snprintf(p, size, "SIRW_%d_%d_%d", gp_session_id, gp_command_count, shared_id);
 }
 
@@ -354,7 +365,7 @@ static void sisc_lockname(char* p, int size, int shared_id)
 			);
 }
 
-void sisc_material_wait(int shared_id)
+void shareinput_reader_wait(int shared_id)
 {
 	char lkname[100];
 
@@ -366,7 +377,7 @@ void sisc_material_wait(int shared_id)
 	OpenTemporaryFileName(lkname, O_RDONLY, true, true);
 }
 
-void sisc_material_notify(int shared_id)
+void shareinput_writer_notify(int shared_id)
 {
 	char lkname[100];
 

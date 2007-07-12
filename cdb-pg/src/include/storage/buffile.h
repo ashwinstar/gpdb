@@ -31,6 +31,7 @@
 
 typedef struct BufFile BufFile;
 
+#define MAX_RWFILE_PREFIX_SIZE 128
 /*
  * prototypes for functions in buffile.c
  */

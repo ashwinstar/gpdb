@@ -53,6 +53,12 @@ extern Tuplesortstate *tuplesort_begin_heap(TupleDesc tupDesc,
 					 int nkeys,
 					 Oid *sortOperators, AttrNumber *attNums,
 					 int workMem, bool randomAccess);
+extern Tuplesortstate *tuplesort_begin_heap_file_readerwriter(
+		const char* rwfile_prefix, bool isWriter,
+		TupleDesc tupDesc, 
+		int nkeys,
+		Oid *sortOperators, AttrNumber *attNums,
+		int workMem, bool randomAccess);
 extern Tuplesortstate *tuplesort_begin_index(Relation indexRel,
 					  bool enforceUnique,
 					  int workMem, bool randomAccess);
@@ -85,6 +91,7 @@ extern bool tuplesort_getdatum(Tuplesortstate *state, bool forward,
 				   Datum *val, bool *isNull);
 
 extern void tuplesort_end(Tuplesortstate *state);
+extern void tuplesort_flush(Tuplesortstate *state);
 
 extern int	tuplesort_merge_order(long allowedMem);
 

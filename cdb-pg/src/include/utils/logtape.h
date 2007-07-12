@@ -27,6 +27,7 @@ typedef struct LogicalTapeSet LogicalTapeSet;
 extern LogicalTape *LogicalTapeCreate(LogicalTapeSet *lts, LogicalTape *lt);
 extern void LogicalTapeClose(LogicalTapeSet *lts, LogicalTape *lt, bool shouldFree);
 extern LogicalTapeSet *LogicalTapeSetCreate(int ntapes);
+extern LogicalTapeSet *LogicalTapeSetCreate_ReaderWriter(const char* rwfile_prefix, int ntapes); 
 extern void LogicalTapeSetClose(LogicalTapeSet *lts);
 extern void LogicalTapeSetForgetFreeSpace(LogicalTapeSet *lts);
 
@@ -42,6 +43,8 @@ extern void LogicalTapeRewindTape(LogicalTapeSet *lts, LogicalTape *lt, bool for
 extern void LogicalTapeRewind(LogicalTapeSet *lts, int tapenum, bool forWrite);
 
 extern void LogicalTapeFreeze(LogicalTapeSet *lts, int tapenum);
+extern void LogicalTapeFlush(LogicalTapeSet *lts, int tapenum, BufFile *pstatefile);
+extern LogicalTapeSet *LoadLogicalTapeSetState(BufFile *pfile, const char* rwfile_prefix);
 
 extern bool LogicalTapeBackspaceTape(LogicalTapeSet *lts, LogicalTape *lt,
 					 size_t size);

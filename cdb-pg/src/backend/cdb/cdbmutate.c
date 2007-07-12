@@ -1734,8 +1734,8 @@ static bool shareinput_mutator_xslice(Node* node, Query *qry, void *vpctxt, bool
 			else
 				Assert(!"Invalid share type");
 
-			lappend(ctxt->sharedNodes, shared);
-			lappend_int(ctxt->sliceMarks, motId);
+			ctxt->sharedNodes = lappend(ctxt->sharedNodes, shared);
+			ctxt->sliceMarks = lappend_int(ctxt->sliceMarks, motId);
 		}
 	}
 				

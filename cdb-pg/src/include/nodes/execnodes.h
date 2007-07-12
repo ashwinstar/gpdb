@@ -1510,9 +1510,9 @@ typedef struct ShareInputScanState
 } ShareInputScanState;
 
 /* XXX Should move into buf file */
-extern void sisc_material_notify(int shared_id);
-extern void sisc_material_wait(int shared_id);
-extern void sisc_material_bufname(char* p, int size, int shared_id);
+extern void shareinput_reader_wait(int shared_id);
+extern void shareinput_writer_notify(int shared_id);
+extern void shareinput_create_bufname_prefix(char* p, int size, int shared_id);
 
 /* ----------------
  *	 SortState information

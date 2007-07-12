@@ -45,7 +45,6 @@
  * is defined, although md.c ignores it when that symbol is defined.
  */
 #define MAX_PHYSICAL_FILESIZE  (RELSEG_SIZE * BLCKSZ)
-#define MAX_RWFILE_PREFIX_SIZE 64
 
 /*
  * This data structure represents a buffered file that consists of one or

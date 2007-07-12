@@ -74,7 +74,6 @@ ExecMaterial(MaterialState *node)
 		 */
 		if(ma->share_type == SHARE_MATERIAL_XSLICE)
 		{
-			MotionState *mostate = (MotionState *) node->ss.ps.lefttree;
 			char rwfile_prefix[60];
 
 			if(ma->driver_slice != currentSliceId)
@@ -83,10 +82,7 @@ ExecMaterial(MaterialState *node)
 				return NULL;
 			}
 			
-			Assert(mostate && IsA(mostate, MotionState));
-			Assert(mostate->mstype == MOTIONSTATE_RECV);
-
-			sisc_material_bufname(rwfile_prefix, sizeof(rwfile_prefix), ma->share_id); 
+			shareinput_create_bufname_prefix(rwfile_prefix, sizeof(rwfile_prefix), ma->share_id); 
 			elog(LOG, "Material node creates shareinput rwfile %s", rwfile_prefix);
 			tuplestorestate = tuplestore_begin_heap_file_readerwriter(rwfile_prefix, true);
 		}
@@ -154,12 +150,11 @@ ExecMaterial(MaterialState *node)
 		 */
 		if(ma->share_type == SHARE_MATERIAL_XSLICE) 
 		{
-			tuplestore_flush(tuplestorestate);
-		}
-		else if (ma->driver_slice == currentSliceId)
-		{
-			tuplestore_flush(tuplestorestate);
-			sisc_material_notify(ma->share_id);
+			if (ma->driver_slice == currentSliceId)
+			{
+				tuplestore_flush(tuplestorestate);
+				shareinput_writer_notify(ma->share_id);
+			}
 		}
 
 		return NULL;

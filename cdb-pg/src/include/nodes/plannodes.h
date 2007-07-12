@@ -501,6 +501,7 @@ typedef struct Sort
 	/* Sort node can be shared */
 	ShareType 	share_type;
 	int 		share_id;
+	int 		driver_slice;
 } Sort;
 
 /* ---------------

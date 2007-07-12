@@ -107,6 +107,7 @@
 #include "lib/stringinfo.h"             /* StringInfo */
 #include "miscadmin.h"
 #include "utils/datum.h"
+#include "storage/buffile.h"
 #include "utils/logtape.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -375,6 +376,11 @@ struct Tuplesortstate
 #ifdef TRACE_SORT
 	PGRUsage	ru_start;
 #endif
+
+	/* 
+	 * File fo dump/load logical tape set state.  Used by sharing sort across slice 
+	 */
+	BufFile *pfile_rwfile_state;
 };
 
 #define COMPARETUP(state,a,b)	((*(state)->comparetup) (a, b, state))
@@ -436,7 +442,7 @@ FREEMEM(Tuplesortstate *state, int amt)
 
 static Tuplesortstate *tuplesort_begin_common(int workMem, bool randomAccess);
 static void puttuple_common(Tuplesortstate *state, SortTuple *tuple);
-static void inittapes(Tuplesortstate *state);
+static void inittapes(Tuplesortstate *state, const char* rwfile_prefix);
 static void selectnewtape(Tuplesortstate *state);
 static void mergeruns(Tuplesortstate *state);
 static void mergeonerun(Tuplesortstate *state);
@@ -672,6 +678,72 @@ tuplesort_begin_heap(TupleDesc tupDesc,
 
 	return state;
 }
+
+Tuplesortstate *
+tuplesort_begin_heap_file_readerwriter(
+	const char *rwfile_prefix, bool isWriter,
+	TupleDesc tupDesc,
+	int nkeys,
+	Oid *sortOperators, AttrNumber *attNums,
+	int workMem, bool randomAccess)
+{
+	Tuplesortstate *state;
+	char statedump[MAX_RWFILE_PREFIX_SIZE];
+
+	snprintf(statedump, MAX_RWFILE_PREFIX_SIZE, "%s_sortstate", rwfile_prefix);
+
+	if(isWriter)
+	{
+		/*
+		 * Writer is a oridinary tuplesort, except the underlying buf file are named by
+		 * rwfile_prefix.
+		 */
+		state = tuplesort_begin_heap(tupDesc, nkeys, sortOperators, attNums, workMem, randomAccess);
+
+		/* Immediately initialize logical tapes.  Now everything will be sorted on tape. */
+		inittapes(state, rwfile_prefix);
+
+		/* 
+		 * Init the dump file for the state (mainly, for logical tape set.).  Later reader can
+		 * load back the states
+		 */
+		state->pfile_rwfile_state = BufFileCreateTemp_ReaderWriter(statedump, true);
+		return state;
+	}
+
+	/* 
+	 * For reader, we really don't know anything about sort op, attNums, etc.  
+	 * All the readers cares are the data on the logical tape set.  The state
+	 * of the logical tape set has been dumped, so we load it back and that is
+	 * it.
+	 */
+	state = (Tuplesortstate *) palloc0(sizeof(Tuplesortstate));
+	state->status = TSS_SORTEDONTAPE;
+	state->randomAccess = true;
+
+	state->pfile_rwfile_state = BufFileCreateTemp_ReaderWriter(statedump, false);
+	state->tapeset = LoadLogicalTapeSetState(state->pfile_rwfile_state, rwfile_prefix);
+	state->currentRun = 0;
+	state->result_tape = 0;
+
+	state->pos.eof_reached =false;
+	state->pos.markpos_block = 0;
+	state->pos.markpos_offset = 0;
+	state->pos.markpos_eof = false;
+	state->pos.work_tape = NULL;
+
+	return state;
+}
+
+	
+
+	
+
+
+
+
+	
+
 
 Tuplesortstate *
 tuplesort_begin_index(Relation indexRel,
@@ -1045,7 +1117,7 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 			/*
 			 * Nope; time to switch to tape-based operation.
 			 */
-			inittapes(state);
+			inittapes(state, NULL);
 
 			/*
 			 * Dump tuples until we are back under the limit.
@@ -1168,6 +1240,15 @@ tuplesort_performsort(Tuplesortstate *state)
     state->availMemMin01 = state->availMemMin;
 
 	MemoryContextSwitchTo(oldcontext);
+}
+
+void tuplesort_flush(Tuplesortstate *state)
+{
+	Assert(state->status == TSS_SORTEDONTAPE);
+	Assert(state->tapeset && state->pfile_rwfile_state);
+	Assert(state->pos.work_tape == NULL);
+	LogicalTapeFlush(state->tapeset, state->result_tape, state->pfile_rwfile_state);
+	BufFileFlush(state->pfile_rwfile_state);
 }
 
 /*
@@ -1510,7 +1591,7 @@ tuplesort_merge_order(long allowedMem)
  * This is called only if we have found we don't have room to sort in memory.
  */
 static void
-inittapes(Tuplesortstate *state)
+inittapes(Tuplesortstate *state, const char* rwfile_prefix)
 {
 	int			maxTapes,
 				ntuples,
@@ -1553,7 +1634,10 @@ inittapes(Tuplesortstate *state)
 	/*
 	 * Create the tape set and allocate the per-tape data arrays.
 	 */
-	state->tapeset = LogicalTapeSetCreate(maxTapes);
+	if(!rwfile_prefix)
+		state->tapeset = LogicalTapeSetCreate(maxTapes);
+	else
+		state->tapeset = LogicalTapeSetCreate_ReaderWriter(rwfile_prefix, maxTapes);
 
 	state->mergeactive = (bool *) palloc0(maxTapes * sizeof(bool));
 	state->mergenext = (int *) palloc0(maxTapes * sizeof(int));
