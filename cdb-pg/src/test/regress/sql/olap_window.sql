@@ -305,6 +305,12 @@ select row_number() over (partition by pn),
     rank() over (partition by vn order by cn) 
 from sale; -- mvd 4->1
 
+select cname, 
+	   rank() over (partition by sale.cn order by pn),
+	   rank() over (partition by sale.cn order by vn)
+from sale, customer
+where sale.cn = customer.cn; -- mvd 1->2,3
+
 -- Aggregate nesting --
 
 create table olap_tmp(g integer, h integer, i integer, x integer);
