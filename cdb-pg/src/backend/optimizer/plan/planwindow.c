@@ -215,6 +215,7 @@ static Plan *plan_non_trivial_window_query(PlannerInfo *root, WindowContext *con
 static void plan_windowinfo_coplans(PlannerInfo *root, WindowContext *context, int window_index);
 static List * plan_window_rtable(PlannerInfo* root, WindowContext *context);
 static List *make_rowkey_targets(void);
+static Plan *condition_input(PlannerInfo *root, Plan *inputplan, int partkey_len, AttrNumber *partkey_attrs, List *sortclause, CdbPathLocus input_locus, List **pathkeys_ptr);
 static Coplan *makeCoplan(CoplanType type, WindowContext *context);
 static AttrNumber addTargetToCoplan(Node *target, Coplan *coplan, WindowContext *context);
 static Aggref* makeWindowAggref(WindowRef *winref);
@@ -1341,6 +1342,111 @@ static Plan *plan_common_subquery(PlannerInfo *root, List *lower_tlist,
 	return result_plan;
 }
 
+/* condition_input
+ * put necessary reordering and motion on top of the input plun.
+ */
+Plan *condition_input(
+		PlannerInfo *root,
+		Plan *input_plan,
+		int partkey_len,
+		AttrNumber *partkey_attrs,
+		List *sortclause,
+		CdbPathLocus input_locus,
+		List **pathkeys_ptr
+		)
+{
+	Plan *new_plan;
+	List *pathkeys;
+	List *sort_pathkeys = NULL;	
+	
+	double motion_cost_per_row = (gp_motion_cost_per_row > 0.0) ? 
+									gp_motion_cost_per_row : 2.0 * cpu_tuple_cost;
+
+	Assert( input_plan);
+	Assert( !CdbPathLocus_IsNull(input_locus));
+	Assert( pathkeys_ptr && (*pathkeys_ptr == NIL || IsA(*pathkeys_ptr, List)) );
+	
+	new_plan = (Plan *) input_plan;
+
+	pathkeys = *pathkeys_ptr;
+	
+	if ( sortclause != NIL )
+	{
+		sort_pathkeys = make_pathkeys_for_sortclauses(sortclause, new_plan->targetlist);
+		sort_pathkeys = canonicalize_pathkeys(root, sort_pathkeys);
+		Assert(sort_pathkeys != NULL);
+	}
+	
+	if ( partkey_len == 0 ) /* Plan for single process locus. */
+	{
+		if(sort_pathkeys != NULL)
+		{
+			if(!pathkeys_contained_in(sort_pathkeys, *pathkeys_ptr))
+			{
+				new_plan = (Plan *) make_sort_from_sortclauses(root, sortclause, new_plan);
+				*pathkeys_ptr = sort_pathkeys;
+				mark_sort_locus(new_plan);
+			}
+		}
+
+		if(CdbPathLocus_IsPartitioned(input_locus))
+		{
+			new_plan = (Plan *) make_motion_gather_to_QE(new_plan, (*pathkeys_ptr != NULL));
+			new_plan->total_cost += motion_cost_per_row * new_plan->plan_rows;
+		}
+
+		Assert(new_plan->flow);
+		return new_plan;
+	}
+	else  /* Plan for hash distributed locus. */
+	{
+
+		List *dist_keys = NIL;
+		List *dist_pathkeys = NIL;
+		List *dist_exprs = NIL;
+		ListCell *lc;
+		int n = partkey_len;
+		
+		foreach (lc, sortclause)
+		{
+			if ( 0 >= n-- ) break;
+			dist_keys = lappend(dist_keys, lfirst(lc));
+		}
+		dist_pathkeys = make_pathkeys_for_sortclauses(dist_keys, new_plan->targetlist);
+		dist_pathkeys = canonicalize_pathkeys(root, dist_pathkeys);
+		
+		if ( ! cdbpathlocus_collocates(input_locus, dist_pathkeys ) )
+		{
+			/* Preexisting input_locus won't do.  Redistribute. */
+			foreach (lc, dist_keys)
+			{
+				SortClause *sc = (SortClause*)lfirst(lc);
+				TargetEntry *tle =  get_sortgroupclause_tle(sc, new_plan->targetlist);
+				dist_exprs = lappend(dist_exprs, tle->expr);
+			}
+		}
+
+		if(dist_exprs)
+		{
+			new_plan = (Plan *) make_motion_hash(root, new_plan, dist_exprs);
+			new_plan->total_cost += motion_cost_per_row * new_plan->plan_rows;
+			*pathkeys_ptr = NIL;
+			Assert(new_plan->flow);
+		}
+
+		if(sortclause != NIL)
+		{
+			if(! pathkeys_contained_in(sort_pathkeys, *pathkeys_ptr))
+			{
+				new_plan = (Plan *) make_sort_from_sortclauses(root, sortclause, new_plan);
+				*pathkeys_ptr = sort_pathkeys;
+				mark_sort_locus(new_plan);
+			}
+		}
+
+		return new_plan;
+	}
+}
 
 /* Plan a window query that can be implemented without any joins or 
  * input sharing, i.e., it involves one scan of the input plan result
@@ -1372,8 +1478,7 @@ static Plan *plan_trivial_window_query(PlannerInfo *root, WindowContext *context
 	window_pathkeys = canonicalize_pathkeys(root, window_pathkeys);
 	
 	/* Assure needed colocation and order. */
-	result_plan = condition_input(&shareplan_simple,
-								  root,
+	result_plan = condition_input(root,
 								  result_plan,
 								  winfo->partkey_len,
 								  winfo->partkey_attrs,
@@ -1909,7 +2014,6 @@ static Aggref* makeAuxCountAggref()
  */
 
 static RangeTblEntry *rte_for_coplan(
-		ISHAREPLAN *share,
 		PlannerInfo *root,
 		Plan *input_plan, 
 		CdbPathLocus subplan_locus,
@@ -1921,10 +2025,8 @@ static RangeTblEntry *rte_for_coplan(
 	RangeTblEntry *rte;
 	Plan *new_plan;
 	
-	new_plan = condition_input(
-						share,
-						root,
-						(share == &shareplan_simple) ? copyObject(input_plan) : input_plan,
+	new_plan = condition_input(root,
+						input_plan,
 						winfo->partkey_len, 
 						winfo->partkey_attrs,
 						winfo->sortclause,
@@ -2028,99 +2130,58 @@ static RangeTblEntry *rte_for_coplan(
 }
 
 /* 
- * The function plan_window_rtable_func brings together the coplans that make
- * up a window plan.  
- *
- * The ISHAREPLAN interface will points to the appropriate routines that will
- * dup or share the underlying subplan.
- */
-static List * plan_window_rtable_share(ISHAREPLAN *share, 
-		PlannerInfo* root, WindowContext *context)
-{
-	int i;
-	RangeTblEntry *rte;
-	List *rtable = NIL;
-	
-	if(share->init_ctxt)
-		(*share->init_ctxt) (share->ctxt);
-
-	for ( i = 0; i < context->nwindowinfos; i++ )
-	{
-		WindowInfo *winfo = &context->windowinfos[i];
-		
-		if ( winfo->window_coplan != NULL )
-		{
-			rte = rte_for_coplan(
-					share,
-					root, 
-					context->subplan, 
-					context->subplan_locus,
-					context->subplan_pathkeys,
-					winfo,
-					winfo->window_coplan);
-
-			rtable = lappend(rtable, rte);
-		}
-
-		if ( winfo->agg_coplan != NULL )
-		{
-			rte = rte_for_coplan(
-					share,
-					root, 
-					context->subplan, 
-					context->subplan_locus,
-					context->subplan_pathkeys,
-					winfo,
-					winfo->agg_coplan);
-
-			rtable = lappend(rtable, rte);
-		}
-	}
-
-	Assert( list_length(rtable) == context->coplan_count );
-
-	return rtable;
-}
-
-/* 
  * plan_window_rtable is the stub for plan_window_rtable_dup/share.
  *
  * XXX TODO: Right now we either always dup the subplan or always share
  * the sub plan, depending on a guc gp_window_shareinput.
  * Should make this cost based
  */
-List *plan_window_rtable(PlannerInfo *root, WindowContext *ctxt)
+List *plan_window_rtable(PlannerInfo *root, WindowContext *context)
 {
-	if((!gp_window_shareinput)
-		|| ctxt->nwindowinfos == 0 
-		|| (ctxt->nwindowinfos == 1 && 
-				(ctxt->windowinfos[0].window_coplan == NULL ||
-			 	 ctxt->windowinfos[0].agg_coplan == NULL)
-	  	   )
-	  )
-		return plan_window_rtable_share(&shareplan_simple, root, ctxt);
-	else 
-	{
-		ShareType stype = add_sharenode(
-				root, 
-				(Plan **) &ctxt->subplan, 
-				&ctxt->subplan_pathkeys,
-				ctxt->subplan_locus,
-				(void *) ctxt,
-				ctxt->nwindowinfos,
-				get_windowctxt_partkey_len,
-				get_windowctxt_sortclause
-				);
+	int i;
+	RangeTblEntry *rte;
+	List *sharedNodes = NIL;
+	List *rtable = NIL;
+	ListCell *lc = NULL;
 
-		Assert(stype == SHARE_MATERIAL);
-		Assert(IsA(ctxt->subplan, Material));
-		return plan_window_rtable_share(&shareplan_ms, root, ctxt);
+	sharedNodes = share_plan(root, context->subplan, context->coplan_count);
+	Assert(list_length(sharedNodes) == context->coplan_count);
+
+	lc = list_head(sharedNodes);
+
+	for ( i = 0; i < context->nwindowinfos; i++ )
+	{
+		WindowInfo *winfo = context->windowinfos + i; 
+		if ( winfo->window_coplan != NULL )
+		{
+			Assert(lc);
+			rte = rte_for_coplan(root, 
+					(Plan *) lfirst(lc),
+					context->subplan_locus,
+					context->subplan_pathkeys,
+					winfo,
+					winfo->window_coplan);
+			lc = lnext(lc);
+			rtable = lappend(rtable, rte);
+
+		}
+
+		if ( winfo->agg_coplan != NULL )
+		{
+			rte = rte_for_coplan(root, 
+					(Plan *) lfirst(lc),
+					context->subplan_locus,
+					context->subplan_pathkeys,
+					winfo,
+					winfo->agg_coplan);
+			lc = lnext(lc);
+			rtable = lappend(rtable, rte);
+		}
 	}
 
-	Assert(!"Should never reach");
-	return NULL;
+	Assert( list_length(rtable) == context->coplan_count );
+	return rtable;
 }
-
 
 /* Plan the FROM-WHERE clauses to rejoin the coplans.
  */

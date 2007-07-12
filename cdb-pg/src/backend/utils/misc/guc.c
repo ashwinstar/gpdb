@@ -1175,7 +1175,7 @@ static struct config_bool ConfigureNamesBool[] =
             gettext_noop("Reduces duplicate subplan execution.")
 		},
 		&gp_window_shareinput,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 
 	{

@@ -972,47 +972,16 @@ static List *
 generate_list_subplans(PlannerInfo *root, int num_subplans,
 					   GroupExtContext *context)
 {
-	List *subplans = NIL;
 	int group_no;
+	List* subplans = share_plan(root, context->subplan, num_subplans);
 
-	ShareType stype = SHARE_NOTSHARED;
+	list_free(context->pathkeys);
+	context->pathkeys = NIL;
 
-	if(gp_window_shareinput && num_subplans > 0)
+	for(group_no = 0; group_no < num_subplans; ++group_no)
 	{
-		stype = add_sharenode(root,
-				&context->subplan,
-				&context->pathkeys,
-				context->input_locus,
-				(void *) context,
-				num_subplans,
-				NULL,
-				NULL);
-	}
- 
-	if(stype == SHARE_NOTSHARED)
-	{
-		for (group_no = 0; group_no < num_subplans; group_no++)
-			subplans = lappend(subplans, copyObject(context->subplan));
-
-		/* set all pathkeys to context->current_pathkeys */
-		list_free(context->pathkeys);
-		context->pathkeys = NIL;
-		for (group_no = 0; group_no < num_subplans; group_no++)
-		{
-			List *pathkeys = copyObject(context->current_pathkeys);
-			context->pathkeys = lappend(context->pathkeys, pathkeys);
-		}
-	}
-	
-
-	else
-	{
-		Assert(stype == SHARE_MATERIAL);
-		for(group_no = 0; group_no < num_subplans; group_no++)
-		{
-			Plan *newplan = (*(shareplan_ms.newplan_for_subplan)) (NULL, root, context->subplan);
-			subplans = lappend(subplans, newplan);
-		}
+		List *pathkeys = copyObject(context->current_pathkeys);
+		context->pathkeys = lappend(context->pathkeys, pathkeys);
 	}
 
 	return subplans;
