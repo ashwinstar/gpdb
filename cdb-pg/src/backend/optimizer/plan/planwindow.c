@@ -1089,14 +1089,21 @@ make_lower_targetlist(Query *parse,
 		{
 			ListCell *lct;
 			TargetEntry *te;
-			TargetEntry *tle = (TargetEntry *)lfirst(lc);
+			bool found = false;
 			
-			foreach ( lct, lower_tlist )
+			tle = (TargetEntry *)lfirst(lc);
+			
+			foreach (lct, lower_tlist)
 			{
 				te = (TargetEntry *)lfirst(lct);
-				if ( equal(tle->expr, te->expr) )
+				if (equal(tle->expr, te->expr) && 
+					(te->ressortgroupref == tle->ressortgroupref ||
+					 te->ressortgroupref == 0))
+				{
 					break;
+				}
 			}
+			
 			if ( lct != NULL )
 			{
 				/* Found one. */
