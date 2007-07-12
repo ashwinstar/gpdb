@@ -1239,3 +1239,16 @@ order by 1,5;
 (26 rows)
 
 -- end equivalent
+-- Check that mixing cume_dist() with other window functions on the same
+-- window does not result in badness
+select cn, rank() over (w), cume_dist() over (w) from
+  customer
+  window w as (order by cname);
+ cn | rank | cume_dist 
+----+------+-----------
+  2 |    1 |      0.25
+  3 |    2 |       0.5
+  1 |    3 |      0.75
+  4 |    4 |         1
+(4 rows)
+

@@ -391,3 +391,10 @@ group by rollup(cn,vn,pn)
 order by 1,5;
 
 -- end equivalent
+
+-- Check that mixing cume_dist() with other window functions on the same
+-- window does not result in badness
+
+select cn, rank() over (w), cume_dist() over (w) from
+  customer
+  window w as (order by cname);

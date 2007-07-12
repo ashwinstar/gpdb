@@ -2390,7 +2390,8 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 
 			winform = (Form_pg_window) GETSTRUCT(win_tuple);
 
-			/* Lookup ordinary window implementation function info.
+			/* 
+			 * Lookup ordinary window implementation function info.
 			 */			
 			switch ( winref->winstage)
 			{
@@ -2434,9 +2435,16 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 			wrxstate->args = lcons(xtrastate, wrxstate->args);
 			fmgr_info(funcstate->windowfn_oid, &funcstate->windowfn);			
 
-			/* TODO: make this a bit cleaner */
-			if (PointerIsValid(funcstate->wlevel))
+			/* 
+			 * Only set the peer count if we're referencing an actual
+			 * window key level and if the peer count is required. This
+			 * ensures that subsequent iterations do not overwrite the peer
+			 * count flag.
+			 */
+			if (PointerIsValid(funcstate->wlevel) && winform->winpeercount)
+			{
 				funcstate->wlevel->need_peer_count = winform->winpeercount;
+			}
 		}
 		else
 		{
