@@ -1089,7 +1089,6 @@ make_lower_targetlist(Query *parse,
 		{
 			ListCell *lct;
 			TargetEntry *te;
-			bool found = false;
 			
 			tle = (TargetEntry *)lfirst(lc);
 			
