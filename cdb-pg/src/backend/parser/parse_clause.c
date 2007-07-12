@@ -320,7 +320,15 @@ transformWindowClause(ParseState *pstate, Query *qry)
 								 errmsg("conflicting ORDER BY clauses in window "
 										"specification")));
 
-					if (ws2->frame)
+					/*
+					 * We only want to disallow the specification of a 
+					 * framing clause when the target list form is like:
+					 *
+					 *  foo() OVER (w1 ORDER BY baz) ...
+					 */
+					if (!(ws->partition == NIL && ws->order == NIL &&
+						  ws->name == NULL) &&
+						ws2->frame)
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
 								 errmsg("window specification \"%s\" cannot have "
