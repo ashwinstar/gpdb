@@ -973,6 +973,22 @@ if (1)
         {
             $ini =~ s/gathered.*results/gathered SOME_NUMBER_OF results/;
         }
+
+        # fix code locations eg "(xact.c:1458)" to "(xact.c:SOME_LINE)"
+        if ($ini =~ m/(ERROR|WARNING|CONTEXT|NOTICE):\s+Raise an error as directed by/)
+        {
+            $ini =~ s/\.c\:\d+\)/\.c\:SOME_LINE\)/;
+        }
+        if ($ini =~ m/(DETAIL|ERROR|WARNING|CONTEXT|NOTICE):\s+Raise .* for debug_dtm_action\s*\=\s* \d+/)
+        {
+            $ini =~ s/\.c\:\d+\)/\.c\:SOME_LINE\)/;
+        }
+        if ($ini =~ m/(ERROR|WARNING|CONTEXT|NOTICE):\s+Could not .* savepoint/)
+        {
+            $ini =~ s/\.c\:\d+\)/\.c\:SOME_LINE\)/;
+        }
+
+
         if ($ini =~ m/(ERROR|WARNING|CONTEXT|NOTICE):.*connection.*failed.*(http|gpfdist)/)
         {
             $ini =~ s/connection.*failed.*(http|gpfdist).*/connection failed dummy_protocol\:\/\/DUMMY_LOCATION/;

@@ -540,7 +540,7 @@ DROP EXTERNAL TABLE EXT_LINEITEM;
 -- gpfdist
 --
 CREATE EXTERNAL WEB TABLE gpfdist_start (x text)
-execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_srcdir@/data  </dev/null >/dev/null 2>&1 &); echo "starting...") '
+execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_srcdir@/data  </dev/null >/dev/null 2>&1 &); sleep 5; echo "starting...") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 CREATE EXTERNAL WEB TABLE gpfdist_stop (x text)
@@ -1093,7 +1093,7 @@ DROP EXTERNAL TABLE EXT_LINEITEM;
 -- csv (mpp-1519, etc)
 --
 CREATE EXTERNAL WEB TABLE gpfdist_csv_start (x text)
-execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_srcdir@/data  -q \'"\' -h  </dev/null >/dev/null 2>&1 &); echo "starting...") '
+execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_srcdir@/data  -q \'"\' -h  </dev/null >/dev/null 2>&1 &); sleep 5; echo "starting...") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 -- 
@@ -1626,8 +1626,10 @@ NOTICE:  HEADER means that each one of the data files has a header row. Also, if
 -- ignore quoting (use g vs double quote)
 --
 select count(*) from bad_whois;
-ERROR:  missing data for column "domain_name"  (seg0 slice1 @hostname@:11002 pid=1163)
-DETAIL:  External table bad_whois, line 2 of gpfdist://@hostname@:8080/whois.csv: ""
+ERROR:  missing data for column "subdomain"  (seg0 slice1 @hostname@:11002 pid=22625)
+DETAIL:  
+	 External table bad_whois, line 3 of gpfdist://@hostname@:8080/whois.csv: "is provided by WEBCC for information purposes, and to assist in obtaining 
+information about or rela..."
 drop external table bad_whois;
 --
 -- invalid formatting (drop first column [source_line int])
@@ -1725,8 +1727,8 @@ location ('gpfdist://@hostname@:8080/whois.csv' )
 format 'csv' ( quote as '"');
 -- "
 select count(rec_path) from bad2_whois;
-ERROR:  extra data after last expected column  (seg0 slice1 @hostname@:11002 pid=1163)
-DETAIL:  External table bad2_whois, line 63 of gpfdist://@hostname@:8080/whois.csv: "2278,00669.net,net,net,,,,,"MDNH, Inc",,,2006-06-17 11:02:05.664637,,,2006-11-28,3,,,a.ns.ultsearch...."
+ERROR:  extra data after last expected column  (seg0 slice1 @hostname@:11002 pid=22625)
+DETAIL:  External table bad2_whois, line 58 of gpfdist://@hostname@:8080/whois.csv: "2,00111.net,net,net,,,,,,,,2006-06-16 19:33:12.11421,2006-02-17,2006-02-18 01:19:53,2007-02-17,3,,,n..."
 drop external table bad2_whois;
 --
 -- more invalid formatting -- treat a csv file as a text file
@@ -1740,7 +1742,7 @@ reverse_dns			varchar(512)
 location ('gpfdist://@hostname@:8080/whois.csv' )
 format 'text' (delimiter '|');
 select count(*) from bad3_whois;
-ERROR:  extra data after last expected column  (seg0 slice1 @hostname@:11002 pid=1163)
+ERROR:  extra data after last expected column  (seg0 slice1 @hostname@:11002 pid=22625)
 DETAIL:  External table bad3_whois, line 1 of gpfdist://@hostname@:8080/whois.csv: "2,00111.net,net,net,,,,,,,,2006-06-16 19:33:12.11421,2006-02-17,2006-02-18 01:19:53,2007-02-17,3,,,n..."
 drop external table bad3_whois;
 select * from gpfdist_stop;
@@ -1756,7 +1758,7 @@ create external table badt1 (x text)
 location ('file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl' )
 format 'text' (delimiter '|');
 select * from badt1;
-ERROR:  could not open "file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl" for reading: No such file or directory  (seg0 slice1 @hostname@:11002 pid=1163)
+ERROR:  could not open "file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl" for reading: No such file or directory  (seg0 slice1 @hostname@:11002 pid=22625)
 drop external table badt1;
 --
 -- try a bad protocol
@@ -1769,7 +1771,7 @@ ERROR:  invalid URI 'bad_protocol://@hostname@@abs_srcdir@/data/no/such/place/ba
 -- get an error for missing gpfdist
 --
 select count(*) from ext_whois;
-ERROR:  connection failed while gpfdist://@hostname@:8080/whois.csv (url.i:164)  (seg0 slice1 @hostname@:11002 pid=1163)
+ERROR:  connection failed while gpfdist://@hostname@:8080/whois.csv (url.i:164)  (seg1 slice1 @hostname@:11003 pid=22626)
 drop external table ext_whois;
 drop table cpy_whois;
 drop table v_w;
@@ -1786,7 +1788,7 @@ drop external table gpfdist_stop;
 --- test copying in CSV mode with various styles
 --- of embedded line ending characters
 CREATE EXTERNAL WEB TABLE gpfdist_start (x text)
-execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_builddir@/results -q \'z\' -x \'Z\' </dev/null >/dev/null 2>&1 &); echo "starting...") '
+execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_builddir@/results -q \'z\' -x \'Z\' </dev/null >/dev/null 2>&1 &); sleep 5; echo "starting...") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 CREATE EXTERNAL WEB TABLE gpfdist_stop (x text)
@@ -1933,7 +1935,7 @@ on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 -- point gpfdist at the results directory, not the data directory
 CREATE EXTERNAL WEB TABLE gpfdist_start (x text)
-execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_builddir@/results  </dev/null >/dev/null 2>&1 &); echo "starting...") '
+execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_builddir@/results  </dev/null >/dev/null 2>&1 &); sleep 5; echo "starting...") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 CREATE EXTERNAL WEB TABLE gpfdist_stop (x text)

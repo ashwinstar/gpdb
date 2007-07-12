@@ -190,7 +190,7 @@ DROP EXTERNAL TABLE EXT_LINEITEM;
 --
 
 CREATE EXTERNAL WEB TABLE gpfdist_start (x text)
-execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_srcdir@/data  </dev/null >/dev/null 2>&1 &); echo "starting...") '
+execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_srcdir@/data  </dev/null >/dev/null 2>&1 &); sleep 5; echo "starting...") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 
@@ -376,7 +376,7 @@ DROP EXTERNAL TABLE EXT_LINEITEM;
 -- csv (mpp-1519, etc)
 --
 CREATE EXTERNAL WEB TABLE gpfdist_csv_start (x text)
-execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_srcdir@/data  -q \'"\' -h  </dev/null >/dev/null 2>&1 &); echo "starting...") '
+execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_srcdir@/data  -q \'"\' -h  </dev/null >/dev/null 2>&1 &); sleep 5; echo "starting...") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 -- 
@@ -950,7 +950,7 @@ drop external table gpfdist_stop;
 --- of embedded line ending characters
 
 CREATE EXTERNAL WEB TABLE gpfdist_start (x text)
-execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_builddir@/results -q \'z\' -x \'Z\' </dev/null >/dev/null 2>&1 &); echo "starting...") '
+execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_builddir@/results -q \'z\' -x \'Z\' </dev/null >/dev/null 2>&1 &); sleep 5; echo "starting...") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 
@@ -1078,7 +1078,7 @@ FORMAT 'text' (delimiter '|');
 
 -- point gpfdist at the results directory, not the data directory
 CREATE EXTERNAL WEB TABLE gpfdist_start (x text)
-execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_builddir@/results  </dev/null >/dev/null 2>&1 &); echo "starting...") '
+execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_builddir@/results  </dev/null >/dev/null 2>&1 &); sleep 5; echo "starting...") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 
