@@ -23,7 +23,7 @@
  * Copyright (c) 2003-2006, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/nodes/tidbitmap.c,v 1.9 2006/03/05 15:58:28 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/nodes/tidbitmap.c,v 1.10 2006/07/13 17:47:01 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -1003,7 +1003,11 @@ tbm_lossify(HashBitmap *tbm)
 		tbm_mark_page_lossy(tbm, page->blockno);
 
 		if (tbm->nentries <= tbm->maxentries)
-			return;				/* we have done enough */
+		{
+			/* we have done enough */
+			hash_seq_term(&status);
+			break;
+		}
 
 		/*
 		 * Note: tbm_mark_page_lossy may have inserted a lossy chunk into the

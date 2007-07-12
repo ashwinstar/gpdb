@@ -4529,6 +4529,7 @@ CommitSubTransaction(void)
 						  s->parent->subTransactionId);
 	AtEOSubXact_Files(true, s->subTransactionId,
 					  s->parent->subTransactionId);
+	AtEOSubXact_HashTables(true, s->nestingLevel);
 
 	/*
 	 * We need to restore the upper transaction's read-only state, in case the
@@ -4640,6 +4641,7 @@ AbortSubTransaction(void)
 							  s->parent->subTransactionId);
 		AtEOSubXact_Files(false, s->subTransactionId,
 						  s->parent->subTransactionId);
+		AtEOSubXact_HashTables(false, s->nestingLevel);
 	}
 
 	/*
