@@ -125,8 +125,21 @@ createDispatchAgents(void)
 	PQExpBufferData buffer;
 	int i, j;
 	
-	//int			size = getgpsegmentCount()/4+1;
-	int			size = 2;
+	/*
+	 * Not a lot of thought has gone into tuning this.
+	 * If we were just dispatching non-sliced plans, we'd want to limit
+	 * the number of dispatch agents to about sqrt(getgpsegmentCount()) 
+	 * to balance the load, but since we do have multi-slice plans, it may be
+	 * useful to have as many as 1 dispatch agent per host.
+	 * 
+	 */
+	
+	int			size = getgpsegmentCount()/8;
+	if (size < 2)				/* on small systems, use two dispatch agents */
+		size = 2;
+	
+	if (getgpsegmentCount()<=1)	/* some developers use a single segment, I think */
+		size = 1;
 
 	elog(DEBUG1,"createDispatchAgents");
 	
@@ -138,7 +151,7 @@ createDispatchAgents(void)
 	/*
 	 * We can't allocate more dispatch agents than segments than we know about
 	 */
-	Assert(size <= getgpsegmentCount());
+	Assert(size > 0 && size <= getgpsegmentCount());
 
 	/*
 	 * MemoryContexts used in this routine.
@@ -180,7 +193,7 @@ createDispatchAgents(void)
 	for (i = 0; i < size; i++)
 	{
 		q = &cdb_component_dbs->segment_db_info[j++];
-		if (!q->isprimary  || !q->valid)
+		while (!q->isprimary  || !q->valid)
 			q = &cdb_component_dbs->segment_db_info[j++];
 	 
 		
