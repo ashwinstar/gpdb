@@ -164,7 +164,54 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 			q = getSegmentDescriptorFromGang(gp, seg);
 
 			/* send COPY command to the segment DB */
+#if 0
 			res = PQexec(q->conn, copyCmd);
+#else
+			/*
+			 * The problem with PQexec is that we don't transmit the session userid or 
+			 * current userid, so if the user has used set session authorization or set role, 
+			 * we might execute the copy using the wrong session's permissions.
+			 */
+			{
+			char *serializedSnapshot;
+			int serializedSnapshotlen;
+			char * query_text = NULL;
+			int query_text_len;
+			int txnOptions = 0;
+			
+			serializedSnapshot = 
+				qdSerializeDtxContextInfo(&serializedSnapshotlen, true /* wantSnapshot */, txnOptions, "cdbcopy");
+			
+			/*
+			 * Since we are sending directly to the QE, the gang info and slice info isn't used.
+			 * 
+			 * But if we wanted to send to a dispatch agent, we'd need some way to say we want to send to
+			 * one specific QE, which we currently don't have.
+			 */
+
+			query_text = PQbuildGpQueryString(
+					copyCmd, strlen(copyCmd)+1, 
+					NULL, 0, NULL, 0, NULL, 0, NULL, 0,
+					serializedSnapshot, serializedSnapshotlen, 
+					0 /* unused flag */, gp_command_count, -1 /* localSlice */, 0 /* rootIdx */, 1 /* primaryGang */, 0 /* mirrorGang */,
+					GetSessionUserId(), superuser_arg(GetSessionUserId()), GetOuterUserId(), superuser_arg(GetOuterUserId()), GetUserId(),
+					&query_text_len);
+				 
+			 
+			if (PQsendGpQuery_shared(q->conn, (char *)query_text, query_text_len) == 0)
+			{
+				/* Note the error. */
+				elog(ERROR,"Command could not be sent to QE %s", PQerrorMessage(q->conn));
+			}
+	
+			/*
+			 * I think PQsendGpQuery_shared gets rid of the shared_buffer, so we don't need to free it.
+			 */
+			/* free(query_text);  // allocted with malloc, so use free  */
+			
+			res = PQgetResult(q->conn);
+			}
+#endif 
 
 			if ( (c->copy_in && (PQresultStatus(res) != PGRES_COPY_IN)) ||
 				 (!c->copy_in && (PQresultStatus(res) != PGRES_COPY_OUT)) )
