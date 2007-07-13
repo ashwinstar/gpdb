@@ -2341,10 +2341,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 				elog(ERROR,"Command could not be sent to QD %s", PQerrorMessage(_QD_conn));
 			}
 	
-			/*
-			 * I think PQsendGpQuery_shared gets rid of the shared_buffer, so we don't need to free it.
-			 */
-			/* free(query_text);  // allocted with malloc, so use free  */
+			free(query_text);  /* allocted with malloc, so use free  */
 			
 		}
 		/* End special code to use PQsendGpQuery */

@@ -204,10 +204,7 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 				elog(ERROR,"Command could not be sent to QE %s", PQerrorMessage(q->conn));
 			}
 	
-			/*
-			 * I think PQsendGpQuery_shared gets rid of the shared_buffer, so we don't need to free it.
-			 */
-			/* free(query_text);  // allocted with malloc, so use free  */
+			free(query_text);  /* allocted with malloc, so use free  */
 			
 			res = PQgetResult(q->conn);
 			}
