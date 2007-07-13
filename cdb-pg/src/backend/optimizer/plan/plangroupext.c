@@ -655,8 +655,9 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 	GpSetOpType optype = PSETOP_NONE;
 	Plan *common_source_plan;
 	double      motion_cost_per_row;
+	AttrNumber *orig_grpColIdx;
 
-	pfree(context->grpColIdx);
+	orig_grpColIdx = context->grpColIdx;
 	context->grpColIdx = context->current_rollup->colIdx;
 
 	/* Add an explicit sort if we couldn't make the path
@@ -666,11 +667,12 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 							   context->current_pathkeys))
 	{
 		lefttree = (Plan *)
-			make_sort_from_groupcols(root,
-									 root->parse->groupClause,
-									 context->grpColIdx,
-									 false,
-									 lefttree);
+			make_sort_from_reordered_groupcols(root,
+											  root->parse->groupClause,
+											  orig_grpColIdx,
+											  context->grpColIdx,
+											  false,
+											  lefttree);
 		context->current_pathkeys = root->group_pathkeys;
 		mark_sort_locus(lefttree);
 
@@ -683,6 +685,8 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 			pSort->noduplicates = true;
 		}
 	}
+
+	pfree(orig_grpColIdx);
 
 	context->aggstrategy = AGG_SORTED; /* set the strategy to AGG_SORTED */
 

@@ -315,6 +315,15 @@ select cn,sum(qty) from sale group by cube(prc,cn);
 select cn,sum(qty) from sale group by grouping sets (cube(prc,cn));
 --end equivalent
 
+--begin equivalent
+select cn,sum(distinct qty) from sale group by prc,cn
+union all select null,sum(distinct qty) from sale group by prc
+union all select cn,sum(distinct qty) from sale group by cn
+union all select null,sum(distinct qty) from sale;
+select cn,sum(distinct qty) from sale group by cube(prc,cn);
+select cn,sum(distinct qty) from sale group by grouping sets (cube(prc,cn));
+--end equivalent
+
 -- Ungrouped attributes in GROUPING function --
 
 select grouping(cn,vn,pn) from sale group by cn; --error
