@@ -343,6 +343,8 @@ extern Datum drandom(PG_FUNCTION_ARGS);
 extern Datum setseed(PG_FUNCTION_ARGS);
 extern Datum float8_accum(PG_FUNCTION_ARGS);
 extern Datum float4_accum(PG_FUNCTION_ARGS);
+extern Datum float8_decum(PG_FUNCTION_ARGS);
+extern Datum float4_decum(PG_FUNCTION_ARGS);
 extern Datum float8_avg(PG_FUNCTION_ARGS);
 extern Datum float8_var_pop(PG_FUNCTION_ARGS);
 extern Datum float8_var_samp(PG_FUNCTION_ARGS);
@@ -864,6 +866,8 @@ extern Datum int4_invsum(PG_FUNCTION_ARGS);
 extern Datum int8_invsum(PG_FUNCTION_ARGS);
 extern Datum int2_avg_accum(PG_FUNCTION_ARGS);
 extern Datum int4_avg_accum(PG_FUNCTION_ARGS);
+extern Datum int2_avg_decum(PG_FUNCTION_ARGS);
+extern Datum int4_avg_decum(PG_FUNCTION_ARGS);
 extern Datum int8_avg(PG_FUNCTION_ARGS);
 extern Datum width_bucket_numeric(PG_FUNCTION_ARGS);
 extern Datum numeric_amalg(PG_FUNCTION_ARGS); /* MPP */

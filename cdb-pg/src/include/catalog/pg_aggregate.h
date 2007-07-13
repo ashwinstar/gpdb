@@ -90,22 +90,22 @@ typedef FormData_pg_aggregate *Form_pg_aggregate;
 
 /* avg */
 DATA(insert ( 2100	int8_accum		int8_decum 	numeric_amalg		numeric_demalg	 numeric_avg	0	1231	"{0,0,0}" ));
-DATA(insert ( 2101	int4_avg_accum	- int8_avg_amalg	int8_avg_demalg int8_avg		0	1016	"{0,0}" ));
-DATA(insert ( 2102	int2_avg_accum	- int8_avg_amalg	int8_avg_demalg int8_avg		0	1016	"{0,0}" ));
+DATA(insert ( 2101	int4_avg_accum	int4_avg_decum int8_avg_amalg	int8_avg_demalg int8_avg		0	1016	"{0,0}" ));
+DATA(insert ( 2102	int2_avg_accum	int2_avg_decum int8_avg_amalg	int8_avg_demalg int8_avg		0	1016	"{0,0}" ));
 DATA(insert ( 2103	numeric_accum	numeric_decum	 numeric_amalg		numeric_demalg numeric_avg	0	1231	"{0,0,0}" ));
-DATA(insert ( 2104	float4_accum	- float8_amalg		float8_demalg float8_avg	0	1022	"{0,0,0}" ));
-DATA(insert ( 2105	float8_accum	- float8_amalg		float8_demalg float8_avg	0	1022	"{0,0,0}" ));
-DATA(insert ( 2106	interval_accum	- interval_amalg	interval_demalg interval_avg	0	1187	"{0 second,0 second}" ));
+DATA(insert ( 2104	float4_accum	float4_decum float8_amalg		float8_demalg float8_avg	0	1022	"{0,0,0}" ));
+DATA(insert ( 2105	float8_accum	float8_decum float8_amalg		float8_demalg float8_avg	0	1022	"{0,0,0}" ));
+DATA(insert ( 2106	interval_accum	interval_decum interval_amalg	interval_demalg interval_avg	0	1187	"{0 second,0 second}" ));
 
 /* sum */
 DATA(insert ( 2107	int8_sum		int8_invsum 	numeric_add		numeric_sub -				0	1700	_null_ ));
 DATA(insert ( 2108	int4_sum		int4_invsum 	int8pl			int8mi -				0	20		_null_ ));
 DATA(insert ( 2109	int2_sum		int2_invsum		int8pl			int8mi -				0	20		_null_ ));
-DATA(insert ( 2110	float4pl		- float4pl			float4mi -				0	700		_null_ ));
-DATA(insert ( 2111	float8pl		- float8pl			float8mi -				0	701		_null_ ));
-DATA(insert ( 2112	cash_pl			- cash_pl			cash_mi -				0	790		_null_ ));
-DATA(insert ( 2113	interval_pl		- interval_pl		interval_mi -				0	1186	_null_ ));
-DATA(insert ( 2114	numeric_add		- numeric_add		numeric_sub -				0	1700	_null_ ));
+DATA(insert ( 2110	float4pl		float4mi float4pl			float4mi -				0	700		_null_ ));
+DATA(insert ( 2111	float8pl		float8mi float8pl			float8mi -				0	701		_null_ ));
+DATA(insert ( 2112	cash_pl			cash_mi cash_pl			cash_mi -				0	790		_null_ ));
+DATA(insert ( 2113	interval_pl		interval_mi interval_pl		interval_mi -				0	1186	_null_ ));
+DATA(insert ( 2114	numeric_add		numeric_sub numeric_add		numeric_sub -				0	1700	_null_ ));
 
 /* max */
 DATA(insert ( 2115	int8larger		- int8larger		- -				413		20		_null_ ));
@@ -157,48 +157,48 @@ DATA(insert ( 2803	int8inc			- int8pl	int8mi -				0		20		"0" ));
 DATA(insert ( 2718	int8_accum		int8_decum	 numeric_amalg	numeric_demalg numeric_var_pop	0	1231	"{0,0,0}" ));
 DATA(insert ( 2719	int4_accum		int4_decum	 numeric_amalg	numeric_demalg numeric_var_pop	0	1231	"{0,0,0}" ));
 DATA(insert ( 2720	int2_accum		int2_decum	 numeric_amalg	numeric_demalg numeric_var_pop	0	1231	"{0,0,0}" ));
-DATA(insert ( 2721	float4_accum	- float8_amalg	float8_demalg float8_var_pop	0	1022	"{0,0,0}" ));
-DATA(insert ( 2722	float8_accum	- float8_amalg	float8_demalg float8_var_pop	0	1022	"{0,0,0}" ));
+DATA(insert ( 2721	float4_accum	float4_decum float8_amalg	float8_demalg float8_var_pop	0	1022	"{0,0,0}" ));
+DATA(insert ( 2722	float8_accum	float8_decum float8_amalg	float8_demalg float8_var_pop	0	1022	"{0,0,0}" ));
 DATA(insert ( 2723	numeric_accum	numeric_decum	 numeric_amalg	numeric_demalg numeric_var_pop	0	1231	"{0,0,0}" ));
 
 /* var_samp */
 DATA(insert ( 2641	int8_accum		int8_decum	 numeric_amalg	numeric_demalg numeric_var_samp	0	1231	"{0,0,0}" ));
 DATA(insert ( 2642	int4_accum		int4_decum	 numeric_amalg	numeric_demalg numeric_var_samp	0	1231	"{0,0,0}" ));
 DATA(insert ( 2643	int2_accum		int2_decum	 numeric_amalg	numeric_demalg numeric_var_samp	0	1231	"{0,0,0}" ));
-DATA(insert ( 2644	float4_accum	- float8_amalg	float8_demalg float8_var_samp	0	1022	"{0,0,0}" ));
-DATA(insert ( 2645	float8_accum	- float8_amalg	float8_demalg float8_var_samp	0	1022	"{0,0,0}" ));
+DATA(insert ( 2644	float4_accum	float4_decum float8_amalg	float8_demalg float8_var_samp	0	1022	"{0,0,0}" ));
+DATA(insert ( 2645	float8_accum	float8_decum float8_amalg	float8_demalg float8_var_samp	0	1022	"{0,0,0}" ));
 DATA(insert ( 2646	numeric_accum 	numeric_decum	 numeric_amalg	numeric_demalg numeric_var_samp	0	1231	"{0,0,0}" ));
 
 /* variance: historical Postgres syntax for var_samp */
 DATA(insert ( 2148	int8_accum		int8_decum	 numeric_amalg	numeric_demalg numeric_var_samp	0	1231	"{0,0,0}" ));
 DATA(insert ( 2149	int4_accum		int4_decum	 numeric_amalg	numeric_demalg numeric_var_samp	0	1231	"{0,0,0}" ));
 DATA(insert ( 2150	int2_accum		int2_decum	 numeric_amalg	numeric_demalg numeric_var_samp	0	1231	"{0,0,0}" ));
-DATA(insert ( 2151	float4_accum	- float8_amalg	float8_demalg float8_var_samp	0	1022	"{0,0,0}" ));
-DATA(insert ( 2152	float8_accum	- float8_amalg	float8_demalg float8_var_samp	0	1022	"{0,0,0}" ));
+DATA(insert ( 2151	float4_accum	float4_decum float8_amalg	float8_demalg float8_var_samp	0	1022	"{0,0,0}" ));
+DATA(insert ( 2152	float8_accum	float8_decum float8_amalg	float8_demalg float8_var_samp	0	1022	"{0,0,0}" ));
 DATA(insert ( 2153	numeric_accum	numeric_decum	 numeric_amalg	numeric_demalg numeric_var_samp	0	1231	"{0,0,0}" ));
 
 /* stddev_pop */
 DATA(insert ( 2724	int8_accum		int8_decum	 numeric_amalg	numeric_demalg numeric_stddev_pop	0	1231	"{0,0,0}" ));
 DATA(insert ( 2725	int4_accum		int4_decum	 numeric_amalg	numeric_demalg numeric_stddev_pop	0	1231	"{0,0,0}" ));
 DATA(insert ( 2726	int2_accum		int2_decum	 numeric_amalg	numeric_demalg numeric_stddev_pop	0	1231	"{0,0,0}" ));
-DATA(insert ( 2727	float4_accum	- float8_amalg	float8_demalg float8_stddev_pop		0	1022	"{0,0,0}" ));
-DATA(insert ( 2728	float8_accum	- float8_amalg	float8_demalg float8_stddev_pop		0	1022	"{0,0,0}" ));
+DATA(insert ( 2727	float4_accum	float4_decum float8_amalg	float8_demalg float8_stddev_pop		0	1022	"{0,0,0}" ));
+DATA(insert ( 2728	float8_accum	float8_decum float8_amalg	float8_demalg float8_stddev_pop		0	1022	"{0,0,0}" ));
 DATA(insert ( 2729	numeric_accum	numeric_decum	 numeric_amalg	numeric_demalg numeric_stddev_pop	0	1231	"{0,0,0}" ));
 
 /* stddev_samp */
 DATA(insert ( 2712	int8_accum		int8_decum	 numeric_amalg	numeric_demalg numeric_stddev_samp	0	1231	"{0,0,0}" ));
 DATA(insert ( 2713	int4_accum		int4_decum	 numeric_amalg	numeric_demalg numeric_stddev_samp	0	1231	"{0,0,0}" ));
 DATA(insert ( 2714	int2_accum		int2_decum	 numeric_amalg	numeric_demalg numeric_stddev_samp	0	1231	"{0,0,0}" ));
-DATA(insert ( 2715	float4_accum	- float8_amalg	float8_demalg float8_stddev_samp	0	1022	"{0,0,0}" ));
-DATA(insert ( 2716	float8_accum	- float8_amalg	float8_demalg float8_stddev_samp	0	1022	"{0,0,0}" ));
+DATA(insert ( 2715	float4_accum	float4_decum float8_amalg	float8_demalg float8_stddev_samp	0	1022	"{0,0,0}" ));
+DATA(insert ( 2716	float8_accum	float8_decum float8_amalg	float8_demalg float8_stddev_samp	0	1022	"{0,0,0}" ));
 DATA(insert ( 2717	numeric_accum	numeric_decum	 numeric_amalg	numeric_demalg numeric_stddev_samp	0	1231	"{0,0,0}" ));
 
 /* stddev: historical Postgres syntax for stddev_samp */
 DATA(insert ( 2154	int8_accum		int8_decum	 numeric_amalg	numeric_demalg numeric_stddev_samp	0	1231	"{0,0,0}" ));
 DATA(insert ( 2155	int4_accum		int4_decum	 numeric_amalg	numeric_demalg numeric_stddev_samp	0	1231	"{0,0,0}" ));
-DATA(insert ( 2156	int2_accum		- numeric_amalg	numeric_demalg numeric_stddev_samp	0	1231	"{0,0,0}" ));
-DATA(insert ( 2157	float4_accum	- float8_amalg	float8_demalg float8_stddev_samp	0	1022	"{0,0,0}" ));
-DATA(insert ( 2158	float8_accum	- float8_amalg	float8_demalg float8_stddev_samp	0	1022	"{0,0,0}" ));
+DATA(insert ( 2156	int2_accum		int2_decum numeric_amalg	numeric_demalg numeric_stddev_samp	0	1231	"{0,0,0}" ));
+DATA(insert ( 2157	float4_accum	float4_decum float8_amalg	float8_demalg float8_stddev_samp	0	1022	"{0,0,0}" ));
+DATA(insert ( 2158	float8_accum	float8_decum float8_amalg	float8_demalg float8_stddev_samp	0	1022	"{0,0,0}" ));
 DATA(insert ( 2159	numeric_accum	numeric_decum numeric_amalg	numeric_demalg numeric_stddev_samp	0	1231	"{0,0,0}" ));
 
 /* SQL2003 binary regression aggregates */

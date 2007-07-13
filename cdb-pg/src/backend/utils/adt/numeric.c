@@ -2781,6 +2781,62 @@ int4_avg_accum(PG_FUNCTION_ARGS)
 }
 
 Datum
+int2_avg_decum(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray;
+	int16		newval = PG_GETARG_INT16(1);
+	Int8TransTypeData *transdata;
+
+	/*
+	 * If we're invoked by nodeAgg, we can cheat and modify our first
+	 * parameter in-place to reduce palloc overhead. Otherwise we need to make
+	 * a copy of it before scribbling on it.
+	 */
+	if (fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context))
+		transarray = PG_GETARG_ARRAYTYPE_P(0);
+	else
+		transarray = PG_GETARG_ARRAYTYPE_P_COPY(0);
+
+	if (ARR_HASNULL(transarray) ||
+		ARR_SIZE(transarray) != ARR_OVERHEAD_NONULLS(1) + sizeof(Int8TransTypeData))
+		elog(ERROR, "expected 2-element int8 array");
+
+	transdata = (Int8TransTypeData *) ARR_DATA_PTR(transarray);
+	transdata->count--;
+	transdata->sum -= newval;
+
+	PG_RETURN_ARRAYTYPE_P(transarray);
+}
+
+Datum
+int4_avg_decum(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray;
+	int32		newval = PG_GETARG_INT32(1);
+	Int8TransTypeData *transdata;
+
+	/*
+	 * If we're invoked by nodeAgg, we can cheat and modify our first
+	 * parameter in-place to reduce palloc overhead. Otherwise we need to make
+	 * a copy of it before scribbling on it.
+	 */
+	if (fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context))
+		transarray = PG_GETARG_ARRAYTYPE_P(0);
+	else
+		transarray = PG_GETARG_ARRAYTYPE_P_COPY(0);
+
+	if (ARR_HASNULL(transarray) ||
+		ARR_SIZE(transarray) != ARR_OVERHEAD_NONULLS(1) + sizeof(Int8TransTypeData))
+		elog(ERROR, "expected 2-element int8 array");
+
+	transdata = (Int8TransTypeData *) ARR_DATA_PTR(transarray);
+	transdata->count--;
+	transdata->sum -= newval;
+
+	PG_RETURN_ARRAYTYPE_P(transarray);
+}
+
+Datum
 int8_avg(PG_FUNCTION_ARGS)
 {
 	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);

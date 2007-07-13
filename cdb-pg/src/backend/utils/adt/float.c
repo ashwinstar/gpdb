@@ -1998,6 +1998,55 @@ float8_accum(PG_FUNCTION_ARGS)
 }
 
 Datum
+float8_decum(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
+	float8		newval = PG_GETARG_FLOAT8(1);
+	float8	   *transvalues;
+	float8		N,
+				miX,
+				miX2;
+
+	transvalues = check_float8_array(transarray, "float8_decum", 3);
+	N = transvalues[0];
+	miX = transvalues[1];
+	miX2 = transvalues[2];
+
+	N -= 1.0;
+	miX -= newval;
+	miX2 -= newval * newval;
+
+	/*
+	 * If we're invoked by nodeAgg, we can cheat and modify our first
+	 * parameter in-place to reduce palloc overhead. Otherwise we construct a
+	 * new array with the updated transition data and return it.
+	 */
+	if (fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context))
+	{
+		transvalues[0] = N;
+		transvalues[1] = miX;
+		transvalues[2] = miX2;
+
+		PG_RETURN_ARRAYTYPE_P(transarray);
+	}
+	else
+	{
+		Datum		transdatums[3];
+		ArrayType  *result;
+
+		transdatums[0] = Float8GetDatumFast(N);
+		transdatums[1] = Float8GetDatumFast(miX);
+		transdatums[2] = Float8GetDatumFast(miX2);
+
+		result = construct_array(transdatums, 3,
+								 FLOAT8OID,
+							 sizeof(float8), false /* float8 byval */ , 'd');
+
+		PG_RETURN_ARRAYTYPE_P(result);
+	}
+}
+
+Datum
 float4_accum(PG_FUNCTION_ARGS)
 {
 	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
@@ -2041,6 +2090,59 @@ float4_accum(PG_FUNCTION_ARGS)
 		transdatums[0] = Float8GetDatumFast(N);
 		transdatums[1] = Float8GetDatumFast(sumX);
 		transdatums[2] = Float8GetDatumFast(sumX2);
+
+		result = construct_array(transdatums, 3,
+								 FLOAT8OID,
+							 sizeof(float8), false /* float8 byval */ , 'd');
+
+		PG_RETURN_ARRAYTYPE_P(result);
+	}
+}
+
+Datum
+float4_decum(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
+	float4		newval4 = PG_GETARG_FLOAT4(1);
+	float8	   *transvalues;
+	float8		N,
+				miX,
+				miX2,
+				newval;
+
+	transvalues = check_float8_array(transarray, "float4_decum", 3);
+	N = transvalues[0];
+	miX = transvalues[1];
+	miX2 = transvalues[2];
+
+	/* Do arithmetic in float8 for best accuracy */
+	newval = newval4;
+
+	N -= 1.0;
+	miX -= newval;
+	miX2 -= newval * newval;
+
+	/*
+	 * If we're invoked by nodeAgg, we can cheat and modify our first
+	 * parameter in-place to reduce palloc overhead. Otherwise we construct a
+	 * new array with the updated transition data and return it.
+	 */
+	if (fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context))
+	{
+		transvalues[0] = N;
+		transvalues[1] = miX;
+		transvalues[2] = miX2;
+
+		PG_RETURN_ARRAYTYPE_P(transarray);
+	}
+	else
+	{
+		Datum		transdatums[3];
+		ArrayType  *result;
+
+		transdatums[0] = Float8GetDatumFast(N);
+		transdatums[1] = Float8GetDatumFast(miX);
+		transdatums[2] = Float8GetDatumFast(miX2);
 
 		result = construct_array(transdatums, 3,
 								 FLOAT8OID,
