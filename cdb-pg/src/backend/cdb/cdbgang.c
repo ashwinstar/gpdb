@@ -335,7 +335,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	 * 
 	 * NOTE:  Entry DB gangs do NOT use dispatch agents.
 	 */
-	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent && type != GANGTYPE_ENTRYDB_READER)
+	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent && dispatchagents && type != GANGTYPE_ENTRYDB_READER)
 	{
 		PGresult   *result;
 		int i, j;
