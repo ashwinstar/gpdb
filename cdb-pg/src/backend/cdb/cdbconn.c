@@ -242,6 +242,7 @@ cdbconn_initSegmentDescriptor(SegmentDatabaseDescriptor *segdbDesc,
     segdbDesc->conn = NULL;
     segdbDesc->motionListener = 0;
     segdbDesc->whoami = NULL;
+    segdbDesc->myAgent = NULL;
 
     /* Connection error info */
     segdbDesc->errcode = 0;

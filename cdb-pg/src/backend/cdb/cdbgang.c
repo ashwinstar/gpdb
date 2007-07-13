@@ -438,6 +438,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 
 					newGangDefinition->db_descriptors[j].motionListener = gresp[i].motionListener;
 					newGangDefinition->db_descriptors[j].backendPid = gresp[i].pid;
+					newGangDefinition->db_descriptors[j].myAgent = &dispatchagents->db_descriptors[whichagent];
 					i++;
 				}
 				 
@@ -2493,7 +2494,14 @@ getSegmentDescriptorFromGang(const Gang * gp, int seg)
 	for (i = 0; i < gp->size; i++)
 	{
 		if (gp->db_descriptors[i].segindex == seg)
+		{
+			/*
+			 * If we are using dispatch agents, return the segdb descriptor for the DA.
+			 */
+			if (gp->dispatchagents && gp->db_descriptors[i].myAgent)
+				return (gp->db_descriptors[i].myAgent);
 			return &(gp->db_descriptors[i]);
+		}
 	}
 
 	return NULL;
