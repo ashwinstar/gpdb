@@ -536,6 +536,10 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 
 		*context->p_dNumGroups += current_numGroups;
 
+		/*
+		 * Re-construct the grouping columns index array. The last column
+		 * GROUPING is switched to its rightful position.
+		 */
 		new_grpColIdx = palloc0(context->numGroupCols * sizeof(AttrNumber));
 		memcpy(new_grpColIdx, groupColIdx, context->numGroupCols * sizeof(AttrNumber));
 		last_grpCol = new_grpColIdx[context->numGroupCols - 1];
@@ -1263,17 +1267,8 @@ plan_list_rollup_plans(PlannerInfo *root,
 	AttrNumber *orig_grpColIdx = context->grpColIdx;
 	int orig_numGroupCols = context->numGroupCols;
 	Query *orig_query = root->parse;
-
 	Query *final_query;
-	int max_num_rollup_levels = 0;
-
-	for (rollup_no=0; rollup_no<list_length(context->canonical_rollups); rollup_no++)
-	{
-		CanonicalRollup *rollup = (CanonicalRollup *)
-			list_nth(context->canonical_rollups, rollup_no);
-		if (rollup->ngrpsets > max_num_rollup_levels)
-			max_num_rollup_levels = rollup->ngrpsets;
-	}
+	List *pathkeys = NIL;
 
 	/* Generate the shared input subplans for all rollups. */
 	context->subplan = lefttree;
@@ -1291,6 +1286,9 @@ plan_list_rollup_plans(PlannerInfo *root,
 		
 		context->pathkeys =	lappend(context->pathkeys, pathkeys);
 	}
+
+	pathkeys = context->pathkeys;
+	context->pathkeys = NIL;
 
 	if (list_length(context->canonical_rollups) > 1)
 	{
@@ -1313,7 +1311,7 @@ plan_list_rollup_plans(PlannerInfo *root,
 		context->current_rollup = (CanonicalRollup *)
 			list_nth(context->canonical_rollups, rollup_no);
 
-		context->current_pathkeys = list_nth(context->pathkeys, rollup_no);
+		context->current_pathkeys = list_nth(pathkeys, rollup_no);
 
 		context->tlist = copyObject(orig_tlist);
 		context->numGroupCols = orig_numGroupCols;
