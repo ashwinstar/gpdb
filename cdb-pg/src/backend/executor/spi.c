@@ -2327,7 +2327,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 				query, strlen(query)+1, 
 				NULL, 0, NULL, 0, NULL, 0, NULL, 0,
 				serializedSnapshot, serializedSnapshotlen, 
-				0 /* unused flag */, gp_command_count, -1, 0, 0, 0,
+				0 /* unused flag */, gp_command_count, -1 /* localSlice */, 0 /* rootIdx */, 1 /* primaryGang */, 0 /* mirrorGang */,
 				GetSessionUserId(), superuser_arg(GetSessionUserId()), GetOuterUserId(), superuser_arg(GetOuterUserId()), GetUserId(),
 				&query_text_len);
 			 
