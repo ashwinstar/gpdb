@@ -307,7 +307,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	 * If the connection fails, mark it (locally) as unavailable
 	 * If no database serving a segindex is available, fail the user's connection request.
 	 */
-	elog(LOG,"createGang type = %d, gang_id %d, size %d",type,gang_id,size);
+	elog(DEBUG1,"createGang type = %d, gang_id %d, size %d",type,gang_id,size);
 	if (type == GANGTYPE_PRIMARY_WRITER)
 		Assert(gang_id == 1);
 
@@ -434,6 +434,8 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 				{
 					conninfo = conninfoarray[whichagent];
 					Assert(i < conninfo->nsegs);
+					elog(LOG,"DA %d: Gang_id %d segdb %d",whichagent, gang_id, newGangDefinition->db_descriptors[j].segindex); 
+
 					newGangDefinition->db_descriptors[j].motionListener = gresp[i].motionListener;
 					newGangDefinition->db_descriptors[j].backendPid = gresp[i].pid;
 					i++;
@@ -446,6 +448,14 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 			
 			PQclear(result);
 			
+			/*
+			 * We need to keep track of which dispatch agent(s) control this gang, so we 
+			 * know who to send gang control messages to.
+			 * 
+			 * For one gangs, we build a 1 list of dispatch agents.  This leaks these 2 palloc calls,
+			 * but and given session only uses a handful of 1-gangs during it's life, so
+			 * it's not worth worrying about it.
+			 */
 			if (newGangDefinition->size == 1)
 			{				
 				newGangDefinition->dispatchagents = palloc0(sizeof(DispatchAgentSet));
@@ -458,9 +468,15 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 		/*
 		 * By filling in the Gang->dispatchagents, we let dispatch know that it is supposed
 		 * to use the dispatch agents (and what those dispatch agents are).
+		 * 
+		 * For n-gangs, we just point to the list of all dispatch agents.
+		 * 
+		 * If we ever support gangs that are > 1, but < number of segments, we'd need to update this.
+		 * 
 		 */
 		if (newGangDefinition->dispatchagents==NULL || newGangDefinition->size > 1)
 			newGangDefinition->dispatchagents = dispatchagents;
+			
 		newGangDefinition->all_valid_segdbs_connected = true;
 		newGangDefinition->active = false;
 		
@@ -780,24 +796,24 @@ buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo)
         switch (type)
 	    {
 		    case GANGTYPE_PRIMARY_WRITER:
-			    elog(LOG, "Starting %d qExec processes for primary writer gang%s%s%s",
+			    elog(LOG, "buildGangDefinitionFromConninfo Starting %d qExec processes for primary writer gang%s%s%s",
 			    		conninfo->nsegs, pn1, pn2, pn3);
 			    break;
 		    case GANGTYPE_MIRROR_WRITER:
-			    elog(LOG, "Starting %d qExec processes for mirror writer gang%s%s%s",
+			    elog(LOG, "buildGangDefinitionFromConninfo Starting %d qExec processes for mirror writer gang%s%s%s",
 			    		conninfo->nsegs, pn1, pn2, pn3);
 			    break;
 		    case GANGTYPE_ENTRYDB_READER:
-			    elog(LOG, "Starting 1 qExec process for entry db reader gang%s%s%s",
+			    elog(LOG, "buildGangDefinitionFromConninfo Starting 1 qExec process for entry db reader gang%s%s%s",
                      pn1, pn2, pn3);
                 break;
 		    case GANGTYPE_PRIMARY_READER:
 			    /* Must be size 1 or size numsegments */
                 if (size == 1)
-			        elog(LOG, "Starting 1 qExec process for seg%d reader gang%s%s%s",
+			        elog(LOG, "buildGangDefinitionFromConninfo Starting 1 qExec process for seg%d reader gang%s%s%s",
 			        		conninfo->content, pn1, pn2, pn3);
                 else
-			        elog(LOG, "Starting %d qExec processes for reader gang%s%s%s",
+			        elog(LOG, "buildGangDefinitionFromConninfo Starting %d qExec processes for reader gang%s%s%s",
 			        		conninfo->nsegs, pn1, pn2, pn3);
 			    break;
 		    default:
@@ -2384,6 +2400,8 @@ allocateGang(GangType type, int size, int content, char *portal_name)
  * as the dispatch agent doesn't differentiate allocated from available, or 1 gangs
  * from n-gangs.  It assumes the QD keeps track of all that.
  * 
+ * It might be nice to pass gang type and size to this routine as safety checks.
+ * 
  */
 
 Gang * findGangById(int gang_id)
@@ -2442,8 +2460,21 @@ Gang * findGangById(int gang_id)
 		}
 	}
 	
+	/*
+	 * 1-gangs can exist on some dispatch agents, and not on others.
+	 * 
+	 * so, we can't tell if not finding the gang is an error or not.
+	 * 
+	 * It would be good if we knew if this was a 1-gang on not.
+	 * 
+	 * The writer gangs are always n-gangs.
+	 * 
+	 */
 	
-	elog(ERROR,"Could not find gang_id %d",gang_id);
+	if (gang_id <= 2)
+		elog(ERROR,"Could not find gang_id %d",gang_id);
+	else
+		elog(DEBUG1,"Could not find gang_id %d", gang_id);
 	
 	return NULL;
  
@@ -2633,7 +2664,7 @@ cleanupGang(Gang * gp)
 	if (gp == NULL)
 		return true;
 	
-	elog(LOG,"cleaning up gang %d",gp->gang_id);
+	elog(DEBUG5,"cleaning up gang %d",gp->gang_id);
 
     if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
         elog(DEBUG4, "cleanupGang: cleaning gang type %d size %d, was used for portal: %s", gp->type, gp->size, (gp->portal_name ? gp->portal_name : "(unnamed)"));
@@ -2662,13 +2693,14 @@ cleanupGang(Gang * gp)
 
 		for (i = 0; i < gp->dispatchagents->size; i++)
 		{
+			elog(DEBUG1,"Sending clean gang message to dispatch agent on segdb %d",gp->dispatchagents->db_descriptors[i].segindex);
 			PQsendControlGang(gp->dispatchagents->db_descriptors[i].conn, gp->gang_id, "clean gang");
 			
 			result = PQgetResult(gp->dispatchagents->db_descriptors[i].conn);
 			
 			if (PQresultStatus(result)!=PGRES_COMMAND_OK)
 			{
-				elog(ERROR,"Dispatch Agent unable to clean gang, %s %s",PQresStatus(PQresultStatus(result)),
+				elog(WARNING,"Dispatch Agent unable to clean gang, %s %s",PQresStatus(PQresultStatus(result)),
 						PQresultErrorMessage(result));
 			}
 		}

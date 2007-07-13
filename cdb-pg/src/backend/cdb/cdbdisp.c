@@ -292,7 +292,6 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 			(int) mppDispatchCommandType);
 	}
 
-	
 	/*
 	 * The most threads we could have is segdb_count / gp_connections_per_thread, rounded up.
 	 * This is equivalent to 1 + (segdb_count-1) / gp_connections_per_thread.
@@ -676,7 +675,6 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 		elog(DEBUG4, "CheckDispatchResult: Joining to thread %d of %d",
 			 i + 1, dispatchThreads->threadCount);
 
-
 		if (pParms->thread_valid)
 		{
 			pthread_err = pthread_join(pParms->thread, NULL);
@@ -970,7 +968,6 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	dtxProtocolParms.dtxProtocolCommandLoggingStr = dtxProtocolCommandLoggingStr;
 	memcpy(dtxProtocolParms.gid, gid, TMGIDSIZE);
 	dtxProtocolParms.gxid = gxid;
-	
 	
 	/*
 	 * Allocate a primary and mirror QE for every available segDB in the system.
@@ -2822,10 +2819,15 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				if (slice->mirror_gang_id > 0)
 					mirrorGang = findGangById(slice->mirror_gang_id);
 				
-				Assert(primaryGang != NULL);
-				Assert(primaryGang->type == slice->gangType || primaryGang->type == GANGTYPE_PRIMARY_WRITER);
+				Assert(Gp_role == GP_ROLE_DISPATCHAGENT || primaryGang != NULL);
+				if (primaryGang != NULL)
+					Assert(primaryGang->type == slice->gangType || primaryGang->type == GANGTYPE_PRIMARY_WRITER);
+					
 				if (slice->mirror_gang_id >0)
-					Assert(mirrorGang != NULL);
+					Assert(Gp_role == GP_ROLE_DISPATCHAGENT || mirrorGang != NULL);
+				
+				if (primaryGang == NULL && mirrorGang == NULL)
+					continue;
 				
 			}
 		}

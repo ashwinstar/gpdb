@@ -134,14 +134,6 @@ getgpsegmentCount(void)
 		elog(DEBUG1, "getgpsegmentCount called when Gp_role == execute, but is relying on gp_id info");
 		/* log_backtrace(); */
 	}
-	/* Assert( Gp_role != GP_ROLE_EXECUTE ); */
-
-	/*
-	if (GpIdentity.numsegments <= 0)
-	{
-		elog(LOG, "getgpsegmentCount called BEFORE gp_id record has been read in.");
-		return 0;
-	}*/
 	
 	Assert(GpIdentity.numsegments > 0);
 
