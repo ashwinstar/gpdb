@@ -445,13 +445,22 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 			result->extras = NULL;
 			
 			PQclear(result);
+			
+			if (newGangDefinition->size == 1)
+			{				
+				newGangDefinition->dispatchagents = palloc0(sizeof(DispatchAgentSet));
+				newGangDefinition->dispatchagents->size = 1;
+				newGangDefinition->dispatchagents->db_descriptors = (SegmentDatabaseDescriptor *) palloc0( sizeof(SegmentDatabaseDescriptor));
+				newGangDefinition->dispatchagents->db_descriptors[0] = dispatchagents->db_descriptors[whichagent];
+			}
 		}
 		
 		/*
 		 * By filling in the Gang->dispatchagents, we let dispatch know that it is supposed
 		 * to use the dispatch agents (and what those dispatch agents are).
 		 */
-		newGangDefinition->dispatchagents = dispatchagents;
+		if (newGangDefinition->dispatchagents==NULL || newGangDefinition->size > 1)
+			newGangDefinition->dispatchagents = dispatchagents;
 		newGangDefinition->all_valid_segdbs_connected = true;
 		newGangDefinition->active = false;
 		
@@ -3252,6 +3261,9 @@ gangOK(Gang * gp)
 		for (i = 0; i < gp->dispatchagents->size; i++)
 		{
 			SegmentDatabaseDescriptor *segdbDesc = &(gp->dispatchagents->db_descriptors[i]);
+			
+			if (segdbDesc == NULL)
+				return false;
 	
 			if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)
 				return false;

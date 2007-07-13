@@ -2809,11 +2809,13 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			primaryGang = slice->primaryGang;
 			mirrorGang = slice->mirrorGang;
 			
+			Assert(primaryGang == NULL || Gp_role == GP_ROLE_DISPATCH);
+			
 			/*
 			 * If we are on the dispatch agent, the gang pointers aren't filled in.
 			 * We must look them up by ID
 			 */
-			if (primaryGang == NULL)
+			if (primaryGang == NULL || Gp_role == GP_ROLE_DISPATCHAGENT)
 			{
 				elog(DEBUG1,"Gangs are %d and %d, type=%d",slice->primary_gang_id,slice->mirror_gang_id,slice->gangType);
 				primaryGang = findGangById(slice->primary_gang_id);
@@ -2856,7 +2858,11 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			}
 			else
 			{
-				elog(WARNING,"QD Using default writer gang");
+				/* 
+				 * When sending from the QD with a slice table, and using Dispatch Agents,
+				 * we just get the primary gang to know where the dispatch agents live.
+				 */
+				elog(DEBUG5,"QD Using default writer gang");
 				primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, getgpsegmentCount(), -1, NULL);
 			}
 
@@ -3265,6 +3271,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		cdb_max_slices = nSlices;
 	
 	Assert(sliceTbl);
+	Assert(sliceTbl->slices > 0);
 	
 	cdbdisp_dispatchX(&queryParms,
 			 cancelOnError,
