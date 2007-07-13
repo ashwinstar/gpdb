@@ -430,3 +430,12 @@ union all select vn,cn,dt,1,REGR_COUNT(prc*qty,prc*qty) FROM sale GROUP BY pn,qt
 select vn,cn,dt,GROUP_ID(), REGR_COUNT(prc*qty,prc*qty) FROM sale GROUP BY (pn,qty),(vn),ROLLUP((qty)),cn,dt;
 --end equivalent
 SELECT cn,pn,GROUPING(cn),GROUP_ID(), SUM(qty) FROM sale GROUP BY ROLLUP((cn,prc)),(cn,prc,dt),(pn,qty,vn) HAVING GROUP_ID() < 0 AND STDDEV_SAMP(pn) = 9.23708093366322 ORDER BY pn,cn desc;
+
+--begin equivalent
+SELECT dt,GROUPING(dt), MAX(DISTINCT prc*qty) FROM sale GROUP BY (dt,vn,vn),ROLLUP((qty,cn),(vn),(vn),(prc));
+select dt,0 as grouping, max(distinct prc*qty) from sale group by dt,vn,qty,cn,prc
+union all select dt,0, max(distinct prc*qty) from sale group by dt,vn,qty,cn
+union all select dt,0, max(distinct prc*qty) from sale group by dt,vn,qty,cn
+union all select dt,0, max(distinct prc*qty) from sale group by dt,vn,qty,cn
+union all select dt,0, max(distinct prc*qty) from sale group by dt,vn;
+--end equivalent

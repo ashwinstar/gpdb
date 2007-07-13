@@ -3481,20 +3481,16 @@ explain select dt,pn,cn,GROUP_ID(), count(prc) FROM sale GROUP BY ROLLUP((dt)),R
                ->  Gather Motion 2:1  (slice1)  (cost=1.02..1.07 rows=0 width=24)
                      Merge Key: pn, unnamed_attr_3, cn, dt, "grouping"
                      ->  GroupAggregate  (cost=1.02..1.07 rows=0 width=24)
-                           Group By: pn, unnamed_attr_3, cn, dt, "grouping"
-                           Grouping Set: (grouping)
+                           Group By: "grouping"
                            ->  Subquery Scan "rollup"  (cost=1.02..1.07 rows=0 width=24)
                                  ->  GroupAggregate  (cost=1.02..1.07 rows=0 width=24)
-                                       Group By: pn, unnamed_attr_3, cn, dt, "grouping"
-                                       Grouping Set: (pn, grouping)
+                                       Group By: pn, "grouping"
                                        ->  Subquery Scan "rollup"  (cost=1.02..1.07 rows=0 width=24)
                                              ->  GroupAggregate  (cost=1.02..1.07 rows=0 width=24)
-                                                   Group By: pn, unnamed_attr_3, cn, dt, "grouping"
-                                                   Grouping Set: (pn, unnamed_attr_3, grouping)
+                                                   Group By: pn, unnamed_attr_3, "grouping"
                                                    ->  Subquery Scan "rollup"  (cost=1.02..1.07 rows=0 width=24)
                                                          ->  GroupAggregate  (cost=1.02..1.07 rows=0 width=24)
-                                                               Group By: pn, unnamed_attr_3, cn, dt, "grouping" (3 times)
-                                                               Grouping Set: (pn, unnamed_attr_3, cn, grouping)
+                                                               Group By: pn, unnamed_attr_3, cn, "grouping" (3 times)
                                                                ->  Subquery Scan "rollup"  (cost=1.02..1.06 rows=1 width=24)
                                                                      ->  GroupAggregate  (cost=1.02..1.05 rows=1 width=24)
                                                                            Group By: pn, vn, cn, dt (3 times)
@@ -3508,16 +3504,13 @@ explain select dt,pn,cn,GROUP_ID(), count(prc) FROM sale GROUP BY ROLLUP((dt)),R
                      ->  Gather Motion 2:1  (slice2)  (cost=1.02..1.26 rows=1 width=24)
                            Merge Key: dt, pn, unnamed_attr_3, cn, "grouping"
                            ->  GroupAggregate  (cost=1.02..1.24 rows=1 width=24)
-                                 Group By: dt, pn, unnamed_attr_3, cn, "grouping"
-                                 Grouping Set: (dt, grouping)
+                                 Group By: dt, "grouping"
                                  ->  Subquery Scan "rollup"  (cost=1.02..1.20 rows=2 width=24)
                                        ->  GroupAggregate  (cost=1.02..1.18 rows=2 width=24)
-                                             Group By: dt, pn, unnamed_attr_3, cn, "grouping"
-                                             Grouping Set: (dt, pn, grouping)
+                                             Group By: dt, pn, "grouping"
                                              ->  Subquery Scan "rollup"  (cost=1.02..1.10 rows=3 width=24)
                                                    ->  GroupAggregate  (cost=1.02..1.07 rows=3 width=24)
-                                                         Group By: dt, pn, vn, cn
-                                                         Grouping Set: (dt, pn, vn)
+                                                         Group By: dt, pn, vn
                                                          ->  Sort  (cost=1.02..1.02 rows=1 width=24)
                                                                Sort Key: dt, pn, vn, cn
                                                                ->  Seq Scan on sale  (cost=0.00..1.01 rows=1 width=24)
@@ -3528,16 +3521,13 @@ explain select dt,pn,cn,GROUP_ID(), count(prc) FROM sale GROUP BY ROLLUP((dt)),R
                      ->  Gather Motion 2:1  (slice3)  (cost=1.02..1.69 rows=4 width=24)
                            Merge Key: cn, pn, dt, unnamed_attr_3, "grouping"
                            ->  GroupAggregate  (cost=1.02..1.61 rows=4 width=24)
-                                 Group By: cn, pn, dt, unnamed_attr_3, "grouping"
-                                 Grouping Set: (cn, grouping)
+                                 Group By: cn, "grouping"
                                  ->  Subquery Scan "rollup"  (cost=1.02..1.47 rows=6 width=24)
                                        ->  GroupAggregate  (cost=1.02..1.41 rows=6 width=24)
-                                             Group By: cn, pn, dt, unnamed_attr_3, "grouping" (3 times)
-                                             Grouping Set: (cn, pn, grouping)
+                                             Group By: cn, pn, "grouping" (3 times)
                                              ->  Subquery Scan "rollup"  (cost=1.02..1.22 rows=8 width=24)
                                                    ->  GroupAggregate  (cost=1.02..1.14 rows=8 width=24)
-                                                         Group By: cn, pn, dt, vn (3 times)
-                                                         Grouping Set: (cn, pn, dt)
+                                                         Group By: cn, pn, dt (3 times)
                                                          ->  Sort  (cost=1.02..1.02 rows=1 width=24)
                                                                Sort Key: cn, pn, dt, vn
                                                                ->  Seq Scan on sale  (cost=0.00..1.01 rows=1 width=24)
@@ -3548,16 +3538,13 @@ explain select dt,pn,cn,GROUP_ID(), count(prc) FROM sale GROUP BY ROLLUP((dt)),R
                      ->  Gather Motion 2:1  (slice4)  (cost=1.02..2.93 rows=12 width=24)
                            Merge Key: unnamed_attr_3, cn, dt, pn, "grouping"
                            ->  GroupAggregate  (cost=1.02..2.69 rows=12 width=24)
-                                 Group By: unnamed_attr_3, cn, dt, pn, "grouping"
-                                 Grouping Set: (unnamed_attr_3, grouping)
+                                 Group By: unnamed_attr_3, "grouping"
                                  ->  Subquery Scan "rollup"  (cost=1.02..2.27 rows=18 width=24)
                                        ->  GroupAggregate  (cost=1.02..2.09 rows=18 width=24)
-                                             Group By: unnamed_attr_3, cn, dt, pn, "grouping"
-                                             Grouping Set: (unnamed_attr_3, cn, grouping)
+                                             Group By: unnamed_attr_3, cn, "grouping"
                                              ->  Subquery Scan "rollup"  (cost=1.02..1.53 rows=22 width=24)
                                                    ->  GroupAggregate  (cost=1.02..1.31 rows=22 width=24)
-                                                         Group By: vn, cn, dt, pn
-                                                         Grouping Set: (vn, cn, dt)
+                                                         Group By: vn, cn, dt
                                                          ->  Sort  (cost=1.02..1.02 rows=1 width=24)
                                                                Sort Key: vn, cn, dt, pn
                                                                ->  Seq Scan on sale  (cost=0.00..1.01 rows=1 width=24)
@@ -3568,8 +3555,7 @@ explain select dt,pn,cn,GROUP_ID(), count(prc) FROM sale GROUP BY ROLLUP((dt)),R
                      ->  Gather Motion 2:1  (slice5)  (cost=1.02..2.37 rows=41 width=24)
                            Merge Key: dt, vn, cn, pn, "grouping"
                            ->  GroupAggregate  (cost=1.02..1.55 rows=41 width=24)
-                                 Group By: dt, vn, cn, pn
-                                 Grouping Set: (dt, vn)
+                                 Group By: dt, vn
                                  ->  Sort  (cost=1.02..1.02 rows=1 width=24)
                                        Sort Key: dt, vn, cn, pn
                                        ->  Seq Scan on sale  (cost=0.00..1.01 rows=1 width=24)
@@ -3580,12 +3566,11 @@ explain select dt,pn,cn,GROUP_ID(), count(prc) FROM sale GROUP BY ROLLUP((dt)),R
                      ->  Gather Motion 2:1  (slice6)  (cost=1.02..3.05 rows=62 width=24)
                            Merge Key: dt, cn, vn, pn, "grouping"
                            ->  GroupAggregate  (cost=1.02..1.81 rows=62 width=24)
-                                 Group By: dt, cn, vn, pn
-                                 Grouping Set: (dt, cn)
+                                 Group By: dt, cn
                                  ->  Sort  (cost=1.02..1.02 rows=1 width=24)
                                        Sort Key: dt, cn, vn, pn
                                        ->  Seq Scan on sale  (cost=0.00..1.01 rows=1 width=24)
-(111 rows)
+(96 rows)
 
 --begin equivalent
 select vn,cn,dt,0,REGR_COUNT(prc*qty,prc*qty) FROM sale GROUP BY pn,qty,vn,cn,dt
@@ -3653,3 +3638,115 @@ SELECT cn,pn,GROUPING(cn),GROUP_ID(), SUM(qty) FROM sale GROUP BY ROLLUP((cn,prc
 ----+----+----------+----------+-----
 (0 rows)
 
+--begin equivalent
+SELECT dt,GROUPING(dt), MAX(DISTINCT prc*qty) FROM sale GROUP BY (dt,vn,vn),ROLLUP((qty,cn),(vn),(vn),(prc));
+     dt     | grouping |   max   
+------------+----------+---------
+ 03-01-1401 |        0 |       0
+ 05-02-1401 |        0 |       0
+ 06-01-1401 |        0 |       1
+ 06-01-1401 |        0 |       0
+ 03-01-1401 |        0 |       0
+ 05-02-1401 |        0 |       0
+ 06-01-1401 |        0 |       0
+ 03-01-1401 |        0 |       0
+ 05-02-1401 |        0 |       0
+ 06-01-1401 |        0 |       0
+ 03-01-1401 |        0 |       0
+ 05-02-1401 |        0 |       0
+ 06-01-1401 |        0 |       0
+ 03-01-1401 |        0 |       0
+ 05-02-1401 |        0 |       0
+ 06-01-1401 |        0 |      60
+ 06-01-1401 |        0 |       1
+ 06-01-1401 |        0 |       0
+ 01-01-1401 |        0 | 2640000
+ 04-01-1401 |        0 |       0
+ 05-01-1401 |        0 |       0
+ 06-01-1401 |        0 |      60
+ 06-01-1401 |        0 |      60
+ 06-01-1401 |        0 |       0
+ 01-01-1401 |        0 | 2640000
+ 04-01-1401 |        0 |       0
+ 05-01-1401 |        0 |       0
+ 06-01-1401 |        0 |      60
+ 06-01-1401 |        0 |      60
+ 06-01-1401 |        0 |       1
+ 06-01-1401 |        0 |       0
+ 01-01-1401 |        0 | 2640000
+ 04-01-1401 |        0 |       0
+ 05-01-1401 |        0 |       0
+ 06-01-1401 |        0 |      60
+ 06-01-1401 |        0 |      60
+ 06-01-1401 |        0 |       1
+ 06-01-1401 |        0 |       0
+ 01-01-1401 |        0 | 2640000
+ 04-01-1401 |        0 |       0
+ 05-01-1401 |        0 |       0
+ 06-01-1401 |        0 |      60
+ 06-01-1401 |        0 |      60
+ 06-01-1401 |        0 |       1
+ 06-01-1401 |        0 |       0
+ 01-01-1401 |        0 | 2640000
+ 04-01-1401 |        0 |       0
+ 05-01-1401 |        0 |       0
+(48 rows)
+
+select dt,0 as grouping, max(distinct prc*qty) from sale group by dt,vn,qty,cn,prc
+union all select dt,0, max(distinct prc*qty) from sale group by dt,vn,qty,cn
+union all select dt,0, max(distinct prc*qty) from sale group by dt,vn,qty,cn
+union all select dt,0, max(distinct prc*qty) from sale group by dt,vn,qty,cn
+union all select dt,0, max(distinct prc*qty) from sale group by dt,vn;
+     dt     | grouping |   max   
+------------+----------+---------
+ 03-01-1401 |        0 |       0
+ 05-02-1401 |        0 |       0
+ 06-01-1401 |        0 |       1
+ 06-01-1401 |        0 |       0
+ 03-01-1401 |        0 |       0
+ 05-02-1401 |        0 |       0
+ 06-01-1401 |        0 |       0
+ 03-01-1401 |        0 |       0
+ 05-02-1401 |        0 |       0
+ 06-01-1401 |        0 |       0
+ 03-01-1401 |        0 |       0
+ 05-02-1401 |        0 |       0
+ 06-01-1401 |        0 |       0
+ 03-01-1401 |        0 |       0
+ 05-02-1401 |        0 |       0
+ 06-01-1401 |        0 |      60
+ 06-01-1401 |        0 |       1
+ 06-01-1401 |        0 |       0
+ 01-01-1401 |        0 | 2640000
+ 04-01-1401 |        0 |       0
+ 05-01-1401 |        0 |       0
+ 06-01-1401 |        0 |      60
+ 06-01-1401 |        0 |      60
+ 06-01-1401 |        0 |       0
+ 01-01-1401 |        0 | 2640000
+ 04-01-1401 |        0 |       0
+ 05-01-1401 |        0 |       0
+ 06-01-1401 |        0 |      60
+ 06-01-1401 |        0 |      60
+ 06-01-1401 |        0 |       1
+ 06-01-1401 |        0 |       0
+ 01-01-1401 |        0 | 2640000
+ 04-01-1401 |        0 |       0
+ 05-01-1401 |        0 |       0
+ 06-01-1401 |        0 |      60
+ 06-01-1401 |        0 |      60
+ 06-01-1401 |        0 |       1
+ 06-01-1401 |        0 |       0
+ 01-01-1401 |        0 | 2640000
+ 04-01-1401 |        0 |       0
+ 05-01-1401 |        0 |       0
+ 06-01-1401 |        0 |      60
+ 06-01-1401 |        0 |      60
+ 06-01-1401 |        0 |       1
+ 06-01-1401 |        0 |       0
+ 01-01-1401 |        0 | 2640000
+ 04-01-1401 |        0 |       0
+ 05-01-1401 |        0 |       0
+(48 rows)
+
+--end equivalent

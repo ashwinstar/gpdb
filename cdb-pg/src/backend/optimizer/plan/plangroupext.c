@@ -514,6 +514,9 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 	/* Construct the rest Agg nodes. */
 	for (; group_no <= last_group_no; group_no++)
 	{
+		AttrNumber *new_grpColIdx;
+		AttrNumber last_grpCol;
+
 		if (group_no > 0)
 			grouping += ( ((uint64)1) << context->current_rollup->grping_pos[
 							 context->current_rollup->numcols - group_no]);
@@ -533,9 +536,16 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 
 		*context->p_dNumGroups += current_numGroups;
 
+		new_grpColIdx = palloc0(context->numGroupCols * sizeof(AttrNumber));
+		memcpy(new_grpColIdx, groupColIdx, context->numGroupCols * sizeof(AttrNumber));
+		last_grpCol = new_grpColIdx[context->numGroupCols - 1];
+		new_grpColIdx[context->numGroupCols - 1] =
+			new_grpColIdx[context->numGroupCols - group_no - 1];
+		new_grpColIdx[context->numGroupCols - group_no - 1] = last_grpCol;
+		
 		agg_node = add_second_stage_agg(root, context->is_agg, context->tlist, current_tlist,
 										current_qual, context->aggstrategy,
-										context->numGroupCols, groupColIdx,
+										context->numGroupCols, new_grpColIdx,
 										group_no, input_grouping, grouping,
 										context->current_rollup->grpset_counts[group_no],
 										current_numGroups,

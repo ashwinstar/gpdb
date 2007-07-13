@@ -1720,11 +1720,6 @@ show_grouping_keys(Plan        *plan,
     int			i;
 	int         num_null_cols = 0;
 	int         rollup_gs_times = 0;
-	uint64      input_grouping = 0;
-	bool        input_has_grouping = false;
-	StringInfoData tmpstr;
-
-	initStringInfoOfSize(&tmpstr, 1000);
 
     if (numCols <= 0)
         return;
@@ -1775,19 +1770,15 @@ show_grouping_keys(Plan        *plan,
 	{
 		num_null_cols = ((Agg*)plan)->numNullCols;
 		rollup_gs_times = ((Agg*)plan)->rollupGSTimes;
-		input_grouping = ((Agg*)plan)->inputGrouping;
-		input_has_grouping = ((Agg*)plan)->inputHasGrouping;
 	}
 
 	else if (IsA(plan, Group))
 	{
 		num_null_cols = ((Group*)plan)->numNullCols;
 		rollup_gs_times = ((Group*)plan)->rollupGSTimes;
-		input_grouping = ((Group*)plan)->inputGrouping;
-		input_has_grouping = ((Group*)plan)->inputHasGrouping;
 	}
 
-    for (keyno = 0; keyno < numCols; keyno++)
+    for (keyno = 0; keyno < numCols - num_null_cols; keyno++)
     {
 	    /* find key expression in tlist */
 	    AttrNumber      keyresno = subplanColIdx[keyno];
@@ -1810,36 +1801,12 @@ show_grouping_keys(Plan        *plan,
 		if (keyno > 0)
 			appendStringInfoString(str, ", ");
 		appendStringInfoString(str, exprstr);
-
-		/* Add to tmpstr for grouping sets */
-		if ((num_null_cols > 0) && (numCols - num_null_cols - keyno > 0))
-		{
-			if (keyno > 0)
-				appendStringInfoString(&tmpstr, ", ");
-			if ((input_grouping == 0 && keyno == numCols - num_null_cols) ||
-				(input_has_grouping && keyno == numCols - num_null_cols - 1))
-				appendStringInfoString(&tmpstr, grping_str);
-			else
-				appendStringInfoString(&tmpstr, exprstr);
-		}
     }
 
 	if (rollup_gs_times > 1)
 		appendStringInfo(str, " (%d times)", rollup_gs_times);
 
     appendStringInfoChar(str, '\n');
-
-	if (num_null_cols > 0)
-	{
-		for (i = 0; i < indent; i++)
-			appendStringInfoString(str, "  ");
-
-		appendStringInfoString(str, "  Grouping Set: (");
-		appendStringInfoString(str, tmpstr.data);
-		appendStringInfoString(str, ")\n");
-	}
-
-	pfree(tmpstr.data);
 }                               /* show_grouping_keys */
 
 

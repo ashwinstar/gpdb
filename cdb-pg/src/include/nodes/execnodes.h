@@ -1553,18 +1553,6 @@ typedef struct GroupState
 	bool		grp_done;		/* indicates completion of Group scan */
 
 	HeapTuple	grp_firstTuple; /* copy of first tuple of current group */
-	/* Indicate that we've read the first tuple in the current group. */
-	bool        has_firsttuple;
-
-	/* The modified version of a input tuple.
-	 *
-	 * When the Group appears in a ROLLUP, it may require to modify
-	 * an input tuple to generate a real group tuple. We can't simply
-	 * rewrite the original input tuple slot for this purpose since the orignal
-	 * input tuple may also be a pass-thru tuple. This slot is used to store
-	 * the modified tuple.
-	 */
-	TupleTableSlot *modified_slot;
 
 	/*
 	 * This Group node may require to output each group tuple multiple times
@@ -1633,16 +1621,6 @@ typedef struct AggState
 
 	/* ROLLUP */
 	AggStatePerGroup perpassthru; /* per-Aggref-per-pass-through-tuple working state */
-
-	/* The modified version of a input tuple.
-	 *
-	 * When the Agg appears in a ROLLUP, it may require to modify
-	 * an input tuple before aggregating its value. We can't simply
-	 * rewrite the original input tuple slot for this purpose since the orignal
-	 * input tuple may also be a pass-thru tuple. This slot is used to store
-	 * the modified tuple.
-	 */
-	TupleTableSlot *modified_slot;
 
 	/*
 	 * This Agg node may require to output each aggregate tuple multiple times

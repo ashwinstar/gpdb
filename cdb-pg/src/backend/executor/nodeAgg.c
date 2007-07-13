@@ -894,7 +894,6 @@ agg_retrieve_direct(AggState *aggstate)
 	HeapTuple   copytuple = NULL;
 	bool        passthru_ready = false;
 	bool        has_partial_agg = aggstate->has_partial_agg;
-	TupleTableSlot *modified_slot;
 
 	uint64      input_grouping = node->inputGrouping;
 	bool        input_has_grouping = node->inputHasGrouping;
@@ -937,7 +936,7 @@ agg_retrieve_direct(AggState *aggstate)
 		if (is_final_rollup_agg ||is_middle_rollup_agg)
 			econtext->grouping =
 				get_grouping(econtext->ecxt_scantuple,
-							 node->grpColIdx[node->numCols-1]);
+							 node->grpColIdx[node->numCols-node->numNullCols-1]);
 		else
 			econtext->grouping = node->grouping;
 
@@ -1057,24 +1056,12 @@ agg_retrieve_direct(AggState *aggstate)
 				 * or need to be aggregated.
 				 */
 				outer_grouping =
-					tuple_grouping(firstSlot, node->numCols,
+					tuple_grouping(firstSlot, node->numCols-node->numNullCols,
 								   input_grouping, input_has_grouping,
-								   node->numCols > 0 ? node->grpColIdx[node->numCols-1]: 0);
+								   (node->numCols-node->numNullCols) > 0 ?
+								   node->grpColIdx[node->numCols-node->numNullCols-1]: 0);
 
 				Assert(outer_grouping <= input_grouping);
-			}
-
-			else if (aggstate->grp_firstTuple == NULL)
-			{
-				/*
-				 * Here, in the previous call, we have read the first tuple in the new
-				 * group and added it to the aggregate result. However, at this point,
-				 * the firstSlot stores the original input tuple since this tuple is
-				 * also a pass-thru tuple. We want firstSlot to be the modified tuple for
-				 * comparison later. So we copy aggstate->modified_slot to firstSlot.
-				 */
-				if (node->numNullCols > 0)
-					firstSlot = ExecCopySlot(firstSlot, aggstate->modified_slot);
 			}
 			
 			if (outer_grouping < input_grouping)
@@ -1091,65 +1078,9 @@ agg_retrieve_direct(AggState *aggstate)
 					!aggstate->has_partial_agg)
 					maybe_passthru = true;
 				
-				/*
-				 * For a ROLLUP query, we may need to modify the input tuple
-				 * to match with the current rollup level. We initialize those
-				 * arrays that are needed for this process.
-				 */
-				if (aggstate->num_attrs == 0 && node->numNullCols > 0)
-				{
-					int num_grpattrs = node->numCols;
-					int attno;
+				/* set up for first advance aggregates call */
+				tmpcontext->ecxt_scantuple = firstSlot;
 
-					/* Ignore Grouping column */
-					if (is_middle_rollup_agg)
-						num_grpattrs--;
-					aggstate->num_attrs =
-						outerslot->tts_tupleDescriptor->natts;
-					aggstate->replValues =
-						palloc0(aggstate->num_attrs * sizeof(Datum));
-					aggstate->replIsnull = palloc0(aggstate->num_attrs * sizeof(bool));
-					aggstate->doReplace = palloc0(aggstate->num_attrs * sizeof(bool));
-
-					Assert(num_grpattrs >= node->numNullCols);
-
-					for (attno=num_grpattrs - node->numNullCols; attno<num_grpattrs; attno++)
-					{
-						aggstate->replIsnull[node->grpColIdx[attno] - 1] = true;
-						aggstate->doReplace[node->grpColIdx[attno] - 1] = true;
-					}
-				}
-
-				if (!aggstate->has_partial_agg)
-				{
-					/*
-					 * Modify the input tuple when this node requires some grouping
-					 * columns to be set to NULL.
-					 */
-					if (node->numNullCols > 0)
-					{
-						copytuple = ExecCopySlotTuple(firstSlot);
-						copytuple =
-							heap_modify_tuple(copytuple,
-											  firstSlot->tts_tupleDescriptor,
-											  aggstate->replValues,
-											  aggstate->replIsnull,
-											  aggstate->doReplace);
-						ExecStoreTuple(copytuple,
-									   aggstate->modified_slot,
-									   InvalidBuffer,
-									   true);
-						/* set up for first advance aggregates call */
-						tmpcontext->ecxt_scantuple = aggstate->modified_slot;
-					}
-
-					else
-					{
-						/* set up for first advance aggregates call */
-						tmpcontext->ecxt_scantuple = firstSlot;
-					}
-				}
-				
 				/*
 				 * Process each outer-plan tuple, and then fetch the next one,
 				 * until we exhause the outer plan or cross a group boundary.
@@ -1173,9 +1104,6 @@ agg_retrieve_direct(AggState *aggstate)
 						aggstate->has_partial_agg = has_partial_agg;
 						break;
 					}
-
-					if (!aggstate->has_partial_agg && node->numNullCols > 0)
-						firstSlot = ExecCopySlot(firstSlot, aggstate->modified_slot);
 					
 					outerslot = ExecProcNode(outerPlan);
 					if (TupIsNull(outerslot))
@@ -1202,42 +1130,20 @@ agg_retrieve_direct(AggState *aggstate)
 						int match_numcols;
 
 						int outer_grouping =
-							tuple_grouping(outerslot, node->numCols,
+							tuple_grouping(outerslot, node->numCols-node->numNullCols,
 										   input_grouping, input_has_grouping,
-										   node->numCols > 0 ? node->grpColIdx[node->numCols-1]: 0);
+										   (node->numCols-node->numNullCols) > 0 ?
+										   node->grpColIdx[node->numCols-node->numNullCols-1]: 0);
 
 						Assert(outer_grouping <= input_grouping);
-
-						/*
-						 * We modify the tuple before checking if we've crossed
-						 * a group boundary.
-						 */
-						if (node->numNullCols > 0)
-						{
-							copytuple = ExecCopySlotTuple(outerslot);
-							copytuple =
-								heap_modify_tuple(copytuple,
-												  firstSlot->tts_tupleDescriptor,
-												  aggstate->replValues,
-												  aggstate->replIsnull,
-												  aggstate->doReplace);
-							ExecStoreTuple(copytuple,
-										   aggstate->modified_slot,
-										   InvalidBuffer,
-										   true);
-							modified_slot = aggstate->modified_slot;
-						}
-						else
-						{
-							modified_slot = outerslot;
-						}
 						
 						if (outer_grouping == input_grouping)
-							match_numcols = node->numCols;
+							match_numcols = node->numCols - node->numNullCols;
 						else
-							match_numcols = node->numCols - 1; /* ignore Grouping column */
+							/* ignore Grouping column */
+							match_numcols = node->numCols - node->numNullCols - 1;
 						
-						tuple_match = execTuplesMatch(firstSlot, modified_slot,
+						tuple_match = execTuplesMatch(firstSlot, outerslot,
 													  match_numcols, node->grpColIdx,
 													  aggstate->eqfunctions,
 													  tmpcontext->ecxt_per_tuple_memory);
@@ -1261,23 +1167,8 @@ agg_retrieve_direct(AggState *aggstate)
 								outer_grouping == input_grouping)
 							{
 								has_partial_agg = true;
-								tmpcontext->ecxt_scantuple = modified_slot;
+								tmpcontext->ecxt_scantuple = outerslot;
 								advance_aggregates(aggstate, pergroup);
-							}
-
-							if (aggstate->has_partial_agg &&
-								outer_grouping < input_grouping)
-							{
-								/*
-								 * When the tuple we just read is a pass-thru tuple,
-								 * we found a match without the GROUPING column.
-								 * However, the original first tuple, stored in firstSlot,
-								 * in a new group may have different value for GROUPING with
-								 * aggstate->modified_slot. We want to copy firstSlot into
-								 * aggstate->modified_slot before our next call.
-								 */
-								aggstate->modified_slot =
-									ExecCopySlot(aggstate->modified_slot, firstSlot);
 							}
 							
 							passthru_ready = true;
@@ -1373,9 +1264,61 @@ agg_retrieve_direct(AggState *aggstate)
 			(passthru_ready && is_middle_rollup_agg))
 			econtext->grouping =
 				get_grouping(econtext->ecxt_scantuple,
-							 node->grpColIdx[node->numCols-1]);
+							 node->grpColIdx[node->numCols-node->numNullCols-1]);
 		else
 			econtext->grouping = node->grouping;
+
+		/*
+		 * When some grouping columns do not appear in this Agg node,
+		 * We modify the input tuple before doing projection.
+		 */
+		if (!passthru_ready && node->numNullCols > 0)
+		{
+			/*
+			 * For a ROLLUP query, we may need to modify the input tuple
+			 * to match with the current rollup level. We initialize those
+			 * arrays that are needed for this process. (Only do this once.)
+			 */
+			if (aggstate->num_attrs == 0 && node->numNullCols > 0)
+			{
+				int num_grpattrs = node->numCols;
+				int attno;
+
+				aggstate->num_attrs =
+				    firstSlot->tts_tupleDescriptor->natts;
+				aggstate->replValues =
+					palloc0(aggstate->num_attrs * sizeof(Datum));
+				aggstate->replIsnull = palloc0(aggstate->num_attrs * sizeof(bool));
+				aggstate->doReplace = palloc0(aggstate->num_attrs * sizeof(bool));
+
+				Assert(num_grpattrs >= node->numNullCols);
+
+				for (attno=num_grpattrs - node->numNullCols; attno<num_grpattrs; attno++)
+				{
+					aggstate->replIsnull[node->grpColIdx[attno] - 1] = true;
+					aggstate->doReplace[node->grpColIdx[attno] - 1] = true;
+				}
+			}
+
+			/*
+			 * Modify the input tuple when this node requires some grouping
+			 * columns to be set to NULL.
+			 */
+			if (node->numNullCols > 0)
+			{
+				copytuple = ExecCopySlotTuple(econtext->ecxt_scantuple);
+				copytuple =
+					heap_modify_tuple(copytuple,
+									  firstSlot->tts_tupleDescriptor,
+									  aggstate->replValues,
+									  aggstate->replIsnull,
+									  aggstate->doReplace);
+				ExecStoreTuple(copytuple,
+							   econtext->ecxt_scantuple,
+							   InvalidBuffer,
+							   true);
+			}
+		}
 
 		/*
 		 * Since one tuple may be outputted several times with different
@@ -1963,9 +1906,6 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	}
 
 	aggstate->num_attrs = 0;
-	aggstate->modified_slot = 
-		MakeSingleTupleTableSlot(aggstate->ss.ss_ScanTupleSlot->tts_tupleDescriptor);
-
 	aggstate->prev_aggslot = NULL;
 	aggstate->num_repeats = 0;
 
@@ -2042,8 +1982,6 @@ ExecEndAgg(AggState *node)
 		pfree(node->doReplace);
 	}
 
-	ExecClearTuple(node->modified_slot);
-
 	MemoryContextDelete(node->aggcontext);
 
 	outerPlan = outerPlanState(node);
@@ -2105,7 +2043,6 @@ ExecReScanAgg(AggState *node, ExprContext *exprCtxt)
 	}
 
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
-	ExecClearTuple(node->modified_slot);
 	node->prev_aggslot = NULL;
 	node->num_repeats = 0;
 	node->has_partial_agg = false;
