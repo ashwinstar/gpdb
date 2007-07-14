@@ -149,3 +149,4 @@ pqCatenateResultError     209
 pqPutnchar 		  210
 PQbuildGpDtxProtocolCommand 211
 PQsendCreateGang	  212
+PQsendControlGang     213
