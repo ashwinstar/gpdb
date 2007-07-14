@@ -455,6 +455,17 @@ typedef enum ShareType
 	/* Other types maybe added later, like sharing a hash */
 } ShareType;
 
+#define SHARE_ID_NOT_SHARED (-1)
+#define SHARE_ID_NOT_ASSIGNED (-2)
+
+extern int get_plan_share_id(Plan *p);
+extern void set_plan_share_id(Plan *p, int share_id);
+extern ShareType get_plan_share_type (Plan *p);
+extern void set_plan_share_type(Plan *p, ShareType st);
+extern void set_plan_share_type_xslice(Plan *p);
+extern int get_plan_driver_slice(Plan *p);
+extern void set_plan_driver_slice(Plan *P, int slice);
+
 /* ----------------
  *		shareinputscan node
  * ----------------

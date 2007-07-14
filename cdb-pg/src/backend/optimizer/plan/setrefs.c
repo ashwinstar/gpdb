@@ -57,12 +57,6 @@ typedef struct
 	Index		subvarno;
 } replace_vars_with_subplan_refs_context;
 
-typedef struct
-{
-	List *rtable;
-	List *sharedNodes;
-} set_plan_ref_context;
-
 static Plan *set_plan_references(Plan *plan, set_plan_ref_context *ctxt);
 static Plan *set_subqueryscan_references(SubqueryScan *plan, set_plan_ref_context *ctxt);
 static bool trivial_subqueryscan(SubqueryScan *plan);
@@ -105,17 +99,12 @@ static Plan *cdb_insert_result_node(Plan *plan, set_plan_ref_context* ctxt);
  *
  * It is a simple driver over the set_plan_references.
  */
-Plan *set_plan_references_qry(Plan *plan, Query *qry)
+Plan *set_plan_references_qry(Plan *plan, set_plan_ref_context *ctxt)
 {
-	set_plan_ref_context ctxt;
 	Plan *result = NULL;
 
-	ctxt.rtable = qry->rtable;
-	ctxt.sharedNodes = qry->sharedNodes;
-
-	result = set_plan_references(plan, &ctxt);
-	qry->rtable = ctxt.rtable;
-	qry->sharedNodes = ctxt.sharedNodes;
+	result = set_plan_references(plan, ctxt);
+	ctxt->qry->rtable = ctxt->rtable;
 
 	return result;
 }
@@ -606,13 +595,17 @@ set_subqueryscan_references(SubqueryScan *plan, set_plan_ref_context* ctxt)
 	RangeTblEntry *rte;
 	ListCell   *l;
 	List *oldrtable = ctxt->rtable;
+	Query *oldqry = ctxt->qry;
+
 	/* First, recursively process the subplan */
 	rte = rt_fetch(plan->scan.scanrelid, oldrtable);
 	Assert(rte->rtekind == RTE_SUBQUERY);
 
 	ctxt->rtable = rte->subquery->rtable;
+	ctxt->qry = rte->subquery;
 	plan->subplan = set_plan_references(plan->subplan, ctxt);
 	rte->subquery->rtable = ctxt->rtable;
+	ctxt->qry = oldqry;
 
 	/*
 	 * We have to process any initplans too; set_plan_references can't do it
@@ -1008,8 +1001,8 @@ fix_expr_references_walker(Node *node, void *context)
 		SubPlan    *sp = (SubPlan *) node;
 		set_plan_ref_context *oldctxt = (set_plan_ref_context *) context;
 		List *oldrtable = oldctxt->rtable;
-		oldctxt->rtable = sp->rtable;
 
+		oldctxt->rtable = sp->rtable;
 		sp->plan = set_plan_references(sp->plan, oldctxt);
 		oldctxt->rtable = oldrtable; 
 	}

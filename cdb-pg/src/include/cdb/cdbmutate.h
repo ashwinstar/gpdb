@@ -38,6 +38,16 @@ extern void add_slice_to_motion(Motion *m,
 		int numOutputSegs, int *outputSegIdx 
 		);
 
-extern Plan *apply_shareinput_dag_to_tree(Plan *plan, Query *query);
-extern Plan *apply_shareinput_xslice(Plan *plan, Query *query);
+/*
+ * Context for apply shareinput
+ */
+typedef struct ApplyShareInputContext
+{
+	List *sharedNodes;
+	List *sliceMarks;
+	List *motStack;
+} ApplyShareInputContext;
+
+extern Plan *apply_shareinput_dag_to_tree(Plan *plan, ApplyShareInputContext *ctxt); 
+extern Plan *apply_shareinput_xslice(Plan *plan, ApplyShareInputContext *ctxt);
 #endif   /* CDBMUTATE_H */

@@ -136,7 +136,14 @@ extern void process_implied_equality(PlannerInfo *root,
 /*
  * prototypes for plan/setrefs.c
  */
-extern Plan *set_plan_references_qry(Plan *plan, Query *qry); 
+typedef struct set_plan_ref_context
+{
+	Query *qry;
+	List *rtable;
+	List *sharedNodes;
+} set_plan_ref_context;
+
+extern Plan *set_plan_references_qry(Plan *plan, set_plan_ref_context *ctxt); 
 extern List *set_returning_clause_references(List *rlist,
 								Plan *topplan,
 								Index resultRelation); 

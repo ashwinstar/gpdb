@@ -3296,7 +3296,7 @@ make_sort(PlannerInfo *root, Plan *lefttree, int numCols,
 	node->noduplicates = false; /* CDB */
 
 	node->share_type = SHARE_NOTSHARED;
-	node->share_id = -1;
+	node->share_id = SHARE_ID_NOT_SHARED;
 	node->driver_slice = -1;
 
 	return node;
@@ -3702,7 +3702,7 @@ make_material(Plan *lefttree)
 
 	node->cdb_strict = false;
 	node->share_type = SHARE_NOTSHARED;
-	node->share_id = -1;
+	node->share_id = SHARE_ID_NOT_SHARED;
 	node->driver_slice = -1; 
 
 	return node;

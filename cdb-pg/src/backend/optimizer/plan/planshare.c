@@ -21,6 +21,88 @@
 #include "cdb/cdbmutate.h" 					/* add_slice_to_motion */
 #include "cdb/cdbvars.h"
 
+int get_plan_share_id(Plan *p)
+{
+	if(IsA(p, Material))
+		return ((Material *) p)->share_id;
+	
+	if(IsA(p, Sort))
+		return ((Sort *) p)->share_id;
+
+	Assert(IsA(p, ShareInputScan));
+	return ((ShareInputScan *) p)->share_id;
+}
+
+void set_plan_share_id(Plan *p, int share_id)
+{
+	if(IsA(p, Material))
+		((Material *) p)->share_id = share_id;
+	else if(IsA(p, Sort))
+		((Sort *) p)->share_id = share_id;
+	else
+	{
+		Assert(IsA(p, ShareInputScan));
+		((ShareInputScan *) p)->share_id = share_id;
+	}
+}
+
+ShareType get_plan_share_type(Plan *p)
+{
+	if(IsA(p, Material))
+		return ((Material *) p)->share_type;
+	
+	if(IsA(p, Sort))
+		return ((Sort *) p)->share_type ;
+
+	Assert(IsA(p, ShareInputScan));
+	return ((ShareInputScan *) p)->share_type;
+}
+
+void set_plan_share_type(Plan *p, ShareType share_type)
+{
+	if(IsA(p, Material))
+		((Material *) p)->share_type = share_type;
+	else if(IsA(p, Sort))
+		((Sort *) p)->share_type = share_type;
+	else
+	{
+		Assert(IsA(p, ShareInputScan));
+		((ShareInputScan *) p)->share_type = share_type;
+	}
+}
+
+void set_plan_share_type_xslice(Plan *p)
+{
+	ShareType st = get_plan_share_type(p);
+	if(st == SHARE_MATERIAL)
+		set_plan_share_type(p, SHARE_MATERIAL_XSLICE);
+	else
+	{
+		Assert(st == SHARE_SORT);
+		set_plan_share_type(p, SHARE_SORT_XSLICE);
+	}
+}
+
+int get_plan_driver_slice(Plan *p)
+{
+	if(IsA(p, Material))
+		return ((Material *) p)->driver_slice;
+
+	Assert(IsA(p, Sort));
+	return ((Sort *) p)->driver_slice;
+}
+
+void set_plan_driver_slice(Plan *p, int slice)
+{
+	if(IsA(p, Material))
+		((Material *) p)->driver_slice = slice;
+	else
+	{
+		Assert(IsA(p, Sort));
+		((Sort *) p)->driver_slice = slice;
+	}
+}
+
 static ShareInputScan *make_shareinputscan(Plan *inputplan) 
 {
 	ShareInputScan *sisc = NULL;
@@ -35,22 +117,8 @@ static ShareInputScan *make_shareinputscan(Plan *inputplan)
 	sisc->plan.lefttree = oldplan;
 	sisc->plan.flow = copyObject(inputplan->flow); 
 
-	if(IsA(inputplan, Material))
-	{
-		Material *ma = (Material *) inputplan;
-		Assert(ma->share_type == SHARE_MATERIAL || ma->share_type == SHARE_MATERIAL_XSLICE);
-		Assert(ma->share_id >= 0);
-		sisc->share_type = ma->share_type;
-		sisc->share_id = ma->share_id;
-	}
-	else 
-	{
-		Sort *s = (Sort *) inputplan;
-		Assert(s->share_type == SHARE_SORT || s->share_type == SHARE_SORT_XSLICE);
-		Assert(s->share_id >= 0);
-		sisc->share_type = s->share_type;
-		sisc->share_id = s->share_id;
-	}
+	set_plan_share_type((Plan *) sisc, get_plan_share_type(inputplan));
+	set_plan_share_id((Plan *) sisc, get_plan_share_id(inputplan));
 
 	sisc->plan.qual = NIL;
 	sisc->plan.righttree = NULL;
@@ -67,7 +135,6 @@ List *share_plan(PlannerInfo *root, Plan *common, int numpartners)
 {
 	List *shared_nodes = NULL;
 	ShareType stype;
-	Query *qry = root->parse;
 	Plan *shared = common;
 	bool xslice = false;
 	int i;
@@ -84,10 +151,10 @@ List *share_plan(PlannerInfo *root, Plan *common, int numpartners)
 			Material *m = (Material *) common;
 
 			Assert(m->share_type == SHARE_NOTSHARED);
+			Assert(m->share_id == SHARE_ID_NOT_SHARED);
 
 			stype = xslice ? SHARE_MATERIAL_XSLICE : SHARE_MATERIAL; 
-			m->share_id = list_length(qry->sharedNodes);
-			qry->sharedNodes = lappend(qry->sharedNodes, common);
+			m->share_id = SHARE_ID_NOT_ASSIGNED;
 			m->share_type = stype;
 		}
 		else if (IsA(common, Sort))
@@ -96,8 +163,7 @@ List *share_plan(PlannerInfo *root, Plan *common, int numpartners)
 
 			Assert(s->share_type == SHARE_NOTSHARED);
 			stype = xslice ? SHARE_SORT_XSLICE : SHARE_SORT;
-			s->share_id = list_length(qry->sharedNodes);
-			qry->sharedNodes = lappend(qry->sharedNodes, common);
+			s->share_id = SHARE_ID_NOT_ASSIGNED;
 			s->share_type = stype;
 		}
 		else
@@ -115,8 +181,7 @@ List *share_plan(PlannerInfo *root, Plan *common, int numpartners)
 			shared->flow = copyObject(common->flow); 
 
 			stype = xslice ? SHARE_MATERIAL_XSLICE : SHARE_MATERIAL; 
-			m->share_id = list_length(qry->sharedNodes);
-			qry->sharedNodes = lappend(qry->sharedNodes, shared);
+			m->share_id = SHARE_ID_NOT_ASSIGNED;
 			m->share_type = stype;
 		}
 

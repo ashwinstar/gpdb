@@ -180,9 +180,6 @@ typedef struct Query
 	TableOidInfo	intoOidInfo;  /* MPP */
 	 
 	GpPolicy  *intoPolicy;			/* MPP. Used only on the QD... Doesn't need to be serialized */
-
-	List 	*sharedNodes;	 	/* plan sharing.  List of shared nodes */
-
 } Query;
 
 /****************************************************************************

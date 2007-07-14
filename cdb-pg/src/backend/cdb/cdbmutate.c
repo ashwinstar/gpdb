@@ -1470,23 +1470,13 @@ DoesDistributionHaveDependencies(Oid relOid, GpPolicy * policy)
 }
 #endif 
 
-/*
- * An ApplyShareInputState holds the state for recursively apply shareinput_mutator.
- */
-typedef struct ApplyShareInputState
-{
-	List *sharedNodes;
-	List *sliceMarks;
-	List *motStack;
-} ApplyShareInputState;
-
 
 /* Walk the tree for shareinput.
  * Shareinput fix shared_as_id and underlying_share_id of nodes in place.  We do not want to use
  * the ordinary tree walker as it is unnecessary to make copies etc.
  */
-typedef bool (*SHAREINPUT_MUTATOR) (Node *node, Query* qry, void *ctxt, bool fPop);
-static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, Query* qry, void *ctxt)
+typedef bool (*SHAREINPUT_MUTATOR) (Node *node, ApplyShareInputContext *ctxt, bool fPop);
+static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, ApplyShareInputContext *ctxt)
 {
 	Plan *plan = NULL; 
 	bool recursive_down;
@@ -1497,12 +1487,7 @@ static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, Query* qry, void
 	if(IsA(node, SubPlan))
 	{
 		SubPlan *subplan = (SubPlan *) node;
-		ApplyShareInputState subplan_ctxt;
-		subplan_ctxt.sharedNodes = NULL;
-		subplan_ctxt.sliceMarks = NULL;
-		subplan_ctxt.motStack = NULL;
-
-		shareinput_walker(f, (Node *)subplan->plan, qry, &subplan_ctxt);
+		shareinput_walker(f, (Node *)subplan->plan, ctxt); 
 		return;
 	}
 
@@ -1513,7 +1498,7 @@ static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, Query* qry, void
 		foreach(lc, l)
 		{
 			Node* n = lfirst(lc);
-			shareinput_walker(f, n, qry, ctxt);
+			shareinput_walker(f, n, ctxt);
 			return;
 		}
 	}
@@ -1522,7 +1507,7 @@ static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, Query* qry, void
 		return;
 
 	plan = (Plan *) node;
-	recursive_down = (*f)(node, qry, ctxt, false);
+	recursive_down = (*f)(node, ctxt, false);
 
 	if(recursive_down) 
 	{
@@ -1531,31 +1516,31 @@ static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, Query* qry, void
 			ListCell *cell;
 			Append *app = (Append *) node;
 			foreach(cell, app->appendplans)
-				shareinput_walker(f, (Node *)lfirst(cell), qry, ctxt);
+				shareinput_walker(f, (Node *)lfirst(cell), ctxt);
 		}
 
 		if(IsA(node, SubqueryScan))
 		{
 			SubqueryScan *subqscan = (SubqueryScan *) node;
-			shareinput_walker(f, (Node *) subqscan->subplan, qry, ctxt);
+			shareinput_walker(f, (Node *) subqscan->subplan, ctxt);
 		}
 
-		shareinput_walker(f, (Node *)plan->lefttree, qry, ctxt);
-		shareinput_walker(f, (Node *)plan->righttree, qry, ctxt);
-		shareinput_walker(f, (Node *)plan->initPlan, qry, ctxt);
+		shareinput_walker(f, (Node *)plan->lefttree, ctxt);
+		shareinput_walker(f, (Node *)plan->righttree, ctxt);
+		shareinput_walker(f, (Node *)plan->initPlan, ctxt);
 	}
 
-	(*f)(node, qry, ctxt, true);
+	(*f)(node, ctxt, true);
 }
 
 /* 
  * DAG to Tree
  * Zap children if I am not the first sharer (not recursive down).  
+ * Assign share_id to both ShareInputScan and Material/Sort.
  */
-static bool shareinput_mutator_dag_to_tree(Node *node, Query *qry, void *vptr, bool fPop)
+static bool shareinput_mutator_dag_to_tree(Node *node, ApplyShareInputContext* ctxt, bool fPop)
 {
 	Plan *plan = (Plan *) node;
-	ApplyShareInputState *ctxt = (ApplyShareInputState *) vptr;
 
 	if(fPop)
 		return true;
@@ -1564,17 +1549,24 @@ static bool shareinput_mutator_dag_to_tree(Node *node, Query *qry, void *vptr, b
 	{
 		Plan *subplan = plan->lefttree;
 
+		Assert(subplan);
 		Assert(IsA(subplan, Material) || IsA(subplan, Sort));
+		Assert(get_plan_share_id(plan) == SHARE_ID_NOT_ASSIGNED);
 		Assert(plan->righttree == NULL);
 		Assert(plan->initPlan == NULL);
 
 		if(list_member_ptr(ctxt->sharedNodes, subplan))
 		{
+			Assert(get_plan_share_id(subplan) >= 0);
+			set_plan_share_id(plan, get_plan_share_id(subplan));
 			plan->lefttree = NULL;
 			return false;
 		}
 		else
 		{
+			Assert(get_plan_share_id(subplan) == SHARE_ID_NOT_ASSIGNED);
+			set_plan_share_id(subplan, list_length(ctxt->sharedNodes));
+			set_plan_share_id(plan, get_plan_share_id(subplan));
 			ctxt->sharedNodes = lappend(ctxt->sharedNodes, subplan);
 			return true;
 		}
@@ -1586,29 +1578,22 @@ static bool shareinput_mutator_dag_to_tree(Node *node, Query *qry, void *vptr, b
 /* 
  * Apply the share input mutator.
  */
-Plan *apply_shareinput_dag_to_tree(Plan *plan, Query *query)
+Plan *apply_shareinput_dag_to_tree(Plan *plan, ApplyShareInputContext *ctxt)
 {
-	ApplyShareInputState state;
-
-	state.sharedNodes = NULL;
-	state.motStack = NULL;
-
-	Assert(is_plan_node((Node *) plan) && IsA(query, Query));
-
-	shareinput_walker(shareinput_mutator_dag_to_tree, (Node *) plan, query, (void *) &state);
+	shareinput_walker(shareinput_mutator_dag_to_tree, (Node *) plan, ctxt);
 	return plan;
 }
 
 /* Some helper: implements a stack using List. */
-static void shareinput_pushmot(ApplyShareInputState *ctxt, int motid)
+static void shareinput_pushmot(ApplyShareInputContext *ctxt, int motid)
 {
 	ctxt->motStack = lcons_int(motid, ctxt->motStack);
 }
-static void shareinput_popmot(ApplyShareInputState *ctxt)
+static void shareinput_popmot(ApplyShareInputContext *ctxt)
 {
 	list_delete_first(ctxt->motStack);
 }
-static int shareinput_peekmot(ApplyShareInputState *ctxt)
+static int shareinput_peekmot(ApplyShareInputContext *ctxt)
 {
 	return linitial_int(ctxt->motStack);
 }
@@ -1619,7 +1604,7 @@ typedef struct ShareNodeWithSliceMark
 	int slice_mark;
 } ShareNodeWithSliceMark;
 
-static bool shareinput_find_sharenode(ApplyShareInputState *ctxt, int share_id, ShareNodeWithSliceMark *result)
+static bool shareinput_find_sharenode(ApplyShareInputContext *ctxt, int share_id, ShareNodeWithSliceMark *result)
 {
 	ListCell *lc;
 	ListCell *lc_slicemark;
@@ -1631,44 +1616,25 @@ static bool shareinput_find_sharenode(ApplyShareInputState *ctxt, int share_id, 
 	{
 		Plan *plan = (Plan *) lfirst(lc);
 
-		if(IsA(plan, Material))
+		Assert(IsA(plan, Material) || IsA(plan, Sort));
+		if(get_plan_share_id(plan) == share_id)
 		{
-			Material *m = (Material *) plan;
-			if(m->share_id == share_id)
+			if(result)
 			{
-				if(result)
-				{
-					result->plan = plan;
-					result->slice_mark = lfirst_int(lc_slicemark);
-				}
-				return true;
+				result->plan = plan;
+				result->slice_mark = lfirst_int(lc_slicemark);
 			}
+			return true;
 		}
-		else if(IsA(plan, Sort))
-		{
-			Sort *s = (Sort *) plan;
-			if(s->share_id == share_id)
-			{
-				if(result)
-				{
-					result->plan = plan;
-					result->slice_mark = lfirst_int(lc_slicemark);
-				}
-				return true;
-			}
-		}
-		else
-			Assert(!"Bad share node type");
 	}
 
 	return false;
 }
 
 
-static bool shareinput_mutator_xslice(Node* node, Query *qry, void *vpctxt, bool fPop)
+static bool shareinput_mutator_xslice(Node* node, ApplyShareInputContext *ctxt, bool fPop)
 {
 	Plan *plan = (Plan *) node;
-	ApplyShareInputState *ctxt = (ApplyShareInputState *) vpctxt;
 
 	if(fPop)
 	{
@@ -1698,42 +1664,17 @@ static bool shareinput_mutator_xslice(Node* node, Query *qry, void *vpctxt, bool
 
 			if(plan_slicemark.slice_mark != motId)
 			{
-				if(IsA(plan_slicemark.plan, Material))
-				{
-					Material *m = (Material *) plan_slicemark.plan;
-
-					Assert(m->share_type == SHARE_MATERIAL || m->share_type == SHARE_MATERIAL_XSLICE);
-					if(m->share_type == SHARE_MATERIAL)
-						m->share_type = SHARE_MATERIAL_XSLICE;
-				}
-				else if(IsA(plan_slicemark.plan, Sort))
-				{
-					Sort *s = (Sort *) plan_slicemark.plan;
-					Assert(s->share_type == SHARE_SORT || s->share_type == SHARE_SORT_XSLICE);
-
-					if(s->share_type == SHARE_SORT_XSLICE)
-						s->share_type = SHARE_SORT_XSLICE;
-				}
+				ShareType stype = get_plan_share_type(plan_slicemark.plan);
+				if(stype == SHARE_MATERIAL || stype == SHARE_SORT)
+					set_plan_share_type_xslice(plan_slicemark.plan);
 			}
 		}
 		else
 		{
 			Assert(shareinput_find_sharenode(ctxt, sisc->share_id, NULL) == false);
-			
-			if(IsA(shared, Material))
-			{
-				Material *m = (Material *) shared;
-				Assert(m->share_id == sisc->share_id && m->share_type == SHARE_MATERIAL);
-				m->driver_slice = motId;
-			} 
-			else if(IsA(shared, Sort))
-			{
-				Sort *s = (Sort *) shared;
-				Assert(s->share_id == sisc->share_id && s->share_type == SHARE_SORT);
-			}
-			else
-				Assert(!"Invalid share type");
-
+			Assert(get_plan_share_id(plan) == get_plan_share_id(shared));
+			set_plan_driver_slice(shared, motId);
+		
 			ctxt->sharedNodes = lappend(ctxt->sharedNodes, shared);
 			ctxt->sliceMarks = lappend_int(ctxt->sliceMarks, motId);
 		}
@@ -1742,17 +1683,15 @@ static bool shareinput_mutator_xslice(Node* node, Query *qry, void *vpctxt, bool
 	return true;
 }
 
-Plan *apply_shareinput_xslice(Plan *plan, Query *query)
+Plan *apply_shareinput_xslice(Plan *plan, ApplyShareInputContext *ctxt) 
 {
-	ApplyShareInputState state;
-	state.sharedNodes = NULL;
-	state.sliceMarks = NULL;
-	state.motStack = NULL;
+	ctxt->sharedNodes = NULL;
+	ctxt->sliceMarks = NULL;
+	ctxt->motStack = NULL;
 
-	Assert(is_plan_node((Node *) plan) && IsA(query, Query));
-	shareinput_pushmot(&state, 0);
+	shareinput_pushmot(ctxt, 0);
 	
-	shareinput_walker(shareinput_mutator_xslice, (Node *) plan, query, (void *) &state);
+	shareinput_walker(shareinput_mutator_xslice, (Node *) plan, ctxt); 
 	
 	return plan;
 }

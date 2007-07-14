@@ -109,6 +109,8 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 	Index		save_PlannerQueryLevel;
 	List	   *save_PlannerParamList;
 	ParamListInfo save_PlannerBoundParamList;
+	ApplyShareInputContext shareinput_context;
+	set_plan_ref_context setref_context;
 
 	/*
 	 * The planner can be called recursively (an example is when
@@ -174,11 +176,18 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 	 *
 	 * apply_shareinput will fix shared_id, and change the DAG to a tree.
 	 */
+	shareinput_context.sharedNodes = NULL;
+	shareinput_context.sliceMarks = NULL;
+	shareinput_context.motStack = NULL;
 
-	result_plan = apply_shareinput_dag_to_tree(result_plan, parse); 
+	result_plan = apply_shareinput_dag_to_tree(result_plan, &shareinput_context); 
+
+	setref_context.qry = parse;
+	setref_context.rtable = parse->rtable;
+	setref_context.sharedNodes = shareinput_context.sharedNodes;
 
 	/* final cleanup of the plan */
-	result_plan = set_plan_references_qry(result_plan, parse);
+	result_plan = set_plan_references_qry(result_plan, &setref_context);
 
 	/* executor wants to know total number of Params used overall */
 	result_plan->nParamExec = list_length(PlannerParamList);
@@ -194,7 +203,7 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 		/* cdbparallelize may create additional slices that may affect share input.
 		 * need to mark material nodes that are split acrossed multi slices.
 		 */
-		result_plan = apply_shareinput_xslice(result_plan, parse);
+		result_plan = apply_shareinput_xslice(result_plan, &shareinput_context);
 	}
 
 	/* restore state for outer planner, if any */
