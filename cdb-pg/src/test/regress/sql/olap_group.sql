@@ -431,7 +431,7 @@ select cn, vn, pn, count(dt),group_id(),grouping(cn,vn,pn) from sale group by gr
 select a,b from (select 1 as a , 2 as b) r(a,b) group by rollup(a,b);
 
 -- tests for known bugs
-explain select dt,pn,cn,GROUP_ID(), count(prc) FROM sale GROUP BY ROLLUP((dt)),ROLLUP((cn)),ROLLUP((vn)),ROLLUP((pn),(cn));
+select dt,pn,cn,GROUP_ID(), count(prc) FROM sale GROUP BY ROLLUP((dt)),ROLLUP((cn)),ROLLUP((vn)),ROLLUP((pn),(cn));
 
 --begin equivalent
 select vn,cn,dt,0,REGR_COUNT(prc*qty,prc*qty) FROM sale GROUP BY pn,qty,vn,cn,dt

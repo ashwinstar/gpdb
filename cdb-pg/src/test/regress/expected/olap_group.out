@@ -3539,106 +3539,244 @@ select a,b from (select 1 as a , 2 as b) r(a,b) group by rollup(a,b);
 (3 rows)
 
 -- tests for known bugs
-explain select dt,pn,cn,GROUP_ID(), count(prc) FROM sale GROUP BY ROLLUP((dt)),ROLLUP((cn)),ROLLUP((vn)),ROLLUP((pn),(cn));
-                                                               QUERY PLAN                                                                
------------------------------------------------------------------------------------------------------------------------------------------
- Append  (cost=1.02..25.21 rows=439 width=24)
-   ->  GroupAggregate  (cost=1.02..1.12 rows=4 width=24)
-         Group By: "rollup".pn, "rollup".unnamed_attr_3, "rollup".cn, "rollup".dt, "rollup"."grouping"
-         ->  Subquery Scan "rollup"  (cost=1.02..1.07 rows=0 width=24)
-               ->  Gather Motion 2:1  (slice1)  (cost=1.02..1.07 rows=0 width=24)
-                     Merge Key: pn, unnamed_attr_3, cn, dt, "grouping"
-                     ->  GroupAggregate  (cost=1.02..1.07 rows=0 width=24)
-                           Group By: "grouping"
-                           ->  Subquery Scan "rollup"  (cost=1.02..1.07 rows=0 width=24)
-                                 ->  GroupAggregate  (cost=1.02..1.07 rows=0 width=24)
-                                       Group By: pn, "grouping"
-                                       ->  Subquery Scan "rollup"  (cost=1.02..1.07 rows=0 width=24)
-                                             ->  GroupAggregate  (cost=1.02..1.07 rows=0 width=24)
-                                                   Group By: pn, unnamed_attr_3, "grouping"
-                                                   ->  Subquery Scan "rollup"  (cost=1.02..1.07 rows=0 width=24)
-                                                         ->  GroupAggregate  (cost=1.02..1.07 rows=0 width=24)
-                                                               Group By: pn, unnamed_attr_3, cn, "grouping" (3 times)
-                                                               ->  Subquery Scan "rollup"  (cost=1.02..1.06 rows=1 width=24)
-                                                                     ->  GroupAggregate  (cost=1.02..1.05 rows=1 width=24)
-                                                                           Group By: pn, vn, cn, dt (3 times)
-                                                                           ->  Sort  (cost=1.02..1.02 rows=1 width=24)
-                                                                                 Sort Key: pn, vn, cn, dt
-                                                                                 ->  Seq Scan on sale  (cost=0.00..1.01 rows=1 width=24)
-   ->  Subquery Scan "rollup"  (cost=1.02..1.53 rows=11 width=24)
-         ->  GroupAggregate  (cost=1.02..1.42 rows=11 width=24)
-               Group By: dt, pn, unnamed_attr_3, cn, "grouping"
-               ->  Subquery Scan "rollup"  (cost=1.02..1.27 rows=1 width=24)
-                     ->  Gather Motion 2:1  (slice2)  (cost=1.02..1.26 rows=1 width=24)
-                           Merge Key: dt, pn, unnamed_attr_3, cn, "grouping"
-                           ->  GroupAggregate  (cost=1.02..1.24 rows=1 width=24)
-                                 Group By: dt, "grouping"
-                                 ->  Subquery Scan "rollup"  (cost=1.02..1.20 rows=2 width=24)
-                                       ->  GroupAggregate  (cost=1.02..1.18 rows=2 width=24)
-                                             Group By: dt, pn, "grouping"
-                                             ->  Subquery Scan "rollup"  (cost=1.02..1.10 rows=3 width=24)
-                                                   ->  GroupAggregate  (cost=1.02..1.07 rows=3 width=24)
-                                                         Group By: dt, pn, vn
-                                                         ->  Sort  (cost=1.02..1.02 rows=1 width=24)
-                                                               Sort Key: dt, pn, vn, cn
-                                                               ->  Seq Scan on sale  (cost=0.00..1.01 rows=1 width=24)
-   ->  Subquery Scan "rollup"  (cost=1.02..2.47 rows=30 width=24)
-         ->  GroupAggregate  (cost=1.02..2.17 rows=30 width=24)
-               Group By: cn, pn, dt, unnamed_attr_3, "grouping"
-               ->  Subquery Scan "rollup"  (cost=1.02..1.73 rows=4 width=24)
-                     ->  Gather Motion 2:1  (slice3)  (cost=1.02..1.69 rows=4 width=24)
-                           Merge Key: cn, pn, dt, unnamed_attr_3, "grouping"
-                           ->  GroupAggregate  (cost=1.02..1.61 rows=4 width=24)
-                                 Group By: cn, "grouping"
-                                 ->  Subquery Scan "rollup"  (cost=1.02..1.47 rows=6 width=24)
-                                       ->  GroupAggregate  (cost=1.02..1.41 rows=6 width=24)
-                                             Group By: cn, pn, "grouping" (3 times)
-                                             ->  Subquery Scan "rollup"  (cost=1.02..1.22 rows=8 width=24)
-                                                   ->  GroupAggregate  (cost=1.02..1.14 rows=8 width=24)
-                                                         Group By: cn, pn, dt (3 times)
-                                                         ->  Sort  (cost=1.02..1.02 rows=1 width=24)
-                                                               Sort Key: cn, pn, dt, vn
-                                                               ->  Seq Scan on sale  (cost=0.00..1.01 rows=1 width=24)
-   ->  Subquery Scan "rollup"  (cost=1.02..5.09 rows=83 width=24)
-         ->  GroupAggregate  (cost=1.02..4.26 rows=83 width=24)
-               Group By: unnamed_attr_3, cn, dt, pn, "grouping"
-               ->  Subquery Scan "rollup"  (cost=1.02..3.05 rows=12 width=24)
-                     ->  Gather Motion 2:1  (slice4)  (cost=1.02..2.93 rows=12 width=24)
-                           Merge Key: unnamed_attr_3, cn, dt, pn, "grouping"
-                           ->  GroupAggregate  (cost=1.02..2.69 rows=12 width=24)
-                                 Group By: unnamed_attr_3, "grouping"
-                                 ->  Subquery Scan "rollup"  (cost=1.02..2.27 rows=18 width=24)
-                                       ->  GroupAggregate  (cost=1.02..2.09 rows=18 width=24)
-                                             Group By: unnamed_attr_3, cn, "grouping"
-                                             ->  Subquery Scan "rollup"  (cost=1.02..1.53 rows=22 width=24)
-                                                   ->  GroupAggregate  (cost=1.02..1.31 rows=22 width=24)
-                                                         Group By: vn, cn, dt
-                                                         ->  Sort  (cost=1.02..1.02 rows=1 width=24)
-                                                               Sort Key: vn, cn, dt, pn
-                                                               ->  Seq Scan on sale  (cost=0.00..1.01 rows=1 width=24)
-   ->  Subquery Scan "rollup"  (cost=1.02..6.19 rows=124 width=24)
-         ->  GroupAggregate  (cost=1.02..4.95 rows=124 width=24)
-               Group By: dt, unnamed_attr_3, cn, pn, "grouping"
-               ->  Subquery Scan "rollup"  (cost=1.02..2.78 rows=41 width=24)
-                     ->  Gather Motion 2:1  (slice5)  (cost=1.02..2.37 rows=41 width=24)
-                           Merge Key: dt, vn, cn, pn, "grouping"
-                           ->  GroupAggregate  (cost=1.02..1.55 rows=41 width=24)
-                                 Group By: dt, vn
-                                 ->  Sort  (cost=1.02..1.02 rows=1 width=24)
-                                       Sort Key: dt, vn, cn, pn
-                                       ->  Seq Scan on sale  (cost=0.00..1.01 rows=1 width=24)
-   ->  Subquery Scan "rollup"  (cost=1.02..8.81 rows=187 width=24)
-         ->  GroupAggregate  (cost=1.02..6.94 rows=187 width=24)
-               Group By: dt, cn, unnamed_attr_3, pn, "grouping"
-               ->  Subquery Scan "rollup"  (cost=1.02..3.67 rows=62 width=24)
-                     ->  Gather Motion 2:1  (slice6)  (cost=1.02..3.05 rows=62 width=24)
-                           Merge Key: dt, cn, vn, pn, "grouping"
-                           ->  GroupAggregate  (cost=1.02..1.81 rows=62 width=24)
-                                 Group By: dt, cn
-                                 ->  Sort  (cost=1.02..1.02 rows=1 width=24)
-                                       Sort Key: dt, cn, vn, pn
-                                       ->  Seq Scan on sale  (cost=0.00..1.01 rows=1 width=24)
-(96 rows)
+select dt,pn,cn,GROUP_ID(), count(prc) FROM sale GROUP BY ROLLUP((dt)),ROLLUP((cn)),ROLLUP((vn)),ROLLUP((pn),(cn));
+     dt     | pn  | cn | ?column? | count 
+------------+-----+----+----------+-------
+            |     |    |        0 |     1
+            |     |    |        0 |     1
+            |     |    |        0 |     2
+            |     |    |        0 |     4
+            |     |    |        0 |     4
+            |     |    |        0 |    12
+            |     |  1 |        0 |     1
+            |     |  1 |        0 |     1
+            |     |  1 |        0 |     1
+            |     |  1 |        0 |     2
+            |     |  1 |        0 |     5
+            |     |  2 |        0 |     1
+            |     |  2 |        0 |     1
+            |     |  2 |        0 |     2
+            |     |  3 |        0 |     1
+            |     |  3 |        0 |     2
+            |     |  3 |        0 |     3
+            |     |  4 |        0 |     2
+            |     |  4 |        0 |     2
+            | 100 |    |        0 |     1
+            | 100 |    |        0 |     1
+            | 100 |    |        0 |     2
+            | 100 |  1 |        0 |     1
+            | 100 |  1 |        0 |     1
+            | 100 |  1 |        1 |     1
+            | 100 |  1 |        1 |     1
+            | 100 |  1 |        2 |     1
+            | 100 |  1 |        2 |     1
+            | 100 |  2 |        0 |     1
+            | 100 |  2 |        0 |     1
+            | 100 |  2 |        1 |     1
+            | 100 |  2 |        1 |     1
+            | 100 |  2 |        2 |     1
+            | 100 |  2 |        2 |     1
+            | 200 |    |        0 |     1
+            | 200 |    |        0 |     1
+            | 200 |    |        0 |     2
+            | 200 |  1 |        0 |     1
+            | 200 |  1 |        0 |     1
+            | 200 |  1 |        1 |     1
+            | 200 |  1 |        1 |     1
+            | 200 |  1 |        2 |     1
+            | 200 |  1 |        2 |     1
+            | 200 |  3 |        0 |     1
+            | 200 |  3 |        0 |     1
+            | 200 |  3 |        1 |     1
+            | 200 |  3 |        1 |     1
+            | 200 |  3 |        2 |     1
+            | 200 |  3 |        2 |     1
+            | 300 |    |        0 |     1
+            | 300 |    |        0 |     1
+            | 300 |  1 |        0 |     1
+            | 300 |  1 |        0 |     1
+            | 300 |  1 |        1 |     1
+            | 300 |  1 |        1 |     1
+            | 300 |  1 |        2 |     1
+            | 300 |  1 |        2 |     1
+            | 400 |    |        0 |     2
+            | 400 |    |        0 |     2
+            | 400 |  1 |        0 |     1
+            | 400 |  1 |        0 |     1
+            | 400 |  1 |        1 |     1
+            | 400 |  1 |        1 |     1
+            | 400 |  1 |        2 |     1
+            | 400 |  1 |        2 |     1
+            | 400 |  2 |        0 |     1
+            | 400 |  2 |        0 |     1
+            | 400 |  2 |        1 |     1
+            | 400 |  2 |        1 |     1
+            | 400 |  2 |        2 |     1
+            | 400 |  2 |        2 |     1
+            | 500 |    |        0 |     2
+            | 500 |    |        0 |     2
+            | 500 |  1 |        0 |     1
+            | 500 |  1 |        0 |     1
+            | 500 |  1 |        1 |     1
+            | 500 |  1 |        1 |     1
+            | 500 |  1 |        2 |     1
+            | 500 |  1 |        2 |     1
+            | 500 |  3 |        0 |     1
+            | 500 |  3 |        0 |     1
+            | 500 |  3 |        1 |     1
+            | 500 |  3 |        1 |     1
+            | 500 |  3 |        2 |     1
+            | 500 |  3 |        2 |     1
+            | 600 |    |        0 |     1
+            | 600 |    |        0 |     1
+            | 600 |  3 |        0 |     1
+            | 600 |  3 |        0 |     1
+            | 600 |  3 |        1 |     1
+            | 600 |  3 |        1 |     1
+            | 600 |  3 |        2 |     1
+            | 600 |  3 |        2 |     1
+            | 700 |    |        0 |     1
+            | 700 |    |        0 |     1
+            | 700 |  4 |        0 |     1
+            | 700 |  4 |        0 |     1
+            | 700 |  4 |        1 |     1
+            | 700 |  4 |        1 |     1
+            | 700 |  4 |        2 |     1
+            | 700 |  4 |        2 |     1
+            | 800 |    |        0 |     1
+            | 800 |    |        0 |     1
+            | 800 |  4 |        0 |     1
+            | 800 |  4 |        0 |     1
+            | 800 |  4 |        1 |     1
+            | 800 |  4 |        1 |     1
+            | 800 |  4 |        2 |     1
+            | 800 |  4 |        2 |     1
+ 01-01-1401 |     |    |        0 |     1
+ 01-01-1401 |     |    |        0 |     1
+ 01-01-1401 |     |  2 |        0 |     1
+ 01-01-1401 |     |  2 |        0 |     1
+ 01-01-1401 | 100 |    |        0 |     1
+ 01-01-1401 | 100 |    |        0 |     1
+ 01-01-1401 | 100 |  2 |        0 |     1
+ 01-01-1401 | 100 |  2 |        0 |     1
+ 01-01-1401 | 100 |  2 |        1 |     1
+ 01-01-1401 | 100 |  2 |        1 |     1
+ 01-01-1401 | 100 |  2 |        2 |     1
+ 01-01-1401 | 100 |  2 |        2 |     1
+ 03-01-1401 |     |    |        0 |     1
+ 03-01-1401 |     |    |        0 |     1
+ 03-01-1401 |     |  1 |        0 |     1
+ 03-01-1401 |     |  1 |        0 |     1
+ 03-01-1401 | 200 |    |        0 |     1
+ 03-01-1401 | 200 |    |        0 |     1
+ 03-01-1401 | 200 |  1 |        0 |     1
+ 03-01-1401 | 200 |  1 |        0 |     1
+ 03-01-1401 | 200 |  1 |        1 |     1
+ 03-01-1401 | 200 |  1 |        1 |     1
+ 03-01-1401 | 200 |  1 |        2 |     1
+ 03-01-1401 | 200 |  1 |        2 |     1
+ 04-01-1401 |     |    |        0 |     1
+ 04-01-1401 |     |    |        0 |     1
+ 04-01-1401 |     |  3 |        0 |     1
+ 04-01-1401 |     |  3 |        0 |     1
+ 04-01-1401 | 200 |    |        0 |     1
+ 04-01-1401 | 200 |    |        0 |     1
+ 04-01-1401 | 200 |  3 |        0 |     1
+ 04-01-1401 | 200 |  3 |        0 |     1
+ 04-01-1401 | 200 |  3 |        1 |     1
+ 04-01-1401 | 200 |  3 |        1 |     1
+ 04-01-1401 | 200 |  3 |        2 |     1
+ 04-01-1401 | 200 |  3 |        2 |     1
+ 05-01-1401 |     |    |        0 |     1
+ 05-01-1401 |     |    |        0 |     1
+ 05-01-1401 |     |  1 |        0 |     1
+ 05-01-1401 |     |  1 |        0 |     1
+ 05-01-1401 | 100 |    |        0 |     1
+ 05-01-1401 | 100 |    |        0 |     1
+ 05-01-1401 | 100 |  1 |        0 |     1
+ 05-01-1401 | 100 |  1 |        0 |     1
+ 05-01-1401 | 100 |  1 |        1 |     1
+ 05-01-1401 | 100 |  1 |        1 |     1
+ 05-01-1401 | 100 |  1 |        2 |     1
+ 05-01-1401 | 100 |  1 |        2 |     1
+ 05-02-1401 |     |    |        0 |     1
+ 05-02-1401 |     |    |        0 |     1
+ 05-02-1401 |     |  1 |        0 |     1
+ 05-02-1401 |     |  1 |        0 |     1
+ 05-02-1401 | 300 |    |        0 |     1
+ 05-02-1401 | 300 |    |        0 |     1
+ 05-02-1401 | 300 |  1 |        0 |     1
+ 05-02-1401 | 300 |  1 |        0 |     1
+ 05-02-1401 | 300 |  1 |        1 |     1
+ 05-02-1401 | 300 |  1 |        1 |     1
+ 05-02-1401 | 300 |  1 |        2 |     1
+ 05-02-1401 | 300 |  1 |        2 |     1
+ 06-01-1401 |     |    |        0 |     2
+ 06-01-1401 |     |    |        0 |     2
+ 06-01-1401 |     |    |        0 |     3
+ 06-01-1401 |     |    |        0 |     7
+ 06-01-1401 |     |  1 |        0 |     1
+ 06-01-1401 |     |  1 |        0 |     1
+ 06-01-1401 |     |  1 |        0 |     2
+ 06-01-1401 |     |  2 |        0 |     1
+ 06-01-1401 |     |  2 |        0 |     1
+ 06-01-1401 |     |  3 |        0 |     2
+ 06-01-1401 |     |  3 |        0 |     2
+ 06-01-1401 |     |  4 |        0 |     2
+ 06-01-1401 |     |  4 |        0 |     2
+ 06-01-1401 | 400 |    |        0 |     2
+ 06-01-1401 | 400 |    |        0 |     2
+ 06-01-1401 | 400 |  1 |        0 |     1
+ 06-01-1401 | 400 |  1 |        0 |     1
+ 06-01-1401 | 400 |  1 |        1 |     1
+ 06-01-1401 | 400 |  1 |        1 |     1
+ 06-01-1401 | 400 |  1 |        2 |     1
+ 06-01-1401 | 400 |  1 |        2 |     1
+ 06-01-1401 | 400 |  2 |        0 |     1
+ 06-01-1401 | 400 |  2 |        0 |     1
+ 06-01-1401 | 400 |  2 |        1 |     1
+ 06-01-1401 | 400 |  2 |        1 |     1
+ 06-01-1401 | 400 |  2 |        2 |     1
+ 06-01-1401 | 400 |  2 |        2 |     1
+ 06-01-1401 | 500 |    |        0 |     2
+ 06-01-1401 | 500 |    |        0 |     2
+ 06-01-1401 | 500 |  1 |        0 |     1
+ 06-01-1401 | 500 |  1 |        0 |     1
+ 06-01-1401 | 500 |  1 |        1 |     1
+ 06-01-1401 | 500 |  1 |        1 |     1
+ 06-01-1401 | 500 |  1 |        2 |     1
+ 06-01-1401 | 500 |  1 |        2 |     1
+ 06-01-1401 | 500 |  3 |        0 |     1
+ 06-01-1401 | 500 |  3 |        0 |     1
+ 06-01-1401 | 500 |  3 |        1 |     1
+ 06-01-1401 | 500 |  3 |        1 |     1
+ 06-01-1401 | 500 |  3 |        2 |     1
+ 06-01-1401 | 500 |  3 |        2 |     1
+ 06-01-1401 | 600 |    |        0 |     1
+ 06-01-1401 | 600 |    |        0 |     1
+ 06-01-1401 | 600 |  3 |        0 |     1
+ 06-01-1401 | 600 |  3 |        0 |     1
+ 06-01-1401 | 600 |  3 |        1 |     1
+ 06-01-1401 | 600 |  3 |        1 |     1
+ 06-01-1401 | 600 |  3 |        2 |     1
+ 06-01-1401 | 600 |  3 |        2 |     1
+ 06-01-1401 | 700 |    |        0 |     1
+ 06-01-1401 | 700 |    |        0 |     1
+ 06-01-1401 | 700 |  4 |        0 |     1
+ 06-01-1401 | 700 |  4 |        0 |     1
+ 06-01-1401 | 700 |  4 |        1 |     1
+ 06-01-1401 | 700 |  4 |        1 |     1
+ 06-01-1401 | 700 |  4 |        2 |     1
+ 06-01-1401 | 700 |  4 |        2 |     1
+ 06-01-1401 | 800 |    |        0 |     1
+ 06-01-1401 | 800 |    |        0 |     1
+ 06-01-1401 | 800 |  4 |        0 |     1
+ 06-01-1401 | 800 |  4 |        0 |     1
+ 06-01-1401 | 800 |  4 |        1 |     1
+ 06-01-1401 | 800 |  4 |        1 |     1
+ 06-01-1401 | 800 |  4 |        2 |     1
+ 06-01-1401 | 800 |  4 |        2 |     1
+(234 rows)
 
 --begin equivalent
 select vn,cn,dt,0,REGR_COUNT(prc*qty,prc*qty) FROM sale GROUP BY pn,qty,vn,cn,dt

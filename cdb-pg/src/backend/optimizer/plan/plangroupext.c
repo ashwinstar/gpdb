@@ -1292,8 +1292,6 @@ plan_list_rollup_plans(PlannerInfo *root,
 
 	if (list_length(context->canonical_rollups) > 1)
 	{
-		/* XXX: disable shareinput */
-		gp_window_shareinput = false;
 		subplans = generate_list_subplans(root,
 										  list_length(context->canonical_rollups),
 										  context);
