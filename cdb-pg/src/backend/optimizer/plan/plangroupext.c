@@ -797,6 +797,8 @@ plan_list_aggs(PlannerInfo *root,
 	int group_no;
 	uint64 grouping = 0;
 	List *subplans = NIL;
+	int num_subplans = 0;
+	int subplan_no;
 
 	/*
 	 * Generate subplans for Agg nodes in each requested rollup level.
@@ -808,27 +810,28 @@ plan_list_aggs(PlannerInfo *root,
 	context->pathkeys = NIL;
 	for (group_no=0; group_no<context->current_rollup->numcols + 1; group_no++)
 	{
-		/*
-		 * XXX We use the same pathkeys for each Agg node here. This
-		 * could be improved to use different pathkeys, because each
-		 * Agg node does have different sorting requirements.
-		 */
-		context->pathkeys = lappend(context->pathkeys,
-									context->current_pathkeys);
+		if (context->current_rollup->grpset_counts[group_no] > 0)
+		{
+			num_subplans++;
+			
+			/*
+			 * XXX We use the same pathkeys for each Agg node here. This
+			 * could be improved to use different pathkeys, because each
+			 * Agg node does have different sorting requirements.
+			 */
+			context->pathkeys = lappend(context->pathkeys,
+										context->current_pathkeys);
+		}
 	}
 
-	subplans = generate_list_subplans(root,
-									  context->current_rollup->numcols + 1,
-									  context);
+	subplans = generate_list_subplans(root, num_subplans, context);
 
 	/* Append Grouping and GroupId into context->tlist */
 	context->tlist = add_grouping_groupid(context->tlist);
 
 	/* Generate an Agg/Group node for each rollup level */
-	for (group_no=0; group_no<context->current_rollup->numcols + 1; group_no++)
+	for (group_no=0, subplan_no=0; group_no<context->current_rollup->numcols + 1; group_no++)
 	{
-		Plan *subplan = (Plan *)list_nth(subplans, group_no);
-
 		if (group_no > 0)
 			grouping += ( ((uint64)1) << context->current_rollup->grping_pos[
 							 context->current_rollup->numcols - group_no]);
@@ -836,6 +839,8 @@ plan_list_aggs(PlannerInfo *root,
 		if (context->current_rollup->grpset_counts[group_no] > 0)
 		{
 			Plan *agg_plan ;
+			Plan *subplan = (Plan *)list_nth(subplans, subplan_no);
+			subplan_no++;
 
 			/* Add an explicit sort if we couldn't make the path
 			 * come out the way the Agg/Group node needs it.
@@ -1349,11 +1354,11 @@ plan_list_rollup_plans(PlannerInfo *root,
 												   makeAlias("rollup", NULL),
 												   TRUE);
 			final_query->rtable = lappend(final_query->rtable, newrte);
-			subquery_tlist = generate_subquery_tlist(rollup_no + 1,
+			subquery_tlist = generate_subquery_tlist(list_length(final_query->rtable),
 													 rollup_plan->targetlist);
 			rollup_plan = (Plan *)make_subqueryscan(subquery_tlist,
 													NIL,
-													rollup_no + 1,
+													list_length(final_query->rtable),
 													rollup_plan);
 			mark_passthru_locus(rollup_plan, true, true);
 		}

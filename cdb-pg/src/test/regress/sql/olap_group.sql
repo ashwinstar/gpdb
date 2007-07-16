@@ -448,3 +448,11 @@ union all select dt,0, max(distinct prc*qty) from sale group by dt,vn,qty,cn
 union all select dt,0, max(distinct prc*qty) from sale group by dt,vn,qty,cn
 union all select dt,0, max(distinct prc*qty) from sale group by dt,vn;
 --end equivalent
+
+--begin equivalent
+select sale.cn,max(distinct sale.cn) from sale,vendor where sale.vn=vendor.vn group by sale.cn,sale.vn
+union all select sale.cn,max(distinct sale.cn) from sale,vendor where sale.vn=vendor.vn group by sale.cn
+union all select null,max(distinct sale.cn) from sale,vendor where sale.vn=vendor.vn
+union all select null,max(distinct sale.cn) from sale,vendor where sale.vn=vendor.vn group by sale.vn;
+select sale.cn,max(distinct sale.cn) from sale,vendor where sale.vn=vendor.vn group by cube(sale.cn,sale.vn);
+--end equivalent

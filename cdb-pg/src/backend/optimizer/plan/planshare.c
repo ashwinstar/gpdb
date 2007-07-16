@@ -139,6 +139,14 @@ List *share_plan(PlannerInfo *root, Plan *common, int numpartners)
 	bool xslice = false;
 	int i;
 
+	Assert(numpartners > 0);
+	
+	if(numpartners == 1)
+	{
+		shared_nodes = lappend(shared_nodes, common);
+		return shared_nodes;
+	}
+
 	if(!gp_window_shareinput)
 	{
 		for(i=0; i<numpartners; ++i)

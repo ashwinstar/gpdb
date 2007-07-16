@@ -3956,3 +3956,56 @@ union all select dt,0, max(distinct prc*qty) from sale group by dt,vn;
 (48 rows)
 
 --end equivalent
+--begin equivalent
+select sale.cn,max(distinct sale.cn) from sale,vendor where sale.vn=vendor.vn group by sale.cn,sale.vn
+union all select sale.cn,max(distinct sale.cn) from sale,vendor where sale.vn=vendor.vn group by sale.cn
+union all select null,max(distinct sale.cn) from sale,vendor where sale.vn=vendor.vn
+union all select null,max(distinct sale.cn) from sale,vendor where sale.vn=vendor.vn group by sale.vn;
+ cn | max 
+----+-----
+  1 |   1
+  3 |   3
+    |   4
+  1 |   1
+  1 |   1
+  1 |   1
+  1 |   1
+  2 |   2
+  2 |   2
+  3 |   3
+  3 |   3
+  4 |   4
+  2 |   2
+  4 |   4
+    |   1
+    |   1
+    |   3
+    |   4
+    |   2
+(19 rows)
+
+select sale.cn,max(distinct sale.cn) from sale,vendor where sale.vn=vendor.vn group by cube(sale.cn,sale.vn);
+ cn | max 
+----+-----
+  1 |   1
+  3 |   3
+    |   4
+  1 |   1
+  1 |   1
+  1 |   1
+  1 |   1
+  2 |   2
+  2 |   2
+  3 |   3
+  3 |   3
+  4 |   4
+  2 |   2
+  4 |   4
+    |   1
+    |   1
+    |   3
+    |   4
+    |   2
+(19 rows)
+
+--end equivalent
