@@ -33,7 +33,6 @@
 #include "utils/memutils.h"
 #include "access/htup.h"
 #include "cdb/cdbvars.h"
-#include <math.h>
 
 #include "executor/execHashagg.h"
 
@@ -349,15 +348,15 @@ agg_hash_initial_pass(AggState *aggstate)
 
 					est_tuples_per_group = outer->plan->plan_rows / aggstate->ss.ps.plan->plan_rows;
 
-					/* assume that we're halfway ? */
+					/* assume that we're 10% ? */
 					groups = Max((outer->plan->plan_rows /* est_tuples */ / act_tuples_per_group),
-								 (2.0 * (double)ht->ntuple / act_tuples_per_group));
+								 (10.0 * (double)ht->ntuple / act_tuples_per_group));
 
 					elog(HHA_MSG_LVL,
 						 "hybrid hash aggregation: recalculate batch count using %f groups (est density %f act density %f)",
 						 groups, est_tuples_per_group, act_tuples_per_group);
 
-					entry_size = ceil(((work_mem * 1024.0) - (ht->nbatch * sizeBufFile(NULL))) / ht->nentries);
+					entry_size = ht->hats.workmem_per_entry;
 
 					new_batches = calcBatchCount(work_mem * 1024.0, 
 												 groups,
@@ -985,7 +984,7 @@ calcBatchCount(double memquota, double ngroups, double zH, double zB, bool force
 	 * overflow within a subsequent pass.
 	 */
 	double d = memquota*memquota - 4 * zB * ngroups * zH;
-		
+
 	/* By default we plan on writing input tuples back to disk
 	 * once, but the user can increase this.  We creep up to
 	 * user's limit in order the choose the smallest rewrite
@@ -995,7 +994,7 @@ calcBatchCount(double memquota, double ngroups, double zH, double zB, bool force
 	while (d < 0 && rewrite_fudge < gp_hashagg_rewrite_limit)
 	{
 		rewrite_fudge++;
-		rewrite_fudge = ( rewrite_fudge > gp_hashagg_rewrite_limit ) ?
+		rewrite_fudge = (rewrite_fudge > gp_hashagg_rewrite_limit) ?
 			gp_hashagg_rewrite_limit :
 			rewrite_fudge;
 			
@@ -1008,7 +1007,10 @@ calcBatchCount(double memquota, double ngroups, double zH, double zB, bool force
 	if (d < 0)
 	{
 		if (force)
+		{
+			elog(DEBUG2, "hashagg: even after applying fudge, can't fit groups");
 			d = 0;
+		}
 		else
 		{
 			elog(DEBUG2, "hashagg can't calculate memory usage!");
@@ -1050,9 +1052,10 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 	
 	double nB = 2.0;
 	double zB = sizeBufFile(NULL); /* Passes = overflow batches */
-	
+
 	elog(DEBUG2, "hashagg ngroups = %g, numaggs = %d, keywidth = %d, transpace = %d", ngroups, numaggs, keywidth, transpace);
 	elog(DEBUG2, "hashagg memquota = %g, zH = %g, zB = %g", memquota, zH, zB);
+
 
 	if (nK > INT_MAX || ngroups > INT_MAX)
 	{
@@ -1077,8 +1080,8 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 
 		if (nB < 2.0)
 			return false;
-	}
-	
+	}   
+
 	nH = floor((memquota - nB*zB)/zH);
 	
     /* Allocate at least a few hash entries regardless of memquota. */
