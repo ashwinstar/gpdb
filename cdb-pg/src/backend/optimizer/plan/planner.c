@@ -915,10 +915,9 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 													  tlist);
 		sort_pathkeys = canonicalize_pathkeys(root, sort_pathkeys);
 	}
-	else if ( parse->windowClause )
+	else if ( parse->windowClause && parse->targetList )
+	/* Should really test for no windowing target, but empty tlist suffices. */
 	{
-		/* TODO Need work here. */
-		
 		/*
 		 * Calculate pathkeys that represent ordering requirements. Stash
 		 * them in PlannerInfo so that query_planner can canonicalize them.
