@@ -62,7 +62,7 @@
 
 #include "cdb/cdbcat.h"
 #include "cdb/cdbdisp.h"
-#include "cdb/cdbdispatchresult.h"      /* cdbdisp_sumCmdTuples() */
+#include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbexplain.h"             /* cdbexplain_sendExecStats() */
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbsubplan.h"

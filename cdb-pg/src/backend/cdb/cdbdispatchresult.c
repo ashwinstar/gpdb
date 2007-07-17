@@ -21,6 +21,7 @@
 #include "utils/guc.h"              /* log_min_messages */
 
 #include "cdb/cdbconn.h"            /* SegmentDatabaseDescriptor */
+#include "cdb/cdbvars.h"
 #include "cdb/cdbdispatchresult.h"  /* me */
 
 
@@ -737,7 +738,6 @@ cdbdisp_sumCmdTuples(CdbDispatchResults *results, int sliceIndex)
                 sum += atoi(cmdTuples);
         }
     }
-
     return sum;
 }                               /* cdbdisp_sumCmdTuples */
 
@@ -780,6 +780,13 @@ cdbdisp_resultBegin(CdbDispatchResults *results, int sliceIndex)
 
     if (sliceIndex < 0)
         return &results->resultArray[0];
+    
+    /*
+     * If we are using dispatch agents, the DA handled the slicing,
+     * so we only get one final result
+     */
+    if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent)
+    	return &results->resultArray[0];
 
     si = &results->sliceMap[sliceIndex];
 
@@ -803,6 +810,9 @@ cdbdisp_resultEnd(CdbDispatchResults *results, int sliceIndex)
 
     if (sliceIndex < 0)
         return &results->resultArray[results->resultCount];
+    
+    if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent)
+       	return &results->resultArray[results->resultCount];
 
     si = &results->sliceMap[sliceIndex];
 
@@ -1144,7 +1154,7 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 		}
 	}
 	
-	elog(DEBUG1,"relayresults is done. completionTag %s  errmsgbuf.len=%d",completionTag, errmsgbuf.len);
+	elog(LOG,"relayresults is done. completionTag %s  errmsgbuf.len=%d",completionTag, errmsgbuf.len);
 	
 	if (errmsgbuf.len > 0)
 		ereport(ERROR, (errmsg("%s", errmsgbuf.data)));

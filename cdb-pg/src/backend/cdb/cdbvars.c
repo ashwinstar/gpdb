@@ -413,8 +413,8 @@ assign_gp_use_dispatch_agent(bool newval, bool doit, GucSource source)
 		 * If we are now going to be using dispatch agents, we do this 
 		 * just to help debugging.  This should come out later.
 		 */
-		if (gp_use_dispatch_agent)
-			gp_log_gang = GPVARS_VERBOSITY_VERBOSE;
+		//if (gp_use_dispatch_agent)
+		//	gp_log_gang = GPVARS_VERBOSITY_VERBOSE;
 	}
 
 	return true;
