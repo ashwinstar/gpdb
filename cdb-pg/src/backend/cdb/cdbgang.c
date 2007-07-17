@@ -2707,6 +2707,7 @@ cleanupGang(Gang * gp)
 	if (proc_exit_inprogress)
 		return true;
 	
+
 	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent && gp->dispatchagents)
 	{
 		PGresult * result;
@@ -2714,18 +2715,31 @@ cleanupGang(Gang * gp)
 
 		for (i = 0; i < gp->dispatchagents->size; i++)
 		{
-			elog(DEBUG1,"Sending clean gang message to dispatch agent on segdb %d",gp->dispatchagents->db_descriptors[i].segindex);
-			PQsendControlGang(gp->dispatchagents->db_descriptors[i].conn, gp->gang_id, "clean gang");
-			
-			result = PQgetResult(gp->dispatchagents->db_descriptors[i].conn);
-			
-			if (PQresultStatus(result)!=PGRES_COMMAND_OK)
+			if (PQstatus(gp->dispatchagents->db_descriptors[i].conn) == CONNECTION_OK)
 			{
-				elog(WARNING,"Dispatch Agent unable to clean gang, %s %s",PQresStatus(PQresultStatus(result)),
-						PQresultErrorMessage(result));
+#if 0
+				elog(DEBUG1,"Sending clean gang message to dispatch agent on segdb %d",gp->dispatchagents->db_descriptors[i].segindex);
+				PQsendControlGang(gp->dispatchagents->db_descriptors[i].conn, gp->gang_id, "clean gang");
+				
+				result = PQgetResult(gp->dispatchagents->db_descriptors[i].conn);
+				
+				if (PQresultStatus(result)!=PGRES_COMMAND_OK)
+				{
+					elog(WARNING,"Dispatch Agent unable to clean gang, %s %s",PQresStatus(PQresultStatus(result)),
+							PQresultErrorMessage(result));
+					return false;
+				}
+#endif
+			}
+			else
+			{
+				elog(LOG, "cleanupGang: lost connection with dispatch agent. Disconnecting");
+				disconnectAndDestroyGang(gp);
+				return false;
 			}
 		}
 	}
+
 
 	/*
 	 * Loop through the segment_database_descriptors array and, for each
