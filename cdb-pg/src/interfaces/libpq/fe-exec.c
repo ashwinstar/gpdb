@@ -2774,6 +2774,12 @@ PQcmdTuples(PGresult *res)
 	else if (strncmp(res->cmdStatus, "MOVE ", 5) == 0 ||
 			 strncmp(res->cmdStatus, "COPY ", 5) == 0)
 		p = res->cmdStatus + 5;
+	/*
+	 * CDB: we want to caclulate es_processed for a SELECT INTO, so need
+	 *      to handle a SELECT too.
+	 */
+	else if (strncmp(res->cmdStatus, "SELECT ", 7) == 0)
+		p = res->cmdStatus + 7;
 	else
 		return "";
 

@@ -201,7 +201,8 @@ ProcessQuery(Portal portal,
 		switch (operation)
 		{
 			case CMD_SELECT:
-				strcpy(completionTag, "SELECT");
+				snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
+						 "SELECT %u", queryDesc->es_processed);
 				break;
 			case CMD_INSERT:	
 				if (queryDesc->es_processed == 1)
