@@ -59,11 +59,11 @@ typedef struct HashAggEntry
 
 typedef struct HashAggTableSizes
 {
-    int             nbuckets;   /* Calculated # of hash buckets. */
-    int             nentries;   /* Calculated # of hash entries. */
-    int             nbatches;   /* Calculated # of passes. */
-    int             workmem_initial;    /* estimated work_mem bytes at #entries=0 */
-    int             workmem_per_entry;  /* additional work_mem bytes per entry */
+    unsigned             nbuckets;   /* Calculated # of hash buckets. */
+    unsigned             nentries;   /* Calculated # of hash entries. */
+    unsigned             nbatches;   /* Calculated # of passes. */
+    unsigned             workmem_initial;    /* estimated work_mem bytes at #entries=0 */
+    unsigned             workmem_per_entry;  /* additional work_mem bytes per entry */
     bool            spill;      /* do we expect to spill ? */
 } HashAggTableSizes;
 
@@ -104,20 +104,20 @@ typedef struct HashAggTable
 	unsigned long		ntuple;
 	
 	HashAggState		state;	/* state of processing */
-	int pass;					/* current pass (0 is initial) */
- 	int source;					/* source batch file for this pass */
-	int overflow;				/* overflow batch file for this pass */
+	unsigned			pass;	/* current pass (0 is initial) */
+ 	unsigned			source;	/* source batch file for this pass */
+	unsigned			overflow; /* overflow batch file for this pass */
 	
 	/* Hash table iterator */
-	int				curr_bucket_idx;
-	HashAggEntry   *next_entry;	
+	unsigned			curr_bucket_idx;
+	HashAggEntry		*next_entry;	
 
     /* CDB: Statistics for EXPLAIN ANALYZE */
     HashAggTableSizes   hats;
 	unsigned long		ngroup_initial;
 	unsigned long		ntuple_initial;
     unsigned long       noverflow_initial;
-    int                 num_reloads;
+    unsigned            num_reloads;
     double              num_overflow_rows;
     double              num_groups_total;
     CdbExplain_Agg      chainlength;

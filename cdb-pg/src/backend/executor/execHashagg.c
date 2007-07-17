@@ -39,13 +39,13 @@
 static void reset_agg_hash_table(AggState *aggstate);
 static bool agg_hash_reload(AggState *aggstate);
 
-static void create_batches(HashAggTable *hashtable, int nbatch);
+static void create_batches(HashAggTable *hashtable, unsigned int nbatch);
 static void destroy_batches(HashAggTable *hashtable);
-static void batch_put_tuple(HashAggTable *hashtable, int batch, TupleTableSlot *tupleSlot);
-static void batch_rewind(HashAggTable *hashtable, int batch);
-static void batch_close(HashAggTable *hashtable, int batch);
+static void batch_put_tuple(HashAggTable *hashtable, unsigned int batch, TupleTableSlot *tupleSlot);
+static void batch_rewind(HashAggTable *hashtable, unsigned int batch);
+static void batch_close(HashAggTable *hashtable, unsigned int batch);
 
-static TupleTableSlot *batch_get_tuple(HashAggTable *hashtable, int batch,  TupleTableSlot *tupleSlot);
+static TupleTableSlot *batch_get_tuple(HashAggTable *hashtable, unsigned int batch,  TupleTableSlot *tupleSlot);
 static void init_agg_hash_iter(HashAggTable* ht);
 static HashAggEntry *lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 *hashkeyp, bool *isNew);
 static uint32 calc_hash_value(AggState* aggstate, TupleTableSlot *inputslot);
@@ -428,8 +428,8 @@ bool
 agg_hash_next_pass(AggState *aggstate)
 {
 	HashAggTable *ht = aggstate->hhashtable;
-	int pass = aggstate->hhashtable->pass;
-	int nbatch = aggstate->hhashtable->nbatch;
+	unsigned int pass = aggstate->hhashtable->pass;
+	unsigned int nbatch = aggstate->hhashtable->nbatch;
 	BatchFileInfo *batches = aggstate->hhashtable->batches;
 	
 	elog(HHA_MSG_LVL,
@@ -571,7 +571,7 @@ agg_hash_reload(AggState *aggstate)
 	ExprContext *tmpcontext;
 	HashAggTable *ht;
 	BatchFileInfo *batches;
-	int source, overflow;
+	unsigned int source, overflow;
 	HashAggEntry *entry;
 	TupleTableSlot *outerslot;
 	unsigned long ntuple = 0;
@@ -793,7 +793,7 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 *has
 	HashAggEntry *entry;
 	TupleDesc entry_tuple_desc;
 	uint32 hashkey;
-	int bucket_idx;
+	unsigned int bucket_idx;
 	bool match;
 	
 	agg = (Agg*)aggstate->ss.ps.plan;
@@ -1057,7 +1057,7 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 	elog(DEBUG2, "hashagg memquota = %g, zH = %g, zB = %g", memquota, zH, zB);
 
 
-	if (nK > INT_MAX || ngroups > INT_MAX)
+	if (nK > UINT_MAX || ngroups > UINT_MAX)
 	{
 		elog(DEBUG2, "hashagg table size bigger than int type!");
 		return false;
@@ -1089,7 +1089,7 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 
 	nK = ceil(nH/NGROUP_PER_BUCKET);
 
-	if (nB > INT_MAX || nH > INT_MAX || nK > INT_MAX)
+	if (nB > UINT_MAX || nH > UINT_MAX || nK > UINT_MAX)
 	{
 		if (force)
 		{
@@ -1106,12 +1106,12 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 	
     if (out_hats)
     {
-        out_hats->nbuckets = (int)nK;
-        out_hats->nentries = (int)nH;
-		out_hats->nbatches = (int)nB;
+        out_hats->nbuckets = (unsigned)nK;
+        out_hats->nentries = (unsigned)nH;
+		out_hats->nbatches = (unsigned)nB;
 		out_hats->spill = expectSpill;
-        out_hats->workmem_initial = (int)(nB*zB);
-        out_hats->workmem_per_entry = (int)zH;
+        out_hats->workmem_initial = (unsigned)(nB*zB);
+        out_hats->workmem_per_entry = (unsigned)zH;
     }
 	
 	elog(DEBUG2, "hashagg nbuckets = %d, nentries = %d, nbatches = %d", (int)nK, (int)nH, (int)nB);
@@ -1126,7 +1126,7 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
  * Initialize HashAggTable with the specified number of batch file slots.
  */
 void
-create_batches(HashAggTable *hashtable, int nbatch)
+create_batches(HashAggTable *hashtable, unsigned int nbatch)
 {
 	size_t sz;
 	
@@ -1144,7 +1144,7 @@ create_batches(HashAggTable *hashtable, int nbatch)
 void
 destroy_batches(HashAggTable * hashtable)
 {
-	int i;
+	unsigned int i;
 	
 	for (i = 0; i < hashtable->nbatch; i++)
 	{
@@ -1170,7 +1170,7 @@ destroy_batches(HashAggTable * hashtable)
  */
 void
 batch_put_tuple(HashAggTable *hashtable,
-			   int batch,
+			   unsigned int batch,
 			   TupleTableSlot *tupleSlot)
 {
 	size_t		written;
@@ -1234,8 +1234,8 @@ batch_put_tuple(HashAggTable *hashtable,
  */
 TupleTableSlot *
 batch_get_tuple(HashAggTable *hashtable,
-				   int batch,
-				   TupleTableSlot *tupleSlot)
+				unsigned int batch,
+				TupleTableSlot *tupleSlot)
 {
 	size_t		nread;
 	HeapTuple	heapTuple;
@@ -1315,12 +1315,12 @@ batch_get_tuple(HashAggTable *hashtable,
  *		reposition batch so next read will start at the beginning
  */
 void
-batch_rewind(HashAggTable *hashtable, int batch)
+batch_rewind(HashAggTable *hashtable, unsigned int batch)
 {
 	int n;
 	BatchFileInfo *info;
 	
-	Assert( hashtable != NULL && 0 <= batch && batch < hashtable->nbatch );
+	Assert(hashtable != NULL && 0 <= batch && batch < hashtable->nbatch);
 	
 	info = &hashtable->batches[batch];
 	
@@ -1341,15 +1341,15 @@ batch_rewind(HashAggTable *hashtable, int batch)
  *		close a batch file thus releasing its file and memory space
  */
 void
-batch_close(HashAggTable *hashtable, int batch)
+batch_close(HashAggTable *hashtable, unsigned int batch)
 {
 	BatchFileInfo *info;
 	
-	Assert( hashtable != NULL && 0 <= batch && batch < hashtable->nbatch );
+	Assert(hashtable != NULL && 0 <= batch && batch < hashtable->nbatch);
 	
 	info = &hashtable->batches[batch];
 	
-	if ( info->file != NULL )
+	if (info->file != NULL)
 	{
 		BufFileClose(info->file);
 		info->file = NULL;
@@ -1366,7 +1366,7 @@ batch_close(HashAggTable *hashtable, int batch)
 void
 agg_hash_table_stat_upd(HashAggTable *ht)
 {
-    int     i;
+    unsigned int	i;
 
     for (i = 0; i < ht->nbucket; i++)
     {
