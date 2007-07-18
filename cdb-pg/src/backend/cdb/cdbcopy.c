@@ -135,115 +135,25 @@ cdbCopyGetDbCount(int total_segs, int seg)
 int
 cdbCopyStart(CdbCopy *c, char *copyCmd)
 {
-	PGresult   *res;
-	SegmentDatabaseDescriptor *q;
-	Gang	   *gp;
 	int			seg;
 	int			db;
-
+	
 	/* clean err message */
 	c->err_msg.len = 0;
 	c->err_msg.data[0] = '\0';
 	c->err_msg.cursor = 0;
 	
+	/* dispatch copy command to both primary and mirror writer gangs */
+	CdbDoCommand(copyCmd, false, c->copy_in /* needTwoPhase */, 
+			c->copy_in /* dispatchToMirrors */, true /* dispatchToPrimaries */);
+	
+	/* fill in CdbCopy structure */
 	for (seg = 0; seg < c->total_segs; seg++)
 	{
 		for (db = 0; db < c->mirror_map[seg]; db++)
 		{
-			if (db == 0)
-				gp = c->primary_writer;
-			else
-			{
-				gp = c->mirror_writer;
-				
-				/* skip mirror if COPY OUT */
-				if(!c->copy_in)
-					continue;
-			}
-			
-			q = getSegmentDescriptorFromGang(gp, seg);
-
-			/* send COPY command to the segment DB */
-#if 0
-			res = PQexec(q->conn, copyCmd);
-#else
-			/*
-			 * The problem with PQexec is that we don't transmit the session userid or 
-			 * current userid, so if the user has used set session authorization or set role, 
-			 * we might execute the copy using the wrong session's permissions.
-			 */
-			{
-			char *serializedSnapshot;
-			int serializedSnapshotlen;
-			char * query_text = NULL;
-			int query_text_len;
-			int txnOptions = 0;
-			
-			serializedSnapshot = 
-				qdSerializeDtxContextInfo(&serializedSnapshotlen, true /* wantSnapshot */, txnOptions, "cdbcopy");
-			
-			/*
-			 * Since we are sending directly to the QE, the gang info and slice info isn't used.
-			 * 
-			 * But if we wanted to send to a dispatch agent, we'd need some way to say we want to send to
-			 * one specific QE, which we currently don't have.
-			 */
-
-			query_text = PQbuildGpQueryString(
-					copyCmd, strlen(copyCmd)+1, 
-					NULL, 0, NULL, 0, NULL, 0, NULL, 0,
-					serializedSnapshot, serializedSnapshotlen, 
-					0 /* unused flag */, gp_command_count, -1 /* localSlice */, 0 /* rootIdx */, 1 /* primaryGang */, 0 /* mirrorGang */,
-					GetSessionUserId(), superuser_arg(GetSessionUserId()), GetOuterUserId(), superuser_arg(GetOuterUserId()), GetUserId(),
-					&query_text_len);
-				 
-			 
-			if (PQsendGpQuery_shared(q->conn, (char *)query_text, query_text_len) == 0)
-			{
-				/* Note the error. */
-				elog(ERROR,"Command could not be sent to QE %s", PQerrorMessage(q->conn));
-			}
-	
-			free(query_text);  /* allocted with malloc, so use free  */
-			
-			res = PQgetResult(q->conn);
-			}
-#endif 
-
-			if ( (c->copy_in && (PQresultStatus(res) != PGRES_COPY_IN)) ||
-				 (!c->copy_in && (PQresultStatus(res) != PGRES_COPY_OUT)) )
-			{
-				char   *pri = PQresultErrorField(res, PG_DIAG_MESSAGE_PRIMARY);
-				char   *dtl = PQresultErrorField(res, PG_DIAG_MESSAGE_DETAIL);
-				char   *ctx = PQresultErrorField(res, PG_DIAG_CONTEXT);
-				
-				appendStringInfo(&(c->err_msg), "Failed to start COPY - %s", pri);
-				
-				if (q->whoami)
-					appendStringInfo(&(c->err_msg),"  (%s)", q->whoami);
-				
-				if (dtl)
-					appendStringInfo(&(c->err_msg), "\n%s", dtl);
-				
-				/*
-				 * note that due to cdb_tidy_message() in elog.c "If more than 
-				 * one line, move lines after the first to errdetail" so we save
-				 * the context in another stringInfo and fetch it in the error
-				 * callback in copy.c, so it wouldn't appear as DETAIL...
-				 */
-				if (ctx)
-					appendStringInfo(&(c->err_context), "%s", ctx);
-					
-				PQclear(res);
-				
-				return -1;
-			}
-			else
-				c->segdb_state[seg][db] = SEGDB_COPY;	/* we be jammin! */
-
-			PQclear(res);
+			c->segdb_state[seg][db] = SEGDB_COPY;	/* we be jammin! */
 		}
-
 	}
 
 	return 0;
@@ -320,7 +230,7 @@ bool cdbCopyGetData(CdbCopy *c, bool copy_cancel, uint64 *rows_processed)
 	c->copy_out_buf.cursor = 0;
 	
 	gp = c->primary_writer;
-	
+
 	/*
 	 * Collect data rows from the segments that still have rows to 
 	 * give until chunk minimum size is reached
@@ -414,7 +324,7 @@ bool cdbCopyGetData(CdbCopy *c, bool copy_cancel, uint64 *rows_processed)
 		if(c->copy_out_buf.len > COPYOUT_CHUNK_SIZE)
 			break;
 	}
-	
+
 	return false;
 }
 
