@@ -2254,7 +2254,9 @@ processResults(CdbDispatchResult * dispatchResult)
 		/* Did a command complete successfully? */
 		resultStatus = PQresultStatus(pRes);
 		if (resultStatus == PGRES_COMMAND_OK ||
-			resultStatus == PGRES_TUPLES_OK)
+			resultStatus == PGRES_TUPLES_OK ||
+			resultStatus == PGRES_COPY_IN ||
+			resultStatus == PGRES_COPY_OUT)
 		{						/* QE reported success */
 
 			/*
@@ -2272,6 +2274,10 @@ processResults(CdbDispatchResult * dispatchResult)
 						     segdbDesc->whoami,
 						     cmdStatus ? cmdStatus : "(no cmdStatus)");
 			}
+			
+			if (resultStatus == PGRES_COPY_IN ||
+				resultStatus == PGRES_COPY_OUT)
+				return true;
 		}						/* QE reported success */
 
 		/* Note QE error.  Cancel the whole statement if requested. */

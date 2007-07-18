@@ -435,7 +435,9 @@ cdbdisp_debugDispatchResult(CdbDispatchResult  *dispatchResult,
 
         /* QE success */
         if (resultStatus == PGRES_COMMAND_OK ||
-            resultStatus == PGRES_TUPLES_OK)
+            resultStatus == PGRES_TUPLES_OK ||
+            resultStatus == PGRES_COPY_IN ||
+            resultStatus == PGRES_COPY_OUT)
         {
             char *cmdStatus = PQcmdStatus(pgresult);
 
@@ -531,7 +533,9 @@ cdbdisp_dumpDispatchResult(CdbDispatchResult       *dispatchResult,
 
         /* QE success */
         if (resultStatus == PGRES_COMMAND_OK ||
-            resultStatus == PGRES_TUPLES_OK)
+            resultStatus == PGRES_TUPLES_OK ||
+            resultStatus == PGRES_COPY_IN ||
+            resultStatus == PGRES_COPY_OUT)
         {
             if (verbose)
             {
@@ -989,7 +993,10 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 				 * if the command completed OK, we want to collect the number of tuples and lastOid
 				 * information to relay back to the QD.
 				 */
-				if (PQresultStatus(p) == PGRES_TUPLES_OK || PQresultStatus(p) == PGRES_COMMAND_OK)
+				if (PQresultStatus(p) == PGRES_TUPLES_OK || 
+					PQresultStatus(p) == PGRES_COMMAND_OK ||
+					PQresultStatus(p) == PGRES_COPY_IN ||
+					PQresultStatus(p) == PGRES_COPY_OUT)
 				{
 					char   *cmdTuples;
 					Oid    cmdLastOid;
