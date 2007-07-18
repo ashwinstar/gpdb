@@ -2211,11 +2211,6 @@ CopyFromDispatch(CopyState cstate)
 
 
 	/*
-	 * start a transaction
-	 */
-	cdbCopyStartTransaction();
-
-	/*
 	 * Start a COPY command in every db of every segment in MPP.
 	 *
 	 * From this point in the code we need to be extra careful
