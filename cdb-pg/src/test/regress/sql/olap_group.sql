@@ -456,3 +456,8 @@ union all select null,max(distinct sale.cn) from sale,vendor where sale.vn=vendo
 union all select null,max(distinct sale.cn) from sale,vendor where sale.vn=vendor.vn group by sale.vn;
 select sale.cn,max(distinct sale.cn) from sale,vendor where sale.vn=vendor.vn group by cube(sale.cn,sale.vn);
 --end equivalent
+
+--begin equivalent
+select cn,sum(qty) from sale group by cn;
+select cn,sum(qty) from sale group by grouping sets(cn);
+--end equivalent

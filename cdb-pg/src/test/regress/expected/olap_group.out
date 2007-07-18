@@ -4009,3 +4009,23 @@ select sale.cn,max(distinct sale.cn) from sale,vendor where sale.vn=vendor.vn gr
 (19 rows)
 
 --end equivalent
+--begin equivalent
+select cn,sum(qty) from sale group by cn;
+ cn | sum  
+----+------
+  3 |   25
+  1 |   16
+  4 |    2
+  2 | 1101
+(4 rows)
+
+select cn,sum(qty) from sale group by grouping sets(cn);
+ cn | sum  
+----+------
+  3 |   25
+  1 |   16
+  4 |    2
+  2 | 1101
+(4 rows)
+
+--end equivalent
