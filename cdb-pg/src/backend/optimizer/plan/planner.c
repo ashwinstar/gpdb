@@ -1885,7 +1885,7 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 					   Path *cheapest_path, Path *sorted_path,
 					   double dNumGroups, AggClauseCounts *agg_counts)
 {
-	int			numGroupCols = list_length(root->parse->groupClause);
+	int			numGroupCols = num_distcols_in_grouplist(root->parse->groupClause);
 	double		cheapest_path_rows;
 	int			cheapest_path_width;
 	Size		hashentrysize;
@@ -2037,13 +2037,14 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 static bool
 hash_safe_grouping(PlannerInfo *root)
 {
-	ListCell   *gl;
+	List *grouptles;
+	ListCell   *glc;
 
-	foreach(gl, root->parse->groupClause)
+	grouptles = get_sortgroupclauses_tles(root->parse->groupClause,
+										 root->parse->targetList);
+	foreach(glc, grouptles)
 	{
-		GroupClause *grpcl = (GroupClause *) lfirst(gl);
-		TargetEntry *tle = get_sortgroupclause_tle(grpcl,
-												   root->parse->targetList);
+		TargetEntry *tle = (TargetEntry *)lfirst(glc);
 		Operator	optup;
 		bool		oprcanhash;
 
