@@ -8014,9 +8014,13 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			 */
             if (PQntuples(res) < 1 && actual_atts > 0)
 			{
-				mpp_err_msg( logError, progname, "query to obtain distribution policy of table \"%s\" returned no data\n",
-							 tbinfo->dobj.name);
-				exit_nicely();
+				/* if this is a catalog table we allow dumping it, skip the error */
+				if(strncmp(tbinfo->dobj.namespace->dobj.name, "pg_", 3) != 0)
+				{
+					mpp_err_msg( logError, progname, "query to obtain distribution policy of table \"%s\" returned no data\n",
+								 tbinfo->dobj.name);
+					exit_nicely();
+				}
 			}
 			
 			/*
