@@ -2710,7 +2710,6 @@ cleanupGang(Gang * gp)
 
 	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent && gp->dispatchagents)
 	{
-		PGresult * result;
 		int i;
 
 		for (i = 0; i < gp->dispatchagents->size; i++)
@@ -2718,6 +2717,7 @@ cleanupGang(Gang * gp)
 			if (PQstatus(gp->dispatchagents->db_descriptors[i].conn) == CONNECTION_OK)
 			{
 #if 0
+				PGresult * result;
 				elog(DEBUG1,"Sending clean gang message to dispatch agent on segdb %d",gp->dispatchagents->db_descriptors[i].segindex);
 				PQsendControlGang(gp->dispatchagents->db_descriptors[i].conn, gp->gang_id, "clean gang");
 				
