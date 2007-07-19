@@ -144,7 +144,8 @@ typedef struct AllocSetContext
 	Size		nextBlockSize;	/* next block size to allocate */
 	AllocBlock	keeper;			/* if not NULL, keep this block over resets */
 
-#ifdef MEMORY_CONTEXT_CHECKING_XXX_FTIAN_LEAKING
+#ifdef MEMORY_CONTEXT_CHECKING
+	AllocChunk  allocList;
 	Size 		totalAllocSize; /* total allocated bytes out of the context */
 #endif
 
@@ -188,6 +189,10 @@ typedef struct AllocChunkData
 	/* when debugging memory usage, also store actual requested size */
 	/* this is zero in a free chunk */
 	Size		requested_size;
+	const char  *alloc_tag;
+	int 		alloc_n;
+	void *alloc_prev;
+	void *alloc_next;
 #endif
 } AllocChunkData;
 
@@ -248,6 +253,57 @@ static MemoryContextMethods AllocSetMethods = {
  * Debug macros
  * ----------
  */
+#ifdef MEMORY_CONTEXT_CHECKING
+
+extern void dump_memory_allocation_ctxt(FILE * ofile, void *ctxt);
+void dump_memory_allocation_ctxt(FILE *ofile, void *ctxt)
+{
+	AllocSet set = (AllocSet) ctxt;
+	AllocSet next;
+	AllocChunk chunk = set->allocList;
+
+	while(chunk)
+	{
+		fprintf(ofile, "%d\t%s\t%d\t%d\t%d\n", (int) ctxt, chunk->alloc_tag, chunk->alloc_n, (int) chunk->size, (int) chunk->requested_size);
+		chunk = chunk->alloc_next;
+	}
+
+	next = (AllocSet) set->header.firstchild;
+	while(next)
+	{
+		dump_memory_allocation_ctxt(ofile, next);
+		next = (AllocSet) next->header.nextchild;
+	}
+}
+
+static void AllocFreeInfo(AllocSet set, AllocChunk chunk)
+{
+	AllocChunk prev = chunk->alloc_prev;
+	AllocChunk next = chunk->alloc_next;
+
+	if(prev != NULL)
+		prev->alloc_next = next;
+	else
+		set->allocList = next;
+
+	if(next != NULL)
+		next->alloc_prev = prev;
+
+	set->totalAllocSize -= chunk->size;
+}
+
+static void AllocAllocInfo(AllocSet set, AllocChunk chunk)
+{
+	chunk->alloc_prev = NULL;
+	chunk->alloc_next = set->allocList;
+
+	if(set->allocList)
+		set->allocList->alloc_prev = chunk;
+
+	set->allocList = chunk;
+	set->totalAllocSize += chunk->size;
+}
+#else
 #ifdef HAVE_ALLOCINFO
 #define AllocFreeInfo(_cxt, _chunk) \
 			fprintf(stderr, "AllocFree: %s: %p, %d\n", \
@@ -258,6 +314,7 @@ static MemoryContextMethods AllocSetMethods = {
 #else
 #define AllocFreeInfo(_cxt, _chunk)
 #define AllocAllocInfo(_cxt, _chunk)
+#endif
 #endif
 
 /* ----------
@@ -418,10 +475,8 @@ AllocSetReset(MemoryContext context)
 #ifdef MEMORY_CONTEXT_CHECKING
 	/* Check for corruption and leaks before freeing */
 	AllocSetCheck(context);
-#endif
-
-#ifdef MEMORY_CONTEXT_CHECKING_XXX_FTIAN_LEAKING
 	set->totalAllocSize = 0;
+	set->allocList = NULL;
 #endif
 
 	/* Clear chunk freelists */
@@ -523,11 +578,6 @@ AllocSetAlloc(MemoryContext context, Size size)
 	Size		blksize;
 
 	AssertArg(AllocSetIsValid(set));
-
-#ifdef MEMORY_CONTEXT_CHECKING_XXX_FTIAN_LEAKING
-	set->totalAllocSize += size;
-	Assert(set->totalAllocSize <= 200 * 1024 * 1024);
-#endif
 
 	/*
 	 * If requested size exceeds maximum for chunks, allocate an entire block
@@ -865,6 +915,8 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 				 set->header.name, chunk);
 #endif
 
+	AllocFreeInfo(set, chunk);
+
 	/* isReset must be false already */
 	Assert(!set->isReset);
 
@@ -881,6 +933,7 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 		if (size < oldsize)
 			((char *) pointer)[size] = 0x7E;
 #endif
+		AllocAllocInfo(set, chunk);
 		return pointer;
 	}
 
@@ -944,6 +997,7 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 			((char *) AllocChunkGetPointer(chunk))[size] = 0x7E;
 #endif
 
+		AllocAllocInfo(set, chunk);
 		return AllocChunkGetPointer(chunk);
 	}
 	else
@@ -993,6 +1047,7 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 					if (size < chunk->size)
 						((char *) pointer)[size] = 0x7E;
 #endif
+					AllocAllocInfo(set, chunk);
 					return pointer;
 				}
 			}

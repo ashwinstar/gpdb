@@ -669,16 +669,34 @@ MemoryContextCreate(NodeTag tag, Size size,
  * nodes/memnodes.h into postgres.h which seems a bad idea.
  */
 void *
+#ifdef MEMORY_CONTEXT_CHECKING
+MemoryContextAllocTagN(MemoryContext context, Size size, const char* tag, int n)
+#else
 MemoryContextAlloc(MemoryContext context, Size size)
+#endif
 {
+	void *ret;
+
 	AssertArg(MemoryContextIsValid(context));
 
 	if (!AllocSizeIsValid(size))
 		elog(ERROR, "invalid memory alloc request size %lu",
 			 (unsigned long) size);
 
-	return (*context->methods->alloc) (context, size);
+	ret = (*context->methods->alloc) (context, size);
+
+#ifdef MEMORY_CONTEXT_CHECKING
+	{
+		StandardChunkHeader *header;
+		header = (StandardChunkHeader *)
+			((char *) ret - STANDARDCHUNKHEADERSIZE);
+		header->alloc_tag = tag;
+		header->alloc_n = n;
+	}
+#endif
+	return ret;
 }
+
 
 /*
  * MemoryContextAllocZero
@@ -688,7 +706,11 @@ MemoryContextAlloc(MemoryContext context, Size size)
  *	is a very common combination, so we provide the combined operation.
  */
 void *
+#ifdef MEMORY_CONTEXT_CHECKING
+MemoryContextAllocZeroTagN(MemoryContext context, Size size, const char* tag, int n)
+#else
 MemoryContextAllocZero(MemoryContext context, Size size)
+#endif
 {
 	void	   *ret;
 
@@ -705,6 +727,15 @@ MemoryContextAllocZero(MemoryContext context, Size size)
 
 	MemSetAligned(ret, 0, size);
 
+#ifdef MEMORY_CONTEXT_CHECKING
+	{
+		StandardChunkHeader *header;
+		header = (StandardChunkHeader *)
+			((char *) ret - STANDARDCHUNKHEADERSIZE);
+		header->alloc_tag = tag;
+		header->alloc_n = n;
+	}
+#endif
 	return ret;
 }
 
@@ -716,7 +747,11 @@ MemoryContextAllocZero(MemoryContext context, Size size)
  *	is so often called with compile-time-constant sizes.
  */
 void *
+#ifdef MEMORY_CONTEXT_CHECKING
+MemoryContextAllocZeroAlignedTagN(MemoryContext context, Size size, const char* tag, int n)
+#else
 MemoryContextAllocZeroAligned(MemoryContext context, Size size)
+#endif
 {
 	void	   *ret;
 
@@ -730,6 +765,15 @@ MemoryContextAllocZeroAligned(MemoryContext context, Size size)
 
 	MemSetLoop(ret, 0, size);
 
+#ifdef MEMORY_CONTEXT_CHECKING
+	{
+		StandardChunkHeader *header;
+		header = (StandardChunkHeader *)
+			((char *) ret - STANDARDCHUNKHEADERSIZE);
+		header->alloc_tag = tag;
+		header->alloc_n = n;
+	}
+#endif
 	return ret;
 }
 
@@ -766,9 +810,14 @@ pfree(void *pointer)
  *		Adjust the size of a previously allocated chunk.
  */
 void *
+#ifdef MEMORY_CONTEXT_CHECKING
+repallocTagN(void *pointer, Size size, const char* tag, int n)
+#else
 repalloc(void *pointer, Size size)
+#endif
 {
 	StandardChunkHeader *header;
+	void *ret;
 
 	/*
 	 * Try to detect bogus pointers handed to us, poorly though we can.
@@ -790,8 +839,18 @@ repalloc(void *pointer, Size size)
 		elog(ERROR, "invalid memory alloc request size %lu",
 			 (unsigned long) size);
 
-	return (*header->context->methods->realloc) (header->context,
+	ret = (*header->context->methods->realloc) (header->context,
 												 pointer, size);
+#ifdef MEMORY_CONTEXT_CHECKING
+	{
+		StandardChunkHeader *header;
+		header = (StandardChunkHeader *)
+			((char *) ret - STANDARDCHUNKHEADERSIZE);
+		header->alloc_tag = tag;
+		header->alloc_n = n;
+	}
+#endif
+	return ret;
 }
 
 /*

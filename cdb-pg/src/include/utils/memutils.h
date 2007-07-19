@@ -56,6 +56,10 @@ typedef struct StandardChunkHeader
 #ifdef MEMORY_CONTEXT_CHECKING
 	/* when debugging memory usage, also store actual requested size */
 	Size		requested_size;
+	const char *alloc_tag;
+	int 		alloc_n;
+	void *alloc_prev;
+	void *alloc_next;
 #endif
 } StandardChunkHeader;
 

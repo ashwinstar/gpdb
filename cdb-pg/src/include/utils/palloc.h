@@ -45,13 +45,39 @@ extern DLLIMPORT MemoryContext CurrentMemoryContext;
 /*
  * Fundamental memory-allocation operations (more are in utils/memutils.h)
  */
+#ifdef MEMORY_CONTEXT_CHECKING
+extern void *MemoryContextAllocTagN(MemoryContext context, Size size, const char* tag, int n);
+extern void *MemoryContextAllocZeroTagN(MemoryContext context, Size size, const char* tag, int n);
+extern void *MemoryContextAllocZeroAlignedTagN(MemoryContext context, Size size, const char* tag, int n);
+
+#define MemoryContextAlloc(ctxt, sz) MemoryContextAllocTagN(ctxt, (sz), __FILE__, __LINE__)
+#define MemoryContextAllocZero(ctxt, sz) MemoryContextAllocZeroTagN(ctxt, (sz), __FILE__, __LINE__)
+#define MemoryContextAllocZeroAligned(ctxt, sz) MemoryContextAllocZeroAlignedTagN(ctxt, (sz), __FILE__, __LINE__)
+
+#define palloc(sz) MemoryContextAllocTagN(CurrentMemoryContext, (sz), __FILE__, __LINE__)
+#define palloc0(sz) MemoryContextAllocZeroTagN(CurrentMemoryContext, (sz), __FILE__, __LINE__)
+#define palloc0fast(sz) \
+	( MemSetTest(0, sz) ? \
+	  MemoryContextAllocZeroAlignedTagN(CurrentMemoryContext, (sz), __FILE__, __LINE__) : \
+	  MemoryContextAllocZeroTagN(CurrentMemoryContext, (sz), __FILE__, __LINE__) )
+
+#define palloctagn(sz, tag, n) MemoryContextAllocTagN(CurrentMemoryContext, (sz), (tag), (n))
+#define palloc0tagn(sz, tag, n) MemoryContextAlloczeroTagN(CurrentMemoryContext, (sz), (tag), (n))
+
+extern void pfree(void *ptr);
+extern void *repallocTagN(void *ptr, Size size, const char* tag, int n);
+#define repalloc(ptr, sz) repallocTagN(ptr, (sz), __FILE__, __LINE__)
+
+#else
 extern void *MemoryContextAlloc(MemoryContext context, Size size);
 extern void *MemoryContextAllocZero(MemoryContext context, Size size);
 extern void *MemoryContextAllocZeroAligned(MemoryContext context, Size size);
 
 #define palloc(sz)	MemoryContextAlloc(CurrentMemoryContext, (sz))
+#define palloctagn(sz, tag, n) MemoryContextAlloc(CurrentMemoryContext, (sz))
 
 #define palloc0(sz) MemoryContextAllocZero(CurrentMemoryContext, (sz))
+#define palloc0tagn(sz, tag, n) MemoryContextAllocZero(CurrentMemoryContext, (sz))
 
 /*
  * The result of palloc() is always word-aligned, so we can skip testing
@@ -69,6 +95,7 @@ extern void *MemoryContextAllocZeroAligned(MemoryContext context, Size size);
 extern void pfree(void *pointer);
 
 extern void *repalloc(void *pointer, Size size);
+#endif
 
 /*
  * MemoryContextSwitchTo can't be a macro in standard C compilers.

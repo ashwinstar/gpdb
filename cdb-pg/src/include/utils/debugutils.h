@@ -12,6 +12,9 @@
 #include "executor/tuptable.h"
 
 extern void dotnode(void *, const char*);
+#ifdef MEMORY_CONTEXT_CHECKING
+extern void dump_memory_allocation(const char*);
+#endif
 extern char *tup2str(TupleTableSlot *slot);
 #endif /* _DEBUGUTILS_H_ */
 
