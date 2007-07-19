@@ -93,6 +93,7 @@ FORCE_CLEAR () {
 		else
 			LOG_MSG "[INFO][$INST_COUNT]:-No /tmp lock file located"
 		fi
+		QE_DIR_CHK
 		IS_THERE=`$TRUSTED_SHELL $QE_NAME "if [ -f ${QE_DIR}/postmaster.pid ];then echo 1;else echo 0;fi"`
 		if [ $IS_THERE -eq 1 ];then
         		LOG_MSG "[INFO][$INST_COUNT]:-Clearing postmaster.pid file" 1
@@ -137,6 +138,14 @@ STOP_SEG () {
 	LOG_MSG "[INFO][$INST_COUNT]:-End Function $FUNCNAME"
 }
 
+QE_DIR_CHK () {
+        CHK_DIR ${QE_DIR} $QE_NAME
+        if [ $EXISTS -ne 0 ];then
+                $ECHO "FAILED:${QE_LINE}:NO_DIR" >> $PARALLEL_STATUS_FILE
+                LOG_MSG "[INFO][$INST_COUNT]:-End Main"
+                exit 1
+        fi
+}
 #******************************************************************************
 # Main Section
 #******************************************************************************
