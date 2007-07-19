@@ -377,6 +377,7 @@ PROCESS_STARTUP () {
 		SWITCH_QE_LOG=0
 	fi
 	INVALID_START_COUNT=0
+	TOTAL_FAILED_COUNT=0
 	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
 	for QNODE in "${QE_ARRAY[@]}"
 	do
@@ -407,45 +408,67 @@ PROCESS_STARTUP () {
 	done
 	if [ $DEBUG_LEVEL -eq 0 ];then $NOLINE_ECHO;fi
 	DUMP_STAT=0
+	TOTAL_FAILED_COUNT=$INVALID_START_COUNT
 	#Now check the status of the segment responses in the status file
 	PARALLEL_SUMMARY_STATUS_REPORT $PARALLEL_STATUS_FILE
 	if [ $KILLED_COUNT -ne 0 ];then
+		((TOTAL_FAILED_COUNT=$TOTAL_FAILED_COUNT+$KILLED_COUNT))
 		EXIT_STATUS=1
 		DUMP_STAT=1
 	fi
 	PING_FAILED_COUNT=`$GREP -c ":PING_FAILED" $PARALLEL_STATUS_FILE`
 	if [ $PING_FAILED_COUNT -ne 0 ];then
+		((TOTAL_FAILED_COUNT=$TOTAL_FAILED_COUNT+$PING_FAILED_COUNT))
 		LOG_MSG "[WARN]:-Total processes returned ping failure         = $PING_FAILED_COUNT $WARN_MARK" 1
 		EXIT_STATUS=1
 		DUMP_STAT=1
 	fi	
 	INVALID_START_FAIL=`$GREP -c ":INVALID_START_FAIL" $PARALLEL_STATUS_FILE`
 	if [ $INVALID_START_FAIL -ne 0 ];then
+		((TOTAL_FAILED_COUNT=$TOTAL_FAILED_COUNT+$INVALID_START_FAIL))
 		LOG_MSG "[WARN]:-Total processes returned invalid start fail   = $INVALID_START_FAIL $WARN_MARK" 1
 		EXIT_STATUS=1
 		DUMP_STAT=1
 	fi
 	VALID_START_FAIL=`$GREP -c ":VALID_START_FAIL" $PARALLEL_STATUS_FILE`
 	if [ $VALID_START_FAIL -ne 0 ];then
+		((TOTAL_FAILED_COUNT=$TOTAL_FAILED_COUNT+$VALID_START_FAIL))
 		LOG_MSG "[WARN]:-Total processes returned valid start fail     = $VALID_START_FAIL $WARN_MARK" 1
 		EXIT_STATUS=1
 		DUMP_STAT=1
 	fi
 	PG_CTL_NO_RUNNING=`$GREP -c ":PG_CTL_NO_RUNNING" $PARALLEL_STATUS_FILE`
 	if [ $PG_CTL_NO_RUNNING -ne 0 ];then
+		((TOTAL_FAILED_COUNT=$TOTAL_FAILED_COUNT+$PG_CTL_NO_RUNNING))
+		LOG_MSG "[WARN]:-Total processes returned valid start fail     = $VALID_START_FAIL $WARN_MARK" 1
 		LOG_MSG "[WARN]:-Total processes returned pg_ctl not running   = $PG_CTL_NO_RUNNING $WARN_MARK" 1
 		EXIT_STATUS=1
 		DUMP_STAT=1
 	fi
 	PG_CTL_THERE_START_FAILED=`$GREP -c ":PG_CTL_THERE_START_FAILED" $PARALLEL_STATUS_FILE`
 	if [ $PG_CTL_THERE_START_FAILED -ne 0 ];then
+		((TOTAL_FAILED_COUNT=$TOTAL_FAILED_COUNT+$PG_CTL_THERE_START_FAILED))
 		LOG_MSG "[WARN]:-Total processes returned pg_ctl fail          = $PG_CTL_THERE_START_FAILED $WARN_MARK" 1
+		EXIT_STATUS=1
+		DUMP_STAT=1
+	fi
+	NO_DIR_ERROR=`$GREP -c ":NO_DIR" $PARALLEL_STATUS_FILE`
+	if [ $NO_DIR_ERROR -ne 0 ];then
+		((TOTAL_FAILED_COUNT=$TOTAL_FAILED_COUNT+$NO_DIR_ERROR))
+		LOG_MSG "[WARN]:-Total processes returned missing directory    = $NO_DIR_ERROR $WARN_MARK" 1
 		EXIT_STATUS=1
 		DUMP_STAT=1
 	fi
 	LC_ERROR=`$GREP -c ":LC_ERROR" $PARALLEL_STATUS_FILE`
 	if [ $LC_ERROR -ne 0 ];then
+		((TOTAL_FAILED_COUNT=$TOTAL_FAILED_COUNT+$LC_ERROR))
 		LOG_MSG "[WARN]:-Total processes returned lc_error             = $LC_ERROR $WARN_MARK" 1
+		EXIT_STATUS=1
+		DUMP_STAT=1
+	fi
+	if [ $INVALID_START_COUNT -ne 0 ];then
+		((TOTAL_FAILED_COUNT=$TOTAL_FAILED_COUNT+$INVALID_START_COUNT))
+		LOG_MSG "[WARN]:-Total instances marked invalid and bypassed   = $INVALID_START_COUNT $WARN_MARK" 1
 		EXIT_STATUS=1
 		DUMP_STAT=1
 	fi
@@ -459,13 +482,15 @@ PROCESS_STARTUP () {
 	if [ $COMPLETED_COUNT -eq $TOTAL_BATCH_LIMIT ];then
 		LOG_MSG "[INFO]:-Successfully started $COMPLETED_COUNT of $TOTAL_BATCH_LIMIT segment instances" 1
 	else
-		LOG_MSG "[WARN]:-Successfully started $COMPLETED_COUNT of $TOTAL_BATCH_LIMIT segment instances    $WARN_MARK" 1
+		LOG_MSG "[WARN]:-Successfully started $COMPLETED_COUNT of $TOTAL_BATCH_LIMIT segment instances   $WARN_MARK" 1
 		EXIT_STATUS=1
 	fi
 	if [ $DUMP_STAT -ne 0 ];then
+		((TOTAL_NOT_STARTED=$TOTAL_BATCH_LIMIT-$COMPLETED_COUNT))
 		LOG_MSG "[INFO]:------------------------------------------------" 1
 		LOG_MSG "[WARN]:-Segment instance startup failures reported" 1	
-		LOG_MSG "[WARN]:-Failed to start $TOTAL_FAILED_COUNT of $TOTAL_BATCH_LIMIT segment instances        $WARN_MARK" 1
+		LOG_MSG "[WARN]:-Failed to start $TOTAL_NOT_STARTED of $TOTAL_BATCH_LIMIT segment instances        $WARN_MARK" 1
+		LOG_MSG "[WARN]:-A total of $TOTAL_FAILED_COUNT errors were encountered" 1
 		LOG_MSG "[INFO]:-Securing contents of parallel status file to log file" 1
 		$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE
 		LOG_MSG "[INFO]:-Review $LOG_FILE" 1
@@ -492,7 +517,7 @@ PROCESS_STARTUP () {
 	if [ $DUMP_STAT -ne 1 ] && [ $EXIT_STATUS -eq 0 ];then
 		LOG_MSG "[INFO]:-Database successfully started with no errors reported" 1
 	else
-		LOG_MSG "[WARN]:-Database started but warnings generated            $WARN_MARK" 1
+		LOG_MSG "[WARN]:-Database started but warnings generated          $WARN_MARK" 1
 		LOG_MSG "[INFO]:-Check status of database with gpstate utility " 1
 	fi 
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"

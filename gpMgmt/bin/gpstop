@@ -244,6 +244,8 @@ PROMPT_CONTINUE () {
 
 PROCESS_SHUTDOWN () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		TOTAL_BATCH_LIMIT=$QE_ARRAY_COUNT
+		INVALID_START_COUNT=0
 		if [ $STOP_INVALID -eq 1 ];then
 			BATCH_LIMIT=$QE_ARRAY_COUNT
 		else
@@ -292,6 +294,7 @@ PROCESS_SHUTDOWN () {
 				ERROR_CHK $? "shutdown Master instance on $QD_NAME" 2 ;;
 		esac
 		PARALLEL_SETUP  $PARALLEL_STATUS_FILE
+		TOTAL_FAILED_COUNT=0
 		for QNODE in "${QE_ARRAY[@]}"
 				do
 				QE_NAME=`$ECHO $QNODE|$CUT -d"|" -f1`
@@ -305,36 +308,63 @@ PROCESS_SHUTDOWN () {
 				else
 					if [ $DEBUG_LEVEL -eq 0 ];then $ECHO;fi
 					LOG_MSG "[WARN]:-Not processing $QE_NAME directory $QE_DIR marked invalid" 1
+					((INVALID_START_COUNT=$INVALID_START_COUNT+1))
 					EXIT_STATUS=1
 				fi
 		done
+	if [ $DEBUG_LEVEL -eq 0 ];then $ECHO;fi
 	DUMP_STAT=0
+	TOTAL_FAILED_COUNT=$INVALID_START_COUNT
 	PARALLEL_SUMMARY_STATUS_REPORT $PARALLEL_STATUS_FILE
+	NO_DIR_ERROR=`$GREP -c ":NO_DIR" $PARALLEL_STATUS_FILE`
+	if [ $NO_DIR_ERROR -ne 0 ];then
+		EXIT_STATUS=1;DUMP_STAT=1
+		LOG_MSG "[WARN]:-Total processes returned missing directory    = $NO_DIR_ERROR $WARN_MARK" 1
+		((TOTAL_FAILED_COUNT=$TOTAL_FAILED_COUNT+$KILLED_COUNT))
+	fi
 	if [ $KILLED_COUNT -ne 0 ];then
 		EXIT_STATUS=1;DUMP_STAT=1
+		((TOTAL_FAILED_COUNT=$TOTAL_FAILED_COUNT+$KILLED_COUNT))
 	fi
 	FORCE_CLEAR_WARN=`$GREP -c ":FORCE_CLEAR_WARN" $PARALLEL_STATUS_FILE`
 	if [ $FORCE_CLEAR_WARN -ne 0 ];then
 		LOG_MSG "[WARN]:-Total processes returned force clear fail     = $FORCE_CLEAR_WARN $WARN_MARK" 1
 		EXIT_STATUS=1;DUMP_STAT=1
+		((TOTAL_FAILED_COUNT=$TOTAL_FAILED_COUNT+$FORCE_CLEAR_WARN))
 	fi
 	NO_FORCE_CLEAR=`$GREP -c ":NO_FORCE_CLEAR" $PARALLEL_STATUS_FILE`
 	if [ $NO_FORCE_CLEAR -ne 0 ];then
 		LOG_MSG "[WARN]:-Total processes returned pg_ctl shutdown fail = $NO_FORCE_CLEAR $WARN_MARK" 1
 		EXIT_STATUS=1;DUMP_STAT=1
+		((TOTAL_FAILED_COUNT=$TOTAL_FAILED_COUNT+$NO_FORCE_CLEAR))
 	fi
 	PING_FAILED_COUNT=`$GREP -c ":PING_FAILED" $PARALLEL_STATUS_FILE`
 	if [ $PING_FAILED_COUNT  -ne 0 ];then
 		LOG_MSG "[WARN]:-Total processes returned a ping fail          = $PING_FAILED_COUNT $WARN_MARK" 1
 		EXIT_STATUS=1;DUMP_STAT=1
+		((TOTAL_FAILED_COUNT=$TOTAL_FAILED_COUNT+$PING_FAILED_COUNT))
 	fi
-	LOG_MSG "[INFO]:-Successfully shutdown $COMPLETED_COUNT of $BATCH_LIMIT segment instances" 1
+	if [ $INVALID_START_COUNT -ne 0 ];then
+		((TOTAL_FAILED_COUNT=$TOTAL_FAILED_COUNT+$INVALID_START_COUNT))
+		LOG_MSG "[WARN]:-Total instances marked invalid and bypassed   = $INVALID_START_COUNT $WARN_MARK" 1
+		EXIT_STATUS=1;DUMP_STAT=1
+	fi
+	if [ $COMPLETED_COUNT -eq $TOTAL_BATCH_LIMIT ];then
+		LOG_MSG "[INFO]:-Successfully shutdown $COMPLETED_COUNT of $TOTAL_BATCH_LIMIT segment instances" 1
+	else
+		LOG_MSG "[WARN]:-Successfully shutdown $COMPLETED_COUNT of $TOTAL_BATCH_LIMIT segment instances  $WARN_MARK" 1
+	fi
 	if [ $DUMP_STAT -ne 0 ];then
+		((TOTAL_NOT_STOPPED=$TOTAL_BATCH_LIMIT-$COMPLETED_COUNT))
                 LOG_MSG "[INFO]:-Securing contents of parallel status file to log file" 1
-                $CAT $PARALLEL_STATUS_FILE >> $LOG_FILE
                 LOG_MSG "[INFO]:--------------------------------------------------------" 1
-                LOG_MSG "[INFO]:-Error messages contained within status file" 1
-                $CAT $PARALLEL_STATUS_FILE|$GREP -v "COMPLETED:"
+		LOG_MSG "[WARN]:-Segment instance shutdown failures reported" 1
+		LOG_MSG "[WARN]:-Failed to shutdown $TOTAL_NOT_STOPPED of $TOTAL_BATCH_LIMIT segment instances $WARN_MARK" 1
+		LOG_MSG "[WARN]:-A total of $TOTAL_FAILED_COUNT errors were encountered" 1
+		LOG_MSG "[INFO]:-Securing contents of parallel status file to log file" 1
+                $CAT $PARALLEL_STATUS_FILE >> $LOG_FILE
+		LOG_MSG "[INFO]:-Review $LOG_FILE" 1
+		LOG_MSG "[INFO]:-For more details on segment startup failure(s)" 1
                 LOG_MSG "[INFO]:--------------------------------------------------------" 1
         else
                 LOG_MSG "[INFO]:-Database successfully shutdown with no errors reported" 1
