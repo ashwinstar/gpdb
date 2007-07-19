@@ -8,5 +8,6 @@
 #define _PLANSHARE_H_
 
 List *share_plan(PlannerInfo *root, Plan *common, int numpartners); 
+Cost cost_share_plan(Plan *common, int numpartners);
 
 #endif /* _PLANSHARE_H_ */

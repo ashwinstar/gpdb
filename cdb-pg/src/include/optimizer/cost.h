@@ -99,6 +99,7 @@ extern void cost_window(Path *path, PlannerInfo *root,
 		   int numOrderCols,
 		   Cost input_startup_cost, Cost input_total_cost,
 		   double input_tuples);
+extern void cost_shareinputscan(Path *path, Cost sharecost, double ntuples, int width);
 extern void cost_nestloop(NestPath *path, PlannerInfo *root);
 extern void cost_mergejoin(MergePath *path, PlannerInfo *root);
 extern void cost_hashjoin(HashPath *path, PlannerInfo *root);

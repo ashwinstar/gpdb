@@ -107,6 +107,7 @@ static ShareInputScan *make_shareinputscan(Plan *inputplan)
 {
 	ShareInputScan *sisc = NULL;
 	Plan *oldplan = NULL;
+	Path sipath;
 
 	sisc = makeNode(ShareInputScan);
 
@@ -123,8 +124,10 @@ static ShareInputScan *make_shareinputscan(Plan *inputplan)
 	sisc->plan.qual = NIL;
 	sisc->plan.righttree = NULL;
 
-	sisc->plan.startup_cost = oldplan->startup_cost;
-	sisc->plan.total_cost = oldplan->total_cost;
+	cost_shareinputscan(&sipath, oldplan->total_cost, oldplan->plan_rows, oldplan->plan_width);
+
+	sisc->plan.startup_cost = sipath.startup_cost;
+	sisc->plan.total_cost = sipath.total_cost; 
 	sisc->plan.plan_rows = oldplan->plan_rows;
 	sisc->plan.plan_width = oldplan->plan_width;
 
@@ -202,3 +205,28 @@ List *share_plan(PlannerInfo *root, Plan *common, int numpartners)
 
 	return shared_nodes;
 }
+
+/*
+ * Return the total cost of sharing common numpartner times.
+ * If the planner need to make a decision whether the common subplan should be shared
+ * or should be duplicated, planner should compare the cost returned by this function 
+ * against common->total_cost * numpartners.
+ */
+Cost cost_share_plan(Plan *common, int numpartners)
+{
+	Path sipath;
+	Path mapath;
+
+	if(IsA(common, Material) || IsA(common, Sort))
+	{
+		cost_shareinputscan(&sipath, common->total_cost, common->plan_rows, common->plan_width);
+
+		return common->total_cost + (sipath.total_cost - common->total_cost) * numpartners;
+	}
+
+	cost_material(&mapath, common->total_cost, common->plan_rows, common->plan_width);
+	cost_shareinputscan(&sipath, mapath.total_cost, common->plan_rows, common->plan_width);
+
+	return mapath.total_cost + (sipath.total_cost - mapath.total_cost) * numpartners;
+}
+

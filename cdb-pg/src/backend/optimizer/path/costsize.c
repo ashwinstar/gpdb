@@ -1193,6 +1193,25 @@ cost_window(Path *path, PlannerInfo *root,
 	path->total_cost = total_cost;
 }
 
+/* 
+ * cost_shareinputscan
+ * 		compute the cost of shareinputscan.  Shareinput scan scans from 
+ * 		a material or sort.  It may read disk, but should be costed
+ *   	less than material node.
+ */
+void 
+cost_shareinputscan(Path *path, Cost sharecost, double tuples, int width)
+{
+	double nbytes = relation_byte_size(tuples, width);
+	double npages = ceil(nbytes/BLCKSZ);
+	path->startup_cost = sharecost;
+	path->total_cost = sharecost;
+	
+	/* charge a small amount I/O cost */
+	path->total_cost += seq_page_cost * npages * 0.2;
+	/* charge a small CPU cost.  */
+	path->total_cost += cpu_tuple_cost * tuples * 0.1;
+}
 
 /*
  * If a nestloop's inner path is an indexscan, be sure to use its estimated
