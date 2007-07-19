@@ -576,7 +576,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 		pthread_attr_setstacksize(&t_atts, Max(PTHREAD_STACK_MIN, (64*1024)));
 #endif
 
-		pthread_err = pthread_create(&pParms->thread, NULL, thread_DoConnect, pParms);
+		pthread_err = pthread_create(&pParms->thread, &t_atts, thread_DoConnect, pParms);
 
 		pthread_attr_destroy(&t_atts);
 		if (pthread_err != 0)
