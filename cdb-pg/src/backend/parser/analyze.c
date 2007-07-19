@@ -4744,6 +4744,11 @@ transformLockingClause(Query *qry, LockingClause *lc)
 			switch (rte->rtekind)
 			{
 				case RTE_RELATION:
+					if(get_rel_relkind(rte->relid) == RELKIND_EXTERNAL)
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("SELECT FOR UPDATE/SHARE cannot be applied to external tables")));
+					
 					applyLockingClause(qry, i, lc->forUpdate, lc->noWait);
 					rte->requiredPerms |= ACL_SELECT_FOR_UPDATE;
 					break;
@@ -4779,6 +4784,11 @@ transformLockingClause(Query *qry, LockingClause *lc)
 					switch (rte->rtekind)
 					{
 						case RTE_RELATION:
+							if(get_rel_relkind(rte->relid) == RELKIND_EXTERNAL)
+								ereport(ERROR,
+										(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+										 errmsg("SELECT FOR UPDATE/SHARE cannot be applied to external tables")));
+							
 							applyLockingClause(qry, i,
 											   lc->forUpdate, lc->noWait);
 							rte->requiredPerms |= ACL_SELECT_FOR_UPDATE;
