@@ -264,7 +264,7 @@ void dump_memory_allocation_ctxt(FILE *ofile, void *ctxt)
 
 	while(chunk)
 	{
-		fprintf(ofile, "%d\t%s\t%d\t%d\t%d\n", (int) ctxt, chunk->alloc_tag, chunk->alloc_n, (int) chunk->size, (int) chunk->requested_size);
+		fprintf(ofile, "%d|%s|%d|%d|%d\n", (int) ctxt, chunk->alloc_tag, chunk->alloc_n, (int) chunk->size, (int) chunk->requested_size);
 		chunk = chunk->alloc_next;
 	}
 
