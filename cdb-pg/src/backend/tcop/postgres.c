@@ -4029,6 +4029,17 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			 * scenarios.
 			 */
 			proc_exit(0);
+			
+		case 'd':			/* copy data */
+		case 'c':			/* copy done */
+		case 'f':			/* copy fail */
+
+			/*
+			 * Accept but ignore these messages, per protocol spec; we
+			 * probably got here because a COPY failed, and the frontend
+			 * is still sending data.
+			 */
+			break;
 
 		default:
 		ereport(FATAL,
