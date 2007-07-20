@@ -10,7 +10,6 @@
 #include <json/json.h>
 
 #include "gpma.h"
-#include "fsm.h"
 
 gpma_t gpma = {0};
 

@@ -530,7 +530,7 @@ APR_DECLARE(apr_status_t) gpcc_net_readln(gpcc_net_conn_t conn,
     return 0;
 }
 
-APR_DECLARE(apr_status_t) apr_net_read_packet(gpcc_net_conn_t conn, 
+APR_DECLARE(apr_status_t) gpcc_net_read_packet(gpcc_net_conn_t conn, 
 					      gpcc_net_packet_t** packet)
 {
     gpcc_net_packet_t pkt;
