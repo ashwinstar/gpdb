@@ -2768,6 +2768,17 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	// must have somebody to dispatch to.
 	Assert(sliceTbl != NULL || pQueryParms->primary_gang_id > 0 || pQueryParms->mirror_gang_id > 0);
 	
+	if (DEBUG2 >= log_min_messages)
+	{
+		char		msec_str[32];
+		switch (check_log_duration(msec_str, false))
+		{
+			case 1:
+			case 2:
+				ereport(LOG, (errmsg("duration to start of dispatch send: %s ms", msec_str)));
+				break;
+		}
+	}
 	/*
 	 * Now we need to call CDBDispatchCommand once per slice.  Each such
 	 * call dispatches a MPPEXEC command to each of the QEs assigned to
@@ -2779,6 +2790,8 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	 *
 	 * So, for each slice in the tree...
 	 */
+
+	
 	for (iSlice = 0; iSlice < nSlices; iSlice++)
 	{
 		Gang	   *primaryGang = NULL;
@@ -2984,6 +2997,19 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg_internal("Unable to dispatch plan.")));
 	}
+	
+	if (DEBUG2 >= log_min_messages)
+	{
+		char		msec_str[32];
+		switch (check_log_duration(msec_str, false))
+		{
+			case 1:
+			case 2:
+				ereport(LOG, (errmsg("duration to dispatch out: %s ms", msec_str)));
+				break;
+		}
+	}
+	
 }	/* cdbdisp_dispatchX */
 
 /*

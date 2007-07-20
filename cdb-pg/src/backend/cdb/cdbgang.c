@@ -1813,9 +1813,7 @@ cdbgang_parse_gpdaid_params(struct Port *port, const char *gpdaid_value)
 		goto bad;
 
 	pfree(gpdaid);
-	
-	/* TEMP */
-	log_min_messages = DEBUG5;
+
 	elog(DEBUG1," Dispatch Agent Started");
 	return;
 
@@ -2113,7 +2111,7 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
 				   segdbDesc->errcode == 0 &&
 				   segdbDesc->error_message.len == 0);
 
-            if (gp_log_gang >= GPVARS_VERBOSITY_TERSE)
+            if (gp_log_gang >= GPVARS_VERBOSITY_TERSE || DEBUG4 >= log_min_messages)
                 elog(LOG, "Connected to %s motionListenerPort=%d with options %s",
 				     segdbDesc->whoami,
 				     segdbDesc->motionListener,
@@ -2588,7 +2586,7 @@ getCdbProcessList(Gang *gang, int sliceIndex)
 			process->contentid = segdbDesc->segindex;
 			process->routeid = k++;
 
-            if (gp_log_gang >= GPVARS_VERBOSITY_VERBOSE)
+            if (gp_log_gang >= GPVARS_VERBOSITY_VERBOSE || DEBUG4 >= log_min_messages)
                 elog(LOG, "Gang assignment (gang_id %d): slice%d %s%d %s:%d pid=%d",
                 	 gang->gang_id,
                      sliceIndex,

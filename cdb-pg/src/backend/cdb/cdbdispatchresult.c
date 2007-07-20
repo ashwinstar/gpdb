@@ -1161,7 +1161,7 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 		}
 	}
 	
-	elog(LOG,"relayresults is done. completionTag %s  errmsgbuf.len=%d",completionTag, errmsgbuf.len);
+	elog(DEBUG1,"relayresults is done. completionTag %s  errmsgbuf.len=%d",completionTag, errmsgbuf.len);
 	
 	if (errmsgbuf.len > 0)
 		ereport(ERROR, (errmsg("%s", errmsgbuf.data)));

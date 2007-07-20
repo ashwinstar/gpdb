@@ -3425,9 +3425,13 @@ get_stats_option_name(const char *arg)
  
 static bool dispatchAgent(int firstchar, StringInfo input_message)
 {
+	char		msec_str[32];
+	bool		was_logged = false;
+	
 	Assert(Gp_role == GP_ROLE_DISPATCHAGENT);
-	elog(LOG, "Message type %c received by Dispatch Agent", firstchar);
+	elog(DEBUG5, "Message type %c received by Dispatch Agent", firstchar);
 	SetClientEncoding(GetDatabaseEncoding(), true);	
+
 	switch (firstchar)
 	{
 		case 'G': /* Gang management */
@@ -3513,6 +3517,16 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			}
 
 			finish_xact_command();
+			
+			
+			switch (check_log_duration(msec_str, was_logged))
+			{
+				case 1:
+				case 2:
+					ereport(LOG,  (errmsg("duration: %s ms  gang statement: %s gang_id %d",
+				             msec_str, query_string, gang_id) ));
+					break;
+			}
 			
 			debug_query_string = NULL;
 
@@ -3743,6 +3757,17 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			
 			MemoryContextSwitchTo(MessageContext);
 			
+			if (DEBUG2 >= log_min_messages)
+			{
+				switch (check_log_duration(msec_str, false))
+				{
+					case 1:
+					case 2:
+						ereport(LOG,  (errmsg("duration to dispatch result: %s ms", msec_str)));
+						break;
+				}					 
+			}
+			
 			/*
 			 * relay the results back to the QD
 			 */
@@ -3799,6 +3824,15 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			finish_xact_command();
 			
 			elog(DEBUG1,"Dispatch agent says we are done with this command %s",completionTag);
+			
+			switch (check_log_duration(msec_str, was_logged))
+			{
+				case 1:
+				case 2:
+					ereport(LOG,  (errmsg("duration: %s ms  statement: %s",
+				             msec_str, query_string) ));
+					break;
+			}
 		
 			debug_query_string = NULL;
 
@@ -3942,6 +3976,15 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				EndCommand(completionTag,whereToSendOutput);
 				
 				finish_xact_command();
+				
+				switch (check_log_duration(msec_str, was_logged))
+				{
+					case 1:
+					case 2:
+						ereport(LOG,  (errmsg("duration: %s ms  DTM statement: %s",
+					             msec_str, loggingStr) ));
+						break;
+				}
 				
 				debug_query_string = NULL;
 				
