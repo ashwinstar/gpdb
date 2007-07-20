@@ -862,6 +862,45 @@ APR_DECLARE(gpcc_net_request_t*) gpcc_net_parse_request(const char* buf, int* le
     return req;
 }
 
+static const char *_net_request_get_header(gpcc_net_request_t *req, const char *header)
+{
+    int i;
+
+    for (i = 0 ; i < req->hc ; i++){
+	if (apr_strnatcasecmp(req->hname[i], header) == 0) {
+	    return req->hvalue[i];
+	}
+    }
+    return 0;
+}
+
+APR_DECLARE(const char *) gpcc_net_request_get_header(gpcc_net_request_t *req, const char * header,
+						      const char *def)
+{
+    const char *value = _net_request_get_header(req, header);
+    if (value)
+	return value;
+    return def;
+}
+
+APR_DECLARE(int) gpcc_net_request_get_header_int(gpcc_net_request_t *req, const char * header,
+						 int def)
+{
+    const char *value = _net_request_get_header(req, header);
+    if (value)
+	return atoi(value);
+    return def;
+}
+
+APR_DECLARE(float) gpcc_net_request_get_header_float(gpcc_net_request_t *req, const char * header,
+					       float def)
+{
+    const char *value = _net_request_get_header(req, header);
+    if (value)
+	return atof(value);
+    return def;
+}
+
 
 
 
