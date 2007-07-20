@@ -270,9 +270,6 @@ assign_gp_session_role(const char *newval, bool doit, GucSource source)
 
 		if (Gp_role == GP_ROLE_DISPATCH)
 			Gp_segment = -1;
-		
-		if (Gp_role == GP_ROLE_DISPATCHAGENT)
-			gp_log_gang = GPVARS_VERBOSITY_VERBOSE;
 	}
 	return newval;
 }
