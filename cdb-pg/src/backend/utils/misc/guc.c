@@ -1189,6 +1189,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_adjust_selectivity_for_outerjoins", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Adjust selectivity of null tests over outer joins."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&gp_adjust_selectivity_for_outerjoins,
+		true, NULL, NULL
+	},
+
+	{
 		{"gp_enable_interconnect_aggressive_retry", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable application-level fast-track interconnect retries"),
 			NULL,

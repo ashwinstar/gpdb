@@ -105,6 +105,13 @@ static Selectivity join_in_selectivity(JoinPath *path, PlannerInfo *root);
 static double relation_byte_size(double tuples, int width);
 static double page_size(double tuples, int width);
 
+static Selectivity adjust_selectivity_for_nulltest(Selectivity selec,
+												Selectivity pselec,
+												List *pushed_quals,
+												JoinType jointype,
+												RelOptInfo *left,
+												RelOptInfo *right);
+
 
 /* CDB: The clamp_row_est() function definition has been moved to cost.h */
 
@@ -2007,6 +2014,100 @@ set_baserel_size_estimates(PlannerInfo *root, RelOptInfo *rel)
 	set_rel_width(root, rel);
 }
 
+
+
+/*
+ * adjust_selectivity_for_nulltest
+ *		adjust selectivity of a nulltest on the inner side of an
+ *		outer join
+ *
+ * This is a patch to make the workaround for (NOT) IN subqueries
+ *
+ *    ... FROM T1 LEFT OUTER JOIN T2 ON ... WHERE T2.X IS (NOT) NULL
+ *
+ * work. This is not a comprehensive fix but addresses only
+ * this very special case.
+ *
+ */
+static Selectivity
+adjust_selectivity_for_nulltest(Selectivity selec,
+								Selectivity pselec,
+								List *pushed_quals,
+								JoinType jointype,
+								RelOptInfo *left,
+								RelOptInfo *right)
+{
+	Assert(IS_OUTER_JOIN(jointype));
+
+	/* 
+	 * consider only singletons; the case of multiple
+	 * nulltests on the inner side of an outer join is not very 
+	 * useful in practice;
+	 */
+	if (JOIN_FULL != jointype &&
+		1 == list_length(pushed_quals))	
+	{
+		Node *clause = (Node *) lfirst(list_head(pushed_quals));
+
+		if (IsA(clause, RestrictInfo))
+		{
+			clause = (Node *)((RestrictInfo*)clause) -> clause;
+
+			if (IsA(clause, NullTest))
+			{
+				int nulltesttype = 0;
+				Node *node = NULL;
+				Node *basenode = NULL;
+	
+				/* extract information */
+				nulltesttype = ((NullTest *) clause)->nulltesttype;
+				node = (Node *) ((NullTest *) clause)->arg;
+	
+				/* CONSIDER: is this really necessary? */
+				if (IsA(node, RelabelType))
+					basenode = (Node *) ((RelabelType *) node)->arg;
+				else
+					basenode = node;
+
+				if (IsA(basenode, Var))
+				{
+					Var *var = (Var *) basenode;
+					double	nullfrac = 1 - selec;
+	
+					/* 
+					 * a pushed qual must be applied on the inner side only; type implies 
+					 * where to find the var in the inputs
+					 */
+					Assert(!(JOIN_RIGHT == jointype) || bms_is_member(var->varno, left->relids));
+					Assert(!(JOIN_LEFT == jointype) || bms_is_member(var->varno, right->relids));
+
+					/* adjust selectivity according to test */
+					switch (((NullTest *) clause)->nulltesttype)
+					{
+						case IS_NULL:
+							pselec = nullfrac + ((1 - nullfrac ) * pselec);
+							break;
+
+						case IS_NOT_NULL:
+							pselec = (1 - nullfrac) + (nullfrac * pselec);
+							break;
+
+						default:
+							/* unknown null test*/
+							Assert(false);
+					}
+				}
+			}
+		}
+	}
+
+	Assert(pselec >= 0.0 && pselec <= 1.0);
+	return pselec;
+}
+
+
+
+
 /*
  * set_joinrel_size_estimates
  *		Set the size estimates for the given join relation.
@@ -2080,6 +2181,18 @@ set_joinrel_size_estimates(PlannerInfo *root, RelOptInfo *rel,
 										pushedquals,
 										0,
 										jointype);
+
+		/* 
+		 * special case where a pushed qual probes the inner
+		 * side of an outer join to be NULL
+		 */
+		if (gp_adjust_selectivity_for_outerjoins)
+			pselec = adjust_selectivity_for_nulltest(jselec,
+													pselec,
+													pushedquals, 
+													jointype, 
+													outer_rel, 
+													inner_rel);
 
 		/* Avoid leaking a lot of ListCells */
 		list_free(joinquals);

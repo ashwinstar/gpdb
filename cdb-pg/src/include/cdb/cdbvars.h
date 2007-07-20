@@ -437,6 +437,12 @@ extern bool enable_agg_restruct;
  */
 extern bool gp_enable_motion_deadlock_sanity;
 
+/*
+ * Adjust selectivity for nulltests atop of outer joins; 
+ * Special casing prominent use case to work around lack of (NOT) IN subqueries
+ */
+extern bool gp_adjust_selectivity_for_outerjoins;
+
 /* ----- Experimental Features ----- */
 
 /* May Greenplum redistribute on the argument of a lone aggregate distinct in

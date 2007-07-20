@@ -113,6 +113,7 @@ double		gp_hashagg_rewrite_limit = 1;
 bool		gp_hashagg_recalc_density = true;
 
 bool		gp_enable_motion_deadlock_sanity = FALSE; /* planning time sanity check */
+bool		gp_adjust_selectivity_for_outerjoins = TRUE;
 
 /* Greenplum Database Experimental Feature GUCs */
 bool		gp_enable_agg_distinct = FALSE;
