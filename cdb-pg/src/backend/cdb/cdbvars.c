@@ -404,15 +404,11 @@ assign_gp_use_dispatch_agent(bool newval, bool doit, GucSource source)
 	{
 		/*
 		 * If we are switching, we must get rid of all existing gangs.
+		 * TODO: check for being in a transaction, or owning temp tables, as disconnecting all gangs
+		 * will wipe them out.
 		 */
 		disconnectAndDestroyAllGangs();
 		gp_use_dispatch_agent = newval;
-		/*
-		 * If we are now going to be using dispatch agents, we do this 
-		 * just to help debugging.  This should come out later.
-		 */
-		//if (gp_use_dispatch_agent)
-		//	gp_log_gang = GPVARS_VERBOSITY_VERBOSE;
 	}
 
 	return true;
