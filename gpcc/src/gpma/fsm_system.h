@@ -1,4 +1,18 @@
+static apr_status_t http_request(gpcc_event_t *ev, void *cmdslot_)
+{
+    cmdslot_t *p = cmdslot_;
+    conninfo_t* conninfo = p->conninfo;
+    int i;
 
+    gpcc_log_info("http request...");
+    for (i = 0 ; i < conninfo->peer.request->argc ; i++){
+	gpcc_log_info("%s ", conninfo->peer.request->argv[i]);
+    }
+    for (i = 0 ; i < conninfo->peer.request->hc ; i++){
+	gpcc_log_info("%s : %s\n", conninfo->peer.request->hname[i], conninfo->peer.request->hvalue[i]);
+    }
+	
+}
 
 static void u_queue_failure_event(cmdslot_t* cmdslot)
 {
@@ -91,6 +105,8 @@ static apr_status_t a_system_net_received(gpcc_event_t* ev, void* cmdslot_)
     conninfo_t* conninfo = ei->conninfo;
     int e;
 
+    gpcc_log_info("a_system_net_received...");
+
     /* peer has not send protocol ? */
     if (! conninfo->peer.request) {
 	e = gpcc_net_read_request(conninfo->conn, &conninfo->peer.request, 
@@ -153,12 +169,14 @@ static apr_status_t a_system_net_received(gpcc_event_t* ev, void* cmdslot_)
 	}
 	else {
 	    /* HTTP */
-	    if (conninfo->peer.request->datalen != conninfo->peer.request->offset) {
-		e = gpcc_net_read_request_data(conninfo->conn, conninfo->peer.request);
-		if (e) {
-		    goto bail;
-		}
+	    if (conninfo->peer.request->datalen == conninfo->peer.request->offset) {
+		/* extra packet from client. ignore the packet */
+		return 0;
+	    }
 
+	    e = gpcc_net_read_request_data(conninfo->conn, conninfo->peer.request);
+	    if (e) {
+		goto bail;
 	    }
 
 	    /* complete header and data */

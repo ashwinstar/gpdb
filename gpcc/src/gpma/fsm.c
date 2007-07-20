@@ -20,4 +20,7 @@ APR_DECLARE(void) fsm_setup(void)
 		 a_get_identity_send_request, 0);
     gpcc_fsm_put(GET_IDENTITY_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE, 
 		 a_close_conn, 0);
+    
+    gpcc_fsm_put(HTTP_REQUEST_CMDSTATE, INIT_EVENT, NULL_CMDSTATE,
+		 http_request, 0);
 }

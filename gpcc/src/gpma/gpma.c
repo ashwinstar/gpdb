@@ -260,6 +260,8 @@ static void d_main(void)
     gpcc_evqueue_t* evq;
     cmdslot_t* cp;
 
+    event_init();
+
     /* create the event queue */
     evq = gpma.evq = gpcc_evqueue_create(1000, gpma.pool);
 
