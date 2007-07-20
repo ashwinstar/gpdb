@@ -12,6 +12,12 @@ static apr_status_t http_request(gpcc_event_t *ev, void *cmdslot_)
 	gpcc_log_info("%s : %s\n", conninfo->peer.request->hname[i], conninfo->peer.request->hvalue[i]);
     }
 	
+    gpcc_log_info("data len = %d", conninfo->peer.request->datalen);
+    for (i = 0 ; i < conninfo->peer.request->datalen ; i++) {
+	gpcc_log_info("data[%d] = %c", i, conninfo->peer.request->data[i]);
+    }
+
+    return 0;
 }
 
 static void u_queue_failure_event(cmdslot_t* cmdslot)
@@ -105,7 +111,6 @@ static apr_status_t a_system_net_received(gpcc_event_t* ev, void* cmdslot_)
     conninfo_t* conninfo = ei->conninfo;
     int e;
 
-    gpcc_log_info("a_system_net_received...");
 
     /* peer has not send protocol ? */
     if (! conninfo->peer.request) {

@@ -31,7 +31,7 @@ mkgp:
 mkgpma:
 	@echo --- gpma -----------------------------------------------------
 	@(cd src/gpma; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
-		-o gpma *.c -L../build/lib -lgpcc $(APRLIBS) $(APULIBS) -L$(GPCC)/ext/$(JSON)/.libs -ljson)
+		-o gpma *.c -L../build/lib -lgpcc $(APRLIBS) $(APULIBS) -L$(GPCC)/ext/$(JSON)/.libs -L$(GPCC)/ext/$(LIBEVENT)/.libs -ljson -levent)
 
 mklibgpcc:
 	@echo --- libgpcc --------------------------------------------------

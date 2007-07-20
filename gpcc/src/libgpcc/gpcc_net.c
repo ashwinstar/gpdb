@@ -877,7 +877,7 @@ APR_DECLARE(apr_status_t) gpcc_net_read_request_data(gpcc_net_conn_t conn,
     
     n = (n > nn) ? nn : n ;
     memcpy(req->data + req->offset, bb->buf + bb->bot, n);
-    req->datalen += n;
+    req->offset += n;
     bb->bot += n;
     spin = gpcc_spin_release(spin);
 
