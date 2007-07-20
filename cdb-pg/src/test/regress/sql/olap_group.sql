@@ -461,3 +461,6 @@ select sale.cn,max(distinct sale.cn) from sale,vendor where sale.vn=vendor.vn gr
 select cn,sum(qty) from sale group by cn;
 select cn,sum(qty) from sale group by grouping sets(cn);
 --end equivalent
+select cn,sum(qty),grouping((cn,vn),vn) from sale group by rollup(cn,vn);
+select sum(qty),grouping(cn+pn) from sale group by cn+vn,vn;
+select sum(qty),grouping(cn+vn) from sale group by rollup(cn+vn,vn);

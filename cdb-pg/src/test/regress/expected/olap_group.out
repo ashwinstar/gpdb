@@ -4029,3 +4029,31 @@ select cn,sum(qty) from sale group by grouping sets(cn);
 (4 rows)
 
 --end equivalent
+select cn,sum(qty),grouping((cn,vn),vn) from sale group by rollup(cn,vn);
+ERROR:  row type can not be used inside a Grouping function.
+select sum(qty),grouping(cn+pn) from sale group by cn+vn,vn;
+ERROR:  expression in a Grouping fuction does not appear in GROUP BY.
+select sum(qty),grouping(cn+vn) from sale group by rollup(cn+vn,vn);
+ sum  | grouping 
+------+----------
+    1 |        0
+    1 |        0
+   13 |        0
+   24 |        0
+ 1100 |        0
+    1 |        0
+    2 |        0
+    1 |        0
+    1 |        0
+    1 |        0
+    1 |        0
+   13 |        0
+   24 |        0
+ 1100 |        0
+    1 |        0
+    2 |        0
+    1 |        0
+    1 |        0
+ 1144 |        1
+(19 rows)
+

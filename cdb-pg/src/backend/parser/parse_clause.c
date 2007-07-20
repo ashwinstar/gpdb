@@ -1914,7 +1914,18 @@ grouping_rewrite_walker(Node *node, void *context)
 				RangeTblEntry *rte;
 				const char *attname;
 				Var *var = (Var *) node;
-				
+
+				/* Do not allow expressions inside a grouping function. */
+				if (IsA(node, RowExpr))
+					ereport(ERROR,
+							(errcode(ERRCODE_GROUPING_ERROR),
+							 errmsg("row type can not be used inside a Grouping function.")));
+
+				if (!IsA(node, Var))
+					ereport(ERROR,
+							(errcode(ERRCODE_GROUPING_ERROR),
+							 errmsg("expression in a Grouping fuction does not appear in GROUP BY.")));
+
 				Assert(IsA(node, Var));
 				Assert(var->varno > 0);
 				Assert(var->varno <= list_length(ctx->pstate->p_rtable));
