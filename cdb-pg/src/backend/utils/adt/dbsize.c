@@ -62,9 +62,18 @@ get_size_from_segDBs(const char * cmd)
 		}
 		else
 		{
-			int64 tempsize = 0;
-			(void) scanint8(PQgetvalue(results[i], 0, 0), false, &tempsize);
-			 size += tempsize;
+			/*
+			 * Due to funkyness in the current dispatch agent code, instead of 1 result 
+			 * per QE with 1 row each, we can get back 1 result per dispatch agent, with
+			 * one row per QE controlled by that agent.
+			 */
+			int j;
+			for (j = 0; j < PQntuples(results[i]); j++)
+			{
+				int64 tempsize = 0;
+				(void) scanint8(PQgetvalue(results[i], j, 0), false, &tempsize);
+				 size += tempsize;
+			}
 		}
 	}
 

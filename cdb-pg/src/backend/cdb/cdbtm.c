@@ -2543,11 +2543,20 @@ determineSegmentMaxDistributedXid(void)
 			}
 			else
 			{
-				DistributedTransactionId temp = 0;
-				temp  =  atol(PQgetvalue(results[i], 0, 0));
-				elog((Debug_print_full_dtm ? LOG : DEBUG5),"determineSegmentMaxDistributedXid value = %d",temp);
-				if (temp  > max)
-					max = temp;
+				/*
+				 * Due to funkyness in the current dispatch agent code, instead of 1 result 
+				 * per QE with 1 row each, we can get back 1 result per dispatch agent, with
+				 * one row per QE controlled by that agent.
+				 */
+				int j;
+				for (j = 0; j < PQntuples(results[i]); j++)
+				{
+					DistributedTransactionId temp = 0;
+					temp  =  atol(PQgetvalue(results[i], j, 0));
+					elog((Debug_print_full_dtm ? LOG : DEBUG5),"determineSegmentMaxDistributedXid value = %d",temp);
+					if (temp  > max)
+						max = temp;
+				}
 			}
 		}
 	}

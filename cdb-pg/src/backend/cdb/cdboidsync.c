@@ -72,11 +72,20 @@ get_max_oid_from_segDBs(void)
 		}
 		else
 		{
-			Oid tempoid = 0;
-			tempoid =  atol(PQgetvalue(results[i], 0, 0));
-
-			if (tempoid > oid)
-				oid = tempoid;
+			/*
+			 * Due to funkyness in the current dispatch agent code, instead of 1 result 
+			 * per QE with 1 row each, we can get back 1 result per dispatch agent, with
+			 * one row per QE controlled by that agent.
+			 */
+			int j;
+			for (j = 0; j < PQntuples(results[i]); j++)
+			{
+				Oid tempoid = 0;
+				tempoid =  atol(PQgetvalue(results[i], j, 0));
+	
+				if (tempoid > oid)
+					oid = tempoid;
+			}
 		}
 	}
 
