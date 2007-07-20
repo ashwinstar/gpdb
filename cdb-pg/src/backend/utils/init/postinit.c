@@ -551,7 +551,6 @@ InitPostgres(const char *dbname, const char *username)
 	}
 	else if (Gp_role == GP_ROLE_DISPATCHAGENT)
 	{
-		elog(LOG,"I am a dispatch agent, I don't get a shared snapshot");
 		SharedLocalSnapshotSlot = NULL;
 	}
     else if (Gp_segment == -1 && Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)

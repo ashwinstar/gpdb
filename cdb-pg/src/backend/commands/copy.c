@@ -1005,6 +1005,8 @@ DoCopy(const CopyStmt *stmt)
 		((cstate->client_encoding != GetDatabaseEncoding() ||
 		  pg_database_encoding_max_length() > 1) &&
 		 (!is_from || (Gp_role != GP_ROLE_EXECUTE)) );
+	if (Gp_role == GP_ROLE_DISPATCHAGENT)
+		cstate->need_transcoding = false;
 	cstate->encoding_embeds_ascii = PG_ENCODING_IS_CLIENT_ONLY(cstate->client_encoding);
 	cstate->line_buf_converted = (Gp_role == GP_ROLE_EXECUTE ? true : false);
 
@@ -1078,7 +1080,7 @@ DoCopy(const CopyStmt *stmt)
 			}
 		}
 		
-		if (Gp_role == GP_ROLE_DISPATCH)
+		if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)
 			CopyFromDispatch(cstate);
 		else
 			/* execute or utility mode */
@@ -1214,7 +1216,7 @@ DoCopyTo(CopyState cstate)
 		 * doing COPY (SELECT) we just go straight to work, without
 		 * dispatching COPY commands to executors.
 		 */
-		if (Gp_role == GP_ROLE_DISPATCH && cstate->rel)
+		if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && cstate->rel)
 			CopyToDispatch(cstate);		
 		else
 			CopyTo(cstate);		
@@ -1304,7 +1306,7 @@ CopyTo(CopyState cstate)
 		 * We don't want binary header in exec mode. it's
 		 * taken care of in the dispatcher code.
 		 */
-		if (Gp_role != GP_ROLE_EXECUTE)
+		if (Gp_role != GP_ROLE_EXECUTE && Gp_role != GP_ROLE_DISPATCHAGENT)
 		{
 			/* Generate header for a binary copy */
 			int32		tmp;
@@ -1335,7 +1337,7 @@ CopyTo(CopyState cstate)
 		if (cstate->header_line)
 		{
 			/* header should not be printed in execute mode. */
-			if (Gp_role != GP_ROLE_EXECUTE)
+			if (Gp_role != GP_ROLE_EXECUTE && Gp_role != GP_ROLE_DISPATCHAGENT)
 			{
 			bool		hdr_delim = false;
 
@@ -1394,7 +1396,7 @@ CopyTo(CopyState cstate)
 	
 	if (cstate->binary)
 	{
-		if (Gp_role != GP_ROLE_EXECUTE)
+		if (Gp_role != GP_ROLE_EXECUTE && Gp_role != GP_ROLE_DISPATCHAGENT)
 		{
 			/* Generate trailer for a binary copy */
 			CopySendInt16(cstate, -1);
@@ -1755,7 +1757,8 @@ copy_in_error_callback(void *arg)
 	/*
 	 * If we saved the error context from a QE in cdbcopy.c append it here.
 	 */
-	if(Gp_role == GP_ROLE_DISPATCH && cstate->executor_err_context.len > 0)
+	if((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)
+			&& cstate->executor_err_context.len > 0)
 	{
 		errcontext("%s", cstate->executor_err_context.data);
 		return;
@@ -2322,7 +2325,7 @@ CopyFromDispatch(CopyState cstate)
 			{
 				CopyGetData(cstate, readSig, 1);
 
-				if (Gp_role == GP_ROLE_DISPATCH)
+				if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)
 					appendBinaryStringInfo(&header_buf, readSig, 1);
 
 				
@@ -4333,7 +4336,7 @@ CopyReadAttributesText(CopyState cstate, char *nulls,
 				 * for the dispatcher - stop parsing once we have
 				 * all the hash field values. We don't need the rest.
 				 */
-				if (Gp_role == GP_ROLE_DISPATCH)
+				if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)
 				{
 					if (attribute == cstate->last_hash_field)
 					{
@@ -4530,7 +4533,7 @@ CopyReadBinaryAttribute(CopyState cstate, int column_no, FmgrInfo *flinfo, Oid t
 				 errmsg("unexpected EOF in COPY data")));
 
 	/* load raw data into line buf for dispatching later */
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)
 		appendBinaryStringInfo(&cstate->line_buf, cstate->attribute_buf.data, fld_size);
 
 	cstate->attribute_buf.len = fld_size;
@@ -4688,7 +4691,7 @@ CopyReadAttributesCSV(CopyState cstate, char *nulls, int *attr_offsets,
 			 * for the dispatcher - stop parsing once we have
 			 * all the hash field values. We don't need the rest.
 			 */
-			if (Gp_role == GP_ROLE_DISPATCH)
+			if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)
 			{
 				if (attribute == cstate->last_hash_field)
 					break;

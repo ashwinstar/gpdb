@@ -2833,7 +2833,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			 */
 			if (primaryGang == NULL || Gp_role == GP_ROLE_DISPATCHAGENT)
 			{
-				elog(DEBUG1,"Gangs are %d and %d, type=%d",slice->primary_gang_id,slice->mirror_gang_id,slice->gangType);
+				elog(DEBUG1,"Dispatch %d, Gangs are %d and %d, type=%d",iSlice, slice->primary_gang_id,slice->mirror_gang_id,slice->gangType);
 				primaryGang = findGangById(slice->primary_gang_id);
 				if (slice->mirror_gang_id > 0)
 					mirrorGang = findGangById(slice->mirror_gang_id);
@@ -2955,6 +2955,19 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
                                    *pMirrorResults,
                                    si, sliceLim);
 		}
+		
+		/*
+		 * If we are doing sliced execution, and have multiple slices, let the 
+		 * message to the writer gangs get out before we dispatch to the readers,
+		 * hopefully letting them set up the shared snapshot and avoiding the busy wait
+		 * the readers would do if it isn't set up.
+		 * 
+		 * This delay is really short, just enough to cause us to give up our 
+		 * timeslice.  But don't be fooled... Unix can delay as long as 1ms before 
+		 * returning, regardless of what we say.
+		 */
+		if (sliceVector && slice && iSlice+1 < nSlices && slice->primary_gang_id == 1)
+			pg_usleep(100); /* time in microsecs */
 	}
 
 	
@@ -3347,6 +3360,12 @@ compare_slice_order(const void *aa, const void *bb)
 	if (b->slice == NULL)
 		return -1;
 
+	/* sort the writer gang slice first, because he sets the shared snapshot */
+	if (a->slice->primary_gang_id == 1 && b->slice->primary_gang_id != 1)
+		return -1;
+	else if (b->slice->primary_gang_id == 1 && a->slice->primary_gang_id != 1)
+		return 1;
+	
 	if (a->children == b->children)
 		return 0;
 	else if (a->children > b->children)
