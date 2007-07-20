@@ -4057,3 +4057,8 @@ select sum(qty),grouping(cn+vn) from sale group by rollup(cn+vn,vn);
  1144 |        1
 (19 rows)
 
+select * from sale where exists (select cn, sum(qty) from sale group by rollup(cn,vn) having sum(qty)=10000000);
+ cn | vn | pn | dt | qty | prc 
+----+----+----+----+-----+-----
+(0 rows)
+

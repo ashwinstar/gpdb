@@ -464,3 +464,5 @@ select cn,sum(qty) from sale group by grouping sets(cn);
 select cn,sum(qty),grouping((cn,vn),vn) from sale group by rollup(cn,vn);
 select sum(qty),grouping(cn+pn) from sale group by cn+vn,vn;
 select sum(qty),grouping(cn+vn) from sale group by rollup(cn+vn,vn);
+
+select * from sale where exists (select cn, sum(qty) from sale group by rollup(cn,vn) having sum(qty)=10000000);

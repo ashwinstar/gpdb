@@ -242,14 +242,18 @@ convert_EXISTS_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink
         return limitqual;
     }
 
-    /* Delete targetlist, ORDER BY and DISTINCT. */
-    subselect->targetList = NULL;
+    /* Delete ORDER BY and DISTINCT. */
     subselect->sortClause = NIL;
     subselect->distinctClause = NIL;
 
-    /* HAVING is the only place that could still contain aggregates. */
+    /* HAVING is the only place that could still contain aggregates.
+	 * We can delete targetlist if there is no havingQual.
+	 */
     if (subselect->havingQual == NULL)
+	{
+		subselect->targetList = NULL;
         subselect->hasAggs = false;
+	}
 
     /* If HAVING has no aggregates, demote it to WHERE. */
     else if (!checkExprHasAggs(subselect->havingQual))
