@@ -6,7 +6,7 @@ APR=apr-1.2.8
 APU=apr-util-1.2.8
 JSON=json-c-0.6
 LIBEVENT=libevent-1.3b-1
-INCLUDES=-I$(GPCC)/ext/include $$($(GPCC)/ext/apr/apr-1-config --includes) $$($(GPCC)/ext/apu/apu-1-config --includes) -I$(GPCC)/ext/$(LIBEVENT) -I$(GPCC)/ext/$(JSON) -I$(GPCC)/src/include
+INCLUDES=-I$(GPCC)/ext/include $$($(GPCC)/ext/apr/apr-1-config --includes) $$($(GPCC)/ext/apu/apu-1-config --includes) -I$(GPCC)/ext/$(LIBEVENT) -I$(GPCC)/ext -I$(GPCC)/ext/$(JSON) -I$(GPCC)/src/include
 CFLAGS=$(OPT) $$($(GPCC)/ext/apr/apr-1-config --cflags)
 APRLIBS=-L$(GPCC)/ext/apr/.libs $$($(GPCC)/ext/apr/apr-1-config --link-ld --libs) 
 APULIBS=-L$(GPCC)/ext/apu/.libs -L$(GPCC)/ext/apu/xml/expat/lib/.libs -laprutil-1 -lexpat
@@ -14,7 +14,7 @@ GP_VERSION=$$(< $(GPCC)/../VERSION)
 CPPFLAGS=$$($(GPCC)/ext/apr/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)"
 
 
-all: mkext mklibgpcc mkgpfdist 
+all: mkext mklibgpcc mkgpfdist mkgpma
 
 #mkgpma mkgp 
 
