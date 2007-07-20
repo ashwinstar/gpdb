@@ -359,7 +359,7 @@ sub format_query_output
 
         my $ah1 = tablelizer($lines, $firstline);
 
-        unless (scalar(@{$ah1}))
+        unless (defined($ah1) && scalar(@{$ah1}))
         {
 #            print "No tablelizer hash for $lines, $firstline\n";
 #            print STDERR "No tablelizer hash for $lines, $firstline\n";
@@ -719,6 +719,16 @@ if (1)
     my $directive = {};
     my $big_ignore = 0;
     my $error_detail_exttab_trifecta_skip = 0; # don't ask!
+
+    my $verzion = '$Id$   ';
+
+    $verzion =~ s/\,v//; # remove ,v
+    my @verza = split(/\s+/, $verzion);
+    if (scalar(@verza) > 3)
+    {
+        $verzion = $verza[1] . " version " . $verza[2];
+        print "GP_IGNORE: formatted by $verzion\n";
+    }
 
   L_bigwhile:
     while (<>) # big while
