@@ -43,6 +43,9 @@ enum event_t {
     GET_IDENTITY_MSG_EVENT,
     IDENTITY_MSG_EVENT,
 
+    HTTP_REQUEST_EVENT,
+    
+
     EVENT_MAX,
 };
 
@@ -54,6 +57,8 @@ enum cmdstate_t {
     SYSTEM_CMDSTATE,
 
     GET_IDENTITY_CMDSTATE,
+
+    HTTP_REQUEST_CMDSTATE,
 
     CMDSTATE_MAX,
 };

@@ -96,10 +96,7 @@ static apr_status_t a_system_net_received(gpcc_event_t* ev, void* cmdslot_)
 	e = gpcc_net_read_request(conninfo->conn, &conninfo->peer.request, 
 				  conninfo->pool);
 	if (e) {
-	    if (e == APR_EAGAIN)
-		return 0;
-	    gpcc_net_close(conninfo->conn);
-	    return 0;
+	    goto bail;
 	}
 	if (1 == conninfo->peer.request->argc &&
 	    0 == strcmp(conninfo->peer.request->argv[0], GPCC_NET_PROTO)) {
@@ -114,7 +111,23 @@ static apr_status_t a_system_net_received(gpcc_event_t* ev, void* cmdslot_)
 	}
 	else {
 	    /* handle http */
-	    gpcc_fatal(FLINE, "protocol not implemented");
+	    conninfo->peer.request->datalen = gpcc_net_request_get_header_int(conninfo->peer.request, 
+									      "content-length", 0);
+	    conninfo->peer.request->offset = 0;
+	    if (conninfo->peer.request->datalen > 0) {
+		/* get data */
+		conninfo->peer.request->data = apr_palloc(conninfo->pool, conninfo->peer.request->datalen);
+		e = gpcc_net_read_request_data(conninfo->conn, conninfo->peer.request);
+		if (e) {
+		    goto bail;
+		}
+	    }
+
+	    /* complete header and data */
+	    if (! cmdslot_alloc("HTTP_REQUEST", HTTP_REQUEST_CMDSTATE, conninfo)) {
+		gpcc_net_close(conninfo->conn);
+		return 0;
+	    }
 	}
 	return 0;
     }
@@ -127,10 +140,7 @@ static apr_status_t a_system_net_received(gpcc_event_t* ev, void* cmdslot_)
 	    /* get tuple (msg-type, rcvidx, sndidx, content-length, content) */
 	    e = gpcc_net_read_packet(conninfo->conn, &packet);
 	    if (e) {
-		if (e == APR_EAGAIN)
-		    return 0;
-		gpcc_net_close(conninfo->conn);
-		return 0;
+		goto bail;
 	    }
 
 	    /* dispatch to cmdslot */
@@ -143,15 +153,29 @@ static apr_status_t a_system_net_received(gpcc_event_t* ev, void* cmdslot_)
 	}
 	else {
 	    /* HTTP */
+	    if (conninfo->peer.request->datalen != conninfo->peer.request->offset) {
+		e = gpcc_net_read_request_data(conninfo->conn, conninfo->peer.request);
+		if (e) {
+		    goto bail;
+		}
 
-	    /* check "Content-Length" */
+	    }
 
-	       
-	    /* if request is complete, run the request */
+	    /* complete header and data */
+	    if (! cmdslot_alloc("HTTP_REQUEST", HTTP_REQUEST_CMDSTATE, conninfo)) {
+		gpcc_net_close(conninfo->conn);
+		return 0;
+	    }
 	}
-
-
     }
+
+    return 0;
+    
+    bail:
+    
+    if (e == APR_EAGAIN)
+	return 0;
+    gpcc_net_close(conninfo->conn);
     return 0;
 }
 

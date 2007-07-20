@@ -6,7 +6,7 @@
 
 #define GPCC_NET_CONN_MAX	256
 #define GPCC_NET_PROTO		"gpcc/3.1"
-
+#define HTTP_NET_PROTO          "http/1.0"
 
 /** identifies a connection, only non-zero values are valid */
 typedef apr_uint32_t gpcc_net_conn_t;
@@ -141,6 +141,9 @@ struct gpcc_net_request_t {
     int hc;
     char* hname[50];
     char* hvalue[50];
+    int datalen;
+    int offset;
+    char *data;
 };
 
 /**
@@ -151,6 +154,34 @@ struct gpcc_net_request_t {
  *  @return NULL if a full request is still not available in the buffer
  */
 APR_DECLARE(gpcc_net_request_t*) gpcc_net_parse_request(const char* buf, int* len, apr_pool_t* pool);
+
+/**
+ *  Get value of the header
+ *  @param req the request
+ *  @param header the header name
+ *  @param def default value
+ *  @return def if header not found
+ */
+APR_DECLARE(const char *) gpcc_net_request_get_header(gpcc_net_request_t *req, const char *header, const char *def);
+
+/**
+ *  Get integer value of the header
+ *  @param req the request
+ *  @param header the header name
+ *  @param def default value
+ *  @return def if header not found
+ */
+APR_DECLARE(int) gpcc_net_request_get_header_int(gpcc_net_request_t *req, const char *header, int def);
+
+/**
+ *  Get float value of the header
+ *  @param req the request
+ *  @param header the header name
+ *  @param def default value
+ *  @return def if header not found
+ */
+APR_DECLARE(float) gpcc_net_request_get_header_float(gpcc_net_request_t *req, const char *header, float def);
+
 
 
 /**
@@ -163,11 +194,22 @@ APR_DECLARE(gpcc_net_request_t*) gpcc_net_parse_request(const char* buf, int* le
 APR_DECLARE(apr_status_t) gpcc_net_read_request(gpcc_net_conn_t conn, 
 						gpcc_net_request_t** req, 
 						apr_pool_t* pool);
-
-
+			  
+			  
+/**
+ *  Read for HTTP-style request data
+ *  @param conn the connection
+ *  @param req the request
+ *  @return APR_EAGAIN if a full request is still not avaliable in the connection
+ */		     
+			    
+APR_DECLARE(apr_status_t) gpcc_net_read_request_data(gpcc_net_conn_t conn,
+						     gpcc_net_request_t *req);
 
 APR_DECLARE(apr_status_t) gpcc_net_send_request(gpcc_net_conn_t conn,
 						const gpcc_net_request_t* req);
+
+
 
 /**
  *  Send a packet

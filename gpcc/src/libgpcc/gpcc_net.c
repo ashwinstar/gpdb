@@ -779,7 +779,39 @@ APR_DECLARE(apr_status_t) gpcc_net_read_request(gpcc_net_conn_t conn,
     return *req ? 0 : APR_EAGAIN;
 }
     
+APR_DECLARE(apr_status_t) gpcc_net_read_request_data(gpcc_net_conn_t conn,
+						     gpcc_net_request_t *req)
+{
+    apr_uint32_t *spin;
+    item_t *item;
+    buf_t *bb;
+    int n, nn;
+
+    spin = gpcc_spin_secure(net.net_spin);
+    if (! (item = getitem(conn))) {
+	spin = gpcc_spin_release(spin);
+	return APR_EINVAL;
+    }
+
+    bb = &item->in;
+    n = bb->top - bb->bot;
+    if (n == 0) {
+	spin = gpcc_spin_release(spin);
+	return APR_EAGAIN;
+    }
+ 
+    nn = req->datalen - req->offset;
     
+    n = (n > nn) ? nn : n ;
+    memcpy(req->data + req->offset, bb->buf + bb->bot, n);
+    req->datalen += n;
+    bb->bot += n;
+    spin = gpcc_spin_release(spin);
+
+    return (req->datalen == req->offset) ? 0 : APR_EAGAIN;
+}
+
+					  
 APR_DECLARE(gpcc_net_request_t*) gpcc_net_parse_request(const char* buf, int* len, apr_pool_t* pool)
 {
     int n = *len;

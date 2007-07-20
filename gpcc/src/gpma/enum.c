@@ -56,6 +56,8 @@ const char* cmdstate_str(cmdstate_t cmdstate)
     switch (cmdstate) {
 	CASESTR(NULL_CMDSTATE);
 	CASESTR(SYSTEM_CMDSTATE);
+	CASESTR(HTTP_REQUEST_CMDSTATE);
+	CASESTR(GET_IDENTITY_CMDSTATE);
     case CMDSTATE_MAX: break;
     }
     return "UNKNOWN_CMDSTATE";
