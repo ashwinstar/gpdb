@@ -1801,10 +1801,12 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 								aggref->aggtype,
 								transfn_oid,
 								finalfn_oid,
+								InvalidOid /* prelim */,
 								InvalidOid /* invtrans */,
 								InvalidOid /* invprelim */,
 								&transfnexpr,
 								&finalfnexpr,
+								NULL,
 								NULL,
 								NULL);
 

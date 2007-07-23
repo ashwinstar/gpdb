@@ -438,10 +438,12 @@ build_aggregate_fnexprs(Oid *agg_input_types,
 						Oid agg_result_type,
 						Oid transfn_oid,
 						Oid finalfn_oid,
+						Oid prelimfn_oid,
 						Oid invtransfn_oid,
 						Oid invprelimfn_oid,
 						Expr **transfnexpr,
 						Expr **finalfnexpr,
+						Expr **prelimfnexpr,
 						Expr **invtransfnexpr,
 						Expr **invprelimfnexpr)
 {
@@ -496,6 +498,23 @@ build_aggregate_fnexprs(Oid *agg_input_types,
 											 COERCE_DONTCARE);
 	}
 
+	/* prelim function */
+	if (OidIsValid(prelimfn_oid))
+	{
+		/*
+		 * Build expr tree for inverse transition function
+		 */
+		argp = makeNode(Param);
+		argp->paramkind = PARAM_EXEC;
+		argp->paramid = -1;
+		argp->paramtype = agg_state_type;
+		args = list_make1(argp);
+
+		/* XXX: is agg_state_type correct here? */
+		*prelimfnexpr = (Expr *) makeFuncExpr(prelimfn_oid, agg_state_type,
+											  args, COERCE_DONTCARE);
+	}
+	
 	/* inverse functions */
 	if (OidIsValid(invtransfn_oid))
 	{
@@ -509,10 +528,11 @@ build_aggregate_fnexprs(Oid *agg_input_types,
 		args = list_make1(argp);
 
 		*invtransfnexpr = (Expr *) makeFuncExpr(invtransfn_oid,
-											 agg_result_type,
+											 agg_state_type,
 											 args,
 											 COERCE_DONTCARE);
 	}
+
 	if (OidIsValid(invprelimfn_oid))
 	{
 		/*
@@ -525,7 +545,7 @@ build_aggregate_fnexprs(Oid *agg_input_types,
 		args = list_make1(argp);
 
 		*invprelimfnexpr = (Expr *) makeFuncExpr(invprelimfn_oid,
-											 agg_result_type,
+											 agg_state_type,
 											 args,
 											 COERCE_DONTCARE);
 	}

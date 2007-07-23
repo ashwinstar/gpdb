@@ -1659,6 +1659,11 @@ typedef struct WindowState
 	TupleTableSlot *priorslot;	/* place for prior tuple */
 	TupleTableSlot *curslot;	/* current tuple */
 	TupleTableSlot *spare;	/* current tuple */
+
+	/* meta data about the current slot */
+	bool cur_slot_is_new; /* is this a slot from a buffer or outer plan */
+	bool cur_slot_part_break; /* slot breaks the partition key */
+	int cur_slot_key_break; /* break level of the key in the slot */
 	
 	/* Array of working states per distinct window function */
 	int			numfuncs;

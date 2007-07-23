@@ -28,10 +28,12 @@ extern void build_aggregate_fnexprs(Oid *agg_input_types,
 						Oid agg_result_type,
 						Oid transfn_oid,
 						Oid finalfn_oid,
+						Oid prelimfn_oid,
 						Oid invtransfn_oid,
 						Oid invprelimfn_oid,
 						Expr **transfnexpr,
 						Expr **finalfnexpr,
+						Expr **prelimfnexpr,
 						Expr **invtransfnexpr,
 						Expr **invprelimfnexpr);
 
