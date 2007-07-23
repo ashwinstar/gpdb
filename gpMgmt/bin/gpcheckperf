@@ -19,7 +19,7 @@ Usage: gpcheckperf <options>
                        d: runs only disk tests
                        s: runs only stream benchmark
     -B size    : where size specifies the block size for disk performance tests
-                 [default=8KB] e.g. 1KB, 4MB
+                 [default=32KB] e.g. 1KB, 4MB
     -S size    : where size specifies the file size for disk performance tests
                  [default=2X Memory] e.g. 500MB, 16GB
     -p port    : where port is the ssh port number [default=22]
@@ -50,7 +50,7 @@ opt['-D'] = False
 opt['-v'] = False
 opt['-V'] = False
 opt['-r'] = 'ds'
-opt['-B'] = 1024 * 8
+opt['-B'] = 1024 * 32
 opt['-S'] = 0
 opt['-p'] = 22
 opt['-h'] = []
