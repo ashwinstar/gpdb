@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include "gpma.h"
 
+#include "fsm_http.h"
 #include "fsm_system.h"
 
 APR_DECLARE(void) fsm_setup(void)
