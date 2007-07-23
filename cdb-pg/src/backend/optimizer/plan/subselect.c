@@ -1122,6 +1122,7 @@ finalize_plan(Plan *plan, List *rtable,
 		case T_ExternalScan:
 		case T_Material:
 		case T_Sort:
+		case T_ShareInputScan:
 		case T_Unique:
 		case T_SetOp:
 		case T_Group:
