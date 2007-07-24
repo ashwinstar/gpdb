@@ -1680,6 +1680,9 @@ typedef struct WindowState
 	 */
 	MemoryContext transcontext;
 
+	/* framed window functions need access to their frames */
+	WindowStatePerFunction cur_funcstate;
+
 	/* frame buffers */
 	Dllist *trail;
 	Dllist *lead;

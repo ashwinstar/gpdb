@@ -3318,10 +3318,10 @@ DATA(insert OID = 7006 ( ntile				PGNSP PGUID 12 f f f f i 1 20 t "20"  _null_ _
 DATA(insert OID = 7007 ( ntile				PGNSP PGUID 12 f f f f i 1 20 t "1700"  _null_ _null_ _null_  window_dummy - _null_ ));
 
 /* XXX for now, window functions with arguments, just cite numeric = 1700, need to overload. */
-/* DATA(insert OID = 7xxx ( first_value		PGNSP PGUID 12 f f f f i 1 20 "1700"  _null_ _null_ _null_  window_dummy - _null_ )); */
-/* DATA(insert OID = 7xxx ( last_value			PGNSP PGUID 12 f f f f i 1 20 "1700"  _null_ _null_ _null_  window_dummy - _null_ )); */
-/* DATA(insert OID = 7xxx ( lag				PGNSP PGUID 12 f f f f i 3 20 "1700 1700 1700"  _null_ _null_ _null_  window_dummy - _null_ )); */
-/* DATA(insert OID = 7xxx ( lead				PGNSP PGUID 12 f f f f i 3 20 "1700 1700 1700"  _null_ _null_ _null_  window_dummy - _null_ )); */
+/* DATA(insert OID = 7xxx ( first_value		PGNSP PGUID 12 f f f f i 1 20 t "1700"  _null_ _null_ _null_  window_dummy - _null_ )); */
+/* DATA(insert OID = 7xxx ( last_value			PGNSP PGUID 12 f f f f i 1 20 t "1700"  _null_ _null_ _null_  window_dummy - _null_ )); */
+/* DATA(insert OID = 7xxx ( lag				PGNSP PGUID 12 f f f f i 3 20 t "1700 1700 1700"  _null_ _null_ _null_  window_dummy - _null_ )); */
+DATA(insert OID = 7011 ( lead				PGNSP PGUID 12 f f f f i 3 20 t "1700 1700 1700"  _null_ _null_ _null_  window_dummy - _null_ ));
 
 /* We use the same procedures here as above since the types are binary compatible. */
 DATA(insert OID = 2174 ( bpchar_pattern_lt	  PGNSP PGUID 12 f f t f i 2 16 f "1042 1042" _null_ _null_ _null_ text_pattern_lt - _null_ ));
@@ -4046,6 +4046,7 @@ DATA(insert OID = 7101 (  rank_immed   PGNSP PGUID 12 f f t f i 1 20 f "2281" _n
 DESCR("window immediate function");
 DATA(insert OID = 7102 (  dense_rank_immed   PGNSP PGUID 12 f f t f i 1 20 f "2281" _null_ _null_ _null_ dense_rank_immed - _null_ ));
 DESCR("window immediate function");
+DATA(insert OID = 7106 (  lead_immed_int   PGNSP PGUID 12 f f t f i 4 23 f "2281 23 23 23" _null_ _null_ _null_ lead_immed_int - _null_ ));
 DATA(insert OID = 7204 (  cume_dist_prelim   PGNSP PGUID 12 f f t f i 1 20 f "2281" _null_ _null_ _null_ cume_dist_prelim - _null_ ));
 DESCR("window preliminary function");
 DATA(insert OID = 7205 (  ntile_prelim_int   PGNSP PGUID 12 f f t f i 2 1016 f "2281 23" _null_ _null_ _null_ ntile_prelim_int - _null_ ));

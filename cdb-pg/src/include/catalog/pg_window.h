@@ -129,7 +129,8 @@ DATA(insert ( 7007	t f f t	0			7207		1016		7305 ));
 /* ... for many datatypes */
 
 /* lead */
-/* DATA(insert ( 70xx	t f f f	0				0			0			0 )); */
+#define LEAD_WINDOW_FUNC_OID 7011
+DATA(insert ( 7011	t f f f	7106		0			0			0 ));
 /* ... for many datatypes */
 
 

@@ -141,8 +141,11 @@ typedef struct WindowStatePerFunctionData
 	/* offsets into the frame buffers */
 	int32 prev_trail_edge;
 	int32 cur_trail_edge;
+	bool cur_trail_edge_equal; /* edge is exactly matched */
+	
 	int32 prev_lead_edge;
 	int32 cur_lead_edge;
+	bool cur_lead_edge_equal; /* edge is exactly matched */
 
 	/* where we've processed up to */
 	int32 trail_done;
@@ -1199,7 +1202,7 @@ cmp_deformed_tuple(Datum *a, bool *a_nulls, Datum *b, bool *b_nulls,
 	 */
 
 	if (is_equal)
-		i = ncols;
+		i = ncols - 1;
 	else
 		i = 0;
 
@@ -1356,12 +1359,23 @@ set_edge_val(WindowState *wstate, WindowFrameState fs, WindowFrameEdge *e,
 				fs->lead_edge_set = true;
 			}
 		}
-		else if (key->frame->trail->kind == WINDOW_CURRENT_ROW)
+		else if (e->kind == WINDOW_CURRENT_ROW)
 		{
-			memcpy(fs->trail_edge_d, vals,
-				   sizeof(Datum) * key->numSortCols);
-			memcpy(fs->trail_edge_nulls, nulls,
-				   sizeof(Datum) * key->numSortCols);
+			Datum *d;
+			bool *n;
+			
+			if (is_trail)
+			{
+				d = fs->trail_edge_d;
+				n = fs->trail_edge_nulls;
+			}
+			else
+			{
+				d = fs->lead_edge_d;
+				n = fs->lead_edge_nulls;
+			}
+			memcpy(d, vals, sizeof(Datum) * key->numSortCols);
+			memcpy(n, nulls, sizeof(Datum) * key->numSortCols);
 		}
 	}
 }
@@ -1408,6 +1422,7 @@ get_last_trans_val(WindowStatePerFunction funcstate)
 {
 	WindowRangeBuffer *wrb;
 
+	Insist(funcstate->frame_mem_used > 0);
 	wrb = (WindowRangeBuffer *)funcstate->frame_trans_vals[funcstate->frame_mem_used - 1];
 	return wrb->transval;
 }
@@ -1462,10 +1477,12 @@ appendRangeTuple(WindowState *wstate, WindowKey *key,
 		int funcno = lfirst_int(lc);
 		WindowStatePerFunction funcstate = &wstate->func_state[funcno];
 		WindowTransValue *wtv;
+		bool append = true;
 
-		if (is_peer)
+		if (is_peer && funcstate->frame_mem_used > 0)
 		{
 			wtv = get_last_trans_val(funcstate);
+			append = false;
 		}
 		else
 		{
@@ -1484,7 +1501,7 @@ appendRangeTuple(WindowState *wstate, WindowKey *key,
 		invokeWindowedFunc(funcstate, funcstate->transfn, wtv, 
 						   wstate, econtext);
 
-		if (!is_peer)
+		if (append)
 		{
 			bufferAddRangeTransValue(wstate, key, funcstate, wtv, vals, nulls,
 									 tuple_before_edge);
@@ -1631,65 +1648,132 @@ adjustEdges(WindowState *wstate)
 				 * careful.
 				 */
 
-				funcstate->prev_trail_edge = funcstate->cur_trail_edge;
-
-				if (funcstate->prev_trail_edge > 0)
-					pos = funcstate->prev_trail_edge;
-
-				while (pos <= (funcstate->frame_mem_used - 1))
+				if (key->frame->trail->kind != WINDOW_UNBOUND_PRECEDING)
 				{
-					bool res;
-					WindowRangeBuffer *wrb;
-
-					wrb = funcstate->frame_trans_vals[pos];
-
-					res = cmp_deformed_tuple(wrb->key, wrb->nulls,
-											 fs->trail_edge_d,
-											 fs->trail_edge_nulls,
-											 key->numSortCols,
-											 level_state->eqfunctions,
-											 econtext->ecxt_per_tuple_memory,
-											 false);
-					if (!res)
+					funcstate->prev_trail_edge = funcstate->cur_trail_edge;
+					/* it was greater than the edge, so go past it */
+					if (!funcstate->cur_trail_edge_equal && 
+						funcstate->prev_trail_edge != -1)
 					{
-						funcstate->cur_trail_edge = pos;
-						break;
+						funcstate->prev_trail_edge++;
 					}
-
-					pos++;
+					elog(NOTICE, "prev trail = %i", funcstate->prev_trail_edge);
+	
+					if (funcstate->prev_trail_edge > 0)
+						pos = funcstate->prev_trail_edge;
+	
+					while (pos <= (funcstate->frame_mem_used - 1))
+					{
+						bool res;
+						WindowRangeBuffer *wrb;
+	
+						wrb = funcstate->frame_trans_vals[pos];
+	
+						res = cmp_deformed_tuple(wrb->key, wrb->nulls,
+												 fs->trail_edge_d,
+												 fs->trail_edge_nulls,
+												 key->numSortCols,
+												 level_state->ltfunctions,
+											 econtext->ecxt_per_tuple_memory,
+												 false);
+						/* add equal test */
+						if (res)
+						{
+							if (funcstate->prev_trail_edge == -1)
+								funcstate->prev_trail_edge = 0;
+	
+							funcstate->cur_trail_edge = pos;
+							funcstate->cur_trail_edge_equal = false;
+						}
+						else
+						{
+							res =  cmp_deformed_tuple(wrb->key, wrb->nulls,
+												 fs->trail_edge_d,
+												 fs->trail_edge_nulls,
+												 key->numSortCols,
+												 level_state->eqfunctions,
+											 econtext->ecxt_per_tuple_memory,
+												 true);
+							if (res)
+							{
+								if (funcstate->prev_trail_edge == -1)
+									funcstate->prev_trail_edge = 0;
+	
+								funcstate->cur_trail_edge = pos;
+								funcstate->cur_trail_edge_equal = true;
+							}
+							/* we must break either way */
+							break;
+						}
+	
+						pos++;
+					}
 				}
-
+	
 				/* now, leading edge */
 				funcstate->prev_lead_edge = funcstate->cur_lead_edge;
 
+				/* it was greater than the edge, so go past it */
+				if (!funcstate->cur_lead_edge_equal && 
+					funcstate->prev_lead_edge != -1)
+				{
+					funcstate->prev_lead_edge++;
+				}
+
 				if (funcstate->prev_lead_edge > 0)
 					pos = funcstate->prev_lead_edge;
+				else
+					pos = 0; /* reset */
 
 				while (pos <= (funcstate->frame_mem_used - 1))
 				{
-					bool res;
+					bool res1 = false, res2 = false;
 					WindowRangeBuffer *wrb;
 
 					wrb = funcstate->frame_trans_vals[pos];
 
-					res = cmp_deformed_tuple(wrb->key, wrb->nulls,
+					res1 = cmp_deformed_tuple(wrb->key, wrb->nulls,
 											 fs->lead_edge_d,
 											 fs->lead_edge_nulls,
 											 key->numSortCols,
-											 level_state->eqfunctions,
+											 level_state->ltfunctions,
 											 econtext->ecxt_per_tuple_memory,
 											 false);
-					if (!res)
+					
+					if (!res1)
+						res2 = cmp_deformed_tuple(wrb->key, wrb->nulls,
+												 fs->lead_edge_d,
+												 fs->lead_edge_nulls,
+												 key->numSortCols,
+												 level_state->eqfunctions,
+												 econtext->ecxt_per_tuple_memory,
+												 true);
+					
+					if (res1 || res2)
 					{
+						if (funcstate->prev_lead_edge == -1)
+						{
+							funcstate->prev_lead_edge =
+								funcstate->cur_trail_edge;
+						}
+
 						funcstate->cur_lead_edge = pos;
 						found_lead = true;
-						break;
+						if (res2)
+							funcstate->cur_lead_edge_equal = true;
+						else
+							funcstate->cur_lead_edge_equal = false;
 					}
+					else
+						break;
 
 					pos++;
 				}
+
+#if 0
 				if (!found_lead)
 					funcstate->cur_lead_edge = -1;
+#endif
 			}
 		}
 	}
@@ -1857,34 +1941,38 @@ populateFrameBuffers(WindowState *wstate)
 			else
 			{
 				bool is_peer = false;
-#if 0
 				Datum *new_vals;
 				bool *new_nulls;
-#endif
 				bool lttrail, eqtrail, ltlead, eqlead;
 				bool tuple_before_edge = false;
 				bool tuple_in_buf = false;
 				
 				/* if this is a peer of the previous tuple, just append */
-				if (level < wbi.min_key_break)
+				if (level < wbi.min_key_break || wbi.min_key_break == -1)
 					is_peer = true;
 
-#if 0
 				new_vals = palloc(sizeof(Datum) * key->numSortCols);
 				new_nulls = palloc(sizeof(Datum) * key->numSortCols);
 
 				deform_window_tuple(slot, key->numSortCols, key->sortColIdx,
 									new_vals, new_nulls,
 									wstate->transcontext);
-#endif
-				/* XXX: this needs to be a bit smarter! */
-				lttrail = cmp_deformed_tuple(vals[level], nulls[level],
-										   fs->trail_edge_d,
-										   fs->trail_edge_nulls,
-										   key->numSortCols,
-										   level_state->ltfunctions,
-										   econtext->ecxt_per_tuple_memory,
-										   false);
+	
+				if (key->frame->trail->kind == WINDOW_UNBOUND_PRECEDING)
+					lttrail = false;
+				else if (key->frame->trail->kind == WINDOW_CURRENT_ROW ||
+						 EDGE_IS_BOUND(key->frame->trail))
+				{
+						 
+					/* XXX: if this is a peer, why do this? */			
+					lttrail = cmp_deformed_tuple(new_vals, new_nulls,
+											   fs->trail_edge_d,
+											   fs->trail_edge_nulls,
+											   key->numSortCols,
+											   level_state->ltfunctions,
+											   econtext->ecxt_per_tuple_memory,
+											   false);
+				}
 
 				if (lttrail)
 				{
@@ -1892,13 +1980,17 @@ populateFrameBuffers(WindowState *wstate)
 				}
 				else
 				{
-					eqtrail = cmp_deformed_tuple(vals[level], nulls[level],
+					if (key->frame->trail == WINDOW_UNBOUND_PRECEDING)
+						eqtrail = false;
+					else
+						eqtrail = cmp_deformed_tuple(new_vals, new_nulls,
 											   fs->trail_edge_d,
 											   fs->trail_edge_nulls,
 											   key->numSortCols,
 											   level_state->eqfunctions,
 											   econtext->ecxt_per_tuple_memory,
 											   false);
+
 					if (eqtrail)
 					{
 						tuple_in_buf = true;
@@ -1906,14 +1998,22 @@ populateFrameBuffers(WindowState *wstate)
 					}
 					else
 					{
-						/* see if it is less than or equal to the lead */
-						ltlead = cmp_deformed_tuple(vals[level], nulls[level],
-										   fs->lead_edge_d,
-										   fs->lead_edge_nulls,
-										   key->numSortCols,
-										   level_state->ltfunctions,
+						if (key->frame->lead->kind == WINDOW_UNBOUND_FOLLOWING)
+						{
+							ltlead = true;
+						}
+						else
+						{
+							/* see if it is less than or equal to the lead */
+							ltlead = cmp_deformed_tuple(new_vals, new_nulls,
+											   fs->lead_edge_d,
+											   fs->lead_edge_nulls,
+											   key->numSortCols,
+											   level_state->ltfunctions,
 										   econtext->ecxt_per_tuple_memory,
-										   false);
+											   false);
+						}
+						
 						if (ltlead)
 						{
 							tuple_in_buf = true;
@@ -1922,14 +2022,14 @@ populateFrameBuffers(WindowState *wstate)
 						else
 						{
 							eqlead = 
-								cmp_deformed_tuple(vals[level], 
-												   nulls[level],
-												   fs->trail_edge_d,
-												   fs->trail_edge_nulls,
+								cmp_deformed_tuple(new_vals, 
+												   new_nulls,
+												   fs->lead_edge_d,
+												   fs->lead_edge_nulls,
 												   key->numSortCols,
 												   level_state->eqfunctions,
 											   econtext->ecxt_per_tuple_memory,
-											   	   false);
+											   	   true);
 
 							if (eqlead)
 							{
@@ -1938,11 +2038,10 @@ populateFrameBuffers(WindowState *wstate)
 							}
 						}
 					}
-
 				}
 				
 				appendRangeTuple(wstate, key, key->frame, fs, 
-								 vals[level], nulls[level], 
+								 new_vals, new_nulls, 
 								 level, level_state->level_funcs,
 								 is_peer, tuple_in_buf);
 				tuple_in_frame = tuple_before_edge;
@@ -1987,11 +2086,17 @@ func_get_vals(WindowStatePerFunction funcstate, long int start,
 	{
 		if (funcstate->trail_done >= end)
 			return NIL;
+
+		if (start < funcstate->trail_done)
+			start = funcstate->trail_done;
 	}
 	else
 	{
 		if (funcstate->lead_done >= end)
 			return NIL;
+
+		if (start < funcstate->lead_done)
+			start = funcstate->lead_done;
 	}
 
 	n = start;
@@ -2012,12 +2117,12 @@ func_get_vals(WindowStatePerFunction funcstate, long int start,
 	if (is_trail)
 	{
 		elog(NOTICE, "setting trail done to %li", n);
-		funcstate->trail_done = n;
+		funcstate->trail_done = n - 1;
 	}
 	else
 	{
 		elog(NOTICE, "setting lead_done to %li", n);
-		funcstate->lead_done = n;
+		funcstate->lead_done = n - 1;
 	}
 	return ret;
 }
@@ -2117,16 +2222,37 @@ calculateTransVals(WindowState *wstate)
 			 */
 			if (OidIsValid(funcstate->invprelimfn_oid))
 			{
+				long int end = funcstate->cur_trail_edge;
+				long int start;
+				
+				if (!key->frame->is_rows)
+				{
+					/* The current trail edge hovers somewhere between the
+					 * previous edge and the next value -- unless it is
+					 * equal to it. If it is not equal, say it is so that
+					 * process_vals() will return something.
+					 */
+					if (!funcstate->cur_trail_edge_equal)
+						end++;
+				}
 				vals = func_get_vals(funcstate, funcstate->prev_trail_edge,
-									 funcstate->cur_trail_edge, true);
+									 end, true);
 
 				process_vals(wstate, funcstate, vals, key->frame->is_rows,
 							 false);
 
 				/* XXX: must be able to be starter than this! */
+#if 0
 				if (funcstate->prev_lead_edge == -1)
-					funcstate->prev_lead_edge = 0;
-				
+				{
+					start = funcstate->prev_lead_edge = 0;
+				}
+				else
+				{
+					if (!key->frame->is_rows)
+						start = funcstate->prev_lead_edge + 1;
+				}
+#endif
 				vals = func_get_vals(funcstate, funcstate->prev_lead_edge,
 									 funcstate->cur_lead_edge, false);
 
@@ -2904,8 +3030,12 @@ init_frames(WindowState *wstate)
 			{
 				lvl_funcs = lappend_int(lvl_funcs, funcno);
 				
-				if (!frame || (fs->default_frame && !funcstate->allowframe))
+				if (!frame ||
+					(fs->default_frame && !funcstate->isAgg && 
+					 !funcstate->allowframe))
+				{
 					funcstate->trivial_frame = true;
+				}
 			}
 	
 			/* 
@@ -2913,9 +3043,10 @@ init_frames(WindowState *wstate)
 			 * as ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW with no
 			 * exclusion clause OR it is a window function without a frame.
 			 */
-			if (frame && frame->trail->kind == WINDOW_UNBOUND_PRECEDING && 
-				 frame->lead->kind == WINDOW_CURRENT_ROW &&
-				 frame->exclude == WINDOW_EXCLUSION_NULL)
+			if (frame && frame->is_rows && 
+				frame->trail->kind == WINDOW_UNBOUND_PRECEDING && 
+				frame->lead->kind == WINDOW_CURRENT_ROW &&
+				frame->exclude == WINDOW_EXCLUSION_NULL)
 			{
 				funcstate->trivial_frame = true;
 			}
@@ -3273,6 +3404,7 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 			 *
 			 *   RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
 			 */
+			f->is_rows = false;
 			f->trail->kind = WINDOW_UNBOUND_PRECEDING;
 			f->lead->kind = WINDOW_CURRENT_ROW;
 
@@ -4014,4 +4146,60 @@ ntile_final(PG_FUNCTION_ARGS)
 			(row_index - prefix_size) / min_size;
 
 	PG_RETURN_INT64(result);
+}
+
+/*
+ * Initial implementation of LEAD(col, offset, value_expr)
+ */
+Datum
+lead_immed_int(PG_FUNCTION_ARGS)
+{
+	int64 offset;
+	int32 val_expr;
+	bool val_expr_null = true;
+	WindowRefExprState *ref_state = (WindowRefExprState *) PG_GETARG_POINTER(0);
+	WindowState *window_state = ref_state->windowstate;
+	WindowStatePerFunction funcstate = window_state->cur_funcstate;
+	long int pos;
+
+	Insist(PG_NARGS() >= 2);
+	
+	if (PG_NARGS() > 3)
+	{
+		val_expr = PG_GETARG_INT32(3);
+		val_expr_null = PG_ARGISNULL(3);
+	}
+	
+	if (PG_NARGS() > 2)
+	{
+		if (PG_ARGISNULL(2))
+			elog(ERROR, "LEAD offset cannot be NULL");
+
+		offset = PG_GETARG_INT64(2);
+	}
+	
+	if (PG_NARGS() == 2)
+	{
+	 	offset = 1; /* default */
+	}
+
+	pos = funcstate->cur_trail_edge + (long int)offset;
+	
+	if (pos > funcstate->frame_mem_used - 1)
+	{
+		PG_RETURN_NULL();
+	}
+	else
+	{
+		Datum d;
+		WindowRowsBuffer *wrb;
+
+		wrb = funcstate->frame_trans_vals[pos];
+
+		if (wrb->transval->transValueIsNull)
+			PG_RETURN_NULL();
+		
+		d = wrb->transval->transValue;
+		PG_RETURN_INT32(d);
+	}
 }
