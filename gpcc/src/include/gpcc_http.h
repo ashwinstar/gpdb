@@ -8,7 +8,7 @@
 typedef struct gpcc_http_request_t gpcc_http_request_t;
 
 struct gpcc_http_request_t {
-    gpcc_net_request_t *net;
+    gpcc_net_request_t net;
     int pc;
     char *pname[50];
     char *pvalue[50];

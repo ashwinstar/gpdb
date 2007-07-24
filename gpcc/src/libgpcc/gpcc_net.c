@@ -15,6 +15,7 @@
 
 #include <signal.h>
 #include <gpcc_net.h>
+#include <gpcc_http.h>
 #include <gpcc_spin.h>
 #include <apr_network_io.h>
 #include <apr_thread_proc.h>
@@ -920,11 +921,23 @@ APR_DECLARE(gpcc_net_request_t*) gpcc_net_parse_request(const char* buf, int* le
     /* we have a complete HTTP-style HEADER request (terminated by empty line) */
     *len = n = p - buf; /* consume it */
     line = apr_pstrndup(pool, buf, n); /* dup it */
-    req = apr_pcalloc(pool, sizeof(gpcc_net_request_t));
 
     /* for first line */
     line = apr_strtok(line, "\n", &last);
     line = gpcc_string_trim(line);
+
+    if (strcasestr(line, GPCC_NET_PROTO)) {
+	req = apr_pcalloc(pool, sizeof(gpcc_net_request_t));
+	
+    } 
+    else if (strcasestr(line, HTTP_NET_PROTO)) {
+	req = apr_pcalloc(pool, sizeof(gpcc_http_request_t));
+    }
+    else {
+	gpcc_log_error("Protocol not supported");
+	return 0;
+    }
+
     if (0 != apr_tokenize_to_argv(line, &req->argv, pool))
 	return req;
     while (req->argv[req->argc]) 

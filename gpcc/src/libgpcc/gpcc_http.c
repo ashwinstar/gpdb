@@ -9,7 +9,7 @@ static char *url_decode(apr_pool_t *pool, char *src)
 
 APR_DECLARE(gpcc_http_request_t *) gpcc_http_parse_request(gpcc_net_request_t *req, apr_pool_t *pool)
 {
-    gpcc_http_request_t *http;
+    gpcc_http_request_t *http = (gpcc_http_request_t *) req;
     char *s, *last, *tok, *p;
     int i;
 
@@ -17,8 +17,6 @@ APR_DECLARE(gpcc_http_request_t *) gpcc_http_parse_request(gpcc_net_request_t *r
 	gpcc_log_error("invalid HTTP request");
 	return 0;
     }
-    http = apr_pcalloc(pool, sizeof(gpcc_http_request_t));
-    http->net = req;
     
     /* parse URL */
     http->cpath = req->argv[1];
@@ -84,7 +82,7 @@ APR_DECLARE(float) gpcc_http_request_get_param_float(gpcc_http_request_t *req, c
  */
 APR_DECLARE(const char *) gpcc_http_request_get_method(gpcc_http_request_t *req)
 {
-    return req->net->argv[0];
+    return req->net.argv[0];
 }
 
 /**
@@ -92,8 +90,8 @@ APR_DECLARE(const char *) gpcc_http_request_get_method(gpcc_http_request_t *req)
  */
 APR_DECLARE(const char *) gpcc_http_request_get_data(gpcc_http_request_t *req, int *len)
 {
-    *len = req->net->datalen;
-    return req->net->data;
+    *len = req->net.datalen;
+    return req->net.data;
 }
 
 /**
