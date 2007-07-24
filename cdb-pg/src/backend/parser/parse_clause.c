@@ -1880,6 +1880,10 @@ grouping_rewrite_walker(Node *node, void *context)
 	{
 		return true;
 	}
+	else if (IsA(node, TypeCast))
+	{
+		return true;
+	}
 	else if (IsA(node, GroupingFunc))
 	{
 		GroupingFunc *gf = (GroupingFunc *)node;
@@ -1919,12 +1923,12 @@ grouping_rewrite_walker(Node *node, void *context)
 				if (IsA(node, RowExpr))
 					ereport(ERROR,
 							(errcode(ERRCODE_GROUPING_ERROR),
-							 errmsg("row type can not be used inside a Grouping function.")));
+							 errmsg("row type can not be used inside a grouping function.")));
 
 				if (!IsA(node, Var))
 					ereport(ERROR,
 							(errcode(ERRCODE_GROUPING_ERROR),
-							 errmsg("expression in a Grouping fuction does not appear in GROUP BY.")));
+							 errmsg("expression in a grouping fuction does not appear in GROUP BY.")));
 
 				Assert(IsA(node, Var));
 				Assert(var->varno > 0);
