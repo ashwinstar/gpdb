@@ -3,7 +3,7 @@
 
 #include <gpcc_net.h>
 
-#define HTTP_NET_PROTO          "http/1.0"
+#define HTTP_NET_PROTO          "http/1.1"
 
 typedef struct gpcc_http_request_t gpcc_http_request_t;
 
