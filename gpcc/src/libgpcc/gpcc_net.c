@@ -934,7 +934,7 @@ APR_DECLARE(gpcc_net_request_t*) gpcc_net_parse_request(const char* buf, int* le
 	req = apr_pcalloc(pool, sizeof(gpcc_http_request_t));
     }
     else {
-	gpcc_log_error("Protocol not supported");
+	gpcc_log_error("Protocol not supported: %s", line);
 	return 0;
     }
 
