@@ -253,7 +253,8 @@ ExecHashJoin(HashJoinState *node)
 				Assert(batchno > hashtable->curbatch);
 				ExecHashJoinSaveTuple(ExecFetchSlotMinimalTuple(outerTupleSlot),
 									  hashvalue,
-                                      &hashtable->batches[batchno]->outerside);
+                                      &hashtable->batches[batchno]->outerside,
+									  hashtable->bfCxt);
 				node->hj_NeedNewOuter = true;
 				continue;		/* loop around for a new outer tuple */
 			}
@@ -779,15 +780,21 @@ start_over:
  */
 void
 ExecHashJoinSaveTuple(MinimalTuple tuple, uint32 hashvalue,
-					  struct HashJoinBatchSide *batchside)
+					  struct HashJoinBatchSide *batchside,
+					  MemoryContext bfCxt)
 {
 	BufFile    *file = batchside->bufFile;
 	size_t		written;
 
 	if (file == NULL)
 	{
+		MemoryContext   oldcxt;
 		/* First write to this batch file, so open it. */
+		oldcxt = MemoryContextSwitchTo(bfCxt);
 		file = BufFileCreateTemp(false);
+
+		MemoryContextSwitchTo(oldcxt);
+
 		batchside->bufFile = file;
 	}
 

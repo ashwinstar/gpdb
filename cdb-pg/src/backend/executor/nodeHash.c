@@ -303,6 +303,13 @@ ExecHashTableCreate(Hash *node, List *hashOperators)
 												ALLOCSET_DEFAULT_INITSIZE,
 												ALLOCSET_DEFAULT_MAXSIZE);
 
+	/* CDB */ /* track temp buf file allocations in separate context */
+	hashtable->bfCxt = AllocSetContextCreate(hashtable->hashCxt,
+												"hbbfcxt",
+												ALLOCSET_DEFAULT_MINSIZE,
+												ALLOCSET_DEFAULT_INITSIZE,
+												ALLOCSET_DEFAULT_MAXSIZE);
+
 	/*
      * Allocate data that will live for the life of the hashjoin
      */
@@ -589,7 +596,8 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 				Assert(batchno > curbatch);
 				ExecHashJoinSaveTuple(HJTUPLE_MINTUPLE(tuple),
 									  tuple->hashvalue,
-                                      &hashtable->batches[batchno]->innerside);
+                                      &hashtable->batches[batchno]->innerside,
+									  hashtable->bfCxt);
 				/* and remove from hash table */
 				if (prevtuple)
 					prevtuple->next = nexttuple;
@@ -710,7 +718,7 @@ ExecHashTableInsert(HashJoinTable hashtable,
 		 * put the tuple into a temp file for later batches
 		 */
 		Assert(batchno > hashtable->curbatch);
-		ExecHashJoinSaveTuple(tuple, hashvalue, &batch->innerside);
+		ExecHashJoinSaveTuple(tuple, hashvalue, &batch->innerside, hashtable->bfCxt);
 	}
 }
 

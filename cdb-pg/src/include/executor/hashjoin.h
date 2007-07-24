@@ -174,6 +174,7 @@ typedef struct HashJoinTableData
 
 	MemoryContext hashCxt;		/* context for whole-hash-join storage */
 	MemoryContext batchCxt;		/* context for this-batch-only storage */
+	MemoryContext bfCxt;		/* CDB */ /* context for temp buf file */
 
     HashJoinTableStats *stats;  /* statistics workarea for EXPLAIN ANALYZE */
 } HashJoinTableData;

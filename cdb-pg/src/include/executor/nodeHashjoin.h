@@ -27,7 +27,8 @@ extern void ExecEndHashJoin(HashJoinState *node);
 extern void ExecReScanHashJoin(HashJoinState *node, ExprContext *exprCtxt);
 
 extern void ExecHashJoinSaveTuple(MinimalTuple tuple, uint32 hashvalue,
-					              struct HashJoinBatchSide *batchside);
+					              struct HashJoinBatchSide *batchside,
+								  MemoryContext bfCxt);
 
 extern executorTupleQueue *makeTQ(int size, struct Instrumentation *instr);
 extern void enqueueTQ(executorTupleQueue *tq, TupleTableSlot *slot);
