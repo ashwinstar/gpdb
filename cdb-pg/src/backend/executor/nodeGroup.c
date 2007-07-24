@@ -268,14 +268,19 @@ ExecGroup(GroupState *node)
 			/* modify the tuple */
 			if (group_node->numNullCols > 0)
 			{
+				HeapTuple newtuple;
+
 				copytuple = ExecCopySlotTuple(econtext->ecxt_scantuple);
 				/* modify this tuple */
-				copytuple =
+				newtuple =
 					heap_modify_tuple(copytuple,
 									  firsttupleslot->tts_tupleDescriptor,
 									  node->replValues,
 									  node->replIsnull,
 									  node->doReplace);
+				/* free copytuple */
+				heap_freetuple(copytuple);
+				copytuple = newtuple;
 
 				ExecStoreTuple(copytuple,
 							   econtext->ecxt_scantuple,

@@ -1306,13 +1306,19 @@ agg_retrieve_direct(AggState *aggstate)
 			 */
 			if (node->numNullCols > 0)
 			{
+				HeapTuple newtuple;
+
 				copytuple = ExecCopySlotTuple(econtext->ecxt_scantuple);
-				copytuple =
+				newtuple =
 					heap_modify_tuple(copytuple,
 									  firstSlot->tts_tupleDescriptor,
 									  aggstate->replValues,
 									  aggstate->replIsnull,
 									  aggstate->doReplace);
+				/* free copytuple */
+				heap_freetuple(copytuple);
+				copytuple = newtuple;
+
 				ExecStoreTuple(copytuple,
 							   econtext->ecxt_scantuple,
 							   InvalidBuffer,
