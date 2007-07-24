@@ -517,6 +517,8 @@ resetPartFuncFrameBuf(WindowState *wstate)
 			funcstate->prev_lead_edge = funcstate->cur_lead_edge = -1;
 			funcstate->trail_done = -1;
 			funcstate->lead_done = -1;
+			funcstate->cur_trail_edge_equal = false;
+			funcstate->cur_lead_edge_equal = false;
 		}
 		else
 		{
@@ -532,6 +534,10 @@ resetPartFuncFrameBuf(WindowState *wstate)
 
 			funcstate->trail_done = -1;
 			funcstate->lead_done = -1;
+
+			funcstate->cur_trail_edge_equal = false;
+			funcstate->cur_lead_edge_equal = false;
+		
 		}
 	}
 }
@@ -568,10 +574,22 @@ resetPartFrameBuf(WindowState *wstate)
 			pfree(wt);
 			free(curr);
 		}
+		
+	    while ((curr = DLRemHead(wstate->lead)) != NULL)
+		{
+			WindowTuple *wt = DLE_VAL(curr);
+	
+			pfree(wt->tup);
+			pfree(wt);
+			free(curr);
+		}
 	
 		wt = DLE_VAL(save);
 		wt->part_break = false; /* new tuple, therefore not a break */
 		DLAddTail(wstate->trail, save);
+		wstate->cur_slot_is_new = true;
+		wstate->cur_slot_part_break = false;
+		wstate->cur_slot_key_break = -1;
 	}
 	else
 	{
@@ -720,13 +738,25 @@ fetchTupleThroughBuf(WindowState *wstate)
 static long int
 moveToBufEnd(WindowState *wstate)
 {
+	/* we only want to go so far as the end of the partition */
 	Dlelem *el;
+	Dlelem *save;
 	long int n = 0;
 	
 	while ((el = DLRemHead(wstate->lead)))
 	{
-		n++;
-		DLAddTail(wstate->trail, el);
+		WindowTuple *wt = DLE_VAL(el);
+		
+		if (wt->part_break)
+		{
+			DLAddHead(wstate->lead, el);
+			break;
+		}
+		else
+		{
+			n++;
+			DLAddTail(wstate->trail, el);
+		}
 	}
 	return n;
 }
@@ -1490,7 +1520,7 @@ appendRangeTuple(WindowState *wstate, WindowKey *key,
 
 			oldcxt = MemoryContextSwitchTo(wstate->transcontext);
 			wtv = palloc(sizeof(WindowTransValue));
-			wtv->noTransValue = false;
+			wtv->noTransValue = funcstate->aggInitValueIsNull;
 
 			wtv->transValue = datumCopy(funcstate->aggInitValue, 
 										funcstate->aggTranstypeByVal,
@@ -1714,8 +1744,7 @@ adjustEdges(WindowState *wstate)
 				funcstate->prev_lead_edge = funcstate->cur_lead_edge;
 
 				/* it was greater than the edge, so go past it */
-				if (!funcstate->cur_lead_edge_equal && 
-					funcstate->prev_lead_edge != -1)
+				if (funcstate->prev_lead_edge != -1)
 				{
 					funcstate->prev_lead_edge++;
 				}
@@ -1866,7 +1895,6 @@ populateFrameBuffers(WindowState *wstate)
 		{
 			WindowTuple *wt;
 			wt = fetchTupleThroughBuf(wstate);
-			ntuples++;
 
 			if (!wt)
 				break;
@@ -1880,6 +1908,9 @@ populateFrameBuffers(WindowState *wstate)
 			lead_row_index++;
 			wbi.part_break = wt->part_break;
 			wbi.min_key_break = wt->min_key_break;
+
+			if (!wbi.part_break)
+				ntuples++;
 		}
 		
 		DB_TTS(slot);
@@ -3030,9 +3061,7 @@ init_frames(WindowState *wstate)
 			{
 				lvl_funcs = lappend_int(lvl_funcs, funcno);
 				
-				if (!frame ||
-					(fs->default_frame && !funcstate->isAgg && 
-					 !funcstate->allowframe))
+				if (!frame || (!funcstate->isAgg && !funcstate->allowframe))
 				{
 					funcstate->trivial_frame = true;
 				}
