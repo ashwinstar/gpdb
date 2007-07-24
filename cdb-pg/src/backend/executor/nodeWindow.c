@@ -1980,7 +1980,7 @@ populateFrameBuffers(WindowState *wstate)
 				}
 				else
 				{
-					if (key->frame->trail == WINDOW_UNBOUND_PRECEDING)
+					if (key->frame->trail->kind == WINDOW_UNBOUND_PRECEDING)
 						eqtrail = false;
 					else
 						eqtrail = cmp_deformed_tuple(new_vals, new_nulls,
