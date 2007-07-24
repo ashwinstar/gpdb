@@ -2088,11 +2088,12 @@ query_is_distinct_for(Query *query, List *colnos)
 	 */
 	if (query->groupClause)
 	{
-		foreach(l, query->groupClause)
+		List *grouptles =
+			get_sortgroupclauses_tles(query->groupClause, query->targetList);
+		
+		foreach(l, grouptles)
 		{
-			GroupClause *grpcl = (GroupClause *) lfirst(l);
-			TargetEntry *tle = get_sortgroupclause_tle(grpcl,
-													   query->targetList);
+			TargetEntry *tle = (TargetEntry *)lfirst(l);
 
 			if (!list_member_int(colnos, tle->resno))
 				break;			/* exit early if no match */
