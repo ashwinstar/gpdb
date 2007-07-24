@@ -7,7 +7,7 @@ static char *url_decode(apr_pool_t *pool, char *src)
     return apr_pstrdup(pool, src);
 }
 
-APR_DECLARE(gpcc_http_request_t *) gpcc_http_parse_request(gpcc_net_request_t *req, apr_pool_t *pool)
+APR_DECLARE(apr_status_t) gpcc_http_parse_request(gpcc_net_request_t *req, apr_pool_t *pool)
 {
     gpcc_http_request_t *http = (gpcc_http_request_t *) req;
     char *s, *last, *tok, *p;
@@ -15,7 +15,7 @@ APR_DECLARE(gpcc_http_request_t *) gpcc_http_parse_request(gpcc_net_request_t *r
 
     if (req->argc != 3 || apr_strnatcasecmp(req->argv[2], HTTP_NET_PROTO) != 0) {
 	gpcc_log_error("invalid HTTP request");
-	return 0;
+	return APR_EINVAL;
     }
     
     /* parse URL */
@@ -36,7 +36,7 @@ APR_DECLARE(gpcc_http_request_t *) gpcc_http_parse_request(gpcc_net_request_t *r
 	http->pc = i;
     }
     
-    return http;
+    return 0;
 }
 
 

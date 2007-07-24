@@ -15,7 +15,7 @@ struct gpcc_http_request_t {
     char *cpath;  
 };
 
-APR_DECLARE(gpcc_http_request_t *) gpcc_http_parse_request(gpcc_net_request_t *req, apr_pool_t *p);
+APR_DECLARE(apr_status_t) gpcc_http_parse_request(gpcc_net_request_t *req, apr_pool_t *p);
 
 /**
  *  Returns value of HTTP request parameter name/value pair by name

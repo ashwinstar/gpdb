@@ -3,7 +3,7 @@ static apr_status_t http_request(gpcc_event_t *ev, void *cmdslot_)
     cmdslot_t *p = cmdslot_;
     conninfo_t* conninfo = p->conninfo;
     int i;
-    gpcc_http_request_t *req = gpcc_http_parse_request(conninfo->peer.request, conninfo->pool);
+    gpcc_http_request_t *req = (gpcc_http_request_t *) conninfo->peer.request;
 
     gpcc_log_info("http request...");
     gpcc_log_info("METHOD=%s", gpcc_http_request_get_method(req));

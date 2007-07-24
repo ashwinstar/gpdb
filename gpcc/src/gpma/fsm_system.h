@@ -124,6 +124,12 @@ static apr_status_t a_system_net_received(gpcc_event_t* ev, void* cmdslot_)
 	    }
 
 	    /* complete header and data */
+	    e = gpcc_http_parse_request(conninfo->peer.request, conninfo->pool);
+	    if (e) {
+		gpcc_net_close(conninfo->conn);
+		return 0;
+	    }
+
 	    if (! cmdslot_alloc("HTTP_REQUEST", HTTP_REQUEST_CMDSTATE, conninfo)) {
 		gpcc_net_close(conninfo->conn);
 		return 0;
@@ -164,6 +170,12 @@ static apr_status_t a_system_net_received(gpcc_event_t* ev, void* cmdslot_)
 	    }
 
 	    /* complete header and data */
+	    e = gpcc_http_parse_request(conninfo->peer.request, conninfo->pool);
+	    if (e) {
+		gpcc_net_close(conninfo->conn);
+		return 0;
+	    }
+
 	    if (! cmdslot_alloc("HTTP_REQUEST", HTTP_REQUEST_CMDSTATE, conninfo)) {
 		gpcc_net_close(conninfo->conn);
 		return 0;
