@@ -6,7 +6,6 @@
 
 #define GPCC_NET_CONN_MAX	256
 #define GPCC_NET_PROTO		"gpcc/3.1"
-#define HTTP_NET_PROTO          "http/1.0"
 
 /** identifies a connection, only non-zero values are valid */
 typedef apr_uint32_t gpcc_net_conn_t;

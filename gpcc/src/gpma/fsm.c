@@ -1,6 +1,7 @@
 #include <gpcc.h>
 #include <gpcc_fsm.h>
 #include <gpcc_net.h>
+#include <gpcc_http.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "gpma.h"
