@@ -31,8 +31,8 @@ netperf:
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 	@echo "Building netperf utility."
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	@if [ ! -d $(SRC)/src/$(NETPERF_DIR) ]; then \
-		(cd $(SRC)/src && gzip -d -c $(NETPERF_DIR).tar.gz | tar xvf - && cd $(NETPERF_DIR) && configure) \
+	@if [ ! -a $(SRC)/src/$(NETPERF_DIR)/Makefile ]; then \
+		(cd $(SRC)/src && gzip -d -c $(NETPERF_DIR).tar.gz | tar xvf - && cd $(NETPERF_DIR) && ./configure) \
 	fi
 	@(cd $(SRC)/src/$(NETPERF_DIR) && make)
 	cp $(SRC)/src/$(NETPERF_DIR)/src/netperf $(SRC)/src/$(NETPERF_DIR)/src/netserver lib/
