@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <fcntl.h>
 #include <netdb.h>
 #ifndef WIN32
@@ -15,6 +16,7 @@
 
 #include <signal.h>
 #include <gpcc_net.h>
+#include <gpcc_http.h>
 #include <gpcc_spin.h>
 #include <apr_network_io.h>
 #include <apr_thread_proc.h>
@@ -884,6 +886,38 @@ APR_DECLARE(apr_status_t) gpcc_net_read_request_data(gpcc_net_conn_t conn,
     return (req->datalen == req->offset) ? 0 : APR_EAGAIN;
 }
     
+APR_DECLARE(gpcc_net_request_t *) gpcc_new_request(const char *header, apr_pool_t *pool)
+{
+    gpcc_net_request_t *req = 0;
+    char buf[1024];
+    char *p;
+
+    if (!header || strlen(header) >= sizeof(buf)) {
+	gpcc_log_error("Protocol not supported: header is too long");
+	return 0;
+    }
+
+    strcpy(buf, header);
+    for (p = buf ; *p ; p++) {
+	char c = *p;
+	*p = tolower(c);
+    }
+
+    if (strstr(buf, GPCC_NET_PROTO)) {
+	req = apr_pcalloc(pool, sizeof(gpcc_net_request_t));
+	
+    } 
+    else if (strstr(buf, HTTP_NET_PROTO)) {
+	req = apr_pcalloc(pool, sizeof(gpcc_http_request_t));
+    }
+    else {
+	gpcc_log_error("Protocol not supported: %s", header);
+	return 0;
+    }
+
+
+    return req;
+}
     
 APR_DECLARE(gpcc_net_request_t*) gpcc_net_parse_request(const char* buf, int* len, apr_pool_t* pool)
 {
@@ -925,6 +959,9 @@ APR_DECLARE(gpcc_net_request_t*) gpcc_net_parse_request(const char* buf, int* le
     /* for first line */
     line = apr_strtok(line, "\n", &last);
     line = gpcc_string_trim(line);
+
+    req = gpcc_new_request(line, pool);
+    
     if (0 != apr_tokenize_to_argv(line, &req->argv, pool))
 	return req;
     while (req->argv[req->argc]) 
