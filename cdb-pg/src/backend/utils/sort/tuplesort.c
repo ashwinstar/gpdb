@@ -198,11 +198,13 @@ struct TuplesortPos
 	bool		eof_reached;	/* reached EOF (needed for cursors) */
 
 	/* markpos_xxx holds marked position for mark and restore */
-	long		markpos_block;	/* tape block# (only used if SORTEDONTAPE) */
-	long		markpos_offset; /* saved "current", or offset in tape block */
-	bool		markpos_eof;	/* saved "eof_reached" */
+	union {
+		LogicalTapePos tapepos;
+		long 		   mempos;
+	} markpos;
+	bool markpos_eof; 
 
-	LogicalTape *work_tape;      /* current tape that I am working on */
+	int 		cur_work_tape;      /* current tape that I am working on */
 };
 
 
@@ -380,8 +382,14 @@ struct Tuplesortstate
 	/* 
 	 * File fo dump/load logical tape set state.  Used by sharing sort across slice 
 	 */
+	char    pfile_rwfile_prefix[MAX_RWFILE_PREFIX_SIZE];
 	BufFile *pfile_rwfile_state;
 };
+
+static bool is_sortstate_rwfile(Tuplesortstate *state)
+{
+	return state->pfile_rwfile_state != NULL;
+}
 
 #define COMPARETUP(state,a,b)	((*(state)->comparetup) (a, b, state))
 #define COPYTUP(state,stup,tup) ((*(state)->copytup) (state, stup, tup))
@@ -464,6 +472,8 @@ static void copytup_heap(Tuplesortstate *state, SortTuple *stup, void *tup);
 static void writetup_heap(Tuplesortstate *state, int tapenum,
 			  SortTuple *stup);
 static void readtup_heap(Tuplesortstate *state, TuplesortPos *pos, SortTuple *stup,
+			 int tapenum, unsigned int len);
+static void readtup_heap_reader(Tuplesortstate *state, TuplesortPos *pos, SortTuple *stup,
 			 int tapenum, unsigned int len);
 static int comparetup_index(const SortTuple *a, const SortTuple *b,
 				 Tuplesortstate *state);
@@ -567,7 +577,7 @@ tuplesort_begin_common(int workMem, bool randomAccess)
 	 */
 
 	state->result_tape = -1;	/* flag that result tape has not been formed */
-	state->pos.work_tape = NULL; /* work tape of the pos in the state is always NULL */
+	state->pos.cur_work_tape = -1; /* flag no work tape associated with pos */
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -681,14 +691,16 @@ tuplesort_begin_heap(TupleDesc tupDesc,
 
 Tuplesortstate *
 tuplesort_begin_heap_file_readerwriter(
-	const char *rwfile_prefix, bool isWriter,
-	TupleDesc tupDesc,
-	int nkeys,
-	Oid *sortOperators, AttrNumber *attNums,
-	int workMem, bool randomAccess)
+		const char *rwfile_prefix, bool isWriter,
+		TupleDesc tupDesc,
+		int nkeys,
+		Oid *sortOperators, AttrNumber *attNums,
+		int workMem, bool randomAccess)
 {
 	Tuplesortstate *state;
 	char statedump[MAX_RWFILE_PREFIX_SIZE];
+
+	Assert(randomAccess);
 
 	snprintf(statedump, MAX_RWFILE_PREFIX_SIZE, "%s_sortstate", rwfile_prefix);
 
@@ -700,50 +712,43 @@ tuplesort_begin_heap_file_readerwriter(
 		 */
 		state = tuplesort_begin_heap(tupDesc, nkeys, sortOperators, attNums, workMem, randomAccess);
 
-		/* Immediately initialize logical tapes.  Now everything will be sorted on tape. */
-		inittapes(state, rwfile_prefix);
-
-		/* 
-		 * Init the dump file for the state (mainly, for logical tape set.).  Later reader can
-		 * load back the states
-		 */
+		snprintf(state->pfile_rwfile_prefix, MAX_RWFILE_PREFIX_SIZE, "%s", rwfile_prefix);
 		state->pfile_rwfile_state = BufFileCreateTemp_ReaderWriter(statedump, true);
 		return state;
 	}
+	else
+	{
 
-	/* 
-	 * For reader, we really don't know anything about sort op, attNums, etc.  
-	 * All the readers cares are the data on the logical tape set.  The state
-	 * of the logical tape set has been dumped, so we load it back and that is
-	 * it.
-	 */
-	state = (Tuplesortstate *) palloc0(sizeof(Tuplesortstate));
-	state->status = TSS_SORTEDONTAPE;
-	state->randomAccess = true;
+		/* 
+		 * For reader, we really don't know anything about sort op, attNums, etc.  
+		 * All the readers cares are the data on the logical tape set.  The state
+		 * of the logical tape set has been dumped, so we load it back and that is
+		 * it.
+		 */
+		state = tuplesort_begin_common(workMem, randomAccess);
+		state->status = TSS_SORTEDONTAPE;
+		state->randomAccess = true;
 
-	state->pfile_rwfile_state = BufFileCreateTemp_ReaderWriter(statedump, false);
-	state->tapeset = LoadLogicalTapeSetState(state->pfile_rwfile_state, rwfile_prefix);
-	state->currentRun = 0;
-	state->result_tape = 0;
+		state->readtup = readtup_heap_reader;
 
-	state->pos.eof_reached =false;
-	state->pos.markpos_block = 0;
-	state->pos.markpos_offset = 0;
-	state->pos.markpos_eof = false;
-	state->pos.work_tape = NULL;
+		snprintf(state->pfile_rwfile_prefix, MAX_RWFILE_PREFIX_SIZE, "%s", rwfile_prefix);
+		state->pfile_rwfile_state = BufFileCreateTemp_ReaderWriter(statedump, false);
 
-	return state;
+		state->tapeset = LoadLogicalTapeSetState(state->pfile_rwfile_state, rwfile_prefix);
+		state->currentRun = 0;
+		state->result_tape = 0;
+
+		state->pos.eof_reached =false;
+		state->pos.markpos.tapepos.blkNum = 0;
+		state->pos.markpos.tapepos.offset = 0; 
+		state->pos.markpos.mempos = 0;
+		state->pos.markpos_eof = false;
+		state->pos.cur_work_tape = -1;
+
+		return state;
+	}
+	return NULL;
 }
-
-	
-
-	
-
-
-
-
-	
-
 
 Tuplesortstate *
 tuplesort_begin_index(Relation indexRel,
@@ -1117,7 +1122,7 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 			/*
 			 * Nope; time to switch to tape-based operation.
 			 */
-			inittapes(state, NULL);
+			inittapes(state, is_sortstate_rwfile(state) ? state->pfile_rwfile_prefix : NULL);
 
 			/*
 			 * Dump tuples until we are back under the limit.
@@ -1174,24 +1179,31 @@ tuplesort_performsort(Tuplesortstate *state)
 	switch (state->status)
 	{
 		case TSS_INITIAL:
-
-			/*
-			 * We were able to accumulate all the tuples within the allowed
-			 * amount of memory.  Just qsort 'em and we're done.
-			 */
-			if ((state->memtupcount > 1)
-				&& state->standardsort)
-				qsort_arg((void *) state->memtuples,
-						  state->memtupcount,
-						  sizeof(SortTuple),
-						  (qsort_arg_comparator) state->comparetup,
-						  (void *) state);
-			state->pos.current = 0;
-			state->pos.eof_reached = false;
-			state->pos.markpos_offset = 0;
-			state->pos.markpos_eof = false;
-			state->status = TSS_SORTEDINMEM;
-			break;
+			if(!is_sortstate_rwfile(state))
+			{
+				/*
+				 * We were able to accumulate all the tuples within the allowed
+				 * amount of memory.  Just qsort 'em and we're done.
+				 */
+				if ((state->memtupcount > 1)
+						&& state->standardsort)
+					qsort_arg((void *) state->memtuples,
+							state->memtupcount,
+							sizeof(SortTuple),
+							(qsort_arg_comparator) state->comparetup,
+							(void *) state);
+				state->pos.current = 0;
+				state->pos.eof_reached = false;
+				state->pos.markpos.mempos = 0;
+				state->pos.markpos_eof = false;
+				state->status = TSS_SORTEDINMEM;
+				break;
+			}
+			else
+			{
+				inittapes(state, state->pfile_rwfile_prefix);
+				/* fall through */
+			}
 		case TSS_BUILDRUNS:
 
 			/*
@@ -1214,8 +1226,8 @@ tuplesort_performsort(Tuplesortstate *state)
 
 			mergeruns(state);
 			state->pos.eof_reached = false;
-			state->pos.markpos_block = 0L;
-			state->pos.markpos_offset = 0;
+			state->pos.markpos.tapepos.blkNum = 0L; 
+			state->pos.markpos.tapepos.offset = 0;
 			state->pos.markpos_eof = false;
 			break;
 		default:
@@ -1246,7 +1258,7 @@ void tuplesort_flush(Tuplesortstate *state)
 {
 	Assert(state->status == TSS_SORTEDONTAPE);
 	Assert(state->tapeset && state->pfile_rwfile_state);
-	Assert(state->pos.work_tape == NULL);
+	Assert(state->pos.cur_work_tape == -1);
 	LogicalTapeFlush(state->tapeset, state->result_tape, state->pfile_rwfile_state);
 	BufFileFlush(state->pfile_rwfile_state);
 }
@@ -1261,6 +1273,7 @@ tuplesort_gettuple_common_pos(Tuplesortstate *state, TuplesortPos *pos,
 		bool forward, SortTuple *stup, bool *should_free)
 {
 	unsigned int tuplen;
+	int work_tape;
 	bool fOK;
 
 	switch (state->status)
@@ -1301,16 +1314,18 @@ tuplesort_gettuple_common_pos(Tuplesortstate *state, TuplesortPos *pos,
 			break;
 
 		case TSS_SORTEDONTAPE:
-			AssertEquivalent((pos == &state->pos), (pos->work_tape == NULL));
+			AssertEquivalent((pos == &state->pos), (pos->cur_work_tape == -1));
 			Assert(forward || state->randomAccess);
 			*should_free = true;
+			work_tape =	pos->cur_work_tape == -1 ? state->result_tape : pos->cur_work_tape; 
+
 			if (forward)
 			{
 				if (pos->eof_reached)
 					return false;
-				if ((tuplen = getlen(state, pos, state->result_tape, true)) != 0) 
+				if ((tuplen = getlen(state, pos, work_tape, true)) != 0) 
 				{
-					READTUP(state, pos, stup, state->result_tape, tuplen);
+					READTUP(state, pos, stup, work_tape, tuplen);
 					return true;
 				}
 				else
@@ -1331,10 +1346,7 @@ tuplesort_gettuple_common_pos(Tuplesortstate *state, TuplesortPos *pos,
 			 * end of file; back up to fetch last tuple's ending length
 			 * word.  If seek fails we must have a completely empty file.
 			 */
-			if(pos->work_tape)
-				fOK = LogicalTapeBackspaceTape(state->tapeset, pos->work_tape, 2*sizeof(unsigned));
-			else
-				fOK = LogicalTapeBackspace(state->tapeset, state->result_tape, 2*sizeof(unsigned));
+			fOK = LogicalTapeBackspace(state->tapeset, work_tape,  2*sizeof(unsigned));
 			if(!fOK)
 				return false;
 
@@ -1344,17 +1356,12 @@ tuplesort_gettuple_common_pos(Tuplesortstate *state, TuplesortPos *pos,
 			}
 			else
 			{
-				tuplen = getlen(state, pos, state->result_tape, false);
+				tuplen = getlen(state, pos, work_tape, false);
 
 				/*
 				 * Back up to get ending length word of tuple before it.
 				 */
-				if(pos->work_tape)
-					fOK = LogicalTapeBackspaceTape(state->tapeset, pos->work_tape, 
-							tuplen + 2 *sizeof(unsigned));
-				else
-					fOK = LogicalTapeBackspace(state->tapeset, state->result_tape,
-							tuplen + 2 *sizeof(unsigned));
+				fOK = LogicalTapeBackspace(state->tapeset, work_tape, tuplen + 2 *sizeof(unsigned));
 
 				if (!fOK)
 				{
@@ -1364,12 +1371,7 @@ tuplesort_gettuple_common_pos(Tuplesortstate *state, TuplesortPos *pos,
 					 * in forward direction (not obviously right, but that is
 					 * what in-memory case does).
 					 */
-					if(pos->work_tape)
-						fOK = LogicalTapeBackspaceTape(state->tapeset, pos->work_tape, 
-								tuplen + 2 *sizeof(unsigned));
-					else
-						fOK = LogicalTapeBackspace(state->tapeset, state->result_tape,
-								tuplen + 2 *sizeof(unsigned));
+					fOK = LogicalTapeBackspace(state->tapeset, work_tape, tuplen + 2 *sizeof(unsigned));
 					if(!fOK)
 						elog(ERROR, "bogus tuple length in backward scan");
 
@@ -1377,26 +1379,23 @@ tuplesort_gettuple_common_pos(Tuplesortstate *state, TuplesortPos *pos,
 				}
 			}
 
-			tuplen = getlen(state, pos, state->result_tape, false);
+			tuplen = getlen(state, pos, work_tape, false);
 
 			/*
 			 * Now we have the length of the prior tuple, back up and read it.
 			 * Note: READTUP expects we are positioned after the initial
 			 * length word of the tuple, so back up to that point.
 			 */
-			if(pos->work_tape)
-				fOK = LogicalTapeBackspaceTape(state->tapeset, pos->work_tape, tuplen);
-			else
-				fOK = LogicalTapeBackspace(state->tapeset, state->result_tape, tuplen);
+			fOK = LogicalTapeBackspace(state->tapeset, work_tape, tuplen);
 			if (!fOK) 
 				elog(ERROR, "bogus tuple length in backward scan");
 
-			READTUP(state, pos, stup, state->result_tape, tuplen);
+			READTUP(state, pos, stup, work_tape, tuplen);
 			return true;
 
 		case TSS_FINALMERGE:
 			Assert(forward);
-			Assert(pos == &state->pos && pos->work_tape == NULL);
+			Assert(pos == &state->pos && pos->cur_work_tape == -1);
 
 			*should_free = true;
 
@@ -2079,7 +2078,7 @@ mergeprereadone(Tuplesortstate *state, int srcTape)
 		   state->mergenext[srcTape] == 0)
 	{
 		/* read next tuple, if any */
-		Assert(state->pos.work_tape == NULL);
+		Assert(state->pos.cur_work_tape == -1);
 		if ((tuplen = getlen(state, &state->pos, srcTape, true)) == 0)
 		{
 			state->mergeactive[srcTape] = false;
@@ -2201,27 +2200,27 @@ tuplesort_rescan_pos(Tuplesortstate *state, TuplesortPos *pos)
 		case TSS_SORTEDINMEM:
 			pos->current = 0;
 			pos->eof_reached = false;
-			pos->markpos_offset = 0;
+			pos->markpos.mempos = 0; 
 			pos->markpos_eof = false;
-			pos->work_tape = NULL;
+			pos->cur_work_tape = -1;
 			break;
 		case TSS_SORTEDONTAPE:
 			if(pos == &state->pos)
 			{
-				Assert(pos->work_tape == NULL);
+				Assert(pos->cur_work_tape == -1);
 				LogicalTapeRewind(state->tapeset, state->result_tape, false);
 			}
 			else
 			{
-				if(pos->work_tape == NULL)
-					pos->work_tape = LogicalTapeCreate(state->tapeset, NULL);
+				if(pos->cur_work_tape == -1)
+					pos->cur_work_tape = 0;
 
-				LogicalTapeRewindTape(state->tapeset, pos->work_tape, false);
+				LogicalTapeRewind(state->tapeset, pos->cur_work_tape, false);
 			}
 
 			pos->eof_reached = false;
-			pos->markpos_block = 0L;
-			pos->markpos_offset = 0;
+			pos->markpos.tapepos.blkNum = 0L; 
+			pos->markpos.tapepos.offset = 0;
 			pos->markpos_eof = false;
 			break;
 		default:
@@ -2230,19 +2229,6 @@ tuplesort_rescan_pos(Tuplesortstate *state, TuplesortPos *pos)
 	}
 
 	MemoryContextSwitchTo(oldcontext);
-}
-
-/*
- * tuplesort_close_pos.  This function frees the TuplesortPos 
- */
-void tuplesort_close_pos(Tuplesortstate *state, TuplesortPos *pos)
-{
-	Assert(pos != &state->pos); 
-	if(pos->work_tape != NULL)
-	{
-		LogicalTapeClose(state->tapeset, pos->work_tape, true /* should free the tape */);
-		pos->work_tape = NULL;
-	}
 }
 
 /*
@@ -2260,6 +2246,7 @@ void tuplesort_rescan(Tuplesortstate *state)
 void
 tuplesort_markpos_pos(Tuplesortstate *state, TuplesortPos *pos)
 {
+	int work_tape;
 	MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
 
 	Assert(state->randomAccess);
@@ -2267,21 +2254,13 @@ tuplesort_markpos_pos(Tuplesortstate *state, TuplesortPos *pos)
 	switch (state->status)
 	{
 		case TSS_SORTEDINMEM:
-			pos->markpos_offset = pos->current;
+			pos->markpos.mempos = pos->current;
 			pos->markpos_eof = pos->eof_reached;
 			break;
 		case TSS_SORTEDONTAPE:
-			AssertEquivalent(pos == &state->pos, pos->work_tape == NULL);	
-			if(pos->work_tape != NULL)
-				LogicalTapeTellTape(state->tapeset, 
-						pos->work_tape, 
-						&pos->markpos_block, 
-						&pos->markpos_offset);
-			else
-				LogicalTapeTell(state->tapeset,
-							state->result_tape,
-							&pos->markpos_block,
-							&pos->markpos_offset);
+			AssertEquivalent(pos == &state->pos, pos->cur_work_tape == -1);	
+			work_tape = pos->cur_work_tape == -1 ? state->result_tape : pos->cur_work_tape;
+			LogicalTapeTell(state->tapeset, work_tape, &pos->markpos.tapepos);
 			pos->markpos_eof = pos->eof_reached;
 			break;
 		default:
@@ -2311,24 +2290,14 @@ tuplesort_restorepos_pos(Tuplesortstate *state, TuplesortPos *pos)
 	switch (state->status)
 	{
 		case TSS_SORTEDINMEM:
-			pos->current = pos->markpos_offset;
+			pos->current = pos->markpos.mempos; 
 			pos->eof_reached = pos->markpos_eof;
 			break;
 		case TSS_SORTEDONTAPE:
-			AssertEquivalent(pos == &state->pos, pos->work_tape == NULL);	
+			AssertEquivalent(pos == &state->pos, pos->cur_work_tape == -1);	
 			{
-				bool fSeekOK = false;
-				if (pos->work_tape != NULL)
-					fSeekOK = LogicalTapeSeekTape(state->tapeset, 
-							pos->work_tape, 
-							pos->markpos_block,
-							pos->markpos_offset
-							);
-				else
-					fSeekOK = LogicalTapeSeek(state->tapeset,
-								 state->result_tape,
-								 pos->markpos_block,
-								 pos->markpos_offset);
+				int work_tape = pos->cur_work_tape == -1 ? state->result_tape : pos->cur_work_tape;
+				bool fSeekOK = LogicalTapeSeek(state->tapeset, work_tape, &pos->markpos.tapepos);
 				
 				if(!fSeekOK)
 					elog(ERROR, "tuplesort_restorepos failed");
@@ -2649,14 +2618,13 @@ getlen(Tuplesortstate *state, TuplesortPos *pos, int tapenum, bool eofOK)
 	unsigned int len;
 	size_t readSize;
 
-	AssertEquivalent(pos == &state->pos, pos->work_tape == NULL);	
-	if(pos->work_tape == NULL)
-		readSize = LogicalTapeRead(state->tapeset, tapenum, (void *)&len, sizeof(len));
-	else
-		readSize = LogicalTapeReadTape(state->tapeset, pos->work_tape, (void *)&len, sizeof(len));
+	Assert(tapenum >= 0);
+	readSize = LogicalTapeRead(state->tapeset, tapenum, (void *)&len, sizeof(len));
 
 	if(readSize != sizeof(len))
+	{
 		elog(ERROR, "unexpected end of tape");
+	}
 
 	if (len == 0 && !eofOK)
 		elog(ERROR, "unexpected end of data");
@@ -2994,12 +2962,8 @@ readtup_heap(Tuplesortstate *state, TuplesortPos *pos, SortTuple *stup,
 	/* read in the tuple proper */
 	tuple->t_len = len;
 
-	if(pos->work_tape!=NULL)
-		readSize = LogicalTapeReadTape(state->tapeset, pos->work_tape, 
-				(void *) ((char *)tuple + sizeof(int)),
-				len - sizeof(int));
-	else
-		readSize = LogicalTapeRead(state->tapeset, tapenum,
+	Assert(tapenum >= 0);
+	readSize = LogicalTapeRead(state->tapeset, tapenum,
 				(void *) ((char *)tuple + sizeof(int)),
 				len - sizeof(int));
 
@@ -3008,10 +2972,7 @@ readtup_heap(Tuplesortstate *state, TuplesortPos *pos, SortTuple *stup,
 
 	if (state->randomAccess)	/* need trailing length word? */
 	{
-		if(pos->work_tape != NULL)
-			readSize = LogicalTapeReadTape(state->tapeset, pos->work_tape, (void *)&tuplen, sizeof(tuplen));
-		else
-			readSize = LogicalTapeRead(state->tapeset, tapenum, (void *)&tuplen, sizeof(tuplen));
+		readSize = LogicalTapeRead(state->tapeset, tapenum, (void *)&tuplen, sizeof(tuplen));
 
 		if(readSize != sizeof(tuplen))
 			elog(ERROR, "unexpected end of data");
@@ -3027,6 +2988,36 @@ readtup_heap(Tuplesortstate *state, TuplesortPos *pos, SortTuple *stup,
 								&stup->isnull1);
 }
 
+static void
+readtup_heap_reader(Tuplesortstate *state, TuplesortPos *pos, SortTuple *stup,
+			 int tapenum, unsigned int len)
+{
+	MinimalTuple tuple = (MinimalTuple) palloc(len);
+	unsigned int tuplen;
+	size_t readSize;
+
+	USEMEM(state, GetMemoryChunkSpace(tuple));
+	/* read in the tuple proper */
+	tuple->t_len = len;
+
+	Assert(tapenum >= 0);
+	readSize = LogicalTapeRead(state->tapeset, tapenum,
+				(void *) ((char *)tuple + sizeof(int)),
+				len - sizeof(int));
+
+	if (readSize != (size_t) (len - sizeof(int))) 
+		elog(ERROR, "unexpected end of data");
+
+	if (state->randomAccess)	/* need trailing length word? */
+	{
+		readSize = LogicalTapeRead(state->tapeset, tapenum, (void *)&tuplen, sizeof(tuplen));
+
+		if(readSize != sizeof(tuplen))
+			elog(ERROR, "unexpected end of data");
+	}
+
+	stup->tuple = (void *) tuple;
+}
 
 /*
  * Routines specialized for IndexTuple case
@@ -3193,22 +3184,17 @@ readtup_index(Tuplesortstate *state, TuplesortPos *pos, SortTuple *stup,
 	IndexTuple	tuple = (IndexTuple) palloc(tuplen);
 	size_t readSize;
 
+	Assert(tapenum >= 0);
 	USEMEM(state, GetMemoryChunkSpace(tuple));
 
-	if(pos->work_tape != NULL)
-		readSize = LogicalTapeReadTape(state->tapeset, pos->work_tape, (void *)tuple, tuplen);
-	else
-		readSize = LogicalTapeRead(state->tapeset, tapenum, (void *)tuple, tuplen);
+	readSize = LogicalTapeRead(state->tapeset, tapenum, (void *)tuple, tuplen);
 
 	if(readSize != tuplen)
 		elog(ERROR, "unexpected end of data");
 
 	if (state->randomAccess)	/* need trailing length word? */
 	{
-		if(pos->work_tape != NULL)
-			readSize = LogicalTapeReadTape(state->tapeset, pos->work_tape, (void *)&tuplen, sizeof(tuplen));
-		else
-			readSize = LogicalTapeRead(state->tapeset, tapenum, (void *)&tuplen, sizeof(tuplen));
+		readSize = LogicalTapeRead(state->tapeset, tapenum, (void *)&tuplen, sizeof(tuplen));
 
 		if (readSize != sizeof(tuplen))
 			elog(ERROR, "unexpected end of data");
@@ -3293,6 +3279,8 @@ readtup_datum(Tuplesortstate *state, TuplesortPos *pos, SortTuple *stup,
 	size_t readSize;
 	unsigned int tuplen = len - sizeof(unsigned int);
 
+	Assert(tapenum >= 0);
+
 	if (tuplen == 0)
 	{
 		/* it's NULL */
@@ -3303,10 +3291,7 @@ readtup_datum(Tuplesortstate *state, TuplesortPos *pos, SortTuple *stup,
 	else if (state->datumTypeByVal)
 	{
 		Assert(tuplen == sizeof(Datum));
-		if(pos->work_tape != NULL)
-			readSize = LogicalTapeReadTape(state->tapeset, pos->work_tape, (void *)&stup->datum1, tuplen);
-		else
-			readSize = LogicalTapeRead(state->tapeset, tapenum, (void *)&stup->datum1, tuplen);
+		readSize = LogicalTapeRead(state->tapeset, tapenum, (void *)&stup->datum1, tuplen);
 
 		if (readSize != tuplen) 
 			elog(ERROR, "unexpected end of data");
@@ -3317,10 +3302,7 @@ readtup_datum(Tuplesortstate *state, TuplesortPos *pos, SortTuple *stup,
 	{
 		void	   *raddr = palloc(tuplen);
 
-		if(pos->work_tape!=NULL)
-			readSize = LogicalTapeReadTape(state->tapeset, pos->work_tape, raddr, tuplen);
-		else
-			readSize = LogicalTapeRead(state->tapeset, tapenum, raddr, tuplen);
+		readSize = LogicalTapeRead(state->tapeset, tapenum, raddr, tuplen);
 
 		if(readSize != tuplen)
 			elog(ERROR, "unexpected end of data");
@@ -3333,10 +3315,7 @@ readtup_datum(Tuplesortstate *state, TuplesortPos *pos, SortTuple *stup,
 
 	if (state->randomAccess)	/* need trailing length word? */
 	{
-		if(pos->work_tape != NULL)
-			readSize = LogicalTapeReadTape(state->tapeset, pos->work_tape, (void *)&tuplen, sizeof(tuplen));
-		else
-			readSize = LogicalTapeRead(state->tapeset, tapenum, (void *)&tuplen, sizeof(tuplen));
+		readSize = LogicalTapeRead(state->tapeset, tapenum, (void *)&tuplen, sizeof(tuplen));
 
 		if (readSize != sizeof(tuplen)) 
 			elog(ERROR, "unexpected end of data");

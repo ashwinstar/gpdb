@@ -213,7 +213,7 @@ ExecSort(SortState *node)
 
 		if(plannode->share_type == SHARE_SORT_XSLICE)
 		{
-			if(plannode->driver_slice != currentSliceId)
+			if(plannode->driver_slice == currentSliceId)
 			{
 				tuplesort_flush(tuplesortstate);
 				shareinput_writer_notify(plannode->share_id);

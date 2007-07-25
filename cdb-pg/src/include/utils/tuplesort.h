@@ -108,8 +108,6 @@ extern void tuplesort_markpos_pos(Tuplesortstate *state, TuplesortPos *pos);
 extern void tuplesort_restorepos(Tuplesortstate *state);
 extern void tuplesort_restorepos_pos(Tuplesortstate *state, TuplesortPos *pos);
 
-extern void tuplesort_close_pos(Tuplesortstate *state, TuplesortPos *pos);
-
 /*
  * tuplesort_set_instrument
  *

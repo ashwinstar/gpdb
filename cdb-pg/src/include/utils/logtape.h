@@ -16,6 +16,12 @@
 #ifndef LOGTAPE_H
 #define LOGTAPE_H
 
+typedef struct LogicalTapePos
+{
+	long blkNum; 
+	int  offset;
+} LogicalTapePos;
+
 /* LogicalTapeSet and LogicalTape are opaque types whose details are not known outside logtape.c. */
 typedef struct LogicalTape LogicalTape;
 typedef struct LogicalTapeSet LogicalTapeSet;
@@ -24,42 +30,24 @@ typedef struct LogicalTapeSet LogicalTapeSet;
  * prototypes for functions in logtape.c
  */
 
-extern LogicalTape *LogicalTapeCreate(LogicalTapeSet *lts, LogicalTape *lt);
-extern void LogicalTapeClose(LogicalTapeSet *lts, LogicalTape *lt, bool shouldFree);
+extern LogicalTape *LogicalTapeCreate(LogicalTapeSet *lts, LogicalTape *lt); 
 extern LogicalTapeSet *LogicalTapeSetCreate(int ntapes);
 extern LogicalTapeSet *LogicalTapeSetCreate_ReaderWriter(const char* rwfile_prefix, int ntapes); 
 extern void LogicalTapeSetClose(LogicalTapeSet *lts);
 extern void LogicalTapeSetForgetFreeSpace(LogicalTapeSet *lts);
 
-extern size_t LogicalTapeReadTape(LogicalTapeSet *lts, LogicalTape *lt,
-				void *ptr, size_t size);
-extern size_t LogicalTapeRead(LogicalTapeSet *lts, int tapenum,
-				void *ptr, size_t size);
+extern size_t LogicalTapeRead(LogicalTapeSet *lts, int tapenum, void *ptr, size_t size);
+extern void LogicalTapeWrite(LogicalTapeSet *lts, int tapenum, void *ptr, size_t size);
 
-extern void LogicalTapeWrite(LogicalTapeSet *lts, int tapenum,
-				 void *ptr, size_t size);
-
-extern void LogicalTapeRewindTape(LogicalTapeSet *lts, LogicalTape *lt, bool forWrite);
 extern void LogicalTapeRewind(LogicalTapeSet *lts, int tapenum, bool forWrite);
 
 extern void LogicalTapeFreeze(LogicalTapeSet *lts, int tapenum);
 extern void LogicalTapeFlush(LogicalTapeSet *lts, int tapenum, BufFile *pstatefile);
 extern LogicalTapeSet *LoadLogicalTapeSetState(BufFile *pfile, const char* rwfile_prefix);
 
-extern bool LogicalTapeBackspaceTape(LogicalTapeSet *lts, LogicalTape *lt,
-					 size_t size);
-extern bool LogicalTapeBackspace(LogicalTapeSet *lts, int tapenum,
-					 size_t size);
-
-extern bool LogicalTapeSeekTape(LogicalTapeSet *lts, LogicalTape *lt,
-				long blocknum, long offset);
-extern bool LogicalTapeSeek(LogicalTapeSet *lts, int tapenum,
-				long blocknum, long offset);
-
-extern void LogicalTapeTellTape(LogicalTapeSet *lts, LogicalTape *lt,
-				long *blocknum, long *offset);
-extern void LogicalTapeTell(LogicalTapeSet *lts, int tapenum,
-				long *blocknum, long *offset);
+extern bool LogicalTapeBackspace(LogicalTapeSet *lts, int tapenum, size_t size);
+extern bool LogicalTapeSeek(LogicalTapeSet *lts, int tapenum, LogicalTapePos *pos); 
+extern void LogicalTapeTell(LogicalTapeSet *lts, int tapenum, LogicalTapePos *pos);
 
 extern long LogicalTapeSetBlocks(LogicalTapeSet *lts);
 

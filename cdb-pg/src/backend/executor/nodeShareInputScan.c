@@ -93,8 +93,7 @@ ShareInputNext(ShareInputScanState *node)
 				sharedSort = (Sort *) snState->plan;
 				Assert(IsA(sharedSort, Sort));
 				Assert(sisc->share_id == sharedSort->share_id);
-				/* We cannot share sort across slice yet */
-				Assert(sharedSort->share_type == SHARE_SORT);
+				share_type = sharedSort->share_type;
 			}
 		}
 
@@ -124,7 +123,7 @@ ShareInputNext(ShareInputScanState *node)
 			shareinput_reader_wait(sisc->share_id);
 			node->ts_state = tuplesort_begin_heap_file_readerwriter(
 					rwfile_prefix, false,
-					NULL, 0, NULL, NULL, 0, true);
+					NULL, 0, NULL, NULL, work_mem/1024, true);
 			tuplesort_begin_pos((Tuplesortstate *) node->ts_state, (TuplesortPos **)(&node->ts_pos));
 			tuplesort_rescan_pos((Tuplesortstate *) node->ts_state, (TuplesortPos *)node->ts_pos); 
 		}
@@ -262,7 +261,7 @@ void ExecEndShareInputScan(ShareInputScanState *node)
 		if(node->ts_pos)
 		{
 			Assert(node->ts_state);
-			tuplesort_close_pos((Tuplesortstate *)node->ts_state, (TuplesortPos *)node->ts_pos);
+			/* XXX need to clean up teh state */
 		}
 	}
 

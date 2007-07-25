@@ -170,7 +170,7 @@ List *share_plan(PlannerInfo *root, Plan *common, int numpartners)
 		}
 		else if (IsA(common, Sort))
 		{
-			Sort *s = (Sort *) s;
+			Sort *s = (Sort *) common;
 
 			Assert(s->share_type == SHARE_NOTSHARED);
 			stype = xslice ? SHARE_SORT_XSLICE : SHARE_SORT;

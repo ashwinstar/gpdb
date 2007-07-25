@@ -996,7 +996,9 @@ generate_list_subplans(PlannerInfo *root, int num_subplans,
 					   GroupExtContext *context)
 {
 	int group_no;
-	List* subplans = share_plan(root, context->subplan, num_subplans);
+	List *subplans;
+
+	subplans = share_plan(root, context->subplan, num_subplans);
 
 	list_free(context->pathkeys);
 	context->pathkeys = NIL;
@@ -1437,3 +1439,4 @@ make_pathkeys_for_rollup(List *groupclause,
 
 	return pathkeys;
 }
+
