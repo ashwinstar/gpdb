@@ -278,7 +278,7 @@ typedef struct WindowBreakInfo
 do \
 { \
 	char *__buf = tup2str(slot); \
-	elog(NOTICE, "slot = %s", __buf); \
+	elog(DEBUG1, "slot = %s", __buf); \
 	pfree(__buf); \
 } while(0)
 	
@@ -1324,12 +1324,12 @@ set_edge_val(WindowState *wstate, WindowFrameState fs, WindowFrameEdge *e,
 			if (is_trail)
 			{
 				fs->trail_rows = (long int)(wstate->row_index + rows_param);
-				elog(NOTICE, "trail edge row = %li", fs->trail_rows);
+				elog(DEBUG1, "trail edge row = %li", fs->trail_rows);
 			}
 			else
 			{
 				fs->lead_rows = (long int)(wstate->row_index + rows_param);
-				elog(NOTICE, "lead edge row = %li", fs->lead_rows);
+				elog(DEBUG1, "lead edge row = %li", fs->lead_rows);
 			}
 		}
 		else
@@ -1442,7 +1442,7 @@ funcFrameBufAppend(WindowState *wstate, WindowStatePerFunction funcstate,
 	if (tuple_in_frame)
 	{
 		funcstate->cur_lead_edge = funcstate->frame_mem_used - 1;
-		elog(NOTICE, "setting lead: prev = %i, lead = %i",
+		elog(DEBUG1, "setting lead: prev = %i, lead = %i",
 			 funcstate->prev_lead_edge, funcstate->cur_lead_edge);
 	}
 }
@@ -1568,7 +1568,7 @@ appendRowTuple(WindowState *wstate, WindowFrame *frame,
 
 	if (EDGE_IS_BOUND(frame->lead) || frame->lead->kind == WINDOW_CURRENT_ROW)
 	{
-		elog(NOTICE, "lead row index = %lli, lead param = %li",
+		elog(DEBUG1, "lead row index = %lli, lead param = %li",
 			 lead_row_index, fs->lead_rows);
 		
 		if (lead_row_index <= (fs->lead_rows))
@@ -1687,7 +1687,7 @@ adjustEdges(WindowState *wstate)
 					{
 						funcstate->prev_trail_edge++;
 					}
-					elog(NOTICE, "prev trail = %i", funcstate->prev_trail_edge);
+					elog(DEBUG1, "prev trail = %i", funcstate->prev_trail_edge);
 	
 					if (funcstate->prev_trail_edge > 0)
 						pos = funcstate->prev_trail_edge;
@@ -1870,7 +1870,7 @@ populateFrameBuffers(WindowState *wstate)
 	/* we've moved forward by ntuples so add that to the row index */
 	lead_row_index += ntuples;
 
-	elog(NOTICE, "----populating frame");
+	elog(DEBUG1, "----populating frame");
 	/* now for the hard bit, populating the actual frame */
 	
 	while (true)
@@ -1917,7 +1917,7 @@ populateFrameBuffers(WindowState *wstate)
 
 		if (wbi.part_break)
 		{
-			elog(NOTICE, "saw partition break");
+			elog(DEBUG1, "saw partition break");
 			break;
 		}
 
@@ -1934,7 +1934,7 @@ populateFrameBuffers(WindowState *wstate)
 
 		if (process_cur_slot)
 		{
-			elog(NOTICE, "processed cur");
+			elog(DEBUG1, "processed cur");
 			process_cur_slot = false;
 		}
 
@@ -2087,10 +2087,10 @@ populateFrameBuffers(WindowState *wstate)
 			break;
 	}
 
-	elog(NOTICE, "moving frame by %li, lead row %lli", (-ntuples + 1),
+	elog(DEBUG1, "moving frame by %li, lead row %lli", (-ntuples + 1),
 		 lead_row_index);
 	moveFrameBuf(wstate, -(lead_row_index - wstate->row_index));
-	elog(NOTICE, "----- end frame populate");
+	elog(DEBUG1, "----- end frame populate");
 
 	/* restore old tuple */
 	econtext->ecxt_outertuple = wstate->priorslot;
@@ -2107,7 +2107,7 @@ func_get_vals(WindowStatePerFunction funcstate, long int start,
 	List *ret = NIL;
 	long int n;
 
-	elog(NOTICE, "-- processing %s - start %li, end %li",
+	elog(DEBUG1, "-- processing %s - start %li, end %li",
 		 is_trail ? "trail" : "lead", start, end);
 
 	if (start == -1)
@@ -2140,19 +2140,19 @@ func_get_vals(WindowStatePerFunction funcstate, long int start,
 	while (((is_trail && n < end) || (!is_trail && n <= end))
 		   && n < funcstate->frame_mem_used)
 	{
-		elog(NOTICE, "returning tuple at pos %li", n);
+		elog(DEBUG1, "returning tuple at pos %li", n);
 		ret = lappend(ret, funcstate->frame_trans_vals[n++]);
 	}
-	elog(NOTICE, "--");
+	elog(DEBUG1, "--");
 
 	if (is_trail)
 	{
-		elog(NOTICE, "setting trail done to %li", n);
+		elog(DEBUG1, "setting trail done to %li", n);
 		funcstate->trail_done = n - 1;
 	}
 	else
 	{
-		elog(NOTICE, "setting lead_done to %li", n);
+		elog(DEBUG1, "setting lead_done to %li", n);
 		funcstate->lead_done = n - 1;
 	}
 	return ret;
@@ -2184,7 +2184,7 @@ process_vals(WindowState *wstate, WindowStatePerFunction funcstate,
 			/* put the buffered value in as the second arg */
 			fcinfo.arg[1] = wrb->transval->transValue;
 			fcinfo.argnull[1] = wrb->transval->transValueIsNull;
-			elog(NOTICE, "processing buffer for row %llu, is %s",
+			elog(DEBUG1, "processing buffer for row %llu, is %s",
 				 wrb->row_index, is_add ? "add" : "inv");
 		}
 		else
@@ -2320,7 +2320,7 @@ static void
 invokeNonTrivialFuncs2(WindowState *wstate)
 {
 	/* firstly, populate the frames */
-	elog(NOTICE, "processing tuple");
+	elog(DEBUG1, "processing tuple");
 	DB_TTS(wstate->curslot);
 	populateFrameBuffers(wstate);
 
