@@ -42,6 +42,9 @@ class pxssh (spawn):
 	cmd = 'ssh -o "BatchMode yes" -o "StrictHostKeyChecking no"'
 	cmd = cmd + ' -p %s -l %s %s' % (port, username, server)
         spawn.__init__(self, cmd, timeout=login_timeout)
+	# we don't need this since we are not sending 
+	# password over (see comments in pexpect.py re: delaybeforesend)
+	self.delaybeforesend = 0
 
     ### cktan: wait for login
     def loginWait(self, login_timeout=10):
