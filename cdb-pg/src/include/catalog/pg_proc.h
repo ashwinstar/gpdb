@@ -1544,6 +1544,7 @@ DESCR("truncate interval to specified units");
 
 DATA(insert OID = 1219 (  int8inc		   PGNSP PGUID 12 f f t f i 1 20 f "20" _null_ _null_ _null_	int8inc - _null_ ));
 DESCR("increment");
+DATA(insert OID = 2857 (  int8dec		   PGNSP PGUID 12 f f t f i 1 20 f "20" _null_ _null_ _null_	int8dec - _null_ ));
 DATA(insert OID = 2804 (  int8inc_any	   PGNSP PGUID 12 f f t f i 2 20 f "20 2276" _null_ _null_ _null_ int8inc_any - _null_ ));
 DESCR("increment, ignores second argument");
 DATA(insert OID = 1230 (  int8abs		   PGNSP PGUID 12 f f t f i 1 20 f "20" _null_ _null_ _null_	int8abs - _null_ ));

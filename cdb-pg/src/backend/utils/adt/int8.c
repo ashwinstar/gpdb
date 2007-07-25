@@ -694,6 +694,50 @@ int8inc(PG_FUNCTION_ARGS)
 	}
 }
 
+Datum
+int8dec(PG_FUNCTION_ARGS)
+{
+	if (fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context))
+	{
+		/*
+		 * Special case to avoid palloc overhead for COUNT(): when called from
+		 * nodeAgg, we know that the argument is modifiable local storage, so
+		 * just update it in-place.
+		 *
+		 * Note: this assumes int8 is a pass-by-ref type; if we ever support
+		 * pass-by-val int8, this should be ifdef'd out when int8 is
+		 * pass-by-val.
+		 */
+		int64	   *arg = (int64 *) PG_GETARG_POINTER(0);
+		int64		result;
+
+		result = *arg - 1;
+		/* Overflow check */
+		if (result < 0 && *arg > 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+					 errmsg("bigint out of range")));
+
+		*arg = result;
+		PG_RETURN_POINTER(arg);
+	}
+	else
+	{
+		/* Not called by nodeAgg, so just do it the dumb way */
+		int64		arg = PG_GETARG_INT64(0);
+		int64		result;
+
+		result = arg - 1;
+		/* Overflow check */
+		if (result < 0 && arg > 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+					 errmsg("bigint out of range")));
+
+		PG_RETURN_INT64(result);
+	}
+}
+
 /*
  * These functions are exactly like int8inc but are used for aggregates that
  * count only non-null values.	Since the functions are declared strict,

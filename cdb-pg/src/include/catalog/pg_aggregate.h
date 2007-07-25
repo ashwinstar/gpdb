@@ -151,7 +151,7 @@ DATA(insert ( 2798	tidsmaller		- tidsmaller		- -				2799	27		_null_ ));
 
 /* count */
 DATA(insert ( 2147	int8inc_any		- int8pl	int8mi -				0		20		"0" ));
-DATA(insert ( 2803	int8inc			- int8pl	int8mi -				0		20		"0" ));
+DATA(insert ( 2803	int8inc			int8dec	 int8pl	int8mi -				0		20		"0" ));
 
 /* var_pop */
 DATA(insert ( 2718	int8_accum		int8_decum	 numeric_amalg	numeric_demalg numeric_var_pop	0	1231	"{0,0,0}" ));

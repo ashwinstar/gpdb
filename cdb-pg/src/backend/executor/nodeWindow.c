@@ -2233,12 +2233,16 @@ calculateTransVals(WindowState *wstate)
 		WindowKey *key = lfirst(lkey);
 		ListCell *func;
 		WindowStatePerLevel level_state = &wstate->level_state[++level];
+		WindowFrameState fs = &wstate->frame_states[level];
 		
 		foreach(func, level_state->level_funcs)
 		{
 			int funcno = (int)lfirst_int(func);
 			WindowStatePerFunction funcstate = &wstate->func_state[funcno];
 			List *vals;
+
+			if (!FRAME_IS_COMPLEX(funcstate, fs))
+				continue;
 
 			/*
 			 * Here, we remove values from the transition value
@@ -2296,7 +2300,14 @@ calculateTransVals(WindowState *wstate)
 				 * We must manually manage the frame so, give the range as
 				 * the whole frame.
 				 */
-				vals = func_get_vals(funcstate, funcstate->cur_trail_edge,
+				long int start;
+
+				if (funcstate->cur_trail_edge == -1)
+					start = 0;
+				else
+					start = funcstate->cur_trail_edge;
+				
+				vals = func_get_vals(funcstate, start,
 									 funcstate->cur_lead_edge, false);
 				process_vals(wstate, funcstate, vals, key->frame->is_rows,
 							 true);
