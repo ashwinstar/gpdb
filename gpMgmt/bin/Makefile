@@ -18,13 +18,25 @@ PYLIB_SRC=$(SRC)/pythonSrc
 LIB_DIR=$(SRC)/lib
 
 
-all: pylib
+all: pylib stream netperf
 
 #
 # Python Libraries
 #
-pylib : paramiko pycrypto stream
+pylib : paramiko pycrypto 
 
+
+NETPERF_DIR=netperf-2.4.3
+netperf:
+	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+	@echo "Building netperf utility."
+	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+	@if [ ! -d $(SRC)/src/$(NETPERF_DIR) ]; then \
+		(cd $(SRC)/src && gzip -d -c $(NETPERF_DIR).tar.gz | tar xvf - && cd $(NETPERF_DIR) && configure) \
+	fi
+	@(cd $(SRC)/src/$(NETPERF_DIR) && make)
+	cp $(SRC)/src/$(NETPERF_DIR)/src/netperf $(SRC)/src/$(NETPERF_DIR)/src/netserver lib/
+	@echo ""
 
 
 
