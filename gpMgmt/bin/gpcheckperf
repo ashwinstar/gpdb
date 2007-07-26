@@ -348,7 +348,7 @@ def gethostaddress():
 def runNetPerfTest():
     host = gethostaddress()
     if host is None:
-        sys.exit('[Error] get host adddress failed')
+        sys.exit('[Error] get host address failed')
     port = 23331
 
     if opt['-v']:
@@ -382,7 +382,7 @@ def printNetResult(title, result):
     import commands;
     dest = gethostaddress()
     if dest is None:
-        sys.exit('[Error] get host adddress failed')
+        sys.exit('[Error] get host address failed')
 
     print '%s%s%s' % ('Source Host'.ljust(30), 'Destination Host'.ljust(30), 'MB/sec'.ljust(30))
     for h in result:
