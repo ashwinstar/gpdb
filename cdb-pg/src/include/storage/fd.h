@@ -73,6 +73,8 @@ extern int	FileSync(File file);
 extern long FileSeek(File file, long offset, int whence);
 extern int	FileTruncate(File file, long offset);
 
+extern int  FileGetFd(File file);
+
 /* Operations that allow use of regular stdio --- USE WITH CAUTION */
 extern FILE *AllocateFile(const char *name, const char *mode);
 extern int	FreeFile(FILE *file);

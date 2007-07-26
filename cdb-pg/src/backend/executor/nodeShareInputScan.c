@@ -50,6 +50,7 @@ ShareInputNext(ShareInputScanState *node)
 	ScanDirection dir;
 	bool forward;
 	TupleTableSlot *slot;
+	int driver_slice;
 
 	ShareInputScan * sisc = (ShareInputScan *) node->ss.ps.plan;
 
@@ -87,6 +88,7 @@ ShareInputNext(ShareInputScanState *node)
 				Assert(IsA(sharedMaterial, Material));
 				Assert(sisc->share_id == sharedMaterial->share_id);
 				share_type = sharedMaterial->share_type;
+				driver_slice = sharedMaterial->driver_slice;
 			}
 			else
 			{
@@ -94,6 +96,7 @@ ShareInputNext(ShareInputScanState *node)
 				Assert(IsA(sharedSort, Sort));
 				Assert(sisc->share_id == sharedSort->share_id);
 				share_type = sharedSort->share_type;
+				driver_slice = sharedSort->driver_slice;
 			}
 		}
 
@@ -102,7 +105,14 @@ ShareInputNext(ShareInputScanState *node)
 			char rwfile_prefix[60];
 			shareinput_create_bufname_prefix(rwfile_prefix, sizeof(rwfile_prefix), sisc->share_id);
 			
-			shareinput_reader_wait(sisc->share_id);
+			if(driver_slice != currentSliceId)
+				node->share_lk_ctxt = shareinput_reader_waitready(sisc->share_id);
+			else
+			{
+				Assert(snState && IsA(snState, MaterialState));
+				((MaterialState *) snState)->nsharer_inslice++;
+			}
+
 			node->ts_state = tuplestore_begin_heap_file_readerwriter(rwfile_prefix, false);
 			tuplestore_begin_pos((Tuplestorestate *) node->ts_state, (TuplestorePos **)(&node->ts_pos));
 			tuplestore_rescan_pos((Tuplestorestate *) node->ts_state, (TuplestorePos *)node->ts_pos); 
@@ -120,7 +130,14 @@ ShareInputNext(ShareInputScanState *node)
 			char rwfile_prefix[60];
 			shareinput_create_bufname_prefix(rwfile_prefix, sizeof(rwfile_prefix), sisc->share_id);
 			
-			shareinput_reader_wait(sisc->share_id);
+			if(driver_slice != currentSliceId)
+				node->share_lk_ctxt = shareinput_reader_waitready(sisc->share_id);
+			else
+			{
+				Assert(snState && IsA(snState, SortState));
+				((SortState *) snState)->nsharer_inslice++;
+			}
+
 			node->ts_state = tuplesort_begin_heap_file_readerwriter(
 					rwfile_prefix, false,
 					NULL, 0, NULL, NULL, work_mem/1024, true);
@@ -183,6 +200,8 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 	sisstate->ts_state = NULL;
 	sisstate->ts_pos = NULL;
 
+	sisstate->share_lk_ctxt = NULL;
+
 	/* 
 	 * init child node.  
 	 * if outerPlan is NULL, this is no-op (so that the ShareInput node will be 
@@ -243,7 +262,7 @@ ExecCountSlotsShareInputScan(ShareInputScan* node)
  */
 void ExecEndShareInputScan(ShareInputScanState *node)
 {
-	ShareInputScan *sisc = (ShareInputScan *) node->ss.ps.plan;
+	ShareInputScan * sisc = (ShareInputScan *) node->ss.ps.plan;
 
 	/* clean up tuple table */
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
@@ -256,14 +275,9 @@ void ExecEndShareInputScan(ShareInputScanState *node)
 	 * XXX Do we need to pfree the tuplestore_state and pos? 
 	 * XXX nodeMaterial.c does not, need to find out why
 	 */
-	if(sisc->share_type == SHARE_SORT)
-	{
-		if(node->ts_pos)
-		{
-			Assert(node->ts_state);
-			/* XXX need to clean up teh state */
-		}
-	}
+	
+	if(node->share_lk_ctxt)
+		shareinput_reader_notifydone(node->share_lk_ctxt, sisc->share_id);
 
 	node->ts_state = NULL;
 	node->ts_pos = NULL;
@@ -350,40 +364,96 @@ void ExecShareInputScanReScan(ShareInputScanState *node, ExprContext *exprCtxt)
 
 #include "fcntl.h"
 #include "storage/fd.h"
+#include "cdb/cdbselect.h"
 
-void shareinput_create_bufname_prefix(char* p, int size, int shared_id)
+void shareinput_create_bufname_prefix(char* p, int size, int share_id)
 {
-	snprintf(p, size, "SIRW_%d_%d_%d", gp_session_id, gp_command_count, shared_id);
+	snprintf(p, size, "SIRW_%d_%d_%d", gp_session_id, gp_command_count, share_id);
 }
 
-static void sisc_lockname(char* p, int size, int shared_id)
+static void sisc_lockname(char* p, int size, int share_id, const char* name)
 {
 	snprintf(p, size,
-			"gpcdb2.sisc_%d_%d_%d_%d",
-			Gp_segment, gp_session_id, gp_command_count, shared_id
+			"gpcdb2.sisc_%d_%d_%d_%d_%s",
+			Gp_segment, gp_session_id, gp_command_count, share_id, name
 			);
 }
 
-void shareinput_reader_wait(int shared_id)
+typedef struct ShareInput_Lk_Context 
+{
+	File f;
+} ShareInput_Lk_Context;
+
+void *shareinput_reader_waitready(int share_id)
 {
 	char lkname[100];
+	ShareInput_Lk_Context *pctxt = palloc(sizeof(ShareInput_Lk_Context));
 
-	sisc_lockname(lkname, 100, shared_id);
+	sisc_lockname(lkname, 100, share_id, "ready");
 
 	CreateTempFifo(lkname);
 
-	elog(LOG, "sisc_material wait on %s", lkname);
-	OpenTemporaryFileName(lkname, O_RDONLY, true, true);
+	elog(LOG, "sisc wait ready on %s", lkname);
+	pctxt->f = OpenTemporaryFileName(lkname, O_WRONLY, false, false);
+	return (void *) pctxt;
 }
 
-void shareinput_writer_notify(int shared_id)
+void *shareinput_writer_notifyready(int share_id)
 {
 	char lkname[100];
+	ShareInput_Lk_Context *pctxt = palloc(sizeof(ShareInput_Lk_Context));
 
-	sisc_lockname(lkname, 100, shared_id);
+	sisc_lockname(lkname, 100, share_id, "ready");
 
 	CreateTempFifo(lkname);
 
-	elog(LOG, "sisc_material notify %s", lkname);
-	OpenTemporaryFileName(lkname, O_WRONLY, true, true);
+	elog(LOG, "sisc notify ready %s", lkname);
+	pctxt->f = OpenTemporaryFileName(lkname, O_RDWR, false, true);
+	return (void *) pctxt;
+}
+
+void shareinput_reader_notifydone(void *ctxt, int share_id)
+{
+	ShareInput_Lk_Context *pctxt = (ShareInput_Lk_Context *) ctxt;
+
+	FileWrite(pctxt->f, "x", 1);
+	elog(LOG, "sisc notify done");
+
+	FileClose(pctxt->f); 
+	pfree(ctxt);
+}
+
+void shareinput_writer_waitdone(void *ctxt, int share_id, int nsharer_xslice)
+{
+	int fd;
+	mpp_fd_set rset;
+	ShareInput_Lk_Context *pctxt = (ShareInput_Lk_Context *) ctxt;
+
+	fd = FileGetFd(pctxt->f);
+	
+	while(nsharer_xslice > 0)
+	{
+		char x = 'a';
+		int rsize = FileRead(pctxt->f, &x, 1);
+		if(rsize == 1)
+		{
+			Assert(x == 'x');
+			elog(LOG, "sisc wait done get 1 notification");
+			--nsharer_xslice;
+		}
+		else
+		{
+			MPP_FD_ZERO(&rset);
+			MPP_FD_SET(fd, &rset);
+
+			elog(LOG, "sisc wait done select ... ");
+			select(1, &rset, NULL, NULL, NULL); 
+			
+			if(!MPP_FD_ISSET(fd, &rset))
+				elog(ERROR, "shareinput_writer_waitdone failed");
+		}
+	}
+
+	FileClose(pctxt->f);
+	pfree(ctxt);
 }

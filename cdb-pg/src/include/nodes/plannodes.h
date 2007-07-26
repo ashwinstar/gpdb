@@ -491,6 +491,7 @@ typedef struct Material
 	ShareType 	share_type;
 	int 		share_id;
 	int         driver_slice;
+	int         nsharer;
 } Material;
 
 
@@ -513,6 +514,7 @@ typedef struct Sort
 	ShareType 	share_type;
 	int 		share_id;
 	int 		driver_slice;
+	int         nsharer;
 } Sort;
 
 /* ---------------

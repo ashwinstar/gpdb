@@ -1005,6 +1005,17 @@ OpenTemporaryFile(bool interXact)
 	return OpenTemporaryFileName(NULL, fileFlags, interXact, true);
 }
 
+/* 
+ * Get OS file descriptor 
+ */
+int FileGetFd(File file)
+{
+	Vfd *vfdp = &VfdCache[file];
+	if(FileIsNotOpen(file))
+		return -1;
+	return vfdp->fd;
+}
+
 /*
  * close a file when done with it
  */

@@ -19,6 +19,7 @@
 #include "libpq/libpq-be.h"
 #include "libpq/ip.h"
 #include "utils/builtins.h"
+#include "utils/debugbreak.h"
 
 #include "cdb/cdbselect.h"
 #include "cdb/tupchunklist.h"
@@ -2468,6 +2469,7 @@ acceptIncomingConnection(void)
             case ENOTSOCK:
 #endif
             case EOPNOTSUPP:
+				debug_break();
                 /* Shouldn't get these errors unless there is a bug. */
                 ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                                 errmsg("Interconnect error on listener port %d",
@@ -2481,6 +2483,7 @@ acceptIncomingConnection(void)
             case ENFILE:
             case EMFILE:
             case ENOBUFS:
+				debug_break();
                 /* Out of resources. */
                 ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                                 errmsg("Interconnect error on listener port %d",

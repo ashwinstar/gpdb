@@ -609,6 +609,7 @@ _outMaterial(StringInfo str, Material *node)
 	WRITE_ENUM_FIELD(share_type, ShareType);
 	WRITE_INT_FIELD(share_id);
 	WRITE_INT_FIELD(driver_slice);
+	WRITE_INT_FIELD(nsharer);
 
 	_outPlanInfo(str, (Plan *) node);
 }
@@ -651,6 +652,7 @@ _outSort(StringInfo str, Sort *node)
 	WRITE_ENUM_FIELD(share_type, ShareType);
 	WRITE_INT_FIELD(share_id);
 	WRITE_INT_FIELD(driver_slice);
+	WRITE_INT_FIELD(nsharer);
 }
 
 static void

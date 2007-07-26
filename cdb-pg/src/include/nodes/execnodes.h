@@ -1502,6 +1502,9 @@ typedef struct MaterialState
 	bool		randomAccess;	/* need random access to subplan output? */
 	bool		eof_underlying; /* reached end of underlying plan? */
 	void	   *tuplestorestate;	/* private state of tuplestore.c */
+
+	int 		nsharer_inslice; 
+	void  		*share_lk_ctxt;
 } MaterialState;
 
 /* ----------------
@@ -1519,12 +1522,16 @@ typedef struct ShareInputScanState
 	 */
 	void 		*ts_state;
 	void 		*ts_pos;
+
+	void 	    *share_lk_ctxt;
 } ShareInputScanState;
 
 /* XXX Should move into buf file */
-extern void shareinput_reader_wait(int shared_id);
-extern void shareinput_writer_notify(int shared_id);
-extern void shareinput_create_bufname_prefix(char* p, int size, int shared_id);
+extern void *shareinput_reader_waitready(int share_id);
+extern void *shareinput_writer_notifyready(int share_id);
+extern void shareinput_reader_notifydone(void *, int share_id);
+extern void shareinput_writer_waitdone(void *, int share_id, int nsharer_xslice);
+extern void shareinput_create_bufname_prefix(char* p, int size, int share_id);
 
 /* ----------------
  *	 SortState information
@@ -1540,6 +1547,9 @@ typedef struct SortState
 	ExprState  *limitOffset;	/* OFFSET parameter, or NULL if none */
 	ExprState  *limitCount;		/* COUNT parameter, or NULL if none */
 	bool		noduplicates;   /* true if discard duplicate rows */
+
+	int 		nsharer_inslice; 
+	void 		*share_lk_ctxt;
 } SortState;
 
 /* ---------------------

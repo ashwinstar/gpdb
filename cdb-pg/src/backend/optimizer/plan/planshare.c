@@ -103,19 +103,30 @@ void set_plan_driver_slice(Plan *p, int slice)
 	}
 }
 
+static void incr_plan_nsharer(Plan *p)
+{
+	if(IsA(p, Material))
+		((Material *) p)->nsharer++;
+	else
+	{
+		Assert(IsA(p, Sort));
+		((Sort *) p)->nsharer++;
+	}
+}
+
 static ShareInputScan *make_shareinputscan(Plan *inputplan) 
 {
 	ShareInputScan *sisc = NULL;
-	Plan *oldplan = NULL;
 	Path sipath;
 
-	sisc = makeNode(ShareInputScan);
-
-	oldplan = (Plan *) inputplan;
 	Assert(IsA(inputplan, Material) || IsA(inputplan, Sort));
 
-	sisc->plan.targetlist = copyObject(oldplan->targetlist);
-	sisc->plan.lefttree = oldplan;
+	sisc = makeNode(ShareInputScan);
+	incr_plan_nsharer(inputplan);
+
+
+	sisc->plan.targetlist = copyObject(inputplan->targetlist);
+	sisc->plan.lefttree = inputplan;
 	sisc->plan.flow = copyObject(inputplan->flow); 
 
 	set_plan_share_type((Plan *) sisc, get_plan_share_type(inputplan));
@@ -124,12 +135,12 @@ static ShareInputScan *make_shareinputscan(Plan *inputplan)
 	sisc->plan.qual = NIL;
 	sisc->plan.righttree = NULL;
 
-	cost_shareinputscan(&sipath, oldplan->total_cost, oldplan->plan_rows, oldplan->plan_width);
+	cost_shareinputscan(&sipath, inputplan->total_cost, inputplan->plan_rows, inputplan->plan_width);
 
 	sisc->plan.startup_cost = sipath.startup_cost;
 	sisc->plan.total_cost = sipath.total_cost; 
-	sisc->plan.plan_rows = oldplan->plan_rows;
-	sisc->plan.plan_width = oldplan->plan_width;
+	sisc->plan.plan_rows = inputplan->plan_rows;
+	sisc->plan.plan_width = inputplan->plan_width;
 
 	return sisc;
 }

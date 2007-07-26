@@ -564,6 +564,7 @@ _copyMaterial(Material *from)
 	COPY_SCALAR_FIELD(share_type);
 	COPY_SCALAR_FIELD(share_id);
 	COPY_SCALAR_FIELD(driver_slice);
+	COPY_SCALAR_FIELD(nsharer);
 	
     return newnode;
 }
@@ -594,6 +595,7 @@ _copySort(Sort *from)
 	COPY_SCALAR_FIELD(share_type);
 	COPY_SCALAR_FIELD(share_id);
 	COPY_SCALAR_FIELD(driver_slice);
+	COPY_SCALAR_FIELD(nsharer);
 
 	return newnode;
 }

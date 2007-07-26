@@ -153,7 +153,7 @@ ExecMaterial(MaterialState *node)
 			if (ma->driver_slice == currentSliceId)
 			{
 				tuplestore_flush(tuplestorestate);
-				shareinput_writer_notify(ma->share_id);
+				node->share_lk_ctxt = shareinput_writer_notifyready(ma->share_id);
 			}
 		}
 
@@ -270,6 +270,8 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 
 	matstate->eof_underlying = false;
 	matstate->tuplestorestate = NULL;
+	matstate->nsharer_inslice = 0;
+	matstate->share_lk_ctxt = NULL;
 
 	/*
 	 * Miscellaneous initialization
@@ -369,15 +371,14 @@ ExecEndMaterial(MaterialState *node)
 	 */
 	if (node->tuplestorestate != NULL)
 	{
-		/* We do not release resource here.  If the material is cross slice
-		 * other slice may require it to exist.  The underlying resource is 
-		 * marked to be released at transaction commit time.
-		 */
-		if(ma->share_type != SHARE_MATERIAL_XSLICE) 
+		if(ma->share_type == SHARE_MATERIAL_XSLICE)
 		{
-			tuplestore_end((Tuplestorestate *) node->tuplestorestate); 
-			node->tuplestorestate = NULL;
+			int nsharer_xslice = ma->nsharer - node->nsharer_inslice;
+			Assert(node->share_lk_ctxt && nsharer_xslice > 0);
+			shareinput_writer_waitdone(node->share_lk_ctxt, ma->share_id, nsharer_xslice);
 		}
+		tuplestore_end((Tuplestorestate *) node->tuplestorestate); 
+		node->tuplestorestate = NULL;
 	}
 
 	/*

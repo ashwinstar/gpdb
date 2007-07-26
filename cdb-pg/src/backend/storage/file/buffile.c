@@ -217,7 +217,7 @@ BufFileCreateTemp_ReaderWriter(const char* fileName, bool isWriter)
 
 	pfile = OpenTemporaryFileName(fileName, 
 					fileFlags,
-					true, /* interXact */
+					false, /* interXact */
 					isWriter /* del on close */);
 
 	if(pfile < 0)

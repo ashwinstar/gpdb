@@ -3303,6 +3303,7 @@ make_sort(PlannerInfo *root, Plan *lefttree, int numCols,
 	node->share_type = SHARE_NOTSHARED;
 	node->share_id = SHARE_ID_NOT_SHARED;
 	node->driver_slice = -1;
+	node->nsharer = 0;
 
 	return node;
 }
@@ -3709,6 +3710,7 @@ make_material(Plan *lefttree)
 	node->share_type = SHARE_NOTSHARED;
 	node->share_id = SHARE_ID_NOT_SHARED;
 	node->driver_slice = -1; 
+	node->nsharer = 0;
 
 	return node;
 }
