@@ -384,10 +384,10 @@ def printNetResult(title, result):
     if dest is None:
         sys.exit('[Error] get host adddress failed')
 
-    print '%.50s\t\t%.50s\t\t%.50s' % ('Source Host', 'Destination Host', 'MB/sec')
+    print '%s%s%s' % ('Source Host'.ljust(30), 'Destination Host'.ljust(30), 'MB/sec'.ljust(30))
     for h in result:
         (recv, send, sendm, time, throughput) = result[h]
-        print '%.50s\t\t%.50s\t\t%.50s' % (h, dest, throughput)
+        print '%s%s%s' % (h.ljust(30), dest.ljust(30), throughput.ljust(30))
 
 
 ################
