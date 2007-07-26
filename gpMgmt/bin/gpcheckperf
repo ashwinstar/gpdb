@@ -14,10 +14,11 @@ Usage: gpcheckperf <options>
     -v         : enable verbose
     -V         : enable very verbose
     -D         : print per host disk stats on disk read/write tests
-    -r flags   : where flags specifies the tests to run [default=ds]. 
+    -r flags   : where flags specifies the tests to run [default=dsn]. 
                  Supported test flags are:
                        d: runs only disk tests
                        s: runs only stream benchmark
+                       n: runs only netperf
     -B size    : where size specifies the block size for disk performance tests
                  [default=32KB] e.g. 1KB, 4MB
     -S size    : where size specifies the file size for disk performance tests
@@ -49,7 +50,7 @@ opt['-d'] = []
 opt['-D'] = False
 opt['-v'] = False
 opt['-V'] = False
-opt['-r'] = 'ds'
+opt['-r'] = 'dsn'
 opt['-B'] = 1024 * 32
 opt['-S'] = 0
 opt['-p'] = 22
@@ -334,6 +335,60 @@ def runStreamTest():
 	    result[h] = (float(o[1]), 0, 0)
     return result
 
+def gethostaddress():
+    import commands
+    out = commands.getoutput("ifconfig -a | grep 'inet' | grep -v '127.' | awk '{print $2}' | cut -d: -f2")
+    hosts = out.split()
+    for a in hosts:
+        if a != '':
+            return a
+    return None
+
+#############
+def runNetPerfTest():
+    host = gethostaddress()
+    if host is None:
+        sys.exit('[Error] get host adddress failed')
+    port = 23331
+
+    if opt['-v']:
+        print '-------------------'
+        print ' NETPERF Test'
+        print '-------------------'
+
+    cmd = '%s/lib/netserver -p %d > /dev/null 2>&1' % (sys.path[0], port)
+    (ok, out) = run(cmd)
+    if not ok: sys.exit('[Error] command failed: ' + cmd)
+
+    rmtPath = copyExecOver('netperf')
+    cmd = gpssh('%s -H %s -p %d -t TCP_STREAM -l 5 -f M -P 0' % (rmtPath, host, port))
+    (ok, out) = run(cmd)
+    if not ok: 
+        run('killall -9 netserver')
+        sys.exit('[Error] command failed: ' + cmd)
+
+    run('killall -9 netserver')
+    
+    out = StringIO.StringIO(out)    
+    result = {}
+    for line in out:
+        i = line.find(']')
+        o = line[i+2:]
+        o = o.split()
+        result[line[1:i]] = o
+    return result
+
+def printNetResult(title, result):
+    import commands;
+    dest = gethostaddress()
+    if dest is None:
+        sys.exit('[Error] get host adddress failed')
+
+    print '%.50s\t%.50s\t%.50s' % ('Source Host', 'Destination Host', 'MB/sec')
+    for h in result:
+        (recv, send, sendm, time, throughput) = result[h]
+        print '%.50s\t%.50s\t%.50s' % (h, dest, throughput)
+
 
 ################
 def printResult(title, result):
@@ -386,6 +441,9 @@ try:
 	if opt['-r'].find('s') >= 0:
 	    streamResult = runStreamTest()
 
+        if opt['-r'].find('n') >= 0:
+            netResult = runNetPerfTest()
+
 	runTeardown()
 
     finally:
@@ -397,6 +455,9 @@ try:
 
 	if streamResult:
 	    printResult('stream', streamResult)
+
+        if netResult:
+            printNetResult('netperf', netResult)
 
 	runTeardown()
 
