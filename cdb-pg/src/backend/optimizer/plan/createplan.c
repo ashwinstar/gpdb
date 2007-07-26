@@ -985,7 +985,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	/* gpfdist or EXECUTE specific variables */
 	int				total_to_skip = 0;
 	int				max_participants_allowed = 0;
-	bool			num_segs_participating = 0;
+	int			num_segs_participating = 0;
 	bool			*skip_map = NULL;
 	bool			should_skip_randomly = false;
 
@@ -1250,6 +1250,11 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 					done = true;
 					break;
 				}
+
+                                if(list_length(modifiedloclist) > num_segs_participating)
+                                {
+                                        elog(ERROR, "External scan location list failed building distribution.");
+                                }
 			}
 		}
 		
