@@ -123,6 +123,22 @@ typedef struct RefInfo
 	Expr	   *resultexpr; /* Result expression for upper target list */
 } RefInfo;
 
+/* Macros to determine what kind of window function a RefInfo represents
+ * should be used AFTER the context has been intialized by functions through
+ * through assign_window_info().
+ */
+#define RefInfo_AggregateUnordered(rinfo, context) \
+	( (rinfo)->isagg && !(rinfo)->needcount && (context)->specinfos[rinfo->specindex].order == NIL )
+
+#define RefInfo_AggregateOrdered(rinfo, context) \
+	( (rinfo)->isagg && !(rinfo)->needcount && (context)->specinfos[rinfo->specindex].order != NIL )
+
+#define RefInfo_WindowDeferred(rinfo, context) \
+	( !(rinfo)->isagg && (rinfo)->needcount )
+
+#define RefInfo_WindowImmediate(rinfo, context) \
+	( !(rinfo)->isagg && !(rinfo)->needcount )
+
 /* SpecInfo represents a distinct, referenced WindowSpec from the query.
  * They are stored in the WindowContext's array (nspecinfos,specinfos).
  *
@@ -190,6 +206,8 @@ typedef struct WindowContext
 	RefInfo		   *cur_refinfo;
 } WindowContext;
 
+#define VarattnoAdjustment (-(FirstLowInvalidHeapAttributeNumber + 1))
+
 /* Forward declarations (local) */
 
 static WindowContext *newWindowContext(void);
@@ -211,12 +229,20 @@ static void assign_window_info(WindowContext *context);
 static bool is_order_prefix_of(List *sca, List *scb);
 static void lookup_window_function(RefInfo *rinfo);
 static Plan *plan_trivial_window_query(PlannerInfo *root, WindowContext *context, List **pathkeys_ptr);
-static Plan *plan_non_trivial_window_query(PlannerInfo *root, WindowContext *context, List **pathkeys_ptr);
+#ifdef BRIAN_SANDBOX
+static Plan *plan_sequential_window_query(PlannerInfo *root, WindowContext *context, List **pathkeys_ptr);
+static Plan *plan_sequential_stage(PlannerInfo *root, WindowContext *context, 
+		int hi_windex, int lo_windex,
+		Plan *input_plan, CdbPathLocus *locus_ptr, List **pathkeys_ptr);
+#endif BRIAN_SANDBOX
+static Plan *plan_parallel_window_query(PlannerInfo *root, WindowContext *context, List **pathkeys_ptr);
 static void plan_windowinfo_coplans(PlannerInfo *root, WindowContext *context, int window_index);
 static List * plan_window_rtable(PlannerInfo* root, WindowContext *context);
 static List *make_rowkey_targets(void);
-static Plan *condition_input(PlannerInfo *root, Plan *inputplan, int partkey_len, AttrNumber *partkey_attrs, List *sortclause, CdbPathLocus input_locus, List **pathkeys_ptr);
 static Coplan *makeCoplan(CoplanType type, WindowContext *context);
+static Plan *assure_collocation_and_order(PlannerInfo *root, Plan *input_plan, 
+		int partkey_len, AttrNumber *partkey_attrs, List *sortclause, 
+		CdbPathLocus input_locus, List **pathkeys_ptr);
 static AttrNumber addTargetToCoplan(Node *target, Coplan *coplan, WindowContext *context);
 static Aggref* makeWindowAggref(WindowRef *winref);
 static Aggref* makeAuxCountAggref(void);
@@ -225,7 +251,10 @@ static Node * translate_upper_tlist_mutator(Node *node, WindowContext *context);
 static FromExpr *plan_window_jointree(PlannerInfo *root, WindowContext *context);
 static Expr *make_window_join_term(Oid type, Index lftvarno, AttrNumber lftattrno, Index rgtvarno, AttrNumber rgtattrno);
 static Oid *get_window_attr_types(List *targetlist, int nattrs, AttrNumber *attrs);
+static RangeTblEntry *package_plan_as_rte(Query *query, Plan *plan, Alias *eref, List *pathkeys);
 
+
+#ifdef BRIAN_SANDBOX
 /* Helper function to get nth windowinfo's partkey len */
 static int get_windowctxt_partkey_len(void *ctxt, int nth)
 {
@@ -248,6 +277,7 @@ static List *get_windowctxt_sortclause(void *ctxt, int nth)
 
 	return winfo->sortclause;
 }
+#endif BRIAN_SANDBOX
 
 
 Plan *
@@ -316,7 +346,7 @@ window_planner(PlannerInfo *root, double tuple_fraction, List **pathkeys_ptr)
 	}
 	else
 	{
-		return plan_non_trivial_window_query(root, context, pathkeys_ptr);
+		return plan_parallel_window_query(root, context, pathkeys_ptr);
 	}
 
 	/* TODO Check our API.
@@ -429,10 +459,10 @@ static void deleteWindowContext(WindowContext *context)
  * index and save it in the context.  The intended use of the index is
  * as follows:
  *
- *    varattno_offsets[varno] + varattno  -->  index
+ *    varattno_offsets[varno] + varattno + VarattnoAdjustment  -->  index
  *
  *    offset_varnos[index]  -->  varno
- *    index - varattno_offsets[varno]  --> varattno
+ *    index - varattno_offsets[varno] - VarattnoAdjustment  --> varattno
  */
 static void build_var_index(Query *parse, WindowContext *context)
 {
@@ -474,11 +504,14 @@ static bool window_tlist_vars_walker(Node *node, WindowContext *context)
 	if ( IsA(node, Var) )
 	{
 		Var *var = (Var *) node;
+		AttrNumber adjusted_attno;
 		Assert( var->varno <= context->max_varno );
 		if ( var->varlevelsup > 0 )
 			return false;
-		if ( var->varattno > context->varattno_offsets[var->varno] )
-			context->varattno_offsets[var->varno] = var->varattno;
+		
+		adjusted_attno = var->varattno + VarattnoAdjustment;
+		if ( adjusted_attno > context->varattno_offsets[var->varno] )
+			context->varattno_offsets[var->varno] = adjusted_attno;
 		return false;
 	}
 	return expression_tree_walker(node, window_tlist_vars_walker, (void *)context);
@@ -489,9 +522,11 @@ static bool window_tlist_vars_walker(Node *node, WindowContext *context)
  */
 static int index_of_var(Var * var, WindowContext *context)
 {
+	AttrNumber adjusted_attno;
 	Assert( var->varno <= context->max_varno );
 	
-	return context->varattno_offsets[var->varno] + var->varattno;
+	adjusted_attno = var->varattno + VarattnoAdjustment;
+	return context->varattno_offsets[var->varno] + adjusted_attno;
 }
 
 
@@ -1001,8 +1036,40 @@ static int compare_edge(WindowFrameEdge *a, WindowFrameEdge *b)
 		return 1;
 	else if ( a->kind == WINDOW_BOUND_PRECEDING || a->kind == WINDOW_BOUND_FOLLOWING )
 	{
-		/* TODO: compare a->val to b->val */
-		elog(ERROR, "cannot compare framing bounds yet!!!");
+		/* Compare a->val to b->val */
+		bool okay = TRUE;
+		Const *aconst, *bconst;
+		int64 aval, bval;
+		
+		okay = IsA(a->val,Const) && IsA(b->val,Const);
+		
+		if ( okay )
+		{
+			aconst = (Const*)a->val;
+			if ( aconst->consttype == INT4OID )
+				aval = DatumGetInt32(aconst->constvalue);
+			else if ( aconst->consttype == INT8OID )
+				aval = DatumGetInt64(aconst->constvalue);
+			else
+				okay = FALSE;
+		}
+		if ( okay )
+		{	
+		bconst = (Const*)b->val;
+			if ( bconst->consttype == INT4OID )
+				bval = DatumGetInt32(bconst->constvalue);
+			else if ( bconst->consttype == INT8OID )
+				bval = DatumGetInt64(bconst->constvalue);
+			else
+				okay = FALSE;
+		}
+		if ( !okay )
+			elog(ERROR, "framing bound is not an integer constant");
+			
+		if ( aval < bval )
+			return -1;
+		else if ( aval > bval )
+			return 1;
 	}
 	return 0;
 }
@@ -1318,7 +1385,10 @@ static Plan *plan_common_subquery(PlannerInfo *root, List *lower_tlist,
 	/* Generate the best unsorted and presorted paths for this Query. */
 	query_planner(root, lower_tlist, 0.0, 
 				  &cheapest_path, &sorted_path, &num_groups);
-	if ( order_hint != NIL && sorted_path != NULL )
+	if ( order_hint != NIL &&
+		 sorted_path != NULL &&
+		 (	CdbPathLocus_IsEntry(sorted_path->locus) ||
+			CdbPathLocus_IsSingleQE(sorted_path->locus) ) )
 		best_path = sorted_path;
 	else
 		best_path = cheapest_path;
@@ -1342,110 +1412,118 @@ static Plan *plan_common_subquery(PlannerInfo *root, List *lower_tlist,
 	return result_plan;
 }
 
-/* condition_input
- * put necessary reordering and motion on top of the input plun.
+
+/* Assure that the given input plan meets the given distribution and sort order
+ * requirements -- either by observing that it does or by adding Motion and/or 
+ * Sort nodes to meet the requirements.
+ *
+ * Note that the function currently won't redistribute a plan that meets the
+ * collocation requirement, e.g., since a singleton locus collocates on any 
+ * partition key, the function won't "spread" such a plan's result across the 
+ * segments.  Perhaps we should reconsider this.
+ *
+ * Returns the input plan, possibly with new nodes on top.  Input and output
+ * must have flow declarations.
  */
-Plan *condition_input(
+Plan *assure_collocation_and_order(
 		PlannerInfo *root,
 		Plan *input_plan,
 		int partkey_len,
 		AttrNumber *partkey_attrs,
-		List *sortclause,
+		List *sortclause,								 
 		CdbPathLocus input_locus,
-		List **pathkeys_ptr
-		)
+		List **pathkeys_ptr)
 {
-	Plan *new_plan;
+	Plan *result_plan;
 	List *pathkeys;
-	List *sort_pathkeys = NULL;	
+	List *sort_pathkeys = NULL;
+	double motion_cost_per_row = (gp_motion_cost_per_row > 0.0) ?
+					gp_motion_cost_per_row :
+					2.0 * cpu_tuple_cost;
 	
-	double motion_cost_per_row = (gp_motion_cost_per_row > 0.0) ? 
-									gp_motion_cost_per_row : 2.0 * cpu_tuple_cost;
-
-	Assert( input_plan);
+	Assert( input_plan && (input_plan->flow || IsA(input_plan, Motion)) );
 	Assert( !CdbPathLocus_IsNull(input_locus));
 	Assert( pathkeys_ptr && (*pathkeys_ptr == NIL || IsA(*pathkeys_ptr, List)) );
 	
-	new_plan = (Plan *) input_plan;
-
+	result_plan = input_plan;
 	pathkeys = *pathkeys_ptr;
 	
 	if ( sortclause != NIL )
 	{
-		sort_pathkeys = make_pathkeys_for_sortclauses(sortclause, new_plan->targetlist);
+		sort_pathkeys = make_pathkeys_for_sortclauses(sortclause, input_plan->targetlist);
 		sort_pathkeys = canonicalize_pathkeys(root, sort_pathkeys);
 		Assert(sort_pathkeys != NULL);
 	}
 	
 	if ( partkey_len == 0 ) /* Plan for single process locus. */
 	{
+		/* Assure sort order first */
 		if(sort_pathkeys != NULL)
 		{
 			if(!pathkeys_contained_in(sort_pathkeys, *pathkeys_ptr))
 			{
-				new_plan = (Plan *) make_sort_from_sortclauses(root, sortclause, new_plan);
+				result_plan = (Plan *) make_sort_from_sortclauses(root, sortclause, result_plan);
 				*pathkeys_ptr = sort_pathkeys;
-				mark_sort_locus(new_plan);
+				mark_sort_locus(result_plan);
 			}
 		}
 
-		if(CdbPathLocus_IsPartitioned(input_locus))
+		/* bring to single locus */
+		if( CdbPathLocus_IsPartitioned(input_locus))
 		{
-			new_plan = (Plan *) make_motion_gather_to_QE(new_plan, (*pathkeys_ptr != NULL));
-			new_plan->total_cost += motion_cost_per_row * new_plan->plan_rows;
+			result_plan = (Plan *) make_motion_gather_to_QE(result_plan, (*pathkeys_ptr != NULL));
+			result_plan->total_cost += motion_cost_per_row * result_plan->plan_rows;
 		}
 
-		Assert(new_plan->flow);
-		return new_plan;
+		Assert(result_plan->flow);
 	}
 	else  /* Plan for hash distributed locus. */
 	{
-
 		List *dist_keys = NIL;
 		List *dist_pathkeys = NIL;
 		List *dist_exprs = NIL;
 		ListCell *lc;
-		int n = partkey_len;
+		int n;
 		
+		/* Get the required distribution path keys. */
+		n = partkey_len;
 		foreach (lc, sortclause)
 		{
 			if ( 0 >= n-- ) break;
 			dist_keys = lappend(dist_keys, lfirst(lc));
 		}
-		dist_pathkeys = make_pathkeys_for_sortclauses(dist_keys, new_plan->targetlist);
+		dist_pathkeys = make_pathkeys_for_sortclauses(dist_keys, input_plan->targetlist);
 		dist_pathkeys = canonicalize_pathkeys(root, dist_pathkeys);
 		
-		if ( ! cdbpathlocus_collocates(input_locus, dist_pathkeys ) )
+		/* Assure the required distribution. */
+		if ( ! cdbpathlocus_collocates(input_locus, dist_pathkeys) )
 		{
-			/* Preexisting input_locus won't do.  Redistribute. */
 			foreach (lc, dist_keys)
 			{
 				SortClause *sc = (SortClause*)lfirst(lc);
-				TargetEntry *tle =  get_sortgroupclause_tle(sc, new_plan->targetlist);
+				TargetEntry *tle =  get_sortgroupclause_tle(sc,input_plan->targetlist);
 				dist_exprs = lappend(dist_exprs, tle->expr);
 			}
-		}
 
-		if(dist_exprs)
-		{
-			new_plan = (Plan *) make_motion_hash(root, new_plan, dist_exprs);
-			new_plan->total_cost += motion_cost_per_row * new_plan->plan_rows;
-			*pathkeys_ptr = NIL;
-			Assert(new_plan->flow);
+			Insist(dist_exprs != NIL); /* since partkey is non-empty */
+			
+			result_plan = (Plan *) make_motion_hash(root, result_plan, dist_exprs);
+			result_plan->total_cost += motion_cost_per_row * result_plan->plan_rows;
+			*pathkeys_ptr = NIL; /* no longer sorted */
+			Assert(result_plan->flow);
 		}
 
 		if(sortclause != NIL)
 		{
 			if(! pathkeys_contained_in(sort_pathkeys, *pathkeys_ptr))
 			{
-				new_plan = (Plan *) make_sort_from_sortclauses(root, sortclause, new_plan);
+				result_plan = (Plan *) make_sort_from_sortclauses(root, sortclause, result_plan);
 				*pathkeys_ptr = sort_pathkeys;
-				mark_sort_locus(new_plan);
+				mark_sort_locus(result_plan);
 			}
 		}
-
-		return new_plan;
 	}
+	return result_plan;
 }
 
 /* Plan a window query that can be implemented without any joins or 
@@ -1478,13 +1556,13 @@ static Plan *plan_trivial_window_query(PlannerInfo *root, WindowContext *context
 	window_pathkeys = canonicalize_pathkeys(root, window_pathkeys);
 	
 	/* Assure needed colocation and order. */
-	result_plan = condition_input(root,
-								  result_plan,
-								  winfo->partkey_len,
-								  winfo->partkey_attrs,
-								  winfo->sortclause,
-								  input_locus,
-								  &pathkeys);
+	result_plan = assure_collocation_and_order(root,
+											   result_plan,
+											   winfo->partkey_len,
+											   winfo->partkey_attrs,
+											   winfo->sortclause,
+											   input_locus,
+											   &pathkeys);
 	
 	/* Add the single Window node. */
 	result_plan = (Plan*) make_window(root, context->upper_tlist, 
@@ -1512,13 +1590,325 @@ static Plan *plan_trivial_window_query(PlannerInfo *root, WindowContext *context
 	return result_plan;
 }
 
+#ifdef BRIAN_SANDBOX
 
-
-/* Plan a window query that requires a join and/or input sharing. 
+/* Construct a sequential plan for a non-trivial window query.  A non-trivial
+ * window query is one that involves more than one partition/sort order or
+ * that contains deferred window functions.
+ *
+ * A sequential plan implements the query as a sequence of stages, each of
+ * which adds partial results corresponding to window functions to the 
+ * relation under contruction.  At the top these partial results are
+ * combined to produce the final result.
+ * 
+ * Aggregations (for deferred window functions or unordered aggregate window
+ * functions) are immediately joined back into the relation under construction
+ * via a locally generated MergeJoin, i.e., the join optimizer isn't involved.
  *
  * Returns plan and, implicitly, pathkeys.
  */
-static Plan *plan_non_trivial_window_query(PlannerInfo *root, WindowContext *context, List **pathkeys_ptr)
+static Plan *plan_sequential_window_query(PlannerInfo *root, WindowContext *context, List **pathkeys_ptr)
+{
+	Plan *result_plan;
+	List *result_pathkeys;
+	CdbPathLocus locus;
+	List *pathkeys = NIL;
+	List *targetlist;
+	List *rtable;
+	FromExpr *jointree;
+	List *sort_hint;
+	int hi, lo;
+	
+	Assert ( pathkeys_ptr != NULL );
+	
+	sort_hint = context->windowinfos[context->nwindowinfos-1].sortclause;
+
+	result_plan = plan_common_subquery(root, context->lower_tlist,
+									   sort_hint,
+									   &locus,
+									   &pathkeys);
+	
+	/* No row key used in the sequential strategy. */
+	context->rowkey_len = 0;
+	context->rowkey_attrs = NULL;	
+	context->keyed_lower_tlist = context->lower_tlist;	
+	
+	/* Record common subquery information in context. */
+	context->subplan = result_plan;
+	context->subplan_locus = locus;
+	context->subplan_pathkeys = pathkeys;
+	
+	/* We construct plan stages from the last window info to the first.
+	 * The window info sort places non-partitioned windows first and we
+	 * prefer to process these last. A stage consists of a set of 
+	 * WindowInfos with the same partitioning.
+	 */
+	for ( hi = context->nwindowinfos - 1; hi >= 0; hi = lo - 1 )
+	{
+		int j;
+		Bitmapset *partset = context->specinfos[context->windowinfos[hi].firstspecindex].partset;
+
+		lo = hi;		
+		for ( j = hi-1; j  >= 0; j-- )
+		{
+			WindowInfo *winfo = &context->windowinfos[j];
+			
+			if ( ! bms_equal( context->specinfos[winfo->firstspecindex].partset, partset ) )
+				break;
+				
+			lo = j;
+		}
+		
+		/* Plan a stage for WindowInfos from hi to lo. */
+		result_plan = plan_sequential_stage(root, 
+											context, 
+											hi, lo, 
+											result_plan, 
+											&locus, 
+											&pathkeys
+											);
+	}
+	
+	/* Generate coplans for each WindowInfo								  								  
+	context->coplan_count = 0;
+	
+	for ( i = 0; i < context->nwindowinfos; i++ )
+	{
+		plan_windowinfo_coplans(root, context, i);
+	} 
+	*/
+	
+	/* Construct the range table for the join query to be constructed. */
+	rtable = plan_window_rtable(root, context);
+	
+	/* Mutate the upper target list to refer to the new range table. */
+	targetlist = translate_upper_tlist(context->upper_tlist, context);
+	
+	/* Arrange to join the coplans back together. */
+	jointree = plan_window_jointree(root,  context);
+	
+	/* XXX This is the evil part!
+	 *
+	 * Modify the input query to look like a new upper level join
+	 * query.  Retain what's above  the jointree (ordering, etc)
+	 * from the original.  This works because the targetlist is
+	 * "conformable" with the original w.r.t. sort/group refs,
+	 * resnos, types, etc.
+	 *
+	 * We don't need to descend into the range table to fix varlevelsup
+	 * due to the new query level we're adding, because the range table
+	 * has already been planned. (Right?)
+	 */
+	root->parse->targetList = targetlist;
+	root->parse->rtable = rtable;
+	root->parse->jointree = jointree;
+	root->parse->windowClause = NIL;
+	
+	/* Plan the join.
+	 */
+	{
+		Path *cheapest_path;
+		Path *best_path;
+		Path *sorted_path;
+		double ngroups;
+		QualCost tlist_cost;
+						
+		root->group_pathkeys = NIL;
+		root->sort_pathkeys = 
+			make_pathkeys_for_sortclauses(root->parse->sortClause, targetlist);
+		root->query_pathkeys = root->sort_pathkeys;
+		
+		query_planner(root, targetlist, 0.0, &cheapest_path, &sorted_path, &ngroups);
+		
+		if ( sorted_path != NULL )
+			best_path = sorted_path;
+		else
+			best_path = cheapest_path;
+		
+		result_plan = create_plan(root, best_path);
+		result_pathkeys = best_path->pathkeys;
+		
+		/* Adjust target list (create_plan returns a flat one) and costs
+		 * since our target list may have expressions.  (Could track this
+		 * and avoid, but not yet.)
+		 */
+		result_plan = plan_pushdown_tlist(result_plan, targetlist);
+		cost_qual_eval(&tlist_cost, targetlist);
+		result_plan->startup_cost += tlist_cost.startup;
+		result_plan->total_cost += tlist_cost.startup + tlist_cost.per_tuple * result_plan->plan_rows;
+
+		Assert( result_plan->flow != NULL );
+	}
+
+	*pathkeys_ptr = result_pathkeys;
+	return result_plan;
+}
+
+/* Plan a single stage of a sequential window query plan.
+ *
+ * By construction, all the window functions computed by a stage have the 
+ * same PARTITION BY specification.  They are represented by contiguous
+ * WindowInfo structures (from lo_windex to hi_windex) in the WindowContext.
+ *
+ * A stage comprises a chain of Window nodes (with an initial motion and 
+ * intervening sorts as required) and, if needed, an Agg node which is joined
+ * to the head of the Window node chain.  
+ */
+static Plan *plan_sequential_stage(PlannerInfo *root, 
+								   WindowContext *context, 
+								   int hi_windex, int lo_windex, 
+								   Plan *input_plan,
+								   CdbPathLocus *locus_ptr,
+								   List **pathkeys_ptr )
+{
+	Plan *window_plan;
+	Plan *agg_plan = NULL;
+	WindowInfo *winfo;
+	int i;
+
+	/* In-Out parameters */
+	CdbPathLocus locus = *locus_ptr;
+	List *pathkeys = *pathkeys_ptr;
+
+	/* Are there external aggregations? */
+	bool hasagg = FALSE;
+	for ( i = lo_windex; i <= hi_windex; i++ )
+	{
+		winfo = &context->windowinfos[i];
+		hasagg = hasagg || winfo->needpartkey || winfo->needauxcount;
+	}
+
+	/* By definition, all the WindowInfo in a stage have the same partitioning
+	 * so we begin by assuring collocation on the partition key. (We also
+	 * coerce the desired order for first WindowInfo.)
+	 */
+	window_plan = assure_collocation_and_order(root, 
+											   input_plan, 
+											   winfo->partkey_len,
+											   winfo->partkey_attrs,
+											   winfo->sortclause,
+											   locus,
+											   &pathkeys);
+	
+	if ( hasagg )
+	{
+		/* We'll be encountering some Agg targets.  Here we want to 
+		 * share the current window plan locally (within the slice)
+		 * so we can develop an Agg and a Window branch within the
+		 * stage.  */
+		AggStrategy strategy = AGG_PLAIN;
+		long num_groups = 1;
+		AttrNumber *grpcolidx = NULL;
+		List *share_partners = NIL;
+		/* List *tlist = NIL; */
+		
+		if ( winfo->partkey_len > 0 )
+		{
+			int i;
+			double d;
+			size_t sz;
+			List *part_exprs = NIL;
+			
+			/* Estimate the number of parts in the partition. */
+			for ( i = 0; i < winfo->partkey_len; i++ )
+			{
+				TargetEntry *tle; 
+				tle = get_tle_by_resno(input_plan->targetlist, 
+									   winfo->partkey_attrs[i]);
+				part_exprs = lappend(part_exprs, tle->expr);
+			}
+			d = estimate_num_groups(root, part_exprs, window_plan->plan_rows);
+			num_groups = (d<0)? 0: (d>LONG_MAX)? LONG_MAX: (long)d;
+			list_free(part_exprs);
+			part_exprs = NIL;
+
+
+			strategy = AGG_SORTED;
+			sz = winfo->partkey_len * sizeof(AttrNumber);
+			grpcolidx = (AttrNumber*)palloc(sz);
+			for ( i = 0; i < winfo->partkey_len; i++ )
+			{
+				TargetEntry *tle; 			
+				tle = get_tle_by_resno(window_plan->targetlist, 
+									   winfo->partkey_attrs[i]);
+
+				/* grpcolidx[i] = addTargetToAggStage((Node*)tle, &tlist, context);
+				
+				addTargetToCoplan((Node*)tle, agg_coplan, context); */
+			}
+			
+			share_partners = share_plan(root, window_plan, 2);
+			window_plan = list_nth(share_partners, 0);
+			agg_plan = list_nth(share_partners, 1);
+			list_free(share_partners);
+		}
+		
+		agg_plan = (Plan *)make_agg(
+					root,
+					NIL, /* TODO targetlist */
+					NIL, /* qual */
+					strategy,
+					winfo->partkey_len, 
+					grpcolidx,
+				    num_groups,
+				    0, /* num_nullcols */
+				    0, /* input_grouping */
+				    0, /* grouping_id */
+				    0, /* rollup_gs_times */
+					0, /* numAggs */
+					0, /* transSpace */
+					agg_plan /* now just the shared input */
+					);
+	}
+	
+	
+	for ( i = lo_windex; i <= hi_windex; i++ )
+	{
+		winfo = &context->windowinfos[i];
+		
+		/* [Re]condition input for this window info.  At most this may
+		 * add a Sort node, but the partitioning order will be preserved.
+		 */
+		 
+		/* Initialize a Window node for this WindowInfo. 
+		 */
+		
+		/* Per SpecInfo */
+		/*  Per WindowRef/RefInfo 
+		 *
+		 *    Add targets to the window node.
+		 *    Add targets to the agg node.
+		 */
+	}
+	
+	if ( hasagg )
+	{
+		/* Add MergeJoin of SubqueryScans and make necessary adjustments
+		 * to root->parse (push a Query with rangetable into it).
+		 *
+		 * stuff the result in window_plan
+		 */
+	}	
+
+	
+	return window_plan;
+}
+
+#endif /* BRIAN_SANDBOX */
+
+
+/* Construct a parallel plan for a non-trivial window query.  A non-trivial
+ * window query is one that involves more than one partition/sort order or
+ * that contains deferred window functions.
+ *
+ * A parallel plan implements the query as a top-level join of a set of
+ * independent "coplans" that compute portions of the final target list.
+ * The coplans usually take their input from the common subquery via input
+ * sharing.
+ *
+ * Returns plan and, implicitly, pathkeys.
+ */
+static Plan *plan_parallel_window_query(PlannerInfo *root, WindowContext *context, List **pathkeys_ptr)
 {
 	Plan *subplan;
 	Plan *result_plan;
@@ -1655,7 +2045,10 @@ static Plan *plan_non_trivial_window_query(PlannerInfo *root, WindowContext *con
 	return result_plan;
 }
 
-
+/* Plan the coplans for a single WindowInfo. Results are stored back in the
+ * indicated WindowInfo (fields window_coplan and agg_coplan).  The context
+ * is updated appropriately (e.g., the Var translation map is kept current).
+ */
 static void plan_windowinfo_coplans(PlannerInfo *root, WindowContext *context, int window_index)
 {
 	Coplan *window_coplan = NULL;
@@ -1814,7 +2207,7 @@ static void plan_windowinfo_coplans(PlannerInfo *root, WindowContext *context, i
 		
 		ref = rinfo->ref;
 		
-		if ( rinfo->isagg && sinfo->order == NIL )
+		if ( RefInfo_AggregateUnordered(rinfo, context) ) // ( rinfo->isagg && sinfo->order == NIL )
 		{
 			/* Plan unordered aggregate */
 			Aggref *aggref;
@@ -1827,7 +2220,7 @@ static void plan_windowinfo_coplans(PlannerInfo *root, WindowContext *context, i
 			var = makeVar(agg_coplan->varno, resno, ref->restype, -1, false);
 			rinfo->resultexpr = (Expr*)var;
 		}
-		else if ( !rinfo->isagg && rinfo->needcount )
+		else if ( RefInfo_WindowDeferred(rinfo, context) ) // ( !rinfo->isagg && rinfo->needcount )
 		{
 			/* Plan deferred window function */
 			FuncExpr *func;
@@ -1848,7 +2241,8 @@ static void plan_windowinfo_coplans(PlannerInfo *root, WindowContext *context, i
 			func = makeFuncExpr(rinfo->winfinfunc, restype, list_make2(arg1, arg2), COERCE_DONTCARE);
 			rinfo->resultexpr = (Expr*)func;
 		}
-		else if ( rinfo->isagg || !rinfo->needcount )
+		else if ( RefInfo_WindowImmediate(rinfo, context) || 
+				  RefInfo_AggregateOrdered(rinfo, context) ) // ( rinfo->isagg || !rinfo->needcount )
 		{
 			/* Plan immediate window function or ordered window agg) */
 			ref->winstage = WINSTAGE_IMMEDIATE;
@@ -2021,11 +2415,11 @@ static RangeTblEntry *rte_for_coplan(
 		WindowInfo *winfo,
 		Coplan *coplan)
 {
-	Query *subquery;
 	RangeTblEntry *rte;
 	Plan *new_plan;
+	Alias *new_eref;
 	
-	new_plan = condition_input(root,
+	new_plan = assure_collocation_and_order(root,
 						input_plan,
 						winfo->partkey_len, 
 						winfo->partkey_attrs,
@@ -2091,11 +2485,45 @@ static RangeTblEntry *rte_for_coplan(
 				new_plan->lefttree, 
 				(subplan_pathkeys != NIL));
 
-	/* The RTE we produce is pre-planned, but it should carry a plausible
-	 * subquery.
-	 */
+	/* Need to specify eref for messages. */
+	new_eref = makeNode(Alias);
+	new_eref->aliasname = pstrdup("coplan");
+	new_eref->colnames = coplan->targetnames;
+	
+	rte = package_plan_as_rte(root->parse, new_plan, new_eref, subplan_pathkeys);
+
+	return rte;
+}
+
+/* Package a plan as a pre-planned subquery RTE.
+ *
+ * Note that the input query is usually root->parse (since that is the
+ * query from which this invocation of the planner takes its context).
+ * 
+ * Note also that the supplied plan's target list must be congruent with
+ * the range of the underlying planner context.
+ *
+ * The result is a pre-planned subquery RTE which incorporates the given
+ * plan, alias, and pathkeys (if any) directly.  The input query is copied,
+ * not modified.
+ *
+ * The caller must install the RTE in an appropriate query's range table
+ * and reference its results through a SubqueryScan node.
+ */
+static RangeTblEntry *package_plan_as_rte(Query *query, Plan *plan, Alias *eref, List *pathkeys)
+{
+	Query *subquery;
+	RangeTblEntry *rte;
+	
+	
+	Assert( query != NULL );
+	Assert( plan != NULL );
+	Assert( eref != NULL );
+	Assert( plan->flow != NULL ); /* essential in a pre-planned RTE */
+	
+	/* Make a plausible subquery for the RTE we'll produce. */
 	subquery = makeNode(Query);
-	memcpy(subquery, root->parse, sizeof(Query));
+	memcpy(subquery, query, sizeof(Query));
 	
 	subquery->querySource = QSRC_PLANNER;
 	subquery->canSetTag = false;
@@ -2105,7 +2533,7 @@ static RangeTblEntry *rte_for_coplan(
 	subquery->intoOnCommit = ONCOMMIT_NOOP;
 	subquery->intoTableSpaceName = NULL;
 	
-	subquery->targetList = copyObject(new_plan->targetlist);
+	subquery->targetList = copyObject(plan->targetlist);
 	subquery->windowClause = NIL;
 	
 	subquery->distinctClause = NIL;
@@ -2115,19 +2543,17 @@ static RangeTblEntry *rte_for_coplan(
 	
 	Assert( subquery->setOperations == NULL );
 	
-	/* Package up the RTE. 
-	 */
+	/* Package up the RTE. */
 	rte = makeNode(RangeTblEntry);
 	rte->rtekind = RTE_SUBQUERY;
 	rte->subquery = subquery;
-	rte->eref = makeNode(Alias);
-	rte->eref->aliasname = pstrdup("coplan");
-	rte->eref->colnames = coplan->targetnames;
-	rte->subquery_plan = new_plan;
-	rte->subquery_pathkeys = subplan_pathkeys;
+	rte->eref = eref;
+	rte->subquery_plan = plan;
+	rte->subquery_pathkeys = pathkeys;
 
 	return rte;
 }
+
 
 /* 
  * plan_window_rtable is the stub for plan_window_rtable_dup/share.
