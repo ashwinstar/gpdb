@@ -9,7 +9,6 @@ if exist buildenv.bat call buildenv.bat
 
 REM special for GPDB
 if exist ..\msvc if exist ..\..\..\src cd ..\..\..
-pwd
 copy src\include\catalog\gp_version.in src\include\catalog\gp_version.h
 copy src\backend\catalog\cdb_schema.in src\backend\catalog\cdb_schema.sql
 cd %STARTDIR%

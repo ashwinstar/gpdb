@@ -95,7 +95,7 @@ sub CopyFiles
         $f = $basedir . $f;
         die "No file $f\n" if (!-f $f);
         copy($f, $target . basename($f))
-          || croak "Could not copy $f to $target". basename($f). " to $target". basename($f) . "\n";
+          || carp "Could not copy $f to $target". basename($f). " to $target". basename($f) . "\n";
     }
     print "\n";
 }
@@ -120,7 +120,7 @@ sub CopySetOfFiles
         my $tgt = $target . basename($_);
         print ".";
         my $src = $norecurse?(dirname($spec) . '/' . $_):$_;
-        copy($src, $tgt) || carp "Could not copy $src: $!\n";
+        copy($src, $tgt) || carp "Could not copy $src to $tgt: $!\n";
     }
     close($D);
     print "\n";
@@ -163,7 +163,7 @@ sub CopySolutionOutput
             # Static lib, such as libpgport, only used internally during build, don't install
             next;
         }
-        copy("$conf\\$pf\\$pf.$ext","$target\\$dir\\$pf.$ext") || carp "Could not copy $pf.$ext\n";
+        copy("$conf\\$pf\\$pf.$ext","$target\\$dir\\$pf.$ext") || carp "Could not copy $conf\\$pf\\$pf.$ext to $target\\$dir\\$pf.$ext\n";
         copy("$conf\\$pf\\$pf.pdb","$target\\symbols\\$pf.pdb") || carp "Could not copy $pf.pdb\n";
         print ".";
     }
@@ -249,7 +249,7 @@ sub CopyContribFiles
             foreach my $f (split /\s+/,$flist)
             {
                 copy('contrib/' . $d . '/' . $f,$target . '/share/contrib/' . basename($f))
-                  || croak("Could not copy file $f in contrib $d");
+                  || carp("Could not copy file $f in contrib $d");
                 print '.';
             }
         }
@@ -267,7 +267,7 @@ sub CopyContribFiles
             foreach my $f (split /\s+/,$flist)
             {
                 copy('contrib/' . $d . '/' . $f, $target . '/doc/contrib/' . $f)
-                  || croak("Could not copy file $f in contrib $d");
+                  || carp("Could not copy file $f in contrib $d");
                 print '.';
             }
         }
@@ -311,7 +311,7 @@ sub CopyIncludeFiles
         'src/include/', 'postgres_ext.h', 'pg_config.h', 'pg_config_os.h', 'pg_config_manual.h'
     );
     copy('src/include/libpq/libpq-fs.h', $target . '/include/libpq/')
-      || croak 'Could not copy libpq-fs.h';
+      || carp 'Could not copy libpq-fs.h';
 
     CopyFiles('Libpq headers', $target . '/include/', 'src/interfaces/libpq/', 'libpq-fe.h');
     CopyFiles(
@@ -326,7 +326,7 @@ sub CopyIncludeFiles
         'src/include/', 'c.h', 'port.h', 'postgres_fe.h'
     );
     copy('src/include/libpq/pqcomm.h', $target . '/include/internal/libpq/')
-      || croak 'Could not copy pqcomm.h';
+      || carp 'Could not copy pqcomm.h';
 
     CopyFiles(
         'Server headers',
