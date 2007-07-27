@@ -36,7 +36,9 @@ APR_DECLARE(size_t) txt_file_read(gpcc_file_t *fd, void *ptr, size_t size)
 
 APR_DECLARE(int) txt_file_close(gpcc_file_t *fd)
 {
-    return close(fd->ffd);
+    int e = close(fd->ffd);
+    fd->ffd = 0;
+    return e;
 }
 
 /* GZ */
@@ -67,7 +69,9 @@ APR_DECLARE(size_t) gz_file_read(gpcc_file_t *fd, void *ptr, size_t len)
 
 APR_DECLARE(int) gz_file_close(gpcc_file_t *fd)
 {
-    return gzclose(fd->u.gz.fp);
+    int e =  gzclose(fd->u.gz.fp);
+    fd->ffd = 0;
+    return e;
 }
 
 /* Compress *.Z */
@@ -186,23 +190,33 @@ APR_DECLARE(size_t) z_file_read(gpcc_file_t *fd, void *ptr, size_t size)
 
 APR_DECLARE(int) z_file_close(gpcc_file_t *fd)
 {
+    int e;
+
     if (fd->u.z.closed == 0) {
 	(void) inflateEnd(&fd->u.z.strm);
     }
-    return close(fd->ffd);	
+    e = close(fd->ffd);	
+    fd->ffd = 0;
+    return e;
 }
 
 APR_DECLARE(apr_status_t) gpcc_file_open(gpcc_file_t *fd, const char *fpath, int oflag, mode_t mode)
 {
-    if (apr_fnmatch("*.gz", fpath, APR_FNM_PERIOD | APR_FNM_CASE_BLIND) == APR_SUCCESS) {
-	return gz_file_open(fd, fpath, oflag, mode);
-    } 
-    else if (apr_fnmatch("*.Z", fpath, APR_FNM_PERIOD | APR_FNM_CASE_BLIND) == APR_SUCCESS) {
-	return z_file_open(fd, fpath, oflag, mode);	
-    }
-    else if (apr_fnmatch("*.zip", fpath, APR_FNM_PERIOD | APR_FNM_CASE_BLIND) == APR_SUCCESS) {    
-	gpcc_warning(FLINE, "compression zip is not supported");
-	return -1;
+    char *s = strrchr(fpath, '.');
+    if (s) {
+	if (apr_strnatcasecmp(s, ".gz") == 0) {
+	    return gz_file_open(fd, fpath, oflag, mode);
+	} 
+	else if (apr_strnatcasecmp(s, ".z") == 0) {
+	    return z_file_open(fd, fpath, oflag, mode);	
+	}
+	else if (apr_strnatcasecmp(s, ".zip") == 0) {
+	    gpcc_warning(FLINE, "compression zip is not supported");
+	    return -1;
+	} 
+	else {
+	    return txt_file_open(fd, fpath, oflag, mode);
+	}
     } else {
 	return txt_file_open(fd, fpath, oflag, mode);
     }
