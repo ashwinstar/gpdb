@@ -370,7 +370,7 @@ ShmemInitStruct(const char *name, Size size, bool *foundPtr)
 		{
 			LWLockRelease(ShmemIndexLock);
 
-			elog(WARNING, "ShmemIndex entry size is wrong");
+			elog(WARNING, "ShmemIndex entry size is wrong.  entry is %ld, we were looking for %ld",result->size,size);
 			/* let caller print its message too */
 			return NULL;
 		}
