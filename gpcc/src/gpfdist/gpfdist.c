@@ -26,6 +26,7 @@
 #include <apr_env.h>
 #include <apr_fnmatch.h>
 #include <gpcc_net.h>
+#include <gpcc_file.h>
 
 #include <event.h>
 #define BLOCKSIZE  (1024 * 32)
@@ -81,7 +82,7 @@ struct {
 typedef struct fstream_t fstream_t;
 struct fstream_t {
     const char** fpath;		/* array of fpath */
-    int*         ffd;		/* array of fd */
+    gpcc_file_t *fd;            /* array of fd */
     int          fn;		/* #elements in ffd[] and fpath[] */
     int		 fidx;		/* current index in ffd[] */
     apr_uint64_t foff;		/* current offset in ffd[fidx] */
@@ -211,9 +212,9 @@ void fstream_free(fstream_t* fs)
 {
     int i;
     for (i = 0; i < fs->fn; i++) {
-	if (fs->ffd[i] >= 0) {
-	    close(fs->ffd[i]);
-	    fs->ffd[i] = 0;
+	if (fs->fd[i].ffd >= 0) {
+	    gpcc_file_close(&fs->fd[i]);
+	    fs->fd[i].ffd = 0;
 	}
 	free((char*)fs->fpath[i]);
     }
@@ -223,7 +224,7 @@ void fstream_free(fstream_t* fs)
     }
     
     free(fs->fpath);
-    free(fs->ffd);
+    free(fs->fd);
     free(fs);
 }
 
@@ -231,7 +232,7 @@ void fstream_free(fstream_t* fs)
 /* alloc a new file stream */
 fstream_t* fstream_alloc(char** path, int npath)
 {
-    int i, fd;
+    int i;
     fstream_t* fs;
 
     if (0 == (fs = malloc(sizeof(fstream_t))))
@@ -241,22 +242,23 @@ fstream_t* fstream_alloc(char** path, int npath)
 
     fs->fn = npath;
     fs->fpath = malloc(sizeof(char*) * npath);
-    fs->ffd = malloc(sizeof(int) * npath);
-    if (0 == fs->fpath || 0 == fs->ffd) 
+    fs->fd = malloc(sizeof(gpcc_file_t) * npath);
+    if (0 == fs->fpath || 0 == fs->fd) 
 	gpcc_fatal(FLINE, "out of memory");
 	
     for (i = 0; i < npath; i++) {
 	if (0 == (fs->fpath[i] = strdup(path[i])))
 	    gpcc_fatal(FLINE, "out of memory");
 
-	fs->ffd[i] = 0;
+	fs->fd[i].ffd = 0;
 	/* check READ access right */
-	if (-1 == (fd = open(path[i], O_RDONLY, 0600))) {
+
+	if (0 != gpcc_file_open(&fs->fd[i], path[i], O_RDONLY, 0600)) {
 	    gpcc_warning(FLINE, "unable to open file %s", path[i]);
 	    fstream_free(fs);
 	    return 0;
 	} else {
-	    close(fd);
+	    gpcc_file_close(&fs->fd[i]);
 	}
     }
     fs->fidx = 0;
@@ -288,7 +290,7 @@ block_t* fstream_get_block(fstream_t* fs)
 	b = block_get();
 
     /* on to next file? */
-    if (fs->ffd[fs->fidx] < 0) {
+    if (fs->fd[fs->fidx].ffd < 0) {
 	fs->fidx++;
 	fs->foff = 0;
 	fs->fskip = opt.h;
@@ -296,10 +298,10 @@ block_t* fstream_get_block(fstream_t* fs)
 	    return b;		/* return the residue block */
     }
 
-    if (fs->ffd[fs->fidx] == 0) {
+    if (fs->fd[fs->fidx].ffd == 0) {
 	if (opt.V) 
 	    printf("   opening %s\n", fs->fpath[fs->fidx]);
-	if (-1 == (fs->ffd[fs->fidx] = open(fs->fpath[fs->fidx], O_RDONLY, 0600))) {
+	if (0 != gpcc_file_open(&fs->fd[fs->fidx], fs->fpath[fs->fidx], O_RDONLY, 0600)) {
 	    gpcc_warning(FLINE, "unable to open file %s", fs->fpath[fs->fidx]);
 	    fs->ferror = 1;
 	    return 0;
@@ -311,7 +313,7 @@ block_t* fstream_get_block(fstream_t* fs)
     while (0 != (n = sizeof(b->byte) - b->top)) {
 
 	/* read into b */
-	n = read(fs->ffd[fs->fidx], b->byte + b->top, n);
+	n = gpcc_file_read(&fs->fd[fs->fidx], b->byte + b->top, n);
 	if (n < 0) {
 	    fs->ferror = 1;
 	    return 0;
@@ -319,8 +321,8 @@ block_t* fstream_get_block(fstream_t* fs)
 	if (n == 0) {		/* current file EOF */
 	    localEOF = 1;
 	    /* close this file */
-	    close(fs->ffd[fs->fidx]);
-	    fs->ffd[fs->fidx] = -1;
+	    gpcc_file_close(&fs->fd[fs->fidx]);
+	    fs->fd[fs->fidx].ffd = -1;
 	    break;
 	}
 	b->top += n;
