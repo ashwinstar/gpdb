@@ -22,13 +22,6 @@ struct gpcc_file_t {
 
     union {
 	struct {
-	    unsigned char buf[256*1024];
-	    int top;
-	    int bot;
-	    int closed;
-	    z_stream strm;
-	} z;
-	struct {
 	    gzFile fp;
 	} gz;
     } u;
