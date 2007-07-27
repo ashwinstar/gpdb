@@ -173,6 +173,29 @@ typedef struct WindowRowsBuffer
 	WindowTransValue *transval;
 } WindowRowsBuffer;
 
+/*
+ * We special case buffers for frames referenced by window functions
+ * supporting frames.
+ */
+typedef struct WinFuncBufferData
+{
+	Datum *arg;
+	bool *argnull;
+} WinFuncBufferData;
+
+typedef struct WinFuncRowBuffer
+{
+	WinFuncBufferData dat; /* must be first */
+	int64 row_index;
+} WinFuncRowBuffer;
+
+typedef struct WinFuncRangeBuffer
+{
+	WinFuncBufferData dat; /* must be first */
+	Datum *vals;
+	bool *nulls;
+} WinFuncRangeBuffer;
+
 typedef struct WindowFrameStateData
 {
 	/* if the user didn't specify a frame, we use the default */
@@ -271,6 +294,8 @@ typedef struct WindowBreakInfo
 #define FUNC_HAS_MAN_FRAME(f) \
 	(funcstate->isAgg && !OidIsValid(funcstate->invtransfn_oid))
 
+#define IS_LEAD_LAG_FUNC(oid) (oid == LEAD_WINDOW_FUNC_OID) 
+
 #define ABS(x) (x < 0 ? -x : x)
 #define MIN(x, y) (x =< y ? x : y)
 
@@ -295,6 +320,16 @@ static void freeFrameBuf(WindowState *wstate);
 static void init_frames(WindowState *wstate);
 static void resetPartFrameBuf(WindowState *wstate);
 static WindowTransValue *get_last_trans_val(WindowStatePerFunction funcstate);
+static void bufferAddRowWindowFuncTuple(WindowState *wstate,
+										WindowStatePerFunction funcstate,
+										Datum *args, bool *nulls, 
+										int64 lead_row_index,
+										bool tuple_in_frame);
+static void bufferAddRangeWindowFuncTuple(WindowState *wstate, 
+							  			  WindowStatePerFunction funcstate,
+							  			  Datum *args, bool *argnulls,
+							  			  Datum *vals, bool *nulls,
+							  			  bool tuple_in_frame);
 
 /* WindowState constructor.
  */
@@ -937,7 +972,6 @@ resetPerFunctionAggStates(WindowState *wstate, Index minlevel)
 		WindowStatePerFunction funcstate = &wstate->func_state[funcno];
 		
 		if (funcstate->isAgg && funcstate->wlevel->level >= minlevel)
-			//resetAggState(wstate, funcstate);
 			resetAggState(wstate, &funcstate->aggTransValue,
 							  &funcstate->aggTransValueIsNull,
 							  &funcstate->aggNoTransValue,
@@ -1512,37 +1546,128 @@ appendRangeTuple(WindowState *wstate, WindowKey *key,
 	{
 		int funcno = lfirst_int(lc);
 		WindowStatePerFunction funcstate = &wstate->func_state[funcno];
-		WindowTransValue *wtv;
-		bool append = true;
 
-		if (is_peer && funcstate->frame_mem_used > 0)
+		if (funcstate->trivial_frame ||
+			(!funcstate->isAgg && !funcstate->allowframe))
 		{
-			wtv = get_last_trans_val(funcstate);
-			append = false;
+			continue;
+		}
+
+		if (funcstate->isAgg)
+		{
+			WindowTransValue *wtv;
+			bool append = true;
+			if (is_peer && funcstate->frame_mem_used > 0)
+			{
+				
+				wtv = get_last_trans_val(funcstate);
+				append = false;
+			}
+			else
+			{
+				MemoryContext oldcxt;
+	
+				oldcxt = MemoryContextSwitchTo(wstate->transcontext);
+				wtv = palloc(sizeof(WindowTransValue));
+				wtv->noTransValue = funcstate->aggInitValueIsNull;
+	
+				wtv->transValue = datumCopy(funcstate->aggInitValue, 
+											funcstate->aggTranstypeByVal,
+											funcstate->aggTranstypeLen);
+				wtv->transValueIsNull = funcstate->aggInitValueIsNull;
+				MemoryContextSwitchTo(oldcxt);
+			}
+			invokeWindowedFunc(funcstate, funcstate->transfn, wtv, 
+							   wstate, econtext);
+	
+			if (append)
+			{
+				bufferAddRangeTransValue(wstate, key, funcstate, wtv, vals, 
+										 nulls, tuple_before_edge);
+			}
 		}
 		else
 		{
-			MemoryContext oldcxt;
+			Datum *args;
+			bool *argnulls;
+			ListCell *lc;
+			int nargs;
+			MemoryContext oldctx;
+			int argno;
+			WindowRefExprState *wrxstate = funcstate->wrxstate;
 
-			oldcxt = MemoryContextSwitchTo(wstate->transcontext);
-			wtv = palloc(sizeof(WindowTransValue));
-			wtv->noTransValue = funcstate->aggInitValueIsNull;
+			/* 
+			 * If this is a window function support framing and isn't
+			 * LEAD() or LAG(), we only store each distinct value.
+			 */
+			if (!funcstate->isAgg && is_peer && funcstate->frame_mem_used > 0 
+				&& !IS_LEAD_LAG_FUNC(funcstate->windowfn_oid))
+				return;
 
-			wtv->transValue = datumCopy(funcstate->aggInitValue, 
-										funcstate->aggTranstypeByVal,
-										funcstate->aggTranstypeLen);
-			wtv->transValueIsNull = funcstate->aggInitValueIsNull;
-			MemoryContextSwitchTo(oldcxt);
-		}
-		invokeWindowedFunc(funcstate, funcstate->transfn, wtv, 
-						   wstate, econtext);
+			/* 
+			 * We're actually buffering the arguments to the function too,
+			 * instead of passing them to a transition function as we would
+			 * for an aggregate-as-window-function. So, we pull the args
+			 * out and save them.
+			 */
+			nargs = list_length(wrxstate->args) - 1;
+			argno = -1;
+			
+			oldctx = MemoryContextSwitchTo(wstate->transcontext);
+			
+			args = palloc(nargs * sizeof(Datum));
+			argnulls = palloc(nargs * sizeof(bool));
+			
+			foreach (lc, wrxstate->args)
+			{
+				ExprState  *argstate = (ExprState *) lfirst(lc);
+				
+				argno++;
 
-		if (append)
-		{
-			bufferAddRangeTransValue(wstate, key, funcstate, wtv, vals, nulls,
-									 tuple_before_edge);
+				if (argno < 1)
+					continue;
+				
+				args[argno - 1] = ExecEvalExpr(argstate, econtext,
+										   &argnulls[argno - 1], NULL);
+			}
+			MemoryContextSwitchTo(oldctx);
+			
+			bufferAddRangeWindowFuncTuple(wstate, funcstate, args, argnulls,
+										  vals, nulls, tuple_before_edge);
 		}
 	}
+}
+
+static void
+bufferAddRowWindowFuncTuple(WindowState *wstate, 
+							WindowStatePerFunction funcstate,
+							Datum *args, bool *nulls, int64 lead_row_index,
+							bool tuple_in_frame)
+{
+	WinFuncRowBuffer *wrb = MemoryContextAlloc(wstate->transcontext,
+											    sizeof(WinFuncRowBuffer));
+
+	wrb->row_index = lead_row_index;
+	wrb->dat.arg = args;
+	wrb->dat.argnull = nulls;
+	funcFrameBufAppend(wstate, funcstate, (void *)wrb, tuple_in_frame);
+}
+
+static void
+bufferAddRangeWindowFuncTuple(WindowState *wstate, 
+							  WindowStatePerFunction funcstate,
+							  Datum *args, bool *argnulls,
+							  Datum *vals, bool *nulls,
+							  bool tuple_in_frame)
+{
+	WinFuncRangeBuffer *wrb = MemoryContextAlloc(wstate->transcontext,
+												 sizeof(WinFuncRangeBuffer));
+
+	wrb->dat.arg = args;
+	wrb->dat.argnull = nulls;
+	wrb->vals = vals;
+	wrb->nulls = nulls;
+	funcFrameBufAppend(wstate, funcstate, (void *)wrb, tuple_in_frame);
 }
 
 static void
@@ -1593,24 +1718,74 @@ appendRowTuple(WindowState *wstate, WindowFrame *frame,
 	{
 		int funcno = lfirst_int(lc);
 		WindowStatePerFunction funcstate = &wstate->func_state[funcno];
-		WindowTransValue *wtv; 
-		MemoryContext oldcxt;
 
-		oldcxt = MemoryContextSwitchTo(wstate->transcontext);
-		wtv = palloc(sizeof(WindowTransValue));
-		wtv->noTransValue = false;
+		if (funcstate->isAgg)
+		{
+			WindowTransValue *wtv; 
+			MemoryContext oldcxt;
 
-		wtv->transValue = datumCopy(funcstate->aggInitValue, 
-									funcstate->aggTranstypeByVal,
-									funcstate->aggTranstypeLen);
-		wtv->transValueIsNull = funcstate->aggInitValueIsNull;
-		MemoryContextSwitchTo(oldcxt);
+			oldcxt = MemoryContextSwitchTo(wstate->transcontext);
+			wtv = palloc(sizeof(WindowTransValue));
+			wtv->noTransValue = false;
+
+			wtv->transValue = datumCopy(funcstate->aggInitValue, 
+										funcstate->aggTranstypeByVal,
+										funcstate->aggTranstypeLen);
+			wtv->transValueIsNull = funcstate->aggInitValueIsNull;
+			MemoryContextSwitchTo(oldcxt);
 		
-		invokeWindowedFunc(funcstate, funcstate->transfn, wtv,
-						   wstate, econtext);
+			invokeWindowedFunc(funcstate, funcstate->transfn, wtv,
+							   wstate, econtext);
 
-		bufferAddRowTransValue(wstate, funcstate, wtv, lead_row_index,
-							   tuple_in_frame);
+			bufferAddRowTransValue(wstate, funcstate, wtv, lead_row_index,
+								   tuple_in_frame);
+		}
+		else
+		{
+			Datum *args;
+			bool *argnulls;
+			ListCell *lc;
+			int nargs;
+			MemoryContext oldctx;
+			int argno;
+			WindowRefExprState *wrxstate = funcstate->wrxstate;
+
+			/* 
+			 * We're actually buffering the arguments to the function too,
+			 * instead of passing them to a transition function as we would
+			 * for an aggregate-as-window-function. So, we pull the args
+			 * out and save them.
+			 */
+			nargs = list_length(wrxstate->args) - 1;
+			argno = 0;
+			
+			oldctx = MemoryContextSwitchTo(wstate->transcontext);
+			
+			args = palloc(nargs * sizeof(Datum));
+			argnulls = palloc(nargs * sizeof(bool));
+			
+			foreach (lc, wrxstate->args)
+			{
+				ExprState  *argstate = (ExprState *) lfirst(lc);
+
+				/* skip the internal arg */
+				if (argno < 1)
+				{
+					argno++;
+					continue;
+				}
+
+				args[argno - 1] = ExecEvalExpr(argstate, econtext,
+										       argnulls + argno - 1, NULL);
+				argno++;
+			}
+
+			MemoryContextSwitchTo(oldctx);
+			
+			bufferAddRowWindowFuncTuple(wstate, funcstate, args, argnulls,
+										lead_row_index, tuple_in_frame);
+	
+		}
 	}
 
 	return tuple_in_frame;
@@ -1657,7 +1832,8 @@ adjustEdges(WindowState *wstate)
 					funcstate->cur_trail_edge = funcstate->prev_trail_edge + 1;
 				}
 	
-				if (funcstate->cur_lead_edge + 1 <= funcstate->frame_mem_used)
+				if (funcstate->cur_lead_edge + 1 <= 
+					funcstate->frame_mem_used - 1)
 				{
 					funcstate->cur_lead_edge++;
 					if (wstate->row_index == 1)
@@ -1669,7 +1845,7 @@ adjustEdges(WindowState *wstate)
 				else
 				{
 					funcstate->prev_lead_edge++;
-					funcstate->cur_lead_edge = -1;
+//					funcstate->cur_lead_edge = -1;
 				}
 			}
 			else
@@ -1969,7 +2145,7 @@ populateFrameBuffers(WindowState *wstate)
 			level_state = &wstate->level_state[level];
 	
 			if (fs->empty_frame)
-				return false;
+				return;
 
 
 			if (is_rows)
@@ -2254,73 +2430,85 @@ calculateTransVals(WindowState *wstate)
 			if (!FRAME_IS_COMPLEX(funcstate, fs))
 				continue;
 
-			/*
-			 * Here, we remove values from the transition value
-			 * which have fallen out of the frame and add those 
-			 * which have come into the frame.
-			 *
-			 * This works for functions which do and do not support
-			 * inversion because func_get_vals_for_add() will return
-			 * the whole from for functions which do not support inversion
-			 * and only the difference between the previous frame edge and
-			 * current frame edge for those that do.
-			 */
-			if (OidIsValid(funcstate->invprelimfn_oid))
+			if (funcstate->isAgg)
 			{
-				long int end = funcstate->cur_trail_edge;
-				long int start;
-				
-				if (!key->frame->is_rows)
+				/*
+				 * Here, we remove values from the transition value
+				 * which have fallen out of the frame and add those 
+				 * which have come into the frame.
+				 *
+				 * This works for functions which do and do not support
+				 * inversion because func_get_vals_for_add() will return
+				 * the whole from for functions which do not support inversion
+				 * and only the difference between the previous frame edge and
+				 * current frame edge for those that do.
+				 */
+				if (OidIsValid(funcstate->invprelimfn_oid))
 				{
-					/* The current trail edge hovers somewhere between the
-					 * previous edge and the next value -- unless it is
-					 * equal to it. If it is not equal, say it is so that
-					 * process_vals() will return something.
-					 */
-					if (!funcstate->cur_trail_edge_equal)
-						end++;
-				}
-				vals = func_get_vals(funcstate, funcstate->prev_trail_edge,
-									 end, true);
-
-				process_vals(wstate, funcstate, vals, key->frame->is_rows,
-							 false);
-
-				/* XXX: must be able to be starter than this! */
-#if 0
-				if (funcstate->prev_lead_edge == -1)
-				{
-					start = funcstate->prev_lead_edge = 0;
+					long int end = funcstate->cur_trail_edge;
+					long int start;
+					
+					if (!key->frame->is_rows)
+					{
+						/* The current trail edge hovers somewhere between the
+						 * previous edge and the next value -- unless it is
+						 * equal to it. If it is not equal, say it is so that
+						 * process_vals() will return something.
+						 */
+						if (!funcstate->cur_trail_edge_equal)
+							end++;
+					}
+					vals = func_get_vals(funcstate, funcstate->prev_trail_edge,
+										 end, true);
+	
+					process_vals(wstate, funcstate, vals, key->frame->is_rows,
+								 false);
+	
+					vals = func_get_vals(funcstate, funcstate->prev_lead_edge,
+										 funcstate->cur_lead_edge, false);
+	
+					process_vals(wstate, funcstate, vals, key->frame->is_rows, 
+								 true);
 				}
 				else
 				{
-					if (!key->frame->is_rows)
-						start = funcstate->prev_lead_edge + 1;
+					/* 
+					 * We must manually manage the frame so, give the range as
+					 * the whole frame.
+					 */
+					long int start;
+	
+					if (funcstate->cur_trail_edge == -1)
+						start = 0;
+					else
+						start = funcstate->cur_trail_edge;
+					
+					vals = func_get_vals(funcstate, start,
+										 funcstate->cur_lead_edge, false);
+					process_vals(wstate, funcstate, vals, key->frame->is_rows,
+								 true);
 				}
-#endif
-				vals = func_get_vals(funcstate, funcstate->prev_lead_edge,
-									 funcstate->cur_lead_edge, false);
-
-				process_vals(wstate, funcstate, vals, key->frame->is_rows, 
-							 true);
 			}
 			else
 			{
-				/* 
-				 * We must manually manage the frame so, give the range as
-				 * the whole frame.
-				 */
-				long int start;
+				/* window function case */
+				FunctionCallInfoData fcinfo;
+				ExprContext *econtext = wstate->ps.ps_ExprContext;
+				int argno = initFcinfo(funcstate->wrxstate, &fcinfo, 
+									   funcstate, econtext);
 
-				if (funcstate->cur_trail_edge == -1)
-					start = 0;
-				else
-					start = funcstate->cur_trail_edge;
-				
-				vals = func_get_vals(funcstate, start,
-									 funcstate->cur_lead_edge, false);
-				process_vals(wstate, funcstate, vals, key->frame->is_rows,
-							 true);
+				wstate->cur_funcstate = funcstate;
+
+				InitFunctionCallInfoData(fcinfo, 
+										 &funcstate->windowfn,
+										 argno,
+										 (void *) funcstate->wrxstate, 
+										 NULL);
+				{
+			
+					funcstate->win_value = FunctionCallInvoke(&fcinfo);
+					funcstate->win_value_is_null = fcinfo.isnull;
+				}
 			}
 		}
 	}
@@ -3800,6 +3988,7 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 			ReleaseSysCache(win_tuple);
 			
 			funcstate->windowfn_oid = windowfn_oid;
+			funcstate->allowframe = winform->winallowframe;
 			
 			/* Inject extra argument. */
 			refptr = makeNode(Const);
@@ -4249,4 +4438,90 @@ lead_immed_int(PG_FUNCTION_ARGS)
 		d = wrb->transval->transValue;
 		PG_RETURN_INT32(d);
 	}
+}
+
+static Datum
+last_value_internal(WindowRefExprState *ref_state, bool *isnull)
+{
+	WindowState *window_state = ref_state->windowstate;
+	WindowStatePerFunction funcstate = window_state->cur_funcstate;
+	long int pos;
+	WinFuncBufferData *dat;
+
+	pos = funcstate->cur_lead_edge;
+	if (pos < 0 || pos >= funcstate->frame_mem_used)
+	{
+		*isnull = true;
+		return (Datum)0;
+	}
+
+	dat = (WinFuncBufferData *)funcstate->frame_trans_vals[pos];
+
+	if (dat->argnull[0])
+	{
+		*isnull = true;
+		return (Datum)0;
+	}
+	*isnull = false;
+	return dat->arg[0];
+}
+
+Datum
+last_value_smallint(PG_FUNCTION_ARGS)
+{
+	Datum d;
+	bool isnull;
+	
+	d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+							&isnull);
+	
+	if (isnull)
+	   PG_RETURN_NULL();
+
+	PG_RETURN_INT16(DatumGetInt16(d));
+}
+
+Datum
+last_value_int(PG_FUNCTION_ARGS)
+{
+	Datum d;
+	bool isnull;
+	
+	d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+							&isnull);
+	
+	if (isnull)
+	   PG_RETURN_NULL();
+
+	PG_RETURN_INT32(DatumGetInt32(d));
+}
+
+Datum
+last_value_bigint(PG_FUNCTION_ARGS)
+{
+	Datum d;
+	bool isnull;
+	
+	d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+							&isnull);
+	
+	if (isnull)
+	   PG_RETURN_NULL();
+
+	PG_RETURN_INT64(DatumGetInt64(d));
+}
+
+Datum
+last_value_numeric(PG_FUNCTION_ARGS)
+{
+	Datum d;
+	bool isnull;
+	
+	d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+							&isnull);
+	
+	if (isnull)
+	   PG_RETURN_NULL();
+
+	PG_RETURN_NUMERIC(DatumGetNumeric(d));
 }

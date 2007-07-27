@@ -40,5 +40,9 @@ Datum ntile_prelim_bigint(PG_FUNCTION_ARGS);
 Datum ntile_prelim_numeric(PG_FUNCTION_ARGS);
 Datum ntile_final(PG_FUNCTION_ARGS);
 extern Datum lead_immed_int(PG_FUNCTION_ARGS);
+extern Datum last_value_int(PG_FUNCTION_ARGS);
+extern Datum last_value_bigint(PG_FUNCTION_ARGS);
+extern Datum last_value_smallint(PG_FUNCTION_ARGS);
+extern Datum last_value_numeric(PG_FUNCTION_ARGS);
 
 #endif   /* NODEWINDOW_H */

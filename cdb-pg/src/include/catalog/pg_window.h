@@ -121,7 +121,10 @@ DATA(insert ( 7007	t f f t	0			7207		1016		7305 ));
 /* ... for many datatypes */
 
 /* last_value */
-/* DATA(insert ( 70xx	t f f f	0				0			0			0 )); */
+DATA(insert ( 7012	t t f f	7103		0			0			0 ));
+DATA(insert ( 7013	t t f f	7107		0			0			0 ));
+DATA(insert ( 7014	t t f f	7108		0			0			0 ));
+DATA(insert ( 7015	t t f f	7109		0			0			0 ));
 /* ... for many datatypes */
 
 /* lag */
