@@ -396,7 +396,8 @@ assign_gp_use_dispatch_agent(bool newval, bool doit, GucSource source)
 {
 
 
-	elog(LOG, "assign_gp_use_dispatch_agent: gp_use_dispatch_agent old=%s, newval=%s, doit=%s",
+	if (newval != gp_use_dispatch_agent && doit)
+		elog(LOG, "assign_gp_use_dispatch_agent: gp_use_dispatch_agent old=%s, newval=%s, doit=%s",
 			(gp_use_dispatch_agent ? "true" : "false"), (newval ? "true" : "false"), (doit ? "true" : "false"));
 
 
@@ -407,7 +408,8 @@ assign_gp_use_dispatch_agent(bool newval, bool doit, GucSource source)
 		 * TODO: check for being in a transaction, or owning temp tables, as disconnecting all gangs
 		 * will wipe them out.
 		 */
-		disconnectAndDestroyAllGangs();
+		if (newval != gp_use_dispatch_agent)
+			disconnectAndDestroyAllGangs();
 		gp_use_dispatch_agent = newval;
 	}
 
