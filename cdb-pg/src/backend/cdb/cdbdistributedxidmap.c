@@ -401,7 +401,7 @@ DistributedXidMapShmemInit(void)
 	bool		found;
 	DISTRIBUTEDXIDMAP_SHARED *shared;
 	
-	shared = (DISTRIBUTEDXIDMAP_SHARED *) ShmemInitStruct("DistributedXidMap Shared", tmShmemSize(), &found);
+	shared = (DISTRIBUTEDXIDMAP_SHARED *) ShmemInitStruct("DistributedXidMap Shared", DistributedXidMapShmemSize(), &found);
 	if (!shared)
 		elog(FATAL, "Could not initialize Distributed XIP Map shared memory");
 
