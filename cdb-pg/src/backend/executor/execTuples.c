@@ -196,9 +196,15 @@ ExecDropTupleTable(TupleTable table,	/* tuple table */
 			if (slot->tts_tupleDescriptor)
 				ReleaseTupleDesc(slot->tts_tupleDescriptor);
 			if (slot->tts_values)
+			{
 				pfree(slot->tts_values);
+				slot->tts_values = NULL;
+			}
 			if (slot->tts_isnull)
+			{
 				pfree(slot->tts_isnull);
+				slot->tts_isnull = NULL;
+			}
 		}
 	}
 
@@ -257,9 +263,15 @@ ExecDropSingleTupleTableSlot(TupleTableSlot *slot)
 	if (slot->tts_tupleDescriptor)
 		ReleaseTupleDesc(slot->tts_tupleDescriptor);
 	if (slot->tts_values)
+	{
 		pfree(slot->tts_values);
+		slot->tts_values = NULL;
+	}
 	if (slot->tts_isnull)
+	{
 		pfree(slot->tts_isnull);
+		slot->tts_isnull = NULL;
+	}
 
 	pfree(slot);
 }

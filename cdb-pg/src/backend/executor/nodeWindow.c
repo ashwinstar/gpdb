@@ -1445,7 +1445,7 @@ set_edge_val(WindowState *wstate, WindowFrameState fs, WindowFrameEdge *e,
 				n = fs->lead_edge_nulls;
 			}
 			memcpy(d, vals, sizeof(Datum) * key->numSortCols);
-			memcpy(n, nulls, sizeof(Datum) * key->numSortCols);
+			memcpy(n, nulls, sizeof(bool) * key->numSortCols);
 		}
 	}
 }
