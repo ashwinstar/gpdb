@@ -33,6 +33,8 @@ sub genbki
     $version =~ /^(\d+\.\d+)/ || die "Bad format verison $version\n";
     my $majorversion = $1;
 
+	# In PG 8.2, NAMEDATALEN is in postgres_ext.h.  it moves
+	# to pg_config_manual.h in PG 8.3
     my $pgext = read_file("src/include/postgres_ext.h");
     $pgext =~ /^#define\s+NAMEDATALEN\s+(\d+)$/mg
       || die "Could not read NAMEDATALEN from pg_config_manual.h\n";

@@ -15,7 +15,8 @@ sub new
 {
     my $junk = shift;
     my $options = shift;
-    die "Pthreads is required.\n" unless $options->{pthread};
+    die "Pthreads is required by Greenplum DB.\n" unless $options->{pthread};
+    die "zlib is required by Greenplum DB.\n" unless $options->{zlib};
     my $self = {
         projects => {},
         options  => $options,
@@ -125,6 +126,8 @@ s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY
             print O "#define HAVE_KRB5_ERROR_TEXT_DATA 1\n";
             print O "#define HAVE_KRB5_TICKET_ENC_PART2 1\n";
             print O "#define PG_KRB_SRVNAM \"postgres\"\n";
+            print O "#define HAVE_KRB5_FREE_UNPARSED_NAME 1\n";
+            print O "#define ENABLE_GSS 1\n";
         }
 		if (my $port = $self->{options}->{"--with-pgport"})
 		{
@@ -250,10 +253,9 @@ s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY
 #if (_MSC_VER > 1200)
 #define HAVE_LONG_LONG_INT_64
 #define ENABLE_THREAD_SAFETY 1
-#endif
 EOF
 	print O "#define USE_INTEGER_DATETIMES 1\n" if ($self->{options}->{integer_datetimes});
-	#print O "#endif\n";
+	print O "#endif\n";
         close(O);
     }
 
@@ -262,17 +264,17 @@ EOF
         print "Generating pg_config_paths.h...\n";
         open(O,'>', 'src\port\pg_config_paths.h') || confess "Could not open pg_config_paths.h";
         print O  <<EOF;
-#define PGBINDIR "/usr/local/pgsql/bin"
-#define PGSHAREDIR "/usr/local/pgsql/share"
-#define SYSCONFDIR "/usr/local/pgsql/etc"
-#define INCLUDEDIR "/usr/local/pgsql/include"
-#define PKGINCLUDEDIR "/usr/local/pgsql/include"
-#define INCLUDEDIRSERVER "/usr/local/pgsql/include/server"
-#define LIBDIR "/usr/local/pgsql/lib"
-#define PKGLIBDIR "/usr/local/pgsql/lib"
-#define LOCALEDIR "/usr/local/pgsql/share/locale"
-#define DOCDIR "/usr/local/pgsql/doc"
-#define MANDIR "/usr/local/pgsql/man"
+#define PGBINDIR "/bin"
+#define PGSHAREDIR "/share"
+#define SYSCONFDIR "/etc"
+#define INCLUDEDIR "/include"
+#define PKGINCLUDEDIR "/include"
+#define INCLUDEDIRSERVER "/include/server"
+#define LIBDIR "/lib"
+#define PKGLIBDIR "/lib"
+#define LOCALEDIR "/share/locale"
+#define DOCDIR "/doc"
+#define MANDIR "/man"
 EOF
         close(O);
     }
@@ -315,7 +317,7 @@ sub AddProject
     if ($self->{options}->{zlib})
     {
         $proj->AddIncludeDir($self->{options}->{zlib} . '\include');
-        $proj->AddLibrary($self->{options}->{zlib} . '\lib\zdll.lib');
+        $proj->AddLibrary($self->{options}->{zlib} . '\lib\zlib.lib');
 	$proj->AddLibrary($self->{options}->{zlib} . '\lib\libcurl.lib');
     }
     if ($self->{options}->{openssl})
@@ -334,6 +336,7 @@ sub AddProject
         $proj->AddIncludeDir($self->{options}->{krb5} . '\inc\krb5');
         $proj->AddLibrary($self->{options}->{krb5} . '\lib\i386\krb5_32.lib');
         $proj->AddLibrary($self->{options}->{krb5} . '\lib\i386\comerr32.lib');
+        $proj->AddLibrary($self->{options}->{krb5} . '\lib\i386\gssapi32.lib');
     }
     if ($self->{options}->{xml})
     {

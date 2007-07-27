@@ -1,4 +1,4 @@
-@echo on
+@echo off
 REM $PostgreSQL: pgsql/src/tools/msvc/build.bat,v 1.8 2007/04/18 10:14:06 mha Exp $
 
 SETLOCAL
@@ -7,11 +7,13 @@ SET CONFIG=
 if exist src\tools\msvc\buildenv.bat call src\tools\msvc\buildenv.bat
 if exist buildenv.bat call buildenv.bat
 
+REM special for GPDB
 if exist ..\msvc if exist ..\..\..\src cd ..\..\..
 pwd
 copy src\include\catalog\gp_version.in src\include\catalog\gp_version.h
 copy src\backend\catalog\cdb_schema.in src\backend\catalog\cdb_schema.sql
 cd %STARTDIR%
+REM end special for GPDB
 
 perl mkvcbuild.pl
 if errorlevel 1 goto :eof
@@ -40,4 +42,6 @@ SET E=%ERRORLEVEL%
 
 cd %STARTDIR%
 
+REM exit fix for pre-2003 shell especially if used on buildfarm
+if "%XP_EXIT_FIX%" == "yes" exit %E%
 exit /b %E%

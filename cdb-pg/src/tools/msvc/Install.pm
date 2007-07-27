@@ -120,7 +120,7 @@ sub CopySetOfFiles
         my $tgt = $target . basename($_);
         print ".";
         my $src = $norecurse?(dirname($spec) . '/' . $_):$_;
-        copy($src, $tgt) || croak "Could not copy $src: $!\n";
+        copy($src, $tgt) || carp "Could not copy $src: $!\n";
     }
     close($D);
     print "\n";
@@ -163,8 +163,8 @@ sub CopySolutionOutput
             # Static lib, such as libpgport, only used internally during build, don't install
             next;
         }
-        copy("$conf\\$pf\\$pf.$ext","$target\\$dir\\$pf.$ext") || croak "Could not copy $pf.$ext\n";
-        copy("$conf\\$pf\\$pf.pdb","$target\\symbols\\$pf.pdb") || croak "Could not copy $pf.pdb\n";
+        copy("$conf\\$pf\\$pf.$ext","$target\\$dir\\$pf.$ext") || carp "Could not copy $pf.$ext\n";
+        copy("$conf\\$pf\\$pf.pdb","$target\\symbols\\$pf.pdb") || carp "Could not copy $pf.pdb\n";
         print ".";
     }
     print "\n";

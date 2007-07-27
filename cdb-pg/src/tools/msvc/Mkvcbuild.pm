@@ -23,6 +23,7 @@ my $postgres;
 my $libpq;
 
 my $contrib_defines = {'refint' => 'REFINT_VERBOSE'};
+# for GPDB, I've added xlogdump
 my @contrib_uselibpq = ('dblink', 'oid2name', 'pgbench', 'vacuumlo', 'xlogdump');
 my @contrib_uselibpgport = ('oid2name', 'pgbench', 'pg_standby', 'vacuumlo', 'xlogdump');
 my $contrib_extralibs = {'pgbench' => ['wsock32.lib']};
@@ -52,13 +53,19 @@ sub mkvcbuild
     $libpgport = $solution->AddProject('libpgport','lib','misc');
     $libpgport->AddDefine('FRONTEND');
     $libpgport->AddFiles('src\port',@pgportfiles);
+    
+    # because in GPDB, the postgres executible calls libpq, we need to build it first.
 
     $libpq = $solution->AddProject('libpq','dll','interfaces','src\interfaces\libpq');
     $libpq->AddDefine('FRONTEND');
     $libpq->AddIncludeDir('src\port');
     $libpq->AddLibrary('wsock32.lib ws2_32.lib');
+    $libpq->AddLibrary('secur32.lib');
     $libpq->AddLibrary('wldap32.lib') if ($solution->{options}->{ldap});
+    
+    # since GPDB postgres uses pthreads, we use them here too.
     $libpq->AddLibrary($config->{'pthread'} . '\pthreadVC2.lib');
+    
     $libpq->UseDef('src\interfaces\libpq\libpqdll.def');
     $libpq->ReplaceFile('src\interfaces\libpq\libpqrc.c','src\interfaces\libpq\libpq.rc');
     $libpq->AddReference($libpgport);
@@ -70,25 +77,36 @@ sub mkvcbuild
     $postgres->AddFile('src\backend\utils\fmgrtab.c');
     $postgres->ReplaceFile('src\backend\port\dynloader.c','src\backend\port\dynloader\win32.c');
     $postgres->ReplaceFile('src\backend\port\pg_sema.c','src\backend\port\win32_sema.c');
+    
+    # in PG 8.2, we use sysv_shmem.c, but in PG 8.3, this should be win32_shmem.c
     $postgres->ReplaceFile('src\backend\port\pg_shmem.c','src\backend\port\sysv_shmem.c');
+    
     $postgres->AddFiles('src\port',@pgportfiles);
     $postgres->AddDir('src\timezone');
     $postgres->AddFiles('src\backend\parser','scan.l','gram.y');
     $postgres->AddFiles('src\backend\bootstrap','bootscanner.l','bootparse.y');
     $postgres->AddFiles('src\backend\utils\misc','guc-file.l');
+    
+    # because GPDB postgres calls libpq, add references to libpq and libpgport and their includes
     $postgres->AddIncludeDir('src\interfaces\libpq');
     $postgres->AddIncludeDir('src\port');
     $postgres->AddReference($libpgport);
     $postgres->AddReference($libpq);
+    
     $postgres->AddDefine('BUILDING_DLL');
-    $postgres->AddLibrary('wsock32.lib ws2_32.lib');
+    $postgres->AddLibrary('wsock32.lib ws2_32.lib secur32.lib');
     $postgres->AddLibrary('wldap32.lib') if ($solution->{options}->{ldap});
+    
+    # GPDB actually requires pthreads, can't run without.
     $postgres->AddLibrary($config->{'pthread'} . '\pthreadVC2.lib');
+    
     $postgres->FullExportDLL('postgres.lib');
 
     my $plpgsql = $solution->AddProject('plpgsql','dll','PLs','src\pl\plpgsql\src');
     $plpgsql->AddFiles('src\pl\plpgsql\src','scan.l','gram.y');
     $plpgsql->AddReference($postgres);
+    
+    #in GPDB, plpgsql calls libpq, so include references to it.
     $plpgsql->AddIncludeDir('src\interfaces\libpq');
     $plpgsql->AddReference($libpq,$libpgport);
     $plpgsql->AddLibrary('wsock32.lib ws2_32.lib');
@@ -139,7 +157,8 @@ sub mkvcbuild
     my $pgtypes =
       $solution->AddProject('libpgtypes','dll','interfaces','src\interfaces\ecpg\pgtypeslib');
     $pgtypes->AddDefine('FRONTEND');
-    $pgtypes->AddReference($postgres,$libpgport);
+    #$pgtypes->AddReference($postgres,$libpgport);
+    $pgtypes->AddReference($libpgport);
     $pgtypes->AddIncludeDir('src\interfaces\ecpg\include');
 
     my $libecpg =$solution->AddProject('libecpg','dll','interfaces','src\interfaces\ecpg\ecpglib');
@@ -197,19 +216,23 @@ sub mkvcbuild
 
     my $psql = AddSimpleFrontend('psql', 1);
     $psql->AddIncludeDir('src\bin\pg_dump');
+    $psql->AddIncludeDir('src\backend');
     $psql->AddFile('src\bin\psql\psqlscan.l');
 
     my $pgdump = AddSimpleFrontend('pg_dump', 1);
+    $pgdump->AddIncludeDir('src\backend');
     $pgdump->AddFile('src\bin\pg_dump\pg_dump.c');
     $pgdump->AddFile('src\bin\pg_dump\common.c');
     $pgdump->AddFile('src\bin\pg_dump\pg_dump_sort.c');
 
     my $pgdumpall = AddSimpleFrontend('pg_dump', 1);
     $pgdumpall->{name} = 'pg_dumpall';
+    $pgdumpall->AddIncludeDir('src\backend');
     $pgdumpall->AddFile('src\bin\pg_dump\pg_dumpall.c');
 
     my $pgrestore = AddSimpleFrontend('pg_dump', 1);
     $pgrestore->{name} = 'pg_restore';
+    $pgrestore->AddIncludeDir('src\backend');
     $pgrestore->AddFile('src\bin\pg_dump\pg_restore.c');
 
     my $zic = $solution->AddProject('zic','exe','utils');
@@ -305,6 +328,7 @@ sub mkvcbuild
             if ($f =~ /\/keywords\.o$/)
             {
                 $proj->AddFile('src\backend\parser\keywords.c');
+                $proj->AddIncludeDir('src\backend');
             }
             else
             {

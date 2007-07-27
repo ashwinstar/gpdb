@@ -12,12 +12,12 @@ our $config = {
     #krb5=>'c:\prog\pgsql\depend\krb5', # --with-krb5=<path>
     #ldap=>1,			# --with-ldap
     #openssl=>'c:\openssl', # --with-ssl=<path>
-    pthread=>'c:\pthreads',
-
+    pthread=>'c:\pthreads',  # gpdb needs pthreads 
     #xml=>'c:\prog\pgsql\depend\libxml2',
     #xslt=>'c:\prog\pgsql\depend\libxslt',
     #iconv=>'c:\prog\pgsql\depend\iconv',
-    zlib=>'c:\zlib'# --with-zlib=<path>
+    zlib=>'c:\zlib', # --with-zlib=<path> gpdb needs zlib
+    curl=>'c:\zlib' # gpdb needs libcurl
 };
 
 1;
