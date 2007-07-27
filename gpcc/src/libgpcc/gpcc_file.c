@@ -208,7 +208,9 @@ APR_DECLARE(apr_status_t) gpcc_file_open(gpcc_file_t *fd, const char *fpath, int
 	    return gz_file_open(fd, fpath, oflag, mode);
 	} 
 	else if (apr_strnatcasecmp(s, ".z") == 0) {
-	    return z_file_open(fd, fpath, oflag, mode);	
+	    gpcc_warning(FLINE, "compression .z file is not supported");
+	    return -1;
+	    /* return z_file_open(fd, fpath, oflag, mode);	 */
 	}
 	else if (apr_strnatcasecmp(s, ".zip") == 0) {
 	    gpcc_warning(FLINE, "compression zip is not supported");
