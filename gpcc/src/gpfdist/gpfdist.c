@@ -82,7 +82,7 @@ struct {
 typedef struct fstream_t fstream_t;
 struct fstream_t {
     const char** fpath;		/* array of fpath */
-    gpcc_file_t *fd;            /* array of fd */
+    gpcc_file_t**fd;            /* array of fd */
     int          fn;		/* #elements in ffd[] and fpath[] */
     int		 fidx;		/* current index in ffd[] */
     apr_uint64_t foff;		/* current offset in ffd[fidx] */
@@ -212,9 +212,9 @@ void fstream_free(fstream_t* fs)
 {
     int i;
     for (i = 0; i < fs->fn; i++) {
-	if (fs->fd[i].ffd >= 0) {
-	    gpcc_file_close(&fs->fd[i]);
-	    fs->fd[i].ffd = 0;
+	if (fs->fd[i]) {
+	    gpcc_file_close(fs->fd[i]);
+	    fs->fd[i] = 0;
 	}
 	free((char*)fs->fpath[i]);
     }
@@ -242,7 +242,7 @@ fstream_t* fstream_alloc(char** path, int npath)
 
     fs->fn = npath;
     fs->fpath = malloc(sizeof(char*) * npath);
-    fs->fd = malloc(sizeof(gpcc_file_t) * npath);
+    fs->fd = malloc(sizeof(gpcc_file_t*) * npath);
     if (0 == fs->fpath || 0 == fs->fd) 
 	gpcc_fatal(FLINE, "out of memory");
 	
@@ -250,15 +250,17 @@ fstream_t* fstream_alloc(char** path, int npath)
 	if (0 == (fs->fpath[i] = strdup(path[i])))
 	    gpcc_fatal(FLINE, "out of memory");
 
-	fs->fd[i].ffd = 0;
 	/* check READ access right */
-
-	if (0 != gpcc_file_open(&fs->fd[i], path[i], O_RDONLY, 0600)) {
+	if (0 == (fs->fd[i] = gpcc_file_open(path[i], O_RDONLY, 0600))) {
 	    gpcc_warning(FLINE, "unable to open file %s", path[i]);
 	    fstream_free(fs);
 	    return 0;
-	} else {
-	    gpcc_file_close(&fs->fd[i]);
+	} 
+	
+	if (i > 0) {
+	    /* leave the first file opened */
+	    gpcc_file_close(fs->fd[i]);
+	    fs->fd[i] = 0;
 	}
     }
     fs->fidx = 0;
@@ -283,27 +285,35 @@ block_t* fstream_get_block(fstream_t* fs)
     if (fs->ferror || fs->fidx >= fs->fn)
 	return 0;
 
-    /* use residue block if available */
+    /* use residue block if available. otherwise, alloc new block. */
     if (0 != (b = fs->fblock)) 
 	fs->fblock = 0;
     else
 	b = block_get();
 
     /* on to next file? */
-    if (fs->fd[fs->fidx].ffd < 0) {
+    if (fs->fd[fs->fidx] == 0) {
+	if (b->bot != b->top) {
+	    /* complete the previous file by returning the last residue block */
+	    return b;
+	}
+
 	fs->fidx++;
+	if (fs->fidx >= fs->fn)  {
+	    block_put(b);
+	    return 0;
+	}
+
 	fs->foff = 0;
 	fs->fskip = opt.h;
-	if (fs->fidx >= fs->fn)
-	    return b;		/* return the residue block */
-    }
 
-    if (fs->fd[fs->fidx].ffd == 0) {
 	if (opt.V) 
 	    printf("   opening %s\n", fs->fpath[fs->fidx]);
-	if (0 != gpcc_file_open(&fs->fd[fs->fidx], fs->fpath[fs->fidx], O_RDONLY, 0600)) {
+	if (0 == (fs->fd[fs->fidx] = gpcc_file_open(fs->fpath[fs->fidx], 
+						    O_RDONLY, 0600))) {
 	    gpcc_warning(FLINE, "unable to open file %s", fs->fpath[fs->fidx]);
 	    fs->ferror = 1;
+	    block_put(b);
 	    return 0;
 	}	
     }
@@ -313,16 +323,17 @@ block_t* fstream_get_block(fstream_t* fs)
     while (0 != (n = sizeof(b->byte) - b->top)) {
 
 	/* read into b */
-	n = gpcc_file_read(&fs->fd[fs->fidx], b->byte + b->top, n);
+	n = gpcc_file_read(fs->fd[fs->fidx], b->byte + b->top, n);
 	if (n < 0) {
 	    fs->ferror = 1;
+	    block_put(b);
 	    return 0;
 	}
-	if (n == 0) {		/* current file EOF */
+	if (n == 0) {  /* current file EOF */
 	    localEOF = 1;
 	    /* close this file */
-	    gpcc_file_close(&fs->fd[fs->fidx]);
-	    fs->fd[fs->fidx].ffd = -1;
+	    gpcc_file_close(fs->fd[fs->fidx]);
+	    fs->fd[fs->fidx] = 0;
 	    break;
 	}
 	b->top += n;
@@ -367,11 +378,12 @@ block_t* fstream_get_block(fstream_t* fs)
 
     
     /* no record boundary 
-       -> record larger than BLOCKSIZE? unacceptable */
+       -> record larger than BLOCKSIZE? unacceptable!! */
     if (!p) {
 	gpcc_warning(FLINE, "ERROR: line too long in file %s (%d bytes)", 
 		     fs->fpath[fs->fidx], b->top - b->bot);
 	fs->ferror = 1;
+	block_put(b);
 	return 0;
     }
 

@@ -73,6 +73,7 @@ mkext:
 		(cd ext; gzip -d -c $(APR).tar.gz | tar xvf -) ;\
 		(cd ext/apr; ./configure --enable-shared=no \
 			--enable-static=yes --enable-threads \
+			--enable-debug=yes \
 			--prefix=$(GPCC)/ext) ;\
 	fi
 	@(cd ext/apr; $(MAKE) all >> out)
@@ -89,6 +90,9 @@ mkext:
 
 clean: 
 	(cd ext; rm -rf lib bin include build-1 share apr apu json libevent)
-	(cd ext; rm -rf $(APR) $(APU) $(JSON) $(LIBEVENT))
+	@if [ -a ext/apr/Makefile ]; then make clean; fi 
+	@if [ -a ext/apu/Makefile ]; then make clean; fi
+	@if [ -a ext/json/Makefile ]; then make clean; fi 
+	@if [ -a ext/libevent/Makefile ]; then make clean; fi 
 	rm -rf src/build
 	find src -name '*.o' -exec rm -f {} \;
