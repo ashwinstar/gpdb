@@ -304,11 +304,11 @@ ExecHashTableCreate(Hash *node, List *hashOperators)
 												ALLOCSET_DEFAULT_MAXSIZE);
 
 	/* CDB */ /* track temp buf file allocations in separate context */
-	hashtable->bfCxt = AllocSetContextCreate(hashtable->hashCxt,
-												"hbbfcxt",
-												ALLOCSET_DEFAULT_MINSIZE,
-												ALLOCSET_DEFAULT_INITSIZE,
-												ALLOCSET_DEFAULT_MAXSIZE);
+	hashtable->bfCxt = AllocSetContextCreate(CurrentMemoryContext,
+											 "hbbfcxt",
+											 ALLOCSET_DEFAULT_MINSIZE,
+											 ALLOCSET_DEFAULT_INITSIZE,
+											 ALLOCSET_DEFAULT_MAXSIZE);
 
 	/*
      * Allocate data that will live for the life of the hashjoin
