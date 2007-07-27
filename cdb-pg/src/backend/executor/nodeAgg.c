@@ -898,7 +898,8 @@ agg_retrieve_direct(AggState *aggstate)
 	uint64      input_grouping = node->inputGrouping;
 	bool        input_has_grouping = node->inputHasGrouping;
 	bool        is_final_rollup_agg =
-		(input_has_grouping && node->numNullCols == 0);
+		(node->lastAgg ||
+		 (input_has_grouping && node->numNullCols == 0));
 	bool        is_middle_rollup_agg =
 		(input_has_grouping && node->numNullCols > 0);
 
@@ -933,7 +934,7 @@ agg_retrieve_direct(AggState *aggstate)
 		econtext->group_id = aggstate->num_repeats;
 
 		/* Get grouping from the input tuple or the Agg node. */
-		if (is_final_rollup_agg ||is_middle_rollup_agg)
+		if (is_final_rollup_agg)
 			econtext->grouping =
 				get_grouping(econtext->ecxt_scantuple,
 							 node->grpColIdx[node->numCols-node->numNullCols-1]);
@@ -1193,7 +1194,7 @@ agg_retrieve_direct(AggState *aggstate)
 		 */
 		if (passthru_ready)
 		{
-			if (is_middle_rollup_agg)
+			if (!node->lastAgg && is_middle_rollup_agg)
 				return outerslot;
 
 			/*

@@ -62,7 +62,8 @@ ExecGroup(GroupState *node)
 	input_grouping = group_node->inputGrouping;
 	input_has_grouping = group_node->inputHasGrouping;
 	is_final_rollup_group =
-		(input_has_grouping && group_node->numNullCols == 0);
+		(group_node->lastGroup ||
+		 (input_has_grouping && group_node->numNullCols == 0));
 	is_middle_rollup_group =
 		(input_has_grouping && group_node->numNullCols > 0);
 
@@ -78,8 +79,9 @@ ExecGroup(GroupState *node)
 		 * to just do the projection again.
 		 */
 		econtext->ecxt_scantuple = node->prev_groupslot;
+		econtext->group_id = node->num_repeats;
 
-		if (is_final_rollup_group ||is_middle_rollup_group)
+		if (is_final_rollup_group)
 			econtext->grouping =
 				get_grouping(econtext->ecxt_scantuple,
 							 group_node->grpColIdx[numCols-1]);
@@ -131,8 +133,15 @@ ExecGroup(GroupState *node)
 				ExecStoreTuple(node->grp_firstTuple, firsttupleslot,
 							   InvalidBuffer, true);
 				node->grp_firstTuple = NULL;
+
+				outer_grouping =
+					tuple_grouping(firsttupleslot, numCols, input_grouping, input_has_grouping,
+							   group_node->grpColIdx[numCols-1]);
 				
-				if (is_middle_rollup_group)
+				if (outer_grouping < input_grouping)
+					node->is_passthru = true;
+
+				if (is_middle_rollup_group || outer_grouping < input_grouping)
 				{
 					/* grp_firstTuple is a pass-thru tuple.*/
 					passthru_ready = true;
@@ -140,6 +149,16 @@ ExecGroup(GroupState *node)
 					break;
 				}
 			}
+
+			else if (node->is_passthru)
+			{
+				/* We want to clean up firsttupeslot since if
+				 * it is just a pass-thru tuple.
+				 */
+				firsttupleslot = ExecClearTuple(firsttupleslot);
+				node->is_passthru = false;
+			}
+			
 			
 			outerslot = ExecProcNode(outerPlanState(node));
 			if (TupIsNull(outerslot))
@@ -165,13 +184,7 @@ ExecGroup(GroupState *node)
 
 			Assert (outer_grouping <= input_grouping);
 		
-			if (outer_grouping < input_grouping)
-			{
-				passthru_ready = true;
-				break;
-			}
-		
-			if (TupIsNull(firsttupleslot))
+			if (TupIsNull(firsttupleslot) && outer_grouping == input_grouping)
 			{
 				/* This is the first tuple from the input. Copy it to firsttupleslot. */
 				firsttupleslot =
@@ -180,9 +193,16 @@ ExecGroup(GroupState *node)
 
 			else
 			{
+				int match_numcols = numCols;
+				
+				if (outer_grouping < input_grouping)
+					/* ignore grouping column */
+					match_numcols--;
+					
 				/* Check if we've acrossed the group boundary. */
-				if (!execTuplesMatch(firsttupleslot, outerslot,
-									 numCols, grpColIdx,
+				if (!TupIsNull(firsttupleslot) && 
+					!execTuplesMatch(firsttupleslot, outerslot,
+									 match_numcols, grpColIdx,
 									 node->eqfunctions,
 									 econtext->ecxt_per_tuple_memory))
 				{
@@ -193,8 +213,8 @@ ExecGroup(GroupState *node)
 					break;
 				}
 			}
-			
-			if (is_middle_rollup_group)
+
+			if (is_middle_rollup_group || outer_grouping < input_grouping)
 			{
 				passthru_ready = true;
 				break;
@@ -211,7 +231,14 @@ ExecGroup(GroupState *node)
 		 * rollup node.
 		 */
 		if (passthru_ready && !group_node->lastGroup)
+		{
+#if 0
+			elog(LOG, "nodeGroup: numNullCols=%d, inputHasGrouping=%d, output tuple: %s",
+				 group_node->numNullCols, group_node->inputHasGrouping, tup2str(outerslot));
+#endif
+
 			return outerslot;
+		}
 
 		/*
 		 * We obtain GROUP_ID from the input tuples when this is
@@ -409,6 +436,7 @@ ExecInitGroup(Group *node, EState *estate, int eflags)
 	grpstate->replIsnull = NULL;
 	grpstate->doReplace = NULL;
 	grpstate->grp_firstTuple = NULL;
+	grpstate->is_passthru = false;
 
 	return grpstate;
 }
@@ -434,6 +462,7 @@ ExecEndGroup(GroupState *node)
 	/* clean up tuple table */
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
+	node->is_passthru = false;
 	if (node->grp_firstTuple != NULL)
 	{
 		heap_freetuple(node->grp_firstTuple);
@@ -457,6 +486,7 @@ ExecReScanGroup(GroupState *node, ExprContext *exprCtxt)
 	/* must clear first tuple */
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
+	node->is_passthru = false;
 	if (node->grp_firstTuple != NULL)
 	{
 		heap_freetuple(node->grp_firstTuple);

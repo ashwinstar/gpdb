@@ -3781,6 +3781,7 @@ make_agg(PlannerInfo *root, List *tlist, List *qual,
 	node->grouping = grouping;
 	node->inputHasGrouping = false;
 	node->rollupGSTimes = rollupGSTimes;
+	node->lastAgg = false;
 
 	copy_plan_costsize(plan, lefttree); /* only care about copying size */
 

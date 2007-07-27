@@ -2322,6 +2322,7 @@ _readAgg(const char ** str)
 	READ_UINT64_FIELD(grouping);
 	READ_BOOL_FIELD(inputHasGrouping);
 	READ_INT_FIELD(rollupGSTimes);
+	READ_BOOL_FIELD(lastAgg);
 
 	READ_DONE();
 }

@@ -466,3 +466,7 @@ select sum(qty),grouping(cn+pn) from sale group by cn+vn,vn;
 select sum(qty),grouping(cn+vn) from sale group by rollup(cn+vn,vn);
 
 select * from sale where exists (select cn, sum(qty) from sale group by rollup(cn,vn) having sum(qty)=10000000);
+
+create sequence newseq start 1;
+create view v7 as select nextval('newseq');
+select sum(nextval) from v7 group by rollup(nextval);

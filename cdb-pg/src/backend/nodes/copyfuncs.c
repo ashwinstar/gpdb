@@ -644,6 +644,7 @@ _copyAgg(Agg *from)
 	COPY_SCALAR_FIELD(grouping);
 	COPY_SCALAR_FIELD(inputHasGrouping);
 	COPY_SCALAR_FIELD(rollupGSTimes);
+	COPY_SCALAR_FIELD(lastAgg);
 
 	return newnode;
 }

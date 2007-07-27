@@ -1563,6 +1563,7 @@ typedef struct GroupState
 	bool		grp_done;		/* indicates completion of Group scan */
 
 	HeapTuple	grp_firstTuple; /* copy of first tuple of current group */
+	bool        is_passthru;     /* indicate if grp_firstTuple is a pass-thru tuple. */
 
 	/*
 	 * This Group node may require to output each group tuple multiple times

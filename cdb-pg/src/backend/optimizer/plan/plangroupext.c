@@ -528,6 +528,12 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 		current_tlist = tlist2;
 		current_qual = qual2;
 
+		if (!need_finalagg && group_no == last_group_no)
+		{
+			current_tlist = tlist3;
+			current_qual = qual3;
+		}
+
 		current_numGroups =
 			(((double)(context->numGroupCols-group_no))/((double)(context->numGroupCols))) *
 			numGroups;
@@ -634,9 +640,12 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 		context->tlist = tlist3;
 	}
 
-	if (!context->is_agg)
+	if (!context->twostage)
 	{
-		((Group*)agg_node)->lastGroup = true;
+		if (context->is_agg)
+			((Agg *)agg_node)->lastAgg = true;
+		else
+			((Group*)agg_node)->lastGroup = true;
 	}
 
 	pfree(orig_grpColIdx);

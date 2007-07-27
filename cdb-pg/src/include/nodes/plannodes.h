@@ -562,10 +562,6 @@ typedef struct Group
 
 	/*
 	 * Indicate if this Group node is the last one in a rollup.
-	 *
-	 * We need to output tuples for duplicate grouping sets at the final
-	 * Group node. Unlike Agg nodes, we do not have a way to tell if
-	 * a Group node is the final one. We add this value for this purpose.
 	 */
 	bool        lastGroup;
 } Group;
@@ -647,6 +643,11 @@ typedef struct Agg
 	 * for a given query. Used only for ROLLUP queries.
 	 */
 	int         rollupGSTimes;
+
+	/*
+	 * Indicate if this Agg node is the last one in a rollup.
+	 */
+	bool        lastAgg;
 } Agg;
 
 /* ---------------
