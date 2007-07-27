@@ -15,13 +15,10 @@ CPPFLAGS=$$($(GPCC)/ext/apr/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)
 
 
 all: mkext mklibgpcc mkgpfdist mkgpma
-
-#mkgpma mkgp 
-
 mkgpfdist: 
 	@echo --- gpfdist --------------------------------------------------
 	(cd src/gpfdist; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
-		-o gpfdist *.c -L../build/lib -lgpcc $(APRLIBS) $(APULIBS) -L$(GPCC)/ext/$(JSON)/.libs -L$(GPCC)/ext/$(LIBEVENT)/.libs -ljson -levent)
+		-o gpfdist *.c -L../build/lib -lgpcc $(APRLIBS) $(APULIBS) -L$(GPCC)/ext/$(JSON)/.libs -L$(GPCC)/ext/$(LIBEVENT)/.libs -ljson -levent -lz)
 	@mkdir -p build/bin
 	@cp src/gpfdist/gpfdist build/bin/
 
