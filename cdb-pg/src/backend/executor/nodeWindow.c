@@ -1197,11 +1197,17 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 	{
 		WindowStatePerFunction funcstate = &wstate->func_state[funcno];
 		WindowFrameState fs = NULL;
+		bool add = false;
 
 		if (PointerIsValid(funcstate->wlevel))
 			fs = &wstate->frame_states[funcstate->wlevel->level];
 		
-		if (!fs || !FRAME_IS_COMPLEX(funcstate, fs))
+		if (!fs)
+			add = true;
+		else if (!fs->empty_frame && funcstate->trivial_frame)
+			add = true;
+
+		if (add)
 			add_tuple_to_trans(funcstate, wstate, econtext);
 		else
 			*found = true;
@@ -1961,6 +1967,10 @@ populateFrameBuffers(WindowState *wstate)
 			
 			fs = &wstate->frame_states[level];
 			level_state = &wstate->level_state[level];
+	
+			if (fs->empty_frame)
+				return false;
+
 
 			if (is_rows)
 			{
@@ -3278,9 +3288,6 @@ init_frames(WindowState *wstate)
 					fmgr_info(ordfuncid, &fcinfo);
 					
 					/* is trail less than lead */
-					Assert(PointerIsValid(fs->trail_range));
-					Assert(PointerIsValid(fs->lead_range));
-						   
 					datum = FunctionCall2(&fcinfo, fs->trail_range,
 										  fs->lead_range);
 
