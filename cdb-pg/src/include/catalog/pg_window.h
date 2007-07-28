@@ -117,14 +117,69 @@ DATA(insert ( 7007	t f f t	0			7207		1016		7305 ));
 /* XXX omitted for now; no way to represent auxiliary aggregate SUM(x). */
 
 /* first_value */
-/* DATA(insert ( 70xx	t f f f	0				0			0			0 )); */
-/* ... for many datatypes */
-
+DATA(insert ( 7017  t t f f 7111        0       0       0 ));
+DATA(insert ( 7018  t t f f 7112		0		0		0 ));
+DATA(insert ( 7019  t t f f 7113		0		0		0 ));
+DATA(insert ( 7020  t t f f 7114		0		0		0 ));
+DATA(insert ( 7021  t t f f 7115		0		0		0 ));
+DATA(insert ( 7022  t t f f 7116		0		0		0 ));
+DATA(insert ( 7023  t t f f 7117		0		0		0 ));
+DATA(insert ( 7024  t t f f 7118		0		0		0 ));
+DATA(insert ( 7025  t t f f 7119		0		0		0 ));
+DATA(insert ( 7026  t t f f 7120		0		0		0 ));
+DATA(insert ( 7027  t t f f 7121		0		0		0 ));
+DATA(insert ( 7028  t t f f 7122		0		0		0 ));
+DATA(insert ( 7029  t t f f 7123		0		0		0 ));
+DATA(insert ( 7030  t t f f 7124		0		0		0 ));
+DATA(insert ( 7031  t t f f 7125		0		0		0 ));
+DATA(insert ( 7032  t t f f 7126		0		0		0 ));
+DATA(insert ( 7033  t t f f 7127		0		0		0 ));
+DATA(insert ( 7034  t t f f 7128		0		0		0 ));
+DATA(insert ( 7035  t t f f 7129		0		0		0 ));
+DATA(insert ( 7036  t t f f 7130		0		0		0 ));
+DATA(insert ( 7037  t t f f 7131		0		0		0 ));
+DATA(insert ( 7038  t t f f 7132		0		0		0 ));
+DATA(insert ( 7039  t t f f 7133		0		0		0 ));
+DATA(insert ( 7040  t t f f 7134		0		0		0 ));
+DATA(insert ( 7041  t t f f 7135		0		0		0 ));
+DATA(insert ( 7042  t t f f 7136		0		0		0 ));
+DATA(insert ( 7043  t t f f 7137		0		0		0 ));
+DATA(insert ( 7044  t t f f 7138		0		0		0 ));
+DATA(insert ( 7045  t t f f 7139		0		0		0 ));
+DATA(insert ( 7046  t t f f 7140		0		0		0 ));
+DATA(insert ( 7047  t t f f 7141		0		0		0 ));
 /* last_value */
-DATA(insert ( 7012	t t f f	7103		0			0			0 ));
-DATA(insert ( 7013	t t f f	7107		0			0			0 ));
-DATA(insert ( 7014	t t f f	7108		0			0			0 ));
-DATA(insert ( 7015	t t f f	7109		0			0			0 ));
+DATA(insert ( 7012	t t f f	7103		0		0		0 ));
+DATA(insert ( 7013	t t f f	7107		0		0		0 ));
+DATA(insert ( 7014	t t f f	7108		0		0		0 ));
+DATA(insert ( 7015	t t f f	7109		0		0		0 ));
+DATA(insert ( 7016	t t f f	7110		0		0		0 ));
+DATA(insert ( 7063  t t f f 7165		0		0		0 ));
+DATA(insert ( 7072  t t f f 7166		0		0		0 ));
+DATA(insert ( 7073  t t f f 7167		0		0		0 ));
+DATA(insert ( 7048  t t f f 7168		0		0		0 ));
+DATA(insert ( 7049  t t f f 7142		0		0		0 ));
+DATA(insert ( 7050  t t f f 7143		0		0		0 ));
+DATA(insert ( 7051  t t f f 7144		0		0		0 ));
+DATA(insert ( 7052  t t f f 7145		0		0		0 ));
+DATA(insert ( 7053  t t f f 7146		0		0		0 ));
+DATA(insert ( 7054  t t f f 7147		0		0		0 ));
+DATA(insert ( 7055  t t f f 7148		0		0		0 ));
+DATA(insert ( 7056  t t f f 7149		0		0		0 ));
+DATA(insert ( 7057  t t f f 7150		0		0		0 ));
+DATA(insert ( 7058  t t f f 7151		0		0		0 ));
+DATA(insert ( 7059  t t f f 7152		0		0		0 ));
+DATA(insert ( 7060  t t f f 7153		0		0		0 ));
+DATA(insert ( 7061  t t f f 7154		0		0		0 ));
+DATA(insert ( 7062  t t f f 7155		0		0		0 ));
+DATA(insert ( 7064  t t f f 7157		0		0		0 ));
+DATA(insert ( 7065  t t f f 7158		0		0		0 ));
+DATA(insert ( 7066  t t f f 7159		0		0		0 ));
+DATA(insert ( 7067  t t f f 7160		0		0		0 ));
+DATA(insert ( 7068  t t f f 7161		0		0		0 ));
+DATA(insert ( 7069  t t f f 7162		0		0		0 ));
+DATA(insert ( 7070  t t f f 7163		0		0		0 ));
+DATA(insert ( 7071  t t f f 7164		0		0		0 ));
 /* ... for many datatypes */
 
 /* lag */

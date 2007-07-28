@@ -775,7 +775,6 @@ moveToBufEnd(WindowState *wstate)
 {
 	/* we only want to go so far as the end of the partition */
 	Dlelem *el;
-	Dlelem *save;
 	long int n = 0;
 	
 	while ((el = DLRemHead(wstate->lead)))
@@ -2446,7 +2445,6 @@ calculateTransVals(WindowState *wstate)
 				if (OidIsValid(funcstate->invprelimfn_oid))
 				{
 					long int end = funcstate->cur_trail_edge;
-					long int start;
 					
 					if (!key->frame->is_rows)
 					{
@@ -4478,7 +4476,7 @@ last_value_smallint(PG_FUNCTION_ARGS)
 	if (isnull)
 	   PG_RETURN_NULL();
 
-	PG_RETURN_INT16(DatumGetInt16(d));
+	return d;
 }
 
 Datum
@@ -4493,7 +4491,7 @@ last_value_int(PG_FUNCTION_ARGS)
 	if (isnull)
 	   PG_RETURN_NULL();
 
-	PG_RETURN_INT32(DatumGetInt32(d));
+	return d;
 }
 
 Datum
@@ -4508,7 +4506,7 @@ last_value_bigint(PG_FUNCTION_ARGS)
 	if (isnull)
 	   PG_RETURN_NULL();
 
-	PG_RETURN_INT64(DatumGetInt64(d));
+	return d;
 }
 
 Datum
@@ -4523,5 +4521,914 @@ last_value_numeric(PG_FUNCTION_ARGS)
 	if (isnull)
 	   PG_RETURN_NULL();
 
-	PG_RETURN_NUMERIC(DatumGetNumeric(d));
+	return d;
 }
+
+Datum
+last_value_text(PG_FUNCTION_ARGS)
+{
+	Datum d;
+	bool isnull;
+	
+	d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+							&isnull);
+	
+	if (isnull)
+	   PG_RETURN_NULL();
+
+	return d;
+}
+
+Datum
+last_value_bool(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_char(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_cidr(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_circle(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_float4(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_float8(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_inet(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_interval(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_line(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_lseg(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_macaddr(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_money(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_name(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_oid(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_path(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_point(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_polygon(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_reltime(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_tid(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_time(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_timestamp(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_timestamptz(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_timetz(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_varbit(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_varchar(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+last_value_xid(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+
+
+static Datum
+first_value_internal(WindowRefExprState *ref_state, bool *isnull)
+{
+	WindowState *window_state = ref_state->windowstate;
+	WindowStatePerFunction funcstate = window_state->cur_funcstate;
+	long int pos;
+	WinFuncBufferData *dat;
+
+	/* 
+	 * We're tricky here because we want to handle situations where
+	 * the trail edge is not in play as yet.
+	 */
+
+	if (funcstate->cur_trail_edge != -1)
+		pos = funcstate->cur_trail_edge;
+	else
+		pos = 0;
+
+	if (pos < 0 || pos >= funcstate->frame_mem_used)
+	{
+		*isnull = true;
+		return (Datum)0;
+	}
+
+	dat = (WinFuncBufferData *)funcstate->frame_trans_vals[pos];
+
+	if (dat->argnull[0])
+	{
+		*isnull = true;
+		return (Datum)0;
+	}
+	*isnull = false;
+	return dat->arg[0];
+}
+
+Datum
+first_value_bool(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_char(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_cidr(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_circle(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_float4(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_float8(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_inet(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_interval(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_line(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_lseg(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_macaddr(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_smallint(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_int4(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_int8(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_money(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_name(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_numeric(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+
+Datum
+first_value_oid(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_path(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_point(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_polygon(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_reltime(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_text(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_tid(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_time(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_timestamp(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_timestamptz(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_timetz(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_varbit(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_varchar(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_xid(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
