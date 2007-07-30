@@ -183,9 +183,99 @@ DATA(insert ( 7071  t t f f 7164		0		0		0 ));
 /* ... for many datatypes */
 
 /* lag */
-/* DATA(insert ( 70xx	t f f f	0				0			0			0 )); */
-/* ... for many datatypes */
-
+DATA(insert ( 7675  t t f f 7490		0		0		0 ));
+DATA(insert ( 7491  t t f f 7492		0		0		0 ));
+DATA(insert ( 7493  t t f f 7494		0		0		0 ));
+DATA(insert ( 7495  t t f f 7496		0		0		0 ));
+DATA(insert ( 7497  t t f f 7498		0		0		0 ));
+DATA(insert ( 7499  t t f f 7500		0		0		0 ));
+DATA(insert ( 7501  t t f f 7502		0		0		0 ));
+DATA(insert ( 7503  t t f f 7504		0		0		0 ));
+DATA(insert ( 7505  t t f f 7506		0		0		0 ));
+DATA(insert ( 7507  t t f f 7508		0		0		0 ));
+DATA(insert ( 7509  t t f f 7510		0		0		0 ));
+DATA(insert ( 7511  t t f f 7512		0		0		0 ));
+DATA(insert ( 7513  t t f f 7514		0		0		0 ));
+DATA(insert ( 7515  t t f f 7516		0		0		0 ));
+DATA(insert ( 7517  t t f f 7518		0		0		0 ));
+DATA(insert ( 7519  t t f f 7520		0		0		0 ));
+DATA(insert ( 7521  t t f f 7522		0		0		0 ));
+DATA(insert ( 7523  t t f f 7524		0		0		0 ));
+DATA(insert ( 7525  t t f f 7526		0		0		0 ));
+DATA(insert ( 7527  t t f f 7528		0		0		0 ));
+DATA(insert ( 7529  t t f f 7530		0		0		0 ));
+DATA(insert ( 7531  t t f f 7532		0		0		0 ));
+DATA(insert ( 7533  t t f f 7534		0		0		0 ));
+DATA(insert ( 7535  t t f f 7536		0		0		0 ));
+DATA(insert ( 7537  t t f f 7538		0		0		0 ));
+DATA(insert ( 7539  t t f f 7540		0		0		0 ));
+DATA(insert ( 7541  t t f f 7542		0		0		0 ));
+DATA(insert ( 7543  t t f f 7544		0		0		0 ));
+DATA(insert ( 7545  t t f f 7546		0		0		0 ));
+DATA(insert ( 7547  t t f f 7548		0		0		0 ));
+DATA(insert ( 7549  t t f f 7550		0		0		0 ));
+DATA(insert ( 7551  t t f f 7552		0		0		0 ));
+DATA(insert ( 7553  t t f f 7554		0		0		0 ));
+DATA(insert ( 7555  t t f f 7556		0		0		0 ));
+DATA(insert ( 7557  t t f f 7558		0		0		0 ));
+DATA(insert ( 7559  t t f f 7560		0		0		0 ));
+DATA(insert ( 7561  t t f f 7562		0		0		0 ));
+DATA(insert ( 7563  t t f f 7564		0		0		0 ));
+DATA(insert ( 7565  t t f f 7566		0		0		0 ));
+DATA(insert ( 7567  t t f f 7568		0		0		0 ));
+DATA(insert ( 7569  t t f f 7570		0		0		0 ));
+DATA(insert ( 7571  t t f f 7572		0		0		0 ));
+DATA(insert ( 7573  t t f f 7574		0		0		0 ));
+DATA(insert ( 7575  t t f f 7576		0		0		0 ));
+DATA(insert ( 7577  t t f f 7578		0		0		0 ));
+DATA(insert ( 7579  t t f f 7580		0		0		0 ));
+DATA(insert ( 7581  t t f f 7582		0		0		0 ));
+DATA(insert ( 7583  t t f f 7584		0		0		0 ));
+DATA(insert ( 7585  t t f f 7586		0		0		0 ));
+DATA(insert ( 7587  t t f f 7588		0		0		0 ));
+DATA(insert ( 7589  t t f f 7590		0		0		0 ));
+DATA(insert ( 7591  t t f f 7592		0		0		0 ));
+DATA(insert ( 7593  t t f f 7594		0		0		0 ));
+DATA(insert ( 7595  t t f f 7596		0		0		0 ));
+DATA(insert ( 7597  t t f f 7598		0		0		0 ));
+DATA(insert ( 7599  t t f f 7600		0		0		0 ));
+DATA(insert ( 7601  t t f f 7602		0		0		0 ));
+DATA(insert ( 7603  t t f f 7604		0		0		0 ));
+DATA(insert ( 7605  t t f f 7606		0		0		0 ));
+DATA(insert ( 7607  t t f f 7608		0		0		0 ));
+DATA(insert ( 7609  t t f f 7610		0		0		0 ));
+DATA(insert ( 7611  t t f f 7612		0		0		0 ));
+DATA(insert ( 7613  t t f f 7614		0		0		0 ));
+DATA(insert ( 7615  t t f f 7616		0		0		0 ));
+DATA(insert ( 7617  t t f f 7618		0		0		0 ));
+DATA(insert ( 7619  t t f f 7620		0		0		0 ));
+DATA(insert ( 7621  t t f f 7622		0		0		0 ));
+DATA(insert ( 7623  t t f f 7624		0		0		0 ));
+DATA(insert ( 7625  t t f f 7626		0		0		0 ));
+DATA(insert ( 7627  t t f f 7628		0		0		0 ));
+DATA(insert ( 7629  t t f f 7630		0		0		0 ));
+DATA(insert ( 7631  t t f f 7632		0		0		0 ));
+DATA(insert ( 7633  t t f f 7634		0		0		0 ));
+DATA(insert ( 7635  t t f f 7636		0		0		0 ));
+DATA(insert ( 7637  t t f f 7638		0		0		0 ));
+DATA(insert ( 7639  t t f f 7640		0		0		0 ));
+DATA(insert ( 7641  t t f f 7642		0		0		0 ));
+DATA(insert ( 7643  t t f f 7644		0		0		0 ));
+DATA(insert ( 7645  t t f f 7646		0		0		0 ));
+DATA(insert ( 7647  t t f f 7648		0		0		0 ));
+DATA(insert ( 7649  t t f f 7650		0		0		0 ));
+DATA(insert ( 7651  t t f f 7652		0		0		0 ));
+DATA(insert ( 7653  t t f f 7654		0		0		0 ));
+DATA(insert ( 7655  t t f f 7656		0		0		0 ));
+DATA(insert ( 7657  t t f f 7658		0		0		0 ));
+DATA(insert ( 7659  t t f f 7660		0		0		0 ));
+DATA(insert ( 7661  t t f f 7662		0		0		0 ));
+DATA(insert ( 7663  t t f f 7664		0		0		0 ));
+DATA(insert ( 7665  t t f f 7666		0		0		0 ));
+DATA(insert ( 7667  t t f f 7668		0		0		0 ));
+DATA(insert ( 7669  t t f f 7670		0		0		0 ));
+DATA(insert ( 7671  t t f f 7672		0		0		0 ));
+DATA(insert ( 7673  t t f f 7674		0		0		0 ));
 DATA(insert ( 7011	t f f f	7106		0		0		0 ));
 DATA(insert ( 7074	t f f f	7105		0		0		0 ));
 DATA(insert ( 7075	t f f f	7104		0		0		0 ));
@@ -279,8 +369,6 @@ DATA(insert ( 7482  t t f f 7483		0		0		0 ));
 DATA(insert ( 7484  t t f f 7485		0		0		0 ));
 DATA(insert ( 7486  t t f f 7487		0		0		0 ));
 DATA(insert ( 7488  t t f f 7489		0		0		0 ));
-/* ... for many datatypes */
-
 
 /*
  * prototypes for functions in pg_window.c

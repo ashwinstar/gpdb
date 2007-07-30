@@ -337,7 +337,7 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 				frame->lead = lead;
 				over->frame = frame;
 			}
-			else if(IS_LAG_FUNC(funcid))
+			else if(IS_LAG_FUNC(wf->winfunc))
 			{
 				WindowFrame *frame = makeNode(WindowFrame);
 				WindowFrameEdge *trail = makeNode(WindowFrameEdge);
