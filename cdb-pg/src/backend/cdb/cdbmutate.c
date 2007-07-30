@@ -249,8 +249,9 @@ apply_motion(Plan *plan, Query *query)
 					
 					if (query->intoPolicy == NULL)
 					{
-						char columns[255];
+						char * columns;
 						int i;
+						columns = palloc((NAMEDATALEN+3)*targetPolicy->nattrs+1);
 						columns[0] = '\0';
 						for (i=0;i<targetPolicy->nattrs;i++)
 						{
