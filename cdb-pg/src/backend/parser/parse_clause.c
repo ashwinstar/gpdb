@@ -349,7 +349,7 @@ transformWindowClause(ParseState *pstate, Query *qry)
 					if (ws->order == NIL && ws2->order != NIL)
 						newspec->order = copyObject(ws2->order);
 				
-					//newspec->frame = copyObject(ws2->frame);
+					newspec->frame = copyObject(ws2->frame);
 
 				}
 			}
