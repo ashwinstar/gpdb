@@ -3333,6 +3333,8 @@ init_frames(WindowState *wstate)
 				HeapTuple tup;
 				AttrNumber attnum;
 				Oid ltype, rtype;
+				bool have_add = false;
+				bool have_sub = false;
 
 				fs->trail_edge_d = (Datum *) palloc(sizeof(Datum) *
 													 key->numSortCols);
@@ -3362,8 +3364,18 @@ init_frames(WindowState *wstate)
 	
 					Insist(HeapTupleIsValid(tup));
 					
-					fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode, 
-							  &fs->sub_fn);
+					if (frame->trail->kind == WINDOW_BOUND_PRECEDING)
+					{
+						fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode, 
+								  &fs->sub_fn);
+						have_sub = true;
+					}
+					else
+					{
+						fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode, 
+								  &fs->add_fn);
+						have_add = true;
+					}
 					ReleaseSysCache(tup);
 					/* 
 					 * XXX: we should actually use the result from the above as
@@ -3403,10 +3415,20 @@ init_frames(WindowState *wstate)
 
 					Insist(HeapTupleIsValid(tup));
 					
-					fmgr_info(
-							((Form_pg_operator) GETSTRUCT(tup))->oprcode,
-							&fs->add_fn);
+					if (frame->lead->kind == WINDOW_BOUND_PRECEDING)
+					{
+						if (!have_sub)
+							fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode, 
+									  &fs->sub_fn);
 						
+					}
+					else
+					{
+						if (!have_add)
+							fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode, 
+								  &fs->add_fn);
+					}
+
 					ReleaseSysCache(tup);
 					
 					/* now for greater-than */
