@@ -90,9 +90,9 @@ mkext:
 
 clean: 
 	(cd ext; rm -rf lib bin include build-1 share apr apu json libevent)
-	@if [ -a ext/apr/Makefile ]; then make clean; fi 
-	@if [ -a ext/apu/Makefile ]; then make clean; fi
-	@if [ -a ext/json/Makefile ]; then make clean; fi 
-	@if [ -a ext/libevent/Makefile ]; then make clean; fi 
+	@if [ -a ext/apr/Makefile ]; then $(MAKE) clean; fi 
+	@if [ -a ext/apu/Makefile ]; then $(MAKE) clean; fi
+	@if [ -a ext/json/Makefile ]; then $(MAKE) clean; fi 
+	@if [ -a ext/libevent/Makefile ]; then $(MAKE) clean; fi 
 	rm -rf src/build
 	find src -name '*.o' -exec rm -f {} \;
