@@ -1403,7 +1403,6 @@ set_edge_val(WindowState *wstate, WindowFrameState fs, WindowFrameEdge *e,
 				}
 				else
 					result = (Datum)0;
-				
 			}
 			else
 			{
@@ -1967,11 +1966,6 @@ adjustEdges(WindowState *wstate)
 					
 					if (res1 || res2)
 					{
-						if (funcstate->prev_lead_edge == -1)
-						{
-							funcstate->prev_lead_edge =
-								funcstate->cur_trail_edge;
-						}
 
 						funcstate->cur_lead_edge = pos;
 						found_lead = true;
@@ -1979,6 +1973,28 @@ adjustEdges(WindowState *wstate)
 							funcstate->cur_lead_edge_equal = true;
 						else
 							funcstate->cur_lead_edge_equal = false;
+
+						/* 
+						 * If values if just come into the frame, set the
+						 * edge to be that of the current trail. If that is
+						 * not set (must be unbounded preceding), set it
+						 * to the current lead value (which would be zero).
+						 */
+						if (funcstate->prev_lead_edge == -1)
+						{
+							if (funcstate->cur_trail_edge != -1)
+							{
+								funcstate->prev_lead_edge = 
+									funcstate->cur_trail_edge;
+							}
+							else
+							{
+								Insist(key->frame->trail->kind == WINDOW_UNBOUND_PRECEDING);
+								Insist(funcstate->cur_lead_edge == 0);
+								funcstate->prev_lead_edge = 
+									funcstate->cur_lead_edge;
+							}
+						}
 					}
 					else
 						break;
@@ -3356,27 +3372,38 @@ init_frames(WindowState *wstate)
 					attnum = key->sortColIdx[0];
 					ltype = desc->attrs[attnum - 1]->atttypid;
 					rtype = exprType(frame->lead->val);
-					tup = SearchSysCache(OPERNAMENSP,
-										 CStringGetDatum("-"),
-										 ObjectIdGetDatum(ltype),
-										 ObjectIdGetDatum(rtype),
-										 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
-	
-					Insist(HeapTupleIsValid(tup));
 					
 					if (frame->trail->kind == WINDOW_BOUND_PRECEDING)
 					{
+
+						tup = SearchSysCache(OPERNAMENSP,
+											 CStringGetDatum("-"),
+											 ObjectIdGetDatum(ltype),
+											 ObjectIdGetDatum(rtype),
+											 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+
+						Insist(HeapTupleIsValid(tup));
 						fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode, 
 								  &fs->sub_fn);
 						have_sub = true;
+						ReleaseSysCache(tup);
 					}
 					else
 					{
+
+						tup = SearchSysCache(OPERNAMENSP,
+											 CStringGetDatum("+"),
+											 ObjectIdGetDatum(ltype),
+											 ObjectIdGetDatum(rtype),
+											 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+
+						Insist(HeapTupleIsValid(tup));
 						fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode, 
 								  &fs->add_fn);
 						have_add = true;
+
+						ReleaseSysCache(tup);
 					}
-					ReleaseSysCache(tup);
 					/* 
 					 * XXX: we should actually use the result from the above as
 					 * the LHS of this...
@@ -3407,30 +3434,41 @@ init_frames(WindowState *wstate)
 													  NULL);
 
 					rtype = exprType(frame->lead->val);
-					tup = SearchSysCache(OPERNAMENSP,
-										 CStringGetDatum("+"),
-										 ObjectIdGetDatum(ltype),
-										 ObjectIdGetDatum(rtype),
-										 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
 
-					Insist(HeapTupleIsValid(tup));
 					
 					if (frame->lead->kind == WINDOW_BOUND_PRECEDING)
 					{
 						if (!have_sub)
+						{
+							tup = SearchSysCache(OPERNAMENSP,
+												 CStringGetDatum("-"),
+												 ObjectIdGetDatum(ltype),
+												 ObjectIdGetDatum(rtype),
+										 		ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+
+							Insist(HeapTupleIsValid(tup));
 							fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode, 
 									  &fs->sub_fn);
-						
+							ReleaseSysCache(tup);
+						}
 					}
 					else
 					{
 						if (!have_add)
+						{
+							tup = SearchSysCache(OPERNAMENSP,
+												 CStringGetDatum("+"),
+												 ObjectIdGetDatum(ltype),
+												 ObjectIdGetDatum(rtype),
+												 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+
+							Insist(HeapTupleIsValid(tup));
 							fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode, 
 								  &fs->add_fn);
+							ReleaseSysCache(tup);
+						}
 					}
 
-					ReleaseSysCache(tup);
-					
 					/* now for greater-than */
 					/* 
 					 * XXX: we should actually use the result from the above as
