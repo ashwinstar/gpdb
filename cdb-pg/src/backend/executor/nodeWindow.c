@@ -4389,11 +4389,8 @@ ntile_final(PG_FUNCTION_ARGS)
 	PG_RETURN_INT64(result);
 }
 
-/*
- * Initial implementation of LEAD(col, offset, value_expr)
- */
-Datum
-lead_immed_int(PG_FUNCTION_ARGS)
+static Datum
+lead_lag_internal(PG_FUNCTION_ARGS, bool is_lead, bool *isnull)
 {
 	int64 offset;
 	int32 val_expr;
@@ -4407,14 +4404,19 @@ lead_immed_int(PG_FUNCTION_ARGS)
 	
 	if (PG_NARGS() > 3)
 	{
-		val_expr = PG_GETARG_INT32(3);
+		val_expr = PG_GETARG_DATUM(3);
 		val_expr_null = PG_ARGISNULL(3);
 	}
 	
 	if (PG_NARGS() > 2)
 	{
 		if (PG_ARGISNULL(2))
-			elog(ERROR, "LEAD offset cannot be NULL");
+		{
+			if (is_lead)
+				elog(ERROR, "LEAD offset cannot be NULL");
+			else
+				elog(ERROR, "LAG offset cannot be NULL");
+		}
 
 		offset = PG_GETARG_INT64(2);
 	}
@@ -4424,14 +4426,21 @@ lead_immed_int(PG_FUNCTION_ARGS)
 	 	offset = 1; /* default */
 	}
 
-	pos = funcstate->cur_trail_edge + (long int)offset;
+	/* XXX: should check for overflow */
+	if (is_lead)
+		pos = funcstate->cur_trail_edge + (long int)offset;
+	else
+		pos = funcstate->cur_lead_edge - (long int)offset;
 	
-	if (pos > funcstate->frame_mem_used - 1)
+	if (pos > funcstate->frame_mem_used - 1 || pos < 0)
 	{
 		if (!val_expr_null)
-			PG_RETURN_INT32(val_expr);
+			return val_expr;
 		else
-			PG_RETURN_NULL();
+		{
+			*isnull = true;
+			return (Datum)0;
+		}
 	}
 	else
 	{
@@ -4441,11 +4450,452 @@ lead_immed_int(PG_FUNCTION_ARGS)
 		dat = (WinFuncBufferData *)funcstate->frame_trans_vals[pos];
 
 		if (dat->argnull[0])
-			PG_RETURN_NULL();
+		{
+			*isnull = true;
+			return (Datum)0;
+		}
 		
 		d = dat->arg[0];
-		PG_RETURN_INT32(d);
+		return d;
 	}
+}
+
+/*
+ * Initial implementation of LEAD(col, offset, value_expr)
+ */
+Datum
+lead_int(PG_FUNCTION_ARGS)
+{
+	bool isnull;
+	Datum d;
+	
+	d = lead_lag_internal(fcinfo, true, &isnull);
+
+	if (isnull)
+		PG_RETURN_NULL();
+
+	PG_RETURN_DATUM(d);
+	
+}
+
+Datum
+lead_bool(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_char(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_cidr(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_circle(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_float4(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_float8(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_inet(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_interval(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_line(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_lseg(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_macaddr(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_smallint(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_int8(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_money(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_name(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_numeric(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_oid(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_path(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_point(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_polygon(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_reltime(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_text(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_tid(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_time(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_timestamp(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_timestamptz(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_timetz(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_varbit(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_varchar(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_xid(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
 }
 
 static Datum
