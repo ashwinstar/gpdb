@@ -430,7 +430,7 @@ def printResult(title, result):
 try:
     parseCommandLine()
     runSetup()
-    diskWriteResult = diskReadResult = streamResult = None
+    diskWriteResult = diskReadResult = streamResult = netResult = None
     tornDown = False
     try:
 	if opt['-r'].find('d') >= 0:
