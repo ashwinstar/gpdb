@@ -294,7 +294,7 @@ typedef struct WindowBreakInfo
 #define FUNC_HAS_MAN_FRAME(f) \
 	(funcstate->isAgg && !OidIsValid(funcstate->invtransfn_oid))
 
-#define IS_LEAD_LAG_FUNC(oid) (oid == LEAD_WINDOW_FUNC_OID) 
+#define IS_LEAD_LAG_FUNC(oid) (IS_LEAD_FUNC(oid) || IS_LAG_FUNC(oid)) 
 
 #define ABS(x) (x < 0 ? -x : x)
 #define MIN(x, y) (x =< y ? x : y)
@@ -1371,12 +1371,12 @@ set_edge_val(WindowState *wstate, WindowFrameState fs, WindowFrameEdge *e,
 				elog(DEBUG1, "lead edge row = %li", fs->lead_rows);
 			}
 		}
-		else
+		else if (e->kind == WINDOW_CURRENT_ROW)
 		{
 			if (is_trail)
-				fs->trail_rows = 0L;
+				fs->trail_rows = (long int)wstate->row_index;
 			else
-				fs->lead_rows = 0L;
+				fs->lead_rows = (long int)wstate->row_index;
 		}
 	}
 	else
@@ -1825,6 +1825,12 @@ adjustEdges(WindowState *wstate)
 				 * If we've processed the first row, set the prev to the
 				 * edge of the first row
 				 */
+				if (key->frame->trail->kind == WINDOW_CURRENT_ROW &&
+					funcstate->cur_trail_edge == -1)
+				{
+					funcstate->cur_trail_edge = 0;
+				}
+					
 				if (fs->trail_rows > 0)
 				{
 					funcstate->prev_trail_edge++;
@@ -3268,7 +3274,8 @@ init_frames(WindowState *wstate)
 			{
 				lvl_funcs = lappend_int(lvl_funcs, funcno);
 				
-				if (!frame || (!funcstate->isAgg && !funcstate->allowframe))
+				if (!frame || (!funcstate->isAgg && !funcstate->allowframe &&
+							   !IS_LEAD_LAG_FUNC(funcstate->windowfn_oid)))
 				{
 					funcstate->trivial_frame = true;
 				}
@@ -4421,19 +4428,22 @@ lead_immed_int(PG_FUNCTION_ARGS)
 	
 	if (pos > funcstate->frame_mem_used - 1)
 	{
-		PG_RETURN_NULL();
+		if (!val_expr_null)
+			PG_RETURN_INT32(val_expr);
+		else
+			PG_RETURN_NULL();
 	}
 	else
 	{
 		Datum d;
-		WindowRowsBuffer *wrb;
+		WinFuncBufferData *dat;
 
-		wrb = funcstate->frame_trans_vals[pos];
+		dat = (WinFuncBufferData *)funcstate->frame_trans_vals[pos];
 
-		if (wrb->transval->transValueIsNull)
+		if (dat->argnull[0])
 			PG_RETURN_NULL();
 		
-		d = wrb->transval->transValue;
+		d = dat->arg[0];
 		PG_RETURN_INT32(d);
 	}
 }

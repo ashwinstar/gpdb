@@ -95,6 +95,13 @@ typedef FormData_pg_proc *Form_pg_proc;
 #define Anum_pg_proc_probin				18
 #define Anum_pg_proc_proacl				19
 
+/* LEAD and LAG for windowing */
+#define IS_LEAD_FUNC(fid) \
+	(fid == LEAD_FUNC_INT_OID)
+
+#define IS_LAG_FUNC(fid) \
+	(false)
+
 /* ----------------
  *		initial contents of pg_proc
  * ----------------
@@ -3382,7 +3389,7 @@ DATA(insert OID = 7069 ( last_value	PGNSP	PGUID 12 f f f f i 1 1562 t "1562"  _n
 DATA(insert OID = 7070 ( last_value	PGNSP	PGUID 12 f f f f i 1 1043 t "1043"  _null_ _null_ _null_  window_dummy - _null_ ));
 DATA(insert OID = 7071 ( last_value	PGNSP	PGUID 12 f f f f i 1 28 t "28"  _null_ _null_ _null_  window_dummy - _null_ ));
 /* DATA(insert OID = 7xxx ( lag				PGNSP PGUID 12 f f f f i 3 20 t "1700 1700 1700"  _null_ _null_ _null_  window_dummy - _null_ )); */
-DATA(insert OID = 7011 ( lead				PGNSP PGUID 12 f f f f i 3 20 t "1700 1700 1700"  _null_ _null_ _null_  window_dummy - _null_ ));
+DATA(insert OID = 7011 ( lead				PGNSP PGUID 12 f f f f i 3 23 t "23 20 23"  _null_ _null_ _null_  window_dummy - _null_ ));
 
 /* We use the same procedures here as above since the types are binary compatible. */
 DATA(insert OID = 2174 ( bpchar_pattern_lt	  PGNSP PGUID 12 f f t f i 2 16 f "1042 1042" _null_ _null_ _null_ text_pattern_lt - _null_ ));
@@ -4107,7 +4114,8 @@ DATA(insert OID = 7101 (  rank_immed   PGNSP PGUID 12 f f t f i 1 20 f "2281" _n
 DESCR("window immediate function");
 DATA(insert OID = 7102 (  dense_rank_immed   PGNSP PGUID 12 f f t f i 1 20 f "2281" _null_ _null_ _null_ dense_rank_immed - _null_ ));
 DESCR("window immediate function");
-DATA(insert OID = 7106 (  lead_immed_int   PGNSP PGUID 12 f f t f i 4 23 f "2281 23 23 23" _null_ _null_ _null_ lead_immed_int - _null_ ));
+#define LEAD_FUNC_INT_OID 7106
+DATA(insert OID = 7106 (  lead_immed_int   PGNSP PGUID 12 f f t f i 4 23 f "2281 23 20 23" _null_ _null_ _null_ lead_immed_int - _null_ ));
 DATA(insert OID = 7111 (  first_value_bool  PGNSP   PGUID 12 f f t f i 2 16 f "2281 16" _null_ _null_ _null_ first_value_bool - _null_ ));
 DATA(insert OID = 7112 (  first_value_char	PGNSP	PGUID 12 f f t f i 2 18 f "2281 18" _null_ _null_ _null_ first_value_char - _null_ ));
 DATA(insert OID = 7113 (  first_value_cidr	PGNSP	PGUID 12 f f t f i 2 650 f "2281 650" _null_ _null_ _null_ first_value_cidr - _null_ ));
