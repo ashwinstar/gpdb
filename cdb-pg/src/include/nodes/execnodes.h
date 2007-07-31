@@ -1660,7 +1660,6 @@ typedef struct AggState
  */
 typedef struct WindowStatePerLevelData *WindowStatePerLevel;
 typedef struct WindowStatePerFunctionData *WindowStatePerFunction;
-typedef struct WindowFrameStateData *WindowFrameState;
 
 typedef struct WindowState
 {
@@ -1697,33 +1696,6 @@ typedef struct WindowState
 	/* frame buffers */
 	Dllist *trail;
 	Dllist *lead;
-
-	/* frame processing data */
-
-	/* key levels which have a ROWS/RANGE trailing edge to their window */
-	List *frame_levels[4];
-
-	/* 
-	 * Position relative to current row of the "most trailing edge" of any
-	 * frame defined.
-	 */
-	long int frame_trail_edge;
-	/* position of leading edge, as above */
-	long int frame_lead_edge;
-#if 0
-	List *levels_rows_trail;
-	List *levels_range_trail;
-	/* 
-	 * Funcs which have bounded preceding frames, in descending 
-	 * order of range value. This is because we want to process the function
-	 * furthest from the current row, first.
-	 */
-	List *levels_rows_lead;
-	List *levels_range_lead;
-#endif
-
-	/* state variables for window frames at each key level */
-	WindowFrameState frame_states;
 } WindowState;
 
 /* ----------------
