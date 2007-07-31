@@ -1225,6 +1225,11 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 
 	Insist(transportStates->sliceTable != NULL);
 
+	/* if we're already trying to clean up after an error -- don't
+	 * allow signals to interrupt us */
+	if (forceEOS)
+		HOLD_INTERRUPTS();
+
 	mySlice = (Slice *) list_nth(transportStates->sliceTable->slices, transportStates->sliceId);
 
     /* Log the start of TeardownInterconnect. */
@@ -1398,6 +1403,9 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 
 	transportStates->activated = false;
 	transportStates->sliceTable = NULL;
+
+	if (forceEOS)
+		RESUME_INTERRUPTS();
 
 #ifdef AMS_VERBOSE_LOGGING
 	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
