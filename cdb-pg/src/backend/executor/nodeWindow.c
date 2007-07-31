@@ -4486,6 +4486,12 @@ lead_lag_internal(PG_FUNCTION_ARGS, bool is_lead, bool *isnull)
 	 	offset = 1; /* default */
 	}
 
+	if (offset < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("%s offset cannot be negative",
+						is_lead ? "LEAD" : "LAG")));
+
 	/* XXX: should check for overflow */
 	if (is_lead)
 		pos = funcstate->cur_trail_edge + (long int)offset;
