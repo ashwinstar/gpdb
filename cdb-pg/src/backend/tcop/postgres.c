@@ -3440,10 +3440,10 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			int connrespsize;
 			const char *query_string;
 			const char * completionTag = "GANG";
-			GpSegmentConnectionInfoSet * conninfo;
+			GpSegmentConnectionInfoSet * conninfo = NULL;
 			GpSegmentConnectionResponse * connresp;
 			StringInfoData buf;
-			int gang_id;
+			int gang_id = 0;
 
 			SetCurrentStatementStartTimestamp();
 
@@ -3593,6 +3593,8 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			CdbDispatchCmdThreads *dispatchThreads;
 
 			int unusedFlags;
+			bool isCopy = false;
+			bool copyIsFrom = false;
 
 			/* Set statement_timestamp() */
 			SetCurrentStatementStartTimestamp();
@@ -3675,6 +3677,15 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			pgstat_report_activity("DISPATCH");
 
 			set_ps_display(query_string, false);
+			
+			if (strncmp(query_string,"COPY ",5)==0)
+			{
+				isCopy = true;
+				if (strstr(query_string,"FROM STDIN ")!=0)
+					copyIsFrom = true;
+				else
+					copyIsFrom = false;
+			}
 
 			elog(DEBUG1, "stmt to be redispatched received from QD: %s.",query_string);
 
@@ -3706,13 +3717,14 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			}
 			
 
-			//PG_TRY();
+			if (cuid > 0)
+				SetUserId(cuid); /* Set current userid */
 
+			//PG_TRY();
 			{
 
 				DispatchCommandQueryParms queryParms;
-				if (cuid > 0)
-					SetUserId(cuid); /* Set current userid */
+				
 
 				memset(&queryParms, 0, sizeof(queryParms));
 				/*
@@ -3804,6 +3816,11 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				pfree(dispatchThreads);
 			}
 			dispatchThreads = NULL;
+			
+			if (isCopy)
+			{
+				pg_usleep(200*1000000);
+			}
 			 
 			/*
 			 * Not really necessary to reset this, but let's play it safe
@@ -3833,6 +3850,51 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				             msec_str, query_string) ));
 					break;
 			}
+			 
+			
+			/*
+			else
+			{
+				setupQEDtxContext(&TempDtxContextInfo);
+				
+				//PG_TRY();
+				{				
+						
+					if (serializedQuerytreelen==0 && serializedPlantreelen==0)
+						{
+							if (strncmp(query_string, "BEGIN", 5) == 0)
+							{
+								CommandDest dest = whereToSendOutput;
+
+								
+								elog((Debug_print_full_dtm ? LOG : DEBUG5), "PostgresMain explicit %s", query_string);
+
+								
+								pgstat_report_activity("BEGIN");
+								
+								set_ps_display("BEGIN", false);
+
+								BeginCommand("BEGIN", dest);
+
+								EndCommand("BEGIN", dest);
+
+							}
+							else
+							{
+								exec_simple_query(query_string);
+							}
+						}
+					else
+						exec_mpp_query(query_string, 
+										serializedQuerytree, serializedQuerytreelen,
+										serializedPlantree, serializedPlantreelen,
+										serializedParams, serializedParamslen,
+										serializedSliceInfo, serializedSliceInfolen,
+										localSlice);
+					
+				}
+				
+			}*/
 		
 			debug_query_string = NULL;
 

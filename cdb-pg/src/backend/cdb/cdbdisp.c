@@ -2696,7 +2696,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 {
 	
 	
-	int			oldLocalSlice;
+	int			oldLocalSlice = 0;
 	sliceVec	*sliceVector = NULL;
 	int			nSlices = 1;
 	int			sliceLim = 1;

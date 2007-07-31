@@ -1283,7 +1283,7 @@ plan_list_rollup_plans(PlannerInfo *root,
 	AttrNumber *orig_grpColIdx = context->grpColIdx;
 	int orig_numGroupCols = context->numGroupCols;
 	Query *orig_query = root->parse;
-	Query *final_query;
+	Query *final_query = NULL;
 	List *pathkeys = NIL;
 
 	/* Generate the shared input subplans for all rollups. */

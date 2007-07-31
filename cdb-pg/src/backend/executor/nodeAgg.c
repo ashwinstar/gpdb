@@ -887,7 +887,7 @@ agg_retrieve_direct(AggState *aggstate)
 	AggStatePerAgg peragg;
 	AggStatePerGroup pergroup;
 	AggStatePerGroup perpassthru;
-	TupleTableSlot *outerslot;
+	TupleTableSlot *outerslot = NULL;
 	TupleTableSlot *firstSlot;
 	int			aggno;
 

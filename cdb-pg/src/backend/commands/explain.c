@@ -979,7 +979,7 @@ explain_outNode(StringInfo str,
 				Motion	   *pMotion = (Motion *) plan;
                 int         nSenders = pMotion->numInputSegs;
 
-				int         nReceivers; 
+				int         nReceivers = 0; 
 				bool        senderIsEntryDb = false;
 
 				switch (pMotion->motionType)

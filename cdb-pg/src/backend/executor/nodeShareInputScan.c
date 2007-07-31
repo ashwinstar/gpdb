@@ -50,7 +50,7 @@ ShareInputNext(ShareInputScanState *node)
 	ScanDirection dir;
 	bool forward;
 	TupleTableSlot *slot;
-	int driver_slice;
+	int driver_slice = 0;
 
 	ShareInputScan * sisc = (ShareInputScan *) node->ss.ps.plan;
 
@@ -447,7 +447,7 @@ void shareinput_writer_waitdone(void *ctxt, int share_id, int nsharer_xslice)
 			MPP_FD_SET(fd, &rset);
 
 			elog(LOG, "sisc wait done select ... ");
-			select(1, &rset, NULL, NULL, NULL); 
+			select(1, (fd_set *)&rset, NULL, NULL, NULL); 
 			
 			if(!MPP_FD_ISSET(fd, &rset))
 				elog(ERROR, "shareinput_writer_waitdone failed");

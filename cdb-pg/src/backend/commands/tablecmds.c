@@ -718,9 +718,9 @@ extern void	DefineExternalRelation(CreateExternalStmt *stmt)
 	CreateStmt *createStmt = makeNode(CreateStmt);
 	ExtTableTypeDesc *exttypeDesc;
 	Oid			extRelOid;
-	Datum		locationUris;
+	Datum		locationUris = 0;
 	Datum		formatOptStr;
-	Datum		locationExec;
+	Datum		locationExec = 0;
 	char		formattype;
 	char		*commandString = NULL;
 	
