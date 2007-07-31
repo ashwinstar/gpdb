@@ -404,3 +404,43 @@ order by 1,5;
 select cn, rank() over (w), cume_dist() over (w) from
   customer
   window w as (order by cname);
+
+-- Check LEAD()
+-- sanity tests
+select p.proname, p.proargtypes from pg_window w, pg_proc p, pg_proc p2 where w.winfunc = p.oid and w.winfnoid = p2.oid and p2.proname = 'lead' order by 1,2;
+
+select lead(cn) from sale;
+
+select cn, cname, lead(cname, -1) over (order by cn) from customer;
+
+-- actual LEAD tests
+select cn, cname, lead(cname, 2, 'undefined') over (order by cn) from customer;
+
+select cn, cname, lead(cname, 2) over (order by cn) from customer;
+
+select cn, cname, lead(cname) over (order by cn) from customer;
+
+select cn, vn, pn, lead(cn, 1, cn + 1) over (order by cn, vn, pn) from 
+sale order by 1, 2, 3;
+
+select cn, vn, pn, qty * prc, 
+	lead(qty * prc) over (order by cn, vn, pn) from sale
+order by 1, 2, 3;
+
+-- Check LAG()
+-- sanity tests
+select p.proname, p.proargtypes from pg_window w, pg_proc p, pg_proc p2 where w.winfunc = p.oid and w.winfnoid = p2.oid and p2.proname = 'lag' order by 1,2;
+
+-- actual LAG tests
+select cn, cname, lag(cname, 2, 'undefined') over (order by cn) from customer;
+
+select cn, cname, lag(cname, 2) over (order by cn) from customer;
+
+select cn, cname, lag(cname) over (order by cn) from customer;
+
+select cn, vn, pn, lag(cn, 1, cn + 1) over (order by cn, vn, pn) from 
+sale order by 1, 2, 3;
+
+select cn, vn, pn, qty * prc, 
+	lag(qty * prc) over (order by cn, vn, pn) from sale
+order by 1, 2, 3;
