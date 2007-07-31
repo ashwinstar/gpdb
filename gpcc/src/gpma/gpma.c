@@ -14,13 +14,13 @@
 
 gpma_t gpma = {0};
 
-
+#if 0
 static const char* json_object_object_get_string(struct json_object* dict, char* key)
 {
     struct json_object* value = json_object_object_get(dict,key);
     return value ? json_object_get_string(value) : 0;
 }
-
+#endif
 
 /* Match a cmdidx to a cmdslot */
 static cmdslot_t* cmdslot_get(int cmdidx)

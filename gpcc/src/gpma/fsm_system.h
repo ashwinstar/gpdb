@@ -1,9 +1,11 @@
+#if 0
 
 static void u_queue_failure_event(cmdslot_t* cmdslot)
 {
     gpcc_event_t* ev = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, ev);
 }
+#endif
 
 static void u_queue_timeup_event(cmdslot_t* cmdslot)
 {
@@ -27,13 +29,14 @@ static apr_status_t u_send_get_identity(cmdslot_t* cmdslot)
 				cmdslot->cmdidx, 0, 0, 0);
 }
 
+#if 0
 static apr_status_t u_send_identity(conninfo_t* conninfo, apr_uint32_t rcvidx, char* json)
 {
     return gpcc_net_send_packet(conninfo->conn, IDENTITY_MSG,
 				0, rcvidx, json, strlen(json));
 }
 
-
+#endif
 
 
 /* 
@@ -71,7 +74,7 @@ static apr_status_t a_system_net_opened(gpcc_event_t* ev, void* cmdslot_)
     return 0;
 }
 
-
+#if 0
 static apr_status_t a_system_net_closed(gpcc_event_t* ev, void* cmdslot_)
 {
     /*
@@ -82,7 +85,7 @@ static apr_status_t a_system_net_closed(gpcc_event_t* ev, void* cmdslot_)
     return 0;
 }
 
-
+#endif
 
 static apr_status_t a_system_net_received(gpcc_event_t* ev, void* cmdslot_)
 {
@@ -204,10 +207,11 @@ static apr_status_t a_close_conn(gpcc_event_t* ev, void* cmdslot_)
 static apr_status_t a_get_identity_send_request(gpcc_event_t* ev, void* cmdslot_)
 {
     cmdslot_t* cmdslot = cmdslot_;
-    eventinfo_t* ei = (eventinfo_t*) ev->edata;
-    conninfo_t* conninfo = ei->conninfo;
+    /*    eventinfo_t* ei = (eventinfo_t*) ev->edata; */
+    /* conninfo_t* conninfo = ei->conninfo; */
     if (! u_send_get_identity(cmdslot)) { 
 	return APR_EINVAL;
     }
+    return 0;
 }
 

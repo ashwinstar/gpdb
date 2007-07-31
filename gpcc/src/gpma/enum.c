@@ -45,6 +45,7 @@ const char* event_str(event_t event)
 
 	CASESTR(GET_IDENTITY_MSG_EVENT);
 	CASESTR(IDENTITY_MSG_EVENT);
+	CASESTR(HTTP_REQUEST_EVENT);
     case EVENT_MAX: break;
     }
     return "UNKNOWN_EVENT";
