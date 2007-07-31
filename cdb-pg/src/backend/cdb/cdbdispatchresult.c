@@ -959,6 +959,32 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 						NULL);
 				break;
 			}
+			if (PQresultStatus(p) == PGRES_COPY_IN ||
+				PQresultStatus(p) == PGRES_COPY_OUT)
+			{
+				int i;
+				elog(LOG,"We are doing a COPY!");
+				if (PQresultStatus(p) == PGRES_COPY_IN)
+				{
+					pq_beginmessage(&buf, 'G');
+					pq_sendbyte(&buf, p->binary);		/* overall format */
+					pq_sendint(&buf, p->numAttributes, 2);
+					for (i = 0; i < p->numAttributes; i++)
+						pq_sendint(&buf, p->attDescs[i].format, 2);		/* per-column formats */
+					pq_endmessage(&buf);
+				}
+				else
+				{
+					pq_beginmessage(&buf, 'H');
+					pq_sendbyte(&buf, p->binary);		/* overall format */
+					pq_sendint(&buf, p->numAttributes, 2);
+					for (i = 0; i < p->numAttributes; i++)
+						pq_sendint(&buf, p->attDescs[i].format, 2);		/* per-column formats */
+					pq_endmessage(&buf);
+				}
+				 
+				break;
+			}
 		}
 
 		for (i = 0; i < gangResults->resultCount; ++i)
