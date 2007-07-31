@@ -38,7 +38,14 @@ netperf:
 	cp $(SRC)/src/$(NETPERF_DIR)/src/netperf $(SRC)/src/$(NETPERF_DIR)/src/netserver lib/
 	@echo ""
 
-
+netperfClean:
+	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+	@echo "Cleaning netperf utility."
+	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+	@if [ -f $(SRC)/src/$(NETPERF_DIR)/Makefile ]; then \
+		(cd $(SRC)/src/$(NETPERF_DIR) && make clean) \
+	fi
+	@echo ""
 
 #
 #  STREAM
