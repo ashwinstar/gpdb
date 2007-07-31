@@ -200,8 +200,12 @@ createDispatchAgents(void)
 		 * we have created in this loop
 		 */
 		q = &cdb_component_dbs->segment_db_info[j++];
-		while (!q->isprimary  || !q->valid || strcmp(lasthost,q->hostname)==0)
+		while ((!q->isprimary  || !q->valid || strcmp(lasthost,q->hostname)==0) && 
+					j < cdb_component_dbs->total_segment_dbs)
 			q = &cdb_component_dbs->segment_db_info[j++];
+		
+		if (j >= cdb_component_dbs->total_segment_dbs)
+			break;
 	 
 		if (strcmp(q->hostname,"localhost")!=0)
 			strcpy(lasthost, q->hostname);
