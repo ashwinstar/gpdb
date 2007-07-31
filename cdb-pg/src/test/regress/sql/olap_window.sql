@@ -264,13 +264,13 @@ from sale;
 
 -- !
 select cn, dt, ntile(3) over (partition by cn order by dt) 
-from sale;
+from sale; -- mvd 1,2->3
 
 -- !
 select cn, dt, 
     ntile(3) over (partition by cn order by dt), 
     sum(prc) over (order by cn, dt) 
-from sale;
+from sale; -- mvd 1,2->3
 
 -- !
 select cn, dt, 

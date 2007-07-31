@@ -891,7 +891,7 @@ from sale;
 
 -- !
 select cn, dt, ntile(3) over (partition by cn order by dt) 
-from sale;
+from sale; -- mvd 1,2->3
  cn |     dt     | ntile 
 ----+------------+-------
   1 | 03-01-1401 |     1
@@ -912,7 +912,7 @@ from sale;
 select cn, dt, 
     ntile(3) over (partition by cn order by dt), 
     sum(prc) over (order by cn, dt) 
-from sale;
+from sale; -- mvd 1,2->3
  cn |     dt     | ntile | sum  
 ----+------------+-------+------
   1 | 03-01-1401 |     1 |    0
