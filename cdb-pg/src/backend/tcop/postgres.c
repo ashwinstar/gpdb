@@ -3595,6 +3595,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			int unusedFlags;
 			bool isCopy = false;
 			bool copyIsFrom = false;
+			bool isSetOrReset = false;
 
 			/* Set statement_timestamp() */
 			SetCurrentStatementStartTimestamp();
@@ -3686,6 +3687,10 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				else
 					copyIsFrom = false;
 			}
+			else if (pg_strncasecmp(query_string,"SET ",4)==0 ||
+					 pg_strncasecmp(query_string,"RESET ",6)==0)
+				isSetOrReset = true;
+				
 
 			elog(DEBUG1, "stmt to be redispatched received from QD: %s.",query_string);
 
@@ -3816,6 +3821,17 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				pfree(dispatchThreads);
 			}
 			dispatchThreads = NULL;
+			
+			if (isSetOrReset)
+			{
+				/*
+				 * If this is a SET or RESET of a GUC variable, let's record it 
+				 * ourselves.  This is good for logging, and is also important
+				 * so that when we build new gangs they get the correct GUC
+				 * values
+				 */
+				exec_simple_query(query_string);
+			}
 			
 			if (isCopy)
 			{
