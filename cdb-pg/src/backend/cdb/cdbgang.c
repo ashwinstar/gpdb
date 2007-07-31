@@ -124,6 +124,7 @@ createDispatchAgents(void)
 
 	PQExpBufferData buffer;
 	int i, j;
+	char lasthost[255];
 	
 	/*
 	 * Not a lot of thought has gone into tuning this.
@@ -184,31 +185,35 @@ createDispatchAgents(void)
 	 */
 	
 	dispatchagents = palloc0(sizeof(DispatchAgentSet));
-	dispatchagents->size = size;
+	dispatchagents->size = 0;
 	dispatchagents->db_descriptors = (SegmentDatabaseDescriptor *) palloc0(size * sizeof(SegmentDatabaseDescriptor));
 	
 	
 	j = 0;	/* Starting point for the search */
+	lasthost[0] = '\0';
 	
 	for (i = 0; i < size; i++)
 	{
+		/*
+		 * Find a valid primary postmaster.  
+		 * On a different host from any other dispatchAgent
+		 * we have created in this loop
+		 */
 		q = &cdb_component_dbs->segment_db_info[j++];
-		while (!q->isprimary  || !q->valid)
+		while (!q->isprimary  || !q->valid || strcmp(lasthost,q->hostname)==0)
 			q = &cdb_component_dbs->segment_db_info[j++];
 	 
+		if (strcmp(q->hostname,"localhost")!=0)
+			strcpy(lasthost, q->hostname);
 		
 		elog(LOG,"Using dispatch agent on %s %d segindex %d",q->hostname,q->port,q->segindex);
 		 
-		/*
-		 * For now, create exactly one dispatch agent
-		 */
-
-		
 		cdbconn_initSegmentDescriptor(&dispatchagents->db_descriptors[i],
 				  q,
 				  myDatabaseName,
 				  GetUserNameFromId(GetAuthenticatedUserId()));
 		
+		dispatchagents->size++;
 		//dispatchagents->db_descriptors[i]->segindex = -2;
 	
 	
