@@ -262,8 +262,10 @@ class Session(cmd.Cmd):
 	line = '\\\\'.join(line);
 	line = line.split('"');
 	line = '\\"'.join(line);
-	if opt['-e']: print line
+        line = line.split('$')
+        line = '\\$'.join(line)
 	line = 'bash -c "' + line + '" < /dev/null';
+	if opt['-e']: print line
 	for s in self.pxssh:
 	    s.sendline(line)
 	    s.flush()
