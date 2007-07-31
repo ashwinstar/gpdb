@@ -1320,6 +1320,21 @@ win2 as (order by sale.pn asc);
 
 -- end equivalent
 -- Test for MPP-1756, the planner should create just the one key level
+explain select cn,
+sum(qty) over (order by cn rows between 1 preceding and 1 following),
+sum(qty) over (order by cn rows between 1 preceding and 1 following)
+from sale;
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Window  (cost=1.02..1.05 rows=1 width=8)
+   Order By: cn
+   ->  Gather Motion 2:1  (slice1)  (cost=1.02..1.04 rows=1 width=8)
+         Merge Key: cn
+         ->  Sort  (cost=1.02..1.02 rows=1 width=8)
+               Sort Key: cn
+               ->  Seq Scan on sale  (cost=0.00..1.01 rows=1 width=8)
+(7 rows)
+
 select cn,
 sum(qty) over (order by cn rows between 1 preceding and 1 following),
 sum(qty) over (order by cn rows between 1 preceding and 1 following)
@@ -1338,6 +1353,67 @@ from sale;
   3 |   25 |   25
   4 |   14 |   14
   4 |    2 |    2
+(12 rows)
+
+-- Sanity test for executor detection of non-sense frames
+SELECT sale.pn,sale.cn,sale.prc,
+    AVG(cast (sale.prc as int))
+      OVER(order by sale.cn asc range between 6 following and 0 following ) as c
+      FROM sale;
+ pn  | cn | prc  | c 
+-----+----+------+---
+ 200 |  1 |    0 |  
+ 100 |  1 |    0 |  
+ 300 |  1 |    0 |  
+ 400 |  1 |    0 |  
+ 500 |  1 |    5 |  
+ 100 |  2 | 2400 |  
+ 400 |  2 |    0 |  
+ 200 |  3 |    0 |  
+ 600 |  3 |    5 |  
+ 500 |  3 |    5 |  
+ 700 |  4 |    1 |  
+ 800 |  4 |    1 |  
+(12 rows)
+
+SELECT sale.pn,sale.cn,sale.prc,
+    AVG(cast (sale.prc as int))
+      OVER(order by sale.cn asc rows between 6 following and 0 following ) as c
+      FROM sale;
+ pn  | cn | prc  | c 
+-----+----+------+---
+ 200 |  1 |    0 |  
+ 100 |  1 |    0 |  
+ 300 |  1 |    0 |  
+ 400 |  1 |    0 |  
+ 500 |  1 |    5 |  
+ 100 |  2 | 2400 |  
+ 400 |  2 |    0 |  
+ 200 |  3 |    0 |  
+ 600 |  3 |    5 |  
+ 500 |  3 |    5 |  
+ 700 |  4 |    1 |  
+ 800 |  4 |    1 |  
+(12 rows)
+
+SELECT sale.pn,sale.cn,sale.prc,
+    AVG(cast (sale.prc as int))
+      OVER(order by sale.cn asc range between 1 preceding and 10 preceding ) as c
+      FROM sale;
+ pn  | cn | prc  | c 
+-----+----+------+---
+ 200 |  1 |    0 |  
+ 100 |  1 |    0 |  
+ 300 |  1 |    0 |  
+ 400 |  1 |    0 |  
+ 500 |  1 |    5 |  
+ 100 |  2 | 2400 |  
+ 400 |  2 |    0 |  
+ 200 |  3 |    0 |  
+ 600 |  3 |    5 |  
+ 500 |  3 |    5 |  
+ 700 |  4 |    1 |  
+ 800 |  4 |    1 |  
 (12 rows)
 
 -- Check LEAD()
@@ -1441,7 +1517,7 @@ select p.proname, p.proargtypes from pg_window w, pg_proc p, pg_proc p2 where w.
 (93 rows)
 
 select lead(cn) from sale;
-ERROR:  window function 7075 called as normal function (nodeWindow.c:4154)
+ERROR:  window function 7075 called as normal function (nodeWindow.c:3545)
 select cn, cname, lead(cname, -1) over (order by cn) from customer;
 ERROR:  LEAD offset cannot be negative
 -- actual LEAD tests

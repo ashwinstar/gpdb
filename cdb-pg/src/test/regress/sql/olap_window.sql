@@ -426,11 +426,31 @@ win2 as (order by sale.pn asc);
 
 -- Test for MPP-1756, the planner should create just the one key level
 
+explain select cn,
+sum(qty) over (order by cn rows between 1 preceding and 1 following),
+sum(qty) over (order by cn rows between 1 preceding and 1 following)
+from sale;
+
 select cn,
 sum(qty) over (order by cn rows between 1 preceding and 1 following),
 sum(qty) over (order by cn rows between 1 preceding and 1 following)
 from sale;
 
+-- Sanity test for executor detection of non-sense frames
+SELECT sale.pn,sale.cn,sale.prc,
+    AVG(cast (sale.prc as int))
+      OVER(order by sale.cn asc range between 6 following and 0 following ) as c
+      FROM sale;
+
+SELECT sale.pn,sale.cn,sale.prc,
+    AVG(cast (sale.prc as int))
+      OVER(order by sale.cn asc rows between 6 following and 0 following ) as c
+      FROM sale;
+
+SELECT sale.pn,sale.cn,sale.prc,
+    AVG(cast (sale.prc as int))
+      OVER(order by sale.cn asc range between 1 preceding and 10 preceding ) as c
+      FROM sale;
 
 -- Check LEAD()
 -- sanity tests
