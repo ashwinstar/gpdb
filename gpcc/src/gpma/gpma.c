@@ -8,6 +8,7 @@
 #include <gpcc_net.h>
 #include <gpcc_fsm.h>
 #include <json/json.h>
+#include <event.h>
 
 #include "gpma.h"
 

@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <apr_strings.h>
 #include <gpcc_http.h>
 
