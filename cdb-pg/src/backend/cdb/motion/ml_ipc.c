@@ -2200,7 +2200,7 @@ readRegisterMessage(ChunkTransportState *transportStates,
     RegisterMessage    *regMsg;
 	RegisterMessage     msg;
 	MotionConn         *newConn;
-    ChunkTransportStateEntry   *pEntry;
+    ChunkTransportStateEntry   *pEntry = NULL;
 	CdbProcess         *cdbproc;
 
     /* Get ready to receive the Register message. */
@@ -2315,7 +2315,12 @@ readRegisterMessage(ChunkTransportState *transportStates,
     }
     else
 	{
-		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+    	/*
+    	 * Make sure pEntry is a valid pointer before dereferrencing it to display error
+    	 */
+    	if (msg.sendSliceIndex > 0 &&
+    		msg.sendSliceIndex <= transportStates->size )
+    		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                         errmsg("Interconnect error: Invalid registration "
                                "message received from %s.",
                                conn->remoteHostAndPort),
@@ -2327,6 +2332,19 @@ readRegisterMessage(ChunkTransportState *transportStates,
                                   msg.srcListenerPort, msg.srcSessionId,
                                   msg.srcCommandCount, pEntry->valid,pEntry->motNodeId)
                 ));
+    	else
+    		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+    		                        errmsg("Interconnect error: Invalid registration "
+    		                               "message received from %s.",
+    		                               conn->remoteHostAndPort),
+    		                        errdetail("sendSlice=%d recvSlice=%d srcContentId=%d "
+    		                                  "srcPid=%d srcListenerPort=%d "
+    		                                  "srcSessionId=%d srcCommandCount=%d *sendSliceIndex out of bounds* ",
+    		                                  msg.sendSliceIndex, msg.recvSliceIndex,
+    		                                  msg.srcContentId, msg.srcPid,
+    		                                  msg.srcListenerPort, msg.srcSessionId,
+    		                                  msg.srcCommandCount)
+    		                ));
 	}
 
     /*
