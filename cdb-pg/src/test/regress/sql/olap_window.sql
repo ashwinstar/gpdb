@@ -405,6 +405,33 @@ select cn, rank() over (w), cume_dist() over (w) from
   customer
   window w as (order by cname);
 
+-- Test for MPP-1762
+
+-- begin equivalent
+
+SELECT sale.prc,sale.cn, sale.cn, 
+AVG(sale.pn) OVER(order by sale.pn desc,sale.vn asc,sale.cn desc rows between unbounded preceding and unbounded following) as avg,
+sale.vn,sale.pn,
+DENSE_RANK() OVER(order by sale.pn asc) FROM sale,vendor WHERE sale.vn =vendor.vn;
+
+SELECT sale.prc,sale.cn,sale.cn, AVG(sale.pn) OVER(win1),
+sale.vn,sale.pn,
+DENSE_RANK() OVER(win2)
+FROM sale,vendor                                                       
+WHERE sale.vn=vendor.vn
+WINDOW win1 as (order by sale.pn desc,sale.vn asc,sale.cn desc rows between unbounded preceding and unbounded following ),
+win2 as (order by sale.pn asc);
+
+-- end equivalent
+
+-- Test for MPP-1756, the planner should create just the one key level
+
+select cn,
+sum(qty) over (order by cn rows between 1 preceding and 1 following),
+sum(qty) over (order by cn rows between 1 preceding and 1 following)
+from sale;
+
+
 -- Check LEAD()
 -- sanity tests
 select p.proname, p.proargtypes from pg_window w, pg_proc p, pg_proc p2 where w.winfunc = p.oid and w.winfnoid = p2.oid and p2.proname = 'lead' order by 1,2;
