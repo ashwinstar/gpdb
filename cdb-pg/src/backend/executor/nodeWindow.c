@@ -1765,6 +1765,10 @@ appendRowTuple(WindowState *wstate, WindowFrame *frame,
 			foreach (lc, wrxstate->args)
 			{
 				ExprState  *argstate = (ExprState *) lfirst(lc);
+				Oid typid;
+				bool byval;
+				int16 len;
+				MemoryContext oldctx;
 
 				/* skip the internal arg */
 				if (argno < 1)
@@ -1775,6 +1779,15 @@ appendRowTuple(WindowState *wstate, WindowFrame *frame,
 
 				args[argno - 1] = ExecEvalExpr(argstate, econtext,
 										       argnulls + argno - 1, NULL);
+
+				/* XXX: get a copy, do the leg work at init time though */
+				typid = exprType((Node *)argstate->expr);
+				get_typlenbyval(typid, &len, &byval);
+
+				oldctx = MemoryContextSwitchTo(wstate->transcontext);
+				args[argno - 1] = datumCopy(args[argno - 1], byval, len);
+				MemoryContextSwitchTo(oldctx);
+
 				argno++;
 			}
 
