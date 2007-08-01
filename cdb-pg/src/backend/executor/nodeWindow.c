@@ -596,8 +596,8 @@ resetInputBuffer(WindowState *wstate)
 		if (save_firsttuple)
 		{
 			tuplestore_gettupleslot(wstate->input_buffer->tuplestorestate,
-									true, wstate->curslot);
-			wstate->spare = ExecCopySlot(wstate->spare, wstate->curslot);
+									true, wstate->spare);
+			wstate->curslot = ExecCopySlot(wstate->curslot, wstate->spare);
 		}
 		
 #if 0
@@ -622,7 +622,7 @@ resetInputBuffer(WindowState *wstate)
 			wstate->input_buffer->ntuples_markpos++;
 
 			tuplestore_puttupleslot(wstate->input_buffer->tuplestorestate,
-									wstate->spare);
+									wstate->curslot);
 			wstate->cur_slot_is_new = true;
 		}
 	}
