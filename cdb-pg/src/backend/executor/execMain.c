@@ -262,6 +262,8 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		 */
 		estate->es_slice_map = (MotionState **) palloc0((1 + queryDesc->plantree->nMotionNodes) * sizeof(MotionState *));
 
+		estate->es_sharenode = (List **) palloc0(sizeof(List *));
+
         /* qDisp should have sent us a slice table via MPPEXEC */
 		if (queryDesc->plantree != NULL && queryDesc->plantree->sliceTable != NULL)
 		{

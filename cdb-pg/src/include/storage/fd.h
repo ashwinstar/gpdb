@@ -68,6 +68,7 @@ extern void CreateTempFifo(const char* filename);
 extern void FileClose(File file);
 extern void FileUnlink(File file);
 extern int	FileRead(File file, char *buffer, int amount);
+extern int	FileReadIntr(File file, char *buffer, int amount, bool fRetryInt);
 extern int	FileWrite(File file, char *buffer, int amount);
 extern int	FileSync(File file);
 extern long FileSeek(File file, long offset, int whence);

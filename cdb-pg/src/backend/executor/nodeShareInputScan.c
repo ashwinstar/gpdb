@@ -394,7 +394,9 @@ void *shareinput_reader_waitready(int share_id)
 	CreateTempFifo(lkname);
 
 	elog(LOG, "sisc wait ready on %s", lkname);
+	CHECK_FOR_INTERRUPTS();
 	pctxt->f = OpenTemporaryFileName(lkname, O_WRONLY, false, false);
+
 	return (void *) pctxt;
 }
 
@@ -434,23 +436,16 @@ void shareinput_writer_waitdone(void *ctxt, int share_id, int nsharer_xslice)
 	while(nsharer_xslice > 0)
 	{
 		char x = 'a';
-		int rsize = FileRead(pctxt->f, &x, 1);
+		int rsize;
+		
+		CHECK_FOR_INTERRUPTS();
+		
+		rsize = FileReadIntr(pctxt->f, &x, 1, false);
 		if(rsize == 1)
 		{
 			Assert(x == 'x');
 			elog(LOG, "sisc wait done get 1 notification");
 			--nsharer_xslice;
-		}
-		else
-		{
-			MPP_FD_ZERO(&rset);
-			MPP_FD_SET(fd, &rset);
-
-			elog(LOG, "sisc wait done select ... ");
-			select(1, (fd_set *)&rset, NULL, NULL, NULL); 
-			
-			if(!MPP_FD_ISSET(fd, &rset))
-				elog(ERROR, "shareinput_writer_waitdone failed");
 		}
 	}
 

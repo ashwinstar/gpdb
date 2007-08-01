@@ -475,7 +475,7 @@ typedef struct EState
 	struct MotionState **es_slice_map;
 	
 	/* Data structure for node sharing */
-	List *es_sharenode;
+	List **es_sharenode;
 
 	int active_recv_id;
 	void *motionlayer_context;  /* Motion Layer state */

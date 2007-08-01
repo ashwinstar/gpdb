@@ -1080,8 +1080,15 @@ FileUnlink(File file)
 	FileClose(file);
 }
 
+
 int
 FileRead(File file, char *buffer, int amount)
+{
+	return FileReadIntr(file, buffer, amount, true);
+}
+
+int
+FileReadIntr(File file, char *buffer, int amount, bool fRetryIntr)
 {
 	int			returnCode;
 
@@ -1124,7 +1131,7 @@ retry:
 		}
 #endif
 		/* OK to retry if interrupted */
-		if (errno == EINTR)
+		if (errno == EINTR && fRetryIntr)
 			goto retry;
 
 		/* Trouble, so assume we don't know the file position anymore */

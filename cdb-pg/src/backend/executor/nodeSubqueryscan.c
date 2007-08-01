@@ -235,9 +235,7 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	 */
 	subquerystate->subplan = ExecInitNode(node->subplan, sp_estate, eflags);
 
-	/* 
-	 * now return sharenode list from subquery to original estate 
-	 */
+	/* return borrowed share node list */
 	estate->es_sharenode = sp_estate->es_sharenode;
 
 	/*

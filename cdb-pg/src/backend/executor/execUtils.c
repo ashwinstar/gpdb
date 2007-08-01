@@ -1311,25 +1311,31 @@ ShutdownExprContext(ExprContext *econtext)
 ShareNodeEntry *
 ExecGetShareNodeEntry(EState* estate, int shareidx, bool fCreate)
 {
+	List *l;
+
 	Assert(shareidx >= 0);
+
+	if(estate->es_sharenode == NULL)
+		estate->es_sharenode = (List **) palloc0(sizeof(List *));
+
 	if(!fCreate)
 	{
-		if(shareidx >= list_length(estate->es_sharenode))
+		if(shareidx >= list_length(*estate->es_sharenode)) 
 			return NULL;
 	}
 	else
 	{
-		while(list_length(estate->es_sharenode) <= shareidx)
+		while(list_length(*estate->es_sharenode) <= shareidx)
 		{
 			ShareNodeEntry *n = makeNode(ShareNodeEntry);
 			n->sharePlan = NULL;
 			n->shareState = NULL;
 
-			estate->es_sharenode = lappend(estate->es_sharenode, n); 
+			*estate->es_sharenode = lappend(*estate->es_sharenode, n); 
 		}
 	}
 		
-	return (ShareNodeEntry *) list_nth(estate->es_sharenode, shareidx);
+	return (ShareNodeEntry *) list_nth(*estate->es_sharenode, shareidx);
 }
 
 /* ----------------------------------------------------------------

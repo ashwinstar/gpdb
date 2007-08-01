@@ -1526,8 +1526,8 @@ static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, ApplyShareInputC
 			shareinput_walker(f, (Node *) subqscan->subplan, ctxt);
 		}
 
-		shareinput_walker(f, (Node *)plan->lefttree, ctxt);
 		shareinput_walker(f, (Node *)plan->righttree, ctxt);
+		shareinput_walker(f, (Node *)plan->lefttree, ctxt);
 		shareinput_walker(f, (Node *)plan->initPlan, ctxt);
 	}
 
