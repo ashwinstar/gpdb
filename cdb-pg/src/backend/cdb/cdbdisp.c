@@ -2748,16 +2748,21 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 
 		if (slice->mirror_gang_id > 0)
 		{
-			*pMirrorResults = cdbdisp_makeDispatchResults(getgpsegmentCount(),
+			Assert(pMirrorResults);
+			if (pMirrorResults)
+				*pMirrorResults = cdbdisp_makeDispatchResults(getgpsegmentCount(),
 														  sliceLim,
 														  cancelOnError);
 		}
 	}
 	
 	if (sliceTbl == NULL && pQueryParms->mirror_gang_id > 0)
+	{
+		Assert(pMirrorResults);
 		*pMirrorResults = cdbdisp_makeDispatchResults(getgpsegmentCount(),
 				  sliceLim,
 				  cancelOnError);
+	}
 		
 
 	cdb_total_plans++;
@@ -2945,6 +2950,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 
 			Assert(mirrorGang != NULL);	/* Must have a gang to dispatch to */
 			Assert(mirrorGang->size > 0);
+			Assert(pMirrorResults);
 			Assert((*pMirrorResults) &&
 					(*pMirrorResults)->resultArray);
 			
@@ -3054,7 +3060,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
  * suggested that the caller use cdbdisp_finishCommand().
  *
  * Note that the slice tree dispatched is the one specified in the EState
- * of the argument QueryDesc as es_cur_root_slice.
+ * of the argument QueryDesc as es_cur__slice.
  *
  * Note that the QueryDesc params must include PARAM_EXEC_REMOTE parameters
  * containing the values of any initplans required by the slice to be run.
@@ -3327,6 +3333,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 			 pMirrorResults,       /* OUT */
 			 pDispatchThreads)	;	/* OUT */
 	
+
+	sliceTbl->localSlice = oldLocalSlice;
 	
 }	/* cdbdisp_dispatchPlan */
 
