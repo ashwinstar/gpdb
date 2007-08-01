@@ -1156,7 +1156,9 @@ tmShmemInit(void)
 	shmControlLock = shared->ControlLock;
 	shmTmRecoverred = &shared->recoverred;
 	shmGIDSeq = &shared->seqno;
-	*shmGIDSeq = FirstDistributedTransactionId;
+	/* Only initialize this if we are the creator of the shared memory */
+	if (!found)
+		*shmGIDSeq = FirstDistributedTransactionId;
 	shmDtmStarted = &shared->DtmStarted;
 	shmSegmentCount = &shared->SegmentCount;
 	shmSegmentStatesByteLen = &shared->SegmentsStatesByteLen;
@@ -2304,6 +2306,7 @@ generateGID(char *gid, DistributedTransactionId *gxid)
 		ereport(ERROR,
 				(errmsg("reached limit of global transactions per start")));
 	}
+	
 	*gxid = (*shmGIDSeq)++;
 	sprintf(gid, "%ld-%.10d", t, (*gxid));
 }
