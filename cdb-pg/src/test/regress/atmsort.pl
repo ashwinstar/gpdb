@@ -848,6 +848,8 @@ if (1)
             {
                 $ini =~ s/\s+\(seg.*pid.*\)//;
 
+				# also remove line numbers from errors
+				$ini =~ s/\s+\(.*\.[ch]:\d+\)/ (SOMEFILE:SOMEFUNC)/;
                 my $outsize = scalar(@outarr);
 
                 my $lastguy = -1;
