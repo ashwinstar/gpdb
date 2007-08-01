@@ -68,10 +68,10 @@ WHERE p1.oid != p2.oid AND
 -- Considering only built-in procs (prolang = 12), look for multiple uses
 -- of the same internal function (ie, matching prosrc fields).  It's OK to
 -- have several entries with different pronames for the same internal function,
--- but conflicts in the number of arguments and other critical items should
--- be complained of.  (We don't check data types here; see next query.)
--- Note: ignore aggregate functions here, since they all point to the same
--- dummy built-in function.
+-- but conflicts in the number of arguments (except in the case of window 
+-- functions) and other critical items should be complained of.  (We don't 
+-- check data types here; see next query.) Note: ignore aggregate functions 
+-- here, since they all point to the same dummy built-in function.
 
 SELECT p1.oid, p1.proname, p2.oid, p2.proname
 FROM pg_proc AS p1, pg_proc AS p2
@@ -87,7 +87,8 @@ WHERE p1.oid < p2.oid AND
      p1.proisstrict != p2.proisstrict OR
      p1.proretset != p2.proretset OR
      p1.provolatile != p2.provolatile OR
-     p1.pronargs != p2.pronargs);
+     (p1.pronargs != p2.pronargs AND p1.oid 
+	  NOT IN (select winfunc from pg_window)));
 
 -- Look for uses of different type OIDs in the argument/result type fields
 -- for different aliases of the same built-in function.
