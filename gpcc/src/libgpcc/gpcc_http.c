@@ -1,11 +1,48 @@
 #include <stdlib.h>
+#include <ctype.h>
 #include <apr_strings.h>
 #include <gpcc_http.h>
 
-/* TODO: url_decode should decode the url */
-static char *url_decode(apr_pool_t *pool, char *src)
+#define ISXDIGIT(x) (isxdigit((int) ((unsigned char)x)))
+
+char *url_unescape(const char *string, int length, int *olen, apr_pool_t *p)
 {
-    return apr_pstrdup(pool, src);
+  int alloc = (length?length:(int)strlen(string))+1;
+  char *ns = apr_palloc(p, alloc);
+  unsigned char in;
+  int strindex=0;
+  long hex;
+
+  if( !ns )
+    return NULL;
+
+  while(--alloc > 0) {
+    in = *string;
+    if(('%' == in) && ISXDIGIT(string[1]) && ISXDIGIT(string[2])) {
+      /* this is two hexadecimal digits following a '%' */
+      char hexstr[3];
+      char *ptr;
+      hexstr[0] = string[1];
+      hexstr[1] = string[2];
+      hexstr[2] = 0;
+
+      hex = strtol(hexstr, &ptr, 16);
+
+      in = (unsigned char)hex; /* this long is never bigger than 255 anyway */
+
+      string+=2;
+      alloc-=2;
+    }
+
+    ns[strindex++] = in;
+    string++;
+  }
+  ns[strindex]=0; /* terminate it */
+
+  if(olen)
+    /* store output size */
+    *olen = strindex;
+  return ns;
 }
 
 APR_DECLARE(apr_status_t) gpcc_http_parse_request(gpcc_net_request_t *req, apr_pool_t *pool)
@@ -31,7 +68,7 @@ APR_DECLARE(apr_status_t) gpcc_http_parse_request(gpcc_net_request_t *req, apr_p
 	    }
 	    else {
 		http->pname[i] = apr_pstrndup(pool, tok, p - tok);
-		http->pvalue[i] = url_decode(pool, p+1);
+		http->pvalue[i] = url_unescape(p+1, 0, 0, pool);
 	    }
 	}
 	http->pc = i;
