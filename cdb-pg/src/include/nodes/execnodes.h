@@ -1660,6 +1660,7 @@ typedef struct AggState
  */
 typedef struct WindowStatePerLevelData *WindowStatePerLevel;
 typedef struct WindowStatePerFunctionData *WindowStatePerFunction;
+typedef struct WindowInputBufferData *WindowInputBuffer;
 
 typedef struct WindowState
 {
@@ -1693,9 +1694,8 @@ typedef struct WindowState
 	/* framed window functions need access to their frames */
 	WindowStatePerFunction cur_funcstate;
 
-	/* frame buffers */
-	Dllist *trail;
-	Dllist *lead;
+	/* input buffer */
+	WindowInputBuffer input_buffer;
 } WindowState;
 
 /* ----------------

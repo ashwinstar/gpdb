@@ -27,7 +27,6 @@
 #include "executor/executor.h"
 #include "executor/nodeAgg.h"
 #include "executor/nodeWindow.h"
-#include "lib/dllist.h"
 #include "optimizer/clauses.h"
 #include "parser/parse_agg.h"
 #include "parser/parse_coerce.h"
@@ -244,17 +243,6 @@ typedef struct WinFuncRangeBuffer
 	bool *nulls;
 } WinFuncRangeBuffer;
 
-/*
- * We need to buffer tuples and meta data inside the framing code. We use
- * this structure for that purpose.
- */
-typedef struct WindowTuple
-{
-	HeapTuple 	tup;
-	bool		part_break;
-	int			min_key_break;
-} WindowTuple;
-
 typedef struct WindowBreakInfo
 {
 	bool		part_break;
@@ -292,18 +280,46 @@ do \
 	pfree(__buf); \
 } while(0)
 	
-	
+/****************************************************
+ * Window Input Buffer and its APIs
+ ***************************************************/
+/*
+ * WindowInputBuffer: this buffer holds input tuples that fit in the
+ * partition which is currently processed by the window node. This
+ * buffer also stores the first tuple in the next partition, which
+ * is always the last tuple in the buffer.
+ */
+typedef struct WindowInputBufferData
+{
+	Tuplestorestate *tuplestorestate;
+
+	/* the number of tuples that are not before the current read
+	 * position.
+	 */
+	long int ntuples;
+
+	/* the number of tuples not before the mark pos. */
+	long int ntuples_markpos;
+
+	/* Indicate if the last tuple in the buffer is the tuple that
+	 * breaks the partition key.
+	 */
+	bool part_break;
+} WindowInputBufferData;
+
+static void markposInputBuffer(WindowState *wstate);  /* moveFrameBuf */
+static void restoreposInputBuffer(WindowState *wstate);
+static void resetInputBuffer(WindowState *wstate); /* resetPartFrameBuf */
+static void freeInputBuffer(WindowState *wstate); /* freeFrameBuf */
+
 static WindowState *makeWindowState(Window *window, EState *estate);
 static void initializePartition(WindowState *wstate);
 static void advanceKeyLevelState(WindowState *wstate, int min_level); 
 static void resetPerFunctionAggStates(WindowState *wstate, Index minlevel);
 static void resetManagedFrameAggStates(WindowState *wstate);
 static TupleTableSlot *nextRow(WindowState *wstate, ExprContext *econtext);
-static WindowTuple *fetchTupleThroughBuf(WindowState *wstate);
-static void moveFrameBuf(WindowState *wstate, long int ntuples);
-static void freeFrameBuf(WindowState *wstate);
+static MinimalTuple fetchTupleThroughBuf(WindowState *wstate);
 static void init_frames(WindowState *wstate);
-static void resetPartFrameBuf(WindowState *wstate);
 static WindowTransValue *get_last_trans_val(WindowStatePerFunction funcstate);
 static void bufferAddRowWindowFuncTuple(WindowState *wstate,
 										WindowStatePerFunction funcstate,
@@ -385,8 +401,8 @@ initializePartition(WindowState *wstate)
 		/* TODO per-key-level buffer management reinitialization */
 	}
 	
-	/* Per-partition buffer management reinitialzation. */
-	resetPartFrameBuf(wstate);
+	/* Per-partition input buffer management reinitialzation. */
+	resetInputBuffer(wstate);
 	
 	if (wstate->numlevels > 0)
 		resetPerFunctionAggStates(wstate, 0);
@@ -402,7 +418,7 @@ processPeerCounts(WindowState *wstate, int min_level,
 	long int nfetches = 0;
 	Window *window = (Window *)wstate->ps.plan;
 	TupleTableSlot *priorslot = NULL;
-	WindowTuple *priorwt = NULL;
+	MinimalTuple priorwt = NULL;
 	char *buf;
 	bool seen_null = false;
 	
@@ -413,6 +429,8 @@ processPeerCounts(WindowState *wstate, int min_level,
 	Assert(ExecSupportsMarkRestore(nodeTag(outerPlan->plan)));
 	ExecMarkPos(outerPlan);
 #endif
+	/* Mark the current position in the input buffer */
+	markposInputBuffer(wstate);
 	
 	buf = tup2str(cur_slot);
 	elog(DEBUG1, "first = %s", buf);
@@ -458,7 +476,7 @@ processPeerCounts(WindowState *wstate, int min_level,
 				{
 					bool match;
 					TupleTableSlot *slot;
-					WindowTuple *wt;
+					MinimalTuple wt;
 	
 					if (priorslot)
 					{
@@ -513,9 +531,8 @@ processPeerCounts(WindowState *wstate, int min_level,
 	elog(DEBUG1, "total peer count %lld, %li", (long long)peer_count, nfetches);
 	if (nfetches)
 	{
-	//	ExecRestrPos(outerPlan);
 		elog(DEBUG1, "rewinding %li", nfetches);
-		moveFrameBuf(wstate, -nfetches);
+		restoreposInputBuffer(wstate);
 	}
 }
 
@@ -562,258 +579,231 @@ resetPartFuncFrameBuf(WindowState *wstate)
 	}
 }
 
+
 /*
- * Reset a frame buffer after a partition boundary has been passed. We
+ * Reset an input buffer after a partition boundary has been passed. We
  * must keep the last tuple fetched -- it is the tuple which caused the
  * key break -- and put it in the new buffer.
  *
  * Of course, we could get called to initialise the buffer as well.
  */
-
 static void
-resetPartFrameBuf(WindowState *wstate)
+resetInputBuffer(WindowState *wstate)
 {
-	if (wstate->trail)
+	if (wstate->input_buffer)
 	{
-    	Dlelem *curr;
-		Dlelem *save;
-		WindowTuple *wt;
+		bool save_firsttuple = wstate->input_buffer->part_break;
+		if (save_firsttuple)
+		{
+			tuplestore_gettupleslot(wstate->input_buffer->tuplestorestate,
+									true, wstate->curslot);
+			wstate->spare = ExecCopySlot(wstate->spare, wstate->curslot);
+		}
+		
+#if 0
+		tuplestore_reset(wstate->input_buffer->tuplestorestate);
+#else
+		tuplestore_end(wstate->input_buffer->tuplestorestate);
+		wstate->input_buffer->tuplestorestate = 
+			tuplestore_begin_heap(true, false, work_mem/2 /* XXX correct? */);
+#endif
 
-		save = DLRemTail(wstate->trail);
-		DLRemHead(wstate->lead);
-		Insist(PointerIsValid(save));
-	
-		/* there shouldn't be any elements in the lead list */
-		//Insist(!PointerIsValid(DLGetHead(wstate->lead)));
-		
-	    while ((curr = DLRemHead(wstate->trail)) != NULL)
-		{
-			WindowTuple *wt = DLE_VAL(curr);
-	
-			pfree(wt->tup);
-			pfree(wt);
-			free(curr);
-		}
-		
-	    while ((curr = DLRemHead(wstate->lead)) != NULL)
-		{
-			WindowTuple *wt = DLE_VAL(curr);
-	
-			pfree(wt->tup);
-			pfree(wt);
-			free(curr);
-		}
-	
-		wt = DLE_VAL(save);
-		wt->part_break = false; /* new tuple, therefore not a break */
-		DLAddTail(wstate->trail, save);
-		wstate->cur_slot_is_new = true;
+		wstate->input_buffer->ntuples = 0;
+		wstate->input_buffer->ntuples_markpos = 0;
+		wstate->input_buffer->part_break = false;
+
+		wstate->cur_slot_is_new = false;
 		wstate->cur_slot_part_break = false;
 		wstate->cur_slot_key_break = -1;
+
+		if (save_firsttuple)
+		{
+			wstate->input_buffer->ntuples++;
+			wstate->input_buffer->ntuples_markpos++;
+
+			tuplestore_puttupleslot(wstate->input_buffer->tuplestorestate,
+									wstate->spare);
+			wstate->cur_slot_is_new = true;
+		}
 	}
+
 	else
 	{
-		wstate->trail = DLNewList();
-		wstate->lead = DLNewList();
+		wstate->input_buffer = (WindowInputBuffer)palloc0(sizeof(WindowInputBufferData));
+		wstate->input_buffer->tuplestorestate =
+			tuplestore_begin_heap(true, false, work_mem/2 /* XXX correct? */);
+		wstate->input_buffer->ntuples = 0;
+		wstate->input_buffer->ntuples_markpos = 0;
 	}
 
 	resetPartFuncFrameBuf(wstate);
 }
 
 static void
-freeFrameBuf(WindowState *wstate)
+freeInputBuffer(WindowState *wstate)
 {
-	/* TODO: free manually, to free HeapTuples */
-	if (wstate->trail)
-	{
-		DLFreeList(wstate->trail);
-		wstate->trail = NULL;
-	}
-	if (wstate->lead)
-	{
-		DLFreeList(wstate->lead);
-		wstate->lead = NULL;
-	}
+	tuplestore_end(wstate->input_buffer->tuplestorestate);
+	pfree(wstate->input_buffer);
+	wstate->input_buffer = NULL;
 }
-	
+
 /*
- * Fetch a tuple in a frame buffer aware way. If set_cur_row is true, the 
- * row fetched is the current row the window is focussed around.
+ * Fetch a tuple in a frame buffer aware way.
+ *
+ * If the input buffer is not empty, the current read position to the input buffer is
+ * the previous current_row. 
+ * 
  */
-static WindowTuple *
+static MinimalTuple
 fetchTupleThroughBuf(WindowState *wstate)
 {
-	WindowTuple *wt;
+	MinimalTuple wt;
 	Window *window = (Window *)wstate->ps.plan;	
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 
-	if (!DLGetHead(wstate->lead))
+	/* Read the previous current_row tuple */
+	if (wstate->input_buffer->ntuples >= 1)
 	{
-		TupleTableSlot *slot = ExecProcNode(outerPlanState(wstate));	
-		WindowTuple *prev_wt = NULL;
+		tuplestore_gettupleslot(wstate->input_buffer->tuplestorestate,
+								true, wstate->spare);
+	}
 
-		if (TupIsNull(slot))
-			return NULL;
-
-		if (wstate->spare->tts_tupleDescriptor == NULL)
+	if (wstate->input_buffer->ntuples <= 1)
+	{
+		/* if part_break is set, the tuple to be returned is the tuple
+		 * in the input buffer.
+		 */
+		if (wstate->input_buffer->part_break)
 		{
-			ExecSetSlotDescriptor(wstate->spare, 
-								  slot->tts_tupleDescriptor);
+			Assert(wstate->input_buffer->ntuples == 1);
+
+			wstate->curslot = ExecCopySlot(wstate->curslot, wstate->spare);
+			wstate->input_buffer->part_break = false;
 		}
-
-		wt = palloc(sizeof(WindowTuple));
 		
-		/* get prior tuple */
-		if (DLGetTail(wstate->trail))
-			prev_wt = (WindowTuple *) DLE_VAL(DLGetTail(wstate->trail));
-		
-		wt->min_key_break = -1;		
-		wt->part_break = false;
-		
-		if (PointerIsValid(prev_wt))
-		{
-#if 0
-			save = ExecFetchSlotTuple(wstate->priorslot);
-			ExecClearTuple(wstate->priorslot);
-			ExecStoreTuple(prev_wt->tup, wstate->priorslot, 
-#endif
-			ExecStoreTuple(prev_wt->tup, wstate->spare,
-						   InvalidBuffer, false);
-
-			wt->part_break = (window->numPartCols && 
-							  (!execTuplesMatch(wstate->spare, slot, 
-								window->numPartCols, window->partColIdx, 
-								wstate->eqfunctions,
-								econtext->ecxt_per_tuple_memory)));
-		
-			if (!wt->part_break)
-			{
-				ListCell *lc;
-				int level = 0;
-				bool match = true;
-			
-				/* Process ordering partial key that breaks. */
-				foreach (lc, window->windowKeys)
-				{
-					WindowKey *key = (WindowKey *)lfirst(lc);
-					/* XXX: should just put the eqfunctions in WindowKey */
-					WindowStatePerLevel ls = &wstate->level_state[level];
-				
-					if (match)
-					{
-						match = execTuplesMatch(wstate->spare, slot, 
-												key->numSortCols, 
-												key->sortColIdx,
-												ls->eqfunctions,
-												econtext->ecxt_per_tuple_memory);
-						elog(DEBUG1, "here, match is %s", match ? "true" : "false");
-						if (!match)
-							wt->min_key_break = level;
-					}
-
-					level++;
-				}
-			}
-		}
 		else
 		{
-			/* must be the first tuple. */
-			//wt->part_break = window->numPartCols > 0;
-			//}
-			wt->min_key_break = -1;
+			TupleTableSlot *slot = ExecProcNode(outerPlanState(wstate));	
+
+			if (TupIsNull(slot))
+				return NULL;
+
+			if (wstate->spare->tts_tupleDescriptor == NULL)
+			{
+				ExecSetSlotDescriptor(wstate->spare, 
+									  slot->tts_tupleDescriptor);
+			}
+
+			/* Put this new tuple into the input buffer. */
+			tuplestore_puttupleslot(wstate->input_buffer->tuplestorestate, slot);
+
+#if 0
+			/* Read this tuple out of the input buffer */
+			tuplestore_gettupleslot(wstate->input_buffer->tuplestorestate, true, wstate->curslot);
+			wt = ExecFetchSlotMinimalTuple(wstate->curslot);
+#else
+			/* XXX Use this temporarily. We will switch to the above one after
+			 * new tuplestore is working.
+			 */
 			wstate->curslot = slot;
-		}
-	
-		wstate->cur_slot_is_new = true;
-		wstate->cur_slot_part_break = wt->part_break;
-		wstate->cur_slot_key_break = wt->min_key_break;
-		wstate->curslot = slot;
-		wt->tup = ExecCopySlotTuple(wstate->curslot);
-		DLAddTail(wstate->trail, DLNewElem(wt));
-#if 0		
-		tup = ExecCopySlotTuple(wstate->curslot);
-		DLAddTail(wstate->trail, DLNewElem(tup));
+			wt = ExecCopySlotMinimalTuple(wstate->curslot);
 #endif
-		elog(DEBUG1, "%s: added to buf", PG_FUNCNAME_MACRO);
+			wstate->input_buffer->ntuples++;
+			wstate->input_buffer->ntuples_markpos++;
+		}
+		wstate->cur_slot_is_new = true;
 	}
+	
 	else
 	{
-		Dlelem *el = DLRemHead(wstate->lead);
-		wt = (WindowTuple *)DLE_VAL(el);
-		
-		DLAddTail(wstate->trail, el);
+		/* Read the next tuple from the input buffer. */
+		tuplestore_gettupleslot(wstate->input_buffer->tuplestorestate,
+								true, wstate->curslot);
 
-		ExecStoreTuple(wt->tup, 
-					   wstate->curslot, InvalidBuffer,
-					   false);
+		/* XXX Since we always want the read position of tuplestore to point
+		 * to the previous current_rows, we backup one position. We do not
+		 * need to do this with the new API though.
+		 */
+		tuplestore_advance(wstate->input_buffer->tuplestorestate, false);
+		
 		wstate->cur_slot_is_new = false;
-		wstate->cur_slot_part_break = wt->part_break;
-		wstate->cur_slot_key_break = wt->min_key_break;
 	}
+
+	wstate->cur_slot_part_break = false;
+	wstate->cur_slot_key_break = -1;
+
+	if (wstate->input_buffer->ntuples > 1)
+	{
+		wstate->cur_slot_part_break =
+			(window->numPartCols &&
+			 (!execTuplesMatch(wstate->spare, wstate->curslot, 
+							   window->numPartCols, window->partColIdx, 
+							   wstate->eqfunctions,
+							   econtext->ecxt_per_tuple_memory)));
+
+		if (wstate->cur_slot_part_break)
+			wstate->input_buffer->part_break = true;
+		
+		if (!wstate->cur_slot_part_break)
+		{
+			ListCell *lc;
+			int level = 0;
+			bool match = true;
+			
+			/* Process ordering partial key that breaks. */
+			foreach (lc, window->windowKeys)
+			{
+				WindowKey *key = (WindowKey *)lfirst(lc);
+				/* XXX: should just put the eqfunctions in WindowKey */
+				WindowStatePerLevel ls = &wstate->level_state[level];
+
+				if (match)
+				{
+					match = execTuplesMatch(wstate->spare, wstate->curslot, 
+											key->numSortCols, 
+											key->sortColIdx,
+											ls->eqfunctions,
+											econtext->ecxt_per_tuple_memory);
+					elog(DEBUG1, "here, match is %s", match ? "true" : "false");
+					if (!match)
+						wstate->cur_slot_key_break = level;
+				}
+						
+				level++;
+			}
+		}
+	}
+
+	if (wstate->input_buffer->ntuples > 1)
+		wstate->input_buffer->ntuples--;
+
+	
+	elog(DEBUG1, "input_buffer->ntuples_markpos = %ld, part_break=%d, min_key_break=%d", 
+		 wstate->input_buffer->ntuples_markpos,
+		 wstate->cur_slot_part_break,
+		 wstate->cur_slot_key_break);
 
 	return wt;
 }
 
-static long int
-moveToBufEnd(WindowState *wstate)
+/*
+ * Mark the current position in the input buffer.
+ */
+static void
+markposInputBuffer(WindowState *wstate)
 {
-	/* we only want to go so far as the end of the partition */
-	Dlelem *el;
-	long int n = 0;
-	
-	while ((el = DLRemHead(wstate->lead)))
-	{
-		WindowTuple *wt = DLE_VAL(el);
-		
-		if (wt->part_break)
-		{
-			DLAddHead(wstate->lead, el);
-			break;
-		}
-		else
-		{
-			n++;
-			DLAddTail(wstate->trail, el);
-		}
-	}
-	return n;
+	tuplestore_markpos(wstate->input_buffer->tuplestorestate);
+	wstate->input_buffer->ntuples_markpos = wstate->input_buffer->ntuples;
 }
 
+/*
+ * Restore the last marked position in the input buffer.
+ */
 static void
-moveFrameBuf(WindowState *wstate, long int ntuples)
+restoreposInputBuffer(WindowState *wstate)
 {
-	long int tup = 0;
-	bool forward = ntuples >= 0 ? true : false;
-	long int tupcount = forward ? ntuples : -ntuples;
-	elog(DEBUG1, "moving from %li", ntuples);
-
-	if (ntuples == 0)
-		return;
-	
-	if (wstate->lead == NULL)
-		wstate->lead = DLNewList();
-	
-	while (tupcount-- > 0)
-	{
-		Dlelem *el;
-	   
-		if (forward)
-			el = DLRemHead(wstate->lead);
-		else
-			el = DLRemTail(wstate->trail);
-
-		if (el == NULL)
-			elog(ERROR, "edge is null, direction = %s, tups %li, moved %li",
-				 forward ? "forward" : "back", ntuples, tup);
-
-		if (forward)
-			DLAddTail(wstate->trail, el);
-		else
-			DLAddHead(wstate->lead, el);
-
-		tup++;
-	}
-	elog(DEBUG1, "moved %li", tup);
+	tuplestore_restorepos(wstate->input_buffer->tuplestorestate);
+	wstate->input_buffer->ntuples = wstate->input_buffer->ntuples_markpos;
 }
 
 /* Advance the "primitive" values that drive the calculation of window
@@ -973,8 +963,7 @@ nextRow(WindowState *wstate, ExprContext *econtext)
 {
 	TupleTableSlot *outerTupleSlot;
 	TupleTableSlot *priorTupleSlot = wstate->priorslot;
-	int min_key_break = -1;
-	WindowTuple *wt;
+	MinimalTuple wt;
 
 	/* Get the new current row into the outer tuple slot. */
 	wt = fetchTupleThroughBuf(wstate);
@@ -994,10 +983,10 @@ nextRow(WindowState *wstate, ExprContext *econtext)
 	/* At the first row of a partition, we're already initialised. */
 	if (wstate->row_index >= 0)
 	{
-		if (wt->part_break)
+		if (wstate->cur_slot_part_break)
 			initializePartition(wstate);
 		else
-			advanceKeyLevelState(wstate, wt->min_key_break);
+			advanceKeyLevelState(wstate, wstate->cur_slot_key_break);
 	}
 
 	wstate->row_index++;
@@ -1006,17 +995,17 @@ nextRow(WindowState *wstate, ExprContext *econtext)
 	 * If we saw a key change, reset the aggregates. If we didn't, reset any
 	 * aggregates with "managed frames".
 	 */
-	if (wt->min_key_break > 0)
-		resetPerFunctionAggStates(wstate, wt->min_key_break);
+	if (wstate->cur_slot_key_break > 0)
+		resetPerFunctionAggStates(wstate, wstate->cur_slot_key_break);
 	else
 		resetManagedFrameAggStates(wstate);
 
 	ExecCopySlot(priorTupleSlot, outerTupleSlot); /* for next time through */
 
-	if (wt->min_key_break >= 0 || wstate->row_index == 0 /* first row */
-		|| wt->part_break)
+	if (wstate->cur_slot_key_break >= 0 || wstate->row_index == 0 /* first row */
+		|| wstate->cur_slot_part_break)
 	{
-		int level = min_key_break != -1 ? min_key_break : 0;
+		int level = wstate->cur_slot_key_break != -1 ? wstate->cur_slot_key_break : 0;
 		processPeerCounts(wstate, level, priorTupleSlot,
 						  econtext->ecxt_per_tuple_memory);
 	}
@@ -1072,7 +1061,7 @@ add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 								  &fcinfo, (void *)wstate,
 								  wstate->transcontext,
 								  econtext->ecxt_per_tuple_memory);
-		
+		elog(DEBUG1, "add_tuple_to_trans calls invoke_agg_trans_func");
 	}
 	else /* ordinary window function */
 	{
@@ -1115,6 +1104,7 @@ invokeWindowedFunc(WindowStatePerFunction funcstate, FmgrInfo fn,
 								  &fcinfo, (void *)wstate,
 								  wstate->transcontext,
 								  econtext->ecxt_per_tuple_memory);
+		elog(DEBUG1, "invokeWindowedFunc calls invoke_agg_trans_func");
 	}
 	else /* ordinary window function */
 	{
@@ -1491,11 +1481,13 @@ appendRangeTuple(WindowState *wstate, WindowKey *key,
 				wtv->transValueIsNull = funcstate->aggInitValueIsNull;
 				MemoryContextSwitchTo(oldcxt);
 			}
+
 			invokeWindowedFunc(funcstate, funcstate->transfn, wtv, 
 							   wstate, econtext);
-	
+
 			if (append)
 			{
+				elog(DEBUG1, "append a new transition value.");
 				bufferAddRangeTransValue(wstate, key, funcstate, wtv, vals, 
 										 nulls, tuple_before_edge);
 			}
@@ -1627,6 +1619,8 @@ appendRowTuple(WindowState *wstate, WindowFrame *frame,
 		tuple_in_frame = true;
 	}
 
+	if (!wstate->cur_slot_is_new)
+		return tuple_in_frame;
 
 	foreach(lc, funcs)
 	{
@@ -1994,7 +1988,13 @@ populateFrameBuffers(WindowState *wstate)
 	adjustEdges(wstate);
 
 	/* fast forward from current row */
-	ntuples = moveToBufEnd(wstate);
+	if (!wstate->input_buffer->part_break)
+		ntuples = wstate->input_buffer->ntuples - 1; /* ignore current row */
+	else
+		/* ignore current row and the tuple that breaks the key */
+		ntuples = wstate->input_buffer->ntuples - 2;
+
+	markposInputBuffer(wstate);
 
 	/* we've moved forward by ntuples so add that to the row index */
 	lead_row_index += ntuples;
@@ -2022,7 +2022,7 @@ populateFrameBuffers(WindowState *wstate)
 		}
 		else
 		{
-			WindowTuple *wt;
+			MinimalTuple wt;
 			wt = fetchTupleThroughBuf(wstate);
 
 			if (!wt)
@@ -2035,8 +2035,10 @@ populateFrameBuffers(WindowState *wstate)
 				break;
 
 			lead_row_index++;
-			wbi.part_break = wt->part_break;
-			wbi.min_key_break = wt->min_key_break;
+			wbi.part_break = wstate->cur_slot_part_break;
+			wbi.min_key_break = wstate->cur_slot_key_break;
+
+			process_cur_slot = wstate->cur_slot_is_new;
 
 			if (!wbi.part_break)
 				ntuples++;
@@ -2053,19 +2055,6 @@ populateFrameBuffers(WindowState *wstate)
 		/* make expr evalutators happy */
 		econtext->ecxt_scantuple = slot;
 		econtext->ecxt_outertuple = slot;
-
-
-		if (process_cur_slot)
-		{
-			/* add to tuple to outer plan buffer */
-			//appendToTupleBuffer(wstate, slot, &wbi);
-		}
-
-		if (process_cur_slot)
-		{
-			elog(DEBUG1, "processed cur");
-			process_cur_slot = false;
-		}
 
 		/* 
 		 * Test to see if the tuple falls into any frame?
@@ -2099,7 +2088,7 @@ populateFrameBuffers(WindowState *wstate)
 												level_state, slot,
 												level_state->level_funcs,
 												lead_row_index);
-
+				process_cur_slot = false;
 			}
 			else
 			{
@@ -2203,10 +2192,13 @@ populateFrameBuffers(WindowState *wstate)
 					}
 				}
 				
-				appendRangeTuple(wstate, key, key->frame, level_state, 
-								 new_vals, new_nulls, 
-								 level, level_state->level_funcs,
-								 is_peer, tuple_in_buf);
+				if (process_cur_slot)
+					appendRangeTuple(wstate, key, key->frame, level_state, 
+									 new_vals, new_nulls, 
+									 level, level_state->level_funcs,
+									 is_peer, tuple_in_buf);
+				process_cur_slot = false;
+
 				tuple_in_frame = tuple_before_edge;
 
 			}
@@ -2221,7 +2213,8 @@ populateFrameBuffers(WindowState *wstate)
 
 	elog(DEBUG1, "moving frame by %li, lead row %lli", (-ntuples + 1),
 		 lead_row_index);
-	moveFrameBuf(wstate, -(lead_row_index - wstate->row_index));
+
+	restoreposInputBuffer(wstate);
 	elog(DEBUG1, "----- end frame populate");
 
 	/* restore old tuple */
@@ -2346,6 +2339,7 @@ process_vals(WindowState *wstate, WindowStatePerFunction funcstate,
 								  &fcinfo, (void *)wstate,
 								  wstate->transcontext,
 								  econtext->ecxt_per_tuple_memory);
+		elog(DEBUG1, "process_vals calls invoke_agg_trans_func");
 	}
 
 	funcstate->aggTransValue = tv.transValue;
@@ -3448,6 +3442,8 @@ ExecCountSlotsWindow(Window *node)
 void
 ExecEndWindow(WindowState *node)
 {
+	freeInputBuffer(node);
+
 	/*  Free the exprcontext */
 	ExecFreeExprContext(&node->ps);
 
@@ -3456,8 +3452,6 @@ ExecEndWindow(WindowState *node)
 
 	/* shut down subplans */
 	ExecEndNode(outerPlanState(node));
-
-	freeFrameBuf(node);
 }
 
 void

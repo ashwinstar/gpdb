@@ -222,7 +222,7 @@ BufFileCreateTemp_ReaderWriter(const char* fileName, bool isWriter)
 
 	if(pfile < 0)
 	{
-		elog(ERROR, "BufFileCreateTmp_ReaderWriter failed to open tmp file");
+		elog(ERROR, "BufFileCreateTmp_ReaderWriter failed to open tmp file: %s", fileName);
 	}
 
 	file = makeBufFile(pfile);
