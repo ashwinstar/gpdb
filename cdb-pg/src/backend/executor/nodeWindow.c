@@ -62,7 +62,7 @@ typedef struct WindowStatePerLevelData
 	Index	    level;			/* index of WindowKey for this level */
 	FmgrInfo   *eqfunctions;	/* equality fns for partial key */
 	FmgrInfo   *ltfunctions;	/* less-than functions for partial key */
-	bool		need_peer_count;
+	bool		need_peercount;
 
 	int64		group_index;
 	int64		prior_non_peer_count;
@@ -143,7 +143,6 @@ typedef struct WindowStatePerFunctionData
 	bool				win_value_is_null;
 	Oid					windowfn_oid;
 	FmgrInfo			windowfn;
-	bool				need_peercount;
 	
 	/* Aggregate-derived window function */
 	Oid					transfn_oid;
@@ -450,7 +449,7 @@ processPeerCounts(WindowState *wstate, int min_level,
 	 	 * until there is a key change.
 	 	 */
 
-		if (level_state->need_peer_count)
+		if (level_state->need_peercount)
 		{
 			WindowKey  *key;
 //			char *buf;
@@ -1002,8 +1001,9 @@ nextRow(WindowState *wstate, ExprContext *econtext)
 
 	ExecCopySlot(priorTupleSlot, outerTupleSlot); /* for next time through */
 
-	if (wstate->cur_slot_key_break >= 0 || wstate->row_index == 0 /* first row */
-		|| wstate->cur_slot_part_break)
+	if (wstate->need_peercount &&
+		(wstate->cur_slot_key_break >= 0 || wstate->row_index == 0 /* first row */
+		 || wstate->cur_slot_part_break))
 	{
 		int level = wstate->cur_slot_key_break != -1 ? wstate->cur_slot_key_break : 0;
 		processPeerCounts(wstate, level, priorTupleSlot,
@@ -3095,11 +3095,12 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 	econtext->ecxt_aggvalues = (Datum*) palloc0(sizeof(Datum) * numrefs);
 	econtext->ecxt_aggnulls = (bool *) palloc0(sizeof(bool) * numrefs);
 	
+	wstate->need_peercount = false;
+
 	wstate->numfuncs = 0;
 	wstate->func_state = palloc0(sizeof(WindowStatePerFunctionData) *  numrefs);
 
 	elog(DEBUG1, "allocating %i func states", numrefs);
-
 
 	/* Initialize per window ref (both ordinary and aggregate derived). */
 	refno = -1;
@@ -3410,7 +3411,8 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 			 */
 			if (PointerIsValid(funcstate->wlevel) && winform->winpeercount)
 			{
-				funcstate->wlevel->need_peer_count = winform->winpeercount;
+				funcstate->wlevel->need_peercount = winform->winpeercount;
+				wstate->need_peercount = winform->winpeercount;
 			}
 		}
 		else

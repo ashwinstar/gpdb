@@ -1695,6 +1695,9 @@ typedef struct WindowState
 
 	/* input buffer */
 	WindowInputBuffer input_buffer;
+
+	/* Indicate if any function need a peer count. */
+	bool need_peercount;
 } WindowState;
 
 /* ----------------
