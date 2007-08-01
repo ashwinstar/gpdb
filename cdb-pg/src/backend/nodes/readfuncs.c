@@ -2576,6 +2576,7 @@ _readMaterial(void)
 	READ_INT_FIELD(share_id);
 	READ_INT_FIELD(driver_slice);
 	READ_INT_FIELD(nsharer);
+	READ_INT_FIELD(nsharer_xslice);
 
     readPlanInfo((Plan *)local_node);
 
@@ -2624,6 +2625,7 @@ _readSort(void)
 	READ_INT_FIELD(share_id);
 	READ_INT_FIELD(driver_slice);
 	READ_INT_FIELD(nsharer);
+	READ_INT_FIELD(nsharer_xslice);
 
 	READ_DONE();
 }

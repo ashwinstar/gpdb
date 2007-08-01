@@ -2397,6 +2397,7 @@ _readMaterial(const char ** str)
 	READ_INT_FIELD(share_id);
 	READ_INT_FIELD(driver_slice);
 	READ_INT_FIELD(nsharer);
+	READ_INT_FIELD(nsharer_xslice);
 
     readPlanInfo(str, (Plan *)local_node);
 
@@ -2446,6 +2447,7 @@ _readSort(const char ** str)
 	READ_INT_FIELD(share_id);
 	READ_INT_FIELD(driver_slice);
 	READ_INT_FIELD(nsharer);
+	READ_INT_FIELD(nsharer_xslice);
 
 	READ_DONE();
 }

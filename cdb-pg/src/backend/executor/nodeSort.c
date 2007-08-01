@@ -216,7 +216,7 @@ ExecSort(SortState *node)
 			if(plannode->driver_slice == currentSliceId)
 			{
 				tuplesort_flush(tuplesortstate);
-				node->share_lk_ctxt = shareinput_writer_notifyready(plannode->share_id);
+				node->share_lk_ctxt = shareinput_writer_notifyready(plannode->share_id, plannode->nsharer_xslice);
 			}
 		}
 
@@ -274,7 +274,6 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 
 	sortstate->sort_Done = false;
 	sortstate->tuplesortstate = NULL;
-	sortstate->nsharer_inslice = 0;
 	sortstate->share_lk_ctxt = NULL;
 
 	/* CDB */
@@ -392,9 +391,7 @@ ExecEndSort_internal(SortState *node)
 	{
 		if(sort->share_type == SHARE_SORT_XSLICE)
 		{
-			int nsharer_xslice = sort->nsharer - node->nsharer_inslice;
-			Assert(node->share_lk_ctxt && nsharer_xslice > 0);
-			shareinput_writer_waitdone(node->share_lk_ctxt, sort->share_id, nsharer_xslice);
+			shareinput_writer_waitdone(node->share_lk_ctxt, sort->share_id, sort->nsharer_xslice);
 		}
 
 		tuplesort_end((Tuplesortstate *) node->tuplesortstate);

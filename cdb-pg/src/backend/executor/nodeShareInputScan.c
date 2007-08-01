@@ -107,11 +107,6 @@ ShareInputNext(ShareInputScanState *node)
 			
 			if(driver_slice != currentSliceId)
 				node->share_lk_ctxt = shareinput_reader_waitready(sisc->share_id);
-			else
-			{
-				Assert(snState && IsA(snState, MaterialState));
-				((MaterialState *) snState)->nsharer_inslice++;
-			}
 
 			node->ts_state = tuplestore_begin_heap_file_readerwriter(rwfile_prefix, false);
 			tuplestore_begin_pos((Tuplestorestate *) node->ts_state, (TuplestorePos **)(&node->ts_pos));
@@ -381,36 +376,115 @@ static void sisc_lockname(char* p, int size, int share_id, const char* name)
 
 typedef struct ShareInput_Lk_Context 
 {
-	File f;
+	File readyf;
+	File donef;
+	int  zcnt;
 } ShareInput_Lk_Context;
 
 void *shareinput_reader_waitready(int share_id)
 {
 	char lkname[100];
+	mpp_fd_set rset;
+	struct timeval tval;
+	int fd;
+	int n;
+	char a;
+	int asize;
+
 	ShareInput_Lk_Context *pctxt = palloc(sizeof(ShareInput_Lk_Context));
 
 	sisc_lockname(lkname, 100, share_id, "ready");
-
 	CreateTempFifo(lkname);
+	pctxt->readyf = OpenTemporaryFileName(lkname, O_RDWR, false, false);
+	
+	sisc_lockname(lkname, 100, share_id, "done");
+	CreateTempFifo(lkname);
+	pctxt->donef = OpenTemporaryFileName(lkname, O_RDWR, false, false);
 
-	elog(LOG, "sisc wait ready on %s", lkname);
-	CHECK_FOR_INTERRUPTS();
-	pctxt->f = OpenTemporaryFileName(lkname, O_WRONLY, false, false);
+	pctxt->zcnt = 0;
+
+	fd = FileGetFd(pctxt->readyf);
+	tval.tv_sec = 1;
+	tval.tv_usec = 0;
+
+	while(1)
+	{
+		CHECK_FOR_INTERRUPTS();
+		
+		MPP_FD_ZERO(&rset);
+		MPP_FD_SET(fd, &rset);
+
+		n = select(fd+1, (fd_set *) &rset, NULL, NULL, &tval);
+
+		if(n==1)
+		{
+			asize = FileRead(pctxt->readyf, &a, 1);
+			Assert(asize == 1 && a == 'a');
+			
+			elog(DEBUG5, "SISC: Wait ready get a, now write b");
+			FileWrite(pctxt->donef, "b", 1);
+			break;
+		}
+
+		elog(DEBUG5, "SISC: Wait readly try again ... ");
+	}
 
 	return (void *) pctxt;
 }
 
-void *shareinput_writer_notifyready(int share_id)
+void *shareinput_writer_notifyready(int share_id, int xslice)
 {
 	char lkname[100];
 	ShareInput_Lk_Context *pctxt = palloc(sizeof(ShareInput_Lk_Context));
+	mpp_fd_set rset;
+	struct timeval tval;
+	int fd;
+	int n;
+	char b;
+	int bsize;
 
 	sisc_lockname(lkname, 100, share_id, "ready");
-
 	CreateTempFifo(lkname);
+	pctxt->readyf = OpenTemporaryFileName(lkname, O_RDWR, false, true);
 
-	elog(LOG, "sisc notify ready %s", lkname);
-	pctxt->f = OpenTemporaryFileName(lkname, O_RDWR, false, true);
+	sisc_lockname(lkname, 100, share_id, "done");
+	CreateTempFifo(lkname);
+	pctxt->donef = OpenTemporaryFileName(lkname, O_RDWR, false, true);
+
+	pctxt->zcnt = 0;
+
+	fd = FileGetFd(pctxt->donef);
+	tval.tv_sec = 1;
+	tval.tv_usec = 0;
+
+	while(xslice > 0)
+	{
+		CHECK_FOR_INTERRUPTS();
+		
+		FileWrite(pctxt->readyf, "a", 1);
+
+		MPP_FD_ZERO(&rset);
+		MPP_FD_SET(fd, &rset);
+
+		n = select(fd+1, (fd_set *) &rset, NULL, NULL, &tval);
+
+		if(n==1)
+		{
+			bsize = FileRead(pctxt->donef, &b, 1);
+
+			if(b == 'z')
+				++pctxt->zcnt;
+			else
+			{
+				Assert(bsize == 1 && b == 'b');
+				elog(DEBUG5, "SISC: notify ready 1");
+				--xslice;
+			}
+		}
+
+		elog(DEBUG5, "SISC: try notify ready again ... ");
+	}
+
 	return (void *) pctxt;
 }
 
@@ -418,37 +492,53 @@ void shareinput_reader_notifydone(void *ctxt, int share_id)
 {
 	ShareInput_Lk_Context *pctxt = (ShareInput_Lk_Context *) ctxt;
 
-	FileWrite(pctxt->f, "x", 1);
-	elog(LOG, "sisc notify done");
+	FileWrite(pctxt->donef, "z", 1);
+	elog(DEBUG5, "sisc notify done");
 
-	FileClose(pctxt->f); 
+	FileClose(pctxt->readyf); 
+	FileClose(pctxt->donef); 
 	pfree(ctxt);
 }
 
 void shareinput_writer_waitdone(void *ctxt, int share_id, int nsharer_xslice)
 {
-	int fd;
-	mpp_fd_set rset;
 	ShareInput_Lk_Context *pctxt = (ShareInput_Lk_Context *) ctxt;
+	mpp_fd_set rset;
+	struct timeval tval;
+	int fd;
+	int n;
+	char z;
+	int zsize;
 
-	fd = FileGetFd(pctxt->f);
+	fd = FileGetFd(pctxt->donef);
+	tval.tv_sec = 1;
+	tval.tv_usec = 0;
 	
+	nsharer_xslice -= pctxt->zcnt;
+
 	while(nsharer_xslice > 0)
 	{
-		char x = 'a';
-		int rsize;
-		
 		CHECK_FOR_INTERRUPTS();
-		
-		rsize = FileReadIntr(pctxt->f, &x, 1, false);
-		if(rsize == 1)
+	
+		MPP_FD_ZERO(&rset);
+		MPP_FD_SET(fd, &rset);
+
+		n = select(fd+1, (fd_set *) &rset, NULL, NULL, &tval);
+	
+		if(n==1)
 		{
-			Assert(x == 'x');
-			elog(LOG, "sisc wait done get 1 notification");
+			zsize = FileRead(pctxt->donef, &z, 1); 
+			Assert(zsize == 1 && z == 'z');
+
+			elog(DEBUG5, "SISC: wait done get 1 notification");
 			--nsharer_xslice;
 		}
+
+		elog(DEBUG5, "SISC: wait done try again ... ");
 	}
 
-	FileClose(pctxt->f);
+	FileClose(pctxt->donef);
+	FileClose(pctxt->readyf);
+
 	pfree(ctxt);
 }

@@ -465,6 +465,7 @@ extern void set_plan_share_type(Plan *p, ShareType st);
 extern void set_plan_share_type_xslice(Plan *p);
 extern int get_plan_driver_slice(Plan *p);
 extern void set_plan_driver_slice(Plan *P, int slice);
+extern void incr_plan_nsharer_xslice(Plan *p);
 
 /* ----------------
  *		shareinputscan node
@@ -492,6 +493,7 @@ typedef struct Material
 	int 		share_id;
 	int         driver_slice;
 	int         nsharer;
+	int 		nsharer_xslice;
 } Material;
 
 
@@ -515,6 +517,7 @@ typedef struct Sort
 	int 		share_id;
 	int 		driver_slice;
 	int         nsharer;
+	int 		nsharer_xslice;
 } Sort;
 
 /* ---------------

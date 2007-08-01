@@ -153,7 +153,7 @@ ExecMaterial(MaterialState *node)
 			if (ma->driver_slice == currentSliceId)
 			{
 				tuplestore_flush(tuplestorestate);
-				node->share_lk_ctxt = shareinput_writer_notifyready(ma->share_id);
+				node->share_lk_ctxt = shareinput_writer_notifyready(ma->share_id, ma->nsharer_xslice);
 			}
 		}
 
@@ -270,7 +270,6 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 
 	matstate->eof_underlying = false;
 	matstate->tuplestorestate = NULL;
-	matstate->nsharer_inslice = 0;
 	matstate->share_lk_ctxt = NULL;
 
 	/*
@@ -373,9 +372,7 @@ ExecEndMaterial(MaterialState *node)
 	{
 		if(ma->share_type == SHARE_MATERIAL_XSLICE)
 		{
-			int nsharer_xslice = ma->nsharer - node->nsharer_inslice;
-			Assert(node->share_lk_ctxt && nsharer_xslice > 0);
-			shareinput_writer_waitdone(node->share_lk_ctxt, ma->share_id, nsharer_xslice);
+			shareinput_writer_waitdone(node->share_lk_ctxt, ma->share_id, ma->nsharer_xslice);
 		}
 		tuplestore_end((Tuplestorestate *) node->tuplestorestate); 
 		node->tuplestorestate = NULL;

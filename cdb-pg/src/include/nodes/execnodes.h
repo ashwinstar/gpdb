@@ -1503,7 +1503,6 @@ typedef struct MaterialState
 	bool		eof_underlying; /* reached end of underlying plan? */
 	void	   *tuplestorestate;	/* private state of tuplestore.c */
 
-	int 		nsharer_inslice; 
 	void  		*share_lk_ctxt;
 } MaterialState;
 
@@ -1528,7 +1527,7 @@ typedef struct ShareInputScanState
 
 /* XXX Should move into buf file */
 extern void *shareinput_reader_waitready(int share_id);
-extern void *shareinput_writer_notifyready(int share_id);
+extern void *shareinput_writer_notifyready(int share_id, int nsharer_xslice);
 extern void shareinput_reader_notifydone(void *, int share_id);
 extern void shareinput_writer_waitdone(void *, int share_id, int nsharer_xslice);
 extern void shareinput_create_bufname_prefix(char* p, int size, int share_id);

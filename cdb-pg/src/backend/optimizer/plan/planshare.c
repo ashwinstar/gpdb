@@ -114,6 +114,17 @@ static void incr_plan_nsharer(Plan *p)
 	}
 }
 
+void incr_plan_nsharer_xslice(Plan *p)
+{
+	if(IsA(p, Material))
+		((Material *) p)->nsharer_xslice++;
+	else
+	{
+		Assert(IsA(p, Sort));
+		((Sort *) p)->nsharer_xslice++;
+	}
+}
+
 static ShareInputScan *make_shareinputscan(Plan *inputplan) 
 {
 	ShareInputScan *sisc = NULL;

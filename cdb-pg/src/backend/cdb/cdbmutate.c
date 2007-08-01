@@ -1668,6 +1668,7 @@ static bool shareinput_mutator_xslice(Node* node, ApplyShareInputContext *ctxt, 
 				ShareType stype = get_plan_share_type(plan_slicemark.plan);
 				if(stype == SHARE_MATERIAL || stype == SHARE_SORT)
 					set_plan_share_type_xslice(plan_slicemark.plan);
+				incr_plan_nsharer_xslice(plan_slicemark.plan);
 			}
 		}
 		else
