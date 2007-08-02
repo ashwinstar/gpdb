@@ -448,6 +448,14 @@ sum(qty) over (order by cn rows between 1 preceding and 1 following),
 sum(qty) over (order by cn rows between 1 preceding and 1 following)
 from sale;
 
+-- test for MPP-1760. Framed queries without order by clauses are not
+-- permitted.
+
+select cn,
+sum(count(*)) over (range between 1 preceding and 1 following)
+from sale
+group by cn;
+
 -- Sanity test for executor detection of non-sense frames
 SELECT sale.pn,sale.cn,sale.prc,
     AVG(cast (sale.prc as int))

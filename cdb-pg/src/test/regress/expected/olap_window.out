@@ -1380,6 +1380,13 @@ from sale;
   4 |    2 |    2
 (12 rows)
 
+-- test for MPP-1760. Framed queries without order by clauses are not
+-- permitted.
+select cn,
+sum(count(*)) over (range between 1 preceding and 1 following)
+from sale
+group by cn;
+ERROR:  window specifications with a framing clause must have an ORDER BY clause
 -- Sanity test for executor detection of non-sense frames
 SELECT sale.pn,sale.cn,sale.prc,
     AVG(cast (sale.prc as int))

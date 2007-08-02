@@ -411,6 +411,17 @@ transformWindowClause(ParseState *pstate, Query *qry)
 		 */
 		if (ws->frame)
 		{
+			/* 
+			 * Framing is only supported on specifications with an ordering
+			 * clause.
+			 */
+			if (!ws->order)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("window specifications with a framing clause "
+								"must have an ORDER BY clause")));
+
+			/* with that out of the way, we may proceed */
 			WindowFrame *nf = copyObject(ws->frame);
 			if (nf->is_between)
 			{
