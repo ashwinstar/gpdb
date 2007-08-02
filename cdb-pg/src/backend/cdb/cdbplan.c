@@ -881,6 +881,7 @@ plan_tree_mutator(Node *node,
 				
 				FLATCOPY(newkey, key, WindowKey);
 				COPYARRAY(newkey, key, numSortCols, sortColIdx);
+				COPYARRAY(newkey, key, numSortCols, sortOperators);
 				MUTATE(newkey->frame, key->frame, WindowFrame *);
 				
 				return (Node *) newkey;

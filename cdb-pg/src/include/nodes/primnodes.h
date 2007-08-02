@@ -1222,6 +1222,7 @@ typedef struct WindowKey
 	NodeTag			type;
 	int				numSortCols; /* may be zero, see note */
 	AttrNumber	   *sortColIdx;
+	Oid			   *sortOperators;
 	WindowFrame	   *frame;		/* NULL or framing for WindowKey */
 } WindowKey;
 

@@ -2516,6 +2516,7 @@ _readWindowKey(void)
 
 	READ_INT_FIELD(numSortCols);
 	READ_INT_ARRAY_OR_NULL(sortColIdx, numSortCols, AttrNumber);
+	READ_OID_ARRAY(sortOperators, numSortCols);
 	READ_NODE_FIELD(frame);
 
 	READ_DONE();

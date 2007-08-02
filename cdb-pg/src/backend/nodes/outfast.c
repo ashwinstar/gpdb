@@ -547,6 +547,7 @@ _outWindowKey(StringInfo str, WindowKey *node)
 	WRITE_INT_FIELD(numSortCols);
 
 	WRITE_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
+	WRITE_OID_ARRAY(sortOperators, numSortCols);
 	WRITE_NODE_FIELD(frame);
 }
 

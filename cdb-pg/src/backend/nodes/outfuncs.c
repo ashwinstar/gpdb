@@ -554,6 +554,11 @@ _outWindowKey(StringInfo str, WindowKey *node)
 	appendStringInfoLiteral(str, " :sortColIdx");
 	for (i = 0; i < node->numSortCols; i++)
 		appendStringInfo(str, " %d", node->sortColIdx[i]);
+
+	appendStringInfoLiteral(str, " :sortOperators");
+	for (i = 0; i < node->numSortCols; i++)
+		appendStringInfo(str, " %u", node->sortOperators[i]);
+		
 	WRITE_NODE_FIELD(frame);
 }
 

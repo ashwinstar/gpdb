@@ -36,6 +36,9 @@
 #include "utils/debugbreak.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+#ifdef BRIAN_SANDBOX
+#include "utils/selfuncs.h"
+#endif /*BRIAN_SANDBOX*/
 
 #include "cdb/cdbgroup.h"					/* cdbpathlocus_collocates() */
 #include "cdb/cdbllize.h"                   /* pull_up_Flow() */
@@ -234,6 +237,7 @@ static Plan *plan_sequential_window_query(PlannerInfo *root, WindowContext *cont
 static Plan *plan_sequential_stage(PlannerInfo *root, WindowContext *context, 
 		int hi_windex, int lo_windex,
 		Plan *input_plan, CdbPathLocus *locus_ptr, List **pathkeys_ptr);
+static Plan *assure_order(PlannerInfo *root, Plan *input_plan, List *sortclause, List **pathkeys_ptr);
 #endif BRIAN_SANDBOX
 static Plan *plan_parallel_window_query(PlannerInfo *root, WindowContext *context, List **pathkeys_ptr);
 static void plan_windowinfo_coplans(PlannerInfo *root, WindowContext *context, int window_index);
@@ -346,7 +350,11 @@ window_planner(PlannerInfo *root, double tuple_fraction, List **pathkeys_ptr)
 	}
 	else
 	{
+#ifdef BRIAN_SANDBOX
+		return plan_sequential_window_query(root, context, pathkeys_ptr);
+#else
 		return plan_parallel_window_query(root, context, pathkeys_ptr);
+#endif BRIAN_SANDBOX
 	}
 
 	/* TODO Check our API.
@@ -1210,6 +1218,7 @@ static void set_window_keys(WindowContext *context, int wind_index)
 	ListCell *lc;
 	int nattrs;
 	AttrNumber* sortattrs = NULL;
+	Oid* sortops = NULL;
 	
 	/* results  */
 	int partkey_len = 0;
@@ -1225,11 +1234,14 @@ static void set_window_keys(WindowContext *context, int wind_index)
 	if ( nattrs > 0 )
 	{
 		sortattrs = (AttrNumber *)palloc(nattrs*sizeof(AttrNumber));
+		sortops = (Oid *)palloc(nattrs*sizeof(Oid));
 		i = 0;
 		foreach ( lc, winfo->sortclause )
 		{
 			SortClause *sc = (SortClause *)lfirst(lc);
-			sortattrs[i++] = context->sortref_resno[sc->tleSortGroupRef];
+			sortattrs[i] = context->sortref_resno[sc->tleSortGroupRef];
+			sortops[i] = sc->sortop;
+			i++;
 		}
 	}
 	
@@ -1266,10 +1278,13 @@ static void set_window_keys(WindowContext *context, int wind_index)
 		if (  wkey->numSortCols > 0 )
 		{
 			wkey->sortColIdx = (AttrNumber*)palloc(wkey->numSortCols * sizeof(AttrNumber));
+			wkey->sortOperators = (Oid*)palloc(wkey->numSortCols * sizeof(Oid));
 			
 			for ( j = 0; j < wkey->numSortCols; j++ )
 			{
-				wkey->sortColIdx[j] = sortattrs[nextsk++];
+				wkey->sortColIdx[j] = sortattrs[nextsk];
+				wkey->sortOperators[j] = sortops[nextsk]; /* TODO SET THIS CORRECTLY!!! */
+				nextsk++;
 			}
 		}
 		wkey->frame = copyObject(sinfo->frame);
@@ -1303,6 +1318,13 @@ lookup_window_function(RefInfo *rinfo)
 	proform = (Form_pg_proc) GETSTRUCT(tuple);
 	isagg = proform->proisagg;
 	iswin = proform->proiswin;
+	
+	if ( (!isagg) && (!iswin) )
+	{
+		ereport(ERROR,
+			(errcode(ERRCODE_SYNTAX_ERROR),
+			 errmsg("can not call ordinary function, %s, as window function", NameStr(proform->proname))));
+	}
 	ReleaseSysCache(tuple);
 	
 	Assert( isagg != iswin );
@@ -1526,6 +1548,51 @@ Plan *assure_collocation_and_order(
 	return result_plan;
 }
 
+#ifdef BRIAN_SANDBOX
+/* Assure that the given input plan meets the sort order requirements 
+ * by adding a Sort node, if necessary.
+ *
+ * Returns the input plan, possibly with a new Sort node on top.  
+ * Input and output must have flow declarations.
+ */
+Plan *assure_order(
+		PlannerInfo *root,
+		Plan *input_plan,
+		List *sortclause,								 
+		List **pathkeys_ptr)
+{
+	Plan *result_plan;
+	List *pathkeys;
+	List *sort_pathkeys = NULL;
+	
+	Assert( input_plan && (input_plan->flow || IsA(input_plan, Motion)) );
+	Assert( pathkeys_ptr && (*pathkeys_ptr == NIL || IsA(*pathkeys_ptr, List)) );
+	
+	result_plan = input_plan;
+	pathkeys = *pathkeys_ptr;
+	
+	if ( sortclause != NIL )
+	{
+		sort_pathkeys = make_pathkeys_for_sortclauses(sortclause, input_plan->targetlist);
+		sort_pathkeys = canonicalize_pathkeys(root, sort_pathkeys);
+		Assert(sort_pathkeys != NULL);
+	}
+
+	if(sort_pathkeys != NULL)
+	{
+		if(!pathkeys_contained_in(sort_pathkeys, *pathkeys_ptr))
+		{
+			result_plan = (Plan *) make_sort_from_sortclauses(root, sortclause, result_plan);
+			*pathkeys_ptr = sort_pathkeys;
+			mark_sort_locus(result_plan);
+		}
+	}
+
+	return result_plan;
+}
+#endif /* BRIAN_SANDBOX */
+
+
 /* Plan a window query that can be implemented without any joins or 
  * input sharing, i.e., it involves one scan of the input plan result
  * and a single Window node.
@@ -1618,7 +1685,9 @@ static Plan *plan_sequential_window_query(PlannerInfo *root, WindowContext *cont
 	FromExpr *jointree;
 	List *sort_hint;
 	int hi, lo;
-	
+	TargetEntry *tle;
+	AttrNumber resno;
+		
 	Assert ( pathkeys_ptr != NULL );
 	
 	sort_hint = context->windowinfos[context->nwindowinfos-1].sortclause;
@@ -1628,20 +1697,47 @@ static Plan *plan_sequential_window_query(PlannerInfo *root, WindowContext *cont
 									   &locus,
 									   &pathkeys);
 	
-	/* No row key used in the sequential strategy. */
+	/* Be tidy: no row key used in the sequential strategy. */
 	context->rowkey_len = 0;
 	context->rowkey_attrs = NULL;	
-	context->keyed_lower_tlist = context->lower_tlist;	
+	context->keyed_lower_tlist = NULL;	
 	
-	/* Record common subquery information in context. */
+	/* Record common subquery information in context. 
+	 *
+	 * It's not clear that we need this for the sequential strategy.
+	 */
 	context->subplan = result_plan;
 	context->subplan_locus = locus;
 	context->subplan_pathkeys = pathkeys;
 	
-	/* We construct plan stages from the last window info to the first.
-	 * The window info sort places non-partitioned windows first and we
-	 * prefer to process these last. A stage consists of a set of 
-	 * WindowInfos with the same partitioning.
+	/* Initialize an array to convert the index of a Var from the lower 
+	 * range to its position (resno) in the target list we are producing.  
+	 * This will be used later to mutate Vars on the original range table 
+	 * (from the original target list) to Vars on the final range table.
+	 */	
+	resno = 0;
+	context->offset_upper_varattrnos = palloc0(context->offset_lim * sizeof(Var*));
+	
+	foreach ( lc, context->lower_tlist )
+	{
+		tle = (TargetEntry *)lfirst(lc);
+		resno++;
+		
+		/* This assumption later allows us to copy key attributes. */
+		Assert( resno == tle->resno ); 
+		
+		if ( IsA(tle->expr, Var) )
+		{
+			context->offset_upper_varattrnos[index_of_var(var,context)] = resno;
+		}
+	}
+	
+	/* 
+	 * A stage comprises a set of WindowInfos with the same partitioning.
+	 *
+	 * We construct plan stages from the last window info to the first.
+	 * This is because the window info sort places non-partitioned windows 
+	 * first and we prefer to process these last. 
 	 */
 	for ( hi = context->nwindowinfos - 1; hi >= 0; hi = lo - 1 )
 	{
@@ -1744,6 +1840,7 @@ static Plan *plan_sequential_window_query(PlannerInfo *root, WindowContext *cont
 	return result_plan;
 }
 
+
 /* Plan a single stage of a sequential window query plan.
  *
  * By construction, all the window functions computed by a stage have the 
@@ -1751,8 +1848,20 @@ static Plan *plan_sequential_window_query(PlannerInfo *root, WindowContext *cont
  * WindowInfo structures (from lo_windex to hi_windex) in the WindowContext.
  *
  * A stage comprises a chain of Window nodes (with an initial motion and 
- * intervening sorts as required) and, if needed, an Agg node which is joined
- * to the head of the Window node chain.  
+ * intervening sorts as required) and, if needed, an Agg node which is merge
+ * joined to the head of the Window node chain on the common partition key.
+ * By construction, this key is the high-order term of any sorts.
+ *
+ * Thus a simple (no Agg) stage looks like
+ *
+ *   input->Motion->Sort->Window->...->Sort->Window->
+ * 
+ * With aggregation, this becomes
+ *
+ *   input->Motion->Sort->Share->Window->...->Sort->Window-+->Join->
+ *                            |                            |
+ *                            +------------>Agg------------+
+ *
  */
 static Plan *plan_sequential_stage(PlannerInfo *root, 
 								   WindowContext *context, 
@@ -1770,17 +1879,17 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 	CdbPathLocus locus = *locus_ptr;
 	List *pathkeys = *pathkeys_ptr;
 
-	/* Are there external aggregations? */
+	/* Does this stage require external aggregations? */
 	bool hasagg = FALSE;
 	for ( i = lo_windex; i <= hi_windex; i++ )
 	{
 		winfo = &context->windowinfos[i];
 		hasagg = hasagg || winfo->needpartkey || winfo->needauxcount;
+		if ( hasagg ) break;
 	}
 
-	/* By definition, all the WindowInfo in a stage have the same partitioning
-	 * so we begin by assuring collocation on the partition key. (We also
-	 * coerce the desired order for first WindowInfo.)
+	/* Assure collocation on the partition key and ordering for the first
+	 * WindowInfo in the stage.
 	 */
 	window_plan = assure_collocation_and_order(root, 
 											   input_plan, 
@@ -1792,16 +1901,24 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 	
 	if ( hasagg )
 	{
-		/* We'll be encountering some Agg targets.  Here we want to 
-		 * share the current window plan locally (within the slice)
-		 * so we can develop an Agg and a Window branch within the
-		 * stage.  */
 		AggStrategy strategy = AGG_PLAIN;
 		long num_groups = 1;
 		AttrNumber *grpcolidx = NULL;
 		List *share_partners = NIL;
-		/* List *tlist = NIL; */
+		List *tlist = NIL;
 		
+		/* Since we'll be encountering some Agg targets.  Prepare for that 
+		 * by sharing the input window plan locally (within the slice) so
+		 * we can develop an Agg and a Window chain within the stage. 
+		 */
+		share_partners = share_plan(root, window_plan, 2);
+		window_plan = list_nth(share_partners, 0);
+		agg_plan = list_nth(share_partners, 1);
+		list_free(share_partners);
+		
+		/* If there's a partition key, we'll group on that, else default
+		 * to a plain aggregation.
+		 */
 		if ( winfo->partkey_len > 0 )
 		{
 			int i;
@@ -1822,7 +1939,6 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 			list_free(part_exprs);
 			part_exprs = NIL;
 
-
 			strategy = AGG_SORTED;
 			sz = winfo->partkey_len * sizeof(AttrNumber);
 			grpcolidx = (AttrNumber*)palloc(sz);
@@ -1832,20 +1948,19 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 				tle = get_tle_by_resno(window_plan->targetlist, 
 									   winfo->partkey_attrs[i]);
 
-				/* grpcolidx[i] = addTargetToAggStage((Node*)tle, &tlist, context);
-				
-				addTargetToCoplan((Node*)tle, agg_coplan, context); */
+				tle = copyObject(tle);
+				grpcolidx[i] = tle->resno = i+1;
+				tlist = lappend(tlist, tle);
 			}
 			
-			share_partners = share_plan(root, window_plan, 2);
-			window_plan = list_nth(share_partners, 0);
-			agg_plan = list_nth(share_partners, 1);
-			list_free(share_partners);
 		}
 		
+		/* Put the Agg node atop the Agg plan. It's targetlist is, however,
+		 * incomplete at this point.  We'll fill it in as we go.
+		 */
 		agg_plan = (Plan *)make_agg(
 					root,
-					NIL, /* TODO targetlist */
+					tlist, /* just partkey (if any) at this point */
 					NIL, /* qual */
 					strategy,
 					winfo->partkey_len, 
@@ -1861,17 +1976,35 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 					);
 	}
 	
-	
+	/* Put Window node (and required Sort) atop the Window plan for each
+	 * WindowInfo in the stage.
+	 */
 	for ( i = lo_windex; i <= hi_windex; i++ )
 	{
 		winfo = &context->windowinfos[i];
-		
-		/* [Re]condition input for this window info.  At most this may
-		 * add a Sort node, but the partitioning order will be preserved.
-		 */
+
+		if ( i > lo_windex )
+		{
+			/* [Re]condition input for this window info.  At most this may
+			 * add a Sort node, but the partitioning and the partitioning
+			 * sort order will be preserved so we don't need to Sort the 
+			 * agg_plan (if any).
+			 */
+			window_plan = assure_order(root, 
+									   window_plan, 
+									   winfo->sortclause,
+									   &pathkeys);
+		}
 		 
 		/* Initialize a Window node for this WindowInfo. 
 		 */
+		window_plan = (Plan *)make_window(
+						root,
+						copyObject(window_plan->tlist),
+						winfo->partkey_len,
+						NULL, /* TODO partColIdx */
+						NIL, /* TODO windowKeys */
+						window_plan);
 		
 		/* Per SpecInfo */
 		/*  Per WindowRef/RefInfo 

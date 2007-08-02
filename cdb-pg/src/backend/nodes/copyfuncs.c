@@ -665,7 +665,10 @@ _copyWindowKey(WindowKey *from)
 
 	COPY_SCALAR_FIELD(numSortCols);
 	if (from->numSortCols > 0)
+	{
 		COPY_POINTER_FIELD(sortColIdx, from->numSortCols * sizeof(AttrNumber));
+		COPY_POINTER_FIELD(sortOperators, from->numSortCols * sizeof(Oid));
+	}
 	COPY_NODE_FIELD(frame);
 
 	return newnode;
