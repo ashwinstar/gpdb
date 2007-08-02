@@ -1311,8 +1311,6 @@ ShutdownExprContext(ExprContext *econtext)
 ShareNodeEntry *
 ExecGetShareNodeEntry(EState* estate, int shareidx, bool fCreate)
 {
-	List *l;
-
 	Assert(shareidx >= 0);
 
 	if(estate->es_sharenode == NULL)
