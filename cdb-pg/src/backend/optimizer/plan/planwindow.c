@@ -1266,7 +1266,14 @@ static void set_window_keys(WindowContext *context, int wind_index)
 		
 		if ( keylen == 0 )
 		{
-			Assert( sinfo->frame == NULL );
+			if ( sinfo->frame != NULL )
+			{
+				ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("invalid window specification"),
+					 errhint("Only ordered windows may specify ROWS or RANGE framing.")));
+			}
+
 			sinfo->keylevel = -1;  /* No ordering key, just partition key. */
 			continue;
 		}
