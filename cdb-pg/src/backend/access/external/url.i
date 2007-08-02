@@ -77,9 +77,10 @@ struct URL_FILE
 			CURL *handle;
 			char *curl_url;
 			struct curl_slist *x_httpheader;
-			char *buffer;               /* buffer to store cached data*/
-			int buffer_len;             /* currently allocated buffers length */
-			int buffer_pos;             /* end of data in buffer*/
+			struct {
+				char byte[1024*16];
+				int bot, top;
+			} buffer;
 			int still_running;          /* Is background url fetch still in progress */
 		} curl;
 
@@ -96,7 +97,6 @@ URL_FILE *url_fopen(char *url, const char *operation, extvar_t* ev);
 int url_fclose(URL_FILE *file);
 int url_feof(URL_FILE *file);
 size_t url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file);
-char * url_fgets(char *ptr, int size, URL_FILE *file);
 void url_rewind(URL_FILE *file);
 
 /* we use a global one for convenience */
@@ -109,38 +109,33 @@ write_callback(char *buffer,
                size_t nitems,
                void *userp)
 {
-    char *newbuff;
-    int rembuff;
-
     URL_FILE *url = (URL_FILE *)userp;
-    size *= nitems;
+	const int bsz = sizeof(url->u.curl.buffer.byte);
+	const int used = url->u.curl.buffer.top - url->u.curl.buffer.bot;
+	int avail = bsz - url->u.curl.buffer.top;
 
-    rembuff=url->u.curl.buffer_len - url->u.curl.buffer_pos;//remaining space in buffer
+	if (size != 1) 
+	{
+		elog(ERROR, "internal error: size param %d should be 1", (int)size);
+		return -1;
+	}
+	size = nitems;
 
-    if(size > rembuff)
-    {
-        //not enuf space in buffer
-        newbuff=realloc(url->u.curl.buffer,url->u.curl.buffer_len + (size - rembuff));
-        if(newbuff==NULL)
-        {
-            fprintf(stderr,"callback buffer grow failed\n");
-            size=rembuff;
-        }
-        else
-        {
-            /* realloc suceeded increase buffer size*/
-            url->u.curl.buffer_len+=size - rembuff;
-            url->u.curl.buffer=newbuff;
+	/* if current buffer is less than 1 quarter full, compress it */
+	if (url->u.curl.buffer.bot > bsz * 3 / 4) 
+	{
+		memmove(url->u.curl.buffer.byte, 
+				url->u.curl.buffer.byte + url->u.curl.buffer.bot,
+				used);
+		url->u.curl.buffer.bot = 0;
+		url->u.curl.buffer.top = used;
+		avail = bsz - url->u.curl.buffer.top;
+	}
 
-            /*printf("Callback buffer grown to %d bytes\n",url->buffer_len);*/
-        }
-    }
-
-    memcpy(&url->u.curl.buffer[url->u.curl.buffer_pos], buffer, size);
-    url->u.curl.buffer_pos += size;
-
-    /*fprintf(stderr, "callback %d size bytes\n", size);*/
-
+    if (size > avail)
+		size = avail;
+	memcpy(url->u.curl.buffer.byte + url->u.curl.buffer.top, buffer, size);
+    url->u.curl.buffer.top += size;
     return size;
 }
 
@@ -188,11 +183,20 @@ fill_buffer(URL_FILE *file,int want)
      */
 	if (! file->u.curl.still_running)
 		return 0;
-	if (file->u.curl.buffer_pos >= want)
+	if (file->u.curl.buffer.top - file->u.curl.buffer.bot >= want)
 		return 0;
 
+	/* prime it */
+	if (file->u.curl.still_running 
+		&& file->u.curl.buffer.top - file->u.curl.buffer.bot < want)
+	{
+		while (CURLM_CALL_MULTI_PERFORM == 
+				   (e = curl_multi_perform(multi_handle, &file->u.curl.still_running)));
+	}
+
     /* attempt to fill buffer */
-	while (file->u.curl.still_running && file->u.curl.buffer_pos < want)
+	while (file->u.curl.still_running 
+		   && file->u.curl.buffer.top - file->u.curl.buffer.bot < want)
     {
         FD_ZERO(&fdread);
         FD_ZERO(&fdwrite);
@@ -205,7 +209,8 @@ fill_buffer(URL_FILE *file,int want)
         /* get file descriptors from the transfers */
         if (0 != (e = curl_multi_fdset(multi_handle, &fdread, &fdwrite, &fdexcep, &maxfd)))
 		{
-			elog(ERROR, "internal error: curl_multi_fdset failed (%d)", e);
+			elog(ERROR, "internal error: curl_multi_fdset failed (%d - %s)", 
+				 e, curl_easy_strerror(e));
 			return -1;
 		}
 
@@ -217,7 +222,10 @@ fill_buffer(URL_FILE *file,int want)
 
         if (-1 == (nfds = select(maxfd+1, &fdread, &fdwrite, &fdexcep, &timeout))) 
 		{
-			elog(ERROR, "internal error: select failed on curl_multi_fdset");
+			if (errno == EINTR) 
+				continue;
+			elog(ERROR, "internal error: select failed on curl_multi_fdset (%d - %s)",
+				 errno, strerror(errno));
 			return -1;
 		}
 
@@ -230,7 +238,8 @@ fill_buffer(URL_FILE *file,int want)
 			while (CURLM_CALL_MULTI_PERFORM == 
 				   (e = curl_multi_perform(multi_handle, &file->u.curl.still_running)));
 			if (e != 0) {
-				elog(ERROR, "internal error: curl_multi_perform failed (%d)", e);
+				elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)", 
+					 e, curl_easy_strerror(e));
 				return 1;
 			}
         }
@@ -238,32 +247,6 @@ fill_buffer(URL_FILE *file,int want)
     return 1;
 }
 
-/* use to remove want bytes from the front of a files buffer */
-static int
-use_buffer(URL_FILE *file,int want)
-{
-    /* sort out buffer */
-    if ((file->u.curl.buffer_pos - want) <=0)
-    {
-        /* ditch buffer - write will recreate */
-        if (file->u.curl.buffer)
-            free(file->u.curl.buffer);
-
-        file->u.curl.buffer=NULL;
-        file->u.curl.buffer_pos=0;
-        file->u.curl.buffer_len=0;
-    }
-    else
-    {
-        /* move rest down make it available for later */
-        memmove(file->u.curl.buffer,
-                &file->u.curl.buffer[want],
-                (file->u.curl.buffer_pos - want));
-
-        file->u.curl.buffer_pos -= want;
-    }
-    return 0;
-}
 
 
 static int set_httpheader(URL_FILE* fcurl, const char* name, const char* value)
@@ -479,7 +462,10 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 		file->u.exec.fp = popen(shexec, "r");
 		file->u.exec.shexec = shexec;
 		if (file->u.exec.fp == NULL)
+		{
 			elog( ERROR, "External Table error executing cmd: '%s'", cmd );
+			return NULL;
+		}
 	}
     else if (IS_FILE_URI(url))
     {
@@ -530,25 +516,29 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 
         if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_URL, file->u.curl.curl_url))) 
 		{
-			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_URL %s error %d", file->u.curl.curl_url, e);
+			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_URL %s (%d - %s)", 
+				 file->u.curl.curl_url, e, curl_easy_strerror(e));
 			url_fclose(file);
 			return NULL;
 		}
         if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_VERBOSE, FALSE))) 
 		{
-			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_VERBOSE error %d", e);
+			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_VERBOSE error (%d - %s)", 
+				 e, curl_easy_strerror(e));
 			url_fclose(file);
 			return NULL;
 		}
         if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_WRITEFUNCTION, write_callback)))
 		{
-			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEFUNCTION error %d", e);
+			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEFUNCTION error (%d - %s)", 
+				 e, curl_easy_strerror(e));
 			url_fclose(file);
 			return NULL;
 		}
         if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_WRITEDATA, file)))
 		{
-			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error %d", e);
+			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error (%d - %s)", 
+				 e, curl_easy_strerror(e));
 			url_fclose(file);
 			return NULL;
 		}
@@ -570,7 +560,8 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 
 		if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_HTTPHEADER, file->u.curl.x_httpheader)))
 		{
-			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error %d", e);
+			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error (%d - %s)", 
+				 e, curl_easy_strerror(e));
 			url_fclose(file);
 			return NULL;
         }
@@ -589,7 +580,8 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 		{
 			if (CURLM_CALL_MULTI_PERFORM != e)
 			{
-				elog(ERROR, "internal error: curl_multi_add_handle failed (%d)", e);
+				elog(ERROR, "internal error: curl_multi_add_handle failed (%d - %s)", 
+					 e, curl_easy_strerror(e));
 				url_fclose(file);
 				return NULL;
 			}
@@ -601,7 +593,8 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 
 		if (e != 0) 
 		{
-			elog(ERROR, "internal error: curl_multi_perform failed (%d)", e);
+			elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)",
+				 e, curl_easy_strerror(e));
 			url_fclose(file);
 			return NULL;
 		}
@@ -643,8 +636,7 @@ url_fclose(URL_FILE *file)
 			curl_easy_cleanup(file->u.curl.handle);
 		}
 
-		if (file->u.curl.buffer)
-			free(file->u.curl.buffer);/* free any allocated buffer space */
+		file->u.curl.buffer.bot = file->u.curl.buffer.top = 0;
         break;
 
     default: /* unknown or supported type - oh dear */
@@ -675,8 +667,9 @@ url_feof(URL_FILE *file)
         break;    	
 
     case CFTYPE_CURL:
-        if ((file->u.curl.buffer_pos == 0) && (!file->u.curl.still_running))
-            ret = 1;
+		if (file->u.curl.buffer.bot == file->u.curl.buffer.top
+			&& ! file->u.curl.still_running)
+			ret = 1;
         break;
 
     default: /* unknown or supported type - oh dear */
@@ -691,6 +684,7 @@ size_t
 url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file)
 {
     size_t want;
+	int cnt;
 
     switch (file->type)
     {
@@ -705,26 +699,24 @@ url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file)
     case CFTYPE_CURL:
         want = nmemb * size;
 
+		/* fill the buffer */
         fill_buffer(file,want);
 
-        /* check if theres data in the buffer - if not fill_buffer()
-         * either errored or EOF */
-        if (!file->u.curl.buffer_pos)
+		/* if no data, check error */
+		cnt = file->u.curl.buffer.top - file->u.curl.buffer.bot;
+		if (cnt == 0)
             return is_error(file);
 
         /* ensure only available data is considered */
-        if(file->u.curl.buffer_pos < want)
-            want = file->u.curl.buffer_pos;
+		if (cnt < want)
+			want = cnt / size * size;
 
         /* xfer data to caller */
-        memcpy(ptr, file->u.curl.buffer, want);
-
-        use_buffer(file,want);
+        memcpy(ptr, file->u.curl.buffer.byte, want);
+		file->u.curl.buffer.bot += want;
 
         want = want / size;     /* number of items - nb correct op - checked
                                  * with glibc code*/
-
-        /*printf("(fread) return %d bytes %d left\n", want,file->u.curl.buffer_pos);*/
         break;
 
     default: /* unknown or supported type - oh dear */
@@ -736,67 +728,9 @@ url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file)
     return want;
 }
 
-char *
-url_fgets(char *ptr, int size, URL_FILE *file)
-{
-    int want = size - 1;/* always need to leave room for zero termination */
-    int loop;
-
-    switch(file->type)
-    {
-    case CFTYPE_FILE:
-        ptr = fgets(ptr, size, file->u.file.fp);
-		break;
-
-    case CFTYPE_EXEC:
-        ptr = fgets(ptr, size, file->u.exec.fp);
-        break;
-    	
-    case CFTYPE_CURL:
-        fill_buffer(file, want);
-
-        /* check if theres data in the buffer - if not fill either errored or
-         * EOF */
-        if (!file->u.curl.buffer_pos)
-            return NULL;
-
-        /* ensure only available data is considered */
-        if (file->u.curl.buffer_pos < want)
-            want = file->u.curl.buffer_pos;
-
-        /*buffer contains data */
-        /* look for newline or eof */
-        for (loop = 0; loop < want; loop++)
-        {
-            if (file->u.curl.buffer[loop] == '\n')
-            {
-                want=loop+1;/* include newline */
-                break;
-            }
-        }
-
-        /* xfer data to caller */
-        memcpy(ptr, file->u.curl.buffer, want);
-        ptr[want] = 0;/* allways null terminate */
-
-        use_buffer(file,want);
-
-        /*printf("(fgets) return %d bytes %d left\n", want,file->u.curl.buffer_pos);*/
-        break;
-
-    default: /* unknown or supported type - oh dear */
-        ptr = NULL;
-        errno = EBADF;
-        break;
-    }
-
-    return ptr;/*success */
-}
-
 void
 url_rewind(URL_FILE *file)
 {
-	char *url = file->url;
     switch(file->type)
     {
     case CFTYPE_FILE:
@@ -805,10 +739,14 @@ url_rewind(URL_FILE *file)
        
     case CFTYPE_EXEC:
     	/* we'll need to execute the command again */
-    	url_fclose(file);
-
-    	/* most of these are null fo us. */
-    	url_fopen(url, NULL, NULL);
+		if (file->u.exec.fp)
+			pclose(file->u.exec.fp);
+		file->u.exec.fp = popen(file->u.exec.shexec, "r");
+		if (file->u.exec.fp == NULL)
+		{
+			elog(ERROR, "External Table error executing cmd: '%s'", file->u.exec.shexec);
+			return;
+		}
     	break; 
 
     case CFTYPE_CURL:
@@ -818,15 +756,8 @@ url_rewind(URL_FILE *file)
         /* restart */
         curl_multi_add_handle(multi_handle, file->u.curl.handle);
 
-        /* ditch buffer - write will recreate - resets stream pos*/
-        if (file->u.curl.buffer)
-		{
-            free(file->u.curl.buffer);
-			file->u.curl.buffer=NULL;
-		}
-        file->u.curl.buffer_pos=0;
-        file->u.curl.buffer_len=0;
-
+        /* reset buffer */
+		file->u.curl.buffer.bot = file->u.curl.buffer.top = 0;
         break;
 
     default: /* unknown or supported type - oh dear */
