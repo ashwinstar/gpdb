@@ -2121,7 +2121,7 @@ static struct config_int ConfigureNamesInt[] =
 		&gp_debug_linger,
 		45, 0, 3600, NULL, NULL
 #else
-		{"gp_debug_linger", PGC_SUSET, DEVELOPER_OPTIONS,
+		{"gp_debug_linger", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Number of seconds for QD/QE process to linger upon fatal internal error."),
 			gettext_noop("Allows an opportunity to debug the backend process before it terminates."),
 			GUC_NOT_IN_SAMPLE | GUC_NO_RESET_ALL | GUC_UNIT_S
