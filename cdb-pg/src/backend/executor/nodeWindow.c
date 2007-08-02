@@ -28,6 +28,7 @@
 #include "executor/nodeAgg.h"
 #include "executor/nodeWindow.h"
 #include "optimizer/clauses.h"
+#include "nodes/makefuncs.h"
 #include "parser/parse_agg.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
@@ -93,20 +94,10 @@ typedef struct WindowStatePerLevelData
 	Datum trail_range;
 	Datum lead_range;
 
-	/* 
-	 * RANGE frames also need to do addition and subtraction of the above
-	 * for each new row so we must lookup and remember the relevant functions.
-	 */
-	FmgrInfo add_fn;
-	FmgrInfo sub_fn;
-
-	/*
-	 * We also need less than and greater than.
-	 */
-	FmgrInfo gt_fn;
-	FmgrInfo lt_fn;
-
 	/* state for frame edges */
+	ExprState *trail_expr;
+	ExprState *lead_expr;
+
 	Datum *trail_edge_d;
 	bool *trail_edge_nulls;
 	bool trail_edge_set;
@@ -1250,6 +1241,8 @@ set_edge_val(WindowState *wstate, WindowStatePerLevel level_state,
 			 WindowFrameEdge *e, WindowKey *key, Datum *vals, bool *nulls, 
 			 bool is_trail)
 {
+	ExprContext *econtext = wstate->ps.ps_ExprContext;
+
 	if (key->frame->is_rows)
 	{
 		long int rows_param;
@@ -1290,51 +1283,34 @@ set_edge_val(WindowState *wstate, WindowStatePerLevel level_state,
 		if (EDGE_IS_BOUND(e))
 		{
 			Datum result;
-			Datum edge_range;
-	
-			if (is_trail)
-				edge_range = level_state->trail_range;
-			else
-				edge_range = level_state->lead_range;
 			
 			Assert(key->numSortCols == 1);
-	
-			/* initial frame edge can be either kind */
-			if (e->kind == WINDOW_BOUND_FOLLOWING)
-			{
-				/* bound edges can only have a single framing column */
-				if (!nulls[0])
-				{
-					result = FunctionCall2(&level_state->add_fn, vals[0], edge_range);
-				}
-				else
-					result = (Datum)0;
-			}
-			else
-			{
-				if (!nulls[0])
-				{
-					result = FunctionCall2(&level_state->sub_fn, vals[0], edge_range); 
-				}
-				else
-					result = (Datum)0;
-			}
-	
+
 			if (is_trail)
 			{
+				bool isnull;
+
+				result = ExecEvalExpr(level_state->trail_expr, econtext,
+									  &isnull, NULL);
 				level_state->trail_edge_d[0] = result;
-				level_state->trail_edge_nulls[0] = nulls[0];
+				level_state->trail_edge_nulls[0] = isnull;
 				level_state->trail_edge_set = true;
+	
 			}
 			else
 			{
+				bool isnull;
+
+				result = ExecEvalExpr(level_state->lead_expr, econtext,
+									  &isnull, NULL);
 				level_state->lead_edge_d[0] = result;
-				level_state->lead_edge_nulls[0] = nulls[0];
+				level_state->lead_edge_nulls[0] = isnull;
 				level_state->lead_edge_set = true;
 			}
 		}
 		else if (e->kind == WINDOW_CURRENT_ROW)
 		{
+			/* for current row, just copy things directly */
 			Datum *d;
 			bool *n;
 			
@@ -2615,6 +2591,101 @@ ExecWindow(WindowState *wstate)
 	return resultSlot;
 }
 
+static void
+init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
+						   AttrNumber attnum,
+						   bool is_trail,
+						   WindowStatePerLevel level_state,
+						   WindowState *wstate)
+{
+	ExprState *n;
+	Expr *expr;
+	Var *var;
+	Oid exprrestype;
+	Oid ltype, rtype;
+	HeapTuple tup;
+	ExprContext  *econtext;
+	bool isNull;
+	
+	Insist(EDGE_IS_BOUND(edge));
+
+	ltype = desc->attrs[attnum - 1]->atttypid;
+	rtype = exprType(edge->val);
+	
+	var = makeVar(0, attnum, ltype, desc->attrs[attnum - 1]->atttypmod, 0);
+	n = ExecInitExpr((Expr *)edge->val, (PlanState *) wstate);
+
+	if (is_trail)
+		level_state->trail_range = ExecEvalExpr(n, econtext, &isNull, NULL);
+	else
+		level_state->lead_range = ExecEvalExpr(n, econtext, &isNull, NULL);
+	pfree(n);
+
+	if (edge->kind == WINDOW_BOUND_PRECEDING)
+	{
+		Form_pg_operator opr;
+		
+		tup = SearchSysCache(OPERNAMENSP,
+							 CStringGetDatum("-"),
+							 ObjectIdGetDatum(ltype),
+							 ObjectIdGetDatum(rtype),
+							 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+
+		Insist(HeapTupleIsValid(tup));
+		opr = ((Form_pg_operator) GETSTRUCT(tup));
+		ReleaseSysCache(tup);
+
+		exprrestype = opr->oprresult;
+		expr = make_opclause(HeapTupleGetOid(tup), exprrestype,
+							 false, (Expr *)var, 
+							 (Expr *)edge->val);
+		((OpExpr *)expr)->opfuncid = opr->oprcode;
+	}
+	else
+	{
+		Form_pg_operator opr;
+		
+		tup = SearchSysCache(OPERNAMENSP,
+							 CStringGetDatum("+"),
+							 ObjectIdGetDatum(ltype),
+							 ObjectIdGetDatum(rtype),
+							 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+
+		Insist(HeapTupleIsValid(tup));
+		opr = ((Form_pg_operator) GETSTRUCT(tup));
+		ReleaseSysCache(tup);
+
+		exprrestype = opr->oprresult;						
+		expr = make_opclause(HeapTupleGetOid(tup), exprrestype,
+							 false, (Expr *)var, 
+							 (Expr *)edge->val);
+		((OpExpr *)expr)->opfuncid = opr->oprcode;
+	}
+
+	/*
+	 * If the frame edge operation returns a different type
+	 * to the input type, we must coerce it back.
+	 */
+	if (ltype != exprrestype)
+	{
+		int32 typmod = desc->attrs[attnum - 1]->atttypmod;
+		expr = 
+			(Expr *)coerce_to_target_type(NULL,
+										  (Node *)expr, 
+									 	  exprrestype,
+									 	  ltype, typmod,
+									 	  COERCION_EXPLICIT,
+										  COERCE_IMPLICIT_CAST);
+	}
+
+	n = ExecInitExpr(expr, (PlanState *) wstate);
+	
+	if (is_trail)
+		level_state->trail_expr = n;
+	else
+		level_state->lead_expr = n;
+}
+
 /*
  * Initialise frame specific state.
  */
@@ -2625,7 +2696,6 @@ init_frames(WindowState *wstate)
 	Window *node = (Window *)wstate->ps.plan;
 	int level = -1;
 	ListCell *lc;
-	ExprContext  *econtext = wstate->ps.ps_ExprContext;;
 
 	resetPartFuncFrameBuf(wstate);
 
@@ -2719,14 +2789,7 @@ init_frames(WindowState *wstate)
 			}
 			else
 			{
-				ExprState *e;
-				bool isNull;
 				TupleDesc desc = ExecGetResultType(wstate->ps.lefttree); 
-				HeapTuple tup;
-				AttrNumber attnum;
-				Oid ltype, rtype;
-				bool have_add = false;
-				bool have_sub = false;
 
 				level_state->trail_edge_d = (Datum *) palloc(sizeof(Datum) *
 													 key->numSortCols);
@@ -2736,131 +2799,16 @@ init_frames(WindowState *wstate)
 				/* we only need the subtraction function for bound frames */
 				if (EDGE_IS_BOUND(frame->trail))
 				{
-					ExprState *e;
-		
-					e = ExecInitExpr((Expr *)key->frame->trail->val,
-									  (PlanState *) wstate);
-
-					level_state->trail_range = ExecEvalExpr(e, econtext, &isNull, 
-												   NULL);
-
-					Insist(key->numSortCols == 1);
-					attnum = key->sortColIdx[0];
-					ltype = desc->attrs[attnum - 1]->atttypid;
-					rtype = exprType(frame->lead->val);
-					
-					if (frame->trail->kind == WINDOW_BOUND_PRECEDING)
-					{
-
-						tup = SearchSysCache(OPERNAMENSP,
-											 CStringGetDatum("-"),
-											 ObjectIdGetDatum(ltype),
-											 ObjectIdGetDatum(rtype),
-											 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
-
-						Insist(HeapTupleIsValid(tup));
-						fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode, 
-								  &level_state->sub_fn);
-						have_sub = true;
-						ReleaseSysCache(tup);
-					}
-					else
-					{
-
-						tup = SearchSysCache(OPERNAMENSP,
-											 CStringGetDatum("+"),
-											 ObjectIdGetDatum(ltype),
-											 ObjectIdGetDatum(rtype),
-											 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
-
-						Insist(HeapTupleIsValid(tup));
-						fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode, 
-								  &level_state->add_fn);
-						have_add = true;
-
-						ReleaseSysCache(tup);
-					}
-					/* 
-					 * XXX: we should actually use the result from the above as
-					 * the LHS of this...
-					 */
-					tup = SearchSysCache(OPERNAMENSP,
-										 CStringGetDatum(">"),
-										 ObjectIdGetDatum(rtype),
-										 ObjectIdGetDatum(rtype),
-										 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
-
-					Insist(HeapTupleIsValid(tup));
-					
-					fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode,
-							  &level_state->gt_fn);
-					ReleaseSysCache(tup);
+					init_bound_frame_edge_expr(frame->trail, desc,
+											   key->sortColIdx[0],
+											   true, level_state, wstate);
 				}
 
 				if (EDGE_IS_BOUND(frame->lead))
 				{
-					Insist(key->numSortCols == 1);
-					attnum = key->sortColIdx[0];
-					ltype = desc->attrs[attnum - 1]->atttypid;
-
-					e = ExecInitExpr((Expr *)key->frame->lead->val,
-									 (PlanState *) wstate);
-
-					level_state->lead_range = ExecEvalExpr(e, econtext, &isNull, 
-													  NULL);
-
-					rtype = exprType(frame->lead->val);
-
-					
-					if (frame->lead->kind == WINDOW_BOUND_PRECEDING)
-					{
-						if (!have_sub)
-						{
-							tup = SearchSysCache(OPERNAMENSP,
-												 CStringGetDatum("-"),
-												 ObjectIdGetDatum(ltype),
-												 ObjectIdGetDatum(rtype),
-										 		ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
-
-							Insist(HeapTupleIsValid(tup));
-							fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode, 
-									  &level_state->sub_fn);
-							ReleaseSysCache(tup);
-						}
-					}
-					else
-					{
-						if (!have_add)
-						{
-							tup = SearchSysCache(OPERNAMENSP,
-												 CStringGetDatum("+"),
-												 ObjectIdGetDatum(ltype),
-												 ObjectIdGetDatum(rtype),
-												 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
-
-							Insist(HeapTupleIsValid(tup));
-							fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode, 
-								  &level_state->add_fn);
-							ReleaseSysCache(tup);
-						}
-					}
-
-					/* now for greater-than */
-					/* 
-					 * XXX: we should actually use the result from the above as
-					 * the LHS of this...
-					 */
-					tup = SearchSysCache(OPERNAMENSP,
-										 CStringGetDatum("<"),
-										 ObjectIdGetDatum(ltype),
-										 ObjectIdGetDatum(ltype),
-										 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
-
-					Insist(HeapTupleIsValid(tup));
-					
-					fmgr_info(((Form_pg_operator) GETSTRUCT(tup))->oprcode,
-							  &level_state->lt_fn);
-					ReleaseSysCache(tup);
+					init_bound_frame_edge_expr(frame->lead, desc,
+											   key->sortColIdx[0],
+											   false, level_state, wstate);
 				}
 			}
 		}

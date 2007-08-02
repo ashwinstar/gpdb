@@ -1260,6 +1260,31 @@ order by 1,5;
 (26 rows)
 
 -- end equivalent
+-- Some data types, like date, when mixed with operators like "-" result in
+-- data returned in a different data type. We're smart enough to detect
+-- this but some tests are good.
+select cn, dt, qty,
+	sum(qty) over (order by dt 
+       range between '1 year'::interval preceding and 
+                     '1 month'::interval following)
+from sale;
+ cn |     dt     | qty  | sum  
+----+------------+------+------
+  2 | 01-01-1401 | 1100 | 1100
+  1 | 03-01-1401 |    1 | 1102
+  3 | 04-01-1401 |    1 | 1103
+  1 | 05-01-1401 |    1 | 1144
+  1 | 05-02-1401 |    1 | 1144
+  1 | 06-01-1401 |    1 | 1144
+  1 | 06-01-1401 |   12 | 1144
+  3 | 06-01-1401 |   12 | 1144
+  4 | 06-01-1401 |    1 | 1144
+  2 | 06-01-1401 |    1 | 1144
+  3 | 06-01-1401 |   12 | 1144
+  4 | 06-01-1401 |    1 | 1144
+(12 rows)
+
+-- XXX: add tests rejecting those which cannot cast back
 -- Check that mixing cume_dist() with other window functions on the same
 -- window does not result in badness
 select cn, rank() over (w), cume_dist() over (w) from

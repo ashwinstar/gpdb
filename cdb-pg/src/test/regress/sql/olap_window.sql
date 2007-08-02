@@ -398,6 +398,18 @@ order by 1,5;
 
 -- end equivalent
 
+-- Some data types, like date, when mixed with operators like "-" result in
+-- data returned in a different data type. We're smart enough to detect
+-- this but some tests are good.
+
+select cn, dt, qty,
+	sum(qty) over (order by dt 
+       range between '1 year'::interval preceding and 
+                     '1 month'::interval following)
+from sale;
+
+-- XXX: add tests rejecting those which cannot cast back
+
 -- Check that mixing cume_dist() with other window functions on the same
 -- window does not result in badness
 
