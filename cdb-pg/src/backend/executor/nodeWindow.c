@@ -716,6 +716,8 @@ fetchTupleThroughBuf(WindowState *wstate)
 		 */
 		tuplestore_advance(wstate->input_buffer->tuplestorestate, false);
 		
+		wt = ExecFetchSlotMinimalTuple(wstate->curslot);
+
 		wstate->cur_slot_is_new = false;
 	}
 
