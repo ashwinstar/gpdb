@@ -404,8 +404,6 @@ void *shareinput_reader_waitready(int share_id)
 	pctxt->zcnt = 0;
 
 	fd = FileGetFd(pctxt->readyf);
-	tval.tv_sec = 1;
-	tval.tv_usec = 0;
 
 	while(1)
 	{
@@ -414,6 +412,9 @@ void *shareinput_reader_waitready(int share_id)
 		MPP_FD_ZERO(&rset);
 		MPP_FD_SET(fd, &rset);
 
+		tval.tv_sec = 1;
+		tval.tv_usec = 0;
+
 		n = select(fd+1, (fd_set *) &rset, NULL, NULL, &tval);
 
 		if(n==1)
@@ -421,12 +422,15 @@ void *shareinput_reader_waitready(int share_id)
 			asize = FileRead(pctxt->readyf, &a, 1);
 			Assert(asize == 1 && a == 'a');
 			
-			elog(DEBUG5, "SISC: Wait ready get a, now write b");
+			elog(LOG, "SISC: Wait ready get a, now write b");
 			FileWrite(pctxt->donef, "b", 1);
 			break;
 		}
-
-		elog(DEBUG5, "SISC: Wait readly try again ... ");
+		else
+		{
+			int save_errno = errno;
+			elog(LOG, "SISC: Wait readly try again, errno %d ... ", save_errno);
+		}
 	}
 
 	return (void *) pctxt;
@@ -437,8 +441,10 @@ void *shareinput_writer_notifyready(int share_id, int xslice)
 	char lkname[100];
 	ShareInput_Lk_Context *pctxt = palloc(sizeof(ShareInput_Lk_Context));
 	mpp_fd_set rset;
+	mpp_fd_set wset;
 	struct timeval tval;
-	int fd;
+	int rfd;
+	int wfd;
 	int n;
 	char b;
 	int bsize;
@@ -453,20 +459,34 @@ void *shareinput_writer_notifyready(int share_id, int xslice)
 
 	pctxt->zcnt = 0;
 
-	fd = FileGetFd(pctxt->donef);
-	tval.tv_sec = 1;
-	tval.tv_usec = 0;
+	wfd = FileGetFd(pctxt->readyf);
+	rfd = FileGetFd(pctxt->donef);
 
 	while(xslice > 0)
 	{
 		CHECK_FOR_INTERRUPTS();
 		
-		FileWrite(pctxt->readyf, "a", 1);
+		MPP_FD_ZERO(&wset);
+		MPP_FD_SET(wfd, &wset);
+
+		tval.tv_sec = 1;
+		tval.tv_usec = 0;
+		n = select(wfd+1, NULL, (fd_set *) &wset, NULL, &tval);
+
+		if(n==1)
+		{
+			elog(LOG, "SISC: notify ready once");
+			FileWrite(pctxt->readyf, "a", 1);
+		}
+
+		CHECK_FOR_INTERRUPTS();
 
 		MPP_FD_ZERO(&rset);
-		MPP_FD_SET(fd, &rset);
+		MPP_FD_SET(rfd, &rset);
 
-		n = select(fd+1, (fd_set *) &rset, NULL, NULL, &tval);
+		tval.tv_sec = 1;
+		tval.tv_usec = 0;
+		n = select(rfd+1, (fd_set *) &rset, NULL, NULL, &tval);
 
 		if(n==1)
 		{
@@ -477,23 +497,51 @@ void *shareinput_writer_notifyready(int share_id, int xslice)
 			else
 			{
 				Assert(bsize == 1 && b == 'b');
-				elog(DEBUG5, "SISC: notify ready 1");
+				elog(LOG, "SISC: notify ready succeed 1");
 				--xslice;
 			}
 		}
-
-		elog(DEBUG5, "SISC: try notify ready again ... ");
+		else
+		{
+			int save_errno = errno;
+			elog(LOG, "SISC: notify still wait for an answer, errno %d", save_errno);
+		}
 	}
-
 	return (void *) pctxt;
 }
 
 void shareinput_reader_notifydone(void *ctxt, int share_id)
 {
 	ShareInput_Lk_Context *pctxt = (ShareInput_Lk_Context *) ctxt;
+	mpp_fd_set wset;
+	struct timeval tval;
+	int fd;
+	int n;
 
-	FileWrite(pctxt->donef, "z", 1);
-	elog(DEBUG5, "sisc notify done");
+	fd = FileGetFd(pctxt->donef);
+
+	while(1)
+	{
+		CHECK_FOR_INTERRUPTS();
+
+		MPP_FD_ZERO(&wset);
+		MPP_FD_SET(fd, &wset);
+
+		tval.tv_sec = 1;
+		tval.tv_usec = 0;
+		n = select(fd+1, NULL, (fd_set *) &wset, NULL, &tval);
+		if(n==1)
+		{
+			elog(LOG, "sisc notify done");
+			FileWrite(pctxt->donef, "z", 1);
+			break;
+		}
+		else
+		{
+			int save_errno = errno;
+			elog(LOG, "sisc notify done timeout, errno %d", save_errno);
+		}
+	}
 
 	FileClose(pctxt->readyf); 
 	FileClose(pctxt->donef); 
@@ -511,8 +559,6 @@ void shareinput_writer_waitdone(void *ctxt, int share_id, int nsharer_xslice)
 	int zsize;
 
 	fd = FileGetFd(pctxt->donef);
-	tval.tv_sec = 1;
-	tval.tv_usec = 0;
 	
 	nsharer_xslice -= pctxt->zcnt;
 
@@ -523,6 +569,8 @@ void shareinput_writer_waitdone(void *ctxt, int share_id, int nsharer_xslice)
 		MPP_FD_ZERO(&rset);
 		MPP_FD_SET(fd, &rset);
 
+		tval.tv_sec = 1;
+		tval.tv_usec = 0;
 		n = select(fd+1, (fd_set *) &rset, NULL, NULL, &tval);
 	
 		if(n==1)
@@ -530,11 +578,14 @@ void shareinput_writer_waitdone(void *ctxt, int share_id, int nsharer_xslice)
 			zsize = FileRead(pctxt->donef, &z, 1); 
 			Assert(zsize == 1 && z == 'z');
 
-			elog(DEBUG5, "SISC: wait done get 1 notification");
+			elog(LOG, "SISC: wait done get 1 notification");
 			--nsharer_xslice;
 		}
-
-		elog(DEBUG5, "SISC: wait done try again ... ");
+		else 
+		{
+			int save_errno = errno;
+			elog(LOG, "SISC: wait done time out once, errno %d", save_errno);
+		}
 	}
 
 	FileClose(pctxt->donef);
