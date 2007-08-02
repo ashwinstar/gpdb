@@ -1101,6 +1101,27 @@ where sale.cn = customer.cn; -- mvd 1->2,3
  Witches, Inc |    1 |    1
 (12 rows)
 
+-- Check that we invert count() correctly. count() is a special case
+-- because when not invoked as count(*), it uses "any" as an argument.
+-- This can trip us up.
+SELECT sale.pn, COUNT(sale.pn) OVER(order by sale.pn)              
+FROM sale;
+ pn  | count 
+-----+-------
+ 100 |     2
+ 100 |     2
+ 200 |     4
+ 200 |     4
+ 300 |     5
+ 400 |     7
+ 400 |     7
+ 500 |     9
+ 500 |     9
+ 600 |    10
+ 700 |    11
+ 800 |    12
+(12 rows)
+
 -- Aggregate nesting --
 create table olap_tmp(g integer, h integer, i integer, x integer);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'g' as the Greenplum Database data distribution key for this table.

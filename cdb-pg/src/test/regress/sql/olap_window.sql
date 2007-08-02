@@ -311,6 +311,12 @@ select cname,
 from sale, customer
 where sale.cn = customer.cn; -- mvd 1->2,3
 
+-- Check that we invert count() correctly. count() is a special case
+-- because when not invoked as count(*), it uses "any" as an argument.
+-- This can trip us up.
+SELECT sale.pn, COUNT(sale.pn) OVER(order by sale.pn)              
+FROM sale;
+
 -- Aggregate nesting --
 
 create table olap_tmp(g integer, h integer, i integer, x integer);

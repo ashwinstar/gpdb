@@ -904,7 +904,7 @@ resetManagedFrameAggStates(WindowState *wstate)
 			WindowStatePerLevel level_state = 
 				&wstate->level_state[funcstate->wlevel->level];
 
-			if (funcstate->isAgg && !OidIsValid(funcstate->invtransfn_oid) &&
+			if (funcstate->isAgg && !OidIsValid(funcstate->invprelimfn_oid) &&
 				FRAME_IS_COMPLEX(funcstate, level_state))
 			{
 				elog(DEBUG1, "resetting managed agg");
