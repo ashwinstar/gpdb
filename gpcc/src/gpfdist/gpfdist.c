@@ -280,7 +280,6 @@ block_t* fstream_get_block(fstream_t* fs)
     char* p; 
     char* q;
     int skipfirst;
-    int localEOF = 0;
     
     if (fs->ferror || fs->fidx >= fs->fn)
 	return 0;
@@ -330,7 +329,6 @@ block_t* fstream_get_block(fstream_t* fs)
 	    return 0;
 	}
 	if (n == 0) {  /* current file EOF */
-	    localEOF = 1;
 	    /* close this file */
 	    gpcc_file_close(fs->fd[fs->fidx]);
 	    fs->fd[fs->fidx] = 0;
@@ -352,30 +350,36 @@ block_t* fstream_get_block(fstream_t* fs)
     /* find the split position */
     p = b->byte + b->bot;
     q = b->byte + b->top;
+    if (skipfirst && p < q) {
+	/* first record is header - skip it. */
+	if (opt.q) 
+	    p = (char*) scan_rec(p, q, 1);
+	else {
+	    for ( ; p < q && *p != '\n'; p++);
+	    p = (p < q) ? p + 1 : 0;
+	}
+	if (!p)  
+	    p = q;
+	b->bot = p - b->byte;
+	p = b->byte + b->bot;
+	q = b->byte + b->top;
+    }
+
+    if (fs->fd[fs->fidx] == 0) {
+	/* EOF, send the whole buffer */
+	return b;
+    }
+
     if (opt.q) {
 	/* go slow, scan byte-by-byte for record boundary */
-	if (skipfirst) {
-	    if (0 != (p = (char*) scan_rec(p, q, 1)))
-		b->bot = p - b->byte;
-	}
-	if (p) 
-	    p = (char*) scan_rec(p, q, sizeof(b->byte) /*artificial max */);
+	p = (char*) scan_rec(p, q, sizeof(b->byte) /*artificial max */);
     }
     else {
 	/* go fast, scan for \n for record boundary */
-	if (skipfirst) {
-	    for ( ; p < q && *p != '\n'; p++);
-	    p = (p < q) ? p + 1 : 0;
-	    if (p) 
-		b->bot = p - b->byte;
-	}
 	/* find the last \n from the back */
-	if (p) {
-	    for (--q; p < q && *q != '\n'; q--);
-	    p = (p < q ? q + 1 : 0);
-	}
+	for (--q; p < q && *q != '\n'; q--);
+	p = (p < q ? q + 1 : 0);
     }
-
     
     /* no record boundary 
        -> record larger than BLOCKSIZE? unacceptable!! */
@@ -496,6 +500,9 @@ void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
     {
 	char* p = gpcc_string_trim(apr_pstrdup(pool, opt.d));
 
+	/* collapse // */
+	while (p[0] == '/' && p[1] == '/') p++;
+
 	/* disallow / */
 	if (0 == strcmp(p, "/")) 
 	    usage("Security Error: cannot run under root (/) directory");
@@ -503,14 +510,22 @@ void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
 	/* strip ending / */
 	while (p[0] && p[strlen(p) - 1] == '/')
 	    p[strlen(p) - 1] = 0;
-
 	opt.d = p;
+
+	if (0 == strlen(opt.d))
+	    opt.d = ".";
 
 	/* check that the dir exists */
 	if (0 != apr_filepath_set(opt.d, pool))
 	    usage(apr_psprintf(pool, 
 			       "Error: cannot access directory '%s'\n"
 			       "Please specify a valid directory for -d switch", opt.d));
+
+	if (0 != apr_filepath_get(&p, 0, pool))
+	    usage(apr_psprintf(pool, 
+			       "Error: cannot access directory '%s'\n"
+			       "Please specify a valid directory for -d switch", opt.d));
+	opt.d = p;
     }
 
     /* check quote and escape options */
@@ -734,6 +749,11 @@ void session_attach(request_t* r)
 		send_error(r, 404, "not found");
 		request_end(r);
 		return;
+	    }
+	    if (opt.v) {
+		int i;
+		for (i = 0; i < n; i++) 
+		    printf("  glob: %s\n", fpath[i]);
 	    }
 	}
 
@@ -997,6 +1017,10 @@ void do_read(int fd, short event, void* arg)
     }
 
     /* Hurray, got a request !!! */
+    if (opt.v) 
+	printf("[INFO] %s requests %s\n\tTID %s\n", 
+	       r->peer, r->in.req->argv[1] ? r->in.req->argv[1] : "(null)", r->tid);
+
 
     /* we don't need to read from the socket anymore */
     shutdown(r->sock, SHUT_RD);
@@ -1028,25 +1052,8 @@ void do_read(int fd, short event, void* arg)
 	return;
     }
 
-    /* scrub the path */
-    /*   - remove / prefixes */
-    for (p = r->in.req->argv[1]; *p == '/'; p++);
-
-
-    /*   - make the new path relative to opt.d */
-    if (apr_filepath_merge(&r->path, opt.d, p, 0, r->pool)) {
-	gpcc_warning(FLINE, "reject invalid request from %s [%s %s]", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
-	send_error(r, 400, "invalid request");
-	request_end(r);
-	return;
-    }
-
-    /*   - remove query (after ?) and fragment (after #) */
-    if (0 != (p = strchr(r->path, '?')))
-	*p = 0;
-
-    if (0 != (p = strchr(r->path, '#')))
-	*p = 0;
+    /* make a copy of the path */
+    r->path = apr_pstrdup(r->pool, r->in.req->argv[1]);
 
     /*   - decode %xx to char */
     for (p = pp = r->path; *pp; p++, pp++) {
@@ -1079,16 +1086,23 @@ void do_read(int fd, short event, void* arg)
     }
     *p = 0;
 
-    /*   - forbid dot dot  */
+    /*   - remove / prefixes */
+    for (p = r->path; *p == '/'; p++);
+    r->path = p;
+
+    /*   - forbid .. dot dot  */
     for (p = r->path; 0 != (p = strchr(p, '.')); p++) {
-	if (p[1] == '.') {
-	    gpcc_warning(FLINE, "reject invalid request from %s [%s %s]", 
-			 r->peer, r->in.req->argv[0], r->in.req->argv[1]);
-	    send_error(r, 400, "invalid request");
-	    request_end(r);
-	    return;
-	}
+        if (p[1] == '.') {
+            gpcc_warning(FLINE, "reject invalid request from %s [%s %s]",
+                         r->peer, r->in.req->argv[0], r->in.req->argv[1]);
+            send_error(r, 400, "invalid request");
+            request_end(r);
+            return;
+        }
     }
+    
+    /*   - make the new path relative to opt.d */
+    r->path = apr_psprintf(r->pool, "%s/%s", opt.d, r->path);
 
     /* Extract X-GP-TID value from HTTP headers */
     {
@@ -1117,9 +1131,6 @@ void do_read(int fd, short event, void* arg)
 	    r->tid = apr_psprintf(r->pool, "auto-tid.%d", gcb.session.gen++);
 	}
     }
-
-    if (opt.v) 
-	printf("[INFO] %s requests %s\n\tTID %s\n", r->peer, r->path, r->tid);
 
     /* Attach to a session */
     session_attach(r);
