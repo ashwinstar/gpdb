@@ -122,7 +122,7 @@ write_callback(char *buffer,
 	size = nitems;
 
 	/* if current buffer is less than 1 quarter full, compress it */
-	if (url->u.curl.buffer.bot > bsz * 3 / 4) 
+	if (avail < bsz / 4 && url->u.curl.buffer.bot > bsz / 4)
 	{
 		memmove(url->u.curl.buffer.byte, 
 				url->u.curl.buffer.byte + url->u.curl.buffer.bot,
@@ -712,7 +712,7 @@ url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file)
 			want = cnt / size * size;
 
         /* xfer data to caller */
-        memcpy(ptr, file->u.curl.buffer.byte, want);
+        memcpy(ptr, file->u.curl.buffer.byte + file->u.curl.buffer.bot, want);
 		file->u.curl.buffer.bot += want;
 
         want = want / size;     /* number of items - nb correct op - checked
