@@ -352,7 +352,7 @@ def gethostaddress():
     if ifconfig_path is None:
         sys.exit('[Error] ifconfig not found')
 
-    out = commands.getoutput("ifconfig -a | grep 'inet' | grep -v '127.' | awk '{print $2}' | cut -d: -f2")
+    out = commands.getoutput("%s -a | grep 'inet' | grep -v '127.' | awk '{print $2}' | cut -d: -f2" % ifconfig_path)
     hosts = out.split()
     for a in hosts:
         if a != '':
