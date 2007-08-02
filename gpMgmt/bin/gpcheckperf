@@ -335,8 +335,23 @@ def runStreamTest():
 	    result[h] = (float(o[1]), 0, 0)
     return result
 
+def findCmdInPath(file):
+    CMDPATH=('/usr/kerberos', '/usr/sfw/bin', 'opt/sfw/bin',
+             '/usr/local/bin', '/bin', '/sbin', '/usr/bin', '/usr/sbin',
+             '/usr/ucb', '/sw/bin')
+    for p in CMDPATH:
+        path = os.path.join(p, file)
+        if os.path.exists(path):
+            return path
+    return None
+
+
 def gethostaddress():
     import commands
+    ifconfig_path = findCmdInPath('ifconfig')
+    if ifconfig_path is None:
+        sys.exit('[Error] ifconfig not found')
+
     out = commands.getoutput("ifconfig -a | grep 'inet' | grep -v '127.' | awk '{print $2}' | cut -d: -f2")
     hosts = out.split()
     for a in hosts:
