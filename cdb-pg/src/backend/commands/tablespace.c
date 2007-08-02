@@ -738,6 +738,19 @@ remove_tablespace_directories(Oid tablespaceoid, bool redo, char *phys)
 	location = (char *) palloc(10 + 10 + 1);
 	sprintf(location, "pg_tblspc/%u", tablespaceoid);
 
+	/* 
+	 * If the tablespace location has been removed previously, then we are done.
+	 * 
+	 */
+	if (stat(location, &st) < 0)
+	{
+		ereport(WARNING,
+				(errmsg("directory linked to \"%s\" does not exist", location)
+				 ));
+				
+		return true;
+	}
+
 	/*
 	 * Check if the tablespace still contains any files.  We try to rmdir each
 	 * per-database directory we find in it.  rmdir failure implies there are
