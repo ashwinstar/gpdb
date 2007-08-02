@@ -265,10 +265,14 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 					 errmsg("window functions may not return sets"),
 					 parser_errposition(pstate, location)));
 
-		/*
-		 * XXX: test for is_win_func later.. could just test for FUNCDETAIL
-		 * now...
+		/* XXX: this actually needs to be done a little to ensure 
+		 * over->parent has an ORDER BY field
 		 */
+		if (agg_distinct && (over->order || over->parent))
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("window reference cannot be DISTINCT qualified")));
+
 		tuple = SearchSysCache(WINFNOID, ObjectIdGetDatum(funcid),
 							   0, 0, 0);
 		if (HeapTupleIsValid(tuple))

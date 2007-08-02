@@ -317,6 +317,9 @@ where sale.cn = customer.cn; -- mvd 1->2,3
 SELECT sale.pn, COUNT(sale.pn) OVER(order by sale.pn)              
 FROM sale;
 
+-- Reject DISTINCT qualified aggs when an ORDER BY is present
+SELECT count(distinct sale.pn) OVER (order by sale.pn) from sale;
+
 -- Aggregate nesting --
 
 create table olap_tmp(g integer, h integer, i integer, x integer);
