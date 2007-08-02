@@ -15,6 +15,7 @@ exit /b 1
 SETLOCAL
 if exist buildenv.bat call buildenv.bat
 
+attrib /S -r %1\*
 perl install.pl "%1"
 
 REM exit fix for pre-2003 shell especially if used on buildfarm
