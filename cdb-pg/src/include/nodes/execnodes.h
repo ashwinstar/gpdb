@@ -1526,10 +1526,10 @@ typedef struct ShareInputScanState
 } ShareInputScanState;
 
 /* XXX Should move into buf file */
-extern void *shareinput_reader_waitready(int share_id);
-extern void *shareinput_writer_notifyready(int share_id, int nsharer_xslice);
+extern void *shareinput_reader_waitready(int share_id, bool wait_ready);
+extern void *shareinput_writer_notifyready(int share_id, int nsharer_xslice_notify_ready);
 extern void shareinput_reader_notifydone(void *, int share_id);
-extern void shareinput_writer_waitdone(void *, int share_id, int nsharer_xslice);
+extern void shareinput_writer_waitdone(void *, int share_id, int nsharer_xslice_wait_done);
 extern void shareinput_create_bufname_prefix(char* p, int size, int share_id);
 
 /* ----------------

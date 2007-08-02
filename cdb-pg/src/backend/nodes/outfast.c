@@ -597,7 +597,8 @@ _outMaterial(StringInfo str, Material *node)
 	WRITE_INT_FIELD(share_id);
 	WRITE_INT_FIELD(driver_slice);
 	WRITE_INT_FIELD(nsharer);
-	WRITE_INT_FIELD(nsharer_xslice);
+	WRITE_INT_FIELD(nsharer_xslice_notify_ready);
+	WRITE_INT_FIELD(nsharer_xslice_wait_done);
 
 	_outPlanInfo(str, (Plan *) node);
 }
@@ -610,6 +611,7 @@ _outShareInputScan(StringInfo str, ShareInputScan *node)
 	WRITE_ENUM_FIELD(share_type, ShareType);
 	WRITE_INT_FIELD(share_id);
 	WRITE_INT_FIELD(driver_slice);
+	WRITE_BOOL_FIELD(need_wait_ready);
 
 	_outPlanInfo(str, (Plan *) node);
 }
@@ -637,7 +639,8 @@ _outSort(StringInfo str, Sort *node)
 	WRITE_INT_FIELD(share_id);
 	WRITE_INT_FIELD(driver_slice);
 	WRITE_INT_FIELD(nsharer);
-	WRITE_INT_FIELD(nsharer_xslice);
+	WRITE_INT_FIELD(nsharer_xslice_notify_ready);
+	WRITE_INT_FIELD(nsharer_xslice_wait_done);
 }
 
 static void

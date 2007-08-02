@@ -105,7 +105,7 @@ ShareInputNext(ShareInputScanState *node)
 			shareinput_create_bufname_prefix(rwfile_prefix, sizeof(rwfile_prefix), sisc->share_id);
 		
 			if(sisc->driver_slice >= 0 && sisc->driver_slice != currentSliceId)
-				node->share_lk_ctxt = shareinput_reader_waitready(sisc->share_id);
+				node->share_lk_ctxt = shareinput_reader_waitready(sisc->share_id, sisc->need_wait_ready);
 
 			node->ts_state = tuplestore_begin_heap_file_readerwriter(rwfile_prefix, false);
 			tuplestore_begin_pos((Tuplestorestate *) node->ts_state, (TuplestorePos **)(&node->ts_pos));
@@ -125,7 +125,7 @@ ShareInputNext(ShareInputScanState *node)
 			shareinput_create_bufname_prefix(rwfile_prefix, sizeof(rwfile_prefix), sisc->share_id);
 			
 			if(sisc->driver_slice >= 0 && sisc->driver_slice != currentSliceId)
-				node->share_lk_ctxt = shareinput_reader_waitready(sisc->share_id);
+				node->share_lk_ctxt = shareinput_reader_waitready(sisc->share_id, sisc->need_wait_ready);
 
 			node->ts_state = tuplesort_begin_heap_file_readerwriter(
 					rwfile_prefix, false,
@@ -376,7 +376,7 @@ typedef struct ShareInput_Lk_Context
 	int  zcnt;
 } ShareInput_Lk_Context;
 
-void *shareinput_reader_waitready(int share_id)
+void *shareinput_reader_waitready(int share_id, bool fneedwait)
 {
 	char lkname[100];
 	mpp_fd_set rset;
@@ -398,33 +398,36 @@ void *shareinput_reader_waitready(int share_id)
 
 	pctxt->zcnt = 0;
 
-	fd = FileGetFd(pctxt->readyf);
-
-	while(1)
+	if(fneedwait)
 	{
-		CHECK_FOR_INTERRUPTS();
-		
-		MPP_FD_ZERO(&rset);
-		MPP_FD_SET(fd, &rset);
+		fd = FileGetFd(pctxt->readyf);
 
-		tval.tv_sec = 1;
-		tval.tv_usec = 0;
-
-		n = select(fd+1, (fd_set *) &rset, NULL, NULL, &tval);
-
-		if(n==1)
+		while(1)
 		{
-			asize = FileRead(pctxt->readyf, &a, 1);
-			Assert(asize == 1 && a == 'a');
-			
-			elog(LOG, "SISC: Wait ready get a, now write b");
-			FileWrite(pctxt->donef, "b", 1);
-			break;
-		}
-		else
-		{
-			int save_errno = errno;
-			elog(LOG, "SISC: Wait readly try again, errno %d ... ", save_errno);
+			CHECK_FOR_INTERRUPTS();
+
+			MPP_FD_ZERO(&rset);
+			MPP_FD_SET(fd, &rset);
+
+			tval.tv_sec = 1;
+			tval.tv_usec = 0;
+
+			n = select(fd+1, (fd_set *) &rset, NULL, NULL, &tval);
+
+			if(n==1)
+			{
+				asize = FileRead(pctxt->readyf, &a, 1);
+				Assert(asize == 1 && a == 'a');
+
+				elog(LOG, "SISC: Wait ready get a, now write b");
+				FileWrite(pctxt->donef, "b", 1);
+				break;
+			}
+			else
+			{
+				int save_errno = errno;
+				elog(LOG, "SISC: Wait readly try again, errno %d ... ", save_errno);
+			}
 		}
 	}
 
