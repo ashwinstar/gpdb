@@ -1547,7 +1547,6 @@ typedef struct SortState
 	ExprState  *limitCount;		/* COUNT parameter, or NULL if none */
 	bool		noduplicates;   /* true if discard duplicate rows */
 
-	int 		nsharer_inslice; 
 	void 		*share_lk_ctxt;
 } SortState;
 

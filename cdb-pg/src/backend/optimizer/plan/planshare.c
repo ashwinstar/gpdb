@@ -142,6 +142,7 @@ static ShareInputScan *make_shareinputscan(Plan *inputplan)
 
 	set_plan_share_type((Plan *) sisc, get_plan_share_type(inputplan));
 	set_plan_share_id((Plan *) sisc, get_plan_share_id(inputplan));
+	sisc->driver_slice = -1;
 
 	sisc->plan.qual = NIL;
 	sisc->plan.righttree = NULL;

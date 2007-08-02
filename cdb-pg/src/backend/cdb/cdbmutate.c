@@ -1599,10 +1599,16 @@ static int shareinput_peekmot(ApplyShareInputContext *ctxt)
 	return linitial_int(ctxt->motStack);
 }
 
+typedef struct SliceMarkCtxt
+{
+	int slice_mark;
+	List *seen_slices;
+} SliceMarkCtxt;
+
 typedef struct ShareNodeWithSliceMark
 {
 	Plan *plan;
-	int slice_mark;
+	SliceMarkCtxt *slicemark_ctxt;
 } ShareNodeWithSliceMark;
 
 static bool shareinput_find_sharenode(ApplyShareInputContext *ctxt, int share_id, ShareNodeWithSliceMark *result)
@@ -1623,7 +1629,7 @@ static bool shareinput_find_sharenode(ApplyShareInputContext *ctxt, int share_id
 			if(result)
 			{
 				result->plan = plan;
-				result->slice_mark = lfirst_int(lc_slicemark);
+				result->slicemark_ctxt = lfirst(lc_slicemark);
 			}
 			return true;
 		}
@@ -1663,22 +1669,35 @@ static bool shareinput_mutator_xslice(Node* node, ApplyShareInputContext *ctxt, 
 			bool found = shareinput_find_sharenode(ctxt, sisc->share_id, &plan_slicemark);
 			Assert(found);
 
-			if(plan_slicemark.slice_mark != motId)
+			if(plan_slicemark.slicemark_ctxt->slice_mark != motId)
 			{
 				ShareType stype = get_plan_share_type(plan_slicemark.plan);
 				if(stype == SHARE_MATERIAL || stype == SHARE_SORT)
 					set_plan_share_type_xslice(plan_slicemark.plan);
-				incr_plan_nsharer_xslice(plan_slicemark.plan);
+
+				if(plan_slicemark.slicemark_ctxt->seen_slices == NULL
+						|| !list_member_int(plan_slicemark.slicemark_ctxt->seen_slices, motId))
+				{
+					incr_plan_nsharer_xslice(plan_slicemark.plan);
+					sisc->driver_slice = get_plan_driver_slice(plan_slicemark.plan);
+					plan_slicemark.slicemark_ctxt->seen_slices = lappend_int(plan_slicemark.slicemark_ctxt->seen_slices, motId);
+				}
 			}
 		}
 		else
 		{
+			SliceMarkCtxt *pslicemark_ctxt = palloc0(sizeof(SliceMarkCtxt));
+
 			Assert(shareinput_find_sharenode(ctxt, sisc->share_id, NULL) == false);
 			Assert(get_plan_share_id(plan) == get_plan_share_id(shared));
 			set_plan_driver_slice(shared, motId);
 		
 			ctxt->sharedNodes = lappend(ctxt->sharedNodes, shared);
-			ctxt->sliceMarks = lappend_int(ctxt->sliceMarks, motId);
+
+			pslicemark_ctxt->slice_mark = motId;
+			ctxt->sliceMarks = lappend(ctxt->sliceMarks, pslicemark_ctxt);
+
+			sisc->driver_slice = get_plan_driver_slice(shared);
 		}
 	}
 				

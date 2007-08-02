@@ -544,6 +544,7 @@ _copyShareInputScan(ShareInputScan *from)
 	CopyPlanFields((Plan *) from, (Plan *) newnode);
 	COPY_SCALAR_FIELD(share_type);
 	COPY_SCALAR_FIELD(share_id);
+	COPY_SCALAR_FIELD(driver_slice);
 	return newnode;
 }
 

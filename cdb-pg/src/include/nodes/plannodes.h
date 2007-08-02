@@ -477,6 +477,7 @@ typedef struct ShareInputScan
 
 	ShareType 	share_type; 
 	int 		share_id;
+	int 		driver_slice;
 } ShareInputScan;
 
 /* ----------------

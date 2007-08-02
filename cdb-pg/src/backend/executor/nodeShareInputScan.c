@@ -50,7 +50,6 @@ ShareInputNext(ShareInputScanState *node)
 	ScanDirection dir;
 	bool forward;
 	TupleTableSlot *slot;
-	int driver_slice = 0;
 
 	ShareInputScan * sisc = (ShareInputScan *) node->ss.ps.plan;
 
@@ -87,16 +86,16 @@ ShareInputNext(ShareInputScanState *node)
 				sharedMaterial = (Material *) snState->plan;
 				Assert(IsA(sharedMaterial, Material));
 				Assert(sisc->share_id == sharedMaterial->share_id);
+				Assert(sisc->driver_slice == -1 || sisc->driver_slice == sharedMaterial->driver_slice);
 				share_type = sharedMaterial->share_type;
-				driver_slice = sharedMaterial->driver_slice;
 			}
 			else
 			{
 				sharedSort = (Sort *) snState->plan;
 				Assert(IsA(sharedSort, Sort));
 				Assert(sisc->share_id == sharedSort->share_id);
+				Assert(sisc->driver_slice == -1 || sisc->driver_slice == sharedSort->driver_slice);
 				share_type = sharedSort->share_type;
-				driver_slice = sharedSort->driver_slice;
 			}
 		}
 
@@ -104,8 +103,8 @@ ShareInputNext(ShareInputScanState *node)
 		{
 			char rwfile_prefix[60];
 			shareinput_create_bufname_prefix(rwfile_prefix, sizeof(rwfile_prefix), sisc->share_id);
-			
-			if(driver_slice != currentSliceId)
+		
+			if(sisc->driver_slice >= 0 && sisc->driver_slice != currentSliceId)
 				node->share_lk_ctxt = shareinput_reader_waitready(sisc->share_id);
 
 			node->ts_state = tuplestore_begin_heap_file_readerwriter(rwfile_prefix, false);
@@ -125,13 +124,8 @@ ShareInputNext(ShareInputScanState *node)
 			char rwfile_prefix[60];
 			shareinput_create_bufname_prefix(rwfile_prefix, sizeof(rwfile_prefix), sisc->share_id);
 			
-			if(driver_slice != currentSliceId)
+			if(sisc->driver_slice >= 0 && sisc->driver_slice != currentSliceId)
 				node->share_lk_ctxt = shareinput_reader_waitready(sisc->share_id);
-			else
-			{
-				Assert(snState && IsA(snState, SortState));
-				((SortState *) snState)->nsharer_inslice++;
-			}
 
 			node->ts_state = tuplesort_begin_heap_file_readerwriter(
 					rwfile_prefix, false,
@@ -236,6 +230,7 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 	ExecAssignScanType(&sisstate->ss, tupDesc);
 
 	sisstate->ss.ps.ps_ProjInfo = NULL;
+
 	return sisstate;
 }
 
@@ -588,6 +583,7 @@ void shareinput_writer_waitdone(void *ctxt, int share_id, int nsharer_xslice)
 		}
 	}
 
+	elog(LOG, "SISC: Writer have got all reader done notification");
 	FileClose(pctxt->donef);
 	FileClose(pctxt->readyf);
 

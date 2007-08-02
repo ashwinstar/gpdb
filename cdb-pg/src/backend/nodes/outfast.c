@@ -609,6 +609,7 @@ _outShareInputScan(StringInfo str, ShareInputScan *node)
 
 	WRITE_ENUM_FIELD(share_type, ShareType);
 	WRITE_INT_FIELD(share_id);
+	WRITE_INT_FIELD(driver_slice);
 
 	_outPlanInfo(str, (Plan *) node);
 }
