@@ -423,7 +423,7 @@ def runNetPerfTest():
 
     rmtPath = copyExecOver('netperf')
 
-    result = {}
+    result = []
 
     hostlist = []
     if opt['-f']:
@@ -444,18 +444,24 @@ def runNetPerfTest():
         d = d < len(hostlist) and d or 0
         srchost = hostlist[s]
         rcvhost = hostlist[d]
+        
+        for j in (0, 1):
+            srchost = j == 0 and hostlist[s] or hostlist[d]
+            rcvhost = j == 0 and hostlist[d] or hostlist[s]
 
-        cmd = ssh(srchost, '%s -H %s -p %d -t TCP_STREAM -l 5 -f M -P 0' % (rmtPath, rcvhost, port))
-        (ok, out) = run(cmd)
-        if not ok:
-            cmd = gpssh('killall -9 netserver')
+            cmd = ssh(srchost, '%s -H %s -p %d -t TCP_STREAM -l 5 -f M -P 0' % (rmtPath, rcvhost, port))
             (ok, out) = run(cmd)
-            sys.exit('[Error] netperf failed')
+            if not ok:
+                cmd = gpssh('killall -9 netserver')
+                (ok, out) = run(cmd)
+                sys.exit('[Error] netperf failed')
 
-        out = StringIO.StringIO(out)    
-        for line in out:
-            o = line.split()
-            result['%s,%s' % (srchost,rcvhost)] = o
+            out = StringIO.StringIO(out)    
+            for line in out:
+                o = line.split()
+                l = [srchost, rcvhost]
+                l.extend(o)
+                result.append(l)
 
     cmd = gpssh('killall -9 netserver')
     (ok, out) = run(cmd)
@@ -468,12 +474,9 @@ def printNetResult(title, result):
 #    dest = gethostaddress()
 #    if dest is None:
 #        sys.exit('[Error] get host address failed')
-
     print '%s%s%s' % ('Source Host'.ljust(30), 'Destination Host'.ljust(30), 'MB/sec'.ljust(30))
     for h in result:
-        (recv, send, sendm, time, throughput) = result[h]
-        hosts = h.split(',')
-        print '%s%s%s' % (hosts[0].ljust(30), hosts[1].ljust(30), throughput.ljust(30))
+        print '%s%s%s' % (h[0].ljust(30), h[1].ljust(30), h[6].ljust(30))
 
 
 ################
