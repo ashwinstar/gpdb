@@ -1557,6 +1557,13 @@ static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, ApplyShareInputC
 			}
 		}
 
+		else if(IsA(node, HashJoin))
+		{
+			/* Hash join the hash table is at inner */
+			shareinput_walker(f, (Node *)plan->righttree, ctxt);
+			shareinput_walker(f, (Node *)plan->lefttree, ctxt);
+		}
+
 		else
 		{
 			shareinput_walker(f, (Node *)plan->lefttree, ctxt);

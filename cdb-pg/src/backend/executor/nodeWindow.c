@@ -1392,7 +1392,7 @@ bufferAddRangeTransValue(WindowState *wstate, WindowKey *key,
 
 	wrb = palloc(sizeof(WindowRangeBuffer));
 	wrb->key = palloc(sizeof(Datum) * key->numSortCols);
-	wrb->nulls = palloc(sizeof(Datum) * key->numSortCols);
+	wrb->nulls = palloc(sizeof(bool) * key->numSortCols);
 
 	/* XXX: really need to use datumCopy() here instead */
 	memcpy(wrb->key, vals, sizeof(Datum) * key->numSortCols);
@@ -2082,7 +2082,7 @@ populateFrameBuffers(WindowState *wstate)
 					is_peer = true;
 
 				new_vals = palloc(sizeof(Datum) * key->numSortCols);
-				new_nulls = palloc(sizeof(Datum) * key->numSortCols);
+				new_nulls = palloc(sizeof(bool) * key->numSortCols);
 
 				deform_window_tuple(slot, key->numSortCols, key->sortColIdx,
 									new_vals, new_nulls,
@@ -3739,7 +3739,7 @@ static Datum
 lead_lag_internal(PG_FUNCTION_ARGS, bool is_lead, bool *isnull)
 {
 	int64 offset;
-	int32 val_expr;
+	Datum val_expr;
 	bool val_expr_null = true;
 	WindowRefExprState *ref_state = (WindowRefExprState *) PG_GETARG_POINTER(0);
 	WindowState *window_state = ref_state->windowstate;
