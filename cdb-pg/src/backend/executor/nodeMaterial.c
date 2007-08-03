@@ -138,27 +138,28 @@ ExecMaterial(MaterialState *node)
 			tuplestore_puttupleslot(tuplestorestate, outerslot);
 		}
 
-	}
-
-	/* for share input, material do not need to return any tuple */
-	if(ma->share_type != SHARE_NOTSHARED)
-	{
-		Assert(ma->share_type == SHARE_MATERIAL || ma->share_type == SHARE_MATERIAL_XSLICE);
-		/* 
-		 * if the material is shared across slice, notify consumers that
-		 * it is ready.
-		 */
-		if(ma->share_type == SHARE_MATERIAL_XSLICE) 
+		/* for share input, material do not need to return any tuple */
+		if(ma->share_type != SHARE_NOTSHARED)
 		{
-			if (ma->driver_slice == currentSliceId)
+			Assert(ma->share_type == SHARE_MATERIAL || ma->share_type == SHARE_MATERIAL_XSLICE);
+			/* 
+			 * if the material is shared across slice, notify consumers that
+			 * it is ready.
+			 */
+			if(ma->share_type == SHARE_MATERIAL_XSLICE) 
 			{
-				tuplestore_flush(tuplestorestate);
-				node->share_lk_ctxt = shareinput_writer_notifyready(ma->share_id, ma->nsharer_xslice); 
+				if (ma->driver_slice == currentSliceId)
+				{
+					tuplestore_flush(tuplestorestate);
+					node->share_lk_ctxt = shareinput_writer_notifyready(ma->share_id, ma->nsharer_xslice); 
+				}
 			}
+			return NULL;
 		}
-
-		return NULL;
 	}
+
+	if(ma->share_type != SHARE_NOTSHARED)
+		return NULL;
 
 	/*
 	 * If we are not at the end of the tuplestore, or are going backwards, try

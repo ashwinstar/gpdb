@@ -204,24 +204,27 @@ ExecSort(SortState *node)
 		 */
 		node->sort_Done = true;
 		SO1_printf("ExecSort: %s\n", "sorting done");
-	}
 
-	/* for share input, do not need to return any tuple */
-	if(plannode->share_type != SHARE_NOTSHARED) 
-	{
-		Assert(plannode->share_type == SHARE_SORT || plannode->share_type == SHARE_SORT_XSLICE);
-
-		if(plannode->share_type == SHARE_SORT_XSLICE)
+		/* for share input, do not need to return any tuple */
+		if(plannode->share_type != SHARE_NOTSHARED) 
 		{
-			if(plannode->driver_slice == currentSliceId)
-			{
-				tuplesort_flush(tuplesortstate);
-				node->share_lk_ctxt = shareinput_writer_notifyready(plannode->share_id, plannode->nsharer_xslice);
-			}
-		}
+			Assert(plannode->share_type == SHARE_SORT || plannode->share_type == SHARE_SORT_XSLICE);
 
-		return NULL;
+			if(plannode->share_type == SHARE_SORT_XSLICE)
+			{
+				if(plannode->driver_slice == currentSliceId)
+				{
+					tuplesort_flush(tuplesortstate);
+					node->share_lk_ctxt = shareinput_writer_notifyready(plannode->share_id, plannode->nsharer_xslice);
+				}
+			}
+
+			return NULL;
+		}
 	}
+
+	if(plannode->share_type != SHARE_NOTSHARED)
+		return NULL;
 				
 	SO1_printf("ExecSort: %s\n",
 			   "retrieving tuple from tuplesort");

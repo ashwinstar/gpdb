@@ -472,7 +472,7 @@ void *shareinput_writer_notifyready(int share_id, int xslice)
 
 		if(n==1)
 		{
-			elog(LOG, "SISC: notify ready once");
+			elog(LOG, "SISC: notify ready once, xslice = %d", xslice);
 			FileWrite(pctxt->readyf, "a", 1);
 		}
 
@@ -494,8 +494,8 @@ void *shareinput_writer_notifyready(int share_id, int xslice)
 			else
 			{
 				Assert(bsize == 1 && b == 'b');
-				elog(LOG, "SISC: notify ready succeed 1");
 				--xslice;
+				elog(LOG, "SISC: notify ready succeed 1, xslice = %d", xslice);
 			}
 		}
 		else
