@@ -349,14 +349,21 @@ def findCmdInPath(file):
 def gethostaddress():
     import commands
     ifconfig_path = findCmdInPath('ifconfig')
+    ping_path = findCmdInPath('ping')
+
     if ifconfig_path is None:
         sys.exit('[Error] ifconfig not found')
 
     out = commands.getoutput("%s -a | grep 'inet' | grep -v '127.' | awk '{print $2}' | cut -d: -f2" % ifconfig_path)
     hosts = out.split()
     for a in hosts:
-        if a != '':
+        if a == '':
+            continue
+        cmd = gpssh('%s -c 1 %s' % (ping_path, a))
+        (ok, out) = run(cmd)
+        if ok:
             return a
+            
     return None
 
 #############
@@ -370,6 +377,7 @@ def runNetPerfTest():
         print '-------------------'
         print ' NETPERF Test'
         print '-------------------'
+
 
     cmd = '%s/lib/netserver -p %d > /dev/null 2>&1' % (sys.path[0], port)
     (ok, out) = run(cmd)
