@@ -1115,7 +1115,7 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
     }
 	
 	elog(DEBUG2, "hashagg nbuckets = %d, nentries = %d, nbatches = %d", (int)nK, (int)nH, (int)nB);
-	elog(DEBUG1, "hashagg expected memory footprint = %d",
+	elog(DEBUG2, "hashagg expected memory footprint = %d",
 		(int)( nH*entrywidth + nK*sizeof(HashAggEntry*) + nB*zB));
 	
 	return true;
