@@ -143,7 +143,7 @@ compress_string(const char *src, int uncompressed_size, int *size)
 		elog(ERROR,"Compression failed");
 		
 	*size = compressed_size + sizeof(int);
-	elog(DEBUG1,"Compressed from %d to %d ",(int)uncompressed_size,(int)*size);
+	elog(DEBUG2,"Compressed from %d to %d ",(int)uncompressed_size,(int)*size);
 
 	return (char *)result;
 }
