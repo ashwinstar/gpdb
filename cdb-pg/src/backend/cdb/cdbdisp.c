@@ -2773,7 +2773,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	// must have somebody to dispatch to.
 	Assert(sliceTbl != NULL || pQueryParms->primary_gang_id > 0 || pQueryParms->mirror_gang_id > 0);
 	
-	if (DEBUG2 >= log_min_messages)
+	if (DEBUG1 >= log_min_messages)
 	{
 		char		msec_str[32];
 		switch (check_log_duration(msec_str, false))
@@ -3017,7 +3017,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 						errmsg_internal("Unable to dispatch plan.")));
 	}
 	
-	if (DEBUG2 >= log_min_messages)
+	if (DEBUG1 >= log_min_messages)
 	{
 		char		msec_str[32];
 		switch (check_log_duration(msec_str, false))

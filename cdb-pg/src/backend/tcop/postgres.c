@@ -3774,7 +3774,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			
 			MemoryContextSwitchTo(MessageContext);
 			
-			if (DEBUG2 >= log_min_messages)
+			if (DEBUG1 >= log_min_messages)
 			{
 				switch (check_log_duration(msec_str, false))
 				{

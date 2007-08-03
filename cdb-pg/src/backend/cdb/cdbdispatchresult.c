@@ -888,7 +888,7 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 	 * 
 	 */
 	
-	elog(DEBUG1,"relayResults is starting");
+	elog(DEBUG2,"relayResults is starting");
 
 	dispatchResult = &pPrimaryResults->resultArray[0];
 	Assert(dispatchResult);
@@ -1056,7 +1056,6 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 						for (j=0; j<nfields; j++)
 						{
 							char * v = PQgetvalue(p, k, j);
-							elog(DEBUG2," result %s",v);
 							pq_sendcountedtext(&buf, v, strlen(v), false);
 						}
 						
@@ -1133,7 +1132,6 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 						for (j=0; j<nfields; j++)
 						{
 							char * v = PQgetvalue(p, k, j);
-							elog(DEBUG2," result %s",v);
 							pq_sendcountedtext(&buf, v, strlen(v), false);
 						}
 						
@@ -1187,7 +1185,7 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 		}
 	}
 	
-	elog(DEBUG1,"relayresults is done. completionTag %s  errmsgbuf.len=%d",completionTag, errmsgbuf.len);
+	elog(DEBUG2,"relayresults is done. completionTag %s  errmsgbuf.len=%d",completionTag, errmsgbuf.len);
 	
 	if (errmsgbuf.len > 0)
 		ereport(ERROR, (errmsg("%s", errmsgbuf.data)));
