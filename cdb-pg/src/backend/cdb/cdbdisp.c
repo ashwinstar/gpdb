@@ -2780,7 +2780,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		{
 			case 1:
 			case 2:
-				ereport(LOG, (errmsg("duration to start of dispatch send: %s ms", msec_str)));
+				ereport(LOG, (errmsg("duration to start of dispatch send (root %d): %s ms", pQueryParms->rootIdx, msec_str)));
 				break;
 		}
 	}
@@ -2860,7 +2860,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			/*
 			 *  Non-sliced, used specified gangs
 			 */
-			elog(DEBUG1,"primary %d mirror %d",pQueryParms->primary_gang_id,pQueryParms->mirror_gang_id);
+			elog(DEBUG2,"primary %d mirror %d",pQueryParms->primary_gang_id,pQueryParms->mirror_gang_id);
 			if (pQueryParms->primary_gang_id > 0)
 				primaryGang = findGangById(pQueryParms->primary_gang_id);
 			if (pQueryParms->mirror_gang_id > 0)
@@ -3024,7 +3024,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		{
 			case 1:
 			case 2:
-				ereport(LOG, (errmsg("duration to dispatch out: %s ms", msec_str)));
+				ereport(LOG, (errmsg("duration to dispatch out (root %d): %s ms", pQueryParms->rootIdx,msec_str)));
 				break;
 		}
 	}

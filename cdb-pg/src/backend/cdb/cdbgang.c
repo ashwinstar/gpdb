@@ -27,6 +27,7 @@
 #include "commands/variable.h"
 #include "nodes/execnodes.h"    /* CdbProcess, Slice, SliceTable */
 #include "postmaster/postmaster.h"
+#include "tcop/tcopprot.h"
 
 extern int	CommitDelay;
 extern int	CommitSiblings;
@@ -247,6 +248,17 @@ createDispatchAgents(void)
 
     free(buffer.data);
     elog(DEBUG1, "createDispatchAgent completed successfully");
+    if (DEBUG1 >= log_min_messages)
+    	{
+    		char		msec_str[32];
+    		switch (check_log_duration(msec_str, false))
+    		{
+    			case 1:
+    			case 2:
+    				ereport(LOG, (errmsg("duration to dispatch agents created: %s ms", msec_str)));
+    				break;
+    		}
+    	}
 	
 	MemoryContextSwitchTo(oldContext);
 	
@@ -502,6 +514,18 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 			
 		newGangDefinition->all_valid_segdbs_connected = true;
 		newGangDefinition->active = false;
+		
+		if (DEBUG1 >= log_min_messages)
+			{
+				char		msec_str[32];
+				switch (check_log_duration(msec_str, false))
+				{
+					case 1:
+					case 2:
+						ereport(LOG, (errmsg("duration to gang_id %d created: %s ms", gang_id,msec_str)));
+						break;
+				}
+			}
 		
 		MemoryContextSwitchTo(oldContext);
 		
