@@ -86,7 +86,6 @@ ShareInputNext(ShareInputScanState *node)
 				sharedMaterial = (Material *) snState->plan;
 				Assert(IsA(sharedMaterial, Material));
 				Assert(sisc->share_id == sharedMaterial->share_id);
-				Assert(sisc->driver_slice == -1 || sisc->driver_slice == sharedMaterial->driver_slice);
 				share_type = sharedMaterial->share_type;
 			}
 			else
@@ -94,7 +93,6 @@ ShareInputNext(ShareInputScanState *node)
 				sharedSort = (Sort *) snState->plan;
 				Assert(IsA(sharedSort, Sort));
 				Assert(sisc->share_id == sharedSort->share_id);
-				Assert(sisc->driver_slice == -1 || sisc->driver_slice == sharedSort->driver_slice);
 				share_type = sharedSort->share_type;
 			}
 		}
@@ -103,10 +101,7 @@ ShareInputNext(ShareInputScanState *node)
 		{
 			char rwfile_prefix[60];
 			shareinput_create_bufname_prefix(rwfile_prefix, sizeof(rwfile_prefix), sisc->share_id);
-		
-			if(sisc->driver_slice >= 0 && sisc->driver_slice != currentSliceId)
-				node->share_lk_ctxt = shareinput_reader_waitready(sisc->share_id, sisc->need_wait_ready);
-
+	
 			node->ts_state = tuplestore_begin_heap_file_readerwriter(rwfile_prefix, false);
 			tuplestore_begin_pos((Tuplestorestate *) node->ts_state, (TuplestorePos **)(&node->ts_pos));
 			tuplestore_rescan_pos((Tuplestorestate *) node->ts_state, (TuplestorePos *)node->ts_pos); 
@@ -124,9 +119,6 @@ ShareInputNext(ShareInputScanState *node)
 			char rwfile_prefix[60];
 			shareinput_create_bufname_prefix(rwfile_prefix, sizeof(rwfile_prefix), sisc->share_id);
 			
-			if(sisc->driver_slice >= 0 && sisc->driver_slice != currentSliceId)
-				node->share_lk_ctxt = shareinput_reader_waitready(sisc->share_id, sisc->need_wait_ready);
-
 			node->ts_state = tuplesort_begin_heap_file_readerwriter(
 					rwfile_prefix, false,
 					NULL, 0, NULL, NULL, work_mem/1024, true);
@@ -230,8 +222,19 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 	ExecAssignScanType(&sisstate->ss, tupDesc);
 
 	sisstate->ss.ps.ps_ProjInfo = NULL;
-
+	
 	return sisstate;
+}
+
+void
+ExecSliceDependencyShareInputScan(ShareInputScanState *node)
+{
+	ShareInputScan * sisc = (ShareInputScan *) node->ss.ps.plan;
+
+	elog(LOG, "SISC exec dependency on slice %d, driver_slice is %d", currentSliceId, sisc->driver_slice);
+
+	if(sisc->driver_slice == currentSliceId)
+		node->share_lk_ctxt = shareinput_reader_waitready(sisc->share_id);
 }
 
 /* ------------------------------------------------------------------
@@ -376,7 +379,7 @@ typedef struct ShareInput_Lk_Context
 	int  zcnt;
 } ShareInput_Lk_Context;
 
-void *shareinput_reader_waitready(int share_id, bool fneedwait)
+void *shareinput_reader_waitready(int share_id)
 {
 	char lkname[100];
 	mpp_fd_set rset;
@@ -398,39 +401,35 @@ void *shareinput_reader_waitready(int share_id, bool fneedwait)
 
 	pctxt->zcnt = 0;
 
-	if(fneedwait)
+	fd = FileGetFd(pctxt->readyf);
+
+	while(1)
 	{
-		fd = FileGetFd(pctxt->readyf);
+		CHECK_FOR_INTERRUPTS();
 
-		while(1)
+		MPP_FD_ZERO(&rset);
+		MPP_FD_SET(fd, &rset);
+
+		tval.tv_sec = 1;
+		tval.tv_usec = 0;
+
+		n = select(fd+1, (fd_set *) &rset, NULL, NULL, &tval);
+
+		if(n==1)
 		{
-			CHECK_FOR_INTERRUPTS();
+			asize = FileRead(pctxt->readyf, &a, 1);
+			Assert(asize == 1 && a == 'a');
 
-			MPP_FD_ZERO(&rset);
-			MPP_FD_SET(fd, &rset);
-
-			tval.tv_sec = 1;
-			tval.tv_usec = 0;
-
-			n = select(fd+1, (fd_set *) &rset, NULL, NULL, &tval);
-
-			if(n==1)
-			{
-				asize = FileRead(pctxt->readyf, &a, 1);
-				Assert(asize == 1 && a == 'a');
-
-				elog(LOG, "SISC: Wait ready get a, now write b");
-				FileWrite(pctxt->donef, "b", 1);
-				break;
-			}
-			else
-			{
-				int save_errno = errno;
-				elog(LOG, "SISC: Wait readly try again, errno %d ... ", save_errno);
-			}
+			elog(LOG, "SISC: Wait ready get a, now write b");
+			FileWrite(pctxt->donef, "b", 1);
+			break;
+		}
+		else
+		{
+			int save_errno = errno;
+			elog(LOG, "SISC: Wait readly try again, errno %d ... ", save_errno);
 		}
 	}
-
 	return (void *) pctxt;
 }
 

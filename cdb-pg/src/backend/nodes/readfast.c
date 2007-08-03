@@ -2398,8 +2398,7 @@ _readMaterial(const char ** str)
 	READ_INT_FIELD(share_id);
 	READ_INT_FIELD(driver_slice);
 	READ_INT_FIELD(nsharer);
-	READ_INT_FIELD(nsharer_xslice_notify_ready);
-	READ_INT_FIELD(nsharer_xslice_wait_done);
+	READ_INT_FIELD(nsharer_xslice);
 
     readPlanInfo(str, (Plan *)local_node);
 
@@ -2417,7 +2416,6 @@ _readShareInputScan(const char ** str)
 	READ_ENUM_FIELD(share_type, ShareType);
 	READ_INT_FIELD(share_id);
 	READ_INT_FIELD(driver_slice);
-	READ_BOOL_FIELD(need_wait_ready);
 
 	readPlanInfo(str, (Plan *)local_node);
 
@@ -2451,8 +2449,7 @@ _readSort(const char ** str)
 	READ_INT_FIELD(share_id);
 	READ_INT_FIELD(driver_slice);
 	READ_INT_FIELD(nsharer);
-	READ_INT_FIELD(nsharer_xslice_notify_ready);
-	READ_INT_FIELD(nsharer_xslice_wait_done);
+	READ_INT_FIELD(nsharer_xslice);
 
 	READ_DONE();
 }

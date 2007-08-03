@@ -350,6 +350,39 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 	return result;
 }
 
+/* ----------------------------------------------------------------
+ *		ExecSliceDependencyNode
+ *
+ *	 	Exec dependency, block till slice dependency are met	
+ * ----------------------------------------------------------------
+ */
+void 
+ExecSliceDependencyNode(PlanState *node)
+{
+	CHECK_FOR_INTERRUPTS();
+
+	if(node == NULL)
+		return;
+
+	if(nodeTag(node) == T_ShareInputScanState)
+		ExecSliceDependencyShareInputScan((ShareInputScanState *) node);
+	else if(nodeTag(node) == T_SubqueryScanState)
+	{
+		SubqueryScanState *subq = (SubqueryScanState *) node;
+		ExecSliceDependencyNode(subq->subplan);
+	}
+	else if(nodeTag(node) == T_AppendState)
+	{
+		int i=0;
+		AppendState *app = (AppendState *) node;
+
+		for(; i<app->as_nplans; ++i)
+			ExecSliceDependencyNode(app->appendplans[i]);
+	}
+
+	ExecSliceDependencyNode(outerPlanState(node));
+	ExecSliceDependencyNode(innerPlanState(node));
+}
 
 /* ----------------------------------------------------------------
  *		ExecProcNode

@@ -114,25 +114,14 @@ static void incr_plan_nsharer(Plan *p)
 	}
 }
 
-void incr_plan_nsharer_xslice_wait_done(Plan *p)
+void incr_plan_nsharer_xslice(Plan *p)
 {
 	if(IsA(p, Material))
-		((Material *) p)->nsharer_xslice_wait_done++;
+		((Material *) p)->nsharer_xslice++;
 	else
 	{
 		Assert(IsA(p, Sort));
-		((Sort *) p)->nsharer_xslice_wait_done++;
-	}
-}
-
-void incr_plan_nsharer_xslice_notify_ready(Plan *p)
-{
-	if(IsA(p, Material))
-		((Material *) p)->nsharer_xslice_notify_ready++;
-	else
-	{
-		Assert(IsA(p, Sort));
-		((Sort *) p)->nsharer_xslice_notify_ready++;
+		((Sort *) p)->nsharer_xslice++;
 	}
 }
 
@@ -154,7 +143,6 @@ static ShareInputScan *make_shareinputscan(Plan *inputplan)
 	set_plan_share_type((Plan *) sisc, get_plan_share_type(inputplan));
 	set_plan_share_id((Plan *) sisc, get_plan_share_id(inputplan));
 	sisc->driver_slice = -1;
-	sisc->need_wait_ready = false;
 
 	sisc->plan.qual = NIL;
 	sisc->plan.righttree = NULL;

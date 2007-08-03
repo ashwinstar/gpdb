@@ -20,4 +20,6 @@ extern void ExecShareInputScanMarkPos(ShareInputScanState *node);
 extern void ExecShareInputScanRestrPos(ShareInputScanState *node);
 extern void ExecShareInputScanReScan(ShareInputScanState *node, ExprContext *exprCtxt);
 
+extern void ExecSliceDependencyShareInputScan(ShareInputScanState *node);
+
 #endif   /* NODESHAREINPUTSCAN_H */

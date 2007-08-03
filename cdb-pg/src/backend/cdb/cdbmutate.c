@@ -1479,35 +1479,12 @@ DoesDistributionHaveDependencies(Oid relOid, GpPolicy * policy)
  * depends on the fact that the plan is a tree.  We first mutate the DAG
  * to a tree.  
  * 
- * NOTE: The shareinput_walker mutate righttree first, then lefttree.  This
- * order is important.  For (Hash/Merge) join, it will finish execute righttree (outer)
- * before start execute lefttree (inner).  We need to put the underlying share 
- * under the SISC that will start first.  Otherwise, we have a deadlock. 
- *
  * Next, we will need to decide if the share is cross slices.  If the share 
  * is not cross slice, we do not need the syncrhonization, and it is possible to 
  * keep the Material/Sort in memory to save a sort.
  *
- * If it is cross slice, there are two cases:
- * 		1. 	The SISC is not in the same slice as the underlying share, but the SISC is in 
- * 			the ancestor of the underlying share.
- *
- *			In this case, we DO NOT need underlying share to notify ready, but we need
- *			the underlying share to wait till done.
- *			NOTE: We cannot notify ready in this case.  Notify ready will block till all
- * 			node need notify are notified.  In this case, underlying share will block, because
- *			the SISC may not get a chance to start (Hash/Merge join). 
- *			The fact that the 1. SISC is in Ancestor slice, 2. the underlying share will start
- *			first (see DAG to TREE) guanrantees the underlying share has finished execution 
- * 			when the SISC starts.
- *
- *		2.	The SISC is not in the same slice as the underlying share and the SISC is not 
- * 			in an ancestor slice.
- *
- *			In this case, we need both notify ready and wait done.
- *
- * No matter which case, if there are multi SISCs in the slice, we just need one SISC (the one
- * that start execution first, this is important) to do the synchronization.
+ * It is essential that we walk the tree in the same order as the ExecProcNode start
+ * execution, otherwise, deadlock may rise.
  */
 
 /* Walk the tree for shareinput.
@@ -1558,16 +1535,34 @@ static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, ApplyShareInputC
 				shareinput_walker(f, (Node *)lfirst(cell), ctxt);
 		}
 
-		if(IsA(node, SubqueryScan))
+		else if(IsA(node, SubqueryScan))
 		{
 			SubqueryScan *subqscan = (SubqueryScan *) node;
 			shareinput_walker(f, (Node *) subqscan->subplan, ctxt);
 		}
 
-		/* The order of recurisive done is important.  See comment above */
-		shareinput_walker(f, (Node *)plan->righttree, ctxt);
-		shareinput_walker(f, (Node *)plan->lefttree, ctxt);
-		shareinput_walker(f, (Node *)plan->initPlan, ctxt);
+		else if(IsA(node, NestLoop))
+		{
+			/* Nest loop join is strange.  Exec order depends on prefetch_inner */
+			NestLoop *nl = (NestLoop *) node;
+			if(nl->join.prefetch_inner)
+			{
+				shareinput_walker(f, (Node *)plan->righttree, ctxt);
+				shareinput_walker(f, (Node *)plan->lefttree, ctxt);
+			}
+			else
+			{
+				shareinput_walker(f, (Node *)plan->lefttree, ctxt);
+				shareinput_walker(f, (Node *)plan->righttree, ctxt);
+			}
+		}
+
+		else
+		{
+			shareinput_walker(f, (Node *)plan->lefttree, ctxt);
+			shareinput_walker(f, (Node *)plan->righttree, ctxt);
+			shareinput_walker(f, (Node *)plan->initPlan, ctxt);
+		}
 	}
 
 	(*f)(node, ctxt, true);
@@ -1638,17 +1633,10 @@ static int shareinput_peekmot(ApplyShareInputContext *ctxt)
 	return linitial_int(ctxt->motStack);
 }
 
-typedef struct SliceMarkCtxt
-{
-	int slice_mark;
-	List *seen_slices;  /* if we have seen this slice, so we will do synchronization only once per slice */
-	List *motStack;		/* to decide if I am in an ancestor slice */ 
-} SliceMarkCtxt;
-
 typedef struct ShareNodeWithSliceMark
 {
 	Plan *plan;
-	SliceMarkCtxt *slicemark_ctxt;
+	int slice_mark;
 } ShareNodeWithSliceMark;
 
 static bool shareinput_find_sharenode(ApplyShareInputContext *ctxt, int share_id, ShareNodeWithSliceMark *result)
@@ -1669,7 +1657,7 @@ static bool shareinput_find_sharenode(ApplyShareInputContext *ctxt, int share_id
 			if(result)
 			{
 				result->plan = plan;
-				result->slicemark_ctxt = lfirst(lc_slicemark);
+				result->slice_mark = lfirst_int(lc_slicemark);
 			}
 			return true;
 		}
@@ -1707,52 +1695,27 @@ static bool shareinput_mutator_xslice(Node* node, ApplyShareInputContext *ctxt, 
 		{
 			ShareNodeWithSliceMark plan_slicemark;
 			bool found = shareinput_find_sharenode(ctxt, sisc->share_id, &plan_slicemark);
+			int  shareSliceId = get_plan_driver_slice(plan_slicemark.plan);
 			Assert(found);
 
-			/* Check if cross slice */
-			if(plan_slicemark.slicemark_ctxt->slice_mark != motId)
+			if(shareSliceId != motId)
 			{
 				ShareType stype = get_plan_share_type(plan_slicemark.plan);
 				if(stype == SHARE_MATERIAL || stype == SHARE_SORT)
 					set_plan_share_type_xslice(plan_slicemark.plan);
 
-				/* Check if we have already seen the slice */
-				if(plan_slicemark.slicemark_ctxt->seen_slices == NULL
-						|| !list_member_int(plan_slicemark.slicemark_ctxt->seen_slices, motId))
-				{
-					/* We have not seen the slice yet. */
-					sisc->driver_slice = get_plan_driver_slice(plan_slicemark.plan);
-					plan_slicemark.slicemark_ctxt->seen_slices = lappend_int(plan_slicemark.slicemark_ctxt->seen_slices, motId);
-
-					/* Both case 1 and case 2 need wait done */
-					incr_plan_nsharer_xslice_wait_done(plan_slicemark.plan);
-
-					/* Check if this is ancestor slice of underlying share */
-					if(!list_member_int(plan_slicemark.slicemark_ctxt->motStack, motId))
-					{
-						/* if not ancestor, we need notify ready as well */
-						incr_plan_nsharer_xslice_notify_ready(plan_slicemark.plan);
-						sisc->need_wait_ready = true;
-					}
-				}
+				incr_plan_nsharer_xslice(plan_slicemark.plan);
+				sisc->driver_slice = motId;
 			}
 		}
 		else
 		{
-			SliceMarkCtxt *pslicemark_ctxt = palloc0(sizeof(SliceMarkCtxt));
-
 			Assert(shareinput_find_sharenode(ctxt, sisc->share_id, NULL) == false);
 			Assert(get_plan_share_id(plan) == get_plan_share_id(shared));
 			set_plan_driver_slice(shared, motId);
 		
 			ctxt->sharedNodes = lappend(ctxt->sharedNodes, shared);
-
-			pslicemark_ctxt->slice_mark = motId;
-			pslicemark_ctxt->motStack = copyObject(ctxt->motStack);
-
-			ctxt->sliceMarks = lappend(ctxt->sliceMarks, pslicemark_ctxt);
-
-			sisc->driver_slice = get_plan_driver_slice(shared);
+			ctxt->sliceMarks = lappend_int(ctxt->sliceMarks, motId); 
 		}
 	}
 				

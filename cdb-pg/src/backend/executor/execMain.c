@@ -1683,6 +1683,11 @@ ExecutePlan(EState *estate,
 	}
 
 	/*
+	 * Make sure slice dependencies are met
+	 */
+	ExecSliceDependencyNode(planstate);
+
+	/*
 	 * Loop until we've processed the proper number of tuples from the plan.
 	 */
 

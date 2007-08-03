@@ -153,7 +153,7 @@ ExecMaterial(MaterialState *node)
 			if (ma->driver_slice == currentSliceId)
 			{
 				tuplestore_flush(tuplestorestate);
-				node->share_lk_ctxt = shareinput_writer_notifyready(ma->share_id, ma->nsharer_xslice_notify_ready);
+				node->share_lk_ctxt = shareinput_writer_notifyready(ma->share_id, ma->nsharer_xslice); 
 			}
 		}
 
@@ -371,9 +371,8 @@ ExecEndMaterial(MaterialState *node)
 	if (node->tuplestorestate != NULL)
 	{
 		if(ma->share_type == SHARE_MATERIAL_XSLICE)
-		{
-			shareinput_writer_waitdone(node->share_lk_ctxt, ma->share_id, ma->nsharer_xslice_wait_done);
-		}
+			shareinput_writer_waitdone(node->share_lk_ctxt, ma->share_id, ma->nsharer_xslice);
+
 		tuplestore_end((Tuplestorestate *) node->tuplestorestate); 
 		node->tuplestorestate = NULL;
 	}

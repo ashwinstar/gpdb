@@ -478,7 +478,6 @@ typedef struct ShareInputScan
 	ShareType 	share_type; 
 	int 		share_id;
 	int 		driver_slice;   	/* slice id that will execute the underlying material/sort */
-	bool 		need_wait_ready;    /* if I need to explicitly wait underlying materila/sort finish */
 } ShareInputScan;
 
 /* ----------------
@@ -495,8 +494,7 @@ typedef struct Material
 	int 		share_id;
 	int         driver_slice; 					/* slice id that will execute this material */
 	int         nsharer;						/* number of sharer */
-	int 		nsharer_xslice_notify_ready; 	/* number of sharer need notify */
-	int 		nsharer_xslice_wait_done; 		/* number of sharer will notfiy done */
+	int 		nsharer_xslice;					/* number of sharer cross slice */ 
 } Material;
 
 
@@ -520,8 +518,7 @@ typedef struct Sort
 	int 		share_id;
 	int 		driver_slice;   /* slice id that will execute this sort */
 	int         nsharer;        /* number of sharer */
-	int 		nsharer_xslice_notify_ready; 	/* number of sharer need notify */
-	int 		nsharer_xslice_wait_done; 		/* number of sharer will notfiy done */
+	int 		nsharer_xslice;					/* number of sharer cross slice */ 
 } Sort;
 
 /* ---------------
