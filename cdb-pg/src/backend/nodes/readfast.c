@@ -957,6 +957,7 @@ _readWindowRef(const char ** str)
 	READ_OID_FIELD(restype);
 	READ_NODE_FIELD(args);
 	READ_UINT_FIELD(winlevelsup);
+	READ_BOOL_FIELD(windistinct);
 	READ_UINT_FIELD(winspec);
 	READ_UINT_FIELD(winindex);
 	READ_ENUM_FIELD(winstage, WinStage);

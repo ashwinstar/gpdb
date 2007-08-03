@@ -259,6 +259,9 @@ static RangeTblEntry *package_plan_as_rte(Query *query, Plan *plan, Alias *eref,
 
 
 #ifdef BRIAN_SANDBOX
+
+static bool gp_enable_sequential_window_plans = true;
+
 /* Helper function to get nth windowinfo's partkey len */
 static int get_windowctxt_partkey_len(void *ctxt, int nth)
 {
@@ -351,7 +354,10 @@ window_planner(PlannerInfo *root, double tuple_fraction, List **pathkeys_ptr)
 	else
 	{
 #ifdef BRIAN_SANDBOX
-		return plan_sequential_window_query(root, context, pathkeys_ptr);
+		if ( gp_enable_sequential_window_plans )
+			return plan_sequential_window_query(root, context, pathkeys_ptr);
+		else
+			return plan_parallel_window_query(root, context, pathkeys_ptr);
 #else
 		return plan_parallel_window_query(root, context, pathkeys_ptr);
 #endif BRIAN_SANDBOX
@@ -1694,6 +1700,7 @@ static Plan *plan_sequential_window_query(PlannerInfo *root, WindowContext *cont
 	int hi, lo;
 	TargetEntry *tle;
 	AttrNumber resno;
+	ListCell *lc;
 		
 	Assert ( pathkeys_ptr != NULL );
 	
@@ -1735,6 +1742,7 @@ static Plan *plan_sequential_window_query(PlannerInfo *root, WindowContext *cont
 		
 		if ( IsA(tle->expr, Var) )
 		{
+			Var *var = (Var*)tle->expr;
 			context->offset_upper_varattrnos[index_of_var(var,context)] = resno;
 		}
 	}
@@ -1772,6 +1780,7 @@ static Plan *plan_sequential_window_query(PlannerInfo *root, WindowContext *cont
 											);
 	}
 	
+	elog(ERROR, "End of working code in plan_sequential_window_query().");
 	/* Generate coplans for each WindowInfo								  								  
 	context->coplan_count = 0;
 	
@@ -2007,11 +2016,14 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 		 */
 		window_plan = (Plan *)make_window(
 						root,
-						copyObject(window_plan->tlist),
+						copyObject(window_plan->targetlist),
 						winfo->partkey_len,
 						NULL, /* TODO partColIdx */
 						NIL, /* TODO windowKeys */
 						window_plan);
+
+
+	elog(ERROR, "End of working code in plan_sequential_stage().");
 		
 		/* Per SpecInfo */
 		/*  Per WindowRef/RefInfo 
@@ -2507,7 +2519,7 @@ static Aggref* makeWindowAggref(WindowRef *winref)
 	aggref->args = copyObject(winref->args);
 	aggref->agglevelsup = 0;
 	aggref->aggstar = false; /* at this point in processing, doesn't matter */
-	aggref->aggdistinct = false; /* not allowed in Window aggregates */
+	aggref->aggdistinct = winref->windistinct;
 	aggref->aggstage = AGGSTAGE_NORMAL;
 
 	return aggref;

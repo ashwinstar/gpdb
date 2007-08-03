@@ -285,6 +285,7 @@ typedef struct WindowRef
 	Oid			restype;		/* type Oid of result of the window function */
 	List	   *args;			/* arguments */	
 	Index		winlevelsup;	/* > 0 if win belongs to outer query  */
+	bool		windistinct;	/* TRUE if it's agg(DISTINCT ...) */
 	Index		winspec;		/* index into Query window clause */
 	
 	/* Following fields are significant only in a Plan tree. */
