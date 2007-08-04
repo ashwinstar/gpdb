@@ -2988,7 +2988,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		 */
 		if (sliceVector && slice && iSlice+1 < nSlices && slice->primary_gang_id == 1)
 		{
-			elog(DEBUG1,"sleep...")
+			elog(DEBUG1,"sleep...");
 			pg_usleep(200); /* time in microsecs */
 			elog(DEBUG1,"sleep done");
 		}
