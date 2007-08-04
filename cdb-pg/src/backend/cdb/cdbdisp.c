@@ -2936,6 +2936,8 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				break;
 		}
 			
+		if (primaryGang->gang_id == 1)
+			elog(DEBUG1,"dispatch to primary gang");
 		/*
 		 * Dispatch the plan to our primaryGang.
 		 * Doesn't wait for it to finish.
@@ -2985,7 +2987,11 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		 * returning, regardless of what we say.
 		 */
 		if (sliceVector && slice && iSlice+1 < nSlices && slice->primary_gang_id == 1)
-			pg_usleep(100); /* time in microsecs */
+		{
+			elog(DEBUG1,"sleep...")
+			pg_usleep(200); /* time in microsecs */
+			elog(DEBUG1,"sleep done");
+		}
 	}
 
 	
