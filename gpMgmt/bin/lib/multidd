@@ -115,6 +115,7 @@ def parseCommandLine():
     if opt['-S'] < 0: usage('Error: invalid -S filesz parameter')
     if opt['-B'] <= 0: usage('Error: invalid -B blocksz parameter')
     if opt['-B'] > 1024*1024: usage('Error: maximum 1MB for -B parameter')
+    if opt['-S'] < opt['-B']: opt['-S'] = opt['-B']
     if len(opt['-i']) != len(opt['-o']): usage('Error: -i and -o parameters must pair up')
     if len(opt['-i']) == 0: usage('Error: missing -i and -o parameters')
 
