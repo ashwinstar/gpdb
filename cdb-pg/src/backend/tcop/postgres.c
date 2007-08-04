@@ -3692,7 +3692,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				isSetOrReset = true;
 				
 
-			elog(DEBUG1, "stmt to be redispatched received from QD: %20s.",query_string);
+			elog(DEBUG2, "stmt to be redispatched received from QD: %20s.",query_string);
 
 			/*
 			 * The appropriate UserIDs must be set, because they are picked up by dispatch
@@ -3768,7 +3768,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				
 				 
 			}
-			elog(DEBUG1,"Dispatch Agent checking dispatch results");
+			elog(DEBUG2,"Dispatch Agent checking dispatch results");
 
 			CdbCheckDispatchResult(dispatchThreads, false);
 			
@@ -3862,7 +3862,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			{
 				case 1:
 				case 2:
-					ereport(LOG,  (errmsg("duration: %s ms  statement: %s",
+					ereport(LOG,  (errmsg("duration: %s ms  statement: %20s",
 				             msec_str, query_string) ));
 					break;
 			}
