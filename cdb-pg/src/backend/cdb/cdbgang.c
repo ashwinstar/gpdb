@@ -716,7 +716,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 				   segdbDesc->errcode == 0 &&
 				   segdbDesc->error_message.len == 0);
 
-            if (gp_log_gang >= GPVARS_VERBOSITY_TERSE)
+            if (gp_log_gang >= GPVARS_VERBOSITY_VERBOSE)
                 elog(LOG, "Connected to %s motionListenerPort=%d with options %s",
 				     segdbDesc->whoami,
 				     segdbDesc->motionListener,
@@ -2144,7 +2144,7 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
 				   segdbDesc->errcode == 0 &&
 				   segdbDesc->error_message.len == 0);
 
-            if (gp_log_gang >= GPVARS_VERBOSITY_TERSE || DEBUG4 >= log_min_messages)
+            if (gp_log_gang >= GPVARS_VERBOSITY_VERBOSE || DEBUG4 >= log_min_messages)
                 elog(LOG, "Connected to %s motionListenerPort=%d with options %s",
 				     segdbDesc->whoami,
 				     segdbDesc->motionListener,
