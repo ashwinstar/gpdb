@@ -6,8 +6,15 @@
 #ifndef TUPSTORE_NEW_H
 #define TUPSTORE_NEW_H
 
+#include "executor/tuptable.h"
+
 /* Opaque data types */
-typedef struct NTupleStorePos NTupleStorePos;
+struct NTupleStorePos
+{
+	long blockn;
+	int slotn;
+} NTupleStorePos;
+
 typedef struct NTupleStoreAccessor NTupleStoreAccessor;
 typedef struct NTupleStore NTupleStore;
 
@@ -52,8 +59,9 @@ extern bool ntuplestore_acc_current_tupleslot(NTupleStoreAccessor *tsa, TupleTab
 extern bool ntuplestore_acc_current_data(NTupleStoreAccessor *tsa, void **data, int *len);
 
 
-/* Tell/seek postion of accessor.  Tell may return NULL if next/prev goes beyond last entry */
-extern NTupleStorePos *ntuplestore_acc_tell(NTupleStoreAccessor *tsa);
+/* Tell/seek postion of accessor. */
+/* Tell fill in the pos, return false if accessor points to an invalid position */
+extern bool ntuplestore_acc_tell(NTupleStoreAccessor *tsa, NTupleStorePos *pos);
 
 /* put the current row at a certain pos (or first/last).  Return false pos is invalid */
 extern bool ntuplestore_acc_seek(NTupleStoreAccessor *tsa, NTupleStorePos *pos);
