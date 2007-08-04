@@ -3692,7 +3692,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				isSetOrReset = true;
 				
 
-			elog(DEBUG2, "stmt to be redispatched received from QD: %20s.",query_string);
+			elog(DEBUG2, "stmt to be redispatched received from QD: %.20s.",query_string);
 
 			/*
 			 * The appropriate UserIDs must be set, because they are picked up by dispatch
