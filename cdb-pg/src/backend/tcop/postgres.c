@@ -3862,7 +3862,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			{
 				case 1:
 				case 2:
-					ereport(LOG,  (errmsg("duration: %s ms  statement: %20s",
+					ereport(LOG,  (errmsg("duration: %s ms  statement: %.20s",
 				             msec_str, query_string) ));
 					break;
 			}
