@@ -903,7 +903,7 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 
 	if (p->QEWriter_HaveInfo)
 	{
-		elog(DEBUG1,"First result: distributedXid %d, curcid %d, is dirty %d",p->QEWriter_DistributedTransactionId,
+		elog(DEBUG3,"First result: distributedXid %d, curcid %d, is dirty %d",p->QEWriter_DistributedTransactionId,
 				p->QEWriter_CommandId,p->QEWriter_Dirty);
 		
 		/*
@@ -1075,7 +1075,7 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 					if (QEDtxContextInfo.distributedXid != p->QEWriter_DistributedTransactionId ||
 							QEDtxContextInfo.distributedSnapshotData.curcid != p->QEWriter_CommandId)
 					{
-						elog(DEBUG1,"other result: distributedXid %d, curcid %d, is dirty %d",p->QEWriter_DistributedTransactionId,
+						elog(DEBUG3,"other result: distributedXid %d, curcid %d, is dirty %d",p->QEWriter_DistributedTransactionId,
 								p->QEWriter_CommandId,p->QEWriter_Dirty);
 						QEDtxContextInfo.distributedXid = p->QEWriter_DistributedTransactionId;
 						QEDtxContextInfo.distributedSnapshotData.curcid = p->QEWriter_CommandId;
