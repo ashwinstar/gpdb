@@ -1022,7 +1022,7 @@ calcBatchCount(double memquota, double ngroups, double zH, double zB, bool force
 		
 	nB = Max(2.0, nB);
 
-	elog(DEBUG1, "hashagg rewrite-fudge %f", rewrite_fudge);
+	elog(DEBUG2, "hashagg rewrite-fudge %f", rewrite_fudge);
 
 	return nB;
 }
