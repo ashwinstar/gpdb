@@ -3774,17 +3774,6 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			
 			MemoryContextSwitchTo(MessageContext);
 			
-			if (DEBUG1 >= log_min_messages)
-			{
-				switch (check_log_duration(msec_str, false))
-				{
-					case 1:
-					case 2:
-						ereport(LOG,  (errmsg("duration to dispatch result: %s ms", msec_str)));
-						break;
-				}					 
-			}
-			
 			/*
 			 * relay the results back to the QD
 			 */
@@ -3862,7 +3851,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			{
 				case 1:
 				case 2:
-					ereport(LOG,  (errmsg("duration: %s ms  statement: %.20s",
+					ereport(LOG,  (errmsg("duration: %s ms  statement: %.40s",
 				             msec_str, query_string) ));
 					break;
 			}
