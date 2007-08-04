@@ -631,6 +631,18 @@ void
 CdbCheckDispatchResult(struct CdbDispatchCmdThreads  *dispatchThreads, bool cancelUnfinishedWork)
 {
 	CdbCheckDispatchResultInt(dispatchThreads, NULL, NULL, cancelUnfinishedWork);
+	
+	if (DEBUG1 >= log_min_messages)
+	{
+		char		msec_str[32];
+		switch (check_log_duration(msec_str, false))
+		{
+			case 1:
+			case 2:
+				ereport(LOG,  (errmsg("duration to dispatch result received from qe: %s ms", msec_str)));
+				break;
+		}					 
+	}
 }
 
 void
