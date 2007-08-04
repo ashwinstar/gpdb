@@ -2838,7 +2838,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			 */
 			if (primaryGang == NULL || Gp_role == GP_ROLE_DISPATCHAGENT)
 			{
-				elog(DEBUG1,"Dispatch %d, Gangs are %d and %d, type=%d",iSlice, slice->primary_gang_id,slice->mirror_gang_id,slice->gangType);
+				elog(DEBUG2,"Dispatch %d, Gangs are %d and %d, type=%d",iSlice, slice->primary_gang_id,slice->mirror_gang_id,slice->gangType);
 				primaryGang = findGangById(slice->primary_gang_id);
 				if (slice->mirror_gang_id > 0)
 					mirrorGang = findGangById(slice->mirror_gang_id);
