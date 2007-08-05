@@ -452,6 +452,8 @@ def runNetPerfTest():
             cmd = ssh(srchost, '%s -H %s -p %d -t TCP_STREAM -l 5 -f M -P 0' % (rmtPath, rcvhost, port))
             (ok, out) = run(cmd)
             if not ok:
+                cmd = gpssh('killall -9 netserver')
+                (ok, out) = run(cmd)
                 sys.exit('[Error] netperf failed: %s -> %s' % (srchost, rcvhost))
 
             out = StringIO.StringIO(out)    
@@ -521,23 +523,18 @@ def printNetResult(title, result):
 #        sys.exit('[Error] get host address failed')
     print 'Netperf Bisection Bandwidth Test (forward)'
     print '%s%s%s' % ('Source Host'.ljust(30), 'Destination Host'.ljust(30), 'MB/sec'.ljust(30))
+    forward = []
     for h in result:
 	if h[0] == 0:
             print '%s%s%s' % (h[1].ljust(30), h[2].ljust(30), h[7].ljust(30))
-
-    print ''
-    print 'Netperf Bisection Bandwidth Test (reverse)'
-    print '%s%s%s' % ('Source Host'.ljust(30), 'Destination Host'.ljust(30), 'MB/sec'.ljust(30))
-    for h in result:
-	if h[0] == 1:
-            print '%s%s%s' % (h[1].ljust(30), h[2].ljust(30), h[7].ljust(30))
+            forward.append(h)
 
     sum = min = max = average = 0
-    sum = sum_rate(result)
-    min = min_rate(result)
-    max = max_rate(result)
-    median = median_rate(result)
-    average = average_rate(result)
+    sum = sum_rate(forward)
+    min = min_rate(forward)
+    max = max_rate(forward)
+    median = median_rate(forward)
+    average = average_rate(forward)
 
     print ''
     print 'Summary:'
@@ -548,7 +545,35 @@ def printNetResult(title, result):
     print 'median = %.2f MB/sec' % median
     print ''
 
-    torlerance(result, max)
+    torlerance(forward, max)
+    
+
+    print ''
+    print 'Netperf Bisection Bandwidth Test (reverse)'
+    print '%s%s%s' % ('Source Host'.ljust(30), 'Destination Host'.ljust(30), 'MB/sec'.ljust(30))
+    reverse = []
+    for h in result:
+	if h[0] == 1:
+            print '%s%s%s' % (h[1].ljust(30), h[2].ljust(30), h[7].ljust(30))
+            reverse.append(h)
+
+    sum = min = max = average = 0
+    sum = sum_rate(reverse)
+    min = min_rate(reverse)
+    max = max_rate(reverse)
+    median = median_rate(reverse)
+    average = average_rate(reverse)
+
+    print ''
+    print 'Summary:'
+    print 'sum = %.2f MB/sec' % sum
+    print 'min = %.2f MB/sec' % min
+    print 'max = %.2f MB/sec' % max
+    print 'average = %.2f MB/sec' % average
+    print 'median = %.2f MB/sec' % median
+    print ''
+
+    torlerance(reverse, max)
     
 
 ################
