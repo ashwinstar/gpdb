@@ -452,14 +452,12 @@ def runNetPerfTest():
             cmd = ssh(srchost, '%s -H %s -p %d -t TCP_STREAM -l 5 -f M -P 0' % (rmtPath, rcvhost, port))
             (ok, out) = run(cmd)
             if not ok:
-                cmd = gpssh('killall -9 netserver')
-                (ok, out) = run(cmd)
-                sys.exit('[Error] netperf failed')
+                sys.exit('[Error] netperf failed: %s -> %s' % (srchost, rcvhost))
 
             out = StringIO.StringIO(out)    
             for line in out:
                 o = line.split()
-                l = [srchost, rcvhost]
+                l = [j, srchost, rcvhost]
                 l.extend(o)
                 result.append(l)
 
@@ -469,15 +467,89 @@ def runNetPerfTest():
 
     return result
 
+def sum_rate(result):
+    sum = 0
+    for h in result:
+        sum += float(h[7])
+    return sum
+
+def min_rate(result):
+    min = float(result[0][7])
+    for h in result:
+        if min > float(h[7]):
+            min = float(h[7])
+    return min
+
+def max_rate(result):
+    max = 0
+    for h in result:
+        if max < float(h[7]):
+            max = float(h[7])
+    return max
+
+def average_rate(result):
+    sum = 0
+    n = 0
+    for h in result:
+        sum += float(h[7])
+        n += 1
+    return 1.0 * sum / n
+
+def median_rate(result):
+    rate = []
+    for h in result:
+        rate.append(float(h[7]))
+
+    n = len(rate)
+    copy = rate[:]
+    copy.sort()
+    if n & 1:
+        return copy[n // 2]
+    else:
+        return (copy[n // 2 - 1] + copy[n //2]) / 2
+
+def torlerance(result, max):
+    limit = max * 0.97
+    for h in result:
+        if float(h[7]) < limit:
+            print '[Warning] connection between %s and %s is no good' % (h[1], h[2])
+
 def printNetResult(title, result):
     import commands;
 #    dest = gethostaddress()
 #    if dest is None:
 #        sys.exit('[Error] get host address failed')
+    print 'Netperf Bisection Bandwidth Test (forward)'
     print '%s%s%s' % ('Source Host'.ljust(30), 'Destination Host'.ljust(30), 'MB/sec'.ljust(30))
     for h in result:
-        print '%s%s%s' % (h[0].ljust(30), h[1].ljust(30), h[6].ljust(30))
+	if h[0] == 0:
+            print '%s%s%s' % (h[1].ljust(30), h[2].ljust(30), h[7].ljust(30))
 
+    print ''
+    print 'Netperf Bisection Bandwidth Test (reverse)'
+    print '%s%s%s' % ('Source Host'.ljust(30), 'Destination Host'.ljust(30), 'MB/sec'.ljust(30))
+    for h in result:
+	if h[0] == 1:
+            print '%s%s%s' % (h[1].ljust(30), h[2].ljust(30), h[7].ljust(30))
+
+    sum = min = max = average = 0
+    sum = sum_rate(result)
+    min = min_rate(result)
+    max = max_rate(result)
+    median = median_rate(result)
+    average = average_rate(result)
+
+    print ''
+    print 'Summary:'
+    print 'sum = %.2f MB/sec' % sum
+    print 'min = %.2f MB/sec' % min
+    print 'max = %.2f MB/sec' % max
+    print 'average = %.2f MB/sec' % average
+    print 'median = %.2f MB/sec' % median
+    print ''
+
+    torlerance(result, max)
+    
 
 ################
 def printResult(title, result):
