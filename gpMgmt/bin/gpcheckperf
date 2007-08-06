@@ -516,25 +516,20 @@ def torlerance(result, max):
         if float(h[7]) < limit:
             print '[Warning] connection between %s and %s is no good' % (h[1], h[2])
 
-def printNetResult(title, result):
-    import commands;
-#    dest = gethostaddress()
-#    if dest is None:
-#        sys.exit('[Error] get host address failed')
-    print 'Netperf Bisection Bandwidth Test (forward)'
+def printNetSummary(title, result):
+
+    print title
     print '%s%s%s' % ('Source Host'.ljust(30), 'Destination Host'.ljust(30), 'MB/sec'.ljust(30))
-    forward = []
+
     for h in result:
-	if h[0] == 0:
-            print '%s%s%s' % (h[1].ljust(30), h[2].ljust(30), h[7].ljust(30))
-            forward.append(h)
+        print '%s%s%s' % (h[1].ljust(30), h[2].ljust(30), h[7].ljust(30))
 
     sum = min = max = average = 0
-    sum = sum_rate(forward)
-    min = min_rate(forward)
-    max = max_rate(forward)
-    median = median_rate(forward)
-    average = average_rate(forward)
+    sum = sum_rate(result)
+    min = min_rate(result)
+    max = max_rate(result)
+    median = median_rate(result)
+    average = average_rate(result)
 
     print ''
     print 'Summary:'
@@ -545,36 +540,24 @@ def printNetResult(title, result):
     print 'median = %.2f MB/sec' % median
     print ''
 
-    torlerance(forward, max)
-    
+    torlerance(result, max)    
 
     print ''
-    print 'Netperf Bisection Bandwidth Test (reverse)'
-    print '%s%s%s' % ('Source Host'.ljust(30), 'Destination Host'.ljust(30), 'MB/sec'.ljust(30))
+
+
+def printNetResult(title, result):
+    forward = []
     reverse = []
     for h in result:
-	if h[0] == 1:
-            print '%s%s%s' % (h[1].ljust(30), h[2].ljust(30), h[7].ljust(30))
+	if h[0] == 0:
+            forward.append(h)    
+        else:
             reverse.append(h)
 
-    sum = min = max = average = 0
-    sum = sum_rate(reverse)
-    min = min_rate(reverse)
-    max = max_rate(reverse)
-    median = median_rate(reverse)
-    average = average_rate(reverse)
+    printNetSummary('Netperf Bisection Bandwidth Test (forward)', forward)
 
-    print ''
-    print 'Summary:'
-    print 'sum = %.2f MB/sec' % sum
-    print 'min = %.2f MB/sec' % min
-    print 'max = %.2f MB/sec' % max
-    print 'average = %.2f MB/sec' % average
-    print 'median = %.2f MB/sec' % median
-    print ''
+    printNetSummary('Netperf Bisection Bandwidth Test (reverse)', reverse)
 
-    torlerance(reverse, max)
-    
 
 ################
 def printResult(title, result):
