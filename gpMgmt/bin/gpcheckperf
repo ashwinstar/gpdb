@@ -476,7 +476,7 @@ def sum_rate(result):
     return sum
 
 def min_rate(result):
-    min = float(result[0][7])
+    min = 999999999
     for h in result:
         if min > float(h[7]):
             min = float(h[7])
