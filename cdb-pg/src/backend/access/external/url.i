@@ -473,7 +473,7 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 	 * if 'url' starts with "execute:" then it's a command to execute and 
 	 * not a url (the command specified in CREATE EXTERNAL TABLE .. EXECUTE) 
 	 */
-	if (strncasecmp(url, exec_prefix, strlen(exec_prefix)) == 0)
+	if (pg_strncasecmp(url, exec_prefix, strlen(exec_prefix)) == 0)
 	{
 		char* cmd = url + strlen(exec_prefix);
 		int sz = make_command(cmd, ev, 0);
