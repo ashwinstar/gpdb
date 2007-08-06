@@ -465,6 +465,13 @@ sum(count(*)) over (range between 1 preceding and 1 following)
 from sale
 group by cn;
 
+-- test for issue which reopened MPP-1762
+-- We allow the user to specify DESC sort order
+SELECT sale.cn,sale.vn,AVG(cast (sale.vn as int)) OVER(order by sale.cn desc) as avg from sale;
+
+-- a bit harder
+SELECT sale.cn,sale.dt, sale.vn,AVG(cast (sale.vn as int)) OVER(order by sale.cn desc, sale.dt asc) as avg from sale;
+
 -- Sanity test for executor detection of non-sense frames
 SELECT sale.pn,sale.cn,sale.prc,
     AVG(cast (sale.prc as int))

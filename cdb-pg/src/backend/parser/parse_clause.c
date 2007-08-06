@@ -19,6 +19,7 @@
 #include "access/heapam.h"
 #include "catalog/heap.h"
 #include "catalog/pg_namespace.h"
+#include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "nodes/makefuncs.h"
@@ -84,6 +85,13 @@ typedef struct grouping_rewrite_ctx
 	List *grp_tles;
 	ParseState *pstate;
 } grouping_rewrite_ctx;
+
+typedef struct winref_check_ctx
+{
+	Index win_clause;
+	bool has_order;
+	bool has_frame;
+} winref_check_ctx;
 
 /*
  * transformFromClause -
@@ -163,7 +171,11 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 			TargetEntry *te;
 			Oid otype;
 			Oid rtype;
+			Oid newrtype;
 			SortClause *sort;
+			Oid oprresult;
+			List *oprname;
+			Operator tup;
 						
 			if (list_length(spec->order) != 1)
 				ereport(ERROR,
@@ -177,38 +189,92 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 			te = getTargetBySortGroupRef(sort->tleSortGroupRef, qry->targetList);
 			otype = exprType((Node *)te->expr);
 			rtype = exprType(val);
-	
+
 			if (e->kind == WINDOW_BOUND_FOLLOWING)
+				oprname = lappend(NIL, makeString("+"));
+			else
+				oprname = lappend(NIL, makeString("-"));
+
+			tup = oper(pstate, oprname, otype, rtype, false, 0);
+				
+			/* XXX: improve comment */
+			if (!HeapTupleIsValid(tup))
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("ordering column does not support addition")));
+			oprresult = ((Form_pg_operator)GETSTRUCT(tup))->oprresult;
+			newrtype = ((Form_pg_operator)GETSTRUCT(tup))->oprright;
+			ReleaseSysCache(tup);
+			list_free_deep(oprname);
+
+			if (rtype != newrtype)
 			{
-				HeapTuple tup;
-				tup = SearchSysCache(OPERNAMENSP,
-									 CStringGetDatum("+"),
-									 ObjectIdGetDatum(otype),
-									 ObjectIdGetDatum(rtype),
-									 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
-				if (!HeapTupleIsValid(tup))
-					ereport(ERROR,
-							(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("ordering column does not support addition")));
-				ReleaseSysCache(tup);
+				/* 
+				 * We have to coerce the RHS to the new type so that we'll be
+				 * able to trivially find an operator later on.
+				 */
+
+				/* XXX: we assume that the typmod for the new RHS type
+				 * is the same as before... is that safe?
+				 */ 
+				int32 typmod = exprTypmod(val);
+				Expr *expr = 
+					(Expr *)coerce_to_target_type(NULL,
+												  val, 
+											 	  rtype,
+											 	  newrtype, typmod,
+									 			  COERCION_EXPLICIT,
+												  COERCE_IMPLICIT_CAST);
+				if (!PointerIsValid(expr))
+					elog(ERROR, "..");
+				else
+					val = (Node *)expr;
 			}
-			else if (e->kind == WINDOW_BOUND_PRECEDING)
+			
+			if (oprresult != otype)
 			{
-				HeapTuple tup;
-				tup = SearchSysCache(OPERNAMENSP,
-									 CStringGetDatum("-"),
-									 ObjectIdGetDatum(otype),
-									 ObjectIdGetDatum(rtype),
-									 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
-				if (!HeapTupleIsValid(tup))
+				/* see if it can be coerced */
+				if (!can_coerce_type(1, &oprresult, &otype, COERCION_EXPLICIT))
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("ordering column does not support subtraction")));
-				ReleaseSysCache(tup);
+							 errmsg("invalid RANGE parameter")));
+
 			}
 			e->val = val;
 		}
 	}
+}
+
+static bool
+winref_not_distinct_walker(Node *node, void *ctx)
+{
+	winref_check_ctx *ref = (winref_check_ctx *)ctx;
+
+	if (IsA(node, WindowRef))
+	{
+		WindowRef *winref = (WindowRef *)node;
+
+		if (winref->winspec == ref->win_clause && winref->windistinct)
+		{
+			if (ref->has_order)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("DISTINCT cannot be used with "
+								"window specification containing an "
+								"ORDER BY clause")));
+
+			if (ref->has_frame)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("DISTINCT cannot be used with "
+								"window specification containing a "
+								"framing clause")));
+
+
+		}
+	}
+
+	return expression_tree_walker(node, winref_not_distinct_walker, ctx);
 }
 
 /*
@@ -228,6 +294,7 @@ transformWindowClause(ParseState *pstate, Query *qry)
 	ListCell *w;
 	List *winout = NIL;
 	List *winin = pstate->p_win_clauses;
+	Index clauseno = -1;
 	
 	/*
 	 * Skip processing the window clause if there are no window functions
@@ -257,6 +324,8 @@ transformWindowClause(ParseState *pstate, Query *qry)
 		WindowSpec *newspec = makeNode(WindowSpec);
 		ListCell   *tmp;
 		bool		found = false;
+
+		clauseno++;
 
 		/*
 		 * Loop through those clauses we've already processed to
@@ -387,6 +456,20 @@ transformWindowClause(ParseState *pstate, Query *qry)
 													 true);
 			}
 		}
+
+		/* see if any WindowRefs using this spec are DISTINCT qualified */
+		if (newspec->order || ws->frame)
+		{
+			winref_check_ctx ctx;
+
+			ctx.win_clause = clauseno;
+			ctx.has_order = PointerIsValid(newspec->order);
+			ctx.has_frame = PointerIsValid(ws->frame);
+
+			expression_tree_walker((Node *)qry->targetList, 
+								   winref_not_distinct_walker, (void *)&ctx);
+
+		}
 		
 		/* 
 		 * Finally, process the framing clause. parseProcessWindFunc() will
@@ -411,6 +494,9 @@ transformWindowClause(ParseState *pstate, Query *qry)
 		 */
 		if (ws->frame)
 		{
+			/* with that out of the way, we may proceed */
+			WindowFrame *nf = copyObject(ws->frame);
+		
 			/* 
 			 * Framing is only supported on specifications with an ordering
 			 * clause.
@@ -421,8 +507,6 @@ transformWindowClause(ParseState *pstate, Query *qry)
 						 errmsg("window specifications with a framing clause "
 								"must have an ORDER BY clause")));
 
-			/* with that out of the way, we may proceed */
-			WindowFrame *nf = copyObject(ws->frame);
 			if (nf->is_between)
 			{
 				Assert(PointerIsValid(nf->trail));

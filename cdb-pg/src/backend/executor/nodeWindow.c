@@ -79,6 +79,9 @@ typedef struct WindowStatePerLevelData
 	/* if the user didn't specify a frame, we use the default */
 	bool default_frame;
 
+	/* user can specify ascending or descending order, record it here */
+	bool *col_sort_asc;
+
 	/* 
 	 * Frame is contradictory and no tuples will fall into the frame, for
 	 * example: BETWEEN 10 FOLLOWING AND 10 PRECEDING.
@@ -415,10 +418,6 @@ processPeerCounts(WindowState *wstate, int min_level,
 	elog(DEBUG1, "called %s", PG_FUNCNAME_MACRO);
 
 
-#if 0 /* temporarily disabled */	
-	Assert(ExecSupportsMarkRestore(nodeTag(outerPlan->plan)));
-	ExecMarkPos(outerPlan);
-#endif
 	/* Mark the current position in the input buffer */
 	markposInputBuffer(wstate);
 	
@@ -443,18 +442,11 @@ processPeerCounts(WindowState *wstate, int min_level,
 		if (level_state->need_peercount)
 		{
 			WindowKey  *key;
-//			char *buf;
 
 			/* we already have one peer in cur_slot, so adjust */
 			Assert(level_state->peer_count == -1);
 			level_state->peer_count = peer_count;
 
-#if 0
-			elog(DEBUG1, "level %i needs peer", i);
-			buf = tup2str(cur_slot);
-			elog(DEBUG1, "first peer: %s", buf);
-			pfree(buf);
-#endif
 			if (!seen_null)
 			{
 				Assert(list_length(window->windowKeys) > i);
@@ -492,9 +484,6 @@ processPeerCounts(WindowState *wstate, int min_level,
 						elog(DEBUG1, "slot is null");
 						break;
 					}
-					else
-					{
-					}
 	
 					/* XXX: shouldn't this be priorslot instead of cur_slot */
 					match = execTuplesMatch(cur_slot, slot, 
@@ -513,12 +502,11 @@ processPeerCounts(WindowState *wstate, int min_level,
 			}
 			level_state->peer_count = peer_count;
 			
-	//		peer_count++; /* update to reflect the tuple we just pulled */
-
 			elog(DEBUG1, "peer count = %lld", (long long)level_state->peer_count);
 		}
 	}
 	elog(DEBUG1, "total peer count %lld, %li", (long long)peer_count, nfetches);
+
 	if (nfetches)
 	{
 		elog(DEBUG1, "rewinding %li", nfetches);
@@ -647,7 +635,7 @@ freeInputBuffer(WindowState *wstate)
 static MinimalTuple
 fetchTupleThroughBuf(WindowState *wstate)
 {
-	MinimalTuple wt;
+	MinimalTuple wt = NULL;
 	Window *window = (Window *)wstate->ps.plan;	
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 
@@ -1148,8 +1136,8 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 
 static bool
 cmp_deformed_tuple(Datum *a, bool *a_nulls, Datum *b, bool *b_nulls,
-				   int ncols, FmgrInfo *funcs, MemoryContext evalContext,
-				   bool is_equal)
+				   bool *asc_cols, int ncols, FmgrInfo *funcs, 
+				   MemoryContext evalContext, bool is_equal)
 {
 	MemoryContext oldContext;
 	bool		result;
@@ -1195,8 +1183,23 @@ cmp_deformed_tuple(Datum *a, bool *a_nulls, Datum *b, bool *b_nulls,
 		if (isNull1)
 			continue;			/* both are null, treat as equal */
 
-		/* Apply the type-specific equality function */
+		/* 
+		 * As we're not doing equality tests, be aware of user specified
+		 * ordering. If the user specified DESC, swap the order of arguments
+		 * for this test.
+		 */
+		if (!is_equal)
+		{
+			if (!asc_cols[i])
+			{
+				Datum tmp;
 
+				tmp = attr1;
+				attr1 = attr2;
+				attr2 = attr1;
+			}
+		}
+		/* Apply the type-specific equality function */
 		if (!DatumGetBool(FunctionCall2(&funcs[i],
 										attr1, attr2)))
 		{
@@ -1286,8 +1289,6 @@ set_edge_val(WindowState *wstate, WindowStatePerLevel level_state,
 		{
 			Datum result;
 			
-			Assert(key->numSortCols == 1);
-
 			if (is_trail)
 			{
 				bool isnull;
@@ -1380,7 +1381,7 @@ get_last_trans_val(WindowStatePerFunction funcstate)
 }
 
 static void
-bufferAddRangeTransValue(WindowState *wstate, WindowKey *key,
+bufferAddRangeTransValue(WindowState *wstate, int ncols,
 						 WindowStatePerFunction funcstate,
 						 WindowTransValue *wtv, Datum *vals, bool *nulls,
 						 bool tuple_before_edge)
@@ -1391,12 +1392,12 @@ bufferAddRangeTransValue(WindowState *wstate, WindowKey *key,
 	oldctx = MemoryContextSwitchTo(wstate->transcontext);
 
 	wrb = palloc(sizeof(WindowRangeBuffer));
-	wrb->key = palloc(sizeof(Datum) * key->numSortCols);
-	wrb->nulls = palloc(sizeof(bool) * key->numSortCols);
+	wrb->key = palloc(sizeof(Datum) * ncols);
+	wrb->nulls = palloc(sizeof(bool) * ncols);
 
 	/* XXX: really need to use datumCopy() here instead */
-	memcpy(wrb->key, vals, sizeof(Datum) * key->numSortCols);
-	memcpy(wrb->nulls, nulls, sizeof(bool) * key->numSortCols);
+	memcpy(wrb->key, vals, sizeof(Datum) * ncols);
+	memcpy(wrb->nulls, nulls, sizeof(bool) * ncols);
 	
 	wrb->transval = wtv;
 
@@ -1465,8 +1466,10 @@ appendRangeTuple(WindowState *wstate, WindowKey *key,
 
 			if (append)
 			{
+				int ncols = key->numSortCols;
+
 				elog(DEBUG1, "append a new transition value.");
-				bufferAddRangeTransValue(wstate, key, funcstate, wtv, vals, 
+				bufferAddRangeTransValue(wstate, ncols, funcstate, wtv, vals, 
 										 nulls, tuple_before_edge);
 			}
 		}
@@ -1765,6 +1768,9 @@ adjustEdges(WindowState *wstate)
 
 				if (key->frame->trail->kind != WINDOW_UNBOUND_PRECEDING)
 				{
+					Insist(key->frame->trail->kind != WINDOW_UNBOUND_FOLLOWING);
+					
+					
 					funcstate->prev_trail_edge = funcstate->cur_trail_edge;
 					/* it was greater than the edge, so go past it */
 					if (!funcstate->cur_trail_edge_equal && 
@@ -1787,6 +1793,7 @@ adjustEdges(WindowState *wstate)
 						res = cmp_deformed_tuple(wrb->key, wrb->nulls,
 												 level_state->trail_edge_d,
 												 level_state->trail_edge_nulls,
+												 level_state->col_sort_asc,
 												 key->numSortCols,
 												 level_state->ltfunctions,
 											 econtext->ecxt_per_tuple_memory,
@@ -1805,6 +1812,7 @@ adjustEdges(WindowState *wstate)
 							res =  cmp_deformed_tuple(wrb->key, wrb->nulls,
 												 level_state->trail_edge_d,
 												 level_state->trail_edge_nulls,
+												 level_state->col_sort_asc,
 												 key->numSortCols,
 												 level_state->eqfunctions,
 											 econtext->ecxt_per_tuple_memory,
@@ -1849,6 +1857,7 @@ adjustEdges(WindowState *wstate)
 					res1 = cmp_deformed_tuple(wrb->key, wrb->nulls,
 											 level_state->lead_edge_d,
 											 level_state->lead_edge_nulls,
+											 level_state->col_sort_asc,
 											 key->numSortCols,
 											 level_state->ltfunctions,
 											 econtext->ecxt_per_tuple_memory,
@@ -1858,6 +1867,7 @@ adjustEdges(WindowState *wstate)
 						res2 = cmp_deformed_tuple(wrb->key, wrb->nulls,
 												 level_state->lead_edge_d,
 												 level_state->lead_edge_nulls,
+												 level_state->col_sort_asc,
 												 key->numSortCols,
 												 level_state->eqfunctions,
 												 econtext->ecxt_per_tuple_memory,
@@ -2098,6 +2108,7 @@ populateFrameBuffers(WindowState *wstate)
 					lttrail = cmp_deformed_tuple(new_vals, new_nulls,
 											   level_state->trail_edge_d,
 											   level_state->trail_edge_nulls,
+											   level_state->col_sort_asc,
 											   key->numSortCols,
 											   level_state->ltfunctions,
 											   econtext->ecxt_per_tuple_memory,
@@ -2116,6 +2127,7 @@ populateFrameBuffers(WindowState *wstate)
 						eqtrail = cmp_deformed_tuple(new_vals, new_nulls,
 											   level_state->trail_edge_d,
 											   level_state->trail_edge_nulls,
+											   level_state->col_sort_asc,
 											   key->numSortCols,
 											   level_state->eqfunctions,
 											   econtext->ecxt_per_tuple_memory,
@@ -2138,6 +2150,7 @@ populateFrameBuffers(WindowState *wstate)
 							ltlead = cmp_deformed_tuple(new_vals, new_nulls,
 											   level_state->lead_edge_d,
 											   level_state->lead_edge_nulls,
+											   level_state->col_sort_asc,
 											   key->numSortCols,
 											   level_state->ltfunctions,
 										   econtext->ecxt_per_tuple_memory,
@@ -2156,6 +2169,7 @@ populateFrameBuffers(WindowState *wstate)
 												   new_nulls,
 												   level_state->lead_edge_d,
 												   level_state->lead_edge_nulls,
+												   level_state->col_sort_asc,
 												   key->numSortCols,
 												   level_state->eqfunctions,
 											   econtext->ecxt_per_tuple_memory,
@@ -2606,7 +2620,7 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 	Oid exprrestype;
 	Oid ltype, rtype;
 	HeapTuple tup;
-	ExprContext  *econtext;
+	ExprContext *econtext = wstate->ps.ps_ExprContext;
 	bool isNull;
 	
 	Insist(EDGE_IS_BOUND(edge));
@@ -2680,6 +2694,8 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 										  COERCE_IMPLICIT_CAST);
 	}
 
+	Insist(PointerIsValid(expr));
+
 	n = ExecInitExpr(expr, (PlanState *) wstate);
 	
 	if (is_trail)
@@ -2708,15 +2724,19 @@ init_frames(WindowState *wstate)
 		int funcno;
 		List *lvl_funcs = NIL;
 		WindowStatePerLevel level_state;
+		int ncols = key->numSortCols;
+		int i;
 
 		level++;
 		level_state = &wstate->level_state[level];
 
-		level_state->trail_edge_d = palloc(sizeof(Datum) * key->numSortCols);
-		level_state->trail_edge_nulls = palloc(sizeof(bool) * key->numSortCols);
+		level_state->trail_edge_d = palloc(sizeof(Datum) * ncols);
+		level_state->trail_edge_nulls = palloc(sizeof(bool) * ncols);
 		
-		level_state->lead_edge_d = palloc(sizeof(Datum) * key->numSortCols);
-		level_state->lead_edge_nulls = palloc(sizeof(bool) * key->numSortCols);
+		level_state->lead_edge_d = palloc(sizeof(Datum) * ncols);
+		level_state->lead_edge_nulls = palloc(sizeof(bool) * ncols);
+
+		level_state->col_sort_asc = palloc(sizeof(bool) * ncols);
 
 		frame = key->frame;
 
@@ -2772,6 +2792,24 @@ init_frames(WindowState *wstate)
 
 		level_state->level_funcs = lvl_funcs;
 
+		/* what sort order did the user specify for each key? */
+		for (i = 0; i < ncols; i++)
+		{
+			Oid sortop = key->sortOperators[i];
+			Form_pg_operator op;
+			HeapTuple optup = SearchSysCache(OPEROID,
+							   				 ObjectIdGetDatum(sortop),
+							   				 0, 0, 0);
+			Insist(HeapTupleIsValid(optup));
+			op = (Form_pg_operator)GETSTRUCT(optup);
+			ReleaseSysCache(optup);
+
+			if (strcmp(NameStr(op->oprname), "<") == 0)
+				level_state->col_sort_asc[i] = true;
+			else
+				level_state->col_sort_asc[i] = false;
+		}
+		
 		/* now, initialize the actual frame */
 		if (frame)
 		{
@@ -2792,12 +2830,7 @@ init_frames(WindowState *wstate)
 			else
 			{
 				TupleDesc desc = ExecGetResultType(wstate->ps.lefttree); 
-
-				level_state->trail_edge_d = (Datum *) palloc(sizeof(Datum) *
-													 key->numSortCols);
-				level_state->lead_edge_d = (Datum *) palloc(sizeof(Datum) *
-													key->numSortCols);
-
+				
 				/* we only need the subtraction function for bound frames */
 				if (EDGE_IS_BOUND(frame->trail))
 				{
@@ -2814,75 +2847,82 @@ init_frames(WindowState *wstate)
 				}
 			}
 		}
-		
+
+		/* look for empty frames */
+		if (frame->trail->kind == WINDOW_UNBOUND_FOLLOWING ||
+			frame->lead->kind == WINDOW_UNBOUND_PRECEDING ||
+			(frame->trail->kind == WINDOW_BOUND_FOLLOWING &&
+			 frame->lead->kind == WINDOW_BOUND_PRECEDING))
 		{
-			/* look for empty frames */
-			if (frame->trail->kind == WINDOW_UNBOUND_FOLLOWING ||
-				frame->lead->kind == WINDOW_UNBOUND_PRECEDING ||
-				(frame->trail->kind == WINDOW_BOUND_FOLLOWING &&
-				 frame->lead->kind == WINDOW_BOUND_PRECEDING))
+			level_state->empty_frame = true;
+		}
+		else if ((frame->trail->kind == WINDOW_BOUND_PRECEDING &&
+				 frame->lead->kind == WINDOW_BOUND_PRECEDING) ||
+				 (frame->trail->kind == WINDOW_BOUND_FOLLOWING &&
+				 frame->lead->kind == WINDOW_BOUND_FOLLOWING))
+		{
+			bool is_pre = 
+				(frame->trail->kind == WINDOW_BOUND_PRECEDING &&
+				 frame->lead->kind == WINDOW_BOUND_PRECEDING);
+			
+			if (frame->is_rows)
 			{
-				level_state->empty_frame = true;
-			}
-			else if ((frame->trail->kind == WINDOW_BOUND_PRECEDING &&
-					 frame->lead->kind == WINDOW_BOUND_PRECEDING) ||
-					 (frame->trail->kind == WINDOW_BOUND_FOLLOWING &&
-					 frame->lead->kind == WINDOW_BOUND_FOLLOWING))
-			{
-				bool is_pre = 
-					(frame->trail->kind == WINDOW_BOUND_PRECEDING &&
-					 frame->lead->kind == WINDOW_BOUND_PRECEDING);
-				
-				if (frame->is_rows)
+				if (is_pre)
 				{
-					if (is_pre)
-					{
-						if (level_state->lead_rows > level_state->trail_rows)
-							level_state->empty_frame = true;
-					}
-					else
-					{
-						if (level_state->lead_rows < level_state->trail_rows)
-							level_state->empty_frame = true;
-					}
+					if (level_state->lead_rows > level_state->trail_rows)
+						level_state->empty_frame = true;
 				}
 				else
 				{
-					Oid ordfuncid;
-					TupleDesc tup = ExecGetResultType(wstate->ps.lefttree); 
-					AttrNumber attnum;
-					Datum datum;
-					FmgrInfo fcinfo;
-					Operator optup;
+					if (level_state->lead_rows < level_state->trail_rows)
+						level_state->empty_frame = true;
+				}
+			}
+			else
+			{
+				Oid ordfuncid;
+				TupleDesc tup = ExecGetResultType(wstate->ps.lefttree); 
+				AttrNumber attnum;
+				Datum datum;
+				FmgrInfo fcinfo;
+				Operator optup;
 
 
-					attnum = key->sortColIdx[0];
-					optup = ordering_oper(tup->attrs[attnum - 1]->atttypid,
-										  false);
-					
-					ordfuncid = oprfuncid(optup); 
-					elog(DEBUG1, "found operator %u", oprid(optup));
-					ReleaseSysCache(optup);
+				attnum = key->sortColIdx[0];
+				optup = ordering_oper(tup->attrs[attnum - 1]->atttypid,
+									  false);
+				
+				ordfuncid = oprfuncid(optup); 
+				elog(DEBUG1, "found operator %u", oprid(optup));
+				ReleaseSysCache(optup);
 
-					fmgr_info(ordfuncid, &fcinfo);
-					
-					/* is trail less than lead */
+				fmgr_info(ordfuncid, &fcinfo);
+				
+				/* is trail less than lead */
+				if (level_state->col_sort_asc[0])
 					datum = FunctionCall2(&fcinfo, level_state->trail_range,
 										  level_state->lead_range);
+				else
+					/* reverse argument order */
+					datum = FunctionCall2(&fcinfo, level_state->lead_range,
+										  level_state->trail_range);
+			
 
-					if (is_pre)
-					{
-						if (DatumGetBool(datum))
-							level_state->empty_frame = true;
-					}
-					else
-					{
-						if (!DatumGetBool(datum))
-							level_state->empty_frame = true;
-					}
+
+				if (is_pre)
+				{
+					if (DatumGetBool(datum))
+						level_state->empty_frame = true;
+				}
+				else
+				{
+					if (!DatumGetBool(datum))
+						level_state->empty_frame = true;
 				}
 			}
 		}
+
+
 	}
 }
 
@@ -3175,7 +3215,7 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 			 *     run-time check compensates for the poor state of planning.
 			 */
 			if ( winref->winlevel >= wstate->numlevels )
-				elog(ERROR,"Window function aggregation over entire partition not supported yet.");
+				elog(ERROR, "Window function aggregation over entire partition not supported yet.");
 
 			agg_tuple = SearchSysCache(AGGFNOID,
 									   ObjectIdGetDatum(winref->winfnoid),
@@ -3294,7 +3334,7 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 		{
 			HeapTuple win_tuple;
 			Form_pg_window winform;
-			Oid windowfn_oid;
+			Oid windowfn_oid = InvalidOid;
 			Const *refptr;
 			ExprState *xtrastate;
 			
@@ -3320,6 +3360,7 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 					windowfn_oid  = winform->winprefunc;
 					break;
 			}
+
 			Assert(OidIsValid(windowfn_oid));
 
 			/* Check that window function owner has permission to call the
@@ -3526,6 +3567,7 @@ percent_rank_final(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_DATA_EXCEPTION),
 				 errmsg("arguments invvalid or inconsistent"),
 				 errhint("inappropriate call to window function implementation")));
+		result = 0.0; /* quieten GCC */
 	}
 	else if ( arg1 == 1 && arg2 == 1 )
 	{
@@ -3587,6 +3629,7 @@ cume_dist_final(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_DATA_EXCEPTION),
 				 errmsg("arguments invalid or inconsistent"),
 				 errhint("inappropriate call to window function implementation")));
+		result = 0.0; /* quieten GCC */
 	}
 	else if ( arg1 == 1 && arg2 == 1 )
 	{
@@ -3738,8 +3781,8 @@ ntile_final(PG_FUNCTION_ARGS)
 static Datum
 lead_lag_internal(PG_FUNCTION_ARGS, bool is_lead, bool *isnull)
 {
-	int64 offset;
-	Datum val_expr;
+	int64 offset = 0;
+	Datum val_expr = 0;
 	bool val_expr_null = true;
 	WindowRefExprState *ref_state = (WindowRefExprState *) PG_GETARG_POINTER(0);
 	WindowState *window_state = ref_state->windowstate;
