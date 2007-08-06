@@ -417,7 +417,20 @@ select cn, dt, qty,
                      '1 month'::interval following)
 from sale;
 
--- XXX: add tests rejecting those which cannot cast back
+select cn, dt, qty, prc,
+	sum(qty) over (order by prc range '314.15926535'::float8 preceding) as sum
+from sale;
+
+-- There are some types we cannot cast back, test for those too
+select cn, dt, qty,
+	sum(qty) over (order by dt
+       range '2007-08-05'::date preceding) as sum
+from sale;
+
+select cn, dt, qty,
+	sum(qty) over (order by dt
+       range '192.168.1.1'::inet preceding) as sum
+from sale;
 
 -- Check that mixing cume_dist() with other window functions on the same
 -- window does not result in badness

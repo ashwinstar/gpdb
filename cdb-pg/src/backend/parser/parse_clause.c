@@ -195,13 +195,14 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 			else
 				oprname = lappend(NIL, makeString("-"));
 
-			tup = oper(pstate, oprname, otype, rtype, false, 0);
+			tup = oper(pstate, oprname, otype, rtype, true, 0);
 				
 			/* XXX: improve comment */
 			if (!HeapTupleIsValid(tup))
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("ordering column does not support addition")));
+						 errmsg("window specification ORDER BY column "
+								"must be coercable to RANGE parameter type")));
 			oprresult = ((Form_pg_operator)GETSTRUCT(tup))->oprresult;
 			newrtype = ((Form_pg_operator)GETSTRUCT(tup))->oprright;
 			ReleaseSysCache(tup);
@@ -226,7 +227,14 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 									 			  COERCION_EXPLICIT,
 												  COERCE_IMPLICIT_CAST);
 				if (!PointerIsValid(expr))
-					elog(ERROR, "..");
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("type mismatch between ORDER BY and RANGE "
+									"parameter in window specification"),
+							 errhint("Operations between window specification "
+									 "the ORDER BY column and RANGE parameter "
+									 "must result in a data type which can be "
+									 "cast back to the ORDER BY column type")));
 				else
 					val = (Node *)expr;
 			}
@@ -237,7 +245,11 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 				if (!can_coerce_type(1, &oprresult, &otype, COERCION_EXPLICIT))
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("invalid RANGE parameter")));
+							 errmsg("invalid RANGE parameter"),
+							 errhint("Operations between window specification "
+									 "the ORDER BY column and RANGE parameter "
+									 "must result in a data type which can be "
+									 "cast back to the ORDER BY column type")));
 
 			}
 			e->val = val;
