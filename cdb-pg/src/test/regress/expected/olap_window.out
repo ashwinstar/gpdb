@@ -1308,7 +1308,37 @@ from sale;
   4 | 06-01-1401 |    1 | 1144
 (12 rows)
 
--- XXX: add tests rejecting those which cannot cast back
+select cn, dt, qty, prc,
+	sum(qty) over (order by prc range '314.15926535'::float8 preceding) as sum
+from sale;
+ cn |     dt     | qty  | prc  | sum  
+----+------------+------+------+------
+  1 | 03-01-1401 |    1 |    0 |    6
+  3 | 04-01-1401 |    1 |    0 |    6
+  1 | 05-01-1401 |    1 |    0 |    6
+  2 | 06-01-1401 |    1 |    0 |    6
+  1 | 05-02-1401 |    1 |    0 |    6
+  1 | 06-01-1401 |    1 |    0 |    6
+  4 | 06-01-1401 |    1 |    1 |    8
+  4 | 06-01-1401 |    1 |    1 |    8
+  3 | 06-01-1401 |   12 |    5 |   44
+  1 | 06-01-1401 |   12 |    5 |   44
+  3 | 06-01-1401 |   12 |    5 |   44
+  2 | 01-01-1401 | 1100 | 2400 | 1100
+(12 rows)
+
+-- There are some types we cannot cast back, test for those too
+select cn, dt, qty,
+	sum(qty) over (order by dt
+       range '2007-08-05'::date preceding) as sum
+from sale;
+ERROR:  invalid RANGE parameter
+HINT:  Operations between window specification the ORDER BY column and RANGE parameter must result in a data type which can be cast back to the ORDER BY column type
+select cn, dt, qty,
+	sum(qty) over (order by dt
+       range '192.168.1.1'::inet preceding) as sum
+from sale;
+ERROR:  window specification RANGE parameter type must be coercable to ORDER BY column type
 -- Check that mixing cume_dist() with other window functions on the same
 -- window does not result in badness
 select cn, rank() over (w), cume_dist() over (w) from

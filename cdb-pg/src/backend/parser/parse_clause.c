@@ -197,12 +197,12 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 
 			tup = oper(pstate, oprname, otype, rtype, true, 0);
 				
-			/* XXX: improve comment */
 			if (!HeapTupleIsValid(tup))
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("window specification ORDER BY column "
-								"must be coercable to RANGE parameter type")));
+						 errmsg("window specification RANGE parameter type "
+								"must be coercable to ORDER BY column type")));
+			
 			oprresult = ((Form_pg_operator)GETSTRUCT(tup))->oprresult;
 			newrtype = ((Form_pg_operator)GETSTRUCT(tup))->oprright;
 			ReleaseSysCache(tup);
