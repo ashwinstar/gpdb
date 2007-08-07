@@ -1600,9 +1600,6 @@ appendRowTuple(WindowState *wstate, WindowFrame *frame,
 		tuple_in_frame = true;
 	}
 
-	if (!wstate->cur_slot_is_new)
-		return tuple_in_frame;
-
 	foreach(lc, funcs)
 	{
 		int funcno = lfirst_int(lc);
@@ -1975,14 +1972,21 @@ populateFrameBuffers(WindowState *wstate)
 	/* adjust the trailing edges, determining old and new edge positions */
 	adjustEdges(wstate);
 
+	/* save out position */
+	markposInputBuffer(wstate);
+	
 	/* fast forward from current row */
 	if (!wstate->input_buffer->part_break)
+	{
 		ntuples = wstate->input_buffer->ntuples - 1; /* ignore current row */
+		wstate->input_buffer->ntuples = 1;
+	}
 	else
+	{
 		/* ignore current row and the tuple that breaks the key */
 		ntuples = wstate->input_buffer->ntuples - 2;
-
-	markposInputBuffer(wstate);
+		wstate->input_buffer->ntuples = 2;
+	}
 
 	/* we've moved forward by ntuples so add that to the row index */
 	lead_row_index += ntuples;
