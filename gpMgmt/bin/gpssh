@@ -348,7 +348,7 @@ try:
         else: usage('Error: invalid -h argument')
 
     tab.extend(readHostFile(opt['-f']))
-    tab.sort(lambda x, y: cmp(x[0], y[0]) or cmp(x[1], y[1]))
+#    tab.sort(lambda x, y: cmp(x[0], y[0]) or cmp(x[1], y[1]))
     opt['-h'] = tab
 
     if argcmd:
