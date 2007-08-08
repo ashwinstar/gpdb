@@ -403,23 +403,45 @@ def gethostaddress1():
 
     return None
 
+
+def startNetServer():
+    port = 23000
+    success = False
+    ntry = 5
+    rmtPath = copyExecOver('netserver')
+
+    while not success and ntry > 0:
+        cmd = gpssh('%s -p %d > /dev/null 2>&1' % (rmtPath, port))
+        (ok, out) = run(cmd)
+        if not ok:
+            if opt['-v']: print '[Warning] start netserver with port %d failed' % port
+            cmd = gpssh('killall -9 netserver')
+            port += 12
+            ntry -= 1
+        else:
+            success = True
+
+
+    if success == False:
+        return 0
+
+    return port
+
 #############
 def runNetPerfTest():
  #   host = gethostaddress()
 
  #   if host is None:
  #       sys.exit('[Error] get host address failed')
-    port = 23331
 
     if opt['-v']:
         print '-------------------'
         print ' NETPERF Test'
         print '-------------------'
 
-    rmtPath = copyExecOver('netserver')
-    cmd = gpssh('%s -p %d > /dev/null 2>&1' % (rmtPath, port))
-    (ok, out) = run(cmd)
-    if not ok: sys.exit('[Error] command failed: ' + cmd)
+    port = startNetServer()
+    if port == 0:
+        sys.exit('[Error] start netserver failure')
 
     rmtPath = copyExecOver('netperf')
 
