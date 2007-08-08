@@ -1433,7 +1433,7 @@ DoPortalRunFetch(Portal portal,
 				 * going forwards.
 				 */
 				if (portal->posOverflow || 
-					portal->portalPos == INT64CONST(0x7FFFFFFFFFFFFFFF) ||
+					portal->portalPos ==  INT64_MAX ||
 					count - 1 <= portal->portalPos / 2)
 				{
 					/* until we enable backward scan - bail out here */
