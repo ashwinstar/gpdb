@@ -155,6 +155,9 @@ ExecCreateTupleTable(int tableSize)
 		slot->tts_values = NULL;
 		slot->tts_isnull = NULL;
 		slot->tts_mintuple = NULL;
+#ifdef DEBUG_NTUPLESTORE
+		slot->tts_nts_acc = NULL;
+#endif
 	}
 
 	return newtable;
@@ -239,6 +242,9 @@ MakeSingleTupleTableSlot(TupleDesc tupdesc)
 	slot->tts_values = NULL;
 	slot->tts_isnull = NULL;
 	slot->tts_mintuple = NULL;
+#ifdef DEBUG_NTUPLESTORE
+	slot->tts_nts_acc = NULL;
+#endif
 
 	ExecSetSlotDescriptor(slot, tupdesc);
 
@@ -419,6 +425,10 @@ ExecStoreTuple(HeapTuple tuple,
 	/* passing shouldFree=true for a tuple on a disk page is not sane */
 	Assert(BufferIsValid(buffer) ? (!shouldFree) : true);
 
+#ifdef DEBUG_NTUPLESTORE
+	check_tableslot_tuplestore(slot);
+#endif
+
 	/*
 	 * Free any old physical tuple belonging to the slot.
 	 */
@@ -438,6 +448,9 @@ ExecStoreTuple(HeapTuple tuple,
 	slot->tts_tuple = tuple;
 	slot->tts_mintuple = NULL;
 
+#ifdef DEBUG_NTUPLESTORE
+	slot->tts_nts_acc = NULL;
+#endif
 	/* Mark extracted state invalid */
 	slot->tts_nvalid = 0;
 
@@ -481,6 +494,9 @@ ExecStoreMinimalTuple(MinimalTuple mtup,
 	Assert(mtup != NULL);
 	Assert(slot != NULL);
 	Assert(slot->tts_tupleDescriptor != NULL);
+#ifdef DEBUG_NTUPLESTORE
+	check_tableslot_tuplestore(slot);
+#endif
 
 	/*
 	 * Free any old physical tuple belonging to the slot.
@@ -534,6 +550,10 @@ ExecClearTuple(TupleTableSlot *slot)	/* slot in which to store tuple */
 	 * sanity checks
 	 */
 	Assert(slot != NULL);
+
+#ifdef DEBUG_NTUPLESTORE
+	check_tableslot_tuplestore(slot);
+#endif
 
 	/*
 	 * Free the old physical tuple if necessary.
@@ -642,6 +662,9 @@ ExecCopySlotTuple(TupleTableSlot *slot)
 	 */
 	Assert(slot != NULL);
 	Assert(!slot->tts_isempty);
+#ifdef DEBUG_NTUPLESTORE
+	check_tableslot_tuplestore(slot);
+#endif
 
 	/*
 	 * If we have a physical tuple then just copy it.
@@ -676,6 +699,9 @@ ExecCopySlotMinimalTuple(TupleTableSlot *slot)
 	 */
 	Assert(slot != NULL);
 	Assert(!slot->tts_isempty);
+#ifdef DEBUG_NTUPLESTORE
+	check_tableslot_tuplestore(slot);
+#endif
 
 	/*
 	 * If we have a physical tuple then just copy it.
@@ -696,6 +722,135 @@ ExecCopySlotMinimalTuple(TupleTableSlot *slot)
 								   slot->tts_isnull);
 }
 
+extern Datum toast_flatten_tuple_attribute(Datum value, Oid typeId, int32 typeMod);
+bool ExecCopySlotMinimalTupleTo(TupleTableSlot *slot, char *dest, unsigned int *len)
+{
+	Assert(slot && !slot->tts_isempty);
+#ifdef DEBUG_NTUPLESTORE
+	check_tableslot_tuplestore(slot);
+#endif
+
+	if (slot->tts_tuple)
+	{
+		if(slot->tts_mintuple)
+		{
+			if(dest && *len >= slot->tts_mintuple->t_len)
+			{
+				*len = slot->tts_mintuple->t_len;
+				memcpy(dest, slot->tts_mintuple, *len); 
+				return true;
+			}
+			else
+			{
+				*len = slot->tts_mintuple->t_len;
+				return false;
+			}
+		}
+		else
+		{
+			int cplen = slot->tts_tuple->t_len - MINIMAL_TUPLE_OFFSET;
+			if(dest && *len > cplen)
+			{
+				memcpy(dest, (char *) slot->tts_tuple + MINIMAL_TUPLE_OFFSET, cplen);
+				*len = cplen;
+				return true;
+			}
+			else
+			{
+				*len = cplen;
+				return false;
+			}
+		}
+	}
+	else
+	{
+		MinimalTuple  tuple;
+		unsigned long cplen;
+		int hoff;
+		bool hasnull = false;
+		Form_pg_attribute *att = slot->tts_tupleDescriptor->attrs; 
+		int	numberOfAttributes = slot->tts_tupleDescriptor->natts;
+		int			i;
+
+		if (numberOfAttributes > MaxTupleAttributeNumber)
+			ereport(ERROR,
+					(errcode(ERRCODE_TOO_MANY_COLUMNS),
+					 errmsg("number of columns (%d) exceeds limit (%d)",
+						 numberOfAttributes, MaxTupleAttributeNumber)));
+
+		/*
+		 * Check for nulls and embedded tuples; expand any toasted attributes in
+		 * embedded tuples.  This preserves the invariant that toasting can only
+		 * go one level deep.
+		 *
+		 * We can skip calling toast_flatten_tuple_attribute() if the attribute
+		 * couldn't possibly be of composite type.  All composite datums are
+		 * varlena and have alignment 'd'; furthermore they aren't arrays. Also,
+		 * if an attribute is already toasted, it must have been sent to disk
+		 * already and so cannot contain toasted attributes.
+		 */
+		for (i = 0; i < numberOfAttributes; i++)
+		{
+			if (slot->tts_isnull[i])
+				hasnull = true;
+			else if (att[i]->attlen == -1 &&
+					att[i]->attalign == 'd' &&
+					att[i]->attndims == 0 &&
+					!VARATT_IS_EXTENDED(slot->tts_values[i]))
+			{
+				slot->tts_values[i] = toast_flatten_tuple_attribute(slot->tts_values[i],
+						att[i]->atttypid,
+						att[i]->atttypmod);
+			}
+		}
+
+		/*
+		 * Determine total space needed
+		 */
+		cplen = offsetof(MinimalTupleData, t_bits);
+
+		if (hasnull)
+			cplen += BITMAPLEN(numberOfAttributes);
+
+		if (slot->tts_tupleDescriptor->tdhasoid)
+			cplen += sizeof(Oid);
+
+		hoff = cplen = MAXALIGN(cplen); /* align user data safely */
+
+		cplen += heap_compute_data_size(slot->tts_tupleDescriptor, slot->tts_values, slot->tts_isnull);
+
+		if(!dest || *len < cplen)
+		{
+			*len = cplen;
+			return false;
+		}
+
+		*len = cplen;
+		memset(dest, 0, cplen);
+		tuple = (MinimalTuple) dest;
+
+		/*
+		 * And fill in the information.
+		 */
+		tuple->t_len = cplen;
+		HeapTupleHeaderSetNatts(tuple, numberOfAttributes);
+		tuple->t_hoff = hoff + MINIMAL_TUPLE_OFFSET;
+
+		if (slot->tts_tupleDescriptor->tdhasoid)		/* else leave infomask = 0 */
+			tuple->t_infomask = HEAP_HASOID;
+
+		heap_fill_tuple(slot->tts_tupleDescriptor,
+				slot->tts_values,
+				slot->tts_isnull,
+				(char *) tuple + hoff,
+				&tuple->t_infomask,
+				(hasnull ? tuple->t_bits : NULL));
+
+		return true;
+	}
+	return false;
+}
+		
 /* --------------------------------
  *		ExecFetchSlotTuple
  *			Fetch the slot's regular physical tuple.
@@ -717,6 +872,9 @@ ExecFetchSlotTuple(TupleTableSlot *slot)
 	 */
 	Assert(slot != NULL);
 	Assert(!slot->tts_isempty);
+#ifdef DEBUG_NTUPLESTORE
+	check_tableslot_tuplestore(slot);
+#endif
 
 	/*
 	 * If we have a regular physical tuple then just return it.
@@ -752,6 +910,10 @@ ExecFetchSlotMinimalTuple(TupleTableSlot *slot)
 	 */
 	Assert(slot != NULL);
 	Assert(!slot->tts_isempty);
+
+#ifdef DEBUG_NTUPLESTORE
+	check_tableslot_tuplestore(slot);
+#endif
 
 	/*
 	 * If we have a minimal physical tuple then just return it.
@@ -804,6 +966,9 @@ ExecMaterializeSlot(TupleTableSlot *slot)
 	Assert(slot != NULL);
 	Assert(!slot->tts_isempty);
 
+#ifdef DEBUG_NTUPLESTORE
+	check_tableslot_tuplestore(slot);
+#endif
 	/*
 	 * If we have a regular physical tuple, and it's locally palloc'd, we have
 	 * nothing to do.

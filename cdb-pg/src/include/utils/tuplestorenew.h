@@ -9,7 +9,7 @@
 #include "executor/tuptable.h"
 
 /* Opaque data types */
-struct NTupleStorePos
+typedef struct NTupleStorePos
 {
 	long blockn;
 	int slotn;
@@ -34,7 +34,7 @@ extern void ntuplestore_destroy(NTupleStore *ts);
  * Create Accessor: current we support 1 writer, many reader per store.  After created, the accessor
  * is positioned at the first tuple or eof (if there is no tuple).
  */
-extern NTupleStoreAccessor *ntuplestore_create_accessor(NTupleStore *ts, bool init, bool isWriter);
+extern NTupleStoreAccessor *ntuplestore_create_accessor(NTupleStore *ts, bool isWriter);
 extern void ntuplestore_destroy_accessor(NTupleStoreAccessor *acc);
 
 /* Put slot/data automatically postion the accessor to the last entry */
@@ -60,7 +60,10 @@ extern bool ntuplestore_acc_current_data(NTupleStoreAccessor *tsa, void **data, 
 
 
 /* Tell/seek postion of accessor. */
-/* Tell fill in the pos, return false if accessor points to an invalid position */
+
+/* Tell fill in the pos, return false if accessor points to an invalid position.
+ * Caller can pass in pos = NULL to simply tell if the accessor is at a valid postion.
+ */
 extern bool ntuplestore_acc_tell(NTupleStoreAccessor *tsa, NTupleStorePos *pos);
 
 /* put the current row at a certain pos (or first/last).  Return false pos is invalid */

@@ -495,7 +495,7 @@ void *shareinput_writer_notifyready(int share_id, int xslice)
 			{
 				Assert(bsize == 1 && b == 'b');
 				--xslice;
-				elog(LOG, "SISC: notify ready succeed 1, xslice = %d", xslice);
+				elog(LOG, "SISC: notify ready succeed 1, xslice remaining %d", xslice);
 			}
 		}
 		else

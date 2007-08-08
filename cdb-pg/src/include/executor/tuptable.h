@@ -118,7 +118,15 @@ typedef struct TupleTableSlot
 	MinimalTuple tts_mintuple;	/* set if it's a minimal tuple, else NULL */
 	HeapTupleData tts_minhdr;	/* workspace if it's a minimal tuple */
 	long		tts_off;		/* saved state for slot_deform_tuple */
+
+#ifdef DEBUG_NTUPLESTORE
+	void       *tts_nts_acc;    /* ntuplestore accessor */
+#endif
 } TupleTableSlot;
+
+#ifdef DEBUG_NTUPLESTORE
+extern void check_tableslot_tuplestore(TupleTableSlot *slot);
+#endif
 
 /*
  * Tuple table data structure: an array of TupleTableSlots.
@@ -158,6 +166,7 @@ extern TupleTableSlot *ExecStoreVirtualTuple(TupleTableSlot *slot);
 extern TupleTableSlot *ExecStoreAllNullTuple(TupleTableSlot *slot);
 extern HeapTuple ExecCopySlotTuple(TupleTableSlot *slot);
 extern MinimalTuple ExecCopySlotMinimalTuple(TupleTableSlot *slot);
+extern bool ExecCopySlotMinimalTupleTo(TupleTableSlot *slot, char *dest, unsigned int *len);
 extern HeapTuple ExecFetchSlotTuple(TupleTableSlot *slot);
 extern MinimalTuple ExecFetchSlotMinimalTuple(TupleTableSlot *slot);
 extern HeapTuple ExecMaterializeSlot(TupleTableSlot *slot);

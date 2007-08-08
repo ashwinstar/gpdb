@@ -12,7 +12,7 @@ subdir = src/backend/utils/sort
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
-OBJS = logtape.o tuplesort.o tuplestore.o
+OBJS = logtape.o tuplesort.o tuplestore.o tuplestorenew.o
 
 all: SUBSYS.o
 
