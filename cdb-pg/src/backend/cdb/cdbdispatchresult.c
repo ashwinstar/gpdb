@@ -721,13 +721,13 @@ cdbdisp_dumpDispatchResults(struct CdbDispatchResults  *meleeResults,
  * entries that have a successful PGresult.  If sliceIndex >= 0,
  * uses only the results belonging to the specified slice.
  */
-int
+int64
 cdbdisp_sumCmdTuples(CdbDispatchResults *results, int sliceIndex)
 {
     CdbDispatchResult  *dispatchResult;
     CdbDispatchResult  *resultEnd = cdbdisp_resultEnd(results, sliceIndex);
     PGresult           *pgresult;
-    int                 sum = 0;
+    int64              sum = 0;
 
     for (dispatchResult = cdbdisp_resultBegin(results, sliceIndex);
          dispatchResult < resultEnd;

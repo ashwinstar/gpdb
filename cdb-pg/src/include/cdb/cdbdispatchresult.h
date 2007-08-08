@@ -247,7 +247,7 @@ cdbdisp_dumpDispatchResults(struct CdbDispatchResults  *gangResults,
  * entries that have a successful PGresult.  If sliceIndex >= 0,
  * uses only the entries belonging to the specified slice.
  */
-int
+int64
 cdbdisp_sumCmdTuples(CdbDispatchResults *results, int sliceIndex);
 
 /*

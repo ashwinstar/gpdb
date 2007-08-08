@@ -22,6 +22,7 @@
 #include "libpq-int.h"
 
 #include "mb/pg_wchar.h"
+#include <limits.h>
 
 #ifdef WIN32
 #include "win32.h"
@@ -544,7 +545,8 @@ pqInternalNotice(const PGNoticeHooks * hooks, const char *fmt,...)
 /*
  * pqAddTuple
  *	  add a row pointer to the PGresult structure, growing it if necessary
- *	  Returns TRUE if OK, FALSE if not enough memory to add the row
+ *	  Returns TRUE if OK, FALSE if not enough memory to add the row or 
+ *    the result counter overflows.
  */
 int
 pqAddTuple(PGresult *res, PGresAttValue *tup)
@@ -577,6 +579,10 @@ pqAddTuple(PGresult *res, PGresAttValue *tup)
 		res->tuples = newTuples;
 	}
 	res->tuples[res->ntups] = tup;
+
+	if (res->ntups == INT_MAX)
+		return FALSE;		/* Counter overflow. */
+
 	res->ntups++;
 	return TRUE;
 }

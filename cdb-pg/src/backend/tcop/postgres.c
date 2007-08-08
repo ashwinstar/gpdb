@@ -2295,7 +2295,7 @@ exec_bind_message(StringInfo input_message)
  * Process an "Execute" message for a portal
  */
 static void
-exec_execute_message(const char *portal_name, long max_rows)
+exec_execute_message(const char *portal_name, int64 max_rows)
 {
 	CommandDest dest;
 	DestReceiver *receiver;
@@ -5266,7 +5266,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 			case 'E':			/* execute */
 				{
 					const char *portal_name;
-					int			max_rows;
+					int64			max_rows;
 
                     if (Gp_role != GP_ROLE_EXECUTE)
                         gp_command_count++;
@@ -5275,7 +5275,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					SetCurrentStatementStartTimestamp();
 
 					portal_name = pq_getmsgstring(&input_message);
-					max_rows = pq_getmsgint(&input_message, 4);
+					max_rows = pq_getmsgint64(&input_message);
 					pq_getmsgend(&input_message);
 
 					elog((Debug_print_full_dtm ? LOG : DEBUG5), "Execute: %s.",portal_name);

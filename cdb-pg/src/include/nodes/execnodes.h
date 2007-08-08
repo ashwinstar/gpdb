@@ -442,7 +442,7 @@ typedef struct EState
 
 	TupleTable	es_tupleTable;	/* Array of TupleTableSlots */
 
-	uint32		es_processed;	/* # of tuples processed */
+	uint64		es_processed;	/* # of tuples processed */
 	Oid			es_lastoid;		/* last oid processed (by INSERT) */
 	List	   *es_rowMarks;	/* not good place, but there is no other */
 

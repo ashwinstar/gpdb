@@ -43,18 +43,18 @@ static void ProcessQuery(Portal portal,
 			 DestReceiver *dest,
 			 char *completionTag);
 static void FillPortalStore(Portal portal);
-static uint32 RunFromStore(Portal portal, ScanDirection direction, long count,
+static uint64 RunFromStore(Portal portal, ScanDirection direction, int64 count,
 			 DestReceiver *dest);
-static long PortalRunSelect(Portal portal, bool forward, long count,
+static int64 PortalRunSelect(Portal portal, bool forward, int64 count,
 				DestReceiver *dest);
 static void PortalRunUtility(Portal portal, Query *query,
 				 DestReceiver *dest, char *completionTag);
 static void PortalRunMulti(Portal portal,
 			   DestReceiver *dest, DestReceiver *altdest,
 			   char *completionTag);
-static long DoPortalRunFetch(Portal portal,
+static int64 DoPortalRunFetch(Portal portal,
 				 FetchDirection fdirection,
-				 long count,
+				 int64 count,
 				 DestReceiver *dest);
 static void DoPortalRewind(Portal portal);
 
@@ -202,7 +202,7 @@ ProcessQuery(Portal portal,
 		{
 			case CMD_SELECT:
 				snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
-						 "SELECT %u", queryDesc->es_processed);
+						 "SELECT " UINT64_FORMAT "", queryDesc->es_processed);
 				break;
 			case CMD_INSERT:	
 				if (queryDesc->es_processed == 1)
@@ -210,15 +210,15 @@ ProcessQuery(Portal portal,
 				else
 					lastOid = InvalidOid;
 				snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
-						 "INSERT %u %u", lastOid, queryDesc->es_processed);
+						 "INSERT %u " UINT64_FORMAT "", lastOid, queryDesc->es_processed);
 				break;
 			case CMD_UPDATE:
 				snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
-						 "UPDATE %u", queryDesc->es_processed);
+						 "UPDATE " UINT64_FORMAT "", queryDesc->es_processed);
 				break;
 			case CMD_DELETE:
 				snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
-						 "DELETE %u", queryDesc->es_processed);
+						 "DELETE " UINT64_FORMAT "", queryDesc->es_processed);
 				break;
 			default:
 				strcpy(completionTag, "???");
@@ -629,7 +629,7 @@ PortalSetResultFormat(Portal portal, int nFormats, int16 *formats)
  * suspended due to exhaustion of the count parameter.
  */
 bool
-PortalRun(Portal portal, long count,
+PortalRun(Portal portal, int64 count,
 		  DestReceiver *dest, DestReceiver *altdest,
 		  char *completionTag)
 {
@@ -820,15 +820,15 @@ PortalRun(Portal portal, long count,
  *
  * Returns number of rows processed (suitable for use in result tag)
  */
-static long
+static int64
 PortalRunSelect(Portal portal,
 				bool forward,
-				long count,
+				int64 count,
 				DestReceiver *dest)
 {
 	QueryDesc  *queryDesc;
 	ScanDirection direction;
-	uint32		nprocessed;
+	uint64		nprocessed;
 
 	/*
 	 * NB: queryDesc will be NULL if we are fetching from a held cursor or a
@@ -941,7 +941,7 @@ PortalRunSelect(Portal portal,
 			}
 			else
 			{
-				long		oldPos;
+				int64		oldPos;
 
 				oldPos = portal->portalPos;
 				portal->portalPos -= nprocessed;
@@ -1014,11 +1014,11 @@ FillPortalStore(Portal portal)
  * are run in the caller's memory context (since we have no estate).  Watch
  * out for memory leaks.
  */
-static uint32
-RunFromStore(Portal portal, ScanDirection direction, long count,
+static uint64
+RunFromStore(Portal portal, ScanDirection direction, int64 count,
 			 DestReceiver *dest)
 {
-	long		current_tuple_count = 0;
+	int64		current_tuple_count = 0;
 	TupleTableSlot *slot;
 
 	slot = MakeSingleTupleTableSlot(portal->tupDesc);
@@ -1256,13 +1256,13 @@ PortalRunMulti(Portal portal,
  *
  * Returns number of rows processed (suitable for use in result tag)
  */
-long
+int64
 PortalRunFetch(Portal portal,
 			   FetchDirection fdirection,
-			   long count,
+			   int64 count,
 			   DestReceiver *dest)
 {
-	long		result;
+	int64		result;
 	Portal		saveActivePortal;
 	Snapshot	saveActiveSnapshot;
 	ResourceOwner saveResourceOwner;
@@ -1380,10 +1380,10 @@ PortalRunFetch(Portal portal,
  *
  * Returns number of rows processed (suitable for use in result tag)
  */
-static long
+static int64
 DoPortalRunFetch(Portal portal,
 				 FetchDirection fdirection,
-				 long count,
+				 int64 count,
 				 DestReceiver *dest)
 {
 	bool		forward;
@@ -1432,7 +1432,8 @@ DoPortalRunFetch(Portal portal,
 				 * we are.	In any case, we arrange to fetch the target row
 				 * going forwards.
 				 */
-				if (portal->posOverflow || portal->portalPos == LONG_MAX ||
+				if (portal->posOverflow || 
+					portal->portalPos == INT64CONST(0x7FFFFFFFFFFFFFFF) ||
 					count - 1 <= portal->portalPos / 2)
 				{
 					/* until we enable backward scan - bail out here */
@@ -1448,7 +1449,7 @@ DoPortalRunFetch(Portal portal,
 				}
 				else
 				{
-					long		pos = portal->portalPos;
+					int64		pos = portal->portalPos;
 
 					if (portal->atEnd)
 						pos++;	/* need one extra fetch if off end */
@@ -1578,7 +1579,7 @@ DoPortalRunFetch(Portal portal,
 	 */
 	if (!forward && count == FETCH_ALL && dest->mydest == DestNone)
 	{
-		long		result = portal->portalPos;
+		int64		result = portal->portalPos;
 
 		/* until we enable backward scan - bail out here */
 		ereport(ERROR,

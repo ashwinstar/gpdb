@@ -37,6 +37,17 @@
 
 #include "nodes/print.h"
 
+/*
+ * Update the legacy 32-bit processed counter, but handle overflow.
+ */
+#define	SET_SPI_PROCESSED	\
+		if (SPI_processed64 > UINT_MAX) \
+			SPI_processed = UINT_MAX; \
+		else \
+			SPI_processed = (uint32)SPI_processed64 
+
+
+uint64		SPI_processed64 = 0;
 uint32		SPI_processed = 0;
 Oid			SPI_lastoid = InvalidOid;
 SPITupleTable *SPI_tuptable = NULL;
@@ -295,6 +306,7 @@ SPI_finish(void)
 	 * Reset result variables, especially SPI_tuptable which is probably
 	 * pointing at a just-deleted tuptable
 	 */
+	SPI_processed64 = 0;
 	SPI_processed = 0;
 	SPI_lastoid = InvalidOid;
 	SPI_tuptable = NULL;
@@ -620,6 +632,7 @@ AtEOXact_SPI(bool isCommit)
 	_SPI_current = _SPI_stack = NULL;
 	_SPI_stack_depth = 0;
 	_SPI_connected = _SPI_curid = -1;
+	SPI_processed64 = 0;
 	SPI_processed = 0;
 	SPI_lastoid = InvalidOid;
 	SPI_tuptable = NULL;
@@ -673,6 +686,7 @@ AtEOSubXact_SPI(bool isCommit, SubTransactionId mySubid)
 			_SPI_current = NULL;
 		else
 			_SPI_current = &(_SPI_stack[_SPI_connected]);
+		SPI_processed64 = 0;
 		SPI_processed = 0;
 		SPI_lastoid = InvalidOid;
 		SPI_tuptable = NULL;
@@ -1331,6 +1345,7 @@ SPI_cursor_open(const char *name, void *plan,
 		}
 		
 		/* Reset SPI result (note we deliberately don't touch lastoid) */
+		SPI_processed64 = 0;
 		SPI_processed = 0;
 		SPI_tuptable = NULL;
 		_SPI_current->processed = 0;
@@ -1474,7 +1489,9 @@ SPI_cursor_open(const char *name, void *plan,
 				
         	}
         			
-        	SPI_processed = _SPI_current->processed;
+        	SPI_processed64 = _SPI_current->processed;
+			SET_SPI_PROCESSED;
+
 			SPI_lastoid = _SPI_current->lastoid;
 			SPI_tuptable = _SPI_current->tuptable;
 	        
@@ -1540,6 +1557,7 @@ SPI_cursor_open(const char *name, void *plan,
 	}
 
 	/* Reset SPI result (note we deliberately don't touch lastoid) */
+	SPI_processed64 = 0;
 	SPI_processed = 0;
 	SPI_tuptable = NULL;
 	_SPI_current->processed = 0;
@@ -2088,7 +2106,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 				  bool read_only, long tcount)
 {
 	volatile int my_res = 0;
-	volatile uint32 my_processed = 0;
+	volatile uint64 my_processed = 0;
 	volatile Oid my_lastoid = InvalidOid;
 	SPITupleTable *volatile my_tuptable = NULL;
 	volatile int res = 0;
@@ -2646,7 +2664,9 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
     	 */ 
     	
         ActiveSnapshot = saveActiveSnapshot;
-        SPI_processed = _SPI_current->processed;
+        SPI_processed64 = _SPI_current->processed;
+		SET_SPI_PROCESSED;
+
 		SPI_lastoid = _SPI_current->lastoid;
 		SPI_tuptable = _SPI_current->tuptable;
         elog(DEBUG1,"_SPI_execute_plan done %d", my_res);
@@ -2857,7 +2877,9 @@ fail:
 	ActiveSnapshot = saveActiveSnapshot;
 
 	/* Save results for caller */
-	SPI_processed = my_processed;
+	SPI_processed64 = my_processed;
+	SET_SPI_PROCESSED;
+
 	SPI_lastoid = my_lastoid;
 	SPI_tuptable = my_tuptable;
 
@@ -2989,7 +3011,7 @@ static void
 _SPI_cursor_operation(Portal portal, bool forward, long count,
 					  DestReceiver *dest)
 {
-	long		nfetched;
+	int64		nfetched;
 	elog(DEBUG1,"SPI_cursor_operation");
 
 	/* Check that the portal is valid */
@@ -3001,6 +3023,7 @@ _SPI_cursor_operation(Portal portal, bool forward, long count,
 		elog(ERROR, "SPI cursor operation called while not connected");
 
 	/* Reset the SPI result (note we deliberately don't touch lastoid) */
+	SPI_processed64 = 0;
 	SPI_processed = 0;
 	SPI_tuptable = NULL;
 	_SPI_current->processed = 0;
@@ -3026,7 +3049,9 @@ _SPI_cursor_operation(Portal portal, bool forward, long count,
 		elog(ERROR, "consistency check on SPI tuple count failed");
 
 	/* Put the result into place for access by caller */
-	SPI_processed = _SPI_current->processed;
+	SPI_processed64 = _SPI_current->processed;
+	SET_SPI_PROCESSED;
+
 	SPI_tuptable = _SPI_current->tuptable;
 
 	/* tuptable now is caller's responsibility, not SPI's */

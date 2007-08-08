@@ -448,7 +448,7 @@ PersistHoldablePortal(Portal portal)
 			}
 			else
 			{
-				long		store_pos;
+				int64		store_pos;
 	
 				if (portal->posOverflow)	/* oops, cannot trust portalPos */
 					ereport(ERROR,
