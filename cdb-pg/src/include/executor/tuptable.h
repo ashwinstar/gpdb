@@ -119,12 +119,12 @@ typedef struct TupleTableSlot
 	HeapTupleData tts_minhdr;	/* workspace if it's a minimal tuple */
 	long		tts_off;		/* saved state for slot_deform_tuple */
 
-#ifdef DEBUG_NTUPLESTORE
+#ifdef USE_DEBUG_NTUPLESTORE
 	void       *tts_nts_acc;    /* ntuplestore accessor */
 #endif
 } TupleTableSlot;
 
-#ifdef DEBUG_NTUPLESTORE
+#ifdef USE_DEBUG_NTUPLESTORE
 extern void check_tableslot_tuplestore(TupleTableSlot *slot);
 #endif
 

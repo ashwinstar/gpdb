@@ -631,6 +631,10 @@
    */
 #undef USE_DEBUG_BREAK
 
+/* Define to 1 to build with debug ntuplestore capabilities. (--enable-debugntuplestore)
+   */
+#undef USE_DEBUG_NTUPLESTORE
+
 /* Define to 1 if you want 64-bit integer timestamp and interval support.
    (--enable-integer-datetimes) */
 #undef USE_INTEGER_DATETIMES

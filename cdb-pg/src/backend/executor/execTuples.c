@@ -155,7 +155,7 @@ ExecCreateTupleTable(int tableSize)
 		slot->tts_values = NULL;
 		slot->tts_isnull = NULL;
 		slot->tts_mintuple = NULL;
-#ifdef DEBUG_NTUPLESTORE
+#ifdef USE_DEBUG_NTUPLESTORE
 		slot->tts_nts_acc = NULL;
 #endif
 	}
@@ -242,7 +242,7 @@ MakeSingleTupleTableSlot(TupleDesc tupdesc)
 	slot->tts_values = NULL;
 	slot->tts_isnull = NULL;
 	slot->tts_mintuple = NULL;
-#ifdef DEBUG_NTUPLESTORE
+#ifdef USE_DEBUG_NTUPLESTORE
 	slot->tts_nts_acc = NULL;
 #endif
 
@@ -425,7 +425,7 @@ ExecStoreTuple(HeapTuple tuple,
 	/* passing shouldFree=true for a tuple on a disk page is not sane */
 	Assert(BufferIsValid(buffer) ? (!shouldFree) : true);
 
-#ifdef DEBUG_NTUPLESTORE
+#ifdef USE_DEBUG_NTUPLESTORE
 	check_tableslot_tuplestore(slot);
 #endif
 
@@ -448,7 +448,7 @@ ExecStoreTuple(HeapTuple tuple,
 	slot->tts_tuple = tuple;
 	slot->tts_mintuple = NULL;
 
-#ifdef DEBUG_NTUPLESTORE
+#ifdef USE_DEBUG_NTUPLESTORE
 	slot->tts_nts_acc = NULL;
 #endif
 	/* Mark extracted state invalid */
@@ -494,7 +494,7 @@ ExecStoreMinimalTuple(MinimalTuple mtup,
 	Assert(mtup != NULL);
 	Assert(slot != NULL);
 	Assert(slot->tts_tupleDescriptor != NULL);
-#ifdef DEBUG_NTUPLESTORE
+#ifdef USE_DEBUG_NTUPLESTORE
 	check_tableslot_tuplestore(slot);
 #endif
 
@@ -551,7 +551,7 @@ ExecClearTuple(TupleTableSlot *slot)	/* slot in which to store tuple */
 	 */
 	Assert(slot != NULL);
 
-#ifdef DEBUG_NTUPLESTORE
+#ifdef USE_DEBUG_NTUPLESTORE
 	check_tableslot_tuplestore(slot);
 #endif
 
@@ -662,7 +662,7 @@ ExecCopySlotTuple(TupleTableSlot *slot)
 	 */
 	Assert(slot != NULL);
 	Assert(!slot->tts_isempty);
-#ifdef DEBUG_NTUPLESTORE
+#ifdef USE_DEBUG_NTUPLESTORE
 	check_tableslot_tuplestore(slot);
 #endif
 
@@ -699,7 +699,7 @@ ExecCopySlotMinimalTuple(TupleTableSlot *slot)
 	 */
 	Assert(slot != NULL);
 	Assert(!slot->tts_isempty);
-#ifdef DEBUG_NTUPLESTORE
+#ifdef USE_DEBUG_NTUPLESTORE
 	check_tableslot_tuplestore(slot);
 #endif
 
@@ -726,7 +726,7 @@ extern Datum toast_flatten_tuple_attribute(Datum value, Oid typeId, int32 typeMo
 bool ExecCopySlotMinimalTupleTo(TupleTableSlot *slot, char *dest, unsigned int *len)
 {
 	Assert(slot && !slot->tts_isempty);
-#ifdef DEBUG_NTUPLESTORE
+#ifdef USE_DEBUG_NTUPLESTORE
 	check_tableslot_tuplestore(slot);
 #endif
 
@@ -872,7 +872,7 @@ ExecFetchSlotTuple(TupleTableSlot *slot)
 	 */
 	Assert(slot != NULL);
 	Assert(!slot->tts_isempty);
-#ifdef DEBUG_NTUPLESTORE
+#ifdef USE_DEBUG_NTUPLESTORE
 	check_tableslot_tuplestore(slot);
 #endif
 
@@ -911,7 +911,7 @@ ExecFetchSlotMinimalTuple(TupleTableSlot *slot)
 	Assert(slot != NULL);
 	Assert(!slot->tts_isempty);
 
-#ifdef DEBUG_NTUPLESTORE
+#ifdef USE_DEBUG_NTUPLESTORE
 	check_tableslot_tuplestore(slot);
 #endif
 
@@ -966,7 +966,7 @@ ExecMaterializeSlot(TupleTableSlot *slot)
 	Assert(slot != NULL);
 	Assert(!slot->tts_isempty);
 
-#ifdef DEBUG_NTUPLESTORE
+#ifdef USE_DEBUG_NTUPLESTORE
 	check_tableslot_tuplestore(slot);
 #endif
 	/*

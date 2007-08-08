@@ -108,7 +108,6 @@ static void ltsWriteBlock(LogicalTapeSet *lts, long blocknum, void *buffer);
 static void ltsReadBlock(LogicalTapeSet *lts, long blocknum, void *buffer);
 static long ltsGetFreeBlock(LogicalTapeSet *lts);
 static void ltsReleaseBlock(LogicalTapeSet *lts, long blocknum);
-static void ltsDumpBuffer(LogicalTapeSet *lts, LogicalTape *lt);
 
 static void DumpLogicalTapeSetState(BufFile *pfile, LogicalTapeSet *lts, LogicalTape *lt)
 {

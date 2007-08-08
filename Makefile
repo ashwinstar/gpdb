@@ -47,7 +47,7 @@ devel : version HOMEDEP $(ISCONFIG)
 
 forceplan : INSTCFLAGS=$(DEBUGFLAGS)
 forceplan : INSTLOC=$(DEVPATH)
-forceplan : CONFIGFLAGS+=--enable-cassert --enable-debug --enable-forceplan --enable-debugbreak
+forceplan : CONFIGFLAGS+=--enable-cassert --enable-debug --enable-forceplan --enable-debugbreak --enable-debugntuplestore
 forceplan : HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR); $(MAKE) install

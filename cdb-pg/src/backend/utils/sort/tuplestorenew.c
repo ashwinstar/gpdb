@@ -168,15 +168,15 @@ void ntuplestore_setinstrument(NTupleStore *st, struct Instrumentation *instr)
 	st->instrument = instr;
 }
 
-#ifdef DEBUG_NTUPLESTORE
+#ifdef USE_DEBUG_NTUPLESTORE
 /* Sanity checks on a TupleTableSlot.  Will fail if someone called advance/seek etc.
  * on accessor 
  */
 void check_tableslot_tuplestore(TupleTableSlot *slot)
 {
-	if(slot->tts_nts_slot)
+	if(slot->tts_nts_acc)
 	{
-		NTupleStoreAccessor *acc = (NTupleStoreAccessor *) slot->tts_nts_slot;
+		NTupleStoreAccessor *acc = (NTupleStoreAccessor *) slot->tts_nts_acc;
 		void *data;
 		int  len;
 
@@ -195,7 +195,7 @@ static void verify_ts_page_list(NTupleStore * ts)
 	NTupleStorePage *p = ts->first_page;
 	NTupleStorePage *pnext;
 	
-	nts_verify_page_formate_is_sane();
+	verify_nts_page_format_is_sane();
 
 	Assert(p);
 	Assert(nts_page_blockn(p) >= ts->first_ondisk_blockn);
@@ -211,7 +211,7 @@ static void verify_ts_page_list(NTupleStore * ts)
 
 		for(s = 0; s<nts_page_slot_cnt(pnext); ++s)
 		{
-			NTupleStoreSlotEntry* slotentry = nts_page_slot_entry(pnext, s); 
+			NTupleStorePageSlotEntry* slotentry = nts_page_slot_entry(pnext, s); 
 			if(slotentry->data_start < 0 || slotentry->size < 0)
 			{
 				Assert(validstarted == false);
@@ -251,7 +251,7 @@ static void verify_ts_page_list(NTupleStore * ts)
 
 			for(s = 0; s<nts_page_slot_cnt(pnext); ++s)
 			{
-				NTupleStoreSlotEntry* slotentry = nts_page_slot_entry(pnext, s);
+				NTupleStorePageSlotEntry* slotentry = nts_page_slot_entry(pnext, s);
 				Assert(slotentry->data_start >= prev_data_start + prev_data_len);
 				Assert(slotentry->data_start == NTS_ALLIGN8(slotentry->data_start));
 

@@ -388,6 +388,11 @@ PGAC_ARG_BOOL(enable, debugbreak, no, [  --enable-debugbreak        enable debug
               [AC_DEFINE([USE_DEBUG_BREAK], 1,
                          [Define to 1 to build with debug_break capabilities. (--enable-debugbreak)])])
 
+PGAC_ARG_BOOL(enable, debugntuplestore, no, [  --enable-ntuplestore      enable debug_ntuplestore (for debugging)],
+              [AC_DEFINE([USE_DEBUG_NTUPLESTORE], 1,
+                         [Define to 1 to build with debug_ntuplestore. (--enable-ntuplestore)])])
+
+
 #
 # Include directories
 #
