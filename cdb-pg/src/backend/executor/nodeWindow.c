@@ -739,7 +739,7 @@ fetchTupleThroughBuf(WindowState *wstate)
 			foreach (lc, window->windowKeys)
 			{
 				WindowKey *key = (WindowKey *)lfirst(lc);
-				/* XXX: should just put the eqfunctions in WindowKey */
+
 				WindowStatePerLevel ls = &wstate->level_state[level];
 
 				if (match)
@@ -1051,7 +1051,6 @@ add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 	}
 	else /* ordinary window function */
 	{
-		/* XXX: fix me to stop temporarily in state */
 		InitFunctionCallInfoData(fcinfo, 
 								 &funcstate->windowfn,
 								 argno,
@@ -1259,28 +1258,26 @@ set_edge_val(WindowState *wstate, WindowStatePerLevel level_state,
 
 	if (key->frame->is_rows)
 	{
-		long int rows_param;
-
-		/* XXX: avoid doing this again and again for ROWS */
 		if (EDGE_IS_BOUND(e))
 		{
-			if (is_trail)
-				rows_param = ((Const *)(e->val))->constvalue;
-			else
-				rows_param = ((Const *)(e->val))->constvalue;
-
-			if (e->kind == WINDOW_BOUND_PRECEDING)
-				rows_param = -rows_param;
-
-			if (is_trail)
+			/* already initialised for first row */
+			if (wstate->row_index > 0)
 			{
-				level_state->trail_rows = (long int)(wstate->row_index + rows_param);
-				elog(DEBUG1, "trail edge row = %li", level_state->trail_rows);
-			}
-			else
-			{
-				level_state->lead_rows = (long int)(wstate->row_index + rows_param);
-				elog(DEBUG1, "lead edge row = %li", level_state->lead_rows);
+				if (is_trail)
+				{
+					Assert(level_state->trail_edge_set);
+
+					level_state->trail_rows++;
+					elog(DEBUG1, "trail edge row = %li", 
+						 level_state->trail_rows);
+				}
+				else
+				{
+					Assert(level_state->lead_edge_set);
+
+					level_state->lead_rows++;
+					elog(DEBUG1, "lead edge row = %li", level_state->lead_rows);
+				}
 			}
 		}
 		else if (e->kind == WINDOW_CURRENT_ROW)
@@ -2221,13 +2218,10 @@ populateFrameBuffers(WindowState *wstate)
 						}
 					}
 				}
-#if 0				
-				if (process_cur_slot)
-#endif
-					appendRangeTuple(wstate, key, key->frame, level_state, 
-									 new_vals, new_nulls, 
-									 level, level_state->level_funcs,
-									 is_peer, tuple_in_buf);
+				appendRangeTuple(wstate, key, key->frame, level_state, 
+								 new_vals, new_nulls, 
+								 level, level_state->level_funcs,
+								 is_peer, tuple_in_buf);
 				process_cur_slot = false;
 
 				tuple_in_frame = tuple_before_edge;
@@ -2375,6 +2369,11 @@ process_vals(WindowState *wstate, WindowStatePerFunction funcstate,
 	funcstate->aggNoTransValue = tv.noTransValue;
 }
 
+/*
+ * Now that we've populated the frame buffers and adjusted the trail and
+ * lead edges, it's time to calculate the actual transition values/
+ * window function results for this outer row.
+ */
 static void
 calculateTransVals(WindowState *wstate)
 {
@@ -2463,6 +2462,11 @@ calculateTransVals(WindowState *wstate)
 				int argno = initFcinfo(funcstate->wrxstate, &fcinfo, 
 									   funcstate, econtext);
 
+				/* 
+				 * Window functions like LEAD and LAG need to know their
+				 * WindowStatePerFunction so that they can peek into the
+				 * buffer.
+				 */
 				wstate->cur_funcstate = funcstate;
 
 				InitFunctionCallInfoData(fcinfo, 
@@ -2490,9 +2494,6 @@ invokeNonTrivialFuncs(WindowState *wstate)
 
 	/* next, calculate the transition value for each function */
 	calculateTransVals(wstate);
-	
-	/* finally, finalise the functions */
-//	finaliseFuncs(wstate);
 }
 
 static void
@@ -2851,15 +2852,55 @@ init_frames(WindowState *wstate)
 		{
 			if (frame->is_rows)
 			{
+				ExprContext *econtext = wstate->ps.ps_ExprContext;
+
 				if (EDGE_IS_BOUND(frame->trail))
-					level_state->trail_rows = 
-						((Const *)key->frame->trail->val)->constvalue;
+				{
+					long int rows_param;
+					bool isnull;
+					
+					level_state->trail_expr =
+						ExecInitExpr((Expr *)key->frame->trail->val, 
+									 (PlanState *) wstate); 
+
+					rows_param = ExecEvalExpr(level_state->trail_expr,
+											  econtext,
+											  &isnull,
+											  NULL);
+
+					Insist(!isnull);
+
+					if (frame->trail->kind == WINDOW_BOUND_PRECEDING)
+						rows_param = -rows_param;
+
+					level_state->trail_rows = rows_param;
+					level_state->trail_edge_set = true;
+				}
 				else
 					level_state->trail_rows = 0L;
 
 				if (EDGE_IS_BOUND(frame->lead))
-					level_state->lead_rows = 
-						((Const *)key->frame->lead->val)->constvalue;
+				{
+					long int rows_param;
+					bool isnull;
+
+					level_state->lead_expr = 
+						ExecInitExpr((Expr *)key->frame->lead->val, 
+									 (PlanState *) wstate); 
+
+					rows_param = ExecEvalExpr(level_state->lead_expr,
+											  econtext,
+											  &isnull,
+											  NULL);
+
+					Insist(!isnull);
+
+					if (frame->lead->kind == WINDOW_BOUND_PRECEDING)
+						rows_param = -rows_param;
+					
+					level_state->lead_rows = rows_param;
+					level_state->lead_edge_set = true;
+				}
 				else
 					level_state->lead_rows = 0L;
 			}
@@ -3260,12 +3301,7 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 				 *prelimfnexpr;
 			Datum textInitVal;
 			
-			/* XXX In reality, we shouldn't see this condition. The planner
-			 *     shouldn't produce it.  However, during development, this
-			 *     run-time check compensates for the poor state of planning.
-			 */
-			if ( winref->winlevel >= wstate->numlevels )
-				elog(ERROR, "Window function aggregation over entire partition not supported yet.");
+			Insist(winref->winlevel < wstate->numlevels);
 
 			agg_tuple = SearchSysCache(AGGFNOID,
 									   ObjectIdGetDatum(winref->winfnoid),
