@@ -3483,7 +3483,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			if (strcmp(query_string,"create gang")==0)
 			{
 				gang_id = conninfo->gang_id; /* just for debugging */
-				elog(LOG, "Gang stmt: %s gang_id %d.",query_string, conninfo->gang_id);
+				elog(DEBUG1, "Gang stmt: %s gang_id %d.",query_string, conninfo->gang_id);
 				
 				/*
 				 * create a fragment of a gang based on the info passed to 
@@ -3504,7 +3504,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			}
 			else
 			{
-				elog(LOG, "Gang stmt: %s gang_id %d.",query_string, gang_id);
+				elog(DEBUG1, "Gang stmt: %s gang_id %d.",query_string, gang_id);
 				
 				if (strcmp(query_string,"clean gang")==0)
 					cleanupGang(findGangById(gang_id));
