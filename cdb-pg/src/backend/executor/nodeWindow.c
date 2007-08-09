@@ -1814,11 +1814,31 @@ adjustEdges(WindowState *wstate)
 					while (pos <= (funcstate->frame_mem_used - 1))
 					{
 						bool res;
-						WindowRangeBuffer *wrb;
+						Datum *keys;
+						bool *nulls;
+
+						/* 
+						 * These buffers have a different physical layout so
+						 * we must interact with them seperately.
+						 */
+						if (funcstate->isAgg)
+						{
+							WindowRangeBuffer *wrb;
+
+							wrb = funcstate->frame_trans_vals[pos];
+							keys = wrb->key;
+							nulls = wrb->nulls;
+						}
+						else
+						{
+							WinFuncRangeBuffer *wrb;
+
+							wrb = funcstate->frame_trans_vals[pos];
+							keys = wrb->vals;
+							nulls = wrb->nulls;
+						}
 	
-						wrb = funcstate->frame_trans_vals[pos];
-	
-						res = cmp_deformed_tuple(wrb->key, wrb->nulls,
+						res = cmp_deformed_tuple(keys, nulls,
 												 level_state->trail_edge_d,
 												 level_state->trail_edge_nulls,
 												 level_state->col_sort_asc,
@@ -1837,7 +1857,7 @@ adjustEdges(WindowState *wstate)
 						}
 						else
 						{
-							res =  cmp_deformed_tuple(wrb->key, wrb->nulls,
+							res =  cmp_deformed_tuple(keys, nulls,
 												 level_state->trail_edge_d,
 												 level_state->trail_edge_nulls,
 												 level_state->col_sort_asc,
@@ -1878,11 +1898,31 @@ adjustEdges(WindowState *wstate)
 				while (pos <= (funcstate->frame_mem_used - 1))
 				{
 					bool res1 = false, res2 = false;
-					WindowRangeBuffer *wrb;
+					Datum *keys;
+					bool *nulls;
 
-					wrb = funcstate->frame_trans_vals[pos];
+					/* 
+					 * These buffers have a different physical layout so
+					 * we must interact with them seperately.
+					 */
+					if (funcstate->isAgg)
+					{
+						WindowRangeBuffer *wrb;
 
-					res1 = cmp_deformed_tuple(wrb->key, wrb->nulls,
+						wrb = funcstate->frame_trans_vals[pos];
+						keys = wrb->key;
+						nulls = wrb->nulls;
+					}
+					else
+					{
+						WinFuncRangeBuffer *wrb;
+
+						wrb = funcstate->frame_trans_vals[pos];
+						keys = wrb->vals;
+						nulls = wrb->nulls;
+					}
+
+					res1 = cmp_deformed_tuple(keys, nulls,
 											 level_state->lead_edge_d,
 											 level_state->lead_edge_nulls,
 											 level_state->col_sort_asc,
@@ -1892,7 +1932,7 @@ adjustEdges(WindowState *wstate)
 											 false);
 					
 					if (!res1)
-						res2 = cmp_deformed_tuple(wrb->key, wrb->nulls,
+						res2 = cmp_deformed_tuple(keys, nulls,
 												 level_state->lead_edge_d,
 												 level_state->lead_edge_nulls,
 												 level_state->col_sort_asc,
