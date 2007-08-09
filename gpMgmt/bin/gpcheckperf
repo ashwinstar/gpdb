@@ -349,61 +349,6 @@ def findCmdInPath(file):
             return path
     return None
 
-
-def gethostaddress():
-    import commands
-    OS = os.uname() 
-    
-
-    ifconfig_path = findCmdInPath('ifconfig')
-    ping_path = findCmdInPath('ping')
-
-    if ifconfig_path is None:
-        sys.exit('[Error] ifconfig not found')
-
-    out = commands.getoutput("%s -a | grep 'inet' | grep -v '127.' | awk '{print $2}' | cut -d: -f2" % ifconfig_path)
-    hosts = out.split()
-    for a in hosts:
-        if a == '':
-            continue
-        if OS[0] == 'SunOS':
-            cmd = gpssh('%s -a %s' % (ping_path, a))
-        else:
-            cmd = gpssh('%s -c 1 %s' % (ping_path, a))
-        (ok, out) = run(cmd)
-        if ok:
-            return a
-            
-    return None
-
-def gethostaddress1():
-    import commands
-    OS = os.uname()
-    hostname_path = findCmdInPath('hostname')
-    ping_path = findCmdInPath('ping')
-
-    if hostname_path is None:
-        sys.exit('[Error] hostname not found')
-
-    out = commands.getoutput(hostname_path)
-    
-    if OS[0] == 'SunOS':
-        cmd = gpssh('%s -a %s' % (ping_path, out))
-    else:
-        cmd = gpssh('%s -c 1 %s' % (ping_path, out))
-    (ok, out) = run(cmd)
-    if ok:
-        lines = out.split('\n')
-        for line in lines:
-            s = line.find('(')
-            e = line.find(')')
-            if (s == -1 or e == -1):
-                continue
-            return line[s+1:e]
-
-    return None
-
-
 def startNetServer():
     port = 23000
     success = False
@@ -429,11 +374,6 @@ def startNetServer():
 
 #############
 def runNetPerfTest():
- #   host = gethostaddress()
-
- #   if host is None:
- #       sys.exit('[Error] get host address failed')
-
     if opt['-v']:
         print '-------------------'
         print ' NETPERF Test'

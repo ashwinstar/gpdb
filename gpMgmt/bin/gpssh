@@ -270,9 +270,7 @@ class Session(cmd.Cmd):
 	    s.sendline(line)
 	    s.flush()
 	for s in self.pxssh:
-	    while not s.prompt(120): 
-	        if not s.isalive() or s.eof():
-		    break
+	    while not s.prompt(120) and s.isalive() and not s.eof(): pass
 	    out = s.before.split('\n')
 	    out = out[1:-1]
 	    if len(out) == 0:
