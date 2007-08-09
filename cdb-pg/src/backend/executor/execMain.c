@@ -60,6 +60,7 @@
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_class.h"
 
+#include "tcop/tcopprot.h"
 #include "cdb/cdbcat.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdispatchresult.h"
@@ -314,6 +315,17 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 				PG_RE_THROW();
 			}
 			PG_END_TRY();
+			if (DEBUG1 >= log_min_messages)
+						{
+							char		msec_str[32];
+							switch (check_log_duration(msec_str, false))
+							{
+								case 1:
+								case 2:
+									ereport(LOG, (errmsg("duration to Interconnect setup done: %s ms", msec_str)));
+									break;
+							}
+						}
 		}
 	}
 
@@ -1034,6 +1046,18 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	 * ExecInitSubPlan().
 	 */
 	
+	if (DEBUG1 >= log_min_messages)
+		{
+			char		msec_str[32];
+			switch (check_log_duration(msec_str, false))
+			{
+				case 1:
+				case 2:
+					ereport(LOG, (errmsg("duration to InitPlan start: %s ms", msec_str)));
+					break;
+			}
+		}
+	
 	if (operation == CMD_SELECT && (Gp_role == GP_ROLE_EXECUTE || (shouldDispatch && cdbpathlocus_querysegmentcatalogs)))
 	{
 		/*
@@ -1408,6 +1432,19 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 			/* Only create the table if root slice */
 	        (Gp_role != GP_ROLE_EXECUTE || Gp_is_writer) )
 		OpenIntoRel(queryDesc);
+	
+	
+	if (DEBUG1 >= log_min_messages)
+			{
+				char		msec_str[32];
+				switch (check_log_duration(msec_str, false))
+				{
+					case 1:
+					case 2:
+						ereport(LOG, (errmsg("duration to InitPlan end: %s ms", msec_str)));
+						break;
+				}
+			}
 }
 
 /*
