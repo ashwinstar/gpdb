@@ -1355,6 +1355,44 @@ set_edge_val(WindowState *wstate, WindowStatePerLevel level_state,
 }
 
 static void
+eval_copy_winfunc_args(WindowState *wstate, List *funcargs, Datum *vals,
+					   bool *nulls)
+{
+	ListCell *lc;
+	int argno = 0;
+	ExprContext *econtext = wstate->ps.ps_ExprContext;
+	
+	foreach (lc, funcargs)
+	{
+		ExprState  *argstate = (ExprState *) lfirst(lc);
+		Oid typid;
+		bool byval;
+		int16 len;
+		MemoryContext oldctx;
+
+		/* skip the internal arg */
+		if (argno < 1)
+		{
+			argno++;
+			continue;
+		}
+
+		vals[argno - 1] = ExecEvalExpr(argstate, econtext,
+								       nulls + argno - 1, NULL);
+
+		/* XXX: get a copy, do the leg work at init time though */
+		typid = exprType((Node *)argstate->expr);
+		get_typlenbyval(typid, &len, &byval);
+
+		oldctx = MemoryContextSwitchTo(wstate->transcontext);
+		vals[argno - 1] = datumCopy(vals[argno - 1], byval, len);
+		MemoryContextSwitchTo(oldctx);
+
+		argno++;
+	}
+}
+
+static void
 bufEnsureSpace(WindowStatePerFunction funcstate, WindowState *wstate,
 			   size_t elem_sz)
 {
@@ -1508,7 +1546,6 @@ appendRangeTuple(WindowState *wstate, WindowKey *key,
 		{
 			Datum *args;
 			bool *argnulls;
-			ListCell *lc;
 			int nargs;
 			MemoryContext oldctx;
 			int argno;
@@ -1536,19 +1573,9 @@ appendRangeTuple(WindowState *wstate, WindowKey *key,
 			args = palloc(nargs * sizeof(Datum));
 			argnulls = palloc(nargs * sizeof(bool));
 			
-			foreach (lc, wrxstate->args)
-			{
-				ExprState  *argstate = (ExprState *) lfirst(lc);
-				
-				argno++;
-
-				if (argno < 1)
-					continue;
-				
-				args[argno - 1] = ExecEvalExpr(argstate, econtext,
-										   &argnulls[argno - 1], NULL);
-			}
 			MemoryContextSwitchTo(oldctx);
+
+			eval_copy_winfunc_args(wstate, wrxstate->args, args, argnulls);
 			
 			bufferAddRangeWindowFuncTuple(wstate, funcstate, args, argnulls,
 										  vals, nulls, tuple_before_edge);
@@ -1661,7 +1688,6 @@ appendRowTuple(WindowState *wstate, WindowFrame *frame,
 		{
 			Datum *args;
 			bool *argnulls;
-			ListCell *lc;
 			int nargs;
 			MemoryContext oldctx;
 			int argno;
@@ -1681,37 +1707,10 @@ appendRowTuple(WindowState *wstate, WindowFrame *frame,
 			args = palloc(nargs * sizeof(Datum));
 			argnulls = palloc(nargs * sizeof(bool));
 			
-			foreach (lc, wrxstate->args)
-			{
-				ExprState  *argstate = (ExprState *) lfirst(lc);
-				Oid typid;
-				bool byval;
-				int16 len;
-				MemoryContext oldctx;
-
-				/* skip the internal arg */
-				if (argno < 1)
-				{
-					argno++;
-					continue;
-				}
-
-				args[argno - 1] = ExecEvalExpr(argstate, econtext,
-										       argnulls + argno - 1, NULL);
-
-				/* XXX: get a copy, do the leg work at init time though */
-				typid = exprType((Node *)argstate->expr);
-				get_typlenbyval(typid, &len, &byval);
-
-				oldctx = MemoryContextSwitchTo(wstate->transcontext);
-				args[argno - 1] = datumCopy(args[argno - 1], byval, len);
-				MemoryContextSwitchTo(oldctx);
-
-				argno++;
-			}
-
 			MemoryContextSwitchTo(oldctx);
-			
+
+			eval_copy_winfunc_args(wstate, wrxstate->args, args, argnulls);
+
 			bufferAddRowWindowFuncTuple(wstate, funcstate, args, argnulls,
 										lead_row_index, tuple_in_frame);
 	
@@ -1916,7 +1915,6 @@ adjustEdges(WindowState *wstate)
 					else
 					{
 						WinFuncRangeBuffer *wrb;
-
 						wrb = funcstate->frame_trans_vals[pos];
 						keys = wrb->vals;
 						nulls = wrb->nulls;
@@ -2068,7 +2066,6 @@ populateFrameBuffers(WindowState *wstate)
 	while (true)
 	{
 		bool passed_all_edges = true;
-		ListCell *lc;
 		TupleTableSlot *slot; // = ExecProcNode(outerPlanState(wstate));;
 		WindowBreakInfo wbi;
 
@@ -3234,7 +3231,7 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 		Form_pg_proc proform;
 		HeapTuple	heap_tuple;
 		ListCell   *lcarg;
-		int			i, funcno;
+		int			funcno;
 		Oid			winOwner,
 					winResType;
 		bool		isAgg, 

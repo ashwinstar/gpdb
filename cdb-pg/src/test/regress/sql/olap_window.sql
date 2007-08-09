@@ -485,6 +485,17 @@ SELECT sale.cn,sale.vn,AVG(cast (sale.vn as int)) OVER(order by sale.cn desc) as
 -- a bit harder
 SELECT sale.cn,sale.dt, sale.vn,AVG(cast (sale.vn as int)) OVER(order by sale.cn desc, sale.dt asc) as avg from sale;
 
+-- test for MPP-1810 and other similar queries
+SELECT sale.vn,sale.vn,sale.qty,                                   
+FIRST_VALUE(floor(sale.vn)) OVER(order by sale.vn asc range 0 preceding) as f
+from sale;
+
+select cn, cname, first_value(cname) over(order by cn range 2 preceding) as f
+from customer;
+
+select cn, prc, dt, first_value(prc) over (order by dt rows between 0 following
+and 4 following) as f from sale;
+
 -- Sanity test for executor detection of non-sense frames
 SELECT sale.pn,sale.cn,sale.prc,
     AVG(cast (sale.prc as int))
