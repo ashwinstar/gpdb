@@ -2162,7 +2162,7 @@ send_message_to_server_log(ErrorData *edata)
 		for (i = 0; i < edata->stacktracesize; i++)
 		{
 			appendBinaryStringInfo(&buf, prefix.data, prefix.len);
-			appendStringInfo(&buf, "Traceback %d:  %s", (int)i, strings[i]);
+			appendStringInfo(&buf, "Traceback %d:  %.200s", (int)i, strings[i]);
 			appendStringInfoChar(&buf, '\n');
 		}
 		free(strings);
