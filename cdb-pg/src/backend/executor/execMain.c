@@ -294,6 +294,17 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		if (queryDesc->plantree->nMotionNodes > 0)
 		{
 			int i;
+			if (DEBUG1 >= log_min_messages)
+				{
+					char		msec_str[32];
+					switch (check_log_duration(msec_str, false))
+					{
+						case 1:
+						case 2:
+							ereport(LOG, (errmsg("duration to Interconnect setup start: %s ms", msec_str)));
+							break;
+					}
+				}
 
 			PG_TRY();
 			{
