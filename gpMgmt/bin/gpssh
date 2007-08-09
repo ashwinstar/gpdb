@@ -264,13 +264,13 @@ class Session(cmd.Cmd):
 	line = '\\"'.join(line);
         line = line.split('$')
         line = '\\$'.join(line)
-	line = 'bash -c "' + line + '" < /dev/null';
+	line = 'eval "' + line + '" < /dev/null';
 	if opt['-e']: print line
 	for s in self.pxssh:
 	    s.sendline(line)
 	    s.flush()
 	for s in self.pxssh:
-	    while not s.prompt(): pass
+	    s.prompt(120)
 	    out = s.before.split('\n')
 	    out = out[1:-1]
 	    if len(out) == 0:
