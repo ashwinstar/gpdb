@@ -948,42 +948,49 @@ static void trim_page_to_slotn(NTupleStorePage *page, int slotn)
  * any junk, but we need to write a page).  A better way is to may logical page blockn
  * to a physical blockn.  
  */
-void ntuplestore_acc_trim(NTupleStoreAccessor *tsa, NTupleStorePos *pos)
+void ntuplestore_trim(NTupleStore *ts, NTupleStorePos *pos)
 {
-	bool fOK;
+	NTupleStorePage *page = nts_load_page(ts, pos->blockn); 
 
-	Assert(tsa->page && tsa->isWriter);
-	Assert(tsa->store && tsa->store->first_page && tsa->store->last_page);
-	Assert(pos->blockn >= nts_page_blockn(tsa->store->first_page));
-	Assert(pos->blockn <= nts_page_blockn(tsa->store->last_page)); 
+	Assert(page); 
+	trim_page_to_slotn(page, pos->slotn);
 
-	/* fisrt seek to the page */
-	fOK = ntuplestore_acc_seek(tsa, pos);
-	Assert(fOK);
+	nts_unpin_page(ts, ts->first_page);
 
-	trim_page_to_slotn(tsa->page, pos->slotn);
-
-	if(tsa->store->first_page == tsa->page)
-		return;
-
-	nts_unpin_page(tsa->store, tsa->store->first_page);
-
-	while(tsa->store->first_page != tsa->page)
+	while(ts->first_page != page)
 	{
-		NTupleStorePage *next = nts_page_next(tsa->store->first_page);
+		NTupleStorePage *next = nts_page_next(ts->first_page);
 
-		if(nts_page_is_dirty(tsa->store->first_page))
+		Assert(nts_page_pin_cnt(ts->first_page) == 0);
+
+		/* Flush dirty page anyway, to prevent holes in file */
+		if(nts_page_is_dirty(ts->first_page))
 		{
-			if(tsa->store->pfile)
-				ntsWriteBlock(tsa->store, tsa->store->first_page);
+			if(ts->pfile)
+				ntsWriteBlock(ts, ts->first_page);
 		}
 
-		tsa->store->first_free_page = NTS_PREPEND_1(tsa->store->first_free_page, tsa->store->first_page); 
-		tsa->store->first_page = next;
+		ts->first_free_page = NTS_PREPEND_1(ts->first_free_page, ts->first_page); 
+		ts->first_page = next;
 	}
 
-	nts_pin_page(tsa->store, tsa->store->first_page);
-	return;
+	Assert(ts->first_page);
+	nts_pin_page(ts, ts->first_page);
+}
+
+int ntuplestore_compare_pos(NTupleStore *ts, NTupleStorePos *pos1, NTupleStorePos *pos2)
+{
+	if(pos1->blockn < pos2->blockn)
+		return -1;
+	if(pos1->blockn > pos2->blockn)
+		return 1;
+
+	if(pos1->slotn < pos2->slotn)
+		return -1;
+	if(pos1->slotn > pos2->slotn)
+		return 1;
+
+	return 0;
 }
 
 static void ntuplestore_acc_advance_in_page(NTupleStoreAccessor *tsa, int* pn)

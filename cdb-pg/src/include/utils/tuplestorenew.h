@@ -29,6 +29,8 @@ extern NTupleStore *ntuplestore_create_readerwriter(const char* filename, int ma
 extern void ntuplestore_reset(NTupleStore *ts);
 extern void ntuplestore_flush(NTupleStore *ts);
 extern void ntuplestore_destroy(NTupleStore *ts);
+extern void ntuplestore_trim(NTupleStore* ts, NTupleStorePos *pos);
+extern int ntuplestore_compare_pos(NTupleStore *ts, NTupleStorePos *pos1, NTupleStorePos *pos2);
 
 /* Tuple store accessor method 
  * Create Accessor: current we support 1 writer, many reader per store.  After created, the accessor
@@ -40,12 +42,6 @@ extern void ntuplestore_destroy_accessor(NTupleStoreAccessor *acc);
 /* Put slot/data automatically postion the accessor to the last entry */
 extern void ntuplestore_acc_put_tupleslot(NTupleStoreAccessor *tsa, TupleTableSlot *slot);
 extern void ntuplestore_acc_put_data(NTupleStoreAccessor *tsa, void *data, int len);
-
-/* Trim will trim tuples upto but not include the pos.  After trim, the accessor is postioned
- * at pos.  Trim changes tuplestore state so if there are other accessors opend, it is caller's
- * reponsibility to make sure trim does not invalid other accessors.
- */
-extern void ntuplestore_acc_trim(NTupleStoreAccessor *tsa, NTupleStorePos *pos);
 
 /* return true if sucess, false if beyond last (first) valid position */
 extern bool ntuplestore_acc_advance(NTupleStoreAccessor *tsa, int n);
