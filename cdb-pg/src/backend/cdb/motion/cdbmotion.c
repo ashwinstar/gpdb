@@ -816,7 +816,7 @@ EndMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool flushCommLa
 	pMNEntry->cleanedUp = true;
 
 	/* Clean up the motion-node entry, then remove it from the hash table. */
-	if (gp_log_interconnect >= GPVARS_VERBOSITY_TERSE)
+	if (gp_log_interconnect >= GPVARS_VERBOSITY_VERBOSE)
     {
         if (pMNEntry->stat_total_bytes_sent > 0 ||
             pMNEntry->sel_wr_wait > 0)
