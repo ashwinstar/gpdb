@@ -133,7 +133,7 @@ def do_system(res):
         if line.startswith('set'):
             for key in SYSTEM_KEYS:
                 if line.find(key) != -1:
-		    res['system.%s' % key] = line[3:].split('=').strip()
+		    res['system.%s' % key] = line[3:].split('=')[-1].strip()
                     break
 
     return True
@@ -157,8 +157,8 @@ def do_ndd(res):
     if not os.path.exists('/usr/sbin/ndd'):
         return False
 
-    list = ('tcp_conn_req_max_q tcp_conn_req_max_q0 tcp_largest_anon_port ' +
-            'tcp_smallest_anon_port tcp_time_wait_interval').split()
+    list = ('tcp_conn_req_max_q', 'tcp_conn_req_max_q0', 'tcp_largest_anon_port', \
+                'tcp_smallest_anon_port', 'tcp_time_wait_interval')
     for key in list:
         (ok, out) = run('/usr/sbin/ndd /dev/tcp ' + key)
         if ok and len(out) == 1:
