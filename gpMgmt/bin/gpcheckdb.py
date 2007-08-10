@@ -123,6 +123,12 @@ def parseCommandLine():
 ########################################################
 #  validate GPDB function
 
+def match(hostname, port, key, qd_value, qe_value):
+    if qd_value != qe_value:
+        print '[%s:%s] [Error] %s mismatch (value %s should == %s)' % (hostname, port, key, str(qe_value), str(qd_value))
+        return False
+    return True
+
 def validate_gp_id(qd_gpname, qd_numsegments, qe_content, qe_definedprimary, qe_dbid, \
                        qe_isprimary, qe_valid, qe_hostname, qe_port, qe_datadir):
 
@@ -140,8 +146,13 @@ def validate_gp_id(qd_gpname, qd_numsegments, qe_content, qe_definedprimary, qe_
     numsegments = idrow[1].strip()
     dbid = idrow[2].strip()
     content = parseInt(idrow[3].strip())
+    
+    ok = True
+    ok &= match(qe_hostname, qe_port, 'pg_catalog.gp_id.gpname', qd_gpname, gpname)
+    ok &= match(qe_hostname, qe_port, 'pg_catalog.gp_id.numsegments', qd_numsegments, numsegments)
+    ok &= match(qe_hostname, qe_port, 'pg_catalog.gp_id.dbid', qe_dbid, dbid)
+    ok &= match(qe_hostname, qe_port, 'pg_catalog.gp_id.content', qe_content, content)
 
-    ok = (gpname == qd_gpname and numsegments == qd_numsegments and dbid == qe_dbid and content == qe_content)
     if ok == False:
         print '[%s:%s] [Error] checking pg_catalog.gp_id table on segment (content=%d, dbid=%s) ... failed' %  \
             (qe_hostname, qe_port, qe_content, qe_dbid)
@@ -165,7 +176,9 @@ def validate_gp_version_at_initdb(qd_gpname, qd_numsegments, qd_schemaversion, \
     schemaversion = verrow[0].strip()
     productversion = verrow[1].strip()
 
-    ok = (schemaversion == qd_schemaversion and productversion == qd_productversion)
+    ok = True
+    ok &= match(qe_hostname, qe_port, 'pg_catalog.gp_version_at_initdb.schemaversion', qd_schemaversion, schemaversion)
+    ok &= match(qe_hostname, qe_port, 'pg_catalog.gp_version_at_initdb.productversion', qd_productversion, productversion)
     if ok == False:
         print '[%s:%s] [Error] checking pg_catalog.gp_version_at_initdb table on segment (content=%d, dbid=%s) ... failed' % \
             (qe_hostname, qe_port, qe_content, qe_dbid)
