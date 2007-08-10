@@ -141,7 +141,7 @@ def sshGpSys():
     for h in opt['-h']: user[h[0]] = h
     sameUser = (len(user) == 1)
     for h in opt['-h']:
-        cmd = ('export LD_LIBRARY_PATH=%s && export GPHOME=%s && $GPHOME/bin/lib/gpsys.py -p' % (os.getenv('LD_LIBRARY_PATH'), GPHOME))
+        cmd = ('export PATH=%s && export LD_LIBRARY_PATH=%s && export GPHOME=%s && $GPHOME/bin/lib/gpsys.py -p' % (os.getenv('PATH'), os.getenv('LD_LIBRARY_PATH'), GPHOME))
         ssh = 'ssh -p %d -o "BatchMode yes" -o "StrictHostKeyChecking no" %s@%s' % (h[2], h[0], h[1])
 	ssh = ssh + ' eval  \'%s\' ' % cmd
         if opt['-v']: print '[INFO %s@%s] %s' % (h[0], h[1], cmd)
@@ -299,31 +299,32 @@ try:
         elif match(session, key, v):
             # check ndd
             key = 'ndd.tcp_conn_req_max_q'
-            match(session, key, 4096)
+            match(session, key, '4096')
 
             key = 'ndd.tcp_conn_req_max_q0'
-            match(session, key, 4096)
+            match(session, key, '4096')
 
             key = 'ndd.tcp_largest_anon_port'
-            match(session, key, 65535)
+            match(session, key, '65535')
             
             key = 'ndd.tcp_smallest_anon_port'
-            match(session, key, 4096)
+            match(session, key, '4096')
 
             key = 'ndd.tcp_time_wait_interval'
-            match(session, key, 100)
+            match(session, key, '100')
 
+            # check system
             key = 'system.rlim_fd_max'
-            match(session, key, 262144)
+            match(session, key, '262144')
             
             key = 'system.rlim_fd_cur'
-            match(session, key, 65536)
+            match(session, key, '65536')
 
             key = 'system.shmsys:shminfo_shmmax'
-            match(session, key, 0x2000000)
+            matchMore(session, key, 0x2000000)
 
             key = 'system.semsys:seminfo_semmi'
-            match(session, key, 1024)
+            match(session, key, '1024')
     
     elif value:
         print ('[ERROR %s] invalid system (value %s should be either Linux or SunOS)' 
