@@ -581,7 +581,16 @@ pqAddTuple(PGresult *res, PGresAttValue *tup)
 	res->tuples[res->ntups] = tup;
 
 	if (res->ntups == INT_MAX)
-		return FALSE;		/* Counter overflow. */
+	{
+		/*
+		 * If we are going to overflow ntups, then abort. This check could be 
+		 * performed before allocating memory for the tuple. However we punt on 
+		 * memory exhaustion happening before INT_MAX rows are fetched and
+		 * place it here avoid making the overflow check an overhead to every 
+		 * tuple addition.
+		 */
+		return FALSE;
+	}
 
 	res->ntups++;
 	return TRUE;

@@ -3457,7 +3457,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			if (strcmp(query_string,"create gang")==0)
 			{
 
-				size = pq_getmsgint(input_message,4);
+				size = pq_getmsgint(input_message, 4);
 				conninfo = (GpSegmentConnectionInfoSet *) pq_getmsgbytes(input_message, size);
 			}
 			else
