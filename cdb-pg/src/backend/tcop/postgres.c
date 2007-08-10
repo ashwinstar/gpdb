@@ -5275,7 +5275,9 @@ PostgresMain(int argc, char *argv[], const char *username)
 					SetCurrentStatementStartTimestamp();
 
 					portal_name = pq_getmsgstring(&input_message);
-					max_rows = pq_getmsgint64(&input_message);
+
+					 /*Get the max rows but cast to int64 internally. */
+					max_rows = (int64)pq_getmsgint(&input_message,4);
 					pq_getmsgend(&input_message);
 
 					elog((Debug_print_full_dtm ? LOG : DEBUG5), "Execute: %s.",portal_name);
