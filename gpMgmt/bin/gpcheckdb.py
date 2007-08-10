@@ -34,10 +34,10 @@ opt['-V'] = False
 opt['-h'] = 'localhost'
 opt['-p'] = 5432
 
-GREENPLUM_DB_CLIENT_HOME=os.getenv('GREENPLUM_DB_CLIENT_HOME')
-if GREENPLUM_DB_CLIENT_HOME is None:
-    sys.exit('GREENPLUM_DB_CLIENT_HOME is not set')
-
+GPHOME=os.getenv('GPHOME')
+if GPHOME is None:
+    sys.exit('GPHOME is not set')
+PSQL=os.path.join(GPHOME, 'bin', 'psql')
 OS = os.uname()
 
 
