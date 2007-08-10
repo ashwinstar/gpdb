@@ -250,11 +250,11 @@ ExecMaterial(MaterialState *node)
 #else
 
 	if(forward)
-		eof_tuplestore = !ntuplestore_acc_advance(tsa, 1);
+		eof_tuplestore = (tsa == NULL) || !ntuplestore_acc_advance(tsa, 1);
 	else
-		eof_tuplestore = !ntuplestore_acc_advance(tsa, -1);
+		eof_tuplestore = (tsa == NULL) || !ntuplestore_acc_advance(tsa, -1);
 
-	if(ntuplestore_acc_tell(tsa, NULL))
+	if(tsa!=NULL && ntuplestore_acc_tell(tsa, NULL))
 	{
 		ntuplestore_acc_current_tupleslot(tsa, slot);
 		return slot;
