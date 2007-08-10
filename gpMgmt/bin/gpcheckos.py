@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
 '''
-gposcheck -- check os for consistency and compatibility with GPDB.
+gpcheckos -- check os for consistency and compatibility with GPDB.
 
-Usage: gposcheck [--version] [-?v] [-p port] [-u user] [-h host] [-f hostfile] 
+Usage: gpcheckos [--version] [-?v] [-p port] [-u user] [-h host] [-f hostfile] 
 
 
           --version : print version information
