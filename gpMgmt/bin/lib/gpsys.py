@@ -66,11 +66,12 @@ def add(res, prefix, lines):
 
 
 def do_gppath(res):
-    (ok, out) = run("echo $GPHOME")
-    if ok and len(out) == 1:
-        res['gp.gphome'] = out[0].strip()
-        return True
-    return False
+    out = os.getenv("GPHOME")
+    if out is None:
+	return False
+
+    res['gp.gphome'] = out.strip()
+    return True
 
 
 def do_postgres_md5(res):
@@ -85,7 +86,7 @@ def do_postgres_md5(res):
 
 
 def do_postgres_version(res):
-    (ok, out) = run('postgres --version')
+    (ok, out) = run('$GPHOME/bin/postgres --version')
     if ok and len(out) == 1: 
         res['gp.postgres.version'] = out[0].strip()
         return True
@@ -119,6 +120,23 @@ def do_platform(res):
     res['python.platform.processor'] = uname[5]
     return True
 
+def do_system(res):
+    SYSTEM_KEYS = ('rlim_fd_max', 'rlim_fd_cur', 'shmsys:shminfo_shmmax', 'semsys:seminfo_semmni')
+    f = open('/etc/system', 'r')
+    content = f.read()
+    f.close()
+    
+    p = []
+    lines = content.splitlines()
+    for line in lines:
+        line = line.strip()
+        if line.startswith('set'):
+            for key in SYSTEM_KEYS:
+                if line.find(key) != -1:
+		    res[key] = line[3:].split('=').strip()
+                    break
+
+    return True
 
 def do_meminfo(res):
     if not os.path.exists('/proc/meminfo'):
@@ -149,13 +167,18 @@ def do_ndd(res):
 
 parseCommandLine()
 res = {}
+do_gppath(res)
 do_postgres_md5(res)
 do_postgres_version(res)
-do_sysctl(res)
-do_ulimit(res)
 do_platform(res)
 do_meminfo(res)
-do_ndd(res)
+if res['python.platform.system'] == 'sunos':
+    do_system(res)
+    do_ndd(res)
+elif res['python.platform.system'] == 'linux':
+    do_sysctl(res)
+    do_ulimit(res)
+
 
 if opt['-p']:
     print pickle.dumps(res)
