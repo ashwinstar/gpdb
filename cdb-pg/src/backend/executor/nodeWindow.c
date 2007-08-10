@@ -3694,7 +3694,7 @@ percent_rank_final(PG_FUNCTION_ARGS)
 	}
 	else if ( arg1 == 1 && arg2 == 1 )
 	{
-		result = 1.0; /* or is it 0.0? */
+		result = 0.0; /* per Oracle */
 	}
 	else
 	{
