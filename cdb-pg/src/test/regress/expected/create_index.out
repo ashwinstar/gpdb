@@ -676,6 +676,7 @@ select t from bm_test where upper(t3) = 'FOO';
 select t from bm_test where n ISNULL;
  t 
 ---
-(0 rows)
+ 
+(1 row)
 
 drop table bm_test;

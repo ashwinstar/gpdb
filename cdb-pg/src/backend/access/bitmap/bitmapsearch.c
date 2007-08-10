@@ -432,6 +432,21 @@ _bitmap_findbitmaps(IndexScanDesc scan, ScanDirection dir)
 								   scan->keyData[keyNo].sk_argument);
 		}
 
+		/* When there are no scan keys, all bitmap vectors are included,
+		 * including the one for the NULL value.
+		 * This can happen when the index is created with predicates.
+		 */
+		if (scan->numberOfKeys == 0)
+		{
+			ItemPos *itemPos;
+			itemPos = (ItemPos*)palloc0(sizeof(ItemPos));
+			itemPos->blockNo = BM_LOV_STARTPAGE;;
+			itemPos->offset = 1;
+			lovItemPoss = lappend(lovItemPoss, itemPos);
+
+			scanPos->nvec++;
+		}
+
 		/* XXX: is SnapshotAny really the right choice? */
 		scanDesc = index_beginscan(lovHeap, lovIndex, SnapshotAny,
 								   scan->numberOfKeys, scanKeys);

@@ -84,7 +84,7 @@ NOTICE:  truncate cascades to table "trunc_e"
 -- circular references
 ALTER TABLE truncate_a ADD FOREIGN KEY (col1) REFERENCES trunc_c;
 WARNING:  Referential integrity (FOREIGN KEY) constraints are not supported in Greenplum Database, will not be enforced.
-ERROR:  Functions that execute SQL statements from the segDBs are not yet supported (spi.c:183)  (seg1 jbook.local:12003 pid=29424)
+ERROR:  Functions that execute SQL statements from the segDBs are not yet supported (spi.c:194)  (seg1 jbook.local:12003 pid=29424)
 DETAIL:  SQL statement "SELECT fk."col1" FROM ONLY "public"."truncate_a" fk LEFT OUTER JOIN ONLY "public"."trunc_c" pk ON (pk."a"=fk."col1") WHERE pk."a" IS NULL AND (fk."col1" IS NOT NULL)"
 -- Add some data to verify that truncating actually works ...
 INSERT INTO trunc_c VALUES (1);
