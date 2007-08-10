@@ -93,6 +93,8 @@ typedef struct WindowStatePerLevelData
 	 */
 	bool	empty_frame;
 
+	bool is_rows;
+
 	/* XXX: merge the following 4 fields into 2 */
 	/* state for rows frame is simple (for now) */
 	long int trail_rows;
@@ -195,8 +197,6 @@ typedef struct WindowStatePerFunctionData
 	/* where we've processed up to */
 	int32 trail_done;
 	int32 lead_done;
-	/* is the new trailing edge past the current buffer? */
-	bool trail_passed_frame;
 } WindowStatePerFunctionData;
 
 /* 
@@ -2866,6 +2866,8 @@ init_frames(WindowState *wstate)
 
 		level_state->level_funcs = lvl_funcs;
 
+		level_state->is_rows = frame->is_rows;
+
 		/* what sort order did the user specify for each key? */
 		for (i = 0; i < ncols; i++)
 		{
@@ -5356,10 +5358,22 @@ first_value_internal(WindowRefExprState *ref_state, bool *isnull)
 	 * edge is not in play yet (i.e., the frame is something like
 	 * BETWEEN 2 PRECEDING AND 2 FOLLOWING) then we must use the first value
 	 * in the FRAME.
+	 *
+	 * It gets even more difficult than that though. We want the first value
+	 * in the frame but cur_trail_edge points to the value in memory at or
+	 * just before the trail edge of the frame. So, if the trail edge is 
+	 * equal to an actual value, use it. Otherwise, use the next value
+	 * along.
 	 */
 
-	pos = funcstate->cur_trail_edge < 0 ? 0 : funcstate->cur_trail_edge;
+	pos = funcstate->cur_trail_edge;
 
+	if (funcstate->wlevel->is_rows == false &&
+		funcstate->cur_trail_edge_equal == false &&
+		pos + 1 < funcstate->frame_mem_used && 
+		pos + 1 <= funcstate->cur_lead_edge)
+		pos++;
+	
 	if (pos < 0 || pos > funcstate->cur_lead_edge ||
 		pos >= funcstate->frame_mem_used)
 	{
