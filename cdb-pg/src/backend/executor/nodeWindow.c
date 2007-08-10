@@ -5352,16 +5352,16 @@ first_value_internal(WindowRefExprState *ref_state, bool *isnull)
 	WinFuncBufferData *dat;
 
 	/* 
-	 * We're tricky here because we want to handle situations where
-	 * the trail edge is not in play as yet.
+	 * The sematics of FIRST_VALUE in Oracle requires that if the trail
+	 * edge is not in play yet (i.e., the frame is something like
+	 * BETWEEN 2 PRECEDING AND 2 FOLLOWING) then we must use the first value
+	 * in the FRAME.
 	 */
 
-	if (funcstate->cur_trail_edge != -1)
-		pos = funcstate->cur_trail_edge;
-	else
-		pos = 0;
+	pos = funcstate->cur_trail_edge < 0 ? 0 : funcstate->cur_trail_edge;
 
-	if (pos < 0 || pos >= funcstate->frame_mem_used)
+	if (pos < 0 || pos > funcstate->cur_lead_edge ||
+		pos >= funcstate->frame_mem_used)
 	{
 		*isnull = true;
 		return (Datum)0;
