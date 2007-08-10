@@ -1501,8 +1501,10 @@ typedef struct MaterialState
 	ScanState	ss;				/* its first field is NodeTag */
 	bool		randomAccess;	/* need random access to subplan output? */
 	bool		eof_underlying; /* reached end of underlying plan? */
-	void	   *tuplestorestate;	/* private state of tuplestore.c */
 
+	void	   *ts_state;	    /* private state of tuplestore.c */
+	void       *ts_pos;
+	void 	   *ts_markpos;
 	void  		*share_lk_ctxt;
 } MaterialState;
 
@@ -1521,6 +1523,7 @@ typedef struct ShareInputScanState
 	 */
 	void 		*ts_state;
 	void 		*ts_pos;
+	void 		*ts_markpos; 
 
 	void 	    *share_lk_ctxt;
 } ShareInputScanState;

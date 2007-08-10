@@ -53,7 +53,7 @@ static inline void nts_page_set_dirty(NTupleStorePage *page, bool dirty)
 		(page)->header.page_flag &= (~NTS_PAGE_DIRTY);
 }
 
-#define NTS_ALLIGN8(n) (((n)+7) & 7) 
+#define NTS_ALLIGN8(n) (((n)+7) & (~7)) 
 
 /* page stuff.  Note slot grow desc, so the minus array index stuff. */
 static inline long nts_page_blockn(NTupleStorePage *page) { return page->header.blockn; }
@@ -100,8 +100,11 @@ static inline char *nts_page_next_slot_data_ptr(NTupleStorePage *page)
 }
 static inline int nts_page_avail_bytes(NTupleStorePage *page)
 {
-	return (char *) nts_page_slot_entry(page, nts_page_slot_cnt(page)) - 
+	int b = (char *) nts_page_slot_entry(page, nts_page_slot_cnt(page)) - 
 		(char *) nts_page_next_slot_data_ptr(page);
+	if(b < 0)
+		return 0;
+	return b;
 }
 
 static inline void verify_nts_page_format_is_sane()
@@ -492,6 +495,17 @@ static NTupleStorePage *nts_get_free_page(NTupleStore *nts)
 	init_page(page);
 	++nts->page_cnt;
 
+	if(nts->instrument)
+	{
+		nts->instrument->workmemused = Max(nts->instrument->workmemused, nts->page_cnt * BLCKSZ); 
+		if(nts->last_page)
+		{
+			long pagewanted = nts_page_blockn(nts->last_page) - nts_page_blockn(nts->first_page) + 1;
+			Assert(pagewanted >= 1);
+
+			nts->instrument->workmemwanted = Max(nts->instrument->workmemwanted, pagewanted * BLCKSZ);
+		}
+	}
 	return page;
 }
 
@@ -550,7 +564,8 @@ static NTupleStorePage *nts_load_next_page(NTupleStore* store, NTupleStorePage *
 	bool fOK; 
 	NTupleStorePage *next = nts_page_next(page);
 
-	AssertImply(!next, store->rwflag == NTS_IS_READER);
+	if(!next && store->rwflag != NTS_IS_READER)
+		return NULL;
 
 	if(!next || nts_page_blockn(next) > blockn)
 	{
@@ -610,7 +625,7 @@ extern NTupleStore *ntuplestore_create(int maxBytes)
 	verify_ts_page_sane();
 #endif
 	store->pfile = NULL;
-	store->first_ondisk_blockn = -1;
+	store->first_ondisk_blockn = 0;
 
 	Assert(maxBytes >= 0);
 	store->page_max = maxBytes / BLCKSZ;
@@ -618,8 +633,9 @@ extern NTupleStore *ntuplestore_create(int maxBytes)
 	if(store->page_max < 16)
 		store->page_max = 16;
 
-	store->first_page = (NTupleStorePage *) palloc(sizeof(NTupleStorePage));
+	store->first_page = (NTupleStorePage *) malloc(sizeof(NTupleStorePage));
 	init_page(store->first_page);
+	nts_page_set_blockn(store->first_page, 0);
 
 	store->page_cnt = 1;
 	store->pin_cnt = 0;
@@ -662,8 +678,15 @@ extern NTupleStore *ntuplestore_create_readerwriter(const char *filename, int ma
 		if(store->page_max < 16)
 			store->page_max = 16;
 
+		store->first_page = (NTupleStorePage *) malloc(sizeof(NTupleStorePage));
+		init_page(store->first_page);
+
 		fOK = ntsReadBlock(store, 0, store->first_page);
-		Assert(fOK);
+		if(!fOK)
+		{
+			/* empty file.  We set blockn anyway */
+			nts_page_set_blockn(store->first_page, 0);
+		}
 
 		store->page_cnt = 1;
 		store->pin_cnt = 0;
@@ -813,14 +836,14 @@ void ntuplestore_acc_put_tupleslot(NTupleStoreAccessor *tsa, TupleTableSlot *slo
 	unsigned int  dest_len;
 	bool put_ok;
 
-	
-	Assert(tsa->page && tsa->isWriter);
+	Assert(tsa->isWriter);
 	Assert(tsa->store && tsa->store->first_page && tsa->store->last_page);
 
 	/* first move the page to last page */
-	if(tsa->page != tsa->store->last_page)
+	if(!tsa->page || tsa->page != tsa->store->last_page)
 	{
-		nts_unpin_page(tsa->store, tsa->page);
+		if(tsa->page) 
+			nts_unpin_page(tsa->store, tsa->page);
 		tsa->page = tsa->store->last_page;
 		nts_pin_page(tsa->store, tsa->page);
 	}
@@ -1000,7 +1023,7 @@ static void ntuplestore_acc_advance_in_page(NTupleStoreAccessor *tsa, int* pn)
 
 	if(*pn > 0) /* seeking forward */
 	{
-		Assert(tsa->pos.slotn >= nts_page_first_valid_slotn(tsa->page)); 
+		Assert(tsa->pos.slotn + 1 >= nts_page_first_valid_slotn(tsa->page)); 
 
 		if((tsa->pos.slotn + *pn) < nts_page_slot_cnt(tsa->page))
 		{
@@ -1008,7 +1031,8 @@ static void ntuplestore_acc_advance_in_page(NTupleStoreAccessor *tsa, int* pn)
 			*pn = 0;
 		}
 		else
-			*pn -= nts_page_slot_cnt(tsa->page) - tsa->pos.slotn;
+			*pn -= (nts_page_slot_cnt(tsa->page) - tsa->pos.slotn) - 1;
+
 	}
 	else /* seeking backward */
 	{
@@ -1047,7 +1071,7 @@ bool ntuplestore_acc_advance(NTupleStoreAccessor *tsa, int n)
 
 			nts_pin_page(tsa->store, tsa->page);
 			tsa->pos.blockn = nts_page_blockn(tsa->page);
-			tsa->pos.slotn = 0;
+			tsa->pos.slotn = -1;
 		}
 		else /* seeking backward */
 		{
@@ -1065,7 +1089,7 @@ bool ntuplestore_acc_advance(NTupleStoreAccessor *tsa, int n)
 
 			nts_pin_page(tsa->store, tsa->page);
 			tsa->pos.blockn = nts_page_blockn(tsa->page);
-			tsa->pos.slotn = nts_page_slot_cnt(tsa->page) - 1;
+			tsa->pos.slotn = nts_page_slot_cnt(tsa->page);
 		}
 
 		ntuplestore_acc_advance_in_page(tsa, &n);
@@ -1088,7 +1112,16 @@ bool ntuplestore_acc_current_tupleslot(NTupleStoreAccessor *tsa, TupleTableSlot 
 
 	Assert(tuple && len > 0);
 
+#ifdef USE_DEBUG_NTUPLESTORE
+	slot->tts_nts_acc = NULL;
+#endif
+
 	ExecStoreMinimalTuple(tuple, slot, false);
+
+#ifdef USE_DEBUG_NTUPLESTORE
+	slot->tts_nts_acc = (void *) tsa;
+#endif
+
 	return true;
 }
 
@@ -1150,7 +1183,20 @@ bool ntuplestore_acc_seek(NTupleStoreAccessor *tsa, NTupleStorePos *pos)
 
 bool ntuplestore_acc_seek_first(NTupleStoreAccessor *tsa)
 {
-	Assert(tsa->store && tsa->store->first_page);
+	ntuplestore_acc_seek_bof(tsa);
+	return ntuplestore_acc_advance(tsa, 1);
+}
+
+bool ntuplestore_acc_seek_last(NTupleStoreAccessor *tsa)
+{
+	ntuplestore_acc_seek_eof(tsa);
+	return ntuplestore_acc_advance(tsa, -1);
+}
+
+
+void ntuplestore_acc_seek_bof(NTupleStoreAccessor *tsa)
+{
+	Assert(tsa && tsa->store && tsa->store->first_page);
 
 	if(tsa->page)
 		nts_unpin_page(tsa->store, tsa->page);
@@ -1159,18 +1205,10 @@ bool ntuplestore_acc_seek_first(NTupleStoreAccessor *tsa)
 	nts_pin_page(tsa->store, tsa->page);
 
 	tsa->pos.blockn = nts_page_blockn(tsa->page);
-	tsa->pos.slotn = nts_page_first_valid_slotn(tsa->page); 
-
-	if(nts_page_valid_slot_cnt(tsa->page) == 0)
-	{
-		tsa->pos.slotn = -1;
-		return false;
-	}
-
-	return true;
+	tsa->pos.slotn = nts_page_first_valid_slotn(tsa->page) - 1;
 }
 
-bool ntuplestore_acc_seek_last(NTupleStoreAccessor *tsa)
+void ntuplestore_acc_seek_eof(NTupleStoreAccessor *tsa)
 {
 	Assert(tsa && tsa->store && tsa->store->last_page);
 
@@ -1182,6 +1220,4 @@ bool ntuplestore_acc_seek_last(NTupleStoreAccessor *tsa)
 
 	tsa->pos.blockn = nts_page_blockn(tsa->page);
 	tsa->pos.slotn = nts_page_slot_cnt(tsa->page);
-
-	return ntuplestore_acc_advance(tsa, -1);
 }

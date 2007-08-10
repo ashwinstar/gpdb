@@ -24,6 +24,8 @@
 
 #include "executor/executor.h"
 #include "executor/nodeMaterial.h"
+#include "utils/tuplestorenew.h"
+
 #include "miscadmin.h"
 
 #include "cdb/cdbvars.h"
@@ -47,19 +49,31 @@ ExecMaterial(MaterialState *node)
 	EState	   *estate;
 	ScanDirection dir;
 	bool		forward;
+
+#ifdef USE_OLD_TUPLESTORE
 	Tuplestorestate *tuplestorestate;
+#else
+	NTupleStore *ts;
+	NTupleStoreAccessor *tsa;
+#endif
+
 	bool		eof_tuplestore;
 	TupleTableSlot *slot;
 	Material *ma;
 	
-
 	/*
 	 * get state info from node
 	 */
 	estate = node->ss.ps.state;
 	dir = estate->es_direction;
 	forward = ScanDirectionIsForward(dir);
-	tuplestorestate = (Tuplestorestate *) node->tuplestorestate;
+
+#ifdef USE_OLD_TUPLESTORE
+	tuplestorestate = (Tuplestorestate *) node->ts_state;
+#else
+	ts = (NTupleStore *) node->ts_state;
+	tsa = (NTupleStoreAccessor *) node->ts_pos;
+#endif
 
 	ma = (Material *) node->ss.ps.plan;
 	Assert(IsA(ma, Material));
@@ -67,7 +81,14 @@ ExecMaterial(MaterialState *node)
 	/*
 	 * If first time through, and we need a tuplestore, initialize it.
 	 */
-	if (tuplestorestate == NULL && (ma->share_type != SHARE_NOTSHARED || node->randomAccess))
+	if (
+#ifdef USE_OLD_TUPLESTORE
+			tuplestorestate == NULL 
+#else
+			ts == NULL
+#endif
+			&& (ma->share_type != SHARE_NOTSHARED || node->randomAccess)
+		)
 	{
 		/* 
 		 * For cross slice material, we only run ExecMaterial on DriverSlice 
@@ -84,32 +105,41 @@ ExecMaterial(MaterialState *node)
 			
 			shareinput_create_bufname_prefix(rwfile_prefix, sizeof(rwfile_prefix), ma->share_id); 
 			elog(LOG, "Material node creates shareinput rwfile %s", rwfile_prefix);
+#ifdef USE_OLD_TUPLESTORE
 			tuplestorestate = tuplestore_begin_heap_file_readerwriter(rwfile_prefix, true);
+#else
+			ts = ntuplestore_create_readerwriter(rwfile_prefix, work_mem * 1024, true);
+			tsa = ntuplestore_create_accessor(ts, true);
+#endif
 		}
 		else
 		{
+#ifdef USE_OLD_TUPLESTORE
 			tuplestorestate = tuplestore_begin_heap(true, false, work_mem); 
+#else
+			ts = ntuplestore_create(work_mem * 1024);
+			tsa = ntuplestore_create_accessor(ts, true);
+#endif
 		}
 		
+#ifdef USE_OLD_TUPLESTORE
 		Assert(tuplestorestate);
-		node->tuplestorestate = (void *) tuplestorestate;
+		node->ts_state = (void *) tuplestorestate;
+#else
+		Assert(ts && tsa);
+		node->ts_state = (void *) ts;
+		node->ts_pos = (void *) tsa;
+#endif
 
         /* CDB: Offer extra info for EXPLAIN ANALYZE. */
         if (node->ss.ps.instrument)
         {
             /* Let the tuplestore share our Instrumentation object. */
+#ifdef USE_OLD_TUPLESTORE
             tuplestore_set_instrument(tuplestorestate, node->ss.ps.instrument);
-
-            /* Request a callback at end of query. */
-            node->ss.ps.cdbexplainfun = ExecMaterialExplainEnd;
-        }
-
-        /* CDB: Offer extra info for EXPLAIN ANALYZE. */
-        if (node->ss.ps.instrument)
-        {
-            /* Let the tuplestore share our Instrumentation object. */
-            tuplestore_set_instrument(tuplestorestate, node->ss.ps.instrument);
-
+#else
+			ntuplestore_setinstrument(ts, node->ss.ps.instrument);
+#endif
             /* Request a callback at end of query. */
             node->ss.ps.cdbexplainfun = ExecMaterialExplainEnd;
         }
@@ -132,11 +162,27 @@ ExecMaterial(MaterialState *node)
 			if (TupIsNull(outerslot))
 			{
 				node->eof_underlying = true;
+#ifdef USE_OLD_TUPLESTORE
 				tuplestore_rescan(tuplestorestate);
+#else
+				ntuplestore_acc_seek_bof(tsa);
+#endif
+
 				break;
 			}
+#ifdef USE_OLD_TUPLESTORE
 			tuplestore_puttupleslot(tuplestorestate, outerslot);
+#else
+			ntuplestore_acc_put_tupleslot(tsa, outerslot);
+#endif
 		}
+	
+#ifndef USE_OLD_TUPLESTORE
+		if(forward)
+			ntuplestore_acc_seek_bof(tsa);
+		else
+			ntuplestore_acc_seek_eof(tsa);
+#endif
 
 		/* for share input, material do not need to return any tuple */
 		if(ma->share_type != SHARE_NOTSHARED)
@@ -150,7 +196,11 @@ ExecMaterial(MaterialState *node)
 			{
 				if (ma->driver_slice == currentSliceId)
 				{
+#ifdef USE_OLD_TUPLESTORE
 					tuplestore_flush(tuplestorestate);
+#else
+					ntuplestore_flush(ts);
+#endif
 					node->share_lk_ctxt = shareinput_writer_notifyready(ma->share_id, ma->nsharer_xslice); 
 				}
 			}
@@ -165,8 +215,8 @@ ExecMaterial(MaterialState *node)
 	 * If we are not at the end of the tuplestore, or are going backwards, try
 	 * to fetch a tuple from tuplestore.
 	 */
-	eof_tuplestore = (tuplestorestate == NULL) ||
-		tuplestore_ateof(tuplestorestate);
+#ifdef USE_OLD_TUPLESTORE
+	eof_tuplestore = (tuplestorestate == NULL) || tuplestore_ateof(tuplestorestate);
 
 	if (!forward && eof_tuplestore)
 	{
@@ -183,11 +233,13 @@ ExecMaterial(MaterialState *node)
 		}
 		eof_tuplestore = false;
 	}
+#endif
 
 	/*
 	 * If we can fetch another tuple from the tuplestore, return it.
 	 */
 	slot = node->ss.ps.ps_ResultTupleSlot;
+#ifdef USE_OLD_TUPLESTORE
 	if (!eof_tuplestore)
 	{
 		if (tuplestore_gettupleslot(tuplestorestate, forward, slot))
@@ -195,6 +247,19 @@ ExecMaterial(MaterialState *node)
 		if (forward)
 			eof_tuplestore = true;
 	}
+#else
+
+	if(forward)
+		eof_tuplestore = !ntuplestore_acc_advance(tsa, 1);
+	else
+		eof_tuplestore = !ntuplestore_acc_advance(tsa, -1);
+
+	if(ntuplestore_acc_tell(tsa, NULL))
+	{
+		ntuplestore_acc_current_tupleslot(tsa, slot);
+		return slot;
+	}
+#endif
 
 	/*
 	 * If necessary, try to fetch another row from the subplan.
@@ -221,6 +286,7 @@ ExecMaterial(MaterialState *node)
 			return NULL;
 		}
 
+#ifdef USE_OLD_TUPLESTORE
 		/*
 		 * Append returned tuple to tuplestore.  NOTE: because the tuplestore
 		 * is certainly in EOF state, its read position will move forward over
@@ -228,6 +294,10 @@ ExecMaterial(MaterialState *node)
 		 */
 		if (tuplestorestate)
 			tuplestore_puttupleslot(tuplestorestate, outerslot);
+#else
+		if (tsa)
+			ntuplestore_acc_put_tupleslot(tsa, outerslot);
+#endif
 
 		/*
 		 * And return a copy of the tuple.	(XXX couldn't we just return the
@@ -270,7 +340,9 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 										EXEC_FLAG_MARK)) != 0;
 
 	matstate->eof_underlying = false;
-	matstate->tuplestorestate = NULL;
+	matstate->ts_state = NULL;
+	matstate->ts_pos = NULL;
+	matstate->ts_markpos = NULL;
 	matstate->share_lk_ctxt = NULL;
 
 	/*
@@ -369,13 +441,26 @@ ExecEndMaterial(MaterialState *node)
 	/*
 	 * Release tuplestore resources
 	 */
-	if (node->tuplestorestate != NULL)
+	if (node->ts_state != NULL)
 	{
 		if(ma->share_type == SHARE_MATERIAL_XSLICE)
 			shareinput_writer_waitdone(node->share_lk_ctxt, ma->share_id, ma->nsharer_xslice);
 
+#ifdef USE_OLD_TUPLESTORE
 		tuplestore_end((Tuplestorestate *) node->tuplestorestate); 
 		node->tuplestorestate = NULL;
+#else
+		Assert(node->ts_pos);
+		ntuplestore_destroy_accessor((NTupleStoreAccessor *) node->ts_pos);
+		ntuplestore_destroy((NTupleStore *) node->ts_state);
+
+		node->ts_pos = NULL;
+		node->ts_state = NULL;
+
+		if(node->ts_markpos)
+			pfree(node->ts_markpos);
+		node->ts_markpos = NULL;
+#endif
 	}
 
 	/*
@@ -406,10 +491,21 @@ ExecMaterialMarkPos(MaterialState *node)
 	/*
 	 * if we haven't materialized yet, just return.
 	 */
-	if (!node->tuplestorestate)
+	if (!node->ts_state)
 		return;
 
-	tuplestore_markpos((Tuplestorestate *) node->tuplestorestate);
+#ifdef USE_OLD_TUPLESTORE
+	tuplestore_markpos((Tuplestorestate *) node->ts_state); 
+#else
+	Assert(node->ts_pos);
+
+	if(node->ts_markpos == NULL)
+	{
+		node->ts_markpos = palloc(sizeof(NTupleStorePos));
+	}
+
+	ntuplestore_acc_tell((NTupleStoreAccessor *) node->ts_pos, (NTupleStorePos *) node->ts_markpos);
+#endif
 }
 
 /* ----------------------------------------------------------------
@@ -434,13 +530,18 @@ ExecMaterialRestrPos(MaterialState *node)
 	/*
 	 * if we haven't materialized yet, just return.
 	 */
-	if (!node->tuplestorestate)
+	if (!node->ts_state)
 		return;
 
+#ifdef USE_OLD_TUPLESTORE
 	/*
 	 * restore the scan to the previously marked position
 	 */
 	tuplestore_restorepos((Tuplestorestate *) node->tuplestorestate); 
+#else
+	Assert(node->ts_pos && node->ts_markpos);
+	ntuplestore_acc_seek((NTupleStoreAccessor *) node->ts_pos, (NTupleStorePos *) node->ts_markpos);
+#endif
 }
 
 /* ----------------------------------------------------------------
@@ -469,7 +570,7 @@ ExecMaterialReScan(MaterialState *node, ExprContext *exprCtxt)
 		 * is not NULL then it will be re-scanned by ExecProcNode, else - no
 		 * reason to re-scan it at all.
 		 */
-		if (!node->tuplestorestate)
+		if (!node->ts_state)
 			return;
 
 		/*
@@ -481,12 +582,30 @@ ExecMaterialReScan(MaterialState *node, ExprContext *exprCtxt)
 		 */
 		if (((PlanState *) node)->lefttree->chgParam != NULL)
 		{
-			tuplestore_end((Tuplestorestate *) node->tuplestorestate); 
-			node->tuplestorestate = NULL;
+#ifdef USE_OLD_TUPLESTORE
+			tuplestore_end((Tuplestorestate *) node->ts_state); 
+			node->ts_state = NULL;
 			node->eof_underlying = false;
+#else
+			ntuplestore_destroy_accessor((NTupleStoreAccessor *) node->ts_pos);
+			ntuplestore_destroy((NTupleStore *) node->ts_state);
+			if(node->ts_markpos)
+				pfree(node->ts_markpos);
+
+			node->ts_state = NULL;
+			node->ts_pos = NULL;
+			node->ts_markpos = NULL;
+			node->eof_underlying = false;
+#endif
 		}
 		else
+		{
+#ifdef USE_OLD_TUPLESTORE
 			tuplestore_rescan((Tuplestorestate *) node->tuplestorestate); 
+#else
+			ntuplestore_acc_seek_bof((NTupleStoreAccessor *) node->ts_pos);
+#endif
+		}
 	}
 	else
 	{

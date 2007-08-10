@@ -8,13 +8,13 @@
 
 #include "executor/tuptable.h"
 
-/* Opaque data types */
 typedef struct NTupleStorePos
 {
 	long blockn;
 	int slotn;
 } NTupleStorePos;
 
+/* Opaque data types */
 typedef struct NTupleStoreAccessor NTupleStoreAccessor;
 typedef struct NTupleStore NTupleStore;
 
@@ -66,5 +66,7 @@ extern bool ntuplestore_acc_tell(NTupleStoreAccessor *tsa, NTupleStorePos *pos);
 extern bool ntuplestore_acc_seek(NTupleStoreAccessor *tsa, NTupleStorePos *pos);
 extern bool ntuplestore_acc_seek_first(NTupleStoreAccessor *tsa);
 extern bool ntuplestore_acc_seek_last(NTupleStoreAccessor *tsa);
+extern void ntuplestore_acc_seek_bof(NTupleStoreAccessor *tsa);
+extern void ntuplestore_acc_seek_eof(NTupleStoreAccessor *tsa);
 
 #endif /* TUPSTORE_NEW_H */

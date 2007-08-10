@@ -524,6 +524,9 @@ ExecStoreMinimalTuple(MinimalTuple mtup,
 	slot->tts_shouldFree = shouldFree;
 	slot->tts_tuple = &slot->tts_minhdr;
 	slot->tts_mintuple = mtup;
+#ifdef USE_DEBUG_NTUPLESTORE
+	slot->tts_nts_acc = NULL;
+#endif
 
 	slot->tts_minhdr.t_len = mtup->t_len + MINIMAL_TUPLE_OFFSET;
 	slot->tts_minhdr.t_data = (HeapTupleHeader) ((char *) mtup - MINIMAL_TUPLE_OFFSET);
@@ -551,10 +554,6 @@ ExecClearTuple(TupleTableSlot *slot)	/* slot in which to store tuple */
 	 */
 	Assert(slot != NULL);
 
-#ifdef USE_DEBUG_NTUPLESTORE
-	check_tableslot_tuplestore(slot);
-#endif
-
 	/*
 	 * Free the old physical tuple if necessary.
 	 */
@@ -568,6 +567,9 @@ ExecClearTuple(TupleTableSlot *slot)	/* slot in which to store tuple */
 
 	slot->tts_tuple = NULL;
 	slot->tts_mintuple = NULL;
+#ifdef USE_DEBUG_NTUPLESTORE
+	slot->tts_nts_acc = NULL;
+#endif
 	slot->tts_shouldFree = false;
 
 	/*
@@ -751,7 +753,9 @@ bool ExecCopySlotMinimalTupleTo(TupleTableSlot *slot, char *dest, unsigned int *
 			int cplen = slot->tts_tuple->t_len - MINIMAL_TUPLE_OFFSET;
 			if(dest && *len > cplen)
 			{
-				memcpy(dest, (char *) slot->tts_tuple + MINIMAL_TUPLE_OFFSET, cplen);
+				MinimalTuple mint = (MinimalTuple) dest;
+				memcpy(dest, (char *) slot->tts_tuple->t_data + MINIMAL_TUPLE_OFFSET, cplen);
+				mint->t_len = cplen;
 				*len = cplen;
 				return true;
 			}
