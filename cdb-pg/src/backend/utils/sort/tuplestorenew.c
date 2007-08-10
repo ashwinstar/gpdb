@@ -286,6 +286,7 @@ static inline void init_page(NTupleStorePage *page)
 	nts_page_set_pin_cnt(page, 0);
 	nts_page_set_data_bcnt(page, 0);
 	nts_page_set_slot_cnt(page, 0);
+	nts_page_set_first_valid_slotn(page, 0);
 }
 
 static inline void nts_pin_page(NTupleStore* nts, NTupleStorePage *page)
