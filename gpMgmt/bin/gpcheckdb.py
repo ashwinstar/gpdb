@@ -75,9 +75,9 @@ class Config:
 
     def fill(self):
         self.record = []
-        (ok, out) = run('psql template1 -p %d -t -q -c \"select * from gp_configuration\"' % opt['-p'])
+        (ok, out) = run('psql template1 -h %s -p %d -t -q -c \"select * from gp_configuration\"' % (opt['-h'], opt['-p']))
         if not ok:
-            sys.exit('Unable to select gp_configuration')
+            sys.exit('[%s:%d] [Error] Unable to select gp_configuration' % (opt['-h'], opt['-p']))
         for line in out:
             line = line.strip()
             if line: self.record.append(Config.Record(line))
