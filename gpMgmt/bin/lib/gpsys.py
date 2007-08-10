@@ -133,7 +133,7 @@ def do_system(res):
         if line.startswith('set'):
             for key in SYSTEM_KEYS:
                 if line.find(key) != -1:
-		    res[key] = line[3:].split('=').strip()
+		    res['system.%s' % key] = line[3:].split('=').strip()
                     break
 
     return True
@@ -171,13 +171,13 @@ do_gppath(res)
 do_postgres_md5(res)
 do_postgres_version(res)
 do_platform(res)
-do_meminfo(res)
 if res['python.platform.system'] == 'sunos':
     do_system(res)
     do_ndd(res)
 elif res['python.platform.system'] == 'linux':
     do_sysctl(res)
     do_ulimit(res)
+    do_meminfo(res)
 
 
 if opt['-p']:

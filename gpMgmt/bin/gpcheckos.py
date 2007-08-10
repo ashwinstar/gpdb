@@ -298,7 +298,32 @@ try:
             print '  [ERROR %s] Solaris version (version %s should be >= 5.10)' % (p.x_peer, v)
         elif match(session, key, v):
             # check ndd
-	    pass
+            key = 'ndd.tcp_conn_req_max_q'
+            match(session, key, 4096)
+
+            key = 'ndd.tcp_conn_req_max_q0'
+            match(session, key, 4096)
+
+            key = 'ndd.tcp_largest_anon_port'
+            match(session, key, 65535)
+            
+            key = 'ndd.tcp_smallest_anon_port'
+            match(session, key, 4096)
+
+            key = 'ndd.tcp_time_wait_interval'
+            match(session, key, 100)
+
+            key = 'system.rlim_fd_max'
+            match(session, key, 262144)
+            
+            key = 'system.rlim_fd_cur'
+            match(session, key, 65536)
+
+            key = 'system.shmsys:shminfo_shmmax'
+            match(session, key, 0x2000000)
+
+            key = 'system.semsys:seminfo_semmi'
+            match(session, key, 1024)
     
     elif value:
         print ('[ERROR %s] invalid system (value %s should be either Linux or SunOS)' 
