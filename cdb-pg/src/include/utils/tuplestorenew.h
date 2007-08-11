@@ -26,6 +26,9 @@ void ntuplestore_setinstrument(NTupleStore* ts, struct Instrumentation *ins);
 /* Tuple store method */
 extern NTupleStore *ntuplestore_create(int maxBytes);
 extern NTupleStore *ntuplestore_create_readerwriter(const char* filename, int maxBytes, bool isWriter);
+extern bool ntuplestore_is_readerwriter_reader(NTupleStore* nts);
+extern bool ntuplestore_is_readerwriter_writer(NTupleStore* nts);
+extern bool ntuplestore_is_readerwriter(NTupleStore* nts);
 extern void ntuplestore_reset(NTupleStore *ts);
 extern void ntuplestore_flush(NTupleStore *ts);
 extern void ntuplestore_destroy(NTupleStore *ts);

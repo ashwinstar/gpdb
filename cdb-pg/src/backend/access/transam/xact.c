@@ -216,6 +216,7 @@ typedef struct XactCallbackItem
 } XactCallbackItem;
 
 static XactCallbackItem *Xact_callbacks = NULL;
+static XactCallbackItem *Xact_callbacks_once = NULL;
 
 /*
  * List of add-on start- and end-of-subxact callbacks
@@ -241,6 +242,7 @@ static void AtStart_Cache(void);
 static void AtStart_Memory(void);
 static void AtStart_ResourceOwner(void);
 static void CallXactCallbacks(XactEvent event);
+static void CallXactCallbacksOnce(XactEvent event);
 static void CallSubXactCallbacks(SubXactEvent event,
 					 SubTransactionId mySubid,
 					 SubTransactionId parentSubid);
@@ -2156,6 +2158,7 @@ CommitTransaction(void)
 	 */
 
 	CallXactCallbacks(XACT_EVENT_COMMIT);
+	CallXactCallbacksOnce(XACT_EVENT_COMMIT);
 
 	ResourceOwnerRelease(TopTransactionResourceOwner,
 						 RESOURCE_RELEASE_BEFORE_LOCKS,
@@ -2394,6 +2397,7 @@ PrepareTransaction(void)
 	 */
 
 	CallXactCallbacks(XACT_EVENT_PREPARE);
+	CallXactCallbacksOnce(XACT_EVENT_PREPARE);
 
 	ResourceOwnerRelease(TopTransactionResourceOwner,
 						 RESOURCE_RELEASE_BEFORE_LOCKS,
@@ -2570,6 +2574,7 @@ AbortTransaction(void)
 	 */
 
 	CallXactCallbacks(XACT_EVENT_ABORT);
+	CallXactCallbacksOnce(XACT_EVENT_ABORT);
 
 	ResourceOwnerRelease(TopTransactionResourceOwner,
 						 RESOURCE_RELEASE_BEFORE_LOCKS,
@@ -3324,6 +3329,58 @@ CallXactCallbacks(XactEvent event)
 		(*item->callback) (event, item->arg);
 }
 
+/* Register or deregister callback functions for start/end Xact.  Call only once. */
+void
+RegisterXactCallbackOnce(XactCallback callback, void *arg)
+{
+	XactCallbackItem *item;
+
+	item = (XactCallbackItem *)
+		MemoryContextAlloc(TopMemoryContext, sizeof(XactCallbackItem));
+	item->callback = callback;
+	item->arg = arg;
+	item->next = Xact_callbacks_once;
+	Xact_callbacks_once = item;
+}
+
+void
+UnregisterXactCallbackOnce(XactCallback callback, void *arg)
+{
+	XactCallbackItem *item;
+	XactCallbackItem *prev;
+
+	prev = NULL;
+	for (item = Xact_callbacks_once; item; prev = item, item = item->next)
+	{
+		if (item->callback == callback && item->arg == arg)
+		{
+			if (prev)
+				prev->next = item->next;
+			else
+				Xact_callbacks_once = item->next;
+			pfree(item);
+			break;
+		}
+	}
+}
+
+static void
+CallXactCallbacksOnce(XactEvent event)
+{
+	/* currently callback once should ignore prepare. */
+	if (event == XACT_EVENT_PREPARE)
+		return;
+
+	while(Xact_callbacks_once)
+	{
+		XactCallbackItem *next = Xact_callbacks_once->next;
+
+		(*Xact_callbacks_once->callback)(event, Xact_callbacks_once->arg);
+		pfree(Xact_callbacks_once);
+
+		Xact_callbacks_once = next;
+	}
+}
 
 /*
  * Register or deregister callback functions for start- and end-of-subxact

@@ -294,16 +294,18 @@ void ExecEndShareInputScan(ShareInputScanState *node)
 		shareinput_reader_notifydone(node->share_lk_ctxt, sisc->share_id);
 
 #ifndef USE_OLD_TUPLESTORE
-	if(sisc->share_type == SHARE_MATERIAL || sisc->share_type == SHARE_MATERIAL_XSLICE)
+	Assert(sisc->share_type == SHARE_MATERIAL || sisc->share_type == SHARE_SORT);
+
+	if(sisc->share_type == SHARE_MATERIAL) 
 	{
 		if(node->ts_pos != NULL)
 			ntuplestore_destroy_accessor((NTupleStoreAccessor *) node->ts_pos);
 		if(node->ts_markpos != NULL)
 			pfree(node->ts_markpos);
 
-		if(sisc->share_type == SHARE_MATERIAL_XSLICE)
+		if(node->ts_state != NULL)
 		{
-			if(node->ts_state != NULL)
+			if(ntuplestore_is_readerwriter_reader((NTupleStore *) node->ts_state))
 				ntuplestore_destroy((NTupleStore *) node->ts_state);
 		}
 	}

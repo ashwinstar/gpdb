@@ -194,6 +194,8 @@ extern void RequireTransactionChain(void *stmtNode, const char *stmtType);
 extern bool IsInTransactionChain(void *stmtNode);
 extern void RegisterXactCallback(XactCallback callback, void *arg);
 extern void UnregisterXactCallback(XactCallback callback, void *arg);
+extern void RegisterXactCallbackOnce(XactCallback callback, void *arg);
+extern void UnregisterXactCallbackOnce(XactCallback callback, void *arg);
 extern void RegisterSubXactCallback(SubXactCallback callback, void *arg);
 extern void UnregisterSubXactCallback(SubXactCallback callback, void *arg);
 

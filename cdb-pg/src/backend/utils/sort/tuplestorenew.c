@@ -1,7 +1,6 @@
 /*
  * tuplestorenew.c
  *		A better tuplestore
- *
  */
 
 #include "postgres.h"
@@ -38,7 +37,13 @@ typedef struct NTupleStorePage
 	NTupleStorePageSlotEntry slot[1];
 } NTupleStorePage;
 
-/* some convinient macros */
+typedef struct NTupleStoreLobRef
+{
+	long start;
+	long size;
+} NTupleStoreLobRef;
+
+/* some convinient macro/inline functions */
 /* page flag bits */
 #define NTS_PAGE_DIRTY 1
 static inline bool nts_page_is_dirty(NTupleStorePage * page)
@@ -118,15 +123,18 @@ static inline void verify_nts_page_format_is_sane()
 static inline void update_page_slot_entry(NTupleStorePage *page, int len)
 {
 	short data_start = (short) NTS_ALLIGN8( nts_page_data_bcnt(page) );
+	int w_len = len > 0 ? len : -len;
+
 	NTupleStorePageSlotEntry *slot = nts_page_next_slot_entry(page);
 
-	Assert(len >= 0 && len < NTS_MAX_ENTRY_SIZE);
+	Assert(len < (int) NTS_MAX_ENTRY_SIZE);
+	Assert(len > 0 || len == -sizeof(NTupleStoreLobRef)); 
 
 	slot->data_start = data_start;
 	slot->size = (short) len;
 
 	nts_page_incr_slot_cnt(page);
-	nts_page_set_data_bcnt(page, data_start+len);
+	nts_page_set_data_bcnt(page, data_start+w_len);
 	nts_page_set_dirty(page, true);
 }
 
@@ -137,8 +145,6 @@ static inline void update_page_slot_entry(NTupleStorePage *page, int len)
 
 struct NTupleStore
 {
-	BufFile *pfile; 	/* underlying backed file */
-
 	int page_max;   /* max page the store can use */
 	int page_effective_max; 
 	int page_cnt; 	/* page count */
@@ -150,20 +156,41 @@ struct NTupleStore
 	long first_ondisk_blockn;           /* first blockn that is written to disk */
 	int rwflag;  /* if I am ordinary store, or a reader, or a writer of readerwriter (share input) */
 
+	BufFile *pfile; 	/* underlying backed file */
+	BufFile *plobfile;  /* underlying backed file for lobs (entries does not fit one page) */
+	long     lobbytes;  /* number of bytes written to lob file */
+
 	/* some stats, which are not restictly required */
 	int racc_cnt;   
 	int wacc_cnt;
 
+	/* instrumentation for explain analyze */
 	Instrumentation *instrument;
 };
 
+bool ntuplestore_is_readerwriter_reader(NTupleStore *nts) { return nts->rwflag == NTS_IS_READER; }
+bool ntuplestore_is_readerwriter_writer(NTupleStore *nts) { return nts->rwflag == NTS_IS_WRITER; }
+bool ntuplestore_is_readerwriter(NTupleStore *nts) { return nts->rwflag != NTS_NOT_READERWRITER; }
+/* Accessor to the tuplestore.
+ * 
+ * About the pos of an Accessor. 
+ * An acessor has a pos, pos.blockn == -1 implies the postion is not valid.  
+ * Else, pos.blockn should be the same as blockn of the current page.
+ * If the pos.blockn is valid, then pos.slotn should also be a valid slotn in the 
+ * page, or
+ * 		1. it may equals (first_valid - 1), which indicates it is positioned right before
+ *			first valid slot,
+ *		2. it may equals page->header.slotn, which indicates it is positioned just after
+ *			the last slot,
+ * the two positons are handy when we advance the accessor.
+ */
 struct NTupleStoreAccessor
 {
 	NTupleStore *store;
+	NTupleStorePage *page;
 	bool isWriter;
 
 	NTupleStorePos  pos;
-	NTupleStorePage *page;
 };
 
 void ntuplestore_setinstrument(NTupleStore *st, struct Instrumentation *instr)
@@ -225,9 +252,10 @@ static void verify_ts_page_list(NTupleStore * ts)
 
 			Assert(slotentry->data_start >= prev_data_start + prev_data_len);
 			Assert(slotentry->data_start == NTS_ALLIGN8(slotentry->data_start));
+			Assert(slotentry->size > 0 || slotentry->size == (-sizeof(NTupleStoreLobRef)));
 
 			prev_data_start = slotentry->data_start;
-			prev_data_len = slotentry->size;
+			prev_data_len = slotentry->size > 0 ? slotentry->size : -slotentry->size;
 		}
 	}
 
@@ -257,9 +285,11 @@ static void verify_ts_page_list(NTupleStore * ts)
 				NTupleStorePageSlotEntry* slotentry = nts_page_slot_entry(pnext, s);
 				Assert(slotentry->data_start >= prev_data_start + prev_data_len);
 				Assert(slotentry->data_start == NTS_ALLIGN8(slotentry->data_start));
+				Assert(slotentry->size <= NTS_MAX_ENTRY_SIZE);
+				Assert(slotentry->size > 0 || slotentry->size == (-sizeof(NTupleStoreLobRef))); 
 
 				prev_data_start = slotentry->data_start;
-				prev_data_len = slotentry->size;
+				prev_data_len = slotentry->size > 0 ? slotentry->size : -slotentry->size;
 			}
 		}
 	}
@@ -371,6 +401,7 @@ static void nts_remove_page_from_dlist(NTupleStorePage *page, void **prev, void 
 }
 #define NTS_REMOVE_1(page) (nts_remove_page_from_dlist((page), &((page)->header.prev_1), &((page)->header.next_1)))
 
+/* read a page by blockn.  After read the page in not pined and not in any list */
 static bool ntsReadBlock(NTupleStore *ts, int blockn, NTupleStorePage *page)
 {
 	long diskblockn = blockn - ts->first_ondisk_blockn;
@@ -391,6 +422,7 @@ static bool ntsReadBlock(NTupleStore *ts, int blockn, NTupleStorePage *page)
 	return true;
 }
 
+/* write a page */
 static bool ntsWriteBlock(NTupleStore *ts, NTupleStorePage *page)
 {
 	Assert(ts->rwflag != NTS_IS_READER);
@@ -618,15 +650,63 @@ static NTupleStorePage *nts_load_prev_page(NTupleStore *store, NTupleStorePage *
 	return NULL;
 }
 
+static void ntuplestore_cleanup(NTupleStore *ts, bool fNormal)
+{
+	NTupleStorePage *p = ts->first_page;
+
+#ifdef DEBUG
+	verify_ts_page_list(ts);
+
+	if(fNormal)
+	{
+		Assert(ts->racc_cnt == 0 || !"NTupleStore leaking a read accessor");
+		Assert(ts->wacc_cnt == 0 || !"NTupleStore leaking a write accessor");
+	}
+#endif
+
+	while(p)
+	{
+		NTupleStorePage *pnext = nts_page_next(p); 
+		free(p);
+		p = pnext;
+	}
+
+	p = ts->first_free_page;
+	while(p)
+	{
+		NTupleStorePage *pnext = nts_page_next(p); 
+		free(p);
+		p = pnext;
+	}
+
+	if(fNormal && ts->rwflag == NTS_NOT_READERWRITER)
+	{
+		if(ts->pfile)
+			BufFileClose(ts->pfile);
+		if(ts->plobfile)
+			BufFileClose(ts->plobfile);
+	}
+
+	free(ts);
+}
+
+static void XCallBack_NTS(XactEvent event, void *nts)
+{
+	ntuplestore_cleanup((NTupleStore *)nts, false);
+}
+
 extern NTupleStore *ntuplestore_create(int maxBytes)
 {
-	NTupleStore *store = (NTupleStore *) palloc(sizeof(NTupleStore));
+	NTupleStore *store = (NTupleStore *) malloc(sizeof(NTupleStore));
 
 #ifdef DEBUG
 	verify_ts_page_sane();
 #endif
 	store->pfile = NULL;
 	store->first_ondisk_blockn = 0;
+
+	store->plobfile = NULL;
+	store->lobbytes = 0;
 
 	Assert(maxBytes >= 0);
 	store->page_max = maxBytes / BLCKSZ;
@@ -652,6 +732,8 @@ extern NTupleStore *ntuplestore_create(int maxBytes)
 	store->wacc_cnt = 0;
 
 	store->instrument = NULL;
+
+	RegisterXactCallbackOnce(XCallBack_NTS, (void *) store);
 	return store;
 }
 
@@ -660,19 +742,31 @@ extern NTupleStore *ntuplestore_create_readerwriter(const char *filename, int ma
 	NTupleStore* store = NULL;
 	bool fOK; 
 	
+	char filenamelob[MAX_RWFILE_PREFIX_SIZE];
+	int  fnlobbytes = snprintf(filenamelob, MAX_RWFILE_PREFIX_SIZE, "%s_LOB", filename);
+
+	if(fnlobbytes >= MAX_RWFILE_PREFIX_SIZE)
+		elog(ERROR, "Invalid temporary file name by readerwriter %s", filename);
+
 	if(isWriter)
 	{
 		store = ntuplestore_create(maxBytes);
 		store->pfile = BufFileCreateTemp_ReaderWriter(filename, isWriter);
 		store->rwflag = NTS_IS_WRITER;
+
+		store->plobfile = BufFileCreateTemp_ReaderWriter(filenamelob, isWriter);
+		store->lobbytes = 0;
 	}
 	else
 	{
-		store = (NTupleStore *) palloc(sizeof(NTupleStore));
+		store = (NTupleStore *) malloc(sizeof(NTupleStore));
 		store->pfile = BufFileCreateTemp_ReaderWriter(filename, isWriter);
 		store->first_ondisk_blockn = 0;
 		store->rwflag = NTS_IS_READER;
 	
+		store->plobfile = BufFileCreateTemp_ReaderWriter(filenamelob, isWriter);
+		store->lobbytes = 0;
+
 		Assert(maxBytes >= 0);
 		store->page_max = maxBytes / BLCKSZ;
 		/* give me at least 16 pages */
@@ -701,10 +795,10 @@ extern NTupleStore *ntuplestore_create_readerwriter(const char *filename, int ma
 		store->wacc_cnt = 0;
 
 		store->instrument = NULL;
+		RegisterXactCallbackOnce(XCallBack_NTS, (void *) store);
 	}
 	return store;
 }
-		
 
 extern void ntuplestore_reset(NTupleStore *ts)
 {
@@ -730,6 +824,15 @@ extern void ntuplestore_reset(NTupleStore *ts)
 	ts->last_page = ts->first_page;
 	nts_pin_page(ts, ts->first_page);
 	nts_pin_page(ts, ts->last_page);
+
+	ts->first_ondisk_blockn = 0;
+
+	if(ts->plobfile)
+	{
+		bool fOK = BufFileSeekBlock(ts->plobfile, 0);
+		Assert(fOK);
+	}
+	ts->lobbytes = 0;
 }
 
 extern void ntuplestore_flush(NTupleStore *ts)
@@ -752,38 +855,14 @@ extern void ntuplestore_flush(NTupleStore *ts)
 	}
 	
 	BufFileFlush(ts->pfile);
+	if(ts->plobfile)
+		BufFileFlush(ts->plobfile);
 }
 
 extern void ntuplestore_destroy(NTupleStore *ts)
 {
-	NTupleStorePage *p = ts->first_page;
-
-#ifdef DEBUG
-	verify_ts_page_list(ts);
-
-	Assert(ts->racc_cnt == 0 || !"NTupleStore leaking a read accessor");
-	Assert(ts->wacc_cnt == 0 || !"NTupleStore leaking a write accessor");
-#endif
-
-	while(p)
-	{
-		NTupleStorePage *pnext = nts_page_next(p); 
-		free(p);
-		p = pnext;
-	}
-
-	p = ts->first_free_page;
-	while(p)
-	{
-		NTupleStorePage *pnext = nts_page_next(p); 
-		free(p);
-		p = pnext;
-	}
-
-	if(ts->pfile && ts->rwflag == NTS_NOT_READERWRITER) 
-		BufFileClose(ts->pfile);
-
-	pfree(ts);
+	ntuplestore_cleanup(ts, true);
+	UnregisterXactCallbackOnce(XCallBack_NTS, (void *) ts);
 }
 
 extern NTupleStoreAccessor* ntuplestore_create_accessor(NTupleStore *ts, bool isWriter)
@@ -831,6 +910,40 @@ void ntuplestore_destroy_accessor(NTupleStoreAccessor *acc)
 	pfree(acc);
 }
 
+static long ntuplestore_put_lob(NTupleStore *nts, char* data, NTupleStoreLobRef *lobref)
+{
+	long wlen; 
+
+	if(!nts->plobfile)
+	{
+		Assert(nts->rwflag == NTS_NOT_READERWRITER);
+		Assert(nts->lobbytes == 0);
+		nts->plobfile = BufFileCreateTemp(false);
+	}
+
+	wlen = BufFileWrite(nts->plobfile, data, lobref->size); 
+	Assert(wlen == lobref->size);
+
+	lobref->start = nts->lobbytes;
+	nts->lobbytes += lobref->size;
+
+	return wlen;
+}
+
+static long ntuplestore_get_lob(NTupleStore *nts, void *data, NTupleStoreLobRef *lobref)
+{
+	long fileno = lobref->start / RELSEG_SIZE;
+	long offset = lobref->start % RELSEG_SIZE;
+
+	long ret = BufFileSeek(nts->plobfile, fileno, offset, SEEK_SET);
+	Assert(ret == 0);
+
+	ret = BufFileRead(nts->plobfile, data, lobref->size);
+	Assert(ret == lobref->size);
+
+	return ret;
+}
+
 void ntuplestore_acc_put_tupleslot(NTupleStoreAccessor *tsa, TupleTableSlot *slot)
 {
 	char *dest_ptr;
@@ -857,9 +970,7 @@ void ntuplestore_acc_put_tupleslot(NTupleStoreAccessor *tsa, TupleTableSlot *slo
 
 	if(put_ok)
 		update_page_slot_entry(tsa->page, (int) dest_len);
-	else if(dest_len > NTS_MAX_ENTRY_SIZE)
-		elog(ERROR, "NTuplestore cannot store slot: len is %d", dest_len);
-	else
+	else if(dest_len <= NTS_MAX_ENTRY_SIZE)
 	{
 		NTupleStorePage *page = nts_get_free_page(tsa->store);
 		if(!page)
@@ -884,6 +995,18 @@ void ntuplestore_acc_put_tupleslot(NTupleStoreAccessor *tsa, TupleTableSlot *slo
 		tsa->store->last_page = page;
 		nts_pin_page(tsa->store, tsa->store->last_page);
 	}
+	else
+	{
+		char* lob = palloc(dest_len);
+		NTupleStoreLobRef lobref;
+
+		lobref.size = dest_len;
+
+		ntuplestore_put_lob(tsa->store, lob, &lobref);
+		ntuplestore_acc_put_data(tsa, &lobref, -sizeof(NTupleStoreLobRef)); 
+		pfree(lob);
+		return;
+	}
 
 	tsa->pos.blockn = nts_page_blockn(tsa->page); 
 	tsa->pos.slotn = nts_page_slot_cnt(tsa->page) - 1; 
@@ -893,12 +1016,14 @@ void ntuplestore_acc_put_data(NTupleStoreAccessor *tsa, void *data, int len)
 {
 	char *dest_ptr;
 	int   dest_len;
+	int   w_len = len > 0 ? len : -len;
 
 	Assert(tsa->page && tsa->isWriter);
 	Assert(tsa->store && tsa->store->first_page && tsa->store->last_page);
+	Assert(len > 0 || len == (-sizeof(NTupleStoreLobRef)));
 
-	if(len > NTS_MAX_ENTRY_SIZE)
-		elog(ERROR, "NTupleStore cannot store data: len is %d", len);
+	Assert(len <= (int) NTS_MAX_ENTRY_SIZE);
+
 
 	/* first move the page to last page */
 	if(tsa->page != tsa->store->last_page)
@@ -911,9 +1036,9 @@ void ntuplestore_acc_put_data(NTupleStoreAccessor *tsa, void *data, int len)
 	dest_ptr = nts_page_next_slot_data_ptr(tsa->page); 
 	dest_len = nts_page_avail_bytes(tsa->page); 
 
-	if(dest_len >= len)
+	if(dest_len >= w_len)
 	{
-		memcpy(dest_ptr, data, len);
+		memcpy(dest_ptr, data, w_len);
 		update_page_slot_entry(tsa->page, len);
 	}
 	else
@@ -925,7 +1050,7 @@ void ntuplestore_acc_put_data(NTupleStoreAccessor *tsa, void *data, int len)
 		Assert(nts_page_slot_cnt(page) == 0 && nts_page_data_bcnt(page) == 0); 
 
 		dest_ptr = nts_page_next_slot_data_ptr(page); 
-		memcpy(dest_ptr, data, len);
+		memcpy(dest_ptr, data, w_len);
 
 		update_page_slot_entry(page, len);
 		nts_page_set_blockn(page, nts_page_blockn(tsa->page) + 1);
@@ -944,28 +1069,6 @@ void ntuplestore_acc_put_data(NTupleStoreAccessor *tsa, void *data, int len)
 	tsa->pos.slotn = nts_page_slot_cnt(tsa->page) - 1; 
 }
 
-static void trim_page_to_slotn(NTupleStorePage *page, int slotn)
-{
-
-#ifdef DEBUG
-	int i; 
-	for(i = 0; i<nts_page_first_valid_slotn(page); ++i)
-	{
-		NTupleStorePageSlotEntry *slot = nts_page_slot_entry(page, i); 
-		Assert(slot->data_start == -1 && slot->size == -1);
-	}
-
-	for(; i<slotn; ++i)
-	{
-		NTupleStorePageSlotEntry *slot = nts_page_slot_entry(page, i); 
-		slot->data_start = -1;
-		slot->size = -1;
-	}
-#endif
-	
-	nts_page_set_first_valid_slotn(page, slotn);
-}
-
 /* XXX Not done yet.
  * Postgres does not allow hole in the BufFile, therefore, even if we are trimming
  * a page, if, we are already in disk mode, we will have to flush the page (or write
@@ -977,7 +1080,7 @@ void ntuplestore_trim(NTupleStore *ts, NTupleStorePos *pos)
 	NTupleStorePage *page = nts_load_page(ts, pos->blockn); 
 
 	Assert(page); 
-	trim_page_to_slotn(page, pos->slotn);
+	nts_page_set_first_valid_slotn(page, pos->slotn);
 
 	nts_unpin_page(ts, ts->first_page);
 
@@ -1111,7 +1214,19 @@ bool ntuplestore_acc_current_tupleslot(NTupleStoreAccessor *tsa, TupleTableSlot 
 		return false;
 	}
 
-	Assert(tuple && len > 0);
+	if(len < 0)
+	{
+		NTupleStoreLobRef *plobref = (NTupleStoreLobRef *) tuple;
+		Assert(len == -sizeof(NTupleStoreLobRef));
+		
+		tuple = (MinimalTuple) palloc(plobref->size);
+		len = ntuplestore_get_lob(tsa->store, tuple, plobref);
+
+		Assert(len == plobref->size);
+
+		ExecStoreMinimalTuple(tuple, slot, true);
+		return true;
+	}
 
 #ifdef USE_DEBUG_NTUPLESTORE
 	slot->tts_nts_acc = NULL;
