@@ -68,7 +68,7 @@ serializeNode(Node *node, int *size)
 		}
 		PG_CATCH();
 		{
-			elog_node_display(NOTICE, "Before serialization", node, true);
+			elog_node_display(DEBUG5, "Before serialization", node, true);
 			PG_RE_THROW();
 		}
 		PG_END_TRY();
@@ -77,9 +77,9 @@ serializeNode(Node *node, int *size)
 		 * of plan nodes -- they avoid sending QD-only info out) */
 		if (strcmp(nodeToString(node), nodeToString(newnode)) != 0)
 		{
-			elog_node_display(NOTICE, "Before serialization", node, true);
+			elog_node_display(DEBUG5, "Before serialization", node, true);
 
-			elog_node_display(NOTICE, "After deserialization", newnode, true);
+			elog_node_display(DEBUG5, "After deserialization", newnode, true);
 		}
 	}
 
