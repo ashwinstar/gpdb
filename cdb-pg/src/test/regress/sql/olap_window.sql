@@ -500,6 +500,18 @@ and 4 following) as f from sale;
 -- test for second issue in MPP-1810
 select vn, first_value(vn) over(order by vn range 2 preceding) from vendor;
 
+-- MPP-1819
+SELECT sale.cn,sale.pn, 
+FIRST_VALUE(sale.pn+sale.pn) OVER(order by sale.cn rows unbounded preceding) as fv from sale;
+
+SELECT sale.cn,sale.pn, 
+FIRST_VALUE(sale.pn+sale.pn) OVER(order by sale.cn range unbounded preceding) as fv from sale;
+
+-- MPP-1812
+SELECT sale.cn,sale.prc,sale.vn,
+SUM(floor(sale.prc*sale.vn)) OVER(order by sale.cn asc,sale.prc range current row) as fv 
+from sale;
+
 -- Sanity test for executor detection of non-sense frames
 SELECT sale.pn,sale.cn,sale.prc,
     AVG(cast (sale.prc as int))

@@ -1538,6 +1538,63 @@ select vn, first_value(vn) over(order by vn range 2 preceding) from vendor;
  50 |          50
 (5 rows)
 
+-- MPP-1819
+SELECT sale.cn,sale.pn, 
+FIRST_VALUE(sale.pn+sale.pn) OVER(order by sale.cn rows unbounded preceding) as fv from sale;
+ cn | pn  | fv  
+----+-----+-----
+  1 | 200 | 400
+  1 | 100 | 400
+  1 | 300 | 400
+  1 | 400 | 400
+  1 | 500 | 400
+  2 | 100 | 400
+  2 | 400 | 400
+  3 | 200 | 400
+  3 | 600 | 400
+  3 | 500 | 400
+  4 | 700 | 400
+  4 | 800 | 400
+(12 rows)
+
+SELECT sale.cn,sale.pn, 
+FIRST_VALUE(sale.pn+sale.pn) OVER(order by sale.cn range unbounded preceding) as fv from sale;
+ cn | pn  | fv  
+----+-----+-----
+  1 | 200 | 400
+  1 | 100 | 400
+  1 | 300 | 400
+  1 | 400 | 400
+  1 | 500 | 400
+  2 | 100 | 400
+  2 | 400 | 400
+  3 | 200 | 400
+  3 | 600 | 400
+  3 | 500 | 400
+  4 | 700 | 400
+  4 | 800 | 400
+(12 rows)
+
+-- MPP-1812
+SELECT sale.cn,sale.prc,sale.vn,
+SUM(floor(sale.prc*sale.vn)) OVER(order by sale.cn asc,sale.prc range current row) as fv 
+from sale;
+ cn | prc  | vn |  fv   
+----+------+----+-------
+  1 |    0 | 10 |     0
+  1 |    0 | 20 |     0
+  1 |    0 | 30 |     0
+  1 |    0 | 50 |     0
+  1 |    5 | 30 |   150
+  2 |    0 | 50 |     0
+  2 | 2400 | 40 | 96000
+  3 |    0 | 40 |     0
+  3 |    5 | 30 |   300
+  3 |    5 | 30 |   300
+  4 |    1 | 40 |    80
+  4 |    1 | 40 |    80
+(12 rows)
+
 -- Sanity test for executor detection of non-sense frames
 SELECT sale.pn,sale.cn,sale.prc,
     AVG(cast (sale.prc as int))
