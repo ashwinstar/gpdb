@@ -5440,7 +5440,14 @@ first_value_internal(WindowRefExprState *ref_state, bool *isnull)
 		funcstate->cur_trail_edge_equal == false &&
 		pos + 1 < funcstate->frame_mem_used && 
 		pos + 1 <= funcstate->cur_lead_edge)
+	{
 		pos++;
+	}
+	else if (funcstate->wlevel->is_rows == true &&
+			 pos == -1)
+	{
+		pos++;
+	}
 	
 	if (pos < 0 || pos > funcstate->cur_lead_edge ||
 		pos >= funcstate->frame_mem_used)
