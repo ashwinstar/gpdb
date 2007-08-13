@@ -3555,7 +3555,7 @@ CopyReadLineText(CopyState cstate, size_t bytesread)
 		if (!eol_detected)
 		{
 			/* load entire input buffer into line buf, and quit */
-			appendBinaryStringInfo(&cstate->line_buf, cstate->raw_buf, RAW_BUF_SIZE);
+			appendBinaryStringInfo(&cstate->line_buf, cstate->raw_buf, bytesread);
 			cstate->raw_buf_done = true;
 			return false;
 		}
@@ -3606,7 +3606,7 @@ CopyReadLineText(CopyState cstate, size_t bytesread)
 		/* reached end of buffer */
 		if ((cstate->endloc = scanTextLine(cstate, cstate->begloc, cstate->eol_ch[0], bytesread - cstate->raw_buf_index)) == NULL)
 		{
-			linesize = RAW_BUF_SIZE - (cstate->begloc - cstate->raw_buf);
+			linesize = bytesread - (cstate->begloc - cstate->raw_buf);
 			appendBinaryStringInfo(&cstate->line_buf, cstate->begloc, linesize);
 
 			if (cstate->line_buf.len > 1)
@@ -3833,7 +3833,7 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 		if (!eol_detected)
 		{
 			/* load entire input buffer into line buf, and quit */
-			appendBinaryStringInfo(&cstate->line_buf, cstate->raw_buf, RAW_BUF_SIZE);
+			appendBinaryStringInfo(&cstate->line_buf, cstate->raw_buf, bytesread);
 			cstate->line_done = false;
 			cstate->raw_buf_done = true;
 
@@ -3889,7 +3889,7 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 		/* reached end of buffer */
 		if ((cstate->endloc = scanCSVLine(cstate, cstate->begloc, cstate->eol_ch[0], escapec, quotec, bytesread - cstate->raw_buf_index)) == NULL)
 		{
-			linesize = RAW_BUF_SIZE - (cstate->begloc - cstate->raw_buf);
+			linesize = bytesread - (cstate->begloc - cstate->raw_buf);
 			appendBinaryStringInfo(&cstate->line_buf, cstate->begloc, linesize);
 
 			if (cstate->last_was_esc)
