@@ -579,8 +579,8 @@ resetInputBuffer(WindowState *wstate)
 		if (save_firsttuple)
 		{
 			tuplestore_gettupleslot(wstate->input_buffer->tuplestorestate,
-									true, wstate->spare);
-			wstate->curslot = ExecCopySlot(wstate->curslot, wstate->spare);
+									true, wstate->priorslot);
+			wstate->curslot = ExecCopySlot(wstate->curslot, wstate->priorslot);
 		}
 		
 #if 0
@@ -648,7 +648,7 @@ fetchTupleThroughBuf(WindowState *wstate)
 	if (wstate->input_buffer->ntuples >= 1)
 	{
 		tuplestore_gettupleslot(wstate->input_buffer->tuplestorestate,
-								true, wstate->spare);
+								true, wstate->priorslot);
 	}
 
 	if (wstate->input_buffer->ntuples <= 1)
@@ -660,10 +660,9 @@ fetchTupleThroughBuf(WindowState *wstate)
 		{
 			Assert(wstate->input_buffer->ntuples == 1);
 
-			wstate->curslot = ExecCopySlot(wstate->curslot, wstate->spare);
+			wstate->curslot = ExecCopySlot(wstate->curslot, wstate->priorslot);
 			wstate->input_buffer->part_break = false;
 		}
-		
 		else
 		{
 			TupleTableSlot *slot = ExecProcNode(outerPlanState(wstate));	
@@ -671,9 +670,9 @@ fetchTupleThroughBuf(WindowState *wstate)
 			if (TupIsNull(slot))
 				return NULL;
 
-			if (wstate->spare->tts_tupleDescriptor == NULL)
+			if (wstate->priorslot->tts_tupleDescriptor == NULL)
 			{
-				ExecSetSlotDescriptor(wstate->spare, 
+				ExecSetSlotDescriptor(wstate->priorslot, 
 									  slot->tts_tupleDescriptor);
 			}
 
@@ -689,6 +688,7 @@ fetchTupleThroughBuf(WindowState *wstate)
 			 * new tuplestore is working.
 			 */
 			wstate->curslot = slot;
+
 			wt = ExecCopySlotMinimalTuple(wstate->curslot);
 #endif
 			wstate->input_buffer->ntuples++;
@@ -696,7 +696,6 @@ fetchTupleThroughBuf(WindowState *wstate)
 		}
 		wstate->cur_slot_is_new = true;
 	}
-	
 	else
 	{
 		/* Read the next tuple from the input buffer. */
@@ -721,7 +720,7 @@ fetchTupleThroughBuf(WindowState *wstate)
 	{
 		wstate->cur_slot_part_break =
 			(window->numPartCols &&
-			 (!execTuplesMatch(wstate->spare, wstate->curslot, 
+			 (!execTuplesMatch(wstate->priorslot, wstate->curslot, 
 							   window->numPartCols, window->partColIdx, 
 							   wstate->eqfunctions,
 							   econtext->ecxt_per_tuple_memory)));
@@ -744,7 +743,7 @@ fetchTupleThroughBuf(WindowState *wstate)
 
 				if (match)
 				{
-					match = execTuplesMatch(wstate->spare, wstate->curslot, 
+					match = execTuplesMatch(wstate->priorslot, wstate->curslot, 
 											key->numSortCols, 
 											key->sortColIdx,
 											ls->eqfunctions,
@@ -947,7 +946,7 @@ static TupleTableSlot *
 nextRow(WindowState *wstate, ExprContext *econtext)
 {
 	TupleTableSlot *outerTupleSlot;
-	TupleTableSlot *priorTupleSlot = wstate->priorslot;
+	TupleTableSlot *saveSlot = wstate->saveslot;
 	MinimalTuple wt;
 
 	/* Get the new current row into the outer tuple slot. */
@@ -956,10 +955,10 @@ nextRow(WindowState *wstate, ExprContext *econtext)
 	if (!PointerIsValid(wt))
 		return NULL;
 
-	/* If first call, initialize priorslot. */
-	if (wstate->priorslot->tts_tupleDescriptor == NULL)
+	/* If first call, initialize saveslot. */
+	if (wstate->saveslot->tts_tupleDescriptor == NULL)
 	{
-		ExecSetSlotDescriptor(wstate->priorslot, 
+		ExecSetSlotDescriptor(wstate->saveslot, 
 							  wstate->curslot->tts_tupleDescriptor);
 	}
 	
@@ -985,18 +984,18 @@ nextRow(WindowState *wstate, ExprContext *econtext)
 	else
 		resetManagedFrameAggStates(wstate);
 
-	ExecCopySlot(priorTupleSlot, outerTupleSlot); /* for next time through */
+	ExecCopySlot(saveSlot, outerTupleSlot); /* for next time through */
 
 	if (wstate->need_peercount &&
 		(wstate->cur_slot_key_break >= 0 || wstate->row_index == 0 /* first row */
 		 || wstate->cur_slot_part_break))
 	{
 		int level = wstate->cur_slot_key_break != -1 ? wstate->cur_slot_key_break : 0;
-		processPeerCounts(wstate, level, priorTupleSlot,
+		processPeerCounts(wstate, level, saveSlot,
 						  econtext->ecxt_per_tuple_memory);
 	}
 
-	return priorTupleSlot;
+	return outerTupleSlot;
 }
 
 static int
@@ -1113,8 +1112,8 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 	int funcno;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 
-	econtext->ecxt_outertuple = wstate->priorslot;
-	econtext->ecxt_scantuple = wstate->priorslot;
+	econtext->ecxt_outertuple = wstate->saveslot;
+	econtext->ecxt_scantuple = wstate->saveslot;
 
 	for (funcno = 0; funcno < wstate->numfuncs; funcno++)
 	{
@@ -1140,18 +1139,28 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 
 static bool
 cmp_deformed_tuple(Datum *a, bool *a_nulls, Datum *b, bool *b_nulls,
-				   bool *asc_cols, int ncols, FmgrInfo *funcs, 
-				   MemoryContext evalContext, bool is_equal)
+				   bool *asc_cols, int ncols, FmgrInfo *ltfuncs, 
+				   FmgrInfo *eqfuncs, MemoryContext evalContext, bool is_equal)
 {
 	MemoryContext oldContext;
 	bool		result;
 	int			i, j;
+	FmgrInfo *funcs;
 
 	/* Reset and switch into the temp context. */
 	MemoryContextReset(evalContext);
 	oldContext = MemoryContextSwitchTo(evalContext);
 
-	result = true;
+	if (is_equal)
+	{
+		funcs = eqfuncs;
+		result = true;
+	}
+	else
+	{
+		funcs = ltfuncs;
+		result = true;
+	}
 
 	/*
 	 * For equality testing, we can will most likely find an inequality
@@ -1159,7 +1168,6 @@ cmp_deformed_tuple(Datum *a, bool *a_nulls, Datum *b, bool *b_nulls,
 	 * doing equality testing in which case we must move from left to 
 	 * right.
 	 */
-
 	if (is_equal)
 		i = ncols - 1;
 	else
@@ -1171,6 +1179,7 @@ cmp_deformed_tuple(Datum *a, bool *a_nulls, Datum *b, bool *b_nulls,
 					attr2;
 		bool		isNull1,
 					isNull2;
+		bool 		res;
 
 		attr1 = a[i];
 		isNull1 = a_nulls[i];
@@ -1200,14 +1209,46 @@ cmp_deformed_tuple(Datum *a, bool *a_nulls, Datum *b, bool *b_nulls,
 
 				tmp = attr1;
 				attr1 = attr2;
-				attr2 = attr1;
+				attr2 = tmp;
 			}
 		}
-		/* Apply the type-specific equality function */
-		if (!DatumGetBool(FunctionCall2(&funcs[i],
-										attr1, attr2)))
+		
+		/* Apply the type-specific function */
+		res = DatumGetBool(FunctionCall2(&funcs[i], attr1, attr2));
+
+		if (is_equal && !res)
 		{
-			result = false;		/* they aren't equal */
+			/* we wanted equality but didn't get it */
+			result = false;
+			break;
+		}
+		else if (!is_equal)
+		{
+			if (!res)
+			{
+				/* 
+				 * We wanted it to be less, but it wasn't. Continue only if
+				 * they're equal.
+				 */
+				res = DatumGetBool(FunctionCall2(&eqfuncs[i], attr1, attr2));
+				if (res)
+				{
+					/* 
+					 * Because we found the previous key equal, set the
+					 * return value to false.
+					 */
+					result = false;
+					continue;
+				}
+				else
+					/* LHS is greater than RHS */
+					result = false;
+			}
+			else
+			{
+				/* because all keys are sorted, we return straight away */
+				result = true;
+			}
 			break;
 		}
 	}
@@ -1222,31 +1263,26 @@ cmp_deformed_tuple(Datum *a, bool *a_nulls, Datum *b, bool *b_nulls,
  * Like heap_deform_tuple(), but we only extract those fields listed in
  * attnums.
  *
- * values and nulls should be allocated memory by the caller.
+ * values and nulls should be allocated memory by the caller. Further, it
+ * is the caller's responsibility to make a copy of each datum if they must
+ * survive a long time.
  */
 static void
 deform_window_tuple(TupleTableSlot *slot, int nattrs, AttrNumber *attnums, 
-					Datum *values, bool *nulls, MemoryContext ctx)
+					Datum *values, bool *nulls)
 {
 	int i;
-	MemoryContext oldctx = MemoryContextSwitchTo(ctx);
 
 	for (i = 0; i < nattrs; i++)
 	{
 		AttrNumber attnum = attnums[i];
 		bool isnull;
-		Form_pg_attribute attr = slot->tts_tupleDescriptor->attrs[attnum - 1];
 		Datum d = slot_getattr(slot, attnum, &isnull);
 
-		/* 
-		 * We must copy this tuple because we may need to keep it around
-		 * a long time. Caller is responsible for freeing these values.
-		 */
-		values[i] = datumCopy(d, attr->attbyval, attr->attlen);
+		/* caller is responsible for making a copy */
+		values[i] = d;
 		nulls[i] = isnull;
 	}
-
-	MemoryContextSwitchTo(oldctx);
 }
 
 static void
@@ -1321,35 +1357,35 @@ set_edge_val(WindowState *wstate, WindowStatePerLevel level_state,
 			/* for current row, just copy things directly */
 			Datum *d;
 			bool *n;
-			bool is_set;
+			MemoryContext oldctx;
+			int i;
 			
 			if (is_trail)
 			{
 				d = level_state->trail_edge_d;
 				n = level_state->trail_edge_nulls;
-				is_set = level_state->trail_edge_set;
 				level_state->trail_edge_set = true;
 			}
 			else
 			{
 				d = level_state->lead_edge_d;
 				n = level_state->lead_edge_nulls;
-				is_set = level_state->lead_edge_set;
 				level_state->lead_edge_set = true;
 			}
 
-			if (is_set)
-			{
-				int i;
+			oldctx = MemoryContextSwitchTo(wstate->transcontext);
 
-				for (i = 0; i < key->numSortCols; i++)
-				{
-					if (!level_state->col_typbyvals[i])
-						pfree(DatumGetPointer(d[i]));
-				}
+			for (i = 0; i < key->numSortCols; i++)
+			{
+				/* 
+				 * Copy the tuple since current it's the tuple directly
+				 * from the buffer pool.
+				 */
+				d[i] = datumCopy(vals[i], level_state->col_typbyvals[i],
+								level_state->col_typlens[i]);
+				n[i] = nulls[i];
 			}
-			memcpy(d, vals, sizeof(Datum) * key->numSortCols);
-			memcpy(n, nulls, sizeof(bool) * key->numSortCols);
+			MemoryContextSwitchTo(wstate->transcontext);
 		}
 	}
 }
@@ -1484,12 +1520,14 @@ bufferAddRangeTransValue(WindowState *wstate, int ncols,
  * If is_peer is true, the tuple is a peer of the previously seen tuple, 
  * so we simply pass the transition value for that function to
  * invokeWindowedFunc().
+ *
+ * eq_lead_edge tells appendRangeTuple() is equal to the current edge.
  */
 static void
 appendRangeTuple(WindowState *wstate, WindowKey *key,
 				 WindowFrame *frame, WindowStatePerLevel level_state,
 				 Datum *vals, bool *nulls, int level, List *funcs,
-				 bool is_peer, bool tuple_before_edge)
+				 bool is_peer, bool tuple_before_edge, bool eq_lead_edge)
 {
 	ListCell *lc;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
@@ -1504,6 +1542,9 @@ appendRangeTuple(WindowState *wstate, WindowKey *key,
 		{
 			continue;
 		}
+
+		if (tuple_before_edge)
+			funcstate->cur_lead_edge_equal = eq_lead_edge;
 
 		if (funcstate->isAgg)
 		{
@@ -1843,6 +1884,7 @@ adjustEdges(WindowState *wstate)
 												 level_state->col_sort_asc,
 												 key->numSortCols,
 												 level_state->ltfunctions,
+												 level_state->eqfunctions,
 											 econtext->ecxt_per_tuple_memory,
 												 false);
 						/* add equal test */
@@ -1861,6 +1903,7 @@ adjustEdges(WindowState *wstate)
 												 level_state->trail_edge_nulls,
 												 level_state->col_sort_asc,
 												 key->numSortCols,
+												 level_state->ltfunctions,
 												 level_state->eqfunctions,
 											 econtext->ecxt_per_tuple_memory,
 												 true);
@@ -1883,14 +1926,18 @@ adjustEdges(WindowState *wstate)
 				/* now, leading edge */
 				funcstate->prev_lead_edge = funcstate->cur_lead_edge;
 
-				/* it was greater than the edge, so go past it */
-				if (funcstate->prev_lead_edge != -1)
+				/* 
+				 * If the lead edge was equal, go past it with the previous
+				 * position so we do not count it twice.
+				 */
+				if (funcstate->cur_lead_edge_equal &&
+					funcstate->prev_lead_edge != -1)
 				{
 					funcstate->prev_lead_edge++;
 				}
 
-				if (funcstate->prev_lead_edge > 0)
-					pos = funcstate->prev_lead_edge;
+				if (funcstate->cur_lead_edge > 0)
+					pos = funcstate->cur_lead_edge;
 				else
 					pos = 0; /* reset */
 
@@ -1926,6 +1973,7 @@ adjustEdges(WindowState *wstate)
 											 level_state->col_sort_asc,
 											 key->numSortCols,
 											 level_state->ltfunctions,
+											 level_state->eqfunctions,
 											 econtext->ecxt_per_tuple_memory,
 											 false);
 					
@@ -1935,6 +1983,7 @@ adjustEdges(WindowState *wstate)
 												 level_state->lead_edge_nulls,
 												 level_state->col_sort_asc,
 												 key->numSortCols,
+												 level_state->ltfunctions,
 												 level_state->eqfunctions,
 												 econtext->ecxt_per_tuple_memory,
 												 true);
@@ -1970,6 +2019,13 @@ adjustEdges(WindowState *wstate)
 									funcstate->cur_lead_edge;
 							}
 						}
+
+						/* 
+						 * We found a match so the next key will be past the
+						 * edge.
+						 */
+						if (res2)
+							break;
 					}
 					else
 						break;
@@ -2026,8 +2082,7 @@ populateFrameBuffers(WindowState *wstate)
 		nulls = palloc(sizeof(bool) * key->numSortCols);
 		
 		deform_window_tuple(wstate->curslot, key->numSortCols,
-							key->sortColIdx, vals, nulls, 
-							wstate->transcontext); 
+							key->sortColIdx, vals, nulls); 
 
 		set_edge_val(wstate, level_state, key->frame->trail, key, vals, 
 					 nulls, true);
@@ -2056,6 +2111,14 @@ populateFrameBuffers(WindowState *wstate)
 		ntuples = wstate->input_buffer->ntuples - 2;
 		wstate->input_buffer->ntuples = 2;
 	}
+
+    {                                                                           
+        int tuple_no;                                                           
+                                                                                
+        /* advance ntuples */                                                   
+        for(tuple_no=0; tuple_no<ntuples; tuple_no++)                           
+            tuplestore_advance(wstate->input_buffer->tuplestorestate, true);    
+    }
 
 	/* we've moved forward by ntuples so add that to the row index */
 	lead_row_index += ntuples;
@@ -2167,8 +2230,7 @@ populateFrameBuffers(WindowState *wstate)
 				new_nulls = palloc(sizeof(bool) * key->numSortCols);
 
 				deform_window_tuple(slot, key->numSortCols, key->sortColIdx,
-									new_vals, new_nulls,
-									wstate->transcontext);
+									new_vals, new_nulls);
 	
 				if (key->frame->trail->kind == WINDOW_UNBOUND_PRECEDING)
 					lttrail = false;
@@ -2183,6 +2245,7 @@ populateFrameBuffers(WindowState *wstate)
 											   level_state->col_sort_asc,
 											   key->numSortCols,
 											   level_state->ltfunctions,
+											   level_state->eqfunctions,
 											   econtext->ecxt_per_tuple_memory,
 											   false);
 				}
@@ -2201,9 +2264,10 @@ populateFrameBuffers(WindowState *wstate)
 											   level_state->trail_edge_nulls,
 											   level_state->col_sort_asc,
 											   key->numSortCols,
+											   level_state->ltfunctions,
 											   level_state->eqfunctions,
 											   econtext->ecxt_per_tuple_memory,
-											   false);
+											   true);
 
 					if (eqtrail)
 					{
@@ -2225,6 +2289,7 @@ populateFrameBuffers(WindowState *wstate)
 											   level_state->col_sort_asc,
 											   key->numSortCols,
 											   level_state->ltfunctions,
+											   level_state->eqfunctions,
 										   econtext->ecxt_per_tuple_memory,
 											   false);
 						}
@@ -2243,6 +2308,7 @@ populateFrameBuffers(WindowState *wstate)
 												   level_state->lead_edge_nulls,
 												   level_state->col_sort_asc,
 												   key->numSortCols,
+												   level_state->ltfunctions,
 												   level_state->eqfunctions,
 											   econtext->ecxt_per_tuple_memory,
 											   	   true);
@@ -2255,10 +2321,11 @@ populateFrameBuffers(WindowState *wstate)
 						}
 					}
 				}
+
 				appendRangeTuple(wstate, key, key->frame, level_state, 
 								 new_vals, new_nulls, 
 								 level, level_state->level_funcs,
-								 is_peer, tuple_in_buf);
+								 is_peer, tuple_in_buf, eqlead);
 				process_cur_slot = false;
 
 				tuple_in_frame = tuple_before_edge;
@@ -2280,8 +2347,8 @@ populateFrameBuffers(WindowState *wstate)
 	elog(DEBUG1, "----- end frame populate");
 
 	/* restore old tuple */
-	econtext->ecxt_outertuple = wstate->priorslot;
-    econtext->ecxt_scantuple = wstate->priorslot;
+	econtext->ecxt_outertuple = wstate->saveslot;
+    econtext->ecxt_scantuple = wstate->saveslot;
 }
 
 static List *
@@ -3097,6 +3164,7 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 	ExecInitResultTupleSlot(estate, &wstate->ps);
 	wstate->priorslot = ExecInitExtraTupleSlot(estate);
 	wstate->spare = ExecInitExtraTupleSlot(estate);
+	wstate->saveslot = ExecInitExtraTupleSlot(estate);
 
 	/* Initialize child expressions.
 	 *
