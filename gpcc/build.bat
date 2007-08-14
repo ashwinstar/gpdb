@@ -10,6 +10,7 @@ set JSON=%GPCC%\ext\json-c-0.6
 set LIBEVENT=%GPCC%\ext\libevent-1.3b-1
 set LIBGPCC=%GPCC%\WIN32\libgpcc
 set GPFDIST=%GPCC%\WIN32\gpfdist
+set ZLIB=%GPCC%\ext\zlib-1.2.3
 
 copy %GPCC%\ext\WIN32\apr\*.vcproj %APR%
 copy %GPCC%\ext\WIN32\apr\*.sln %APR%
@@ -81,6 +82,14 @@ pushd %LIBEVENT%\WIN32-Prj
 
 vcbuild /u libevent.vcproj /clean
 vcbuild /u libevent.vcproj "Release|Win32"
+
+popd
+
+echo --------------------- zlib ---------------------------------
+pushd %ZLIB%\projects\vc2005
+
+vcbuild /u zlib.vcproj /clean
+vcbuild /u zlib.vcproj "LIB Release|Win32"
 
 popd
 

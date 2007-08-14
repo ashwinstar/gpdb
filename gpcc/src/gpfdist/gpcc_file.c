@@ -7,8 +7,12 @@
 #include <apr_fnmatch.h>
 #include <apr_strings.h>
 #include <fcntl.h>
-
-
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#ifdef WIN32
+#include <io.h>
+#endif
 
 typedef enum gpcc_file_type_t gpcc_file_type_t;
 enum gpcc_file_type_t {
@@ -40,26 +44,26 @@ struct gpcc_file_t {
 /* TEXT */
 
 
-APR_DECLARE(size_t) txt_file_read(gpcc_file_t *fd, void *ptr, size_t size) 
+size_t txt_file_read(gpcc_file_t *fd, void *ptr, size_t size) 
 {
     return read(fd->ffd, ptr, size);
 }
 
-APR_DECLARE(int) txt_file_close(gpcc_file_t *fd)
+int txt_file_close(gpcc_file_t *fd)
 {
     int e = close(fd->ffd);
     fd->ffd = 0;
     return e;
 }
 
-static gpcc_file_t* txt_file_open(const char *fpath, int oflag, mode_t mode) 
+static gpcc_file_t* txt_file_open(const char *fpath, int oflag) 
 {
     gpcc_file_t* fd = malloc(sizeof(gpcc_file_t));
     if (! fd) 
 	gpcc_fatal(FLINE, "out of memory");
     
     memset(fd, 0, sizeof(*fd));
-    if (-1 == (fd->ffd = open(fpath, oflag, mode))) {
+    if (-1 == (fd->ffd = open(fpath, oflag, 0600))) {
 	gpcc_warning(FLINE, "unable to open file %s", fpath);
 	free(fd);
 	return 0;
@@ -73,13 +77,13 @@ static gpcc_file_t* txt_file_open(const char *fpath, int oflag, mode_t mode)
 
 /* GZ */
 
-APR_DECLARE(size_t) gz_file_read(gpcc_file_t *fd, void *ptr, size_t len)
+size_t gz_file_read(gpcc_file_t *fd, void *ptr, size_t len)
 {
     int n = gzread(fd->u.gz.fp, ptr, len);
     return n;
 }
 
-APR_DECLARE(int) gz_file_close(gpcc_file_t *fd)
+int gz_file_close(gpcc_file_t *fd)
 {
     int e =  gzclose(fd->u.gz.fp);
     fd->ffd = 0;
@@ -87,14 +91,14 @@ APR_DECLARE(int) gz_file_close(gpcc_file_t *fd)
     return e;
 }
 
-static gpcc_file_t* gz_file_open(const char *fpath, int oflag, mode_t mode)
+static gpcc_file_t* gz_file_open(const char *fpath, int oflag)
 {
     gpcc_file_t* fd = malloc(sizeof(gpcc_file_t));
     if (! fd) 
 	gpcc_fatal(FLINE, "out of memory");
     
     memset(fd, 0, sizeof(*fd));
-    if (-1 == (fd->ffd = open(fpath, oflag, mode))) {
+    if (-1 == (fd->ffd = open(fpath, oflag, 0600))) {
 	gpcc_warning(FLINE, "unable to open file %s", fpath);
 	free(fd);
 	return 0;
@@ -113,12 +117,12 @@ static gpcc_file_t* gz_file_open(const char *fpath, int oflag, mode_t mode)
     return fd;
 }
 
-APR_DECLARE(gpcc_file_t*) gpcc_file_open(const char *fpath, int oflag, mode_t mode)
+APR_DECLARE(gpcc_file_t*) gpcc_file_open(const char *fpath, int oflag)
 {
     char *s;
     if (0 != (s = strrchr(fpath, '.'))) {
 	if (apr_strnatcasecmp(s, ".gz") == 0) {
-	    return gz_file_open(fpath, oflag, mode);
+	    return gz_file_open(fpath, oflag);
 	} 
 	if (apr_strnatcasecmp(s, ".z") == 0) {
 	    gpcc_warning(FLINE, "compression .z file is not supported");
@@ -129,7 +133,7 @@ APR_DECLARE(gpcc_file_t*) gpcc_file_open(const char *fpath, int oflag, mode_t mo
 	    return 0;
 	}
     }
-    return txt_file_open(fpath, oflag, mode);
+    return txt_file_open(fpath, oflag);
 }
 
 
@@ -138,7 +142,7 @@ APR_DECLARE(int) gpcc_file_close(gpcc_file_t* fd)
     return fd->close(fd);
 }
 
-APR_DECLARE(int) gpcc_file_read(gpcc_file_t* fd, void* ptr, int len)
+APR_DECLARE(size_t) gpcc_file_read(gpcc_file_t* fd, void* ptr, int len)
 {
     return fd->read(fd, ptr, len);
 }

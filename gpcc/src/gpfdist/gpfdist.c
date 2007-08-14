@@ -251,7 +251,7 @@ fstream_t* fstream_alloc(char** path, int npath)
 	    gpcc_fatal(FLINE, "out of memory");
 
 	/* check READ access right */
-	if (0 == (fs->fd[i] = gpcc_file_open(path[i], O_RDONLY, 0600))) {
+	if (0 == (fs->fd[i] = gpcc_file_open(path[i], O_RDONLY))) {
 	    gpcc_warning(FLINE, "unable to open file %s", path[i]);
 	    fstream_free(fs);
 	    return 0;
@@ -308,8 +308,7 @@ block_t* fstream_get_block(fstream_t* fs)
 
 	if (opt.V) 
 	    printf("   opening %s\n", fs->fpath[fs->fidx]);
-	if (0 == (fs->fd[fs->fidx] = gpcc_file_open(fs->fpath[fs->fidx], 
-						    O_RDONLY, 0600))) {
+	if (0 == (fs->fd[fs->fidx] = gpcc_file_open(fs->fpath[fs->fidx], O_RDONLY))) {
 	    gpcc_warning(FLINE, "unable to open file %s", fs->fpath[fs->fidx]);
 	    fs->ferror = 1;
 	    block_put(b);

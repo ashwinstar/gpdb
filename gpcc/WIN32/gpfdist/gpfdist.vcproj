@@ -118,7 +118,7 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalIncludeDirectories="../../src/include;../src/include;../../ext/apr/include;&quot;../../ext/apr-util/include&quot;;&quot;../../ext/libevent-1.3b-1&quot;;&quot;../../ext/json-c-0.6&quot;"
+				AdditionalIncludeDirectories="../../src/include;../src/include;../../ext/apr/include;&quot;../../ext/apr-util/include&quot;;&quot;../../ext/libevent-1.3b-1&quot;;&quot;../../ext/json-c-0.6&quot;;../../src/gpfdist;&quot;../../ext/zlib-1.2.3&quot;"
 				PreprocessorDefinitions="WIN32,APR_DECLARE_STATIC,APU_DECLARE_STATIC"
 				RuntimeLibrary="0"
 				UsePrecompiledHeader="0"
@@ -137,9 +137,9 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="libgpcc.lib apr-1.lib aprutil-1.lib libevent.lib ws2_32.lib mswsock.lib Rpcrt4.lib"
+				AdditionalDependencies="libgpcc.lib apr-1.lib aprutil-1.lib libevent.lib ws2_32.lib mswsock.lib Rpcrt4.lib zlib.lib"
 				LinkIncremental="1"
-				AdditionalLibraryDirectories="../../ext/apr\LibR;&quot;../../ext/apr-util/LibR&quot;;&quot;../../ext/libevent-1.3b-1/win32-prj/release&quot;;../libgpcc/release"
+				AdditionalLibraryDirectories="../../ext/apr\LibR;&quot;../../ext/apr-util/LibR&quot;;&quot;../../ext/libevent-1.3b-1/win32-prj/release&quot;;../libgpcc/release;&quot;../../ext/zlib-1.2.3/projects/vc2005/Win32_LIB_Release&quot;"
 				GenerateDebugInformation="true"
 				SubSystem="1"
 				OptimizeReferences="2"
@@ -181,6 +181,10 @@
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
 			>
 			<File
+				RelativePath="..\..\src\gpfdist\gpcc_file.c"
+				>
+			</File>
+			<File
 				RelativePath="..\..\src\gpfdist\gpfdist.c"
 				>
 			</File>
@@ -196,6 +200,10 @@
 			</File>
 			<File
 				RelativePath="..\..\src\include\gpcc_event.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\gpfdist\gpcc_file.h"
 				>
 			</File>
 			<File
