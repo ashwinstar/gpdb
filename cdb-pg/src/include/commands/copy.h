@@ -192,6 +192,7 @@ extern void CopyReadAttributesText(CopyState cstate, char *nulls,
 extern void CopyReadAttributesCSV(CopyState cstate, char *nulls, int *attr_offsets,
 					  int num_phys_attrs, Form_pg_attribute *attr);
 extern void limit_printout_length(StringInfo buf);
+extern void truncateEol(StringInfo buf, EolType	eol_type);
 
 
 

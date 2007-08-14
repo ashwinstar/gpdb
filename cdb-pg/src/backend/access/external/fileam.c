@@ -804,6 +804,19 @@ file_scan_error_callback(void *arg)
 
 	CopyState	cstate = (CopyState) arg;
 
+	/*
+	 * Make sure to not modify the actual line_buf here (for example
+	 * in limit_printout_length() ) as we may got here not because of
+	 * a data error but because of an innocent elog(NOTICE) for example
+	 * somewhere in the code. We make a copy of line_buf and use it for 
+	 * the error context purposes so that a non-data related elog call
+	 * won't corrupt our data in line_buf.
+	 */
+	StringInfoData copy_of_line_buf;
+				
+	initStringInfo(&copy_of_line_buf);
+	appendStringInfoString(&copy_of_line_buf, cstate->line_buf.data);
+				
 	if (cstate->cur_attname)
 	{
 		/* error is relevant to a particular column */
@@ -815,26 +828,14 @@ file_scan_error_callback(void *arg)
 	}
 	else
 	{
-		int			eol_len = 1;
-		int			eol_loc = 0;
-
-		if (cstate->eol_type == EOL_CRNL)
-			eol_len = 2;
-
-		eol_loc = cstate->line_buf.len - eol_len;
-
-		if (eol_loc < 0)		/* just to be sure */
-			eol_loc = 0;
-
-		/* remove LF from line before displaying it */
-		cstate->line_buf.data[cstate->line_buf.len - eol_len] = '\0';
 
 		/* error is relevant to a particular line */
 		if (cstate->line_buf_converted || !cstate->need_transcoding)
 		{
-			limit_printout_length(&cstate->line_buf);
+			truncateEol(&copy_of_line_buf, cstate->eol_type);
+			limit_printout_length(&copy_of_line_buf);
 
-			errcontext("External table %s, line %d of %s: \"%s\"", cstate->cur_relname, cstate->cur_lineno, cstate->filename, cstate->line_buf.data);
+			errcontext("External table %s, line %d of %s: \"%s\"", cstate->cur_relname, cstate->cur_lineno, cstate->filename, copy_of_line_buf.data);
 		}
 		else
 		{
@@ -850,6 +851,9 @@ file_scan_error_callback(void *arg)
 		}
 	}
 
+	/* error context will possibly free it but just in case */
+	pfree(copy_of_line_buf.data);
+	
 }
 
 /*
