@@ -3779,36 +3779,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			completionTag = cdbdisp_relayresults(pPrimaryResults, pMirrorResults);
 			
 			/* free memory allocated for the dispatch threads struct */
-			
-			/*
-			 * Don't use this:
-					cdbdisp_destroyDispatchThreads(dispatchThreads);
-			 * because it wants to pfree the things in the queryParms struct
-			 */
-			
-			if (dispatchThreads)
-			{
-				int i;
-				for (i = 0; i < dispatchThreads->dispatchCommandParmsArSize; i++)
-				{
-					DispatchCommandParms *pParms;
-					pParms = &(dispatchThreads->dispatchCommandParmsAr[i]);
-					if (pParms->dispatchResultPtrArray)
-					{
-						pfree(pParms->dispatchResultPtrArray);
-						pParms->dispatchResultPtrArray = NULL;
-					}
-				}
-				
-				pfree(dispatchThreads->dispatchCommandParmsAr);	
-				dispatchThreads->dispatchCommandParmsAr = NULL;
-
-				dispatchThreads->dispatchCommandParmsArSize = 0;
-				dispatchThreads->threadCount = 0;
-					
-				pfree(dispatchThreads);
-			}
-			dispatchThreads = NULL;
+			cdbdisp_destroyDispatchThreads(dispatchThreads);
 			
 			if (isSetOrReset)
 			{

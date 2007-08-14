@@ -3830,45 +3830,51 @@ cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads)
 			{
 				DispatchCommandQueryParms *pQueryParms = &pParms->queryParms;
 
-				if (pQueryParms->strCommand)
+				/* Leave query params if we are a dispatch agent. */
+				if (Gp_role != GP_ROLE_DISPATCHAGENT)
 				{
-					/* Caller frees if desired */
-					pQueryParms->strCommand = NULL;
-				}
+
+					if (pQueryParms->strCommand)
+					{
+						/* Caller frees if desired */
+						pQueryParms->strCommand = NULL;
+					}
+					
+					if (pQueryParms->serializedDtxContextInfo)
+					{
+						if (i==0)
+							pfree(pQueryParms->serializedDtxContextInfo);
+						pQueryParms->serializedDtxContextInfo = NULL;
+					}
+					
+					if (pQueryParms->serializedSliceInfo)
+					{
+						if (i==0)
+							pfree(pQueryParms->serializedSliceInfo);
+						pQueryParms->serializedSliceInfo = NULL;
+					}
+					
+					if (pQueryParms->serializedQuerytree)
+					{
+						if (i==0)
+							pfree(pQueryParms->serializedQuerytree);
+						pQueryParms->serializedQuerytree = NULL;
+					}
 				
-				if (pQueryParms->serializedDtxContextInfo)
-				{
-					if (i==0)
-						pfree(pQueryParms->serializedDtxContextInfo);
-					pQueryParms->serializedDtxContextInfo = NULL;
-				}
-				
-				if (pQueryParms->serializedSliceInfo)
-				{
-					if (i==0)
-						pfree(pQueryParms->serializedSliceInfo);
-					pQueryParms->serializedSliceInfo = NULL;
-				}
-				
-				if (pQueryParms->serializedQuerytree)
-				{
-					if (i==0)
-						pfree(pQueryParms->serializedQuerytree);
-					pQueryParms->serializedQuerytree = NULL;
-				}
-				
-				if (pQueryParms->serializedPlantree)
-				{
-					if (i==0)
-						pfree(pQueryParms->serializedPlantree);
-					pQueryParms->serializedPlantree = NULL;
-				}
-				
-				if (pQueryParms->serializedParams)
-				{
-					if (i==0)
-						pfree(pQueryParms->serializedParams);
-					pQueryParms->serializedParams = NULL;
+					if (pQueryParms->serializedPlantree)
+					{
+						if (i==0)
+							pfree(pQueryParms->serializedPlantree);
+						pQueryParms->serializedPlantree = NULL;
+					}
+					
+					if (pQueryParms->serializedParams)
+					{
+						if (i==0)
+							pfree(pQueryParms->serializedParams);
+						pQueryParms->serializedParams = NULL;
+					}
+
 				}
 			}
 			break;
