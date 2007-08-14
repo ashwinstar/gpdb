@@ -20,6 +20,10 @@ else
     GP_BUILDNUMBER=`echo $RAW_VERSION | sed -e 's,.*build-,,'`
 fi
 
+if [ -f BUILD_NUMBER ] ; then
+    GP_BUILDNUMBER=`cat BUILD_NUMBER`
+fi
+
 echo "${GP_VERSION} build ${GP_BUILDNUMBER}"
 
 exit 0
