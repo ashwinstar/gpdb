@@ -1273,8 +1273,13 @@ ProcessUtility(Node *parsetree,
 
 						initStringInfo(&buffer);
 
-						appendStringInfo(&buffer, "REINDEX DATABASE \"%s\"", stmt->name);
-
+						/* MPP-1832: REINDEX SYSTEM generates sets
+						 * kind to OBJECT_DATABASE, but sets do_user
+						 * to false */
+						if (!stmt->do_user)
+							appendStringInfo(&buffer, "REINDEX SYSTEM \"%s\"", stmt->name);
+						else
+							appendStringInfo(&buffer, "REINDEX DATABASE \"%s\"", stmt->name);
 
 						CdbDoCommand(buffer.data, false, /*no txn*/ false, 
 									 /* mirrors */ true, /* primaries */ true);
