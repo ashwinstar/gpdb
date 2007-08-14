@@ -3543,8 +3543,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			query_string = pq_getmsgstring(input_message);
 			pq_getmsgend(input_message);
 
-			elog(NOTICE, "Simple query stmt: %s.",query_string);
-			elog(ERROR,"Can't dispatch simple query yet");
+			elog(ERROR,"Can't dispatch simple query yet: %s", query_string);
 
 			setupRegularDtxContext();
 
