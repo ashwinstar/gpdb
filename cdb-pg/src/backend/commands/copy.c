@@ -92,7 +92,6 @@ static bool CopyGetInt16(CopyState cstate, int16 *val);
 static char *scanTextLine(CopyState cstate, const char *s, char c, size_t len);
 static char *scanCSVLine(CopyState cstate, const char *s, char c1, char c2, char c3, size_t len);
 
-static void truncateEol(CopyState cstate);
 static void concatenateEol(CopyState cstate);
 static char *escape_quotes(const char *src);
 
@@ -1755,6 +1754,19 @@ copy_in_error_callback(void *arg)
 	CopyState	cstate = (CopyState) arg;
 	
 	/*
+	 * Make sure to not modify the actual line_buf here (for example
+	 * in limit_printout_length() ) as we may got here not because of
+	 * a data error but because of an innocent elog(NOTICE) for example
+	 * somewhere in the code. We make a copy of line_buf and use it for 
+	 * the error context purposes so that a non-data related elog call
+	 * won't corrupt our data in line_buf.
+	 */
+	StringInfoData copy_of_line_buf;
+				
+	initStringInfo(&copy_of_line_buf);
+	appendStringInfoString(&copy_of_line_buf, cstate->line_buf.data);
+	
+	/*
 	 * If we saved the error context from a QE in cdbcopy.c append it here.
 	 */
 	if((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)
@@ -1789,29 +1801,17 @@ copy_in_error_callback(void *arg)
 		}
 		else
 		{
-			int			eol_len = 1;
-			int			eol_loc = 0;
-
-			if (cstate->eol_type == EOL_CRNL)
-				eol_len = 2;
-
-			eol_loc = cstate->line_buf.len - eol_len;
-
-			if (eol_loc < 0)	/* just to be sure */
-				eol_loc = 0;
-
-			/* remove LF from line before displaying it */
-			cstate->line_buf.data[cstate->line_buf.len - eol_len] = '\0';
 
 			/* error is relevant to a particular line */
 			if (cstate->line_buf_converted || !cstate->need_transcoding)
 			{
-				limit_printout_length(&cstate->line_buf);
+				truncateEol(&copy_of_line_buf, cstate->eol_type);
+				limit_printout_length(&copy_of_line_buf);
 
 				if (Gp_role == GP_ROLE_EXECUTE)
-					errcontext("COPY %s, line %d of this segment db input data: \"%s\"", cstate->cur_relname, cstate->cur_lineno, cstate->line_buf.data);
+					errcontext("COPY %s, line %d of this segment db input data: \"%s\"", cstate->cur_relname, cstate->cur_lineno, copy_of_line_buf.data);
 				else if(!cstate->error_on_executor) /* don't print out context if error wasn't local */
-					errcontext("COPY %s, line %d: \"%s\"", cstate->cur_relname, cstate->cur_lineno, cstate->line_buf.data);
+					errcontext("COPY %s, line %d: \"%s\"", cstate->cur_relname, cstate->cur_lineno, copy_of_line_buf.data);
 			}
 			else
 			{
@@ -1830,6 +1830,9 @@ copy_in_error_callback(void *arg)
 			}
 		}
 	}
+	
+	/* error context will possibly free it but just in case */
+	pfree(copy_of_line_buf.data);
 }
 
 /*
@@ -2766,7 +2769,7 @@ CopyFromDispatch(CopyState cstate)
 						 * remove eol characters from end of line buf
 						 */
 						if(!cstate->binary)
-							truncateEol(cstate);
+							truncateEol(&cstate->line_buf, cstate->eol_type);
 						
 						if (isnull)
 						{
@@ -5141,19 +5144,36 @@ scanCSVLine(CopyState cstate, const char *s, char eol, char escapec, char quotec
 	return ((*s == eol) ? (char *) s : NULL);
 }
 
-/* remove end of line chars from end of line buf */
-static void truncateEol(CopyState cstate)
+/* remove end of line chars from end of a buffer */
+void truncateEol(StringInfo buf, EolType eol_type)
 {
-	if(cstate->eol_type == EOL_CRNL)
+	int one_back = buf->len - 1;
+	int two_back = buf->len - 2;
+	
+	if(eol_type == EOL_CRNL)
 	{
-		cstate->line_buf.data[cstate->line_buf.len - 2] = '\0';
-		cstate->line_buf.data[cstate->line_buf.len - 1] = '\0';
-		cstate->line_buf.len -= 2;
+		if(buf->len < 2)
+			return;
+		
+		if(buf->data[two_back] == '\r' &&
+		   buf->data[one_back] == '\n')
+		{
+			buf->data[two_back] = '\0';
+			buf->data[one_back] = '\0';
+			buf->len -= 2;			
+		}
 	}
 	else
 	{
-		cstate->line_buf.data[cstate->line_buf.len - 1] = '\0';
-		cstate->line_buf.len--;
+		if(buf->len < 1)
+			return;
+		
+		if(buf->data[one_back] == '\r' ||
+		   buf->data[one_back] == '\n')
+		{
+			buf->data[one_back] = '\0';
+			buf->len--;			
+		}
 	}
 }
 
