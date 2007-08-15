@@ -1,0 +1,90 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <gpcc.h>
+#include <gpcc_proc.h>
+
+
+APR_DECLARE(apr_status_t) gpcc_proc_run(apr_proc_t *proc, const char *prog, const char *const *argv, const char * const *env, apr_cmdtype_e cmdtype, int wait, apr_pool_t *p)
+{
+    int e;
+    int ret = 0;
+    apr_procattr_t *attr;
+    apr_exit_why_e exitwhy;
+
+    e = apr_procattr_create(&attr, p);
+    if (e) {
+	fprintf(stderr, "apr_procattr_create failure");
+	return e;
+    }
+    if ((e = apr_procattr_io_set(attr, APR_NO_PIPE, APR_FULL_BLOCK, APR_NO_PIPE)) != APR_SUCCESS) {
+	return e;
+    }
+    /* default value: APR_PROGRAM */
+    if ((e = apr_procattr_cmdtype_set(attr, cmdtype)) != APR_SUCCESS) {
+        return e;
+    }
+
+    e = apr_proc_create(proc, prog, argv, env, attr, p);
+    if (e){
+	fprintf(stderr, "apr_proc_create failure");
+	return e;
+    }
+    
+
+    if (wait) {
+	e = apr_proc_wait(proc, &ret, &exitwhy, APR_WAIT);
+	return ret;
+    }
+
+    return e;
+
+}
+
+
+APR_DECLARE(apr_status_t) gpcc_proc_run_shell(apr_proc_t *proc, const char *prog, const char *const *argv, const char * const *env, int wait, apr_pool_t *p)
+{
+    apr_cmdtype_e cmdtype = APR_SHELLCMD;
+
+    if (env) {
+	cmdtype = APR_SHELLCMD_ENV;
+    }
+
+    return gpcc_proc_run(proc, prog, argv, env, cmdtype, wait, p);
+
+}
+
+APR_DECLARE(apr_status_t) gpcc_proc_run_prog(apr_proc_t *proc, const char *prog, const char *const *argv, const char *const *env, int wait, apr_pool_t *p)
+{
+    apr_cmdtype_e cmdtype = APR_PROGRAM_PATH;
+    if (env) {
+	cmdtype = APR_PROGRAM_ENV;
+    }
+    return gpcc_proc_run(proc, prog, argv, env, cmdtype, wait, p);
+}
+
+APR_DECLARE(apr_status_t) gpcc_proc_psql(apr_proc_t *proc, const char *sql, int wait, apr_pool_t *p)
+{
+    char cmd[1024];
+    int e;
+
+    const char *gphome = getenv("GPHOME");
+    if (gphome == 0) {
+	fprintf(stderr, "GPHOME no set");
+	return 1;
+    }
+    
+    e = gpcc_proc_run_shell(proc, cmd, 0, 0, wait, p);
+
+    return e;
+}
+
+APR_DECLARE(apr_status_t) gpcc_proc_ssh(apr_proc_t *proc, const char *cmd, int wait, apr_pool_t *p)
+{
+    char sshcmd[1024];
+    int e;
+    
+    e = gpcc_proc_run_prog(proc, sshcmd, 0, 0, wait, p);
+    
+    return e;
+}
+
