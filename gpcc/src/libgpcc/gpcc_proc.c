@@ -78,7 +78,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_psql(apr_proc_t *proc, const char *sql, int 
     return e;
 }
 
-APR_DECLARE(apr_status_t) gpcc_proc_ssh(apr_proc_t *proc, const char *cmd, int wait, apr_pool_t *p)
+APR_DECLARE(apr_status_t) gpcc_proc_ssh(apr_proc_t *proc, const char *hostname, int port, const char *cmd, int wait, apr_pool_t *p)
 {
     char sshcmd[1024];
     int e;
@@ -88,3 +88,32 @@ APR_DECLARE(apr_status_t) gpcc_proc_ssh(apr_proc_t *proc, const char *cmd, int w
     return e;
 }
 
+APR_DECLARE(apr_status_t) gpcc_proc_gpssh(apr_proc_t *proc, const char *const *hostnames, int port, const char *cmd, int wait, apr_pool_t *pool)
+{
+    int i;
+    int e = 0;
+    int ret;
+    apr_proc_t *p;
+    apr_exit_why_e exitwhy;
+    
+    for (i = 0, p = proc ; hostnames[i] ; i++, p++) {
+	e = gpcc_proc_ssh(p, hostnames[i], port, cmd, 0, pool);
+	if (e) {
+	    fprintf(stderr, "gpcc_proc_ssh %s: command failed %s\n", hostnames[i], cmd);
+	    return e;
+	}
+	
+    }
+ 
+    if (wait) {
+	e = 0;
+	for (i = 0 ; hostnames[i] ; i++) {
+	    apr_proc_wait(proc, &ret, &exitwhy, APR_WAIT);
+	    e |= ret;
+	}
+
+	return e;
+    }  
+
+    return e;
+}
