@@ -3418,6 +3418,9 @@ get_stats_option_name(const char *arg)
 }
 
 #include "cdb/cdbgang.h"
+#include "commands/copy.h"
+extern void CopyToDispatch(CopyState cstate);
+extern void CopyFromDispatch(CopyState cstate);
 
 /*
  * This code is used by the dispatch agent (Gp_role == GP_ROLE_DISPATCHAGENT)
@@ -3789,12 +3792,24 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				 * so that when we build new gangs they get the correct GUC
 				 * values
 				 */
+				elog(DEBUG1,"DA doing this: %s",query_string);  
 				exec_simple_query(query_string);
 			}
 			
 			if (isCopy)
 			{
-				pg_usleep(200*1000000);
+				CopyState cstate;
+				/* Allocate workspace and zero all fields */
+				cstate = (CopyStateData *) palloc0(sizeof(CopyStateData));
+				pg_usleep(2*1000000);
+				if (copyIsFrom)
+				{
+					CopyFromDispatch(cstate);
+				}
+				else
+				{
+					CopyToDispatch(cstate);
+				}
 			}
 			 
 			/*
@@ -4893,6 +4908,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 		 */
 		QueryCancelPending = false;		/* forget any earlier CANCEL signal */
 		DoingCommandRead = true;
+		elog(DEBUG1, "Waiting for a message from libpq"); /* TODO: Remove this */
 
 		/*
 		 * (3) read a command (loop blocks here)
@@ -4923,6 +4939,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 		
 		elog((Debug_print_full_dtm ? LOG : DEBUG5), "First char: '%c'; gp_role = '%s'.",firstchar,role_to_string(Gp_role));
 
+		elog(DEBUG1, "Message type %c received by from libpq", firstchar); /* TODO: Remove this */
 		if (Gp_role == GP_ROLE_DISPATCHAGENT)
 		{
 			send_ready_for_query = dispatchAgent(firstchar,&input_message);
