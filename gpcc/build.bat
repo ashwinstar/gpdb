@@ -12,6 +12,40 @@ set LIBGPCC=%GPCC%\WIN32\libgpcc
 set GPFDIST=%GPCC%\WIN32\gpfdist
 set ZLIB=%GPCC%\ext\zlib-1.2.3
 
+cd %EXT%
+
+if not exist apr (
+	7za x apr-1.2.8.tar.gz -so > apr-1.2.8.tar
+	7za x apr-1.2.8.tar
+	rename apr-1.2.8 apr
+	del apr-1.2.8.tar
+)
+
+if not exist apr-util (
+	7za x apr-util-1.2.8.tar.gz -so > apr-util-1.2.8.tar
+	7za x apr-util-1.2.8.tar
+	rename apr-util-1.2.8 apr-util
+	del apr-util-1.2.8.tar
+)
+
+if not exist json-c-0.6 (
+	7za x json-c-0.6.tar.gz -so > json-c-0.6.tar
+	7za x json-c-0.6.tar
+	del json-c-0.6.tar
+)
+
+if not exist libevent-1.3b-1 (
+	7za x libevent-1.3b-1.tar.gz -so > libevent-1.3b-1.tar
+	7za x libevent-1.3b-1.tar
+	del libevent-1.3b-1.tar
+)
+
+if not exist zlib-1.2.3 (
+	7za x zlib-1.2.3.zip -r
+)
+
+cd %GPCC%
+
 copy %GPCC%\ext\WIN32\apr\*.vcproj %APR%
 copy %GPCC%\ext\WIN32\apr\*.sln %APR%
 copy %GPCC%\ext\WIN32\apr\*.hw %APR%\include
@@ -45,66 +79,50 @@ rem     redefine: #define APR_HAS_LDAP	0
 
 
 
-pushd %APR%
+cd %APR%
 
 vcbuild /u apr.vcproj /clean
 vcbuild /u apr.vcproj "Release|Win32"
 
-popd
-
-pushd %APU%\xml\expat\lib
+cd %APU%\xml\expat\lib
 
 vcbuild /u xml.vcproj /clean
 vcbuild /u xml.vcproj "Release|Win32"
 
-popd
-
-pushd %APU%
+cd %APU%
 
 vcbuild /u aprutil.vcproj /clean
 vcbuild /u aprutil.vcproj "Release|Win32"
 
-popd
-
-
 
 echo ---------------------- json ----------------------------
-pushd %JSON%
+cd %JSON%
 
 vcbuild /u json-c.vcproj /clean
 vcbuild /u json-c.vcproj "Release|Win32"
 
-popd
-
-
 echo ---------------------- libevent ----------------------------
-pushd %LIBEVENT%\WIN32-Prj
+cd %LIBEVENT%\WIN32-Prj
 
 vcbuild /u libevent.vcproj /clean
 vcbuild /u libevent.vcproj "Release|Win32"
 
-popd
-
 echo --------------------- zlib ---------------------------------
-pushd %ZLIB%\projects\vc2005
+cd %ZLIB%\projects\vc2005
 
 vcbuild /u zlib.vcproj /clean
 vcbuild /u zlib.vcproj "LIB Release|Win32"
 
-popd
-
 echo --------------------- libgpcc ------------------------------
-pushd %LIBGPCC%
+cd %LIBGPCC%
 
 vcbuild /u libgpcc.vcproj /clean
 vcbuild /u libgpcc.vcproj "Release|Win32"
 
-popd
-
 echo --------------------- gpfdist ------------------------------
-pushd %GPFDIST%
+cd %GPFDIST%
 
 vcbuild /u gpfdist.vcproj /clean
 vcbuild /u gpfdist.vcproj "Release|Win32"
 
-popd
+cd %GPCC%
