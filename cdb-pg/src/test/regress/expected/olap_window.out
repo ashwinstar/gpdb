@@ -1657,6 +1657,28 @@ from sale;
   4 |    1 | 40 |    80
 (12 rows)
 
+-- MPP-1843, check the interaction between ROWS frames and partitioning
+SELECT sale.dt,sale.prc,sale.cn,
+sale.vn,
+SUM(sale.cn) OVER(partition by sale.dt,sale.prc order by sale.cn asc rows 
+between 0 following and 1 following) as sum 
+from sale order by dt, prc, cn;
+     dt     | prc  | cn | vn | sum 
+------------+------+----+----+-----
+ 01-01-1401 | 2400 |  2 | 40 |   2
+ 03-01-1401 |    0 |  1 | 10 |   1
+ 04-01-1401 |    0 |  3 | 40 |   3
+ 05-01-1401 |    0 |  1 | 20 |   1
+ 05-02-1401 |    0 |  1 | 30 |   1
+ 06-01-1401 |    0 |  1 | 50 |   3
+ 06-01-1401 |    0 |  2 | 50 |   2
+ 06-01-1401 |    1 |  4 | 40 |   8
+ 06-01-1401 |    1 |  4 | 40 |   4
+ 06-01-1401 |    5 |  1 | 30 |   4
+ 06-01-1401 |    5 |  3 | 30 |   6
+ 06-01-1401 |    5 |  3 | 30 |   3
+(12 rows)
+
 -- Sanity test for executor detection of non-sense frames
 SELECT sale.pn,sale.cn,sale.prc,
     AVG(cast (sale.prc as int))

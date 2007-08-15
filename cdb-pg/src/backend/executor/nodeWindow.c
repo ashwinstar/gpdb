@@ -329,6 +329,9 @@ static void bufferAddRangeWindowFuncTuple(WindowState *wstate,
 							  			  Datum *args, bool *argnulls,
 							  			  Datum *vals, bool *nulls,
 							  			  bool tuple_in_frame);
+static long int init_rows_edge_value(ExprState *rows_expr, 
+									 WindowBoundingKind kind,
+									 ExprContext *econtext);
 
 /* WindowState constructor.
  */
@@ -373,6 +376,7 @@ static void
 initializePartition(WindowState *wstate)
 {
 	int level;
+	Window *window = (Window *)wstate->ps.plan;
 	
 	elog(DEBUG1, "initializing partition");
 	
@@ -386,6 +390,7 @@ initializePartition(WindowState *wstate)
 	for ( level = 0; level < wstate->numlevels; level++ )
 	{
 		WindowStatePerLevel level_state = &wstate->level_state[level];
+		WindowKey *key;
 		
 		level_state->group_index = 0;
 		level_state->prior_non_peer_count = 0;
@@ -396,7 +401,30 @@ initializePartition(WindowState *wstate)
 		level_state->prior_rank = 1;
 		level_state->prior_dense_rank = 1;
 		
-		/* TODO per-key-level buffer management reinitialization */
+		key = list_nth(window->windowKeys, level);
+
+		Insist(PointerIsValid(key));
+		
+		if (key->frame && key->frame->is_rows)
+		{
+			if (EDGE_IS_BOUND(key->frame->trail))
+			{
+				level_state->trail_rows = 
+					init_rows_edge_value(level_state->trail_expr, 
+										 key->frame->trail->kind,
+										 wstate->ps.ps_ExprContext);
+				level_state->trail_edge_set = true;
+			}
+
+			if (EDGE_IS_BOUND(key->frame->lead))
+			{
+				level_state->lead_rows = 
+					init_rows_edge_value(level_state->lead_expr,
+										 key->frame->lead->kind,
+										 wstate->ps.ps_ExprContext);
+				level_state->lead_edge_set = true;
+			}
+		}
 	}
 	
 	/* Per-partition input buffer management reinitialzation. */
@@ -2825,6 +2853,27 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 		level_state->lead_expr = n;
 }
 
+static long int
+init_rows_edge_value(ExprState *rows_expr, WindowBoundingKind kind,
+					 ExprContext *econtext)
+{
+
+	long int rows_param;
+	bool isnull;
+	
+	rows_param = ExecEvalExpr(rows_expr,
+							  econtext,
+							  &isnull,
+							  NULL);
+
+	Insist(!isnull);
+
+	if (kind == WINDOW_BOUND_PRECEDING)
+		rows_param = -rows_param;
+
+	return rows_param;
+}
+
 /*
  * Initialise frame specific state.
  */
@@ -2942,24 +2991,14 @@ init_frames(WindowState *wstate)
 
 				if (EDGE_IS_BOUND(frame->trail))
 				{
-					long int rows_param;
-					bool isnull;
-					
 					level_state->trail_expr =
 						ExecInitExpr((Expr *)key->frame->trail->val, 
 									 (PlanState *) wstate); 
 
-					rows_param = ExecEvalExpr(level_state->trail_expr,
-											  econtext,
-											  &isnull,
-											  NULL);
-
-					Insist(!isnull);
-
-					if (frame->trail->kind == WINDOW_BOUND_PRECEDING)
-						rows_param = -rows_param;
-
-					level_state->trail_rows = rows_param;
+					level_state->trail_rows = 
+						init_rows_edge_value(level_state->trail_expr,
+											 frame->trail->kind,
+											 econtext);
 					level_state->trail_edge_set = true;
 				}
 				else
@@ -2967,24 +3006,15 @@ init_frames(WindowState *wstate)
 
 				if (EDGE_IS_BOUND(frame->lead))
 				{
-					long int rows_param;
-					bool isnull;
-
 					level_state->lead_expr = 
 						ExecInitExpr((Expr *)key->frame->lead->val, 
 									 (PlanState *) wstate); 
 
-					rows_param = ExecEvalExpr(level_state->lead_expr,
-											  econtext,
-											  &isnull,
-											  NULL);
+					level_state->lead_rows = 
+						init_rows_edge_value(level_state->lead_expr,
+											 frame->lead->kind,
+											 econtext);
 
-					Insist(!isnull);
-
-					if (frame->lead->kind == WINDOW_BOUND_PRECEDING)
-						rows_param = -rows_param;
-					
-					level_state->lead_rows = rows_param;
 					level_state->lead_edge_set = true;
 				}
 				else

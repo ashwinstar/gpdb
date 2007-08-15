@@ -529,6 +529,13 @@ SELECT sale.cn,sale.prc,sale.vn,
 SUM(floor(sale.prc*sale.vn)) OVER(order by sale.cn asc,sale.prc range current row) as fv 
 from sale;
 
+-- MPP-1843, check the interaction between ROWS frames and partitioning
+SELECT sale.dt,sale.prc,sale.cn,
+sale.vn,
+SUM(sale.cn) OVER(partition by sale.dt,sale.prc order by sale.cn asc rows 
+between 0 following and 1 following) as sum 
+from sale order by dt, prc, cn;
+
 -- Sanity test for executor detection of non-sense frames
 SELECT sale.pn,sale.cn,sale.prc,
     AVG(cast (sale.prc as int))
