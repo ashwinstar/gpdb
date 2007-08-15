@@ -3438,13 +3438,6 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 	 */
 	if (qry->hasWindFuncs && (qry->groupClause || qry->hasAggs))
 		transformGroupedWindows(qry);
-#if 0
-	if (qry->hasWindFuncs)
-	{
-		elog_node_display(NOTICE, "window clause query", qry, true);
-		elog(ERROR, "window clauses are unsupported");
-	}
-#endif
 
 	return qry;
 }
