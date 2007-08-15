@@ -1112,6 +1112,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_enable_preunique", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable 2-phase duplicate removal."),
+			gettext_noop("If true, planner may choose to remove duplicates in "
+						 "two phases--before and after redistribution.")
+		},
+		&gp_enable_preunique,
+		true, NULL, NULL
+	},
+
+	{
 		{"gp_hashagg_recalc_density", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Executor can recalculate grouping density based on pre-spill real density."),
 			NULL,
@@ -1128,16 +1138,6 @@ static struct config_bool ConfigureNamesBool[] =
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_enable_agg_distinct,
-		false, NULL, NULL
-	},
-
-	{
-		{"gp_enable_preunique", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Experimental feature: 2-phase duplicate removal."),
-			NULL,
-            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&gp_enable_preunique,
 		false, NULL, NULL
 	},
 

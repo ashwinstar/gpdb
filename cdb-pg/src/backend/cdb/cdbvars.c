@@ -109,6 +109,7 @@ bool        enable_adaptive_nestloop = true;
 double      gp_motion_cost_per_row = 0;
 int         gp_segments_for_planner = 0;
 bool		enable_agg_restruct = true;
+bool		gp_enable_preunique = TRUE;
 double		gp_hashagg_rewrite_limit = 1;
 bool		gp_hashagg_recalc_density = true;
 
@@ -117,7 +118,6 @@ bool		gp_adjust_selectivity_for_outerjoins = TRUE;
 
 /* Greenplum Database Experimental Feature GUCs */
 bool		gp_enable_agg_distinct = FALSE;
-bool		gp_enable_preunique = FALSE;
 bool		gp_enable_explain_allstat = FALSE;
 bool		gp_enable_sort_limit = FALSE;
 bool		gp_enable_sort_distinct = FALSE;

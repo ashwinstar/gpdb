@@ -41,6 +41,7 @@
 #include "parser/parse_expr.h"
 #include "parser/parse_oper.h"
 #include "parser/parsetree.h"
+#include "utils/selfuncs.h"
 #include "utils/syscache.h"
 #include "nodes/bitmapset.h"
 
@@ -845,13 +846,19 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	int64		count_est = 0;
 	Plan	   *result_plan;
 	List	   *current_pathkeys = NIL;
+	CdbPathLocus current_locus;
 	List	   *sort_pathkeys;
     Path       *best_path = NULL;
 	double		dNumGroups = 0;
+	double		numDistinct = 1;
+	List	   *distinctExprs = NIL;
+
 	double		motion_cost_per_row  =
 						(gp_motion_cost_per_row > 0.0) ?
 						gp_motion_cost_per_row :
 						2.0 * cpu_tuple_cost;
+	
+	CdbPathLocus_MakeNull(&current_locus); 
 	
 	/* Tweak caller-supplied tuple_fraction if have LIMIT/OFFSET */
 	if (parse->limitCount || parse->limitOffset)
@@ -1141,6 +1148,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 			 */
 			result_plan = create_plan(root, best_path);
 			current_pathkeys = best_path->pathkeys;
+			current_locus = best_path->locus; /* just use keys, don't copy */
 
 			/*
 			 * create_plan() returns a plan with just a "flat" tlist of
@@ -1220,6 +1228,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 												result_plan);
 				/* Hashed aggregation produces randomly-ordered results */
 				current_pathkeys = NIL;
+				CdbPathLocus_MakeNull(&current_locus);
 			}
 			else if (parse->hasAggs)
 			{
@@ -1275,6 +1284,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 													agg_counts.numAggs,
 													agg_counts.transitionSpace,
 													result_plan);
+					CdbPathLocus_MakeNull(&current_locus);
 				}
 
 				/* Plan the grouping extension */
@@ -1323,6 +1333,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 						 */
 						sort_pathkeys = make_pathkeys_for_sortclauses(parse->sortClause,
 																	  result_plan->targetlist);
+						CdbPathLocus_MakeNull(&current_locus);
 					}
 				}
 			}
@@ -1413,7 +1424,8 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 																	  result_plan->targetlist);
 					}
 				}
-				/* The Group node won't change sort ordering */
+				/* The Group node won't change sort ordering, but may disrupt locus. */
+				CdbPathLocus_MakeNull(&current_locus);
 			}
 			else if (root->hasHavingQual)
 			{
@@ -1435,6 +1447,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 				/* Result will be only one row anyway; no sort order */
 				current_pathkeys = NIL;
 				mark_plan_general(result_plan);
+				CdbPathLocus_MakeNull(&current_locus);
 			}
 		}						/* end of non-minmax-aggregate case */
 
@@ -1469,54 +1482,80 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 
 	/*
 	 * MPP: If there's a DISTINCT clause and we're not collocated on the
-	 * key, we need to redistribute.
+	 * distinct key, we need to redistribute on that key.  In addition, 
+	 * we need to consider whether to "pre-unique" by doing a Sort-Unique 
+	 * operation on the data as currently distributed, redistributing on 
+	 * the district key, and doing the Sort-Unique again. This 2-phase 
+	 * approach will be a win, if the cost of redistributing the entire 
+	 * input exceeds the cost of an extra Redistribute-Sort-Unique on the
+	 * pre-uniqued (reduced) input.
 	 */
-	 if ( Gp_role == GP_ROLE_DISPATCH && parse->distinctClause != NULL)
+	 if ( parse->distinctClause != NULL)
 	 {
-		if ( result_plan->flow->flotype == FLOW_PARTITIONED )
-		{
-			List *distinctExprs = NIL;
-			ListCell *cell;
+		distinctExprs = get_sortgrouplist_exprs(parse->distinctClause, 
+												parse->targetList);
+		numDistinct = estimate_num_groups(root, distinctExprs, 
+										  result_plan->plan_rows);
 		
-			/* Regard input as strewn.  Redistribute on distinct keys. */
+		if ( CdbPathLocus_IsNull(current_locus) )
+		{
+			current_locus = cdbpathlocus_from_flow(result_plan->flow);
+		}
+		
+		if ( Gp_role == GP_ROLE_DISPATCH && CdbPathLocus_IsPartitioned(current_locus) )
+		{
+			List *distinct_pathkeys = make_pathkeys_for_sortclauses(parse->distinctClause,
+																	parse->targetList);
+			bool needMotion = !cdbpathlocus_collocates(current_locus, distinct_pathkeys);
 			
-			if ( gp_enable_preunique ) /* Do we want to pre-unique? */
+			/* Apply the preunique optimization, if enabled and worthwhile. */
+			if ( gp_enable_preunique && needMotion )
 			{
-				/* Reduce the number of rows to move by adding a [Sort and]
-				 * Unique prior to the redistribute Motion. */
-				if (parse->sortClause)
+				double base_cost, alt_cost;
+				Path sort_path;	 /* dummy for result of cost_sort */
+				
+				base_cost = motion_cost_per_row * result_plan->plan_rows;
+				alt_cost = motion_cost_per_row * numDistinct;
+				cost_sort(&sort_path, root, NIL, alt_cost, 
+						  numDistinct, result_plan->plan_rows);
+				alt_cost += sort_path.startup_cost;
+				alt_cost += cpu_operator_cost * numDistinct 
+							* list_length(parse->distinctClause);
+					  
+				if ( alt_cost < base_cost )
 				{
-					if (!pathkeys_contained_in(sort_pathkeys, current_pathkeys))
+					/* Reduce the number of rows to move by adding a [Sort and]
+					 * Unique prior to the redistribute Motion. */
+					if (parse->sortClause)
 					{
-						result_plan = (Plan *)
+						if (!pathkeys_contained_in(sort_pathkeys, current_pathkeys))
+						{
+							result_plan = (Plan *)
 							make_sort_from_sortclauses(root,
 													   parse->sortClause,
 													   result_plan);
-						current_pathkeys = sort_pathkeys;
-						mark_sort_locus(result_plan);
+							((Sort*)result_plan)->noduplicates = gp_enable_sort_distinct;
+							current_pathkeys = sort_pathkeys;
+							mark_sort_locus(result_plan);
+						}
 					}
+
+					result_plan = (Plan *) make_unique(result_plan, parse->distinctClause);
+
+					result_plan->flow = pull_up_Flow(result_plan,
+													 result_plan->lefttree,
+													 true);
+					
+					result_plan->plan_rows = numDistinct;
 				}
-
-				result_plan = (Plan *) make_unique(result_plan, parse->distinctClause);
-
-                result_plan->flow = pull_up_Flow(result_plan,
-                                                 result_plan->lefttree,
-                                                 true);
-				
-				/* Is this right? */
-				result_plan->plan_rows = dNumGroups;
 			}
 			
-			foreach(cell, parse->distinctClause)
+			if ( needMotion )
 			{
-				SortClause *sortcl = (SortClause *) lfirst(cell);
-				TargetEntry *tle = get_sortgroupclause_tle(sortcl, result_plan->targetlist);
-				distinctExprs = lappend(distinctExprs, tle->expr);
+				result_plan = (Plan*)make_motion_hash(root, result_plan, distinctExprs);
+				result_plan->total_cost += motion_cost_per_row * result_plan->plan_rows;
+				current_pathkeys = NULL; /* Any pre-existing order now lost. */
 			}
-			result_plan = (Plan*)make_motion_hash(root, result_plan, distinctExprs);
-			result_plan->total_cost += motion_cost_per_row * result_plan->plan_rows;
-			
-			current_pathkeys = NULL; /* Any pre-existing order now lost. */
 		}
 		else if ( result_plan->flow->flotype == FLOW_SINGLETON )
 			; /* Already collocated. */
@@ -1531,16 +1570,16 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
     /*
 	 * If we were not able to make the plan come out in the right order, add
 	 * an explicit sort step.  Note that, if we going to add a Unique node,
-	 *  the sort_pathkeys will have the distinct keys as a prefix.
+	 * the sort_pathkeys will have the distinct keys as a prefix.
 	 */
 	if (parse->sortClause)
 	{
 		if (!pathkeys_contained_in(sort_pathkeys, current_pathkeys))
 		{
 			result_plan = (Plan *)
-				make_sort_from_sortclauses(root,
-										   parse->sortClause,
-										   result_plan);
+			make_sort_from_sortclauses(root,
+									   parse->sortClause,
+									   result_plan);
 			current_pathkeys = sort_pathkeys;
 			mark_sort_locus(result_plan);
 		}
@@ -1551,6 +1590,8 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	 */
 	if (parse->distinctClause)
 	{
+		if ( IsA(result_plan, Sort) && gp_enable_sort_distinct )
+			((Sort*)result_plan)->noduplicates = true;
 		result_plan = (Plan *) make_unique(result_plan, parse->distinctClause);
         result_plan->flow = pull_up_Flow(result_plan,
                                          result_plan->lefttree,

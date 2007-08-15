@@ -193,6 +193,7 @@
 #gp_enable_adaptive_nestloop = on
 
 #enable_agg_restructure = on
+#gp_enable_preunique = on
 #enable_groupagg = on
 #enable_hashagg = on
 
