@@ -15,33 +15,33 @@ set ZLIB=%GPCC%\ext\zlib-1.2.3
 cd %EXT%
 
 if not exist apr (
-	7za x apr-1.2.8.tar.gz -so > apr-1.2.8.tar
-	7za x apr-1.2.8.tar
+	%GPCC%\WIN32\7za x apr-1.2.8.tar.gz -so > apr-1.2.8.tar
+	%GPCC%\WIN32\7za x apr-1.2.8.tar
 	rename apr-1.2.8 apr
 	del apr-1.2.8.tar
 )
 
 if not exist apr-util (
-	7za x apr-util-1.2.8.tar.gz -so > apr-util-1.2.8.tar
-	7za x apr-util-1.2.8.tar
+	%GPCC%\WIN32\7za x apr-util-1.2.8.tar.gz -so > apr-util-1.2.8.tar
+	%GPCC%\WIN32\7za x apr-util-1.2.8.tar
 	rename apr-util-1.2.8 apr-util
 	del apr-util-1.2.8.tar
 )
 
 if not exist json-c-0.6 (
-	7za x json-c-0.6.tar.gz -so > json-c-0.6.tar
-	7za x json-c-0.6.tar
+	%GPCC%\WIN32\7za x json-c-0.6.tar.gz -so > json-c-0.6.tar
+	%GPCC%\WIN32\7za x json-c-0.6.tar
 	del json-c-0.6.tar
 )
 
 if not exist libevent-1.3b-1 (
-	7za x libevent-1.3b-1.tar.gz -so > libevent-1.3b-1.tar
-	7za x libevent-1.3b-1.tar
+	%GPCC%\WIN32\7za x libevent-1.3b-1.tar.gz -so > libevent-1.3b-1.tar
+	%GPCC%\WIN32\7za x libevent-1.3b-1.tar
 	del libevent-1.3b-1.tar
 )
 
 if not exist zlib-1.2.3 (
-	7za x zlib-1.2.3.zip -r
+	%GPCC%\WIN32\7za x zlib-1.2.3.zip -r
 )
 
 cd %GPCC%
