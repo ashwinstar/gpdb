@@ -646,6 +646,7 @@ void request_end(request_t* r)
 	session_detach(r);
     }
     event_del(&r->ev);
+    shutdown(r->sock, SHUT_WR);
     closesocket(r->sock);
     apr_pool_destroy(r->pool);
 }
