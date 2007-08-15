@@ -2753,6 +2753,8 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 	HeapTuple tup;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 	bool isNull;
+	char *oprname;
+	Form_pg_operator opr;
 	
 	Insist(EDGE_IS_BOUND(edge));
 
@@ -2768,46 +2770,34 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 		level_state->lead_range = ExecEvalExpr(n, econtext, &isNull, NULL);
 	pfree(n);
 
-	if (edge->kind == WINDOW_BOUND_PRECEDING)
+	if ((edge->kind == WINDOW_BOUND_PRECEDING && 
+		 level_state->col_sort_asc[0]) ||
+		(edge->kind == WINDOW_BOUND_FOLLOWING &&
+		 !level_state->col_sort_asc[0]))
 	{
-		Form_pg_operator opr;
-		
-		tup = SearchSysCache(OPERNAMENSP,
-							 CStringGetDatum("-"),
-							 ObjectIdGetDatum(ltype),
-							 ObjectIdGetDatum(rtype),
-							 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
-
-		Insist(HeapTupleIsValid(tup));
-		opr = ((Form_pg_operator) GETSTRUCT(tup));
-		ReleaseSysCache(tup);
-
-		exprrestype = opr->oprresult;
-		expr = make_opclause(HeapTupleGetOid(tup), exprrestype,
-							 false, (Expr *)var, 
-							 (Expr *)edge->val);
-		((OpExpr *)expr)->opfuncid = opr->oprcode;
+		oprname = "-";
 	}
 	else
 	{
-		Form_pg_operator opr;
-		
-		tup = SearchSysCache(OPERNAMENSP,
-							 CStringGetDatum("+"),
-							 ObjectIdGetDatum(ltype),
-							 ObjectIdGetDatum(rtype),
-							 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
-
-		Insist(HeapTupleIsValid(tup));
-		opr = ((Form_pg_operator) GETSTRUCT(tup));
-		ReleaseSysCache(tup);
-
-		exprrestype = opr->oprresult;						
-		expr = make_opclause(HeapTupleGetOid(tup), exprrestype,
-							 false, (Expr *)var, 
-							 (Expr *)edge->val);
-		((OpExpr *)expr)->opfuncid = opr->oprcode;
+		oprname = "+";
 	}
+
+		
+	tup = SearchSysCache(OPERNAMENSP,
+						 CStringGetDatum(oprname),
+						 ObjectIdGetDatum(ltype),
+						 ObjectIdGetDatum(rtype),
+						 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+
+	Insist(HeapTupleIsValid(tup));
+	opr = ((Form_pg_operator) GETSTRUCT(tup));
+	ReleaseSysCache(tup);
+
+	exprrestype = opr->oprresult;
+	expr = make_opclause(HeapTupleGetOid(tup), exprrestype,
+						 false, (Expr *)var, 
+						 (Expr *)edge->val);
+	((OpExpr *)expr)->opfuncid = opr->oprcode;
 
 	/*
 	 * If the frame edge operation returns a different type

@@ -1499,6 +1499,47 @@ SELECT sale.cn,sale.dt, sale.vn,AVG(cast (sale.vn as int)) OVER(order by sale.cn
   1 | 06-01-1401 | 30 | 34.1666666666666667
 (12 rows)
 
+-- Even harder (MPP-1805)
+SELECT sale.cn,sale.prc,sale.qty,                                  
+SUM(floor(sale.prc*sale.qty)) 
+OVER(order by sale.cn desc range between 4  preceding and 4 following) as foo 
+FROM sale;
+ cn | prc  | qty  |   foo   
+----+------+------+---------
+  4 |    1 |    1 | 2640182
+  4 |    1 |    1 | 2640182
+  3 |    5 |   12 | 2640182
+  3 |    0 |    1 | 2640182
+  3 |    5 |   12 | 2640182
+  2 |    0 |    1 | 2640182
+  2 | 2400 | 1100 | 2640182
+  1 |    0 |    1 | 2640182
+  1 |    0 |    1 | 2640182
+  1 |    5 |   12 | 2640182
+  1 |    0 |    1 | 2640182
+  1 |    0 |    1 | 2640182
+(12 rows)
+
+SELECT sale.pn,sale.vn, 
+SUM(cast (sale.vn as int)) 
+OVER(order by sale.cn desc range current row) as sum,
+sale.cn from sale;
+ pn  | vn | sum | cn 
+-----+----+-----+----
+ 800 | 40 |  80 |  4
+ 700 | 40 |  80 |  4
+ 500 | 30 | 100 |  3
+ 200 | 40 | 100 |  3
+ 600 | 30 | 100 |  3
+ 400 | 50 |  90 |  2
+ 100 | 40 |  90 |  2
+ 300 | 30 | 140 |  1
+ 400 | 50 | 140 |  1
+ 500 | 30 | 140 |  1
+ 200 | 10 | 140 |  1
+ 100 | 20 | 140 |  1
+(12 rows)
+
 -- test for MPP-1810 and other similar queries
 SELECT sale.vn,sale.vn,sale.qty,                                   
 FIRST_VALUE(floor(sale.vn)) OVER(order by sale.vn asc range 0 preceding) as f

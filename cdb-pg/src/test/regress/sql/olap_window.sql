@@ -491,6 +491,17 @@ SELECT sale.cn,sale.vn,AVG(cast (sale.vn as int)) OVER(order by sale.cn desc) as
 -- a bit harder
 SELECT sale.cn,sale.dt, sale.vn,AVG(cast (sale.vn as int)) OVER(order by sale.cn desc, sale.dt asc) as avg from sale;
 
+-- Even harder (MPP-1805)
+SELECT sale.cn,sale.prc,sale.qty,                                  
+SUM(floor(sale.prc*sale.qty)) 
+OVER(order by sale.cn desc range between 4  preceding and 4 following) as foo 
+FROM sale;
+
+SELECT sale.pn,sale.vn, 
+SUM(cast (sale.vn as int)) 
+OVER(order by sale.cn desc range current row) as sum,
+sale.cn from sale;
+
 -- test for MPP-1810 and other similar queries
 SELECT sale.vn,sale.vn,sale.qty,                                   
 FIRST_VALUE(floor(sale.vn)) OVER(order by sale.vn asc range 0 preceding) as f
