@@ -60,11 +60,11 @@ static const char BinarySignature[] = "PGCOPY\n\377\r\n";   /* 11 bytes total */
 
 /* non-export function prototypes */
 static void DoCopyTo(CopyState cstate);
-static void CopyToDispatch(CopyState cstate);
+extern void CopyToDispatch(CopyState cstate);
 static void CopyTo(CopyState cstate);
 static void CopyOneRowTo(CopyState cstate, Oid tupleOid,
 						                         Datum *values, bool *nulls);
-static void CopyFromDispatch(CopyState cstate);
+extern void CopyFromDispatch(CopyState cstate);
 static void CopyFrom(CopyState cstate);
 static Datum CopyReadBinaryAttribute(CopyState cstate, int column_no, FmgrInfo *flinfo,
 						Oid typioparam, int32 typmod, bool *isnull);
@@ -819,6 +819,7 @@ DoCopy(const CopyStmt *stmt)
 				 errhint("Anyone can COPY to stdout or from stdin. "
 						 "psql's \\copy command also works for anyone.")));
 
+	elog(DEBUG1,"DoCopy starting");
 	if (stmt->relation)
 	{
 		Assert(!stmt->query);
@@ -1506,7 +1507,7 @@ CopyOneRowTo(CopyState cstate, Oid tupleOid, Datum *values, bool *nulls)
  * Copy from relation TO file. Starts a COPY TO command on each of
  * the executors and gathers all the results and writes it out.
  */
-static void
+ void
 CopyToDispatch(CopyState cstate)
 {
 	TupleDesc	tupDesc;
@@ -1610,6 +1611,8 @@ CopyToDispatch(CopyState cstate)
 	 * Calling ereport() will leave the executors hanging in
 	 * COPY state.
 	 */
+	if (Gp_role != GP_ROLE_DISPATCHAGENT)
+	{
 	elog(DEBUG5, "COPY command sent to segdbs: %s", cdbcopy_cmd.data);
 	if (cdbCopyStart(cdbCopy, cdbcopy_cmd.data) == -1)
 	{
@@ -1622,6 +1625,7 @@ CopyToDispatch(CopyState cstate)
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
 				 errmsg("%s", cdbcopy_err.data)));
+	}
 	}
 	
 	if (cstate->binary)
@@ -1872,7 +1876,7 @@ limit_printout_length(StringInfo buf)
 /*
  * Copy FROM file to relation.
  */
-static void
+ void
 CopyFromDispatch(CopyState cstate)
 {
 	TupleDesc	tupDesc;
@@ -2061,10 +2065,13 @@ CopyFromDispatch(CopyState cstate)
 	policy = cstate->rel->rd_cdbpolicy;
 	
 	/* policy should be PARTITIONED (normal tables) or ENTRY (no column tables) */
-	Insist(policy &&
-           policy->ptype != POLICYTYPE_UNDEFINED);
+	Insist(Gp_role == GP_ROLE_DISPATCHAGENT || (policy &&
+           policy->ptype != POLICYTYPE_UNDEFINED));
 	
-	p_nattrs = policy->nattrs;	/* number of partitioning keys */
+	if (policy)
+		p_nattrs = policy->nattrs;	/* number of partitioning keys */
+	else
+		p_nattrs = 0;
 	cdbHash = makeCdbHash(cdbCopy->total_segs, HASH_FNV_1);		/* Create hash API
 		* reference */
 	
