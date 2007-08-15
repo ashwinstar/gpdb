@@ -1,4 +1,4 @@
-/* $PostgreSQL: pgsql/contrib/tsearch2/dict_syn.c,v 1.10.2.1 2006/12/04 09:27:44 teodor Exp $ */
+/* $PostgreSQL: pgsql/contrib/tsearch2/dict_syn.c,v 1.14 2007/03/28 01:28:34 tgl Exp $ */
 
 /*
  * ISpell interface
@@ -40,7 +40,7 @@ findwrd(char *in, char **end)
 	while (*in && isspace((unsigned char) *in))
 		in++;
 
-	if (!in)
+	if (*in=='\0')
 		return NULL;
 	start = in;
 
@@ -101,12 +101,10 @@ syn_init(PG_FUNCTION_ARGS)
 	}
 	memset(d, 0, sizeof(DictSyn));
 
-	while (fgets(buf, SYNBUFLEN, fin))
+	while (fgets(buf, sizeof(buf), fin))
 	{
-		slen = strlen(buf) - 1;
-		buf[slen] = '\0';
-		if (*buf == '\0')
-			continue;
+		slen = strlen(buf);	
+		pg_verifymbstr(buf, slen, false);
 		if (cur == d->len)
 		{
 			d->len = (d->len) ? 2 * d->len : 16;
