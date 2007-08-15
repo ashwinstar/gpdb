@@ -3436,7 +3436,7 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 	 * If the query mixes window functions and aggregates, we need to
 	 * transform it such that the grouped query appears as a subquery
 	 */
-	if (qry->hasWindFuncs && qry->hasAggs)
+	if (qry->hasWindFuncs && (qry->groupClause || qry->hasAggs))
 		transformGroupedWindows(qry);
 #if 0
 	if (qry->hasWindFuncs)
