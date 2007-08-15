@@ -1990,3 +1990,23 @@ order by 1, 2, 3;
   4 | 40 | 800 |        1 |       1
 (12 rows)
 
+-- FIRST_VALUE/LAST_VALUE tests
+SELECT sale.cn,sale.qty,sale.pn, 
+LAST_VALUE(sale.qty*sale.pn) OVER(partition by sale.cn order by sale.cn,pn range between unbounded preceding and unbounded following ) as lv 
+from sale order by 1, 2, 3;
+ cn | qty  | pn  |  lv  
+----+------+-----+------
+  1 |    1 | 100 | 6000
+  1 |    1 | 200 | 6000
+  1 |    1 | 300 | 6000
+  1 |    1 | 400 | 6000
+  1 |   12 | 500 | 6000
+  2 |    1 | 400 |  400
+  2 | 1100 | 100 |  400
+  3 |    1 | 200 | 7200
+  3 |   12 | 500 | 7200
+  3 |   12 | 600 | 7200
+  4 |    1 | 700 |  800
+  4 |    1 | 800 |  800
+(12 rows)
+

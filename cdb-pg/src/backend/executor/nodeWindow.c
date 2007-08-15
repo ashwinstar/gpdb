@@ -1593,14 +1593,6 @@ appendRangeTuple(WindowState *wstate, WindowKey *key,
 			WindowRefExprState *wrxstate = funcstate->wrxstate;
 
 			/* 
-			 * If this is a window function support framing and isn't
-			 * LEAD() or LAG(), we only store each distinct value.
-			 */
-			if (!funcstate->isAgg && is_peer && funcstate->frame_mem_used > 0 
-				&& !IS_LEAD_LAG_FUNC(funcstate->windowfn_oid))
-				return;
-
-			/* 
 			 * We're actually buffering the arguments to the function too,
 			 * instead of passing them to a transition function as we would
 			 * for an aggregate-as-window-function. So, we pull the args
@@ -1819,21 +1811,17 @@ adjustEdges(WindowState *wstate)
 				else
 				{
 					funcstate->prev_lead_edge++;
-//					funcstate->cur_lead_edge = -1;
 				}
 			}
 			else
 			{
 				long int pos = 0;
 				bool found_lead = false;
-				
-				/* XXX: if we pass the edge, set trail_edge_passed */
 
 				/* 
 				 * First, do trail. prev_trail_edge might be -1, so be
 				 * careful.
 				 */
-
 				if (key->frame->trail->kind != WINDOW_UNBOUND_PRECEDING)
 				{
 					Insist(key->frame->trail->kind != WINDOW_UNBOUND_FOLLOWING);
@@ -1926,15 +1914,6 @@ adjustEdges(WindowState *wstate)
 				/* now, leading edge */
 				funcstate->prev_lead_edge = funcstate->cur_lead_edge;
 
-				/* 
-				 * If the lead edge was equal, go past it with the previous
-				 * position so we do not count it twice.
-				 */
-				if (funcstate->cur_lead_edge_equal &&
-					funcstate->prev_lead_edge != -1)
-				{
-					funcstate->prev_lead_edge++;
-				}
 
 				if (funcstate->cur_lead_edge > 0)
 					pos = funcstate->cur_lead_edge;
@@ -2033,10 +2012,15 @@ adjustEdges(WindowState *wstate)
 					pos++;
 				}
 
-#if 0
-				if (!found_lead)
-					funcstate->cur_lead_edge = -1;
-#endif
+				/* 
+				 * If the lead edge was equal, go past it with the previous
+				 * position so we do not count it twice.
+				 */
+				if (funcstate->prev_lead_edge != -1 &&
+					funcstate->prev_lead_edge < funcstate->cur_lead_edge)
+				{
+					funcstate->prev_lead_edge++;
+				}
 			}
 		}
 	}
@@ -2218,7 +2202,7 @@ populateFrameBuffers(WindowState *wstate)
 				bool is_peer = false;
 				Datum *new_vals;
 				bool *new_nulls;
-				bool lttrail, eqtrail, ltlead, eqlead;
+				bool lttrail, eqtrail, ltlead, eqlead = false;
 				bool tuple_before_edge = false;
 				bool tuple_in_buf = false;
 				

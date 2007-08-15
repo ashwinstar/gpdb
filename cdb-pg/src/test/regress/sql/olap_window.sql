@@ -567,3 +567,8 @@ sale order by 1, 2, 3;
 select cn, vn, pn, qty * prc, 
 	lag(qty * prc) over (order by cn, vn, pn) from sale
 order by 1, 2, 3;
+
+-- FIRST_VALUE/LAST_VALUE tests
+SELECT sale.cn,sale.qty,sale.pn, 
+LAST_VALUE(sale.qty*sale.pn) OVER(partition by sale.cn order by sale.cn,pn range between unbounded preceding and unbounded following ) as lv 
+from sale order by 1, 2, 3;
