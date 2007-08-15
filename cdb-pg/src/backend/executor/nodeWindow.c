@@ -2350,19 +2350,25 @@ func_get_vals(WindowStatePerFunction funcstate, long int start,
 
 	if (is_trail)
 	{
-		if (funcstate->trail_done >= end)
-			return NIL;
+		if (OidIsValid(funcstate->invprelimfn_oid))
+		{
+			if (funcstate->trail_done >= end)
+				return NIL;
 
-		if (start < funcstate->trail_done)
-			start = funcstate->trail_done;
+			if (start < funcstate->trail_done)
+				start = funcstate->trail_done;
+		}
 	}
 	else
 	{
-		if (funcstate->lead_done >= end)
-			return NIL;
+		if (OidIsValid(funcstate->invprelimfn_oid))
+		{
+			if (funcstate->lead_done >= end)
+				return NIL;
 
-		if (start < funcstate->lead_done)
-			start = funcstate->lead_done;
+			if (start < funcstate->lead_done)
+				start = funcstate->lead_done;
+		}
 	}
 
 	n = start;
