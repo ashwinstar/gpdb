@@ -407,6 +407,12 @@ order by 1,5;
 
 -- end equivalent
 
+-- basic framed query test
+select pn, count(*) 
+over (order by pn range between 1 preceding and 1 following) as c
+from sale
+order by pn;
+
 -- Some data types, like date, when mixed with operators like "-" result in
 -- data returned in a different data type. We're smart enough to detect
 -- this but some tests are good.
