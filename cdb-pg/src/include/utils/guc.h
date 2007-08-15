@@ -125,6 +125,7 @@ extern bool log_parser_stats;
 extern bool log_planner_stats;
 extern bool log_executor_stats;
 extern bool log_statement_stats;
+extern bool log_dispatch_stats;
 extern bool log_btree_build_stats;
 
 extern DLLIMPORT bool check_function_bodies;

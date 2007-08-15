@@ -1512,6 +1512,13 @@ static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bo
 
 		if (log_duration)
 			appendPQExpBuffer(buffer, " -c log_duration=true");
+		
+		if (log_dispatch_stats)
+			appendPQExpBuffer(buffer, " -c log_dispatch_stats=true");
+		if (log_statement_stats)
+			appendPQExpBuffer(buffer, " -c log_statement_stats=true");
+		if (log_executor_stats)
+			appendPQExpBuffer(buffer, " -c log_executor_stats=true");
 
 		if (log_min_duration_statement >= 0)
 			appendPQExpBuffer(buffer, " -c log_min_duration_statement=%d", log_min_duration_statement);

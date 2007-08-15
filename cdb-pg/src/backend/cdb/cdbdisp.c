@@ -632,6 +632,9 @@ CdbCheckDispatchResult(struct CdbDispatchCmdThreads  *dispatchThreads, bool canc
 {
 	CdbCheckDispatchResultInt(dispatchThreads, NULL, NULL, cancelUnfinishedWork);
 	
+	if (log_dispatch_stats)
+		ShowUsage("DISPATCH STATISTICS");
+	
 	if (DEBUG1 >= log_min_messages)
 	{
 		char		msec_str[32];
@@ -639,7 +642,7 @@ CdbCheckDispatchResult(struct CdbDispatchCmdThreads  *dispatchThreads, bool canc
 		{
 			case 1:
 			case 2:
-				ereport(LOG,  (errmsg("duration to dispatch result received from qe: %s ms", msec_str)));
+				ereport(LOG,  (errmsg("duration to dispatch result received from all QEs: %s ms", msec_str)));
 				break;
 		}					 
 	}
@@ -1105,6 +1108,9 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	Gang	*primaryGang;
 	Gang	*mirrorGang;
 	int		nsegdb = getgpsegmentCount();
+	
+	if (log_dispatch_stats)
+		ResetUsage();
 	
 	Assert(dispatchToPrimaries || dispatchToMirrors);
 	
@@ -1775,6 +1781,17 @@ thread_DispatchCommand(void *arg)
 				if (DEBUG4 >= log_min_messages)
 					write_stderr("Thread %u: processResults says we are finished with %d:  %s\n",mythread(),i+1,segdbDesc->whoami);
 				dispatchResult->stillRunning = false;
+				if (DEBUG1 >= log_min_messages)
+				{
+					char		msec_str[32];
+					switch (check_log_duration(msec_str, false))
+					{
+						case 1:
+						case 2:
+							write_stderr("Thread %u: duration to dispatch result received from thread %d (seg %d): %s ms\n", mythread(),i+1 ,dispatchResult->segdbDesc->segindex,msec_str);
+							break;
+					}					 
+				}
 				if (PQisBusy(dispatchResult->segdbDesc->conn))
 					write_stderr("We thought we were done, because finished==true, but libpq says we are still busy\n");
 			}
@@ -2715,6 +2732,8 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	int			iSlice;
 	int			rootIdx = pQueryParms->rootIdx;
 
+	if (log_dispatch_stats)
+		ResetUsage();
 
 	*pPrimaryResults = NULL;
 	if (pMirrorResults)

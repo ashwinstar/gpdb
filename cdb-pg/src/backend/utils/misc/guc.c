@@ -153,6 +153,7 @@ static bool assign_debug_assertions(bool newval, bool doit, GucSource source);
 static bool assign_ssl(bool newval, bool doit, GucSource source);
 static bool assign_stage_log_stats(bool newval, bool doit, GucSource source);
 static bool assign_log_stats(bool newval, bool doit, GucSource source);
+static bool assign_dispatch_log_stats(bool newval, bool doit, GucSource source);
 static bool assign_transaction_read_only(bool newval, bool doit, GucSource source);
 static const char *assign_canonical_path(const char *newval, bool doit, GucSource source);
 static const char *assign_backslash_quote(const char *newval, bool doit, GucSource source);
@@ -198,6 +199,7 @@ bool		log_planner_stats = false;
 bool		log_executor_stats = false;
 bool		log_statement_stats = false;		/* this is sort of all three
 												 * above together */
+bool 		log_dispatch_stats = false;
 bool		log_btree_build_stats = false;
 
 bool		check_function_bodies = true;
@@ -768,6 +770,14 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&log_statement_stats,
 		false, assign_log_stats, NULL
+	},
+	{
+		{"log_dispatch_stats", PGC_SUSET, STATS_MONITORING,
+			gettext_noop("Writes dispatcher performance statistics to the server log."),
+			NULL
+		},
+		&log_dispatch_stats,
+		false, assign_dispatch_log_stats, NULL
 	},
 #ifdef BTREE_BUILD_STATS
 	{
@@ -7258,12 +7268,33 @@ static bool
 assign_log_stats(bool newval, bool doit, GucSource source)
 {
 	if (newval &&
-		(log_parser_stats || log_planner_stats || log_executor_stats))
+		(log_parser_stats || log_planner_stats || log_executor_stats || log_dispatch_stats))
 	{
 		if (source >= PGC_S_INTERACTIVE)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("cannot enable \"log_statement_stats\" when "
+							"\"log_parser_stats\", \"log_planner_stats\", "
+							"\"log_dispatch_stats\", "
+							"or \"log_executor_stats\" is true")));
+		/* source == PGC_S_OVERRIDE means do it anyway, eg at xact abort */
+		else if (source != PGC_S_OVERRIDE)
+			return false;
+	}
+	return true;
+}
+
+static bool
+assign_dispatch_log_stats(bool newval, bool doit, GucSource source)
+{
+	if (newval &&
+			(log_parser_stats || log_planner_stats || log_executor_stats || log_statement_stats))
+	{
+		if (source >= PGC_S_INTERACTIVE)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("cannot enable \"log_dispatch_stats\" when "
+							"\"log_statement_stats\", "
 							"\"log_parser_stats\", \"log_planner_stats\", "
 							"or \"log_executor_stats\" is true")));
 		/* source == PGC_S_OVERRIDE means do it anyway, eg at xact abort */
