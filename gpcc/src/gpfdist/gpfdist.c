@@ -11,6 +11,7 @@
 #include <winsock2.h>
 #include <windows.h>
 #include <io.h>
+#define SHUT_WR SD_SEND
 #define SHUT_RD SD_RECEIVE
 #endif
 
