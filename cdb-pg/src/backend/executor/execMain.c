@@ -534,6 +534,18 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	}
 	PG_END_TRY();
 	
+	if (DEBUG1 >= log_min_messages)
+				{
+					char		msec_str[32];
+					switch (check_log_duration(msec_str, false))
+					{
+						case 1:
+						case 2:
+							ereport(LOG, (errmsg("duration to ExecutorStart end: %s ms", msec_str)));
+							break;
+					}
+				}
+	
 	MemoryContextSwitchTo(oldcontext);
 }
 
