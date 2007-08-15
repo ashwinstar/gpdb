@@ -4939,7 +4939,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 		
 		elog((Debug_print_full_dtm ? LOG : DEBUG5), "First char: '%c'; gp_role = '%s'.",firstchar,role_to_string(Gp_role));
 
-		elog(DEBUG1, "Message type %c received by from libpq", firstchar); /* TODO: Remove this */
+		elog(DEBUG1, "Message type %c received by from libpq, len = %d", firstchar, input_message.len); /* TODO: Remove this */
 		if (Gp_role == GP_ROLE_DISPATCHAGENT)
 		{
 			send_ready_for_query = dispatchAgent(firstchar,&input_message);
