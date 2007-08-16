@@ -294,17 +294,6 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		if (queryDesc->plantree->nMotionNodes > 0)
 		{
 			int i;
-			if (DEBUG1 >= log_min_messages)
-				{
-					char		msec_str[32];
-					switch (check_log_duration(msec_str, false))
-					{
-						case 1:
-						case 2:
-							ereport(LOG, (errmsg("duration to Interconnect setup start: %s ms", msec_str)));
-							break;
-					}
-				}
 
 			PG_TRY();
 			{
@@ -326,17 +315,6 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 				PG_RE_THROW();
 			}
 			PG_END_TRY();
-			if (DEBUG1 >= log_min_messages)
-						{
-							char		msec_str[32];
-							switch (check_log_duration(msec_str, false))
-							{
-								case 1:
-								case 2:
-									ereport(LOG, (errmsg("duration to Interconnect setup done: %s ms", msec_str)));
-									break;
-							}
-						}
 		}
 	}
 
@@ -769,6 +747,18 @@ ExecutorEnd(QueryDesc *queryDesc)
 	estate = queryDesc->estate;
 
 	Assert(estate != NULL);
+	
+	if (DEBUG1 >= log_min_messages)
+				{
+					char		msec_str[32];
+					switch (check_log_duration(msec_str, false))
+					{
+						case 1:
+						case 2:
+							ereport(LOG, (errmsg("duration to ExecutorEnd starting: %s ms", msec_str)));
+							break;
+					}
+				}
 
 	/*
 	 * Switch into per-query memory context to run ExecEndPlan
@@ -838,6 +828,17 @@ ExecutorEnd(QueryDesc *queryDesc)
 	queryDesc->tupDesc = NULL;
 	queryDesc->estate = NULL;
 	queryDesc->planstate = NULL;
+	if (DEBUG1 >= log_min_messages)
+					{
+						char		msec_str[32];
+						switch (check_log_duration(msec_str, false))
+						{
+							case 1:
+							case 2:
+								ereport(LOG, (errmsg("duration to ExecutorEnd end: %s ms", msec_str)));
+								break;
+						}
+					}
 }
 
 /* ----------------------------------------------------------------
