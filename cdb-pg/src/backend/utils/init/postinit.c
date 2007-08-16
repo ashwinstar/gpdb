@@ -42,7 +42,6 @@
 #include "utils/acl.h"
 #include "utils/flatfiles.h"
 #include "utils/guc.h"
-#include "utils/portal.h"
 #include "utils/relcache.h"
 #include "utils/resscheduler.h"
 #include "utils/syscache.h"
@@ -609,10 +608,6 @@ ShutdownPostgres(int code, Datum arg)
 {
 	/* Make sure we've killed any active transaction */
 	AbortOutOfAnyTransaction();
-
-	/* Cleanup for any resource locks on portals (holdable cursors). */
-	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
-		AtExitCleanup_ResPortals();
 
 	/*
 	 * User locks are not released by transaction end, so be sure to release

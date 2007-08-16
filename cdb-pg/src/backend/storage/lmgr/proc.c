@@ -605,6 +605,13 @@ ProcKill(int code, Datum arg)
 
 	Assert(MyProc != NULL);
 
+	/* 
+	 * Cleanup for any resource locks on portals - from holdable cursors or
+	 * unclean process abort (assertion failures).
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
+		AtExitCleanup_ResPortals();
+
 	/*
 	 * Release any LW locks I am holding.  There really shouldn't be any, but
 	 * it's cheap to check again before we cut the knees off the LWLock
