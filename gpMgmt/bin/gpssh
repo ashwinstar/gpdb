@@ -152,7 +152,7 @@ def createOneTimeSession(cmd):
     
     for h in opt['-h']:
 	ssh = 'ssh -p %d -o "BatchMode yes" -o "StrictHostKeyChecking no" %s@%s' % (h[2], h[0], h[1])
-	ssh = ssh + ' eval \'%s\' ' % cmd
+	ssh = ssh + ' "%s" ' % cmd
 	if opt['-v']: print '[INFO %s@%s] %s' % (h[0], h[1], cmd)
 	elif opt['-e']: print cmd
 	p = popen2.Popen4(ssh)
