@@ -34,6 +34,10 @@ if sys.version_info < (2, 3):
     sys.exit("Error: gpcheckperf is supported on Python versions 2.3 or greater\n"
 	     + "Please upgrade python installed on this machine.")
 
+GPHOME=os.getenv('GPHOME')
+if GPHOME is None:
+    sys.exit('Please set GPHOME environment variable')
+
 def usage(exitarg):
     help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', os.path.split(__file__)[-1] + '_help');
     try:
@@ -360,7 +364,7 @@ def startNetServer():
         (ok, out) = run(cmd)
         if not ok:
             if opt['-v']: print '[Warning] start netserver with port %d failed' % port
-            cmd = gpssh('killall -9 netserver')
+            cmd = gpssh('export GPHOME=%s && $GPHOME/bin/gpkillall netserver' % GPHOME)
             port += 12
             ntry -= 1
         else:
