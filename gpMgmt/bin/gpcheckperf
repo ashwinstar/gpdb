@@ -421,6 +421,8 @@ def runNetPerfTest():
             out = StringIO.StringIO(out)    
             for line in out:
                 o = line.split()
+                if len(o) != 5:
+                    continue
                 l = [j, srchost, rcvhost]
                 l.extend(o)
                 result.append(l)
