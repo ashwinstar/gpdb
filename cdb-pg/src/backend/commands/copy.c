@@ -2394,7 +2394,7 @@ CopyFromDispatch(CopyState cstate)
 	cstate->fe_eof = false;
 	cstate->eol_type = EOL_UNKNOWN;
 	cstate->cur_relname = RelationGetRelationName(cstate->rel);
-	cstate->cur_lineno = 1;
+	cstate->cur_lineno = 0;
 	cstate->cur_attname = NULL;
 
 	/* Set up callback to identify error line number */
@@ -2524,17 +2524,19 @@ CopyFromDispatch(CopyState cstate)
 					}
 					PG_END_TRY();					
 
-					/*
-					 * if finished processing data line - increment line count.
-					 * Otherwise, if eof is not yet reached, we skip att parsing
-					 * and read more data. But if eof _was_ reached it means
-					 * that the original last data line is defective and
-					 * we want to catch that error later on.
-					 */
-					if (cstate->line_done)
-						cstate->cur_lineno++;
-					else if (!cstate->fe_eof || cstate->end_marker)
-						break;
+					if(!cstate->line_done)
+					{
+						/*
+						 * We did not finish reading a complete date line
+						 *
+						 * If eof is not yet reached, we skip att parsing
+						 * and read more data. But if eof _was_ reached it means
+						 * that the original last data line is defective and
+						 * we want to catch that error later on.
+						 */
+						if (!cstate->fe_eof || cstate->end_marker)
+							break;
+					}
 
 					if (file_has_oids)
 					{
@@ -3260,17 +3262,19 @@ CopyFrom(CopyState cstate)
 						CopyReadLineCSV(cstate, bytesread) :
 						CopyReadLineText(cstate, bytesread);
 
-					/*
-					 * if finished processing data line - increment line count.
-					 * Otherwise, if eof is not yet reached, we skip att parsing
-					 * and read more data. But if eof _was_ reached it means
-					 * that the original last data line is defective and
-					 * we want to catch that error later on.
-					 */
-					if (cstate->line_done)
-						cstate->cur_lineno++;
-					else if (!cstate->fe_eof || cstate->end_marker)
-						break;
+					if(!cstate->line_done)
+					{
+						/*
+						 * We did not finish reading a complete date line
+						 *
+						 * If eof is not yet reached, we skip att parsing
+						 * and read more data. But if eof _was_ reached it means
+						 * that the original last data line is defective and
+						 * we want to catch that error later on.
+						 */
+						if (!cstate->fe_eof || cstate->end_marker)
+							break;
+					}
 
 					if (file_has_oids)
 					{
@@ -3741,23 +3745,30 @@ CopyReadLineText(CopyState cstate, size_t bytesread)
 	}
 
 	/*
-	 * Done reading the line. Convert it to server encoding if it's complete.
+	 * Done reading a complete data line. Increment input row count and
+	 * convert it to server encoding if transcoding is needed.
 	 */
-	if (cstate->need_transcoding && cstate->line_done)
+	if (cstate->line_done)
 	{
-		cvt = (char *) pg_client_to_server(cstate->line_buf.data,
-										   cstate->line_buf.len);
-		if (cvt != cstate->line_buf.data)
+		cstate->cur_lineno++;
+		
+		if (cstate->need_transcoding)
 		{
-			/* transfer converted data back to line_buf */
-			cstate->line_buf.len = 0;
-			cstate->line_buf.data[0] = '\0';
-			cstate->line_buf.cursor = 0;
-			appendBinaryStringInfo(&cstate->line_buf, cvt, strlen(cvt));
-			pfree(cvt);
+			cvt = (char *) pg_client_to_server(cstate->line_buf.data,
+											   cstate->line_buf.len);
+			if (cvt != cstate->line_buf.data)
+			{
+				/* transfer converted data back to line_buf */
+				cstate->line_buf.len = 0;
+				cstate->line_buf.data[0] = '\0';
+				cstate->line_buf.cursor = 0;
+				appendBinaryStringInfo(&cstate->line_buf, cvt, strlen(cvt));
+				pfree(cvt);
+			}
 		}
-	}
 
+	}
+						
 	/* indicate that conversion had occured */
 	cstate->line_buf_converted = true;
 
@@ -3990,20 +4001,27 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 		}						/* end of found eol_ch */
 	}
 
+
 	/*
-	 * Done reading the line. Convert it to server encoding.
+	 * Done reading a complete data line. Increment input row count and
+	 * convert it to server encoding if transcoding is needed.
 	 */
-	if (cstate->need_transcoding && cstate->line_done)
+	if (cstate->line_done)
 	{
-		cvt = (char *) pg_client_to_server(cstate->line_buf.data,
-										   cstate->line_buf.len);
-		if (cvt != cstate->line_buf.data)
+		cstate->cur_lineno++;
+
+		if (cstate->need_transcoding)
 		{
-			/* transfer converted data back to line_buf */
-			cstate->line_buf.len = 0;
-			cstate->line_buf.data[0] = '\0';
-			cstate->line_buf.cursor = 0;
-			appendBinaryStringInfo(&cstate->line_buf, cvt, strlen(cvt));
+			cvt = (char *) pg_client_to_server(cstate->line_buf.data,
+											   cstate->line_buf.len);
+			if (cvt != cstate->line_buf.data)
+			{
+				/* transfer converted data back to line_buf */
+				cstate->line_buf.len = 0;
+				cstate->line_buf.data[0] = '\0';
+				cstate->line_buf.cursor = 0;
+				appendBinaryStringInfo(&cstate->line_buf, cvt, strlen(cvt));
+			}
 		}
 	}
 
