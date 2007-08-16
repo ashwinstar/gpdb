@@ -35,6 +35,7 @@
 #include "utils/memutils.h"
 #include "utils/lsyscache.h"
 
+#include "cdb/cdbvars.h"
 
 static void ExecHashIncreaseNumBatches(HashJoinTable hashtable);
 static void ExecHashTableExplainEnd(PlanState *planstate, struct StringInfoData *buf);
@@ -347,7 +348,10 @@ ExecHashTableCreate(Hash *node, List *hashOperators)
  */
 
 /* Target bucket loading (tuples per bucket) */
-#define NTUP_PER_BUCKET			10
+/*
+ * CDB: we now use gp_hashnode_tuples_per_bucket
+ * #define NTUP_PER_BUCKET			10
+ */
 
 /* Prime numbers that we like to use as nbuckets values */
 static const int hprimes[] = {
@@ -388,7 +392,7 @@ ExecChooseHashTableSize(double ntuples, int tupwidth,
 	hash_table_bytes = work_mem * 1024L;
 
 	/*
-	 * Set nbuckets to achieve an average bucket load of NTUP_PER_BUCKET when
+	 * Set nbuckets to achieve an average bucket load of gp_hashnode_tuples_per_bucket when
 	 * memory is filled.  Set nbatch to the smallest power of 2 that appears
 	 * sufficient.
 	 */
@@ -399,7 +403,7 @@ ExecChooseHashTableSize(double ntuples, int tupwidth,
 		double		dbatch;
 		int			minbatch;
 
-		lbuckets = (hash_table_bytes / tupsize) / NTUP_PER_BUCKET;
+		lbuckets = (hash_table_bytes / tupsize) / gp_hashnode_tuples_per_bucket;
 		lbuckets = Min(lbuckets, INT_MAX);
 		nbuckets = (int) lbuckets;
 
@@ -421,11 +425,11 @@ ExecChooseHashTableSize(double ntuples, int tupwidth,
 		/* divide our tuple row-count estimate by our the number of
 		 * tuples we'd like in a bucket: this produces a small bucket
 		 * count independent of our work_mem setting */
-		dbuckets_lower = (double)ntuples / (double)NTUP_PER_BUCKET;
+		dbuckets_lower = (double)ntuples / (double)gp_hashnode_tuples_per_bucket;
 
 		/* if we have work_mem to spare, we'd like to use it -- so
 		 * divide up our memory evenly (see the spill case above) */
-		dbuckets_upper = (double)hash_table_bytes / ((double)tupsize * NTUP_PER_BUCKET);
+		dbuckets_upper = (double)hash_table_bytes / ((double)tupsize * gp_hashnode_tuples_per_bucket);
 
 		/* we'll use our "lower" work_mem independent guess as a lower
 		 * limit; but if we've got memory to spare we'll take the mean

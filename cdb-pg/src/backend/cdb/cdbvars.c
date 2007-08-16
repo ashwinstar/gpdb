@@ -116,6 +116,8 @@ bool		gp_hashagg_recalc_density = true;
 bool		gp_enable_motion_deadlock_sanity = FALSE; /* planning time sanity check */
 bool		gp_adjust_selectivity_for_outerjoins = TRUE;
 
+int			gp_hashnode_tuples_per_bucket = 5;
+
 /* Greenplum Database Experimental Feature GUCs */
 bool		gp_enable_agg_distinct = FALSE;
 bool		gp_enable_explain_allstat = FALSE;
