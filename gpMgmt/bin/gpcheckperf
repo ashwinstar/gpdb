@@ -364,7 +364,7 @@ def startNetServer():
         (ok, out) = run(cmd)
         if not ok:
             if opt['-v']: print '[Warning] start netserver with port %d failed' % port
-            cmd = gpssh('export GPHOME=%s && $GPHOME/bin/gpkillall netserver' % GPHOME)
+            cmd = gpssh('"(export GPHOME=%s && $GPHOME/bin/gpkillall netserver)"' % GPHOME)
             port += 12
             ntry -= 1
         else:
@@ -418,7 +418,7 @@ def runNetPerfTest():
             cmd = ssh(srchost, '%s -H %s -p %d -t TCP_STREAM -l 5 -f M -P 0' % (rmtPath, rcvhost, port))
             (ok, out) = run(cmd)
             if not ok:
-                cmd = gpssh('killall -9 netserver')
+                cmd = gpssh('"(export GPHOME=%s && $GPHOME/bin/gpkillall netserver)"' % GPHOME)
                 (ok, out) = run(cmd)
                 sys.exit('[Error] netperf failed: %s -> %s' % (srchost, rcvhost))
 
@@ -431,7 +431,7 @@ def runNetPerfTest():
                 l.extend(o)
                 result.append(l)
 
-    cmd = gpssh('killall -9 netserver')
+    cmd = gpssh('"(export GPHOME=%s && $GPHOME/bin/gpkillall netserver)"' % GPHOME)
     (ok, out) = run(cmd)
     
 
