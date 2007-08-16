@@ -852,6 +852,9 @@ AtExitCleanup_ResPortals(void)
 	HASH_SEQ_STATUS status;
 	PortalHashEnt *hentry;
 
+	if (PortalHashTable == NULL)
+		return;
+
 	hash_seq_init(&status, PortalHashTable);
 
 	while ((hentry = (PortalHashEnt *) hash_seq_search(&status)) != NULL)
