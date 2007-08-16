@@ -3,10 +3,10 @@
  * win32_sema.c
  *	  Microsoft Windows Win32 Semaphores Emulation
  *
- * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2007, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/port/win32_sema.c,v 1.3 2006/10/04 00:29:56 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/port/win32_sema.c,v 1.5 2007/04/24 12:25:18 mha Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -82,7 +82,7 @@ PGSemaphoreCreate(PGSemaphore sema)
 	sec_attrs.bInheritHandle = TRUE;
 
 	/* We don't need a named semaphore */
-	cur_handle = CreateSemaphore(&sec_attrs, 1, 1, NULL);
+	cur_handle = CreateSemaphore(&sec_attrs, 1, 32767, NULL);
 	if (cur_handle)
 	{
 		/* Successfully done */
