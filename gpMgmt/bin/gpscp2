@@ -178,7 +178,6 @@ try:
             dir = '%s/%s' % (filePath[-1], host)
             if not os.path.exists(dir): os.mkdir(dir)
             cmd += ' %s' % dir
-            print cmd
             run(proc, cmd)
     else:
         #target is remote
@@ -187,8 +186,6 @@ try:
             for file in filePath[0:-1]:
                 cmd += ' %s' % file
             cmd += filePath[-1].replace(opt['-J'], ' %s@%s' % (user, host))
-
-            print cmd
             run(proc, cmd)
 
 
