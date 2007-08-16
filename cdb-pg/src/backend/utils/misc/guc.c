@@ -2232,12 +2232,22 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"gp_hashnode_tuples_per_bucket", PGC_USERSET, GP_ARRAY_TUNING,
+		{"gp_hashjoin_tuples_per_bucket", PGC_USERSET, GP_ARRAY_TUNING,
 		 gettext_noop("Target density of hashtable used by Hashjoin during execution"),
 		 gettext_noop("A smaller value will tend to produce larger hashtables, which increases join performance"),
 		 GUC_NOT_IN_SAMPLE
 		},
-		&gp_hashnode_tuples_per_bucket,
+		&gp_hashjoin_tuples_per_bucket,
+		5, 1, 25, NULL, NULL
+	},
+
+	{
+		{"gp_hashagg_groups_per_bucket", PGC_USERSET, GP_ARRAY_TUNING,
+		 gettext_noop("Target density of hashtable used by Hashagg during execution"),
+		 gettext_noop("A smaller value will tend to produce larger hashtables, which increases agg performance"),
+		 GUC_NOT_IN_SAMPLE
+		},
+		&gp_hashagg_groups_per_bucket,
 		5, 1, 25, NULL, NULL
 	},
 

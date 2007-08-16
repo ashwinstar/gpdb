@@ -1027,8 +1027,11 @@ calcBatchCount(double memquota, double ngroups, double zH, double zB, bool force
 	return nB;
 }
 
-#define NGROUP_PER_BUCKET 7.0
-#define OVERHEAD_PER_ENTRY ((double)sizeof(uint32))/NGROUP_PER_BUCKET
+/*
+ * Use a runtime tuneable gp_hashagg_groups_per_bucket
+ * #define NGROUP_PER_BUCKET 7.0
+ */
+#define OVERHEAD_PER_ENTRY ((double)sizeof(uint32))/gp_hashagg_groups_per_bucket
 
 bool
 calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
@@ -1046,7 +1049,7 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 		+ keywidth
 		+ transpace;
 	
-	double nK = ceil(ngroups/NGROUP_PER_BUCKET); /* Buckets */
+	double nK = ceil(ngroups/gp_hashagg_groups_per_bucket); /* Buckets */
 	
 	double nH, zH = OVERHEAD_PER_ENTRY + entrywidth; /* Hash Entries */
 	
@@ -1085,9 +1088,9 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 	nH = floor((memquota - nB*zB)/zH);
 	
     /* Allocate at least a few hash entries regardless of memquota. */
-    nH = Max(nH, NGROUP_PER_BUCKET);
+    nH = Max(nH, gp_hashagg_groups_per_bucket);
 
-	nK = ceil(nH/NGROUP_PER_BUCKET);
+	nK = ceil(nH/gp_hashagg_groups_per_bucket);
 
 	if (nB > UINT_MAX || nH > UINT_MAX || nK > UINT_MAX)
 	{

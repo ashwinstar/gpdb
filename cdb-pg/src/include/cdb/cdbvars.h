@@ -446,7 +446,8 @@ extern bool gp_adjust_selectivity_for_outerjoins;
 /*
  * Target density for hash-node (HJ).
  */
-extern int gp_hashnode_tuples_per_bucket;
+extern int gp_hashjoin_tuples_per_bucket;
+extern int gp_hashagg_groups_per_bucket;
 
 /* ----- Experimental Features ----- */
 

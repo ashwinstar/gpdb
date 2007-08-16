@@ -349,7 +349,7 @@ ExecHashTableCreate(Hash *node, List *hashOperators)
 
 /* Target bucket loading (tuples per bucket) */
 /*
- * CDB: we now use gp_hashnode_tuples_per_bucket
+ * CDB: we now use gp_hashjoin_tuples_per_bucket
  * #define NTUP_PER_BUCKET			10
  */
 
@@ -392,7 +392,7 @@ ExecChooseHashTableSize(double ntuples, int tupwidth,
 	hash_table_bytes = work_mem * 1024L;
 
 	/*
-	 * Set nbuckets to achieve an average bucket load of gp_hashnode_tuples_per_bucket when
+	 * Set nbuckets to achieve an average bucket load of gp_hashjoin_tuples_per_bucket when
 	 * memory is filled.  Set nbatch to the smallest power of 2 that appears
 	 * sufficient.
 	 */
@@ -403,7 +403,7 @@ ExecChooseHashTableSize(double ntuples, int tupwidth,
 		double		dbatch;
 		int			minbatch;
 
-		lbuckets = (hash_table_bytes / tupsize) / gp_hashnode_tuples_per_bucket;
+		lbuckets = (hash_table_bytes / tupsize) / gp_hashjoin_tuples_per_bucket;
 		lbuckets = Min(lbuckets, INT_MAX);
 		nbuckets = (int) lbuckets;
 
@@ -425,11 +425,11 @@ ExecChooseHashTableSize(double ntuples, int tupwidth,
 		/* divide our tuple row-count estimate by our the number of
 		 * tuples we'd like in a bucket: this produces a small bucket
 		 * count independent of our work_mem setting */
-		dbuckets_lower = (double)ntuples / (double)gp_hashnode_tuples_per_bucket;
+		dbuckets_lower = (double)ntuples / (double)gp_hashjoin_tuples_per_bucket;
 
 		/* if we have work_mem to spare, we'd like to use it -- so
 		 * divide up our memory evenly (see the spill case above) */
-		dbuckets_upper = (double)hash_table_bytes / ((double)tupsize * gp_hashnode_tuples_per_bucket);
+		dbuckets_upper = (double)hash_table_bytes / ((double)tupsize * gp_hashjoin_tuples_per_bucket);
 
 		/* we'll use our "lower" work_mem independent guess as a lower
 		 * limit; but if we've got memory to spare we'll take the mean
