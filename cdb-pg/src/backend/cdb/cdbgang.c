@@ -62,7 +62,7 @@ buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo);
 
 static bool isTargetPortal(char *p1, char *p2);
 
-static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bool isprimary);
+static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bool isprimary, bool i_am_superuser);
 
 
 /*
@@ -91,6 +91,8 @@ typedef struct DoConnectParms
 
 	/* type of gang. */
 	GangType	type;
+	
+	bool		i_am_superuser;
 
 	/*
 	 * The pthread_t thread handle.
@@ -230,7 +232,7 @@ createDispatchAgents(void)
 		build_gpdaid_params(&buffer);
 	
 		addOptions(&buffer,
-				true /* writer? */, q->segindex /* segindex */,true /* primary? */ );
+				true /* writer? */, q->segindex /* segindex */,true /* primary? */ , superuser());
 	
 	
 		if (!cdbconn_doDispatchAgentConnect(&dispatchagents->db_descriptors[i], buffer.data))
@@ -594,6 +596,8 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 
 		/* set the gangType. */
 		pParms->type = type;
+		
+		pParms->i_am_superuser = superuser();
 
         if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 		    elog(DEBUG5, "createGang creating thread %d of %d for libpq connections",
@@ -1274,7 +1278,7 @@ addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
 	(*segdbCount)++;
 }
 
-static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bool isprimary)
+static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bool isprimary, bool i_am_superuser)
 {
 	int		j, start, end;
 	char		temp[256];
@@ -1461,7 +1465,7 @@ static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bo
 	/*
      * some super-user settable gucs
      */
-	if (superuser())
+	if (i_am_superuser)
 	{
 		switch (log_min_messages)
 		{
@@ -1623,7 +1627,7 @@ thread_DoConnect(void *arg)
 
 		addOptions(&buffer,
 				(pParms->type == GANGTYPE_PRIMARY_WRITER || pParms->type == GANGTYPE_MIRROR_WRITER),
-				q->segindex,q->isprimary);
+				q->segindex,q->isprimary,pParms->i_am_superuser);
 
 		if (cdbconn_doConnect(segdbDesc, buffer.data))
 		{
@@ -2027,6 +2031,8 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
 
 		/* set the gangType. */
 		pParms->type = conninfo->type;
+		
+		pParms->i_am_superuser = superuser();
 
         if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 		    elog(DEBUG5, "createGang creating thread %d of %d for libpq connections",
