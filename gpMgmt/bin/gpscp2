@@ -175,7 +175,7 @@ try:
             for file in filePath[0:-1]:
                 remotePath = file.replace(opt['-J'], ' %s@%s' % (user, host))
                 cmd += remotePath
-            dir = '%s/%s@%s' % (filePath[-1], user, host)
+            dir = '%s/%s' % (filePath[-1], host)
             if not os.path.exists(dir): os.mkdir(dir)
             cmd += ' %s' % dir
             print cmd
