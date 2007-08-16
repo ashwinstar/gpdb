@@ -46,7 +46,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_psql(apr_proc_t *proc, const char *sql, int 
  *  @param p memory pool
  *  @return APR_SUCCESS if succes otherwise failure
  */
-APR_DECLARE(apr_status_t) gpcc_proc_ssh(apr_proc_t *proc, const char *hostname, int port, const char *cmd, int wait, apr_pool_t *p);
+APR_DECLARE(apr_status_t) gpcc_proc_ssh(apr_proc_t *proc, const char *user, const char *hostname, int port, const char *cmd, int wait, apr_pool_t *p);
 
 /**
  *  gpssh to run command line with a list of hosts
@@ -58,5 +58,5 @@ APR_DECLARE(apr_status_t) gpcc_proc_ssh(apr_proc_t *proc, const char *hostname, 
  *  @param pool memory pool
  *  @return APR_SUCCESS if success otherwise failure
  */
- APR_DECLARE(apr_status_t) gpcc_proc_gpssh(apr_proc_t *proc, const char *const *hostnames, int port, const char *cmd, int wait, apr_pool_t *p);
+APR_DECLARE(apr_status_t) gpcc_proc_gpssh(apr_proc_t *proc, const char *user, const char *const *hostnames, int port, const char *cmd, int wait, apr_pool_t *p);
 #endif

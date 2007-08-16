@@ -78,17 +78,33 @@ APR_DECLARE(apr_status_t) gpcc_proc_psql(apr_proc_t *proc, const char *sql, int 
     return e;
 }
 
-APR_DECLARE(apr_status_t) gpcc_proc_ssh(apr_proc_t *proc, const char *hostname, int port, const char *cmd, int wait, apr_pool_t *p)
+APR_DECLARE(apr_status_t) gpcc_proc_ssh(apr_proc_t *proc, const char *user, const char *hostname, int port, const char *cmd, int wait, apr_pool_t *p)
 {
-    char sshcmd[1024];
+    char *argv[10];
     int e;
-    
-    e = gpcc_proc_run_prog(proc, sshcmd, 0, 0, wait, p);
-    
+    char host[256];
+    char portstr[10];
+    char cmdstr[1024];
+
+    sprintf(portstr, "%d", port);
+    sprintf(host, "%s@%s", user, hostname);
+    sprintf(cmdstr, "\"\"%s\"\"", cmd);
+    argv[0] = "ssh";
+    argv[1] = "-p";
+    argv[2] = portstr;
+    argv[3] = "-o";
+    argv[4] = "\"\"BatchMode yes\"\"";
+    argv[5] = "-o";
+    argv[6] = "\"\"StrictHostKeyChecking no\"\"";
+    argv[7] = host;
+    argv[8] = cmdstr;
+    argv[9] = 0;
+
+    e = gpcc_proc_run_prog(proc, "ssh", (const char *const *)argv, 0, wait, p);
     return e;
 }
 
-APR_DECLARE(apr_status_t) gpcc_proc_gpssh(apr_proc_t *proc, const char *const *hostnames, int port, const char *cmd, int wait, apr_pool_t *pool)
+APR_DECLARE(apr_status_t) gpcc_proc_gpssh(apr_proc_t *proc, const char *user, const char *const *hostnames, int port, const char *cmd, int wait, apr_pool_t *pool)
 {
     int i;
     int e = 0;
@@ -97,7 +113,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_gpssh(apr_proc_t *proc, const char *const *h
     apr_exit_why_e exitwhy;
     
     for (i = 0, p = proc ; hostnames[i] ; i++, p++) {
-	e = gpcc_proc_ssh(p, hostnames[i], port, cmd, 0, pool);
+	e = gpcc_proc_ssh(p, user, hostnames[i], port, cmd, 0, pool);
 	if (e) {
 	    fprintf(stderr, "gpcc_proc_ssh %s: command failed %s\n", hostnames[i], cmd);
 	    return e;
