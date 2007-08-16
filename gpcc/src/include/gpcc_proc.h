@@ -36,7 +36,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_run_prog(apr_proc_t *proc, const char *prog,
  *  @param p memory pool
  *  @return APR_SUCCESS if succes otherwise failure
  */
-APR_DECLARE(apr_status_t) gpcc_proc_psql(apr_proc_t *proc, const char *sql, int wait, apr_pool_t *p);
+APR_DECLARE(apr_status_t) gpcc_proc_psql(apr_proc_t *proc, int port, const char *dbname, const char *sql, int utility, int wait, apr_pool_t *p);
 
 /**
  *  gpcc_proc_ssh to run a ssh remote command
