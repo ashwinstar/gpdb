@@ -62,8 +62,10 @@ APR_DECLARE(apr_status_t) gpcc_proc_run_prog(apr_proc_t *proc, const char *prog,
     return gpcc_proc_run(proc, prog, argv, env, cmdtype, wait, p);
 }
 
-APR_DECLARE(apr_status_t) gpcc_proc_psql(apr_proc_t *proc, const char *sql, int wait, apr_pool_t *p)
+APR_DECLARE(apr_status_t) gpcc_proc_psql(apr_proc_t *proc, int port, const char *dbname, const char *sql, 
+					 int utility, int wait, apr_pool_t *p)
 {
+    char *argv[2];
     char cmd[1024];
     int e;
 
@@ -73,7 +75,16 @@ APR_DECLARE(apr_status_t) gpcc_proc_psql(apr_proc_t *proc, const char *sql, int 
 	return 1;
     }
     
-    e = gpcc_proc_run_shell(proc, cmd, 0, 0, wait, p);
+    if (utility) {
+	sprintf(cmd, "PGOPTIONS=\" gp_session_role=utility\" %s/bin/psql -p %d %s -t -c \"%s\"",
+		gphome, port, dbname, sql);
+    } else {
+	sprintf(cmd, "%s/bin/psql -p %d %s -c \"%s\"", gphome, port, dbname, sql);
+    }
+
+    argv[0] = cmd;
+    argv[1] = 0;
+    e = gpcc_proc_run_shell(proc, argv[0], (const char *const *) argv, 0, wait, p);
 
     return e;
 }
