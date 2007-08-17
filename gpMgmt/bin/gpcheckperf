@@ -61,6 +61,13 @@ opt['-p'] = 22
 opt['-h'] = []
 opt['-f'] = False
 
+def killall(procname):
+    if os.uname()[0] == 'SunOS':
+        return 'pkill %s' % procname
+    else:
+        return 'killall -9 %s' % procname
+
+
 def ssh(srchost, cmd):
     s = 'ssh -p %d %s' % (opt['-p'], srchost)
     return s + ' ' + cmd
@@ -364,7 +371,7 @@ def startNetServer():
         (ok, out) = run(cmd)
         if not ok:
             if opt['-v']: print '[Warning] start netserver with port %d failed' % port
-            cmd = gpssh('"(export GPHOME=%s && $GPHOME/bin/gpkillall netserver)"' % GPHOME)
+            cmd = gpssh(killall('netserver'))
             port += 12
             ntry -= 1
         else:
@@ -418,7 +425,7 @@ def runNetPerfTest():
             cmd = ssh(srchost, '%s -H %s -p %d -t TCP_STREAM -l 5 -f M -P 0' % (rmtPath, rcvhost, port))
             (ok, out) = run(cmd)
             if not ok:
-                cmd = gpssh('"(export GPHOME=%s && $GPHOME/bin/gpkillall netserver)"' % GPHOME)
+                cmd = gpssh(killall('netserver'))
                 (ok, out) = run(cmd)
                 sys.exit('[Error] netperf failed: %s -> %s' % (srchost, rcvhost))
 
@@ -431,7 +438,7 @@ def runNetPerfTest():
                 l.extend(o)
                 result.append(l)
 
-    cmd = gpssh('"(export GPHOME=%s && $GPHOME/bin/gpkillall netserver)"' % GPHOME)
+    cmd = gpssh(killall('netserver'))
     (ok, out) = run(cmd)
     
 
