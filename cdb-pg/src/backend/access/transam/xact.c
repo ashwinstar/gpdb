@@ -482,6 +482,16 @@ SetCurrentStatementStartTimestamp(void)
 }
 
 /*
+ *	SetCurrentStatementStartTimestampToMaster
+ */
+void
+SetCurrentStatementStartTimestampToMaster(TimestampTz masterTime)
+{
+	if (masterTime != 0)
+		stmtStartTimestamp = masterTime;
+}
+
+/*
  *	GetCurrentTransactionNestLevel
  *
  * Note: this will return zero when not inside any transaction, one when
@@ -1916,7 +1926,9 @@ StartTransaction(void)
 					 * TODO: is there a semaphore or something better we can
 					 * do here.
 					 */
+					elog(DEBUG1,"Sleeping while waiting for shared snapshot");
 					pg_usleep(sleep_per_check_us);
+					elog(DEBUG1,"waking while waiting for shared snapshot");
 
 					CHECK_FOR_INTERRUPTS();
 
