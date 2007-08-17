@@ -347,6 +347,17 @@ extern char *PQbuildGpQueryString(const char  *command,
 								   int			rootIdx,
 								   int		   	primary_gang_id,
 								   int		   	mirror_gang_id,
+/* Ugly, because c.h might not be included in all files that use this */
+#ifdef HAVE_INT64	
+								   int64
+#else
+#ifdef HAVE_LONG_INT_64
+								   long int
+#else
+								   long long int
+#endif 
+#endif
+								   				currentStatementStartTimestamp,
 								   Oid			sessionUserId,
 								   pqbool		sessionUserIsSuper,
 					  			   Oid			outerUserId,

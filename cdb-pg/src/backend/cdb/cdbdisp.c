@@ -67,6 +67,8 @@
  * Static Helper functions
  */
 static void *thread_DispatchCommand(void *arg);
+static bool thread_DispatchOut(DispatchCommandParms		*pParms);
+static void thread_DispatchWait(DispatchCommandParms	*pParms);
 
 
 static bool
@@ -1492,26 +1494,11 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 /*--------------------------------------------------------------------*/
 
 
-
-/*
- * thread_DispatchCommand is the thread proc used to dispatch the command to one or more of the qExecs.
- *
- * NOTE: This function MUST NOT contain elog or ereport statements. (or most any other backend code)
- *		 elog is NOT thread-safe.  Developers should instead use something like:
- *
- *	if (DEBUG3 >= log_min_messages)
- *			write_stderr("my brilliant log statement here.\n");
- *
- * NOTE: In threads, we cannot use palloc, because it's not thread safe.
- */
-void *
-thread_DispatchCommand(void *arg)
+static bool  
+thread_DispatchOut(DispatchCommandParms		*pParms)
 {
-	DispatchCommandParms		*pParms = (DispatchCommandParms *) arg;
-	SegmentDatabaseDescriptor	*segdbDesc;
 	CdbDispatchResult			*dispatchResult;
 	int							i, db_count = pParms->db_count;
-	int							timeoutCounter = 0;
 
 	switch (pParms->mppDispatchCommandType)
 	{
@@ -1528,6 +1515,7 @@ thread_DispatchCommand(void *arg)
 						pQueryParms->serializedDtxContextInfo, pQueryParms->serializedDtxContextInfolen, 
 						0 /* unused flags*/, pParms->cmdID, pParms->localSlice, pQueryParms->rootIdx,
 						pQueryParms->primary_gang_id, pQueryParms->mirror_gang_id,
+						GetCurrentStatementStartTimestamp(),
 						pParms->sessUserId, pParms->sessUserId_is_super,
 						pParms->outerUserId, pParms->outerUserId_is_super, pParms->currUserId,
 						&pParms->query_text_len);
@@ -1551,14 +1539,14 @@ thread_DispatchCommand(void *arg)
 	default:
 		write_stderr("bad dispatch command type %d\n", (int) pParms->mppDispatchCommandType);
 		pParms->query_text_len = 0;
-		return NULL;
+		return false;
 	}
 
 	if (pParms->query_text == NULL)
 	{
 		write_stderr("could not build query string, total length %d\n", pParms->query_text_len);
 		pParms->query_text_len = 0;
-		return NULL;
+		return false;
 	}
 
 	/*
@@ -1653,13 +1641,24 @@ thread_DispatchCommand(void *arg)
 			default:
 				write_stderr("bad dispatch command type %d\n", (int) pParms->mppDispatchCommandType);
 				pParms->query_text_len = 0;
-				return NULL;
+				return false;
 			}
 			
             dispatchResult->hasDispatched = true;
         }
 
 	}
+	return true;
+
+}
+
+static void
+thread_DispatchWait(DispatchCommandParms		*pParms)
+{
+	SegmentDatabaseDescriptor	*segdbDesc;
+	CdbDispatchResult			*dispatchResult;
+	int							i, db_count = pParms->db_count;
+	int							timeoutCounter = 0;
 
 	/*
 	 * OK, we are finished submitting the command to the segdbs.
@@ -1738,7 +1737,7 @@ thread_DispatchCommand(void *arg)
 				continue;
 
 			handleSelectError(pParms, db_count, sock_errno);
-			return NULL;
+			return;
 		}
 
 		if (n == 0)
@@ -1801,6 +1800,26 @@ thread_DispatchCommand(void *arg)
 		}						/* input available; receive and process it */
 
 	}							/* some QEs running */
+
+}
+/*
+ * thread_DispatchCommand is the thread proc used to dispatch the command to one or more of the qExecs.
+ *
+ * NOTE: This function MUST NOT contain elog or ereport statements. (or most any other backend code)
+ *		 elog is NOT thread-safe.  Developers should instead use something like:
+ *
+ *	if (DEBUG3 >= log_min_messages)
+ *			write_stderr("my brilliant log statement here.\n");
+ *
+ * NOTE: In threads, we cannot use palloc, because it's not thread safe.
+ */
+void *
+thread_DispatchCommand(void *arg)
+{
+	DispatchCommandParms		*pParms = (DispatchCommandParms *) arg;
+
+	if (thread_DispatchOut(pParms))
+		thread_DispatchWait(pParms);
 
 	return (NULL);
 }	/* thread_DispatchCommand */
@@ -2955,8 +2974,6 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				break;
 		}
 			
-		if (primaryGang->gang_id == 1)
-			elog(DEBUG1,"dispatch to primary gang");
 		/*
 		 * Dispatch the plan to our primaryGang.
 		 * Doesn't wait for it to finish.

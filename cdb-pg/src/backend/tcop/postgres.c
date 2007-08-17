@@ -3623,6 +3623,13 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			
 			primary_gang_id = pq_getmsgint(input_message, 4);
 			mirror_gang_id = pq_getmsgint(input_message, 4);
+			
+			TimestampTz statementStart = pq_getmsgint64(input_message);
+			/*
+			 * Set the CurrentStatementStartTimestamp on the Dispatch Agent
+			 * to be the same as the QD thinks.
+			 */
+			SetCurrentStatementStartTimestampToMaster(statementStart);
 
 			/* read ser string lengths */
 			query_string_len = pq_getmsgint(input_message, 4);
@@ -5025,6 +5032,17 @@ PostgresMain(int argc, char *argv[], const char *username)
 					
 					primary_gang_id = pq_getmsgint(&input_message, 4);
 					mirror_gang_id = pq_getmsgint(&input_message, 4);
+					
+					TimestampTz statementStart = pq_getmsgint64(&input_message);
+					/*
+					 * Should we set the CurrentStatementStartTimestamp to the 
+					 * original start of the statement (as seen by the masterDB?
+					 * 
+					 * Or have it be the time this particular QE received it's work?
+					 * 
+					 * Or both?
+					 */
+					//SetCurrentStatementStartTimestampToMaster(statementStart);
 					
 					/* read ser string lengths */
 					query_string_len = pq_getmsgint(&input_message, 4);

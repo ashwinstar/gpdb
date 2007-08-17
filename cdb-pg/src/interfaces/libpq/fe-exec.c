@@ -746,6 +746,7 @@ PQbuildGpQueryString(const char  *command,
 					  int		   rootIdx,
 					  int		   primary_gang_id,
 					  int		   mirror_gang_id,
+					  int64		   currentStatementStartTimestamp,
 					  Oid			sessionUserId,
 					  bool			sessionUserIsSuper,
 					  Oid			outerUserId,
@@ -754,13 +755,14 @@ PQbuildGpQueryString(const char  *command,
 					  int         *final_len)
 {
 	int	tmp, len;
+	uint32		n32;
 	int	total_query_len;
 	char *shared_query, *pos;
 	char one = 1;
 	char zero = 0;
 
 	total_query_len = 5 /* overhead */ + 14 /* userids */ + 24 /* lengths */ +
-		4 /* comamnd count */ + snapshotInfo_len +
+		4 /* comamnd count */ + snapshotInfo_len + 8 +
 		4 /* flags */ + command_len + querytree_len + plantree_len + params_len + sliceinfo_len + 4 + 4 + 4 + 4;
 
 	shared_query = malloc(total_query_len);
@@ -819,6 +821,16 @@ PQbuildGpQueryString(const char  *command,
 	
 	tmp = htonl(mirror_gang_id);
 	memcpy(pos, &tmp, 4);
+	pos += 4;
+	
+	/* High order half first, since we're doing MSB-first */
+	n32 = (uint32) (currentStatementStartTimestamp >> 32);
+	n32 = htonl(n32);
+	memcpy(pos, &n32,4);
+	pos += 4;
+	/* Now the low order half */
+	n32 = (uint32) currentStatementStartTimestamp;
+	n32 = htonl(n32);
 	pos += 4;
 	
 	tmp = htonl(command_len);
