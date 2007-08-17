@@ -3580,6 +3580,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			int rootIdx;
 			int primary_gang_id;
 			int mirror_gang_id;
+			TimestampTz statementStart;
 			Oid suid;
 			Oid ouid;
 			Oid cuid;
@@ -3624,7 +3625,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			primary_gang_id = pq_getmsgint(input_message, 4);
 			mirror_gang_id = pq_getmsgint(input_message, 4);
 			
-			TimestampTz statementStart = pq_getmsgint64(input_message);
+			statementStart = pq_getmsgint64(input_message);
 			/*
 			 * Set the CurrentStatementStartTimestamp on the Dispatch Agent
 			 * to be the same as the QD thinks.
@@ -5001,6 +5002,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					int		rootIdx;
 					int		primary_gang_id;
 					int		mirror_gang_id;
+					TimestampTz statementStart;
 					Oid 	suid;
 					Oid 	ouid;
 					Oid 	cuid;
@@ -5033,7 +5035,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					primary_gang_id = pq_getmsgint(&input_message, 4);
 					mirror_gang_id = pq_getmsgint(&input_message, 4);
 					
-					TimestampTz statementStart = pq_getmsgint64(&input_message);
+					statementStart = pq_getmsgint64(&input_message);
 					/*
 					 * Should we set the CurrentStatementStartTimestamp to the 
 					 * original start of the statement (as seen by the masterDB?
@@ -5042,7 +5044,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					 * 
 					 * Or both?
 					 */
-					//SetCurrentStatementStartTimestampToMaster(statementStart);
+					SetCurrentStatementStartTimestampToMaster(statementStart);
 					
 					/* read ser string lengths */
 					query_string_len = pq_getmsgint(&input_message, 4);
