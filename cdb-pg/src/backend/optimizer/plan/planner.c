@@ -2599,7 +2599,7 @@ static List *canonicalize_gs_list(List *gsl, bool ordinary)
 		}
 		else if ( IsA(node, GroupingClause) )
 		{	
-			List *gs;
+			List *gs = NIL;
 			GroupingClause *gc = (GroupingClause*)node;
 			
 			if ( ordinary )
