@@ -1627,7 +1627,7 @@ typedef enum FetchDirection
 	FETCH_RELATIVE
 } FetchDirection;
 
-#define FETCH_ALL	0x7FFFFFFFFFFFFFFF
+#define FETCH_ALL	INT64CONST(0x7FFFFFFFFFFFFFFF)
 
 typedef struct FetchStmt
 {
