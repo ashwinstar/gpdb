@@ -4289,6 +4289,34 @@ plan_pushdown_tlist(Plan *plan, List *tlist)
     return plan;
 }                               /* plan_pushdown_tlist */
 
+/*
+ * Return true if there is the same tleSortGroupRef in an entry in glist
+ * as the tleSortGroupRef in gc.
+ */
+static bool
+groupcol_in_list(GroupClause *gc, List *glist)
+{
+	bool found = false;
+	ListCell *lc;
+	
+	foreach (lc, glist)
+	{
+		GroupClause *entry = (GroupClause *)lfirst(lc);
+		Assert (IsA(entry, GroupClause));
+		if (gc->tleSortGroupRef == entry->tleSortGroupRef)
+		{
+			found = true;
+			break;
+		}
+	}
+	return found;
+}
+
+
+/*
+ * Construct a list of GroupClauses from the transformed GROUP BY clause.
+ * This list of GroupClauses has unique tleSortGroupRefs.
+ */
 static List *
 flatten_grouping_list(List *groupcls)
 {
@@ -4309,18 +4337,40 @@ flatten_grouping_list(List *groupcls)
 		if (IsA(node, GroupingClause))
 		{
 			List *groupsets = ((GroupingClause*)node)->groupsets;
-			result =
-				list_concat_unique(result,
-								   flatten_grouping_list(groupsets));
+			List *flatten_groupsets =
+				flatten_grouping_list(groupsets);
+			ListCell *lc;
+			
+			foreach (lc, flatten_groupsets)
+			{
+				GroupClause *flatten_gc = (GroupClause *)lfirst(lc);
+				Assert(IsA(flatten_gc, GroupClause));
+				
+				if (!groupcol_in_list(flatten_gc, result))
+					result = lappend(result, flatten_gc);
+			}
+			
 		}
 		else if (IsA(node, List))
 		{
-			result = list_concat_unique(result,
-										flatten_grouping_list((List *)node));
+			List *flatten_groupsets =
+				flatten_grouping_list((List *)node);
+			ListCell *lc;
+			
+			foreach (lc, flatten_groupsets)
+			{
+				GroupClause *flatten_gc = (GroupClause *)lfirst(lc);
+				Assert(IsA(flatten_gc, GroupClause));
+				
+				if (!groupcol_in_list(flatten_gc, result))
+					result = lappend(result, flatten_gc);
+			}
 		}
 		else
 		{
-			if (!list_member(result, node))
+			Assert(IsA(node, GroupClause));
+			
+			if (!groupcol_in_list((GroupClause *)node, result))
 				result = lappend(result, node);
 		}
 	}

@@ -22,6 +22,7 @@
 #include "optimizer/paths.h"
 #include "optimizer/planshare.h"
 #include "parser/parse_relation.h" /* addRangeTableEntryForSubquery */
+#include "parser/parsetree.h"  /* get_tle_by_resno */
 
 #include "cdb/cdbsetop.h"					/* make_motion... routines */
 #include "cdb/cdbvars.h"
@@ -586,35 +587,34 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 	if (need_finalagg)
 	{
 		long lNumGroups;
-		Flow *flow;
+		int key_no;
+		List *groupExprs = NIL;
 
 		double motion_cost_per_row = (gp_motion_cost_per_row > 0.0) ?
 			gp_motion_cost_per_row :
 			2.0 * cpu_tuple_cost;
 
-		/* We need to add Grouping into agg_node->flow so that it will
-		 * be in Gather merge key.
-		 */
-		flow = agg_node->flow;
-		if (flow->numSortCols > 0)
+		/* Build the hash keys */
+		for (key_no=0; key_no<context->numGroupCols; key_no++)
 		{
-			flow->numSortCols++;
-			if (flow->numSortCols != context->numGroupCols)
-				ereport(ERROR, (
-							errcode(ERRCODE_CDB_INTERNAL_ERROR),
-							errmsg("Group keys not equal to sort keys") ));
-			flow->sortColIdx = repalloc(flow->sortColIdx,
-										flow->numSortCols * sizeof(AttrNumber));
-			flow->sortColIdx[flow->numSortCols-1] = prelimGroupColIdx[flow->numSortCols-1];
-			flow->sortOperators = repalloc(flow->sortOperators,
-										   flow->numSortCols * sizeof(Oid));
-			flow->sortOperators[flow->numSortCols-1] =
-				ordering_oper_opid(exprType((Node *)grping));
+			TargetEntry *tle = get_tle_by_resno(agg_node->targetlist,
+												prelimGroupColIdx[key_no]);
+			groupExprs = lappend(groupExprs, copyObject(tle->expr));
 		}
-
-		agg_node = (Plan *)make_motion_gather_to_QE(agg_node, true);
+		
+		agg_node = (Plan *)make_motion_hash(root, agg_node, groupExprs);
 		agg_node->total_cost += motion_cost_per_row * agg_node->plan_rows;
 
+		/* Add a sort node */
+		if (context->aggstrategy == AGG_SORTED)
+		{
+			agg_node = (Plan *) make_sort_from_groupcols(root, root->parse->groupClause,
+														 prelimGroupColIdx,
+														 true,
+														 agg_node);
+			mark_sort_locus(agg_node);
+		}
+		
 		/* Convert # groups to long int --- but 'ware overflow! */
 		lNumGroups = (long) Min(*context->p_dNumGroups, (double) LONG_MAX);
 

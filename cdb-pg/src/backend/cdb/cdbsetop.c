@@ -484,15 +484,14 @@ void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort)
 		Flow *subplanflow = subplan->flow; 
 		
 		/* Make sure all the expressions the flow thinks we're hashed on
-		 * occur, in order, at the beginning of the subplan targetlist. 
-         * (Why does it matter that they are in order and at the beginning??)
+		 * occur in the subplan targetlist.
 		 */
 		foreach( c, subplanflow->hashExpr )
 		{
 			Node *x = (Node*)lfirst(c);
 
             i++;
-			tle = get_tle_by_resno(subplan->targetlist, i);
+			tle = tlist_member(x, subplan->targetlist);
 			
             Insist(tle 
                    && (equal(x, tle->expr)
