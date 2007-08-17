@@ -3174,7 +3174,7 @@ transformGroupedWindows(Query *qry)
 	subq->intoOptions = NIL;
 	subq->intoOnCommit = ONCOMMIT_NOOP;
 	subq->intoTableSpaceName = NULL;
-	subq->hasAggs = true;
+	subq->hasAggs = false;
 	/* hasWindFuncs is covered later */
 	subq->hasSubLinks = qry->hasSubLinks; /* If qry has them, we do now */
 	subq->rtable = qry->rtable;
@@ -3253,6 +3253,13 @@ transformGroupedWindows(Query *qry)
 		char *resname;
 		
 		Assert(IsA(te, TargetEntry));
+
+		/*
+		 * Check if there is an Agg node in the targetlist. If so
+		 * we mark hasAggs to true.
+		 */
+		if (checkExprHasAggs((Node *)te->expr))
+			subq->hasAggs = true;
 
 		/* 
 	 	 * TEs generated for the purpose of sorting (PARTITION BY and 

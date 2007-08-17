@@ -536,6 +536,15 @@ SUM(sale.cn) OVER(partition by sale.dt,sale.prc order by sale.cn asc rows
 between 0 following and 1 following) as sum 
 from sale order by dt, prc, cn;
 
+-- MPP-1840, grouping + windowing
+--begin_equivalent
+SELECT cn, vn, pn, GROUPING(cn,vn,pn),
+SUM(vn) OVER (PARTITION BY GROUPING(cn,vn,pn) ORDER BY cn) as sum FROM sale
+GROUP BY ROLLUP(cn,vn,pn);
+select cn,vn,pn,grouping,sum(vn) over (partition by grouping order by cn) as sum 
+from (select cn,vn,pn,grouping(cn,vn,pn) from sale group by rollup(cn,vn,pn)) t;
+--end_equivalent
+
 -- Sanity test for executor detection of non-sense frames
 SELECT sale.pn,sale.cn,sale.prc,
     AVG(cast (sale.prc as int))
