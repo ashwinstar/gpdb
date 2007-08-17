@@ -831,6 +831,7 @@ PQbuildGpQueryString(const char  *command,
 	/* Now the low order half */
 	n32 = (uint32) currentStatementStartTimestamp;
 	n32 = htonl(n32);
+	memcpy(pos, &n32,4);
 	pos += 4;
 	
 	tmp = htonl(command_len);
