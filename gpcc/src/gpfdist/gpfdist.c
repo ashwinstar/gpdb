@@ -647,7 +647,7 @@ void request_end(request_t* r)
 	session_detach(r);
     }
     event_del(&r->ev);
-    shutdown(r->sock, SHUT_WR);
+    shutdown(r->sock, SHUT_WR | SHUT_RD);
     closesocket(r->sock);
     apr_pool_destroy(r->pool);
 }
@@ -1324,3 +1324,120 @@ char* path_basename(const char* path, apr_pool_t* pool)
     return apr_pstrndup(pool, path, idx - path);
 }
 
+APR_DECLARE(gpcc_net_request_t*) gpcc_net_parse_request(const char* buf, int* len, apr_pool_t* pool)
+{
+    int n = *len;
+    const char* p;
+    char* line;
+    char* last;
+    gpcc_net_request_t* req = 0;
+    char* colon;
+    int empty, completed;
+
+    /* find an empty line */
+    *len = 0;
+    empty = 1, completed = 0;
+    for (p = buf; n > 0 && *p; p++, n--) {
+	int ch = *p;
+	/* skip spaces */
+	if (ch == ' ' || ch == '\t' || ch == '\r') 
+	    continue;
+	if (ch == '\n') {
+	    if (! empty) {
+		empty = 1;
+		continue;
+	    }
+	    p++;
+	    completed = 1;
+	    break;
+	}
+	empty = 0;
+    }
+    if (! completed)
+	return 0;
+    
+    /* we have a complete HTTP-style request (terminated by empty line) */
+    *len = n = p - buf; /* consume it */
+    line = apr_pstrndup(pool, buf, n); /* dup it */
+    req = apr_pcalloc(pool, sizeof(gpcc_net_request_t));
+
+    /* for first line */
+    line = apr_strtok(line, "\n", &last);
+    line = gpcc_string_trim(line);
+    if (0 != apr_tokenize_to_argv(line, &req->argv, pool))
+	return req;
+    while (req->argv[req->argc]) 
+	req->argc++;
+
+    /* for each subsequent lines */
+    while (0 != (line = apr_strtok(0, "\n", &last))) {
+	if (*line == ' ' || *line == '\t') {
+	    /* continuation */
+	    if (req->hc == 0)	/* illegal - missing first header */
+		break;
+	    line = gpcc_string_trim(line);
+	    if (*line == 0)	/* empty line */
+		break;
+	    /* add to previous hvalue */
+	    req->hvalue[req->hc-1] 
+		= gpcc_string_trim(apr_pstrcat(pool, req->hvalue[req->hc-1], 
+					       " ", line, 0));
+	    continue;
+	}
+	/* find a colon, and break the line in two */
+	if (! (colon = strchr(line, ':')))
+	    colon = line + strlen(line); 
+	else
+	    *colon++ = 0;
+
+	line = gpcc_string_trim(line);
+	if (*line == 0) 	/* empty line */
+	    break;
+
+	/* save name, value pair */
+	req->hname[req->hc] = line;
+	req->hvalue[req->hc] = gpcc_string_trim(colon);
+	req->hc++;
+
+	if (req->hc >= sizeof(req->hname) / sizeof(req->hname[0]))
+	    break;
+    }
+
+    return req;
+}
+
+
+APR_DECLARE(char*) gpcc_string_trim(char* s)
+{
+    char* p;
+    s += strspn(s, " \t\r\n");
+    for (p = s + strlen(s) - 1; p > s; p--) {
+	if (strchr(" \t\r\n", *p))
+	    *p = 0;
+	else
+	    break;
+    }
+    return s;
+}
+
+APR_DECLARE(int) gpcc_fatal(const char* fline, const char* fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    fprintf(stderr, "[INTERNAL ERROR] [%s] ", fline);
+    vfprintf(stderr, fmt, ap);
+    fprintf(stderr, "\n          ... exiting\n"); 
+    exit(1);
+    return 0;
+}
+
+
+APR_DECLARE(int) gpcc_warning(const char* fline, const char* fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    fprintf(stderr, "[WRN] [%s] ", fline); 
+    vfprintf(stderr, fmt, ap);
+    fprintf(stderr, "\n");
+    return 0;
+}
