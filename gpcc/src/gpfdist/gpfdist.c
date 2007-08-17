@@ -16,18 +16,31 @@
 #endif
 
 #include <signal.h>
-#include <gpcc.h>
 #include <apr_getopt.h>
 #include <apr_strings.h>
-#include <gpcc_strings.h>
 #include <apr_hash.h>
 #include <apr_file_info.h>
 #include <apr_time.h>
 #include <apr_uri.h>
 #include <apr_env.h>
 #include <apr_fnmatch.h>
-#include <gpcc_net.h>
 #include <gpcc_file.h>
+
+typedef struct gpcc_net_request_t gpcc_net_request_t;
+struct gpcc_net_request_t {
+    int argc;
+    char** argv;
+    int hc;
+    char* hname[50];
+    char* hvalue[50];
+    int datalen;
+    int offset;
+    char *data;
+};
+
+APR_DECLARE(gpcc_net_request_t*) gpcc_net_parse_request(const char* buf, int* len, apr_pool_t* pool);
+APR_DECLARE(char*) gpcc_string_trim(char* s);
+
 
 #include <event.h>
 #define BLOCKSIZE  (1024 * 32)

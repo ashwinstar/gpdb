@@ -5,7 +5,14 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <gpcc.h>
+
+#include <apr_general.h>
+#include <apr.h>
+
+#define FLINE __FILE__ ":" APR_STRINGIFY(__LINE__)
+
+APR_DECLARE(int) gpcc_fatal(const char* fline, const char* fmt, ...);
+APR_DECLARE(int) gpcc_warning(const char* fline, const char* fmt, ...);
 
 typedef struct gpcc_file_t gpcc_file_t;
 APR_DECLARE(gpcc_file_t*) gpcc_file_open(const char *fpath, int oflag);
