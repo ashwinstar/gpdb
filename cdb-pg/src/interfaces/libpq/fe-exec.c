@@ -399,6 +399,8 @@ PQclear(PGresult *res)
 	res->QEWriter_CommandId = 0;
 	res->QEWriter_Dirty = 0;
 	
+	if (res->extras)
+		free(res->extras);
 	res->extraslen = 0;
 	res->extras = NULL;
 
