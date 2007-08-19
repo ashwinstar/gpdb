@@ -262,7 +262,9 @@ winref_not_distinct_walker(Node *node, void *ctx)
 {
 	winref_check_ctx *ref = (winref_check_ctx *)ctx;
 
-	if (IsA(node, WindowRef))
+	if (!node)
+		return false;
+	else if (IsA(node, WindowRef))
 	{
 		WindowRef *winref = (WindowRef *)node;
 
