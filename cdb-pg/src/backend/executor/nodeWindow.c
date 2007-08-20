@@ -2370,7 +2370,7 @@ populateFrameBuffers(WindowState *wstate)
 				bool is_peer = false;
 				Datum *new_vals;
 				bool *new_nulls;
-				bool lttrail, eqtrail, ltlead, eqlead = false;
+				bool lttrail = false, eqtrail, ltlead, eqlead = false;
 				bool tuple_before_edge = false;
 				bool tuple_in_buf = false;
 				
