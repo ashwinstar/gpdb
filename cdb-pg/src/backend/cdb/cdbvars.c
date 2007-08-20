@@ -154,6 +154,7 @@ SeqServerControlBlock *seqServerCtl;
 /* Segment id where singleton gangs are to be dispatched. */
 int         gp_singleton_segindex;
 
+bool        gp_cost_hashjoin_chainwalk = false;
 
 /* ----------------
  * The single row from gp_id for this database is held in this variable,

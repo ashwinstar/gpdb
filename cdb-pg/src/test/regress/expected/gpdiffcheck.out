@@ -141,6 +141,7 @@ select row_number() over (), c1, c2, c3 from gpd1;
 -- explain testing
 --
 set gp_segments_for_planner=4;
+set gp_cost_hashjoin_chainwalk=on;
 explain analyze select a.* from gpd1 as a, gpd1 as b where b.c1 in (select max(c1) from gpd1);
                                                                                 QUERY PLAN                                                                                
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------

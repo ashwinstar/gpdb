@@ -546,6 +546,9 @@ extern int	currentSliceId;
 extern int  gp_singleton_segindex;
 
 extern int cdb_total_plans;
+/* Enable ading the cost for walking the chain in the hash join. */
+extern bool gp_cost_hashjoin_chainwalk;
+
 extern int cdb_total_slices;
 extern int cdb_max_slices;
 

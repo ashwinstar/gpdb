@@ -1537,6 +1537,7 @@ cost_mergejoin(MergePath *path, PlannerInfo *root)
 	 * cpu_tuple_cost plus the cost of evaluating additional restriction
 	 * clauses that are to be applied at the join.	(This is pessimistic since
 	 * not all of the quals may get evaluated at each tuple.)  This work is
+	
 	 * skipped in JOIN_IN mode, so apply the factor.
 	 */
 	startup_cost += qp_qual_cost.startup;
@@ -1737,9 +1738,12 @@ cost_hashjoin(HashPath *path, PlannerInfo *root)
 		joininfactor * 0.5;*/
 	run_cost += hash_qual_cost.per_tuple * hashjointuples;
 
-    /* CDB: Add a small charge for walking the hash chains. */
-    run_cost += 0.05 * cpu_operator_cost * 
-                outer_path_rows * inner_path_rows * innerbucketsize * joininfactor;
+	if (gp_cost_hashjoin_chainwalk)
+	{
+		/* CDB: Add a small charge for walking the hash chains. */
+		run_cost += 0.05 * cpu_operator_cost * 
+			outer_path_rows * inner_path_rows * innerbucketsize * joininfactor;
+	}
 
 	/*
 	 * For each tuple that gets through the hashjoin proper, we charge

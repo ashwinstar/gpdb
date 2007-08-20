@@ -1219,6 +1219,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_cost_hashjoin_chainwalk", PGC_USERSET, QUERY_TUNING_COST,
+			gettext_noop("Enable the cost for walking the chain in the hash join"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_cost_hashjoin_chainwalk,
+		false, NULL, NULL
+	},
+
+	{
 		{"gp_is_primary", PGC_BACKEND, GP_WORKER_IDENTITY,
 			gettext_noop("Reports session type as primary or mirror."),
 			NULL,
