@@ -18,7 +18,7 @@ static apr_status_t gpcc_proc_initialize()
     
     GPHOME = getenv("GPHOME");
     if (GPHOME == 0) {
-	fprintf(stderr, "GPHOME not set");
+	gpcc_fatal(FLINE, "GPHOME not set");
 	return 1;
     }
     
@@ -50,7 +50,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_run(apr_proc_t *proc, const char *prog, cons
 
     e = apr_procattr_create(&attr, p);
     if (e) {
-	fprintf(stderr, "apr_procattr_create failure");
+	gpcc_log_error("apr_procattr_create failure");
 	return e;
     }
     if ((e = apr_procattr_io_set(attr, APR_NO_PIPE, APR_FULL_BLOCK, APR_NO_PIPE)) != APR_SUCCESS) {
@@ -63,7 +63,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_run(apr_proc_t *proc, const char *prog, cons
 
     e = apr_proc_create(proc, prog, argv, env, attr, p);
     if (e){
-	fprintf(stderr, "apr_proc_create failure");
+	gpcc_log_error("apr_proc_create failure");
 	return e;
     }
     
@@ -160,7 +160,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_gpssh(apr_proc_t *proc, const char *user, co
     for (i = 0, p = proc ; hostnames[i] ; i++, p++) {
 	e = gpcc_proc_ssh(p, user, hostnames[i], port, cmd, 0, pool);
 	if (e) {
-	    fprintf(stderr, "gpcc_proc_ssh %s: command failed %s\n", hostnames[i], cmd);
+	    gpcc_log_error("gpcc_proc_ssh %s: command failed %s\n", hostnames[i], cmd);
 	    return e;
 	}
 	
