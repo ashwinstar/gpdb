@@ -1214,7 +1214,7 @@ from
     sum(qty*prc)
   from sale
   group by rollup(cn,vn,pn)) olap_tmp(g,cn,vn,pn,s)
-order by 1,5;
+order by 1,5; -- order 1,5
  g | cn | vn | pn  |    s    | rank 
 ---+----+----+-----+---------+------
  0 |  2 | 50 | 400 |       0 |    1
@@ -1252,7 +1252,7 @@ select
   rank() over (partition by grouping(cn,vn,pn) order by sum(qty*prc))
 from sale
 group by rollup(cn,vn,pn)
-order by 1,5;
+order by 1,5; -- order 1,5
  grouping | cn | vn | pn  |   sum   | rank 
 ----------+----+----+-----+---------+------
         0 |  2 | 50 | 400 |       0 |    1
@@ -1360,6 +1360,24 @@ select cn, dt, qty,
        range '192.168.1.1'::inet preceding) as sum
 from sale;
 ERROR:  window specification RANGE parameter type must be coercable to ORDER BY column type
+-- Test for FOLLOWING frames
+select cn, prc, dt, sum(prc) over (order by dt,cn rows between 2 following and 3 following) as f from sale;
+ cn | prc  |     dt     | f  
+----+------+------------+----
+  2 | 2400 | 01-01-1401 |  0
+  1 |    0 | 03-01-1401 |  0
+  3 |    0 | 04-01-1401 |  0
+  1 |    0 | 05-01-1401 |  5
+  1 |    0 | 05-02-1401 |  5
+  1 |    0 | 06-01-1401 |  5
+  1 |    5 | 06-01-1401 | 10
+  2 |    0 | 06-01-1401 |  6
+  3 |    5 | 06-01-1401 |  2
+  3 |    5 | 06-01-1401 |  1
+  4 |    1 | 06-01-1401 |  0
+  4 |    1 | 06-01-1401 |  0
+(12 rows)
+
 -- Check that mixing cume_dist() with other window functions on the same
 -- window does not result in badness
 select cn, rank() over (w), cume_dist() over (w) from
@@ -1683,9 +1701,21 @@ from sale order by dt, prc, cn;
 --begin_equivalent
 SELECT cn, vn, pn, GROUPING(cn,vn,pn),
 SUM(vn) OVER (PARTITION BY GROUPING(cn,vn,pn) ORDER BY cn) as sum FROM sale
-GROUP BY ROLLUP(cn,vn,pn);
+GROUP BY ROLLUP(cn,vn,pn) order by 4; -- order 4
  cn | vn | pn  | grouping | sum 
 ----+----+-----+----------+-----
+  1 | 30 | 300 |        0 | 140
+  1 | 30 | 500 |        0 | 140
+  1 | 50 | 400 |        0 | 140
+  1 | 10 | 200 |        0 | 140
+  1 | 20 | 100 |        0 | 140
+  2 | 50 | 400 |        0 | 230
+  2 | 40 | 100 |        0 | 230
+  3 | 30 | 600 |        0 | 330
+  3 | 30 | 500 |        0 | 330
+  3 | 40 | 200 |        0 | 330
+  4 | 40 | 800 |        0 | 410
+  4 | 40 | 700 |        0 | 410
   1 | 50 |     |        1 | 110
   1 | 10 |     |        1 | 110
   1 | 20 |     |        1 | 110
@@ -1700,24 +1730,26 @@ GROUP BY ROLLUP(cn,vn,pn);
   3 |    |     |        3 |    
   4 |    |     |        3 |    
     |    |     |        7 |    
-  1 | 30 | 300 |        0 | 140
-  1 | 30 | 500 |        0 | 140
-  1 | 50 | 400 |        0 | 140
-  1 | 10 | 200 |        0 | 140
-  1 | 20 | 100 |        0 | 140
-  2 | 50 | 400 |        0 | 230
-  2 | 40 | 100 |        0 | 230
-  3 | 30 | 600 |        0 | 330
-  3 | 30 | 500 |        0 | 330
-  3 | 40 | 200 |        0 | 330
-  4 | 40 | 800 |        0 | 410
-  4 | 40 | 700 |        0 | 410
 (26 rows)
 
-select cn,vn,pn,grouping,sum(vn) over (partition by grouping order by cn) as sum 
-from (select cn,vn,pn,grouping(cn,vn,pn) from sale group by rollup(cn,vn,pn)) t;
+select cn,vn,pn,grouping,
+	sum(vn) over (partition by grouping order by cn) as sum 
+from (select cn,vn,pn,grouping(cn,vn,pn) from sale group by rollup(cn,vn,pn)) t
+order by 4; -- order 4
  cn | vn | pn  | grouping | sum 
 ----+----+-----+----------+-----
+  1 | 30 | 300 |        0 | 140
+  1 | 30 | 500 |        0 | 140
+  1 | 50 | 400 |        0 | 140
+  1 | 10 | 200 |        0 | 140
+  1 | 20 | 100 |        0 | 140
+  2 | 50 | 400 |        0 | 230
+  2 | 40 | 100 |        0 | 230
+  3 | 30 | 600 |        0 | 330
+  3 | 30 | 500 |        0 | 330
+  3 | 40 | 200 |        0 | 330
+  4 | 40 | 800 |        0 | 410
+  4 | 40 | 700 |        0 | 410
   1 | 50 |     |        1 | 110
   1 | 10 |     |        1 | 110
   1 | 20 |     |        1 | 110
@@ -1732,18 +1764,6 @@ from (select cn,vn,pn,grouping(cn,vn,pn) from sale group by rollup(cn,vn,pn)) t;
   3 |    |     |        3 |    
   4 |    |     |        3 |    
     |    |     |        7 |    
-  1 | 30 | 300 |        0 | 140
-  1 | 30 | 500 |        0 | 140
-  1 | 50 | 400 |        0 | 140
-  1 | 10 | 200 |        0 | 140
-  1 | 20 | 100 |        0 | 140
-  2 | 50 | 400 |        0 | 230
-  2 | 40 | 100 |        0 | 230
-  3 | 30 | 600 |        0 | 330
-  3 | 30 | 500 |        0 | 330
-  3 | 40 | 200 |        0 | 330
-  4 | 40 | 800 |        0 | 410
-  4 | 40 | 700 |        0 | 410
 (26 rows)
 
 --end_equivalent
@@ -2142,7 +2162,7 @@ order by 1, 2, 3;
   4 | 40 | 800 |        1 |       1
 (12 rows)
 
--- FIRST_VALUE/LAST_VALUE tests
+-- LAST_VALUE tests
 SELECT sale.cn,sale.qty,sale.pn, 
 LAST_VALUE(sale.qty*sale.pn) OVER(partition by sale.cn order by sale.cn,pn range between unbounded preceding and unbounded following ) as lv 
 from sale order by 1, 2, 3;
@@ -2160,5 +2180,114 @@ from sale order by 1, 2, 3;
   3 |   12 | 600 | 7200
   4 |    1 | 700 |  800
   4 |    1 | 800 |  800
+(12 rows)
+
+SELECT sale.vn,sale.qty,                                   
+LAST_VALUE(floor(sale.vn)) OVER(order by sale.vn asc range 0 preceding) as f
+from sale;
+ vn | qty  | f  
+----+------+----
+ 10 |    1 | 10
+ 20 |    1 | 20
+ 30 |   12 | 30
+ 30 |    1 | 30
+ 30 |   12 | 30
+ 30 |   12 | 30
+ 40 | 1100 | 40
+ 40 |    1 | 40
+ 40 |    1 | 40
+ 40 |    1 | 40
+ 50 |    1 | 50
+ 50 |    1 | 50
+(12 rows)
+
+select cn, cast(cname as varchar(10)), last_value(cast(cname as varchar(10))) 
+  over(order by cn range 2 preceding) as f
+from customer;
+ cn |   cname    |     f      
+----+------------+------------
+  1 | Macbeth    | Macbeth
+  2 | Duncan     | Duncan
+  3 | Lady Macbe | Lady Macbe
+  4 | Witches, I | Witches, I
+(4 rows)
+
+select cn, prc, dt, 
+last_value(prc) over (order by dt, prc, cn rows between 1 following and 4 following) as f from sale;
+ cn | prc  |     dt     | f 
+----+------+------------+---
+  2 | 2400 | 01-01-1401 | 0
+  1 |    0 | 03-01-1401 | 0
+  3 |    0 | 04-01-1401 | 0
+  1 |    0 | 05-01-1401 | 1
+  1 |    0 | 05-02-1401 | 1
+  1 |    0 | 06-01-1401 | 5
+  2 |    0 | 06-01-1401 | 5
+  4 |    1 | 06-01-1401 | 5
+  4 |    1 | 06-01-1401 | 5
+  1 |    5 | 06-01-1401 | 5
+  3 |    5 | 06-01-1401 | 5
+  3 |    5 | 06-01-1401 |  
+(12 rows)
+
+select vn, last_value(vn) 
+over(order by vn range between 2 preceding and 2 following) from vendor;
+ vn | last_value 
+----+------------
+ 10 |         10
+ 20 |         20
+ 30 |         30
+ 40 |         40
+ 50 |         50
+(5 rows)
+
+select vn, last_value(vn) 
+over(order by vn range between 20 preceding and 20 following) from vendor;
+ vn | last_value 
+----+------------
+ 10 |         30
+ 20 |         40
+ 30 |         50
+ 40 |         50
+ 50 |         50
+(5 rows)
+
+SELECT sale.cn,sale.pn, 
+last_VALUE(sale.pn+sale.pn) 
+OVER(order by sale.cn rows between current row and 
+unbounded following) as fv from sale;
+ cn | pn  |  fv  
+----+-----+------
+  1 | 200 | 1600
+  1 | 100 | 1600
+  1 | 300 | 1600
+  1 | 400 | 1600
+  1 | 500 | 1600
+  2 | 100 | 1600
+  2 | 400 | 1600
+  3 | 200 | 1600
+  3 | 600 | 1600
+  3 | 500 | 1600
+  4 | 700 | 1600
+  4 | 800 | 1600
+(12 rows)
+
+SELECT sale.cn,sale.pn, 
+last_VALUE(sale.pn+sale.pn) OVER(order by sale.cn range between current row and
+unbounded following) as fv from sale;
+ cn | pn  |  fv  
+----+-----+------
+  1 | 200 | 1600
+  1 | 100 | 1600
+  1 | 300 | 1600
+  1 | 400 | 1600
+  1 | 500 | 1600
+  2 | 100 | 1600
+  2 | 400 | 1600
+  3 | 200 | 1600
+  3 | 600 | 1600
+  3 | 500 | 1600
+  4 | 700 | 1600
+  4 | 800 | 1600
 (12 rows)
 

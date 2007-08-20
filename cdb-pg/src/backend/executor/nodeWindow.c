@@ -1488,6 +1488,7 @@ funcFrameBufAppend(WindowState *wstate, WindowStatePerFunction funcstate,
 	if (tuple_in_frame)
 	{
 		funcstate->cur_lead_edge = funcstate->frame_mem_used - 1;
+
 		elog(DEBUG1, "setting lead: prev = %i, lead = %i",
 			 funcstate->prev_lead_edge, funcstate->cur_lead_edge);
 	}
@@ -1701,6 +1702,7 @@ appendRowTuple(WindowState *wstate, WindowFrame *frame,
 {
 	ListCell *lc;
 	bool tuple_in_frame = false;
+	bool tuple_before_lead = false;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 
 	if (EDGE_IS_BOUND(frame->lead) || frame->lead->kind == WINDOW_CURRENT_ROW)
@@ -1708,8 +1710,14 @@ appendRowTuple(WindowState *wstate, WindowFrame *frame,
 		elog(DEBUG1, "lead row index = %lli, lead param = %li",
 			 lead_row_index, level_state->lead_rows);
 		
-		if (lead_row_index <= (level_state->lead_rows))
-			tuple_in_frame = true;
+		if (lead_row_index <= level_state->lead_rows)
+		{
+			tuple_before_lead = true;
+			
+			if (/*level_state->trail_rows >= 0 &&  */
+				lead_row_index >= level_state->trail_rows)
+				tuple_in_frame = true;
+		}
 
 	}
 	else
@@ -1717,6 +1725,7 @@ appendRowTuple(WindowState *wstate, WindowFrame *frame,
 		Assert(frame->lead->kind == WINDOW_UNBOUND_FOLLOWING);
 
 		tuple_in_frame = true;
+		tuple_before_lead = true;
 	}
 
 	foreach(lc, funcs)
@@ -1731,7 +1740,7 @@ appendRowTuple(WindowState *wstate, WindowFrame *frame,
 
 			oldcxt = MemoryContextSwitchTo(wstate->transcontext);
 			wtv = palloc(sizeof(WindowTransValue));
-			wtv->noTransValue = false;
+			wtv->noTransValue = funcstate->aggInitValueIsNull;
 
 			wtv->transValue = datumCopy(funcstate->aggInitValue, 
 										funcstate->aggTranstypeByVal,
@@ -1776,9 +1785,43 @@ appendRowTuple(WindowState *wstate, WindowFrame *frame,
 										lead_row_index, tuple_in_frame);
 	
 		}
+
+		/* we're in business, ensure everything else knows about it */
+		if (EDGE_IS_BOUND(frame->trail) &&
+			funcstate->prev_lead_edge == -1)
+		{
+			if (frame->trail->kind == WINDOW_BOUND_PRECEDING)
+				funcstate->prev_lead_edge = 0;
+			else
+			{
+				if (funcstate->cur_trail_edge > 0)
+					funcstate->prev_lead_edge = funcstate->cur_trail_edge;
+				else
+				{
+					long int rows_param;
+					bool isnull;
+	
+					rows_param = ExecEvalExpr(level_state->trail_expr,
+											  econtext,
+											  &isnull,
+											  NULL);
+					funcstate->prev_lead_edge = 0;
+					if (funcstate->cur_trail_edge == -1)
+					{
+						funcstate->cur_trail_edge = rows_param;
+						funcstate->prev_trail_edge = 0;
+					}
+				}
+			}
+		}
+		else if (frame->trail->kind == WINDOW_UNBOUND_PRECEDING &&
+				 funcstate->prev_lead_edge == -1)
+		{
+			funcstate->prev_lead_edge = 0;
+		}
 	}
 
-	return tuple_in_frame;
+	return tuple_before_lead;
 }
 
 /* 
@@ -1814,31 +1857,128 @@ adjustEdges(WindowState *wstate)
 				 * If we've processed the first row, set the prev to the
 				 * edge of the first row
 				 */
-				if (key->frame->trail->kind == WINDOW_CURRENT_ROW &&
-					funcstate->cur_trail_edge == -1)
+				if (funcstate->cur_trail_edge != -1)
 				{
-					funcstate->cur_trail_edge = 0;
+					if (funcstate->prev_trail_edge != -1)
+						funcstate->prev_trail_edge = funcstate->cur_trail_edge;
+					else
+						funcstate->prev_trail_edge = 0;
 				}
-					
-				if (level_state->trail_rows > 0)
+				if (key->frame->trail->kind == WINDOW_CURRENT_ROW)
 				{
-					funcstate->prev_trail_edge++;
-					funcstate->cur_trail_edge = funcstate->prev_trail_edge + 1;
+				   	if (funcstate->cur_trail_edge == -1)
+					{
+						funcstate->cur_trail_edge = 0;
+						//funcstate->prev_trail_edge = 0;
+					}
+					else
+					{
+						funcstate->cur_trail_edge++;
+						funcstate->prev_trail_edge++;
+					}
+				}
+				else if (key->frame->trail->kind == WINDOW_BOUND_PRECEDING)
+				{
+					if (funcstate->cur_trail_edge == -1)
+					{
+						/* we've come into frame now */
+						if (level_state->trail_rows == 0)
+						{
+							funcstate->cur_trail_edge = 0;
+							//funcstate->prev_trail_edge = 0;
+						}
+					}
+					else
+					{
+						funcstate->cur_trail_edge++;
+						//funcstate->prev_trail_edge++;
+					}
+				}
+				else if (key->frame->trail->kind == WINDOW_BOUND_FOLLOWING)
+				{
+					if (funcstate->cur_trail_edge == -1)
+					{
+						bool isnull;
+						long int rows_param = 
+							ExecEvalExpr(level_state->trail_expr,
+										 econtext, &isnull, NULL);
+
+						if (rows_param == wstate->row_index)
+						{
+							/* this is legal since we know we're N rows ahead */
+							funcstate->cur_trail_edge = rows_param;
+							funcstate->prev_trail_edge = rows_param;
+						}
+					}
+					else if (funcstate->cur_trail_edge != -1)
+					{
+						funcstate->cur_trail_edge++;
+						//funcstate->prev_trail_edge++;
+					}
+					/* do nothing if we didn't find out edge */
 				}
 	
-				if (funcstate->cur_lead_edge + 1 <= 
-					funcstate->frame_mem_used - 1)
+				/* now for the lead */
+				if (funcstate->cur_lead_edge != -1)
 				{
-					funcstate->cur_lead_edge++;
-					if (wstate->row_index == 1)
+					if (funcstate->prev_lead_edge != -1)
 						funcstate->prev_lead_edge = funcstate->cur_lead_edge;
 					else
-						/* we know that the trail_edge moves forward by one */
-						funcstate->prev_lead_edge++;
+						funcstate->prev_lead_edge = 0;
 				}
-				else
+				else if(key->frame->trail->kind == WINDOW_BOUND_PRECEDING)
 				{
-					funcstate->prev_lead_edge++;
+					funcstate->prev_lead_edge = 0;
+				}
+
+				if (key->frame->lead->kind == WINDOW_CURRENT_ROW)
+				{
+				   	if (funcstate->cur_lead_edge == -1)
+						funcstate->cur_lead_edge = 0;
+					else
+					{
+						funcstate->cur_lead_edge++;
+						funcstate->prev_lead_edge++;
+					}
+				}
+				else if (key->frame->lead->kind == WINDOW_BOUND_PRECEDING)
+				{
+					if (funcstate->cur_lead_edge == -1)
+					{
+						/* we've come into frame now */
+						if (level_state->lead_rows == 0)
+						{
+							funcstate->cur_lead_edge = 0;
+							funcstate->prev_lead_edge = 0;
+						}
+					}
+					else
+					{
+						funcstate->cur_lead_edge++;
+						funcstate->prev_lead_edge++;
+					}
+				}
+				else if (key->frame->lead->kind == WINDOW_BOUND_FOLLOWING)
+				{
+					if (funcstate->cur_lead_edge == -1 &&
+						funcstate->frame_mem_used)
+					{
+						WindowRowsBuffer *wrb;
+
+						wrb = funcstate->frame_trans_vals[0];
+
+						if (wrb->row_index == wstate->row_index)
+						{
+							funcstate->cur_lead_edge = 0;
+							funcstate->prev_lead_edge = 0;
+						}
+					}
+					else if (funcstate->cur_lead_edge != -1)
+					{
+						funcstate->cur_lead_edge++;
+						funcstate->prev_lead_edge++;
+					}
+					/* do nothing if we didn't find out edge */
 				}
 			}
 			else
@@ -2533,8 +2673,22 @@ calculateTransVals(WindowState *wstate)
 				 */
 				if (OidIsValid(funcstate->invprelimfn_oid))
 				{
-					long int end = funcstate->cur_trail_edge;
+					long int end;
 					
+					/* 
+					 * Process transition values then inverse transition
+					 * values. This is important for processing of 
+					 * BETWEEN FOLLOWING N AND FOLLOWING M frames because
+					 * if we do inversion values first, they have no
+					 * effect since the transition value is uninitialised.
+					 */
+					vals = func_get_vals(funcstate, funcstate->prev_lead_edge,
+										 funcstate->cur_lead_edge, false);
+	
+					process_vals(wstate, funcstate, vals, key->frame->is_rows, 
+								 true);
+
+					end = funcstate->cur_trail_edge;
 					if (!key->frame->is_rows)
 					{
 						/* The current trail edge hovers somewhere between the
@@ -2550,12 +2704,6 @@ calculateTransVals(WindowState *wstate)
 	
 					process_vals(wstate, funcstate, vals, key->frame->is_rows,
 								 false);
-	
-					vals = func_get_vals(funcstate, funcstate->prev_lead_edge,
-										 funcstate->cur_lead_edge, false);
-	
-					process_vals(wstate, funcstate, vals, key->frame->is_rows, 
-								 true);
 				}
 				else
 				{
@@ -4939,6 +5087,11 @@ last_value_internal(WindowRefExprState *ref_state, bool *isnull)
 	WinFuncBufferData *dat;
 
 	pos = funcstate->cur_lead_edge;
+
+	if (pos >= funcstate->frame_mem_used &&
+		(funcstate->frame_mem_used - 1) >= funcstate->cur_trail_edge)
+		pos = funcstate->frame_mem_used - 1;
+		
 	if (pos < 0 || pos >= funcstate->frame_mem_used)
 	{
 		*isnull = true;

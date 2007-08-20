@@ -394,7 +394,7 @@ from
     sum(qty*prc)
   from sale
   group by rollup(cn,vn,pn)) olap_tmp(g,cn,vn,pn,s)
-order by 1,5;
+order by 1,5; -- order 1,5
 
 select
   grouping(cn, vn, pn),
@@ -403,7 +403,7 @@ select
   rank() over (partition by grouping(cn,vn,pn) order by sum(qty*prc))
 from sale
 group by rollup(cn,vn,pn)
-order by 1,5;
+order by 1,5; -- order 1,5
 
 -- end equivalent
 
@@ -437,6 +437,9 @@ select cn, dt, qty,
 	sum(qty) over (order by dt
        range '192.168.1.1'::inet preceding) as sum
 from sale;
+
+-- Test for FOLLOWING frames
+select cn, prc, dt, sum(prc) over (order by dt,cn rows between 2 following and 3 following) as f from sale;
 
 -- Check that mixing cume_dist() with other window functions on the same
 -- window does not result in badness
@@ -540,9 +543,12 @@ from sale order by dt, prc, cn;
 --begin_equivalent
 SELECT cn, vn, pn, GROUPING(cn,vn,pn),
 SUM(vn) OVER (PARTITION BY GROUPING(cn,vn,pn) ORDER BY cn) as sum FROM sale
-GROUP BY ROLLUP(cn,vn,pn);
-select cn,vn,pn,grouping,sum(vn) over (partition by grouping order by cn) as sum 
-from (select cn,vn,pn,grouping(cn,vn,pn) from sale group by rollup(cn,vn,pn)) t;
+GROUP BY ROLLUP(cn,vn,pn) order by 4; -- order 4
+
+select cn,vn,pn,grouping,
+sum(vn) over (partition by grouping order by cn) as sum 
+from (select cn,vn,pn,grouping(cn,vn,pn) from sale group by rollup(cn,vn,pn)) t
+order by 4; -- order 4
 --end_equivalent
 
 -- Sanity test for executor detection of non-sense frames
@@ -601,7 +607,34 @@ select cn, vn, pn, qty * prc,
 	lag(qty * prc) over (order by cn, vn, pn) from sale
 order by 1, 2, 3;
 
--- FIRST_VALUE/LAST_VALUE tests
+-- LAST_VALUE tests
 SELECT sale.cn,sale.qty,sale.pn, 
 LAST_VALUE(sale.qty*sale.pn) OVER(partition by sale.cn order by sale.cn,pn range between unbounded preceding and unbounded following ) as lv 
 from sale order by 1, 2, 3;
+
+SELECT sale.vn,sale.qty,                                   
+LAST_VALUE(floor(sale.vn)) OVER(order by sale.vn asc range 0 preceding) as f
+from sale;
+
+select cn, cast(cname as varchar(10)), last_value(cast(cname as varchar(10))) 
+  over(order by cn range 2 preceding) as f
+from customer;
+
+select cn, prc, dt, 
+last_value(prc) over (order by dt, prc, cn rows between 1 following and 4 following) as f from sale;
+
+select vn, last_value(vn) 
+over(order by vn range between 2 preceding and 2 following) from vendor;
+
+select vn, last_value(vn) 
+over(order by vn range between 20 preceding and 20 following) from vendor;
+
+SELECT sale.cn,sale.pn, 
+last_VALUE(sale.pn+sale.pn) 
+OVER(order by sale.cn rows between current row and 
+unbounded following) as fv from sale;
+
+SELECT sale.cn,sale.pn, 
+last_VALUE(sale.pn+sale.pn) OVER(order by sale.cn range between current row and
+unbounded following) as fv from sale;
+
