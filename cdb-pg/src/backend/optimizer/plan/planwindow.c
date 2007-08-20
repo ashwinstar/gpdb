@@ -1053,7 +1053,7 @@ static int compare_edge(WindowFrameEdge *a, WindowFrameEdge *b)
 		/* Compare a->val to b->val */
 		bool okay = TRUE;
 		Const *aconst, *bconst;
-		int64 aval, bval;
+		int64 aval = 0, bval = 0;
 		
 		okay = IsA(a->val,Const) && IsA(b->val,Const);
 		
@@ -2205,7 +2205,7 @@ static void plan_windowinfo_coplans(PlannerInfo *root, WindowContext *context, i
 {
 	Coplan *window_coplan = NULL;
 	Coplan *agg_coplan = NULL;
-	size_t sz;
+	size_t sz = 0;
 	int i;
 	ListCell *lc;
 	WindowInfo *winfo = context->windowinfos + window_index;
