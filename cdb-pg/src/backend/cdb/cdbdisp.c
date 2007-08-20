@@ -12,6 +12,7 @@
  */
 
 #include "postgres.h"
+//#define DONT_USE_THREADS 1
 #include <pthread.h>
 #include <limits.h>
 
@@ -66,7 +67,9 @@
 /*
  * Static Helper functions
  */
+#ifndef DONT_USE_THREADS
 static void *thread_DispatchCommand(void *arg);
+#endif
 static bool thread_DispatchOut(DispatchCommandParms		*pParms);
 static void thread_DispatchWait(DispatchCommandParms	*pParms);
 
@@ -407,13 +410,19 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 	 */
 	for (i = 0; i < newThreads; i++)
 	{
-		int		pthread_err = 0;
 		DispatchCommandParms *pParms = &((*dispatchThreads)->dispatchCommandParmsAr + (*dispatchThreads)->threadCount)[i];
-
+#ifndef DONT_USE_THREADS
+		int		pthread_err = 0;
+		
  		/* attributes of the thread we're creating */
 		pthread_attr_t t_atts;
+#endif
 
 		Assert(pParms != NULL);
+		
+#ifdef DONT_USE_THREADS
+		thread_DispatchOut(pParms);
+#else
 
 		elog(DEBUG4, "dispatchToGang: Creating thread %d of %d for CommandDispatch",
 			 i + 1, newThreads);
@@ -459,6 +468,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 							errdetail("pthread_create() failed with err %d", pthread_err),
 							errhint("gp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", gp_connections_per_thread)));
 		}
+#endif
 
 	}
 
@@ -684,16 +694,20 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 	 */
 	for (i = 0; i < dispatchThreads->threadCount; i++)
 	{							/* loop over threads */
-		int			pthread_err = 0;
-
+		
 		pParms = &dispatchThreads->dispatchCommandParmsAr[i];
 		Assert(pParms != NULL);
+		
+#ifdef DONT_USE_THREADS
+		thread_DispatchWait(pParms);
+#else
 
 		elog(DEBUG4, "CheckDispatchResult: Joining to thread %d of %d",
 			 i + 1, dispatchThreads->threadCount);
 
 		if (pParms->thread_valid)
 		{
+			int			pthread_err = 0;
 			pthread_err = pthread_join(pParms->thread, NULL);
 			if (pthread_err != 0)
 				elog(FATAL, "CheckDispatchResult: pthread_join failed on thread %d (0x%x) of %d (returned %d attempting to join to 0x%x)",
@@ -705,7 +719,7 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 #endif
 					 dispatchThreads->threadCount, pthread_err, mythread());
 		}
-
+#endif
 		HOLD_INTERRUPTS();
 		pParms->thread_valid = false;
 		memset(&pParms->thread, 0, sizeof(pParms->thread));
@@ -1646,6 +1660,100 @@ thread_DispatchOut(DispatchCommandParms		*pParms)
 			
             dispatchResult->hasDispatched = true;
         }
+	}
+        
+        
+        
+    /*
+     * Is everything sent?  Well, if the network stack was too busy, some of the sends
+     * might not have completed.  Make sure they do.
+     */
+
+	{
+		bool allsent=true;
+		
+		/*
+		 * debug loop to check to see if this really is needed
+		 */
+		for (i = 0; i < db_count; i++)
+    	{
+    		dispatchResult = pParms->dispatchResultPtrArray[i];
+    		if (!dispatchResult->stillRunning || !dispatchResult->hasDispatched)
+    			continue;
+    		if (PQstatus(dispatchResult->segdbDesc->conn) == CONNECTION_BAD)
+    			continue;
+    		if (dispatchResult->segdbDesc->conn->outCount > 0)
+    		{
+    			write_stderr("Yes, extra flushing is necessary %d\n",i);
+    			break;
+    		}
+    	}
+		
+		/*
+		 * Check to see if any needed extra flushing.
+		 */
+		for (i = 0; i < db_count; i++)
+    	{
+        	int			flushResult;
+
+    		dispatchResult = pParms->dispatchResultPtrArray[i];
+    		if (!dispatchResult->stillRunning || !dispatchResult->hasDispatched)
+    			continue;
+    		if (PQstatus(dispatchResult->segdbDesc->conn) == CONNECTION_BAD)
+    			continue;
+    		/*
+			 * If data remains unsent, send it.  Else we might be waiting for the
+			 * result of a command the backend hasn't even got yet.
+			 */
+    		flushResult = pqFlush(dispatchResult->segdbDesc->conn);
+    		/*
+    		 * First time, go through the loop without waiting if we can't 
+    		 * flush, in case we are using multiple network adapters, and 
+    		 * other connections might be able to flush
+    		 */
+    		if (flushResult > 0)
+    		{
+    			allsent=false;
+    			write_stderr("flushing didn't finish the work %d\n",i);
+    		}
+    		
+    	}
+
+        /*
+         * our first attempt at doing more flushes didn't get everything out,
+         * so we need to continue to try.
+         */
+		if (!allsent)
+	        for (i = 0; i < db_count; i++)
+	    	{
+	        	int			flushResult;
+	
+	    		dispatchResult = pParms->dispatchResultPtrArray[i];
+	    		if (!dispatchResult->stillRunning || !dispatchResult->hasDispatched)
+	    			continue;
+	    		if (PQstatus(dispatchResult->segdbDesc->conn) == CONNECTION_BAD)
+	    			continue;
+				/*
+				 * If data remains unsent, send it.  Else we might be waiting for the
+				 * result of a command the backend hasn't even got yet.
+				 */
+				while ((flushResult = pqFlush(dispatchResult->segdbDesc->conn)) > 0)
+				{
+					/*
+					 * If the flush didn't happen, this time wait until we 
+					 * can do the flush.
+					 */
+					write_stderr("Waiting until we can flush\n");
+					if (pqWait(FALSE, TRUE, dispatchResult->segdbDesc->conn))
+					{
+						//log an error on this
+						break;
+					}
+					write_stderr("Done Waiting until we can flush\n");
+				}
+		    		
+
+	        }
 
 	}
 	return true;
@@ -1802,6 +1910,7 @@ thread_DispatchWait(DispatchCommandParms		*pParms)
 	}							/* some QEs running */
 
 }
+#ifndef DONT_USE_THREADS
 /*
  * thread_DispatchCommand is the thread proc used to dispatch the command to one or more of the qExecs.
  *
@@ -1823,7 +1932,7 @@ thread_DispatchCommand(void *arg)
 
 	return (NULL);
 }	/* thread_DispatchCommand */
-
+#endif
 
 /* Helper function to thread_DispatchCommand that decides if we should dispatch
  * to this segment database.
