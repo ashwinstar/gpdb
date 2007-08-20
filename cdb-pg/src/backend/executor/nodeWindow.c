@@ -1708,7 +1708,7 @@ appendRowTuple(WindowState *wstate, WindowFrame *frame,
 	if (EDGE_IS_BOUND(frame->lead) || frame->lead->kind == WINDOW_CURRENT_ROW)
 	{
 		elog(DEBUG1, "lead row index = %lli, lead param = %li",
-			 lead_row_index, level_state->lead_rows);
+			(long long) lead_row_index, level_state->lead_rows);
 		
 		if (lead_row_index <= level_state->lead_rows)
 		{
@@ -2493,7 +2493,7 @@ populateFrameBuffers(WindowState *wstate)
 	}
 
 	elog(DEBUG1, "moving frame by %li, lead row %lli", (-ntuples + 1),
-		 lead_row_index);
+		(long long) lead_row_index);
 
 	restoreposInputBuffer(wstate);
 	elog(DEBUG1, "----- end frame populate");
@@ -2594,7 +2594,7 @@ process_vals(WindowState *wstate, WindowStatePerFunction funcstate,
 			fcinfo.arg[1] = wrb->transval->transValue;
 			fcinfo.argnull[1] = wrb->transval->transValueIsNull;
 			elog(DEBUG1, "processing buffer for row %llu, is %s",
-				 wrb->row_index, is_add ? "add" : "inv");
+				(unsigned long long) wrb->row_index, is_add ? "add" : "inv");
 		}
 		else
 		{
@@ -2858,7 +2858,7 @@ invokeWindowFuncs(WindowState *wstate)
 
 	elog(DEBUG1, "======= START FRAME PROCESS =====");
 	elog(DEBUG1, "row index %lli",
-		 (int64) wstate->row_index);
+		 (long long) wstate->row_index);
 	
 	invokeTrivialFuncs(wstate, &found_complex_func);
 
