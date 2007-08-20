@@ -46,6 +46,7 @@
 #include "utils/resscheduler.h"
 #include "utils/syscache.h"
 #include "utils/tqual.h"  		/* SharedSnapshot */
+#include "utils/portal.h"
 #include "pgstat.h"
 
 

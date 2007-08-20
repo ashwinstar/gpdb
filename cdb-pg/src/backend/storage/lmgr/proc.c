@@ -45,6 +45,7 @@
 #include "storage/spin.h"
 #include "utils/resscheduler.h"
 #include "utils/timestamp.h"
+#include "utils/portal.h"
 
 #include "utils/tqual.h"  /*SharedLocalSnapshotSlot*/
 #include "cdb/cdbvars.h"  /*Gp_is_writer*/
