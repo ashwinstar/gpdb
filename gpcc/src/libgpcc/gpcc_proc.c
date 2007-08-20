@@ -28,14 +28,14 @@ static apr_status_t gpcc_proc_initialize()
 	strcpy(LD_LIBRARY_PATH, path);
     }
 
-    sprintf(LD_LIBRARY_PATH, "%s;%s/lib", LD_LIBRARY_PATH, GPHOME);
+    sprintf(LD_LIBRARY_PATH, "%s:%s/lib", LD_LIBRARY_PATH, GPHOME);
 
     *PATH = 0;
     path = getenv("PATH");
     if (path) {
 	strcpy(PATH, path);
     }
-    sprintf(PATH, "%s;%s/bin", PATH, GPHOME);
+    sprintf(PATH, "%s:%s/bin", PATH, GPHOME);
 
     initialize = 1;
     return 0;
