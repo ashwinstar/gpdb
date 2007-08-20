@@ -334,7 +334,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 						  &tlist1, &tlist2, &tlist3, &qual3);
 
 	/* Even though we use context->grpColIdx to generate
-	 * these tlists, but the order of grouping columns are defined
+	 * these tlists, but the order of grouping columns are defined in
 	 * context->current_rollup->colIdx. We reflect this
 	 * in constructing prelimGroupColIdx.
 	 */
@@ -608,10 +608,25 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 		/* Add a sort node */
 		if (context->aggstrategy == AGG_SORTED)
 		{
-			agg_node = (Plan *) make_sort_from_groupcols(root, root->parse->groupClause,
-														 prelimGroupColIdx,
-														 true,
-														 agg_node);
+			/* Make the final group columns to be sorted. We include
+			 * Grouping column here.
+			 */
+			AttrNumber *new_grpColIdx =
+				(AttrNumber *)palloc0(context->numGroupCols * sizeof(AttrNumber));
+			memcpy(new_grpColIdx, context->grpColIdx,
+				   (context->numGroupCols - 1) * sizeof(AttrNumber));
+			new_grpColIdx[context->numGroupCols - 1] =
+				prelimGroupColIdx[context->numGroupCols - 1];
+			
+			agg_node = (Plan *)
+				make_sort_from_reordered_groupcols(root,
+												   root->parse->groupClause,
+												   orig_grpColIdx,
+												   new_grpColIdx,
+												   true,
+												   agg_node);
+			pfree(new_grpColIdx);
+
 			mark_sort_locus(agg_node);
 		}
 		

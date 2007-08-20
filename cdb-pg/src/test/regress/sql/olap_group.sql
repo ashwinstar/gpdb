@@ -470,3 +470,10 @@ select * from sale where exists (select cn, sum(qty) from sale group by rollup(c
 create sequence newseq start 1;
 create view v7 as select nextval('newseq');
 select sum(nextval) from v7 group by rollup(nextval);
+
+-- MPP-1858
+SELECT sale.vn,sale.qty,sale.cn,sale.vn,sale.prc,MIN(floor(sale.qty))
+FROM sale
+GROUP BY CUBE((sale.cn,sale.prc),(sale.vn),(sale.cn,sale.cn),(sale.vn,sale.qty)),
+ROLLUP((sale.cn,sale.pn),(sale.prc,sale.qty),(sale.cn));
+select pn,prc,cn,vn,sum(qty) from sale group by grouping sets (rollup(pn,prc), rollup(cn,vn));

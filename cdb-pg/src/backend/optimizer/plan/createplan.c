@@ -3633,10 +3633,15 @@ make_sort_from_reordered_groupcols(PlannerInfo *root,
 	numgrpkeys = num_distcols_in_grouplist(groupcls);
 
 	if (appendGrouping)
-		numgrpkeys ++;
-
-	sortColIdx = (AttrNumber *) palloc(numgrpkeys * sizeof(AttrNumber));
-	sortOperators = (Oid *) palloc(numgrpkeys * sizeof(Oid));
+	{
+		sortColIdx = (AttrNumber *) palloc((numgrpkeys + 1) * sizeof(AttrNumber));
+		sortOperators = (Oid *) palloc((numgrpkeys + 1) * sizeof(Oid));
+	}
+	else
+	{
+		sortColIdx = (AttrNumber *) palloc(numgrpkeys * sizeof(AttrNumber));
+		sortOperators = (Oid *) palloc(numgrpkeys * sizeof(Oid));
+	}	
 
 	numsortkeys = 0;
 
