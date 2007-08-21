@@ -113,6 +113,9 @@ extern void tuned_STREAM_Scale(double scalar);
 extern void tuned_STREAM_Add();
 extern void tuned_STREAM_Triad(double scalar);
 #endif
+#ifdef _OPENMP
+int omp_get_num_threads( );
+#endif
 int
 main()
     {
