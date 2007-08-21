@@ -2138,7 +2138,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&gp_connections_per_thread,
-		4, 1, INT_MAX, assign_gp_connections_per_thread, show_gp_connections_per_thread
+		4, 0, INT_MAX, assign_gp_connections_per_thread, show_gp_connections_per_thread
 	},
 	
 	{
