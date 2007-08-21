@@ -372,6 +372,9 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	List	   *subpaths = NIL;
 	ListCell   *l;
 
+	/* weighted average of widths */
+	double width_avg = 0;
+
 	/*
 	 * XXX for now, can't handle inherited expansion of FOR UPDATE/SHARE; can
 	 * we do better?  (This will take some redesign because the executor
@@ -468,8 +471,7 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		 */
         rel->tuples += childrel->tuples;
 		rel->rows += cdbpath_rows(childrel->cheapest_total_path);
-		if (childrel->width > rel->width)
-			rel->width = childrel->width;
+		width_avg += cdbpath_rows(childrel->cheapest_total_path) * childrel->width;
 
 		forboth(parentvars, rel->reltargetlist,
 				childvars, childrel->reltargetlist)
@@ -488,6 +490,8 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 			}
 		}
 	}
+
+	rel->width = (int) (width_avg / Max(1.0, rel->rows));
 
     /* CDB: Just one child (or none)?  Set flag if result is at most 1 row. */
     if (!subpaths)
