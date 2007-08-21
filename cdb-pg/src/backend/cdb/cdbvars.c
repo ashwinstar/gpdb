@@ -379,7 +379,7 @@ assign_gp_connections_per_thread(int newval, bool doit, GucSource source)
 
 	if (doit)
 	{
-		if (newval < 1)
+		if (newval < 0)
 			return false;
 
 		gp_connections_per_thread = newval;
