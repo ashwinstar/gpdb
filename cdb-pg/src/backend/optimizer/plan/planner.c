@@ -1493,7 +1493,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	 if ( parse->distinctClause != NULL)
 	 {
 		distinctExprs = get_sortgrouplist_exprs(parse->distinctClause, 
-												parse->targetList);
+												result_plan->targetlist);
 		numDistinct = estimate_num_groups(root, distinctExprs, 
 										  result_plan->plan_rows);
 		
@@ -1505,7 +1505,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		if ( Gp_role == GP_ROLE_DISPATCH && CdbPathLocus_IsPartitioned(current_locus) )
 		{
 			List *distinct_pathkeys = make_pathkeys_for_sortclauses(parse->distinctClause,
-																	parse->targetList);
+																	result_plan->targetlist);
 			bool needMotion = !cdbpathlocus_collocates(current_locus, distinct_pathkeys);
 			
 			/* Apply the preunique optimization, if enabled and worthwhile. */
