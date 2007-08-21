@@ -442,7 +442,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 														   root->parse->groupClause,
 														   orig_grpColIdx,
 														   groupColIdx,
-														   false,
+														   NULL,
 														   current_lefttree);
 					context->current_pathkeys = root->group_pathkeys;
 					mark_sort_locus(current_lefttree);
@@ -608,25 +608,29 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 		/* Add a sort node */
 		if (context->aggstrategy == AGG_SORTED)
 		{
-			/* Make the final group columns to be sorted. We include
-			 * Grouping column here.
-			 */
-			AttrNumber *new_grpColIdx =
+			AttrNumber *orig_prelimGroupColIdx =
 				(AttrNumber *)palloc0(context->numGroupCols * sizeof(AttrNumber));
-			memcpy(new_grpColIdx, context->grpColIdx,
-				   (context->numGroupCols - 1) * sizeof(AttrNumber));
-			new_grpColIdx[context->numGroupCols - 1] =
-				prelimGroupColIdx[context->numGroupCols - 1];
-			
+			int attno;
+			TargetEntry *grouping_entry;
+
+			/* Create a group column index array that maps columns in
+			 * prelimGroupColIdx to the position in the original GROUP
+			 * BY clause.
+			 */
+			for (attno=0; attno<context->numGroupCols -1; attno++)
+				orig_prelimGroupColIdx[attno] = attno+1;
+
+			grouping_entry =
+				get_tle_by_resno(agg_node->targetlist,
+								 prelimGroupColIdx[context->numGroupCols - 1]);
 			agg_node = (Plan *)
 				make_sort_from_reordered_groupcols(root,
 												   root->parse->groupClause,
-												   orig_grpColIdx,
-												   new_grpColIdx,
-												   true,
+												   orig_prelimGroupColIdx,
+												   prelimGroupColIdx,
+												   grouping_entry,
 												   agg_node);
-			pfree(new_grpColIdx);
-
+			pfree(orig_prelimGroupColIdx);
 			mark_sort_locus(agg_node);
 		}
 		
@@ -696,11 +700,11 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 	{
 		lefttree = (Plan *)
 			make_sort_from_reordered_groupcols(root,
-											  root->parse->groupClause,
-											  orig_grpColIdx,
-											  context->grpColIdx,
-											  false,
-											  lefttree);
+											   root->parse->groupClause,
+											   orig_grpColIdx,
+											   context->grpColIdx,
+											   NULL,
+											   lefttree);
 		context->current_pathkeys = root->group_pathkeys;
 		mark_sort_locus(lefttree);
 

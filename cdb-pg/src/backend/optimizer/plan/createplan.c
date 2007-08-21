@@ -3609,15 +3609,16 @@ make_sort_from_groupcols(PlannerInfo *root,
  * 'groupcls' is the list of GroupClauses
  * 'orig_groupColIdx' is the original columns numbers for groupcls
  * 'new_grpColIdx' gives the re-ordered column numbers to use
- * 'appendGrouping' represents whether to append a Grouping
- *    as the last sort key, used for grouping extension.
+ * 'grouping' represents the target entry for the Grouping column.
+ *    If this value is not NULL, "Grouping" column will be added
+ *    into the sorting list.
  */
 Sort*
 make_sort_from_reordered_groupcols(PlannerInfo *root,
 								   List *groupcls,
 								   AttrNumber *orig_grpColIdx,
 								   AttrNumber *new_grpColIdx,
-								   bool appendGrouping,
+								   TargetEntry *grouping,
 								   Plan *lefttree)
 {
 	List	   *sub_tlist = lefttree->targetlist;
@@ -3632,7 +3633,7 @@ make_sort_from_reordered_groupcols(PlannerInfo *root,
 	 */
 	numgrpkeys = num_distcols_in_grouplist(groupcls);
 
-	if (appendGrouping)
+	if (grouping != NULL)
 	{
 		sortColIdx = (AttrNumber *) palloc((numgrpkeys + 1) * sizeof(AttrNumber));
 		sortOperators = (Oid *) palloc((numgrpkeys + 1) * sizeof(Oid));
@@ -3678,18 +3679,11 @@ make_sort_from_reordered_groupcols(PlannerInfo *root,
 									  numsortkeys, sortColIdx, sortOperators);
 	}
 
-	if (appendGrouping)
+	if (grouping != NULL)
 	{
-		Oid sort_op;
-		/* Grouping will be the last entry in grpColIdx */
-		TargetEntry *tle = get_tle_by_resno(sub_tlist, new_grpColIdx[grpno]);
+		Oid sort_op = ordering_oper_opid(exprType((Node *)grouping->expr));
 
-		if (tle->resname == NULL)
-			tle->resname = "grouping";
-
-		sort_op = ordering_oper_opid(exprType((Node *)tle->expr));
-
-		numsortkeys = add_sort_column(tle->resno, sort_op,
+		numsortkeys = add_sort_column(grouping->resno, sort_op,
 									  numsortkeys, sortColIdx, sortOperators);
 	}
 

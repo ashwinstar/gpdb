@@ -477,3 +477,7 @@ FROM sale
 GROUP BY CUBE((sale.cn,sale.prc),(sale.vn),(sale.cn,sale.cn),(sale.vn,sale.qty)),
 ROLLUP((sale.cn,sale.pn),(sale.prc,sale.qty),(sale.cn));
 select pn,prc,cn,vn,sum(qty) from sale group by grouping sets (rollup(pn,prc), rollup(cn,vn));
+SELECT sale.vn,sale.pn,GROUP_ID(),COUNT(floor(sale.vn+sale.cn)) FROM sale
+GROUP BY (),GROUPING SETS(CUBE((sale.qty,sale.qty,sale.qty),(sale.pn,sale.pn),(sale.cn,sale.pn,sale.prc),(sale.cn,sale.vn,sale.vn)),
+CUBE((sale.cn,sale.qty),(sale.vn,sale.prc,sale.qty),(sale.vn),(sale.vn,sale.dt),(sale.pn),(sale.qty,sale.pn)),CUBE((sale.qty,sale.dt))) 
+ORDER BY sale.vn asc,sale.pn desc,sale.vn asc,sale.vn asc;

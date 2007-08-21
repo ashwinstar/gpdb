@@ -83,7 +83,7 @@ extern Sort *make_sort_from_reordered_groupcols(PlannerInfo *root,
 												List *groupcls,
 												AttrNumber *orig_grpColIdx,
 												AttrNumber *new_grpColIdx,
-												bool appendGrouping,
+												TargetEntry *grouping,
 												Plan *lefttree);
 extern Agg *make_agg(PlannerInfo *root, List *tlist, List *qual,
 					 AggStrategy aggstrategy,
