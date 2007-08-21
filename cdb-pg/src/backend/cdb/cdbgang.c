@@ -1410,6 +1410,7 @@ static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bo
 	appendPQExpBuffer(buffer, " -c temp_buffers=%d", num_temp_buffers);
     appendPQExpBuffer(buffer, " -c gp_log_interconnect=%s",
                        gpvars_show_gp_log_interconnect());
+    appendPQExpBuffer(buffer, " -c gp_connections_per_thread=%d",gp_connections_per_thread);
 
     if (gp_use_snapshop_during_callback)
     	appendPQExpBuffer(buffer, " -c gp_use_snapshop_during_callback=true");
