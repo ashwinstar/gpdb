@@ -277,3 +277,39 @@ APR_DECLARE(apr_status_t) pg_check_segment(int port, apr_pool_t *p)
 
     return 0;
 }
+
+APR_DECLARE(apr_status_t) gpcc_pg_change_password(int port, const char *user, const char *password, apr_pool_t *p) 
+{
+    int e;
+    apr_proc_t proc;
+    char sql[1024];
+
+    sprintf(sql, "alter user %s password '%s'", user, password);
+    e = gpcc_proc_psql(&proc, port, DEFAULT_GP_DBNAME, sql, 1, 1, p); 
+    if (e) {
+	gpcc_log_error("gpcc_pg_change_password failure");
+	return e;
+    }
+
+    return 0;
+}
+
+
+APR_DECLARE(apr_status_t) gpcc_pg_create_database(int port, const char *dbname, apr_pool_t *p) 
+{
+    int e;
+    apr_proc_t proc;
+    char sql[1024];
+
+    sprintf(sql, "create database %s", dbname);
+    e = gpcc_proc_psql(&proc, port, DEFAULT_GP_DBNAME, sql, 1, 1, p); 
+    if (e) {
+	gpcc_log_error("gpcc_pg_change_password failure");
+	return e;
+    }
+
+    return 0;
+    
+
+
+}

@@ -59,4 +59,25 @@ APR_DECLARE(apr_status_t) gpcc_pg_reset_invalid_segment(int master_port, apr_poo
  */
 APR_DECLARE(apr_status_t) gpcc_pg_check_segment(int port, apr_pool_t *p);
 
-#endif
+
+/**
+ *  change password
+ *  @param port Greenplum Database port number
+ *  @param user username
+ *  @param password password
+ *  @param p memory pool
+ *  @return APR_SUCCESS if success
+ */
+APR_DECLARE(apr_status_t) gpcc_pg_change_password(int port, const char *user, const char *password, apr_pool_t *p) ;
+
+
+/**
+ *  create database
+ *  @param port Greenplum Database port number
+ *  @param dbname database name
+ *  @param p memory pool
+ *  @return APR_SUCCESS if success
+ */
+APR_DECLARE(apr_status_t) gpcc_pg_create_database(int port, const char *dbname, apr_pool_t *p) ;
+
+#endif   /* GPCC_PG_H */
