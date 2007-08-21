@@ -463,10 +463,17 @@ extern bool gp_enable_agg_distinct;
  * to the collocation motion for a Unique operator?  The idea is to reduce
  * the number of rows moving over the interconnect.
  *
- * The code does not currently use planner estimates for this.  If enabled,
- * the tactic is used whenever possible.
+ * The code uses planner estimates for this.  If enabled, the tactic is used 
+ * only if it is estimated to be cheaper that a 1-phase approach.  However,
+ * see gp_eqger_preunique.
  */
 extern bool gp_enable_preunique;
+
+/* If gp_enable_preunique is true, then  apply the associated optimzation
+ * in an "eager" fashion.  In effect, this setting overrides the cost-
+ * based decision whether to use a 2-phase approach to duplicate removal.
+ */
+extern bool gp_eager_preunique;
 
 /* May Greenplum dump statistics for all segments as a huge ugly string
  * during EXPLAIN ANALYZE? 

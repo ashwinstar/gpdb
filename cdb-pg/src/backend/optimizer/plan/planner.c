@@ -1522,7 +1522,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 				alt_cost += cpu_operator_cost * numDistinct 
 							* list_length(parse->distinctClause);
 					  
-				if ( alt_cost < base_cost )
+				if ( alt_cost < base_cost || gp_eager_preunique )
 				{
 					/* Reduce the number of rows to move by adding a [Sort and]
 					 * Unique prior to the redistribute Motion. */

@@ -1132,6 +1132,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_eager_preunique", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Experimental feature: 2-phase duplicate removal - cost override."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_eager_preunique,
+		false, NULL, NULL
+	},
+
+	{
 		{"gp_hashagg_recalc_density", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Executor can recalculate grouping density based on pre-spill real density."),
 			NULL,

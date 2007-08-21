@@ -110,6 +110,7 @@ double      gp_motion_cost_per_row = 0;
 int         gp_segments_for_planner = 0;
 bool		enable_agg_restruct = true;
 bool		gp_enable_preunique = TRUE;
+bool		gp_eager_preunique = FALSE;
 double		gp_hashagg_rewrite_limit = 1;
 bool		gp_hashagg_recalc_density = true;
 
