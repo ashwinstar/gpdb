@@ -349,7 +349,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 
 	segdb_count = newGangDefinition->size;
 
-	Assert(gp_connections_per_thread > 0);
+	Assert(gp_connections_per_thread >= 0);
 	Assert(segdb_count > 0);
 	
 	/*
@@ -544,7 +544,10 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	 * We allocate enough memory for this many DoConnectParms structures,
 	 * even though we may not use them all.
 	 */
-	max_threads = 1 + (segdb_count - 1) / gp_connections_per_thread;
+	if (gp_connections_per_thread==0)
+		max_threads = 1;
+	else
+		max_threads = 1 + (segdb_count - 1) / gp_connections_per_thread;
 	Assert(max_threads > 0);
 	doConnectParmsAr = (DoConnectParms *)
 		palloc0(max_threads * sizeof(DoConnectParms));
@@ -583,6 +586,8 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	 */
 	if (segdbs_in_thread_pool == 0)
 		threadCount = 0;
+	else if (gp_connections_per_thread == 0)
+		threadCount = 1;
 	else
 		threadCount = 1 + (segdbs_in_thread_pool - 1) / gp_connections_per_thread;
 
@@ -1241,6 +1246,7 @@ addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
 {
 	DoConnectParms *pParms;
 	int			ParmsIndex;
+	bool		firsttime = false;
 
 	Assert(segdbCount != NULL);
 
@@ -1251,14 +1257,21 @@ addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
 	 * by (*segdbCount) % gp_connections_per_thread == 0,
 	 * then we initialize the struct members for that array location first.
 	 */
-	ParmsIndex = (*segdbCount) / gp_connections_per_thread;
+	if (gp_connections_per_thread == 0)
+		ParmsIndex = 0;
+	else
+		ParmsIndex = (*segdbCount) / gp_connections_per_thread;
 	pParms = &ParmsAr[ParmsIndex];
 
-	if ((*segdbCount) % gp_connections_per_thread == 0)
+	if (gp_connections_per_thread == 0)
+		firsttime = (*segdbCount) == 0;
+	else
+		firsttime = (*segdbCount) % gp_connections_per_thread == 0;
+	if (firsttime)
 	{
-		Assert(gp_connections_per_thread > 0);
+		Assert(gp_connections_per_thread >= 0);
 		pParms->segdbDescPtrArray =
-			(SegmentDatabaseDescriptor **) palloc0(gp_connections_per_thread *
+			(SegmentDatabaseDescriptor **) palloc0((gp_connections_per_thread == 0 ? getgpsegmentCount() : gp_connections_per_thread) *
 												   sizeof
 												   (SegmentDatabaseDescriptor
 													*));
@@ -1979,7 +1992,10 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
 	 * even though we may not use them all.
 	 */
 	segdb_count = conninfo->nsegs;
-	max_threads = 1 + (segdb_count - 1) / gp_connections_per_thread;
+	if (gp_connections_per_thread == 0)
+		max_threads = 1;
+	else
+		max_threads = 1 + (segdb_count - 1) / gp_connections_per_thread;
 	Assert(max_threads > 0);
 	doConnectParmsAr = (DoConnectParms *)
 		palloc0(max_threads * sizeof(DoConnectParms));
@@ -2018,6 +2034,8 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
 	 */
 	if (segdbs_in_thread_pool == 0)
 		threadCount = 0;
+	else if (gp_connections_per_thread == 0)
+		threadCount = 1;
 	else
 		threadCount = 1 + (segdbs_in_thread_pool - 1) / gp_connections_per_thread;
 
