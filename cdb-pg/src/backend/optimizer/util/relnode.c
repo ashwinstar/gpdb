@@ -372,9 +372,8 @@ build_join_rel(PlannerInfo *root,
 	build_joinrel_tlist(root, joinrel, outer_rel);
 	build_joinrel_tlist(root, joinrel, inner_rel);
 
-	/* determine width ouf output row */
-	Assert(0 == joinrel->width);
-	joinrel->width = outer_rel->width + inner_rel->width;
+	/* cap width of output row by sum of its inputs */
+	joinrel->width = Min(joinrel->width, outer_rel->width + inner_rel->width);
 
 	/*
 	 * Construct restrict and join clause lists for the new joinrel. (The
@@ -473,6 +472,7 @@ build_joinrel_tlist(PlannerInfo *root, RelOptInfo *joinrel,
 		{
 			/* Yup, add it to the output */
 			joinrel->reltargetlist = lappend(joinrel->reltargetlist, origvar);
+			joinrel->width += baserel->attr_widths[ndx];
 		}
 	}
 }
