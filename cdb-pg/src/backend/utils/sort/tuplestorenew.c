@@ -1003,7 +1003,7 @@ void ntuplestore_acc_put_tupleslot(NTupleStoreAccessor *tsa, TupleTableSlot *slo
 		lobref.size = dest_len;
 
 		ntuplestore_put_lob(tsa->store, lob, &lobref);
-		ntuplestore_acc_put_data(tsa, &lobref, -sizeof(NTupleStoreLobRef)); 
+		ntuplestore_acc_put_data(tsa, &lobref, -(int)sizeof(NTupleStoreLobRef)); 
 		pfree(lob);
 		return;
 	}
