@@ -527,8 +527,8 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, cha
 	 *
 	 */
     GetSubtransactionsForSharedSnapshot(
-    	&SharedLocalSnapshotSlot->subcnt,
-    	SharedLocalSnapshotSlot->subxids);
+    	(uint32 *)&SharedLocalSnapshotSlot->subcnt,
+    	(TransactionId *)SharedLocalSnapshotSlot->subxids);
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"updateSharedLocalSnapshot count of subtransaction ids %u",SharedLocalSnapshotSlot->subcnt);
 
 	if (snapshot->xcnt > 0)
@@ -612,7 +612,7 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, cha
 		DtxContextToString(DistributedTransactionContext));
 	elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Dump Local* %s)", 
 	 	  QEDtxContextInfo.distributedSnapshotData.snapshotId,
-	 	  DebugGetSnapshotString(&SharedLocalSnapshotSlot->snapshot));
+	 	  DebugGetSnapshotString((const Snapshot)&SharedLocalSnapshotSlot->snapshot));
 
 }
 
@@ -755,7 +755,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 				
 				if (Debug_print_full_dtm)
 				{
-					ShowSubtransactionsForSharedSnapshot(SharedLocalSnapshotSlot->subcnt,SharedLocalSnapshotSlot->subxids);
+					ShowSubtransactionsForSharedSnapshot(SharedLocalSnapshotSlot->subcnt,(const TransactionId *)SharedLocalSnapshotSlot->subxids);
 				}
 	
 				return snapshot;
