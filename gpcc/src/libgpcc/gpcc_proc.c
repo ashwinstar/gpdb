@@ -110,11 +110,13 @@ APR_DECLARE(apr_status_t) gpcc_proc_psql(apr_proc_t *proc, int port, const char 
 	return e;
 
     if (utility) {
-	sprintf(cmd, "PGOPTIONS=\" gp_session_role=utility\" %s/bin/psql -p %d %s -t -c \"%s\"",
+	sprintf(cmd, "PGOPTIONS=\"-c gp_session_role=utility\" %s/bin/psql -p %d %s -A -t -c \"%s\"",
 		GPHOME, port, dbname, sql);
     } else {
 	sprintf(cmd, "%s/bin/psql -p %d %s -c \"%s\"", GPHOME, port, dbname, sql);
     }
+
+    gpcc_log_info("Execute: %s", cmd);
 
     argv[0] = cmd;
     argv[1] = 0;
@@ -194,7 +196,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start(apr_proc_t *proc, int port, con
     if ((e = gpcc_proc_initialize()) != 0) 
 	return e;
 
-    sprintf(cmd, "export LD_LIBRARY_PATH=%s && export PATH=%s && export PGPORT=%d && pg_ctl start -D %s -l %s.log -o \"%s\" %s", 
+    sprintf(cmd, "export LD_LIBRARY_PATH=%s && export PATH=%s && export PGPORT=%d && pg_ctl start -D %s -l %s.log -o \"%s\" %s > /dev/null 2>&1", 
 	    LD_LIBRARY_PATH, PATH, port, data_dir, data_dir, option, waitflag);
     
     argv[0] = cmd;
@@ -202,6 +204,23 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start(apr_proc_t *proc, int port, con
     e = gpcc_proc_run_shell(proc, argv[0], (const char *const *) argv, 0, blocking, p);
 
     return e;
+}
+
+APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_segment(apr_proc_t *proc, int port, const char *data_dir, int wait, int blocking, apr_pool_t *p)
+{
+    char option[128];
+    sprintf(option, "-i -p %d", port);
+    return gpcc_proc_pg_ctl_start(proc, port, data_dir, option, wait, blocking, p);    
+}
+
+/**
+ * pg_ctl start master in admin mode
+ */
+APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_master(apr_proc_t *proc, int port, const char *data_dir, int wait, int blocking, apr_pool_t *p)
+{
+    char option[128];
+    sprintf(option, "-i -p %d -c gp_role=utility", port);
+    return gpcc_proc_pg_ctl_start(proc, port, data_dir, option, wait, blocking, p);
 }
 	
 /**
@@ -218,7 +237,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_stop(apr_proc_t *proc, int port, cons
     if ((e = gpcc_proc_initialize()) != 0) 
 	return e;
 
-    sprintf(cmd, "export LD_LIBRARY_PATH=%s && export PATH=%s && export PGPORT=%d && pg_ctl stop -D %s -m %s %s", 
+    sprintf(cmd, "export LD_LIBRARY_PATH=%s && export PATH=%s && export PGPORT=%d && pg_ctl stop -D %s -m %s %s > /dev/null 2>&1", 
 	    LD_LIBRARY_PATH, PATH, port, data_dir, mode, waitflag);
     
     argv[0] = cmd;
