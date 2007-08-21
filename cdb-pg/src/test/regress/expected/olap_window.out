@@ -1697,6 +1697,25 @@ from sale order by dt, prc, cn;
  06-01-1401 |    5 |  3 | 30 |   3
 (12 rows)
 
+-- MPP-1804, Used to return incorrect number of rows
+SELECT sale.vn,sale.cn,
+SUM(sale.cn) OVER(partition by sale.vn order by sale.cn desc range between current row and unbounded following) as sum from sale;
+ vn | cn | sum 
+----+----+-----
+ 10 |  1 |   1
+ 20 |  1 |   1
+ 30 |  3 |   8
+ 30 |  3 |   8
+ 30 |  1 |   2
+ 30 |  1 |   2
+ 40 |  4 |  13
+ 40 |  4 |  13
+ 40 |  3 |   5
+ 40 |  2 |   2
+ 50 |  2 |   3
+ 50 |  1 |   1
+(12 rows)
+
 -- MPP-1840, grouping + windowing
 --begin_equivalent
 SELECT cn, vn, pn, GROUPING(cn,vn,pn),
