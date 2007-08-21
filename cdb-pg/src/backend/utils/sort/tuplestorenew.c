@@ -128,7 +128,7 @@ static inline void update_page_slot_entry(NTupleStorePage *page, int len)
 	NTupleStorePageSlotEntry *slot = nts_page_next_slot_entry(page);
 
 	Assert(len < (int) NTS_MAX_ENTRY_SIZE);
-	Assert(len > 0 || len == -sizeof(NTupleStoreLobRef)); 
+	Assert(len > 0 || len == -(int)sizeof(NTupleStoreLobRef)); 
 
 	slot->data_start = data_start;
 	slot->size = (short) len;
@@ -1020,7 +1020,7 @@ void ntuplestore_acc_put_data(NTupleStoreAccessor *tsa, void *data, int len)
 
 	Assert(tsa->page && tsa->isWriter);
 	Assert(tsa->store && tsa->store->first_page && tsa->store->last_page);
-	Assert(len > 0 || len == (-sizeof(NTupleStoreLobRef)));
+	Assert(len > 0 || len == (-(int)sizeof(NTupleStoreLobRef)));
 
 	Assert(len <= (int) NTS_MAX_ENTRY_SIZE);
 
@@ -1217,7 +1217,7 @@ bool ntuplestore_acc_current_tupleslot(NTupleStoreAccessor *tsa, TupleTableSlot 
 	if(len < 0)
 	{
 		NTupleStoreLobRef *plobref = (NTupleStoreLobRef *) tuple;
-		Assert(len == -sizeof(NTupleStoreLobRef));
+		Assert(len == -(int)sizeof(NTupleStoreLobRef));
 		
 		tuple = (MinimalTuple) palloc(plobref->size);
 		len = ntuplestore_get_lob(tsa->store, tuple, plobref);
