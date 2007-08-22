@@ -29,7 +29,7 @@ typedef struct
 	SubTransactionId connectSubid;		/* ID of connecting subtransaction */
 } _SPI_connection;
 
-typedef struct
+typedef struct _SPI_plan
 {
 	/* Context containing _SPI_plan itself as well as subsidiary data */
 	MemoryContext plancxt;
