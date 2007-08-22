@@ -6,7 +6,7 @@
 # Portions Copyright (c) 1996-2007, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
-# $PostgreSQL: pgsql/src/test/regress/GNUmakefile,v 1.66 2007/02/09 15:56:00 petere Exp $
+# $PostgreSQL: pgsql/src/test/regress/GNUmakefile,v 1.68 2007/06/12 11:07:32 mha Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -51,7 +51,7 @@ EXTRADEFS = '-DHOST_TUPLE="$(host_tuple)"' \
 
 all: submake-libpgport pg_regress$(X)
 
-pg_regress$(X): pg_regress.o
+pg_regress$(X): pg_regress.o pg_regress_main.o
 	$(CC) $(CFLAGS) $^ $(LDFLAGS) $(LIBS) -o $@
 
 # dependencies ensure that path changes propagate
@@ -86,9 +86,10 @@ $(NAME)$(DLSUFFIX): $(shlib)
 
 # Test input and expected files.  These are created by pg_regress itself, so we
 # don't have a rule to create them.  We do need rules to clean them however.
-file_list := $(subst .source,, $(notdir $(wildcard $(top_srcdir)/$(subdir)/input/*.source)))
-input_files  := $(foreach file, $(file_list), sql/$(file).sql)
-output_files := $(foreach file, $(file_list), expected/$(file).out)
+ifile_list := $(subst .source,, $(notdir $(wildcard $(top_srcdir)/$(subdir)/input/*.source)))
+input_files  := $(foreach file, $(ifile_list), sql/$(file).sql)
+ofile_list := $(subst .source,, $(notdir $(wildcard $(top_srcdir)/$(subdir)/output/*.source)))
+output_files := $(foreach file, $(ofile_list), expected/$(file).out)
 
 ifneq ($(PORTNAME),win32)
 abs_srcdir := $(shell cd $(srcdir) && pwd)
@@ -171,7 +172,7 @@ clean distclean maintainer-clean: clean-lib
 # things built by `all' target
 	rm -f $(NAME)$(DLSUFFIX) $(OBJS)
 	$(MAKE) -C $(contribdir)/spi clean
-	rm -f $(output_files) $(input_files) pg_regress.o pg_regress$(X)
+	rm -f $(output_files) $(input_files) pg_regress_main.o pg_regress.o pg_regress$(X)
 # things created by various check targets
 	rm -rf testtablespace
 	rm -rf results tmp_check log
