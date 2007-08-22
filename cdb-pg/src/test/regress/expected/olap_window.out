@@ -193,6 +193,35 @@ window w as (w order by cname); --error - can't refer to window in its definitio
   4 | Witches, Inc | Lonely Heath
 (4 rows)
 
+-- test the frame parser
+select cn, 
+  count(*) over (order by cn range '1'::interval preceding) 
+  from customer; -- error, type mismatch
+ERROR:  window specification RANGE parameter type must be coercable to ORDER BY column type
+select cn,
+  count(*) over (order by cn range between '-11' preceding and '-2' following)
+  from customer; -- error, negative values not permitted
+ERROR:  RANGE parameter cannot be negative
+select cn,
+  count(*) over (order by cn range (2 - 1) preceding)
+  from customer; -- error, we don't permit expressions
+ERROR:  RANGE parameter must be a constant
+HINT:  Only constants and constants with a cast are permitted as RANGE parameters
+select cn,
+  sum(cn) over (order by cn range NULL preceding)
+  from customer; -- we don't permit NULL
+ERROR:  RANGE parameter cannot be NULL
+select cn,
+  sum(cn) over (order by cn range '1'::float8 preceding)
+  from customer; -- this, however, should work
+ cn | sum 
+----+-----
+  1 |   1
+  2 |   3
+  3 |   5
+  4 |   7
+(4 rows)
+
 ---- 4 -- Partitioned, non-ordered window specifications -- OVER (PARTTION BY ...) ----
 -- !
 select row_number() over (partition by cn), cn, pn 

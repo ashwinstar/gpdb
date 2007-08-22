@@ -77,7 +77,26 @@ window
 select * from customer
 window w as (w order by cname); --error - can't refer to window in its definition
 
+-- test the frame parser
+select cn, 
+  count(*) over (order by cn range '1'::interval preceding) 
+  from customer; -- error, type mismatch
 
+select cn,
+  count(*) over (order by cn range between '-11' preceding and '-2' following)
+  from customer; -- error, negative values not permitted
+
+select cn,
+  count(*) over (order by cn range (2 - 1) preceding)
+  from customer; -- error, we don't permit expressions
+
+select cn,
+  sum(cn) over (order by cn range NULL preceding)
+  from customer; -- we don't permit NULL
+
+select cn,
+  sum(cn) over (order by cn range '1'::float8 preceding)
+  from customer; -- this, however, should work
 
 ---- 4 -- Partitioned, non-ordered window specifications -- OVER (PARTTION BY ...) ----
 

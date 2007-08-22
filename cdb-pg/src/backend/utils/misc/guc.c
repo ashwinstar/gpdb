@@ -2478,7 +2478,6 @@ static struct config_real ConfigureNamesReal[] =
 		{"gp_selectivity_damping_factor", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Factor used in selectivity damping."),
 			gettext_noop("Values 1..N, 1 = basic damping, greater values emphasize damping"),
-			NULL,
 			GUC_NOT_IN_SAMPLE
   		},
 		&gp_selectivity_damping_factor,

@@ -35,6 +35,7 @@
 #include "parser/parse_oper.h"
 #include "parser/parse_relation.h"
 #include "parser/parse_target.h"
+#include "parser/parse_type.h"
 #include "rewrite/rewriteManip.h"
 #include "utils/guc.h"
 #include "utils/syscache.h"
@@ -163,6 +164,12 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("ROWS parameter must be an integer constant")));
+
+			if (intVal(val) < 0)
+				ereport(ERROR,
+						(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
+						 errmsg("ROWS parameter cannot be negative")));
+
 			e->val = (Node *)make_const(val);
 		}
 		else
@@ -176,20 +183,39 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 			Oid oprresult;
 			List *oprname;
 			Operator tup;
+			Const *con;
+			int32 typmod;
 						
 			if (list_length(spec->order) != 1)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("only one ORDER BY column may be specified when "
-								"RANGE is used in a window specification")));
+						 errmsg("only one ORDER BY column may be specified when"
+								" RANGE is used in a window specification")));
 	
 			val = transformExpr(pstate, e->val);
+			typmod = exprTypmod(val);
 	
+			if (!IsA(val, Const))
+				ereport(ERROR,
+						(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
+						 errmsg("RANGE parameter must be a constant"),
+						 errhint("Only constants and constants with a cast "
+								 "are permitted as RANGE parameters")));
+				
+			con = (Const *)val;
+			
+			if (con->constisnull)
+				ereport(ERROR,
+						(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
+						 errmsg("RANGE parameter cannot be NULL")));
+
 			sort = (SortClause *)linitial(spec->order);
-			te = getTargetBySortGroupRef(sort->tleSortGroupRef, qry->targetList);
+			te = getTargetBySortGroupRef(sort->tleSortGroupRef, 
+										 qry->targetList);
 			otype = exprType((Node *)te->expr);
 			rtype = exprType(val);
 
+			/* XXX: Reverse these if user specified DESC */
 			if (e->kind == WINDOW_BOUND_FOLLOWING)
 				oprname = lappend(NIL, makeString("+"));
 			else
@@ -218,7 +244,6 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 				/* XXX: we assume that the typmod for the new RHS type
 				 * is the same as before... is that safe?
 				 */ 
-				int32 typmod = exprTypmod(val);
 				Expr *expr = 
 					(Expr *)coerce_to_target_type(NULL,
 												  val, 
@@ -236,7 +261,13 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 									 "must result in a data type which can be "
 									 "cast back to the ORDER BY column type")));
 				else
+				{
+					/* update reference to the const field for remaining code */
+					if (IsA(expr, Const))
+						con = (Const *)expr;
+
 					val = (Node *)expr;
+				}
 			}
 			
 			if (oprresult != otype)
@@ -251,7 +282,36 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 									 "must result in a data type which can be "
 									 "cast back to the ORDER BY column type")));
 
+				/* The executor will do the rest of the work */
 			}
+
+			/* see if RANGE parameter is negative */
+			tup = ordering_oper(newrtype, false);
+			if (HeapTupleIsValid(tup))
+			{
+				Type typ = typeidType(newrtype);
+				Oid funcoid = oprfuncid(tup);
+				Datum zero;
+				Datum result;
+
+				zero = stringTypeDatum(typ, "0", exprTypmod(val));
+
+				/* 
+				 * As we know the value is a const and since transformExpr()
+				 * will have parsed the type into its internal format, we can
+				 * just poke directly into the Const structure.
+				 */
+				result = OidFunctionCall2(funcoid, con->constvalue, zero);
+
+				if (result)
+					ereport(ERROR,
+							(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
+							 errmsg("RANGE parameter cannot be negative")));
+
+				ReleaseSysCache(tup);
+				ReleaseSysCache(typ);
+			}
+
 			e->val = val;
 		}
 	}
@@ -1987,11 +2047,16 @@ grouping_rewrite_walker(Node *node, void *context)
 
 	if (IsA(node, A_Const))
 	{
-		return true;
+		return false;
+	}
+	else if(IsA(node, A_Expr))
+	{
+		/* could be seen inside an untransformed window clause */
+		return false;
 	}
 	else if (IsA(node, TypeCast))
 	{
-		return true;
+		return false;
 	}
 	else if (IsA(node, GroupingFunc))
 	{

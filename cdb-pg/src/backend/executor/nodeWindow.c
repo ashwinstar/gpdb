@@ -2927,7 +2927,7 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 {
 	ExprState *n;
 	Expr *expr;
-	Var *var;
+	Expr *varexpr;
 	Oid exprrestype;
 	Oid ltype, rtype;
 	HeapTuple tup;
@@ -2935,13 +2935,14 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 	bool isNull;
 	char *oprname;
 	Form_pg_operator opr;
+	int32 vartypmod = desc->attrs[attnum - 1]->atttypmod;
 	
 	Insist(EDGE_IS_BOUND(edge));
 
 	ltype = desc->attrs[attnum - 1]->atttypid;
 	rtype = exprType(edge->val);
 	
-	var = makeVar(0, attnum, ltype, desc->attrs[attnum - 1]->atttypmod, 0);
+	varexpr = (Expr *)makeVar(0, attnum, ltype, vartypmod, 0);
 	n = ExecInitExpr((Expr *)edge->val, (PlanState *) wstate);
 
 	if (is_trail)
@@ -2969,13 +2970,42 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 						 ObjectIdGetDatum(rtype),
 						 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
 
-	Insist(HeapTupleIsValid(tup));
-	opr = ((Form_pg_operator) GETSTRUCT(tup));
+	/*
+	 * If we didn't find an operator, it's probably because the user has
+	 * specified a RANGE parameter which does not have an implicit cast
+	 * to the sorting column. So, see what operator the parser found
+	 * via oper() and arrange for the LHS to be cast to that for the purpose
+	 * of the expression evaluation.
+	 */
+	if (!HeapTupleIsValid(tup))
+	{
+		List *oprlist = lappend(NIL, makeString(oprname));
+
+		tup = oper(NULL, oprlist, ltype, rtype, true, -1);
+
+		list_free_deep(oprlist);
+
+		/* We have to find it now */
+		Insist(HeapTupleIsValid(tup));
+		
+		opr = (Form_pg_operator) GETSTRUCT(tup);
+
+		/* this is why we're here */
+		Insist(ltype != opr->oprleft);
+		
+		varexpr = (Expr *)coerce_to_target_type(NULL, (Node *)varexpr, 
+												ltype, opr->oprleft, vartypmod,
+												COERCION_EXPLICIT,
+												COERCE_IMPLICIT_CAST);
+	}
+	else
+		opr = ((Form_pg_operator) GETSTRUCT(tup));
+	
 	ReleaseSysCache(tup);
 
 	exprrestype = opr->oprresult;
 	expr = make_opclause(HeapTupleGetOid(tup), exprrestype,
-						 false, (Expr *)var, 
+						 false, varexpr, 
 						 (Expr *)edge->val);
 	((OpExpr *)expr)->opfuncid = opr->oprcode;
 
@@ -2985,12 +3015,11 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 	 */
 	if (ltype != exprrestype)
 	{
-		int32 typmod = desc->attrs[attnum - 1]->atttypmod;
 		expr = 
 			(Expr *)coerce_to_target_type(NULL,
 										  (Node *)expr, 
 									 	  exprrestype,
-									 	  ltype, typmod,
+									 	  ltype, vartypmod,
 									 	  COERCION_EXPLICIT,
 										  COERCE_IMPLICIT_CAST);
 	}
