@@ -1217,6 +1217,36 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_adjust_selectivity_for_outerjoins,
 		true, NULL, NULL
 	},
+	
+	{
+		{"gp_selectivity_damping_for_scans", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Damping of selectivities for clauses over the same base relation."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+  		},
+		&gp_selectivity_damping_for_scans,
+		false, NULL, NULL
+	},
+	
+	{
+		{"gp_selectivity_damping_for_joins", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Damping of selectivities in join clauses."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+  		},
+		&gp_selectivity_damping_for_joins,
+		false, NULL, NULL
+	},
+	
+	{
+		{"gp_selectivity_damping_sigsort", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Sort selectivities by ascending significance, i.e. smallest first"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+  		},
+		&gp_selectivity_damping_sigsort,
+		true, NULL, NULL
+	},
 
 	{
 		{"gp_enable_interconnect_aggressive_retry", PGC_USERSET, DEVELOPER_OPTIONS,
@@ -2442,6 +2472,17 @@ static struct config_real ConfigureNamesReal[] =
 		},
 		&analyze_relative_error,
 		0.25, 0, 1.0, NULL, NULL
+	},
+	
+	{
+		{"gp_selectivity_damping_factor", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Factor used in selectivity damping."),
+			gettext_noop("Values 1..N, 1 = basic damping, greater values emphasize damping"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+  		},
+		&gp_selectivity_damping_factor,
+		1.0, 1.0, DBL_MAX, NULL, NULL
 	},
 
     /* End-of-list marker */

@@ -25,6 +25,7 @@
 #include "utils/lsyscache.h"
 #include "utils/selfuncs.h"
 
+#include "cdb/cdbvars.h"        /* cdb GUCs */
 
 /*
  * Data structure for accumulating info about possible range-query
@@ -43,6 +44,26 @@ typedef struct RangeQueryClause
 static void addRangeClause(RangeQueryClause **rqlist, Node *clause,
 			   bool varonleft, bool isLTsel, Selectivity s2);
 
+/* cmpSelectivity
+ * comparison function for using qsort on an array of Selectivity entries
+ */
+static int
+cmpSelectivity
+	(
+	const void *psela, 
+	const void *pselb
+	)
+{
+	Selectivity sela = * (Selectivity *) psela;
+	Selectivity selb = * (Selectivity *) pselb;
+
+	if (sela < selb) 
+		return -1;
+	if (selb < sela)
+		return 1;
+
+	return 0;
+}
 
 /****************************************************************************
  *		ROUTINES TO COMPUTE SELECTIVITIES
@@ -94,15 +115,23 @@ Selectivity
 clauselist_selectivity(PlannerInfo *root,
 					   List *clauses,
 					   int varRelid,
-					   JoinType jointype)
+					   JoinType jointype,
+					   bool use_damping)
 {
 	Selectivity s1 = 1.0;
+	Selectivity *rgsel = NULL;
 	RangeQueryClause *rqlist = NULL;
 	ListCell   *l;
 
+	int pos = 0;
+	int i = 0;
+
+	/* allocate array to hold all selectivity factors */
+	rgsel = (Selectivity *) palloc(sizeof(Selectivity) * list_length(clauses));
+
 	/*
 	 * Initial scan over clauses.  Anything that doesn't look like a potential
-	 * rangequery clause gets multiplied into s1 and forgotten. Anything that
+	 * rangequery clause gets directly added as selectivity factor. Anything that
 	 * does gets inserted into an rqlist entry.
 	 */
 	foreach(l, clauses)
@@ -112,7 +141,7 @@ clauselist_selectivity(PlannerInfo *root,
 		Selectivity s2;
 
 		/* Always compute the selectivity using clause_selectivity */
-		s2 = clause_selectivity(root, clause, varRelid, jointype);
+		s2 = clause_selectivity(root, clause, varRelid, jointype, use_damping);
 
 		/*
 		 * Check for being passed a RestrictInfo.
@@ -125,7 +154,7 @@ clauselist_selectivity(PlannerInfo *root,
 			rinfo = (RestrictInfo *) clause;
 			if (rinfo->pseudoconstant)
 			{
-				s1 = s1 * s2;
+				rgsel[pos++] = s2;
 				continue;
 			}
 			clause = (Node *) rinfo->clause;
@@ -181,7 +210,7 @@ clauselist_selectivity(PlannerInfo *root,
 						break;
 					default:
 						/* Just merge the selectivity in generically */
-						s1 = s1 * s2;
+						rgsel[pos++] = s2;
 						break;
 				}
 				continue;		/* drop to loop bottom */
@@ -189,7 +218,7 @@ clauselist_selectivity(PlannerInfo *root,
 		}
 
 		/* Not the right form, so treat it generically. */
-		s1 = s1 * s2;
+		rgsel[pos++] = s2;
 	}
 
 	/*
@@ -250,15 +279,15 @@ clauselist_selectivity(PlannerInfo *root,
 				}
 			}
 			/* Merge in the selectivity of the pair of clauses */
-			s1 *= s2;
+			rgsel[pos++] = s2;
 		}
 		else
 		{
 			/* Only found one of a pair, merge it in generically */
 			if (rqlist->have_lobound)
-				s1 *= rqlist->lobound;
+				rgsel[pos++] = rqlist->lobound;
 			else
-				s1 *= rqlist->hibound;
+				rgsel[pos++] = rqlist->hibound;
 		}
 		/* release storage and advance */
 		rqnext = rqlist->next;
@@ -266,6 +295,30 @@ clauselist_selectivity(PlannerInfo *root,
 		rqlist = rqnext;
 	}
 
+	Assert(pos <= list_length(clauses));
+
+	if (use_damping && pos >= 2)
+	{
+		/* sort selectivities first; most significant (i.e. lowest) first */
+		if (gp_selectivity_damping_sigsort)
+			qsort(rgsel, pos, sizeof(Selectivity), cmpSelectivity);
+
+		for (i = 1; i < pos; i++)
+		{
+			/* dampen selectivity as n-th root of the original value */
+			rgsel[i] = pow(rgsel[i], 1.0/Max(0.1, ((i + 1) * gp_selectivity_damping_factor)));
+		}
+	}
+
+	/* make sure nobody touched s1 yet */
+	Assert(s1 == 1.0);
+
+	for (i = 0; i < pos; i++)
+	{
+		s1 *= rgsel[i];
+	}
+
+	pfree(rgsel);
 	return s1;
 }
 
@@ -416,7 +469,8 @@ Selectivity
 clause_selectivity(PlannerInfo *root,
 				   Node *clause,
 				   int varRelid,
-				   JoinType jointype)
+				   JoinType jointype,
+				   bool use_damping)
 {
 	Selectivity s1 = 1.0;		/* default for any unhandled clause type */
 	RestrictInfo *rinfo = NULL;
@@ -557,7 +611,8 @@ clause_selectivity(PlannerInfo *root,
 		s1 = 1.0 - clause_selectivity(root,
 								  (Node *) get_notclausearg((Expr *) clause),
 									  varRelid,
-									  jointype);
+									  jointype,
+									  use_damping);
 	}
 	else if (and_clause(clause))
 	{
@@ -565,7 +620,8 @@ clause_selectivity(PlannerInfo *root,
 		s1 = clauselist_selectivity(root,
 									((BoolExpr *) clause)->args,
 									varRelid,
-									jointype);
+									jointype,
+									use_damping);
 	}
 	else if (or_clause(clause))
 	{
@@ -583,7 +639,8 @@ clause_selectivity(PlannerInfo *root,
 			Selectivity s2 = clause_selectivity(root,
 												(Node *) lfirst(arg),
 												varRelid,
-												jointype);
+												jointype,
+												use_damping);
 
 			s1 = s1 + s2 - s1 * s2;
 		}
@@ -716,7 +773,8 @@ clause_selectivity(PlannerInfo *root,
 		s1 = clause_selectivity(root,
 								(Node *) ((RelabelType *) clause)->arg,
 								varRelid,
-								jointype);
+								jointype,
+								use_damping);
 	}
 	else if (IsA(clause, CoerceToDomain))
 	{
@@ -724,7 +782,8 @@ clause_selectivity(PlannerInfo *root,
 		s1 = clause_selectivity(root,
 								(Node *) ((CoerceToDomain *) clause)->arg,
 								varRelid,
-								jointype);
+								jointype,
+								use_damping);
 	}
 
 	/* Cache the result if possible */

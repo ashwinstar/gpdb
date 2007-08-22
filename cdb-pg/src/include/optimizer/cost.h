@@ -121,10 +121,12 @@ extern void set_values_size_estimates(PlannerInfo *root, RelOptInfo *rel);
 extern Selectivity clauselist_selectivity(PlannerInfo *root,
 					   List *clauses,
 					   int varRelid,
-					   JoinType jointype);
+					   JoinType jointype,
+					   bool use_damping);
 extern Selectivity clause_selectivity(PlannerInfo *root,
 				   Node *clause,
 				   int varRelid,
-				   JoinType jointype);
+				   JoinType jointype,
+				   bool use_damping);
 
 #endif   /* COST_H */

@@ -1397,12 +1397,14 @@ booltestsel(PlannerInfo *root, BoolTestType booltesttype, Node *arg,
 			case IS_TRUE:
 			case IS_NOT_FALSE:
 				selec = (double) clause_selectivity(root, arg,
-													varRelid, jointype);
+													varRelid, jointype,
+													false /* use_damping */);
 				break;
 			case IS_FALSE:
 			case IS_NOT_TRUE:
 				selec = 1.0 - (double) clause_selectivity(root, arg,
-														  varRelid, jointype);
+														  varRelid, jointype,
+														  false /* use_damping */);
 				break;
 			default:
 				elog(ERROR, "unrecognized booltesttype: %d",
@@ -4840,7 +4842,8 @@ genericcostestimate(PlannerInfo *root,
 	/* Estimate the fraction of main-table tuples that will be visited */
 	*indexSelectivity = clauselist_selectivity(root, selectivityQuals,
 											   index->rel->relid,
-											   JOIN_INNER);
+											   JOIN_INNER,
+											   false /* use_damping */);
 
 	/*
 	 * If caller didn't give us an estimate, estimate the number of index
@@ -5168,7 +5171,8 @@ btcostestimate(PG_FUNCTION_ARGS)
 
 		btreeSelectivity = clauselist_selectivity(root, indexBoundQuals,
 												  index->rel->relid,
-												  JOIN_INNER);
+												  JOIN_INNER,
+												  false /* use_damping */);
 		numIndexTuples = btreeSelectivity * index->rel->tuples;
 		/*
 		 * As in genericcostestimate(), we have to adjust for any

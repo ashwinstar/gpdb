@@ -449,6 +449,30 @@ extern bool gp_adjust_selectivity_for_outerjoins;
 extern int gp_hashjoin_tuples_per_bucket;
 extern int gp_hashagg_groups_per_bucket;
 
+
+/*
+ * Damping of selectivities of clauses which pertain to the same base 
+ * relation; compensates for undetected correlation
+ */
+extern bool gp_selectivity_damping_for_scans;
+
+/*
+ * Damping of selectivities of clauses in joins
+ */
+extern bool gp_selectivity_damping_for_joins;
+
+/*
+ * Damping factor for selecticity damping
+ */
+extern double gp_selectivity_damping_factor;
+
+/*
+ * Sort selectivities by significance before applying 
+ * damping (ON by default)
+ */
+extern bool gp_selectivity_damping_sigsort;
+
+
 /* ----- Experimental Features ----- */
 
 /* May Greenplum redistribute on the argument of a lone aggregate distinct in

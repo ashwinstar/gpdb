@@ -1978,7 +1978,8 @@ approx_selectivity(PlannerInfo *root, List *quals, JoinType jointype)
 		Node	   *qual = (Node *) lfirst(l);
 
 		/* Note that clause_selectivity will be able to cache its result */
-		total *= clause_selectivity(root, qual, 0, jointype);
+		total *= clause_selectivity(root, qual, 0, jointype, 
+									false /* use_damping */);
 	}
 	return total;
 }
@@ -2009,7 +2010,8 @@ set_baserel_size_estimates(PlannerInfo *root, RelOptInfo *rel)
 		clauselist_selectivity(root,
 							   rel->baserestrictinfo,
 							   0,
-							   JOIN_INNER);
+							   JOIN_INNER,
+							   gp_selectivity_damping_for_scans);
 
 	rel->rows = clamp_row_est(nrows);
 
@@ -2180,12 +2182,14 @@ set_joinrel_size_estimates(PlannerInfo *root, RelOptInfo *rel,
 		jselec = clauselist_selectivity(root,
 										joinquals,
 										0,
-										jointype);
+										jointype,
+										gp_selectivity_damping_for_joins);
 		pselec = clauselist_selectivity(root,
 										pushedquals,
 										0,
-										jointype);
-
+										jointype,
+										gp_selectivity_damping_for_joins);
+										
 		/* 
 		 * special case where a pushed qual probes the inner
 		 * side of an outer join to be NULL
@@ -2207,7 +2211,8 @@ set_joinrel_size_estimates(PlannerInfo *root, RelOptInfo *rel,
 		jselec = clauselist_selectivity(root,
 										restrictlist,
 										0,
-										jointype);
+										jointype,
+										gp_selectivity_damping_for_joins);
 		pselec = 0.0;			/* not used, keep compiler quiet */
 	}
 
@@ -2307,7 +2312,8 @@ join_in_selectivity(JoinPath *path, PlannerInfo *root)
 	selec = clauselist_selectivity(root,
 								   path->joinrestrictinfo,
 								   0,
-								   JOIN_INNER);
+								   JOIN_INNER,
+								   gp_selectivity_damping_for_joins);
 	nrows = path->outerjoinpath->parent->rows * innerrel->rows * selec;
 
 	nrows = clamp_row_est(nrows);

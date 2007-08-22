@@ -1324,7 +1324,8 @@ create_index_path(PlannerInfo *root,
 			clauselist_selectivity(root,
 								   allclauses,
 								   rel->relid,	/* do not use 0! */
-								   JOIN_INNER);
+								   JOIN_INNER,
+								   false /* use_damping */);
 		/* Like costsize.c, force estimate to be at least one row */
 		pathnode->rows = clamp_row_est(pathnode->rows);
 	}

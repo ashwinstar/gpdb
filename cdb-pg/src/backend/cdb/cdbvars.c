@@ -116,6 +116,10 @@ bool		gp_hashagg_recalc_density = true;
 
 bool		gp_enable_motion_deadlock_sanity = FALSE; /* planning time sanity check */
 bool		gp_adjust_selectivity_for_outerjoins = TRUE;
+bool		gp_selectivity_damping_for_scans = false;
+bool		gp_selectivity_damping_for_joins = false;
+double		gp_selectivity_damping_factor = 1;
+bool		gp_selectivity_damping_sigsort = true;
 
 int			gp_hashjoin_tuples_per_bucket = 5;
 int			gp_hashagg_groups_per_bucket = 5;
