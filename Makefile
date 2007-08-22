@@ -102,6 +102,8 @@ mgmtcopy :
 		$(INSTLOC)/bin/gpactivatestandby \
 		$(INSTLOC)/bin/gpaddmirrors \
 		$(INSTLOC)/bin/gpaddpart \
+		$(INSTLOC)/bin/gpcheckdb \
+		$(INSTLOC)/bin/gpcheckos \
 		$(INSTLOC)/bin/gpcheckperf \
 		$(INSTLOC)/bin/gpcreatepart \
 		$(INSTLOC)/bin/gpcrondump \
@@ -114,6 +116,7 @@ mgmtcopy :
 		$(INSTLOC)/bin/gprebuildsystem \
 		$(INSTLOC)/bin/gprecoverseg \
 		$(INSTLOC)/bin/gpscp \
+		$(INSTLOC)/bin/gpscp2 \
 		$(INSTLOC)/bin/gpsizecalc \
 		$(INSTLOC)/bin/gpskew \
 		$(INSTLOC)/bin/gpssh \
