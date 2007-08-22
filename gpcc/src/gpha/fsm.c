@@ -1,0 +1,64 @@
+#include <gpcc.h>
+#include <gpcc_fsm.h>
+#include <gpcc_net.h>
+#include <gpcc_http.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include "gpha.h"
+
+#include "fsm_http.h"
+#include "fsm_system.h"
+#include "fsm_segment.h"
+
+APR_DECLARE(void) fsm_setup(void)
+{
+    gpcc_fsm_put(SYSTEM_CMDSTATE, TICK_EVENT, SYSTEM_CMDSTATE, 
+		 a_system_tick, 0);
+    gpcc_fsm_put(SYSTEM_CMDSTATE, NET_OPENED_EVENT, SYSTEM_CMDSTATE, 
+		 a_system_net_opened, 0);
+    gpcc_fsm_put(SYSTEM_CMDSTATE, NET_RECEIVED_EVENT, SYSTEM_CMDSTATE,
+		 a_system_net_received, 0);
+
+    gpcc_fsm_put(GET_IDENTITY_CMDSTATE, INIT_EVENT, GET_IDENTITY_CMDSTATE, 
+		 a_get_identity_send_request, 0);
+    gpcc_fsm_put(GET_IDENTITY_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE, 
+		 a_close_conn, 0);
+    
+    gpcc_fsm_put(HTTP_REQUEST_CMDSTATE, INIT_EVENT, NULL_CMDSTATE,
+		 http_request, 0);
+
+
+    /* Segment FSM */
+    /* segment initdb */
+    gpcc_fsm_put(SEG_INIT_CMDSTATE, INIT_EVENT, SEG_INIT_CMDSTATE,
+		 seg_initialize, 0);
+    gpcc_fsm_put(SEG_INIT_CMDSTATE, SEG_INITDB_EVENT, SEG_INITDB_CMDSTATE,
+		 seg_initdb, 0);
+    gpcc_fsm_put(SEG_INITDB_CMDSTATE, TIMEUP_EVENT, SEG_INITDB_CMDSTATE,
+		 seg_initdb_wait, 0);
+    gpcc_fsm_put(SEG_INITDB_CMDSTATE, SEG_INITDB_NEXT_EVENT, SEG_INIT_CMDSTATE,
+		 seg_initdb_pg_hba_append, seg_initdb_checkdb, seg_initdb_reply, seg_initdb_cleanup, 0);
+
+
+    /* segment start */
+    gpcc_fsm_put(SEG_INIT_CMDSTATE, SEG_START_EVENT, SEG_START_CMDSTATE,
+		 seg_start, 0);
+    gpcc_fsm_put(SEG_START_CMDSTATE, TIMEUP_EVENT, SEG_START_CMDSTATE,
+		 seg_start_wait, 0);
+    gpcc_fsm_put(SEG_START_CMDSTATE, SEG_START_DONE_EVENT, SEG_INIT_CMDSTATE,
+		 seg_start_reply, seg_start_cleanup, 0);
+
+    /* segment stop */
+    gpcc_fsm_put(SEG_INIT_CMDSTATE, SEG_STOP_EVENT, SEG_STOP_CMDSTATE,
+		 seg_stop, 0);
+    gpcc_fsm_put(SEG_STOP_CMDSTATE, TIMEUP_EVENT, SEG_STOP_CMDSTATE,
+		 seg_stop_wait, 0);
+    gpcc_fsm_put(SEG_STOP_CMDSTATE, SEG_STOP_DONE_EVENT, SEG_INIT_CMDSTATE,
+		 seg_stop_reply, seg_stop_cleanup, 0);
+    
+    /* segment status */
+    gpcc_fsm_put(SEG_INIT_CMDSTATE, SEG_STATUS_EVENT, SEG_INIT_CMDSTATE,
+		 seg_status, 0);
+		 
+    
+}
