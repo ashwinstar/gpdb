@@ -1814,7 +1814,8 @@ appendRowTuple(WindowState *wstate, WindowFrame *frame,
 				}
 			}
 		}
-		else if (frame->trail->kind == WINDOW_UNBOUND_PRECEDING &&
+		else if ((frame->trail->kind == WINDOW_UNBOUND_PRECEDING ||
+				  frame->trail->kind == WINDOW_CURRENT_ROW) &&
 				 funcstate->prev_lead_edge == -1)
 		{
 			funcstate->prev_lead_edge = 0;
@@ -1869,7 +1870,7 @@ adjustEdges(WindowState *wstate)
 				   	if (funcstate->cur_trail_edge == -1)
 					{
 						funcstate->cur_trail_edge = 0;
-						//funcstate->prev_trail_edge = 0;
+						funcstate->prev_trail_edge = 0;
 					}
 					else
 					{
@@ -1934,7 +1935,10 @@ adjustEdges(WindowState *wstate)
 				if (key->frame->lead->kind == WINDOW_CURRENT_ROW)
 				{
 				   	if (funcstate->cur_lead_edge == -1)
+					{
 						funcstate->cur_lead_edge = 0;
+						funcstate->prev_lead_edge = 0;
+					}
 					else
 					{
 						funcstate->cur_lead_edge++;
@@ -3210,7 +3214,7 @@ init_frames(WindowState *wstate)
 			{
 				if (is_pre)
 				{
-					if (level_state->lead_rows > level_state->trail_rows)
+					if (level_state->lead_rows < level_state->trail_rows)
 						level_state->empty_frame = true;
 				}
 				else
