@@ -49,12 +49,15 @@
 
 #ifdef BUILDING_DLL
 #define DLLIMPORT __declspec (dllexport)
+#define PGDLLIMPORT __declspec (dllexport)
 #else							/* not BUILDING_DLL */
 #define DLLIMPORT __declspec (dllimport)
+#define PGDLLIMPORT __declspec (dllimport)
 #endif
 #else							/* not CYGWIN, not MSVC, not MingW */
 
 #define DLLIMPORT
+#define PGDLLIMPORT
 #endif
 
 

@@ -789,6 +789,9 @@ extern int	vsnprintf(char *str, size_t count, const char *fmt, va_list args);
 #ifndef DLLIMPORT
 #define DLLIMPORT				/* no special DLL markers on most ports */
 #endif
+#ifndef PGDLLIMPORT
+#define PGDLLIMPORT				/* no special DLL markers on most ports */
+#endif
 
 /*
  * The following is used as the arg list for signal handlers.  Any ports
