@@ -3,6 +3,7 @@
 
 #include "config.h"
 #include "enum.h"
+#include <apr_thread_proc.h>
 
 
 #define DEFAULT_QD_MAX_CONNECT  25
@@ -49,10 +50,57 @@ struct cmdslot_t {
     int         countdown;	/* if > 0, will count down to 0 
 				   and generate a TIMEUP_EVENT */
     conninfo_t* conninfo;
+
+    apr_pool_t *pool;
+
     union {
 	struct {
 	    
 	} a;
+
+	struct {
+	    const char *segment;
+	    int port;
+	    char *data_dir;
+	    int primary;
+	    int valid;
+
+	    struct {
+		apr_pool_t *subpool;
+		struct json_object *msg;
+		int parentidx;
+		char *action;
+		char *mode;
+		char *data_dir;
+		int port;
+		int exitcode;
+		char *reason;
+		apr_proc_t proc;
+
+		union {
+		    struct {
+		    } initdb;
+		    
+		    struct {
+			
+		    } startdb;
+		    
+		    struct {
+			
+		    } stopdb;
+		    
+		    struct {
+			
+		    } statusdb;
+		    
+		} u;
+	    } request;
+	} seg;
+
+
+	struct {
+	    
+	} ma;
     } u;
 };
 

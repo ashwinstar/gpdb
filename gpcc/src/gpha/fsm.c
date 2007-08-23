@@ -1,9 +1,12 @@
+#include <apr_strings.h>
 #include <gpcc.h>
 #include <gpcc_fsm.h>
 #include <gpcc_net.h>
 #include <gpcc_http.h>
+#include <gpcc_proc.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <json/json.h>
 #include "gpha.h"
 
 #include "fsm_http.h"
@@ -19,14 +22,22 @@ APR_DECLARE(void) fsm_setup(void)
     gpcc_fsm_put(SYSTEM_CMDSTATE, NET_RECEIVED_EVENT, SYSTEM_CMDSTATE,
 		 a_system_net_received, 0);
 
+    /* http slot */
+    gpcc_fsm_put(HTTP_REQUEST_CMDSTATE, INIT_EVENT, NULL_CMDSTATE,
+		 http_request, 0);
+
+
+    /* all slot -- get identity */
     gpcc_fsm_put(GET_IDENTITY_CMDSTATE, INIT_EVENT, GET_IDENTITY_CMDSTATE, 
 		 a_get_identity_send_request, 0);
     gpcc_fsm_put(GET_IDENTITY_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE, 
 		 a_close_conn, 0);
-    
-    gpcc_fsm_put(HTTP_REQUEST_CMDSTATE, INIT_EVENT, NULL_CMDSTATE,
-		 http_request, 0);
 
+
+    /* ma slot */
+    /* forward requests to segment */
+    gpcc_fsm_put(GET_IDENTITY_CMDSTATE, SEGMENT_REQUEST_MSG_EVENT, GET_IDENTITY_CMDSTATE,
+		 ma_dispatch_segment, 0);
 
     /* Segment FSM */
     /* segment initdb */
@@ -60,5 +71,5 @@ APR_DECLARE(void) fsm_setup(void)
     gpcc_fsm_put(SEG_INIT_CMDSTATE, SEG_STATUS_EVENT, SEG_INIT_CMDSTATE,
 		 seg_status, 0);
 		 
-    
+
 }

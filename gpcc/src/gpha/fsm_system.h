@@ -33,7 +33,7 @@ static apr_status_t u_send_get_identity(cmdslot_t* cmdslot)
 static apr_status_t u_send_identity(conninfo_t* conninfo, apr_uint32_t rcvidx, char* json)
 {
     return gpcc_net_send_packet(conninfo->conn, IDENTITY_MSG,
-				0, rcvidx, json, strlen(json));
+				0, rcvidx, json, strlen(json)+1);
 }
 
 #endif
@@ -153,8 +153,8 @@ static apr_status_t a_system_net_received(gpcc_event_t* ev, void* cmdslot_)
 	    }
 
 	    /* dispatch to cmdslot */
-	    ev = gpcc_event_alloc(packet->mh.type, packet->mh.rcvidx, sizeof(*packet));
-	    memcpy(ev->edata, packet, sizeof(*packet));
+	    ev = gpcc_event_alloc(packet->mh.type, packet->mh.rcvidx, sizeof(*packet)+packet->mh.len-1);
+	    memcpy(ev->edata, packet, sizeof(*packet)+packet->mh.len-1);
 	    gpcc_evqueue_put(gpha.evq, ev);
 
 	    if (packet) 

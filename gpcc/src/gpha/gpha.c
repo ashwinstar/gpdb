@@ -47,6 +47,8 @@ APR_DECLARE(cmdslot_t*) cmdslot_alloc(const char* name,
 	cmdslot->cmdidx = seq | i;
 	cmdslot->cmdstate = init_state;
 	cmdslot->conninfo = conninfo;
+	apr_pool_create(&cmdslot->pool, 0);
+	cmdslot->cmdname = (name ? apr_pstrdup(cmdslot->pool, name) : 0);
 
 	ev = gpcc_event_alloc(INIT_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpha.evq, ev);
@@ -58,6 +60,7 @@ APR_DECLARE(cmdslot_t*) cmdslot_alloc(const char* name,
 
 APR_DECLARE(void) cmdslot_free(cmdslot_t* cp)
 {
+    if (cp->pool) apr_pool_destroy(cp->pool);
     memset(cp, 0, sizeof(*cp));
 }
 
