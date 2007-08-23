@@ -921,10 +921,10 @@ static long ntuplestore_put_lob(NTupleStore *nts, char* data, NTupleStoreLobRef 
 		nts->plobfile = BufFileCreateTemp(false);
 	}
 
-	wlen = BufFileWrite(nts->plobfile, data, lobref->size); 
-	Assert(wlen == lobref->size);
-
 	lobref->start = nts->lobbytes;
+	wlen = BufFileWrite(nts->plobfile, data, lobref->size); 
+
+	Assert(wlen == lobref->size);
 	nts->lobbytes += lobref->size;
 
 	return wlen;
