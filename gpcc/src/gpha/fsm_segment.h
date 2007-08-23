@@ -46,6 +46,8 @@ static apr_status_t ma_dispatch_segment(gpcc_event_t *ev, void *_cmdslot)
     struct json_object *obj = json_tokener_parse(packet->mb);
     struct json_object *segobj;
     event_t etype;
+    gpcc_event_t *evt;
+
 
     if (!obj) {
 	gpcc_warning(FLINE, "json_tokener_parse error");
@@ -84,9 +86,9 @@ static apr_status_t ma_dispatch_segment(gpcc_event_t *ev, void *_cmdslot)
     for (i = 1 ; i < CMDSLOT_MAX ; i++) {
 	slot = &gpha.cmdslot[i];
 	if (slot->cmdidx && strcmp(slot->cmdname, seg) == 0) {
-	    ev = gpcc_event_alloc(etype, slot->cmdidx, sizeof(*packet) + packet->mh.len - 1);
-	    memcpy(ev->edata, packet, sizeof(*packet) + packet->mh.len  - 1);
-	    gpcc_evqueue_put(gpha.evq, ev);
+	    evt = gpcc_event_alloc(etype, slot->cmdidx, sizeof(*packet) + packet->mh.len - 1);
+	    memcpy(evt->edata, packet, sizeof(*packet) + packet->mh.len  - 1);
+	    gpcc_evqueue_put(gpha.evq, evt);
 	    json_object_put(obj);
 	    return 0;
 	}
@@ -94,9 +96,9 @@ static apr_status_t ma_dispatch_segment(gpcc_event_t *ev, void *_cmdslot)
 
     /* new segment request */
     slot = cmdslot_alloc(seg, SEG_INIT_CMDSTATE, 0);
-    ev = gpcc_event_alloc(etype, slot->cmdidx, sizeof(*packet) + packet->mh.len - 1);
-    memcpy(ev->edata, packet, sizeof(*packet) + packet->mh.len  - 1);
-    gpcc_evqueue_put(gpha.evq, ev);    
+    evt = gpcc_event_alloc(etype, slot->cmdidx, sizeof(*packet) + packet->mh.len - 1);
+    memcpy(evt->edata, packet, sizeof(*packet) + packet->mh.len  - 1);
+    gpcc_evqueue_put(gpha.evq, evt);    
     
     json_object_put(obj);
     return 0;
