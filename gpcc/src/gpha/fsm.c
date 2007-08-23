@@ -4,6 +4,7 @@
 #include <gpcc_net.h>
 #include <gpcc_http.h>
 #include <gpcc_proc.h>
+#include <gpcc_pg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <json/json.h>
@@ -48,7 +49,7 @@ APR_DECLARE(void) fsm_setup(void)
     gpcc_fsm_put(SEG_INITDB_CMDSTATE, TIMEUP_EVENT, SEG_INITDB_CMDSTATE,
 		 seg_initdb_wait, 0);
     gpcc_fsm_put(SEG_INITDB_CMDSTATE, SEG_INITDB_NEXT_EVENT, SEG_INIT_CMDSTATE,
-		 seg_initdb_pg_hba_append, seg_initdb_checkdb, seg_initdb_reply, seg_initdb_cleanup, 0);
+		 seg_initdb_pg_hba_append, seg_initdb_checkdb, seg_initdb_reply, seg_request_cleanup, 0);
 
 
     /* segment start */
@@ -57,7 +58,7 @@ APR_DECLARE(void) fsm_setup(void)
     gpcc_fsm_put(SEG_START_CMDSTATE, TIMEUP_EVENT, SEG_START_CMDSTATE,
 		 seg_start_wait, 0);
     gpcc_fsm_put(SEG_START_CMDSTATE, SEG_START_DONE_EVENT, SEG_INIT_CMDSTATE,
-		 seg_start_reply, seg_start_cleanup, 0);
+		 seg_start_reply, seg_request_cleanup, 0);
 
     /* segment stop */
     gpcc_fsm_put(SEG_INIT_CMDSTATE, SEG_STOP_EVENT, SEG_STOP_CMDSTATE,
@@ -65,7 +66,7 @@ APR_DECLARE(void) fsm_setup(void)
     gpcc_fsm_put(SEG_STOP_CMDSTATE, TIMEUP_EVENT, SEG_STOP_CMDSTATE,
 		 seg_stop_wait, 0);
     gpcc_fsm_put(SEG_STOP_CMDSTATE, SEG_STOP_DONE_EVENT, SEG_INIT_CMDSTATE,
-		 seg_stop_reply, seg_stop_cleanup, 0);
+		 seg_stop_reply, seg_request_cleanup, 0);
     
     /* segment status */
     gpcc_fsm_put(SEG_INIT_CMDSTATE, SEG_STATUS_EVENT, SEG_INIT_CMDSTATE,
