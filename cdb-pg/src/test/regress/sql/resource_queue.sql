@@ -24,6 +24,7 @@ DROP RESOURCE QUEUE regressq2;
 CREATE RESOURCE QUEUE reg_activeq ACTIVE THRESHOLD 2;
 CREATE RESOURCE QUEUE reg_costq COST THRESHOLD 30000.00;
 CREATE USER reg_u1 RESOURCE QUEUE reg_costq;
+GRANT SELECT ON tenk1 TO reg_u1;
 SELECT u.rolname, u.rolsuper, r.rsqname FROM pg_roles as u, pg_resqueue as r WHERE u.rolresqueue=r.oid and rolname='reg_u1';
 ALTER USER reg_u1 RESOURCE QUEUE reg_activeq;
 SELECT u.rolname, u.rolsuper, r.rsqname FROM pg_roles as u, pg_resqueue as r WHERE u.rolresqueue=r.oid and rolname='reg_u1';
@@ -42,19 +43,19 @@ SET SESSION AUTHORIZATION reg_u1;
 
 -- self deadlock (active queue threshold 2)
 BEGIN;
-DECLARE c1 CURSOR FOR SELECT 1;
-DECLARE c2 CURSOR FOR SELECT 2;
-DECLARE c3 CURSOR FOR SELECT 3; -- should detect deadlock
+DECLARE c1 CURSOR FOR SELECT 1 FROM tenk1;
+DECLARE c2 CURSOR FOR SELECT 2 FROM tenk1;
+DECLARE c3 CURSOR FOR SELECT 3 FROM tenk1; -- should detect deadlock
 END;
 
 -- track cursor open/close count (should not deadlock)
 BEGIN;
-DECLARE c1 CURSOR FOR SELECT 1;
+DECLARE c1 CURSOR FOR SELECT 1 FROM tenk1;
 CLOSE c1;
-DECLARE c2 CURSOR FOR SELECT 2;
-DECLARE c3 CURSOR FOR SELECT 3;
+DECLARE c2 CURSOR FOR SELECT 2 FROM tenk1;
+DECLARE c3 CURSOR FOR SELECT 3 FROM tenk1;
 CLOSE c3;
-DECLARE c4 CURSOR FOR SELECT 4;
+DECLARE c4 CURSOR FOR SELECT 4 FROM tenk1;
 FETCH c4;
 END;
 
@@ -63,13 +64,14 @@ RESET SESSION AUTHORIZATION;
 
 -- reset session to super user. make sure no longer queued
 BEGIN;
-DECLARE c1 CURSOR FOR SELECT 1;
-DECLARE c2 CURSOR FOR SELECT 2;
-DECLARE c3 CURSOR FOR SELECT 3; -- should not deadlock, we are SU.
+DECLARE c1 CURSOR FOR SELECT 1 FROM tenk1;
+DECLARE c2 CURSOR FOR SELECT 2 FROM tenk1;
+DECLARE c3 CURSOR FOR SELECT 3 FROM tenk1; -- should not deadlock, we are SU.
 END;
 
 -- cleanup
 
+REVOKE SELECT ON tenk1 FROM reg_u1;
 DROP USER reg_u1;
 DROP USER reg_u2;
 DROP RESOURCE QUEUE reg_activeq;

@@ -160,12 +160,13 @@ ProcessQuery(Portal portal,
 	 * If resource scheduling is enabled and we are locking non SELECT queries,
 	 * or this is a SELECT INTO then lock the portal here. 
 	 * Skip if this query is added by the rewriter or
-	 * we are superuser.
+	 * we are superuser. Additionally we only lock parallel plan queries.
 	 */
 	if (Gp_role == GP_ROLE_DISPATCH && portal && 
 		ResourceScheduler && 
 		(!ResourceSelectOnly || portal->sourceTag == T_SelectStmt) && 
-		parsetree->canSetTag && !superuser())
+		parsetree->canSetTag && !superuser() &&
+		queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
 		portal->releaseResLock = ResLockPortal(portal, queryDesc->plantree);
 
 	/*
@@ -448,8 +449,11 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 	            /*
 	             * If resource scheduling is enabled, lock the portal here.
 	             * Skip this if we are superuser!
+				 * Additionally only lock parallel plan queries.
 	             */
-	            if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler && !superuser())
+	            if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler && 
+					!superuser() &&
+					queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
 		            portal->releaseResLock = ResLockPortal(portal, queryDesc->plantree);
 
 				/*
