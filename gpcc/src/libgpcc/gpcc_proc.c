@@ -181,6 +181,29 @@ APR_DECLARE(apr_status_t) gpcc_proc_gpssh(apr_proc_t *proc, const char *user, co
     return e;
 }
 
+/**
+ *  initdb -E encoding -D data_dir --locale=locale --max_connections=25 --shared_buffers=12000Mb
+ */
+APR_DECLARE(apr_status_t) gpcc_proc_initdb(apr_proc_t *proc, const char *data_dir, const char *encoding, const char *locale, 
+					   int max_connect, const char *shared_buffer, int blocking, apr_pool_t *p)
+{
+    int e;
+    char cmd[1024];
+    char *argv[2];
+
+    if ((e = gpcc_proc_initialize()) != 0) 
+	return e;
+
+    sprintf(cmd, "export LD_LIBRARY_PATH=%s && export PATH=%s && initdb -E %s -D %s --locale=%s --max_connections=%d --shared_buffers=%s > /dev/null 2>&1", 
+	    LD_LIBRARY_PATH, PATH, encoding, data_dir, locale, max_connect, shared_buffer);
+    
+    argv[0] = cmd;
+    argv[1] = 0;
+    e = gpcc_proc_run_shell(proc, argv[0], (const char *const *) argv, 0, blocking, p);
+
+    return e;
+}
+
 
 /**
  *  pg_ctl start [-w] [-D DATADIR] [-s] [-l FILENAME] [-o "OPTIONS"]

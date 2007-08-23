@@ -137,9 +137,22 @@ static apr_status_t seg_initdb(gpcc_event_t* ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     gpcc_net_packet_t *packet = (gpcc_net_packet_t *) ev->edata;
+    struct json_object *obj = json_tokener_parse(packet->mb);
+    gpcc_event_t *evt;
+    int e;
+
+    memset(&cmdslot->u.seg.request, 0, sizeof(cmdslot->u.seg.request));
+
+    if (!obj) {
+	gpcc_warning(FLINE, "json_tokener_parse error");
+	evt = gpcc_event_alloc(SEG_INITDB_DONE_EVENT, cmdslot->cmdidx, 0);
+	cmdslot->u.seg.request.exitcode = 1;
+	cmdslot->u.seg.request.reason = "json_tokener_parse error";
+	gpcc_evqueue_put(gpha.evq, evt);
+	json_object_put(obj);
+	return 0;
+    }
     
-    cmdslot->u.seg.request.parentidx = packet->mh.rcvidx;
-    apr_pool_create(&cmdslot->u.seg.request.subpool, cmdslot->pool);
 
     /* check initdb is valid */
     /* check data_dir exists */
@@ -147,30 +160,80 @@ static apr_status_t seg_initdb(gpcc_event_t* ev, void *_cmdslot)
     /* check database is running (port)*/
 
     /* initdb start */
+    apr_pool_create(&cmdslot->u.seg.request.subpool, cmdslot->pool);
+    cmdslot->u.seg.request.msg = obj;
+    cmdslot->u.seg.request.parentidx = packet->mh.rcvidx;
+    cmdslot->u.seg.request.port = json_object_get_int(json_object_object_get(obj, "port"));
+    cmdslot->u.seg.request.mode = json_object_get_string(json_object_object_get(obj, "mode"));
+    cmdslot->u.seg.request.data_dir = json_object_get_string(json_object_object_get(obj, "dir"));
+    
+    if (0 != (e = gpcc_proc_initdb(&cmdslot->u.seg.request.proc,
+				   cmdslot->u.seg.request.data_dir,
+				   "UNICODE",
+				   "UNICODE",
+				   25,
+				   "128Mb",
+				   1,
+				   cmdslot->u.seg.request.subpool))) {
+	gpcc_warning(FLINE, "initdb failure");
+	evt = gpcc_event_alloc(SEG_INITDB_DONE_EVENT, cmdslot->cmdidx, 0);
+	cmdslot->u.seg.request.exitcode = e;
+	cmdslot->u.seg.request.reason = "initdb failure";
+	gpcc_evqueue_put(gpha.evq, evt);
+	return 0;
+    }
+
+    cmdslot->countdown = 1;
 
     
     return 0;
 }
 
-static apr_status_t seg_initdb_wait(gpcc_event_t* ev, void *cmdslot)
+static apr_status_t seg_initdb_wait(gpcc_event_t* ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    int ret = 0;
+    apr_exit_why_e exitwhy;
+    int e;
+    gpcc_event_t *evt;
+
+    e = apr_proc_wait(&cmdslot->u.seg.request.proc, &ret, &exitwhy, APR_NOWAIT);
+    if (e == APR_CHILD_DONE) {
+	evt = gpcc_event_alloc(SEG_INITDB_NEXT_EVENT, cmdslot->cmdidx, 0);
+	cmdslot->u.seg.request.exitcode = ret;
+	cmdslot->u.seg.request.reason = proc_exit_reason(exitwhy);	
+	gpcc_evqueue_put(gpha.evq, evt);
+
+	/* save the setting port and data_dir permanently */
+	if (cmdslot->u.seg.port == 0) {
+	    cmdslot->u.seg.port = cmdslot->u.seg.request.port;
+	}
+	if (cmdslot->u.seg.data_dir == 0) {
+	    cmdslot->u.seg.data_dir = apr_pstrdup(cmdslot->pool, cmdslot->u.seg.request.data_dir);
+	}
+	
+
+    } else {
+	/* continue to wait */
+	cmdslot->countdown = 1;
+    }
+
+    return 0;
+}
+
+static apr_status_t seg_initdb_pg_hba_append(gpcc_event_t* ev, void *_cmdslot) 
 {
 
     return 0;
 }
 
-static apr_status_t seg_initdb_pg_hba_append(gpcc_event_t* ev, void *cmdslot) 
+static apr_status_t seg_initdb_checkdb(gpcc_event_t* ev, void *_cmdslot)
 {
 
     return 0;
 }
 
-static apr_status_t seg_initdb_checkdb(gpcc_event_t* ev, void *cmdslot)
-{
-
-    return 0;
-}
-
-static apr_status_t seg_initdb_reply(gpcc_event_t* ev, void *cmdslot)
+static apr_status_t seg_initdb_reply(gpcc_event_t* ev, void *_cmdslot)
 {
 
     return 0;   

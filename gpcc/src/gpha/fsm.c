@@ -46,6 +46,8 @@ APR_DECLARE(void) fsm_setup(void)
 		 seg_initialize, 0);
     gpcc_fsm_put(SEG_INIT_CMDSTATE, SEG_INITDB_EVENT, SEG_INITDB_CMDSTATE,
 		 seg_initdb, 0);
+    gpcc_fsm_put(SEG_INITDB_CMDSTATE, SEG_INITDB_DONE_EVENT, SEG_INIT_CMDSTATE,
+		 seg_initdb_reply, seg_request_cleanup, 0);
     gpcc_fsm_put(SEG_INITDB_CMDSTATE, TIMEUP_EVENT, SEG_INITDB_CMDSTATE,
 		 seg_initdb_wait, 0);
     gpcc_fsm_put(SEG_INITDB_CMDSTATE, SEG_INITDB_NEXT_EVENT, SEG_INIT_CMDSTATE,

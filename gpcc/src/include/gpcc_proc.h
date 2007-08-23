@@ -61,6 +61,22 @@ APR_DECLARE(apr_status_t) gpcc_proc_ssh(apr_proc_t *proc, const char *user, cons
 APR_DECLARE(apr_status_t) gpcc_proc_gpssh(apr_proc_t *proc, const char *user, const char *const *hostnames, int port, const char *cmd, int blocking, apr_pool_t *p);
 
 /**
+ *  initdb -E encoding -D data_dir --locale=locale --max_connections=25 --shared_buffers=12000Mb
+ *  
+ *  @param proc process handle
+ *  @param data_dir data directory
+ *  @param encoding database encoding
+ *  @param locale database locale
+ *  @param max_connect number of max connections
+ *  @param shared_buffers  shared buffers size
+ *  @param blocking flag to indicate blocking or not
+ *  @param p memory pool
+ *  @return APR_SUCCESS if success otherwise failure
+ */
+
+APR_DECLARE(apr_status_t) gpcc_proc_initdb(apr_proc_t *proc, const char *data_dir, const char *encoding, const char *locale, 
+					   int max_connect, const char *shared_buffer, int blocking, apr_pool_t *p);
+/**
  *  pg_ctl start [-w] [-D DATADIR] [-s] [-l FILENAME] [-o "OPTIONS"]
  *
  *  @param proc process handle
