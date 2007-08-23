@@ -574,6 +574,20 @@ from (select cn,vn,pn,grouping(cn,vn,pn) from sale group by rollup(cn,vn,pn)) t
 order by 4; -- order 4
 --end_equivalent
 
+-- MPP-1860
+SELECT sale.pn,sale.vn,sale.qty,
+SUM(floor(sale.vn*sale.qty)) OVER(order by sale.pn asc rows between 4 preceding and 0 preceding)  as sum 
+FROM sale;
+
+-- MPP-1866
+SELECT sale.cn,sale.pn,sale.prc, 
+SUM(floor(sale.pn*sale.prc)) OVER(order by sale.cn asc, pn rows between current row and unbounded following ) as sum 
+FROM sale;
+
+SELECT sale.pn,sale.vn, 
+COUNT(floor(sale.vn)) OVER(order by sale.pn asc rows between current row and unbounded following) 
+FROM sale;    
+
 -- Sanity test for executor detection of non-sense frames
 SELECT sale.pn,sale.cn,sale.prc,
     AVG(cast (sale.prc as int))

@@ -1870,12 +1870,12 @@ adjustEdges(WindowState *wstate)
 				   	if (funcstate->cur_trail_edge == -1)
 					{
 						funcstate->cur_trail_edge = 0;
-						funcstate->prev_trail_edge = 0;
+				//		funcstate->prev_trail_edge = 0;
 					}
 					else
 					{
 						funcstate->cur_trail_edge++;
-						funcstate->prev_trail_edge++;
+						//funcstate->prev_trail_edge++;
 					}
 				}
 				else if (key->frame->trail->kind == WINDOW_BOUND_PRECEDING)
