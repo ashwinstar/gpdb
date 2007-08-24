@@ -64,6 +64,7 @@ COPY_REC=0
 PROCESS_COPY_REC=0
 CHILD_TABLE_ID="_child_depth_"
 CASCADE_PERMS=0
+NO_INDEX=0
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -108,6 +109,9 @@ USAGE () {
 		$ECHO "          [mandatory if partition type list]"
 		$ECHO "      -s, <new range value> new upper range value to be applied to a range partition type"
 		$ECHO "          [mandatory if partition type range]"
+		$ECHO "      -I, do not create index(s) if current child tables have indexing"
+		$ECHO "          use this option if you want to load direct into a child table and create required"
+		$ECHO "          child table indexes at a later stage"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
@@ -165,7 +169,11 @@ PROMPT_CONTINUE () {
 		if [ $INDEX_GEN -eq 0 ];then
 		LOG_MSG "[INFO]:-Index generation           = Off" 1
 		else
-		LOG_MSG "[INFO]:-Index generation           = On" 1;fi
+		if [ $NO_INDEX -eq 0 ];then
+		LOG_MSG "[INFO]:-Index generation           = On" 1
+		else
+		LOG_MSG "[INFO]:-Index generation           = Override -I option supplied" 1;fi
+		fi
 		if [ $COPY_REC -eq 1 ] && [ $PROCESS_COPY_REC -eq 1 ];then
 		LOG_MSG "[INFO]:-Parent table copy back     = On" 1
 		else
@@ -810,14 +818,18 @@ RUN_CASCADE_PERMS () {
 
 RUN_INDEX_SQL () {
         LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-        LOG_MSG "[INFO]:-Running generated index creation SQL file" 1
-        $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -f $IDX_TMP_FILE >> $LOG_FILE 2>&1
-        if [ $? -ne 0 ];then
-                RM_TMP_FILE
-                ERROR_EXIT "[FATAL]:-Failed to run index creation SQL file, check log file for error messages." 2
-        else
-                LOG_MSG "[INFO]:-Completed run of generated SQL file" 1
-        fi
+	if [ $NO_INDEX -eq 0 ];then
+        	LOG_MSG "[INFO]:-Running generated index creation SQL file" 1
+        	$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -f $IDX_TMP_FILE >> $LOG_FILE 2>&1
+        	if [ $? -ne 0 ];then
+                	RM_TMP_FILE
+                	ERROR_EXIT "[FATAL]:-Failed to run index creation SQL file, check log file for error messages." 2
+        	else
+                	LOG_MSG "[INFO]:-Completed run of generated SQL file" 1
+        	fi
+	else
+		LOG_MSG "[INFO]:-By passing index generation as -I option supplied" 1
+	fi
         LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -849,7 +861,7 @@ ANALYZE_CHILD_TABLES () {
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":vt:'?'aql:d:x:n:co:s:!D" opt;do
+		while getopts ":vt:'?'aql:d:x:n:co:s:!DI" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						t ) PARENT_TABLE_NAME=`$ECHO $OPTARG|$TR '[A-Z]' '[a-z]'` ;;
@@ -866,6 +878,7 @@ if [ $# -ne 0 ]; then
 						o ) PART_LIST=$OPTARG ;;
 						s ) END_RANGE=$OPTARG ;;
 						D ) DEBUG_LEVEL=1 ;;
+						I ) NO_INDEX=1 ;;
 						* ) USAGE ;;
 				esac
 		done	
