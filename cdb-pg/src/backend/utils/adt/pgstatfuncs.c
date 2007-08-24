@@ -39,6 +39,7 @@ extern Datum pg_stat_get_backend_idset(PG_FUNCTION_ARGS);
 extern Datum pg_backend_pid(PG_FUNCTION_ARGS);
 extern Datum pg_stat_reset(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_backend_pid(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_backend_session_id(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_backend_dbid(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_backend_userid(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_backend_activity(PG_FUNCTION_ARGS);
@@ -58,6 +59,8 @@ extern Datum pg_stat_get_queue_num_exec(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_queue_num_wait(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_queue_elapsed_exec(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_queue_elapsed_wait(PG_FUNCTION_ARGS);
+
+extern Datum pg_renice_session(PG_FUNCTION_ARGS);
 
 Datum
 pg_stat_get_numscans(PG_FUNCTION_ARGS)
@@ -327,6 +330,19 @@ pg_stat_get_backend_pid(PG_FUNCTION_ARGS)
 
 	PG_RETURN_INT32(beentry->st_procpid);
 }
+
+Datum
+pg_stat_get_backend_session_id(PG_FUNCTION_ARGS)
+{
+	int32		beid = PG_GETARG_INT32(0);
+	PgBackendStatus *beentry;
+
+	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+		PG_RETURN_NULL();
+
+	PG_RETURN_INT32(beentry->st_session_id);
+}
+
 
 
 Datum
@@ -696,3 +712,163 @@ pg_stat_get_queue_elapsed_wait(PG_FUNCTION_ARGS)
 
 	PG_RETURN_INT64(result);
 }
+
+
+/*
+ * This should probably be moved to it's own file, or at least some better place.
+ * I put it here because it uses pgstat_fetch_stat_beentry
+ */
+
+#include <sys/time.h>
+#ifndef WIN32
+#include <sys/resource.h>
+#endif
+#include "libpq-fe.h"
+#include "lib/stringinfo.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdbdisp.h"
+
+Datum
+pg_renice_session(PG_FUNCTION_ARGS)
+{
+	int32 session_id = PG_GETARG_INT32(0);
+	int32 niceamount = PG_GETARG_INT32(1);
+	int prio_out = -1;   /* -1 means couldn't change priority, 0 means ok */
+	bool ok = true;
+	int tot_backends = pgstat_fetch_stat_numbackends();
+	int beid;
+	int numfound = 0;
+
+	if (niceamount < -20|| niceamount > 20)
+		elog(ERROR, "nice values must be between -20 and 20");
+	
+	if (gp_session_id != session_id)
+	
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+			  (errmsg("only superuser can renice another user's session"))));
+	
+	
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		int i;
+		int resultCount = 0;
+		struct pg_result **results = NULL;
+		char cmd[255];
+
+		StringInfoData errbuf;
+
+		initStringInfo(&errbuf);
+		
+		/*
+		 * Make sure the session exists before dispatching
+		 */
+		for (beid = 1; beid <= tot_backends; beid++)
+		{
+			PgBackendStatus *beentry = pgstat_fetch_stat_beentry(beid);
+
+			if (beentry && beentry->st_session_id == session_id)
+				numfound++;
+		}
+			
+		if (numfound == 0)
+			elog(ERROR, "Did not find any backends for session number %d", session_id);
+		
+		/*
+		 * Ok, it exists, dispatch the command to the segDBs.
+		 */
+
+		sprintf(cmd, "select pg_renice_session(%d,%d)", session_id, niceamount);
+
+		results = cdbdisp_dispatchRMCommand(cmd, true, true, &errbuf,
+				&resultCount);
+
+		if (errbuf.len > 0)
+			ereport(ERROR,(
+					errmsg("pg_renice_session error (gathered %d results from cmd '%s')",
+					resultCount, cmd), errdetail("%s",	errbuf.data)));
+
+		for (i = 0; i < resultCount; i++)
+		{
+			if (PQresultStatus(results[i]) != PGRES_TUPLES_OK)
+			{
+				elog(ERROR, "pg_renice_session: resultStatus not tuples_Ok");
+			}
+			else
+			{
+
+				int j;
+				for (j = 0; j < PQntuples(results[i]); j++)
+				{
+					int retvalue = 0;
+					retvalue = atoi(PQgetvalue(results[i], j, 0));
+					/*
+					 * -1 means that segDB could not do the renice
+					 */
+					if (retvalue == -1)
+						ok = false;
+				}
+
+			}
+		}
+
+		pfree(errbuf.data);
+
+		for (i = 0; i < resultCount; i++)
+			PQclear(results[i]);
+
+		free(results);
+		
+		if (!ok)
+		{
+			elog(WARNING, "Had trouble renicing one or more backends");
+			prio_out = -1;
+		}
+	}
+	else /* Gp_role == EXECUTE */
+	{
+		/*
+		 * Only renice the QEs, not the QD... I think that sounds right.
+		 * 
+		 * TODO: Identify the Dispatch Agents, and avoid re-nicing them
+		 */
+		for (beid = 1; beid <= tot_backends; beid++)
+		{
+			PgBackendStatus *beentry = pgstat_fetch_stat_beentry(beid);
+	
+			if (beentry && beentry->st_session_id == session_id)
+			{
+#ifndef WIN32
+				prio_out = setpriority(PRIO_PROCESS, beentry->st_procpid, niceamount);
+#else
+				prio_out = -1;
+				// To do this on Windows:
+				// Use hProcess = OpenProcess(PROCESS_QUERY_INFORMATION|PROCESS_SET_INFORMATION,FALSE,dwProcessId);
+				// SetPriorityClass(hProcess,dwPriorityClass);
+				// CloseHandle(hProcess);
+				
+				// Might need to AdjustTokenPrivileges() on ourselves first, to enable SeDebugPrivilege or somesuch.
+#endif
+				if (prio_out == -1)
+				{
+					if (errno == EACCES)
+					{
+						ereport(WARNING,(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+						 errmsg("Could not change nice value to lower number because we don't have the privileges to do so")
+						));
+					}
+					else if (errno == ESRCH)
+					{
+						/* ignore this, the backend went away when we weren't looking */
+					}
+					else
+						elog(WARNING, "Could not change priority, errno %d", errno);
+				}
+			}
+		}
+	}
+	
+	PG_RETURN_INT32(prio_out);
+}
+
