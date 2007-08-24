@@ -266,22 +266,42 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
     cmdslot->u.seg.request.port = json_object_get_int(json_object_object_get(obj, "port"));
     cmdslot->u.seg.request.mode = json_object_get_string(json_object_object_get(obj, "mode"));
     cmdslot->u.seg.request.data_dir = json_object_get_string(json_object_object_get(obj, "dir"));
+
     
-    if (0 != (e = gpcc_proc_pg_ctl_start_segment(&cmdslot->u.seg.request.proc,
-						 cmdslot->u.seg.request.port,
-						 cmdslot->u.seg.request.data_dir,
-						 1, 0, 
-						 cmdslot->u.seg.request.subpool))) {
-	gpcc_warning(FLINE, "pg_ctl start failure");
-	evt = gpcc_event_alloc(SEG_START_DONE_EVENT, cmdslot->cmdidx, 0);
-	cmdslot->u.seg.request.exitcode = e;
-	cmdslot->u.seg.request.reason = "pg_ctl start failure";
-	gpcc_evqueue_put(gpha.evq, evt);
-	return 0;
-    }
+    if (strstr(json_object_get_string(json_object_object_get(obj, "seg")), "seg.m.") == 0) {
+	/* this is QE */
+
+	if (0 != (e = gpcc_proc_pg_ctl_start_segment(&cmdslot->u.seg.request.proc,
+						     cmdslot->u.seg.request.port,
+						     cmdslot->u.seg.request.data_dir,
+						     1, 0, 
+						     cmdslot->u.seg.request.subpool))) {
+	    gpcc_warning(FLINE, "pg_ctl start segment failure");
+	    evt = gpcc_event_alloc(SEG_START_DONE_EVENT, cmdslot->cmdidx, 0);
+	    cmdslot->u.seg.request.exitcode = e;
+	    cmdslot->u.seg.request.reason = "pg_ctl start segment failure";
+	    gpcc_evqueue_put(gpha.evq, evt);
+	    return 0;
+	}
+    } else {
+	/* this is QD */
+	if (0 != (e = gpcc_proc_pg_ctl_start_master(&cmdslot->u.seg.request.proc,
+						     cmdslot->u.seg.request.port,
+						     cmdslot->u.seg.request.data_dir,
+						     1, 0, 
+						     cmdslot->u.seg.request.subpool))) {
+	    gpcc_warning(FLINE, "pg_ctl start master failure");
+	    evt = gpcc_event_alloc(SEG_START_DONE_EVENT, cmdslot->cmdidx, 0);
+	    cmdslot->u.seg.request.exitcode = e;
+	    cmdslot->u.seg.request.reason = "pg_ctl start master failure";
+	    gpcc_evqueue_put(gpha.evq, evt);
+	    return 0;
+	}
+    }	
 
     cmdslot->countdown = 1;
     return 0;
+
 }
 
 static apr_status_t seg_start_wait(gpcc_event_t* ev, void *_cmdslot)
