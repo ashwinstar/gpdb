@@ -3030,6 +3030,10 @@ DATA(insert OID = 6033 (  pg_stat_get_queue_elapsed_exec	PGNSP PGUID 12 f f t f 
 DESCR("Statistics:  Elapsed seconds for queries that executed in queue");
 DATA(insert OID = 6034 (  pg_stat_get_queue_elapsed_wait	PGNSP PGUID 12 f f t f s 1 20 f "26" _null_ _null_ _null_ pg_stat_get_queue_elapsed_wait - _null_ ));
 DESCR("Statistics:  Elapsed seconds for queries that waited in queue");
+DATA(insert OID = 6039 (  pg_stat_get_backend_session_id	PGNSP PGUID 12 f f t f s 1 23 f "23" _null_ _null_ _null_ pg_stat_get_backend_session_id - _null_ ));
+DESCR("Statistics: Greenplum session id of backend");
+DATA(insert OID = 6040 (  pg_renice_session	PGNSP PGUID 12 f f t f v 2 23 f "23 23" _null_ _null_ _null_ pg_renice_session - _null_ ));
+DESCR("change priority of all the backends for a given session id");
 
 DATA(insert OID = 1946 (  encode						PGNSP PGUID 12 f f t f i 2 25 f "17 25" _null_ _null_ _null_	binary_encode - _null_ ));
 DESCR("Convert bytea value into some ascii-only text string");

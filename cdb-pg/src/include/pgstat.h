@@ -391,6 +391,7 @@ typedef struct PgBackendStatus
 	/* Database OID, owning user's OID, connection client address */
 	Oid			st_databaseid;
 	Oid			st_userid;
+	int			st_session_id;  /* GPDB only */
 	SockAddr	st_clientaddr;
 
 	/* Is backend currently waiting on an lmgr lock? */

@@ -856,7 +856,7 @@ pg_renice_session(PG_FUNCTION_ARGS)
 					{
 						ereport(WARNING,(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 						 errmsg("Could not change nice value to lower number because we don't have the privileges to do so")
-						));
+						)));
 					}
 					else if (errno == ESRCH)
 					{

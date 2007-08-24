@@ -56,6 +56,7 @@
 #include "storage/pmsignal.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
+#include "cdb/cdbvars.h"
 
 
 /* ----------
@@ -1396,6 +1397,7 @@ pgstat_bestart(void)
 	beentry->st_activity_start_timestamp = 0;
 	beentry->st_databaseid = MyDatabaseId;
 	beentry->st_userid = userid;
+	beentry->st_session_id = gp_session_id;  /* GPDB only */
 	beentry->st_clientaddr = clientaddr;
 	beentry->st_waiting = false;
 	beentry->st_activity[0] = '\0';
@@ -1441,6 +1443,7 @@ pgstat_beshutdown_hook(int code, Datum arg)
 	beentry->st_changecount++;
 
 	beentry->st_procpid = 0;	/* mark invalid */
+	beentry->st_session_id = 0;
 
 	beentry->st_changecount++;
 	Assert((beentry->st_changecount & 1) == 0);

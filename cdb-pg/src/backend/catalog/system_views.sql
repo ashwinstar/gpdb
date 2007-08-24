@@ -332,6 +332,7 @@ CREATE VIEW pg_stat_activity AS
             D.oid AS datid, 
             D.datname AS datname, 
             pg_stat_get_backend_pid(S.backendid) AS procpid, 
+			pg_stat_get_backend_session_id(S.backendid) AS sess_id, 
             pg_stat_get_backend_userid(S.backendid) AS usesysid, 
             U.rolname AS usename, 
             pg_stat_get_backend_activity(S.backendid) AS current_query,
