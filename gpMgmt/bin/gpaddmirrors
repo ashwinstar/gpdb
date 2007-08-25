@@ -181,7 +181,7 @@ OBTAIN_PARAM () {
 	ERROR_CHK $? "obtain segment instance directory suffix" 2
 	PRI_SEGMENT_ARRAY_COUNT=${#PRI_SEGMENT_ARRAY[@]}
 	if [ $BALANCE -eq 1 ];then
-		if [ $PRI_HOST_COUNT -eq 1 ] || [ $PRI_SEG_PER_HOST -eq $PRI_HOST_COUNT ];then
+		if [ $PRI_HOST_COUNT -eq 1 ] || [ $PRI_SEG_PER_HOST -ge $PRI_HOST_COUNT ];then
 			LOG_MSG "[FATAL]:-Number of segment hosts must be greater than the number of segment instances per host"  1
 			ERROR_EXIT "[FATAL]:-Insufficient Greenplum segment hosts for -s mirroring option" 2
 		fi
