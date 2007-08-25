@@ -3389,6 +3389,7 @@ DATA(insert OID = 7001 ( rank				PGNSP PGUID 12 f f f f i 0 20 t ""  _null_ _nul
 DATA(insert OID = 7002 ( dense_rank			PGNSP PGUID 12 f f f f i 0 20 t ""  _null_ _null_ _null_  window_dummy - _null_ ));
 DATA(insert OID = 7003 ( percent_rank		PGNSP PGUID 12 f f f f i 0 701 t ""  _null_ _null_ _null_  window_dummy - _null_ ));
 DATA(insert OID = 7004 ( cume_dist			PGNSP PGUID 12 f f f f i 0 701 t ""  _null_ _null_ _null_  window_dummy - _null_ ));
+#define CUME_DIST_OID 7004
 DATA(insert OID = 7005 ( ntile				PGNSP PGUID 12 f f f f i 1 20 t "23"  _null_ _null_ _null_  window_dummy - _null_ ));
 DATA(insert OID = 7006 ( ntile				PGNSP PGUID 12 f f f f i 1 20 t "20"  _null_ _null_ _null_  window_dummy - _null_ ));
 DATA(insert OID = 7007 ( ntile				PGNSP PGUID 12 f f f f i 1 20 t "1700"  _null_ _null_ _null_  window_dummy - _null_ ));
@@ -4801,6 +4802,8 @@ DATA(insert OID = 7163 (  last_value_varchar	PGNSP	PGUID 12 f f t f i 2 1043 f "
 DATA(insert OID = 7164 (  last_value_xid	PGNSP	PGUID 12 f f t f i 2 28 f "2281 28" _null_ _null_ _null_ last_value_xid - _null_ ));
 DATA(insert OID = 7204 (  cume_dist_prelim   PGNSP PGUID 12 f f t f i 1 20 f "2281" _null_ _null_ _null_ cume_dist_prelim - _null_ ));
 DESCR("window preliminary function");
+#define CUME_DIST_PRELIM_OID 7204
+#define CUME_DIST_PRELIM_TYPE 20
 DATA(insert OID = 7205 (  ntile_prelim_int   PGNSP PGUID 12 f f t f i 2 1016 f "2281 23" _null_ _null_ _null_ ntile_prelim_int - _null_ ));
 DESCR("window preliminary function");
 DATA(insert OID = 7206 (  ntile_prelim_bigint   PGNSP PGUID 12 f f t f i 2 1016 f "2281 20" _null_ _null_ _null_ ntile_prelim_bigint - _null_ ));

@@ -1684,7 +1684,9 @@ typedef struct WindowState
 	
 	/* Per row state */
 	int64		row_index;
+
 	int			numlevels;
+
 	WindowStatePerLevel level_state;
 
 	/* memory context for transition value processing */

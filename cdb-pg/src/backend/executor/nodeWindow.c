@@ -44,6 +44,8 @@
 #include "utils/numeric.h"
 #include "utils/syscache.h"
 
+#ifndef NEW_WINDOWNODE
+
 /* 
  * A struct to hold all the data relevant to a transition value, used for
  * buffering.
@@ -2267,7 +2269,7 @@ populateFrameBuffers(WindowState *wstate)
 		ntuples = wstate->input_buffer->ntuples - 2;
 		wstate->input_buffer->ntuples = 2;
 	}
-
+	
     {                                                                           
         int tuple_no;                                                           
                                                                                 
@@ -3528,6 +3530,7 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 		funcstate->wrxstate = wrxstate;
 		funcstate->wref = winref;
 
+		/* XXX should be an Assert here? */
 		if (winref->winlevel < wstate->numlevels)
 			funcstate->wlevel = &wstate->level_state[winref->winlevel];
 		else
@@ -6129,3 +6132,4 @@ first_value_xid(PG_FUNCTION_ARGS)
     return d;
 }
 
+#endif

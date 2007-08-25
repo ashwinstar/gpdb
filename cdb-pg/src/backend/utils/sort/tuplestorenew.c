@@ -1018,7 +1018,7 @@ void ntuplestore_acc_put_data(NTupleStoreAccessor *tsa, void *data, int len)
 	int   dest_len;
 	int   w_len = len > 0 ? len : -len;
 
-	Assert(tsa->page && tsa->isWriter);
+	Assert(tsa->isWriter);
 	Assert(tsa->store && tsa->store->first_page && tsa->store->last_page);
 	Assert(len > 0 || len == (-(int)sizeof(NTupleStoreLobRef)));
 
@@ -1026,9 +1026,10 @@ void ntuplestore_acc_put_data(NTupleStoreAccessor *tsa, void *data, int len)
 
 
 	/* first move the page to last page */
-	if(tsa->page != tsa->store->last_page)
+	if(!tsa->page || tsa->page != tsa->store->last_page)
 	{
-		nts_unpin_page(tsa->store, tsa->page);
+		if (tsa->page)
+			nts_unpin_page(tsa->store, tsa->page);
 		tsa->page = tsa->store->last_page;
 		nts_pin_page(tsa->store, tsa->page);
 	}
