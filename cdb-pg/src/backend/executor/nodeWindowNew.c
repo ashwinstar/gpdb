@@ -441,7 +441,8 @@ static void processTupleSlot(WindowState *wstate, TupleTableSlot *slot);
 static void * getCurrentValue(NTupleStoreAccessor *reader,
 							  WindowStatePerLevel level_state);
 static bool cmp_deformed_tuple(Datum *a, bool *a_nulls, Datum *b, bool *b_nulls,
-							   bool *asc_cols, int ncols, FmgrInfo *funcs, 
+							   bool *asc_cols, int ncols,
+							   FmgrInfo *ltfuncs, FmgrInfo *eqfuncs,
 							   MemoryContext evalContext, bool is_equal);
 static FmgrInfo *get_ltfuncs(TupleDesc tupdesc, int numCols, AttrNumber *matchColIdx);
 static void advanceKeyLevelState(WindowState *wstate, int min_level); 
@@ -652,105 +653,75 @@ serializeFuncs(WindowStatePerLevel level_state,
 			bool byvalue;
 			get_typlenbyval(CUME_DIST_PRELIM_TYPE,
 							&typelen, &byvalue);
-			if (byvalue)
+
+			ensureSpace(p_serial_entry, p_max_size,
+						written_pos, sizeof(bool));
+
+			memcpy(written_pos,
+				   &(funcstate->win_value_is_null),
+				   sizeof(bool));
+			written_pos += sizeof(bool); /* isnull col */
+
+			if (!funcstate->win_value_is_null)
 			{
-				ensureSpace(p_serial_entry, p_max_size,
-							written_pos, sizeof(Datum));
+				if (byvalue)
+				{
+					ensureSpace(p_serial_entry, p_max_size,
+								written_pos, sizeof(Datum));
 				
-				memcpy(written_pos, &(funcstate->win_value),
-					   sizeof(Datum));
-				written_pos += sizeof(Datum);
-			}
-			else
-			{
-				ensureSpace(p_serial_entry, p_max_size,
-							written_pos, typelen);
+					memcpy(written_pos, &(funcstate->win_value),
+						   sizeof(Datum));
+					written_pos += sizeof(Datum);
+				}
+				else
+				{
+					ensureSpace(p_serial_entry, p_max_size,
+								written_pos, typelen);
 			
-				memcpy(written_pos,
-					   DatumGetPointer(funcstate->win_value),
-					   typelen);
+					memcpy(written_pos,
+						   DatumGetPointer(funcstate->win_value),
+						   typelen);
 				
-				written_pos += typelen;
+					written_pos += typelen;
+				}
 			}
-
-			ensureSpace(p_serial_entry, p_max_size,
-						written_pos, sizeof(bool));
-				
-			memcpy(written_pos,
-				   &(funcstate->win_value_is_null),
-				   sizeof(bool));
-			written_pos += sizeof(bool); /* isnull col */
 		}
-
-#if 0		
-		else if (!funcstate->isAgg)
-		{
-			if (funcstate->resulttypeByVal)
-			{
-				ensureSpace(p_serial_entry, p_max_size,
-							written_pos, sizeof(Datum));
-				
-				memcpy(written_pos, &(funcstate->win_value),
-					   sizeof(Datum));
-				written_pos += sizeof(Datum);
-			}
-			else
-			{
-				Size real_size = datumGetSize(funcstate->win_value,
-											  funcstate->resulttypeByVal,
-											  funcstate->resulttypeLen);
-
-				ensureSpace(p_serial_entry, p_max_size,
-							written_pos, real_size);
-				
-				memcpy(written_pos,
-					   DatumGetPointer(funcstate->win_value),
-					   real_size);
-				
-				written_pos += real_size;
-			}
-
-			ensureSpace(p_serial_entry, p_max_size,
-						written_pos, sizeof(bool));
-				
-			memcpy(written_pos,
-				   &(funcstate->win_value_is_null),
-				   sizeof(bool));
-			written_pos += sizeof(bool); /* isnull col */
-		}
-#endif
 
 		/* the function which has an inverse preliminary function */
 		else if (OidIsValid(funcstate->invprelimfn_oid))
 		{
-			if (funcstate->aggTranstypeByVal)
-			{
-				ensureSpace(p_serial_entry, p_max_size,
-							written_pos, sizeof(funcstate->aggTransValue));
-				
-				memcpy(written_pos, &(funcstate->aggTransValue),
-					   sizeof(funcstate->aggTransValue));
-				written_pos += sizeof(funcstate->aggTransValue);
-			}
-			else
-			{
-				Size real_size = datumGetSize(funcstate->aggTransValue,
-											  funcstate->aggTranstypeByVal,
-											  funcstate->aggTranstypeLen);
-				ensureSpace(p_serial_entry, p_max_size,
-							written_pos, real_size);
-				
-				memcpy(written_pos,
-					   DatumGetPointer(funcstate->aggTransValue),
-					   real_size);
-				written_pos += real_size;
-			}
-
 			ensureSpace(p_serial_entry, p_max_size,
 						written_pos, sizeof(bool));
-				
+
 			memcpy(written_pos, &(funcstate->aggTransValueIsNull), sizeof(bool));
 			written_pos += sizeof(bool);
+
+			if (!funcstate->aggTransValueIsNull)
+			{
+				if (funcstate->aggTranstypeByVal)
+				{
+					ensureSpace(p_serial_entry, p_max_size,
+								written_pos, sizeof(funcstate->aggTransValue));
+				
+					memcpy(written_pos, &(funcstate->aggTransValue),
+						   sizeof(funcstate->aggTransValue));
+					written_pos += sizeof(funcstate->aggTransValue);
+				}
+				else
+				{
+					Size real_size = datumGetSize(funcstate->aggTransValue,
+												  funcstate->aggTranstypeByVal,
+												  funcstate->aggTranstypeLen);
+
+					ensureSpace(p_serial_entry, p_max_size,
+								written_pos, real_size);
+
+					memcpy(written_pos,
+						   DatumGetPointer(funcstate->aggTransValue),
+						   real_size);
+					written_pos += real_size;
+				}
+			}
 		}
 		
 		/* the general case */
@@ -774,29 +745,32 @@ serializeFuncs(WindowStatePerLevel level_state,
 
 				value = ExecEvalExpr(argstate, econtext, &isnull, NULL);
 
-				if (byval)
-				{
-					ensureSpace(p_serial_entry, p_max_size,
-								written_pos, sizeof(Datum));
-				
-					memcpy(written_pos, &value, sizeof(Datum));
-					written_pos += sizeof(Datum);
-				}
-				else
-				{
-					ensureSpace(p_serial_entry, p_max_size,
-								written_pos, arglen);
-				
-					memcpy(written_pos, DatumGetPointer(value),
-						   arglen);
-					written_pos += arglen;
-				}
-
 				ensureSpace(p_serial_entry, p_max_size,
 							written_pos, sizeof(bool));
 				
 				memcpy(written_pos, &(isnull), sizeof(bool));
 				written_pos += sizeof(bool);
+
+				if (!isnull)
+				{
+					if (byval)
+					{
+						ensureSpace(p_serial_entry, p_max_size,
+									written_pos, sizeof(Datum));
+				
+						memcpy(written_pos, &value, sizeof(Datum));
+						written_pos += sizeof(Datum);
+					}
+					else
+					{
+						ensureSpace(p_serial_entry, p_max_size,
+									written_pos, arglen);
+				
+						memcpy(written_pos, DatumGetPointer(value),
+							   arglen);
+						written_pos += arglen;
+					}
+				}
 			}
 		}
 	}
@@ -867,19 +841,25 @@ deserializeFuncs(WindowStatePerLevel level_state,
 			bool byvalue;
 			get_typlenbyval(CUME_DIST_PRELIM_TYPE,
 							&typelen, &byvalue);
-			if (byvalue)
-			{
-				memcpy(&(value->value), read_pos, sizeof(Datum));
-				read_pos += sizeof(Datum);
-			}
-			else
-			{
-				value->value = PointerGetDatum(read_pos);
-				read_pos += typelen;
-			}
 
 			memcpy(&(value->valueIsNull), read_pos, sizeof(bool));
 			read_pos += sizeof(bool);
+
+			if (!value->valueIsNull)
+			{
+				if (byvalue)
+				{
+					memcpy(&(value->value), read_pos, sizeof(Datum));
+					read_pos += sizeof(Datum);
+				}
+				else
+				{
+					value->value = PointerGetDatum(read_pos);
+					read_pos += typelen;
+				}
+			}
+			else
+				value->value = 0;
 		}
 		
 
@@ -887,21 +867,27 @@ deserializeFuncs(WindowStatePerLevel level_state,
 		 */
 		else if (OidIsValid(funcstate->invprelimfn_oid))
 		{
-			if (funcstate->aggTranstypeByVal)
-			{
-			    memcpy(&(value->value), read_pos, sizeof(Datum));
-				read_pos += sizeof(Datum);
-			}
-			else
-			{
-				value->value = PointerGetDatum(read_pos);
-				read_pos += datumGetSize(value->value,
-										 funcstate->aggTranstypeByVal,
-										 funcstate->aggTranstypeLen);
-			}
 			memcpy(&(value->valueIsNull), read_pos, sizeof(bool));
 			read_pos += sizeof(bool);
 
+			if (!value->valueIsNull)
+			{
+				if (funcstate->aggTranstypeByVal)
+				{
+					memcpy(&(value->value), read_pos, sizeof(Datum));
+					read_pos += sizeof(Datum);
+				}
+				else
+				{
+					value->value = PointerGetDatum(read_pos);
+					read_pos += datumGetSize(value->value,
+											 funcstate->aggTranstypeByVal,
+											 funcstate->aggTranstypeLen);
+				}
+			}
+			else
+				value->value = 0;
+			
 			funcstate->final_aggTransValue = value->value;
 			funcstate->final_aggTransValueIsNull = value->valueIsNull;
 			funcstate->final_aggNoTransValue = false;
@@ -923,18 +909,22 @@ deserializeFuncs(WindowStatePerLevel level_state,
 				typid = exprType((Node *)argstate->expr);
 				get_typlenbyval(typid, &arglen, &byval);
 
-				if (byval)
-				{
-					memcpy(&(value->value), read_pos, sizeof(Datum));
-					read_pos += sizeof(Datum);
-				}
-				else
-				{
-					value->value = PointerGetDatum(read_pos);
-					read_pos += arglen;
-				}
 				memcpy(&(value->valueIsNull), read_pos, sizeof(bool));
 				read_pos += sizeof(bool);
+
+				if (!value->valueIsNull)
+				{
+					if (byval)
+					{
+						memcpy(&(value->value), read_pos, sizeof(Datum));
+						read_pos += sizeof(Datum);
+					}
+					else
+					{
+						value->value = PointerGetDatum(read_pos);
+						read_pos += arglen;
+					}
+				}
 			}
 		}
 
@@ -1004,20 +994,16 @@ serializeEntryForRange(WindowStatePerLevel level_state,
 
 		key = slot_getattr(slot, attnum, &isnull);
 
-		if (level_state->col_typbyvals[key_no])
-			keylen += sizeof(Datum);
-		else
-			keylen += level_state->col_typlens[key_no];
-		keylen += sizeof(bool);
+		keylen += datumGetSize(key, level_state->col_typbyvals[key_no],
+							   level_state->col_typlens[key_no]);
 	
-		ensureSpace(p_serial_entry, &max_size, written_pos, keylen);
+		ensureSpace(p_serial_entry, &max_size, written_pos, keylen + sizeof(bool));
 
 		if (level_state->col_typbyvals[key_no])
 			memcpy(written_pos, &(key), sizeof(Datum));
 		else
-			memcpy(written_pos, DatumGetPointer(key),
-				   keylen - sizeof(bool));
-		written_pos += (keylen - sizeof(bool));
+			memcpy(written_pos, DatumGetPointer(key), keylen);
+		written_pos += keylen;
 		
 		memcpy(written_pos, &(isnull), sizeof(bool));
 		written_pos += sizeof(bool);
@@ -1054,11 +1040,10 @@ deserializeEntryForRange(WindowStatePerLevel level_state,
 	{
 		Size curr_keylen = 0;
 		
-		if (level_state->col_typbyvals[key_no])
-			curr_keylen += sizeof(Datum);
-		else
-			curr_keylen += level_state->col_typlens[key_no];
-	
+		curr_keylen = datumGetSize(PointerGetDatum(read_pos),
+								   level_state->col_typbyvals[key_no],
+								   level_state->col_typlens[key_no]);
+
 		if (level_state->col_typbyvals[key_no])
 			memcpy(&(entry->keys[key_no]), read_pos, sizeof(Datum));
 		else
@@ -1137,6 +1122,7 @@ appendToFrameBuffer(WindowStatePerLevel level_state, ExprContext *econtext)
 									&new_lead_key, &new_lead_key_isnull,
 									level_state->col_sort_asc,
 									level_state->numSortCols,
+									level_state->ltfunctions,
 									level_state->eqfunctions,
 									econtext->ecxt_per_tuple_memory,
 									true) &&
@@ -1145,6 +1131,7 @@ appendToFrameBuffer(WindowStatePerLevel level_state, ExprContext *econtext)
 								   level_state->col_sort_asc,
 								   level_state->numSortCols,
 								   level_state->ltfunctions,
+								   level_state->eqfunctions,
 								   econtext->ecxt_per_tuple_memory,
 								   false))
 				ntuplestore_acc_advance(level_state->lead_reader, 1);
@@ -1307,12 +1294,14 @@ hasEnoughDataInRange(WindowFrameBuffer buffer,
 							level_state->col_sort_asc,
 							level_state->numSortCols,
 							level_state->ltfunctions,
+							level_state->eqfunctions,
 							econtext->ecxt_per_tuple_memory,
 							false) ||
 		 cmp_deformed_tuple(lead_keys, lead_keys_isnull,
 							lead_entry->keys, lead_entry->nulls,
 							level_state->col_sort_asc,
 							level_state->numSortCols,
+							level_state->ltfunctions,
 							level_state->eqfunctions,
 							econtext->ecxt_per_tuple_memory,
 							true)))
@@ -2337,21 +2326,30 @@ invokeTrivialFuncs(WindowState *wstate, bool last_peer, bool *found)
 	}
 }
 
-
 static bool
 cmp_deformed_tuple(Datum *a, bool *a_nulls, Datum *b, bool *b_nulls,
-				   bool *asc_cols, int ncols, FmgrInfo *funcs, 
-				   MemoryContext evalContext, bool is_equal)
+				   bool *asc_cols, int ncols, FmgrInfo *ltfuncs, 
+				   FmgrInfo *eqfuncs, MemoryContext evalContext, bool is_equal)
 {
 	MemoryContext oldContext;
 	bool		result;
 	int			i, j;
+	FmgrInfo *funcs;
 
 	/* Reset and switch into the temp context. */
 	MemoryContextReset(evalContext);
 	oldContext = MemoryContextSwitchTo(evalContext);
 
-	result = true;
+	if (is_equal)
+	{
+		funcs = eqfuncs;
+		result = true;
+	}
+	else
+	{
+		funcs = ltfuncs;
+		result = true;
+	}
 
 	/*
 	 * For equality testing, we can will most likely find an inequality
@@ -2359,7 +2357,6 @@ cmp_deformed_tuple(Datum *a, bool *a_nulls, Datum *b, bool *b_nulls,
 	 * doing equality testing in which case we must move from left to 
 	 * right.
 	 */
-
 	if (is_equal)
 		i = ncols - 1;
 	else
@@ -2371,6 +2368,7 @@ cmp_deformed_tuple(Datum *a, bool *a_nulls, Datum *b, bool *b_nulls,
 					attr2;
 		bool		isNull1,
 					isNull2;
+		bool 		res;
 
 		attr1 = a[i];
 		isNull1 = a_nulls[i];
@@ -2400,14 +2398,46 @@ cmp_deformed_tuple(Datum *a, bool *a_nulls, Datum *b, bool *b_nulls,
 
 				tmp = attr1;
 				attr1 = attr2;
-				attr2 = attr1;
+				attr2 = tmp;
 			}
 		}
-		/* Apply the type-specific equality function */
-		if (!DatumGetBool(FunctionCall2(&funcs[i],
-										attr1, attr2)))
+		
+		/* Apply the type-specific function */
+		res = DatumGetBool(FunctionCall2(&funcs[i], attr1, attr2));
+
+		if (is_equal && !res)
 		{
-			result = false;		/* they aren't equal */
+			/* we wanted equality but didn't get it */
+			result = false;
+			break;
+		}
+		else if (!is_equal)
+		{
+			if (!res)
+			{
+				/* 
+				 * We wanted it to be less, but it wasn't. Continue only if
+				 * they're equal.
+				 */
+				res = DatumGetBool(FunctionCall2(&eqfuncs[i], attr1, attr2));
+				if (res)
+				{
+					/* 
+					 * Because we found the previous key equal, set the
+					 * return value to false.
+					 */
+					result = false;
+					continue;
+				}
+				else
+					/* LHS is greater than RHS */
+					result = false;
+			}
+			else
+			{
+				/* because all keys are sorted, we return straight away */
+				result = true;
+			}
 			break;
 		}
 	}
@@ -2462,9 +2492,9 @@ adjustEdges(WindowFrameBuffer buffer,
 
 	if(level_state->is_rows)
 	{
-		Assert(level_state->num_trail_rows <= (-level_state->trail_rows) + 1);
+		Assert(level_state->num_trail_rows <= ABS(level_state->trail_rows) + 1);
 			
-		if (level_state->num_trail_rows == (-level_state->trail_rows) + 1)
+		if (level_state->num_trail_rows == ABS(level_state->trail_rows) + 1)
 		{
 			if (ntuplestore_acc_tell(level_state->trail_reader, NULL))
 				ntuplestore_acc_advance(level_state->trail_reader, 1);
@@ -2531,6 +2561,7 @@ adjustEdges(WindowFrameBuffer buffer,
 												 level_state->col_sort_asc,
 												 level_state->numSortCols,
 												 level_state->ltfunctions,
+												 level_state->eqfunctions,
 												 econtext->ecxt_per_tuple_memory,
 												 false);
 				if (need_adjust)
@@ -2567,6 +2598,7 @@ adjustEdges(WindowFrameBuffer buffer,
 													 level_state->col_sort_asc,
 													 level_state->numSortCols,
 													 level_state->ltfunctions,
+													 level_state->eqfunctions,
 													 econtext->ecxt_per_tuple_memory,
 													 false);
 					if (need_adjust)
@@ -2612,6 +2644,7 @@ adjustEdges(WindowFrameBuffer buffer,
 												 level_state->col_sort_asc,
 												 level_state->numSortCols,
 												 level_state->ltfunctions,
+												 level_state->eqfunctions,
 												 econtext->ecxt_per_tuple_memory,
 												 false);
 				if (need_adjust)
@@ -2620,6 +2653,7 @@ adjustEdges(WindowFrameBuffer buffer,
 														new_lead_keys, new_lead_keys_isnull,
 														level_state->col_sort_asc,
 														level_state->numSortCols,
+														level_state->ltfunctions,
 														level_state->eqfunctions,
 														econtext->ecxt_per_tuple_memory,
 														true);
@@ -3266,8 +3300,6 @@ checkOutputReady(WindowState *wstate)
 	return true;
 }
 
-
-
 static void
 init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 						   AttrNumber attnum,
@@ -3277,19 +3309,22 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 {
 	ExprState *n;
 	Expr *expr;
-	Var *var;
+	Expr *varexpr;
 	Oid exprrestype;
 	Oid ltype, rtype;
 	HeapTuple tup;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 	bool isNull;
+	char *oprname;
+	Form_pg_operator opr;
+	int32 vartypmod = desc->attrs[attnum - 1]->atttypmod;
 	
 	Insist(EDGE_IS_BOUND(edge));
 
 	ltype = desc->attrs[attnum - 1]->atttypid;
 	rtype = exprType(edge->val);
 	
-	var = makeVar(0, attnum, ltype, desc->attrs[attnum - 1]->atttypmod, 0);
+	varexpr = (Expr *)makeVar(0, attnum, ltype, vartypmod, 0);
 	n = ExecInitExpr((Expr *)edge->val, (PlanState *) wstate);
 
 	if (is_trail)
@@ -3298,46 +3333,63 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 		level_state->lead_range = ExecEvalExpr(n, econtext, &isNull, NULL);
 	pfree(n);
 
-	if (edge->kind == WINDOW_BOUND_PRECEDING)
+	if ((edge->kind == WINDOW_BOUND_PRECEDING && 
+		 level_state->col_sort_asc[0]) ||
+		(edge->kind == WINDOW_BOUND_FOLLOWING &&
+		 !level_state->col_sort_asc[0]))
 	{
-		Form_pg_operator opr;
-		
-		tup = SearchSysCache(OPERNAMENSP,
-							 CStringGetDatum("-"),
-							 ObjectIdGetDatum(ltype),
-							 ObjectIdGetDatum(rtype),
-							 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
-
-		Insist(HeapTupleIsValid(tup));
-		opr = ((Form_pg_operator) GETSTRUCT(tup));
-		ReleaseSysCache(tup);
-
-		exprrestype = opr->oprresult;
-		expr = make_opclause(HeapTupleGetOid(tup), exprrestype,
-							 false, (Expr *)var, 
-							 (Expr *)edge->val);
-		((OpExpr *)expr)->opfuncid = opr->oprcode;
+		oprname = "-";
 	}
 	else
 	{
-		Form_pg_operator opr;
-		
-		tup = SearchSysCache(OPERNAMENSP,
-							 CStringGetDatum("+"),
-							 ObjectIdGetDatum(ltype),
-							 ObjectIdGetDatum(rtype),
-							 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
-
-		Insist(HeapTupleIsValid(tup));
-		opr = ((Form_pg_operator) GETSTRUCT(tup));
-		ReleaseSysCache(tup);
-
-		exprrestype = opr->oprresult;						
-		expr = make_opclause(HeapTupleGetOid(tup), exprrestype,
-							 false, (Expr *)var, 
-							 (Expr *)edge->val);
-		((OpExpr *)expr)->opfuncid = opr->oprcode;
+		oprname = "+";
 	}
+
+		
+	tup = SearchSysCache(OPERNAMENSP,
+						 CStringGetDatum(oprname),
+						 ObjectIdGetDatum(ltype),
+						 ObjectIdGetDatum(rtype),
+						 ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+
+	/*
+	 * If we didn't find an operator, it's probably because the user has
+	 * specified a RANGE parameter which does not have an implicit cast
+	 * to the sorting column. So, see what operator the parser found
+	 * via oper() and arrange for the LHS to be cast to that for the purpose
+	 * of the expression evaluation.
+	 */
+	if (!HeapTupleIsValid(tup))
+	{
+		List *oprlist = lappend(NIL, makeString(oprname));
+
+		tup = oper(NULL, oprlist, ltype, rtype, true, -1);
+
+		list_free_deep(oprlist);
+
+		/* We have to find it now */
+		Insist(HeapTupleIsValid(tup));
+		
+		opr = (Form_pg_operator) GETSTRUCT(tup);
+
+		/* this is why we're here */
+		Insist(ltype != opr->oprleft);
+		
+		varexpr = (Expr *)coerce_to_target_type(NULL, (Node *)varexpr, 
+												ltype, opr->oprleft, vartypmod,
+												COERCION_EXPLICIT,
+												COERCE_IMPLICIT_CAST);
+	}
+	else
+		opr = ((Form_pg_operator) GETSTRUCT(tup));
+	
+	ReleaseSysCache(tup);
+
+	exprrestype = opr->oprresult;
+	expr = make_opclause(HeapTupleGetOid(tup), exprrestype,
+						 false, varexpr, 
+						 (Expr *)edge->val);
+	((OpExpr *)expr)->opfuncid = opr->oprcode;
 
 	/*
 	 * If the frame edge operation returns a different type
@@ -3345,12 +3397,11 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 	 */
 	if (ltype != exprrestype)
 	{
-		int32 typmod = desc->attrs[attnum - 1]->atttypmod;
 		expr = 
 			(Expr *)coerce_to_target_type(NULL,
 										  (Node *)expr, 
 									 	  exprrestype,
-									 	  ltype, typmod,
+									 	  ltype, vartypmod,
 									 	  COERCION_EXPLICIT,
 										  COERCE_IMPLICIT_CAST);
 	}
