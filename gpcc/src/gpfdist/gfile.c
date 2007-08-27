@@ -1,4 +1,4 @@
-#include <gpcc_file.h>
+#include <gfile.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,22 +14,21 @@
 #include <io.h>
 #endif
 
-typedef enum gpcc_file_type_t gpcc_file_type_t;
-enum gpcc_file_type_t {
-    GPCC_FILE_TXT,
-    GPCC_FILE_GZ,
-    GPCC_FILE_Z,
-    GPCC_FILE_ZIP,
-    GPCC_FILE_MAX,
+typedef enum gfile_type_t gfile_type_t;
+enum gfile_type_t {
+    GFILE_TXT,
+    GFILE_GZ,
+    GFILE_Z,
+    GFILE_ZIP,
+    GFILE_MAX,
 };
 
 
-typedef struct gpcc_file_t gpcc_file_t;
-struct gpcc_file_t {
-    gpcc_file_type_t type;
+struct gfile_t {
+    gfile_type_t type;
     int ffd;
-    size_t (*read)(gpcc_file_t*, void*, size_t);
-    int (*close)(gpcc_file_t*);
+    size_t (*read)(gfile_t*, void*, size_t);
+    int (*close)(gfile_t*);
 
     union {
 	struct {
@@ -45,31 +44,31 @@ struct gpcc_file_t {
 /* TEXT */
 
 
-size_t txt_file_read(gpcc_file_t *fd, void *ptr, size_t size) 
+size_t txt_file_read(gfile_t *fd, void *ptr, size_t size) 
 {
     return read(fd->ffd, ptr, size);
 }
 
-int txt_file_close(gpcc_file_t *fd)
+int txt_file_close(gfile_t *fd)
 {
     int e = close(fd->ffd);
     fd->ffd = 0;
     return e;
 }
 
-static gpcc_file_t* txt_file_open(const char *fpath, int oflag) 
+static gfile_t* txt_file_open(const char *fpath, int oflag) 
 {
-    gpcc_file_t* fd = malloc(sizeof(gpcc_file_t));
+    gfile_t* fd = malloc(sizeof(gfile_t));
     if (! fd) 
-	gpcc_fatal(FLINE, "out of memory");
+	gfatal(FLINE, "out of memory");
     
     memset(fd, 0, sizeof(*fd));
     if (-1 == (fd->ffd = open(fpath, oflag, 0600))) {
-	gpcc_warning(FLINE, "unable to open file %s", fpath);
+	gwarning(FLINE, "unable to open file %s", fpath);
 	free(fd);
 	return 0;
     }
-    fd->type = GPCC_FILE_TXT;
+    fd->type = GFILE_TXT;
     fd->read = txt_file_read;
     fd->close = txt_file_close;
     return fd;
@@ -78,13 +77,13 @@ static gpcc_file_t* txt_file_open(const char *fpath, int oflag)
 
 /* GZ */
 
-size_t gz_file_read(gpcc_file_t *fd, void *ptr, size_t len)
+size_t gz_file_read(gfile_t *fd, void *ptr, size_t len)
 {
     int n = gzread(fd->u.gz.fp, ptr, len);
     return n;
 }
 
-int gz_file_close(gpcc_file_t *fd)
+int gz_file_close(gfile_t *fd)
 {
     int e =  gzclose(fd->u.gz.fp);
     fd->ffd = 0;
@@ -92,33 +91,33 @@ int gz_file_close(gpcc_file_t *fd)
     return e;
 }
 
-static gpcc_file_t* gz_file_open(const char *fpath, int oflag)
+static gfile_t* gz_file_open(const char *fpath, int oflag)
 {
-    gpcc_file_t* fd = malloc(sizeof(gpcc_file_t));
+    gfile_t* fd = malloc(sizeof(gfile_t));
     if (! fd) 
-	gpcc_fatal(FLINE, "out of memory");
+	gfatal(FLINE, "out of memory");
     
     memset(fd, 0, sizeof(*fd));
     if (-1 == (fd->ffd = open(fpath, oflag, 0600))) {
-	gpcc_warning(FLINE, "unable to open file %s", fpath);
+	gwarning(FLINE, "unable to open file %s", fpath);
 	free(fd);
 	return 0;
     }
     
     fd->u.gz.fp = gzdopen(fd->ffd, "rb");
     if (fd->u.gz.fp == 0) {
-	gpcc_warning(FLINE, "unable to open gzfp\n", fpath);
+	gwarning(FLINE, "unable to open gzfp\n", fpath);
 	free(fd);
 	return 0;
     }
 
-    fd->type = GPCC_FILE_GZ;
+    fd->type = GFILE_GZ;
     fd->read = gz_file_read;
     fd->close = gz_file_close;
     return fd;
 }
 
-APR_DECLARE(gpcc_file_t*) gpcc_file_open(const char *fpath, int oflag)
+APR_DECLARE(gfile_t*) gfile_open(const char *fpath, int oflag)
 {
     char *s;
     if (0 != (s = strrchr(fpath, '.'))) {
@@ -126,11 +125,11 @@ APR_DECLARE(gpcc_file_t*) gpcc_file_open(const char *fpath, int oflag)
 	    return gz_file_open(fpath, oflag);
 	} 
 	if (apr_strnatcasecmp(s, ".z") == 0) {
-	    gpcc_warning(FLINE, "compression .z file is not supported");
+	    gwarning(FLINE, "compression .z file is not supported");
 	    return 0;
 	}
 	if (apr_strnatcasecmp(s, ".zip") == 0) {
-	    gpcc_warning(FLINE, "compression zip is not supported");
+	    gwarning(FLINE, "compression zip is not supported");
 	    return 0;
 	}
     }
@@ -138,12 +137,12 @@ APR_DECLARE(gpcc_file_t*) gpcc_file_open(const char *fpath, int oflag)
 }
 
 
-APR_DECLARE(int) gpcc_file_close(gpcc_file_t* fd)
+APR_DECLARE(int) gfile_close(gfile_t* fd)
 {
     return fd->close(fd);
 }
 
-APR_DECLARE(size_t) gpcc_file_read(gpcc_file_t* fd, void* ptr, int len)
+APR_DECLARE(size_t) gfile_read(gfile_t* fd, void* ptr, int len)
 {
     return fd->read(fd, ptr, len);
 }

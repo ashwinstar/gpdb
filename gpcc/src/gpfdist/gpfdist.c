@@ -26,8 +26,8 @@
 #include <apr_fnmatch.h>
 #include "gfile.h"
 
-typedef struct gpcc_net_request_t gpcc_net_request_t;
-struct gpcc_net_request_t {
+typedef struct gnet_request_t gnet_request_t;
+struct gnet_request_t {
     int argc;
     char** argv;
     int hc;
@@ -38,8 +38,8 @@ struct gpcc_net_request_t {
     char *data;
 };
 
-APR_DECLARE(gpcc_net_request_t*) gpcc_net_parse_request(const char* buf, int* len, apr_pool_t* pool);
-APR_DECLARE(char*) gpcc_string_trim(char* s);
+APR_DECLARE(gnet_request_t*) gnet_parse_request(const char* buf, int* len, apr_pool_t* pool);
+APR_DECLARE(char*) gstring_trim(char* s);
 
 
 #include <event.h>
@@ -97,7 +97,7 @@ struct {
 typedef struct fstream_t fstream_t;
 struct fstream_t {
     const char** fpath;		/* array of fpath */
-    gpcc_file_t**fd;            /* array of fd */
+    gfile_t**fd;            /* array of fd */
     int          fn;		/* #elements in ffd[] and fpath[] */
     int		 fidx;		/* current index in ffd[] */
     apr_uint64_t foff;		/* current offset in ffd[fidx] */
@@ -135,7 +135,7 @@ struct request_t {
 	char* hbuf;		/* buffer for raw incoming HTTP request */
 	int   hbuftop;		/* # bytes used in hbuf */
 	int   hbufmax;		/* size of hbuf[] */
-	gpcc_net_request_t* req; /* a parsed HTTP request, NULL if still incomplete. */
+	gnet_request_t* req; /* a parsed HTTP request, NULL if still incomplete. */
     } in;
 
     struct {
@@ -154,7 +154,7 @@ block_t* block_get()
     }
     else {
 	if (! (b = malloc(sizeof(block_t)))) 
-	    gpcc_fatal(FLINE, "out of memory");
+	    gfatal(FLINE, "out of memory");
     }
 
     b->bot = b->top = 0;
@@ -177,7 +177,7 @@ block_t* block_split(block_t* b, int n)
     block_t* bb;
     int m = b->top - b->bot - n;
     if (m < 0)
-	gpcc_fatal(FLINE, "assert failed, n = %d, bot %d, top %d", n, b->bot, b->top);
+	gfatal(FLINE, "assert failed, n = %d, bot %d, top %d", n, b->bot, b->top);
 
     if (m == 0)
 	return 0;
@@ -228,7 +228,7 @@ void fstream_free(fstream_t* fs)
     int i;
     for (i = 0; i < fs->fn; i++) {
 	if (fs->fd[i]) {
-	    gpcc_file_close(fs->fd[i]);
+	    gfile_close(fs->fd[i]);
 	    fs->fd[i] = 0;
 	}
 	free((char*)fs->fpath[i]);
@@ -251,30 +251,30 @@ fstream_t* fstream_alloc(char** path, int npath)
     fstream_t* fs;
 
     if (0 == (fs = malloc(sizeof(fstream_t))))
-	gpcc_fatal(FLINE, "out of memory");
+	gfatal(FLINE, "out of memory");
     
     memset(fs, 0, sizeof(*fs));
 
     fs->fn = npath;
     fs->fpath = malloc(sizeof(char*) * npath);
-    fs->fd = malloc(sizeof(gpcc_file_t*) * npath);
+    fs->fd = malloc(sizeof(gfile_t*) * npath);
     if (0 == fs->fpath || 0 == fs->fd) 
-	gpcc_fatal(FLINE, "out of memory");
+	gfatal(FLINE, "out of memory");
 	
     for (i = 0; i < npath; i++) {
 	if (0 == (fs->fpath[i] = strdup(path[i])))
-	    gpcc_fatal(FLINE, "out of memory");
+	    gfatal(FLINE, "out of memory");
 
 	/* check READ access right */
-	if (0 == (fs->fd[i] = gpcc_file_open(path[i], O_RDONLY|O_BINARY))) {
-	    gpcc_warning(FLINE, "unable to open file %s", path[i]);
+	if (0 == (fs->fd[i] = gfile_open(path[i], O_RDONLY|O_BINARY))) {
+	    gwarning(FLINE, "unable to open file %s", path[i]);
 	    fstream_free(fs);
 	    return 0;
 	} 
 	
 	if (i > 0) {
 	    /* leave the first file opened */
-	    gpcc_file_close(fs->fd[i]);
+	    gfile_close(fs->fd[i]);
 	    fs->fd[i] = 0;
 	}
     }
@@ -323,8 +323,8 @@ block_t* fstream_get_block(fstream_t* fs)
 
 	if (opt.V) 
 	    printf("   opening %s\n", fs->fpath[fs->fidx]);
-	if (0 == (fs->fd[fs->fidx] = gpcc_file_open(fs->fpath[fs->fidx], O_RDONLY|O_BINARY))) {
-	    gpcc_warning(FLINE, "unable to open file %s", fs->fpath[fs->fidx]);
+	if (0 == (fs->fd[fs->fidx] = gfile_open(fs->fpath[fs->fidx], O_RDONLY|O_BINARY))) {
+	    gwarning(FLINE, "unable to open file %s", fs->fpath[fs->fidx]);
 	    fs->ferror = 1;
 	    block_put(b);
 	    return 0;
@@ -336,7 +336,7 @@ block_t* fstream_get_block(fstream_t* fs)
     while (0 != (n = sizeof(b->byte) - b->top)) {
 
 	/* read into b */
-	n = gpcc_file_read(fs->fd[fs->fidx], b->byte + b->top, n);
+	n = gfile_read(fs->fd[fs->fidx], b->byte + b->top, n);
 	if (n < 0) {
 	    fs->ferror = 1;
 	    block_put(b);
@@ -344,7 +344,7 @@ block_t* fstream_get_block(fstream_t* fs)
 	}
 	if (n == 0) {  /* current file EOF */
 	    /* close this file */
-	    gpcc_file_close(fs->fd[fs->fidx]);
+	    gfile_close(fs->fd[fs->fidx]);
 	    fs->fd[fs->fidx] = 0;
 	    break;
 	}
@@ -398,7 +398,7 @@ block_t* fstream_get_block(fstream_t* fs)
     /* no record boundary 
        -> record larger than BLOCKSIZE? unacceptable!! */
     if (!p) {
-	gpcc_warning(FLINE, "ERROR: line too long in file %s (%d bytes)", 
+	gwarning(FLINE, "ERROR: line too long in file %s (%d bytes)", 
 		     fs->fpath[fs->fidx], b->top - b->bot);
 	fs->ferror = 1;
 	block_put(b);
@@ -488,7 +488,7 @@ void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
     
     
     if (0 != apr_getopt_init(&os, pool, argc, argv)) 
-	gpcc_fatal(FLINE, "apt_getopt_init failed");
+	gfatal(FLINE, "apt_getopt_init failed");
 
     while (0 == (e = apr_getopt_long(os, option, &ch, &arg))) {
 	switch (ch) {
@@ -512,7 +512,7 @@ void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
 
     /* validate opt.d */
     {
-	char* p = gpcc_string_trim(apr_pstrdup(pool, opt.d));
+	char* p = gstring_trim(apr_pstrdup(pool, opt.d));
 
 	/* collapse // */
 	while (p[0] == '/' && p[1] == '/') p++;
@@ -605,7 +605,7 @@ void send_empty(request_t* r)
 	n = strlen(buf);
     m = send(r->sock, buf, n, 0);
     if (m != n) 
-	gpcc_fatal(FLINE, "assert failed");
+	gfatal(FLINE, "assert failed");
 }
 
 
@@ -624,12 +624,12 @@ void send_ok(request_t* r)
 	n = strlen(buf);
     m = send(r->sock, buf, n, 0);
     if (m != n) 
-	gpcc_fatal(FLINE, "assert failed");
+	gfatal(FLINE, "assert failed");
 }
 
 
 
-void print_request(gpcc_net_request_t* r)
+void print_request(gnet_request_t* r)
 {
     int i;
     for (i = 0; i < r->argc; i++) {
@@ -650,7 +650,7 @@ void request_end(request_t* r)
 
     /* If we still have a block outstanding, the session is corrupted. */
     if (r->out.block) {
-	gpcc_warning(FLINE, "request failure resulting in session failure");
+	gwarning(FLINE, "request failure resulting in session failure");
 	if (s) 
 	    session_end(s, 1);
 	block_put(r->out.block);
@@ -760,7 +760,7 @@ void session_attach(request_t* r)
 	    /* glob for all files matching r->path pattern */
 	    fpath = glob(r->path, &n, r->pool);
 	    if (!fpath || n == 0) {
-		gpcc_warning(FLINE, "bad path: %s", r->path);
+		gwarning(FLINE, "bad path: %s", r->path);
 		send_error(r, 404, "not found");
 		request_end(r);
 		return;
@@ -787,14 +787,14 @@ void session_attach(request_t* r)
 		/* this is a directory - glob for all files in the dir */
 		char* newpath = 0;
 		if (apr_filepath_merge(&newpath, fpath[0], "*", 0, r->pool)) {
-		    gpcc_warning(FLINE, "bad path: %s (filepathmerge)", r->path);
+		    gwarning(FLINE, "bad path: %s (filepathmerge)", r->path);
 		    send_error(r, 404, "not found");
 		    request_end(r);
 		    return;
 		}
 		fpath = glob(newpath, &n, r->pool);
 		if (!fpath || n == 0) {
-		    gpcc_warning(FLINE, "bad path: %s", r->path);
+		    gwarning(FLINE, "bad path: %s", r->path);
 		    send_error(r, 404, "not found");
 		    request_end(r);
 		    return;
@@ -805,7 +805,7 @@ void session_attach(request_t* r)
 	/* try opening the fstream */
 	fstream = fstream_alloc(fpath, n);
 	if (! fstream) {
-	    gpcc_warning(FLINE, "reject request from %s, path %s\n", r->peer, r->path);
+	    gwarning(FLINE, "reject request from %s, path %s\n", r->peer, r->path);
 	    send_error(r, 404, "not found");
 	    request_end(r);
 	    return;
@@ -813,14 +813,14 @@ void session_attach(request_t* r)
 
 	/* allocate session */
 	if (0 == (s = malloc(sizeof(session_t)))) 
-	    gpcc_fatal(FLINE, "out of memory");
+	    gfatal(FLINE, "out of memory");
 
 	memset(s, 0, sizeof(*s));
 
 	if (0 == (s->tid = strdup(r->tid)) 
 	    || 0 == (s->path = strdup(r->path))
 	    || 0 == (s->key = strdup(key))) {
-	    gpcc_fatal(FLINE, "out of memory");
+	    gfatal(FLINE, "out of memory");
 	}
 
 	s->fstream = fstream;
@@ -890,14 +890,14 @@ void session_detach(request_t* r)
     r->session = 0;
     if (s) {
 	if (s->nrequest == 0) 
-	    gpcc_fatal(FLINE, "assert failed");
+	    gfatal(FLINE, "assert failed");
 	s->nrequest--;
 	s->mtime = apr_time_now();
 
 	/* for auto-tid sessions, we can free it now */
 	if (0 == strncmp("auto-tid.", s->tid, 9)) {
 	    if (s->nrequest != 0) 
-		gpcc_fatal(FLINE, "assert failed");
+		gfatal(FLINE, "assert failed");
 
 	    session_free(s);
 	}
@@ -914,7 +914,7 @@ void do_write(int fd, short event, void* arg)
     block_t* b;
 
     if (fd != r->sock) 
-	gpcc_fatal(FLINE, "assert failed");
+	gfatal(FLINE, "assert failed");
 
     /* Loop at most 3 blocks or until we choke on the socket */
     for (i = 0; i < 3; i++) {
@@ -1012,7 +1012,7 @@ void do_read(int fd, short event, void* arg)
 	/* check if a complete HTTP request is availble in header buf */
 	r->in.hbuftop += n;
 	n = r->in.hbuftop;
-	r->in.req = gpcc_net_parse_request(r->in.hbuf, &n, r->pool);
+	r->in.req = gnet_parse_request(r->in.hbuf, &n, r->pool);
 	if (!r->in.req && r->in.hbuftop >= r->in.hbufmax) {
 	    /* not available, but headerbuf is full - send error and close */
 	    send_error(r, 400, "forbidden");
@@ -1049,19 +1049,19 @@ void do_read(int fd, short event, void* arg)
 
     /* parse the HTTP request. Expect "GET /path HTTP/1.X" */
     if (r->in.req->argc != 3) {
-	gpcc_warning(FLINE, "reject invalid request from %s", r->peer);
+	gwarning(FLINE, "reject invalid request from %s", r->peer);
 	send_error(r, 400, "invalid request");
 	request_end(r);
 	return;
     }
     if (0 != strncmp("HTTP/1.", r->in.req->argv[2], 7)) {
-	gpcc_warning(FLINE, "reject invalid protocol from %s [%s]", r->peer, r->in.req->argv[2]);
+	gwarning(FLINE, "reject invalid protocol from %s [%s]", r->peer, r->in.req->argv[2]);
 	send_error(r, 400, "invalid request");
 	request_end(r);
 	return;
     }
     if (0 != strcmp("GET", r->in.req->argv[0])) {
-	gpcc_warning(FLINE, "reject invalid request from %s [%s %s]", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
+	gwarning(FLINE, "reject invalid request from %s [%s %s]", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
 	send_error(r, 400, "invalid request");
 	request_end(r);
 	return;
@@ -1108,7 +1108,7 @@ void do_read(int fd, short event, void* arg)
     /*   - forbid .. dot dot  */
     for (p = r->path; 0 != (p = strchr(p, '.')); p++) {
         if (p[1] == '.') {
-            gpcc_warning(FLINE, "reject invalid request from %s [%s %s]",
+            gwarning(FLINE, "reject invalid request from %s [%s %s]",
                          r->peer, r->in.req->argv[0], r->in.req->argv[1]);
             send_error(r, 400, "invalid request");
             request_end(r);
@@ -1136,7 +1136,7 @@ void do_read(int fd, short event, void* arg)
 	    r->tid = apr_psprintf(r->pool, "%s.%s.%s", xid, cid, sn);
 	}
 	else if (xid || cid || sn) {
-	    gpcc_warning(FLINE, "reject invalid request from %s [%s %s] - missing X-GP-* header", 
+	    gwarning(FLINE, "reject invalid request from %s [%s %s] - missing X-GP-* header", 
 			 r->peer, r->in.req->argv[0], r->in.req->argv[1]);
 	    send_error(r, 400, "invalid request");
 	    request_end(r);
@@ -1166,7 +1166,7 @@ void do_accept(int fd, short event, void* arg)
 
     /* do the accept */
     if ((sock = accept(fd, (void*) &a, &len)) < 0) {
-	gpcc_warning(FLINE, "accept failed");
+	gwarning(FLINE, "accept failed");
 	return;
     }
 
@@ -1178,12 +1178,12 @@ void do_accept(int fd, short event, void* arg)
     }
 #else
     if (fcntl(sock, F_SETFL, O_NONBLOCK) == -1) {
-	gpcc_warning(FLINE, "fcntl(F_SETFL, O_NONBLOCK) failed");
+	gwarning(FLINE, "fcntl(F_SETFL, O_NONBLOCK) failed");
 	closesocket(sock);
 	return;
     }
     if (fcntl(sock, F_SETFD, 1) == -1) {
-	gpcc_warning(FLINE, "fcntl(F_SETFD) failed");
+	gwarning(FLINE, "fcntl(F_SETFD) failed");
 	closesocket(sock);
 	return;
     }
@@ -1198,7 +1198,7 @@ void do_accept(int fd, short event, void* arg)
 
     /* create a pool container for this socket */
     if (apr_pool_create(&pool, gcb.pool)) 
-	gpcc_fatal(FLINE, "out of memory");
+	gfatal(FLINE, "out of memory");
 
     /* create the request in pool */
     r = apr_pcalloc(pool, sizeof(request_t));
@@ -1254,11 +1254,11 @@ void http_setup(void)
 
     f = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (f < 0) 
-	gpcc_fatal(FLINE, "cannot create socket on port %d", opt.p);
+	gfatal(FLINE, "cannot create socket on port %d", opt.p);
 
 #ifndef WIN32
     if (fcntl(f, F_SETFD, 1) == -1) 
-	gpcc_fatal(FLINE, "cannot create socket on port %d - fcntl(F_SETFD) failed", opt.p);
+	gfatal(FLINE, "cannot create socket on port %d - fcntl(F_SETFD) failed", opt.p);
 
 	/* For the Windows case, we could use SetHandleInformation to remove
        the HANDLE_INHERIT property from fd.  
@@ -1275,28 +1275,28 @@ void http_setup(void)
 
     /* bind */
     if (bind(f, (void*) &a, sizeof(a))) 
-	gpcc_fatal(FLINE, "cannot create socket on port %d", opt.p);
+	gfatal(FLINE, "cannot create socket on port %d", opt.p);
 
     /* listen with a big queue */
     if (listen(f, 256)) 
-	gpcc_fatal(FLINE, "cannot listen on port %d", opt.p);
+	gfatal(FLINE, "cannot listen on port %d", opt.p);
 
     gcb.listen_sock = f;
 
     /* setup event priority */
     if (event_priority_init(10)) 
-	gpcc_warning(FLINE, "event_priority_init failed");
+	gwarning(FLINE, "event_priority_init failed");
 
     /* when this socket is ready, do accept */
     event_set(&gcb.listen_event, gcb.listen_sock, EV_READ | EV_PERSIST, do_accept, 0);
 
     /* high priority so we accept as fast as possible */
     if (event_priority_set(&gcb.listen_event, 0)) 
-	gpcc_warning(FLINE, "event_priority_set failed");
+	gwarning(FLINE, "event_priority_set failed");
 
     /* start watching this event */
     if (event_add(&gcb.listen_event, 0))
-	gpcc_fatal(FLINE, "cannot set up event on listen socket");
+	gfatal(FLINE, "cannot set up event on listen socket");
 
 }
 
@@ -1304,11 +1304,11 @@ void http_setup(void)
 int main(int argc, const char* const argv[])
 {
     if (0 != apr_app_initialize(&argc, &argv, 0)) 
-	gpcc_fatal(FLINE, "apr_app_initialize failed");
+	gfatal(FLINE, "apr_app_initialize failed");
     atexit(apr_terminate);
 
     if (0 != apr_pool_create(&gcb.pool, 0))
-	gpcc_fatal(FLINE, "apr_app_initialize failed");
+	gfatal(FLINE, "apr_app_initialize failed");
 
     gcb.session.tab = apr_hash_make(gcb.pool);
 
@@ -1337,13 +1337,13 @@ char* path_basename(const char* path, apr_pool_t* pool)
     return apr_pstrndup(pool, path, idx - path);
 }
 
-APR_DECLARE(gpcc_net_request_t*) gpcc_net_parse_request(const char* buf, int* len, apr_pool_t* pool)
+APR_DECLARE(gnet_request_t*) gnet_parse_request(const char* buf, int* len, apr_pool_t* pool)
 {
     int n = *len;
     const char* p;
     char* line;
     char* last;
-    gpcc_net_request_t* req = 0;
+    gnet_request_t* req = 0;
     char* colon;
     int empty, completed;
 
@@ -1372,11 +1372,11 @@ APR_DECLARE(gpcc_net_request_t*) gpcc_net_parse_request(const char* buf, int* le
     /* we have a complete HTTP-style request (terminated by empty line) */
     *len = n = p - buf; /* consume it */
     line = apr_pstrndup(pool, buf, n); /* dup it */
-    req = apr_pcalloc(pool, sizeof(gpcc_net_request_t));
+    req = apr_pcalloc(pool, sizeof(gnet_request_t));
 
     /* for first line */
     line = apr_strtok(line, "\n", &last);
-    line = gpcc_string_trim(line);
+    line = gstring_trim(line);
     if (0 != apr_tokenize_to_argv(line, &req->argv, pool))
 	return req;
     while (req->argv[req->argc]) 
@@ -1388,12 +1388,12 @@ APR_DECLARE(gpcc_net_request_t*) gpcc_net_parse_request(const char* buf, int* le
 	    /* continuation */
 	    if (req->hc == 0)	/* illegal - missing first header */
 		break;
-	    line = gpcc_string_trim(line);
+	    line = gstring_trim(line);
 	    if (*line == 0)	/* empty line */
 		break;
 	    /* add to previous hvalue */
 	    req->hvalue[req->hc-1] 
-		= gpcc_string_trim(apr_pstrcat(pool, req->hvalue[req->hc-1], 
+		= gstring_trim(apr_pstrcat(pool, req->hvalue[req->hc-1], 
 					       " ", line, 0));
 	    continue;
 	}
@@ -1403,13 +1403,13 @@ APR_DECLARE(gpcc_net_request_t*) gpcc_net_parse_request(const char* buf, int* le
 	else
 	    *colon++ = 0;
 
-	line = gpcc_string_trim(line);
+	line = gstring_trim(line);
 	if (*line == 0) 	/* empty line */
 	    break;
 
 	/* save name, value pair */
 	req->hname[req->hc] = line;
-	req->hvalue[req->hc] = gpcc_string_trim(colon);
+	req->hvalue[req->hc] = gstring_trim(colon);
 	req->hc++;
 
 	if (req->hc >= sizeof(req->hname) / sizeof(req->hname[0]))
@@ -1420,7 +1420,7 @@ APR_DECLARE(gpcc_net_request_t*) gpcc_net_parse_request(const char* buf, int* le
 }
 
 
-APR_DECLARE(char*) gpcc_string_trim(char* s)
+APR_DECLARE(char*) gstring_trim(char* s)
 {
     char* p;
     s += strspn(s, " \t\r\n");
@@ -1433,7 +1433,7 @@ APR_DECLARE(char*) gpcc_string_trim(char* s)
     return s;
 }
 
-APR_DECLARE(int) gpcc_fatal(const char* fline, const char* fmt, ...)
+APR_DECLARE(int) gfatal(const char* fline, const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
@@ -1445,7 +1445,7 @@ APR_DECLARE(int) gpcc_fatal(const char* fline, const char* fmt, ...)
 }
 
 
-APR_DECLARE(int) gpcc_warning(const char* fline, const char* fmt, ...)
+APR_DECLARE(int) gwarning(const char* fline, const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
