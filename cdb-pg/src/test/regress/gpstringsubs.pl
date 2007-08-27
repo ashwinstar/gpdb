@@ -266,6 +266,9 @@ if (1)
                 my @exe_thing;
 
                 next
+                    if (($gpw =~ m/is\_transformed\_to/));
+
+                next
                     unless (($gpw =~ m/gpwhich\_\w/));
 
                 @exe_thing = ($gpw =~ m/gpwhich\_(.*)/);
