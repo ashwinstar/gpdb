@@ -9,15 +9,18 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <dirent.h>
 #include <limits.h>
 #include <string.h>
 #include <gpcc.h>
 #include <gpcc_config.h>
 #include <gpcc_proc.h>
+#include <gpcc_file.h>
 #include <gpcc_pg.h>
 
 
 #define DEFAULT_GP_DBNAME         "template1"
+
 
 APR_DECLARE(apr_status_t) gpcc_pg_ctl_status(int port, const char *data_dir, apr_pool_t *p) 
 {
@@ -68,18 +71,6 @@ APR_DECLARE(apr_status_t) gpcc_pg_hba_append(const char *data_dir, const char *c
     return 0;
 }
 
-static int file_exists(const char *fpath)
-{
-    int fd;
-    if (-1 == (fd = open(fpath, O_RDONLY, 0600))) {
-	gpcc_warning(FLINE, "unable to open file %s", fpath);
-	return 0;
-    }
-
-    close(fd);
-    return 1;
-}
-
 APR_DECLARE(apr_status_t) gpcc_pg_log_rotate(const char *data_dir, apr_pool_t *p) 
 {
     apr_time_t now = apr_time_now();
@@ -93,8 +84,8 @@ APR_DECLARE(apr_status_t) gpcc_pg_log_rotate(const char *data_dir, apr_pool_t *p
 
     printf(logf);
 
-    if (file_exists(clog)) {
-	if (file_exists(logf)) {
+    if (gpcc_file_exists(clog)) {
+	if (gpcc_file_exists(logf)) {
 	    /* append the current log to backup log */
 	    apr_file_append(clog, logf, 0600, p);
 	    apr_file_remove(clog, p);
@@ -122,7 +113,7 @@ APR_DECLARE(apr_status_t) gpcc_pg_pid_active(int port, int *pid, apr_pool_t *p)
     argv[0] = cmd;
     argv[1] = 0;
 
-    lockf_exist = file_exists(lockf);
+    lockf_exist = gpcc_file_exists(lockf);
     e = gpcc_proc_run_shell(&proc, argv[0], (const char * const *) argv, 0, 1, p);
     if (e) {
 	gpcc_log_error("netstat failure");
@@ -313,3 +304,96 @@ APR_DECLARE(apr_status_t) gpcc_pg_create_database(int port, const char *dbname, 
 
 
 }
+
+APR_DECLARE(apr_status_t) gpcc_pg_update_gp_configuration(int port, 
+							  int dbid,
+							  int content,
+							  const char *primary,
+							  const char *hostname,
+							  int seg_port,
+							  const char *data_dir,
+							  apr_pool_t *p)
+{
+    int e;
+    apr_proc_t proc;
+    char sql[1024];
+    char line[1024];
+    int count = 0;
+
+    /* check gp_configuration first */
+    sprintf(sql, "select count(*) from gp_configurationn where content=%d and definedprimary='%s'",
+	    content, primary);
+    e = gpcc_proc_psql(&proc, port, DEFAULT_GP_DBNAME, sql, 1, 1, p);
+    if (e) {
+	gpcc_log_error("gpcc_pg_update_gp_configuration select failure");
+	return e;
+    }
+
+    if ((e = apr_file_gets(line, sizeof(line), proc.out)) != 0) {
+	return e;
+    }
+    
+    count = strtol(line, 0, 0);
+    if (count > 0) {
+	gpcc_warning(FLINE, "Content %d already exists in gp_configuration", content);
+	return 0;
+
+    }
+
+    sprintf(sql, "insert into gp_configuration (dbid, isprimary, content, valid, definedprimary, hostname, port, datadir) values (%d, '%s', %d, 't', '%s', '%s', %d, '%s')",
+	    dbid, primary, content, primary, hostname, seg_port, data_dir);
+    e = gpcc_proc_psql(&proc, port, DEFAULT_GP_DBNAME, sql, 1, 1, p);
+    if (e) {
+	gpcc_log_error("gpcc_pg_update_gp_configuration update failure");
+	return e;
+    }
+    return 0;
+}
+
+
+APR_DECLARE(apr_status_t) gpcc_pg_update_gp_id(int port, 
+					       const char *gpname,
+					       int numseg,
+					       int dbid,
+					       int content,
+					       apr_pool_t *p)
+{
+    int e;
+    apr_proc_t proc;
+    char sql[1024];
+
+    sprintf(sql, "insert into gp_id (gpname, numsegments, dbid, content) values ('%s', %d, %d, %d)",
+	    gpname, numseg, dbid, content);
+    e = gpcc_proc_psql(&proc, port, DEFAULT_GP_DBNAME, sql, 1, 1, p);
+    if (e) {
+	gpcc_log_error("gpcc_pg_update_gp_id update failure");
+	return e;
+    }
+    return 0;
+}
+
+
+/**
+ * if QD 
+ *   #port     port = 5432
+ *   #log_statement log_statement=all
+ *   checkpoint_segments checkpoint_segments=31
+ *   stats_command_string stats_command_string=on 
+ * else QE 
+ *   #port 
+ *   listen_addresses -- listen_addresses='*'
+ *   checkpoint_segments checkpoint_segments=31
+ * endif
+ */
+APR_DECLARE(apr_status_t) gpcc_pg_update_postgresql_conf(int port, const char *data_dir, int isqd, apr_pool_t *p) {
+    char cmd[1024];
+
+    sprintf(cmd, "%s/postgresql.conf", data_dir);
+
+    
+    
+
+
+    return 0;
+}
+

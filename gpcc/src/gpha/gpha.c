@@ -598,6 +598,8 @@ int main(int argc, const char* argv[])
 
     GPCC_DO(0 == load_config());
 
+    GPCC_DO(0 == (gpha.gphome = getenv("GPHOME")));
+
     if (! gpha.debug) {
 	GPCC_DO(0 == apr_proc_detach(1));
 	/* At this point, we are now a daemon */

@@ -1,5 +1,31 @@
 #include <gpcc_json.h>
 
+char *gpcc_json_object_get_string(struct json_object *object, char *key, char *defvalue)
+{
+    struct json_object *keyobj;
+
+    keyobj = json_object_object_get(object, key);
+    if (!keyobj){
+	return defvalue;
+    }
+
+    return json_object_get_string(keyobj);
+}
+
+int gpcc_json_object_get_int(struct json_object *object, char *key, int defvalue)
+{
+    struct json_object *keyobj;
+
+    keyobj = json_object_object_get(object, key);
+    if (!keyobj){
+	return defvalue;
+    }
+
+    return json_object_get_int(keyobj);
+}
+
+
+
 struct json_object *gpcc_json_hostlist(const char * const *masters, const char *const *segments) {
     struct json_object *obj = 0;
     struct json_object *master_array = 0;

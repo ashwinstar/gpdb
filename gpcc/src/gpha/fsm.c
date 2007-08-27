@@ -5,6 +5,8 @@
 #include <gpcc_http.h>
 #include <gpcc_proc.h>
 #include <gpcc_pg.h>
+#include <gpcc_json.h>
+#include <gpcc_file.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <json/json.h>

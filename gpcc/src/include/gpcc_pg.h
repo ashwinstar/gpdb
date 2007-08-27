@@ -80,4 +80,45 @@ APR_DECLARE(apr_status_t) gpcc_pg_change_password(int port, const char *user, co
  */
 APR_DECLARE(apr_status_t) gpcc_pg_create_database(int port, const char *dbname, apr_pool_t *p) ;
 
+
+/**
+ *  update gp_configuration
+ *
+ *  @param port  database port number
+ *  @param dbid  dbid
+ *  @param content
+ *  @param primary
+ *  @param hostname
+ *  @param seg_port   segment port number
+ *  @param data_dir   segment data directory
+ *  @param p memory pool
+ *  @return APR_SUCCESS if success 
+ */
+APR_DECLARE(apr_status_t) gpcc_pg_update_gp_configuration(int port, 
+							  int dbid,
+							  int content,
+							  const char *primary,
+							  const char *hostname,
+							  int seg_port,
+							  const char *data_dir,
+							  apr_pool_t *p);
+
+
+/**
+ *  update gp_id
+ *
+ *  @param gpname Greenplum Database name
+ *  @param numseg number of segments
+ *  @param dbid
+ *  @param content
+ *  @param p memory pool
+ *  @return APR_SUCCESS if success
+ */
+APR_DECLARE(apr_status_t) gpcc_pg_update_gp_id(int port, 
+					       const char *gpname,
+					       int numseg,
+					       int dbid,
+					       int content,
+					       apr_pool_t *p);
+
 #endif   /* GPCC_PG_H */

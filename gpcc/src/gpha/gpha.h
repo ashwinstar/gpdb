@@ -126,6 +126,7 @@ struct gpha_t {
     gpcc_evqueue_t* evq;	/* the event queue */
     int          system_cmdidx; /* cmdidx of system FSM */
     apr_uint16_t cmdidx_gen;
+    const char*  gphome;
     cmdslot_t    cmdslot[CMDSLOT_MAX];
 };
 

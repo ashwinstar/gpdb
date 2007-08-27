@@ -4,6 +4,25 @@
 #include <json/json.h>
 
 /**
+ *  get string from json_object
+ *  @param object json object
+ *  @param key  key value
+ *  @param defvalue default value
+ *  @return string value if exists otherwise returns default value
+ */
+char *gpcc_json_object_get_string(struct json_object *object, char *key, char *defvalue);
+
+/**
+ *  get int from json_object
+ *  @param object json object
+ *  @param key  key value
+ *  @param defvalue default value
+ *  @return integer value if exists otherwise returns default value
+ */
+int gpcc_json_object_get_int(struct json_object *object, char *key, int defvalue);
+
+
+/**
  *  create hostlist object
  *
  *  object contains "master" array and "segment" array
