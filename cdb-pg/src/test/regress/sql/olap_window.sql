@@ -675,3 +675,7 @@ SELECT sale.cn,sale.pn,
 last_VALUE(sale.pn+sale.pn) OVER(order by sale.cn range between current row and
 unbounded following) as fv from sale;
 
+-- MPP-1881
+SELECT sale.pn,
+COUNT(pn) OVER(order by sale.pn asc range between unbounded preceding and unbounded following) 
+FROM sale;

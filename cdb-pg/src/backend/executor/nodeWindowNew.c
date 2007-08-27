@@ -1281,6 +1281,10 @@ hasEnoughDataInRange(WindowFrameBuffer buffer,
 	if (level_state->empty_frame)
 		return true;
 
+	if (!EDGE_IS_BOUND(level_state->frame->lead) &&
+		!EDGE_IS_CURRENT_ROW(level_state->frame->lead))
+		return false;
+
 	lead_keys = (Datum *)
 		palloc0(level_state->numSortCols * sizeof(Datum));
 	lead_keys_isnull = (bool *)

@@ -2398,3 +2398,23 @@ unbounded following) as fv from sale;
   4 | 800 | 1600
 (12 rows)
 
+-- MPP-1881
+SELECT sale.pn,
+COUNT(pn) OVER(order by sale.pn asc range between unbounded preceding and unbounded following) 
+FROM sale;
+ pn  | count 
+-----+-------
+ 100 |    12
+ 100 |    12
+ 200 |    12
+ 200 |    12
+ 300 |    12
+ 400 |    12
+ 400 |    12
+ 500 |    12
+ 500 |    12
+ 600 |    12
+ 700 |    12
+ 800 |    12
+(12 rows)
+
