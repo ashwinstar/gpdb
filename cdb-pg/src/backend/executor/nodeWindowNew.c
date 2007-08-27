@@ -1069,7 +1069,7 @@ appendToFrameBuffer(WindowStatePerLevel level_state,
 
 	elog(DEBUG1, "append tuple to buffer: %s", tup2str(econtext->ecxt_scantuple));
 
-	/* Adjust the trailing edge if it is rows x following. */
+	/* Adjust the trailing edge if it is rows x following or rows current row */
 	if (level_state->is_rows &&
 		EDGE_IS_BOUND(level_state->frame->trail) &&
 		level_state->trail_rows > 0)
@@ -1086,6 +1086,10 @@ appendToFrameBuffer(WindowStatePerLevel level_state,
 			level_state->num_trail_rows++;
 		}
 	}
+
+	else if(level_state->is_rows &&
+			EDGE_IS_CURRENT_ROW(level_state->frame->trail))
+		ntuplestore_acc_seek_last(level_state->trail_reader);
 
 	/* Adjust the leading edge */
 	if (!ntuplestore_acc_tell(level_state->lead_reader, NULL))
@@ -1634,9 +1638,25 @@ initWindowFuncState(WindowState *wstate, Window *node)
 			}
 			else
 			{
+				ListCell *func_lc;
+				bool func_exist = false;
 				funcstate->wlevel = level_state;
-				level_state->level_funcs = lappend(level_state->level_funcs,
-												   funcstate);
+
+				/* Do not append a duplicate window functions to the level. */
+				foreach (func_lc, level_state->level_funcs)
+				{
+					WindowStatePerFunction curr_funcstate =
+						(WindowStatePerFunction) lfirst(func_lc);
+					if (curr_funcstate == funcstate)
+					{
+						func_exist = true;
+						break;
+					}
+				}
+
+				if (!func_exist)
+					level_state->level_funcs = lappend(level_state->level_funcs,
+													   funcstate);
 			}
 		}
 		
@@ -3456,49 +3476,29 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 static void
 init_frames(WindowState *wstate)
 {
-	Window *node = (Window *)wstate->ps.plan;
 	int level = -1;
 	ListCell *lc;
+	int col_no;
 
-	foreach(lc, node->windowKeys)
+	for(level=0; level<wstate->numlevels; level++)
 	{
-		WindowKey *key = lfirst(lc);
-		WindowFrame *frame;
-		int funcno;
-		WindowStatePerLevel level_state;
-		int ncols = key->numSortCols;
-		int i;
-
-		level++;
-		level_state = &wstate->level_state[level];
+		WindowStatePerLevel level_state = &wstate->level_state[level];
+		int ncols = level_state->numSortCols;
+		WindowFrame *frame = level_state->frame;
 
 		level_state->col_sort_asc = palloc(sizeof(bool) * ncols);
-
-		frame = key->frame;
-
-		for (funcno = 0; funcno < wstate->numfuncs; funcno++)
+		foreach (lc, level_state->level_funcs)
 		{
-			WindowStatePerFunction funcstate = &wstate->func_state[funcno];
+			WindowStatePerFunction funcstate =
+				(WindowStatePerFunction)lfirst(lc);
 
-			/* 
-			 * No level means null window specification -- i.e., OVER () --
-			 * so mark it as trivial.
-			 */
-			if (!PointerIsValid(funcstate->wlevel))
+			if (!frame || (!funcstate->isAgg && !funcstate->allowframe &&
+						   !IS_LEAD_LAG_FUNC(funcstate->windowfn_oid)))
 			{
 				funcstate->trivial_frame = true;
-				continue;
 			}
 
-			if (level == funcstate->wlevel->level)
-			{
-				if (!frame || (!funcstate->isAgg && !funcstate->allowframe &&
-							   !IS_LEAD_LAG_FUNC(funcstate->windowfn_oid)))
-				{
-					funcstate->trivial_frame = true;
-				}
-			}
-	
+
 			/* 
 			 * We say the function is trivial to invoke if its frame is defined
 			 * as ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW with no
@@ -3532,11 +3532,11 @@ init_frames(WindowState *wstate)
 				}
 			}
 		}
-
+		
 		/* what sort order did the user specify for each key? */
-		for (i = 0; i < ncols; i++)
+		for (col_no = 0; col_no < ncols; col_no++)
 		{
-			Oid sortop = key->sortOperators[i];
+			Oid sortop = level_state->sortOperators[col_no];
 			Form_pg_operator op;
 			HeapTuple optup = SearchSysCache(OPEROID,
 							   				 ObjectIdGetDatum(sortop),
@@ -3546,11 +3546,11 @@ init_frames(WindowState *wstate)
 			ReleaseSysCache(optup);
 
 			if (strcmp(NameStr(op->oprname), "<") == 0)
-				level_state->col_sort_asc[i] = true;
+				level_state->col_sort_asc[col_no] = true;
 			else
-				level_state->col_sort_asc[i] = false;
+				level_state->col_sort_asc[col_no] = false;
 		}
-		
+
 		/* now, initialize the actual frame */
 		if (frame)
 		{
@@ -3564,7 +3564,7 @@ init_frames(WindowState *wstate)
 					bool isnull;
 					
 					level_state->trail_expr =
-						ExecInitExpr((Expr *)key->frame->trail->val, 
+						ExecInitExpr((Expr *)level_state->frame->trail->val, 
 									 (PlanState *) wstate); 
 
 					rows_param = ExecEvalExpr(level_state->trail_expr,
@@ -3588,7 +3588,7 @@ init_frames(WindowState *wstate)
 					bool isnull;
 
 					level_state->lead_expr = 
-						ExecInitExpr((Expr *)key->frame->lead->val, 
+						ExecInitExpr((Expr *)level_state->frame->lead->val, 
 									 (PlanState *) wstate); 
 
 					rows_param = ExecEvalExpr(level_state->lead_expr,
@@ -3614,14 +3614,14 @@ init_frames(WindowState *wstate)
 				if (EDGE_IS_BOUND(frame->trail))
 				{
 					init_bound_frame_edge_expr(frame->trail, desc,
-											   key->sortColIdx[0],
+											   level_state->sortColIdx[0],
 											   true, level_state, wstate);
 				}
 
 				if (EDGE_IS_BOUND(frame->lead))
 				{
 					init_bound_frame_edge_expr(frame->lead, desc,
-											   key->sortColIdx[0],
+											   level_state->sortColIdx[0],
 											   false, level_state, wstate);
 				}
 			}
@@ -3667,7 +3667,7 @@ init_frames(WindowState *wstate)
 				Operator optup;
 
 
-				attnum = key->sortColIdx[0];
+				attnum = level_state->sortColIdx[0];
 				optup = ordering_oper(tup->attrs[attnum - 1]->atttypid,
 									  false);
 				
