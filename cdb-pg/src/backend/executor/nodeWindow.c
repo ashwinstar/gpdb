@@ -520,7 +520,6 @@ processPeerCounts(WindowState *wstate, int min_level,
 						break;
 					}
 	
-					/* XXX: shouldn't this be priorslot instead of cur_slot */
 					match = execTuplesMatch(cur_slot, slot, 
 											key->numSortCols, key->sortColIdx,
 											level_state->eqfunctions,
@@ -1421,19 +1420,16 @@ set_edge_val(WindowState *wstate, WindowStatePerLevel level_state,
 }
 
 static void
-eval_copy_winfunc_args(WindowState *wstate, List *funcargs, Datum *vals,
-					   bool *nulls)
+eval_copy_winfunc_args(WindowState *wstate, WindowRefExprState *wrxstate,
+					   Datum *vals, bool *nulls)
 {
 	ListCell *lc;
 	int argno = 0;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 	
-	foreach (lc, funcargs)
+	foreach(lc, wrxstate->args)
 	{
 		ExprState  *argstate = (ExprState *) lfirst(lc);
-		Oid typid;
-		bool byval;
-		int16 len;
 		MemoryContext oldctx;
 
 		/* skip the internal arg */
@@ -1446,12 +1442,11 @@ eval_copy_winfunc_args(WindowState *wstate, List *funcargs, Datum *vals,
 		vals[argno - 1] = ExecEvalExpr(argstate, econtext,
 								       nulls + argno - 1, NULL);
 
-		/* XXX: get a copy, do the leg work at init time though */
-		typid = exprType((Node *)argstate->expr);
-		get_typlenbyval(typid, &len, &byval);
-
 		oldctx = MemoryContextSwitchTo(wstate->transcontext);
-		vals[argno - 1] = datumCopy(vals[argno - 1], byval, len);
+		vals[argno - 1] = datumCopy(vals[argno - 1], 
+									wrxstate->argtypbyval[argno],
+									wrxstate->argtyplen[argno]);
+		
 		MemoryContextSwitchTo(oldctx);
 
 		argno++;
@@ -1639,7 +1634,7 @@ appendRangeTuple(WindowState *wstate, WindowKey *key,
 			
 			MemoryContextSwitchTo(oldctx);
 
-			eval_copy_winfunc_args(wstate, wrxstate->args, args, argnulls);
+			eval_copy_winfunc_args(wstate, wrxstate, args, argnulls);
 			
 			bufferAddRangeWindowFuncTuple(wstate, funcstate, args, argnulls,
 										  vals, nulls, tuple_before_edge);
@@ -1781,7 +1776,7 @@ appendRowTuple(WindowState *wstate, WindowFrame *frame,
 			
 			MemoryContextSwitchTo(oldctx);
 
-			eval_copy_winfunc_args(wstate, wrxstate->args, args, argnulls);
+			eval_copy_winfunc_args(wstate, wrxstate, args, argnulls);
 
 			bufferAddRowWindowFuncTuple(wstate, funcstate, args, argnulls,
 										lead_row_index, tuple_in_frame);
@@ -3752,9 +3747,6 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 
 			/* Check that window function owner has permission to call the
 			 * implementation function. 
-			 *
-			 * XXX initially all implementation functions are builtin and 
-			 *     anyone can call them, but good to follow form.
 			 */
 			aclresult = pg_proc_aclcheck(windowfn_oid, 
 										 winOwner, 
@@ -3768,7 +3760,12 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 			funcstate->windowfn_oid = windowfn_oid;
 			funcstate->allowframe = winform->winallowframe;
 			
-			/* Inject extra argument. */
+			fmgr_info(funcstate->windowfn_oid, &funcstate->windowfn);			
+			
+			/* 
+			 * Inject extra argument. If you change these, change them in the
+			 * framed window function case below.
+			 */
 			refptr = makeNode(Const);
 			refptr->consttype = INTERNALOID;
 			refptr->constlen = 4;
@@ -3778,9 +3775,48 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 			
 			xtrastate = ExecInitExpr((Expr *) refptr, (PlanState *) wstate);
 			
+			/* 
+			 * Save a pointer to the old args for use in the framed 
+			 * case below
+			 */
 			wrxstate->args = lcons(xtrastate, wrxstate->args);
-			fmgr_info(funcstate->windowfn_oid, &funcstate->windowfn);			
 
+			/* 
+			 * Initialize byval and typlen for framed funcs. Of course we're
+			 * creating an entry here for the inserted refptr but we do so
+			 * for consistency.
+			 */
+			if (funcstate->allowframe || IS_LEAD_LAG_FUNC(windowfn_oid))
+			{
+				ListCell *lc;
+				int numargs = list_length(wrxstate->args);
+				int argno = 0;
+
+				wrxstate->argtypbyval = palloc(sizeof(bool) * numargs);
+				wrxstate->argtyplen = palloc(sizeof(int16) * numargs);
+
+				foreach(lc, wrxstate->args)
+				{
+					if (argno == 0)
+					{
+						/* internal arg */
+						wrxstate->argtypbyval[argno] = true;
+						wrxstate->argtyplen[argno] = INTERNALOID;
+					}
+					else
+					{
+						Oid typid = inputTypes[argno - 1];
+						int16 len;
+						bool byval;
+
+						get_typlenbyval(typid, &len, &byval);
+						wrxstate->argtypbyval[argno] = byval;
+						wrxstate->argtyplen[argno] = len;
+					}
+					argno++;
+				}
+			}
+			
 			/* 
 			 * Only set the peer count if we're referencing an actual
 			 * window key level and if the peer count is required. This

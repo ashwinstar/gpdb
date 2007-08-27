@@ -3588,29 +3588,26 @@ ExecInitExpr(Expr *node, PlanState *parent)
 			{
 				WindowRef *windowref = (WindowRef *)node;
 				WindowRefExprState *wrstate = makeNode(WindowRefExprState);
+				int numrefs;
+				WindowState   *winstate = (WindowState *) parent;
 				
-				wrstate->xprstate.evalfunc = (ExprStateEvalFunc) ExecEvalWindowRef;
-				if (parent && IsA(parent, WindowState))
-				{
-					int numrefs;
-					WindowState   *winstate = (WindowState *) parent;
+				wrstate->xprstate.evalfunc = 
+					(ExprStateEvalFunc) ExecEvalWindowRef;
+				
+				Insist(parent && IsA(parent, WindowState));
 
-					winstate->wrxstates = lcons(wrstate, winstate->wrxstates);
-					numrefs = list_length(winstate->wrxstates);
+				winstate->wrxstates = lcons(wrstate, winstate->wrxstates);
+				numrefs = list_length(winstate->wrxstates);
 
-					wrstate->args = (List *) ExecInitExpr((Expr *) windowref->args,
-														 parent);
-
-					/* Nested window functions are invalid and should not
-					 * have reached this point in processing. */
-					if (numrefs != list_length(winstate->wrxstates))
-						elog(ERRCODE_INTERNAL_ERROR, "nested windowref calls found in Window plan node");
-				}
-				else
-				{
-					/* WindowRef allowed only in Window nodes; planner messed up */
-					elog(ERROR, "windowref found in non-Window plan node");
-				}
+				wrstate->args = (List *) ExecInitExpr((Expr *) windowref->args,
+													  parent);
+				/* 
+				 * Nested window functions are invalid and should not have 
+				 * reached this point in processing.
+				 */
+				if (numrefs != list_length(winstate->wrxstates))
+					elog(ERRCODE_INTERNAL_ERROR, "nested windowref calls "
+						 "found in Window plan node");
 				state = (ExprState *) wrstate;
 			}
 			break;
