@@ -24,7 +24,7 @@
 #include <apr_uri.h>
 #include <apr_env.h>
 #include <apr_fnmatch.h>
-#include <gpcc_file.h>
+#include "gfile.h"
 
 typedef struct gpcc_net_request_t gpcc_net_request_t;
 struct gpcc_net_request_t {
