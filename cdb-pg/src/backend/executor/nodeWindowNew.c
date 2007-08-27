@@ -252,12 +252,6 @@ typedef struct WinFuncRangeBuffer
 	bool *nulls;
 } WinFuncRangeBuffer;
 
-typedef struct WindowBreakInfo
-{
-	bool		part_break;
-	int			min_key_break;
-} WindowBreakInfo;
-
 #define FRAME_TRAIL_ROWS 	0
 #define FRAME_TRAIL_RANGE	1
 #define FRAME_LEAD_ROWS		2
@@ -269,28 +263,11 @@ typedef struct WindowBreakInfo
 #define EDGE_IS_CURRENT_ROW(e) \
 	 e->kind == WINDOW_CURRENT_ROW
 
-#define FRAME_NEEDS_FILL(wstate, key, funcstate) \
-	((wstate->row_index == 0 && EDGE_IS_BOUND(key->frame->lead)) \
-	 || FUNC_HAS_MAN_FRAME(funcstate))
-	
-#define FRAME_IS_COMPLEX(f, fs) (!(f->trivial_frame || fs->empty_frame))
-
-#define FUNC_HAS_MAN_FRAME(f) \
-	(funcstate->isAgg && !OidIsValid(funcstate->invtransfn_oid))
-
 #define IS_LEAD_LAG_FUNC(oid) (IS_LEAD_FUNC(oid) || IS_LAG_FUNC(oid)) 
 
 #define ABS(x) (x < 0 ? -x : x)
 #define MIN(x, y) (x =< y ? x : y)
 
-#define DB_TTS(slot) \
-do \
-{ \
-	char *__buf = tup2str(slot); \
-	elog(DEBUG1, "slot = %s", __buf); \
-	pfree(__buf); \
-} while(0)
-	
 /****************************************************
  * Window Input Buffer and its APIs
  ***************************************************/
@@ -396,7 +373,7 @@ static WindowFrameBuffer createRowsFrameBuffer(long int trail_rows,
 											   int bytes);
 static WindowFrameBuffer resetFrameBuffer(WindowFrameBuffer buffer);
 static void appendToFrameBuffer(WindowStatePerLevel level_state,
-								ExprContext *econtext);
+								ExprContext *econtext, WindowState *wstate);
 #if 0
 static void trimFrameBuffer(WindowFrameBuffer buffer, NTupleStorePos *pos);
 static List *getValueAtPos(WindowFrameBuffer buffer,
@@ -1068,7 +1045,9 @@ deserializeEntryForRange(WindowStatePerLevel level_state,
  * appendToFrameBuffer -- append a list of values into the frame buffer.
  */
 static void
-appendToFrameBuffer(WindowStatePerLevel level_state, ExprContext *econtext)
+appendToFrameBuffer(WindowStatePerLevel level_state,
+					ExprContext *econtext,
+					WindowState *wstate)
 {
 	char *serial_entry;
 	Size len;
@@ -1088,6 +1067,8 @@ appendToFrameBuffer(WindowStatePerLevel level_state, ExprContext *econtext)
 
 	ntuplestore_acc_put_data(buffer->writer, (void*)serial_entry, len);
 
+	elog(DEBUG1, "append tuple to buffer: %s", tup2str(econtext->ecxt_scantuple));
+
 	/* Adjust the leading edge */
 	if (!ntuplestore_acc_tell(level_state->lead_reader, NULL))
 	{
@@ -1105,28 +1086,35 @@ appendToFrameBuffer(WindowStatePerLevel level_state, ExprContext *econtext)
 
 	else if (!level_state->is_rows)
 	{
-		FrameBufferEntryForRange *lead_entry;
-	    Datum new_lead_key;
-		bool new_lead_key_isnull;
-
-		lead_entry = getCurrentValue(level_state->lead_reader, level_state);
-		Assert(lead_entry != NULL);
-		
 		if (EDGE_IS_BOUND(level_state->frame->lead))
 		{
+			Datum new_lead_key;
+			bool new_lead_key_isnull;
+			Datum curr_key;
+			bool curr_key_isnull;
+			
 			Assert(level_state->numSortCols == 1);
-			new_lead_key = ExecEvalExpr(level_state->lead_expr, econtext,
-									&(new_lead_key_isnull), NULL);
 
-			if (!cmp_deformed_tuple(lead_entry->keys, lead_entry->nulls,
-									&new_lead_key, &new_lead_key_isnull,
-									level_state->col_sort_asc,
-									level_state->numSortCols,
-									level_state->ltfunctions,
-									level_state->eqfunctions,
-									econtext->ecxt_per_tuple_memory,
-									true) &&
-				cmp_deformed_tuple(lead_entry->keys, lead_entry->nulls,
+			/* Obtain the key for the inserted row. */
+			deform_window_tuple(econtext->ecxt_scantuple,
+								level_state->numSortCols, level_state->sortColIdx,
+								&curr_key, &curr_key_isnull,
+								wstate->transcontext);
+
+			/* Calculate the leading key based on the current_row. */
+			econtext->ecxt_scantuple = wstate->curslot;
+			new_lead_key = ExecEvalExpr(level_state->lead_expr, econtext,
+										&(new_lead_key_isnull), NULL);
+
+			if (cmp_deformed_tuple(&curr_key, &curr_key_isnull,
+								   &new_lead_key, &new_lead_key_isnull,
+								   level_state->col_sort_asc,
+								   level_state->numSortCols,
+								   level_state->ltfunctions,
+								   level_state->eqfunctions,
+								   econtext->ecxt_per_tuple_memory,
+								   true) &&
+				cmp_deformed_tuple(&curr_key, &curr_key_isnull,
 								   &new_lead_key, &new_lead_key_isnull,
 								   level_state->col_sort_asc,
 								   level_state->numSortCols,
@@ -2058,8 +2046,6 @@ initializePartition(WindowState *wstate)
 {
 	int level;
 	
-	elog(DEBUG1, "initializing partition");
-	
 	/* Reset partition primitive values. Note row_index is -1 to flag 
 	 * "before first row of partition" and so that it increments to 0.
 	 */
@@ -2269,7 +2255,6 @@ add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 								  &fcinfo, (void *)wstate,
 								  wstate->transcontext,
 								  econtext->ecxt_per_tuple_memory);
-		elog(DEBUG1, "add_tuple_to_trans calls invoke_agg_trans_func");
 	}
 	else /* ordinary window function */
 	{
@@ -2634,6 +2619,8 @@ adjustEdges(WindowFrameBuffer buffer,
 			need_adjust = true;
 			while (need_adjust)
 			{
+				bool key_equal;
+				
 				lead_row = getCurrentValue(level_state->lead_reader, level_state);
 
 				if (lead_row == NULL)
@@ -2647,23 +2634,28 @@ adjustEdges(WindowFrameBuffer buffer,
 												 level_state->eqfunctions,
 												 econtext->ecxt_per_tuple_memory,
 												 false);
-				if (need_adjust)
+				key_equal = cmp_deformed_tuple(lead_row->keys, lead_row->nulls,
+											   new_lead_keys, new_lead_keys_isnull,
+											   level_state->col_sort_asc,
+											   level_state->numSortCols,
+											   level_state->ltfunctions,
+											   level_state->eqfunctions,
+											   econtext->ecxt_per_tuple_memory,
+											   true);
+				if (need_adjust && !key_equal)
 				{
-					bool key_equal = cmp_deformed_tuple(lead_row->keys, lead_row->nulls,
-														new_lead_keys, new_lead_keys_isnull,
-														level_state->col_sort_asc,
-														level_state->numSortCols,
-														level_state->ltfunctions,
-														level_state->eqfunctions,
-														econtext->ecxt_per_tuple_memory,
-														true);
-					if (!key_equal)
-					{
-						bool found = ntuplestore_acc_advance(level_state->lead_reader, 1);
-						if (!found)
-							break;
-					}
+					bool found = ntuplestore_acc_advance(level_state->lead_reader, 1);
+					if (!found)
+						break;
 				}
+				if (!need_adjust && !key_equal)
+				{
+					/* We need to back off one. */
+					bool found = ntuplestore_acc_advance(level_state->lead_reader, -1);
+					if (!found)
+						break;
+				}
+				
 			}
 		}
 		else if (EDGE_IS_CURRENT_ROW(level_state->frame->lead))
@@ -2722,7 +2714,6 @@ finaliseFuncs(WindowState *wstate)
 	/*
 	 * Put the current transition value into the econtext
 	 */
-	elog(DEBUG1, "finalising %i", wstate->numfuncs);
 	for (funcno = 0; funcno < wstate->numfuncs; funcno++)
 	{
 		WindowStatePerFunction funcstate = &wstate->func_state[funcno];
@@ -2803,10 +2794,6 @@ invokeWindowFuncs(WindowState *wstate, bool last_peer)
 {	
 	bool found_complex_func = false;
 
-	elog(DEBUG1, "======= START FRAME PROCESS =====");
-	elog(DEBUG1, "row index %lli",
-		 (int64) wstate->row_index);
-	
 	invokeTrivialFuncs(wstate, last_peer, &found_complex_func);
 
 	/* 
@@ -2817,9 +2804,6 @@ invokeWindowFuncs(WindowState *wstate, bool last_peer)
 		invokeNonTrivialFuncs(wstate);
 
 	finaliseFuncs(wstate);
-		
-
-	elog(DEBUG1, "======== END OF FRAME PROCESSING =======");
 }
 
 /*
@@ -3219,11 +3203,15 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot)
 				/* Set econtext->ecxt_scantuple because the range
 				 * frame needs this for order keys.
 				 */
+#if 0
 				if (!TupIsNull(slot))
 					econtext->ecxt_scantuple = wstate->priorslot;
 				else
 					econtext->ecxt_scantuple = wstate->curslot;
-				appendToFrameBuffer(level_state, econtext);
+#else
+				econtext->ecxt_scantuple = wstate->priorslot;
+#endif
+				appendToFrameBuffer(level_state, econtext, wstate);
 			}
 
 			/* If this slot causes the partition key to break, we don't add
@@ -3639,7 +3627,6 @@ init_frames(WindowState *wstate)
 									  false);
 				
 				ordfuncid = oprfuncid(optup); 
-				elog(DEBUG1, "found operator %u", oprid(optup));
 				ReleaseSysCache(optup);
 
 				fmgr_info(ordfuncid, &fcinfo);
@@ -3993,11 +3980,6 @@ cume_dist_prelim(PG_FUNCTION_ARGS)
 	WindowStatePerLevel level_state = &window_state->level_state[ref->winlevel];
 	
 	result = level_state->prior_non_peer_count + (level_state->peer_count + 1);
-
-	elog(DEBUG1, "--prior = %llu, peercount = %lli, result %llu",
-		(long long unsigned int) level_state->prior_non_peer_count,
-		(long long int) level_state->peer_count,
-		(long long unsigned int) result);
 
 	PG_RETURN_INT64(result);
 }
