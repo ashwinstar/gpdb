@@ -1092,75 +1092,78 @@ appendToFrameBuffer(WindowStatePerLevel level_state,
 		ntuplestore_acc_seek_last(level_state->trail_reader);
 
 	/* Adjust the leading edge */
-	if (!ntuplestore_acc_tell(level_state->lead_reader, NULL))
+	if (level_state->frame->lead->kind != WINDOW_BOUND_PRECEDING)
 	{
-		ntuplestore_acc_seek_last(level_state->lead_reader);
-		level_state->num_lead_rows++;
-	}
-
-	else if (level_state->is_rows &&
-			 level_state->num_lead_rows < level_state->lead_rows)
-	{
-		bool found = ntuplestore_acc_advance(level_state->lead_reader, 1);
-		Assert(found);
-		level_state->num_lead_rows++;
-	}
-
-	else if (!level_state->is_rows)
-	{
-		if (EDGE_IS_BOUND(level_state->frame->lead))
+		if (!ntuplestore_acc_tell(level_state->lead_reader, NULL))
 		{
-			Datum new_lead_key;
-			bool new_lead_key_isnull;
-			Datum curr_key;
-			bool curr_key_isnull;
+			ntuplestore_acc_seek_last(level_state->lead_reader);
+			level_state->num_lead_rows++;
+		}
+
+		else if (level_state->is_rows &&
+				 level_state->num_lead_rows < level_state->lead_rows)
+		{
+			bool found = ntuplestore_acc_advance(level_state->lead_reader, 1);
+			Assert(found);
+			level_state->num_lead_rows++;
+		}
+
+		else if (!level_state->is_rows)
+		{
+			if (EDGE_IS_BOUND(level_state->frame->lead))
+			{
+				Datum new_lead_key;
+				bool new_lead_key_isnull;
+				Datum curr_key;
+				bool curr_key_isnull;
 			
-			Assert(level_state->numSortCols == 1);
+				Assert(level_state->numSortCols == 1);
+				
+				/* Obtain the key for the inserted row. */
+				deform_window_tuple(econtext->ecxt_scantuple,
+									level_state->numSortCols, level_state->sortColIdx,
+									&curr_key, &curr_key_isnull,
+									wstate->transcontext);
 
-			/* Obtain the key for the inserted row. */
-			deform_window_tuple(econtext->ecxt_scantuple,
-								level_state->numSortCols, level_state->sortColIdx,
-								&curr_key, &curr_key_isnull,
-								wstate->transcontext);
+				/* Calculate the leading key based on the current_row. */
+				econtext->ecxt_scantuple = wstate->curslot;
+				new_lead_key = ExecEvalExpr(level_state->lead_expr, econtext,
+											&(new_lead_key_isnull), NULL);
 
-			/* Calculate the leading key based on the current_row. */
-			econtext->ecxt_scantuple = wstate->curslot;
-			new_lead_key = ExecEvalExpr(level_state->lead_expr, econtext,
-										&(new_lead_key_isnull), NULL);
-
-			if (cmp_deformed_tuple(&curr_key, &curr_key_isnull,
-								   &new_lead_key, &new_lead_key_isnull,
-								   level_state->col_sort_asc,
-								   level_state->numSortCols,
-								   level_state->ltfunctions,
-								   level_state->eqfunctions,
-								   econtext->ecxt_per_tuple_memory,
-								   true) ||
-				cmp_deformed_tuple(&curr_key, &curr_key_isnull,
-								   &new_lead_key, &new_lead_key_isnull,
-								   level_state->col_sort_asc,
-								   level_state->numSortCols,
-								   level_state->ltfunctions,
-								   level_state->eqfunctions,
-								   econtext->ecxt_per_tuple_memory,
-								   false))
+				if (cmp_deformed_tuple(&curr_key, &curr_key_isnull,
+									   &new_lead_key, &new_lead_key_isnull,
+									   level_state->col_sort_asc,
+									   level_state->numSortCols,
+									   level_state->ltfunctions,
+									   level_state->eqfunctions,
+									   econtext->ecxt_per_tuple_memory,
+									   true) ||
+					cmp_deformed_tuple(&curr_key, &curr_key_isnull,
+									   &new_lead_key, &new_lead_key_isnull,
+									   level_state->col_sort_asc,
+									   level_state->numSortCols,
+									   level_state->ltfunctions,
+									   level_state->eqfunctions,
+									   econtext->ecxt_per_tuple_memory,
+									   false))
+					ntuplestore_acc_advance(level_state->lead_reader, 1);
+			}
+			else if (EDGE_IS_CURRENT_ROW(level_state->frame->lead))
+			{
+				if (!ntuplestore_acc_tell(buffer->current_row_reader, NULL))
+					ntuplestore_acc_seek_last(level_state->lead_reader);
+				else
+				{
+					bool found;
+					NTupleStorePos pos;
+					found = ntuplestore_acc_tell(buffer->current_row_reader, &pos);
+					Assert(found);
+					ntuplestore_acc_seek(level_state->lead_reader, &pos);
+				}
+			}
+			else
 				ntuplestore_acc_advance(level_state->lead_reader, 1);
 		}
-		else if (EDGE_IS_CURRENT_ROW(level_state->frame->lead))
-		{
-			if (!ntuplestore_acc_tell(buffer->current_row_reader, NULL))
-				ntuplestore_acc_seek_last(level_state->lead_reader);
-			else
-			{
-				bool found;
-				NTupleStorePos pos;
-				found = ntuplestore_acc_tell(buffer->current_row_reader, &pos);
-				Assert(found);
-				ntuplestore_acc_seek(level_state->lead_reader, &pos);
-			}
-		}
-		else
-			ntuplestore_acc_advance(level_state->lead_reader, 1);
 	}
 
 	if (!ntuplestore_acc_tell(buffer->current_row_reader, NULL))
@@ -1531,9 +1534,19 @@ computeFrameValue(WindowStatePerLevel level_state,
 
 		else
 		{
-			funcstate->final_aggTransValue = funcstate->aggTransValue;
-			funcstate->final_aggTransValueIsNull = funcstate->aggTransValueIsNull;
-			funcstate->final_aggNoTransValue = funcstate->aggNoTransValue;
+			if (level_state->frame->trail->kind == WINDOW_BOUND_FOLLOWING ||
+				level_state->frame->lead->kind == WINDOW_BOUND_PRECEDING)
+			{
+				funcstate->final_aggTransValue = funcstate->aggInitValue;
+				funcstate->final_aggTransValueIsNull = funcstate->aggInitValueIsNull;
+				funcstate->final_aggNoTransValue = funcstate->aggInitValueIsNull;
+			}
+			else
+			{
+				funcstate->final_aggTransValue = funcstate->aggTransValue;
+				funcstate->final_aggTransValueIsNull = funcstate->aggTransValueIsNull;
+				funcstate->final_aggNoTransValue = funcstate->aggNoTransValue;
+			}
 		}
 	}
 
@@ -2694,7 +2707,13 @@ adjustEdges(WindowFrameBuffer buffer,
 				lead_row = getCurrentValue(level_state->lead_reader, level_state);
 
 				if (lead_row == NULL)
-					break;
+				{
+					if (level_state->frame->lead->kind != WINDOW_BOUND_PRECEDING)
+						break;
+					
+					ntuplestore_acc_seek_first(level_state->lead_reader);
+					lead_row = getCurrentValue(level_state->lead_reader, level_state);
+				}
 			
 				need_adjust = cmp_deformed_tuple(lead_row->keys, lead_row->nulls,
 												 new_lead_keys, new_lead_keys_isnull,

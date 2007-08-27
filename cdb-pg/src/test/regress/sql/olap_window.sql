@@ -683,3 +683,8 @@ FROM sale;
 -- MPP-1878
 SELECT sale.vn,sale.cn, COUNT(vn) OVER(order by sale.cn asc range between unbounded preceding and 2 following)
 FROM sale;
+
+-- MPP-1877
+SELECT sale.vn,sale.cn, 
+COUNT(vn) OVER(order by sale.cn asc range between unbounded preceding and 2 preceding) 
+FROM sale; 
