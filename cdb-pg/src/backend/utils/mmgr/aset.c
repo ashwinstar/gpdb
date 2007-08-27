@@ -284,10 +284,16 @@ static void AllocFreeInfo(AllocSet set, AllocChunk chunk)
 	if(prev != NULL)
 		prev->alloc_next = next;
 	else
+	{
+		Assert(set->allocList == chunk);
 		set->allocList = next;
+	}
 
 	if(next != NULL)
 		next->alloc_prev = prev;
+
+	chunk->alloc_prev = NULL;
+	chunk->alloc_next = NULL;
 
 	set->totalAllocSize -= chunk->size;
 }
@@ -391,8 +397,9 @@ AllocSetContextCreate(MemoryContext parent,
 	context->maxBlockSize = maxBlockSize;
 	context->nextBlockSize = initBlockSize;
 
-#ifdef MEMORY_CONTEXT_CHECKING_XXX_FTIAN_LEAKING
+#ifdef MEMORY_CONTEXT_CHECKING
 	context->totalAllocSize = 0;
+	context->allocList = NULL;
 #endif
 
 	/*
@@ -915,8 +922,6 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 				 set->header.name, chunk);
 #endif
 
-	AllocFreeInfo(set, chunk);
-
 	/* isReset must be false already */
 	Assert(!set->isReset);
 
@@ -927,6 +932,7 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 	 */
 	if (oldsize >= size)
 	{
+		AllocFreeInfo(set, chunk);
 #ifdef MEMORY_CONTEXT_CHECKING
 		chunk->requested_size = size;
 		/* set mark to catch clobber of "unused" space */
@@ -949,6 +955,8 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 		Size		chksize;
 		Size		blksize;
         Size        oldsize;
+
+		AllocFreeInfo(set, chunk);
 
 		while (block != NULL)
 		{
@@ -1039,6 +1047,9 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 				if (freespace >= delta)
 				{
 					/* Yes, so just enlarge the chunk. */
+
+					AllocFreeInfo(set, chunk);
+
 					block->freeptr += delta;
 					chunk->size += delta;
 #ifdef MEMORY_CONTEXT_CHECKING

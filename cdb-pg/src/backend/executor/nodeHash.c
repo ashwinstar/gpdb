@@ -973,6 +973,14 @@ ExecHashTableExplainEnd(PlanState *planstate, struct StringInfoData *buf)
 
     stats = hashtable->stats;
 
+	/* Check batchstats not null: If nodeHash failed to palloc batchstats, it will
+	 * throw.  Posgres will catch and handle it, but no matter what, postgres will 
+	 * try to get some explain results.  We must check here in this case or we will
+	 * segv.
+	 */
+	if(stats->batchstats == NULL)
+		return;
+
     /* Report on batch in progress, in case the join is being ended early. */
     ExecHashTableExplainBatchEnd(hashtable);
 
@@ -1192,8 +1200,8 @@ ExecHashTableExplainBatchEnd(HashJoinTable hashtable)
     int                 i;
 
     /* Already reported on this batch? */
-    if (stats->endedbatch == curbatch ||
-        curbatch >= hashtable->nbatch)
+    if ( stats->endedbatch == curbatch 
+			|| curbatch >= hashtable->nbatch)
         return;
     stats->endedbatch = curbatch;
 

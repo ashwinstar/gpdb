@@ -1443,8 +1443,8 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 	queryParms.strCommand = strCommand;
 	queryParms.serializedQuerytree = serializedQuerytree;
 	queryParms.serializedQuerytreelen = serializedQuerytreelen;
-	queryParms.serializedQuerytree = serializedPlantree;
-	queryParms.serializedQuerytreelen = serializedPlantreelen;
+	queryParms.serializedPlantree = serializedPlantree;
+	queryParms.serializedPlantreelen = serializedPlantreelen;
 	
 	/*
 	 * Allocate a primary and mirror QE for every available segDB in the system.
