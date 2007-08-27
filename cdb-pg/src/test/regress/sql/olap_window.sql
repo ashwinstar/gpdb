@@ -679,3 +679,7 @@ unbounded following) as fv from sale;
 SELECT sale.pn,
 COUNT(pn) OVER(order by sale.pn asc range between unbounded preceding and unbounded following) 
 FROM sale;
+
+-- MPP-1878
+SELECT sale.vn,sale.cn, COUNT(vn) OVER(order by sale.cn asc range between unbounded preceding and 2 following)
+FROM sale;

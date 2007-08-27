@@ -1135,7 +1135,7 @@ appendToFrameBuffer(WindowStatePerLevel level_state,
 								   level_state->ltfunctions,
 								   level_state->eqfunctions,
 								   econtext->ecxt_per_tuple_memory,
-								   true) &&
+								   true) ||
 				cmp_deformed_tuple(&curr_key, &curr_key_isnull,
 								   &new_lead_key, &new_lead_key_isnull,
 								   level_state->col_sort_asc,
