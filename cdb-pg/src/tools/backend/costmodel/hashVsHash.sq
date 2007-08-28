@@ -1,0 +1,1395 @@
+/*-------------------------------------------------------------------------
+ *
+ * HashVsHash.sq
+ *    Cost model visualization
+ *
+ * Required software: Sysquake LE, which may be downloaded for free from
+ *     http://www.calerga.com/products/Sysquake/index.html
+ * This script was developed using Sysquake 3.6 LE on MS Windows.
+ *
+ * Copyright (c) 2007, greenplum inc
+ *
+ * $Id$
+ *
+ *-------------------------------------------------------------------------
+ */
+title "HashVsHash cost model"
+help
+{@
+This Sysquake LE script plots the results of the PostgreSQL or
+Greenplum DB optimizer's cost models for comparison of two alternative
+plans: hash join between T (outer) and U (inner), and hash join between
+U (outer) and T (inner).
+
+The intended users are database kernel developers and performance
+analysts who are familiar with the concepts and source code of these
+optimizers.
+
+The "Parameters" area can be scrolled using a mouse wheel or the
+hand cursor to bring all the controls into view.  Unneeded controls
+can be hidden using the "Show controls" checkboxes.
+
+Kurt Harriman, greenplum inc
+@}
+version
+{@
+The cost model is thought to be mostly up-to-date with the current
+versions of PostgreSQL and Greenplum DB as of
+March 29, 2007
+@}
+
+variable relT
+variable relU
+variable joinsel
+variable joinsize
+
+// GUCs and #defines
+variable costgucs
+variable work_mem
+variable NTUP_PER_BUCKET
+variable blcksz
+// blcksz(1) = BLCKSZ = current blocksize for cost model; adjustable via slider
+// blcksz(2) same as (1) while modelVersion is a pg version, else stays frozen
+// blcksz(3) false to keep (2) frozen; true to update (2) when (1) changes
+
+// calculated
+variable hashbuildT
+variable hashbuildU
+
+// keyboard input
+variable scaleflag
+
+// platform dependent
+define MAXIMUM_ALIGNOF  = 8
+define sizeof_ptr       = 8
+
+// initial parameter values
+define BLCKSZ_default   = 8192              // for PostgreSQL versions
+define rows_default     = 1000
+define rowSize_default  = 100
+
+// heap page capacity
+define sizeof_PageHeaderData = 20           // storage/bufpage.h, up to pd_linp (first ItemId)
+define MaxSpecialSpace  = 32                // access/htup.h
+define sizeof_ItemIdData = 4                // storage/itemid.h
+
+// visible control group ids
+variable visibleControls
+variable _nondumpable visibleControlsChooser
+variable visibleControlsCheckmarks
+define vc_explain_id    = _auto
+define vc_gucs_id       = _auto
+define vc_joinsel_id    = _auto
+define vc_quals_id      = _auto
+define vc_sizeadj_id    = _auto
+define vc_subplans_id   = _auto
+define vc_vers_id       = _auto
+
+// slider control ids
+define blcksz_id                = _auto
+define gucs_id                  = _auto
+define joinrows_id              = _auto
+define ntup_per_bucket_id       = _auto
+define quals_id                 = _auto
+define relT_id                  = _auto
+define relU_id                  = _auto
+define relT_initialRows_id      = _auto
+define relU_initialRows_id      = _auto
+define relT_initialScanCost_id  = _auto
+define relU_initialScanCost_id  = _auto
+define relT_rows_id             = _auto
+define relU_rows_id             = _auto
+define relT_rowSize_id          = _auto
+define relU_rowSize_id          = _auto
+define work_mem_id              = _auto
+
+// button control ids
+define modelVersion_id1     = _auto
+define modelVersion_id2     = _auto
+define modelVersion_id3     = _auto
+define modelVersion_id4     = _auto
+define modelVersion_idN     = modelVersion_id4
+define visibleControls_id1  = _auto
+define visibleControls_id2  = _auto
+define visibleControls_id3  = _auto
+define visibleControls_id4  = _auto
+define visibleControls_idN  = visibleControls_id4
+
+// plot & line control ids
+define outer_rows_id        = _auto
+define inner_rows_id        = _auto
+define T_rows_id            = _auto
+define U_rows_id            = _auto
+define xytrace_id           = _auto
+
+// cost model version ids
+variable modelVersion                       // enumerator struct for the chosen version
+variable _nondumpable modelVersionChooser   // enumChooser struct containing version info
+define ver_pg815   = _auto
+define ver_pg820   = _auto      // pg 8.2.0 uses costsize.c version 1.169
+                                //  This version introduced the MinimalTuple format
+                                //  for HJ workfiles etc., with shorter headers.
+                                //  See htup.h version 1.83 / MAIN:tgl:20060627213120
+                                //  Adds seq_page_cost GUC - see costsize.c 1.156 / MAIN:tgl:20060605024958
+                                // pg 8.2.1 uses costsize.c version 1.169.2.1 /
+                                //  REL8_2_STABLE:tgl:20061215184235 - Skipping
+                                //  8.2.1 here because HJ costing isn't affected
+define ver_pg822   = _auto      // pg 8.2.2 thru 8.2.4 all use costsize.c version 1.169.2.2
+                                //  REL8_2_STABLE:tgl:20070108160931
+                                //  Removes bias against HJ with inner rel larger than outer.
+define ver_pg830   = _auto      // pg 8.3.0 is still in development at this writing.
+                                //  At present this visualization reflects unreleased
+                                //    costsize.c version 1.179 dated 2007-03-27.
+                                //  Stored tuple header size reduced - see...
+                                //    htup.h ver 1.89 / MAIN:momjian:20070109220059
+                                //    htup.h ver 1.91 / MAIN:tgl:20070209033533
+define ver_pgmin   = ver_pg815
+define ver_pgmax   = ver_pg830
+define ver_gp231   = _auto      // gp 2.3.1 is based on pg 8.1.1
+                                //  uses costsize.c version 1.15.2.5 / Release-2_3_0-branch:kharriman:20070227024315
+define ver_gp300   = _auto      // gp 3.0 is based on pg 8.2.3
+                                //  BLCKSZ increased to 32K - see pg_config_manual.h ver 1.6 / MAIN:cmcdevitt:20070206024456
+                                //  uses costsize.c version 1.29
+                                //  Removes bias against HJ with inner rel larger than outer.
+                                //  Adds seq_page_cost GUC - see costsize.c 1.156 / MAIN:tgl:20060605024958
+                                //  Stored tuple header size reduced - see...
+                                //    pg htup.h ver 1.89 / MAIN:momjian:20070109220059 (will be in 8.3)
+                                //    pg htup.h ver 1.91 / MAIN:tgl:20070209033533 (will be in 8.3)
+                                //    gp htup.h ver 1.6 / MAIN:gsherry:20070301024612
+                                // gp 3.0.0.1 skipped - no HJ costing changes
+define ver_gp3002  = _auto      // uses costsize.c version 1.29.6.5
+                                //  Adds gp_cost_hashjoin_chainwalk GUC, off by default - see
+                                //    costsize.c ver 1.29.6.4 / Release-3_0_0-branch:jzhang:20070816011436
+                                //  No other changes relevant to HJ cost.
+define ver_gpmin   = ver_gp231
+define ver_gpmax   = ver_gp3002
+//define ver_default = ver_gpmax
+define ver_default = ver_gp300
+
+// bit bucket for unused result of multiple assignment
+variable _nondumpable unused
+
+
+//--------------------------------------------------------------------//
+//                     Initialization of globals                      //
+//--------------------------------------------------------------------//
+
+init ( relT, relU, ...
+       joinsel, joinsize, ...
+       costgucs, work_mem, blcksz, NTUP_PER_BUCKET, ...
+       modelVersion, modelVersionChooser, ...
+       visibleControls, visibleControlsChooser, ...
+       scaleflag, unused ) = init
+function
+{@
+    function ( relT, relU, ...
+               joinsel, joinsize, ...
+               costgucs, work_mem, blcksz, NTUP_PER_BUCKET, ...
+               modelVersion, modelVersionChooser, ...
+               visibleControls, visibleControlsChooser, ...
+               scaleflag, unused ) = ...
+    init
+        subplots('HashVsHash\tParameters\nT HJ U\tHash Build (U inner)\nU HJ T\tHash Build (T inner)');
+        scaleflag = 0;
+        unused = [];
+
+        ( modelVersion, modelVersionChooser, blcksz ) = ...
+        initVersions( ver_default, BLCKSZ_default );
+
+        ( visibleControls, visibleControlsChooser ) = visibleControls_init();
+
+        costgucs = costgucs_init();
+        NTUP_PER_BUCKET = 10;
+        work_mem = 64;
+
+        relT = rel_init( 'T', 'c', rowSize_default, rows_default * 10, costgucs.cpu_tuple_cost );
+        relU = rel_init( 'U', 'y', rowSize_default / 10, rows_default, costgucs.cpu_tuple_cost );
+
+        joinsize = joinsize_init( relT.initialRows, relU.initialRows, relT.initialRows );
+        joinsel = joinsel_init( joinsize.joinRows / joinsize.xprodRows, 2, 0 );
+@}
+
+
+//********************************************************************//
+//                                                                    //
+//                              Structs                               //
+//                                                                    //
+//********************************************************************//
+
+//--------------------------------------------------------------------//
+//            PostgreSQL and Greenplum versions supported             //
+//--------------------------------------------------------------------//
+function
+{@
+    function ( modelVersion, modelVersionChooser, blcksz ) = ...
+    initVersions( ver_default, BLCKSZ_default )
+        versionPrototype = version_init([], 'versionPrototype', []);
+        versionPrototype.sizeof_HeapTupleHeaderData = MAXALIGN(27);
+        versionPrototype.sizeof_MinimalTupleData    = versionPrototype.sizeof_HeapTupleHeaderData;
+
+        versionEnumerators = {};
+        versionEnumerators = join(versionEnumerators, initPgVersionEnumerators( versionPrototype ));
+        versionEnumerators = join(versionEnumerators, initGpVersionEnumerators( versionPrototype ));
+
+        modelVersionChooser = enumChooser_init( versionEnumerators, ...
+                                                'Version of cost model', 4, ...
+                                                modelVersion_id1 : modelVersion_idN );
+
+        modelVersion_initial = enumChooser_id_to_enum( modelVersionChooser, ver_default );
+
+        blcksz = [ BLCKSZ_default, BLCKSZ_default, true ];
+        ( modelVersion, blcksz ) = modelVersion_set( modelVersion_initial, blcksz );
+
+
+    function versions = ...
+    initPgVersionEnumerators(v)
+        v = version_init( v, 'pg 8.1.5', ver_pg815 );
+        versions{end+1} = v;
+
+        v = version_init( v,  'pg 8.2.0', ver_pg820 );
+        v.sizeof_MinimalTupleData = MAXALIGN(12);     // MAIN:tgl:20060627213120
+        versions{end+1} = v;
+
+        v = version_init( v,  'pg 8.2.2', ver_pg822 );
+        versions{end+1} = v;
+
+        v = version_init( v,  'pg 8.3.0', ver_pg830 );
+        v.sizeof_HeapTupleHeaderData = MAXALIGN(23);  // MAIN:tgl:20070209033533
+        versions{end+1} = v;
+
+    function versions = ...
+    initGpVersionEnumerators(v)
+        v = version_init( v,  'gp 2.3.1', ver_gp231 );
+        v.BLCKSZ = 8*1024;
+        versions{end+1} = v;
+
+        v = version_init( v,  'gp 3.0', ver_gp300 );
+        v.BLCKSZ = 32*1024;                             // MAIN:cmcdevitt:20070206024456 (pg_config_manual.h 1.6)
+        v.sizeof_MinimalTupleData    = MAXALIGN(12);    // MAIN:tgl:20060627213120
+        v.sizeof_HeapTupleHeaderData = MAXALIGN(23);    // MAIN:gsherry:20070301024612
+        versions{end+1} = v;
+
+        v = version_init( v,  'gp 3.0.0.2', ver_gp3002 );
+        versions{end+1} = v;
+
+    function ( modelVersion, blcksz ) = ...
+    modelVersion_set( newVersion, blcksz )
+        if isfield( newVersion, 'BLCKSZ' )
+            // Reset BLCKSZ to version's default when switching to a gp version.
+            blcksz = [ newVersion.BLCKSZ, blcksz(2), false ];
+        else
+            // Don't reset BLCKSZ when switching between pg versions.
+            // When switching from gp to pg, restore latest pg BLCKSZ setting.
+            blcksz = [ blcksz(2), blcksz(2), true ];
+        end
+        modelVersion = newVersion;
+
+    function blcksz = ...
+    blcksz_set( blcksz, newBLCKSZ )
+        // If pg version, save a copy of the BLCKSZ for modelVersion_set()
+        if blcksz(3)
+            blcksz(2) = newBLCKSZ;
+        end
+        blcksz(1) = newBLCKSZ;
+@}
+
+//--------------------------------------------------------------------//
+//                              costgucs                              //
+//--------------------------------------------------------------------//
+function
+{@
+    function costgucs = ...
+    costgucs_init()
+        costgucs = struct();
+        costgucs.cpu_tuple_cost        = 0.01;
+        costgucs.cpu_operator_cost     = 0.0025;
+        costgucs.seq_page_cost         = 1;
+        costgucs.hj_chainwalk_weight   = 1;
+@}
+
+//--------------------------------------------------------------------//
+//                                rel                                 //
+//--------------------------------------------------------------------//
+// NB. User can set initialRows and initialScanCost from an EXPLAIN report.
+// From them we compute scanCostPerRow.  Subsequently we compute the join's
+// subplan cost as scanCost = rows * scanCostPerRow; this is added into the
+// join cost.  'rows' is initialized from initialRows but may then be
+// changed by the user to experiment with varying the amount of data
+// entering the join.  As 'rows' varies, we update the scanCost
+// accordingly using the scanCostPerRow derived from initialRows and
+// initialCost.
+function
+{@
+    function rel = ...
+    rel_init( name, rowLineStyle, rowSize, initialRows, scanCostPerRow )
+        rel = struct();
+        rel.name = name;
+        rel.rows = initialRows;
+        rel.rowSize = MAXALIGN( rowSize );
+        rel.rowLineStyle = rowLineStyle;
+
+        rel.initialRows = initialRows;
+        rel.initialScanCost = initialRows * scanCostPerRow;
+        rel.scanCost = rel.initialScanCost;
+        rel.scanCostPerRow = scanCostPerRow;
+
+    function ( rel, joinsel, joinsize ) = ...
+    rel_initialRows_drag( rel, whichrel, joinsel, joinsize, nb, x1 )
+        if isempty( nb ) || x1 <= 0
+            cancel;
+        end
+        rows = ceil( x1 );
+        if whichrel == 1
+            joinsize = joinsize_init( rows, joinsize.rowsU, joinsize.joinRows );
+        else
+            joinsize = joinsize_init( joinsize.rowsT, rows, joinsize.joinRows );
+        end
+        rel.rows = rows;
+        rel.initialRows = rel.rows;
+        rel = rel_initialScanCost_drag( rel, 0, rel.initialScanCost );
+        joinsel.selectivity = joinsize.joinRows / joinsize.xprodRows;
+
+    function rel = ...
+    rel_initialScanCost_drag( rel, nb, x1 )
+        if isempty( nb ) || x1 < 0
+            cancel;
+        end
+        rel.initialScanCost = x1;
+        rel.scanCostPerRow = rel.initialScanCost / rel.initialRows;
+        rel.scanCost = rel.rows * rel.scanCostPerRow;
+
+    function rel = ...
+    rel_rows_drag( rel, nb, x1 )
+        if isempty( nb )
+            cancel;
+        end
+        rel.rows = ceil( x1 );
+        rel.scanCost = rel.rows * rel.scanCostPerRow;
+
+    function ( msg, rel ) = ...
+    rel_rows_dragmsg( rel, nb, x1 )
+        rel = rel_rows_drag( rel, nb, x1 );
+        msg = rel_rows_mouseover( rel, rel.rows );
+
+    function ( msg, cursor ) = ...
+    rel_rows_mouseover( rel, x0 )
+        msg = sprintf( '%s rows = %d', rel.name, x0 );
+        cursor = true;
+
+    function rel = ...
+    rel_rowSize_drag( rel, nb, x1 )
+        if isempty(nb)
+            cancel;
+        end
+        rel.rowSize = MAXALIGN(round(x1));
+@}
+
+//--------------------------------------------------------------------//
+//                              joinsel                               //
+//--------------------------------------------------------------------//
+function
+{@
+    function joinsel = ...
+    joinsel_init( selectivity, nquals_hash, nquals_postjoin )
+        joinsel = struct();
+        joinsel.selectivity = selectivity;
+        joinsel.nquals_hash = nquals_hash;
+        joinsel.nquals_postjoin = nquals_postjoin;
+@}
+
+//--------------------------------------------------------------------//
+//                              joinsize                              //
+//--------------------------------------------------------------------//
+function
+{@
+    function joinsize = ...
+    joinsize_init( rowsT, rowsU, joinRows )
+        joinsize = struct();
+        joinsize.rowsT = rowsT;
+        joinsize.rowsU = rowsU;
+        joinsize.xprodRows = rowsT * rowsU;
+        joinsize.joinRows = min( joinRows, joinsize.xprodRows );
+@}
+
+//--------------------------------------------------------------------//
+//                             hashbuild                              //
+//--------------------------------------------------------------------//
+
+make hashbuildT = hashbuild_make( relT, work_mem, NTUP_PER_BUCKET, ...
+                                  joinsel, costgucs, blcksz, modelVersion )
+make hashbuildU = hashbuild_make( relU, work_mem, NTUP_PER_BUCKET, ...
+                                  joinsel, costgucs, blcksz, modelVersion )
+function
+{@
+    function hashbuild = ...
+    hashbuild_make( rel, work_mem, NTUP_PER_BUCKET, ...
+                    joinsel, costgucs, blcksz, modelVersion )
+        hashbuild = struct();
+        ( hashbuild.nbuckets, hashbuild.nbatch ) = ...
+            ExecChooseHashTableSize( rel.rows, rel.rowSize, ...
+                                     work_mem, NTUP_PER_BUCKET, ...
+                                     modelVersion );
+        ( hashbuild.totalCost, hashbuild.ioCost, hashbuild.cpuCost ) = ...
+            cost_hashjoin( 0, 0, 0, 0, ...
+                           rel.rows, rel.rowSize, rel.scanCost, ...
+                           hashbuild.nbuckets, hashbuild.nbatch, ...
+                           joinsel, costgucs, blcksz, modelVersion );
+@}
+
+
+//********************************************************************//
+//                                                                    //
+//                           User Interface                           //
+//                                                                    //
+//********************************************************************//
+
+//--------------------------------------------------------------------//
+//                      Keyboard event handlers                       //
+//--------------------------------------------------------------------//
+keydown "s" scaleflag = scaleflag_keydown( scaleflag )
+
+function
+{@
+    function scaleflag = ...
+    scaleflag_keydown( scaleflag )
+        scaleflag = ~scaleflag;
+@}
+
+
+//--------------------------------------------------------------------//
+//                        "Parameters" dialog                         //
+//--------------------------------------------------------------------//
+
+figure "Parameters"
+    mousedrag visibleControls_id1
+        visibleControls = checkboxes_drag( visibleControlsChooser, visibleControls, _id, _x1, _x0 )
+    mousedrag visibleControls_id2
+        visibleControls = checkboxes_drag( visibleControlsChooser, visibleControls, _id, _x1, _x0 )
+    mousedrag visibleControls_id3
+        visibleControls = checkboxes_drag( visibleControlsChooser, visibleControls, _id, _x1, _x0 )
+    mousedrag modelVersion_id1
+        ( modelVersion, blcksz ) = ...
+        vers_drag( modelVersionChooser, blcksz, _id, _x1 )
+    mousedrag modelVersion_id2
+        ( modelVersion, blcksz ) = ...
+        vers_drag( modelVersionChooser, blcksz, _id, _x1 )
+    mousedrag modelVersion_id3
+        ( modelVersion, blcksz ) = ...
+        vers_drag( modelVersionChooser, blcksz, _id, _x1 )
+    mousedrag blcksz_id
+        blcksz = blcksz_drag( blcksz, _nb, _x1 )
+    mousedrag gucs_id
+        costgucs = ...
+        gucs_drag( costgucs, _nb, _x1 )
+    mousedrag joinrows_id
+        ( joinsel, joinsize ) = ...
+        joinrows_drag( joinsel, joinsize, _nb, _x1 )
+    mousedrag quals_id
+        joinsel = ...
+        quals_drag( joinsel, _nb, _x1 )
+    mousedrag ntup_per_bucket_id
+        NTUP_PER_BUCKET = intSlider_drag(_nb, _x1)
+    mousedrag relT_initialRows_id
+        ( relT, joinsel, joinsize ) = ...
+        rel_initialRows_drag( relT, 1, joinsel, joinsize, _nb, _x1 )
+    mousedrag relU_initialRows_id
+        ( relU, joinsel, joinsize ) = ...
+        rel_initialRows_drag( relU, 2, joinsel, joinsize, _nb, _x1 )
+    mousedrag relT_initialScanCost_id
+        relT = ...
+        rel_initialScanCost_drag( relT, _nb, _x1 )
+    mousedrag relU_initialScanCost_id
+        relU = ...
+        rel_initialScanCost_drag( relU, _nb, _x1 )
+    mousedrag relT_rows_id
+        relT = ...
+        rel_rows_drag( relT, _nb, _x1 )
+    mousedrag relU_rows_id
+        relU = ...
+        rel_rows_drag( relU, _nb, _x1 )
+    mousedrag relT_rowSize_id
+        relT = ...
+        rel_rowSize_drag( relT, _nb, _x1 )
+    mousedrag relU_rowSize_id
+        relU = ...
+        rel_rowSize_drag( relU, _nb, _x1 )
+    mousedrag work_mem_id
+        work_mem = work_mem_drag(_nb, _x1)
+    draw
+        drawParams( relT, relU, joinsel, joinsize, ...
+                    costgucs, work_mem, blcksz, NTUP_PER_BUCKET, ...
+                    modelVersion, modelVersionChooser, ...
+                    visibleControls, visibleControlsChooser, visibleControlsCheckmarks )
+
+make visibleControlsCheckmarks = ...
+     checkmarks_make( visibleControlsChooser, visibleControls )
+
+function
+{@
+    function ...
+    drawParams( relT, relU, joinsel, joinsize, ...
+                costgucs, work_mem, blcksz, NTUP_PER_BUCKET, ...
+                modelVersion, modelVersionChooser, ...
+                visibleControls, visibleControlsChooser, visibleControlsCheckmarks )
+        title( 'Parameters        (drag up/down or scroll to see more)' );
+        firsttab = 'hj_chainwalk_weight (0.0000)____';     // make room for widest label
+        visibleControls_draw( firsttab, visibleControlsChooser, visibleControlsCheckmarks );
+
+        for vc_enumerator = visibleControls
+            switch vc_enumerator.enum_id
+                case vc_vers_id
+                    vers_draw( firsttab, modelVersionChooser, modelVersion, blcksz );
+                case vc_explain_id
+                    explain_draw( firsttab, relT, relU, joinsize, work_mem );
+                case vc_gucs_id
+                    gucs_draw( costgucs, work_mem, NTUP_PER_BUCKET );
+                case vc_joinsel_id
+                    joinsize_draw( joinsize );
+                case vc_quals_id
+                    quals_draw( joinsel );
+                case vc_sizeadj_id
+                    sizeadj_draw( relT, relU, joinsel );
+                case vc_subplans_id
+                    subplans_draw( relT, relU );
+            end
+        end
+
+    function ( visibleControls, visibleControlsChooser ) = ...
+    visibleControls_init
+        enums = {};
+        enums{end+1} = enumerator_init( 'Version'     , vc_vers_id );
+        visibleControls = enums;
+        enums{end+1} = enumerator_init( 'Size Adj'    , vc_sizeadj_id );
+        enums{end+1} = enumerator_init( 'GUCs'        , vc_gucs_id );
+        enums{end+1} = enumerator_init( 'Quals'       , vc_quals_id );
+        enums{end+1} = enumerator_init( 'Selectivity' , vc_joinsel_id );
+        enums{end+1} = enumerator_init( 'Subplans'    , vc_subplans_id );
+        enums{end+1} = enumerator_init( 'Explain'     , vc_explain_id );
+        visibleControlsChooser = enumChooser_init( enums, ...
+                                                   'Show controls', 4, ...
+                                                   visibleControls_id1 : visibleControls_idN );
+
+    function ...
+    visibleControls_draw( firsttab, visibleControlsChooser, visibleControlsCheckmarks )
+        settabs( [ firsttab, '\t\b', visibleControlsChooser.longestName, '__' ] );
+        checkboxes_draw( visibleControlsChooser, visibleControlsCheckmarks );
+        settabs( firsttab );
+
+    function blcksz = ...
+    blcksz_drag( blcksz, nb, x1 )
+        if isempty(nb)
+            cancel;
+        end
+        blcksz = blcksz_set( blcksz, 2^round(x1+12) );
+
+    function ...
+    explain_draw( firsttab, relT, relU, joinsize, work_mem )
+        text( '-------------------- EXPLAIN plan' );
+        settabs( [ firsttab, '\t000000000000000' ] );
+        textfield( 'Joined rows out', '%.0f', joinsize.joinRows,    '', joinrows_id );
+        textfield( 'T rows to join',  '%.0f', joinsize.rowsT,       '', relT_initialRows_id );
+        textfield( 'U rows to join',  '%.0f', joinsize.rowsU,       '', relU_initialRows_id );
+        textfield( 'T total cost',    '%.0f', relT.initialScanCost, '', relT_initialScanCost_id );
+        textfield( 'U total cost',    '%.0f', relU.initialScanCost, '', relU_initialScanCost_id );
+        textfield( 'work_mem (KB)',   '%.0f', work_mem,             '', work_mem_id );
+        settabs( firsttab );
+
+    function ...
+    gucs_draw( costgucs, work_mem, NTUP_PER_BUCKET )
+        text('-------------------- GUCs');
+        labels = sprintf( 'work_mem (%d KB)', work_mem );
+        slider( labels, work_mem, [32,4*1024*1024], 'L', '', work_mem_id );
+        labels = sprintf( 'cpu_tuple_cost (%f)\ncpu_operator_cost (%f)\nseq_page_cost (%f)\nhj_chainwalk_weight (%f)', ...
+                          costgucs.cpu_tuple_cost, costgucs.cpu_operator_cost, ...
+                          costgucs.seq_page_cost, costgucs.hj_chainwalk_weight );
+        slider( labels, ...
+                [costgucs.cpu_tuple_cost; costgucs.cpu_operator_cost; costgucs.seq_page_cost; costgucs.hj_chainwalk_weight], ...
+                [0,0.1; 0,0.1; 0,10; 1e-4,10], '---L', '', gucs_id );
+        labels = sprintf('ntup_per_bucket (%d)', NTUP_PER_BUCKET);
+        slider(labels, NTUP_PER_BUCKET, [1,20], '', '', ntup_per_bucket_id);
+
+    function costgucs = ...
+    gucs_drag( costgucs, nb, x1 )
+        if isempty(nb)
+            cancel;
+        end
+        switch nb
+            case 1
+                costgucs.cpu_tuple_cost = x1;
+            case 2
+                costgucs.cpu_operator_cost = x1;
+            case 3
+                costgucs.seq_page_cost = x1;
+            case 4
+                costgucs.hj_chainwalk_weight = x1;
+        end
+
+    function ...
+    joinsize_draw( joinsize )
+        invsel = joinsize.xprodRows / joinsize.joinRows;
+        text( sprintf( '-------------------- Join selectivity = 1 / %.0f', invsel ) );
+        labels = sprintf( 'T rows to join (%d)', joinsize.rowsT );
+        slider( labels, joinsize.rowsT, [ 1,1e9 ], 'L', '', relT_initialRows_id );
+        labels = sprintf( 'U rows to join (%d)', joinsize.rowsU );
+        slider( labels, joinsize.rowsU, [ 1,1e9 ], 'L', '', relU_initialRows_id );
+        labels = sprintf( 'Joined rows out (%.0f)', joinsize.joinRows );
+        slider( labels, joinsize.joinRows, [ 1,joinsize.xprodRows ], 'L', '', joinrows_id );
+
+    function ( joinsel, joinsize ) = ...
+    joinrows_drag( joinsel, joinsize, nb, x1 )
+        if isempty(nb) || x1 < 0
+            cancel;
+        end
+        joinsize.joinRows = min( ceil( x1 ), joinsize.xprodRows );
+        joinsel.selectivity = joinsize.joinRows / joinsize.xprodRows;
+
+    function ...
+    quals_draw( joinsel )
+        text( '-------------------- Join quals' );
+        labels = sprintf( 'Hash Cond (%d)\nJoin Filter (%d)', ...
+                          joinsel.nquals_hash, joinsel.nquals_postjoin );
+        slider( labels, [ joinsel.nquals_hash; joinsel.nquals_postjoin ], [ 0,10 ], '', '', quals_id );
+
+    function joinsel = ...
+    quals_drag( joinsel, nb, x1 )
+        if isempty(nb)
+            cancel;
+        end
+        switch nb
+            case 1
+                joinsel.nquals_hash = round( x1 );
+            case 2
+                joinsel.nquals_postjoin = round( x1 );
+        end
+
+    function ...
+    sizeadj_draw( relT, relU, joinsel )
+        bytesT = relT.rows * relT.rowSize;
+        bytesU = relU.rows * relU.rowSize;
+        diff = bytesT - bytesU;
+        arrow = (diff > 1000) ? '>' : (diff < -1000) ? '<' : ' ';
+        joinResultRows = relT.rows * relU.rows * joinsel.selectivity;
+        text( sprintf( '-------------------- Size Adj\tT = %s     %s     U = %s;     Out = %s', ...
+                       fmtint( '%.0f %sB', bytesT ), arrow, fmtint( '%.0f %sB', bytesU ), ...
+                       fmtint( '%.0f %s rows', joinResultRows ) ) );
+        labels = sprintf( 'Rows from T (%d)', relT.rows );
+        slider( labels, relT.rows, [ 1,1e9 ], 'L', relT.rowLineStyle, relT_rows_id );
+        labels = sprintf( 'Rows from U (%d)', relU.rows );
+        slider( labels, relU.rows, [ 1,1e9 ], 'L', relU.rowLineStyle, relU_rows_id );
+        labels = sprintf( 'Width T (%d bytes/row)', relT.rowSize );
+        slider( labels, relT.rowSize, [ 0,1000 ], '', '', relT_rowSize_id );
+        labels = sprintf( 'Width U (%d bytes/row)', relU.rowSize );
+        slider( labels, relU.rowSize, [ 0,1000 ], '', '', relU_rowSize_id );
+
+    function ...
+    subplans_draw( relT, relU )
+        text( sprintf( '-------------------- Subplan cost per row  ...  %s = 1/%g     %s = 1/%g', ...
+                       relT.name, 1 / relT.scanCostPerRow, relU.name, 1 / relU.scanCostPerRow ) );
+        labels = sprintf( '%s total cost (%d)', relT.name, relT.initialScanCost );
+        slider( labels, relT.initialScanCost, [ 1,1e9 ], 'L', '', relT_initialScanCost_id );
+        labels = sprintf( '%s total cost (%d)', relU.name, relU.initialScanCost );
+        slider( labels, relU.initialScanCost, [ 1,1e9 ], 'L', '', relU_initialScanCost_id );
+        labels = sprintf( '%s rows to join (%d)', relT.name, relT.initialRows );
+        slider( labels, relT.initialRows, [ 1,1e9 ], 'L', '', relT_initialRows_id );
+        labels = sprintf( '%s rows to join (%d)', relU.name, relU.initialRows );
+        slider( labels, relU.initialRows, [ 1,1e9 ], 'L', '', relU_initialRows_id );
+
+    function ...
+    vers_draw( firsttab, modelVersionChooser, modelVersion, blcksz )
+        text( '-------------------- Version' );
+        labels = sprintf( 'Block size (%d KB)', blcksz(1)/1024 );
+        slider( labels, log2( blcksz(1)/4096 ), [0,6], '', '', blcksz_id );
+
+        settabs([firsttab, '\t\b', modelVersionChooser.longestName, '_']);
+        radiobuttons_draw( modelVersionChooser, modelVersion.enum_id );
+        settabs( firsttab );
+
+    function ( modelVersion, blcksz ) = ...
+    vers_drag( modelVersionChooser, blcksz, id, x1 )
+        ( modelVersion, blcksz ) = ...
+        modelVersion_set( radiobuttons_drag( modelVersionChooser, id, x1 ), blcksz );
+
+    function work_mem = ...
+    work_mem_drag( nb, x1 )
+        if isempty(nb) || x1 < 32
+            cancel;
+        end
+        work_mem = x1;
+@}
+
+//--------------------------------------------------------------------//
+//                    "(T hj U) vs (U hj T)" plots                    //
+//--------------------------------------------------------------------//
+
+figure "HashVsHash"
+    mouseover
+        ( _msg, _cursor ) = xy_mouseover( _id, _x0, _y0 )
+    mousedrag T_rows_id
+        ( _msg, relT ) = rel_rows_dragmsg( relT, _nb, _x1 )
+    mouseover T_rows_id
+        ( _msg, _cursor ) = rel_rows_mouseover( relT, _x0 )
+    mousedrag U_rows_id
+        ( _msg, relU ) = rel_rows_dragmsg( relU, _nb, _x1 )
+    mouseover U_rows_id
+        ( _msg, _cursor ) = rel_rows_mouseover( relU, _x0 )
+
+    draw hashVsHash_draw( relT, relU, hashbuildU, ...
+                          joinsel, costgucs, scaleflag, ...
+                          work_mem, NTUP_PER_BUCKET, blcksz, modelVersion, ...
+                          1 )
+
+figure "HashVsHash (Ratio)"
+    mouseover
+        ( _msg, _cursor ) = xy_mouseover( _id, _x0, _y0 )
+    mousedrag T_rows_id
+        ( _msg, relT ) = rel_rows_dragmsg( relT, _nb, _x1 )
+    mouseover T_rows_id
+        ( _msg, _cursor ) = rel_rows_mouseover( relT, _x0 )
+    mousedrag U_rows_id
+        ( _msg, relU ) = rel_rows_dragmsg( relU, _nb, _x1 )
+    mouseover U_rows_id
+        ( _msg, _cursor ) = rel_rows_mouseover( relU, _x0 )
+
+    draw hashVsHash_draw( relT, relU, hashbuildU, ...
+                          joinsel, costgucs, scaleflag, ...
+                          work_mem, NTUP_PER_BUCKET, blcksz, modelVersion, ...
+                          2 )
+
+figure "HashVsHash (Difference)"
+    mouseover
+        ( _msg, _cursor ) = xy_mouseover( _id, _x0, _y0 )
+    mousedrag T_rows_id
+        ( _msg, relT ) = rel_rows_dragmsg( relT, _nb, _x1 )
+    mouseover T_rows_id
+        ( _msg, _cursor ) = rel_rows_mouseover( relT, _x0 )
+    mousedrag U_rows_id
+        ( _msg, relU ) = rel_rows_dragmsg( relU, _nb, _x1 )
+    mouseover U_rows_id
+        ( _msg, _cursor ) = rel_rows_mouseover( relU, _x0 )
+
+    draw hashVsHash_draw( relT, relU, hashbuildU, ...
+                          joinsel, costgucs, scaleflag, ...
+                          work_mem, NTUP_PER_BUCKET, blcksz, modelVersion, ...
+                          3 )
+
+function
+{@
+    function ...
+    hashVsHash_draw( relT, relU, hashbuildU, ...
+                     joinsel, costgucs, scaleflag, ...
+                     work_mem, NTUP_PER_BUCKET, blcksz, modelVersion, ...
+                     whichPlot )
+        sc = scale;
+        if isempty(sc)
+            sc = [1,1e9];
+        end
+        relT_rowSamples = 10.^[log10(max(1,sc(1))):.1:log10(max(1,sc(2)))];
+        for relT_rows = relT_rowSamples
+            tuCost(end+1) = ...
+                cost_hashjoin( relT_rows, relT.rowSize, relT_rows * relT.scanCostPerRow, 0, ...
+                               relU.rows, relU.rowSize, relU.scanCost, ...
+                               hashbuildU.nbuckets, hashbuildU.nbatch, ...
+                               joinsel, costgucs, blcksz, modelVersion );
+            (hashT_nbuckets, hashT_nbatch) = ExecChooseHashTableSize( relT_rows, relT.rowSize, ...
+                                                                      work_mem, NTUP_PER_BUCKET, ...
+                                                                      modelVersion );
+            utCost(end+1) = ...
+                cost_hashjoin( relU.rows, relU.rowSize, relU.scanCost, 0, ...
+                               relT_rows, relT.rowSize, relT_rows * relT.scanCostPerRow, ...
+                               hashT_nbuckets, hashT_nbatch, ...
+                               joinsel, costgucs, blcksz, modelVersion );
+        end
+        switch whichPlot
+            case 1
+                title( sprintf( 'Hash Join Cost   ...   %s', modelVersion.enum_name ) );
+                hashVsHash_scale( sc, scaleflag, 'loglog', [1,1e12], [ 1, tuCost, utCost ] );
+                label( ['   ', relT.name, ' Rows'] );
+                plot( relT_rowSamples, tuCost, 'r', xytrace_id );
+                plot( relT_rowSamples, utCost, 'b', xytrace_id );
+                legnd = 'Total cost (T x U)\nTotal cost (U x T)';
+                style = 'rb';
+
+                // was larger rel chosen as inner?
+                sizediff = relT_rowSamples * relT.rowSize - relU.rows * relU.rowSize;
+                costdiff = tuCost - utCost;
+                biginnerT = (sizediff >= 1000) & (costdiff >= 10);
+                biginnerU = (sizediff <= -1000) & (costdiff <= -10);
+                if nnz(biginnerT)
+                    plot( relT_rowSamples(biginnerT), utCost(biginnerT), 'bx' );
+                    legnd = [ legnd, '\n', relT.name, ' bigger & inner' ];
+                    style = [ style, 'bx' ];
+                end
+                if nnz(biginnerU)
+                    plot( relT_rowSamples(biginnerU), tuCost(biginnerU), 'ro' );
+                    legnd = [ legnd, '\n', relU.name, ' bigger & inner' ];
+                    style = [ style, 'ro' ];
+                end
+
+            case 2
+                title( 'Hash Join Cost (Ratio)' );
+                costratio = tuCost ./ utCost;
+                sizeratio = ( relT_rowSamples * relT.rowSize ) / ( relU.rows * relU.rowSize );
+                hashVsHash_scale( sc, scaleflag, 'loglog', [0.5,2.0], [ costratio ] );
+                label( ['   ', relT.name, ' Rows'] );
+                line( [0,1], 1.0, 'h(c0c0c0)' );
+                plot( relT_rowSamples, costratio, 'g', xytrace_id );
+                plot( relT_rowSamples, sizeratio, 'm', xytrace_id );
+                legnd = 'Cost(T x U) / Cost(U x T)\nT bytes / U bytes';
+                style = 'gm';
+            case 3
+                title( 'Hash Join Cost (Difference)' );
+                diff = tuCost - utCost;
+                hashVsHash_scale( sc, scaleflag, 'loglin', [-1000,1000], diff );
+                label( ['   ', relT.name, ' Rows'] );
+                line( [0,1], 0.0, 'h(c0c0c0)' );
+                plot( relT_rowSamples, diff, 'm', xytrace_id );
+                legnd = 'Cost(T x U) - Cost(U x T)';
+                style = 'm';
+        end
+        line( [1,0], relT.rows, relT.rowLineStyle, T_rows_id );
+        line( [1,0], relU.rows, relU.rowLineStyle, U_rows_id );
+        legend( [ legnd, '\n', relT.name, ' rows\n', relU.name, ' rows' ], ...
+                [ style, relT.rowLineStyle, relU.rowLineStyle ] );
+        plotoption('tllegend');
+
+    function ...
+    hashVsHash_scale( sc, scaleflag, option, default, vec )
+        scale( option );
+        if scaleflag
+            sc(3) = min( vec );
+            sc(4) = max( vec );
+        else
+            sc(3:4) = default;
+        end
+        scale('lock', sc);
+@}
+
+//--------------------------------------------------------------------//
+//                "Hash Join (x outer, y inner)" plots                //
+//--------------------------------------------------------------------//
+
+figure "T HJ U"
+    mouseover
+        ( _msg, _cursor ) = xy_mouseover( _id, _x0, _y0 )
+    mousedrag outer_rows_id
+        ( _msg, relT ) = rel_rows_dragmsg( relT, _nb, _x1 )
+    mouseover outer_rows_id
+        ( _msg, _cursor ) = rel_rows_mouseover( relT, _x0 )
+
+    draw joinCost_draw( relT, relU, hashbuildU, ...
+                        joinsel, costgucs, blcksz, modelVersion )
+
+figure "U HJ T"
+    mouseover
+        ( _msg, _cursor ) = xy_mouseover( _id, _x0, _y0 )
+    mousedrag outer_rows_id
+        ( _msg, relU ) = rel_rows_dragmsg( relU, _nb, _x1 )
+    mouseover outer_rows_id
+        ( _msg, _cursor ) = rel_rows_mouseover( relU, _x0 )
+
+    draw joinCost_draw( relU, relT, hashbuildT, ...
+                        joinsel, costgucs, blcksz, modelVersion )
+
+function
+{@
+    function ...
+    joinCost_draw( relOuter, relInner, hashbuildInner, ...
+                   joinsel, costgucs, blcksz, modelVersion )
+        scale loglog;
+        scale('lock', [1,1e9,1,1e12]);
+        sc = scale;
+        outerRowSamples = 10.^[log10(max(1,sc(1))):.1:log10(max(1,sc(2)))];
+        for outerRows = outerRowSamples
+            (hjCost(end+1), hjIO(end+1), hjCPU(end+1)) = ...
+                cost_hashjoin( outerRows, relOuter.rowSize, outerRows * relOuter.scanCostPerRow, 0, ...
+                               relInner.rows, relInner.rowSize, relInner.scanCost, ...
+                               hashbuildInner.nbuckets, hashbuildInner.nbatch, ...
+                               joinsel, costgucs, blcksz, modelVersion );
+        end
+        title( ['Hash Join (', relOuter.name, ' outer, ', relInner.name, ' inner)'] );
+        line( [0,1], hashbuildInner.totalCost, 'm', xytrace_id );
+        plot(outerRowSamples, hjIO, 'g', xytrace_id);
+        plot(outerRowSamples, hjCPU, 'r', xytrace_id);
+        plot(outerRowSamples, hjCost, 'b', xytrace_id);
+        line( [1,0], relOuter.rows, relOuter.rowLineStyle, outer_rows_id );
+        label( [relOuter.name, ' Rows (Outer)'] );
+        legend( sprintf( 'Total cost (%s x %s)\nI/O cost\nCPU cost\n%s build cost\n%s rows', ...
+                         relOuter.name, relInner.name, relInner.name, relOuter.name ), ...
+                ['bgrm', relOuter.rowLineStyle] );
+        plotoption('tllegend');
+@}
+
+//--------------------------------------------------------------------//
+//                         "Hash Build" plots                         //
+//--------------------------------------------------------------------//
+
+figure "Hash Build (T inner)"
+    mouseover
+        ( _msg, _cursor ) = xy_mouseover( _id, _x0, _y0 )
+    mousedrag inner_rows_id
+        ( _msg, relT ) = rel_rows_dragmsg( relT, _nb, _x1 )
+    mouseover inner_rows_id
+        ( _msg, _cursor ) = rel_rows_mouseover( relT, _x0 )
+
+    draw hashTable_draw( relT, joinsel, costgucs, ...
+                         work_mem, blcksz, NTUP_PER_BUCKET, modelVersion )
+
+figure "Hash Build (U inner)"
+    mouseover
+        ( _msg, _cursor ) = xy_mouseover( _id, _x0, _y0 )
+    mousedrag inner_rows_id
+        ( _msg, relU ) = rel_rows_dragmsg( relU, _nb, _x1 )
+    mouseover inner_rows_id
+        ( _msg, _cursor ) = rel_rows_mouseover( relU, _x0 )
+
+    draw hashTable_draw( relU, joinsel, costgucs, ...
+                         work_mem, blcksz, NTUP_PER_BUCKET, modelVersion )
+
+function
+{@
+    function ...
+    hashTable_draw( relInner, joinsel, costgucs, ...
+                    work_mem, blcksz, NTUP_PER_BUCKET, modelVersion )
+        scale loglog;
+        scale('lock', [1,1e8,0.9,1e8]);
+        sc = scale;
+        rowSamples = 10.^[log10(max(1,sc(1))):.1:log10(max(1,sc(2)))];
+        for rows = rowSamples
+            (nbuckets(end+1), nbatch(end+1)) = ExecChooseHashTableSize( rows, relInner.rowSize, ...
+                                                                        work_mem, NTUP_PER_BUCKET, ...
+                                                                        modelVersion );
+            hashpages(end+1) = (nbatch(end) <= 1) ? 0 : page_size(rows, relInner.rowSize, blcksz(1), modelVersion);
+            (hjStartupCost(end+1), hjStartupIO(end+1), hjStartupCPU(end+1)) = ...
+                cost_hashjoin( 0, 0, 0, 0, ...
+                               rows, relInner.rowSize, rows * relInner.scanCostPerRow, ...
+                               nbuckets(end), nbatch(end), ...
+                               joinsel, costgucs, blcksz, modelVersion );
+        end
+        plotoption('tllegend');
+        plot(rowSamples, nbatch, 'h(ff8000)', xytrace_id);
+        plot(rowSamples, nbuckets, 'h(ff8000)o', xytrace_id);
+        plot(rowSamples, hashpages, 'g', xytrace_id);
+        plot(rowSamples, hjStartupCost, 'm', xytrace_id);
+        line( [1,0], relInner.rows, relInner.rowLineStyle, inner_rows_id );
+        label( [relInner.name, ' Rows (Inner)'] );
+        legnd = { 'Build cost\nSpill pages\nBatches\nBuckets', 'mgh(ff8000)h(ff8000)o' };
+        legend( [legnd{1}, '\n', relInner.name, ' rows'], [legnd{2}, relInner.rowLineStyle] );
+
+@}
+
+
+//********************************************************************//
+//                                                                    //
+//                      User Interface Utilities                      //
+//                                                                    //
+//********************************************************************//
+
+//--------------------------------------------------------------------//
+//                        common UI functions                         //
+//--------------------------------------------------------------------//
+function
+{@
+    function v = ...
+    floatSlider_drag(nb, x1)
+        if isempty(nb)
+            cancel;
+        end
+        v = x1;
+
+    function v = ...
+    intSlider_drag(nb, x1)
+        if isempty(nb)
+            cancel;
+        end
+        v = round(x1);
+
+    function (msg,cursor) = ...
+    xy_mouseover(id, x0, y0)
+        if isempty(id)
+            cancel;
+        end
+        msg = sprintf('x=%g y=%g', x0, y0);
+        cursor = false;
+
+    function s = ...
+    fmtint( fmt, i )
+        j = abs( i );
+        if j >= 1e13
+            scl = 1e-12;
+            u = 'T';
+        elseif j >= 1e10
+            scl = 1e-9;
+            u = 'G';
+        elseif j >= 1e7
+            scl = 1e-6;
+            u = 'M';
+        elseif j >= 1e4
+            scl = 1e-3;
+            u = 'K';
+        else
+            scl = 1;
+            u = '';
+        end
+        // fmt should be something like '%.0f %s' or '%.3g%s'
+        s = sprintf( fmt, i * scl, u );
+@}
+
+//--------------------------------------------------------------------//
+//                             enumerator                             //
+//--------------------------------------------------------------------//
+function
+{@
+    function enumerator = ...
+    enumerator_init( enum_name, enum_id )
+        enumerator = struct();
+        enumerator.enum_name = enum_name;
+        enumerator.enum_id   = enum_id;
+
+    function versionEnumerator = ...
+    version_init( copyFromVersion, enum_name, enum_id )
+        versionEnumerator = enumerator_init(enum_name, enum_id);
+        if ~isempty(copyFromVersion)
+            for fieldname = fieldnames(copyFromVersion)
+                if ~isfield(versionEnumerator, fieldname)
+                    versionEnumerator.(fieldname) = copyFromVersion.(fieldname);
+                end
+            end
+        end
+
+    function enum_name = ...
+    enumerator_name( enumerator )
+        enum_name = enumerator.enum_name;
+
+    function enum_id = ...
+    enumerator_id( enumerator )
+        enum_id = enumerator.enum_id;
+@}
+
+//--------------------------------------------------------------------//
+//                            enumChooser                             //
+//--------------------------------------------------------------------//
+function
+{@
+    function ix = ...
+    enumChooser_name_to_ix( chooser, enum_name )
+        ix = find( list2num( map( @eq, chooser.enum_names, {enum_name} ) ), 1 ) || 0;
+
+    function ix = ...
+    enumChooser_id_to_ix( chooser, enum_id )
+        ix = find(chooser.enum_ids == enum_id, 1) || 0;
+
+    function enumerator = ...
+    enumChooser_name_to_enum( chooser, enum_name )
+        ix = enumChooser_name_to_ix( chooser, enum_name );
+        enumerator = ix ? chooser.enumerators{ix} : struct();
+
+    function enumerator = ...
+    enumChooser_id_to_enum( chooser, enum_id )
+        ix = enumChooser_id_to_ix( chooser, enum_id );
+        enumerator = ix ? chooser.enumerators{ix} : struct();
+
+    function chooser = ...
+    enumChooser_init( enumerators, label, buttons_per_row, control_ids )
+        enum_names = map( @enumerator_name, enumerators );
+        enum_ids = list2num( map( @enumerator_id, enumerators ));
+
+        n = length(enumerators);
+        assert(n <= buttons_per_row * length(control_ids));
+
+        bargs = {};
+        longestName = '';
+        for i = 1 : buttons_per_row : n
+            m = min(i + buttons_per_row - 1, n);
+            iba = length(bargs) + 1;
+            barg = struct();
+            barg.label = (i == 1) ? label : '';
+            for ix = i : m
+                enum_name = enum_names{ix};
+                barg.label = [barg.label, '\t', enum_name];
+                if length(longestName) < length(enum_name)
+                    longestName = enum_name;
+                end
+            end
+            barg.control_id = control_ids(iba);
+            barg.ix0 = i - 1;
+            barg.ixM = m;
+            bargs{iba} = barg;
+        end
+
+        chooser = struct();
+        chooser.enumerators = enumerators;
+        chooser.enum_names = enum_names;
+        chooser.enum_ids = enum_ids;
+        chooser.buttonargs = bargs;
+        chooser.control_ids = control_ids(1:length(bargs));
+        chooser.longestName = longestName;
+
+    function buttonarg = ...
+    enumChooser_cid_to_barg( chooser, control_id )
+        iba = find( chooser.control_ids == control_id, 1 );
+        buttonarg = chooser.buttonargs{iba};
+
+    function ...
+    radiobuttons_draw( enumChooser, chosen_enum_id )
+        ix = enumChooser_id_to_ix( enumChooser, chosen_enum_id );
+        for buttonarg = enumChooser.buttonargs
+            button(buttonarg.label, ix - buttonarg.ix0, 'radiobutton', '', buttonarg.control_id);
+        end
+
+    function ( chosen_enumerator, chosen_enum_id ) = ...
+    radiobuttons_drag( enumChooser, id, x1 )
+        buttonarg = enumChooser_cid_to_barg(enumChooser, id);
+        chosen_enumerator = enumChooser.enumerators{x1 + buttonarg.ix0};
+        chosen_enum_id = chosen_enumerator.enum_id;
+
+    function checkmarks = ...
+    checkmarks_make( enumChooser, chosen_enumerators )
+        chosen_enum_ids = list2num( map( @enumerator_id, chosen_enumerators ) );
+        checkmarks = [];
+        for buttonarg = enumChooser.buttonargs
+            cm = 0;
+            for i = find(ismember(enumChooser.enum_ids(buttonarg.ix0+1 : buttonarg.ixM), chosen_enum_ids))
+                cm = bitset(cm, i);
+            end
+            checkmarks(end+1) = cm;
+        end
+
+    function ...
+    checkboxes_draw( enumChooser, checkmarks )
+        for iba = 1 : length(checkmarks)
+            barg = enumChooser.buttonargs{iba};
+            button(barg.label, checkmarks(iba), 'checkmark', '', barg.control_id);
+        end
+
+    function chosen_enumerators = ...
+    checkboxes_drag( enumChooser, chosen_enumerators, id, x1, x0 )
+        buttonarg = enumChooser_cid_to_barg(enumChooser, id);
+        for iChanged = find(bitget(bitxor(x1, x0), [1:buttonarg.ixM]));
+            ix = iChanged + buttonarg.ix0;
+            if bitget(x1, iChanged)
+                chosen_enumerators = join({enumChooser.enumerators{ix}}, chosen_enumerators);
+            else
+                chosen_enum_ids = map( @enumerator_id, chosen_enumerators );
+                which_to_drop = ismember( list2num(chosen_enum_ids), enumChooser.enum_ids(ix) );
+                chosen_enumerators(which_to_drop) = {};
+            end
+        end
+@}
+
+
+//********************************************************************//
+//                                                                    //
+//                             Cost model                             //
+//                                                                    //
+//********************************************************************//
+
+//--------------------------------------------------------------------//
+//                    common cost model functions                     //
+//--------------------------------------------------------------------//
+// Last updated 24 March 2007.
+
+function
+{@
+    function per_tuple = ...
+    cost_qual_eval( nquals, cpu_operator_cost )
+        // costsize.c
+        per_tuple = nquals * cpu_operator_cost;
+
+    function nbytes_padded = ...
+    MAXALIGN( nbytes )
+        // c.h
+        nbytes_padded = bitand( nbytes+MAXIMUM_ALIGNOF-1, -MAXIMUM_ALIGNOF );
+
+    function nbytes = ...
+    relation_byte_size( tuples, width, modelVersion )
+        // costsize.c
+        // NB: width and sizeof_HeapTupleHeaderData have already been MAXALIGNed
+        nbytes = tuples * (width + modelVersion.sizeof_HeapTupleHeaderData);
+
+    function npages = ...
+    page_size( tuples, width, blcksz, modelVersion )
+        // costsize.c
+        npages = ceil( relation_byte_size( tuples, width, modelVersion ) / blcksz(1) );
+@}
+
+
+//--------------------------------------------------------------------//
+//                           Hash Join cost                           //
+//--------------------------------------------------------------------//
+// Last updated 2007-08-28.
+
+function
+{@
+    function (nbuckets, nbatch) = ...
+    ExecChooseHashTableSize(ntuples, tupwidth, work_mem, NTUP_PER_BUCKET, modelVersion)
+        sizeof_HashJoinTupleData = MAXALIGN(sizeof_ptr + 4);
+        tupsize = sizeof_HashJoinTupleData + ...
+                  modelVersion.sizeof_MinimalTupleData + ...
+                  tupwidth;
+        inner_rel_bytes = ntuples * tupsize;
+        hash_table_bytes = work_mem * 1024;
+        if inner_rel_bytes > hash_table_bytes
+            nbuckets = floor(hash_table_bytes / tupsize / NTUP_PER_BUCKET);
+            dbatch = ceil(inner_rel_bytes / hash_table_bytes);
+            nbatch = 2;
+            while nbatch < dbatch
+                nbatch = nbatch * 2;
+            end
+        else
+            switch modelVersion.enum_id
+                case ver_gp300 : ver_gpmax
+                    // MAIN:tkordas:20070313184638
+                    dbuckets_lower = ntuples / NTUP_PER_BUCKET;
+                    dbuckets_upper = hash_table_bytes / (tupsize * NTUP_PER_BUCKET);
+                    if dbuckets_upper > dbuckets_lower
+                         dbuckets = (dbuckets_lower + dbuckets_upper)/2.0;
+                    else
+                         dbuckets = dbuckets_lower;
+                    end
+                    nbuckets = ceil(dbuckets);
+                otherwise
+                    nbuckets = ceil(ntuples / NTUP_PER_BUCKET);
+            end
+            nbatch = 1;
+        end
+        for prime = [1033, 2063, 4111, 8219, 16417, 32779, 65539, 131111, ...
+                     262151, 524341, 1048589, 2097211, 4194329, 8388619, 16777289, 33554473, ...
+                     67108913, 134217773, 268435463, 536870951, 1073741831]
+            if prime >= nbuckets
+                nbuckets = prime;
+                break;
+            end
+        end
+
+    function (total_cost, io_cost, cpu_cost) = ...
+    cost_hashjoin( outer_path_rows, outerRowSize, outer_path_total_cost, outer_path_startup_cost, ...
+                   inner_path_rows, innerRowSize, inner_path_total_cost, ...
+                   numbuckets, numbatches, ...
+                   joinsel, costgucs, blcksz, modelVersion )
+        num_hashclauses = joinsel.nquals_hash;
+        cpu_operator_cost = costgucs.cpu_operator_cost;
+        cpu_tuple_cost = costgucs.cpu_tuple_cost;
+        seq_page_cost = costgucs.seq_page_cost;
+
+        // cost and selectivity of the hashquals and other restriction clauses
+        hash_qual_cost = cost_qual_eval( joinsel.nquals_hash, cpu_operator_cost );
+        qp_qual_cost = cost_qual_eval( joinsel.nquals_postjoin, cpu_operator_cost );
+        hash_selec = joinsel.selectivity;
+
+        // approx # tuples passing the hash quals
+        hashjointuples = hash_selec * outer_path_rows * inner_path_rows;
+
+        // cost of source data
+        startup_cost(end+1) = outer_path_startup_cost;
+        run_cost(end+1) = outer_path_total_cost - outer_path_startup_cost;
+        startup_cost(end+1) = inner_path_total_cost;
+
+        // cost of computing hash function
+        switch modelVersion.enum_id
+            case [ver_pg822 : ver_pgmax, ver_gp300 : ver_gpmax]
+                //   pg costsize.c ver 1.169.2.1 / REL8_2_STABLE:tgl:20070108160931
+                //   pg costsize.c ver 1.173 / MAIN:tgl:20070108160922
+                //   gp costsize.c ver 1.29 / MAIN:cmcdevitt:20070316224417
+                startup_cost(end+1) = (cpu_operator_cost * num_hashclauses + cpu_tuple_cost) * inner_path_rows;
+            otherwise
+                startup_cost(end+1) = cpu_operator_cost * num_hashclauses * inner_path_rows;
+        end
+        run_cost(end+1) = cpu_operator_cost * num_hashclauses * outer_path_rows;
+
+        // hash table size that executor would use for inner relation
+        virtualbuckets = numbuckets * numbatches;
+
+        // bucketsize fraction for inner relation
+        innerbucketsize = ceil(1/virtualbuckets);
+
+        // I/O cost when hash table spills to disk
+        io_cost = 0;
+        if numbatches > 1
+            outerpages = page_size(outer_path_rows, outerRowSize, blcksz, modelVersion);
+            innerpages = page_size(inner_path_rows, innerRowSize, blcksz, modelVersion);
+            startup_cost(end+1) = seq_page_cost * innerpages;
+            run_cost(end+1) = seq_page_cost * (innerpages + 2 * outerpages);
+            io_cost = startup_cost(end) + run_cost(end);
+        end
+
+        // cpu cost for hash lookups
+        joininfactor = 1;
+        chainwalk_cost = 0;
+        switch modelVersion.enum_id
+            case [ver_pgmin : ver_pg822 - 1]
+                // searching within hash chains
+                chainwalk_cost = hash_qual_cost * ...
+                                 outer_path_rows * ceil(inner_path_rows * innerbucketsize) * ...
+                                 joininfactor;
+            case ver_pg822 : ver_pgmax
+                // searching within hash chains
+                //   pg costsize.c ver 1.169.2.1 / REL8_2_STABLE:tgl:20070108160931
+                //   pg costsize.c ver 1.173 / MAIN:tgl:20070108160922
+                chainwalk_cost = hash_qual_cost * ...
+                                 outer_path_rows * ceil(inner_path_rows * innerbucketsize) * ...
+                                 joininfactor * 0.5;
+            case [ver_gp300 : ver_gp3002 - 1]
+                // evaluating hash join quals
+                //   gp costsize.c ver 1.28 / MAIN:kharriman:20070227025348
+                //   gp costsize.c ver 1.15.2.4 / Release-2_3_0-branch:kharriman:20070227023643
+                run_cost(end+1) = hash_qual_cost * hashjointuples;
+                // searching within hash chains
+                //   gp costsize.c ver 1.28 / MAIN:kharriman:20070227025348
+                //   gp costsize.c ver 1.15.2.5 / Release-2_3_0-branch:kharriman:20070227024315
+                chainwalk_cost = 0.05 * cpu_operator_cost * ...
+                                 outer_path_rows * inner_path_rows * innerbucketsize * joininfactor;
+            case ver_gp3002 : ver_gpmax
+                // evaluating hash join quals
+                //   gp costsize.c ver 1.28 / MAIN:kharriman:20070227025348
+                //   gp costsize.c ver 1.15.2.4 / Release-2_3_0-branch:kharriman:20070227023643
+                run_cost(end+1) = hash_qual_cost * hashjointuples;
+                // searching within hash chains
+                //   gp costsize.c ver 1.29.6.4 / Release-3_0_0-branch:jzhang:20070816011436
+                gp_cost_hashjoin_chainwalk = false;
+                if gp_cost_hashjoin_chainwalk
+                    chainwalk_cost = 0.05 * cpu_operator_cost * ...
+                                     outer_path_rows * inner_path_rows * innerbucketsize * joininfactor;
+                end
+        end
+        run_cost(end+1) = chainwalk_cost * costgucs.hj_chainwalk_weight;
+
+        // cpu cost for post-join quals
+        joininfactor = 1;
+        switch modelVersion.enum_id
+            case ver_pgmin : ver_pgmax
+                cpu_per_tuple = cpu_tuple_cost + qp_qual_cost;
+                run_cost(end+1) = cpu_per_tuple * hashjointuples * joininfactor;
+            case ver_gpmin : ver_gpmax
+                //   gp costsize.c ver 1.15.2.1 / Release-2_3_0-branch:kharriman:20061105010029
+                //   gp costsize.c ver 1.16 / MAIN:kharriman:20061105005913
+                resultRows_punt = hashjointuples;     // assume all rows pass
+                run_cost(end+1) = qp_qual_cost * hashjointuples + cpu_tuple_cost * resultRows_punt;
+        end
+
+        // bias against putting larger relation on inside
+        bias = 1;
+        innerbytes = inner_path_rows * innerRowSize;
+        outerbytes = outer_path_rows * outerRowSize;
+        if innerbytes > outerbytes && outerbytes > 0
+            switch modelVersion.enum_id
+                case ver_pgmin : ver_pg822 - 1
+                    bias = sqrt(innerbytes/outerbytes);
+                case ver_gpmin : ver_gp300 - 1
+                    //   gp costsize.c ver 1.15.2.1 / Release-2_3_0-branch:kharriman:20061105010029
+                    //   gp costsize.c ver 1.16 / MAIN:kharriman:20061105005913
+                    bias = 1 + 0.1*log(innerbytes/outerbytes);
+                case [ver_pg822 : ver_pgmax, ver_gp300 : ver_gpmax]
+                    //   pg costsize.c ver 1.169.2.1 / REL8_2_STABLE:tgl:20070108160931
+                    //   pg costsize.c ver 1.173 / MAIN:tgl:20070108160922
+                    //   gp costsize.c ver 1.29 / MAIN:cmcdevitt:20070316224417
+                    // deleted the bias
+            end
+        end
+
+        startup_sum = sum(startup_cost);
+        run_sum = sum(run_cost);
+
+        total_cost = startup_sum + bias*run_sum;
+        cpu_cost = startup_sum + run_sum - io_cost;
+@}
+
