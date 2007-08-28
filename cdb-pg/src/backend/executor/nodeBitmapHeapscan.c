@@ -118,6 +118,13 @@ BitmapHeapNext(BitmapHeapScanState *node)
 							  IsA(tbm, StreamBitmap))))
 			elog(ERROR, "unrecognized result from subplan");
 
+		/* When a HashBitmap is returned, set the returning bitmaps
+		 * in the subplan to NULL, so that the subplan nodes do not
+		 * mistakenly try to release the space during the rescan.
+		 */
+		if (tbm != NULL && IsA(tbm, HashBitmap))
+			tbm_reset_bitmaps(outerPlanState(node));
+
 		node->tbm = tbm;
 	}
 

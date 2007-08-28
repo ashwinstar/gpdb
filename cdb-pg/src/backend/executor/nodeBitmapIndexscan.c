@@ -153,6 +153,16 @@ ExecBitmapIndexReScan(BitmapIndexScanState *node, ExprContext *exprCtxt)
 	if (node->biss_RuntimeKeysReady)
 		index_rescan(node->biss_ScanDesc, node->biss_ScanKeys);
 
+	/* Sanity check */
+	if (node->bitmap)
+	{
+		if (!IsA(node->bitmap, HashBitmap) &&
+			!IsA(node->bitmap, StreamBitmap))
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("the returning bitmap in nodeBitmapIndexScan is corrupted.")));
+	}
+
 	/* reset hashBitmap */
 	if(node->bitmap && IsA(node->bitmap, HashBitmap))
 	{
