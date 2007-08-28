@@ -90,6 +90,9 @@ mkext:
 	fi
 	@(cd ext/apu; make all install >> out)
 
+veryclean: clean
+	(cd ext; rm -rf apr apr-1.2.8 apu apr-util-1.2.8 json json-c-0.6 libevent libevent-1.3b-1)
+
 clean: 
 	(cd ext; rm -rf lib bin include build-1 share apr apu json libevent)
 	@if [ -a ext/apr/Makefile ]; then $(MAKE) clean; fi
