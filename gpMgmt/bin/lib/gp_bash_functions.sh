@@ -964,7 +964,7 @@ PING_HOST () {
 	PING_EXIT=$1
 	if [ x"" == x"$PING_EXIT" ];then PING_EXIT=0;fi
 	case $OS_TYPE in
-		darwin )
+		darwin|freebsd )
 			$PING $PING_TIME $TARGET_HOST > /dev/null 2>&1 ;;
 		* )
 			$PING $TARGET_HOST $PING_TIME > /dev/null 2>&1
