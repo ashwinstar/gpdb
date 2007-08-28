@@ -29,6 +29,7 @@ on the standard options.  The following options are specific to gpdiff:
 
     -help            brief help message
     -man             full documentation
+    -version         print gpdiff version and underlying diff version
 
 =head1 OPTIONS
 
@@ -41,6 +42,10 @@ on the standard options.  The following options are specific to gpdiff:
 =item B<-man>
     
     Prints the manual page and exits.
+
+=item B<-version>
+
+    Prints the gpdiff version and underlying diff version
 
 =back
 
@@ -268,7 +273,7 @@ if (1)
     # check for man or help args
     if (scalar(@ARGV))
     {
-        if ($ARGV[0] =~ m/^\-(\-)*(v)$/)
+        if ($ARGV[0] =~ m/^\-(\-)*(v|version)$/)
         {
             $verzion = 1;
         }
