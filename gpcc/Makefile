@@ -60,7 +60,7 @@ mkext:
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd ext/libevent; make install >> out)
+	@(cd ext/libevent; $(MAKE) install >> out)
 	@echo     -- json
 	@(cd ext; rm -f json; ln -s $(JSON) json)
 	@if ! [ -a ext/json/Makefile ]; then \
@@ -69,7 +69,7 @@ mkext:
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd ext/json; make all; make install >> out)
+	@(cd ext/json; $(MAKE) all; $(MAKE) install >> out)
 	@echo     -- apr
 	@(cd ext; rm -f apr; ln -s $(APR) apr)
 	@if ! [ -a ext/apr/Makefile ]; then \
@@ -78,7 +78,7 @@ mkext:
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd ext/apr; make all install >> out)
+	@(cd ext/apr; $(MAKE) all install >> out)
 	@echo     -- apu
 	@(cd ext; rm -f apu; ln -s $(APU) apu)
 	@if ! [ -a ext/apu/Makefile ]; then \
@@ -88,7 +88,7 @@ mkext:
 			--with-apr=../apr \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd ext/apu; make all install >> out)
+	@(cd ext/apu; $(MAKE) all install >> out)
 
 veryclean: clean
 	(cd ext; rm -rf apr apr-1.2.8 apu apr-util-1.2.8 json json-c-0.6 libevent libevent-1.3b-1)
