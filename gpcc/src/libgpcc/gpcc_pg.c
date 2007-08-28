@@ -386,11 +386,7 @@ APR_DECLARE(apr_status_t) gpcc_pg_update_gp_id(int port,
  *   checkpoint_segments checkpoint_segments=31
  * endif
  */
-APR_DECLARE(apr_status_t) gpcc_pg_update_postgresql_conf(int port, const char *data_dir, int checkpoint_segments, int isqd, apr_pool_t *p) {
-    struct {
-	char *grep;
-	char *insert;
-    } replace[5];
+APR_DECLARE(apr_status_t) gpcc_pg_update_postgresql_conf(const char *data_dir, gpcc_pg_conf_subst_t *subst, apr_pool_t *p) {
     char *fpath;
     char *buf;
     int len = 0;
@@ -402,48 +398,38 @@ APR_DECLARE(apr_status_t) gpcc_pg_update_postgresql_conf(int port, const char *d
 
     apr_filepath_merge(&fpath, data_dir, "postgresql.conf", 0, p);
     len = gpcc_file_read_fully(fpath, &buf, p);
-    if (len == 0) {
-	gpcc_warning(FLINE, "open postgresql.conf error");
+    if (len <= 0) {
+	gpcc_warning(FLINE, "open %s error", fpath);
 	return 1;
     }
-
-    if (isqd) {
-	replace[0].grep = "#log_statement";
-	replace[0].insert = "log_statement=all";
-	replace[1].grep = "stats_command_string";
-	replace[1].insert = "stats_command_string=on";
-	replace[2].grep = "#port";
-	replace[2].insert = apr_psprintf(p, "port=%d", port);
-	replace[3].grep = "checkpoint_segments";
-	replace[3].insert = apr_psprintf(p, "checkpoint_segments=%d", checkpoint_segments);
-	replace[4].grep = 0;
-
-    } else {
-	replace[0].grep = "listen_addresses";
-	replace[1].insert = "listen_addresses='*'";
-	replace[1].grep = "#port";
-	replace[1].insert = apr_psprintf(p, "port=%d", port);
-	replace[2].grep = "checkpoint_segments";
-	replace[2].insert = apr_psprintf(p, "checkpoint_segments=%d", checkpoint_segments);
-	replace[3].grep = 0;
-
-    }
-    
 
     if ((fp = fopen(TMP_POSTGRESQL_CONF, "wb")) == 0){
 	gpcc_warning(FLINE, "open %s error", TMP_POSTGRESQL_CONF);
 	return 1;
     }
 
+    for (i = 0 ; subst[i].pattern ; i++) {
+	subst[i].inserted = 0;
+    }
+
     for (tok = apr_strtok(buf, "\r\n", &last) ; tok ; tok = apr_strtok(buf, 0, &last)) {
-	for (i = 0 ; replace[i].grep ; i++) {
-	    if (tok == strstr(tok, replace[i].grep)) {
+	for (i = 0 ; subst[i].pattern ; i++) {
+	    if (tok == strstr(tok, subst[i].pattern)) {
 		/* insert the line and # as comment*/
-		fprintf(fp, "%s #", replace[i].insert);
+		fprintf(fp, "%s #", subst[i].insert);
+		subst[i].inserted = 1;
 		break;
 	    }
 	}
 	fprintf(fp, "%s\n", tok);
+    }
+
+    /* add to the end of file */
+    for (i = 0 ; subst[i].pattern ; i++) {
+	if (subst[i].inserted == 0) {
+	    fprintf(fp, "%s\n", subst[i].insert);
+	    subst[i].inserted = 1;
+	}
     }
 
 

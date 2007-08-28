@@ -280,6 +280,46 @@ static apr_status_t seg_initdb_pg_hba_append(gpcc_event_t* ev, void *_cmdslot)
     return 0;
 }
 
+static apr_status_t seg_initdb_pg_conf_update(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    gpcc_pg_conf_subst_t subst[5];
+    int e;
+
+    if (strstr(cmdslot->cmdname, "seg.m.") != 0) {
+	subst[0].pattern = "#log_statement";
+	subst[0].insert = "log_statement=all";
+	subst[1].pattern = "stats_command_string";
+	subst[1].insert = "stats_command_string=on";
+	subst[2].pattern = "#port";
+	subst[2].insert = apr_psprintf(cmdslot->u.seg.request.subpool, "port=%d", cmdslot->u.seg.request.port);
+	subst[3].pattern = "checkpoint_segments";
+	subst[3].insert = apr_psprintf(cmdslot->u.seg.request.subpool, "checkpoint_segments=%d", 
+				       gpcc_json_object_get_int(cmdslot->u.seg.request.msg, "gpcc.checkpoint_segments", 31));
+	subst[4].pattern = 0;
+
+    } else {
+	subst[0].pattern = "listen_addresses";
+	subst[0].insert = "listen_addresses='*'";
+	subst[1].pattern = "#port";
+	subst[1].insert = apr_psprintf(cmdslot->u.seg.request.subpool, "port=%d", cmdslot->u.seg.request.port);
+	subst[2].pattern = "checkpoint_segments";
+	subst[2].insert = apr_psprintf(cmdslot->u.seg.request.subpool, "checkpoint_segments=%d", 
+				       gpcc_json_object_get_int(cmdslot->u.seg.request.msg, "gpcc.checkpoint_segments", 31));
+	subst[3].pattern = 0;
+
+    }
+    
+
+    if (0 != (e = gpcc_pg_update_postgresql_conf(cmdslot->u.seg.request.data_dir, subst, cmdslot->u.seg.request.subpool))) {
+	seg_request_error(ev, _cmdslot, SEG_INITDB_DONE_EVENT, e, "failed to update postgresql.conf");
+	return 0;
+    }
+
+    return 0;
+
+}
+
 static apr_status_t seg_initdb_checkdb(gpcc_event_t* ev, void *_cmdslot)
 {
 

@@ -121,4 +121,23 @@ APR_DECLARE(apr_status_t) gpcc_pg_update_gp_id(int port,
 					       int content,
 					       apr_pool_t *p);
 
+
+typedef struct gpcc_pg_conf_subst_t gpcc_pg_conf_subst_t;
+struct gpcc_pg_conf_subst_t {			
+    char *pattern;
+    char *insert;
+    int inserted;
+};		       
+
+/**
+ *  update postgresql.conf
+ *  @param data_dir data directory
+ *  @param subst pattern to substitue or insert.  (NULL terminated)
+ *  @param p memory pool
+ *  @return APR_SUCCESS if success
+ */
+
+APR_DECLARE(apr_status_t) gpcc_pg_update_postgresql_conf(const char *data_dir, gpcc_pg_conf_subst_t *subst, apr_pool_t *p);
+
+
 #endif   /* GPCC_PG_H */
