@@ -18,6 +18,7 @@
 #include <gpcc_file.h>
 #include <gpcc_pg.h>
 
+#include <apr_strings.h>
 
 #define DEFAULT_GP_DBNAME         "template1"
 
@@ -385,13 +386,75 @@ APR_DECLARE(apr_status_t) gpcc_pg_update_gp_id(int port,
  *   checkpoint_segments checkpoint_segments=31
  * endif
  */
-APR_DECLARE(apr_status_t) gpcc_pg_update_postgresql_conf(int port, const char *data_dir, int isqd, apr_pool_t *p) {
-    char cmd[1024];
+APR_DECLARE(apr_status_t) gpcc_pg_update_postgresql_conf(int port, const char *data_dir, int checkpoint_segments, int isqd, apr_pool_t *p) {
+    struct {
+	char *grep;
+	char *insert;
+    } replace[5];
+    char *fpath;
+    char *buf;
+    int len = 0;
+    char *tok, *last;
+    FILE *fp;
+    int i, e;
 
-    sprintf(cmd, "%s/postgresql.conf", data_dir);
+#define TMP_POSTGRESQL_CONF "/tmp/postgresql.conf"
 
+    apr_filepath_merge(&fpath, data_dir, "postgresql.conf", 0, p);
+    len = gpcc_file_read_fully(fpath, &buf, p);
+    if (len == 0) {
+	gpcc_warning(FLINE, "open postgresql.conf error");
+	return 1;
+    }
+
+    if (isqd) {
+	replace[0].grep = "#log_statement";
+	replace[0].insert = "log_statement=all";
+	replace[1].grep = "stats_command_string";
+	replace[1].insert = "stats_command_string=on";
+	replace[2].grep = "#port";
+	replace[2].insert = apr_psprintf(p, "port=%d", port);
+	replace[3].grep = "checkpoint_segments";
+	replace[3].insert = apr_psprintf(p, "checkpoint_segments=%d", checkpoint_segments);
+	replace[4].grep = 0;
+
+    } else {
+	replace[0].grep = "listen_addresses";
+	replace[1].insert = "listen_addresses='*'";
+	replace[1].grep = "#port";
+	replace[1].insert = apr_psprintf(p, "port=%d", port);
+	replace[2].grep = "checkpoint_segments";
+	replace[2].insert = apr_psprintf(p, "checkpoint_segments=%d", checkpoint_segments);
+	replace[3].grep = 0;
+
+    }
     
-    
+
+    if ((fp = fopen(TMP_POSTGRESQL_CONF, "wb")) == 0){
+	gpcc_warning(FLINE, "open %s error", TMP_POSTGRESQL_CONF);
+	return 1;
+    }
+
+    for (tok = apr_strtok(buf, "\r\n", &last) ; tok ; tok = apr_strtok(buf, 0, &last)) {
+	for (i = 0 ; replace[i].grep ; i++) {
+	    if (tok == strstr(tok, replace[i].grep)) {
+		/* insert the line and # as comment*/
+		fprintf(fp, "%s #", replace[i].insert);
+		break;
+	    }
+	}
+	fprintf(fp, "%s\n", tok);
+    }
+
+
+    if (fp) fclose(fp);
+
+    if (0 != (e = apr_file_rename(TMP_POSTGRESQL_CONF, fpath, p))) {
+	gpcc_warning(FLINE, "rename %s to %s error", TMP_POSTGRESQL_CONF, fpath);
+	return e;
+    }
+
+    remove(TMP_POSTGRESQL_CONF);
 
 
     return 0;
