@@ -36,6 +36,30 @@ struct json_object *gpcc_json_hostlist(const char * const *masters, const char *
 
 /**
  *  create segment   request object
+ *
+ *   seg              =         gpdb.seg.m.0 or gpdb.seg.X.X   X is an integer
+ *   action           =         init/start/stop/status
+ *   mode             =         ro/rw     smart/immediate/fast
+ *   host             =         hostname  (node.X or (x.x.x.a, x.x.x.b, x.x.x.c, x.x.x.d))
+ *   dir              =         data directory
+ *   port             =         database port number
+ *
+ *   additional parameters for initdb
+ *   dbid             =         dbid
+ *   content          =         content
+ *
+ *   gpdb.name        =         mygpdb
+ *   gpdb.encoding    =         UNICODE
+ *   gpdb.locale      =         UNICODE
+ *   gpdb.trusted_shell =       ssh
+ *   gpdb.checkpoint_segments =       check point segment default = 31
+ *   gpdb.max_connect   =       25
+ *   gpdb.shared_buffers =      128Mb
+ *   gpdb.user          =       username
+ *   gpdb.password      =       password
+ *   node.X             =       (x.x.x.a, x.x.x.b, x.x.x.c, x.x.x.d) list of network addresses
+ *   gpdb.seg.m.X       =       node.X:/db/seg.m.X:0   #node, data_dir, cpu affinity
+ *   
  *  @param segment   segment name e.g. "seg.X.X"
  *  @param action    start/stop/set_mode
  *  @param mode      ro/rw

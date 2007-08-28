@@ -177,7 +177,7 @@ static apr_status_t seg_initdb(gpcc_event_t* ev, void *_cmdslot)
     apr_pool_create(&cmdslot->u.seg.request.subpool, cmdslot->pool);
 
     if (!obj) {
-	seg_request_error(ev, _cmdslot, SEG_INITDB_DONE_EVENT, 1, "json_tokener_parse error");
+	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, 1, "json_tokener_parse error");
 	json_object_put(obj);
 	return 0;
     }
@@ -186,11 +186,13 @@ static apr_status_t seg_initdb(gpcc_event_t* ev, void *_cmdslot)
     cmdslot->u.seg.request.port = gpcc_json_object_get_int(obj, "port", 0);
     cmdslot->u.seg.request.mode = gpcc_json_object_get_string(obj, "mode", 0);
     cmdslot->u.seg.request.data_dir = gpcc_json_object_get_string(obj, "dir", 0);
+    cmdslot->u.seg.request.dbid = gpcc_json_object_get_int(obj, "dbid", 0);
+    cmdslot->u.seg.request.content = gpcc_json_object_get_int(obj, "content", 0);
 
     if (cmdslot->u.seg.request.port == 0 || 
 	cmdslot->u.seg.request.mode == 0 ||
 	cmdslot->u.seg.request.data_dir == 0) {	
-	seg_request_error(ev, _cmdslot, SEG_INITDB_DONE_EVENT, 1, "parameter is missing");
+	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, 1, "parameter is missing");
 	json_object_put(obj);
 	return 0;
     }
@@ -200,21 +202,21 @@ static apr_status_t seg_initdb(gpcc_event_t* ev, void *_cmdslot)
     /* check initdb is valid */
     apr_filepath_merge(&initdbfn, gpha.gphome, "initdb", 0, cmdslot->u.seg.request.subpool);
     if (! gpcc_file_exists(initdbfn)) {
-	seg_request_error(ev, _cmdslot, SEG_INITDB_DONE_EVENT, 1, "initdb not found");
+	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, 1, "initdb not found");
 	json_object_put(obj);
 	return 0;
     }
 
     /* check data_dir exists */
     if (gpcc_file_directory_exists(cmdslot->u.seg.request.data_dir)) {
-	seg_request_error(ev, _cmdslot, SEG_INITDB_DONE_EVENT, 1, "data directory exists");
+	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, 1, "data directory exists");
 	json_object_put(obj);
 	return 0;
     }	
 
     /* check database is running (port)*/
     if (0 == (e = gpcc_pg_pid_active(cmdslot->u.seg.request.port, &pid, cmdslot->u.seg.request.subpool))) {
-	seg_request_error(ev, _cmdslot, SEG_INITDB_DONE_EVENT, 1, "database is running");
+	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, 1, "database is running");
 	json_object_put(obj);
 	return 0;	
     }
@@ -223,14 +225,14 @@ static apr_status_t seg_initdb(gpcc_event_t* ev, void *_cmdslot)
     
     if (0 != (e = gpcc_proc_initdb(&cmdslot->u.seg.request.proc,
 				   cmdslot->u.seg.request.data_dir,
-				   gpcc_json_object_get_string(obj, "gpcc.encoding", "UNICODE"),
-				   gpcc_json_object_get_string(obj, "gpcc.locale", "UNICODE"),
-				   gpcc_json_object_get_int(obj, "gpcc.max_connect", 25),
-				   gpcc_json_object_get_string(obj, "gpcc.shared_buffers", "128Mb"),
+				   gpcc_json_object_get_string(obj, "gpdb.encoding", "UNICODE"),
+				   gpcc_json_object_get_string(obj, "gpdb.locale", "UNICODE"),
+				   gpcc_json_object_get_int(obj, "gpdb.max_connect", 25),
+				   gpcc_json_object_get_string(obj, "gpdb.shared_buffers", "128Mb"),
 				   1,
 				   cmdslot->u.seg.request.subpool))) {
 
-	seg_request_error(ev, _cmdslot, SEG_INITDB_DONE_EVENT, e, "initdb failure");
+	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, e, "initdb failure");
 	json_object_put(obj);
 	return 0;
     }
@@ -252,24 +254,75 @@ static apr_status_t seg_initdb_wait(gpcc_event_t* ev, void *_cmdslot)
 
     e = apr_proc_wait(&cmdslot->u.seg.request.proc, &ret, &exitwhy, APR_NOWAIT);
     if (e == APR_CHILD_DONE) {
-	evt = gpcc_event_alloc(SEG_INITDB_NEXT_EVENT, cmdslot->cmdidx, 0);
-	cmdslot->u.seg.request.exitcode = ret;
-	cmdslot->u.seg.request.reason = proc_exit_reason(exitwhy);	
-	gpcc_evqueue_put(gpha.evq, evt);
+	if (ret == 0) {
+	    /* start database */
+	    if (0 != (e = gpcc_proc_pg_ctl_start_segment(&cmdslot->u.seg.request.proc,
+							 cmdslot->u.seg.request.port,
+							 cmdslot->u.seg.request.data_dir,
+							 1, 0,
+							 cmdslot->u.seg.request.subpool))) {
+		seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, e, "pg_ctl start failure");
+		return 0;
+	    }
 
-	/* save the setting port and data_dir permanently */
-	if (cmdslot->u.seg.port == 0) {
-	    cmdslot->u.seg.port = cmdslot->u.seg.request.port;
+	    evt = gpcc_event_alloc(SEG_INITDB_NEXT_EVENT, cmdslot->cmdidx, 0);
+	    gpcc_evqueue_put(gpha.evq, evt);
+	    
+
+	} else {
+	    evt = gpcc_event_alloc(SEG_INITDB_FAIL1_EVENT, cmdslot->cmdidx, 0);
+	    cmdslot->u.seg.request.exitcode = ret;
+	    cmdslot->u.seg.request.reason = proc_exit_reason(exitwhy);	
+	    gpcc_evqueue_put(gpha.evq, evt);	    
 	}
-	if (cmdslot->u.seg.data_dir == 0) {
-	    cmdslot->u.seg.data_dir = apr_pstrdup(cmdslot->pool, cmdslot->u.seg.request.data_dir);
-	}
-	
 
     } else {
 	/* continue to wait */
 	cmdslot->countdown = 1;
     }
+
+    return 0;
+}
+
+
+
+static apr_status_t seg_initdb_start_wait(gpcc_event_t* ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    int ret = 0;
+    apr_exit_why_e exitwhy;
+    int e;
+    gpcc_event_t *evt;
+
+    e = apr_proc_wait(&cmdslot->u.seg.request.proc, &ret, &exitwhy, APR_NOWAIT);
+    if (e == APR_CHILD_DONE) {
+	if (ret == 0) {
+	    evt = gpcc_event_alloc(SEG_INITDB_NEXT_EVENT, cmdslot->cmdidx, 0);
+	    gpcc_evqueue_put(gpha.evq, evt);
+	    
+	} else {
+	    evt = gpcc_event_alloc(SEG_INITDB_FAIL2_EVENT, cmdslot->cmdidx, 0);
+	    cmdslot->u.seg.request.exitcode = ret;
+	    cmdslot->u.seg.request.reason = proc_exit_reason(exitwhy);	
+	    gpcc_evqueue_put(gpha.evq, evt);	    
+	}
+
+    } else {
+	/* continue to wait */
+	cmdslot->countdown = 1;
+    }
+
+    return 0;
+}
+
+static apr_status_t seg_initdb_backout1(gpcc_event_t *ev, void *_cmdslot)
+{
+    
+    return 0;
+}
+
+static apr_status_t seg_initdb_backout2(gpcc_event_t *ev, void *_cmdslot)
+{
 
     return 0;
 }
@@ -295,7 +348,7 @@ static apr_status_t seg_initdb_pg_conf_update(gpcc_event_t *ev, void *_cmdslot)
 	subst[2].insert = apr_psprintf(cmdslot->u.seg.request.subpool, "port=%d", cmdslot->u.seg.request.port);
 	subst[3].pattern = "checkpoint_segments";
 	subst[3].insert = apr_psprintf(cmdslot->u.seg.request.subpool, "checkpoint_segments=%d", 
-				       gpcc_json_object_get_int(cmdslot->u.seg.request.msg, "gpcc.checkpoint_segments", 31));
+				       gpcc_json_object_get_int(cmdslot->u.seg.request.msg, "gpdb.checkpoint_segments", 31));
 	subst[4].pattern = 0;
 
     } else {
@@ -305,7 +358,7 @@ static apr_status_t seg_initdb_pg_conf_update(gpcc_event_t *ev, void *_cmdslot)
 	subst[1].insert = apr_psprintf(cmdslot->u.seg.request.subpool, "port=%d", cmdslot->u.seg.request.port);
 	subst[2].pattern = "checkpoint_segments";
 	subst[2].insert = apr_psprintf(cmdslot->u.seg.request.subpool, "checkpoint_segments=%d", 
-				       gpcc_json_object_get_int(cmdslot->u.seg.request.msg, "gpcc.checkpoint_segments", 31));
+				       gpcc_json_object_get_int(cmdslot->u.seg.request.msg, "gpdb.checkpoint_segments", 31));
 	subst[3].pattern = 0;
 
     }
@@ -322,6 +375,16 @@ static apr_status_t seg_initdb_pg_conf_update(gpcc_event_t *ev, void *_cmdslot)
 
 static apr_status_t seg_initdb_checkdb(gpcc_event_t* ev, void *_cmdslot)
 {
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+
+    /* save the setting port and data_dir permanently */
+    if (cmdslot->u.seg.port == 0) {
+	cmdslot->u.seg.port = cmdslot->u.seg.request.port;
+    }
+    if (cmdslot->u.seg.data_dir == 0) {
+	cmdslot->u.seg.data_dir = apr_pstrdup(cmdslot->pool, cmdslot->u.seg.request.data_dir);
+    }
+    
 
     return 0;
 }

@@ -73,6 +73,8 @@ struct cmdslot_t {
 		char *mode;
 		char *data_dir;
 		int port;
+		int dbid;
+		int content;
 		int exitcode;
 		char *reason;
 		apr_proc_t proc;
