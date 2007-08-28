@@ -688,3 +688,42 @@ FROM sale;
 SELECT sale.vn,sale.cn, 
 COUNT(vn) OVER(order by sale.cn asc range between unbounded preceding and 2 preceding) 
 FROM sale; 
+SELECT sale.vn,sale.cn, 
+COUNT(vn) OVER(order by sale.cn asc rows between unbounded preceding and 2 preceding) 
+FROM sale; 
+
+-- Framing clauses
+select cn,count(*) over (order by cn rows between 2 preceding and 1 preceding) as c from sale;
+select cn,count(*) over (order by cn rows between 2 preceding and 0 preceding) as c from sale;
+select cn,count(*) over (order by cn rows between 2 preceding and 1 following) as c from sale;
+select cn,count(*) over (order by cn rows between 0 preceding and 1 following) as c from sale;
+select cn,count(*) over (order by cn rows between 0 following and 1 following) as c from sale;
+select cn,count(*) over (order by cn rows between 1 following and 2 following) as c from sale;
+select cn,count(*) over (order by cn rows between unbounded preceding and 2 preceding) as c from sale;
+select cn,count(*) over (order by cn rows between unbounded preceding and 0 preceding) as c from sale;
+select cn,count(*) over (order by cn rows between unbounded preceding and 2 following) as c from sale;
+select cn,count(*) over (order by cn rows between 2 preceding and unbounded following) as c from sale;
+select cn,count(*) over (order by cn rows between 0 preceding and unbounded following) as c from sale;
+select cn,count(*) over (order by cn rows between 0 following and unbounded following) as c from sale;
+select cn,count(*) over (order by cn rows between 1 following and unbounded following) as c from sale;
+select cn,count(*) over (order by cn rows between unbounded preceding and unbounded following) as c from sale;
+
+select cn,count(*) over (order by cn range between 2 preceding and 1 preceding) as c from sale;
+select cn,count(*) over (order by cn range between 2 preceding and 0 preceding) as c from sale;
+select cn,count(*) over (order by cn range between 2 preceding and 1 following) as c from sale;
+select cn,count(*) over (order by cn range between 0 preceding and 1 following) as c from sale;
+select cn,count(*) over (order by cn range between 0 following and 1 following) as c from sale;
+select cn,count(*) over (order by cn range between 1 following and 2 following) as c from sale;
+select cn,count(*) over (order by cn range between unbounded preceding and 2 preceding) as c from sale;
+select cn,count(*) over (order by cn range between unbounded preceding and 0 preceding) as c from sale;
+select cn,count(*) over (order by cn range between unbounded preceding and 2 following) as c from sale;
+select cn,count(*) over (order by cn range between 2 preceding and unbounded following) as c from sale;
+select cn,count(*) over (order by cn range between 0 preceding and unbounded following) as c from sale;
+select cn,count(*) over (order by cn range between 0 following and unbounded following) as c from sale;
+select cn,count(*) over (order by cn range between 1 following and unbounded following) as c from sale;
+select cn,count(*) over (order by cn range between unbounded preceding and unbounded following) as c from sale;
+
+-- MPP-1885
+SELECT sale.vn,
+COUNT(vn) OVER(order by sale.vn asc range between unbounded preceding and 2 preceding)
+FROM sale;

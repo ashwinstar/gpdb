@@ -1147,7 +1147,7 @@ static void ntuplestore_acc_advance_in_page(NTupleStoreAccessor *tsa, int* pn)
 			*pn = 0;
 		}
 		else
-			*pn += nts_page_valid_slot_cnt(tsa->page);
+			*pn += (tsa->pos.slotn - nts_page_first_valid_slotn(tsa->page));
 	}
 }
 
