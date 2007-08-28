@@ -106,11 +106,6 @@ BEGIN
                                                 "atmsort.pl"
                                                 ));
 
-    # need gnu diff on solaris
-    if ($Config{'osname'} =~ m/solaris/i)
-    {
-        $ATMDIFF = "gdiff";
-    }
 }
 
 sub gpdiff_files
@@ -118,6 +113,12 @@ sub gpdiff_files
     my ($f1, $f2, $d2d) = @_;
 
     my @tmpfils;
+
+    # need gnu diff on solaris
+    if ($Config{'osname'} =~ m/solaris|sunos/i)
+    {
+        $ATMDIFF = "gdiff";
+    }
 
     for my $ii (1..2)
     {
@@ -259,6 +260,7 @@ if (1)
 {
     my $man  = 0;
     my $help = 0;
+    my $verzion = 0;
     my $pmsg = "";
 
 #    getatm();
@@ -266,6 +268,10 @@ if (1)
     # check for man or help args
     if (scalar(@ARGV))
     {
+        if ($ARGV[0] =~ m/^\-(\-)*(v)$/)
+        {
+            $verzion = 1;
+        }
         if ($ARGV[0] =~ m/^\-(\-)*(man|help|\?)$/i)
         {
             if ($ARGV[0] =~ m/man/i)
@@ -284,11 +290,34 @@ if (1)
         $help = 1;
     }
 
-    if ((1 == scalar(@ARGV)) && (!($help || $man)))
+    if ((1 == scalar(@ARGV)) && (!($help || $man || $verzion)))
     {
         $pmsg = "unknown operand: $ARGV[0]";
         $help = 1;
     }
+
+    if ($verzion)
+    {
+        my $VERSION = do { my @r = (q$Revision$ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r }; # must be all one line, for MakeMaker
+
+        # need gnu diff on solaris
+        if ($Config{'osname'} =~ m/solaris|sunos/i)
+        {
+            $ATMDIFF = "gdiff";
+        }
+        print "$0 version $VERSION\n";
+        print "Type \'gpdiff.pl --help\' for more information on the standard options\n";
+        print "$0 calls the \"", $ATMDIFF, "\" utility:\n\n";
+
+        my $outi = `$ATMDIFF -v`;
+
+        $outi =~ s/^/   /gm;
+
+        print $outi, "\n";
+
+        exit(1);
+    }
+
 
     pod2usage(-msg => $pmsg, -exitstatus => 1) if $help;
     pod2usage(-msg => $pmsg, -exitstatus => 0, -verbose => 2) if $man;
