@@ -451,10 +451,10 @@ APR_DECLARE(apr_status_t) gpcc_pg_update_postgresql_conf(int port, const char *d
 
     if (0 != (e = apr_file_rename(TMP_POSTGRESQL_CONF, fpath, p))) {
 	gpcc_warning(FLINE, "rename %s to %s error", TMP_POSTGRESQL_CONF, fpath);
+	remove(TMP_POSTGRESQL_CONF);
 	return e;
     }
 
-    remove(TMP_POSTGRESQL_CONF);
 
 
     return 0;
