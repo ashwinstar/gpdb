@@ -255,8 +255,41 @@ static apr_status_t seg_initdb(gpcc_event_t* ev, void *_cmdslot)
 
 static apr_status_t seg_initdb_pg_hba_append(gpcc_event_t* ev, void *_cmdslot) 
 {
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    int i, j, nnode;
+    char nodename[64];
+    char *addr, *last, *tok;
+    char **hosts;
 
-    return 0;
+#define MAX_HOSTS_PER_NODE  4
+
+    /* find number of nodes */
+    i = 0;
+    while (1) {
+	sprintf(nodename, "node.%d", i);
+	addr = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, nodename, 0);
+	if (! addr) 
+	    break;
+	i++;
+    }
+
+    nnode = i;
+    hosts = apr_pcalloc(cmdslot->u.seg.request.subpool, sizeof(char *) * (nnode * MAX_HOSTS_PER_NODE + 1));
+    for (i = 0 ; i < nnode ; i++) {
+	sprintf(nodename, "node.%d", i);
+	addr = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, nodename, 0);
+	addr = apr_pstrdup(cmdslot->u.seg.request.subpool, addr);
+	addr++;
+	addr[strlen(addr)-1] = 0;
+	for (tok = apr_strtok(addr, ",", &last), j = 0; 
+	     tok && j < MAX_HOSTS_PER_NODE; 
+	     tok = apr_strtok(addr, 0, &last), j++) {
+	    hosts[i*MAX_HOSTS_PER_NODE+j] = apr_pstrdup(cmdslot->u.seg.request.subpool, tok);
+	}
+    }
+
+    return gpcc_pg_hba_append(cmdslot->u.seg.request.data_dir, (const char * const *) hosts, cmdslot->u.seg.request.subpool);
+
 }
 
 static apr_status_t seg_initdb_pg_conf_update(gpcc_event_t *ev, void *_cmdslot)
@@ -292,7 +325,7 @@ static apr_status_t seg_initdb_pg_conf_update(gpcc_event_t *ev, void *_cmdslot)
 
     if (0 != (e = gpcc_pg_update_postgresql_conf(cmdslot->u.seg.request.data_dir, subst, cmdslot->u.seg.request.subpool))) {
 	seg_request_error(ev, _cmdslot, SEG_INITDB_DONE_EVENT, e, "failed to update postgresql.conf");
-	return 0;
+	return e;
     }
 
     return 0;
@@ -361,6 +394,12 @@ static apr_status_t seg_initdb_start_wait(gpcc_event_t* ev, void *_cmdslot)
     e = apr_proc_wait(&cmdslot->u.seg.request.proc, &ret, &exitwhy, APR_NOWAIT);
     if (e == APR_CHILD_DONE) {
 	if (ret == 0) {
+	    /* update gp_id */
+
+
+	    /* update gp_configuration */
+
+
 	    evt = gpcc_event_alloc(SEG_INITDB_NEXT_EVENT, cmdslot->cmdidx, 0);
 	    gpcc_evqueue_put(gpha.evq, evt);
 	    
