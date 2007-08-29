@@ -2802,10 +2802,29 @@ adjustEdges(WindowFrameBuffer buffer,
 			{
 				Datum curr_key;
 				bool curr_key_isnull;
-				
+
 				/* Check if the last row is the trailing edge. */
-				ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
-												  wstate->spare);
+				if (wstate->input_buffer->part_break)
+				{
+					/* If the last tuple breaks the partition key, the tuple to check
+					 * is the last second tuple in the input buffer.
+					 */
+					bool found = ntuplestore_acc_advance(wstate->input_buffer->writer, -1);
+					Assert(found);
+					ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
+													  wstate->spare);
+
+					/* Put the writer pointer back to its original place. */
+					found = ntuplestore_acc_advance(wstate->input_buffer->writer, 1);
+					Assert(found);
+				}
+
+				else
+				{
+					ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
+													  wstate->spare);
+				}
+				
 				econtext->ecxt_scantuple = wstate->spare;
 				deform_window_tuple(econtext->ecxt_scantuple,
 									level_state->numSortCols, level_state->sortColIdx,
@@ -2885,39 +2904,53 @@ adjustEdges(WindowFrameBuffer buffer,
 
 			if (need_adjust)
 			{
+				Datum curr_key;
+				bool curr_key_isnull;
+
+				/* Check if the last row is the leading edge */
 				if (wstate->input_buffer->part_break)
-					ntuplestore_acc_seek_last(level_state->lead_reader);
-				else
 				{
-					/* Check if the last row is the leading edge */
-					Datum curr_key;
-					bool curr_key_isnull;
-				
+					/* If the last tuple breaks the partition key, the tuple to check
+					 * is the last second tuple in the input buffer.
+					 */
+					bool found = ntuplestore_acc_advance(wstate->input_buffer->writer, -1);
+					Assert(found);
 					ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
 													  wstate->spare);
-					econtext->ecxt_scantuple = wstate->spare;
-					deform_window_tuple(econtext->ecxt_scantuple,
-										level_state->numSortCols, level_state->sortColIdx,
-										&curr_key, &curr_key_isnull,
-										wstate->transcontext);
-					if (!cmp_deformed_tuple(&curr_key, &curr_key_isnull,
-											new_lead_keys, new_lead_keys_isnull,
-											level_state->col_sort_asc,
-											level_state->numSortCols,
-											level_state->ltfunctions,
-											level_state->eqfunctions,
-											econtext->ecxt_per_tuple_memory,
-											false) &&
-						!cmp_deformed_tuple(&curr_key, &curr_key_isnull,
-											new_lead_keys, new_lead_keys_isnull,
-											level_state->col_sort_asc,
-											level_state->numSortCols,
-											level_state->ltfunctions,
-											level_state->eqfunctions,
-											econtext->ecxt_per_tuple_memory,
-											true))
-						ntuplestore_acc_seek_last(level_state->lead_reader);
+
+					/* Put the writer pointer back to its original place. */
+					found = ntuplestore_acc_advance(wstate->input_buffer->writer, 1);
+					Assert(found);
 				}
+
+				else
+				{
+					ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
+													  wstate->spare);
+				}
+				
+				econtext->ecxt_scantuple = wstate->spare;
+				deform_window_tuple(econtext->ecxt_scantuple,
+									level_state->numSortCols, level_state->sortColIdx,
+									&curr_key, &curr_key_isnull,
+									wstate->transcontext);
+				if (!cmp_deformed_tuple(&curr_key, &curr_key_isnull,
+										new_lead_keys, new_lead_keys_isnull,
+										level_state->col_sort_asc,
+										level_state->numSortCols,
+										level_state->ltfunctions,
+										level_state->eqfunctions,
+										econtext->ecxt_per_tuple_memory,
+										false) &&
+					!cmp_deformed_tuple(&curr_key, &curr_key_isnull,
+										new_lead_keys, new_lead_keys_isnull,
+										level_state->col_sort_asc,
+										level_state->numSortCols,
+										level_state->ltfunctions,
+										level_state->eqfunctions,
+										econtext->ecxt_per_tuple_memory,
+										true))
+					ntuplestore_acc_seek_last(level_state->lead_reader);
 			}
 		}
 		else if (EDGE_IS_CURRENT_ROW(level_state->frame->lead))

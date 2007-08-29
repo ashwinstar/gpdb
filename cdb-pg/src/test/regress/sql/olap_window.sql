@@ -748,3 +748,11 @@ FROM sale;
 SELECT sale.vn,sale.cn,sale.prc,sale.pn,sale.prc,
 COUNT(floor(sale.prc)) OVER(partition by sale.vn,sale.cn,sale.prc,sale.vn order by sale.pn asc range between unbounded preceding and 1 preceding) as count 
 from sale;
+
+-- MPP-1893
+SELECT sale.prc,sale.cn,sale.vn,sale.pn,sale.cn,
+AVG(floor(sale.pn-sale.cn)) OVER(partition by sale.prc,sale.cn order by sale.vn desc range between 1 preceding and unbounded following) as avg
+FROM sale;
+SELECT sale.prc,sale.cn,sale.vn,sale.pn,sale.cn,
+AVG(floor(sale.pn-sale.cn)) OVER(partition by sale.prc,sale.cn order by sale.vn desc range between 0 preceding and unbounded following) as avg
+FROM sale;

@@ -3071,3 +3071,42 @@ from sale;
  50 |  1 |    0 | 400 |    0 |     0
 (12 rows)
 
+-- MPP-1893
+SELECT sale.prc,sale.cn,sale.vn,sale.pn,sale.cn,
+AVG(floor(sale.pn-sale.cn)) OVER(partition by sale.prc,sale.cn order by sale.vn desc range between 1 preceding and unbounded following) as avg
+FROM sale;
+ prc  | cn | vn | pn  | cn | avg 
+------+----+----+-----+----+-----
+    0 |  1 | 50 | 400 |  1 | 249
+    0 |  1 | 30 | 300 |  1 | 199
+    0 |  1 | 20 | 100 |  1 | 149
+    0 |  1 | 10 | 200 |  1 | 199
+    0 |  3 | 40 | 200 |  3 | 197
+    1 |  4 | 40 | 800 |  4 | 746
+    1 |  4 | 40 | 700 |  4 | 746
+    5 |  1 | 30 | 500 |  1 | 499
+    5 |  3 | 30 | 600 |  3 | 547
+    5 |  3 | 30 | 500 |  3 | 547
+    0 |  2 | 50 | 400 |  2 | 398
+ 2400 |  2 | 40 | 100 |  2 |  98
+(12 rows)
+
+SELECT sale.prc,sale.cn,sale.vn,sale.pn,sale.cn,
+AVG(floor(sale.pn-sale.cn)) OVER(partition by sale.prc,sale.cn order by sale.vn desc range between 0 preceding and unbounded following) as avg
+FROM sale;
+ prc  | cn | vn | pn  | cn | avg 
+------+----+----+-----+----+-----
+    0 |  1 | 50 | 400 |  1 | 249
+    0 |  1 | 30 | 300 |  1 | 199
+    0 |  1 | 20 | 100 |  1 | 149
+    0 |  1 | 10 | 200 |  1 | 199
+    0 |  3 | 40 | 200 |  3 | 197
+    1 |  4 | 40 | 800 |  4 | 746
+    1 |  4 | 40 | 700 |  4 | 746
+    5 |  1 | 30 | 500 |  1 | 499
+    5 |  3 | 30 | 600 |  3 | 547
+    5 |  3 | 30 | 500 |  3 | 547
+    0 |  2 | 50 | 400 |  2 | 398
+ 2400 |  2 | 40 | 100 |  2 |  98
+(12 rows)
+
