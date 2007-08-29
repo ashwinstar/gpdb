@@ -387,6 +387,8 @@ static apr_status_t seg_initdb_start_wait(gpcc_event_t* ev, void *_cmdslot)
     e = apr_proc_wait(&cmdslot->u.seg.request.proc, &ret, &exitwhy, APR_NOWAIT);
     if (e == APR_CHILD_DONE) {
 	if (ret == 0) {
+	    /* check pg_ctl status for sure */
+
 	    /* update gp_id */
 
 
@@ -408,12 +410,18 @@ static apr_status_t seg_initdb_start_wait(gpcc_event_t* ev, void *_cmdslot)
     return 0;
 }
 
+/**
+ *  backout1 -- backout after initdb
+ */
 static apr_status_t seg_initdb_backout1(gpcc_event_t *ev, void *_cmdslot)
 {
     
     return 0;
 }
 
+/**
+ *  backout2 -- initdb success but start failure
+ */
 static apr_status_t seg_initdb_backout2(gpcc_event_t *ev, void *_cmdslot)
 {
 
