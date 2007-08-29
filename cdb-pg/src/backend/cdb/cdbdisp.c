@@ -1940,8 +1940,6 @@ thread_DispatchWaitSingle(DispatchCommandParms		*pParms)
 	SegmentDatabaseDescriptor	*segdbDesc;
 	CdbDispatchResult			*dispatchResult;
 	char * msg = NULL;
-
-	write_stderr("thread_DispatchWaitSingle");
 	
 	Assert(pParms->db_count == 1);
 	dispatchResult = pParms->dispatchResultPtrArray[0];
@@ -1975,7 +1973,7 @@ thread_DispatchWaitSingle(DispatchCommandParms		*pParms)
 			PGresult   *pRes;
 			ExecStatusType resultStatus;
 			int			resultIndex = cdbdisp_numPGresult(dispatchResult);
-			write_stderr("resultIndex = %d",resultIndex);
+			write_stderr("resultIndex = %d\n",resultIndex);
 
 			if (DEBUG4 >= log_min_messages)
 				write_stderr("Thread %u: PQgetResult\n",mythread());
