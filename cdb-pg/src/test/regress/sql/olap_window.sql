@@ -735,3 +735,11 @@ count(*) over (order by cn,vn,pn) as c3 from sale;
 select cn,pn,vn, count(*) over (order by cn range between 2 preceding and 2 following) as c1,
 count(*) over (order by cn,vn rows between 2 preceding and 2 following) as c2,
 count(*) over (order by cn,vn,pn) as c3 from sale;
+
+-- MPP-1897
+SELECT sale.cn,sale.qty,
+SUM(floor(sale.qty)) OVER(order by sale.cn asc range between 2 following and 2 following) 
+FROM sale;
+SELECT sale.cn,sale.qty,
+SUM(floor(sale.qty)) OVER(order by sale.cn asc rows between 2 following and 2 following) as sum
+FROM sale;

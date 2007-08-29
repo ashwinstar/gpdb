@@ -381,7 +381,8 @@ static WindowFrameBuffer createRowsFrameBuffer(long int trail_rows,
 											   int bytes);
 static WindowFrameBuffer resetFrameBuffer(WindowFrameBuffer buffer);
 static void appendToFrameBuffer(WindowStatePerLevel level_state,
-								ExprContext *econtext, WindowState *wstate);
+								ExprContext *econtext, WindowState *wstate,
+								bool last_peer);
 #if 0
 static void trimFrameBuffer(WindowFrameBuffer buffer, NTupleStorePos *pos);
 static List *getValueAtPos(WindowFrameBuffer buffer,
@@ -420,7 +421,7 @@ static int initFcinfo(WindowRefExprState *wrxstate, FunctionCallInfoData *fcinfo
 static void adjustEdges(WindowFrameBuffer buffer, WindowState *wstate);
 static TupleTableSlot *fetchCurrentRow(WindowState *wstate);
 static TupleTableSlot *fetchTupleSlotThroughBuf(WindowState *wstate);
-static void processTupleSlot(WindowState *wstate, TupleTableSlot *slot);
+static void processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer);
 static void * getCurrentValue(NTupleStoreAccessor *reader,
 							  WindowStatePerLevel level_state);
 static bool cmp_deformed_tuple(Datum *a, bool *a_nulls, Datum *b, bool *b_nulls,
@@ -1087,7 +1088,8 @@ deserializeEntryForRange(WindowStatePerLevel level_state,
 static void
 appendToFrameBuffer(WindowStatePerLevel level_state,
 					ExprContext *econtext,
-					WindowState *wstate)
+					WindowState *wstate,
+					bool last_peer)
 {
 	char *serial_entry;
 	Size len;
@@ -1130,7 +1132,8 @@ appendToFrameBuffer(WindowStatePerLevel level_state,
 	{
 		if (!ntuplestore_acc_tell(level_state->trail_reader, NULL))
 		{
-			ntuplestore_acc_seek_last(level_state->trail_reader);
+			if (!last_peer)
+				ntuplestore_acc_seek_last(level_state->trail_reader);
 		}
 		
 		else if (level_state->num_trail_rows < level_state->trail_rows - 1)
@@ -2705,10 +2708,12 @@ adjustEdges(WindowFrameBuffer buffer,
 				bool found;
 				if (ntuplestore_acc_tell(level_state->trail_reader, NULL))
 					found = ntuplestore_acc_advance(level_state->trail_reader, 1);
-				else
+				else if (level_state->frame->trail->kind != WINDOW_BOUND_FOLLOWING ||
+						 level_state->trail_rows == 0)
 					found = ntuplestore_acc_seek_first(level_state->trail_reader);
 
-				if (found)
+				if (found ||
+					level_state->frame->trail->kind == WINDOW_BOUND_FOLLOWING)
 					level_state->num_trail_rows++;
 			}
 		}
@@ -3293,6 +3298,7 @@ ExecWindow(WindowState *wstate)
 	ExprContext *econtext;
 	int level;
 	ExprDoneCond isDone;
+	bool last_peer = false;
 
 	econtext = wstate->ps.ps_ExprContext;
 
@@ -3313,7 +3319,7 @@ ExecWindow(WindowState *wstate)
 
 	/* Process the current_row if it has not been processed. */
 	if (wstate->cur_slot_is_new)
-		processTupleSlot(wstate, wstate->curslot);
+		processTupleSlot(wstate, wstate->curslot, false);
 
 	/* Increment the current_row in the frame buffer for each
 	 * key level.
@@ -3342,7 +3348,10 @@ ExecWindow(WindowState *wstate)
 	{
 		next_tupleslot = fetchTupleSlotThroughBuf(wstate);
 
-		processTupleSlot(wstate, next_tupleslot);
+		if (TupIsNull(next_tupleslot) || wstate->cur_slot_part_break)
+			last_peer = true;
+
+		processTupleSlot(wstate, next_tupleslot, last_peer);
 		if (!TupIsNull(next_tupleslot))
 			output_ready = checkOutputReady(wstate);
 		else
@@ -3416,9 +3425,13 @@ resetTransValues(WindowStatePerLevel level_state,
  * key level to compute an intermediate result.
  *
  * We only handle non-trivial window functions here.
+ *
+ * 'last_peer' indicates if the tuple to be inserted is the last tuple from
+ * the input. It is used to determine if the trailing edge and leading edge
+ * need to be adjusted.
  */
 static void
-processTupleSlot(WindowState *wstate, TupleTableSlot *slot)
+processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 {
 	int level;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
@@ -3458,7 +3471,7 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot)
 				 * frame needs this for order keys.
 				 */
 				econtext->ecxt_scantuple = wstate->priorslot;
-				appendToFrameBuffer(level_state, econtext, wstate);
+				appendToFrameBuffer(level_state, econtext, wstate, last_peer);
 			}
 
 			/* If this slot causes the partition key to break, we don't add
@@ -3833,42 +3846,57 @@ init_frames(WindowState *wstate)
 			}
 			else
 			{
-				Oid ordfuncid;
+				Oid ineq_ordfuncid;
+				Oid eq_ordfuncid;
 				TupleDesc tup = ExecGetResultType(wstate->ps.lefttree); 
 				AttrNumber attnum;
-				Datum datum;
-				FmgrInfo fcinfo;
-				Operator optup;
-
+				Datum ineq_datum;
+				Datum eq_datum;
+				FmgrInfo ineq_fcinfo;
+				FmgrInfo eq_fcinfo;
+				Operator ineq_optup;
+				Operator eq_optup;
 
 				attnum = level_state->sortColIdx[0];
-				optup = ordering_oper(tup->attrs[attnum - 1]->atttypid,
-									  false);
-				
-				ordfuncid = oprfuncid(optup); 
-				ReleaseSysCache(optup);
 
-				fmgr_info(ordfuncid, &fcinfo);
-				
-				/* is trail less than lead */
+				ineq_optup = ordering_oper(tup->attrs[attnum - 1]->atttypid,
+										   false);
+				ineq_ordfuncid = oprfuncid(ineq_optup); 
+				ReleaseSysCache(ineq_optup);
+				fmgr_info(ineq_ordfuncid, &ineq_fcinfo);
+
+				eq_optup = equality_oper(tup->attrs[attnum - 1]->atttypid,
+										 false);
+				eq_ordfuncid = oprfuncid(eq_optup); 
+				ReleaseSysCache(eq_optup);
+				fmgr_info(eq_ordfuncid, &eq_fcinfo);
+
+				/* is trail less than or equal to lead */
 				if (level_state->col_sort_asc[0])
-					datum = FunctionCall2(&fcinfo, level_state->trail_range,
-										  level_state->lead_range);
+				{
+					ineq_datum = FunctionCall2(&ineq_fcinfo, level_state->trail_range,
+											   level_state->lead_range);
+					eq_datum = FunctionCall2(&eq_fcinfo, level_state->trail_range,
+											 level_state->lead_range);
+				}
+				
 				else
+				{
 					/* reverse argument order */
-					datum = FunctionCall2(&fcinfo, level_state->lead_range,
-										  level_state->trail_range);
-			
-
+					ineq_datum = FunctionCall2(&ineq_fcinfo, level_state->lead_range,
+											   level_state->trail_range);
+					eq_datum = FunctionCall2(&eq_fcinfo, level_state->lead_range,
+											 level_state->trail_range);
+				}
 
 				if (is_pre)
 				{
-					if (DatumGetBool(datum))
+					if (DatumGetBool(ineq_datum) && !DatumGetBool(eq_datum))
 						level_state->empty_frame = true;
 				}
 				else
 				{
-					if (!DatumGetBool(datum))
+					if (!DatumGetBool(ineq_datum) && !DatumGetBool(eq_datum))
 						level_state->empty_frame = true;
 				}
 			}
