@@ -159,17 +159,25 @@ def waitSession(session):
     permissionDenied = False
     for p in session:
         p.x_res = p.fromchild.read()
-        if opt['-v']: print p.x_res
         try:
             p.x_res = pickle.loads(p.x_res)
-        except pickle.UnpicklingError:
+        except KeyboardInterrupt:
+            raise
+        except:
             permissionDenied = (p.x_res.find('Permission denied') >= 0)
-            if not permissionDenied:
-                errmsg = '[ERROR %s] bad output while %s' % (p.x_peer, p.x_ssh)
-                print errmsg
+            if permissionDenied:
+                errmsg = '[ERROR %s] ssh permission denied while %s' % (p.x_peer, p.x_ssh)
+            else:
+                noSuchFile = (p.x_res.find('No such file') >= 0)
+                if noSuchFile:
+                    errmsg = '[ERROR %s] no such file error while %s' % (p.x_peer, p.x_ssh)
+                else:
+                    errmsg = '[ERROR %s] bad output while %s' % (p.x_peer, p.x_ssh)
+            print errmsg
+        if opt['-v']: print p.x_res
 	status = p.wait()
 	if status:
-	    errmsg = '[ERROR %s] Command failed. Exit status = %s' % (p.x_peer, status)
+	    errmsg = '[ERROR %s] Command failed. Exit status = %s. Command = %s' % (p.x_peer, status, p.x_ssh)
 	    print errmsg
 		
     if permissionDenied:
@@ -180,35 +188,42 @@ def waitSession(session):
     if errmsg: sys.exit(1)
 
 
+def perr(host, s):
+    print '   ERROR: on %s - %s' % (host, s)
+
+
 def match(session, key, value):
     ok = True
+    print 'checking: %s = %s' % (key, value)
     for p in session:
         v = p.x_res.get(key, '')
         p.x_match = (v == value)
         if not p.x_match: 
-            print '  [ERROR %s] %s mismatch (value %s should == %s)' % (p.x_peer, key, v, value)
+            perr(p.x_peer, '%s mismatch (value %s should == %s)' % (key, v, value))
             ok = False
     return ok
 
 def matchList(session, key, value):
     ok = True
+    print 'checking: %s = %s' % (key, value)
     for p in session:
 	v = p.x_res.get(key, '')
 	l = v.split()
         p.x_match = (l == value)
         if not p.x_match:
-	    print '  [Error %s] %s mismatch (value %s should == %s)' % (p.x_peer, key, str(l), str(value))
+            perr(p.x_peer, '%s mismatch (value %s should == %s)' % (key, str(l), str(value)))
             ok = False
     return ok
 
 def matchMore(session, key, value):
     ok = True
+    print 'checking: %s >= %s' % (key, value)
     value = int(value)
     for p in session:
         v = int(p.x_res.get(key, 0))
         p.x_match = (v >= value)
         if not p.x_match:
-            print '  [ERROR %s] %s invalid (value %s should be >= %s)' % (p.x_peer, key, v, value)
+            perr(p.x_peer, '%s invalid (value %s should be >= %s)' % (key, v, value))
 
 try:
     parseCommandLine()
@@ -234,32 +249,31 @@ try:
     for p in session:
         value = p.x_res.get(key)
         if not value:
-            print '  [ERROR %s] GPHOME not set' % p.x_peer
-
+            perr(p.x_peer, 'GPHOME not set')
+            
     # check postgres 
     key = 'gp.postgres.md5'
     value = p0.x_res.get(key)
     if not value: 
-        print '  [ERROR %s] postgres binaries unavailable' % p0.x_peer
+        perr(p0.x_peer, 'postgres binaries unavailable')
     else:
-        print key, '=', value
         match(session, key, value)
         # check postgres version
         key = 'gp.postgres.version'
         value = p0.x_res.get(key)
         if not value: 
-            print '  [ERROR %s] postgres version unavailable' % p0.x_peer
+            perr(p0.x_peer, 'postgres version unavailable')
         else:
-            print key, '=', value
             match(session, key, value)
 
     key = 'python.platform.system'
     value = p0.x_res.get(key)
+    print 'checking: %s = linux or sunos' % key
     if value == 'linux' and match(session, key, 'linux'):
         key = 'python.platform.release'
         v = session[0].x_res['python.platform.release']
         if v.find('2.6') != 0:
-            print '  [ERROR %s] Linux version (version %s should be >= 2.6)' % (p.x_peer, v)
+            perr(p.x_peer, 'Linux version (version %s should be >= 2.6)' % v)
         elif match(session, key, v):
             # check shm
             key = 'sysctl.kernel.shmmax'
@@ -295,7 +309,7 @@ try:
         key = 'python.platform.release'
         v = session[0].x_res['python.platform.release']
         if v.find('5.10') != 0:
-            print '  [ERROR %s] Solaris version (version %s should be >= 5.10)' % (p.x_peer, v)
+            perr(p.x_peer, 'Solaris version (version %s should be >= 5.10)' % v)
         elif match(session, key, v):
             # check ndd
             key = 'ndd.tcp_conn_req_max_q'
@@ -326,12 +340,8 @@ try:
             key = 'system.semsys:seminfo_semmi'
             match(session, key, '1024')
     
-    elif value:
-        print ('[ERROR %s] invalid system (value %s should be either Linux or SunOS)' 
-               % (p0.x_peer, value))
     else:
-        print ('[ERROR %s] unknown system (key %s should be either Linux or SunOS)' 
-               % (p0.x_peer, key))
+        perr(p0.x_peer, 'unknown system (key %s should be either Linux or SunOS)' % key)
 
     
 
