@@ -264,16 +264,14 @@ static apr_status_t seg_initdb_pg_hba_append(gpcc_event_t* ev, void *_cmdslot)
 #define MAX_HOSTS_PER_NODE  4
 
     /* find number of nodes */
-    i = 0;
+    nnode = 0;
     while (1) {
-	sprintf(nodename, "node.%d", i);
-	addr = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, nodename, 0);
-	if (! addr) 
+	sprintf(nodename, "node.%d", nnode);
+	if (gpcc_json_object_get_string(cmdslot->u.seg.request.msg, nodename, 0) == 0)
 	    break;
-	i++;
+	nnode++;
     }
 
-    nnode = i;
     hosts = apr_pcalloc(cmdslot->u.seg.request.subpool, sizeof(char *) * (nnode * MAX_HOSTS_PER_NODE + 1));
     for (i = 0 ; i < nnode ; i++) {
 	sprintf(nodename, "node.%d", i);
@@ -374,7 +372,40 @@ static apr_status_t seg_initdb_wait(gpcc_event_t* ev, void *_cmdslot)
     return 0;
 }
 
+static apr_status_t seg_initdb_update_gp_id(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    int nsegment = 0;
+    char segname[32];
+    char *gpname = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, "gpdb.name", "mygpdb");
 
+    while (1) {
+	sprintf(segname, "gpdb.seg.%d.0", nsegment);
+	if (gpcc_json_object_get_string(cmdslot->u.seg.request.msg, segname, 0) == 0) {
+	    break;
+	}
+	nsegment++;
+    }
+    
+    return gpcc_pg_update_gp_id(cmdslot->u.seg.request.port,
+				gpname,
+				nsegment,
+				cmdslot->u.seg.request.dbid,
+				cmdslot->u.seg.request.content,
+				cmdslot->u.seg.request.subpool);
+}
+
+static apr_status_t seg_initdb_update_gp_configuration(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+
+    if (strstr(cmdslot->cmdname, "gpdb.seg.m.") == 0)
+	return 0;
+
+    /* TODO: update gp_configuration table */
+
+    return 0;
+}
 
 static apr_status_t seg_initdb_start_wait(gpcc_event_t* ev, void *_cmdslot)
 {
@@ -388,11 +419,24 @@ static apr_status_t seg_initdb_start_wait(gpcc_event_t* ev, void *_cmdslot)
     if (e == APR_CHILD_DONE) {
 	if (ret == 0) {
 	    /* check pg_ctl status for sure */
+	    if (0 != (e = gpcc_pg_ctl_status(cmdslot->u.seg.request.port,
+					     cmdslot->u.seg.request.data_dir,
+					     cmdslot->u.seg.request.subpool))) {
+		seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL2_EVENT, e, "database is not running");
+		return 0;
+	    }
 
 	    /* update gp_id */
-
+	    if (0 != (e = seg_initdb_update_gp_id(ev, _cmdslot))) {
+		seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL2_EVENT, e, "update gp_id table failure");
+		return 0;
+	    }
 
 	    /* update gp_configuration */
+	    if (0 != (e = seg_initdb_update_gp_configuration(ev, _cmdslot))) {
+		seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL2_EVENT, e, "update gp_configuration table failure");
+		return 0;
+	    }
 
 
 	    evt = gpcc_event_alloc(SEG_INITDB_NEXT_EVENT, cmdslot->cmdidx, 0);
@@ -412,18 +456,61 @@ static apr_status_t seg_initdb_start_wait(gpcc_event_t* ev, void *_cmdslot)
 
 /**
  *  backout1 -- backout after initdb
+ *
+ *  rm -f $DATAT_DIR 
  */
 static apr_status_t seg_initdb_backout1(gpcc_event_t *ev, void *_cmdslot)
 {
-    
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    apr_proc_t proc;
+    char cmd[1024];
+    char *argv[2];
+    int e;
+
+    sprintf(cmd, "rm -r %s", cmdslot->u.seg.request.data_dir);
+    argv[0] = cmd;
+    argv[1] = 0;
+
+    if (0 != (e = gpcc_proc_run_shell(&proc, cmd, (const char *const *) argv, 0, 1, cmdslot->u.seg.request.subpool))) {
+	gpcc_warning(FLINE, "failed to run command: %s", cmd);
+    }
+
     return 0;
 }
 
 /**
  *  backout2 -- initdb success but start failure
+ *
+ *  rm -f /tmp/.s.PGSQL.$GP_PORT*
+ *  rm -f $DATA_DIR.log
+ *  pg_ctl stop
  */
 static apr_status_t seg_initdb_backout2(gpcc_event_t *ev, void *_cmdslot)
 {
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    apr_proc_t proc;
+    char cmd[1024];
+    char *argv[2];
+    int e;
+
+    sprintf(cmd, "rm -f /tmp/.s.PGSQL.%d* ; rm -f %s.log", 
+	    cmdslot->u.seg.request.port,
+	    cmdslot->u.seg.request.data_dir);
+    argv[0] = cmd;
+    argv[1] = 0;
+
+    if (0 != (e = gpcc_proc_run_shell(&proc, cmd, (const char *const *)argv, 0, 1, cmdslot->u.seg.request.subpool))) {
+	gpcc_warning(FLINE, "failed to run command: %s", cmd);
+    }
+    
+
+    if (0 != (e = gpcc_proc_pg_ctl_stop(&proc, cmdslot->u.seg.request.port,
+					cmdslot->u.seg.request.data_dir,
+					cmdslot->u.seg.request.mode,
+					0, 1, 
+					cmdslot->u.seg.request.subpool))) {
+	gpcc_warning(FLINE, "failed to stop database");
+    }
 
     return 0;
 }
