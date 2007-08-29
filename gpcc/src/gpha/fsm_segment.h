@@ -185,7 +185,7 @@ static apr_status_t seg_initdb(gpcc_event_t* ev, void *_cmdslot)
     apr_pool_create(&cmdslot->u.seg.request.subpool, cmdslot->pool);
 
     if (!obj) {
-	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, 1, "json_tokener_parse error");
+	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "json_tokener_parse error");
 	json_object_put(obj);
 	return 0;
     }
@@ -200,7 +200,7 @@ static apr_status_t seg_initdb(gpcc_event_t* ev, void *_cmdslot)
     if (cmdslot->u.seg.request.port == 0 || 
 	cmdslot->u.seg.request.mode == 0 ||
 	cmdslot->u.seg.request.data_dir == 0) {	
-	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, 1, "parameter is missing");
+	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "parameter is missing");
 	json_object_put(obj);
 	return 0;
     }
@@ -210,21 +210,21 @@ static apr_status_t seg_initdb(gpcc_event_t* ev, void *_cmdslot)
     /* check initdb is valid */
     apr_filepath_merge(&initdbfn, gpha.gphome, "initdb", 0, cmdslot->u.seg.request.subpool);
     if (! gpcc_file_exists(initdbfn)) {
-	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, 1, "initdb not found");
+	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "initdb not found");
 	json_object_put(obj);
 	return 0;
     }
 
     /* check data_dir exists */
     if (gpcc_file_directory_exists(cmdslot->u.seg.request.data_dir)) {
-	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, 1, "data directory exists");
+	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "data directory exists");
 	json_object_put(obj);
 	return 0;
     }	
 
     /* check database is running (port)*/
     if (0 == (e = gpcc_pg_pid_active(cmdslot->u.seg.request.port, &pid, cmdslot->u.seg.request.subpool))) {
-	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, 1, "database is running");
+	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "database is running");
 	json_object_put(obj);
 	return 0;	
     }
@@ -240,7 +240,7 @@ static apr_status_t seg_initdb(gpcc_event_t* ev, void *_cmdslot)
 				   1,
 				   cmdslot->u.seg.request.subpool))) {
 
-	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, e, "initdb failure");
+	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, e, "initdb failure");
 	json_object_put(obj);
 	return 0;
     }
