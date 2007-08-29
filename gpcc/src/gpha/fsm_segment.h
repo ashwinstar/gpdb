@@ -296,7 +296,6 @@ static apr_status_t seg_initdb_pg_conf_update(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     gpcc_pg_conf_subst_t subst[5];
-    int e;
 
     if (strstr(cmdslot->cmdname, "gpdb.seg.m.") != 0) {
 	subst[0].pattern = "#log_statement";
@@ -323,13 +322,7 @@ static apr_status_t seg_initdb_pg_conf_update(gpcc_event_t *ev, void *_cmdslot)
     }
     
 
-    if (0 != (e = gpcc_pg_update_postgresql_conf(cmdslot->u.seg.request.data_dir, subst, cmdslot->u.seg.request.subpool))) {
-	seg_request_error(ev, _cmdslot, SEG_INITDB_DONE_EVENT, e, "failed to update postgresql.conf");
-	return e;
-    }
-
-    return 0;
-
+    return gpcc_pg_update_postgresql_conf(cmdslot->u.seg.request.data_dir, subst, cmdslot->u.seg.request.subpool);
 }
 
 static apr_status_t seg_initdb_wait(gpcc_event_t* ev, void *_cmdslot)
