@@ -3051,3 +3051,23 @@ FROM sale;
   4 |    1 |     
 (12 rows)
 
+-- MPP-1892
+SELECT sale.vn,sale.cn,sale.prc,sale.pn,sale.prc,
+COUNT(floor(sale.prc)) OVER(partition by sale.vn,sale.cn,sale.prc,sale.vn order by sale.pn asc range between unbounded preceding and 1 preceding) as count 
+from sale;
+ vn | cn | prc  | pn  | prc  | count 
+----+----+------+-----+------+-------
+ 40 |  2 | 2400 | 100 | 2400 |     0
+ 50 |  2 |    0 | 400 |    0 |     0
+ 10 |  1 |    0 | 200 |    0 |     0
+ 20 |  1 |    0 | 100 |    0 |     0
+ 30 |  1 |    0 | 300 |    0 |     0
+ 30 |  1 |    5 | 500 |    5 |     0
+ 30 |  3 |    5 | 500 |    5 |     0
+ 30 |  3 |    5 | 600 |    5 |     1
+ 40 |  3 |    0 | 200 |    0 |     0
+ 40 |  4 |    1 | 700 |    1 |     0
+ 40 |  4 |    1 | 800 |    1 |     1
+ 50 |  1 |    0 | 400 |    0 |     0
+(12 rows)
+

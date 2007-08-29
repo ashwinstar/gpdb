@@ -2885,35 +2885,39 @@ adjustEdges(WindowFrameBuffer buffer,
 
 			if (need_adjust)
 			{
-				/* Check if the last row is the leading edge */
-				Datum curr_key;
-				bool curr_key_isnull;
-				
-				/* Check if the last row is the trailing edge. */
-				ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
-												  wstate->spare);
-				econtext->ecxt_scantuple = wstate->spare;
-				deform_window_tuple(econtext->ecxt_scantuple,
-									level_state->numSortCols, level_state->sortColIdx,
-									&curr_key, &curr_key_isnull,
-									wstate->transcontext);
-				if (!cmp_deformed_tuple(&curr_key, &curr_key_isnull,
-										new_lead_keys, new_lead_keys_isnull,
-										level_state->col_sort_asc,
-										level_state->numSortCols,
-										level_state->ltfunctions,
-										level_state->eqfunctions,
-										econtext->ecxt_per_tuple_memory,
-										false) &&
-					!cmp_deformed_tuple(&curr_key, &curr_key_isnull,
-										new_lead_keys, new_lead_keys_isnull,
-										level_state->col_sort_asc,
-										level_state->numSortCols,
-										level_state->ltfunctions,
-										level_state->eqfunctions,
-										econtext->ecxt_per_tuple_memory,
-										true))
+				if (wstate->input_buffer->part_break)
 					ntuplestore_acc_seek_last(level_state->lead_reader);
+				else
+				{
+					/* Check if the last row is the leading edge */
+					Datum curr_key;
+					bool curr_key_isnull;
+				
+					ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
+													  wstate->spare);
+					econtext->ecxt_scantuple = wstate->spare;
+					deform_window_tuple(econtext->ecxt_scantuple,
+										level_state->numSortCols, level_state->sortColIdx,
+										&curr_key, &curr_key_isnull,
+										wstate->transcontext);
+					if (!cmp_deformed_tuple(&curr_key, &curr_key_isnull,
+											new_lead_keys, new_lead_keys_isnull,
+											level_state->col_sort_asc,
+											level_state->numSortCols,
+											level_state->ltfunctions,
+											level_state->eqfunctions,
+											econtext->ecxt_per_tuple_memory,
+											false) &&
+						!cmp_deformed_tuple(&curr_key, &curr_key_isnull,
+											new_lead_keys, new_lead_keys_isnull,
+											level_state->col_sort_asc,
+											level_state->numSortCols,
+											level_state->ltfunctions,
+											level_state->eqfunctions,
+											econtext->ecxt_per_tuple_memory,
+											true))
+						ntuplestore_acc_seek_last(level_state->lead_reader);
+				}
 			}
 		}
 		else if (EDGE_IS_CURRENT_ROW(level_state->frame->lead))

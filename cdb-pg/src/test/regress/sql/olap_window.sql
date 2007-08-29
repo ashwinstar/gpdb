@@ -743,3 +743,8 @@ FROM sale;
 SELECT sale.cn,sale.qty,
 SUM(floor(sale.qty)) OVER(order by sale.cn asc rows between 2 following and 2 following) as sum
 FROM sale;
+
+-- MPP-1892
+SELECT sale.vn,sale.cn,sale.prc,sale.pn,sale.prc,
+COUNT(floor(sale.prc)) OVER(partition by sale.vn,sale.cn,sale.prc,sale.vn order by sale.pn asc range between unbounded preceding and 1 preceding) as count 
+from sale;
