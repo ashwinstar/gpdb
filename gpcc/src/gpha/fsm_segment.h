@@ -518,6 +518,17 @@ static apr_status_t seg_initdb_backout2(gpcc_event_t *ev, void *_cmdslot)
 static apr_status_t seg_initdb_checkdb(gpcc_event_t* ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    int e;
+    char *user = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, "gpdb.user", getenv("USER"));
+    char *passwd = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, "gpdb.password", "mpparray");
+
+    if (0 != (e = gpcc_pg_change_password(cmdslot->u.seg.request.port,
+					  user,
+					  passwd,
+					  cmdslot->u.seg.request.subpool))) {
+	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL2_EVENT, e, "change password failure");
+	return 0;
+    }
 
     /* save the setting port and data_dir permanently */
     if (cmdslot->u.seg.port == 0) {
