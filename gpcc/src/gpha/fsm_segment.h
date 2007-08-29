@@ -507,7 +507,7 @@ static apr_status_t seg_initdb_backout2(gpcc_event_t *ev, void *_cmdslot)
     if (0 != (e = gpcc_proc_pg_ctl_stop(&proc, cmdslot->u.seg.request.port,
 					cmdslot->u.seg.request.data_dir,
 					"immediate",
-					0, 1, 
+					1, 1, 
 					cmdslot->u.seg.request.subpool))) {
 	gpcc_warning(FLINE, "failed to stop database");
     }
