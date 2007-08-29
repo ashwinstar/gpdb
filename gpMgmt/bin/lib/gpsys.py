@@ -171,13 +171,17 @@ do_gppath(res)
 do_postgres_md5(res)
 do_postgres_version(res)
 do_platform(res)
-if res['python.platform.system'] == 'sunos':
+system = res['python.platform.system']
+if system == 'sunos':
     do_system(res)
     do_ndd(res)
-elif res['python.platform.system'] == 'linux':
+elif system == 'linux':
     do_sysctl(res)
     do_ulimit(res)
     do_meminfo(res)
+elif system == 'darwin': 
+    do_sysctl(res)
+    do_ulimit(res)
 
 
 if opt['-p']:
