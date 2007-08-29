@@ -727,3 +727,11 @@ select cn,count(*) over (order by cn range between unbounded preceding and unbou
 SELECT sale.vn,
 COUNT(vn) OVER(order by sale.vn asc range between unbounded preceding and 2 preceding)
 FROM sale;
+
+-- aggregates in multiple key levels
+select cn,pn,vn, count(*) over (order by cn) as c1, 
+count(*) over (order by cn,vn) as c2,
+count(*) over (order by cn,vn,pn) as c3 from sale;
+select cn,pn,vn, count(*) over (order by cn range between 2 preceding and 2 following) as c1,
+count(*) over (order by cn,vn rows between 2 preceding and 2 following) as c2,
+count(*) over (order by cn,vn,pn) as c3 from sale;

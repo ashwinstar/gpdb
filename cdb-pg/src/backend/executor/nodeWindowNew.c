@@ -161,7 +161,6 @@ typedef struct WindowStatePerFunctionData
 	/* Indicate if this function requires a range cumulative frame. */
 	bool                cumul_frame;
 	
-
 	int					numargs; /* explicit, caller-supplied args */
 	int16				resulttypeLen;
 	bool				resulttypeByVal;
@@ -210,6 +209,13 @@ typedef struct WindowStatePerFunctionData
 
 	/* frame does not require buffering and complexity of invokeWindowFuncs() */
 	bool				trivial_frame;
+
+	/* The index for the intermediate value of this function when serializing
+	 * its value along with others before storing them into frame buffers.
+	 *
+	 * The initial value is -1.
+	 */
+	int                 serial_index;
 } WindowStatePerFunctionData;
 
 /* 
@@ -426,6 +432,8 @@ static void advanceKeyLevelState(WindowState *wstate, int min_level);
 static void init_frames(WindowState *wstate);
 static void deform_window_tuple(TupleTableSlot *slot, int nattrs, AttrNumber *attnums, 
 								Datum *values, bool *nulls, MemoryContext ctx);
+static int findSerialIndex(WindowStatePerFunction funcstate,
+						   WindowStatePerLevel level_state);
 
 
 /*
@@ -595,6 +603,32 @@ ensureSpace(char **p_serial_entry, Size *p_max_size,
 	}
 }
 
+/*
+ * findSerialIndex -- find the index for a given function in a key level
+ * when serializing all intermediate results before writing them to
+ * the frame buffer.
+ */
+static int findSerialIndex(WindowStatePerFunction funcstate,
+						   WindowStatePerLevel level_state)
+{
+	ListCell *lc;
+	int serial_index = -1;
+	foreach(lc, level_state->level_funcs)
+	{
+		WindowStatePerFunction curr_funcstate = (WindowStatePerFunction) lfirst(lc);
+		if (curr_funcstate->trivial_frame &&
+			curr_funcstate->windowfn_oid != CUME_DIST_PRELIM_OID)
+		{
+			/* ignore trivial window functions */
+			continue;
+		}
+
+		serial_index++;
+		if (curr_funcstate == funcstate)
+			break;
+	}
+	return serial_index;
+}
 
 /*
  * serializeFuncs -- serialize values for all functions in a given
@@ -608,13 +642,12 @@ serializeFuncs(WindowStatePerLevel level_state,
 {
 	ListCell *lc;
 	char *written_pos = (*p_serial_entry) + start_pos;
-	int value_no = 0;
+	int serial_index = -1;
 
 	/* the value for each function. */
 	foreach (lc, level_state->level_funcs)
 	{
 		WindowStatePerFunction funcstate = (WindowStatePerFunction) lfirst(lc);
-		value_no++;
 
 		if (funcstate->trivial_frame &&
 			funcstate->windowfn_oid != CUME_DIST_PRELIM_OID)
@@ -662,6 +695,8 @@ serializeFuncs(WindowStatePerLevel level_state,
 					written_pos += typelen;
 				}
 			}
+			serial_index++;
+			funcstate->serial_index = serial_index;
 		}
 
 		/* the function which has an inverse preliminary function */
@@ -699,6 +734,9 @@ serializeFuncs(WindowStatePerLevel level_state,
 					written_pos += real_size;
 				}
 			}
+
+			serial_index++;
+			funcstate->serial_index = serial_index;
 		}
 		
 		/* the general case */
@@ -749,6 +787,8 @@ serializeFuncs(WindowStatePerLevel level_state,
 					}
 				}
 			}
+			serial_index++;
+			funcstate->serial_index = serial_index;
 		}
 	}
 
@@ -1148,14 +1188,24 @@ appendToFrameBuffer(WindowStatePerLevel level_state,
 	 */
 	if (level_state->is_rows)
 	{
-		if (!ntuplestore_acc_tell(level_state->lead_reader, NULL))
-			level_state->num_lead_rows++;
-		else if (level_state->num_lead_rows < level_state->lead_rows)
+		if (level_state->num_lead_rows < level_state->lead_rows)
 		{
-			bool found = ntuplestore_acc_advance(level_state->lead_reader, 1);
-			Assert(found);
-			level_state->num_lead_rows++;
+			if (!ntuplestore_acc_tell(level_state->lead_reader, NULL))
+				level_state->num_lead_rows++;
+			else
+			{
+				bool found = ntuplestore_acc_advance(level_state->lead_reader, 1);
+				Assert(found);
+				level_state->num_lead_rows++;
+			}
 		}
+
+		/* If the leading reader is not set, set it here. */
+		else if (level_state->frame->lead->kind != WINDOW_BOUND_PRECEDING &&
+				 !ntuplestore_acc_tell(level_state->lead_reader, NULL))
+			ntuplestore_acc_seek_last(level_state->lead_reader);
+		else if (level_state->frame->lead->kind == WINDOW_BOUND_PRECEDING)
+			level_state->num_lead_rows++;
 	}
 	
 	else
@@ -1459,6 +1509,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 			funcstate->win_value = value->value;
 			funcstate->win_value_is_null = value->valueIsNull;
 		}
+		value_no++;
 	}
 
 	/*
@@ -1596,6 +1647,8 @@ computeFrameValue(WindowStatePerLevel level_state,
 				funcstate->final_aggNoTransValue = funcstate->aggNoTransValue;
 			}
 		}
+
+		value_no++;
 	}
 
 	/*
@@ -1628,6 +1681,8 @@ initWindowFuncState(WindowState *wstate, Window *node)
 	numrefs = list_length(wstate->wrxstates);
 
 	wstate->func_state = palloc0(sizeof(WindowStatePerFunctionData) *  numrefs);
+
+	wstate->func_state->serial_index = -1;
 
 	/* Initialize per window ref (both ordinary and aggregate derived). */
 	refno = -1;
@@ -2389,7 +2444,7 @@ add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 }
 
 static void
-invokeTrivialFuncs(WindowState *wstate, bool last_peer, bool *found)
+invokeTrivialFuncs(WindowState *wstate, bool *found)
 {
 	int funcno;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
@@ -2397,10 +2452,7 @@ invokeTrivialFuncs(WindowState *wstate, bool last_peer, bool *found)
 	for (funcno = 0; funcno < wstate->numfuncs; funcno++)
 	{
 		WindowStatePerFunction funcstate = &wstate->func_state[funcno];
-		WindowStatePerLevel level_state = NULL;
-
-		if (PointerIsValid(funcstate->wlevel))
-			level_state = &wstate->level_state[funcstate->wlevel->level];
+		WindowStatePerLevel level_state = funcstate->wlevel;
 		
 		if (funcstate->trivial_frame)
 		{
@@ -2415,11 +2467,63 @@ invokeTrivialFuncs(WindowState *wstate, bool last_peer, bool *found)
 			}
 		}
 		
-		else if (last_peer && funcstate->cumul_frame)
+		else if (funcstate->cumul_frame)
 		{
-			funcstate->final_aggTransValue = funcstate->aggTransValue;
-			funcstate->final_aggTransValueIsNull = funcstate->aggTransValueIsNull;
-			funcstate->final_aggNoTransValue = funcstate->aggNoTransValue;
+			WindowFrameBuffer frame_buffer;
+			
+			Assert(level_state != NULL);
+			frame_buffer = level_state->frame_buffer;
+
+			/* When the current_row_reader is set, we retrieve the intermediate
+			 * accumulated aggregate value from the buffer.
+			 */
+			if (ntuplestore_acc_tell(frame_buffer->current_row_reader, NULL))
+			{
+				FrameBufferEntryForRange *range_entry;
+				FrameBufferEntryForRows *rows_entry;
+				WindowValue *value;
+				
+				if (funcstate->serial_index == -1)
+					funcstate->serial_index = findSerialIndex(funcstate, level_state);
+
+				if (level_state->is_rows)
+				{
+					rows_entry = (FrameBufferEntryForRows *)
+						getCurrentValue(frame_buffer->current_row_reader,
+										level_state);
+					Assert(rows_entry != NULL);
+					value = (WindowValue *)list_nth(rows_entry->func_values,
+													funcstate->serial_index);
+				}
+				
+				else
+				{
+					range_entry = (FrameBufferEntryForRange *)
+						getCurrentValue(frame_buffer->current_row_reader,
+												  level_state);
+					Assert(range_entry != NULL);
+					value = (WindowValue *)list_nth(range_entry->func_values,
+													funcstate->serial_index);
+				}
+
+				Assert(value != NULL);
+				funcstate->final_aggTransValue = datumCopy(value->value,
+														   funcstate->aggTranstypeByVal,
+														   funcstate->aggTranstypeLen);
+				funcstate->final_aggTransValueIsNull = value->valueIsNull;
+				funcstate->final_aggNoTransValue = false;
+
+				pfree(value);
+			}
+
+			/* Otherwise, the value for the current_rows is stored in aggTransValue.
+			 */
+			else
+			{
+				funcstate->final_aggTransValue = funcstate->aggTransValue;
+				funcstate->final_aggTransValueIsNull = funcstate->aggTransValueIsNull;
+				funcstate->final_aggNoTransValue = funcstate->aggNoTransValue;
+			}
 		}
 			
 		else if (!funcstate->trivial_frame && !funcstate->cumul_frame)
@@ -2939,11 +3043,11 @@ finaliseFuncs(WindowState *wstate)
  * every single time it moves.
  */
 static void
-invokeWindowFuncs(WindowState *wstate, bool last_peer)
+invokeWindowFuncs(WindowState *wstate)
 {	
 	bool found_complex_func = false;
 
-	invokeTrivialFuncs(wstate, last_peer, &found_complex_func);
+	invokeTrivialFuncs(wstate, &found_complex_func);
 
 	/* 
 	 * If there are no functions/frames which need non-trivial window
@@ -3189,7 +3293,6 @@ ExecWindow(WindowState *wstate)
 	ExprContext *econtext;
 	int level;
 	ExprDoneCond isDone;
-	bool last_peer = false;
 
 	econtext = wstate->ps.ps_ExprContext;
 
@@ -3239,9 +3342,6 @@ ExecWindow(WindowState *wstate)
 	{
 		next_tupleslot = fetchTupleSlotThroughBuf(wstate);
 
-		if (TupIsNull(next_tupleslot) || wstate->cur_slot_part_break)
-			last_peer = true;
-
 		processTupleSlot(wstate, next_tupleslot);
 		if (!TupIsNull(next_tupleslot))
 			output_ready = checkOutputReady(wstate);
@@ -3252,7 +3352,7 @@ ExecWindow(WindowState *wstate)
 	econtext->ecxt_scantuple = wstate->curslot;
 	econtext->ecxt_outertuple = wstate->curslot;
 
-	invokeWindowFuncs(wstate, last_peer);
+	invokeWindowFuncs(wstate);
 	
 	/*
 	 * Form the result tuple using ExecProject(), and return it.

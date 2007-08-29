@@ -2973,3 +2973,42 @@ FROM sale;
  50 |    10
 (12 rows)
 
+-- aggregates in multiple key levels
+select cn,pn,vn, count(*) over (order by cn) as c1, 
+count(*) over (order by cn,vn) as c2,
+count(*) over (order by cn,vn,pn) as c3 from sale;
+ cn | pn  | vn | c1 | c2 | c3 
+----+-----+----+----+----+----
+  1 | 200 | 10 |  5 |  1 |  1
+  1 | 100 | 20 |  5 |  2 |  2
+  1 | 300 | 30 |  5 |  4 |  3
+  1 | 500 | 30 |  5 |  4 |  4
+  1 | 400 | 50 |  5 |  5 |  5
+  2 | 100 | 40 |  7 |  6 |  6
+  2 | 400 | 50 |  7 |  7 |  7
+  3 | 500 | 30 | 10 |  9 |  8
+  3 | 600 | 30 | 10 |  9 |  9
+  3 | 200 | 40 | 10 | 10 | 10
+  4 | 700 | 40 | 12 | 12 | 11
+  4 | 800 | 40 | 12 | 12 | 12
+(12 rows)
+
+select cn,pn,vn, count(*) over (order by cn range between 2 preceding and 2 following) as c1,
+count(*) over (order by cn,vn rows between 2 preceding and 2 following) as c2,
+count(*) over (order by cn,vn,pn) as c3 from sale;
+ cn | pn  | vn | c1 | c2 | c3 
+----+-----+----+----+----+----
+  1 | 200 | 10 | 10 |  3 |  1
+  1 | 100 | 20 | 10 |  4 |  2
+  1 | 300 | 30 | 10 |  5 |  3
+  1 | 500 | 30 | 10 |  5 |  4
+  1 | 400 | 50 | 10 |  5 |  5
+  2 | 100 | 40 | 12 |  5 |  6
+  2 | 400 | 50 | 12 |  5 |  7
+  3 | 500 | 30 | 12 |  5 |  8
+  3 | 600 | 30 | 12 |  5 |  9
+  3 | 200 | 40 | 12 |  5 | 10
+  4 | 700 | 40 |  7 |  4 | 11
+  4 | 800 | 40 |  7 |  3 | 12
+(12 rows)
+
