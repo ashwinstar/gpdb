@@ -147,16 +147,24 @@ static apr_status_t seg_request_cleanup(gpcc_event_t* ev, void *_cmdslot)
     return 0;
 }
 
-static apr_status_t seg_request_error(gpcc_event_t *ev, void *_cmdslot, event_t event, int exitcode, char *reason)
+static apr_status_t seg_request_error(gpcc_event_t *ev, void *_cmdslot, event_t event, int exitcode, char *fmt, ...)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     gpcc_event_t *evt;
-    
-    gpcc_warning(FLINE, reason);
+
     evt = gpcc_event_alloc(event, cmdslot->cmdidx, 0);
     cmdslot->u.seg.request.exitcode = exitcode;
-    cmdslot->u.seg.request.reason = (reason ? apr_pstrdup(cmdslot->u.seg.request.subpool, reason) : "");
+    if (fmt) {
+	va_list ap;
+	va_start(ap, fmt);
+	cmdslot->u.seg.request.reason = apr_pvsprintf(cmdslot->u.seg.request.subpool, fmt, ap);
+	va_end(ap);
+    } else {
+	cmdslot->u.seg.request.reason = "";
+    }
+    gpcc_warning(FLINE, cmdslot->u.seg.request.reason);
     gpcc_evqueue_put(gpha.evq, evt);
+
     return 0;
 
 
@@ -329,10 +337,7 @@ static apr_status_t seg_initdb_wait(gpcc_event_t* ev, void *_cmdslot)
 	    
 
 	} else {
-	    evt = gpcc_event_alloc(SEG_INITDB_FAIL1_EVENT, cmdslot->cmdidx, 0);
-	    cmdslot->u.seg.request.exitcode = ret;
-	    cmdslot->u.seg.request.reason = proc_exit_reason(exitwhy);	
-	    gpcc_evqueue_put(gpha.evq, evt);	    
+	    seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, ret, proc_exit_reason(exitwhy));
 	}
 
     } else {
@@ -360,10 +365,7 @@ static apr_status_t seg_initdb_start_wait(gpcc_event_t* ev, void *_cmdslot)
 	    gpcc_evqueue_put(gpha.evq, evt);
 	    
 	} else {
-	    evt = gpcc_event_alloc(SEG_INITDB_FAIL2_EVENT, cmdslot->cmdidx, 0);
-	    cmdslot->u.seg.request.exitcode = ret;
-	    cmdslot->u.seg.request.reason = proc_exit_reason(exitwhy);	
-	    gpcc_evqueue_put(gpha.evq, evt);	    
+	    seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL2_EVENT, ret, proc_exit_reason(exitwhy));
 	}
 
     } else {
