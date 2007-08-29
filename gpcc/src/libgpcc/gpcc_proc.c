@@ -256,12 +256,14 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_stop(apr_proc_t *proc, int port, cons
     char cmd[1024];
     char *argv[2];
     char *waitflag = (wait ? "-w" : "-W");
+    char option[128];
+    sprintf(option, "-i -p %d", port);
 
     if ((e = gpcc_proc_initialize()) != 0) 
 	return e;
 
-    sprintf(cmd, "export LD_LIBRARY_PATH=%s && export PATH=%s && export PGPORT=%d && pg_ctl stop -D %s -m %s %s > /dev/null 2>&1", 
-	    LD_LIBRARY_PATH, PATH, port, data_dir, mode, waitflag);
+    sprintf(cmd, "export LD_LIBRARY_PATH=%s && export PATH=%s && export PGPORT=%d && pg_ctl stop -D %s -o \"%s\" -m %s %s > /dev/null 2>&1", 
+	    LD_LIBRARY_PATH, PATH, port, data_dir, option, mode, waitflag);
     
     argv[0] = cmd;
     argv[1] = 0;
