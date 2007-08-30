@@ -97,7 +97,10 @@ typedef struct WindowStatePerLevelData
 	/* user can specify ascending or descending order, record it here */
 	bool *col_sort_asc;
 
-	/* The order by keys. There is at least one sort key. */
+	/* The partial order by keys. There is at least one sort key in this array. 
+	 * It is used for convenience to find the order by keys since we need to
+	 * store them in the frame buffer for RANGE-based framing.
+	 */
 	int numSortCols;
 	AttrNumber *sortColIdx;
 	Oid *sortOperators;
@@ -207,13 +210,6 @@ typedef struct WindowStatePerFunctionData
 	bool                final_aggTransValueIsNull;
 	bool                final_aggNoTransValue;
 
-	/* 
-	 * When calculating RANGE frames, we continue to emit the same
-	 * transition value for all peers. We keep the peer field in 
-	 * peer_value to test inside the framing code.
-	 */
-	Datum 				peer_value;
-
 	/* frame does not require buffering and complexity of invokeWindowFuncs() */
 	bool				trivial_frame;
 
@@ -224,25 +220,6 @@ typedef struct WindowStatePerFunctionData
 	 */
 	int                 serial_index;
 } WindowStatePerFunctionData;
-
-/* 
- * We buffer two kinds windowed tuples: those for RANGE frames and those
- * for ROWS frames. RANGE frames need their key and transition value,
- * ROWS frames, only the latter.
- */
-
-typedef struct WindowRangeBuffer
-{
-	Datum *key; /* one of more attributes of the key */
-	bool *nulls;
-	WindowValue *transval;
-} WindowRangeBuffer;
-
-typedef struct WindowRowsBuffer
-{
-	int64 row_index;
-	WindowValue *transval;
-} WindowRowsBuffer;
 
 /*
  * We special case buffers for frames referenced by window functions
@@ -280,7 +257,6 @@ typedef struct WinFuncRangeBuffer
 
 #define IS_LEAD_LAG_FUNC(oid) (IS_LEAD_FUNC(oid) || IS_LAG_FUNC(oid)) 
 
-#define ABS(x) (x < 0 ? -x : x)
 #define MIN(x, y) (x =< y ? x : y)
 
 /****************************************************
@@ -446,6 +422,8 @@ static int findSerialIndex(WindowStatePerFunction funcstate,
 
 /*
  * initFrameBuffer -- initialize the frame buffer.
+ *
+ * Create the tuplestore and all accessors.
  */
 static void
 initFrameBuffer(WindowFrameBuffer buffer, int bytes)
@@ -497,7 +475,8 @@ createRowsFrameBuffer(long int trail_rows, long int lead_rows, int bytes)
 }
 
 /*
- * createFrameBuffers -- create frame buffers for a WindowState.
+ * createFrameBuffers -- create frame buffers for all key levels inside
+ * a given WindowState.
  */
 static void
 createFrameBuffers(WindowState *wstate)
@@ -1091,7 +1070,7 @@ deserializeEntryForRange(WindowStatePerLevel level_state,
 }
 
 /*
- * appendToFrameBuffer -- append a list of values into the frame buffer.
+ * appendToFrameBuffer -- append the intermediate values stored in level
  */
 static void
 appendToFrameBuffer(WindowStatePerLevel level_state,
@@ -1494,7 +1473,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 	Assert(level_state->is_rows == buffer->is_rows);
 
 	/*
-	 * Process the ordinary window functions.
+	 * Process the ordinary window functions -- we only handle CUME_DIST here.
 	 */
 	foreach (lc, level_state->level_funcs)
 	{
@@ -1503,8 +1482,8 @@ computeFrameValue(WindowStatePerLevel level_state,
 		WindowValue *value = NULL;
 
 		WindowStatePerFunction funcstate = (WindowStatePerFunction) lfirst(lc);
-		
-		if (funcstate->isAgg || funcstate->trivial_frame)
+
+		if (funcstate->windowfn_oid != CUME_DIST_PRELIM_OID)
 			continue;
 
 		if (is_rows)
@@ -2701,6 +2680,308 @@ deform_window_tuple(TupleTableSlot *slot, int nattrs, AttrNumber *attnums,
 }
 
 /*
+ * Adjust the trailing and leading edge for ROWS-based framing.
+ */
+static void
+adjustEdgesForRows(WindowFrameBuffer buffer,
+				   WindowState *wstate)
+{
+	WindowStatePerLevel level_state = buffer->level_state;
+	
+	if (EDGE_IS_BOUND(level_state->frame->trail) ||
+		EDGE_IS_CURRENT_ROW(level_state->frame->trail))
+	{
+		if (level_state->num_trail_rows <= level_state->trail_rows - 1)
+		{
+			bool found;
+			if (ntuplestore_acc_tell(level_state->trail_reader, NULL))
+				found = ntuplestore_acc_advance(level_state->trail_reader, 1);
+			else if (level_state->frame->trail->kind != WINDOW_BOUND_FOLLOWING ||
+					 level_state->trail_rows == 0)
+				found = ntuplestore_acc_seek_first(level_state->trail_reader);
+
+			if (found ||
+				level_state->frame->trail->kind == WINDOW_BOUND_FOLLOWING)
+				level_state->num_trail_rows++;
+		}
+	}
+	
+	if (level_state->frame->lead->kind == WINDOW_BOUND_PRECEDING &&
+		level_state->num_lead_rows == level_state->lead_rows)
+	{
+		ntuplestore_acc_seek_first(level_state->lead_reader);
+	}
+			
+	else if ((!EDGE_IS_BOUND(level_state->frame->lead) &&
+			  !EDGE_IS_CURRENT_ROW(level_state->frame->lead)) ||
+			 level_state->num_lead_rows < level_state->lead_rows)
+	{
+		bool found = ntuplestore_acc_tell(level_state->lead_reader, NULL);
+		ntuplestore_acc_advance(level_state->lead_reader, 1);
+		if (found)
+			level_state->num_lead_rows++;
+	}
+}
+
+/*
+ * Adjust the trailing and leading edges for RANGE-based framing.
+ */
+static void
+adjustEdgesForRange(WindowFrameBuffer buffer,
+					WindowState *wstate)
+{
+	WindowStatePerLevel level_state = buffer->level_state;
+	ExprContext *econtext = wstate->ps.ps_ExprContext;
+	
+	/* For a RANGE frame, we need to compare the key values between
+	 * the trailing edge and the leading edge with the current_row.
+	 */
+	FrameBufferEntryForRange *trail_row = NULL;
+	FrameBufferEntryForRange *lead_row = NULL;
+
+	Datum new_trail_key;
+	bool new_trail_key_isnull;
+	Datum new_lead_key;
+	bool new_lead_key_isnull;
+	
+	bool need_adjust = true;
+
+	if (EDGE_IS_BOUND(level_state->frame->trail))
+	{
+		Assert(level_state->numSortCols == 1);
+		new_trail_key = ExecEvalExpr(level_state->trail_expr, econtext,
+									 &(new_trail_key_isnull), NULL);
+			
+		/* Adjust the trailing edge */
+		while (need_adjust)
+		{
+			trail_row = getCurrentValue(level_state->trail_reader, level_state);
+
+			/* If trail_reader does not point to any tuple in the buffer, we
+			 * check on the first tuple.
+			 */
+			if (trail_row == NULL)
+			{
+				ntuplestore_acc_seek_first(level_state->trail_reader);
+				trail_row = getCurrentValue(level_state->trail_reader, level_state);
+			}
+
+			need_adjust = cmp_deformed_tuple(trail_row->keys, trail_row->nulls,
+											 &new_trail_key, &new_trail_key_isnull,
+											 level_state->col_sort_asc,
+											 level_state->numSortCols,
+											 level_state->ltfunctions,
+											 level_state->eqfunctions,
+											 econtext->ecxt_per_tuple_memory,
+											 false);
+			if (need_adjust)
+			{
+				bool found = ntuplestore_acc_advance(level_state->trail_reader, 1);
+				if (!found)
+					break;
+			}
+		}
+
+		if (!need_adjust)
+		{
+			/* Point to the previous tuple */
+			ntuplestore_acc_advance(level_state->trail_reader, -1);
+		}
+		else
+		{
+			Datum curr_key;
+			bool curr_key_isnull;
+
+			/* Check if the last row is the trailing edge. */
+			if (wstate->input_buffer->part_break)
+			{
+				/* If the last tuple breaks the partition key, the tuple to check
+				 * is the last second tuple in the input buffer.
+				 */
+				bool found = ntuplestore_acc_advance(wstate->input_buffer->writer, -1);
+				Assert(found);
+				ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
+												  wstate->spare);
+
+				/* Put the writer pointer back to its original place. */
+				found = ntuplestore_acc_advance(wstate->input_buffer->writer, 1);
+				Assert(found);
+			}
+
+			else
+			{
+				ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
+												  wstate->spare);
+			}
+				
+			econtext->ecxt_scantuple = wstate->spare;
+			deform_window_tuple(econtext->ecxt_scantuple,
+								level_state->numSortCols, level_state->sortColIdx,
+								&curr_key, &curr_key_isnull,
+								wstate->transcontext);
+			if (!cmp_deformed_tuple(&curr_key, &curr_key_isnull,
+									&new_trail_key, &new_trail_key_isnull,
+									level_state->col_sort_asc,
+									level_state->numSortCols,
+									level_state->ltfunctions,
+									level_state->eqfunctions,
+									econtext->ecxt_per_tuple_memory,
+									false))
+				ntuplestore_acc_seek_last(level_state->trail_reader);
+		}
+	}
+	
+	else if (EDGE_IS_CURRENT_ROW(level_state->frame->trail))
+	{
+		bool found = ntuplestore_acc_advance(level_state->trail_reader, 1);
+		if (!found)
+			ntuplestore_acc_seek_first(level_state->trail_reader);
+	}
+
+	/* Adjust the leading edge */
+	if (EDGE_IS_BOUND(level_state->frame->lead))
+	{
+		Assert(level_state->numSortCols == 1);
+		
+		new_lead_key = ExecEvalExpr(level_state->lead_expr, econtext,
+									&(new_lead_key_isnull), NULL);
+
+		need_adjust = true;
+		while (need_adjust)
+		{
+			bool key_equal;
+				
+			lead_row = getCurrentValue(level_state->lead_reader, level_state);
+
+			if (lead_row == NULL)
+			{
+				if (level_state->frame->lead->kind != WINDOW_BOUND_PRECEDING)
+					break;
+					
+				ntuplestore_acc_seek_first(level_state->lead_reader);
+				lead_row = getCurrentValue(level_state->lead_reader, level_state);
+			}
+			
+			need_adjust = cmp_deformed_tuple(lead_row->keys, lead_row->nulls,
+											 &new_lead_key, &new_lead_key_isnull,
+											 level_state->col_sort_asc,
+											 level_state->numSortCols,
+											 level_state->ltfunctions,
+											 level_state->eqfunctions,
+											 econtext->ecxt_per_tuple_memory,
+											 false);
+			key_equal = cmp_deformed_tuple(lead_row->keys, lead_row->nulls,
+										   &new_lead_key, &new_lead_key_isnull,
+										   level_state->col_sort_asc,
+										   level_state->numSortCols,
+										   level_state->ltfunctions,
+										   level_state->eqfunctions,
+										   econtext->ecxt_per_tuple_memory,
+										   true);
+			if (need_adjust && !key_equal)
+			{
+				bool found = ntuplestore_acc_advance(level_state->lead_reader, 1);
+				if (!found)
+					break;
+			}
+			else if (!need_adjust && !key_equal)
+			{
+				/* We need to back off one. */
+				bool found = ntuplestore_acc_advance(level_state->lead_reader, -1);
+				level_state->lead_ready = true;
+				if (!found)
+					break;
+			}
+		}
+
+		if (need_adjust)
+		{
+			Datum curr_key;
+			bool curr_key_isnull;
+
+			/* Check if the last row is the leading edge */
+			if (wstate->input_buffer->part_break)
+			{
+				/* If the last tuple breaks the partition key, the tuple to check
+				 * is the last second tuple in the input buffer.
+				 */
+				bool found = ntuplestore_acc_advance(wstate->input_buffer->writer, -1);
+				Assert(found);
+				ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
+												  wstate->spare);
+
+				/* Put the writer pointer back to its original place. */
+				found = ntuplestore_acc_advance(wstate->input_buffer->writer, 1);
+				Assert(found);
+			}
+
+			else
+			{
+				ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
+												  wstate->spare);
+			}
+				
+			econtext->ecxt_scantuple = wstate->spare;
+			deform_window_tuple(econtext->ecxt_scantuple,
+								level_state->numSortCols, level_state->sortColIdx,
+								&curr_key, &curr_key_isnull,
+								wstate->transcontext);
+			if (!cmp_deformed_tuple(&curr_key, &curr_key_isnull,
+									&new_lead_key, &new_lead_key_isnull,
+									level_state->col_sort_asc,
+									level_state->numSortCols,
+									level_state->ltfunctions,
+									level_state->eqfunctions,
+									econtext->ecxt_per_tuple_memory,
+									false) &&
+				!cmp_deformed_tuple(&curr_key, &curr_key_isnull,
+									&new_lead_key, &new_lead_key_isnull,
+									level_state->col_sort_asc,
+									level_state->numSortCols,
+									level_state->ltfunctions,
+									level_state->eqfunctions,
+									econtext->ecxt_per_tuple_memory,
+									true))
+			{
+				ntuplestore_acc_seek_last(level_state->lead_reader);
+				level_state->lead_ready = true;
+			}
+			else
+				level_state->lead_ready = false;
+		}
+	}
+	else if (EDGE_IS_CURRENT_ROW(level_state->frame->lead))
+	{
+		bool found;
+		if (ntuplestore_acc_tell(buffer->current_row_reader, NULL))
+		{
+			NTupleStorePos pos;
+			found = ntuplestore_acc_tell(buffer->current_row_reader, &pos);
+			Assert(found);
+			ntuplestore_acc_seek(level_state->lead_reader, &pos);
+		}
+		else
+			found = ntuplestore_acc_advance(level_state->lead_reader, 1);
+
+		if (found)
+			level_state->lead_ready = true;
+		else
+			level_state->lead_ready = false;
+	}
+	else
+	{
+		ntuplestore_acc_advance(level_state->lead_reader, 1);
+		level_state->lead_ready = false;
+	}
+
+	if (trail_row != NULL)
+		pfree(trail_row);
+	if (lead_row != NULL)
+		pfree(lead_row);
+}
+
+
+/*
  * Adjust the trailing and leading edge to the frame buffer for
  * its list of key levels.
  */
@@ -2709,303 +2990,11 @@ adjustEdges(WindowFrameBuffer buffer,
 			WindowState *wstate)
 {
 	WindowStatePerLevel level_state = buffer->level_state;
-	ExprContext *econtext = wstate->ps.ps_ExprContext;
 
-	if(level_state->is_rows)
-	{
-		if (EDGE_IS_BOUND(level_state->frame->trail) ||
-			EDGE_IS_CURRENT_ROW(level_state->frame->trail))
-		{
-			if (level_state->num_trail_rows <= level_state->trail_rows - 1)
-			{
-				bool found;
-				if (ntuplestore_acc_tell(level_state->trail_reader, NULL))
-					found = ntuplestore_acc_advance(level_state->trail_reader, 1);
-				else if (level_state->frame->trail->kind != WINDOW_BOUND_FOLLOWING ||
-						 level_state->trail_rows == 0)
-					found = ntuplestore_acc_seek_first(level_state->trail_reader);
-
-				if (found ||
-					level_state->frame->trail->kind == WINDOW_BOUND_FOLLOWING)
-					level_state->num_trail_rows++;
-			}
-		}
-
-		if (level_state->frame->lead->kind == WINDOW_BOUND_PRECEDING &&
-			level_state->num_lead_rows == level_state->lead_rows)
-		{
-			ntuplestore_acc_seek_first(level_state->lead_reader);
-		}
-			
-		else if ((!EDGE_IS_BOUND(level_state->frame->lead) &&
-			 !EDGE_IS_CURRENT_ROW(level_state->frame->lead)) ||
-			level_state->num_lead_rows < level_state->lead_rows)
-		{
-			bool found = ntuplestore_acc_tell(level_state->lead_reader, NULL);
-			ntuplestore_acc_advance(level_state->lead_reader, 1);
-			if (found)
-				level_state->num_lead_rows++;
-		}
-	}
-		
+	if (level_state->is_rows)
+		adjustEdgesForRows(buffer, wstate);
 	else
-	{
-		/* For a RANGE frame, we need to compare the key values between
-		 * the trailing edge and the leading edge with the current_row.
-		 */
-		FrameBufferEntryForRange *trail_row = NULL;
-		FrameBufferEntryForRange *lead_row = NULL;
-
-		Datum *new_trail_keys;
-		bool *new_trail_keys_isnull;
-		Datum *new_lead_keys;
-		bool *new_lead_keys_isnull;
-
-		bool need_adjust = true;
-
-		new_trail_keys = (Datum*)palloc0(level_state->numSortCols * sizeof(Datum));
-		new_trail_keys_isnull =
-			(bool *)palloc0(level_state->numSortCols * sizeof(bool));
-			
-		new_lead_keys = (Datum*)palloc0(level_state->numSortCols * sizeof(Datum));
-		new_lead_keys_isnull =
-			(bool *)palloc0(level_state->numSortCols * sizeof(bool));
-
-		if (EDGE_IS_BOUND(level_state->frame->trail))
-		{
-			Assert(level_state->numSortCols == 1);
-			new_trail_keys[0] = ExecEvalExpr(level_state->trail_expr, econtext,
-											 &(new_trail_keys_isnull[0]), NULL);
-			
-			/* Adjust the trailing edge */
-			while (need_adjust)
-			{
-				trail_row = getCurrentValue(level_state->trail_reader, level_state);
-
-				/* If trail_reader does not point to any tuple in the buffer, we
-				 * check on the first tuple.
-				 */
-				if (trail_row == NULL)
-				{
-					ntuplestore_acc_seek_first(level_state->trail_reader);
-					trail_row = getCurrentValue(level_state->trail_reader, level_state);
-				}
-
-				need_adjust = cmp_deformed_tuple(trail_row->keys, trail_row->nulls,
-												 new_trail_keys, new_trail_keys_isnull,
-												 level_state->col_sort_asc,
-												 level_state->numSortCols,
-												 level_state->ltfunctions,
-												 level_state->eqfunctions,
-												 econtext->ecxt_per_tuple_memory,
-												 false);
-				if (need_adjust)
-				{
-					bool found = ntuplestore_acc_advance(level_state->trail_reader, 1);
-					if (!found)
-						break;
-				}
-			}
-
-			if (!need_adjust)
-			{
-				/* Point to the previous tuple */
-				ntuplestore_acc_advance(level_state->trail_reader, -1);
-			}
-			else
-			{
-				Datum curr_key;
-				bool curr_key_isnull;
-
-				/* Check if the last row is the trailing edge. */
-				if (wstate->input_buffer->part_break)
-				{
-					/* If the last tuple breaks the partition key, the tuple to check
-					 * is the last second tuple in the input buffer.
-					 */
-					bool found = ntuplestore_acc_advance(wstate->input_buffer->writer, -1);
-					Assert(found);
-					ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
-													  wstate->spare);
-
-					/* Put the writer pointer back to its original place. */
-					found = ntuplestore_acc_advance(wstate->input_buffer->writer, 1);
-					Assert(found);
-				}
-
-				else
-				{
-					ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
-													  wstate->spare);
-				}
-				
-				econtext->ecxt_scantuple = wstate->spare;
-				deform_window_tuple(econtext->ecxt_scantuple,
-									level_state->numSortCols, level_state->sortColIdx,
-									&curr_key, &curr_key_isnull,
-									wstate->transcontext);
-				if (!cmp_deformed_tuple(&curr_key, &curr_key_isnull,
-										new_trail_keys, new_trail_keys_isnull,
-										level_state->col_sort_asc,
-										level_state->numSortCols,
-										level_state->ltfunctions,
-										level_state->eqfunctions,
-										econtext->ecxt_per_tuple_memory,
-										false))
-					ntuplestore_acc_seek_last(level_state->trail_reader);
-			}
-		}
-
-		else if (EDGE_IS_CURRENT_ROW(level_state->frame->trail))
-		{
-			bool found = ntuplestore_acc_advance(level_state->trail_reader, 1);
-			if (!found)
-				ntuplestore_acc_seek_first(level_state->trail_reader);
-		}
-
-		/* Adjust the leading edge */
-		if (EDGE_IS_BOUND(level_state->frame->lead))
-		{
-			new_lead_keys[0] = ExecEvalExpr(level_state->lead_expr, econtext,
-											&(new_lead_keys_isnull[0]), NULL);
-
-			need_adjust = true;
-			while (need_adjust)
-			{
-				bool key_equal;
-				
-				lead_row = getCurrentValue(level_state->lead_reader, level_state);
-
-				if (lead_row == NULL)
-				{
-					if (level_state->frame->lead->kind != WINDOW_BOUND_PRECEDING)
-						break;
-					
-					ntuplestore_acc_seek_first(level_state->lead_reader);
-					lead_row = getCurrentValue(level_state->lead_reader, level_state);
-				}
-			
-				need_adjust = cmp_deformed_tuple(lead_row->keys, lead_row->nulls,
-												 new_lead_keys, new_lead_keys_isnull,
-												 level_state->col_sort_asc,
-												 level_state->numSortCols,
-												 level_state->ltfunctions,
-												 level_state->eqfunctions,
-												 econtext->ecxt_per_tuple_memory,
-												 false);
-				key_equal = cmp_deformed_tuple(lead_row->keys, lead_row->nulls,
-											   new_lead_keys, new_lead_keys_isnull,
-											   level_state->col_sort_asc,
-											   level_state->numSortCols,
-											   level_state->ltfunctions,
-											   level_state->eqfunctions,
-											   econtext->ecxt_per_tuple_memory,
-											   true);
-				if (need_adjust && !key_equal)
-				{
-					bool found = ntuplestore_acc_advance(level_state->lead_reader, 1);
-					if (!found)
-						break;
-				}
-				else if (!need_adjust && !key_equal)
-				{
-					/* We need to back off one. */
-					bool found = ntuplestore_acc_advance(level_state->lead_reader, -1);
-					level_state->lead_ready = true;
-					if (!found)
-						break;
-				}
-			}
-
-			if (need_adjust)
-			{
-				Datum curr_key;
-				bool curr_key_isnull;
-
-				/* Check if the last row is the leading edge */
-				if (wstate->input_buffer->part_break)
-				{
-					/* If the last tuple breaks the partition key, the tuple to check
-					 * is the last second tuple in the input buffer.
-					 */
-					bool found = ntuplestore_acc_advance(wstate->input_buffer->writer, -1);
-					Assert(found);
-					ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
-													  wstate->spare);
-
-					/* Put the writer pointer back to its original place. */
-					found = ntuplestore_acc_advance(wstate->input_buffer->writer, 1);
-					Assert(found);
-				}
-
-				else
-				{
-					ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
-													  wstate->spare);
-				}
-				
-				econtext->ecxt_scantuple = wstate->spare;
-				deform_window_tuple(econtext->ecxt_scantuple,
-									level_state->numSortCols, level_state->sortColIdx,
-									&curr_key, &curr_key_isnull,
-									wstate->transcontext);
-				if (!cmp_deformed_tuple(&curr_key, &curr_key_isnull,
-										new_lead_keys, new_lead_keys_isnull,
-										level_state->col_sort_asc,
-										level_state->numSortCols,
-										level_state->ltfunctions,
-										level_state->eqfunctions,
-										econtext->ecxt_per_tuple_memory,
-										false) &&
-					!cmp_deformed_tuple(&curr_key, &curr_key_isnull,
-										new_lead_keys, new_lead_keys_isnull,
-										level_state->col_sort_asc,
-										level_state->numSortCols,
-										level_state->ltfunctions,
-										level_state->eqfunctions,
-										econtext->ecxt_per_tuple_memory,
-										true))
-				{
-					ntuplestore_acc_seek_last(level_state->lead_reader);
-					level_state->lead_ready = true;
-				}
-				else
-					level_state->lead_ready = false;
-			}
-		}
-		else if (EDGE_IS_CURRENT_ROW(level_state->frame->lead))
-		{
-			bool found;
-			if (ntuplestore_acc_tell(buffer->current_row_reader, NULL))
-			{
-				NTupleStorePos pos;
-				found = ntuplestore_acc_tell(buffer->current_row_reader, &pos);
-				Assert(found);
-				ntuplestore_acc_seek(level_state->lead_reader, &pos);
-			}
-			else
-				found = ntuplestore_acc_advance(level_state->lead_reader, 1);
-
-			if (found)
-				level_state->lead_ready = true;
-			else
-				level_state->lead_ready = false;
-		}
-		else
-		{
-			ntuplestore_acc_advance(level_state->lead_reader, 1);
-			level_state->lead_ready = false;
-		}
-
-		pfree(new_trail_keys);
-		pfree(new_trail_keys_isnull);
-		pfree(new_lead_keys);
-		pfree(new_lead_keys_isnull);
-		if (trail_row != NULL)
-			pfree(trail_row);
-		if (lead_row != NULL)
-			pfree(lead_row);
-	}
+		adjustEdgesForRange(buffer, wstate);
 }
 
 /*
