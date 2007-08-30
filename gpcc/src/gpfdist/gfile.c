@@ -117,9 +117,34 @@ static gfile_t* gz_file_open(const char *fpath, int oflag)
     return fd;
 }
 
+static apr_status_t gfile_is_directory(const char *fpath, int *is_dir)
+{
+  struct stat buf;
+  int e;
+
+  if (0 != (e = stat(fpath, &buf))) {
+      return e;
+  }
+
+  *is_dir = S_ISDIR(buf.st_mode);
+  return 0;
+}
+
 APR_DECLARE(gfile_t*) gfile_open(const char *fpath, int oflag)
 {
     char *s;
+    int is_dir = 0;
+
+    if (gfile_is_directory(fpath, &is_dir) != 0) {
+	gwarning(FLINE, "stat %s failure", fpath);
+	return 0;
+    }
+    
+    if (is_dir) {
+	gwarning(FLINE, "%s is a directory", fpath);
+	return 0;
+    }
+
     if (0 != (s = strrchr(fpath, '.'))) {
 	if (apr_strnatcasecmp(s, ".gz") == 0) {
 	    return gz_file_open(fpath, oflag);
