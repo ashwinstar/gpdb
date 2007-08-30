@@ -50,6 +50,7 @@
 #include "cdb/cdbtm.h"
 #include "cdb/cdbllize.h"
 #include "libpq-fe.h"
+#include "libpq/libpq-be.h"
 //#undef socket
 //#undef accept
 //#undef connect
@@ -162,6 +163,113 @@ CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase, char*
 static volatile bool pleaseCancel = false; /* (transaction granularity) */
 
 static DtxContextInfo TempQDDtxContextInfo;
+
+/*
+ * We can't use elog to write to the log if we are running in a thread.
+ * 
+ * So, write some thread-safe routines to write to the log.
+ * 
+ * Ugly:  This write in a fixed format, and ignore what the log_prefix guc says.
+ */
+static void get_timestamp(char * strfbuf)
+{
+	time_t		stamp_time;
+	char			msbuf[8];
+	struct timeval tv;
+
+	gettimeofday(&tv, NULL);
+	stamp_time = tv.tv_sec;
+
+	strftime(strfbuf, 127,
+	/* leave room for milliseconds... */
+	/* Win32 timezone names are too long so don't print them */
+#ifndef WIN32
+			 "%Y-%m-%d %H:%M:%S     %Z",
+#else
+			 "%Y-%m-%d %H:%M:%S     ",
+#endif
+			 localtime(&stamp_time));
+
+	/* 'paste' milliseconds into place... */
+	sprintf(msbuf, ".%03d", (int) (tv.tv_usec / 1000));
+	strncpy(strfbuf + 19, msbuf, 4);	
+}
+
+void
+write_log(const char *fmt,...)
+{
+	char logprefix[1024];
+	char tempbuf[25];
+	va_list		ap;
+
+	fmt = _(fmt);
+
+	va_start(ap, fmt);
+	
+	get_timestamp(logprefix);
+	strcat(logprefix,"|");
+	if (MyProcPort)
+	{
+		const char *username = MyProcPort->user_name;
+		if (username == NULL || *username == '\0')
+			username = "";
+		strcat(logprefix,username); // user 
+	}
+	
+	strcat(logprefix,"|");
+	if (MyProcPort)
+	{
+		const char *dbname = MyProcPort->database_name;
+
+		if (dbname == NULL || *dbname == '\0')
+			dbname = "";
+		strcat(logprefix, dbname);
+	}
+	strcat(logprefix,"|");
+	sprintf(tempbuf,"%d",MyProcPid);
+	strcat(logprefix,tempbuf); // pid
+	strcat(logprefix,"|");
+	sprintf(tempbuf,"con%d cmd%d",gp_session_id,gp_command_count);
+	strcat(logprefix,tempbuf);
+	if (Gp_role == GP_ROLE_DISPATCHAGENT)
+	   strcat(logprefix, " *DA*");
+	strcat(logprefix,"|");
+	sprintf(tempbuf,"%u",mythread());
+	strcat(logprefix,":-THREAD ");
+	strcat(logprefix,tempbuf);
+	strcat(logprefix,":  ");
+	
+	strcat(logprefix,fmt);
+	 
+	
+#ifndef WIN32
+	/* On Unix, we just fprintf to stderr */
+	vfprintf(stderr, logprefix, ap);
+    fflush(stderr);
+#else
+
+	/*
+	 * On Win32, we print to stderr if running on a console, or write to
+	 * eventlog if running as a service
+	 */
+	if (pgwin32_is_service())	/* Running as a service */
+	{
+		char		errbuf[2048];		/* Arbitrary size? */
+
+		vsnprintf(errbuf, sizeof(errbuf), logprefix, ap);
+
+		write_eventlog(EVENTLOG_ERROR_TYPE, errbuf);
+	}
+	else
+    {
+        /* Not running as service, write to stderr */
+        vfprintf(stderr, logprefix, ap);
+        fflush(stderr);
+    }
+#endif
+	va_end(ap);
+}
+
 
 /*--------------------------------------------------------------------*/
 
@@ -1577,14 +1685,14 @@ thread_DispatchOut(DispatchCommandParms		*pParms)
 		break;
 
 	default:
-		write_stderr("bad dispatch command type %d\n", (int) pParms->mppDispatchCommandType);
+		write_log("bad dispatch command type %d\n", (int) pParms->mppDispatchCommandType);
 		pParms->query_text_len = 0;
 		return false;
 	}
 
 	if (pParms->query_text == NULL)
 	{
-		write_stderr("could not build query string, total length %d\n", pParms->query_text_len);
+		write_log("could not build query string, total length %d\n", pParms->query_text_len);
 		pParms->query_text_len = 0;
 		return false;
 	}
@@ -1604,9 +1712,7 @@ thread_DispatchOut(DispatchCommandParms		*pParms)
 		{
 			if (dispatchResult->segdbDesc->conn)
 			{
-				if (Gp_role == GP_ROLE_DISPATCHAGENT)
-					write_stderr("*DA* ");
-				write_stderr("Thread %u: thread_DispatchCommand working on %d of %d commands.  asyncStatus %d\n",mythread(),
+				write_log("thread_DispatchCommand working on %d of %d commands.  asyncStatus %d\n",
 	                         i + 1, db_count, dispatchResult->segdbDesc->conn->asyncStatus);
 			}
 		}
@@ -1620,7 +1726,7 @@ thread_DispatchOut(DispatchCommandParms		*pParms)
             /* Don't dispatch if cancellation pending or no connection. */
             dispatchResult->stillRunning = false;
             if (PQisBusy(dispatchResult->segdbDesc->conn))
-				write_stderr("Thread %u: We thought we were done, because !shouldStillDispatchCommand(), but libpq says we are still busy\n", mythread());
+				write_log(" We thought we were done, because !shouldStillDispatchCommand(), but libpq says we are still busy\n");
         }
         else
         {
@@ -1632,7 +1738,7 @@ thread_DispatchOut(DispatchCommandParms		*pParms)
 				PGresult   *pRes;
 				ExecStatusType resultStatus;
 				
-				write_stderr("Thread %u: Trying to send to busy connection %s  %d %d asyncStatus %d\n", mythread(), dispatchResult->segdbDesc->whoami, i, db_count, dispatchResult->segdbDesc->conn->asyncStatus);
+				write_log("Trying to send to busy connection %s  %d %d asyncStatus %d\n", dispatchResult->segdbDesc->whoami, i, db_count, dispatchResult->segdbDesc->conn->asyncStatus);
 				/*
 				 * We weren't expecting the session to be in use!, let's see what it says 
 				 */
@@ -1640,13 +1746,13 @@ thread_DispatchOut(DispatchCommandParms		*pParms)
 				if (pRes != NULL) /* null is OK ? */
 				{
 					resultStatus = PQresultStatus(pRes);
-					write_stderr("Thread %u: ResultStatus = %s\n", mythread(), PQresStatus(resultStatus));
-					write_stderr("%s", PQerrorMessage(dispatchResult->segdbDesc->conn));
+					write_log("ResultStatus = %s\n", PQresStatus(resultStatus));
+					write_log("%s", PQerrorMessage(dispatchResult->segdbDesc->conn));
 				}
 				else
 				{
-					write_stderr("Thread %u: result was null\n", mythread());
-					write_stderr("%s", PQerrorMessage(dispatchResult->segdbDesc->conn));
+					write_log("result was null\n");
+					write_log("%s", PQerrorMessage(dispatchResult->segdbDesc->conn));
 					Assert(!PQisBusy(dispatchResult->segdbDesc->conn));
 				}
 			}
@@ -1678,8 +1784,7 @@ thread_DispatchOut(DispatchCommandParms		*pParms)
 					Debug_dtm_action_segment == dispatchResult->segdbDesc->segment_database_info->segindex &&
 					Debug_dtm_action_primary == dispatchResult->segdbDesc->segment_database_info->isprimary)
 				{
-					write_stderr("Thread %u: Delaying '%s' broadcast for segment %d (%s) by %d milliseconds.\n",
-					             mythread(),
+					write_log("Delaying '%s' broadcast for segment %d (%s) by %d milliseconds.\n",
 					             DtxProtocolCommandToString(Debug_dtm_action_protocol),
 					             Debug_dtm_action_segment,
 					             (Debug_dtm_action_primary ? "primary" : "mirror"),
@@ -1692,7 +1797,7 @@ thread_DispatchOut(DispatchCommandParms		*pParms)
 				break;
 				
 			default:
-				write_stderr("bad dispatch command type %d\n", (int) pParms->mppDispatchCommandType);
+				write_log("bad dispatch command type %d\n", (int) pParms->mppDispatchCommandType);
 				pParms->query_text_len = 0;
 				return false;
 			}
@@ -1725,7 +1830,7 @@ thread_DispatchOut(DispatchCommandParms		*pParms)
     			continue;
     		if (dispatchResult->segdbDesc->conn->outCount > 0)
     		{
-    			write_stderr("Yes, extra flushing is necessary %d\n",i);
+    			write_log("Yes, extra flushing is necessary %d\n",i);
     			break;
     		}
     	}
@@ -1755,7 +1860,7 @@ thread_DispatchOut(DispatchCommandParms		*pParms)
     		if (flushResult > 0)
     		{
     			allsent=false;
-    			write_stderr("flushing didn't finish the work %d\n",i);
+    			write_log("flushing didn't finish the work %d\n",i);
     		}
     		
     	}
@@ -1891,7 +1996,7 @@ thread_DispatchWait(DispatchCommandParms		*pParms)
 				continue;
 
 			if (DEBUG4 >= log_min_messages)
-				write_stderr("Thread %u: looking for results from %d of %d\n",mythread(),i+1,db_count);
+				write_log("looking for results from %d of %d\n",i+1,db_count);
 
 			/* Skip this connection if it has no input available. */
 			sock = PQsocket(segdbDesc->conn);
@@ -1900,7 +2005,7 @@ thread_DispatchWait(DispatchCommandParms		*pParms)
 				continue;
 
 			if (DEBUG4 >= log_min_messages)
-				write_stderr("Thread %u: PQsocket says there are results from %d\n",mythread(),i+1);
+				write_log("PQsocket says there are results from %d\n",i+1);
 			/* Receive and process results from this QE. */
 			finished = processResults(dispatchResult);
 
@@ -1908,7 +2013,7 @@ thread_DispatchWait(DispatchCommandParms		*pParms)
 			if (finished)
 			{
 				if (DEBUG4 >= log_min_messages)
-					write_stderr("Thread %u: processResults says we are finished with %d:  %s\n",mythread(),i+1,segdbDesc->whoami);
+					write_log("processResults says we are finished with %d:  %s\n",i+1,segdbDesc->whoami);
 				dispatchResult->stillRunning = false;
 				if (DEBUG1 >= log_min_messages)
 				{
@@ -1917,16 +2022,16 @@ thread_DispatchWait(DispatchCommandParms		*pParms)
 					{
 						case 1:
 						case 2:
-							write_stderr("Thread %u: duration to dispatch result received from thread %d (seg %d): %s ms\n", mythread(),i+1 ,dispatchResult->segdbDesc->segindex,msec_str);
+							write_log("duration to dispatch result received from thread %d (seg %d): %s ms\n", i+1 ,dispatchResult->segdbDesc->segindex,msec_str);
 							break;
 					}					 
 				}
 				if (PQisBusy(dispatchResult->segdbDesc->conn))
-					write_stderr("We thought we were done, because finished==true, but libpq says we are still busy\n");
+					write_log("We thought we were done, because finished==true, but libpq says we are still busy\n");
 			}
 			else
 				if (DEBUG4 >= log_min_messages)
-					write_stderr("Thread %u: processResults says we have more to do with %d: %s\n",mythread(),i+1,segdbDesc->whoami);
+					write_log("processResults says we have more to do with %d: %s\n",i+1,segdbDesc->whoami);
 		}						/* input available; receive and process it */
 
 	}							/* some QEs running */
@@ -1973,10 +2078,10 @@ thread_DispatchWaitSingle(DispatchCommandParms		*pParms)
 			PGresult   *pRes;
 			ExecStatusType resultStatus;
 			int			resultIndex = cdbdisp_numPGresult(dispatchResult);
-			write_stderr("resultIndex = %d\n",resultIndex);
+			write_log("resultIndex = %d\n",resultIndex);
 
 			if (DEBUG4 >= log_min_messages)
-				write_stderr("Thread %u: PQgetResult\n",mythread());
+				write_log("PQgetResult\n");
 			/* Get one message. */
 			pRes = PQgetResult(segdbDesc->conn);
 
@@ -1994,7 +2099,7 @@ thread_DispatchWaitSingle(DispatchCommandParms		*pParms)
 				if (DEBUG4 >= log_min_messages)
 				{
 					/* Don't use elog, it's not thread-safe */
-					write_stderr("Thread %u: %s -> idle\n", mythread(), segdbDesc->whoami);
+					write_log("%s -> idle\n", segdbDesc->whoami);
 				}
 				break;		/* this is normal end of command */
 			}						/* end of results */
@@ -2021,7 +2126,7 @@ thread_DispatchWaitSingle(DispatchCommandParms		*pParms)
 					/* Don't use elog, it's not thread-safe */
 					char	   *cmdStatus = PQcmdStatus(pRes);
 
-					write_stderr("%s -> ok %s\n",
+					write_log("%s -> ok %s\n",
 							     segdbDesc->whoami,
 							     cmdStatus ? cmdStatus : "(no cmdStatus)");
 				}
@@ -2042,7 +2147,7 @@ thread_DispatchWaitSingle(DispatchCommandParms		*pParms)
 				if (DEBUG2 >= log_min_messages)
 				{
 					/* Don't use elog, it's not thread-safe */
-					write_stderr("%s -> %s %s  %s",
+					write_log("%s -> %s %s  %s",
 	                             segdbDesc->whoami,
 							     PQresStatus(resultStatus),
 							     sqlstate ? sqlstate : "(no SQLSTATE)",
@@ -2067,7 +2172,7 @@ thread_DispatchWaitSingle(DispatchCommandParms		*pParms)
 		 
 		
 		if (DEBUG4 >= log_min_messages)
-			write_stderr("Thread %u: processResultsSingle says we are finished with :  %s\n",mythread(),segdbDesc->whoami);
+			write_log("processResultsSingle says we are finished with :  %s\n",segdbDesc->whoami);
 		dispatchResult->stillRunning = false;
 		if (DEBUG1 >= log_min_messages)
 		{
@@ -2076,12 +2181,12 @@ thread_DispatchWaitSingle(DispatchCommandParms		*pParms)
 			{
 				case 1:
 				case 2:
-					write_stderr("Thread %u: duration to dispatch result received from thread (seg %d): %s ms\n", mythread() ,dispatchResult->segdbDesc->segindex,msec_str);
+					write_log("duration to dispatch result received from thread (seg %d): %s ms\n", dispatchResult->segdbDesc->segindex,msec_str);
 					break;
 			}					 
 		}
 		if (PQisBusy(dispatchResult->segdbDesc->conn))
-			write_stderr("We thought we were done, because finished==true, but libpq says we are still busy\n");
+			write_log("We thought we were done, because finished==true, but libpq says we are still busy\n");
 
 
 	}
@@ -2097,7 +2202,7 @@ thread_DispatchWaitSingle(DispatchCommandParms		*pParms)
  *		 elog is NOT thread-safe.  Developers should instead use something like:
  *
  *	if (DEBUG3 >= log_min_messages)
- *			write_stderr("my brilliant log statement here.\n");
+ *			write_log("my brilliant log statement here.\n");
  *
  * NOTE: In threads, we cannot use palloc, because it's not thread safe.
  */
@@ -2150,7 +2255,7 @@ shouldStillDispatchCommand(CdbDispatchResult * dispatchResult)
 		if (DEBUG4 >= log_min_messages)
 		{
 			/* Don't use elog, it's not thread-safe */
-			write_stderr("Thread %u: Lost connection: %s\n", mythread(), segdbDesc->whoami);
+			write_log("Lost connection: %s\n", segdbDesc->whoami);
 		}
 
 		/* Free the PGconn object at once whenever we notice it's gone bad. */
@@ -2174,7 +2279,7 @@ shouldStillDispatchCommand(CdbDispatchResult * dispatchResult)
 			if (DEBUG4 >= log_min_messages)
 			{
 				/* Don't use elog, it's not thread-safe */
-				write_stderr("Thread %u: Error cleanup in progress; command not sent to %s\n", mythread(),
+				write_log("Error cleanup in progress; command not sent to %s\n", 
 						     segdbDesc->whoami);
 			}
 			return false;
@@ -2190,7 +2295,7 @@ shouldStillDispatchCommand(CdbDispatchResult * dispatchResult)
 	{
 		dispatchResult->wasCanceled = true;
 		if (DEBUG4 >= log_min_messages)
-			write_stderr("Thread %u: Cancellation request pending; command not sent to %s\n",mythread(),
+			write_log("Cancellation request pending; command not sent to %s\n",
 					     segdbDesc->whoami);
 		return false;
 	}
@@ -2216,7 +2321,7 @@ dispatchCommandQuery(CdbDispatchResult  *dispatchResult,
 
 	/* Don't use elog, it's not thread-safe */
 	if (DEBUG3 >= log_min_messages)
-		write_stderr("Thread %u: %s <- %.120s\n", mythread(), segdbDesc->whoami, strCommand);
+		write_log("%s <- %.120s\n", segdbDesc->whoami, strCommand);
 
 	/*
 	 * Submit the command asynchronously.
@@ -2227,7 +2332,7 @@ dispatchCommandQuery(CdbDispatchResult  *dispatchResult,
 		char	   *msg = PQerrorMessage(segdbDesc->conn);
 
 		if (DEBUG3 >= log_min_messages)
-			write_stderr("Thread %u: PQsendMPPQuery_shared error %s %s \n", mythread(), segdbDesc->whoami,
+			write_log("PQsendMPPQuery_shared error %s %s \n", segdbDesc->whoami,
 						 msg ? msg : "");
 		/* Note the error. */
 		cdbdisp_appendMessage(dispatchResult, LOG,
@@ -2263,7 +2368,7 @@ dispatchCommandDtxProtocol(CdbDispatchResult  *dispatchResult,
 
 	/* Don't use elog, it's not thread-safe */
 	if (DEBUG3 >= log_min_messages)
-		write_stderr("Thread %u: %s <- dtx protocol command %d\n", mythread(), segdbDesc->whoami, (int)dtxProtocolCommand);
+		write_log("%s <- dtx protocol command %d\n", segdbDesc->whoami, (int)dtxProtocolCommand);
 
 	/*
 	 * Submit the command asynchronously.
@@ -2275,7 +2380,7 @@ dispatchCommandDtxProtocol(CdbDispatchResult  *dispatchResult,
 		char *msg = PQerrorMessage(segdbDesc->conn);
 
 		if (DEBUG3 >= log_min_messages)
-			write_stderr("Thread %u: PQsendMPPQuery_shared error %s %s \n", mythread(),segdbDesc->whoami,
+			write_log("PQsendMPPQuery_shared error %s %s \n",segdbDesc->whoami,
 						 msg ? msg : "");
 		/* Note the error. */
 		cdbdisp_appendMessage(dispatchResult, LOG,
@@ -2312,7 +2417,7 @@ handleSelectError(DispatchCommandParms * pParms,
 	if (LOG >= log_min_messages)
 	{
 		/* Don't use elog, it's not thread-safe */
-		write_stderr("Thread %u: thread_DispatchCommand select() failed; errno=%d\n",mythread(),
+		write_log("thread_DispatchCommand select() failed; errno=%d\n",
 				     sock_errno);
 	}
 
@@ -2341,7 +2446,7 @@ handleSelectError(DispatchCommandParms * pParms,
 		/* We're done with this QE, sadly. */
 		dispatchResult->stillRunning = false;
 		if (PQisBusy(dispatchResult->segdbDesc->conn))
-				write_stderr("Thread %u: We thought we were done, because of an error, but we are still busy\n", mythread());
+				write_log("We thought we were done, because of an error, but we are still busy\n");
 	}
 
 	/* No point in trying to cancel the other QEs with select() broken. */
@@ -2406,7 +2511,7 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 				memset(errbuf, 0, sizeof(errbuf));
 
 				if (DEBUG4 >= log_min_messages)
-					write_stderr("Calling PQcancel for %s\n",
+					write_log("Calling PQcancel for %s\n",
 							     segdbDesc->whoami);
 
 				/*
@@ -2420,7 +2525,7 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 				if (PQcancel(cn, errbuf, 256) == 0)
 				{	
 					if (LOG >= log_min_messages)
-						write_stderr("Unable to cancel: %s\n", errbuf);
+						write_log("Unable to cancel: %s\n", errbuf);
 				}
 				PQfreeCancel(cn);
 			}
@@ -2444,7 +2549,7 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 			segdbDesc = dispatchResult->segdbDesc;
 
 			if (DEBUG5 >= log_min_messages)
-				write_stderr("Thread %u: checking status %d of %d     %s stillRunning %d \n", mythread(),i+1,db_count,segdbDesc->whoami,dispatchResult->stillRunning);
+				write_log("checking status %d of %d     %s stillRunning %d \n",i+1,db_count,segdbDesc->whoami,dispatchResult->stillRunning);
 
 			/* Skip if already finished or didn't dispatch. */
 			if (!dispatchResult->stillRunning)
@@ -2455,7 +2560,7 @@ handleSelectTimeout(DispatchCommandParms * pParms,
                 continue;
 
             if (DEBUG5 >= log_min_messages)
-				write_stderr("Thread %u: testing connection %d of %d     %s stillRunning %d \n", mythread(),i+1,db_count,segdbDesc->whoami,dispatchResult->stillRunning);
+				write_log("testing connection %d of %d     %s stillRunning %d \n", i+1,db_count,segdbDesc->whoami,dispatchResult->stillRunning);
             
 
 			if (!FtsTestConnection(segdbDesc->segment_database_info, segdbDesc->username, segdbDesc->dbname))
@@ -2501,8 +2606,8 @@ CollectQEWriterTransactionInformation(SegmentDatabaseDescriptor *segdbDesc, CdbD
 	if (conn && conn->QEWriter_HaveInfo)
 	{
 #if 0
-		write_stderr("Thread %u: %s -> Collected QE Writer transaction info (segment %d (%s), DistributedTransactionId = %u, CommandId = %u, pRes->QEDirty = %s, dispatchResult->QEDirty = %s) \n", 
-			mythread(), segdbDesc->whoami,
+		write_log("%s -> Collected QE Writer transaction info (segment %d (%s), DistributedTransactionId = %u, CommandId = %u, pRes->QEDirty = %s, dispatchResult->QEDirty = %s) \n", 
+			segdbDesc->whoami,
 			segdbDesc->segment_database_info->segindex,
 			(segdbDesc->segment_database_info->isprimary ? "primary" : "mirror"),
 			conn->QEWriter_DistributedTransactionId,
@@ -2529,7 +2634,7 @@ processResults(CdbDispatchResult * dispatchResult)
 	int			rc;
 
 	if (DEBUG5 >= log_min_messages)
-		write_stderr("Thread %u: processResults.  isBusy = %d\n", mythread(), PQisBusy(segdbDesc->conn));
+		write_log("processResults.  isBusy = %d\n", PQisBusy(segdbDesc->conn));
 
 	/* Receive input from QE. */
 	rc = PQconsumeInput(segdbDesc->conn);
@@ -2538,7 +2643,7 @@ processResults(CdbDispatchResult * dispatchResult)
 	if (rc == 0)
 	{							/* handle PQconsumeInput error */
 		msg = PQerrorMessage(segdbDesc->conn);
-		write_stderr("Thread %u: PQconsumeInput failed %s\n", mythread(), msg ? msg : "unknown error");
+		write_log("PQconsumeInput failed %s\n", msg ? msg : "unknown error");
 
 		/* Save error info for later. */
 		cdbdisp_appendMessage(dispatchResult, LOG,
@@ -2556,7 +2661,7 @@ processResults(CdbDispatchResult * dispatchResult)
 	}							/* handle PQconsumeInput error */
 
 	if (DEBUG4 >= log_min_messages && PQisBusy(segdbDesc->conn))
-		write_stderr("Thread %u: PQisBusy\n", mythread());
+		write_log("PQisBusy\n");
 			
 	/* If we have received one or more complete messages, process them. */
 	while (!PQisBusy(segdbDesc->conn))
@@ -2566,7 +2671,7 @@ processResults(CdbDispatchResult * dispatchResult)
 		int			resultIndex = cdbdisp_numPGresult(dispatchResult);
 
 		if (DEBUG4 >= log_min_messages)
-			write_stderr("Thread %u: PQgetResult\n",mythread());
+			write_log("PQgetResult\n");
 		/* Get one message. */
 		pRes = PQgetResult(segdbDesc->conn);
 
@@ -2584,7 +2689,7 @@ processResults(CdbDispatchResult * dispatchResult)
 			if (DEBUG4 >= log_min_messages)
 			{
 				/* Don't use elog, it's not thread-safe */
-				write_stderr("Thread %u: %s -> idle\n", mythread(), segdbDesc->whoami);
+				write_log("%s -> idle\n", segdbDesc->whoami);
 			}
 			return true;		/* this is normal end of command */
 		}						/* end of results */
@@ -2611,7 +2716,7 @@ processResults(CdbDispatchResult * dispatchResult)
 				/* Don't use elog, it's not thread-safe */
 				char	   *cmdStatus = PQcmdStatus(pRes);
 
-				write_stderr("%s -> ok %s\n",
+				write_log("%s -> ok %s\n",
 						     segdbDesc->whoami,
 						     cmdStatus ? cmdStatus : "(no cmdStatus)");
 			}
@@ -2632,7 +2737,7 @@ processResults(CdbDispatchResult * dispatchResult)
 			if (DEBUG2 >= log_min_messages)
 			{
 				/* Don't use elog, it's not thread-safe */
-				write_stderr("%s -> %s %s  %s",
+				write_log("%s -> %s %s  %s",
                              segdbDesc->whoami,
 						     PQresStatus(resultStatus),
 						     sqlstate ? sqlstate : "(no SQLSTATE)",
