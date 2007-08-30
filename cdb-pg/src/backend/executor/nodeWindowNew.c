@@ -1212,12 +1212,14 @@ appendToFrameBuffer(WindowStatePerLevel level_state,
 			}
 		}
 
-		/* If the leading reader is not set, set it here. */
-		else if (level_state->frame->lead->kind != WINDOW_BOUND_PRECEDING &&
-				 !ntuplestore_acc_tell(level_state->lead_reader, NULL))
-			ntuplestore_acc_seek_last(level_state->lead_reader);
-		else if (level_state->frame->lead->kind == WINDOW_BOUND_PRECEDING)
-			level_state->num_lead_rows++;
+		else 
+		{
+			Assert(level_state->num_lead_rows == level_state->lead_rows);
+
+			/* If the leading edge is not set, set it here. */
+			if (!ntuplestore_acc_tell(level_state->lead_reader, NULL))
+				ntuplestore_acc_seek_last(level_state->lead_reader);
+		}
 	}
 	
 	else
@@ -1433,68 +1435,14 @@ hasEnoughDataInRange(WindowFrameBuffer buffer,
 					 MemoryContext context,
 					 Datum trail_range, Datum lead_range)
 {
-	FrameBufferEntryForRange *lead_entry;
-	Datum* lead_keys;
-	bool* lead_keys_isnull;
-	bool enough = false;
-
 	if (level_state->empty_frame)
 		return true;
 
 	if (!EDGE_IS_BOUND(level_state->frame->lead) &&
 		!EDGE_IS_CURRENT_ROW(level_state->frame->lead))
 		return false;
-
-#if 0
-	lead_keys = (Datum *)
-		palloc0(level_state->numSortCols * sizeof(Datum));
-	lead_keys_isnull = (bool *)
-		palloc0(level_state->numSortCols * sizeof(bool));
-
-	lead_entry = getCurrentValue(level_state->lead_reader, level_state);
-
-	if (EDGE_IS_BOUND(level_state->frame->lead))
-	{
-		Assert(level_state->numSortCols == 1);
-		
-		lead_keys[0] = ExecEvalExpr(level_state->lead_expr, econtext,
-									&(lead_keys_isnull[0]), NULL);
-	}
-	else
-	{
-		deform_window_tuple(econtext->ecxt_scantuple,
-							level_state->numSortCols, level_state->sortColIdx,
-							lead_keys, lead_keys_isnull, context);
-		
-	}
-
-	/* Check if the buffer has data for lead_range. */
-	if (lead_entry != NULL &&
-		(cmp_deformed_tuple(lead_keys, lead_keys_isnull,
-							lead_entry->keys, lead_entry->nulls,
-							level_state->col_sort_asc,
-							level_state->numSortCols,
-							level_state->ltfunctions,
-							level_state->eqfunctions,
-							econtext->ecxt_per_tuple_memory,
-							false) ||
-		 cmp_deformed_tuple(lead_keys, lead_keys_isnull,
-							lead_entry->keys, lead_entry->nulls,
-							level_state->col_sort_asc,
-							level_state->numSortCols,
-							level_state->ltfunctions,
-							level_state->eqfunctions,
-							econtext->ecxt_per_tuple_memory,
-							true)))
-		enough = true;
 	
-	pfree(lead_keys);
-	pfree(lead_keys_isnull);
-#endif
-
-	enough = level_state->lead_ready;
-	
-	return enough;
+	return level_state->lead_ready;
 }
 
 
@@ -2793,7 +2741,8 @@ adjustEdges(WindowFrameBuffer buffer,
 			 !EDGE_IS_CURRENT_ROW(level_state->frame->lead)) ||
 			level_state->num_lead_rows < level_state->lead_rows)
 		{
-			bool found = ntuplestore_acc_advance(level_state->lead_reader, 1);
+			bool found = ntuplestore_acc_tell(level_state->lead_reader, NULL);
+			ntuplestore_acc_advance(level_state->lead_reader, 1);
 			if (found)
 				level_state->num_lead_rows++;
 		}

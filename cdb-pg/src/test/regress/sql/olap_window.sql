@@ -796,3 +796,34 @@ FROM sale;
 SELECT sale.vn,sale.qty,
 SUM(floor(sale.qty)) OVER(order by sale.vn desc range between 0 following and 2 following ) as sum
 from sale;
+
+-- MPP-1907, MPP-1912
+-- begin_equivalent
+SELECT sale.pn,
+COUNT(floor(sale.pn)) OVER(order by sale.pn desc rows between 4 preceding and current row) as count 
+FROM sale;
+SELECT sale.pn,
+COUNT(floor(sale.pn)) OVER(order by sale.pn desc rows between 4 preceding and 0 preceding) as count 
+FROM sale;
+SELECT sale.pn,
+COUNT(floor(sale.pn)) OVER(order by sale.pn desc rows between 4 preceding and 0 following) as count 
+FROM sale;
+SELECT sale.pn,
+COUNT(floor(sale.pn)) OVER(order by sale.pn desc rows 4 preceding) as count 
+FROM sale;
+-- end_equivalent
+
+-- begin_equivalent
+SELECT sale.pn,
+COUNT(floor(sale.pn)) OVER(order by sale.pn desc range between 4 preceding and current row) as count 
+FROM sale;
+SELECT sale.pn,
+COUNT(floor(sale.pn)) OVER(order by sale.pn desc range between 4 preceding and 0 preceding) as count 
+FROM sale;
+SELECT sale.pn,
+COUNT(floor(sale.pn)) OVER(order by sale.pn desc range between 4 preceding and 0 following) as count 
+FROM sale;
+SELECT sale.pn,
+COUNT(floor(sale.pn)) OVER(order by sale.pn desc range 4 preceding) as count 
+FROM sale;
+-- end_equivalent
