@@ -1162,8 +1162,10 @@ bool ntuplestore_acc_advance(NTupleStoreAccessor *tsa, int n)
 	{
 		if(n > 0) /* seek forward */
 		{
-			nts_unpin_page(tsa->store, tsa->page);
+			NTupleStorePage *oldpage = tsa->page;
 			tsa->page = nts_load_next_page(tsa->store, tsa->page);
+			nts_unpin_page(tsa->store, oldpage);
+
 			if(!tsa->page)
 			{
 				tsa->pos.blockn = -1;
@@ -1180,8 +1182,10 @@ bool ntuplestore_acc_advance(NTupleStoreAccessor *tsa, int n)
 		}
 		else /* seeking backward */
 		{
-			nts_unpin_page(tsa->store, tsa->page);
+			NTupleStorePage *oldpage = tsa->page;
 			tsa->page = nts_load_prev_page(tsa->store, tsa->page);
+			nts_unpin_page(tsa->store, oldpage);
+
 			if(!tsa->page)
 			{
 				tsa->pos.blockn = -1;
