@@ -150,7 +150,7 @@ static void	print_connection(ChunkTransportState *transportStates, int fd, const
 static void format_fd_set(StringInfo buf, int nfds, mpp_fd_set fds, char* pfx, char *sfx);
 static char *format_sockaddr(struct sockaddr *sa, char* buf, int bufsize);
 
-/*static void waitOnSocketDone(int);*/
+static void waitOnSocketDone(int);
 
 static void flushInterconnectListenerBacklog(void);
 
@@ -1380,17 +1380,8 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 
 			if (conn->sockfd >= 0)
 			{
-				/*
-				 * I think this waitOnSocketDone() isn't necessary.
-				 * 
-				 * If we do the wait, everybody will stay alive until the slowest QE is done.
-				 * But there is no reason to stay alive if all we are going to do is
-				 * close our socket.  Staying alive makes it very hard to tell WHO
-				 * is the slow QE.  By eliminating this call, it becomes easier to tell.
-				 *
 				if (!forceEOS)
 					waitOnSocketDone(conn->sockfd);
-				*/
 				closesocket(conn->sockfd);
 				conn->sockfd = -1;
 			}
@@ -3265,7 +3256,6 @@ flushInterconnectListenerBacklog(void)
  * about). This should give us notification of ProcDiePending and
  * QueryCancelPending
  */
-#if 0
 static void
 waitOnSocketDone(int fd)
 {
@@ -3330,4 +3320,3 @@ waitOnSocketDone(int fd)
 
 	return;
 }
-#endif
