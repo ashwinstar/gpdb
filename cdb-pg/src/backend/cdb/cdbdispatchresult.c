@@ -308,7 +308,7 @@ cdbdisp_appendMessage(CdbDispatchResult    *dispatchResult,
     if (elevel >= log_min_messages)
     {
         oneTrailingNewlinePQ(dispatchResult->error_message);
-        write_stderr("%s", dispatchResult->error_message->data + msgoff);
+        write_log("%s", dispatchResult->error_message->data + msgoff);
     }
 
     /* In case the caller wants to hand the buffer to ereport(),

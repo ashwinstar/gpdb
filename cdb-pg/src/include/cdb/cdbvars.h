@@ -618,5 +618,10 @@ typedef struct SeqServerControlBlock
 
 extern SeqServerControlBlock *seqServerCtl;
 
+/*
+ * Thread-safe routine to write to the log
+ */
+extern void write_log(const char *fmt,...);
+
 
 #endif   /* GPVARS_H */

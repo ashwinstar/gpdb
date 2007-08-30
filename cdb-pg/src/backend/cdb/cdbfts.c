@@ -157,7 +157,7 @@ FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *username, char *
 			if (LOG >= log_min_messages)
 			{
 				/* Don't use elog, it's not thread-safe */
-				write_stderr("FTS: test connection status unknown, dbid %d dbname %s error message %s (%d)",
+				write_log("FTS: test connection status unknown, dbid %d dbname %s error message %s (%d)",
 							 failedDBInfo->dbid, dbName, PQerrorMessage(conn), PQstatus(conn));
 			}
 			ret = true;
@@ -168,11 +168,11 @@ FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *username, char *
 		if (errorMsg == NULL)
 		{
 			if (LOG >= log_min_messages)
-				write_stderr("FTS: test connection can't parse error message");
+				write_log("FTS: test connection can't parse error message");
 		}
 
 		if (DEBUG3 >= log_min_messages)
-			write_stderr("FtsTestConnection: connection failed with message (%s)", errorMsg);
+			write_log("FtsTestConnection: connection failed with message (%s)", errorMsg);
 
 		/* If we get a network error (do we really need a
 		 * comprehensive list here ?) or a "FATAL" database error,
@@ -193,7 +193,7 @@ FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *username, char *
 		{
 			/* non-fatal connection errors are ignored */
 			if (DEBUG3 >= log_min_messages)
-				write_stderr("FtsTestConnection: nonfatal error, ignoring (%d, %s)", PQsocket(conn), errorMsg);
+				write_log("FtsTestConnection: nonfatal error, ignoring (%d, %s)", PQsocket(conn), errorMsg);
 			ret = true;
 			break;
 		}
@@ -214,7 +214,7 @@ FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *username, char *
 
 		/* This is a real failure for which a reconfigure may be warranted */
 		if (LOG >= log_min_messages)
-			write_stderr("FTS: test connection failed, dbid %d dbname %s error message %s",
+			write_log("FTS: test connection failed, dbid %d dbname %s error message %s",
 						 failedDBInfo->dbid, dbName, PQerrorMessage(conn));
 		ret = false;
 	} while (0);

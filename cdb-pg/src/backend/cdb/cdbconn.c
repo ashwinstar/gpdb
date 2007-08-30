@@ -345,7 +345,7 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
 
         /* Don't use elog, it's not thread-safe */
         if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
-            write_stderr("%s\n", segdbDesc->error_message.data);
+            write_log("%s\n", segdbDesc->error_message.data);
 
         PQfinish(segdbDesc->conn);
         segdbDesc->conn = NULL;
@@ -365,7 +365,7 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
 
         /* Don't use elog, it's not thread-safe */
         if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
-            write_stderr("Connected to %s motionListener=%d with options %s\n",
+            write_log("Connected to %s motionListener=%d with options %s\n",
 						 segdbDesc->whoami,
 						 segdbDesc->motionListener,
 						 buffer.data);
@@ -446,7 +446,7 @@ cdbconn_doDispatchAgentConnect(SegmentDatabaseDescriptor    *segdbDesc,
 
         /* Don't use elog, it's not thread-safe */
         if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
-            write_stderr("%s\n", segdbDesc->error_message.data);
+            write_log("%s\n", segdbDesc->error_message.data);
 
         PQfinish(segdbDesc->conn);
         segdbDesc->conn = NULL;
@@ -466,7 +466,7 @@ cdbconn_doDispatchAgentConnect(SegmentDatabaseDescriptor    *segdbDesc,
 
         /* Don't use elog, it's not thread-safe */
         if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
-            write_stderr("Connected to %s motionListener=%d with options %s\n",
+            write_log("Connected to %s motionListener=%d with options %s\n",
 						 segdbDesc->whoami,
 						 segdbDesc->motionListener,
 						 buffer.data);

@@ -195,7 +195,7 @@ static void get_timestamp(char * strfbuf)
 	strncpy(strfbuf + 19, msbuf, 4);	
 }
 
-void
+static void
 write_log(const char *fmt,...)
 {
 	char logprefix[1024];
