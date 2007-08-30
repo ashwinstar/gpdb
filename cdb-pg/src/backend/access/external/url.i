@@ -526,13 +526,6 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 			memcpy(file->u.curl.curl_url, "http", 4);
 		}
 
-		if (! (curl_global_init(CURL_GLOBAL_ALL)))
-		{
-			elog(ERROR, "internal error: curl_global_init failed");
-			url_fclose(file);
-			return NULL;
-		}
-
         if (! (file->u.curl.handle = curl_easy_init()))
 		{
 			elog(ERROR, "internal error: curl_easy_init failed");
