@@ -366,8 +366,18 @@ static void doNegateFloat(Value *v);
 %type <boolean> constraints_set_mode
 %type <str>		OptTableSpace OptConsTableSpace OptTableSpaceOwner
 %type <list>    OptDistributedBy
+%type <list>    OptTabPartitionBy
 %type <list>	opt_check_option
-
+%type <node>	OptTabPartitionsNumber /* XXX XXX: ??? */
+%type <list>	OptTabPartitionSpec    /* XXX XXX: ??? */
+%type <list>	TabPartitionElemList    /* XXX XXX: ??? */
+%type <list> 	TabPartitionElem        /* XXX XXX: need complex type */
+%type <list> 	TabPartitionBoundarySpec        /* XXX XXX: need complex type */
+%type <list> 	OptTabPartitionBoundarySpec        /* XXX XXX: need complex type */
+%type <list> 	TabPartitionBoundarySpecStart        /* XXX XXX: need complex type */
+%type <node> 	TabPartitionBoundarySpecEnd        /* XXX XXX: need complex type */
+%type <node> 	OptTabPartitionBoundarySpecEnd        /* XXX XXX: need complex type */
+%type <node> 	TabPartitionNameDecl        /* XXX XXX: need complex type */
 
 /*
  * If you make any token changes, update the keyword table in
@@ -428,7 +438,7 @@ static void doNegateFloat(Value *v);
 	OBJECT_P OF OFF OFFSET OIDS OLD ON ONLY OPERATOR OPTION OR
 	ORDER OTHERS OUT_P OUTER_P OVER OVERCOMMIT OVERLAPS OVERLAY OWNED OWNER
 
-	PARTIAL PARTITION PASSWORD PLACING POSITION
+	PARTIAL PARTITION PARTITIONS PASSWORD PLACING POSITION
 	PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
 	PRIOR PRIVILEGES PROCEDURAL PROCEDURE
 
@@ -1880,7 +1890,7 @@ opt_using:
  *****************************************************************************/
 
 CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
-			OptInherit OptWith OnCommitOption OptTableSpace OptDistributedBy
+			OptInherit OptWith OnCommitOption OptTableSpace OptDistributedBy OptTabPartitionBy
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 					$4->istemp = $2;
@@ -1903,7 +1913,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					$$ = (Node *)n;
 				}
 		| CREATE OptTemp TABLE qualified_name OF qualified_name
-			'(' OptTableElementList ')' OptWith OnCommitOption OptTableSpace OptDistributedBy
+			'(' OptTableElementList ')' OptWith OnCommitOption OptTableSpace OptDistributedBy OptTabPartitionBy
 				{
 					/* SQL99 CREATE TABLE OF <UDT> (cols) seems to be satisfied
 					 * by our inheritance capabilities. Let's try it...
@@ -2372,6 +2382,64 @@ OptDistributedBy:   DISTRIBUTED BY  '(' columnList ')'			{ $$ = $4; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
+OptTabPartitionsNumber: PARTITIONS NumericOnly 		{ $$ = makeAConst($2); }
+			| /*EMPTY*/								{ $$ = NULL; }
+		;
+
+OptTabPartitionSpec: '(' TabPartitionElemList ')'	{ $$ = $2; }
+			| /*EMPTY*/								{ $$ = NULL; }
+		;
+
+TabPartitionElemList:
+            TabPartitionElem						{ $$ = list_make1($1); }
+			| TabPartitionElemList ',' 
+              TabPartitionElem						{ $$ = lappend($1, $3); }
+		;
+
+/* Note: specstart is a list, but specend is a scalar.  Not sure if
+   this is the best way to do this... */
+
+TabPartitionBoundarySpecStart:
+			START opt_with IDENT 				{ $$ = list_make1((Node *) makeString($3));}
+            ;
+
+TabPartitionBoundarySpecEnd:
+			END_P opt_with IDENT 				{ $$ = (Node *) makeString($3);}
+            ;
+
+OptTabPartitionBoundarySpecEnd:
+            TabPartitionBoundarySpecEnd 			{ $$ = $1; }
+			| /*EMPTY*/								{ $$ = NULL; }
+		;
+
+TabPartitionBoundarySpec:
+			TabPartitionBoundarySpecStart
+              OptTabPartitionBoundarySpecEnd	{ $$ = lappend($1, $2); }
+			| TabPartitionBoundarySpecEnd		{ $$ = list_make1($1); }
+            ;
+
+OptTabPartitionBoundarySpec:
+            TabPartitionBoundarySpec
+			| /*EMPTY*/								{ $$ = NULL; }
+		;
+
+
+TabPartitionElem: 
+            TabPartitionNameDecl OptTabPartitionBoundarySpec	{ $$ = $2; }
+			| TabPartitionBoundarySpec 	{ $$ = $1; }
+            ;
+
+TabPartitionNameDecl: PARTITION IDENT			
+				{
+					$$ = (Node *) makeString($2);
+				}
+		;
+
+
+OptTabPartitionBy:   PARTITION BY RANGE '(' columnList ')' OptTabPartitionsNumber OptTabPartitionSpec			{ $$ = $5; }
+			| /*EMPTY*/								{ $$ = NULL; }
+		;
+
 /*
  * Note: CREATE TABLE ... AS SELECT ... is just another spelling for
  * SELECT ... INTO.
@@ -2379,7 +2447,7 @@ OptDistributedBy:   DISTRIBUTED BY  '(' columnList ')'			{ $$ = $4; }
 
 CreateAsStmt:
 		CREATE OptTemp TABLE qualified_name OptCreateAs
-			OptWith OnCommitOption OptTableSpace AS SelectStmt OptDistributedBy
+			OptWith OnCommitOption OptTableSpace AS SelectStmt OptDistributedBy OptTabPartitionBy
 				{
 					/*
 					 * When the SelectStmt is a set-operation tree, we must
@@ -7965,7 +8033,7 @@ window_name: ColId { $$ = $1; }
 		;
 /*
  * func_expr is split out from c_expr just so that we have a classification
- * for "everything that is a function call or looks like one".  This isn't
+a * for "everything that is a function call or looks like one".  This isn't
  * very important, but it saves us having to document which variants are
  * legal in the backwards-compatible functional-index syntax for CREATE INDEX.
  * (Note that many of the special SQL functions wouldn't actually make any

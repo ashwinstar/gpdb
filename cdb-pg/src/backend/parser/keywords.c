@@ -276,6 +276,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"owner", OWNER},
 	{"partial", PARTIAL},
 	{"partition", PARTITION},
+	{"partitions", PARTITIONS},
 	{"password", PASSWORD},
 	{"placing", PLACING},
 	{"position", POSITION},
