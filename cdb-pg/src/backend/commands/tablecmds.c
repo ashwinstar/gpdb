@@ -566,35 +566,6 @@ DefineRelation_int(CreateStmt *stmt,
 		stmt->oidInfo.toastIndexOid = InvalidOid;
 	}
 
-	/* 
-	 * Special code for allowing upgrade from Greenplum Database 2.2 to 2.3.
-	 * 
-	 * If we are creating pg_resqueue, it means we are upgrading a 2.2 system.
-	 * We need to create it with the right OIDs as if it had been created by initdb.
-	 */
-	/*if (namespaceId == PG_CATALOG_NAMESPACE)
-	{
-		if(tablespaceId==GLOBALTABLESPACE_OID && strcmp(relname,"pg_resqueue")==0)
-		{
-			relationId = ResQueueRelationId; 
-			stmt->oidInfo.comptypeOid = 10288;
-			stmt->oidInfo.toastOid = InvalidOid;
-			stmt->oidInfo.toastIndexOid = InvalidOid;
-			allowSystemTableMods = true;
-			shared_relation = true;
-		} 
-		
-		if (strcmp(relname,"pg_roles")==0)
-		{
-			relationId = 10317; 
-		}
-		if (strcmp(relname,"pg_locks")==0)
-		{
-			relationId = 10348; 
-		}
-		stmt->oidInfo.relOid = relationId;
-	}*/
-	
     if (stmt->oidInfo.relOid)
         elog(DEBUG4, "DefineRelation relOid=%d schemaname=%s shouldDispatch=%d",
              stmt->oidInfo.relOid,
