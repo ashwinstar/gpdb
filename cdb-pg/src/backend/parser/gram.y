@@ -374,6 +374,7 @@ static void doNegateFloat(Value *v);
 %type <list> 	TabPartitionElem        /* XXX XXX: need complex type */
 %type <list> 	TabPartitionBoundarySpec        /* XXX XXX: need complex type */
 %type <list> 	OptTabPartitionBoundarySpec        /* XXX XXX: need complex type */
+%type <list> 	TabPartitionBoundarySpecValList        /* XXX XXX: need complex type */
 %type <list> 	TabPartitionBoundarySpecStart        /* XXX XXX: need complex type */
 %type <node> 	TabPartitionBoundarySpecEnd        /* XXX XXX: need complex type */
 %type <node> 	OptTabPartitionBoundarySpecEnd        /* XXX XXX: need complex type */
@@ -2412,8 +2413,17 @@ OptTabPartitionBoundarySpecEnd:
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
+TabPartitionBoundarySpecValList:
+            AexprConst	    					{ $$ = list_make1($1); }
+			| TabPartitionBoundarySpecValList ',' 
+              AexprConst						{ $$ = lappend($1, $3); }
+		;
+
+/* VALUES for LIST, start..end for RANGE. */
+
 TabPartitionBoundarySpec:
-			TabPartitionBoundarySpecStart
+            VALUES '(' TabPartitionBoundarySpecValList ')'		{ $$ = $3; }
+			| TabPartitionBoundarySpecStart
               OptTabPartitionBoundarySpecEnd	{ $$ = lappend($1, $2); }
 			| TabPartitionBoundarySpecEnd		{ $$ = list_make1($1); }
             ;
