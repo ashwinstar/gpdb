@@ -371,3 +371,51 @@ SELECT * FROM copy_regression_csv3 ORDER BY a;
 DROP TABLE copy_regression_csv1;
 DROP TABLE copy_regression_csv2;
 DROP TABLE copy_regression_csv3;
+
+
+-- ###########################################################
+-- distributed data error consolidation + original row numbers
+-- ###########################################################
+
+CREATE TABLE copy_regression_error1(a int, b int) distributed by(a);
+
+-- parse error on QE (extra column on line 6)
+
+COPY copy_regression_error1 from stdin;
+1	1
+2	2
+3	3
+4	4
+5	5
+6	6	6
+7	7
+\.
+
+-- parse error on QD (missing column on line 3)
+COPY copy_regression_error1 from stdin;
+1	1
+2	2
+3
+4	4
+\.
+
+-- convert error on QD (invalid type line 2)
+
+COPY copy_regression_error1 from stdin;
+1	1
+two	2
+3	3
+\.
+
+-- convert error on QE (invalid type line 5)
+COPY copy_regression_error1 from stdin;
+1	1
+2	2
+3	3
+4	4
+5	five
+6	6
+7	7
+\.
+
+DROP TABLE copy_regression_error1;

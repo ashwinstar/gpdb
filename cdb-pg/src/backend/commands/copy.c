@@ -92,6 +92,7 @@ static bool CopyGetInt16(CopyState cstate, int16 *val);
 static char *scanTextLine(CopyState cstate, const char *s, char c, size_t len);
 static char *scanCSVLine(CopyState cstate, const char *s, char c1, char c2, char c3, size_t len);
 
+static int CopyExtractLineNum(CopyState cstate);
 static void concatenateEol(CopyState cstate);
 static char *escape_quotes(const char *src);
 
@@ -682,6 +683,8 @@ DoCopy(const CopyStmt *stmt)
 				 errmsg("cannot specify NULL in BINARY mode")));
 
 	/* Set defaults */
+	
+	cstate->err_loc_type = ROWNUM_ORIGINAL; 
 	
 	cstate->escape_off = false;
 	
@@ -1771,6 +1774,23 @@ copy_in_error_callback(void *arg)
 	appendStringInfoString(&copy_of_line_buf, cstate->line_buf.data);
 	
 	/*
+	 * If our (copy of) linebuf has the embedded original row number, remove 
+     * it. It is not part of the actual data, and should not be displayed.
+	 */
+	if(cstate->err_loc_type == ROWNUM_EMBEDDED)
+	{
+		/* the following is a compacted mod of CopyExtractLineNum */
+		int lineno_str_len = 0;
+		char *line_start = copy_of_line_buf.data;
+		char *lineno_delim = memchr(line_start, ORIGINAL_LINENO_DELIM, 32);
+		
+		Insist(lineno_delim && (lineno_delim != line_start));
+		lineno_str_len = lineno_delim - line_start + 1;
+		copy_of_line_buf.data += lineno_str_len; /* advance beyond original lineno */
+		copy_of_line_buf.len -= lineno_str_len;
+	}
+	
+	/*
 	 * If we saved the error context from a QE in cdbcopy.c append it here.
 	 */
 	if((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)
@@ -1796,10 +1816,7 @@ copy_in_error_callback(void *arg)
 			/* error is relevant to a particular column */
 			limit_printout_length(&cstate->attribute_buf);
 
-			if (Gp_role == GP_ROLE_EXECUTE)
-				errcontext("COPY %s, line %d of this segment db input data, column %s",
-						   cstate->cur_relname, cstate->cur_lineno, cstate->cur_attname);
-			else if(!cstate->error_on_executor)
+			if(!cstate->error_on_executor) /* don't print out context if error wasn't local */
 				errcontext("COPY %s, line %d, column %s",
 						   cstate->cur_relname, cstate->cur_lineno, cstate->cur_attname);
 		}
@@ -1812,9 +1829,7 @@ copy_in_error_callback(void *arg)
 				truncateEol(&copy_of_line_buf, cstate->eol_type);
 				limit_printout_length(&copy_of_line_buf);
 
-				if (Gp_role == GP_ROLE_EXECUTE)
-					errcontext("COPY %s, line %d of this segment db input data: \"%s\"", cstate->cur_relname, cstate->cur_lineno, copy_of_line_buf.data);
-				else if(!cstate->error_on_executor) /* don't print out context if error wasn't local */
+				if(!cstate->error_on_executor) /* don't print out context if error wasn't local */
 					errcontext("COPY %s, line %d: \"%s\"", cstate->cur_relname, cstate->cur_lineno, copy_of_line_buf.data);
 			}
 			else
@@ -1827,16 +1842,12 @@ copy_in_error_callback(void *arg)
 				 * to regurgitate it without conversion.  So we have to punt
 				 * and just report the line number.
 				 */
-				if (Gp_role == GP_ROLE_EXECUTE)
-					errcontext("COPY %s, line %d of this segment db input data", cstate->cur_relname, cstate->cur_lineno);
-				else if(!cstate->error_on_executor)
+				if(!cstate->error_on_executor)
 					errcontext("COPY %s, line %d", cstate->cur_relname, cstate->cur_lineno);
 			}
 		}
 	}
 	
-	/* error context will possibly free it but just in case */
-	pfree(copy_of_line_buf.data);
 }
 
 /*
@@ -1945,6 +1956,12 @@ CopyFromDispatch(CopyState cstate)
 	int			p_nattrs;		/* num of partitioning keys in the policy			 */
 
 	/*
+	 * Variables for original row number tracking
+	 */
+	StringInfoData line_buf_with_lineno;
+	int			original_lineno_for_qe;
+
+	/*
 	 * Variables for cdbhash
 	 */
 	CdbHash    *cdbHash;		/* a CdbHash API object		 */
@@ -1959,6 +1976,12 @@ CopyFromDispatch(CopyState cstate)
 	attr_count = list_length(cstate->attnumlist);
 	num_defaults = 0;
 
+	/*
+	 * Init original row number tracking vars
+	 */
+	initStringInfo(&line_buf_with_lineno);
+	original_lineno_for_qe = 1;
+	
 	/*
 	 * We need a ResultRelInfo so we can use the regular executor's
 	 * index-entry-making machinery.  (There used to be a huge amount of
@@ -2056,7 +2079,6 @@ CopyFromDispatch(CopyState cstate)
 	 * 4 - send the COPY command to all segment databases.
 	 * 5 - prepare cdbhash for hashing on row values.
 	 */
-	
 	cdbCopy = makeCdbCopy(true);
 	
 	/*
@@ -2402,7 +2424,8 @@ CopyFromDispatch(CopyState cstate)
 	errcontext.arg = (void *) cstate;
 	errcontext.previous = error_context_stack;
 	error_context_stack = &errcontext;
-
+	cstate->err_loc_type = ROWNUM_ORIGINAL;
+	
 	/*
 	 * initialize buffered scan variables.
 	 */
@@ -2508,6 +2531,8 @@ CopyFromDispatch(CopyState cstate)
 
 				if (!cstate->binary)
 				{
+					/* Get the line number of the first line of this data row */
+					original_lineno_for_qe = cstate->cur_lineno + 1;
 
 					PG_TRY();
 					{
@@ -2527,7 +2552,7 @@ CopyFromDispatch(CopyState cstate)
 					if(!cstate->line_done)
 					{
 						/*
-						 * We did not finish reading a complete date line
+						 * We did not finish reading a complete data line.
 						 *
 						 * If eof is not yet reached, we skip att parsing
 						 * and read more data. But if eof _was_ reached it means
@@ -2900,11 +2925,40 @@ CopyFromDispatch(CopyState cstate)
 
 				target_seg = cdbhashreduce(cdbHash);	/* hash result segment */
 
+
 				/*
-				 * Send data row to all databases for this segment.
+				 * Send data row to all databases for this segment. If not in 
+				 * BINARY format, also send the original row number with the data.
 				 */
-				cdbCopySendData(cdbCopy, target_seg, cstate->line_buf.data, cstate->line_buf.len);
-				
+				if(cstate->binary)
+				{
+					/* send the data row the way it is */
+					cdbCopySendData(cdbCopy, 
+									target_seg, 
+									cstate->line_buf.data, 
+									cstate->line_buf.len);									
+				}
+				else
+				{
+					/* modify the data to look like: "<lineno>^<data>" */
+					appendStringInfo(&line_buf_with_lineno, "%d%c%s", 
+									 original_lineno_for_qe, 
+									 ORIGINAL_LINENO_DELIM,
+									 cstate->line_buf.data);
+					
+					/* send modified data */
+					cdbCopySendData(cdbCopy, 
+									target_seg, 
+									line_buf_with_lineno.data, 
+									line_buf_with_lineno.len);
+					
+					line_buf_with_lineno.len = 0;
+					line_buf_with_lineno.data[0] = '\0';
+					line_buf_with_lineno.cursor = 0;
+					
+				}
+
+
 				cstate->processed++;
 				
 				if (cdbCopy->io_errors)
@@ -2917,6 +2971,7 @@ CopyFromDispatch(CopyState cstate)
 				cstate->line_buf.len = 0;		/* we can reset line buffer now. */
 				cstate->line_buf.data[0] = '\0';
 				cstate->line_buf.cursor = 0;
+
 			}					/* end while(!raw_buf_done) */
 		}						/* end if (bytesread > 0 || !cstate->fe_eof) */
 		else
@@ -2994,6 +3049,7 @@ CopyFromDispatch(CopyState cstate)
 	pfree(defexprs);
 	pfree(cdbcopy_cmd.data);
 	pfree(cdbcopy_err.data);
+	pfree(line_buf_with_lineno.data);
 	pfree(cdbCopy);
 
 	ExecDropSingleTupleTableSlot(slot);
@@ -3192,6 +3248,10 @@ CopyFrom(CopyState cstate)
 	errcontext.arg = (void *) cstate;
 	errcontext.previous = error_context_stack;
 	error_context_stack = &errcontext;
+	if(Gp_role == GP_ROLE_EXECUTE)
+		cstate->err_loc_type = ROWNUM_EMBEDDED; /* get original row num from QD COPY */
+	else
+		cstate->err_loc_type = ROWNUM_ORIGINAL; /* we can count rows by ourselves */
 
 	/*
 	 * initialize buffered scan variables.
@@ -3256,7 +3316,7 @@ CopyFrom(CopyState cstate)
 
 				if (!cstate->binary)
 				{
-
+					
 					/* Actually read the line into memory here */
 					cstate->line_done = cstate->csv_mode ?
 						CopyReadLineCSV(cstate, bytesread) :
@@ -3745,12 +3805,24 @@ CopyReadLineText(CopyState cstate, size_t bytesread)
 	}
 
 	/*
-	 * Done reading a complete data line. Increment input row count and
-	 * convert it to server encoding if transcoding is needed.
+	 * Done reading a complete data line. Set input row number for error report 
+	 * purposes and convert it to server encoding if transcoding is needed.
 	 */
 	if (cstate->line_done)
 	{
-		cstate->cur_lineno++;
+		/*
+		 * Increment line count by 1 if we have access to all the original
+		 * data rows and can count them reliably (ROWNUM_ORIGINAL). However 
+		 * if we have ROWNUM_EMBEDDED the original row number for this row
+		 * was sent to us with the data (courtesy of the data distributor), so 
+		 * get that number instead.
+		 */
+		if(cstate->err_loc_type == ROWNUM_ORIGINAL)
+			cstate->cur_lineno++; 
+		else if(cstate->err_loc_type == ROWNUM_EMBEDDED)
+			cstate->cur_lineno = CopyExtractLineNum(cstate);
+		else
+			Assert(false); /* byte offset not yet supported */
 		
 		if (cstate->need_transcoding)
 		{
@@ -4003,13 +4075,25 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 
 
 	/*
-	 * Done reading a complete data line. Increment input row count and
-	 * convert it to server encoding if transcoding is needed.
+	 * Done reading a complete data line. Set input row number for error report 
+	 * purposes and convert it to server encoding if transcoding is needed.
 	 */
 	if (cstate->line_done)
 	{
-		cstate->cur_lineno++;
-
+		/*
+		 * Increment line count by 1 if we have access to all the original
+		 * data rows and can count them reliably (ROWNUM_ORIGINAL). However 
+		 * if we have ROWNUM_EMBEDDED the original row number for this row
+		 * was sent to us with the data (courtesy of the data distributor), so 
+		 * get that number instead.
+		 */
+		if(cstate->err_loc_type == ROWNUM_ORIGINAL)
+			cstate->cur_lineno++; 
+		else if(cstate->err_loc_type == ROWNUM_EMBEDDED)
+			cstate->cur_lineno = CopyExtractLineNum(cstate);
+		else
+			Assert(false); /* byte offset not yet supported */
+		
 		if (cstate->need_transcoding)
 		{
 			cvt = (char *) pg_client_to_server(cstate->line_buf.data,
@@ -4202,8 +4286,8 @@ int GetDecimalFromHex(char hex)
  *
  * line_buf.cursor -- an offset from beginning of the line buffer
  * that indicates where we are about to begin the next scan. Note that
- * if we have WITH OIDS this cursor is already shifted past the first
- * OID attribute.
+ * if we have WITH OIDS or if we ran CopyExtractLineNum this cursor is 
+ * already shifted and is not in the beginning of line buf anymore.
  *
  * attribute_buf.cursor -- an offset from the beginning of the
  * attribute buffer that indicates where the current attribute begins.
@@ -5086,6 +5170,53 @@ CopyGetAttnums(TupleDesc tupDesc, Relation rel, List *attnamelist)
 	}
 	
 	return attnums;
+}
+
+/*
+ * CopyExtractLineNum - extract embedded row number from data.
+ *
+ * If data is being parsed in execute mode the parser (QE) doesn't
+ * know the original line number (in the original file) of the current 
+ * row. Therefore the QD sends this information along with the data.
+ * The same goes for external table scans with gpfdist. gpfdist will
+ * send embedded line numbers with data.
+ *
+ * in:
+ *    line_buf: <original_num>^<data for this row>
+ *    lineno: ?
+ *
+ * out:
+ *    line_buf: <data for this row>
+ *    lineno: <original_num>
+ */
+static
+int CopyExtractLineNum(CopyState cstate)
+{
+	char *lineno_delim = NULL;
+	
+	/* 
+	 * Line_buf may have already skipped an OID column if WITH OIDS defined,
+	 * so we need to start from cursor not always from beginning of linebuf.
+	 */
+	char *line_start = cstate->line_buf.data + cstate->line_buf.cursor;
+	int  lineno_str_len = 0;
+	int  lineno = 0;
+		
+	lineno_delim = memchr(line_start, ORIGINAL_LINENO_DELIM, 32);
+	Insist(lineno_delim && (lineno_delim != line_start));		
+	lineno_str_len = lineno_delim - line_start + 1;
+	
+	/* change the lineno delim to null '\0' to look at the lineno */
+	*lineno_delim = '\0';
+	lineno = atoi(line_start);
+	
+	/* restore the line_buf byte */
+	*lineno_delim = ORIGINAL_LINENO_DELIM;
+
+	/* reposition line buf cursor to see real data (skip lineno) */
+	cstate->line_buf.cursor += lineno_str_len;
+				
+	return lineno;
 }
 
 

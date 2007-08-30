@@ -196,11 +196,11 @@ NOTICE:  Table has no attributes to distribute on.
 COPY copy_regression_nocol from stdin;
 COPY copy_regression_nocol from stdin;
 ERROR:  extra data after last expected column
-CONTEXT:  COPY copy_regression_nocol, line 2: "we should get an "extra data" error here"
+CONTEXT:  COPY copy_regression_nocol, line 1: "we should get an "extra data" error here"
 COPY copy_regression_nocol from stdin with csv;
 COPY copy_regression_nocol from stdin with csv; -- should fail
 ERROR:  extra data after last expected column
-CONTEXT:  COPY copy_regression_nocol, line 2: "we should get an "extra data" error here"
+CONTEXT:  COPY copy_regression_nocol, line 1: "we should get an "extra data" error here"
 COPY copy_regression_nocol to stdout;
 COPY copy_regression_nocol to stdout with csv;
 DROP TABLE copy_regression_nocol;
@@ -333,3 +333,24 @@ SELECT * FROM copy_regression_csv3 ORDER BY a;
 DROP TABLE copy_regression_csv1;
 DROP TABLE copy_regression_csv2;
 DROP TABLE copy_regression_csv3;
+-- ###########################################################
+-- distributed data error consolidation + original row numbers
+-- ###########################################################
+CREATE TABLE copy_regression_error1(a int, b int) distributed by(a);
+-- parse error on QE (extra column on line 6)
+COPY copy_regression_error1 from stdin;
+ERROR:  extra data after last expected column  (seg1 localhost:11002 pid=19466)
+CONTEXT:  COPY copy_regression_error1, line 6: "6	6	6"
+-- parse error on QD (missing column on line 3)
+COPY copy_regression_error1 from stdin;
+ERROR:  missing data for column "b"
+CONTEXT:  COPY copy_regression_error1, line 3: "3"
+-- convert error on QD (invalid type line 2)
+COPY copy_regression_error1 from stdin;
+ERROR:  invalid input syntax for integer: "two"
+CONTEXT:  COPY copy_regression_error1, line 2, column a
+-- convert error on QE (invalid type line 5)
+COPY copy_regression_error1 from stdin;
+ERROR:  invalid input syntax for integer: "five"  (seg0 localhost:11001 pid=19465)
+CONTEXT:  COPY copy_regression_error1, line 5, column b
+DROP TABLE copy_regression_error1;

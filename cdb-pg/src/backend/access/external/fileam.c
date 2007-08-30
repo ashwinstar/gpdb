@@ -554,6 +554,7 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, 
 	pstate->eol_type = EOL_UNKNOWN;
 	pstate->cur_relname = RelationGetRelationName(relation);
 	pstate->cur_lineno = 0;
+	pstate->err_loc_type = ROWNUM_ORIGINAL;
 	pstate->cur_attname = NULL;
 	pstate->raw_buf_done = true;	/* true so we will read data in first run */
 	pstate->line_done = true;

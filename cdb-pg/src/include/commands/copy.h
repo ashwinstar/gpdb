@@ -42,6 +42,42 @@ typedef enum EolType
 } EolType;
 
 /*
+ * There are several ways to know the input row number where an error happened, 
+ * in order to report it reliably.
+ *
+ * ROWNUM_ORIGINAL - Used when the error happens in the same place that the
+ * *whole* file or data is read, and input row numbers can be tracked reliably. 
+ * So, if an error happens in the n'th data row read, it's actually the n'th row 
+ * of the file (or data stream).
+ * Using this type are - COPY in dispatch mode, COPY in utility mode, External 
+ * tables with 'file', and external web tables.
+ * 
+ * ROWNUM_EMBEDDED - Used when the error happens in a place where a random
+ * part of the file is read (given to us) and therefore the row numbers of the 
+ * original data are unknown. 
+ * So, If an error happens in the n'th row read it can actually be the (n+m)'th 
+ * row of the original file. 
+ * Using this type are - COPY in execute mode, and External tables getting data
+ * from a gpfdist process in a CSV Format (gpfdist only parses CSV row by row,
+ * while text format is parsed in chucks).
+ * In this case we do some extra work to retrieve the original row number - the 
+ * distributor (COPY dispatcher, or gpfdist) embeds the original row number in
+ * the beginning of each data row, and this number is extracted later on.
+ *
+ * BYTENUM_EMBEDDED - Original row isn't even known to the distributor, only 
+ * the byte offset of each chunk it sends. We report errors in byte offset
+ * number, not row number. We keep track of byte counts. This is currently
+ * only used by external tables with gpfdist in 'text' format.
+ *
+ */
+typedef enum ErrLocType
+{
+	ROWNUM_ORIGINAL,
+	ROWNUM_EMBEDDED,
+	BYTENUM_EMBEDDED
+} ErrLocType;
+
+/*
  * This struct contains all the state variables used throughout a COPY
  * operation. For simplicity, we use the same struct for all variants of COPY,
  * even though some fields are used in only some cases.
@@ -167,7 +203,10 @@ typedef struct CopyStateData
 	bool		cr_in_prevbuf;	/* CR was last character of the data input
 								 * buffer */
 
-
+	/* Original row number tracking variables */
+#define ORIGINAL_LINENO_DELIM '^'
+	ErrLocType  err_loc_type;   /* see enum def for description */	
+	
 	struct HeapInsertDesc *heapInsertDesc;
 
 	/* end Greenplum Database specific variables */
