@@ -159,11 +159,14 @@ def waitSession(session):
     permissionDenied = False
     for p in session:
         p.x_res = p.fromchild.read()
+        i = p.x_res.find("BEGINDUMP")
+        if i >= 0: p.x_res = p.x_res[i+10:]
         try:
             p.x_res = pickle.loads(p.x_res)
         except KeyboardInterrupt:
             raise
         except:
+            if opt['-v']: print p.x_res
             permissionDenied = (p.x_res.find('Permission denied') >= 0)
             if permissionDenied:
                 errmsg = '[ERROR %s] ssh permission denied while %s' % (p.x_peer, p.x_ssh)

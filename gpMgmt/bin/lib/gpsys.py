@@ -185,7 +185,9 @@ elif system == 'darwin':
 
 
 if opt['-p']:
+    print "BEGINDUMP"
     print pickle.dumps(res)
+    print "ENDDUMP"
 else:
     for i in res:
         print i, ' | ', res[i]
