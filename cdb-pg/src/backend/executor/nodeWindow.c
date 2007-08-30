@@ -2161,7 +2161,6 @@ adjustEdges(WindowState *wstate)
 							}
 							else
 							{
-								Insist(key->frame->trail->kind == WINDOW_UNBOUND_PRECEDING);
 								Insist(funcstate->cur_lead_edge == 0);
 								funcstate->prev_lead_edge = 
 									funcstate->cur_lead_edge;
@@ -2998,13 +2997,13 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 	else
 		opr = ((Form_pg_operator) GETSTRUCT(tup));
 	
-	ReleaseSysCache(tup);
 
 	exprrestype = opr->oprresult;
 	expr = make_opclause(HeapTupleGetOid(tup), exprrestype,
 						 false, varexpr, 
 						 (Expr *)edge->val);
 	((OpExpr *)expr)->opfuncid = opr->oprcode;
+	ReleaseSysCache(tup);
 
 	/*
 	 * If the frame edge operation returns a different type
