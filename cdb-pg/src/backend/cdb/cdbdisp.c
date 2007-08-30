@@ -171,6 +171,41 @@ static DtxContextInfo TempQDDtxContextInfo;
  * 
  * Ugly:  This write in a fixed format, and ignore what the log_prefix guc says.
  */
+
+#ifdef WIN32
+static void
+write_eventlog(int level, const char *line);
+/*
+ * Write a message line to the windows event log
+ */
+static void
+write_eventlog(int level, const char *line)
+{
+	int			eventlevel = EVENTLOG_ERROR_TYPE;
+	static HANDLE evtHandle = INVALID_HANDLE_VALUE;
+
+	if (evtHandle == INVALID_HANDLE_VALUE)
+	{
+		evtHandle = RegisterEventSource(NULL, "PostgreSQL");
+		if (evtHandle == NULL)
+		{
+			evtHandle = INVALID_HANDLE_VALUE;
+			return;
+		}
+	}
+
+	ReportEvent(evtHandle,
+				eventlevel,
+				0,
+				0,				/* All events are Id 0 */
+				NULL,
+				1,
+				0,
+				&line,
+				NULL);
+}
+#endif   /* WIN32 */
+
 static void get_timestamp(char * strfbuf)
 {
 	time_t		stamp_time;
@@ -195,7 +230,7 @@ static void get_timestamp(char * strfbuf)
 	strncpy(strfbuf + 19, msbuf, 4);	
 }
 
-static void
+void
 write_log(const char *fmt,...)
 {
 	char logprefix[1024];
