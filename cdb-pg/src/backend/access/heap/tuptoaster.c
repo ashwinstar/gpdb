@@ -84,6 +84,53 @@ heap_tuple_fetch_attr(varattrib *attr)
 	return result;
 }
 
+void varattrib_untoast_ptr_len(Datum d, char **datastart, int *len, void **tofree)
+{
+	struct varlena *va = (struct varlena *) DatumGetPointer(d);
+	varattrib *attr = (varattrib *) va;
+
+	*len = -1;
+	*tofree = NULL;
+
+	if(VARATT_IS_EXTENDED(attr))
+	{
+		if(VARATT_IS_EXTERNAL(attr))
+		{
+			attr = toast_fetch_datum(attr);
+			/* toast_fetch_datum will palloc, so set it up for free */
+			*tofree = attr;
+		}
+
+		if(VARATT_IS_COMPRESSED(attr))
+		{
+			PGLZ_Header *tmp = (PGLZ_Header *) attr;
+			attr = (varattrib *) palloc(PGLZ_RAW_SIZE(tmp) + VARHDRSZ);
+			SET_VARSIZE(attr, PGLZ_RAW_SIZE(tmp) + VARHDRSZ);
+			pglz_decompress(tmp, VARDATA(attr));
+
+			/* If tofree is set, that is, we get it from toast_fetch_datum.  
+			 * We need to free it here 
+			 */
+			if(*tofree)
+				pfree(*tofree);
+			*tofree = attr;
+		}
+		else if(VARATT_IS_SHORT(attr))
+		{
+			*len = VARSIZE_SHORT(attr) - VARHDRSZ_SHORT;
+			*datastart = VARDATA_SHORT(attr);
+			attr = NULL;
+		}
+	}
+
+	if(*len == -1)
+	{
+		*datastart = VARDATA(attr);
+		*len = VARSIZE(attr) - VARHDRSZ;
+	}
+
+	Assert(*len >= 0);
+}
 
 /* ----------
  * heap_tuple_untoast_attr -
@@ -1045,7 +1092,7 @@ toast_save_datum(Relation rel, Datum value)
 	else if (VARATT_IS_COMPRESSED(value))
 	{
 		/* rawsize in a compressed datum is the just the size of the payload */
-		rawsize = ((varattrib *) value)->va_compressed.va_rawsize + VARHDRSZ;
+		rawsize = ((varattrib *) DatumGetPointer(value))->va_compressed.va_rawsize + VARHDRSZ;
 		extsize = VARSIZE(value) - VARHDRSZ;
 		data_p = VARDATA(value);
 		data_todo = VARSIZE(value) - VARHDRSZ;
@@ -1075,7 +1122,7 @@ toast_save_datum(Relation rel, Datum value)
 		Assert(VARATT_EXTERNAL_IS_COMPRESSED(result));
 		elog(DEBUG4,
 			 "saved toast datum, original varsize %ud rawsize %ud new extsize %ud rawsize %uld\n", 
-			 VARSIZE(value), ((varattrib *) value)->va_compressed.va_rawsize,
+			 VARSIZE(value), ((varattrib *) DatumGetPointer(value))->va_compressed.va_rawsize,
 			 result->va_external.va_extsize, result->va_external.va_rawsize);
 	}
 	else
@@ -1279,15 +1326,15 @@ toast_fetch_datum(varattrib *attr)
 		Assert(!isnull);
 		chunk = DatumGetPointer(fastgetattr(ttup, 3, toasttupDesc, &isnull));
 		Assert(!isnull);
-		if (VARATT_IS_SHORT(chunk)) 
+		if (VARATT_IS_SHORT(PointerGetDatum(chunk))) 
 		{
-			chunksize = VARSIZE_SHORT(chunk) - VARHDRSZ_SHORT;
-			chunkdata = VARDATA_SHORT(chunk);
+			chunksize = VARSIZE_SHORT(PointerGetDatum(chunk)) - VARHDRSZ_SHORT;
+			chunkdata = VARDATA_SHORT(PointerGetDatum(chunk));
 		}
-		else if (!VARATT_IS_EXTENDED(chunk)) 
+		else if (!VARATT_IS_EXTENDED(PointerGetDatum(chunk))) 
 		{
-			chunksize = VARSIZE(chunk) - VARHDRSZ;
-			chunkdata = VARDATA(chunk);
+			chunksize = VARSIZE(PointerGetDatum(chunk)) - VARHDRSZ;
+			chunkdata = VARDATA(PointerGetDatum(chunk));
 		}
 		else 
 		{
@@ -1471,10 +1518,10 @@ toast_fetch_datum_slice(varattrib *attr, int32 sliceoffset, int32 length)
 		Assert(!isnull);
 		chunk = DatumGetPointer(fastgetattr(ttup, 3, toasttupDesc, &isnull));
 		Assert(!isnull);
-		if (VARATT_IS_SHORT(chunk))
-			chunksize = VARSIZE_SHORT(chunk) - VARHDRSZ_SHORT;
-		else if (!VARATT_IS_EXTENDED(chunk))
-			chunksize = VARSIZE(chunk) - VARHDRSZ;
+		if (VARATT_IS_SHORT((varattrib *)chunk))
+			chunksize = VARSIZE_SHORT((varattrib *)chunk) - VARHDRSZ_SHORT;
+		else if (!VARATT_IS_EXTENDED((varattrib *)chunk))
+			chunksize = VARSIZE((varattrib *)chunk) - VARHDRSZ;
 		else {
 			elog(ERROR, "found toasted toast chunk?");
 			chunksize = 0; /* shut compiler up */
@@ -1522,7 +1569,7 @@ toast_fetch_datum_slice(varattrib *attr, int32 sliceoffset, int32 length)
 
 		memcpy(((char *) VARDATA(result)) +
 			   (residx * TOAST_MAX_CHUNK_SIZE - sliceoffset) + chcpystrt,
-			   VARDATA(chunk) + chcpystrt,
+			   VARDATA((varattrib *)chunk) + chcpystrt,
 			   (chcpyend - chcpystrt) + 1);
 
 		nextidx++;

@@ -93,6 +93,14 @@ extern void toast_delete(Relation rel, HeapTuple oldtup);
 extern varattrib *heap_tuple_fetch_attr(varattrib *attr);
 
 /* ----------
+ * varattrib_untoast_ptr_len
+ * 
+ *		Fast path to get the pointer and length, avoid palloc if possible.
+ * ----------
+ */
+extern void varattrib_untoast_ptr_len(Datum d, char **datastart, int *len, void **tofree);
+
+/* ----------
  * heap_tuple_untoast_attr() -
  *
  *		Fully detoasts one attribute, fetching and/or decompressing
