@@ -366,6 +366,7 @@ static void doNegateFloat(Value *v);
 %type <boolean> constraints_set_mode
 %type <str>		OptTableSpace OptConsTableSpace OptTableSpaceOwner
 %type <list>    OptDistributedBy
+%type <keyword> TabPartitionByType
 %type <list>    OptTabPartitionBy
 %type <list>	opt_check_option
 %type <node>	OptTabPartitionsNumber /* XXX XXX: ??? */
@@ -415,7 +416,7 @@ static void doNegateFloat(Value *v);
 
 	GLOBAL GRANT GRANTED GREATEST GROUP_P GROUP_ID GROUPING
 
-	HANDLER HAVING HEADER_P HOLD HOST HOUR_P
+	HANDLER HASH HAVING HEADER_P HOLD HOST HOUR_P
 
 	IF_P  ILIKE IMMEDIATE IMMUTABLE IMPLICIT_P IN_P INCLUDING INCREMENT
 	INDEX INDEXES INHERIT INHERITS INITIALLY INNER_P INOUT INPUT_P
@@ -427,7 +428,7 @@ static void doNegateFloat(Value *v);
 	KEY
 
 	LANCOMPILER LANGUAGE LARGE_P  LAST_P LEADING LEAST LEFT LEVEL
-	LIKE LIMIT LISTEN LOAD LOCAL LOCALTIME LOCALTIMESTAMP LOCATION
+	LIKE LIMIT LIST LISTEN LOAD LOCAL LOCALTIME LOCALTIMESTAMP LOCATION
 	LOCK_P LOGIN_P
 
 	MATCH MAXVALUE MINUTE_P MINVALUE MIRROR MODE MONTH_P MOVE
@@ -2445,8 +2446,16 @@ TabPartitionNameDecl: PARTITION IDENT
 				}
 		;
 
+TabPartitionByType:
+			RANGE 				{ $$ = $1; }
+			| HASH				{ $$ = $1; }
+			| LIST				{ $$ = $1; }
+		;
 
-OptTabPartitionBy:   PARTITION BY RANGE '(' columnList ')' OptTabPartitionsNumber OptTabPartitionSpec			{ $$ = $5; }
+OptTabPartitionBy:
+			PARTITION BY 
+            TabPartitionByType '(' columnList ')' 
+            OptTabPartitionsNumber OptTabPartitionSpec			{ $$ = $5; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
@@ -9302,6 +9311,7 @@ unreserved_keyword:
 			| GLOBAL
 			| GRANTED
 			| HANDLER
+			| HASH
 			| HEADER_P
 			| HOLD
 			| HOST
@@ -9328,6 +9338,7 @@ unreserved_keyword:
 			| LARGE_P
 			| LAST_P
 			| LEVEL
+			| LIST
 			| LISTEN
 			| LOAD
 			| LOCAL
@@ -9366,6 +9377,7 @@ unreserved_keyword:
 			| OWNED
 			| OWNER
 			| PARTIAL
+			| PARTITIONS
 			| PASSWORD
 			| PREPARE
 			| PREPARED
