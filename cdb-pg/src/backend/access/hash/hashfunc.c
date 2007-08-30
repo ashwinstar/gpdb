@@ -131,22 +131,26 @@ hashname(PG_FUNCTION_ARGS)
 	return hash_any((unsigned char *) key, keylen);
 }
 
+
 Datum
 hashtext(PG_FUNCTION_ARGS)
 {
-	text	   *key = PG_GETARG_TEXT_P(0);
+	Datum d0 = PG_GETARG_DATUM(0);
+	char *p0; void *tofree0; int len0;
+	
 	Datum		result;
+
+	varattrib_untoast_ptr_len(d0, &p0, &len0, &tofree0);
 
 	/*
 	 * Note: this is currently identical in behavior to hashvarlena, but keep
 	 * it as a separate function in case we someday want to do something
 	 * different in non-C locales.	(See also hashbpchar, if so.)
 	 */
-	result = hash_any((unsigned char *) VARDATA(key),
-					  VARSIZE(key) - VARHDRSZ);
+	result = hash_any((unsigned char *) p0, len0);
 
-	/* Avoid leaking memory for toasted inputs */
-	PG_FREE_IF_COPY(key, 0);
+	if(tofree0)
+		pfree(tofree0);
 
 	return result;
 }
@@ -158,14 +162,17 @@ hashtext(PG_FUNCTION_ARGS)
 Datum
 hashvarlena(PG_FUNCTION_ARGS)
 {
-	struct varlena *key = PG_GETARG_VARLENA_P(0);
+	Datum d0 = PG_GETARG_DATUM(0);
+	char *p0; void *tofree0; int len0;
+	
 	Datum		result;
 
-	result = hash_any((unsigned char *) VARDATA(key),
-					  VARSIZE(key) - VARHDRSZ);
+	varattrib_untoast_ptr_len(d0, &p0, &len0, &tofree0);
 
-	/* Avoid leaking memory for toasted inputs */
-	PG_FREE_IF_COPY(key, 0);
+	result = hash_any((unsigned char *) p0, len0);
+
+	if(tofree0)
+		pfree(tofree0);
 
 	return result;
 }
