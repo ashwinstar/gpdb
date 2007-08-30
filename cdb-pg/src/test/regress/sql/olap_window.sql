@@ -708,6 +708,21 @@ select cn,count(*) over (order by cn rows between 0 following and unbounded foll
 select cn,count(*) over (order by cn rows between 1 following and unbounded following) as c from sale;
 select cn,count(*) over (order by cn rows between unbounded preceding and unbounded following) as c from sale;
 
+select cn,count(*) over (order by cn desc rows between 2 preceding and 1 preceding) as c from sale;
+select cn,count(*) over (order by cn desc rows between 2 preceding and 0 preceding) as c from sale;
+select cn,count(*) over (order by cn desc rows between 2 preceding and 1 following) as c from sale;
+select cn,count(*) over (order by cn desc rows between 0 preceding and 1 following) as c from sale;
+select cn,count(*) over (order by cn desc rows between 0 following and 1 following) as c from sale;
+select cn,count(*) over (order by cn desc rows between 1 following and 2 following) as c from sale;
+select cn,count(*) over (order by cn desc rows between unbounded preceding and 2 preceding) as c from sale;
+select cn,count(*) over (order by cn desc rows between unbounded preceding and 0 preceding) as c from sale;
+select cn,count(*) over (order by cn desc rows between unbounded preceding and 2 following) as c from sale;
+select cn,count(*) over (order by cn desc rows between 2 preceding and unbounded following) as c from sale;
+select cn,count(*) over (order by cn desc rows between 0 preceding and unbounded following) as c from sale;
+select cn,count(*) over (order by cn desc rows between 0 following and unbounded following) as c from sale;
+select cn,count(*) over (order by cn desc rows between 1 following and unbounded following) as c from sale;
+select cn,count(*) over (order by cn desc rows between unbounded preceding and unbounded following) as c from sale;
+
 select cn,count(*) over (order by cn range between 2 preceding and 1 preceding) as c from sale;
 select cn,count(*) over (order by cn range between 2 preceding and 0 preceding) as c from sale;
 select cn,count(*) over (order by cn range between 2 preceding and 1 following) as c from sale;
@@ -722,6 +737,21 @@ select cn,count(*) over (order by cn range between 0 preceding and unbounded fol
 select cn,count(*) over (order by cn range between 0 following and unbounded following) as c from sale;
 select cn,count(*) over (order by cn range between 1 following and unbounded following) as c from sale;
 select cn,count(*) over (order by cn range between unbounded preceding and unbounded following) as c from sale;
+
+select cn,count(*) over (order by cn desc range between 2 preceding and 1 preceding) as c from sale;
+select cn,count(*) over (order by cn desc range between 2 preceding and 0 preceding) as c from sale;
+select cn,count(*) over (order by cn desc range between 2 preceding and 1 following) as c from sale;
+select cn,count(*) over (order by cn desc range between 0 preceding and 1 following) as c from sale;
+select cn,count(*) over (order by cn desc range between 0 following and 1 following) as c from sale;
+select cn,count(*) over (order by cn desc range between 1 following and 2 following) as c from sale;
+select cn,count(*) over (order by cn desc range between unbounded preceding and 2 preceding) as c from sale;
+select cn,count(*) over (order by cn desc range between unbounded preceding and 0 preceding) as c from sale;
+select cn,count(*) over (order by cn desc range between unbounded preceding and 2 following) as c from sale;
+select cn,count(*) over (order by cn desc range between 2 preceding and unbounded following) as c from sale;
+select cn,count(*) over (order by cn desc range between 0 preceding and unbounded following) as c from sale;
+select cn,count(*) over (order by cn desc range between 0 following and unbounded following) as c from sale;
+select cn,count(*) over (order by cn desc range between 1 following and unbounded following) as c from sale;
+select cn,count(*) over (order by cn desc range between unbounded preceding and unbounded following) as c from sale;
 
 -- MPP-1885
 SELECT sale.vn,
@@ -756,3 +786,13 @@ FROM sale;
 SELECT sale.prc,sale.cn,sale.vn,sale.pn,sale.cn,
 AVG(floor(sale.pn-sale.cn)) OVER(partition by sale.prc,sale.cn order by sale.vn desc range between 0 preceding and unbounded following) as avg
 FROM sale;
+
+-- MPP-1895
+SELECT sale.prc,sale.vn,
+COUNT(vn) OVER(partition by sale.prc order by sale.vn asc range between 3 preceding and 3 following) 
+FROM sale;
+
+-- MPP-1898
+SELECT sale.vn,sale.qty,
+SUM(floor(sale.qty)) OVER(order by sale.vn desc range between 0 following and 2 following ) as sum
+from sale;
