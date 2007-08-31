@@ -519,16 +519,26 @@ static apr_status_t seg_initdb_checkdb(gpcc_event_t* ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     int e;
-    char *user = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, "gpdb.user", getenv("USER"));
-    char *passwd = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, "gpdb.password", "mpparray");
+    char *user;
+    char *passwd;
 
-    if (0 != (e = gpcc_pg_change_password(cmdslot->u.seg.request.port,
-					  user,
-					  passwd,
-					  cmdslot->u.seg.request.subpool))) {
-	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL2_EVENT, e, "change password failure");
-	return 0;
+    if (strstr(cmdslot->cmdname, "gpdb.seg.m.")) {
+	/* this is QD */
+	user = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, "gpdb.user", getenv("USER"));
+	passwd = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, "gpdb.password", "mpparray");
+	if (0 != (e = gpcc_pg_change_password(cmdslot->u.seg.request.port,
+					      user,
+					      passwd,
+					      cmdslot->u.seg.request.subpool))) {
+	    seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL2_EVENT, e, "change password failure");
+	    return 0;
+	}
+
+
     }
+
+    /* TODO:  stop and start database in production mode or just stop and wait for next command */
+
 
     /* save the setting port and data_dir permanently */
     if (cmdslot->u.seg.port == 0) {
@@ -566,12 +576,20 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
     }
 
     cmdslot->u.seg.request.parentidx = packet->mh.rcvidx;
-    cmdslot->u.seg.request.port = json_object_get_int(json_object_object_get(obj, "port"));
-    cmdslot->u.seg.request.mode = json_object_get_string(json_object_object_get(obj, "mode"));
-    cmdslot->u.seg.request.data_dir = json_object_get_string(json_object_object_get(obj, "dir"));
+    cmdslot->u.seg.request.port = gpcc_json_object_get_int(obj, "port", 0);
+    cmdslot->u.seg.request.mode = gpcc_json_object_get_string(obj, "mode", 0);
+    cmdslot->u.seg.request.data_dir = gpcc_json_object_get_string(obj, "dir", 0);
+
+    if (cmdslot->u.seg.request.port == 0 ||
+	cmdslot->u.seg.request.mode == 0 ||
+	cmdslot->u.seg.request.data_dir == 0) {
+	seg_request_error(ev, _cmdslot, SEG_START_DONE_EVENT, 1, "request error: parameter is missing");
+	json_object_put(obj);
+	return 0;
+    }
 
     
-    if (strstr(json_object_get_string(json_object_object_get(obj, "seg")), "gpdb.seg.m.") == 0) {
+    if (strstr(cmdslot->cmdname, "gpdb.seg.m.") == 0) {
 	/* this is QE */
 
 	if (0 != (e = gpcc_proc_pg_ctl_start_segment(&cmdslot->u.seg.request.proc,
@@ -660,9 +678,17 @@ static apr_status_t seg_stop(gpcc_event_t* ev, void *_cmdslot)
     }
 
     cmdslot->u.seg.request.parentidx = packet->mh.rcvidx;
-    cmdslot->u.seg.request.port = json_object_get_int(json_object_object_get(obj, "port"));
-    cmdslot->u.seg.request.mode = json_object_get_string(json_object_object_get(obj, "mode"));
-    cmdslot->u.seg.request.data_dir = json_object_get_string(json_object_object_get(obj, "dir"));
+    cmdslot->u.seg.request.port = gpcc_json_object_get_int(obj, "port", 0);
+    cmdslot->u.seg.request.mode = gpcc_json_object_get_string(obj, "mode", 0);
+    cmdslot->u.seg.request.data_dir = gpcc_json_object_get_string(obj, "dir", 0);
+
+    if (cmdslot->u.seg.request.port == 0 ||
+	cmdslot->u.seg.request.mode == 0 ||
+	cmdslot->u.seg.request.data_dir == 0) {
+	seg_request_error(ev, _cmdslot, SEG_STOP_DONE_EVENT, 1, "request error: parameter is missing");
+	json_object_put(obj);
+	return 0;
+    }
     
     if (0 != (e = gpcc_proc_pg_ctl_stop(&cmdslot->u.seg.request.proc,
 					cmdslot->u.seg.request.port,
