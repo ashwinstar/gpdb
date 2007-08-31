@@ -401,11 +401,20 @@ filegettup(FileScanDesc scan,
 					CopyReadLineCSV(pstate, pstate->bytesread) :
 					CopyReadLineText(pstate, pstate->bytesread);
 
-				if (pstate->line_done)
-					pstate->cur_lineno++;
-				else if (!pstate->fe_eof || pstate->end_marker)
-					break;
-
+				if(!pstate->line_done)
+				{
+					/*
+					 * We did not finish reading a complete data line.
+					 *
+					 * If eof is not yet reached, we skip att parsing
+					 * and read more data. But if eof _was_ reached it means
+					 * that the original last data line is defective and
+					 * we want to catch that error later on.
+					 */
+					if (!pstate->fe_eof || pstate->end_marker)
+						break;
+				}
+				
 				/* parse attributes */
 				if (pstate->csv_mode)
 					CopyReadAttributesCSV(pstate, scan->nulls, pstate->attr_offsets, scan->num_phys_attrs, scan->attr);
