@@ -751,19 +751,13 @@ int fpath_all_directories(char **fpath, int n, apr_pool_t *pool)
 
 char **fpath_merge(char **fpath1, int n1, char **fpath2, int n2, int *n, apr_pool_t *p)
 {
-    int i, j;
     char **fpath;
     
     fpath = apr_palloc(p, sizeof(char *) * (n1 + n2));
     *n = n1 + n2;
 
-    for (i = 0 ; i < n1 ; i++) {
-	fpath[i] = fpath1[i];
-    }
-
-    for (i = n1, j = 0  ; j < n2 ; i++, j++) {
-	fpath[i] = fpath2[j];
-    }
+    memcpy(fpath, fpath1, sizeof(char*) * n1);
+    memcpy(fpath+n1, fpath2, sizeof(char*) * n2);
 
     return fpath;
 }
