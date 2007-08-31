@@ -231,7 +231,8 @@ void fstream_free(fstream_t* fs)
 	    gfile_close(fs->fd[i]);
 	    fs->fd[i] = 0;
 	}
-	free((char*)fs->fpath[i]);
+	if (fs->fpath[i]) 
+	    free((char*)fs->fpath[i]);
     }
     if (fs->fblock) {
 	block_put(fs->fblock);
@@ -260,6 +261,9 @@ fstream_t* fstream_alloc(char** path, int npath)
     fs->fd = malloc(sizeof(gfile_t*) * npath);
     if (0 == fs->fpath || 0 == fs->fd) 
 	gfatal(FLINE, "out of memory");
+
+    memset(fs->fpath, 0, sizeof(char*) * npath);
+    memset(fs->fd, 0, sizeof(gfile_t*) * npath);
 	
     for (i = 0; i < npath; i++) {
 	if (0 == (fs->fpath[i] = strdup(path[i])))
