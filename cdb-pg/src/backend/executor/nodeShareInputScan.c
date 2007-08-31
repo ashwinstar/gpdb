@@ -466,11 +466,13 @@ static void shareinput_clean_lk_ctxt(ShareInput_Lk_Context *lk_ctxt)
 {
 	int err;
 
+	elog(LOG, "shareinput_clean_lk_ctxt cleanup lk ctxt %p", lk_ctxt);
+
 	if(lk_ctxt->readyfd >= 0)
 	{
 		err = close(lk_ctxt->readyfd);
 		if(err)
-			elog(ERROR, "XCallBack_ShareInput_FIFO cannot close readyfd");
+			elog(ERROR, "shareinput_clean_lk_ctxt cannot close readyfd");
 
 		lk_ctxt->readyfd = -1;
 	}
@@ -479,7 +481,7 @@ static void shareinput_clean_lk_ctxt(ShareInput_Lk_Context *lk_ctxt)
 	{
 		err = close(lk_ctxt->donefd);
 		if(err)
-			elog(ERROR, "XCallBack_ShareInput_FIFO cannot close donefd");
+			elog(ERROR, "shareinput_clean_lk_ctxt cannot close donefd");
 
 		lk_ctxt->readyfd = -1;
 	}
@@ -488,7 +490,7 @@ static void shareinput_clean_lk_ctxt(ShareInput_Lk_Context *lk_ctxt)
 	{
 		err = unlink(lk_ctxt->lkname_ready);
 		if(err)
-			elog(ERROR, "XCallback_ShareInput_FIFO cannot unlink %s", lk_ctxt->lkname_ready);
+			elog(ERROR, "shareinput_clean_lk_ctxt cannot unlink %s", lk_ctxt->lkname_ready);
 
 		lk_ctxt->del_ready = false;
 	}
@@ -497,12 +499,12 @@ static void shareinput_clean_lk_ctxt(ShareInput_Lk_Context *lk_ctxt)
 	{
 		err = unlink(lk_ctxt->lkname_done);
 		if(err)
-			elog(ERROR, "XCallback_ShareInput_FIFO cannot unline %s", lk_ctxt->lkname_done);
+			elog(ERROR, "shareinput_clean_lk_ctxt cannot unline %s", lk_ctxt->lkname_done);
 
 		lk_ctxt->del_done = false;
 	}
 
-	pfree (lk_ctxt);
+	free (lk_ctxt);
 }
 
 static void XCallBack_ShareInput_FIFO(XactEvent ev, void* vp)
@@ -541,7 +543,7 @@ void *shareinput_reader_waitready(int share_id)
 	char a;
 	int asize;
 
-	ShareInput_Lk_Context *pctxt = palloc(sizeof(ShareInput_Lk_Context));
+	ShareInput_Lk_Context *pctxt = malloc(sizeof(ShareInput_Lk_Context));
 
 	pctxt->readyfd = -1;
 	pctxt->donefd = -1;
@@ -604,7 +606,7 @@ void *shareinput_writer_notifyready(int share_id, int xslice)
 	char b;
 	int bsize;
 
-	ShareInput_Lk_Context *pctxt = palloc(sizeof(ShareInput_Lk_Context));
+	ShareInput_Lk_Context *pctxt = malloc(sizeof(ShareInput_Lk_Context));
 
 	pctxt->readyfd = -1;
 	pctxt->donefd = -1;
