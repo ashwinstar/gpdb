@@ -3322,6 +3322,7 @@ CopyFrom(CopyState cstate)
 						CopyReadLineCSV(cstate, bytesread) :
 						CopyReadLineText(cstate, bytesread);
 
+					
 					if(!cstate->line_done)
 					{
 						/*
@@ -3334,6 +3335,40 @@ CopyFrom(CopyState cstate)
 						 */
 						if (!cstate->fe_eof || cstate->end_marker)
 							break;
+					}
+					else
+					{
+						/* 
+						 * SREH special case - encoding error
+						 *
+						 * If data is already in server encoding then it means
+						 * that it was converted successfully by QD COPY. Then
+						 * we are done. However, if it's not in a valid server
+						 * encoding this must mean that the QD COPY failed to
+						 * convert to server encoding and sent us the raw text
+						 * from the original data stream. In order to 
+						 * reconstruct the error for logging it we attempt to
+						 * do the conversion here again, and then catch the 
+						 * error and log it.
+						 */
+						if(/* TODO: if mode == SREH && LOGINTO && */Gp_role == GP_ROLE_DISPATCH)
+						{
+							Assert(!cstate->need_transcoding);
+							
+							if(!pg_verify_mbstr(GetDatabaseEncoding(), 
+												cstate->line_buf.data, 
+												cstate->line_buf.len, 
+												true /* don't ereport */))
+							{
+								/* invalid server encoding. reconstruct QD error */
+								cstate->line_buf_converted = false;
+								(void) pg_client_to_server(cstate->line_buf.data,
+																   cstate->line_buf.len);
+								
+								/* previous statement MUST report an error! */
+								Assert(false); 
+							}
+						}
 					}
 
 					if (file_has_oids)
