@@ -827,10 +827,8 @@ void session_attach(request_t* r)
 		}
 		dirfpath = glob(newpath, &dirnf, r->pool);
 		if (!dirfpath || dirnf == 0) {
-		    gwarning(FLINE, "bad path: %s", r->path);
-		    send_error(r, 404, "not found");
-		    request_end(r);
-		    return;
+		    gwarning(FLINE, "%s is empty directory", fpath[i]);
+		    continue;
 		}
 
 		/* append dirfpath to fpath */
@@ -839,6 +837,13 @@ void session_attach(request_t* r)
 
 	    fpath = ffpath;
 	    n = nn;
+
+	    if (n == 0) {
+		gwarning(FLINE, "bad path: %s", r->path);
+		send_error(r, 404, "not found");
+		request_end(r);
+		return;
+	    }
 	}
 
 	/* try opening the fstream */
