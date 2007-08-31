@@ -729,7 +729,44 @@ char** glob(char* path, int* retcnt, apr_pool_t* pool)
     return fpath;
 }
 
+int fpath_all_directories(char **fpath, int n, apr_pool_t *pool)
+{
+    int i;
 
+    for (i = 0 ; i < n ; i++) {
+	/* check if fpath is a directory */
+	apr_finfo_t finfo;
+	if (apr_stat(&finfo, fpath[i], APR_FINFO_TYPE, pool)) {
+	    /* error in stat. assume non-directory */
+	    return 0; 
+	}
+	else if (finfo.filetype != APR_DIR) {
+	    /* not a directory */
+	    return 0; 
+	}
+    }
+    
+    return 1;
+}
+
+char **fpath_merge(char **fpath1, int n1, char **fpath2, int n2, int *n, apr_pool_t *p)
+{
+    int i, j;
+    char **fpath;
+    
+    fpath = apr_palloc(p, sizeof(char *) * (n1 + n2));
+    *n = n1 + n2;
+
+    for (i = 0 ; i < n1 ; i++) {
+	fpath[i] = fpath1[i];
+    }
+
+    for (i = n1, j = 0  ; j < n2 ; i++, j++) {
+	fpath[i] = fpath2[j];
+    }
+
+    return fpath;
+}
 
 void session_attach(request_t* r)
 {
@@ -772,34 +809,37 @@ void session_attach(request_t* r)
 	    }
 	}
 
-	if (n == 1) {
-	    /* check if fpath is a directory */
-	    apr_finfo_t finfo;
-	    if (apr_stat(&finfo, r->path, APR_FINFO_TYPE, r->pool)) {
-		/* error in stat. assume non-directory */
-		; 
-	    }
-	    else if (finfo.filetype != APR_DIR) {
-		/* not a directory */
-		; 
-	    }
-	    else {
+				    
+	if (fpath_all_directories(fpath, n, r->pool)) {
+	    int i;
+	    int nn = 0;
+	    char **ffpath = 0;
+
+	    for (i = 0  ; i < n ; i++) {
 		/* this is a directory - glob for all files in the dir */
 		char* newpath = 0;
-		if (apr_filepath_merge(&newpath, fpath[0], "*", 0, r->pool)) {
+		char **dirfpath = 0;
+		int dirnf = 0;
+		if (apr_filepath_merge(&newpath, fpath[i], "*", 0, r->pool)) {
 		    gwarning(FLINE, "bad path: %s (filepathmerge)", r->path);
 		    send_error(r, 404, "not found");
 		    request_end(r);
 		    return;
 		}
-		fpath = glob(newpath, &n, r->pool);
-		if (!fpath || n == 0) {
+		dirfpath = glob(newpath, &dirnf, r->pool);
+		if (!dirfpath || dirnf == 0) {
 		    gwarning(FLINE, "bad path: %s", r->path);
 		    send_error(r, 404, "not found");
 		    request_end(r);
 		    return;
 		}
+
+		/* append dirfpath to fpath */
+		ffpath = fpath_merge(ffpath, nn, dirfpath, dirnf, &nn, r->pool);
 	    }
+
+	    fpath = ffpath;
+	    n = nn;
 	}
 
 	/* try opening the fstream */
