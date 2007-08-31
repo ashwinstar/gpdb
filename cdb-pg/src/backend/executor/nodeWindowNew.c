@@ -1540,10 +1540,15 @@ computeFrameValue(WindowStatePerLevel level_state,
 			}
 			else
 			{
+				TupleTableSlot *slot = econtext->ecxt_scantuple;
+				
 				ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
 												  wstate->spare);
 				econtext->ecxt_scantuple = wstate->spare;
 				add_tuple_to_trans(funcstate, wstate, econtext);
+
+				/* Reset back to its orginial value */
+				econtext->ecxt_scantuple = slot;
 			}
 		}
 

@@ -3857,3 +3857,23 @@ count(*) over (order by pn range between 200 preceding and 200 following) from s
  800 |     2 |     3
 (12 rows)
 
+-- MPP-1923
+SELECT sale.cn,sale.pn,sale.vn,
+CUME_DIST() OVER(partition by sale.cn,sale.pn order by sale.vn desc,sale.pn desc,sale.cn asc)
+FROM sale;
+ cn | pn  | vn | cume_dist 
+----+-----+----+-----------
+  1 | 100 | 20 |         1
+  1 | 200 | 10 |         1
+  2 | 400 | 50 |         1
+  3 | 200 | 40 |         1
+  3 | 600 | 30 |         1
+  4 | 800 | 40 |         1
+  1 | 300 | 30 |         1
+  1 | 400 | 50 |         1
+  1 | 500 | 30 |         1
+  2 | 100 | 40 |         1
+  3 | 500 | 30 |         1
+  4 | 700 | 40 |         1
+(12 rows)
+

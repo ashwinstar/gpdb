@@ -839,3 +839,8 @@ FROM sale;
 
 select pn, count(*) over (order by pn range between 100 preceding and 100 following),
 count(*) over (order by pn range between 200 preceding and 200 following) from sale;
+
+-- MPP-1923
+SELECT sale.cn,sale.pn,sale.vn,
+CUME_DIST() OVER(partition by sale.cn,sale.pn order by sale.vn desc,sale.pn desc,sale.cn asc)
+FROM sale;
