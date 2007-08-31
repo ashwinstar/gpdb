@@ -3434,7 +3434,10 @@ ExecWindow(WindowState *wstate)
 				(level_state->is_rows ||
 				 (wstate->cur_slot_key_break != -1 &&
 				  level >= wstate->cur_slot_key_break)))
+			{
+				econtext->ecxt_scantuple = wstate->curslot;
 				incrementCurrentRow(level_state->frame_buffer, wstate);
+			}
 		}
 	}
 

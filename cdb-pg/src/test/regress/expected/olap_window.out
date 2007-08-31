@@ -3839,3 +3839,21 @@ FROM sale;
   4 |  21 |     5
 (12 rows)
 
+select pn, count(*) over (order by pn range between 100 preceding and 100 following),
+count(*) over (order by pn range between 200 preceding and 200 following) from sale;
+ pn  | count | count 
+-----+-------+-------
+ 100 |     4 |     5
+ 100 |     4 |     5
+ 200 |     5 |     7
+ 200 |     5 |     7
+ 300 |     5 |     9
+ 400 |     5 |     8
+ 400 |     5 |     8
+ 500 |     5 |     7
+ 500 |     5 |     7
+ 600 |     4 |     7
+ 700 |     3 |     5
+ 800 |     2 |     3
+(12 rows)
+

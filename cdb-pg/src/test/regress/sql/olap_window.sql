@@ -836,3 +836,6 @@ FROM sale;
 SELECT sale.cn,
 SUM(sale.cn) OVER(order by sale.cn asc range 2 preceding ),COUNT(floor(sale.vn)) OVER(order by sale.cn asc range 1 preceding ) 
 FROM sale;
+
+select pn, count(*) over (order by pn range between 100 preceding and 100 following),
+count(*) over (order by pn range between 200 preceding and 200 following) from sale;
