@@ -9,7 +9,7 @@ static event_t segment_msg_get_event(struct json_object *obj)
     }
     action = json_object_get_string(aobj);
     
-    if (strcmp(action, "initdb") == 0) {
+    if (strcmp(action, "init") == 0) {
 	return SEG_INITDB_EVENT;
     } else if (strcmp(action, "start") == 0) {
 	return SEG_START_EVENT;
