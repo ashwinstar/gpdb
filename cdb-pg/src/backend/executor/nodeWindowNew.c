@@ -418,6 +418,8 @@ static void deform_window_tuple(TupleTableSlot *slot, int nattrs, AttrNumber *at
 								Datum *values, bool *nulls, MemoryContext ctx);
 static int findSerialIndex(WindowStatePerFunction funcstate,
 						   WindowStatePerLevel level_state);
+static void add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
+							   ExprContext *econtext);
 
 
 /*
@@ -643,7 +645,7 @@ serializeFuncs(WindowStatePerLevel level_state,
 			/* ignore trivial window functions */
 			continue;
 		}
-		
+
 		/* CUME_DIST_PRELIM function */
 		else if (funcstate->windowfn_oid == CUME_DIST_PRELIM_OID)
 		{
@@ -866,7 +868,6 @@ deserializeFuncs(WindowStatePerLevel level_state,
 			else
 				value->value = 0;
 		}
-		
 
 		/* the function which has an inverse preliminary function.
 		 */
@@ -1451,6 +1452,21 @@ hasEnoughDataInRows(WindowFrameBuffer buffer,
 	return false;
 }
 
+static void
+freeFrameBufferEntryForRange(FrameBufferEntryForRange *range_entry)
+{
+	pfree(range_entry->keys);
+	pfree(range_entry->nulls);
+
+	list_free_deep(range_entry->func_values);
+}
+
+static void
+freeFrameBufferEntryForRows(FrameBufferEntryForRows *rows_entry)
+{
+	list_free_deep(rows_entry->func_values);
+}
+
 /*
  * computeFrameValue -- compute transition values for each function
  * in a given key level from the data stored in its frame buffer.
@@ -1469,197 +1485,216 @@ computeFrameValue(WindowStatePerLevel level_state,
 	bool is_rows = level_state->is_rows;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 	WindowFrameBuffer buffer = level_state->frame_buffer;
+	FunctionCallInfoData fcinfo;
 	
+	FrameBufferEntryForRange *range_trail_entry = NULL;
+	FrameBufferEntryForRange *range_lead_entry = NULL;
+	FrameBufferEntryForRows *rows_trail_entry = NULL;
+	FrameBufferEntryForRows *rows_lead_entry = NULL;
+	FrameBufferEntryForRange *range_entry = NULL;
+	FrameBufferEntryForRows *rows_entry = NULL;
+
+	WindowValue *trail_value = NULL;
+	WindowValue *lead_value = NULL;
+	WindowValue *value = NULL;
+
+	bool read_value = false;
+	bool read_edge_value = false;
+
 	Assert(level_state->is_rows == buffer->is_rows);
 
-	/*
-	 * Process the ordinary window functions -- we only handle CUME_DIST here.
-	 */
-	foreach (lc, level_state->level_funcs)
-	{
-		FrameBufferEntryForRange *range_entry = NULL;
-		FrameBufferEntryForRows *rows_entry = NULL;
-		WindowValue *value = NULL;
-
-		WindowStatePerFunction funcstate = (WindowStatePerFunction) lfirst(lc);
-
-		if (funcstate->windowfn_oid != CUME_DIST_PRELIM_OID)
-			continue;
-
-		if (is_rows)
-		{
-			rows_entry = getCurrentValue(buffer->current_row_reader, level_state);
-			if (rows_entry != NULL)
-				value = (WindowValue *)list_nth(rows_entry->func_values, value_no);
-		}
-		else
-		{
-			range_entry = getCurrentValue(buffer->current_row_reader, level_state);
-			if (range_entry != NULL)
-				value = (WindowValue *)list_nth(range_entry->func_values, value_no);
-		}
-
-		if (value != NULL)
-		{
-			funcstate->win_value = value->value;
-			funcstate->win_value_is_null = value->valueIsNull;
-		}
-		value_no++;
-	}
-
-	/*
-	 * Process the functions which have inverse preliminary functions.
-	 * This is the simplese case and most optimized case where the
-	 * final transition values for these functions can be obtained
-	 * by substracting the value pointed by 'lead_reader' to the value
-	 * pointed by the 'trail_reader'.
-	 */
 	foreach (lc, level_state->level_funcs)
 	{
 		WindowStatePerFunction funcstate = (WindowStatePerFunction) lfirst(lc);
-		FunctionCallInfoData fcinfo;
-		FrameBufferEntryForRange *range_trail_entry = NULL;
-		FrameBufferEntryForRange *range_lead_entry = NULL;
-		FrameBufferEntryForRows *rows_trail_entry = NULL;
-		FrameBufferEntryForRows *rows_lead_entry = NULL;
-		WindowValue *trail_value = NULL;
-		WindowValue *lead_value = NULL;
-
-		if (!(funcstate->isAgg && OidIsValid(funcstate->invprelimfn_oid)))
+		
+		/* Ignore ordinary window functions, except for CUME_DIST. */
+		if (funcstate->trivial_frame &&
+			funcstate->windowfn_oid != CUME_DIST_PRELIM_OID)
 			continue;
 
-		if (is_rows)
+		/* CUME_DIST */
+		else if (funcstate->windowfn_oid == CUME_DIST_PRELIM_OID)
 		{
-			rows_trail_entry = getCurrentValue(level_state->trail_reader, level_state);
-			if (level_state->lead_rows != 0)
-				rows_lead_entry = getCurrentValue(level_state->lead_reader, level_state);
-
-			if (rows_trail_entry != NULL)
-			{
-				Assert(list_length(rows_trail_entry->func_values) > value_no);
-				trail_value = 
-					(WindowValue *)list_nth(rows_trail_entry->func_values, value_no);
-			}
-			
-			if (rows_lead_entry != NULL)
-			{
-				Assert(list_length(rows_lead_entry->func_values) > value_no);
-				lead_value =
-					(WindowValue *)list_nth(rows_lead_entry->func_values, value_no);
-			}
-		}
-		else
-		{
-			range_trail_entry = getCurrentValue(level_state->trail_reader, level_state);
-
-			/* If the leading edge is UNBOUNDED FOLLOWING, the value in the leading edge
-			 * is funcstate->aggTransValue. We don't need to read from the buffer.
+			/* If we didn't read the value pointed by current_row_reader,
+			 * read it now.
 			 */
-			if (level_state->frame->lead->kind != WINDOW_UNBOUND_FOLLOWING)
-				range_lead_entry = getCurrentValue(level_state->lead_reader, level_state);
-
-			if (range_trail_entry != NULL)
+			if (!read_value)
 			{
-				Assert(list_length(range_trail_entry->func_values) > value_no);
-				trail_value =
-					(WindowValue *)list_nth(range_trail_entry->func_values, value_no);
+				read_value = true;
+				
+				if (is_rows)
+					rows_entry = getCurrentValue(buffer->current_row_reader, level_state);
+				else
+					range_entry = getCurrentValue(buffer->current_row_reader, level_state);
 			}
 			
-			if (range_lead_entry != NULL)
+			if (is_rows && rows_entry != NULL)
+				value = (WindowValue *)list_nth(rows_entry->func_values, value_no);
+			else if (!is_rows && range_entry != NULL)	
+				value = (WindowValue *)list_nth(range_entry->func_values, value_no);
+
+			if (value != NULL)
 			{
-				Assert(list_length(range_lead_entry->func_values) > value_no);
-				lead_value =
-					(WindowValue *)list_nth(range_lead_entry->func_values, value_no);
+				funcstate->win_value = value->value;
+				funcstate->win_value_is_null = value->valueIsNull;
+			}
+			else
+			{
+				ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
+												  wstate->spare);
+				econtext->ecxt_scantuple = wstate->spare;
+				add_tuple_to_trans(funcstate, wstate, econtext);
 			}
 		}
-		
-		if (trail_value != NULL)
-		{
-			fcinfo.arg[1] = trail_value->value;
-			fcinfo.argnull[1] = trail_value->valueIsNull;
-		}
-		else
-		{
-			fcinfo.arg[1] = funcstate->aggInitValue;
-			fcinfo.argnull[1] = funcstate->aggInitValueIsNull;
-		}
 
-		if (lead_value != NULL || trail_value != NULL)
+		/* Aggregate functions with inverse preliminary functions. */
+		else if (funcstate->isAgg && OidIsValid(funcstate->invprelimfn_oid))
 		{
-			MemoryContext oldcxt;
-
-			oldcxt = MemoryContextSwitchTo(wstate->transcontext);
-			if (lead_value != NULL)
+			if (!read_edge_value)
 			{
+				read_edge_value = true;
+
+				if (is_rows)
+				{
+					rows_trail_entry = getCurrentValue(level_state->trail_reader, level_state);
+					if (level_state->lead_rows != 0)
+						rows_lead_entry = getCurrentValue(level_state->lead_reader, level_state);
+				}
+				
+				else
+				{
+					range_trail_entry = getCurrentValue(level_state->trail_reader, level_state);
+					/* If the leading edge is UNBOUNDED FOLLOWING, the value in the leading edge
+					 * is funcstate->aggTransValue. We don't need to read from the buffer.
+					 */
+					if (level_state->frame->lead->kind != WINDOW_UNBOUND_FOLLOWING)
+						range_lead_entry = getCurrentValue(level_state->lead_reader, level_state);
+				}
+			}
+			
+			if (is_rows)
+			{
+				if (rows_trail_entry != NULL)
+				{
+					Assert(list_length(rows_trail_entry->func_values) > value_no);
+					trail_value = 
+						(WindowValue *)list_nth(rows_trail_entry->func_values, value_no);
+				}
+			
+				if (rows_lead_entry != NULL)
+				{
+					Assert(list_length(rows_lead_entry->func_values) > value_no);
+					lead_value =
+						(WindowValue *)list_nth(rows_lead_entry->func_values, value_no);
+				}
+			}
+			else
+			{
+				if (range_trail_entry != NULL)
+				{
+					Assert(list_length(range_trail_entry->func_values) > value_no);
+					trail_value =
+						(WindowValue *)list_nth(range_trail_entry->func_values, value_no);
+				}
+
+				if (range_lead_entry != NULL)
+				{
+					Assert(list_length(range_lead_entry->func_values) > value_no);
+					lead_value =
+						(WindowValue *)list_nth(range_lead_entry->func_values, value_no);
+				}
+			}
+			
+			if (trail_value != NULL)
+			{
+				fcinfo.arg[1] = trail_value->value;
+				fcinfo.argnull[1] = trail_value->valueIsNull;
+			}
+			else
+			{
+				fcinfo.arg[1] = funcstate->aggInitValue;
+				fcinfo.argnull[1] = funcstate->aggInitValueIsNull;
+			}
+
+			if (lead_value != NULL || trail_value != NULL)
+			{
+				MemoryContext oldcxt;
+
+				oldcxt = MemoryContextSwitchTo(wstate->transcontext);
+				if (lead_value != NULL)
+				{
+					funcstate->final_aggTransValue =
+						datumCopy(lead_value->value,
+								  funcstate->aggTranstypeByVal,
+								  funcstate->aggTranstypeLen);
+					funcstate->final_aggTransValueIsNull = lead_value->valueIsNull;
+					funcstate->final_aggNoTransValue = false;
+				}
+				else
+				{
+					funcstate->final_aggTransValue = 
+						datumCopy(funcstate->aggTransValue,
+								  funcstate->aggTranstypeByVal,
+								  funcstate->aggTranstypeLen);
+					funcstate->final_aggTransValueIsNull = funcstate->aggTransValueIsNull;
+					funcstate->final_aggNoTransValue = false;
+				}
+				MemoryContextSwitchTo(oldcxt);
+			
 				funcstate->final_aggTransValue =
-					datumCopy(lead_value->value,
-							  funcstate->aggTranstypeByVal,
-							  funcstate->aggTranstypeLen);
-				funcstate->final_aggTransValueIsNull = lead_value->valueIsNull;
-				funcstate->final_aggNoTransValue = false;
+					invoke_agg_trans_func(funcstate->invprelimfn,
+										  funcstate->numargs,
+										  funcstate->final_aggTransValue,
+										  &funcstate->final_aggNoTransValue,
+										  &(funcstate->final_aggTransValueIsNull),
+										  funcstate->aggTranstypeByVal,
+										  funcstate->aggTranstypeLen,
+										  &fcinfo, (void *)wstate,
+										  wstate->transcontext,
+										  econtext->ecxt_per_tuple_memory);
 			}
+			
 			else
 			{
-				funcstate->final_aggTransValue = 
-					datumCopy(funcstate->aggTransValue,
-							  funcstate->aggTranstypeByVal,
-							  funcstate->aggTranstypeLen);
-				funcstate->final_aggTransValueIsNull = funcstate->aggTransValueIsNull;
-				funcstate->final_aggNoTransValue = false;
+				if ((level_state->frame->trail->kind == WINDOW_BOUND_FOLLOWING &&
+					 ((level_state->is_rows && level_state->trail_rows != 0) ||
+					  (!level_state->is_rows && level_state->trail_range != 0))) ||
+					(level_state->frame->lead->kind == WINDOW_BOUND_PRECEDING &&
+					 ((level_state->is_rows && level_state->lead_rows != 0) ||
+					  (!level_state->is_rows && level_state->lead_range != 0))))
+				{
+					funcstate->final_aggTransValue = funcstate->aggInitValue;
+					funcstate->final_aggTransValueIsNull = funcstate->aggInitValueIsNull;
+					funcstate->final_aggNoTransValue = funcstate->aggInitValueIsNull;
+				}
+				else
+				{
+					funcstate->final_aggTransValue = funcstate->aggTransValue;
+					funcstate->final_aggTransValueIsNull = funcstate->aggTransValueIsNull;
+					funcstate->final_aggNoTransValue = funcstate->aggNoTransValue;
+				}
 			}
-			MemoryContextSwitchTo(oldcxt);
-			
-			funcstate->final_aggTransValue =
-				invoke_agg_trans_func(funcstate->invprelimfn,
-									  funcstate->numargs,
-									  funcstate->final_aggTransValue,
-									  &funcstate->final_aggNoTransValue,
-									  &(funcstate->final_aggTransValueIsNull),
-									  funcstate->aggTranstypeByVal,
-									  funcstate->aggTranstypeLen,
-									  &fcinfo, (void *)wstate,
-									  wstate->transcontext,
-									  econtext->ecxt_per_tuple_memory);
 		}
 
 		else
 		{
-			if ((level_state->frame->trail->kind == WINDOW_BOUND_FOLLOWING &&
-				 ((level_state->is_rows && level_state->trail_rows != 0) ||
-				  (!level_state->is_rows && level_state->trail_range != 0))) ||
-				(level_state->frame->lead->kind == WINDOW_BOUND_PRECEDING &&
-				 ((level_state->is_rows && level_state->lead_rows != 0) ||
-				  (!level_state->is_rows && level_state->lead_range != 0))))
-			{
-				funcstate->final_aggTransValue = funcstate->aggInitValue;
-				funcstate->final_aggTransValueIsNull = funcstate->aggInitValueIsNull;
-				funcstate->final_aggNoTransValue = funcstate->aggInitValueIsNull;
-			}
-			else
-			{
-				funcstate->final_aggTransValue = funcstate->aggTransValue;
-				funcstate->final_aggTransValueIsNull = funcstate->aggTransValueIsNull;
-				funcstate->final_aggNoTransValue = funcstate->aggNoTransValue;
-			}
+			ereport(ERROR,
+					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
+					 errmsg("Not yet support functions that do not have invprelimfn")));
 		}
 
 		value_no++;
 	}
 
-	/*
-	 * Process the rest of functions.
-	 */
-	foreach(lc, level_state->level_funcs)
-	{
-		WindowStatePerFunction funcstate = (WindowStatePerFunction) lfirst(lc);
-
-		if (funcstate->isAgg && OidIsValid(funcstate->invprelimfn_oid))
-			continue;
-		
-		ereport(ERROR,
-				(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-				 errmsg("Not yet support functions that do not have invprelimfn")));
-	}
+	if (range_trail_entry != NULL)
+		freeFrameBufferEntryForRange(range_trail_entry);
+	if (range_lead_entry != NULL)
+		freeFrameBufferEntryForRange(range_lead_entry);
+	if (rows_trail_entry != NULL)
+		freeFrameBufferEntryForRows(rows_trail_entry);
+	if (rows_lead_entry != NULL)
+		freeFrameBufferEntryForRows(rows_lead_entry);
+	
 }
 
 /*
@@ -2449,7 +2484,8 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 		WindowStatePerFunction funcstate = &wstate->func_state[funcno];
 		WindowStatePerLevel level_state = funcstate->wlevel;
 		
-		if (funcstate->trivial_frame)
+		if (funcstate->trivial_frame &&
+			funcstate->windowfn_oid != CUME_DIST_PRELIM_OID)
 		{
 			econtext->ecxt_scantuple = wstate->curslot;
 			add_tuple_to_trans(funcstate, wstate, econtext);
@@ -2474,9 +2510,9 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 			 */
 			if (ntuplestore_acc_tell(frame_buffer->current_row_reader, NULL))
 			{
-				FrameBufferEntryForRange *range_entry;
-				FrameBufferEntryForRows *rows_entry;
-				WindowValue *value;
+				FrameBufferEntryForRange *range_entry = NULL;
+				FrameBufferEntryForRows *rows_entry = NULL;
+				WindowValue *value = NULL;
 				
 				if (funcstate->serial_index == -1)
 					funcstate->serial_index = findSerialIndex(funcstate, level_state);
@@ -2508,7 +2544,10 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 				funcstate->final_aggTransValueIsNull = value->valueIsNull;
 				funcstate->final_aggNoTransValue = false;
 
-				pfree(value);
+				if (range_entry != NULL)
+					freeFrameBufferEntryForRange(range_entry);
+				if (rows_entry != NULL)
+					freeFrameBufferEntryForRows(rows_entry);
 			}
 
 			/* Otherwise, the value for the current_rows is stored in aggTransValue.
@@ -2521,7 +2560,7 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 			}
 		}
 			
-		else if (!funcstate->trivial_frame && !funcstate->cumul_frame)
+		else
 			*found = true;
 	}
 }
@@ -2975,9 +3014,9 @@ adjustEdgesForRange(WindowFrameBuffer buffer,
 	}
 
 	if (trail_row != NULL)
-		pfree(trail_row);
+		freeFrameBufferEntryForRange(trail_row);
 	if (lead_row != NULL)
-		pfree(lead_row);
+		freeFrameBufferEntryForRange(lead_row);
 }
 
 
@@ -3373,7 +3412,10 @@ ExecWindow(WindowState *wstate)
 
 	/* Process the current_row if it has not been processed. */
 	if (wstate->cur_slot_is_new)
+	{
 		processTupleSlot(wstate, wstate->curslot, false);
+		wstate->cur_slot_is_new = false;
+	}
 
 	/* Increment the current_row in the frame buffer for each
 	 * key level.
@@ -3400,12 +3442,18 @@ ExecWindow(WindowState *wstate)
 	
 	while (!output_ready)
 	{
+		if (wstate->cur_slot_is_new &&
+			wstate->cur_slot_key_break != -1 &&
+			wstate->cur_slot_key_break < wstate->numlevels)
+			advanceKeyLevelState(wstate, wstate->cur_slot_key_break);
+
 		next_tupleslot = fetchTupleSlotThroughBuf(wstate);
 
 		if (TupIsNull(next_tupleslot) || wstate->cur_slot_part_break)
 			last_peer = true;
 
 		processTupleSlot(wstate, next_tupleslot, last_peer);
+
 		if (!TupIsNull(next_tupleslot))
 			output_ready = checkOutputReady(wstate);
 		else

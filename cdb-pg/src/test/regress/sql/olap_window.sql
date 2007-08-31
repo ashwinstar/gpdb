@@ -827,3 +827,12 @@ SELECT sale.pn,
 COUNT(floor(sale.pn)) OVER(order by sale.pn desc range 4 preceding) as count 
 FROM sale;
 -- end_equivalent
+
+-- MPP-1915
+select cn, qty, sum(qty) over(order by cn) as sum, cume_dist() over(order by cn) as cume1 from sale;
+SELECT sale.cn,
+SUM(sale.cn) OVER(order by sale.cn asc range 1 preceding ),COUNT(floor(sale.vn)) OVER(order by sale.cn asc range 1 preceding ) 
+FROM sale;
+SELECT sale.cn,
+SUM(sale.cn) OVER(order by sale.cn asc range 2 preceding ),COUNT(floor(sale.vn)) OVER(order by sale.cn asc range 1 preceding ) 
+FROM sale;
