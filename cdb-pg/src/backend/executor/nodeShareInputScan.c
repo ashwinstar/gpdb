@@ -415,12 +415,22 @@ void ExecShareInputScanReScan(ShareInputScanState *node, ExprContext *exprCtxt)
  * Here we use the fact the for FIFO (named pipe), we can make reader block till
  * writer create the FIFO.  mkfifo is Posix.1 and should be available on any
  * reasonable Unix like system.
+ *
+ * At first, I used postgres File to manage the FIFO.  It turns out this is not
+ * correct because when postgres run out of file descriptors, it will try to close
+ * some file descriptors using an LRU algorithm.  Later when the File is used again,
+ * postgres will reopen it. The FIFO here is used for synchronization so it is simply 
+ * wrong.  Here we use the file descriptor directly, and use a XCallBack to cleanup
+ * the resource at the end of transaction (commit or abort).
  * 
  * XXX However, it is always better to have this kind of stuff abstracted out
  * by the system.  
  **************************************************************************/
 
 #include "fcntl.h"
+#include "unistd.h"
+#include "sys/types.h"
+#include "sys/stat.h"
 #include "storage/fd.h"
 #include "cdb/cdbselect.h"
 
@@ -429,64 +439,151 @@ void shareinput_create_bufname_prefix(char* p, int size, int share_id)
 	snprintf(p, size, "SIRW_%d_%d_%d", gp_session_id, gp_command_count, share_id);
 }
 
+/* Here we use the absolute path name as the lock name.  See fd.c 
+ * for how the name is created (GP_TEMP_FILE_DIR and make_database_relative).
+ */
 static void sisc_lockname(char* p, int size, int share_id, const char* name)
 {
 	snprintf(p, size,
-			"gpcdb2.sisc_%d_%d_%d_%d_%s",
+			"%s/%s/gpcdb2.sisc_%d_%d_%d_%d_%s",
+			DatabasePath, PG_TEMP_FILES_DIR,
 			Gp_segment, gp_session_id, gp_command_count, share_id, name
 			);
 }
 
 typedef struct ShareInput_Lk_Context 
 {
-	File readyf;
-	File donef;
+	int readyfd;
+	int donefd;
 	int  zcnt;
+	bool del_ready; 
+	bool del_done;
+	char lkname_ready[MAXPGPATH];
+	char lkname_done[MAXPGPATH];
 } ShareInput_Lk_Context;
+
+static void shareinput_clean_lk_ctxt(ShareInput_Lk_Context *lk_ctxt)
+{
+	int err;
+
+	if(lk_ctxt->readyfd >= 0)
+	{
+		err = close(lk_ctxt->readyfd);
+		if(err)
+			elog(ERROR, "XCallBack_ShareInput_FIFO cannot close readyfd");
+
+		lk_ctxt->readyfd = -1;
+	}
+
+	if(lk_ctxt->donefd >= 0)
+	{
+		err = close(lk_ctxt->donefd);
+		if(err)
+			elog(ERROR, "XCallBack_ShareInput_FIFO cannot close donefd");
+
+		lk_ctxt->readyfd = -1;
+	}
+
+	if(lk_ctxt->del_ready && lk_ctxt->lkname_ready[0])
+	{
+		err = unlink(lk_ctxt->lkname_ready);
+		if(err)
+			elog(ERROR, "XCallback_ShareInput_FIFO cannot unlink %s", lk_ctxt->lkname_ready);
+
+		lk_ctxt->del_ready = false;
+	}
+
+	if(lk_ctxt->del_done && lk_ctxt->lkname_done[0])
+	{
+		err = unlink(lk_ctxt->lkname_done);
+		if(err)
+			elog(ERROR, "XCallback_ShareInput_FIFO cannot unline %s", lk_ctxt->lkname_done);
+
+		lk_ctxt->del_done = false;
+	}
+
+	pfree (lk_ctxt);
+}
+
+static void XCallBack_ShareInput_FIFO(XactEvent ev, void* vp)
+{
+	ShareInput_Lk_Context *lk_ctxt = (ShareInput_Lk_Context *) vp; 
+	shareinput_clean_lk_ctxt(lk_ctxt);
+}
+
+static void create_tmp_fifo(const char *fifoname)
+{
+#ifdef WIN32
+	elog(ERROR, "mkfifo not supported on win32");
+#else
+	int err = mkfifo(fifoname, 0600);
+	if(err < 0)
+	{
+		/* first try may be due to pgsql_tmp dir is not created yet. */
+		char tmpdir[MAXPGPATH];
+		snprintf(tmpdir, MAXPGPATH, "%s/%s", DatabasePath, PG_TEMP_FILES_DIR);
+		mkdir(tmpdir, S_IRWXU);
+
+		/* then try it again */
+		int err = mkfifo(fifoname, 0600);
+
+		if(err < 0 && errno != EEXIST)
+			elog(ERROR, "Cannot create tmp fifo %s", fifoname);
+	}
+#endif
+}
 
 void *shareinput_reader_waitready(int share_id)
 {
-	char lkname[100];
 	mpp_fd_set rset;
 	struct timeval tval;
-	int fd;
 	int n;
 	char a;
 	int asize;
 
 	ShareInput_Lk_Context *pctxt = palloc(sizeof(ShareInput_Lk_Context));
 
-	sisc_lockname(lkname, 100, share_id, "ready");
-	CreateTempFifo(lkname);
-	pctxt->readyf = OpenTemporaryFileName(lkname, O_RDWR, false, false);
-	
-	sisc_lockname(lkname, 100, share_id, "done");
-	CreateTempFifo(lkname);
-	pctxt->donef = OpenTemporaryFileName(lkname, O_RDWR, false, false);
-
+	pctxt->readyfd = -1;
+	pctxt->donefd = -1;
 	pctxt->zcnt = 0;
+	pctxt->del_ready = false;
+	pctxt->del_done = false;
+	pctxt->lkname_ready[0] = '\0';
+	pctxt->lkname_done[0] = '\0';
 
-	fd = FileGetFd(pctxt->readyf);
+	RegisterXactCallbackOnce(XCallBack_ShareInput_FIFO, pctxt);
+
+	sisc_lockname(pctxt->lkname_ready, MAXPGPATH, share_id, "ready");
+	create_tmp_fifo(pctxt->lkname_ready);
+	pctxt->readyfd = open(pctxt->lkname_ready, O_RDWR, 0600); 
+	if(pctxt->readyfd < 0)
+		elog(ERROR, "shareinput_reader_waitready cannot open %s", pctxt->lkname_ready);
+	
+	sisc_lockname(pctxt->lkname_done, MAXPGPATH, share_id, "done");
+	create_tmp_fifo(pctxt->lkname_done);
+	pctxt->donefd = open(pctxt->lkname_done, O_RDWR, 0600);
+	if(pctxt->donefd < 0)
+		elog(ERROR, "shareinput_reader_waitready cannot open %s", pctxt->lkname_done);
 
 	while(1)
 	{
 		CHECK_FOR_INTERRUPTS();
 
 		MPP_FD_ZERO(&rset);
-		MPP_FD_SET(fd, &rset);
+		MPP_FD_SET(pctxt->readyfd, &rset);
 
 		tval.tv_sec = 1;
 		tval.tv_usec = 0;
 
-		n = select(fd+1, (fd_set *) &rset, NULL, NULL, &tval);
+		n = select(pctxt->readyfd+1, (fd_set *) &rset, NULL, NULL, &tval);
 
 		if(n==1)
 		{
-			asize = FileRead(pctxt->readyf, &a, 1);
+			asize = read(pctxt->readyfd, &a, 1);
 			Assert(asize == 1 && a == 'a');
 
 			elog(LOG, "SISC: Wait ready get a, now write b");
-			FileWrite(pctxt->donef, "b", 1);
+			write(pctxt->donefd, "b", 1);
 			break;
 		}
 		else
@@ -500,59 +597,68 @@ void *shareinput_reader_waitready(int share_id)
 
 void *shareinput_writer_notifyready(int share_id, int xslice)
 {
-	char lkname[100];
-	ShareInput_Lk_Context *pctxt = palloc(sizeof(ShareInput_Lk_Context));
 	mpp_fd_set rset;
 	mpp_fd_set wset;
 	struct timeval tval;
-	int rfd;
-	int wfd;
 	int n;
 	char b;
 	int bsize;
 
-	sisc_lockname(lkname, 100, share_id, "ready");
-	CreateTempFifo(lkname);
-	pctxt->readyf = OpenTemporaryFileName(lkname, O_RDWR, false, true);
+	ShareInput_Lk_Context *pctxt = palloc(sizeof(ShareInput_Lk_Context));
 
-	sisc_lockname(lkname, 100, share_id, "done");
-	CreateTempFifo(lkname);
-	pctxt->donef = OpenTemporaryFileName(lkname, O_RDWR, false, true);
-
+	pctxt->readyfd = -1;
+	pctxt->donefd = -1;
 	pctxt->zcnt = 0;
+	pctxt->del_ready = false;
+	pctxt->del_done = false;
+	pctxt->lkname_ready[0] = '\0';
+	pctxt->lkname_done[0] = '\0';
 
-	wfd = FileGetFd(pctxt->readyf);
-	rfd = FileGetFd(pctxt->donef);
+	RegisterXactCallbackOnce(XCallBack_ShareInput_FIFO, pctxt);
+
+	sisc_lockname(pctxt->lkname_ready, MAXPGPATH, share_id, "ready");
+	create_tmp_fifo(pctxt->lkname_ready);
+	pctxt->del_ready = true;
+	pctxt->readyfd = open(pctxt->lkname_ready, O_RDWR, 0600); 
+	if(pctxt->readyfd < 0)
+		elog(ERROR, "shareinput_writer_notifyready cannot open %s", pctxt->lkname_ready);
+	
+	sisc_lockname(pctxt->lkname_done, MAXPGPATH, share_id, "done");
+	create_tmp_fifo(pctxt->lkname_done);
+	pctxt->del_done = true;
+	pctxt->donefd = open(pctxt->lkname_done, O_RDWR, 0600);
+	if(pctxt->donefd < 0)
+		elog(ERROR, "shareinput_reader_waitready cannot open %s", pctxt->lkname_done);
 
 	while(xslice > 0)
 	{
 		CHECK_FOR_INTERRUPTS();
 		
 		MPP_FD_ZERO(&wset);
-		MPP_FD_SET(wfd, &wset);
+		MPP_FD_SET(pctxt->readyfd, &wset);
 
 		tval.tv_sec = 1;
 		tval.tv_usec = 0;
-		n = select(wfd+1, NULL, (fd_set *) &wset, NULL, &tval);
+		n = select(pctxt->readyfd+1, NULL, (fd_set *) &wset, NULL, &tval);
 
 		if(n==1)
 		{
 			elog(LOG, "SISC: notify ready once, xslice = %d", xslice);
-			FileWrite(pctxt->readyf, "a", 1);
+			write(pctxt->readyfd, "a", 1);
 		}
 
 		CHECK_FOR_INTERRUPTS();
 
 		MPP_FD_ZERO(&rset);
-		MPP_FD_SET(rfd, &rset);
+		MPP_FD_SET(pctxt->donefd, &rset);
 
 		tval.tv_sec = 1;
 		tval.tv_usec = 0;
-		n = select(rfd+1, (fd_set *) &rset, NULL, NULL, &tval);
+		n = select(pctxt->donefd+1, (fd_set *) &rset, NULL, NULL, &tval);
 
 		if(n==1)
 		{
-			bsize = FileRead(pctxt->donef, &b, 1);
+			bsize = read(pctxt->donefd, &b, 1);
 
 			if(b == 'z')
 				++pctxt->zcnt;
@@ -577,25 +683,22 @@ void shareinput_reader_notifydone(void *ctxt, int share_id)
 	ShareInput_Lk_Context *pctxt = (ShareInput_Lk_Context *) ctxt;
 	mpp_fd_set wset;
 	struct timeval tval;
-	int fd;
 	int n;
-
-	fd = FileGetFd(pctxt->donef);
 
 	while(1)
 	{
 		CHECK_FOR_INTERRUPTS();
 
 		MPP_FD_ZERO(&wset);
-		MPP_FD_SET(fd, &wset);
+		MPP_FD_SET(pctxt->donefd, &wset);
 
 		tval.tv_sec = 1;
 		tval.tv_usec = 0;
-		n = select(fd+1, NULL, (fd_set *) &wset, NULL, &tval);
+		n = select(pctxt->donefd+1, NULL, (fd_set *) &wset, NULL, &tval);
 		if(n==1)
 		{
 			elog(LOG, "sisc notify done");
-			FileWrite(pctxt->donef, "z", 1);
+			write(pctxt->donefd, "z", 1);
 			break;
 		}
 		else
@@ -605,9 +708,8 @@ void shareinput_reader_notifydone(void *ctxt, int share_id)
 		}
 	}
 
-	FileClose(pctxt->readyf); 
-	FileClose(pctxt->donef); 
-	pfree(ctxt);
+	shareinput_clean_lk_ctxt(pctxt);
+	UnregisterXactCallbackOnce(XCallBack_ShareInput_FIFO, (void *) ctxt);
 }
 
 void shareinput_writer_waitdone(void *ctxt, int share_id, int nsharer_xslice)
@@ -615,13 +717,10 @@ void shareinput_writer_waitdone(void *ctxt, int share_id, int nsharer_xslice)
 	ShareInput_Lk_Context *pctxt = (ShareInput_Lk_Context *) ctxt;
 	mpp_fd_set rset;
 	struct timeval tval;
-	int fd;
 	int n;
 	char z;
 	int zsize;
 
-	fd = FileGetFd(pctxt->donef);
-	
 	nsharer_xslice -= pctxt->zcnt;
 
 	while(nsharer_xslice > 0)
@@ -629,15 +728,15 @@ void shareinput_writer_waitdone(void *ctxt, int share_id, int nsharer_xslice)
 		CHECK_FOR_INTERRUPTS();
 	
 		MPP_FD_ZERO(&rset);
-		MPP_FD_SET(fd, &rset);
+		MPP_FD_SET(pctxt->donefd, &rset);
 
 		tval.tv_sec = 1;
 		tval.tv_usec = 0;
-		n = select(fd+1, (fd_set *) &rset, NULL, NULL, &tval);
+		n = select(pctxt->donefd+1, (fd_set *) &rset, NULL, NULL, &tval);
 	
 		if(n==1)
 		{
-			zsize = FileRead(pctxt->donef, &z, 1); 
+			zsize = read(pctxt->donefd, &z, 1); 
 			Assert(zsize == 1 && z == 'z');
 
 			elog(LOG, "SISC: wait done get 1 notification");
@@ -651,8 +750,6 @@ void shareinput_writer_waitdone(void *ctxt, int share_id, int nsharer_xslice)
 	}
 
 	elog(LOG, "SISC: Writer have got all reader done notification");
-	FileClose(pctxt->donef);
-	FileClose(pctxt->readyf);
-
-	pfree(ctxt);
+	shareinput_clean_lk_ctxt(ctxt);
+	UnregisterXactCallbackOnce(XCallBack_ShareInput_FIFO, (void *) ctxt);
 }

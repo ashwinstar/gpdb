@@ -63,7 +63,6 @@ extern File FileNameOpenFile(FileName fileName, int fileFlags, int fileMode);
 extern File PathNameOpenFile(FileName fileName, int fileFlags, int fileMode);
 extern File OpenTemporaryFileName(const char* fileName, int fileFlags, bool interXact, bool delOnClose);
 extern File OpenTemporaryFile(bool interXact);
-extern void CreateTempFifo(const char* filename);
 
 extern void FileClose(File file);
 extern void FileUnlink(File file);
@@ -73,8 +72,6 @@ extern int	FileWrite(File file, char *buffer, int amount);
 extern int	FileSync(File file);
 extern long FileSeek(File file, long offset, int whence);
 extern int	FileTruncate(File file, long offset);
-
-extern int  FileGetFd(File file);
 
 /* Operations that allow use of regular stdio --- USE WITH CAUTION */
 extern FILE *AllocateFile(const char *name, const char *mode);

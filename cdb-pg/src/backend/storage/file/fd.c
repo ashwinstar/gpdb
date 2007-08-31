@@ -862,55 +862,6 @@ FileNameOpenFile(FileName fileName, int fileFlags, int fileMode)
 	return fd;
 }
 
-void 
-CreateTempFifo(const char* fileName)
-{
-	char tempfilepath[MAXPGPATH];
-	char *fname = NULL;
-#ifndef WIN32
-	int err;
-#endif
-
-	snprintf(tempfilepath, sizeof(tempfilepath),
-			"%s/%s", PG_TEMP_FILES_DIR, fileName
-			);
-
-	fname = make_database_relative(tempfilepath);
-	Assert(fname);
-
-#ifdef WIN32
-	elog(ERROR,"mkfifo not supported on win32");
-#else
-
-	err = mkfifo(fname, 0600);
-	if(err < 0 && errno != EEXIST)
-	{
-		char	   *dirpath;
-
-		/*
-		 * We might need to create the pg_tempfiles subdirectory, if no one
-		 * has yet done so.
-		 *
-		 * Don't check for error from mkdir; it could fail if someone else
-		 * just did the same thing.  If it doesn't work then we'll bomb out on
-		 * the second create attempt, instead.
-		 */
-		dirpath = make_database_relative(PG_TEMP_FILES_DIR);
-		mkdir(dirpath, S_IRWXU);
-		pfree(dirpath);
-
-		err = mkfifo(fname, 0600);
-
-		pfree(fname);
-		fname = NULL;
-		if(err < 0 && errno != EEXIST)
-			elog(ERROR, "Cannot create temp fifo %s", fname);
-	}
-#endif
-	if(fname != NULL)
-		pfree(fname);
-}
-
 File 
 OpenTemporaryFileName(const char* fileName, int fileFlags, bool interXact, bool delOnClose)
 {
@@ -1003,17 +954,6 @@ OpenTemporaryFile(bool interXact)
 	 */
 	int fileFlags = O_RDWR | PG_BINARY | O_TRUNC | O_CREAT;
 	return OpenTemporaryFileName(NULL, fileFlags, interXact, true);
-}
-
-/* 
- * Get OS file descriptor 
- */
-int FileGetFd(File file)
-{
-	Vfd *vfdp = &VfdCache[file];
-	if(FileIsNotOpen(file))
-		return -1;
-	return vfdp->fd;
 }
 
 /*
