@@ -290,6 +290,7 @@ static bool integer_datetimes;
 //static bool standard_conforming_strings;
 static char *gp_log_gang_str;
 static char *gp_log_interconnect_str;
+static char *gp_interconnect_type_str;
 
 /* should be static, but commands/variable.c needs to get at these */
 char	   *role_string;
@@ -3026,6 +3027,15 @@ static struct config_string ConfigureNamesString[] =
 		},
 		&gp_log_interconnect_str,
 		"terse", gpvars_assign_gp_log_interconnect, gpvars_show_gp_log_interconnect
+	},
+
+	{
+		{"gp_interconnect_type", PGC_USERSET, GP_ARRAY_TUNING,
+		 gettext_noop("Sets the protocol used for inter-node communication."),
+		 gettext_noop("Valid values are \"tcp\" and \"udp\".")
+		},
+		&gp_interconnect_type_str,
+		INTERCONNECT_TYPE_TCP, gpvars_assign_gp_interconnect_type, gpvars_show_gp_interconnect_type
 	},
 	
 	{

@@ -718,6 +718,9 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 	(*ppTransportStates)->sliceTable = mySliceTable;
 	(*ppTransportStates)->sliceId = mySliceId;
 
+	if (Gp_interconnect_type == INTERCONNECT_TYPE_NIL)
+		return;
+
 	mySlice = (Slice *) list_nth((*ppTransportStates)->sliceTable->slices, mySliceId);
 
     Assert(mySlice &&
@@ -1224,6 +1227,9 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 	MotionConn *conn;
 
 	Insist(transportStates->sliceTable != NULL);
+
+	if (Gp_interconnect_type == INTERCONNECT_TYPE_NIL)
+		return;
 
 	/* if we're already trying to clean up after an error -- don't
 	 * allow signals to interrupt us */

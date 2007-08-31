@@ -308,6 +308,19 @@ extern int	Gp_max_packet_size;	/* GUC var */
 #define MAX_PACKET_SIZE 65536
 
 /*
+ * Support for multiple "types" of interconnect
+ */
+
+#define INTERCONNECT_TYPE_TCP (0)
+#define INTERCONNECT_TYPE_UDP (1)
+#define INTERCONNECT_TYPE_NIL (2)
+
+extern int Gp_interconnect_type;
+
+extern const char *gpvars_assign_gp_interconnect_type(const char *newval, bool doit, GucSource source);
+extern const char *gpvars_show_gp_interconnect_type(void);
+
+/*
  * Parameter gp_interconnect_aggressive_retry
  *
  * The run-time parameter gp_interconnect_aggressive_retry controls the

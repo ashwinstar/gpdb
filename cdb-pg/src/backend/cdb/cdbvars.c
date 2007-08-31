@@ -101,6 +101,8 @@ int			interconnect_setup_timeout=20;
 
 bool		gp_interconnect_aggressive_retry=true; /* fast-track app-level retry */
 
+int			Gp_interconnect_type = INTERCONNECT_TYPE_TCP;
+
 /*
  * Greenplum Database Optimizer GUCs
  */
@@ -598,3 +600,48 @@ gpvars_show_gp_log_interconnect(void)
 }                               /* gpvars_show_gp_log_interconnect */
 
 
+/*
+ * gpvars_assign_gp_interconnect_type
+ * gpvars_show_gp_interconnect_type
+ */
+const char *
+gpvars_assign_gp_interconnect_type(const char *newval, bool doit, GucSource source)
+{
+	int newtype;
+
+	if (!pg_strcasecmp("tcp", newval))
+		newtype = INTERCONNECT_TYPE_TCP;
+	else if (!pg_strcasecmp("udp", newval))
+		newtype = INTERCONNECT_TYPE_UDP;
+	else if (!pg_strcasecmp("nil", newval))
+		newtype = INTERCONNECT_TYPE_NIL;
+	else
+		elog(ERROR, "Unknown interconnect type. (current type is '%s')", gpvars_show_gp_interconnect_type());
+
+	if (doit)
+	{
+		if (newtype == INTERCONNECT_TYPE_NIL)
+			elog(WARNING, "Nil-Interconnect diagnostic mode enabled (tuple will be dropped).");
+		else if (Gp_interconnect_type == INTERCONNECT_TYPE_NIL)
+			elog(WARNING, "Nil-Interconnect diagnostic mode disabled.");
+
+		Gp_interconnect_type = newtype;
+	}
+
+	return newval;
+}                               /* gpvars_assign_gp_log_interconnect */
+
+const char *
+gpvars_show_gp_interconnect_type(void)
+{
+	switch(Gp_interconnect_type)
+	{
+		case INTERCONNECT_TYPE_UDP:
+			return "UDP";
+		case INTERCONNECT_TYPE_NIL:
+			return "NIL";
+		case INTERCONNECT_TYPE_TCP:
+		default:
+			return "TCP";
+	}
+}                               /* gpvars_show_gp_log_interconnect */

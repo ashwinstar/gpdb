@@ -1408,8 +1408,8 @@ static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bo
 	appendPQExpBuffer(buffer, " -c work_mem=%d", work_mem);
 	appendPQExpBuffer(buffer, " -c maintenance_work_mem=%d", maintenance_work_mem);
 	appendPQExpBuffer(buffer, " -c temp_buffers=%d", num_temp_buffers);
-    appendPQExpBuffer(buffer, " -c gp_log_interconnect=%s",
-                       gpvars_show_gp_log_interconnect());
+    appendPQExpBuffer(buffer, " -c gp_log_interconnect=%s -c gp_interconnect_type=%s",
+					  gpvars_show_gp_log_interconnect(), gpvars_show_gp_interconnect_type());
 
     if (gp_use_snapshop_during_callback)
     	appendPQExpBuffer(buffer, " -c gp_use_snapshop_during_callback=true");
