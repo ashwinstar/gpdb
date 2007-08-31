@@ -216,18 +216,18 @@ static void get_timestamp(char * strfbuf)
 	stamp_time = tv.tv_sec;
 
 	strftime(strfbuf, 127,
-	/* leave room for milliseconds... */
+	/* leave room for microseconds... */
 	/* Win32 timezone names are too long so don't print them */
 #ifndef WIN32
-			 "%Y-%m-%d %H:%M:%S     %Z",
+			 "%Y-%m-%d %H:%M:%S        %Z",
 #else
-			 "%Y-%m-%d %H:%M:%S     ",
+			 "%Y-%m-%d %H:%M:%S        ",
 #endif
 			 localtime(&stamp_time));
 
 	/* 'paste' milliseconds into place... */
-	sprintf(msbuf, ".%03d", (int) (tv.tv_usec / 1000));
-	strncpy(strfbuf + 19, msbuf, 4);	
+	sprintf(msbuf, ".%06d", (int) (tv.tv_usec));
+	strncpy(strfbuf + 19, msbuf, 7);	
 }
 
 void
