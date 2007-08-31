@@ -753,6 +753,11 @@ char **fpath_merge(char **fpath1, int n1, char **fpath2, int n2, int *n, apr_poo
 {
     char **fpath;
     
+    if (n1 == 0) {
+	*n = n2;
+	return fpath2;
+    }
+
     fpath = apr_palloc(p, sizeof(char *) * (n1 + n2));
     *n = n1 + n2;
 
