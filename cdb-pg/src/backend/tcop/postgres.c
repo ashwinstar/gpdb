@@ -159,10 +159,11 @@ static PreparedStatement *unnamed_stmt_pstmt = NULL;
 
 static bool EchoQuery = false;	/* default don't echo */
 
+extern pthread_t main_tid;
 #ifndef _WIN32
-static pthread_t main_tid = (pthread_t)0;
+pthread_t main_tid = (pthread_t)0;
 #else
-static pthread_t main_tid = {0,0};
+pthread_t main_tid = {0,0};
 #endif
 
 /*

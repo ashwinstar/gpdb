@@ -58,6 +58,7 @@
 //#undef recv
 //#undef send
 
+extern pthread_t main_tid;
 #ifndef _WIN32
 #define mythread() ((unsigned int) pthread_self())
 #else
@@ -269,9 +270,14 @@ write_log(const char *fmt,...)
 	if (Gp_role == GP_ROLE_DISPATCHAGENT)
 	   strcat(logprefix, " *DA*");
 	strcat(logprefix,"|");
-	sprintf(tempbuf,"%u",mythread());
 	strcat(logprefix,":-THREAD ");
-	strcat(logprefix,tempbuf);
+	if (pthread_equal(main_tid, pthread_self()))
+		strcat(logprefix,"MAIN");
+	else
+	{
+		sprintf(tempbuf,"%u",mythread());
+		strcat(logprefix,tempbuf);
+	}
 	strcat(logprefix,":  ");
 	
 	strcat(logprefix,fmt);
