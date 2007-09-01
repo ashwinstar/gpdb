@@ -848,3 +848,8 @@ FROM sale;
 SELECT sale.cn,sale.vn,sale.pn,
 SUM(floor(sale.cn*sale.vn)) OVER(partition by sale.vn,sale.pn order by sale.pn asc rows between 1 following and unbounded following) as sum
 from sale;
+
+-- MPP-1924
+SELECT sale.cn,
+COUNT(cn) OVER(order by sale.cn range between 7 following and 7 following) as count 
+FROM sale;

@@ -3579,15 +3579,29 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 		if (!level_state->trivial_frames_only ||
 			level_state->need_peercount)
 		{
+			bool write_pre_value = false;
+			if (wstate->input_buffer->num_tuples > 1 &&
+				wstate->cur_slot_is_new)
+			{
+				if (level_state->is_rows)
+					write_pre_value = true;
+				else if (wstate->cur_slot_part_break || TupIsNull(slot))
+					write_pre_value = true;
+				else if ((wstate->cur_slot_key_break != -1 &&
+						  level >= wstate->cur_slot_key_break))
+					write_pre_value = true;
+			}
+			
 			/* If this tuple breaks the order by key in this level,
 			 * we write out previous aggregate values if any.
 			 */
-			if ((wstate->input_buffer->num_tuples > 1) &&
-				(level_state->is_rows ||
-				 ((wstate->cur_slot_key_break != -1 &&
-				   level >= wstate->cur_slot_key_break) &&
-				  wstate->cur_slot_is_new)))
+			if (write_pre_value)
 			{
+				/*
+				 * If there is a CUME_DIST, we need to compute its
+				 * preliminary value before appending it to the frame
+				 * buffer.
+				 */
 				if (level_state->need_peercount)
 				{
 					foreach(lc, level_state->level_funcs)
