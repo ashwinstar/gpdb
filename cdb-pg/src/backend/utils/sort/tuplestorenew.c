@@ -820,6 +820,7 @@ extern void ntuplestore_reset(NTupleStore *ts)
 	ts->first_page = ts->first_free_page;
 	ts->first_free_page = nts_page_next(ts->first_page);
 	init_page(ts->first_page);
+	nts_page_set_blockn(ts->first_page, 0);
 
 	ts->last_page = ts->first_page;
 	nts_pin_page(ts, ts->first_page);
@@ -1259,6 +1260,8 @@ bool ntuplestore_acc_current_data(NTupleStoreAccessor *tsa, void **data, int *le
 
 bool ntuplestore_acc_tell(NTupleStoreAccessor *tsa, NTupleStorePos *pos)
 {
+	AssertImply(tsa->pos.blockn==-1, tsa->pos.slotn==-1);
+	
 	if(!tsa->page || tsa->pos.slotn == -1)
 		return false;
 

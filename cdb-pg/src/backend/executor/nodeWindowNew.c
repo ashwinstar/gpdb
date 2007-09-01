@@ -155,6 +155,11 @@ typedef struct WindowStatePerLevelData
 	 * output.
 	 */
 	bool lead_ready;
+
+	/* Indicate if funcstate->aggTransValue actually contains the aggregate
+	 * value.
+	 */
+	bool agg_filled;
 } WindowStatePerLevelData;
 
 /* 
@@ -1192,13 +1197,26 @@ appendToFrameBuffer(WindowStatePerLevel level_state,
 			}
 		}
 
-		else 
+		else if ((EDGE_IS_BOUND(level_state->frame->lead) ||
+				  EDGE_IS_CURRENT_ROW(level_state->frame->lead)) &&
+				 level_state->num_lead_rows == level_state->lead_rows)
 		{
-			Assert(level_state->num_lead_rows == level_state->lead_rows);
-
 			/* If the leading edge is not set, set it here. */
 			if (!ntuplestore_acc_tell(level_state->lead_reader, NULL))
 				ntuplestore_acc_seek_last(level_state->lead_reader);
+		}
+
+		else if (!EDGE_IS_BOUND(level_state->frame->lead) &&
+				 !EDGE_IS_CURRENT_ROW(level_state->frame->lead))
+		{
+			if (!ntuplestore_acc_tell(level_state->lead_reader, NULL))
+				ntuplestore_acc_seek_last(level_state->lead_reader);
+			else
+			{
+				bool found = ntuplestore_acc_advance(level_state->lead_reader, 1);
+				if (found)
+					level_state->num_lead_rows++;
+			}
 		}
 	}
 	
@@ -1561,7 +1579,9 @@ computeFrameValue(WindowStatePerLevel level_state,
 
 				if (is_rows)
 				{
-					rows_trail_entry = getCurrentValue(level_state->trail_reader, level_state);
+					if (level_state->frame->trail->kind != WINDOW_BOUND_FOLLOWING ||
+						level_state->num_lead_rows >= level_state->trail_rows)
+						rows_trail_entry = getCurrentValue(level_state->trail_reader, level_state);
 					if (level_state->lead_rows != 0)
 						rows_lead_entry = getCurrentValue(level_state->lead_reader, level_state);
 				}
@@ -2755,14 +2775,14 @@ adjustEdgesForRows(WindowFrameBuffer buffer,
 	{
 		ntuplestore_acc_seek_first(level_state->lead_reader);
 	}
-			
-	else if ((!EDGE_IS_BOUND(level_state->frame->lead) &&
-			  !EDGE_IS_CURRENT_ROW(level_state->frame->lead)) ||
-			 level_state->num_lead_rows < level_state->lead_rows)
+	
+    else if ((!EDGE_IS_BOUND(level_state->frame->lead) &&
+		   !EDGE_IS_CURRENT_ROW(level_state->frame->lead)) ||
+		  level_state->num_lead_rows < level_state->lead_rows)
 	{
-		bool found = ntuplestore_acc_tell(level_state->lead_reader, NULL);
-		ntuplestore_acc_advance(level_state->lead_reader, 1);
-		if (found)
+		bool prev_set = ntuplestore_acc_tell(level_state->lead_reader, NULL);
+		bool found = ntuplestore_acc_advance(level_state->lead_reader, 1);
+		if (found || (prev_set && level_state->agg_filled))
 			level_state->num_lead_rows++;
 	}
 }
@@ -3553,6 +3573,8 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 
 		if (level_state->empty_frame)
 			continue;
+
+		level_state->agg_filled = true;
 		
 		if (!level_state->trivial_frames_only ||
 			level_state->need_peercount)
@@ -3588,7 +3610,10 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 			 * this tuple to the transition value.
 			 */
 			if (wstate->cur_slot_part_break || TupIsNull(slot))
+			{
+				level_state->agg_filled = false;
 				continue;
+			}
 			
 			foreach(lc, level_state->level_funcs)
 			{

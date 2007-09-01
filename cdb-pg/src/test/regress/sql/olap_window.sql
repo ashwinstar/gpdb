@@ -844,3 +844,7 @@ count(*) over (order by pn range between 200 preceding and 200 following) from s
 SELECT sale.cn,sale.pn,sale.vn,
 CUME_DIST() OVER(partition by sale.cn,sale.pn order by sale.vn desc,sale.pn desc,sale.cn asc)
 FROM sale;
+
+SELECT sale.cn,sale.vn,sale.pn,
+SUM(floor(sale.cn*sale.vn)) OVER(partition by sale.vn,sale.pn order by sale.pn asc rows between 1 following and unbounded following) as sum
+from sale;
