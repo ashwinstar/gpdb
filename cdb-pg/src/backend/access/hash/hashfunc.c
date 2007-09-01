@@ -20,6 +20,7 @@
 #include "postgres.h"
 
 #include "access/hash.h"
+#include "access/tuptoaster.h"
 
 
 /* Note: this is used for both "char" and boolean datatypes */
