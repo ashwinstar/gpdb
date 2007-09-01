@@ -217,6 +217,14 @@ sub mkvcbuild
     my $psql = AddSimpleFrontend('psql', 1);
     $psql->AddIncludeDir('src\bin\pg_dump');
     $psql->AddIncludeDir('src\backend');
+    if ($solution->{options}->{readline})
+    {
+		$psql->AddIncludeDir($solution->{options}->{readline} . '\include');
+		$psql->AddLibrary($solution->{options}->{readline} . '\lib\readline.lib');
+		$psql->AddLibrary($solution->{options}->{readline} . '\lib\history.lib');
+		#$psql->AddLibrary($solution->{options}->{readline} . '\lib\libreadline.a');
+		#$psql->AddLibrary($solution->{options}->{readline} . '\lib\libhistory.a');
+    }
     $psql->AddFile('src\bin\psql\psqlscan.l');
 
     my $pgdump = AddSimpleFrontend('pg_dump', 1);

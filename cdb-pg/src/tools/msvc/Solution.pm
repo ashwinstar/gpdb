@@ -136,6 +136,16 @@ s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY
 			print O "#define DEF_PGPORT $port\n";
 			print O "#define DEF_PGPORT_STR \"$port\"\n";
 		}
+		
+		if ($self->{options}->{readline})
+		{
+			print O "#define HAVE_LIBREADLINE 1\n";
+			print O "#define HAVE_READLINE_READLINE_H 1\n";
+			print O "#define HAVE_READLINE_HISTORY_H 1\n";
+			print O "#define USE_READLINE 1\n";
+			print O "#define USE_READLINE_STATIC 1\n";
+		}
+
         print O "#define VAL_CONFIGURE \"" . $self->GetFakeConfigure() . "\"\n";
         print O "#endif /* IGNORE_CONFIGURED_SETTINGS */\n";
         close(O);
