@@ -527,7 +527,7 @@ static void create_tmp_fifo(const char *fifoname)
 		mkdir(tmpdir, S_IRWXU);
 
 		/* then try it again */
-		int err = mkfifo(fifoname, 0600);
+		err = mkfifo(fifoname, 0600);
 
 		if(err < 0 && errno != EEXIST)
 			elog(ERROR, "Cannot create tmp fifo %s", fifoname);
