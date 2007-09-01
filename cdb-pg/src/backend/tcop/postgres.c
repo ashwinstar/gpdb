@@ -3607,6 +3607,8 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 
 			/* get the client command serial# */
 			gp_command_count = pq_getmsgint(input_message, 4);
+			
+			elog(DEBUG1, "Message type %c received by dispatch agent from libpq, len = %d", firstchar, input_message->len); /* TODO: Remove this */
 
 			/* Get the userid info  (session, outer, current) */
 			suid = pq_getmsgint(input_message, 4);
@@ -4946,9 +4948,6 @@ PostgresMain(int argc, char *argv[], const char *username)
 			continue;
 		
 		elog((Debug_print_full_dtm ? LOG : DEBUG5), "First char: '%c'; gp_role = '%s'.",firstchar,role_to_string(Gp_role));
-
-		if (firstchar=='M' || firstchar=='G' || firstchar=='T')
-			elog(DEBUG1, "Message type %c received by from libpq, len = %d", firstchar, input_message.len); /* TODO: Remove this */
 		
 		if (Gp_role == GP_ROLE_DISPATCHAGENT)
 		{
@@ -4963,6 +4962,9 @@ PostgresMain(int argc, char *argv[], const char *username)
 
                     if (Gp_role != GP_ROLE_EXECUTE)
                         gp_command_count++;
+                    
+ 
+                    elog(DEBUG1, "Message type %c received by from libpq, len = %d", firstchar, input_message.len); /* TODO: Remove this */
 
 					/* Set statement_timestamp() */
  					SetCurrentStatementStartTimestamp();
@@ -5017,6 +5019,8 @@ PostgresMain(int argc, char *argv[], const char *username)
  					
 					/* get the client command serial# */
 					gp_command_count = pq_getmsgint(&input_message, 4);
+					
+					elog(DEBUG1, "Message type %c received by from libpq, len = %d", firstchar, input_message.len); /* TODO: Remove this */
 									
 					/* Get the userid info  (session, outer, current) */	
 					suid = pq_getmsgint(&input_message, 4);	
@@ -5174,6 +5178,9 @@ PostgresMain(int argc, char *argv[], const char *username)
 					DistributedTransactionId gxid;
 					int	primary_gang_id;
 					int mirror_gang_id;
+					
+
+					elog(DEBUG1, "Message type %c received by from libpq, len = %d", firstchar, input_message.len); /* TODO: Remove this */
 					
 					/* get the transaction protocol command # */
 					dtxProtocolCommand = (DtxProtocolCommand) pq_getmsgint(&input_message, 4);
