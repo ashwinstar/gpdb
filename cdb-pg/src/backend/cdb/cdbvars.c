@@ -607,7 +607,7 @@ gpvars_show_gp_log_interconnect(void)
 const char *
 gpvars_assign_gp_interconnect_type(const char *newval, bool doit, GucSource source)
 {
-	int newtype;
+	int newtype = 0;
 
 	if (!pg_strcasecmp("tcp", newval))
 		newtype = INTERCONNECT_TYPE_TCP;
