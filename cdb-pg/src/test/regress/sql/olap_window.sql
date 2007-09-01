@@ -853,3 +853,9 @@ from sale;
 SELECT sale.cn,
 COUNT(cn) OVER(order by sale.cn range between 7 following and 7 following) as count 
 FROM sale;
+
+-- MPP-1925
+SELECT sale.pn,sale.vn,
+COUNT(floor(sale.cn-sale.prc)) OVER(order by sale.pn asc,sale.vn asc,sale.vn desc rows between current row and 2 following ) as count,sale.pn,
+CUME_DIST() OVER(order by sale.pn asc) as cume_dist
+FROM sale;

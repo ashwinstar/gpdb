@@ -3916,3 +3916,24 @@ FROM sale;
   4 |     0
 (12 rows)
 
+-- MPP-1925
+SELECT sale.pn,sale.vn,
+COUNT(floor(sale.cn-sale.prc)) OVER(order by sale.pn asc,sale.vn asc,sale.vn desc rows between current row and 2 following ) as count,sale.pn,
+CUME_DIST() OVER(order by sale.pn asc) as cume_dist
+FROM sale;
+ pn  | vn | count | pn  |     cume_dist     
+-----+----+-------+-----+-------------------
+ 100 | 20 |     3 | 100 | 0.166666666666667
+ 100 | 40 |     3 | 100 | 0.166666666666667
+ 200 | 10 |     3 | 200 | 0.333333333333333
+ 200 | 40 |     3 | 200 | 0.333333333333333
+ 300 | 30 |     3 | 300 | 0.416666666666667
+ 400 | 50 |     3 | 400 | 0.583333333333333
+ 400 | 50 |     3 | 400 | 0.583333333333333
+ 500 | 30 |     3 | 500 |              0.75
+ 500 | 30 |     3 | 500 |              0.75
+ 600 | 30 |     3 | 600 | 0.833333333333333
+ 700 | 40 |     2 | 700 | 0.916666666666667
+ 800 | 40 |     1 | 800 |                 1
+(12 rows)
+

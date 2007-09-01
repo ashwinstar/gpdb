@@ -2385,6 +2385,29 @@ freeInputBuffer(WindowState *wstate)
 	wstate->input_buffer = NULL;
 }
 
+/*
+ * Advance CUME_DIST values.
+ */
+static void
+advanceCumeDist(WindowState *wstate, int min_level)
+{
+	WindowStatePerLevel level_state;
+	int i;
+	
+	for (i = 0; i < wstate->numlevels; i++)
+	{
+		level_state = &wstate->level_state[i];
+
+		if (i >= min_level && min_level != -1)
+		{
+			level_state->prior_non_peer_count += level_state->peer_count + 1;
+			level_state->peer_index = 0;
+			level_state->peer_count = 0;
+		}
+	}
+}
+
+
 /* Advance the "primitive" values that drive the calculation of window
  * functions for the window ordering of the specified level.  
  * 
@@ -2425,10 +2448,7 @@ advanceKeyLevelState(WindowState *wstate, int min_level)
 			level_state->prior_dense_rank = level_state->dense_rank;
 		
 			/* Advance level data for first peer in next group. */
-			level_state->prior_non_peer_count += level_state->peer_count + 1;
 			level_state->group_index++;
-			level_state->peer_index = 0;
-			level_state->peer_count = 0;
 			level_state->rank = 1 + cur_row_index; 
 			level_state->dense_rank = 1 + level_state->group_index;
 		}
@@ -3470,11 +3490,6 @@ ExecWindow(WindowState *wstate)
 	
 	while (!output_ready)
 	{
-		if (wstate->cur_slot_is_new &&
-			wstate->cur_slot_key_break != -1 &&
-			wstate->cur_slot_key_break < wstate->numlevels)
-			advanceKeyLevelState(wstate, wstate->cur_slot_key_break);
-
 		next_tupleslot = fetchTupleSlotThroughBuf(wstate);
 
 		if (TupIsNull(next_tupleslot) || wstate->cur_slot_part_break)
@@ -3634,14 +3649,26 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 				WindowStatePerFunction funcstate = (WindowStatePerFunction) lfirst(lc);
 				ExprContext *econtext = wstate->ps.ps_ExprContext;
 				
-				if(funcstate->trivial_frame)
+				if (funcstate->trivial_frame &&
+					!level_state->need_peercount)
 					continue;
 
-				/* Add this tuple to its transition value */
-				econtext->ecxt_scantuple = slot;
-				econtext->ecxt_outertuple = slot; /* XXX really need this? */
+				if (funcstate->windowfn_oid == CUME_DIST_PRELIM_OID)
+				{
+					if (wstate->cur_slot_is_new &&
+						wstate->cur_slot_key_break != -1 &&
+						wstate->cur_slot_key_break < wstate->numlevels)
+						advanceCumeDist(wstate, wstate->cur_slot_key_break);
+				}
 				
-				add_tuple_to_trans(funcstate, wstate, econtext);
+				else
+				{
+					/* Add this tuple to its transition value */
+					econtext->ecxt_scantuple = slot;
+					econtext->ecxt_outertuple = slot; /* XXX really need this? */
+					
+					add_tuple_to_trans(funcstate, wstate, econtext);
+				}
 			}
 		}
 	}
