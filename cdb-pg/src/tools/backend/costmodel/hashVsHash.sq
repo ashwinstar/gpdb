@@ -133,7 +133,7 @@ define xytrace_id           = _auto
 
 // option checkboxes
 variable _nondumpable optionCheckboxes
-//define oc_spilltweak        = _auto
+define oc_spilltweak        = _auto
 
 // cost model version ids
 variable _nondumpable modelVersion  // enumerator struct for the chosen version
@@ -348,11 +348,11 @@ function
     optionCheckboxes_init()
         enums = {};
 
-        // enums{end+1} = enumerator_init( 'Spill cost' , oc_spilltweak );
+        enums{end+1} = enumerator_init( 'Batch 0 spill cost ' , oc_spilltweak );
         // add items here
 
         optionChooser = enumChooser_init( enums, ...
-                                          'Tweaks', 3, ...
+                                          'Tweaks', 2, ...
                                           optionCheckboxes_id1 : optionCheckboxes_idN );
         optionCheckboxes = checkboxes_init( [], optionChooser );
 @}
@@ -1531,6 +1531,16 @@ function
         if numbatches > 1
             outerpages = page_size(outer_path_rows, outerRowSize, blcksz, modelVersion);
             innerpages = page_size(inner_path_rows, innerRowSize, blcksz, modelVersion);
+
+            // experimental: exclude first batch from I/O cost
+            if checkboxes_test( optionCheckboxes, oc_spilltweak )
+                spillfrac = ( numbatches - 1 ) / numbatches;
+                outer_spill_rows = ceil( outer_path_rows * spillfrac );
+                inner_spill_rows = ceil( inner_path_rows * spillfrac );
+                outerpages = page_size(outer_spill_rows, outerRowSize, blcksz, modelVersion);
+                innerpages = page_size(inner_spill_rows, innerRowSize, blcksz, modelVersion);
+            end
+
             startup_cost(end+1) = seq_page_cost * innerpages;
             run_cost(end+1) = seq_page_cost * (innerpages + 2 * outerpages);
             io_cost = startup_cost(end) + run_cost(end);
