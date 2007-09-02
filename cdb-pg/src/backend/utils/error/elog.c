@@ -77,6 +77,19 @@
 #include "utils/elog.h" /* backtrace() prototype for solaris */
 #include "utils/debugbreak.h"
 
+#ifdef USE_ASSERT_CHECKING
+#include "miscadmin.h"
+#include <pthread.h>
+extern pthread_t main_tid;
+#ifndef _WIN32
+#define mythread() ((unsigned int) pthread_self())
+#define mainthread() ((unsigned int) main_tid)
+#else
+#define mythread() ((unsigned int) pthread_self().p)
+#define mainthread() ((unsigned int) main_tid.p)
+#endif 
+#endif
+
 /* Global variables */
 ErrorContextCallback *error_context_stack = NULL;
 
@@ -1009,6 +1022,12 @@ elog_start(const char *filename, int lineno, const char *funcname)
 	edata->funcname = funcname;
 	/* errno is saved now so that error parameter eval can't change it */
 	edata->saved_errno = errno;
+#ifdef USE_ASSERT_CHECKING
+	if (IsUnderPostmaster && mainthread() != 0 && !pthread_equal(main_tid, pthread_self()))
+	{
+		write_stderr("elog called from thread");
+	}
+#endif
 }
 
 /*
