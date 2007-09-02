@@ -1025,7 +1025,7 @@ elog_start(const char *filename, int lineno, const char *funcname)
 #ifdef USE_ASSERT_CHECKING
 	if (IsUnderPostmaster && mainthread() != 0 && !pthread_equal(main_tid, pthread_self()))
 	{
-		write_stderr("elog called from thread");
+		write_log("elog called from thread\n");
 	}
 #endif
 }
