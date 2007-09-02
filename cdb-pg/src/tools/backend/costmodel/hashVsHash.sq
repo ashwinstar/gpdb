@@ -79,9 +79,7 @@ define sizeof_ItemIdData = 4                // storage/itemid.h
 define INT_MAX          = 2147483647
 
 // visible control group ids
-variable visibleControls
-variable _nondumpable visibleControlsChooser
-variable visibleControlsCheckmarks
+variable _nondumpable visibleControls
 define vc_explain_id    = _auto
 define vc_gucs_id       = _auto
 define vc_joinsel_id    = _auto
@@ -107,7 +105,7 @@ define relT_rowSize_id          = _auto
 define relU_rowSize_id          = _auto
 define work_mem_id              = _auto
 
-// button control ids
+// button and checkbox control ids
 define modelVersion_id1     = _auto
 define modelVersion_id2     = _auto
 define modelVersion_id3     = _auto
@@ -118,6 +116,10 @@ define visibleControls_id2  = _auto
 define visibleControls_id3  = _auto
 define visibleControls_id4  = _auto
 define visibleControls_idN  = visibleControls_id4
+define optionCheckboxes_id1 = _auto
+define optionCheckboxes_id2 = _auto
+define optionCheckboxes_id3 = _auto
+define optionCheckboxes_idN = optionCheckboxes_id3
 
 // plot & line control ids
 define outer_rows_id        = _auto
@@ -129,9 +131,13 @@ define T_rows_id            = _auto
 define U_rows_id            = _auto
 define xytrace_id           = _auto
 
+// option checkboxes
+variable _nondumpable optionCheckboxes
+//define oc_spilltweak        = _auto
+
 // cost model version ids
-variable modelVersion                       // enumerator struct for the chosen version
-variable _nondumpable modelVersionChooser   // enumChooser struct containing version info
+variable _nondumpable modelVersion  // enumerator struct for the chosen version
+variable _nondumpable modelVersionChooser
 define ver_pg815   = _auto
 define ver_pg820   = _auto      // pg 8.2.0 uses costsize.c version 1.169
                                 //  This version introduced the MinimalTuple format
@@ -191,16 +197,16 @@ variable _nondumpable unused
 init ( relT, relU, ...
        joinsel, joinsize, ...
        costgucs, work_mem, blcksz, NTUP_PER_BUCKET, ...
-       modelVersion, modelVersionChooser, ...
-       visibleControls, visibleControlsChooser, ...
+       modelVersion, modelVersionChooser, optionCheckboxes, ...
+       visibleControls, ...
        scaleflag, unused ) = init
 function
 {@
     function ( relT, relU, ...
                joinsel, joinsize, ...
                costgucs, work_mem, blcksz, NTUP_PER_BUCKET, ...
-               modelVersion, modelVersionChooser, ...
-               visibleControls, visibleControlsChooser, ...
+               modelVersion, modelVersionChooser, optionCheckboxes, ...
+               visibleControls, ...
                scaleflag, unused ) = ...
     init
         subplots('HashVsHash\tControl Panel\nT HJ U\tHash Build (U inner)\nU HJ T\tHash Build (T inner)');
@@ -208,9 +214,9 @@ function
         unused = [];
 
         ( modelVersion, modelVersionChooser, blcksz, NTUP_PER_BUCKET ) = ...
-        initVersions( ver_default, BLCKSZ_default );
-
-        ( visibleControls, visibleControlsChooser ) = visibleControls_init();
+            initVersions( ver_default, BLCKSZ_default );
+        optionCheckboxes = optionCheckboxes_init();
+        visibleControls = visibleControls_init();
 
         costgucs = costgucs_init();
         work_mem = 128 * 1024;          // gp default is 128 MB
@@ -253,7 +259,6 @@ function
 
         blcksz = [ BLCKSZ_default, BLCKSZ_default, true ];
         ( modelVersion, blcksz, NTUP_PER_BUCKET ) = modelVersion_set( modelVersion_initial, blcksz );
-
 
     function versions = ...
     initPgVersionEnumerators(v)
@@ -300,6 +305,17 @@ function
         NTUP_PER_BUCKET = newVersion.NTUP_PER_BUCKET;
         modelVersion = newVersion;
 
+    function versionEnumerator = ...
+    version_init( copyFromVersion, enum_name, enum_id )
+        versionEnumerator = enumerator_init(enum_name, enum_id);
+        if ~isempty(copyFromVersion)
+            for fieldname = fieldnames(copyFromVersion)
+                if ~isfield(versionEnumerator, fieldname)
+                    versionEnumerator.(fieldname) = copyFromVersion.(fieldname);
+                end
+            end
+        end
+
     function blcksz = ...
     blcksz_set( blcksz, newBLCKSZ )
         // If pg version, save a copy of the BLCKSZ for modelVersion_set()
@@ -315,12 +331,30 @@ function
 function
 {@
     function costgucs = ...
-    costgucs_init()
+    costgucs_init
         costgucs = struct();
         costgucs.cpu_tuple_cost        = 0.01;
         costgucs.cpu_operator_cost     = 0.0025;
         costgucs.seq_page_cost         = 1;
         costgucs.hj_chainwalk_weight   = 1;
+@}
+
+//--------------------------------------------------------------------//
+//                          optionCheckboxes                          //
+//--------------------------------------------------------------------//
+function
+{@
+    function optionCheckboxes = ...
+    optionCheckboxes_init()
+        enums = {};
+
+        // enums{end+1} = enumerator_init( 'Spill cost' , oc_spilltweak );
+        // add items here
+
+        optionChooser = enumChooser_init( enums, ...
+                                          'Tweaks', 3, ...
+                                          optionCheckboxes_id1 : optionCheckboxes_idN );
+        optionCheckboxes = checkboxes_init( [], optionChooser );
 @}
 
 //--------------------------------------------------------------------//
@@ -351,10 +385,13 @@ function
         rel.scanCostPerRow = scanCostPerRow;
 
     function ( rel, joinsel, joinsize ) = ...
-    rel_initialRows_drag( rel, whichrel, joinsel, joinsize, nb, x1 )
+    rel_initialRows_drag( rel_old, whichrel, joinsel_old, joinsize_old, nb, x1 )
         if isempty( nb ) || x1 <= 0
             cancel;
         end
+        rel = rel_old;
+        joinsel = joinsel_old;
+        joinsize = joinsize_old;
         rows = ceil( x1 );
         if whichrel == 1
             joinsize = joinsize_init( rows, joinsize.rowsU, joinsize.joinRows );
@@ -367,27 +404,30 @@ function
         joinsel.selectivity = joinsize.joinRows / joinsize.xprodRows;
 
     function rel = ...
-    rel_initialRowSize_drag( rel, nb, x1 )
+    rel_initialRowSize_drag( rel_old, nb, x1 )
         if isempty( nb ) || x1 < 0
             cancel;
         end
+        rel = rel_old;
         rel.initialRowSize = ceil( x1 );
         rel.rowSize = MAXALIGN( rel.initialRowSize );
 
     function rel = ...
-    rel_initialScanCost_drag( rel, nb, x1 )
+    rel_initialScanCost_drag( rel_old, nb, x1 )
         if isempty( nb ) || x1 < 0
             cancel;
         end
+        rel = rel_old;
         rel.initialScanCost = x1;
         rel.scanCostPerRow = rel.initialScanCost / rel.initialRows;
         rel.scanCost = rel.rows * rel.scanCostPerRow;
 
     function rel = ...
-    rel_rows_drag( rel, nb, x1 )
+    rel_rows_drag( rel_old, nb, x1 )
         if isempty( nb )
             cancel;
         end
+        rel = rel_old;
         rel.rows = ceil( x1 );
         rel.scanCost = rel.rows * rel.scanCostPerRow;
 
@@ -402,10 +442,11 @@ function
         cursor = true;
 
     function rel = ...
-    rel_rowSize_drag( rel, nb, x1 )
+    rel_rowSize_drag( rel_old, nb, x1 )
         if isempty(nb)
             cancel;
         end
+        rel = rel_old;
         rel.rowSize = MAXALIGN(round(x1));
 @}
 
@@ -441,24 +482,28 @@ function
 //--------------------------------------------------------------------//
 
 make hashbuildT = hashbuild_make( relT, work_mem, NTUP_PER_BUCKET, ...
-                                  joinsel, costgucs, blcksz, modelVersion )
+                                  joinsel, costgucs, blcksz, ...
+                                  modelVersion, optionCheckboxes )
 make hashbuildU = hashbuild_make( relU, work_mem, NTUP_PER_BUCKET, ...
-                                  joinsel, costgucs, blcksz, modelVersion )
+                                  joinsel, costgucs, blcksz, ...
+                                  modelVersion, optionCheckboxes )
 function
 {@
     function hashbuild = ...
     hashbuild_make( rel, work_mem, NTUP_PER_BUCKET, ...
-                    joinsel, costgucs, blcksz, modelVersion )
+                    joinsel, costgucs, blcksz, ...
+                    modelVersion, optionCheckboxes )
         hashbuild = struct();
         ( hashbuild.nbuckets, hashbuild.nbatch, hashbuild.bytes ) = ...
             ExecChooseHashTableSize( rel.rows, rel.rowSize, ...
                                      work_mem, NTUP_PER_BUCKET, ...
-                                     modelVersion );
+                                     modelVersion, optionCheckboxes );
         ( hashbuild.totalCost, hashbuild.ioCost, hashbuild.cpuCost ) = ...
             cost_hashjoin( 0, 0, 0, 0, ...
                            rel.rows, rel.rowSize, rel.scanCost, ...
                            hashbuild.nbuckets, hashbuild.nbatch, ...
-                           joinsel, costgucs, blcksz, modelVersion );
+                           joinsel, costgucs, blcksz, ...
+                           modelVersion, optionCheckboxes );
 @}
 
 //--------------------------------------------------------------------//
@@ -467,20 +512,20 @@ function
 
 make joincostTU = ...
      joincost_make( relT, relU, hashbuildU, ...
-                    joinsel, costgucs, blcksz, modelVersion )
+                    joinsel, costgucs, blcksz, modelVersion, optionCheckboxes )
 make joincostUT = ...
      joincost_make( relU, relT, hashbuildT, ...
-                    joinsel, costgucs, blcksz, modelVersion )
+                    joinsel, costgucs, blcksz, modelVersion, optionCheckboxes )
 function
 {@
     function hjCost = ...
     joincost_make( relOuter, relInner, hashbuildInner, ...
-                   joinsel, costgucs, blcksz, modelVersion )
+                   joinsel, costgucs, blcksz, modelVersion, optionCheckboxes )
         ( hjCost, hjIO, hjCPU ) = ...
             cost_hashjoin( relOuter.rows, relOuter.rowSize, relOuter.scanCost, 0, ...
                            relInner.rows, relInner.rowSize, relInner.scanCost, ...
                            hashbuildInner.nbuckets, hashbuildInner.nbatch, ...
-                           joinsel, costgucs, blcksz, modelVersion );
+                           joinsel, costgucs, blcksz, modelVersion, optionCheckboxes );
 @}
 
 
@@ -502,6 +547,27 @@ function
         scaleflag = ~scaleflag;
 @}
 
+//--------------------------------------------------------------------//
+//                          VisibleControls                           //
+//--------------------------------------------------------------------//
+function
+{@
+    function visibleControls = ...
+    visibleControls_init()
+        enums = {};
+        enums{end+1} = enumerator_init( 'Version'     , vc_vers_id );
+        enums{end+1} = enumerator_init( 'Size Adj'    , vc_sizeadj_id );
+        enums{end+1} = enumerator_init( 'GUCs'        , vc_gucs_id );
+        enums{end+1} = enumerator_init( 'Quals'       , vc_quals_id );
+        enums{end+1} = enumerator_init( 'Selectivity' , vc_joinsel_id );
+        enums{end+1} = enumerator_init( 'Subplans'    , vc_subplans_id );
+        enums{end+1} = enumerator_init( 'Explain'     , vc_explain_id );
+        visibleControlsChooser = enumChooser_init( enums, ...
+                                                   'Show controls', 4, ...
+                                                   visibleControls_id1 : visibleControls_idN );
+        initiallyVisible = [ vc_vers_id ];
+        visibleControls = checkboxes_init( initiallyVisible, visibleControlsChooser );
+@}
 
 //--------------------------------------------------------------------//
 //                          "Control Panel"                           //
@@ -511,21 +577,33 @@ figure "Control Panel"
     mouseover
         _msg = params_mouseover()
 
-    mousedrag visibleControls_id1
-        visibleControls = checkboxes_drag( visibleControlsChooser, visibleControls, _id, _x1, _x0 )
-    mousedrag visibleControls_id2
-        visibleControls = checkboxes_drag( visibleControlsChooser, visibleControls, _id, _x1, _x0 )
-    mousedrag visibleControls_id3
-        visibleControls = checkboxes_drag( visibleControlsChooser, visibleControls, _id, _x1, _x0 )
-    mousedrag modelVersion_id1
+    mouseup visibleControls_id1
+        visibleControls = ...
+        checkboxes_mouseup( visibleControls, _id, _x1, _x0 )
+    mouseup visibleControls_id2
+        visibleControls = ...
+        checkboxes_mouseup( visibleControls, _id, _x1, _x0 )
+    mouseup visibleControls_id3
+        visibleControls = ...
+        checkboxes_mouseup( visibleControls, _id, _x1, _x0 )
+    mouseup modelVersion_id1
         ( modelVersion, blcksz, NTUP_PER_BUCKET ) = ...
-        vers_drag( modelVersionChooser, blcksz, _id, _x1 )
-    mousedrag modelVersion_id2
+        vers_mouseup( modelVersionChooser, blcksz, _id, _x1 )
+    mouseup modelVersion_id2
         ( modelVersion, blcksz, NTUP_PER_BUCKET ) = ...
-        vers_drag( modelVersionChooser, blcksz, _id, _x1 )
-    mousedrag modelVersion_id3
+        vers_mouseup( modelVersionChooser, blcksz, _id, _x1 )
+    mouseup modelVersion_id3
         ( modelVersion, blcksz, NTUP_PER_BUCKET ) = ...
-        vers_drag( modelVersionChooser, blcksz, _id, _x1 )
+        vers_mouseup( modelVersionChooser, blcksz, _id, _x1 )
+    mouseup optionCheckboxes_id1
+        optionCheckboxes = ...
+        checkboxes_mouseup( optionCheckboxes, _id, _x1, _x0 )
+    mouseup optionCheckboxes_id2
+        optionCheckboxes = ...
+        checkboxes_mouseup( optionCheckboxes, _id, _x1, _x0 )
+    mouseup optionCheckboxes_id3
+        optionCheckboxes = ...
+        checkboxes_mouseup( optionCheckboxes, _id, _x1, _x0 )
     mousedrag blcksz_id
         blcksz = blcksz_drag( blcksz, _nb, _x1 )
     mousedrag explain_rows_id
@@ -565,30 +643,27 @@ figure "Control Panel"
     draw
         params_draw( relT, relU, hashbuildT, hashbuildU, joinsel, joinsize, ...
                      costgucs, work_mem, blcksz, NTUP_PER_BUCKET, ...
-                     modelVersion, modelVersionChooser, ...
+                     modelVersion, modelVersionChooser, optionCheckboxes, ...
                      joincostTU, joincostUT, ...
-                     visibleControls, visibleControlsChooser, visibleControlsCheckmarks )
-
-make visibleControlsCheckmarks = ...
-     checkmarks_make( visibleControlsChooser, visibleControls )
+                     visibleControls )
 
 function
 {@
     function ...
     params_draw( relT, relU, hashbuildT, hashbuildU, joinsel, joinsize, ...
                  costgucs, work_mem, blcksz, NTUP_PER_BUCKET, ...
-                 modelVersion, modelVersionChooser, ...
+                 modelVersion, modelVersionChooser, optionCheckboxes, ...
                  joincostTU, joincostUT, ...
-                 visibleControls, visibleControlsChooser, visibleControlsCheckmarks )
+                 visibleControls )
         title( sprintf( '%s   Cost: T x U = %.0f   U x T = %.0f', ...
                         modelVersion.enum_name, joincostTU, joincostUT ) );
         firsttab = 'hj_chainwalk_weight (0.0000)____';     // make room for widest label
-        visibleControls_draw( firsttab, visibleControlsChooser, visibleControlsCheckmarks );
+        checkboxes_draw( visibleControls, firsttab );
 
-        for vc_enumerator = visibleControls
-            switch vc_enumerator.enum_id
+        for vc_enum_id = checkboxes_chosen( visibleControls )
+            switch vc_enum_id
                 case vc_vers_id
-                    vers_draw( firsttab, modelVersionChooser, modelVersion, blcksz );
+                    vers_draw( blcksz, modelVersion, modelVersionChooser, optionCheckboxes, firsttab );
                 case vc_explain_id
                     explain_draw( firsttab, relT, relU, joinsize, work_mem );
                 case vc_gucs_id
@@ -607,27 +682,6 @@ function
     function msg = ...
     params_mouseover()
         msg = 'Control panel area can be dragged up/down or scrolled with mousewheel.';
-
-    function ( visibleControls, visibleControlsChooser ) = ...
-    visibleControls_init
-        enums = {};
-        enums{end+1} = enumerator_init( 'Version'     , vc_vers_id );
-        visibleControls = enums;
-        enums{end+1} = enumerator_init( 'Size Adj'    , vc_sizeadj_id );
-        enums{end+1} = enumerator_init( 'GUCs'        , vc_gucs_id );
-        enums{end+1} = enumerator_init( 'Quals'       , vc_quals_id );
-        enums{end+1} = enumerator_init( 'Selectivity' , vc_joinsel_id );
-        enums{end+1} = enumerator_init( 'Subplans'    , vc_subplans_id );
-        enums{end+1} = enumerator_init( 'Explain'     , vc_explain_id );
-        visibleControlsChooser = enumChooser_init( enums, ...
-                                                   'Show controls', 4, ...
-                                                   visibleControls_id1 : visibleControls_idN );
-
-    function ...
-    visibleControls_draw( firsttab, visibleControlsChooser, visibleControlsCheckmarks )
-        settabs( [ firsttab, '\t\b', visibleControlsChooser.longestName, '__' ] );
-        checkboxes_draw( visibleControlsChooser, visibleControlsCheckmarks );
-        settabs( firsttab );
 
     function blcksz = ...
     blcksz_drag( blcksz, nb, x1 )
@@ -650,13 +704,14 @@ function
 
     function ( relT, relU, joinsel, joinsize ) = ...
     explain_rows_drag( relT, relU, joinsel, joinsize, nb, x1 )
+        if isempty( nb ) || x1 <= 0
+            cancel;
+        end
         switch nb
             case 1
                 ( relT, joinsel, joinsize ) = rel_initialRows_drag( relT, 1, joinsel, joinsize, nb, x1 );
             case 2
                 ( relU, joinsel, joinsize ) = rel_initialRows_drag( relU, 2, joinsel, joinsize, nb, x1 );
-            otherwise
-                cancel;
         end
 
     function ( relT, relU ) = ...
@@ -698,10 +753,11 @@ function
         slider(labels, NTUP_PER_BUCKET, [1,20], '', '', ntup_per_bucket_id);
 
     function costgucs = ...
-    gucs_drag( costgucs, nb, x1 )
+    gucs_drag( costgucs_old, nb, x1 )
         if isempty(nb)
             cancel;
         end
+        costgucs = costgucs_old;
         switch nb
             case 1
                 costgucs.cpu_tuple_cost = x1;
@@ -723,10 +779,12 @@ function
         slider( labels, joinsize.joinRows, [ 1,joinsize.xprodRows ], 'L', '', joinrows_id );
 
     function ( joinsel, joinsize ) = ...
-    joinrows_drag( joinsel, joinsize, nb, x1 )
+    joinrows_drag( joinsel_old, joinsize_old, nb, x1 )
         if isempty(nb) || x1 < 0
             cancel;
         end
+        joinsel = joinsel_old;
+        joinsize = joinsize_old;
         joinsize.joinRows = min( ceil( x1 ), joinsize.xprodRows );
         joinsel.selectivity = joinsize.joinRows / joinsize.xprodRows;
 
@@ -738,10 +796,11 @@ function
         slider( labels, [ joinsel.nquals_hash; joinsel.nquals_postjoin ], [ 0,10 ], '', '', quals_id );
 
     function joinsel = ...
-    quals_drag( joinsel, nb, x1 )
+    quals_drag( joinsel_old, nb, x1 )
         if isempty(nb)
             cancel;
         end
+        joinsel = joinsel_old;
         switch nb
             case 1
                 joinsel.nquals_hash = round( x1 );
@@ -779,17 +838,18 @@ function
         slider( labels, [ relT.initialRows; relU.initialRows ], [ 1,1e9 ], 'L', '', explain_rows_id );
 
     function ...
-    vers_draw( firsttab, modelVersionChooser, modelVersion, blcksz )
+    vers_draw( blcksz, modelVersion, modelVersionChooser, optionCheckboxes, firsttab )
         text( '-------------------- Version' );
         labels = sprintf( 'Block size (%d KB)', blcksz(1)/1024 );
         slider( labels, log2( blcksz(1)/4096 ), [0,6], '', '', blcksz_id );
 
         settabs([firsttab, '\t\b', modelVersionChooser.longestName, '_']);
         radiobuttons_draw( modelVersionChooser, modelVersion.enum_id );
+        checkboxes_draw( optionCheckboxes, firsttab );
         settabs( firsttab );
 
     function ( modelVersion, blcksz, NTUP_PER_BUCKET ) = ...
-    vers_drag( modelVersionChooser, blcksz, id, x1 )
+    vers_mouseup( modelVersionChooser, blcksz, id, x1 )
         ( modelVersion, blcksz, NTUP_PER_BUCKET ) = ...
         modelVersion_set( radiobuttons_drag( modelVersionChooser, id, x1 ), blcksz );
 
@@ -815,7 +875,8 @@ figure "HashVsHash"
 
     draw hashVsHash_draw( relT, relU, hashbuildU, ...
                           joinsel, costgucs, scaleflag, ...
-                          work_mem, NTUP_PER_BUCKET, blcksz, modelVersion, ...
+                          work_mem, NTUP_PER_BUCKET, blcksz, ...
+                          modelVersion, optionCheckboxes, ...
                           joincostTU, joincostUT, ...
                           1 )
 
@@ -825,7 +886,8 @@ figure "HashVsHash (Ratio)"
 
     draw hashVsHash_draw( relT, relU, hashbuildU, ...
                           joinsel, costgucs, scaleflag, ...
-                          work_mem, NTUP_PER_BUCKET, blcksz, modelVersion, ...
+                          work_mem, NTUP_PER_BUCKET, blcksz, ...
+                          modelVersion, optionCheckboxes, ...
                           joincostTU, joincostUT, ...
                           2 )
 
@@ -835,7 +897,8 @@ figure "HashVsHash (Difference)"
 
     draw hashVsHash_draw( relT, relU, hashbuildU, ...
                           joinsel, costgucs, scaleflag, ...
-                          work_mem, NTUP_PER_BUCKET, blcksz, modelVersion, ...
+                          work_mem, NTUP_PER_BUCKET, blcksz, ...
+                          modelVersion, optionCheckboxes, ...
                           joincostTU, joincostUT, ...
                           3 )
 
@@ -844,7 +907,8 @@ function
     function ...
     hashVsHash_draw( relT, relU, hashbuildU, ...
                      joinsel, costgucs, scaleflag, ...
-                     work_mem, NTUP_PER_BUCKET, blcksz, modelVersion, ...
+                     work_mem, NTUP_PER_BUCKET, blcksz, ...
+                     modelVersion, optionCheckboxes, ...
                      joincostTU, joincostUT, ...
                      whichPlot )
         sc = scale;
@@ -857,16 +921,18 @@ function
                 cost_hashjoin( relT_rows, relT.rowSize, relT_rows * relT.scanCostPerRow, 0, ...
                                relU.rows, relU.rowSize, relU.scanCost, ...
                                hashbuildU.nbuckets, hashbuildU.nbatch, ...
-                               joinsel, costgucs, blcksz, modelVersion );
+                               joinsel, costgucs, blcksz, ...
+                               modelVersion, optionCheckboxes );
             ( hashT_nbuckets, hashT_nbatch, hashT_bytes(end+1) ) = ...
                 ExecChooseHashTableSize( relT_rows, relT.rowSize, ...
                                          work_mem, NTUP_PER_BUCKET, ...
-                                         modelVersion );
+                                         modelVersion, optionCheckboxes );
             utCost(end+1) = ...
                 cost_hashjoin( relU.rows, relU.rowSize, relU.scanCost, 0, ...
                                relT_rows, relT.rowSize, relT_rows * relT.scanCostPerRow, ...
                                hashT_nbuckets, hashT_nbatch, ...
-                               joinsel, costgucs, blcksz, modelVersion );
+                               joinsel, costgucs, blcksz, ...
+                               modelVersion, optionCheckboxes );
         end
         switch whichPlot
             case 1
@@ -960,7 +1026,8 @@ figure "T HJ U"
         _msg = joincost_mouseover( relT, relU, hashbuildT, hashbuildU, 1, _x0, _y0 )
 
     draw joinCost_draw( relT, relU, hashbuildU, ...
-                        joinsel, costgucs, blcksz, modelVersion, ...
+                        joinsel, costgucs, blcksz, ...
+                        modelVersion, optionCheckboxes, ...
                         joincostTU )
 
 figure "U HJ T"
@@ -970,14 +1037,16 @@ figure "U HJ T"
         _msg = joincost_mouseover( relT, relU, hashbuildT, hashbuildU, 0, _x0, _y0 )
 
     draw joinCost_draw( relU, relT, hashbuildT, ...
-                        joinsel, costgucs, blcksz, modelVersion, ...
+                        joinsel, costgucs, blcksz, ...
+                        modelVersion, optionCheckboxes, ...
                         joincostUT )
 
 function
 {@
     function ...
     joinCost_draw( relOuter, relInner, hashbuildInner, ...
-                   joinsel, costgucs, blcksz, modelVersion, ...
+                   joinsel, costgucs, blcksz, ...
+                   modelVersion, optionCheckboxes, ...
                    joincostOuterInner )
         scale loglog;
         scale('lock', [1,1e9,1,1e12]);
@@ -988,7 +1057,8 @@ function
                 cost_hashjoin( outerRows, relOuter.rowSize, outerRows * relOuter.scanCostPerRow, 0, ...
                                relInner.rows, relInner.rowSize, relInner.scanCost, ...
                                hashbuildInner.nbuckets, hashbuildInner.nbatch, ...
-                               joinsel, costgucs, blcksz, modelVersion );
+                               joinsel, costgucs, blcksz, ...
+                               modelVersion, optionCheckboxes );
         end
         title( sprintf( 'Hash Join (%s outer, %s inner)   ...   %s = %.0f rows', ...
                         relOuter.name, relInner.name, relInner.name, relInner.rows ) );
@@ -1020,7 +1090,8 @@ figure "Hash Build (T inner)"
         ( _msg, _cursor ) = rel_rows_mouseover( relT, _x0 )
 
     draw hashTable_draw( relT, joinsel, costgucs, ...
-                         work_mem, blcksz, NTUP_PER_BUCKET, modelVersion )
+                         work_mem, blcksz, NTUP_PER_BUCKET, ...
+                         modelVersion, optionCheckboxes )
 
 figure "Hash Build (U inner)"
     mouseover
@@ -1031,13 +1102,15 @@ figure "Hash Build (U inner)"
         ( _msg, _cursor ) = rel_rows_mouseover( relU, _x0 )
 
     draw hashTable_draw( relU, joinsel, costgucs, ...
-                         work_mem, blcksz, NTUP_PER_BUCKET, modelVersion )
+                         work_mem, blcksz, NTUP_PER_BUCKET, ...
+                         modelVersion, optionCheckboxes )
 
 function
 {@
     function ...
     hashTable_draw( relInner, joinsel, costgucs, ...
-                    work_mem, blcksz, NTUP_PER_BUCKET, modelVersion )
+                    work_mem, blcksz, NTUP_PER_BUCKET, ...
+                    modelVersion, optionCheckboxes )
         scale loglog;
         scale('lock', [1,1e8,0.9,1e8]);
         sc = scale;
@@ -1049,13 +1122,14 @@ function
         for rows = rowSamples
             (nbuckets(end+1), nbatch(end+1)) = ExecChooseHashTableSize( rows, relInner.rowSize, ...
                                                                         work_mem, NTUP_PER_BUCKET, ...
-                                                                        modelVersion );
+                                                                        modelVersion, optionCheckboxes );
             hashpages(end+1) = (nbatch(end) <= 1) ? 0 : page_size(rows, relInner.rowSize, blcksz(1), modelVersion);
             (hjStartupCost(end+1), hjStartupIO(end+1), hjStartupCPU(end+1)) = ...
                 cost_hashjoin( 0, 0, 0, 0, ...
                                rows, relInner.rowSize, rows * relInner.scanCostPerRow, ...
                                nbuckets(end), nbatch(end), ...
-                               joinsel, costgucs, blcksz, modelVersion );
+                               joinsel, costgucs, blcksz, ...
+                               modelVersion, optionCheckboxes );
         end
         plotoption('tllegend');
         plot(rowSamples, nbatch, 'h(ff8000)', xytrace_id);
@@ -1079,6 +1153,14 @@ function
 //                      User Interface Utilities                      //
 //                                                                    //
 //********************************************************************//
+
+function
+{@
+    function arr = ...
+    list2numFix( list )
+        // Sysquake 3.6 bug: Can't call list2num on an empty list; it returns garbage
+        arr = isempty( list ) ? [] : list2num( list );
+@}
 
 //--------------------------------------------------------------------//
 //                        common UI functions                         //
@@ -1147,17 +1229,6 @@ function
         enumerator.enum_name = enum_name;
         enumerator.enum_id   = enum_id;
 
-    function versionEnumerator = ...
-    version_init( copyFromVersion, enum_name, enum_id )
-        versionEnumerator = enumerator_init(enum_name, enum_id);
-        if ~isempty(copyFromVersion)
-            for fieldname = fieldnames(copyFromVersion)
-                if ~isfield(versionEnumerator, fieldname)
-                    versionEnumerator.(fieldname) = copyFromVersion.(fieldname);
-                end
-            end
-        end
-
     function enum_name = ...
     enumerator_name( enumerator )
         enum_name = enumerator.enum_name;
@@ -1165,6 +1236,15 @@ function
     function enum_id = ...
     enumerator_id( enumerator )
         enum_id = enumerator.enum_id;
+
+    function enum_ids = ...
+    enumerator_ids( enumerators )
+        enum_ids = list2numFix( map( @enumerator_id, enumerators ) );
+
+    function enum_ids = ...
+    enumerator_ids_upd( enum_ids, remove_enum_ids, insert_enum_ids )
+        whichToDrop = ismember( enum_ids, [ remove_enum_ids, insert_enum_ids ] );
+        enum_ids = [ insert_enum_ids, enum_ids( ~whichToDrop ) ];
 @}
 
 //--------------------------------------------------------------------//
@@ -1174,7 +1254,7 @@ function
 {@
     function ix = ...
     enumChooser_name_to_ix( chooser, enum_name )
-        ix = find( list2num( map( @eq, chooser.enum_names, {enum_name} ) ), 1 ) || 0;
+        ix = find( list2numFix( map( @eq, chooser.enum_names, {enum_name} ) ), 1 ) || 0;
 
     function ix = ...
     enumChooser_id_to_ix( chooser, enum_id )
@@ -1183,17 +1263,21 @@ function
     function enumerator = ...
     enumChooser_name_to_enum( chooser, enum_name )
         ix = enumChooser_name_to_ix( chooser, enum_name );
-        enumerator = ix ? chooser.enumerators{ix} : struct();
+        enumerator = ix ? chooser.enumerators{ix} : [];
 
     function enumerator = ...
     enumChooser_id_to_enum( chooser, enum_id )
         ix = enumChooser_id_to_ix( chooser, enum_id );
         enumerator = ix ? chooser.enumerators{ix} : struct();
 
+    function enumerators = ...
+    enumChooser_ids_to_enums( chooser, enum_ids )
+        enumerators = isempty( enum_ids ) ? {} : map( @enumChooser_id_to_enum, {chooser}, num2list( enum_ids ) );
+
     function chooser = ...
     enumChooser_init( enumerators, label, buttons_per_row, control_ids )
         enum_names = map( @enumerator_name, enumerators );
-        enum_ids = list2num( map( @enumerator_id, enumerators ));
+        enum_ids = enumerator_ids( enumerators );
 
         n = length(enumerators);
         assert(n <= buttons_per_row * length(control_ids));
@@ -1239,14 +1323,71 @@ function
         end
 
     function ( chosen_enumerator, chosen_enum_id ) = ...
-    radiobuttons_drag( enumChooser, id, x1 )
+    radiobuttons_mouseup( enumChooser, id, x1 )
         buttonarg = enumChooser_cid_to_barg(enumChooser, id);
         chosen_enumerator = enumChooser.enumerators{x1 + buttonarg.ix0};
         chosen_enum_id = chosen_enumerator.enum_id;
+@}
+
+//--------------------------------------------------------------------//
+//                             checkboxes                             //
+//--------------------------------------------------------------------//
+function
+{@
+    function checkboxes = ...
+    checkboxes_init( chosen_enum_ids, enumChooser )
+        checkboxes = struct();
+        checkboxes.chosen_enum_ids = chosen_enum_ids;
+        checkboxes.chooser = enumChooser;
+        checkboxes.checkmarks = checkboxes_checkmarks( chosen_enum_ids, enumChooser );
+
+    function chosen_enum_ids = ...
+    checkboxes_chosen( checkboxes )
+        chosen_enum_ids = checkboxes.chosen_enum_ids;
+
+    function ismem = ...
+    checkboxes_test( checkboxes, enum_ids )
+        ismem = ismember( enum_ids, checkboxes.chosen_enum_ids );
+
+    function checkboxes = ...
+    checkboxes_upd( checkboxes, remove_enum_ids, insert_enum_ids )
+        checkboxes.chosen_enum_ids = enumerator_ids_upd( checkboxes.chosen_enum_ids, remove_enum_ids, insert_enum_ids );
+        checkboxes.checkmarks = checkboxes_checkmarks( checkboxes.chosen_enum_ids, checkboxes.chooser );
+
+    function ...
+    checkboxes_draw( checkboxes, firsttab )
+        settabs( [ firsttab, '\t\b', checkboxes.chooser.longestName, '__' ] );
+        checkmarks = checkboxes.checkmarks;
+        bargs = checkboxes.chooser.buttonargs;
+        for iba = 1 : length( checkmarks )
+            barg = bargs{iba};
+            button( barg.label, checkmarks( iba ), 'checkmark', '', barg.control_id );
+        end
+        settabs( firsttab );
+
+    function checkboxes = ...
+    checkboxes_mouseup( checkboxes, id, x1, x0 )
+        // NB: For checkboxes we use mouseup instead of mousedrag, avoiding
+        // a Sysquake 3.6 bug in which the mousedrag handler's input and
+        // output variables of list or struct type become corrupted when
+        // the user drags the mouse (not just clicks) within a checkbox.
+        chooser = checkboxes.chooser;
+        insert_enum_ids = [];
+        remove_enum_ids = [];
+        buttonarg = enumChooser_cid_to_barg( chooser, id );
+        for iChanged = find(bitget(bitxor(x1, x0), [1:buttonarg.ixM]));
+            ix = iChanged + buttonarg.ix0;
+            id = chooser.enum_ids( ix );
+            if bitget(x1, iChanged)
+                insert_enum_ids(end+1) = id;
+            else
+                remove_enum_ids(end+1) = id;
+            end
+        end
+        checkboxes = checkboxes_upd( checkboxes, remove_enum_ids, insert_enum_ids );
 
     function checkmarks = ...
-    checkmarks_make( enumChooser, chosen_enumerators )
-        chosen_enum_ids = list2num( map( @enumerator_id, chosen_enumerators ) );
+    checkboxes_checkmarks( chosen_enum_ids, enumChooser )
         checkmarks = [];
         for buttonarg = enumChooser.buttonargs
             cm = 0;
@@ -1254,27 +1395,6 @@ function
                 cm = bitset(cm, i);
             end
             checkmarks(end+1) = cm;
-        end
-
-    function ...
-    checkboxes_draw( enumChooser, checkmarks )
-        for iba = 1 : length(checkmarks)
-            barg = enumChooser.buttonargs{iba};
-            button(barg.label, checkmarks(iba), 'checkmark', '', barg.control_id);
-        end
-
-    function chosen_enumerators = ...
-    checkboxes_drag( enumChooser, chosen_enumerators, id, x1, x0 )
-        buttonarg = enumChooser_cid_to_barg(enumChooser, id);
-        for iChanged = find(bitget(bitxor(x1, x0), [1:buttonarg.ixM]));
-            ix = iChanged + buttonarg.ix0;
-            if bitget(x1, iChanged)
-                chosen_enumerators = join({enumChooser.enumerators{ix}}, chosen_enumerators);
-            else
-                chosen_enum_ids = map( @enumerator_id, chosen_enumerators );
-                which_to_drop = ismember( list2num(chosen_enum_ids), enumChooser.enum_ids(ix) );
-                chosen_enumerators(which_to_drop) = {};
-            end
         end
 @}
 
@@ -1323,7 +1443,8 @@ function
 function
 {@
     function ( nbuckets, nbatch, inner_rel_bytes ) = ...
-    ExecChooseHashTableSize(ntuples, tupwidth, work_mem, NTUP_PER_BUCKET, modelVersion)
+    ExecChooseHashTableSize( ntuples, tupwidth, work_mem, NTUP_PER_BUCKET, ...
+                             modelVersion, optionCheckboxes )
         sizeof_HashJoinTupleData = MAXALIGN(sizeof_ptr + 4);
         tupsize = sizeof_HashJoinTupleData + ...
                   modelVersion.sizeof_MinimalTupleData + ...
@@ -1363,7 +1484,8 @@ function
     cost_hashjoin( outer_path_rows, outerRowSize, outer_path_total_cost, outer_path_startup_cost, ...
                    inner_path_rows, innerRowSize, inner_path_total_cost, ...
                    numbuckets, numbatches, ...
-                   joinsel, costgucs, blcksz, modelVersion )
+                   joinsel, costgucs, blcksz, ...
+                   modelVersion, optionCheckboxes )
         num_hashclauses = joinsel.nquals_hash;
         cpu_operator_cost = costgucs.cpu_operator_cost;
         cpu_tuple_cost = costgucs.cpu_tuple_cost;
