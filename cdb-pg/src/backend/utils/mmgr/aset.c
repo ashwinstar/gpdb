@@ -67,6 +67,19 @@
 
 #include "utils/memutils.h"
 
+#ifdef USE_ASSERT_CHECKING
+#include "miscadmin.h"
+#include <pthread.h>
+extern pthread_t main_tid;
+#ifndef _WIN32
+#define mythread() ((unsigned int) pthread_self())
+#define mainthread() ((unsigned int) main_tid)
+#else
+#define mythread() ((unsigned int) pthread_self().p)
+#define mainthread() ((unsigned int) main_tid.p)
+#endif 
+#endif
+
 /* Define this to detail debug alloc information */
 /* #define HAVE_ALLOCINFO */
 
@@ -585,6 +598,12 @@ AllocSetAlloc(MemoryContext context, Size size)
 	Size		blksize;
 
 	AssertArg(AllocSetIsValid(set));
+#ifdef USE_ASSERT_CHECKING
+	if (IsUnderPostmaster && context != ErrorContext && mainthread() != 0 && !pthread_equal(main_tid, pthread_self()))
+	{
+		elog(ERROR,"palloc called from thread");
+	}
+#endif
 
 	/*
 	 * If requested size exceeds maximum for chunks, allocate an entire block
@@ -838,6 +857,12 @@ AllocSetFree(MemoryContext context, void *pointer)
 	AllocChunk	chunk = AllocPointerGetChunk(pointer);
 
 	AllocFreeInfo(set, chunk);
+#ifdef USE_ASSERT_CHECKING
+	if (IsUnderPostmaster && context != ErrorContext && mainthread() != 0 && !pthread_equal(main_tid, pthread_self()))
+	{
+		elog(ERROR,"pfree called from thread");
+	}
+#endif
 
 #ifdef MEMORY_CONTEXT_CHECKING
 	/* Test for someone scribbling on unused space in chunk */
@@ -914,6 +939,12 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 	AllocChunk	chunk = AllocPointerGetChunk(pointer);
 	Size		oldsize = chunk->size;
 
+#ifdef USE_ASSERT_CHECKING
+	if (IsUnderPostmaster  && context != ErrorContext && mainthread() != 0 && !pthread_equal(main_tid, pthread_self()))
+	{
+		elog(ERROR,"prealloc called from thread");
+	}
+#endif
 #ifdef MEMORY_CONTEXT_CHECKING
 	/* Test for someone scribbling on unused space in chunk */
 	if (chunk->requested_size < oldsize)
