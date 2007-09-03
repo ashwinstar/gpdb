@@ -106,6 +106,7 @@ static apr_status_t get_proto_received(gpcc_event_t* ev, void* cmdslot_)
 	goto fail;
     }
 
+    /*
     guid = json_object_object_get_string(dict, "guid");
     if (!guid || 0 != strcmp(guid, gpha.guid)) {
 	gpcc_warning(FLINE, "peer guid mismatch");
@@ -117,6 +118,7 @@ static apr_status_t get_proto_received(gpcc_event_t* ev, void* cmdslot_)
 	gpcc_warning(FLINE, "peer sys.array_name mismatch");
 	goto fail;
     }
+    */
 
     peer_id = json_object_object_get_string(dict, "peer_id");
     if (!peer_id) {
@@ -171,15 +173,11 @@ static apr_status_t system_send_proto(gpcc_event_t* ev, void* cmdslot_)
     buffer[sizeof(buffer)-2] = 0;
     apr_snprintf(buffer, sizeof(buffer), "{ "
 		 "protocol: '%s', "
-		 "array_name: '%s', "
-		 "guid: '%s', "
 		 "peer_id: '%s', "
 		 "role: '%s' }", 
 		 GPCC_NET_PROTO,
-		 config_get(gpha.cfg, "sys.array_name"),
-		 config_get(gpha.cfg, "sys.guid"),
 		 nodeidstr, 
-		 "ma");
+		 "ha");
     GPCC_DO(buffer[sizeof(buffer)-2] == 0); /* make sure buffer not overflowed */
 
     GPCC_NET_MSGHDR_FILL(&replyhdr, PROTO_MSG, strlen(buffer),
@@ -271,16 +269,16 @@ static void d_main(void)
 
     /* greetings */
     apr_rfc822_date(date, apr_time_now());
-    gpcc_log_info("[%s] started gpha %s %s %s", date, gpha.guid, gpha.maid, gpha.dir);
+    gpcc_log_info("[%s] started gpha %s %s", date, gpha.dir);
 
     /* network up */
-    GPCC_DO(0 == gpcc_net_start(config_get_int(gpha.cfg, "sys.ha.port"), 
+    GPCC_DO(0 == gpcc_net_start(gpha.port,
 				net_opened_cb,
 				net_closed_cb,
 				net_recv_cb,
 				time_tick_cb, 0));
 
-    gpcc_log_info("gpha listening to port %d", config_get_int(gpha.cfg, "sys.ha.port"));
+    gpcc_log_info("gpha listening to port %d", gpha.port);
 
     cp = cmdslot_alloc("SYSTEM", SYSTEM_CMDSTATE, 0);
     gpha.system_cmdidx = cp->cmdidx;
@@ -355,12 +353,11 @@ static void d_main(void)
 /* Print usage info */
 static void usage(const char* program, int status)
 {
-    fprintf(stderr, "\nUsage: %s [-?b] guid maid dir\n\n", program);
+    fprintf(stderr, "\nUsage: %s [-?bD] [-p port] dir\n\n", program);
     fprintf(stderr, "    -?   : print this help screen\n");
-    fprintf(stderr, "    -b   : boot the Master Agent\n");
+    fprintf(stderr, "    -b   : boot the Host Agent\n");
     fprintf(stderr, "    -D   : debug mode and do not run as daemon\n");
-    fprintf(stderr, "    guid : the Global Unique ID of the GPDB\n");
-    fprintf(stderr, "    maid : the Master Agent ID\n");
+    fprintf(stderr, "    -p   : port number\n");
     fprintf(stderr, "    dir  : agent local storage directory\n");
     fprintf(stderr, "\n");
     exit(status);
@@ -375,11 +372,11 @@ static apr_status_t parse_cmdline(int argc, const char* argv[])
     apr_getopt_t* handle;
     char opt;
     const char* optarg;
-    int i, e;
+    int e;
     FILE* f;
-
+    
     GPCC_DO(0 == apr_getopt_init(&handle, gpha.pool, argc, argv));
-    while (0 == (e = apr_getopt(handle, "?bD", &opt, &optarg))) {
+    while (0 == (e = apr_getopt(handle, "?bDp:", &opt, &optarg))) {
 	switch (opt) {
 	case 'b': 
 	    gpha.boot_flag = 1;
@@ -387,6 +384,8 @@ static apr_status_t parse_cmdline(int argc, const char* argv[])
 	case 'D':
 	    gpha.debug = 1;
 	    break;
+	case 'p':
+	    gpha.port = strtol(optarg, 0, 0);
 	case '?':
 	    usage(argv[0], 0);
 	    break;
@@ -396,30 +395,12 @@ static apr_status_t parse_cmdline(int argc, const char* argv[])
     }
     if (e != APR_EOF) 
 	usage(argv[0], 1);
-    if (argc - handle->ind != 3)
+    if (argc - handle->ind != 1)
 	usage(argv[0], 1);
-    gpha.guid = argv[handle->ind++];
-    gpha.maid = argv[handle->ind++];
     gpha.dir = argv[handle->ind++];
 
-    if (strlen(gpha.guid) != 17 || gpha.guid[8] != '-') {
-	gpcc_log_error("invalid guid in command");
-	exit(1);
-    }
-    for (i = 0; i < 17; i++) {
-	int c = gpha.guid[i];
-	if (i != 8 && ! ('0' <= c && c <= '9')) {
-	    gpcc_log_error("invalid guid in command");
-	    exit(1);
-	}
-    }
-
-    gpha.maid = apr_pstrcat(gpha.pool, "ma.", gpha.maid, NULL);
-    if (0 != strcmp(gpha.maid, "ma.0") 
-	&& 0 != strcmp(gpha.maid, "ma.1")
-	&& 0 != strcmp(gpha.maid, "ma.2")) {
-	gpcc_log_error("invalid master agent id in command");
-	exit(1);
+    if (gpha.port == 0) {
+	gpha.port = 53333;
     }
 
     if (strlen(gpha.dir) == 0) {
@@ -437,7 +418,7 @@ static apr_status_t parse_cmdline(int argc, const char* argv[])
 	exit(1);
     }
 
-    gpha.logfpath = apr_psprintf(gpha.pool, "%s/gpha_%s.log", gpha.dir, gpha.guid);
+    gpha.logfpath = apr_psprintf(gpha.pool, "%s/gpha.log", gpha.dir);
     f = fopen(gpha.logfpath, "a");
     if (!f) {
 	fprintf(stderr, "unable to create log file %s\n", gpha.logfpath);
@@ -445,144 +426,6 @@ static apr_status_t parse_cmdline(int argc, const char* argv[])
     }
     fclose(f);
     
-    return 0;
-}
-
-
-/*
- *  Sanity check on config info.
- */
-static apr_status_t verify_config(void)
-{
-    int i;
-    const char* v;
-    char buf[1024];
-
-    /* csn must match */
-    if (gpha.csn != config_get_int64(gpha.cfg, "sys.csn")) {
-	gpcc_fatal(FLINE, "config file error: csn mismatch (expect %lld, receive %lld)",
-		   gpha.csn, config_get_int64(gpha.cfg, "sys.csn"));
-    }
-
-    /* guid must match */
-    if (! config_eq(gpha.cfg, "sys.guid", gpha.guid)) {
-	gpcc_fatal(FLINE, "config file error: guid mismatch (expect %s, receive %s)",
-		       gpha.guid, config_getx(gpha.cfg, "sys.guid", "[null]"));
-    }
-
-    /* name must exist */
-    if (! config_get(gpha.cfg, "sys.array_name")) {
-	gpcc_fatal(FLINE, "config file error: sys.array_name missing");
-    }
-
-    /* default ma port if not set */
-    i = config_get_or_set_int(gpha.cfg, "sys.ma.port", DEFAULT_MA_PORT);
-    if (! (0 < i && i < 65000)) {
-	gpcc_fatal(FLINE, "config file error: sys.qd.port invalid (value %d)", i);
-    }
-
-    /* default qd port if not set */
-    i = config_get_or_set_int(gpha.cfg, "sys.qd.port", DEFAULT_QD_PORT);
-    if (! (0 < i && i < 65000)) {
-	gpcc_fatal(FLINE, "config file error: sys.qd.port invalid (value %d)", i);
-    }
-
-    /* default qe baseport if not set */
-    i = config_get_or_set_int(gpha.cfg, "sys.qe.baseport", DEFAULT_QE_BASEPORT);
-    if (! (0 < i && i < 65000)) {
-	gpcc_fatal(FLINE, "config file error: sys.qe.baseport invalid (value %d)", i);
-    }
-
-    /* default qd max connect if not set */
-    i = config_get_or_set_int(gpha.cfg, "sys.qd.max_connect", DEFAULT_QD_MAX_CONNECT);
-    if (! (0 < i && i <= 512)) {
-	gpcc_fatal(FLINE, "config file error: sys.qd.max_connect invalid (value %d)", i);
-    }
-
-    /* default qe max connect if not set */
-    i = config_get_or_set_int(gpha.cfg, "sys.qe.max_connect", DEFAULT_QE_MAX_CONNECT);
-    if (! (0 < i && i <= 512)) {
-	gpcc_fatal(FLINE, "config file error: sys.qe.max_connect invalid (value %d)", i);
-    }
-
-    /* default min mirror if not set */
-    i = config_get_or_set_int(gpha.cfg, "sys.min_mirror", 0);
-    if (! (0 <= i && i < 2)) {
-	gpcc_fatal(FLINE, "config file error: sys.qe.min_mirror invalid (value %d)", i);
-    }
-
-    /* default qd max buffer if not set */
-    v = config_get_or_set(gpha.cfg, "sys.qd.max_buffer", DEFAULT_QD_MAX_BUFFER);
-    if (gpcc_string_parse_memory(v) == 0) {
-	gpcc_fatal(FLINE, "config file error: sys.qd.max_buffer invalid (value %s)", v);
-    }
-	
-    /* default qe max buffer if not set */
-    v = config_get_or_set(gpha.cfg, "sys.qe.max_buffer", DEFAULT_QE_MAX_BUFFER);
-    if (gpcc_string_parse_memory(v) == 0) {
-	gpcc_fatal(FLINE, "config file error: sys.qe.max_buffer invalid (value %s)", v);
-    }
-
-    /* all 3 ma must be set */
-    for (i = 0; i < 3; i++) {
-	sprintf(buf, "ma.%d", i);
-	if (! (v = config_get(gpha.cfg, buf)))
-	    gpcc_fatal(FLINE, "config file error: %s not set", buf);
-    }
-
-    /* qd must exist */
-    v = config_get(gpha.cfg, "seg.m.0");
-    if (!v) {
-	gpcc_fatal(FLINE, "config file error: seg.m.0 not set");
-    }
-
-    /* minimum 2 QEs, max 512 QEs */
-    for (i = 0; i < 512; i++) {
-	sprintf(buf, "seg.%d.0", i);
-	v = config_get(gpha.cfg, buf);
-	if (!v) {
-	    if (i < 2) 
-		gpcc_fatal(FLINE, "config file error: %s not set", buf);
-	    break;
-	}
-    }
-    if (! (2 <= i && i < 512)) {
-	gpcc_fatal(FLINE, "config file error: too many segments (max 512)");
-    }
-
-    /* set the number of QEs */
-    config_set_int(gpha.cfg, "seg.max", i);
-    
-    return 0;
-}
-
-
-/*
- * Load the config into gpha. 
- */
-static apr_status_t load_config(void)
-{
-    if (gpha.boot_flag) {
-	/* read config from stdin */
-	gpha.cfg = config_read_stream(stdin, gpha.pool);
-	gpha.csn = 0;
-	config_set_int64(gpha.cfg, "sys.csn", gpha.csn);
-	GPCC_DO(0 == verify_config());
-
-	++gpha.csn;
-	config_set_int64(gpha.cfg, "sys.csn", gpha.csn);
-	GPCC_DO(0 == config_write(gpha.dir, gpha.guid, gpha.csn, gpha.cfg));
-    }
-    else {
-	gpha.csn = config_determine_csn(gpha.dir, gpha.guid);
-	gpha.cfg = config_read(gpha.dir, gpha.guid, gpha.csn, gpha.pool);
-	if (gpha.cfg == 0) {
-	    fprintf(stderr, "ERROR: config file not found in dir %s\n", gpha.dir);
-	    exit(1);
-	}
-	GPCC_DO(0 == verify_config());
-    }
-
     return 0;
 }
 
@@ -595,8 +438,6 @@ int main(int argc, const char* argv[])
     GPCC_DO(0 == apr_pool_create(&gpha.pool, 0));
 
     GPCC_DO(0 == parse_cmdline(argc, argv));
-
-    GPCC_DO(0 == load_config());
 
     GPCC_DO(0 == (gpha.gphome = getenv("GPHOME")));
 

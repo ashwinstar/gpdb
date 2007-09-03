@@ -37,14 +37,37 @@ struct json_object *gpcc_json_hostlist(const char * const *masters, const char *
 /**
  *  create segment   request object
  *
+ *
+ *   command start
  *   seg              =         gpdb.seg.m.0 or gpdb.seg.X.X   X is an integer
- *   action           =         init/start/stop/status
- *   mode             =         ro/rw     smart/immediate/fast
- *   host             =         hostname  (node.X or (x.x.x.a, x.x.x.b, x.x.x.c, x.x.x.d))
+ *   action           =         start
+ *   mode             =         ro/rw
  *   dir              =         data directory
  *   port             =         database port number
  *
- *   additional parameters for initdb
+ *
+ *   command stop
+ *   seg              =         gpdb.seg.m.0 or gpdb.seg.X.X   X is an integer
+ *   action           =         stop
+ *   mode             =         smart/immediate/fast
+ *   dir              =         data directory
+ *   port             =         database port number
+ *   
+ *
+ *   command status
+ *   seg              =         gpdb.seg.m.0 or gpdb.seg.X.X   X is an integer
+ *   action           =         status
+ *   dir              =         data directory
+ *   port             =         database port number
+ *
+ *   command init
+ *
+ *   seg              =         gpdb.seg.m.0 or gpdb.seg.X.X   X is an integer
+ *   action           =         init
+ *   mode             =         N/A
+ *   host             =         hostname  (node.X or (x.x.x.a, x.x.x.b, x.x.x.c, x.x.x.d))
+ *   dir              =         data directory
+ *   port             =         database port number
  *   dbid             =         dbid
  *   content          =         content
  *
@@ -60,7 +83,16 @@ struct json_object *gpcc_json_hostlist(const char * const *masters, const char *
  *   node.X             =       (x.x.x.a, x.x.x.b, x.x.x.c, x.x.x.d) list of network addresses
  *   gpdb.seg.m.X       =       node.X:/db/seg.m.X:0   #node, data_dir, cpu affinity
  *   
- *  @param segment   segment name e.g. "seg.X.X"
+ *
+ *   dbid             =         [1...N]
+ *   for (dbid = 1, i= 0 ; gpdb.seg.m.%d ; i++, dbid++);
+ *   for (i = 0 ; gbdb.seg.%d.[0-1] ; i++, dbid++);
+
+ *
+ *   content          =         -1 if gpdb.seg.m.Y  else    X if gpdb.seg.X.Y
+ *
+ *
+ *  @param segment   segment name e.g. "gpdb.seg.X.X"
  *  @param action    start/stop/set_mode
  *  @param mode      ro/rw
  *  @param host      host name

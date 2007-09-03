@@ -398,11 +398,115 @@ static apr_status_t seg_initdb_update_gp_id(gpcc_event_t *ev, void *_cmdslot)
 static apr_status_t seg_initdb_update_gp_configuration(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    struct json_object *msg = cmdslot->u.seg.request.msg;
+    int dbid = 1;
+    int i, j, e;
+    char segname[64];
+    char *seg;
+    int primary_port, mirror_port;
+    int master_port, port;
+    char *node;
+    char *data_dir;
+    char *last;
+    char *primary;
 
     if (strstr(cmdslot->cmdname, "gpdb.seg.m.") == 0)
 	return 0;
 
-    /* TODO: update gp_configuration table */
+    master_port = gpcc_json_object_get_int(msg, "gpdb.seg.master_port", DEFAULT_QD_PORT);
+    primary_port = gpcc_json_object_get_int(msg, "gpdb.seg.base_port", DEFAULT_QE_BASEPORT);
+    mirror_port = gpcc_json_object_get_int(msg, "gpdb.seg.mirror_base_port,", DEFAULT_MIRROR_QE_BASEPORT);
+
+    if (master_port == 0) { 
+	gpcc_warning(FLINE, "gpdb.seg.master_port not set");
+	return 1;
+    }
+    if (primary_port == 0) {
+	gpcc_warning(FLINE, "gpdb.seg.base_port not set");
+	return 1;
+    }
+    if (mirror_port == 0) {
+	gpcc_warning(FLINE, "gpdb.seg.mirror_base_port not set");
+	return 1;
+    }
+
+
+    /* update gp_configuration table */
+
+    /* master QD segment */
+    for (i = 0; i < 7 ; i++) {
+	sprintf(segname, "gpdb.seg.m.%d", i);
+	if ((seg = gpcc_json_object_get_string(msg, segname, 0)) == 0){
+	    break;
+	}
+
+	/* content = -1 and dbid++ */
+	primary = (dbid == 1) ? "t" : "f";
+	
+	seg = apr_pstrdup(cmdslot->u.seg.request.subpool, seg);
+	
+	node = apr_strtok(seg, ":", &last);
+	if (!node) {
+	    gpcc_warning(FLINE, "%s format error (%s)", segname,  gpcc_json_object_get_string(msg, segname, 0));
+	    return 1;
+	}
+
+	data_dir = apr_strtok(seg, 0, &last);
+	if (! data_dir) {
+	    gpcc_warning(FLINE, "%s format error (%s)", segname,  gpcc_json_object_get_string(msg, segname, 0));
+	    return 1;
+	}
+
+	if (0 != (e = gpcc_pg_update_gp_configuration(cmdslot->u.seg.request.port, 
+						      dbid++, -1, 
+						      primary,
+						      node,
+						      master_port, 
+						      data_dir,
+						      cmdslot->u.seg.request.subpool))) {
+	    gpcc_warning(FLINE, "gpcc_pg_update_gp_configuration failure");
+	    return e;
+	}
+    }
+
+    /* QEs segment */
+    for (i = 0 ; 1 ; i++) {
+	for (j = 0 ; j < 2 ; j++) {
+	    sprintf(segname, "gpdb.seg.%d.%d", i, j);
+	    if ((seg = gpcc_json_object_get_string(msg, segname, 0)) == 0){
+		if (j == 0)
+		    break;
+		else
+		    continue;
+	    }
+
+	    port = (j == 0) ? primary_port++ : mirror_port++;
+	    primary = (j == 0) ? "t" : "f";
+
+	    seg = apr_pstrdup(cmdslot->u.seg.request.subpool, seg);
+	    
+	    node = apr_strtok(seg, ":", &last);
+	    if (!node) {
+		gpcc_warning(FLINE, "%s format error (%s)", segname,  gpcc_json_object_get_string(msg, segname, 0));
+		return 1;
+	    }
+	    
+	    data_dir = apr_strtok(seg, 0, &last);
+	    if (! data_dir) {
+		gpcc_warning(FLINE, "%s format error (%s)", segname,  gpcc_json_object_get_string(msg, segname, 0));
+		return 1;
+	    }
+
+	    if (0 != (e = gpcc_pg_update_gp_configuration(cmdslot->u.seg.request.port, 
+							  dbid++, i, primary, node,
+							  port, 
+							  data_dir,
+							  cmdslot->u.seg.request.subpool))) {
+		gpcc_warning(FLINE, "gpcc_pg_update_gp_configuration failure");
+		return e;
+	    }
+	}
+    }
 
     return 0;
 }

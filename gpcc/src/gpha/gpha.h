@@ -1,7 +1,6 @@
 #ifndef GPHA_H
 #define GPHA_H
 
-#include "config.h"
 #include "enum.h"
 #include <apr_thread_proc.h>
 
@@ -13,7 +12,7 @@
 #define DEFAULT_MA_PORT   	12000
 #define DEFAULT_QD_PORT   	12100
 #define DEFAULT_QE_BASEPORT	12200
-
+#define DEFAULT_MIRROR_QE_BASEPORT  22200
 #define CMDSLOT_MAX    512
 
 
@@ -117,11 +116,8 @@ struct eventinfo_t {
 typedef struct gpha_t gpha_t;
 struct gpha_t {
     apr_pool_t*  pool;
-    const char*  guid;		/* GUID */
-    const char*  maid;		/* MA ID */
-    const char*  dir;		/* MA data & log directory */
-    config_t*    cfg;		/* config  */
-    apr_uint64_t csn;		/* change seq number of config file */
+    const char*  dir;		/* HA data & log directory */
+    int          port;          /* HA port number */
     int          boot_flag;	/* TRUE if booting */
     int          debug;		/* TRUE if debug mode */
     const char*  logfpath;	/* path to log file */
