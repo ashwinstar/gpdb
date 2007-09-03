@@ -118,6 +118,20 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_master(apr_proc_t *proc, int po
 APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_segment(apr_proc_t *proc, int port, const char *data_dir, int wait, int blocking, apr_pool_t *p);
 
 /**
+ *  gpsyncmaster [-p port] [-D DATADIR] -i
+ * 
+ *  @param proc process handle
+ *  @param port gbdb port number
+ *  @param data_dir data_directory
+ *  @param option psql option
+ *  @param option blocking flag to indicate blocking or non-blocking
+ *  @param pool memory pool
+ *  @return APR_SUCCESS if success otherwise failure
+ *
+ */
+APR_DECLARE(apr_status_t) gpcc_proc_gpsyncmaster_start(apr_proc_t *proc, int port, const char *data_dir, const char *option, int blocking, apr_pool_t *p);
+
+/**
  *  pg_ctl stop [-W] [-D DATADIR] [-s] [-m SHUTDOWN-MODE]
  *
  *  @param proc process handle

@@ -229,6 +229,29 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start(apr_proc_t *proc, int port, con
     return e;
 }
 
+/**
+ *  gpsyncmaster [-p port] [-D DATADIR] -i
+ *
+ */
+APR_DECLARE(apr_status_t) gpcc_proc_gpsyncmaster_start(apr_proc_t *proc, int port, const char *data_dir, const char *option, int blocking, apr_pool_t *p)
+{
+    int e;
+    char cmd[1024];
+    char *argv[2];
+
+    if ((e = gpcc_proc_initialize()) != 0) 
+	return e;
+
+    sprintf(cmd, "export LD_LIBRARY_PATH=%s && export PATH=%s && gpsyncmaster -p %d -D %s -i >> %s.log 2>&1 &", 
+	    LD_LIBRARY_PATH, PATH, port, data_dir, data_dir);
+    
+    argv[0] = cmd;
+    argv[1] = 0;
+    e = gpcc_proc_run_shell(proc, argv[0], (const char *const *) argv, 0, blocking, p);
+
+    return e;
+}
+
 APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_segment(apr_proc_t *proc, int port, const char *data_dir, int wait, int blocking, apr_pool_t *p)
 {
     char option[128];
