@@ -940,7 +940,7 @@ static apr_status_t seg_status(gpcc_event_t* ev, void *_cmdslot)
     obj = gpcc_json_status(cmdslot->cmdname, "server is running", 0, 0);
     objstr = json_object_to_json_string(obj);
     evt = gpcc_event_alloc(SEG_STATUS_REPLY_EVENT, cmdslot->u.seg.request.parentidx, strlen(objstr)+1);
-    memcpy(evt->edata, objstr, strlen(objstr));
+    memcpy(evt->edata, objstr, strlen(objstr)+1);
     gpcc_evqueue_put(gpha.evq, ev);
     json_object_put(obj);
 
@@ -953,7 +953,7 @@ static apr_status_t seg_status(gpcc_event_t* ev, void *_cmdslot)
     obj = gpcc_json_status(cmdslot->cmdname, "server is not running", 0, cmdslot->u.seg.request.reason);
     objstr = json_object_to_json_string(obj);
     evt = gpcc_event_alloc(SEG_STATUS_REPLY_EVENT, cmdslot->u.seg.request.parentidx, strlen(objstr)+1);
-    memcpy(evt->edata, objstr, strlen(objstr));
+    memcpy(evt->edata, objstr, strlen(objstr)+1);
     gpcc_evqueue_put(gpha.evq, ev);
     json_object_put(obj);
 
