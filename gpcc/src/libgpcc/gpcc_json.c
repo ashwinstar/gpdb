@@ -94,12 +94,13 @@ struct json_object *gpcc_json_segment_request(const char *segment, const char *a
 }
 
 
-struct json_object *gpcc_json_segment_reply(const char *status, const char *reason)
+struct json_object *gpcc_json_segment_reply(const char *segment, const char *status, const char *reason)
 {
     const char *r = (reason ? reason : "");
     struct json_object *obj = 0;
 
     obj = json_object_new_object();
+    json_object_object_add(obj, "seg", json_object_new_string((char *) segment));
     json_object_object_add(obj, "status", json_object_new_string((char *)status));
     json_object_object_add(obj, "reason", json_object_new_string((char *)r));
 

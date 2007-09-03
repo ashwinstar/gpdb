@@ -111,7 +111,7 @@ struct json_object *gpcc_json_segment_request(const char *segment, const char *a
  *  @param reason    reason of failure
  *  @return json_object
  */
-struct json_object *gpcc_json_segment_reply(const char *status, const char *reason);
+struct json_object *gpcc_json_segment_reply(const char *segment, const char *status, const char *reason);
 
 
 /**

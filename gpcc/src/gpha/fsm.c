@@ -41,6 +41,14 @@ APR_DECLARE(void) fsm_setup(void)
     /* forward requests to segment */
     gpcc_fsm_put(GET_IDENTITY_CMDSTATE, SEGMENT_REQUEST_MSG_EVENT, GET_IDENTITY_CMDSTATE,
 		 ma_dispatch_segment, 0);
+    gpcc_fsm_put(GET_IDENTITY_CMDSTATE, SEG_STATUS_REPLY_EVENT, GET_IDENTITY_CMDSTATE,
+		 ma_status_reply, 0);
+    gpcc_fsm_put(GET_IDENTITY_CMDSTATE, SEG_INITDB_REPLY_EVENT, GET_IDENTITY_CMDSTATE,
+		 ma_initdb_reply, 0);
+    gpcc_fsm_put(GET_IDENTITY_CMDSTATE, SEG_START_REPLY_EVENT, GET_IDENTITY_CMDSTATE,
+		 ma_start_reply, 0);
+    gpcc_fsm_put(GET_IDENTITY_CMDSTATE, SEG_STOP_REPLY_EVENT, GET_IDENTITY_CMDSTATE,
+		 ma_stop_reply, 0);
 
     /* Segment FSM */
     gpcc_fsm_put(SEG_INIT_CMDSTATE, INIT_EVENT, SEG_INIT_CMDSTATE,
