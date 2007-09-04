@@ -224,6 +224,7 @@ static apr_status_t seg_initdb(gpcc_event_t* ev, void *_cmdslot)
     int e;
     char *initdbfn = 0;
     int pid = 0;
+    int max_connect = 0;
 
     memset(&cmdslot->u.seg.request, 0, sizeof(cmdslot->u.seg.request));
     apr_pool_create(&cmdslot->u.seg.request.subpool, cmdslot->pool);
@@ -274,13 +275,18 @@ static apr_status_t seg_initdb(gpcc_event_t* ev, void *_cmdslot)
     }
 
     /* initdb start */
-    
+    max_connect = gpcc_json_object_get_int(obj, "gpdb.max_connect", 25);
+    if (strstr(cmdslot->cmdname, "gpdb.seg.m.") == 0)  {
+	/* QE max_connect */
+	max_connect *= 5;
+    }
+
     if (0 != (e = gpcc_proc_initdb(&cmdslot->u.seg.request.proc,
 				   cmdslot->u.seg.request.data_dir,
 				   gpcc_json_object_get_string(obj, "gpdb.encoding", "UNICODE"),
 				   gpcc_json_object_get_string(obj, "gpdb.locale", "UNICODE"),
-				   gpcc_json_object_get_int(obj, "gpdb.max_connect", 25),
-				   gpcc_json_object_get_string(obj, "gpdb.shared_buffers", "128Mb"),
+				   max_connect,
+				   gpcc_json_object_get_string(obj, "gpdb.shared_buffers", "128MB"),
 				   1,
 				   cmdslot->u.seg.request.subpool))) {
 
@@ -391,39 +397,13 @@ static apr_status_t seg_initdb_wait(gpcc_event_t* ev, void *_cmdslot)
 	    }
 
 	    /* start database */
-	    if (strstr(cmdslot->cmdname, "gpdb.seg.m.")) {
-		if (strcmp(cmdslot->cmdname, "gpdb.seg.m.0") == 0) {
-		    /* master QD */
-		    if (0 != (e = gpcc_proc_pg_ctl_start_segment(&cmdslot->u.seg.request.proc,
-								 cmdslot->u.seg.request.port,
-								 cmdslot->u.seg.request.data_dir,
-								 1, 0,
-								 cmdslot->u.seg.request.subpool))) {
-			seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, e, "pg_ctl start failure");
-			return 0;
-		    }
-		}
-		else {
-		    /* standby master */
-		    if (0 != (e = gpcc_proc_gpsyncmaster_start(&cmdslot->u.seg.request.proc, 
-							       cmdslot->u.seg.request.port,
-							       cmdslot->u.seg.request.data_dir,
-							       0, 0, 
-							       cmdslot->u.seg.request.subpool))) {
-			seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, e, "gpsyncmaster failure");
-			return 0;
-		    }
-		}
-
-	    } else {
-		if (0 != (e = gpcc_proc_pg_ctl_start_segment(&cmdslot->u.seg.request.proc,
-							     cmdslot->u.seg.request.port,
-							     cmdslot->u.seg.request.data_dir,
-							     1, 0,
-							     cmdslot->u.seg.request.subpool))) {
-		    seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, e, "pg_ctl start failure");
-		    return 0;
-		}
+	    if (0 != (e = gpcc_proc_pg_ctl_start_segment(&cmdslot->u.seg.request.proc,
+							 cmdslot->u.seg.request.port,
+							 cmdslot->u.seg.request.data_dir,
+							 1, 0,
+							 cmdslot->u.seg.request.subpool))) {
+		seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, e, "pg_ctl start failure");
+		return 0;
 	    }
 
 	    evt = gpcc_event_alloc(SEG_INITDB_NEXT_EVENT, cmdslot->cmdidx, 0);
@@ -573,6 +553,7 @@ static apr_status_t seg_initdb_update_gp_configuration(gpcc_event_t *ev, void *_
     }
 
     /* standby master */
+    /*
     for (i = 1 ; 1 ; i++) {
 	sprintf(segname, "gpdb.seg.m.%d", i);
 	if ((seg = gpcc_json_object_get_string(msg, segname, 0)) == 0){
@@ -583,7 +564,7 @@ static apr_status_t seg_initdb_update_gp_configuration(gpcc_event_t *ev, void *_
 	    return 1;
 	}	
     }
-
+    */
     return 0;
 }
 
@@ -698,6 +679,7 @@ static apr_status_t seg_initdb_backout2(gpcc_event_t *ev, void *_cmdslot)
 static apr_status_t seg_initdb_checkdb(gpcc_event_t* ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    apr_proc_t proc;
     int e;
     char *user;
     char *passwd;
@@ -717,8 +699,16 @@ static apr_status_t seg_initdb_checkdb(gpcc_event_t* ev, void *_cmdslot)
 
     }
 
-    /* TODO:  stop and start database in production mode or just stop and wait for next command */
-
+    /* stop database */
+    if (0 != (e = gpcc_proc_pg_ctl_stop(&proc,
+					cmdslot->u.seg.request.port,
+					cmdslot->u.seg.request.data_dir,
+					"immediate",
+					1, 1,
+					cmdslot->u.seg.request.subpool))) {
+	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL2_EVENT, e, "pg_ctl stop failure");
+	return 0;
+    }
 
     /* save the setting port and data_dir permanently */
     if (cmdslot->u.seg.port == 0) {
