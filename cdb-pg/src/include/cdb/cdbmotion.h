@@ -40,7 +40,7 @@ typedef enum ReceiveReturnCode
 
 /* API FUNCTION CALLS */
 
-extern MotionNodeEntry *getMotionNodeEntry(MotionLayerState *mlStates, int16 motNodeID, char *errString);
+extern MotionNodeEntry *getMotionNodeEntry(MotionLayerState *mlStates, int16 motNodeID, char *errString  __attribute__((unused)) );
 
 /* Initialization of motion layer for this query */
 extern void initMotionLayerStructs(MotionLayerState **ml_states);
@@ -57,7 +57,7 @@ extern void EndMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool
 
 /* Reset the Motion Layer's state between query executions (normal termination
  * or error-cleanup). */
-extern void RemoveMotionLayer(MotionLayerState *ml_states, bool flushCommLayer);
+extern void RemoveMotionLayer(MotionLayerState *ml_states, bool flushCommLayer  __attribute__((unused)) );
 
 
 /* non-blocking operation that may perform only part (or none) of the

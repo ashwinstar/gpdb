@@ -259,7 +259,7 @@ role_to_string(GpRoleValue role)
  * See src/backend/util/misc/guc.c for option definition.
  */
 const char *
-assign_gp_session_role(const char *newval, bool doit, GucSource source)
+assign_gp_session_role(const char *newval, bool doit, GucSource source __attribute__((unused)) )
 {
 
 #if FALSE
@@ -375,7 +375,7 @@ assign_gp_role(const char *newval, bool doit, GucSource source)
  * See src/backend/util/misc/guc.c for option definition.
  */
 bool
-assign_gp_connections_per_thread(int newval, bool doit, GucSource source)
+assign_gp_connections_per_thread(int newval, bool doit, GucSource source __attribute__((unused)) )
 {
 
 #if FALSE
@@ -403,7 +403,7 @@ assign_gp_connections_per_thread(int newval, bool doit, GucSource source)
 void disconnectAndDestroyAllGangs(void);
 
 bool
-assign_gp_use_dispatch_agent(bool newval, bool doit, GucSource source)
+assign_gp_use_dispatch_agent(bool newval, bool doit, GucSource source __attribute__((unused)) )
 {
 
 
@@ -559,7 +559,7 @@ gpvars_verbosity_to_string(GpVars_Verbosity verbosity)
  * gpvars_show_gp_log_gangs
  */
 const char *
-gpvars_assign_gp_log_gang(const char *newval, bool doit, GucSource source)
+gpvars_assign_gp_log_gang(const char *newval, bool doit, GucSource source __attribute__((unused)) )
 {
 	GpVars_Verbosity v = gpvars_string_to_verbosity(newval);
 
@@ -582,7 +582,7 @@ gpvars_show_gp_log_gang(void)
  * gpvars_show_gp_log_interconnect
  */
 const char *
-gpvars_assign_gp_log_interconnect(const char *newval, bool doit, GucSource source)
+gpvars_assign_gp_log_interconnect(const char *newval, bool doit, GucSource source __attribute__((unused)) )
 {
 	GpVars_Verbosity v = gpvars_string_to_verbosity(newval);
 
@@ -605,7 +605,7 @@ gpvars_show_gp_log_interconnect(void)
  * gpvars_show_gp_interconnect_type
  */
 const char *
-gpvars_assign_gp_interconnect_type(const char *newval, bool doit, GucSource source)
+gpvars_assign_gp_interconnect_type(const char *newval, bool doit, GucSource source __attribute__((unused)) )
 {
 	int newtype = 0;
 

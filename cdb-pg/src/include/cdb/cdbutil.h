@@ -80,7 +80,7 @@ extern void cdb_setup(void);
  * when disabling Greenplum Database functionality.
  *
  */
-extern void cdb_cleanup(int code, Datum arg);
+extern void cdb_cleanup(int code, Datum arg  __attribute__((unused)) );
 
 
 /*

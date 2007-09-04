@@ -484,7 +484,7 @@ cdbconn_setSliceIndex(SegmentDatabaseDescriptor    *segdbDesc,
     CdbComponentDatabaseInfo   *q = segdbDesc->segment_database_info;
     PQExpBuffer scratchbuf = &segdbDesc->error_message;
     int         scratchoff = scratchbuf->len;
-    Assert(scratchbuf->len >=0 && scratchbuf->len < 300000);
+    Assert(scratchbuf->len < 300000);
 
     /* Format the identity of the segment db. */
     if (q->segindex >= 0)

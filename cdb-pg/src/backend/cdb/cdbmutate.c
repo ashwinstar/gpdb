@@ -80,7 +80,7 @@ doesUpdateAffectPartitionCols(Plan         *plan,
 static void
 warn_ctid_without_segid(Query *query, Plan *plan);
 
-static bool has_ctid_outside_tlist_walker(Node *node, void* unused);
+static bool has_ctid_outside_tlist_walker(Node *node, void* unused  __attribute__((unused)) );
 
 #if 0
 static bool DoesDistributionHaveDependencies(Oid relOid, GpPolicy * policy);
@@ -1301,7 +1301,7 @@ ctid_inventory_walker(Node *node, ctid_inv_data * inv)
 }
 
 bool
-has_ctid_outside_tlist_walker(Node *node, void* unused)
+has_ctid_outside_tlist_walker(Node *node, void* unused __attribute__((unused)) )
 {
 	if (node == NULL)
 		return false;

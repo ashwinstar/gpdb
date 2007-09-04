@@ -156,7 +156,7 @@ static void recomputeNamespacePath(void);
 static void InitTempTableNamespace(void);
 static void RemoveTempRelations(Oid tempNamespaceId);
 static void RemoveTempRelationsCallback(int code, Datum arg);
-static void NamespaceCallback(Datum arg, Oid relid);
+static void NamespaceCallback(Datum arg __attribute__((unused)) , Oid relid __attribute__((unused)) );
 
 /* These don't really need to appear in any header file */
 Datum		pg_table_is_visible(PG_FUNCTION_ARGS);

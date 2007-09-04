@@ -858,7 +858,7 @@ FtsCondSetTxnReadOnly(bool *XactFlag)
  * Set Read only
  */
 bool
-assign_gp_set_read_only(bool newval, bool doit, GucSource source)
+assign_gp_set_read_only(bool newval, bool doit, GucSource source __attribute__((unused)) )
 {
 
 #if FALSE

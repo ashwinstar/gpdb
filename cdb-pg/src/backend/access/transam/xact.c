@@ -5138,14 +5138,14 @@ xact_redo_abort(xl_xact_abort *xlrec, TransactionId xid)
 }
 
 static void
-xact_redo_distributed_forget(xl_xact_distributed_forget *xlrec, TransactionId xid)
+xact_redo_distributed_forget(xl_xact_distributed_forget *xlrec, TransactionId xid __attribute__((unused)) )
 {
 	redoDistributedForgetCommitRecord(&xlrec->gxact_log);
 }
 
 
 void
-xact_redo(XLogRecPtr lsn, XLogRecord *record)
+xact_redo(XLogRecPtr lsn __attribute__((unused)) , XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
 

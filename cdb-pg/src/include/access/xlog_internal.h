@@ -249,10 +249,10 @@ extern XLogRecPtr RequestXLogSwitch(void);
  * These aren't in xlog.h because I'd rather not include fmgr.h there.
  */
 extern Datum pg_start_backup(PG_FUNCTION_ARGS);
-extern Datum pg_stop_backup(PG_FUNCTION_ARGS);
-extern Datum pg_switch_xlog(PG_FUNCTION_ARGS);
-extern Datum pg_current_xlog_location(PG_FUNCTION_ARGS);
-extern Datum pg_current_xlog_insert_location(PG_FUNCTION_ARGS);
+extern Datum pg_stop_backup(PG_FUNCTION_ARGS __attribute__((unused)) );
+extern Datum pg_switch_xlog(PG_FUNCTION_ARGS __attribute__((unused)) );
+extern Datum pg_current_xlog_location(PG_FUNCTION_ARGS __attribute__((unused)) );
+extern Datum pg_current_xlog_insert_location(PG_FUNCTION_ARGS __attribute__((unused)) );
 extern Datum pg_xlogfile_name_offset(PG_FUNCTION_ARGS);
 extern Datum pg_xlogfile_name(PG_FUNCTION_ARGS);
 

@@ -291,13 +291,12 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 
 	SegmentDatabaseDescriptor *segdbDesc;
 	CdbComponentDatabaseInfo *q;
-	int			i;
 	DoConnectParms *doConnectParmsAr = NULL;
 	int			threadCount = 0;
 	int			max_threads;
 	int			segdbs_in_thread_pool;
 	int			segdb_count;
-	
+	int			i;
 
 	Assert(size == 1 || size == getgpsegmentCount());
 
@@ -424,6 +423,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 
 		for (whichagent=0;whichagent<dispatchagents->size;whichagent++)
 		{
+			int i;
 			conninfo = conninfoarray[whichagent];
 			
 			/*
@@ -872,6 +872,7 @@ buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo)
 			        elog(LOG, "buildGangDefinitionFromConninfo Starting %d qExec processes for reader gang%s%s%s",
 			        		conninfo->nsegs, pn1, pn2, pn3);
 			    break;
+		    case GANGTYPE_UNALLOCATED:
 		    default:
 			    Insist(0);
 	    }
@@ -1011,6 +1012,7 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 			        elog(LOG, "Starting %d qExec processes for reader gang%s%s%s",
                          size, pn1, pn2, pn3);
 			    break;
+		    case GANGTYPE_UNALLOCATED:
 		    default:
 			    Insist(0);
 	    }
@@ -1751,7 +1753,7 @@ gpqeid_next_param(char **cpp, char **npp)
 }
 
 void
-cdbgang_parse_gpqeid_params(struct Port *port, const char *gpqeid_value)
+cdbgang_parse_gpqeid_params(struct Port *port __attribute__((unused)) , const char *gpqeid_value)
 {
 	char	   *gpqeid = pstrdup(gpqeid_value);
 	char	   *cp;
@@ -1794,7 +1796,7 @@ bad:
 
 
 void
-cdbgang_parse_gpqdid_params(struct Port *port, const char *gpqdid_value)
+cdbgang_parse_gpqdid_params(struct Port *port __attribute__((unused)) , const char *gpqdid_value)
 {
 	char	   *gpqdid = pstrdup(gpqdid_value);
 	char	   *cp;
@@ -1837,7 +1839,7 @@ bad:
 }	/* cdbgang_parse_gpqdid_params */
 
 void
-cdbgang_parse_gpdaid_params(struct Port *port, const char *gpdaid_value)
+cdbgang_parse_gpdaid_params(struct Port *port __attribute__((unused)) , const char *gpdaid_value)
 {
 	char	   *gpdaid = pstrdup(gpdaid_value);
 	char	   *cp;
@@ -2434,6 +2436,7 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 			}
 			break;
 
+        case GANGTYPE_UNALLOCATED:
 		default:
 			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 							errmsg_internal("problem in allocateGang")));

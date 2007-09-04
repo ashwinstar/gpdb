@@ -131,7 +131,7 @@ static void statRecvTuple(MotionNodeEntry * pMNEntry,
  * execution.
  */
 void
-RemoveMotionLayer(MotionLayerState *mlStates, bool flushCommLayer)
+RemoveMotionLayer(MotionLayerState *mlStates, bool flushCommLayer  __attribute__((unused)))
 {
 
 	if (Gp_role == GP_ROLE_UTILITY)
@@ -861,7 +861,7 @@ EndMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool flushCommLa
  * returned if the ID is unrecognized.
  */
 MotionNodeEntry *
-getMotionNodeEntry(MotionLayerState *mlStates, int16 motNodeID, char *errString)
+getMotionNodeEntry(MotionLayerState *mlStates, int16 motNodeID, char *errString __attribute__((unused)) )
 {
 	MotionNodeEntry *pMNEntry = NULL;
 

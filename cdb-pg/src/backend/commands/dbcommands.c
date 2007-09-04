@@ -978,7 +978,7 @@ AlterDatabase(AlterDatabaseStmt *stmt)
 	ScanKeyInit(&scankey,
 				Anum_pg_database_datname,
 				BTEqualStrategyNumber, F_NAMEEQ,
-				NameGetDatum(stmt->dbname));
+				CStringGetDatum(stmt->dbname));
 	scan = systable_beginscan(rel, DatabaseNameIndexId, true,
 							  SnapshotNow, 1, &scankey);
 	tuple = systable_getnext(scan);
@@ -1064,7 +1064,7 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 	ScanKeyInit(&scankey,
 				Anum_pg_database_datname,
 				BTEqualStrategyNumber, F_NAMEEQ,
-				NameGetDatum(stmt->dbname));
+				CStringGetDatum(stmt->dbname));
 	scan = systable_beginscan(rel, DatabaseNameIndexId, true,
 							  SnapshotNow, 1, &scankey);
 	tuple = systable_getnext(scan);
@@ -1208,7 +1208,7 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 	ScanKeyInit(&scankey,
 				Anum_pg_database_datname,
 				BTEqualStrategyNumber, F_NAMEEQ,
-				NameGetDatum((char *) dbname));
+				CStringGetDatum((char *) dbname));
 	scan = systable_beginscan(rel, DatabaseNameIndexId, true,
 							  SnapshotNow, 1, &scankey);
 	tuple = systable_getnext(scan);
@@ -1346,7 +1346,7 @@ get_db_info(const char *name, LOCKMODE lockmode,
 		ScanKeyInit(&scanKey,
 					Anum_pg_database_datname,
 					BTEqualStrategyNumber, F_NAMEEQ,
-					NameGetDatum((char *) name));
+					CStringGetDatum((char *) name));
 
 		scan = systable_beginscan(relation, DatabaseNameIndexId, true,
 								  SnapshotNow, 1, &scanKey);
@@ -1629,7 +1629,7 @@ get_database_name(Oid dbid)
  * DATABASE resource manager's routines
  */
 void
-dbase_redo(XLogRecPtr lsn, XLogRecord *record)
+dbase_redo(XLogRecPtr lsn  __attribute__((unused)), XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
 

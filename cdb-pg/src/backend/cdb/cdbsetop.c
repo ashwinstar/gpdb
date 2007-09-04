@@ -381,7 +381,7 @@ Motion* make_motion_hash_all_targets(PlannerInfo *root, Plan *subplan)
  *      tuples non-distinct on the values of the hash expressions.  This
  *      motion should only be applied to a non-replicated, non-root subplan.
  */
-Motion* make_motion_hash(PlannerInfo *root, Plan *subplan, List *hashexprs)
+Motion* make_motion_hash(PlannerInfo *root __attribute__((unused)) , Plan *subplan, List *hashexprs)
 {
 	Motion *motion;
 	int numInputSegs;

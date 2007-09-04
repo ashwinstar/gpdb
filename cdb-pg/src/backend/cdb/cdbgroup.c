@@ -1280,6 +1280,7 @@ CdbPathLocus cdbpathlocus_from_flow(Flow *flow)
         case FLOW_PARTITIONED:
 			CdbPathLocus_MakeStrewn(&locus);
             break;
+        case FLOW_UNDEFINED:
         default:
             Insist(0);
     }

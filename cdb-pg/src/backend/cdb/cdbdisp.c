@@ -2095,7 +2095,7 @@ thread_DispatchWaitSingle(DispatchCommandParms		*pParms)
 	if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)
 	/* Lost the connection. */
 	{
-		char	   *msg = PQerrorMessage(segdbDesc->conn);
+		msg = PQerrorMessage(segdbDesc->conn);
 
 		/* Save error info for later. */
 		cdbdisp_appendMessage(dispatchResult, DEBUG1,
@@ -3817,7 +3817,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		cdb_max_slices = nSlices;
 	
 	Assert(sliceTbl);
-	Assert(sliceTbl->slices > 0);
+	Assert(sliceTbl->slices != NIL);
 	
 	cdbdisp_dispatchX(&queryParms,
 			 cancelOnError,
@@ -4042,13 +4042,13 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
  * throws an error and does not return.
  */
 void
-CdbDispatchUtilityStatement(struct Node *stmt, char* debugCaller)
+CdbDispatchUtilityStatement(struct Node *stmt, char* debugCaller __attribute__((unused)) )
 {
 	CdbDispatchUtilityStatement_Internal(stmt, /* needTwoPhase */ true, "CdbDispatchUtilityStatement");
 }
 
 void
-CdbDispatchUtilityStatement_NoTwoPhase(struct Node *stmt, char* debugCaller)
+CdbDispatchUtilityStatement_NoTwoPhase(struct Node *stmt, char* debugCaller __attribute__((unused)) )
 {
 	CdbDispatchUtilityStatement_Internal(stmt, /* needTwoPhase */ false, "CdbDispatchUtilityStatement_NoTwoPhase");
 }

@@ -88,7 +88,7 @@ cdbpath_cost_motion(CdbMotionPath *motionpath)
  *      pathkeys otherwise (the usual case).
  */
 Path *
-cdbpath_create_motion_path(PlannerInfo     *root,
+cdbpath_create_motion_path(PlannerInfo     *root __attribute__((unused)) ,
                            Path            *subpath,
                            List            *pathkeys,
                            bool             require_existing_order,

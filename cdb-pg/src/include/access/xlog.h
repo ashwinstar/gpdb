@@ -152,7 +152,7 @@ extern bool XLOG_DEBUG;
 extern XLogRecPtr XLogInsert(RmgrId rmid, uint8 info, XLogRecData *rdata);
 extern void XLogFlush(XLogRecPtr RecPtr);
 
-extern void xlog_redo(XLogRecPtr lsn, XLogRecord *record);
+extern void xlog_redo(XLogRecPtr lsn __attribute__((unused)) , XLogRecord *record);
 extern void xlog_desc(StringInfo buf, uint8 xl_info, char *rec);
 
 extern void UpdateControlFile(void);

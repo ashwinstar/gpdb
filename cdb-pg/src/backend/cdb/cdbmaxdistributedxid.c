@@ -20,7 +20,7 @@
 Datum		gp_max_distributed_xid(PG_FUNCTION_ARGS);
 
 Datum
-gp_max_distributed_xid(PG_FUNCTION_ARGS)
+gp_max_distributed_xid(PG_FUNCTION_ARGS __attribute__((unused)) )
 {
 	DistributedTransactionId max = GetMaxDistributedXid();
 

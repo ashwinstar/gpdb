@@ -19,7 +19,7 @@
 Datum		gp_distributed_xid(PG_FUNCTION_ARGS);
 
 Datum
-gp_distributed_xid(PG_FUNCTION_ARGS)
+gp_distributed_xid(PG_FUNCTION_ARGS __attribute__((unused)) )
 {
 	DistributedTransactionId xid = getDistributedTransactionId();
 

@@ -2279,7 +2279,7 @@ getDtxCheckPointInfoAndLock(char **result, int *result_size)
 }
 
 void 
-freeDtxCheckPointInfoAndUnlock(char *info, int info_size, XLogRecPtr *recptr)
+freeDtxCheckPointInfoAndUnlock(char *info, int info_size  __attribute__((unused)) , XLogRecPtr *recptr)
 {
 	pfree(info);
 
@@ -2847,7 +2847,7 @@ void verify_shared_snapshot_ready(void)
  * See verify_shared_snapshot_ready(...) for additional information.
  */
 bool
-assign_gp_write_shared_snapshot(bool newval, bool doit, GucSource source)
+assign_gp_write_shared_snapshot(bool newval, bool doit, GucSource source __attribute__((unused)) )
 {
 	
 #if FALSE
@@ -3752,9 +3752,9 @@ performDtxProtocolAbortPrepared(const char *gid, bool raiseErrorIfNotFound)
 
 void
 performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
-						  int flags,
-						  const char *loggingStr, const char *gid, 
-						  DistributedTransactionId gxid)
+						  int flags  __attribute__((unused)) ,
+						  const char *loggingStr __attribute__((unused)) , const char *gid, 
+						  DistributedTransactionId gxid __attribute__((unused)) )
 {
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "performDtxProtocolCommand called with DTX protocol = %s, QE distribute transaction context: '%s'",
 		 DtxProtocolCommandToString(dtxProtocolCommand), DtxContextToString(DistributedTransactionContext));

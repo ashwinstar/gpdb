@@ -66,13 +66,13 @@ static void CopyOneRowTo(CopyState cstate, Oid tupleOid,
 						                         Datum *values, bool *nulls);
 extern void CopyFromDispatch(CopyState cstate);
 static void CopyFrom(CopyState cstate);
-static Datum CopyReadBinaryAttribute(CopyState cstate, int column_no, FmgrInfo *flinfo,
+static Datum CopyReadBinaryAttribute(CopyState cstate, int column_no __attribute__((unused)), FmgrInfo *flinfo,
 						Oid typioparam, int32 typmod, bool *isnull);
 static char *CopyReadOidAttr(CopyState cstate, bool *isnull);
 static void CopyAttributeOutText(CopyState cstate, char *string);
 static void CopyAttributeOutCSV(CopyState cstate, char *string,
 								bool use_quote, bool single_attr);
-static bool DetectLineEnd(CopyState cstate, size_t bytesread);
+static bool DetectLineEnd(CopyState cstate, size_t bytesread  __attribute__((unused)));
 
 /* Low-level communications functions */
 static void SendCopyBegin(CopyState cstate);
@@ -4203,7 +4203,7 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
  * try again in the next buffer.
  */
 static bool
-DetectLineEnd(CopyState cstate, size_t bytesread)
+DetectLineEnd(CopyState cstate, size_t bytesread  __attribute__((unused)))
 {
 	int			index = 0;
 	char		c;
@@ -4637,7 +4637,7 @@ CopyReadAttributesText(CopyState cstate, char *nulls,
  * Read a binary attribute
  */
 static Datum
-CopyReadBinaryAttribute(CopyState cstate, int column_no, FmgrInfo *flinfo, Oid typioparam,
+CopyReadBinaryAttribute(CopyState cstate, int column_no __attribute__((unused)), FmgrInfo *flinfo, Oid typioparam,
 						int32 typmod, bool *isnull)
 {
 	int32		fld_size;
@@ -5414,7 +5414,7 @@ escape_quotes(const char *src)
  * copy_dest_startup --- executor startup
  */
 static void
-copy_dest_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
+copy_dest_startup(DestReceiver *self __attribute__((unused)), int operation __attribute__((unused)), TupleDesc typeinfo __attribute__((unused)))
 {
 	/* no-op */
 }
@@ -5439,7 +5439,7 @@ copy_dest_receive(TupleTableSlot *slot, DestReceiver *self)
  * copy_dest_shutdown --- executor end
  */
 static void
-copy_dest_shutdown(DestReceiver *self)
+copy_dest_shutdown(DestReceiver *self __attribute__((unused)))
 {
 	/* no-op */
 }

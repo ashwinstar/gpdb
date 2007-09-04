@@ -62,7 +62,7 @@ extern void AlterDatabaseOwner(const char *dbname, Oid newOwnerId);
 extern Oid	get_database_oid(const char *dbname);
 extern char *get_database_name(Oid dbid);
 
-extern void dbase_redo(XLogRecPtr lsn, XLogRecord *rptr);
+extern void dbase_redo(XLogRecPtr lsn  __attribute__((unused)), XLogRecord *rptr);
 extern void dbase_desc(StringInfo buf, uint8 xl_info, char *rec);
 
 #endif   /* DBCOMMANDS_H */

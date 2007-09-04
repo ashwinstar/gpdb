@@ -1505,7 +1505,7 @@ ShutdownMultiXact(void)
  * Get the next MultiXactId and offset to save in a checkpoint record
  */
 void
-MultiXactGetCheckptMulti(bool is_shutdown,
+MultiXactGetCheckptMulti(bool is_shutdown __attribute__((unused)) ,
 						 MultiXactId *nextMulti,
 						 MultiXactOffset *nextMultiOffset)
 {
@@ -1862,7 +1862,7 @@ WriteMZeroPageXlogRec(int pageno, uint8 info)
  * MULTIXACT resource manager's routines
  */
 void
-multixact_redo(XLogRecPtr lsn, XLogRecord *record)
+multixact_redo(XLogRecPtr lsn __attribute__((unused)) , XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
 

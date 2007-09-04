@@ -962,15 +962,15 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 			if (PQresultStatus(p) == PGRES_COPY_IN ||
 				PQresultStatus(p) == PGRES_COPY_OUT)
 			{
-				int i;
+				int k;
 				elog(LOG,"We are doing a COPY!");
 				if (PQresultStatus(p) == PGRES_COPY_IN)
 				{
 					pq_beginmessage(&buf, 'G');
 					pq_sendbyte(&buf, p->binary);		/* overall format */
 					pq_sendint(&buf, p->numAttributes, 2);
-					for (i = 0; i < p->numAttributes; i++)
-						pq_sendint(&buf, p->attDescs[i].format, 2);		/* per-column formats */
+					for (k = 0; k < p->numAttributes; k++)
+						pq_sendint(&buf, p->attDescs[k].format, 2);		/* per-column formats */
 					pq_endmessage(&buf);
 				}
 				else
@@ -978,8 +978,8 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 					pq_beginmessage(&buf, 'H');
 					pq_sendbyte(&buf, p->binary);		/* overall format */
 					pq_sendint(&buf, p->numAttributes, 2);
-					for (i = 0; i < p->numAttributes; i++)
-						pq_sendint(&buf, p->attDescs[i].format, 2);		/* per-column formats */
+					for (k = 0; k < p->numAttributes; k++)
+						pq_sendint(&buf, p->attDescs[k].format, 2);		/* per-column formats */
 					pq_endmessage(&buf);
 				}
 				 
@@ -1041,7 +1041,7 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 				 */
 				if (PQresultStatus(p) == PGRES_TUPLES_OK)
 				{
-					int j,k;
+					int m,k;
 					int nRows = PQntuples(p);
 					for (k=0; k<nRows; k++)
 					{
@@ -1053,9 +1053,9 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 
 						pq_sendint(&buf, nfields, 2);
 
-						for (j=0; j<nfields; j++)
+						for (m=0; m<nfields; m++)
 						{
-							char * v = PQgetvalue(p, k, j);
+							char * v = PQgetvalue(p, k, m);
 							pq_sendcountedtext(&buf, v, strlen(v), false);
 						}
 						
@@ -1117,7 +1117,7 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 				 */
 				if (PQresultStatus(p) == PGRES_TUPLES_OK)
 				{
-					int j,k;
+					int m,k;
 					int nRows = PQntuples(p);
 					for (k=0; k<nRows; k++)
 					{
@@ -1129,9 +1129,9 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 
 						pq_sendint(&buf, nfields, 2);
 
-						for (j=0; j<nfields; j++)
+						for (m=0; m<nfields; m++)
 						{
-							char * v = PQgetvalue(p, k, j);
+							char * v = PQgetvalue(p, k, m);
 							pq_sendcountedtext(&buf, v, strlen(v), false);
 						}
 						

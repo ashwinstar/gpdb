@@ -153,9 +153,9 @@ static void motion_sanity_check(Plan *plan);
 Plan *
 cdbparallelize(Plan *plan,
 			   Query *query,
-			   bool isCursor,
-			   int cursorOptions,
-			   ParamListInfo boundParams,
+			   bool isCursor __attribute__((unused)) ,
+			   int cursorOptions __attribute__((unused)) ,
+			   ParamListInfo boundParams __attribute__((unused)) ,
 			   bool uses_correlation
 )
 {

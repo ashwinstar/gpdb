@@ -317,7 +317,7 @@ extern int	Gp_max_packet_size;	/* GUC var */
 
 extern int Gp_interconnect_type;
 
-extern const char *gpvars_assign_gp_interconnect_type(const char *newval, bool doit, GucSource source);
+extern const char *gpvars_assign_gp_interconnect_type(const char *newval, bool doit, GucSource source __attribute__((unused)) );
 extern const char *gpvars_show_gp_interconnect_type(void);
 
 /*
@@ -407,7 +407,7 @@ gpvars_show_gp_log_gang(void);
 extern GpVars_Verbosity    gp_log_interconnect;
 
 const char *
-gpvars_assign_gp_log_interconnect(const char *newval, bool doit, GucSource source);
+gpvars_assign_gp_log_interconnect(const char *newval, bool doit, GucSource source __attribute__((unused)) );
 const char *
 gpvars_show_gp_log_interconnect(void);
 
@@ -634,7 +634,7 @@ extern SeqServerControlBlock *seqServerCtl;
 /*
  * Thread-safe routine to write to the log
  */
-extern void write_log(const char *fmt,...);
+extern void write_log(const char *fmt,...) __attribute__((format(printf, 1, 2)));
 
 
 #endif   /* GPVARS_H */

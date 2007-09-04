@@ -5522,7 +5522,7 @@ GetNextXidAndEpoch(TransactionId *xid, uint32 *epoch)
  * This must be called ONCE during postmaster or standalone-backend shutdown
  */
 void
-ShutdownXLOG(int code, Datum arg)
+ShutdownXLOG(int code __attribute__((unused)) , Datum arg __attribute__((unused)) )
 {
 	ereport(LOG,
 			(errmsg("shutting down")));
@@ -5965,7 +5965,7 @@ RequestXLogSwitch(void)
  * XLOG resource manager's routines
  */
 void
-xlog_redo(XLogRecPtr lsn, XLogRecord *record)
+xlog_redo(XLogRecPtr lsn __attribute__((unused)) , XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
 
@@ -6110,7 +6110,7 @@ xlog_outrec(StringInfo buf, XLogRecord *record)
  * GUC support
  */
 const char *
-assign_xlog_sync_method(const char *method, bool doit, GucSource source)
+assign_xlog_sync_method(const char *method, bool doit, GucSource source __attribute__((unused)) )
 {
 	int			new_sync_method;
 	int			new_sync_bit;
@@ -6398,7 +6398,7 @@ pg_start_backup(PG_FUNCTION_ARGS)
  * the label file, plus the backup-end time and WAL location.
  */
 Datum
-pg_stop_backup(PG_FUNCTION_ARGS)
+pg_stop_backup(PG_FUNCTION_ARGS __attribute__((unused)) )
 {
 	text	   *result;
 	XLogRecPtr	startpoint;
@@ -6536,7 +6536,7 @@ pg_stop_backup(PG_FUNCTION_ARGS)
  * pg_switch_xlog: switch to next xlog file
  */
 Datum
-pg_switch_xlog(PG_FUNCTION_ARGS)
+pg_switch_xlog(PG_FUNCTION_ARGS __attribute__((unused)) )
 {
 	text	   *result;
 	XLogRecPtr	switchpoint;
@@ -6567,7 +6567,7 @@ pg_switch_xlog(PG_FUNCTION_ARGS)
  * to the kernel, but is not necessarily synced to disk.
  */
 Datum
-pg_current_xlog_location(PG_FUNCTION_ARGS)
+pg_current_xlog_location(PG_FUNCTION_ARGS __attribute__((unused)) )
 {
 	text	   *result;
 	char		location[MAXFNAMELEN];
@@ -6596,7 +6596,7 @@ pg_current_xlog_location(PG_FUNCTION_ARGS)
  * This function is mostly for debugging purposes.
  */
 Datum
-pg_current_xlog_insert_location(PG_FUNCTION_ARGS)
+pg_current_xlog_insert_location(PG_FUNCTION_ARGS __attribute__((unused)) )
 {
 	text	   *result;
 	XLogCtlInsert *Insert = &XLogCtl->Insert;
