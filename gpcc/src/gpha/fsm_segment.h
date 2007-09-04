@@ -678,7 +678,7 @@ static apr_status_t seg_initdb_backout2(gpcc_event_t *ev, void *_cmdslot)
 static apr_status_t seg_initdb_copy_data_directory(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
-    apr_proc_t *proc = 0, *p;
+    apr_proc_t *proc = 0, *p, ssh_proc;
     int e, ret;
     char *host;
     int i, nstandby = 0;
@@ -714,6 +714,8 @@ static apr_status_t seg_initdb_copy_data_directory(gpcc_event_t *ev, void *_cmds
     proc = apr_palloc(cmdslot->u.seg.request.subpool, sizeof(apr_proc_t) * nstandby);
 
     for (i = 1, p = proc ; i <= nstandby ; i++, p++) {
+	char *cmd;
+
 	sprintf(segname, "gpdb.seg.m.%d", i);
 	if ((seg = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, segname, 0)) == 0)
 	    break;
@@ -721,6 +723,15 @@ static apr_status_t seg_initdb_copy_data_directory(gpcc_event_t *ev, void *_cmds
 	seg = apr_pstrdup(cmdslot->u.seg.request.subpool, seg);
 	node = apr_strtok(seg, ":", &last);
 	data_dir = apr_strtok(seg, 0, &last);
+
+	cmd = apr_psprintf(cmdslot->u.seg.request.subpool, 
+			   "if [ -d '%s' ] ; then rm -Rf %s ; else if [ -f '%s' ]; then exit 1 ; fi ; fi", 
+			   data_dir, data_dir, data_dir);
+	e = gpcc_proc_ssh(&ssh_proc, user, node, ssh_port, cmd, 1, cmdslot->u.seg.request.subpool);
+	if (e) {
+	    gpcc_warning(FLINE, "[%s] command failed %s", cmd);
+	    return 2;
+	}
 
 	e = gpcc_proc_scp(p, user, node, ssh_port, master_data_dir, data_dir, 0, cmdslot->u.seg.request.subpool);
 	if (e) {
