@@ -238,7 +238,7 @@ static Plan *plan_sequential_stage(PlannerInfo *root, WindowContext *context,
 		int hi_windex, int lo_windex,
 		Plan *input_plan, CdbPathLocus *locus_ptr, List **pathkeys_ptr);
 static Plan *assure_order(PlannerInfo *root, Plan *input_plan, List *sortclause, List **pathkeys_ptr);
-#endif BRIAN_SANDBOX
+#endif /* BRIAN_SANDBOX */
 static Plan *plan_parallel_window_query(PlannerInfo *root, WindowContext *context, List **pathkeys_ptr);
 static void plan_windowinfo_coplans(PlannerInfo *root, WindowContext *context, int window_index);
 static List * plan_window_rtable(PlannerInfo* root, WindowContext *context);
@@ -284,7 +284,7 @@ static List *get_windowctxt_sortclause(void *ctxt, int nth)
 
 	return winfo->sortclause;
 }
-#endif BRIAN_SANDBOX
+#endif /* BRIAN_SANDBOX */
 
 
 Plan *
@@ -360,7 +360,7 @@ window_planner(PlannerInfo *root, double tuple_fraction, List **pathkeys_ptr)
 			return plan_parallel_window_query(root, context, pathkeys_ptr);
 #else
 		return plan_parallel_window_query(root, context, pathkeys_ptr);
-#endif BRIAN_SANDBOX
+#endif /* BRIAN_SANDBOX */
 	}
 
 	/* TODO Check our API.
