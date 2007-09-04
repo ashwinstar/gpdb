@@ -55,7 +55,7 @@ stream:
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 	@echo "Building stream utility."
 	@echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-	@cd $(STREAM_DIR) ; NO_M64=TRUE gcc -Wall stream.c -o stream; cd ../../
+	@cd $(STREAM_DIR) ; NO_M64=TRUE gcc  stream.c -o stream; cd ../../
 	@cp $(STREAM_DIR)/stream lib/stream 
 	@echo ""
 
