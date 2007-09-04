@@ -138,6 +138,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"encrypted", ENCRYPTED},
 	{"end", END_P},
 	{"escape", ESCAPE},
+	{"every", EVERY},
 	{"except", EXCEPT},
 	{"exclude", EXCLUDE},
 	{"excluding", EXCLUDING},

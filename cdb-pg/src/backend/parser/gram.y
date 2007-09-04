@@ -377,8 +377,10 @@ static void doNegateFloat(Value *v);
 %type <list> 	OptTabPartitionBoundarySpec        /* XXX XXX: need complex type */
 %type <list> 	TabPartitionBoundarySpecValList        /* XXX XXX: need complex type */
 %type <list> 	TabPartitionBoundarySpecStart        /* XXX XXX: need complex type */
-%type <node> 	TabPartitionBoundarySpecEnd        /* XXX XXX: need complex type */
-%type <node> 	OptTabPartitionBoundarySpecEnd        /* XXX XXX: need complex type */
+%type <list> 	TabPartitionBoundarySpecEnd        /* XXX XXX: need complex type */
+%type <list> 	OptTabPartitionBoundarySpecEnd        /* XXX XXX: need complex type */
+%type <node> 	OptTabPartitionBoundarySpecEvery        /* XXX XXX: need complex type */
+%type <value>	OptNumericOnly 
 %type <node> 	TabPartitionNameDecl        /* XXX XXX: need complex type */
 
 /*
@@ -408,7 +410,7 @@ static void doNegateFloat(Value *v);
 	DEFERRABLE DEFERRED DEFINER DELETE_P DELIMITER DELIMITERS
 	DESC DISABLE_P DISTINCT DISTRIBUTED DO DOMAIN_P DOUBLE_P DROP
 
-	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ESCAPE EXCEPT 
+	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ESCAPE EVERY EXCEPT 
 	EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN EXTERNAL EXTRACT
 
 	FALSE_P FETCH FIRST_P FLOAT_P FOLLOWING FOR FORCE FOREIGN FORMAT FORWARD
@@ -2402,11 +2404,21 @@ TabPartitionElemList:
    this is the best way to do this... */
 
 TabPartitionBoundarySpecStart:
-			START opt_with IDENT 				{ $$ = list_make1((Node *) makeString($3));}
+			START opt_with ctext_row 				{ $$ = $3;}
             ;
 
 TabPartitionBoundarySpecEnd:
-			END_P opt_with IDENT 				{ $$ = (Node *) makeString($3);}
+			END_P opt_with ctext_row 				{ $$ = $3;}
+            ;
+
+OptNumericOnly:
+            NumericOnly 							{ $$ = $1; }
+			| /*EMPTY*/								{ $$ = NULL; }            
+            ;
+
+OptTabPartitionBoundarySpecEvery:
+            EVERY OptNumericOnly IDENT 		{ $$ = (Node *) makeString($3); }
+			| /*EMPTY*/								{ $$ = NULL; }
             ;
 
 OptTabPartitionBoundarySpecEnd:
@@ -2425,8 +2437,10 @@ TabPartitionBoundarySpecValList:
 TabPartitionBoundarySpec:
             VALUES '(' TabPartitionBoundarySpecValList ')'		{ $$ = $3; }
 			| TabPartitionBoundarySpecStart
-              OptTabPartitionBoundarySpecEnd	{ $$ = lappend($1, $2); }
-			| TabPartitionBoundarySpecEnd		{ $$ = list_make1($1); }
+              OptTabPartitionBoundarySpecEnd
+              OptTabPartitionBoundarySpecEvery  { $$ = lappend($1, $2); }
+			| TabPartitionBoundarySpecEnd
+              OptTabPartitionBoundarySpecEvery	{ $$ = list_make1($1); }
             ;
 
 OptTabPartitionBoundarySpec:
@@ -9297,6 +9311,7 @@ unreserved_keyword:
 			| ENCODING
 			| ENCRYPTED
 			| ESCAPE
+			| EVERY
 			| EXCLUDING
 			| EXCLUSIVE
 			| EXECUTE
