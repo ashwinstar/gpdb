@@ -467,7 +467,7 @@ write_auth_file(Relation rel_authid, Relation rel_authmem)
 				auth_info[curr_role].rolpassword = DatumGetCString(DirectFunctionCall1(textout, datum));
 
 			/* assume passwd has attlen -1 */
-			off = att_addlength(off, -1, tp + off);
+			off = att_addlength(off, -1, PointerGetDatum(tp + off));
 		}
 
 		if (HeapTupleHasNulls(tuple) &&

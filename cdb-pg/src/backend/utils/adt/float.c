@@ -1991,7 +1991,7 @@ float8_accum(PG_FUNCTION_ARGS)
 
 		result = construct_array(transdatums, 3,
 								 FLOAT8OID,
-							 sizeof(float8), false /* float8 byval */ , 'd');
+							 sizeof(float8), true /* float8 byval */ , 'd');
 
 		PG_RETURN_ARRAYTYPE_P(result);
 	}
@@ -2040,7 +2040,7 @@ float8_decum(PG_FUNCTION_ARGS)
 
 		result = construct_array(transdatums, 3,
 								 FLOAT8OID,
-							 sizeof(float8), false /* float8 byval */ , 'd');
+							 sizeof(float8), true /* float8 byval */ , 'd');
 
 		PG_RETURN_ARRAYTYPE_P(result);
 	}
@@ -2093,7 +2093,7 @@ float4_accum(PG_FUNCTION_ARGS)
 
 		result = construct_array(transdatums, 3,
 								 FLOAT8OID,
-							 sizeof(float8), false /* float8 byval */ , 'd');
+							 sizeof(float8), true /* float8 byval */ , 'd');
 
 		PG_RETURN_ARRAYTYPE_P(result);
 	}
@@ -2146,7 +2146,7 @@ float4_decum(PG_FUNCTION_ARGS)
 
 		result = construct_array(transdatums, 3,
 								 FLOAT8OID,
-							 sizeof(float8), false /* float8 byval */ , 'd');
+							 sizeof(float8), true /* float8 byval */ , 'd');
 
 		PG_RETURN_ARRAYTYPE_P(result);
 	}
@@ -2360,7 +2360,7 @@ float8_regr_accum(PG_FUNCTION_ARGS)
 		result = construct_array(transdatums, 6,
 								 FLOAT8OID,
 								 sizeof(float8),
-								 false /* float8 byval */ , 'd');
+								 true /* float8 byval */ , 'd');
 
 		PG_RETURN_ARRAYTYPE_P(result);
 	}
@@ -3048,7 +3048,7 @@ float8_amalg_demalg(ArrayType *aTransArray, ArrayType *bTransArray,
 
 		result = construct_array(transdatums, 3,
 								 FLOAT8OID,
-							 sizeof(float8), false /* float8 byval */ , 'd');
+							 sizeof(float8), true /* float8 byval */ , 'd');
 
 		return result;
 	}
@@ -3121,7 +3121,7 @@ float8_regr_amalg(PG_FUNCTION_ARGS)
 
 		result = construct_array(transdatums, 6,
 								 FLOAT8OID,
-							 sizeof(float8), false /* float8 byval */ , 'd');
+							 sizeof(float8), true /* float8 byval */ , 'd');
 
 		PG_RETURN_ARRAYTYPE_P(result);
 	}

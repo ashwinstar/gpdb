@@ -1995,7 +1995,7 @@ renameatt(Oid myrelid,
 	/* this test is deliberately not attisdropped-aware */
 	if (SearchSysCacheExists(ATTNAME,
 							 ObjectIdGetDatum(myrelid),
-							 PointerGetDatum(newattname),
+							 PointerGetDatum((char *) newattname),
 							 0, 0))
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_COLUMN),
@@ -2132,7 +2132,7 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 	relrelation = heap_open(RelationRelationId, Gp_role == GP_ROLE_DISPATCH ? ShareRowExclusiveLock : RowExclusiveLock);
 
 	reltup = SearchSysCacheCopy(RELOID,
-								PointerGetDatum(myrelid),
+								ObjectIdGetDatum(myrelid),
 								0, 0, 0);
 	if (!HeapTupleIsValid(reltup))		/* shouldn't happen */
 		elog(ERROR, "cache lookup failed for relation %u", myrelid);

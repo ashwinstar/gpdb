@@ -59,15 +59,15 @@ heap_compute_data_size(TupleDesc tupleDesc,
 		/* we're anticipating converting to a short varlena header even if it's
 		 * not currently */
  		if (att[i]->attlen == -1 &&
- 			!VARATT_IS_EXTERNAL(values[i]) &&
- 			(VARATT_IS_SHORT(values[i]) || 
-			 (VARATT_COULD_SHORT((varattrib*)values[i]) &&
+ 			!VARATT_IS_EXTERNAL_D(values[i]) &&
+ 			(VARATT_IS_SHORT_D(values[i]) || 
+			 (VARATT_COULD_SHORT_D(values[i]) &&
 			  att[i]->atttypid != INT2VECTOROID &&
 			  att[i]->atttypid != OIDVECTOROID &&
 			  att[i]->atttypid < FirstNormalObjectId)))
 		{
 			/* no alignment and we will convert to 1-byte header */; 
-			data_length += VARSIZE_ANY_EXHDR(values[i]) + VARHDRSZ_SHORT;
+			data_length += VARSIZE_ANY_EXHDR_D(values[i]) + VARHDRSZ_SHORT;
 		}
 		else
 		{
@@ -103,15 +103,15 @@ ComputeDataSize(TupleDesc tupleDesc,
 			continue;
 
  		if (att[i]->attlen == -1 &&
- 			!VARATT_IS_EXTERNAL(values[i]) &&
- 			(VARATT_IS_SHORT(values[i]) || 
-			 (VARATT_COULD_SHORT((varattrib*)values[i]) &&
+ 			!VARATT_IS_EXTERNAL_D(values[i]) &&
+ 			(VARATT_IS_SHORT_D(values[i]) || 
+			 (VARATT_COULD_SHORT_D(values[i]) &&
 			  att[i]->atttypid != INT2VECTOROID &&
 			  att[i]->atttypid != OIDVECTOROID &&
 			  att[i]->atttypid < FirstNormalObjectId)))
 		{
 			/* no alignment and we will convert to 1-byte header */; 
-			data_length += VARSIZE_ANY_EXHDR(values[i]) + VARHDRSZ_SHORT;
+			data_length += VARSIZE_ANY_EXHDR_D(values[i]) + VARHDRSZ_SHORT;
 		}
 		else
 		{
@@ -194,31 +194,31 @@ heap_fill_tuple(TupleDesc tupleDesc,
 		{
 			/* varlena */
 			*infomask |= HEAP_HASVARWIDTH;
-			if (VARATT_IS_COMPRESSED(values[i]))
+			if (VARATT_IS_COMPRESSED_D(values[i]))
 				*infomask |= HEAP_HASCOMPRESSED;
-			if (VARATT_IS_EXTERNAL(values[i])) 
+			if (VARATT_IS_EXTERNAL_D(values[i])) 
 			{
 				*infomask |= HEAP_HASEXTERNAL;
 				data = (char *) att_align((long) data, att[i]->attalign);
 				data_length = VARSIZE_EXTERNAL(DatumGetPointer(values[i]));
 				memcpy(data, DatumGetPointer(values[i]), data_length);
 			}
-			else if (VARATT_IS_SHORT(values[i])) 
+			else if (VARATT_IS_SHORT_D(values[i])) 
 			{
 				/* no alignment for short varlenas */
 				data_length = VARSIZE_SHORT(DatumGetPointer(values[i]));
 				memcpy(data, DatumGetPointer(values[i]), data_length);
 			}
-			else if (VARATT_COULD_SHORT((varattrib*)values[i]) &&
+			else if (VARATT_COULD_SHORT_D(values[i]) &&
 					 att[i]->atttypid != INT2VECTOROID &&
 					 att[i]->atttypid != OIDVECTOROID &&
 					 att[i]->atttypid < FirstNormalObjectId)
 			{
 				/* convert to short varlena -- no alignment */
-				data_length = VARSIZE(values[i]) - VARHDRSZ + VARHDRSZ_SHORT;
-				*data = VARSIZE_TO_SHORT(values[i]);
+				data_length = VARSIZE_D(values[i]) - VARHDRSZ + VARHDRSZ_SHORT;
+				*data = VARSIZE_TO_SHORT_D(values[i]);
 				memcpy(data+1, 
-					   VARDATA(values[i]),
+					   VARDATA_D(values[i]),
 					   data_length-1);
 			}
 			else
@@ -326,31 +326,31 @@ DataFill(char *data,
 		{
 			/* varlena */
 			*infomask |= HEAP_HASVARWIDTH;
-			if (VARATT_IS_COMPRESSED(values[i]))
+			if (VARATT_IS_COMPRESSED_D(values[i]))
 				*infomask |= HEAP_HASCOMPRESSED;
-			if (VARATT_IS_EXTERNAL(values[i])) 
+			if (VARATT_IS_EXTERNAL_D(values[i])) 
 			{
 				*infomask |= HEAP_HASEXTERNAL;
 				data = (char *) att_align((long) data, att[i]->attalign);
 				data_length = VARSIZE_EXTERNAL(DatumGetPointer(values[i]));
 				memcpy(data, DatumGetPointer(values[i]), data_length);
 			}
-			else if (VARATT_IS_SHORT(values[i])) 
+			else if (VARATT_IS_SHORT_D(values[i])) 
 			{
 				/* no alignment for short varlenas */
 				data_length = VARSIZE_SHORT(DatumGetPointer(values[i]));
 				memcpy(data, DatumGetPointer(values[i]), data_length);
 			}
-			else if (VARATT_COULD_SHORT((varattrib*)values[i]) &&
+			else if (VARATT_COULD_SHORT_D(values[i]) &&
 					 att[i]->atttypid != INT2VECTOROID &&
 					 att[i]->atttypid != OIDVECTOROID &&
 					 att[i]->atttypid < FirstNormalObjectId)
 			{
 				/* convert to short varlena -- no alignment */
-				data_length = VARSIZE(values[i]) - VARHDRSZ + VARHDRSZ_SHORT;
-				*data = VARSIZE_TO_SHORT(values[i]);
+				data_length = VARSIZE_D(values[i]) - VARHDRSZ + VARHDRSZ_SHORT;
+				*data = VARSIZE_TO_SHORT_D(values[i]);
 				memcpy(data+1, 
-					   VARDATA(values[i]),
+					   VARDATA_D(values[i]),
 					   data_length-1);
 			}
 			else
@@ -607,7 +607,7 @@ nocachegetattr(HeapTuple tuple,
 
 			att[j]->attcacheoff = off;
 
-			off = att_addlength(off, att[j]->attlen, tp + off);
+			off = att_addlength(off, att[j]->attlen, PointerGetDatum(tp + off));
 		}
 
 		return fetchatt(att[attnum], tp + att[attnum]->attcacheoff);
@@ -658,7 +658,7 @@ nocachegetattr(HeapTuple tuple,
 			if (att[i]->attlen < 0)
 				usecache = false;
 
-			off = att_addlength(off, att[i]->attlen, tp + off);
+			off = att_addlength(off, att[i]->attlen, PointerGetDatum(tp + off));
 		}
 
 		if (att[attnum]->attlen != -1 || !tp[off])
@@ -721,7 +721,7 @@ heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
             break;
 		default:
 			elog(ERROR, "invalid attnum: %d", attnum);
-			result = 0;			/* keep compiler quiet */
+			result = Int64GetDatum(0);			/* keep compiler quiet */
 			break;
 	}
 	return result;
@@ -823,7 +823,7 @@ heap_form_tuple(TupleDesc tupleDescriptor,
 		else if (att[i]->attlen == -1 &&
 				 att[i]->attalign == 'd' &&
 				 att[i]->attndims == 0 &&
-				 !VARATT_IS_EXTENDED(values[i]))
+				 !VARATT_IS_EXTENDED_D(values[i]))
 		{
 			values[i] = toast_flatten_tuple_attribute(values[i],
 													  att[i]->atttypid,
@@ -935,7 +935,7 @@ heap_formtuple(TupleDesc tupleDescriptor,
 		else if (att[i]->attlen == -1 &&
 				 att[i]->attalign == 'd' &&
 				 att[i]->attndims == 0 &&
-				 !VARATT_IS_EXTENDED(values[i]))
+				 !VARATT_IS_EXTENDED_D(values[i]))
 		{
 			values[i] = toast_flatten_tuple_attribute(values[i],
 													  att[i]->atttypid,
@@ -1225,14 +1225,14 @@ heap_deform_tuple(HeapTuple tuple, TupleDesc tupleDesc,
 
 #ifdef USE_ASSERT_CHECKING
 		if (thisatt->attlen == -1)
-			Assert(VARATT_IS_SHORT(values[attnum]) || 
-				   !VARATT_COULD_SHORT((varattrib*)values[attnum]) ||
+			Assert(VARATT_IS_SHORT_D(values[attnum]) || 
+				   !VARATT_COULD_SHORT_D(values[attnum]) ||
 				   thisatt->atttypid == OIDVECTOROID ||
 				   thisatt->atttypid == INT2VECTOROID ||
 				   thisatt->atttypid >= FirstNormalObjectId);
 #endif
 
-		off = att_addlength(off, thisatt->attlen, tp + off);
+		off = att_addlength(off, thisatt->attlen, PointerGetDatum(tp + off));
 	}
 
 	/*
@@ -1333,14 +1333,14 @@ heap_deformtuple(HeapTuple tuple,
 
 #ifdef USE_ASSERT_CHECKING
 		if (thisatt->attlen == -1)
-			Assert(VARATT_IS_SHORT(values[attnum]) || 
-				   !VARATT_COULD_SHORT((varattrib*)values[attnum]) ||
+			Assert(VARATT_IS_SHORT_D(values[attnum]) || 
+				   !VARATT_COULD_SHORT_D(values[attnum]) ||
 				   thisatt->atttypid == OIDVECTOROID ||
 				   thisatt->atttypid == INT2VECTOROID ||
 				   thisatt->atttypid >= FirstNormalObjectId);
 #endif
 
-		off = att_addlength(off, thisatt->attlen, tp + off);
+		off = att_addlength(off, thisatt->attlen, PointerGetDatum(tp + off));
 	}
 
 	/*
@@ -1435,7 +1435,7 @@ slot_deform_tuple(TupleTableSlot *slot, int natts)
 
 		values[attnum] = fetchatt(thisatt, tp + off);
 
-		off = att_addlength(off, thisatt->attlen, tp + off);
+		off = att_addlength(off, thisatt->attlen, PointerGetDatum(tp + off));
 	}
 
 	/*
@@ -1744,7 +1744,7 @@ heap_form_minimal_tuple(TupleDesc tupleDescriptor,
 		else if (att[i]->attlen == -1 &&
 				 att[i]->attalign == 'd' &&
 				 att[i]->attndims == 0 &&
-				 !VARATT_IS_EXTENDED(values[i]))
+				 !VARATT_IS_EXTENDED_D(values[i]))
 		{
 			values[i] = toast_flatten_tuple_attribute(values[i],
 													  att[i]->atttypid,

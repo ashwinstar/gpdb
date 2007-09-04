@@ -357,7 +357,7 @@ make_const(Value *value)
 
 					typeid = INT8OID;
 					typelen = sizeof(int64);
-					typebyval = false;	/* XXX might change someday */
+					typebyval = true;	/* XXX might change someday */
 				}
 			}
 			else

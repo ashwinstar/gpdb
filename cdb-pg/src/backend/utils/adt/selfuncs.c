@@ -4714,11 +4714,11 @@ string_to_datum(const char *str, Oid datatype)
 	 * varchar constants too...
 	 */
 	if (datatype == NAMEOID)
-		return DirectFunctionCall1(namein, CStringGetDatum(str));
+		return DirectFunctionCall1(namein, CStringGetDatum((char *) str));
 	else if (datatype == BYTEAOID)
-		return DirectFunctionCall1(byteain, CStringGetDatum(str));
+		return DirectFunctionCall1(byteain, CStringGetDatum((char *) str));
 	else
-		return DirectFunctionCall1(textin, CStringGetDatum(str));
+		return DirectFunctionCall1(textin, CStringGetDatum((char *) str));
 }
 
 /*

@@ -176,7 +176,7 @@ RenameConversion(List *name, const char *newname)
 
 	/* make sure the new name doesn't exist */
 	if (SearchSysCacheExists(CONNAMENSP,
-							 CStringGetDatum(newname),
+							 CStringGetDatum((char *) newname),
 							 ObjectIdGetDatum(namespaceOid),
 							 0, 0))
 		ereport(ERROR,

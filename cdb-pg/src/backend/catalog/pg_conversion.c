@@ -56,7 +56,7 @@ ConversionCreate(const char *conname, Oid connamespace,
 
 	/* make sure there is no existing conversion of same name */
 	if (SearchSysCacheExists(CONNAMENSP,
-							 PointerGetDatum(conname),
+							 PointerGetDatum((char *) conname),
 							 ObjectIdGetDatum(connamespace),
 							 0, 0))
 		ereport(ERROR,
@@ -260,7 +260,7 @@ FindConversion(const char *conname, Oid connamespace)
 
 	/* search pg_conversion by connamespace and conversion name */
 	tuple = SearchSysCache(CONNAMENSP,
-						   PointerGetDatum(conname),
+						   PointerGetDatum((char *) conname),
 						   ObjectIdGetDatum(connamespace),
 						   0, 0);
 	if (!HeapTupleIsValid(tuple))

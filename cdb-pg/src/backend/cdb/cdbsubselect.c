@@ -197,7 +197,7 @@ convert_EXISTS_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink
         rnode = copyObject(subselect->limitCount);
         IncrementVarSublevelsUp(rnode, -1, 1);
         lnode = (Node *)makeConst(INT8OID, sizeof(int64), Int64GetDatum(0),
-                                  false, false);
+                                  false, true);
         limitqual = (Node *)make_op(NULL, list_make1(makeString("<")),
                                     lnode, rnode, -1);
         subselect->limitCount = NULL;
@@ -229,7 +229,7 @@ convert_EXISTS_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink
             lnode = copyObject(subselect->limitOffset);
             IncrementVarSublevelsUp(lnode, -1, 1);
             rnode = (Node *)makeConst(INT8OID, sizeof(int64), Int64GetDatum(1),
-                                      false, false);
+                                      false, true);
             node = (Node *)make_op(NULL, list_make1(makeString("<")),
                                    lnode, rnode, -1);
             limitqual = make_and_qual(limitqual, node);
@@ -276,7 +276,7 @@ convert_EXISTS_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink
     if (!contain_vars_of_level_or_above(sublink->subselect, 1))
     {
         subselect->limitCount = (Node *)makeConst(INT8OID, sizeof(int64), Int64GetDatum(1),
-                                                  false, false);
+                                                  false, true);
         return make_and_qual(limitqual, (Node *)sublink);
     }
 

@@ -384,7 +384,7 @@ plpgsql_exec_function(PLpgSQL_function *func, FunctionCallInfo fcinfo)
 			 * sure it is labeled with the caller-supplied tuple type.
 			 */
 			estate.retval =
-				PointerGetDatum(SPI_returntuple((HeapTuple) (estate.retval),
+				PointerGetDatum(SPI_returntuple((HeapTuple) (DatumGetPointer(estate.retval)),
 												tupdesc));
 		}
 		else
@@ -669,7 +669,7 @@ plpgsql_exec_trigger(PLpgSQL_function *func,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
 					 errmsg("returned tuple structure does not match table of trigger event")));
 		/* Copy tuple to upper executor memory */
-		rettup = SPI_copytuple((HeapTuple) (estate.retval));
+		rettup = SPI_copytuple((HeapTuple) (DatumGetPointer(estate.retval)));
 	}
 
 	/*
@@ -1856,7 +1856,7 @@ exec_stmt_return(PLpgSQL_execstate *estate, PLpgSQL_stmt_return *stmt)
 
 					if (HeapTupleIsValid(rec->tup))
 					{
-						estate->retval = (Datum) rec->tup;
+						estate->retval = PointerGetDatum(rec->tup);
 						estate->rettupdesc = rec->tupdesc;
 						estate->retisnull = false;
 					}
@@ -1868,8 +1868,8 @@ exec_stmt_return(PLpgSQL_execstate *estate, PLpgSQL_stmt_return *stmt)
 					PLpgSQL_row *row = (PLpgSQL_row *) retvar;
 
 					Assert(row->rowtupdesc);
-					estate->retval = (Datum) make_tuple_from_row(estate, row,
-															row->rowtupdesc);
+					estate->retval = PointerGetDatum(make_tuple_from_row(estate, row,
+															row->rowtupdesc));
 					if (estate->retval == (Datum) NULL) /* should not happen */
 						elog(ERROR, "row not compatible with its own tupdesc");
 					estate->rettupdesc = row->rowtupdesc;
@@ -1891,7 +1891,7 @@ exec_stmt_return(PLpgSQL_execstate *estate, PLpgSQL_stmt_return *stmt)
 			exec_run_select(estate, stmt->expr, 1, NULL);
 			if (estate->eval_processed > 0)
 			{
-				estate->retval = (Datum) estate->eval_tuptable->vals[0];
+				estate->retval = PointerGetDatum(estate->eval_tuptable->vals[0]);
 				estate->rettupdesc = estate->eval_tuptable->tupdesc;
 				estate->retisnull = false;
 			}
@@ -2977,7 +2977,7 @@ exec_stmt_open(PLpgSQL_execstate *estate, PLpgSQL_stmt_open *stmt)
 		 * ----------
 		 */
 		free_var(curvar);
-		curvar->value = DirectFunctionCall1(textin, CStringGetDatum(portal->name));
+		curvar->value = DirectFunctionCall1(textin, CStringGetDatum((char *) portal->name));
 		curvar->isnull = false;
 		curvar->freeval = true;
 
@@ -3075,7 +3075,7 @@ exec_stmt_open(PLpgSQL_execstate *estate, PLpgSQL_stmt_open *stmt)
 	 * ----------
 	 */
 	free_var(curvar);
-	curvar->value = DirectFunctionCall1(textin, CStringGetDatum(portal->name));
+	curvar->value = DirectFunctionCall1(textin, CStringGetDatum((char *) portal->name));
 	curvar->isnull = false;
 	curvar->freeval = true;
 

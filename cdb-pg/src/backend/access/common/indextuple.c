@@ -72,7 +72,7 @@ index_form_tuple(TupleDesc tupleDescriptor,
 		 * If value is stored EXTERNAL, must fetch it so we are not depending
 		 * on outside storage.	This should be improved someday.
 		 */
-		if (VARATT_IS_EXTERNAL(values[i]))
+		if (VARATT_IS_EXTERNAL_D(values[i]))
 		{
 			untoasted_values[i] = 
 				PointerGetDatum(heap_tuple_fetch_attr((varattrib *) 
@@ -84,9 +84,9 @@ index_form_tuple(TupleDesc tupleDescriptor,
 		 * If value is above size target, and is of a compressible datatype,
 		 * try to compress it in-line.
 		 */
-		if (!VARATT_IS_SHORT(untoasted_values[i]) &&
-			VARSIZE(untoasted_values[i]) > TOAST_INDEX_TARGET &&
-			!VARATT_IS_COMPRESSED(untoasted_values[i]) &&
+		if (!VARATT_IS_SHORT_D(untoasted_values[i]) &&
+			VARSIZE_D(untoasted_values[i]) > TOAST_INDEX_TARGET &&
+			!VARATT_IS_COMPRESSED_D(untoasted_values[i]) &&
 			(att->attstorage == 'x' || att->attstorage == 'm'))
 		{
 			Datum		cvalue = toast_compress_datum(untoasted_values[i]);
@@ -396,7 +396,7 @@ nocache_index_getattr(IndexTuple tup,
 			if (att[i]->attlen < 0)
 				usecache = false;
 
-			off = att_addlength(off, att[i]->attlen, tp + off);
+			off = att_addlength(off, att[i]->attlen, PointerGetDatum(tp + off));
 
 		}
 

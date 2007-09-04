@@ -385,7 +385,7 @@ InitializeSessionUserId(const char *rolename)
 	AssertState(!OidIsValid(AuthenticatedUserId));
 
 	roleTup = SearchSysCache(AUTHNAME,
-							 PointerGetDatum(rolename),
+							 PointerGetDatum((char *) rolename),
 							 0, 0, 0);
 	if (!HeapTupleIsValid(roleTup))
 		ereport(FATAL,

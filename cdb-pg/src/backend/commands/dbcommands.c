@@ -1208,7 +1208,7 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 	ScanKeyInit(&scankey,
 				Anum_pg_database_datname,
 				BTEqualStrategyNumber, F_NAMEEQ,
-				NameGetDatum(dbname));
+				NameGetDatum((char *) dbname));
 	scan = systable_beginscan(rel, DatabaseNameIndexId, true,
 							  SnapshotNow, 1, &scankey);
 	tuple = systable_getnext(scan);
@@ -1346,7 +1346,7 @@ get_db_info(const char *name, LOCKMODE lockmode,
 		ScanKeyInit(&scanKey,
 					Anum_pg_database_datname,
 					BTEqualStrategyNumber, F_NAMEEQ,
-					NameGetDatum(name));
+					NameGetDatum((char *) name));
 
 		scan = systable_beginscan(relation, DatabaseNameIndexId, true,
 								  SnapshotNow, 1, &scanKey);
@@ -1581,7 +1581,7 @@ get_database_oid(const char *dbname)
 	ScanKeyInit(&entry[0],
 				Anum_pg_database_datname,
 				BTEqualStrategyNumber, F_NAMEEQ,
-				CStringGetDatum(dbname));
+				CStringGetDatum((char *) dbname));
 	scan = systable_beginscan(pg_database, DatabaseNameIndexId, true,
 							  SnapshotNow, 1, entry);
 

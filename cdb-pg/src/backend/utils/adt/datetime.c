@@ -3997,7 +3997,7 @@ pg_timezone_names(PG_FUNCTION_ARGS)
 	MemSet(nulls, 0, sizeof(nulls));
 
 	values[0] = DirectFunctionCall1(textin,
-								  CStringGetDatum(pg_get_timezone_name(tz)));
+								  CStringGetDatum((char *) pg_get_timezone_name(tz)));
 
 	values[1] = DirectFunctionCall1(textin,
 									CStringGetDatum(tzn ? tzn : ""));

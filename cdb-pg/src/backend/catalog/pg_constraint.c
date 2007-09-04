@@ -137,7 +137,7 @@ CreateConstraintEntry(const char *constraintName,
 	 */
 	if (conBin)
 		values[Anum_pg_constraint_conbin - 1] = DirectFunctionCall1(textin,
-													CStringGetDatum(conBin));
+													CStringGetDatum((char *) conBin));
 	else
 		nulls[Anum_pg_constraint_conbin - 1] = 'n';
 
@@ -146,7 +146,7 @@ CreateConstraintEntry(const char *constraintName,
 	 */
 	if (conSrc)
 		values[Anum_pg_constraint_consrc - 1] = DirectFunctionCall1(textin,
-													CStringGetDatum(conSrc));
+													CStringGetDatum((char *) conSrc));
 	else
 		nulls[Anum_pg_constraint_consrc - 1] = 'n';
 
@@ -290,7 +290,7 @@ ConstraintNameIsUsed(ConstraintCategory conCat, Oid objId,
 	ScanKeyInit(&skey[0],
 				Anum_pg_constraint_conname,
 				BTEqualStrategyNumber, F_NAMEEQ,
-				CStringGetDatum(conname));
+				CStringGetDatum((char *) conname));
 
 	ScanKeyInit(&skey[1],
 				Anum_pg_constraint_connamespace,

@@ -302,7 +302,7 @@ AggregateCreateWithOid(const char *aggName,
 	values[Anum_pg_aggregate_aggtranstype - 1] = ObjectIdGetDatum(aggTransType);
 	if (agginitval)
 		values[Anum_pg_aggregate_agginitval - 1] =
-			DirectFunctionCall1(textin, CStringGetDatum(agginitval));
+			DirectFunctionCall1(textin, CStringGetDatum((char *) agginitval));
 	else
 		nulls[Anum_pg_aggregate_agginitval - 1] = 'n';
 

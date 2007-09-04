@@ -265,7 +265,7 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 
 	assert(pszBackupFileName != NULL && pszBackupFileName[0] != '\0');
 
-	PG_RETURN_TEXT_P(DirectFunctionCall1(textin, CStringGetDatum(pszBackupFileName)));
+	return DirectFunctionCall1(textin, CStringGetDatum(pszBackupFileName));
 }
 
 /*
@@ -515,7 +515,7 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 
 	assert(pszBackupFileName != NULL && pszBackupFileName[0] != '\0');
 
-	PG_RETURN_TEXT_P(DirectFunctionCall1(textin, CStringGetDatum(pszBackupFileName)));
+	return DirectFunctionCall1(textin, CStringGetDatum(pszBackupFileName));
 }
 
 /*
@@ -625,7 +625,7 @@ gp_read_backup_file__(PG_FUNCTION_ARGS)
 	f = NULL;
 	pszBackup[info.st_size] = '\0';
 
-	PG_RETURN_TEXT_P(DirectFunctionCall1(textin, CStringGetDatum(pszBackup)));
+	return DirectFunctionCall1(textin, CStringGetDatum(pszBackup));
 }
 
 /*
@@ -710,7 +710,7 @@ gp_write_backup_file__(PG_FUNCTION_ARGS)
 	
 	assert(pszFileName != NULL && pszFileName[0] != '\0');
 	
-	PG_RETURN_TEXT_P(DirectFunctionCall1(textin, CStringGetDatum(pszFileName)));
+	return DirectFunctionCall1(textin, CStringGetDatum(pszFileName));
 }
 
 /*

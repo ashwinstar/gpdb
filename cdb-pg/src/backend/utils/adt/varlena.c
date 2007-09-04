@@ -705,7 +705,7 @@ text_substring(Datum str, int32 start, int32 length, bool length_not_specified)
 		 * If we're working with an untoasted source, no need to do an
 		 * extra copying step.
 		 */
-		if (VARATT_IS_EXTENDED(str))
+		if (VARATT_IS_EXTENDED_D(str))
 			slice = DatumGetTextPSlice(str, slice_start, slice_size);
 		else
 			slice = (text *) DatumGetPointer(str);
@@ -2652,7 +2652,7 @@ array_to_text(PG_FUNCTION_ARGS)
 				appendStringInfoString(&buf, value);
 			printed = true;
 
-			p = DatumGetPointer(att_addlength(PointerGetDatum(p), typlen, p)); 
+			p = DatumGetPointer(att_addlength(PointerGetDatum(p), typlen, PointerGetDatum(p))); 
 			p = (char *) att_align(p, typalign);
 		}
 

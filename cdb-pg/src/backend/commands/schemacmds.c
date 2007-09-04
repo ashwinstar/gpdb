@@ -271,7 +271,7 @@ RenameSchema(const char *oldname, const char *newname)
 	rel = heap_open(NamespaceRelationId, RowExclusiveLock);
 
 	tup = SearchSysCacheCopy(NAMESPACENAME,
-							 CStringGetDatum(oldname),
+							 CStringGetDatum((char *) oldname),
 							 0, 0, 0);
 	if (!HeapTupleIsValid(tup))
 		ereport(ERROR,
@@ -281,7 +281,7 @@ RenameSchema(const char *oldname, const char *newname)
 	/* make sure the new name doesn't exist */
 	if (HeapTupleIsValid(
 						 SearchSysCache(NAMESPACENAME,
-										CStringGetDatum(newname),
+										CStringGetDatum((char *) newname),
 										0, 0, 0)))
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_SCHEMA),
@@ -348,7 +348,7 @@ AlterSchemaOwner(const char *name, Oid newOwnerId)
 	rel = heap_open(NamespaceRelationId, RowExclusiveLock);
 
 	tup = SearchSysCache(NAMESPACENAME,
-						 CStringGetDatum(name),
+						 CStringGetDatum((char *) name),
 						 0, 0, 0);
 	if (!HeapTupleIsValid(tup))
 		ereport(ERROR,

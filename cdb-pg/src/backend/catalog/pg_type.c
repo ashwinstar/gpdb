@@ -282,7 +282,7 @@ TypeCreateWithOid(const char *typeName,
 	 */
 	if (defaultTypeValue)
 		values[i] = DirectFunctionCall1(textin,
-										CStringGetDatum(defaultTypeValue));
+										CStringGetDatum((char *) defaultTypeValue));
 	else
 		nulls[i] = 'n';
 	i++;						/* typdefault */
@@ -296,7 +296,7 @@ TypeCreateWithOid(const char *typeName,
 	pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
 
 	tup = SearchSysCacheCopy(TYPENAMENSP,
-							 CStringGetDatum(typeName),
+							 CStringGetDatum((char *) typeName),
 							 ObjectIdGetDatum(typeNamespace),
 							 0, 0);
 	if (HeapTupleIsValid(tup))
@@ -579,7 +579,7 @@ TypeRename(const char *oldTypeName, Oid typeNamespace,
 	pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
 
 	tuple = SearchSysCacheCopy(TYPENAMENSP,
-							   CStringGetDatum(oldTypeName),
+							   CStringGetDatum((char *) oldTypeName),
 							   ObjectIdGetDatum(typeNamespace),
 							   0, 0);
 	if (!HeapTupleIsValid(tuple))
@@ -588,7 +588,7 @@ TypeRename(const char *oldTypeName, Oid typeNamespace,
 				 errmsg("type \"%s\" does not exist", oldTypeName)));
 
 	if (SearchSysCacheExists(TYPENAMENSP,
-							 CStringGetDatum(newTypeName),
+							 CStringGetDatum((char *) newTypeName),
 							 ObjectIdGetDatum(typeNamespace),
 							 0, 0))
 		ereport(ERROR,

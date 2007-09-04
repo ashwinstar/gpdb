@@ -29,7 +29,7 @@ IsDefinedRewriteRule(Oid owningRel, const char *ruleName)
 {
 	return SearchSysCacheExists(RULERELNAME,
 								ObjectIdGetDatum(owningRel),
-								PointerGetDatum(ruleName),
+								PointerGetDatum((char *) ruleName),
 								0, 0);
 }
 

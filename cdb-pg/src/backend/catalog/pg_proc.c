@@ -244,9 +244,9 @@ ProcedureCreate(const char *procedureName,
 	else
 		nulls[Anum_pg_proc_proargnames - 1] = 'n';
 	values[Anum_pg_proc_prosrc - 1] = DirectFunctionCall1(textin,
-													CStringGetDatum(prosrc));
+													CStringGetDatum((char *) prosrc));
 	values[Anum_pg_proc_probin - 1] = DirectFunctionCall1(textin,
-													CStringGetDatum(probin));
+													CStringGetDatum((char *) probin));
 	/* start out with empty permissions */
 	nulls[Anum_pg_proc_proacl - 1] = 'n';
 
@@ -255,7 +255,7 @@ ProcedureCreate(const char *procedureName,
 
 	/* Check for pre-existing definition */
 	oldtup = SearchSysCache(PROCNAMEARGSNSP,
-							PointerGetDatum(procedureName),
+							PointerGetDatum((char *) procedureName),
 							PointerGetDatum(parameterTypes),
 							ObjectIdGetDatum(procNamespace),
 							0);

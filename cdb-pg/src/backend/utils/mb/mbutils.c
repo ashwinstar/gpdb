@@ -289,9 +289,8 @@ pg_convert(PG_FUNCTION_ARGS)
 				 pg_convert2, string, src_encoding_name, dest_encoding_name);
 
 	/* free memory allocated by namein */
-	pfree((void *) src_encoding_name);
-
-	PG_RETURN_TEXT_P(result);
+	pfree((void *) DatumGetPointer(src_encoding_name));
+	return result;
 }
 
 /*
@@ -463,7 +462,7 @@ perform_default_encoding_conversion(const char *src, int len, bool is_client_to_
 	FunctionCall5(flinfo,
 				  Int32GetDatum(src_encoding),
 				  Int32GetDatum(dest_encoding),
-				  CStringGetDatum(src),
+				  CStringGetDatum((char *) src),
 				  CStringGetDatum(result),
 				  Int32GetDatum(len));
 	return result;

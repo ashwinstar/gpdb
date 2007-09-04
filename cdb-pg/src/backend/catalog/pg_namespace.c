@@ -44,7 +44,7 @@ NamespaceCreate(const char *nspName, Oid ownerId, Oid forceOid)
 
 	/* make sure there is no existing namespace of same name */
 	if (SearchSysCacheExists(NAMESPACENAME,
-							 PointerGetDatum(nspName),
+							 PointerGetDatum((char *) nspName),
 							 0, 0, 0))
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_SCHEMA),

@@ -133,6 +133,7 @@ hashname(PG_FUNCTION_ARGS)
 }
 
 
+extern void varattrib_untoast_ptr_len(Datum d, char **datastart, int *len, void **tofree);
 Datum
 hashtext(PG_FUNCTION_ARGS)
 {

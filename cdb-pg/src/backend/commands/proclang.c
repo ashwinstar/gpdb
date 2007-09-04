@@ -323,7 +323,7 @@ find_language_template(const char *languageName)
 	ScanKeyInit(&key,
 				Anum_pg_pltemplate_tmplname,
 				BTEqualStrategyNumber, F_NAMEEQ,
-				NameGetDatum(languageName));
+				NameGetDatum((char *) languageName));
 	scan = systable_beginscan(rel, PLTemplateNameIndexId, true,
 							  SnapshotNow, 1, &key);
 
@@ -479,7 +479,7 @@ RenameLanguage(const char *oldname, const char *newname)
 	rel = heap_open(LanguageRelationId, RowExclusiveLock);
 
 	tup = SearchSysCacheCopy(LANGNAME,
-							 CStringGetDatum(oldname),
+							 CStringGetDatum((char *) oldname),
 							 0, 0, 0);
 	if (!HeapTupleIsValid(tup))
 		ereport(ERROR,
@@ -488,7 +488,7 @@ RenameLanguage(const char *oldname, const char *newname)
 
 	/* make sure the new name doesn't exist */
 	if (SearchSysCacheExists(LANGNAME,
-							 CStringGetDatum(newname),
+							 CStringGetDatum((char *) newname),
 							 0, 0, 0))
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),

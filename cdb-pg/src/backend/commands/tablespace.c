@@ -967,7 +967,7 @@ RenameTableSpace(const char *oldname, const char *newname)
 	ScanKeyInit(&entry[0],
 				Anum_pg_tablespace_spcname,
 				BTEqualStrategyNumber, F_NAMEEQ,
-				CStringGetDatum(oldname));
+				CStringGetDatum((char *) oldname));
 	scan = heap_beginscan(rel, SnapshotNow, 1, entry);
 	tup = heap_getnext(scan, ForwardScanDirection);
 	if (!HeapTupleIsValid(tup))
@@ -996,7 +996,7 @@ RenameTableSpace(const char *oldname, const char *newname)
 	ScanKeyInit(&entry[0],
 				Anum_pg_tablespace_spcname,
 				BTEqualStrategyNumber, F_NAMEEQ,
-				CStringGetDatum(newname));
+				CStringGetDatum((char *) newname));
 	scan = heap_beginscan(rel, SnapshotNow, 1, entry);
 	tup = heap_getnext(scan, ForwardScanDirection);
 	if (HeapTupleIsValid(tup))
@@ -1034,7 +1034,7 @@ AlterTableSpaceOwner(const char *name, Oid newOwnerId)
 	ScanKeyInit(&entry[0],
 				Anum_pg_tablespace_spcname,
 				BTEqualStrategyNumber, F_NAMEEQ,
-				CStringGetDatum(name));
+				CStringGetDatum((char *) name));
 	scandesc = heap_beginscan(rel, SnapshotNow, 1, entry);
 	tup = heap_getnext(scandesc, ForwardScanDirection);
 	if (!HeapTupleIsValid(tup))
@@ -1200,7 +1200,7 @@ get_tablespace_oid(const char *tablespacename)
 	ScanKeyInit(&entry[0],
 				Anum_pg_tablespace_spcname,
 				BTEqualStrategyNumber, F_NAMEEQ,
-				CStringGetDatum(tablespacename));
+				CStringGetDatum((char *) tablespacename));
 	scandesc = heap_beginscan(rel, SnapshotNow, 1, entry);
 	tuple = heap_getnext(scandesc, ForwardScanDirection);
 

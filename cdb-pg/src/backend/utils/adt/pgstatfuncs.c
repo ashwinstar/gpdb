@@ -513,8 +513,7 @@ pg_stat_get_backend_client_addr(PG_FUNCTION_ARGS)
 	}
 #endif
 
-	PG_RETURN_INET_P(DirectFunctionCall1(inet_in,
-										 CStringGetDatum(remote_host)));
+	return DirectFunctionCall1(inet_in, CStringGetDatum(remote_host));
 }
 
 Datum
@@ -856,7 +855,7 @@ pg_renice_session(PG_FUNCTION_ARGS)
 					{
 						ereport(WARNING,(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 						 errmsg("Could not change nice value to lower number because we don't have the privileges to do so")
-						)));
+						));
 					}
 					else if (errno == ESRCH)
 					{

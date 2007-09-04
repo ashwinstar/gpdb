@@ -1001,7 +1001,7 @@ DropRole(DropRoleStmt *stmt)
 		Oid			roleid;
 
 		tuple = SearchSysCache(AUTHNAME,
-							   PointerGetDatum(role),
+							   PointerGetDatum((char *) role),
 							   0, 0, 0);
 		if (!HeapTupleIsValid(tuple))
 		{
@@ -1162,7 +1162,7 @@ RenameRole(const char *oldname, const char *newname)
 	dsc = RelationGetDescr(rel);
 
 	oldtuple = SearchSysCache(AUTHNAME,
-							  CStringGetDatum(oldname),
+							  CStringGetDatum((char *) oldname),
 							  0, 0, 0);
 	if (!HeapTupleIsValid(oldtuple))
 		ereport(ERROR,
@@ -1190,7 +1190,7 @@ RenameRole(const char *oldname, const char *newname)
 
 	/* make sure the new name doesn't exist */
 	if (SearchSysCacheExists(AUTHNAME,
-							 CStringGetDatum(newname),
+							 CStringGetDatum((char *) newname),
 							 0, 0, 0))
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
@@ -1227,7 +1227,7 @@ RenameRole(const char *oldname, const char *newname)
 
 	repl_repl[Anum_pg_authid_rolname - 1] = 'r';
 	repl_val[Anum_pg_authid_rolname - 1] = DirectFunctionCall1(namein,
-												   CStringGetDatum(newname));
+												   CStringGetDatum((char *) newname));
 	repl_null[Anum_pg_authid_rolname - 1] = ' ';
 
 	datum = heap_getattr(oldtuple, Anum_pg_authid_rolpassword, dsc, &isnull);

@@ -39,8 +39,6 @@
 /*
  * Same, but work from byval/len parameters rather than Form_pg_attribute.
  */
-#if SIZEOF_DATUM == 8
-
 #define fetch_att(T,attbyval,attlen) \
 ( \
 	(attbyval) ? \
@@ -66,29 +64,6 @@
 	: \
 	PointerGetDatum((char *) (T)) \
 )
-#else							/* SIZEOF_DATUM != 8 */
-
-#define fetch_att(T,attbyval,attlen) \
-( \
-	(attbyval) ? \
-	( \
-		(attlen) == (int) sizeof(int32) ? \
-			Int32GetDatum(*((int32 *)(T))) \
-		: \
-		( \
-			(attlen) == (int) sizeof(int16) ? \
-				Int16GetDatum(*((int16 *)(T))) \
-			: \
-			( \
-				AssertMacro((attlen) == 1), \
-				CharGetDatum(*((char *)(T))) \
-			) \
-		) \
-	) \
-	: \
-	PointerGetDatum((char *) (T)) \
-)
-#endif   /* SIZEOF_DATUM == 8 */
 
 /*
  * att_align aligns the given offset as needed for a datum of alignment
@@ -134,8 +109,6 @@
  * distinguish by-val and by-ref cases anyway, and so a do-it-all macro
  * wouldn't be convenient.
  */
-#if SIZEOF_DATUM == 8
-
 #define store_att_byval(T,newdatum,attlen) \
 	do { \
 		switch (attlen) \
@@ -158,27 +131,5 @@
 				break; \
 		} \
 	} while (0)
-#else							/* SIZEOF_DATUM != 8 */
-
-#define store_att_byval(T,newdatum,attlen) \
-	do { \
-		switch (attlen) \
-		{ \
-			case sizeof(char): \
-				*(char *) (T) = DatumGetChar(newdatum); \
-				break; \
-			case sizeof(int16): \
-				*(int16 *) (T) = DatumGetInt16(newdatum); \
-				break; \
-			case sizeof(int32): \
-				*(int32 *) (T) = DatumGetInt32(newdatum); \
-				break; \
-			default: \
-				elog(ERROR, "unsupported byval length: %d", \
-					 (int) (attlen)); \
-				break; \
-		} \
-	} while (0)
-#endif   /* SIZEOF_DATUM == 8 */
 
 #endif

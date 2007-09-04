@@ -722,7 +722,7 @@ SearchSysCacheAttName(Oid relid, const char *attname)
 
 	tuple = SearchSysCache(ATTNAME,
 						   ObjectIdGetDatum(relid),
-						   CStringGetDatum(attname),
+						   CStringGetDatum((char *) attname),
 						   0, 0);
 	if (!HeapTupleIsValid(tuple))
 		return NULL;

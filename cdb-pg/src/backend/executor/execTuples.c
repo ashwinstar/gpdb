@@ -800,7 +800,7 @@ bool ExecCopySlotMinimalTupleTo(TupleTableSlot *slot, char *dest, unsigned int *
 			else if (att[i]->attlen == -1 &&
 					att[i]->attalign == 'd' &&
 					att[i]->attndims == 0 &&
-					!VARATT_IS_EXTENDED(slot->tts_values[i]))
+					!VARATT_IS_EXTENDED_D(slot->tts_values[i]))
 			{
 				slot->tts_values[i] = toast_flatten_tuple_attribute(slot->tts_values[i],
 						att[i]->atttypid,

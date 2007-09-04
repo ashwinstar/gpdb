@@ -306,7 +306,7 @@ RenameAggregate(List *name, List *args, const char *newname)
 
 	/* make sure the new name doesn't exist */
 	if (SearchSysCacheExists(PROCNAMEARGSNSP,
-							 CStringGetDatum(newname),
+							 CStringGetDatum((char *) newname),
 							 PointerGetDatum(&procForm->proargtypes),
 							 ObjectIdGetDatum(namespaceOid),
 							 0))

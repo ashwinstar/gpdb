@@ -46,7 +46,7 @@ RemoveRewriteRule(Oid owningRel, const char *ruleName, DropBehavior behavior,
 	 */
 	tuple = SearchSysCache(RULERELNAME,
 						   ObjectIdGetDatum(owningRel),
-						   PointerGetDatum(ruleName),
+						   PointerGetDatum((char *) ruleName),
 						   0, 0);
 
 	/*

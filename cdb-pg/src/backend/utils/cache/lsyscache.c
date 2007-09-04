@@ -1066,7 +1066,7 @@ Oid
 get_relname_relid(const char *relname, Oid relnamespace)
 {
 	return GetSysCacheOid(RELNAMENSP,
-						  PointerGetDatum(relname),
+						  PointerGetDatum((char *) relname),
 						  ObjectIdGetDatum(relnamespace),
 						  0, 0);
 }
@@ -2204,7 +2204,7 @@ Oid
 get_roleid(const char *rolname)
 {
 	return GetSysCacheOid(AUTHNAME,
-						  PointerGetDatum(rolname),
+						  PointerGetDatum((char *) rolname),
 						  0, 0, 0);
 }
 

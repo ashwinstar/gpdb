@@ -373,7 +373,7 @@ toast_delete(Relation rel, HeapTuple oldtup)
 		{
 			Datum		value = toast_values[i];
 
-			if (!toast_isnull[i] && VARATT_IS_EXTERNAL(value))
+			if (!toast_isnull[i] && VARATT_IS_EXTERNAL_D(value))
 				toast_delete_datum(rel, value);
 		}
 	}
@@ -591,9 +591,9 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup)
 		{
 			if (toast_action[i] != ' ')
 				continue;
-			if (VARATT_IS_EXTERNAL(toast_values[i]))
+			if (VARATT_IS_EXTERNAL_D(toast_values[i]))
 				continue;
-			if (VARATT_IS_COMPRESSED(toast_values[i]))
+			if (VARATT_IS_COMPRESSED_D(toast_values[i]))
 				continue;
 			if (att[i]->attstorage != 'x')
 				continue;
@@ -622,7 +622,7 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup)
 				pfree(DatumGetPointer(old_value));
 			toast_values[i] = new_value;
 			toast_free[i] = true;
-			toast_sizes[i] = VARSIZE(toast_values[i]);
+			toast_sizes[i] = VARSIZE_D(toast_values[i]);
 			need_change = true;
 			need_free = true;
 		}
@@ -656,7 +656,7 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup)
 		{
 			if (toast_action[i] == 'p')
 				continue;
-			if (VARATT_IS_EXTERNAL(toast_values[i]))
+			if (VARATT_IS_EXTERNAL_D(toast_values[i]))
 				continue;
 			if (att[i]->attstorage != 'x' && att[i]->attstorage != 'e')
 				continue;
@@ -704,9 +704,9 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup)
 		{
 			if (toast_action[i] != ' ')
 				continue;
-			if (VARATT_IS_EXTERNAL(toast_values[i]))
+			if (VARATT_IS_EXTERNAL_D(toast_values[i]))
 				continue;
-			if (VARATT_IS_COMPRESSED(toast_values[i]))
+			if (VARATT_IS_COMPRESSED_D(toast_values[i]))
 				continue;
 			if (att[i]->attstorage != 'm')
 				continue;
@@ -734,7 +734,7 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup)
 				pfree(DatumGetPointer(old_value));
 			toast_values[i] = new_value;
 			toast_free[i] = true;
-			toast_sizes[i] = VARSIZE(toast_values[i]);
+			toast_sizes[i] = VARSIZE_D(toast_values[i]);
 			need_change = true;
 			need_free = true;
 		}
@@ -767,7 +767,7 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup)
 		{
 			if (toast_action[i] == 'p')
 				continue;
-			if (VARATT_IS_EXTERNAL(toast_values[i]))
+			if (VARATT_IS_EXTERNAL_D(toast_values[i]))
 				continue;
 			if (att[i]->attstorage != 'm')
 				continue;
@@ -792,7 +792,7 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup)
 			pfree(DatumGetPointer(old_value));
 
 		toast_free[i] = true;
-		toast_sizes[i] = VARSIZE(toast_values[i]);
+		toast_sizes[i] = VARSIZE_D(toast_values[i]);
 
 		need_change = true;
 		need_free = true;
@@ -1014,12 +1014,12 @@ Datum
 toast_compress_datum(Datum value)
 {
 	varattrib  *tmp;
-	int32		valsize = VARSIZE_ANY_EXHDR(value);
+	int32		valsize = VARSIZE_ANY_EXHDR_D(value);
 
 	tmp = (varattrib *) palloc(PGLZ_MAX_OUTPUT(valsize));
-	if (pglz_compress(VARDATA_ANY(value), valsize,
+	if (pglz_compress(VARDATA_ANY_D(value), valsize,
 					  (PGLZ_Header *) tmp, PGLZ_strategy_default) &&
-		VARSIZE(tmp) < VARSIZE_ANY(value))
+		VARSIZE(tmp) < VARSIZE_ANY_D(value))
 	{
 		/* successful compression */
 		VARATT_SET_COMPRESSED(tmp);
@@ -1082,30 +1082,30 @@ toast_save_datum(Relation rel, Datum value)
 	 * extsize is the actual size of the data payload in the toast records
 	 * without any headers
 	 */
-	if (VARATT_IS_SHORT(value)) 
+	if (VARATT_IS_SHORT_D(value)) 
 	{
-		rawsize = VARSIZE_SHORT(value) - VARHDRSZ_SHORT + VARHDRSZ;
-		extsize = VARSIZE_SHORT(value) - VARHDRSZ_SHORT;
-		data_p = VARDATA_SHORT(value);
-		data_todo = VARSIZE_SHORT(value) - VARHDRSZ_SHORT;
+		rawsize = VARSIZE_SHORT_D(value) - VARHDRSZ_SHORT + VARHDRSZ;
+		extsize = VARSIZE_SHORT_D(value) - VARHDRSZ_SHORT;
+		data_p = VARDATA_SHORT_D(value);
+		data_todo = VARSIZE_SHORT_D(value) - VARHDRSZ_SHORT;
 	}
-	else if (VARATT_IS_COMPRESSED(value))
+	else if (VARATT_IS_COMPRESSED_D(value))
 	{
 		/* rawsize in a compressed datum is the just the size of the payload */
 		rawsize = ((varattrib *) DatumGetPointer(value))->va_compressed.va_rawsize + VARHDRSZ;
-		extsize = VARSIZE(value) - VARHDRSZ;
-		data_p = VARDATA(value);
-		data_todo = VARSIZE(value) - VARHDRSZ;
+		extsize = VARSIZE_D(value) - VARHDRSZ;
+		data_p = VARDATA_D(value);
+		data_todo = VARSIZE_D(value) - VARHDRSZ;
 		/* 	we used to set result->va_header |= VARATT_FLAG_COMPRESSED; down
 		 * 	below. we don't any longer and depend on the equality holding:
 		 * 	extsize = rawsize + VARHDRSZ*/
 	}
 	else 
 	{
-		rawsize = VARSIZE(value);
-		extsize = VARSIZE(value) - VARHDRSZ;
-		data_p = VARDATA(value);
-		data_todo = VARSIZE(value) - VARHDRSZ;
+		rawsize = VARSIZE_D(value);
+		extsize = VARSIZE_D(value) - VARHDRSZ;
+		data_p = VARDATA_D(value);
+		data_todo = VARSIZE_D(value) - VARHDRSZ;
 	}
 	
 	SET_VARSIZE_EXTERNAL(result);
@@ -1115,14 +1115,14 @@ toast_save_datum(Relation rel, Datum value)
 	result->va_external.va_toastrelid = rel->rd_rel->reltoastrelid;
 
 #ifdef USE_ASSERT_CHECKING
-	Assert( (VARATT_IS_COMPRESSED(value)||0) == (VARATT_EXTERNAL_IS_COMPRESSED(result)||0) );
+	Assert( (VARATT_IS_COMPRESSED_D(value)||0) == (VARATT_EXTERNAL_IS_COMPRESSED(result)||0) );
 
-	if (VARATT_IS_COMPRESSED(value)) 
+	if (VARATT_IS_COMPRESSED_D(value)) 
 	{
 		Assert(VARATT_EXTERNAL_IS_COMPRESSED(result));
 		elog(DEBUG4,
 			 "saved toast datum, original varsize %ud rawsize %ud new extsize %ud rawsize %uld\n", 
-			 VARSIZE(value), ((varattrib *) DatumGetPointer(value))->va_compressed.va_rawsize,
+			 VARSIZE_D(value), ((varattrib *) DatumGetPointer(value))->va_compressed.va_rawsize,
 			 result->va_external.va_extsize, result->va_external.va_rawsize);
 	}
 	else
@@ -1130,7 +1130,7 @@ toast_save_datum(Relation rel, Datum value)
 		Assert(!VARATT_EXTERNAL_IS_COMPRESSED(result));
 		elog(DEBUG4,
 			 "saved toast datum, original varsize %ud new extsize %ud rawsize %ud\n", 
-			 VARSIZE(value),
+			 VARSIZE_D(value),
 			 result->va_external.va_extsize, result->va_external.va_rawsize);
 	}
 #endif
@@ -1326,15 +1326,15 @@ toast_fetch_datum(varattrib *attr)
 		Assert(!isnull);
 		chunk = DatumGetPointer(fastgetattr(ttup, 3, toasttupDesc, &isnull));
 		Assert(!isnull);
-		if (VARATT_IS_SHORT(PointerGetDatum(chunk))) 
+		if (VARATT_IS_SHORT(chunk)) 
 		{
-			chunksize = VARSIZE_SHORT(PointerGetDatum(chunk)) - VARHDRSZ_SHORT;
-			chunkdata = VARDATA_SHORT(PointerGetDatum(chunk));
+			chunksize = VARSIZE_SHORT(chunk) - VARHDRSZ_SHORT;
+			chunkdata = VARDATA_SHORT(chunk);
 		}
-		else if (!VARATT_IS_EXTENDED(PointerGetDatum(chunk))) 
+		else if (!VARATT_IS_EXTENDED(chunk)) 
 		{
-			chunksize = VARSIZE(PointerGetDatum(chunk)) - VARHDRSZ;
-			chunkdata = VARDATA(PointerGetDatum(chunk));
+			chunksize = VARSIZE(chunk) - VARHDRSZ;
+			chunkdata = VARDATA(chunk);
 		}
 		else 
 		{

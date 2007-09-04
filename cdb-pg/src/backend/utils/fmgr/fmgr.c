@@ -791,7 +791,7 @@ fmgr_oldstyle(PG_FUNCTION_ARGS)
 			break;
 	}
 
-	return (Datum) returnValue;
+	return PointerGetDatum(returnValue);
 }
 
 
@@ -1922,7 +1922,7 @@ fmgr(Oid procedureId,...)
 					flinfo.fn_oid, n_arguments, FUNC_MAX_ARGS)));
 		va_start(pvar, procedureId);
 		for (i = 0; i < n_arguments; i++)
-			fcinfo.arg[i] = (Datum) va_arg(pvar, char *);
+			fcinfo.arg[i] = PointerGetDatum(va_arg(pvar, char *));
 		va_end(pvar);
 	}
 
@@ -1932,61 +1932,7 @@ fmgr(Oid procedureId,...)
 	if (fcinfo.isnull)
 		elog(ERROR, "function %u returned NULL", flinfo.fn_oid);
 
-	return (char *) result;
-}
-
-
-/*-------------------------------------------------------------------------
- *		Support routines for standard pass-by-reference datatypes
- *
- * Note: at some point, at least on some platforms, these might become
- * pass-by-value types.  Obviously Datum must be >= 8 bytes to allow
- * int64 or float8 to be pass-by-value.  I think that Float4GetDatum
- * and Float8GetDatum will need to be out-of-line routines anyway,
- * since just casting from float to Datum will not do the right thing;
- * some kind of trick with pointer-casting or a union will be needed.
- *-------------------------------------------------------------------------
- */
-
-Datum
-Int64GetDatum(int64 X)
-{
-#ifndef INT64_IS_BUSTED
-	int64	   *retval = (int64 *) palloc(sizeof(int64));
-
-	*retval = X;
-	return PointerGetDatum(retval);
-#else							/* INT64_IS_BUSTED */
-
-	/*
-	 * On a machine with no 64-bit-int C datatype, sizeof(int64) will not be
-	 * 8, but we want Int64GetDatum to return an 8-byte object anyway, with
-	 * zeroes in the unused bits.  This is needed so that, for example, hash
-	 * join of int8 will behave properly.
-	 */
-	int64	   *retval = (int64 *) palloc0(Max(sizeof(int64), 8));
-
-	*retval = X;
-	return PointerGetDatum(retval);
-#endif   /* INT64_IS_BUSTED */
-}
-
-Datum
-Float4GetDatum(float4 X)
-{
-	float4	   *retval = (float4 *) palloc(sizeof(float4));
-
-	*retval = X;
-	return PointerGetDatum(retval);
-}
-
-Datum
-Float8GetDatum(float8 X)
-{
-	float8	   *retval = (float8 *) palloc(sizeof(float8));
-
-	*retval = X;
-	return PointerGetDatum(retval);
+	return DatumGetPointer(result);
 }
 
 /*-------------------------------------------------------------------------

@@ -1050,7 +1050,8 @@ hash_seq_init(HASH_SEQ_STATUS *status, HTAB *hashp)
 	status->hashp = hashp;
 	status->curBucket = 0;
 	status->curEntry = NULL;
-	if (!hashp->frozen)
+
+	if (hashp && !hashp->frozen)
 		register_seq_scan(hashp);
 }
 

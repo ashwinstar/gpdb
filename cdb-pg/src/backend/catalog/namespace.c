@@ -426,7 +426,7 @@ TypenameGetTypid(const char *typname)
 		Oid			namespaceId = lfirst_oid(l);
 
 		typid = GetSysCacheOid(TYPENAMENSP,
-							   PointerGetDatum(typname),
+							   PointerGetDatum((char *) typname),
 							   ObjectIdGetDatum(namespaceId),
 							   0, 0);
 		if (OidIsValid(typid))
@@ -1064,7 +1064,7 @@ OpclassnameGetOpcid(Oid amid, const char *opcname)
 
 		opcid = GetSysCacheOid(CLAAMNAMENSP,
 							   ObjectIdGetDatum(amid),
-							   PointerGetDatum(opcname),
+							   PointerGetDatum((char *) opcname),
 							   ObjectIdGetDatum(namespaceId),
 							   0);
 		if (OidIsValid(opcid))
@@ -1148,7 +1148,7 @@ ConversionGetConid(const char *conname)
 			continue;			/* do not look in temp namespace */
 
 		conid = GetSysCacheOid(CONNAMENSP,
-							   PointerGetDatum(conname),
+							   PointerGetDatum((char *) conname),
 							   ObjectIdGetDatum(namespaceId),
 							   0, 0);
 		if (OidIsValid(conid))
@@ -1287,7 +1287,7 @@ LookupExplicitNamespace(const char *nspname)
 	}
 
 	namespaceId = GetSysCacheOid(NAMESPACENAME,
-								 CStringGetDatum(nspname),
+								 CStringGetDatum((char *) nspname),
 								 0, 0, 0);
 	if (!OidIsValid(namespaceId))
 		ereport(ERROR,
@@ -1328,7 +1328,7 @@ LookupCreationNamespace(const char *nspname)
 	}
 
 	namespaceId = GetSysCacheOid(NAMESPACENAME,
-								 CStringGetDatum(nspname),
+								 CStringGetDatum((char *) nspname),
 								 0, 0, 0);
 	if (!OidIsValid(namespaceId))
 		ereport(ERROR,

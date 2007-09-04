@@ -233,7 +233,7 @@ Async_Listen(const char *relname)
 	}
 
 	i = 0;
-	values[i++] = (Datum) relname;
+	values[i++] = PointerGetDatum((char *) relname);
 	values[i++] = (Datum) MyProcPid;
 	values[i++] = (Datum) 0;	/* no notifies pending */
 

@@ -4110,7 +4110,7 @@ do_ntile_prelim(WindowRefExprState *ref_state, int64 num_tiles)
 	work[0] = Int64GetDatumFast(num_tiles); /* ntile argument */
 	work[1] = Int64GetDatumFast(window_state->row_index);
 		
-	return construct_array(work, 2, INT8OID, 8, false, 'd');
+	return construct_array(work, 2, INT8OID, 8, true, 'd');
 }
  
 Datum
@@ -4179,7 +4179,7 @@ ntile_final(PG_FUNCTION_ARGS)
 	int64 partition_row_count = PG_GETARG_INT64(1); /* partition row count */
 	
 	/* we expect the input to be bigint[2] */
-	deconstruct_array(pair, INT8OID, 8, false, 'd', &work, NULL, &len);
+	deconstruct_array(pair, INT8OID, 8, true, 'd', &work, NULL, &len);
 	if (len != 2)
 		elog(ERROR, "expected 2-element int8 array");
 

@@ -490,7 +490,7 @@ DropTrigger(Oid relid, const char *trigname, DropBehavior behavior,
 	ScanKeyInit(&skey[1],
 				Anum_pg_trigger_tgname,
 				BTEqualStrategyNumber, F_NAMEEQ,
-				CStringGetDatum(trigname));
+				CStringGetDatum((char *) trigname));
 
 	tgscan = systable_beginscan(tgrel, TriggerRelidNameIndexId, true,
 								SnapshotNow, 2, skey);
@@ -675,7 +675,7 @@ renametrig(Oid relid,
 	ScanKeyInit(&key[1],
 				Anum_pg_trigger_tgname,
 				BTEqualStrategyNumber, F_NAMEEQ,
-				PointerGetDatum(newname));
+				PointerGetDatum((char *) newname));
 	tgscan = systable_beginscan(tgrel, TriggerRelidNameIndexId, true,
 								SnapshotNow, 2, key);
 	if (HeapTupleIsValid(tuple = systable_getnext(tgscan)))
@@ -695,7 +695,7 @@ renametrig(Oid relid,
 	ScanKeyInit(&key[1],
 				Anum_pg_trigger_tgname,
 				BTEqualStrategyNumber, F_NAMEEQ,
-				PointerGetDatum(oldname));
+				PointerGetDatum((char *) oldname));
 	tgscan = systable_beginscan(tgrel, TriggerRelidNameIndexId, true,
 								SnapshotNow, 2, key);
 	if (HeapTupleIsValid(tuple = systable_getnext(tgscan)))
@@ -777,7 +777,7 @@ EnableDisableTrigger(Relation rel, const char *tgname,
 		ScanKeyInit(&keys[1],
 					Anum_pg_trigger_tgname,
 					BTEqualStrategyNumber, F_NAMEEQ,
-					CStringGetDatum(tgname));
+					CStringGetDatum((char *) tgname));
 		nkeys = 2;
 	}
 	else

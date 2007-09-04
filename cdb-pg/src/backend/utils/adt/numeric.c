@@ -2445,6 +2445,7 @@ Datum
 int2_sum(PG_FUNCTION_ARGS)
 {
 	int64		newval;
+	int64 		oldsum;
 
 	if (PG_ARGISNULL(0))
 	{
@@ -2456,40 +2457,22 @@ int2_sum(PG_FUNCTION_ARGS)
 		PG_RETURN_INT64(newval);
 	}
 
-	/*
-	 * If we're invoked by nodeAgg, we can cheat and modify out first
-	 * parameter in-place to avoid palloc overhead. If not, we need to return
-	 * the new value of the transition variable.
-	 */
-	if (fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context))
-	{
-		int64	   *oldsum = (int64 *) PG_GETARG_POINTER(0);
+	oldsum = PG_GETARG_INT64(0);
 
-		/* Leave the running sum unchanged in the new input is null */
-		if (!PG_ARGISNULL(1))
-			*oldsum = *oldsum + (int64) PG_GETARG_INT16(1);
+	/* Leave sum unchanged if new input is null. */
+	if (PG_ARGISNULL(1))
+		PG_RETURN_INT64(oldsum);
 
-		PG_RETURN_POINTER(oldsum);
-	}
-	else
-	{
-		int64		oldsum = PG_GETARG_INT64(0);
+	/* OK to do the addition. */
+	newval = oldsum + (int64) PG_GETARG_INT16(1);
 
-		/* Leave sum unchanged if new input is null. */
-		if (PG_ARGISNULL(1))
-			PG_RETURN_INT64(oldsum);
-
-		/* OK to do the addition. */
-		newval = oldsum + (int64) PG_GETARG_INT16(1);
-
-		PG_RETURN_INT64(newval);
-	}
+	PG_RETURN_INT64(newval);
 }
 
 Datum
 int4_sum(PG_FUNCTION_ARGS)
 {
-	int64		newval;
+	int64		val;
 
 	if (PG_ARGISNULL(0))
 	{
@@ -2497,38 +2480,20 @@ int4_sum(PG_FUNCTION_ARGS)
 		if (PG_ARGISNULL(1))
 			PG_RETURN_NULL();	/* still no non-null */
 		/* This is the first non-null input. */
-		newval = (int64) PG_GETARG_INT32(1);
-		PG_RETURN_INT64(newval);
+		val = (int64) PG_GETARG_INT32(1);
+		PG_RETURN_INT64(val);
 	}
 
-	/*
-	 * If we're invoked by nodeAgg, we can cheat and modify out first
-	 * parameter in-place to avoid palloc overhead. If not, we need to return
-	 * the new value of the transition variable.
-	 */
-	if (fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context))
-	{
-		int64	   *oldsum = (int64 *) PG_GETARG_POINTER(0);
+	val = PG_GETARG_INT64(0);
 
-		/* Leave the running sum unchanged in the new input is null */
-		if (!PG_ARGISNULL(1))
-			*oldsum = *oldsum + (int64) PG_GETARG_INT32(1);
+	/* Leave sum unchanged if new input is null. */
+	if (PG_ARGISNULL(1))
+		PG_RETURN_INT64(val); 
 
-		PG_RETURN_POINTER(oldsum);
-	}
-	else
-	{
-		int64		oldsum = PG_GETARG_INT64(0);
+	/* OK to do the addition. */
+	val = val + (int64) PG_GETARG_INT32(1);
 
-		/* Leave sum unchanged if new input is null. */
-		if (PG_ARGISNULL(1))
-			PG_RETURN_INT64(oldsum);
-
-		/* OK to do the addition. */
-		newval = oldsum + (int64) PG_GETARG_INT32(1);
-
-		PG_RETURN_INT64(newval);
-	}
+	PG_RETURN_INT64(val);
 }
 
 Datum
@@ -2574,6 +2539,7 @@ Datum
 int2_invsum(PG_FUNCTION_ARGS)
 {
 	int64		newval;
+	int64 		oldsum;
 
 	if (PG_ARGISNULL(0))
 	{
@@ -2588,40 +2554,23 @@ int2_invsum(PG_FUNCTION_ARGS)
 			 "transition value but non-NULL argument");
 	}
 
-	/*
-	 * If we're invoked by nodeAgg, we can cheat and modify out first
-	 * parameter in-place to avoid palloc overhead. If not, we need to return
-	 * the new value of the transition variable.
-	 */
-	if (fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context))
-	{
-		int64	   *oldsum = (int64 *) PG_GETARG_POINTER(0);
+	oldsum = PG_GETARG_INT64(0);
 
-		/* Leave the running sum unchanged in the new input is null */
-		if (!PG_ARGISNULL(1))
-			*oldsum = *oldsum - (int64) PG_GETARG_INT16(1);
+	/* Leave sum unchanged if new input is null. */
+	if (PG_ARGISNULL(1))
+		PG_RETURN_INT64(oldsum);
 
-		PG_RETURN_POINTER(oldsum);
-	}
-	else
-	{
-		int64		oldsum = PG_GETARG_INT64(0);
+	/* OK to do the addition. */
+	newval = oldsum - (int64) PG_GETARG_INT16(1);
 
-		/* Leave sum unchanged if new input is null. */
-		if (PG_ARGISNULL(1))
-			PG_RETURN_INT64(oldsum);
-
-		/* OK to do the addition. */
-		newval = oldsum - (int64) PG_GETARG_INT16(1);
-
-		PG_RETURN_INT64(newval);
-	}
+	PG_RETURN_INT64(newval);
 }
 
 Datum
 int4_invsum(PG_FUNCTION_ARGS)
 {
 	int64		newval;
+	int64 		oldsum;
 
 	if (PG_ARGISNULL(0))
 	{
@@ -2636,34 +2585,16 @@ int4_invsum(PG_FUNCTION_ARGS)
 			 "transition value but non-NULL argument");
 	}
 
-	/*
-	 * If we're invoked by nodeAgg, we can cheat and modify out first
-	 * parameter in-place to avoid palloc overhead. If not, we need to return
-	 * the new value of the transition variable.
-	 */
-	if (fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context))
-	{
-		int64	   *oldsum = (int64 *) PG_GETARG_POINTER(0);
+	oldsum = PG_GETARG_INT64(0);
 
-		/* Leave the running sum unchanged in the new input is null */
-		if (!PG_ARGISNULL(1))
-			*oldsum = *oldsum - (int64) PG_GETARG_INT32(1);
+	/* Leave sum unchanged if new input is null. */
+	if (PG_ARGISNULL(1))
+		PG_RETURN_INT64(oldsum);
 
-		PG_RETURN_POINTER(oldsum);
-	}
-	else
-	{
-		int64		oldsum = PG_GETARG_INT64(0);
+	/* OK to do the addition. */
+	newval = oldsum - (int64) PG_GETARG_INT32(1);
 
-		/* Leave sum unchanged if new input is null. */
-		if (PG_ARGISNULL(1))
-			PG_RETURN_INT64(oldsum);
-
-		/* OK to do the addition. */
-		newval = oldsum - (int64) PG_GETARG_INT32(1);
-
-		PG_RETURN_INT64(newval);
-	}
+	PG_RETURN_INT64(newval);
 }
 
 Datum

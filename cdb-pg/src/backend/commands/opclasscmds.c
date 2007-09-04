@@ -855,7 +855,7 @@ RenameOpClass(List *name, const char *access_method, const char *newname)
 	AclResult	aclresult;
 
 	amOid = GetSysCacheOid(AMNAME,
-						   CStringGetDatum(access_method),
+						   CStringGetDatum((char *) access_method),
 						   0, 0, 0);
 	if (!OidIsValid(amOid))
 		ereport(ERROR,
@@ -908,7 +908,7 @@ RenameOpClass(List *name, const char *access_method, const char *newname)
 	/* make sure the new name doesn't exist */
 	if (SearchSysCacheExists(CLAAMNAMENSP,
 							 ObjectIdGetDatum(amOid),
-							 CStringGetDatum(newname),
+							 CStringGetDatum((char *) newname),
 							 ObjectIdGetDatum(namespaceOid),
 							 0))
 	{
@@ -977,7 +977,7 @@ AlterOpClassOwner(List *name, const char *access_method, Oid newOwnerId)
 	char	   *schemaname;
 
 	amOid = GetSysCacheOid(AMNAME,
-						   CStringGetDatum(access_method),
+						   CStringGetDatum((char *) access_method),
 						   0, 0, 0);
 	if (!OidIsValid(amOid))
 		ereport(ERROR,

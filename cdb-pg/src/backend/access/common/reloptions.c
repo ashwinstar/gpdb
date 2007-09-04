@@ -57,7 +57,7 @@ transformRelOptions(Datum oldOptions, List *defList,
 	astate = NULL;
 
 	/* Copy any oldOptions that aren't to be replaced */
-	if (oldOptions != (Datum) 0)
+	if (DatumGetPointer(oldOptions) != 0)
 	{
 		ArrayType  *array = DatumGetArrayTypeP(oldOptions);
 		Datum	   *oldoptions;
@@ -175,7 +175,7 @@ parseRelOptions(Datum options, int numkeywords, const char *const * keywords,
 	MemSet(values, 0, numkeywords * sizeof(char *));
 
 	/* Done if no options */
-	if (options == (Datum) 0)
+	if (DatumGetPointer(options) == 0)
 		return;
 
 	array = DatumGetArrayTypeP(options);
@@ -304,7 +304,7 @@ index_reloptions(RegProcedure amoptions, Datum reloptions, bool validate)
 	Assert(RegProcedureIsValid(amoptions));
 
 	/* Assume function is strict */
-	if (reloptions == (Datum) 0)
+	if (DatumGetPointer(reloptions) == 0) 
 		return NULL;
 
 	/* Can't use OidFunctionCallN because we might get a NULL result */

@@ -196,7 +196,7 @@ pg_lock_status(PG_FUNCTION_ARGS)
 			locktypename = tnbuf;
 		}
 		values[0] = DirectFunctionCall1(textin,
-										CStringGetDatum(locktypename));
+										CStringGetDatum((char *) locktypename));
 
 
 		switch (lock->tag.locktag_type)
@@ -273,7 +273,7 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		else
 			nulls[10] = 'n';
 		values[11] = DirectFunctionCall1(textin,
-					  CStringGetDatum(GetLockmodeName(LOCK_LOCKMETHOD(*lock),
+					  CStringGetDatum((char *) GetLockmodeName(LOCK_LOCKMETHOD(*lock),
 													  mode)));
 		values[12] = BoolGetDatum(granted);
 		

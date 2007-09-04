@@ -137,7 +137,7 @@ OperatorGet(const char *operatorName,
 	Oid			operatorObjectId;
 
 	tup = SearchSysCache(OPERNAMENSP,
-						 PointerGetDatum(operatorName),
+						 PointerGetDatum((char *) operatorName),
 						 ObjectIdGetDatum(leftObjectId),
 						 ObjectIdGetDatum(rightObjectId),
 						 ObjectIdGetDatum(operatorNamespace));

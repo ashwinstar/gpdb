@@ -473,7 +473,7 @@ make_agg_subplan(PlannerInfo *root, MinMaxAggInfo *info)
 	subparse->limitOffset = NULL;
 	subparse->limitCount = (Node *) makeConst(INT8OID, sizeof(int64),
 											  Int64GetDatum(1),
-											  false, false /* not by val */ );
+											  false, true /* not by val */ );
 
 	/*
 	 * Generate the plan for the subquery.	We already have a Path for the
