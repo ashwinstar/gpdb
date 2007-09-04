@@ -367,12 +367,12 @@ static void doNegateFloat(Value *v);
 %type <str>		OptTableSpace OptConsTableSpace OptTableSpaceOwner
 %type <list>    OptDistributedBy
 %type <keyword> TabPartitionByType
-%type <list>    OptTabPartitionBy
+%type <list>    OptTabPartitionBy OptTabSubPartitionBy
 %type <list>	opt_check_option
-%type <node>	OptTabPartitionsNumber /* XXX XXX: ??? */
-%type <list>	OptTabPartitionSpec    /* XXX XXX: ??? */
-%type <list>	TabPartitionElemList    /* XXX XXX: ??? */
-%type <list> 	TabPartitionElem        /* XXX XXX: need complex type */
+%type <node>	OptTabPartitionsNumber OptTabSubPartitionsNumber /* XXX XXX: ??? */
+%type <list>	OptTabPartitionSpec OptTabSubPartitionSpec    /* XXX XXX: ??? */
+%type <list>	TabPartitionElemList TabSubPartitionElemList OptTabSubPartitionTemplate   /* XXX XXX: ??? */
+%type <list> 	TabPartitionElem TabSubPartitionElem        /* XXX XXX: need complex type */
 %type <list> 	TabPartitionBoundarySpec        /* XXX XXX: need complex type */
 %type <list> 	OptTabPartitionBoundarySpec        /* XXX XXX: need complex type */
 %type <list> 	TabPartitionBoundarySpecValList        /* XXX XXX: need complex type */
@@ -381,7 +381,7 @@ static void doNegateFloat(Value *v);
 %type <list> 	OptTabPartitionBoundarySpecEnd        /* XXX XXX: need complex type */
 %type <node> 	OptTabPartitionBoundarySpecEvery        /* XXX XXX: need complex type */
 %type <value>	OptNumericOnly 
-%type <node> 	TabPartitionNameDecl        /* XXX XXX: need complex type */
+%type <node> 	TabPartitionNameDecl TabSubPartitionNameDecl        /* XXX XXX: need complex type */
 
 /*
  * If you make any token changes, update the keyword table in
@@ -456,7 +456,9 @@ static void doNegateFloat(Value *v);
 	SAVEPOINT SCHEMA SCROLL SECOND_P SECURITY SEGMENT SELECT SEQUENCE
 	SERIALIZABLE SESSION SESSION_USER SET SETOF SETS SHARE
 	SHOW SIMILAR SIMPLE SMALLINT SOME STABLE START STATEMENT
-	STATISTICS STDIN STDOUT STORAGE STRICT_P SUBSTRING SUPERUSER_P SYMMETRIC
+	STATISTICS STDIN STDOUT STORAGE STRICT_P 
+	SUBPARTITION SUBPARTITIONS
+	SUBSTRING SUPERUSER_P SYMMETRIC
 	SYSID SYSTEM_P
 
 	TABLE TABLESPACE TEMP TEMPLATE TEMPORARY THEN THRESHOLD TIES TIME TIMESTAMP
@@ -2390,7 +2392,14 @@ OptTabPartitionsNumber: PARTITIONS NumericOnly 		{ $$ = makeAConst($2); }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
+OptTabSubPartitionsNumber: SUBPARTITIONS NumericOnly { $$ = makeAConst($2); }
+			| /*EMPTY*/								{ $$ = NULL; }
+		;
+
 OptTabPartitionSpec: '(' TabPartitionElemList ')'	{ $$ = $2; }
+			| /*EMPTY*/								{ $$ = NULL; }
+		;
+OptTabSubPartitionSpec: '(' TabSubPartitionElemList ')'	{ $$ = $2; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
@@ -2398,6 +2407,11 @@ TabPartitionElemList:
             TabPartitionElem						{ $$ = list_make1($1); }
 			| TabPartitionElemList ',' 
               TabPartitionElem						{ $$ = lappend($1, $3); }
+		;
+TabSubPartitionElemList:
+            TabSubPartitionElem						{ $$ = list_make1($1); }
+			| TabSubPartitionElemList ',' 
+              TabSubPartitionElem					{ $$ = lappend($1, $3); }
 		;
 
 /* Note: specstart is a list, but specend is a scalar.  Not sure if
@@ -2448,13 +2462,24 @@ OptTabPartitionBoundarySpec:
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
-
 TabPartitionElem: 
-            TabPartitionNameDecl OptTabPartitionBoundarySpec	{ $$ = $2; }
+            TabPartitionNameDecl 
+            OptTabPartitionBoundarySpec	OptTabSubPartitionSpec { $$ = $2; }
+			| TabPartitionBoundarySpec 	OptTabSubPartitionSpec { $$ = $1; }
+            ;
+
+TabSubPartitionElem: 
+            TabSubPartitionNameDecl OptTabPartitionBoundarySpec	{ $$ = $2; }
 			| TabPartitionBoundarySpec 	{ $$ = $1; }
             ;
 
 TabPartitionNameDecl: PARTITION IDENT			
+				{
+					$$ = (Node *) makeString($2);
+				}
+		;
+
+TabSubPartitionNameDecl: SUBPARTITION IDENT			
 				{
 					$$ = (Node *) makeString($2);
 				}
@@ -2469,7 +2494,24 @@ TabPartitionByType:
 OptTabPartitionBy:
 			PARTITION BY 
             TabPartitionByType '(' columnList ')' 
-            OptTabPartitionsNumber OptTabPartitionSpec			{ $$ = $5; }
+            OptTabPartitionsNumber 
+            OptTabSubPartitionBy
+            OptTabPartitionSpec						{ $$ = $5; }
+			| /*EMPTY*/								{ $$ = NULL; }
+		;
+
+OptTabSubPartitionTemplate:
+			SUBPARTITION TEMPLATE 
+            '(' TabSubPartitionElemList ')' 		{ $$ = $4; }
+			| /*EMPTY*/								{ $$ = NULL; }
+		;
+
+
+OptTabSubPartitionBy:
+			SUBPARTITION BY 
+            TabPartitionByType '(' columnList ')' 
+            OptTabSubPartitionsNumber 
+            OptTabSubPartitionTemplate				{ $$ = $5; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
@@ -9441,6 +9483,8 @@ unreserved_keyword:
 			| STDIN
 			| STDOUT
 			| STORAGE
+			| SUBPARTITION
+			| SUBPARTITIONS
 			| SUPERUSER_P
 			| SYSID
 			| SYSTEM_P

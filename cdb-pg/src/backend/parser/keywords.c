@@ -350,6 +350,8 @@ static const ScanKeyword ScanKeywords[] = {
 	{"stdout", STDOUT},
 	{"storage", STORAGE},
 	{"strict", STRICT_P},
+	{"subpartition", SUBPARTITION},
+	{"subpartitions", SUBPARTITIONS},
 	{"substring", SUBSTRING},
 	{"superuser", SUPERUSER_P},
 	{"symmetric", SYMMETRIC},
