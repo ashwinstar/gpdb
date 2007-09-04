@@ -397,15 +397,25 @@ static apr_status_t seg_initdb_wait(gpcc_event_t* ev, void *_cmdslot)
 	    }
 
 	    /* start database */
-	    if (0 != (e = gpcc_proc_pg_ctl_start_segment(&cmdslot->u.seg.request.proc,
-							 cmdslot->u.seg.request.port,
-							 cmdslot->u.seg.request.data_dir,
-							 1, 0,
-							 cmdslot->u.seg.request.subpool))) {
-		seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, e, "pg_ctl start failure");
-		return 0;
+	    if (strcmp(cmdslot->cmdname, "gpdb.seg.m.0") == 0) {
+		if (0 != (e = gpcc_proc_pg_ctl_start_admin_master(&cmdslot->u.seg.request.proc,
+								  cmdslot->u.seg.request.port,
+								  cmdslot->u.seg.request.data_dir,
+								  1, 0,
+								  cmdslot->u.seg.request.subpool))) {
+		    seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, e, "pg_ctl start admin failure");
+		    return 0;
+		}
+	    } else {
+		if (0 != (e = gpcc_proc_pg_ctl_start_segment(&cmdslot->u.seg.request.proc,
+							     cmdslot->u.seg.request.port,
+							     cmdslot->u.seg.request.data_dir,
+							     1, 0,
+							     cmdslot->u.seg.request.subpool))) {
+		    seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, e, "pg_ctl start failure");
+		    return 0;
+		}
 	    }
-
 	    evt = gpcc_event_alloc(SEG_INITDB_NEXT_EVENT, cmdslot->cmdidx, 0);
 	    gpcc_evqueue_put(gpha.evq, evt);
 	    
@@ -854,7 +864,33 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
 	}
     } else {
 	/* this is QD */
+	if (0 != (e = gpcc_pg_log_rotate(cmdslot->u.seg.request.data_dir, cmdslot->u.seg.request.subpool))) {
+	    ;
+	}
+
 	if (strcmp(cmdslot->cmdname, "gpdb.seg.m.0") == 0) {
+	    /* start master in admin mode */
+
+	    /* get QE details */
+	    if (0 != (e = gpcc_pg_get_qe_details(cmdslot->u.seg.request.port,
+						 cmdslot->u.seg.request.subpool))) {
+		seg_request_error(ev, _cmdslot, SEG_START_DONE_EVENT, e, "get qe details failure");
+		json_object_put(obj);
+		return 0;
+	    }
+
+	    /* update gp_configuration to set all segments marked as invalid to valid */
+	    if (0 != (e = gpcc_pg_reset_invalid_segment(cmdslot->u.seg.request.port,
+							cmdslot->u.seg.request.subpool))) {
+		seg_request_error(ev, _cmdslot, SEG_START_DONE_EVENT, e, "reset invalid segment failure");
+		json_object_put(obj);
+		return 0;
+	    }
+
+	    /* stop master */
+
+
+	    /* start master in production mode */
 	    if (0 != (e = gpcc_proc_pg_ctl_start_master(&cmdslot->u.seg.request.proc,
 							cmdslot->u.seg.request.port,
 							cmdslot->u.seg.request.data_dir,

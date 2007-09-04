@@ -126,7 +126,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start(apr_proc_t *proc, int port, con
 
 
 /**
- *  pg_ctl start master in admin mode
+ *  pg_ctl start master in production mode
  *
  *  @param proc process handle
  *  @param port gpdb port number
@@ -137,6 +137,21 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start(apr_proc_t *proc, int port, con
  *  @return APR_SUCCESS if success otherwise failure
  */
 APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_master(apr_proc_t *proc, int port, const char *data_dir, int wait, int blocking, apr_pool_t *p);
+
+
+/**
+ * pg_ctl start master in admin mode
+ *
+ *  @param proc process handle
+ *  @param port gpdb port number
+ *  @param data_dir data directory
+ *  @param wait flag to indicate pg_ctl wait until finish or not
+ *  @param blocking flag to indicate blocking or non-blocking
+ *  @param pool memory pool
+ *  @return APR_SUCCESS if success otherwise failure
+ */
+APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_admin_master(apr_proc_t *proc, int port, const char *data_dir, int wait, int blocking, apr_pool_t *p);
+
 
 /**
  *  pg_ctl start segment

@@ -59,6 +59,11 @@ APR_DECLARE(apr_status_t) gpcc_pg_reset_invalid_segment(int master_port, apr_poo
  */
 APR_DECLARE(apr_status_t) gpcc_pg_check_segment(int port, apr_pool_t *p);
 
+/**
+ *  get qe details
+ *  @param port port number
+ */
+APR_DECLARE(apr_status_t) gpcc_pg_get_qe_details(int port, apr_pool_t *p) ;
 
 /**
  *  change password

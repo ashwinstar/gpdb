@@ -270,6 +270,27 @@ APR_DECLARE(apr_status_t) pg_check_segment(int port, apr_pool_t *p)
     return 0;
 }
 
+APR_DECLARE(apr_status_t) gpcc_pg_get_qe_details(int port, apr_pool_t *p) 
+{
+    apr_proc_t proc;
+    char *sql;
+    char line[1024];
+    int e;
+
+    sql = "select a.hostname, a.datadir, a.port, b.valid, b.definedprimary from gp_configuration a, gp_pgdatabase where a.dbid=b.dbid and a.content<>-1";
+    e = gpcc_proc_psql(&proc, port, DEFAULT_GP_DBNAME, sql, 1, 1, p);
+    if (e) {
+	gpcc_log_error("psql -c 'select a.hostname....' error");
+	return e;
+    }
+
+    while (0 != (e = apr_file_gets(line, sizeof(line), proc.out))) {
+	;
+    }
+
+    return 0;
+}
+
 APR_DECLARE(apr_status_t) gpcc_pg_change_password(int port, const char *user, const char *password, apr_pool_t *p) 
 {
     int e;

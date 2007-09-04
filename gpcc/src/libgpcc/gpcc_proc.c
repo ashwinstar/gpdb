@@ -199,7 +199,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_scp(apr_proc_t *proc, const char *user, cons
     argv[1] = "-pr";
     argv[2] = "-P";
     argv[3] = portstr;
-    argv[4] = src;
+    argv[4] = (char *) src;
     argv[5] = remote;
     argv[6] = 0;
 
@@ -325,13 +325,24 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_segment(apr_proc_t *proc, int p
 /**
  * pg_ctl start master in admin mode
  */
-APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_master(apr_proc_t *proc, int port, const char *data_dir, int wait, int blocking, apr_pool_t *p)
+APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_admin_master(apr_proc_t *proc, int port, const char *data_dir, int wait, int blocking, apr_pool_t *p)
 {
     char option[128];
     sprintf(option, "-i -p %d -c gp_role=utility", port);
     return gpcc_proc_pg_ctl_start(proc, port, data_dir, option, wait, blocking, p);
 }
 	
+/**
+ * pg_ctl start master in admin mode
+ */
+APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_master(apr_proc_t *proc, int port, const char *data_dir, int wait, int blocking, apr_pool_t *p)
+{
+    char option[128];
+    sprintf(option, "-i -E -p %d", port);
+    return gpcc_proc_pg_ctl_start(proc, port, data_dir, option, wait, blocking, p);
+}
+
+
 /**
  *  pg_ctl stop [-W] [-D DATADIR] [-s] [-m SHUTDOWN-MODE]
  *
