@@ -2166,7 +2166,7 @@ tuple_grouping(TupleTableSlot *outerslot, int numGroupCols,
 			   int grpingIdx)
 {
 	Datum grping_datum;
-	uint64 grping;
+	int64 grping;
 	bool isnull;
 
 	/* Simple return 0 if input_grouping is 0. */
@@ -2175,7 +2175,7 @@ tuple_grouping(TupleTableSlot *outerslot, int numGroupCols,
 
 	grping_datum = slot_getattr(outerslot, grpingIdx, &isnull);
 
-	Assert(!isnull && grping_datum != 0);
+	Assert(!isnull);
 
 	grping = DatumGetInt64(grping_datum);
 
