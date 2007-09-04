@@ -380,6 +380,7 @@ static apr_status_t seg_initdb_wait(gpcc_event_t* ev, void *_cmdslot)
     apr_exit_why_e exitwhy;
     int e;
     gpcc_event_t *evt;
+    int utility = 0;
 
     e = apr_proc_wait(&cmdslot->u.seg.request.proc, &ret, &exitwhy, APR_NOWAIT);
     if (e == APR_CHILD_DONE) {
@@ -397,25 +398,21 @@ static apr_status_t seg_initdb_wait(gpcc_event_t* ev, void *_cmdslot)
 	    }
 
 	    /* start database */
+	    utility = 0;
 	    if (strcmp(cmdslot->cmdname, "gpdb.seg.m.0") == 0) {
-		if (0 != (e = gpcc_proc_pg_ctl_start_admin_master(&cmdslot->u.seg.request.proc,
-								  cmdslot->u.seg.request.port,
-								  cmdslot->u.seg.request.data_dir,
-								  1, 0,
-								  cmdslot->u.seg.request.subpool))) {
-		    seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, e, "pg_ctl start admin failure");
-		    return 0;
-		}
-	    } else {
-		if (0 != (e = gpcc_proc_pg_ctl_start_segment(&cmdslot->u.seg.request.proc,
-							     cmdslot->u.seg.request.port,
-							     cmdslot->u.seg.request.data_dir,
-							     1, 0,
-							     cmdslot->u.seg.request.subpool))) {
-		    seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, e, "pg_ctl start failure");
-		    return 0;
-		}
+		/* start QD in admin/utility mode */
+		utility = 1;
 	    }
+		
+	    if (0 != (e = gpcc_proc_pg_ctl_start_segment(&cmdslot->u.seg.request.proc,
+							 cmdslot->u.seg.request.port,
+							 cmdslot->u.seg.request.data_dir,
+							 utility, 1, 0,
+							 cmdslot->u.seg.request.subpool))) {
+		seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, e, "pg_ctl start failure");
+		return 0;
+	    }
+
 	    evt = gpcc_event_alloc(SEG_INITDB_NEXT_EVENT, cmdslot->cmdidx, 0);
 	    gpcc_evqueue_put(gpha.evq, evt);
 	    
@@ -856,7 +853,7 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
 	if (0 != (e = gpcc_proc_pg_ctl_start_segment(&cmdslot->u.seg.request.proc,
 						     cmdslot->u.seg.request.port,
 						     cmdslot->u.seg.request.data_dir,
-						     1, 0, 
+						     0, 1, 0, 
 						     cmdslot->u.seg.request.subpool))) {
 	    seg_request_error(ev, _cmdslot, SEG_START_DONE_EVENT, e, "pg_ctl start segment failure");
 	    json_object_put(obj);
