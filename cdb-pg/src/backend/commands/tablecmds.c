@@ -212,7 +212,7 @@ static void ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		  bool recurse, bool recursing);
 static void ATRewriteCatalogs(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo);
 static void ATAddToastIfNeeded(List **wqueue, int oidInfoCount,TableOidInfo * oidInfo);
-static void ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd, int oidInfoCount, TableOidInfo * oidInfo);
+static void ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd);
 static void ATRewriteTables(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo);
 static void ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap);
 static AlteredTableInfo *ATGetQueueEntry(List **wqueue, Relation rel);
@@ -2751,7 +2751,7 @@ ATRewriteCatalogs(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 			rel = relation_open(tab->relid, NoLock);
 
 			foreach(lcmd, subcmds)
-				ATExecCmd(tab, rel, (AlterTableCmd *) lfirst(lcmd), oidInfoCount, oidInfo);
+				ATExecCmd(tab, rel, (AlterTableCmd *) lfirst(lcmd));
 
 			/*
 			 * After the ALTER TYPE pass, do cleanup work (this is not done in
@@ -2848,7 +2848,7 @@ ATAddToastIfNeeded(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
  * ATExecCmd: dispatch a subcommand to appropriate execution routine
  */
 static void
-ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd, int oidInfoCount, TableOidInfo * oidInfo)
+ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
 {
 	switch (cmd->subtype)
 	{

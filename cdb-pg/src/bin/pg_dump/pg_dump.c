@@ -182,8 +182,8 @@ static char *getFormattedTypeName(Oid oid, OidOptions opts);
 static char *myFormatType(const char *typname, int32 typmod);
 static const char *fmtQualifiedId(const char *schema, const char *id);
 static bool hasBlobs(Archive *AH);
-static int	dumpBlobs(Archive *AH, void *arg);
-static int	dumpBlobComments(Archive *AH, void *arg);
+static int	dumpBlobs(Archive *AH, void *arg __attribute__((unused)));
+static int	dumpBlobComments(Archive *AH, void *arg  __attribute__((unused)));
 static void dumpDatabase(Archive *AH);
 static void dumpEncoding(Archive *AH);
 static void dumpStdStrings(Archive *AH);
@@ -1657,7 +1657,7 @@ hasBlobs(Archive *AH)
  *	dump all blobs
  */
 static int
-dumpBlobs(Archive *AH, void *arg)
+dumpBlobs(Archive *AH, void *arg  __attribute__((unused)))
 {
 	const char *blobQry;
 	const char *blobFetchQry;
@@ -1744,7 +1744,7 @@ dumpBlobs(Archive *AH, void *arg)
  * all the comments into one big TOC entry.
  */
 static int
-dumpBlobComments(Archive *AH, void *arg)
+dumpBlobComments(Archive *AH, void *arg  __attribute__((unused)))
 {
 	const char *blobQry;
 	const char *blobFetchQry;

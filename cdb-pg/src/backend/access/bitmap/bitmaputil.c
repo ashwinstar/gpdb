@@ -488,7 +488,7 @@ _bitmap_union(BMBatchWords **batches, uint32 numBatches, BMBatchWords *result)
 	uint32		nextReadNo;
 	uint32		batchNo;
 
-	Assert (numBatches >= 0);
+	Assert ((int)numBatches >= 0);
 
 	if (numBatches == 0)
 		return;

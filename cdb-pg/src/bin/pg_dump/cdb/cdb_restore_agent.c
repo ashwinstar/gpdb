@@ -81,7 +81,7 @@ typedef struct option optType;
 extern void makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg );
 static void myChildHandler(int signo);
 static void myHandler(int signo);
-static void* monitorThreadProc(void *arg);
+static void* monitorThreadProc(void *arg __attribute__((unused)));
 static void _check_database_version(ArchiveHandle *AH, bool ignoreVersion);
 //static bool execMPPCatalogFunction(PGconn* pConn);
 static char* testProgramExists(char* pszProgramName);
@@ -868,7 +868,7 @@ void makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg )
  * a linked list of gp_backup_status insert command requests.  If any are there, it causes an insert and a notify
  * to be sent.    
  */
-void* monitorThreadProc(void *arg)
+void* monitorThreadProc(void *arg __attribute__((unused)))
 {
 	int sock;
 	bool bGotFinished;

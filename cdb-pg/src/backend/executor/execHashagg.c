@@ -1323,7 +1323,7 @@ batch_rewind(HashAggTable *hashtable, unsigned int batch)
 	int n;
 	BatchFileInfo *info;
 	
-	Assert(hashtable != NULL && 0 <= batch && batch < hashtable->nbatch);
+	Assert(hashtable != NULL && 0 <= (int)batch && batch < hashtable->nbatch);
 	
 	info = &hashtable->batches[batch];
 	
@@ -1348,7 +1348,7 @@ batch_close(HashAggTable *hashtable, unsigned int batch)
 {
 	BatchFileInfo *info;
 	
-	Assert(hashtable != NULL && 0 <= batch && batch < hashtable->nbatch);
+	Assert(hashtable != NULL && 0 <= (int)batch && batch < hashtable->nbatch);
 	
 	info = &hashtable->batches[batch];
 	

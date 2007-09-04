@@ -219,8 +219,8 @@ static char *getFormattedTypeName(Oid oid, OidOptions opts);
 static char *myFormatType(const char *typname, int32 typmod);
 static const char *fmtQualifiedId(const char *schema, const char *id);
 static bool hasBlobs(Archive *AH);
-static int	dumpBlobs(Archive *AH, void *arg);
-static int	dumpBlobComments(Archive *AH, void *arg);
+static int	dumpBlobs(Archive *AH, void *arg  __attribute__((unused)));
+static int	dumpBlobComments(Archive *AH, void *arg __attribute__((unused)));
 static void dumpDatabase(Archive *AH);
 static void dumpEncoding(Archive *AH);
 static void dumpStdStrings(Archive *AH);
@@ -234,7 +234,7 @@ static void check_sql_result(PGresult *res, PGconn *conn, const char *query,
 static void   forkMPPCatalogDumper(void);
 static void   _check_database_version(ArchiveHandle *AH, bool ignoreVersion);
 extern void   makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg );
-static void*  monitorThreadProc(void *arg);
+static void*  monitorThreadProc(void *arg  __attribute__((unused)));
 static void   myHandler(int signo);
 static char*  formCatalogFilePathName( char* pszBackupDirectory, char* pszBackupKey, int pszInstID, int pszSegID );
 static char*  formCDatabaseFilePathName( char* pszBackupDirectory, char* pszBackupKey, int pszInstID, int pszSegID );
@@ -2062,7 +2062,7 @@ hasBlobs(Archive *AH)
  *	dump all blobs
  */
 static int
-dumpBlobs(Archive *AH, void *arg)
+dumpBlobs(Archive *AH, void *arg  __attribute__((unused)))
 {
 	const char *blobQry;
 	const char *blobFetchQry;
@@ -2149,7 +2149,7 @@ dumpBlobs(Archive *AH, void *arg)
  * all the comments into one big TOC entry.
  */
 static int
-dumpBlobComments(Archive *AH, void *arg)
+dumpBlobComments(Archive *AH, void *arg  __attribute__((unused)))
 {
 	const char *blobQry;
 	const char *blobFetchQry;
@@ -9498,7 +9498,7 @@ check_sql_result(PGresult *res, PGconn *conn, const char *query,
  * is to periodically examine a linked list of gp_backup_status insert command 
  * requests.  If any are there, it causes an insert and a notify to be sent.    
  */
-void* monitorThreadProc(void *arg)
+void* monitorThreadProc(void *arg  __attribute__((unused)))
 {
 	int sock;
 	fd_set input_mask;

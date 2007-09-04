@@ -966,7 +966,7 @@ void ntuplestore_acc_put_tupleslot(NTupleStoreAccessor *tsa, TupleTableSlot *slo
 	dest_ptr = nts_page_next_slot_data_ptr(tsa->page); 
 	dest_len = (unsigned int) nts_page_avail_bytes(tsa->page); 
 
-	Assert(dest_len >= 0 && dest_len <= NTS_MAX_ENTRY_SIZE);
+	Assert(dest_len <= NTS_MAX_ENTRY_SIZE);
 	put_ok = ExecCopySlotMinimalTupleTo(slot, dest_ptr, &dest_len);
 
 	if(put_ok)

@@ -61,7 +61,7 @@ static teReqs _tocEntryRequired(TocEntry *te, RestoreOptions *ropt, bool include
 static void _disableTriggersIfNecessary(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt);
 static void _enableTriggersIfNecessary(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt);
 static TocEntry *getTocEntryByDumpId(ArchiveHandle *AH, DumpId id);
-static void _moveAfter(ArchiveHandle *AH, TocEntry *pos, TocEntry *te);
+static void _moveAfter(ArchiveHandle *AH __attribute__((unused)), TocEntry *pos, TocEntry *te);
 static int	_discoverArchiveFormat(ArchiveHandle *AH);
 
 static void dump_lo_buf(ArchiveHandle *AH);
@@ -1247,7 +1247,7 @@ warn_or_die_horribly(ArchiveHandle *AH,
 }
 
 static void
-_moveAfter(ArchiveHandle *AH, TocEntry *pos, TocEntry *te)
+_moveAfter(ArchiveHandle *AH  __attribute__((unused)), TocEntry *pos, TocEntry *te)
 {
 	te->prev->next = te->next;
 	te->next->prev = te->prev;

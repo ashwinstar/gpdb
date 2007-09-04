@@ -32,9 +32,9 @@
 static size_t _WriteData(ArchiveHandle *AH, const void *data, size_t dLen);
 static size_t _WriteBlobData(ArchiveHandle *AH, const void *data, size_t dLen);
 static void _EndData(ArchiveHandle *AH, TocEntry *te);
-static int	_WriteByte(ArchiveHandle *AH, const int i);
-static size_t _WriteBuf(ArchiveHandle *AH, const void *buf, size_t len);
-static void _CloseArchive(ArchiveHandle *AH);
+static int	_WriteByte(ArchiveHandle *AH __attribute__((unused)), const int i __attribute__((unused)));
+static size_t _WriteBuf(ArchiveHandle *AH  __attribute__((unused)), const void *buf __attribute__((unused)), size_t len);
+static void _CloseArchive(ArchiveHandle *AH  __attribute__((unused)));
 static void _PrintTocData(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt);
 static void _StartBlobs(ArchiveHandle *AH, TocEntry *te);
 static void _StartBlob(ArchiveHandle *AH, TocEntry *te, Oid oid);
@@ -200,21 +200,21 @@ _PrintTocData(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt)
 }
 
 static int
-_WriteByte(ArchiveHandle *AH, const int i)
+_WriteByte(ArchiveHandle *AH  __attribute__((unused)), const int i  __attribute__((unused)))
 {
 	/* Don't do anything */
 	return 0;
 }
 
 static size_t
-_WriteBuf(ArchiveHandle *AH, const void *buf, size_t len)
+_WriteBuf(ArchiveHandle *AH  __attribute__((unused)), const void *buf  __attribute__((unused)), size_t len)
 {
 	/* Don't do anything */
 	return len;
 }
 
 static void
-_CloseArchive(ArchiveHandle *AH)
+_CloseArchive(ArchiveHandle *AH  __attribute__((unused)))
 {
 	/* Nothing to do */
 }

@@ -3051,7 +3051,7 @@ PGTYPEStimestamp_defmt_scan(char **str, char *fmt, timestamp * d,
 				pfmt++;
 				scan_type = PGTYPES_TYPE_UINT;
 				err = pgtypes_defmt_scan(&scan_val, scan_type, &pstr, pfmt);
-				if (scan_val.uint_val < 0 || scan_val.uint_val > 53)
+				if ((int)scan_val.uint_val < 0 || scan_val.uint_val > 53)
 					err = 1;
 				break;
 			case 'V':
@@ -3065,14 +3065,14 @@ PGTYPEStimestamp_defmt_scan(char **str, char *fmt, timestamp * d,
 				pfmt++;
 				scan_type = PGTYPES_TYPE_UINT;
 				err = pgtypes_defmt_scan(&scan_val, scan_type, &pstr, pfmt);
-				if (scan_val.uint_val < 0 || scan_val.uint_val > 6)
+				if ((int)scan_val.uint_val < 0 || scan_val.uint_val > 6)
 					err = 1;
 				break;
 			case 'W':
 				pfmt++;
 				scan_type = PGTYPES_TYPE_UINT;
 				err = pgtypes_defmt_scan(&scan_val, scan_type, &pstr, pfmt);
-				if (scan_val.uint_val < 0 || scan_val.uint_val > 53)
+				if ((int)scan_val.uint_val < 0 || scan_val.uint_val > 53)
 					err = 1;
 				break;
 			case 'x':

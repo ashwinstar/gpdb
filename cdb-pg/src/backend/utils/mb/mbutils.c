@@ -265,8 +265,8 @@ pg_do_encoding_conversion(unsigned char *src, int len,
 	OidFunctionCall5(proc,
 					 Int32GetDatum(src_encoding),
 					 Int32GetDatum(dest_encoding),
-					 CStringGetDatum(src),
-					 CStringGetDatum(result),
+					 CStringGetDatum((char *)src),
+					 CStringGetDatum((char *)result),
 					 Int32GetDatum(len));
 	return result;
 }

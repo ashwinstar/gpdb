@@ -26,7 +26,7 @@ static const char *modulename = gettext_noop("archiver (db)");
 
 static void _check_database_version(ArchiveHandle *AH, bool ignoreVersion);
 static PGconn *_connectDB(ArchiveHandle *AH, const char *newdbname, const char *newUser);
-static void notice_processor(void *arg, const char *message);
+static void notice_processor(void *arg  __attribute__((unused)), const char *message);
 static char *_sendSQLLine(ArchiveHandle *AH, char *qry, char *eos);
 static char *_sendCopyLine(ArchiveHandle *AH, char *qry, char *eos);
 
@@ -272,7 +272,7 @@ ConnectDatabase(Archive *AHX,
 
 
 static void
-notice_processor(void *arg, const char *message)
+notice_processor(void *arg  __attribute__((unused)), const char *message)
 {
 	write_msg(NULL, "%s", message);
 }

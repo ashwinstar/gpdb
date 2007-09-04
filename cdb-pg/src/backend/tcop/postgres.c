@@ -1016,7 +1016,7 @@ exec_mpp_query(const char *query_string,
             length = DatumGetInt32(pxd->value);
 
             /* value */
-            Insist(length >= 0 &&
+            Insist((int)length >= 0 &&
                    length <= epos - cpos);
             if (length > 0)
             {
@@ -5645,7 +5645,7 @@ ShowUsage(const char *title)
  * on_proc_exit handler to log end of session
  */
 static void
-log_disconnections(int code, Datum arg)
+log_disconnections(int code, Datum arg __attribute__((unused)))
 {
 	Port	   *port = MyProcPort;
 	long		secs;
