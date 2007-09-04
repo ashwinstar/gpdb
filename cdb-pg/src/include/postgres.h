@@ -208,9 +208,9 @@ typedef union varattrib
 
 /*
  * Port Notes:
- *	Postgres makes the following assumption about machines:
  *
- *	sizeof(Datum) == sizeof(long) >= sizeof(void *) >= 4
+ *  Greenplum CDB:
+ * 	Datum is alway 8 bytes, regardless if it is 32bit or 64bit machine.  
  *
  *	Postgres also assumes that
  *

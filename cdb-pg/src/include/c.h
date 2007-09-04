@@ -255,22 +255,6 @@ typedef uint16 bits16;			/* >= 16 bits */
 typedef uint32 bits32;			/* >= 32 bits */
 
 /*
- * floatN
- *		Floating point number, AT LEAST N BITS IN SIZE,
- *		used for numerical computations.
- *
- *		Since sizeof(floatN) may be > sizeof(char *), always pass
- *		floatN by reference.
- *
- * XXX: these typedefs are now deprecated in favor of float4 and float8.
- * They will eventually go away.
- */
-typedef float float32data;
-typedef double float64data;
-typedef float *float32;
-typedef double *float64;
-
-/*
  * 64-bit integers
  */
 #ifdef HAVE_LONG_INT_64
