@@ -817,6 +817,32 @@ static apr_status_t seg_initdb_reply(gpcc_event_t* ev, void *_cmdslot)
 
 
 /* segment start */
+
+#if 0
+	    /* TODO:  this should be in MA */
+
+	    /* start master in admin mode */
+
+	    /* get QE details */
+	    if (0 != (e = gpcc_pg_get_qe_details(cmdslot->u.seg.request.port,
+						 cmdslot->u.seg.request.subpool))) {
+		seg_request_error(ev, _cmdslot, SEG_START_DONE_EVENT, e, "get qe details failure");
+		json_object_put(obj);
+		return 0;
+	    }
+
+	    /* update gp_configuration to set all segments marked as invalid to valid */
+	    if (0 != (e = gpcc_pg_reset_invalid_segment(cmdslot->u.seg.request.port,
+							cmdslot->u.seg.request.subpool))) {
+		seg_request_error(ev, _cmdslot, SEG_START_DONE_EVENT, e, "reset invalid segment failure");
+		json_object_put(obj);
+		return 0;
+	    }
+
+	    /* stop master */
+
+#endif
+
 static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
@@ -866,36 +892,28 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
 	}
 
 	if (strcmp(cmdslot->cmdname, "gpdb.seg.m.0") == 0) {
-	    /* start master in admin mode */
-
-	    /* get QE details */
-	    if (0 != (e = gpcc_pg_get_qe_details(cmdslot->u.seg.request.port,
-						 cmdslot->u.seg.request.subpool))) {
-		seg_request_error(ev, _cmdslot, SEG_START_DONE_EVENT, e, "get qe details failure");
-		json_object_put(obj);
-		return 0;
-	    }
-
-	    /* update gp_configuration to set all segments marked as invalid to valid */
-	    if (0 != (e = gpcc_pg_reset_invalid_segment(cmdslot->u.seg.request.port,
-							cmdslot->u.seg.request.subpool))) {
-		seg_request_error(ev, _cmdslot, SEG_START_DONE_EVENT, e, "reset invalid segment failure");
-		json_object_put(obj);
-		return 0;
-	    }
-
-	    /* stop master */
-
-
-	    /* start master in production mode */
-	    if (0 != (e = gpcc_proc_pg_ctl_start_master(&cmdslot->u.seg.request.proc,
-							cmdslot->u.seg.request.port,
-							cmdslot->u.seg.request.data_dir,
-							1, 0, 
-							cmdslot->u.seg.request.subpool))) {
-		seg_request_error(ev, _cmdslot, SEG_START_DONE_EVENT, e, "pg_ctl start master failure");
-		json_object_put(obj);
-		return 0;
+	    if (gpcc_json_object_get_int(cmdslot->u.seg.request.msg, "utility", 0) == 1) {
+		/* start master in utility mode */
+		if (0 != (e = gpcc_proc_pg_ctl_start_segment(&cmdslot->u.seg.request.proc,
+							     cmdslot->u.seg.request.port,
+							     cmdslot->u.seg.request.data_dir,
+							     1, 1, 0, 
+							     cmdslot->u.seg.request.subpool))) {
+		    seg_request_error(ev, _cmdslot, SEG_START_DONE_EVENT, e, "pg_ctl start master failure");
+		    json_object_put(obj);
+		    return 0;
+		}
+	    } else {
+		/* start master in production mode */
+		if (0 != (e = gpcc_proc_pg_ctl_start_master(&cmdslot->u.seg.request.proc,
+							    cmdslot->u.seg.request.port,
+							    cmdslot->u.seg.request.data_dir,
+							    1, 0, 
+							    cmdslot->u.seg.request.subpool))) {
+		    seg_request_error(ev, _cmdslot, SEG_START_DONE_EVENT, e, "pg_ctl start master failure");
+		    json_object_put(obj);
+		    return 0;
+		}
 	    }
 	} else {
 	    if (0 != (e = gpcc_proc_gpsyncmaster_start(&cmdslot->u.seg.request.proc,
