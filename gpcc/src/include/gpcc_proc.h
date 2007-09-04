@@ -58,7 +58,41 @@ APR_DECLARE(apr_status_t) gpcc_proc_ssh(apr_proc_t *proc, const char *user, cons
  *  @param pool memory pool
  *  @return APR_SUCCESS if success otherwise failure
  */
-APR_DECLARE(apr_status_t) gpcc_proc_gpssh(apr_proc_t *proc, const char *user, const char *const *hostnames, int port, const char *cmd, int blocking, apr_pool_t *p);
+APR_DECLARE(apr_status_t) gpcc_proc_gpssh(apr_proc_t **proc, const char *user, const char *const *hostnames, int port, const char *cmd, int blocking, apr_pool_t *p);
+
+/**
+ *  gpcc_proc_scp to run a scp remote command
+ *  @param proc process handle
+ *  @param user user name
+ *  @param hostname
+ *  @param port  ssh port number
+ *  @param src source file/directory
+ *  @param target  target file /directory
+ *  @param wait to wait until finish
+ *  @param p memory pool
+ *  @return APR_SUCCESS if success otherwise failure
+ */
+APR_DECLARE(apr_status_t) gpcc_proc_scp(apr_proc_t *proc, const char *user, const char *hostname, int port, const char *src, const char *target, int wait, apr_pool_t *p);
+
+/**
+ *  gpcc_proc_gpscp to run scp with a list of hosts
+ *  scp -pr data_dir user@host:/dir 
+ *
+ *  @param proc process handle
+ *  @param user user name
+ *  @param hostnames list of hostnames
+ *  @param port  ssh port number
+ *  @param src source file/directory
+ *  @param target  target file /directory
+ *  @param wait to wait until finish
+ *  @param p memory pool
+ *  @return APR_SUCCESS if success otherwise failure
+ *
+ */
+APR_DECLARE(apr_status_t) gpcc_proc_gpscp(apr_proc_t **proc, const char *user, const char *const *hostnames, 
+					  int port, const char *src, const char *target, int wait, apr_pool_t *p);
+
+
 
 /**
  *  initdb -E encoding -D data_dir --locale=locale --max_connections=25 --shared_buffers=12000Mb

@@ -553,7 +553,6 @@ static apr_status_t seg_initdb_update_gp_configuration(gpcc_event_t *ev, void *_
     }
 
     /* standby master */
-    /*
     for (i = 1 ; 1 ; i++) {
 	sprintf(segname, "gpdb.seg.m.%d", i);
 	if ((seg = gpcc_json_object_get_string(msg, segname, 0)) == 0){
@@ -564,7 +563,7 @@ static apr_status_t seg_initdb_update_gp_configuration(gpcc_event_t *ev, void *_
 	    return 1;
 	}	
     }
-    */
+
     return 0;
 }
 
@@ -598,7 +597,6 @@ static apr_status_t seg_initdb_start_wait(gpcc_event_t* ev, void *_cmdslot)
 		seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL2_EVENT, e, "update gp_configuration table failure");
 		return 0;
 	    }
-
 
 	    evt = gpcc_event_alloc(SEG_INITDB_NEXT_EVENT, cmdslot->cmdidx, 0);
 	    gpcc_evqueue_put(gpha.evq, evt);
@@ -676,6 +674,70 @@ static apr_status_t seg_initdb_backout2(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
+  /* copy data directory to standby master gpdb.seg.m.X */
+static apr_status_t seg_initdb_copy_data_directory(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    apr_proc_t *proc = 0, *p;
+    int e, ret;
+    char *host;
+    int i, nstandby = 0;
+    char *user;
+    int ssh_port;
+    char *seg, *node, *data_dir, *master_node, *master_data_dir, *last;
+    apr_exit_why_e exitwhy;
+    char segname[64];
+
+    user = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, "gpdb.user", getenv("USER"));
+    ssh_port = gpcc_json_object_get_int(cmdslot->u.seg.request.msg, "gpdb.ssh_port", 22);
+
+
+
+    for (i = 1, nstandby = 0 ; 1 ; i++, nstandby++) {
+	sprintf(segname, "gpdb.seg.m.%d", i);
+	if ((seg = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, segname, 0)) == 0)
+	    break;
+    }
+
+    if (nstandby == 0)
+	return 0;
+
+    if ((seg = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, "gpdb.seg.m.0", 0)) == 0){
+	gpcc_warning(FLINE, "no master found");
+	return 1;
+    }
+
+    seg = apr_pstrdup(cmdslot->u.seg.request.subpool, seg);
+    master_node = apr_strtok(seg, ":", &last);
+    master_data_dir = apr_strtok(seg, 0, &last);
+
+    proc = apr_palloc(cmdslot->u.seg.request.subpool, sizeof(apr_proc_t) * nstandby);
+
+    for (i = 1, p = proc ; i <= nstandby ; i++, p++) {
+	sprintf(segname, "gpdb.seg.m.%d", i);
+	if ((seg = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, segname, 0)) == 0)
+	    break;
+
+	seg = apr_pstrdup(cmdslot->u.seg.request.subpool, seg);
+	node = apr_strtok(seg, ":", &last);
+	data_dir = apr_strtok(seg, 0, &last);
+
+	e = gpcc_proc_scp(p, user, node, ssh_port, master_data_dir, data_dir, 0, cmdslot->u.seg.request.subpool);
+	if (e) {
+	    gpcc_warning(FLINE, "[%s] command failed scp %s to %s", node, master_data_dir, data_dir);
+	    return e;
+	}
+    }
+    
+    e = 0;
+    for (i = 0 , p = proc ; i < nstandby ; i++, p++) {
+	apr_proc_wait(p, &ret, &exitwhy, APR_WAIT);
+	e |= ret;
+    }
+
+    return e;
+}
+
 static apr_status_t seg_initdb_checkdb(gpcc_event_t* ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
@@ -684,7 +746,7 @@ static apr_status_t seg_initdb_checkdb(gpcc_event_t* ev, void *_cmdslot)
     char *user;
     char *passwd;
 
-    if (strstr(cmdslot->cmdname, "gpdb.seg.m.")) {
+    if (strcmp(cmdslot->cmdname, "gpdb.seg.m.0") == 0) {
 	/* this is QD */
 	user = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, "gpdb.user", getenv("USER"));
 	passwd = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, "gpdb.password", "mpparray");
@@ -710,6 +772,14 @@ static apr_status_t seg_initdb_checkdb(gpcc_event_t* ev, void *_cmdslot)
 	return 0;
     }
 
+    /* copy data directory to standby master */
+    if (strcmp(cmdslot->cmdname, "gpdb.seg.m.0") == 0) {
+	if (0 != (e = seg_initdb_copy_data_directory(ev, _cmdslot))) {
+	    seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL2_EVENT, e, "scp failure");
+	    return 0;
+	}
+    }
+
     /* save the setting port and data_dir permanently */
     if (cmdslot->u.seg.port == 0) {
 	cmdslot->u.seg.port = cmdslot->u.seg.request.port;
@@ -726,6 +796,7 @@ static apr_status_t seg_initdb_reply(gpcc_event_t* ev, void *_cmdslot)
 {
     return seg_request_reply(ev, _cmdslot, SEG_INITDB_REPLY_EVENT);
 }
+
 
 /* segment start */
 static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
