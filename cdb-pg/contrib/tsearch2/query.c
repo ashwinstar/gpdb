@@ -547,8 +547,8 @@ rexectsq(PG_FUNCTION_ARGS)
 Datum
 exectsq(PG_FUNCTION_ARGS)
 {
-	tsvector   *val = (tsvector *) DatumGetPointer(PG_DETOAST_DATUM(PG_GETARG_DATUM(0)));
-	QUERYTYPE  *query = (QUERYTYPE *) DatumGetPointer(PG_DETOAST_DATUM(PG_GETARG_DATUM(1)));
+	tsvector   *val = (tsvector *) PG_DETOAST_DATUM(PG_GETARG_DATUM(0));
+	QUERYTYPE  *query = (QUERYTYPE *) PG_DETOAST_DATUM(PG_GETARG_DATUM(1));
 	CHKVAL		chkval;
 	bool		result;
 
@@ -869,7 +869,7 @@ infix(INFIX * in, bool first)
 Datum
 tsquery_out(PG_FUNCTION_ARGS)
 {
-	QUERYTYPE  *query = (QUERYTYPE *) DatumGetPointer(PG_DETOAST_DATUM(PG_GETARG_DATUM(0)));
+	QUERYTYPE  *query = (QUERYTYPE *) PG_DETOAST_DATUM(PG_GETARG_DATUM(0));
 	INFIX		nrm;
 
 	if (query->size == 0)
@@ -897,7 +897,7 @@ tsquery_out(PG_FUNCTION_ARGS)
 Datum
 tsquerytree(PG_FUNCTION_ARGS)
 {
-	QUERYTYPE  *query = (QUERYTYPE *) DatumGetPointer(PG_DETOAST_DATUM(PG_GETARG_DATUM(0)));
+	QUERYTYPE  *query = (QUERYTYPE *) PG_DETOAST_DATUM(PG_GETARG_DATUM(0));
 	INFIX		nrm;
 	text	   *res;
 	ITEM	   *q;

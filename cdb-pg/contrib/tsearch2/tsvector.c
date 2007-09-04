@@ -928,15 +928,15 @@ tsearch2(PG_FUNCTION_ARGS)
 		{
 			text	   *txttmp = (text *) DatumGetPointer(OidFunctionCall1(
 																	 funcoid,
-												 PointerGetDatum(txt_toasted)
+																	 txt_toasted
 																		   ));
 
-			txt = (text *) DatumGetPointer(PG_DETOAST_DATUM(PointerGetDatum(txttmp)));
+			txt = (text *) PG_DETOAST_DATUM(PointerGetDatum(txttmp));
 			if (txt == txttmp)
 				txt_toasted = PointerGetDatum(txt);
 		}
 		else
-			txt = (text *) DatumGetPointer(PG_DETOAST_DATUM(PointerGetDatum(txt_toasted)));
+			txt = (text *) PG_DETOAST_DATUM(txt_toasted);
 
 		parsetext_v2(cfg, &prs, VARDATA(txt), VARSIZE(txt) - VARHDRSZ);
 		if (txt != (text *) DatumGetPointer(txt_toasted))
@@ -1050,8 +1050,8 @@ Datum		tsvector_ge(PG_FUNCTION_ARGS);
 Datum		tsvector_gt(PG_FUNCTION_ARGS);
 
 #define RUNCMP										\
-tsvector *a		   = (tsvector *) DatumGetPointer(PG_DETOAST_DATUM(PG_GETARG_DATUM(0)));\
-tsvector *b		   = (tsvector *) DatumGetPointer(PG_DETOAST_DATUM(PG_GETARG_DATUM(1)));\
+tsvector *a		   = (tsvector *) PG_DETOAST_DATUM(PG_GETARG_DATUM(0));\
+tsvector *b		   = (tsvector *) PG_DETOAST_DATUM(PG_GETARG_DATUM(1));\
 int res = silly_cmp_tsvector(a,b);							\
 PG_FREE_IF_COPY(a,0);									\
 PG_FREE_IF_COPY(b,1);									\

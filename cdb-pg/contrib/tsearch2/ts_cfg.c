@@ -90,7 +90,7 @@ init_cfg(Oid id, TSCfgInfo * cfg)
 	for (i = 0; i < SPI_processed; i++)
 	{
 		int			lexid = DatumGetInt32(SPI_getbinval(SPI_tuptable->vals[i], SPI_tuptable->tupdesc, 1, &isnull));
-		ArrayType  *toasted_a = (ArrayType *) PointerGetDatum(SPI_getbinval(SPI_tuptable->vals[i], SPI_tuptable->tupdesc, 2, &isnull));
+		ArrayType  *toasted_a = (ArrayType *) DatumGetPointer(SPI_getbinval(SPI_tuptable->vals[i], SPI_tuptable->tupdesc, 2, &isnull));
 		ArrayType  *a;
 
 		if (!cfg->map)
@@ -107,7 +107,7 @@ init_cfg(Oid id, TSCfgInfo * cfg)
 		if (isnull)
 			continue;
 
-		a = (ArrayType *) PointerGetDatum(PG_DETOAST_DATUM(DatumGetPointer(toasted_a)));
+		a = (ArrayType *) PG_DETOAST_DATUM(PointerGetDatum(toasted_a));
 
 		if (ARR_NDIM(a) != 1)
 			ts_error(ERROR, "Wrong dimension");

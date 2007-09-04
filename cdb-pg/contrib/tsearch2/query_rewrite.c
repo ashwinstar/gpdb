@@ -236,7 +236,7 @@ Datum
 rewrite_accum(PG_FUNCTION_ARGS)
 {
 	QUERYTYPE  *acc = (QUERYTYPE *) PG_GETARG_POINTER(0);
-	ArrayType  *qa = (ArrayType *) DatumGetPointer(PG_DETOAST_DATUM_COPY(PG_GETARG_DATUM(1)));
+	ArrayType  *qa = (ArrayType *) PG_DETOAST_DATUM_COPY(PG_GETARG_DATUM(1));
 	QUERYTYPE  *q;
 	QTNode	   *qex,
 			   *subs = NULL,
@@ -369,7 +369,7 @@ Datum		tsquery_rewrite(PG_FUNCTION_ARGS);
 Datum
 tsquery_rewrite(PG_FUNCTION_ARGS)
 {
-	QUERYTYPE  *query = (QUERYTYPE *) DatumGetPointer(PG_DETOAST_DATUM_COPY(PG_GETARG_DATUM(0)));
+	QUERYTYPE  *query = (QUERYTYPE *) PG_DETOAST_DATUM_COPY(PG_GETARG_DATUM(0));
 	text	   *in = PG_GETARG_TEXT_P(1);
 	QUERYTYPE  *rewrited = query;
 	QTNode	   *tree;
@@ -429,8 +429,8 @@ tsquery_rewrite(PG_FUNCTION_ARGS)
 
 			if (!isnull)
 			{
-				QUERYTYPE  *qtex = (QUERYTYPE *) DatumGetPointer(PG_DETOAST_DATUM(qdata));
-				QUERYTYPE  *qtsubs = (QUERYTYPE *) DatumGetPointer(PG_DETOAST_DATUM(sdata));
+				QUERYTYPE  *qtex = (QUERYTYPE *) PG_DETOAST_DATUM(qdata);
+				QUERYTYPE  *qtsubs = (QUERYTYPE *) PG_DETOAST_DATUM(sdata);
 				QTNode	   *qex,
 						   *qsubs = NULL;
 
@@ -497,9 +497,9 @@ Datum		tsquery_rewrite_query(PG_FUNCTION_ARGS);
 Datum
 tsquery_rewrite_query(PG_FUNCTION_ARGS)
 {
-	QUERYTYPE  *query = (QUERYTYPE *) DatumGetPointer(PG_DETOAST_DATUM_COPY(PG_GETARG_DATUM(0)));
-	QUERYTYPE  *ex = (QUERYTYPE *) DatumGetPointer(PG_DETOAST_DATUM(PG_GETARG_DATUM(1)));
-	QUERYTYPE  *subst = (QUERYTYPE *) DatumGetPointer(PG_DETOAST_DATUM(PG_GETARG_DATUM(2)));
+	QUERYTYPE  *query = (QUERYTYPE *) PG_DETOAST_DATUM_COPY(PG_GETARG_DATUM(0));
+	QUERYTYPE  *ex = (QUERYTYPE *) PG_DETOAST_DATUM(PG_GETARG_DATUM(1));
+	QUERYTYPE  *subst = (QUERYTYPE *) PG_DETOAST_DATUM(PG_GETARG_DATUM(2));
 	QUERYTYPE  *rewrited = query;
 	QTNode	   *tree,
 			   *qex,

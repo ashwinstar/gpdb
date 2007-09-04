@@ -85,7 +85,7 @@ static int	outbuf_maxlen = 0;
 Datum
 gtsvector_out(PG_FUNCTION_ARGS)
 {
-	GISTTYPE   *key = (GISTTYPE *) DatumGetPointer(PG_DETOAST_DATUM(PG_GETARG_POINTER(0)));
+	GISTTYPE   *key = (GISTTYPE *) PG_DETOAST_DATUM(PG_GETARG_DATUM(0));
 	char	   *outbuf;
 
 	if (outbuf_maxlen == 0)
@@ -155,7 +155,7 @@ gtsvector_compress(PG_FUNCTION_ARGS)
 	if (entry->leafkey)
 	{							/* tsvector */
 		GISTTYPE   *res;
-		tsvector   *val = (tsvector *) DatumGetPointer(PG_DETOAST_DATUM(entry->key));
+		tsvector   *val = (tsvector *) PG_DETOAST_DATUM(entry->key);
 		int4		len;
 		int4	   *arr;
 		WordEntry  *ptr = ARRPTR(val);
@@ -234,7 +234,7 @@ Datum
 gtsvector_decompress(PG_FUNCTION_ARGS)
 {
 	GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
-	GISTTYPE   *key = (GISTTYPE *) DatumGetPointer(PG_DETOAST_DATUM(entry->key));
+	GISTTYPE   *key = (GISTTYPE *) PG_DETOAST_DATUM(entry->key);
 
 	if (key != (GISTTYPE *) DatumGetPointer(entry->key))
 	{

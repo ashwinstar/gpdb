@@ -1011,8 +1011,7 @@ dblink_get_connections(PG_FUNCTION_ARGS)
 	}
 
 	if (astate)
-		PG_RETURN_ARRAYTYPE_P(makeArrayResult(astate,
-											  CurrentMemoryContext));
+		return makeArrayResult(astate, CurrentMemoryContext);
 	else
 		PG_RETURN_NULL();
 }
@@ -1641,7 +1640,7 @@ Datum
 dblink_current_query(PG_FUNCTION_ARGS)
 {
 	if (debug_query_string)
-		PG_RETURN_TEXT_P(GET_TEXT(debug_query_string));
+		PG_RETURN_TEXT_P(GET_TEXT((char *) debug_query_string));
 	else
 		PG_RETURN_NULL();
 }

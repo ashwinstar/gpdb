@@ -102,7 +102,7 @@ readXLogPage(void)
 /* 
  * Exit closing active database connections
  */
-void
+static void
 exit_gracefuly(int status)
 {
 	destroyPQExpBuffer(dbQry);
@@ -118,7 +118,7 @@ exit_gracefuly(int status)
 /*
  * Open a database connection
  */
-PGconn *
+static PGconn *
 DBConnect(const char *host, const char *port, char *database, const char *user)
 {
 	char	*password = NULL;
@@ -1389,7 +1389,7 @@ dumpPgControl(char* fname)
 	else if (nread != sizeof(ControlFileData))
 	{
 		fprintf(stderr, "Read %d bytes of control file data and was expecting %d\n",
-			(int) nread, sizeof(ControlFileData));
+			(int) nread, (int) sizeof(ControlFileData));
 		exit(1);
 	}
 
