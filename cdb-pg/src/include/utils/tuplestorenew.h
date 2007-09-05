@@ -72,4 +72,5 @@ extern bool ntuplestore_acc_seek_last(NTupleStoreAccessor *tsa);
 extern void ntuplestore_acc_seek_bof(NTupleStoreAccessor *tsa);
 extern void ntuplestore_acc_seek_eof(NTupleStoreAccessor *tsa);
 
+extern int ntuplestore_count_slot(NTupleStore *nts, NTupleStorePos *pos1, NTupleStorePos *pos2);
 #endif /* TUPSTORE_NEW_H */
