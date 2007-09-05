@@ -97,7 +97,6 @@ typedef struct WindowStatePerLevelData
 
 	bool is_rows;
 
-	/* XXX: merge the following 4 fields into 2 */
 	/* state for rows frame is simple (for now) */
 	long int trail_rows;
 	long int lead_rows;
@@ -110,6 +109,8 @@ typedef struct WindowStatePerLevelData
 	ExprState *trail_expr;
 	ExprState *lead_expr;
 
+	int nsortcols; /* number of sort columns in trial/lead edge data */
+	AttrNumber *sortcolidx; /* sort column indexes */
 	Datum *trail_edge_d;
 	bool *trail_edge_nulls;
 	bool trail_edge_set;
@@ -1316,12 +1317,12 @@ deform_window_tuple(TupleTableSlot *slot, int nattrs, AttrNumber *attnums,
 
 static void
 set_edge_val(WindowState *wstate, WindowStatePerLevel level_state, 
-			 WindowFrameEdge *e, WindowKey *key, Datum *vals, bool *nulls, 
-			 bool is_trail)
+			 WindowFrameEdge *e, int ncols, Datum *vals, bool *nulls, 
+			 bool is_trail, bool is_rows)
 {
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 
-	if (key->frame->is_rows)
+	if (is_rows)
 	{
 		if (EDGE_IS_BOUND(e))
 		{
@@ -1404,7 +1405,7 @@ set_edge_val(WindowState *wstate, WindowStatePerLevel level_state,
 
 			oldctx = MemoryContextSwitchTo(wstate->transcontext);
 
-			for (i = 0; i < key->numSortCols; i++)
+			for (i = 0; i < ncols; i++)
 			{
 				/* 
 				 * Copy the tuple since current it's the tuple directly
@@ -1550,8 +1551,8 @@ bufferAddRangeTransValue(WindowState *wstate, int ncols,
  * eq_lead_edge tells appendRangeTuple() is equal to the current edge.
  */
 static void
-appendRangeTuple(WindowState *wstate, WindowKey *key,
-				 WindowFrame *frame, WindowStatePerLevel level_state,
+appendRangeTuple(WindowState *wstate, WindowFrame *frame, 
+				 WindowStatePerLevel level_state,
 				 Datum *vals, bool *nulls, int level, List *funcs,
 				 bool is_peer, bool tuple_before_edge, bool eq_lead_edge)
 {
@@ -1602,7 +1603,7 @@ appendRangeTuple(WindowState *wstate, WindowKey *key,
 
 			if (append)
 			{
-				int ncols = key->numSortCols;
+				int ncols = level_state->nsortcols;
 
 				elog(DEBUG1, "append a new transition value.");
 				bufferAddRangeTransValue(wstate, ncols, funcstate, wtv, vals, 
@@ -2039,7 +2040,7 @@ adjustEdges(WindowState *wstate)
 												 level_state->trail_edge_d,
 												 level_state->trail_edge_nulls,
 												 level_state->col_sort_asc,
-												 key->numSortCols,
+												 level_state->nsortcols,
 												 level_state->ltfunctions,
 												 level_state->eqfunctions,
 											 econtext->ecxt_per_tuple_memory,
@@ -2059,7 +2060,7 @@ adjustEdges(WindowState *wstate)
 												 level_state->trail_edge_d,
 												 level_state->trail_edge_nulls,
 												 level_state->col_sort_asc,
-												 key->numSortCols,
+												 level_state->nsortcols,
 												 level_state->ltfunctions,
 												 level_state->eqfunctions,
 											 econtext->ecxt_per_tuple_memory,
@@ -2119,7 +2120,7 @@ adjustEdges(WindowState *wstate)
 											 level_state->lead_edge_d,
 											 level_state->lead_edge_nulls,
 											 level_state->col_sort_asc,
-											 key->numSortCols,
+											 level_state->nsortcols,
 											 level_state->ltfunctions,
 											 level_state->eqfunctions,
 											 econtext->ecxt_per_tuple_memory,
@@ -2130,7 +2131,7 @@ adjustEdges(WindowState *wstate)
 												 level_state->lead_edge_d,
 												 level_state->lead_edge_nulls,
 												 level_state->col_sort_asc,
-												 key->numSortCols,
+												 level_state->nsortcols,
 												 level_state->ltfunctions,
 												 level_state->eqfunctions,
 												 econtext->ecxt_per_tuple_memory,
@@ -2217,7 +2218,13 @@ populateFrameBuffers(WindowState *wstate)
 	long int ntuples;
 	bool process_cur_slot = wstate->cur_slot_is_new;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
+	Datum *save_vals;
+	bool *save_nulls;
+	int save_ncols;
 	
+	save_vals = NULL;
+	save_nulls = NULL;
+
 	/* calculate (new) frame edges */
 	foreach(lc, window->windowKeys)
 	{
@@ -2225,25 +2232,44 @@ populateFrameBuffers(WindowState *wstate)
 		WindowStatePerLevel level_state;
 		Datum *vals;
 		bool *nulls;
+		int ncols;
 
 		level++;
-		
 		level_state = &wstate->level_state[level];
-
-		vals = palloc(sizeof(Datum) * key->numSortCols);
-		nulls = palloc(sizeof(bool) * key->numSortCols);
 		
-		deform_window_tuple(wstate->curslot, key->numSortCols,
-							key->sortColIdx, vals, nulls); 
+		if (key->numSortCols)
+		{
+			if (PointerIsValid(save_vals))
+			{
+				Assert(PointerIsValid(save_nulls));
 
-		set_edge_val(wstate, level_state, key->frame->trail, key, vals, 
-					 nulls, true);
-		set_edge_val(wstate, level_state, key->frame->lead, key, vals, 
-					 nulls, false);
+				pfree(save_vals);
+				pfree(save_nulls);
+			}
 
-		pfree(vals);
-		pfree(nulls);
+			save_vals = vals = palloc(sizeof(Datum) * key->numSortCols);
+			save_nulls = nulls = palloc(sizeof(bool) * key->numSortCols);
+			save_ncols = ncols = key->numSortCols;
+		
+			deform_window_tuple(wstate->curslot, key->numSortCols,
+								key->sortColIdx, vals, nulls); 
+		}
+		else
+		{
+			vals = save_vals;
+			nulls = save_nulls;
+			ncols = save_ncols;
+		}
+
+		set_edge_val(wstate, level_state, key->frame->trail, ncols, vals, 
+					 nulls, true, key->frame->is_rows);
+		set_edge_val(wstate, level_state, key->frame->lead, ncols, vals, 
+					 nulls, false, key->frame->is_rows);
+
 	}
+
+	pfree(save_vals);
+	pfree(save_nulls);
 
 	/* adjust the trailing edges, determining old and new edge positions */
 	adjustEdges(wstate);
@@ -2378,10 +2404,11 @@ populateFrameBuffers(WindowState *wstate)
 				if (level < wbi.min_key_break || wbi.min_key_break == -1)
 					is_peer = true;
 
-				new_vals = palloc(sizeof(Datum) * key->numSortCols);
-				new_nulls = palloc(sizeof(bool) * key->numSortCols);
+				new_vals = palloc(sizeof(Datum) * level_state->nsortcols);
+				new_nulls = palloc(sizeof(bool) * level_state->nsortcols);
 
-				deform_window_tuple(slot, key->numSortCols, key->sortColIdx,
+				deform_window_tuple(slot, level_state->nsortcols, 
+									level_state->sortcolidx,
 									new_vals, new_nulls);
 	
 				if (key->frame->trail->kind == WINDOW_UNBOUND_PRECEDING)
@@ -2395,7 +2422,7 @@ populateFrameBuffers(WindowState *wstate)
 											   level_state->trail_edge_d,
 											   level_state->trail_edge_nulls,
 											   level_state->col_sort_asc,
-											   key->numSortCols,
+											   level_state->nsortcols,
 											   level_state->ltfunctions,
 											   level_state->eqfunctions,
 											   econtext->ecxt_per_tuple_memory,
@@ -2415,7 +2442,7 @@ populateFrameBuffers(WindowState *wstate)
 											   level_state->trail_edge_d,
 											   level_state->trail_edge_nulls,
 											   level_state->col_sort_asc,
-											   key->numSortCols,
+											   level_state->nsortcols,
 											   level_state->ltfunctions,
 											   level_state->eqfunctions,
 											   econtext->ecxt_per_tuple_memory,
@@ -2439,7 +2466,7 @@ populateFrameBuffers(WindowState *wstate)
 											   level_state->lead_edge_d,
 											   level_state->lead_edge_nulls,
 											   level_state->col_sort_asc,
-											   key->numSortCols,
+											   level_state->nsortcols,
 											   level_state->ltfunctions,
 											   level_state->eqfunctions,
 										   econtext->ecxt_per_tuple_memory,
@@ -2459,7 +2486,7 @@ populateFrameBuffers(WindowState *wstate)
 												   level_state->lead_edge_d,
 												   level_state->lead_edge_nulls,
 												   level_state->col_sort_asc,
-												   key->numSortCols,
+												   level_state->nsortcols,
 												   level_state->ltfunctions,
 												   level_state->eqfunctions,
 											   econtext->ecxt_per_tuple_memory,
@@ -2474,7 +2501,7 @@ populateFrameBuffers(WindowState *wstate)
 					}
 				}
 
-				appendRangeTuple(wstate, key, key->frame, level_state, 
+				appendRangeTuple(wstate, key->frame, level_state, 
 								 new_vals, new_nulls, 
 								 level, level_state->level_funcs,
 								 is_peer, tuple_in_buf, eqlead);
@@ -3061,6 +3088,8 @@ init_frames(WindowState *wstate)
 	Window *node = (Window *)wstate->ps.plan;
 	int level = -1;
 	ListCell *lc;
+	int last_nattrs = 0; /* number of attrs in the last key which had attrs */
+	AttrNumber *last_sortcolidx;
 
 	resetPartFuncFrameBuf(wstate);
 
@@ -3074,12 +3103,29 @@ init_frames(WindowState *wstate)
 		int ncols = key->numSortCols;
 		int i;
 
+		if (ncols)
+		{
+			last_nattrs = ncols;
+			last_sortcolidx = key->sortColIdx;
+		}
+
 		level++;
+		
 		level_state = &wstate->level_state[level];
 
+		level_state->nsortcols = last_nattrs;
+		level_state->sortcolidx = last_sortcolidx;
+
+		/* 
+		 * We must allocate memory here, even if we have no sort columns 
+		 * because we need to store the result of the frame edge calculation
+		 * operations inside set_edge_val().
+		 *
+		 * XXX: we could special case CURRENT ROW.
+		 */
 		level_state->trail_edge_d = palloc(sizeof(Datum) * ncols);
 		level_state->trail_edge_nulls = palloc(sizeof(bool) * ncols);
-		
+	
 		level_state->lead_edge_d = palloc(sizeof(Datum) * ncols);
 		level_state->lead_edge_nulls = palloc(sizeof(bool) * ncols);
 
@@ -3205,14 +3251,14 @@ init_frames(WindowState *wstate)
 				if (EDGE_IS_BOUND(frame->trail))
 				{
 					init_bound_frame_edge_expr(frame->trail, desc,
-											   key->sortColIdx[0],
+											   level_state->sortcolidx[0],
 											   true, level_state, wstate);
 				}
 
 				if (EDGE_IS_BOUND(frame->lead))
 				{
 					init_bound_frame_edge_expr(frame->lead, desc,
-											   key->sortColIdx[0],
+											   level_state->sortcolidx[0],
 											   false, level_state, wstate);
 				}
 			}
@@ -3258,7 +3304,7 @@ init_frames(WindowState *wstate)
 				Operator optup;
 
 
-				attnum = key->sortColIdx[0];
+				attnum = level_state->sortcolidx[0];
 				optup = ordering_oper(tup->attrs[attnum - 1]->atttypid,
 									  false);
 				
@@ -3393,15 +3439,50 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 		WindowKey *key = (WindowKey *) lfirst(lc);
 		WindowFrame *f;
 		WindowStatePerLevel lvl = &wstate->level_state[++i];
-		int j;
 		
-		lvl->eqfunctions = execTuplesMatchPrepare(desc,
-								   				  key->numSortCols,
-								   				  key->sortColIdx);
+		lvl->level = i;
 
-		lvl->ltfunctions = get_ltfuncs(desc,
-									   key->numSortCols,
-									   key->sortColIdx);
+		/* if empty, get prev key */
+		if (key->numSortCols)
+		{
+			int j;
+			lvl->eqfunctions = execTuplesMatchPrepare(desc,
+									   				  key->numSortCols,
+									   				  key->sortColIdx);
+
+			lvl->ltfunctions = get_ltfuncs(desc,
+										   key->numSortCols,
+										   key->sortColIdx);
+
+			lvl->col_types = palloc(sizeof(Oid) * key->numSortCols);
+			lvl->col_typlens = palloc(sizeof(int2) * key->numSortCols);
+			lvl->col_typbyvals = palloc(sizeof(bool) * key->numSortCols);
+
+			for (j = 0; j < key->numSortCols; j++)
+			{
+				AttrNumber attnum = key->sortColIdx[j];
+				Form_pg_attribute attr = desc->attrs[attnum - 1];
+
+				lvl->col_types[j] = attr->atttypid;
+				lvl->col_typlens[j] = attr->attlen;
+				lvl->col_typbyvals[j] = attr->attbyval;
+			}
+		}
+		else
+		{
+			if (i - 1 >= 0)
+			{
+				WindowStatePerLevel last_level;
+
+				last_level = &wstate->level_state[i - 1];
+
+				lvl->eqfunctions = last_level->eqfunctions;
+				lvl->ltfunctions = last_level->ltfunctions;
+				lvl->col_types = last_level->col_types;
+				lvl->col_typlens = last_level->col_typlens;
+				lvl->col_typbyvals = last_level->col_typbyvals;
+			}
+		}
 
 		if (!key->frame)
 		{
@@ -3444,20 +3525,6 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 
 		Assert(PointerIsValid(f->trail));
 		Assert(PointerIsValid(f->lead));
-
-		lvl->col_types = palloc(sizeof(Oid) * key->numSortCols);
-		lvl->col_typlens = palloc(sizeof(int2) * key->numSortCols);
-		lvl->col_typbyvals = palloc(sizeof(bool) * key->numSortCols);
-
-		for (j = 0; j < key->numSortCols; j++)
-		{
-			AttrNumber attnum = key->sortColIdx[j];
-			Form_pg_attribute attr = desc->attrs[attnum - 1];
-			
-			lvl->col_types[j] = attr->atttypid;
-			lvl->col_typlens[j] = attr->attlen;
-			lvl->col_typbyvals[j] = attr->attbyval;
-		}
 	}
 
 	/* Allocate result storage and working storage per window ref.
