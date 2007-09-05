@@ -2220,7 +2220,7 @@ populateFrameBuffers(WindowState *wstate)
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 	Datum *save_vals;
 	bool *save_nulls;
-	int save_ncols;
+	int save_ncols = 0;
 	
 	save_vals = NULL;
 	save_nulls = NULL;
@@ -3089,7 +3089,7 @@ init_frames(WindowState *wstate)
 	int level = -1;
 	ListCell *lc;
 	int last_nattrs = 0; /* number of attrs in the last key which had attrs */
-	AttrNumber *last_sortcolidx;
+	AttrNumber *last_sortcolidx = NULL;
 
 	resetPartFuncFrameBuf(wstate);
 
