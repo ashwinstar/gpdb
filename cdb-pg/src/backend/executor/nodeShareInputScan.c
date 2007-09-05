@@ -584,14 +584,18 @@ void *shareinput_reader_waitready(int share_id)
 			asize = read(pctxt->readyfd, &a, 1);
 			Assert(asize == 1 && a == 'a');
 
-			elog(LOG, "SISC: Wait ready get a, now write b");
+			elog(DEBUG1, "SISC: Wait ready get a, now write b");
 			write(pctxt->donefd, "b", 1);
 			break;
+		}
+		else if(n==0)
+		{
+			elog(DEBUG1, "SISC: Wait ready time out once");
 		}
 		else
 		{
 			int save_errno = errno;
-			elog(LOG, "SISC: Wait readly try again, errno %d ... ", save_errno);
+			elog(LOG, "SISC: Wait ready try again, errno %d ... ", save_errno);
 		}
 	}
 	return (void *) pctxt;
@@ -645,7 +649,7 @@ void *shareinput_writer_notifyready(int share_id, int xslice)
 
 		if(n==1)
 		{
-			elog(LOG, "SISC: notify ready once, xslice = %d", xslice);
+			elog(DEBUG1, "SISC: notify ready once, xslice = %d", xslice);
 			write(pctxt->readyfd, "a", 1);
 		}
 
@@ -668,8 +672,12 @@ void *shareinput_writer_notifyready(int share_id, int xslice)
 			{
 				Assert(bsize == 1 && b == 'b');
 				--xslice;
-				elog(LOG, "SISC: notify ready succeed 1, xslice remaining %d", xslice);
+				elog(DEBUG1, "SISC: notify ready succeed 1, xslice remaining %d", xslice);
 			}
+		}
+		else if(n==0)
+		{
+			elog(DEBUG1, "SISC: Notify ready time out once ... ");
 		}
 		else
 		{
@@ -699,14 +707,18 @@ void shareinput_reader_notifydone(void *ctxt, int share_id)
 		n = select(pctxt->donefd+1, NULL, (fd_set *) &wset, NULL, &tval);
 		if(n==1)
 		{
-			elog(LOG, "sisc notify done");
+			elog(DEBUG1, "SISC: notify done");
 			write(pctxt->donefd, "z", 1);
 			break;
+		}
+		else if(n==0)
+		{
+			elog(DEBUG1, "SISC: notify done time out once ...");
 		}
 		else
 		{
 			int save_errno = errno;
-			elog(LOG, "sisc notify done timeout, errno %d", save_errno);
+			elog(LOG, "SISC: notify done timeout, errno %d", save_errno);
 		}
 	}
 
@@ -741,8 +753,12 @@ void shareinput_writer_waitdone(void *ctxt, int share_id, int nsharer_xslice)
 			zsize = read(pctxt->donefd, &z, 1); 
 			Assert(zsize == 1 && z == 'z');
 
-			elog(LOG, "SISC: wait done get 1 notification");
+			elog(DEBUG1, "SISC: wait done get 1 notification");
 			--nsharer_xslice;
+		}
+		else if(n==0)
+		{
+			elog(DEBUG1, "SISC: wait done timeout onece");
 		}
 		else 
 		{
@@ -751,7 +767,7 @@ void shareinput_writer_waitdone(void *ctxt, int share_id, int nsharer_xslice)
 		}
 	}
 
-	elog(LOG, "SISC: Writer have got all reader done notification");
+	elog(DEBUG1, "SISC: Writer have got all reader done notification");
 	shareinput_clean_lk_ctxt(ctxt);
 	UnregisterXactCallbackOnce(XCallBack_ShareInput_FIFO, (void *) ctxt);
 }
