@@ -218,7 +218,10 @@ session = None
 def cleanup():
     while True:
 	try:
-	    if session: session.clean()
+	    if session: 
+                print '\n[Cleanup...]'; 
+                session.clean()
+            session = None
 	    break
 	except KeyboardInterrupt:
 	    pass
@@ -256,10 +259,7 @@ def interactive():
     signal.signal(signal.SIGINT, sigint_handle)
     while True:
 	try:
-	    if session: 
-		print '\n[Cleanup...]'; 
-		session.clean()
-		session = None
+            cleanup()
 	    session = Session()
 	    session.login(opt['-h'])
 	    session.cmdloop()
