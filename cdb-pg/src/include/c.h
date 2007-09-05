@@ -287,6 +287,7 @@ typedef unsigned long int uint64;
 #endif
 
 #define INT64_IS_BUSTED
+#error "Greenplum Database cannot be compiled on machines that don't have a 64-bit integer type"
 #endif   /* not HAVE_LONG_INT_64 and not
 								 * HAVE_LONG_LONG_INT_64 */
 
