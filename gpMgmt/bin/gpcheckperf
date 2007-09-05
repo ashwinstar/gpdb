@@ -442,7 +442,7 @@ def printNetResult(result):
         print '%s %s %s' % (h[0].ljust(30), h[1].ljust(30), h[6].ljust(30))
 
     sum = min = max = average = 0
-    n = map(lambda x: return x[7], result)
+    n = map(lambda x: x[7], result)
     sum = reduce(lambda x, y: x + y, n)
     min = reduce(lambda x, y: x > y and y or x, n, 9999999999)
     max = reduce(lambda x, y: x > y and x or y, n)
