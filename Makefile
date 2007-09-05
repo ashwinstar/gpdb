@@ -7,7 +7,6 @@ RELEASE=`$(CURDIR)/releasetag`
 GPDIR=greenplum-db$(RELEASE)
 GPDOCDIR=$(CURDIR)/docs/release
 
-TARBALL=/tmp/$(GPDIR).tar.gz
 
 DEFPORT=5432
 
@@ -28,7 +27,7 @@ endif
 
 all : devel
 
-.PHONY : RECONFIG GPROOTDEP HOMEDEP clean distclean tarball distprep version
+.PHONY : RECONFIG GPROOTDEP HOMEDEP clean distclean distprep version
 
 test2 :
 	echo "CWD ="$(CURDIR)
@@ -66,7 +65,6 @@ dist : version GPROOTDEP RECONFIG $(ISCONFIG)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
-	@rm -f $(TARBALL); $(MAKE) tarball TARBALL=$(TARBALL) INSTLOC=$(INSTLOC)
 
 groupSession:
 	@cd $(GPMGMT)/bin; $(MAKE) 
@@ -86,11 +84,10 @@ copydocs :
 	cp $(GPDOCDIR)/pdf/GP*.pdf $(INSTLOC)/docs/; \
 	fi 
 
-tarball :
-	@gtar czf $(TARBALL) $(INSTLOC)
 
 mgmtcopy :
 	@#Copy the management utilities
+	@mkdir -p $(INSTLOC)/bin
 	@cp -rp $(GPMGMT)/bin $(INSTLOC)
 	@cp -rp $(GPCC)/build/bin $(INSTLOC)
 	@cp $(GPPGDIR)/src/test/regress/*.pl $(INSTLOC)/bin
@@ -174,7 +171,6 @@ clean :
 	@cd $(GPPGDIR); $(MAKE) clean
 	@cd $(GPMGMT)/bin; $(MAKE) clean
 	@cd $(GPCC); $(MAKE) clean
-	@rm -f $(TARBALL)
 
 distclean :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, no need to clean"; exit 1; fi
