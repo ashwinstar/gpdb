@@ -293,10 +293,10 @@ def parseMultiDDResult(out):
 
 #############
 def runDiskWriteTest(multidd):
-    if opt['-v']:
-	print '--------------------'
-	print '  DISK WRITE TEST'
-	print '--------------------'
+    print
+    print '--------------------'
+    print '--  DISK WRITE TEST'
+    print '--------------------'
     
     cmd = 'time -p ' + multidd
     for d in opt['-d']:
@@ -312,10 +312,10 @@ def runDiskWriteTest(multidd):
 
 #############
 def runDiskReadTest(multidd):
-    if opt['-v']:
-	print '--------------------'
-	print '  DISK READ TEST'
-	print '--------------------'
+    print
+    print '--------------------'
+    print '--  DISK READ TEST'
+    print '--------------------'
 
     cmd = 'time -p ' + multidd
     for d in opt['-d']:
@@ -331,10 +331,10 @@ def runDiskReadTest(multidd):
 
 #############
 def runStreamTest():
-    if opt['-v']:
-	print '--------------------'
-	print '  STREAM TEST'
-	print '--------------------'
+    print
+    print '--------------------'
+    print '--  STREAM TEST'
+    print '--------------------'
 
     rmtPath = copyExecOver('stream')
     cmd = gpssh(rmtPath)
@@ -391,10 +391,10 @@ def runNetperfTestBetween(x, y, netperf_path, netserver_port):
 
 #############
 def runNetPerfTest():
-    if opt['-v']:
-        print '-------------------'
-        print ' NETPERF Test'
-        print '-------------------'
+    print
+    print '-------------------'
+    print '--  NETPERF TEST'
+    print '-------------------'
 
     hostlist = gplib.parse_hostlines_hostfile(opt['-h'],
                                               opt['-f'],
@@ -525,6 +525,11 @@ try:
 	runTeardown()
 
     finally:
+        print
+        print '===================='
+        print '==  RESULT'
+        print '===================='
+
 	if diskWriteResult:
 	    printResult('disk write', diskWriteResult)
 
