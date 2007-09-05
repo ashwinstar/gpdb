@@ -30,23 +30,22 @@ Usage: gpcheckperf <options>
 """
 import os, sys, getopt, math, StringIO, stat
 
-if sys.version_info < (2, 3):
-    sys.exit("Error: gpcheckperf is supported on Python versions 2.3 or greater\n"
-	     + "Please upgrade python installed on this machine.")
+sys.path.append(sys.path[0] + '/lib')
+try:
+    import gplib
+except ImportError, e:
+    sys.exit('Error: unable to import module: ' + str(e))
+
 
 GPHOME=os.getenv('GPHOME')
 if GPHOME is None:
     sys.exit('Please set GPHOME environment variable')
 
+################
 def usage(exitarg):
-    help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', os.path.split(__file__)[-1] + '_help');
-    try:
-	f = open(help_path);
-	for line in f: 
-	    print line,
-    except:
-        print __doc__
+    print gplib.cli_help() or __doc__
     sys.exit(exitarg)
+
 
 script_name = os.path.split(__file__)[-1]
 opt = {}
@@ -57,10 +56,11 @@ opt['-V'] = False
 opt['-r'] = 'dsn'
 opt['-B'] = 1024 * 32
 opt['-S'] = 0
-opt['-p'] = 22
+opt['-p'] = None
 opt['-h'] = []
 opt['-f'] = False
 
+#############
 def killall(procname):
     if os.uname()[0] == 'SunOS':
         return 'pkill %s' % procname
@@ -68,13 +68,11 @@ def killall(procname):
         return 'killall -9 %s' % procname
 
 
-def ssh(srchost, cmd):
-    s = 'ssh -p %d %s' % (opt['-p'], srchost)
-    return s + ' ' + cmd
 
 #############
 def gpssh(cmd):
-    s = 'gpssh -p %d' % opt['-p']
+    s = 'gpssh'
+    if opt['-p']: s += ' -p %d' % opt['-p']
     if (opt['-f']):
 	s = s + ' -f ' + opt['-f']
     else:
@@ -83,7 +81,8 @@ def gpssh(cmd):
 
 #############
 def gpscp(cmd):
-    s = 'gpscp -p %d' % opt['-p']
+    s = 'gpscp'
+    if opt['-p']: s += ' -p %d' % opt['-p']
     if (opt['-f']):
 	s = s + ' -f ' + opt['-f']
     else:
@@ -106,11 +105,6 @@ def parseMemorySize(line):
 	return 0
 
 #############
-def parseInt(val): 
-    try: return int(val)
-    except ValueError: return 0
-
-#############
 def print_version():
     print '%s version $Revision$' % script_name
     sys.exit(0)
@@ -128,14 +122,14 @@ def parseCommandLine():
 	elif (switch[1] in 'vVD'): opt[switch] = True
 	elif (switch[1] in 'dh'): opt[switch].append(val)
 	elif (switch[1] in 'rf'): opt[switch] = val
-	elif (switch == '-p'): opt[switch] = parseInt(val)
+	elif (switch == '-p'): opt[switch] = gplib.parse_port(val)
 	elif (switch[1] in 'BS'): opt[switch] = parseMemorySize(val)
 	elif (switch == '--version'): print_version()
 
     if opt['-V']: opt['-v'] = True
 
-    if not (opt['-p'] > 0): 
-	usage('Error: please specify port number for -p switch')
+    if opt['-p'] != None:
+        if not opt['-p'] > 0: usage('Error: please specify port number for -p switch')
 
     if (len(opt['-d']) == 0): 
 	usage('Error: please specify at least one segdir (-d switch)')
@@ -200,6 +194,13 @@ def runTeardown():
 	(ok, out) = run(cmd)
     except:
 	pass
+
+    try:
+        cmd = gpssh(killall('netserver'))
+        (ok, out) = run(cmd)
+    except:
+        pass
+
     runTeardown_torndown = True
 
 #############
@@ -350,38 +351,43 @@ def runStreamTest():
 	    result[h] = (float(o[1]), 0, 0)
     return result
 
-def findCmdInPath(file):
-    CMDPATH=('/usr/kerberos', '/usr/sfw/bin', 'opt/sfw/bin',
-             '/usr/local/bin', '/bin', '/sbin', '/usr/bin', '/usr/sbin',
-             '/usr/ucb', '/sw/bin')
-    for p in CMDPATH:
-        path = os.path.join(p, file)
-        if os.path.exists(path):
-            return path
-    return None
 
+#############
 def startNetServer():
     port = 23000
-    success = False
-    ntry = 5
     rmtPath = copyExecOver('netserver')
 
-    while not success and ntry > 0:
+    for i in xrange(5):
+        if i > 0: print '[Warning] retrying with port %d' % port
+        cmd = gpssh(killall('netserver'))
+        (ok, out) = run(cmd)
+
         cmd = gpssh('%s -p %d > /dev/null 2>&1' % (rmtPath, port))
         (ok, out) = run(cmd)
-        if not ok:
-            if opt['-v']: print '[Warning] start netserver with port %d failed' % port
-            cmd = gpssh(killall('netserver'))
-            port += 12
-            ntry -= 1
-        else:
-            success = True
+        if ok: return port
 
+        if opt['-v']: print '[Warning] start netserver with port %d failed' % port
+        port += 12
 
-    if success == False:
-        return 0
+    return 0
 
-    return port
+#############
+def runNetperfTestBetween(x, y, netperf_path, netserver_port):
+    cmd = gplib.ssh_prefix(x[0], x[1], x[2])
+    cmd += '%s -H %s -p %d -t TCP_STREAM -l 5 -f M -P 0' % (netperf_path, y[1], netserver_port)
+    (ok, out) = run(cmd)
+    if not ok: 
+        print '[Warning] netperf failed on %s -> %s' % (x[1], y[1])
+        return []
+    result = []
+    for line in out:
+        o = line.split()
+        if len(o) != 5: continue
+        l = [x[1], y[1]].extend(o)
+        if opt['-v']: 
+            print '[Info] %s -> %s : %s' % (x[1], y[1], str(o))
+        result.append(l)
+    return result
 
 #############
 def runNetPerfTest():
@@ -390,148 +396,76 @@ def runNetPerfTest():
         print ' NETPERF Test'
         print '-------------------'
 
-    port = startNetServer()
-    if port == 0:
-        sys.exit('[Error] start netserver failure')
-
-    rmtPath = copyExecOver('netperf')
-
-    result = []
-
-    hostlist = []
-    if opt['-f']:
-        f = open(opt['-f'])
-        lines = f.readlines()
-        f.close()
-        for line in lines:
-            line = line.strip()
-            if line != '':
-                hostlist.append(line)
-    else:
-        hostlist = opt['-h']
-
-    idx = [i for i in range(len(hostlist))]
-    src = idx[0::2]
-    for s in src:
-        d = s + 1
-        d = d < len(hostlist) and d or 0
-        srchost = hostlist[s]
-        rcvhost = hostlist[d]
-        
-        for j in (0, 1):
-            srchost = j == 0 and hostlist[s] or hostlist[d]
-            rcvhost = j == 0 and hostlist[d] or hostlist[s]
-
-            cmd = ssh(srchost, '%s -H %s -p %d -t TCP_STREAM -l 5 -f M -P 0' % (rmtPath, rcvhost, port))
-            (ok, out) = run(cmd)
-            if not ok:
-                cmd = gpssh(killall('netserver'))
-                (ok, out) = run(cmd)
-                sys.exit('[Error] netperf failed: %s -> %s' % (srchost, rcvhost))
-
-            out = StringIO.StringIO(out)    
-            for line in out:
-                o = line.split()
-                if len(o) != 5:
-                    continue
-                l = [j, srchost, rcvhost]
-                l.extend(o)
-                result.append(l)
-
-    cmd = gpssh(killall('netserver'))
-    (ok, out) = run(cmd)
+    hostlist = gplib.parse_hostlines_hostfile(opt['-h'],
+                                              opt['-f'],
+                                              None, opt['-p'])
+    if len(hostlist) == 0:
+        usage('Error: missing hosts in -h and/or -f arguments')
     
+    if len(hostlist) == 1:
+        print '[Warning] single host only - abandon netperf test'
+        return None
+
+    # start netserver
+    netserver_port = startNetServer()
+    if netserver_port == 0:
+        print '[Error] unable to start netserver ... abort netperf test'
+        return None
+    
+    netperf = copyExecOver('netperf')
+
+    # make sure we have even number of hosts
+    if len(hostlist) & 1 == 1:
+        hostlist.append(hostlist[0])
+
+    # run netperf test between host[0] & host[1], host[2] & host[3], ...
+    result = []
+    for i in xrange(len(hostlist)):
+        if i & 1 == 0: continue
+        x = hostlist[i-1]
+        y = hostlist[i]
+        res = runNetperfTestBetween(x, y, netperf, netserver_port)
+        result.append(res)
+        res = runNetperfTestBetween(y, x, netperf, netserver_port)
+        result.append(res)
 
     return result
 
-def sum_rate(result):
-    sum = 0
-    for h in result:
-        sum += float(h[7])
-    return sum
 
-def min_rate(result):
-    min = 999999999
-    for h in result:
-        if min > float(h[7]):
-            min = float(h[7])
-    return min
+#############
+def printNetResult(result):
 
-def max_rate(result):
-    max = 0
-    for h in result:
-        if max < float(h[7]):
-            max = float(h[7])
-    return max
-
-def average_rate(result):
-    sum = 0
-    n = 0
-    for h in result:
-        sum += float(h[7])
-        n += 1
-    return 1.0 * sum / n
-
-def median_rate(result):
-    rate = []
-    for h in result:
-        rate.append(float(h[7]))
-
-    n = len(rate)
-    copy = rate[:]
-    copy.sort()
-    if n & 1:
-        return copy[n // 2]
-    else:
-        return (copy[n // 2 - 1] + copy[n //2]) / 2
-
-def torlerance(result, max):
-    limit = max * 0.97
-    for h in result:
-        if float(h[7]) < limit:
-            print '[Warning] connection between %s and %s is no good' % (h[1], h[2])
-
-def printNetSummary(title, result):
-
-    print title
+    print 'Netperf bisection bandwidth test'
     print '%s%s%s' % ('Source Host'.ljust(30), 'Destination Host'.ljust(30), 'MB/sec'.ljust(30))
 
     for h in result:
-        print '%s%s%s' % (h[1].ljust(30), h[2].ljust(30), h[7].ljust(30))
+        print '%s %s %s' % (h[0].ljust(30), h[1].ljust(30), h[6].ljust(30))
 
     sum = min = max = average = 0
-    sum = sum_rate(result)
-    min = min_rate(result)
-    max = max_rate(result)
-    median = median_rate(result)
-    average = average_rate(result)
+    n = map(lambda x: return x[7], result)
+    sum = reduce(lambda x, y: x + y, n)
+    min = reduce(lambda x, y: x > y and y or x, n, 9999999999)
+    max = reduce(lambda x, y: x > y and x or y, n)
+    ave = float(sum) / len(result)
+    
+    copy = n[:]
+    copy.sort()
+    median = copy[len(copy) / 2]
 
     print ''
     print 'Summary:'
     print 'sum = %.2f MB/sec' % sum
     print 'min = %.2f MB/sec' % min
     print 'max = %.2f MB/sec' % max
-    print 'average = %.2f MB/sec' % average
+    print 'ave = %.2f MB/sec' % ave
     print 'median = %.2f MB/sec' % median
     print ''
 
-    torlerance(result, max)    
+    limit = max * 0.9
+    for r in result:
+        if r[7] < limit:
+            print '[Warning] connection between %s and %s is no good' % (r[0], r[1])
 
-    print ''
-
-
-def printNetResult(title, result):
-    forward = []
-    reverse = []
-    for h in result:
-	if h[0] == 0:
-            forward.append(h)    
-        else:
-            reverse.append(h)
-
-    printNetSummary('Netperf Bisection Bandwidth Test (forward)', forward)
-
-    printNetSummary('Netperf Bisection Bandwidth Test (reverse)', reverse)
 
 
 ################
@@ -601,7 +535,7 @@ try:
 	    printResult('stream', streamResult)
 
         if netResult:
-            printNetResult('netperf', netResult)
+            printNetResult(netResult)
 
 	runTeardown()
 

@@ -17,9 +17,11 @@ Usage: gpscp [--version] [-?v] [-p port] [-u user]
 
 import sys, getopt, popen2, os
 
-if sys.version_info < (2, 3):
-    sys.exit("Error: gpscp is supported on Python versions 2.3 or greater\n"
-	     + "Please upgrade python installed on this machine.")
+sys.path.append(sys.path[0] + '/lib')
+try:
+    import gplib
+except ImportError, e:
+    sys.exit('Error: unable to import module: ' + str(e))
 
 #
 # all the command line options
@@ -27,7 +29,7 @@ if sys.version_info < (2, 3):
 script_name = os.path.split(__file__)[-1]
 opt = {}
 opt['-v'] = False
-opt['-p'] = 22
+opt['-p'] = None
 opt['-u'] = os.environ.get('LOGNAME') or os.environ.get('USER')
 opt['-h'] = []
 opt['-f'] = None
@@ -38,20 +40,8 @@ session = []
 
 ################
 def usage(exitarg):
-    help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', script_name + '_help');
-    try:
-	f = open(help_path);
-	for line in f: 
-	    print line,
-    except:
-        print __doc__
+    print gplib.cli_help() or __doc__
     sys.exit(exitarg)
-
-#############
-def parsePort(val): 
-    try: return int(val)
-    except ValueError: return 0
-
 
 #############
 def print_version():
@@ -71,10 +61,11 @@ def parseCommandLine():
 	elif (switch == '-v'):        opt[switch] = True
 	elif (switch[1] in 'uf'):     opt[switch] = val
 	elif (switch == '-h'):        opt[switch].append(val)
-	elif (switch == '-p'):        opt[switch] = parsePort(val)
+	elif (switch == '-p'):        opt[switch] = gplib.parse_port(val)
         elif (switch == '--version'): print_version()
 
-    if not (opt['-p'] > 0): usage('Error: please specify port number for -p switch')
+    if opt['-p'] != None:
+        if not opt['-p'] > 0: usage('Error: please specify port number for -p switch')
 
     hf = (len(opt['-h']) and 1 or 0) + (opt['-f'] and 1 or 0)
     if hf != 1:
@@ -90,81 +81,27 @@ def parseCommandLine():
     remotePath = args[1]
 
 
-################
-def parseHostLine(line):
-    '''Parse line into (user, host, port) tuple'''
-    try:
-	user = opt['-u']
-	host = None
-	port = opt['-p']
-	t = line.strip().split('@')
-	cnt = len(t)
-	if t[0][0] == '#': return None
-        if cnt == 1: 
-	    host = t[0]
-	else:
-	    user = t[0]
-	    host = t[1]
-
-	t = host.split(':')
-	if len(t) > 1:
-	    host = t[0]
-	    port = int(t[1])
-	    
-	return (user, host, port)
-
-    except ValueError: pass
-    except IndexError: pass
-    return None
-
-
-#############
-def readHostFile(fname, retList):
-    if not fname: return
-    f = None; lno = 0; host = {}
-    try:
-	try:
-	    f = open(fname, 'r')
-	    for line in f:
-		lno = lno + 1
-		h = parseHostLine(line)
-		if not h: continue
-		key = '%s@%s' % (h[0], h[1])
-		host[key] = h
-	    for n in host: retList.append(host[n])
-	except IOError:
-	    sys.exit('[ERROR] cannot read host file ' + fname 
-		     + (lno > 0 and (' (line %d)' % lno) or ''))
-    finally:
-	if f: f.close()
-
-
-
-
 
 #############
 try:
     parseCommandLine()
-    tab = []
-    for h in opt['-h']:
-	h = parseHostLine(h)
-	if h: tab.append(h)
-	else: usage('Error: invalid -h argument')
+    opt['-h'] = gplib.parse_hostlines_hostfile(opt['-h'],
+                                               opt['-f'],
+                                               opt['-u'],
+                                               opt['-p'])
+    if len(opt['-h']) == 0:
+        usage('Error: missing hosts in -h and/or -f arguments')
 
-    readHostFile(opt['-f'], tab)
-#    tab.sort(lambda x, y: cmp(x[0], y[0]) or cmp(x[1], y[1]))
-    opt['-h'] = tab
-
-    scp = 'scp -o "BatchMode yes" -o "StrictHostKeyChecking no"'
     proc = []
     for (user, host, port) in opt['-h']:
-	cmd = scp + ' -P %d %s %s@%s:%s' % (port, localPath, user, host, remotePath)
+        peer = user and ('%s@%s' % (user, host)) or host
+	cmd = gplib.scp_prefix(port) + ' %s %s:%s' % (localPath, peer, remotePath)
 	if opt['-v']: print '[INFO]', cmd
 	p = popen2.Popen4(cmd)
 	p.x_cmd = cmd
 	p.x_user = user
 	p.x_host = host
-	p.x_peer = '%s@%s' % (user, host)
+	p.x_peer = peer
 	p.tochild.close()
 	proc.append(p)
 

@@ -38,9 +38,13 @@ class pxssh (spawn):
         self.PROMPT_SET_CSH = "set prompt='[PEXPECT]\$ '"
 
     ### cktan: spawn login process, but don't wait on it
-    def loginAsync (self,server,username,login_timeout=10, port=22):
+    def loginAsync (self,server,username=None,login_timeout=10, port=None):
 	cmd = 'ssh -o "BatchMode yes" -o "StrictHostKeyChecking no"'
-	cmd = cmd + ' -p %s -l %s %s' % (port, username, server)
+        if port:
+            cmd = cmd + ' -p %d' % port
+        if username:
+            cmd = cmd + ' -l %s' % username
+        cmd = cmd + ' ' + server
         spawn.__init__(self, cmd, timeout=login_timeout)
 	# we don't need this since we are not sending 
 	# password over (see comments in pexpect.py re: delaybeforesend)

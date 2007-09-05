@@ -16,15 +16,12 @@ Usage: gpssh-exkeys [--version] [-?v] [-p port] [-u user]
 
 import os, sys, getopt, time, getpass, logging
 
-if sys.version_info < (2, 3): 
-    sys.exit("[ERROR] gpssh-exkeys is supported on Python versions 2.3 or greater\n"
-             + "Please upgrade python installed on this machine.")
-
 sys.path.append(sys.path[0] + '/lib')
 try:
+    import gplib
     import paramiko
 except ImportError, e:
-    sys.exit('[ERROR] unable to import module: ' + str(e))
+    sys.exit('Error: unable to import module: ' + str(e))
 
 
 #
@@ -47,19 +44,8 @@ hostList = []
 
 ################
 def usage(exitarg):
-    help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', script_name + '_help');
-    try:
-	f = open(help_path);
-	for line in f: 
-	    print line,
-    except:
-        print __doc__
+    print gplib.cli_help() or __doc__
     sys.exit(exitarg)
-
-#############
-def parsePort(val): 
-    try: return int(val)
-    except ValueError: return 0
 
 #############
 def print_version():
@@ -69,9 +55,9 @@ def print_version():
 
 class Host: 
     def __init__(self, user, host, port):
-	self.m_user = user
+	self.m_user = user or opt['-u']
 	self.m_host = host
-	self.m_port = int(port)
+	self.m_port = port and int(port) or opt['-p']
 	self.m_name = '%s@%s' % (user, host)
 	self.m_popen = None
 	self.m_popen_cmd = ''
@@ -180,51 +166,6 @@ def parseCommandLine():
         usage('[ERROR] please specify at least one of -h or -f args, but not both')
 
 
-def parseHostLine(line):
-    '''Parse line into (user, host, port) tuple'''
-    try:
-	user = opt['-u']
-	host = None
-	port = opt['-p']
-	t = line.strip().split('@')
-	cnt = len(t)
-	if t[0][0] == '#': return None
-        if cnt == 1: 
-	    host = t[0]
-	else:
-	    user = t[0]
-	    host = t[1]
-
-	t = host.split(':')
-	if len(t) > 1:
-	    host = t[0]
-	    port = int(t[1])
-	    
-	return (user, host, port)
-
-    except ValueError: pass
-    except IndexError: pass
-    return None
-
-def readHostFile(fname, retList):
-    if not fname: return
-    f = None; lno = 0; host = {}
-    try:
-	try:
-	    f = open(fname, 'r')
-	    for line in f:
-		lno = lno + 1
-		h = parseHostLine(line)
-		if not h: continue
-		key = '%s@%s' % (h[0], h[1])
-		host[key] = h
-	    for n in host: retList.append(host[n])
-	except IOError:
-	    sys.exit('[ERROR] cannot read host file ' + fname 
-		     + (lno > 0 and (' (line %d)' % lno) or ''))
-    finally:
-	if f: f.close()
-
 
 ###  create local id_rsa
 def createLocalID():
@@ -314,16 +255,15 @@ try:
     logging.getLogger('paramiko.transport').addHandler(nullFile)
 
     parseCommandLine()
-    tab = []
-    for h in opt['-h']: 
-	h = parseHostLine(h)
-	if h: tab.append(h)
-	else: usage('[ERROR] invalid -h parameter')
+    opt['-h'] = gplib.parse_hostlines_hostfile(opt['-h'],
+                                               opt['-f'],
+                                               opt['-u'],
+                                               opt['-p'])
+    if len(opt['-h']) == 0:
+        usage('Error: missing hosts in -h and/or -f arguments')
 
-    readHostFile(opt['-f'], tab)
-#    tab.sort(lambda x, y: cmp(x[0], y[0]) or cmp(x[1], y[1]))
-    opt['-h'] = tab
-    for h in opt['-h']: hostList.append(Host(h[0], h[1], h[2]))
+    for (user, host, port) in opt['-h']: 
+        hostList.append(Host(user, host, port))
 
 
     ######################
