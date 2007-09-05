@@ -18,12 +18,11 @@ PYLIB_SRC=$(SRC)/pythonSrc
 LIB_DIR=$(SRC)/lib
 
 
-all: pylib stream netperf
+all: paramiko pycrypto stream netperf
 
 #
 # Python Libraries
 #
-pylib : paramiko pycrypto 
 
 
 NETPERF_DIR=netperf-2.4.3
@@ -33,13 +32,7 @@ netperf:
 		(cd $(SRC)/src && gzip -d -c $(NETPERF_DIR).tar.gz | tar xvf - && cd $(NETPERF_DIR) && ./configure) \
 	fi
 	@(cd $(SRC)/src/$(NETPERF_DIR) && $(MAKE))
-	cp $(SRC)/src/$(NETPERF_DIR)/src/netperf $(SRC)/src/$(NETPERF_DIR)/src/netserver lib/
-
-netperfClean:
-	@echo "--- Cleaning netperf utility."
-	@if [ -f $(SRC)/src/$(NETPERF_DIR)/Makefile ]; then \
-		(cd $(SRC)/src/$(NETPERF_DIR) && make clean) \
-	fi
+	@cp $(SRC)/src/$(NETPERF_DIR)/src/netperf $(SRC)/src/$(NETPERF_DIR)/src/netserver lib/
 
 #
 #  STREAM
@@ -49,14 +42,6 @@ stream:
 	@echo "--- stream"
 	@cd $(STREAM_DIR) ; NO_M64=TRUE gcc  stream.c -o stream; cd ../../
 	@cp $(STREAM_DIR)/stream lib/stream 
-
-streamClean:
-	@echo "--- cleaning stream"
-	@rm -rf $(STREAM_DIR)/stream lib/stream > /dev/null 
-
-
-
-stream:
 
 #
 # PARAMIKO
@@ -72,10 +57,6 @@ paramiko:
 	fi
 	@(cd $(PYLIB_SRC)/$(PARAMIKO_DIR) && NO_M64=TRUE python setup.py build > /dev/null 2>&1 )
 	@cp -r $(PYLIB_SRC)/$(PARAMIKO_DIR)/build/lib/paramiko  $(LIB_DIR)/
-
-paramikoClean:
-	@echo "--- cleaning paramiko"
-	@rm -rf $(PYLIB_SRC)/$(PARAMIKO_DIR)
 
 
 #
@@ -94,17 +75,18 @@ pycrypto:
 	@(cd $(PYLIB_SRC)/$(PYCRYPTO_DIR) && NO_M64=TRUE python setup.py build > /dev/null 2>&1 )
 	@cp -r $(PYLIB_SRC)/$(PYCRYPTO_DIR)/build/lib.*/Crypto $(LIB_DIR)
 
-
-pycryptoClean:
-	@echo "--- cleaning pycrypto"
-	@rm -rf $(PYLIB_SRC)/$(PYCRYPTO_DIR)
-
 solarisTest:
 	@if [ `uname -s` = 'SunOS' ]; then \
 		echo "SOLARIS" ; \
 	fi
 
-clean : pycryptoClean paramikoClean 
+clean :
+	@rm -rf $(PYLIB_SRC)/$(PARAMIKO_DIR)
+	@rm -rf $(PYLIB_SRC)/$(PYCRYPTO_DIR)
+	@rm -rf $(STREAM_DIR)/stream lib/stream  
+	@if [ -f $(SRC)/src/$(NETPERF_DIR)/Makefile ]; then \
+		(cd $(SRC)/src/$(NETPERF_DIR) && make clean) \
+	fi
 	@rm -rf *.pyc lib/*.pyc
 
     
