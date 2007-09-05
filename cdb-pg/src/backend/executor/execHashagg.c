@@ -168,6 +168,7 @@ create_agg_hash_table(AggState *aggstate)
 	
     ht->nbucket = hats.nbuckets;
 	ht->buckets = (HashAggEntry**)palloc0(ht->nbucket * sizeof(HashAggEntry*));
+	ht->bloom = (uint64*)palloc0(ht->nbucket * sizeof(uint64));
 	
 	ht->max_entries = hats.nentries;
 	ht->nentries = 0;
@@ -795,6 +796,7 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 *has
 	uint32 hashkey;
 	unsigned int bucket_idx;
 	bool match;
+	uint64 bloomval;			/* bloom filter value */
 	
 	agg = (Agg*)aggstate->ss.ps.plan;
 	econtext = aggstate->tmpcontext; /* short-lived, per-input-tuple */
@@ -818,9 +820,11 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 *has
 	if ( hashkeyp )
 		*hashkeyp = hashkey;
 	bucket_idx = hashkey % ht->nbucket;
+	bloomval = ((uint64)1) << ((hashkey >> 13) & 0x3f);
+	entry = (0 == (ht->bloom[bucket_idx] & bloomval) ? NULL : ht->buckets[bucket_idx]);
 	
 	/* Search entry chain for the bucket. */
-	for ( entry = ht->buckets[bucket_idx];
+	for ( ;
 		  entry != NULL;
 		  entry = entry->next )
 	{
@@ -866,9 +870,10 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 *has
 		{
 			/* Create a new matching entry. */
 			entry = makeHashAggEntry(aggstate, inputslot, hashkey);
-			entry->next = ht->buckets[bucket_idx];			
+			entry->next = ht->buckets[bucket_idx];
 			ht->buckets[bucket_idx] = entry;
 			ht->nentries++;
+			ht->bloom[bucket_idx] |= bloomval;
 			
 			if ( isNew != NULL )
 				*isNew = true;

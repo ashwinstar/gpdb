@@ -90,6 +90,7 @@ typedef struct HashAggTable
 	/* Hash table */
 	unsigned		nbucket;
 	HashAggEntry  **buckets;
+	uint64         *bloom;
 	unsigned		max_entries;
 	unsigned		nentries;
 	
