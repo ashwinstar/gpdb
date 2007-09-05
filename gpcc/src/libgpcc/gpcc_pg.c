@@ -166,13 +166,13 @@ APR_DECLARE(apr_status_t) gpcc_pg_pid_active(int port, int *pid, apr_pool_t *p)
 }
 
 
-APR_DECLARE(apr_status_t) gpcc_pg_reset_invalid_segment(int master_port, apr_pool_t *p) 
+APR_DECLARE(apr_status_t) gpcc_pg_reset_invalid_segment(const char *hostname, int master_port, apr_pool_t *p) 
 {
     apr_proc_t proc;
     int e, nfail;
     char line[1024];
 
-    if ((e = gpcc_proc_psql(&proc, master_port, DEFAULT_GP_DBNAME, "show gp_fault_action", 1, 1, p)) != 0) {
+    if ((e = gpcc_proc_psql(&proc, hostname, master_port, DEFAULT_GP_DBNAME, "show gp_fault_action", 1, 1, p)) != 0) {
 	gpcc_log_error("psql -c 'show gp_fault_action' error");
 	return e;
     }
@@ -186,7 +186,7 @@ APR_DECLARE(apr_status_t) gpcc_pg_reset_invalid_segment(int master_port, apr_poo
     }
     
 
-    if ((e = gpcc_proc_psql(&proc, master_port, DEFAULT_GP_DBNAME, "select count(*) from gp_configuration where valid='f' and content <> -1", 1, 1, p)) != 0) {
+    if ((e = gpcc_proc_psql(&proc, hostname, master_port, DEFAULT_GP_DBNAME, "select count(*) from gp_configuration where valid='f' and content <> -1", 1, 1, p)) != 0) {
 	gpcc_log_error("psql -c 'select count(*) from gp_configuration...' error");
 	return e;
     }
@@ -199,17 +199,17 @@ APR_DECLARE(apr_status_t) gpcc_pg_reset_invalid_segment(int master_port, apr_poo
 
     if (nfail > 0) {
 
-	if ((e = gpcc_proc_psql(&proc, master_port, DEFAULT_GP_DBNAME, "update gp_configuration set valid='t' where valid='f' and content <> -1", 1, 1, p)) != 0) {
+	if ((e = gpcc_proc_psql(&proc, hostname, master_port, DEFAULT_GP_DBNAME, "update gp_configuration set valid='t' where valid='f' and content <> -1", 1, 1, p)) != 0) {
 	    gpcc_log_error("psql -c 'update gp_configuration...(1)' error");
 	    return e;
 	}
 
-	if ((e = gpcc_proc_psql(&proc, master_port, DEFAULT_GP_DBNAME, "update gp_configuration set isprimary='t' where definedprimary='t' and isprimary='f' and content<>-1", 1, 1, p)) != 0) {
+	if ((e = gpcc_proc_psql(&proc, hostname, master_port, DEFAULT_GP_DBNAME, "update gp_configuration set isprimary='t' where definedprimary='t' and isprimary='f' and content<>-1", 1, 1, p)) != 0) {
 	    gpcc_log_error("psql -c 'update gp_configuration...(2)' error");
 	    return e;
 	}
 
-	if ((e = gpcc_proc_psql(&proc, master_port, DEFAULT_GP_DBNAME, "update gp_configuration set isprimary='f' where definedprimary='f' and isprimary='t' and content<>-1", 1, 1, p)) != 0) {
+	if ((e = gpcc_proc_psql(&proc, hostname, master_port, DEFAULT_GP_DBNAME, "update gp_configuration set isprimary='f' where definedprimary='f' and isprimary='t' and content<>-1", 1, 1, p)) != 0) {
 	    gpcc_log_error("psql -c 'update gp_configuration...(3)' error");
 	    return e;
 	}
@@ -222,13 +222,13 @@ APR_DECLARE(apr_status_t) gpcc_pg_reset_invalid_segment(int master_port, apr_poo
 
 
 
-APR_DECLARE(apr_status_t) pg_check_segment(int port, apr_pool_t *p) 
+APR_DECLARE(apr_status_t) pg_check_segment(const char *hostname, int port, apr_pool_t *p) 
 {
     apr_proc_t proc;
     int e;
     char line[1024];
 
-    e = gpcc_proc_psql(&proc, port, DEFAULT_GP_DBNAME, "show lc_collate", 1, 1, p);
+    e = gpcc_proc_psql(&proc, hostname, port, DEFAULT_GP_DBNAME, "show lc_collate", 1, 1, p);
     if (e) {
 	gpcc_log_error("psql -c 'show lc_collate' error");
 	return e;
@@ -240,7 +240,7 @@ APR_DECLARE(apr_status_t) pg_check_segment(int port, apr_pool_t *p)
 
     gpcc_log_info("show lc_collate = %s\n", line);
 
-    e = gpcc_proc_psql(&proc, port, DEFAULT_GP_DBNAME, "show lc_monetary", 1, 1, p);
+    e = gpcc_proc_psql(&proc, hostname, port, DEFAULT_GP_DBNAME, "show lc_monetary", 1, 1, p);
     if (e) {
 	gpcc_log_error("psql -c 'show lc_monetart' error");
 	return e;
@@ -252,7 +252,7 @@ APR_DECLARE(apr_status_t) pg_check_segment(int port, apr_pool_t *p)
 
     gpcc_log_info("show lc_monetary = %s\n", line);
 
-    e = gpcc_proc_psql(&proc, port, DEFAULT_GP_DBNAME, "show lc_numeric", 1, 1, p);
+    e = gpcc_proc_psql(&proc, hostname, port, DEFAULT_GP_DBNAME, "show lc_numeric", 1, 1, p);
     if (e) {
 	gpcc_log_error("psql -c 'show lc_numeric' error");
 	return e;
@@ -270,7 +270,7 @@ APR_DECLARE(apr_status_t) pg_check_segment(int port, apr_pool_t *p)
     return 0;
 }
 
-APR_DECLARE(apr_status_t) gpcc_pg_get_qe_details(int port, apr_pool_t *p) 
+APR_DECLARE(apr_status_t) gpcc_pg_get_qe_details(const char *hostname, int port, apr_pool_t *p) 
 {
     apr_proc_t proc;
     char *sql;
@@ -278,7 +278,7 @@ APR_DECLARE(apr_status_t) gpcc_pg_get_qe_details(int port, apr_pool_t *p)
     int e;
 
     sql = "select a.hostname, a.datadir, a.port, b.valid, b.definedprimary from gp_configuration a, gp_pgdatabase where a.dbid=b.dbid and a.content<>-1";
-    e = gpcc_proc_psql(&proc, port, DEFAULT_GP_DBNAME, sql, 1, 1, p);
+    e = gpcc_proc_psql(&proc, hostname, port, DEFAULT_GP_DBNAME, sql, 1, 1, p);
     if (e) {
 	gpcc_log_error("psql -c 'select a.hostname....' error");
 	return e;
@@ -291,14 +291,14 @@ APR_DECLARE(apr_status_t) gpcc_pg_get_qe_details(int port, apr_pool_t *p)
     return 0;
 }
 
-APR_DECLARE(apr_status_t) gpcc_pg_change_password(int port, const char *user, const char *password, apr_pool_t *p) 
+APR_DECLARE(apr_status_t) gpcc_pg_change_password(const char *hostname, int port, const char *user, const char *password, apr_pool_t *p) 
 {
     int e;
     apr_proc_t proc;
     char sql[1024];
 
     sprintf(sql, "alter user %s password '%s'", user, password);
-    e = gpcc_proc_psql(&proc, port, DEFAULT_GP_DBNAME, sql, 1, 1, p); 
+    e = gpcc_proc_psql(&proc, hostname, port, DEFAULT_GP_DBNAME, sql, 1, 1, p); 
     if (e) {
 	gpcc_log_error("gpcc_pg_change_password failure");
 	return e;
@@ -308,14 +308,14 @@ APR_DECLARE(apr_status_t) gpcc_pg_change_password(int port, const char *user, co
 }
 
 
-APR_DECLARE(apr_status_t) gpcc_pg_create_database(int port, const char *dbname, apr_pool_t *p) 
+APR_DECLARE(apr_status_t) gpcc_pg_create_database(const char *hostname, int port, const char *dbname, apr_pool_t *p) 
 {
     int e;
     apr_proc_t proc;
     char sql[1024];
 
     sprintf(sql, "create database %s", dbname);
-    e = gpcc_proc_psql(&proc, port, DEFAULT_GP_DBNAME, sql, 1, 1, p); 
+    e = gpcc_proc_psql(&proc, hostname, port, DEFAULT_GP_DBNAME, sql, 1, 1, p); 
     if (e) {
 	gpcc_log_error("gpcc_pg_change_password failure");
 	return e;
@@ -327,7 +327,8 @@ APR_DECLARE(apr_status_t) gpcc_pg_create_database(int port, const char *dbname, 
 
 }
 
-APR_DECLARE(apr_status_t) gpcc_pg_update_gp_configuration(int port, 
+APR_DECLARE(apr_status_t) gpcc_pg_update_gp_configuration(const char *dbhost, 
+							  int port, 
 							  int dbid,
 							  int content,
 							  const char *primary,
@@ -345,7 +346,7 @@ APR_DECLARE(apr_status_t) gpcc_pg_update_gp_configuration(int port,
     /* check gp_configuration first */
     sprintf(sql, "select count(*) from gp_configurationn where content=%d and definedprimary='%s'",
 	    content, primary);
-    e = gpcc_proc_psql(&proc, port, DEFAULT_GP_DBNAME, sql, 1, 1, p);
+    e = gpcc_proc_psql(&proc, dbhost, port, DEFAULT_GP_DBNAME, sql, 1, 1, p);
     if (e) {
 	gpcc_log_error("gpcc_pg_update_gp_configuration select failure");
 	return e;
@@ -364,7 +365,7 @@ APR_DECLARE(apr_status_t) gpcc_pg_update_gp_configuration(int port,
 
     sprintf(sql, "insert into gp_configuration (dbid, isprimary, content, valid, definedprimary, hostname, port, datadir) values (%d, '%s', %d, 't', '%s', '%s', %d, '%s')",
 	    dbid, primary, content, primary, hostname, seg_port, data_dir);
-    e = gpcc_proc_psql(&proc, port, DEFAULT_GP_DBNAME, sql, 1, 1, p);
+    e = gpcc_proc_psql(&proc, dbhost, port, DEFAULT_GP_DBNAME, sql, 1, 1, p);
     if (e) {
 	gpcc_log_error("gpcc_pg_update_gp_configuration update failure");
 	return e;
@@ -373,7 +374,8 @@ APR_DECLARE(apr_status_t) gpcc_pg_update_gp_configuration(int port,
 }
 
 
-APR_DECLARE(apr_status_t) gpcc_pg_update_gp_id(int port, 
+APR_DECLARE(apr_status_t) gpcc_pg_update_gp_id(const char *hostname,
+					       int port, 
 					       const char *gpname,
 					       int numseg,
 					       int dbid,
@@ -386,7 +388,7 @@ APR_DECLARE(apr_status_t) gpcc_pg_update_gp_id(int port,
 
     sprintf(sql, "insert into gp_id (gpname, numsegments, dbid, content) values ('%s', %d, %d, %d)",
 	    gpname, numseg, dbid, content);
-    e = gpcc_proc_psql(&proc, port, DEFAULT_GP_DBNAME, sql, 1, 1, p);
+    e = gpcc_proc_psql(&proc, hostname, port, DEFAULT_GP_DBNAME, sql, 1, 1, p);
     if (e) {
 	gpcc_log_error("gpcc_pg_update_gp_id update failure");
 	return e;

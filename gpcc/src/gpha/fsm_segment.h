@@ -356,7 +356,8 @@ static apr_status_t seg_initdb_pg_conf_update(gpcc_event_t *ev, void *_cmdslot)
 	subst[3].insert = apr_psprintf(cmdslot->u.seg.request.subpool, "checkpoint_segments=%d", 
 				       gpcc_json_object_get_int(cmdslot->u.seg.request.msg, "gpdb.checkpoint_segments", 31));
 	subst[4].pattern = 0;
-
+	
+	/* gp_fault_action=readonly/continue/none */
     } else {
 	subst[0].pattern = "listen_addresses";
 	subst[0].insert = "listen_addresses='*'";
@@ -450,7 +451,8 @@ static apr_status_t seg_initdb_update_gp_id(gpcc_event_t *ev, void *_cmdslot)
 	nsegment++;
     }
     
-    return gpcc_pg_update_gp_id(cmdslot->u.seg.request.port,
+    return gpcc_pg_update_gp_id(0,
+				cmdslot->u.seg.request.port,
 				gpname,
 				nsegment,
 				cmdslot->u.seg.request.dbid,
@@ -488,7 +490,8 @@ static apr_status_t seg_initdb_update_gp_conf_per_segment(gpcc_event_t *ev, void
 	return 1;
     }
 
-    if (0 != (e = gpcc_pg_update_gp_configuration(cmdslot->u.seg.request.port, 
+    if (0 != (e = gpcc_pg_update_gp_configuration(0,
+						  cmdslot->u.seg.request.port, 
 						  dbid, 
 						  content, 
 						  primary,
@@ -774,7 +777,8 @@ static apr_status_t seg_initdb_checkdb(gpcc_event_t* ev, void *_cmdslot)
 	/* this is QD */
 	user = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, "gpdb.user", getenv("USER"));
 	passwd = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, "gpdb.password", "mpparray");
-	if (0 != (e = gpcc_pg_change_password(cmdslot->u.seg.request.port,
+	if (0 != (e = gpcc_pg_change_password(0,
+					      cmdslot->u.seg.request.port,
 					      user,
 					      passwd,
 					      cmdslot->u.seg.request.subpool))) {
@@ -830,7 +834,8 @@ static apr_status_t seg_initdb_reply(gpcc_event_t* ev, void *_cmdslot)
 	    /* start master in admin mode */
 
 	    /* get QE details */
-	    if (0 != (e = gpcc_pg_get_qe_details(cmdslot->u.seg.request.port,
+                if (0 != (e = gpcc_pg_get_qe_details(0,
+				     cmdslot->u.seg.request.port,
 						 cmdslot->u.seg.request.subpool))) {
 		seg_request_error(ev, _cmdslot, SEG_START_DONE_EVENT, e, "get qe details failure");
 		json_object_put(obj);
@@ -838,7 +843,8 @@ static apr_status_t seg_initdb_reply(gpcc_event_t* ev, void *_cmdslot)
 	    }
 
 	    /* update gp_configuration to set all segments marked as invalid to valid */
-	    if (0 != (e = gpcc_pg_reset_invalid_segment(cmdslot->u.seg.request.port,
+                 if (0 != (e = gpcc_pg_reset_invalid_segment(0,
+					    cmdslot->u.seg.request.port,
 							cmdslot->u.seg.request.subpool))) {
 		seg_request_error(ev, _cmdslot, SEG_START_DONE_EVENT, e, "reset invalid segment failure");
 		json_object_put(obj);

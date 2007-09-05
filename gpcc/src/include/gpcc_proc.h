@@ -31,12 +31,15 @@ APR_DECLARE(apr_status_t) gpcc_proc_run_prog(apr_proc_t *proc, const char *prog,
 /**
  *  gpcc_proc_psql to run a postgres SQL statement 
  *  @param proc process handle
+ *  @param hostname host to connect gpdb.  NULL means "localhost"
+ *  @param port gpdb port number
+ *  @param dbname database name
  *  @param sql SQL statement
  *  @param blocking flag to indicate blocking or non-blocking
  *  @param p memory pool
  *  @return APR_SUCCESS if succes otherwise failure
  */
-APR_DECLARE(apr_status_t) gpcc_proc_psql(apr_proc_t *proc, int port, const char *dbname, const char *sql, int utility, int blocking, apr_pool_t *p);
+APR_DECLARE(apr_status_t) gpcc_proc_psql(apr_proc_t *proc, const char *hostname, int port, const char *dbname, const char *sql, int utility, int blocking, apr_pool_t *p);
 
 /**
  *  gpcc_proc_ssh to run a ssh remote command

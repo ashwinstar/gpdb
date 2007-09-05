@@ -99,7 +99,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_run_prog(apr_proc_t *proc, const char *prog,
     return gpcc_proc_run(proc, prog, argv, env, cmdtype, wait, p);
 }
 
-APR_DECLARE(apr_status_t) gpcc_proc_psql(apr_proc_t *proc, int port, const char *dbname, const char *sql, 
+APR_DECLARE(apr_status_t) gpcc_proc_psql(apr_proc_t *proc, const char *hostname, int port, const char *dbname, const char *sql, 
 					 int utility, int wait, apr_pool_t *p)
 {
     char *argv[2];
@@ -110,10 +110,19 @@ APR_DECLARE(apr_status_t) gpcc_proc_psql(apr_proc_t *proc, int port, const char 
 	return e;
 
     if (utility) {
-	sprintf(cmd, "PGOPTIONS=\"-c gp_session_role=utility\" %s/bin/psql -p %d %s -A -t -c \"%s\"",
-		GPHOME, port, dbname, sql);
+	if (hostname) {
+	    sprintf(cmd, "PGOPTIONS=\"-c gp_session_role=utility\" %s/bin/psql -h %s -p %d %s -A -t -c \"%s\"",
+		    GPHOME, hostname, port, dbname, sql);
+	} else {
+	    sprintf(cmd, "PGOPTIONS=\"-c gp_session_role=utility\" %s/bin/psql -p %d %s -A -t -c \"%s\"",
+		    GPHOME, port, dbname, sql);
+	}
     } else {
-	sprintf(cmd, "%s/bin/psql -p %d %s -c \"%s\"", GPHOME, port, dbname, sql);
+	if (hostname) {
+	    sprintf(cmd, "%s/bin/psql -h %s -p %d %s -c \"%s\"", GPHOME, hostname, port, dbname, sql);
+	} else {
+	    sprintf(cmd, "%s/bin/psql -p %d %s -c \"%s\"", GPHOME, port, dbname, sql);
+	}
     }
 
     gpcc_log_info("Execute: %s", cmd);

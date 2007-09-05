@@ -44,51 +44,62 @@ APR_DECLARE(apr_status_t) gpcc_pg_pid_active(int port, int *pid, apr_pool_t *p);
 
 /**
  *  reset the invalid segment in gp_configuration table 
+ *
+ *  @param dbhost hostname to connect to gpdb.  NULL means "localhost"
  *  @param master_port master port number
  *  @param p memory pool
  *  @return APR_SUCCESS if success
  */
-APR_DECLARE(apr_status_t) gpcc_pg_reset_invalid_segment(int master_port, apr_pool_t *p);
+APR_DECLARE(apr_status_t) gpcc_pg_reset_invalid_segment(const char *hostname, int master_port, apr_pool_t *p);
 
 
 /**
  *  check the segment
+ *
+ *  @param dbhost hostname to connect to gpdb.  NULL means "localhost"
  *  @param port segment port number
  *  @param p memory pool
  *  @return APR_SUCCESS if success
  */
-APR_DECLARE(apr_status_t) gpcc_pg_check_segment(int port, apr_pool_t *p);
+APR_DECLARE(apr_status_t) gpcc_pg_check_segment(const char *hostname, int port, apr_pool_t *p);
 
 /**
  *  get qe details
+ *
+ *  @param dbhost hostname to connect to gpdb.  NULL means "localhost"
  *  @param port port number
  */
-APR_DECLARE(apr_status_t) gpcc_pg_get_qe_details(int port, apr_pool_t *p) ;
+APR_DECLARE(apr_status_t) gpcc_pg_get_qe_details(const char *hostname, int port, apr_pool_t *p) ;
 
 /**
  *  change password
+ *
+ *  @param dbhost hostname to connect to gpdb.  NULL means "localhost"
  *  @param port Greenplum Database port number
  *  @param user username
  *  @param password password
  *  @param p memory pool
  *  @return APR_SUCCESS if success
  */
-APR_DECLARE(apr_status_t) gpcc_pg_change_password(int port, const char *user, const char *password, apr_pool_t *p) ;
+APR_DECLARE(apr_status_t) gpcc_pg_change_password(const char *hostname, int port, const char *user, const char *password, apr_pool_t *p) ;
 
 
 /**
  *  create database
+ *
+ *  @param dbhost hostname to connect to gpdb.  NULL means "localhost"
  *  @param port Greenplum Database port number
  *  @param dbname database name
  *  @param p memory pool
  *  @return APR_SUCCESS if success
  */
-APR_DECLARE(apr_status_t) gpcc_pg_create_database(int port, const char *dbname, apr_pool_t *p) ;
+APR_DECLARE(apr_status_t) gpcc_pg_create_database(const char *hostname, int port, const char *dbname, apr_pool_t *p) ;
 
 
 /**
  *  update gp_configuration
  *
+ *  @param dbhost hostname to connect to gpdb.  NULL means "localhost"
  *  @param port  database port number
  *  @param dbid  dbid
  *  @param content
@@ -99,7 +110,8 @@ APR_DECLARE(apr_status_t) gpcc_pg_create_database(int port, const char *dbname, 
  *  @param p memory pool
  *  @return APR_SUCCESS if success 
  */
-APR_DECLARE(apr_status_t) gpcc_pg_update_gp_configuration(int port, 
+APR_DECLARE(apr_status_t) gpcc_pg_update_gp_configuration(const char *dbhost,
+							  int port, 
 							  int dbid,
 							  int content,
 							  const char *primary,
@@ -112,6 +124,8 @@ APR_DECLARE(apr_status_t) gpcc_pg_update_gp_configuration(int port,
 /**
  *  update gp_id
  *
+ *  @param dbhost hostname to connect to gpdb.  NULL means "localhost"
+ *  @param port   database port number
  *  @param gpname Greenplum Database name
  *  @param numseg number of segments
  *  @param dbid
@@ -119,7 +133,8 @@ APR_DECLARE(apr_status_t) gpcc_pg_update_gp_configuration(int port,
  *  @param p memory pool
  *  @return APR_SUCCESS if success
  */
-APR_DECLARE(apr_status_t) gpcc_pg_update_gp_id(int port, 
+APR_DECLARE(apr_status_t) gpcc_pg_update_gp_id(const char *hostname,
+					       int port, 
 					       const char *gpname,
 					       int numseg,
 					       int dbid,
