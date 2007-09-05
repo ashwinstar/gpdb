@@ -109,21 +109,19 @@ APR_DECLARE(apr_status_t) gpcc_proc_psql(apr_proc_t *proc, const char *hostname,
     if ((e = gpcc_proc_initialize()) != 0) 
 	return e;
 
-    if (utility) {
-	if (hostname) {
-	    sprintf(cmd, "PGOPTIONS=\"-c gp_session_role=utility\" %s/bin/psql -h %s -p %d %s -A -t -c \"%s\"",
-		    GPHOME, hostname, port, dbname, sql);
-	} else {
-	    sprintf(cmd, "PGOPTIONS=\"-c gp_session_role=utility\" %s/bin/psql -p %d %s -A -t -c \"%s\"",
-		    GPHOME, port, dbname, sql);
-	}
-    } else {
-	if (hostname) {
-	    sprintf(cmd, "%s/bin/psql -h %s -p %d %s -c \"%s\"", GPHOME, hostname, port, dbname, sql);
-	} else {
-	    sprintf(cmd, "%s/bin/psql -p %d %s -c \"%s\"", GPHOME, port, dbname, sql);
-	}
+    *cmd = 0;
+    if (utility)
+	strcpy(cmd, "PGOPTIONS=\"-c gp_session_role=utility\" ");
+    
+    strcat(cmd, GPHOME);
+    strcat(cmd, "/bin/psql");
+    
+    if (hostname) {
+	strcat(cmd, " -h ");
+	strcat(cmd, hostname);
     }
+    
+    sprintf(cmd, "%s -p %d %s -A -t -c \"%s\"", cmd, port, dbname, sql);
 
     gpcc_log_info("Execute: %s", cmd);
 
