@@ -621,9 +621,20 @@ gpvars_assign_gp_interconnect_type(const char *newval, bool doit, GucSource sour
 	if (doit)
 	{
 		if (newtype == INTERCONNECT_TYPE_NIL)
-			elog(WARNING, "Nil-Interconnect diagnostic mode enabled (tuple will be dropped).");
+		{
+			if (Gp_role == GP_ROLE_DISPATCH)
+				elog(WARNING, "Nil-Interconnect diagnostic mode enabled (tuple will be dropped).");
+			else
+				elog(LOG, "Nil-Interconnect diagnostic mode enabled (tuple will be dropped).");
+				
+		}
 		else if (Gp_interconnect_type == INTERCONNECT_TYPE_NIL)
-			elog(WARNING, "Nil-Interconnect diagnostic mode disabled.");
+		{
+			if (Gp_role == GP_ROLE_DISPATCH)
+				elog(WARNING, "Nil-Interconnect diagnostic mode disabled.");
+			else
+				elog(LOG, "Nil-Interconnect diagnostic mode disabled.");
+		}
 
 		Gp_interconnect_type = newtype;
 	}
