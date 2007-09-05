@@ -1305,7 +1305,7 @@ deform_window_tuple(TupleTableSlot *slot, int nattrs, AttrNumber *attnums,
 	for (i = 0; i < nattrs; i++)
 	{
 		AttrNumber attnum = attnums[i];
-		bool isnull;
+		bool isnull = false;
 		Datum d = slot_getattr(slot, attnum, &isnull);
 
 		/* caller is responsible for making a copy */
@@ -1361,7 +1361,7 @@ set_edge_val(WindowState *wstate, WindowStatePerLevel level_state,
 			
 			if (is_trail)
 			{
-				bool isnull;
+				bool isnull = false;
 
 				result = ExecEvalExpr(level_state->trail_expr, econtext,
 									  &isnull, NULL);
@@ -1372,7 +1372,7 @@ set_edge_val(WindowState *wstate, WindowStatePerLevel level_state,
 			}
 			else
 			{
-				bool isnull;
+				bool isnull = false;
 
 				result = ExecEvalExpr(level_state->lead_expr, econtext,
 									  &isnull, NULL);
@@ -1796,7 +1796,7 @@ appendRowTuple(WindowState *wstate, WindowFrame *frame,
 				else
 				{
 					long int rows_param;
-					bool isnull;
+					bool isnull = false;
 	
 					rows_param = ExecEvalExpr(level_state->trail_expr,
 											  econtext,
@@ -1896,7 +1896,7 @@ adjustEdges(WindowState *wstate)
 				{
 					if (funcstate->cur_trail_edge == -1)
 					{
-						bool isnull;
+						bool isnull = false;
 						long int rows_param = 
 							ExecEvalExpr(level_state->trail_expr,
 										 econtext, &isnull, NULL);
@@ -2928,7 +2928,7 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 	Oid ltype, rtype;
 	HeapTuple tup;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
-	bool isNull;
+	bool isNull = false;
 	char *oprname;
 	Form_pg_operator opr;
 	int32 vartypmod = desc->attrs[attnum - 1]->atttypmod;
@@ -3036,7 +3036,7 @@ init_rows_edge_value(ExprState *rows_expr, WindowBoundingKind kind,
 {
 
 	long int rows_param;
-	bool isnull;
+	bool isnull = false;
 	
 	rows_param = ExecEvalExpr(rows_expr,
 							  econtext,
@@ -4283,7 +4283,7 @@ lead_lag_internal(PG_FUNCTION_ARGS, bool is_lead, bool *isnull)
 Datum
 lead_int(PG_FUNCTION_ARGS)
 {
-	bool isnull;
+	bool isnull = false;
 	Datum d;
 	
 	d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4298,7 +4298,7 @@ lead_int(PG_FUNCTION_ARGS)
 Datum
 lead_bool(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4312,7 +4312,7 @@ lead_bool(PG_FUNCTION_ARGS)
 Datum
 lead_char(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4326,7 +4326,7 @@ lead_char(PG_FUNCTION_ARGS)
 Datum
 lead_cidr(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4340,7 +4340,7 @@ lead_cidr(PG_FUNCTION_ARGS)
 Datum
 lead_circle(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4354,7 +4354,7 @@ lead_circle(PG_FUNCTION_ARGS)
 Datum
 lead_float4(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4368,7 +4368,7 @@ lead_float4(PG_FUNCTION_ARGS)
 Datum
 lead_float8(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4382,7 +4382,7 @@ lead_float8(PG_FUNCTION_ARGS)
 Datum
 lead_inet(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4396,7 +4396,7 @@ lead_inet(PG_FUNCTION_ARGS)
 Datum
 lead_interval(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4410,7 +4410,7 @@ lead_interval(PG_FUNCTION_ARGS)
 Datum
 lead_line(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4424,7 +4424,7 @@ lead_line(PG_FUNCTION_ARGS)
 Datum
 lead_lseg(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4438,7 +4438,7 @@ lead_lseg(PG_FUNCTION_ARGS)
 Datum
 lead_macaddr(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4452,7 +4452,7 @@ lead_macaddr(PG_FUNCTION_ARGS)
 Datum
 lead_smallint(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4466,7 +4466,7 @@ lead_smallint(PG_FUNCTION_ARGS)
 Datum
 lead_int8(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4480,7 +4480,7 @@ lead_int8(PG_FUNCTION_ARGS)
 Datum
 lead_money(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4494,7 +4494,7 @@ lead_money(PG_FUNCTION_ARGS)
 Datum
 lead_name(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4508,7 +4508,7 @@ lead_name(PG_FUNCTION_ARGS)
 Datum
 lead_numeric(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4522,7 +4522,7 @@ lead_numeric(PG_FUNCTION_ARGS)
 Datum
 lead_oid(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4536,7 +4536,7 @@ lead_oid(PG_FUNCTION_ARGS)
 Datum
 lead_path(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4550,7 +4550,7 @@ lead_path(PG_FUNCTION_ARGS)
 Datum
 lead_point(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4564,7 +4564,7 @@ lead_point(PG_FUNCTION_ARGS)
 Datum
 lead_polygon(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4578,7 +4578,7 @@ lead_polygon(PG_FUNCTION_ARGS)
 Datum
 lead_reltime(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4592,7 +4592,7 @@ lead_reltime(PG_FUNCTION_ARGS)
 Datum
 lead_text(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4606,7 +4606,7 @@ lead_text(PG_FUNCTION_ARGS)
 Datum
 lead_tid(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4620,7 +4620,7 @@ lead_tid(PG_FUNCTION_ARGS)
 Datum
 lead_time(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4634,7 +4634,7 @@ lead_time(PG_FUNCTION_ARGS)
 Datum
 lead_timestamp(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4648,7 +4648,7 @@ lead_timestamp(PG_FUNCTION_ARGS)
 Datum
 lead_timestamptz(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4662,7 +4662,7 @@ lead_timestamptz(PG_FUNCTION_ARGS)
 Datum
 lead_timetz(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4676,7 +4676,7 @@ lead_timetz(PG_FUNCTION_ARGS)
 Datum
 lead_varbit(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4690,7 +4690,7 @@ lead_varbit(PG_FUNCTION_ARGS)
 Datum
 lead_varchar(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4704,7 +4704,7 @@ lead_varchar(PG_FUNCTION_ARGS)
 Datum
 lead_xid(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, true, &isnull);
@@ -4718,7 +4718,7 @@ lead_xid(PG_FUNCTION_ARGS)
 Datum
 lag_bool(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -4732,7 +4732,7 @@ lag_bool(PG_FUNCTION_ARGS)
 Datum
 lag_char(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -4746,7 +4746,7 @@ lag_char(PG_FUNCTION_ARGS)
 Datum
 lag_cidr(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -4760,7 +4760,7 @@ lag_cidr(PG_FUNCTION_ARGS)
 Datum
 lag_circle(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -4774,7 +4774,7 @@ lag_circle(PG_FUNCTION_ARGS)
 Datum
 lag_float4(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -4788,7 +4788,7 @@ lag_float4(PG_FUNCTION_ARGS)
 Datum
 lag_float8(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -4802,7 +4802,7 @@ lag_float8(PG_FUNCTION_ARGS)
 Datum
 lag_inet(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -4816,7 +4816,7 @@ lag_inet(PG_FUNCTION_ARGS)
 Datum
 lag_interval(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -4830,7 +4830,7 @@ lag_interval(PG_FUNCTION_ARGS)
 Datum
 lag_line(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -4844,7 +4844,7 @@ lag_line(PG_FUNCTION_ARGS)
 Datum
 lag_lseg(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -4858,7 +4858,7 @@ lag_lseg(PG_FUNCTION_ARGS)
 Datum
 lag_macaddr(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -4872,7 +4872,7 @@ lag_macaddr(PG_FUNCTION_ARGS)
 Datum
 lag_smallint(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -4886,7 +4886,7 @@ lag_smallint(PG_FUNCTION_ARGS)
 Datum
 lag_int4(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -4900,7 +4900,7 @@ lag_int4(PG_FUNCTION_ARGS)
 Datum
 lag_int8(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -4914,7 +4914,7 @@ lag_int8(PG_FUNCTION_ARGS)
 Datum
 lag_money(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -4928,7 +4928,7 @@ lag_money(PG_FUNCTION_ARGS)
 Datum
 lag_name(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -4942,7 +4942,7 @@ lag_name(PG_FUNCTION_ARGS)
 Datum
 lag_numeric(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -4956,7 +4956,7 @@ lag_numeric(PG_FUNCTION_ARGS)
 Datum
 lag_oid(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -4970,7 +4970,7 @@ lag_oid(PG_FUNCTION_ARGS)
 Datum
 lag_path(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -4984,7 +4984,7 @@ lag_path(PG_FUNCTION_ARGS)
 Datum
 lag_point(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -4998,7 +4998,7 @@ lag_point(PG_FUNCTION_ARGS)
 Datum
 lag_polygon(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -5012,7 +5012,7 @@ lag_polygon(PG_FUNCTION_ARGS)
 Datum
 lag_reltime(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -5026,7 +5026,7 @@ lag_reltime(PG_FUNCTION_ARGS)
 Datum
 lag_text(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -5040,7 +5040,7 @@ lag_text(PG_FUNCTION_ARGS)
 Datum
 lag_tid(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -5054,7 +5054,7 @@ lag_tid(PG_FUNCTION_ARGS)
 Datum
 lag_time(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -5068,7 +5068,7 @@ lag_time(PG_FUNCTION_ARGS)
 Datum
 lag_timestamp(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -5082,7 +5082,7 @@ lag_timestamp(PG_FUNCTION_ARGS)
 Datum
 lag_timestamptz(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -5096,7 +5096,7 @@ lag_timestamptz(PG_FUNCTION_ARGS)
 Datum
 lag_timetz(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -5110,7 +5110,7 @@ lag_timetz(PG_FUNCTION_ARGS)
 Datum
 lag_varbit(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -5124,7 +5124,7 @@ lag_varbit(PG_FUNCTION_ARGS)
 Datum
 lag_varchar(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -5138,7 +5138,7 @@ lag_varchar(PG_FUNCTION_ARGS)
 Datum
 lag_xid(PG_FUNCTION_ARGS)
 {   
-    bool isnull;
+    bool isnull = false;
     Datum d;
     
     d = lead_lag_internal(fcinfo, false, &isnull);
@@ -5184,7 +5184,7 @@ Datum
 last_value_smallint(PG_FUNCTION_ARGS)
 {
 	Datum d;
-	bool isnull;
+	bool isnull = false;
 	
 	d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
 							&isnull);
@@ -5199,7 +5199,7 @@ Datum
 last_value_int(PG_FUNCTION_ARGS)
 {
 	Datum d;
-	bool isnull;
+	bool isnull = false;
 	
 	d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
 							&isnull);
@@ -5214,7 +5214,7 @@ Datum
 last_value_bigint(PG_FUNCTION_ARGS)
 {
 	Datum d;
-	bool isnull;
+	bool isnull = false;
 	
 	d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
 							&isnull);
@@ -5229,7 +5229,7 @@ Datum
 last_value_numeric(PG_FUNCTION_ARGS)
 {
 	Datum d;
-	bool isnull;
+	bool isnull = false;
 	
 	d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
 							&isnull);
@@ -5244,7 +5244,7 @@ Datum
 last_value_text(PG_FUNCTION_ARGS)
 {
 	Datum d;
-	bool isnull;
+	bool isnull = false;
 	
 	d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
 							&isnull);
@@ -5259,7 +5259,7 @@ Datum
 last_value_bool(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5274,7 +5274,7 @@ Datum
 last_value_char(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5289,7 +5289,7 @@ Datum
 last_value_cidr(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5304,7 +5304,7 @@ Datum
 last_value_circle(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5319,7 +5319,7 @@ Datum
 last_value_float4(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5334,7 +5334,7 @@ Datum
 last_value_float8(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5349,7 +5349,7 @@ Datum
 last_value_inet(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5364,7 +5364,7 @@ Datum
 last_value_interval(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5379,7 +5379,7 @@ Datum
 last_value_line(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5394,7 +5394,7 @@ Datum
 last_value_lseg(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5409,7 +5409,7 @@ Datum
 last_value_macaddr(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5424,7 +5424,7 @@ Datum
 last_value_money(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5439,7 +5439,7 @@ Datum
 last_value_name(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5454,7 +5454,7 @@ Datum
 last_value_oid(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5469,7 +5469,7 @@ Datum
 last_value_path(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5484,7 +5484,7 @@ Datum
 last_value_point(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5499,7 +5499,7 @@ Datum
 last_value_polygon(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5514,7 +5514,7 @@ Datum
 last_value_reltime(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5529,7 +5529,7 @@ Datum
 last_value_tid(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5544,7 +5544,7 @@ Datum
 last_value_time(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5559,7 +5559,7 @@ Datum
 last_value_timestamp(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5574,7 +5574,7 @@ Datum
 last_value_timestamptz(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5589,7 +5589,7 @@ Datum
 last_value_timetz(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5604,7 +5604,7 @@ Datum
 last_value_varbit(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5619,7 +5619,7 @@ Datum
 last_value_varchar(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5634,7 +5634,7 @@ Datum
 last_value_xid(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5705,7 +5705,7 @@ Datum
 first_value_bool(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5720,7 +5720,7 @@ Datum
 first_value_char(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5735,7 +5735,7 @@ Datum
 first_value_cidr(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5750,7 +5750,7 @@ Datum
 first_value_circle(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5765,7 +5765,7 @@ Datum
 first_value_float4(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5780,7 +5780,7 @@ Datum
 first_value_float8(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5795,7 +5795,7 @@ Datum
 first_value_inet(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5810,7 +5810,7 @@ Datum
 first_value_interval(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5825,7 +5825,7 @@ Datum
 first_value_line(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5840,7 +5840,7 @@ Datum
 first_value_lseg(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5855,7 +5855,7 @@ Datum
 first_value_macaddr(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5870,7 +5870,7 @@ Datum
 first_value_smallint(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5885,7 +5885,7 @@ Datum
 first_value_int4(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5900,7 +5900,7 @@ Datum
 first_value_int8(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5915,7 +5915,7 @@ Datum
 first_value_money(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5930,7 +5930,7 @@ Datum
 first_value_name(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5945,7 +5945,7 @@ Datum
 first_value_numeric(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5961,7 +5961,7 @@ Datum
 first_value_oid(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5976,7 +5976,7 @@ Datum
 first_value_path(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -5991,7 +5991,7 @@ Datum
 first_value_point(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6006,7 +6006,7 @@ Datum
 first_value_polygon(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6021,7 +6021,7 @@ Datum
 first_value_reltime(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6036,7 +6036,7 @@ Datum
 first_value_text(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6051,7 +6051,7 @@ Datum
 first_value_tid(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6066,7 +6066,7 @@ Datum
 first_value_time(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6081,7 +6081,7 @@ Datum
 first_value_timestamp(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6096,7 +6096,7 @@ Datum
 first_value_timestamptz(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6111,7 +6111,7 @@ Datum
 first_value_timetz(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6126,7 +6126,7 @@ Datum
 first_value_varbit(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6141,7 +6141,7 @@ Datum
 first_value_varchar(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6156,7 +6156,7 @@ Datum
 first_value_xid(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
