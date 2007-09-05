@@ -42,6 +42,7 @@ struct json_object *gpcc_json_hostlist(const char * const *masters, const char *
  *   seg              =         gpdb.seg.m.0 or gpdb.seg.X.X   X is an integer
  *   action           =         start
  *   mode             =         ro/rw
+ *   utility          =         0/1
  *   dir              =         data directory
  *   port             =         database port number
  *

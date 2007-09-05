@@ -315,7 +315,8 @@ APR_DECLARE(apr_status_t) gpcc_proc_gpsyncmaster_start(apr_proc_t *proc, int por
     return e;
 }
 
-APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_segment(apr_proc_t *proc, int port, const char *data_dir, int utility, int wait, int blocking, apr_pool_t *p)
+APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_segment(apr_proc_t *proc, int port, const char *data_dir, 
+							 int utility, int wait, int blocking, apr_pool_t *p)
 {
     char option[128];
     if (utility) {
@@ -329,10 +330,15 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_segment(apr_proc_t *proc, int p
 /**
  * pg_ctl start master in admin mode
  */
-APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_master(apr_proc_t *proc, int port, const char *data_dir, int wait, int blocking, apr_pool_t *p)
+APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_master(apr_proc_t *proc, int port, const char *data_dir, 
+							int utility, int wait, int blocking, apr_pool_t *p)
 {
     char option[128];
-    sprintf(option, "-i -E -p %d", port);
+    if (utility) {
+	sprintf(option, "-i -p %d -c gp_role=utility", port);
+    } else {
+	sprintf(option, "-i -E -p %d", port);
+    }
     return gpcc_proc_pg_ctl_start(proc, port, data_dir, option, wait, blocking, p);
 }
 
