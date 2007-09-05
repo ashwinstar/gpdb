@@ -3844,6 +3844,7 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 	{
 		WindowStatePerLevel level_state = &wstate->level_state[level];
 		ListCell *lc;
+		bool adv_cume_dist = false;
 
 		if (level_state->empty_frame)
 			continue;
@@ -3912,12 +3913,18 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 					!level_state->need_peercount)
 					continue;
 
-				if (funcstate->windowfn_oid == CUME_DIST_PRELIM_OID)
+				/* Increment the values for CUME_DIST. There may be more than
+				 * one cume_dist in one key level. We should catch this in the
+				 * earlier stage, but in case we didn't, we only do this once.
+				 */
+				if (!adv_cume_dist && funcstate->windowfn_oid == CUME_DIST_PRELIM_OID)
 				{
 					if (wstate->cur_slot_is_new &&
 						wstate->cur_slot_key_break != -1 &&
 						wstate->cur_slot_key_break < wstate->numlevels)
 						advanceCumeDist(wstate, wstate->cur_slot_key_break);
+
+					adv_cume_dist = true;
 				}
 				
 				else

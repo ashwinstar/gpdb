@@ -3988,3 +3988,24 @@ from fact_test;
 (13 rows)
 
 drop table fact_test;
+-- MPP-1929
+SELECT vn,pn,cn,
+TO_CHAR(COALESCE(CUME_DIST() OVER(partition by sale.vn,sale.pn order by sale.cn desc),0),'99999999.9999999') as cum_dist,
+TO_CHAR(COALESCE(CUME_DIST() OVER(partition by sale.vn,sale.pn order by sale.cn desc),0),'99999999.9999999') as cum_dist
+from sale;
+ vn | pn  | cn |     cum_dist      |     cum_dist      
+----+-----+----+-------------------+-------------------
+ 30 | 300 |  1 |         1.0000000 |         1.0000000
+ 30 | 500 |  3 |          .5000000 |          .5000000
+ 30 | 500 |  1 |         1.0000000 |         1.0000000
+ 40 | 800 |  4 |         1.0000000 |         1.0000000
+ 50 | 400 |  2 |          .5000000 |          .5000000
+ 50 | 400 |  1 |         1.0000000 |         1.0000000
+ 10 | 200 |  1 |         1.0000000 |         1.0000000
+ 20 | 100 |  1 |         1.0000000 |         1.0000000
+ 30 | 600 |  3 |         1.0000000 |         1.0000000
+ 40 | 100 |  2 |         1.0000000 |         1.0000000
+ 40 | 200 |  3 |         1.0000000 |         1.0000000
+ 40 | 700 |  4 |         1.0000000 |         1.0000000
+(12 rows)
+

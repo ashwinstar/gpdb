@@ -893,3 +893,9 @@ select date_key, bcookie, time_key, event_type,
 ) AS time_check
 from fact_test;
 drop table fact_test;
+
+-- MPP-1929
+SELECT vn,pn,cn,
+TO_CHAR(COALESCE(CUME_DIST() OVER(partition by sale.vn,sale.pn order by sale.cn desc),0),'99999999.9999999') as cum_dist,
+TO_CHAR(COALESCE(CUME_DIST() OVER(partition by sale.vn,sale.pn order by sale.cn desc),0),'99999999.9999999') as cum_dist
+from sale;
