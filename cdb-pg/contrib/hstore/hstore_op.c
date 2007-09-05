@@ -75,7 +75,7 @@ exists(PG_FUNCTION_ARGS)
 	PG_FREE_IF_COPY(hs, 0);
 	PG_FREE_IF_COPY(key, 1);
 
-	PG_RETURN_BOOL(entry);
+	PG_RETURN_BOOL(entry!=NULL);
 }
 
 PG_FUNCTION_INFO_V1(defined);
@@ -620,7 +620,7 @@ each(PG_FUNCTION_ARGS)
 		if (nulls[1] != 'n')
 			pfree(DatumGetPointer(dvalues[1]));
 
-		SRF_RETURN_NEXT(funcctx, PointerGetDatum(res));
+		SRF_RETURN_NEXT(funcctx, res);
 	}
 
 	pfree(st->hs);

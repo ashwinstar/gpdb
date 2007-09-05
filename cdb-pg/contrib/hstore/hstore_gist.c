@@ -114,7 +114,7 @@ ghstore_compress(PG_FUNCTION_ARGS)
 	{
 		GISTTYPE   *res = (GISTTYPE *) palloc(CALCGTSIZE(0));
 		HStore	   *toastedval = (HStore *) DatumGetPointer(entry->key);
-		HStore	   *val = (HStore *) DatumGetPointer(PG_DETOAST_DATUM(entry->key));
+		HStore	   *val = (HStore *) PG_DETOAST_DATUM(entry->key);
 		HEntry	   *ptr = ARRPTR(val);
 		char	   *words = STRPTR(val);
 
