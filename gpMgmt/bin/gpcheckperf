@@ -106,7 +106,7 @@ def parseMemorySize(line):
 
 #############
 def print_version():
-    print '%s version $Revision$' % script_name
+    print '%s version cvs Head build dev' % script_name
     sys.exit(0)
 
 #############
@@ -374,20 +374,24 @@ def startNetServer():
 #############
 def runNetperfTestBetween(x, y, netperf_path, netserver_port):
     cmd = gplib.ssh_prefix(x[0], x[1], x[2])
-    cmd += '%s -H %s -p %d -t TCP_STREAM -l 5 -f M -P 0' % (netperf_path, y[1], netserver_port)
+    cmd += ' %s -H %s -p %d -t TCP_STREAM -l 5 -f M -P 0' % (netperf_path, y[1], netserver_port)
     (ok, out) = run(cmd)
     if not ok: 
         print '[Warning] netperf failed on %s -> %s' % (x[1], y[1])
         return []
-    result = []
-    for line in out:
-        o = line.split()
-        if len(o) != 5: continue
-        l = [x[1], y[1]].extend(o)
+
+    for line in StringIO.StringIO(out):
+        line = line.split()
+        if len(line) != 5: continue
+	l = [x[1], y[1]]
+	l.extend(map(lambda x: float(x), line))
         if opt['-v']: 
-            print '[Info] %s -> %s : %s' % (x[1], y[1], str(o))
-        result.append(l)
-    return result
+            print '[Info] %s -> %s : %s' % (x[1], y[1], str(line))
+	return l
+
+    print '[Warning] netperf failed on %s -> %s' % (x[1], y[1])
+    print '[Info]', out
+    return []
 
 #############
 def runNetPerfTest():
@@ -436,13 +440,11 @@ def runNetPerfTest():
 def printNetResult(result):
 
     print 'Netperf bisection bandwidth test'
-    print '%s%s%s' % ('Source Host'.ljust(30), 'Destination Host'.ljust(30), 'MB/sec'.ljust(30))
-
     for h in result:
-        print '%s %s %s' % (h[0].ljust(30), h[1].ljust(30), h[6].ljust(30))
+        print '%s -> %s = %f' % (h[0], h[1], h[6])
 
     sum = min = max = average = 0
-    n = map(lambda x: x[7], result)
+    n = map(lambda x: float(x[6]), result)
     sum = reduce(lambda x, y: x + y, n)
     min = reduce(lambda x, y: x > y and y or x, n, 9999999999)
     max = reduce(lambda x, y: x > y and x or y, n)
@@ -463,7 +465,7 @@ def printNetResult(result):
 
     limit = max * 0.9
     for r in result:
-        if r[7] < limit:
+        if r[6] < limit:
             print '[Warning] connection between %s and %s is no good' % (r[0], r[1])
 
 
