@@ -179,8 +179,8 @@ static void doNegateFloat(Value *v);
 %type <node>	alter_column_default opclass_item alter_using
 %type <ival>	add_drop
 
-%type <node>	alter_table_cmd alter_rel_cmd
-%type <list>	alter_table_cmds alter_rel_cmds
+%type <node>	alter_table_cmd alter_rel_cmd alter_table_partition_id_spec
+%type <list>	alter_table_cmds alter_rel_cmds alter_table_partition_cmd
 
 %type <dbehavior>	opt_drop_behavior
 
@@ -1649,10 +1649,34 @@ alter_table_cmd:
 					n->def = (Node *) $3;
 					$$ = (Node *)n;
 				}
+			| alter_table_partition_cmd
+				{
+                    /*					$$ = (Node *)$1; */
+                    /*                    $$ = NULL; */
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_EnableTrigAll;
+					$$ = (Node *)n;
+				}
 			| alter_rel_cmd
 				{
 					$$ = $1;
 				}
+		;
+
+alter_table_partition_id_spec: IDENT {$$ = (Node *)$1; }
+		;
+
+alter_table_partition_cmd:
+			ADD_P PARTITION 
+            OptTabPartitionBoundarySpec	OptTabSubPartitionSpec { $$ = $3; }
+			| ADD_P PARTITION IDENT	
+            OptTabPartitionBoundarySpec	OptTabSubPartitionSpec { $$ = $4; }
+			| COALESCE PARTITION 	 { $$ = list_make1(NULL); }
+			| COALESCE PARTITION IDENT	 { $$ = list_make1($3); }
+			| DROP PARTITION 
+            alter_table_partition_id_spec	 { $$ = list_make1($3); }
+			| TRUNCATE PARTITION 
+            alter_table_partition_id_spec	 { $$ = list_make1($3); }
 		;
 
 alter_rel_cmds:
