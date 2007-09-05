@@ -41,8 +41,8 @@ struct json_object *gpcc_json_hostlist(const char * const *masters, const char *
  *   command start
  *   seg              =         gpdb.seg.m.0 or gpdb.seg.X.X   X is an integer
  *   action           =         start
- *   mode             =         ro/rw
- *   utility          =         0/1
+ *   mode             =         normal/force   normal startup or force startup of failed segment (force only applicable to master QD)
+ *   utility          =         0/1            only applicable to master QD
  *   dir              =         data directory
  *   port             =         database port number
  *
@@ -78,17 +78,17 @@ struct json_object *gpcc_json_hostlist(const char * const *masters, const char *
  *   gpdb.trusted_shell =       ssh
  *   gpdb.checkpoint_segments =       check point segment default = 31
  *   gpdb.max_connect   =       25
- *   gpdb.shared_buffers =      128Mb
+ *   gpdb.shared_buffers =      128MB
  *   gpdb.user          =       username
  *   gpdb.password      =       password
  *   node.X             =       (x.x.x.a, x.x.x.b, x.x.x.c, x.x.x.d) list of network addresses
  *   gpdb.seg.m.X       =       node.X:/db/seg.m.X:0   #node, data_dir, cpu affinity
  *   
  *
- *   dbid             =         [1...N]
+ *   dbid             =         1  (for master QD)
  *   for (dbid = 1, i= 0 ; gpdb.seg.m.%d ; i++, dbid++);
  *   for (i = 0 ; gbdb.seg.%d.[0-1] ; i++, dbid++);
-
+ *   for (i = 1; gpdb.seg.m.[1-N] ; i++, dbid++);
  *
  *   content          =         -1 if gpdb.seg.m.Y  else    X if gpdb.seg.X.Y
  *
