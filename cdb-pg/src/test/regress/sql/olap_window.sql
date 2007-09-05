@@ -859,3 +859,37 @@ SELECT sale.pn,sale.vn,
 COUNT(floor(sale.cn-sale.prc)) OVER(order by sale.pn asc,sale.vn asc,sale.vn desc rows between current row and 2 following ) as count,sale.pn,
 CUME_DIST() OVER(order by sale.pn asc) as cume_dist
 FROM sale;
+
+-- MPP-1874
+CREATE TABLE FACT_TEST
+(DATE_KEY    NUMERIC(10,0)  NOT NULL,
+ BCOOKIE     text  NOT NULL,
+ TIME_KEY    INTEGER  NOT NULL,
+ EVENT_TYPE  text  NOT NULL
+);
+insert into fact_test values (20070101, 'W', 100, 'c');
+insert into fact_test values (20070101, 'W', 100, 'p');
+insert into fact_test values (20070101, 'B', 100, 'c');
+insert into fact_test values (20070101, 'A', 10100101, 'p');
+insert into fact_test values (20070101, 'A', 20100101, 'p');
+insert into fact_test values (20070101, 'B', 101, 'p');
+insert into fact_test values (20070101, 'C', 105, 'p');
+insert into fact_test values (20070101, 'D', 107, 'p');
+insert into fact_test values (20070101, 'E', 10, 'c');
+insert into fact_test values (20070101, 'E', 10, 'p');
+insert into fact_test values (20070101, 'A', 101, 'c');
+insert into fact_test values (20070101, 'A', 101, 'p');
+insert into fact_test values (20070101, 'A', 10100101, 'p');
+
+select date_key, bcookie, time_key, event_type, 
+(
+ case
+   when (time_key- lag(time_key, 1, NULL) over (
+         partition by date_key, bcookie
+         order by date_key, bcookie, time_key, event_type)
+   ) > 1800 then 1
+            else 0
+ end
+) AS time_check
+from fact_test;
+drop table fact_test;

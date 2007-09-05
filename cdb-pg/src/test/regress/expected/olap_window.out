@@ -3937,3 +3937,54 @@ FROM sale;
  800 | 40 |     1 | 800 |                 1
 (12 rows)
 
+-- MPP-1874
+CREATE TABLE FACT_TEST
+(DATE_KEY    NUMERIC(10,0)  NOT NULL,
+ BCOOKIE     text  NOT NULL,
+ TIME_KEY    INTEGER  NOT NULL,
+ EVENT_TYPE  text  NOT NULL
+);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'date_key' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+insert into fact_test values (20070101, 'W', 100, 'c');
+insert into fact_test values (20070101, 'W', 100, 'p');
+insert into fact_test values (20070101, 'B', 100, 'c');
+insert into fact_test values (20070101, 'A', 10100101, 'p');
+insert into fact_test values (20070101, 'A', 20100101, 'p');
+insert into fact_test values (20070101, 'B', 101, 'p');
+insert into fact_test values (20070101, 'C', 105, 'p');
+insert into fact_test values (20070101, 'D', 107, 'p');
+insert into fact_test values (20070101, 'E', 10, 'c');
+insert into fact_test values (20070101, 'E', 10, 'p');
+insert into fact_test values (20070101, 'A', 101, 'c');
+insert into fact_test values (20070101, 'A', 101, 'p');
+insert into fact_test values (20070101, 'A', 10100101, 'p');
+select date_key, bcookie, time_key, event_type, 
+(
+ case
+   when (time_key- lag(time_key, 1, NULL) over (
+         partition by date_key, bcookie
+         order by date_key, bcookie, time_key, event_type)
+   ) > 1800 then 1
+            else 0
+ end
+) AS time_check
+from fact_test;
+ date_key | bcookie | time_key | event_type | time_check 
+----------+---------+----------+------------+------------
+ 20070101 | A       |      101 | c          |          0
+ 20070101 | A       |      101 | p          |          0
+ 20070101 | A       | 10100101 | p          |          1
+ 20070101 | A       | 10100101 | p          |          0
+ 20070101 | A       | 20100101 | p          |          1
+ 20070101 | B       |      100 | c          |          0
+ 20070101 | B       |      101 | p          |          0
+ 20070101 | C       |      105 | p          |          0
+ 20070101 | D       |      107 | p          |          0
+ 20070101 | E       |       10 | c          |          0
+ 20070101 | E       |       10 | p          |          0
+ 20070101 | W       |      100 | c          |          0
+ 20070101 | W       |      100 | p          |          0
+(13 rows)
+
+drop table fact_test;

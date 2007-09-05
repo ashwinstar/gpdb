@@ -94,6 +94,9 @@ typedef struct WindowStatePerLevelData
 	/* Indicate if the frame is a ROW frame or a RANGE frame. */
 	bool is_rows;
 
+	/* Indicate if its functions are LEAD/LAG */
+	bool has_lead_lag;
+
 	/* user can specify ascending or descending order, record it here */
 	bool *col_sort_asc;
 
@@ -369,7 +372,7 @@ static WindowFrameBuffer createRowsFrameBuffer(long int trail_rows,
 											   int bytes);
 static WindowFrameBuffer resetFrameBuffer(WindowFrameBuffer buffer);
 static void appendToFrameBuffer(WindowStatePerLevel level_state,
-								ExprContext *econtext, WindowState *wstate,
+								WindowState *wstate,
 								bool last_peer);
 #if 0
 static void trimFrameBuffer(WindowFrameBuffer buffer, NTupleStorePos *pos);
@@ -557,6 +560,7 @@ static void
 resetFrameBuffers(WindowState *wstate)
 {
 	int level;
+	
 	for (level=0; level < wstate->numlevels; level++)
 	{
 		WindowStatePerLevel level_state = &wstate->level_state[level];
@@ -680,18 +684,70 @@ serializeFuncs(WindowStatePerLevel level_state,
 				}
 				else
 				{
+					Size real_size = datumGetSize(funcstate->win_value,
+												  byvalue,
+												  typelen);
+					
 					ensureSpace(p_serial_entry, p_max_size,
-								written_pos, typelen);
+								written_pos, real_size);
 			
 					memcpy(written_pos,
 						   DatumGetPointer(funcstate->win_value),
-						   typelen);
+						   real_size);
 				
-					written_pos += typelen;
+					written_pos += real_size;
 				}
 			}
 			serial_index++;
 			funcstate->serial_index = serial_index;
+		}
+
+		else if (IS_LEAD_LAG_FUNC(funcstate->windowfn_oid))
+		{
+			WindowRefExprState *wrxstate;
+			int nargs;
+			int argno = 1;
+			wrxstate = funcstate->wrxstate;
+			nargs = list_length(wrxstate->args);
+			Assert(2 <= nargs && nargs <= 4);
+
+			ensureSpace(p_serial_entry, p_max_size,
+						written_pos, sizeof(bool));
+
+			memcpy(written_pos,
+				   &(funcstate->win_value_is_null),
+				   sizeof(bool));
+			written_pos += sizeof(bool); /* isnull col */
+			
+			if (!funcstate->win_value_is_null)
+			{
+				if (wrxstate->argtypbyval[argno])
+				{
+					ensureSpace(p_serial_entry, p_max_size,
+								written_pos, sizeof(Datum));
+				
+					memcpy(written_pos, &(funcstate->win_value),
+						   sizeof(Datum));
+					written_pos += sizeof(Datum);
+				}
+				else
+				{
+					Size real_size = datumGetSize(funcstate->win_value,
+												  wrxstate->argtypbyval[argno],
+												  wrxstate->argtyplen[argno]);
+					ensureSpace(p_serial_entry, p_max_size,
+								written_pos, real_size);
+			
+					memcpy(written_pos,
+						   DatumGetPointer(funcstate->win_value),
+						   real_size);
+				
+					written_pos += real_size;
+				}
+			}
+			serial_index++;
+			funcstate->serial_index = serial_index;
+					
 		}
 
 		/* the function which has an inverse preliminary function */
@@ -867,7 +923,40 @@ deserializeFuncs(WindowStatePerLevel level_state,
 				else
 				{
 					value->value = PointerGetDatum(read_pos);
-					read_pos += typelen;
+					read_pos += datumGetSize(value->value,
+											 byvalue,
+											 typelen);
+				}
+			}
+			else
+				value->value = 0;
+		}
+
+		else if (IS_LEAD_LAG_FUNC(funcstate->windowfn_oid))
+		{
+			WindowRefExprState *wrxstate;
+			int nargs;
+			int argno = 1;
+			wrxstate = funcstate->wrxstate;
+			nargs = list_length(wrxstate->args);
+			Assert(2 <= nargs && nargs <= 4);
+
+			memcpy(&(value->valueIsNull), read_pos, sizeof(bool));
+			read_pos += sizeof(bool);
+
+			if (!value->valueIsNull)
+			{
+				if (wrxstate->argtypbyval[argno])
+				{
+					memcpy(&(value->value), read_pos, sizeof(Datum));
+					read_pos += sizeof(Datum);
+				}
+				else
+				{
+					value->value = PointerGetDatum(read_pos);
+					read_pos += datumGetSize(value->value,
+											 wrxstate->argtypbyval[argno],
+											 wrxstate->argtyplen[argno]);
 				}
 			}
 			else
@@ -1076,40 +1165,17 @@ deserializeEntryForRange(WindowStatePerLevel level_state,
 }
 
 /*
- * appendToFrameBuffer -- append the intermediate values stored in level
+ * adjustEdgesAfterAppend -- adjust the trailing and leading edges for
+ * a given level_state after appending a value into its frame buffer.
  */
 static void
-appendToFrameBuffer(WindowStatePerLevel level_state,
-					ExprContext *econtext,
-					WindowState *wstate,
-					bool last_peer)
+adjustEdgesAfterAppend(WindowStatePerLevel level_state,
+					   WindowState *wstate,
+					   bool last_peer)
 {
-	char *serial_entry;
-	Size len;
 	WindowFrameBuffer buffer = level_state->frame_buffer;
+	ExprContext *econtext = wstate->ps.ps_ExprContext;
 	TupleTableSlot *inserting_tuple = econtext->ecxt_scantuple;
-
-	Assert(buffer->is_rows == level_state->is_rows);
-	if (buffer->is_rows)
-	{
-		serializeEntryForRows(level_state, econtext,
-							  &serial_entry, &len);
-	}
-	else
-	{
-		serializeEntryForRange(level_state, econtext,
-							   &serial_entry, &len);
-	}
-
-	ntuplestore_acc_put_data(buffer->writer, (void*)serial_entry, len);
-
-	elog(DEBUG1, "append tuple to buffer: %s", tup2str(econtext->ecxt_scantuple));
-
-	/* XXX We should move this into level_state so that we
-	 * don't need to palloc and pfree() all the time.
-	 */
-	pfree(serial_entry);
-
 
 	/* If the current_row_reader for the buffer is not set, set it to point to
 	 * the last row.
@@ -1333,6 +1399,43 @@ appendToFrameBuffer(WindowStatePerLevel level_state,
 			level_state->lead_ready = last_peer;
 		}
 	}
+}
+
+/*
+ * appendToFrameBuffer -- append the intermediate values stored in level
+ */
+static void
+appendToFrameBuffer(WindowStatePerLevel level_state,
+					WindowState *wstate,
+					bool last_peer)
+{
+	char *serial_entry;
+	Size len;
+	WindowFrameBuffer buffer = level_state->frame_buffer;
+	ExprContext *econtext = wstate->ps.ps_ExprContext;
+
+	Assert(buffer->is_rows == level_state->is_rows);
+	if (buffer->is_rows)
+	{
+		serializeEntryForRows(level_state, econtext,
+							  &serial_entry, &len);
+	}
+	else
+	{
+		serializeEntryForRange(level_state, econtext,
+							   &serial_entry, &len);
+	}
+
+	ntuplestore_acc_put_data(buffer->writer, (void*)serial_entry, len);
+
+	elog(DEBUG1, "append tuple to buffer: %s", tup2str(econtext->ecxt_scantuple));
+
+	/* XXX We should move this into level_state so that we
+	 * don't need to palloc and pfree() all the time.
+	 */
+	pfree(serial_entry);
+
+	adjustEdgesAfterAppend(level_state, wstate, last_peer);
 }
 
 #if 0
@@ -1567,6 +1670,66 @@ computeFrameValue(WindowStatePerLevel level_state,
 
 				/* Reset back to its orginial value */
 				econtext->ecxt_scantuple = slot;
+			}
+		}
+
+		/* LEAD/LAG functions */
+		else if (IS_LEAD_LAG_FUNC(funcstate->windowfn_oid))
+		{
+			if (!read_edge_value)
+			{
+				read_edge_value = true;
+			
+				Assert(is_rows);
+				if (level_state->frame->trail->kind != WINDOW_BOUND_FOLLOWING ||
+					level_state->num_lead_rows >= level_state->trail_rows)
+					rows_trail_entry = getCurrentValue(level_state->trail_reader, level_state);
+				if (level_state->lead_rows != 0)
+					rows_lead_entry = getCurrentValue(level_state->lead_reader, level_state);
+			}
+			
+			if (rows_lead_entry != NULL)
+			{
+				lead_value = (WindowValue *)list_nth(rows_lead_entry->func_values, value_no);
+
+				funcstate->aggTransValue = lead_value->value;
+				funcstate->aggTransValueIsNull = lead_value->valueIsNull;
+			}
+			
+			else
+			{
+				WindowRefExprState *wrxstate = funcstate->wrxstate;
+				ExprState *argstate;
+				int nargs = list_length(wrxstate->args);
+				FunctionCallInfoData fcinfo;
+				int argno = 3;
+
+				Assert(nargs <= 4);
+
+				if (level_state->lead_rows < 0 ||
+					level_state->num_lead_rows < level_state->lead_rows)
+				{
+					/* Use the default value if any. */
+					if (nargs == 4)
+					{
+						argstate = (ExprState *)list_nth(wrxstate->args, argno);
+						funcstate->aggTransValue = ExecEvalExpr(argstate, econtext,
+															fcinfo.argnull + argno, NULL);
+						funcstate->aggTransValueIsNull = fcinfo.argnull[argno];
+					}
+
+					else
+					{
+						funcstate->aggTransValue = 0;
+						funcstate->aggTransValueIsNull = true;
+					}
+				}
+
+				else
+				{
+					funcstate->aggTransValue = funcstate->win_value;
+					funcstate->aggTransValueIsNull = funcstate->win_value_is_null;
+				}
 			}
 		}
 
@@ -1813,25 +1976,9 @@ initWindowFuncState(WindowState *wstate, Window *node)
 			}
 			else
 			{
-				ListCell *func_lc;
-				bool func_exist = false;
 				funcstate->wlevel = level_state;
-
-				/* Do not append a duplicate window functions to the level. */
-				foreach (func_lc, level_state->level_funcs)
-				{
-					WindowStatePerFunction curr_funcstate =
-						(WindowStatePerFunction) lfirst(func_lc);
-					if (curr_funcstate == funcstate)
-					{
-						func_exist = true;
-						break;
-					}
-				}
-
-				if (!func_exist)
-					level_state->level_funcs = lappend(level_state->level_funcs,
-													   funcstate);
+				level_state->level_funcs = lappend(level_state->level_funcs,
+												   funcstate);
 			}
 		}
 		
@@ -2080,6 +2227,42 @@ initWindowFuncState(WindowState *wstate, Window *node)
 			fmgr_info(funcstate->windowfn_oid, &funcstate->windowfn);			
 
 			/* 
+			 * Initialize byval and typlen for framed funcs. Of course we're
+			 * creating an entry here for the inserted refptr but we do so
+			 * for consistency.
+			 */
+			if (funcstate->allowframe || IS_LEAD_LAG_FUNC(windowfn_oid))
+			{
+				ListCell *lc;
+				int numargs = list_length(wrxstate->args);
+				int argno = 0;
+
+				wrxstate->argtypbyval = palloc(sizeof(bool) * numargs);
+				wrxstate->argtyplen = palloc(sizeof(int16) * numargs);
+
+				foreach(lc, wrxstate->args)
+				{
+					if (argno == 0)
+					{
+						/* internal arg */
+						wrxstate->argtypbyval[argno] = true;
+						wrxstate->argtyplen[argno] = INTERNALOID;
+					}
+					else
+					{
+						Oid typid = inputTypes[argno - 1];
+						int16 len;
+						bool byval;
+
+						get_typlenbyval(typid, &len, &byval);
+						wrxstate->argtypbyval[argno] = byval;
+						wrxstate->argtyplen[argno] = len;
+					}
+					argno++;
+				}
+			}
+
+			/* 
 			 * Only set the peer count if we're referencing an actual
 			 * window key level and if the peer count is required. This
 			 * ensures that subsequent iterations do not overwrite the peer
@@ -2120,6 +2303,8 @@ initWindowStatePerLevel(WindowState *wstate, Window *node)
 		WindowKey *key = (WindowKey *) lfirst(lc);
 		WindowFrame *frame;
 		WindowStatePerLevel lvl =  &wstate->level_state[level_no++];
+
+		lvl->has_lead_lag = false;
 
 		/* Copy the sort columns for this level. If the window key contains
 		 * an empty list of sort columns, we copy the previous non-empty
@@ -2542,7 +2727,7 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 				funcstate->final_aggNoTransValue = funcstate->aggNoTransValue;
 			}
 		}
-		
+
 		else if (funcstate->cumul_frame)
 		{
 			WindowFrameBuffer frame_buffer;
@@ -3151,9 +3336,19 @@ finaliseFuncs(WindowState *wstate)
 		{
 			Datum *vals = econtext->ecxt_aggvalues;
 			bool *isnulls = econtext->ecxt_aggnulls;
-				
-			vals[funcno] = funcstate->win_value;
-			isnulls[funcno] = funcstate->win_value_is_null;
+
+			if (IS_LEAD_LAG_FUNC(funcstate->windowfn_oid))
+			{
+				vals[funcno] = funcstate->aggTransValue;
+				isnulls[funcno] = funcstate->aggTransValueIsNull;
+				funcstate->aggTransValue = 0;
+				funcstate->aggTransValueIsNull = true;
+			}
+			else
+			{
+				vals[funcno] = funcstate->win_value;
+				isnulls[funcno] = funcstate->win_value_is_null;
+			}
 		}
 	}
 }
@@ -3217,6 +3412,7 @@ fetchCurrentRow(WindowState *wstate)
 	Window *window = (Window *)wstate->ps.plan;	
 	bool has_prior_tuple = false;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
+	int level;
 	
 	if (buffer != NULL)
 	{
@@ -3320,6 +3516,69 @@ fetchCurrentRow(WindowState *wstate)
 	if (wstate->cur_slot_key_break != -1 &&
 		wstate->cur_slot_key_break < wstate->numlevels)
 		advanceKeyLevelState(wstate, wstate->cur_slot_key_break);
+
+	/* Evaluate the LEAD/LAG offset values, and change the
+	 * framing clauses accordingly.
+	 */
+	for (level=0; level<wstate->numlevels; level++)
+	{
+		WindowStatePerLevel level_state = &wstate->level_state[level];
+		WindowStatePerFunction funcstate;
+		WindowRefExprState *wrxstate;
+		int nargs;
+
+		if (!level_state->has_lead_lag)
+			continue;
+		
+		Assert(list_length(level_state->level_funcs) == 1);
+		funcstate = (WindowStatePerFunction)
+			linitial(level_state->level_funcs);
+
+		/* Compute the offset value from the arguments of LEAD/LAG
+		 * function. If such value is not provided, the default
+		 * is 1.
+		 */
+		wrxstate = funcstate->wrxstate;
+		nargs = list_length(wrxstate->args);
+		Assert(2 <= nargs && nargs <= 4);
+
+		if (list_length(wrxstate->args) == 2)
+		{
+			if (IS_LEAD_FUNC(funcstate->windowfn_oid))
+				level_state->lead_rows = 1;
+			else
+				level_state->lead_rows = -1;
+		}
+		
+		else
+		{
+			FunctionCallInfoData fcinfo;
+			ExprState *argstate;
+			int argno = 2; /* the index for the offset */
+			
+			Assert(nargs <= 4);
+			argstate = (ExprState *)list_nth(wrxstate->args, argno);
+
+			econtext->ecxt_scantuple = wstate->curslot;
+			fcinfo.arg[argno] = ExecEvalExpr(argstate, econtext,
+											 fcinfo.argnull + argno, NULL);
+
+			Assert(!fcinfo.argnull[argno]);
+
+			/* XXX We need to check on the type for this offset argument? */
+
+			level_state->lead_rows = DatumGetInt64(fcinfo.arg[argno]);
+			if (IS_LAG_FUNC(funcstate->windowfn_oid))
+				level_state->lead_rows = 0 - level_state->lead_rows;
+		}
+
+		level_state->frame->trail->kind = WINDOW_UNBOUND_PRECEDING;
+		
+		if (level_state->lead_rows >= 0)
+			level_state->frame->lead->kind = WINDOW_BOUND_FOLLOWING;
+		else
+			level_state->frame->lead->kind = WINDOW_BOUND_PRECEDING;
+	}
 
 	return wstate->curslot;
 }
@@ -3632,7 +3891,7 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 				 * frame needs this for order keys.
 				 */
 				econtext->ecxt_scantuple = wstate->priorslot;
-				appendToFrameBuffer(level_state, econtext, wstate, last_peer);
+				appendToFrameBuffer(level_state, wstate, last_peer);
 			}
 
 			/* If this slot causes the partition key to break, we don't add
@@ -4117,6 +4376,108 @@ get_ltfuncs(TupleDesc tupdesc, int numCols, AttrNumber *matchColIdx)
 	return ltfunctions;
 }
 
+/*
+ * separateLeadLag -- separate LEAD/LAG functions from its original
+ * key level, and store them individually in a different key
+ * level.
+ *
+ * XXX should we do this in the planning phrase?
+ */
+static void
+separateLeadLag(WindowState *wstate)
+{
+	int level;
+	ListCell *lc;
+	int count_lead_lag = 0;
+	WindowStatePerLevel old_level_state;
+	int numlevels = wstate->numlevels;
+	bool *num_lead_lag = palloc0(numlevels * sizeof(int));
+	int new_level = 0;
+
+	/* Compute how many extra levels we need to make */
+	for (level=0; level<wstate->numlevels; level++)
+	{
+		WindowStatePerLevel level_state =
+			&wstate->level_state[level];
+		
+		foreach (lc, level_state->level_funcs)
+		{
+			WindowStatePerFunction funcstate =
+				(WindowStatePerFunction) lfirst(lc);
+
+			if (IS_LEAD_LAG_FUNC(funcstate->windowfn_oid))
+			{
+				count_lead_lag++;
+				num_lead_lag[level]++;
+			}
+		}
+	}
+
+	if (count_lead_lag == 0)
+		return;
+
+	old_level_state = wstate->level_state;
+	numlevels = wstate->numlevels + count_lead_lag;
+	
+	wstate->level_state = (WindowStatePerLevel)
+		palloc0(numlevels * sizeof(WindowStatePerLevelData));
+
+	for (level=0; level<wstate->numlevels; level++)
+	{
+		WindowStatePerLevel level_state = &old_level_state[level];
+		List *level_funcs = level_state->level_funcs;
+		WindowStatePerLevel next_level_state;
+		
+		if (num_lead_lag[level] == list_length(level_state->level_funcs))
+		{
+			memcpy(&wstate->level_state[new_level], &old_level_state[level],
+				   sizeof(WindowStatePerLevelData));
+			if (num_lead_lag[level] > 0)
+				wstate->level_state[new_level].has_lead_lag = true;
+			new_level++;
+			continue;
+		}
+		
+		level_state->level_funcs = NIL;
+		
+		/* Move the LEAD/LAG to next_level_state, and keep others to
+		 * level_state.
+		 */
+		foreach (lc, level_funcs)
+		{
+			WindowStatePerFunction funcstate =
+				(WindowStatePerFunction) lfirst(lc);
+
+			if (IS_LEAD_LAG_FUNC(funcstate->windowfn_oid))
+			{
+				next_level_state = &wstate->level_state[new_level + 1];
+				next_level_state->frame = copyObject(level_state->frame);
+				next_level_state->is_rows = true;
+				next_level_state->has_lead_lag = true;
+
+				next_level_state->level_funcs =
+					lappend(next_level_state->level_funcs, funcstate);
+				funcstate->wlevel = next_level_state;
+				new_level++;
+			}
+
+			else
+			{
+				level_state->level_funcs =
+					lappend(level_state->level_funcs, funcstate);
+			}
+		}
+
+		list_free(level_funcs);
+		new_level++;
+	}
+
+	wstate->numlevels = new_level;
+
+	pfree(num_lead_lag);
+	pfree(old_level_state);
+}
+
 /* -----------------
  * ExecInitWindow
  *
@@ -4201,6 +4562,14 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 
 	/* Frame initialisation can take place now */	
 	init_frames(wstate);
+
+	/* Separate LEAD/LAG functions from wstate->level_state, and
+	 * store them individually to a new level_state. LEAD/LAG really
+	 * should not share the same key level as the other functions
+	 * since its framing depends on the offset value provided in
+	 * its arguments.
+	 */
+	separateLeadLag(wstate);
 
 	return wstate;
 }
@@ -4564,8 +4933,7 @@ lead_lag_internal(PG_FUNCTION_ARGS, bool is_lead, bool *isnull)
 	bool val_expr_null = true;
 #if 0
 	WindowRefExprState *ref_state = (WindowRefExprState *) PG_GETARG_POINTER(0);
-	WindowState *window_state = ref_state->windowstate;
-	WindowStatePerFunction funcstate = window_state->cur_funcstate;
+	WindowState *wstate = ref_state->windowstate;
 #endif
 
 	Insist(PG_NARGS() >= 2);
@@ -4600,11 +4968,9 @@ lead_lag_internal(PG_FUNCTION_ARGS, bool is_lead, bool *isnull)
 				 errmsg("%s offset cannot be negative",
 						is_lead ? "LEAD" : "LAG")));
 
-	ereport(ERROR,
-			(errcode(ERRCODE_GP_FEATURE_NOT_YET),
-			 (errmsg("LEAD/LAG not supported yet"))));
-
-	return (Datum)0;
+	/* Simply return the value of the first argument. */
+	*isnull = fcinfo->argnull[1];
+	return PG_GETARG_DATUM(1);
 }
 
 /*
