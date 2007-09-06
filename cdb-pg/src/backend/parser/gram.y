@@ -181,6 +181,9 @@ static void doNegateFloat(Value *v);
 
 %type <node>	alter_table_cmd alter_rel_cmd alter_table_partition_id_spec
 %type <list>	alter_table_cmds alter_rel_cmds alter_table_partition_cmd
+				opt_table_partition_merge_into 
+				opt_table_partition_split_into
+%type <ival>	opt_table_partition_exchange_validate
 
 %type <dbehavior>	opt_drop_behavior
 
@@ -367,7 +370,8 @@ static void doNegateFloat(Value *v);
 %type <str>		OptTableSpace OptConsTableSpace OptTableSpaceOwner
 %type <list>    OptDistributedBy
 %type <keyword> TabPartitionByType
-%type <list>    OptTabPartitionBy OptTabSubPartitionBy
+%type <list>    OptTabPartitionBy TabSubPartitionBy 
+				OptTabSubPartitionBy OptTabSubSubPartitionBy
 %type <list>	opt_check_option
 %type <node>	OptTabPartitionsNumber OptTabSubPartitionsNumber /* XXX XXX: ??? */
 %type <list>	OptTabPartitionSpec OptTabSubPartitionSpec    /* XXX XXX: ??? */
@@ -411,6 +415,7 @@ static void doNegateFloat(Value *v);
 	DESC DISABLE_P DISTINCT DISTRIBUTED DO DOMAIN_P DOUBLE_P DROP
 
 	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ESCAPE EVERY EXCEPT 
+	EXCHANGE
 	EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN EXTERNAL EXTRACT
 
 	FALSE_P FETCH FIRST_P FLOAT_P FOLLOWING FOR FORCE FOREIGN FORMAT FORWARD
@@ -433,7 +438,7 @@ static void doNegateFloat(Value *v);
 	LIKE LIMIT LIST LISTEN LOAD LOCAL LOCALTIME LOCALTIMESTAMP LOCATION
 	LOCK_P LOGIN_P
 
-	MATCH MAXVALUE MINUTE_P MINVALUE MIRROR MODE MONTH_P MOVE
+	MATCH MAXVALUE MERGE MINUTE_P MINVALUE MIRROR MODE MONTH_P MOVE
 
 	NAMES NATIONAL NATURAL NCHAR NEW NEXT NO NOCREATEDB
 	NOCREATEROLE NOCREATEUSER NOINHERIT NOLOGIN_P NONE NOOVERCOMMIT NOSUPERUSER
@@ -455,7 +460,7 @@ static void doNegateFloat(Value *v);
 
 	SAVEPOINT SCHEMA SCROLL SECOND_P SECURITY SEGMENT SELECT SEQUENCE
 	SERIALIZABLE SESSION SESSION_USER SET SETOF SETS SHARE
-	SHOW SIMILAR SIMPLE SMALLINT SOME STABLE START STATEMENT
+	SHOW SIMILAR SIMPLE SMALLINT SOME SPLIT STABLE START STATEMENT
 	STATISTICS STDIN STDOUT STORAGE STRICT_P 
 	SUBPARTITION SUBPARTITIONS
 	SUBSTRING SUPERUSER_P SYMMETRIC
@@ -468,7 +473,7 @@ static void doNegateFloat(Value *v);
 	UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN UNTIL
 	UPDATE USER USING
 
-	VACUUM VALID VALIDATOR VALUES VARCHAR VARYING
+	VACUUM VALID VALIDATION VALIDATOR VALUES VARCHAR VARYING
 	VERBOSE VIEW VOLATILE
 
 	WEB WHEN WHERE WINDOW WITH WITHOUT WORK WRITE
@@ -1663,7 +1668,30 @@ alter_table_cmd:
 				}
 		;
 
-alter_table_partition_id_spec: IDENT {$$ = (Node *)$1; }
+opt_table_partition_split_into: 
+			INTO '(' PARTITION 
+            alter_table_partition_id_spec ','
+            PARTITION 
+            alter_table_partition_id_spec ')'	{ $$ = list_make1($4); }
+			| /* EMPTY */					{ $$ = NULL; /* default */ }
+		;
+
+opt_table_partition_merge_into: 
+			INTO PARTITION 
+            alter_table_partition_id_spec	{ $$ = list_make1($3); }
+			| /* EMPTY */					{ $$ = NULL; /* default */ }
+		;
+
+opt_table_partition_exchange_validate: 
+			WITH VALIDATION						{ $$ = +1; }
+			| WITHOUT VALIDATION				{ $$ = +0; }
+			| /* EMPTY */						{ $$ = +1; /* default */ }
+		;
+
+alter_table_partition_id_spec: 
+            IDENT											{$$ = (Node *)$1; }
+            | FOR ctext_row									{$$ = (Node *)$2; }
+            | FOR '(' POSITION '(' NumericOnly ')' ')'		{$$ = (Node *)$5; }
 		;
 
 alter_table_partition_cmd:
@@ -1675,6 +1703,20 @@ alter_table_partition_cmd:
 			| COALESCE PARTITION IDENT	 { $$ = list_make1($3); }
 			| DROP PARTITION 
             alter_table_partition_id_spec	 { $$ = list_make1($3); }
+			| EXCHANGE PARTITION 
+            alter_table_partition_id_spec 
+            WITH TABLE relation_expr 
+            opt_table_partition_exchange_validate	{ $$ = list_make1($3); }
+			| MERGE PARTITION 
+            alter_table_partition_id_spec ','
+            PARTITION alter_table_partition_id_spec 
+            opt_table_partition_merge_into	{ $$ = list_make1($3); }
+			| RENAME PARTITION 
+            alter_table_partition_id_spec TO IDENT	{ $$ = list_make1($3); }
+			| SPLIT PARTITION 
+            alter_table_partition_id_spec AT '(' ')'
+            PARTITION alter_table_partition_id_spec 
+            opt_table_partition_split_into	{ $$ = list_make1($3); }
 			| TRUNCATE PARTITION 
             alter_table_partition_id_spec	 { $$ = list_make1($3); }
 		;
@@ -2423,7 +2465,9 @@ OptTabSubPartitionsNumber: SUBPARTITIONS NumericOnly { $$ = makeAConst($2); }
 OptTabPartitionSpec: '(' TabPartitionElemList ')'	{ $$ = $2; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
-OptTabSubPartitionSpec: '(' TabSubPartitionElemList ')'	{ $$ = $2; }
+OptTabSubPartitionSpec: 
+/*          '(' TabSubPartitionElemList ')'			{ $$ = $2; } */
+            '(' TabSubPartitionElemList OptTabSubPartitionSpec ')' { $$ = $2; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
@@ -2530,13 +2574,24 @@ OptTabSubPartitionTemplate:
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
+/* subpartitions of subpartitions */
+OptTabSubSubPartitionBy:
+            ','  TabSubPartitionBy 					{ $$ = $2; }
+			| /*EMPTY*/								{ $$ = NULL; }
+		;
 
 OptTabSubPartitionBy:
+            TabSubPartitionBy						{ $$ = $1; }
+			| /*EMPTY*/								{ $$ = NULL; }
+		;
+
+TabSubPartitionBy:
 			SUBPARTITION BY 
             TabPartitionByType '(' columnList ')' 
             OptTabSubPartitionsNumber 
-            OptTabSubPartitionTemplate				{ $$ = $5; }
-			| /*EMPTY*/								{ $$ = NULL; }
+  /*            OptTabSubPartitionTemplate				{ $$ = $5; } */
+            OptTabSubPartitionTemplate
+            OptTabSubSubPartitionBy					{ $$ = $5; } 
 		;
 
 /*
