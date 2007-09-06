@@ -139,32 +139,15 @@ def error(host, key, value):
     if host not in errors:
         errors[host] = {}
 
-    if key.startswith('sysctl.vm.overcommit_memory'):
-        type = 'vm.overcommit_memory'
-        key = key[len('sysctl.'):]
-    if key.startswith('sysctl.'):
-        type = 'sysctl'
-        key = key[len('sysctl.'):]
-    elif key.startswith('gp.gphome'):
-        type = 'gphome'
-        key = key[len('gp.'):]
-    elif key.startswith('gp.postgres'):
-        type = 'postgres'
-        key = key[len('gp.'):]
-    elif key.startswith('ndd'):
-        type = 'ndd'
-        key = key[len('ndd.'):]
-    elif key.startswith('python.platform.'):
-        type = 'platform'
-        key = key[len('python.platform.'):]
-    elif key.startswith('system'):
-        type = 'system'
-        key = key[len('system.'):]
-    elif key.startswith('ulimit'):
-        type = 'ulimit'
-        key = key[len('ulimit.'):]
-    else:
+    index = key.find('.')
+    if index == -1:
         type = 'others'
+    else:
+        type = key[0:index]
+        key = key[index+1:]
+    
+    if key == 'vm.overcommit_memory':
+        type = 'vm'
 
     if not type in errors[host]:
         errors[host][type] = []
@@ -178,7 +161,7 @@ def print_fix():
     print ''
     for h in errors.keys():
 
-        if 'vm.overcommit_memory' in errors[h]:
+        if 'vm' in errors[h]:
             print
             print '[FIX %s] please execute the following command' % h
             print '/sbin/sysctl -w %s=%s' % (key, value)
@@ -189,7 +172,7 @@ def print_fix():
             for (key, value) in errors[h]['sysctl']:
                 print '%s = %s' % (key, value)
 
-        if 'gphome' in errors[h]:
+        if 'env' in errors[h]:
 	    print
             print '[FIX %s] please set the GPHOME environment variable' % h
             
@@ -285,33 +268,33 @@ try:
 
     p0 = session[0]
     # check gphome
-    key = 'gp.gphome'
+    key = 'env.gphome'
     for p in session:
         value = p.x_res.get(key)
         if not value:
             perr(p.x_peer, 'GPHOME not set')
             
     # check postgres 
-    key = 'gp.postgres.md5'
+    key = 'postgres.md5'
     value = p0.x_res.get(key)
     if not value: 
         perr(p0.x_peer, 'postgres binaries unavailable')
     else:
         match(session, key, value)
         # check postgres version
-        key = 'gp.postgres.version'
+        key = 'postgres.version'
         value = p0.x_res.get(key)
         if not value: 
             perr(p0.x_peer, 'postgres version unavailable')
         else:
             match(session, key, value)
 
-    key = 'python.platform.system'
+    key = 'platform.system'
     value = p0.x_res.get(key)
     print 'checking: %s = linux or sunos' % key
     if value == 'linux' and match(session, key, 'linux'):
-        key = 'python.platform.release'
-        v = session[0].x_res['python.platform.release']
+        key = 'platform.release'
+        v = session[0].x_res['platform.release']
         if v.find('2.6') != 0:
             perr(p.x_peer, 'Linux version (version %s should be >= 2.6)' % v)
         elif match(session, key, v):
@@ -346,8 +329,8 @@ try:
             matchMore(session, key, 131072)
 
     elif value == 'sunos' and match(session, key, 'sunos'):
-        key = 'python.platform.release'
-        v = session[0].x_res['python.platform.release']
+        key = 'platform.release'
+        v = session[0].x_res['platform.release']
         if v.find('5.10') != 0:
             perr(p.x_peer, 'Solaris version (version %s should be >= 5.10)' % v)
         elif match(session, key, v):

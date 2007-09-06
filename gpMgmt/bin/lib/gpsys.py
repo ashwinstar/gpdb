@@ -70,7 +70,7 @@ def do_gppath(res):
     if out is None:
 	return False
 
-    res['gp.gphome'] = out.strip()
+    res['env.gphome'] = out.strip()
     return True
 
 
@@ -80,7 +80,7 @@ def do_postgres_md5(res):
     if ok:
         for line in out:
             if len(line) == 33:
-                res['gp.postgres.md5'] = line.lower().strip()
+                res['postgres.md5'] = line.lower().strip()
                 return True
     return False
 
@@ -88,7 +88,7 @@ def do_postgres_md5(res):
 def do_postgres_version(res):
     (ok, out) = run('$GPHOME/bin/postgres --version')
     if ok and len(out) == 1: 
-        res['gp.postgres.version'] = out[0].strip()
+        res['postgres.version'] = out[0].strip()
         return True
     return False
             
@@ -110,14 +110,14 @@ def do_ulimit(res):
 
 
 def do_platform(res):
-    res['python.platform.platform'] = platform.platform()
+    res['platform.platform'] = platform.platform()
     uname = platform.uname()
-    res['python.platform.system'] = uname[0].lower()
-    res['python.platform.node'] = uname[1]
-    res['python.platform.release'] = uname[2]
-    res['python.platform.version'] = uname[3]
-    res['python.platform.machine'] = uname[4]
-    res['python.platform.processor'] = uname[5]
+    res['platform.system'] = uname[0].lower()
+    res['platform.node'] = uname[1]
+    res['platform.release'] = uname[2]
+    res['platform.version'] = uname[3]
+    res['platform.machine'] = uname[4]
+    res['platform.processor'] = uname[5]
     return True
 
 def do_system(res):
@@ -171,7 +171,7 @@ do_gppath(res)
 do_postgres_md5(res)
 do_postgres_version(res)
 do_platform(res)
-system = res['python.platform.system']
+system = res['platform.system']
 if system == 'sunos':
     do_system(res)
     do_ndd(res)
