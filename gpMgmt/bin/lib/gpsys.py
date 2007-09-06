@@ -70,7 +70,7 @@ def do_gppath(res):
     if out is None:
 	return False
 
-    res['env.gphome'] = out.strip()
+    res['env.GPHOME'] = out.strip()
     return True
 
 

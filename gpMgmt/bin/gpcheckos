@@ -174,13 +174,14 @@ def print_fix():
 
         if 'env' in errors[h]:
 	    print
-            print '[FIX %s] please set the GPHOME environment variable' % h
+            for (key, value) in errors[h]['env']:
+                print '[FIX %s] please set the %s environment variable' % (h, key)
             
         if 'postgres' in errors[h]:
 	    print
             print '[FIX %s] please check the software version or installation' % h
             for (key, value) in errors[h]['postgres']:
-                pass
+                print 'check %s = %s' % (key, value)
 
         if 'ndd' in errors[h]:
 	    print
@@ -192,7 +193,7 @@ def print_fix():
 	    print
             print '[FIX %s] please valid the OS configuration' % h
             for (key, value) in errors[h]['platform']:
-                pass
+                print 'check %s = %s' % (key, value)
 
         if 'system' in errors[h]:
 	    print
@@ -269,7 +270,7 @@ try:
 
     p0 = session[0]
     # check gphome
-    key = 'env.gphome'
+    key = 'env.GPHOME'
     for p in session:
         value = p.x_res.get(key)
         if not value:
