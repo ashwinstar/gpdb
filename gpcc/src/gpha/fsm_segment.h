@@ -276,7 +276,7 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     gpcc_net_packet_t *packet = (gpcc_net_packet_t *) ev->edata;
-    struct json_object *obj = json_tokener_parse(packet->mb);
+    struct json_object *obj;
     int e;
     char *initdbfn = 0;
     int pid = 0;
@@ -287,8 +287,12 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     char *last;
     
     memset(&cmdslot->u.seg.request, 0, sizeof(cmdslot->u.seg.request));
-    apr_pool_create(&cmdslot->u.seg.request.subpool, cmdslot->pool);
+    if (0 != (e = apr_pool_create(&cmdslot->u.seg.request.subpool, cmdslot->pool))) {
+	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, e, "apr_pool_create error");
+	return 0;
+    }
 
+    obj = json_tokener_parse(packet->mb);
     if (!obj) {
 	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "json_tokener_parse error");
 	json_object_put(obj);
@@ -329,7 +333,7 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
 
     /* check database is running (port)*/
     if (0 == (e = gpcc_pg_pid_active(cmdslot->u.seg.request.port, &pid, cmdslot->u.seg.request.subpool))) {
-	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "database is running");
+	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "gpsyncmaster is running");
 	json_object_put(obj);
 	return 0;	
     }
@@ -341,7 +345,7 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
 	return 0;
     }
 
-    user = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, "gpdb.user", getenv("USER"));
+    user = gpcc_json_object_get_string(obj, "gpdb.user", getenv("USER"));
     seg = apr_pstrdup(cmdslot->u.seg.request.subpool, seg);
     node = apr_strtok(seg, ":", &last);  /* TODO: get json object from node */
     m_data_dir = apr_strtok(seg, 0, &last);
@@ -368,15 +372,19 @@ static apr_status_t seg_initdb_qe_and_master_qd(gpcc_event_t *ev, void *_cmdslot
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     gpcc_net_packet_t *packet = (gpcc_net_packet_t *) ev->edata;
-    struct json_object *obj = json_tokener_parse(packet->mb);
+    struct json_object *obj;
     int e;
     char *initdbfn = 0;
     int pid = 0;
     int max_connect = 0;
 
     memset(&cmdslot->u.seg.request, 0, sizeof(cmdslot->u.seg.request));
-    apr_pool_create(&cmdslot->u.seg.request.subpool, cmdslot->pool);
+    if (0 != (e = apr_pool_create(&cmdslot->u.seg.request.subpool, cmdslot->pool))) {
+	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, e, "apr_pool_create error");
+	return 0;
+    }
 
+    obj = json_tokener_parse(packet->mb);
     if (!obj) {
 	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "json_tokener_parse error");
 	json_object_put(obj);
@@ -687,6 +695,7 @@ static apr_status_t seg_initdb_update_gp_configuration(gpcc_event_t *ev, void *_
     int primary_port, mirror_port;
     int master_port, port;
     char *primary;
+    int done = 0;
 
     if (! seg_is_qd(cmdslot))
 	return 0;
@@ -694,20 +703,6 @@ static apr_status_t seg_initdb_update_gp_configuration(gpcc_event_t *ev, void *_
     master_port = gpcc_json_object_get_int(msg, "gpdb.seg.master_port", DEFAULT_QD_PORT);
     primary_port = gpcc_json_object_get_int(msg, "gpdb.seg.base_port", DEFAULT_QE_BASEPORT);
     mirror_port = gpcc_json_object_get_int(msg, "gpdb.seg.mirror_base_port,", DEFAULT_MIRROR_QE_BASEPORT);
-
-    if (master_port == 0) { 
-	gpcc_warning(FLINE, "gpdb.seg.master_port not set");
-	return 1;
-    }
-    if (primary_port == 0) {
-	gpcc_warning(FLINE, "gpdb.seg.base_port not set");
-	return 1;
-    }
-    if (mirror_port == 0) {
-	gpcc_warning(FLINE, "gpdb.seg.mirror_base_port not set");
-	return 1;
-    }
-
 
     /* update gp_configuration table */
 
@@ -717,14 +712,13 @@ static apr_status_t seg_initdb_update_gp_configuration(gpcc_event_t *ev, void *_
     }
 
     /* QEs segment */
-    for (i = 0 ; 1 ; i++) {
+    for (i = 0 ; ! done ; i++) {
 	for (j = 0 ; j < 2 ; j++) {
 	    sprintf(segname, "gpdb.seg.%d.%d", i, j);
 	    if ((seg = gpcc_json_object_get_string(msg, segname, 0)) == 0){
-		if (j == 0)
-		    break;
-		else
-		    continue;
+		if (j == 0) 
+		    done = 1;
+		break;
 	    }
 
 	    port = (j == 0) ? primary_port++ : mirror_port++;
@@ -918,12 +912,16 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     gpcc_net_packet_t *packet = (gpcc_net_packet_t *) ev->edata;
-    struct json_object *obj = json_tokener_parse(packet->mb);
+    struct json_object *obj;
     int e;
 
     memset(&cmdslot->u.seg.request, 0, sizeof(cmdslot->u.seg.request));
-    apr_pool_create(&cmdslot->u.seg.request.subpool, cmdslot->pool);
-
+    if (0 != (e = apr_pool_create(&cmdslot->u.seg.request.subpool, cmdslot->pool))) {
+	seg_request_error(ev, _cmdslot, SEG_START_DONE_EVENT, e, "apr_pool_create error");
+	return 0;
+    }
+    
+    obj = json_tokener_parse(packet->mb);
     if (!obj) {
 	seg_request_error(ev, _cmdslot, SEG_START_DONE_EVENT, 1, "json_tokener_parse error");
 	json_object_put(obj);
@@ -1040,12 +1038,16 @@ static apr_status_t seg_stop(gpcc_event_t* ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     gpcc_net_packet_t *packet = (gpcc_net_packet_t *) ev->edata;
-    struct json_object *obj = json_tokener_parse(packet->mb);
+    struct json_object *obj;
     int e;
 
     memset(&cmdslot->u.seg.request, 0, sizeof(cmdslot->u.seg.request));
-    apr_pool_create(&cmdslot->u.seg.request.subpool, cmdslot->pool);
+    if (0 != (e = apr_pool_create(&cmdslot->u.seg.request.subpool, cmdslot->pool))) {
+	seg_request_error(ev, _cmdslot, SEG_STOP_DONE_EVENT, e, "apr_pool_create error");
+	return 0;
+    }
 
+    obj = json_tokener_parse(packet->mb);
     if (!obj) {
 	seg_request_error(ev, _cmdslot, SEG_STOP_DONE_EVENT, 1, "json_tokenr_parse error");
 	json_object_put(obj);
