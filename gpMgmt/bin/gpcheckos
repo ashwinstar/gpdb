@@ -177,55 +177,55 @@ def print_fix():
 
     print ''
     for h in errors.keys():
-        print 'FIX: %s' % h
 
         if 'vm.overcommit_memory' in errors[h]:
+            print '[FIX %s] please type the following command' % h
             print '/sbin/sysctl -w %s=%s' % (key, value)
             
         if 'sysctl' in errors[h]:
-            print 'FIX: please add/modify the value in /etc/sysctl.conf'
+            print '[FIX %s] please add/modify the following value(s) in /etc/sysctl.conf' % h
 	    print
             for (key, value) in errors[h]['sysctl']:
                 print '%s = %s' % (key, value)
 
         if 'gphome' in errors[h]:
 	    print
-            print 'FIX: please set the GPHOME environment variable'
+            print '[FIX %s] please set the GPHOME environment variable' % h
             
         if 'postgres' in errors[h]:
 	    print
-            print 'FIX: please check the software version or installation'
+            print '[FIX %s] please check the software version or installation' % h
             for (key, value) in errors[h]['postgres']:
                 pass
 
         if 'ndd' in errors[h]:
 	    print
-            print 'FIX: please add/modify the value in /etc/rc2.d/S*gpdb_ndd'
+            print '[FIX %s] please add/modify the following value(s) in /etc/rc2.d/S*gpdb_ndd' % h
             for (key, value) in errors[h]['ndd']:
                 print '/usr/sbin/ndd -set /dev/tcp %s %s' % (key, value)
 
         if 'platform' in errors[h]:
 	    print
-            print 'FIX: please valid the OS configuration.'
+            print '[FIX %s] please valid the OS configuration' % h
             for (key, value) in errors[h]['platform']:
                 pass
 
         if 'system' in errors[h]:
 	    print
-            print 'FIX: please add/modify the value in /etc/system.'
+            print '[FIX %s] please add/modify the following value(s) in /etc/system'  % h
             for (key, value) in errors[h]['system']:
                 print 'set %s=%s' % (key, value)
 
         if 'ulimit' in errors[h]:
 	    print
-            print 'FIX: please add/modify the value in /etc/security/limits.conf.'
+            print '[FIX %s] please add/modify the following value(s) in /etc/security/limits.conf' % h
             for (key, value) in errors[h]['ulimit']:
                 print 'soft %s %s' % (key, value)
                 print 'hard %s %s' % (key, value)
 
         if 'others' in errors[h]:
 	    print
-            print 'FIX: please add/modify the values'
+            print '[FIX %s] please add/modify the value(s)' % h
             for (key, value) in errors[h]['others']:
                 print '%s = %s' % (key, value)
             
