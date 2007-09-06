@@ -229,13 +229,14 @@ def match(session, key, value):
 def matchList(session, key, value):
     ok = True
     print 'checking: %s = %s' % (key, value)
+    vs = value.split()
     for p in session:
 	v = p.x_res.get(key, '')
 	l = v.split()
-        p.x_match = (l == value)
+        p.x_match = (l == vs)
         if not p.x_match:
-            perr(p.x_peer, '%s mismatch (value %s should == %s)' % (key, str(l), str(value)))
-            error(p.x_peer, key, str(value))
+            perr(p.x_peer, '%s mismatch (value %s should == %s)' % (key, str(l), str(vs)))
+            error(p.x_peer, key, value)
             ok = False
     return ok
 
@@ -308,7 +309,7 @@ try:
 
             # check sem
             key = 'sysctl.kernel.sem'
-            matchList(session, key, ['250', '64000', '100', '512'])
+            matchList(session, key, '250 64000 100 512')
 
             # check net
             key = 'sysctl.net.ipv4.tcp_tw_recycle'
