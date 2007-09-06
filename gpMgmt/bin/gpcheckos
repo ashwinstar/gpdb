@@ -78,7 +78,7 @@ def sshGpSys():
     session = []
     for (user, host, port) in opt['-h']:
         peer = user and ('%s@%s' % (user, host)) or host
-        cmd = ('export PATH=%s && export LD_LIBRARY_PATH=%s && export GPHOME=%s && $GPHOME/bin/lib/gpsys.py -p' % (os.getenv('PATH'), os.getenv('LD_LIBRARY_PATH'), GPHOME))
+        cmd = ('export PATH=%s && export LD_LIBRARY_PATH=%s && %s/bin/lib/gpsys.py -p' % (os.getenv('PATH'), os.getenv('LD_LIBRARY_PATH'), GPHOME))
         ssh = gplib.ssh_prefix(user, host, port)
 	ssh = ssh + ' eval  \'%s\' ' % cmd
         if opt['-v']: print '[INFO %s] %s' % (peer, cmd)
@@ -275,6 +275,7 @@ try:
         value = p.x_res.get(key)
         if not value:
             perr(p.x_peer, 'GPHOME not set')
+            error(p.x_peer, key, 'GPHOME not set')
             
     # check postgres 
     key = 'postgres.md5'
