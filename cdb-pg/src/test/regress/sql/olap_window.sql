@@ -925,3 +925,15 @@ select cn,vn,qty,
 sum(qty) over(order by cn rows between 1 preceding and 0 following) as sum1,
 sum(qty) over(order by cn rows between 1 preceding and 1 following) as sum2
 from sale;
+
+-- MPP-1933
+SELECT sale.prc,sale.vn,sale.cn,sale.pn,sale.qty,
+LAG(cast(floor(sale.vn) as int),cast (floor(sale.prc) as int),NULL) OVER(partition by sale.prc,sale.vn,sale.cn,sale.pn order by sale.cn desc) as lag1
+from sale;
+SELECT sale.prc,sale.vn,sale.cn,sale.pn,sale.qty,
+LAG(cast(floor(sale.qty/sale.vn) as int),cast (floor(sale.pn) as int),NULL) OVER(partition by sale.prc,sale.vn,sale.cn,sale.pn order by sale.cn desc) as lag2
+from sale;
+SELECT sale.prc,sale.vn,sale.cn,sale.pn,sale.qty,
+LAG(cast(floor(sale.vn) as int),cast (floor(sale.prc) as int),NULL) OVER(partition by sale.prc,sale.vn,sale.cn,sale.pn order by sale.cn desc) as lag1,
+LAG(cast(floor(sale.qty/sale.vn) as int),cast (floor(sale.pn) as int),NULL) OVER(partition by sale.prc,sale.vn,sale.cn,sale.pn order by sale.cn desc) as lag2
+from sale;

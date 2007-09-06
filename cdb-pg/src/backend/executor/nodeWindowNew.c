@@ -4650,6 +4650,12 @@ separateLeadLag(WindowState *wstate)
 				first_one = false;
 				level_state->level_funcs =
 					lappend(level_state->level_funcs, funcstate);
+
+				if (IS_LEAD_LAG_FUNC(funcstate->windowfn_oid))
+				{
+					level_state->has_lead_lag = true;
+					set_lead_lag_framing(level_state, wstate);
+				}
 			}
 		}
 

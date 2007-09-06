@@ -4158,3 +4158,62 @@ from sale;
   4 | 40 |    1 |    2 |    2
 (12 rows)
 
+-- MPP-1933
+SELECT sale.prc,sale.vn,sale.cn,sale.pn,sale.qty,
+LAG(cast(floor(sale.vn) as int),cast (floor(sale.prc) as int),NULL) OVER(partition by sale.prc,sale.vn,sale.cn,sale.pn order by sale.cn desc) as lag1
+from sale;
+ prc  | vn | cn | pn  | qty  | lag1 
+------+----+----+-----+------+------
+    0 | 10 |  1 | 200 |    1 |   10
+    0 | 20 |  1 | 100 |    1 |   20
+    0 | 40 |  3 | 200 |    1 |   40
+    0 | 50 |  2 | 400 |    1 |   50
+    1 | 40 |  4 | 800 |    1 |     
+    5 | 30 |  3 | 600 |   12 |     
+    0 | 30 |  1 | 300 |    1 |   30
+    0 | 50 |  1 | 400 |    1 |   50
+    1 | 40 |  4 | 700 |    1 |     
+    5 | 30 |  3 | 500 |   12 |     
+    5 | 30 |  1 | 500 |   12 |     
+ 2400 | 40 |  2 | 100 | 1100 |     
+(12 rows)
+
+SELECT sale.prc,sale.vn,sale.cn,sale.pn,sale.qty,
+LAG(cast(floor(sale.qty/sale.vn) as int),cast (floor(sale.pn) as int),NULL) OVER(partition by sale.prc,sale.vn,sale.cn,sale.pn order by sale.cn desc) as lag2
+from sale;
+ prc  | vn | cn | pn  | qty  | lag2 
+------+----+----+-----+------+------
+    0 | 10 |  1 | 200 |    1 |     
+    0 | 20 |  1 | 100 |    1 |     
+    0 | 40 |  3 | 200 |    1 |     
+    0 | 50 |  2 | 400 |    1 |     
+    1 | 40 |  4 | 800 |    1 |     
+    5 | 30 |  3 | 600 |   12 |     
+    0 | 30 |  1 | 300 |    1 |     
+    0 | 50 |  1 | 400 |    1 |     
+    1 | 40 |  4 | 700 |    1 |     
+    5 | 30 |  3 | 500 |   12 |     
+    5 | 30 |  1 | 500 |   12 |     
+ 2400 | 40 |  2 | 100 | 1100 |     
+(12 rows)
+
+SELECT sale.prc,sale.vn,sale.cn,sale.pn,sale.qty,
+LAG(cast(floor(sale.vn) as int),cast (floor(sale.prc) as int),NULL) OVER(partition by sale.prc,sale.vn,sale.cn,sale.pn order by sale.cn desc) as lag1,
+LAG(cast(floor(sale.qty/sale.vn) as int),cast (floor(sale.pn) as int),NULL) OVER(partition by sale.prc,sale.vn,sale.cn,sale.pn order by sale.cn desc) as lag2
+from sale;
+ prc  | vn | cn | pn  | qty  | lag1 | lag2 
+------+----+----+-----+------+------+------
+    0 | 10 |  1 | 200 |    1 |   10 |     
+    0 | 20 |  1 | 100 |    1 |   20 |     
+    0 | 40 |  3 | 200 |    1 |   40 |     
+    0 | 50 |  2 | 400 |    1 |   50 |     
+    1 | 40 |  4 | 800 |    1 |      |     
+    5 | 30 |  3 | 600 |   12 |      |     
+    0 | 30 |  1 | 300 |    1 |   30 |     
+    0 | 50 |  1 | 400 |    1 |   50 |     
+    1 | 40 |  4 | 700 |    1 |      |     
+    5 | 30 |  3 | 500 |   12 |      |     
+    5 | 30 |  1 | 500 |   12 |      |     
+ 2400 | 40 |  2 | 100 | 1100 |      |     
+(12 rows)
+
