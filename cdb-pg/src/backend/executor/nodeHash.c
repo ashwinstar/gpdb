@@ -47,6 +47,8 @@ ExecHashTableExplainBatches(HashJoinTable   hashtable,
                             const char     *title);
 
 
+#define BLOOMVAL(hk)  (((uint64)1) << (((hk) >> 13) & 0x3f))
+
 /* ----------------------------------------------------------------
  *		ExecHash
  *
@@ -260,6 +262,7 @@ ExecHashTableCreate(Hash *node, List *hashOperators)
 	hashtable = (HashJoinTable)palloc0(sizeof(HashJoinTableData));
 	hashtable->nbuckets = nbuckets;
 	hashtable->buckets = NULL;
+	hashtable->bloom = NULL;
 	hashtable->nbatch = nbatch;
 	hashtable->curbatch = 0;
 	hashtable->nbatch_original = nbatch;
@@ -333,6 +336,7 @@ ExecHashTableCreate(Hash *node, List *hashOperators)
 
 	hashtable->buckets = (HashJoinTuple *)
 		palloc0(nbuckets * sizeof(HashJoinTuple));
+	hashtable->bloom = (uint64*) palloc0(nbuckets * sizeof(uint64));
 
 	MemoryContextSwitchTo(oldcxt);
 
@@ -572,6 +576,7 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 	{
 		HashJoinTuple prevtuple;
 		HashJoinTuple tuple;
+		uint64 bloom = 0;
 
 		prevtuple = NULL;
 		tuple = hashtable->buckets[i];
@@ -591,6 +596,7 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 			{
 				/* keep tuple */
 				prevtuple = tuple;
+				bloom |= BLOOMVAL(tuple->hashvalue);
 			}
 			else
 			{
@@ -621,6 +627,7 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 
 			tuple = nexttuple;
 		}
+		hashtable->bloom[i] = bloom;
 	}
 
 #ifdef HJDEBUG
@@ -710,6 +717,7 @@ ExecHashTableInsert(HashJoinTable hashtable,
 		memcpy(HJTUPLE_MINTUPLE(hashTuple), tuple, tuple->t_len);
 		hashTuple->next = hashtable->buckets[bucketno];
 		hashtable->buckets[bucketno] = hashTuple;
+		hashtable->bloom[bucketno] |= BLOOMVAL(hashvalue);
 
 		/* Double the number of batches when too much data in hash table. */
 		if (batch->innerspace > hashtable->spaceAllowed ||
@@ -840,6 +848,10 @@ ExecScanHashBucket(HashJoinState *hjstate,
 	HashJoinTuple hashTuple = hjstate->hj_CurTuple;
 	uint32		hashvalue = hjstate->hj_CurHashValue;
 
+	/* if bloom failter fail, then no match - don't even bother to scan */
+	if (0 == (hashtable->bloom[hjstate->hj_CurBucketNo] & BLOOMVAL(hashvalue)))
+		return NULL;
+
 	/*
 	 * hj_CurTuple is NULL to start scanning a new bucket, or the address of
 	 * the last tuple returned from the current bucket.
@@ -901,6 +913,8 @@ ExecHashTableReset(HashJoinTable hashtable)
 	/* Reallocate and reinitialize the hash bucket headers. */
 	hashtable->buckets = (HashJoinTuple *)
 		palloc0(nbuckets * sizeof(HashJoinTuple));
+	hashtable->bloom = (uint64*)
+		palloc0(nbuckets * sizeof(uint64));
 
 	hashtable->batches[hashtable->curbatch]->innerspace = 0;
 	hashtable->batches[hashtable->curbatch]->innertuples = 0;
