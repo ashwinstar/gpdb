@@ -1714,8 +1714,7 @@ alter_table_partition_cmd:
 			| RENAME PARTITION 
             alter_table_partition_id_spec TO IDENT	{ $$ = list_make1($3); }
 			| SPLIT PARTITION 
-            alter_table_partition_id_spec AT '(' ')'
-            PARTITION alter_table_partition_id_spec 
+            alter_table_partition_id_spec AT ctext_row
             opt_table_partition_split_into	{ $$ = list_make1($3); }
 			| TRUNCATE PARTITION 
             alter_table_partition_id_spec	 { $$ = list_make1($3); }
