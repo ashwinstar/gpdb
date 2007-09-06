@@ -130,8 +130,106 @@ def waitSession(session):
 
 def perr(host, s):
     print '   ERROR: on %s - %s' % (host, s)
+    
+
+errors = {}
+def error(host, key, value):
+    global errors
+
+    if host not in errors:
+        errors[host] = {}
+
+    if key.startswith('sysctl.vm.overcommit_memory'):
+        type = 'vm.overcommit_memory'
+        key = key[len('sysctl.'):]
+    if key.startswith('sysctl.'):
+        type = 'sysctl'
+        key = key[len('sysctl.'):]
+    elif key.startswith('gp.gphome'):
+        type = 'gphome'
+        key = key[len('gp.'):]
+    elif key.startswith('gp.postgres'):
+        type = 'postgres'
+        key = key[len('gp.'):]
+    elif key.startswith('ndd'):
+        type = 'ndd'
+        key = key[len('ndd.'):]
+    elif key.startswith('python.platform.'):
+        type = 'platform'
+        key = key[len('python.platform.'):]
+    elif key.startswith('system'):
+        type = 'system'
+        key = key[len('system.'):]
+    elif key.startswith('ulimit'):
+        type = 'ulimit'
+        key = key[len('ulimit.'):]
+    else:
+        type = 'others'
+
+    if not type in errors[host]:
+        errors[host][type] = []
+
+    errors[host][type].append((key, value))
 
 
+def print_fix():
+    global errors
+
+    print ''
+    for h in errors.keys():
+        print 'FIX: %s' % h
+
+        if 'vm.overcommit_memory' in errors[h]:
+            print '/sbin/sysctl -w %s=%s' % (key, value)
+            
+        if 'sysctl' in errors[h]:
+            print 'FIX: please add/modify the value in /etc/sysctl.conf'
+	    print
+            for (key, value) in errors[h]['sysctl']:
+                print '%s = %s' % (key, value)
+
+        if 'gphome' in errors[h]:
+	    print
+            print 'FIX: please set the GPHOME environment variable'
+            
+        if 'postgres' in errors[h]:
+	    print
+            print 'FIX: please check the software version or installation'
+            for (key, value) in errors[h]['postgres']:
+                pass
+
+        if 'ndd' in errors[h]:
+	    print
+            print 'FIX: please add/modify the value in /etc/rc2.d/S*gpdb_ndd'
+            for (key, value) in errors[h]['ndd']:
+                print '/usr/sbin/ndd -set /dev/tcp %s %s' % (key, value)
+
+        if 'platform' in errors[h]:
+	    print
+            print 'FIX: please valid the OS configuration.'
+            for (key, value) in errors[h]['platform']:
+                pass
+
+        if 'system' in errors[h]:
+	    print
+            print 'FIX: please add/modify the value in /etc/system.'
+            for (key, value) in errors[h]['system']:
+                print 'set %s=%s' % (key, value)
+
+        if 'ulimit' in errors[h]:
+	    print
+            print 'FIX: please add/modify the value in /etc/security/limits.conf.'
+            for (key, value) in errors[h]['ulimit']:
+                print 'soft %s %s' % (key, value)
+                print 'hard %s %s' % (key, value)
+
+        if 'others' in errors[h]:
+	    print
+            print 'FIX: please add/modify the values'
+            for (key, value) in errors[h]['others']:
+                print '%s = %s' % (key, value)
+            
+                    
 def match(session, key, value):
     ok = True
     print 'checking: %s = %s' % (key, value)
@@ -140,6 +238,7 @@ def match(session, key, value):
         p.x_match = (v == value)
         if not p.x_match: 
             perr(p.x_peer, '%s mismatch (value %s should == %s)' % (key, v, value))
+            error(p.x_peer, key, value)
             ok = False
     return ok
 
@@ -152,6 +251,7 @@ def matchList(session, key, value):
         p.x_match = (l == value)
         if not p.x_match:
             perr(p.x_peer, '%s mismatch (value %s should == %s)' % (key, str(l), str(value)))
+            error(p.x_peer, key, str(value))
             ok = False
     return ok
 
@@ -164,6 +264,7 @@ def matchMore(session, key, value):
         p.x_match = (v >= value)
         if not p.x_match:
             perr(p.x_peer, '%s invalid (value %s should be >= %s)' % (key, v, value))
+            error(p.x_peer, key, value)
 
 try:
     parseCommandLine()
@@ -278,6 +379,7 @@ try:
             key = 'system.semsys:seminfo_semmi'
             match(session, key, '1024')
     
+            print_fix()
     else:
         perr(p0.x_peer, 'unknown system (key %s should be either Linux or SunOS)' % key)
 
