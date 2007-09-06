@@ -910,3 +910,18 @@ SELECT sale.dt,sale.vn,sale.qty,sale.pn,sale.cn,
 LEAD(cast(floor(sale.cn+sale.vn) as int),cast (floor(sale.qty) as int),NULL) OVER(partition by sale.dt,sale.vn,sale.qty order by sale.pn desc,sale.cn desc) as lead
 FROM sale;
 
+-- MPP-1935
+SELECT sale.vn,sale.qty,sale.prc,
+LAG(cast(floor(sale.qty*sale.prc) as int),cast (floor(sale.prc) as int),NULL) OVER(order by sale.vn asc) as lag 
+from sale;
+
+-- MPP-1936
+SELECT sale.vn,sale.prc,sale.qty,
+COUNT(floor(sale.prc)) OVER(order by sale.vn asc),
+LAG(cast(floor(sale.qty*sale.prc) as int),cast (floor(sale.prc) as int),NULL) OVER(order by sale.vn asc) as lag 
+from sale;
+
+select cn,vn,qty,
+sum(qty) over(order by cn rows between 1 preceding and 0 following) as sum1,
+sum(qty) over(order by cn rows between 1 preceding and 1 following) as sum2
+from sale;

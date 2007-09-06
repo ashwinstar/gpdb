@@ -1702,9 +1702,10 @@ computeFrameValue(WindowStatePerLevel level_state,
 				Assert(is_rows);
 				if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
 					level_state->num_lead_rows >= level_state->trail_rows)
+				{
 					rows_trail_entry = getCurrentValue(level_state->trail_reader, level_state);
-				if (level_state->lead_rows != 0)
 					rows_lead_entry = getCurrentValue(level_state->lead_reader, level_state);
+				}
 			}
 			
 			if (rows_lead_entry != NULL)
@@ -1763,9 +1764,10 @@ computeFrameValue(WindowStatePerLevel level_state,
 				{
 					if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
 						level_state->num_lead_rows >= level_state->trail_rows)
+					{
 						rows_trail_entry = getCurrentValue(level_state->trail_reader, level_state);
-					if (level_state->lead_rows != 0)
 						rows_lead_entry = getCurrentValue(level_state->lead_reader, level_state);
+					}
 				}
 				
 				else
@@ -2753,6 +2755,7 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 			
 			Assert(level_state != NULL);
 			frame_buffer = level_state->frame_buffer;
+			Assert(frame_buffer != NULL);
 
 			/* When the current_row_reader is set, we retrieve the intermediate
 			 * accumulated aggregate value from the buffer.
@@ -4626,33 +4629,25 @@ separateLeadLag(WindowState *wstate)
 			WindowStatePerFunction funcstate =
 				(WindowStatePerFunction) lfirst(lc);
 
-			if (IS_LEAD_LAG_FUNC(funcstate->windowfn_oid))
+			if (IS_LEAD_LAG_FUNC(funcstate->windowfn_oid) &&
+				(separate_first_one || !first_one))
 			{
-				if (separate_first_one || !first_one)
-				{
-					next_level_state = &wstate->level_state[new_level + 1];
-					next_level_state->frame = copyObject(level_state->frame);
-					next_level_state->is_rows = true;
-					next_level_state->has_lead_lag = true;
-					
-					next_level_state->level_funcs =
-						lappend(next_level_state->level_funcs, funcstate);
-					funcstate->wlevel = next_level_state;
-					set_lead_lag_framing(&wstate->level_state[new_level], wstate);
-					
-					new_level++;
-				}
+				next_level_state = &wstate->level_state[new_level + 1];
+				next_level_state->frame = copyObject(level_state->frame);
+				next_level_state->is_rows = true;
+				next_level_state->has_lead_lag = true;
+				
+				next_level_state->level_funcs =
+					lappend(next_level_state->level_funcs, funcstate);
 
-				else
-				{
-					first_one = false;
-					level_state->level_funcs =
-						lappend(level_state->level_funcs, funcstate);
-				}
+				set_lead_lag_framing(next_level_state, wstate);
+				
+				new_level++;
 			}
 
 			else
 			{
+				first_one = false;
 				level_state->level_funcs =
 					lappend(level_state->level_funcs, funcstate);
 			}
@@ -4663,6 +4658,17 @@ separateLeadLag(WindowState *wstate)
 	}
 
 	wstate->numlevels = new_level;
+
+	/* Reset the wlevel in all funcstates */
+	for (level=0; level<wstate->numlevels; level++)
+	{
+		WindowStatePerLevel level_state = &wstate->level_state[level];
+		foreach (lc, level_state->level_funcs)
+		{
+			WindowStatePerFunction funcstate = (WindowStatePerFunction) lfirst(lc);
+			funcstate->wlevel = level_state;
+		}
+	}
 
 	pfree(num_lead_lag);
 	pfree(old_level_state);
