@@ -146,7 +146,7 @@ def error(host, key, value):
         type = key[0:index]
         key = key[index+1:]
     
-    if key == 'vm.overcommit_memory':
+    if type == 'sysctl' and key == 'vm.overcommit_memory':
         type = 'vm'
 
     if not type in errors[host]:
