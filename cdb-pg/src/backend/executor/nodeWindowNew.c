@@ -3582,8 +3582,10 @@ fetchCurrentRow(WindowState *wstate)
 					Assert(ntuples >= 0);
 					if (ntuples >= level_state->lead_rows)
 					{
-						Assert(ntuplestore_acc_seek(level_state->lead_reader, &curr_row_pos));
-						Assert(ntuplestore_acc_advance(level_state->lead_reader, level_state->lead_rows));
+						found = ntuplestore_acc_seek(level_state->lead_reader, &curr_row_pos);
+						Assert(found);
+						found = ntuplestore_acc_advance(level_state->lead_reader, level_state->lead_rows);
+						Assert(found);
 						level_state->num_lead_rows = level_state->lead_rows;
 					}
 					else
@@ -3621,8 +3623,10 @@ fetchCurrentRow(WindowState *wstate)
 
 					if (ntuples >= 0 - level_state->lead_rows)
 					{
-						Assert(ntuplestore_acc_seek(level_state->lead_reader, &curr_row_pos));
-						Assert(ntuplestore_acc_advance(level_state->lead_reader, level_state->lead_rows));
+						found = ntuplestore_acc_seek(level_state->lead_reader, &curr_row_pos);
+						Assert(found);
+						found = ntuplestore_acc_advance(level_state->lead_reader, level_state->lead_rows);
+						Assert(found);
 						level_state->num_lead_rows = level_state->lead_rows;
 					}
 					else
@@ -3636,9 +3640,12 @@ fetchCurrentRow(WindowState *wstate)
 					NTupleStorePos last_pos;
 					if (ntuplestore_acc_seek_last(level_state->lead_reader))
 					{
-						Assert(ntuplestore_acc_tell(level_state->lead_reader, &last_pos));
-						Assert(ntuplestore_acc_seek_first(level_state->lead_reader));
-						Assert(ntuplestore_acc_tell(level_state->lead_reader, &first_pos));
+						found = ntuplestore_acc_tell(level_state->lead_reader, &last_pos);
+						Assert(found);
+						found = ntuplestore_acc_seek_first(level_state->lead_reader);
+						Assert(found);
+						found = ntuplestore_acc_tell(level_state->lead_reader, &first_pos);
+						Assert(found);
 						ntuples = ntuplestore_count_slot(frame_buffer->tuplestore,
 														 &first_pos, &last_pos) + 1;
 						Assert(ntuples >= 0);
