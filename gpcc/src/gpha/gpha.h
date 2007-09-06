@@ -63,6 +63,8 @@ struct cmdslot_t {
 	    char *data_dir;
 	    int primary;
 	    int valid;
+	    int isqd;
+	    int idx;
 
 	    struct {
 		apr_pool_t *subpool;

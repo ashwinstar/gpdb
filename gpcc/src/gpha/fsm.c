@@ -53,6 +53,8 @@ APR_DECLARE(void) fsm_setup(void)
     /* Segment FSM */
     gpcc_fsm_put(SEG_INIT_CMDSTATE, INIT_EVENT, SEG_INIT_CMDSTATE,
 		 seg_initialize, 0);
+    gpcc_fsm_put(SEG_INIT_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
+		 seg_cleanup, 0);
 
     /* segment initdb */
     gpcc_fsm_put(SEG_INIT_CMDSTATE, SEG_INITDB_EVENT, SEG_INITDB_CMDSTATE,
@@ -63,6 +65,8 @@ APR_DECLARE(void) fsm_setup(void)
 		 seg_initdb_backout1, seg_initdb_reply, seg_request_cleanup, 0);
     gpcc_fsm_put(SEG_INITDB_CMDSTATE, TIMEUP_EVENT, SEG_INITDB_CMDSTATE,
 		 seg_initdb_wait, 0);
+    gpcc_fsm_put(SEG_INITDB_CMDSTATE, SEG_INITDB_DONE_EVENT, SEG_INIT_CMDSTATE,
+		 seg_initdb_reply, seg_request_cleanup, 0);
     gpcc_fsm_put(SEG_INITDB_CMDSTATE, SEG_INITDB_NEXT_EVENT, SEG_INITDB_START_CMDSTATE,
 		 seg_initdb_start_wait, 0);
     gpcc_fsm_put(SEG_INITDB_START_CMDSTATE, TIMEUP_EVENT, SEG_INITDB_START_CMDSTATE,

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <apr_strings.h>
 #include <gpcc.h>
 #include <gpcc_proc.h>
 
@@ -193,21 +194,19 @@ APR_DECLARE(apr_status_t) gpcc_proc_gpssh(apr_proc_t **proc, const char *user, c
     return e;
 }
 
-APR_DECLARE(apr_status_t) gpcc_proc_scp(apr_proc_t *proc, const char *user, const char *hostname, int port, const char *src, const char *target, int wait, apr_pool_t *p)
+APR_DECLARE(apr_status_t) gpcc_proc_scp(apr_proc_t *proc, int port, const char *src, const char *target, int wait, apr_pool_t *p)
 {
     char *argv[10];
     int e;
-    char remote[1024];
     char portstr[10];
 
     sprintf(portstr, "%d", port);
-    sprintf(remote, "%s@%s:%s", user, hostname, target);
     argv[0] = "scp";
     argv[1] = "-pr";
     argv[2] = "-P";
     argv[3] = portstr;
     argv[4] = (char *) src;
-    argv[5] = remote;
+    argv[5] = (char *) target;
     argv[6] = 0;
 
     e = gpcc_proc_run_prog(proc, "scp", (const char *const *)argv, 0, wait, p);
@@ -230,7 +229,8 @@ APR_DECLARE(apr_status_t) gpcc_proc_gpscp(apr_proc_t **proc, const char *user, c
     *proc = apr_palloc(pool, sizeof(apr_proc_t) * nhosts);
 
     for (i = 0, p = *proc ; hostnames[i] ; i++, p++) {
-	e = gpcc_proc_scp(p, user, hostnames[i], port, src, target, 0, pool);
+	char *source = apr_psprintf(pool, "%s@%s:%s", user, hostnames[i], src);
+	e = gpcc_proc_scp(p, port, source, target, 0, pool);
 	if (e) {
 	    gpcc_log_error("gpcc_proc_scp %s: command failed copy %s to %s\n", hostnames[i], src, target);
 	    return e;

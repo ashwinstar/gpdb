@@ -66,8 +66,6 @@ APR_DECLARE(apr_status_t) gpcc_proc_gpssh(apr_proc_t **proc, const char *user, c
 /**
  *  gpcc_proc_scp to run a scp remote command
  *  @param proc process handle
- *  @param user user name
- *  @param hostname
  *  @param port  ssh port number
  *  @param src source file/directory
  *  @param target  target file /directory
@@ -75,7 +73,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_gpssh(apr_proc_t **proc, const char *user, c
  *  @param p memory pool
  *  @return APR_SUCCESS if success otherwise failure
  */
-APR_DECLARE(apr_status_t) gpcc_proc_scp(apr_proc_t *proc, const char *user, const char *hostname, int port, const char *src, const char *target, int wait, apr_pool_t *p);
+APR_DECLARE(apr_status_t) gpcc_proc_scp(apr_proc_t *proc, int port, const char *src, const char *target, int wait, apr_pool_t *p);
 
 /**
  *  gpcc_proc_gpscp to run scp with a list of hosts
