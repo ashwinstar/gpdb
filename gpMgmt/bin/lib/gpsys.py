@@ -68,7 +68,6 @@ def add(res, prefix, lines):
 def do_gppath(res):
     out = os.getenv("GPHOME")
     if out is None:
-        res['env.GPHOME'] = ''
 	return False
 
     res['env.GPHOME'] = out.strip()
