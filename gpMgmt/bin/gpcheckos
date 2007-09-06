@@ -179,12 +179,13 @@ def print_fix():
     for h in errors.keys():
 
         if 'vm.overcommit_memory' in errors[h]:
-            print '[FIX %s] please type the following command' % h
+            print
+            print '[FIX %s] please execute the following command' % h
             print '/sbin/sysctl -w %s=%s' % (key, value)
             
         if 'sysctl' in errors[h]:
 	    print
-            print '[FIX %s] please add/modify the following value(s) in /etc/sysctl.conf' % h
+            print '[FIX %s] please add/modify the following line(s) in /etc/sysctl.conf' % h
             for (key, value) in errors[h]['sysctl']:
                 print '%s = %s' % (key, value)
 
@@ -200,7 +201,7 @@ def print_fix():
 
         if 'ndd' in errors[h]:
 	    print
-            print '[FIX %s] please add/modify the following value(s) in /etc/rc2.d/S*gpdb_ndd' % h
+            print '[FIX %s] please add/modify the following line(s) in /etc/rc2.d/S*gpdb_ndd' % h
             for (key, value) in errors[h]['ndd']:
                 print '/usr/sbin/ndd -set /dev/tcp %s %s' % (key, value)
 
@@ -212,20 +213,20 @@ def print_fix():
 
         if 'system' in errors[h]:
 	    print
-            print '[FIX %s] please add/modify the following value(s) in /etc/system'  % h
+            print '[FIX %s] please add/modify the following line(s) in /etc/system'  % h
             for (key, value) in errors[h]['system']:
                 print 'set %s=%s' % (key, value)
 
         if 'ulimit' in errors[h]:
 	    print
-            print '[FIX %s] please add/modify the following value(s) in /etc/security/limits.conf' % h
+            print '[FIX %s] please add/modify the following line(s) in /etc/security/limits.conf' % h
             for (key, value) in errors[h]['ulimit']:
                 print 'soft %s %s' % (key, value)
                 print 'hard %s %s' % (key, value)
 
         if 'others' in errors[h]:
 	    print
-            print '[FIX %s] please add/modify the value(s)' % h
+            print '[FIX %s] please add/modify the line(s)' % h
             for (key, value) in errors[h]['others']:
                 print '%s = %s' % (key, value)
             
