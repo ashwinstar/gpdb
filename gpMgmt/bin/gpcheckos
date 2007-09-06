@@ -183,8 +183,8 @@ def print_fix():
             print '/sbin/sysctl -w %s=%s' % (key, value)
             
         if 'sysctl' in errors[h]:
-            print '[FIX %s] please add/modify the following value(s) in /etc/sysctl.conf' % h
 	    print
+            print '[FIX %s] please add/modify the following value(s) in /etc/sysctl.conf' % h
             for (key, value) in errors[h]['sysctl']:
                 print '%s = %s' % (key, value)
 
