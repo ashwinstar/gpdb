@@ -110,10 +110,11 @@ def waitOneTimeSession(session):
 		if not permissionDenied:
 		    permissionDenied = (out.find('Permission denied') >= 0)
 	status = p.wait()
+        p.pid = 0
 	if status:
 	    errmsg = '[ERROR %s] Command failed. Exit status = %s' % (p.x_peer, status)
 	    print errmsg
-		
+
     if permissionDenied:
 	print
 	print 'hint: check if the host is alive'
@@ -121,6 +122,9 @@ def waitOneTimeSession(session):
 	print
     if errmsg: sys.exit(1)
 
+def killOneTimeSession(session):
+    for p in session:
+        if p.pid > 0: os.kill(p.pid, signal.SIGTERM)
 
 def closePxsshOne(p):
     p.close(force = True)
@@ -283,12 +287,14 @@ try:
         usage('Error: missing hosts in -h and/or -f arguments')
 
     if argcmd:
-	s = createOneTimeSession(argcmd)
-	waitOneTimeSession(s)
+	session = createOneTimeSession(argcmd)
+	waitOneTimeSession(session)
 	if opt['-v']: print '[INFO] completed successfully'
 	sys.exit(0)
 
     interactive()
 
 except KeyboardInterrupt:
+    if argcmd:
+        killOneTimeSession(session)
     sys.exit('\nInterrupted...')
