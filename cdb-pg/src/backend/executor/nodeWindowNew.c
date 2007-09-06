@@ -259,9 +259,23 @@ typedef struct WinFuncRangeBuffer
 
 #define EDGE_IS_BOUND(e) \
 	(e->kind == WINDOW_BOUND_PRECEDING || \
-	 e->kind == WINDOW_BOUND_FOLLOWING)
+	 e->kind == WINDOW_BOUND_FOLLOWING || \
+     e->kind == WINDOW_DELAYED_BOUND_FOLLOWING || \
+     e->kind == WINDOW_DELAYED_BOUND_PRECEDING)
 #define EDGE_IS_CURRENT_ROW(e) \
 	 (e->kind == WINDOW_CURRENT_ROW)
+#define EDGE_IS_DELAYED(e) \
+     (e->kind == WINDOW_DELAYED_BOUND_FOLLOWING || \
+      e->kind == WINDOW_DELAYED_BOUND_PRECEDING)
+#define EDGE_IS_BOUND_FOLLOWING(e) \
+     (e->kind == WINDOW_BOUND_FOLLOWING || \
+      e->kind == WINDOW_DELAYED_BOUND_FOLLOWING)
+#define EDGE_IS_BOUND_PRECEDING(e) \
+     (e->kind == WINDOW_BOUND_PRECEDING || \
+      e->kind == WINDOW_DELAYED_BOUND_PRECEDING)
+#define EDGE_IS_DELAYED_BOUND(e) \
+     (e->kind == WINDOW_DELAYED_BOUND_PRECEDING || \
+      e->kind == WINDOW_DELAYED_BOUND_FOLLOWING)
 
 #define IS_LEAD_LAG_FUNC(oid) (IS_LEAD_FUNC(oid) || IS_LAG_FUNC(oid)) 
 
@@ -428,7 +442,8 @@ static int findSerialIndex(WindowStatePerFunction funcstate,
 						   WindowStatePerLevel level_state);
 static void add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 							   ExprContext *econtext);
-
+static void set_lead_lag_framing(WindowStatePerLevel level_state,
+								 WindowState *wstate);
 
 /*
  * initFrameBuffer -- initialize the frame buffer.
@@ -1204,7 +1219,7 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 	}
 
 	else if (!level_state->is_rows &&
-			 level_state->frame->trail->kind == WINDOW_BOUND_FOLLOWING)
+			 EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail))
 	{
 		Datum new_trail_key;
 		bool new_trail_key_isnull;
@@ -1241,7 +1256,7 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 	}
 
 	/* If the leading edge is "x PRECEDING" and x > 0, simple return. */
-	if (level_state->frame->lead->kind == WINDOW_BOUND_PRECEDING &&
+	if (EDGE_IS_BOUND_PRECEDING(level_state->frame->lead) &&
 		((level_state->is_rows && level_state->lead_rows != 0) ||
 		 (!level_state->is_rows && level_state->lead_range != 0)))
 		return;
@@ -1254,7 +1269,11 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 		if (level_state->num_lead_rows < level_state->lead_rows)
 		{
 			if (!ntuplestore_acc_tell(level_state->lead_reader, NULL))
-				level_state->num_lead_rows++;
+			{
+				if (!last_peer)
+					level_state->num_lead_rows++;
+			}
+			
 			else
 			{
 				bool found = ntuplestore_acc_advance(level_state->lead_reader, 1);
@@ -1681,7 +1700,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 				read_edge_value = true;
 			
 				Assert(is_rows);
-				if (level_state->frame->trail->kind != WINDOW_BOUND_FOLLOWING ||
+				if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
 					level_state->num_lead_rows >= level_state->trail_rows)
 					rows_trail_entry = getCurrentValue(level_state->trail_reader, level_state);
 				if (level_state->lead_rows != 0)
@@ -1742,7 +1761,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 
 				if (is_rows)
 				{
-					if (level_state->frame->trail->kind != WINDOW_BOUND_FOLLOWING ||
+					if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
 						level_state->num_lead_rows >= level_state->trail_rows)
 						rows_trail_entry = getCurrentValue(level_state->trail_reader, level_state);
 					if (level_state->lead_rows != 0)
@@ -1844,10 +1863,10 @@ computeFrameValue(WindowStatePerLevel level_state,
 			
 			else
 			{
-				if ((level_state->frame->trail->kind == WINDOW_BOUND_FOLLOWING &&
+				if ((EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) &&
 					 ((level_state->is_rows && level_state->trail_rows != 0) ||
 					  (!level_state->is_rows && level_state->trail_range != 0))) ||
-					(level_state->frame->lead->kind == WINDOW_BOUND_PRECEDING &&
+					(EDGE_IS_BOUND_PRECEDING(level_state->frame->lead) &&
 					 ((level_state->is_rows && level_state->lead_rows != 0) ||
 					  (!level_state->is_rows && level_state->lead_range != 0))))
 				{
@@ -2965,17 +2984,17 @@ adjustEdgesForRows(WindowFrameBuffer buffer,
 			bool found;
 			if (ntuplestore_acc_tell(level_state->trail_reader, NULL))
 				found = ntuplestore_acc_advance(level_state->trail_reader, 1);
-			else if (level_state->frame->trail->kind != WINDOW_BOUND_FOLLOWING ||
+			else if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
 					 level_state->trail_rows == 0)
 				found = ntuplestore_acc_seek_first(level_state->trail_reader);
 
 			if (found ||
-				level_state->frame->trail->kind == WINDOW_BOUND_FOLLOWING)
+				EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail))
 				level_state->num_trail_rows++;
 		}
 	}
 	
-	if (level_state->frame->lead->kind == WINDOW_BOUND_PRECEDING &&
+	if (EDGE_IS_BOUND_PRECEDING(level_state->frame->lead) &&
 		level_state->num_lead_rows == level_state->lead_rows)
 	{
 		ntuplestore_acc_seek_first(level_state->lead_reader);
@@ -3124,7 +3143,7 @@ adjustEdgesForRange(WindowFrameBuffer buffer,
 
 			if (lead_row == NULL)
 			{
-				if (level_state->frame->lead->kind != WINDOW_BOUND_PRECEDING)
+				if (!EDGE_IS_BOUND_PRECEDING(level_state->frame->lead))
 					break;
 					
 				ntuplestore_acc_seek_first(level_state->lead_reader);
@@ -3517,67 +3536,125 @@ fetchCurrentRow(WindowState *wstate)
 		wstate->cur_slot_key_break < wstate->numlevels)
 		advanceKeyLevelState(wstate, wstate->cur_slot_key_break);
 
+	/* If this tuple breaks the partition key, re-initialize
+	 * the state.
+	 */
+	if (wstate->cur_slot_part_break)
+		initializePartition(wstate);
+
 	/* Evaluate the LEAD/LAG offset values, and change the
 	 * framing clauses accordingly.
 	 */
 	for (level=0; level<wstate->numlevels; level++)
 	{
 		WindowStatePerLevel level_state = &wstate->level_state[level];
-		WindowStatePerFunction funcstate;
-		WindowRefExprState *wrxstate;
-		int nargs;
 
 		if (!level_state->has_lead_lag)
 			continue;
-		
-		Assert(list_length(level_state->level_funcs) == 1);
-		funcstate = (WindowStatePerFunction)
-			linitial(level_state->level_funcs);
 
-		/* Compute the offset value from the arguments of LEAD/LAG
-		 * function. If such value is not provided, the default
-		 * is 1.
-		 */
-		wrxstate = funcstate->wrxstate;
-		nargs = list_length(wrxstate->args);
-		Assert(2 <= nargs && nargs <= 4);
-
-		if (list_length(wrxstate->args) == 2)
+		if (EDGE_IS_DELAYED(level_state->frame->lead))
 		{
-			if (IS_LEAD_FUNC(funcstate->windowfn_oid))
-				level_state->lead_rows = 1;
-			else
-				level_state->lead_rows = -1;
-		}
-		
-		else
-		{
-			FunctionCallInfoData fcinfo;
-			ExprState *argstate;
-			int argno = 2; /* the index for the offset */
+			WindowFrameBuffer frame_buffer = level_state->frame_buffer;
 			
-			Assert(nargs <= 4);
-			argstate = (ExprState *)list_nth(wrxstate->args, argno);
+			set_lead_lag_framing(level_state, wstate);
 
-			econtext->ecxt_scantuple = wstate->curslot;
-			fcinfo.arg[argno] = ExecEvalExpr(argstate, econtext,
-											 fcinfo.argnull + argno, NULL);
+			level_state->num_lead_rows = 0;
 
-			Assert(!fcinfo.argnull[argno]);
+			/* Reset the leading edge pointer in the frame buffer. */
+			if (EDGE_IS_BOUND_FOLLOWING(level_state->frame->lead))
+			{
+				NTupleStorePos curr_row_pos;
+				NTupleStorePos last_pos;
+				
+				if (ntuplestore_acc_tell(frame_buffer->current_row_reader, &curr_row_pos))
+				{
+					int ntuples;
 
-			/* XXX We need to check on the type for this offset argument? */
+					bool found = ntuplestore_acc_seek_last(level_state->lead_reader);
+					Assert(found);
+					found = ntuplestore_acc_tell(level_state->lead_reader, &last_pos);
+					Assert(found);
+					ntuples = ntuplestore_count_slot(frame_buffer->tuplestore,
+													 &curr_row_pos, &last_pos);
+					Assert(ntuples >= 0);
+					if (ntuples >= level_state->lead_rows)
+					{
+						Assert(ntuplestore_acc_seek(level_state->lead_reader, &curr_row_pos));
+						Assert(ntuplestore_acc_advance(level_state->lead_reader, level_state->lead_rows));
+						level_state->num_lead_rows = level_state->lead_rows;
+					}
+					else
+					{
+						ntuplestore_acc_advance(level_state->lead_reader, 1);
+						level_state->num_lead_rows = ntuples;
+						if (level_state->agg_filled)
+							level_state->num_lead_rows++;
+					}
+				}
 
-			level_state->lead_rows = DatumGetInt64(fcinfo.arg[argno]);
-			if (IS_LAG_FUNC(funcstate->windowfn_oid))
-				level_state->lead_rows = 0 - level_state->lead_rows;
+				else
+				{
+					ntuplestore_acc_set_invalid(level_state->lead_reader);
+					level_state->num_lead_rows = 0;
+				}
+			}
+
+			else
+			{
+				NTupleStorePos curr_row_pos;
+				NTupleStorePos first_pos;
+				int ntuples;
+
+				if (ntuplestore_acc_tell(frame_buffer->current_row_reader, &curr_row_pos))
+				{
+					bool found = ntuplestore_acc_seek_first(level_state->lead_reader);
+					Assert(found);
+					found = ntuplestore_acc_tell(level_state->lead_reader, &first_pos);
+					Assert(found);
+					
+					ntuples = ntuplestore_count_slot(frame_buffer->tuplestore,
+													 &first_pos, &curr_row_pos);
+					Assert(ntuples >= 0);
+
+					if (ntuples >= 0 - level_state->lead_rows)
+					{
+						Assert(ntuplestore_acc_seek(level_state->lead_reader, &curr_row_pos));
+						Assert(ntuplestore_acc_advance(level_state->lead_reader, level_state->lead_rows));
+						level_state->num_lead_rows = level_state->lead_rows;
+					}
+					else
+					{
+						ntuplestore_acc_advance(level_state->lead_reader, -1);
+						level_state->num_lead_rows = 0 - ntuples;
+					}
+				}
+				else
+				{
+					NTupleStorePos last_pos;
+					if (ntuplestore_acc_seek_last(level_state->lead_reader))
+					{
+						Assert(ntuplestore_acc_tell(level_state->lead_reader, &last_pos));
+						Assert(ntuplestore_acc_seek_first(level_state->lead_reader));
+						Assert(ntuplestore_acc_tell(level_state->lead_reader, &first_pos));
+						ntuples = ntuplestore_count_slot(frame_buffer->tuplestore,
+														 &first_pos, &last_pos) + 1;
+						Assert(ntuples >= 0);
+
+						if (ntuples >= 0 - level_state->lead_rows)
+						{
+							ntuplestore_acc_advance(level_state->lead_reader,
+													ntuples + level_state->lead_rows);
+							level_state->num_lead_rows = level_state->lead_rows;
+						}
+						else
+						{
+							ntuplestore_acc_advance(level_state->lead_reader, -1);
+							level_state->num_lead_rows = 0 - ntuples;
+						}
+					}
+				}
+			}
 		}
-
-		level_state->frame->trail->kind = WINDOW_UNBOUND_PRECEDING;
-		
-		if (level_state->lead_rows >= 0)
-			level_state->frame->lead->kind = WINDOW_BOUND_FOLLOWING;
-		else
-			level_state->frame->lead->kind = WINDOW_BOUND_PRECEDING;
 	}
 
 	return wstate->curslot;
@@ -3707,12 +3784,6 @@ ExecWindow(WindowState *wstate)
 
 	if (TupIsNull(econtext->ecxt_scantuple))
 		return NULL; /* we are done */
-
-	/* If this tuple breaks the partition key, re-initialize
-	 * the state.
-	 */
-	if (wstate->cur_slot_part_break)
-		initializePartition(wstate);
 
 	/* Process the current_row if it has not been processed. */
 	if (wstate->cur_slot_is_new)
@@ -4023,9 +4094,9 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 		level_state->lead_range = ExecEvalExpr(n, econtext, &isNull, NULL);
 	pfree(n);
 
-	if ((edge->kind == WINDOW_BOUND_PRECEDING && 
+	if ((EDGE_IS_BOUND_PRECEDING(edge) && 
 		 level_state->col_sort_asc[0]) ||
-		(edge->kind == WINDOW_BOUND_FOLLOWING &&
+		(EDGE_IS_BOUND_FOLLOWING(edge) &&
 		 !level_state->col_sort_asc[0]))
 	{
 		oprname = "-";
@@ -4162,8 +4233,8 @@ init_frames(WindowState *wstate)
 				/* look for empty frames */
 				if (frame->trail->kind == WINDOW_UNBOUND_FOLLOWING ||
 					frame->lead->kind == WINDOW_UNBOUND_PRECEDING ||
-					(frame->trail->kind == WINDOW_BOUND_FOLLOWING &&
-					 frame->lead->kind == WINDOW_BOUND_PRECEDING))
+					(EDGE_IS_BOUND_FOLLOWING(frame->trail) &&
+					 EDGE_IS_BOUND_PRECEDING(frame->lead)))
 				{
 					level_state->empty_frame = true;
 				}
@@ -4219,7 +4290,8 @@ init_frames(WindowState *wstate)
 				else
 					level_state->trail_rows = 0L;
 
-				if (EDGE_IS_BOUND(frame->lead))
+				if (EDGE_IS_BOUND(frame->lead) &&
+					level_state->frame->lead->val != NULL)
 				{
 					long int rows_param;
 					bool isnull;
@@ -4255,7 +4327,8 @@ init_frames(WindowState *wstate)
 											   true, level_state, wstate);
 				}
 
-				if (EDGE_IS_BOUND(frame->lead))
+				if (EDGE_IS_BOUND(frame->lead) &&
+					!EDGE_IS_DELAYED_BOUND(frame->lead))
 				{
 					init_bound_frame_edge_expr(frame->lead, desc,
 											   level_state->sortColIdx[0],
@@ -4384,6 +4457,86 @@ get_ltfuncs(TupleDesc tupdesc, int numCols, AttrNumber *matchColIdx)
 }
 
 /*
+ * set_lead_lag_framing -- Set the framing for LEAD/LAG functions.
+ */
+static void
+set_lead_lag_framing(WindowStatePerLevel level_state,
+					 WindowState *wstate)
+{
+	WindowStatePerFunction funcstate;
+	WindowRefExprState *wrxstate;
+	int nargs;
+	ExprContext *econtext = wstate->ps.ps_ExprContext;
+	bool is_const = false;
+		
+	funcstate = (WindowStatePerFunction)
+		linitial(level_state->level_funcs);
+
+	/* Compute the offset value from the arguments of LEAD/LAG
+	 * function. If such value is not provided, the default
+	 * is 1.
+	 */
+	wrxstate = funcstate->wrxstate;
+	nargs = list_length(wrxstate->args);
+	Assert(2 <= nargs && nargs <= 4);
+
+	if (list_length(wrxstate->args) == 2)
+	{
+		if (IS_LEAD_FUNC(funcstate->windowfn_oid))
+			level_state->lead_rows = 1;
+		else
+			level_state->lead_rows = -1;
+
+		is_const = true;
+	}
+		
+	else
+	{
+		FunctionCallInfoData fcinfo;
+		ExprState *argstate;
+		int argno = 2; /* the index for the offset */
+			
+		Assert(nargs <= 4);
+		argstate = (ExprState *)list_nth(wrxstate->args, argno);
+		is_const = IsA(argstate->expr, Const);
+
+		econtext->ecxt_scantuple = wstate->curslot;
+		if (!TupIsNull(wstate->curslot) || is_const)
+		{
+			fcinfo.arg[argno] = ExecEvalExpr(argstate, econtext,
+											 fcinfo.argnull + argno, NULL);
+
+			Assert(!fcinfo.argnull[argno]);
+
+			/* XXX We need to check on the type for this offset argument? */
+
+			level_state->lead_rows = DatumGetInt64(fcinfo.arg[argno]);
+			if (IS_LAG_FUNC(funcstate->windowfn_oid))
+				level_state->lead_rows = 0 - level_state->lead_rows;
+		}
+		else
+			level_state->lead_rows = 0;
+	}
+
+	level_state->frame->trail->kind = WINDOW_UNBOUND_PRECEDING;
+
+	if (is_const)
+	{
+		if (level_state->lead_rows >= 0)
+			level_state->frame->lead->kind = WINDOW_BOUND_FOLLOWING;
+		else
+			level_state->frame->lead->kind = WINDOW_BOUND_PRECEDING;
+	}
+	else
+	{
+		if (IS_LEAD_FUNC(funcstate->windowfn_oid))
+			level_state->frame->lead->kind = WINDOW_DELAYED_BOUND_FOLLOWING;
+		else
+			level_state->frame->lead->kind = WINDOW_DELAYED_BOUND_PRECEDING;
+	}
+}
+
+/*
  * separateLeadLag -- separate LEAD/LAG functions from its original
  * key level, and store them individually in a different key
  * level.
@@ -4431,21 +4584,39 @@ separateLeadLag(WindowState *wstate)
 
 	for (level=0; level<wstate->numlevels; level++)
 	{
-		WindowStatePerLevel level_state = &old_level_state[level];
-		List *level_funcs = level_state->level_funcs;
+		WindowStatePerLevel level_state = NULL;
+		List *level_funcs = old_level_state[level].level_funcs;
 		WindowStatePerLevel next_level_state;
+		bool separate_first_one = true;
+		bool first_one = true;
 		
-		if (num_lead_lag[level] == list_length(level_state->level_funcs))
+		memcpy(&wstate->level_state[new_level], &old_level_state[level],
+			   sizeof(WindowStatePerLevelData));
+
+		if (num_lead_lag[level] == 0)
 		{
-			memcpy(&wstate->level_state[new_level], &old_level_state[level],
-				   sizeof(WindowStatePerLevelData));
-			if (num_lead_lag[level] > 0)
-				wstate->level_state[new_level].has_lead_lag = true;
 			new_level++;
 			continue;
 		}
 		
-		level_state->level_funcs = NIL;
+		if (num_lead_lag[level] == 1 &&
+			list_length(level_funcs) == 1)
+		{
+			wstate->level_state[new_level].has_lead_lag = true;
+			set_lead_lag_framing(&wstate->level_state[new_level], wstate);
+			
+			new_level++;
+			continue;
+		}
+
+		/* If there are all LEAD/LAG functions, keep the first one in
+		 * the original level.
+		 */
+		if (num_lead_lag[level] == list_length(level_funcs))
+			separate_first_one = false;
+		
+		wstate->level_state[new_level].level_funcs = NIL;
+		level_state = &wstate->level_state[new_level];
 		
 		/* Move the LEAD/LAG to next_level_state, and keep others to
 		 * level_state.
@@ -4457,15 +4628,27 @@ separateLeadLag(WindowState *wstate)
 
 			if (IS_LEAD_LAG_FUNC(funcstate->windowfn_oid))
 			{
-				next_level_state = &wstate->level_state[new_level + 1];
-				next_level_state->frame = copyObject(level_state->frame);
-				next_level_state->is_rows = true;
-				next_level_state->has_lead_lag = true;
+				if (separate_first_one || !first_one)
+				{
+					next_level_state = &wstate->level_state[new_level + 1];
+					next_level_state->frame = copyObject(level_state->frame);
+					next_level_state->is_rows = true;
+					next_level_state->has_lead_lag = true;
+					
+					next_level_state->level_funcs =
+						lappend(next_level_state->level_funcs, funcstate);
+					funcstate->wlevel = next_level_state;
+					set_lead_lag_framing(&wstate->level_state[new_level], wstate);
+					
+					new_level++;
+				}
 
-				next_level_state->level_funcs =
-					lappend(next_level_state->level_funcs, funcstate);
-				funcstate->wlevel = next_level_state;
-				new_level++;
+				else
+				{
+					first_one = false;
+					level_state->level_funcs =
+						lappend(level_state->level_funcs, funcstate);
+				}
 			}
 
 			else

@@ -1264,7 +1264,13 @@ bool ntuplestore_acc_tell(NTupleStoreAccessor *tsa, NTupleStorePos *pos)
 	
 	if(!tsa->page || tsa->pos.slotn == -1)
 		return false;
-
+	
+	Assert(tsa->pos.blockn == nts_page_blockn(tsa->page));
+	
+	if(tsa->pos.slotn >= nts_page_slot_cnt(tsa->page)
+	   || tsa->pos.slotn < nts_page_first_valid_slotn(tsa->page))
+		return false;
+	
 	if(pos)
 	{
 		pos->blockn = tsa->pos.blockn;
@@ -1317,6 +1323,17 @@ bool ntuplestore_acc_seek_last(NTupleStoreAccessor *tsa)
 	return ntuplestore_acc_advance(tsa, -1);
 }
 
+void  ntuplestore_acc_set_invalid(NTupleStoreAccessor *tsa)
+{
+	Assert(tsa);
+	
+	if(tsa->page)
+		nts_unpin_page(tsa->store, tsa->page);
+
+	tsa->page = NULL;
+	tsa->pos.blockn = -1;
+	tsa->pos.slotn = -1;
+}
 
 void ntuplestore_acc_seek_bof(NTupleStoreAccessor *tsa)
 {
@@ -1350,18 +1367,41 @@ int ntuplestore_count_slot(NTupleStore *nts, NTupleStorePos *pos1, NTupleStorePo
 {
 	NTupleStoreAccessor *tsa1 = ntuplestore_create_accessor(nts, false); 
 	NTupleStoreAccessor *tsa2 = ntuplestore_create_accessor(nts, false);
-	int ret = 0;
-	bool fOK; 
 
+	bool fOK;
+	int ret;
+	
 	fOK = ntuplestore_acc_seek(tsa1, pos1);
 	if(!fOK)
 		return -1;
-
 	fOK = ntuplestore_acc_seek(tsa2, pos2);
 	if(!fOK)
 		return -1;
+	
+	ret = ntuplestore_count_slot_acc(nts, tsa1, tsa2);
+	
+	ntuplestore_destroy_accessor(tsa1);
+	ntuplestore_destroy_accessor(tsa2);
 
-	if(ntuplestore_compare_pos(nts, pos1, pos2) < 0)
+	return ret;
+}
+
+
+int ntuplestore_count_slot_acc(NTupleStore *nts, NTupleStoreAccessor *tsa1, NTupleStoreAccessor *tsa2)
+{
+	int ret = 0;
+	bool fOK; 
+	NTupleStorePos oldpos1;
+	
+	fOK = ntuplestore_acc_tell(tsa1, &oldpos1);
+	if(!fOK)
+		return -1;
+
+	fOK = ntuplestore_acc_tell(tsa2, NULL);
+	if(!fOK)
+		return -1;
+
+	if(ntuplestore_compare_pos(nts, &tsa1->pos, &tsa2->pos) > 0)
 		return -1;
 
 	while(tsa1->pos.blockn < tsa2->pos.blockn)
@@ -1386,9 +1426,9 @@ int ntuplestore_count_slot(NTupleStore *nts, NTupleStorePos *pos1, NTupleStorePo
 	Assert(tsa1->pos.blockn == tsa2->pos.blockn);
 	ret += tsa2->pos.slotn - tsa1->pos.slotn;
 
-	ntuplestore_destroy_accessor(tsa1);
-	ntuplestore_destroy_accessor(tsa2);
-
+	fOK = ntuplestore_acc_seek(tsa1, &oldpos1);
+	Assert(fOK);
+	
 	return ret;
 }
 		

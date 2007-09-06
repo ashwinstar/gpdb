@@ -899,3 +899,14 @@ SELECT vn,pn,cn,
 TO_CHAR(COALESCE(CUME_DIST() OVER(partition by sale.vn,sale.pn order by sale.cn desc),0),'99999999.9999999') as cum_dist,
 TO_CHAR(COALESCE(CUME_DIST() OVER(partition by sale.vn,sale.pn order by sale.cn desc),0),'99999999.9999999') as cum_dist
 from sale;
+
+select cn,pn,lag(pn,cn) over (order by pn) from sale;
+select cn,pn,lead(pn,cn) over (order by pn) from sale;
+select vn,cn,pn,lead(pn,cn) over (partition by vn order by cn) from sale;
+select vn,cn,pn,lag(pn,cn) over (partition by vn order by cn) from sale;
+
+-- MPP-1934
+SELECT sale.dt,sale.vn,sale.qty,sale.pn,sale.cn,
+LEAD(cast(floor(sale.cn+sale.vn) as int),cast (floor(sale.qty) as int),NULL) OVER(partition by sale.dt,sale.vn,sale.qty order by sale.pn desc,sale.cn desc) as lead
+FROM sale;
+
