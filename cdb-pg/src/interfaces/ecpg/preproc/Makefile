@@ -23,7 +23,7 @@ override CPPFLAGS := -I../include -I$(top_srcdir)/src/interfaces/ecpg/include \
 	 $(CPPFLAGS)
 
 ifeq ($(GCC), yes)
-override CFLAGS += -Wno-unused-label
+override CFLAGS += -Wno-unused-label -Wno-error
 endif
 override CFLAGS += $(PTHREAD_CFLAGS)
 
