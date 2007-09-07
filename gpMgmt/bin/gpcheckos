@@ -162,9 +162,10 @@ def print_fix():
     for h in errors.keys():
 
         if 'vm' in errors[h]:
-            print
-            print '[FIX %s] please execute the following command' % h
-            print '/sbin/sysctl -w %s=%s' % (key, value)
+	    print
+            print '[FIX %s] please execute the following command(s)' % h
+	    for (key, value) in errors[h]['vm']:
+                print '/sbin/sysctl -w %s=%s' % (key, value)
             
         if 'sysctl' in errors[h]:
 	    print
@@ -330,6 +331,8 @@ try:
             matchMore(session, key, 65536)
             key = 'ulimit.nproc'
             matchMore(session, key, 131072)
+	
+	    print_fix()
 
     elif value == 'sunos' and match(session, key, 'sunos'):
         key = 'platform.release'
