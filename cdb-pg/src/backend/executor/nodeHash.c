@@ -77,7 +77,7 @@ MultiExecHash(HashState *node)
 	HashJoinTable hashtable;
 	TupleTableSlot *slot;
 	ExprContext *econtext;
-	uint32		hashvalue;
+	uint32		hashvalue = 0;
 
 	/* must provide our own instrumentation support */
 	if (node->ps.instrument)

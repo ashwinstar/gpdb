@@ -1806,7 +1806,7 @@ static int32
 numericvar_to_int4(NumericVar *var)
 {
 	int32		result;
-	int64		val;
+	int64		val = 0;
 
 	if (!numericvar_to_int8(var, &val))
 		ereport(ERROR,
@@ -1847,7 +1847,7 @@ numeric_int8(PG_FUNCTION_ARGS)
 {
 	Numeric		num = PG_GETARG_NUMERIC(0);
 	NumericVar	x;
-	int64		result;
+	int64		result = 0;
 
 	/* XXX would it be better to return NULL? */
 	if (NUMERIC_IS_NAN(num))
@@ -1889,7 +1889,7 @@ numeric_int2(PG_FUNCTION_ARGS)
 {
 	Numeric		num = PG_GETARG_NUMERIC(0);
 	NumericVar	x;
-	int64		val;
+	int64		val = 0;
 	int16		result;
 
 	/* XXX would it be better to return NULL? */
@@ -5753,7 +5753,7 @@ int64
 numeric_to_pos_int8_trunc(Numeric num)
 {
 	NumericVar var;
-	int64 result;
+	int64 result = 0;
 	
 	/* Truncate ntile_arg to int8, put in result. */
 	init_var_from_num(num, &var);

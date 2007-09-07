@@ -1793,8 +1793,8 @@ point_in(PG_FUNCTION_ARGS)
 {
 	char	   *str = PG_GETARG_CSTRING(0);
 	Point	   *point;
-	double		x,
-				y;
+	double		x = 0,
+				y = 0;
 	char	   *s;
 
 	if (!pair_decode(str, &x, &y, &s) || (*s != '\0'))

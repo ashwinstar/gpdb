@@ -2242,7 +2242,7 @@ timestamp_pl_interval(PG_FUNCTION_ARGS)
 		{
 			struct pg_tm tt,
 					   *tm = &tt;
-			fsec_t		fsec;
+			fsec_t		fsec = 0;
 
 			if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
 				ereport(ERROR,
@@ -2275,7 +2275,7 @@ timestamp_pl_interval(PG_FUNCTION_ARGS)
 		{
 			struct pg_tm tt,
 					   *tm = &tt;
-			fsec_t		fsec;
+			fsec_t		fsec = 0;
 			int			julian;
 
 			if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
@@ -2343,7 +2343,7 @@ timestamptz_pl_interval(PG_FUNCTION_ARGS)
 		{
 			struct pg_tm tt,
 					   *tm = &tt;
-			fsec_t		fsec;
+			fsec_t		fsec = 0;
 
 			if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
 				ereport(ERROR,
@@ -2378,7 +2378,7 @@ timestamptz_pl_interval(PG_FUNCTION_ARGS)
 		{
 			struct pg_tm tt,
 					   *tm = &tt;
-			fsec_t		fsec;
+			fsec_t		fsec = 0;
 			int			julian;
 
 			if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
@@ -3179,7 +3179,7 @@ timestamp_trunc(PG_FUNCTION_ARGS)
 	int			type,
 				val;
 	char	   *lowunits;
-	fsec_t		fsec;
+	fsec_t		fsec = 0;
 	struct pg_tm tt,
 			   *tm = &tt;
 
@@ -3308,12 +3308,12 @@ timestamptz_trunc(PG_FUNCTION_ARGS)
 	text	   *units = PG_GETARG_TEXT_P(0);
 	TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(1);
 	TimestampTz result;
-	int			tz;
+	int			tz = 0;
 	int			type,
 				val;
 	bool		redotz = false;
 	char	   *lowunits;
-	fsec_t		fsec;
+	fsec_t		fsec = 0;
 	char	   *tzn;
 	struct pg_tm tt,
 			   *tm = &tt;
@@ -3704,7 +3704,7 @@ timestamp_part(PG_FUNCTION_ARGS)
 	int			type,
 				val;
 	char	   *lowunits;
-	fsec_t		fsec;
+	fsec_t		fsec = 0;
 	struct pg_tm tt,
 			   *tm = &tt;
 
@@ -3922,12 +3922,12 @@ timestamptz_part(PG_FUNCTION_ARGS)
 	text	   *units = PG_GETARG_TEXT_P(0);
 	TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(1);
 	float8		result;
-	int			tz;
+	int			tz = 0;
 	int			type,
 				val;
 	char	   *lowunits;
 	double		dummy;
-	fsec_t		fsec;
+	fsec_t		fsec = 0;
 	char	   *tzn;
 	struct pg_tm tt,
 			   *tm = &tt;
@@ -4290,7 +4290,7 @@ timestamp_zone(PG_FUNCTION_ARGS)
 	{
 		/* Apply the timezone change */
 		struct pg_tm tm;
-		fsec_t		fsec;
+		fsec_t		fsec = 0;
 
 		if (timestamp2tm(timestamp, NULL, &tm, &fsec, NULL, tzp) != 0)
 			ereport(ERROR,
@@ -4379,7 +4379,7 @@ timestamp2timestamptz(Timestamp timestamp)
 	TimestampTz result;
 	struct pg_tm tt,
 			   *tm = &tt;
-	fsec_t		fsec;
+	fsec_t		fsec = 0;
 	int			tz;
 
 	if (TIMESTAMP_NOT_FINITE(timestamp))
@@ -4412,7 +4412,7 @@ timestamptz_timestamp(PG_FUNCTION_ARGS)
 	Timestamp	result;
 	struct pg_tm tt,
 			   *tm = &tt;
-	fsec_t		fsec;
+	fsec_t		fsec = 0;
 	char	   *tzn;
 	int			tz;
 
@@ -4463,7 +4463,7 @@ timestamptz_zone(PG_FUNCTION_ARGS)
 	{
 		/* Apply the timezone change */
 		struct pg_tm tm;
-		fsec_t		fsec;
+		fsec_t		fsec = 0;
 
 		if (timestamp2tm(timestamp, &tz, &tm, &fsec, NULL, tzp) != 0)
 			ereport(ERROR,

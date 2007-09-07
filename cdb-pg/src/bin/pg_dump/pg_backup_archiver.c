@@ -131,7 +131,12 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 	ArchiveHandle *AH = (ArchiveHandle *) AHX;
 	TocEntry   *te;
 	teReqs		reqs;
-	OutputContext sav;
+	OutputContext sav = 
+		{
+		NULL, /*	OF */
+		0, /* gzOut */
+		};
+
 	bool		defnDumped;
 
 	AH->ropt = ropt;
@@ -597,7 +602,12 @@ PrintTOCSummary(Archive *AHX, RestoreOptions *ropt)
 {
 	ArchiveHandle *AH = (ArchiveHandle *) AHX;
 	TocEntry   *te = AH->toc->next;
-	OutputContext sav;
+	OutputContext sav = 
+		{
+		NULL, /* OF */
+		0, /* gzOut */
+		};
+
 	char	   *fmtName;
 
 	if (ropt->filename)

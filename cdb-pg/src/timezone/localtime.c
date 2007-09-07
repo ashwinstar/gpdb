@@ -584,8 +584,22 @@ tzparse(const char *name, struct state * sp, int lastditch)
 			name = TZDEFRULESTRING;
 		if (*name == ',' || *name == ';')
 		{
-			struct rule start;
-			struct rule end;
+			struct rule start =
+				{
+				0, /* r_type */
+				0, /* r_day */
+				0, /* r_mon */
+				0, /* r_time */
+				};
+
+			struct rule end =
+				{
+				0, /* r_type */
+				0, /* r_day */
+				0, /* r_mon */
+				0, /* r_time */
+				};
+
 			int			year;
 			pg_time_t	janfirst;
 			pg_time_t	starttime;

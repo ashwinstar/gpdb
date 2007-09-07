@@ -822,7 +822,18 @@ textpos(PG_FUNCTION_ARGS)
 static int 
 text_position_ptr_len(char* p1, int len1, char* p2, int len2)
 {
-	TextPositionState state;
+	TextPositionState state = 
+		{
+		0, /* use_wchar */
+		NULL, /* str1 */
+		NULL, /* str2 */
+		NULL, /* wstr1 */
+		NULL, /* wstr2 */
+		0, /* len1 */
+		0, /* len2 */
+		};
+
+
 	int result;
 
 	text_position_setup_ptr_len(p1, len1, p2, len2, &state);
@@ -1958,7 +1969,16 @@ replace_text(PG_FUNCTION_ARGS)
 
 	int from_sub_text_len; 
 
-	TextPositionState state;
+	TextPositionState state = 
+		{
+		0, /* use_wchar */
+		NULL, /* str1 */
+		NULL, /* str2 */
+		NULL, /* wstr1 */
+		NULL, /* wstr2 */
+		0, /* len1 */
+		0, /* len2 */
+		};
 	text	   *ret_text;
 	int			start_posn;
 	int			curr_posn;
@@ -2330,7 +2350,17 @@ split_text(PG_FUNCTION_ARGS)
 
 	int			inputstring_len; 
 	int			fldsep_len; 
-	TextPositionState state;
+	TextPositionState state = 		
+		{
+		0, /* use_wchar */
+		NULL, /* str1 */
+		NULL, /* str2 */
+		NULL, /* wstr1 */
+		NULL, /* wstr2 */
+		0, /* len1 */
+		0, /* len2 */
+		};
+
 	int			start_posn;
 	int			end_posn;
 	text	   *result_text;
@@ -2458,7 +2488,17 @@ text_to_array(PG_FUNCTION_ARGS)
 
 	int			inputstring_len;
 	int			fldsep_len; 
-	TextPositionState state;
+	TextPositionState state = 		
+		{
+		0, /* use_wchar */
+		NULL, /* str1 */
+		NULL, /* str2 */
+		NULL, /* wstr1 */
+		NULL, /* wstr2 */
+		0, /* len1 */
+		0, /* len2 */
+		};
+
 	int			fldnum;
 	int			start_posn;
 	int			end_posn;

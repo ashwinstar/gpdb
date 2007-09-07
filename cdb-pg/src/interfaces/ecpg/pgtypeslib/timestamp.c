@@ -88,7 +88,7 @@ tm2timestamp(struct tm * tm, fsec_t fsec, int *tzp, timestamp * result)
 static timestamp
 SetEpochTimestamp(void)
 {
-	timestamp	dt;
+	timestamp	dt = 0;
 	struct tm	tt,
 			   *tm = &tt;
 

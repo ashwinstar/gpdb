@@ -121,7 +121,16 @@ HashAggTable *
 create_agg_hash_table(AggState *aggstate)
 {
 	HashAggTable *ht;
-    HashAggTableSizes   hats;
+	HashAggTableSizes   hats = 
+		{
+		0, /* nbuckets */
+		0, /* nentries */
+		0, /* nbatches */
+		0, /* workmem_initial */
+		0, /* workmem_per_entry */
+		false, /* spill */
+		};
+
 	MemoryContext oldcontext;
 	Agg *agg = (Agg*)aggstate->ss.ps.plan;
 	
@@ -611,7 +620,7 @@ agg_hash_reload(AggState *aggstate)
 	
 	for (;;)
 	{
-		bool isNew;
+		bool isNew = false;
 		
 		outerslot = batch_get_tuple(ht, source, tmpcontext->ecxt_scantuple);
 		if (TupIsNull(outerslot))

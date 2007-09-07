@@ -164,8 +164,8 @@ eqsel(PG_FUNCTION_ARGS)
 	List	   *args = (List *) PG_GETARG_POINTER(2);
 	int			varRelid = PG_GETARG_INT32(3);
 	VariableStatData vardata;
-	Node	   *other;
-	bool		varonleft;
+	Node	   *other = NULL;
+	bool		varonleft = false;
 	Datum	   *values;
 	int			nvalues;
 	float4	   *numbers;
@@ -784,8 +784,8 @@ scalarltsel(PG_FUNCTION_ARGS)
 	List	   *args = (List *) PG_GETARG_POINTER(2);
 	int			varRelid = PG_GETARG_INT32(3);
 	VariableStatData vardata;
-	Node	   *other;
-	bool		varonleft;
+	Node	   *other = NULL;
+	bool		varonleft = false;
 	Datum		constval;
 	Oid			consttype;
 	bool		isgt;
@@ -859,8 +859,8 @@ scalargtsel(PG_FUNCTION_ARGS)
 	List	   *args = (List *) PG_GETARG_POINTER(2);
 	int			varRelid = PG_GETARG_INT32(3);
 	VariableStatData vardata;
-	Node	   *other;
-	bool		varonleft;
+	Node	   *other = NULL;
+	bool		varonleft = false;
 	Datum		constval;
 	Oid			consttype;
 	bool		isgt;
@@ -2255,8 +2255,8 @@ mergejoinscansel(PlannerInfo *root, Node *clause,
 				leop,
 				revgtop,
 				revleop;
-	Datum		leftmax,
-				rightmax;
+	Datum		leftmax = 0,
+				rightmax = 0;
 	double		selec;
 
 	/* Set default results if we can't figure anything out. */
