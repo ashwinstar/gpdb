@@ -122,6 +122,30 @@ static void statRecvTuple(MotionNodeEntry * pMNEntry,
 						  ChunkSorterEntry * pCSEntry,
 						  ReceiveReturnCode recvRC);
 
+
+
+/* Helper function to perform the operations necessary to reconstruct a
+ * HeapTuple from a list of tuple-chunks, and then update the Motion Layer
+ * state appropriately.  This includes storing the tuple, cleaning out the
+ * tuple-chunk list, and recording statistics about the newly formed tuple.
+ */
+static inline void
+reconstructTuple(MotionNodeEntry * pMNEntry, ChunkSorterEntry * pCSEntry)
+{
+	HeapTuple	htup;
+
+	/*
+	 * Convert the list of chunks into a tuple, then stow it away. This frees
+	 * our TCList as a side-effect
+	 */
+	htup = CvtChunksToHeapTup(&pCSEntry->chunk_list, &pMNEntry->ser_tup_info);
+
+	htfifo_addtuple(pCSEntry->ready_tuples, htup);
+
+	/* Stats */
+	statNewTupleArrived(pMNEntry, pCSEntry);
+}
+
 /*=========================================================================
  * FUNCTION DEFINITIONS
  */
@@ -1169,28 +1193,6 @@ addChunkToSorter(MotionLayerState *mlStates,
 	return tupleCompleted;
 }
 
-
-/* Helper function to perform the operations necessary to reconstruct a
- * HeapTuple from a list of tuple-chunks, and then update the Motion Layer
- * state appropriately.  This includes storing the tuple, cleaning out the
- * tuple-chunk list, and recording statistics about the newly formed tuple.
- */
-static inline void
-reconstructTuple(MotionNodeEntry * pMNEntry, ChunkSorterEntry * pCSEntry)
-{
-	HeapTuple	htup;
-
-	/*
-	 * Convert the list of chunks into a tuple, then stow it away. This frees
-	 * our TCList as a side-effect
-	 */
-	htup = CvtChunksToHeapTup(&pCSEntry->chunk_list, &pMNEntry->ser_tup_info);
-
-	htfifo_addtuple(pCSEntry->ready_tuples, htup);
-
-	/* Stats */
-	statNewTupleArrived(pMNEntry, pCSEntry);
-}
 
 
 /*=========================================================================

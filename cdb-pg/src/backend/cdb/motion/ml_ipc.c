@@ -181,6 +181,294 @@ gettime_elapsed_ms(struct timeval t0)
 }
 
 
+/* Function getChunkTransportState() is used to retrieve a ChunkTransportState from the
+ * hashtab hashtable based on the given motNodeID.	This function should only
+ * be called after createChunkTransportState() for a given motion node has been called
+ * first.
+ *
+ * PARAMETERS
+ *
+ *	 motNodeID - motion node ID to lookup the ChunkTransportState.
+ *
+ * RETURNS
+ *	 The ChunkTransportState struct for the given motNodeID.
+ */
+static inline ChunkTransportStateEntry *
+getChunkTransportState(ChunkTransportState *transportState, int motNodeID)
+{
+	ChunkTransportStateEntry *pEntry = NULL;
+
+	Assert(transportState != NULL);
+
+	if (motNodeID > 0 &&
+        transportState &&
+        motNodeID <= transportState->size &&
+        transportState->states[motNodeID-1].motNodeId == motNodeID &&
+        transportState->states[motNodeID-1].valid)
+    {
+        pEntry = &transportState->states[motNodeID - 1];
+    }
+    else
+	{
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+		errmsg("Interconnect Error: Unexpected Motion Node Id: %d.  This means"
+			   " a motion node that wasn't setup is requesting interconnect"
+			   " resources.", motNodeID)));
+        /* not reached */
+	}
+	return pEntry;
+}
+
+
+
+/* Function doBroadcast() is used to send a TupleChunk to all recipients.
+ *
+ * PARAMETERS
+ *	 pEntry - ChunkTransportState context that contains everything we need to send.
+ *	 tcItem - TupleChunk to send.
+ */
+static int
+doBroadcast(MotionLayerState *mlStates, ChunkTransportState *transportStates, ChunkTransportStateEntry * pEntry, TupleChunkListItem tcItem)
+{
+	MotionConn *conn;
+	int			i,
+				inactive = 0;
+
+	/* add our tcItem to each of the outgoing buffers. */
+	for (i = 0; i < pEntry->numConns; i++)
+	{
+		conn = pEntry->conns + i;
+		/* only send to still interested receivers. */
+		if (conn->stillActive)
+		{
+			sendChunk(mlStates, transportStates, conn, tcItem, pEntry->motNodeId);
+			if (!conn->stillActive)
+				inactive++;
+		}
+	}
+
+	return inactive;
+}
+
+
+/* Function readPacket() is used to read in the next packet from the given
+ * MotionConn.
+ *
+ * This call blocks until the packet is read in, and is part of a
+ * global scheme where senders block until the entire message is sent, and
+ * receivers block until the entire message is read.  Both use non-blocking
+ * socket calls so that we can handle any PG interrupts.
+ *
+ * Note, that for speed we want to read a message all in one go,
+ * header and all. A consequence is that we may read in part of the
+ * next message, which we've got to keep track of ... recvBytes holds
+ * the byte-count of the unprocessed messages.
+ *
+ * PARAMETERS
+ *	 conn - MotionConn to read the packet from.
+ *
+ */
+static inline void
+readPacket(ChunkTransportState *transportStates, MotionConn * conn)
+{
+	int			n,
+				bytesRead = conn->recvBytes;
+	bool		gotHeader = false,
+				gotPacket = false;
+	mpp_fd_set	rset;
+
+#ifdef AMS_VERBOSE_LOGGING
+	elog(DEBUG5, "readpacket: (fd %d) (max %d) outstanding bytes %d", conn->sockfd, Gp_max_packet_size, conn->recvBytes);
+#endif
+
+	/* do we have a complete message waiting to be processed ? */
+	if (conn->recvBytes >= PACKET_HEADER_SIZE)
+	{
+		conn->msgSize = getInt32(conn->msgPos);
+		gotHeader = true;
+		if (conn->recvBytes >= conn->msgSize)
+		{
+#ifdef AMS_VERBOSE_LOGGING
+			elog(DEBUG5, "readpacket: returning previously read data (%d)", conn->recvBytes);
+#endif
+			return;
+		}
+	}
+
+	/*
+	 * partial message waiting in recv buffer! Move to head of buffer:
+	 * eliminate the slack (which will always be at the beginning) in
+	 * the buffer
+	 */
+	if (conn->recvBytes != 0)
+		memcpy(conn->pBuff, conn->msgPos, conn->recvBytes);
+
+	conn->msgPos = conn->pBuff;
+
+#ifdef AMS_VERBOSE_LOGGING
+	elog(DEBUG5, "readpacket: %s on previous call msgSize %d", gotHeader ? "got header" : "no header", conn->msgSize);
+#endif
+
+	while (!gotPacket && bytesRead < Gp_max_packet_size)
+	{
+		/* see if user canceled and stuff like that */
+		ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
+
+		/*
+		 * we read at the end of the buffer, we've eliminated any
+		 * slack above
+		 */
+		if ((n = recv(conn->sockfd, conn->pBuff + bytesRead,
+					  Gp_max_packet_size - bytesRead, 0)) < 0)
+		{
+			if (errno == EINTR)
+				continue;
+			if (errno == EWOULDBLOCK)
+			{
+				do
+				{
+					struct timeval timeout = tval;
+
+					/* see if user canceled and stuff like that */
+					ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
+
+					MPP_FD_ZERO(&rset);
+					MPP_FD_SET(conn->sockfd, &rset);
+					n = select(conn->sockfd + 1, (fd_set *)&rset, NULL, NULL, &timeout);
+					if (n == 0 || (n < 0 && errno == EINTR))
+						continue;
+					else if (n < 0)
+					{
+						ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+										errmsg("Interconnect error reading an incoming packet."),
+						                errdetail("%m%s from seg%d at %s",
+						                          "select",
+                                                  conn->remoteContentId,
+                                                  conn->remoteHostAndPort)
+						        ));
+					}
+				}
+				while (n < 1);
+			}
+			else
+			{
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+					            errmsg("Interconnect error reading an incoming packet."),
+						        errdetail("%m%s from seg%d at %s",
+						                  "read",
+                                          conn->remoteContentId,
+                                          conn->remoteHostAndPort)
+						));
+			}
+		}
+		else if (n == 0)
+		{
+#ifdef AMS_VERBOSE_LOGGING
+			elog(DEBUG5, "readpacket(); breaking in while (fd %d) recvBytes %d msgSize %d", conn->sockfd, conn->recvBytes, conn->msgSize);
+			print_connection(transportStates, conn->sockfd, "interconnect error on");
+#endif
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+				errmsg("Interconnect error: connection closed prematurely."),
+				 errdetail("from Remote Connection: contentId=%d at %s",
+						   conn->remoteContentId, conn->remoteHostAndPort)
+					));
+			break;
+		}
+		else
+		{
+			bytesRead += n;
+
+			if (!gotHeader && bytesRead >= PACKET_HEADER_SIZE)
+			{
+				/* got the header */
+				conn->msgSize = getInt32(conn->msgPos);
+				gotHeader = true;
+			}
+			conn->recvBytes = bytesRead;
+
+			if (gotHeader && bytesRead >= conn->msgSize)
+				gotPacket = true;
+		}
+	}
+#ifdef AMS_VERBOSE_LOGGING
+	elog(DEBUG5, "readpacket: got %d bytes", conn->recvBytes);
+#endif
+}
+
+
+static inline TupleChunkListItem
+RecvTupleChunk(ChunkTransportState *transportStates,
+			   MotionConn * conn)
+{
+	TupleChunkListItem tcItem;
+	TupleChunkListItem firstTcItem = NULL;
+	TupleChunkListItem lastTcItem = NULL;
+	uint16		tcSize;
+	int			bytesProcessed = 0;
+
+	/* read the packet in from the network. */
+	readPacket(transportStates, conn);
+
+#ifdef AMS_VERBOSE_LOGGING
+	elog(DEBUG5, "read packet recv bytes %d msgsize %d", conn->recvBytes, conn->msgSize);
+#endif
+
+	/* go through and form us some TupleChunks. */
+	bytesProcessed = PACKET_HEADER_SIZE;
+
+	while (bytesProcessed != conn->msgSize)
+	{
+		tcSize = TUPLE_CHUNK_HEADER_SIZE + (*(uint16 *) (conn->msgPos + bytesProcessed));
+
+		if (tcSize >= conn->msgSize)
+		{
+			/* it is possible that our message got messed up by a
+			 * cancellation ? */
+			ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
+
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							errmsg("Interconnect error parsing message"),
+							errdetail("tcSize %d >= conn->msgSize %d", tcSize, conn->msgSize)));
+		}
+		Assert(tcSize < conn->msgSize);
+
+		/*
+		 * We store the data inplace, and handle any necessary copying later
+		 * on
+		 */
+		tcItem = (TupleChunkListItem) palloc0(sizeof(TupleChunkListItemData));
+
+        tcItem->chunk_length = tcSize;
+		tcItem->inplace = (char *) (conn->msgPos + bytesProcessed);
+
+		bytesProcessed += tcSize;
+
+		if (firstTcItem == NULL)
+		{
+			firstTcItem = tcItem;
+			lastTcItem = tcItem;
+		}
+		else
+		{
+			lastTcItem->p_next = tcItem;
+			lastTcItem = tcItem;
+		}
+	}
+
+	conn->recvBytes -= conn->msgSize;
+	if (conn->recvBytes != 0)
+	{
+#ifdef AMS_VERBOSE_LOGGING
+		elog(DEBUG5, "residual message %d bytes", conn->recvBytes);
+#endif
+		conn->msgPos += conn->msgSize;
+	}
+
+	conn->msgSize = 0;
+
+	return firstTcItem;
+}
+
 /*=========================================================================
  * VISIBLE FUNCTIONS
  */
@@ -491,79 +779,6 @@ RecvTupleChunkFrom(ChunkTransportState *transportStates,
 	conn = pEntry->conns + srcRoute;
 
 	return RecvTupleChunk(transportStates, conn);
-}
-
-static inline TupleChunkListItem
-RecvTupleChunk(ChunkTransportState *transportStates,
-			   MotionConn * conn)
-{
-	TupleChunkListItem tcItem;
-	TupleChunkListItem firstTcItem = NULL;
-	TupleChunkListItem lastTcItem = NULL;
-	uint16		tcSize;
-	int			bytesProcessed = 0;
-
-	/* read the packet in from the network. */
-	readPacket(transportStates, conn);
-
-#ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG5, "read packet recv bytes %d msgsize %d", conn->recvBytes, conn->msgSize);
-#endif
-
-	/* go through and form us some TupleChunks. */
-	bytesProcessed = PACKET_HEADER_SIZE;
-
-	while (bytesProcessed != conn->msgSize)
-	{
-		tcSize = TUPLE_CHUNK_HEADER_SIZE + (*(uint16 *) (conn->msgPos + bytesProcessed));
-
-		if (tcSize >= conn->msgSize)
-		{
-			/* it is possible that our message got messed up by a
-			 * cancellation ? */
-			ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
-
-			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-							errmsg("Interconnect error parsing message"),
-							errdetail("tcSize %d >= conn->msgSize %d", tcSize, conn->msgSize)));
-		}
-		Assert(tcSize < conn->msgSize);
-
-		/*
-		 * We store the data inplace, and handle any necessary copying later
-		 * on
-		 */
-		tcItem = (TupleChunkListItem) palloc0(sizeof(TupleChunkListItemData));
-
-        tcItem->chunk_length = tcSize;
-		tcItem->inplace = (char *) (conn->msgPos + bytesProcessed);
-
-		bytesProcessed += tcSize;
-
-		if (firstTcItem == NULL)
-		{
-			firstTcItem = tcItem;
-			lastTcItem = tcItem;
-		}
-		else
-		{
-			lastTcItem->p_next = tcItem;
-			lastTcItem = tcItem;
-		}
-	}
-
-	conn->recvBytes -= conn->msgSize;
-	if (conn->recvBytes != 0)
-	{
-#ifdef AMS_VERBOSE_LOGGING
-		elog(DEBUG5, "residual message %d bytes", conn->recvBytes);
-#endif
-		conn->msgPos += conn->msgSize;
-	}
-
-	conn->msgSize = 0;
-
-	return firstTcItem;
 }
 
 /* DeregisterReadInterest is called on receiving nodes when they
@@ -1591,44 +1806,6 @@ createChunkTransportState(ChunkTransportState *transportStates,
 	return pEntry;
 }
 
-
-/* Function getChunkTransportState() is used to retrieve a ChunkTransportState from the
- * hashtab hashtable based on the given motNodeID.	This function should only
- * be called after createChunkTransportState() for a given motion node has been called
- * first.
- *
- * PARAMETERS
- *
- *	 motNodeID - motion node ID to lookup the ChunkTransportState.
- *
- * RETURNS
- *	 The ChunkTransportState struct for the given motNodeID.
- */
-static inline ChunkTransportStateEntry *
-getChunkTransportState(ChunkTransportState *transportState, int motNodeID)
-{
-	ChunkTransportStateEntry *pEntry = NULL;
-
-	Assert(transportState != NULL);
-
-	if (motNodeID > 0 &&
-        transportState &&
-        motNodeID <= transportState->size &&
-        transportState->states[motNodeID-1].motNodeId == motNodeID &&
-        transportState->states[motNodeID-1].valid)
-    {
-        pEntry = &transportState->states[motNodeID - 1];
-    }
-    else
-	{
-		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-		errmsg("Interconnect Error: Unexpected Motion Node Id: %d.  This means"
-			   " a motion node that wasn't setup is requesting interconnect"
-			   " resources.", motNodeID)));
-        /* not reached */
-	}
-	return pEntry;
-}
 
 
 /* Function removeChunkTransportState() is used to remove a ChunkTransportState struct from
@@ -2786,179 +2963,6 @@ flushBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates, Mo
 	conn->msgSize = PACKET_HEADER_SIZE;
 
 	return true;
-}
-
-/* Function readPacket() is used to read in the next packet from the given
- * MotionConn.
- *
- * This call blocks until the packet is read in, and is part of a
- * global scheme where senders block until the entire message is sent, and
- * receivers block until the entire message is read.  Both use non-blocking
- * socket calls so that we can handle any PG interrupts.
- *
- * Note, that for speed we want to read a message all in one go,
- * header and all. A consequence is that we may read in part of the
- * next message, which we've got to keep track of ... recvBytes holds
- * the byte-count of the unprocessed messages.
- *
- * PARAMETERS
- *	 conn - MotionConn to read the packet from.
- *
- */
-static inline void
-readPacket(ChunkTransportState *transportStates, MotionConn * conn)
-{
-	int			n,
-				bytesRead = conn->recvBytes;
-	bool		gotHeader = false,
-				gotPacket = false;
-	mpp_fd_set	rset;
-
-#ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG5, "readpacket: (fd %d) (max %d) outstanding bytes %d", conn->sockfd, Gp_max_packet_size, conn->recvBytes);
-#endif
-
-	/* do we have a complete message waiting to be processed ? */
-	if (conn->recvBytes >= PACKET_HEADER_SIZE)
-	{
-		conn->msgSize = getInt32(conn->msgPos);
-		gotHeader = true;
-		if (conn->recvBytes >= conn->msgSize)
-		{
-#ifdef AMS_VERBOSE_LOGGING
-			elog(DEBUG5, "readpacket: returning previously read data (%d)", conn->recvBytes);
-#endif
-			return;
-		}
-	}
-
-	/*
-	 * partial message waiting in recv buffer! Move to head of buffer:
-	 * eliminate the slack (which will always be at the beginning) in
-	 * the buffer
-	 */
-	if (conn->recvBytes != 0)
-		memcpy(conn->pBuff, conn->msgPos, conn->recvBytes);
-
-	conn->msgPos = conn->pBuff;
-
-#ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG5, "readpacket: %s on previous call msgSize %d", gotHeader ? "got header" : "no header", conn->msgSize);
-#endif
-
-	while (!gotPacket && bytesRead < Gp_max_packet_size)
-	{
-		/* see if user canceled and stuff like that */
-		ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
-
-		/*
-		 * we read at the end of the buffer, we've eliminated any
-		 * slack above
-		 */
-		if ((n = recv(conn->sockfd, conn->pBuff + bytesRead,
-					  Gp_max_packet_size - bytesRead, 0)) < 0)
-		{
-			if (errno == EINTR)
-				continue;
-			if (errno == EWOULDBLOCK)
-			{
-				do
-				{
-					struct timeval timeout = tval;
-
-					/* see if user canceled and stuff like that */
-					ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
-
-					MPP_FD_ZERO(&rset);
-					MPP_FD_SET(conn->sockfd, &rset);
-					n = select(conn->sockfd + 1, (fd_set *)&rset, NULL, NULL, &timeout);
-					if (n == 0 || (n < 0 && errno == EINTR))
-						continue;
-					else if (n < 0)
-					{
-						ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-										errmsg("Interconnect error reading an incoming packet."),
-						                errdetail("%m%s from seg%d at %s",
-						                          "select",
-                                                  conn->remoteContentId,
-                                                  conn->remoteHostAndPort)
-						        ));
-					}
-				}
-				while (n < 1);
-			}
-			else
-			{
-				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-					            errmsg("Interconnect error reading an incoming packet."),
-						        errdetail("%m%s from seg%d at %s",
-						                  "read",
-                                          conn->remoteContentId,
-                                          conn->remoteHostAndPort)
-						));
-			}
-		}
-		else if (n == 0)
-		{
-#ifdef AMS_VERBOSE_LOGGING
-			elog(DEBUG5, "readpacket(); breaking in while (fd %d) recvBytes %d msgSize %d", conn->sockfd, conn->recvBytes, conn->msgSize);
-			print_connection(transportStates, conn->sockfd, "interconnect error on");
-#endif
-			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-				errmsg("Interconnect error: connection closed prematurely."),
-				 errdetail("from Remote Connection: contentId=%d at %s",
-						   conn->remoteContentId, conn->remoteHostAndPort)
-					));
-			break;
-		}
-		else
-		{
-			bytesRead += n;
-
-			if (!gotHeader && bytesRead >= PACKET_HEADER_SIZE)
-			{
-				/* got the header */
-				conn->msgSize = getInt32(conn->msgPos);
-				gotHeader = true;
-			}
-			conn->recvBytes = bytesRead;
-
-			if (gotHeader && bytesRead >= conn->msgSize)
-				gotPacket = true;
-		}
-	}
-#ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG5, "readpacket: got %d bytes", conn->recvBytes);
-#endif
-}
-
-/* Function doBroadcast() is used to send a TupleChunk to all recipients.
- *
- * PARAMETERS
- *	 pEntry - ChunkTransportState context that contains everything we need to send.
- *	 tcItem - TupleChunk to send.
- */
-static int
-doBroadcast(MotionLayerState *mlStates, ChunkTransportState *transportStates, ChunkTransportStateEntry * pEntry, TupleChunkListItem tcItem)
-{
-	MotionConn *conn;
-	int			i,
-				inactive = 0;
-
-	/* add our tcItem to each of the outgoing buffers. */
-	for (i = 0; i < pEntry->numConns; i++)
-	{
-		conn = pEntry->conns + i;
-		/* only send to still interested receivers. */
-		if (conn->stillActive)
-		{
-			sendChunk(mlStates, transportStates, conn, tcItem, pEntry->motNodeId);
-			if (!conn->stillActive)
-				inactive++;
-		}
-	}
-
-	return inactive;
 }
 
 #ifdef AMS_VERBOSE_LOGGING
