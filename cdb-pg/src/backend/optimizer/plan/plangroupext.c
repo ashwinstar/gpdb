@@ -324,7 +324,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 
 	TargetEntry *tle;
 	Grouping *grping;
-	uint64    input_grouping;
+	uint64    input_grouping = 0;
 	bool need_finalagg = !context->twostage;
 
 	generate_three_tlists(context->tlist, context->twostage,

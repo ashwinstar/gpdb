@@ -2077,7 +2077,9 @@ adjust_selectivity_for_nulltest(Selectivity selec,
 
 				if (IsA(basenode, Var))
 				{
+#ifdef USE_ASSERT_CHECKING
 					Var *var = (Var *) basenode;
+#endif /* USE_ASSERT_CHECKING */
 					double	nullfrac = 1 - selec;
 	
 					/* 
