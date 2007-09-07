@@ -1070,7 +1070,9 @@ ResRemoveFromWaitQueue(PGPROC *proc, uint32 hashcode)
     LOCK			*waitLock = proc->waitLock;
     PROCLOCK		*proclock = proc->waitProcLock;
     LOCKMODE		lockmode = proc->waitLockMode;
+#ifdef USE_ASSERT_CHECKING
     LOCKMETHODID	lockmethodid = LOCK_LOCKMETHOD(*waitLock);
+#endif /* USE_ASSERT_CHECKING */
 	ResPortalTag	portalTag;
 
 	/* Make sure lockmethod is for a resource lock. */

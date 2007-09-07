@@ -830,9 +830,13 @@ extern void ntuplestore_reset(NTupleStore *ts)
 
 	if(ts->plobfile)
 	{
-		bool fOK = BufFileSeekBlock(ts->plobfile, 0);
+#ifdef USE_ASSERT_CHECKING
+		bool fOK = 
+#endif /* USE_ASSERT_CHECKING */
+			BufFileSeekBlock(ts->plobfile, 0);
 		Assert(fOK);
 	}
+
 	ts->lobbytes = 0;
 }
 
