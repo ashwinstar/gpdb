@@ -1395,7 +1395,11 @@ int ntuplestore_count_slot_acc(NTupleStore *nts, NTupleStoreAccessor *tsa1, NTup
 {
 	int ret = 0;
 	bool fOK; 
-	NTupleStorePos oldpos1;
+	NTupleStorePos oldpos1 =
+		{
+		0, /* blockn */
+		0, /* slotn */
+		};
 	
 	fOK = ntuplestore_acc_tell(tsa1, &oldpos1);
 	if(!fOK)
