@@ -2151,6 +2151,15 @@ static struct config_int ConfigureNamesInt[] =
         &Gp_max_packet_size,
         DEFAULT_PACKET_SIZE, MIN_PACKET_SIZE, MAX_PACKET_SIZE, NULL, NULL
 	},
+
+	{
+		{"gp_interconnect_queue_depth", PGC_SUSET, GP_ARRAY_TUNING,
+            gettext_noop("Sets the maximum size of the receive queue for each connection in the UDP interconnect"),
+            NULL,
+        },
+        &Gp_interconnect_queue_depth,
+        1, 1, 256, NULL, NULL
+	},
 	
 	{
 		{"gp_command_count", PGC_INTERNAL, CLIENT_CONN_OTHER,

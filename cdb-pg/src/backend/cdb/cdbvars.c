@@ -97,11 +97,16 @@ int			Gp_listener_port;
 
 int			Gp_max_packet_size;	/* max Interconnect packet size */
 
+int			Gp_interconnect_queue_depth=1;	/* max number of messages
+											 * waiting in rx-queue
+											 * before we drop.*/
+
 int			interconnect_setup_timeout=20;
+
+int			Gp_interconnect_type = INTERCONNECT_TYPE_TCP;
 
 bool		gp_interconnect_aggressive_retry=true; /* fast-track app-level retry */
 
-int			Gp_interconnect_type = INTERCONNECT_TYPE_TCP;
 
 /*
  * Greenplum Database Optimizer GUCs

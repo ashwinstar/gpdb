@@ -321,6 +321,18 @@ extern const char *gpvars_assign_gp_interconnect_type(const char *newval, bool d
 extern const char *gpvars_show_gp_interconnect_type(void);
 
 /*
+ * Parameter Gp_interconnect_queue_depth
+ *
+ * The run-time parameter Gp_interconnect_queue_depth controls the
+ * number of outstanding messages allowed to accumulated on a
+ * 'connection' before the peer will start to backoff.
+ *
+ * This guc is specific to the UDP-interconnect.
+ *
+ */
+extern int	Gp_interconnect_queue_depth;
+
+/*
  * Parameter gp_interconnect_aggressive_retry
  *
  * The run-time parameter gp_interconnect_aggressive_retry controls the
