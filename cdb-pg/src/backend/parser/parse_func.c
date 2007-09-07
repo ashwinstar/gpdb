@@ -64,16 +64,16 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 				  bool agg_star, bool agg_distinct, bool is_column,
 				  WindowSpec *over, int location)
 {
-	Oid			rettype;
-	Oid			funcid;
+	Oid			rettype = InvalidOid;
+	Oid			funcid = InvalidOid;
 	ListCell   *l;
 	ListCell   *nextl;
 	Node	   *first_arg = NULL;
 	int			nargs;
 	Oid			actual_arg_types[FUNC_MAX_ARGS];
-	Oid		   *declared_arg_types;
+	Oid		   *declared_arg_types = NULL;
 	Node	   *retval;
-	bool		retset;
+	bool		retset = false;
 	FuncDetailCode fdresult;
 
 	/*

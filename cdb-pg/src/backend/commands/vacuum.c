@@ -1325,8 +1325,14 @@ full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 {
 	VacPageListData vacuum_pages;		/* List of pages to vacuum and/or
 										 * clean indexes */
-	VacPageListData fraged_pages;		/* List of pages with space enough for
-										 * re-using */
+	VacPageListData fraged_pages =		/* List of pages with space enough for */
+		{								/* re-using */
+		0, /* empty_end_pages */
+		0, /* num_pages */
+		0, /* num_allocated_pages */
+		NULL /* pageesc */
+		};
+
 	Relation   *Irel;
 	int			nindexes,
 				i;

@@ -27,6 +27,7 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/xact.h"
+#include "access/transam.h"				/* InvalidTransactionId */
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -169,14 +170,14 @@ createdb_int(CreatedbStmt *stmt,
 {
 	HeapScanDesc scan;
 	Relation	rel;
-	Oid			src_dboid;
+	Oid			src_dboid = InvalidOid;
 	Oid			src_owner;
-	int			src_encoding;
-	bool		src_istemplate;
+	int			src_encoding = -1;
+	bool		src_istemplate = false;
 	bool		src_allowconn;
-	Oid			src_lastsysoid;
-	TransactionId src_frozenxid;
-	Oid			src_deftablespace;
+	Oid			src_lastsysoid = InvalidOid;
+	TransactionId src_frozenxid = InvalidTransactionId;
+	Oid			src_deftablespace = InvalidOid;
 	volatile Oid dst_deftablespace;
 	Relation	pg_database_rel;
 	HeapTuple	tuple;
@@ -673,8 +674,8 @@ createdb_int(CreatedbStmt *stmt,
 void
 dropdb(const char *dbname, bool missing_ok)
 {
-	Oid			db_id;
-	bool		db_istemplate;
+	Oid			db_id = InvalidOid;
+	bool		db_istemplate = true;
 	Relation	pgdbrel;
 	HeapTuple	tup;
 
@@ -853,7 +854,7 @@ dropdb(const char *dbname, bool missing_ok)
 void
 RenameDatabase(const char *oldname, const char *newname)
 {
-	Oid			db_id;
+	Oid			db_id = InvalidOid;
 	HeapTuple	newtup;
 	Relation	rel;
 

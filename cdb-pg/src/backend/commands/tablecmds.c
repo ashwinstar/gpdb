@@ -1037,10 +1037,13 @@ ExecuteTruncate(TruncateStmt *stmt)
 		ListCell   *cell2;
 		ListCell   *cell3;
 		ListCell   *cell4;
+
+#ifdef USE_ASSERT_CHECKING
 		int			len = list_length(relids);
 		Assert(len==list_length(stmt->relids));
 		Assert(len==list_length(stmt->new_heap_oids));
 		Assert(len==list_length(stmt->new_toast_oids));
+#endif /* USE_ASSERT_CHECKING */
 		
 		cell2 = list_head(stmt->relids); 
 		cell3 = list_head(stmt->new_heap_oids); 
