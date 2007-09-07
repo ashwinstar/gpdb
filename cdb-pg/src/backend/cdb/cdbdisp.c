@@ -4090,7 +4090,7 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions, char* d
 	DistributedSnapshot distributedSnapshot;
 	Snapshot snapshot;
 	int serializedLen;
-	DtxContextInfo *pDtxContextInfo;
+	DtxContextInfo *pDtxContextInfo = NULL;
 
 	
 	/* If we already have a LatestSnapshot set then no reason to try

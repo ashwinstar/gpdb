@@ -45,7 +45,7 @@
 
 static LWLockId shmControlLock;
 static bool *shmTmRecoverred;
-static int *shmGIDSeq;
+static uint32 *shmGIDSeq;
 static int *shmNumGxacts;
 static int *shmCurrentPhase1Count;
 
@@ -2304,7 +2304,7 @@ generateGID(char *gid, DistributedTransactionId *gxid)
 	if (*shmGIDSeq >= LastDistributedTransactionId)
 	{
 		ereport(ERROR,
-				(errmsg("reached limit of global transactions per start")));
+				(errmsg("reached limit of %u global transactions per start", LastDistributedTransactionId)));
 	}
 	
 	*gxid = (*shmGIDSeq)++;
@@ -2716,7 +2716,7 @@ abortRMInDoubtTransactions(HTAB *htab)
 	char	   *cmd = NULL,
 				cmdbuf[100];
 	InDoubtDtx *entry = NULL;
-	TMGXACT *gxact;
+	TMGXACT *gxact = NULL;
 
 	if (htab == NULL)
 		return;
