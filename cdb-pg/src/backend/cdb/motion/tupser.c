@@ -866,6 +866,7 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 	TupleChunkListItem tcItem;
 	int			i;
 	HeapTuple	htup;
+	TupleChunkType tcType;
 
 	AssertArg(tcList != NULL);
 	AssertArg(tcList->p_first != NULL);
@@ -873,18 +874,22 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 
 	tcItem = tcList->p_first;
 
-	if (tcList->num_chunks == 1 &&
-		GetChunkType(tcItem) == TC_EMPTY)
+	if (tcList->num_chunks == 1)
 	{
-		/*
-		 * the sender is indicating that there was a row with no attributes:
-		 * return a NULL tuple
-		 */
-		clearTCList(tcList);
+		GetChunkType(tcItem, &tcType);
 
-		htup = heap_formtuple(pSerInfo->tupdesc, pSerInfo->values, pSerInfo->nulls);
+		if (tcType == TC_EMPTY)
+		{
+			/*
+			 * the sender is indicating that there was a row with no attributes:
+			 * return a NULL tuple
+			 */
+			clearTCList(tcList);
 
-		return htup;
+			htup = heap_formtuple(pSerInfo->tupdesc, pSerInfo->values, pSerInfo->nulls);
+
+			return htup;
+		}
 	}
 
 	/*
@@ -903,11 +908,12 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 	{
 		/* Make sure that the type of this tuple chunk is correct! */
 
+		GetChunkType(tcItem, &tcType);
 		if (i == 0)
 		{
 			if (tcItem->p_next == NULL)
 			{
-				if (GetChunkType(tcItem) != TC_WHOLE)
+				if (tcType != TC_WHOLE)
 				{
 					ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
 									errmsg("Single chunk's type must be TC_WHOLE.")));
@@ -916,7 +922,7 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 			else
 				/* tcItem->p_next != NULL */
 			{
-				if (GetChunkType(tcItem) != TC_PARTIAL_START)
+				if (tcType != TC_PARTIAL_START)
 				{
 					ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
 									errmsg("First chunk of collection must have type"
@@ -929,7 +935,7 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 		{
 			if (tcItem->p_next == NULL)
 			{
-				if (GetChunkType(tcItem) != TC_PARTIAL_END)
+				if (tcType != TC_PARTIAL_END)
 				{
 					ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
 									errmsg("Last chunk of collection must have type"
@@ -939,7 +945,7 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 			else
 				/* tcItem->p_next != NULL */
 			{
-				if (GetChunkType(tcItem) != TC_PARTIAL_MID)
+				if (tcType != TC_PARTIAL_MID)
 				{
 					ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
 									errmsg("Last chunk of collection must have type"

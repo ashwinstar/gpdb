@@ -726,9 +726,10 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 				   segdbDesc->error_message.len == 0);
 
             if (gp_log_gang >= GPVARS_VERBOSITY_VERBOSE)
-                elog(LOG, "Connected to %s motionListenerPort=%d with options %s",
+                elog(LOG, "Connected to %s motionListenerPorts=%d/%d with options %s",
 				     segdbDesc->whoami,
-				     segdbDesc->motionListener,
+					 (segdbDesc->motionListener & 0x0ffff),
+					 ((segdbDesc->motionListener>>16) & 0x0ffff),
 				     PQoptions(segdbDesc->conn));
 
 			/*
@@ -2180,9 +2181,10 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
 				   segdbDesc->error_message.len == 0);
 
             if (gp_log_gang >= GPVARS_VERBOSITY_VERBOSE || DEBUG4 >= log_min_messages)
-                elog(LOG, "Connected to %s motionListenerPort=%d with options %s",
+                elog(LOG, "Connected to %s motionListenerPorts=%d/%d with options %s",
 				     segdbDesc->whoami,
-				     segdbDesc->motionListener,
+					 (segdbDesc->motionListener & 0x0ffff),
+					 ((segdbDesc->motionListener>>16) & 0x0ffff),
 				     PQoptions(segdbDesc->conn));
 
 			/*
@@ -2650,7 +2652,12 @@ getCdbProcessList(Gang *gang, int sliceIndex)
             }
 
 			process->listenerAddr = pstrdup(qeinfo->hostip);
-			process->listenerPort = segdbDesc->motionListener;
+
+			if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
+				process->listenerPort = (segdbDesc->motionListener >> 16) & 0x0ffff;
+			else
+				process->listenerPort = (segdbDesc->motionListener & 0x0ffff);
+
 			process->pid = segdbDesc->backendPid;
 			process->contentid = segdbDesc->segindex;
 			process->routeid = k++;
@@ -2723,7 +2730,10 @@ getCdbProcessesForQD(int isPrimary)
 
 	proc = makeNode(CdbProcess);
 	proc->listenerAddr = pstrdup(qdinfo->hostip);
-	proc->listenerPort = Gp_listener_port;
+	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
+		proc->listenerPort = (Gp_listener_port >> 16) & 0x0ffff;
+	else 
+		proc->listenerPort = (Gp_listener_port & 0x0ffff);
 	proc->pid = MyProcPid;
 	proc->contentid = -1;
 	proc->routeid = 0;

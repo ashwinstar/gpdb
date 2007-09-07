@@ -87,6 +87,12 @@ extern void SetupInterconnect(ChunkTransportState **transportStates,
 							  int mySliceId,
 							  MotionLayerState *mlStates);
 
+extern void
+SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
+					 struct SliceTable * mySliceTable,
+					 int mySliceId,
+					 MotionLayerState *mlStates);
+
 /* The TeardownInterconnect() function should be called at the end of executing
  * a DML statement to close down all TCP socket resources that were setup during
  * SetupInterconnect().
@@ -204,5 +210,13 @@ DeregisterReadInterest(ChunkTransportState *transportStates,
  */
 extern void doSendStopMessage(ChunkTransportState *transportStates, 
 							  int16 motNodeID);
+
+/* 
+ * Return a UDP receive buffer to our freelist.
+ *
+ * allows us to "keep" a buffer held for a connection, to avoid a copy
+ * (see inplace in chunklist).
+ */
+extern void  ml_put_rx_buffer(ChunkTransportState *transportStates, int motNodeID, int route);
 
 #endif   /* ML_IPC_H */

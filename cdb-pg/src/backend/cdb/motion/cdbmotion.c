@@ -207,8 +207,11 @@ initMotionLayerStructs(MotionLayerState **mlStates)
 
 	if(Gp_role == GP_ROLE_UTILITY)
 		return;
-	
-	Gp_max_tuple_chunk_size = Gp_max_packet_size - PACKET_HEADER_SIZE - TUPLE_CHUNK_HEADER_SIZE;
+
+	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
+		Gp_max_tuple_chunk_size = Gp_max_packet_size - sizeof(struct icpkthdr) - TUPLE_CHUNK_HEADER_SIZE;
+	else
+		Gp_max_tuple_chunk_size = Gp_max_packet_size - PACKET_HEADER_SIZE - TUPLE_CHUNK_HEADER_SIZE;		
 	
 	/*
 	 * Create the memory-contexts that we will use within the Motion Layer.
@@ -734,6 +737,10 @@ processIncomingChunks(MotionLayerState *mlStates,
 		tcItem = tcNext;
 	}
 
+	/* The chunk list we just processed freed-up our rx-buffer space. */
+	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
+		ml_put_rx_buffer(transportStates, motNodeID, srcRoute);
+
 	/* Stats */
 	statChunksProcessed(mlStates, pMNEntry, numChunks, chunkBytes, tupleBytes);
 
@@ -1066,7 +1073,7 @@ addChunkToSorter(MotionLayerState *mlStates,
 
 	/* Look at the chunk's type, to figure out what to do with it. */
 
-	tcType = GetChunkType(tcItem);
+	GetChunkType(tcItem, &tcType);
 
 	switch (tcType)
 	{
@@ -1147,7 +1154,9 @@ addChunkToSorter(MotionLayerState *mlStates,
 			break;
 
 		case TC_END_OF_STREAM:
-
+#ifdef AMS_VERBOSE_LOGGING
+			elog(LOG, "Got end-of-stream. motnode %d route %d", motNodeID, srcRoute);
+#endif
 			/* There shouldn't be any partial tuple data in the list! */
 			if (chunkSorterEntry->chunk_list.num_chunks != 0)
 			{

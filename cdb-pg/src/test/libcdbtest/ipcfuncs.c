@@ -109,8 +109,10 @@ Datum ml_ipc_getMsg__text1(PG_FUNCTION_ARGS)
     
     /* now pull out the message and form a string and return it back. */
     uint8 *dataStart = recvTcItem->chunk_data + TUPLE_CHUNK_HEADER_SIZE;
-    uint16 dataSize = GetChunkDataSize( recvTcItem->chunk_data );
 
+    uint16 dataSize;
+
+	GetChunkDataSize(recvTcItem->chunk_data, &dataSize);
     
     //form result
     int len = dataSize + VARHDRSZ;

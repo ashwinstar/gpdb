@@ -21,6 +21,33 @@ struct CdbProcess;                          /* #include "nodes/execnodes.h" */
 struct Slice;                               /* #include "nodes/execnodes.h" */
 struct SliceTable;                          /* #include "nodes/execnodes.h" */
 
+struct icpkthdr
+{
+	int			motNodeId;
+
+	/* three pairs which seem useful for identifying packets */
+	int32		srcPid;
+	int32		srcListenerPort;
+
+	int32		dstPid;
+	int32		dstListenerPort;
+	
+    int32       sessionId;
+    int32       commandCount;
+
+	/* are these really useful ? YES THEY ARE! they're guaranteed to specify a connection */
+    int32       recvSliceIndex;
+    int32       sendSliceIndex;
+	int32       srcContentId;
+	int32		dstContentId;
+
+	/* packet specific info */
+	int32		flags;
+	int32		len;
+
+	uint32		seq;
+};
+
 typedef enum MotionConnState
 {
     mcsNull,
@@ -30,6 +57,7 @@ typedef enum MotionConnState
     mcsRecvRegMsg,
     mcsSendRegMsg,
     mcsStarted,
+	mcsEosSent
 } MotionConnState;
 
 /* Structure used for keeping track of a pt-to-pt connection between two
@@ -42,6 +70,8 @@ typedef struct MotionConn
 	
 	/* pointer to the data buffer. */
 	uint8	   *pBuff;
+
+	uint16		route;
 	
 	/* size of the message in the buffer, if any. */
 	int32		msgSize;
@@ -62,12 +92,21 @@ typedef struct MotionConn
     MotionConnState state;
 	
     int         wakeup_ms;
+
+	struct icpkthdr		conn_info;
 	
     struct CdbProcess  *cdbProc;
     int			remoteContentId;
     char        remoteHostAndPort[64];
     char        localHostAndPort[64];
-	
+
+	struct sockaddr_in peer;
+
+	/* a queue of maximum length Gp_interconnect_queue_depth */
+	int			pkt_q_size;
+	int			pkt_q_head;
+	int			pkt_q_tail;
+	uint8		**pkt_q;
 }	MotionConn;
 
 /* used to organize all of the information for a given motion node.
@@ -98,9 +137,14 @@ typedef struct ChunkTransportStateEntry
     /* slice table entries */
     struct Slice   *sendSlice;
     struct Slice   *recvSlice;
-	
+
     /* setup info */
     int         outgoingPortRetryCount;
+
+	int			txfd;
+	unsigned short txport;
+
+	bool		sendingEos;
 	
 }	ChunkTransportStateEntry;
 

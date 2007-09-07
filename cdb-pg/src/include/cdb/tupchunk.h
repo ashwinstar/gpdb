@@ -74,16 +74,16 @@ typedef enum TupleChunkType
 #define GetChunkDataPtr(tcItem) \
 	(((tcItem)->inplace != NULL) ? ((char *)((tcItem)->inplace)) : ((char *)((tcItem)->chunk_data)))
 
-#define GetChunkDataSize(tcItem) \
-	(*(uint16 *)(GetChunkDataPtr(tcItem)))
+#define GetChunkDataSize(tcItem, sizep)	\
+	do { uint16 sizeid; memcpy(&sizeid, (GetChunkDataPtr(tcItem)), sizeof(uint16)); *typep = typeid; } while (0)
 
-#define GetChunkType(/* uint 8 * */tcItem) \
-	(*(uint16 *)(GetChunkDataPtr(tcItem) + 2))
+#define GetChunkType(/* uint 8 * */tcItem, /* TupleChunkType * */typep) \
+	do { uint16 typeid; memcpy(&typeid, (GetChunkDataPtr(tcItem) + 2), sizeof(uint16)); *typep = typeid; } while (0)
 
 #define SetChunkDataSize(/* uint8 * */tc_data, /* uint16 */value) \
-	(*(uint16 *)(tc_data) = (value))
+	do { uint16 val = (value); memcpy(tc_data, &val, sizeof(uint16)); } while (0)
 
-#define SetChunkType(/* uint 8 * */tc_data, /* TupleChunkType */value) \
-	(*(uint16 *)((tc_data) + 2) = (value))
+#define SetChunkType(/* uint8 * */tc_data, /* TupleChunkType */value) \
+	do { uint16 val = (value); memcpy((tc_data+2), &val, sizeof(uint16)); } while (0)
 
 #endif   /* TUPCHUNK_H */

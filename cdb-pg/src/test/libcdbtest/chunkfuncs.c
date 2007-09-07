@@ -492,7 +492,7 @@ Datum GetDechunkedRows__text1_regtype1(PG_FUNCTION_ARGS)
 
             appendChunkToTCList(&tcListData, tcItem);
 
-            lastChunkType = GetChunkType(tcItem);
+            GetChunkType(tcItem, &lastChunkType);
 
             s_dcr_state->rowIdx++;
         }
