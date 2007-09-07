@@ -20,6 +20,10 @@ DLTYPE= library
 override CPPFLAGS := -DFRONTEND \
 	-I../include -I$(top_srcdir)/src/interfaces/ecpg/include \
 	-I$(libpq_srcdir) -I$(top_builddir)/src/port $(CPPFLAGS)
+	
+ifeq ($(GCC), yes)
+override CFLAGS += -Wno-error
+endif
 override CFLAGS += $(PTHREAD_CFLAGS)
 
 # Need to recompile any libpgport object files
