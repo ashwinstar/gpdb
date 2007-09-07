@@ -154,7 +154,7 @@ typedef struct TmControlBlock
 {
 	LWLockId					ControlLock;
 	bool						recoverred;
-	int							seqno;
+	uint32						seqno;
 	bool						DtmStarted;
 	int							SegmentCount;
 	int							SegmentsStatesByteLen;
