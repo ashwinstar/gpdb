@@ -703,7 +703,7 @@ InitMotionLayerIPC(void)
 {
 	int i;
 	uint16 tcp_listener;
-	uint16 udp_listener;
+	uint16 udp_listener = 0;
 
 	tval.tv_sec = 0;
 	tval.tv_usec = 500000;
@@ -2819,8 +2819,8 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 		elog(LOG, "During teardownUDP, rx_thread is waiting");
 	}
 
-	elog(LOG, "TeardownUDPInterconnect: total pkt count %lld "
-		 "dropped acks %lld retransmits %lld conn mismatch %lld rx overrun %lld",
+	elog(LOG, "TeardownUDPInterconnect: total pkt count " INT64_FORMAT
+		 " dropped acks " INT64_FORMAT " retransmits " INT64_FORMAT " conn mismatch " INT64_FORMAT " rx overrun " INT64_FORMAT,
 		 ic_stats_pkt_count, ic_stats_dropped_acks, ic_stats_retrans,
 		 ic_stats_mismatch, ic_stats_rx_overrun);
 
