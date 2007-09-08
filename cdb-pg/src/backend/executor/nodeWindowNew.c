@@ -2984,7 +2984,7 @@ adjustEdgesForRows(WindowFrameBuffer buffer,
 	{
 		if (level_state->num_trail_rows <= level_state->trail_rows - 1)
 		{
-			bool found;
+			bool found = false;
 			if (ntuplestore_acc_tell(level_state->trail_reader, NULL))
 				found = ntuplestore_acc_advance(level_state->trail_reader, 1);
 			else if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||

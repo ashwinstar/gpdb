@@ -11,7 +11,7 @@ GPDOCDIR=$(CURDIR)/docs/release
 DEFPORT=5432
 
 OPTFLAGS="-O3 -finline-limit=1800 -funroll-loops -fargument-noalias-global $(COPTX) -g"
-DEBUGFLAGS="-O1 -fno-omit-frame-pointer -finline-limit=1800 -g3"
+DEBUGFLAGS="-fno-omit-frame-pointer -finline-limit=1800 -g3"
 
 DISTPATH=$(GPROOT)/$(GPDIR)
 DEVPATH=$(HOME)/$(GPDIR)

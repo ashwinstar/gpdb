@@ -1701,13 +1701,10 @@ static bool shareinput_mutator_xslice(Node* node, ApplyShareInputContext *ctxt, 
 		if(!shared)
 		{
 			ShareNodeWithSliceMark plan_slicemark = {NULL /* plan */,0 /* slice_mark */};
-			int  shareSliceId = get_plan_driver_slice(plan_slicemark.plan);
-
-#ifdef USE_ASSERT_CHECKING
-			bool found = 
-#endif /* USE_ASSERT_CHECKING */
-				shareinput_find_sharenode(ctxt, sisc->share_id, &plan_slicemark);
-			Assert(found);
+			int  shareSliceId = 0;
+			
+			shareinput_find_sharenode(ctxt, sisc->share_id, &plan_slicemark);
+			shareSliceId = get_plan_driver_slice(plan_slicemark.plan);
 
 			if(shareSliceId != motId)
 			{
