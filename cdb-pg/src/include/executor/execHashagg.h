@@ -21,19 +21,7 @@
 
 #include "cdb/cdbexplain.h"                 /* CdbExplain_Agg */
 
-typedef struct BatchFileInfo
-{
-	long ntuples;
-	BufFile *file;
-} BatchFileInfo;
-
-typedef struct BatchTupleHeader
-{
-	uint32		tuplen;	
-	uint16		natts;			/* number of attributes */
-	uint16		infomask;		/* various flag bits */
-	/* nulls bitmap follows if HEAP_HASNULL, then actual tuple data */
-} BatchTupleHeader;
+typedef struct BatchFileInfo BatchFileInfo;
 
 /* An entry in an Agg hash table.
  * 

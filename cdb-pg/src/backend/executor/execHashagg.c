@@ -36,18 +36,34 @@
 
 #include "executor/execHashagg.h"
 
+struct BatchFileInfo
+{
+	long ntuples;
+	BufFile *file;
+};
+
+typedef struct BatchTupleHeader BatchTupleHeader;
+struct BatchTupleHeader
+{
+	uint32 hkey;				/* store the hashkey to avoid recalc */
+	uint32 tuplen;
+	/* minimal heap tuple follows */
+};
+
+
 static void reset_agg_hash_table(AggState *aggstate);
 static bool agg_hash_reload(AggState *aggstate);
 
 static void create_batches(HashAggTable *hashtable, unsigned int nbatch);
 static void destroy_batches(HashAggTable *hashtable);
-static void batch_put_tuple(HashAggTable *hashtable, unsigned int batch, TupleTableSlot *tupleSlot);
+static void batch_put_tuple(HashAggTable *hashtable, unsigned int batch, TupleTableSlot *tupleSlot, uint32 hkey);
 static void batch_rewind(HashAggTable *hashtable, unsigned int batch);
 static void batch_close(HashAggTable *hashtable, unsigned int batch);
 
-static TupleTableSlot *batch_get_tuple(HashAggTable *hashtable, unsigned int batch,  TupleTableSlot *tupleSlot);
+static TupleTableSlot *batch_get_tuple(HashAggTable *hashtable, unsigned int batch,  TupleTableSlot *tupleSlot, uint32* hkey);
 static void init_agg_hash_iter(HashAggTable* ht);
-static HashAggEntry *lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 *hashkeyp, bool *isNew);
+static HashAggEntry *lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, 
+										   uint32 hkin, uint32 *hkout, bool *isNew);
 static uint32 calc_hash_value(AggState* aggstate, TupleTableSlot *inputslot);
 static HashAggEntry *makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashkey);
 
@@ -309,7 +325,7 @@ agg_hash_initial_pass(AggState *aggstate)
 		
 		/* Find or (if there's room) build a hash table entry for the
 		 * input tuple's group. */
-		entry = lookup_agg_hash_entry(aggstate, outerslot, &hashkey, &isNew);
+		entry = lookup_agg_hash_entry(aggstate, outerslot, 0, &hashkey, &isNew);
 
 		if (entry != NULL)
 		{
@@ -397,7 +413,7 @@ agg_hash_initial_pass(AggState *aggstate)
 			Assert(batch > 0 && batch < ht->nbatch);
 			
 			/* Write the tuple to the appropriate overflow batch. */
-			batch_put_tuple(ht, batch, outerslot);
+			batch_put_tuple(ht, batch, outerslot, hashkey);
 		}
 	}
 
@@ -620,9 +636,10 @@ agg_hash_reload(AggState *aggstate)
 	
 	for (;;)
 	{
+		uint32 hkey;
 		bool isNew = false;
 		
-		outerslot = batch_get_tuple(ht, source, tmpcontext->ecxt_scantuple);
+		outerslot = batch_get_tuple(ht, source, tmpcontext->ecxt_scantuple, &hkey);
 		if (TupIsNull(outerslot))
 			break;
 			
@@ -630,7 +647,7 @@ agg_hash_reload(AggState *aggstate)
 		tmpcontext->ecxt_scantuple = outerslot;
 
 		/* Find or build hhashtable entry for this tuple's group */
-		entry = lookup_agg_hash_entry(aggstate, outerslot, NULL, &isNew);
+		entry = lookup_agg_hash_entry(aggstate, outerslot, hkey, NULL, &isNew);
 
 		if ( entry != NULL )
 		{			
@@ -644,16 +661,16 @@ agg_hash_reload(AggState *aggstate)
 				
 			/* Advance the aggregates */
 			advance_aggregates(aggstate, entry->pergroup);
-
-			/* Reset per-input-tuple context after each tuple */
-			ResetExprContext(tmpcontext);
 		}
 		else
 		{			
 			/* Write the input tuple to the overflow. */
 			noverflow++;
-			batch_put_tuple(ht, overflow, outerslot);
+			batch_put_tuple(ht, overflow, outerslot, hkey);
 		}
+
+		/* Reset per-input-tuple context after each tuple */
+		ResetExprContext(tmpcontext);
 	}
 	ht->ntuple += ntuple;
 	ht->ngroup += ngroup;
@@ -775,6 +792,10 @@ calc_hash_value(AggState* aggstate, TupleTableSlot *inputslot)
 
 	MemoryContextSwitchTo(oldContext);
 
+	/* 0 is special */
+	if (hashkey == 0) 
+		hashkey = 0xcafebabe;	/* just a random number */
+
 	return hashkey;
 }
 
@@ -792,8 +813,9 @@ calc_hash_value(AggState* aggstate, TupleTableSlot *inputslot)
  * a new entry will have uninitialized per-group data (Aggref states).
  * Initializing them is the callers responsibility.
  */
-HashAggEntry *
-lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 *hashkeyp, bool *isNew)
+static HashAggEntry *
+lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, 
+					  uint32 hkin, uint32 *hkout, bool *isNew)
 {
 	Agg *agg;
 	ExprContext *econtext;
@@ -804,7 +826,6 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 *has
 	TupleDesc entry_tuple_desc;
 	uint32 hashkey;
 	unsigned int bucket_idx;
-	bool match;
 	uint64 bloomval;			/* bloom filter value */
 	
 	agg = (Agg*)aggstate->ss.ps.plan;
@@ -825,9 +846,10 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 *has
 	oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 
 	/* Get hash key and its bucket index. */
-	hashkey = calc_hash_value(aggstate, inputslot);
-	if ( hashkeyp )
-		*hashkeyp = hashkey;
+	hashkey = hkin ? hkin : calc_hash_value(aggstate, inputslot);
+	if (hkout)
+		*hkout = hashkey;
+
 	bucket_idx = hashkey % ht->nbucket;
 	bloomval = ((uint64)1) << ((hashkey >> 13) & 0x3f);
 	entry = (0 == (ht->bloom[bucket_idx] & bloomval) ? NULL : ht->buckets[bucket_idx]);
@@ -837,14 +859,13 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 *has
 		  entry != NULL;
 		  entry = entry->next )
 	{
-		match = false;
-		
 		if ( hashkey == entry->hashvalue )
 		{
 			HeapTuple heapTuple = entry->heaptuple;
 			int i;
+			bool match = true;
 			
-			for (match = true, i = 0; match && i < agg->numCols; i++)
+			for (i = 0; i < agg->numCols; i++)
 			{
 				AttrNumber	att = agg->grpColIdx[i];
 				Datum		input_datum, entry_datum;
@@ -860,16 +881,18 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 *has
 												 input_datum,
 												 entry_datum)) ) )
 					continue; /* Both non-NULL and equal. */
+
 				match = false;
+				break;
 			}
-		}
-		
-		if ( match )
-		{
-			/* Found an existing matching entry. */
-			if ( isNew != NULL )
-				*isNew = false;
-			break;
+
+			if (match)
+			{
+				/* Found an existing matching entry. */
+				if ( isNew != NULL )
+					*isNew = false;
+				break;
+			}
 		}
 	}
 	
@@ -1181,31 +1204,31 @@ destroy_batches(HashAggTable * hashtable)
  * its HeapTupleData (with meaningless t_data pointer) followed by the
  * HeapTupleHeader and tuple data.
  *
+ * CDB: store the hashkey to avoid computation upon read-back of spills.
+ *
  * Note: it is important always to call this in the regular executor
  * context, not in a shorter-lived context; else the temp file buffers
  * will get messed up.
  */
-void
+static void
 batch_put_tuple(HashAggTable *hashtable,
-			   unsigned int batch,
-			   TupleTableSlot *tupleSlot)
+				unsigned int batch,
+				TupleTableSlot *tupleSlot,
+				uint32 hkey)
 {
-	size_t		written;
+	static const char *msg = "could not write to temporary batch file: %m";
+
 	BatchFileInfo *info;
 	BufFile    *file;
-	BatchTupleHeader hth;
-	HeapTupleHeader t_data;
-	unsigned int	datalen;
-	unsigned int	nullslen;
 	/* HeapTuple heapTuple = tupleSlot->tts_tuple; */
-	HeapTuple heapTuple = ExecFetchSlotTuple(tupleSlot);
-	
-	static const char *msg = "could not write to temporary batch file: %m";
+	MinimalTuple minTuple = ExecFetchSlotMinimalTuple(tupleSlot);
+	BatchTupleHeader hth;
+
+	hth.hkey = hkey;
+	hth.tuplen = MAXALIGN(minTuple->t_len);
 
 	info = &hashtable->batches[batch];
 	file = info->file;
-	t_data = heapTuple->t_data;
-
 	if (file == NULL)
 	{
 		/* First write to this batch file, so open it. */
@@ -1214,30 +1237,10 @@ batch_put_tuple(HashAggTable *hashtable,
 		info->ntuples = 0L;
 	}
 
-	datalen = heapTuple->t_len - t_data->t_hoff;
-	if (HeapTupleHasNulls(heapTuple))
-		nullslen = BITMAPLEN(HeapTupleHeaderGetNatts(t_data));
-	else
-		nullslen = 0;
-
-	hth.tuplen = sizeof(BatchTupleHeader) + nullslen + datalen;
-	hth.natts = HeapTupleHeaderGetNatts(t_data);
-	hth.infomask = t_data->t_infomask;
-
-	written = BufFileWrite(file, (void *)&hth, sizeof(hth));
-	if (written != sizeof(hth))
+	if (sizeof(hth) != BufFileWrite(file, (void*) &hth, sizeof(hth)))
 		ereport(ERROR, (errcode_for_file_access(), errmsg(msg)));
 
-	/* Now the body of the tuple */
-	if (nullslen)
-	{
-		written = BufFileWrite(file, (void *)t_data->t_bits, nullslen);
-		if (written != nullslen)
-			ereport(ERROR, (errcode_for_file_access(), errmsg(msg)));
-	}
-
-	written = BufFileWrite(file, (char *)t_data + t_data->t_hoff, datalen);
-	if (written != datalen)
+	if (hth.tuplen != BufFileWrite(file, minTuple, hth.tuplen))
 		ereport(ERROR, (errcode_for_file_access(), errmsg(msg)));
 	
 	info->ntuples++;
@@ -1249,82 +1252,70 @@ batch_put_tuple(HashAggTable *hashtable,
  *
  * On success the tuple is stored in the given slot.
  */
-TupleTableSlot *
+static TupleTableSlot *
 batch_get_tuple(HashAggTable *hashtable,
 				unsigned int batch,
-				TupleTableSlot *tupleSlot)
+				TupleTableSlot *tupleSlot,
+				uint32 *hkey)
 {
-	size_t		nread;
-	HeapTuple	heapTuple;
+#if 1
+	static const char *msg = "could not read temporary batch file: %m";
 	BatchTupleHeader hth;
-	unsigned int	datalen;
-	unsigned int	nullslen;
-	unsigned int	hoff;
-	HeapTupleHeader t_data;
-	
-	static const char *msg = "could not read from temporary batch file: %m";
-
 	BatchFileInfo *info = &hashtable->batches[batch];
 	BufFile *file = info->file;
+	MinimalTuple minTuple;
+	int n;
 
-	nread = BufFileRead(file, (void *)&hth, sizeof(hth));
-	if (nread == 0)
+	if (sizeof(hth) != (n = BufFileRead(file, &hth, sizeof(hth))))
+	{
+		if (n == 0)
+		{
+			/* Don't leave exhausted batch files lying around. */
+			Assert(info->ntuples == 0);
+			batch_close(hashtable, batch);
+			return NULL; /* end of file */
+		}
+		ereport(ERROR, (errcode_for_file_access(), errmsg(msg)));
+	}
+
+	*hkey = hth.hkey;
+	minTuple = (MinimalTuple) palloc(hth.tuplen);
+	if (hth.tuplen != BufFileRead(file, minTuple, hth.tuplen))
+		ereport(ERROR, (errcode_for_file_access(), errmsg(msg)));
+
+	info->ntuples--;
+	return ExecStoreMinimalTuple(minTuple, tupleSlot, true);
+#else
+	/* enable this later - pending buffile.c change */
+	static const char *msg = "could not read temporary batch file: %m";
+	BatchTupleHeader *hth;
+	BatchFileInfo *info = &hashtable->batches[batch];
+	BufFile *file = info->file;
+	MinimalTuple minTuple;
+	int n;
+
+	n = sizeof(*hth);
+	hth = (BatchTupleHeader*) BufFilePeek(file, n);
+	if (! hth)
 	{
 		/* Don't leave exhausted batch files lying around. */
 		Assert(info->ntuples == 0);
 		batch_close(hashtable, batch);
 		return NULL; /* end of file */
 	}
-	if (nread != sizeof(hth))
+
+	*hkey = hth->hkey;
+
+	n += hth->tuplen;
+	hth = (BatchTupleHeader*) BufFilePeek(file, n);
+	if (! hth)
 		ereport(ERROR, (errcode_for_file_access(), errmsg(msg)));
+	BufFilePeekAdvance(file, n);
 
-	/* reconstruct lengths of null bitmap and data part */
-	if (hth.infomask & HEAP_HASNULL)
-		nullslen = BITMAPLEN(hth.natts);
-	else
-		nullslen = 0;
-	datalen = hth.tuplen - sizeof(BatchTupleHeader) - nullslen;
-
-	/* determine overhead size of tuple (should match heap_form_tuple) */
-	hoff = offsetof(HeapTupleHeaderData, t_bits) + nullslen;
-	if (hth.infomask & HEAP_HASOID)
-		hoff += sizeof(Oid);
-	hoff = MAXALIGN(hoff);
-
-	/* Allocate the space in one chunk, like heap_form_tuple */
-	heapTuple = (HeapTuple) palloc(HEAPTUPLESIZE + hoff + datalen);
-
-	t_data = (HeapTupleHeader) ((char *)heapTuple + HEAPTUPLESIZE);
-
-	/* make sure unused header fields are zeroed */
-	MemSetAligned(t_data, 0, hoff);
-	/* reconstruct the HeapTupleData fields */
-	heapTuple->t_len = hoff + datalen;
-	ItemPointerSetInvalid(&(heapTuple->t_self));
-	heapTuple->t_tableOid = InvalidOid;
-	heapTuple->t_data = t_data;
-
-	/* reconstruct the HeapTupleHeaderData fields */
-	ItemPointerSetInvalid(&(t_data->t_ctid));
-	HeapTupleHeaderSetNatts(t_data, hth.natts);
-	t_data->t_infomask = (hth.infomask & ~HEAP_XACT_MASK)
-		| (HEAP_XMIN_INVALID | HEAP_XMAX_INVALID);
-	t_data->t_hoff = hoff;
-
-	if (nullslen)
-	{
-		nread = BufFileRead(file, (void *) t_data->t_bits, nullslen);
-		if (nread != nullslen)
-			ereport(ERROR, (errcode_for_file_access(), errmsg(msg)));
-	}
-
-	/* and now the data proper */
-	nread = BufFileRead(file, (char *) t_data + hoff, datalen);
-	if (nread != datalen)
-		ereport(ERROR, (errcode_for_file_access(), errmsg(msg)));
-
+	minTuple = (MinimalTuple) (((char*) hth) + sizeof(hth));
 	info->ntuples--;
-	return ExecStoreTuple(heapTuple, tupleSlot, InvalidBuffer, true);
+	return ExecStoreMinimalTuple(minTuple, tupleSlot, false);
+#endif
 }
 
 /*
