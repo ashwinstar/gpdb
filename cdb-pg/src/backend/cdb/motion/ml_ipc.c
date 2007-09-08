@@ -1039,7 +1039,7 @@ sendAck(MotionConn *conn, bool stop)
 		write_log("sendack: flags 0x%x node %d route %d seq %d\n",
 				  msg.flags, msg.motNodeId, conn->route, conn->conn_info.seq);
 
-	n = sendto(UDPlistenerFd, &msg, sizeof(msg), 0,
+	n = sendto(UDPlistenerFd, (const char *)&msg, sizeof(msg), 0,
 			   (struct sockaddr *)&conn->peer, sizeof(conn->peer));
 
 	if (n < sizeof(msg))
@@ -1850,7 +1850,7 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 
 					peerlen = sizeof(peer);
 					read_count = recvfrom(sendingChunkTransportState->txfd,
-										  &pkt, sizeof(pkt), 0, (struct sockaddr *)&peer, &peerlen);
+										  (char *)&pkt, sizeof(pkt), 0, (struct sockaddr *)&peer, &peerlen);
 
 					if (read_count < 0)
 						ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
@@ -1997,7 +1997,10 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 	Insist(!*ppTransportStates && mySliceTable);
 
 	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
-		return SetupUDPInterconnect(ppTransportStates, mySliceTable, mySliceId, mlStates);
+	{
+		SetupUDPInterconnect(ppTransportStates, mySliceTable, mySliceId, mlStates);
+		return;
+	}
 
 	*ppTransportStates = palloc0(sizeof(ChunkTransportState));
 	
@@ -3011,12 +3014,12 @@ setupUDPListeningSocket(int backlog, int *listenerSocketFd, uint16 *listenerPort
     fun = "setsockopt";
 	rcvbuf = 128 * 1024;
 	rcvbufsize = sizeof(rcvbuf);
-    if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, rcvbufsize) < 0)
+    if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (const char *)&rcvbuf, rcvbufsize) < 0)
 		goto error;
 
     fun = "getsockopt";
 	rcvbufsize = sizeof(rcvbuf);
-    if (getsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, &rcvbufsize) < 0)
+    if (getsockopt(fd, SOL_SOCKET, SO_RCVBUF, (char *)&rcvbuf, &rcvbufsize) < 0)
 		goto error;
 
 	elog(LOG, "setupUDPListeningSocket: rcvbuf size %d", rcvbuf);
@@ -3024,12 +3027,12 @@ setupUDPListeningSocket(int backlog, int *listenerSocketFd, uint16 *listenerPort
     fun = "setsockopt";
 	rcvbuf = 128 * 1024;
 	rcvbufsize = sizeof(rcvbuf);
-    if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, rcvbufsize) < 0)
+    if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (const char *)&rcvbuf, rcvbufsize) < 0)
 		goto error;
 
     fun = "getsockopt";
 	rcvbufsize = sizeof(rcvbuf);
-    if (getsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, &rcvbufsize) < 0)
+    if (getsockopt(fd, SOL_SOCKET, SO_RCVBUF, (char *)&rcvbuf, &rcvbufsize) < 0)
 		goto error;
 
 	elog(LOG, "setupUDPListeningSocket: rcvbuf size %d", rcvbuf);
@@ -3528,7 +3531,7 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 
 	conn_addhash(conn);
 
-	n = sendto(pEntry->txfd, &conn->conn_info, sizeof(conn->conn_info), 0,
+	n = sendto(pEntry->txfd, (const char *)&conn->conn_info, sizeof(conn->conn_info), 0,
 			   (struct sockaddr *)&saddr, (socklen_t)sizeof(saddr));
 	if (n != sizeof(conn->conn_info))
 	{
@@ -4392,7 +4395,7 @@ flushUDPBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 			struct icpkthdr pkt;
 
 			peerlen = sizeof(peer);
-			n = recvfrom(pEntry->txfd, &pkt, sizeof(pkt), 0,
+			n = recvfrom(pEntry->txfd, (char *)&pkt, sizeof(pkt), 0,
 						 (struct sockaddr *)&peer, &peerlen);
 
 			if (n < 0)
@@ -5093,7 +5096,7 @@ ic_rx_thread_func(void *arg)
 			socklen_t peerlen;
 
 			peerlen = sizeof(peer);
-			read_count = recvfrom(UDPlistenerFd, pkt, Gp_max_packet_size, 0,
+			read_count = recvfrom(UDPlistenerFd, (char *)pkt, Gp_max_packet_size, 0,
 								  (struct sockaddr *)&peer, &peerlen);
 
 			ic_stats_pkt_count++;
