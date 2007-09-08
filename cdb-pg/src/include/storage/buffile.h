@@ -47,6 +47,11 @@ extern uint64 BufFileTell64(BufFile *file);
 extern int	BufFileSeekBlock(BufFile *file, long blknum);
 extern int BufFileFlush(BufFile *file);
 
+
+extern size_t BufFileReadRaw(BufFile* file, void* ptr, size_t size);
+extern char* BufFilePeek(BufFile *file, int size);
+
+
 extern size_t sizeBufFile(BufFile * file); /* MPP */
 
 extern int BufFileNumFiles(BufFile *file); 

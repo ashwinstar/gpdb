@@ -77,6 +77,17 @@ struct BufFile
 	int			nbytes;			/* total # of valid bytes in buffer */
 	char		buffer[BLCKSZ];
 
+
+	struct {
+		/* buffer that allows peeking */
+		char* buf;
+		int   max, bot, top;
+
+		/* "current pos" (see above) to ensure that the file did not 
+		   do any seeking behind BufFilePeek() */
+		int   xFile, xOffset, xPos;
+	} peek;
+
 	/* 
 	 * "common" prefix.  Used by shareinput reader/writer
 	 * It takes form SIRW_%d_%d_%d, pid, address, fileSeqNum.  
@@ -113,6 +124,10 @@ makeBufFile(File firstfile)
 	file->nbytes = 0;
 
 	file->rwfile_prefix = NULL;
+
+	/* temporary space, we will repalloc later on first peek*/
+	file->peek.buf = palloc(8);	
+	file->peek.max = 8;
 
 	return file;
 }
@@ -285,10 +300,11 @@ BufFileClose(BufFile *file)
  * At call, must have dirty = false, pos and nbytes = 0.
  * On exit, nbytes is number of bytes loaded.
  */
-static void
-BufFileLoadBuffer(BufFile *file)
+static size_t
+BufFileLoadBufferRaw(BufFile *file, char* ptr, size_t size)
 {
-	File		thisfile;
+	File thisfile;
+	size_t n;
 
 	/*
 	 * Advance to next component file if necessary and possible.
@@ -311,19 +327,28 @@ BufFileLoadBuffer(BufFile *file)
 	if (file->curOffset != file->offsets[file->curFile])
 	{
 		if (FileSeek(thisfile, file->curOffset, SEEK_SET) != file->curOffset)
-			return;				/* seek failed, read nothing */
+			return 0;				/* seek failed, read nothing */
 		file->offsets[file->curFile] = file->curOffset;
 	}
 
 	/*
 	 * Read whatever we can get, up to a full bufferload.
 	 */
-	file->nbytes = FileRead(thisfile, file->buffer, sizeof(file->buffer));
-	if (file->nbytes < 0)
-		file->nbytes = 0;
-	file->offsets[file->curFile] += file->nbytes;
+	n = FileRead(thisfile, ptr, size);
+	if (n < 0)
+		n = 0;
+	file->offsets[file->curFile] += n;
 	/* we choose not to advance curOffset here */
+	return n;
 }
+
+static void
+BufFileLoadBuffer(BufFile *file)
+{
+	file->nbytes = BufFileLoadBufferRaw(file, file->buffer, sizeof(file->buffer));
+	file->pos = 0;
+}
+
 
 /*
  * BufFileDumpBuffer
@@ -455,6 +480,64 @@ BufFileRead(BufFile *file, void *ptr, size_t size)
 
 	return nread;
 }
+
+
+/*
+ *  BufFileReadRaw
+ * 
+ *  Like BufFileRead() except read directly into user buffer
+ */
+size_t
+BufFileReadRaw(BufFile *file, void* ptr_, size_t size)
+{
+	char* ptr = (char*) ptr_;
+	char* orig = (char*) ptr_;
+	size_t n = 0;
+	
+	if (file->dirty)
+	{
+		if (BufFileFlush(file) != 0)
+			return 0;			/* could not flush... */
+		Assert(!file->dirty);
+	}
+
+	if (size <= 0)
+		return 0;
+
+	if (file->nbytes)
+	{
+		if (file->pos >= file->nbytes)
+		{
+			file->curOffset += file->pos;
+			file->pos = file->nbytes = 0;
+		}
+
+		/* if there are bytes cached ... */
+		if (file->pos < file->nbytes)
+		{
+			n = file->nbytes - file->pos;
+			if (n > size)
+				n = size;
+			memcpy(ptr, file->buffer + file->pos, n);
+			file->pos += n;
+			ptr += n, size -= n;
+		}
+	}
+
+	while (size > 0)
+	{
+		n = BufFileLoadBufferRaw(file, ptr, size);
+		if (n <= 0)
+			break;
+
+		file->curOffset += n;
+		ptr += n, size -= n;
+	}
+
+	return ptr - orig;
+}
+
+
 
 /*
  * BufFileWrite
@@ -673,3 +756,74 @@ BufFileTellBlock(BufFile *file)
 }
 
 #endif
+
+
+
+/*
+ *  Peek into a file for sequential scans only. No seeking allowed.
+ */
+char* BufFilePeek(BufFile *file, int size)
+{
+	int n;
+
+	if (file->dirty)
+	{
+		if (BufFileFlush(file) != 0)
+			return 0;			/* could not flush */
+		Assert(!file->dirty);
+	}
+
+	if (file->peek.max < BLCKSZ || file->peek.max < size)
+	{
+		/* get a reasonable buffer */
+		file->peek.max = size + 2*BLCKSZ;
+		file->peek.buf = repalloc(file->peek.buf, file->peek.max);
+	}
+
+	if (! (file->peek.xFile == file->curFile 
+		   && file->peek.xOffset == file->curOffset
+		   && file->peek.xPos == file->pos))
+	{
+		/* reset */
+		file->peek.bot = file->peek.top = 0;
+	}
+
+	n = file->peek.top - file->peek.bot;
+	if (n < size)
+	{
+		if (n > 0)
+			memmove(file->peek.buf, file->peek.buf + file->peek.bot, n);
+
+		file->peek.bot = 0;
+		file->peek.top = n;
+
+		/*
+		elog(NOTICE, "reading %d bytes (bot %d, top %d, max %d), size %d", 
+			 file->peek.max - file->peek.top,
+			 file->peek.bot, file->peek.top, file->peek.max,
+			 size);
+		*/
+		n = BufFileReadRaw(file, file->peek.buf + file->peek.top, 
+						   file->peek.max - file->peek.top);
+		if (n < 0)
+			n = 0;
+		file->peek.top += n;
+
+		/* adjust position if it moved */
+		file->peek.xFile = file->curFile;
+		file->peek.xOffset = file->curOffset;
+		file->peek.xPos = file->pos;
+
+		n = file->peek.top - file->peek.bot;
+		if (n < size)
+			return 0;
+	}
+
+	/* we have enough in the buffer:
+	   advance, but send the ptr into the past */
+	n = file->peek.bot;
+	file->peek.bot += size;
+	return file->peek.buf + n;
+}
+
+

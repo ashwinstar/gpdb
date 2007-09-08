@@ -51,6 +51,7 @@ struct BatchTupleHeader
 };
 
 
+
 static void reset_agg_hash_table(AggState *aggstate);
 static bool agg_hash_reload(AggState *aggstate);
 
@@ -1258,7 +1259,8 @@ batch_get_tuple(HashAggTable *hashtable,
 				TupleTableSlot *tupleSlot,
 				uint32 *hkey)
 {
-#if 1
+#if 0
+	/* regular copy read */
 	static const char *msg = "could not read temporary batch file: %m";
 	BatchTupleHeader hth;
 	BatchFileInfo *info = &hashtable->batches[batch];
@@ -1286,33 +1288,32 @@ batch_get_tuple(HashAggTable *hashtable,
 	info->ntuples--;
 	return ExecStoreMinimalTuple(minTuple, tupleSlot, true);
 #else
-	/* enable this later - pending buffile.c change */
+	/* copyless / pallocless read */
 	static const char *msg = "could not read temporary batch file: %m";
 	BatchTupleHeader *hth;
 	BatchFileInfo *info = &hashtable->batches[batch];
 	BufFile *file = info->file;
 	MinimalTuple minTuple;
-	int n;
+	int tuplen;
 
-	n = sizeof(*hth);
-	hth = (BatchTupleHeader*) BufFilePeek(file, n);
+	hth = (BatchTupleHeader*) BufFilePeek(file, sizeof(*hth));
 	if (! hth)
 	{
 		/* Don't leave exhausted batch files lying around. */
+		if (info->ntuples) 
+			elog(ERROR, "Internal error, ntuples %ld", info->ntuples);
 		Assert(info->ntuples == 0);
 		batch_close(hashtable, batch);
 		return NULL; /* end of file */
 	}
 
 	*hkey = hth->hkey;
+	tuplen = hth->tuplen;
 
-	n += hth->tuplen;
-	hth = (BatchTupleHeader*) BufFilePeek(file, n);
-	if (! hth)
+	minTuple = (MinimalTuple) BufFilePeek(file, tuplen);
+	if (! minTuple)
 		ereport(ERROR, (errcode_for_file_access(), errmsg(msg)));
-	BufFilePeekAdvance(file, n);
 
-	minTuple = (MinimalTuple) (((char*) hth) + sizeof(hth));
 	info->ntuples--;
 	return ExecStoreMinimalTuple(minTuple, tupleSlot, false);
 #endif
