@@ -71,6 +71,10 @@ def parseCommandLine():
 	elif (switch == '-p'):        opt[switch] = gplib.parse_port(val)
         elif (switch == '--version'): print_version()
 
+    try:
+        t = time.strptime(opt['-t'], '%Y-%m-%d %H:%M:%S')
+    except ValueError, e:
+        usage('Error: ' + str(e))
 
 def run(cmd):
     p = os.popen(cmd)
