@@ -216,7 +216,7 @@ def pg_locks():
     return run('psql -e template1 -c "select * from pg_locks" > %s 2>&1' % fpath)
 
 def gp_dump_schema():
-    return run('gp_dump -s %s --gp-d=%s' % (opt['-s'], opt['-o']))
+    return run('gp_dump -s %s --gp-d=%s > /dev/null 2>&1' % (opt['-s'], opt['-o']))
 
 def save(fpath, content):
     try:
