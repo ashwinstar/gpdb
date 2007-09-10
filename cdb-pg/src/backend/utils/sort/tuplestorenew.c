@@ -406,6 +406,9 @@ static bool ntsReadBlock(NTupleStore *ts, int blockn, NTupleStorePage *page)
 {
 	long diskblockn = blockn - ts->first_ondisk_blockn;
 
+	if(!ts->pfile)
+		return false;
+	
 	Assert(ts->first_ondisk_blockn >= 0);
 	Assert(ts && diskblockn >= 0 && page);
 	if(BufFileSeekBlock(ts->pfile, diskblockn) != 0 ||
@@ -1265,6 +1268,12 @@ bool ntuplestore_acc_current_data(NTupleStoreAccessor *tsa, void **data, int *le
 bool ntuplestore_acc_tell(NTupleStoreAccessor *tsa, NTupleStorePos *pos)
 {
 	AssertImply(tsa->pos.blockn==-1, tsa->pos.slotn==-1);
+
+	if (pos != NULL)
+	{
+		pos->blockn = -1;
+		pos->slotn = -1;
+	}
 	
 	if(!tsa->page || tsa->pos.slotn == -1)
 		return false;

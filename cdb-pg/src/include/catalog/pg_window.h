@@ -82,7 +82,6 @@ typedef FormData_pg_window *Form_pg_window;
 #define Anum_pg_window_winpretype		8
 #define Anum_pg_window_winfinfunc		9
 
-
 /* ----------------
  * initial contents of pg_window
  * ---------------

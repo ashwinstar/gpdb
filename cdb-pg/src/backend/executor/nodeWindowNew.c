@@ -444,6 +444,7 @@ static void add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *ws
 							   ExprContext *econtext);
 static void set_lead_lag_framing(WindowStatePerLevel level_state,
 								 WindowState *wstate);
+static void separateLeadLag(WindowState *wstate);
 
 /*
  * initFrameBuffer -- initialize the frame buffer.
@@ -645,6 +646,55 @@ static int findSerialIndex(WindowStatePerFunction funcstate,
 }
 
 /*
+ * serializeValue -- serialize a given value (Datum) into a char array.
+ *
+ * The return pointer points to the next char position in the
+ * given char array after writing the serialized string of the
+ * given value.
+ */
+static char *
+serializeValue(Datum value, bool isnull,
+			   bool byvalue, int16 typelen,
+			   char **p_serial_entry, Size *p_max_size, Size *p_len,
+			   Size start_pos)
+{
+	char *written_pos = (*p_serial_entry) + start_pos;
+	
+	ensureSpace(p_serial_entry, p_max_size,
+				written_pos, sizeof(bool));
+
+	memcpy(written_pos, &isnull, sizeof(bool));
+	written_pos += sizeof(bool); /* isnull col */
+
+	if (!isnull)
+	{
+		if (byvalue)
+		{
+			ensureSpace(p_serial_entry, p_max_size,
+						written_pos, sizeof(Datum));
+			
+			memcpy(written_pos, &value, sizeof(Datum));
+			written_pos += sizeof(Datum);
+		}
+		else
+		{
+			Size real_size = datumGetSize(value, byvalue, typelen);
+					
+			ensureSpace(p_serial_entry, p_max_size,
+						written_pos, real_size);
+			
+			memcpy(written_pos,
+				   DatumGetPointer(value),
+				   real_size);
+			
+			written_pos += real_size;
+		}
+	}
+
+	return written_pos;
+}
+
+/*
  * serializeFuncs -- serialize values for all functions in a given
  * level and put it into a given space, starting from 'start_pos'.
  */
@@ -678,43 +728,11 @@ serializeFuncs(WindowStatePerLevel level_state,
 			get_typlenbyval(CUME_DIST_PRELIM_TYPE,
 							&typelen, &byvalue);
 
-			ensureSpace(p_serial_entry, p_max_size,
-						written_pos, sizeof(bool));
-
-			memcpy(written_pos,
-				   &(funcstate->win_value_is_null),
-				   sizeof(bool));
-			written_pos += sizeof(bool); /* isnull col */
-
-			if (!funcstate->win_value_is_null)
-			{
-				if (byvalue)
-				{
-					ensureSpace(p_serial_entry, p_max_size,
-								written_pos, sizeof(Datum));
-				
-					memcpy(written_pos, &(funcstate->win_value),
-						   sizeof(Datum));
-					written_pos += sizeof(Datum);
-				}
-				else
-				{
-					Size real_size = datumGetSize(funcstate->win_value,
-												  byvalue,
-												  typelen);
-					
-					ensureSpace(p_serial_entry, p_max_size,
-								written_pos, real_size);
-			
-					memcpy(written_pos,
-						   DatumGetPointer(funcstate->win_value),
-						   real_size);
-				
-					written_pos += real_size;
-				}
-			}
-			serial_index++;
-			funcstate->serial_index = serial_index;
+			written_pos =
+				serializeValue(funcstate->win_value, funcstate->win_value_is_null,
+							   byvalue, typelen,
+							   p_serial_entry, p_max_size,
+							   p_len, (written_pos - *p_serial_entry));
 		}
 
 		else if (IS_LEAD_LAG_FUNC(funcstate->windowfn_oid))
@@ -726,83 +744,22 @@ serializeFuncs(WindowStatePerLevel level_state,
 			nargs = list_length(wrxstate->args);
 			Assert(2 <= nargs && nargs <= 4);
 
-			ensureSpace(p_serial_entry, p_max_size,
-						written_pos, sizeof(bool));
-
-			memcpy(written_pos,
-				   &(funcstate->win_value_is_null),
-				   sizeof(bool));
-			written_pos += sizeof(bool); /* isnull col */
-			
-			if (!funcstate->win_value_is_null)
-			{
-				if (wrxstate->argtypbyval[argno])
-				{
-					ensureSpace(p_serial_entry, p_max_size,
-								written_pos, sizeof(Datum));
-				
-					memcpy(written_pos, &(funcstate->win_value),
-						   sizeof(Datum));
-					written_pos += sizeof(Datum);
-				}
-				else
-				{
-					Size real_size = datumGetSize(funcstate->win_value,
-												  wrxstate->argtypbyval[argno],
-												  wrxstate->argtyplen[argno]);
-					ensureSpace(p_serial_entry, p_max_size,
-								written_pos, real_size);
-			
-					memcpy(written_pos,
-						   DatumGetPointer(funcstate->win_value),
-						   real_size);
-				
-					written_pos += real_size;
-				}
-			}
-			serial_index++;
-			funcstate->serial_index = serial_index;
-					
+			written_pos = 
+				serializeValue(funcstate->win_value, funcstate->win_value_is_null,
+							   wrxstate->argtypbyval[argno], wrxstate->argtyplen[argno],
+							   p_serial_entry, p_max_size,
+							   p_len, (written_pos - *p_serial_entry));
 		}
 
 		/* the function which has an inverse preliminary function */
-		else if (OidIsValid(funcstate->invprelimfn_oid))
+		else if (OidIsValid(funcstate->invprelimfn_oid) ||
+				 OidIsValid(funcstate->prelimfn_oid))
 		{
-			ensureSpace(p_serial_entry, p_max_size,
-						written_pos, sizeof(bool));
-
-			memcpy(written_pos, &(funcstate->aggTransValueIsNull), sizeof(bool));
-			written_pos += sizeof(bool);
-
-			if (!funcstate->aggTransValueIsNull)
-			{
-				if (funcstate->aggTranstypeByVal)
-				{
-					ensureSpace(p_serial_entry, p_max_size,
-								written_pos, sizeof(funcstate->aggTransValue));
-				
-					memcpy(written_pos, &(funcstate->aggTransValue),
-						   sizeof(funcstate->aggTransValue));
-					written_pos += sizeof(funcstate->aggTransValue);
-				}
-				else
-				{
-					Size real_size = datumGetSize(funcstate->aggTransValue,
-												  funcstate->aggTranstypeByVal,
-												  funcstate->aggTranstypeLen);
-
-					ensureSpace(p_serial_entry, p_max_size,
-								written_pos, real_size);
-
-					memcpy(written_pos,
-						   DatumGetPointer(funcstate->aggTransValue),
-						   real_size);
-					written_pos += real_size;
-				}
-			}
-
-			serial_index++;
-			funcstate->serial_index = serial_index;
+			written_pos = 
+				serializeValue(funcstate->aggTransValue, funcstate->aggTransValueIsNull,
+							   funcstate->aggTranstypeByVal, funcstate->aggTranstypeLen,
+							   p_serial_entry, p_max_size,
+							   p_len, (written_pos - *p_serial_entry));
 		}
 		
 		/* the general case */
@@ -826,36 +783,16 @@ serializeFuncs(WindowStatePerLevel level_state,
 
 				value = ExecEvalExpr(argstate, econtext, &isnull, NULL);
 
-				ensureSpace(p_serial_entry, p_max_size,
-							written_pos, sizeof(bool));
-				
-				memcpy(written_pos, &(isnull), sizeof(bool));
-				written_pos += sizeof(bool);
-
-				if (!isnull)
-				{
-					if (byval)
-					{
-						ensureSpace(p_serial_entry, p_max_size,
-									written_pos, sizeof(Datum));
-				
-						memcpy(written_pos, &value, sizeof(Datum));
-						written_pos += sizeof(Datum);
-					}
-					else
-					{
-						ensureSpace(p_serial_entry, p_max_size,
-									written_pos, arglen);
-				
-						memcpy(written_pos, DatumGetPointer(value),
-							   arglen);
-						written_pos += arglen;
-					}
-				}
+				written_pos = 
+					serializeValue(value, isnull,
+								   byval, arglen,
+								   p_serial_entry, p_max_size,
+								   p_len, (written_pos - *p_serial_entry));
 			}
-			serial_index++;
-			funcstate->serial_index = serial_index;
 		}
+
+		serial_index++;
+		funcstate->serial_index = serial_index;
 	}
 
 	*p_len = written_pos - *p_serial_entry;
@@ -893,6 +830,42 @@ serializeEntryForRows(WindowStatePerLevel level_state,
 }
 
 /*
+ * deserializeValue -- deserialize one WindowValue from a given char array.
+ *
+ * The return pointer points to the char position in the given char array
+ * after reading one seralized string of WindowValue.
+ *
+ * Note that 'value' is allocated by the caller.
+ */
+static char *
+deserializeValue(char *read_pos, WindowValue *value,
+				 bool byvalue, int16 typelen)
+{
+	memcpy(&(value->valueIsNull), read_pos, sizeof(bool));
+	read_pos += sizeof(bool);
+
+	if (!value->valueIsNull)
+	{
+		if (byvalue)
+		{
+			memcpy(&(value->value), read_pos, sizeof(Datum));
+			read_pos += sizeof(Datum);
+		}
+		else
+		{
+			value->value = PointerGetDatum(read_pos);
+			read_pos += datumGetSize(value->value,
+									 byvalue,
+									 typelen);
+		}
+	}
+	else
+		value->value = 0;
+
+	return read_pos;
+}
+
+/*
  * deserializeFuncs -- deserialize function values from a given array.
  */
 static List *
@@ -924,27 +897,7 @@ deserializeFuncs(WindowStatePerLevel level_state,
 			bool byvalue;
 			get_typlenbyval(CUME_DIST_PRELIM_TYPE,
 							&typelen, &byvalue);
-
-			memcpy(&(value->valueIsNull), read_pos, sizeof(bool));
-			read_pos += sizeof(bool);
-
-			if (!value->valueIsNull)
-			{
-				if (byvalue)
-				{
-					memcpy(&(value->value), read_pos, sizeof(Datum));
-					read_pos += sizeof(Datum);
-				}
-				else
-				{
-					value->value = PointerGetDatum(read_pos);
-					read_pos += datumGetSize(value->value,
-											 byvalue,
-											 typelen);
-				}
-			}
-			else
-				value->value = 0;
+			read_pos = deserializeValue(read_pos, value, byvalue, typelen);
 		}
 
 		else if (IS_LEAD_LAG_FUNC(funcstate->windowfn_oid))
@@ -956,56 +909,24 @@ deserializeFuncs(WindowStatePerLevel level_state,
 			nargs = list_length(wrxstate->args);
 			Assert(2 <= nargs && nargs <= 4);
 
-			memcpy(&(value->valueIsNull), read_pos, sizeof(bool));
-			read_pos += sizeof(bool);
-
-			if (!value->valueIsNull)
-			{
-				if (wrxstate->argtypbyval[argno])
-				{
-					memcpy(&(value->value), read_pos, sizeof(Datum));
-					read_pos += sizeof(Datum);
-				}
-				else
-				{
-					value->value = PointerGetDatum(read_pos);
-					read_pos += datumGetSize(value->value,
-											 wrxstate->argtypbyval[argno],
-											 wrxstate->argtyplen[argno]);
-				}
-			}
-			else
-				value->value = 0;
+			read_pos = deserializeValue(read_pos, value,
+										wrxstate->argtypbyval[argno],
+										wrxstate->argtyplen[argno]);
 		}
 
 		/* the function which has an inverse preliminary function.
 		 */
-		else if (OidIsValid(funcstate->invprelimfn_oid))
+		else if (OidIsValid(funcstate->invprelimfn_oid) ||
+				 OidIsValid(funcstate->prelimfn_oid))
 		{
-			memcpy(&(value->valueIsNull), read_pos, sizeof(bool));
-			read_pos += sizeof(bool);
-
-			if (!value->valueIsNull)
-			{
-				if (funcstate->aggTranstypeByVal)
-				{
-					memcpy(&(value->value), read_pos, sizeof(Datum));
-					read_pos += sizeof(Datum);
-				}
-				else
-				{
-					value->value = PointerGetDatum(read_pos);
-					read_pos += datumGetSize(value->value,
-											 funcstate->aggTranstypeByVal,
-											 funcstate->aggTranstypeLen);
-				}
-			}
-			else
-				value->value = 0;
-			
+			read_pos = deserializeValue(read_pos, value,
+										funcstate->aggTranstypeByVal,
+										funcstate->aggTranstypeLen);
+#if 0
 			funcstate->final_aggTransValue = value->value;
 			funcstate->final_aggTransValueIsNull = value->valueIsNull;
 			funcstate->final_aggNoTransValue = false;
+#endif
 		}
 
 		/* the general case */
@@ -1024,22 +945,7 @@ deserializeFuncs(WindowStatePerLevel level_state,
 				typid = exprType((Node *)argstate->expr);
 				get_typlenbyval(typid, &arglen, &byval);
 
-				memcpy(&(value->valueIsNull), read_pos, sizeof(bool));
-				read_pos += sizeof(bool);
-
-				if (!value->valueIsNull)
-				{
-					if (byval)
-					{
-						memcpy(&(value->value), read_pos, sizeof(Datum));
-						read_pos += sizeof(Datum);
-					}
-					else
-					{
-						value->value = PointerGetDatum(read_pos);
-						read_pos += arglen;
-					}
-				}
+				read_pos = deserializeValue(read_pos, value, byval, arglen);
 			}
 		}
 
@@ -1885,11 +1791,150 @@ computeFrameValue(WindowStatePerLevel level_state,
 			}
 		}
 
+		else if (funcstate->isAgg && OidIsValid(funcstate->prelimfn_oid))
+		{
+			FrameBufferEntryForRows *curr_rows_entry = NULL;
+			FrameBufferEntryForRange *curr_range_entry = NULL;
+			WindowValue *curr_value = NULL;
+			
+			/* Indicate if the current frame contains tuples at all. */
+			bool has_tuples = true;
+			NTupleStorePos orig_pos;
+
+			if (EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) &&
+				((level_state->is_rows && 
+				  level_state->num_lead_rows < level_state->trail_rows) ||
+				 (!ntuplestore_acc_tell(level_state->trail_reader, NULL) &&
+				  !level_state->is_rows &&
+				  level_state->trail_range != 0)))
+				has_tuples = false;
+
+			/* Remember the original trail_reader position. */
+			ntuplestore_acc_tell(level_state->trail_reader, &orig_pos);
+
+			/* Since the trail_reader points to the value before the trailing
+			 * edge, we advance the trail_reader by one.
+			 */
+			if (ntuplestore_acc_tell(level_state->trail_reader, NULL))
+				ntuplestore_acc_advance(level_state->trail_reader, 1);
+			else
+			{
+				if (!ntuplestore_acc_tell(level_state->lead_reader, NULL) &&
+					(EDGE_IS_BOUND_PRECEDING(level_state->frame->lead) &&
+					 ((level_state->is_rows && level_state->lead_rows != 0) ||
+					  (!level_state->is_rows && level_state->lead_range != 0))))
+					has_tuples = false;
+				else
+					ntuplestore_acc_seek_first(level_state->trail_reader);
+			}
+				
+			funcstate->final_aggTransValue = funcstate->aggInitValue;
+			funcstate->final_aggTransValueIsNull = funcstate->aggInitValueIsNull;
+			funcstate->final_aggNoTransValue = funcstate->aggInitValueIsNull;
+
+			if (has_tuples)
+			{
+				while (ntuplestore_acc_tell(level_state->trail_reader, NULL))
+				{
+					if (ntuplestore_acc_tell(level_state->lead_reader, NULL) &&
+						ntuplestore_count_slot_acc(level_state->frame_buffer->tuplestore,
+												   level_state->trail_reader,
+												   level_state->lead_reader) < 0)
+						break;
+					
+					if (is_rows)
+					{
+						curr_rows_entry = getCurrentValue(level_state->trail_reader,
+														  level_state);
+						if (curr_rows_entry != NULL)
+							curr_value = (WindowValue *)
+								list_nth(curr_rows_entry->func_values, value_no);
+					}
+					else
+					{
+						curr_range_entry = getCurrentValue(level_state->trail_reader,
+														   level_state);
+						if (curr_range_entry != NULL)
+							curr_value = (WindowValue *)
+								list_nth(curr_range_entry->func_values, value_no);
+					}
+
+					if (curr_value != NULL)
+					{
+						fcinfo.arg[1] = curr_value->value;
+						fcinfo.argnull[1] = curr_value->valueIsNull;
+
+						funcstate->final_aggTransValue =
+							invoke_agg_trans_func(funcstate->prelimfn,
+												  funcstate->numargs,
+												  funcstate->final_aggTransValue,
+												  &funcstate->final_aggNoTransValue,
+												  &(funcstate->final_aggTransValueIsNull),
+												  funcstate->aggTranstypeByVal,
+												  funcstate->aggTranstypeLen,
+												  &fcinfo, (void *)wstate,
+												  wstate->transcontext,
+												  econtext->ecxt_per_tuple_memory);
+					}
+
+					ntuplestore_acc_advance(level_state->trail_reader, 1);
+
+					if (curr_rows_entry != NULL)
+						freeFrameBufferEntryForRows(curr_rows_entry);
+					if (curr_range_entry != NULL)
+						freeFrameBufferEntryForRange(curr_range_entry);
+				}
+
+				/* Add the funcstate->aggTransValue if it is in the current
+				 * frame.
+				 */
+				if (!ntuplestore_acc_tell(level_state->lead_reader, NULL) &&
+					level_state->agg_filled &&
+					(EDGE_IS_BOUND_FOLLOWING(level_state->frame->lead)  ||
+					 EDGE_IS_CURRENT_ROW(level_state->frame->lead) ||
+					 (EDGE_IS_BOUND_PRECEDING(level_state->frame->lead) &&
+					  ((level_state->is_rows && level_state->lead_rows == 0) ||
+					   (!level_state->is_rows && level_state->lead_range == 0)))))
+				{
+					fcinfo.arg[1] = funcstate->aggTransValue;
+					fcinfo.argnull[1] = funcstate->aggTransValueIsNull;
+
+					funcstate->final_aggTransValue =
+						invoke_agg_trans_func(funcstate->prelimfn,
+											  funcstate->numargs,
+											  funcstate->final_aggTransValue,
+											  &funcstate->final_aggNoTransValue,
+											  &(funcstate->final_aggTransValueIsNull),
+											  funcstate->aggTranstypeByVal,
+											  funcstate->aggTranstypeLen,
+											  &fcinfo, (void *)wstate,
+											  wstate->transcontext,
+											  econtext->ecxt_per_tuple_memory);
+				}
+			}
+
+			/* Reset the trail_reader to its original position. */
+			if (!ntuplestore_acc_seek(level_state->trail_reader, &orig_pos))
+				ntuplestore_acc_set_invalid(level_state->trail_reader);
+		}
+
 		else
 		{
-			ereport(ERROR,
-					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-					 errmsg("Not yet support functions that do not have invprelimfn")));
+			/* Here are the general cases. The frame buffer stores the input
+			 * arguments. For window aggregate functions, we scan through
+			 * values between the trailing edge and the leading edge, and
+			 * add them into the transition value. For ordinary window functions,
+			 * we pass the frame buffer to its function handler to generate
+			 * the output.
+			 */
+			if (!funcstate->isAgg)
+			{
+				add_tuple_to_trans(funcstate, wstate, econtext);
+			}
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
+						 errmsg("Not yet support agg functions that do not have invprelimfn")));
 		}
 
 		value_no++;
@@ -3784,6 +3829,22 @@ ExecWindow(WindowState *wstate)
 	ExprDoneCond isDone;
 	bool last_peer = false;
 
+
+	if (wstate->input_buffer == NULL)
+	{
+		/* Separate LEAD/LAG functions from wstate->level_state, and
+		 * store them individually to a new level_state. LEAD/LAG really
+		 * should not share the same key level as the other functions
+		 * since its framing depends on the offset value provided in
+		 * its arguments.
+		 *
+		 * We can not do this inside ExecInitWindow() because we modify
+		 * functions' WindowRefs to point to their new key level, which
+		 * makes it not longer match with windowKeys.
+		 */
+		separateLeadLag(wstate);
+	}
+
 	econtext = wstate->ps.ps_ExprContext;
 
 	/* Fetch the current_row */
@@ -3974,6 +4035,19 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 				 */
 				econtext->ecxt_scantuple = wstate->priorslot;
 				appendToFrameBuffer(level_state, wstate, last_peer);
+
+				/* Reset the transition value for those functions which
+				 * has preliminary functions, but not inverse preliminary
+				 * functions.
+				 */
+				foreach (lc, level_state->level_funcs)
+				{
+					WindowStatePerFunction funcstate = (WindowStatePerFunction) lfirst(lc);
+					if (funcstate->isAgg &&
+						!OidIsValid(funcstate->invprelimfn_oid) &&
+						OidIsValid(funcstate->prelimfn_oid))
+						resetTransValue(funcstate, wstate->transcontext);
+				}
 			}
 
 			/* If this slot causes the partition key to break, we don't add
@@ -3981,7 +4055,9 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 			 */
 			if (wstate->cur_slot_part_break || TupIsNull(slot))
 			{
-				level_state->agg_filled = false;
+				if (write_pre_value)
+					level_state->agg_filled = false;
+				
 				continue;
 			}
 			
@@ -4599,6 +4675,7 @@ separateLeadLag(WindowState *wstate)
 		WindowStatePerLevel next_level_state;
 		bool separate_first_one = true;
 		bool first_one = true;
+		int next_level;
 		
 		memcpy(&wstate->level_state[new_level], &old_level_state[level],
 			   sizeof(WindowStatePerLevelData));
@@ -4631,15 +4708,19 @@ separateLeadLag(WindowState *wstate)
 		/* Move the LEAD/LAG to next_level_state, and keep others to
 		 * level_state.
 		 */
+		next_level = new_level;
 		foreach (lc, level_funcs)
 		{
 			WindowStatePerFunction funcstate =
 				(WindowStatePerFunction) lfirst(lc);
+			WindowRefExprState *ref_state = funcstate->wrxstate;
+			WindowRef *ref = (WindowRef *)ref_state->xprstate.expr;
 
 			if (IS_LEAD_LAG_FUNC(funcstate->windowfn_oid) &&
 				(separate_first_one || !first_one))
 			{
-				next_level_state = &wstate->level_state[new_level + 1];
+				next_level++;
+				next_level_state = &wstate->level_state[next_level];
 				next_level_state->frame = copyObject(level_state->frame);
 				next_level_state->is_rows = true;
 				next_level_state->has_lead_lag = true;
@@ -4648,8 +4729,7 @@ separateLeadLag(WindowState *wstate)
 					lappend(next_level_state->level_funcs, funcstate);
 
 				set_lead_lag_framing(next_level_state, wstate);
-				
-				new_level++;
+				ref->winlevel = next_level;
 			}
 
 			else
@@ -4663,10 +4743,12 @@ separateLeadLag(WindowState *wstate)
 					level_state->has_lead_lag = true;
 					set_lead_lag_framing(level_state, wstate);
 				}
+				ref->winlevel = new_level;
 			}
 		}
 
 		list_free(level_funcs);
+		new_level = next_level;
 		new_level++;
 	}
 
@@ -4771,14 +4853,6 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 
 	/* Frame initialisation can take place now */	
 	init_frames(wstate);
-
-	/* Separate LEAD/LAG functions from wstate->level_state, and
-	 * store them individually to a new level_state. LEAD/LAG really
-	 * should not share the same key level as the other functions
-	 * since its framing depends on the offset value provided in
-	 * its arguments.
-	 */
-	separateLeadLag(wstate);
 
 	return wstate;
 }
@@ -5140,10 +5214,6 @@ lead_lag_internal(PG_FUNCTION_ARGS, bool is_lead, bool *isnull)
 	int64 offset = 0;
 	Datum val_expr = 0;
 	bool val_expr_null = true;
-#if 0
-	WindowRefExprState *ref_state = (WindowRefExprState *) PG_GETARG_POINTER(0);
-	WindowState *wstate = ref_state->windowstate;
-#endif
 
 	Insist(PG_NARGS() >= 2);
 	
@@ -6055,27 +6125,89 @@ lag_xid(PG_FUNCTION_ARGS)
 }
 
 static Datum
-last_value_internal(WindowRefExprState *ref_state, bool *isnull)
+last_value_internal(WindowRefExprState *wrxstate, bool *isnull)
 {
-#if 0
-	WindowState *window_state = ref_state->windowstate;
-	WindowStatePerFunction funcstate = window_state->cur_funcstate;
-	long int pos;
-	WinFuncBufferData *dat;
-#endif
-
+	WindowState *wstate = wrxstate->windowstate;
+	WindowStatePerFunction funcstate = &wstate->func_state[wrxstate->funcno];
+	WindowStatePerLevel level_state = funcstate->wlevel;
+	FrameBufferEntryForRows *rows_lead_entry = NULL;
+	FrameBufferEntryForRange *range_lead_entry = NULL;
+	WindowValue *lead_value = NULL;
+	
 	ereport(ERROR,
-			(errcode(ERRCODE_GP_FEATURE_NOT_YET),
-			 (errmsg("LEAD/LAG not supported yet"))));
+			(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
+			 errmsg("Not yet support LAST_VALUE.")));
 
-	return (Datum)0;
+	if (level_state->is_rows)
+	{
+		if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
+			level_state->num_lead_rows >= level_state->trail_rows)
+		{
+			rows_lead_entry = getCurrentValue(level_state->lead_reader, level_state);
+			if (rows_lead_entry != NULL)
+				lead_value = (WindowValue *)list_nth(rows_lead_entry->func_values,
+													 funcstate->serial_index);
+		}
+	}
+	else
+	{
+		if (level_state->frame->lead->kind != WINDOW_UNBOUND_FOLLOWING)
+		{
+			range_lead_entry = getCurrentValue(level_state->lead_reader, level_state);
+			if (range_lead_entry != NULL)
+				lead_value = (WindowValue *)list_nth(range_lead_entry->func_values,
+													 funcstate->serial_index);
+		}
+	}
+
+	if (lead_value != NULL)
+	{
+		funcstate->win_value = lead_value->value;
+		funcstate->win_value_is_null = lead_value->valueIsNull;
+	}
+
+	else
+	{
+		if ((EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) &&
+			 ((level_state->is_rows && level_state->trail_rows != 0) ||
+			  (!level_state->is_rows && level_state->trail_range != 0))) ||
+			(EDGE_IS_BOUND_PRECEDING(level_state->frame->lead) &&
+			 ((level_state->is_rows && level_state->lead_rows != 0) ||
+			  (!level_state->is_rows && level_state->lead_range != 0))))
+		{
+			funcstate->win_value = 0;
+			funcstate->win_value_is_null = false;
+		}
+		else
+		{
+			int argno = 1;
+			ExprContext *econtext = wstate->ps.ps_ExprContext;
+			TupleTableSlot *orig_slot = econtext->ecxt_scantuple;
+			ExprState *argstate;
+			
+			/* Obtain the value from the last tuple in the input buffer */
+			ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
+											  wstate->spare);
+			econtext->ecxt_scantuple = wstate->spare;
+			argstate = (ExprState *)list_nth(wrxstate->args, argno);
+			funcstate->win_value = ExecEvalExpr(argstate, econtext,
+												&(funcstate->win_value_is_null),
+												NULL);
+			Assert(!funcstate->win_value_is_null);
+			econtext->ecxt_scantuple = orig_slot;
+		}
+	}
+
+	*isnull = funcstate->win_value_is_null;
+
+	return funcstate->win_value;
 }
 
 Datum
 last_value_smallint(PG_FUNCTION_ARGS)
 {
 	Datum d;
-	bool isnull;
+	bool isnull = false;
 	
 	d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
 							&isnull);
@@ -6090,7 +6222,7 @@ Datum
 last_value_int(PG_FUNCTION_ARGS)
 {
 	Datum d;
-	bool isnull;
+	bool isnull = false;
 	
 	d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
 							&isnull);
@@ -6105,7 +6237,7 @@ Datum
 last_value_bigint(PG_FUNCTION_ARGS)
 {
 	Datum d;
-	bool isnull;
+	bool isnull = false;
 	
 	d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
 							&isnull);
@@ -6120,7 +6252,7 @@ Datum
 last_value_numeric(PG_FUNCTION_ARGS)
 {
 	Datum d;
-	bool isnull;
+	bool isnull = false;
 	
 	d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
 							&isnull);
@@ -6135,7 +6267,7 @@ Datum
 last_value_text(PG_FUNCTION_ARGS)
 {
 	Datum d;
-	bool isnull;
+	bool isnull = false;
 	
 	d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
 							&isnull);
@@ -6150,7 +6282,7 @@ Datum
 last_value_bool(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6165,7 +6297,7 @@ Datum
 last_value_char(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6180,7 +6312,7 @@ Datum
 last_value_cidr(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6195,7 +6327,7 @@ Datum
 last_value_circle(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6210,7 +6342,7 @@ Datum
 last_value_float4(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6225,7 +6357,7 @@ Datum
 last_value_float8(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6240,7 +6372,7 @@ Datum
 last_value_inet(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6255,7 +6387,7 @@ Datum
 last_value_interval(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6270,7 +6402,7 @@ Datum
 last_value_line(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6285,7 +6417,7 @@ Datum
 last_value_lseg(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6300,7 +6432,7 @@ Datum
 last_value_macaddr(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6315,7 +6447,7 @@ Datum
 last_value_money(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6330,7 +6462,7 @@ Datum
 last_value_name(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6345,7 +6477,7 @@ Datum
 last_value_oid(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6360,7 +6492,7 @@ Datum
 last_value_path(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6375,7 +6507,7 @@ Datum
 last_value_point(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6390,7 +6522,7 @@ Datum
 last_value_polygon(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6405,7 +6537,7 @@ Datum
 last_value_reltime(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6420,7 +6552,7 @@ Datum
 last_value_tid(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6435,7 +6567,7 @@ Datum
 last_value_time(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6450,7 +6582,7 @@ Datum
 last_value_timestamp(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6465,7 +6597,7 @@ Datum
 last_value_timestamptz(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6480,7 +6612,7 @@ Datum
 last_value_timetz(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6495,7 +6627,7 @@ Datum
 last_value_varbit(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6510,7 +6642,7 @@ Datum
 last_value_varchar(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6525,7 +6657,7 @@ Datum
 last_value_xid(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6539,27 +6671,76 @@ last_value_xid(PG_FUNCTION_ARGS)
 
 
 static Datum
-first_value_internal(WindowRefExprState *ref_state, bool *isnull)
+first_value_internal(WindowRefExprState *wrxstate, bool *isnull)
 {
-#if 0
-	WindowState *window_state = ref_state->windowstate;
-	WindowStatePerFunction funcstate = window_state->cur_funcstate;
-	long int pos;
-	WinFuncBufferData *dat;
-#endif
+	WindowState *wstate = wrxstate->windowstate;
+	WindowStatePerFunction funcstate = &wstate->func_state[wrxstate->funcno];
+	WindowStatePerLevel level_state = funcstate->wlevel;
+	FrameBufferEntryForRows *rows_trail_entry = NULL;
+	FrameBufferEntryForRange *range_trail_entry = NULL;
+	WindowValue *trail_value = NULL;
 
 	ereport(ERROR,
-			(errcode(ERRCODE_GP_FEATURE_NOT_YET),
-			 (errmsg("LEAD/LAG not supported yet"))));
+			(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
+			 errmsg("Not yet support FIRST_VALUE.")));
 
-	return (Datum)0;
+	/* Since the trail_reader points to the value that is right before
+	 * the trailing edge, we advance the trail_reader by one.
+	 */
+	if (ntuplestore_acc_tell(level_state->trail_reader, NULL))
+		ntuplestore_acc_advance(level_state->trail_reader, 1);
+	else
+		ntuplestore_acc_seek_first(level_state->trail_reader);
+	
+	if (level_state->is_rows)
+	{
+		if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
+			level_state->num_lead_rows >= level_state->trail_rows)
+		{
+			rows_trail_entry = getCurrentValue(level_state->trail_reader, level_state);
+			if (rows_trail_entry != NULL)
+				trail_value = (WindowValue *)list_nth(rows_trail_entry->func_values,
+													  funcstate->serial_index);
+		}
+	}
+	else
+	{
+		range_trail_entry = getCurrentValue(level_state->trail_reader, level_state);
+		if (range_trail_entry != NULL)
+			trail_value = (WindowValue *)list_nth(range_trail_entry->func_values,
+												  funcstate->serial_index);
+	}
+
+	if (trail_value != NULL)
+	{
+		funcstate->win_value = trail_value->value;
+		funcstate->win_value_is_null = trail_value->valueIsNull;
+	}
+
+	else
+	{
+		if ((EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) &&
+			 ((level_state->is_rows && level_state->trail_rows != 0) ||
+			  (!level_state->is_rows && level_state->trail_range != 0))) ||
+			(EDGE_IS_BOUND_PRECEDING(level_state->frame->lead) &&
+			 ((level_state->is_rows && level_state->lead_rows != 0) ||
+			  (!level_state->is_rows && level_state->lead_range != 0))))
+		{
+			funcstate->win_value = 0;
+			funcstate->win_value_is_null = false;
+		}
+	}
+
+	*isnull = funcstate->win_value_is_null;
+
+	return funcstate->win_value;
 }
 
 Datum
 first_value_bool(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6574,7 +6755,7 @@ Datum
 first_value_char(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6589,7 +6770,7 @@ Datum
 first_value_cidr(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6604,7 +6785,7 @@ Datum
 first_value_circle(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6619,7 +6800,7 @@ Datum
 first_value_float4(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6634,7 +6815,7 @@ Datum
 first_value_float8(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6649,7 +6830,7 @@ Datum
 first_value_inet(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6664,7 +6845,7 @@ Datum
 first_value_interval(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6679,7 +6860,7 @@ Datum
 first_value_line(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6694,7 +6875,7 @@ Datum
 first_value_lseg(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6709,7 +6890,7 @@ Datum
 first_value_macaddr(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6724,7 +6905,7 @@ Datum
 first_value_smallint(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6739,7 +6920,7 @@ Datum
 first_value_int4(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6754,7 +6935,7 @@ Datum
 first_value_int8(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6769,7 +6950,7 @@ Datum
 first_value_money(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6784,7 +6965,7 @@ Datum
 first_value_name(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6799,7 +6980,7 @@ Datum
 first_value_numeric(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6815,7 +6996,7 @@ Datum
 first_value_oid(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6830,7 +7011,7 @@ Datum
 first_value_path(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6845,7 +7026,7 @@ Datum
 first_value_point(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6860,7 +7041,7 @@ Datum
 first_value_polygon(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6875,7 +7056,7 @@ Datum
 first_value_reltime(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6890,7 +7071,7 @@ Datum
 first_value_text(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6905,7 +7086,7 @@ Datum
 first_value_tid(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6920,7 +7101,7 @@ Datum
 first_value_time(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6935,7 +7116,7 @@ Datum
 first_value_timestamp(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6950,7 +7131,7 @@ Datum
 first_value_timestamptz(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6965,7 +7146,7 @@ Datum
 first_value_timetz(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6980,7 +7161,7 @@ Datum
 first_value_varbit(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -6995,7 +7176,7 @@ Datum
 first_value_varchar(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
@@ -7010,7 +7191,7 @@ Datum
 first_value_xid(PG_FUNCTION_ARGS)
 {
     Datum d;
-    bool isnull;
+    bool isnull = false;
 
     d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
                             &isnull);
