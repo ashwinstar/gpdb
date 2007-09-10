@@ -3422,6 +3422,7 @@ get_stats_option_name(const char *arg)
 #include "commands/copy.h"
 extern void CopyToDispatch(CopyState cstate);
 extern void CopyFromDispatch(CopyState cstate);
+extern void SetSessionUserId(Oid userid, bool is_superuser);
 
 /*
  * This code is used by the dispatch agent (Gp_role == GP_ROLE_DISPATCHAGENT)
@@ -3713,7 +3714,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			 * and relayed to the QE
 			 */
 			if (suid > 0) 
-				SetSessionAuthorization(suid, suid_is_super); /* Set the session UserId */
+				SetSessionUserId(suid, suid_is_super); /* Set the session UserId */
 
 			if (ouid > 0 && ouid != GetSessionUserId())
 				SetCurrentRoleId(ouid, ouid_is_super); /* Set the outer UserId */

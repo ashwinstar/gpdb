@@ -339,8 +339,8 @@ GetSessionUserId(void)
 	return SessionUserId;
 }
 
-
-static void
+/* extern so DispatchAgent can use this (postgres.c) */
+extern void
 SetSessionUserId(Oid userid, bool is_superuser)
 {
 	AssertArg(OidIsValid(userid));
