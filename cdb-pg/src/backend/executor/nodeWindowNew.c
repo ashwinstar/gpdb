@@ -179,6 +179,8 @@ typedef struct WindowStatePerFunctionData
 	/* Indicate if this function requires a range cumulative frame. */
 	bool                cumul_frame;
 	
+	bool                winpeercount;
+
 	int					numargs; /* explicit, caller-supplied args */
 	int16				resulttypeLen;
 	bool				resulttypeByVal;
@@ -632,7 +634,7 @@ static int findSerialIndex(WindowStatePerFunction funcstate,
 	{
 		WindowStatePerFunction curr_funcstate = (WindowStatePerFunction) lfirst(lc);
 		if (curr_funcstate->trivial_frame &&
-			curr_funcstate->windowfn_oid != CUME_DIST_PRELIM_OID)
+			!curr_funcstate->winpeercount)
 		{
 			/* ignore trivial window functions */
 			continue;
@@ -714,14 +716,14 @@ serializeFuncs(WindowStatePerLevel level_state,
 		WindowStatePerFunction funcstate = (WindowStatePerFunction) lfirst(lc);
 
 		if (funcstate->trivial_frame &&
-			funcstate->windowfn_oid != CUME_DIST_PRELIM_OID)
+			!funcstate->winpeercount)
 		{
 			/* ignore trivial window functions */
 			continue;
 		}
 
-		/* CUME_DIST_PRELIM function */
-		else if (funcstate->windowfn_oid == CUME_DIST_PRELIM_OID)
+		/* functions that require peer counts. */
+		else if (funcstate->winpeercount)
 		{
 			int16 typelen;
 			bool byvalue;
@@ -887,11 +889,11 @@ deserializeFuncs(WindowStatePerLevel level_state,
 
 		/* skip window functions with trivial frames */
 		if (funcstate->trivial_frame &&
-			funcstate->windowfn_oid != CUME_DIST_PRELIM_OID)
+			!funcstate->winpeercount)
 			continue;
 
-		/* CUME_DIST_PRELIM function */
-		else if (funcstate->windowfn_oid == CUME_DIST_PRELIM_OID)
+		/* functions that require peer counts. */
+		else if (funcstate->winpeercount)
 		{
 			int16 typelen;
 			bool byvalue;
@@ -1182,7 +1184,8 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 			
 			else
 			{
-				bool found = ntuplestore_acc_advance(level_state->lead_reader, 1);
+				bool found;
+				found = ntuplestore_acc_advance(level_state->lead_reader, 1);
 				Assert(found);
 				level_state->num_lead_rows++;
 			}
@@ -1268,11 +1271,13 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 				
 				else
 				{
+					bool found;
+					
 					/* Check if the last tuple in the input buffer is the leading
 					 * edge.
 					 */
-					bool found = ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
-																   wstate->spare);
+					found = ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
+															  wstate->spare);
 					Assert(found);
 					
 					deform_window_tuple(wstate->spare,
@@ -1442,8 +1447,7 @@ incrementCurrentRow(WindowFrameBuffer buffer,
 		level_state->num_lead_rows--;
 	}
 
-   if (!buffer->level_state->trivial_frames_only ||
-	   level_state->need_peercount)
+   if (!buffer->level_state->trivial_frames_only)
 	   /* Adjust all leading and trailig edges */
 	   adjustEdges(buffer, wstate);
 
@@ -1553,13 +1557,15 @@ computeFrameValue(WindowStatePerLevel level_state,
 	{
 		WindowStatePerFunction funcstate = (WindowStatePerFunction) lfirst(lc);
 		
-		/* Ignore ordinary window functions, except for CUME_DIST. */
+		/* Ignore ordinary window functions, except for functions that
+		 * require peer counts.
+		 */
 		if (funcstate->trivial_frame &&
-			funcstate->windowfn_oid != CUME_DIST_PRELIM_OID)
+			!funcstate->winpeercount)
 			continue;
 
-		/* CUME_DIST */
-		else if (funcstate->windowfn_oid == CUME_DIST_PRELIM_OID)
+		/* functions that require peer counts. */
+		else if (funcstate->winpeercount)
 		{
 			/* If we didn't read the value pointed by current_row_reader,
 			 * read it now.
@@ -2337,6 +2343,7 @@ initWindowFuncState(WindowState *wstate, Window *node)
 			if (PointerIsValid(funcstate->wlevel) && winform->winpeercount)
 			{
 				funcstate->wlevel->need_peercount = winform->winpeercount;
+				funcstate->winpeercount = winform->winpeercount;
 				wstate->need_peercount = winform->winpeercount;
 			}
 		}
@@ -2637,10 +2644,10 @@ freeInputBuffer(WindowState *wstate)
 }
 
 /*
- * Advance CUME_DIST values.
+ * Advance values related to computing peer count.
  */
 static void
-advanceCumeDist(WindowState *wstate, int min_level)
+advancePeerCount(WindowState *wstate, int min_level)
 {
 	WindowStatePerLevel level_state;
 	int i;
@@ -2781,7 +2788,7 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 		WindowStatePerLevel level_state = funcstate->wlevel;
 		
 		if (funcstate->trivial_frame &&
-			funcstate->windowfn_oid != CUME_DIST_PRELIM_OID)
+			!funcstate->winpeercount)
 		{
 			econtext->ecxt_scantuple = wstate->curslot;
 			add_tuple_to_trans(funcstate, wstate, econtext);
@@ -3873,8 +3880,7 @@ ExecWindow(WindowState *wstate)
 		if (level_state->empty_frame)
 			continue;
 
-		if (!level_state->trivial_frames_only ||
-			level_state->need_peercount)
+		if (!level_state->trivial_frames_only)
 		{
 			if ((wstate->input_buffer->num_tuples > 1) &&
 				(level_state->is_rows ||
@@ -3986,15 +3992,14 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 	{
 		WindowStatePerLevel level_state = &wstate->level_state[level];
 		ListCell *lc;
-		bool adv_cume_dist = false;
+		bool adv_peercount = false;
 
 		if (level_state->empty_frame)
 			continue;
 
 		level_state->agg_filled = true;
 		
-		if (!level_state->trivial_frames_only ||
-			level_state->need_peercount)
+		if (!level_state->trivial_frames_only)
 		{
 			bool write_pre_value = false;
 			if (wstate->input_buffer->num_tuples > 1 &&
@@ -4015,9 +4020,9 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 			if (write_pre_value)
 			{
 				/*
-				 * If there is a CUME_DIST, we need to compute its
-				 * preliminary value before appending it to the frame
-				 * buffer.
+				 * If there is a function that requires peer counts, 
+				 * we need to compute its preliminary value before 
+				 * appending it to the frame buffer.
 				 */
 				if (level_state->need_peercount)
 				{
@@ -4025,7 +4030,7 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 					{
 						WindowStatePerFunction funcstate =
 							(WindowStatePerFunction) lfirst(lc);
-						if (funcstate->windowfn_oid == CUME_DIST_PRELIM_OID)
+						if (funcstate->winpeercount)
 							add_tuple_to_trans(funcstate, wstate, econtext);
 					}
 				}
@@ -4066,22 +4071,21 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 				WindowStatePerFunction funcstate = (WindowStatePerFunction) lfirst(lc);
 				ExprContext *econtext = wstate->ps.ps_ExprContext;
 				
-				if (funcstate->trivial_frame &&
-					!level_state->need_peercount)
+				if (funcstate->trivial_frame)
 					continue;
 
-				/* Increment the values for CUME_DIST. There may be more than
-				 * one cume_dist in one key level. We should catch this in the
+				/* Increment the values for peer counts. There may be more than
+				 * one such function in one key level. We should catch this in the
 				 * earlier stage, but in case we didn't, we only do this once.
 				 */
-				if (!adv_cume_dist && funcstate->windowfn_oid == CUME_DIST_PRELIM_OID)
+				if (!adv_peercount && funcstate->winpeercount)
 				{
 					if (wstate->cur_slot_is_new &&
 						wstate->cur_slot_key_break != -1 &&
 						wstate->cur_slot_key_break < wstate->numlevels)
-						advanceCumeDist(wstate, wstate->cur_slot_key_break);
+						advancePeerCount(wstate, wstate->cur_slot_key_break);
 
-					adv_cume_dist = true;
+					adv_peercount = true;
 				}
 				
 				else
@@ -4118,8 +4122,7 @@ checkOutputReady(WindowState *wstate)
 	{
 		WindowStatePerLevel level_state = &wstate->level_state[level];
 
-		if (!level_state->need_peercount &&
-			level_state->trivial_frames_only)
+		if (level_state->trivial_frames_only)
 			continue;
 
 		if (level_state->is_rows)
@@ -4287,7 +4290,8 @@ init_frames(WindowState *wstate)
 				(WindowStatePerFunction)lfirst(lc);
 
 			if (!frame || (!funcstate->isAgg && !funcstate->allowframe &&
-						   !IS_LEAD_LAG_FUNC(funcstate->windowfn_oid)))
+						   !IS_LEAD_LAG_FUNC(funcstate->windowfn_oid) &&
+						   !funcstate->winpeercount))
 			{
 				funcstate->trivial_frame = true;
 			}
