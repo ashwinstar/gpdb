@@ -862,7 +862,7 @@ SendTupleChunkToAMS(MotionLayerState *mlStates,
 {
 	int			i,
 		recount = 0;
-	ChunkTransportStateEntry *pEntry;
+	ChunkTransportStateEntry *pEntry = NULL;
 	MotionConn *conn;
 	TupleChunkListItem currItem;
 
@@ -946,7 +946,7 @@ SendEosToAMS(MotionLayerState *mlStates,
 			 int motNodeID,
 			 TupleChunkListItem tcItem)
 {
-	ChunkTransportStateEntry *pEntry;
+	ChunkTransportStateEntry *pEntry = NULL;
 	MotionConn *conn;
 	int			i;
 
@@ -1078,7 +1078,7 @@ put_rx_buffer(MotionConn *conn)
 void
 ml_put_rx_buffer(ChunkTransportState *transportStates, int motNodeID, int route)
 {
-	ChunkTransportStateEntry *pEntry;
+	ChunkTransportStateEntry *pEntry = NULL;
 	MotionConn			*conn=NULL;
 
 	getChunkTransportState(transportStates, motNodeID, &pEntry);
@@ -1238,7 +1238,7 @@ RecvTupleChunkFromAnyUDP(MotionLayerState *mlStates,
 						 int16 motNodeID,
 						 int16 *srcRoute)
 {
-	ChunkTransportStateEntry *pEntry;
+	ChunkTransportStateEntry *pEntry = NULL;
 	MotionConn			*conn=NULL;
 	int					i, index, activeCount=0;
 	TupleChunkListItem	tcItem=NULL;
@@ -1292,7 +1292,7 @@ RecvTupleChunkFromUDP(ChunkTransportState *transportStates,
 					  int16		motNodeID,
 					  int16		srcRoute)
 {
-	ChunkTransportStateEntry *pEntry;
+	ChunkTransportStateEntry *pEntry = NULL;
 	MotionConn			*conn;
 	int16				route;
 
@@ -1343,7 +1343,7 @@ RecvTupleChunkFromAny(MotionLayerState *mlStates,
 					  int16 motNodeID,
 					  int16 *srcRoute)
 {
-	ChunkTransportStateEntry *pEntry;
+	ChunkTransportStateEntry *pEntry = NULL;
 	MotionNodeEntry  *pMNEntry;
 	MotionConn *conn;
 	TupleChunkListItem tcItem;
@@ -1463,7 +1463,7 @@ RecvTupleChunkFrom(ChunkTransportState *transportStates,
 				   int16 motNodeID,
 				   int16 srcRoute)
 {
-	ChunkTransportStateEntry *pEntry;
+	ChunkTransportStateEntry *pEntry = NULL;
 	MotionConn *conn;
 
 	Insist(transportStates && transportStates->activated);
@@ -1492,7 +1492,7 @@ DeregisterReadInterest(ChunkTransportState *transportStates,
                        int		srcRoute,
                        const char		*reason)
 {
-	ChunkTransportStateEntry *pEntry;
+	ChunkTransportStateEntry *pEntry = NULL;
 	MotionConn *conn;
 
 	Insist(transportStates && transportStates->activated);
@@ -2501,7 +2501,7 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 					 bool forceEOS)
 {
 	ListCell   *cell;
-	ChunkTransportStateEntry *pEntry;
+	ChunkTransportStateEntry *pEntry = NULL;
 	int			i;
 	Slice	   *mySlice;
 	MotionConn *conn;
@@ -3876,7 +3876,7 @@ readRegisterMessage(ChunkTransportState *transportStates,
     RegisterMessage    *regMsg;
 	RegisterMessage     msg;
 	MotionConn         *newConn;
-    ChunkTransportStateEntry   *pEntry;
+    ChunkTransportStateEntry   *pEntry = NULL;
 	CdbProcess         *cdbproc;
 
     /* Get ready to receive the Register message. */
@@ -4660,7 +4660,7 @@ dumpEntryConnections(int elevel, ChunkTransportStateEntry *pEntry)
 void
 doSendStopMessage(ChunkTransportState *transportStates, int16 motNodeID)
 {
-	ChunkTransportStateEntry *pEntry;
+	ChunkTransportStateEntry *pEntry = NULL;
 	MotionConn *conn;
 	int			i;
 	char		m = 'S';
