@@ -227,8 +227,9 @@ def save(fpath, content):
 try:
     parseCommandLine()
 
-    if not os.path.exists(opt['-o']):
-        os.mkdir(opt['-o'])
+    if os.path.exists(opt['-o']):
+        run('rm -rf %s' % opt['-o'])
+    os.mkdir(opt['-o'])
 
     (ok, out) = run('echo "%s" > %s/timestamp' % (opt['-t'],  opt['-o']))
     if not ok:
@@ -244,12 +245,19 @@ try:
     session = sshGpLog(config)
     waitSession(session)
 
+
+
     dbid = 1
     for p in session:
-        dir = '%s/%s' % (opt['-o'], p.x_host)
+
+        odir = '%s/%s' % (opt['-o'], p.x_host)
+        if os.path.exists(odir) == False:
+            os.mkdir(odir)
+
+        dir = '%s/%d' % (odir, dbid)
         if os.path.exists(dir) == False:
             os.mkdir(dir)
-        
+
         key = 'netstat'
         value = p.x_res.get(key)
         if not value:
@@ -269,10 +277,10 @@ try:
         key = 'log'
         value = p.x_res.get(key)
         if not value:
-            value = 'empty log\n'
+            value = 'empty log'
 
         
-        fpath = '%s/%s%d' % (dir, key, dbid)
+        fpath = '%s/%s' % (dir, key)
         save(fpath, value)
 
         dbid += 1
