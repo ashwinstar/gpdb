@@ -2019,6 +2019,11 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 	(*ppTransportStates)->sliceTable = mySliceTable;
 	(*ppTransportStates)->sliceId = mySliceId;
 
+	if (Gp_interconnect_type == INTERCONNECT_TYPE_NIL)
+	{
+		return;
+	}
+
 	mySlice = (Slice *) list_nth((*ppTransportStates)->sliceTable->slices, mySliceId);
 
     Assert(mySlice &&
@@ -2529,6 +2534,10 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
 	{
 		TeardownUDPInterconnect(transportStates, mlStates, forceEOS);
+		return;
+	}
+	else if (Gp_interconnect_type == INTERCONNECT_TYPE_NIL)
+	{
 		return;
 	}
 
