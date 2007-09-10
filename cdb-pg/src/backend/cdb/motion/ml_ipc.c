@@ -168,8 +168,10 @@ static ChunkTransportStateEntry *createChunkTransportState(ChunkTransportState *
 													  int numPrimaryConns,
 													  int numMirrorConns);
 
+#if 1
 static inline ChunkTransportStateEntry *getChunkTransportState(ChunkTransportState *transportStates,
-														  int motNodeID);
+															   int motNodeID) __attribute__((always_inline));
+#endif
 
 static ChunkTransportStateEntry *removeChunkTransportState(ChunkTransportState *transportStates,
 														   int16 motNodeID);
@@ -307,7 +309,7 @@ gettime_elapsed_ms(struct timeval t0)
     return timeval_delta_ms(t1, t0);
 }
 
-
+#if 1
 /* Function getChunkTransportState() is used to retrieve a ChunkTransportState from the
  * hashtab hashtable based on the given motNodeID.	This function should only
  * be called after createChunkTransportState() for a given motion node has been called
@@ -345,7 +347,28 @@ getChunkTransportState(ChunkTransportState *transportState, int motNodeID)
 	}
 	return pEntry;
 }
-
+#else
+#define getChunkTransportState(transportState, motNodeID, ppEntry) \
+	do { \
+		Assert((transportState) != NULL);		\
+		if ((motNodeID) > 0 &&					\
+			(transportState) &&					 \
+			(motNodeID) <= (transportState)->size &&					\
+			(transportState)->states[(motNodeID)-1].motNodeId == (motNodeID) && \
+			(transportState)->states[(motNodeID)-1].valid)				\
+		{ \
+			*(ppEntry) = &(transportState)->states[(motNodeID) - 1];	\
+		} \
+		else \
+		{ \
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), \
+							errmsg("Interconnect Error: Unexpected Motion Node Id: %d.  This means" \
+								   " a motion node that wasn't setup is requesting interconnect" \
+								   " resources.", (motNodeID))));		\
+			/* not reached */ \
+		} \
+	} while (0)
+#endif
 
 
 /* Function doBroadcast() is used to send a TupleChunk to all recipients.
@@ -898,7 +921,11 @@ SendTupleChunkToAMS(MotionLayerState *mlStates,
 		 transportStates, transportStates->size, motNodeID);
 #endif
 
+#if 1
 	pEntry = getChunkTransportState(transportStates, motNodeID);
+#else
+	getChunkTransportState(transportStates, motNodeID, &pEntry);
+#endif
 
 	/*
 	 * tcItem can actually be a chain of tcItems.  we need to send out all of
@@ -977,7 +1004,11 @@ SendEosToAMS(MotionLayerState *mlStates,
 	/* check em' */
 	ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 
+#if 1
 	pEntry = getChunkTransportState(transportStates, motNodeID);
+#else
+	getChunkTransportState(transportStates, motNodeID, &pEntry);
+#endif
 
 	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 		elog(DEBUG3, "Interconnect seg%d slice%d sending end-of-stream to slice%d",
@@ -1103,7 +1134,11 @@ ml_put_rx_buffer(ChunkTransportState *transportStates, int motNodeID, int route)
 	ChunkTransportStateEntry *pEntry;
 	MotionConn			*conn=NULL;
 
+#if 1
 	pEntry = getChunkTransportState(transportStates, motNodeID);
+#else
+	getChunkTransportState(transportStates, motNodeID, &pEntry);
+#endif
 
 	conn = pEntry->conns + route;
 
@@ -1265,7 +1300,11 @@ RecvTupleChunkFromAnyUDP(MotionLayerState *mlStates,
 	int					i, index, activeCount=0;
 	TupleChunkListItem	tcItem=NULL;
 
+#if 1
 	pEntry = getChunkTransportState(transportStates, motNodeID);
+#else
+	getChunkTransportState(transportStates, motNodeID, &pEntry);
+#endif
 
     index = pEntry->scanStart;
 
@@ -1329,7 +1368,11 @@ RecvTupleChunkFromUDP(ChunkTransportState *transportStates,
 	elog(DEBUG5, "RecvTupleChunkFromUDP(motNodID=%d, srcRoute=%d)", motNodeID, srcRoute);
 #endif
 
+#if 1
 	pEntry = getChunkTransportState(transportStates, motNodeID);
+#else
+	getChunkTransportState(transportStates, motNodeID, &pEntry);
+#endif
 	conn = pEntry->conns + srcRoute;
 
 #ifdef AMS_VERBOSE_LOGGING
@@ -1384,7 +1427,11 @@ RecvTupleChunkFromAny(MotionLayerState *mlStates,
 	elog(DEBUG5, "RecvTupleChunkFromAny(motNodeId=%d)", motNodeID);
 #endif
 
+#if 1
 	pEntry = getChunkTransportState(transportStates, motNodeID);
+#else
+	getChunkTransportState(transportStates, motNodeID, &pEntry);
+#endif
 	pMNEntry = getMotionNodeEntry(mlStates, motNodeID, "RecvTupleChunkFromAny");
 
 	do
@@ -1501,7 +1548,11 @@ RecvTupleChunkFrom(ChunkTransportState *transportStates,
 	elog(DEBUG5, "RecvTupleChunkFrom(motNodID=%d, srcpIncIdx %d srcRoute=%d)", motNodeID, srcpInc, srcRoute);
 #endif
 
+#if 1
 	pEntry = getChunkTransportState(transportStates, motNodeID);
+#else
+	getChunkTransportState(transportStates, motNodeID, &pEntry);
+#endif
 	conn = pEntry->conns + srcRoute;
 
 	return RecvTupleChunk(conn, transportStates->teardownActive);
@@ -1520,7 +1571,12 @@ DeregisterReadInterest(ChunkTransportState *transportStates,
 
 	Insist(transportStates && transportStates->activated);
 
+#if 1
 	pEntry = getChunkTransportState(transportStates, motNodeID);
+#else
+	getChunkTransportState(transportStates, motNodeID, &pEntry);
+#endif
+
 	conn = pEntry->conns + srcRoute;
 
     if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
@@ -1909,8 +1965,11 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 				ChunkTransportStateEntry *pEntry=NULL;
 				int motid = lfirst_int(cell);
 
+#if 1
 				pEntry = getChunkTransportState(*ppTransportStates, motid);
-
+#else
+				getChunkTransportState(*ppTransportStates, motid, &pEntry);
+#endif
 				Assert(pEntry);
 				Assert(pEntry->valid);
 
@@ -2630,7 +2689,11 @@ TeardownInterconnect(ChunkTransportState *transportStates,
             elog(DEBUG3, "Interconnect seg%d slice%d closing connections to slice%d",
                  Gp_segment, mySlice->sliceIndex, mySlice->parentIndex);
 
+#if 1
 		pEntry = getChunkTransportState(transportStates, mySlice->sliceIndex);
+#else
+		getChunkTransportState(transportStates, mySlice->sliceIndex, &pEntry);
+#endif
 
 		if (forceEOS)
 			forceEosToPeers(mlStates, transportStates, mySlice->sliceIndex);
@@ -3978,7 +4041,11 @@ readRegisterMessage(ChunkTransportState *transportStates,
      * number equals the motion node id.  (Don't use this ptr until after
      * the bounds are checked, just below.)
      */
+#if 1
     pEntry = getChunkTransportState(transportStates, msg.sendSliceIndex);
+#else
+	getChunkTransportState(transportStates, msg.sendSliceIndex, &pEntry);
+#endif
 	Assert(pEntry);
 
     /* Verify that the message pertains to one of our receiving Motion nodes. */
@@ -4689,7 +4756,11 @@ doSendStopMessage(ChunkTransportState *transportStates, int16 motNodeID)
 	char		m = 'S';
 	ssize_t		written;
 
+#if 1
 	pEntry = getChunkTransportState(transportStates, motNodeID);
+#else
+	getChunkTransportState(transportStates, motNodeID, &pEntry);
+#endif
 	Assert(pEntry);
 
 	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
