@@ -215,6 +215,9 @@ def pg_locks():
     fpath = '%s/pg_locks.out' % opt['-o']
     return run('psql -e template1 -c "select * from pg_locks" > %s 2>&1' % fpath)
 
+def gp_dump_schema():
+    return run('gp_dump -s %s --gp-d=%s' % (opt['-s'], opt['-o']))
+
 def save(fpath, content):
     try:
         f = open(fpath, 'w')
@@ -236,16 +239,28 @@ try:
         sys.exit('directory %s is not writable' % opt['-o'])
 
     (ok, out) = runsql()
+    if not ok:
+        print '[Error] run sql file %s failed' % opt['-f']
 
     (ok, out) = gp_configuration()
+    if not ok:
+        print '[Error] select gp_configuration failed'
+
     (ok, out) = pg_stat_activity()
+    if not ok:
+        print '[Error] select pg_stat_activity failed'
+
     (ok, out) = pg_locks()
+    if not ok:
+        print '[Error] select pg_locks failed'
+
+    (ok, out) = gp_dump_schema()
+    if not ok:
+        print '[Error] gp_dump schema failed'
 
     config = Config()
     session = sshGpLog(config)
     waitSession(session)
-
-
 
     dbid = 1
     for p in session:
