@@ -683,7 +683,7 @@ cdb_cleanup(int code __attribute__((unused)) , Datum arg __attribute__((unused))
 				 cdb_max_slices);
 	}
 
-	if (Gp_role != GP_ROLE_UTILITY)
+	if (Gp_role != GP_ROLE_UTILITY && Gp_role != GP_ROLE_DISPATCHAGENT)
 	{
 		/* shutdown our listener socket */
 		CleanUpMotionLayerIPC();
