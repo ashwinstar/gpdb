@@ -3379,7 +3379,7 @@ fi
 rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
 
   if test "$ICC" = no; then
-    CFLAGS="$CFLAGS -Wall -Wmissing-prototypes -Wpointer-arith -Winline"
+    CFLAGS="$CFLAGS -Wall -Wmissing-prototypes -Wpointer-arith "
 
     { echo "$as_me:$LINENO: checking if $CC supports -Wdeclaration-after-statement" >&5
 echo $ECHO_N "checking if $CC supports -Wdeclaration-after-statement... $ECHO_C" >&6; }

@@ -737,7 +737,7 @@ tuplestore_gettupleslot_pos(Tuplestorestate *state, TuplestorePos *pos, bool for
 						TupleTableSlot *slot)
 {
 	MinimalTuple tuple;
-	bool		should_free;
+	bool		should_free = false;
 
 	tuple = (MinimalTuple) tuplestore_gettuple(state, pos, forward, &should_free);
 
@@ -768,7 +768,7 @@ bool
 tuplestore_advance_pos(Tuplestorestate *state, TuplestorePos *pos, bool forward)
 {
 	void	   *tuple;
-	bool		should_free;
+	bool		should_free = false;
 
 	tuple = tuplestore_gettuple(state, pos, forward, &should_free);
 

@@ -10,8 +10,21 @@ GPDOCDIR=$(CURDIR)/docs/release
 
 DEFPORT=5432
 
-OPTFLAGS="-O3 -finline-limit=1800 -funroll-loops -fargument-noalias-global $(COPTX) -g"
-DEBUGFLAGS="-fno-omit-frame-pointer -finline-limit=1800 -g3"
+OPTFLAGS="-O3 --param large-function-growth=175 --param inline-unit-growth=300 -Winline -finline-limit=1800 -funroll-loops -fargument-noalias-global $(COPTX) -g"
+
+ifeq (on, ${GPDBGINLINE})
+CFLAGS_INLINE=-Winline -finline-limit=1800
+else
+CFLAGS_INLINE=-fno-inline
+endif
+
+ifeq (on, ${GPDBGOPT})
+CFLAGS_OPT=-O1
+else
+CFLAGS_OPT=-O0
+endif
+
+DEBUGFLAGS="$(CFLAGS_INLINE) $(CFLAGS_OPT) -g3"
 
 DISTPATH=$(GPROOT)/$(GPDIR)
 DEVPATH=$(HOME)/$(GPDIR)

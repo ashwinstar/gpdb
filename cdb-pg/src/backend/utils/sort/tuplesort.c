@@ -1524,7 +1524,7 @@ tuplesort_getdatum(Tuplesortstate *state, bool forward,
 {
 	MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
 	SortTuple	stup;
-	bool		should_free;
+	bool		should_free = false;
 
 	if (!tuplesort_gettuple_common_pos(state, &state->pos, forward, &stup, &should_free))
 	{
