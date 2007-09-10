@@ -3435,6 +3435,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 	Assert(Gp_role == GP_ROLE_DISPATCHAGENT);
 	elog(DEBUG5, "Message type %c received by Dispatch Agent", firstchar);
 	SetClientEncoding(GetDatabaseEncoding(), true);	
+	XactReadOnly = true;  /* Make sure we can't update anything */
 
 	switch (firstchar)
 	{
@@ -3711,7 +3712,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			 * The appropriate UserIDs must be set, because they are picked up by dispatch
 			 * and relayed to the QE
 			 */
-			if (suid > 0)
+			if (suid > 0) 
 				SetSessionAuthorization(suid, suid_is_super); /* Set the session UserId */
 
 			if (ouid > 0 && ouid != GetSessionUserId())
@@ -3836,7 +3837,8 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				completionTag = "ERROR";
 			}
 			
-			
+			Assert(getDistributedTransactionId() == InvalidDistributedTransactionId);
+
 			EndCommand(completionTag,whereToSendOutput);
 			
 			finish_xact_command();
