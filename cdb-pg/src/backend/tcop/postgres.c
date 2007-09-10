@@ -5106,7 +5106,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					elog((Debug_print_full_dtm ? LOG : DEBUG5), "MPP dispatched stmt from QD: %s.",query_string);
 
 					if (suid > 0)				
-						SetSessionAuthorization(suid, suid_is_super);  /* Set the session UserId */
+						SetSessionUserId(suid, suid_is_super);  /* Set the session UserId */
 	
 					if (ouid > 0 && ouid != GetSessionUserId()) 
 						SetCurrentRoleId(ouid, ouid_is_super);		/* Set the outer UserId */
