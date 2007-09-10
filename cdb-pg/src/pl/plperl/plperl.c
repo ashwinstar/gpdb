@@ -1343,11 +1343,11 @@ plperl_trigger_handler(PG_FUNCTION_ARGS)
 		TriggerData *trigdata = ((TriggerData *) fcinfo->context);
 
 		if (TRIGGER_FIRED_BY_INSERT(trigdata->tg_event))
-			retval = (Datum) trigdata->tg_trigtuple;
+			retval = PointerGetDatum( trigdata->tg_trigtuple );
 		else if (TRIGGER_FIRED_BY_UPDATE(trigdata->tg_event))
-			retval = (Datum) trigdata->tg_newtuple;
+			retval = PointerGetDatum( trigdata->tg_newtuple );
 		else if (TRIGGER_FIRED_BY_DELETE(trigdata->tg_event))
-			retval = (Datum) trigdata->tg_trigtuple;
+			retval = PointerGetDatum( trigdata->tg_trigtuple );
 		else
 			retval = (Datum) 0; /* can this happen? */
 	}
