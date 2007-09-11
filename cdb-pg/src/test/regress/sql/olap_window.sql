@@ -1028,3 +1028,8 @@ select cn,pn,vn,max(vn) over (partition by cn order by pn range between 0 preced
 select cn,pn,vn,max(vn) over (partition by cn order by pn range between 0 following and unbounded following) as max from sale;
 select cn,pn,vn,max(vn) over (partition by cn order by pn range between 150 following and unbounded following) as max from sale;
 select cn,pn,vn,max(vn) over (partition by cn order by pn range between unbounded preceding and unbounded following) as max from sale;
+
+-- MPP-1943
+SELECT sale.cn,sale.pn,sale.vn,
+MAX(floor(sale.pn/sale.vn)) OVER(order by sale.cn asc,sale.cn asc,sale.pn asc)
+FROM sale;

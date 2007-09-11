@@ -5646,3 +5646,23 @@ select cn,pn,vn,max(vn) over (partition by cn order by pn range between unbounde
   4 | 800 | 40 |  40
 (12 rows)
 
+-- MPP-1943
+SELECT sale.cn,sale.pn,sale.vn,
+MAX(floor(sale.pn/sale.vn)) OVER(order by sale.cn asc,sale.cn asc,sale.pn asc)
+FROM sale;
+ cn | pn  | vn | max 
+----+-----+----+-----
+  1 | 100 | 20 |   5
+  1 | 200 | 10 |  20
+  1 | 300 | 30 |  20
+  1 | 400 | 50 |  20
+  1 | 500 | 30 |  20
+  2 | 100 | 40 |  20
+  2 | 400 | 50 |  20
+  3 | 200 | 40 |  20
+  3 | 500 | 30 |  20
+  3 | 600 | 30 |  20
+  4 | 700 | 40 |  20
+  4 | 800 | 40 |  20
+(12 rows)
+

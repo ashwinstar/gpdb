@@ -1953,8 +1953,6 @@ initWindowFuncState(WindowState *wstate, Window *node)
 
 	wstate->func_state = palloc0(sizeof(WindowStatePerFunctionData) *  numrefs);
 
-	wstate->func_state->serial_index = -1;
-
 	/* Initialize per window ref (both ordinary and aggregate derived). */
 	refno = -1;
 	foreach(lc, wstate->wrxstates)
@@ -2001,6 +1999,8 @@ initWindowFuncState(WindowState *wstate, Window *node)
 		funcstate = &wstate->func_state[funcno];
 		funcstate->wrxstate = wrxstate;
 		funcstate->wref = winref;
+
+		funcstate->serial_index = -1;
 
 		if (winref->winlevel >= wstate->numlevels)
 		{
@@ -4030,6 +4030,7 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 				{
 					WindowStatePerFunction funcstate = (WindowStatePerFunction) lfirst(lc);
 					if (funcstate->isAgg &&
+						!funcstate->cumul_frame &&
 						!OidIsValid(funcstate->invprelimfn_oid) &&
 						OidIsValid(funcstate->prelimfn_oid))
 						resetTransValue(funcstate, wstate->transcontext);
