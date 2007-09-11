@@ -364,9 +364,11 @@ if (1)
         {
             $ATMDIFF = "gdiff";
         }
+        my $whichdiff = `which $ATMDIFF`;
+        chomp $whichdiff;
         print "$0 version $VERSION\n";
         print "Type \'gpdiff.pl --help\' for more information on the standard options\n";
-        print "$0 calls the \"", $ATMDIFF, "\" utility:\n\n";
+        print "$0 calls the \"", $whichdiff, "\" utility:\n\n";
 
         my $outi = `$ATMDIFF -v`;
 
