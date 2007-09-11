@@ -1033,3 +1033,12 @@ select cn,pn,vn,max(vn) over (partition by cn order by pn range between unbounde
 SELECT sale.cn,sale.pn,sale.vn,
 MAX(floor(sale.pn/sale.vn)) OVER(order by sale.cn asc,sale.cn asc,sale.pn asc)
 FROM sale;
+
+-- MPP-1944
+SELECT sale.pn,cn,dt,pn,prc,
+MAX(floor(sale.prc+sale.prc)) OVER(partition by sale.pn,sale.cn,sale.dt,sale.pn order by sale.pn desc,sale.pn asc rows between current row and unbounded following ) 
+FROM sale;
+
+select qty,cn,pn,dt,pn,prc,
+MAX(floor(sale.prc+sale.prc)) OVER(partition by sale.qty,sale.cn,sale.pn,sale.dt order by sale.pn asc range between 0 following and unbounded following ) 
+from sale;

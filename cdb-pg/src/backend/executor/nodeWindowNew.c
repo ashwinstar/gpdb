@@ -1817,6 +1817,8 @@ computeFrameValue(WindowStatePerLevel level_state,
 
 			if (has_tuples)
 			{
+				bool include_last_agg = false;
+				
 				while (ntuplestore_acc_tell(level_state->trail_reader, NULL))
 				{
 					if (ntuplestore_acc_tell(level_state->lead_reader, NULL) &&
@@ -1871,13 +1873,21 @@ computeFrameValue(WindowStatePerLevel level_state,
 				/* Add the funcstate->aggTransValue if it is in the current
 				 * frame.
 				 */
-				if (!ntuplestore_acc_tell(level_state->lead_reader, NULL) &&
-					level_state->agg_filled &&
-					(EDGE_IS_BOUND_FOLLOWING(level_state->frame->lead)  ||
+				if (EDGE_IS_CURRENT_ROW(level_state->frame->trail) ||
+					((EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
+					  EDGE_IS_BOUND_PRECEDING(level_state->frame->trail)) &&
+					 ((level_state->is_rows && level_state->trail_rows == 0) ||
+					  (!level_state->is_rows && level_state->trail_range == 0))))
+					include_last_agg = true;
+				if (EDGE_IS_BOUND_FOLLOWING(level_state->frame->lead)  ||
 					 EDGE_IS_CURRENT_ROW(level_state->frame->lead) ||
 					 (EDGE_IS_BOUND_PRECEDING(level_state->frame->lead) &&
 					  ((level_state->is_rows && level_state->lead_rows == 0) ||
-					   (!level_state->is_rows && level_state->lead_range == 0)))))
+					   (!level_state->is_rows && level_state->lead_range == 0))))
+					include_last_agg = true;
+				
+				if (!ntuplestore_acc_tell(level_state->lead_reader, NULL) &&
+					level_state->agg_filled && include_last_agg)
 				{
 					fcinfo.arg[1] = funcstate->aggTransValue;
 					fcinfo.argnull[1] = funcstate->aggTransValueIsNull;
