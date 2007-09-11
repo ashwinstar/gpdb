@@ -1133,6 +1133,19 @@ typedef struct GrantRoleStmt
 	DropBehavior behavior;		/* drop behavior (for REVOKE) */
 } GrantRoleStmt;
 
+/*
+ * Node that represents the single row error handling (SREH) clause.
+ * used in COPY and External Tables.
+ */
+typedef struct SingleRowErrorDesc
+{
+	NodeTag		type;
+	RangeVar	*errtable;			/* error table for data format errors */
+	int			rejectlimit;		/* per segment error reject limit */
+	bool		is_keep;			/* true if KEEP indicated (COPY only) */
+	bool		is_limit_in_rows;	/* true for ROWS false for PERCENT */
+} SingleRowErrorDesc;
+
 /* ----------------------
  *		Copy Statement
  *
@@ -1152,6 +1165,8 @@ typedef struct CopyStmt
 	bool		is_from;		/* TO or FROM */
 	char	   *filename;		/* filename, or NULL for STDIN/STDOUT */
 	List	   *options;		/* List of DefElem nodes */
+	Node	   *sreh;			/* Single row error handling info */
+	
 } CopyStmt;
 
 /* ----------------------

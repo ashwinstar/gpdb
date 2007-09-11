@@ -162,7 +162,7 @@ static void doNegateFloat(Value *v);
 		DropUserStmt DropdbStmt DropTableSpaceStmt ExplainStmt 
 		ExtTypedesc FetchStmt
 		GrantStmt GrantRoleStmt IndexStmt InsertStmt ListenStmt LoadStmt
-		LockStmt NotifyStmt ExplainableStmt PreparableStmt
+		LockStmt NotifyStmt OptSingleRowErrorHandling ExplainableStmt PreparableStmt
 		CreateFunctionStmt AlterFunctionStmt ReindexStmt RemoveAggrStmt
 		RemoveFuncStmt RemoveOperStmt RenameStmt RevokeStmt RevokeRoleStmt
 		RuleActionStmt RuleActionStmtOrEmpty RuleStmt
@@ -257,14 +257,14 @@ static void doNegateFloat(Value *v);
 				prep_type_clause prep_type_list
 				execute_param_clause using_clause returning_clause
 
-%type <range>	into_clause OptTempTableName
+%type <range>	into_clause OptTempTableName OptErrorTableName
 
 %type <defelt>	createfunc_opt_item common_func_opt_item
 %type <fun_param> func_arg
 %type <fun_param_mode> arg_class
 %type <typnam>	func_return func_type
 
-%type <boolean>  TriggerForType OptTemp OptWeb
+%type <boolean>  TriggerForType OptTemp OptWeb OptSrehLimitType OptSrehKeep
 %type <oncommit> OnCommitOption
 
 %type <node>	for_locking_item
@@ -414,9 +414,8 @@ static void doNegateFloat(Value *v);
 	DEFERRABLE DEFERRED DEFINER DELETE_P DELIMITER DELIMITERS
 	DESC DISABLE_P DISTINCT DISTRIBUTED DO DOMAIN_P DOUBLE_P DROP
 
-	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ESCAPE EVERY EXCEPT 
-	EXCHANGE
-	EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN EXTERNAL EXTRACT
+	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ERRORS ESCAPE EVERY EXCEPT 
+	EXCHANGE EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN EXTERNAL EXTRACT
 
 	FALSE_P FETCH FIRST_P FLOAT_P FOLLOWING FOR FORCE FOREIGN FORMAT FORWARD
 	FREEZE FROM FULL FUNCTION
@@ -432,11 +431,11 @@ static void doNegateFloat(Value *v);
 
 	JOIN
 
-	KEY
+	KEEP KEY
 
 	LANCOMPILER LANGUAGE LARGE_P  LAST_P LEADING LEAST LEFT LEVEL
 	LIKE LIMIT LIST LISTEN LOAD LOCAL LOCALTIME LOCALTIMESTAMP LOCATION
-	LOCK_P LOGIN_P
+	LOCK_P LOG_P LOGIN_P
 
 	MATCH MAXVALUE MERGE MINUTE_P MINVALUE MIRROR MODE MONTH_P MOVE
 
@@ -447,13 +446,13 @@ static void doNegateFloat(Value *v);
 	OBJECT_P OF OFF OFFSET OIDS OLD ON ONLY OPERATOR OPTION OR
 	ORDER OTHERS OUT_P OUTER_P OVER OVERCOMMIT OVERLAPS OVERLAY OWNED OWNER
 
-	PARTIAL PARTITION PARTITIONS PASSWORD PLACING POSITION
+	PARTIAL PARTITION PARTITIONS PASSWORD PERCENT PLACING POSITION
 	PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
 	PRIOR PRIVILEGES PROCEDURAL PROCEDURE
 
 	QUEUE QUOTE
 
-	RANDOMLY RANGE READ REAL REASSIGN RECHECK REFERENCES REINDEX RELATIVE_P 
+	RANDOMLY RANGE READ REAL REASSIGN RECHECK REFERENCES REINDEX REJECT_P RELATIVE_P 
 	RELEASE RENAME REPEATABLE REPLACE RESET RESOURCE RESTART RESTRICT 
 	RETURNING RETURNS REVOKE RIGHT
 	ROLE ROLLBACK ROLLUP ROW ROWS RULE
@@ -1819,6 +1818,7 @@ ClosePortalStmt:
 
 CopyStmt:	COPY opt_binary qualified_name opt_column_list opt_oids
 			copy_from copy_file_name copy_delimiter opt_with copy_opt_list
+			OptSingleRowErrorHandling
 				{
 					CopyStmt *n = makeNode(CopyStmt);
 					n->relation = $3;
@@ -1826,6 +1826,7 @@ CopyStmt:	COPY opt_binary qualified_name opt_column_list opt_oids
 					n->attlist = $4;
 					n->is_from = $6;
 					n->filename = $7;
+					n->sreh = $11;
 
 					n->options = NIL;
 					/* Concatenate user-supplied flags */
@@ -2823,6 +2824,40 @@ ExtcolumnDef:	ColId Typename
 			$$ = (Node *)n;
 		}
 		;
+	
+/*
+ * Single row error handling SQL
+ */
+OptSingleRowErrorHandling:
+		OptErrorTableName OptSrehKeep SEGMENT REJECT_P LIMIT Iconst OptSrehLimitType
+		{
+			SingleRowErrorDesc *n = makeNode(SingleRowErrorDesc);
+			n->errtable = $1;
+			n->is_keep = $2;
+			n->rejectlimit = $6;
+			n->is_limit_in_rows = $7; /* true for ROWS false for PERCENT */
+			$$ = (Node *)n;
+		}
+		| /* empty */	{ $$ = NULL; }
+		;
+	
+OptErrorTableName:
+		LOG_P ERRORS INTO qualified_name 	{ $$ = $4; }
+		| /* empty */						{ $$ = NULL; }
+		;
+	
+OptSrehLimitType:		
+		ROWS					{ $$ = TRUE; }
+		| PERCENT				{ $$ = FALSE; }
+		| /* default is ROWS */	{ $$ = TRUE; }
+		;
+
+OptSrehKeep:
+		KEEP				{ $$ = TRUE; }
+		| /* empty */		{ $$ = FALSE; }
+		;
+
+
 
 /*****************************************************************************
  *
@@ -9514,6 +9549,7 @@ unreserved_keyword:
 			| PARTIAL
 			| PARTITIONS
 			| PASSWORD
+			| PERCENT
 			| PREPARE
 			| PREPARED
 			| PRESERVE
@@ -9677,6 +9713,7 @@ func_name_keyword:
 			| JOIN
 			| LEFT
 			| LIKE
+			| LOG_P
 			| NATURAL
 			| NOTNULL
 			| OUTER_P

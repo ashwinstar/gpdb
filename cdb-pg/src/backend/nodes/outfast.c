@@ -2115,6 +2115,16 @@ _outDeclareCursorStmt(StringInfo str, DeclareCursorStmt *node)
 }
 
 static void
+_outSingleRowErrorDesc(StringInfo str, SingleRowErrorDesc *node)
+{
+	WRITE_NODE_TYPE("SINGLEROWERRORDESC");
+	WRITE_NODE_FIELD(errtable);
+	WRITE_INT_FIELD(rejectlimit);
+	WRITE_BOOL_FIELD(is_keep);
+	WRITE_BOOL_FIELD(is_limit_in_rows);
+}
+
+static void
 _outCopyStmt(StringInfo str, CopyStmt *node)
 {
 	WRITE_NODE_TYPE("COPYSTMT");
@@ -2123,6 +2133,8 @@ _outCopyStmt(StringInfo str, CopyStmt *node)
 	WRITE_BOOL_FIELD(is_from);
 	WRITE_STRING_FIELD(filename);
 	WRITE_NODE_FIELD(options);
+	WRITE_NODE_FIELD(sreh);
+
 }
 
 
@@ -3283,6 +3295,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_DeclareCursorStmt:
 				_outDeclareCursorStmt(str, obj);
+				break;
+			case T_SingleRowErrorDesc:
+				_outSingleRowErrorDesc(str, obj);
 				break;
 			case T_CopyStmt:
 				_outCopyStmt(str, obj);

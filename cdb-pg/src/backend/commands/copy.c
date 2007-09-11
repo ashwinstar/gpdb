@@ -47,6 +47,7 @@
 #include "cdb/cdbcopy.h"
 #include "cdb/cdbhash.h"
 #include "cdb/cdbdispatchresult.h"
+#include "cdb/cdbsreh.h"
 
 
 /* DestReceiver for COPY (SELECT) TO */
@@ -685,7 +686,7 @@ DoCopy(const CopyStmt *stmt)
 	/* Set defaults */
 	
 	cstate->err_loc_type = ROWNUM_ORIGINAL; 
-	
+		
 	cstate->escape_off = false;
 	
 	if (!cstate->delim)
@@ -705,6 +706,50 @@ DoCopy(const CopyStmt *stmt)
 	if (!cstate->binary && !cstate->csv_mode && !cstate->escape)
 		cstate->escape = "\\";			/* default escape for text mode */
 
+	/*
+	 * Error handling setup
+	 */
+	if(stmt->sreh)
+	{		
+		/* Single row error handling requested */
+		SingleRowErrorDesc *sreh;
+		sreh = (SingleRowErrorDesc *)stmt->sreh;
+
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+				 errmsg("Single row error handling is not yet enabled")));			
+		
+		if (!is_from)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+					 errmsg("COPY single row error handling only available using COPY FROM")));
+		
+		if (sreh->errtable)
+		{
+			cstate->errMode = SREH_LOG;
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+					 errmsg("Error tables are not yet supported")));			
+		}
+		else
+		{
+			cstate->errMode = SREH_IGNORE;
+			if (sreh->is_keep)
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+						errmsg("KEEP may only be specified with a LOG INTO errortable clause")));
+			
+		}
+	
+		cstate->cdbsreh = makeCdbSreh(sreh->is_keep, sreh->rejectlimit);
+	}
+	else
+	{
+		/* No single row error handling requested. Use "all or nothing" */
+		cstate->cdbsreh = NULL; /* default - no SREH */
+		cstate->errMode = ALL_OR_NOTHING; /* default */
+	}
+	
 	/*
 	 * Only single-character delimiter strings are supported.
 	 */
@@ -1120,7 +1165,7 @@ DoCopy(const CopyStmt *stmt)
 	
 	/* Clean up storage (probably not really necessary) */
 	processed = cstate->processed;
-
+	
 	pfree(cstate->attribute_buf.data);
 	pfree(cstate->line_buf.data);
 	pfree(cstate);
@@ -1882,6 +1927,88 @@ limit_printout_length(StringInfo buf)
 	appendStringInfoString(buf, "...");
 }
 
+/* ==========================================================================
+ * The follwing macros aid in major refactoring of data processing code (in
+ * CopyFrom(+Dispatch)). We use macros because in some cases the code must be in
+ * line in order to work (for example elog_dismiss() in PG_CATCH) while in 
+ * other cases we'd like to inline the code for performance reasons.
+ *
+ * NOTE that an almost identical set of macros exists in fileam.c. If you make 
+ * changes here you may want to consider taking a look there as well.
+ * ==========================================================================
+ */
+
+#define RESET_LINEBUF \
+cstate->line_buf.len = 0; \
+cstate->line_buf.data[0] = '\0'; \
+cstate->line_buf.cursor = 0;
+
+#define RESET_ATTRBUF \
+cstate->attribute_buf.len = 0; \
+cstate->attribute_buf.data[0] = '\0'; \
+cstate->attribute_buf.cursor = 0;
+
+#define RESET_LINEBUF_WITH_LINENO \
+line_buf_with_lineno.len = 0; \
+line_buf_with_lineno.data[0] = '\0'; \
+line_buf_with_lineno.cursor = 0;
+
+/*
+ * A data error happened. This code block will always be inside a PG_CATCH()
+ * block right when a higher stack level produced an error. We handle the error
+ * by checking which error mode is set (SREH or all-or-nothing) and do the right
+ * thing accordingly. Note that we MUST have this code in a macro (as opposed 
+ * to a function) as elog_dismiss() has to be inlined with PG_CATCH in order to 
+ * access local error state variables.
+ *
+ * changing me? take a look at FILEAM_HANDLE_ERROR in fileam.c as well.
+ */
+#define COPY_HANDLE_ERROR \
+if(cstate->errMode == ALL_OR_NOTHING) \
+{ \
+	/* re-throw error and abort */ \
+	if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) \
+		cdbCopyEnd(cdbCopy); \
+			PG_RE_THROW(); \
+} \
+else \
+{ \
+	/* SREH - release error state */ \
+	cur_row_rejected = true; \
+		if(!elog_dismiss(DEBUG5)) \
+			PG_RE_THROW(); /* <-- hope to never get here! */ \
+				HandleSingleRowError(cstate->cdbsreh); \
+}
+
+/*
+ * if in SREH mode and data error occured it was already handled in 
+ * COPY_HANDLE_ERROR. Therefore, skip to the next row before attempting
+ * to do any further processing on this one. There's a QE and QD versions
+ * since the QE doesn't have a linebuf_with_lineno stringInfo.
+ */
+#define QD_GOTO_NEXT_ROW \
+RESET_LINEBUF_WITH_LINENO; \
+RESET_LINEBUF; \
+cur_row_rejected = false; /* reset for next run */ \
+continue; /* move on to the next data line */
+
+#define QE_GOTO_NEXT_ROW \
+RESET_LINEBUF; \
+cur_row_rejected = false; /* reset for next run */ \
+continue; /* move on to the next data line */
+
+#define IF_REJECT_LIMIT_REACHED_ABORT \
+if(cstate->cdbsreh->rejectcount >= cstate->cdbsreh->rejectlimit) \
+{ \
+	if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) \
+		cdbCopyEnd(cdbCopy); \
+			\
+	ereport(ERROR, \
+			(errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \
+			 (errmsg("Segment reject limit reached after encountering %d data errors. " \
+					 "Aborting operation.",cstate->cdbsreh->rejectcount) \
+			  ))); \
+}
 
 
 /*
@@ -1924,6 +2051,7 @@ CopyFromDispatch(CopyState cstate)
 	bool		no_more_data = false;
 	bool		is_first_col;
 	ListCell   *cur;
+	bool		cur_row_rejected = false;
 
 	CdbCopy    *cdbCopy;
 
@@ -2081,6 +2209,10 @@ CopyFromDispatch(CopyState cstate)
 	 */
 	cdbCopy = makeCdbCopy(true);
 	
+	/* add cdbCopy reference to cdbSreh (if needed) */
+	if(cstate->errMode != ALL_OR_NOTHING)
+		cstate->cdbsreh->cdbcopy = cdbCopy;
+	
 	/*
 	 * get the CDB policy for this table and prepare for hashing.
 	 */
@@ -2211,7 +2343,18 @@ CopyFromDispatch(CopyState cstate)
 
 		/* do NOT include HEADER. Header row is "swallowed" by dispatcher COPY */
 	}
-
+	
+	/* add single row error handling clauses if necessary */
+	if (cstate->errMode != ALL_OR_NOTHING)
+	{
+		if (cstate->errMode == SREH_LOG)
+		{
+			/* TODO: add LOG ERROR INTO clause when error tables are enabled */
+		}
+		
+		appendStringInfo(&cdbcopy_cmd, " SEGMENT REJECT LIMIT %d", cstate->cdbsreh->rejectlimit);
+	}
+	
 
 	/*
 	 * for optimized parsing - get the last field number in the
@@ -2279,7 +2422,6 @@ CopyFromDispatch(CopyState cstate)
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
 				 errmsg("%s", cdbcopy_err.data)));
 	}
-
 
 
 	/*
@@ -2396,9 +2538,7 @@ CopyFromDispatch(CopyState cstate)
 		}
 
 		/* we can reset line buffer now, after copyGetIntX() are done */
-		cstate->line_buf.len = 0;
-		cstate->line_buf.data[0] = '\0';
-		cstate->line_buf.cursor = 0;
+		RESET_LINEBUF;
 	}
 
 	if (file_has_oids && cstate->binary)
@@ -2425,7 +2565,7 @@ CopyFromDispatch(CopyState cstate)
 	errcontext.previous = error_context_stack;
 	error_context_stack = &errcontext;
 	cstate->err_loc_type = ROWNUM_ORIGINAL;
-	
+		
 	/*
 	 * initialize buffered scan variables.
 	 */
@@ -2461,7 +2601,8 @@ CopyFromDispatch(CopyState cstate)
 				/* 
 				 * If we are here, we got some kind of communication error
 				 * with the client or a bad protocol message. clean up and 
-				 * re-throw error
+				 * re-throw error. Note that we don't handle this error in
+				 * any special way in SREH mode as it's not a data error.
 				 */
 				cdbCopyEnd(cdbCopy);
 				PG_RE_THROW();
@@ -2493,17 +2634,39 @@ CopyFromDispatch(CopyState cstate)
 				}
 				PG_CATCH();
 				{
-					/* clean up and re-throw error */
-					cdbCopyEnd(cdbCopy);
-					PG_RE_THROW();
+					/* 
+					 * TODO: use COPY_HANDLE_ERROR here, but make sure to
+					 * ignore this error per the "note:" below.
+					 */
+
+					/* 
+					 * got here? encoding conversion error occured on the 
+					 * header line (first row).
+					 */
+					if(cstate->errMode == ALL_OR_NOTHING)
+					{
+						/* re-throw error and abort */
+						cdbCopyEnd(cdbCopy);
+						PG_RE_THROW();											
+					}
+					else
+					{
+						/* SREH - release error state */
+						if(!elog_dismiss(DEBUG5))
+							PG_RE_THROW(); /* hope to never get here! */
+						
+						/* 
+						 * note: we don't bother doing anything special here.
+						 * we are never interested in logging a header line
+						 * error. just continue the workflow.
+						 */
+					}			
 				}
 				PG_END_TRY();
 				
 				cstate->cur_lineno++;
-				cstate->line_buf.len = 0;
-				cstate->line_buf.data[0] = '\0';
-				cstate->line_buf.cursor = 0;
-								
+				RESET_LINEBUF;
+				
 				cstate->header_line = false;
 			}
 			
@@ -2543,12 +2706,18 @@ CopyFromDispatch(CopyState cstate)
 					}
 					PG_CATCH();
 					{
-						/* clean up and re-throw error */
-						cdbCopyEnd(cdbCopy);
-						PG_RE_THROW();
+						/* got here? encoding conversion/check error occured */
+						COPY_HANDLE_ERROR;
 					}
 					PG_END_TRY();					
 
+					if(cur_row_rejected)
+					{
+						IF_REJECT_LIMIT_REACHED_ABORT;
+						QD_GOTO_NEXT_ROW;
+					}
+						
+					
 					if(!cstate->line_done)
 					{
 						/*
@@ -2572,12 +2741,24 @@ CopyFromDispatch(CopyState cstate)
 
 						if (isnull)
 						{
-							/* clean up and throw error */
-							cdbCopyEnd(cdbCopy);
+							/* got here? null in OID column error */
 							
-							ereport(ERROR,
-									(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-									 errmsg("null OID in COPY data.")));									
+							if(cstate->errMode == ALL_OR_NOTHING)
+							{
+								/* report error and abort */
+								cdbCopyEnd(cdbCopy);
+								
+								ereport(ERROR,
+										(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+										 errmsg("null OID in COPY data.")));									
+							}
+							else
+							{
+								/* SREH */
+								cstate->cdbsreh->rejectcount++;
+								cur_row_rejected = true;
+							}					
+							
 						}
 						else
 						{
@@ -2589,33 +2770,46 @@ CopyFromDispatch(CopyState cstate)
 							}
 							PG_CATCH();
 							{
-								/* clean up and re-throw error */
-								cdbCopyEnd(cdbCopy);
-								PG_RE_THROW();
+								/* got here? oid column conversion failed */
+								COPY_HANDLE_ERROR;
 							}
 							PG_END_TRY();
 
 							if (loaded_oid == InvalidOid)
 							{
-								/* clean up and throw error */
-								cdbCopyEnd(cdbCopy);
-								
-								ereport(ERROR,
-										(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-										 errmsg("invalid OID in COPY data.")));
+								if(cstate->errMode == ALL_OR_NOTHING)
+								{
+									/* report error and abort */
+									cdbCopyEnd(cdbCopy);
+									
+									ereport(ERROR,
+											(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+											 errmsg("invalid OID in COPY data.")));
+								}
+								else
+								{
+									/* SREH */
+									cstate->cdbsreh->rejectcount++;
+									cur_row_rejected = true;
+								}					
 							}
 
 							cstate->cur_attname = NULL;
 						}
+						
+						if(cur_row_rejected)
+						{
+							IF_REJECT_LIMIT_REACHED_ABORT
+							QD_GOTO_NEXT_ROW;							
+						}
 					}
+					
 
 					/*
-					 * try to read a data line, if failed catch the error,
-					 * flag it and break
+					 * try to parse the data line attributes.
 					 */
 					PG_TRY();
 					{
-						/* parse all the attributes in the data line */
 						if (cstate->csv_mode)
 							CopyReadAttributesCSV(cstate, nulls, attr_offsets, num_phys_attrs, attr);
 						else
@@ -2623,11 +2817,16 @@ CopyFromDispatch(CopyState cstate)
 					}
 					PG_CATCH();
 					{
-						/* clean up and re-throw error */
-						cdbCopyEnd(cdbCopy);
-						PG_RE_THROW();						
+						/* Got here? missing or extra column error occured */
+						COPY_HANDLE_ERROR;
 					}
 					PG_END_TRY();
+					
+					if(cur_row_rejected)
+					{
+						IF_REJECT_LIMIT_REACHED_ABORT;
+						QD_GOTO_NEXT_ROW;						
+					}
 
 					/*
 					 * Since we only need the internal format of values that
@@ -2675,9 +2874,8 @@ CopyFromDispatch(CopyState cstate)
 									}
 									PG_CATCH();
 									{
-										/* clean up and re-throw error */
-										cdbCopyEnd(cdbCopy);
-										PG_RE_THROW();
+										/* Got here? datum conversion error */
+										COPY_HANDLE_ERROR;
 									}
 									PG_END_TRY();
 
@@ -2689,6 +2887,12 @@ CopyFromDispatch(CopyState cstate)
 							}
 						}		/* end foreach */
 					}			/* end for partitioning indexes */
+
+					if(cur_row_rejected)
+					{
+						IF_REJECT_LIMIT_REACHED_ABORT;
+						QD_GOTO_NEXT_ROW;						
+					}
 
 				}
 				else
@@ -2712,7 +2916,7 @@ CopyFromDispatch(CopyState cstate)
 					
 					if (fld_count != attr_count + extra_attr_count)
 					{
-						appendStringInfo(&cdbcopy_err, "\n\nMPPCOPY: row field count is %d, expected %d",
+						appendStringInfo(&cdbcopy_err, "\nrow field count is %d, expected %d",
 										 (int) fld_count, attr_count + extra_attr_count);
 						cdbCopy->local_data_err = true;
 						no_more_data = true;
@@ -2730,7 +2934,7 @@ CopyFromDispatch(CopyState cstate)
 																   &isnull));
 						if (isnull || loaded_oid == InvalidOid)
 						{
-							appendStringInfo(&cdbcopy_err, "\n\nMPPCOPY: invalid OID in COPY data");
+							appendStringInfo(&cdbcopy_err, "\ninvalid OID in COPY data");
 							cdbCopy->local_data_err = true;
 							no_more_data = true;
 							break;
@@ -2792,12 +2996,17 @@ CopyFromDispatch(CopyState cstate)
 						}
 						PG_CATCH();
 						{
-							/* clean up and re-throw error */
-							cdbCopyEnd(cdbCopy);
-							PG_RE_THROW();
+							/* TODO: is an error really possible here? */
+							COPY_HANDLE_ERROR;
 						}
 						PG_END_TRY();
-												
+						
+						if(cur_row_rejected)
+						{
+							IF_REJECT_LIMIT_REACHED_ABORT;
+							QD_GOTO_NEXT_ROW;							
+						}
+
 						/*
 						 * prepare to concatinate next value:
 						 * remove eol characters from end of line buf
@@ -2898,19 +3107,7 @@ CopyFromDispatch(CopyState cstate)
 						h_oid = attr[h_attnum - 1]->atttypid;
 					
 					if (nulls[h_attnum - 1] != 'n')
-					{
-						PG_TRY();
-						{
-							cdbhash(cdbHash, h_key, h_oid);
-						}
-						PG_CATCH();
-						{
-							/* clean up and re-throw error */
-							cdbCopyEnd(cdbCopy);
-							PG_RE_THROW();
-						}
-						PG_END_TRY();					
-					}
+						cdbhash(cdbHash, h_key, h_oid);
 					else
 						cdbhashnull(cdbHash);
 				}
@@ -2952,9 +3149,7 @@ CopyFromDispatch(CopyState cstate)
 									line_buf_with_lineno.data, 
 									line_buf_with_lineno.len);
 					
-					line_buf_with_lineno.len = 0;
-					line_buf_with_lineno.data[0] = '\0';
-					line_buf_with_lineno.cursor = 0;
+					RESET_LINEBUF_WITH_LINENO;
 					
 				}
 
@@ -2968,9 +3163,7 @@ CopyFromDispatch(CopyState cstate)
 					break;
 				}
 
-				cstate->line_buf.len = 0;		/* we can reset line buffer now. */
-				cstate->line_buf.data[0] = '\0';
-				cstate->line_buf.cursor = 0;
+				RESET_LINEBUF;
 
 			}					/* end while(!raw_buf_done) */
 		}						/* end if (bytesread > 0 || !cstate->fe_eof) */
@@ -3093,6 +3286,9 @@ CopyFrom(CopyState cstate)
 	int		   *attr_offsets;
 	bool		no_more_data;
 	ListCell   *cur;
+	bool		cur_row_rejected = false;
+
+	CdbCopy    *cdbCopy; /* never used... for compiling COPY_HANDLE_ERROR */
 
 
 	tupDesc = RelationGetDescr(cstate->rel);
@@ -3317,11 +3513,25 @@ CopyFrom(CopyState cstate)
 				if (!cstate->binary)
 				{
 					
-					/* Actually read the line into memory here */
-					cstate->line_done = cstate->csv_mode ?
+					PG_TRY();
+					{
+						/* Actually read the line into memory here */
+						cstate->line_done = cstate->csv_mode ?
 						CopyReadLineCSV(cstate, bytesread) :
 						CopyReadLineText(cstate, bytesread);
-
+					}
+					PG_CATCH();
+					{
+						/* got here? encoding conversion/check error occured */
+						COPY_HANDLE_ERROR;
+					}
+					PG_END_TRY();					
+					
+					if(cur_row_rejected)
+					{
+						IF_REJECT_LIMIT_REACHED_ABORT;
+						QE_GOTO_NEXT_ROW;
+					}
 					
 					if(!cstate->line_done)
 					{
@@ -3351,7 +3561,7 @@ CopyFrom(CopyState cstate)
 						 * do the conversion here again, and then catch the 
 						 * error and log it.
 						 */
-						if(/* TODO: if mode == SREH && LOGINTO && */Gp_role == GP_ROLE_DISPATCH)
+						if(Gp_role == GP_ROLE_EXECUTE && cstate->errMode == SREH_LOG)
 						{
 							Assert(!cstate->need_transcoding);
 							
@@ -3379,27 +3589,83 @@ CopyFrom(CopyState cstate)
 						oid_string = CopyReadOidAttr(cstate, &isnull);
 
 						if (isnull)
-							ereport(ERROR,
-									(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-									 errmsg("null OID in COPY data")));
+						{
+							/* got here? null in OID column error */
+							
+							if(cstate->errMode == ALL_OR_NOTHING)
+							{
+								/* report error and abort */
+								cdbCopyEnd(cdbCopy);
+								
+								ereport(ERROR,
+										(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+										 errmsg("null OID in COPY data.")));									
+							}
+							else
+							{
+								/* SREH */
+								cstate->cdbsreh->rejectcount++;
+								cur_row_rejected = true;
+							}					
+							
+						}
 						else
 						{
-							cstate->cur_attname = "oid";
-							loaded_oid = DatumGetObjectId(DirectFunctionCall1(oidin,
-											   CStringGetDatum(oid_string)));
+							PG_TRY();
+							{
+								cstate->cur_attname = "oid";
+								loaded_oid = DatumGetObjectId(DirectFunctionCall1(oidin,
+																				  CStringGetDatum(oid_string)));
+							}
+							PG_CATCH();
+							{
+								/* got here? oid column conversion failed */
+								COPY_HANDLE_ERROR;
+							}
+							PG_END_TRY();
+							
 							if (loaded_oid == InvalidOid)
-								ereport(ERROR,
-									  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-									   errmsg("invalid OID in COPY data")));
+							{
+								if(cstate->errMode == ALL_OR_NOTHING)
+									ereport(ERROR,
+											(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+											 errmsg("invalid OID in COPY data.")));
+								else /* SREH */
+								{
+									cstate->cdbsreh->rejectcount++;
+									cur_row_rejected = true;
+								}
+							}
 							cstate->cur_attname = NULL;
 						}
+						
+						if(cur_row_rejected)
+						{
+							IF_REJECT_LIMIT_REACHED_ABORT;
+							QE_GOTO_NEXT_ROW;							
+						}
+						
 					}
 
-					/* parse all the attribute in the data line */
-					if (cstate->csv_mode)
-						CopyReadAttributesCSV(cstate, nulls, attr_offsets, num_phys_attrs, attr);
-					else
-						CopyReadAttributesText(cstate, nulls, attr_offsets, num_phys_attrs, attr);
+					PG_TRY();
+					{
+						if (cstate->csv_mode)
+							CopyReadAttributesCSV(cstate, nulls, attr_offsets, num_phys_attrs, attr);
+						else
+							CopyReadAttributesText(cstate, nulls, attr_offsets, num_phys_attrs, attr);
+					}
+					PG_CATCH();
+					{
+						/* Got here? missing or extra column error occured */
+						COPY_HANDLE_ERROR;
+					}
+					PG_END_TRY();
+					
+					if(cur_row_rejected)
+					{
+						IF_REJECT_LIMIT_REACHED_ABORT;
+						QE_GOTO_NEXT_ROW;						
+					}
 					
 					/*
 					 * Loop to read the user attributes on the line.
@@ -3427,14 +3693,31 @@ CopyFrom(CopyState cstate)
 						if (!isnull)
 						{
 							cstate->cur_attname = NameStr(attr[m]->attname);
-							values[m] = InputFunctionCall(&in_functions[m],
-														  string,
-														  typioparams[m],
-														  attr[m]->atttypmod);
 							
+							PG_TRY();
+							{
+								values[m] = InputFunctionCall(&in_functions[m],
+															  string,
+															  typioparams[m],
+															  attr[m]->atttypmod);
+							}
+							PG_CATCH();
+							{
+								COPY_HANDLE_ERROR;
+							}
+							PG_END_TRY();
+														
 							nulls[m] = ' ';
 							cstate->cur_attname = NULL;
+							
 						}
+					}
+					
+					/* if this row had an error in SREH mode, on to the next.. */
+					if(cur_row_rejected)
+					{
+						IF_REJECT_LIMIT_REACHED_ABORT;
+						QE_GOTO_NEXT_ROW;	
 					}
 				}
 				else
@@ -3498,13 +3781,28 @@ CopyFrom(CopyState cstate)
 				 */
 				for (i = 0; i < num_defaults; i++)
 				{
-					values[defmap[i]] = ExecEvalExpr(defexprs[i], econtext,
-													 &isnull, NULL);
+					PG_TRY();
+					{
+						values[defmap[i]] = ExecEvalExpr(defexprs[i], econtext,
+														 &isnull, NULL);
+					}
+					PG_CATCH();
+					{
+						/* TODO: is an error really possible here? */
+						COPY_HANDLE_ERROR;
+					}
+					PG_END_TRY();
+					
 					if (!isnull)
 						nulls[defmap[i]] = ' ';
 				}
 
-
+				if(cur_row_rejected)
+				{
+					IF_REJECT_LIMIT_REACHED_ABORT;
+					QE_GOTO_NEXT_ROW;							
+				}
+				
 				/*
 				 * And now we can form the input tuple.
 				 */
@@ -3583,9 +3881,7 @@ CopyFrom(CopyState cstate)
 					cstate->processed++;
 				}
 
-				cstate->line_buf.len = 0;		/* we can reset line buffer now. */
-				cstate->line_buf.data[0] = '\0';
-				cstate->line_buf.cursor = 0;
+				RESET_LINEBUF;
 			}					/* end while(!raw_buf_done) */
 		}						/* end if (bytesread > 0 || !cstate->fe_eof) */
 		else
@@ -3866,9 +4162,7 @@ CopyReadLineText(CopyState cstate, size_t bytesread)
 			if (cvt != cstate->line_buf.data)
 			{
 				/* transfer converted data back to line_buf */
-				cstate->line_buf.len = 0;
-				cstate->line_buf.data[0] = '\0';
-				cstate->line_buf.cursor = 0;
+				RESET_LINEBUF;
 				appendBinaryStringInfo(&cstate->line_buf, cvt, strlen(cvt));
 				pfree(cvt);
 			}
@@ -4136,9 +4430,7 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 			if (cvt != cstate->line_buf.data)
 			{
 				/* transfer converted data back to line_buf */
-				cstate->line_buf.len = 0;
-				cstate->line_buf.data[0] = '\0';
-				cstate->line_buf.cursor = 0;
+				RESET_LINEBUF;
 				appendBinaryStringInfo(&cstate->line_buf, cvt, strlen(cvt));
 			}
 		}
@@ -4350,12 +4642,9 @@ CopyReadAttributesText(CopyState cstate, char *nulls,
 	ListCell   *cur;			/* cursor to attribute list used for this COPY */
 	int			attribute;
 
-	/*
-	 * init variables for attribute scan
-	 */
-	cstate->attribute_buf.len = 0;
-	cstate->attribute_buf.data[0] = '\0';
-	cstate->attribute_buf.cursor = 0;
+	/* init variables for attribute scan */
+	RESET_ATTRBUF;
+
 	/* cursor is now > 0 if we copy WITH OIDS */
 	scan_start = cstate->line_buf.data + cstate->line_buf.cursor;
 	cur = list_head(cstate->attnumlist);
@@ -4667,10 +4956,8 @@ CopyReadBinaryAttribute(CopyState cstate, int column_no __attribute__((unused)),
 
 
 	/* reset attribute_buf to empty, and load raw data in it */
-	cstate->attribute_buf.len = 0;
-	cstate->attribute_buf.data[0] = '\0';
-	cstate->attribute_buf.cursor = 0;
-
+	RESET_ATTRBUF;
+	
 	enlargeStringInfo(&cstate->attribute_buf, fld_size);
 
 	CopyGetData(cstate, cstate->attribute_buf.data, fld_size);
@@ -4730,13 +5017,9 @@ CopyReadAttributesCSV(CopyState cstate, char *nulls, int *attr_offsets,
 	ListCell   *cur;			/* cursor to attribute list used for this COPY */
 	int			attribute;
 
-	/*
-	 * init variables for attribute scan
-	 */
-	cstate->attribute_buf.len = 0;
-	cstate->attribute_buf.data[0] = '\0';
-	cstate->attribute_buf.cursor = 0;
-
+	/* init variables for attribute scan */
+	RESET_ATTRBUF;
+	
 	cur = list_head(cstate->attnumlist);
 	
 	if(num_phys_attrs > 0)
@@ -4908,10 +5191,8 @@ CopyReadOidAttr(CopyState cstate, bool *isnull)
 	int			bytes_remaining;
 
 	/* reset attribute buf to empty */
-	cstate->attribute_buf.len = 0;
-	cstate->attribute_buf.data[0] = '\0';
-	cstate->attribute_buf.cursor = 0;
-
+	RESET_ATTRBUF;
+	
 	/* # of bytes that were not yet processed in this line */
 	bytes_remaining = cstate->line_buf.len - cstate->line_buf.cursor;
 

@@ -265,6 +265,7 @@ typedef enum NodeTag
 	T_ClusterStmt,
 	T_CopyStmt,
 	T_CreateStmt,
+	T_SingleRowErrorDesc,
 	T_ExtTableTypeDesc,
 	T_CreateExternalStmt,
 	T_DefineStmt,

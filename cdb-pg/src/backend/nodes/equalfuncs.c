@@ -902,6 +902,17 @@ _equalClusterStmt(ClusterStmt *a, ClusterStmt *b)
 }
 
 static bool
+_equalSingleRowErrorDesc(SingleRowErrorDesc *a, SingleRowErrorDesc *b)
+{
+	COMPARE_NODE_FIELD(errtable);
+	COMPARE_SCALAR_FIELD(rejectlimit);
+	COMPARE_SCALAR_FIELD(is_keep);
+	COMPARE_SCALAR_FIELD(is_limit_in_rows);
+	
+	return true;
+}
+
+static bool
 _equalCopyStmt(CopyStmt *a, CopyStmt *b)
 {
 	COMPARE_NODE_FIELD(relation);
@@ -910,6 +921,8 @@ _equalCopyStmt(CopyStmt *a, CopyStmt *b)
 	COMPARE_SCALAR_FIELD(is_from);
 	COMPARE_STRING_FIELD(filename);
 	COMPARE_NODE_FIELD(options);
+	COMPARE_NODE_FIELD(sreh);
+
 
 	return true;
 }
@@ -2252,6 +2265,9 @@ equal(void *a, void *b)
 			break;
 		case T_ClusterStmt:
 			retval = _equalClusterStmt(a, b);
+			break;
+		case T_SingleRowErrorDesc:
+			retval = _equalSingleRowErrorDesc(a, b);
 			break;
 		case T_CopyStmt:
 			retval = _equalCopyStmt(a, b);

@@ -46,6 +46,7 @@
 #include "utils/builtins.h"
 #include "cdb/cdbvars.h"
 
+
 typedef struct extvar_t extvar_t;
 struct extvar_t
 {
@@ -330,6 +331,64 @@ file_getnext(FileScanDesc scan, ScanDirection direction)
 	return tuple;
 }
 
+/* ==========================================================================
+ * The follwing macros aid in major refactoring of data processing code (in
+ * filegettup() ). We use macros because in some cases the code must be in
+ * line in order to work (for example elog_dismiss() in PG_CATCH) while in 
+ * other cases we'd like to inline the code for performance reasons.
+ *
+ * NOTE that an almost identical set of macros exists in copy.c for the COPY
+ * command. If you make changes here you may want to consider taking a look.
+ * ==========================================================================
+ */
+
+#define EXT_RESET_LINEBUF \
+pstate->line_buf.len = 0; \
+pstate->line_buf.data[0] = '\0'; \
+pstate->line_buf.cursor = 0;
+
+/*
+ * A data error happened. This code block will always be inside a PG_CATCH()
+ * block right when a higher stack level produced an error. We handle the error
+ * by checking which error mode is set (SREH or all-or-nothing) and do the right
+ * thing accordingly. Note that we MUST have this code in a macro (as opposed 
+ * to a function) as elog_dismiss() has to be inlined with PG_CATCH in order to 
+ * access local error state variables.
+ */
+#define FILEAM_HANDLE_ERROR \
+if(pstate->errMode == ALL_OR_NOTHING) \
+{ \
+	/* re-throw error and abort */ \
+	PG_RE_THROW(); \
+} \
+else \
+{ \
+	/* SREH - release error state */ \
+	cur_row_rejected = true; \
+	if(!elog_dismiss(DEBUG5)) \
+		PG_RE_THROW(); /* <-- hope to never get here! */ \
+	HandleSingleRowError(pstate->cdbsreh); \
+}
+
+/*
+ * if in SREH mode and data error occured it was already handled in 
+ * FILEAM_HANDLE_ERROR. Therefore, skip to the next row before attempting
+ * to do any further processing on this one. 
+ */
+#define FILEAM_GOTO_NEXT_ROW \
+EXT_RESET_LINEBUF; \
+cur_row_rejected = false; /* reset for next run */ \
+continue; /* move on to the next data line */
+
+#define FILEAM_IF_REJECT_LIMIT_REACHED_ABORT \
+if(pstate->cdbsreh->rejectcount >= pstate->cdbsreh->rejectlimit) \
+{ \
+	ereport(ERROR, \
+			(errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \
+			(errmsg("Segment reject limit reached after encountering %d data errors. " \
+					"Aborting operation.",pstate->cdbsreh->rejectcount) \
+			))); \
+}
 
 
 /* ----------------
@@ -347,6 +406,7 @@ filegettup(FileScanDesc scan,
 {
 	HeapTuple	tuple = NULL;
 	bool		isnull;
+	bool		cur_row_rejected = false;
 	ListCell   *cur;
 	CopyState	pstate = scan->fs_pstate;
     MemoryContext oldcontext;
@@ -380,7 +440,40 @@ filegettup(FileScanDesc scan,
 			
 			/* on first time around just throw the header line away */
 			if(pstate->header_line && pstate->bytesread > 0)
-				readHeaderLine(pstate);
+			{
+				PG_TRY();
+				{
+					readHeaderLine(pstate);
+				}
+				PG_CATCH();
+				{					
+					/* 
+					 * got here? encoding conversion error occured on the 
+					 * header line (first row).
+					 */
+					if(pstate->errMode == ALL_OR_NOTHING)
+					{
+						PG_RE_THROW();											
+					}
+					else
+					{
+						/* SREH - release error state */
+						if(!elog_dismiss(DEBUG5))
+							PG_RE_THROW(); /* hope to never get here! */
+						
+						/* 
+						 * note: we don't bother doing anything special here.
+						 * we are never interested in logging a header line
+						 * error. just continue the workflow.
+						 */
+					}			
+				}
+				PG_END_TRY();
+				
+				EXT_RESET_LINEBUF;
+				pstate->header_line = false;
+			}
+				
 		}
 
 		if (pstate->bytesread > 0 || !pstate->fe_eof)
@@ -388,7 +481,6 @@ filegettup(FileScanDesc scan,
 			/* while there is still data in our buffer */
 			while (!pstate->raw_buf_done)
 			{
-				//CHECK_FOR_INTERRUPTS();
 				
 				/* Initialize all values for row to NULL */
 				MemSet(scan->values, 0, scan->num_phys_attrs * sizeof(Datum));
@@ -396,11 +488,27 @@ filegettup(FileScanDesc scan,
 
 				MemSet(pstate->attr_offsets, 0, scan->num_phys_attrs * sizeof(int));
 
-				/* get a data line */
-				pstate->line_done = pstate->csv_mode ?
-					CopyReadLineCSV(pstate, pstate->bytesread) :
-					CopyReadLineText(pstate, pstate->bytesread);
+				PG_TRY();
+				{
+					/* get a data line */
+					pstate->line_done = pstate->csv_mode ?
+						CopyReadLineCSV(pstate, pstate->bytesread) :
+						CopyReadLineText(pstate, pstate->bytesread);
+				}
+				PG_CATCH();
+				{
+					/* got here? encoding conversion/check error occured */
+					FILEAM_HANDLE_ERROR;
+				}
+				PG_END_TRY();					
 
+				if(cur_row_rejected)
+				{
+					FILEAM_IF_REJECT_LIMIT_REACHED_ABORT;
+					FILEAM_GOTO_NEXT_ROW;
+				}
+				
+				
 				if(!pstate->line_done)
 				{
 					/*
@@ -416,11 +524,27 @@ filegettup(FileScanDesc scan,
 				}
 				
 				/* parse attributes */
-				if (pstate->csv_mode)
-					CopyReadAttributesCSV(pstate, scan->nulls, pstate->attr_offsets, scan->num_phys_attrs, scan->attr);
-				else
-					CopyReadAttributesText(pstate, scan->nulls, pstate->attr_offsets, scan->num_phys_attrs, scan->attr);
+				PG_TRY();
+				{
 
+					if (pstate->csv_mode)
+						CopyReadAttributesCSV(pstate, scan->nulls, pstate->attr_offsets, scan->num_phys_attrs, scan->attr);
+					else
+						CopyReadAttributesText(pstate, scan->nulls, pstate->attr_offsets, scan->num_phys_attrs, scan->attr);
+				}
+				PG_CATCH();
+				{
+					/* Got here? missing or extra column error occured */
+					FILEAM_HANDLE_ERROR;
+				}
+				PG_END_TRY();					
+				
+				if(cur_row_rejected)
+				{
+					FILEAM_IF_REJECT_LIMIT_REACHED_ABORT;
+					FILEAM_GOTO_NEXT_ROW;
+				}
+				
                 oldcontext = MemoryContextSwitchTo(pstate->rowcontext);
 
 				/*
@@ -443,10 +567,21 @@ filegettup(FileScanDesc scan,
 					if (!isnull)
 					{
 						pstate->cur_attname = NameStr(scan->attr[m]->attname);
-						scan->values[m] = InputFunctionCall(&scan->in_functions[m],
-															string,
-														scan->typioparams[m],
-												   scan->attr[m]->atttypmod);
+						
+						PG_TRY();
+						{
+							scan->values[m] = InputFunctionCall(&scan->in_functions[m],
+																string,
+															scan->typioparams[m],
+													   scan->attr[m]->atttypmod);
+						}
+						PG_CATCH();
+						{
+							/* Got here? datum conversion error occured */
+							FILEAM_HANDLE_ERROR;
+						}
+						PG_END_TRY();					
+												
 						scan->nulls[m] = ' ';
 						pstate->cur_attname = NULL;
 					}
@@ -454,11 +589,15 @@ filegettup(FileScanDesc scan,
 
                 MemoryContextSwitchTo(oldcontext);
 
+				if(cur_row_rejected)
+				{
+					FILEAM_IF_REJECT_LIMIT_REACHED_ABORT;
+					FILEAM_GOTO_NEXT_ROW;
+				}
+				
 				/* we can reset line buffer now. */
-				pstate->line_buf.len = 0;
-				pstate->line_buf.data[0] = '\0';
-				pstate->line_buf.cursor = 0;
-
+				EXT_RESET_LINEBUF;
+				
 				/* convert to heap tuple */
 				tuple = heap_formtuple(scan->fs_tupDesc, scan->values, scan->nulls);
 
@@ -576,6 +715,12 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, 
 	pstate->processed = 0;
 	pstate->filename = uri;
 
+	/*
+	 * Error handling setup
+	 */
+	pstate->cdbsreh = NULL; /* default - no SREH */
+	pstate->errMode = ALL_OR_NOTHING; /* default */
+		
 	initStringInfo(&pstate->attribute_buf);
 	initStringInfo(&pstate->line_buf);
 
@@ -583,6 +728,8 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, 
 	MemSet(pstate->raw_buf, ' ', RAW_BUF_SIZE * sizeof(char));
 	pstate->raw_buf[RAW_BUF_SIZE] = '\0';
 
+	
+	
 	/*
 	 * Set up encoding conversion info.  Even if the client and server
 	 * encodings are the same, we must apply pg_client_to_server() to validate
@@ -877,13 +1024,7 @@ void readHeaderLine(CopyState pstate)
 
 	pstate->line_done = pstate->csv_mode ?
 		CopyReadLineCSV(pstate, pstate->bytesread) :
-		CopyReadLineText(pstate, pstate->bytesread);
-		
-	pstate->cur_lineno++;
-	pstate->line_buf.len = 0;
-	pstate->line_buf.data[0] = '\0';
-	pstate->line_buf.cursor = 0;
-	pstate->header_line = false;
+		CopyReadLineText(pstate, pstate->bytesread);		
 }
 
 /*

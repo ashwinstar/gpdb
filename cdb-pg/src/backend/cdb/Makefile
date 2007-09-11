@@ -30,7 +30,7 @@ OBJS = cdbanalyze.o \
 	   cdbmutate.o \
 	   cdbpath.o cdbpathlocus.o cdbpathtoplan.o cdbpgdatabase.o \
 	   cdbplan.o cdbpullup.o \
-	   cdbsetop.o cdbsrlz.o cdbsubplan.o cdbsubselect.o \
+	   cdbsetop.o cdbsreh.o cdbsrlz.o cdbsubplan.o cdbsubselect.o \
 	   cdbtm.o \
 	   cdbutil.o cdbrelsize.o \
 	   cdbvars.o cdboidsync.o

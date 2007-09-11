@@ -17,6 +17,7 @@
 #include "nodes/parsenodes.h"
 #include "tcop/dest.h"
 #include "executor/executor.h"
+#include "cdb/cdbsreh.h"
 
 
 /*
@@ -76,6 +77,18 @@ typedef enum ErrLocType
 	ROWNUM_EMBEDDED,
 	BYTENUM_EMBEDDED
 } ErrLocType;
+
+
+/*
+ * The error handling mode for this data load.
+ */
+typedef enum CopyErrMode
+{
+	ALL_OR_NOTHING,	/* Either all rows or no rows get loaded (the default) */
+	SREH_IGNORE,	/* Sreh - ignore errors (REJECT but no error table) */
+	SREH_LOG		/* Sreh - log errors in an error table */
+} CopyErrMode;
+
 
 /*
  * This struct contains all the state variables used throughout a COPY
@@ -207,6 +220,10 @@ typedef struct CopyStateData
 #define ORIGINAL_LINENO_DELIM '^'
 	ErrLocType  err_loc_type;   /* see enum def for description */	
 	
+	/* Error handling options */
+	CopyErrMode	errMode;
+	CdbSreh		*cdbsreh; /* single row error handler */
+
 	struct HeapInsertDesc *heapInsertDesc;
 
 	/* end Greenplum Database specific variables */

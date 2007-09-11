@@ -2266,6 +2266,19 @@ _copyClusterStmt(ClusterStmt *from)
 	return newnode;
 }
 
+static SingleRowErrorDesc *
+_copySingleRowErrorDesc(SingleRowErrorDesc *from)
+{
+	SingleRowErrorDesc *newnode = makeNode(SingleRowErrorDesc);
+	
+	COPY_NODE_FIELD(errtable);
+	COPY_SCALAR_FIELD(rejectlimit);
+	COPY_SCALAR_FIELD(is_keep);
+	COPY_SCALAR_FIELD(is_limit_in_rows);
+	
+	return newnode;	
+}
+
 static CopyStmt *
 _copyCopyStmt(CopyStmt *from)
 {
@@ -2277,6 +2290,7 @@ _copyCopyStmt(CopyStmt *from)
 	COPY_SCALAR_FIELD(is_from);
 	COPY_STRING_FIELD(filename);
 	COPY_NODE_FIELD(options);
+	COPY_NODE_FIELD(sreh);
 
 	return newnode;
 }
@@ -3586,6 +3600,9 @@ copyObject(void *from)
 			break;
 		case T_ClusterStmt:
 			retval = _copyClusterStmt(from);
+			break;
+		case T_SingleRowErrorDesc:
+			retval = _copySingleRowErrorDesc(from);
 			break;
 		case T_CopyStmt:
 			retval = _copyCopyStmt(from);
