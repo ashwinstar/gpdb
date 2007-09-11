@@ -57,7 +57,7 @@ static bool agg_hash_reload(AggState *aggstate);
 
 static void create_batches(HashAggTable *hashtable, unsigned int nbatch);
 static void destroy_batches(HashAggTable *hashtable);
-static void batch_put_tuple(HashAggTable *hashtable, unsigned int batch, TupleTableSlot *tupleSlot, uint32 hkey);
+static void batch_put_tuple(HashAggTable *hashtable, unsigned int batch, uint32 hkey, char* buf, int buflen);
 static void batch_rewind(HashAggTable *hashtable, unsigned int batch);
 static void batch_close(HashAggTable *hashtable, unsigned int batch);
 
@@ -299,6 +299,8 @@ agg_hash_initial_pass(AggState *aggstate)
 	unsigned long noverflow = 0;
 	bool isNew = false;
 	bool spilling = false;
+	char* spillbuf = 0;
+	unsigned int spillbuflen = 0;
 
 	/*
 	 * Get state info from node.
@@ -315,18 +317,39 @@ agg_hash_initial_pass(AggState *aggstate)
 	 * Process outer-plan tuples, until we exhaust the outer plan.
 	 */
 	ht->pass = 0;
-	for (;;)
+	outerslot = ExecProcNode(outer_ps);
+	if (outerslot)
 	{
-		outerslot = ExecProcNode(outer_ps);
-		if (TupIsNull(outerslot))
-			break;
-			
+		/* Initialize hashslot by cloning input slot. */
+		ExecSetSlotDescriptor(aggstate->hashslot, outerslot->tts_tupleDescriptor);
+		ExecStoreAllNullTuple(aggstate->hashslot);
+	}
+
+	for ( ; ! TupIsNull(outerslot); outerslot = ExecProcNode(outer_ps))
+	{
+		ListCell *lc;
+		MemoryContext oldContext;
+
+		
+		/* get the attrs */
+		oldContext = MemoryContextSwitchTo(outerslot->tts_mcxt);
+		slot_getsomeattrs(outerslot, linitial_int(aggstate->hash_needed));
+		MemoryContextSwitchTo(oldContext);
+
+		/* make a virtual tuple in hashslot with the agg columns */
+		foreach (lc, aggstate->hash_needed)
+		{
+			int n = lfirst_int(lc) - 1;
+			aggstate->hashslot->tts_values[n] = outerslot->tts_values[n];
+			aggstate->hashslot->tts_isnull[n] = outerslot->tts_isnull[n];
+		}
+
 		/* set up for advance_aggregates call */
 		tmpcontext->ecxt_scantuple = outerslot;
-		
+
 		/* Find or (if there's room) build a hash table entry for the
 		 * input tuple's group. */
-		entry = lookup_agg_hash_entry(aggstate, outerslot, 0, &hashkey, &isNew);
+		entry = lookup_agg_hash_entry(aggstate, aggstate->hashslot, 0, &hashkey, &isNew);
 
 		if (entry != NULL)
 		{
@@ -414,7 +437,24 @@ agg_hash_initial_pass(AggState *aggstate)
 			Assert(batch > 0 && batch < ht->nbatch);
 			
 			/* Write the tuple to the appropriate overflow batch. */
-			batch_put_tuple(ht, batch, outerslot, hashkey);
+			{
+				unsigned int len = spillbuflen;
+				if (! ExecCopySlotMinimalTupleTo(outerslot, spillbuf, &len))
+				{
+					MemoryContext oldContext = MemoryContextSwitchTo(aggstate->aggcontext);
+					if (spillbuf)
+						pfree(spillbuf);
+
+					spillbuf = palloc(len);
+					spillbuflen = len;
+					if (! ExecCopySlotMinimalTupleTo(outerslot, spillbuf, &len))
+						ereport(ERROR,
+								(errcode(ERRCODE_INTERNAL_ERROR),
+								 errmsg("hybrid hash aggregation faillure")));
+					MemoryContextSwitchTo(oldContext);
+				}
+				batch_put_tuple(ht, batch, hashkey, spillbuf, len);
+			}
 		}
 	}
 
@@ -667,7 +707,7 @@ agg_hash_reload(AggState *aggstate)
 		{			
 			/* Write the input tuple to the overflow. */
 			noverflow++;
-			batch_put_tuple(ht, overflow, outerslot, hkey);
+			batch_put_tuple(ht, overflow, hkey, (char*) outerslot->tts_mintuple, outerslot->tts_mintuple->t_len);
 		}
 
 		/* Reset per-input-tuple context after each tuple */
@@ -821,7 +861,6 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot,
 	Agg *agg;
 	ExprContext *econtext;
 	MemoryContext oldContext;
-	TupleTableSlot *hashslot  = aggstate->hashslot;
 	HashAggTable *ht;
 	HashAggEntry *entry;
 	TupleDesc entry_tuple_desc;
@@ -834,14 +873,6 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot,
 	ht = aggstate->hhashtable;
 	entry_tuple_desc = aggstate->ss.ss_ScanTupleSlot->tts_tupleDescriptor;
 	
-	/* if first time through, initialize hashslot by cloning input slot.
-	 * This is essential for proper functioning of calc_hash_value, etc. */
-	if (hashslot->tts_tupleDescriptor == NULL)
-	{
-		ExecSetSlotDescriptor(hashslot, inputslot->tts_tupleDescriptor);
-		/* Make sure all unused columns are NULLs */
-		ExecStoreAllNullTuple(hashslot);
-	}
 
 	ResetExprContext(econtext);
 	oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
@@ -865,6 +896,7 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot,
 			HeapTuple heapTuple = entry->heaptuple;
 			int i;
 			bool match = true;
+			Datum i1, i2, e1, e2;
 			
 			for (i = 0; i < agg->numCols; i++)
 			{
@@ -874,6 +906,9 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot,
 
 				input_datum = slot_getattr(inputslot, att, &input_isNull);
 				entry_datum = heap_getattr(heapTuple, att, entry_tuple_desc, &entry_isNull);
+
+				if (att == 1) e1 = entry_datum, i1 = input_datum;
+				else if (att == 2) e2 = entry_datum, i2 = input_datum;
 				
 				if ( input_isNull && entry_isNull )
 					continue; /* NULLs match in group keys. */
@@ -938,41 +973,15 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 {
 	HashAggEntry *entry;
 	MemoryContext oldContext;
-	ListCell   *lc;
-	TupleTableSlot *hashslot = aggstate->hashslot;
 
-	/* Per query context. */
-	oldContext = MemoryContextSwitchTo(aggstate->ss.ps.state->es_query_cxt);
+	oldContext = MemoryContextSwitchTo(aggstate->transcontext);
 
-	/* Move the grouping key into the hash slot by transferring just the
-	 * needed columns.  (All columns were initialized to null earlier,
-	 * so this is sufficient.) */
-	slot_getsomeattrs(inputslot, linitial_int(aggstate->hash_needed));
-	foreach(lc, aggstate->hash_needed)
-	{
-		int		varNumber = lfirst_int(lc) - 1;
-
-		hashslot->tts_values[varNumber] = inputslot->tts_values[varNumber];
-		hashslot->tts_isnull[varNumber] = inputslot->tts_isnull[varNumber];
-	}
-	
-	/* For now we just allocate single entries, but maybe we should consider
-	 * allocating them all at once (since we know how many we're willing to
-	 * hold in memory) or in blocks (to avoid tying up more virtual memory
-	 * than necessary).  We should also consider the impact of holding on
-	 * to hash entry memory longer than necessary.  Right now we release the
-	 * contents of the hash table all at once, but (for a bit of extra
-	 * processing  time) we could release them piecemeal, hopefully, to release
-	 * memory for use by other QEs.
-	 */
-	MemoryContextSwitchTo(aggstate->transcontext);
-	
 	if (aggstate->numaggs == 0)
 		entry = (HashAggEntry*)palloc0(sizeof(HashAggEntry));
 	else
 		entry = (HashAggEntry*)palloc0(sizeof(HashAggEntry) +
 						(aggstate->numaggs-1) * sizeof(AggStatePerGroupData));
-	entry->heaptuple = ExecCopySlotTuple(hashslot);
+	entry->heaptuple = ExecCopySlotTuple(inputslot);
 	entry->hashvalue = hashvalue;
 	
 	MemoryContextSwitchTo(oldContext);
@@ -1214,19 +1223,17 @@ destroy_batches(HashAggTable * hashtable)
 static void
 batch_put_tuple(HashAggTable *hashtable,
 				unsigned int batch,
-				TupleTableSlot *tupleSlot,
-				uint32 hkey)
+				uint32 hkey,
+				char* buf, int buflen)
 {
 	static const char *msg = "could not write to temporary batch file: %m";
 
 	BatchFileInfo *info;
 	BufFile    *file;
-	/* HeapTuple heapTuple = tupleSlot->tts_tuple; */
-	MinimalTuple minTuple = ExecFetchSlotMinimalTuple(tupleSlot);
 	BatchTupleHeader hth;
 
 	hth.hkey = hkey;
-	hth.tuplen = MAXALIGN(minTuple->t_len);
+	hth.tuplen = (buflen = MAXALIGN(buflen));
 
 	info = &hashtable->batches[batch];
 	file = info->file;
@@ -1241,7 +1248,7 @@ batch_put_tuple(HashAggTable *hashtable,
 	if (sizeof(hth) != BufFileWrite(file, (void*) &hth, sizeof(hth)))
 		ereport(ERROR, (errcode_for_file_access(), errmsg(msg)));
 
-	if (hth.tuplen != BufFileWrite(file, minTuple, hth.tuplen))
+	if (hth.tuplen != BufFileWrite(file, buf, buflen))
 		ereport(ERROR, (errcode_for_file_access(), errmsg(msg)));
 	
 	info->ntuples++;
@@ -1259,7 +1266,7 @@ batch_get_tuple(HashAggTable *hashtable,
 				TupleTableSlot *tupleSlot,
 				uint32 *hkey)
 {
-#if 0
+#if 1
 	/* regular copy read */
 	static const char *msg = "could not read temporary batch file: %m";
 	BatchTupleHeader hth;

@@ -751,7 +751,7 @@ bool ExecCopySlotMinimalTupleTo(TupleTableSlot *slot, char *dest, unsigned int *
 		else
 		{
 			int cplen = slot->tts_tuple->t_len - MINIMAL_TUPLE_OFFSET;
-			if(dest && *len > cplen)
+			if(dest && *len >= cplen)
 			{
 				MinimalTuple mint = (MinimalTuple) dest;
 				memcpy(dest, (char *) slot->tts_tuple->t_data + MINIMAL_TUPLE_OFFSET, cplen);
