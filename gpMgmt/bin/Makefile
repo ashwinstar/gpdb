@@ -85,7 +85,7 @@ clean :
 	@rm -rf $(PYLIB_SRC)/$(PYCRYPTO_DIR)
 	@rm -rf $(STREAM_DIR)/stream lib/stream  
 	@if [ -f $(SRC)/src/$(NETPERF_DIR)/Makefile ]; then \
-		(cd $(SRC)/src/$(NETPERF_DIR) && make clean) \
+		(cd $(SRC)/src/$(NETPERF_DIR) && $(MAKE) clean) \
 	fi
 	@rm -rf *.pyc lib/*.pyc
 
