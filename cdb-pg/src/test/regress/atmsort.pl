@@ -24,6 +24,7 @@ Options:
 
     -help            brief help message
     -man             full documentation
+    -do_equiv        construct or compare equivalent query regions
 
 =head1 OPTIONS
 
@@ -36,6 +37,27 @@ Options:
 =item B<-man>
     
     Prints the manual page and exits.
+
+=item B<-do_equiv>
+    
+    Choose one of the following options
+    
+=over 12
+
+=item ignore_all:  
+
+(default) ignore all content in a start_equiv/end_equiv block.
+
+=item make:  
+
+replace the query output of all queries in a start_equiv/end_equiv block with the output of the first query, processed according to any formatting directives for each query.
+
+
+=item compare:  
+
+process the query output of all queries in a start_equiv/end_equiv block (versus prefixing the entire block with GP_IGNORE).
+
+=back
 
 =back
 
@@ -169,6 +191,19 @@ The supported commands are:
 
   Ends the ignored region that started with "start_ignore"
 
+=item -- start_equiv
+
+  Begin an "equivalent" region, and treat contents according to the
+  specified --do_equiv option.  Normally, the results are ignored.
+  The "--do_equiv=make" option replaces the contents of all queries in
+  the equivalent region with the results of the first query.  If
+  "--do_equiv=compare" option is specified, the region is processed
+  according to the stanard query formatting rules.
+
+=item -- end_equiv
+
+  Ends the equivalent region that started with "start_equiv"
+
 =back
 
 Note that you can combine the directives for a single query, but each
@@ -208,18 +243,60 @@ my $bpref = '';
 my $cpref = '';
 my $dpref = '';
 
+my $glob_compare_equiv;
+my $glob_make_equiv_expected;
+
+# array of "expected" rows from first query of equiv region
+my $equiv_expected_rows;
+
+BEGIN
+{ 
+    $glob_compare_equiv = 0;
+    $glob_make_equiv_expected = 0;
+}
+
 BEGIN {
     my $man  = 0;
     my $help = 0;
+    my $compare_equiv = 0;
+    my $make_equiv_expected = 0;
+    my $do_equiv;
 
     GetOptions(
                'help|?' => \$help, man => \$man, 
+               'do_equiv:s' => \$do_equiv
                )
         or pod2usage(2);
 
-    
+    if (defined($do_equiv))
+    {
+        if ($do_equiv =~ m/^(ignore)/i)
+        {
+            # ignore all - default
+        }
+        elsif ($do_equiv =~ m/^(compare)/i)
+        {
+            # compare equiv region
+            $compare_equiv = 1;
+        }
+        elsif ($do_equiv =~ m/^(make)/i)            
+        {
+            # make equiv expected output
+            $make_equiv_expected = 1;
+        }
+        else
+        {
+            $glob_id = "unknown do_equiv option: $do_equiv\nvalid options are:\n\tdo_equiv=compare\n\tdo_equiv=make";
+            $help = 1;
+        }
+
+    }
+
     pod2usage(-msg => $glob_id, -exitstatus => 1) if $help;
     pod2usage(-msg => $glob_id, -exitstatus => 0, -verbose => 2) if $man;
+
+    $glob_compare_equiv = $compare_equiv;
+    $glob_make_equiv_expected = $make_equiv_expected;
 
 }
 
@@ -339,6 +416,19 @@ sub format_query_output
     my $prefix = "";
 
     $directive = {} unless (defined($directive));
+
+    if (exists($directive->{make_equiv_expected}))
+    {
+        # save the first query output from equiv as "expected rows"
+        push @{$equiv_expected_rows}, @{$outarr};
+    }
+    elsif (defined($equiv_expected_rows)
+           && scalar(@{$equiv_expected_rows}))
+    {
+        # reuse equiv expected rows if you have them
+        $outarr = [];
+        push @{$outarr}, @{$equiv_expected_rows};
+    }
 
     if (exists($directive->{explain}))
     {
@@ -722,6 +812,8 @@ if (1)
 
     my $verzion = '$Id$   ';
 
+    my $do_equiv = $glob_compare_equiv || $glob_make_equiv_expected;
+
     $verzion =~ s/\,v//; # remove ,v
     my @verza = split(/\s+/, $verzion);
     if (scalar(@verza) > 3)
@@ -741,14 +833,22 @@ if (1)
             next;
         }
 
-        if ($big_ignore)
+        if ($big_ignore > 0)
         {
+            if (($ini =~ m/\-\-\s*end\_equiv\s*$/i) && !($do_equiv))
+            { 
+                $big_ignore -= 1;
+            }
             if ($ini =~ m/\-\-\s*end\_ignore\s*$/i)
             { 
-                $big_ignore = 0;
+                $big_ignore -= 1;
             }
             print "GP_IGNORE:", $ini;
             next;
+        }
+        elsif (($ini =~ m/\-\-\s*end\_equiv\s*$/i) && $do_equiv)
+        {
+            $equiv_expected_rows = undef;
         }
 
         if ($getrows) # getting rows from SELECT output
@@ -785,9 +885,10 @@ if (1)
         }
         else # finding SQL statement or start of SELECT output
         { 
-            if ($ini =~ m/\-\-\s*start\_ignore\s*$/i)
+            if (($ini =~ m/\-\-\s*start\_ignore\s*$/i) ||
+                (($ini =~ m/\-\-\s*start\_equiv\s*$/i) && !($do_equiv)))
             { 
-                $big_ignore = 1;
+                $big_ignore += 1;
 
                 for my $line (@outarr)
                 {
@@ -797,6 +898,12 @@ if (1)
 
                 print "GP_IGNORE:", $ini;
                 next;
+            }
+            elsif (($ini =~ m/\-\-\s*start\_equiv\s*$/i) && 
+                   $glob_make_equiv_expected)
+            {
+                $equiv_expected_rows = [];
+                $directive->{make_equiv_expected} = 1;
             }
 
             if ($ini =~ m/(insert|update|delete|select|\\d|copy)/i)

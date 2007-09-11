@@ -73,6 +73,17 @@ select a.* from gpd1 as a, gpd1 as b where b.c1 in (select max(c1) from gpd1);
 explain analyze select a.* from gpd1 as a, gpd1 as b where b.c1 in (select max(c1) from gpd1);
 -- end_ignore
 --
+-- start_equiv
+--
+-- order 1
+select c1 from gpd1 order by 1;
+--
+--
+select c1 from gpd1 ;
+--
+--end_equiv
+--
+--
 --
 -- Clean up
 --

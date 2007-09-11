@@ -117,6 +117,8 @@ sub gpdiff_files
 {
     my ($f1, $f2, $d2d) = @_;
 
+    my $need_equiv = 0;
+
     my @tmpfils;
 
     # need gnu diff on solaris
@@ -146,18 +148,54 @@ sub gpdiff_files
 
 #    print $ATMSORT, "\n";
 
-    system "$ATMSORT < $f1 > $newf1";
-    system "$ATMSORT < $f2 > $newf2";
+    if (defined($d2d) && exists($d2d->{equiv}))
+    {
+        # assume f1 and f2 are the same...
+        system "$ATMSORT --do_equiv=compare < $f1 > $newf1";
+        system "$ATMSORT --do_equiv=make    < $f2 > $newf2";
+    }
+    else
+    {
+        system "$ATMSORT < $f1 > $newf1";
+        system "$ATMSORT < $f2 > $newf2";
+    }
 
     my $args = join(" ", @ARGV, $newf1, $newf2);
 
     my $outi =`$ATMDIFF $args`;
 
+    my $stat = $? >> 8; # diff status
+
+    unless (defined($d2d) && exists($d2d->{equiv}))
+    {
+        # check for start_equiv unless already doing equiv check
+
+        # get the count of matching lines
+        my $grepout = `grep -c start_equiv $f1`;
+        chomp $grepout;
+
+        $need_equiv = $grepout;
+#        $need_equiv = 0;
+
+        if ($need_equiv)
+        {
+            $d2d = {} unless (defined($d2d));
+            $d2d->{dir} = 1;
+        }
+    }
+
     # prefix the diff output with the files names for a "directory to
     # directory" diff
     if (defined($d2d) && length($outi))
     {
-        $outi = "$ATMDIFF $f1 $f2\n" . $outi;
+        if (exists($d2d->{equiv}))
+        {
+            $outi = "$ATMDIFF $f1 $f2" . ".equiv\n" . $outi;
+        }
+        else
+        {
+            $outi = "$ATMDIFF $f1 $f2\n" . $outi;
+        }
     }
 
     # replace temp file name references with actual file names
@@ -167,10 +205,23 @@ sub gpdiff_files
     print $outi;
 
 #my $stat = WEXITVALUE($?); # diff status
-    my $stat = $? >> 8; # diff status
 
     unlink $newf1;
     unlink $newf2;
+
+    if ($need_equiv)
+    {
+        my $new_d2d = {};
+        $new_d2d->{equiv} = 1;
+
+        # call recursively if need to perform equiv comparison.
+
+        my $stat1 = gpdiff_files($f1, $f1, $new_d2d);
+        my $stat2 = gpdiff_files($f2, $f2, $new_d2d);
+
+        $stat = $stat1 if ($stat1);
+        $stat = $stat2 if ($stat2);
+    }
 
     return ($stat);
 
@@ -207,7 +258,10 @@ sub filefunc
                                                             $fnam
                                                             ));
 
-                $stat = filefunc($absname, $f2, 1);
+                # specify that is a directory comparison
+                $d2d = {} unless (defined($d2d));
+                $d2d->{dir} = 1;
+                $stat = filefunc($absname, $f2, $d2d);
             } # end while
             closedir $dir_h;
         } # end if open
