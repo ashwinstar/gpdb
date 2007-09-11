@@ -231,29 +231,6 @@ typedef struct WindowStatePerFunctionData
 	int                 serial_index;
 } WindowStatePerFunctionData;
 
-/*
- * We special case buffers for frames referenced by window functions
- * supporting frames.
- */
-typedef struct WinFuncBufferData
-{
-	Datum *arg;
-	bool *argnull;
-} WinFuncBufferData;
-
-typedef struct WinFuncRowBuffer
-{
-	WinFuncBufferData dat; /* must be first */
-	int64 row_index;
-} WinFuncRowBuffer;
-
-typedef struct WinFuncRangeBuffer
-{
-	WinFuncBufferData dat; /* must be first */
-	Datum *vals;
-	bool *nulls;
-} WinFuncRangeBuffer;
-
 #define FRAME_TRAIL_ROWS 	0
 #define FRAME_TRAIL_RANGE	1
 #define FRAME_LEAD_ROWS		2
@@ -1967,8 +1944,12 @@ initWindowFuncState(WindowState *wstate, Window *node)
 	int refno;
 	ListCell *lc;
 
+	if (wstate->wrxstates == NULL)
+		return;
+
 	wstate->numfuncs = 0;
 	numrefs = list_length(wstate->wrxstates);
+    Insist(numrefs > 0);
 
 	wstate->func_state = palloc0(sizeof(WindowStatePerFunctionData) *  numrefs);
 
