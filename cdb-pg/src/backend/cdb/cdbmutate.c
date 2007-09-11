@@ -1673,7 +1673,7 @@ static bool shareinput_find_sharenode(ApplyShareInputContext *ctxt, int share_id
 	return false;
 }
 
-
+/* Adjust share_type of underlying Material or Sort if necessary */
 static bool shareinput_mutator_xslice(Node* node, ApplyShareInputContext *ctxt, bool fPop)
 {
 	Plan *plan = (Plan *) node;
@@ -1730,6 +1730,41 @@ static bool shareinput_mutator_xslice(Node* node, ApplyShareInputContext *ctxt, 
 	return true;
 }
 
+/* Adjust the share_type of the ShareInputScan */
+static bool shareinput_mutator_xslice_si(Node *node, ApplyShareInputContext *ctxt, bool fPop)
+{
+	Plan *plan = (Plan *) node;
+
+	if(fPop)
+		return false;
+
+	if(IsA(plan, ShareInputScan))
+	{
+		ShareInputScan *sisc = (ShareInputScan *) plan;
+		ShareNodeWithSliceMark plan_slicemark = { NULL, 0 };
+		ShareType stype = SHARE_NOTSHARED;
+
+		shareinput_find_sharenode(ctxt, sisc->share_id, &plan_slicemark);
+		stype = get_plan_share_type(plan_slicemark.plan);
+
+		switch(stype)
+		{
+			case SHARE_MATERIAL_XSLICE:
+				Assert(sisc->share_type == SHARE_MATERIAL);
+				set_plan_share_type_xslice(plan);
+				break;
+			case SHARE_SORT_XSLICE:
+				Assert(sisc->share_type == SHARE_SORT);
+				set_plan_share_type_xslice(plan);
+				break;
+			default:
+				Assert(sisc->share_type == stype);
+				break;
+		}
+	}
+	return true;
+}
+
 Plan *apply_shareinput_xslice(Plan *plan, ApplyShareInputContext *ctxt) 
 {
 	ctxt->sharedNodes = NULL;
@@ -1738,7 +1773,13 @@ Plan *apply_shareinput_xslice(Plan *plan, ApplyShareInputContext *ctxt)
 
 	shareinput_pushmot(ctxt, 0);
 	
+	/* First adjust the share_type of underlying Material or Sort,
+	 * then adjust the share_type of the ShareInputScan.  
+	 * Note: We depends on the contxt of first adjustment to do the
+	 * second.   So, do not reset the context between calls.
+	 */
 	shareinput_walker(shareinput_mutator_xslice, (Node *) plan, ctxt); 
+	shareinput_walker(shareinput_mutator_xslice_si, (Node *) plan, ctxt); 
 	
 	return plan;
 }

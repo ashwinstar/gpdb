@@ -56,9 +56,6 @@ ShareInputNext(ShareInputScanState *node)
 	ShareInputScan * sisc = (ShareInputScan *) node->ss.ps.plan;
 
 	ShareType share_type = sisc->share_type;
-	Material *sharedMaterial = NULL;
-	Sort *sharedSort = NULL;
-	
 
 	/* 
 	 * get state info from node
@@ -67,36 +64,17 @@ ShareInputNext(ShareInputScanState *node)
 	dir = estate->es_direction;
 	forward = ScanDirectionIsForward(dir);
 
-	Assert(sisc->share_type == SHARE_MATERIAL || sisc->share_type == SHARE_SORT);
 
 	/* if first time call, need to init underlying material node */
 	if(node->ts_state == NULL)
 	{
-		
-		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, sisc->share_id, false); 
-		PlanState* snState = NULL;
-		
-		if(snEntry) 
+		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, sisc->share_id, false);
+		PlanState *snState = NULL;
+
+		if(snEntry)
 		{
-			snState = (PlanState *)snEntry->shareState;
+			snState = (PlanState *) snEntry->shareState;
 			slot = ExecProcNode(snState);
-
-			Assert(snState->plan != NULL);
-
-			if(share_type == SHARE_MATERIAL)
-			{
-				sharedMaterial = (Material *) snState->plan;
-				Assert(IsA(sharedMaterial, Material));
-				Assert(sisc->share_id == sharedMaterial->share_id);
-				share_type = sharedMaterial->share_type;
-			}
-			else
-			{
-				sharedSort = (Sort *) snState->plan;
-				Assert(IsA(sharedSort, Sort));
-				Assert(sisc->share_id == sharedSort->share_id);
-				share_type = sharedSort->share_type;
-			}
 		}
 
 		if(share_type == SHARE_MATERIAL_XSLICE)
@@ -116,9 +94,7 @@ ShareInputNext(ShareInputScanState *node)
 		}
 		else if(share_type == SHARE_MATERIAL)
 		{
-			Assert(snState != NULL && sharedMaterial != NULL);
 			node->ts_state = ((MaterialState *)snState)->ts_state;
-
 #ifdef USE_OLD_TUPLESTORE
 			tuplestore_begin_pos((Tuplestorestate *) node->ts_state, (TuplestorePos **)(&node->ts_pos));
 			tuplestore_rescan_pos((Tuplestorestate *) node->ts_state, (TuplestorePos *)node->ts_pos); 
@@ -141,7 +117,6 @@ ShareInputNext(ShareInputScanState *node)
 		else 
 		{
 			Assert(sisc->share_type == SHARE_SORT);
-			Assert(sharedSort != NULL && snState != NULL);
 			node->ts_state = ((SortState *)snState)->tuplesortstate;
 			tuplesort_begin_pos((Tuplesortstate *) node->ts_state, (TuplesortPos **)(&node->ts_pos));
 			tuplesort_rescan_pos((Tuplesortstate *) node->ts_state, (TuplesortPos *)node->ts_pos);
@@ -169,7 +144,7 @@ ShareInputNext(ShareInputScanState *node)
 		if(!gotOK)
 		{
 			/* tuplesort_gettupleslot_pos will clear the tuple, so no need to do ExecClearTuple */ 
-			if(sisc->share_type == SHARE_MATERIAL)
+			if(share_type == SHARE_MATERIAL || share_type == SHARE_MATERIAL_XSLICE)
 				return ExecClearTuple(slot);
 		}
 
@@ -294,9 +269,7 @@ void ExecEndShareInputScan(ShareInputScanState *node)
 		shareinput_reader_notifydone(node->share_lk_ctxt, sisc->share_id);
 
 #ifndef USE_OLD_TUPLESTORE
-	Assert(sisc->share_type == SHARE_MATERIAL || sisc->share_type == SHARE_SORT);
-
-	if(sisc->share_type == SHARE_MATERIAL) 
+	if(sisc->share_type == SHARE_MATERIAL || sisc->share_type == SHARE_MATERIAL_XSLICE) 
 	{
 		if(node->ts_pos != NULL)
 			ntuplestore_destroy_accessor((NTupleStoreAccessor *) node->ts_pos);
