@@ -3288,7 +3288,7 @@ CopyFrom(CopyState cstate)
 	ListCell   *cur;
 	bool		cur_row_rejected = false;
 
-	CdbCopy    *cdbCopy; /* never used... for compiling COPY_HANDLE_ERROR */
+	CdbCopy    *cdbCopy = NULL; /* never used... for compiling COPY_HANDLE_ERROR */
 
 
 	tupDesc = RelationGetDescr(cstate->rel);
