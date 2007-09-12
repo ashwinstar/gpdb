@@ -1082,7 +1082,8 @@ void do_read(int fd, short event, void* arg)
     /* Hurray, got a request !!! */
     if (opt.v) 
 	printf("[INFO] %s requests %s\n\tTID %s\n", 
-	       r->peer, r->in.req->argv[1] ? r->in.req->argv[1] : "(null)", r->tid);
+	       r->peer, r->in.req->argv[1] ? r->in.req->argv[1] : "(none)", 
+	       r->tid ? r->tid : "(none)");
 
 
     /* we don't need to read from the socket anymore */
