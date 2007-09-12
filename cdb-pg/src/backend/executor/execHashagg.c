@@ -1253,7 +1253,7 @@ batch_get_tuple(HashAggTable *hashtable,
 				TupleTableSlot *tupleSlot,
 				uint32 *hkey)
 {
-#if 1
+#if 0
 	/* regular copy read */
 	static const char *msg = "could not read temporary batch file: %m";
 	BatchTupleHeader hth;
