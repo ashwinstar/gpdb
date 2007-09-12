@@ -30,5 +30,6 @@ typedef struct CdbSreh
 
 extern CdbSreh *makeCdbSreh(bool should_keep, int rejectlimit);
 extern void HandleSingleRowError(CdbSreh *cdbsreh);
+extern void ReportSrehResults(CdbSreh *cdbsreh, int total_rejected);
 
 #endif /* CDBSREH_H */

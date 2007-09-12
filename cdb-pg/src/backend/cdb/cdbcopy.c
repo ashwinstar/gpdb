@@ -331,8 +331,12 @@ bool cdbCopyGetData(CdbCopy *c, bool copy_cancel, uint64 *rows_processed)
 /*
  * ends the copy command on all segment databases.
  * c->err_msg will include the error msg(s) if any.
+ *
+ * returns the number of rows rejected by QE's. Normally 
+ * will be 0 however in single row error handling mode 
+ * could be larger than 0.
  */
-void
+int
 cdbCopyEnd(CdbCopy *c)
 {
 	SegmentDatabaseDescriptor *q;
@@ -343,6 +347,8 @@ cdbCopyEnd(CdbCopy *c)
 	int			seg;
 	int			db;
 	int			failed_count = 0;
+	int			segment_rows_rejected = 0; /* num of rows rejected by this QE */
+	int			total_rows_rejected = 0; /* total num rows rejected by all QEs */
 	bool		err_header = false;
 	bool		primary_had_error; /* flag to consolidate pri/mir errors */
 	bool		first_error = true;
@@ -452,6 +458,10 @@ cdbCopyEnd(CdbCopy *c)
 					c->remote_data_err = true;
 				}
 
+				/* in SREH mode, check if this seg rejected (how many) rows */
+				if(res->numRejected > 0)
+					segment_rows_rejected = res->numRejected;
+				
 				/* free the PGresult object */
 				PQclear(res);
 			}
@@ -459,6 +469,16 @@ cdbCopyEnd(CdbCopy *c)
 			/* Finished with this segment db. */
 			c->segdb_state[seg][db] = SEGDB_DONE;
 
+			/* 
+			 * add number of rows rejected from this segment to the 
+			 * total of rejected rows. Only count from primary segs.
+			 */
+			if(db == 0 && segment_rows_rejected > 0)
+			{
+				total_rows_rejected += segment_rows_rejected;
+				segment_rows_rejected = 0;
+			}
+			
 			/* Lost the connection? */
 			if (PQstatus(q->conn) == CONNECTION_BAD)
 			{
@@ -488,9 +508,11 @@ cdbCopyEnd(CdbCopy *c)
 	if (failed_count > 0)
 	{
 		elog(LOG, "%s", c->err_msg.data);
-		elog(LOG, "MPPCOPY passes failed segment(s) information to FTS");
+		elog(LOG, "COPY passes failed segment(s) information to FTS");
 		FtsHandleNetFailure(failedSegDBs, failed_count);
 	}
+	
+	return total_rows_rejected;
 }
 
 

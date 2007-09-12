@@ -205,6 +205,10 @@ struct pg_result
     
     void * extras;				/* used for gang management commands */
     int	   extraslen;
+
+	/* GPDB: number of rows rejected in SREH (protocol message 'j') */
+	int			numRejected;
+
 };
 
 /* PGAsyncStatusType defines the state of the query-execution state machine */

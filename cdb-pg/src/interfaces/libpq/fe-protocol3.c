@@ -407,6 +407,21 @@ pqParseInput3(PGconn *conn)
 					 * the COPY command.
 					 */
 					break;
+				case 'j':
+					
+					/*
+					 * QE COPY reports number of rejected rows to the QD COPY
+					 * in single row error handling mode.
+					 */
+					conn->result = PQmakeEmptyPGresult(conn, PGRES_COMMAND_OK);
+					if (!conn->result)
+						return;
+						
+					if (pqGetInt(&(conn->result->numRejected), 4, conn))
+						return;
+							
+					conn->asyncStatus = PGASYNC_READY;
+					break;
                 case 'Y':       /* CDB: statistical response from QE to QD */
 					/* for certain queries, the stats may arrive
 					 * before the completion status -- for this case

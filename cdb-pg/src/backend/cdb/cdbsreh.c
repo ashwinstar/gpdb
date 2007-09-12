@@ -69,6 +69,21 @@ void HandleSingleRowError(CdbSreh *cdbsreh)
 	return; /* OK */
 }
 
+/* 
+ * ReportSrehResults
+ *
+ * When necessary emit a NOTICE that describes the end result of the
+ * SREH operations. Information includes the total number of rejected
+ * rows, and whether rows were ignored or logged into an error table.
+ */
+void ReportSrehResults(CdbSreh *cdbsreh, int total_rejected)
+{
+	if(total_rejected > 0)
+		elog(NOTICE, "Rejected %d badly formatted rows.", total_rejected);
+	
+	/* TODO: expand this function when error tables are enabled */
+}
+
 
 
 

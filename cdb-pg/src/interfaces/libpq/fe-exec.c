@@ -170,6 +170,8 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 	
     result->extras = NULL;
     result->extraslen = 0;
+	
+	result->numRejected = 0;
 
 	if (conn)
 	{

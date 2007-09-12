@@ -88,6 +88,7 @@ static void CopySendInt32(CopyState cstate, int32 val);
 static bool CopyGetInt32(CopyState cstate, int32 *val);
 static void CopySendInt16(CopyState cstate, int16 val);
 static bool CopyGetInt16(CopyState cstate, int16 *val);
+static void CopySendNumRowsRejected(CopyState cstate);
 
 /* byte scaning utils */
 static char *scanTextLine(CopyState cstate, const char *s, char c, size_t len);
@@ -351,6 +352,20 @@ CopyToDispatchFlush(CopyState cstate)
 	/* Reset fe_msgbuf to empty */
 	fe_msgbuf->len = 0;
 	fe_msgbuf->data[0] = '\0';
+}
+
+/*
+ * Using this function the QE COPY sends back to the client (QD COPY) the 
+ * number of rows that were rejected in this last data load in SREH mode.
+ */
+static void 
+CopySendNumRowsRejected(CopyState cstate)
+{
+	StringInfoData buf;
+	Insist(Gp_role == GP_ROLE_EXECUTE);
+	pq_beginmessage(&buf, 'j'); /* 'j' is the msg code for rejected records */
+	pq_sendint(&buf, cstate->cdbsreh->rejectcount, 4);
+	pq_endmessage(&buf);	
 }
 
 /*
@@ -714,10 +729,6 @@ DoCopy(const CopyStmt *stmt)
 		/* Single row error handling requested */
 		SingleRowErrorDesc *sreh;
 		sreh = (SingleRowErrorDesc *)stmt->sreh;
-
-		ereport(ERROR,
-				(errcode(ERRCODE_GP_FEATURE_NOT_YET),
-				 errmsg("Single row error handling is not yet enabled")));			
 		
 		if (!is_from)
 			ereport(ERROR,
@@ -2037,6 +2048,7 @@ CopyFromDispatch(CopyState cstate)
 	Datum	   *values;
 	char	   *nulls;
 	int		   *attr_offsets;
+	int			total_rejeted_from_qes = 0;
 	bool		isnull;
 	bool	   *isvarlena;
 	ResultRelInfo *resultRelInfo;
@@ -3179,7 +3191,7 @@ CopyFromDispatch(CopyState cstate)
 	 * databases Now we would like to end the copy command on
 	 * all segment databases across the cluster.
 	 */
-	cdbCopyEnd(cdbCopy);
+	total_rejeted_from_qes = cdbCopyEnd(cdbCopy);
 
 	/*
 	 * If we quit the processing loop earlier due to a
@@ -3200,7 +3212,9 @@ CopyFromDispatch(CopyState cstate)
 	}
 		
 	/*
-	 * report all accumulated errors back to the client.
+	 * report all accumulated errors back to the client. We get here if an error
+	 * happened in all-or-nothing error handling mode or if reject limit was
+	 * reached in single-row error handling mode.
 	 */
 	if (cdbCopy->remote_data_err || cdbCopy->local_data_err)
 		ereport(ERROR,
@@ -3210,11 +3224,39 @@ CopyFromDispatch(CopyState cstate)
 		ereport(ERROR,
 				(errcode(ERRCODE_IO_ERROR),
 				 errmsg("%s", cdbcopy_err.data)));
-	/*
-	 * Done, clean up
+
+	/* 
+	 * switch back away from COPY error context callback. don't want line 
+	 * error information anymore 
 	 */
 	error_context_stack = errcontext.previous;
 
+	/*
+	 * If we got here it means that either all the data was loaded or some rows
+	 * were rejected in SREH mode. In other words - nothing caused an abort.
+	 * We now want to report the actual number of rows loaded and rejected.
+	 * If any rows were rejected from the QE COPY processes subtract this number 
+	 * from the number of rows that were successfully processed on the QD COPY 
+	 * so that we can report the correct number. 
+	 */
+	if(cstate->cdbsreh)
+	{
+		int total_rejected = 0;
+		
+		/* 
+		 * cstate->processed holds the number of rows *successfully* processed
+		 * by QD COPY. Subtract total rejected by QE COPY and get total loaded.
+		 */
+		cstate->processed -= total_rejeted_from_qes;
+		
+		total_rejected = cstate->cdbsreh->rejectcount + total_rejeted_from_qes;
+		ReportSrehResults(cstate->cdbsreh, total_rejected);
+	}
+
+
+	/*
+	 * Done, clean up
+	 */
 	MemoryContextSwitchTo(oldcontext);
 
 	/*
@@ -3907,6 +3949,14 @@ CopyFrom(CopyState cstate)
 	 * Handle queued AFTER triggers
 	 */
 	AfterTriggerEndQuery(estate);
+
+	/*
+	 * If SREH and in executor mode send the number of rejected
+	 * rows to the client (QD COPY).
+	 */
+	if(cstate->errMode != ALL_OR_NOTHING && Gp_role == GP_ROLE_EXECUTE)
+		CopySendNumRowsRejected(cstate);
+
 
 	pfree(attr_offsets);
 
