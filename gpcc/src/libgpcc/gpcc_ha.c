@@ -96,6 +96,8 @@ void ha_net_recv(gpcc_net_conn_t conn, void *conn_arg)
 	    free(packet);
     }
 
+    return;
+
     bail:
 
     if (e == APR_EAGAIN)
@@ -126,6 +128,9 @@ APR_DECLARE(gpcc_ha_t*) gpcc_ha_open(const char *addr,
 	return 0;
     }
 
+    ha->opened = opened;
+    ha->closed = closed;
+    ha->recv = recv;
     return ha;
 }
 										 
