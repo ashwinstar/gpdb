@@ -9467,6 +9467,7 @@ unreserved_keyword:
 			| ENCRYPTED
 			| ESCAPE
 			| EVERY
+			| EXCHANGE
 			| EXCLUDING
 			| EXCLUSIVE
 			| EXECUTE
@@ -9517,6 +9518,7 @@ unreserved_keyword:
 			| LOGIN_P
 			| MATCH
 			| MAXVALUE
+			| MERGE
 			| MINUTE_P
 			| MINVALUE
 			| MIRROR
@@ -9590,6 +9592,7 @@ unreserved_keyword:
 			| SHARE
 			| SHOW
 			| SIMPLE
+			| SPLIT
 			| STABLE
 			| START
 			| STATEMENT
