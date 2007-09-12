@@ -8,9 +8,12 @@ struct gpcc_ha_t {
     int index;
     apr_pool_t *pool;
     gpcc_net_conn_t conn;
-    gpcc_ha_opened_t *opened;
-    gpcc_ha_closed_t *closed;
-    gpcc_ha_recv_t *recv;
+    
+    struct {
+	gpcc_ha_opened_t *opened;
+	gpcc_ha_closed_t *closed;
+	gpcc_ha_recv_t *recv;
+    } cb;
 
     struct {
 	gpcc_net_request_t *request;
@@ -48,7 +51,7 @@ void *ha_net_opened(gpcc_net_conn_t conn, void *conn_arg,
 	return 0;
     }
 
-    ha->opened(ha);
+    ha->cb.opened(ha);
     return ha;
 }
 
@@ -56,7 +59,7 @@ void ha_net_closed(gpcc_net_conn_t conn, void *conn_arg)
 {
     gpcc_ha_t *ha = (gpcc_ha_t *) conn_arg;
 
-    ha->closed(ha);
+    ha->cb.closed(ha);
 }
 
 void ha_net_recv(gpcc_net_conn_t conn, void *conn_arg)
@@ -90,7 +93,7 @@ void ha_net_recv(gpcc_net_conn_t conn, void *conn_arg)
 	    goto bail;
 	}
 
-	ha->recv(ha, packet);
+	ha->cb.recv(ha, packet);
 
 	if (packet)
 	    free(packet);
@@ -109,7 +112,7 @@ void ha_net_recv(gpcc_net_conn_t conn, void *conn_arg)
 APR_DECLARE(gpcc_ha_t*) gpcc_ha_open(const char *addr,
 				     gpcc_ha_opened_t *opened,
 				     gpcc_ha_closed_t *closed,
-				     gpcc_ha_recv_t *recv) 
+				     gpcc_ha_recv_t *recv)
 {
 			       
     int e;
@@ -128,9 +131,10 @@ APR_DECLARE(gpcc_ha_t*) gpcc_ha_open(const char *addr,
 	return 0;
     }
 
-    ha->opened = opened;
-    ha->closed = closed;
-    ha->recv = recv;
+    ha->cb.opened = opened;
+    ha->cb.closed = closed;
+    ha->cb.recv = recv;
+
     return ha;
 }
 										 
