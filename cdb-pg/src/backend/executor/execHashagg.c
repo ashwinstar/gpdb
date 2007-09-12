@@ -63,8 +63,7 @@ static void batch_close(HashAggTable *hashtable, unsigned int batch);
 
 static TupleTableSlot *batch_get_tuple(HashAggTable *hashtable, unsigned int batch,  TupleTableSlot *tupleSlot, uint32* hkey);
 static void init_agg_hash_iter(HashAggTable* ht);
-static HashAggEntry *lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, 
-										   uint32 hkin, uint32 *hkout, bool *isNew);
+static HashAggEntry *lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashkey, bool* isNew);
 static uint32 calc_hash_value(AggState* aggstate, TupleTableSlot *inputslot);
 static HashAggEntry *makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashkey);
 
@@ -290,24 +289,18 @@ void destroy_agg_hash_table(AggState *aggstate)
 void
 agg_hash_initial_pass(AggState *aggstate)
 {
-	PlanState  *outer_ps;
-	ExprContext *tmpcontext;
-	HashAggTable *ht;
+	PlanState  *outer_ps = outerPlanState(aggstate);
+	ExprContext *tmpcontext = aggstate->tmpcontext; /* per input tuple expr context */
+	HashAggTable *ht = aggstate->hhashtable; 
+	TupleTableSlot *hashslot = aggstate->hashslot;
 	HashAggEntry *entry;
 	TupleTableSlot *outerslot;
-	uint32 hashkey;
 	unsigned long noverflow = 0;
 	bool isNew = false;
 	bool spilling = false;
 	char* spillbuf = 0;
 	unsigned int spillbuflen = 0;
 
-	/*
-	 * Get state info from node.
-	 */
-	outer_ps = outerPlanState(aggstate);
-	tmpcontext = aggstate->tmpcontext; /* per-input-tuple expr context */
-	ht = aggstate->hhashtable;
 	Assert(ht && ht->state == HASHAGG_BEFORE_FIRST_PASS);
 
 	elog(HHA_MSG_LVL,
@@ -321,15 +314,15 @@ agg_hash_initial_pass(AggState *aggstate)
 	if (outerslot)
 	{
 		/* Initialize hashslot by cloning input slot. */
-		ExecSetSlotDescriptor(aggstate->hashslot, outerslot->tts_tupleDescriptor);
-		ExecStoreAllNullTuple(aggstate->hashslot);
+		ExecSetSlotDescriptor(hashslot, outerslot->tts_tupleDescriptor);
+		ExecStoreAllNullTuple(hashslot);
 	}
 
 	for ( ; ! TupIsNull(outerslot); outerslot = ExecProcNode(outer_ps))
 	{
 		ListCell *lc;
 		MemoryContext oldContext;
-
+		uint32 hashkey;
 		
 		/* get the attrs */
 		oldContext = MemoryContextSwitchTo(outerslot->tts_mcxt);
@@ -340,8 +333,8 @@ agg_hash_initial_pass(AggState *aggstate)
 		foreach (lc, aggstate->hash_needed)
 		{
 			int n = lfirst_int(lc) - 1;
-			aggstate->hashslot->tts_values[n] = outerslot->tts_values[n];
-			aggstate->hashslot->tts_isnull[n] = outerslot->tts_isnull[n];
+			hashslot->tts_values[n] = outerslot->tts_values[n];
+			hashslot->tts_isnull[n] = outerslot->tts_isnull[n];
 		}
 
 		/* set up for advance_aggregates call */
@@ -349,7 +342,8 @@ agg_hash_initial_pass(AggState *aggstate)
 
 		/* Find or (if there's room) build a hash table entry for the
 		 * input tuple's group. */
-		entry = lookup_agg_hash_entry(aggstate, aggstate->hashslot, 0, &hashkey, &isNew);
+		hashkey = calc_hash_value(aggstate, hashslot);
+		entry = lookup_agg_hash_entry(aggstate, hashslot, hashkey, &isNew);
 
 		if (entry != NULL)
 		{
@@ -688,7 +682,7 @@ agg_hash_reload(AggState *aggstate)
 		tmpcontext->ecxt_scantuple = outerslot;
 
 		/* Find or build hhashtable entry for this tuple's group */
-		entry = lookup_agg_hash_entry(aggstate, outerslot, hkey, NULL, &isNew);
+		entry = lookup_agg_hash_entry(aggstate, outerslot, hkey, &isNew);
 
 		if ( entry != NULL )
 		{			
@@ -855,8 +849,7 @@ calc_hash_value(AggState* aggstate, TupleTableSlot *inputslot)
  * Initializing them is the callers responsibility.
  */
 static HashAggEntry *
-lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, 
-					  uint32 hkin, uint32 *hkout, bool *isNew)
+lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashkey, bool* isNew)
 {
 	Agg *agg;
 	ExprContext *econtext;
@@ -864,7 +857,6 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot,
 	HashAggTable *ht;
 	HashAggEntry *entry;
 	TupleDesc entry_tuple_desc;
-	uint32 hashkey;
 	unsigned int bucket_idx;
 	uint64 bloomval;			/* bloom filter value */
 	
@@ -877,11 +869,7 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot,
 	ResetExprContext(econtext);
 	oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 
-	/* Get hash key and its bucket index. */
-	hashkey = hkin ? hkin : calc_hash_value(aggstate, inputslot);
-	if (hkout)
-		*hkout = hashkey;
-
+	/* Get the bucket index. */
 	bucket_idx = hashkey % ht->nbucket;
 	bloomval = ((uint64)1) << ((hashkey >> 13) & 0x3f);
 	entry = (0 == (ht->bloom[bucket_idx] & bloomval) ? NULL : ht->buckets[bucket_idx]);
@@ -896,7 +884,6 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot,
 			HeapTuple heapTuple = entry->heaptuple;
 			int i;
 			bool match = true;
-			Datum i1, i2, e1, e2;
 			
 			for (i = 0; i < agg->numCols; i++)
 			{
@@ -904,12 +891,12 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot,
 				Datum		input_datum, entry_datum;
 				bool		input_isNull, entry_isNull;
 
-				input_datum = slot_getattr(inputslot, att, &input_isNull);
+				if (inputslot->tts_tuple)
+					input_datum = heap_getattr(inputslot->tts_tuple, att, entry_tuple_desc, &input_isNull);
+				else
+					input_datum = slot_getattr(inputslot, att, &input_isNull);
 				entry_datum = heap_getattr(heapTuple, att, entry_tuple_desc, &entry_isNull);
 
-				if (att == 1) e1 = entry_datum, i1 = input_datum;
-				else if (att == 2) e2 = entry_datum, i2 = input_datum;
-				
 				if ( input_isNull && entry_isNull )
 					continue; /* NULLs match in group keys. */
 				if ( !(input_isNull || entry_isNull) &&
