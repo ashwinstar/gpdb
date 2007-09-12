@@ -652,6 +652,9 @@ typedef struct Agg
 	 * Indicate if this Agg node is the last one in a rollup.
 	 */
 	bool        lastAgg;
+
+	/* Should we stream this agg */
+	bool 		streaming;
 } Agg;
 
 /* ---------------

@@ -120,6 +120,7 @@ bool		gp_enable_preunique = TRUE;
 bool		gp_eager_preunique = FALSE;
 double		gp_hashagg_rewrite_limit = 1;
 bool		gp_hashagg_recalc_density = true;
+bool 		gp_hashagg_streambottom = false;
 
 bool		gp_enable_motion_deadlock_sanity = FALSE; /* planning time sanity check */
 bool		gp_adjust_selectivity_for_outerjoins = TRUE;
@@ -130,6 +131,10 @@ bool		gp_selectivity_damping_sigsort = true;
 
 int			gp_hashjoin_tuples_per_bucket = 5;
 int			gp_hashagg_groups_per_bucket = 5;
+
+/* default value to 0, which means we do not try to control number of spill batches */
+int 		gp_hashagg_spillbatch_min = 0;
+int 		gp_hashagg_spillbatch_max = 0;
 
 /* Greenplum Database Experimental Feature GUCs */
 bool		gp_enable_agg_distinct = FALSE;

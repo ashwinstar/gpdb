@@ -86,7 +86,7 @@ extern Sort *make_sort_from_reordered_groupcols(PlannerInfo *root,
 												TargetEntry *grouping,
 												Plan *lefttree);
 extern Agg *make_agg(PlannerInfo *root, List *tlist, List *qual,
-					 AggStrategy aggstrategy,
+					 AggStrategy aggstrategy, bool streaming,
 					 int numGroupCols, AttrNumber *grpColIdx,
 					 long numGroups, int numNullCols,
 					 uint64 inputGrouping, uint64 grouping,

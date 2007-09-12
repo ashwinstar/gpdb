@@ -1429,6 +1429,11 @@ static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bo
 		appendPQExpBuffer(buffer, " -c gp_interconnect_setup_timeout=%d", interconnect_setup_timeout);
 	if (gp_hashagg_rewrite_limit != 1.0)
 		appendPQExpBuffer(buffer, " -c gp_hashagg_rewrite_limit=%f", gp_hashagg_rewrite_limit);
+	if (gp_hashagg_spillbatch_min != 0)
+		appendPQExpBuffer(buffer, " -c gp_hashagg_spillbatch_min=%d", gp_hashagg_spillbatch_min);
+	if (gp_hashagg_spillbatch_max != 0)
+		appendPQExpBuffer(buffer, " -c gp_hashagg_spillbatch_max=%d", gp_hashagg_spillbatch_max);
+
 
 	appendPQExpBuffer(buffer, " -c DateStyle=");
 	switch (DateStyle)

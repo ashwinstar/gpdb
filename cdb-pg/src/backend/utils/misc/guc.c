@@ -1200,6 +1200,15 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_hashagg_streambottom", PGC_USERSET, QUERY_TUNING_METHOD,
+            gettext_noop("Stream the bottom stage of two stage hashagg"), 
+            gettext_noop("Avoid spilling at the bootom stage of two stage hashagg")
+		},
+		&gp_hashagg_streambottom,
+		true, NULL, NULL
+	},
+
+	{
 		{"gp_enable_motion_deadlock_sanity", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable verbose check at planning time."),
 			NULL,
@@ -2309,6 +2318,26 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&gp_hashagg_groups_per_bucket,
 		5, 1, 25, NULL, NULL
+	},
+
+	{
+		{"gp_hashagg_spillbatch_min", PGC_USERSET, GP_ARRAY_TUNING,
+		 gettext_noop("Minimum number of spill batches of HashAgg"), 
+		 gettext_noop("Controlling number of spill batches, if too small, hashagg may respill"),
+		 GUC_NOT_IN_SAMPLE
+		},
+		&gp_hashagg_spillbatch_min,
+		0, 0, 1000000, NULL, NULL
+	},
+
+	{
+		{"gp_hashagg_spillbatch_max", PGC_USERSET, GP_ARRAY_TUNING,
+		 gettext_noop("Maximum number of spill batches of HashAgg"), 
+		 gettext_noop("Controlling number of spill batches, if too big, hashagg spill I/O will be slow"), 
+		 GUC_NOT_IN_SAMPLE
+		},
+		&gp_hashagg_spillbatch_max,
+		0, 0, 1000000, NULL, NULL
 	},
 
 	{

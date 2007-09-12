@@ -1978,7 +1978,7 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 					root,
 					tlist, /* just partkey (if any) at this point */
 					NIL, /* qual */
-					strategy,
+					strategy, false,
 					winfo->partkey_len, 
 					grpcolidx,
 				    num_groups,
@@ -2602,7 +2602,7 @@ static RangeTblEntry *rte_for_coplan(
 			
 			new_plan = (Plan*)
 				make_agg(root, coplan->targetlist, NULL,
-						 AGG_SORTED,
+						 AGG_SORTED, false,
 						 winfo->partkey_len, winfo->partkey_attrs,
 						 num_groups,
 						 0, /* num_nullcols */
@@ -2617,7 +2617,7 @@ static RangeTblEntry *rte_for_coplan(
 			/* Plain aggregation, no grouping. */
 			new_plan = (Plan*)
 				make_agg(root, coplan->targetlist, NULL,
-						 AGG_PLAIN,
+						 AGG_PLAIN, false,
 						 0, NULL,
 						 1, /* number of groups */
 						 0, /* num_nullcols */

@@ -2503,6 +2503,7 @@ _readAgg(void)
 	READ_BOOL_FIELD(inputHasGrouping);
 	READ_INT_FIELD(rollupGSTimes);
 	READ_BOOL_FIELD(lastAgg);
+	READ_BOOL_FIELD(streaming);
 
 	READ_DONE();
 }

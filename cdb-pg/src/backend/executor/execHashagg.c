@@ -287,7 +287,7 @@ void destroy_agg_hash_table(AggState *aggstate)
  *
  * When called, CurrentMemoryContext should be the per-query context.
  */
-void
+bool
 agg_hash_initial_pass(AggState *aggstate)
 {
 	PlanState  *outer_ps = outerPlanState(aggstate);
@@ -301,8 +301,12 @@ agg_hash_initial_pass(AggState *aggstate)
 	bool spilling = false;
 	char* spillbuf = 0;
 	unsigned int spillbuflen = 0;
+	bool streaming = ((Agg *) aggstate->ss.ps.plan)->streaming;
+	bool tupRemaining = true;
+	bool inithashslot = true;
 
-	Assert(ht && ht->state == HASHAGG_BEFORE_FIRST_PASS);
+	Assert(ht);
+	AssertImply(!streaming, ht->state == HASHAGG_BEFORE_FIRST_PASS);
 
 	elog(HHA_MSG_LVL,
 		 "hybrid hash aggregation: initial pass -- beginning to load hash table");
@@ -311,19 +315,35 @@ agg_hash_initial_pass(AggState *aggstate)
 	 * Process outer-plan tuples, until we exhaust the outer plan.
 	 */
 	ht->pass = 0;
-	outerslot = ExecProcNode(outer_ps);
-	if (outerslot)
-	{
-		/* For first input, initialize hashslot by cloning input slot. */
-		ExecSetSlotDescriptor(hashslot, outerslot->tts_tupleDescriptor);
-		ExecStoreAllNullTuple(hashslot);
-	}
 
-	for ( ; ! TupIsNull(outerslot); outerslot = ExecProcNode(outer_ps))
+	while(true)
 	{
 		ListCell *lc;
 		MemoryContext oldContext;
 		uint32 hashkey;
+
+		/* Streaming case: break out loop (initial_pass) if hashtable is full */
+		if(streaming && ht->nentries >= ht->max_entries) 
+		{
+			Assert(tupRemaining);
+			break;
+		}
+
+		outerslot = ExecProcNode(outer_ps);
+		if (inithashslot && outerslot)
+		{
+			/* Initialize hashslot by cloning input slot. */
+			ExecSetSlotDescriptor(hashslot, outerslot->tts_tupleDescriptor);
+			ExecStoreAllNullTuple(hashslot);
+			inithashslot = false;
+		}
+		
+		/* no more tuple.  Done */
+		if(TupIsNull(outerslot))
+		{
+			tupRemaining = false;
+			break;
+		}
 		
 		/* get the attrs, need them for calc_hash_value() later */
 		oldContext = MemoryContextSwitchTo(outerslot->tts_mcxt);
@@ -366,6 +386,9 @@ agg_hash_initial_pass(AggState *aggstate)
 			/* No room for a new entry, write entry to overflow batch. */
 			uint32 rotkey;
 			unsigned batch;
+
+			/* Assert streaming case should never spill. */
+			Assert(!streaming);
 
 			if (!spilling)
 			{
@@ -455,7 +478,7 @@ agg_hash_initial_pass(AggState *aggstate)
 
 	/* Initialize to walk the hash table */
 	init_agg_hash_iter(aggstate->hhashtable);
-	
+
 	elog(HHA_MSG_LVL,
 		 "hybrid hash aggregation: %ld tuples loaded to %ld hash table entries",
 		 ht->ntuple, ht->ngroup);
@@ -472,6 +495,12 @@ agg_hash_initial_pass(AggState *aggstate)
         ht->noverflow_initial = noverflow;
         agg_hash_table_stat_upd(ht);
     }
+
+	AssertImply(tupRemaining, streaming);
+	if(tupRemaining) 
+		elog(LOG, "Hashagg does not finish in initial pass, streaming out.");
+
+	return tupRemaining;
 }
 
 
@@ -493,12 +522,16 @@ agg_hash_next_pass(AggState *aggstate)
 	unsigned int pass = aggstate->hhashtable->pass;
 	unsigned int nbatch = aggstate->hhashtable->nbatch;
 	BatchFileInfo *batches = aggstate->hhashtable->batches;
+	bool streaming = ((Agg *) aggstate->ss.ps.plan)->streaming;
 	
 	elog(HHA_MSG_LVL,
 		"hybrid hash aggregation: pass %d -- advancing to next pass",
 		aggstate->hhashtable->pass);
 
 	reset_agg_hash_table(aggstate);
+
+	if(streaming)
+		return agg_hash_initial_pass(aggstate);
 
 	for ( pass++; pass < nbatch; pass++ )
 	{
@@ -598,6 +631,7 @@ bool
 agg_hash_continue_pass(AggState *aggstate)
 {
 	int x;
+	bool streaming = ((Agg *) aggstate->ss.ps.plan)->streaming;
 
 	elog(HHA_MSG_LVL,
 		"hybrid hash aggregation: pass %d -- continuing",
@@ -605,6 +639,9 @@ agg_hash_continue_pass(AggState *aggstate)
 	
 	reset_agg_hash_table(aggstate);
 	
+	if(streaming)
+		return agg_hash_initial_pass(aggstate);
+
 	/* Swap source and overflow files. */
 	x = aggstate->hhashtable->overflow;
 	aggstate->hhashtable->overflow = aggstate->hhashtable->source;
@@ -1160,6 +1197,18 @@ create_batches(HashAggTable *hashtable, unsigned int nbatch)
 	size_t sz;
 	
 	Assert(nbatch > 1 && hashtable->batches == NULL);
+
+	if(gp_hashagg_spillbatch_min != 0 && nbatch < gp_hashagg_spillbatch_min)
+	{
+		elog(LOG, "Hashagg spillbatch use guc min value %d instead of %d", gp_hashagg_spillbatch_min, nbatch);
+		nbatch = gp_hashagg_spillbatch_min;
+	}
+
+	if(gp_hashagg_spillbatch_max != 0 && nbatch > gp_hashagg_spillbatch_max)
+	{
+		elog(LOG, "Hashagg spillbatch use guc max value %d instead of %d", gp_hashagg_spillbatch_max, nbatch);
+		nbatch = gp_hashagg_spillbatch_max;
+	}
 
 	sz = nbatch * sizeof(BatchFileInfo);	
 	hashtable->batches = (BatchFileInfo*)palloc0(sz);

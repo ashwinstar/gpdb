@@ -577,6 +577,15 @@ extern double gp_hashagg_rewrite_limit;
  * (possibly better) batching scheme */
 extern bool gp_hashagg_recalc_density;
 
+/* If we use two stage hashagg, we can stream the bottom half */
+extern bool gp_hashagg_streambottom; 
+
+/* Hashagg spill: minimum number of spill batches */
+extern int gp_hashagg_spillbatch_min;
+/* Hashagg spill: max number of spill batches */
+extern int gp_hashagg_spillbatch_max;
+
+
 /* --------------------------------------------------------------------------------------------------
  * Server debugging
  */

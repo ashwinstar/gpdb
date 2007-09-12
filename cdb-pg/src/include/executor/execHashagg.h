@@ -113,7 +113,7 @@ typedef struct HashAggTable
 } HashAggTable;
 
 extern HashAggTable *create_agg_hash_table(AggState *aggstate);
-extern void agg_hash_initial_pass(AggState *aggstate);
+extern bool agg_hash_initial_pass(AggState *aggstate);
 extern bool agg_hash_next_pass(AggState *aggstate);
 extern bool agg_hash_continue_pass(AggState *aggstate);
 

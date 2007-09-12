@@ -814,7 +814,7 @@ create_unique_plan(CreatePlanContext *ctx, UniquePath *best_path)
 		plan = (Plan *) make_agg(ctx->root,
 								 build_relation_tlist(best_path->path.parent),
 								 NIL,
-								 AGG_HASHED,
+								 AGG_HASHED, false,
 								 numGroupCols,
 								 groupColIdx,
 								 numGroups,
@@ -3757,7 +3757,7 @@ materialize_finished_plan(Plan *subplan)
 
 Agg *
 make_agg(PlannerInfo *root, List *tlist, List *qual,
-		 AggStrategy aggstrategy,
+		 AggStrategy aggstrategy, bool streaming, 
 		 int numGroupCols, AttrNumber *grpColIdx,
 		 long numGroups, int num_nullcols,
 		 uint64 input_grouping, uint64 grouping,
@@ -3783,6 +3783,7 @@ make_agg(PlannerInfo *root, List *tlist, List *qual,
 	node->inputHasGrouping = false;
 	node->rollupGSTimes = rollupGSTimes;
 	node->lastAgg = false;
+	node->streaming = streaming;
 
 	copy_plan_costsize(plan, lefttree); /* only care about copying size */
 

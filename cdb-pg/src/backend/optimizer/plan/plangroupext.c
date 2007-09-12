@@ -975,7 +975,7 @@ add_first_agg(PlannerInfo *root,
 		 * GROUPING in groupColIdx, which is the last entry in groupColIdx.
 		 * The parameter numGroupCols should have excluded the GROUPING column.
 		 */
-		agg_node = (Plan *)make_agg(root, current_tlist, current_qual, context->aggstrategy,
+		agg_node = (Plan *)make_agg(root, current_tlist, current_qual, context->aggstrategy, false,
 									numGroupCols, groupColIdx,
 									lNumGroups, num_nullcols, input_grouping, grouping,
 									rollup_gs_times,

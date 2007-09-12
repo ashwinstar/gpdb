@@ -538,6 +538,7 @@ _outAgg(StringInfo str, Agg *node)
 	WRITE_BOOL_FIELD(inputHasGrouping);
 	WRITE_INT_FIELD(rollupGSTimes);
 	WRITE_BOOL_FIELD(lastAgg);
+	WRITE_BOOL_FIELD(streaming);
 }
 
 static void
