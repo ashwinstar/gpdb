@@ -264,6 +264,7 @@ void destroy_agg_hash_table(AggState *aggstate)
 		
 		destroy_batches(aggstate->hhashtable);
 		pfree(aggstate->hhashtable->buckets);
+		pfree(aggstate->hhashtable->bloom);
 		pfree(aggstate->hhashtable);
 		aggstate->hhashtable = NULL;
 	}
@@ -313,7 +314,7 @@ agg_hash_initial_pass(AggState *aggstate)
 	outerslot = ExecProcNode(outer_ps);
 	if (outerslot)
 	{
-		/* Initialize hashslot by cloning input slot. */
+		/* For first input, initialize hashslot by cloning input slot. */
 		ExecSetSlotDescriptor(hashslot, outerslot->tts_tupleDescriptor);
 		ExecStoreAllNullTuple(hashslot);
 	}
@@ -324,7 +325,7 @@ agg_hash_initial_pass(AggState *aggstate)
 		MemoryContext oldContext;
 		uint32 hashkey;
 		
-		/* get the attrs */
+		/* get the attrs, need them for calc_hash_value() later */
 		oldContext = MemoryContextSwitchTo(outerslot->tts_mcxt);
 		slot_getsomeattrs(outerslot, linitial_int(aggstate->hash_needed));
 		MemoryContextSwitchTo(oldContext);
@@ -849,22 +850,17 @@ calc_hash_value(AggState* aggstate, TupleTableSlot *inputslot)
  * Initializing them is the callers responsibility.
  */
 static HashAggEntry *
-lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashkey, bool* isNew)
+lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashkey, bool* isNew_)
 {
-	Agg *agg;
-	ExprContext *econtext;
+	Agg *agg = (Agg*)aggstate->ss.ps.plan;
+	ExprContext *econtext = aggstate->tmpcontext; /* short-lived, per-input-tuple */
+	HashAggTable *ht = aggstate->hhashtable;
+	TupleDesc entry_tuple_desc = aggstate->ss.ss_ScanTupleSlot->tts_tupleDescriptor;
 	MemoryContext oldContext;
-	HashAggTable *ht;
 	HashAggEntry *entry;
-	TupleDesc entry_tuple_desc;
 	unsigned int bucket_idx;
 	uint64 bloomval;			/* bloom filter value */
-	
-	agg = (Agg*)aggstate->ss.ps.plan;
-	econtext = aggstate->tmpcontext; /* short-lived, per-input-tuple */
-	ht = aggstate->hhashtable;
-	entry_tuple_desc = aggstate->ss.ss_ScanTupleSlot->tts_tupleDescriptor;
-	
+	bool isnew = false;
 
 	ResetExprContext(econtext);
 	oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
@@ -912,8 +908,6 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hash
 			if (match)
 			{
 				/* Found an existing matching entry. */
-				if ( isNew != NULL )
-					*isNew = false;
 				break;
 			}
 		}
@@ -930,19 +924,17 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hash
 			ht->nentries++;
 			ht->bloom[bucket_idx] |= bloomval;
 			
-			if ( isNew != NULL )
-				*isNew = true;
+			isnew = true; /* created a new entry */
 		}
-		else
-		{
-			/* No matching entry and no room to create one. */
-			entry = NULL;
-			/* Don't change *isNew in this case. */
-		}
+		/*
+		  else no matching entry, and no room to create one. 
+		*/
 	}
 	
 	(void) MemoryContextSwitchTo(oldContext);
-	
+
+	if (isNew_)
+		*isNew_ = isnew;
 	return entry;
 }
 
