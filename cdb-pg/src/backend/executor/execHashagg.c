@@ -807,13 +807,13 @@ calc_hash_value(AggState* aggstate, TupleTableSlot *inputslot)
 	for (i = 0; i < agg->numCols; i++)
 	{
 		AttrNumber	att = agg->grpColIdx[i];
-		Datum		attr;
-		bool		isNull;
+		Datum		attr = inputslot->tts_values[att - 1];
+		bool		isNull = inputslot->tts_isnull[att - 1];
 
 		/* rotate hashkey left 1 bit at each step */
 		hashkey = (hashkey << 1) | ((hashkey & 0x80000000) ? 1 : 0);
 
-		attr = slot_getattr(inputslot, att, &isNull);
+		/*attr = slot_getattr(inputslot, att, &isNull);*/
 
 		if (!isNull)			/* treat nulls as having hash key 0 */
 		{
