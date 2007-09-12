@@ -1042,3 +1042,12 @@ FROM sale;
 select qty,cn,pn,dt,pn,prc,
 MAX(floor(sale.prc+sale.prc)) OVER(partition by sale.qty,sale.cn,sale.pn,sale.dt order by sale.pn asc range between 0 following and unbounded following ) 
 from sale;
+
+-- MPP-1947
+SELECT dt,cn,cn,qty,
+MIN(floor(sale.qty)) OVER(partition by sale.dt,sale.cn,sale.dt order by sale.cn desc range between 1 preceding and unbounded following ) 
+FROM sale;
+
+SELECT dt,cn,cn,qty, 
+MAX(floor(sale.qty)) OVER(partition by sale.dt,sale.cn,sale.dt order by sale.cn desc range between 1 preceding and unbounded following )
+from sale;

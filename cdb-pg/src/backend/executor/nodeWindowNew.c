@@ -1879,7 +1879,8 @@ computeFrameValue(WindowStatePerLevel level_state,
 					 ((level_state->is_rows && level_state->trail_rows == 0) ||
 					  (!level_state->is_rows && level_state->trail_range == 0))))
 					include_last_agg = true;
-				if (EDGE_IS_BOUND_FOLLOWING(level_state->frame->lead)  ||
+				if (!EDGE_IS_BOUND(level_state->frame->lead) ||
+					EDGE_IS_BOUND_FOLLOWING(level_state->frame->lead)  ||
 					 EDGE_IS_CURRENT_ROW(level_state->frame->lead) ||
 					 (EDGE_IS_BOUND_PRECEDING(level_state->frame->lead) &&
 					  ((level_state->is_rows && level_state->lead_rows == 0) ||

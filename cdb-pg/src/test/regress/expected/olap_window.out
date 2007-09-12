@@ -5705,3 +5705,42 @@ from sale;
  1100 |  2 | 100 | 01-01-1401 | 100 | 2400 | 4800
 (12 rows)
 
+-- MPP-1947
+SELECT dt,cn,cn,qty,
+MIN(floor(sale.qty)) OVER(partition by sale.dt,sale.cn,sale.dt order by sale.cn desc range between 1 preceding and unbounded following ) 
+FROM sale;
+     dt     | cn | cn | qty  | min  
+------------+----+----+------+------
+ 04-01-1401 |  3 |  3 |    1 |    1
+ 05-01-1401 |  1 |  1 |    1 |    1
+ 06-01-1401 |  4 |  4 |    1 |    1
+ 06-01-1401 |  4 |  4 |    1 |    1
+ 06-01-1401 |  2 |  2 |    1 |    1
+ 01-01-1401 |  2 |  2 | 1100 | 1100
+ 03-01-1401 |  1 |  1 |    1 |    1
+ 05-02-1401 |  1 |  1 |    1 |    1
+ 06-01-1401 |  3 |  3 |   12 |   12
+ 06-01-1401 |  3 |  3 |   12 |   12
+ 06-01-1401 |  1 |  1 |    1 |    1
+ 06-01-1401 |  1 |  1 |   12 |    1
+(12 rows)
+
+SELECT dt,cn,cn,qty, 
+MAX(floor(sale.qty)) OVER(partition by sale.dt,sale.cn,sale.dt order by sale.cn desc range between 1 preceding and unbounded following )
+from sale;
+     dt     | cn | cn | qty  | max  
+------------+----+----+------+------
+ 04-01-1401 |  3 |  3 |    1 |    1
+ 05-01-1401 |  1 |  1 |    1 |    1
+ 06-01-1401 |  4 |  4 |    1 |    1
+ 06-01-1401 |  4 |  4 |    1 |    1
+ 06-01-1401 |  2 |  2 |    1 |    1
+ 01-01-1401 |  2 |  2 | 1100 | 1100
+ 03-01-1401 |  1 |  1 |    1 |    1
+ 05-02-1401 |  1 |  1 |    1 |    1
+ 06-01-1401 |  3 |  3 |   12 |   12
+ 06-01-1401 |  3 |  3 |   12 |   12
+ 06-01-1401 |  1 |  1 |    1 |   12
+ 06-01-1401 |  1 |  1 |   12 |   12
+(12 rows)
+
