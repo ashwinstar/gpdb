@@ -4538,7 +4538,7 @@ init_frames(WindowState *wstate)
 
 	/*
 	 * Set trivial_frames_only in each level state if its functions
-	 * all have trivial frames, and they are not Agg functions.
+	 * all have trivial frames.
 	 *
 	 * Also initialize the transition values for functions
 	 * in this level.
@@ -4813,6 +4813,34 @@ separateLeadLag(WindowState *wstate)
 
 	pfree(num_lead_lag);
 	pfree(old_level_state);
+
+	/*
+	 * Set trivial_frames_only in each level state if its functions
+	 * all have trivial frames.
+	 *
+	 * Also initialize the transition values for functions
+	 * in this level.
+	 */
+	for (level=0; level<wstate->numlevels; level++)
+	{
+		bool trivial_frames_only = true;
+		WindowStatePerLevel level_state = &wstate->level_state[level];
+		
+		foreach(lc, level_state->level_funcs)
+		{
+			WindowStatePerFunction funcstate = (WindowStatePerFunction)
+				lfirst(lc);
+			
+			if (!funcstate->trivial_frame)
+			{
+				trivial_frames_only = false;
+				break;
+			}
+		}
+		level_state->trivial_frames_only = trivial_frames_only;
+
+		resetTransValues(level_state, wstate->transcontext);
+	}
 }
 
 /* -----------------

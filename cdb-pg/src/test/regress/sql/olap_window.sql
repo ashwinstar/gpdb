@@ -1117,3 +1117,9 @@ select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 
 select dt,pn,qty,
 LEAD(cast(floor(sale.qty/sale.qty) as int),cast (floor(sale.qty) as int),NULL) OVER(partition by sale.dt order by sale.pn asc) as lead 
 from sale;
+
+-- MPP-1958
+SELECT sale.qty, 
+MIN(floor(sale.qty)) OVER(order by sale.pn asc rows unbounded preceding ) as min,sale.pn,
+LAG(cast(floor(sale.qty-sale.prc) as int),cast (floor(sale.qty/sale.vn) as int),NULL) OVER(order by sale.pn asc) as lag
+FROM sale;

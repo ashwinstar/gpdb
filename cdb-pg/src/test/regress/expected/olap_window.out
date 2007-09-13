@@ -6717,3 +6717,24 @@ from sale;
  05-01-1401 | 100 |    1 |     
 (12 rows)
 
+-- MPP-1958
+SELECT sale.qty, 
+MIN(floor(sale.qty)) OVER(order by sale.pn asc rows unbounded preceding ) as min,sale.pn,
+LAG(cast(floor(sale.qty-sale.prc) as int),cast (floor(sale.qty/sale.vn) as int),NULL) OVER(order by sale.pn asc) as lag
+FROM sale;
+ qty  | min | pn  | lag 
+------+-----+-----+-----
+    1 |   1 | 100 |   1
+ 1100 |   1 | 100 |    
+    1 |   1 | 200 |   1
+    1 |   1 | 200 |   1
+    1 |   1 | 300 |   1
+    1 |   1 | 400 |   1
+    1 |   1 | 400 |   1
+   12 |   1 | 500 |   7
+   12 |   1 | 500 |   7
+   12 |   1 | 600 |   7
+    1 |   1 | 700 |   0
+    1 |   1 | 800 |   0
+(12 rows)
+
