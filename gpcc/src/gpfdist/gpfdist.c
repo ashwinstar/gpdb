@@ -704,6 +704,10 @@ void session_end(session_t* s, int error)
     }
 }
 
+static int fpath_compare(const void *a, const void *b)
+{
+    return strcmp(*((char **) a), *((char **) b));
+}
 
 char** glob(char* path, int* retcnt, apr_pool_t* pool)
 {
@@ -730,6 +734,9 @@ char** glob(char* path, int* retcnt, apr_pool_t* pool)
     
     if (retcnt) 
 	*retcnt = p - fpath;
+
+
+    qsort(fpath, *retcnt, sizeof(char *), fpath_compare);
     return fpath;
 }
 
