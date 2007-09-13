@@ -146,7 +146,7 @@ create_agg_hash_table(AggState *aggstate)
 	if (!calcHashAggTableSizes(1024.0 * (double)work_mem,
 							   (double)agg->numGroups,
 							   aggstate->numaggs,
-							   est_hash_tuple_size(aggstate->ss.ss_ScanTupleSlot, aggstate->hash_needed),
+							   Min(est_hash_tuple_size(aggstate->ss.ss_ScanTupleSlot, aggstate->hash_needed), agg->plan.plan_width),
 							   agg->transSpace,
 							   true,
 							   &hats))
