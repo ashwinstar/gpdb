@@ -220,6 +220,7 @@ class Session(cmd.Cmd):
 
 session = None
 def cleanup():
+    global session
     while True:
 	try:
 	    if session: 
