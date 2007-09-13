@@ -451,7 +451,9 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 			 */
 			for (i = 0; i< conninfo->nsegs; i++)
 			{
-				elog(LOG,"DA %d: Gang_id %d Result %d MotionListener %d  pid %d",whichagent, gang_id,i, gresp[i].motionListener, gresp[i].pid); 
+				elog(LOG,"DA %d: Gang_id %d Result %d MotionListener %d/%d  pid %d",whichagent, gang_id,i, 
+						(gresp[i].motionListener & 0x0ffff),
+						((gresp[i].motionListener>>16) & 0x0ffff), gresp[i].pid); 
 			}
 			
 			/*
@@ -2239,7 +2241,10 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
 		r[i].motionListener = newGangDefinition->db_descriptors[i].motionListener;
 		r[i].pid = PQbackendPID(newGangDefinition->db_descriptors[i].conn);
 		//strncpy(r[i].hostip, ?);	// Do we need this?
-		elog(LOG,"Gang response motionListener %d, pid %d",r[i].motionListener,r[i].pid);
+		elog(LOG,"Gang response motionListener %d/%d, pid %d",
+				 (r[i].motionListener & 0x0ffff),
+				 ((r[i].motionListener>>16) & 0x0ffff),
+				 r[i].pid);
 	}
 
 	MemoryContextSwitchTo(oldContext);

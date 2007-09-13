@@ -3521,6 +3521,11 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				
 				pq_putmessage('C', completionTag, strlen(completionTag)+1);
 			}
+			
+			pq_flush();	/* send right away, don't wait while we do finish_xact_command */
+			
+			if (MyXactMadeXLogEntry)
+				elog(LOG,"DispatchAgent made an XLog entry?");
 
 			finish_xact_command();
 			
@@ -3839,10 +3844,15 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			}
 			
 			Assert(getDistributedTransactionId() == InvalidDistributedTransactionId);
+			if (MyXactMadeXLogEntry)
+				elog(NOTICE,"DispatchAgent made an XLog entry?");
 
 			EndCommand(completionTag,whereToSendOutput);
 			
+			pq_flush();	/* send right away, don't wait while we do finish_xact_command */
+			
 			finish_xact_command();
+			
 			
 			elog(DEBUG1,"Dispatch agent says we are done with this command %s",completionTag);
 			
@@ -4040,6 +4050,8 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				completionTag = cdbdisp_relayresults(primaryResults, mirrorResults);
 				
 				EndCommand(completionTag,whereToSendOutput);
+				
+				pq_flush();	/* send right away, don't wait while we do finish_xact_command */
 				
 				finish_xact_command();
 				
