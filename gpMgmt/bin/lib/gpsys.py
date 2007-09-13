@@ -120,6 +120,10 @@ def do_platform(res):
     res['platform.processor'] = uname[5]
     return True
 
+def do_python(res):
+    version = sys.version_info
+    res['python.version'] = '%s.%s.%s' % version[0:3]
+
 def do_system(res):
     SYSTEM_KEYS = ('rlim_fd_max', 'rlim_fd_cur', 'shmsys:shminfo_shmmax', 'semsys:seminfo_semmni')
     f = open('/etc/system', 'r')
@@ -170,6 +174,7 @@ res = {}
 do_gppath(res)
 do_postgres_md5(res)
 do_postgres_version(res)
+do_python(res)
 do_platform(res)
 system = res['platform.system']
 if system == 'sunos':
