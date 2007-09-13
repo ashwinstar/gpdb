@@ -5744,3 +5744,956 @@ from sale;
  06-01-1401 |  1 |  1 |   12 |   12
 (12 rows)
 
+-- FIRST_VALUE/LAST_VALUE
+select cn,vn,first_value(vn) over (order by cn rows between 2 preceding and 1 preceding) as first_value from sale;
+ cn | vn | first_value 
+----+----+-------------
+  1 | 10 |            
+  1 | 20 |          10
+  1 | 30 |          10
+  1 | 50 |          20
+  1 | 30 |          30
+  2 | 40 |          50
+  2 | 50 |          30
+  3 | 40 |          40
+  3 | 30 |          50
+  3 | 30 |          40
+  4 | 40 |          30
+  4 | 40 |          30
+(12 rows)
+
+select cn,vn,first_value(vn) over (order by cn rows between 2 preceding and 0 preceding) as first_value from sale;
+ cn | vn | first_value 
+----+----+-------------
+  1 | 10 |          10
+  1 | 20 |          10
+  1 | 30 |          10
+  1 | 50 |          20
+  1 | 30 |          30
+  2 | 40 |          50
+  2 | 50 |          30
+  3 | 40 |          40
+  3 | 30 |          50
+  3 | 30 |          40
+  4 | 40 |          30
+  4 | 40 |          30
+(12 rows)
+
+select cn,vn,first_value(vn) over (order by cn rows between 2 preceding and 1 following) as first_value from sale;
+ cn | vn | first_value 
+----+----+-------------
+  1 | 10 |          10
+  1 | 20 |          10
+  1 | 30 |          10
+  1 | 50 |          20
+  1 | 30 |          30
+  2 | 40 |          50
+  2 | 50 |          30
+  3 | 40 |          40
+  3 | 30 |          50
+  3 | 30 |          40
+  4 | 40 |          30
+  4 | 40 |          30
+(12 rows)
+
+select cn,vn,first_value(vn) over (order by cn rows between 0 preceding and 1 following) as first_value from sale;
+ cn | vn | first_value 
+----+----+-------------
+  1 | 10 |          10
+  1 | 20 |          20
+  1 | 30 |          30
+  1 | 50 |          50
+  1 | 30 |          30
+  2 | 40 |          40
+  2 | 50 |          50
+  3 | 40 |          40
+  3 | 30 |          30
+  3 | 30 |          30
+  4 | 40 |          40
+  4 | 40 |          40
+(12 rows)
+
+select cn,vn,first_value(vn) over (order by cn rows between 0 following and 1 following) as first_value from sale;
+ cn | vn | first_value 
+----+----+-------------
+  1 | 10 |          10
+  1 | 20 |          20
+  1 | 30 |          30
+  1 | 50 |          50
+  1 | 30 |          30
+  2 | 40 |          40
+  2 | 50 |          50
+  3 | 40 |          40
+  3 | 30 |          30
+  3 | 30 |          30
+  4 | 40 |          40
+  4 | 40 |          40
+(12 rows)
+
+select cn,vn,first_value(vn) over (order by cn rows between 1 following and 2 following) as first_value from sale;
+ cn | vn | first_value 
+----+----+-------------
+  1 | 10 |          20
+  1 | 20 |          30
+  1 | 30 |          50
+  1 | 50 |          30
+  1 | 30 |          40
+  2 | 40 |          50
+  2 | 50 |          40
+  3 | 40 |          30
+  3 | 30 |          30
+  3 | 30 |          40
+  4 | 40 |          40
+  4 | 40 |            
+(12 rows)
+
+select cn,vn,first_value(vn) over (order by cn rows between unbounded preceding and 2 preceding) as first_value from sale;
+ cn | vn | first_value 
+----+----+-------------
+  1 | 10 |            
+  1 | 20 |            
+  1 | 30 |          10
+  1 | 50 |          10
+  1 | 30 |          10
+  2 | 40 |          10
+  2 | 50 |          10
+  3 | 40 |          10
+  3 | 30 |          10
+  3 | 30 |          10
+  4 | 40 |          10
+  4 | 40 |          10
+(12 rows)
+
+select cn,vn,first_value(vn) over (order by cn rows between unbounded preceding and 0 preceding) as first_value from sale;
+ cn | vn | first_value 
+----+----+-------------
+  1 | 10 |          10
+  1 | 20 |          10
+  1 | 30 |          10
+  1 | 50 |          10
+  1 | 30 |          10
+  2 | 40 |          10
+  2 | 50 |          10
+  3 | 40 |          10
+  3 | 30 |          10
+  3 | 30 |          10
+  4 | 40 |          10
+  4 | 40 |          10
+(12 rows)
+
+select cn,vn,first_value(vn) over (order by cn rows between unbounded preceding and 2 following) as first_value from sale;
+ cn | vn | first_value 
+----+----+-------------
+  1 | 10 |          10
+  1 | 20 |          10
+  1 | 30 |          10
+  1 | 50 |          10
+  1 | 30 |          10
+  2 | 40 |          10
+  2 | 50 |          10
+  3 | 40 |          10
+  3 | 30 |          10
+  3 | 30 |          10
+  4 | 40 |          10
+  4 | 40 |          10
+(12 rows)
+
+select cn,vn,first_value(vn) over (order by cn rows between 2 preceding and unbounded following) as first_value from sale;
+ cn | vn | first_value 
+----+----+-------------
+  1 | 10 |          10
+  1 | 20 |          10
+  1 | 30 |          10
+  1 | 50 |          20
+  1 | 30 |          30
+  2 | 40 |          50
+  2 | 50 |          30
+  3 | 40 |          40
+  3 | 30 |          50
+  3 | 30 |          40
+  4 | 40 |          30
+  4 | 40 |          30
+(12 rows)
+
+select cn,vn,first_value(vn) over (order by cn rows between 0 preceding and unbounded following) as first_value from sale;
+ cn | vn | first_value 
+----+----+-------------
+  1 | 10 |          10
+  1 | 20 |          20
+  1 | 30 |          30
+  1 | 50 |          50
+  1 | 30 |          30
+  2 | 40 |          40
+  2 | 50 |          50
+  3 | 40 |          40
+  3 | 30 |          30
+  3 | 30 |          30
+  4 | 40 |          40
+  4 | 40 |          40
+(12 rows)
+
+select cn,vn,first_value(vn) over (order by cn rows between 0 following and unbounded following) as first_value from sale;
+ cn | vn | first_value 
+----+----+-------------
+  1 | 10 |          10
+  1 | 20 |          20
+  1 | 30 |          30
+  1 | 50 |          50
+  1 | 30 |          30
+  2 | 40 |          40
+  2 | 50 |          50
+  3 | 40 |          40
+  3 | 30 |          30
+  3 | 30 |          30
+  4 | 40 |          40
+  4 | 40 |          40
+(12 rows)
+
+select cn,vn,first_value(vn) over (order by cn rows between 1 following and unbounded following) as first_value from sale;
+ cn | vn | first_value 
+----+----+-------------
+  1 | 10 |          20
+  1 | 20 |          30
+  1 | 30 |          50
+  1 | 50 |          30
+  1 | 30 |          40
+  2 | 40 |          50
+  2 | 50 |          40
+  3 | 40 |          30
+  3 | 30 |          30
+  3 | 30 |          40
+  4 | 40 |          40
+  4 | 40 |            
+(12 rows)
+
+select cn,vn,first_value(vn) over (order by cn rows between unbounded preceding and unbounded following) as first_value from sale;
+ cn | vn | first_value 
+----+----+-------------
+  1 | 10 |          10
+  1 | 20 |          10
+  1 | 30 |          10
+  1 | 50 |          10
+  1 | 30 |          10
+  2 | 40 |          10
+  2 | 50 |          10
+  3 | 40 |          10
+  3 | 30 |          10
+  3 | 30 |          10
+  4 | 40 |          10
+  4 | 40 |          10
+(12 rows)
+
+select pn,vn,last_value(vn) over (order by pn desc range between 200 preceding and 150 preceding) as last_value from sale;
+ pn  | vn | last_value 
+-----+----+------------
+ 800 | 40 |           
+ 700 | 40 |           
+ 600 | 30 |         40
+ 500 | 30 |         40
+ 500 | 30 |         40
+ 400 | 50 |         30
+ 400 | 50 |         30
+ 300 | 30 |         30
+ 200 | 10 |         50
+ 200 | 40 |         50
+ 100 | 20 |         30
+ 100 | 40 |         30
+(12 rows)
+
+select pn,vn,last_value(vn) over (order by pn desc range between 200 preceding and 0 preceding) as last_value from sale;
+ pn  | vn | last_value 
+-----+----+------------
+ 800 | 40 |         40
+ 700 | 40 |         40
+ 600 | 30 |         30
+ 500 | 30 |         30
+ 500 | 30 |         30
+ 400 | 50 |         50
+ 400 | 50 |         50
+ 300 | 30 |         30
+ 200 | 10 |         40
+ 200 | 40 |         40
+ 100 | 20 |         40
+ 100 | 40 |         40
+(12 rows)
+
+select pn,vn,last_value(vn) over (order by pn desc range between 200 preceding and 150 following) as last_value from sale;
+ pn  | vn | last_value 
+-----+----+------------
+ 800 | 40 |         40
+ 700 | 40 |         30
+ 600 | 30 |         30
+ 500 | 30 |         50
+ 500 | 30 |         50
+ 400 | 50 |         30
+ 400 | 50 |         30
+ 300 | 30 |         40
+ 200 | 10 |         40
+ 200 | 40 |         40
+ 100 | 20 |         40
+ 100 | 40 |         40
+(12 rows)
+
+select pn,vn,last_value(vn) over (order by pn desc range between 0 preceding and 150 following) as last_value from sale;
+ pn  | vn | last_value 
+-----+----+------------
+ 800 | 40 |         40
+ 700 | 40 |         30
+ 600 | 30 |         30
+ 500 | 30 |         50
+ 500 | 30 |         50
+ 400 | 50 |         30
+ 400 | 50 |         30
+ 300 | 30 |         40
+ 200 | 10 |         40
+ 200 | 40 |         40
+ 100 | 20 |         40
+ 100 | 40 |         40
+(12 rows)
+
+select pn,vn,last_value(vn) over (order by pn desc range between 0 following and 150 following) as last_value from sale;
+ pn  | vn | last_value 
+-----+----+------------
+ 800 | 40 |         40
+ 700 | 40 |         30
+ 600 | 30 |         30
+ 500 | 30 |         50
+ 500 | 30 |         50
+ 400 | 50 |         30
+ 400 | 50 |         30
+ 300 | 30 |         40
+ 200 | 10 |         40
+ 200 | 40 |         40
+ 100 | 20 |         40
+ 100 | 40 |         40
+(12 rows)
+
+select pn,vn,last_value(vn) over (order by pn desc range between 150 following and 200 following) as last_value from sale;
+ pn  | vn | last_value 
+-----+----+------------
+ 800 | 40 |         30
+ 700 | 40 |         30
+ 600 | 30 |         50
+ 500 | 30 |         30
+ 500 | 30 |         30
+ 400 | 50 |         40
+ 400 | 50 |         40
+ 300 | 30 |         40
+ 200 | 10 |           
+ 200 | 40 |           
+ 100 | 20 |           
+ 100 | 40 |           
+(12 rows)
+
+select pn,vn,last_value(vn) over (order by pn desc range between unbounded preceding and 200 preceding) as last_value from sale;
+ pn  | vn | last_value 
+-----+----+------------
+ 800 | 40 |           
+ 700 | 40 |           
+ 600 | 30 |         40
+ 500 | 30 |         40
+ 500 | 30 |         40
+ 400 | 50 |         30
+ 400 | 50 |         30
+ 300 | 30 |         30
+ 200 | 10 |         50
+ 200 | 40 |         50
+ 100 | 20 |         30
+ 100 | 40 |         30
+(12 rows)
+
+select pn,vn,last_value(vn) over (order by pn desc range between unbounded preceding and 0 preceding) as last_value from sale;
+ pn  | vn | last_value 
+-----+----+------------
+ 800 | 40 |         40
+ 700 | 40 |         40
+ 600 | 30 |         30
+ 500 | 30 |         30
+ 500 | 30 |         30
+ 400 | 50 |         50
+ 400 | 50 |         50
+ 300 | 30 |         30
+ 200 | 10 |         40
+ 200 | 40 |         40
+ 100 | 20 |         40
+ 100 | 40 |         40
+(12 rows)
+
+select pn,vn,last_value(vn) over (order by pn desc range between unbounded preceding and 200 following) as last_value from sale;
+ pn  | vn | last_value 
+-----+----+------------
+ 800 | 40 |         30
+ 700 | 40 |         30
+ 600 | 30 |         50
+ 500 | 30 |         30
+ 500 | 30 |         30
+ 400 | 50 |         40
+ 400 | 50 |         40
+ 300 | 30 |         40
+ 200 | 10 |         40
+ 200 | 40 |         40
+ 100 | 20 |         40
+ 100 | 40 |         40
+(12 rows)
+
+select pn,vn,last_value(vn) over (order by pn desc range between 200 preceding and unbounded following) as last_value from sale;
+ pn  | vn | last_value 
+-----+----+------------
+ 800 | 40 |         40
+ 700 | 40 |         40
+ 600 | 30 |         40
+ 500 | 30 |         40
+ 500 | 30 |         40
+ 400 | 50 |         40
+ 400 | 50 |         40
+ 300 | 30 |         40
+ 200 | 10 |         40
+ 200 | 40 |         40
+ 100 | 20 |         40
+ 100 | 40 |         40
+(12 rows)
+
+select pn,vn,last_value(vn) over (order by pn desc range between 0 preceding and unbounded following) as last_value from sale;
+ pn  | vn | last_value 
+-----+----+------------
+ 800 | 40 |         40
+ 700 | 40 |         40
+ 600 | 30 |         40
+ 500 | 30 |         40
+ 500 | 30 |         40
+ 400 | 50 |         40
+ 400 | 50 |         40
+ 300 | 30 |         40
+ 200 | 10 |         40
+ 200 | 40 |         40
+ 100 | 20 |         40
+ 100 | 40 |         40
+(12 rows)
+
+select pn,vn,last_value(vn) over (order by pn desc range between 0 following and unbounded following) as last_value from sale;
+ pn  | vn | last_value 
+-----+----+------------
+ 800 | 40 |         40
+ 700 | 40 |         40
+ 600 | 30 |         40
+ 500 | 30 |         40
+ 500 | 30 |         40
+ 400 | 50 |         40
+ 400 | 50 |         40
+ 300 | 30 |         40
+ 200 | 10 |         40
+ 200 | 40 |         40
+ 100 | 20 |         40
+ 100 | 40 |         40
+(12 rows)
+
+select pn,vn,last_value(vn) over (order by pn desc range between 150 following and unbounded following) as last_value from sale;
+ pn  | vn | last_value 
+-----+----+------------
+ 800 | 40 |         40
+ 700 | 40 |         40
+ 600 | 30 |         40
+ 500 | 30 |         40
+ 500 | 30 |         40
+ 400 | 50 |         40
+ 400 | 50 |         40
+ 300 | 30 |         40
+ 200 | 10 |           
+ 200 | 40 |           
+ 100 | 20 |           
+ 100 | 40 |           
+(12 rows)
+
+select pn,vn,last_value(vn) over (order by pn desc range between unbounded preceding and unbounded following) as last_value from sale;
+ pn  | vn | last_value 
+-----+----+------------
+ 800 | 40 |         40
+ 700 | 40 |         40
+ 600 | 30 |         40
+ 500 | 30 |         40
+ 500 | 30 |         40
+ 400 | 50 |         40
+ 400 | 50 |         40
+ 300 | 30 |         40
+ 200 | 10 |         40
+ 200 | 40 |         40
+ 100 | 20 |         40
+ 100 | 40 |         40
+(12 rows)
+
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 2 preceding and 1 preceding) as last_value from sale;
+ cn | vn | pn  | last_value 
+----+----+-----+------------
+  1 | 20 | 100 |           
+  1 | 10 | 200 |         20
+  1 | 30 | 300 |         10
+  1 | 50 | 400 |         30
+  1 | 30 | 500 |         50
+  3 | 40 | 200 |           
+  3 | 30 | 500 |         40
+  3 | 30 | 600 |         30
+  2 | 40 | 100 |           
+  2 | 50 | 400 |         40
+  4 | 40 | 700 |           
+  4 | 40 | 800 |         40
+(12 rows)
+
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 2 preceding and 0 preceding) as last_value from sale;
+ cn | vn | pn  | last_value 
+----+----+-----+------------
+  1 | 20 | 100 |         20
+  1 | 10 | 200 |         10
+  1 | 30 | 300 |         30
+  1 | 50 | 400 |         50
+  1 | 30 | 500 |         30
+  3 | 40 | 200 |         40
+  3 | 30 | 500 |         30
+  3 | 30 | 600 |         30
+  2 | 40 | 100 |         40
+  2 | 50 | 400 |         50
+  4 | 40 | 700 |         40
+  4 | 40 | 800 |         40
+(12 rows)
+
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 2 preceding and 1 following) as last_value from sale;
+ cn | vn | pn  | last_value 
+----+----+-----+------------
+  1 | 20 | 100 |         10
+  1 | 10 | 200 |         30
+  1 | 30 | 300 |         50
+  1 | 50 | 400 |         30
+  1 | 30 | 500 |         30
+  3 | 40 | 200 |         30
+  3 | 30 | 500 |         30
+  3 | 30 | 600 |         30
+  2 | 40 | 100 |         50
+  2 | 50 | 400 |         50
+  4 | 40 | 700 |         40
+  4 | 40 | 800 |         40
+(12 rows)
+
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 0 preceding and 1 following) as last_value from sale;
+ cn | vn | pn  | last_value 
+----+----+-----+------------
+  1 | 20 | 100 |         10
+  1 | 10 | 200 |         30
+  1 | 30 | 300 |         50
+  1 | 50 | 400 |         30
+  1 | 30 | 500 |         30
+  3 | 40 | 200 |         30
+  3 | 30 | 500 |         30
+  3 | 30 | 600 |         30
+  2 | 40 | 100 |         50
+  2 | 50 | 400 |         50
+  4 | 40 | 700 |         40
+  4 | 40 | 800 |         40
+(12 rows)
+
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 0 following and 1 following) as last_value from sale;
+ cn | vn | pn  | last_value 
+----+----+-----+------------
+  1 | 20 | 100 |         10
+  1 | 10 | 200 |         30
+  1 | 30 | 300 |         50
+  1 | 50 | 400 |         30
+  1 | 30 | 500 |         30
+  3 | 40 | 200 |         30
+  3 | 30 | 500 |         30
+  3 | 30 | 600 |         30
+  2 | 40 | 100 |         50
+  2 | 50 | 400 |         50
+  4 | 40 | 700 |         40
+  4 | 40 | 800 |         40
+(12 rows)
+
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 1 following and 2 following) as last_value from sale;
+ cn | vn | pn  | last_value 
+----+----+-----+------------
+  1 | 20 | 100 |         30
+  1 | 10 | 200 |         50
+  1 | 30 | 300 |         30
+  1 | 50 | 400 |         30
+  1 | 30 | 500 |           
+  3 | 40 | 200 |         30
+  3 | 30 | 500 |         30
+  3 | 30 | 600 |           
+  2 | 40 | 100 |         50
+  2 | 50 | 400 |           
+  4 | 40 | 700 |         40
+  4 | 40 | 800 |           
+(12 rows)
+
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between unbounded preceding and 2 preceding) as last_value from sale;
+ cn | vn | pn  | last_value 
+----+----+-----+------------
+  1 | 20 | 100 |           
+  1 | 10 | 200 |           
+  1 | 30 | 300 |         20
+  1 | 50 | 400 |         10
+  1 | 30 | 500 |         30
+  3 | 40 | 200 |           
+  3 | 30 | 500 |           
+  3 | 30 | 600 |         40
+  2 | 40 | 100 |           
+  2 | 50 | 400 |           
+  4 | 40 | 700 |           
+  4 | 40 | 800 |           
+(12 rows)
+
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between unbounded preceding and 0 preceding) as last_value from sale;
+ cn | vn | pn  | last_value 
+----+----+-----+------------
+  1 | 20 | 100 |         20
+  1 | 10 | 200 |         10
+  1 | 30 | 300 |         30
+  1 | 50 | 400 |         50
+  1 | 30 | 500 |         30
+  3 | 40 | 200 |         40
+  3 | 30 | 500 |         30
+  3 | 30 | 600 |         30
+  2 | 40 | 100 |         40
+  2 | 50 | 400 |         50
+  4 | 40 | 700 |         40
+  4 | 40 | 800 |         40
+(12 rows)
+
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between unbounded preceding and 2 following) as last_value from sale;
+ cn | vn | pn  | last_value 
+----+----+-----+------------
+  1 | 20 | 100 |         30
+  1 | 10 | 200 |         50
+  1 | 30 | 300 |         30
+  1 | 50 | 400 |         30
+  1 | 30 | 500 |         30
+  3 | 40 | 200 |         30
+  3 | 30 | 500 |         30
+  3 | 30 | 600 |         30
+  2 | 40 | 100 |         50
+  2 | 50 | 400 |         50
+  4 | 40 | 700 |         40
+  4 | 40 | 800 |         40
+(12 rows)
+
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 2 preceding and unbounded following) as last_value from sale;
+ cn | vn | pn  | last_value 
+----+----+-----+------------
+  1 | 20 | 100 |         30
+  1 | 10 | 200 |         30
+  1 | 30 | 300 |         30
+  1 | 50 | 400 |         30
+  1 | 30 | 500 |         30
+  3 | 40 | 200 |         30
+  3 | 30 | 500 |         30
+  3 | 30 | 600 |         30
+  2 | 40 | 100 |         50
+  2 | 50 | 400 |         50
+  4 | 40 | 700 |         40
+  4 | 40 | 800 |         40
+(12 rows)
+
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 0 preceding and unbounded following) as last_value from sale;
+ cn | vn | pn  | last_value 
+----+----+-----+------------
+  1 | 20 | 100 |         30
+  1 | 10 | 200 |         30
+  1 | 30 | 300 |         30
+  1 | 50 | 400 |         30
+  1 | 30 | 500 |         30
+  3 | 40 | 200 |         30
+  3 | 30 | 500 |         30
+  3 | 30 | 600 |         30
+  2 | 40 | 100 |         50
+  2 | 50 | 400 |         50
+  4 | 40 | 700 |         40
+  4 | 40 | 800 |         40
+(12 rows)
+
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 0 following and unbounded following) as last_value from sale;
+ cn | vn | pn  | last_value 
+----+----+-----+------------
+  1 | 20 | 100 |         30
+  1 | 10 | 200 |         30
+  1 | 30 | 300 |         30
+  1 | 50 | 400 |         30
+  1 | 30 | 500 |         30
+  3 | 40 | 200 |         30
+  3 | 30 | 500 |         30
+  3 | 30 | 600 |         30
+  2 | 40 | 100 |         50
+  2 | 50 | 400 |         50
+  4 | 40 | 700 |         40
+  4 | 40 | 800 |         40
+(12 rows)
+
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 1 following and unbounded following) as last_value from sale;
+ cn | vn | pn  | last_value 
+----+----+-----+------------
+  1 | 20 | 100 |         30
+  1 | 10 | 200 |         30
+  1 | 30 | 300 |         30
+  1 | 50 | 400 |         30
+  1 | 30 | 500 |           
+  3 | 40 | 200 |         30
+  3 | 30 | 500 |         30
+  3 | 30 | 600 |           
+  2 | 40 | 100 |         50
+  2 | 50 | 400 |           
+  4 | 40 | 700 |         40
+  4 | 40 | 800 |           
+(12 rows)
+
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between unbounded preceding and unbounded following) as last_value from sale;
+ cn | vn | pn  | last_value 
+----+----+-----+------------
+  1 | 20 | 100 |         30
+  1 | 10 | 200 |         30
+  1 | 30 | 300 |         30
+  1 | 50 | 400 |         30
+  1 | 30 | 500 |         30
+  3 | 40 | 200 |         30
+  3 | 30 | 500 |         30
+  3 | 30 | 600 |         30
+  2 | 40 | 100 |         50
+  2 | 50 | 400 |         50
+  4 | 40 | 700 |         40
+  4 | 40 | 800 |         40
+(12 rows)
+
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 200 preceding and 150 preceding) as first_value from sale;
+ cn | pn  | vn | first_value 
+----+-----+----+-------------
+  1 | 100 | 20 |            
+  1 | 200 | 10 |            
+  1 | 300 | 30 |          20
+  1 | 400 | 50 |          10
+  1 | 500 | 30 |          30
+  3 | 200 | 40 |            
+  3 | 500 | 30 |            
+  3 | 600 | 30 |            
+  2 | 100 | 40 |            
+  2 | 400 | 50 |            
+  4 | 700 | 40 |            
+  4 | 800 | 40 |            
+(12 rows)
+
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 200 preceding and 0 preceding) as first_value from sale;
+ cn | pn  | vn | first_value 
+----+-----+----+-------------
+  1 | 100 | 20 |          20
+  1 | 200 | 10 |          20
+  1 | 300 | 30 |          20
+  1 | 400 | 50 |          10
+  1 | 500 | 30 |          30
+  3 | 200 | 40 |          40
+  3 | 500 | 30 |          30
+  3 | 600 | 30 |          30
+  2 | 100 | 40 |          40
+  2 | 400 | 50 |          50
+  4 | 700 | 40 |          40
+  4 | 800 | 40 |          40
+(12 rows)
+
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 200 preceding and 150 following) as first_value from sale;
+ cn | pn  | vn | first_value 
+----+-----+----+-------------
+  1 | 100 | 20 |          20
+  1 | 200 | 10 |          20
+  1 | 300 | 30 |          20
+  1 | 400 | 50 |          10
+  1 | 500 | 30 |          30
+  3 | 200 | 40 |          40
+  3 | 500 | 30 |          30
+  3 | 600 | 30 |          30
+  2 | 100 | 40 |          40
+  2 | 400 | 50 |          50
+  4 | 700 | 40 |          40
+  4 | 800 | 40 |          40
+(12 rows)
+
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 0 preceding and 150 following) as first_value from sale;
+ cn | pn  | vn | first_value 
+----+-----+----+-------------
+  1 | 100 | 20 |          20
+  1 | 200 | 10 |          10
+  1 | 300 | 30 |          30
+  1 | 400 | 50 |          50
+  1 | 500 | 30 |          30
+  3 | 200 | 40 |          40
+  3 | 500 | 30 |          30
+  3 | 600 | 30 |          30
+  2 | 100 | 40 |          40
+  2 | 400 | 50 |          50
+  4 | 700 | 40 |          40
+  4 | 800 | 40 |          40
+(12 rows)
+
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 0 following and 150 following) as first_value from sale;
+ cn | pn  | vn | first_value 
+----+-----+----+-------------
+  1 | 100 | 20 |          20
+  1 | 200 | 10 |          10
+  1 | 300 | 30 |          30
+  1 | 400 | 50 |          50
+  1 | 500 | 30 |          30
+  3 | 200 | 40 |          40
+  3 | 500 | 30 |          30
+  3 | 600 | 30 |          30
+  2 | 100 | 40 |          40
+  2 | 400 | 50 |          50
+  4 | 700 | 40 |          40
+  4 | 800 | 40 |          40
+(12 rows)
+
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 150 following and 200 following) as first_value from sale;
+ cn | pn  | vn | first_value 
+----+-----+----+-------------
+  1 | 100 | 20 |          30
+  1 | 200 | 10 |          50
+  1 | 300 | 30 |          30
+  1 | 400 | 50 |            
+  1 | 500 | 30 |            
+  3 | 200 | 40 |            
+  3 | 500 | 30 |            
+  3 | 600 | 30 |            
+  2 | 100 | 40 |            
+  2 | 400 | 50 |            
+  4 | 700 | 40 |            
+  4 | 800 | 40 |            
+(12 rows)
+
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between unbounded preceding and 200 preceding) as first_value from sale;
+ cn | pn  | vn | first_value 
+----+-----+----+-------------
+  1 | 100 | 20 |            
+  1 | 200 | 10 |            
+  1 | 300 | 30 |          20
+  1 | 400 | 50 |          20
+  1 | 500 | 30 |          20
+  3 | 200 | 40 |            
+  3 | 500 | 30 |          40
+  3 | 600 | 30 |          40
+  2 | 100 | 40 |            
+  2 | 400 | 50 |          40
+  4 | 700 | 40 |            
+  4 | 800 | 40 |            
+(12 rows)
+
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between unbounded preceding and 0 preceding) as first_value from sale;
+ cn | pn  | vn | first_value 
+----+-----+----+-------------
+  1 | 100 | 20 |          20
+  1 | 200 | 10 |          20
+  1 | 300 | 30 |          20
+  1 | 400 | 50 |          20
+  1 | 500 | 30 |          20
+  3 | 200 | 40 |          40
+  3 | 500 | 30 |          40
+  3 | 600 | 30 |          40
+  2 | 100 | 40 |          40
+  2 | 400 | 50 |          40
+  4 | 700 | 40 |          40
+  4 | 800 | 40 |          40
+(12 rows)
+
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between unbounded preceding and 200 following) as first_value from sale;
+ cn | pn  | vn | first_value 
+----+-----+----+-------------
+  1 | 100 | 20 |          20
+  1 | 200 | 10 |          20
+  1 | 300 | 30 |          20
+  1 | 400 | 50 |          20
+  1 | 500 | 30 |          20
+  3 | 200 | 40 |          40
+  3 | 500 | 30 |          40
+  3 | 600 | 30 |          40
+  2 | 100 | 40 |          40
+  2 | 400 | 50 |          40
+  4 | 700 | 40 |          40
+  4 | 800 | 40 |          40
+(12 rows)
+
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 200 preceding and unbounded following) as first_value from sale;
+ cn | pn  | vn | first_value 
+----+-----+----+-------------
+  1 | 100 | 20 |          20
+  1 | 200 | 10 |          20
+  1 | 300 | 30 |          20
+  1 | 400 | 50 |          10
+  1 | 500 | 30 |          30
+  3 | 200 | 40 |          40
+  3 | 500 | 30 |          30
+  3 | 600 | 30 |          30
+  2 | 100 | 40 |          40
+  2 | 400 | 50 |          50
+  4 | 700 | 40 |          40
+  4 | 800 | 40 |          40
+(12 rows)
+
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 0 preceding and unbounded following) as first_value from sale;
+ cn | pn  | vn | first_value 
+----+-----+----+-------------
+  1 | 100 | 20 |          20
+  1 | 200 | 10 |          10
+  1 | 300 | 30 |          30
+  1 | 400 | 50 |          50
+  1 | 500 | 30 |          30
+  3 | 200 | 40 |          40
+  3 | 500 | 30 |          30
+  3 | 600 | 30 |          30
+  2 | 100 | 40 |          40
+  2 | 400 | 50 |          50
+  4 | 700 | 40 |          40
+  4 | 800 | 40 |          40
+(12 rows)
+
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 0 following and unbounded following) as first_value from sale;
+ cn | pn  | vn | first_value 
+----+-----+----+-------------
+  1 | 100 | 20 |          20
+  1 | 200 | 10 |          10
+  1 | 300 | 30 |          30
+  1 | 400 | 50 |          50
+  1 | 500 | 30 |          30
+  3 | 200 | 40 |          40
+  3 | 500 | 30 |          30
+  3 | 600 | 30 |          30
+  2 | 100 | 40 |          40
+  2 | 400 | 50 |          50
+  4 | 700 | 40 |          40
+  4 | 800 | 40 |          40
+(12 rows)
+
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 150 following and unbounded following) as first_value from sale;
+ cn | pn  | vn | first_value 
+----+-----+----+-------------
+  1 | 100 | 20 |          30
+  1 | 200 | 10 |          50
+  1 | 300 | 30 |          30
+  1 | 400 | 50 |            
+  1 | 500 | 30 |            
+  3 | 200 | 40 |          30
+  3 | 500 | 30 |            
+  3 | 600 | 30 |            
+  2 | 100 | 40 |          50
+  2 | 400 | 50 |            
+  4 | 700 | 40 |            
+  4 | 800 | 40 |            
+(12 rows)
+
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between unbounded preceding and unbounded following) as first_value from sale;
+ cn | pn  | vn | first_value 
+----+-----+----+-------------
+  1 | 100 | 20 |          20
+  1 | 200 | 10 |          20
+  1 | 300 | 30 |          20
+  1 | 400 | 50 |          20
+  1 | 500 | 30 |          20
+  3 | 200 | 40 |          40
+  3 | 500 | 30 |          40
+  3 | 600 | 30 |          40
+  2 | 100 | 40 |          40
+  2 | 400 | 50 |          40
+  4 | 700 | 40 |          40
+  4 | 800 | 40 |          40
+(12 rows)
+
