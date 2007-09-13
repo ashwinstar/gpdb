@@ -2119,10 +2119,9 @@ thread_DispatchWaitSingle(DispatchCommandParms		*pParms)
 			PGresult   *pRes;
 			ExecStatusType resultStatus;
 			int			resultIndex = cdbdisp_numPGresult(dispatchResult);
-			write_log("resultIndex = %d\n",resultIndex);
 
 			if (DEBUG4 >= log_min_messages)
-				write_log("PQgetResult\n");
+				write_log("PQgetResult, resultIndex = %d\n",resultIndex);
 			/* Get one message. */
 			pRes = PQgetResult(segdbDesc->conn);
 
@@ -2647,6 +2646,7 @@ CollectQEWriterTransactionInformation(SegmentDatabaseDescriptor *segdbDesc, CdbD
 	if (conn && conn->QEWriter_HaveInfo)
 	{
 #if 0
+		if (log_min_messages >= DEBUG1)
 		write_log("%s -> Collected QE Writer transaction info (segment %d (%s), DistributedTransactionId = %u, CommandId = %u, pRes->QEDirty = %s, dispatchResult->QEDirty = %s) \n", 
 			segdbDesc->whoami,
 			segdbDesc->segment_database_info->segindex,
