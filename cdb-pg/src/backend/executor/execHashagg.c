@@ -990,6 +990,23 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 	HashAggEntry *entry;
 	MemoryContext oldContext;
 
+	if (inputslot != aggstate->hashslot)
+	{
+		Datum *values = aggstate->hashslot->tts_values;
+		bool *isnull = aggstate->hashslot->tts_isnull;
+		ListCell *lc;
+
+		oldContext = MemoryContextSwitchTo(inputslot->tts_mcxt);
+		foreach (lc, aggstate->hash_needed)
+		{
+			int n = lfirst_int(lc) - 1;
+			values[n] = heap_getattr(inputslot->tts_tuple, n + 1, 
+									 inputslot->tts_tupleDescriptor, 
+									 &isnull[n]);
+		}
+		MemoryContextSwitchTo(oldContext);
+	}
+
 	oldContext = MemoryContextSwitchTo(aggstate->transcontext);
 
 	if (aggstate->numaggs == 0)
