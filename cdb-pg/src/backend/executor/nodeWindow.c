@@ -44,7 +44,7 @@
 #include "utils/numeric.h"
 #include "utils/syscache.h"
 
-#ifndef NEW_WINDOWNODE
+#ifdef OLD_WINDOWNODE
 
 /* 
  * A struct to hold all the data relevant to a transition value, used for

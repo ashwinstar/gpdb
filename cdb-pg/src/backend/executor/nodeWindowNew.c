@@ -45,7 +45,7 @@
 #include "utils/syscache.h"
 #include "utils/tuplestorenew.h"
 
-#ifdef NEW_WINDOWNODE
+#ifndef OLD_WINDOWNODE
 
 /* The initial frame buffer size (in bytes) */
 #define FRAMEBUFFER_SIZE 1024

@@ -110,3 +110,6 @@ test: exttab1
 test: resource_queue
 test: gptokencheck
 test: gpcopy
+test: olap_setup
+test: olap_group
+test: olap_window

@@ -266,10 +266,10 @@ select cn, vn, pn,
 from sale; -- mvd 1->4; 2->5; 3->6
 
 select cn, vn, pn, avg(qty) over (partition by cn) 
-from sale;
+from sale; --mvd 1->4
 
 select cn, vn, pn, avg(qty) over (partition by vn) 
-from sale;
+from sale; --mvd 2->4
 
 -- !
 select avg(qty) over (partition by cn) 
@@ -295,7 +295,7 @@ from sale; -- mvd 1,2->3
 select cn, dt, 
     percent_rank() over (partition by cn order by dt), 
     sum(prc) over (order by cn, dt) 
-from sale;
+from sale; -- mvd 1,2->3; 1,2->4
 
 select                                                         
   grouping(cn, vn, pn) as gr, cn, vn, pn,
@@ -312,7 +312,7 @@ group by rollup(cn,vn,pn)
 order by 2, 5; -- order 2,5
 
 select cn, vn, pn, rank() over (partition by vn order by cn) 
-from sale;
+from sale; --mvd 2->4
 
 select row_number() over (partition by vn), 
     cn, vn, pn, 
@@ -440,22 +440,22 @@ select cn, dt, qty,
 	sum(qty) over (order by dt 
        range between '1 year'::interval preceding and 
                      '1 month'::interval following)
-from sale;
+from sale; --mvd 2->4
 
 select cn, dt, qty, prc,
 	sum(qty) over (order by prc range '314.15926535'::float8 preceding) as sum
-from sale;
+from sale; --mvd 4->5
 
 -- There are some types we cannot cast back, test for those too
 select cn, dt, qty,
 	sum(qty) over (order by dt
        range '2007-08-05'::date preceding) as sum
-from sale;
+from sale; --mvd 2->4
 
 select cn, dt, qty,
 	sum(qty) over (order by dt
        range '192.168.1.1'::inet preceding) as sum
-from sale;
+from sale; --mvd 2->4
 
 -- Test for FOLLOWING frames
 select cn, prc, dt, sum(prc) over (order by dt,cn rows between 2 following and 3 following) as f from sale;
@@ -556,11 +556,11 @@ SELECT sale.dt,sale.prc,sale.cn,
 sale.vn,
 SUM(sale.cn) OVER(partition by sale.dt,sale.prc order by sale.cn asc rows 
 between 0 following and 1 following) as sum 
-from sale order by dt, prc, cn;
+from sale order by dt, prc, cn; --mvd 1,2->5
 
 -- MPP-1804, Used to return incorrect number of rows
 SELECT sale.vn,sale.cn,
-SUM(sale.cn) OVER(partition by sale.vn order by sale.cn desc range between current row and unbounded following) as sum from sale;
+SUM(sale.cn) OVER(partition by sale.vn order by sale.cn desc range between current row and unbounded following) as sum from sale; --mvd 1->3
 
 -- MPP-1840, grouping + windowing
 --begin_equivalent
@@ -647,7 +647,7 @@ order by 1, 2, 3;
 -- LAST_VALUE tests
 SELECT sale.cn,sale.qty,sale.pn, 
 LAST_VALUE(sale.qty*sale.pn) OVER(partition by sale.cn order by sale.cn,pn range between unbounded preceding and unbounded following ) as lv 
-from sale order by 1, 2, 3;
+from sale order by 1, 2, 3; --mvd 1->4
 
 SELECT sale.vn,sale.qty,                                   
 LAST_VALUE(floor(sale.vn)) OVER(order by sale.vn asc range 0 preceding) as f
@@ -777,20 +777,20 @@ FROM sale;
 -- MPP-1892
 SELECT sale.vn,sale.cn,sale.prc,sale.pn,sale.prc,
 COUNT(floor(sale.prc)) OVER(partition by sale.vn,sale.cn,sale.prc,sale.vn order by sale.pn asc range between unbounded preceding and 1 preceding) as count 
-from sale;
+from sale; --mvd 1,2,3->6
 
 -- MPP-1893
 SELECT sale.prc,sale.cn,sale.vn,sale.pn,sale.cn,
 AVG(floor(sale.pn-sale.cn)) OVER(partition by sale.prc,sale.cn order by sale.vn desc range between 1 preceding and unbounded following) as avg
-FROM sale;
+FROM sale; --mvd 1,2->6
 SELECT sale.prc,sale.cn,sale.vn,sale.pn,sale.cn,
 AVG(floor(sale.pn-sale.cn)) OVER(partition by sale.prc,sale.cn order by sale.vn desc range between 0 preceding and unbounded following) as avg
-FROM sale;
+FROM sale; --mvd 1,2->6
 
 -- MPP-1895
 SELECT sale.prc,sale.vn,
 COUNT(vn) OVER(partition by sale.prc order by sale.vn asc range between 3 preceding and 3 following) 
-FROM sale;
+FROM sale; --mvd 1->3
 
 -- MPP-1898
 SELECT sale.vn,sale.qty,
@@ -843,11 +843,11 @@ count(*) over (order by pn range between 200 preceding and 200 following) from s
 -- MPP-1923
 SELECT sale.cn,sale.pn,sale.vn,
 CUME_DIST() OVER(partition by sale.cn,sale.pn order by sale.vn desc,sale.pn desc,sale.cn asc)
-FROM sale;
+FROM sale; --mvd 1,2->4
 
 SELECT sale.cn,sale.vn,sale.pn,
 SUM(floor(sale.cn*sale.vn)) OVER(partition by sale.vn,sale.pn order by sale.pn asc rows between 1 following and unbounded following) as sum
-from sale;
+from sale; --mvd 2,3->4
 
 -- MPP-1924
 SELECT sale.cn,
@@ -898,17 +898,17 @@ drop table fact_test;
 SELECT vn,pn,cn,
 TO_CHAR(COALESCE(CUME_DIST() OVER(partition by sale.vn,sale.pn order by sale.cn desc),0),'99999999.9999999') as cum_dist,
 TO_CHAR(COALESCE(CUME_DIST() OVER(partition by sale.vn,sale.pn order by sale.cn desc),0),'99999999.9999999') as cum_dist
-from sale;
+from sale; --mvd 1,2->4
 
 select cn,pn,lag(pn,cn) over (order by pn) from sale;
 select cn,pn,lead(pn,cn) over (order by pn) from sale;
-select vn,cn,pn,lead(pn,cn) over (partition by vn order by cn) from sale;
-select vn,cn,pn,lag(pn,cn) over (partition by vn order by cn) from sale;
+select vn,cn,pn,lead(pn,cn) over (partition by vn order by cn) from sale; --mvd 1->4
+select vn,cn,pn,lag(pn,cn) over (partition by vn order by cn) from sale; --mvd 1->4
 
 -- MPP-1934
 SELECT sale.dt,sale.vn,sale.qty,sale.pn,sale.cn,
 LEAD(cast(floor(sale.cn+sale.vn) as int),cast (floor(sale.qty) as int),NULL) OVER(partition by sale.dt,sale.vn,sale.qty order by sale.pn desc,sale.cn desc) as lead
-FROM sale;
+FROM sale; --mvd 1,2,3->6
 
 -- MPP-1935
 SELECT sale.vn,sale.qty,sale.prc,
@@ -929,14 +929,14 @@ from sale;
 -- MPP-1933
 SELECT sale.prc,sale.vn,sale.cn,sale.pn,sale.qty,
 LAG(cast(floor(sale.vn) as int),cast (floor(sale.prc) as int),NULL) OVER(partition by sale.prc,sale.vn,sale.cn,sale.pn order by sale.cn desc) as lag1
-from sale;
+from sale; --mvd 1,2,3,4->6
 SELECT sale.prc,sale.vn,sale.cn,sale.pn,sale.qty,
 LAG(cast(floor(sale.qty/sale.vn) as int),cast (floor(sale.pn) as int),NULL) OVER(partition by sale.prc,sale.vn,sale.cn,sale.pn order by sale.cn desc) as lag2
-from sale;
+from sale; --mvd 1,2,3,4->6
 SELECT sale.prc,sale.vn,sale.cn,sale.pn,sale.qty,
 LAG(cast(floor(sale.vn) as int),cast (floor(sale.prc) as int),NULL) OVER(partition by sale.prc,sale.vn,sale.cn,sale.pn order by sale.cn desc) as lag1,
 LAG(cast(floor(sale.qty/sale.vn) as int),cast (floor(sale.pn) as int),NULL) OVER(partition by sale.prc,sale.vn,sale.cn,sale.pn order by sale.cn desc) as lag2
-from sale;
+from sale; --mvd 1,2,3,4->6
 
 -- MIN/MAX
 select cn,vn,min(vn) over (order by cn rows between 2 preceding and 1 preceding) as min from sale;
@@ -969,65 +969,65 @@ select cn,vn,min(vn) over (order by cn desc rows between 0 following and unbound
 select cn,vn,min(vn) over (order by cn desc rows between 1 following and unbounded following) as min from sale;
 select cn,vn,min(vn) over (order by cn desc rows between unbounded preceding and unbounded following) as min from sale;
 
-select pn,vn,max(vn) over (order by pn range between 200 preceding and 150 preceding) as max from sale;
-select pn,vn,max(vn) over (order by pn range between 200 preceding and 0 preceding) as max from sale;
-select pn,vn,max(vn) over (order by pn range between 200 preceding and 150 following) as max from sale;
-select pn,vn,max(vn) over (order by pn range between 0 preceding and 150 following) as max from sale;
-select pn,vn,max(vn) over (order by pn range between 0 following and 150 following) as max from sale;
-select pn,vn,max(vn) over (order by pn range between 150 following and 200 following) as max from sale;
-select pn,vn,max(vn) over (order by pn range between unbounded preceding and 200 preceding) as max from sale;
-select pn,vn,max(vn) over (order by pn range between unbounded preceding and 0 preceding) as max from sale;
-select pn,vn,max(vn) over (order by pn range between unbounded preceding and 200 following) as max from sale;
-select pn,vn,max(vn) over (order by pn range between 200 preceding and unbounded following) as max from sale;
-select pn,vn,max(vn) over (order by pn range between 0 preceding and unbounded following) as max from sale;
-select pn,vn,max(vn) over (order by pn range between 0 following and unbounded following) as max from sale;
-select pn,vn,max(vn) over (order by pn range between 150 following and unbounded following) as max from sale;
-select pn,vn,max(vn) over (order by pn range between unbounded preceding and unbounded following) as max from sale;
+select pn,vn,max(vn) over (order by pn range between 200 preceding and 150 preceding) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn range between 200 preceding and 0 preceding) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn range between 200 preceding and 150 following) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn range between 0 preceding and 150 following) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn range between 0 following and 150 following) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn range between 150 following and 200 following) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn range between unbounded preceding and 200 preceding) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn range between unbounded preceding and 0 preceding) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn range between unbounded preceding and 200 following) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn range between 200 preceding and unbounded following) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn range between 0 preceding and unbounded following) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn range between 0 following and unbounded following) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn range between 150 following and unbounded following) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn range between unbounded preceding and unbounded following) as max from sale; --mvd 1->3
 
-select pn,vn,max(vn) over (order by pn desc range between 200 preceding and 150 preceding) as max from sale;
-select pn,vn,max(vn) over (order by pn desc range between 200 preceding and 0 preceding) as max from sale;
-select pn,vn,max(vn) over (order by pn desc range between 200 preceding and 150 following) as max from sale;
-select pn,vn,max(vn) over (order by pn desc range between 0 preceding and 150 following) as max from sale;
-select pn,vn,max(vn) over (order by pn desc range between 0 following and 150 following) as max from sale;
-select pn,vn,max(vn) over (order by pn desc range between 150 following and 200 following) as max from sale;
-select pn,vn,max(vn) over (order by pn desc range between unbounded preceding and 200 preceding) as max from sale;
-select pn,vn,max(vn) over (order by pn desc range between unbounded preceding and 0 preceding) as max from sale;
-select pn,vn,max(vn) over (order by pn desc range between unbounded preceding and 200 following) as max from sale;
-select pn,vn,max(vn) over (order by pn desc range between 200 preceding and unbounded following) as max from sale;
-select pn,vn,max(vn) over (order by pn desc range between 0 preceding and unbounded following) as max from sale;
-select pn,vn,max(vn) over (order by pn desc range between 0 following and unbounded following) as max from sale;
-select pn,vn,max(vn) over (order by pn desc range between 150 following and unbounded following) as max from sale;
-select pn,vn,max(vn) over (order by pn desc range between unbounded preceding and unbounded following) as max from sale;
+select pn,vn,max(vn) over (order by pn desc range between 200 preceding and 150 preceding) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn desc range between 200 preceding and 0 preceding) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn desc range between 200 preceding and 150 following) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn desc range between 0 preceding and 150 following) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn desc range between 0 following and 150 following) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn desc range between 150 following and 200 following) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn desc range between unbounded preceding and 200 preceding) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn desc range between unbounded preceding and 0 preceding) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn desc range between unbounded preceding and 200 following) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn desc range between 200 preceding and unbounded following) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn desc range between 0 preceding and unbounded following) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn desc range between 0 following and unbounded following) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn desc range between 150 following and unbounded following) as max from sale; --mvd 1->3
+select pn,vn,max(vn) over (order by pn desc range between unbounded preceding and unbounded following) as max from sale; --mvd 1->3
 
-select cn,vn,pn,min(vn) over (partition by cn order by pn rows between 2 preceding and 1 preceding) as min from sale;
-select cn,vn,pn,min(vn) over (partition by cn order by pn rows between 2 preceding and 0 preceding) as min from sale;
-select cn,vn,pn,min(vn) over (partition by cn order by pn rows between 2 preceding and 1 following) as min from sale;
-select cn,vn,pn,min(vn) over (partition by cn order by pn rows between 0 preceding and 1 following) as min from sale;
-select cn,vn,pn,min(vn) over (partition by cn order by pn rows between 0 following and 1 following) as min from sale;
-select cn,vn,pn,min(vn) over (partition by cn order by pn rows between 1 following and 2 following) as min from sale;
-select cn,vn,pn,min(vn) over (partition by cn order by pn rows between unbounded preceding and 2 preceding) as min from sale;
-select cn,vn,pn,min(vn) over (partition by cn order by pn rows between unbounded preceding and 0 preceding) as min from sale;
-select cn,vn,pn,min(vn) over (partition by cn order by pn rows between unbounded preceding and 2 following) as min from sale;
-select cn,vn,pn,min(vn) over (partition by cn order by pn rows between 2 preceding and unbounded following) as min from sale;
-select cn,vn,pn,min(vn) over (partition by cn order by pn rows between 0 preceding and unbounded following) as min from sale;
-select cn,vn,pn,min(vn) over (partition by cn order by pn rows between 0 following and unbounded following) as min from sale;
-select cn,vn,pn,min(vn) over (partition by cn order by pn rows between 1 following and unbounded following) as min from sale;
-select cn,vn,pn,min(vn) over (partition by cn order by pn rows between unbounded preceding and unbounded following) as min from sale;
+select cn,vn,pn,min(vn) over (partition by cn order by pn rows between 2 preceding and 1 preceding) as min from sale; --mvd 1->4
+select cn,vn,pn,min(vn) over (partition by cn order by pn rows between 2 preceding and 0 preceding) as min from sale; --mvd 1->4
+select cn,vn,pn,min(vn) over (partition by cn order by pn rows between 2 preceding and 1 following) as min from sale; --mvd 1->4
+select cn,vn,pn,min(vn) over (partition by cn order by pn rows between 0 preceding and 1 following) as min from sale; --mvd 1->4
+select cn,vn,pn,min(vn) over (partition by cn order by pn rows between 0 following and 1 following) as min from sale; --mvd 1->4
+select cn,vn,pn,min(vn) over (partition by cn order by pn rows between 1 following and 2 following) as min from sale; --mvd 1->4
+select cn,vn,pn,min(vn) over (partition by cn order by pn rows between unbounded preceding and 2 preceding) as min from sale; --mvd 1->4
+select cn,vn,pn,min(vn) over (partition by cn order by pn rows between unbounded preceding and 0 preceding) as min from sale; --mvd 1->4
+select cn,vn,pn,min(vn) over (partition by cn order by pn rows between unbounded preceding and 2 following) as min from sale; --mvd 1->4
+select cn,vn,pn,min(vn) over (partition by cn order by pn rows between 2 preceding and unbounded following) as min from sale; --mvd 1->4
+select cn,vn,pn,min(vn) over (partition by cn order by pn rows between 0 preceding and unbounded following) as min from sale; --mvd 1->4
+select cn,vn,pn,min(vn) over (partition by cn order by pn rows between 0 following and unbounded following) as min from sale; --mvd 1->4
+select cn,vn,pn,min(vn) over (partition by cn order by pn rows between 1 following and unbounded following) as min from sale; --mvd 1->4
+select cn,vn,pn,min(vn) over (partition by cn order by pn rows between unbounded preceding and unbounded following) as min from sale; --mvd 1->4
 
-select cn,pn,vn,max(vn) over (partition by cn order by pn range between 200 preceding and 150 preceding) as max from sale;
-select cn,pn,vn,max(vn) over (partition by cn order by pn range between 200 preceding and 0 preceding) as max from sale;
-select cn,pn,vn,max(vn) over (partition by cn order by pn range between 200 preceding and 150 following) as max from sale;
-select cn,pn,vn,max(vn) over (partition by cn order by pn range between 0 preceding and 150 following) as max from sale;
-select cn,pn,vn,max(vn) over (partition by cn order by pn range between 0 following and 150 following) as max from sale;
-select cn,pn,vn,max(vn) over (partition by cn order by pn range between 150 following and 200 following) as max from sale;
-select cn,pn,vn,max(vn) over (partition by cn order by pn range between unbounded preceding and 200 preceding) as max from sale;
-select cn,pn,vn,max(vn) over (partition by cn order by pn range between unbounded preceding and 0 preceding) as max from sale;
-select cn,pn,vn,max(vn) over (partition by cn order by pn range between unbounded preceding and 200 following) as max from sale;
-select cn,pn,vn,max(vn) over (partition by cn order by pn range between 200 preceding and unbounded following) as max from sale;
-select cn,pn,vn,max(vn) over (partition by cn order by pn range between 0 preceding and unbounded following) as max from sale;
-select cn,pn,vn,max(vn) over (partition by cn order by pn range between 0 following and unbounded following) as max from sale;
-select cn,pn,vn,max(vn) over (partition by cn order by pn range between 150 following and unbounded following) as max from sale;
-select cn,pn,vn,max(vn) over (partition by cn order by pn range between unbounded preceding and unbounded following) as max from sale;
+select cn,pn,vn,max(vn) over (partition by cn order by pn range between 200 preceding and 150 preceding) as max from sale; --mvd 1,2->4
+select cn,pn,vn,max(vn) over (partition by cn order by pn range between 200 preceding and 0 preceding) as max from sale; --mvd 1,2->4
+select cn,pn,vn,max(vn) over (partition by cn order by pn range between 200 preceding and 150 following) as max from sale; --mvd 1,2->4
+select cn,pn,vn,max(vn) over (partition by cn order by pn range between 0 preceding and 150 following) as max from sale; --mvd 1,2->4
+select cn,pn,vn,max(vn) over (partition by cn order by pn range between 0 following and 150 following) as max from sale; --mvd 1,2->4
+select cn,pn,vn,max(vn) over (partition by cn order by pn range between 150 following and 200 following) as max from sale; --mvd 1,2->4
+select cn,pn,vn,max(vn) over (partition by cn order by pn range between unbounded preceding and 200 preceding) as max from sale; --mvd 1,2->4
+select cn,pn,vn,max(vn) over (partition by cn order by pn range between unbounded preceding and 0 preceding) as max from sale; --mvd 1,2->4
+select cn,pn,vn,max(vn) over (partition by cn order by pn range between unbounded preceding and 200 following) as max from sale; --mvd 1,2->4
+select cn,pn,vn,max(vn) over (partition by cn order by pn range between 200 preceding and unbounded following) as max from sale; --mvd 1,2->4
+select cn,pn,vn,max(vn) over (partition by cn order by pn range between 0 preceding and unbounded following) as max from sale; --mvd 1,2->4
+select cn,pn,vn,max(vn) over (partition by cn order by pn range between 0 following and unbounded following) as max from sale; --mvd 1,2->4
+select cn,pn,vn,max(vn) over (partition by cn order by pn range between 150 following and unbounded following) as max from sale; --mvd 1,2->4
+select cn,pn,vn,max(vn) over (partition by cn order by pn range between unbounded preceding and unbounded following) as max from sale; --mvd 1,2->4
 
 -- MPP-1943
 SELECT sale.cn,sale.pn,sale.vn,
@@ -1037,20 +1037,20 @@ FROM sale;
 -- MPP-1944
 SELECT sale.pn,cn,dt,pn,prc,
 MAX(floor(sale.prc+sale.prc)) OVER(partition by sale.pn,sale.cn,sale.dt,sale.pn order by sale.pn desc,sale.pn asc rows between current row and unbounded following ) 
-FROM sale;
+FROM sale; --mvd 1,2,3->6
 
 select qty,cn,pn,dt,pn,prc,
 MAX(floor(sale.prc+sale.prc)) OVER(partition by sale.qty,sale.cn,sale.pn,sale.dt order by sale.pn asc range between 0 following and unbounded following ) 
-from sale;
+from sale; --mvd 1,2,3,4->7
 
 -- MPP-1947
 SELECT dt,cn,cn,qty,
 MIN(floor(sale.qty)) OVER(partition by sale.dt,sale.cn,sale.dt order by sale.cn desc range between 1 preceding and unbounded following ) 
-FROM sale;
+FROM sale; --mvd 1,2->5
 
 SELECT dt,cn,cn,qty, 
 MAX(floor(sale.qty)) OVER(partition by sale.dt,sale.cn,sale.dt order by sale.cn desc range between 1 preceding and unbounded following )
-from sale;
+from sale; --mvd 1,2->5
 
 -- FIRST_VALUE/LAST_VALUE
 select cn,vn,first_value(vn) over (order by cn rows between 2 preceding and 1 preceding) as first_value from sale;
@@ -1083,40 +1083,40 @@ select pn,vn,last_value(vn) over (order by pn desc range between 0 following and
 select pn,vn,last_value(vn) over (order by pn desc range between 150 following and unbounded following) as last_value from sale;
 select pn,vn,last_value(vn) over (order by pn desc range between unbounded preceding and unbounded following) as last_value from sale;
 
-select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 2 preceding and 1 preceding) as last_value from sale;
-select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 2 preceding and 0 preceding) as last_value from sale;
-select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 2 preceding and 1 following) as last_value from sale;
-select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 0 preceding and 1 following) as last_value from sale;
-select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 0 following and 1 following) as last_value from sale;
-select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 1 following and 2 following) as last_value from sale;
-select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between unbounded preceding and 2 preceding) as last_value from sale;
-select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between unbounded preceding and 0 preceding) as last_value from sale;
-select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between unbounded preceding and 2 following) as last_value from sale;
-select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 2 preceding and unbounded following) as last_value from sale;
-select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 0 preceding and unbounded following) as last_value from sale;
-select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 0 following and unbounded following) as last_value from sale;
-select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 1 following and unbounded following) as last_value from sale;
-select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between unbounded preceding and unbounded following) as last_value from sale;
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 2 preceding and 1 preceding) as last_value from sale; --mvd 1->4
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 2 preceding and 0 preceding) as last_value from sale; --mvd 1->4
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 2 preceding and 1 following) as last_value from sale; --mvd 1->4
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 0 preceding and 1 following) as last_value from sale; --mvd 1->4
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 0 following and 1 following) as last_value from sale; --mvd 1->4
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 1 following and 2 following) as last_value from sale; --mvd 1->4
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between unbounded preceding and 2 preceding) as last_value from sale; --mvd 1->4
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between unbounded preceding and 0 preceding) as last_value from sale; --mvd 1->4
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between unbounded preceding and 2 following) as last_value from sale; --mvd 1->4
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 2 preceding and unbounded following) as last_value from sale; --mvd 1->4
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 0 preceding and unbounded following) as last_value from sale; --mvd 1->4
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 0 following and unbounded following) as last_value from sale; --mvd 1->4
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 1 following and unbounded following) as last_value from sale; --mvd 1->4
+select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between unbounded preceding and unbounded following) as last_value from sale; --mvd 1->4
 
-select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 200 preceding and 150 preceding) as first_value from sale;
-select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 200 preceding and 0 preceding) as first_value from sale;
-select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 200 preceding and 150 following) as first_value from sale;
-select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 0 preceding and 150 following) as first_value from sale;
-select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 0 following and 150 following) as first_value from sale;
-select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 150 following and 200 following) as first_value from sale;
-select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between unbounded preceding and 200 preceding) as first_value from sale;
-select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between unbounded preceding and 0 preceding) as first_value from sale;
-select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between unbounded preceding and 200 following) as first_value from sale;
-select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 200 preceding and unbounded following) as first_value from sale;
-select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 0 preceding and unbounded following) as first_value from sale;
-select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 0 following and unbounded following) as first_value from sale;
-select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 150 following and unbounded following) as first_value from sale;
-select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between unbounded preceding and unbounded following) as first_value from sale;
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 200 preceding and 150 preceding) as first_value from sale; --mvd 1->4
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 200 preceding and 0 preceding) as first_value from sale; --mvd 1->4
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 200 preceding and 150 following) as first_value from sale; --mvd 1->4
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 0 preceding and 150 following) as first_value from sale; --mvd 1->4
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 0 following and 150 following) as first_value from sale; --mvd 1->4
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 150 following and 200 following) as first_value from sale; --mvd 1->4
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between unbounded preceding and 200 preceding) as first_value from sale; --mvd 1->4
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between unbounded preceding and 0 preceding) as first_value from sale; --mvd 1->4
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between unbounded preceding and 200 following) as first_value from sale; --mvd 1->4
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 200 preceding and unbounded following) as first_value from sale; --mvd 1->4
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 0 preceding and unbounded following) as first_value from sale; --mvd 1->4
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 0 following and unbounded following) as first_value from sale; --mvd 1->4
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 150 following and unbounded following) as first_value from sale; --mvd 1->4
+select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between unbounded preceding and unbounded following) as first_value from sale; --mvd 1->4
 
 -- MPP-1957
 select dt,pn,qty,
 LEAD(cast(floor(sale.qty/sale.qty) as int),cast (floor(sale.qty) as int),NULL) OVER(partition by sale.dt order by sale.pn asc) as lead 
-from sale;
+from sale; --mvd 1->4
 
 -- MPP-1958
 SELECT sale.qty, 
