@@ -318,7 +318,6 @@ agg_hash_initial_pass(AggState *aggstate)
 
 	while(true)
 	{
-		ListCell *lc;
 		MemoryContext oldContext;
 		uint32 hashkey;
 
@@ -350,21 +349,13 @@ agg_hash_initial_pass(AggState *aggstate)
 		slot_getsomeattrs(outerslot, linitial_int(aggstate->hash_needed));
 		MemoryContextSwitchTo(oldContext);
 
-		/* make a virtual tuple in hashslot with the agg columns */
-		foreach (lc, aggstate->hash_needed)
-		{
-			int n = lfirst_int(lc) - 1;
-			hashslot->tts_values[n] = outerslot->tts_values[n];
-			hashslot->tts_isnull[n] = outerslot->tts_isnull[n];
-		}
-
 		/* set up for advance_aggregates call */
 		tmpcontext->ecxt_scantuple = outerslot;
 
 		/* Find or (if there's room) build a hash table entry for the
 		 * input tuple's group. */
-		hashkey = calc_hash_value(aggstate, hashslot);
-		entry = lookup_agg_hash_entry(aggstate, hashslot, hashkey, &isNew);
+		hashkey = calc_hash_value(aggstate, outerslot);
+		entry = lookup_agg_hash_entry(aggstate, outerslot, hashkey, &isNew);
 
 		if (entry != NULL)
 		{
@@ -989,23 +980,27 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 {
 	HashAggEntry *entry;
 	MemoryContext oldContext;
+	Datum *values = aggstate->hashslot->tts_values;
+	bool *isnull = aggstate->hashslot->tts_isnull;
+	ListCell *lc;
 
-	if (inputslot != aggstate->hashslot)
+	oldContext = MemoryContextSwitchTo(inputslot->tts_mcxt);
+	foreach (lc, aggstate->hash_needed)
 	{
-		Datum *values = aggstate->hashslot->tts_values;
-		bool *isnull = aggstate->hashslot->tts_isnull;
-		ListCell *lc;
-
-		oldContext = MemoryContextSwitchTo(inputslot->tts_mcxt);
-		foreach (lc, aggstate->hash_needed)
+		int n = lfirst_int(lc) - 1;
+		if (n < inputslot->tts_nvalid)
 		{
-			int n = lfirst_int(lc) - 1;
+			values[n] = inputslot->tts_values[n];
+			isnull[n] = inputslot->tts_isnull[n];
+		}
+		else
+		{
 			values[n] = heap_getattr(inputslot->tts_tuple, n + 1, 
 									 inputslot->tts_tupleDescriptor, 
 									 &isnull[n]);
 		}
-		MemoryContextSwitchTo(oldContext);
 	}
+	MemoryContextSwitchTo(oldContext);
 
 	oldContext = MemoryContextSwitchTo(aggstate->transcontext);
 
