@@ -1017,7 +1017,6 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 
 	oldContext = MemoryContextSwitchTo(aggstate->transcontext);
 
-#if 1
 	if (aggstate->numaggs == 0)
 		entry = (HashAggEntry*)palloc0(sizeof(HashAggEntry));
 	else
@@ -1025,29 +1024,6 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 						(aggstate->numaggs-1) * sizeof(AggStatePerGroupData));
 	entry->heaptuple = ExecCopySlotTuple(aggstate->hashslot);
 	entry->hashvalue = hashvalue;
-#else
-	{
-		int hlen;
-		char* buf;
-		unsigned int tlen;
-		hlen = sizeof(HashAggEntry);
-		if (aggstate->numaggs > 0)
-			hlen += (aggstate->numaggs-1) * sizeof(AggStatePerGroupData);
-		hlen = MAXALIGN(hlen);
-		tlen = 0;
-		ExecCopySlotMinimalTupleTo(aggstate->hashslot, 0, &tlen);
-		buf = palloc(hlen + tlen);
-		memset(buf, 0, hlen);
-		entry = (HashAggEntry*) buf;
-		entry->heaptuple = (HeapTuple) (buf + hlen);
-		entry->hashvalue = hashvalue;
-		if (! ExecCopySlotMinimalTupleTo(aggstate->hashslot, 
-										 (char*) entry->heaptuple, &tlen))
-			ereport(ERROR,
-					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("hybrid hash aggregation faillure - copy tuple failed")));
-	}
-#endif
 	
 	MemoryContextSwitchTo(oldContext);
 	return entry;
