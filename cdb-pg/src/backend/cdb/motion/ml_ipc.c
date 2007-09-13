@@ -811,13 +811,13 @@ CleanUpMotionLayerIPC(void)
 	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
     	elog(DEBUG3, "Cleaning Up Motion Layer IPC...");
 
-	elog(LOG, "udp-ic: telling receiver thread to shutdown.");
+	elog(DEBUG2, "udp-ic: telling receiver thread to shutdown.");
 
 	rx_thread_shutdown = true;
 
 	pthread_join(ic_rx_thread, NULL);
 
-	elog(LOG, "udp-ic: receiver thread shutdown.");
+	elog(DEBUG2, "udp-ic: receiver thread shutdown.");
 
 	/* close down the Interconnect listener socket. */
     if (listenerFd >= 0)
@@ -5019,6 +5019,8 @@ ic_rx_thread_func(void *arg)
 
 		if (rx_thread_shutdown)
 		{
+			if (DEBUG2 >= log_min_messages)
+				write_log("udp-ic: rx-thread shutting down\n");
 			break;
 		}
 
