@@ -399,7 +399,7 @@ agg_hash_initial_pass(AggState *aggstate)
 				 */
 				if (gp_hashagg_recalc_density)
 				{
-#if 0
+#if 1
 					double act_tuples_per_group;
 					double groups, new_batches;
 					double entry_size;
