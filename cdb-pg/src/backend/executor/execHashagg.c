@@ -399,7 +399,7 @@ agg_hash_initial_pass(AggState *aggstate)
 				 */
 				if (gp_hashagg_recalc_density)
 				{
-#if 1
+#if 0
 					double act_tuples_per_group;
 					double groups, new_batches;
 					double entry_size;
@@ -441,9 +441,9 @@ agg_hash_initial_pass(AggState *aggstate)
 					/* use planner estimated rows devide tuples we have processed to 
 					 * estimate batches 
 					 */
-					double new_batches = ((double) outer->plan->plan_rows) / ((double) ht->ntuple);
+					int new_batches = Max(1, (int) ((double) outer->plan->plan_rows) / ((double) ht->ntuple));
 					/* Then thrown in a factor of 2 because respilling is such a horrible thing */
-					new_batches *= 2.0;
+					new_batches *= 2;
 					
 					destroy_batches(ht);
 					create_batches(ht, new_batches);
@@ -1234,6 +1234,8 @@ create_batches(HashAggTable *hashtable, unsigned int nbatch)
 		elog(LOG, "Hashagg spillbatch use guc max value %d instead of %d", gp_hashagg_spillbatch_max, nbatch);
 		nbatch = gp_hashagg_spillbatch_max;
 	}
+
+	elog(LOG, "Hashagg spill to %d batches", nbatch);
 
 	sz = nbatch * sizeof(BatchFileInfo);	
 	hashtable->batches = (BatchFileInfo*)palloc0(sz);
