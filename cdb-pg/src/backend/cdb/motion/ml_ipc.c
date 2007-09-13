@@ -2998,6 +2998,8 @@ setupUDPListeningSocket(int backlog, int *listenerSocketFd, uint16 *listenerPort
     *listenerPort = ntohs(saddr.sin_port);
 
     fun = "setsockopt";
+
+	/* the max-size supported by all of our platforms appears to be 128K ? */
 	rcvbuf = 128 * 1024;
 	rcvbufsize = sizeof(rcvbuf);
     if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (const char *)&rcvbuf, rcvbufsize) < 0)
@@ -3008,20 +3010,7 @@ setupUDPListeningSocket(int backlog, int *listenerSocketFd, uint16 *listenerPort
     if (getsockopt(fd, SOL_SOCKET, SO_RCVBUF, (char *)&rcvbuf, &rcvbufsize) < 0)
 		goto error;
 
-	elog(LOG, "setupUDPListeningSocket: rcvbuf size %d", rcvbuf);
-
-    fun = "setsockopt";
-	rcvbuf = 128 * 1024;
-	rcvbufsize = sizeof(rcvbuf);
-    if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (const char *)&rcvbuf, rcvbufsize) < 0)
-		goto error;
-
-    fun = "getsockopt";
-	rcvbufsize = sizeof(rcvbuf);
-    if (getsockopt(fd, SOL_SOCKET, SO_RCVBUF, (char *)&rcvbuf, &rcvbufsize) < 0)
-		goto error;
-
-	elog(LOG, "setupUDPListeningSocket: rcvbuf size %d", rcvbuf);
+	elog(DEBUG2, "setupUDPListeningSocket: rcvbuf size %d", rcvbuf);
 
 	return;
 
