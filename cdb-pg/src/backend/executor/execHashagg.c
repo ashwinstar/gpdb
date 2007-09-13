@@ -238,6 +238,7 @@ void reset_agg_hash_table(AggState *aggstate)
 		ht->nentries);
 	
 	MemSet(ht->buckets, 0, ht->nbucket * sizeof(HashAggEntry*));
+	MemSet(ht->bloom, 0, ht->nbucket * sizeof(uint64));
 	MemoryContextReset(aggstate->transcontext);
 	ht->nentries = 0;
 	init_agg_hash_iter(ht);
@@ -851,8 +852,6 @@ calc_hash_value(AggState* aggstate, TupleTableSlot *inputslot)
 		/* rotate hashkey left 1 bit at each step */
 		hashkey = (hashkey << 1) | ((hashkey & 0x80000000) ? 1 : 0);
 
-		/*attr = slot_getattr(inputslot, att, &isNull);*/
-
 		if (!isNull)			/* treat nulls as having hash key 0 */
 		{
 			uint32		hkey;
@@ -924,10 +923,7 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hash
 				Datum		input_datum, entry_datum;
 				bool		input_isNull, entry_isNull;
 
-				if (inputslot->tts_tuple)
-					input_datum = heap_getattr(inputslot->tts_tuple, att, entry_tuple_desc, &input_isNull);
-				else
-					input_datum = slot_getattr(inputslot, att, &input_isNull);
+				input_datum = slot_getattr(inputslot, att, &input_isNull);
 				entry_datum = heap_getattr(heapTuple, att, entry_tuple_desc, &entry_isNull);
 
 				if ( !input_isNull && !entry_isNull &&
@@ -1225,7 +1221,7 @@ create_batches(HashAggTable *hashtable, unsigned int nbatch)
 		nbatch = gp_hashagg_spillbatch_max;
 	}
 
-	elog(LOG, "Hashagg spill to %d batches", nbatch);
+	elog(DEBUG2, "Hashagg spill to %d batches", nbatch);
 
 	sz = nbatch * sizeof(BatchFileInfo);	
 	hashtable->batches = (BatchFileInfo*)palloc0(sz);
