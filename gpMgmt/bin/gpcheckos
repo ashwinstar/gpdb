@@ -184,6 +184,12 @@ def print_fix():
             for (key, value) in errors[h]['postgres']:
                 print 'check %s = %s' % (key, value)
 
+        if 'python' in errors[h]:
+            print
+            print '[FIX %s] please check python version.' %h
+            for (key, value) in errors[h]['python']:
+                print 'check python %s is %s or above.' % (key, value)
+
         if 'ndd' in errors[h]:
 	    print
             print '[FIX %s] please add/modify the following line(s) in /etc/rc2.d/S*gpdb_ndd' % h
@@ -242,6 +248,20 @@ def matchList(session, key, value):
             ok = False
     return ok
 
+def matchListMore(session, key, value):
+    ok = True
+    print 'checking: %s = %s' % (key, value)
+    vs = value.split()
+    for p in session:
+	v = p.x_res.get(key, '')
+	l = v.split()
+        p.x_match = (l >= vs)
+        if not p.x_match:
+            perr(p.x_peer, '%s mismatch (value %s should == %s)' % (key, str(l), str(vs)))
+            error(p.x_peer, key, value)
+            ok = False
+    return ok
+
 def matchMore(session, key, value):
     ok = True
     print 'checking: %s >= %s' % (key, value)
@@ -292,6 +312,14 @@ try:
             perr(p0.x_peer, 'postgres version unavailable')
         else:
             match(session, key, value)
+
+    key = 'python.version'
+    for p in session:
+        value = p.x_res.get(key)
+        if not value:
+            perr(p.x_peer, 'python version unavailable')
+        else:
+            matchListMore(session, key, '2.3.5')
 
     key = 'platform.system'
     value = p0.x_res.get(key)
