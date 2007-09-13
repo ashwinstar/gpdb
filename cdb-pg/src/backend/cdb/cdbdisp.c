@@ -1351,7 +1351,9 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 			strncmp(strCommand, "PREPARE ", 8) != 0 &&
 			strncmp(strCommand, "COMMIT ", 6) != 0 &&
 			strncmp(strCommand, "ROLLBACK ", 9) != 0 &&
-			strncmp(strCommand, "select pg_relation_size(", 24) != 0)
+			strncmp(strCommand, "select pg_relation_size(", 24) != 0 &&
+			strncmp(strCommand, "select pg_highest_oid(", 22) != 0
+			)
 		{
 			if (strncmp(strCommand, "MPPEXEC ", 7) == 0 || strncmp(strCommand, "mppexec ", 7) == 0)
 				elog(NOTICE, "Some segments are down.  Dispatching command to remaining segments only");
