@@ -293,7 +293,7 @@ agg_hash_initial_pass(AggState *aggstate)
 	PlanState  *outer_ps = outerPlanState(aggstate);
 	ExprContext *tmpcontext = aggstate->tmpcontext; /* per input tuple expr context */
 	HashAggTable *ht = aggstate->hhashtable; 
-	TupleTableSlot *hashslot = aggstate->hashslot;
+	TupleTableSlot *hashslot = NULL;
 	HashAggEntry *entry;
 	TupleTableSlot *outerslot;
 	unsigned long noverflow = 0;
@@ -303,7 +303,6 @@ agg_hash_initial_pass(AggState *aggstate)
 	unsigned int spillbuflen = 0;
 	bool streaming = ((Agg *) aggstate->ss.ps.plan)->streaming;
 	bool tupRemaining = true;
-	bool inithashslot = true;
 
 	Assert(ht);
 	AssertImply(!streaming, ht->state == HASHAGG_BEFORE_FIRST_PASS);
@@ -329,19 +328,20 @@ agg_hash_initial_pass(AggState *aggstate)
 		}
 
 		outerslot = ExecProcNode(outer_ps);
-		if (inithashslot && outerslot)
-		{
-			/* Initialize hashslot by cloning input slot. */
-			ExecSetSlotDescriptor(hashslot, outerslot->tts_tupleDescriptor);
-			ExecStoreAllNullTuple(hashslot);
-			inithashslot = false;
-		}
-		
+
 		/* no more tuple.  Done */
 		if(TupIsNull(outerslot))
 		{
 			tupRemaining = false;
 			break;
+		}
+
+		if (hashslot == NULL)
+		{
+			/* Initialize hashslot by cloning input slot. */
+			hashslot = aggstate->hashslot;
+			ExecSetSlotDescriptor(hashslot, outerslot->tts_tupleDescriptor);
+			ExecStoreAllNullTuple(hashslot);
 		}
 		
 		/* get the attrs, need them for calc_hash_value() later */
@@ -922,7 +922,7 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hash
 			int i;
 			bool match = true;
 			
-			for (i = 0; i < agg->numCols; i++)
+			for (i = 0; match && i < agg->numCols; i++)
 			{
 				AttrNumber	att = agg->grpColIdx[i];
 				Datum		input_datum, entry_datum;
@@ -934,16 +934,12 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hash
 					input_datum = slot_getattr(inputslot, att, &input_isNull);
 				entry_datum = heap_getattr(heapTuple, att, entry_tuple_desc, &entry_isNull);
 
-				if ( input_isNull && entry_isNull )
-					continue; /* NULLs match in group keys. */
-				if ( !(input_isNull || entry_isNull) &&
+				if ( !input_isNull && !entry_isNull &&
 					 (DatumGetBool(FunctionCall2(&aggstate->eqfunctions[i],
 												 input_datum,
 												 entry_datum)) ) )
 					continue; /* Both non-NULL and equal. */
-
-				match = false;
-				break;
+				match = (input_isNull && entry_isNull);/* NULLs match in group keys. */
 			}
 
 			if (match)
