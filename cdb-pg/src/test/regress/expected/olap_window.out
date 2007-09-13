@@ -6697,3 +6697,23 @@ select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 
   4 | 800 | 40 |          40
 (12 rows)
 
+-- MPP-1957
+select dt,pn,qty,
+LEAD(cast(floor(sale.qty/sale.qty) as int),cast (floor(sale.qty) as int),NULL) OVER(partition by sale.dt order by sale.pn asc) as lead 
+from sale;
+     dt     | pn  | qty  | lead 
+------------+-----+------+------
+ 03-01-1401 | 200 |    1 |     
+ 05-02-1401 | 300 |    1 |     
+ 06-01-1401 | 400 |    1 |    1
+ 06-01-1401 | 400 |    1 |    1
+ 06-01-1401 | 500 |   12 |     
+ 06-01-1401 | 500 |   12 |     
+ 06-01-1401 | 600 |   12 |     
+ 06-01-1401 | 700 |    1 |    1
+ 06-01-1401 | 800 |    1 |     
+ 01-01-1401 | 100 | 1100 |     
+ 04-01-1401 | 200 |    1 |     
+ 05-01-1401 | 100 |    1 |     
+(12 rows)
+

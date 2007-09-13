@@ -2784,9 +2784,17 @@ add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 			 funcstate->aggTransValueIsNull))
 		{
 			int argno = 1;
+			MemoryContext oldcxt;
 			
-			funcstate->aggTransValue = fcinfo.arg[argno];
+			oldcxt = MemoryContextSwitchTo(wstate->transcontext);
+			
+			funcstate->aggTransValue = 
+				datumCopy(fcinfo.arg[argno],
+						  funcstate->wrxstate->argtypbyval[argno],
+						  funcstate->wrxstate->argtyplen[argno]);
 			funcstate->aggTransValueIsNull = fcinfo.argnull[argno];
+
+			MemoryContextSwitchTo(oldcxt);
 		}
 
 		else
@@ -4025,8 +4033,6 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 		if (level_state->empty_frame)
 			continue;
 
-		level_state->agg_filled = true;
-		
 		if (!level_state->trivial_frames_only)
 		{
 			bool write_pre_value = false;
@@ -4082,7 +4088,8 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 						OidIsValid(funcstate->prelimfn_oid))
 						resetTransValue(funcstate, wstate->transcontext);
 
-					else if (IS_FIRST_LAST_FUNC(funcstate->windowfn_oid) && !last_peer)
+					else if ((IS_LEAD_LAG_FUNC(funcstate->windowfn_oid) ||
+							  IS_FIRST_LAST_FUNC(funcstate->windowfn_oid)) && !last_peer)
 						resetTransValue(funcstate, wstate->transcontext);
 				}
 			}
@@ -4127,6 +4134,8 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 					econtext->ecxt_outertuple = slot; /* XXX really need this? */
 					
 					add_tuple_to_trans(funcstate, wstate, econtext);
+
+					level_state->agg_filled = true;
 				}
 			}
 		}

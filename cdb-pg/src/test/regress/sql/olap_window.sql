@@ -1112,3 +1112,8 @@ select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 
 select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 0 following and unbounded following) as first_value from sale;
 select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between 150 following and unbounded following) as first_value from sale;
 select cn,pn,vn,first_value(vn) over (partition by cn order by pn range between unbounded preceding and unbounded following) as first_value from sale;
+
+-- MPP-1957
+select dt,pn,qty,
+LEAD(cast(floor(sale.qty/sale.qty) as int),cast (floor(sale.qty) as int),NULL) OVER(partition by sale.dt order by sale.pn asc) as lead 
+from sale;
