@@ -1156,8 +1156,10 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 			 * tlist of the top plan node.	However, we can skip that if we
 			 * determined that whatever query_planner chose to return will be
 			 * good enough.
+			 *
+			 * For hashagg, we always push down the projection.
 			 */
-			if (need_tlist_eval)
+			if (need_tlist_eval || use_hashed_grouping)
 			{
 				/*
 				 * If the top-level plan node is one that cannot do expression

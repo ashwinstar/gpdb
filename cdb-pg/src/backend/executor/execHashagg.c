@@ -383,12 +383,8 @@ agg_hash_initial_pass(AggState *aggstate)
 
 			if (!spilling)
 			{
-				double act_tuples_per_group;
-				double groups, new_batches;
-				double entry_size;
 
 				PlanState *outer = outerPlanState(aggstate);
-				double est_tuples_per_group;
 
 				spilling = true;
 
@@ -403,6 +399,12 @@ agg_hash_initial_pass(AggState *aggstate)
 				 */
 				if (gp_hashagg_recalc_density)
 				{
+#if 0
+					double act_tuples_per_group;
+					double groups, new_batches;
+					double entry_size;
+					double est_tuples_per_group;
+
 					act_tuples_per_group = ((double)ht->ntuple)/(double)ht->ngroup;
 
 					est_tuples_per_group = outer->plan->plan_rows / aggstate->ss.ps.plan->plan_rows;
@@ -435,6 +437,17 @@ agg_hash_initial_pass(AggState *aggstate)
 						destroy_batches(ht);
 						create_batches(ht, new_batches);
 					}
+#else
+					/* use planner estimated rows devide tuples we have processed to 
+					 * estimate batches 
+					 */
+					double new_batches = ((double) outer->plan->plan_rows) / ((double) ht->ntuple);
+					/* Then thrown in a factor of 2 because respilling is such a horrible thing */
+					new_batches *= 2.0;
+					
+					destroy_batches(ht);
+					create_batches(ht, new_batches);
+#endif
 				}
 				/* NOTE: we never reduce the number of batches, respill passes are too risky */
 			}
