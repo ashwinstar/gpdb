@@ -1009,7 +1009,7 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 	else
 		entry = (HashAggEntry*)palloc0(sizeof(HashAggEntry) +
 						(aggstate->numaggs-1) * sizeof(AggStatePerGroupData));
-	entry->heaptuple = ExecCopySlotTuple(inputslot);
+	entry->heaptuple = ExecCopySlotTuple(aggstate->hashslot);
 	entry->hashvalue = hashvalue;
 	
 	MemoryContextSwitchTo(oldContext);
