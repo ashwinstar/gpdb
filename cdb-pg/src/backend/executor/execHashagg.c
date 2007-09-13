@@ -137,15 +137,7 @@ HashAggTable *
 create_agg_hash_table(AggState *aggstate)
 {
 	HashAggTable *ht;
-	HashAggTableSizes   hats = 
-		{
-		0, /* nbuckets */
-		0, /* nentries */
-		0, /* nbatches */
-		0, /* workmem_initial */
-		0, /* workmem_per_entry */
-		false, /* spill */
-		};
+	HashAggTableSizes hats = {0};
 
 	MemoryContext oldcontext;
 	Agg *agg = (Agg*)aggstate->ss.ps.plan;
@@ -499,6 +491,9 @@ agg_hash_initial_pass(AggState *aggstate)
         ht->noverflow_initial = noverflow;
         agg_hash_table_stat_upd(ht);
     }
+
+	if (spillbuf)
+		pfree(spillbuf);
 
 	AssertImply(tupRemaining, streaming);
 	if(tupRemaining) 
