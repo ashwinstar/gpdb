@@ -6891,7 +6891,7 @@ first_value_internal(WindowRefExprState *wrxstate, bool *isnull)
 		if (EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->lead, true))
 			include_last_agg = true;
 
-		if ((include_last_agg || trail_valid) &&
+		if ((has_tuples || include_last_agg || trail_valid) &&
 			level_state->agg_filled)
 		{
 			funcstate->win_value = funcstate->aggTransValue;

@@ -1123,3 +1123,11 @@ SELECT sale.qty,
 MIN(floor(sale.qty)) OVER(order by sale.pn asc rows unbounded preceding ) as min,sale.pn,
 LAG(cast(floor(sale.qty-sale.prc) as int),cast (floor(sale.qty/sale.vn) as int),NULL) OVER(order by sale.pn asc) as lag
 FROM sale;
+
+-- MPP-1960
+SELECT prc,cn,vn,
+FIRST_VALUE(floor(sale.prc)) OVER(partition by sale.prc,sale.cn order by sale.vn asc range between unbounded preceding and unbounded following) 
+FROM sale; --mvd 1,2->4
+SELECT cn,pn,dt,
+FIRST_VALUE(floor(sale.pn/sale.pn)) OVER(partition by sale.cn,sale.pn,sale.dt order by sale.cn desc range between unbounded preceding and 1 following ) as fv 
+from sale; --mvd 1,2,3->4
