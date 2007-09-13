@@ -2360,11 +2360,17 @@ dispatchCommandQuery(CdbDispatchResult  *dispatchResult,
 {
 	SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
 	PGconn	   *conn = segdbDesc->conn;
+	TimestampTz beforeSend = 0;
+	long		secs;
+	int			usecs;
 
 	/* Don't use elog, it's not thread-safe */
 	if (DEBUG3 >= log_min_messages)
 		write_log("%s <- %.120s\n", segdbDesc->whoami, strCommand);
 
+	if (DEBUG1 >= log_min_messages)
+		beforeSend = GetCurrentTimestamp();
+			
 	/*
 	 * Submit the command asynchronously.
 	 */
@@ -2385,6 +2391,16 @@ dispatchCommandQuery(CdbDispatchResult  *dispatchResult,
 		segdbDesc->conn = NULL;
 		dispatchResult->stillRunning = false;
 	}
+	
+	if (DEBUG1 >= log_min_messages)
+	{
+		TimestampDifference(beforeSend,
+							GetCurrentTimestamp(),
+							&secs, &usecs);
+		
+		write_log("time for PQsendGpQuery_shared %ld.%06d\n",secs,usecs);
+	}
+
 
 	/*
 	 * We'll keep monitoring this QE -- whether or not the command
