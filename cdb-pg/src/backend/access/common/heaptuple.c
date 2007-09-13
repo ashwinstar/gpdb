@@ -1459,7 +1459,7 @@ slot_deform_tuple(TupleTableSlot *slot, int natts)
  *		when the physical tuple is longer than the tupdesc.
  */
 Datum
-slot_getattr(TupleTableSlot *slot, int attnum, bool *isnull)
+_slot_getattr(TupleTableSlot *slot, int attnum, bool *isnull)
 {
 	HeapTuple	tuple = slot->tts_tuple;
 	TupleDesc	tupleDesc = slot->tts_tupleDescriptor;

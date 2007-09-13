@@ -174,9 +174,18 @@ extern TupleTableSlot *ExecCopySlot(TupleTableSlot *dstslot,
 			 TupleTableSlot *srcslot);
 
 /* in access/common/heaptuple.c */
-extern Datum slot_getattr(TupleTableSlot *slot, int attnum, bool *isnull);
+
+extern Datum _slot_getattr(TupleTableSlot *slot, int attnum, bool *isnull);
 extern void slot_getallattrs(TupleTableSlot *slot);
 extern void slot_getsomeattrs(TupleTableSlot *slot, int attnum);
 extern bool slot_attisnull(TupleTableSlot *slot, int attnum);
+
+static inline Datum slot_getattr(TupleTableSlot *slot, int attnum, bool *isnull)
+{
+    if (0 < attnum && attnum <= slot->tts_nvalid)
+	return (*isnull = slot->tts_isnull[attnum-1]), slot->tts_values[attnum-1];
+    else
+	return _slot_getattr(slot, attnum, isnull);
+}
 
 #endif   /* TUPTABLE_H */
