@@ -71,6 +71,11 @@ static void agg_hash_table_stat_upd(HashAggTable *ht);
 
 static double calcBatchCount(double memquota, double ngroups, double zH, double zB, bool force);
 
+/*
+#undef DEBUG2
+#define DEBUG2 LOG
+*/
+
 #define HHA_MSG_LVL DEBUG2
 
 /* Function: est_hash_tuple_size
@@ -118,6 +123,8 @@ static Size est_hash_tuple_size(TupleTableSlot *hashslot, List *hash_needed)
 	}
 
 	len = MAXALIGN(HEAPTUPLESIZE + len);
+
+	elog(HHA_MSG_LVL, "estimated hash tuple size is %d", (int)len);
 	
 	return len;
 }
@@ -833,12 +840,6 @@ calc_hash_value(AggState* aggstate, TupleTableSlot *inputslot)
 	agg = (Agg*)aggstate->ss.ps.plan;
 	econtext = aggstate->tmpcontext; /* short-lived, per-input-tuple */
 
-	/*
-	 * Reset the eval context each time to reclaim any memory leaked in the
-	 * hashkey expressions.
-	 */
-	ResetExprContext(econtext);
-
 	oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 
 	for (i = 0; i < agg->numCols; i++)
@@ -937,11 +938,9 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hash
 				match = (input_isNull && entry_isNull);/* NULLs match in group keys. */
 			}
 
+			/* Break if found an existing matching entry. */
 			if (match)
-			{
-				/* Found an existing matching entry. */
 				break;
-			}
 		}
 	}
 	
