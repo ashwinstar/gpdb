@@ -308,6 +308,7 @@ agg_hash_initial_pass(AggState *aggstate)
 	unsigned int spillbuflen = 0;
 	bool streaming = ((Agg *) aggstate->ss.ps.plan)->streaming;
 	bool tupRemaining = true;
+	const int attrTop = linitial_int(aggstate->hash_needed);
 
 	Assert(ht);
 	AssertImply(!streaming, ht->state == HASHAGG_BEFORE_FIRST_PASS);
@@ -350,9 +351,12 @@ agg_hash_initial_pass(AggState *aggstate)
 		}
 		
 		/* get the attrs, need them for calc_hash_value() later */
-		oldContext = MemoryContextSwitchTo(outerslot->tts_mcxt);
-		slot_getsomeattrs(outerslot, linitial_int(aggstate->hash_needed));
-		MemoryContextSwitchTo(oldContext);
+		if (outerslot->tts_nvalid < attrTop)
+		{
+			oldContext = MemoryContextSwitchTo(outerslot->tts_mcxt);
+			slot_getsomeattrs(outerslot, linitial_int(aggstate->hash_needed));
+			MemoryContextSwitchTo(oldContext);
+		}
 
 		/* set up for advance_aggregates call */
 		tmpcontext->ecxt_scantuple = outerslot;
@@ -992,12 +996,9 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 	{
 		foreach (lc, aggstate->hash_needed)
 		{
-			int n = lfirst_int(lc) - 1;
-			if (n < inputslot->tts_nvalid)
-			{
-				values[n] = inputslot->tts_values[n];
-				isnull[n] = inputslot->tts_isnull[n];
-			}
+			const int n = lfirst_int(lc) - 1;
+			values[n] = inputslot->tts_values[n];
+			isnull[n] = inputslot->tts_isnull[n];
 		}
 	}
 	else 
@@ -1005,7 +1006,7 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 		oldContext = MemoryContextSwitchTo(inputslot->tts_mcxt);
 		foreach (lc, aggstate->hash_needed)
 		{
-			int n = lfirst_int(lc) - 1;
+			const int n = lfirst_int(lc) - 1;
 			values[n] = heap_getattr(inputslot->tts_tuple, n + 1, 
 									 inputslot->tts_tupleDescriptor, 
 									 &isnull[n]);
