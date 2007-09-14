@@ -802,7 +802,8 @@ pfree(void *pointer)
 
 	AssertArg(MemoryContextIsValid(header->context));
 
-	(*header->context->methods.free_p) (header->context, pointer);
+	if (header->context->methods.free_p)
+		(*header->context->methods.free_p) (header->context, pointer);
 }
 
 /*
