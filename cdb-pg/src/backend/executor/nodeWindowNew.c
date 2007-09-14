@@ -265,19 +265,6 @@ typedef struct WindowStatePerFunctionData
              (is_lead && \
 			  (((level_state)->is_rows && (level_state)->lead_rows == 0) || \
 			   (!(level_state)->is_rows && (level_state)->lead_range == 0))))))
-	
-#define IS_LEAD_LAG_FUNC(oid) (IS_LEAD_FUNC(oid) || IS_LAG_FUNC(oid)) 
-
-/* XXX Temporarily define macros for FIRST_VALUE/LAST_VALUE.
- * This will be changed after Brian makes the catalog and
- * the planner changes.
- */
-#define IS_FIRST_VALUE_FUNC(oid) (7111 <= oid && oid <= 7141)
-#define IS_LAST_VALUE_FUNC(oid) (oid == 7103 || \
-								 (7107 <= oid && oid <= 7110) ||\
-								 (7142 <= oid && oid <= 7168 && oid != 7156))
-#define IS_FIRST_LAST_FUNC(oid) (IS_FIRST_VALUE_FUNC(oid) || IS_LAST_VALUE_FUNC(oid))
-
 
 /****************************************************
  * Window Input Buffer and its APIs
@@ -781,8 +768,8 @@ serializeFuncs(WindowStatePerLevel level_state,
 							   p_len, (written_pos - *p_serial_entry));
 		}
 
-		else if (IS_LEAD_LAG_FUNC(funcstate->windowfn_oid) ||
-				 IS_FIRST_LAST_FUNC(funcstate->windowfn_oid))
+		else if (IS_LEAD_LAG(funcstate->wrxstate->winkind) ||
+				 IS_FIRST_LAST(funcstate->wrxstate->winkind))
 		{
 			WindowRefExprState *wrxstate;
 			int nargs;
@@ -940,8 +927,8 @@ deserializeFuncs(WindowStatePerLevel level_state,
 			read_pos = deserializeValue(read_pos, value, byvalue, typelen);
 		}
 
-		else if (IS_LEAD_LAG_FUNC(funcstate->windowfn_oid) ||
-				 IS_FIRST_LAST_FUNC(funcstate->windowfn_oid))
+		else if (IS_LEAD_LAG(funcstate->wrxstate->winkind) ||
+				 IS_FIRST_LAST(funcstate->wrxstate->winkind))
 		{
 			WindowRefExprState *wrxstate;
 			int nargs;
@@ -2271,6 +2258,8 @@ initWindowFuncState(WindowState *wstate, Window *node)
 									winref->winfnoid)));
 			}
 			ReleaseSysCache(agg_tuple);
+			
+			wrxstate->winkind = WINKIND_AGGREGATE;
 		}
 		else if (isWin)
 		{
@@ -2302,6 +2291,8 @@ initWindowFuncState(WindowState *wstate, Window *node)
 					windowfn_oid  = winform->winprefunc;
 					break;
 			}
+			
+			wrxstate->winkind = winform->winkind;
 
 			Assert(OidIsValid(windowfn_oid));
 
@@ -2341,8 +2332,8 @@ initWindowFuncState(WindowState *wstate, Window *node)
 			 * creating an entry here for the inserted refptr but we do so
 			 * for consistency.
 			 */
-			if (funcstate->allowframe || IS_LEAD_LAG_FUNC(windowfn_oid) ||
-				IS_FIRST_LAST_FUNC(windowfn_oid))
+			if (funcstate->allowframe || IS_LEAD_LAG(wrxstate->winkind) ||
+				IS_FIRST_LAST(wrxstate->winkind))
 			{
 				ListCell *lc;
 				int numargs = list_length(wrxstate->args);
@@ -2815,9 +2806,9 @@ add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 								 argno,
 								 (void *) funcstate->wrxstate, 
 								 NULL);
-		if (IS_LEAD_LAG_FUNC(funcstate->windowfn_oid) ||
-			IS_LAST_VALUE_FUNC(funcstate->windowfn_oid) ||
-			(IS_FIRST_VALUE_FUNC(funcstate->windowfn_oid) &&
+		if (IS_LEAD_LAG(funcstate->wrxstate->winkind) ||
+			IS_LAST_VALUE(funcstate->wrxstate->winkind) ||
+			(IS_FIRST_VALUE(funcstate->wrxstate->winkind) &&
 			 funcstate->aggTransValueIsNull))
 		{
 			int argno = 1;
@@ -4125,8 +4116,8 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 						OidIsValid(funcstate->prelimfn_oid))
 						resetTransValue(funcstate, wstate->transcontext);
 
-					else if ((IS_LEAD_LAG_FUNC(funcstate->windowfn_oid) ||
-							  IS_FIRST_LAST_FUNC(funcstate->windowfn_oid)) && !last_peer)
+					else if ((IS_LEAD_LAG(funcstate->wrxstate->winkind) ||
+							  IS_FIRST_LAST(funcstate->wrxstate->winkind)) && !last_peer)
 						resetTransValue(funcstate, wstate->transcontext);
 				}
 			}
@@ -4368,7 +4359,7 @@ init_frames(WindowState *wstate)
 				(WindowStatePerFunction)lfirst(lc);
 
 			if (!frame || (!funcstate->isAgg && !funcstate->allowframe &&
-						   !IS_LEAD_LAG_FUNC(funcstate->windowfn_oid) &&
+						   !IS_LEAD_LAG(funcstate->wrxstate->winkind) &&
 						   !funcstate->winpeercount))
 			{
 				funcstate->trivial_frame = true;
@@ -4434,7 +4425,9 @@ init_frames(WindowState *wstate)
 			{
 				ExprContext *econtext = wstate->ps.ps_ExprContext;
 
-				if (EDGE_IS_BOUND(frame->trail))
+				if (EDGE_IS_BOUND(frame->trail) &&
+					!EDGE_IS_DELAYED_BOUND(frame->trail) && /* XXX */
+					level_state->frame->trail->val != NULL)
 				{
 					long int rows_param;
 					bool isnull;
@@ -4459,6 +4452,7 @@ init_frames(WindowState *wstate)
 					level_state->trail_rows = 0L;
 
 				if (EDGE_IS_BOUND(frame->lead) &&
+					!EDGE_IS_DELAYED_BOUND(frame->lead) && /* XXX */
 					level_state->frame->lead->val != NULL)
 				{
 					long int rows_param;
@@ -4650,7 +4644,7 @@ set_lead_lag_framing(WindowStatePerLevel level_state,
 
 	if (list_length(wrxstate->args) == 2)
 	{
-		if (IS_LEAD_FUNC(funcstate->windowfn_oid))
+		if (IS_LEAD(wrxstate->winkind))
 			level_state->lead_rows = 1;
 		else
 			level_state->lead_rows = -1;
@@ -4679,7 +4673,7 @@ set_lead_lag_framing(WindowStatePerLevel level_state,
 			/* XXX We need to check on the type for this offset argument? */
 
 			level_state->lead_rows = DatumGetInt64(fcinfo.arg[argno]);
-			if (IS_LAG_FUNC(funcstate->windowfn_oid))
+			if (IS_LAG(funcstate->wrxstate->winkind))
 				level_state->lead_rows = 0 - level_state->lead_rows;
 		}
 		else
@@ -4695,7 +4689,7 @@ set_lead_lag_framing(WindowStatePerLevel level_state,
 	}
 	else
 	{
-		if (IS_LEAD_FUNC(funcstate->windowfn_oid))
+		if (IS_LEAD(funcstate->wrxstate->winkind))
 			level_state->frame->lead->kind = WINDOW_DELAYED_BOUND_FOLLOWING;
 		else
 			level_state->frame->lead->kind = WINDOW_DELAYED_BOUND_PRECEDING;
@@ -4734,7 +4728,7 @@ separateLeadLag(WindowState *wstate)
 			WindowStatePerFunction funcstate =
 				(WindowStatePerFunction) lfirst(lc);
 
-			if (IS_LEAD_LAG_FUNC(funcstate->windowfn_oid))
+			if (IS_LEAD_LAG(funcstate->wrxstate->winkind))
 			{
 				count_lead_lag++;
 				num_lead_lag[level]++;
@@ -4799,7 +4793,7 @@ separateLeadLag(WindowState *wstate)
 			WindowRefExprState *ref_state = funcstate->wrxstate;
 			WindowRef *ref = (WindowRef *)ref_state->xprstate.expr;
 
-			if (IS_LEAD_LAG_FUNC(funcstate->windowfn_oid) &&
+			if (IS_LEAD_LAG(ref_state->winkind) &&
 				(separate_first_one || !first_one))
 			{
 				next_level++;
@@ -4821,7 +4815,7 @@ separateLeadLag(WindowState *wstate)
 				level_state->level_funcs =
 					lappend(level_state->level_funcs, funcstate);
 
-				if (IS_LEAD_LAG_FUNC(funcstate->windowfn_oid))
+				if (IS_LEAD_LAG(ref_state->winkind))
 				{
 					level_state->has_lead_lag = true;
 					set_lead_lag_framing(level_state, wstate);

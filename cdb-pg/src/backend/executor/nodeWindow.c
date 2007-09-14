@@ -268,8 +268,6 @@ typedef struct WindowBreakInfo
 #define FUNC_HAS_MAN_FRAME(f) \
 	(funcstate->isAgg && !OidIsValid(funcstate->invtransfn_oid))
 
-#define IS_LEAD_LAG_FUNC(oid) (IS_LEAD_FUNC(oid) || IS_LAG_FUNC(oid)) 
-
 #define ABS(x) (x < 0 ? -x : x)
 #define MIN(x, y) (x =< y ? x : y)
 
@@ -3152,7 +3150,7 @@ init_frames(WindowState *wstate)
 				lvl_funcs = lappend_int(lvl_funcs, funcno);
 				
 				if (!frame || (!funcstate->isAgg && !funcstate->allowframe &&
-							   !IS_LEAD_LAG_FUNC(funcstate->windowfn_oid)))
+							   !IS_LEAD_LAG(funcstate->wrxstate->winkind)))
 				{
 					funcstate->trivial_frame = true;
 				}
@@ -3777,6 +3775,8 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 									winref->winfnoid)));
 			}
 			ReleaseSysCache(agg_tuple);
+			
+			wrxstate->winkind = WINKIND_AGGREGATE;
 		}
 		else if (isWin)
 		{
@@ -3808,6 +3808,8 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 					windowfn_oid  = winform->winprefunc;
 					break;
 			}
+			
+			wrxstate->winkind = winform->winkind;
 
 			Assert(OidIsValid(windowfn_oid));
 
@@ -3852,7 +3854,7 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 			 * creating an entry here for the inserted refptr but we do so
 			 * for consistency.
 			 */
-			if (funcstate->allowframe || IS_LEAD_LAG_FUNC(windowfn_oid))
+			if (funcstate->allowframe || IS_LEAD_LAG(wrxstate->winkind))
 			{
 				ListCell *lc;
 				int numargs = list_length(wrxstate->args);

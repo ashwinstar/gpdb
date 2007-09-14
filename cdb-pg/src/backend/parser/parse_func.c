@@ -312,45 +312,6 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 								"a framed window specification",
 								NameListToString(funcname))));
 			
-			/* 
-			 * XXX: add frame for LEAD()/LAG. This should be moved to the
-			 * planner
-			 */
-			if (IS_LEAD_FUNC(wf->winfunc))
-			{
-				WindowFrame *frame = makeNode(WindowFrame);
-				WindowFrameEdge *trail = makeNode(WindowFrameEdge);
-				WindowFrameEdge *lead = makeNode(WindowFrameEdge);
-				
-				frame->system_generated = true;
-				frame->is_between = true;
-				frame->is_rows = true;
-
-				trail->kind = WINDOW_CURRENT_ROW;
-				lead->kind = WINDOW_UNBOUND_FOLLOWING;
-
-				frame->trail = trail;
-				frame->lead = lead;
-				over->frame = frame;
-			}
-			else if(IS_LAG_FUNC(wf->winfunc))
-			{
-				WindowFrame *frame = makeNode(WindowFrame);
-				WindowFrameEdge *trail = makeNode(WindowFrameEdge);
-				WindowFrameEdge *lead = makeNode(WindowFrameEdge);
-				
-				frame->system_generated = true;
-				frame->is_between = true;
-				frame->is_rows = true;
-
-				trail->kind = WINDOW_UNBOUND_PRECEDING;
-				lead->kind = WINDOW_CURRENT_ROW;
-
-				frame->trail = trail;
-				frame->lead = lead;
-				over->frame = frame;
-			}
-			
 			ReleaseSysCache(tuple);
 		}
 		pstate->p_win_clauses = lappend(pstate->p_win_clauses, over);

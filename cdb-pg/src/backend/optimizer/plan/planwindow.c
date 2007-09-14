@@ -110,6 +110,7 @@ typedef struct RefInfo
 	Bitmapset  *varset;
 	Index		specindex; /* index of parent SpecInfo */
 	bool		isagg;
+	char		winkind;
 	
 	/* When isagg  */
 	bool		hasinvtrans;
@@ -691,15 +692,29 @@ static void inventory_window_specs(List *window_specs, WindowContext *context)
 	ListCell *lcs, *lcp, *lcr;
 	SpecInfo **index;
 	int i, j, ndistinct;
-	unsigned nspec;
+	unsigned nspec, nextra;
 	SpecInfo *specinfos;
 	
-	/* Construct preliminary array of SpecInfo structs, one per WindowSpec. 
-	 * Note that, at this point, the order is the same as the Query's 
-	 * windowClause list. 
+	/* Make a preliminary pass over the refinfos to count how many
+	 * extra specinfos we might need to add to those specified
+	 * in the parse tree.
+	 */
+	nextra = 0;
+	foreach ( lcr, context->refinfos )
+	{
+		RefInfo *rinfo = (RefInfo *)lfirst(lcr);
+		if ( rinfo->winkind == WINKIND_LEAD || rinfo->winkind == WINKIND_LAG )
+			nextra++;
+	}
+	
+	/* Construct preliminary array of SpecInfo structs, one per WindowSpec
+	 * plus possible extras as counted above.  Note that, at this point, 
+	 * the order of the initial entries is the same as the entries in the
+	 * Query's windowClause list.  Space for extras is allocated at the
+	 * end and may be used as needed.
 	 */
 	nspec = list_length(window_specs);
-	specinfos = palloc0(nspec * sizeof(SpecInfo));
+	specinfos = palloc0((nspec+nextra) * sizeof(SpecInfo));
 	i = 0;
 	foreach ( lcs, window_specs )
 	{
@@ -723,21 +738,94 @@ static void inventory_window_specs(List *window_specs, WindowContext *context)
 	}
 	
 	/* Note which WindowRefs each WindowSpec covers by saving the indexes
-	 * of their RefInfos.  In addition, note in the context any occurence
-	 * of a window function that requires an auxiliary aggregate coplan. 
+	 * of their RefInfos.  Redirect WindowRefs with special framing needs
+	 * to one of the extra SpecInfos allocated above.  In addition, note 
+	 * in the context any occurence of a window function that requires an 
+	 * auxiliary aggregate coplan. 
 	 */
 	i = 0;
 	foreach ( lcr, context->refinfos )
 	{
 		RefInfo *rinfo = (RefInfo *)lfirst(lcr);
 		WindowRef *ref = rinfo->ref;
-		SpecInfo *sinfo = &specinfos[ref->winspec];
-		sinfo->refset = bms_add_member(sinfo->refset, i++);
+		int sindex = ref->winspec;
+		SpecInfo *sinfo = &specinfos[sindex];
+		
+		/* If Special Framing ... */
+		if ( rinfo->winkind == WINKIND_LEAD || rinfo->winkind == WINKIND_LAG )
+		{ 
+			Node *offset = NULL;
+			WindowFrame * frame = NULL;
+			SpecInfo *xinfo = sinfo;
+			
+			sindex = nspec++;
+			sinfo = &specinfos[sindex];
+			memcpy(sinfo, xinfo, sizeof(SpecInfo));
+			sinfo->specindex = sindex;
+			
+			Assert( sinfo->frame == NULL );
+			
+			/* At the moment, the only special framing requirements are for
+			 * LEAD and LAG.  These carry an offset as their second argument
+			 * and, by now, the offset has be resolved to a Const node, if
+			 * possible.
+			 */	
+			if ( list_length(ref->args) > 1 )
+			{
+				offset = (Node*)list_nth(ref->args,1);
+			}
+			else
+			{
+				Const *c = (Const*)makeNode(Const);
+				c->consttype = INT8OID;
+				c->constlen = 8;
+				c->constvalue = Int8GetDatum(1);
+				c->constisnull = false;
+				c->constbyval = true;
+				offset = (Node*)c;
+			}
+			
+			frame = makeNode(WindowFrame);
+			frame->system_generated = true;
+			frame->is_between = true;
+			frame->is_rows = true;
+			frame->trail = makeNode(WindowFrameEdge);
+			frame->lead = makeNode(WindowFrameEdge);
+
+			switch ( rinfo->winkind )
+			{
+			case WINKIND_LAG:
+				if ( IsA(offset,Const) )
+					frame->trail->kind = frame->lead->kind = WINDOW_BOUND_PRECEDING;
+				else
+					frame->trail->kind = frame->lead->kind = WINDOW_DELAYED_BOUND_PRECEDING;
+				break;
+				
+			case WINKIND_LEAD:
+				if ( IsA(offset,Const) )
+					frame->trail->kind = frame->lead->kind = WINDOW_BOUND_FOLLOWING;
+				else
+					frame->trail->kind = frame->lead->kind = WINDOW_DELAYED_BOUND_FOLLOWING;
+				break;
+				
+			default:
+				elog(ERROR, "internal window framing error");
+			}
+			
+			frame->trail->val = frame->lead->val = offset;
+			sinfo->frame = frame;
+		}
+		
+		sinfo->refset = bms_add_member(sinfo->refset, i);
+		
+		rinfo->specindex = sinfo->specindex; /* in case this is an extra */
 		
 		if ( rinfo->isagg && sinfo->order == NIL )
 			context->has_unordered_aggs = true;
 		if ( rinfo->needcount && ! rinfo->isagg )
 			context->has_deferred_window_fns = true;
+		
+		i++;
 	}	
 	
 	/* Make an index to group by partition, order, and frame. */
@@ -768,7 +856,7 @@ static void inventory_window_specs(List *window_specs, WindowContext *context)
 		else
 			index[j]->specindex = nspec; /* don't use */
 	}
-	Assert ( j < nspec ); 
+	Assert ( j < nspec ); /* there is a referenced specinfo */
 	
 	ndistinct = 0;
 	index[j]->specindex = ndistinct;
@@ -810,8 +898,7 @@ static void inventory_window_specs(List *window_specs, WindowContext *context)
 	foreach ( lcr, context->refinfos )
 	{
 		RefInfo *rinfo = (RefInfo *)lfirst(lcr);
-		WindowRef *ref = rinfo->ref;
-		SpecInfo *sinfo = & specinfos[ref->winspec];
+		SpecInfo *sinfo = & specinfos[rinfo->specindex];
 		
 		Assert( sinfo->specindex < ndistinct );
 		rinfo->specindex = sinfo->specindex;
@@ -1354,6 +1441,7 @@ lookup_window_function(RefInfo *rinfo)
 		aggform = (Form_pg_aggregate) GETSTRUCT(tuple);
 		
 		rinfo->isagg = true;
+		rinfo->winkind = WINKIND_AGGREGATE;
 		rinfo->hasinvtrans = (aggform->agginvtransfn != InvalidOid);
 		rinfo->hasprelim = (aggform->aggprelimfn != InvalidOid);
 		rinfo->hasinvprelim = (aggform->agginvprelimfn != InvalidOid);
@@ -1387,6 +1475,7 @@ lookup_window_function(RefInfo *rinfo)
 			elog(ERROR, "cache lookup failed for window function %u", fnoid);
 		winform = (Form_pg_window) GETSTRUCT(tuple);
 
+		rinfo->winkind = winform->winkind;
 		rinfo->needcount = winform->wincount;
 		rinfo->winpretype = winform->winpretype;
 		rinfo->winfinfunc = winform->winfinfunc;		
