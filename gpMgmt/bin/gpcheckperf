@@ -254,7 +254,7 @@ def copyExecOver(fname):
     if not ok: sys.exit('[Error] command failed: ' + cmd)
     
     #chmod +x file
-    cmd = gpssh('chmod +x %s' % target)
+    cmd = gpssh('chmod a+rx %s' % target)
     (ok, out) = run(cmd)
     if not ok: sys.exit('[Error] command failed: ' + cmd)
     
