@@ -189,7 +189,12 @@ create_agg_hash_table(AggState *aggstate)
 	oldcontext = MemoryContextSwitchTo(aggstate->aggcontext);
 	
 	ht = (HashAggTable*)palloc0(sizeof(HashAggTable));
-	
+
+	ht->entry_cxt = mpool_create(aggstate->transcontext, 
+								 "HashAggTableContext",
+								 ALLOCSET_DEFAULT_MINSIZE,
+								 ALLOCSET_DEFAULT_INITSIZE,
+								 ALLOCSET_DEFAULT_MAXSIZE);
     ht->nbucket = hats.nbuckets;
 	ht->buckets = (HashAggEntry**)palloc0(ht->nbucket * sizeof(HashAggEntry*));
 	ht->bloom = (uint64*)palloc0(ht->nbucket * sizeof(uint64));
@@ -983,25 +988,32 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 	bool *isnull = aggstate->hashslot->tts_isnull;
 	ListCell *lc;
 
-	oldContext = MemoryContextSwitchTo(inputslot->tts_mcxt);
-	foreach (lc, aggstate->hash_needed)
+	if (inputslot->tts_nvalid >= linitial_int(aggstate->hash_needed))
 	{
-		int n = lfirst_int(lc) - 1;
-		if (n < inputslot->tts_nvalid)
+		foreach (lc, aggstate->hash_needed)
 		{
-			values[n] = inputslot->tts_values[n];
-			isnull[n] = inputslot->tts_isnull[n];
+			int n = lfirst_int(lc) - 1;
+			if (n < inputslot->tts_nvalid)
+			{
+				values[n] = inputslot->tts_values[n];
+				isnull[n] = inputslot->tts_isnull[n];
+			}
 		}
-		else
+	}
+	else 
+	{
+		oldContext = MemoryContextSwitchTo(inputslot->tts_mcxt);
+		foreach (lc, aggstate->hash_needed)
 		{
+			int n = lfirst_int(lc) - 1;
 			values[n] = heap_getattr(inputslot->tts_tuple, n + 1, 
 									 inputslot->tts_tupleDescriptor, 
 									 &isnull[n]);
 		}
+		MemoryContextSwitchTo(oldContext);
 	}
-	MemoryContextSwitchTo(oldContext);
 
-	oldContext = MemoryContextSwitchTo(aggstate->transcontext);
+	oldContext = MemoryContextSwitchTo(aggstate->hhashtable->entry_cxt);
 
 	if (aggstate->numaggs == 0)
 		entry = (HashAggEntry*)palloc0(sizeof(HashAggEntry));

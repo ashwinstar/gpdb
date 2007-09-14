@@ -36,6 +36,9 @@ struct mpool_context_t
 	/* Info about storage allocated in this context: */
 	mpool_block_t* free_tail;	/* points to tail of free list */
 	mpool_block_t* inuse_tail;	/* points to tail of inuse list */
+    int blocks_allocated;
+	uint64 max_bytes_allocated;
+	uint64 bytes_allocated;
 };
 
 /* free_tail and inuse_tail are circular linked list where 
@@ -104,6 +107,7 @@ static mpool_block_t* mpool_block_alloc(mpool_context_t* owner, int minsz)
 		bp->next = 0;
 		MemoryContextNoteAlloc(&owner->header, tot);
 	}
+	owner->blocks_allocated++;
 	return bp;
 }
 
@@ -111,7 +115,7 @@ static mpool_block_t* mpool_block_alloc(mpool_context_t* owner, int minsz)
 /*
  *  Allocate a chunk in a block 
  */
-static mpool_chunkhdr_t* mpool_block_alloc_chunk(mpool_block_t* bp, int sz)
+static inline mpool_chunkhdr_t* mpool_block_alloc_chunk(mpool_block_t* bp, int sz)
 {
 	mpool_chunkhdr_t* p = 0;
 	const int tot = MPOOL_CHUNKHDR_SIZE + MAXALIGN(sz);
@@ -257,6 +261,7 @@ mpool_reset(MemoryContext context)
 
 		/* all of inuse is gone */
 		mpool->inuse_tail = 0;
+		mpool->bytes_allocated = 0;
 	}
 }
 
@@ -291,8 +296,11 @@ mpool_delete(MemoryContext context)
 			free(head);
 			PRINT((LOG, "mpool_delete %x: free block %x", context, head));
 			head = p;
+			mpool->blocks_allocated--;
 		}
 	}
+
+	Assert(mpool->blocks_allocated == 0);
 }
 
 /*
@@ -316,6 +324,9 @@ mpool_alloc(MemoryContext context, Size size)
 		/* fastcase this. return immediately if we get a chunk */
 		if (0 != (chunk = mpool_block_alloc_chunk(bp, size)))
 		{
+			mpool->bytes_allocated += size;
+			if (mpool->bytes_allocated > mpool->max_bytes_allocated)
+				mpool->max_bytes_allocated = mpool->bytes_allocated;
 			return mpool_get_pointer(chunk);
 		}
 	}
@@ -381,6 +392,9 @@ mpool_alloc(MemoryContext context, Size size)
 		bp->next = bp;
 	mpool->inuse_tail = bp;
 
+	mpool->bytes_allocated += size;
+	if (mpool->bytes_allocated > mpool->max_bytes_allocated)
+		mpool->max_bytes_allocated = mpool->bytes_allocated;
 	return mpool_get_pointer(chunk);
 }
 
