@@ -2398,7 +2398,8 @@ dispatchCommandQuery(CdbDispatchResult  *dispatchResult,
 							GetCurrentTimestamp(),
 							&secs, &usecs);
 		
-		write_log("time for PQsendGpQuery_shared %ld.%06d\n",secs,usecs);
+		if (secs != 0 || usecs > 1000) /* Time > 1ms? */
+			write_log("time for PQsendGpQuery_shared %ld.%06d \n",secs,usecs);
 	}
 
 
