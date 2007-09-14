@@ -229,6 +229,7 @@ typedef enum NodeTag
 	 */
 	T_MemoryContext = 600,
 	T_AllocSetContext,
+	T_MPoolContext,
 
 	/*
 	 * TAGS FOR VALUE NODES (value.h)

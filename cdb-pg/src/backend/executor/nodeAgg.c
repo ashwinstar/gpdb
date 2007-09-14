@@ -1527,7 +1527,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	if ( node->aggstrategy == AGG_HASHED )
 	{
 		aggstate->transcontext =
-			AllocSetContextCreate(aggstate->aggcontext,
+			mpool_create(aggstate->aggcontext,
 								  "TransContext",
 								  ALLOCSET_DEFAULT_MINSIZE,
 								  ALLOCSET_DEFAULT_INITSIZE,

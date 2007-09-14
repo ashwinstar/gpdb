@@ -137,6 +137,15 @@ extern MemoryContext AllocSetContextCreate(MemoryContext parent,
 					  Size initBlockSize,
 					  Size maxBlockSize);
 
+/* mpool.c */
+extern MemoryContext mpool_create(MemoryContext parent,
+                                  const char *name,
+                                  Size minContextSize,
+                                  Size initBlockSize,
+                                  Size maxBlockSize);
+
+
+
 /*
  * Recommended default alloc parameters, suitable for "ordinary" contexts
  * that might hold quite a lot of data.
