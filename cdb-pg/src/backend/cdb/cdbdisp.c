@@ -49,6 +49,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbtm.h"
 #include "cdb/cdbllize.h"
+#include "cdb/cdbsreh.h"
 #include "libpq-fe.h"
 #include "libpq/libpq-be.h"
 //#undef socket
@@ -1958,6 +1959,7 @@ thread_DispatchWait(DispatchCommandParms		*pParms)
 	CdbDispatchResult			*dispatchResult;
 	int							i, db_count = pParms->db_count;
 	int							timeoutCounter = 0;
+	int							totalRejected = 0;
 
 	/*
 	 * OK, we are finished submitting the command to the segdbs.
@@ -2092,6 +2094,9 @@ thread_DispatchWait(DispatchCommandParms		*pParms)
 				}
 				if (PQisBusy(dispatchResult->segdbDesc->conn))
 					write_log("We thought we were done, because finished==true, but libpq says we are still busy\n");
+				
+				/* only relevant in SREH - add num rows rejected from this QE to the total */
+				totalRejected += dispatchResult->numrowsrejected;
 			}
 			else
 				if (DEBUG4 >= log_min_messages)
@@ -2099,7 +2104,10 @@ thread_DispatchWait(DispatchCommandParms		*pParms)
 		}						/* input available; receive and process it */
 
 	}							/* some QEs running */
-
+	
+	/* This is only relevant in SREH mode (currently only with external tables) */
+	if(totalRejected > 0)
+		ReportSrehResults(NULL, totalRejected);
 }
 
 
@@ -2755,7 +2763,7 @@ processResults(CdbDispatchResult * dispatchResult)
 			write_log("PQgetResult\n");
 		/* Get one message. */
 		pRes = PQgetResult(segdbDesc->conn);
-
+		
 		CollectQEWriterTransactionInformation(segdbDesc, dispatchResult);
 
 		/*
@@ -2772,9 +2780,11 @@ processResults(CdbDispatchResult * dispatchResult)
 				/* Don't use elog, it's not thread-safe */
 				write_log("%s -> idle\n", segdbDesc->whoami);
 			}
+						
 			return true;		/* this is normal end of command */
 		}						/* end of results */
 
+		
 		/* Attach the PGresult object to the CdbDispatchResult object. */
 		cdbdisp_appendResult(dispatchResult, pRes);
 
@@ -2802,6 +2812,10 @@ processResults(CdbDispatchResult * dispatchResult)
 						     cmdStatus ? cmdStatus : "(no cmdStatus)");
 			}
 			
+			/* SREH - get number of rows rejected from QE if any */
+			if(pRes->numRejected > 0)
+				dispatchResult->numrowsrejected += pRes->numRejected;
+
 			if (resultStatus == PGRES_COPY_IN ||
 				resultStatus == PGRES_COPY_OUT)
 				return true;
@@ -2840,7 +2854,7 @@ processResults(CdbDispatchResult * dispatchResult)
 			cdbdisp_seterrcode(errcode, resultIndex, dispatchResult);
 		}						/* QE reported an error */
 	}							/* loop to call PQgetResult; won't block */
-
+	
 	return false;				/* we must keep on monitoring this socket */
 }	/* processResults */
 

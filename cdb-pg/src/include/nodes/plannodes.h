@@ -360,9 +360,12 @@ typedef struct ValuesScan
 typedef struct ExternalScan
 {
 	Scan		scan;
-	List		*uriList;   /* data uri or null for each segment  */
-	List		*fmtOpts;   /* data format options                */
-	bool		isText;     /* true for text false for csv        */
+	List		*uriList;       /* data uri or null for each segment  */
+	List		*fmtOpts;       /* data format options                */
+	bool		isText;         /* true for text false for csv        */
+	int			rejLimit;       /* reject limit (-1 for no sreh)      */
+	bool		rejLimitInRows; /* true if ROWS false if PERCENT      */
+	Oid			fmterrtbl;      /* format error table, InvalidOid if none */
 	uint32      scancounter;	/* counter incr per scan node created */
 
 } ExternalScan;

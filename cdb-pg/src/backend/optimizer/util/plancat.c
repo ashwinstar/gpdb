@@ -314,6 +314,9 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 	Datum		execcommand;
 	Datum		fmttype;
 	Datum		fmtopts;
+	Datum		rejectlimit;
+	Datum		rejectlimittype;
+	Datum		fmterrtbl;
 	char	   *loc_str = NULL;
 	bool		isNull;
 	Datum	   *elems;
@@ -426,6 +429,42 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 	
 	rel->fmtopts = DatumGetCString(DirectFunctionCall1(textout, fmtopts));
 	Assert(rel->fmtopts != NULL);
+	
+	/* 
+	 * reject limit
+	 */
+	rejectlimit = heap_getattr(tuple, 
+							   Anum_pg_exttable_rejectlimit, 
+							   pg_exttable_rel->rd_att, 
+							   &isNull);
+	if(!isNull)
+		rel->rejectlimit = DatumGetInt32(rejectlimit);
+	else
+		rel->rejectlimit = -1; /* mark that no SREH requested */
+	
+	/*
+	 * Now get the reject limit type
+	 */
+	rejectlimittype = heap_getattr(tuple, 
+								   Anum_pg_exttable_rejectlimittype, 
+								   pg_exttable_rel->rd_att, 
+								   &isNull);
+	
+	rel->rejectlimittype = DatumGetChar(rejectlimittype);
+	if(!isNull)
+		Assert(rel->rejectlimittype == 'r' || rel->rejectlimittype == 'p');
+	
+	/*
+	 * format error table
+	 */
+	fmterrtbl = heap_getattr(tuple, 
+							 Anum_pg_exttable_fmterrtbl, 
+							 pg_exttable_rel->rd_att, 
+							 &isNull);
+	if(isNull)
+		rel->fmterrtbl = InvalidOid;
+	else
+		rel->fmterrtbl = DatumGetObjectId(fmterrtbl);
 	
 	
 	/* Finish up scan and close exttable catalog. */

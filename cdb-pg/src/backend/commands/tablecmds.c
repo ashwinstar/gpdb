@@ -281,7 +281,8 @@ static void update_ri_trigger_args(Oid relid,
 					   bool update_relname);
 static void StoreExternalRelation(Oid tbloid, Datum locations, Datum locationExec, 
 								  char *commandString, Datum formatopts, 
-								  char formattype);
+								  char formattype, bool issreh, int rejectlimit, 
+								  char rejectlimittype, Oid errtbloid);
 static Datum transformLocationUris(List *locs, bool isweb);
 static Datum transformExecOnClause(List	*on_clause);
 static char transformFormatType(char *formatname);
@@ -687,13 +688,18 @@ extern void	DefineExternalRelation(CreateExternalStmt *stmt)
 {
 	
 	CreateStmt *createStmt = makeNode(CreateStmt);
-	ExtTableTypeDesc *exttypeDesc;
+	ExtTableTypeDesc *exttypeDesc = NULL;
+	SingleRowErrorDesc *singlerowerrorDesc = NULL;
 	Oid			extRelOid;
 	Datum		locationUris = 0;
 	Datum		formatOptStr;
 	Datum		locationExec = 0;
 	char		formattype;
 	char		*commandString = NULL;
+	int			rejectlimit = -1;
+	char		rejectlimittype = '\0';
+	Oid			fmtErrTblOid = InvalidOid;
+	bool		issreh = false; /* is single row error handling requested? */
 	
 	/*
 	 * Only superusers allowed to create an external table
@@ -762,6 +768,48 @@ extern void	DefineExternalRelation(CreateExternalStmt *stmt)
 	formatOptStr = transformFormatOpts(formattype, stmt->formatOpts);
 	
 	/*
+	 * Parse single row error handling info if available
+	 */
+	singlerowerrorDesc = (SingleRowErrorDesc *)stmt->sreh;
+	
+	if(singlerowerrorDesc)
+	{
+		issreh = true;
+		
+		/* get reject limit */
+		rejectlimit = singlerowerrorDesc->rejectlimit;
+		
+		if(rejectlimit < 2)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("Segment reject limit for single row error handling "
+							"must be 2 or larger (got %d)", rejectlimit)));
+		
+		/* get reject limit type - (r)ows or (p)ercent */
+		rejectlimittype = (singlerowerrorDesc->is_limit_in_rows ? 'r' : 'p');
+				
+		/* KEEP only allowed for COPY */
+		if(singlerowerrorDesc->is_keep)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("KEEP is not supported in the external table definition. "
+							"Error table will be dropped when its external table is "
+							"dropped.")));
+		
+		if(singlerowerrorDesc->errtable)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("Error tables are not yet supported.")));
+		
+			
+		/* TODO: verify and/or create the error table is requested */
+		fmtErrTblOid = InvalidOid; /* for now, pretent like no err tbl was requested */
+		
+	}
+		
+		
+		
+	/*
 	 * Create the relation (pg_class, pg_type).
 	 */
 	extRelOid = DefineRelation(createStmt, RELKIND_EXTERNAL);
@@ -774,7 +822,11 @@ extern void	DefineExternalRelation(CreateExternalStmt *stmt)
 						  locationExec, 
 						  commandString, 
 						  formatOptStr, 
-						  formattype);
+						  formattype,
+						  issreh,
+						  rejectlimit,
+						  rejectlimittype,
+						  fmtErrTblOid);
 }
 
 /*
@@ -7835,7 +7887,9 @@ AtEOSubXact_on_commit_actions(bool isCommit, SubTransactionId mySubid,
  */
 static void
 StoreExternalRelation(Oid tbloid, Datum uri_locations, Datum exec_locations, 
-					  char *commandString, Datum formatopts, char formattype)
+					  char *commandString, Datum formatopts, char formattype,
+					  bool issreh, int rejectlimit, char rejectlimittype,
+					  Oid errtbloid)
 {
 	Relation	pg_exttable_rel;
 	HeapTuple	pg_exttable_tuple = NULL;
@@ -7870,6 +7924,24 @@ StoreExternalRelation(Oid tbloid, Datum uri_locations, Datum exec_locations,
 		values[Anum_pg_exttable_location - 1] = uri_locations;
 		values[Anum_pg_exttable_command - 1] = 0;
 		nulls[Anum_pg_exttable_command - 1] = 'n';
+	}
+	
+	if(issreh)
+	{
+		values[Anum_pg_exttable_rejectlimit -1] = Int32GetDatum(rejectlimit);
+		values[Anum_pg_exttable_rejectlimittype - 1] = CharGetDatum(rejectlimittype);
+		
+		/* if error table specified store its OID, otherwise put a NULL */
+		if(errtbloid != InvalidOid)
+			values[Anum_pg_exttable_fmterrtbl - 1] = ObjectIdGetDatum(errtbloid);
+		else
+			nulls[Anum_pg_exttable_fmterrtbl - 1] = 'n';
+	}
+	else
+	{
+		nulls[Anum_pg_exttable_rejectlimit -1] = 'n';
+		nulls[Anum_pg_exttable_rejectlimittype - 1] = 'n';
+		nulls[Anum_pg_exttable_fmterrtbl - 1] = 'n';
 	}
 
 	pg_exttable_tuple = heap_formtuple(RelationGetDescr(pg_exttable_rel), 

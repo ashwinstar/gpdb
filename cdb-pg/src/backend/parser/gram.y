@@ -2661,7 +2661,7 @@ CreateAsElement:
  *****************************************************************************/
 	
 CreateExternalStmt:	CREATE EXTERNAL OptWeb OptTemp TABLE qualified_name '(' OptExtTableElementList ')' 
-					ExtTypedesc FORMAT Sconst format_opt
+					ExtTypedesc FORMAT Sconst format_opt OptSingleRowErrorHandling
 						{
 							CreateExternalStmt *n = makeNode(CreateExternalStmt);
 							n->isweb = $3;
@@ -2671,6 +2671,7 @@ CreateExternalStmt:	CREATE EXTERNAL OptWeb OptTemp TABLE qualified_name '(' OptE
 							n->exttypedesc = $10;
 							n->format = $12;
 							n->formatOpts = $13;
+							n->sreh = $14;
 							
 							if(((ExtTableTypeDesc *) n->exttypedesc)->exttabletype == EXTTBL_TYPE_EXECUTE &&
 							   !(n->isweb))

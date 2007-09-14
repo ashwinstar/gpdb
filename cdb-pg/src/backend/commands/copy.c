@@ -88,7 +88,6 @@ static void CopySendInt32(CopyState cstate, int32 val);
 static bool CopyGetInt32(CopyState cstate, int32 *val);
 static void CopySendInt16(CopyState cstate, int16 val);
 static bool CopyGetInt16(CopyState cstate, int16 *val);
-static void CopySendNumRowsRejected(CopyState cstate);
 
 /* byte scaning utils */
 static char *scanTextLine(CopyState cstate, const char *s, char c, size_t len);
@@ -354,19 +353,6 @@ CopyToDispatchFlush(CopyState cstate)
 	fe_msgbuf->data[0] = '\0';
 }
 
-/*
- * Using this function the QE COPY sends back to the client (QD COPY) the 
- * number of rows that were rejected in this last data load in SREH mode.
- */
-static void 
-CopySendNumRowsRejected(CopyState cstate)
-{
-	StringInfoData buf;
-	Insist(Gp_role == GP_ROLE_EXECUTE);
-	pq_beginmessage(&buf, 'j'); /* 'j' is the msg code for rejected records */
-	pq_sendint(&buf, cstate->cdbsreh->rejectcount, 4);
-	pq_endmessage(&buf);	
-}
 
 /*
  * CopyGetData reads data from the source (file or frontend)
@@ -751,8 +737,14 @@ DoCopy(const CopyStmt *stmt)
 						errmsg("KEEP may only be specified with a LOG INTO errortable clause")));
 			
 		}
+		
+		if (!sreh->is_limit_in_rows)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+					 errmsg("Segment reject limit in percentage is not yet supported")));			
+		
 	
-		cstate->cdbsreh = makeCdbSreh(sreh->is_keep, sreh->rejectlimit);
+		cstate->cdbsreh = makeCdbSreh(sreh->is_keep, sreh->rejectlimit, sreh->is_limit_in_rows);
 	}
 	else
 	{
@@ -2364,7 +2356,8 @@ CopyFromDispatch(CopyState cstate)
 			/* TODO: add LOG ERROR INTO clause when error tables are enabled */
 		}
 		
-		appendStringInfo(&cdbcopy_cmd, " SEGMENT REJECT LIMIT %d", cstate->cdbsreh->rejectlimit);
+		appendStringInfo(&cdbcopy_cmd, " SEGMENT REJECT LIMIT %d %s", 
+						 cstate->cdbsreh->rejectlimit, (cstate->cdbsreh->is_limit_in_rows ? "ROWS" : "PERCENT"));
 	}
 	
 
@@ -3955,7 +3948,7 @@ CopyFrom(CopyState cstate)
 	 * rows to the client (QD COPY).
 	 */
 	if(cstate->errMode != ALL_OR_NOTHING && Gp_role == GP_ROLE_EXECUTE)
-		CopySendNumRowsRejected(cstate);
+		SendNumRowsRejected(cstate->cdbsreh->rejectcount);
 
 
 	pfree(attr_offsets);

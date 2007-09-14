@@ -156,7 +156,10 @@ ExecInitExternalScan(ExternalScan *node, EState *estate, int eflags)
 									 node->scancounter,
 									 node->uriList,
 									 node->fmtOpts,
-									 node->isText);
+									 node->isText,
+									 node->rejLimit,
+									 node->rejLimitInRows,
+									 node->fmterrtbl);
 	
 	externalstate->ss.ss_currentRelation = currentRelation;
 	externalstate->ess_ScanDesc = currentScanDesc;

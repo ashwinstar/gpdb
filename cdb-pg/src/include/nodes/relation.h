@@ -294,6 +294,9 @@ typedef struct RelOptInfo
 	char		*execcommand;
 	char		fmttype;
 	char		*fmtopts;
+	int32		rejectlimit;
+	char		rejectlimittype;
+	Oid			fmterrtbl;
 	bool		isrescannable; /* true for ext tables false for ext web tables */
 	
 	/* used by various scans and joins: */

@@ -967,6 +967,8 @@ _equalCreateExternalStmt(CreateExternalStmt *a, CreateExternalStmt *b)
 	COMPARE_STRING_FIELD(format);
 	COMPARE_NODE_FIELD(formatOpts);
 	COMPARE_SCALAR_FIELD(isweb);
+	COMPARE_NODE_FIELD(sreh);
+
 	
 	return true;
 }

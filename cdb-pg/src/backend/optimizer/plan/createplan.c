@@ -110,7 +110,10 @@ static ExternalScan *make_externalscan(List *qptlist,
 									   Index scanrelid,
 									   List *filenames,
 									   List *fmtopts,
-									   bool istext);
+									   bool istext,
+									   int rejectlimit,
+									   bool rejectlimitinrows,
+									   Oid fmterrtableOid);
 static IndexScan *make_indexscan(List *qptlist, List *qpqual, Index scanrelid,
 			   Oid indexid, List *indexqual, List *indexqualorig,
 			   List *indexstrategy, List *indexsubtype,
@@ -972,8 +975,11 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	char			**segdb_file_map = NULL;
 	char			*first_uri_str = NULL;
 	bool			istext = false;
+	bool			islimitinrows = false;
+	int				rejectlimit = -1;
 	int				total_primaries = 0;
 	int				i;
+	Oid				fmtErrTblOid = InvalidOid;
 	
 	/* various processing flags */
 	bool			using_execute = false; /* true if EXECUTE is used */
@@ -1035,7 +1041,28 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		using_location = true;
 	}
 		
-
+	/* various validations */
+	
+	if(rel->rejectlimit != -1)
+	{
+		/* 
+		 * single row error handling is requested, make sure reject 
+		 * limit and error table (if requested) are valid.
+		 */
+		if(rel->rejectlimit < 2)
+		{
+			/* this should never happen unless somebody modified the catalog manually */
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("Segment reject limit for single row error handling "
+							"must be 2 or larger (got %d)", rel->rejectlimit)));
+		}
+		
+		/* TODO: if error table requested, call a function in cdbsreh that 
+				 validates existance and format of this error table. */
+			
+	}
+	
 	if(using_execute && !gp_external_enable_exec)
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_FEATURE_NOT_CONFIGURED), /* any better errcode? */
@@ -1539,12 +1566,23 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	Assert(rel->fmtopts);
 	fmtopts = lappend(fmtopts, makeString(pstrdup(rel->fmtopts)));
 	
+	/* single row error handling */
+	if(rel->rejectlimit != -1)
+	{
+		islimitinrows = (rel->rejectlimittype == 'r' ? true : false);
+		rejectlimit = rel->rejectlimit;
+		fmtErrTblOid = rel->fmterrtbl;
+	}
+
 	scan_plan = make_externalscan(tlist,
 								  scan_clauses,
 								  scan_relid,
 								  filenames,
 								  fmtopts,
-								  istext);
+								  istext,
+								  rejectlimit,
+								  islimitinrows,
+								  fmtErrTblOid);
 	
 	copy_path_costsize(&scan_plan->scan.plan, best_path);
 
@@ -2905,7 +2943,10 @@ make_externalscan(List *qptlist,
 				  Index scanrelid,
 				  List *urilist,
 				  List *fmtopts,
-				  bool istext)
+				  bool istext,
+				  int rejectlimit,
+				  bool rejectlimitinrows,
+				  Oid fmterrtableOid)
 {
 	ExternalScan    *node = makeNode(ExternalScan);
 	Plan	   *plan = &node->scan.plan;
@@ -2922,6 +2963,9 @@ make_externalscan(List *qptlist,
 	node->uriList = urilist;
 	node->fmtOpts = fmtopts;
 	node->isText = istext;
+	node->rejLimit = rejectlimit;
+	node->rejLimitInRows = rejectlimitinrows;
+	node->fmterrtbl = fmterrtableOid;
 	node->scancounter = scancounter++;
 	
 	return node;

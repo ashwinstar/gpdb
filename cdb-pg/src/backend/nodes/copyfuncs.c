@@ -268,6 +268,9 @@ _copyExternalScan(ExternalScan *from)
 	COPY_NODE_FIELD(uriList);
 	COPY_NODE_FIELD(fmtOpts);
 	COPY_SCALAR_FIELD(isText);
+	COPY_SCALAR_FIELD(rejLimit);
+	COPY_SCALAR_FIELD(rejLimitInRows);
+	COPY_SCALAR_FIELD(fmterrtbl);
 	COPY_SCALAR_FIELD(scancounter);
 	
 	return newnode;
@@ -2349,7 +2352,7 @@ _copyCreateExternalStmt(CreateExternalStmt *from)
 	COPY_STRING_FIELD(format);
 	COPY_NODE_FIELD(formatOpts);
 	COPY_SCALAR_FIELD(isweb);
-
+	COPY_NODE_FIELD(sreh);
 	
 	return newnode;
 }

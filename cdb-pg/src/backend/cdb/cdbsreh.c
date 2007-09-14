@@ -12,7 +12,11 @@
 *--------------------------------------------------------------------------
 */
 #include "postgres.h"
+#include "libpq/libpq.h"
+#include "libpq/pqformat.h"
 #include "cdb/cdbsreh.h"
+#include "cdb/cdbvars.h"
+
 
 /*
  * makeCdbSreh
@@ -22,7 +26,7 @@
  * the other variables are set later on, when they are known.
  */
 CdbSreh *
-makeCdbSreh(bool should_keep, int rejectlimit)
+makeCdbSreh(bool should_keep, int rejectlimit, bool is_limit_in_rows)
 {
 	CdbSreh	*h;
 	
@@ -32,6 +36,7 @@ makeCdbSreh(bool should_keep, int rejectlimit)
 	h->rawdata = NULL;
 	h->linenumber = 0;
 	h->rejectlimit = rejectlimit;
+	h->is_limit_in_rows = is_limit_in_rows;
 	h->rejectcount = 0;
 	h->is_server_enc = false;
 	h->should_keep = should_keep;
@@ -79,12 +84,26 @@ void HandleSingleRowError(CdbSreh *cdbsreh)
 void ReportSrehResults(CdbSreh *cdbsreh, int total_rejected)
 {
 	if(total_rejected > 0)
-		elog(NOTICE, "Rejected %d badly formatted rows.", total_rejected);
+		ereport(NOTICE, 
+				(errmsg("Rejected %d badly formatted rows.", total_rejected)));
 	
 	/* TODO: expand this function when error tables are enabled */
 }
 
 
+/*
+ * Using this function the QE sends back to the client QD the number 
+ * of rows that were rejected in this last data load in SREH mode.
+ */
+void SendNumRowsRejected(int numrejected)
+{
+	StringInfoData buf;
+	
+	Insist(Gp_role == GP_ROLE_EXECUTE);
+	pq_beginmessage(&buf, 'j'); /* 'j' is the msg code for rejected records */
+	pq_sendint(&buf, numrejected, 4);
+	pq_endmessage(&buf);	
+}
 
 
 

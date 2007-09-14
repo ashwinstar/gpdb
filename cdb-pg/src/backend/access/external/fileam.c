@@ -65,7 +65,9 @@ struct extvar_t
 #include "url.i"
 
 static HeapTuple filegettup(FileScanDesc scan, ScanDirection dir);
-static void initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, char *uri);
+static void initParseState(CopyState pstate, Relation relation, List *fmtOpts, 
+						   bool isText, char *uri, int rejectlimit, 
+						   bool islimitinrows, Oid fmterrtbl);
 static void open_external_file(FileScanDesc scan);
 static int	file_getdata(URL_FILE *extfile, CopyState pstate, int maxread);
 static void file_scan_error_callback(void *arg);
@@ -105,8 +107,8 @@ static char *g_dataSourceName = NULL;
 */
 FileScanDesc
 file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
-			   List *uriList, List *fmtOpts,
-			   bool isText)
+			   List *uriList, List *fmtOpts, bool isText, int rejLimit,
+			   bool rejLimitInRows, Oid fmterrtbl)
 {
 	FileScanDesc scan;
 	TupleDesc	tupDesc = NULL;
@@ -197,7 +199,8 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 	 * Allocate and init our structure that keeps track of data parsing state
 	 */
 	scan->fs_pstate = (CopyStateData *) palloc0(sizeof(CopyStateData));
-	initParseState(scan->fs_pstate, relation, fmtOpts, isText, scan->fs_uri);
+	initParseState(scan->fs_pstate, relation, fmtOpts, isText, scan->fs_uri,
+				   rejLimit, rejLimitInRows, fmterrtbl);
 
 	/* Set up callback to identify error line number */
 	scan->errcontext.callback = file_scan_error_callback;
@@ -258,6 +261,13 @@ file_endscan(FileScanDesc scan)
      */
     MemoryContextDelete(scan->fs_pstate->rowcontext);
     
+	/*
+	 * if SREH was active, send a libpq message to QD with num of rows 
+	 * rejected in this segment
+	 */
+	if(scan->fs_pstate->errMode != ALL_OR_NOTHING && Gp_role == GP_ROLE_EXECUTE)
+		SendNumRowsRejected(scan->fs_pstate->cdbsreh->rejectcount);
+	
 	/*
 	 * free parse state memory
 	 */
@@ -581,7 +591,10 @@ filegettup(FileScanDesc scan,
 							FILEAM_HANDLE_ERROR;
 						}
 						PG_END_TRY();					
-												
+								
+						if(cur_row_rejected)
+							break; /* get out of loop, then go to next row */
+
 						scan->nulls[m] = ' ';
 						pstate->cur_attname = NULL;
 					}
@@ -690,7 +703,8 @@ else\
  * (text, csv), encoding converstion information, etc...
  */
 static void
-initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, char *uri)
+initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, 
+			   char *uri, int rejectlimit, bool islimitinrows, Oid fmterrtbl )
 {
 	TupleDesc	tupDesc = NULL;
 	char	   *format_str = NULL;
@@ -718,8 +732,24 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, 
 	/*
 	 * Error handling setup
 	 */
-	pstate->cdbsreh = NULL; /* default - no SREH */
-	pstate->errMode = ALL_OR_NOTHING; /* default */
+	if(rejectlimit == -1) 
+	{
+		/* Default error handling - "all-or-nothing" */
+		pstate->cdbsreh = NULL; /* no SREH */
+		pstate->errMode = ALL_OR_NOTHING; 
+	}
+	else
+	{
+		/* Single row error handling */
+		pstate->cdbsreh = makeCdbSreh(false, rejectlimit, islimitinrows);
+		
+		/* select the SREH mode */
+		if(fmterrtbl == InvalidOid)
+			pstate->errMode = SREH_IGNORE; /* no error table */
+		else
+			pstate->errMode = SREH_LOG; /* with error table */
+		
+	}
 		
 	initStringInfo(&pstate->attribute_buf);
 	initStringInfo(&pstate->line_buf);

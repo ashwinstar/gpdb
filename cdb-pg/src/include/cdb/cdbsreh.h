@@ -22,14 +22,16 @@ typedef struct CdbSreh
 	int		linenumber;		/* line number of error in original file */
 	int		rejectlimit;	/* SEGMENT REJECT LIMIT value */
 	int		rejectcount;	/* how many were rejected so far */
+	bool	is_limit_in_rows; /* ROWS = true, PERCENT = false */
 	bool	is_server_enc;	/* was bad row converted to server encoding? */
 	bool	should_keep;	/* if true error table should not get DROP'ed */
 	CdbCopy *cdbcopy;		/* for QD to send bad rows to random QE */
 	
 } CdbSreh;
 
-extern CdbSreh *makeCdbSreh(bool should_keep, int rejectlimit);
+extern CdbSreh *makeCdbSreh(bool should_keep, int rejectlimit, bool is_limit_in_rows);
 extern void HandleSingleRowError(CdbSreh *cdbsreh);
 extern void ReportSrehResults(CdbSreh *cdbsreh, int total_rejected);
+extern void SendNumRowsRejected(int numrejected);
 
 #endif /* CDBSREH_H */

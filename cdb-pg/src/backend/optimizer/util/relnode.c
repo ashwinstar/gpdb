@@ -86,7 +86,10 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 	rel->locationlist = NIL;
 	rel->execcommand = NULL;
 	rel->fmttype = '\0';
-	rel->fmtopts = NULL;	
+	rel->fmtopts = NULL;
+	rel->rejectlimit = -1;
+	rel->rejectlimittype = '\0';
+	rel->fmterrtbl = InvalidOid;
 	rel->isrescannable = true;
 	rel->baserestrictinfo = NIL;
 	rel->baserestrictcost.startup = 0;
