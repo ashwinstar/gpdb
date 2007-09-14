@@ -41,7 +41,7 @@ pg_dlsym(void *handle, char *funcname)
 char *
 pg_dlerror(void)
 {
-	return dlerror();
+	return (char *)dlerror();
 }
 
 #else /* !HAVE_DLOPEN */
