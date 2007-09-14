@@ -418,7 +418,7 @@ DATA(insert OID = 207 (  float4abs		   PGNSP PGUID 12 f f t f i 1 700 f "700" _n
 DESCR("absolute value");
 DATA(insert OID = 208 (  float4_accum	   PGNSP PGUID 12 f f t f i 2 1022 f "1022 700" _null_ _null_ _null_	float4_accum - _null_ ));
 DESCR("aggregate transition function");
-DATA(insert OID = 6024 (  float4_decum	   PGNSP PGUID 12 f f t f i 2 1022 f "1022 700" _null_ _null_ _null_	float4_accum - _null_ ));
+DATA(insert OID = 6024 (  float4_decum	   PGNSP PGUID 12 f f t f i 2 1022 f "1022 700" _null_ _null_ _null_	float4_decum - _null_ ));
 DESCR("aggregate inverse transition function");
 DATA(insert OID = 209 (  float4larger	   PGNSP PGUID 12 f f t f i 2 700 f "700 700" _null_ _null_ _null_	float4larger - _null_ ));
 DESCR("larger of two");
@@ -448,7 +448,7 @@ DATA(insert OID = 221 (  float8abs		   PGNSP PGUID 12 f f t f i 1 701 f "701" _n
 DESCR("absolute value");
 DATA(insert OID = 222 (  float8_accum	   PGNSP PGUID 12 f f t f i 2 1022 f "1022 701" _null_ _null_ _null_	float8_accum - _null_ ));
 DESCR("aggregate transition function");
-DATA(insert OID = 6025 (  float8_decum	   PGNSP PGUID 12 f f t f i 2 1022 f "1022 701" _null_ _null_ _null_	float8_accum - _null_ ));
+DATA(insert OID = 6025 (  float8_decum	   PGNSP PGUID 12 f f t f i 2 1022 f "1022 701" _null_ _null_ _null_	float8_decum - _null_ ));
 DESCR("aggregate inverse transition function");
 DATA(insert OID = 223 (  float8larger	   PGNSP PGUID 12 f f t f i 2 701 f "701 701" _null_ _null_ _null_	float8larger - _null_ ));
 DESCR("larger of two");
@@ -2749,7 +2749,7 @@ DATA(insert OID = 7010 (  int8_invsum	   PGNSP PGUID 12 f f f f i 2 1700 f "1700
 DESCR("SUM(int8) inverse transition function");
 DATA(insert OID = 1843 (  interval_accum   PGNSP PGUID 12 f f t f i 2 1187 f "1187 1186" _null_ _null_ _null_ interval_accum - _null_ ));
 DESCR("aggregate transition function");
-DATA(insert OID = 6038 (  interval_decum   PGNSP PGUID 12 f f t f i 2 1187 f "1187 1186" _null_ _null_ _null_ interval_accum - _null_ ));
+DATA(insert OID = 6038 (  interval_decum   PGNSP PGUID 12 f f t f i 2 1187 f "1187 1186" _null_ _null_ _null_ interval_decum - _null_ ));
 DESCR("aggregate inverse transition function");
 DATA(insert OID = 1844 (  interval_avg	   PGNSP PGUID 12 f f t f i 1 1186 f "1187" _null_ _null_ _null_	interval_avg - _null_ ));
 DESCR("AVG aggregate final function");
@@ -2757,9 +2757,9 @@ DATA(insert OID = 1962 (  int2_avg_accum   PGNSP PGUID 12 f f t f i 2 1016 f "10
 DESCR("AVG(int2) transition function");
 DATA(insert OID = 1963 (  int4_avg_accum   PGNSP PGUID 12 f f t f i 2 1016 f "1016 23" _null_ _null_ _null_ int4_avg_accum - _null_ ));
 DESCR("AVG(int4) transition function");
-DATA(insert OID = 6019 (  int2_avg_decum   PGNSP PGUID 12 f f t f i 2 1016 f "1016 21" _null_ _null_ _null_ int2_avg_accum - _null_ ));
+DATA(insert OID = 6019 (  int2_avg_decum   PGNSP PGUID 12 f f t f i 2 1016 f "1016 21" _null_ _null_ _null_ int2_avg_decum - _null_ ));
 DESCR("AVG(int2) transition function");
-DATA(insert OID = 6020 (  int4_avg_decum   PGNSP PGUID 12 f f t f i 2 1016 f "1016 23" _null_ _null_ _null_ int4_avg_accum - _null_ ));
+DATA(insert OID = 6020 (  int4_avg_decum   PGNSP PGUID 12 f f t f i 2 1016 f "1016 23" _null_ _null_ _null_ int4_avg_decum - _null_ ));
 DESCR("AVG(int4) transition function");
 DATA(insert OID = 1964 (  int8_avg		   PGNSP PGUID 12 f f t f i 1 1700 f "1016" _null_ _null_ _null_	int8_avg - _null_ ));
 DESCR("AVG(int) aggregate final function");
