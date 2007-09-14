@@ -872,7 +872,7 @@ process_data_packets(PGP_Context * ctx, MBuf * dst, PullFilter * src,
 					 int allow_compr, int need_mdc)
 {
 	uint8		tag;
-	int			len,
+	int			len = 0,
 				res;
 	int			got_data = 0;
 	int			got_mdc = 0;
