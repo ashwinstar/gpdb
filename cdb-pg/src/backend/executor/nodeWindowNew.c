@@ -48,7 +48,7 @@
 #ifndef OLD_WINDOWNODE
 
 /* The initial frame buffer size (in bytes) */
-#define FRAMEBUFFER_SIZE 1024
+#define FRAMEBUFFER_ENTRY_SIZE 1024
 
 /* 
  * A struct to hold all the data relevant to a value, used for
@@ -413,6 +413,8 @@ static void createFrameBuffers(WindowState *wstate);
 static void resetFrameBuffers(WindowState *wstate);
 static void resetTransValues(WindowStatePerLevel level_state,
 							 MemoryContext context);
+static void freeFrameBuffer(WindowFrameBuffer buffer);
+static void freeFrameBuffers(WindowState *wstate);
 
 /* the functions for the Window node */
 static WindowState *makeWindowState(Window *window, EState *estate);
@@ -605,6 +607,50 @@ resetFrameBuffers(WindowState *wstate)
 }
 
 /*
+ * freeFrameBuffer -- release the space for a given WindowFrameBuffer.
+ */
+static void
+freeFrameBuffer(WindowFrameBuffer buffer)
+{
+	if (buffer == NULL)
+		return;
+	ntuplestore_destroy_accessor(buffer->writer);
+	ntuplestore_destroy_accessor(buffer->reader);
+	ntuplestore_destroy_accessor(buffer->current_row_reader);
+
+	ntuplestore_destroy(buffer->tuplestore);
+
+	pfree(buffer);
+}
+
+/*
+ * freeFrameBuffers -- release the space for all frame buffers.
+ */
+static void
+freeFrameBuffers(WindowState *wstate)
+{
+	int level;
+	
+	for (level=0; level < wstate->numlevels; level++)
+	{
+		WindowStatePerLevel level_state = &wstate->level_state[level];
+
+		if (level_state->frame_buffer)
+		{
+			/* destroy its accessors */
+			if (level_state->trail_reader)
+				ntuplestore_destroy_accessor(level_state->trail_reader);
+			if (level_state->lead_reader)
+				ntuplestore_destroy_accessor(level_state->lead_reader);
+
+			freeFrameBuffer(level_state->frame_buffer);
+			level_state->frame_buffer = NULL;
+		}
+		
+	}
+}
+
+/*
  * ensureSpace -- ensure that there is enough space in the buffer.
  */
 static inline void
@@ -614,7 +660,7 @@ ensureSpace(char **p_serial_entry, Size *p_max_size,
 	Size current_len = written_pos - *p_serial_entry;
 	if (current_len + written_len > *p_max_size)
 	{
-		*p_max_size += FRAMEBUFFER_SIZE;
+		*p_max_size += FRAMEBUFFER_ENTRY_SIZE;
 		*p_serial_entry = repalloc(*p_serial_entry, *p_max_size);
 	}
 }
@@ -808,24 +854,18 @@ static void
 serializeEntryForRows(WindowStatePerLevel level_state,
 					  ExprContext *econtext,
 					  char **p_serial_entry,
+					  Size *p_max_size,
 					  Size *p_len)
 {
-	Size max_size = FRAMEBUFFER_SIZE;
-
 	*p_len = 0;
 	Assert(level_state->is_rows);
-
-	/*
-	 * We allocate the buffer to be 1K initially, which should be
-	 * sufficient for most cases.
-	 */
-	*p_serial_entry = palloc0(FRAMEBUFFER_SIZE);
+	Assert(*p_serial_entry != NULL);
 
 	/* Copy function values */
 	serializeFuncs(level_state,
 				   econtext,
 				   p_serial_entry,
-				   &max_size,
+				   p_max_size,
 				   p_len,
 				   0);
 }
@@ -984,21 +1024,17 @@ static void
 serializeEntryForRange(WindowStatePerLevel level_state,
 					   ExprContext *econtext,
 					   char **p_serial_entry,
+					   Size *p_max_size,
 					   Size *p_len)
 {
-	Size max_size = FRAMEBUFFER_SIZE;
 	int key_no;
 	char *written_pos;
 	TupleTableSlot *slot = econtext->ecxt_scantuple;
 
 	*p_len = 0;
 	Assert(!level_state->is_rows);
+	Assert(*p_serial_entry != NULL);
 	
-	/*
-	 * We allocate the buffer to be 1K initially, which should be
-	 * sufficient for most cases.
-	 */
-	*p_serial_entry = palloc0(FRAMEBUFFER_SIZE);
 	written_pos = *p_serial_entry;
 	
 	/* Copy the keys */
@@ -1014,7 +1050,7 @@ serializeEntryForRange(WindowStatePerLevel level_state,
 		keylen += datumGetSize(key, level_state->col_typbyvals[key_no],
 							   level_state->col_typlens[key_no]);
 	
-		ensureSpace(p_serial_entry, &max_size, written_pos, keylen + sizeof(bool));
+		ensureSpace(p_serial_entry, p_max_size, written_pos, keylen + sizeof(bool));
 
 		if (level_state->col_typbyvals[key_no])
 			memcpy(written_pos, &(key), sizeof(Datum));
@@ -1030,7 +1066,7 @@ serializeEntryForRange(WindowStatePerLevel level_state,
 	serializeFuncs(level_state,
 				   econtext,
 				   p_serial_entry,
-				   &max_size,
+				   p_max_size,
 				   p_len,
 				   (written_pos - *p_serial_entry));
 }
@@ -1333,7 +1369,7 @@ appendToFrameBuffer(WindowStatePerLevel level_state,
 					WindowState *wstate,
 					bool last_peer)
 {
-	char *serial_entry;
+	char *serial_entry = wstate->serial_array;
 	Size len;
 	WindowFrameBuffer buffer = level_state->frame_buffer;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
@@ -1342,22 +1378,17 @@ appendToFrameBuffer(WindowStatePerLevel level_state,
 	if (buffer->is_rows)
 	{
 		serializeEntryForRows(level_state, econtext,
-							  &serial_entry, &len);
+							  &serial_entry, &(wstate->max_size), &len);
 	}
 	else
 	{
 		serializeEntryForRange(level_state, econtext,
-							   &serial_entry, &len);
+							   &serial_entry, &(wstate->max_size), &len);
 	}
 
 	ntuplestore_acc_put_data(buffer->writer, (void*)serial_entry, len);
 
 	elog(DEBUG1, "append tuple to buffer: %s", tup2str(econtext->ecxt_scantuple));
-
-	/* XXX We should move this into level_state so that we
-	 * don't need to palloc and pfree() all the time.
-	 */
-	pfree(serial_entry);
 
 	adjustEdgesAfterAppend(level_state, wstate, last_peer);
 }
@@ -2524,12 +2555,18 @@ makeWindowState(Window *window, EState *estate)
 		wstate->level_state = NULL;
 	wstate->numlevels = numlevels;
 	
-	/* XXX: only do this if we're processing an Agg */
 	wstate->transcontext = AllocSetContextCreate(CurrentMemoryContext,
 												 "TransContext",
 												 ALLOCSET_DEFAULT_MINSIZE,
 												 ALLOCSET_DEFAULT_INITSIZE,
 												 ALLOCSET_DEFAULT_MAXSIZE);
+
+	/*
+	 * We allocate the buffer to be 1K initially, which should be
+	 * sufficient for most cases.
+	 */
+	wstate->serial_array = palloc0(FRAMEBUFFER_ENTRY_SIZE);
+	wstate->max_size = FRAMEBUFFER_ENTRY_SIZE;
 
 	return wstate;
 }
@@ -4946,11 +4983,26 @@ ExecEndWindow(WindowState *node)
 	if (node->input_buffer)
 		freeInputBuffer(node);
 
+	freeFrameBuffers(node);
+
 	/*  Free the exprcontext */
 	ExecFreeExprContext(&node->ps);
 
 	/* clean out the tuple table */
+	ExecClearTuple(node->curslot);
+	ExecClearTuple(node->spare);
+	ExecClearTuple(node->priorslot);
 	ExecClearTuple(node->ps.ps_ResultTupleSlot);
+
+	if (node->transcontext != NULL)
+		MemoryContextDelete(node->transcontext);
+
+	pfree(node->serial_array);
+
+	if (node->numlevels > 0)
+		pfree(node->level_state);
+	if (node->func_state != NULL)
+		pfree(node->func_state);
 
 	/* shut down subplans */
 	ExecEndNode(outerPlanState(node));
