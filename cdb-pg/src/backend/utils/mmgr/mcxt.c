@@ -128,7 +128,7 @@ MemoryContextReset(MemoryContext context)
 	if (context->firstchild != NULL)
 		MemoryContextResetChildren(context);
 
-	(*context->methods->reset) (context);
+	(*context->methods.reset) (context);
 }
 
 /*
@@ -194,7 +194,7 @@ MemoryContextDelete(MemoryContext context)
 			}
 		}
 	}
-	(*context->methods->delete_context)(context);
+	(*context->methods.delete_context)(context);
 	pfree(context);
 }
 
@@ -230,7 +230,7 @@ MemoryContextResetAndDeleteChildren(MemoryContext context)
 	AssertArg(MemoryContextIsValid(context));
 
 	MemoryContextDeleteChildren(context);
-	(*context->methods->reset) (context);
+	(*context->methods.reset) (context);
 }
 
 /*
@@ -262,7 +262,7 @@ GetMemoryChunkSpace(void *pointer)
 
 	AssertArg(MemoryContextIsValid(header->context));
 
-	return (*header->context->methods->get_chunk_space) (header->context,
+	return (*header->context->methods.get_chunk_space) (header->context,
 														 pointer);
 }
 
@@ -311,7 +311,7 @@ MemoryContextIsEmpty(MemoryContext context)
 	if (context->firstchild != NULL)
 		return false;
 	/* Otherwise use the type-specific inquiry */
-	return (*context->methods->is_empty) (context);
+	return (*context->methods.is_empty) (context);
 }
 
 
@@ -484,7 +484,7 @@ MemoryContextStats_recur(MemoryContext context, MemoryContext topcontext,
     /* Get name and ancestry of this MemoryContext */
     name = MemoryContextName(context, topcontext, namebuf, namebufsize);
 
-	(*context->methods->stats)(context, name);
+	(*context->methods.stats)(context, name);
 
 	for (child = context->firstchild; child != NULL; child = child->nextchild)
 		MemoryContextStats_recur(child, topcontext, namebuf, namebufsize);
@@ -519,7 +519,7 @@ MemoryContextCheck(MemoryContext context)
 
 	AssertArg(MemoryContextIsValid(context));
 
-	(*context->methods->check) (context);
+	(*context->methods.check) (context);
 	for (child = context->firstchild; child != NULL; child = child->nextchild)
 		MemoryContextCheck(child);
 }
@@ -639,7 +639,7 @@ MemoryContextCreate(NodeTag tag, Size size,
 	/* Initialize the node as best we can */
 	MemSet(node, 0, size);
 	node->type = tag;
-	node->methods = methods;
+	node->methods = *methods;
 	node->parent = NULL;		/* for the moment */
 	node->firstchild = NULL;
 	node->nextchild = NULL;
@@ -647,7 +647,7 @@ MemoryContextCreate(NodeTag tag, Size size,
 	strcpy(node->name, name);
 
 	/* Type-specific routine finishes any other essential initialization */
-	(*node->methods->init) (node);
+	(*node->methods.init) (node);
 
 	/* OK to link node to parent (if any) */
 	if (parent)
@@ -683,7 +683,7 @@ MemoryContextAlloc(MemoryContext context, Size size)
 		elog(ERROR, "invalid memory alloc request size %lu",
 			 (unsigned long) size);
 
-	ret = (*context->methods->alloc) (context, size);
+	ret = (*context->methods.alloc) (context, size);
 
 #ifdef MEMORY_CONTEXT_CHECKING
 	{
@@ -723,7 +723,7 @@ MemoryContextAllocZero(MemoryContext context, Size size)
 			 (unsigned long) size);
 	}
 
-	ret = (*context->methods->alloc) (context, size);
+	ret = (*context->methods.alloc) (context, size);
 
 	MemSetAligned(ret, 0, size);
 
@@ -761,7 +761,7 @@ MemoryContextAllocZeroAligned(MemoryContext context, Size size)
 		elog(ERROR, "invalid memory alloc request size %lu",
 			 (unsigned long) size);
 
-	ret = (*context->methods->alloc) (context, size);
+	ret = (*context->methods.alloc) (context, size);
 
 	MemSetLoop(ret, 0, size);
 
@@ -802,7 +802,7 @@ pfree(void *pointer)
 
 	AssertArg(MemoryContextIsValid(header->context));
 
-	(*header->context->methods->free_p) (header->context, pointer);
+	(*header->context->methods.free_p) (header->context, pointer);
 }
 
 /*
@@ -839,7 +839,7 @@ repalloc(void *pointer, Size size)
 		elog(ERROR, "invalid memory alloc request size %lu",
 			 (unsigned long) size);
 
-	ret = (*header->context->methods->realloc) (header->context,
+	ret = (*header->context->methods.realloc) (header->context,
 												 pointer, size);
 #ifdef MEMORY_CONTEXT_CHECKING
 	{
