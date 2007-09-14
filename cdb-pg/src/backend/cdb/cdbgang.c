@@ -138,7 +138,7 @@ createDispatchAgents(void)
 	 * 
 	 */
 	
-	int			size = getgpsegmentCount()/8;
+	int			size = getgpsegmentCount()/10;  /* 1/10 the number of segments */
 	if (size < 2)				/* on small systems, use two dispatch agents */
 		size = 2;
 	
@@ -199,11 +199,20 @@ createDispatchAgents(void)
 	{
 		/*
 		 * Find a valid primary postmaster.  
+		 * 
 		 * On a different host from any other dispatchAgent
 		 * we have created in this loop
+		 * 
+		 * To do this, we assume the normal way gpinitsystem sets
+		 * up things:  The first segment on each host has the same port
+		 * 
+		 * hostname is not enough, because we use different hostnames
+		 * for each lan adapter on the system.
 		 */
 		q = &cdb_component_dbs->segment_db_info[j++];
-		while ((!q->isprimary  || !q->valid || strcmp(lasthost,q->hostname)==0) && 
+		while ((!q->isprimary  || !q->valid || 
+				q->port != cdb_component_dbs->segment_db_info[0].port || 
+				strcmp(lasthost,q->hostname)==0) && 
 					j < cdb_component_dbs->total_segment_dbs)
 			q = &cdb_component_dbs->segment_db_info[j++];
 		
@@ -244,7 +253,7 @@ createDispatchAgents(void)
 	     */
 	    else
 	    {
-	    	elog(DEBUG1,"createDispatchAgent %i success %s", i, buffer.data);
+	    	elog(DEBUG5,"createDispatchAgent %i success %s", i, buffer.data);
 	    }
 	}
 
