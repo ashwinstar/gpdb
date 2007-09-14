@@ -111,6 +111,8 @@ cleanupGang(Gang * gp);
 extern void
 disconnectAndDestroyGangById(int gang_id);
 
+extern int numDispatchAgents(void);
+
 /*
  * cdbgang_parse_gpqeid_params
  *

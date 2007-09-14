@@ -376,6 +376,7 @@ cdbdisp_reconfigureFtsIfNecessary(void)
  * slices in a plan. For dispatch of single commands (ie most uses of
  * cdbdisp_dispatchToGang()), setting it to 1 is fine.
  */
+static int largest_gangsize = 0;
 void
 cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 					   GpDispatchCommandType		mppDispatchCommandType,
@@ -445,6 +446,15 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 			(int) mppDispatchCommandType);
 	}
 
+	db_descriptors_size = gp->size;
+	db_descriptors = gp->db_descriptors;
+	
+	if (gp_use_dispatch_agent && gp->dispatchagents != NULL)
+	{
+		db_descriptors_size = gp->dispatchagents->size;
+		db_descriptors = gp->dispatchagents->db_descriptors;
+	}
+	
 	/*
 	 * The most threads we could have is segdb_count / gp_connections_per_thread, rounded up.
 	 * This is equivalent to 1 + (segdb_count-1) / gp_connections_per_thread.
@@ -453,15 +463,33 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 	 *
 	 * We can only use gp->size here if we're not dealing with a
 	 * singleton gang. It is safer to use the actual segment count.
+	 * But if using Dispatch Agent, this would wast a lot of memory.
 	 */
 	Assert(gp_connections_per_thread >= 0);
 
 	segdbs_in_thread_pool = 0;
 	
+	if (db_descriptors_size > largest_gangsize)
+		largest_gangsize = db_descriptors_size;
+	
+	if (Gp_role==GP_ROLE_DISPATCH)
+	{
+		if (gp_use_dispatch_agent)
+		{
+			if (numDispatchAgents() > largest_gangsize)
+				largest_gangsize = numDispatchAgents();
+		}
+		else
+		{
+			if (getgpsegmentCount() > largest_gangsize)
+				largest_gangsize = getgpsegmentCount();
+		}
+	}
+	
 	if (gp_connections_per_thread == 0)
 		max_threads = 1;	/* one, not zero, because we need to allocate one param block */
 	else
-		max_threads = 1 + (getgpsegmentCount() - 1) / gp_connections_per_thread;
+		max_threads = 1 + (largest_gangsize - 1) / gp_connections_per_thread;
 
 	oldContext = MemoryContextSwitchTo(TopMemoryContext);
 
@@ -495,14 +523,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 
 	MemoryContextSwitchTo(oldContext);
 	
-	db_descriptors_size = gp->size;
-	db_descriptors = gp->db_descriptors;
 	
-	if (gp_use_dispatch_agent && gp->dispatchagents != NULL)
-	{
-		db_descriptors_size = gp->dispatchagents->size;
-		db_descriptors = gp->dispatchagents->db_descriptors;
-	}
 	/*
 	 * Create the thread parms structures based targetSet parameter.
 	 * This will add the segdbDesc pointers appropriate to the

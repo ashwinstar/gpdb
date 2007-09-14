@@ -115,6 +115,13 @@ static char *myDatabaseName = NULL;
 
 static DispatchAgentSet * dispatchagents = NULL;
 
+int numDispatchAgents(void)
+{
+	if (dispatchagents)
+		return dispatchagents->size;
+	else
+		return 0;
+}
 /*
  * create Dispatch Agents for this session
  */
