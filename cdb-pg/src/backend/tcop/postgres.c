@@ -3438,6 +3438,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 	SetClientEncoding(GetDatabaseEncoding(), true);	
 	XactReadOnly = true;  /* Make sure we can't update anything */
 
+
 	switch (firstchar)
 	{
 		case 'G': /* Gang management */
@@ -3525,7 +3526,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			pq_flush();	/* send right away, don't wait while we do finish_xact_command */
 			
 			if (MyXactMadeXLogEntry)
-				elog(LOG,"DispatchAgent made an XLog entry?");
+				elog(DEBUG1,"DispatchAgent made an XLog entry?");
 
 			finish_xact_command();
 			
@@ -3843,7 +3844,6 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				completionTag = "ERROR";
 			}
 			
-			Assert(getDistributedTransactionId() == InvalidDistributedTransactionId);
 			if (MyXactMadeXLogEntry)
 				elog(NOTICE,"DispatchAgent made an XLog entry?");
 
@@ -4054,6 +4054,25 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				pq_flush();	/* send right away, don't wait while we do finish_xact_command */
 				
 				finish_xact_command();
+
+				/*
+				 * Clear these out so we don't get confused on future transactions
+				 */
+				QEDtxContextInfo.distributedXid = InvalidDistributedTransactionId;
+				QEDtxContextInfo.distributedSnapshotData.curcid = 0;
+				QEDtxContextInfo.distributedXid = InvalidDistributedTransactionId;
+				MemSet(QEDtxContextInfo.distributedId, 0, TMGIDSIZE);
+				QEDtxContextInfo.xminAllDistributedSnapshots = InvalidDistributedTransactionId;
+				
+				QEDtxContextInfo.distributedSnapshotData.xmin = InvalidDistributedTransactionId;		
+				QEDtxContextInfo.distributedSnapshotData.xmax = InvalidDistributedTransactionId;		
+				QEDtxContextInfo.distributedSnapshotData.xcnt = 0;		
+				MemSet(QEDtxContextInfo.distributedSnapshotData.xip, 0, sizeof(DistributedTransactionId)*MaxGpDistributedInProgress);
+			    MemSet(QEDtxContextInfo.distributedSnapshotData.debugLocalXip, 0, sizeof(TransactionId)*MaxGpDistributedInProgress);	
+			    QEDtxContextInfo.distributedSnapshotData.curcid = 0;
+			    QEDtxContextInfo.distributedSnapshotData.snapshotId = 0;
+
+				QEDtxContextInfo.distributedTxnOptions = 0;
 				
 				switch (check_log_duration(msec_str, was_logged))
 				{
@@ -4701,6 +4720,25 @@ PostgresMain(int argc, char *argv[], const char *username)
 	 * likewise can't be done until GUC settings are complete)
 	 */
 	process_local_preload_libraries();
+	
+	/*
+	 * DA requires these be cleared at start
+	 */
+	QEDtxContextInfo.distributedXid = InvalidDistributedTransactionId;
+	QEDtxContextInfo.distributedSnapshotData.curcid = 0;
+	QEDtxContextInfo.distributedXid = InvalidDistributedTransactionId;
+	MemSet(QEDtxContextInfo.distributedId, 0, TMGIDSIZE);
+	QEDtxContextInfo.xminAllDistributedSnapshots = InvalidDistributedTransactionId;
+	
+	QEDtxContextInfo.distributedSnapshotData.xmin = InvalidDistributedTransactionId;		
+	QEDtxContextInfo.distributedSnapshotData.xmax = InvalidDistributedTransactionId;		
+	QEDtxContextInfo.distributedSnapshotData.xcnt = 0;		
+	MemSet(QEDtxContextInfo.distributedSnapshotData.xip, 0, sizeof(DistributedTransactionId)*MaxGpDistributedInProgress);
+    MemSet(QEDtxContextInfo.distributedSnapshotData.debugLocalXip, 0, sizeof(TransactionId)*MaxGpDistributedInProgress);	
+    QEDtxContextInfo.distributedSnapshotData.curcid = 0;
+    QEDtxContextInfo.distributedSnapshotData.snapshotId = 0;
+
+	QEDtxContextInfo.distributedTxnOptions = 0;
 
 	/*
 	 * Send this backend's cancellation info to the frontend.

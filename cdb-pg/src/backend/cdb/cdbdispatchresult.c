@@ -919,7 +919,14 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 		QEDtxContextInfo.distributedSnapshotData.curcid = p->QEWriter_CommandId;
 		if (p->QEWriter_Dirty)
 		{
-			MyXactMadeXLogEntry = true;   // marks our transaction as dirty
+			Assert(QEDtxContextInfo.distributedXid != 0 || QEDtxContextInfo.distributedSnapshotData.curcid != 0 );
+			/*
+			 * Don't mark our local transaction dirty, because this slows us down
+			 * because EndTransaction will try to write to the WAL.
+			 * DAs shouldn't write to the WAL.
+			 * 
+			 */
+			/* MyXactMadeXLogEntry = true;   // marks our transaction as dirty*/
 		}
 	}
 	
@@ -1084,7 +1091,14 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 					}
 					if (p->QEWriter_Dirty)
 					{
-						MyXactMadeXLogEntry = true;   // marks our transaction as dirty
+						Assert(QEDtxContextInfo.distributedXid != 0 || QEDtxContextInfo.distributedSnapshotData.curcid != 0 );
+						/*
+						 * Don't mark our local transaction dirty, because this slows us down
+						 * because EndTransaction will try to write to the WAL.
+						 * DAs shouldn't write to the WAL.
+						 * 
+						 */
+						/* MyXactMadeXLogEntry = true;   // marks our transaction as dirty*/
 					}
 				}
 				
@@ -1153,7 +1167,14 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 					}
 					if (p->QEWriter_Dirty)
 					{
-						MyXactMadeXLogEntry = true;   // marks our transaction as dirty
+						Assert(QEDtxContextInfo.distributedXid != 0 || QEDtxContextInfo.distributedSnapshotData.curcid != 0 );
+						/*
+						 * Don't mark our local transaction dirty, because this slows us down
+						 * because EndTransaction will try to write to the WAL.
+						 * DAs shouldn't write to the WAL.
+						 * 
+						 */
+						/* MyXactMadeXLogEntry = true;   // marks our transaction as dirty*/
 					}
 				}
 				
