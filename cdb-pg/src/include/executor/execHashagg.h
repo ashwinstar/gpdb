@@ -76,6 +76,7 @@ typedef enum HashAggState
 typedef struct HashAggTable
 {
 	/* Hash table */
+	MemoryContext   entry_cxt;	/* memory context for hash table entries */
 	unsigned		nbucket;
 	HashAggEntry  **buckets;
 	uint64         *bloom;
