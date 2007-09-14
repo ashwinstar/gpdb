@@ -53,6 +53,11 @@ struct item_t {
     int is_closing:1;
     int self_origin:1;
     buf_t in, out;
+    struct {
+	gpcc_net_opened_t *opened;
+	gpcc_net_closed_t *closed;
+	gpcc_net_recv_t *recv;
+    } cb;
 };
 
 
@@ -93,6 +98,9 @@ static gpcc_net_conn_t mkitem(SOCKET sock, void* arg,
 			      int is_connecting, 
 			      int is_open,
 			      int self_origin,
+			      gpcc_net_opened_t* opened,
+			      gpcc_net_closed_t* closed,
+			      gpcc_net_recv_t* recv,
 			      apr_pool_t* pool)
 {
     apr_uint32_t* spin;
@@ -143,6 +151,9 @@ static gpcc_net_conn_t mkitem(SOCKET sock, void* arg,
     item->is_open = is_open;
     item->is_closing = 0;
     item->self_origin = self_origin;
+    item->cb.opened = opened;
+    item->cb.closed = closed;
+    item->cb.recv = recv;
     item->in.bot = item->in.top = 0;
     item->out.bot = item->out.top = 0;
     event_set(&item->sock_event, item->sock, EV_READ | EV_PERSIST, do_read, item);
@@ -157,7 +168,11 @@ static void do_closed(item_t *item)
     int i;
     apr_uint32_t *spin = 0;
 
-    net.cb.closed(item->conn, item->arg);
+    if (item->cb.closed) {
+	item->cb.closed(item->conn, item->arg);
+    } else {
+	net.cb.closed(item->conn, item->arg);
+    }
     spin = gpcc_spin_secure(spin);
     event_del(&item->sock_event);
     for (i = 0 ; i < GPCC_NET_CONN_MAX && item != net.tab.item[i] ; i++){;}
@@ -219,8 +234,13 @@ static void do_read(int fd, short event, void *arg)
 	item->is_connecting = 0;
 	item->is_open = 1;
 	gpcc_spin_release(spin);
-	item->arg = net.cb.opened(item->conn, item->arg, 
-				  item->self_origin, item->pool);
+	if (item->cb.opened) {
+	    item->arg = item->cb.opened(item->conn, item->arg,
+				       item->self_origin, item->pool);
+	} else {
+	    item->arg = net.cb.opened(item->conn, item->arg, 
+				      item->self_origin, item->pool);
+	}
 	gpcc_spin_secure(spin);
 	if (item->is_closing) {
 	    goto CLOSED;
@@ -229,7 +249,11 @@ static void do_read(int fd, short event, void *arg)
 
     if (bb->bot < bb->top) {
 	gpcc_spin_release(spin);
-	net.cb.recv(item->conn, item->arg);
+	if (item->cb.recv) {
+	    item->cb.recv(item->conn, item->arg);
+	} else {
+	    net.cb.recv(item->conn, item->arg);
+	}
 	gpcc_spin_secure(spin);
 	if (item->is_closing) {
 	    goto CLOSED;
@@ -289,6 +313,7 @@ static void do_accept(int fd, short event, void *arg)
 		  0 /*is_connecting */,
 		  1 /*is_open*/,
 		  0 /*self_origin*/,
+		  0, 0, 0, /* opened, closed, recv */
 		  net.pool);
     if (! conn) {
 	gpcc_warning(FLINE, "do_accept: unable to accept new connection");
@@ -457,6 +482,9 @@ APR_DECLARE(void) gpcc_net_stop(void)
 }
 
 APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* pconn, const char* addr, 
+					gpcc_net_opened_t* opened,
+					gpcc_net_closed_t* closed,
+					gpcc_net_recv_t* recv,
 					void* arg)
 
 {
@@ -499,6 +527,9 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* pconn, const char* addr
 		    1 /*is_connecting*/, 
 		    0 /*is_open*/, 
 		    1 /*self_origin*/, 
+		    opened,
+		    closed,
+		    recv,
 		    pool);
     if (! (*pconn))
 	goto bail;

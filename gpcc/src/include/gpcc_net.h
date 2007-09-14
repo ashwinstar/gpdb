@@ -67,6 +67,9 @@ APR_DECLARE(apr_status_t) gpcc_net_once(void);
  */
 APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* pconn, 
 					const char* addr,
+					gpcc_net_opened_t* opened,
+					gpcc_net_closed_t* closed,
+					gpcc_net_recv_t* recv,
 					void* conn_arg);
 
 /**

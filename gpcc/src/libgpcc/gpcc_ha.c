@@ -2,13 +2,23 @@
 #include <stdlib.h>
 #include <gpcc_ha.h>
 
-#define GET_IDENTITY_MSG 1
+typedef enum msg_t msg_t;
+enum msg_t {
+    NULL_MSG,
+    GET_IDENTITY_MSG,
+    IDENTITY_MSG,
+
+    MSG_MAX,
+};
 
 struct gpcc_ha_t {
     int index;
+    int sndidx;
+    int rcvidx;
     apr_pool_t *pool;
     gpcc_net_conn_t conn;
-    
+    void *arg;
+
     struct {
 	gpcc_ha_opened_t *opened;
 	gpcc_ha_closed_t *closed;
@@ -51,7 +61,6 @@ void *ha_net_opened(gpcc_net_conn_t conn, void *conn_arg,
 	return 0;
     }
 
-    ha->cb.opened(ha);
     return ha;
 }
 
@@ -59,7 +68,7 @@ void ha_net_closed(gpcc_net_conn_t conn, void *conn_arg)
 {
     gpcc_ha_t *ha = (gpcc_ha_t *) conn_arg;
 
-    ha->cb.closed(ha);
+    ha->cb.closed(ha, ha->arg);
 }
 
 void ha_net_recv(gpcc_net_conn_t conn, void *conn_arg)
@@ -93,7 +102,21 @@ void ha_net_recv(gpcc_net_conn_t conn, void *conn_arg)
 	    goto bail;
 	}
 
-	ha->cb.recv(ha, packet);
+	if (ha->rcvidx == 0) {
+	    /* if IDENTITY_MSG, update rcvidx and sndidx else invalid message*/
+	    if (packet->mh.type == IDENTITY_MSG) {
+		/* session ready */
+		ha->rcvidx = packet->mh.rcvidx;
+		ha->sndidx = packet->mh.sndidx;
+		ha->arg = ha->cb.opened(ha, ha->arg);
+	    } else {
+		gpcc_ha_close(ha);
+		return;
+	    }
+
+	} else {
+	    ha->cb.recv(ha, packet, ha->arg);
+	}
 
 	if (packet)
 	    free(packet);
@@ -112,7 +135,8 @@ void ha_net_recv(gpcc_net_conn_t conn, void *conn_arg)
 APR_DECLARE(gpcc_ha_t*) gpcc_ha_open(const char *addr,
 				     gpcc_ha_opened_t *opened,
 				     gpcc_ha_closed_t *closed,
-				     gpcc_ha_recv_t *recv)
+				     gpcc_ha_recv_t *recv,
+				     void *arg)
 {
 			       
     int e;
@@ -134,7 +158,7 @@ APR_DECLARE(gpcc_ha_t*) gpcc_ha_open(const char *addr,
     ha->cb.opened = opened;
     ha->cb.closed = closed;
     ha->cb.recv = recv;
-
+    ha->arg = arg;
     return ha;
 }
 										 
@@ -151,13 +175,12 @@ APR_DECLARE(apr_status_t) gpcc_ha_close(gpcc_ha_t *ha) {
 
 APR_DECLARE(apr_status_t) gpcc_ha_send(gpcc_ha_t *ha,
 				       int type,
-				       int sndidx, int rcvidx,
 				       const char *buf, int len)
 {
     
     return gpcc_net_send_packet(ha->conn,
 				type,
-				sndidx, rcvidx,
+				ha->rcvidx, ha->sndidx,
 				buf, len);
     
 }
