@@ -44,6 +44,7 @@
 #include "libpq/pqsignal.h"
 #endif
 
+#include "catalog/catversion.h"
 
 const char *progname;
 
@@ -149,6 +150,12 @@ main(int argc, char *argv[])
 			puts("postgres (Greenplum Database) " PG_VERSION);
 			exit(0);
 		}
+                if (strcmp(argv[1], "--catalog-version") == 0 )
+                {
+                    printf(_("Catalog version number:               %u\n"),
+                            CATALOG_VERSION_NO);
+                    exit(0);
+                }
 	}
 
 	/*
@@ -304,6 +311,7 @@ help(const char *progname)
 	printf(_("  --describe-config  describe configuration parameters, then exit\n"));
 	printf(_("  --help          show this help, then exit\n"));
 	printf(_("  --version       output version information, then exit\n"));
+        printf(_("  --catalog-version output the catalog version, then exit\n"));
 
 	printf(_("\nDeveloper options:\n"));
 	printf(_("  -f s|i|n|m|h    forbid use of some plan types\n"));
