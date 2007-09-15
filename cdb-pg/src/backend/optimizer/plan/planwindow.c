@@ -1172,6 +1172,11 @@ static int compare_edge(WindowFrameEdge *a, WindowFrameEdge *b)
 		else if ( aval > bval )
 			return 1;
 	}
+	else if (a->kind == WINDOW_DELAYED_BOUND_PRECEDING || a->kind == WINDOW_DELAYED_BOUND_FOLLOWING)
+		return -1;
+	else if (b->kind == WINDOW_DELAYED_BOUND_PRECEDING || b->kind == WINDOW_DELAYED_BOUND_FOLLOWING)
+		return 1;
+
 	return 0;
 }
 

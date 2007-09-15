@@ -606,6 +606,10 @@ static NTupleStorePage *nts_load_next_page(NTupleStore* store, NTupleStorePage *
 	if(!next || nts_page_blockn(next) > blockn)
 	{
 		next = nts_get_free_page(store);
+		if (next == NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 errmsg("Can not allocate a new page in the tuplestore.")));
 		fOK = ntsReadBlock(store, blockn, next);
 		if(!fOK)
 		{

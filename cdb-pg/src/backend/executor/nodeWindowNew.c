@@ -47,7 +47,7 @@
 
 #ifndef OLD_WINDOWNODE
 
-/* The initial frame buffer size (in bytes) */
+/* The initial size (in bytes) for an entry in the frame buffer. */
 #define FRAMEBUFFER_ENTRY_SIZE 1024
 
 /* 
@@ -431,7 +431,6 @@ static void add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *ws
 							   ExprContext *econtext);
 static void set_lead_lag_framing(WindowStatePerLevel level_state,
 								 WindowState *wstate);
-static void separateLeadLag(WindowState *wstate);
 static bool hasTuplesInFrame(WindowStatePerLevel level_state);
 static Datum last_value_internal(WindowRefExprState *wrxstate, bool *isnull);
 static Datum first_value_internal(WindowRefExprState *wrxstate, bool *isnull);
@@ -503,7 +502,7 @@ createFrameBuffers(WindowState *wstate)
 	if (wstate->numlevels <= 0)
 		return;
 	
-	bytes = (work_mem/2) / wstate->numlevels;
+	bytes = ((work_mem * 1024L)/2) / wstate->numlevels;
 	
 	for (level=0; level < wstate->numlevels; level++)
 	{
@@ -1374,8 +1373,6 @@ appendToFrameBuffer(WindowStatePerLevel level_state,
 	}
 
 	ntuplestore_acc_put_data(buffer->writer, (void*)serial_entry, len);
-
-	elog(DEBUG1, "append tuple to buffer: %s", tup2str(econtext->ecxt_scantuple));
 
 	adjustEdgesAfterAppend(level_state, wstate, last_peer);
 }
@@ -2646,7 +2643,7 @@ resetInputBuffer(WindowState *wstate)
 	{
 		wstate->input_buffer = (WindowInputBuffer)palloc0(sizeof(WindowInputBufferData));
 		wstate->input_buffer->tuplestore =
-			ntuplestore_create(work_mem/2); /* correct? */
+			ntuplestore_create((work_mem * 1024L)/2); /* correct? */
 		createFrameBuffers(wstate);
 	}
 
@@ -3884,22 +3881,6 @@ ExecWindow(WindowState *wstate)
 	ExprDoneCond isDone;
 	bool last_peer = false;
 
-
-	if (wstate->input_buffer == NULL)
-	{
-		/* Separate LEAD/LAG functions from wstate->level_state, and
-		 * store them individually to a new level_state. LEAD/LAG really
-		 * should not share the same key level as the other functions
-		 * since its framing depends on the offset value provided in
-		 * its arguments.
-		 *
-		 * We can not do this inside ExecInitWindow() because we modify
-		 * functions' WindowRefs to point to their new key level, which
-		 * makes it not longer match with windowKeys.
-		 */
-		separateLeadLag(wstate);
-	}
-
 	econtext = wstate->ps.ps_ExprContext;
 
 	/* Fetch the current_row */
@@ -4594,6 +4575,32 @@ init_frames(WindowState *wstate)
 
 		resetTransValues(level_state, wstate->transcontext);
 	}
+
+	/*
+	 * Set has_lead_lag flag in each level state if all functions
+	 * in this level are LEAD/LAGs with DELAYED framing.
+	 */
+	for (level=0; level<wstate->numlevels; level++)
+	{
+		WindowStatePerLevel level_state = &wstate->level_state[level];
+		bool has_lead_lag = false;
+		int funcno = 0;
+
+		foreach(lc, level_state->level_funcs)
+		{
+			WindowStatePerFunction funcstate =
+				(WindowStatePerFunction) lfirst(lc);
+
+			if (IS_LEAD_LAG(funcstate->wrxstate->winkind))
+			{
+				Assert(funcno == 0 || has_lead_lag);
+				has_lead_lag = true;
+			}
+
+			funcno++;
+		}
+		level_state->has_lead_lag = has_lead_lag;
+	}
 }
 
 static FmgrInfo *
@@ -4697,181 +4704,6 @@ set_lead_lag_framing(WindowStatePerLevel level_state,
 
 	level_state->frame->trail->kind = level_state->frame->lead->kind;
 	level_state->trail_rows = level_state->lead_rows;
-}
-
-/*
- * separateLeadLag -- separate LEAD/LAG functions from its original
- * key level, and store them individually in a different key
- * level.
- *
- * XXX should we do this in the planning phrase?
- */
-static void
-separateLeadLag(WindowState *wstate)
-{
-	int level;
-	ListCell *lc;
-	int count_lead_lag = 0;
-	WindowStatePerLevel old_level_state;
-	int numlevels = wstate->numlevels;
-	bool *num_lead_lag = palloc0(numlevels * sizeof(int));
-	int new_level = 0;
-
-	/* Compute how many extra levels we need to make */
-	for (level=0; level<wstate->numlevels; level++)
-	{
-		WindowStatePerLevel level_state =
-			&wstate->level_state[level];
-		
-		foreach (lc, level_state->level_funcs)
-		{
-			WindowStatePerFunction funcstate =
-				(WindowStatePerFunction) lfirst(lc);
-
-			if (IS_LEAD_LAG(funcstate->wrxstate->winkind))
-			{
-				count_lead_lag++;
-				num_lead_lag[level]++;
-			}
-		}
-	}
-
-	if (count_lead_lag == 0)
-		return;
-
-	old_level_state = wstate->level_state;
-	numlevels = wstate->numlevels + count_lead_lag;
-	
-	wstate->level_state = (WindowStatePerLevel)
-		palloc0(numlevels * sizeof(WindowStatePerLevelData));
-
-	for (level=0; level<wstate->numlevels; level++)
-	{
-		WindowStatePerLevel level_state = NULL;
-		List *level_funcs = old_level_state[level].level_funcs;
-		WindowStatePerLevel next_level_state;
-		bool separate_first_one = true;
-		bool first_one = true;
-		int next_level;
-		
-		memcpy(&wstate->level_state[new_level], &old_level_state[level],
-			   sizeof(WindowStatePerLevelData));
-
-		if (num_lead_lag[level] == 0)
-		{
-			new_level++;
-			continue;
-		}
-		
-		if (num_lead_lag[level] == 1 &&
-			list_length(level_funcs) == 1)
-		{
-			wstate->level_state[new_level].has_lead_lag = true;
-			set_lead_lag_framing(&wstate->level_state[new_level], wstate);
-			
-			new_level++;
-			continue;
-		}
-
-		/* If there are all LEAD/LAG functions, keep the first one in
-		 * the original level.
-		 */
-		if (num_lead_lag[level] == list_length(level_funcs))
-			separate_first_one = false;
-		
-		wstate->level_state[new_level].level_funcs = NIL;
-		level_state = &wstate->level_state[new_level];
-		
-		/* Move the LEAD/LAG to next_level_state, and keep others to
-		 * level_state.
-		 */
-		next_level = new_level;
-		foreach (lc, level_funcs)
-		{
-			WindowStatePerFunction funcstate =
-				(WindowStatePerFunction) lfirst(lc);
-			WindowRefExprState *ref_state = funcstate->wrxstate;
-			WindowRef *ref = (WindowRef *)ref_state->xprstate.expr;
-
-			if (IS_LEAD_LAG(ref_state->winkind) &&
-				(separate_first_one || !first_one))
-			{
-				next_level++;
-				next_level_state = &wstate->level_state[next_level];
-				next_level_state->frame = copyObject(level_state->frame);
-				next_level_state->is_rows = true;
-				next_level_state->has_lead_lag = true;
-				
-				next_level_state->level_funcs =
-					lappend(next_level_state->level_funcs, funcstate);
-
-				set_lead_lag_framing(next_level_state, wstate);
-				ref->winlevel = next_level;
-			}
-
-			else
-			{
-				first_one = false;
-				level_state->level_funcs =
-					lappend(level_state->level_funcs, funcstate);
-
-				if (IS_LEAD_LAG(ref_state->winkind))
-				{
-					level_state->has_lead_lag = true;
-					set_lead_lag_framing(level_state, wstate);
-				}
-				ref->winlevel = new_level;
-			}
-		}
-
-		list_free(level_funcs);
-		new_level = next_level;
-		new_level++;
-	}
-
-	wstate->numlevels = new_level;
-
-	/* Reset the wlevel in all funcstates */
-	for (level=0; level<wstate->numlevels; level++)
-	{
-		WindowStatePerLevel level_state = &wstate->level_state[level];
-		foreach (lc, level_state->level_funcs)
-		{
-			WindowStatePerFunction funcstate = (WindowStatePerFunction) lfirst(lc);
-			funcstate->wlevel = level_state;
-		}
-	}
-
-	pfree(num_lead_lag);
-	pfree(old_level_state);
-
-	/*
-	 * Set trivial_frames_only in each level state if its functions
-	 * all have trivial frames.
-	 *
-	 * Also initialize the transition values for functions
-	 * in this level.
-	 */
-	for (level=0; level<wstate->numlevels; level++)
-	{
-		bool trivial_frames_only = true;
-		WindowStatePerLevel level_state = &wstate->level_state[level];
-		
-		foreach(lc, level_state->level_funcs)
-		{
-			WindowStatePerFunction funcstate = (WindowStatePerFunction)
-				lfirst(lc);
-			
-			if (!funcstate->trivial_frame)
-			{
-				trivial_frames_only = false;
-				break;
-			}
-		}
-		level_state->trivial_frames_only = trivial_frames_only;
-
-		resetTransValues(level_state, wstate->transcontext);
-	}
 }
 
 /* -----------------

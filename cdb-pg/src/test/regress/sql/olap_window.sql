@@ -158,7 +158,7 @@ from sale; -- mvd 1->2,3
 
 select rank() over (w), cn, pn 
 from sale 
-window w as (order by cn) -- mvd 1->2,3;
+window w as (order by cn); -- mvd 1->2,3
 
 select rank() over (w), cn, pn 
 from sale 
