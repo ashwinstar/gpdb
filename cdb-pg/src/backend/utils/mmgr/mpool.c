@@ -23,10 +23,11 @@
 #undef PRINT
 #define PRINT(x)  
 
-#define MPOOL_BLOCKSZ    (1024*1024) /* 1MB */
-
 
 typedef struct mpool_block_t mpool_block_t;
+
+#define BLOCKSZ_STEP1   (128*1024)  /* 128K */
+#define BLOCKSZ_STEP2   (1024*1024) /* 1MB */
 
 
 typedef struct mpool_context_t mpool_context_t;
@@ -87,27 +88,25 @@ struct mpool_chunkhdr_t
 /*
  *  Allocate a block via malloc
  */
-static mpool_block_t* mpool_block_alloc(mpool_context_t* owner, int minsz)
+static mpool_block_t* mpool_block_alloc(mpool_context_t* mpool, int minsz)
 {
 	const int hdrsz = MAXALIGN(sizeof(mpool_block_t));
 	mpool_block_t* bp;
-	int tot;
+	int tot = mpool->blocks_allocated < 8 ? BLOCKSZ_STEP1 : BLOCKSZ_STEP2;
 
-	if (minsz + MPOOL_CHUNKHDR_SIZE + hdrsz > MPOOL_BLOCKSZ)
+	if (minsz + MPOOL_CHUNKHDR_SIZE + hdrsz > tot)
 		tot = minsz + MPOOL_CHUNKHDR_SIZE + hdrsz;
-	else
-		tot = MPOOL_BLOCKSZ;
 
 	bp = malloc(tot);
 	if (bp) 
 	{
-		bp->owner = owner;
+		bp->owner = mpool;
 		bp->begin = bp->cur = ((char*) bp) + hdrsz;
 		bp->end = ((char*) bp) + tot;
 		bp->next = 0;
-		MemoryContextNoteAlloc(&owner->header, tot);
+		MemoryContextNoteAlloc(&mpool->header, tot);
 	}
-	owner->blocks_allocated++;
+	mpool->blocks_allocated++;
 	return bp;
 }
 
@@ -323,12 +322,7 @@ mpool_alloc(MemoryContext context, Size size)
 	{
 		/* fastcase this. return immediately if we get a chunk */
 		if (0 != (chunk = mpool_block_alloc_chunk(bp, size)))
-		{
-			mpool->bytes_allocated += size;
-			if (mpool->bytes_allocated > mpool->max_bytes_allocated)
-				mpool->max_bytes_allocated = mpool->bytes_allocated;
-			return mpool_get_pointer(chunk);
-		}
+			goto do_alloc;
 	}
 
 
@@ -392,6 +386,7 @@ mpool_alloc(MemoryContext context, Size size)
 		bp->next = bp;
 	mpool->inuse_tail = bp;
 
+	do_alloc:
 	mpool->bytes_allocated += size;
 	if (mpool->bytes_allocated > mpool->max_bytes_allocated)
 		mpool->max_bytes_allocated = mpool->bytes_allocated;
