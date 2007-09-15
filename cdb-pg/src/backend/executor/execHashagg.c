@@ -997,11 +997,26 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 	bool *isnull = aggstate->hashslot->tts_isnull;
 	ListCell *lc;
 
-	foreach (lc, aggstate->hash_needed)
+	if (inputslot->tts_nvalid >= linitial_int(aggstate->hash_needed))
 	{
-		const int n = lfirst_int(lc) - 1;
-		values[n] = inputslot->tts_values[n];
-		isnull[n] = inputslot->tts_isnull[n];
+		foreach (lc, aggstate->hash_needed)
+		{
+			const int n = lfirst_int(lc) - 1;
+			values[n] = inputslot->tts_values[n];
+			isnull[n] = inputslot->tts_isnull[n];
+		}
+	}
+	else 
+	{
+		oldContext = MemoryContextSwitchTo(inputslot->tts_mcxt);
+		foreach (lc, aggstate->hash_needed)
+		{
+			const int n = lfirst_int(lc) - 1;
+			values[n] = heap_getattr(inputslot->tts_tuple, n + 1, 
+									 inputslot->tts_tupleDescriptor, 
+									 &isnull[n]);
+		}
+		MemoryContextSwitchTo(oldContext);
 	}
 
 	oldContext = MemoryContextSwitchTo(aggstate->hhashtable->entry_cxt);
