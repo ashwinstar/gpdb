@@ -367,7 +367,7 @@ CreateExprContext(EState *estate)
 	 * Create working memory for expression evaluation in this context.
 	 */
 	econtext->ecxt_per_tuple_memory =
-		AllocSetContextCreate(estate->es_query_cxt,
+		mpool_create(estate->es_query_cxt,
 							  "ExprContext",
 							  ALLOCSET_DEFAULT_MINSIZE,
 							  ALLOCSET_DEFAULT_INITSIZE,
@@ -438,7 +438,7 @@ CreateStandaloneExprContext(void)
 	 * Create working memory for expression evaluation in this context.
 	 */
 	econtext->ecxt_per_tuple_memory =
-		AllocSetContextCreate(CurrentMemoryContext,
+		mpool_create(CurrentMemoryContext,
 							  "ExprContext",
 							  ALLOCSET_DEFAULT_MINSIZE,
 							  ALLOCSET_DEFAULT_INITSIZE,
