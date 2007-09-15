@@ -870,6 +870,7 @@ extern Datum int2_avg_decum(PG_FUNCTION_ARGS);
 extern Datum int4_avg_decum(PG_FUNCTION_ARGS);
 extern Datum int8_avg(PG_FUNCTION_ARGS);
 extern Datum width_bucket_numeric(PG_FUNCTION_ARGS);
+extern Datum hash_numeric(PG_FUNCTION_ARGS);
 extern Datum numeric_amalg(PG_FUNCTION_ARGS); /* MPP */
 extern Datum int8_avg_amalg(PG_FUNCTION_ARGS); /* MPP */
 extern Datum numeric_demalg(PG_FUNCTION_ARGS); /* MPP */ 

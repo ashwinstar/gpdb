@@ -2227,3 +2227,29 @@ select tt1.*, tt2.* from tt2 right join tt1 on tt1.joincol = tt2.joincol ORDER B
       2 |         |        |        
 (3 rows)
 
+-- test numeric hash join
+set enable_hashjoin to on;
+set enable_mergejoin to off;
+set enable_nestloop to off;
+create table nhtest (i numeric(10, 2));
+insert into nhtest values(100000.22);
+insert into nhtest values(300000.19);
+explain select * from nhtest a join nhtest b using (i);
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1)  (cost=18.12..38.15 rows=761 width=13)
+   ->  Hash Join  (cost=18.12..38.15 rows=761 width=13)
+         Hash Cond: a.i = b.i
+         ->  Seq Scan on nhtest a  (cost=0.00..8.61 rows=761 width=13)
+         ->  Hash  (cost=8.61..8.61 rows=761 width=13)
+               ->  Seq Scan on nhtest b  (cost=0.00..8.61 rows=761 width=13)
+ Settings:  enable_hashjoin=on; enable_mergejoin=off; enable_nestloop=off
+(7 rows)
+
+select * from nhtest a join nhtest b using (i);
+     i     
+-----------
+ 300000.19
+ 100000.22
+(2 rows)
+

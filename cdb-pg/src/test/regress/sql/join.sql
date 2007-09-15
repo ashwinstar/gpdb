@@ -399,3 +399,14 @@ set enable_nestloop to off;
 select tt1.*, tt2.* from tt1 left join tt2 on tt1.joincol = tt2.joincol ORDER BY 1,2,3;
 
 select tt1.*, tt2.* from tt2 right join tt1 on tt1.joincol = tt2.joincol ORDER BY 1,2,3;
+
+-- test numeric hash join
+
+set enable_hashjoin to on;
+set enable_mergejoin to off;
+set enable_nestloop to off;
+create table nhtest (i numeric(10, 2));
+insert into nhtest values(100000.22);
+insert into nhtest values(300000.19);
+explain select * from nhtest a join nhtest b using (i);
+select * from nhtest a join nhtest b using (i);

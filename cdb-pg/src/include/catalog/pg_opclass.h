@@ -129,6 +129,7 @@ DATA(insert OID = 1986 (	403		name_ops		PGNSP PGUID   19 t 0 ));
 #define NAME_BTREE_OPS_OID 1986
 DATA(insert OID = 1987 (	405		name_ops		PGNSP PGUID   19 t 0 ));
 DATA(insert OID = 1988 (	403		numeric_ops		PGNSP PGUID 1700 t 0 ));
+DATA(insert OID = 7676 (	405		numeric_ops		PGNSP PGUID 1700 t 0 ));
 DATA(insert OID = 1989 (	403		oid_ops			PGNSP PGUID   26 t 0 ));
 #define OID_BTREE_OPS_OID 1989
 DATA(insert OID = 1990 (	405		oid_ops			PGNSP PGUID   26 t 0 ));

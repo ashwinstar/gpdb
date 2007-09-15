@@ -683,7 +683,7 @@ DATA(insert OID = 1630 (  "!~~*"  PGNSP PGUID b f  1042 25	16 0 1629 0 0 0 0 bpc
 
 /* NUMERIC type - OID's 1700-1799 */
 DATA(insert OID = 1751 (  "-"	   PGNSP PGUID l f	0 1700 1700    0	0 0 0 0 0 numeric_uminus - - ));
-DATA(insert OID = 1752 (  "="	   PGNSP PGUID b f 1700 1700	 16 1752 1753 1754 1754 1754 1756 numeric_eq eqsel eqjoinsel ));
+DATA(insert OID = 1752 (  "="	   PGNSP PGUID b t 1700 1700	 16 1752 1753 1754 1754 1754 1756 numeric_eq eqsel eqjoinsel ));
 DATA(insert OID = 1753 (  "<>"	   PGNSP PGUID b f 1700 1700	 16 1753 1752 0 0 0 0 numeric_ne neqsel neqjoinsel ));
 DATA(insert OID = 1754 (  "<"	   PGNSP PGUID b f 1700 1700	 16 1756 1757 0 0 0 0 numeric_lt scalarltsel scalarltjoinsel ));
 DATA(insert OID = 1755 (  "<="	   PGNSP PGUID b f 1700 1700	 16 1757 1756 0 0 0 0 numeric_le scalarltsel scalarltjoinsel ));

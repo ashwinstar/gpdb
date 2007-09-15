@@ -594,6 +594,8 @@ DATA(insert (	2231	0 1 f 2328 ));
 DATA(insert (	2232	0 1 f 2334 ));
 /* aclitem_ops */
 DATA(insert (	2235	0 1 f  974 ));
+/* numeric_ops */
+DATA(insert (	7676    0 1 f 1752 ));
 
 /*
  *	gist box_ops
