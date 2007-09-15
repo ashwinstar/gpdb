@@ -282,6 +282,9 @@ write_log(const char *fmt,...)
 	strcat(logprefix,":  ");
 	
 	strcat(logprefix,fmt);
+	
+	if (fmt[strlen(fmt)-1]!='\n')
+		strcat(logprefix,"\n");
 	 
 	
 #ifndef WIN32
