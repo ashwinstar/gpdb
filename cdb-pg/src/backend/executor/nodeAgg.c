@@ -1526,21 +1526,12 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 
 	if ( node->aggstrategy == AGG_HASHED )
 	{
-#if 1
 		aggstate->transcontext =
 			AllocSetContextCreate(aggstate->aggcontext,
 								  "TransContext",
 								  ALLOCSET_DEFAULT_MINSIZE,
 								  ALLOCSET_DEFAULT_INITSIZE,
 								  ALLOCSET_DEFAULT_MAXSIZE);
-#else
-		aggstate->transcontext =
-			mpool_create(aggstate->aggcontext,
-								  "TransContext",
-								  ALLOCSET_DEFAULT_MINSIZE,
-								  ALLOCSET_DEFAULT_INITSIZE,
-								  ALLOCSET_DEFAULT_MAXSIZE);
-#endif
 	}
 	else
 		aggstate->transcontext = aggstate->aggcontext;
