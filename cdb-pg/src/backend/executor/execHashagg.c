@@ -727,16 +727,11 @@ agg_hash_reload(AggState *aggstate)
 	{
 		uint32 hkey;
 		bool isNew = false;
-	    MemoryContext oldContext;
 		
 		outerslot = batch_get_tuple(ht, source, tmpcontext->ecxt_scantuple, &hkey);
 		if (TupIsNull(outerslot))
 			break;
 
-		oldContext = MemoryContextSwitchTo(outerslot->tts_mcxt);
-		slot_getsomeattrs(outerslot, linitial_int(aggstate->hash_needed));
-		MemoryContextSwitchTo(oldContext);
-			
 		/* set up for advance_aggregates call */
 		tmpcontext->ecxt_scantuple = outerslot;
 
