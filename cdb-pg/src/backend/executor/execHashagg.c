@@ -727,10 +727,15 @@ agg_hash_reload(AggState *aggstate)
 	{
 		uint32 hkey;
 		bool isNew = false;
+	    MemoryContext oldContext;
 		
 		outerslot = batch_get_tuple(ht, source, tmpcontext->ecxt_scantuple, &hkey);
 		if (TupIsNull(outerslot))
 			break;
+
+		oldContext = MemoryContextSwitchTo(outerslot->tts_mcxt);
+		slot_getsomeattrs(outerslot, linitial_int(aggstate->hash_needed));
+		MemoryContextSwitchTo(oldContext);
 			
 		/* set up for advance_aggregates call */
 		tmpcontext->ecxt_scantuple = outerslot;
@@ -992,26 +997,11 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 	bool *isnull = aggstate->hashslot->tts_isnull;
 	ListCell *lc;
 
-	if (inputslot->tts_nvalid >= linitial_int(aggstate->hash_needed))
+	foreach (lc, aggstate->hash_needed)
 	{
-		foreach (lc, aggstate->hash_needed)
-		{
-			const int n = lfirst_int(lc) - 1;
-			values[n] = inputslot->tts_values[n];
-			isnull[n] = inputslot->tts_isnull[n];
-		}
-	}
-	else 
-	{
-		oldContext = MemoryContextSwitchTo(inputslot->tts_mcxt);
-		foreach (lc, aggstate->hash_needed)
-		{
-			const int n = lfirst_int(lc) - 1;
-			values[n] = heap_getattr(inputslot->tts_tuple, n + 1, 
-									 inputslot->tts_tupleDescriptor, 
-									 &isnull[n]);
-		}
-		MemoryContextSwitchTo(oldContext);
+		const int n = lfirst_int(lc) - 1;
+		values[n] = inputslot->tts_values[n];
+		isnull[n] = inputslot->tts_isnull[n];
 	}
 
 	oldContext = MemoryContextSwitchTo(aggstate->hhashtable->entry_cxt);
