@@ -846,36 +846,29 @@ calc_hash_value(AggState* aggstate, TupleTableSlot *inputslot)
 	MemoryContext oldContext;
 	uint32		hashkey = 0;
 	int			i;
+	Datum* values = inputslot->tts_values;
+	bool* isnull = inputslot->tts_isnull;
+	FmgrInfo* info = aggstate->hashfunctions;
 	
 	agg = (Agg*)aggstate->ss.ps.plan;
 	econtext = aggstate->tmpcontext; /* short-lived, per-input-tuple */
 
 	oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 
-	for (i = 0; i < agg->numCols; i++)
+	for (i = 0; i < agg->numCols; i++, info++)
 	{
 		AttrNumber	att = agg->grpColIdx[i];
-		Datum		attr = inputslot->tts_values[att - 1];
-		bool		isNull = inputslot->tts_isnull[att - 1];
 
 		/* rotate hashkey left 1 bit at each step */
 		hashkey = (hashkey << 1) | ((hashkey & 0x80000000) ? 1 : 0);
 
-		if (!isNull)			/* treat nulls as having hash key 0 */
+		if (!isnull[att-1])			/* treat nulls as having hash key 0 */
 		{
-			uint32		hkey;
-
-			hkey = DatumGetUInt32(FunctionCall1(&aggstate->hashfunctions[i],
-												attr));
-			hashkey ^= hkey;
+			hashkey ^= DatumGetUInt32(FunctionCall1(info, values[att-1]));
 		}
 	}
 
 	MemoryContextSwitchTo(oldContext);
-
-	/* 0 is special */
-	if (hashkey == 0) 
-		hashkey = 0xcafebabe;	/* just a random number */
 
 	return hashkey;
 }
