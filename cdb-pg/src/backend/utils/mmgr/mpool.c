@@ -26,8 +26,9 @@
 
 typedef struct mpool_block_t mpool_block_t;
 
-#define BLOCKSZ_STEP1   (128*1024)  /* 128K */
-#define BLOCKSZ_STEP2   (1024*1024) /* 1MB */
+#define BLOCKSZ_STEP1	(32*1024)
+#define BLOCKSZ_STEP2   (128*1024)  /* 128K */
+#define BLOCKSZ_STEP3   (1024*1024) /* 1MB */
 
 
 typedef struct mpool_context_t mpool_context_t;
@@ -92,7 +93,8 @@ static mpool_block_t* mpool_block_alloc(mpool_context_t* mpool, int minsz)
 {
 	const int hdrsz = MAXALIGN(sizeof(mpool_block_t));
 	mpool_block_t* bp;
-	int tot = mpool->blocks_allocated < 8 ? BLOCKSZ_STEP1 : BLOCKSZ_STEP2;
+	int tot = (mpool->blocks_allocated < 4 ? BLOCKSZ_STEP1
+			   : (mpool->blocks_allocated < 8 ? BLOCKSZ_STEP2 : BLOCKSZ_STEP3));
 
 	if (minsz + MPOOL_CHUNKHDR_SIZE + hdrsz > tot)
 		tot = minsz + MPOOL_CHUNKHDR_SIZE + hdrsz;
