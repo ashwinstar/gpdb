@@ -911,7 +911,7 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hash
 	oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 
 	/* Get the bucket index. */
-	bucket_idx = hashkey % ht->nbucket;
+	bucket_idx = hashkey & (ht->nbucket - 1);
 	bloomval = ((uint64)1) << ((hashkey >> 13) & 0x3f);
 	entry = (0 == (ht->bloom[bucket_idx] & bloomval) ? NULL : ht->buckets[bucket_idx]);
 	
@@ -1142,6 +1142,8 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 	
 	double nB = 2.0;
 	double zB = sizeBufFile(NULL); /* Passes = overflow batches */
+	unsigned nKint = 0;
+	int nKlog2 = 0;
 
 	elog(DEBUG2, "hashagg ngroups = %g, numaggs = %d, keywidth = %d, transpace = %d", ngroups, numaggs, keywidth, transpace);
 	elog(DEBUG2, "hashagg memquota = %g, zH = %g, zB = %g", memquota, zH, zB);
@@ -1179,7 +1181,7 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 
 	nK = ceil(nH/gp_hashagg_groups_per_bucket);
 
-	if (nB > UINT_MAX || nH > UINT_MAX || nK > UINT_MAX)
+	if (nB >= INT_MAX || nH >= INT_MAX || nK >= INT_MAX)
 	{
 		if (force)
 		{
@@ -1193,10 +1195,15 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 			return false; /* Too many groups. */
 		}
 	}
+
+	nKint = (int) nK;
+	for (nKlog2 = 9; (((unsigned)1) << nKlog2) < nKint; nKlog2++);
+	nKint = ((unsigned)1) << nKlog2;
 	
     if (out_hats)
     {
-        out_hats->nbuckets = (unsigned)nK;
+        out_hats->nbuckets = nKint;
+		out_hats->nbuckets_log2 = nKlog2;
         out_hats->nentries = (unsigned)nH;
 		out_hats->nbatches = (unsigned)nB;
 		out_hats->spill = expectSpill;

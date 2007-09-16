@@ -48,6 +48,7 @@ typedef struct HashAggEntry
 typedef struct HashAggTableSizes
 {
     unsigned             nbuckets;   /* Calculated # of hash buckets. */
+    unsigned 			 nbuckets_log2;
     unsigned             nentries;   /* Calculated # of hash entries. */
     unsigned             nbatches;   /* Calculated # of passes. */
     unsigned             workmem_initial;    /* estimated work_mem bytes at #entries=0 */
