@@ -586,6 +586,7 @@ void send_error(request_t* r, int code, const char* msg)
     printf("%s - %d %s\n", r->peer, code, msg);
     n = apr_snprintf(buf, sizeof(buf), "HTTP/1.0 %d %s\r\n"
 		     "Content-length: 0\r\n"
+		     "Expires: 0\r\n"
 		     "Cache-Control: no-cache\r\n"
 		     "Connection: close\r\n\r\n",
 		     code, msg);
@@ -600,6 +601,7 @@ void send_empty(request_t* r)
     const char* buf = "HTTP/1.0 200 ok\r\n"
 	"Content-type: text/plain\r\n"
 	"Content-length: 0\r\n"
+	"Expires: 0\r\n"
 	"Cache-Control: no-cache\r\n"
 	"Connection: close\r\n\r\n";
 
@@ -621,6 +623,7 @@ void send_ok(request_t* r)
 {
     const char* buf = "HTTP/1.0 200 ok\r\n"
 	"Content-type: text/plain\r\n"
+	"Expires: 0\r\n"
 	"Cache-Control: no-cache\r\n"
 	"Connection: close\r\n\r\n";
         
