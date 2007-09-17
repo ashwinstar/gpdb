@@ -499,14 +499,14 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 	
 	if (DispatchContext == NULL)
 	{
-		 
 		DispatchContext = AllocSetContextCreate(TopMemoryContext,
 											 "Dispatch Context",
 											 ALLOCSET_DEFAULT_MINSIZE,
 											 ALLOCSET_DEFAULT_INITSIZE,
 											 ALLOCSET_DEFAULT_MAXSIZE);
 	}
-
+	Assert(DispatchContext != NULL);
+	
 	oldContext = MemoryContextSwitchTo(DispatchContext);
 
 	if (!(*dispatchThreads))
@@ -824,6 +824,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 		
 		pParms->cmdID = gp_command_count;
 		pParms->localSlice = sliceId;
+		Assert(DispatchContext != NULL);
 		pParms->dispatchResultPtrArray =
 			(CdbDispatchResult **) palloc0((gp_connections_per_thread == 0 ? getgpsegmentCount() : gp_connections_per_thread)*
 										   sizeof(CdbDispatchResult *));

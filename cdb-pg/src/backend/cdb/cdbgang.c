@@ -71,6 +71,8 @@ static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bo
 static CdbComponentDatabases *cdb_component_dbs = NULL;
 static bool mirroringNotConfigured = false;
 
+static MemoryContext GangContext = NULL;
+
 /*
  * Parameter structure for the DoConnect threads
  */
@@ -167,8 +169,16 @@ createDispatchAgents(void)
 	/*
 	 * MemoryContexts used in this routine.
 	 */
+	if (GangContext == NULL)
+	{ 
+		GangContext = AllocSetContextCreate(TopMemoryContext,
+											 "Gang Context",
+											 ALLOCSET_DEFAULT_MINSIZE,
+											 ALLOCSET_DEFAULT_INITSIZE,
+											 ALLOCSET_DEFAULT_MAXSIZE);
+	}
 
-	oldContext = MemoryContextSwitchTo(TopMemoryContext);
+	oldContext = MemoryContextSwitchTo(GangContext);
 
 	/*
 	 * get_database_name allocated memory with palloc, so remember we must pfree it later
@@ -330,8 +340,16 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	/*
 	 * MemoryContexts used in this routine.
 	 */
+	if (GangContext == NULL)
+	{ 
+		GangContext = AllocSetContextCreate(TopMemoryContext,
+											 "Gang Context",
+											 ALLOCSET_DEFAULT_MINSIZE,
+											 ALLOCSET_DEFAULT_INITSIZE,
+											 ALLOCSET_DEFAULT_MAXSIZE);
+	}
 
-	oldContext = MemoryContextSwitchTo(TopMemoryContext);
+	oldContext = MemoryContextSwitchTo(GangContext);
 
 
 	/*
@@ -841,13 +859,13 @@ buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo)
 
 	char	   *username = GetUserNameFromId(GetAuthenticatedUserId());
 
-    Assert(CurrentMemoryContext == TopMemoryContext);
+    Assert(CurrentMemoryContext == GangContext);
     Assert(size > 0);
 
     /*
 	 * Get the structure representing the configured segment
 	 * databases.  This structure is fetched into a permanent memory
-	 * context -- probably the TopMemoryContext. We also allocate
+	 * context. We also allocate
 	 * space for and partially construct the data structure pointed to
 	 * by ClusterDefn and headed by CdbClusterDescriptor.
 	 */
@@ -976,13 +994,13 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 
 	char	   *username = GetUserNameFromId(GetAuthenticatedUserId());
 
-    Assert(CurrentMemoryContext == TopMemoryContext);
+    Assert(CurrentMemoryContext == GangContext);
     Assert(size > 0);
 
     /*
 	 * Get the structure representing the configured segment
 	 * databases.  This structure is fetched into a permanent memory
-	 * context -- probably the TopMemoryContext. We also allocate
+	 * context. We also allocate
 	 * space for and partially construct the data structure pointed to
 	 * by ClusterDefn and headed by CdbClusterDescriptor.
 	 */
@@ -1983,8 +2001,17 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
 	/*
 	 * MemoryContexts used in this routine.
 	 */
+	if (GangContext == NULL)
+	{
+		GangContext = AllocSetContextCreate(TopMemoryContext,
+											 "Gang Context",
+											 ALLOCSET_DEFAULT_MINSIZE,
+											 ALLOCSET_DEFAULT_INITSIZE,
+											 ALLOCSET_DEFAULT_MAXSIZE);
+	}
+	Assert(GangContext != NULL);
 
-	oldContext = MemoryContextSwitchTo(TopMemoryContext);
+	oldContext = MemoryContextSwitchTo(GangContext);
 
 
 	/*
@@ -2301,8 +2328,18 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 		     (portal_name ? portal_name : "<unnamed>"),
 		     list_length(allocatedReaderGangsN),
 		     list_length(availableReaderGangsN));
+    
+    if (GangContext == NULL)
+	{ 
+		GangContext = AllocSetContextCreate(TopMemoryContext,
+											 "Gang Context",
+											 ALLOCSET_DEFAULT_MINSIZE,
+											 ALLOCSET_DEFAULT_INITSIZE,
+											 ALLOCSET_DEFAULT_MAXSIZE);
+	}
+	Assert(GangContext != NULL);
 
-	oldContext = MemoryContextSwitchTo(TopMemoryContext);
+	oldContext = MemoryContextSwitchTo(GangContext);
 
 	/* Make sure CreateGang will use the current database name. */
 
@@ -2924,7 +2961,8 @@ disconnectAndDestroyGangById(int gang_id)
 {
 	MemoryContext oldContext;
 	
-	oldContext = MemoryContextSwitchTo(TopMemoryContext);
+	Assert(GangContext != NULL);
+	oldContext = MemoryContextSwitchTo(GangContext);
 
 	/*
 	 * Now we iterate through the list of available reader gangs
@@ -3170,9 +3208,7 @@ freeGangsForPortal(char *portal_name)
 	MemoryContext oldContext;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
-		return;
-
-	oldContext = MemoryContextSwitchTo(TopMemoryContext);
+		return;	
 
     if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
         elog(DEBUG4, "freeGangsForPortal '%s'. Reader gang inventory: "
@@ -3200,6 +3236,11 @@ freeGangsForPortal(char *portal_name)
 			return;
 		}
 	}
+	
+	if (GangContext)
+		oldContext = MemoryContextSwitchTo(GangContext);
+	else
+		oldContext = MemoryContextSwitchTo(TopMemoryContext);
 
 	/*
 	 * Now we iterate through the list of allocated reader gangs
