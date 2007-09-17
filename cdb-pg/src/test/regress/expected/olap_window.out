@@ -6806,3 +6806,42 @@ from sale; --mvd 1,2,3->4
   4 | 800 | 06-01-1401 |  1
 (12 rows)
 
+-- MPP-1964
+SELECT cn,(cn-prc),prc,
+CORR(floor(sale.cn-sale.prc),floor(sale.prc)) OVER(partition by sale.cn,sale.cn order by sale.cn desc range between 1 preceding and 1 following ) as corr 
+FROM sale; --mvd 1->4
+ cn | ?column? | prc  | corr 
+----+----------+------+------
+  3 |       -2 |    5 |   -1
+  3 |        3 |    0 |   -1
+  3 |       -2 |    5 |   -1
+  1 |        1 |    0 |   -1
+  1 |       -4 |    5 |   -1
+  1 |        1 |    0 |   -1
+  1 |        1 |    0 |   -1
+  1 |        1 |    0 |   -1
+  4 |        3 |    1 |     
+  4 |        3 |    1 |     
+  2 |        2 |    0 |   -1
+  2 |    -2398 | 2400 |   -1
+(12 rows)
+
+SELECT cn,floor(qty/pn),cn,
+CORR(floor(sale.qty/sale.pn),floor(sale.cn)) OVER(order by sale.cn desc range 3 preceding) as correlation 
+from sale;
+ cn | floor | cn |     correlation     
+----+-------+----+---------------------
+  4 |     0 |  4 |                    
+  4 |     0 |  4 |                    
+  3 |     0 |  3 |                    
+  3 |     0 |  3 |                    
+  3 |     0 |  3 |                    
+  2 |     0 |  2 |  -0.540061724867322
+  2 |    11 |  2 |  -0.540061724867322
+  1 |     0 |  1 | -0.0439799497133542
+  1 |     0 |  1 | -0.0439799497133542
+  1 |     0 |  1 | -0.0439799497133542
+  1 |     0 |  1 | -0.0439799497133542
+  1 |     0 |  1 | -0.0439799497133542
+(12 rows)
+

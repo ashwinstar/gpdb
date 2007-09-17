@@ -1765,7 +1765,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 			
 				funcstate->final_aggTransValue =
 					invoke_agg_trans_func(funcstate->invprelimfn,
-										  funcstate->numargs,
+										  funcstate->invprelimfn.fn_nargs - 1,
 										  funcstate->final_aggTransValue,
 										  &funcstate->final_aggNoTransValue,
 										  &(funcstate->final_aggTransValueIsNull),
@@ -1803,6 +1803,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 			FrameBufferEntryForRows *curr_rows_entry = NULL;
 			FrameBufferEntryForRange *curr_range_entry = NULL;
 			WindowValue *curr_value = NULL;
+			MemoryContext oldcxt;
 			
 			/* Indicate if the current frame contains tuples at all. */
 			bool has_tuples = true;
@@ -1834,8 +1835,13 @@ computeFrameValue(WindowStatePerLevel level_state,
 				else
 					ntuplestore_acc_seek_first(level_state->trail_reader);
 			}
-				
-			funcstate->final_aggTransValue = funcstate->aggInitValue;
+
+			oldcxt = MemoryContextSwitchTo(wstate->transcontext);
+			funcstate->final_aggTransValue = 
+				datumCopy(funcstate->aggInitValue,
+						  funcstate->aggTranstypeByVal,
+						  funcstate->aggTranstypeLen);
+			MemoryContextSwitchTo(oldcxt);
 			funcstate->final_aggTransValueIsNull = funcstate->aggInitValueIsNull;
 			funcstate->final_aggNoTransValue = funcstate->aggInitValueIsNull;
 
@@ -1875,7 +1881,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 
 						funcstate->final_aggTransValue =
 							invoke_agg_trans_func(funcstate->prelimfn,
-												  funcstate->numargs,
+												  funcstate->prelimfn.fn_nargs - 1,
 												  funcstate->final_aggTransValue,
 												  &funcstate->final_aggNoTransValue,
 												  &(funcstate->final_aggTransValueIsNull),
@@ -1912,7 +1918,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 
 					funcstate->final_aggTransValue =
 						invoke_agg_trans_func(funcstate->prelimfn,
-											  funcstate->numargs,
+											  funcstate->prelimfn.fn_nargs - 1,
 											  funcstate->final_aggTransValue,
 											  &funcstate->final_aggNoTransValue,
 											  &(funcstate->final_aggTransValueIsNull),
@@ -2872,6 +2878,7 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 				FrameBufferEntryForRange *range_entry = NULL;
 				FrameBufferEntryForRows *rows_entry = NULL;
 				WindowValue *value = NULL;
+				MemoryContext oldcxt;
 				
 				if (funcstate->serial_index == -1)
 					funcstate->serial_index = findSerialIndex(funcstate, level_state);
@@ -2897,9 +2904,11 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 				}
 
 				Assert(value != NULL);
+				oldcxt = MemoryContextSwitchTo(wstate->transcontext);
 				funcstate->final_aggTransValue = datumCopy(value->value,
 														   funcstate->aggTranstypeByVal,
 														   funcstate->aggTranstypeLen);
+				MemoryContextSwitchTo(oldcxt);
 				funcstate->final_aggTransValueIsNull = value->valueIsNull;
 				funcstate->final_aggNoTransValue = false;
 

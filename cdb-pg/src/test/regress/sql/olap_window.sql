@@ -1131,3 +1131,11 @@ FROM sale; --mvd 1,2->4
 SELECT cn,pn,dt,
 FIRST_VALUE(floor(sale.pn/sale.pn)) OVER(partition by sale.cn,sale.pn,sale.dt order by sale.cn desc range between unbounded preceding and 1 following ) as fv 
 from sale; --mvd 1,2,3->4
+
+-- MPP-1964
+SELECT cn,(cn-prc),prc,
+CORR(floor(sale.cn-sale.prc),floor(sale.prc)) OVER(partition by sale.cn,sale.cn order by sale.cn desc range between 1 preceding and 1 following ) as corr 
+FROM sale; --mvd 1->4
+SELECT cn,floor(qty/pn),cn,
+CORR(floor(sale.qty/sale.pn),floor(sale.cn)) OVER(order by sale.cn desc range 3 preceding) as correlation 
+from sale;
