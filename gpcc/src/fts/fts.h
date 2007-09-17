@@ -2,9 +2,9 @@
 #define FTS_H_
 
 #include <gpcc.h>
-#include <apr_queue.h>
+#include <gpcc_event.h>
 
-int fts_initialize(apr_queue_t *alertq);
+int fts_initialize(gpcc_evqueue_t *alertq);
 
 /**
  *
@@ -14,7 +14,7 @@ int fts_initialize(apr_queue_t *alertq);
  *      start - start gpdb
  *      stop  - stop gpdb
  */ 
-int fts_do(const char *msg, apr_queue_t *outq);
+int fts_do(const char *msg, gpcc_evqueue_t *outq);
 
 
 

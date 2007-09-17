@@ -1,50 +1,84 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <apr.h>
-#include <gpcc.h>
-#include <apr_queue.h>
+#include <gpcc_strings.h>
+#include <apr_getopt.h>
+#include <apr_strings.h>
+#include <apr_thread_proc.h>
+#include <gpcc_event.h>
+#include <gpcc_net.h>
+#include <json/json.h>
+#include <event.h>
 #include "fts.h"
+
+
+void* net_opened(gpcc_net_conn_t conn, void* conn_arg, 
+		 int self_origin,
+		 apr_pool_t* pool)
+{
+    gpcc_warning(FLINE, "local net opened");
+    return 0;
+}
+
+/** callback when a connection is closed */
+void net_closed(gpcc_net_conn_t conn, void* conn_arg)
+{
+    gpcc_warning(FLINE, "local net closed");
+}
+
+/** callback when bytes arrives */
+void net_recv(gpcc_net_conn_t conn, void* conn_arg)
+{
+    gpcc_warning(FLINE, "local net recv");
+}
+
+/** callback every second */
+void net_tick(apr_time_t now)
+{
+    ;   
+}
+
 
 int main(int argc, const char *argv[]) 
 {
-    apr_pool_t *p;
-    apr_queue_t *alertq;
-    apr_queue_t *outq;
-    char *out;
+    apr_pool_t *pool;
+    gpcc_evqueue_t *alertq = 0;
+    gpcc_evqueue_t *outq = 0;
     int e;
+    int started = 0;
 
     apr_app_initialize(&argc, (char const *const **) &argv, 0);
 
-    if (0 != (e = apr_pool_create(&p, 0))) {
-	gpcc_warning(FLINE, "apr_pool_create failed");
-	return e;
-    }
+    apr_pool_create(&pool, 0);
 
-    if (0 != (e = apr_queue_create(&alertq, 100, p))){
-	gpcc_warning(FLINE, "apr_queue_create failed");
+    event_init();
+    
+    if (0 != (e = gpcc_net_start(8080, net_opened, net_closed, net_recv, net_tick, 0))) {
+	gpcc_warning(FLINE, "gpcc_net_start failed");
 	return e;
     }
+    
+    alertq = gpcc_evqueue_create(100, pool);
 
-    if (0 != (e = apr_queue_create(&outq, 100, p))){
-	gpcc_warning(FLINE, "apr_queue_create failed");
-	return e;
-    }
+    outq = gpcc_evqueue_create(100, pool);
 
     fts_initialize(alertq);
 
-    fts_do("start", outq);
-    
-    e = apr_queue_pop(outq, (void **) &out);
-    if (e) {
-	gpcc_warning(FLINE, "apr_queue_pop failed");
-	return e;
+    for (;;) {
+	if (gpcc_net_once())
+	    break;
+	
+	if (!started) {
+	    fts_do("start", outq);
+	    started = 1;
+	}
     }
 
-    printf("output = %s", out);
-    fflush(stdout);
-    
+
+    gpcc_net_stop();
+
     fts_terminate();
 
     apr_terminate();
+
     return 0;
 }
