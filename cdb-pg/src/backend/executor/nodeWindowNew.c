@@ -1553,9 +1553,8 @@ static bool hasTuplesInFrame(WindowStatePerLevel level_state)
 	
 	if (ntuplestore_acc_tell(level_state->trail_reader, NULL) &&
 		ntuplestore_acc_tell(level_state->lead_reader, NULL) &&
-		ntuplestore_count_slot_acc(level_state->frame_buffer->tuplestore,
-								   level_state->trail_reader,
-								   level_state->lead_reader) < 0)
+		ntuplestore_acc_is_before( level_state->lead_reader,
+								   level_state->trail_reader))
 		has_tuples = false;
 	if (EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) &&
 		((level_state->is_rows && 
@@ -2806,7 +2805,7 @@ add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 		if (IS_LEAD_LAG(funcstate->wrxstate->winkind) ||
 			IS_LAST_VALUE(funcstate->wrxstate->winkind) ||
 			(IS_FIRST_VALUE(funcstate->wrxstate->winkind) &&
-			 funcstate->aggTransValueIsNull))
+			 funcstate->aggNoTransValue))
 		{
 			int argno = 1;
 			MemoryContext oldcxt;
@@ -2818,6 +2817,7 @@ add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 						  funcstate->wrxstate->argtypbyval[argno],
 						  funcstate->wrxstate->argtyplen[argno]);
 			funcstate->aggTransValueIsNull = fcinfo.argnull[argno];
+			funcstate->aggNoTransValue = false;
 
 			MemoryContextSwitchTo(oldcxt);
 		}
@@ -3994,6 +3994,7 @@ resetTransValue(WindowStatePerFunction funcstate,
 
 		funcstate->aggTransValue = 0;
 		funcstate->aggTransValueIsNull = true;
+		funcstate->aggNoTransValue = true;
 	}
 }
 

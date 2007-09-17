@@ -1452,11 +1452,24 @@ int ntuplestore_count_slot_acc(NTupleStore *nts, NTupleStoreAccessor *tsa1, NTup
 	
 	return ret;
 }
-		
 
+/*
+ * Check if the tuple pointed by tsa1 is before the tuple pointed by tsa2.
+ *
+ * This function assumes that both tsa1 and tsa2 are pointing to a valid position.
+ */
+bool ntuplestore_acc_is_before(NTupleStoreAccessor *tsa1, NTupleStoreAccessor *tsa2)
+{
+	Assert(ntuplestore_acc_tell(tsa1, NULL) &&
+		   ntuplestore_acc_tell(tsa2, NULL));
+	if (tsa1->pos.blockn < tsa2->pos.blockn)
+		return true;
 
-
-
-
-
-
+	if (tsa1->pos.blockn > tsa2->pos.blockn)
+		return false;
+	
+	if (tsa1->pos.slotn < tsa2->pos.slotn)
+		return true;
+	else
+		return false;
+}
