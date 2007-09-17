@@ -339,7 +339,7 @@ DROP TABLE copy_regression_csv3;
 CREATE TABLE copy_regression_error1(a int, b int) distributed by(a);
 -- parse error on QE (extra column on line 6)
 COPY copy_regression_error1 from stdin;
-ERROR:  extra data after last expected column  (seg1 localhost:11002 pid=19466)
+ERROR:  extra data after last expected column  (seg1 localhost:11002 pid=8018)
 CONTEXT:  COPY copy_regression_error1, line 6: "6	6	6"
 -- parse error on QD (missing column on line 3)
 COPY copy_regression_error1 from stdin;
@@ -351,6 +351,35 @@ ERROR:  invalid input syntax for integer: "two"
 CONTEXT:  COPY copy_regression_error1, line 2, column a
 -- convert error on QE (invalid type line 5)
 COPY copy_regression_error1 from stdin;
-ERROR:  invalid input syntax for integer: "five"  (seg0 localhost:11001 pid=19465)
+ERROR:  invalid input syntax for integer: "five"  (seg0 localhost:11001 pid=8017)
 CONTEXT:  COPY copy_regression_error1, line 5, column b
 DROP TABLE copy_regression_error1;
+-- ###########################################################
+-- Single row error handling - SEGMENT REJECT LIMIT tests
+-- ###########################################################
+CREATE TABLE copy_regression_reject1(a int, b int, c int) distributed by(a);
+-- test various errors that would get discovered on QD and QE COPY
+-- only 3 rows here are good data, 5 should get rejected.
+COPY copy_regression_reject1 FROM STDIN SEGMENT REJECT LIMIT 10;
+NOTICE:  Rejected 5 badly formatted rows.
+SELECT * FROM copy_regression_reject1 ORDER BY a; -- should have 3 rows
+ a | b | c 
+---+---+---
+ 1 | 1 | 1
+ 3 | 3 | 3
+ 7 | 7 | 7
+(3 rows)
+
+TRUNCATE copy_regression_reject1;
+-- the very low reject limit should get reached here
+COPY copy_regression_reject1 FROM STDIN SEGMENT REJECT LIMIT 2;
+ERROR:  Segment reject limit reached after encountering 2 data errors. Aborting operation.
+CONTEXT:  COPY copy_regression_reject1, line 5: "5"
+SELECT * FROM copy_regression_reject1 ORDER BY a; -- should have no rows!
+ a | b | c 
+---+---+---
+(0 rows)
+
+-- invalid reject limit, must be larger than 1
+COPY copy_regression_reject1 FROM STDIN SEGMENT REJECT LIMIT 1;
+DROP TABLE copy_regression_reject1;
