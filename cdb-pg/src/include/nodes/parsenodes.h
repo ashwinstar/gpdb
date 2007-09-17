@@ -1192,6 +1192,7 @@ typedef struct CreateStmt
 	OnCommitAction oncommit;	/* what do we do at COMMIT? */
 	char	   *tablespacename; /* table space to use, or NULL */
 	List       *distributedBy;   /* what columns we distribute the data by */
+	Node       *partitionBy;     /* what columns we partition the data by */
 	TableOidInfo oidInfo;
 	char	    relKind;         /* CDB: force relkind to this */
 	GpPolicy  *policy;
@@ -1219,7 +1220,7 @@ typedef struct ExtTableTypeDesc
 typedef struct CreateExternalStmt
 {
 	NodeTag		type;
-	RangeVar   *relation;		/* exteranl relation to create */
+	RangeVar   *relation;		/* external relation to create */
 	List	   *tableElts;		/* column definitions (list of ColumnDef) */
 	Node	   *exttypedesc;    /* LOCATION or EXECUTE information */
 	char	   *format;			/* data format name */
@@ -1320,6 +1321,29 @@ typedef struct FkConstraint
 	Oid			trig4Oid;
 } FkConstraint;
 
+/* ----------
+ * Definitions for Table Partition clauses in CreateStmt
+ *
+ * ----------
+ */
+typedef enum PartitionByType			/* types of Partitions */
+{
+	PARTTYP_HASH,
+	PARTTYP_RANGE,
+	PARTTYP_LIST,
+	PARTTYP_REFERENCE /* for future use... */
+} PartitionByType;
+
+typedef struct PartitionBy
+{
+	NodeTag				type;
+	PartitionByType		partType;
+	List			   *keys;		/* key columns (Partition By ...) */
+	Node			   *partNum;  /* partitionS (constant number)*/
+	Node			   *subPart;  /* optional subpartition (PartitionBy ptr) */
+	List			   *partSpec;	/* specification or template */  
+
+} PartitionBy;
 
 /* ----------------------
  *		Create/Drop Table Space Statements

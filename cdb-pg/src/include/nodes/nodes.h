@@ -331,6 +331,7 @@ typedef enum NodeTag
 	T_ReassignOwnedStmt,
 	T_WindowSpec,
 	T_WindowSpecParse,
+	T_PartitionBy,
 
 	T_A_Expr = 800,
 	T_ColumnRef,

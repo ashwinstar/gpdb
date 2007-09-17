@@ -369,8 +369,8 @@ static void doNegateFloat(Value *v);
 %type <boolean> constraints_set_mode
 %type <str>		OptTableSpace OptConsTableSpace OptTableSpaceOwner
 %type <list>    OptDistributedBy
-%type <keyword> TabPartitionByType
-%type <list>    OptTabPartitionBy TabSubPartitionBy 
+%type <ival>	TabPartitionByType
+%type <node>	OptTabPartitionBy TabSubPartitionBy 
 				OptTabSubPartitionBy OptTabSubSubPartitionBy
 %type <list>	opt_check_option
 %type <node>	OptTabPartitionsNumber OptTabSubPartitionsNumber /* XXX XXX: ??? */
@@ -1974,6 +1974,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->oncommit = $10;
 					n->tablespacename = $11;
 					n->distributedBy = $12;
+					n->partitionBy = $13;
 					n->oidInfo.relOid = 0;
 					n->oidInfo.comptypeOid = 0;
 					n->oidInfo.toastOid = 0;
@@ -2454,6 +2455,8 @@ OptDistributedBy:   DISTRIBUTED BY  '(' columnList ')'			{ $$ = $4; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
+/* START PARTITION RULES */
+
 OptTabPartitionsNumber: PARTITIONS NumericOnly 		{ $$ = makeAConst($2); }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
@@ -2466,7 +2469,6 @@ OptTabPartitionSpec: '(' TabPartitionElemList ')'	{ $$ = $2; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 OptTabSubPartitionSpec: 
-/*          '(' TabSubPartitionElemList ')'			{ $$ = $2; } */
             '(' TabSubPartitionElemList OptTabSubPartitionSpec ')' { $$ = $2; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
@@ -2554,9 +2556,9 @@ TabSubPartitionNameDecl: SUBPARTITION IDENT
 		;
 
 TabPartitionByType:
-			RANGE 				{ $$ = $1; }
-			| HASH				{ $$ = $1; }
-			| LIST				{ $$ = $1; }
+			RANGE 				{ $$ = PARTTYP_RANGE; }
+			| HASH				{ $$ = PARTTYP_HASH; }
+			| LIST				{ $$ = PARTTYP_LIST; }
 		;
 
 OptTabPartitionBy:
@@ -2564,7 +2566,16 @@ OptTabPartitionBy:
             TabPartitionByType '(' columnList ')' 
             OptTabPartitionsNumber 
             OptTabSubPartitionBy
-            OptTabPartitionSpec						{ $$ = $5; }
+            OptTabPartitionSpec						
+				{
+                        PartitionBy *n = makeNode(PartitionBy); 
+                        n->partType = $3;
+                        n->keys     = $5; 
+                        n->partNum  = $7;
+                        n->subPart  = $8;
+                        n->partSpec = $9;
+                        $$ = (Node *)n;
+				}
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
@@ -2589,9 +2600,18 @@ TabSubPartitionBy:
 			SUBPARTITION BY 
             TabPartitionByType '(' columnList ')' 
             OptTabSubPartitionsNumber 
-  /*            OptTabSubPartitionTemplate				{ $$ = $5; } */
             OptTabSubPartitionTemplate
-            OptTabSubSubPartitionBy					{ $$ = $5; } 
+            OptTabSubSubPartitionBy
+				{
+                        PartitionBy *n = makeNode(PartitionBy); 
+                        n->partType = $3;
+                        n->keys     = $5; 
+                        n->partNum  = $7;
+                        n->subPart  = $9;
+                        n->partSpec = $8;
+                        $$ = (Node *)n;
+				}
+
 		;
 
 /*
