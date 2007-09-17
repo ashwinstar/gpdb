@@ -56,7 +56,6 @@ enum event_t {
     NET_OPENED_EVENT,
     NET_CLOSED_EVENT,
     NET_RECEIVED_EVENT,
-    NET_FAILURE_EVENT,
 
     GET_IDENTITY_MSG_EVENT,
     IDENTITY_MSG_EVENT,
@@ -113,6 +112,7 @@ extern const char* event_str(event_t event);
 typedef enum cmdstate_t cmdstate_t;
 enum cmdstate_t {
     NULL_CMDSTATE,
+    TIMER_CMDSTATE,
     SYSTEM_CMDSTATE,
     SYSTEM_READY_CMDSTATE,
     SYSTEM_FATAL_CMDSTATE,

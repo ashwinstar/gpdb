@@ -7,6 +7,7 @@
 #include <gpcc_event.h>
 #include <gpcc_net.h>
 #include <gpcc_fsm.h>
+#include <gpcc_spin.h>
 #include <json/json.h>
 #include <event.h>
 
@@ -227,7 +228,8 @@ static void net_recv_cb(gpcc_net_conn_t conn, void* arg)
 /* callback from gpcc_net. this runs in the network thread */
 static void time_tick_cb(apr_time_t now)
 {
-    gpcc_event_t* ev = gpcc_event_alloc(TICK_EVENT, 0, 0);
+
+    gpcc_event_t *ev = gpcc_event_alloc(TICK_EVENT, gpfts.timer_cmdidx, 0);
     gpcc_evqueue_put(gpfts.evq, ev);
 }
 
@@ -238,7 +240,7 @@ static void * APR_THREAD_FUNC fts_thread_run(apr_thread_t *thread, void *arg)
 {
     gpcc_event_t* ev = 0;
     cmdslot_t* cp;
-
+    
     while (gpfts.thread == thread) {
 	int nxtstate;
 	gpcc_fsm_func_t** action;
@@ -340,6 +342,10 @@ int fts_initialize(gpcc_evqueue_t *alertq)
 
     /* set up the fsm */
     fsm_setup();
+
+    /* timer slot */
+    cp = cmdslot_alloc("TIMER", TIMER_CMDSTATE, 0);
+    gpfts.timer_cmdidx = cp->cmdidx;
 
     /* system slot */
     cp = cmdslot_alloc("SYSTEM", SYSTEM_CMDSTATE, 0);

@@ -5,6 +5,7 @@
 #include <apr_thread_proc.h>
 #include <gpcc_net.h>
 #include <gpcc_event.h>
+#include <gpcc_ha.h>
 #include "event.h"
 
 #define DEFAULT_QD_MAX_CONNECT  25
@@ -56,56 +57,42 @@ struct cmdslot_t {
 
     union {
 	struct {
+	    gpcc_ha_t **ha;
+	    int nha;
 	    
-	} a;
-
-	struct {
-	    const char *segment;
-	    int port;
-	    char *data_dir;
-	    int primary;
-	    int valid;
-	    int isqd;
-	    int idx;
-
 	    struct {
-		apr_pool_t *subpool;
-		struct json_object *msg;
-		int parentidx;
-		char *action;
-		char *mode;
-		char *data_dir;
-		int port;
-		int dbid;
-		int content;
-		int exitcode;
-		char *reason;
-		apr_proc_t proc;
+		gpcc_evqueue_t *outq;
 
 		union {
 		    struct {
+
+		    } setup;
+
+		    struct {
+
 		    } initdb;
-		    
+
 		    struct {
-			
-		    } startdb;
-		    
+
+		    } start;
+
 		    struct {
-			
-		    } stopdb;
-		    
+
+		    } stop;
+
 		    struct {
-			
-		    } statusdb;
-		    
+
+		    } status;
+
 		} u;
 	    } request;
-	} seg;
 
+	} sys;
 
 	struct {
 	    
-	} ma;
+	} a;
+
     } u;
 };
 
@@ -128,6 +115,7 @@ struct gpfts_t {
     gpcc_evqueue_t* evq;	/* the event queue */
     gpcc_evqueue_t* alertq;     /* the alert queue */
     int          system_cmdidx; /* cmdidx of system FSM */
+    int          timer_cmdidx;  /* cmdidx of timer FSM */
     apr_uint16_t cmdidx_gen;
     const char*  gphome;
     cmdslot_t    cmdslot[CMDSLOT_MAX];

@@ -18,11 +18,16 @@
 
 APR_DECLARE(void) fsm_setup(void)
 {
+    gpcc_fsm_put(TIMER_CMDSTATE, INIT_EVENT, TIMER_CMDSTATE,
+		 timer_init, 0);
+    gpcc_fsm_put(TIMER_CMDSTATE, TICK_EVENT, TIMER_CMDSTATE,
+		 timer_tick, 0);
+
     gpcc_fsm_put(SYSTEM_CMDSTATE, INIT_EVENT, SYSTEM_CMDSTATE,
 		 ha_connect_all, 0);
     gpcc_fsm_put(SYSTEM_CMDSTATE, NET_OPENED_EVENT, SYSTEM_CMDSTATE,
 		 ha_opened, 0);
-    gpcc_fsm_put(SYSTEM_CMDSTATE, NET_FAILURE_EVENT, SYSTEM_CMDSTATE,
+    gpcc_fsm_put(SYSTEM_CMDSTATE, NET_CLOSED_EVENT, SYSTEM_CMDSTATE,
 		 ha_closed, 0);
     gpcc_fsm_put(SYSTEM_CMDSTATE, SUCCESS_EVENT, SYSTEM_READY_CMDSTATE,
 		 setup_ready, 0);
@@ -43,16 +48,16 @@ APR_DECLARE(void) fsm_setup(void)
 		 setup_ready, 0);
 
 
-    gpcc_fsm_put(SYSTEM_READY_CMDSTATE, NET_FAILURE_EVENT, SYSTEM_FATAL_CMDSTATE,
+    gpcc_fsm_put(SYSTEM_READY_CMDSTATE, NET_CLOSED_EVENT, SYSTEM_FATAL_CMDSTATE,
 		 ha_closed, 0);
-    gpcc_fsm_put(SYSTEM_FATAL_CMDSTATE, NET_FAILURE_EVENT, SYSTEM_FATAL_CMDSTATE,
+    gpcc_fsm_put(SYSTEM_FATAL_CMDSTATE, NET_CLOSED_EVENT, SYSTEM_FATAL_CMDSTATE,
 		 ha_closed, 0);
 
     gpcc_fsm_put(SYSTEM_READY_CMDSTATE, ARRAY_INIT_EVENT, INITDB_CMDSTATE,
 		 initdb_do, 0);
     gpcc_fsm_put(INITDB_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, INITDB_CMDSTATE,
 		 initdb_reply, 0);
-    gpcc_fsm_put(INITDB_CMDSTATE, NET_FAILURE_EVENT, NULL_CMDSTATE,
+    gpcc_fsm_put(INITDB_CMDSTATE, NET_CLOSED_EVENT, NULL_CMDSTATE,
 		 ha_closed, initdb_reply, 0);
     gpcc_fsm_put(INITDB_CMDSTATE, SUCCESS_EVENT, SYSTEM_READY_CMDSTATE,
 		 initdb_success, 0);
