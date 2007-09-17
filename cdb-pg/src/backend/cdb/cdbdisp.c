@@ -166,6 +166,8 @@ static volatile bool pleaseCancel = false; /* (transaction granularity) */
 
 static DtxContextInfo TempQDDtxContextInfo;
 
+static MemoryContext DispatchContext = NULL;
+
 /*
  * We can't use elog to write to the log if we are running in a thread.
  * 
@@ -494,8 +496,18 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 		max_threads = 1;	/* one, not zero, because we need to allocate one param block */
 	else
 		max_threads = 1 + (largest_gangsize - 1) / gp_connections_per_thread;
+	
+	if (DispatchContext == NULL)
+	{
+		 
+		DispatchContext = AllocSetContextCreate(TopMemoryContext,
+											 "Dispatch Context",
+											 ALLOCSET_DEFAULT_MINSIZE,
+											 ALLOCSET_DEFAULT_INITSIZE,
+											 ALLOCSET_DEFAULT_MAXSIZE);
+	}
 
-	oldContext = MemoryContextSwitchTo(TopMemoryContext);
+	oldContext = MemoryContextSwitchTo(DispatchContext);
 
 	if (!(*dispatchThreads))
 	{
