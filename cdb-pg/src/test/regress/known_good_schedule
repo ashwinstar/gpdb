@@ -87,7 +87,7 @@ ignore: foreign_key
 test: cluster
 test: dependency
 test: guc
-test: combocid
+ignore: combocid
 test: limit
 ignore: plpgsql
 ignore: copy2
