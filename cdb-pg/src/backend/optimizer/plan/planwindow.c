@@ -1137,7 +1137,7 @@ static int compare_edge(WindowFrameEdge *a, WindowFrameEdge *b)
 		return 1;
 	else if ( a->kind == WINDOW_BOUND_PRECEDING || a->kind == WINDOW_BOUND_FOLLOWING )
 	{
-		/* Compare a->val to b->val */
+		/* Compare constant values represented by a->val and b->val. */
 		bool okay = TRUE;
 		Const *aconst, *bconst;
 		int64 aval = 0, bval = 0;
@@ -1173,9 +1173,23 @@ static int compare_edge(WindowFrameEdge *a, WindowFrameEdge *b)
 			return 1;
 	}
 	else if (a->kind == WINDOW_DELAYED_BOUND_PRECEDING || a->kind == WINDOW_DELAYED_BOUND_FOLLOWING)
+	{
+		/* Compare pointer values a->val and b->val. 
+		 * Ordering is arbitrary but consistent.  The idea is that a given
+		 * value should be equal to itself and different from all others
+		 * in order to force delayed bounds into separate window keys.
+		 */
+		if ( ((void*)a->val) < ((void*)b->val) )
+			return -1;
+		else if ( ((void*)a->val) > ((void*)b->val) )
+			return 1;
+	}
+	/*
+	else if (a->kind == WINDOW_DELAYED_BOUND_PRECEDING || a->kind == WINDOW_DELAYED_BOUND_FOLLOWING)
 		return -1;
 	else if (b->kind == WINDOW_DELAYED_BOUND_PRECEDING || b->kind == WINDOW_DELAYED_BOUND_FOLLOWING)
 		return 1;
+	*/
 
 	return 0;
 }
