@@ -1083,13 +1083,10 @@ add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 								 argno,
 								 (void *) funcstate->wrxstate, 
 								 NULL);
-		{
 			
-			funcstate->win_value = FunctionCallInvoke(&fcinfo);
-			funcstate->win_value_is_null = fcinfo.isnull;
-		}
+		funcstate->win_value = FunctionCallInvoke(&fcinfo);
+		funcstate->win_value_is_null = fcinfo.isnull;
 	}
-
 }
 
 static void
@@ -1126,11 +1123,8 @@ invokeWindowedFunc(WindowStatePerFunction funcstate, FmgrInfo fn,
 								 argno,
 								 (void *) funcstate->wrxstate, 
 								 NULL);
-		{
-			
-			wtv->transValue = FunctionCallInvoke(&fcinfo);
-			wtv->transValueIsNull = fcinfo.isnull;
-		}
+		wtv->transValue = FunctionCallInvoke(&fcinfo);
+		wtv->transValueIsNull = fcinfo.isnull;
 	}
 }
 
