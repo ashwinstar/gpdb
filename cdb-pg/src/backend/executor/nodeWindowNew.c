@@ -70,6 +70,25 @@ typedef struct WindowValue
 } WindowValue;
 
 /*
+ * A higher-level structure to represent an entry in the frame buffer.
+ */
+typedef struct FrameBufferEntry
+{
+	/* Keys for RANGE frames. 
+	 *
+	 * This is only used for RANGE frames. For ROWS frame, these values
+	 * are NULL.
+	 */
+	Datum *keys;
+	bool *nulls;
+
+	/* A list of intermediate function values to be buffered in the frame
+	 * buffer. Each of values is of WindowValue type.
+	 */
+	List *func_values;
+} FrameBufferEntry;
+
+/*
  * WindowStatePerLevelData - per-level working state
  */
 typedef struct WindowStatePerLevelData
@@ -177,6 +196,13 @@ typedef struct WindowStatePerLevelData
 	 * value.
 	 */
 	bool agg_filled;
+
+	/*
+	 * FrameBufferEntry buffers to avoid pallocs/pfrees.
+	 */
+	FrameBufferEntry *curr_entry_buf;
+	FrameBufferEntry *trail_entry_buf;
+	FrameBufferEntry *lead_entry_buf;
 } WindowStatePerLevelData;
 
 /* 
@@ -364,19 +390,6 @@ typedef struct WindowFrameBufferData
 } WindowFrameBufferData;
 typedef WindowFrameBufferData *WindowFrameBuffer;
 
-typedef struct FrameBufferEntryForRange
-{
-	/* the keys for the range frame. */
-	Datum *keys;
-	bool *nulls;
-	List *func_values;
-} FrameBufferEntryForRange;
-
-typedef struct FrameBufferEntryForRows
-{
-	List *func_values;
-} FrameBufferEntryForRows;
-
 static WindowFrameBuffer createRangeFrameBuffer(Datum trail_range,
 												Datum lead_range,
 												int bytes);
@@ -389,9 +402,6 @@ static void appendToFrameBuffer(WindowStatePerLevel level_state,
 								bool last_peer);
 #if 0
 static void trimFrameBuffer(WindowFrameBuffer buffer, NTupleStorePos *pos);
-static List *getValueAtPos(WindowFrameBuffer buffer,
-						   WindowStatePerLevel level_state,
-						   NTupleStorePos *pos);
 #endif
 static void incrementCurrentRow(WindowFrameBuffer buffer, WindowState *wstate);
 static bool hasEnoughDataInRange(WindowFrameBuffer buffer,
@@ -428,8 +438,9 @@ static void adjustEdges(WindowFrameBuffer buffer, WindowState *wstate);
 static TupleTableSlot *fetchCurrentRow(WindowState *wstate);
 static TupleTableSlot *fetchTupleSlotThroughBuf(WindowState *wstate);
 static void processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer);
-static void * getCurrentValue(NTupleStoreAccessor *reader,
-							  WindowStatePerLevel level_state);
+static bool getCurrentValue(NTupleStoreAccessor *reader,
+							WindowStatePerLevel level_state,
+							FrameBufferEntry *entry_buf);
 static bool cmp_deformed_tuple(Datum *a, bool *a_nulls, Datum *b, bool *b_nulls,
 							   bool *asc_cols, int ncols,
 							   FmgrInfo *ltfuncs, FmgrInfo *eqfuncs,
@@ -448,6 +459,8 @@ static void set_lead_lag_framing(WindowStatePerLevel level_state,
 static bool hasTuplesInFrame(WindowStatePerLevel level_state);
 static Datum last_value_internal(WindowRefExprState *wrxstate, bool *isnull);
 static Datum first_value_internal(WindowRefExprState *wrxstate, bool *isnull);
+static FrameBufferEntry *createFrameBufferEntry(WindowStatePerLevel level_state);
+static void freeFrameBufferEntry(FrameBufferEntry *entry);
 
 /*
  * initFrameBuffer -- initialize the frame buffer.
@@ -646,7 +659,10 @@ freeFrameBuffers(WindowState *wstate)
 			freeFrameBuffer(level_state->frame_buffer);
 			level_state->frame_buffer = NULL;
 		}
-		
+
+		freeFrameBufferEntry(level_state->curr_entry_buf);
+		freeFrameBufferEntry(level_state->trail_entry_buf);
+		freeFrameBufferEntry(level_state->lead_entry_buf);
 	}
 }
 
@@ -846,30 +862,6 @@ serializeFuncs(WindowStatePerLevel level_state,
 	Assert(*p_len <= *p_max_size);
 }
 
-
-/*
- * serializeEntryForRows -- serialize a buffer entry for rows.
- */
-static void
-serializeEntryForRows(WindowStatePerLevel level_state,
-					  ExprContext *econtext,
-					  char **p_serial_entry,
-					  Size *p_max_size,
-					  Size *p_len)
-{
-	*p_len = 0;
-	Assert(level_state->is_rows);
-	Assert(*p_serial_entry != NULL);
-
-	/* Copy function values */
-	serializeFuncs(level_state,
-				   econtext,
-				   p_serial_entry,
-				   p_max_size,
-				   p_len,
-				   0);
-}
-
 /*
  * deserializeValue -- deserialize one WindowValue from a given char array.
  *
@@ -911,10 +903,11 @@ deserializeValue(char *read_pos, WindowValue *value,
  */
 static List *
 deserializeFuncs(WindowStatePerLevel level_state,
+				 FrameBufferEntry *entry_buf,
 				 char *serial_entry,
 				 Size len)
 {
-	List *func_values = NIL;
+	List *func_values = entry_buf->func_values;
 
 	ListCell *lc;
 	char *read_pos = serial_entry;
@@ -936,10 +929,8 @@ deserializeFuncs(WindowStatePerLevel level_state,
 			bool byvalue;
 			get_typlenbyval(CUME_DIST_PRELIM_TYPE,
 							&typelen, &byvalue);
-			value =	(WindowValue *)palloc0(sizeof(WindowValue));
+			value =	list_nth(func_values, funcstate->serial_index);
 			read_pos = deserializeValue(read_pos, value, byvalue, typelen);
-
-			func_values = lappend(func_values, value);
 		}
 
 		else if (IS_LEAD_LAG(funcstate->wrxstate->winkind) ||
@@ -952,12 +943,10 @@ deserializeFuncs(WindowStatePerLevel level_state,
 			nargs = list_length(wrxstate->args);
 			Assert(2 <= nargs && nargs <= 4);
 
-			value =	(WindowValue *)palloc0(sizeof(WindowValue));
+			value =	list_nth(func_values, funcstate->serial_index);
 			read_pos = deserializeValue(read_pos, value,
 										wrxstate->argtypbyval[argno],
 										wrxstate->argtyplen[argno]);
-
-			func_values = lappend(func_values, value);
 		}
 
 		/* the function which has an inverse preliminary function.
@@ -965,12 +954,10 @@ deserializeFuncs(WindowStatePerLevel level_state,
 		else if (OidIsValid(funcstate->invprelimfn_oid) ||
 				 OidIsValid(funcstate->prelimfn_oid))
 		{
-			value =	(WindowValue *)palloc0(sizeof(WindowValue));
+			value =	list_nth(func_values, funcstate->serial_index);
 			read_pos = deserializeValue(read_pos, value,
 										funcstate->aggTranstypeByVal,
 										funcstate->aggTranstypeLen);
-
-			func_values = lappend(func_values, value);
 		}
 
 		/* the general case */
@@ -981,6 +968,7 @@ deserializeFuncs(WindowStatePerLevel level_state,
 			Oid typid;
 			bool byval;
 			int16 arglen;
+			int argno = 0;
 
 			foreach (ref_lc, winref_state->args)
 			{
@@ -989,10 +977,10 @@ deserializeFuncs(WindowStatePerLevel level_state,
 				typid = exprType((Node *)argstate->expr);
 				get_typlenbyval(typid, &arglen, &byval);
 
-				value =	(WindowValue *)palloc0(sizeof(WindowValue));
+				value =	list_nth(func_values, funcstate->serial_index + argno);
 				read_pos = deserializeValue(read_pos, value, byval, arglen);
 
-				func_values = lappend(func_values, value);
+				argno++;
 			}
 		}
 	}
@@ -1003,72 +991,50 @@ deserializeFuncs(WindowStatePerLevel level_state,
 }
 
 /*
- * deserializeEntryForRows -- deserialize a buffer entry for rows.
- *
- * The space for 'entry' is allocated here. The caller should release the space
- * after using it.
- */
-static FrameBufferEntryForRows *
-deserializeEntryForRows(WindowStatePerLevel level_state,
-						char *serial_entry, Size len)
-{
-	FrameBufferEntryForRows *entry;
-	char *read_pos = serial_entry;
-	
-	Assert(level_state->is_rows);
-
-	entry = (FrameBufferEntryForRows *)palloc0(sizeof(FrameBufferEntryForRows));
-
-	/* deserial function values */
-	entry->func_values = deserializeFuncs(level_state, read_pos,
-										  len);
-
-	return entry;
-}
-
-/*
- * serializeEntryForRange -- serialize a buffer entry for range.
+ * serializeEntry -- serialize a buffer entry.
  */
 static void
-serializeEntryForRange(WindowStatePerLevel level_state,
-					   ExprContext *econtext,
-					   char **p_serial_entry,
-					   Size *p_max_size,
-					   Size *p_len)
+serializeEntry(WindowStatePerLevel level_state,
+			   ExprContext *econtext,
+			   char **p_serial_entry,
+			   Size *p_max_size,
+			   Size *p_len)
 {
 	int key_no;
 	char *written_pos;
 	TupleTableSlot *slot = econtext->ecxt_scantuple;
 
 	*p_len = 0;
-	Assert(!level_state->is_rows);
 	Assert(*p_serial_entry != NULL);
 	
 	written_pos = *p_serial_entry;
 	
-	/* Copy the keys */
-	for (key_no=0; key_no < level_state->numSortCols; key_no++)
+	if (!level_state->is_rows)
 	{
-		AttrNumber attnum = level_state->sortColIdx[key_no];
-		Datum key;
-		bool isnull;
-		Size keylen = 0;
+		/* Copy the keys */
+		for (key_no=0; key_no < level_state->numSortCols; key_no++)
+		{
+			AttrNumber attnum = level_state->sortColIdx[key_no];
+			Datum key;
+			bool isnull;
+			Size keylen = 0;
 
-		key = slot_getattr(slot, attnum, &isnull);
+			key = slot_getattr(slot, attnum, &isnull);
 
-		keylen += datumGetSize(key, level_state->col_typbyvals[key_no],
-							   level_state->col_typlens[key_no]);
+			keylen += datumGetSize(key, level_state->col_typbyvals[key_no],
+								   level_state->col_typlens[key_no]);
 	
-		ensureSpace(p_serial_entry, p_max_size, written_pos, keylen + sizeof(bool));
+			ensureSpace(p_serial_entry, p_max_size, written_pos, keylen + sizeof(bool));
 
-		if (level_state->col_typbyvals[key_no])
-			memcpy(written_pos, &(key), sizeof(Datum));
-		else
-			memcpy(written_pos, DatumGetPointer(key), keylen);
-		written_pos += keylen;
+			if (level_state->col_typbyvals[key_no])
+				memcpy(written_pos, &(key), sizeof(Datum));
+			else
+				memcpy(written_pos, DatumGetPointer(key), keylen);
+			written_pos += keylen;
 		
-		memcpy(written_pos, &(isnull), sizeof(bool));
-		written_pos += sizeof(bool);
+			memcpy(written_pos, &(isnull), sizeof(bool));
+			written_pos += sizeof(bool);
+		}
 	}
 	
 	/* Copy function values */
@@ -1081,46 +1047,44 @@ serializeEntryForRange(WindowStatePerLevel level_state,
 }
 
 /*
- * deserializeEntryForRange -- deserialize a buffer entry for range.
+ * deserializeEntry -- deserialize a buffer entry.
  */
-static FrameBufferEntryForRange *
-deserializeEntryForRange(WindowStatePerLevel level_state,
-						 char *serial_entry, Size len)
+static FrameBufferEntry *
+deserializeEntry(WindowStatePerLevel level_state,
+				 FrameBufferEntry *entry_buf,
+				 char *serial_entry, Size len)
 {
-	FrameBufferEntryForRange *entry;
+	FrameBufferEntry *entry = entry_buf;
 	char *read_pos = serial_entry;
 	Size keylen = 0;
 	int key_no;
 
-	Assert(!level_state->is_rows);
-
-	entry = (FrameBufferEntryForRange *)palloc0(sizeof(FrameBufferEntryForRange));
-	entry->keys = (Datum *)palloc0(level_state->numSortCols * sizeof(Datum));
-	entry->nulls = (bool *)palloc0(level_state->numSortCols * sizeof(bool));
-
-	for (key_no=0; key_no < level_state->numSortCols; key_no++)
+	if (!level_state->is_rows)
 	{
-		Size curr_keylen = 0;
+		for (key_no=0; key_no < level_state->numSortCols; key_no++)
+		{
+			Size curr_keylen = 0;
 		
-		curr_keylen = datumGetSize(PointerGetDatum(read_pos),
-								   level_state->col_typbyvals[key_no],
-								   level_state->col_typlens[key_no]);
+			curr_keylen = datumGetSize(PointerGetDatum(read_pos),
+									   level_state->col_typbyvals[key_no],
+									   level_state->col_typlens[key_no]);
 
-		if (level_state->col_typbyvals[key_no])
-			memcpy(&(entry->keys[key_no]), read_pos, sizeof(Datum));
-		else
-			entry->keys[key_no] = PointerGetDatum(read_pos);
-		read_pos += curr_keylen;
+			if (level_state->col_typbyvals[key_no])
+				memcpy(&(entry->keys[key_no]), read_pos, sizeof(Datum));
+			else
+				entry->keys[key_no] = PointerGetDatum(read_pos);
+			read_pos += curr_keylen;
 
-		keylen += curr_keylen;
+			keylen += curr_keylen;
 		
-		memcpy(&(entry->nulls[key_no]), read_pos, sizeof(bool));
-		read_pos += sizeof(bool);
-		keylen += sizeof(bool);
+			memcpy(&(entry->nulls[key_no]), read_pos, sizeof(bool));
+			read_pos += sizeof(bool);
+			keylen += sizeof(bool);
+		}
 	}
 
 	/* deserial function values */
-	entry->func_values = deserializeFuncs(level_state, read_pos,
+	entry->func_values = deserializeFuncs(level_state, entry_buf, read_pos,
 										  len - keylen);
 
 	return entry;
@@ -1384,16 +1348,8 @@ appendToFrameBuffer(WindowStatePerLevel level_state,
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 
 	Assert(buffer->is_rows == level_state->is_rows);
-	if (buffer->is_rows)
-	{
-		serializeEntryForRows(level_state, econtext,
-							  &serial_entry, &(wstate->max_size), &len);
-	}
-	else
-	{
-		serializeEntryForRange(level_state, econtext,
-							   &serial_entry, &(wstate->max_size), &len);
-	}
+	serializeEntry(level_state, econtext,
+				   &serial_entry, &(wstate->max_size), &len);
 
 	ntuplestore_acc_put_data(buffer->writer, (void*)serial_entry, len);
 
@@ -1409,57 +1365,35 @@ trimFrameBuffer(WindowFrameBuffer buffer, NTupleStorePos *pos)
 {
 	ntuplestore_trim(buffer->tuplestore, pos);
 }
-
-/*
- * getValueAtPos - return a value at the given position.
- */
-static List *
-getValueAtPos(WindowFrameBuffer buffer,
-			  WindowStatePerLevel level_state,
-			  NTupleStorePos *pos)
-{
-	void *data;
-	int len;
-	void *value;
-	
-	ntuplestore_acc_seek(buffer->reader, pos);
-	ntuplestore_acc_current_data(buffer->reader, &data, &len);
-
-	if (buffer->is_rows)
-		value = (void *)deserializeEntryForRows(level_state, data, len);
-	else
-		value = (void *)deserializeEntryForRange(level_state, data, len);
-
-	return value;
-}
 #endif
 
 /*
- * getCurrentValue -- return a value at the current position for
+ * getCurrentValue -- obtain the value at the current position for
  * an accessor.
+ *
+ * The value is stored in the given 'entry_buf'. Note that 'entry_buf'
+ * is allocated by the caller.
+ *
+ * If the current position of the accessor is an invalid position, this
+ * function returns false.
  */
-static void *
+static bool
 getCurrentValue(NTupleStoreAccessor *reader,
-				WindowStatePerLevel level_state)
+				WindowStatePerLevel level_state,
+				FrameBufferEntry *entry_buf)
 {
 	void *data;
 	int len;
-	void *value;
 	
 	bool found = ntuplestore_acc_current_data(reader, &data, &len);
 
 	if (!found)
-		return NULL;
+		return false;
 	
-	if (level_state->is_rows)
-		value = (void *)deserializeEntryForRows(level_state, data, len);
-	else
-		value = (void *)deserializeEntryForRange(level_state, data, len);
+	entry_buf = deserializeEntry(level_state, entry_buf, data, len);
 
-	return value;
+	return true;
 }
-
-				
 
 /*
  * incrementCurrentRow -- increment the current_row in the buffer.
@@ -1534,19 +1468,66 @@ hasEnoughDataInRows(WindowFrameBuffer buffer,
 	return false;
 }
 
-static void
-freeFrameBufferEntryForRange(FrameBufferEntryForRange *range_entry)
+static FrameBufferEntry *createFrameBufferEntry(WindowStatePerLevel level_state)
 {
-	pfree(range_entry->keys);
-	pfree(range_entry->nulls);
+	FrameBufferEntry *entry = NULL;
+	ListCell *lc;
 
-	list_free_deep(range_entry->func_values);
+	entry =	(FrameBufferEntry *)palloc0(sizeof(FrameBufferEntry));
+	if (!level_state->is_rows)
+	{
+		entry->keys = (Datum *)palloc0(level_state->numSortCols * sizeof(Datum));
+		entry->nulls = (bool *)palloc0(level_state->numSortCols * sizeof(bool));
+	}
+
+	entry->func_values = NIL;
+
+	/* Allocate the space for WindowValue */
+	foreach (lc, level_state->level_funcs)
+	{
+		WindowStatePerFunction funcstate = (WindowStatePerFunction) lfirst(lc);
+		WindowValue *value;
+
+		/* skip window functions with trivial frames */
+		if (funcstate->trivial_frame)
+			continue;
+
+		else if (funcstate->winpeercount ||
+				 (IS_LEAD_LAG(funcstate->wrxstate->winkind) ||
+				  IS_FIRST_LAST(funcstate->wrxstate->winkind)) ||
+				 (OidIsValid(funcstate->invprelimfn_oid) ||
+				  OidIsValid(funcstate->prelimfn_oid)))
+		{
+			value =	(WindowValue *)palloc0(sizeof(WindowValue));
+			entry->func_values = lappend(entry->func_values, value);
+		}
+			
+		else
+		{
+			WindowRefExprState *winref_state = funcstate->wrxstate;
+			int argno;
+			for(argno = 0; argno < list_length(winref_state->args); argno++)
+			{
+				value =	(WindowValue *)palloc0(sizeof(WindowValue));
+				entry->func_values = lappend(entry->func_values, value);
+			}
+		}
+	}
+
+	return entry;
 }
 
 static void
-freeFrameBufferEntryForRows(FrameBufferEntryForRows *rows_entry)
+freeFrameBufferEntry(FrameBufferEntry *entry)
 {
-	list_free_deep(rows_entry->func_values);
+	if (entry->keys != NULL)
+		pfree(entry->keys);
+
+	if (entry->nulls != NULL)
+		pfree(entry->nulls);
+	
+	if (entry->func_values != NULL)
+		list_free_deep(entry->func_values);
 }
 
 /*
@@ -1612,10 +1593,9 @@ computeTransValueForAgg(WindowStatePerFunction funcstate,
 						WindowState *wstate)
 {
 	WindowStatePerLevel level_state = funcstate->wlevel;
-	FrameBufferEntryForRows *curr_rows_entry = NULL;
-	FrameBufferEntryForRange *curr_range_entry = NULL;
+	bool has_curr_entry = false;
+	FrameBufferEntry *curr_entry = level_state->curr_entry_buf;
 	WindowValue *curr_value = NULL;
-	bool is_rows = level_state->is_rows;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 	FunctionCallInfoData fcinfo;
 	MemoryContext oldcxt;
@@ -1674,22 +1654,11 @@ computeTransValueForAgg(WindowStatePerFunction funcstate,
 										   level_state->lead_reader) < 0)
 				break;
 					
-			if (is_rows)
-			{
-				curr_rows_entry = getCurrentValue(level_state->trail_reader,
-												  level_state);
-				if (curr_rows_entry != NULL)
-					curr_value = (WindowValue *)
-						list_nth(curr_rows_entry->func_values, funcstate->serial_index);
-			}
-			else
-			{
-				curr_range_entry = getCurrentValue(level_state->trail_reader,
-												   level_state);
-				if (curr_range_entry != NULL)
-					curr_value = (WindowValue *)
-						list_nth(curr_range_entry->func_values, funcstate->serial_index);
-			}
+			has_curr_entry = getCurrentValue(level_state->trail_reader,
+											 level_state, curr_entry);
+			if (has_curr_entry)
+				curr_value = (WindowValue *)
+					list_nth(curr_entry->func_values, funcstate->serial_index);
 
 			if (curr_value != NULL)
 			{
@@ -1707,14 +1676,9 @@ computeTransValueForAgg(WindowStatePerFunction funcstate,
 					int argno;
 					for (argno=1; argno <= funcstate->numargs; argno++)
 					{
-						if (is_rows)
-							curr_value = (WindowValue *)
-								list_nth(curr_rows_entry->func_values,
-										 funcstate->serial_index + (argno-1));
-						else
-							curr_value = (WindowValue *)
-								list_nth(curr_range_entry->func_values,
-										 funcstate->serial_index + (argno-1));
+						curr_value = (WindowValue *)
+							list_nth(curr_entry->func_values,
+									 funcstate->serial_index + (argno-1));
 						fcinfo.arg[argno] = curr_value->value;
 						fcinfo.argnull[argno] = curr_value->valueIsNull;
 					}
@@ -1735,11 +1699,6 @@ computeTransValueForAgg(WindowStatePerFunction funcstate,
 			}
 
 			ntuplestore_acc_advance(level_state->trail_reader, 1);
-
-			if (curr_rows_entry != NULL)
-				freeFrameBufferEntryForRows(curr_rows_entry);
-			if (curr_range_entry != NULL)
-				freeFrameBufferEntryForRange(curr_range_entry);
 		}
 
 		/* Add the funcstate->aggTransValue if it is in the current
@@ -1809,22 +1768,21 @@ computeFrameValue(WindowStatePerLevel level_state,
 				  NTupleStoreAccessor *lead_reader)
 {
 	ListCell *lc;
-	int value_no = 0;
 	bool is_rows = level_state->is_rows;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 	WindowFrameBuffer buffer = level_state->frame_buffer;
 	FunctionCallInfoData fcinfo;
 	
-	FrameBufferEntryForRange *range_trail_entry = NULL;
-	FrameBufferEntryForRange *range_lead_entry = NULL;
-	FrameBufferEntryForRows *rows_trail_entry = NULL;
-	FrameBufferEntryForRows *rows_lead_entry = NULL;
-	FrameBufferEntryForRange *range_entry = NULL;
-	FrameBufferEntryForRows *rows_entry = NULL;
+	FrameBufferEntry *trail_entry = level_state->trail_entry_buf;
+	FrameBufferEntry *lead_entry = level_state->lead_entry_buf;
+	FrameBufferEntry *curr_entry = level_state->curr_entry_buf;
+	bool has_trail_entry = false;
+	bool has_lead_entry = false;
+	bool has_curr_entry = false;
 
 	WindowValue *trail_value = NULL;
 	WindowValue *lead_value = NULL;
-	WindowValue *value = NULL;
+	WindowValue *curr_value = NULL;
 
 	bool read_value = false;
 	bool read_edge_value = false;
@@ -1851,22 +1809,18 @@ computeFrameValue(WindowStatePerLevel level_state,
 			if (!read_value)
 			{
 				read_value = true;
-				
-				if (is_rows)
-					rows_entry = getCurrentValue(buffer->current_row_reader, level_state);
-				else
-					range_entry = getCurrentValue(buffer->current_row_reader, level_state);
+				has_curr_entry = getCurrentValue(buffer->current_row_reader,
+												 level_state, curr_entry);
 			}
 			
-			if (is_rows && rows_entry != NULL)
-				value = (WindowValue *)list_nth(rows_entry->func_values, value_no);
-			else if (!is_rows && range_entry != NULL)	
-				value = (WindowValue *)list_nth(range_entry->func_values, value_no);
+			if (has_curr_entry)
+				curr_value = (WindowValue *)list_nth(curr_entry->func_values,
+													 funcstate->serial_index);
 
-			if (value != NULL)
+			if (curr_value != NULL)
 			{
-				funcstate->win_value = value->value;
-				funcstate->win_value_is_null = value->valueIsNull;
+				funcstate->win_value = curr_value->value;
+				funcstate->win_value_is_null = curr_value->valueIsNull;
 			}
 			else
 			{
@@ -1894,53 +1848,40 @@ computeFrameValue(WindowStatePerLevel level_state,
 					if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
 						level_state->num_lead_rows >= level_state->trail_rows)
 					{
-						rows_trail_entry = getCurrentValue(level_state->trail_reader, level_state);
-						rows_lead_entry = getCurrentValue(level_state->lead_reader, level_state);
+						has_trail_entry = getCurrentValue(level_state->trail_reader,
+														  level_state, trail_entry);
+						has_lead_entry = getCurrentValue(level_state->lead_reader,
+														 level_state, lead_entry);
 					}
 				}
 				
 				else
 				{
-					range_trail_entry = getCurrentValue(level_state->trail_reader, level_state);
+					has_trail_entry = getCurrentValue(level_state->trail_reader,
+													  level_state, trail_entry);
 					/* If the leading edge is UNBOUNDED FOLLOWING, the value in the leading edge
 					 * is funcstate->aggTransValue. We don't need to read from the buffer.
 					 */
 					if (level_state->frame->lead->kind != WINDOW_UNBOUND_FOLLOWING)
-						range_lead_entry = getCurrentValue(level_state->lead_reader, level_state);
+						has_lead_entry = getCurrentValue(level_state->lead_reader,
+														 level_state, lead_entry);
 				}
 			}
 			
-			if (is_rows)
+			if (has_trail_entry)
 			{
-				if (rows_trail_entry != NULL)
-				{
-					Assert(list_length(rows_trail_entry->func_values) > value_no);
-					trail_value = 
-						(WindowValue *)list_nth(rows_trail_entry->func_values, value_no);
-				}
-			
-				if (rows_lead_entry != NULL)
-				{
-					Assert(list_length(rows_lead_entry->func_values) > value_no);
-					lead_value =
-						(WindowValue *)list_nth(rows_lead_entry->func_values, value_no);
-				}
+				Assert(list_length(trail_entry->func_values) > funcstate->serial_index);
+				trail_value = 
+					(WindowValue *)list_nth(trail_entry->func_values,
+											funcstate->serial_index);
 			}
-			else
+			
+			if (has_lead_entry)
 			{
-				if (range_trail_entry != NULL)
-				{
-					Assert(list_length(range_trail_entry->func_values) > value_no);
-					trail_value =
-						(WindowValue *)list_nth(range_trail_entry->func_values, value_no);
-				}
-
-				if (range_lead_entry != NULL)
-				{
-					Assert(list_length(range_lead_entry->func_values) > value_no);
-					lead_value =
-						(WindowValue *)list_nth(range_lead_entry->func_values, value_no);
-				}
+				Assert(list_length(lead_entry->func_values) > funcstate->serial_index);
+				lead_value =
+					(WindowValue *)list_nth(lead_entry->func_values,
+											funcstate->serial_index);
 			}
 			
 			if (trail_value != NULL)
@@ -2046,19 +1987,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 			else
 				computeTransValueForAgg(funcstate, wstate);
 		}
-
-		value_no++;
 	}
-
-	if (range_trail_entry != NULL)
-		freeFrameBufferEntryForRange(range_trail_entry);
-	if (range_lead_entry != NULL)
-		freeFrameBufferEntryForRange(range_lead_entry);
-	if (rows_trail_entry != NULL)
-		freeFrameBufferEntryForRows(rows_trail_entry);
-	if (rows_lead_entry != NULL)
-		freeFrameBufferEntryForRows(rows_lead_entry);
-	
 }
 
 /*
@@ -2957,34 +2886,19 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 			 */
 			if (ntuplestore_acc_tell(frame_buffer->current_row_reader, NULL))
 			{
-				FrameBufferEntryForRange *range_entry = NULL;
-				FrameBufferEntryForRows *rows_entry = NULL;
+				FrameBufferEntry *entry = level_state->curr_entry_buf;
+				bool has_entry = false;
 				WindowValue *value = NULL;
 				MemoryContext oldcxt;
 				
 				if (funcstate->serial_index == -1)
 					funcstate->serial_index = findSerialIndex(funcstate, level_state);
 
-				if (level_state->is_rows)
-				{
-					rows_entry = (FrameBufferEntryForRows *)
-						getCurrentValue(frame_buffer->current_row_reader,
-										level_state);
-					Assert(rows_entry != NULL);
-					value = (WindowValue *)list_nth(rows_entry->func_values,
-													funcstate->serial_index);
-				}
-				
-				else
-				{
-					range_entry = (FrameBufferEntryForRange *)
-						getCurrentValue(frame_buffer->current_row_reader,
-												  level_state);
-					Assert(range_entry != NULL);
-					value = (WindowValue *)list_nth(range_entry->func_values,
-													funcstate->serial_index);
-				}
-
+				has_entry =	getCurrentValue(frame_buffer->current_row_reader,
+											level_state, entry);
+				Assert(has_entry);
+				value = (WindowValue *)list_nth(entry->func_values,
+												funcstate->serial_index);
 				Assert(value != NULL);
 				oldcxt = MemoryContextSwitchTo(wstate->transcontext);
 				funcstate->final_aggTransValue = datumCopy(value->value,
@@ -2993,11 +2907,6 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 				MemoryContextSwitchTo(oldcxt);
 				funcstate->final_aggTransValueIsNull = value->valueIsNull;
 				funcstate->final_aggNoTransValue = false;
-
-				if (range_entry != NULL)
-					freeFrameBufferEntryForRange(range_entry);
-				if (rows_entry != NULL)
-					freeFrameBufferEntryForRows(rows_entry);
 			}
 
 			/* Otherwise, the value for the current_rows is stored in aggTransValue.
@@ -3225,8 +3134,10 @@ adjustEdgesForRange(WindowFrameBuffer buffer,
 	/* For a RANGE frame, we need to compare the key values between
 	 * the trailing edge and the leading edge with the current_row.
 	 */
-	FrameBufferEntryForRange *trail_row = NULL;
-	FrameBufferEntryForRange *lead_row = NULL;
+	FrameBufferEntry *trail_entry = level_state->trail_entry_buf;
+	FrameBufferEntry *lead_entry = level_state->lead_entry_buf;
+	bool has_trail_entry = false;
+	bool has_lead_entry = false;
 
 	Datum new_trail_key;
 	bool new_trail_key_isnull;
@@ -3244,18 +3155,21 @@ adjustEdgesForRange(WindowFrameBuffer buffer,
 		/* Adjust the trailing edge */
 		while (need_adjust)
 		{
-			trail_row = getCurrentValue(level_state->trail_reader, level_state);
+			has_trail_entry = getCurrentValue(level_state->trail_reader,
+											  level_state, trail_entry);
 
 			/* If trail_reader does not point to any tuple in the buffer, we
 			 * check on the first tuple.
 			 */
-			if (trail_row == NULL)
+			if (!has_trail_entry)
 			{
 				ntuplestore_acc_seek_first(level_state->trail_reader);
-				trail_row = getCurrentValue(level_state->trail_reader, level_state);
+				has_trail_entry = getCurrentValue(level_state->trail_reader,
+												  level_state, trail_entry);
+				Assert(has_trail_entry);
 			}
 
-			need_adjust = cmp_deformed_tuple(trail_row->keys, trail_row->nulls,
+			need_adjust = cmp_deformed_tuple(trail_entry->keys, trail_entry->nulls,
 											 &new_trail_key, &new_trail_key_isnull,
 											 level_state->col_sort_asc,
 											 level_state->numSortCols,
@@ -3340,18 +3254,21 @@ adjustEdgesForRange(WindowFrameBuffer buffer,
 		{
 			bool key_equal;
 				
-			lead_row = getCurrentValue(level_state->lead_reader, level_state);
+			has_lead_entry = getCurrentValue(level_state->lead_reader,
+											 level_state, lead_entry);
 
-			if (lead_row == NULL)
+			if (!has_lead_entry)
 			{
 				if (!EDGE_IS_BOUND_PRECEDING(level_state->frame->lead))
 					break;
 					
 				ntuplestore_acc_seek_first(level_state->lead_reader);
-				lead_row = getCurrentValue(level_state->lead_reader, level_state);
+				has_lead_entry = getCurrentValue(level_state->lead_reader,
+												 level_state, lead_entry);
+				Assert(has_lead_entry);
 			}
 			
-			need_adjust = cmp_deformed_tuple(lead_row->keys, lead_row->nulls,
+			need_adjust = cmp_deformed_tuple(lead_entry->keys, lead_entry->nulls,
 											 &new_lead_key, &new_lead_key_isnull,
 											 level_state->col_sort_asc,
 											 level_state->numSortCols,
@@ -3359,7 +3276,7 @@ adjustEdgesForRange(WindowFrameBuffer buffer,
 											 level_state->eqfunctions,
 											 econtext->ecxt_per_tuple_memory,
 											 false);
-			key_equal = cmp_deformed_tuple(lead_row->keys, lead_row->nulls,
+			key_equal = cmp_deformed_tuple(lead_entry->keys, lead_entry->nulls,
 										   &new_lead_key, &new_lead_key_isnull,
 										   level_state->col_sort_asc,
 										   level_state->numSortCols,
@@ -3465,11 +3382,6 @@ adjustEdgesForRange(WindowFrameBuffer buffer,
 		ntuplestore_acc_advance(level_state->lead_reader, 1);
 		level_state->lead_ready = false;
 	}
-
-	if (trail_row != NULL)
-		freeFrameBufferEntryForRange(trail_row);
-	if (lead_row != NULL)
-		freeFrameBufferEntryForRange(lead_row);
 }
 
 
@@ -4736,6 +4648,20 @@ init_frames(WindowState *wstate)
 		}
 		level_state->has_only_trans_funcs = has_only_trans_funcs;
 	}
+
+	/*
+	 * Allocate one FrameBufferEntry buffer for each level state, so that
+	 * we don't need to do pallocs/pfrees every time we read an entry
+	 * from the frame buffer.
+	 */
+	for (level=0; level<wstate->numlevels; level++)
+	{
+		WindowStatePerLevel level_state = &wstate->level_state[level];
+		
+		level_state->curr_entry_buf = createFrameBufferEntry(level_state);
+		level_state->trail_entry_buf = createFrameBufferEntry(level_state);
+		level_state->lead_entry_buf = createFrameBufferEntry(level_state);
+	}
 }
 
 static FmgrInfo *
@@ -5307,7 +5233,8 @@ lead_lag_internal(PG_FUNCTION_ARGS, bool is_lead, bool *isnull)
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 	WindowStatePerFunction funcstate = &wstate->func_state[wrxstate->funcno];
 	WindowStatePerLevel level_state = funcstate->wlevel;
-	FrameBufferEntryForRows *rows_lead_entry = NULL;
+	FrameBufferEntry *lead_entry = level_state->lead_entry_buf;
+	bool has_lead_entry = false;
 	WindowValue *lead_value = NULL;
 
 	Insist(PG_NARGS() >= 2);
@@ -5345,11 +5272,12 @@ lead_lag_internal(PG_FUNCTION_ARGS, bool is_lead, bool *isnull)
 	Assert(level_state->is_rows);
 	if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
 		level_state->num_lead_rows >= level_state->trail_rows)
-		rows_lead_entry = getCurrentValue(level_state->lead_reader, level_state);
+		has_lead_entry = getCurrentValue(level_state->lead_reader,
+										 level_state, lead_entry);
 			
-	if (rows_lead_entry != NULL)
+	if (has_lead_entry)
 	{
-		lead_value = (WindowValue *)list_nth(rows_lead_entry->func_values,
+		lead_value = (WindowValue *)list_nth(lead_entry->func_values,
 											 funcstate->serial_index);
 
 		funcstate->win_value = lead_value->value;
@@ -5402,11 +5330,7 @@ lead_lag_internal(PG_FUNCTION_ARGS, bool is_lead, bool *isnull)
 		}
 	}
 
-	if (rows_lead_entry != NULL)
-		freeFrameBufferEntryForRows(rows_lead_entry);
-
 	*isnull = funcstate->win_value_is_null;
-	
 	return funcstate->win_value;
 }
 
@@ -6288,8 +6212,8 @@ last_value_internal(WindowRefExprState *wrxstate, bool *isnull)
 	WindowState *wstate = wrxstate->windowstate;
 	WindowStatePerFunction funcstate = &wstate->func_state[wrxstate->funcno];
 	WindowStatePerLevel level_state = funcstate->wlevel;
-	FrameBufferEntryForRows *rows_lead_entry = NULL;
-	FrameBufferEntryForRange *range_lead_entry = NULL;
+	FrameBufferEntry *lead_entry = level_state->lead_entry_buf;
+	bool has_lead_entry = false;
 	WindowValue *lead_value = NULL;
 	bool lead_valid = true;
 	bool has_tuples = true;
@@ -6318,20 +6242,18 @@ last_value_internal(WindowRefExprState *wrxstate, bool *isnull)
 		{
 			if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
 				level_state->num_lead_rows >= level_state->trail_rows)
-			{
-				rows_lead_entry = getCurrentValue(level_state->lead_reader, level_state);
-				if (rows_lead_entry != NULL)
-					lead_value = (WindowValue *)list_nth(rows_lead_entry->func_values,
-														 funcstate->serial_index);
-			}
+				has_lead_entry = getCurrentValue(level_state->lead_reader,
+												 level_state, lead_entry);
 		}
 		else
 		{
-			range_lead_entry = getCurrentValue(level_state->lead_reader, level_state);
-			if (range_lead_entry != NULL)
-				lead_value = (WindowValue *)list_nth(range_lead_entry->func_values,
-													 funcstate->serial_index);
+			has_lead_entry = getCurrentValue(level_state->lead_reader,
+											 level_state, lead_entry);
 		}
+
+		if (has_lead_entry)
+			lead_value = (WindowValue *)list_nth(lead_entry->func_values,
+												 funcstate->serial_index);
 	}
 
 	if (lead_value != NULL)
@@ -6836,8 +6758,8 @@ first_value_internal(WindowRefExprState *wrxstate, bool *isnull)
 	WindowState *wstate = wrxstate->windowstate;
 	WindowStatePerFunction funcstate = &wstate->func_state[wrxstate->funcno];
 	WindowStatePerLevel level_state = funcstate->wlevel;
-	FrameBufferEntryForRows *rows_trail_entry = NULL;
-	FrameBufferEntryForRange *range_trail_entry = NULL;
+	FrameBufferEntry *trail_entry = level_state->trail_entry_buf;
+	bool has_trail_entry = false;
 	WindowValue *trail_value = NULL;
 	NTupleStorePos orig_pos;
 	bool trail_valid;
@@ -6873,20 +6795,18 @@ first_value_internal(WindowRefExprState *wrxstate, bool *isnull)
 	{
 		if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
 			level_state->num_lead_rows >= level_state->trail_rows)
-		{
-			rows_trail_entry = getCurrentValue(level_state->trail_reader, level_state);
-			if (rows_trail_entry != NULL)
-				trail_value = (WindowValue *)list_nth(rows_trail_entry->func_values,
-													  funcstate->serial_index);
-		}
+			has_trail_entry = getCurrentValue(level_state->trail_reader,
+											  level_state, trail_entry);
 	}
 	else
 	{
-		range_trail_entry = getCurrentValue(level_state->trail_reader, level_state);
-		if (range_trail_entry != NULL)
-			trail_value = (WindowValue *)list_nth(range_trail_entry->func_values,
-												  funcstate->serial_index);
+		has_trail_entry = getCurrentValue(level_state->trail_reader,
+										  level_state, trail_entry);
 	}
+
+	if (has_trail_entry)
+		trail_value = (WindowValue *)list_nth(trail_entry->func_values,
+											  funcstate->serial_index);
 
 	if (trail_value != NULL)
 	{
