@@ -3441,7 +3441,7 @@ adjustEdgesForRange(WindowFrameBuffer buffer,
 	}
 	else if (EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->lead, true))
 	{
-		bool found;
+		bool found = false;
 		if (ntuplestore_acc_tell(buffer->current_row_reader, NULL))
 		{
 			NTupleStorePos pos;
