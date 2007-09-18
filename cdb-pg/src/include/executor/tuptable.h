@@ -182,10 +182,16 @@ extern bool slot_attisnull(TupleTableSlot *slot, int attnum);
 
 static inline Datum slot_getattr(TupleTableSlot *slot, int attnum, bool *isnull)
 {
+	if (TupIsNull(slot))
+	{
+		*isnull = true;
+		return 0;
+	}
+
     if (0 < attnum && attnum <= slot->tts_nvalid)
-	return (*isnull = slot->tts_isnull[attnum-1]), slot->tts_values[attnum-1];
-    else
-	return _slot_getattr(slot, attnum, isnull);
+		return (*isnull = slot->tts_isnull[attnum-1]), slot->tts_values[attnum-1];
+	else
+		return _slot_getattr(slot, attnum, isnull);
 }
 
 #endif   /* TUPTABLE_H */
