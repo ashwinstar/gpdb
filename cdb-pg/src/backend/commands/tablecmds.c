@@ -2756,6 +2756,21 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			/* No command-specific prep needed */
 			pass = AT_PASS_MISC;
 			break;
+			/* CDB: Partitioned Table commands */
+		case AT_PartAdd:				/* Add */
+		case AT_PartCoalesce:			/* Coalesce */
+		case AT_PartDrop:				/* Drop */
+		case AT_PartExchange:			/* Exchange */
+		case AT_PartMerge:				/* Merge */
+		case AT_PartRename:				/* Rename */
+		case AT_PartSplit:				/* Split */
+		case AT_PartTruncate:			/* Truncate */
+				/* XXX XXX XXX */
+			/* This command never recurses */
+			/* No command-specific prep needed */
+			pass = AT_PASS_MISC;
+			break;
+
 		default:				/* oops */
 			elog(ERROR, "unrecognized alter table type: %d",
 				 (int) cmd->subtype);
@@ -3002,6 +3017,16 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
 			break;
 		case AT_DropInherit:
 			ATExecDropInherit(rel, (RangeVar *) cmd->def);
+			break;
+			/* CDB: Partitioned Table commands */
+		case AT_PartAdd:				/* Add */
+		case AT_PartCoalesce:			/* Coalesce */
+		case AT_PartDrop:				/* Drop */
+		case AT_PartExchange:			/* Exchange */
+		case AT_PartMerge:				/* Merge */
+		case AT_PartRename:				/* Rename */
+		case AT_PartSplit:				/* Split */
+		case AT_PartTruncate:			/* Truncate */
 			break;
 		default:				/* oops */
 			elog(ERROR, "unrecognized alter table type: %d",

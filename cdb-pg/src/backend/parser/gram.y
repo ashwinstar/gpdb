@@ -180,7 +180,8 @@ static void doNegateFloat(Value *v);
 %type <ival>	add_drop
 
 %type <node>	alter_table_cmd alter_rel_cmd alter_table_partition_id_spec
-%type <list>	alter_table_cmds alter_rel_cmds alter_table_partition_cmd
+				alter_table_partition_cmd
+%type <list>	alter_table_cmds alter_rel_cmds 
 				opt_table_partition_merge_into 
 				opt_table_partition_split_into
 %type <ival>	opt_table_partition_exchange_validate
@@ -374,18 +375,19 @@ static void doNegateFloat(Value *v);
 				OptTabSubPartitionBy OptTabSubSubPartitionBy
 %type <list>	opt_check_option
 %type <node>	OptTabPartitionsNumber OptTabSubPartitionsNumber /* XXX XXX: ??? */
-%type <list>	OptTabPartitionSpec OptTabSubPartitionSpec    /* XXX XXX: ??? */
-%type <list>	TabPartitionElemList TabSubPartitionElemList OptTabSubPartitionTemplate   /* XXX XXX: ??? */
-%type <list> 	TabPartitionElem TabSubPartitionElem        /* XXX XXX: need complex type */
-%type <list> 	TabPartitionBoundarySpec        /* XXX XXX: need complex type */
-%type <list> 	OptTabPartitionBoundarySpec        /* XXX XXX: need complex type */
+%type <node>	OptTabPartitionSpec OptTabSubPartitionSpec OptTabSubPartitionTemplate      /* PartitionSpec */
+%type <list>	TabPartitionElemList TabSubPartitionElemList /* list of PartitionElem */
+
+%type <node> 	TabPartitionElem TabSubPartitionElem  /* PartitionElem */
+
+%type <node> 	TabPartitionBoundarySpec OptTabPartitionBoundarySpec  /* PartitionBoundSpec */
 %type <list> 	TabPartitionBoundarySpecValList        /* XXX XXX: need complex type */
 %type <list> 	TabPartitionBoundarySpecStart        /* XXX XXX: need complex type */
 %type <list> 	TabPartitionBoundarySpecEnd        /* XXX XXX: need complex type */
 %type <list> 	OptTabPartitionBoundarySpecEnd        /* XXX XXX: need complex type */
 %type <node> 	OptTabPartitionBoundarySpecEvery        /* XXX XXX: need complex type */
 %type <value>	OptNumericOnly 
-%type <node> 	TabPartitionNameDecl TabSubPartitionNameDecl        /* XXX XXX: need complex type */
+%type <node> 	TabPartitionNameDecl TabSubPartitionNameDecl      /* string */
 
 /*
  * If you make any token changes, update the keyword table in
@@ -1655,11 +1657,7 @@ alter_table_cmd:
 				}
 			| alter_table_partition_cmd
 				{
-                    /*					$$ = (Node *)$1; */
-                    /*                    $$ = NULL; */
-					AlterTableCmd *n = makeNode(AlterTableCmd);
-					n->subtype = AT_EnableTrigAll;
-					$$ = (Node *)n;
+					$$ = $1;
 				}
 			| alter_rel_cmd
 				{
@@ -1695,28 +1693,78 @@ alter_table_partition_id_spec:
 
 alter_table_partition_cmd:
 			ADD_P PARTITION 
-            OptTabPartitionBoundarySpec	OptTabSubPartitionSpec { $$ = $3; }
+            OptTabPartitionBoundarySpec	OptTabSubPartitionSpec 
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_PartAdd;
+					$$ = (Node *)n;
+				}
 			| ADD_P PARTITION IDENT	
-            OptTabPartitionBoundarySpec	OptTabSubPartitionSpec { $$ = $4; }
-			| COALESCE PARTITION 	 { $$ = list_make1(NULL); }
-			| COALESCE PARTITION IDENT	 { $$ = list_make1($3); }
+            OptTabPartitionBoundarySpec	OptTabSubPartitionSpec 
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_PartAdd;
+					$$ = (Node *)n;
+				}
+			| COALESCE PARTITION 	 
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_PartCoalesce;
+					$$ = (Node *)n;
+				}
+			| COALESCE PARTITION IDENT	 
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_PartCoalesce;
+					$$ = (Node *)n;
+				}
 			| DROP PARTITION 
-            alter_table_partition_id_spec	 { $$ = list_make1($3); }
+            alter_table_partition_id_spec	 
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_PartDrop;
+					$$ = (Node *)n;
+				}
 			| EXCHANGE PARTITION 
             alter_table_partition_id_spec 
             WITH TABLE relation_expr 
-            opt_table_partition_exchange_validate	{ $$ = list_make1($3); }
+            opt_table_partition_exchange_validate	
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_PartExchange;
+					$$ = (Node *)n;
+				}
 			| MERGE PARTITION 
             alter_table_partition_id_spec ','
             PARTITION alter_table_partition_id_spec 
-            opt_table_partition_merge_into	{ $$ = list_make1($3); }
+            opt_table_partition_merge_into	
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_PartMerge;
+					$$ = (Node *)n;
+				}
 			| RENAME PARTITION 
-            alter_table_partition_id_spec TO IDENT	{ $$ = list_make1($3); }
+            alter_table_partition_id_spec TO IDENT	
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_PartRename;
+					$$ = (Node *)n;
+				}
 			| SPLIT PARTITION 
             alter_table_partition_id_spec AT ctext_row
-            opt_table_partition_split_into	{ $$ = list_make1($3); }
+            opt_table_partition_split_into	
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_PartSplit;
+					$$ = (Node *)n;
+				}
 			| TRUNCATE PARTITION 
-            alter_table_partition_id_spec	 { $$ = list_make1($3); }
+            alter_table_partition_id_spec	 
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_PartTruncate;
+					$$ = (Node *)n;
+				}
 		;
 
 alter_rel_cmds:
@@ -2465,11 +2513,24 @@ OptTabSubPartitionsNumber: SUBPARTITIONS NumericOnly { $$ = makeAConst($2); }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
-OptTabPartitionSpec: '(' TabPartitionElemList ')'	{ $$ = $2; }
+OptTabPartitionSpec: '(' TabPartitionElemList ')'
+				{
+                        PartitionSpec *n = makeNode(PartitionSpec); 
+                        n->partElem  = $2;
+                        n->subSpec   = NULL;
+                        $$ = (Node *)n;
+				}
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
+
 OptTabSubPartitionSpec: 
-            '(' TabSubPartitionElemList OptTabSubPartitionSpec ')' { $$ = $2; }
+            '(' TabSubPartitionElemList OptTabSubPartitionSpec ')' 
+				{
+                        PartitionSpec *n = makeNode(PartitionSpec); 
+                        n->partElem  = $2;
+                        n->subSpec   = $3;
+                        $$ = (Node *)n;
+				}
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
@@ -2519,28 +2580,80 @@ TabPartitionBoundarySpecValList:
 /* VALUES for LIST, start..end for RANGE. */
 
 TabPartitionBoundarySpec:
-            VALUES '(' TabPartitionBoundarySpecValList ')'		{ $$ = $3; }
+            VALUES '(' TabPartitionBoundarySpecValList ')'
+				{
+                        PartitionBoundSpec *n = makeNode(PartitionBoundSpec); 
+                        n->partType  = PARTTYP_LIST;
+                        n->partStart = $3;
+                        n->partEnd   = NULL;
+                        n->partEvery = NULL;
+                        $$ = (Node *)n;
+				}
 			| TabPartitionBoundarySpecStart
               OptTabPartitionBoundarySpecEnd
-              OptTabPartitionBoundarySpecEvery  { $$ = lappend($1, $2); }
+              OptTabPartitionBoundarySpecEvery  
+				{
+                        PartitionBoundSpec *n = makeNode(PartitionBoundSpec); 
+                        n->partType  = PARTTYP_RANGE;
+                        n->partStart = $1;
+                        n->partEnd   = $2;
+                        n->partEvery = $3;
+                        $$ = (Node *)n;
+				}
 			| TabPartitionBoundarySpecEnd
-              OptTabPartitionBoundarySpecEvery	{ $$ = list_make1($1); }
+              OptTabPartitionBoundarySpecEvery	
+				{
+                        PartitionBoundSpec *n = makeNode(PartitionBoundSpec); 
+                        n->partType  = PARTTYP_RANGE;
+                        n->partStart = NULL;
+                        n->partEnd   = $1;
+                        n->partEvery = $2;
+                        $$ = (Node *)n;
+				}
             ;
 
 OptTabPartitionBoundarySpec:
-            TabPartitionBoundarySpec
+            TabPartitionBoundarySpec				{ $$ = $1; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
 TabPartitionElem: 
             TabPartitionNameDecl 
-            OptTabPartitionBoundarySpec	OptTabSubPartitionSpec { $$ = $2; }
-			| TabPartitionBoundarySpec 	OptTabSubPartitionSpec { $$ = $1; }
+            OptTabPartitionBoundarySpec	OptTabSubPartitionSpec 
+				{
+                        PartitionElem *n = makeNode(PartitionElem); 
+                        n->partName  = $1;
+                        n->boundSpec = $2;
+                        n->subSpec   = $3;
+                        $$ = (Node *)n;
+				}
+			| TabPartitionBoundarySpec 	OptTabSubPartitionSpec 
+				{
+                        PartitionElem *n = makeNode(PartitionElem); 
+                        n->partName  = NULL;
+                        n->boundSpec = $1;
+                        n->subSpec   = $2;
+                        $$ = (Node *)n;
+				}
             ;
 
 TabSubPartitionElem: 
-            TabSubPartitionNameDecl OptTabPartitionBoundarySpec	{ $$ = $2; }
-			| TabPartitionBoundarySpec 	{ $$ = $1; }
+            TabSubPartitionNameDecl OptTabPartitionBoundarySpec	
+				{
+                        PartitionElem *n = makeNode(PartitionElem); 
+                        n->partName  = $1;
+                        n->boundSpec = $2;
+                        n->subSpec   = NULL;
+                        $$ = (Node *)n;
+				}
+			| TabPartitionBoundarySpec 	
+				{
+                        PartitionElem *n = makeNode(PartitionElem); 
+                        n->partName  = NULL;
+                        n->boundSpec = $1;
+                        n->subSpec   = NULL;
+                        $$ = (Node *)n;
+				}
             ;
 
 TabPartitionNameDecl: PARTITION IDENT			
@@ -2581,7 +2694,13 @@ OptTabPartitionBy:
 
 OptTabSubPartitionTemplate:
 			SUBPARTITION TEMPLATE 
-            '(' TabSubPartitionElemList ')' 		{ $$ = $4; }
+            '(' TabSubPartitionElemList ')' 
+				{
+                        PartitionSpec *n = makeNode(PartitionSpec); 
+                        n->partElem  = $4;
+                        n->subSpec   = NULL;
+                        $$ = (Node *)n;
+				}
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
@@ -2613,6 +2732,7 @@ TabSubPartitionBy:
 				}
 
 		;
+/* END PARTITION RULES */
 
 /*
  * Note: CREATE TABLE ... AS SELECT ... is just another spelling for

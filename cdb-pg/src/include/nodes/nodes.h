@@ -332,6 +332,10 @@ typedef enum NodeTag
 	T_WindowSpec,
 	T_WindowSpecParse,
 	T_PartitionBy,
+	T_PartitionElem,
+	T_PartitionEvery,
+	T_PartitionBoundSpec,
+	T_PartitionSpec,
 
 	T_A_Expr = 800,
 	T_ColumnRef,

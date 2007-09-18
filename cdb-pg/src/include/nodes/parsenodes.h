@@ -1020,7 +1020,16 @@ typedef enum AlterTableType
 	AT_EnableTrigUser,			/* ENABLE TRIGGER USER */
 	AT_DisableTrigUser,			/* DISABLE TRIGGER USER */
 	AT_AddInherit,				/* INHERIT parent */
-	AT_DropInherit				/* NO INHERIT parent */
+	AT_DropInherit,				/* NO INHERIT parent */
+	/* CDB: Partitioned Tables */
+	AT_PartAdd,					/* Add */
+	AT_PartCoalesce,			/* Coalesce */
+	AT_PartDrop,				/* Drop */
+	AT_PartExchange,			/* Exchange */
+	AT_PartMerge,				/* Merge */
+	AT_PartRename,				/* Rename */
+	AT_PartSplit,				/* Split */
+	AT_PartTruncate				/* Truncate */
 } AlterTableType;
 
 typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */
@@ -1339,11 +1348,44 @@ typedef struct PartitionBy
 	NodeTag				type;
 	PartitionByType		partType;
 	List			   *keys;		/* key columns (Partition By ...) */
-	Node			   *partNum;  /* partitionS (constant number)*/
-	Node			   *subPart;  /* optional subpartition (PartitionBy ptr) */
-	List			   *partSpec;	/* specification or template */  
-
+	Node			   *partNum;	/* partitionS (constant number)*/
+	Node			   *subPart;	/* optional subpartn (PartitionBy ptr) */
+	Node			   *partSpec;	/* specification or template */  
 } PartitionBy;
+
+typedef struct PartitionElem
+{
+	NodeTag				type;
+	Node			   *partName;	/* partition name (optional) */
+	Node			   *boundSpec;	/* boundary specification */  
+	Node			   *subSpec;	/* subpartition spec */
+} PartitionElem;
+
+typedef struct PartitionEvery
+{
+	NodeTag				type;
+	List			   *keys;		/* key columns (Partition By ...) */
+	Node			   *partNum;	/* partitionS (constant number)*/
+	Node			   *subPart;	/* optional subpartn (PartitionBy ptr) */
+	Node			   *partSpec;	/* specification or template */  
+} PartitionEvery;
+
+/* partition boundary specification */
+typedef struct PartitionBoundSpec
+{
+	NodeTag				type;			
+	PartitionByType		partType;		/* RANGE or LIST */
+	List			   *partStart;		/* start (or VALUES for LIST)  */
+	List			   *partEnd;		/* end (or NULL for LIST ) */
+	Node			   *partEvery;		/* every */
+} PartitionBoundSpec;
+
+typedef struct PartitionSpec
+{
+	NodeTag				type;			
+	List			   *partElem;		/* partition element list */
+	Node			   *subSpec;		/* subpartition spec */
+} PartitionSpec;
 
 /* ----------------------
  *		Create/Drop Table Space Statements
