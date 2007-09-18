@@ -3715,6 +3715,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		queryDesc->operation == CMD_DELETE)
 	{
 
+		MemoryContext oldContext;
 		List * savetargets = NIL;
 		Plan * oldplan = NULL;
 		/*
@@ -3735,6 +3736,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 			oldplan = queryDesc->plantree;
 		}
 
+		
+		oldContext = MemoryContextSwitchTo(QueryContext);
 
 		queryDesc->plantree = (Plan *) plan_tree_mutator((Node *) queryDesc->plantree,
 									pre_dispatch_function_evaluation_mutator,
@@ -3745,6 +3748,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 			queryDesc->plantree->targetlist = savetargets;
 			oldplan->targetlist = savetargets;
 		}
+		
+		MemoryContextSwitchTo(oldContext);
 
 	}
 
