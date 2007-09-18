@@ -185,7 +185,10 @@ ExecMotion(MotionState * node)
 
 		/* Running in diagnostic mode ? */
 		if (Gp_interconnect_type == INTERCONNECT_TYPE_NIL)
+		{
+			node->ps.state->active_recv_id = -1;
 			return NULL;
+		}
 
 		if (motion->sendSorted)
 			tuple = execMotionSortedReceiver(node);
