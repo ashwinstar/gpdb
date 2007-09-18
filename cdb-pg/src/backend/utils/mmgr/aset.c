@@ -858,10 +858,16 @@ AllocSetFree(MemoryContext context, void *pointer)
 
 	AllocFreeInfo(set, chunk);
 #ifdef USE_ASSERT_CHECKING
+	/*
+	 * This check doesnt work because pfree is called during error handling from inside
+	 * AtAbort_Portals.  That can only happen if the error was from a thread (say a SEGV)
+	 */
+	/*
 	if (IsUnderPostmaster && context != ErrorContext && mainthread() != 0 && !pthread_equal(main_tid, pthread_self()))
 	{
 		elog(ERROR,"pfree called from thread");
 	}
+	*/
 #endif
 
 #ifdef MEMORY_CONTEXT_CHECKING
