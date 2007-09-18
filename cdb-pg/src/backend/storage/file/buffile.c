@@ -290,6 +290,7 @@ BufFileClose(BufFile *file)
 	/* release the buffer space */
 	pfree(file->files);
 	pfree(file->offsets);
+	pfree(file->peek.buf);
 	pfree(file);
 }
 
