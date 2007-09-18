@@ -29,7 +29,6 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "nodes/makefuncs.h"
-#include "commands/dbcommands.h"
 #include "access/xlog.h"
 
 #include "cdb/cdbcat.h"
@@ -218,8 +217,7 @@ buildMirrorQDDefinition(void)
 
 		cdb_mirrored_entry_db = malloc(sizeof(SegmentDatabaseDescriptor));
 		memset(cdb_mirrored_entry_db, 0, sizeof(SegmentDatabaseDescriptor));
-		cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, mirrorDb, NULL, NULL);
-
+		cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, mirrorDb);
 		/* connect to mirrored QD */
 		if (!cdblink_connectQD(cdb_mirrored_entry_db))
 		{
@@ -308,7 +306,7 @@ buildQDMirrorFromShmem(void)
 
 	cdb_mirrored_entry_db = malloc(sizeof(SegmentDatabaseDescriptor));
 	memset(cdb_mirrored_entry_db, 0, sizeof(SegmentDatabaseDescriptor));
-	cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, &mirrorDb, NULL, NULL);
+	cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, &mirrorDb);
 
 	/* connect to mirrored QD */
 	if (!cdblink_connectQD(cdb_mirrored_entry_db))

@@ -233,8 +233,8 @@ cdbconn_initSegmentDescriptor(SegmentDatabaseDescriptor *segdbDesc,
     /* Segment db info */
     segdbDesc->segment_database_info = cdbinfo;
     segdbDesc->segindex = cdbinfo->segindex;
-    segdbDesc->dbname = MyProcPort->database_name ? strdup(MyProcPort->database_name) : NULL;
-	segdbDesc->username = MyProcPort->user_name ? strdup(MyProcPort->user_name) : NULL;
+    //segdbDesc->dbname = MyProcPort->database_name ? strdup(MyProcPort->database_name) : NULL;
+	//segdbDesc->username = MyProcPort->user_name ? strdup(MyProcPort->user_name) : NULL;
 
     /* Connection info */
     segdbDesc->conn = NULL;
@@ -255,19 +255,6 @@ cdbconn_termSegmentDescriptor(SegmentDatabaseDescriptor *segdbDesc)
     /* Free the error message buffer. */
     segdbDesc->errcode = 0;
     termPQExpBuffer(&segdbDesc->error_message);
-
-    /* Free database name. */
-    if (segdbDesc->dbname)
-    {
-        free(segdbDesc->dbname);
-        segdbDesc->dbname = NULL;
-    }
-
-	if (segdbDesc->username)
-	{
-		free(segdbDesc->username);
-		segdbDesc->username = NULL;
-	}
 
     /* Free connection info. */
     if (segdbDesc->whoami)
@@ -313,10 +300,10 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
 
     appendPQExpBuffer(&buffer, "port=%u ", q->port);
 
-    if (segdbDesc->dbname)
-        appendPQExpBuffer(&buffer, "dbname=%s ", segdbDesc->dbname);
+    if (MyProcPort->database_name)
+        appendPQExpBuffer(&buffer, "dbname=%s ", MyProcPort->database_name);
 
-    appendPQExpBuffer(&buffer, "user=%s ", segdbDesc->username);
+    appendPQExpBuffer(&buffer, "user=%s ", MyProcPort->user_name);
 
     appendPQExpBuffer(&buffer, "connect_timeout=%d ", gp_segment_connect_timeout);
 
@@ -414,10 +401,10 @@ cdbconn_doDispatchAgentConnect(SegmentDatabaseDescriptor    *segdbDesc,
 
     appendPQExpBuffer(&buffer, "port=%u ", q->port);
 
-    if (segdbDesc->dbname)
-        appendPQExpBuffer(&buffer, "dbname=%s ", segdbDesc->dbname);
+    if (MyProcPort->database_name)
+        appendPQExpBuffer(&buffer, "dbname=%s ", MyProcPort->database_name);
 
-    appendPQExpBuffer(&buffer, "user=%s ", segdbDesc->username);
+    appendPQExpBuffer(&buffer, "user=%s ", MyProcPort->user_name);
 
     appendPQExpBuffer(&buffer, "connect_timeout=%d ", gp_segment_connect_timeout);
 

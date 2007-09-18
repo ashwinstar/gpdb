@@ -23,7 +23,6 @@
 #include "cdb/cdbfts.h"
 #include "cdb/cdblink.h"
 #include "cdb/cdbtm.h"
-#include "commands/dbcommands.h"
 #include "libpq/libpq-be.h"
 
 #include "executor/spi.h"
@@ -39,7 +38,6 @@ static int *ftsSegDBTransientCount;
 
 static int	localFtsSyncCount = -1;
 static bool InReConfigure = false;
-static char *currDbName=NULL;
 
 static struct FtsQDMirrorInfo *ftsQDMirrorInfo=NULL;
 
@@ -133,7 +131,7 @@ FtsReConnectDB(void *failedDB)
  * dispatcher: ONLY CALL THREADSAFE FUNCTIONS -- elog() is NOT threadsafe.
  */
 bool
-FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *username, char *dbName)
+FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo)
 {
    	PGconn		*conn;
 	bool		ret = true;
@@ -142,7 +140,7 @@ FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *username, char *
 
 	/* XXX: this connects in UTILITY mode, are UTILITY mode errors
 	 * different from EXECUTE mode ? */
-	initPQConnectionBuffer(failedDBInfo, username, dbName, buffer, true);
+	initPQConnectionBuffer(failedDBInfo, MyProcPort->user_name, MyProcPort->database_name, buffer, true);
 
 	conn = PQconnectdb(buffer->data);
 
@@ -159,7 +157,7 @@ FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *username, char *
 			{
 				/* Don't use elog, it's not thread-safe */
 				write_log("FTS: test connection status unknown, dbid %d dbname %s error message %s (%d)",
-							 failedDBInfo->dbid, dbName, PQerrorMessage(conn), PQstatus(conn));
+							 failedDBInfo->dbid, MyProcPort->database_name, PQerrorMessage(conn), PQstatus(conn));
 			}
 			ret = true;
 			break;
@@ -216,7 +214,7 @@ FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *username, char *
 		/* This is a real failure for which a reconfigure may be warranted */
 		if (LOG >= log_min_messages)
 			write_log("FTS: test connection failed, dbid %d dbname %s error message %s",
-						 failedDBInfo->dbid, dbName, PQerrorMessage(conn));
+						 failedDBInfo->dbid, MyProcPort->database_name, PQerrorMessage(conn));
 		ret = false;
 	} while (0);
 
@@ -342,7 +340,7 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
         if (PQstatus((segdbDesc + i)->conn) != CONNECTION_OK)
         {
 			elog(DEBUG2, "FtsHandleGangConnectionFailure: looking for real fault on segment %d", i);
-            if (!FtsTestConnection((segdbDesc + i)->segment_database_info, NULL, (segdbDesc + i)->dbname))
+            if (!FtsTestConnection((segdbDesc + i)->segment_database_info))
 			{
 				elog(DEBUG2, "found fault with segment %d", i);
 				realFaultFound = true; 
@@ -384,7 +382,7 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 	for (i = 0; i < size; i++)
 	{
 		if (PQstatus((segdbDesc + i)->conn) != CONNECTION_OK &&
-			!FtsTestConnection((segdbDesc + i)->segment_database_info, NULL, (segdbDesc + i)->dbname))
+			!FtsTestConnection((segdbDesc + i)->segment_database_info))
 			markSegDBStatus((segdbDesc + i)->segment_database_info->dbid, false);
 	}
 	if (gangsExist())
@@ -434,33 +432,15 @@ initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *username, char *dbName
 {
 	char *user = username;
 
-	/* Username, like dbname (see below) must be passed in as an argument if
-	 * calling from a pthread_create()ed thread */
 	if (user == NULL)
-	{
 		user = MyProcPort->user_name;
-		if (user == NULL)
-			user = GetUserNameFromId(GetAuthenticatedUserId());
-	}
+
 
 	initPQExpBuffer(buffer);
 
-	/*
-	 * get_database_name can not be called in a thread, so pass dbName from
-	 * caller if necessary.
-	 */
 	if (dbName == NULL)
-	{
-		if (currDbName == NULL)
-		{
-			MemoryContext oldContext = MemoryContextSwitchTo(TopMemoryContext);
-
-			currDbName = get_database_name(MyDatabaseId);
-			MemoryContextSwitchTo(oldContext);
-		}
-		dbName = currDbName;
-	}
-
+		dbName = MyProcPort->database_name;
+	
 	/*
 	 * Build the connection string
 	 */
@@ -1003,7 +983,7 @@ FtsEvaluateTransientState(void)
 				segDbInfo = cdb_component_dbs->segment_db_info + j;
 				if (segDbInfo->dbid == dbid)
 				{
-					if (!FtsTestConnection(segDbInfo, NULL, NULL))
+					if (!FtsTestConnection(segDbInfo))
 					{
 						/* reconnect failed, keep current state */
 						LWLockRelease(ftsControlLock);

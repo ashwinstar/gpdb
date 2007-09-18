@@ -20,7 +20,6 @@
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_tablespace.h"
-#include "commands/dbcommands.h"
 #include "commands/tablespace.h"
 #include "miscadmin.h"
 #include "storage/fd.h"

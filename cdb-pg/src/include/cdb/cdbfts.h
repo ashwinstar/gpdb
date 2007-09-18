@@ -64,7 +64,7 @@ extern int	FtsShmemSize(void);
 extern void FtsShmemInit(void);
 extern void CondSetMPPReadonly(void);
 extern bool FtsReConnectDB(void *);
-extern bool FtsTestConnection(CdbComponentDatabaseInfo *db_to_test, char *user, char *db);
+extern bool FtsTestConnection(CdbComponentDatabaseInfo *db_to_test);
 extern bool FtsReConfigureMPP(void);
 extern void FtsHandleNetFailure(SegmentDatabaseDescriptor **, int);
 extern bool FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor *, int);

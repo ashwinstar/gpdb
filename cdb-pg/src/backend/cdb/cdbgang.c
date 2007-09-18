@@ -18,7 +18,6 @@
 
 #include "libpq-fe.h"
 #include "miscadmin.h"			/* MyDatabaseId */
-#include "commands/dbcommands.h"	/* get_database_name() */
 #include "storage/proc.h"		/* MyProc */
 #include "storage/ipc.h"
 #include "utils/memutils.h"
@@ -933,8 +932,8 @@ buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo)
 	    /* Segment db info */
 	    segdbDesc->segment_database_info = cdbinfo;
 	    segdbDesc->segindex = conninfo->seginfo[i].segindex;
-	    segdbDesc->dbname = MyProcPort->database_name ? strdup(MyProcPort->database_name) : NULL;
-		segdbDesc->username = MyProcPort->user_name ? strdup(MyProcPort->user_name) : NULL;
+	    //segdbDesc->dbname = MyProcPort->database_name ? strdup(MyProcPort->database_name) : NULL;
+		//segdbDesc->username = MyProcPort->user_name ? strdup(MyProcPort->user_name) : NULL;
 
 	    /* Connection info */
 	    segdbDesc->conn = NULL;
@@ -3533,7 +3532,7 @@ detectFailedConnections(void)
 			SegmentDatabaseDescriptor *segdbDesc =
 				&(primaryWriterGang->db_descriptors[i]);
 
-			if (!FtsTestConnection(segdbDesc->segment_database_info, segdbDesc->username, NULL))
+			if (!FtsTestConnection(segdbDesc->segment_database_info))
 				markSegDBStatus(segdbDesc->segment_database_info->dbid, false);
 		}
 	}
@@ -3548,7 +3547,7 @@ detectFailedConnections(void)
 			SegmentDatabaseDescriptor *segdbDesc =
 				&(mirrorWriterGang->db_descriptors[i]);
 
-			if (!FtsTestConnection(segdbDesc->segment_database_info, segdbDesc->username, NULL))
+			if (!FtsTestConnection(segdbDesc->segment_database_info))
 				markSegDBStatus(segdbDesc->segment_database_info->dbid, false);
 		}
 	}
