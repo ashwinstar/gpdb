@@ -96,7 +96,9 @@ static mpool_block_t* mpool_block_alloc(mpool_context_t* mpool, int minsz)
 	int tot = (mpool->blocks_allocated < 4 ? BLOCKSZ_STEP1
 			   : (mpool->blocks_allocated < 8 ? BLOCKSZ_STEP2 : BLOCKSZ_STEP3));
 
-	if (minsz + MPOOL_CHUNKHDR_SIZE + hdrsz > tot)
+	minsz = MAXALIGN(minsz);
+
+	if (hdrsz + MPOOL_CHUNKHDR_SIZE + minsz > tot)
 		tot = minsz + MPOOL_CHUNKHDR_SIZE + hdrsz;
 
 	bp = malloc(tot);
