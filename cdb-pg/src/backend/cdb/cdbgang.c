@@ -41,6 +41,7 @@ extern char *default_tablespace;
 #include "cdb/cdbvars.h"		/* Gp_role, etc. */
 #include "libpq-fe.h"
 #include "libpq-int.h"
+#include "libpq/libpq-be.h"
 
 
 /*
@@ -110,9 +111,6 @@ typedef struct DoConnectParms
  */
 static void addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
 						 SegmentDatabaseDescriptor * segdbDesc);
-
-
-static char *myDatabaseName = NULL;
  
 
 static DispatchAgentSet * dispatchagents = NULL;
@@ -179,13 +177,6 @@ createDispatchAgents(void)
 	}
 
 	oldContext = MemoryContextSwitchTo(GangContext);
-
-	/*
-	 * get_database_name allocated memory with palloc, so remember we must pfree it later
-	 * (not free)
-	 */
-	if (myDatabaseName == NULL)
-		myDatabaseName = get_database_name(MyDatabaseId);
 	
 	cdb_component_dbs = getCdbComponentDatabases();
 
@@ -242,9 +233,7 @@ createDispatchAgents(void)
 		elog(LOG,"Using dispatch agent on %s %d segindex %d",q->hostname,q->port,q->segindex);
 		 
 		cdbconn_initSegmentDescriptor(&dispatchagents->db_descriptors[i],
-				  q,
-				  myDatabaseName,
-				  GetUserNameFromId(GetAuthenticatedUserId()));
+				  q);
 		
 		dispatchagents->size++;
 		//dispatchagents->db_descriptors[i]->segindex = -2;
@@ -350,14 +339,6 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	}
 
 	oldContext = MemoryContextSwitchTo(GangContext);
-
-
-	/*
-	 * get_database_name allocated memory with palloc, so remember we must pfree it later
-	 * (not free)
-	 */
-	if (myDatabaseName == NULL)
-		myDatabaseName = get_database_name(MyDatabaseId);
 
 	newGangDefinition = buildGangDefinition(type, gang_id, size, content, portal_name);
 
@@ -857,8 +838,6 @@ buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo)
 	int			size = conninfo->nsegs;
 	GangType	type = conninfo->type;
 
-	char	   *username = GetUserNameFromId(GetAuthenticatedUserId());
-
     Assert(CurrentMemoryContext == GangContext);
     Assert(size > 0);
 
@@ -954,8 +933,8 @@ buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo)
 	    /* Segment db info */
 	    segdbDesc->segment_database_info = cdbinfo;
 	    segdbDesc->segindex = conninfo->seginfo[i].segindex;
-	    segdbDesc->dbname = myDatabaseName ? strdup(myDatabaseName) : NULL;
-		segdbDesc->username = username ? strdup(username) : NULL;
+	    segdbDesc->dbname = MyProcPort->database_name ? strdup(MyProcPort->database_name) : NULL;
+		segdbDesc->username = MyProcPort->user_name ? strdup(MyProcPort->user_name) : NULL;
 
 	    /* Connection info */
 	    segdbDesc->conn = NULL;
@@ -968,8 +947,6 @@ buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo)
 		
 	}
 	
-
-	pfree(username);
 	return newGangDefinition;
 }
 
@@ -991,8 +968,6 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 	int			seg_count = 0;
 	int			last_segindex = -1;
 	int			i;
-
-	char	   *username = GetUserNameFromId(GetAuthenticatedUserId());
 
     Assert(CurrentMemoryContext == GangContext);
     Assert(size > 0);
@@ -1067,7 +1042,6 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 		|| cdb_component_dbs->total_segment_dbs <= 0)
 	{
 		elog(ERROR, "building Gang:  GP schema not populated");
-		pfree(username);
 		return NULL;
 	}
 
@@ -1087,14 +1061,11 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
         /* Build segdb descriptor. */
         segdbDesc = (SegmentDatabaseDescriptor *)palloc0(sizeof(*segdbDesc));
 		cdbconn_initSegmentDescriptor(segdbDesc,
-									  cdbinfo,
-									  myDatabaseName,
-									  username);
+									  cdbinfo);
 	    newGangDefinition->size = 1;
 	    newGangDefinition->segdb_count = 1;
 	    newGangDefinition->db_descriptors = segdbDesc;
 
-	    pfree(username);
 	    return newGangDefinition;
     }
 
@@ -1160,7 +1131,6 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 				}
 				else
 				{
-					pfree(username);
 					return NULL;
 				}
 			}
@@ -1214,9 +1184,7 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 					segdbDesc = &newGangDefinition->db_descriptors[seg_count];
 
 					cdbconn_initSegmentDescriptor(segdbDesc,
-												  p,
-												  myDatabaseName,
-												  username);
+												  p);
 
 					seg_count++;
 					if (type == GANGTYPE_PRIMARY_READER && size == 1)
@@ -1260,7 +1228,6 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 		{
 			disableFTS();
 			mirroringNotConfigured = true;
-			pfree(username);
 			return NULL;
 		}
 	}
@@ -1268,7 +1235,6 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 	
 	Assert(newGangDefinition->size = seg_count || type == GANGTYPE_MIRROR_WRITER);
 	newGangDefinition->size = seg_count;
-	pfree(username);
 	return newGangDefinition;
 }
 
@@ -2013,15 +1979,6 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
 
 	oldContext = MemoryContextSwitchTo(GangContext);
 
-
-	/*
-	 * get_database_name allocated memory with palloc, so remember we must pfree it later
-	 * (not free)
-	 */
-	if (myDatabaseName == NULL)
-		myDatabaseName = get_database_name(MyDatabaseId);
-	
-	
 	elog(LOG,"Gang create fragment, id = %d, type = %d",conninfo->gang_id, conninfo->type);
 	
 	for (i = 0 ; i<conninfo->nsegs;i++)
@@ -2340,16 +2297,6 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 	Assert(GangContext != NULL);
 
 	oldContext = MemoryContextSwitchTo(GangContext);
-
-	/* Make sure CreateGang will use the current database name. */
-
-	/*
-	 * get_database_name returns memory from a pstrdup(), so we need to use
-	 * pfree, not free
-	 */
-	if (myDatabaseName != NULL)
-		pfree(myDatabaseName);
-	myDatabaseName = NULL;
 
 	switch (type)
 	{

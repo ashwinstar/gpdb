@@ -24,6 +24,7 @@
 #include "cdb/cdblink.h"
 #include "cdb/cdbtm.h"
 #include "commands/dbcommands.h"
+#include "libpq/libpq-be.h"
 
 #include "executor/spi.h"
 
@@ -436,7 +437,11 @@ initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *username, char *dbName
 	/* Username, like dbname (see below) must be passed in as an argument if
 	 * calling from a pthread_create()ed thread */
 	if (user == NULL)
-		user = GetUserNameFromId(GetAuthenticatedUserId());
+	{
+		user = MyProcPort->user_name;
+		if (user == NULL)
+			user = GetUserNameFromId(GetAuthenticatedUserId());
+	}
 
 	initPQExpBuffer(buffer);
 

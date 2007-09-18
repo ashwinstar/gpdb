@@ -2667,7 +2667,7 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 				write_log("testing connection %d of %d     %s stillRunning %d \n", i+1,db_count,segdbDesc->whoami,dispatchResult->stillRunning);
             
 
-			if (!FtsTestConnection(segdbDesc->segment_database_info, segdbDesc->username, segdbDesc->dbname))
+			if (!FtsTestConnection(segdbDesc->segment_database_info, MyProcPort->user_name, MyProcPort->database_name))
 			{
 				/* Note the error. */
 				cdbdisp_appendMessage(dispatchResult, DEBUG1,

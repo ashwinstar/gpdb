@@ -226,17 +226,15 @@ static void MPPnoticeReceiver(void * arg, const PGresult * res)
 /* Initialize a QE connection descriptor in storage provided by the caller. */
 void
 cdbconn_initSegmentDescriptor(SegmentDatabaseDescriptor *segdbDesc,
-                              struct CdbComponentDatabaseInfo  *cdbinfo,
-                              const char                       *dbname,
-                              const char                       *user)
+                              struct CdbComponentDatabaseInfo  *cdbinfo)
 {
     memset(segdbDesc, 0, sizeof(*segdbDesc));
 
     /* Segment db info */
     segdbDesc->segment_database_info = cdbinfo;
     segdbDesc->segindex = cdbinfo->segindex;
-    segdbDesc->dbname = dbname ? strdup(dbname) : NULL;
-	segdbDesc->username = user ? strdup(user) : NULL;
+    segdbDesc->dbname = MyProcPort->database_name ? strdup(MyProcPort->database_name) : NULL;
+	segdbDesc->username = MyProcPort->user_name ? strdup(MyProcPort->user_name) : NULL;
 
     /* Connection info */
     segdbDesc->conn = NULL;
