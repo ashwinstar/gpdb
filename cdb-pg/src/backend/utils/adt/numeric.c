@@ -303,6 +303,7 @@ static char *get_str_from_var(NumericVar *var, int dscale);
  * CAUTION: These routines perform a  free_var(var)
  */
 static Numeric make_result(NumericVar *var);
+static int make_result_inplace(NumericVar *var, Numeric result, int in_len);
 static bool numericvar_to_int8(NumericVar *var, int64 *result);
 static int32 numericvar_to_int4(NumericVar *var);
 /*
@@ -357,10 +358,6 @@ static void compute_bucket(Numeric operand, Numeric bound1, Numeric bound2,
 static ArrayType *do_numeric_amalg_demalg(ArrayType *aTransArray, 
 										  ArrayType *bTransArray,
 										  bool is_amalg); /* MPP */
-static ArrayType *int8_avg_amalg_demalg(ArrayType *aTransArray,
-										ArrayType *bTransArray,
-										FunctionCallInfo fcinfo, 
-										bool is_amalg);
 
 
 /* ----------------------------------------------------------------------
@@ -2309,34 +2306,6 @@ int8_decum(PG_FUNCTION_ARGS)
 	PG_RETURN_ARRAYTYPE_P(do_numeric_accum_decum(transarray, newval, false));
 }
 
-Datum
-numeric_avg(PG_FUNCTION_ARGS)
-{
-	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
-	Datum	   *transdatums;
-	int			ndatums;
-	Numeric		N,
-				sumX;
-
-	/* We assume the input is array of numeric */
-	deconstruct_array(transarray,
-					  NUMERICOID, -1, false, 'i',
-					  &transdatums, NULL, &ndatums);
-	if (ndatums != 3)
-		elog(ERROR, "expected 3-element numeric array");
-	N = DatumGetNumeric(transdatums[0]);
-	sumX = DatumGetNumeric(transdatums[1]);
-	/* ignore sumX2 */
-
-	/* SQL92 defines AVG of no values to be NULL */
-	/* N is zero iff no digits (cf. numeric_uminus) */
-	if (VARSIZE(N) == NUMERIC_HDRSZ)
-		PG_RETURN_NULL();
-
-	PG_RETURN_DATUM(DirectFunctionCall2(numeric_div,
-										NumericGetDatum(sumX),
-										NumericGetDatum(N)));
-}
 
 /*
  * Workhorse routine for the standard deviance and variance
@@ -2713,161 +2682,435 @@ int8_invsum(PG_FUNCTION_ARGS)
 }
 
 /*
- * Routines for avg(int2) and avg(int4).  The transition datatype
- * is a two-element int8 array, holding count and sum.
+ * Routines for avg int type.  The transition datatype is a int64 for count, and a float8 for sum.
  */
 
-typedef struct Int8TransTypeData
+typedef struct IntFloatAvgTransdata
 {
-#ifndef INT64_IS_BUSTED
-	int64		count;
-	int64		sum;
-#else
-	/* "int64" isn't really 64 bits, so fake up properly-aligned fields */
-	int32		count;
-	int32		pad1;
-	int32		sum;
-	int32		pad2;
+	int32   _len; /* len for varattrib, do not touch directly */
+#if 1
+	int32   pad;  /* pad so int64 and float64 will be 8 bytes alligned */
 #endif
-} Int8TransTypeData;
+	int64 	count;
+	float8 sum;
+} IntFloatAvgTransdata;
+
+static inline Datum intfloat_avg_accum_decum(IntFloatAvgTransdata *transdata, float8 newval, bool acc)
+{
+	if(transdata == NULL || VARSIZE(transdata) != sizeof(IntFloatAvgTransdata))
+	{
+		/* If first time execution, need to allocate memory for this */
+		Assert(acc);
+		transdata = (IntFloatAvgTransdata *) palloc(sizeof(IntFloatAvgTransdata));
+		SET_VARSIZE(transdata, sizeof(IntFloatAvgTransdata));
+		transdata->count = 0;
+		transdata->sum = 0;
+	}
+	else
+	{
+		Assert(VARSIZE(transdata) == sizeof(IntFloatAvgTransdata));
+	}
+
+	if(acc)
+	{
+		++transdata->count;
+		transdata->sum += newval;
+	}
+	else
+	{
+		--transdata->count;
+		transdata->sum -= newval;
+	}
+
+	return PointerGetDatum(transdata); 
+}
+
+static inline Datum intfloat_avg_amalg_demalg(IntFloatAvgTransdata* tr0, IntFloatAvgTransdata *tr1, bool amalg)
+{
+	if(tr0 == NULL || VARSIZE(tr0) != sizeof(IntFloatAvgTransdata))
+	{
+		Assert(amalg);
+		return PointerGetDatum(tr1);
+	}
+
+	if(tr1 == NULL || VARSIZE(tr1) != sizeof(IntFloatAvgTransdata))
+		return PointerGetDatum(tr0);
+
+	Assert(VARSIZE(tr0) == sizeof(IntFloatAvgTransdata));
+	Assert(VARSIZE(tr1) == sizeof(IntFloatAvgTransdata));
+
+	if(amalg)
+	{
+		tr0->count += tr1->count;
+		tr0->sum += tr1->sum;
+	}
+	else
+	{
+		tr0->count -= tr1->count;
+		tr0->sum -= tr1->sum;
+	}
+
+	return PointerGetDatum(tr0);
+}
 
 Datum
 int2_avg_accum(PG_FUNCTION_ARGS)
 {
-	ArrayType  *transarray;
+	IntFloatAvgTransdata *tr = (IntFloatAvgTransdata *) PG_GETARG_BYTEA_P(0);
 	int16		newval = PG_GETARG_INT16(1);
-	Int8TransTypeData *transdata;
 
-	/*
-	 * If we're invoked by nodeAgg, we can cheat and modify our first
-	 * parameter in-place to reduce palloc overhead. Otherwise we need to make
-	 * a copy of it before scribbling on it.
-	 */
-	if (fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context))
-		transarray = PG_GETARG_ARRAYTYPE_P(0);
-	else
-		transarray = PG_GETARG_ARRAYTYPE_P_COPY(0);
-
-	if (ARR_HASNULL(transarray) ||
-		ARR_SIZE(transarray) != ARR_OVERHEAD_NONULLS(1) + sizeof(Int8TransTypeData))
-		elog(ERROR, "expected 2-element int8 array");
-
-	transdata = (Int8TransTypeData *) ARR_DATA_PTR(transarray);
-	transdata->count++;
-	transdata->sum += newval;
-
-	PG_RETURN_ARRAYTYPE_P(transarray);
+	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
+	return intfloat_avg_accum_decum(tr, newval, true);
 }
-
+		
 Datum
 int4_avg_accum(PG_FUNCTION_ARGS)
 {
-	ArrayType  *transarray;
+	IntFloatAvgTransdata *tr = (IntFloatAvgTransdata *) PG_GETARG_BYTEA_P(0);
 	int32		newval = PG_GETARG_INT32(1);
-	Int8TransTypeData *transdata;
 
-	/*
-	 * If we're invoked by nodeAgg, we can cheat and modify our first
-	 * parameter in-place to reduce palloc overhead. Otherwise we need to make
-	 * a copy of it before scribbling on it.
-	 */
-	if (fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context))
-		transarray = PG_GETARG_ARRAYTYPE_P(0);
-	else
-		transarray = PG_GETARG_ARRAYTYPE_P_COPY(0);
+	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
+	return intfloat_avg_accum_decum(tr, newval, true);
+}
 
-	if (ARR_HASNULL(transarray) ||
-		ARR_SIZE(transarray) != ARR_OVERHEAD_NONULLS(1) + sizeof(Int8TransTypeData))
-		elog(ERROR, "expected 2-element int8 array");
+Datum
+int8_avg_accum(PG_FUNCTION_ARGS)
+{
+	IntFloatAvgTransdata *tr = (IntFloatAvgTransdata *) PG_GETARG_BYTEA_P(0);
+	int64		newval = PG_GETARG_INT64(1);
 
-	transdata = (Int8TransTypeData *) ARR_DATA_PTR(transarray);
-	transdata->count++;
-	transdata->sum += newval;
+	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
+	return intfloat_avg_accum_decum(tr, newval, true);
+}
 
-	PG_RETURN_ARRAYTYPE_P(transarray);
+Datum
+float4_avg_accum(PG_FUNCTION_ARGS)
+{
+	IntFloatAvgTransdata *tr = (IntFloatAvgTransdata *) PG_GETARG_BYTEA_P(0);
+	float4		newval = PG_GETARG_FLOAT4(1);
+
+	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
+	return intfloat_avg_accum_decum(tr, newval, true);
+}
+
+Datum
+float8_avg_accum(PG_FUNCTION_ARGS)
+{
+	IntFloatAvgTransdata *tr = (IntFloatAvgTransdata *) PG_GETARG_BYTEA_P(0);
+	float8		newval = PG_GETARG_FLOAT8(1);
+
+	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
+	return intfloat_avg_accum_decum(tr, newval, true);
 }
 
 Datum
 int2_avg_decum(PG_FUNCTION_ARGS)
 {
-	ArrayType  *transarray;
+	IntFloatAvgTransdata *tr = (IntFloatAvgTransdata *) PG_GETARG_BYTEA_P(0);
 	int16		newval = PG_GETARG_INT16(1);
-	Int8TransTypeData *transdata;
 
-	/*
-	 * If we're invoked by nodeAgg, we can cheat and modify our first
-	 * parameter in-place to reduce palloc overhead. Otherwise we need to make
-	 * a copy of it before scribbling on it.
-	 */
-	if (fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context))
-		transarray = PG_GETARG_ARRAYTYPE_P(0);
-	else
-		transarray = PG_GETARG_ARRAYTYPE_P_COPY(0);
-
-	if (ARR_HASNULL(transarray) ||
-		ARR_SIZE(transarray) != ARR_OVERHEAD_NONULLS(1) + sizeof(Int8TransTypeData))
-		elog(ERROR, "expected 2-element int8 array");
-
-	transdata = (Int8TransTypeData *) ARR_DATA_PTR(transarray);
-	transdata->count--;
-	transdata->sum -= newval;
-
-	PG_RETURN_ARRAYTYPE_P(transarray);
+	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
+	return intfloat_avg_accum_decum(tr, newval, false);
 }
 
 Datum
 int4_avg_decum(PG_FUNCTION_ARGS)
 {
-	ArrayType  *transarray;
+	IntFloatAvgTransdata *tr = (IntFloatAvgTransdata *) PG_GETARG_BYTEA_P(0);
 	int32		newval = PG_GETARG_INT32(1);
-	Int8TransTypeData *transdata;
 
-	/*
-	 * If we're invoked by nodeAgg, we can cheat and modify our first
-	 * parameter in-place to reduce palloc overhead. Otherwise we need to make
-	 * a copy of it before scribbling on it.
-	 */
-	if (fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context))
-		transarray = PG_GETARG_ARRAYTYPE_P(0);
-	else
-		transarray = PG_GETARG_ARRAYTYPE_P_COPY(0);
+	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
+	return intfloat_avg_accum_decum(tr, newval, false);
+}
 
-	if (ARR_HASNULL(transarray) ||
-		ARR_SIZE(transarray) != ARR_OVERHEAD_NONULLS(1) + sizeof(Int8TransTypeData))
-		elog(ERROR, "expected 2-element int8 array");
+Datum
+int8_avg_decum(PG_FUNCTION_ARGS)
+{
+	IntFloatAvgTransdata *tr = (IntFloatAvgTransdata *) PG_GETARG_BYTEA_P(0);
+	int64		newval = PG_GETARG_INT64(1);
 
-	transdata = (Int8TransTypeData *) ARR_DATA_PTR(transarray);
-	transdata->count--;
-	transdata->sum -= newval;
+	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
+	return intfloat_avg_accum_decum(tr, newval, false);
+}
 
-	PG_RETURN_ARRAYTYPE_P(transarray);
+Datum
+float4_avg_decum(PG_FUNCTION_ARGS)
+{
+	IntFloatAvgTransdata *tr = (IntFloatAvgTransdata *) PG_GETARG_BYTEA_P(0);
+	float4		newval = PG_GETARG_FLOAT4(1);
+
+	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
+	return intfloat_avg_accum_decum(tr, newval, false);
+}
+
+Datum
+float8_avg_decum(PG_FUNCTION_ARGS)
+{
+	IntFloatAvgTransdata *tr = (IntFloatAvgTransdata *) PG_GETARG_BYTEA_P(0);
+	float8		newval = PG_GETARG_FLOAT8(1);
+
+	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
+	return intfloat_avg_accum_decum(tr, newval, false);
+}
+
+Datum 
+int8_avg_amalg(PG_FUNCTION_ARGS)
+{
+	IntFloatAvgTransdata* d0 = (IntFloatAvgTransdata *) PG_GETARG_BYTEA_P(0);
+	IntFloatAvgTransdata* d1 = (IntFloatAvgTransdata *) PG_GETARG_BYTEA_P(1);
+
+	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
+	return intfloat_avg_amalg_demalg(d0, d1, true);
+}
+
+Datum 
+float8_avg_amalg(PG_FUNCTION_ARGS)
+{
+	IntFloatAvgTransdata* d0 = (IntFloatAvgTransdata *) PG_GETARG_BYTEA_P(0);
+	IntFloatAvgTransdata* d1 = (IntFloatAvgTransdata *) PG_GETARG_BYTEA_P(1);
+
+	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
+	return intfloat_avg_amalg_demalg(d0, d1, true);
+}
+
+Datum
+int8_avg_demalg(PG_FUNCTION_ARGS)
+{
+	IntFloatAvgTransdata* d0 = (IntFloatAvgTransdata *) PG_GETARG_BYTEA_P(0);
+	IntFloatAvgTransdata* d1 = (IntFloatAvgTransdata *) PG_GETARG_BYTEA_P(1);
+	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
+	return intfloat_avg_amalg_demalg(d0, d1, false);
+}
+
+
+Datum
+float8_avg_demalg(PG_FUNCTION_ARGS)
+{
+	IntFloatAvgTransdata* d0 = (IntFloatAvgTransdata *) PG_GETARG_BYTEA_P(0);
+	IntFloatAvgTransdata* d1 = (IntFloatAvgTransdata *) PG_GETARG_BYTEA_P(1);
+	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
+	return intfloat_avg_amalg_demalg(d0, d1, false);
 }
 
 Datum
 int8_avg(PG_FUNCTION_ARGS)
 {
-	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
-	Int8TransTypeData *transdata;
-	Datum		countd,
-				sumd;
-
-	if (ARR_HASNULL(transarray) ||
-		ARR_SIZE(transarray) != ARR_OVERHEAD_NONULLS(1) + sizeof(Int8TransTypeData))
-		elog(ERROR, "expected 2-element int8 array");
-	transdata = (Int8TransTypeData *) ARR_DATA_PTR(transarray);
+	IntFloatAvgTransdata *tr0 = (IntFloatAvgTransdata *) PG_GETARG_BYTEA_P(0);
+	float8 avg = 0;
 
 	/* SQL92 defines AVG of no values to be NULL */
-	if (transdata->count == 0)
+	if(!tr0 || VARSIZE(tr0) < sizeof(IntFloatAvgTransdata) || tr0->count == 0) 
 		PG_RETURN_NULL();
 
-	countd = DirectFunctionCall1(int8_numeric,
-								 Int64GetDatumFast(transdata->count));
-	sumd = DirectFunctionCall1(int8_numeric,
-							   Int64GetDatumFast(transdata->sum));
-
-	PG_RETURN_DATUM(DirectFunctionCall2(numeric_div, sumd, countd));
+	avg = tr0->sum / tr0->count;
+	PG_RETURN_DATUM(DirectFunctionCall1(float8_numeric, Float8GetDatum(avg)));
 }
 
+Datum
+float8_avg(PG_FUNCTION_ARGS)
+{
+	IntFloatAvgTransdata *tr0 = (IntFloatAvgTransdata *) PG_GETARG_BYTEA_P(0);
+	float8 avg = 0;
+
+	/* SQL92 defines AVG of no values to be NULL */
+	if(!tr0 || VARSIZE(tr0) < sizeof(IntFloatAvgTransdata) || tr0->count == 0) 
+		PG_RETURN_NULL();
+
+	avg = tr0->sum / tr0->count;
+	return Float8GetDatum(avg);
+}
+
+/* 
+ * AVG for numeric types
+ */
+
+typedef struct NumericAvgTransData
+{
+	int32 _len; /* varattrib len, do not touch directly */
+#if 1
+	int32   pad;  /* pad so int64 and float64 will be 8 bytes alligned */
+#endif
+	int64 count; 
+	NumericData sum;
+} NumericAvgTransData;
+	
+static inline NumericAvgTransData *num_avg_store_sum(NumericAvgTransData* tr, NumericVar *var)
+{
+	int oldlen = VARSIZE(tr) - offsetof(NumericAvgTransData, sum);
+	int newlen = 0;
+	Numeric num_sum = (Numeric) (&(tr->sum));
+
+	newlen = make_result_inplace(var, num_sum, oldlen);
+	if(newlen != 0)
+	{
+		NumericAvgTransData* oldtr = tr;
+		int newtrlen = newlen + offsetof(NumericAvgTransData, sum) + 10;
+		tr = palloc(newtrlen);
+		SET_VARSIZE(tr, newtrlen);
+		tr->count = oldtr->count;
+		num_sum = (Numeric) (&(tr->sum));
+
+		newlen = make_result_inplace(var, num_sum, newlen + 10);
+		Assert(newlen == 0);
+
+		/* pfree(oldtr); */
+	}
+
+	return tr;
+}
+
+static Datum 
+numeric_avg_accum_decum(NumericAvgTransData *tr, Numeric newval, bool acc) 
+{
+	if(!tr || VARSIZE(tr) < sizeof(NumericAvgTransData))
+	{
+		/* Give it 5 extra digits hope that we do not need to palloc immediately */
+		int len = offsetof(NumericAvgTransData, sum) + VARSIZE(newval) + 10;
+		
+		Assert(acc);
+
+		tr = (NumericAvgTransData *) palloc(len); 
+		SET_VARSIZE(tr, len); 
+		tr->count = 1;
+		memcpy(&(tr->sum), newval, VARSIZE(newval));
+
+		return PointerGetDatum(tr);
+	}
+	else
+	{
+		Numeric num_sum = (Numeric) (&(tr->sum));
+
+		if(acc)
+			++tr->count;
+		else 
+			--tr->count;
+
+		if(NUMERIC_IS_NAN(newval) || NUMERIC_IS_NAN(num_sum))
+			tr = num_avg_store_sum(tr, &const_nan);
+		else
+		{
+			NumericVar v1;
+			NumericVar v2;
+			NumericVar result;
+
+			quick_init_var(&result);
+			init_ro_var_from_num(num_sum, &v1);
+			init_ro_var_from_num(newval, &v2);
+
+			if(acc)
+				add_var(&v1, &v2, &result);
+			else
+				sub_var(&v1, &v2, &result);
+
+			tr = num_avg_store_sum(tr, &result);
+		}
+	}
+	return PointerGetDatum(tr);
+}
+
+Datum
+numeric_avg_accum(PG_FUNCTION_ARGS)
+{
+	NumericAvgTransData *tr = (NumericAvgTransData *) PG_GETARG_BYTEA_P(0); 
+	Numeric newval = PG_GETARG_NUMERIC(1);
+
+	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
+	return numeric_avg_accum_decum(tr, newval, true);
+}
+
+Datum
+numeric_avg_decum(PG_FUNCTION_ARGS)
+{
+	NumericAvgTransData *tr = (NumericAvgTransData *) PG_GETARG_BYTEA_P(0); 
+	Numeric newval = PG_GETARG_NUMERIC(1);
+
+	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
+	return numeric_avg_accum_decum(tr, newval, false);
+}
+
+static Datum numeric_avg_amalg_demalg(NumericAvgTransData* tr0, NumericAvgTransData* tr1, bool amalg)
+{
+
+	if(!tr0 || VARSIZE(tr0) < sizeof(NumericAvgTransData))
+	{
+		Assert(amalg);
+		return PointerGetDatum(tr1);
+	}
+
+	if(!tr1 || VARSIZE(tr1) < sizeof(NumericAvgTransData))
+		return PointerGetDatum(tr0);
+	else
+	{
+		Numeric n0 = (Numeric) (&(tr0->sum));
+		Numeric n1 = (Numeric) (&(tr1->sum));
+
+		if(amalg)
+			tr0->count += tr1->count;
+		else
+			tr0->count -= tr1->count;
+
+		if(NUMERIC_IS_NAN(n0) || NUMERIC_IS_NAN(n1))
+			tr0 = num_avg_store_sum(tr0, &const_nan);
+		else
+		{
+			NumericVar v0;
+			NumericVar v1;
+			NumericVar result;
+
+			quick_init_var(&result);
+			init_ro_var_from_num(n0, &v0);
+			init_ro_var_from_num(n1, &v1);
+
+			if(amalg)
+				add_var(&v0, &v1, &result);
+			else
+				sub_var(&v0, &v1, &result);
+
+			tr0 = num_avg_store_sum(tr0, &result);
+		}
+	}
+
+	return PointerGetDatum(tr0);
+}
+
+Datum numeric_avg_amalg(PG_FUNCTION_ARGS)
+{
+	NumericAvgTransData *tr0 = (NumericAvgTransData *) PG_GETARG_BYTEA_P(0); 
+	NumericAvgTransData *tr1 = (NumericAvgTransData *) PG_GETARG_BYTEA_P(1); 
+
+	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
+	return numeric_avg_amalg_demalg(tr0, tr1, true);
+}
+
+Datum numeric_avg_demalg(PG_FUNCTION_ARGS)
+{
+	NumericAvgTransData *tr0 = (NumericAvgTransData *) PG_GETARG_BYTEA_P(0); 
+	NumericAvgTransData *tr1 = (NumericAvgTransData *) PG_GETARG_BYTEA_P(1); 
+
+	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
+	return numeric_avg_amalg_demalg(tr0, tr1, false);
+}
+
+Datum
+numeric_avg(PG_FUNCTION_ARGS)
+{
+	NumericAvgTransData *tr = (NumericAvgTransData *) PG_GETARG_BYTEA_P(0); 
+	Datum countX;
+	Numeric sumX;
+	Datum result;
+
+	/* SQL92 defines AVG of no values to be NULL */
+	if(!tr || VARSIZE(tr) < sizeof(NumericAvgTransData) || tr->count == 0)
+		PG_RETURN_NULL();
+
+	countX = DirectFunctionCall1(int8_numeric, Int64GetDatum(tr->count));
+	sumX = (Numeric) (&(tr->sum));
+
+	result = DirectFunctionCall2(numeric_div, NumericGetDatum(sumX), countX); 
+	pfree(DatumGetPointer(countX));
+
+	return result;
+}
 
 /* ----------------------------------------------------------------------
  *
@@ -3501,6 +3744,82 @@ make_result(NumericVar *var)
 	free_var(var);
 	dump_numeric("make_result()", result);
 	return result;
+}
+
+/* Make a var in place.  
+ * return 0 if succeed (len is long enough), otherwisse, return bytes needed.
+ */
+static int
+make_result_inplace(NumericVar *var, Numeric result, int in_len)
+{
+	NumericDigit *digits = var->digits;
+	int weight = var->weight;
+	int sign = var->sign;
+	int n;
+	Size len;
+
+	if(sign == NUMERIC_NAN)
+	{
+		if(in_len < NUMERIC_HDRSZ)
+			return NUMERIC_HDRSZ;
+
+		Assert(result);
+		SET_VARSIZE(result, NUMERIC_HDRSZ);
+		NUMERIC_WEIGHT(result) = 0;
+		NUMERIC_SIGN_DSCALE(result) = NUMERIC_NAN;
+
+		return 0;
+	}
+
+	n = var->ndigits;
+
+	/* truncate leading zeroes */
+	while (n > 0 && *digits == 0)
+	{
+		digits++;
+		weight--;
+		n--;
+	}
+	/* truncate trailing zeroes */
+	while (n > 0 && digits[n - 1] == 0)
+		n--;
+
+	/* If zero result, force to weight=0 and positive sign */
+	if (n == 0)
+	{
+		weight = 0;
+		sign = NUMERIC_POS;
+	}
+
+	/* Build the result */
+	len = NUMERIC_HDRSZ + n * sizeof(NumericDigit);
+
+	if(in_len < len)
+		return len;
+
+	Assert(result);
+	SET_VARSIZE(result, len);
+	NUMERIC_WEIGHT(result) = weight;
+	NUMERIC_SIGN_DSCALE(result) = sign | (var->dscale & NUMERIC_DSCALE_MASK);
+
+	memcpy(NUMERIC_DIGITS(result), digits, n * sizeof(NumericDigit));
+
+	/* Check for overflow of int16 fields */
+	if (NUMERIC_WEIGHT(result) != weight ||
+		NUMERIC_DSCALE(result) != var->dscale)
+	{
+		char *ntp = get_str_from_var(var, var->dscale);
+
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("value overflows numeric format"),
+				 errdetail("Overflowing value: %s", ntp)
+				));
+	}
+
+	free_var(var);
+
+	return 0;
 }
 
 
@@ -5755,67 +6074,6 @@ numeric_demalg(PG_FUNCTION_ARGS)
 
 	PG_RETURN_ARRAYTYPE_P(do_numeric_amalg_demalg(aTransArray, bTransArray,
 												  false));
-}
-
-Datum
-int8_avg_amalg(PG_FUNCTION_ARGS)
-{
-	ArrayType  *aTransArray = PG_GETARG_ARRAYTYPE_P(0);
-	ArrayType  *bTransArray = PG_GETARG_ARRAYTYPE_P(1);
-
-	PG_RETURN_ARRAYTYPE_P(int8_avg_amalg_demalg(aTransArray, bTransArray,
-												fcinfo, true));
-}
-
-Datum
-int8_avg_demalg(PG_FUNCTION_ARGS)
-{
-	ArrayType  *aTransArray = PG_GETARG_ARRAYTYPE_P(0);
-	ArrayType  *bTransArray = PG_GETARG_ARRAYTYPE_P(1);
-
-	PG_RETURN_ARRAYTYPE_P(int8_avg_amalg_demalg(aTransArray, bTransArray,
-												fcinfo, false));
-}
-
-static ArrayType *
-int8_avg_amalg_demalg(ArrayType *aTransArray, ArrayType *bTransArray,
-					  FunctionCallInfo fcinfo, bool is_amalg)
-{
-	Int8TransTypeData *atransdata, *btransdata;
-
-	/*
-	 * If we're invoked by nodeAgg, we can cheat and modify our first
-	 * parameter in-place to reduce palloc overhead. Otherwise we need to make
-	 * a copy of it before scribbling on it.
-	 */
-	if (fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context))
-		aTransArray = PG_GETARG_ARRAYTYPE_P(0);
-	else
-		aTransArray = PG_GETARG_ARRAYTYPE_P_COPY(0);
-
-	if (ARR_HASNULL(aTransArray) ||
-	 	ARR_SIZE(aTransArray) != ARR_OVERHEAD_NONULLS(1) + sizeof(Int8TransTypeData))
-		elog(ERROR, "expected 2-element int8 array");
-
-	if (ARR_HASNULL(aTransArray) ||
-		ARR_SIZE(bTransArray) != ARR_OVERHEAD_NONULLS(1) + sizeof(Int8TransTypeData))
-		elog(ERROR, "expected 2-element int8 array");
-
-	atransdata = (Int8TransTypeData *) ARR_DATA_PTR(aTransArray);
-	btransdata = (Int8TransTypeData *) ARR_DATA_PTR(bTransArray);
-
-	if (is_amalg)
-	{
-		atransdata->count += btransdata->count;
-		atransdata->sum += btransdata->sum;
-	}
-	else
-	{
-		atransdata->count -= btransdata->count;
-		atransdata->sum -= btransdata->sum;
-	}
-
-	return aTransArray;
 }
 
 /* Helper for MPP, declared here and in nodeWindow.c

@@ -89,12 +89,12 @@ typedef FormData_pg_aggregate *Form_pg_aggregate;
  */
 
 /* avg */
-DATA(insert ( 2100	int8_accum		int8_decum 	numeric_amalg		numeric_demalg	 numeric_avg	0	1231	"{0,0,0}" ));
-DATA(insert ( 2101	int4_avg_accum	int4_avg_decum int8_avg_amalg	int8_avg_demalg int8_avg		0	1016	"{0,0}" ));
-DATA(insert ( 2102	int2_avg_accum	int2_avg_decum int8_avg_amalg	int8_avg_demalg int8_avg		0	1016	"{0,0}" ));
-DATA(insert ( 2103	numeric_accum	numeric_decum	 numeric_amalg		numeric_demalg numeric_avg	0	1231	"{0,0,0}" ));
-DATA(insert ( 2104	float4_accum	float4_decum float8_amalg		float8_demalg float8_avg	0	1022	"{0,0,0}" ));
-DATA(insert ( 2105	float8_accum	float8_decum float8_amalg		float8_demalg float8_avg	0	1022	"{0,0,0}" ));
+DATA(insert ( 2100	int8_avg_accum	int8_avg_decum int8_avg_amalg int8_avg_demalg int8_avg	0 17 "")); 
+DATA(insert ( 2101	int4_avg_accum	int4_avg_decum int8_avg_amalg int8_avg_demalg int8_avg	0 17 "")); 
+DATA(insert ( 2102	int2_avg_accum	int2_avg_decum int8_avg_amalg int8_avg_demalg int8_avg	0 17 "")); 
+DATA(insert ( 2103	numeric_avg_accum numeric_avg_decum	 numeric_avg_amalg numeric_avg_demalg numeric_avg 0	17 ""));
+DATA(insert ( 2104	float4_avg_accum float4_avg_decum float8_avg_amalg float8_avg_demalg float8_avg	0 17 "")); 
+DATA(insert ( 2105	float8_avg_accum float8_avg_decum float8_avg_amalg float8_avg_demalg float8_avg	0 17 ""));	
 DATA(insert ( 2106	interval_accum	interval_decum interval_amalg	interval_demalg interval_avg	0	1187	"{0 second,0 second}" ));
 
 /* sum */

@@ -2,15 +2,15 @@
 -- AGGREGATES
 --
 SELECT avg(four) AS avg_1 FROM onek;
-       avg_1        
---------------------
- 1.5000000000000000
+ avg_1 
+-------
+   1.5
 (1 row)
 
 SELECT avg(a) AS avg_32 FROM aggtest WHERE a < 100;
-       avg_32        
----------------------
- 32.6666666666666667
+      avg_32      
+------------------
+ 32.6666666666667
 (1 row)
 
 -- In 7.1, avg(float4) is computed using float8 arithmetic.
@@ -238,9 +238,9 @@ group by ten order by ten;
 
 -- user-defined aggregates
 SELECT newavg(four) AS avg_1 FROM onek;
-       avg_1        
---------------------
- 1.5000000000000000
+ avg_1 
+-------
+   1.5
 (1 row)
 
 SELECT newsum(four) AS sum_1500 FROM onek;
@@ -297,6 +297,8 @@ CREATE TEMPORARY TABLE bitwise_test(
   x INT2,
   y BIT(4)
 );
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i2' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 -- empty case
 SELECT 
   BIT_AND(i2) AS "?",
@@ -372,6 +374,8 @@ CREATE TEMPORARY TABLE bool_test(
   b2 BOOL,
   b3 BOOL,
   b4 BOOL);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'b1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 -- empty case
 SELECT
   BOOL_AND(b1)   AS "n",
