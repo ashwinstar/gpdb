@@ -1583,28 +1583,25 @@ static bool hasTuplesInFrame(WindowStatePerLevel level_state)
 }
 
 /*
- * computeTransValueForAgg -- compute transition value for
- * a given Agg function by scanning through values that lie
- * within the trailing and leading edges of the frame buffer
- * that is associated with this function.
+ * computeTransValuesThroughScan -- compute transition values
+ * for those functions in the given level whose aggregate values
+ * can only be computed through scanning through multiple entries
+ * in the frame buffer.
  */
 static void
-computeTransValueForAgg(WindowStatePerFunction funcstate,
-						WindowState *wstate)
+computeTransValuesThroughScan(WindowStatePerLevel level_state,
+							  WindowState *wstate)
 {
-	WindowStatePerLevel level_state = funcstate->wlevel;
+	/* Indicate if the current frame contains tuples at all. */
+	bool has_tuples = true;
+	ListCell *lc;
 	bool has_curr_entry = false;
 	FrameBufferEntry *curr_entry = level_state->curr_entry_buf;
 	WindowValue *curr_value = NULL;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 	FunctionCallInfoData fcinfo;
 	MemoryContext oldcxt;
-			
-	/* Indicate if the current frame contains tuples at all. */
-	bool has_tuples = true;
 	NTupleStorePos orig_pos;
-
-	Assert(funcstate->isAgg);
 
 	if (EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) &&
 		((level_state->is_rows && 
@@ -1632,15 +1629,30 @@ computeTransValueForAgg(WindowStatePerFunction funcstate,
 		else
 			ntuplestore_acc_seek_first(level_state->trail_reader);
 	}
-				
-	oldcxt = MemoryContextSwitchTo(wstate->transcontext);
-	funcstate->final_aggTransValue =
-		datumCopy(funcstate->aggInitValue,
-				  funcstate->aggTranstypeByVal,
-				  funcstate->aggTranstypeLen);
-	MemoryContextSwitchTo(oldcxt);
-	funcstate->final_aggTransValueIsNull = funcstate->aggInitValueIsNull;
-	funcstate->final_aggNoTransValue = funcstate->aggInitValueIsNull;
+
+	foreach(lc, level_state->level_funcs)
+	{
+		WindowStatePerFunction funcstate = (WindowStatePerFunction)
+			lfirst(lc);
+
+		/* Ignore those functions that do not require scanning
+		 * multiple entries in the frame buffer.
+		 */
+		if (funcstate->trivial_frame ||
+			funcstate->winpeercount ||
+			(funcstate->isAgg && OidIsValid(funcstate->invprelimfn_oid)) ||
+			!funcstate->isAgg)
+			continue;
+		
+		oldcxt = MemoryContextSwitchTo(wstate->transcontext);
+		funcstate->final_aggTransValue =
+			datumCopy(funcstate->aggInitValue,
+					  funcstate->aggTranstypeByVal,
+					  funcstate->aggTranstypeLen);
+		MemoryContextSwitchTo(oldcxt);
+		funcstate->final_aggTransValueIsNull = funcstate->aggInitValueIsNull;
+		funcstate->final_aggNoTransValue = funcstate->aggInitValueIsNull;
+	}
 
 	if (has_tuples)
 	{
@@ -1649,23 +1661,38 @@ computeTransValueForAgg(WindowStatePerFunction funcstate,
 		while (ntuplestore_acc_tell(level_state->trail_reader, NULL))
 		{
 			if (ntuplestore_acc_tell(level_state->lead_reader, NULL) &&
-				ntuplestore_count_slot_acc(level_state->frame_buffer->tuplestore,
-										   level_state->trail_reader,
-										   level_state->lead_reader) < 0)
+				ntuplestore_acc_is_before(level_state->lead_reader,
+										  level_state->trail_reader))
 				break;
 					
 			has_curr_entry = getCurrentValue(level_state->trail_reader,
 											 level_state, curr_entry);
-			if (has_curr_entry)
-				curr_value = (WindowValue *)
-					list_nth(curr_entry->func_values, funcstate->serial_index);
+			ntuplestore_acc_advance(level_state->trail_reader, 1);
 
-			if (curr_value != NULL)
+			if (!has_curr_entry)
+				continue;
+
+			foreach(lc, level_state->level_funcs)
 			{
+				WindowStatePerFunction funcstate = (WindowStatePerFunction)
+					lfirst(lc);
 				FmgrInfo *fmgr_info;
-				
+
+				/* Ignore those functions that do not require scanning
+				 * multiple entries in the frame buffer.
+				 */
+				if (funcstate->trivial_frame ||
+					funcstate->winpeercount ||
+					(funcstate->isAgg && OidIsValid(funcstate->invprelimfn_oid)) ||
+					!funcstate->isAgg)
+					continue;
+					
 				if (OidIsValid(funcstate->prelimfn_oid))
 				{
+					curr_value = (WindowValue *)
+						list_nth(curr_entry->func_values, funcstate->serial_index);
+					Assert(curr_value);
+					
 					fcinfo.arg[1] = curr_value->value;
 					fcinfo.argnull[1] = curr_value->valueIsNull;
 					fmgr_info = &(funcstate->prelimfn);
@@ -1679,12 +1706,14 @@ computeTransValueForAgg(WindowStatePerFunction funcstate,
 						curr_value = (WindowValue *)
 							list_nth(curr_entry->func_values,
 									 funcstate->serial_index + (argno-1));
+						Assert(curr_value);
+
 						fcinfo.arg[argno] = curr_value->value;
 						fcinfo.argnull[argno] = curr_value->valueIsNull;
 					}
 					fmgr_info = &(funcstate->transfn);
 				}
-
+				
 				funcstate->final_aggTransValue =
 					invoke_agg_trans_func(*fmgr_info,
 										  fmgr_info->fn_nargs - 1,
@@ -1697,10 +1726,8 @@ computeTransValueForAgg(WindowStatePerFunction funcstate,
 										  wstate->transcontext,
 										  econtext->ecxt_per_tuple_memory);
 			}
-
-			ntuplestore_acc_advance(level_state->trail_reader, 1);
 		}
-
+		
 		/* Add the funcstate->aggTransValue if it is in the current
 		 * frame.
 		 */
@@ -1714,36 +1741,51 @@ computeTransValueForAgg(WindowStatePerFunction funcstate,
 		if (!ntuplestore_acc_tell(level_state->lead_reader, NULL) &&
 			level_state->agg_filled && include_last_agg)
 		{
-			if (OidIsValid(funcstate->prelimfn_oid))
+			foreach(lc, level_state->level_funcs)
 			{
-				fcinfo.arg[1] = funcstate->aggTransValue;
-				fcinfo.argnull[1] = funcstate->aggTransValueIsNull;
+				WindowStatePerFunction funcstate = (WindowStatePerFunction)
+					lfirst(lc);
 
-				funcstate->final_aggTransValue =
-					invoke_agg_trans_func(funcstate->prelimfn,
-										  funcstate->prelimfn.fn_nargs - 1,
-										  funcstate->final_aggTransValue,
-										  &funcstate->final_aggNoTransValue,
-										  &(funcstate->final_aggTransValueIsNull),
-										  funcstate->aggTranstypeByVal,
-										  funcstate->aggTranstypeLen,
-										  &fcinfo, (void *)wstate,
-										  wstate->transcontext,
-										  econtext->ecxt_per_tuple_memory);
-			}
-			else
-			{
-				TupleTableSlot *slot = econtext->ecxt_scantuple;
-				bool found;
-				found = ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
-														  wstate->spare);
-				Assert(found);
+				/* Ignore those functions that do not require scanning
+				 * multiple entries in the frame buffer.
+				 */
+				if (funcstate->trivial_frame ||
+					funcstate->winpeercount ||
+					(funcstate->isAgg && OidIsValid(funcstate->invprelimfn_oid)) ||
+					!funcstate->isAgg)
+					continue;
 
-				econtext->ecxt_scantuple = wstate->spare;
-				add_tuple_to_trans(funcstate, wstate, econtext);
+				if (OidIsValid(funcstate->prelimfn_oid))
+				{
+					fcinfo.arg[1] = funcstate->aggTransValue;
+					fcinfo.argnull[1] = funcstate->aggTransValueIsNull;
 
-				/* Reset back to its orginial value */
-				econtext->ecxt_scantuple = slot;
+					funcstate->final_aggTransValue =
+						invoke_agg_trans_func(funcstate->prelimfn,
+											  funcstate->prelimfn.fn_nargs - 1,
+											  funcstate->final_aggTransValue,
+											  &funcstate->final_aggNoTransValue,
+											  &(funcstate->final_aggTransValueIsNull),
+											  funcstate->aggTranstypeByVal,
+											  funcstate->aggTranstypeLen,
+											  &fcinfo, (void *)wstate,
+											  wstate->transcontext,
+											  econtext->ecxt_per_tuple_memory);
+				}
+				else
+				{
+					TupleTableSlot *slot = econtext->ecxt_scantuple;
+					bool found;
+					found = ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
+															  wstate->spare);
+					Assert(found);
+					
+					econtext->ecxt_scantuple = wstate->spare;
+					add_tuple_to_trans(funcstate, wstate, econtext);
+					
+					/* Reset back to its orginial value */
+					econtext->ecxt_scantuple = slot;
+				}
 			}
 		}
 	}
@@ -1751,7 +1793,6 @@ computeTransValueForAgg(WindowStatePerFunction funcstate,
 	/* Reset the trail_reader to its original position. */
 	if (!ntuplestore_acc_seek(level_state->trail_reader, &orig_pos))
 		ntuplestore_acc_set_invalid(level_state->trail_reader);
-	
 }
 
 /*
@@ -1787,6 +1828,8 @@ computeFrameValue(WindowStatePerLevel level_state,
 	bool read_value = false;
 	bool read_edge_value = false;
 
+	bool require_scanning = false;
+
 	Assert(level_state->is_rows == buffer->is_rows);
 
 	foreach (lc, level_state->level_funcs)
@@ -1796,8 +1839,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 		/* Ignore ordinary window functions, except for functions that
 		 * require peer counts.
 		 */
-		if (funcstate->trivial_frame &&
-			!funcstate->winpeercount)
+		if (funcstate->trivial_frame)
 			continue;
 
 		/* functions that require peer counts. */
@@ -1957,9 +1999,9 @@ computeFrameValue(WindowStatePerLevel level_state,
 
 		else if (funcstate->isAgg && OidIsValid(funcstate->prelimfn_oid))
 		{
-			computeTransValueForAgg(funcstate, wstate);
+			require_scanning = true;
 		}
-
+		
 		else
 		{
 			/* Here are the general cases. The frame buffer stores the input
@@ -1985,9 +2027,17 @@ computeFrameValue(WindowStatePerLevel level_state,
 			}
 
 			else
-				computeTransValueForAgg(funcstate, wstate);
+				require_scanning = true;
 		}
 	}
+
+	/*
+	 * Compute transition values for functions whose values have to be computed
+	 * by scanning through multiple entries in the frame buffer. We will read each
+	 * entry once.
+	 */
+	if (require_scanning)
+		computeTransValuesThroughScan(level_state, wstate);
 }
 
 /*
