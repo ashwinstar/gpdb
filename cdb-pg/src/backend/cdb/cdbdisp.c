@@ -1834,7 +1834,9 @@ thread_DispatchOut(DispatchCommandParms		*pParms)
 				{
 					write_log("result was null\n");
 					write_log("%s", PQerrorMessage(dispatchResult->segdbDesc->conn));
-					Assert(!PQisBusy(dispatchResult->segdbDesc->conn));
+					/* Assert() is not safe to call from a thread */
+					if (PQisBusy(dispatchResult->segdbDesc->conn)) 
+						write_log("Bug!... PQisBusy when we didn't expect it");
 				}
 			}
 #ifdef USE_NONBLOCKING
@@ -2134,10 +2136,15 @@ thread_DispatchWaitSingle(DispatchCommandParms		*pParms)
 	CdbDispatchResult			*dispatchResult;
 	char * msg = NULL;
 	
-	Assert(pParms->db_count == 1);
+	/* Assert() cannot be used in threads */
+	if (pParms->db_count != 1)
+		write_log("Bug... therad_dispatchWaitSingle called with db_count %d",pParms->db_count);
+	
 	dispatchResult = pParms->dispatchResultPtrArray[0];
 	segdbDesc = dispatchResult->segdbDesc;
-	Assert(dispatchResult->stillRunning);
+	
+	if (!dispatchResult->stillRunning);
+		write_log("Bug?... therad_dispatchWaitSingle sees stillRunning false");
 	
 	if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)
 	/* Lost the connection. */
