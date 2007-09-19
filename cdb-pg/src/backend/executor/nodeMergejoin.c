@@ -567,6 +567,10 @@ MJFillInner(MergeJoinState *node)
 
 	ResetExprContext(econtext);
 
+	/* If we don't have an inner, return NULL */
+	if(TupIsNull(node->mj_InnerTupleSlot))
+		return NULL;
+
 	econtext->ecxt_outertuple = node->mj_NullOuterTupleSlot;
 	econtext->ecxt_innertuple = node->mj_InnerTupleSlot;
 
