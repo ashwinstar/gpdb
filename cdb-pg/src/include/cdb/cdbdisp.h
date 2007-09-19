@@ -380,8 +380,6 @@ void
 cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 					 bool cancelOnError,
 					 SliceTable *sliceTbl,
-					 //GpDispatchCommandType		mppDispatchCommandType,
-					 //void						   *commandTypeParms,
 					 struct CdbDispatchResults ** pPrimaryResults,		/* OUT */
 					 struct CdbDispatchResults ** pMirrorResults,       /* OUT */
 					 struct CdbDispatchCmdThreads ** pDispatchThreads);		/* OUT */

@@ -54,6 +54,7 @@ static Gang *createGang(GangType type, int gang_id, int size, int content, char 
 
 static void disconnectAndDestroyGang(Gang * gp);
 static void disconnectAndDestroyAllReaderGangs(void);
+static void disconnectAndDestroyDispatchAgents(void);
 
 static Gang *buildGangDefinition(GangType type, int gang_id, int size, int content, char *portal_name);
 static Gang *buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo);
@@ -868,7 +869,7 @@ buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo)
 	newGangDefinition->gang_id = conninfo->gang_id;
 	newGangDefinition->allocated = false;
 	newGangDefinition->active = false;
-	newGangDefinition->portal_name = NULL; // (portal_name ? pstrdup(portal_name) : (char *) NULL);
+	newGangDefinition->portal_name = NULL;
 
     if (gp_log_gang >= GPVARS_VERBOSITY_VERBOSE)
     {
@@ -990,9 +991,7 @@ buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo)
 	    /* Segment db info */
 	    segdbDesc->segment_database_info = cdbinfo;
 	    segdbDesc->segindex = conninfo->seginfo[i].segindex;
-	    //segdbDesc->dbname = MyProcPort->database_name ? strdup(MyProcPort->database_name) : NULL;
-		//segdbDesc->username = MyProcPort->user_name ? strdup(MyProcPort->user_name) : NULL;
-
+	    
 	    /* Connection info */
 	    segdbDesc->conn = NULL;
 	    segdbDesc->motionListener = 0;
@@ -2230,8 +2229,6 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
 			 * Log failed connections.	Complete failures
 			 * are taken care of later.
 			 */
-			//ereport(LOG, (errcode(segdbDesc->errcode),
-			//		  errmsg("Warning: %s", segdbDesc->error_message.data)));
 			ereport(ERROR, (errcode(ERRCODE_WARNING_GP_INTERCONNECTION),
 							  errmsg("%s", segdbDesc->error_message.data)));
 			if (segdbDesc->errcode == 0 && segdbDesc->error_message.len == 0)
@@ -3293,14 +3290,18 @@ disconnectAndDestroyGang(Gang * gp)
 
 
 	/*
-	 * when we get rid of a writer gang we MUST also get rid of the reader
-	 * gang due to the shared local snapshot code that is shared between
+	 * when we get rid of the primary writer gang we MUST also get rid of the reader
+	 * gangs due to the shared local snapshot code that is shared between
 	 * readers and writers.
 	 */
-	if (gp->type == GANGTYPE_MIRROR_WRITER &&
-		gp->type == GANGTYPE_PRIMARY_WRITER)
+	if (gp->type == GANGTYPE_PRIMARY_WRITER)
 	{
 		disconnectAndDestroyAllReaderGangs();
+		if (mirrorWriterGang)
+		{
+			disconnectAndDestroyGang(mirrorWriterGang);
+			mirrorWriterGang = NULL;
+		}
 	}
 
 
@@ -3545,6 +3546,130 @@ disconnectAndDestroyAllReaderGangs(void)
 	availableReaderGangs1 = NIL;
 }
 
+void
+disconnectAndDestroyDispatchAgents(void)
+{
+	int			i;
+
+	if (dispatchagents == NULL)
+		return;
+
+    if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
+	    elog(DEBUG5, "disconnectAndDestroyDispatchAgents entered");
+    
+    if (Gp_role != GP_ROLE_DISPATCH)
+    	elog(ERROR,"Non-dispatch has dispatch agents?");
+
+	/*
+	 * do we want to send messages to the DA to say get rid of all gangs?
+	 * or assume it has already been done by disconnectAndDestroyAllGangs?
+	 * 
+	{
+		PGresult * result;
+		int i;
+
+		for (i = 0; i < dispatchagents->size; i++)
+		{
+			PQsendControlGang(dispatchagents->db_descriptors[i].conn, -1, "destroy gang");
+			
+			result = PQgetResult(dispatchagents->db_descriptors[i].conn);
+			
+			if (PQresultStatus(result)!=PGRES_COMMAND_OK)
+			{
+				elog(ERROR,"Dispatch Agent unable to destroy gang, %s %s",PQresStatus(PQresultStatus(result)),
+						PQresultErrorMessage(result));
+			}
+		}
+	}
+	*/
+
+	/*
+	 * Loop through the segment_database_descriptors array and, for each
+	 * SegmentDatabaseDescriptor:
+	 *	   1) discard the query results (if any),
+	 *	   2) disconnect the session, and
+	 *	   3) discard any connection error message.
+	 */
+	for (i = 0; i < dispatchagents->size; i++)
+	{
+		SegmentDatabaseDescriptor *segdbDesc = &(dispatchagents->db_descriptors[i]);
+		if (segdbDesc == NULL)
+			continue;
+
+		if (segdbDesc->conn && PQstatus(segdbDesc->conn) != CONNECTION_BAD)
+		{
+			
+			PGTransactionStatusType status =
+				PQtransactionStatus(segdbDesc->conn);
+
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),"disconnectAndDestroyDispatchAgents: got QEDistributedTransactionId = %u, QECommandId = %u, and QEDirty = %s",
+			     segdbDesc->conn->QEWriter_DistributedTransactionId, 
+			     segdbDesc->conn->QEWriter_CommandId, (segdbDesc->conn->QEWriter_Dirty ? "true" : "false"));
+
+            if (gp_log_gang >= GPVARS_VERBOSITY_TERSE)
+            {
+                const char *ts;
+
+                switch (status)
+                {
+                    case PQTRANS_IDLE:
+                        ts = "idle";
+                        break;
+                    case PQTRANS_ACTIVE:
+                        ts = "active";
+                        break;
+                    case PQTRANS_INTRANS:
+                        ts = "idle, within transaction";
+                        break;
+                    case PQTRANS_INERROR:
+                        ts = "idle, within failed transaction";
+                        break;
+                    case PQTRANS_UNKNOWN:
+                        ts = "unknown transaction status";
+                        break;
+                    default:
+                        ts = "invalid transaction status";
+                        break;
+                }
+                elog(DEBUG3, "Finishing connection with %s; %s",
+				     segdbDesc->whoami, ts);
+            }
+
+			if (status == PQTRANS_ACTIVE)
+			{
+				char errbuf[256];
+				PGcancel * cn = PQgetCancel(segdbDesc->conn);
+				if (PQcancel(cn, errbuf, 256)==0)
+				{	
+					elog(LOG,"Unable to cancel %s: %s", segdbDesc->whoami, errbuf);
+				}
+				PQfreeCancel(cn);
+			}
+
+			PQfinish(segdbDesc->conn);
+
+			segdbDesc->conn = NULL;
+		}
+
+		/* Free memory owned by the segdbDesc. */
+		cdbconn_termSegmentDescriptor(segdbDesc);
+	}
+
+
+	/*
+	 * Discard the segment array and the cluster descriptor
+	 */
+	pfree(dispatchagents->db_descriptors);
+	dispatchagents->db_descriptors = NULL;
+	dispatchagents->size = 0;
+	
+	pfree(dispatchagents);
+	
+	dispatchagents = NULL;
+
+    if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
+        elog(DEBUG5, "disconnectAndDestroyDispatchAgents done");
+}
 
 void
 disconnectAndDestroyAllGangs(void)
@@ -3555,11 +3680,15 @@ disconnectAndDestroyAllGangs(void)
 	/* for now, destroy all readers, regardless of the portal that owns them */
 	disconnectAndDestroyAllReaderGangs();
 
-	disconnectAndDestroyGang(primaryWriterGang);
-	primaryWriterGang = NULL;
 	disconnectAndDestroyGang(mirrorWriterGang);
 	mirrorWriterGang = NULL;
+	
+	disconnectAndDestroyGang(primaryWriterGang);
+	primaryWriterGang = NULL;
+	
 
+	disconnectAndDestroyDispatchAgents();
+	
     if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 		elog(DEBUG3, "disconnectAndDestroyAllGangs done");
 }

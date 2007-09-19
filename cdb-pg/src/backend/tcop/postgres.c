@@ -5009,6 +5009,11 @@ PostgresMain(int argc, char *argv[], const char *username)
 		else
 		switch (firstchar)
 		{
+			case 'G':			/* Gang management */
+				{
+					elog(ERROR,"Gang management command received but our role is not dispatch agent");
+				}
+				break;
 			case 'Q':			/* simple query */
 				{
 					const char *query_string;
@@ -6408,6 +6413,11 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 
 		switch (firstchar)
 		{
+			case 'G':			/* Gang management */
+				{
+					elog(ERROR,"Gang management command received by SyncAgent?");
+				}
+				break;
             case 'Q':           /* simple query */
                 {
                     const char *query_string;
