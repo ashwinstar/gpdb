@@ -80,7 +80,19 @@ struct cmdslot_t {
 		    } setup;
 
 		    struct {
-
+			char *mode;
+			struct json_object *config_json;
+			int nsegment;
+			struct {
+			    char *name;
+			    int dbid;
+			    int content;
+			    int port;
+			    char *dir;
+			    int node;
+			    int replied;
+			} *segment;
+			    
 		    } initdb;
 
 		    struct {
