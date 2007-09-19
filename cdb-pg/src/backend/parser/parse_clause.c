@@ -2049,6 +2049,17 @@ grouping_rewrite_walker(Node *node, void *context)
 	{
 		return false;
 	}
+	else if (IsA(node, ColumnRef))
+	{
+		char *name = strVal(linitial(((ColumnRef *) node)->fields));
+		int	location = ((ColumnRef *) node)->location;
+		
+		if (colNameToVar(ctx->pstate, name, true, location) == NULL)
+			ereport(ERROR,
+				(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+				 errmsg("column \"%s\" not found.", name)));
+		return false;
+	}
 	else if(IsA(node, A_Expr))
 	{
 		/* could be seen inside an untransformed window clause */
