@@ -1335,8 +1335,10 @@ agg_retrieve_direct(AggState *aggstate)
 		 */
 		do
 		{
-			if (peragg->aggref->aggstage == AGGSTAGE_FINAL ||
-				peragg->aggref->aggstage == AGGSTAGE_NORMAL)
+			if ((peragg->aggref == NULL && node->lastAgg) ||
+				(peragg->aggref != NULL &&
+				 (peragg->aggref->aggstage == AGGSTAGE_FINAL ||
+				  peragg->aggref->aggstage == AGGSTAGE_NORMAL)))
 			{
 				aggstate->prev_aggslot = econtext->ecxt_scantuple;
 				aggstate->num_repeats = econtext->group_id - 1;
