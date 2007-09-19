@@ -175,7 +175,7 @@ static apr_status_t setup_init(gpcc_event_t *ev, void *_cmdslot)
     }
     
     for (i = 0 ;  ; i++) {
-	sprintf(key, "node%d", i);
+	sprintf(key, "node.%d", i);
 	value = config_get(gpfts.config, key);
 	if (! value) {
 	    break;
@@ -186,7 +186,7 @@ static apr_status_t setup_init(gpcc_event_t *ev, void *_cmdslot)
     cmdslot->u.sys.request.u.setup.hosts = apr_pcalloc(cmdslot->u.sys.request.pool, sizeof(char *) * (i+1));
 
     for (i = 0 ; ; i++) {
-	sprintf(key, "node%d", i);
+	sprintf(key, "node.%d", i);
 	value = config_get(gpfts.config, key);	
     
 	if ((s = strchr(value, ',')) == 0) {
