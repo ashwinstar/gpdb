@@ -541,6 +541,9 @@ MJFillOuter(MergeJoinState *node)
 	econtext->ecxt_outertuple = node->mj_OuterTupleSlot;
 	econtext->ecxt_innertuple = node->mj_NullInnerTupleSlot;
 
+	if (TupIsNull(node->mj_OuterTupleSlot))
+		return NULL;
+
 	if (ExecQual(otherqual, econtext, false))
 	{
 		/*
