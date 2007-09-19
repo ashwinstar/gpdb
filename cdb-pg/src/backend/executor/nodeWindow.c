@@ -779,22 +779,21 @@ serializeFuncs(WindowStatePerLevel level_state,
 			/* ignore trivial window functions */
 			continue;
 		}
-
-		/* functions that require peer counts. */
 		else if (funcstate->winpeercount)
 		{
+			/* functions that require peer counts. */
 			int16 typelen;
 			bool byvalue;
 			get_typlenbyval(CUME_DIST_PRELIM_TYPE,
 							&typelen, &byvalue);
 
 			written_pos =
-				serializeValue(funcstate->win_value, funcstate->win_value_is_null,
+				serializeValue(funcstate->win_value,
+							   funcstate->win_value_is_null,
 							   byvalue, typelen,
 							   p_serial_entry, p_max_size,
 							   p_len, (written_pos - *p_serial_entry));
 		}
-
 		else if (IS_LEAD_LAG(funcstate->wrxstate->winkind) ||
 				 IS_FIRST_LAST(funcstate->wrxstate->winkind))
 		{
@@ -806,26 +805,28 @@ serializeFuncs(WindowStatePerLevel level_state,
 			Assert(2 <= nargs && nargs <= 4);
 
 			written_pos = 
-				serializeValue(funcstate->aggTransValue, funcstate->aggTransValueIsNull,
-							   wrxstate->argtypbyval[argno], wrxstate->argtyplen[argno],
+				serializeValue(funcstate->aggTransValue, 
+							   funcstate->aggTransValueIsNull,
+							   wrxstate->argtypbyval[argno], 
+							   wrxstate->argtyplen[argno],
 							   p_serial_entry, p_max_size,
 							   p_len, (written_pos - *p_serial_entry));
 		}
-
 		/* the function which has an inverse preliminary function */
 		else if (OidIsValid(funcstate->invprelimfn_oid) ||
 				 OidIsValid(funcstate->prelimfn_oid))
 		{
 			written_pos = 
-				serializeValue(funcstate->aggTransValue, funcstate->aggTransValueIsNull,
-							   funcstate->aggTranstypeByVal, funcstate->aggTranstypeLen,
+				serializeValue(funcstate->aggTransValue, 
+							   funcstate->aggTransValueIsNull,
+							   funcstate->aggTranstypeByVal, 
+							   funcstate->aggTranstypeLen,
 							   p_serial_entry, p_max_size,
 							   p_len, (written_pos - *p_serial_entry));
 		}
-		
-		/* the general case */
 		else
 		{
+			/* the general case */
 			WindowRefExprState *winref_state = funcstate->wrxstate;
 			ListCell *ref_lc;
 			Oid typid;
@@ -930,7 +931,6 @@ deserializeFuncs(WindowStatePerLevel level_state,
 			value =	list_nth(func_values, funcstate->serial_index);
 			read_pos = deserializeValue(read_pos, value, byvalue, typelen);
 		}
-
 		else if (IS_LEAD_LAG(funcstate->wrxstate->winkind) ||
 				 IS_FIRST_LAST(funcstate->wrxstate->winkind))
 		{
@@ -946,21 +946,20 @@ deserializeFuncs(WindowStatePerLevel level_state,
 										wrxstate->argtypbyval[argno],
 										wrxstate->argtyplen[argno]);
 		}
-
-		/* the function which has an inverse preliminary function.
-		 */
 		else if (OidIsValid(funcstate->invprelimfn_oid) ||
 				 OidIsValid(funcstate->prelimfn_oid))
 		{
+			/* 
+			 * The function which has an inverse preliminary function.
+			 */
 			value =	list_nth(func_values, funcstate->serial_index);
 			read_pos = deserializeValue(read_pos, value,
 										funcstate->aggTranstypeByVal,
 										funcstate->aggTranstypeLen);
 		}
-
-		/* the general case */
 		else
 		{
+			/* the general case */
 			WindowRefExprState *winref_state = funcstate->wrxstate;
 			ListCell *ref_lc;
 			Oid typid;
@@ -1022,7 +1021,8 @@ serializeEntry(WindowStatePerLevel level_state,
 			keylen += datumGetSize(key, level_state->col_typbyvals[key_no],
 								   level_state->col_typlens[key_no]);
 	
-			ensureSpace(p_serial_entry, p_max_size, written_pos, keylen + sizeof(bool));
+			ensureSpace(p_serial_entry, p_max_size, written_pos,
+						keylen + sizeof(bool));
 
 			if (level_state->col_typbyvals[key_no])
 				memcpy(written_pos, &(key), sizeof(Datum));
@@ -1105,9 +1105,7 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 	 * the last row.
 	 */
 	if (!ntuplestore_acc_tell(buffer->current_row_reader, NULL))
-	{
 		ntuplestore_acc_seek_last(buffer->current_row_reader);
-	}
 
 	/* Adjust the trailing edge if it is "ROWS x FOLLOWING". */
 	if (level_state->is_rows &&
@@ -1119,14 +1117,12 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 			if (!last_peer)
 				ntuplestore_acc_seek_last(level_state->trail_reader);
 		}
-		
 		else if (level_state->num_trail_rows < level_state->trail_rows - 1)
 		{
 			ntuplestore_acc_advance(level_state->trail_reader, 1);
 			level_state->num_trail_rows++;
 		}
 	}
-
 	else if (!level_state->is_rows &&
 			 EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail))
 	{
@@ -1164,7 +1160,7 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 		}
 	}
 
-	/* If the leading edge is "x PRECEDING" and x > 0, simple return. */
+	/* If the leading edge is "x PRECEDING" and x > 0, simply return. */
 	if (EDGE_IS_BOUND_PRECEDING(level_state->frame->lead) &&
 		((level_state->is_rows && level_state->lead_rows != 0) ||
 		 (!level_state->is_rows && level_state->lead_range != 0)))
@@ -1191,7 +1187,6 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 				level_state->num_lead_rows++;
 			}
 		}
-
 		else if ((EDGE_IS_BOUND(level_state->frame->lead) ||
 				  EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->lead, true)) &&
 				 level_state->num_lead_rows == level_state->lead_rows)
@@ -1200,7 +1195,6 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 			if (!ntuplestore_acc_tell(level_state->lead_reader, NULL))
 				ntuplestore_acc_seek_last(level_state->lead_reader);
 		}
-
 		else if (!EDGE_IS_BOUND(level_state->frame->lead) &&
 				 !EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->lead, true))
 		{
@@ -1535,7 +1529,8 @@ freeFrameBufferEntry(FrameBufferEntry *entry)
  * This function returns true if there are tuples in the current
  * frame. Otherwise, return false.
  */
-static bool hasTuplesInFrame(WindowStatePerLevel level_state)
+static bool
+hasTuplesInFrame(WindowStatePerLevel level_state)
 {
 	bool has_tuples = true;
 	NTupleStorePos orig_pos;
@@ -1888,10 +1883,12 @@ computeFrameValue(WindowStatePerLevel level_state,
 					if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
 						level_state->num_lead_rows >= level_state->trail_rows)
 					{
-						has_trail_entry = getCurrentValue(level_state->trail_reader,
-														  level_state, trail_entry);
-						has_lead_entry = getCurrentValue(level_state->lead_reader,
-														 level_state, lead_entry);
+						has_trail_entry =
+							getCurrentValue(level_state->trail_reader,
+											level_state, trail_entry);
+						has_lead_entry = 
+							getCurrentValue(level_state->lead_reader,
+											level_state, lead_entry);
 					}
 				}
 				
@@ -1899,18 +1896,27 @@ computeFrameValue(WindowStatePerLevel level_state,
 				{
 					has_trail_entry = getCurrentValue(level_state->trail_reader,
 													  level_state, trail_entry);
-					/* If the leading edge is UNBOUNDED FOLLOWING, the value in the leading edge
-					 * is funcstate->aggTransValue. We don't need to read from the buffer.
+					
+					/* 
+					 * If the leading edge is UNBOUNDED FOLLOWING, the value 
+					 * in the leading edge is funcstate->aggTransValue. We 
+					 * don't need to read from the buffer.
 					 */
-					if (level_state->frame->lead->kind != WINDOW_UNBOUND_FOLLOWING)
-						has_lead_entry = getCurrentValue(level_state->lead_reader,
-														 level_state, lead_entry);
+					if (level_state->frame->lead->kind != 
+						WINDOW_UNBOUND_FOLLOWING)
+					{
+						has_lead_entry = 
+							getCurrentValue(level_state->lead_reader,
+											level_state, lead_entry);
+					}
 				}
 			}
 			
 			if (has_trail_entry)
 			{
-				Assert(list_length(trail_entry->func_values) > funcstate->serial_index);
+				Assert(list_length(trail_entry->func_values) > 
+					   funcstate->serial_index);
+
 				trail_value = 
 					(WindowValue *)list_nth(trail_entry->func_values,
 											funcstate->serial_index);
@@ -1918,7 +1924,9 @@ computeFrameValue(WindowStatePerLevel level_state,
 			
 			if (has_lead_entry)
 			{
-				Assert(list_length(lead_entry->func_values) > funcstate->serial_index);
+				Assert(list_length(lead_entry->func_values) > 
+					   funcstate->serial_index);
+
 				lead_value =
 					(WindowValue *)list_nth(lead_entry->func_values,
 											funcstate->serial_index);
@@ -1947,7 +1955,9 @@ computeFrameValue(WindowStatePerLevel level_state,
 						datumCopy(lead_value->value,
 								  funcstate->aggTranstypeByVal,
 								  funcstate->aggTranstypeLen);
-					funcstate->final_aggTransValueIsNull = lead_value->valueIsNull;
+					funcstate->final_aggTransValueIsNull = 
+						lead_value->valueIsNull;
+
 					funcstate->final_aggNoTransValue = false;
 				}
 				else
@@ -1957,7 +1967,8 @@ computeFrameValue(WindowStatePerLevel level_state,
 						datumCopy(funcstate->aggTransValue,
 								  funcstate->aggTranstypeByVal,
 								  funcstate->aggTranstypeLen);
-					funcstate->final_aggTransValueIsNull = funcstate->aggTransValueIsNull;
+					funcstate->final_aggTransValueIsNull = 
+						funcstate->aggTransValueIsNull;
 					funcstate->final_aggNoTransValue = false;
 				}
 				MemoryContextSwitchTo(oldcxt);
@@ -1977,8 +1988,12 @@ computeFrameValue(WindowStatePerLevel level_state,
 				else
 				{
 					funcstate->final_aggTransValue = funcstate->aggInitValue;
-					funcstate->final_aggTransValueIsNull = funcstate->aggInitValueIsNull;
-					funcstate->final_aggNoTransValue = funcstate->aggInitValueIsNull;
+
+					funcstate->final_aggTransValueIsNull = 
+						funcstate->aggInitValueIsNull;
+
+					funcstate->final_aggNoTransValue = 
+						funcstate->aggInitValueIsNull;
 				}
 			}
 			
@@ -2003,32 +2018,33 @@ computeFrameValue(WindowStatePerLevel level_state,
 				}
 			}
 		}
-
 		else if (funcstate->isAgg && OidIsValid(funcstate->prelimfn_oid))
 		{
 			require_scanning = true;
 		}
-		
 		else
 		{
 			/* Here are the general cases. The frame buffer stores the input
 			 * arguments. For window aggregate functions, we scan through
 			 * values between the trailing edge and the leading edge, and
-			 * add them into the transition value. For ordinary window functions,
-			 * we pass the frame buffer to its function handler to generate
-			 * the output.
+			 * add them into the transition value. For ordinary window 
+			 * functions, we pass the frame buffer to its function handler 
+			 * to generate the output.
 			 */
 			if (!funcstate->isAgg)
 			{
 				int argno;
 				FunctionCallInfoData fcinfo;
 
-				argno = initFcinfo(funcstate->wrxstate, &fcinfo, funcstate, econtext);
+				argno = initFcinfo(funcstate->wrxstate, &fcinfo, funcstate,
+								   econtext);
+
 				InitFunctionCallInfoData(fcinfo, 
 										 &funcstate->windowfn,
 										 argno,
 										 (void *) funcstate->wrxstate, 
 										 NULL);
+
 				funcstate->win_value = FunctionCallInvoke(&fcinfo);
 				funcstate->win_value_is_null = fcinfo.isnull;
 			}
@@ -2040,8 +2056,8 @@ computeFrameValue(WindowStatePerLevel level_state,
 
 	/*
 	 * Compute transition values for functions whose values have to be computed
-	 * by scanning through multiple entries in the frame buffer. We will read each
-	 * entry once.
+	 * by scanning through multiple entries in the frame buffer. We will 
+	 * read each entry once.
 	 */
 	if (require_scanning)
 		computeTransValuesThroughScan(level_state, wstate);
@@ -4158,11 +4174,15 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 						!funcstate->cumul_frame &&
 						!OidIsValid(funcstate->invprelimfn_oid) &&
 						OidIsValid(funcstate->prelimfn_oid))
+					{
 						resetTransValue(funcstate, wstate->transcontext);
-
+					}
 					else if ((IS_LEAD_LAG(funcstate->wrxstate->winkind) ||
-							  IS_FIRST_LAST(funcstate->wrxstate->winkind)) && !last_peer)
+							  IS_FIRST_LAST(funcstate->wrxstate->winkind)) && 
+							 !last_peer)
+					{
 						resetTransValue(funcstate, wstate->transcontext);
+					}
 				}
 			}
 
@@ -4179,7 +4199,8 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 			
 			foreach(lc, level_state->level_funcs)
 			{
-				WindowStatePerFunction funcstate = (WindowStatePerFunction) lfirst(lc);
+				WindowStatePerFunction funcstate = 
+					(WindowStatePerFunction) lfirst(lc);
 				ExprContext *econtext = wstate->ps.ps_ExprContext;
 				
 				if (funcstate->trivial_frame)
@@ -4188,20 +4209,23 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 				if (HAS_ONLY_TRANS_FUNC(funcstate))
 					continue;
 
-				/* Increment the values for peer counts. There may be more than
-				 * one such function in one key level. We should catch this in the
-				 * earlier stage, but in case we didn't, we only do this once.
+				/* 
+				 * Increment the values for peer counts. There may be more than
+				 * one such function in one key level. We should catch this 
+				 * in the earlier stage, but in case we didn't, we only do 
+				 * this once.
 				 */
 				if (!adv_peercount && funcstate->winpeercount)
 				{
 					if (wstate->cur_slot_is_new &&
 						wstate->cur_slot_key_break != -1 &&
 						wstate->cur_slot_key_break < wstate->numlevels)
+					{
 						advancePeerCount(wstate, wstate->cur_slot_key_break);
+					}
 
 					adv_peercount = true;
 				}
-				
 				else
 				{
 					/* Add this tuple to its transition value */
@@ -4234,7 +4258,7 @@ checkOutputReady(WindowState *wstate)
 	if (wstate->input_buffer->part_break)
 		return true;
 
-	for (level=0; level<wstate->numlevels; level++)
+	for (level = 0; level < wstate->numlevels; level++)
 	{
 		WindowStatePerLevel level_state = &wstate->level_state[level];
 
@@ -4393,13 +4417,14 @@ init_frames(WindowState *wstate)
 	ListCell *lc;
 	int col_no;
 
-	for(level=0; level<wstate->numlevels; level++)
+	for (level = 0; level < wstate->numlevels; level++)
 	{
 		WindowStatePerLevel level_state = &wstate->level_state[level];
 		int ncols = level_state->numSortCols;
 		WindowFrame *frame = level_state->frame;
 
 		level_state->col_sort_asc = palloc(sizeof(bool) * ncols);
+
 		foreach (lc, level_state->level_funcs)
 		{
 			WindowStatePerFunction funcstate =
@@ -4425,7 +4450,6 @@ init_frames(WindowState *wstate)
 			{
 				funcstate->trivial_frame = true;
 			}
-
 			else if (funcstate->isAgg && frame && !frame->is_rows &&
 					 frame->trail->kind == WINDOW_UNBOUND_PRECEDING && 
 				frame->lead->kind == WINDOW_CURRENT_ROW &&
@@ -4433,7 +4457,6 @@ init_frames(WindowState *wstate)
 			{
 				funcstate->cumul_frame = true;
 			}
-
 			else
 			{
 				/* look for empty frames */
