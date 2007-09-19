@@ -15,6 +15,7 @@
 #define PG_DUMP_H
 
 #include "postgres_fe.h"
+#include "pqexpbuffer.h"
 
 /*
  * WIN32 does not provide 64-bit off_t, but does provide the functions operating
@@ -396,6 +397,7 @@ typedef enum _OidOptions
 	zeroAsNone = 8
 } OidOptions;
 
+extern void DetectChildConstraintDropped(TableInfo *tbinfo, PQExpBuffer q);
 extern void AssignDumpId(DumpableObject *dobj);
 extern DumpId createDumpId(void);
 extern DumpId getMaxDumpId(void);

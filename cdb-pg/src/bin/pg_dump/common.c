@@ -18,6 +18,7 @@
 
 #include "postgres_fe.h"
 #include "pg_backup_archiver.h"
+#include "dumputils.h"
 
 #include "postgres.h"
 #include "catalog/pg_class.h"
@@ -376,6 +377,72 @@ flagInhAttrs(TableInfo *tblinfo, int numTables,
 			}
 		}
 	}
+}
+
+/*
+ * MPP-1890
+ *
+ * If the user explicitly DROP'ed a CHECK constraint on a child but it  
+ * still exists on the parent when they dump and restore that constraint
+ * will exist on the child since it will again inherit it from the 
+ * parent. Therefore we look here for constraints that exist on the
+ * parent but not on the child and mark them to be dropped from the 
+ * child after the child table is defined.
+ *
+ * Loop through each parent and for each parent constraint see if it
+ * exists on the child as well. If it doesn't it means that the child
+ * dropped it. Mark it.
+ */		
+void
+DetectChildConstraintDropped(TableInfo *tbinfo, PQExpBuffer q)
+{
+	TableInfo  *parent;
+	TableInfo **parents = tbinfo->parents;
+	int			j,
+				k,
+				l;
+	int			numParents = tbinfo->numParents;
+
+	for (k = 0; k < numParents; k++)
+	{		
+		parent = parents[k];
+		
+		/* for each CHECK constraint of this parent */
+		for (l = 0; l < parent->ncheck; l++)
+		{
+			ConstraintInfo *pconstr = &(parent->checkexprs[l]);
+			ConstraintInfo *cconstr;
+			bool			constr_on_child = false;
+			
+			/* for each child CHECK constraint */
+			for (j = 0; j < tbinfo->ncheck; j++)
+			{
+				cconstr = &(tbinfo->checkexprs[j]);
+				
+				if (strcmp(pconstr->dobj.name, cconstr->dobj.name) == 0)
+				{
+					/* parent constr exists on child. hence wasn't dropped */
+					constr_on_child = true;
+					break;
+				}
+				
+			}
+			
+			/* this parent constr is not on child, issue a DROP for it */
+			if(!constr_on_child)
+			{
+				appendPQExpBuffer(q, "ALTER TABLE %s.",
+								  fmtId(tbinfo->dobj.namespace->dobj.name));
+				appendPQExpBuffer(q, "%s ",
+								  fmtId(tbinfo->dobj.name));
+				appendPQExpBuffer(q, "DROP CONSTRAINT %s;\n",
+								  fmtId(pconstr->dobj.name));
+				
+				constr_on_child = false;
+			}
+		}
+	}
+	
 }
 
 /*

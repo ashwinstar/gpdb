@@ -8059,6 +8059,10 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		
 		appendPQExpBuffer(q, ";\n");
 		
+		/* MPP-1890 */
+		if(numParents > 0)
+			DetectChildConstraintDropped(tbinfo, q);
+		
 		/* Loop dumping statistics and storage statements */
 		for (j = 0; j < tbinfo->numatts; j++)
 		{
