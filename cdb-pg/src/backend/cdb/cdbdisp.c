@@ -382,7 +382,7 @@ cdbdisp_reconfigureFtsIfNecessary(void)
  * slices in a plan. For dispatch of single commands (ie most uses of
  * cdbdisp_dispatchToGang()), setting it to 1 is fine.
  */
-static int largest_gangsize = 0;
+
 void
 cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 					   GpDispatchCommandType		mppDispatchCommandType,
@@ -468,34 +468,20 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 	 * even though we may not use them all.
 	 *
 	 * We can only use gp->size here if we're not dealing with a
-	 * singleton gang. It is safer to use the actual segment count.
-	 * But if using Dispatch Agent, this would wast a lot of memory.
+	 * singleton gang. It is safer to always use the max number of segments we are
+	 * controlling (largestGangsize).
 	 */
 	Assert(gp_connections_per_thread >= 0);
 
 	segdbs_in_thread_pool = 0;
 	
-	if (db_descriptors_size > largest_gangsize)
-		largest_gangsize = db_descriptors_size;
+	Assert(db_descriptors_size <= largestGangsize());
 	
-	if (Gp_role==GP_ROLE_DISPATCH)
-	{
-		if (gp_use_dispatch_agent)
-		{
-			if (numDispatchAgents() > largest_gangsize)
-				largest_gangsize = numDispatchAgents();
-		}
-		else
-		{
-			if (getgpsegmentCount() > largest_gangsize)
-				largest_gangsize = getgpsegmentCount();
-		}
-	}
 	
 	if (gp_connections_per_thread == 0)
 		max_threads = 1;	/* one, not zero, because we need to allocate one param block */
 	else
-		max_threads = 1 + (largest_gangsize - 1) / gp_connections_per_thread;
+		max_threads = 1 + (largestGangsize() - 1) / gp_connections_per_thread;
 	
 	if (DispatchContext == NULL)
 	{
@@ -826,7 +812,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 		pParms->localSlice = sliceId;
 		Assert(DispatchContext != NULL);
 		pParms->dispatchResultPtrArray =
-			(CdbDispatchResult **) palloc0((gp_connections_per_thread == 0 ? getgpsegmentCount() : gp_connections_per_thread)*
+			(CdbDispatchResult **) palloc0((gp_connections_per_thread == 0 ? largestGangsize() : gp_connections_per_thread)*
 										   sizeof(CdbDispatchResult *));
 		memset(&pParms->thread, 0, sizeof(pthread_t));
 		pParms->db_count = 0;
@@ -1056,7 +1042,7 @@ cdbdisp_returnResults(CdbDispatchResults *primaryResults,
 	 * last entry. The caller must PQclear() each PGresult and free() the
 	 * array.
 	 */
-	nslots = 2 * getgpsegmentCount() + 1;
+	nslots = 2 * largestGangsize() + 1;
 	resultSets = (struct pg_result **) calloc(nslots, sizeof(*resultSets));
 
 	/* Collect results from primary gang. */
@@ -1216,13 +1202,13 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	/*
 	 * Allocate a primary and mirror QE for every available segDB in the system.
 	 */
-	primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, nsegdb, -1, NULL);
+	primaryGang = allocatePrimaryWriterGang();
 
 	Assert(primaryGang);
 	
 	dtxProtocolParms.primary_gang_id = primaryGang->gang_id;
 
-	mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, nsegdb, -1, NULL);
+	mirrorGang = allocateMirrorWriterGang();
 
 	if (mirrorGang &&
 		(mirrorGang->segdb_count < nsegdb || mirrorGang->size < nsegdb))
@@ -1364,11 +1350,11 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	/*
 	 * Allocate a primary and mirror QE for every available segDB in the system.
 	 */
-	primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, nsegdb, -1, NULL);
+	primaryGang = allocatePrimaryWriterGang();
 
 	Assert(primaryGang);
 
-	mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, nsegdb, -1, NULL);
+	mirrorGang = allocateMirrorWriterGang();
 	
 	Assert(dispatchToPrimaries || dispatchToMirrors);
 	
@@ -1638,13 +1624,13 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 	/*
 	 * Allocate a primary and mirror QE for every available segDB in the system.
 	 */
-	primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, nsegdb, -1, NULL);
+	primaryGang = allocatePrimaryWriterGang();
 
 	Assert(primaryGang);
 	
 	queryParms.primary_gang_id = primaryGang->gang_id;
 
-	mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, nsegdb, -1, NULL);
+	mirrorGang = allocateMirrorWriterGang();
 	
 	if (mirrorGang)
 		queryParms.mirror_gang_id = mirrorGang->gang_id;
@@ -3299,7 +3285,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	}
 
 	/* Allocate result array with enough slots for QEs of primary gangs. */
-	*pPrimaryResults = cdbdisp_makeDispatchResults(nSlices * getgpsegmentCount(),
+	*pPrimaryResults = cdbdisp_makeDispatchResults(nSlices * largestGangsize(),
 												   sliceLim,
 												   cancelOnError);
 
@@ -3313,7 +3299,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		{
 			Assert(pMirrorResults);
 			if (pMirrorResults)
-				*pMirrorResults = cdbdisp_makeDispatchResults(getgpsegmentCount(),
+				*pMirrorResults = cdbdisp_makeDispatchResults(largestGangsize(),
 														  sliceLim,
 														  cancelOnError);
 		}
@@ -3322,7 +3308,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	if (sliceTbl == NULL && pQueryParms->mirror_gang_id > 0)
 	{
 		Assert(pMirrorResults);
-		*pMirrorResults = cdbdisp_makeDispatchResults(getgpsegmentCount(),
+		*pMirrorResults = cdbdisp_makeDispatchResults(largestGangsize(),
 				  sliceLim,
 				  cancelOnError);
 	}
@@ -3452,7 +3438,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				 * we just get the primary gang to know where the dispatch agents live.
 				 */
 				elog(DEBUG5,"QD Using default writer gang");
-				primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, getgpsegmentCount(), -1, NULL);
+				primaryGang = allocatePrimaryWriterGang();
 			}
 
 			mirrorGang = NULL;

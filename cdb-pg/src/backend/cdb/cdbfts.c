@@ -250,8 +250,8 @@ FtsReConfigureMPP(void)
 	elog(LOG, "FTS: reconfiguration is in progress");
 	disconnectAndDestroyAllGangs();
 
-	allocateGang(GANGTYPE_PRIMARY_WRITER, getgpsegmentCount(), -1, NULL);
-	allocateGang(GANGTYPE_MIRROR_WRITER, getgpsegmentCount(), -1, NULL);
+	allocatePrimaryWriterGang();
+	allocateMirrorWriterGang();
 
 	/* rollback current DTM transaction */
 	AbortCurrentTransaction();

@@ -71,6 +71,8 @@ typedef struct GpSegmentConnectionResponse
 } GpSegmentConnectionResponse;
 
 extern Gang *allocateGang(GangType type, int size, int content, char *portal_name);
+extern Gang *allocatePrimaryWriterGang(void);
+extern Gang *allocateMirrorWriterGang(void);
 
 extern List *getCdbProcessList(Gang *gang, int sliceIndex);
 
@@ -112,6 +114,7 @@ extern void
 disconnectAndDestroyGangById(int gang_id);
 
 extern int numDispatchAgents(void);
+extern int largestGangsize(void);
 
 /*
  * cdbgang_parse_gpqeid_params

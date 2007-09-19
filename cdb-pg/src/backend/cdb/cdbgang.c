@@ -56,8 +56,7 @@ static void disconnectAndDestroyGang(Gang * gp);
 static void disconnectAndDestroyAllReaderGangs(void);
 
 static Gang *buildGangDefinition(GangType type, int gang_id, int size, int content, char *portal_name);
-static Gang *
-buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo);
+static Gang *buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo);
 
 
 static bool isTargetPortal(char *p1, char *p2);
@@ -70,6 +69,8 @@ static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bo
  */
 static CdbComponentDatabases *cdb_component_dbs = NULL;
 static bool mirroringNotConfigured = false;
+
+static int largest_gangsize = 0;
 
 static MemoryContext GangContext = NULL;
 
@@ -120,6 +121,11 @@ int numDispatchAgents(void)
 		return dispatchagents->size;
 	else
 		return 0;
+}
+
+int largestGangsize(void) 
+{
+	return largest_gangsize;
 }
 /*
  * create Dispatch Agents for this session
@@ -264,6 +270,9 @@ createDispatchAgents(void)
 
     free(buffer.data);
     elog(DEBUG1, "createDispatchAgent completed successfully");
+    
+    largest_gangsize = dispatchagents->size;
+    
     if (DEBUG1 >= log_min_messages)
     	{
     		char		msec_str[32];
@@ -560,6 +569,10 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	 * We allocate enough memory for this many DoConnectParms structures,
 	 * even though we may not use them all.
 	 */
+	
+	if (size > largest_gangsize)
+		largest_gangsize = size;
+	
 	if (gp_connections_per_thread==0)
 		max_threads = 1;
 	else
@@ -2010,6 +2023,8 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
 	
 	Assert(conninfo->nsegs > 0 && conninfo->nsegs < 10000);
 	
+	if (conninfo->nsegs > largest_gangsize)
+		largest_gangsize = conninfo->nsegs;
 
 	/*
 	 * MemoryContexts used in this routine.
@@ -2532,6 +2547,157 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 	return gp;
 }
 
+
+Gang *
+allocatePrimaryWriterGang(void)
+{
+	/*
+	 * First, we look for an unallocated but created gang of the right type
+	 * if it exists, we return it.
+	 * Else, we create a new gang
+	 */
+
+	MemoryContext oldContext;
+
+	Gang	   *gp = NULL;
+
+	Insist(Gp_role == GP_ROLE_DISPATCH);
+
+	if (!IsTransactionOrTransactionBlock())
+	{
+		elog(ERROR, "allocatePrimaryWriterGang must be called inside of transaction");
+	}
+
+
+	if (primaryWriterGang == NULL)
+	{
+		int		nsegdb = getgpsegmentCount();
+		
+		if (GangContext == NULL)
+		{ 
+			GangContext = AllocSetContextCreate(TopMemoryContext,
+												 "Gang Context",
+												 ALLOCSET_DEFAULT_MINSIZE,
+												 ALLOCSET_DEFAULT_INITSIZE,
+												 ALLOCSET_DEFAULT_MAXSIZE);
+		}
+		Assert(GangContext != NULL);
+
+		oldContext = MemoryContextSwitchTo(GangContext);
+		
+		/*
+		 * try twice for creating gang
+		 */
+		gp = primaryWriterGang = createGang(GANGTYPE_PRIMARY_WRITER, 1, nsegdb, -1, NULL);
+		if (gp == NULL)
+			gp = primaryWriterGang = createGang(GANGTYPE_PRIMARY_WRITER, 1, nsegdb, -1, NULL);
+		
+		MemoryContextSwitchTo(oldContext);
+	}
+	else
+	{
+        if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
+		    elog(DEBUG4, "Reusing an existing primary writer gang");
+		gp = primaryWriterGang;
+	}
+	
+	/*
+	 * now we enroll the gang in the current global transaction?
+	 */
+
+	
+	if (gp == NULL)
+	{
+		elog(ERROR, "No primary gang allocated");
+	}
+
+	if (gp != NULL)
+	{
+		gp->allocated = true;
+
+		/* sanity check the gang */
+		if (!gangOK(gp))
+			elog(ERROR, "Segment connection failed: allocatePrimaryWriterGang attempted to return a bad gang.");
+	}
+
+	return gp;
+}
+
+Gang *
+allocateMirrorWriterGang(void)
+{
+	/*
+	 * First, we look for an unallocated but created gang of the right type
+	 * if it exists, we return it.
+	 * Else, we create a new gang
+	 */
+
+	MemoryContext oldContext;
+
+	Gang	   *gp = NULL;
+
+	Insist(Gp_role == GP_ROLE_DISPATCH);
+
+	if (!IsTransactionOrTransactionBlock())
+	{
+		elog(ERROR, "allocateMirrorWriterGang must be called inside of transaction");
+	}
+
+
+	if (mirrorWriterGang == NULL)
+	{
+		int		nsegdb = getgpsegmentCount();
+		
+		if (GangContext == NULL)
+		{ 
+			GangContext = AllocSetContextCreate(TopMemoryContext,
+												 "Gang Context",
+												 ALLOCSET_DEFAULT_MINSIZE,
+												 ALLOCSET_DEFAULT_INITSIZE,
+												 ALLOCSET_DEFAULT_MAXSIZE);
+		}
+		Assert(GangContext != NULL);
+
+		oldContext = MemoryContextSwitchTo(GangContext);
+		
+		/*
+		 * try twice for creating gang
+		 */
+		gp = mirrorWriterGang = createGang(GANGTYPE_MIRROR_WRITER, 2, nsegdb, -1, NULL);
+		if (gp == NULL && !mirroringNotConfigured)
+			gp = mirrorWriterGang = createGang(GANGTYPE_MIRROR_WRITER, 2, nsegdb, -1, NULL);
+		
+		MemoryContextSwitchTo(oldContext);
+	}
+	else
+	{
+        if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
+		    elog(DEBUG4, "Reusing an existing mirror writer gang");
+		gp = mirrorWriterGang;
+	}
+	
+	/*
+	 * now we enroll the gang in the current global transaction?
+	 */
+
+	
+	if (gp == NULL)
+	{
+		if (!mirroringNotConfigured)
+			elog(ERROR, "No mirror gang allocated");
+		
+		return NULL;
+	}
+
+
+	gp->allocated = true;
+
+	/* sanity check the gang */
+	if (!gangOK(gp))
+		elog(ERROR, "Segment connection failed: allocateMirrorWriterGang attempted to return a bad gang.");
+
+	return gp;
+}
 /*
  * When we are the dispatch agent, we get told which gang to use by its "gang_id"
  * We need to find the gang in our lists.
@@ -2665,10 +2831,6 @@ getCdbProcessList(Gang *gang, int sliceIndex)
 		bool		primary;
 		int			k = 0;
 		int			listsize = 0;
-
-		/*
-		 * Assert( gang->size == 1 || gang->size == getgpsegmentCount() );
-		 */
 
 		primary = (gang->type != GANGTYPE_MIRROR_WRITER);
 

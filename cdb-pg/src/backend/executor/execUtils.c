@@ -1566,11 +1566,11 @@ AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 		{
 			if (i == 0 && !queryDesc->cursor_query)
 			{
-				inv.vecNgangs[i] = allocateGang(GANGTYPE_PRIMARY_WRITER, getgpsegmentCount(), 0, queryDesc->portal_name);
+				inv.vecNgangs[i] = allocatePrimaryWriterGang();
 				Assert(inv.vecNgangs[i] != NULL);
 				if (inv.writer)
 				{
-					inv.mirrorWriterGang = allocateGang(GANGTYPE_MIRROR_WRITER, getgpsegmentCount(), 0, queryDesc->portal_name);
+					inv.mirrorWriterGang = allocateMirrorWriterGang();
 				}
 			}
 			else
