@@ -2143,9 +2143,6 @@ thread_DispatchWaitSingle(DispatchCommandParms		*pParms)
 	dispatchResult = pParms->dispatchResultPtrArray[0];
 	segdbDesc = dispatchResult->segdbDesc;
 	
-	if (!dispatchResult->stillRunning);
-		write_log("Bug?... therad_dispatchWaitSingle sees stillRunning false");
-	
 	if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)
 	/* Lost the connection. */
 	{
