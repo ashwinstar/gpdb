@@ -4735,7 +4735,8 @@ get_ltfuncs(TupleDesc tupdesc, int numCols, AttrNumber *matchColIdx)
 }
 
 /*
- * set_lead_lag_framing -- Set the framing for LEAD/LAG functions.
+ * set_lead_lag_framing -- Set the framing for LEAD/LAG functions when the offset
+ * is an expression.
  */
 static void
 set_lead_lag_framing(WindowStatePerLevel level_state,
@@ -4745,7 +4746,6 @@ set_lead_lag_framing(WindowStatePerLevel level_state,
 	WindowRefExprState *wrxstate;
 	int nargs;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
-	bool is_const = false;
 		
 	funcstate = (WindowStatePerFunction)
 		linitial(level_state->level_funcs);
@@ -4764,8 +4764,6 @@ set_lead_lag_framing(WindowStatePerLevel level_state,
 			level_state->lead_rows = 1;
 		else
 			level_state->lead_rows = -1;
-
-		is_const = true;
 	}
 		
 	else
@@ -4776,10 +4774,10 @@ set_lead_lag_framing(WindowStatePerLevel level_state,
 			
 		Assert(nargs <= 4);
 		argstate = (ExprState *)list_nth(wrxstate->args, argno);
-		is_const = IsA(argstate->expr, Const);
+		Assert(!IsA(argstate->expr, Const));
 
 		econtext->ecxt_scantuple = wstate->curslot;
-		if (!TupIsNull(wstate->curslot) || is_const)
+		if (!TupIsNull(wstate->curslot))
 		{
 			fcinfo.arg[argno] = ExecEvalExpr(argstate, econtext,
 											 fcinfo.argnull + argno, NULL);
@@ -4796,22 +4794,13 @@ set_lead_lag_framing(WindowStatePerLevel level_state,
 			level_state->lead_rows = 0;
 	}
 
-	if (is_const)
-	{
-		if (level_state->lead_rows >= 0)
-			level_state->frame->lead->kind = WINDOW_BOUND_FOLLOWING;
-		else
-			level_state->frame->lead->kind = WINDOW_BOUND_PRECEDING;
-	}
-	else
-	{
-		if (IS_LEAD(funcstate->wrxstate->winkind))
-			level_state->frame->lead->kind = WINDOW_DELAYED_BOUND_FOLLOWING;
-		else
-			level_state->frame->lead->kind = WINDOW_DELAYED_BOUND_PRECEDING;
-	}
+	if ((IS_LEAD(funcstate->wrxstate->winkind) && level_state->lead_rows < 0) ||
+		(IS_LAG(funcstate->wrxstate->winkind) && level_state->lead_rows > 0))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("%s offset cannot be negative",
+						IS_LEAD(funcstate->wrxstate->winkind) ? "LEAD" : "LAG")));
 
-	level_state->frame->trail->kind = level_state->frame->lead->kind;
 	level_state->trail_rows = level_state->lead_rows;
 }
 
