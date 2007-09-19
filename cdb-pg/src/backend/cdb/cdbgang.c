@@ -2336,6 +2336,11 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 	Gang	   *gp = NULL;
 
 	Insist(Gp_role == GP_ROLE_DISPATCH);
+	
+    if (type == GANGTYPE_PRIMARY_WRITER)
+    	return allocatePrimaryWriterGang();
+    else if (type == GANGTYPE_MIRROR_WRITER)
+    	return allocateMirrorWriterGang();
 
 	if (!IsTransactionOrTransactionBlock())
 	{
@@ -2347,6 +2352,8 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 		     (portal_name ? portal_name : "<unnamed>"),
 		     list_length(allocatedReaderGangsN),
 		     list_length(availableReaderGangsN));
+    
+
     
     if (GangContext == NULL)
 	{ 
@@ -2362,41 +2369,6 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 
 	switch (type)
 	{
-		case GANGTYPE_PRIMARY_WRITER:
-			if (primaryWriterGang == NULL)
-			{
-				/*
-				 * try twice for creating gang
-				 */
-				gp = primaryWriterGang = createGang(type, 1, size, content, portal_name);
-				if (gp == NULL)
-					gp = primaryWriterGang = createGang(type, 1, size, content, portal_name);
-			}
-			else
-			{
-                if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
-				    elog(DEBUG4, "Reusing an existing primary writer gang");
-				gp = primaryWriterGang;
-			}
-			break;
-
-		case GANGTYPE_MIRROR_WRITER:
-			if (mirrorWriterGang == NULL && !mirroringNotConfigured)
-			{
-				/*
-				 * try twice for creating gang
-				 */
-				gp = mirrorWriterGang = createGang(type, 2, size, content, portal_name);
-				if (gp == NULL && !mirroringNotConfigured)
-					gp = mirrorWriterGang = createGang(type, 2, size, content, portal_name);
-			}
-			else
-			{
-                if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
-                    elog(DEBUG4, "Reusing an existing mirror writer gang");
-				gp = mirrorWriterGang;
-			}
-			break;
 
         case GANGTYPE_PRIMARY_READER:
         case GANGTYPE_ENTRYDB_READER:
@@ -2510,6 +2482,8 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 			}
 			break;
 
+        case GANGTYPE_PRIMARY_WRITER:
+        case GANGTYPE_MIRROR_WRITER:
         case GANGTYPE_UNALLOCATED:
 		default:
 			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
@@ -2561,7 +2535,7 @@ allocatePrimaryWriterGang(void)
 
 	Gang	   *gp = NULL;
 
-	Insist(Gp_role == GP_ROLE_DISPATCH);
+	Assert(Gp_role == GP_ROLE_DISPATCH);
 
 	if (!IsTransactionOrTransactionBlock())
 	{
@@ -2636,7 +2610,7 @@ allocateMirrorWriterGang(void)
 
 	Gang	   *gp = NULL;
 
-	Insist(Gp_role == GP_ROLE_DISPATCH);
+	Assert(Gp_role == GP_ROLE_DISPATCH);
 
 	if (!IsTransactionOrTransactionBlock())
 	{
