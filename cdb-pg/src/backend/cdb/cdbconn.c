@@ -228,7 +228,7 @@ void
 cdbconn_initSegmentDescriptor(SegmentDatabaseDescriptor *segdbDesc,
                               struct CdbComponentDatabaseInfo  *cdbinfo)
 {
-    memset(segdbDesc, 0, sizeof(*segdbDesc));
+    MemSet(segdbDesc, 0, sizeof(*segdbDesc));
 
     /* Segment db info */
     segdbDesc->segment_database_info = cdbinfo;
