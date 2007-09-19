@@ -328,6 +328,8 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	 * We can't allocate more segments than we know about
 	 */
 	Assert(size <= getgpsegmentCount());
+	
+	Assert(CurrentResourceOwner != NULL);
 
 	/*
 	 * If we are going to use Dispatch Agents, we need to make sure they are running
@@ -2534,15 +2536,14 @@ allocatePrimaryWriterGang(void)
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
 
-	if (!IsTransactionOrTransactionBlock())
-	{
-		elog(ERROR, "allocatePrimaryWriterGang must be called inside of transaction");
-	}
-
-
 	if (primaryWriterGang == NULL)
 	{
-		int		nsegdb = getgpsegmentCount();
+		int		nsegdb;
+		
+		if (!IsTransactionOrTransactionBlock())
+		{
+			elog(ERROR, "allocatePrimaryWriterGang must be called inside of transaction");
+		}
 		
 		if (GangContext == NULL)
 		{ 
@@ -2556,6 +2557,7 @@ allocatePrimaryWriterGang(void)
 
 		oldContext = MemoryContextSwitchTo(GangContext);
 		
+		nsegdb = getgpsegmentCount();
 		/*
 		 * try twice for creating gang
 		 */
@@ -2609,15 +2611,14 @@ allocateMirrorWriterGang(void)
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
 
-	if (!IsTransactionOrTransactionBlock())
+	if (mirrorWriterGang == NULL && !mirroringNotConfigured)
 	{
-		elog(ERROR, "allocateMirrorWriterGang must be called inside of transaction");
-	}
-
-
-	if (mirrorWriterGang == NULL)
-	{
-		int		nsegdb = getgpsegmentCount();
+		int		nsegdb;
+		
+		if (!IsTransactionOrTransactionBlock())
+		{
+			elog(ERROR, "allocateMirrorWriterGang must be called inside of transaction");
+		}
 		
 		if (GangContext == NULL)
 		{ 
@@ -2631,6 +2632,7 @@ allocateMirrorWriterGang(void)
 
 		oldContext = MemoryContextSwitchTo(GangContext);
 		
+		nsegdb = getgpsegmentCount();
 		/*
 		 * try twice for creating gang
 		 */

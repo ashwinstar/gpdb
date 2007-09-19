@@ -2219,6 +2219,17 @@ CommitTransaction(void)
 	AtEOXact_Files();
 	AtEOXact_ComboCid();
 	pgstat_count_xact_commit();
+	
+	/*
+	 * Do 2nd phase of commit to all QE. NOTE: we can't process
+	 * signals (which may attempt to abort our now partially-completed
+	 * transaction) until we've notified the QEs.
+	 * 
+	 * Note:  do this BEFORE clearing the resource owner, as the dispatch
+	 * routines might want to use them.  Plus, we want AtCommit_Memory to 
+	 * happen after using the dispatcher.
+	 */
+	notifyCommittedDtxTransaction();
 
 	CurrentResourceOwner = NULL;
 	ResourceOwnerDelete(TopTransactionResourceOwner);
@@ -2240,12 +2251,7 @@ CommitTransaction(void)
 	 */
 	s->state = TRANS_DEFAULT;
 
-	/*
-	 * Do 2nd phase of commit to all QE. NOTE: we can't process
-	 * signals (which may attempt to abort our now partially-completed
-	 * transaction) until we've notified the QEs.
-	 */
-	notifyCommittedDtxTransaction();
+
 
 	finishDistributedTransactionContext("CommitTransaction", false);
 
