@@ -1938,6 +1938,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 			if (lead_value != NULL || trail_value != NULL)
 			{
 				MemoryContext oldcxt;
+				bool has_tuples = true;
 
 				oldcxt = MemoryContextSwitchTo(wstate->transcontext);
 				if (lead_value != NULL)
@@ -1951,6 +1952,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 				}
 				else
 				{
+					has_tuples = hasTuplesInFrame(level_state);
 					funcstate->final_aggTransValue = 
 						datumCopy(funcstate->aggTransValue,
 								  funcstate->aggTranstypeByVal,
@@ -1960,17 +1962,24 @@ computeFrameValue(WindowStatePerLevel level_state,
 				}
 				MemoryContextSwitchTo(oldcxt);
 			
-				funcstate->final_aggTransValue =
-					invoke_agg_trans_func(funcstate->invprelimfn,
-										  funcstate->invprelimfn.fn_nargs - 1,
-										  funcstate->final_aggTransValue,
-										  &funcstate->final_aggNoTransValue,
-										  &(funcstate->final_aggTransValueIsNull),
-										  funcstate->aggTranstypeByVal,
-										  funcstate->aggTranstypeLen,
-										  &fcinfo, (void *)wstate,
-										  wstate->transcontext,
-										  econtext->ecxt_per_tuple_memory);
+				if (has_tuples)
+					funcstate->final_aggTransValue =
+						invoke_agg_trans_func(funcstate->invprelimfn,
+											  funcstate->invprelimfn.fn_nargs - 1,
+											  funcstate->final_aggTransValue,
+											  &funcstate->final_aggNoTransValue,
+											  &(funcstate->final_aggTransValueIsNull),
+											  funcstate->aggTranstypeByVal,
+											  funcstate->aggTranstypeLen,
+											  &fcinfo, (void *)wstate,
+											  wstate->transcontext,
+											  econtext->ecxt_per_tuple_memory);
+				else
+				{
+					funcstate->final_aggTransValue = funcstate->aggInitValue;
+					funcstate->final_aggTransValueIsNull = funcstate->aggInitValueIsNull;
+					funcstate->final_aggNoTransValue = funcstate->aggInitValueIsNull;
+				}
 			}
 			
 			else

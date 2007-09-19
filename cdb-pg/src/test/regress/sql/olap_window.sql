@@ -1139,3 +1139,8 @@ FROM sale; --mvd 1->4
 SELECT cn,floor(qty/pn),cn,
 CORR(floor(sale.qty/sale.pn),floor(sale.cn)) OVER(order by sale.cn desc range 3 preceding) as correlation 
 from sale;
+
+-- MPP-1976
+SELECT sale.cn,sale.vn,sale.pn, 
+SUM(floor(sale.cn*sale.vn)) OVER(partition by sale.vn,sale.pn order by sale.pn asc range between 1 following and unbounded following ) as sum
+from sale;
