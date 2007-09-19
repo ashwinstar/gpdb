@@ -6,7 +6,8 @@
 #include <gpcc_net.h>
 #include <gpcc_event.h>
 #include <gpcc_ha.h>
-#include "event.h"
+#include <event.h>
+#include "config.h"
 
 #define DEFAULT_QD_MAX_CONNECT  25
 #define DEFAULT_QE_MAX_CONNECT  25
@@ -42,7 +43,11 @@ struct conninfo_t {
 };
 
 
-
+typedef struct hainfo_t hainfo_t;
+struct hainfo_t {
+    int index;
+    gpcc_ha_t *ha;
+};
 
 typedef struct cmdslot_t cmdslot_t;
 struct cmdslot_t {
@@ -57,15 +62,21 @@ struct cmdslot_t {
 
     union {
 	struct {
-	    gpcc_ha_t **ha;
-	    int nha;
+	    hainfo_t **hainfo;
+	    int nhainfo;
 	    
 	    struct {
+		apr_pool_t *pool;
 		gpcc_evqueue_t *outq;
 
 		union {
 		    struct {
-
+			int nreply;
+			int nconnected;
+			int ndisconnected;
+			char **hosts;
+			int nhost;
+			apr_proc_t *proc;
 		    } setup;
 
 		    struct {
@@ -122,6 +133,7 @@ struct gpfts_t {
     apr_thread_t *thread;
     apr_threadattr_t *attr;
     struct event timer_event;
+    config_t     *config;
 };
 
 extern gpfts_t gpfts;

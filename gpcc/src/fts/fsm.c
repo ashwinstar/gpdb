@@ -24,31 +24,29 @@ APR_DECLARE(void) fsm_setup(void)
 		 timer_tick, 0);
 
     gpcc_fsm_put(SYSTEM_CMDSTATE, INIT_EVENT, SYSTEM_CMDSTATE,
-		 0);
+		 system_init, 0);
 
     gpcc_fsm_put(SYSTEM_CMDSTATE, ARRAY_SETUP_EVENT, SYSTEM_CMDSTATE,
-		 ha_connect_all, 0);
+		 setup_init, setup_array_connect, 0);
     gpcc_fsm_put(SYSTEM_CMDSTATE, NET_OPENED_EVENT, SYSTEM_CMDSTATE,
-		 ha_opened, 0);
+		 setup_ha_opened, 0);
     gpcc_fsm_put(SYSTEM_CMDSTATE, NET_CLOSED_EVENT, SYSTEM_CMDSTATE,
-		 ha_closed, 0);
+		 ha_closed, setup_ha_closed, 0);
     gpcc_fsm_put(SYSTEM_CMDSTATE, SUCCESS_EVENT, SYSTEM_READY_CMDSTATE,
-		 setup_ready, 0);
-    gpcc_fsm_put(SYSTEM_CMDSTATE, FAILURE_EVENT, SYSTEM_CMDSTATE,
-		 setup_failure, 0);
+		 setup_ready, setup_cleanup, 0);
+    gpcc_fsm_put(SYSTEM_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
+		 setup_failure, setup_array_cleanup, setup_cleanup, 0);
     gpcc_fsm_put(SYSTEM_CMDSTATE, SETUP_SSH_EVENT, SETUP_SSH_CMDSTATE,
 		 setup_ssh_start, 0);
     
-    gpcc_fsm_put(SETUP_SSH_CMDSTATE, TIMEUP_EVENT, SETUP_SSH_CMDSTATE,
-		 setup_ssh_check, 0);
     gpcc_fsm_put(SETUP_SSH_CMDSTATE, SUCCESS_EVENT, SETUP_NEXT_CMDSTATE,
-		 ha_connect_all, 0);
+		 setup_array_connect, 0);
     gpcc_fsm_put(SETUP_NEXT_CMDSTATE, NET_OPENED_EVENT, SETUP_NEXT_CMDSTATE,
-		 ha_opened, 0);
-    gpcc_fsm_put(SETUP_NEXT_CMDSTATE, FAILURE_EVENT, SYSTEM_CMDSTATE,
-		 setup_failure, 0);
+		 setup_ha_opened, 0);
+    gpcc_fsm_put(SETUP_NEXT_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
+		 setup_failure, setup_array_cleanup, setup_cleanup, 0);
     gpcc_fsm_put(SETUP_NEXT_CMDSTATE, SUCCESS_EVENT, SYSTEM_READY_CMDSTATE,
-		 setup_ready, 0);
+		 setup_ready, setup_cleanup, 0);
 
 
     gpcc_fsm_put(SYSTEM_READY_CMDSTATE, NET_CLOSED_EVENT, SYSTEM_FATAL_CMDSTATE,
@@ -60,7 +58,7 @@ APR_DECLARE(void) fsm_setup(void)
 		 initdb_do, 0);
     gpcc_fsm_put(INITDB_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, INITDB_CMDSTATE,
 		 initdb_reply, 0);
-    gpcc_fsm_put(INITDB_CMDSTATE, NET_CLOSED_EVENT, SYSTEM_CMDSTATE,
+    gpcc_fsm_put(INITDB_CMDSTATE, NET_CLOSED_EVENT, SYSTEM_FATAL_CMDSTATE,
 		 ha_closed, initdb_reply, 0);
     gpcc_fsm_put(INITDB_CMDSTATE, SUCCESS_EVENT, SYSTEM_READY_CMDSTATE,
 		 initdb_success, 0);

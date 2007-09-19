@@ -3,8 +3,9 @@
 
 #include <gpcc.h>
 #include <gpcc_event.h>
+#include "config.h"
 
-int fts_initialize(gpcc_evqueue_t *alertq);
+int fts_initialize(config_t *config, gpcc_evqueue_t *alertq);
 
 /**
  *

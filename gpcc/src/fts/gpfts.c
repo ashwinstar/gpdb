@@ -183,7 +183,7 @@ static apr_status_t system_send_proto(gpcc_event_t* ev, void* cmdslot_)
 
 
 
-
+#if 0
 
 /* callback from gpcc_net. this runs in the network thread */
 static void* net_opened_cb(gpcc_net_conn_t conn, void* arg, 
@@ -203,6 +203,7 @@ static void* net_opened_cb(gpcc_net_conn_t conn, void* arg,
     gpcc_evqueue_put(gpfts.evq, ev);
     return conninfo;
 }
+
 
 /* callback from gpcc_net. this runs in the network thread */
 static void net_closed_cb(gpcc_net_conn_t conn, void* arg)
@@ -224,6 +225,8 @@ static void net_recv_cb(gpcc_net_conn_t conn, void* arg)
     ei->conninfo = arg;
     gpcc_evqueue_put(gpfts.evq, ev);
 }
+
+#endif
 
 /* callback from gpcc_net. this runs in the network thread */
 static void time_tick_cb(apr_time_t now)
@@ -326,7 +329,7 @@ static void do_timeout(int fd, short event, void *arg)
 }
 
 
-int fts_initialize(gpcc_evqueue_t *alertq)
+int fts_initialize(config_t *config, gpcc_evqueue_t *alertq)
 {
     int e;
     struct timeval tm;
@@ -359,6 +362,7 @@ int fts_initialize(gpcc_evqueue_t *alertq)
 
     /* alert queue */
     gpfts.alertq = alertq;
+    gpfts.config = config;
 
     if (0 != (e = apr_threadattr_create(&gpfts.attr, gpfts.pool))) {
 	gpcc_warning(FLINE, "apr_threadattr_create failed");

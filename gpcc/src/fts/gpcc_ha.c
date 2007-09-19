@@ -17,7 +17,7 @@ struct gpcc_ha_t {
     apr_pool_t *pool;
     gpcc_net_conn_t conn;
     void *arg;
-
+    
     struct {
 	gpcc_ha_opened_t *opened;
 	gpcc_ha_closed_t *closed;
@@ -111,9 +111,12 @@ void ha_net_recv(gpcc_net_conn_t conn, void *conn_arg)
 		ha->rcvidx = packet->mh.sndidx;
 		ha->arg = ha->cb.opened(ha, ha->arg);
 	    } else if (packet->mh.type == GET_IDENTITY_MSG) {
-		gpcc_net_send_packet(ha->con, IDENTITY_MSG,
+		gpcc_net_send_packet(ha->conn, IDENTITY_MSG,
 				     ha->sndidx, packet->mh.sndidx, 0, 0);
 	    } else {
+		if (packet)
+		    free(packet);
+
 		gpcc_ha_close(ha);
 		return;
 	    }
@@ -121,7 +124,7 @@ void ha_net_recv(gpcc_net_conn_t conn, void *conn_arg)
 	} else {
 	    if (packet->mh.type == GET_IDENTITY_MSG) {
 		ha->rcvidx = packet->mh.sndidx;
-		gpcc_net_send_packet(ha->con, IDENTITY_MSG,
+		gpcc_net_send_packet(ha->conn, IDENTITY_MSG,
 				     ha->sndidx, ha->rcvidx, 0, 0);
 	    } else {
 		ha->rcvidx = packet->mh.sndidx;

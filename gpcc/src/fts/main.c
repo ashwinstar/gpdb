@@ -45,6 +45,7 @@ int main(int argc, const char *argv[])
     gpcc_evqueue_t *outq = 0;
     int e;
     int started = 0;
+    config_t *config = 0;
 
     apr_app_initialize(&argc, (char const *const **) &argv, 0);
 
@@ -61,7 +62,7 @@ int main(int argc, const char *argv[])
 
     outq = gpcc_evqueue_create(100, pool);
 
-    fts_initialize(alertq);
+    fts_initialize(config, alertq);
 
     for (;;) {
 	if (gpcc_net_once())
