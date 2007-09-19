@@ -134,6 +134,15 @@ struct json_object *gpcc_json_host_request(const char *host, const char *action,
  */
 struct json_object *gpcc_json_array_request(const char *action, const char *mode);
 
+/**
+ *  create array reply object
+ *
+ *  @param action 
+ *  @param status
+ *  @param reason
+ *  @return json_object
+ */
+struct json_object *gpcc_json_array_reply(const char *action, const char *status, const char *reason);
 
 /**
  *  create alert object

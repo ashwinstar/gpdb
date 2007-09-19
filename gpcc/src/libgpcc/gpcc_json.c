@@ -130,6 +130,19 @@ struct json_object *gpcc_json_array_request(const char *action, const char *mode
     return obj;
 }
 
+struct json_object *gpcc_json_array_reply(const char *action, const char *status, const char *reason)
+{
+   const char *r = (reason ? reason : "");
+    struct json_object *obj = 0;
+
+    obj = json_object_new_object();
+    json_object_object_add(obj, "action", json_object_new_string((char *) action));
+    json_object_object_add(obj, "status", json_object_new_string((char *)status));
+    json_object_object_add(obj, "reason", json_object_new_string((char *)r));
+
+    return obj;
+}
+
 struct json_object *gpcc_json_alert(const char *segment, const char *alert) 
 {
     struct json_object *obj = 0;
