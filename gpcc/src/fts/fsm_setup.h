@@ -258,16 +258,40 @@ static apr_status_t setup_ha_closed(gpcc_event_t *ev, void *_cmdslot)
 /* return success reply to outq */
 static apr_status_t setup_ready(gpcc_event_t *ev, void *_cmdslot)
 {
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    struct json_object *obj;
+    char *objstr;
+    gpcc_event_t *evt;
 
+    obj = gpcc_json_array_reply("setup", "ok", 0);
+    objstr = json_object_to_json_string(obj);
 
+    evt = gpcc_event_alloc(ARRAY_REPLY_MSG_EVENT, 0, strlen(objstr) + 1);
+    memcpy(evt->edata, objstr, strlen(objstr) + 1);
+
+    gpcc_evqueue_put(cmdslot->u.sys.request.outq, evt);
+
+    json_object_put(obj);
     return 0;
 }
 
 /* return failure reply to outq */
 static apr_status_t setup_failure(gpcc_event_t *ev, void *_cmdslot)
 {
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;    
+    struct json_object *obj;
+    char *objstr;
+    gpcc_event_t *evt;
 
+    obj = gpcc_json_array_reply("setup", "failed", 0);
+    objstr = json_object_to_json_string(obj);
 
+    evt = gpcc_event_alloc(ARRAY_REPLY_MSG_EVENT, 0, strlen(objstr) + 1);
+    memcpy(evt->edata, objstr, strlen(objstr) + 1);
+
+    gpcc_evqueue_put(cmdslot->u.sys.request.outq, evt);
+
+    json_object_put(obj);    
     return 0;
 }
 
@@ -291,9 +315,9 @@ static apr_status_t setup_ssh_start(gpcc_event_t *ev, void *_cmdslot)
 	gpcc_warning(FLINE, "start gpha via ssh failed");
 
 #ifdef SUNOS
-	spring(cmd, "pkill gpha");
+	strcpy(cmd, "pkill gpha");
 #else
-	sprintf(cmd, "killall -9 gpha");
+	strcpy(cmd, "killall -9 gpha");
 #endif
 	if (0 != (e = gpcc_proc_gpssh(&cmdslot->u.sys.request.u.setup.proc,
 				      user,
