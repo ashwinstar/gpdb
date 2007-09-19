@@ -87,10 +87,6 @@ select cn,
   from customer; -- error, negative values not permitted
 
 select cn,
-  count(*) over (order by cn range (2 - 1) preceding)
-  from customer; -- error, we don't permit expressions
-
-select cn,
   sum(cn) over (order by cn range NULL preceding)
   from customer; -- we don't permit NULL
 

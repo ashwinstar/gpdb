@@ -203,11 +203,6 @@ select cn,
   from customer; -- error, negative values not permitted
 ERROR:  RANGE parameter cannot be negative
 select cn,
-  count(*) over (order by cn range (2 - 1) preceding)
-  from customer; -- error, we don't permit expressions
-ERROR:  RANGE parameter must be a constant
-HINT:  Only constants and constants with a cast are permitted as RANGE parameters
-select cn,
   sum(cn) over (order by cn range NULL preceding)
   from customer; -- we don't permit NULL
 ERROR:  RANGE parameter cannot be NULL

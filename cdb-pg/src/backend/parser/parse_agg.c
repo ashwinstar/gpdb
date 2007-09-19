@@ -803,6 +803,17 @@ transformWindowSpecExprs(ParseState *pstate)
 			new = lappend(new, (void *)sb);
 		}
 		s->order = new;
+
+		if (s->frame)
+		{
+			WindowFrame *frame = s->frame;
+
+			if (frame->trail)
+				frame->trail->val = transformExpr(pstate, frame->trail->val);
+			if (frame->lead)
+				frame->lead->val = transformExpr(pstate, frame->lead->val);
+
+		}
 	}
 }
 

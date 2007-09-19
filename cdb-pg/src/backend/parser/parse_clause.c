@@ -142,6 +142,28 @@ transformFromClause(ParseState *pstate, List *frmList)
 	}
 }
 
+static bool
+expr_null_check_walker(Node *node, void *context)
+{
+	if (!node)
+		return false;
+
+	if (IsA(node, Const))
+	{
+		Const *con = (Const *)node;
+
+		if (con->constisnull)
+			return true;
+	}
+	return expression_tree_walker(node, expr_null_check_walker, context);
+}
+
+static bool
+expr_contains_null_const(Expr *expr)
+{
+	return expr_null_check_walker((Node *)expr, NULL);
+}
+
 static void
 transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e, 
 						 WindowSpec *spec, Query *qry, bool is_rows)
@@ -152,29 +174,28 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 	{
 		if (is_rows)
 		{
-			Value *val;
-			if (!IsA(e->val, A_Const))
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("ROWS parameter must be an integer constant")));
-			
-			val = &((A_Const *)e->val)->val;
+			/* the e->val should already be transformed */
+			if (IsA(e->val, Const))
+			{
+				Const *con = (Const *)e->val;
+				
+				if (con->consttype != INT4OID)
+					ereport(ERROR,
+							(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
+							 errmsg("ROWS parameter must be an integer expression")));
+				if (DatumGetInt32(con->constvalue) < 0)
+					ereport(ERROR,
+							(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
+							 errmsg("ROWS parameter cannot be negative")));
+			}
 
-			if (!IsA(val, Integer))
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("ROWS parameter must be an integer constant")));
-
-			if (intVal(val) < 0)
+			if (expr_contains_null_const((Expr *)e->val))
 				ereport(ERROR,
 						(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
-						 errmsg("ROWS parameter cannot be negative")));
-
-			e->val = (Node *)make_const(val);
+						 errmsg("ROWS parameter cannot contain NULL value")));
 		}
 		else
 		{
-			Node *val;
 			TargetEntry *te;
 			Oid otype;
 			Oid rtype;
@@ -183,7 +204,6 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 			Oid oprresult;
 			List *oprname;
 			Operator tup;
-			Const *con;
 			int32 typmod;
 						
 			if (list_length(spec->order) != 1)
@@ -192,28 +212,24 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 						 errmsg("only one ORDER BY column may be specified when"
 								" RANGE is used in a window specification")));
 	
-			val = transformExpr(pstate, e->val);
-			typmod = exprTypmod(val);
+			/* e->val should already be transformed */
+			typmod = exprTypmod(e->val);
 	
-			if (!IsA(val, Const))
-				ereport(ERROR,
-						(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
-						 errmsg("RANGE parameter must be a constant"),
-						 errhint("Only constants and constants with a cast "
-								 "are permitted as RANGE parameters")));
+			if (IsA(e->val, Const))
+			{
+				Const *con = (Const *)e->val;
 				
-			con = (Const *)val;
-			
-			if (con->constisnull)
-				ereport(ERROR,
-						(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
-						 errmsg("RANGE parameter cannot be NULL")));
+				if (con->constisnull)
+					ereport(ERROR,
+							(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
+							 errmsg("RANGE parameter cannot be NULL")));
+			}
 
 			sort = (SortClause *)linitial(spec->order);
 			te = getTargetBySortGroupRef(sort->tleSortGroupRef, 
 										 qry->targetList);
 			otype = exprType((Node *)te->expr);
-			rtype = exprType(val);
+			rtype = exprType(e->val);
 
 			/* XXX: Reverse these if user specified DESC */
 			if (e->kind == WINDOW_BOUND_FOLLOWING)
@@ -246,12 +262,13 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 				 */ 
 				Expr *expr = 
 					(Expr *)coerce_to_target_type(NULL,
-												  val, 
+												  e->val, 
 											 	  rtype,
 											 	  newrtype, typmod,
 									 			  COERCION_EXPLICIT,
 												  COERCE_IMPLICIT_CAST);
 				if (!PointerIsValid(expr))
+				{
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("type mismatch between ORDER BY and RANGE "
@@ -260,14 +277,9 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 									 "the ORDER BY column and RANGE parameter "
 									 "must result in a data type which can be "
 									 "cast back to the ORDER BY column type")));
-				else
-				{
-					/* update reference to the const field for remaining code */
-					if (IsA(expr, Const))
-						con = (Const *)expr;
-
-					val = (Node *)expr;
 				}
+				else
+					e->val = (Node *)expr;
 			}
 			
 			if (oprresult != otype)
@@ -285,34 +297,36 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 				/* The executor will do the rest of the work */
 			}
 
-			/* see if RANGE parameter is negative */
-			tup = ordering_oper(newrtype, false);
-			if (HeapTupleIsValid(tup))
+			if (IsA(e->val, Const))
 			{
-				Type typ = typeidType(newrtype);
-				Oid funcoid = oprfuncid(tup);
-				Datum zero;
-				Datum result;
+				/* see if RANGE parameter is negative */
+				tup = ordering_oper(newrtype, false);
+				if (HeapTupleIsValid(tup))
+				{
+					Type typ = typeidType(newrtype);
+					Oid funcoid = oprfuncid(tup);
+					Datum zero;
+					Datum result;
+					Const *con = (Const *)e->val;
 
-				zero = stringTypeDatum(typ, "0", exprTypmod(val));
+					zero = stringTypeDatum(typ, "0", exprTypmod(e->val));
 
-				/* 
-				 * As we know the value is a const and since transformExpr()
-				 * will have parsed the type into its internal format, we can
-				 * just poke directly into the Const structure.
-				 */
-				result = OidFunctionCall2(funcoid, con->constvalue, zero);
+					/* 
+					 * As we know the value is a const and since transformExpr()
+					 * will have parsed the type into its internal format, we can
+					 * just poke directly into the Const structure.
+					 */
+					result = OidFunctionCall2(funcoid, con->constvalue, zero);
 
-				if (result)
-					ereport(ERROR,
-							(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
-							 errmsg("RANGE parameter cannot be negative")));
+					if (result)
+						ereport(ERROR,
+								(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
+								 errmsg("RANGE parameter cannot be negative")));
 
-				ReleaseSysCache(tup);
-				ReleaseSysCache(typ);
+					ReleaseSysCache(tup);
+					ReleaseSysCache(typ);
+				}
 			}
-
-			e->val = val;
 		}
 	}
 }
@@ -2049,17 +2063,6 @@ grouping_rewrite_walker(Node *node, void *context)
 	{
 		return false;
 	}
-	else if (IsA(node, ColumnRef))
-	{
-		char *name = strVal(linitial(((ColumnRef *) node)->fields));
-		int	location = ((ColumnRef *) node)->location;
-		
-		if (colNameToVar(ctx->pstate, name, true, location) == NULL)
-			ereport(ERROR,
-				(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
-				 errmsg("column \"%s\" not found.", name)));
-		return false;
-	}
 	else if(IsA(node, A_Expr))
 	{
 		/* could be seen inside an untransformed window clause */
@@ -2346,6 +2349,7 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 		ctx.pstate = pstate;
 		expression_tree_walker((Node *)*targetlist, grouping_rewrite_walker,
 							   (void *)&ctx);
+
 		/*
 		 * The expression might be present in a window clause as well
 		 * so process those.
