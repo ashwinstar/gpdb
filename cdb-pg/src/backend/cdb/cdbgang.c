@@ -12,7 +12,6 @@
 #include "postgres.h"
 
 #include <unistd.h>				/* getpid() */
-#include <arpa/inet.h>			/* inet_ntoa() */
 #include <pthread.h>
 #include <limits.h>
 
@@ -41,6 +40,7 @@ extern char *default_tablespace;
 #include "libpq-fe.h"
 #include "libpq-int.h"
 #include "libpq/libpq-be.h"
+#include "libpq/ip.h"
 
 
 /*
@@ -918,17 +918,62 @@ buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo)
 		cdbinfo->valid = true;
 		cdbinfo->definedprimary = conninfo->seginfo[i].isprimary;
 		cdbinfo->hostname = pstrdup(conninfo->seginfo[i].hostname);
+		cdbinfo->hostip = NULL;
+		cdbinfo->port = conninfo->seginfo[i].port;
 		{
-		struct hostent * lookup = gethostbyname(conninfo->seginfo[i].hostname);
-		if (lookup == NULL)
-		{
-			elog(FATAL, "gethostbyname() failed for host '%s'", conninfo->seginfo[i].hostname);
-		}
-
-		cdbinfo->hostip = pstrdup(inet_ntoa(*(struct in_addr *) (lookup->h_addr_list[0])));
+			int			ret;
+			char		portNumberStr[32];
+			char	   *service;
+			struct addrinfo *addrs = NULL,
+					   *addr;
+			struct addrinfo hint;
+			
+			/* Initialize hint structure */
+			MemSet(&hint, 0, sizeof(hint));
+			hint.ai_socktype = SOCK_STREAM;
+			hint.ai_family = AF_UNSPEC;
+			
+			snprintf(portNumberStr, sizeof(portNumberStr), "%d", conninfo->seginfo[i].port);
+			service = portNumberStr;
+				
+			ret = pg_getaddrinfo_all(conninfo->seginfo[i].hostname, service, &hint, &addrs);
+			if (ret || !addrs)
+			{
+				if (addrs)
+					pg_freeaddrinfo_all(hint.ai_family, addrs);
+				ereport(FATAL,
+						(errmsg("could not translate host name \"%s\", port \"%d\" to address: %s",
+								conninfo->seginfo[i].hostname, conninfo->seginfo[i].port, gai_strerror(ret))));
+			}
+			for (addr = addrs; addr; addr = addr->ai_next)
+			{
+#ifdef HAVE_UNIX_SOCKETS
+				/* Ignore AF_UNIX sockets, if any are returned. */
+				if (addr->ai_family == AF_UNIX)
+					continue;
+#endif
+				if (addr->ai_family == AF_INET) /* IPv4 address */
+				{
+					char		hostinfo[NI_MAXHOST];
+					pg_getnameinfo_all((struct sockaddr_storage *)addr->ai_addr, addr->ai_addrlen,
+							hostinfo, sizeof(hostinfo),
+												   NULL, 0,
+												   NI_NUMERICHOST);
+					cdbinfo->hostip = pstrdup(hostinfo);
+					break;
+				}
+			}
+			
+#ifdef HAVE_IPV6
+			if (cdbinfo->hostip == NULL && addrs->ai_family == AF_INET6)
+				elog(ERROR,"host %s only has IPv6 address, not yet supported",conninfo->seginfo[i].hostname);
+#endif
+			
+			pg_freeaddrinfo_all(hint.ai_family, addrs);
+		 
 		}
 		 
-		cdbinfo->port = conninfo->seginfo[i].port;
+		
 	    /* Segment db info */
 	    segdbDesc->segment_database_info = cdbinfo;
 	    segdbDesc->segindex = conninfo->seginfo[i].segindex;
@@ -1325,7 +1370,10 @@ static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bo
 		CdbComponentDatabaseInfo  *qdinfo;
 		
 		qdinfo = &cdb_component_dbs->entry_db_info[0];
-		appendPQExpBuffer(buffer, " -c gp_qd_hostname=%s", qdinfo->hostip);
+		if (qdinfo->hostip != NULL)
+			appendPQExpBuffer(buffer, " -c gp_qd_hostname=%s", qdinfo->hostip);
+		else
+			appendPQExpBuffer(buffer, " -c gp_qd_hostname=%s", qdinfo->hostname);		
 		appendPQExpBuffer(buffer, " -c gp_qd_port=%d", qdinfo->port);
 	}
 	else

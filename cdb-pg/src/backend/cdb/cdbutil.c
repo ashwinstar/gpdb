@@ -41,8 +41,7 @@
 #include "cdb/ml_ipc.h"			/* listener_setup */
 #include "cdb/cdbtm.h"
 #include "cdb/cdbfts.h"
-
-#include <arpa/inet.h>			/* inet_ntoa() */
+#include "libpq/ip.h"
 
 /*
  * Helper Functions
@@ -385,6 +384,20 @@ getCdbComponentInfo(void)
 		attr = heap_getattr(gp_configuration_tuple, Anum_gp_configuration_hostname, gp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
 		pRow->hostname = pstrdup(DatumGetCString(attr));
+		
+		/*
+		 * port
+		 */
+		attr = heap_getattr(gp_configuration_tuple, Anum_gp_configuration_port, gp_configuration_rel->rd_att, &isNull);
+		Assert(!isNull);
+		pRow->port = DatumGetInt32(attr);
+
+		/*
+		 * datadir
+		 */
+		attr = heap_getattr(gp_configuration_tuple, Anum_gp_configuration_datadir, gp_configuration_rel->rd_att, &isNull);
+		Assert(!isNull);
+		pRow->datadir = DatumGetCString(DirectFunctionCall1(textout, attr));
 
 		if (segment_ip_cache == NULL)
 		{
@@ -402,33 +415,66 @@ getCdbComponentInfo(void)
 		if (segment_ip_cache[dbid] == NULL)
 		{
 			MemoryContext oldContext;
-			struct hostent *lookup;
-
-			lookup = gethostbyname(pRow->hostname);
-
-			if (lookup == NULL)
-				elog(ERROR, "host \"%s\" lookup failed", pRow->hostname);
-
+			int			ret;
+			char		portNumberStr[32];
+			char	   *service;
+			struct addrinfo *addrs = NULL,
+					   *addr;
+			struct addrinfo hint;
+			
+			/* Initialize hint structure */
+			MemSet(&hint, 0, sizeof(hint));
+			hint.ai_socktype = SOCK_STREAM;
+			hint.ai_family = AF_UNSPEC;
+			
+			snprintf(portNumberStr, sizeof(portNumberStr), "%d", pRow->port);
+			service = portNumberStr;
+				
+			ret = pg_getaddrinfo_all(pRow->hostname, service, &hint, &addrs);
+			if (ret || !addrs)
+			{
+				if (addrs)
+					pg_freeaddrinfo_all(hint.ai_family, addrs);
+				ereport(ERROR,
+						(errmsg("could not translate host name \"%s\", port \"%d\" to address: %s",
+								pRow->hostname, pRow->port, gai_strerror(ret))));
+			}
+			
 			/* save in the cache context */
 			oldContext = MemoryContextSwitchTo(TopMemoryContext);
-			segment_ip_cache[dbid] = pstrdup(inet_ntoa(*(struct in_addr *) (lookup->h_addr_list[0])));
+			
+			for (addr = addrs; addr; addr = addr->ai_next)
+			{
+#ifdef HAVE_UNIX_SOCKETS
+				/* Ignore AF_UNIX sockets, if any are returned. */
+				if (addr->ai_family == AF_UNIX)
+					continue;
+#endif
+				if (addr->ai_family == AF_INET) /* IPv4 address */
+				{
+					char		hostinfo[NI_MAXHOST];
+					pg_getnameinfo_all((struct sockaddr_storage *)addr->ai_addr, addr->ai_addrlen,
+							hostinfo, sizeof(hostinfo),
+												   NULL, 0,
+												   NI_NUMERICHOST);
+					segment_ip_cache[dbid] = pstrdup(hostinfo);
+					break;
+				}
+			}
+			
 			MemoryContextSwitchTo(oldContext);
+			
+#ifdef HAVE_IPV6
+			if (segment_ip_cache[dbid] == NULL && addrs->ai_family == AF_INET6)
+				elog(ERROR,"host %s only has IPv6 address, not yet supported",pRow->hostname);
+#endif
+			
+			pg_freeaddrinfo_all(hint.ai_family, addrs);
 		}
+		
 		pRow->hostip = pstrdup(segment_ip_cache[dbid]);
 
-		/*
-		 * port
-		 */
-		attr = heap_getattr(gp_configuration_tuple, Anum_gp_configuration_port, gp_configuration_rel->rd_att, &isNull);
-		Assert(!isNull);
-		pRow->port = DatumGetInt32(attr);
-
-		/*
-		 * datadir
-		 */
-		attr = heap_getattr(gp_configuration_tuple, Anum_gp_configuration_datadir, gp_configuration_rel->rd_att, &isNull);
-		Assert(!isNull);
-		pRow->datadir = DatumGetCString(DirectFunctionCall1(textout, attr));
+		
 	}
 
 	/*
