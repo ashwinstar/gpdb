@@ -169,6 +169,8 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	
 	/*
 	 * We can't have the Dispatch Agents involved in parsing queries.
+	 * That would have them using the catcache, and taking locks on 
+	 * user relations, etc... Ugh
 	 * 
 	 * And there isn't really any reason for the QEs to do it in this case.
 	 * 
@@ -205,7 +207,9 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	 * 
 	 * I don't think analyze and rewrite will do much to it,
 	 * but it will at least package it up as a query node,
-	 * which we need for serializing.
+	 * which we need for serializing.  And if the copy
+	 * statement has a "select" statement embedded, this
+	 * is essential.
 	 */
 	
 	querytree_list = pg_analyze_and_rewrite(parsetree, copyCmd,
@@ -229,18 +233,18 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	MemoryContextSwitchTo(oldcontext);
 
 	/*
-	 * serialized the stmt tree, and create the sql statement: mppexec ....
+	 * serialized the stmt tree, and dispatch it ....
 	 */
 	serializedQuerytree = serializeNode((Node *) q, &serializedQuerytree_len);
 
 	Assert(serializedQuerytree != NULL);
 	
 	cdbdisp_dispatchCommand(copyCmd, serializedQuerytree, serializedQuerytree_len, 
-								false /* cancelonError */, 
-								c->copy_in /* need2phase */, 
-								true /* withSnapshot */, 
-								c->copy_in /* dispatchToMirrors */, 
-								true /* dispatchToPrimaries */,
+								false 		/* cancelonError */, 
+								c->copy_in 	/* need2phase */, 
+								true 		/* withSnapshot */, 
+								c->copy_in 	/* dispatchToMirrors */, 
+								true 		/* dispatchToPrimaries */,
 								&primaryResults, &mirrorResults, &dispatchThreads);
 
 	/*
