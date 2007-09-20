@@ -1935,6 +1935,21 @@ _readCreateConversionStmt(const char ** str)
 	READ_DONE();
 }
 
+static CopyStmt *
+_readCopyStmt(const char ** str)
+{
+	READ_LOCALS(CopyStmt);
+	
+	READ_NODE_FIELD(relation);
+	READ_NODE_FIELD(attlist);
+	READ_BOOL_FIELD(is_from);
+	READ_STRING_FIELD(filename);
+	READ_NODE_FIELD(options);
+	READ_NODE_FIELD(sreh);
+	
+	READ_DONE();	
+
+}
 static GrantStmt *
 _readGrantStmt(const char ** str)
 {
@@ -3333,10 +3348,11 @@ readNodeBinary(const char ** str)
 			case T_DeclareCursorStmt:
 				return_value = _readDeclareCursorStmt(str);
 				break;
-#if 0
+
 			case T_CopyStmt:
 				return_value = _readCopyStmt(str);
 				break;
+#if 0
 			case T_SelectStmt:
 				return_value = _readSelectStmt(str);
 				break;
