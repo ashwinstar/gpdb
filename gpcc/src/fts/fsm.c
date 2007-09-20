@@ -89,7 +89,7 @@ APR_DECLARE(void) fsm_setup(void)
     
     gpcc_fsm_put(SYSTEM_READY_CMDSTATE, ARRAY_STATUS_EVENT, STATUS_CMDSTATE,
 		 status_init, status_do, 0);
-    gpcc_fsm_put(STATUS_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, STATUS_CMDSTATE,
+    gpcc_fsm_put(STATUS_CMDSTATE, STATUS_REPLY_MSG_EVENT, STATUS_CMDSTATE,
 		 status_reply, 0);
     gpcc_fsm_put(STATUS_CMDSTATE, SUCCESS_EVENT, SYSTEM_READY_CMDSTATE,
 		 status_success, status_cleanup, 0);

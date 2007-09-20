@@ -29,7 +29,7 @@ static apr_status_t status_do(gpcc_event_t *ev, void *_cmdslot)
 	obj = json_tokener_parse(json_object_to_json_string(cmdslot->u.sys.config_json));
 	obj = gpcc_json_segment_request(obj,
 					cmdslot->u.sys.seginfo[i].name,
-					"stop",
+					"status",
 					"",
 					"",
 					cmdslot->u.sys.seginfo[i].port,
@@ -37,7 +37,7 @@ static apr_status_t status_do(gpcc_event_t *ev, void *_cmdslot)
 
 	msg = json_object_to_json_string(obj);
 
-	if (0 != (e = gpcc_ha_send(hainfo->ha, SEGMENT_REQUEST_MSG, msg, strlen(msg) + 1))) {
+	if (0 != (e = gpcc_ha_send(hainfo->ha, STATUS_REQUEST_MSG, msg, strlen(msg) + 1))) {
 	    gpcc_warning(FLINE, "send packet failed");
 	    json_object_put(obj);
 	    return APR_ECONNRESET;
@@ -76,7 +76,7 @@ static apr_status_t status_reply(gpcc_event_t *ev, void *_cmdslot)
 
 	break;
 	}
-    case SEGMENT_REPLY_MSG_EVENT:
+    case STATUS_REPLY_MSG_EVENT:
 	{
 	char *seg, *status, *reason;
 	gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->edata;
@@ -139,7 +139,7 @@ static apr_status_t status_success(gpcc_event_t *ev, void *_cmdslot)
     char *objstr;
     gpcc_event_t *evt;
 
-    obj = gpcc_json_array_reply("stop", "ok", 0);
+    obj = gpcc_json_array_reply("status", "ok", 0);
     objstr = json_object_to_json_string(obj);
 
     evt = gpcc_event_alloc(ARRAY_REPLY_MSG_EVENT, 0, strlen(objstr) + 1);
@@ -158,7 +158,7 @@ static apr_status_t status_failure(gpcc_event_t *ev, void *_cmdslot)
     char *objstr;
     gpcc_event_t *evt;
 
-    obj = gpcc_json_array_reply("stop", "failed", 0);
+    obj = gpcc_json_array_reply("status", "failed", 0);
     objstr = json_object_to_json_string(obj);
 
     evt = gpcc_event_alloc(ARRAY_REPLY_MSG_EVENT, 0, strlen(objstr) + 1);
