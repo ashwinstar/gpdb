@@ -335,6 +335,7 @@ typedef struct WindowInputBufferData
 
 static void resetInputBuffer(WindowState *wstate);
 static void freeInputBuffer(WindowState *wstate);
+static void trimInputBuffer(WindowInputBuffer buffer);
 
 /********************************************************
  * Window Frame Buffer and its APIs
@@ -381,6 +382,11 @@ typedef struct WindowFrameBufferData
 	/* The reader that always points to the current_row. */
 	NTupleStoreAccessor *current_row_reader;
 
+	/* The accessor that defines the point before which all values
+	 * in the buffer can be trimmed.
+	 */
+	NTupleStoreAccessor *trim_reader;
+
 	/* Pointer to the level state. Information about
 	 * window functions can be found here.
 	 */
@@ -398,9 +404,7 @@ static WindowFrameBuffer resetFrameBuffer(WindowFrameBuffer buffer);
 static void appendToFrameBuffer(WindowStatePerLevel level_state,
 								WindowState *wstate,
 								bool last_peer);
-#if 0
-static void trimFrameBuffer(WindowFrameBuffer buffer, NTupleStorePos *pos);
-#endif
+static void trimFrameBuffer(WindowFrameBuffer buffer);
 static void incrementCurrentRow(WindowFrameBuffer buffer, WindowState *wstate);
 static bool hasEnoughDataInRange(WindowFrameBuffer buffer,
 								 WindowStatePerLevel level_state,
@@ -475,6 +479,8 @@ initFrameBuffer(WindowFrameBuffer buffer, int bytes)
 	buffer->reader = ntuplestore_create_accessor(buffer->tuplestore, false);
 
 	buffer->current_row_reader =
+		ntuplestore_create_accessor(buffer->tuplestore, false);
+	buffer->trim_reader =
 		ntuplestore_create_accessor(buffer->tuplestore, false);
 }
 
@@ -570,6 +576,7 @@ resetFrameBuffer(WindowFrameBuffer buffer)
 	ntuplestore_destroy_accessor(buffer->writer);
 	ntuplestore_destroy_accessor(buffer->reader);
 	ntuplestore_destroy_accessor(buffer->current_row_reader);
+	ntuplestore_destroy_accessor(buffer->trim_reader);
 
 	ntuplestore_reset(buffer->tuplestore);
 
@@ -578,6 +585,8 @@ resetFrameBuffer(WindowFrameBuffer buffer)
 	buffer->reader = ntuplestore_create_accessor(buffer->tuplestore, false);
 
 	buffer->current_row_reader =
+		ntuplestore_create_accessor(buffer->tuplestore, false);
+	buffer->trim_reader =
 		ntuplestore_create_accessor(buffer->tuplestore, false);
 
 	return buffer;
@@ -1348,16 +1357,23 @@ appendToFrameBuffer(WindowStatePerLevel level_state,
 	adjustEdgesAfterAppend(level_state, wstate, last_peer);
 }
 
-#if 0
 /*
  * trimFrameBuffer -- trim the old values in the buffer.
  */
 static void
-trimFrameBuffer(WindowFrameBuffer buffer, NTupleStorePos *pos)
+trimFrameBuffer(WindowFrameBuffer buffer)
 {
-	ntuplestore_trim(buffer->tuplestore, pos);
+	NTupleStorePos pos;
+	bool found;
+	
+	Assert(buffer != NULL);
+
+	found = ntuplestore_acc_tell(buffer->trim_reader, &pos);
+	if (!found)
+		return;
+	
+	ntuplestore_trim(buffer->tuplestore, &pos);
 }
-#endif
 
 /*
  * getCurrentValue -- obtain the value at the current position for
@@ -1409,7 +1425,34 @@ incrementCurrentRow(WindowFrameBuffer buffer,
 	   /* Adjust all leading and trailig edges */
 	   adjustEdges(buffer, wstate);
 
-	/* We determine if we need to trim the buffer here. */
+   /* Set the trim_reader, and trim the buffer */
+   if (!level_state->has_lead_lag)
+   {
+	   NTupleStorePos pos;
+	   bool found = ntuplestore_acc_tell(buffer->current_row_reader, &pos);
+	   if (found)
+		   ntuplestore_acc_seek(buffer->trim_reader, &pos);
+	   else
+		   ntuplestore_acc_set_invalid(buffer->trim_reader);
+
+	   if (ntuplestore_acc_tell(level_state->trail_reader, NULL) &&
+		   ((ntuplestore_acc_tell(buffer->trim_reader, NULL) &&
+			 ntuplestore_acc_is_before(level_state->trail_reader,
+									   buffer->trim_reader)) ||
+			!ntuplestore_acc_tell(buffer->trim_reader, NULL)))
+	   {
+		   found = ntuplestore_acc_tell(level_state->trail_reader, &pos);
+		   Assert(found);
+		   ntuplestore_acc_seek(buffer->trim_reader, &pos);
+	   }
+
+	   if (!ntuplestore_acc_tell(level_state->trail_reader, NULL))
+		   ntuplestore_acc_set_invalid(buffer->trim_reader);
+	   else
+		   ntuplestore_acc_advance(buffer->trim_reader, -1);
+
+	   trimFrameBuffer(buffer);
+   }
 }
 
 /*
@@ -2681,6 +2724,25 @@ initializePartition(WindowState *wstate)
 }
 
 /*
+ * trimInputBuffer -- trim the old values in the input buffer.
+ */
+static void
+trimInputBuffer(WindowInputBuffer buffer)
+{
+	/* Trim all values before the current_row_reader position. */
+	NTupleStorePos pos;
+	bool found;
+
+	Assert(buffer != NULL);
+
+	found = ntuplestore_acc_tell(buffer->current_row_reader, &pos);
+	if (!found)
+		return;
+
+	ntuplestore_trim(buffer->tuplestore, &pos);
+}
+
+/*
  * Reset an input buffer after a partition boundary has been passed. We
  * must keep the last tuple fetched -- it is the tuple which caused the
  * key break -- and put it in the new buffer.
@@ -3647,8 +3709,11 @@ fetchCurrentRow(WindowState *wstate)
 		}
 		
 		else
+		{
 			ntuplestore_acc_seek_last(wstate->input_buffer->current_row_reader);
-
+			ntuplestore_acc_seek_last(wstate->input_buffer->reader);
+		}
+		
 		buffer = wstate->input_buffer;
 
 		if (wstate->curslot->tts_tupleDescriptor == NULL)
@@ -3719,6 +3784,8 @@ fetchCurrentRow(WindowState *wstate)
 	 */
 	if (wstate->cur_slot_part_break)
 		initializePartition(wstate);
+	else
+		trimInputBuffer(buffer);
 
 	/* Evaluate the LEAD/LAG offset values, and change the
 	 * framing clauses accordingly.
