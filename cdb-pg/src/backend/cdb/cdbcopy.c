@@ -239,6 +239,15 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 
 	Assert(serializedQuerytree != NULL);
 	
+	/* Reconfigure the cluster if needed. */
+	cdbdisp_reconfigureFtsIfNecessary();
+	
+	if (c->copy_in)
+	{
+		/* Mark this txn as needing a two-phase distributed transaction */
+		setCurrentDtxTwoPhase("CdbCopy", copyCmd);
+	}
+	
 	cdbdisp_dispatchCommand(copyCmd, serializedQuerytree, serializedQuerytree_len, 
 								false 		/* cancelonError */, 
 								c->copy_in 	/* need2phase */, 
