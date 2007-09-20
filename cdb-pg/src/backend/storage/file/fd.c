@@ -1626,15 +1626,18 @@ CleanupTempFiles(bool isProcExit)
 		{
 			unsigned short fdstate = VfdCache[i].fdstate;
 
-			if ((fdstate & FD_TEMPORARY) && VfdCache[i].fileName != NULL)
+			/*
+			 * If we're in the process of exiting a backend process, close
+			 * all temporary files. Otherwise, only close temporary files
+			 * local to the current transaction.
+			 */
+			if((fdstate & FD_XACT_TEMPORARY)
+			  	||
+			   (isProcExit && (fdstate & FD_TEMPORARY))
+			  )
 			{
-				/*
-				 * If we're in the process of exiting a backend process, close
-				 * all temporary files. Otherwise, only close temporary files
-				 * local to the current transaction.
-				 */
-				if (isProcExit || (fdstate & FD_XACT_TEMPORARY))
-					FileClose(i);
+				AssertImply( (fdstate & FD_TEMPORARY), VfdCache[i].fileName != NULL);
+				FileClose(i);
 			}
 		}
 	}
