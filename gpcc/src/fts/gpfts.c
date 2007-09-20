@@ -8,6 +8,7 @@
 #include <gpcc_net.h>
 #include <gpcc_fsm.h>
 #include <gpcc_spin.h>
+#include <gpcc_json.h>
 #include <json/json.h>
 #include <event.h>
 
@@ -301,8 +302,9 @@ static void * APR_THREAD_FUNC fts_thread_run(apr_thread_t *thread, void *arg)
 	}
 
 	/* free up the cmdslot if necessary */
-	if (cp->cmdstate == NULL_CMDSTATE)
+	if (cp->cmdstate == NULL_CMDSTATE) {
 	    cmdslot_free(cp);
+	}
     }
 
     if (ev) {
@@ -394,7 +396,41 @@ int fts_terminate()
 
 int fts_do(const char *cmd, gpcc_evqueue_t *outq)
 {
+    struct json_object *obj;
+    char *action;
+    gpcc_event_t *ev = 0;
 
+    obj = json_tokener_parse((char *)cmd);
+    action = gpcc_json_object_get_string(obj, "action", 0);
+
+    if (gpfts.system_cmdidx == 0) {
+	cmdslot_t *p = cmdslot_alloc("SYSTEM", SYSTEM_CMDSTATE, 0);
+	gpfts.system_cmdidx = p->cmdidx;
+    }
+
+    if (strcmp(action, "setup") == 0) {
+	ev = gpcc_event_alloc(ARRAY_SETUP_EVENT, gpfts.system_cmdidx, strlen(cmd)+1);
+	memcpy(ev->edata, cmd, strlen(cmd) + 1);
+    } else if (strcmp(action, "init") == 0) {
+	ev = gpcc_event_alloc(ARRAY_INIT_EVENT, gpfts.system_cmdidx, strlen(cmd)+1);
+	memcpy(ev->edata, cmd, strlen(cmd) + 1);
+    } else if (strcmp(action, "start") == 0) {
+	ev = gpcc_event_alloc(ARRAY_START_EVENT, gpfts.system_cmdidx, strlen(cmd)+1);
+	memcpy(ev->edata, cmd, strlen(cmd) + 1);
+    } else if (strcmp(action, "stop") == 0) {
+	ev = gpcc_event_alloc(ARRAY_STOP_EVENT, gpfts.system_cmdidx, strlen(cmd)+1);
+	memcpy(ev->edata, cmd, strlen(cmd) + 1);
+    } else if (strcmp(action, "status") == 0) {
+	ev = gpcc_event_alloc(ARRAY_STATUS_EVENT, gpfts.system_cmdidx, strlen(cmd)+1);
+	memcpy(ev->edata, cmd, strlen(cmd) + 1);
+    } else {
+	gpcc_warning(FLINE, "invalid command %s", cmd);
+	json_object_put(obj);
+	return APR_EINVAL;
+    }
+    
+    json_object_put(obj);
+    gpcc_evqueue_put(gpfts.evq, ev);
 
     return 0;
 }

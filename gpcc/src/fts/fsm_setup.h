@@ -408,11 +408,18 @@ static apr_status_t setup_init(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
+static apr_status_t system_end(gpcc_event_t *ev, void *_cmdslot)
+{
+    gpfts.system_cmdidx = 0;
+    return 0;
+}
+
 static apr_status_t setup_cleanup(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
 
     apr_pool_destroy(cmdslot->u.sys.request.pool);
+
 
     return 0;
 }

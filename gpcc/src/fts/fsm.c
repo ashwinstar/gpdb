@@ -38,7 +38,7 @@ APR_DECLARE(void) fsm_setup(void)
     gpcc_fsm_put(SYSTEM_CMDSTATE, SUCCESS_EVENT, SYSTEM_READY_CMDSTATE,
 		 setup_ready, setup_cleanup, 0);
     gpcc_fsm_put(SYSTEM_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
-		 setup_failure, setup_array_cleanup, setup_cleanup, 0);
+		 setup_failure, setup_array_cleanup, setup_cleanup, system_end, 0);
     gpcc_fsm_put(SYSTEM_CMDSTATE, SETUP_SSH_EVENT, SETUP_SSH_CMDSTATE,
 		 setup_ssh_start, 0);
     
@@ -47,7 +47,7 @@ APR_DECLARE(void) fsm_setup(void)
     gpcc_fsm_put(SETUP_NEXT_CMDSTATE, NET_OPENED_EVENT, SETUP_NEXT_CMDSTATE,
 		 setup_ha_opened, 0);
     gpcc_fsm_put(SETUP_NEXT_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
-		 setup_failure, setup_array_cleanup, setup_cleanup, 0);
+		 setup_failure, setup_array_cleanup, setup_cleanup, system_end, 0);
     gpcc_fsm_put(SETUP_NEXT_CMDSTATE, SUCCESS_EVENT, SYSTEM_READY_CMDSTATE,
 		 setup_ready, setup_cleanup, 0);
 
