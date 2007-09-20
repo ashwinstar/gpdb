@@ -354,7 +354,7 @@ create external table badt1 (x text)
 location ('file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl' )
 format 'text' (delimiter '|');
 select * from badt1;
-ERROR:  could not open "file://localhost/Users/agoldshuv/projects/greenplumdb/cdb-pg/src/test/regress/data/no/such/place/badt1.tbl" for reading: No such file or directory
+ERROR:  could not open "file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl" for reading: No such file or directory
 drop external table badt1;
 --
 -- try a bad protocol
@@ -362,7 +362,7 @@ drop external table badt1;
 create external table badt2 (x text) 
 location ('bad_protocol://@hostname@@abs_srcdir@/data/no/such/place/badt2.tbl' )
 format 'text' (delimiter '|');
-ERROR:  invalid URI 'bad_protocol://localhost/Users/agoldshuv/projects/greenplumdb/cdb-pg/src/test/regress/data/no/such/place/badt2.tbl' : undefined protocol
+ERROR:  invalid URI 'bad_protocol://@hostname@@abs_srcdir@/data/no/such/place/badt2.tbl' : undefined protocol
 --
 -- get an error for missing gpfdist
 --

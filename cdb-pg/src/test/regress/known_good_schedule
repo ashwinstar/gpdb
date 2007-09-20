@@ -106,7 +106,7 @@ ignore: returning
 ignore: stats
 ignore: tablespace
 test: gpdiffcheck
-ignore: exttab1
+test: exttab1
 test: resource_queue
 test: gptokencheck
 test: gpcopy
