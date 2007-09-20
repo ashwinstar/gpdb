@@ -84,7 +84,7 @@ FtsShmemInit(void)
 		ftsControlLock = shared->ControlLock;
 		ftsQDMirrorInfo->enabled = true; /* set default to true, will be set to
 										  * false if connection failed */
-		memset(ftsQDMirrorInfo->name, 0, sizeof(ftsQDMirrorInfo->name));
+		MemSet(ftsQDMirrorInfo->name, 0, sizeof(ftsQDMirrorInfo->name));
 		ftsQDMirrorInfo->port = 0;
 
 		/* initialize */
@@ -996,7 +996,7 @@ FtsEvaluateTransientState(void)
 	}
 
 	/* retest ok, reset all states */
-	memset(ftsSegDBTransientState, 0, *ftsSegDBTransientCount * sizeof(struct FtsSegDBState));
+	MemSet(ftsSegDBTransientState, 0, *ftsSegDBTransientCount * sizeof(struct FtsSegDBState));
 	*ftsSegDBTransientCount = 0;
 
 	incFtsSyncCount();

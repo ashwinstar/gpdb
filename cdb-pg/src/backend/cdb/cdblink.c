@@ -216,7 +216,7 @@ buildMirrorQDDefinition(void)
 		}
 
 		cdb_mirrored_entry_db = malloc(sizeof(SegmentDatabaseDescriptor));
-		memset(cdb_mirrored_entry_db, 0, sizeof(SegmentDatabaseDescriptor));
+		MemSet(cdb_mirrored_entry_db, 0, sizeof(SegmentDatabaseDescriptor));
 		cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, mirrorDb);
 		/* connect to mirrored QD */
 		if (!cdblink_connectQD(cdb_mirrored_entry_db))
@@ -305,7 +305,7 @@ buildQDMirrorFromShmem(void)
 	mirrorDb.port = port;
 
 	cdb_mirrored_entry_db = malloc(sizeof(SegmentDatabaseDescriptor));
-	memset(cdb_mirrored_entry_db, 0, sizeof(SegmentDatabaseDescriptor));
+	MemSet(cdb_mirrored_entry_db, 0, sizeof(SegmentDatabaseDescriptor));
 	cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, &mirrorDb);
 
 	/* connect to mirrored QD */

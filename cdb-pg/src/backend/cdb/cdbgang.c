@@ -927,7 +927,7 @@ buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo)
 		
 		CdbComponentDatabaseInfo  *cdbinfo = palloc0(sizeof(CdbComponentDatabaseInfo));
 		segdbDesc = &newGangDefinition->db_descriptors[i];
-		memset(segdbDesc, 0, sizeof(*segdbDesc));
+		MemSet(segdbDesc, 0, sizeof(*segdbDesc));
 
 		cdbinfo->segindex = conninfo->seginfo[i].segindex;
 		cdbinfo->isprimary = conninfo->seginfo[i].isprimary;
@@ -1338,7 +1338,7 @@ addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
 												   sizeof
 												   (SegmentDatabaseDescriptor
 													*));
-		memset(&pParms->thread, 0, sizeof(pthread_t));
+		MemSet(&pParms->thread, 0, sizeof(pthread_t));
 		pParms->db_count = 0;
 	}
 

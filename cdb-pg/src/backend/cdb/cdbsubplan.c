@@ -200,7 +200,7 @@ addRemoteExecParamsToParamList(Plan *plan, List *rtable, ParamListInfo extPrm, P
 	 * the ParamExecData struct or the SubPlan struct.
 	 */
 
-	memset(&context, 0, sizeof(context));
+	MemSet(&context, 0, sizeof(context));
 	param_walker((Node *) plan, &context);
 	
 	/* 

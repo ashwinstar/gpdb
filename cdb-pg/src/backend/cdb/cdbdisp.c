@@ -814,7 +814,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 		pParms->dispatchResultPtrArray =
 			(CdbDispatchResult **) palloc0((gp_connections_per_thread == 0 ? largestGangsize() : gp_connections_per_thread)*
 										   sizeof(CdbDispatchResult *));
-		memset(&pParms->thread, 0, sizeof(pthread_t));
+		MemSet(&pParms->thread, 0, sizeof(pthread_t));
 		pParms->db_count = 0;
 	}
 
@@ -921,7 +921,7 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 		}
 		HOLD_INTERRUPTS();
 		pParms->thread_valid = false;
-		memset(&pParms->thread, 0, sizeof(pParms->thread));
+		MemSet(&pParms->thread, 0, sizeof(pParms->thread));
 		RESUME_INTERRUPTS();
 
 		/*
@@ -1192,7 +1192,7 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 
 	*badGangs = false;
 
-	memset(&dtxProtocolParms, 0, sizeof(dtxProtocolParms));
+	MemSet(&dtxProtocolParms, 0, sizeof(dtxProtocolParms));
 	dtxProtocolParms.dtxProtocolCommand = dtxProtocolCommand;
 	dtxProtocolParms.flags = flags;
 	dtxProtocolParms.dtxProtocolCommandLoggingStr = dtxProtocolCommandLoggingStr;
@@ -1342,7 +1342,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 
 	*pDispatchThreads = NULL;
 
-	memset(&queryParms, 0, sizeof(queryParms));
+	MemSet(&queryParms, 0, sizeof(queryParms));
 	queryParms.strCommand = strCommand;
 	queryParms.serializedQuerytree = serializedQuerytree;
 	queryParms.serializedQuerytreelen = serializedQuerytreelen;
@@ -1614,7 +1614,7 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 	
 	*pDispatchThreads = NULL;
 
-	memset(&queryParms, 0, sizeof(queryParms));
+	MemSet(&queryParms, 0, sizeof(queryParms));
 	queryParms.strCommand = strCommand;
 	queryParms.serializedQuerytree = serializedQuerytree;
 	queryParms.serializedQuerytreelen = serializedQuerytreelen;
@@ -2602,7 +2602,7 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 
 				/* PQcancel uses some strcpy/strcat functions; let's
 				 * clear this for safety */
-				memset(errbuf, 0, sizeof(errbuf));
+				MemSet(errbuf, 0, sizeof(errbuf));
 
 				if (DEBUG4 >= log_min_messages)
 					write_log("Calling PQcancel for %s\n",
@@ -3852,7 +3852,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		}
 	}
 
-	memset(&queryParms, 0, sizeof(queryParms));
+	MemSet(&queryParms, 0, sizeof(queryParms));
 	queryParms.strCommand = debug_query_string;
 	queryParms.serializedQuerytree = squery;
 	queryParms.serializedQuerytreelen = squery_len;
