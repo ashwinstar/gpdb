@@ -17,6 +17,7 @@
 #include "libpq-fe.h"
 #include "libpq-int.h"
 #include "miscadmin.h"
+#include "tcop/tcopprot.h"
 #include "cdb/cdbconn.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbvars.h"
@@ -26,6 +27,8 @@
 #include "cdb/cdbcopy.h"
 #include "cdb/cdbgang.h"
 #include "cdb/cdbdispatchresult.h"
+#include "utils/memutils.h"
+#include "cdb/cdbsrlz.h"
 
 
 /*
@@ -137,15 +140,115 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 {
 	int			seg;
 	int			db;
+	MemoryContext oldcontext;
+	CdbDispatchResults *primaryResults;
+	CdbDispatchResults *mirrorResults;
+	CdbDispatchCmdThreads *dispatchThreads;
+	List	   *parsetree_list;
+	Node	   *parsetree = NULL;
+	List	   *querytree_list;
+	char	   *serializedQuerytree;
+	int			serializedQuerytree_len;
+	Query	   *q = makeNode(Query);
 	
 	/* clean err message */
 	c->err_msg.len = 0;
 	c->err_msg.data[0] = '\0';
 	c->err_msg.cursor = 0;
 	
+	/*
+	 * A context it is safe to build parse trees in.
+	 * We don't want them in TopMemory, as the trees 
+	 * should only last for this one statement
+	 */
+	oldcontext = MemoryContextSwitchTo(MessageContext);
+
+	QueryContext = CurrentMemoryContext;
+	
 	/* dispatch copy command to both primary and mirror writer gangs */
-	CdbDoCommand(copyCmd, false, c->copy_in /* needTwoPhase */, 
-			c->copy_in /* dispatchToMirrors */, true /* dispatchToPrimaries */);
+	
+	/*
+	 * We can't have the Dispatch Agents involved in parsing queries.
+	 * 
+	 * And there isn't really any reason for the QEs to do it in this case.
+	 * 
+	 * So let's parse the copy command into a query tree, serialize it, and
+	 * send it down to the QE or DA.
+	 * 
+	 * I can't tell by looking at the code if this COPY statement that
+	 * Alon has laboriously built up from his context info is supposed to be
+	 * the same as the original COPY statement the QE got.
+	 * 
+	 * If it is, we could just pass the original CopyStmt node to this routine,
+	 * and ship it down to the QE or DA.  That would save all the work in Copy.c
+	 * that creates this COPY statement from the cstate info.
+	 * 
+	 * But since I'm not sure he hasn't
+	 * altered things, I'll play it safe and parse the COPY command he built
+	 */
+	
+	/*
+	 * parse it to a raw parsetree 
+	 */
+	
+	parsetree_list = pg_parse_query(copyCmd);
+	
+	/*
+	 * Assume it will be one statement node, not multiple ones.
+	 */
+
+	parsetree = (Node *) linitial(parsetree_list);
+	Assert(nodeTag(parsetree) == T_CopyStmt);
+	
+	/*
+	 * Ok, we have a raw parse tree of the copy stmt.
+	 * 
+	 * I don't think analyze and rewrite will do much to it,
+	 * but it will at least package it up as a query node,
+	 * which we need for serializing.
+	 */
+	
+	querytree_list = pg_analyze_and_rewrite(parsetree, copyCmd,
+													NULL, 0);
+	
+	/*
+	 * Again, assume it is one query node, not multiple
+	 */
+	q = (Query *)linitial(querytree_list);
+	
+	
+	Assert(IsA(q,Query));
+	Assert(q->commandType == CMD_UTILITY);
+	Assert(q->utilityStmt != NULL);
+	Assert(IsA(q->utilityStmt,CopyStmt));
+	
+	q->querySource = QSRC_ORIGINAL;
+
+	q->canSetTag = true;
+	
+	MemoryContextSwitchTo(oldcontext);
+
+	/*
+	 * serialized the stmt tree, and create the sql statement: mppexec ....
+	 */
+	serializedQuerytree = serializeNode((Node *) q, &serializedQuerytree_len);
+
+	Assert(serializedQuerytree != NULL);
+	
+	cdbdisp_dispatchCommand(copyCmd, serializedQuerytree, serializedQuerytree_len, 
+								false /* cancelonError */, 
+								c->copy_in /* need2phase */, 
+								true /* withSnapshot */, 
+								c->copy_in /* dispatchToMirrors */, 
+								true /* dispatchToPrimaries */,
+								&primaryResults, &mirrorResults, &dispatchThreads);
+
+	/*
+	 * Wait for all QEs to finish. If not all of our QEs were successful,
+	 * report the error and throw up.
+	 */
+	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
+	
 	
 	/* fill in CdbCopy structure */
 	for (seg = 0; seg < c->total_segs; seg++)
