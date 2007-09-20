@@ -178,7 +178,7 @@ typedef struct CopyStateData
 
 	/*
 	 * Finally, raw_buf holds raw data read from the data source (file or
-																  * client connection). CopyReadLine parses this data sufficiently to
+	 * client connection). CopyReadLine parses this data sufficiently to
 	 * locate line boundaries, then transfers the data to line_buf and
 	 * converts it.  Note: we guarantee that there is a \0 at
 	 * raw_buf[raw_buf_len].
