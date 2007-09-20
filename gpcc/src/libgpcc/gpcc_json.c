@@ -77,12 +77,13 @@ struct json_object *gpcc_json_hostlist(const char * const *masters, const char *
  *   
  */
 
-struct json_object *gpcc_json_segment_request(const char *segment, const char *action, const char *mode, 
+struct json_object *gpcc_json_segment_request(struct json_object *_obj, 
+					      const char *segment, const char *action, const char *mode, 
 					      const char *host, int port, const char *data_dir)
 {
-    struct json_object *obj = 0;
-
-    obj = json_object_new_object();
+    struct json_object *obj = _obj;
+    if (!obj)
+	obj = json_object_new_object();
     json_object_object_add(obj, "seg", json_object_new_string((char *)segment));
     json_object_object_add(obj, "action", json_object_new_string((char *)action));
     json_object_object_add(obj, "mode", json_object_new_string((char *)mode));

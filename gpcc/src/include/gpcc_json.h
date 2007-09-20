@@ -101,7 +101,8 @@ struct json_object *gpcc_json_hostlist(const char * const *masters, const char *
  *  @param data_dir  data directory
  *  @return json_object
  */
-struct json_object *gpcc_json_segment_request(const char *segment, const char *action, const char *mode, 
+struct json_object *gpcc_json_segment_request(struct json_object *obj, 
+					      const char *segment, const char *action, const char *mode, 
 					      const char *host, int port, const char *data_dir);
 
 
