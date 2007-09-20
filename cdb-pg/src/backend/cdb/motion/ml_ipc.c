@@ -1007,7 +1007,7 @@ sendAck(MotionConn *conn, bool stop)
 	if (stop)
 		conn->conn_info.flags |= FLAGS_STOP;
 
-	memset(&msg, 0, sizeof(msg));
+	MemSet(&msg, 0, sizeof(msg));
 	memcpy(&msg, &conn->conn_info, sizeof(msg));
 	msg.flags |= FLAGS_ACK;
 
@@ -1692,7 +1692,7 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 			conn->pkt_q = (uint8 **)malloc(Gp_interconnect_queue_depth * sizeof(char *));
 
 			/* connection header info (defining characteristics of this connection) */
-			memset(&conn->conn_info, 0, sizeof(conn->conn_info));
+			MemSet(&conn->conn_info, 0, sizeof(conn->conn_info));
 			conn->route = i;
 			conn->conn_info.motNodeId = pEntry->motNodeId;
 			conn->conn_info.recvSliceIndex = mySlice->sliceIndex;
@@ -2247,7 +2247,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
                                     outgoing_fail_count, iteration)
 						));
             pfree(logbuf.data);
-            memset(&logbuf, 0, sizeof(logbuf));
+            MemSet(&logbuf, 0, sizeof(logbuf));
         }
 
 		ML_CHECK_FOR_INTERRUPTS((*ppTransportStates)->teardownActive);
@@ -2281,7 +2281,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
                 ereport(elevel, (errmsg("SetupInterconnect+%dms:   select()  %s",
                                         elapsed_ms, logbuf.data) ));
                 pfree(logbuf.data);
-                memset(&logbuf, 0, sizeof(logbuf));
+                MemSet(&logbuf, 0, sizeof(logbuf));
                 errno = errnoSave;
             }
         }
@@ -2758,23 +2758,30 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 
 		parentSlice = (Slice *) list_nth(transportStates->sliceTable->slices, mySlice->parentIndex);
 
-		elog(LOG, "closing connections to slice %d (grandparent index %d)",
-			 mySlice->parentIndex, parentSlice->parentIndex);
-
 		/* cleanup a Sending motion node. */
 		if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-			elog(DEBUG3, "Interconnect seg%d slice%d closing connections to slice%d",
-				 Gp_segment, mySlice->sliceIndex, mySlice->parentIndex);
+			elog(DEBUG3, "Interconnect seg%d slice%d closing connections to slice%d (%d peers)",
+				 Gp_segment, mySlice->sliceIndex, mySlice->parentIndex,
+				 list_length(parentSlice->primaryProcesses) + list_length(parentSlice->mirrorProcesses));
 
-		/* no need to send this, all QEs agree that we're cleaning up
-		 * from an error -- so we all shutdown */
-#if 0
+		/* This is required so that the QD gives up and ends the query
+		 * (it doesn't go detect errors in a query until all of the
+		 * QEs are done *and* have sent EOS up to it -- The QEs all
+		 * agree, so among one another the EOS isn't required. */
 		if (forceEOS)
 		{
-//			elog(LOG, "teardownudpinterconnect(): calling forceEosToPeers");
-//			forceEosToPeers(mlStates, transportStates, mySlice->sliceIndex);
+			/* we only need to do this if the QD is our upstream peer ? */
+			if (parentSlice->parentIndex == -1 &&
+				list_length(parentSlice->primaryProcesses) == 1)
+			{
+				CdbProcess *peer = (CdbProcess *)list_nth(parentSlice->primaryProcesses, 0);
+
+//				elog(LOG, "upstream singleton peer has content %d", peer->contentid);
+				/* upstream singleton is the QD */
+				if (peer->contentid == -1)
+					forceEosToPeers(mlStates, transportStates, mySlice->sliceIndex);
+			}
 		}
-#endif
 
 		/* now it is safe to remove. */
 		pEntry = removeChunkTransportState(transportStates, mySlice->sliceIndex);
@@ -2913,7 +2920,7 @@ setupListeningSocket(int backlog, int *listenerSocketFd, uint16 *listenerPort)
     if (!pg_set_noblock(fd))
         goto error;
 
-	memset(&saddr, 0, sizeof(saddr));
+	MemSet(&saddr, 0, sizeof(saddr));
 	saddr.sin_family = AF_INET;
 
 	/* We use INADDR_ANY if we don't have a valid address for
@@ -2979,7 +2986,7 @@ setupUDPListeningSocket(int backlog, int *listenerSocketFd, uint16 *listenerPort
 	if (fd < 0)
 		goto error;
 
-	memset(&saddr, 0, sizeof(saddr));
+	MemSet(&saddr, 0, sizeof(saddr));
 	saddr.sin_family = AF_INET;
 	saddr.sin_port = 0;
 
@@ -2987,7 +2994,7 @@ setupUDPListeningSocket(int backlog, int *listenerSocketFd, uint16 *listenerPort
 	if (bind(fd, (struct sockaddr *)&saddr, sizeof(saddr)) < 0)
 		goto error;
 
-	memset(&saddr, 0, sizeof(saddr));
+	MemSet(&saddr, 0, sizeof(saddr));
 	saddrlen = sizeof(saddr);
 
     fun = "getsockname";
@@ -3071,7 +3078,7 @@ createChunkTransportState(ChunkTransportState *transportStates,
 		newTable = repalloc(transportStates->states, motNodeID * sizeof(ChunkTransportStateEntry));
 		transportStates->states = newTable;
 		/* zero-out the new piece at the end */
-		memset(&transportStates->states[transportStates->size], 0, (motNodeID - transportStates->size) * sizeof(ChunkTransportStateEntry));
+		MemSet(&transportStates->states[transportStates->size], 0, (motNodeID - transportStates->size) * sizeof(ChunkTransportStateEntry));
 		transportStates->size = motNodeID;
 	}
 	
@@ -3383,7 +3390,7 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 	if (pEntry->txfd < 0)
 		goto error;
 
-	memset(&saddr, 0, sizeof(saddr));
+	MemSet(&saddr, 0, sizeof(saddr));
 	saddr.sin_family = AF_INET;
 	saddr.sin_port = 0;
 
@@ -3391,7 +3398,7 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 	if (bind(pEntry->txfd, (struct sockaddr *)&saddr, sizeof(saddr)) < 0)
 		goto error;
 
-	memset(&saddr, 0, sizeof(saddr));
+	MemSet(&saddr, 0, sizeof(saddr));
 	saddrlen = sizeof(saddr);
 
 	fun = "getsockname";
@@ -3445,7 +3452,7 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
     /*
      * Get ipaddr to connect to.
      */
-    memset(&saddr, 0, sizeof(saddr));
+    MemSet(&saddr, 0, sizeof(saddr));
     saddr.sin_family = AF_INET;
 
     if ((n = inet_net_pton(AF_INET, cdbProc->listenerAddr, &saddr.sin_addr, sizeof(saddr.sin_addr))) < 1)
@@ -3484,7 +3491,7 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
                                 conn->sockfd)));
 
 	/* send connection request */
-	memset(&conn->conn_info, 0, sizeof(conn->conn_info));
+	MemSet(&conn->conn_info, 0, sizeof(conn->conn_info));
 	conn->conn_info.len = 0;
 	conn->conn_info.flags = 0;
 	conn->conn_info.motNodeId = pEntry->motNodeId;
@@ -3582,7 +3589,7 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
                                "connection."),
 		                errdetail("%m%s", "setsockopt(SO_REUSEADDR)")));
 
-    memset(&saddr, 0, sizeof(saddr));
+    MemSet(&saddr, 0, sizeof(saddr));
     saddr.sin_family = AF_INET;
 
 	/* We use INADDR_ANY if we don't have a valid address for
@@ -3610,7 +3617,7 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
     /*
      * Get ipaddr to connect to.
      */
-    memset(&saddr, 0, sizeof(saddr));
+    MemSet(&saddr, 0, sizeof(saddr));
     saddr.sin_family = AF_INET;
 
     if ((n = inet_net_pton(AF_INET, cdbProc->listenerAddr, &saddr.sin_addr, sizeof(saddr.sin_addr))) < 1)
@@ -4055,7 +4062,7 @@ readRegisterMessage(ChunkTransportState *transportStates,
     /*
      * The caller's MotionConn object is no longer valid.
      */
-    memset(conn, 0, sizeof(*conn));
+    MemSet(conn, 0, sizeof(*conn));
     conn->state = mcsNull;
 
     /*
@@ -4100,7 +4107,7 @@ acceptIncomingConnection(void)
      */
     for (;;)
     {                           /* loop until success or EWOULDBLOCK */
-	    memset(&remoteAddr, 0, sizeof(remoteAddr));
+	    MemSet(&remoteAddr, 0, sizeof(remoteAddr));
 	    addrsize = sizeof(remoteAddr);
 	    newsockfd = accept(listenerFd, (struct sockaddr *)&remoteAddr, &addrsize);	
 	    if (newsockfd >= 0)
