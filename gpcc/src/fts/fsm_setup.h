@@ -1,5 +1,211 @@
 #define HA_DEFAULT_PORT  9876
 
+
+static struct json_object *config_to_json_object() 
+{
+    struct json_object *obj;
+    char key[128];
+    int i;
+    const char *value;
+    int intvalue;
+
+    obj = json_object_new_object();
+
+    strcpy(key, "gpdb.name");
+    value = config_getx(gpfts.config, key, "mygpdb");
+    json_object_object_add(obj, key, json_object_new_string((char *)value));    
+
+    strcpy(key, "gpdb.user");
+    value = config_getx(gpfts.config, key, getenv("USER"));
+    json_object_object_add(obj, key, json_object_new_string((char *)value));    
+
+    strcpy(key, "gpdb.password");
+    value = config_getx(gpfts.config, key, "mpparray");
+    json_object_object_add(obj, key, json_object_new_string((char *)value));    
+
+    strcpy(key, "gpdb.max_connect");
+    intvalue = config_get_or_set_int(gpfts.config, key, 25);
+    json_object_object_add(obj, key, json_object_new_int(intvalue));
+
+    strcpy(key, "gpdb.encoding");
+    value = config_getx(gpfts.config, key, "UNICODE");
+    json_object_object_add(obj, key, json_object_new_string((char *)value));    
+
+    strcpy(key, "gpdb.locale");
+    value = config_getx(gpfts.config, key, "UNICODE");
+    json_object_object_add(obj, key, json_object_new_string((char *)value));    
+
+    strcpy(key, "gpdb.shared_buffers");
+    value = config_getx(gpfts.config, key, "128MB");
+    json_object_object_add(obj, key, json_object_new_string((char *)value));    
+
+    strcpy(key, "gpdb.checkpoint_segments");
+    intvalue = config_get_or_set_int(gpfts.config, key, 31);
+    json_object_object_add(obj, key, json_object_new_int(intvalue));
+
+    strcpy(key, "gpdb.seg.master_port");
+    intvalue = config_get_or_set_int(gpfts.config, key, DEFAULT_QD_PORT);
+    json_object_object_add(obj, key, json_object_new_int(intvalue));
+
+    strcpy(key, "gpdb.seg.base_port");
+    intvalue = config_get_or_set_int(gpfts.config, key, DEFAULT_QE_BASEPORT);
+    json_object_object_add(obj, key, json_object_new_int(intvalue));
+
+    strcpy(key, "gpdb.seg.mirror_base_port");
+    intvalue = config_get_or_set_int(gpfts.config, key, DEFAULT_MIRROR_QE_BASEPORT);
+    json_object_object_add(obj, key, json_object_new_int(intvalue));
+
+    
+    for (i = 0 ;  ; i++) {
+	sprintf(key, "node.%d", i);
+	value = config_get(gpfts.config, key);
+	if (!value) 
+	    break;
+
+	json_object_object_add(obj, key, json_object_new_string((char *)value));    
+    }
+
+    for (i = 0 ; ; i++) {
+	sprintf(key, "gpdb.seg.m.%d", i);
+	value = config_get(gpfts.config, key);
+	if (!value)
+	    break;
+	json_object_object_add(obj, key, json_object_new_string((char *)value));    
+    }
+
+    for (i = 0 ; ; i++) {
+	sprintf(key, "gpdb.seg.%d.0", i);
+	value = config_get(gpfts.config, key);
+	if (!value)
+	    break;
+	json_object_object_add(obj, key, json_object_new_string((char *)value));    
+
+	sprintf(key, "gpdb.seg.%d.1", i);
+	value = config_get(gpfts.config, key);
+	if (!value)
+	    continue;
+	json_object_object_add(obj, key, json_object_new_string((char *)value));    
+    }
+
+
+
+    return obj;
+}
+
+
+
+static inline void setup_set_segment(cmdslot_t *cmdslot, int idx, char *name, int dbid, int content, int port, int node, char *dir, apr_pool_t *pool)
+{
+
+    cmdslot->u.sys.seginfo[idx].name = apr_pstrdup(pool, name);
+    cmdslot->u.sys.seginfo[idx].dbid = dbid;
+    cmdslot->u.sys.seginfo[idx].content = content;
+    cmdslot->u.sys.seginfo[idx].port = port;
+    cmdslot->u.sys.seginfo[idx].haidx = node;
+    cmdslot->u.sys.seginfo[idx].dir = apr_pstrdup(pool, dir);
+}
+
+static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = (cmdslot_t *)_cmdslot;
+    int i, n, dbid, content, node;
+    char key[128], dir[1024];
+    const char *value;
+    int master_port, base_port, mirror_base_port;
+
+    cmdslot->u.sys.config_json = config_to_json_object();
+
+    master_port = config_get_or_set_int(gpfts.config, key, DEFAULT_QD_PORT);
+    base_port = config_get_or_set_int(gpfts.config, key, DEFAULT_QE_BASEPORT);
+    mirror_base_port = config_get_or_set_int(gpfts.config, key, DEFAULT_MIRROR_QE_BASEPORT);
+
+    for (i = 0 ; ; i++) {
+	sprintf(key, "gpdb.seg.m.%d", i);
+	value = config_get(gpfts.config, key);
+	if (!value)
+	    break;
+    }
+
+    n = i;
+
+    for (i = 0 ; ; i++) {
+	sprintf(key, "gpdb.seg.%d.0", i);
+	value = config_get(gpfts.config, key);
+	if (!value)
+	    break;
+	
+	n++;
+
+	sprintf(key, "gpdb.seg.%d.1", i);
+	value = config_get(gpfts.config, key);
+	if (!value)
+	    continue;
+
+	n++;
+    }	
+
+    cmdslot->u.sys.nseginfo = n;
+    cmdslot->u.sys.seginfo = apr_palloc(cmdslot->pool, sizeof(*cmdslot->u.sys.seginfo) * n);
+
+    /* master QD */
+    strcpy(key, "gpdb.seg.m.0");
+    dbid = 1;
+    content = -1;
+    if (sscanf(value, "node.%d:%s", &node, dir) != 2) {
+	gpcc_warning(FLINE, "value format error. %s = %s", key, value);
+	return APR_EINVAL;
+    }	
+    
+    setup_set_segment(cmdslot, dbid-1, key, dbid, content, master_port, node, dir, cmdslot->pool);
+    
+    for (i = 0 ;  ; i++) {
+	/* master QE */
+	sprintf(key, "gpdb.seg.%d.0", i);
+	value = config_get(gpfts.config, key);
+	if (!value)
+	    break;
+
+	if (sscanf(value, "node.%d:%s", &node, dir) != 2) {
+	    gpcc_warning(FLINE, "value format error. %s = %s", key, value);
+	    return APR_EINVAL;
+	}	
+	dbid++;
+	content++;
+	setup_set_segment(cmdslot, dbid-1, key, dbid, content, base_port++, node, dir, cmdslot->pool);
+
+	/* mirror QE */
+	sprintf(key, "gpdb.seg.%d.1", i);
+	value = config_get(gpfts.config, key);
+	if (!value)
+	    continue;
+
+	if (sscanf(value, "node.%d:%s", &node, dir) != 2) {
+	    gpcc_warning(FLINE, "value format error. %s = %s", key, value);
+	    return APR_EINVAL;
+	}
+	dbid++;	
+	setup_set_segment(cmdslot, dbid-1, key, dbid, content, mirror_base_port++, node, dir, cmdslot->pool);
+    }
+
+    /* standby QD */
+    content = -1;
+    for (i = 1 ; ; i++) {
+	sprintf(key, "gpdb.seg.m.%d", i);
+	value = config_get(gpfts.config, key);
+	if (!value)
+	    break;
+	if (sscanf(value, "node.%d:%s", &node, dir) != 2) {
+	    gpcc_warning(FLINE, "value format error. %s = %s", key, value);
+	    return APR_EINVAL;
+	}
+	dbid++;
+	setup_set_segment(cmdslot, dbid-1, key, dbid, content, master_port, node, dir, cmdslot->pool);
+    }	
+
+    return 0;
+}
+
+
 static void u_queue_timeup_event(cmdslot_t* cmdslot)
 {
     gpcc_event_t* ev = gpcc_event_alloc(TIMEUP_EVENT, cmdslot->cmdidx, 0);
@@ -262,6 +468,9 @@ static apr_status_t setup_ready(gpcc_event_t *ev, void *_cmdslot)
     struct json_object *obj;
     char *objstr;
     gpcc_event_t *evt;
+
+    cmdslot->u.sys.config_json = config_to_json_object();
+    setup_init_seginfo(ev, _cmdslot);
 
     obj = gpcc_json_array_reply("setup", "ok", 0);
     objstr = json_object_to_json_string(obj);

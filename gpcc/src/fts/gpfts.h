@@ -49,6 +49,17 @@ struct hainfo_t {
     gpcc_ha_t *ha;
 };
 
+typedef struct seginfo_t seginfo_t;
+struct seginfo_t {
+    char *name;
+    int dbid;
+    int content;
+    int port;
+    char *dir;
+    int haidx;
+    int replied;
+};
+
 typedef struct cmdslot_t cmdslot_t;
 struct cmdslot_t {
     int 	cmdidx;
@@ -64,6 +75,9 @@ struct cmdslot_t {
 	struct {
 	    hainfo_t **hainfo;
 	    int nhainfo;
+	    seginfo_t *seginfo;
+	    int nseginfo;
+	    struct json_object *config_json;
 	    
 	    struct {
 		apr_pool_t *pool;
@@ -81,18 +95,6 @@ struct cmdslot_t {
 
 		    struct {
 			char *mode;
-			struct json_object *config_json;
-			int nsegment;
-			struct {
-			    char *name;
-			    int dbid;
-			    int content;
-			    int port;
-			    char *dir;
-			    int haidx;
-			    int replied;
-			} *segment;
-			    
 			int nreply;
 			int nsuccess;
 			int nfailed;

@@ -15,7 +15,6 @@
 #include "fsm_setup.h"
 #include "fsm_initdb.h"
 
-
 APR_DECLARE(void) fsm_setup(void)
 {
     gpcc_fsm_put(TIMER_CMDSTATE, INIT_EVENT, TIMER_CMDSTATE,
@@ -26,6 +25,7 @@ APR_DECLARE(void) fsm_setup(void)
     gpcc_fsm_put(SYSTEM_CMDSTATE, INIT_EVENT, SYSTEM_CMDSTATE,
 		 system_init, 0);
 
+    /* setup */
     gpcc_fsm_put(SYSTEM_CMDSTATE, ARRAY_SETUP_EVENT, SYSTEM_CMDSTATE,
 		 setup_init, setup_array_connect, 0);
     gpcc_fsm_put(SYSTEM_CMDSTATE, NET_OPENED_EVENT, SYSTEM_CMDSTATE,
@@ -49,11 +49,13 @@ APR_DECLARE(void) fsm_setup(void)
 		 setup_ready, setup_cleanup, 0);
 
 
+    /* network failure */
     gpcc_fsm_put(SYSTEM_READY_CMDSTATE, NET_CLOSED_EVENT, SYSTEM_FATAL_CMDSTATE,
 		 ha_closed, 0);
     gpcc_fsm_put(SYSTEM_FATAL_CMDSTATE, NET_CLOSED_EVENT, SYSTEM_FATAL_CMDSTATE,
 		 ha_closed, 0);
 
+    /* init */
     gpcc_fsm_put(SYSTEM_READY_CMDSTATE, ARRAY_INIT_EVENT, INITDB_CMDSTATE,
 		 initdb_init, initdb_do, 0);
     gpcc_fsm_put(INITDB_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, INITDB_CMDSTATE,
@@ -66,5 +68,18 @@ APR_DECLARE(void) fsm_setup(void)
 		 ha_closed, initdb_reply, 0);
 
 
+    /* stop */
+    /*
+    gpcc_fsm_put(SYSTEM_READY_CMDSTATE, ARRAY_STOP_EVENT, STOP_CMDSTATE,
+		 stop_init, stop_do, 0);
+    gpcc_fsm_put(STOP_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, STOP_CMDSTATE,
+		 stop_reply, 0);
+    gpcc_fsm_put(STOP_CMDSTATE, SUCCESS_EVENT, SYSTEM_READY_CMDSTATE,
+		 stop_success, stop_cleanup, 0);
+    gpcc_fsm_put(STOP_CMDSTATE, FAILURE_EVENT, SYSTEM_READY_CMDSTATE,
+		 stop_failure, stop_cleanup, 0);
+    gpcc_fsm_put(STOP_CMDSTATE, NET_CLOSED_EVENT, STOP_CMDSTATE,
+		 ha_closed, stop_reply, 0);
 
+    */
 }
