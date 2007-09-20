@@ -3817,9 +3817,43 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			
 			if (isCopy)
 			{
-				CopyState cstate;
+				MemoryContext oldcontext;
+
+				Query 	*query;
+
+				//CopyState cstate;
 				/* Allocate workspace and zero all fields */
-				cstate = (CopyStateData *) palloc0(sizeof(CopyStateData));
+				//cstate = (CopyStateData *) palloc0(sizeof(CopyStateData));
+				
+				/* 
+				 * A context safe to build parse trees in
+				 */
+				oldcontext = MemoryContextSwitchTo(MessageContext);
+
+				QueryContext = CurrentMemoryContext;
+				
+				elog(NOTICE,"DA is doing copy statement %s",query_string);
+				
+				query = (Query *) deserializeNode(serializedQuerytree,serializedQuerytreelen);
+
+			    if (!query ||
+			        !IsA(query, Query))
+			        elog(ERROR, "DispatchAgent: received invalid query for copy stmt");
+			    
+			    if (!IsA(query->utilityStmt,CopyStmt))
+			    	elog(ERROR, "Not a copy statement?");
+			
+				
+				{
+				uint64		processed = DoCopy((CopyStmt *) query->utilityStmt);
+				
+				completionTag = palloc0(COMPLETION_TAG_BUFSIZE);
+				
+				snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
+						 "COPY " UINT64_FORMAT, processed);
+				}
+
+				/*
 				pg_usleep(2*1000000);
 				if (copyIsFrom)
 				{
@@ -3828,7 +3862,9 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				else
 				{
 					CopyToDispatch(cstate);
-				}
+				}*/
+				
+				MemoryContextSwitchTo(oldcontext);
 			}
 			 
 			/*
@@ -3864,51 +3900,6 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				             msec_str, query_string) ));
 					break;
 			}
-			 
-			
-			/*
-			else
-			{
-				setupQEDtxContext(&TempDtxContextInfo);
-				
-				//PG_TRY();
-				{				
-						
-					if (serializedQuerytreelen==0 && serializedPlantreelen==0)
-						{
-							if (strncmp(query_string, "BEGIN", 5) == 0)
-							{
-								CommandDest dest = whereToSendOutput;
-
-								
-								elog((Debug_print_full_dtm ? LOG : DEBUG5), "PostgresMain explicit %s", query_string);
-
-								
-								pgstat_report_activity("BEGIN");
-								
-								set_ps_display("BEGIN", false);
-
-								BeginCommand("BEGIN", dest);
-
-								EndCommand("BEGIN", dest);
-
-							}
-							else
-							{
-								exec_simple_query(query_string);
-							}
-						}
-					else
-						exec_mpp_query(query_string, 
-										serializedQuerytree, serializedQuerytreelen,
-										serializedPlantree, serializedPlantreelen,
-										serializedParams, serializedParamslen,
-										serializedSliceInfo, serializedSliceInfolen,
-										localSlice);
-					
-				}
-				
-			}*/
 		
 			debug_query_string = NULL;
 
