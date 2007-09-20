@@ -177,7 +177,7 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	 * 
 	 * I can't tell by looking at the code if this COPY statement that
 	 * Alon has laboriously built up from his context info is supposed to be
-	 * the same as the original COPY statement the QE got.
+	 * the same as the original COPY statement the QD got.
 	 * 
 	 * If it is, we could just pass the original CopyStmt node to this routine,
 	 * and ship it down to the QE or DA.  That would save all the work in Copy.c
