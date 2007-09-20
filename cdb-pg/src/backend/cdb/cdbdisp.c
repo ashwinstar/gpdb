@@ -176,6 +176,8 @@ static MemoryContext DispatchContext = NULL;
  * Ugly:  This write in a fixed format, and ignore what the log_prefix guc says.
  */
 
+static pthread_mutex_t send_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 #ifdef WIN32
 static void
 write_eventlog(int level, const char *line);
@@ -288,7 +290,13 @@ write_log(const char *fmt,...)
 	if (fmt[strlen(fmt)-1]!='\n')
 		strcat(logprefix,"\n");
 	 
-	
+	/*
+	 * We don't trust that vfprintf won't get confused if it 
+	 * is being run by two threads at the same time, which could
+	 * cause interleaved messages.  Let's play it safe, and
+	 * make sure only one thread is doing this at a time.
+	 */
+	pthread_mutex_lock(&send_mutex);
 #ifndef WIN32
 	/* On Unix, we just fprintf to stderr */
 	vfprintf(stderr, logprefix, ap);
@@ -314,6 +322,7 @@ write_log(const char *fmt,...)
         fflush(stderr);
     }
 #endif
+	pthread_mutex_unlock(&send_mutex);
 	va_end(ap);
 }
 
