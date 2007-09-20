@@ -57,7 +57,6 @@ struct seginfo_t {
     int port;
     char *dir;
     int haidx;
-    int replied;
 };
 
 typedef struct cmdslot_t cmdslot_t;
@@ -98,6 +97,7 @@ struct cmdslot_t {
 			int nreply;
 			int nsuccess;
 			int nfailed;
+			int *replied;
 		    } initdb;
 
 		    struct {

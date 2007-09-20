@@ -4,6 +4,7 @@ static apr_status_t initdb_init(gpcc_event_t *ev, void *_cmdslot)
 
     apr_pool_create(&cmdslot->u.sys.request.pool, 0);
     memset(&cmdslot->u.sys.request.u.initdb, 0, sizeof(cmdslot->u.sys.request.u.initdb));
+    cmdslot->u.sys.request.u.initdb.replied = apr_pcalloc(cmdslot->u.sys.request.pool, sizeof(int) * cmdslot->u.sys.nseginfo);
 
     return 0;
 }
@@ -23,7 +24,7 @@ static apr_status_t initdb_do(gpcc_event_t *ev, void *_cmdslot)
 	    return APR_EINVAL;
 	}
 
-	cmdslot->u.sys.seginfo[i].replied = 0;
+	cmdslot->u.sys.request.u.initdb.replied[i] = 0;
 
 	obj = json_tokener_parse(json_object_to_json_string(cmdslot->u.sys.config_json));
 	obj = gpcc_json_segment_request(obj,
@@ -62,10 +63,10 @@ static apr_status_t initdb_reply(gpcc_event_t *ev, void *_cmdslot)
 	memcpy(&index, ev->edata, sizeof(int));
 	for (i = 0 ; i < cmdslot->u.sys.nseginfo ; i++) {
 	    if (cmdslot->u.sys.seginfo[i].haidx == index) {
-		if (cmdslot->u.sys.seginfo[i].replied == 0) {
+		if (cmdslot->u.sys.request.u.initdb.replied[i] == 0) {
 		    cmdslot->u.sys.request.u.initdb.nfailed++;
 		    cmdslot->u.sys.request.u.initdb.nreply++;
-		    cmdslot->u.sys.seginfo[i].replied++;
+		    cmdslot->u.sys.request.u.initdb.replied[i]++;
 		} else {
 		    cmdslot->u.sys.request.u.initdb.nfailed++;
 		}
@@ -94,7 +95,7 @@ static apr_status_t initdb_reply(gpcc_event_t *ev, void *_cmdslot)
 	    goto bail;
 	}
 
-	cmdslot->u.sys.seginfo[i].replied++;
+	cmdslot->u.sys.request.u.initdb.replied[i]++;
 	if (strcmp(status, "ok") == 0) {
 	    cmdslot->u.sys.request.u.initdb.nsuccess++;
 	} else {
