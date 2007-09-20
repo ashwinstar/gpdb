@@ -55,15 +55,16 @@ APR_DECLARE(void) fsm_setup(void)
 		 ha_closed, 0);
 
     gpcc_fsm_put(SYSTEM_READY_CMDSTATE, ARRAY_INIT_EVENT, INITDB_CMDSTATE,
-		 initdb_do, 0);
+		 initdb_init, initdb_do, 0);
     gpcc_fsm_put(INITDB_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, INITDB_CMDSTATE,
 		 initdb_reply, 0);
-    gpcc_fsm_put(INITDB_CMDSTATE, NET_CLOSED_EVENT, SYSTEM_FATAL_CMDSTATE,
-		 ha_closed, initdb_reply, 0);
     gpcc_fsm_put(INITDB_CMDSTATE, SUCCESS_EVENT, SYSTEM_READY_CMDSTATE,
-		 initdb_success, 0);
+		 initdb_success, initdb_cleanup, 0);
     gpcc_fsm_put(INITDB_CMDSTATE, FAILURE_EVENT, SYSTEM_READY_CMDSTATE,
-		 initdb_failure, 0);
-    
+		 initdb_failure, initdb_cleanup, 0);
+    gpcc_fsm_put(INITDB_CMDSTATE, NET_CLOSED_EVENT, INITDB_CMDSTATE,
+		 ha_closed, initdb_reply, 0);
+
+
 
 }

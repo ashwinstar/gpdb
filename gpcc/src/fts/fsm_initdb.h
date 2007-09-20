@@ -97,7 +97,7 @@ static inline void initdb_set_segment(cmdslot_t *cmdslot, int idx, char *name, i
     cmdslot->u.sys.request.u.initdb.segment[idx].dbid = dbid;
     cmdslot->u.sys.request.u.initdb.segment[idx].content = content;
     cmdslot->u.sys.request.u.initdb.segment[idx].port = port;
-    cmdslot->u.sys.request.u.initdb.segment[idx].node = node;
+    cmdslot->u.sys.request.u.initdb.segment[idx].haidx = node;
     cmdslot->u.sys.request.u.initdb.segment[idx].dir = apr_pstrdup(pool, dir);
 }
 
@@ -208,78 +208,180 @@ static apr_status_t initdb_init(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
+
 static apr_status_t initdb_do(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
-    char seg[128];
-    const char *value;
+    int i, idx, e;
+    hainfo_t *hainfo;
     struct json_object *obj;
-    int i, dbid = 0;
+    char *msg;
 
-    /* prepare json object */
-    obj = config_to_json_object();
+    for (i = 0 ;  i < cmdslot->u.sys.request.u.initdb.nsegment ; i++) {
+	idx = cmdslot->u.sys.request.u.initdb.segment[i].haidx;
+	hainfo = cmdslot->u.sys.hainfo[idx];
+	if (!hainfo) {
+	    gpcc_warning(FLINE, "hainfo[%d] not found", idx);
+	    return APR_EINVAL;
+	}
 
+	cmdslot->u.sys.request.u.initdb.segment[i].replied = 0;
 
-    /* master QD */
-    strcpy(seg, "gpdb.seg.m.0");
-    value = config_get(gpfts.config, seg);
-    if (!value) {
+	obj = json_tokener_parse(json_object_to_json_string(cmdslot->u.sys.request.u.initdb.config_json));
+	obj = gpcc_json_segment_request(obj,
+					cmdslot->u.sys.request.u.initdb.segment[i].name,
+					"init",
+					"",
+					"",
+					cmdslot->u.sys.request.u.initdb.segment[i].port,
+					cmdslot->u.sys.request.u.initdb.segment[i].dir);
+
+	msg = json_object_to_json_string(obj);
+
+	if (0 != (e = gpcc_ha_send(hainfo->ha, SEGMENT_REQUEST_MSG, msg, strlen(msg) + 1))) {
+	    gpcc_warning(FLINE, "send packet failed");
+	    json_object_put(obj);
+	    return APR_ECONNRESET;
+	}
+
 	json_object_put(obj);
-	return APR_EINVAL;
     }
-    dbid=1;
-
-    /* init segment */
-    for (i = 0 ; ; i++) {
-	sprintf(seg, "gpdb.seg.%d.0", i);
-	value = config_get(gpfts.config, seg);
-	if (!value) {
-	    break;
-	}
-	dbid++;
-
-
-	sprintf(seg, "gpdb.seg.%d.1", i);    
-	value = config_get(gpfts.config, seg);
-	if (!value) {
-	    continue;
-	}
-	dbid++;
-
-    }
-
-    /* standby QD */
-    for (i = 1 ; ; i++) {
-	sprintf(seg, "gpdb.seg.m.%d", i);
-	value = config_get(gpfts.config, seg);
-	if (!value) {
-	    break;
-	}
-
-	dbid++;
-    }
-
 
     return 0;
 }
 
 static apr_status_t initdb_reply(gpcc_event_t *ev, void *_cmdslot)
 {
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    struct json_object *obj = 0;
+    gpcc_event_t *evt;
+    int i;
+
+    switch (ev->etype) {
+    case NET_CLOSED_EVENT:
+	{
+	int index;
+	memcpy(&index, ev->edata, sizeof(int));
+	for (i = 0 ; i < cmdslot->u.sys.request.u.initdb.nsegment ; i++) {
+	    if (cmdslot->u.sys.request.u.initdb.segment[i].haidx == index) {
+		if (cmdslot->u.sys.request.u.initdb.segment[i].replied == 0) {
+		    cmdslot->u.sys.request.u.initdb.nfailed++;
+		    cmdslot->u.sys.request.u.initdb.nreply++;
+		    cmdslot->u.sys.request.u.initdb.segment[i].replied++;
+		} else {
+		    cmdslot->u.sys.request.u.initdb.nfailed++;
+		}
+		gpcc_warning(FLINE, "[Error] segment %s connection reset", cmdslot->u.sys.request.u.initdb.segment[i].name);
+	    }
+	}
+
+	break;
+	}
+    case SEGMENT_REPLY_MSG_EVENT:
+	{
+	char *seg, *status, *reason;
+	gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->edata;
+
+	obj = json_tokener_parse(pkt->mb);
+	seg = gpcc_json_object_get_string(obj, "seg", 0);
+	status = gpcc_json_object_get_string(obj, "status", "failed");
+	reason = gpcc_json_object_get_string(obj, "reason", "");
+	
+	for (i = 0 ; i < cmdslot->u.sys.request.u.initdb.nsegment ; i++) {
+	    if (strcmp(seg, cmdslot->u.sys.request.u.initdb.segment[i].name) == 0) 
+		break;
+	}
+	if (i >= cmdslot->u.sys.request.u.initdb.nsegment){
+	    gpcc_warning(FLINE, "[Error] invalid segment name %s", seg);
+	    goto bail;
+	}
+
+	cmdslot->u.sys.request.u.initdb.segment[i].replied++;
+	if (strcmp(status, "ok") == 0) {
+	    cmdslot->u.sys.request.u.initdb.nsuccess++;
+	} else {
+	    gpcc_warning(FLINE, "[Error] segment init failed.  %s status=%s, reason=%s", seg, status, reason);
+	    cmdslot->u.sys.request.u.initdb.nfailed++;
+	}
+	cmdslot->u.sys.request.u.initdb.nreply++;
+	    
+	break;
+	}
+    default:
+	break;
+    }
+
+    if (cmdslot->u.sys.request.u.initdb.nreply >= cmdslot->u.sys.request.u.initdb.nsegment) {
+	if (cmdslot->u.sys.request.u.initdb.nfailed == 0) {
+	    /* success */
+	    evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
+	    gpcc_evqueue_put(gpfts.evq, evt);
+	} else {
+	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	    gpcc_evqueue_put(gpfts.evq, evt);
+	}
+    }
 
 
+    if (obj) json_object_put(obj);
     return 0;
+
+    bail:
+
+    if (obj) json_object_put(obj);
+    return APR_EINVAL;
+	
 }
 
 static apr_status_t initdb_success(gpcc_event_t *ev, void *_cmdslot)
 {
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    struct json_object *obj;
+    char *objstr;
+    gpcc_event_t *evt;
 
+    obj = gpcc_json_array_reply("init", "ok", 0);
+    objstr = json_object_to_json_string(obj);
 
+    evt = gpcc_event_alloc(ARRAY_REPLY_MSG_EVENT, 0, strlen(objstr) + 1);
+    memcpy(evt->edata, objstr, strlen(objstr) + 1);
+
+    gpcc_evqueue_put(cmdslot->u.sys.request.outq, evt);
+
+    json_object_put(obj);
     return 0;
 }
 
 static apr_status_t initdb_failure(gpcc_event_t *ev, void *_cmdslot)
 {
+   cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;    
+    struct json_object *obj;
+    char *objstr;
+    gpcc_event_t *evt;
 
+    obj = gpcc_json_array_reply("init", "failed", 0);
+    objstr = json_object_to_json_string(obj);
 
+    evt = gpcc_event_alloc(ARRAY_REPLY_MSG_EVENT, 0, strlen(objstr) + 1);
+    memcpy(evt->edata, objstr, strlen(objstr) + 1);
+
+    gpcc_evqueue_put(cmdslot->u.sys.request.outq, evt);
+
+    json_object_put(obj);    
+    return 0;
+}
+
+static apr_status_t initdb_cleanup(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+
+    if (cmdslot->u.sys.request.u.initdb.config_json) {
+	json_object_put(cmdslot->u.sys.request.u.initdb.config_json);
+    }
+    if (cmdslot->u.sys.request.pool) {
+	apr_pool_destroy(cmdslot->u.sys.request.pool);
+	cmdslot->u.sys.request.pool = 0;
+    }
+    
     return 0;
 }

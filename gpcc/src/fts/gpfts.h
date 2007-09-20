@@ -89,10 +89,13 @@ struct cmdslot_t {
 			    int content;
 			    int port;
 			    char *dir;
-			    int node;
+			    int haidx;
 			    int replied;
 			} *segment;
 			    
+			int nreply;
+			int nsuccess;
+			int nfailed;
 		    } initdb;
 
 		    struct {
