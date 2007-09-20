@@ -2171,6 +2171,17 @@ CommitTransaction(void)
 
 	CallXactCallbacks(XACT_EVENT_COMMIT);
 	CallXactCallbacksOnce(XACT_EVENT_COMMIT);
+	
+	/*
+	 * Do 2nd phase of commit to all QE. NOTE: we can't process
+	 * signals (which may attempt to abort our now partially-completed
+	 * transaction) until we've notified the QEs.
+	 * 
+	 * Note:  do this BEFORE clearing the resource owner, as the dispatch
+	 * routines might want to use them.  Plus, we want AtCommit_Memory to 
+	 * happen after using the dispatcher.
+	 */
+	notifyCommittedDtxTransaction();
 
 	ResourceOwnerRelease(TopTransactionResourceOwner,
 						 RESOURCE_RELEASE_BEFORE_LOCKS,
@@ -2219,17 +2230,6 @@ CommitTransaction(void)
 	AtEOXact_Files();
 	AtEOXact_ComboCid();
 	pgstat_count_xact_commit();
-	
-	/*
-	 * Do 2nd phase of commit to all QE. NOTE: we can't process
-	 * signals (which may attempt to abort our now partially-completed
-	 * transaction) until we've notified the QEs.
-	 * 
-	 * Note:  do this BEFORE clearing the resource owner, as the dispatch
-	 * routines might want to use them.  Plus, we want AtCommit_Memory to 
-	 * happen after using the dispatcher.
-	 */
-	notifyCommittedDtxTransaction();
 
 	CurrentResourceOwner = NULL;
 	ResourceOwnerDelete(TopTransactionResourceOwner);
