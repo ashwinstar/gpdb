@@ -3,7 +3,7 @@ static apr_status_t initdb_init(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
 
     apr_pool_create(&cmdslot->u.sys.request.pool, 0);
-    memset(&cmdslot->u.sys.request.u.initdb, 0, sizeof(cmdslot->u.sys.request.u.initdb));
+    memset(&cmdslot->u.sys.request.u, 0, sizeof(cmdslot->u.sys.request.u));
     cmdslot->u.sys.request.u.initdb.replied = apr_pcalloc(cmdslot->u.sys.request.pool, sizeof(int) * cmdslot->u.sys.nseginfo);
 
     return 0;

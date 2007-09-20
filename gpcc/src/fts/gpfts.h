@@ -105,11 +105,17 @@ struct cmdslot_t {
 		    } start;
 
 		    struct {
-
+			int nreply;
+			int nsuccess;
+			int nfailed;
+			int *replied;
 		    } stop;
 
 		    struct {
-
+			int nreply;
+			int nsuccess;
+			int nfailed;
+			int *replied;
 		    } status;
 
 		} u;
