@@ -580,7 +580,7 @@ if [ $INTERACTIVE ]; then
 	PROMPT_CONTINUE
 fi
 if [ ! -f $GPSEGSTART ];then
-	ERROR_EXIT "[FATAL]:-Parallel mode selected by no $GPSEGSTART exists" 2
+	ERROR_EXIT "[FATAL]:-Parallel mode selected but no $GPSEGSTART exists" 2
 fi
 PROCESS_STARTUP
 LOG_MSG "[INFO]:-End Main"
