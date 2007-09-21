@@ -1351,6 +1351,7 @@ typedef struct PartitionBy
 	Node			   *partNum;	/* partitionS (constant number)*/
 	Node			   *subPart;	/* optional subpartn (PartitionBy ptr) */
 	Node			   *partSpec;	/* specification or template */  
+	int				    partDepth;	/* depth (starting at zero) */  
 } PartitionBy;
 
 typedef struct PartitionElem

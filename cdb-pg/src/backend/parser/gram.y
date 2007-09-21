@@ -2505,11 +2505,11 @@ OptDistributedBy:   DISTRIBUTED BY  '(' columnList ')'			{ $$ = $4; }
 
 /* START PARTITION RULES */
 
-OptTabPartitionsNumber: PARTITIONS NumericOnly 		{ $$ = makeAConst($2); }
+OptTabPartitionsNumber: PARTITIONS IntegerOnly 		{ $$ = makeAConst($2); }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
-OptTabSubPartitionsNumber: SUBPARTITIONS NumericOnly { $$ = makeAConst($2); }
+OptTabSubPartitionsNumber: SUBPARTITIONS IntegerOnly { $$ = makeAConst($2); }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
@@ -2687,6 +2687,7 @@ OptTabPartitionBy:
                         n->partNum  = $7;
                         n->subPart  = $8;
                         n->partSpec = $9;
+                        n->partDepth = 0;
                         $$ = (Node *)n;
 				}
 			| /*EMPTY*/								{ $$ = NULL; }
@@ -2728,6 +2729,7 @@ TabSubPartitionBy:
                         n->partNum  = $7;
                         n->subPart  = $9;
                         n->partSpec = $8;
+                        n->partDepth = 0;
                         $$ = (Node *)n;
 				}
 

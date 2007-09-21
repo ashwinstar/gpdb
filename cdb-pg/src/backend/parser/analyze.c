@@ -148,6 +148,10 @@ static void transformIndexConstraints(ParseState *pstate,
 						  CreateStmtContext *cxt);
 static void transformDistributedBy(ParseState *pstate,
 		   CreateStmtContext *cxt, List *distributedBy, GpPolicy ** policy, List *likeDistributedBy);
+static void transformPartitionBy(ParseState *pstate,
+		 CreateStmtContext *cxt, CreateStmt *stmt, 
+		 Node *partitionBy, GpPolicy *policy);
+
 static void transformFKConstraints(ParseState *pstate,
 					   CreateStmtContext *cxt,
 					   bool skipValidation,
@@ -1082,6 +1086,10 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	 */
 	transformDistributedBy(pstate, &cxt, stmt->distributedBy, &stmt->policy, likeDistributedBy);
 
+	/*
+	 * Postprocess Greenplum Database partitioned tables
+	 */
+	transformPartitionBy(pstate, &cxt, stmt, stmt->partitionBy, stmt->policy);
 
 	/*
 	 * Output results.
@@ -2501,6 +2509,426 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 
 
 }
+
+/*
+
+transformPartitionBy
+
+a clause like:
+
+PARTITION BY col1 
+  SUBPTN  BY col2 SUBTEMPLATE (Spec2), 
+  SUBPTN  BY col3 SUBTEMPLATE (Spec3)
+(Spec1)
+
+becomes a chain of PartitionBy structs, each with a PartitionSpec:
+
+  pBy -> (col1, spec1, NULL subspec)
+   |
+   v
+  pBy -> (col2, spec2, NULL subspec)
+   |
+   v
+  pBy -> (col3, spec3, NULL subspec)
+
+This struct is easy to process recursively.  However, for the syntax:
+
+PARTITION BY col1 
+  SUBPTN  BY col2 
+  SUBPTN  BY col3 
+(
+PTN AA (SUB CCC (SUB EE, SUB FF), SUB DDD (SUB EE, SUB FF))
+PTN BB (SUB CCC (SUB EE, SUB FF), SUB DDD (SUB EE, SUB FF))
+)
+
+the struct is more like:
+
+  pBy -> (col1, spec1, spec2->spec3)
+   |
+   v
+  pBy -> (col2, NULL spec, NULL subspec)
+   |
+   v
+  pBy -> (col3, NULL spec, NULL subspec)
+
+
+We need to move the subpartition specifications to the correct spots.
+
+*/
+
+static void transformPartitionBy(ParseState *pstate,
+		   CreateStmtContext *cxt, CreateStmt *stmt, 
+		   Node *partitionBy, GpPolicy *policy)
+{
+	CreateStmt	*child_tab_stmt;		
+	RangeVar	*child_tab_name;
+	RangeVar	*parent_tab_name;
+	Oid			snamespaceid;
+	char	   *snamespace;
+	char	   *tab_name_str;
+	int		  	partDepth;	/* depth (starting at zero, but display at 1) */  
+	char	  	depthstr[4];
+	char	   *at_depth = "";
+	char	  	at_buf[40];
+	int		  	partNumber = -1;	
+	int		  	ii;
+	List	   *partElts;
+	ListCell   *lc = NULL;
+
+	PartitionBy		*pBy;				/* the current partitioning clause */
+	PartitionBy		*psubBy  = NULL;	/* child of current */
+
+	if (NULL == partitionBy)
+		return;
+
+	pBy = (PartitionBy *)partitionBy;
+	partDepth = pBy->partDepth;
+	partDepth++;					/* increment depth for subpartition */
+
+	if (partDepth > 99)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("Too many subpartitions: partition depth > 99"
+						 )));
+	}
+	snprintf(depthstr, sizeof(depthstr), "%d", partDepth);
+
+	if (partDepth != 1)
+	{
+		/* Only mention the depth 2 and greater to aid in debugging
+		 * subpartitions
+		 */
+		snprintf(at_buf, sizeof(at_buf), 
+				 " (at depth %d)", partDepth);
+		at_depth = at_buf;
+	}
+
+	/* set the depth for the immediate subpartition */
+	if (pBy->subPart)
+	{
+		/* recursively walk the subpartition clauses under PARTITION
+		 * BY.  The SUBPARTITION TEMPLATE becomes the PartitionSpec of
+		 * the new child partition.
+		 */
+
+		psubBy = (PartitionBy	*)pBy->subPart;
+		psubBy->partDepth = partDepth;
+	}
+
+	/* derive the number of partitions from the PARTITIONS 
+	 * clause (if it exists ) 
+	 */
+	if (pBy->partNum)
+	{
+		A_Const *con = (A_Const *)pBy->partNum;
+
+		Assert(con->val.type == T_Integer);
+
+		/* XXX XXX IntVal ?? */
+		partNumber = con->val.val.ival;
+
+		if (pBy->partType != PARTTYP_HASH)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("PARTITIONS clause requires a HASH partition%s",
+						at_depth
+							 )));
+		}
+
+		if (partNumber < 1)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("PARTITIONS number cannot be less than one%s",
+						at_depth
+							 )));
+		}
+	} /* end partitions clause */
+
+	/* find number of partitions in the specification, and match it up
+	 * with the PARTITIONS clause if partitioned by HASH, and
+	 * determine the subpartition specifications 
+	 */
+	if (pBy->partSpec)
+	{
+		PartitionSpec	*pSpec   = (PartitionSpec *)pBy->partSpec;
+
+		/* NOTE: a top-level PartitionSpec never has a subSpec, but a
+		 * PartitionSpec derived from an inline SubPartition
+		 * specification might have one  
+		 */
+
+		int			numElts = 0;
+
+		partElts = pSpec->partElem;
+
+		foreach(lc, partElts)
+		{
+			numElts++;
+		}
+
+		if ((partNumber > -1) && (numElts != partNumber))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg(
+							 "PARTITIONS \"%d\" must match \"%d\" elements in specification%s",
+							 partNumber, numElts, at_depth
+							 )));
+		}
+
+		partNumber = numElts;
+	}
+
+	if (partNumber < 1)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("No partitions specified at depth %d",
+						partDepth
+						 )));
+	}
+
+	if (partNumber > 999999)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("Too many partitions: partition number > 999999 at depth %d",
+						partDepth
+						 )));
+	}
+
+	/*
+	 * Determine namespace and name to use for the child table.
+	 *
+	 * Although we use ChooseRelationName, it's not guaranteed
+	 * that the selected name won't conflict.  EIT!
+	 */
+
+	snamespaceid = RangeVarGetCreationNamespace(cxt->relation);
+	snamespace = get_namespace_name(snamespaceid);
+
+	/* set up the partition specification element list if it exists */
+	if (pBy->partSpec)
+	{
+		PartitionSpec	*pSpec   = (PartitionSpec *)pBy->partSpec;
+		PartitionSpec	*subSpec = (PartitionSpec *)pSpec->subSpec; 
+
+		/* if the current specification has a subspec, then that is
+		 * the spec for the child.  So we'd better have a SUBPARTITION
+		 * BY clause for the child, and that clause cannot contain a
+		 * SUBPARTITION TEMPLATE (which is a spec).  The subSpec
+		 * becomes subBy's subpartition template spec, which is the
+		 * partition specification for the child.
+		 */
+
+		if (subSpec)
+		{
+			if (NULL == psubBy)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("Missing SUBPARTITION BY clause for subpartition specification%s",
+								at_depth
+								 )));
+			}
+			if (psubBy && psubBy->partSpec)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("Subpartition specification conflict%s",
+								at_depth
+								 )));
+			}
+
+			psubBy->partSpec = (Node *)subSpec;
+		}
+
+		partElts = pSpec->partElem;
+		lc = list_head(partElts);
+	}
+	else
+	{
+		lc = NULL;
+	}
+
+	for (ii = 0; ii<partNumber; ii++)
+	{
+		char	  	prtstr[20];			
+
+		PartitionBy	*newSub = NULL;
+
+		if (lc)
+		{
+			PartitionElem *pElem = (PartitionElem *)lfirst(lc);
+			
+			if (pElem->partName)
+			{
+				/* use the partition name as part of the child table name */
+				char *pName = strVal(pElem->partName);
+				snprintf(prtstr, sizeof(prtstr), "prt_%s", pName);
+			}
+			else
+			{
+				snprintf(prtstr, sizeof(prtstr), "prt_%d", ii+1);
+			}
+
+			if (pElem->subSpec)
+			{
+				/* if the current partition element has a subspec,
+				 * then that is the spec for the child.  So we'd
+				 * better have a SUBPARTITION BY clause for the child,
+				 * and that clause cannot contain a SUBPARTITION
+				 * TEMPLATE (which is a spec).  Note that we might
+				 * have just updated the subBy partition spec with the
+				 * subspec of the current spec, which would be a
+				 * conflict.  If the psubBy has a null spec, we make a
+				 * copy of the node and update it -- the subSpec
+				 * becomes the specification for the child.  And if
+				 * the subspec has a subspec it gets handled at the
+				 * top of this loop as the subspec of the current spec
+				 * when transformPartitionBy is re-invoked for the
+				 * child table.
+				*/
+
+				if (NULL == psubBy)
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("Missing SUBPARTITION BY clause for subpartition specification%s",
+								at_depth
+									 )));
+				}
+
+				if (psubBy && psubBy->partSpec)
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("Subpartition specification conflict%s",
+								at_depth
+						 )));
+				}
+
+				newSub = makeNode(PartitionBy);
+
+				newSub->keys 	  = psubBy->keys ;
+				newSub->partNum	  = psubBy->partNum;
+				newSub->subPart	  = psubBy->subPart;
+				newSub->partSpec  = pElem->subSpec; /* use the subspec */
+				newSub->partDepth = psubBy->partDepth;
+			}
+			
+		}
+		else
+		{
+			snprintf(prtstr, sizeof(prtstr), "prt_%d", ii+1);
+		}
+
+		child_tab_name = makeNode(RangeVar);
+		child_tab_name->catalogname = cxt->relation->catalogname;
+		child_tab_name->schemaname  = cxt->relation->schemaname;
+
+		tab_name_str = 
+			ChooseRelationName(cxt->relation->relname,
+							   depthstr,	/* depth */
+							   prtstr, 		/* object "type" = 
+											   partition + (number or name) */
+							   snamespaceid);
+
+		ereport(NOTICE,
+				(errmsg("%s will create child table \"%s\" for table \"%s\"",
+						cxt->stmtType, tab_name_str,
+						cxt->relation->relname)));
+
+		child_tab_name->relname     = tab_name_str;
+
+		parent_tab_name = makeNode(RangeVar);
+		parent_tab_name->catalogname = cxt->relation->catalogname;
+		parent_tab_name->schemaname  = cxt->relation->schemaname;
+		parent_tab_name->relname     = cxt->relation->relname;
+
+		child_tab_stmt = makeNode(CreateStmt);
+		child_tab_stmt->relation = child_tab_name;
+
+		child_tab_stmt->tableElts = stmt->tableElts;
+
+/*		child_tab_stmt->inhRelations = list_make1(parent_tab_name); */
+		child_tab_stmt->inhRelations = stmt->inhRelations; 
+
+		child_tab_stmt->constraints = stmt->constraints;
+		child_tab_stmt->options = stmt->options;
+		child_tab_stmt->oncommit = stmt->oncommit;
+		child_tab_stmt->tablespacename = stmt->tablespacename;
+		child_tab_stmt->distributedBy = stmt->distributedBy;
+
+/*		child_tab_stmt->partitionBy = pBy->subPart; */
+		child_tab_stmt->partitionBy = (newSub)
+				? (Node *) newSub : (Node *) psubBy;
+
+		child_tab_stmt->oidInfo.relOid = 0;
+		child_tab_stmt->oidInfo.comptypeOid = 0;
+		child_tab_stmt->oidInfo.toastOid = 0;
+		child_tab_stmt->oidInfo.toastIndexOid = 0;
+		child_tab_stmt->oidInfo.toastComptypeOid = 0;
+		child_tab_stmt->relKind = RELKIND_RELATION;
+		child_tab_stmt->policy = 0;
+
+		/* copy the parent table's distribution policy if it has one.
+		 * Otherwise, transformDistributedBy will get annoyed that the
+		 * parent table doesn't exist yet when it attempts to build
+		 * the policy for the child table. 
+		 */
+		if (0 && policy)
+		{
+			GpPolicy   *newpolicy = NULL;
+			int			maxattrs  = 200;
+			int			ii_attrs  = 0;
+			
+			newpolicy = 
+				(GpPolicy *) palloc(
+					sizeof(GpPolicy) + maxattrs * sizeof(newpolicy->attrs[0]));
+			newpolicy->ptype  = policy->ptype;
+			newpolicy->nattrs = policy->nattrs;
+					
+			for (ii_attrs = 0; ii_attrs < policy->nattrs; ii_attrs++)
+			{
+				newpolicy->attrs[ii_attrs] = policy->attrs[ii_attrs];
+			}
+
+			child_tab_stmt->policy = newpolicy;
+		}
+
+		cxt->alist = lappend(cxt->alist, child_tab_stmt);
+		
+		if (1)
+		{
+			AlterTableCmd  *atc = makeNode(AlterTableCmd);
+			AlterTableStmt *ats = makeNode(AlterTableStmt);
+
+			/* alter table child inherits parent */
+			atc->subtype = AT_AddInherit;
+			atc->def = (Node *) parent_tab_name; 
+
+			ats->relation = child_tab_name;
+			ats->cmds 	  = list_make1((Node *)atc);
+			ats->relkind  = OBJECT_TABLE;
+
+			cxt->alist = lappend(cxt->alist, ats);
+		}
+
+		newSub = NULL; /* reset newSub */
+
+		if (lc)
+		{
+			lc = lnext(lc);
+		}
+	} /* end for ii */
+
+
+} /* end transformPartitionBy */
+
 
 static void
 transformFKConstraints(ParseState *pstate, CreateStmtContext *cxt,
