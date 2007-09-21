@@ -230,7 +230,7 @@ GET_DETAILS () {
 				#Need to update gp_configuration file to set all segments marked as invalid to valid
 				LOG_MSG "[INFO]:-Utility requested to attempt startup of segments marked as invalid" 1
 				#See if any segments marked as invalid
-				INVALID_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where valid='f' and content<>-1;"` 
+				INVALID_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select 1 from $CONFIG_TABLE where valid='f' and content<>-1;" | wc -l` 
 				if [ $INVALID_COUNT -gt 0 ];then
 					LOG_MSG "[INFO]:-There are $INVALID_COUNT segments marked as invalid" 1
 					#Update these to be valid
@@ -245,7 +245,7 @@ GET_DETAILS () {
 				fi
 			fi
 		else
-			BATCH_LIMIT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $GP_PG_VIEW where valid ='t' and content<>-1;"`
+			BATCH_LIMIT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select 1 from $GP_PG_VIEW where valid ='t' and content<>-1;" | wc -l`
 		fi
 		TOTAL_BATCH_LIMIT=$QE_ARRAY_COUNT
 		#Gather locale information MPP-972

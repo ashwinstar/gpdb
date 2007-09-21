@@ -293,7 +293,7 @@ ERROR_EXIT () {
 
 READ_CHK () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	READ_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c" select count(*) from $CONFIG_TABLE where port<0;"`
+	NROWS=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c" select * from $CONFIG_TABLE where port<0;"`
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
 		READ_COUNT=0
@@ -301,6 +301,12 @@ READ_CHK () {
 		LOG_MSG "[WARN]:-Could not obtain read count from database"
 		EXIT_STATUS=1
 	else
+		if [ -z "$NROWS" ]
+		then
+			READ_COUNT=0
+		else
+			READ_COUNT=`echo $NROWS | wc -l`
+		fi
 		LOG_MSG "[INFO]:-Obtained -ve port read count $READ_COUNT"
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -452,19 +458,19 @@ CHK_EXISTS_TABLE () {
 		QD_DBNAME=$3
 		if [ $# -ne 3 ];then
 		ERROR_EXIT "[FATAL]:-Incorrect number of parameters passed expected 3 got $#" 2;fi
-		DB_THERE=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT $DEFAULTDB -c"select count(*) from pg_database where datname='$QD_DBNAME';"`
+		DB_THERE=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT $DEFAULTDB -c"select 1 from pg_database where datname='$QD_DBNAME';" | wc -l`
 		if [ $DB_THERE -eq 0 ];then
 			ERROR_EXIT "[FATAL]:-Database $QD_DBNAME does not exist" 2;fi
 		LOG_MSG "[INFO]:-Checking for table $TABLENAME in database $QD_DBNAME"
 		if [ `$ECHO $TABLENAME|$GREP -c "\."` -eq 1 ];then
 			SCHEMA_NAME=`$ECHO $TABLENAME|$CUT -d"." -f1`
                         TABLENAME=`$ECHO $TABLENAME|$CUT -d"." -f2`
-			TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT $QD_DBNAME -c"select count(*) from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+			TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT $QD_DBNAME -c"select 1 from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');" | wc -l`
 			if [ $TAB_COUNT -eq 1 ];then
 			PARTITIONED=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT $QD_DBNAME -c"select relhassubclass from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
 			fi
 		else
-			TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT $QD_DBNAME -c"select count(*) from pg_class where relname='$TABLENAME';"`
+			TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT $QD_DBNAME -c"select 1 from pg_class where relname='$TABLENAME';" | wc -l`
 			if [ $TAB_COUNT -eq 1 ];then
 			PARTITIONED=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT $QD_DBNAME -c"select relhassubclass from pg_class where relname='$TABLENAME';"`
 			SCHEMA_NAME=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT $QD_DBNAME -c"select nspname from pg_namespace where oid in(select relnamespace from pg_class where relname='$TABLENAME');"`
@@ -532,7 +538,7 @@ GET_TABLE_TYPE () {
 	if [ `$ECHO $1|$GREP -c "\."` -eq 1 ];then
 		T_NAME=`$ECHO $1|$CUT -d"." -f2`
 		S_NAME=`$ECHO $1|$CUT -d"." -f1`
-		TAB_TYPE=`${EXPORT_LIB_PATH};$PSQL -p $2 $3 -A -t -c"select count(*) from pg_depend where objid in (select oid from pg_class where relname='${T_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${S_NAME}')) and refobjid not in (select relnamespace from pg_class where relname='${T_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${S_NAME}'));"`
+		TAB_TYPE=`${EXPORT_LIB_PATH};$PSQL -p $2 $3 -A -t -c"select 1 from pg_depend where objid in (select oid from pg_class where relname='${T_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${S_NAME}')) and refobjid not in (select relnamespace from pg_class where relname='${T_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${S_NAME}'));" | wc -l`
 		if [ $TAB_TYPE -eq 1 ];then
 			TAB_TYPE_TXT="Child table"
 			TAB_PARENT_NAME=(`${EXPORT_LIB_PATH};$PSQL -p $2 $3 -R" " -A -t -c"select relname from pg_class where oid in (select refobjid from pg_depend  where objid in (select oid from pg_class where relname='${T_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${S_NAME}')) and refobjid not in (select relnamespace from pg_class where relname='${T_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${S_NAME}')));"`)
@@ -702,7 +708,7 @@ GET_QD_DB_NAME () {
 		#Check if we have PGDATABASE environment variable set, if so see if that database exists
 		if [ x"" != x"$PGDATABASE" ];then
 			LOG_MSG "[INFO]:-PGDATABASE set, checking for this database"
-			QD_DBNAME_THERE=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from pg_database where datname='${PGDATABASE}';"`
+			QD_DBNAME_THERE=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select 1 from pg_database where datname='${PGDATABASE}';" | wc -l`
 			ERROR_CHK $? "check for $PGDATABASE" 2
 			if [ $QD_DBNAME_THERE -eq 1 ];then
 				QD_DBNAME=$PGDATABASE
@@ -715,7 +721,7 @@ GET_QD_DB_NAME () {
 			QD_DBNAME=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"\l" 2>/dev/null|$GREP -v postgres|$GREP -v template0|$HEAD -1|$CUT -d"|" -f1`
 			ERROR_CHK $? "obtain database name" 2
 		fi
-		MASTER_DIR_CHK=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from ${CONFIG_TABLE};"`
+		MASTER_DIR_CHK=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select 1 from ${CONFIG_TABLE};" | wc -l`
 		if [ $MASTER_DIR_CHK -eq 0 ];then
 			ERROR_EXIT "[FATAL]:-MASTER_DATA_DIRECTORY value of $MASTER_DATA_DIRECTORY is incorrect" 2;fi
 		if [ x"" == x"$QD_DBNAME" ]; then
@@ -728,7 +734,7 @@ GET_QD_DB_NAME () {
 GET_STANDBY_COUNT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	GET_QD_DB_NAME
-	STANDBY_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where content=-1 and dbid<>1 ;"`
+	STANDBY_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select 1 from $CONFIG_TABLE where content=-1 and dbid<>1 ;" | wc -l`
 	ERROR_CHK $? "obtain standby master host count" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -782,7 +788,7 @@ CHK_MIRRORS_CONFIGURED () {
 
 GET_MIRROR_TYPE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MIR_NUM=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(distinct hostname) - (select count(distinct hostname) from $CONFIG_TABLE where content<>-1 and hostname not in (select hostname from $CONFIG_TABLE where definedprimary='t' and content<>-1)) from $CONFIG_TABLE where content in (select content from $CONFIG_TABLE where hostname in (select hostname from $CONFIG_TABLE where content=0 and definedprimary='t') and content <>-1 and definedprimary='f');"`
+	MIR_NUM=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(distinct hostname) - (select distinct hostname from $CONFIG_TABLE where content<>-1 and hostname not in (select hostname from $CONFIG_TABLE where definedprimary='t' and content<>-1)) from $CONFIG_TABLE where content in (select content from $CONFIG_TABLE where hostname in (select hostname from $CONFIG_TABLE where content=0 and definedprimary='t') and content <>-1 and definedprimary='f');" | wc -l`
 	if [ $MIR_NUM -eq 0 ];then
 		MIR_TYPE="No Mirror";MIR_TYPE_NUM=0;fi
 	if [ $MIR_NUM -ge 1 ] && [ $MIR_NUM -le 2 ];then
@@ -1001,10 +1007,10 @@ STANDBY_CATALOG_UPDATE () {
 	MASTER_STANDBY_HOSTNAME=$1;shift
 	MASTER_STANDBY_DATA_DIRECTORY=$1;shift
 	MASTER_STANDBY_PORT=$1
-	STANDBY_HOST_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(distinct hostname) from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}';"`
+	STANDBY_HOST_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select distinct hostname from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}';" | wc -l`
 	ERROR_CHK $? "obtain standby host count" 2
         LOG_MSG "[INFO]:-Creating new $CONFIG_TABLE record for ${MASTER_STANDBY_HOSTNAME}"
-        MAX_DB_ID=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select max(dbid)+1 from $CONFIG_TABLE;"`
+        MAX_DB_ID=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select dbid + 1 from $CONFIG_TABLE order by dbid desc limit 1;"`
 	ERROR_CHK $? "obtain max dbid from $CONFIG_TABLE" 2
         $EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"insert into $CONFIG_TABLE (dbid, isprimary, content, valid, definedprimary, hostname, port, datadir) values (${MAX_DB_ID},'f',-1,'t','f','${MASTER_STANDBY_HOSTNAME}',${MASTER_STANDBY_PORT},'${MASTER_STANDBY_DATA_DIRECTORY}');"
         ERROR_CHK $? "add standby host $CONFIG_TABLE record" 2
