@@ -2764,22 +2764,19 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 				 Gp_segment, mySlice->sliceIndex, mySlice->parentIndex,
 				 list_length(parentSlice->primaryProcesses) + list_length(parentSlice->mirrorProcesses));
 
-		/* This is required so that the QD gives up and ends the query
-		 * (it doesn't go detect errors in a query until all of the
-		 * QEs are done *and* have sent EOS up to it -- The QEs all
-		 * agree, so among one another the EOS isn't required. */
+		/* Our dispatcher doesn't notice certain kinds of errors. If a
+		 * QE-detected error occurs, the QD doesn't complete the query
+		 * -- even when all of the QEs get correctly cancelled. 
+		 * 
+		 * The dispatcher doesn't set 'pleaseCancel' for some cases --
+		 * the top "target" may not complete.  This problem also
+		 * occurs with INSERT-SELECTs on clusters with mirrors.
+		 */
 		if (forceEOS)
 		{
-			/* we only need to do this if the QD is our upstream peer ? */
-			if (parentSlice->parentIndex == -1 &&
-				list_length(parentSlice->primaryProcesses) == 1)
+			if (parentSlice->parentIndex == -1)
 			{
-				CdbProcess *peer = (CdbProcess *)list_nth(parentSlice->primaryProcesses, 0);
-
-//				elog(LOG, "upstream singleton peer has content %d", peer->contentid);
-				/* upstream singleton is the QD */
-				if (peer->contentid == -1)
-					forceEosToPeers(mlStates, transportStates, mySlice->sliceIndex);
+				forceEosToPeers(mlStates, transportStates, mySlice->sliceIndex);
 			}
 		}
 
