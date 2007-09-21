@@ -246,6 +246,7 @@ void reset_agg_hash_table(AggState *aggstate)
 	MemSet(ht->bloom, 0, ht->nbucket * sizeof(uint64));
 	MemoryContextReset(aggstate->transcontext);
 	ht->nentries = 0;
+	memset(&ht->entrybuf, 0, sizeof(ht->entrybuf));
 	init_agg_hash_iter(ht);
 }
 
@@ -981,6 +982,7 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 {
 	HashAggEntry *entry;
 	MemoryContext oldContext;
+	HashAggTable *ht = aggstate->hhashtable;
 	Datum *values = aggstate->hashslot->tts_values;
 	bool *isnull = aggstate->hashslot->tts_isnull;
 	ListCell *lc;
@@ -1007,13 +1009,28 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 		MemoryContextSwitchTo(oldContext);
 	}
 
-	oldContext = MemoryContextSwitchTo(aggstate->hhashtable->entry_cxt);
+	oldContext = MemoryContextSwitchTo(ht->entry_cxt);
 
-	if (aggstate->numaggs == 0)
-		entry = (HashAggEntry*)palloc0(sizeof(HashAggEntry));
-	else
-		entry = (HashAggEntry*)palloc0(sizeof(HashAggEntry) +
-						(aggstate->numaggs-1) * sizeof(AggStatePerGroupData));
+	if (ht->entrybuf.szper == 0) 
+	{
+		ht->entrybuf.szper = sizeof(HashAggEntry) 
+			+ (aggstate->numaggs == 0 
+			   ? 0 
+			   : (aggstate->numaggs - 1) * sizeof(AggStatePerGroupData));
+		ht->entrybuf.szper = MAXALIGN(ht->entrybuf.szper);
+	}
+
+	if (ht->entrybuf.base == 0 || ht->entrybuf.cur >= ht->entrybuf.end)
+	{
+		const int n = ht->entrybuf.szper * 1024;
+		ht->entrybuf.base = palloc(n);
+		ht->entrybuf.end = ht->entrybuf.base + n;
+		ht->entrybuf.cur = ht->entrybuf.base;
+	}
+
+	entry = (HashAggEntry*) ht->entrybuf.cur;
+	memset(entry, 0, ht->entrybuf.szper);
+	ht->entrybuf.cur += ht->entrybuf.szper;
 	entry->heaptuple = ExecCopySlotTuple(aggstate->hashslot);
 	entry->hashvalue = hashvalue;
 	

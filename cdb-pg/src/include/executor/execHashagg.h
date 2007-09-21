@@ -80,6 +80,12 @@ typedef struct HashAggTable
 	unsigned		nbucket;
 	HashAggEntry  **buckets;
 	uint64         *bloom;
+	struct {
+		char *base;		/* base of allocated memory */
+		char *cur;		/* next available memory region starts here */
+		char *end;		/* end of allocated memory */
+		int  szper;		/* #bytes per entry */
+	} entrybuf;					/* preallocated entries */
 	unsigned		max_entries;
 	unsigned		nentries;
 	
