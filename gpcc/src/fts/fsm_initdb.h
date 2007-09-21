@@ -31,7 +31,7 @@ static apr_status_t initdb_do(gpcc_event_t *ev, void *_cmdslot)
 					cmdslot->u.sys.seginfo[i].name,
 					"init",
 					"",
-					"",
+					cmdslot->u.sys.seginfo[i].host,
 					cmdslot->u.sys.seginfo[i].port,
 					cmdslot->u.sys.seginfo[i].dir);
 
@@ -174,9 +174,6 @@ static apr_status_t initdb_cleanup(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
 
-    if (cmdslot->u.sys.config_json) {
-	json_object_put(cmdslot->u.sys.config_json);
-    }
     if (cmdslot->u.sys.request.pool) {
 	apr_pool_destroy(cmdslot->u.sys.request.pool);
 	cmdslot->u.sys.request.pool = 0;

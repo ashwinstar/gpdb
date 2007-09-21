@@ -16,7 +16,7 @@
 #include "fsm_initdb.h"
 #include "fsm_stopdb.h"
 #include "fsm_status.h"
-
+#include "fsm_start.h"
 
 APR_DECLARE(void) fsm_setup(void)
 {
@@ -93,5 +93,45 @@ APR_DECLARE(void) fsm_setup(void)
 		 status_failure, status_cleanup, 0);
     gpcc_fsm_put(STATUS_CMDSTATE, NET_CLOSED_EVENT, STATUS_CMDSTATE,
 		 ha_closed, status_reply, 0);
+
+
+    /* start */
+    gpcc_fsm_put(SYSTEM_READY_CMDSTATE, ARRAY_START_EVENT, START_UTILITY_QD_CMDSTATE,
+		 start_init, start_utility_qd, 0);
+    gpcc_fsm_put(START_UTILITY_QD_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, START_UTILITY_QD_CMDSTATE,
+		 start_utility_qd_reply, 0);
+    gpcc_fsm_put(START_UTILITY_QD_CMDSTATE, SUCCESS_EVENT, START_GPCONF_CMDSTATE,
+		 start_gpconf, 0);
+    gpcc_fsm_put(START_UTILITY_QD_CMDSTATE, FAILURE_EVENT, SYSTEM_READY_CMDSTATE,
+		 start_failure, start_cleanup, 0);
+    gpcc_fsm_put(START_GPCONF_CMDSTATE, SUCCESS_EVENT, START_UTILITY_QD_STOP_CMDSTATE,
+		 start_utility_qd_stop, 0);
+    gpcc_fsm_put(START_GPCONF_CMDSTATE, FAILURE_EVENT, START_GPCONF_FAILURE_CMDSTATE,
+		 start_utility_qd_stop, 0);
+    gpcc_fsm_put(START_GPCONF_FAILURE_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, SYSTEM_READY_CMDSTATE,
+		 start_failure, start_cleanup, 0);
+
+    gpcc_fsm_put(START_UTILITY_QD_STOP_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, START_UTILITY_QD_STOP_CMDSTATE,
+		 start_utility_qd_stop_reply, 0);
+    gpcc_fsm_put(START_UTILITY_QD_STOP_CMDSTATE, SUCCESS_EVENT, START_QES_CMDSTATE,
+		 start_qes, 0);
+    gpcc_fsm_put(START_QES_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, START_QES_CMDSTATE,
+		 start_qe_reply, 0);
+    gpcc_fsm_put(START_QES_CMDSTATE, SUCCESS_EVENT, START_QD_CMDSTATE,
+		 start_qd, 0);
+    gpcc_fsm_put(START_QES_CMDSTATE, FAILURE_EVENT, SYSTEM_READY_CMDSTATE,
+		 start_failure, start_cleanup, 0);		 
+
+    gpcc_fsm_put(START_QD_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, START_QD_CMDSTATE,
+		 start_qd_reply, 0);
+    gpcc_fsm_put(START_QD_CMDSTATE, SUCCESS_EVENT, START_STANDBY_QD_CMDSTATE,
+		 start_standby_qd, 0);
+    gpcc_fsm_put(START_STANDBY_QD_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, START_STANDBY_QD_CMDSTATE,
+		 start_standby_qd_reply, 0);
+    gpcc_fsm_put(START_STANDBY_QD_CMDSTATE, SUCCESS_EVENT, SYSTEM_READY_CMDSTATE,
+		 start_success, start_cleanup, 0);
+    gpcc_fsm_put(START_STANDBY_QD_CMDSTATE, FAILURE_EVENT, SYSTEM_READY_CMDSTATE,
+		 start_failure, start_cleanup, 0);
+		 
    
 }

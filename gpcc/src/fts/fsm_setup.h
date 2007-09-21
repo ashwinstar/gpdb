@@ -96,6 +96,9 @@ static struct json_object *config_to_json_object()
 
 static inline void setup_set_segment(cmdslot_t *cmdslot, int idx, char *name, int dbid, int content, int port, int node, char *dir, apr_pool_t *pool)
 {
+    char key[128];
+    const char *value, *s;
+    char addr[128];
 
     cmdslot->u.sys.seginfo[idx].name = apr_pstrdup(pool, name);
     cmdslot->u.sys.seginfo[idx].dbid = dbid;
@@ -103,6 +106,13 @@ static inline void setup_set_segment(cmdslot_t *cmdslot, int idx, char *name, in
     cmdslot->u.sys.seginfo[idx].port = port;
     cmdslot->u.sys.seginfo[idx].haidx = node;
     cmdslot->u.sys.seginfo[idx].dir = apr_pstrdup(pool, dir);
+
+    sprintf(key, "node.%d", node);
+    value = config_get(gpfts.config, key);
+    s = strchr(value, ',');
+    strncpy(addr, value+1, s - value - 1);
+    addr[s-value-1] = 0;
+    cmdslot->u.sys.seginfo[idx].host = apr_pstrdup(pool, addr);
 }
 
 static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
@@ -292,7 +302,8 @@ static apr_status_t setup_array_connect(gpcc_event_t *ev, void *_cmdslot)
 					
 	sprintf(addr, "%s:%d", p->u.sys.request.u.setup.hosts[i], HA_DEFAULT_PORT);
 	
-	hainfo = malloc(sizeof(*hainfo));
+	hainfo = malloc(sizeof(*hainfo) + strlen(p->u.sys.request.u.setup.hosts[i]));
+	strcpy(hainfo->host, p->u.sys.request.u.setup.hosts[i]);
 	hainfo->index = i;
 	hainfo->ha = gpcc_ha_open(p->cmdidx, addr, ha_net_opened, ha_net_closed, ha_net_recv, hainfo);
 	if (!hainfo->ha) {

@@ -47,11 +47,13 @@ typedef struct hainfo_t hainfo_t;
 struct hainfo_t {
     int index;
     gpcc_ha_t *ha;
+    char host[1];
 };
 
 typedef struct seginfo_t seginfo_t;
 struct seginfo_t {
     char *name;
+    char *host;
     int dbid;
     int content;
     int port;
@@ -101,7 +103,11 @@ struct cmdslot_t {
 		    } initdb;
 
 		    struct {
-
+			int nrequest;
+			int nreply;
+			int nsuccess;
+			int nfailed;
+			int *replied;
 		    } start;
 
 		    struct {
