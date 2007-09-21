@@ -675,17 +675,22 @@ freeFrameBuffers(WindowState *wstate)
 
 /*
  * ensureSpace -- ensure that there is enough space in the buffer.
+ *
+ * This function returns the new written position if the array is
+ * entended.
  */
-static inline void
+static inline char *
 ensureSpace(char **p_serial_entry, Size *p_max_size,
 			char *written_pos, Size written_len)
 {
 	Size current_len = written_pos - *p_serial_entry;
-	if (current_len + written_len > *p_max_size)
+	while (current_len + written_len > *p_max_size)
 	{
 		*p_max_size += FRAMEBUFFER_ENTRY_SIZE;
 		*p_serial_entry = repalloc(*p_serial_entry, *p_max_size);
 	}
+
+	return (*p_serial_entry + current_len);
 }
 
 /*
@@ -730,8 +735,8 @@ serializeValue(Datum value, bool isnull,
 {
 	char *written_pos = (*p_serial_entry) + start_pos;
 	
-	ensureSpace(p_serial_entry, p_max_size,
-				written_pos, sizeof(bool));
+	written_pos = ensureSpace(p_serial_entry, p_max_size,
+							  written_pos, sizeof(bool));
 
 	memcpy(written_pos, &isnull, sizeof(bool));
 	written_pos += sizeof(bool); /* isnull col */
@@ -740,8 +745,8 @@ serializeValue(Datum value, bool isnull,
 	{
 		if (byvalue)
 		{
-			ensureSpace(p_serial_entry, p_max_size,
-						written_pos, sizeof(Datum));
+			written_pos = ensureSpace(p_serial_entry, p_max_size,
+									  written_pos, sizeof(Datum));
 			
 			memcpy(written_pos, &value, sizeof(Datum));
 			written_pos += sizeof(Datum);
@@ -750,9 +755,9 @@ serializeValue(Datum value, bool isnull,
 		{
 			Size real_size = datumGetSize(value, byvalue, typelen);
 					
-			ensureSpace(p_serial_entry, p_max_size,
-						written_pos, real_size);
-			
+			written_pos = ensureSpace(p_serial_entry, p_max_size,
+									  written_pos, real_size);
+			Assert(DatumGetPointer(value) != NULL);
 			memcpy(written_pos,
 				   DatumGetPointer(value),
 				   real_size);
@@ -1027,20 +1032,28 @@ serializeEntry(WindowStatePerLevel level_state,
 
 			key = slot_getattr(slot, attnum, &isnull);
 
-			keylen += datumGetSize(key, level_state->col_typbyvals[key_no],
-								   level_state->col_typlens[key_no]);
-	
-			ensureSpace(p_serial_entry, p_max_size, written_pos,
-						keylen + sizeof(bool));
-
-			if (level_state->col_typbyvals[key_no])
-				memcpy(written_pos, &(key), sizeof(Datum));
-			else
-				memcpy(written_pos, DatumGetPointer(key), keylen);
-			written_pos += keylen;
-		
+			written_pos = ensureSpace(p_serial_entry, p_max_size, written_pos,
+									  sizeof(bool));
 			memcpy(written_pos, &(isnull), sizeof(bool));
 			written_pos += sizeof(bool);
+
+			if (!isnull)
+			{
+				if (level_state->col_typbyvals[key_no])
+					keylen += sizeof(Datum);
+				else
+					keylen += datumGetSize(key, level_state->col_typbyvals[key_no],
+										   level_state->col_typlens[key_no]);
+	
+				written_pos = ensureSpace(p_serial_entry, p_max_size, written_pos,
+										  keylen);
+
+				if (level_state->col_typbyvals[key_no])
+					memcpy(written_pos, &(key), sizeof(Datum));
+				else
+					memcpy(written_pos, DatumGetPointer(key), keylen);
+				written_pos += keylen;
+			}
 		}
 	}
 	
@@ -1071,21 +1084,29 @@ deserializeEntry(WindowStatePerLevel level_state,
 		for (key_no=0; key_no < level_state->numSortCols; key_no++)
 		{
 			Size curr_keylen = 0;
-		
-			curr_keylen = datumGetSize(PointerGetDatum(read_pos),
-									   level_state->col_typbyvals[key_no],
-									   level_state->col_typlens[key_no]);
 
-			if (level_state->col_typbyvals[key_no])
-				memcpy(&(entry->keys[key_no]), read_pos, sizeof(Datum));
-			else
-				entry->keys[key_no] = PointerGetDatum(read_pos);
-			read_pos += curr_keylen;
-
-			keylen += curr_keylen;
-		
 			memcpy(&(entry->nulls[key_no]), read_pos, sizeof(bool));
 			read_pos += sizeof(bool);
+
+			if (!entry->nulls[key_no])
+			{
+				if (level_state->col_typbyvals[key_no])
+				{
+					memcpy(&(entry->keys[key_no]), read_pos, sizeof(Datum));
+					curr_keylen = sizeof(Datum);
+				}
+			
+				else
+				{
+					curr_keylen = datumGetSize(PointerGetDatum(read_pos),
+											   level_state->col_typbyvals[key_no],
+											   level_state->col_typlens[key_no]);
+					entry->keys[key_no] = PointerGetDatum(read_pos);
+				}
+				read_pos += curr_keylen;
+				keylen += curr_keylen;
+			}
+		
 			keylen += sizeof(bool);
 		}
 	}
@@ -1346,16 +1367,16 @@ appendToFrameBuffer(WindowStatePerLevel level_state,
 					WindowState *wstate,
 					bool last_peer)
 {
-	char *serial_entry = wstate->serial_array;
 	Size len;
 	WindowFrameBuffer buffer = level_state->frame_buffer;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 
 	Assert(buffer->is_rows == level_state->is_rows);
+	MemSet(wstate->serial_array, 0, wstate->max_size);
 	serializeEntry(level_state, econtext,
-				   &serial_entry, &(wstate->max_size), &len);
+				   &(wstate->serial_array), &(wstate->max_size), &len);
 
-	ntuplestore_acc_put_data(buffer->writer, (void*)serial_entry, len);
+	ntuplestore_acc_put_data(buffer->writer, (void*)(wstate->serial_array), len);
 
 	adjustEdgesAfterAppend(level_state, wstate, last_peer);
 }
@@ -1400,7 +1421,7 @@ getCurrentValue(NTupleStoreAccessor *reader,
 
 	if (!found)
 		return false;
-	
+
 	entry_buf = deserializeEntry(level_state, entry_buf, data, len);
 
 	return true;
@@ -1885,6 +1906,10 @@ computeFrameValue(WindowStatePerLevel level_state,
 		 * require peer counts.
 		 */
 		if (funcstate->trivial_frame)
+			continue;
+
+		/* Ignore functions that are cumulative aggregate functions. */
+		if (funcstate->cumul_frame)
 			continue;
 
 		/* functions that require peer counts. */
