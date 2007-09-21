@@ -848,16 +848,16 @@ ExecScanHashBucket(HashJoinState *hjstate,
 	HashJoinTuple hashTuple = hjstate->hj_CurTuple;
 	uint32		hashvalue = hjstate->hj_CurHashValue;
 
-	/* if bloom failter fail, then no match - don't even bother to scan */
-	if (0 == (hashtable->bloom[hjstate->hj_CurBucketNo] & BLOOMVAL(hashvalue)))
-		return NULL;
-
 	/*
 	 * hj_CurTuple is NULL to start scanning a new bucket, or the address of
 	 * the last tuple returned from the current bucket.
 	 */
 	if (hashTuple == NULL)
-		hashTuple = hashtable->buckets[hjstate->hj_CurBucketNo];
+    {
+	    /* if bloom filter fails, then no match - don't even bother to scan */
+	    if (0 != (hashtable->bloom[hjstate->hj_CurBucketNo] & BLOOMVAL(hashvalue)))
+            hashTuple = hashtable->buckets[hjstate->hj_CurBucketNo];
+    }
 	else
 		hashTuple = hashTuple->next;
 
