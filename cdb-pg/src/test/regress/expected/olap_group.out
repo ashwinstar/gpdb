@@ -3462,7 +3462,7 @@ having group_id()=0;
 select cn,vn,pn,count(dt),0,0 as grouping from sale group by cn,vn,pn
 union all select cn,null,null,count(dt),0,3 from sale group by cn
 union all select cn,null,null,count(dt),1,3 from sale group by cn
-order by 6;
+order by 6; -- order 6
  cn | vn | pn  | count | ?column? | grouping 
 ----+----+-----+-------+----------+----------
   4 | 40 | 800 |     1 |        0 |        0
@@ -3487,8 +3487,7 @@ order by 6;
   1 |    |     |     5 |        1 |        3
 (20 rows)
 
--- order 6
-select cn, vn, pn, count(dt),group_id(),grouping(cn,vn,pn) from sale group by grouping sets ((cn,vn,pn), (cn), (cn)) order by grouping(cn,vn,pn);
+select cn, vn, pn, count(dt),group_id(),grouping(cn,vn,pn) from sale group by grouping sets ((cn,vn,pn), (cn), (cn)) order by grouping(cn,vn,pn); -- order 6
  cn | vn | pn  | count | ?column? | grouping 
 ----+----+-----+-------+----------+----------
   4 | 40 | 800 |     1 |        0 |        0

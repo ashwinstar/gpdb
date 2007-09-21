@@ -423,9 +423,8 @@ having group_id()=0;
 select cn,vn,pn,count(dt),0,0 as grouping from sale group by cn,vn,pn
 union all select cn,null,null,count(dt),0,3 from sale group by cn
 union all select cn,null,null,count(dt),1,3 from sale group by cn
-order by 6;
--- order 6
-select cn, vn, pn, count(dt),group_id(),grouping(cn,vn,pn) from sale group by grouping sets ((cn,vn,pn), (cn), (cn)) order by grouping(cn,vn,pn);
+order by 6; -- order 6
+select cn, vn, pn, count(dt),group_id(),grouping(cn,vn,pn) from sale group by grouping sets ((cn,vn,pn), (cn), (cn)) order by grouping(cn,vn,pn); -- order 6
 --end equivalent
 
 select a,b from (select 1 as a , 2 as b) r(a,b) group by rollup(a,b);
