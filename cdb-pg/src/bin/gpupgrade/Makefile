@@ -15,21 +15,31 @@ include $(top_builddir)/src/Makefile.global
 
 override CPPFLAGS := -DFRONTEND -I$(libpq_srcdir) $(CPPFLAGS)
 
-OBJS= gpupgrade.o
+GPUOBJS= gpupgrade.o
 
-all: submake-libpq gpupgrade
+GPCOBJS= gp_controldata_mod.o pg_crc.o $(WIN32RES)
+
+all: submake-libpq gpupgrade gp_controldata_mod
 
 gpupgrade: gpupgrade.o $(libpq_builddir)/libpq.a 
-	$(CC) $(CFLAGS) $(OBJS)  $(libpq_pgport) $(EXTRA_OBJS) $(LDFLAGS) $(LIBS) -o $@$(X)
+	$(CC) $(CFLAGS) $(GPUOBJS)  $(libpq_pgport) $(EXTRA_OBJS) $(LDFLAGS) $(LIBS) -o $@$(X)
+
+gp_controldata_mod: gp_controldata_mod.o pg_crc.o
+	$(CC) $(CFLAGS) $^ $(LDFLAGS) $(LIBS) -o $@$(X)
+
+pg_crc.c: $(top_srcdir)/src/backend/utils/hash/pg_crc.c
+	rm -f $@ && $(LN_S) $< .
 
 install: all installdirs
 	$(INSTALL_PROGRAM) gpupgrade$(X) '$(DESTDIR)$(bindir)'/gpupgrade$(X)
+	$(INSTALL_PROGRAM) gp_controldata_mod$(X) '$(DESTDIR)$(bindir)'/gp_controldata_mod$(X)
 
 installdirs:
 	$(mkinstalldirs) '$(DESTDIR)$(bindir)'
 
 uninstall:
-	rm -f $(addprefix '$(DESTDIR)$(bindir)'/, gpupgrade$(X)
+	rm -f '$(DESTDIR)$(bindir)'/, gpupgrade$(X)
+	rm -f '$(DESTDIR)$(bindir)'/, gp_controldata_mod$(X)
 
 clean distclean maintainer-clean:
-	rm -f gpupgrade$(X) $(OBJS) gpupgrade.o
+	rm -f gpupgrade$(X) $(OBJS) pg_crc.c
