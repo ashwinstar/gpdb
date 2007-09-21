@@ -232,9 +232,22 @@ static void net_recv_cb(gpcc_net_conn_t conn, void* arg)
 /* callback from gpcc_net. this runs in the network thread */
 static void time_tick_cb(apr_time_t now)
 {
+    apr_uint32_t *spin;
+    cmdslot_t* p = &gpfts.cmdslot[0];
+    cmdslot_t* q = &gpfts.cmdslot[CMDSLOT_MAX];
+    
+    spin = gpcc_spin_secure(gpfts.spin);
 
-    gpcc_event_t *ev = gpcc_event_alloc(TICK_EVENT, gpfts.timer_cmdidx, 0);
-    gpcc_evqueue_put(gpfts.evq, ev);
+    for ( ; p < q; p++) {
+	if (p->cmdidx && p->countdown > 0) {
+	    if (--p->countdown == 0)  {
+		gpcc_event_t* ev = gpcc_event_alloc(TIMEUP_EVENT, p->cmdidx, 0);
+		gpcc_evqueue_put(gpfts.evq, ev);
+	    }
+	}
+    }
+
+    spin = gpcc_spin_release(gpfts.spin);
 }
 
 
@@ -244,7 +257,9 @@ static void * APR_THREAD_FUNC fts_thread_run(apr_thread_t *thread, void *arg)
 {
     gpcc_event_t* ev = 0;
     cmdslot_t* cp;
-    
+    apr_uint32_t *spin;
+
+    spin = gpcc_spin_secure(gpfts.spin);
     while (gpfts.thread == thread) {
 	int nxtstate;
 	gpcc_fsm_func_t** action;
@@ -259,6 +274,9 @@ static void * APR_THREAD_FUNC fts_thread_run(apr_thread_t *thread, void *arg)
 	if (ev == 0) {
 	    continue;
 	}
+
+	spin = gpcc_spin_release(gpfts.spin);
+	spin = gpcc_spin_secure(gpfts.spin);
 
 	/* map the cmdidx */
 	if (ev->cmdidx == 0) 	/* artificially match 0 to system_cmdidx */
@@ -307,6 +325,8 @@ static void * APR_THREAD_FUNC fts_thread_run(apr_thread_t *thread, void *arg)
 	}
     }
 
+    spin = gpcc_spin_release(gpfts.spin);
+
     if (ev) {
 	gpcc_event_free(ev);
     }
@@ -348,10 +368,6 @@ int fts_initialize(config_t *config, gpcc_evqueue_t *alertq)
     /* set up the fsm */
     fsm_setup();
 
-    /* timer slot */
-    cp = cmdslot_alloc("TIMER", TIMER_CMDSTATE, 0);
-    gpfts.timer_cmdidx = cp->cmdidx;
-
     /* system slot */
     cp = cmdslot_alloc("SYSTEM", SYSTEM_CMDSTATE, 0);
     gpfts.system_cmdidx = cp->cmdidx;
@@ -385,7 +401,8 @@ int fts_terminate()
     apr_thread_t *thread = gpfts.thread;
 
     gpfts.thread = 0;
-    
+    gpcc_evqueue_put(gpfts.evq, 0);
+
     apr_thread_join(&ret, thread);
 
     apr_pool_destroy(gpfts.pool);
@@ -399,14 +416,28 @@ int fts_do(const char *cmd, gpcc_evqueue_t *outq)
     struct json_object *obj;
     char *action;
     gpcc_event_t *ev = 0;
+    cmdslot_t *p;
+    apr_uint32_t *spin;
 
     obj = json_tokener_parse((char *)cmd);
     action = gpcc_json_object_get_string(obj, "action", 0);
 
+    spin = gpcc_spin_secure(gpfts.spin);
+
     if (gpfts.system_cmdidx == 0) {
-	cmdslot_t *p = cmdslot_alloc("SYSTEM", SYSTEM_CMDSTATE, 0);
+	p = cmdslot_alloc("SYSTEM", SYSTEM_CMDSTATE, 0);
 	gpfts.system_cmdidx = p->cmdidx;
+    } else {
+	p = cmdslot_get(gpfts.system_cmdidx);
     }
+    if (p->u.sys.request.outq) {
+	gpcc_warning(FLINE, "fts is running on something else.");
+	spin = gpcc_spin_release(gpfts.spin);
+	return APR_EINVAL;
+    }
+    p->u.sys.request.outq = outq;
+
+    spin = gpcc_spin_release(gpfts.spin);
 
     if (strcmp(action, "setup") == 0) {
 	ev = gpcc_event_alloc(ARRAY_SETUP_EVENT, gpfts.system_cmdidx, strlen(cmd)+1);

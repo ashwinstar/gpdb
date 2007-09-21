@@ -149,7 +149,6 @@ struct gpfts_t {
     gpcc_evqueue_t* evq;	/* the event queue */
     gpcc_evqueue_t* alertq;     /* the alert queue */
     int          system_cmdidx; /* cmdidx of system FSM */
-    int          timer_cmdidx;  /* cmdidx of timer FSM */
     apr_uint16_t cmdidx_gen;
     const char*  gphome;
     cmdslot_t    cmdslot[CMDSLOT_MAX];
@@ -157,6 +156,7 @@ struct gpfts_t {
     apr_threadattr_t *attr;
     struct event timer_event;
     config_t     *config;
+    apr_uint32_t spin[1];
 };
 
 extern gpfts_t gpfts;

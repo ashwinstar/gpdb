@@ -20,10 +20,6 @@
 
 APR_DECLARE(void) fsm_setup(void)
 {
-    gpcc_fsm_put(TIMER_CMDSTATE, INIT_EVENT, TIMER_CMDSTATE,
-		 timer_init, 0);
-    gpcc_fsm_put(TIMER_CMDSTATE, TICK_EVENT, TIMER_CMDSTATE,
-		 timer_tick, 0);
 
     gpcc_fsm_put(SYSTEM_CMDSTATE, INIT_EVENT, SYSTEM_CMDSTATE,
 		 system_init, 0);
