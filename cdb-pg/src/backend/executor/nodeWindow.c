@@ -1175,7 +1175,8 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 		 (!level_state->is_rows && level_state->lead_range != 0)))
 		return;
 
-	/* Adjust the leading edge when the edge is "x FOLLOWING" or
+	/* 
+	 * Adjust the leading edge when the edge is "x FOLLOWING" or
 	 * "CURRENT ROW".
 	 */
 	if (level_state->is_rows)
@@ -1187,7 +1188,6 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 				if (!last_peer)
 					level_state->num_lead_rows++;
 			}
-			
 			else
 			{
 				bool found;
@@ -1217,7 +1217,6 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 			}
 		}
 	}
-	
 	else
 	{
 		if (EDGE_IS_BOUND(level_state->frame->lead))
@@ -1277,15 +1276,17 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 				{
 					bool found;
 					
-					/* Check if the last tuple in the input buffer is the leading
-					 * edge.
+					/* 
+					 * Check if the last tuple in the input buffer is 
+					 * the leading edge.
 					 */
 					found = ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
 															  wstate->spare);
 					Assert(found);
 					
 					deform_window_tuple(wstate->spare,
-										level_state->numSortCols, level_state->sortColIdx,
+										level_state->numSortCols,
+										level_state->sortColIdx,
 										&curr_key, &curr_key_isnull,
 										wstate->transcontext);
 
@@ -1312,7 +1313,8 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 				}
 			}
 		}
-		else if (EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->lead, true))
+		else if (EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->lead, 
+									 true))
 		{
 			if (!ntuplestore_acc_tell(buffer->current_row_reader, NULL))
 				ntuplestore_acc_seek_last(level_state->lead_reader);
@@ -1320,6 +1322,7 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 			{
 				bool found;
 				NTupleStorePos pos;
+				
 				found = ntuplestore_acc_tell(buffer->current_row_reader, &pos);
 				Assert(found);
 				ntuplestore_acc_seek(level_state->lead_reader, &pos);
@@ -1503,7 +1506,8 @@ hasEnoughDataInRows(WindowFrameBuffer buffer,
 	return false;
 }
 
-static FrameBufferEntry *createFrameBufferEntry(WindowStatePerLevel level_state)
+static FrameBufferEntry *
+createFrameBufferEntry(WindowStatePerLevel level_state)
 {
 	FrameBufferEntry *entry = NULL;
 	ListCell *lc;
@@ -1719,14 +1723,17 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 				 */
 				if (funcstate->trivial_frame ||
 					funcstate->winpeercount ||
-					(funcstate->isAgg && OidIsValid(funcstate->invprelimfn_oid)) ||
+					(funcstate->isAgg && 
+					 OidIsValid(funcstate->invprelimfn_oid)) ||
 					!funcstate->isAgg)
 					continue;
 					
 				if (OidIsValid(funcstate->prelimfn_oid))
 				{
-					curr_value = (WindowValue *)
-						list_nth(curr_entry->func_values, funcstate->serial_index);
+					curr_value = 
+						(WindowValue *)list_nth(curr_entry->func_values,
+												funcstate->serial_index);
+
 					Assert(curr_value);
 					
 					fcinfo.arg[1] = curr_value->value;
@@ -1764,11 +1771,13 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 			}
 		}
 		
-		/* Add the funcstate->aggTransValue if it is in the current
+		/* 
+		 * Add the funcstate->aggTransValue if it is in the current
 		 * frame.
 		 */
 		if (EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->trail, false))
 			include_last_agg = true;
+		
 		if (!EDGE_IS_BOUND(level_state->frame->lead) ||
 			EDGE_IS_BOUND_FOLLOWING(level_state->frame->lead)  ||
 			EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->lead, true))
@@ -1934,7 +1943,6 @@ computeFrameValue(WindowStatePerLevel level_state,
 											level_state, lead_entry);
 					}
 				}
-				
 				else
 				{
 					has_trail_entry = getCurrentValue(level_state->trail_reader,
@@ -2091,7 +2099,6 @@ computeFrameValue(WindowStatePerLevel level_state,
 				funcstate->win_value = FunctionCallInvoke(&fcinfo);
 				funcstate->win_value_is_null = fcinfo.isnull;
 			}
-
 			else
 				require_scanning = true;
 		}
@@ -2182,7 +2189,8 @@ initWindowFuncState(WindowState *wstate, Window *node)
 			   
 		else
 		{
-			WindowStatePerLevel level_state = &wstate->level_state[winref->winlevel];
+			WindowStatePerLevel level_state = 
+				&wstate->level_state[winref->winlevel];
 
 			/* When this level has the range frame, this frame may not
 			 * always match with the row_number function. For example,
@@ -2295,7 +2303,7 @@ initWindowFuncState(WindowState *wstate, Window *node)
 			
 			
 			/* Check that the aggregate owner has needed permissions. */
-			for ( c = 0; c < NUM_AGG_FNS_TO_CHECK; c++ )
+			for (c = 0; c < NUM_AGG_FNS_TO_CHECK; c++)
 			{
 				if ( ! OidIsValid(to_check[c]) )
 					continue;
@@ -3006,7 +3014,6 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 				funcstate->final_aggNoTransValue = funcstate->aggNoTransValue;
 			}
 		}
-
 		else if (funcstate->cumul_frame &&
 				 !HAS_ONLY_TRANS_FUNC(funcstate))
 		{
@@ -3545,7 +3552,7 @@ invokeNonTrivialFuncs(WindowState *wstate)
 {
 	int level;
 
-	for (level=0; level<wstate->numlevels; level++)
+	for (level = 0; level < wstate->numlevels; level++)
 	{
 		WindowStatePerLevel level_state = &wstate->level_state[level];
 
@@ -4008,7 +4015,8 @@ fetchCurrentRow(WindowState *wstate)
 				}
 				else
 					adjustDelayBoundEdgeForRows(level_state, wstate,
-												level_state->frame->trail, level_state->trail_expr,
+												level_state->frame->trail,
+												level_state->trail_expr,
 												level_state->trail_reader,
 												&(level_state->trail_rows),
 												&(level_state->num_trail_rows));
@@ -4295,7 +4303,7 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 	int level;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 
-	for (level=0; level<wstate->numlevels; level++)
+	for (level = 0; level < wstate->numlevels; level++)
 	{
 		WindowStatePerLevel level_state = &wstate->level_state[level];
 		ListCell *lc;
@@ -4839,7 +4847,7 @@ init_frames(WindowState *wstate)
 	 * Also initialize the transition values for functions
 	 * in this level.
 	 */
-	for (level=0; level<wstate->numlevels; level++)
+	for (level = 0; level < wstate->numlevels; level++)
 	{
 		bool trivial_frames_only = true;
 		WindowStatePerLevel level_state = &wstate->level_state[level];
@@ -4864,7 +4872,7 @@ init_frames(WindowState *wstate)
 	 * Set has_delay_bound flag in each level state if the frame clause
 	 * has a edge of DELAY_BOUND type.
 	 */
-	for (level=0; level<wstate->numlevels; level++)
+	for (level = 0; level < wstate->numlevels; level++)
 	{
 		WindowStatePerLevel level_state = &wstate->level_state[level];
 
@@ -4878,7 +4886,7 @@ init_frames(WindowState *wstate)
 	 * in this level are aggregate functions that have no preliminary
 	 * functions or inverse preliminary functions.
 	 */
-	for (level=0; level<wstate->numlevels; level++)
+	for (level = 0; level < wstate->numlevels; level++)
 	{
 		WindowStatePerLevel level_state = &wstate->level_state[level];
 		bool has_only_trans_funcs = false;
@@ -4916,7 +4924,7 @@ init_frames(WindowState *wstate)
 	 * we don't need to do pallocs/pfrees every time we read an entry
 	 * from the frame buffer.
 	 */
-	for (level=0; level<wstate->numlevels; level++)
+	for (level = 0; level < wstate->numlevels; level++)
 	{
 		WindowStatePerLevel level_state = &wstate->level_state[level];
 		
