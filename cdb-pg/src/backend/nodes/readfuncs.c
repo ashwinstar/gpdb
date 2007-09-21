@@ -362,6 +362,22 @@ _readDeclareCursorStmt(void)
 }
 
 /*
+ * _readSingleRowErrorDesc
+ */
+static SingleRowErrorDesc *
+_readSingleRowErrorDesc(void)
+{
+	READ_LOCALS(SingleRowErrorDesc);
+	
+	READ_NODE_FIELD(errtable);
+	READ_INT_FIELD(rejectlimit);
+	READ_BOOL_FIELD(is_keep);
+	READ_BOOL_FIELD(is_limit_in_rows);
+	
+	READ_DONE();
+}
+
+/*
  * _readSortClause
  */
 static SortClause *
@@ -3103,6 +3119,7 @@ static ParseNodeInfo infoAr[] =
 	{"SETOPERATIONSTMT", (ReadFn)_readSetOperationStmt},
 	{"SETTODEFAULT", (ReadFn)_readSetToDefault},
 	{"SHAREINPUTSCAN", (ReadFn)_readShareInputScan},
+	{"SINGLEROWERRORDESC",(ReadFn)_readSingleRowErrorDesc},
 	{"SLICE", (ReadFn)_readSlice},
 	{"SLICETABLE", (ReadFn)_readSliceTable},
 	{"SORT", (ReadFn)_readSort},

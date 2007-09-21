@@ -224,6 +224,22 @@ _readDeclareCursorStmt(const char ** str)
 }
 
 /*
+ * _readSingleRowErrorDesc
+ */
+static SingleRowErrorDesc *
+_readSingleRowErrorDesc(const char ** str)
+{
+	READ_LOCALS(SingleRowErrorDesc);
+		
+	READ_NODE_FIELD(errtable);
+	READ_INT_FIELD(rejectlimit);
+	READ_BOOL_FIELD(is_keep);
+	READ_BOOL_FIELD(is_limit_in_rows);
+	
+	READ_DONE();
+}
+
+/*
  * _readSortClause
  */
 static SortClause *
@@ -3348,7 +3364,10 @@ readNodeBinary(const char ** str)
 			case T_DeclareCursorStmt:
 				return_value = _readDeclareCursorStmt(str);
 				break;
-
+			
+			case T_SingleRowErrorDesc:
+				return_value = _readSingleRowErrorDesc(str);
+				break;
 			case T_CopyStmt:
 				return_value = _readCopyStmt(str);
 				break;
