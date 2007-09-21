@@ -120,8 +120,10 @@ typedef struct WindowStatePerLevelData
 	/* Indicate if the frame is a ROW frame or a RANGE frame. */
 	bool is_rows;
 
-	/* Indicate if its functions are LEAD/LAG */
-	bool has_lead_lag;
+	/* Indicate if the frame clause for this level has an edge of
+	 * DELAY_BOUND type.
+	 */
+	bool has_delay_bound;
 
 	/* Indicate if all functions in this level are aggregate functions that
 	 * have no preliminary functions or inverse preliminary functions.
@@ -456,8 +458,6 @@ static int findSerialIndex(WindowStatePerFunction funcstate,
 						   WindowStatePerLevel level_state);
 static void add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 							   ExprContext *econtext);
-static void set_lead_lag_framing(WindowStatePerLevel level_state,
-								 WindowState *wstate);
 static bool hasTuplesInFrame(WindowStatePerLevel level_state);
 static Datum last_value_internal(WindowRefExprState *wrxstate, bool *isnull);
 static Datum first_value_internal(WindowRefExprState *wrxstate, bool *isnull);
@@ -1426,7 +1426,7 @@ incrementCurrentRow(WindowFrameBuffer buffer,
 	   adjustEdges(buffer, wstate);
 
    /* Set the trim_reader, and trim the buffer */
-   if (!level_state->has_lead_lag)
+   if (!level_state->has_delay_bound)
    {
 	   NTupleStorePos pos;
 	   bool found = ntuplestore_acc_tell(buffer->current_row_reader, &pos);
@@ -2538,7 +2538,7 @@ initWindowStatePerLevel(WindowState *wstate, Window *node)
 		WindowFrame *frame;
 		WindowStatePerLevel lvl =  &wstate->level_state[level_no++];
 
-		lvl->has_lead_lag = false;
+		lvl->has_delay_bound = false;
 		lvl->has_only_trans_funcs = false;
 
 		/* Copy the sort columns for this level. If the window key contains
@@ -3657,6 +3657,180 @@ invokeWindowFuncs(WindowState *wstate)
 }
 
 /*
+ * get_delay_edge -- evaluate the expression from the current row,
+ * and return the value for the given DELAY_BOUND edge.
+ */
+static Datum
+get_delay_edge(WindowFrameEdge *edge,
+			   ExprState *edge_expr,
+			   bool is_rows,
+			   WindowState *wstate)
+{
+	Datum rows_param = 0;
+	bool isnull = true;
+	ExprContext *econtext = wstate->ps.ps_ExprContext;
+	
+	Assert (EDGE_IS_DELAYED(edge));
+
+	econtext->ecxt_scantuple = wstate->curslot;
+	if (TupIsNull(wstate->curslot))
+		ereport(ERROR,
+				(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
+				 errmsg("%s parameter cannot contain NULL value",
+						(is_rows ? "ROWS" : "RANGE"))));
+	
+	rows_param = ExecEvalExpr(edge_expr,
+							  econtext,
+							  &isnull,
+							  NULL);
+	if (isnull)
+		ereport(ERROR,
+				(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
+				 errmsg("%s parameter cannot contain NULL value",
+						(is_rows ? "ROWS" : "RANGE"))));
+
+	if (is_rows && rows_param < 0)
+		ereport(ERROR,
+				(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
+				 errmsg("%s parameter cannot be negative",
+						(is_rows ? "ROWS" : "RANGE"))));
+
+	if (is_rows && EDGE_IS_BOUND_PRECEDING(edge))
+		rows_param = 0 - rows_param;
+	
+	return rows_param;
+}
+
+/*
+ * adjustDelayBoundEdgeForRows -- evaluate the given DELAY_BOUND edge in
+ * a ROWS-type frame and adjust the corresponding edge to the frame buffer
+ * based on this new edge value.
+ */
+static void
+adjustDelayBoundEdgeForRows(WindowStatePerLevel level_state,
+							WindowState *wstate,
+							WindowFrameEdge *edge,
+							ExprState *edge_expr,
+							NTupleStoreAccessor *edge_reader,
+							long int *p_request_num_rows,
+							long int *p_num_rows)
+{
+	WindowFrameBuffer frame_buffer = level_state->frame_buffer;
+
+	Assert(level_state->has_delay_bound && level_state->is_rows);
+	Assert(EDGE_IS_DELAYED(edge));
+	Assert(list_length(level_state->level_funcs) >= 1);
+
+	*p_request_num_rows = 
+		get_delay_edge(edge, edge_expr, level_state->is_rows, wstate);
+
+	*p_num_rows = 0;
+
+	/* Reset the edge_reader position in the frame buffer. */
+	if (EDGE_IS_BOUND_FOLLOWING(edge))
+	{
+		NTupleStorePos curr_row_pos;
+		NTupleStorePos last_pos;
+				
+		if (ntuplestore_acc_tell(frame_buffer->current_row_reader, &curr_row_pos))
+		{
+			int ntuples;
+			
+			bool found = ntuplestore_acc_seek_last(edge_reader);
+			Assert(found);
+			found = ntuplestore_acc_tell(edge_reader, &last_pos);
+			Assert(found);
+			ntuples = ntuplestore_count_slot(frame_buffer->tuplestore,
+											 &curr_row_pos, &last_pos);
+			Assert(ntuples >= 0);
+			if (ntuples >= level_state->lead_rows)
+			{
+				found = ntuplestore_acc_seek(edge_reader, &curr_row_pos);
+				Assert(found);
+				found = ntuplestore_acc_advance(edge_reader, level_state->lead_rows);
+				Assert(found);
+				*p_num_rows = *p_request_num_rows;
+			}
+			else
+			{
+				ntuplestore_acc_advance(edge_reader, 1);
+				*p_num_rows = ntuples;
+				if (level_state->agg_filled)
+					(*p_num_rows)++;
+			}
+		}
+		
+		else
+		{
+			ntuplestore_acc_set_invalid(edge_reader);
+			*p_num_rows = 0;
+		}
+	}
+	
+	else
+	{
+		NTupleStorePos curr_row_pos;
+		NTupleStorePos first_pos;
+		int ntuples;
+		
+		if (ntuplestore_acc_tell(frame_buffer->current_row_reader, &curr_row_pos))
+		{
+			bool found = ntuplestore_acc_seek_first(edge_reader);
+			Assert(found);
+			found = ntuplestore_acc_tell(edge_reader, &first_pos);
+			Assert(found);
+			
+			ntuples = ntuplestore_count_slot(frame_buffer->tuplestore,
+											 &first_pos, &curr_row_pos);
+			Assert(ntuples >= 0);
+			
+			if (ntuples >= 0 - *p_request_num_rows)
+			{
+				found = ntuplestore_acc_seek(edge_reader, &curr_row_pos);
+				Assert(found);
+				found = ntuplestore_acc_advance(edge_reader, *p_request_num_rows);
+				Assert(found);
+				*p_num_rows = *p_request_num_rows;
+			}
+			else
+			{
+				ntuplestore_acc_advance(edge_reader, -1);
+				*p_num_rows = 0 - ntuples;
+			}
+		}
+		else
+		{
+			NTupleStorePos last_pos;
+
+			if (ntuplestore_acc_seek_last(edge_reader))
+			{
+				bool found = ntuplestore_acc_tell(edge_reader, &last_pos);
+				Assert(found);
+				found = ntuplestore_acc_seek_first(edge_reader);
+				Assert(found);
+				found = ntuplestore_acc_tell(edge_reader, &first_pos);
+				Assert(found);
+				ntuples = ntuplestore_count_slot(frame_buffer->tuplestore,
+												 &first_pos, &last_pos) + 1;
+				Assert(ntuples >= 0);
+				
+				if (ntuples >= 0 - *p_request_num_rows)
+				{
+					ntuplestore_acc_advance(edge_reader,
+											ntuples + *p_request_num_rows);
+					*p_num_rows = *p_request_num_rows;
+				}
+				else
+				{
+					ntuplestore_acc_advance(edge_reader, -1);
+					*p_num_rows = 0 - ntuples;
+				}
+			}
+		}
+	}
+}
+
+/*
  * fetchCurrentRow -- retrieve the current_row from the input buffer.
  * 
  * The current_row_reader always points to the previous current_row
@@ -3787,124 +3961,66 @@ fetchCurrentRow(WindowState *wstate)
 	else
 		trimInputBuffer(buffer);
 
-	/* Evaluate the LEAD/LAG offset values, and change the
-	 * framing clauses accordingly.
+	/* Evaluate the DELAY_BOUND edges, including LEAD/LAG offset expressions,
+	 * and change the framing clauses accordingly.
+	 *
+	 * We also adjust the trailing edge and the leading edge to the frame
+	 * buffer based on these new edge values.
 	 */
 	for (level=0; level<wstate->numlevels; level++)
 	{
 		WindowStatePerLevel level_state = &wstate->level_state[level];
 
-		if (!level_state->has_lead_lag)
+		if (!level_state->has_delay_bound)
 			continue;
 
 		if (EDGE_IS_DELAYED(level_state->frame->lead))
 		{
-			WindowFrameBuffer frame_buffer = level_state->frame_buffer;
-			
-			set_lead_lag_framing(level_state, wstate);
+			if (level_state->is_rows)
+				adjustDelayBoundEdgeForRows(level_state, wstate,
+											level_state->frame->lead, level_state->lead_expr,
+											level_state->lead_reader,
+											&(level_state->lead_rows),
+											&(level_state->num_lead_rows));
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+						 errmsg("Not yet support expressions in a RANGE-frame.")));
+		}
 
-			level_state->num_lead_rows = 0;
-
-			/* Reset the leading edge pointer in the frame buffer. */
-			if (EDGE_IS_BOUND_FOLLOWING(level_state->frame->lead))
+		if (EDGE_IS_DELAYED(level_state->frame->trail))
+		{
+			if (level_state->is_rows)
 			{
-				NTupleStorePos curr_row_pos;
-				NTupleStorePos last_pos;
-				
-				if (ntuplestore_acc_tell(frame_buffer->current_row_reader, &curr_row_pos))
+				if (equal(level_state->frame->lead, level_state->frame->trail))
 				{
-					int ntuples;
+					NTupleStorePos pos;
+					bool found = false;
+					
+					level_state->num_trail_rows = level_state->num_lead_rows;
+					level_state->trail_rows = level_state->lead_rows;
 
-					bool found = ntuplestore_acc_seek_last(level_state->lead_reader);
-					Assert(found);
-					found = ntuplestore_acc_tell(level_state->lead_reader, &last_pos);
-					Assert(found);
-					ntuples = ntuplestore_count_slot(frame_buffer->tuplestore,
-													 &curr_row_pos, &last_pos);
-					Assert(ntuples >= 0);
-					if (ntuples >= level_state->lead_rows)
-					{
-						found = ntuplestore_acc_seek(level_state->lead_reader, &curr_row_pos);
-						Assert(found);
-						found = ntuplestore_acc_advance(level_state->lead_reader, level_state->lead_rows);
-						Assert(found);
-						level_state->num_lead_rows = level_state->lead_rows;
-					}
+					found = ntuplestore_acc_tell(level_state->lead_reader, &pos);
+					if (found)
+						ntuplestore_acc_seek(level_state->trail_reader, &pos);
 					else
-					{
-						ntuplestore_acc_advance(level_state->lead_reader, 1);
-						level_state->num_lead_rows = ntuples;
-						if (level_state->agg_filled)
-							level_state->num_lead_rows++;
-					}
+						ntuplestore_acc_set_invalid(level_state->trail_reader);
 				}
-
 				else
-				{
-					ntuplestore_acc_set_invalid(level_state->lead_reader);
-					level_state->num_lead_rows = 0;
-				}
-			}
+					adjustDelayBoundEdgeForRows(level_state, wstate,
+												level_state->frame->trail, level_state->trail_expr,
+												level_state->trail_reader,
+												&(level_state->trail_rows),
+												&(level_state->num_trail_rows));
 
+				/* For the trailing edge, we also back off one. */
+				ntuplestore_acc_advance(level_state->trail_reader, -1);
+			}
 			else
 			{
-				NTupleStorePos curr_row_pos;
-				NTupleStorePos first_pos;
-				int ntuples;
-
-				if (ntuplestore_acc_tell(frame_buffer->current_row_reader, &curr_row_pos))
-				{
-					bool found = ntuplestore_acc_seek_first(level_state->lead_reader);
-					Assert(found);
-					found = ntuplestore_acc_tell(level_state->lead_reader, &first_pos);
-					Assert(found);
-					
-					ntuples = ntuplestore_count_slot(frame_buffer->tuplestore,
-													 &first_pos, &curr_row_pos);
-					Assert(ntuples >= 0);
-
-					if (ntuples >= 0 - level_state->lead_rows)
-					{
-						found = ntuplestore_acc_seek(level_state->lead_reader, &curr_row_pos);
-						Assert(found);
-						found = ntuplestore_acc_advance(level_state->lead_reader, level_state->lead_rows);
-						Assert(found);
-						level_state->num_lead_rows = level_state->lead_rows;
-					}
-					else
-					{
-						ntuplestore_acc_advance(level_state->lead_reader, -1);
-						level_state->num_lead_rows = 0 - ntuples;
-					}
-				}
-				else
-				{
-					NTupleStorePos last_pos;
-					if (ntuplestore_acc_seek_last(level_state->lead_reader))
-					{
-						found = ntuplestore_acc_tell(level_state->lead_reader, &last_pos);
-						Assert(found);
-						found = ntuplestore_acc_seek_first(level_state->lead_reader);
-						Assert(found);
-						found = ntuplestore_acc_tell(level_state->lead_reader, &first_pos);
-						Assert(found);
-						ntuples = ntuplestore_count_slot(frame_buffer->tuplestore,
-														 &first_pos, &last_pos) + 1;
-						Assert(ntuples >= 0);
-
-						if (ntuples >= 0 - level_state->lead_rows)
-						{
-							ntuplestore_acc_advance(level_state->lead_reader,
-													ntuples + level_state->lead_rows);
-							level_state->num_lead_rows = level_state->lead_rows;
-						}
-						else
-						{
-							ntuplestore_acc_advance(level_state->lead_reader, -1);
-							level_state->num_lead_rows = 0 - ntuples;
-						}
-					}
-				}
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+						 errmsg("Not yet support expressions in a RANGE-frame.")));
 			}
 		}
 	}
@@ -4385,9 +4501,17 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 	n = ExecInitExpr((Expr *)edge->val, (PlanState *) wstate);
 
 	if (is_trail)
-		level_state->trail_range = ExecEvalExpr(n, econtext, &isNull, NULL);
+	{
+		if (!EDGE_IS_DELAYED(edge))
+			level_state->trail_range = ExecEvalExpr(n, econtext, &isNull, NULL);
+	}
+	
 	else
-		level_state->lead_range = ExecEvalExpr(n, econtext, &isNull, NULL);
+	{
+		if (!EDGE_IS_DELAYED(edge))
+			level_state->lead_range = ExecEvalExpr(n, econtext, &isNull, NULL);
+	}
+	
 	pfree(n);
 
 	if ((EDGE_IS_BOUND_PRECEDING(edge) && 
@@ -4563,22 +4687,24 @@ init_frames(WindowState *wstate)
 				ExprContext *econtext = wstate->ps.ps_ExprContext;
 
 				if (EDGE_IS_BOUND(frame->trail) &&
-					!EDGE_IS_DELAYED_BOUND(frame->trail) && /* XXX */
 					level_state->frame->trail->val != NULL)
 				{
-					long int rows_param;
-					bool isnull;
+					long int rows_param = 0;
+					bool isnull = true;
 					
 					level_state->trail_expr =
 						ExecInitExpr((Expr *)level_state->frame->trail->val, 
 									 (PlanState *) wstate); 
 
-					rows_param = ExecEvalExpr(level_state->trail_expr,
-											  econtext,
-											  &isnull,
-											  NULL);
-
-					Insist(!isnull);
+					if (!EDGE_IS_DELAYED_BOUND(frame->trail))
+					{
+						rows_param = ExecEvalExpr(level_state->trail_expr,
+												  econtext,
+												  &isnull,
+												  NULL);
+						
+						Insist(!isnull);
+					}
 
 					if (frame->trail->kind == WINDOW_BOUND_PRECEDING)
 						rows_param = -rows_param;
@@ -4589,22 +4715,24 @@ init_frames(WindowState *wstate)
 					level_state->trail_rows = 0L;
 
 				if (EDGE_IS_BOUND(frame->lead) &&
-					!EDGE_IS_DELAYED_BOUND(frame->lead) && /* XXX */
 					level_state->frame->lead->val != NULL)
 				{
-					long int rows_param;
-					bool isnull;
+					long int rows_param = 0;
+					bool isnull = true;
 
 					level_state->lead_expr = 
 						ExecInitExpr((Expr *)level_state->frame->lead->val, 
 									 (PlanState *) wstate); 
 
-					rows_param = ExecEvalExpr(level_state->lead_expr,
-											  econtext,
-											  &isnull,
-											  NULL);
+					if (!EDGE_IS_DELAYED_BOUND(frame->lead))
+					{
+						rows_param = ExecEvalExpr(level_state->lead_expr,
+												  econtext,
+												  &isnull,
+												  NULL);
 
-					Insist(!isnull);
+						Insist(!isnull);
+					}
 
 					if (frame->lead->kind == WINDOW_BOUND_PRECEDING)
 						rows_param = -rows_param;
@@ -4733,29 +4861,16 @@ init_frames(WindowState *wstate)
 	}
 
 	/*
-	 * Set has_lead_lag flag in each level state if all functions
-	 * in this level are LEAD/LAGs with DELAYED framing.
+	 * Set has_delay_bound flag in each level state if the frame clause
+	 * has a edge of DELAY_BOUND type.
 	 */
 	for (level=0; level<wstate->numlevels; level++)
 	{
 		WindowStatePerLevel level_state = &wstate->level_state[level];
-		bool has_lead_lag = false;
-		int funcno = 0;
 
-		foreach(lc, level_state->level_funcs)
-		{
-			WindowStatePerFunction funcstate =
-				(WindowStatePerFunction) lfirst(lc);
-
-			if (IS_LEAD_LAG(funcstate->wrxstate->winkind))
-			{
-				Assert(funcno == 0 || has_lead_lag);
-				has_lead_lag = true;
-			}
-
-			funcno++;
-		}
-		level_state->has_lead_lag = has_lead_lag;
+		level_state->has_delay_bound = 
+			(EDGE_IS_DELAYED(level_state->frame->lead) ||
+			 EDGE_IS_DELAYED(level_state->frame->trail));
 	}
 
 	/*
@@ -4831,76 +4946,6 @@ get_ltfuncs(TupleDesc tupdesc, int numCols, AttrNumber *matchColIdx)
 	}
 
 	return ltfunctions;
-}
-
-/*
- * set_lead_lag_framing -- Set the framing for LEAD/LAG functions when the offset
- * is an expression.
- */
-static void
-set_lead_lag_framing(WindowStatePerLevel level_state,
-					 WindowState *wstate)
-{
-	WindowStatePerFunction funcstate;
-	WindowRefExprState *wrxstate;
-	int nargs;
-	ExprContext *econtext = wstate->ps.ps_ExprContext;
-		
-	funcstate = (WindowStatePerFunction)
-		linitial(level_state->level_funcs);
-
-	/* Compute the offset value from the arguments of LEAD/LAG
-	 * function. If such value is not provided, the default
-	 * is 1.
-	 */
-	wrxstate = funcstate->wrxstate;
-	nargs = list_length(wrxstate->args);
-	Assert(2 <= nargs && nargs <= 4);
-
-	if (list_length(wrxstate->args) == 2)
-	{
-		if (IS_LEAD(wrxstate->winkind))
-			level_state->lead_rows = 1;
-		else
-			level_state->lead_rows = -1;
-	}
-		
-	else
-	{
-		FunctionCallInfoData fcinfo;
-		ExprState *argstate;
-		int argno = 2; /* the index for the offset */
-			
-		Assert(nargs <= 4);
-		argstate = (ExprState *)list_nth(wrxstate->args, argno);
-		Assert(!IsA(argstate->expr, Const));
-
-		econtext->ecxt_scantuple = wstate->curslot;
-		if (!TupIsNull(wstate->curslot))
-		{
-			fcinfo.arg[argno] = ExecEvalExpr(argstate, econtext,
-											 fcinfo.argnull + argno, NULL);
-
-			Assert(!fcinfo.argnull[argno]);
-
-			/* XXX We need to check on the type for this offset argument? */
-
-			level_state->lead_rows = DatumGetInt64(fcinfo.arg[argno]);
-			if (IS_LAG(funcstate->wrxstate->winkind))
-				level_state->lead_rows = 0 - level_state->lead_rows;
-		}
-		else
-			level_state->lead_rows = 0;
-	}
-
-	if ((IS_LEAD(funcstate->wrxstate->winkind) && level_state->lead_rows < 0) ||
-		(IS_LAG(funcstate->wrxstate->winkind) && level_state->lead_rows > 0))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("%s offset cannot be negative",
-						IS_LEAD(funcstate->wrxstate->winkind) ? "LEAD" : "LAG")));
-
-	level_state->trail_rows = level_state->lead_rows;
 }
 
 /* -----------------

@@ -1140,3 +1140,12 @@ from sale;
 SELECT sale.cn,sale.vn,sale.pn, 
 SUM(floor(sale.cn*sale.vn)) OVER(partition by sale.vn,sale.pn order by sale.pn asc range between 1 following and unbounded following ) as sum
 from sale; --mvd 1,3->4
+
+-- Use expressions in the frame clause
+select cn,pn,qty,sum(qty) over (order by pn rows cn preceding) from sale;
+select cn,pn,qty,sum(qty) over (order by pn rows between current row and cn following) from sale;
+select cn,pn,qty,sum(qty) over (order by pn rows between cn preceding and cn+2 following) from sale;
+select cn,pn,qty,sum(qty) over (order by pn rows between 1 preceding and 1 following),
+sum(qty) over (order by pn rows between cn preceding and cn+2 following) from sale;
+select cn,pn,qty,sum(qty) over (order by pn rows between current row and cn following),
+sum(qty) over (order by pn rows between cn preceding and cn+2 following) from sale;

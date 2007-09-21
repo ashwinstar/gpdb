@@ -902,6 +902,36 @@ static void inventory_window_specs(List *window_specs, WindowContext *context)
 		
 		Assert( sinfo->specindex < ndistinct );
 		rinfo->specindex = sinfo->specindex;
+
+		/*
+		 * Re-set the frame type when the edge variable is not
+		 * a Const.
+		 */
+		if (sinfo->frame != NULL)
+		{
+			if (sinfo->frame->trail != NULL)
+			{
+				if (sinfo->frame->trail->val != NULL &&
+					!IsA(sinfo->frame->trail->val, Const))
+				{
+					if (sinfo->frame->trail->kind == WINDOW_BOUND_FOLLOWING)
+						sinfo->frame->trail->kind = WINDOW_DELAYED_BOUND_FOLLOWING;
+					else if (sinfo->frame->trail->kind == WINDOW_BOUND_PRECEDING)
+						sinfo->frame->trail->kind = WINDOW_DELAYED_BOUND_PRECEDING;
+				}
+			}
+			if (sinfo->frame->lead != NULL)
+			{
+				if (sinfo->frame->lead->val != NULL &&
+					!IsA(sinfo->frame->lead->val, Const))
+				{
+					if (sinfo->frame->lead->kind == WINDOW_BOUND_FOLLOWING)
+						sinfo->frame->lead->kind = WINDOW_DELAYED_BOUND_FOLLOWING;
+					else if (sinfo->frame->lead->kind == WINDOW_BOUND_PRECEDING)
+						sinfo->frame->lead->kind = WINDOW_DELAYED_BOUND_PRECEDING;
+				}
+			}
+		}
 	}		
 	pfree(specinfos);
 }
@@ -1153,24 +1183,30 @@ static int compare_edge(WindowFrameEdge *a, WindowFrameEdge *b)
 				aval = DatumGetInt64(aconst->constvalue);
 			else
 				okay = FALSE;
-		}
-		if ( okay )
-		{	
-		bconst = (Const*)b->val;
+
+			bconst = (Const*)b->val;
 			if ( bconst->consttype == INT4OID )
 				bval = DatumGetInt32(bconst->constvalue);
 			else if ( bconst->consttype == INT8OID )
 				bval = DatumGetInt64(bconst->constvalue);
 			else
 				okay = FALSE;
+
+			if ( aval < bval )
+				return -1;
+			else if ( aval > bval )
+				return 1;
 		}
-		if ( !okay )
-			elog(ERROR, "framing bound is not an integer constant");
-			
-		if ( aval < bval )
-			return -1;
-		else if ( aval > bval )
-			return 1;
+		else
+		{
+			/* Compare pointer value a->val and b->val. Ordering is
+			 * arbitrary but consistent.
+			 */
+			if ( ((void*)a->val) < ((void*)b->val) )
+				return -1;
+			else if ( ((void*)a->val) > ((void*)b->val) )
+				return 1;
+		}
 	}
 	else if (a->kind == WINDOW_DELAYED_BOUND_PRECEDING || a->kind == WINDOW_DELAYED_BOUND_FOLLOWING)
 	{

@@ -404,7 +404,33 @@ set_plan_references(Plan *plan, set_plan_ref_context *ctxt)
 			else
 				fix_expr_references(plan, (Node *) plan->targetlist, ctxt);
 			fix_expr_references(plan, (Node *) plan->qual, ctxt);
- 			/* TODO: Should we walk into the keys to fix vals in frame edges? */
+
+			{
+				indexed_tlist  *subplan_itlist =
+					build_tlist_index(plan->lefttree->targetlist);
+
+				/* Fix frame edges */
+				foreach (l, ((Window *) plan)->windowKeys)
+				{
+					WindowKey *win_key = (WindowKey *)lfirst(l);
+					WindowFrame *frame = win_key->frame;
+						
+					if (frame != NULL)
+					{
+						if (frame->trail != NULL)
+							frame->trail->val =
+								replace_vars_with_subplan_refs(frame->trail->val,
+															   subplan_itlist,
+															   (Index) 0);
+						if (frame->lead != NULL)
+							frame->lead->val =
+								replace_vars_with_subplan_refs(frame->lead->val,
+															   subplan_itlist,
+															   (Index) 0);
+					}
+				}
+
+			}
 			break;
 		case T_Result:
 
