@@ -9,6 +9,7 @@
 #include "postgres.h"
 
 #include "utils/memutils.h"
+#include "cdb/cdbvars.h"
 
 /* Define this to detail debug alloc information */
 /* #define HAVE_ALLOCINFO */
@@ -198,17 +199,23 @@ mpool_create(MemoryContext parent,
 			 Size initBlockSize, /* useless */
 			 Size maxBlockSize /* useless */ )
 {
-	mpool_context_t*	context;
+	if(gp_use_mpool)
+	{
+		mpool_context_t*	context;
+		/* Do the type-independent part of context creation */
+		context = (mpool_context_t*) MemoryContextCreate(T_MPoolContext,
+				sizeof(mpool_context_t),
+				&mpool_methods,
+				parent,
+				name);
 
-	/* Do the type-independent part of context creation */
-	context = (mpool_context_t*) MemoryContextCreate(T_MPoolContext,
-													 sizeof(mpool_context_t),
-													 &mpool_methods,
-													 parent,
-													 name);
-	
 
-	return (MemoryContext) context;
+		return (MemoryContext) context;
+	}
+	else
+	{
+		return AllocSetContextCreate(parent, name, minContextSize, initBlockSize, maxBlockSize);
+	}
 }
 
 /*

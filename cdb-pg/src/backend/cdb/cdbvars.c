@@ -145,6 +145,9 @@ int			gp_sort_flags = 0;
 int 		gp_sort_max_distinct = 20000;
 bool 	    gp_window_shareinput = TRUE;
 
+/* Greenplum memory context use mpool */
+int 		gp_use_mpool = 1;
+
 /* --------------------------------------------------------------------------------------------------
  * Server debugging
  */

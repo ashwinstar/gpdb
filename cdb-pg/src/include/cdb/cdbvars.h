@@ -585,6 +585,8 @@ extern int gp_hashagg_spillbatch_min;
 /* Hashagg spill: max number of spill batches */
 extern int gp_hashagg_spillbatch_max;
 
+/* Memory context mpool */
+extern int gp_use_mpool;
 
 /* --------------------------------------------------------------------------------------------------
  * Server debugging

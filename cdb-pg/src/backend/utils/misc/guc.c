@@ -2341,6 +2341,17 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"gp_use_mpool", PGC_USERSET, GP_ARRAY_TUNING,
+		 gettext_noop("Use mpool memory context"), 
+		 gettext_noop("Mpool is a faster memory allocator"), 
+		 GUC_NOT_IN_SAMPLE
+		},
+		&gp_use_mpool,
+		1, 0, 1, NULL, NULL
+	},
+
+
+	{
 		{"gin_fuzzy_search_limit", PGC_USERSET, CLIENT_CONN_OTHER,
 			gettext_noop("Sets the maximum allowed result for exact search by GIN."),
 			NULL,
