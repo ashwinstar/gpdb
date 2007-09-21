@@ -4,29 +4,29 @@
 
 -- Syntactic equivalents --
 
---begin equivalent
+--start_equiv
 select count(*) from sale;
 select count(*) from sale group by ();
---end equivalent
+--end_equiv
 
---begin equivalent
+--start_equiv
 select cn, count(*) from sale group by cn;
 select cn, count(*) from sale group by (), cn;
 select cn, count(*) from sale group by cn, ();
---end equivalent
+--end_equiv
 
---begin equivalent
+--start_equiv
 select cn, vn, count(*) from sale group by cn, vn;
 select cn, vn, count(*) from sale group by (), cn, vn;
 select cn, vn, count(*) from sale group by cn, (), vn;
 select cn, vn, count(*) from sale group by cn, vn, ();
 select cn, vn, count(*) from sale group by (), cn, (), vn, ();
---end equivalent
+--end_equiv
 
 
 -- Semantic equivalents --
 
---begin equivalent
+--start_equiv
 select cn, vn, pn, sum(qty*prc) from sale group by cn, vn, pn
 union all
 select cn, vn, null, sum(qty*prc) from sale group by cn, vn
@@ -37,9 +37,9 @@ select null, null, null, sum(qty*prc) from sale;
 select cn, vn, pn, sum(qty*prc) from sale group by rollup(cn,vn,pn);
 select cn, vn, pn, sum(qty*prc) from sale group by grouping sets((), (cn), (cn,vn), (cn,vn,pn));
 select cn, vn, pn, sum(qty*prc) from sale group by grouping sets((cn,vn), (), (cn,vn,pn), (cn));
---end equivalent
+--end_equiv
 
---begin equivalent
+--start_equiv
 select cn, vn, pn, sum(qty*prc) from sale group by cn, vn, pn
 union all
 select cn, vn, null, sum(qty*prc) from sale group by cn, vn
@@ -57,9 +57,9 @@ union all
 select null, null, pn, sum(qty*prc) from sale group by pn;
 select cn, vn, pn, sum(qty*prc) from sale group by cube (cn, vn, pn);
 select cn, vn, pn, sum(qty*prc) from sale group by grouping sets ((), (cn), (vn), (pn), (cn,vn), (cn,pn), (vn,pn), (cn,vn,pn));
---end equivalent
+--end_equiv
 
--- begin equivalent
+-- start_equiv
 select cn, vn, pn, count(distinct dt) from sale group by cn, vn, pn
 union all
 select cn, vn, null, count(distinct dt) from sale group by cn, vn
@@ -69,9 +69,9 @@ union all
 select null, null, null, count(distinct dt) from sale;    
 select cn, vn, pn, count(distinct dt) from sale group by rollup(cn,vn,pn);
 select cn, vn, pn, count(distinct dt) from sale group by grouping sets((), (cn), (cn,vn), (cn,vn,pn));
--- end equivalent
+-- end_equiv
 
---begin equivalent order 1,2,3
+--start_equiv order 1,2,3
 select cn, vn, pn, count(distinct dt) from sale group by cn, vn, pn
 union all
 select cn, vn, null, count(distinct dt) from sale group by cn, vn
@@ -90,9 +90,9 @@ select null, null, pn, count(distinct dt) from sale group by pn
 order by 1,2,3; -- order 1,2,3
 select cn, vn, pn, count(distinct dt) from sale group by cube (cn, vn, pn) order by 1,2,3; -- order 1,2,3
 select cn, vn, pn, count(distinct dt) from sale group by grouping sets ((), (cn), (vn), (pn), (cn,vn), (cn,pn), (vn,pn), (cn,vn,pn)) order by 1,2,3; -- order 1,2,3
---end equivalent
+--end_equiv
 
---begin equivalent order 1,2,3
+--start_equiv order 1,2,3
 select cn, vn, pn, sum(qty*prc) from sale group by cn, vn, pn
 union all
 select cn, vn, null, sum(qty*prc) from sale group by cn, vn
@@ -103,9 +103,9 @@ select null, null, null, sum(qty*prc) from sale
 order by 1,2,3; -- order 1,2,3    
 select cn, vn, pn, sum(qty*prc) from sale group by rollup(cn,vn,pn) order by 1,2,3; -- order 1,2,3
 select cn, vn, pn, sum(qty*prc) from sale group by grouping sets((), (cn), (cn,vn), (cn,vn,pn)) order by 1,2,3; -- order 1,2,3
---end equivalent
+--end_equiv
 
---begin equivalent order 3,4,1
+--start_equiv order 3,4,1
 select pn, sum(qty*prc), cn, vn from sale group by cn, vn, pn
 union all
 select null, sum(qty*prc), cn, vn from sale group by cn, vn
@@ -116,9 +116,9 @@ select null, sum(qty*prc), null, null from sale
 order by cn, vn, pn; -- order 3,4,1
 select pn, sum(qty*prc), cn, vn from sale group by rollup(cn,vn,pn) order by cn, vn, pn; -- order 3,4,1
 select pn, sum(qty*prc), cn, vn from sale group by grouping sets((), (cn), (cn,vn), (cn,vn,pn)) order by cn, vn, pn; -- order 3,4,1
---end equivalent
+--end_equiv
 
---begin equivalent order 1,2,3
+--start_equiv order 1,2,3
 select cn, vn, pn, sum(qty*prc) from sale group by cn, vn, pn
 union all
 select cn, vn, null, sum(qty*prc) from sale group by cn, vn
@@ -137,10 +137,10 @@ select null, null, pn, sum(qty*prc) from sale group by pn
 order by 1,2,3; -- order 1,2,3
 select cn, vn, pn, sum(qty*prc) from sale group by cube (cn, vn, pn) order by 1,2,3; -- order 1,2,3
 select cn, vn, pn, sum(qty*prc) from sale group by grouping sets ((), (cn), (vn), (pn), (cn,vn), (cn,pn), (vn,pn), (cn,vn,pn)) order by 1,2,3; -- order 1,2,3
---end equivalent
+--end_equiv
 
 -- ***BUG*** The extended groupings aren't correctly ordered! Maybe they wrongly parallel sorted!
---begin equivalent order 1,2,3
+--start_equiv order 1,2,3
 select cn, vn, pn, count(distinct dt) from sale group by cn, vn, pn
 union all
 select cn, vn, null, count(distinct dt) from sale group by cn, vn
@@ -151,9 +151,9 @@ select null, null, null, count(distinct dt) from sale
 order by 1,2,3; -- order 1,2,3  
 select cn, vn, pn, count(distinct dt) from sale group by rollup(cn,vn,pn) order by 1,2,3; -- order 1,2,3  
 select cn, vn, pn, count(distinct dt) from sale group by grouping sets((), (cn), (cn,vn), (cn,vn,pn)) order by 1,2,3; -- order 1,2,3  
---end equivalent
+--end_equiv
 
---begin equivalent order 1,2,3
+--start_equiv order 1,2,3
 select cn, vn, pn, count(distinct dt) from sale group by cn, vn, pn
 union all
 select cn, vn, null, count(distinct dt) from sale group by cn, vn
@@ -172,7 +172,7 @@ select null, null, pn, count(distinct dt) from sale group by pn
 order by 1,2,3; -- order 1,2,3  
 select cn, vn, pn, count(distinct dt) from sale group by cube (cn, vn, pn) order by 1,2,3; -- order 1,2,3  
 select cn, vn, pn, count(distinct dt) from sale group by grouping sets ((), (cn), (vn), (pn), (cn,vn), (cn,pn), (vn,pn), (cn,vn,pn)) order by 1,2,3; -- order 1,2,3  
---end equivalent
+--end_equiv
 
 
 -- Ordinary Grouping Set Specifications --
@@ -204,53 +204,53 @@ create table olap_tmp (a int, b int, c int);
 
 insert into olap_tmp values (1,1,1),(1,2,1),(1,2,1),(2,1,1),(2,2,1);
 
---begin equivalent
+--start_equiv
 select * from olap_tmp;
 select * from (values (1,1,1),(1,2,1),(1,2,1),(2,1,1),(2,2,1)) r(a,b,c);
---end equivalent
+--end_equiv
 
---begin equivalent
+--start_equiv
 select a,b,sum(c) from olap_tmp group by rollup(a,b);
 select * from (values (1,1,1), (1,2,2), (1,null,3), (2,1,1), (2,2,1),(2,null,2),(null,null,5)) r(a,b,"sum");
---end equivalent
+--end_equiv
 
 insert into olap_tmp values (1,null,1);
 
---begin equivalent
+--start_equiv
 select a,b,sum(c) from olap_tmp group by rollup(a,b);
 select * from (values (1,1,1), (1,2,2), (1,null,1), (1,null,4), (2,1,1), (2,2,1), (2,null,2), (null,null,6)) r(a,b,"sum");
---end equivalent
+--end_equiv
 
 insert into olap_tmp values (null,null,1);
 
---begin equivalent
+--start_equiv
 select a,b,sum(c) from olap_tmp group by rollup(a,b);
 select * from (values (1,1,1), (1,2,2), (1,null,1), (1,null,4), (2,1,1), (2,2,1), (2,null,2), (null,null,1), (null,null,1), (null,null,7)) r(a,b,"sum");
---end equivalent
+--end_equiv
 
 drop table olap_tmp; --ignore
 
 -- Grouping extension combination
---begin equivalent
+--start_equiv
 select cn,vn,sum(qty) from sale group by cn,vn union all
 select cn,null,sum(qty) from sale group by cn union all
 select cn,null,sum(qty) from sale group by cn union all
 select null,null,sum(qty) from sale;
 select cn,vn,sum(qty) from sale group by grouping sets (rollup(cn,vn), cn);
---end equivalent
+--end_equiv
 
---begin equivalent
+--start_equiv
 select cn,vn,sum(qty) from sale group by cn,vn union all
 select cn,null,sum(qty) from sale group by cn union all
 select null,null,sum(qty) from sale;
 select cn,vn,sum(qty) from sale group by grouping sets (rollup(cn,vn));
---end equivalent
+--end_equiv
 
---begin equivalent
+--start_equiv
 select cn,null as vn,sum(qty) from sale group by cn union all
 select null as cn,vn,sum(qty) from sale group by vn;
 select cn,vn,sum(qty) from sale group by grouping sets((cn),(vn));
---end equivalent
+--end_equiv
 
 -- GROUPING function -- 
 
@@ -266,7 +266,7 @@ select grouping(cn,vn,pn) from sale group by rollup(cn,vn,pn) order by 1 desc; -
 select grouping(cn), grouping(vn), grouping(pn) from sale group by rollup(cn,vn,pn) order by 1 desc, 2 desc, 3 desc; -- order 1,2,3
 select cn+vn,pn, grouping(cn+vn,pn), count(*) from sale group by rollup(cn+vn,pn);
 
---begin equivalent
+--start_equiv
 select cn,vn,0 as grouping from sale group by cn,vn
 union all select cn,null,1 as grouping from sale group by cn
 union all (select null,null,3 as grouping from sale limit 1)
@@ -275,9 +275,9 @@ select cn,vn,grouping(cn,vn) from sale group by cube(cn,vn);
 select cn,vn,grouping(cn,vn) from sale group by cube(vn,cn);
 select cn,vn,grouping(cn,vn) from sale group by grouping sets ((vn,cn), (vn), (cn), ());
 select cn,vn,grouping(cn,vn) from sale group by grouping sets ((),(vn,cn), (vn), (cn));
---end equivalent
+--end_equiv
 
---begin equivalent
+--start_equiv
 select cn,vn,0 as grouping from sale group by cn,vn
 union all select cn,null,2 as grouping from sale group by cn
 union all (select null,null,3 as grouping from sale limit 1)
@@ -286,43 +286,43 @@ select cn,vn,grouping(vn,cn) from sale group by cube(cn,vn);
 select cn,vn,grouping(vn,cn) from sale group by cube(vn,cn);
 select cn,vn,grouping(vn,cn) from sale group by grouping sets ((vn,cn), (vn), (cn), ());
 select cn,vn,grouping(vn,cn) from sale group by grouping sets ((vn), (cn), (), (cn,vn));
---end equivalent
+--end_equiv
 
---begin equivalent
+--start_equiv
 select cn,dt,0 as grouping from sale group by cn,dt
 union all select cn,null,1 as grouping from sale group by cn
 union all (select null,null,3 as grouping from sale limit 1)
 union all select null,dt,2 as grouping from sale group by dt;
 select cn,dt,grouping(cn,dt) from sale group by cube(cn,dt);
 select cn,dt,grouping(cn,dt) from sale group by cube(dt,cn);
---end equivalent
+--end_equiv
 
---begin equivalent
+--start_equiv
 select cn,dt,count(vn),0 as grouping from sale group by cn,dt
 union all select cn,null,count(vn),1 as grouping from sale group by cn
 union all (select null,null,count(vn),3 as grouping from sale limit 1)
 union all select null,dt,count(vn),2 as grouping from sale group by dt;
 select cn,dt,count(vn),grouping(cn,dt) from sale group by cube(cn,dt);
 select cn,dt,count(vn),grouping(cn,dt) from sale group by cube(dt,cn);
---end equivalent
+--end_equiv
 
---begin equivalent
+--start_equiv
 select cn,sum(qty) from sale group by prc,cn
 union all select null,sum(qty) from sale group by prc
 union all select cn,sum(qty) from sale group by cn
 union all select null,sum(qty) from sale;
 select cn,sum(qty) from sale group by cube(prc,cn);
 select cn,sum(qty) from sale group by grouping sets (cube(prc,cn));
---end equivalent
+--end_equiv
 
---begin equivalent
+--start_equiv
 select cn,sum(distinct qty) from sale group by prc,cn
 union all select null,sum(distinct qty) from sale group by prc
 union all select cn,sum(distinct qty) from sale group by cn
 union all select null,sum(distinct qty) from sale;
 select cn,sum(distinct qty) from sale group by cube(prc,cn);
 select cn,sum(distinct qty) from sale group by grouping sets (cube(prc,cn));
---end equivalent
+--end_equiv
 
 -- Ungrouped attributes in GROUPING function --
 
@@ -343,7 +343,7 @@ create view gs_view as select cn,vn,grouping(vn,cn) from sale group by grouping 
 select pn, sum(qty), group_id() from sale group by rollup(pn);
 select pn, sum(qty), group_id() from sale group by rollup(pn),pn;
 
---begin equivalent
+--start_equiv
 select pn, sum(qty), 0 from sale group by cn,pn
 union all select pn, sum(qty), 1 from sale group by cn,pn
 union all select pn, sum(qty), 2 from sale group by cn,pn
@@ -357,16 +357,16 @@ union all select null, sum(qty), 2 from sale group by cn
 union all select pn, sum(qty), 0 from sale group by pn
 union all select null, sum(qty), 0 from sale;
 select pn, sum(qty), group_id() from sale group by rollup(cn,pn), cube(cn,pn);
---end equivalent
+--end_equiv
 
 -- Having clause --
 
---begin equivalent
+--start_equiv
 select cn,sum(qty) from sale group by cn,vn having vn=10;
 select cn,sum(qty) from sale group by rollup(cn,vn) having vn=10;
---end equivalent
+--end_equiv
 
---begin equivalent
+--start_equiv
 select cn, vn, pn, count(dt) from sale group by cn, vn, pn having count(dt) <=2
 union all
 select cn, vn, null, count(dt) from sale group by cn, vn having count(dt) <=2
@@ -375,9 +375,9 @@ select cn, null, null, count(dt) from sale group by cn having count(dt) <=2
 union all
 select null, null, null, count(dt) from sale having count(dt) <=2;    
 select cn, vn, pn, count(dt) from sale group by rollup (cn,vn,pn) having count(dt) <=2;
---end equivalent
+--end_equiv
 
---begin equivalent
+--start_equiv
 select cn, vn, pn, count(distinct dt) from sale group by cn, vn, pn having count(distinct dt) <=2
 union all
 select cn, vn, null, count(distinct dt) from sale group by cn, vn having count(distinct dt) <=2
@@ -386,80 +386,80 @@ select cn, null, null, count(distinct dt) from sale group by cn having count(dis
 union all
 select null, null, null, count(distinct dt) from sale having count(distinct dt) <=2;    
 select cn, vn, pn, count(distinct dt) from sale group by rollup (cn,vn,pn) having count(distinct dt) <=2;
---end equivalent
+--end_equiv
 
---begin equivalent
+--start_equiv
 select cn,dt,count(vn),0 as grouping from sale group by cn,dt having count(vn) > 2
 union all select cn,null,count(vn),1 as grouping from sale group by cn having count(vn) > 2
 union all (select null,null,count(vn),3 as grouping from sale  having count(vn) > 2 limit 1)
 union all select null,dt,count(vn),2 as grouping from sale group by dt having count(vn) > 2;
 select cn,dt,count(vn),grouping(cn,dt) from sale group by cube(cn,dt) having count(vn) > 2;
 select cn,dt,count(vn),grouping(cn,dt) from sale group by cube(dt,cn) having count(vn) > 2;
---end equivalent
+--end_equiv
 
---begin equivalent
+--start_equiv
 select cn,dt,count(distinct vn),0 as grouping from sale group by cn,dt having count(distinct vn) > 2
 union all select cn,null,count(distinct vn),1 as grouping from sale group by cn having count(distinct vn) > 2
 union all (select null,null,count(distinct vn),3 as grouping from sale  having count(distinct vn) > 2 limit 1)
 union all select null,dt,count(distinct vn),2 as grouping from sale group by dt having count(distinct vn) > 2;
 select cn,dt,count(distinct vn),grouping(cn,dt) from sale group by cube(cn,dt) having count(distinct vn) > 2;
 select cn,dt,count(distinct vn),grouping(cn,dt) from sale group by cube(dt,cn) having count(distinct vn) > 2;
---end equivalent
+--end_equiv
 
---begin equivalent
+--start_equiv
 select cn, null as vn, null as pn, count(dt), 1 as grouping from sale group by cn;
 select cn, vn, pn, count(dt),grouping(cn,vn) from sale group by rollup (cn,vn,pn) having grouping(cn,vn)=1;
---end equivalent
+--end_equiv
 
---begin equivalent
+--start_equiv
 select cn, vn, pn, count(dt) from sale group by cn,vn,pn
 union all select cn, null, null, count(dt) from sale group by cn;
 select cn, vn, pn, count(dt) from sale group by grouping sets ((cn,vn,pn), (cn));
 select cn, vn, pn, count(dt) from sale group by grouping sets ((cn,vn,pn), (cn), (cn), (cn))
 having group_id()=0;
---end equivalent
+--end_equiv
 
---begin equivalent
+--start_equiv
 select cn,vn,pn,count(dt),0,0 as grouping from sale group by cn,vn,pn
 union all select cn,null,null,count(dt),0,3 from sale group by cn
 union all select cn,null,null,count(dt),1,3 from sale group by cn
 order by 6; -- order 6
 select cn, vn, pn, count(dt),group_id(),grouping(cn,vn,pn) from sale group by grouping sets ((cn,vn,pn), (cn), (cn)) order by grouping(cn,vn,pn); -- order 6
---end equivalent
+--end_equiv
 
 select a,b from (select 1 as a , 2 as b) r(a,b) group by rollup(a,b);
 
 -- tests for known bugs
 select dt,pn,cn,GROUP_ID(), count(prc) FROM sale GROUP BY ROLLUP((dt)),ROLLUP((cn)),ROLLUP((vn)),ROLLUP((pn),(cn));
 
---begin equivalent
+--start_equiv
 select vn,cn,dt,0,REGR_COUNT(prc*qty,prc*qty) FROM sale GROUP BY pn,qty,vn,cn,dt
 union all select vn,cn,dt,1,REGR_COUNT(prc*qty,prc*qty) FROM sale GROUP BY pn,qty,vn,cn,dt;
 select vn,cn,dt,GROUP_ID(), REGR_COUNT(prc*qty,prc*qty) FROM sale GROUP BY (pn,qty),(vn),ROLLUP((qty)),cn,dt;
---end equivalent
+--end_equiv
 SELECT cn,pn,GROUPING(cn),GROUP_ID(), SUM(qty) FROM sale GROUP BY ROLLUP((cn,prc)),(cn,prc,dt),(pn,qty,vn) HAVING GROUP_ID() < 0 AND STDDEV_SAMP(pn) = 9.23708093366322 ORDER BY pn,cn desc;
 
---begin equivalent
+--start_equiv
 SELECT dt,GROUPING(dt), MAX(DISTINCT prc*qty) FROM sale GROUP BY (dt,vn,vn),ROLLUP((qty,cn),(vn),(vn),(prc));
 select dt,0 as grouping, max(distinct prc*qty) from sale group by dt,vn,qty,cn,prc
 union all select dt,0, max(distinct prc*qty) from sale group by dt,vn,qty,cn
 union all select dt,0, max(distinct prc*qty) from sale group by dt,vn,qty,cn
 union all select dt,0, max(distinct prc*qty) from sale group by dt,vn,qty,cn
 union all select dt,0, max(distinct prc*qty) from sale group by dt,vn;
---end equivalent
+--end_equiv
 
---begin equivalent
+--start_equiv
 select sale.cn,max(distinct sale.cn) from sale,vendor where sale.vn=vendor.vn group by sale.cn,sale.vn
 union all select sale.cn,max(distinct sale.cn) from sale,vendor where sale.vn=vendor.vn group by sale.cn
 union all select null,max(distinct sale.cn) from sale,vendor where sale.vn=vendor.vn
 union all select null,max(distinct sale.cn) from sale,vendor where sale.vn=vendor.vn group by sale.vn;
 select sale.cn,max(distinct sale.cn) from sale,vendor where sale.vn=vendor.vn group by cube(sale.cn,sale.vn);
---end equivalent
+--end_equiv
 
---begin equivalent
+--start_equiv
 select cn,sum(qty) from sale group by cn;
 select cn,sum(qty) from sale group by grouping sets(cn);
---end equivalent
+--end_equiv
 select cn,sum(qty),grouping((cn,vn),vn) from sale group by rollup(cn,vn);
 select sum(qty),grouping(cn+pn) from sale group by cn+vn,vn;
 select sum(qty),grouping(cn+vn) from sale group by rollup(cn+vn,vn);
