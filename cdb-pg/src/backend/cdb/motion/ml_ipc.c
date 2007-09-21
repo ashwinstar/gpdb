@@ -2,7 +2,7 @@
  * ml_ipc.c
  *	   Motion Layer IPC Layer.
  *
- * Copyright (c) 2005-2006, Green Plum
+ * Copyright (c) 2005-2007, Greenplum
  *
  * IDENTIFICATION:
  *	   $Id$
@@ -751,7 +751,8 @@ InitMotionLayerIPC(void)
 
 	Gp_listener_port = (udp_listener<<16) | tcp_listener;
 
-    elog(LOG, "Interconnect listening on tcp port %d udp port %d (0x%x)", tcp_listener, udp_listener, Gp_listener_port);
+	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP || log_min_messages >= DEBUG1)
+		elog(LOG, "Interconnect listening on tcp port %d udp port %d (0x%x)", tcp_listener, udp_listener, Gp_listener_port);
 
 	/* set up the connection hash table */
 //	conn_htab_size = Max((GpIdentity.numsegments/2), 16);
