@@ -1,8 +1,6 @@
 ################################################################################ 
-# Makefile  Makefile for Python Modules
-# Author   : Koneru Srikanth
-# Company  : GreenPlum.com
-# Date     : Jan 30th 2006
+# Makefile  Makefile for Python Modules and other utilities
+# Copyright Greenplum 2006, 2007
 ################################################################################
 
 #
