@@ -1139,4 +1139,4 @@ from sale;
 -- MPP-1976
 SELECT sale.cn,sale.vn,sale.pn, 
 SUM(floor(sale.cn*sale.vn)) OVER(partition by sale.vn,sale.pn order by sale.pn asc range between 1 following and unbounded following ) as sum
-from sale;
+from sale; --mvd 1,3->4
