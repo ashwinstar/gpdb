@@ -3735,8 +3735,18 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 			oldplan = queryDesc->plantree;
 		}
 
-		
-		oldContext = MemoryContextSwitchTo(QueryContext);
+		oldContext = CurrentMemoryContext;
+		if (CurrentMemoryContext == TopMemoryContext || CurrentMemoryContext == DispatchContext)
+		{
+			/*
+			 * Make sure the palloc calls from plan_tree_mutator don't happen in 
+			 * topMemory, as this will cause memory leaks
+			 */
+			if (QueryContext != NULL)
+				oldContext = MemoryContextSwitchTo(QueryContext);
+			else
+				oldContext = MemoryContextSwitchTo(MessageContext);
+		}
 
 		queryDesc->plantree = (Plan *) plan_tree_mutator((Node *) queryDesc->plantree,
 									pre_dispatch_function_evaluation_mutator,
