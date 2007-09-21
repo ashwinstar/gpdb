@@ -268,22 +268,22 @@ SELECT * FROM copy_regression_text2;
 -- escape tests
 
 COPY copy_regression_text3 from stdin with delimiter '|' escape '#';
-the at sign: #100 |b text data|c text data|d text data|e text data 
-an embedded delimiter #| character |b text data|c text data|d text data|e text data
-a single backslash \ in col a|b text data|c text data|d text data|e text data
+the at sign: #100 |1|c text data|d text data|e text data 
+an embedded delimiter #| character |2|c text data|d text data|e text data
+a single backslash \ in col a|3|c text data|d text data|e text data
 \.
 COPY copy_regression_text3 from stdin with delimiter '|' escape 'off';
-a single backslash \ in col a|b text data|c text data|d text data|e text data
-c:\\file\data\neew\path|b text data|c text data|d text data|e text data
+a single backslash \ in col a|4|c text data|d text data|e text data
+c:\\file\data\neew\path|5|c text data|d text data|e text data
 \.
 COPY copy_regression_text3 from stdin with delimiter '|';
-the at sign: \100|b text data|c text data|d text data|e text data
+the at sign: \100|6|c text data|d text data|e text data
 an embedded linefeed \
 and another one \
-in column a|b text data|c text data|d text data|e text data
-a single backslash \\ in col a|b text data|c text data|d text data|e text data
+in column a|7|c text data|d text data|e text data
+a single backslash \\ in col a|8|c text data|d text data|e text data
 \.
-SELECT * FROM copy_regression_text3 ORDER BY a;
+SELECT * FROM copy_regression_text3 ORDER BY b;
 
 DROP TABLE copy_regression_text1;
 DROP TABLE copy_regression_text2;
@@ -336,37 +336,37 @@ SELECT * FROM copy_regression_csv2;
 -- escape tests
 
 COPY copy_regression_csv3 from stdin with csv escape E'\\';
-"an embedded delimiter (comma), is printed",b  csv data,c  csv data,d  csv data,e  csv data 
-"an embedded quote (doubleq)\" is printed",b  csv data,c  csv data,d  csv data,e  csv data 
-"an embedded escape \\ is printed",b  csv data,c  csv data,d  csv data,e  csv data
+"an embedded delimiter (comma), is printed",01,c  csv data,d  csv data,e  csv data 
+"an embedded quote (doubleq)\" is printed",02,c  csv data,d  csv data,e  csv data 
+"an embedded escape \\ is printed",03,c  csv data,d  csv data,e  csv data
 "an embedded line feed
-is printed",b  csv data,c  csv data,d  csv data,e  csv data
+is printed",04,c  csv data,d  csv data,e  csv data
 \.
 COPY copy_regression_csv3 from stdin with delimiter E'\t' csv; --default quote and escape - "
-"an embedded delimiter (tab)	 is printed"	b  csv data	c  csv data	d  csv data	e  csv data 
-"an embedded quote or escape (doubleq)"" is printed"	b  csv data	c  csv data	d  csv data	e  csv data 
+"an embedded delimiter (tab)	 is printed"	05	c  csv data	d  csv data	e  csv data 
+"an embedded quote or escape (doubleq)"" is printed"	06	c  csv data	d  csv data	e  csv data 
 "an embedded line feed
-is printed"	b  csv data	c  csv data	d  csv data	e  csv data
+is printed"	07	c  csv data	d  csv data	e  csv data
 \.
 COPY copy_regression_csv3 from stdin with delimiter '|' csv quote ';' escape '*';
-;an embedded delimiter (pipe)| is printed;|b  csv data|c  csv data|d  csv data|e  csv data 
-;an embedded quote (semicolon)*; is printed;|b  csv data|c  csv data|d  csv data|e  csv data 
-;an embedded escape (asterisk)** is printed;|b  csv data|c  csv data|d  csv data|e  csv data
+;an embedded delimiter (pipe)| is printed;|08|c  csv data|d  csv data|e  csv data 
+;an embedded quote (semicolon)*; is printed;|09|c  csv data|d  csv data|e  csv data 
+;an embedded escape (asterisk)** is printed;|10|c  csv data|d  csv data|e  csv data
 ;an embedded line feed
-is printed;|b  csv data|c  csv data|d  csv data|e  csv data
+is printed;|11|c  csv data|d  csv data|e  csv data
 \.
 
 -- check defaults
 COPY copy_regression_csv3 from stdin with csv quote ''''; -- escape should be the same as quote
-'an embedded single quote '' here',b csv data,c csv data,d csv data,e csv data 
+'an embedded single quote '' here',12,c csv data,d csv data,e csv data 
 \.
 COPY copy_regression_csv3 from stdin with csv escape '''';
-"an embedded single quote '' here",b csv data,c csv data,d csv data,e csv data 
+"an embedded single quote '' here",13,c csv data,d csv data,e csv data 
 \.
 COPY copy_regression_csv3 from stdin with csv quote '''' escape E'\\'; -- make sure E'' is accepted
-'an embedded backslash \\ here',b csv data,c csv data,d csv data,e csv data 
+'an embedded backslash \\ here',14,c csv data,d csv data,e csv data 
 \.
-SELECT * FROM copy_regression_csv3 ORDER BY a;
+SELECT * FROM copy_regression_csv3 ORDER BY b;
 
 DROP TABLE copy_regression_csv1;
 DROP TABLE copy_regression_csv2;

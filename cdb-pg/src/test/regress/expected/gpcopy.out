@@ -246,19 +246,19 @@ SELECT * FROM copy_regression_text2;
 COPY copy_regression_text3 from stdin with delimiter '|' escape '#';
 COPY copy_regression_text3 from stdin with delimiter '|' escape 'off';
 COPY copy_regression_text3 from stdin with delimiter '|';
-SELECT * FROM copy_regression_text3 ORDER BY a;
-                 a                  |      b      |      c      |      d      |      e       
-------------------------------------+-------------+-------------+-------------+--------------
- a single backslash \ in col a      | b text data | c text data | d text data | e text data
- a single backslash \ in col a      | b text data | c text data | d text data | e text data
- a single backslash \ in col a      | b text data | c text data | d text data | e text data
- an embedded delimiter | character  | b text data | c text data | d text data | e text data
- an embedded linefeed               | b text data | c text data | d text data | e text data
- and another one                                                                
- in column a                                                                    
- c:\\file\data\neew\path            | b text data | c text data | d text data | e text data
- the at sign: @                     | b text data | c text data | d text data | e text data
- the at sign: @                     | b text data | c text data | d text data | e text data 
+SELECT * FROM copy_regression_text3 ORDER BY b;
+                 a                  | b |      c      |      d      |      e       
+------------------------------------+---+-------------+-------------+--------------
+ the at sign: @                     | 1 | c text data | d text data | e text data 
+ an embedded delimiter | character  | 2 | c text data | d text data | e text data
+ a single backslash \ in col a      | 3 | c text data | d text data | e text data
+ a single backslash \ in col a      | 4 | c text data | d text data | e text data
+ c:\\file\data\neew\path            | 5 | c text data | d text data | e text data
+ the at sign: @                     | 6 | c text data | d text data | e text data
+ an embedded linefeed               | 7 | c text data | d text data | e text data
+ and another one                                                      
+ in column a                                                          
+ a single backslash \ in col a      | 8 | c text data | d text data | e text data
 (8 rows)
 
 DROP TABLE copy_regression_text1;
@@ -308,26 +308,26 @@ COPY copy_regression_csv3 from stdin with delimiter '|' csv quote ';' escape '*'
 COPY copy_regression_csv3 from stdin with csv quote ''''; -- escape should be the same as quote
 COPY copy_regression_csv3 from stdin with csv escape '''';
 COPY copy_regression_csv3 from stdin with csv quote '''' escape E'\\'; -- make sure E'' is accepted
-SELECT * FROM copy_regression_csv3 ORDER BY a;
-                         a                         |      b      |      c      |      d      |      e       
----------------------------------------------------+-------------+-------------+-------------+--------------
- an embedded backslash \ here                      | b csv data  | c csv data  | d csv data  | e csv data 
- an embedded delimiter (comma), is printed         | b  csv data | c  csv data | d  csv data | e  csv data 
- an embedded delimiter (pipe)| is printed          | b  csv data | c  csv data | d  csv data | e  csv data 
- an embedded delimiter (tab)\x09 is printed        | b  csv data | c  csv data | d  csv data | e  csv data 
- an embedded escape (asterisk)* is printed         | b  csv data | c  csv data | d  csv data | e  csv data
- an embedded escape \ is printed                   | b  csv data | c  csv data | d  csv data | e  csv data
- an embedded line feed                             | b  csv data | c  csv data | d  csv data | e  csv data
- is printed                                                                                    
- an embedded line feed                             | b  csv data | c  csv data | d  csv data | e  csv data
- is printed                                                                                    
- an embedded line feed                             | b  csv data | c  csv data | d  csv data | e  csv data
- is printed                                                                                    
- an embedded quote (doubleq)" is printed           | b  csv data | c  csv data | d  csv data | e  csv data 
- an embedded quote (semicolon); is printed         | b  csv data | c  csv data | d  csv data | e  csv data 
- an embedded quote or escape (doubleq)" is printed | b  csv data | c  csv data | d  csv data | e  csv data 
- an embedded single quote ' here                   | b csv data  | c csv data  | d csv data  | e csv data 
- an embedded single quote ' here                   | b csv data  | c csv data  | d csv data  | e csv data 
+SELECT * FROM copy_regression_csv3 ORDER BY b;
+                         a                         | b  |      c      |      d      |      e       
+---------------------------------------------------+----+-------------+-------------+--------------
+ an embedded delimiter (comma), is printed         | 01 | c  csv data | d  csv data | e  csv data 
+ an embedded quote (doubleq)" is printed           | 02 | c  csv data | d  csv data | e  csv data 
+ an embedded escape \ is printed                   | 03 | c  csv data | d  csv data | e  csv data
+ an embedded line feed                             | 04 | c  csv data | d  csv data | e  csv data
+ is printed                                                                           
+ an embedded delimiter (tab)\x09 is printed        | 05 | c  csv data | d  csv data | e  csv data 
+ an embedded quote or escape (doubleq)" is printed | 06 | c  csv data | d  csv data | e  csv data 
+ an embedded line feed                             | 07 | c  csv data | d  csv data | e  csv data
+ is printed                                                                           
+ an embedded delimiter (pipe)| is printed          | 08 | c  csv data | d  csv data | e  csv data 
+ an embedded quote (semicolon); is printed         | 09 | c  csv data | d  csv data | e  csv data 
+ an embedded escape (asterisk)* is printed         | 10 | c  csv data | d  csv data | e  csv data
+ an embedded line feed                             | 11 | c  csv data | d  csv data | e  csv data
+ is printed                                                                           
+ an embedded single quote ' here                   | 12 | c csv data  | d csv data  | e csv data 
+ an embedded single quote ' here                   | 13 | c csv data  | d csv data  | e csv data 
+ an embedded backslash \ here                      | 14 | c csv data  | d csv data  | e csv data 
 (14 rows)
 
 DROP TABLE copy_regression_csv1;
