@@ -10,6 +10,7 @@
 #include "postgres_fe.h"
 #include "libpq-fe.h"
 #include "libpq/pqsignal.h"
+#include "gpupgrade_cmds.h"
 
 typedef struct 
 {
