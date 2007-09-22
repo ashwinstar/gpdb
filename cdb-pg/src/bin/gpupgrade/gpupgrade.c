@@ -82,6 +82,22 @@ mylog(int level, const char *fmt, ...)
 	}
 }
 
+/* 
+ * Perform the ALTER TABLE operations necessary to upgrade from 3.0 to 3.1
+ */
+static void
+schema_upgrade(config_t *conf)
+{
+	if (upgrade)
+	{
+		/* exttable */
+
+		/* pg_window */
+
+	}
+
+}
+
 static void
 run_upgrade_commands(config_t *conf)
 {
@@ -627,6 +643,9 @@ main(int argc, char **argv)
 				   "%d for database %s",segdbs[i]->content,
 				   segdbs[i]->definedprimary, segdbs[i]->dbid,
 				   segdbs[i]->dbname);
+
+		/* modify schema */
+		schema_upgrade(segdbs[i]);
 
 		/* run the upgrade command */
 		run_upgrade_commands(segdbs[i]);
