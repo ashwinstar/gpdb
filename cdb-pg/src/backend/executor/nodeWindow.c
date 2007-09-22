@@ -3708,7 +3708,7 @@ get_delay_edge(WindowFrameEdge *edge,
 	if (TupIsNull(wstate->curslot))
 		ereport(ERROR,
 				(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
-				 errmsg("%s parameter cannot contain NULL value",
+				 errmsg("%s parameter cannot be NULL",
 						(is_rows ? "ROWS" : "RANGE"))));
 	
 	rows_param = ExecEvalExpr(edge_expr,
@@ -3718,7 +3718,7 @@ get_delay_edge(WindowFrameEdge *edge,
 	if (isnull)
 		ereport(ERROR,
 				(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
-				 errmsg("%s parameter cannot contain NULL value",
+				 errmsg("%s parameter cannot be NULL",
 						(is_rows ? "ROWS" : "RANGE"))));
 
 	if (is_rows && rows_param < 0)
@@ -4017,7 +4017,7 @@ fetchCurrentRow(WindowState *wstate)
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
-						 errmsg("Not yet support expressions in a RANGE-frame.")));
+						 errmsg("expressions not yet supported in RANGE-frames")));
 		}
 
 		if (EDGE_IS_DELAYED(level_state->frame->trail))
@@ -4053,7 +4053,7 @@ fetchCurrentRow(WindowState *wstate)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
-						 errmsg("Not yet support expressions in a RANGE-frame.")));
+						 errmsg("expressions not yet supported in RANGE-frames")));
 			}
 		}
 	}
@@ -4935,8 +4935,8 @@ init_frames(WindowState *wstate)
 				 */
 				ereport(ERROR,
 						(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
-						 errmsg("Not yet support aggregate functions with no prelimfn or "
-								"no invprelimfn.")));
+						 errmsg("aggregate functions with no prelimfn or "
+								"invprelimfn are not yet supported as window functions")));
 			}
 
 			funcno++;
@@ -5127,8 +5127,13 @@ ExecReScanWindow(WindowState *node, ExprContext *exprCtxt)
 Datum
 window_dummy(PG_FUNCTION_ARGS)
 {
-	elog(ERROR, "window function %u called as normal function",
-		 fcinfo->flinfo->fn_oid);
+	ereport(ERROR,
+			(errcode(ERRCODE_SYNTAX_ERROR),
+			 errmsg("function %s may only be called as a window function",
+					format_procedure(fcinfo->flinfo->fn_oid)),
+			 errhint("To call a function as a window function use an OVER clause."))
+			);
+			 
 	return (Datum) 0;			/* keep compiler quiet */
 }
 
@@ -5227,7 +5232,7 @@ percent_rank_final(PG_FUNCTION_ARGS)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_EXCEPTION),
-				 errmsg("arguments invvalid or inconsistent"),
+				 errmsg("arguments invalid or inconsistent"),
 				 errhint("inappropriate call to window function implementation")));
 		result = 0.0; /* quieten GCC */
 	}
