@@ -178,6 +178,7 @@ main(int argc, char *argv[])
 	{
 		if (ControlFile.state != DB_SHUTDOWNED)
 		{
+			/* only upgrade shutdown systems */
 			printf(_("\n\nFATAL ERROR\n\n"
 					 "Invalid database state for upgrade: %s\n"
 					 "Action: shutdown the database and try again.\n"),
@@ -187,6 +188,7 @@ main(int argc, char *argv[])
 		}
 		else if (ControlFile.catalog_version_no == tover)
 		{
+			/* must be something wrong if we want to do this */
 			printf(_("\nFATAL ERROR\n\n"
 					 "Catalog version number is already set to %u\n\n"),
 				   tover);
