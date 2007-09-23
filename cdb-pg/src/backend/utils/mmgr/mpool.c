@@ -355,6 +355,7 @@ mpool_alloc(MemoryContext context, Size size)
 		{
 			/* an empty block cannot fit size ... just free it */
 			MemoryContextNoteFree(&mpool->header, bp->end - (char*) bp);
+			mpool->blocks_allocated--;
 			free(bp);
 			bp = 0;
 		}
