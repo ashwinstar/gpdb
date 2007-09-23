@@ -805,7 +805,7 @@ pfree(void *pointer)
 	if (header->context->methods.free_p)
 		(*header->context->methods.free_p) (header->context, pointer);
 	else
-		Assert(1);   /* this assert never fails. Just here so we can set breakpoint in debugger. */
+		Assert(header);   /* this assert never fails. Just here so we can set breakpoint in debugger. */
 }
 
 /*
