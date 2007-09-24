@@ -13,7 +13,7 @@ static apr_status_t initdb_do(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     int i, idx, e;
     hainfo_t *hainfo;
-    struct json_object *obj;
+    struct json_object *obj = 0;
     char *msg;
 
     for (i = 0 ;  i < cmdslot->u.sys.nseginfo ; i++) {
@@ -91,7 +91,10 @@ static apr_status_t initdb_reply(gpcc_event_t *ev, void *_cmdslot)
 	}
 	if (i >= cmdslot->u.sys.nseginfo){
 	    gpcc_warning(FLINE, "[Error] invalid segment name %s", seg);
-	    goto bail;
+	    json_object_put(obj);
+	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	    gpcc_evqueue_put(gpfts.evq, evt);
+	    return 0;
 	}
 
 	cmdslot->u.sys.request.u.initdb.replied[i]++;
@@ -128,11 +131,6 @@ static apr_status_t initdb_reply(gpcc_event_t *ev, void *_cmdslot)
     if (obj) json_object_put(obj);
     return 0;
 
-    bail:
-
-    if (obj) json_object_put(obj);
-    return APR_EINVAL;
-	
 }
 
 static apr_status_t initdb_success(gpcc_event_t *ev, void *_cmdslot)

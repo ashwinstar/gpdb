@@ -44,7 +44,7 @@ static apr_status_t start_utility_qd(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-static apr_status_t start_utility_qd_reply_segment_reply(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t start_utility_qd_segment_reply(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     gpcc_net_packet_t *pkt;
@@ -64,11 +64,15 @@ static apr_status_t start_utility_qd_reply_segment_reply(gpcc_event_t *ev, void 
 	return 0;
     }
 
-    if (strcmp(status, "ok") == 0) {
-	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
+    if (cmdslot->u.sys.network_failure) {
+	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
     } else {
-	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-	gpcc_warning(FLINE, "[Error] start utility qd failed: segment=%s, status=%d, reason=%s", seg, status, reason);
+	if (strcmp(status, "ok") == 0) {
+	    evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
+	} else {
+	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	    gpcc_warning(FLINE, "[Error] start utility qd failed: segment=%s, status=%d, reason=%s", seg, status, reason);
+	}
     }
     
     gpcc_evqueue_put(gpfts.evq, evt);
@@ -76,26 +80,21 @@ static apr_status_t start_utility_qd_reply_segment_reply(gpcc_event_t *ev, void 
     return 0;
 }
 
-static apr_status_t start_utility_qd_reply_net_closed(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t start_utility_qd_net_closed(gpcc_event_t *ev, void *_cmdslot)
 {
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    seginfo_t *seginfo = cmdslot->u.sys.seginfo;
+    int index;
+    gpcc_event_t *evt;
 
+    memcpy(&index, ev->edata, sizeof(int));
+    if (index == seginfo->haidx) {
+	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
+	gpcc_evqueue_put(gpfts.evq, evt);
+    }
     
     return 0;
 }
-
-static apr_status_t start_utility_qd_reply(gpcc_event_t *ev, void *_cmdslot)
-{
-    switch (ev->etype) {
-    case SEGMENT_REPLY_MSG_EVENT:
-	return start_utility_qd_reply_segment_reply(ev, _cmdslot);
-    case NET_CLOSED_EVENT:
-	return start_utility_qd_reply_net_closed(ev, _cmdslot);
-    default:
-	break;
-    }
-    return 0;
-}
-
 
 static apr_status_t start_gpconf(gpcc_event_t *ev, void *_cmdslot)
 {
@@ -131,7 +130,7 @@ static apr_status_t start_utility_qd_stop(gpcc_event_t *ev, void *_cmdslot)
     haidx = seginfo->haidx;
 
     if (!cmdslot->u.sys.hainfo || !cmdslot->u.sys.hainfo[haidx]) {
-	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpfts.evq, evt);
 	return APR_EINVAL;
     }
@@ -151,9 +150,19 @@ static apr_status_t start_utility_qd_stop(gpcc_event_t *ev, void *_cmdslot)
 }
 
 
-static apr_status_t start_gpconf_network_closed(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t start_gpconf_net_closed(gpcc_event_t *ev, void *_cmdslot)
 {
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    seginfo_t *seginfo = cmdslot->u.sys.seginfo;
+    int index;
+    gpcc_event_t *evt;
 
+    memcpy(&index, ev->edata, sizeof(int));
+    if (index == seginfo->haidx) {
+	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
+	gpcc_evqueue_put(gpfts.evq, evt);
+    }
+    
     return 0;
 }
 
@@ -177,13 +186,16 @@ static apr_status_t start_utility_qd_stop_reply(gpcc_event_t *ev, void *_cmdslot
 	return 0;
     }
 
-    if (strcmp(status, "ok") == 0) {
-	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
+    if (cmdslot->u.sys.network_failure) {
+	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
     } else {
-	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-	gpcc_warning(FLINE, "[Error] stop utility qd failed: segment=%s, status=%d, reason=%s", seg, status, reason);
+	if (strcmp(status, "ok") == 0) {
+	    evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
+	} else {
+	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	    gpcc_warning(FLINE, "[Error] stop utility qd failed: segment=%s, status=%d, reason=%s", seg, status, reason);
+	}
     }
-    
     gpcc_evqueue_put(gpfts.evq, evt);
     json_object_put(obj);
     return 0;
@@ -202,16 +214,16 @@ static apr_status_t start_qes(gpcc_event_t *ev, void *_cmdslot)
     char *msg;
 
     if (!cmdslot->u.sys.hainfo) {
-	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpfts.evq, evt);
-	return APR_EINVAL;
+	return 0;
     }
 
     for (i = 0 ; i < cmdslot->u.sys.nhainfo ; i++) {
 	if (!cmdslot->u.sys.hainfo[i]) {
-	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	    evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
 	    gpcc_evqueue_put(gpfts.evq, evt);
-	    return APR_EINVAL;
+	    return 0;
 	}
     }
 
@@ -247,36 +259,83 @@ static apr_status_t start_qe_reply(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     gpcc_net_packet_t *pkt;
-    struct json_object *obj;
+    struct json_object *obj = 0;
     gpcc_event_t *evt = 0;
     char *seg, *status, *reason;
+    int i;
 
-    pkt = (gpcc_net_packet_t *) ev->edata;
-    obj = json_tokener_parse(pkt->mb);
-    seg = gpcc_json_object_get_string(obj, "seg", 0);
-    status = gpcc_json_object_get_string(obj, "status", "failed");
-    reason = gpcc_json_object_get_string(obj, "reason", "");
+    switch (ev->etype) {
+    case NET_CLOSED_EVENT:
+	{
+	int index;
+	memcpy(&index, ev->edata, sizeof(int));
+	for (i = 0 ; i < cmdslot->u.sys.nseginfo ; i++) {
+	    if (cmdslot->u.sys.seginfo[i].haidx == index) {
+		if (cmdslot->u.sys.request.u.start.replied[i] == 0) {
+		    cmdslot->u.sys.request.u.start.nfailed++;
+		    cmdslot->u.sys.request.u.start.nreply++;
+		    cmdslot->u.sys.request.u.start.replied[i]++;
+		} else {
+		    cmdslot->u.sys.request.u.start.nfailed++;
+		}
+		gpcc_warning(FLINE, "[Error] segment %s connection reset", cmdslot->u.sys.seginfo[i].name);
+	    }
+	}
+	break;
+	}
+    case SEGMENT_REPLY_MSG_EVENT:	    
+	{
+	    pkt = (gpcc_net_packet_t *) ev->edata;
+	    obj = json_tokener_parse(pkt->mb);
+	    seg = gpcc_json_object_get_string(obj, "seg", 0);
+	    status = gpcc_json_object_get_string(obj, "status", "failed");
+	    reason = gpcc_json_object_get_string(obj, "reason", "");
+	    
+	    
+	    for (i = 0 ; i < cmdslot->u.sys.nseginfo ; i++) {
+		if (strcmp(seg, cmdslot->u.sys.seginfo[i].name) == 0) 
+		    break;
+	    }
+	    if (i >= cmdslot->u.sys.nseginfo){
+		gpcc_warning(FLINE, "[Error] invalid segment name %s", seg);
+		json_object_put(obj);
+		evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+		gpcc_evqueue_put(gpfts.evq, evt);
+		return 0;
+	    }
+	    
+	    cmdslot->u.sys.request.u.start.replied[i]++;
+	    cmdslot->u.sys.request.u.start.nreply++;
 
-    cmdslot->u.sys.request.u.start.nreply++;
-    if (strcmp(status, "ok") == 0) {
-	cmdslot->u.sys.request.u.start.nsuccess++;
-    } else {
-	cmdslot->u.sys.request.u.start.nfailed++;
-	gpcc_warning(FLINE, "[Error] segment reply failed: segment=%s, status=%s, reason=%s", seg, status, reason);
+	    if (strcmp(status, "ok") == 0) {
+		cmdslot->u.sys.request.u.start.nsuccess++;
+	    } else {
+		cmdslot->u.sys.request.u.start.nfailed++;
+		gpcc_warning(FLINE, "[Error] segment reply failed: segment=%s, status=%s, reason=%s", seg, status, reason);
+	    }
+	    break;
+	}
+    default:
+	break;
     }
 
     if (cmdslot->u.sys.request.u.start.nreply == cmdslot->u.sys.request.u.start.nrequest) {
 	if (cmdslot->u.sys.request.u.start.nfailed == 0) {
 	    evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
 	} else {
-	    evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);	
+	    if (cmdslot->u.sys.network_failure) {
+		evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
+	    } else {
+		evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);	
+	    }
 	}
 	gpcc_evqueue_put(gpfts.evq, evt);
     }
 
-    json_object_put(obj);
+    if (obj) json_object_put(obj);
     return 0;
 }
+
 
 static apr_status_t start_qd(gpcc_event_t *ev, void *_cmdslot)
 {
@@ -331,17 +390,38 @@ static apr_status_t start_qd_reply(gpcc_event_t *ev, void *_cmdslot)
 	return 0;
     }
 
-    if (strcmp(status, "ok") == 0) {
-	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
+    if (cmdslot->u.sys.network_failure) {
+	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
     } else {
-	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-	gpcc_warning(FLINE, "[Error] start production qd failed: segment=%s, status=%d, reason=%s", seg, status, reason);
+	if (strcmp(status, "ok") == 0) {
+	    evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
+	} else {
+	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	    gpcc_warning(FLINE, "[Error] start production qd failed: segment=%s, status=%d, reason=%s", seg, status, reason);
+	}
     }
-    
     gpcc_evqueue_put(gpfts.evq, evt);
     json_object_put(obj);
     return 0;
 }
+
+
+static apr_status_t start_qd_reply_net_closed(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    seginfo_t *seginfo = cmdslot->u.sys.seginfo;
+    int index;
+    gpcc_event_t *evt;
+
+    memcpy(&index, ev->edata, sizeof(int));
+    if (index == seginfo->haidx) {
+	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
+	gpcc_evqueue_put(gpfts.evq, evt);
+    }
+    
+    return 0;
+}
+
 
 static apr_status_t start_standby_qd(gpcc_event_t *ev, void *_cmdslot)
 {
@@ -402,12 +482,16 @@ static apr_status_t start_standby_qd_reply(gpcc_event_t *ev, void *_cmdslot)
 	json_object_put(obj);
 	return 0;
     }
-
-    if (strcmp(status, "ok") == 0) {
-	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
+    
+    if (cmdslot->u.sys.network_failure) {
+	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
     } else {
-	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-	gpcc_warning(FLINE, "[Error] start standby qd failed: segment=%s, status=%d, reason=%s", seg, status, reason);
+	if (strcmp(status, "ok") == 0) {
+	    evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
+	} else {
+	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	    gpcc_warning(FLINE, "[Error] start standby qd failed: segment=%s, status=%d, reason=%s", seg, status, reason);
+	}
     }
     
     gpcc_evqueue_put(gpfts.evq, evt);
@@ -415,7 +499,21 @@ static apr_status_t start_standby_qd_reply(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
+static apr_status_t start_standby_qd_reply_net_closed(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    seginfo_t *seginfo = cmdslot->u.sys.seginfo;
+    int index;
+    gpcc_event_t *evt;
 
+    memcpy(&index, ev->edata, sizeof(int));
+    if (index == seginfo->haidx) {
+	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
+	gpcc_evqueue_put(gpfts.evq, evt);
+    }
+    
+    return 0;
+}
 
 static apr_status_t start_success(gpcc_event_t *ev, void *_cmdslot)
 {
