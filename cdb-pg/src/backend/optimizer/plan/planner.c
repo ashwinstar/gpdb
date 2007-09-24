@@ -59,13 +59,14 @@ ParamListInfo PlannerBoundParamList = NULL;		/* current boundParams */
 
 
 /* Expression kind codes for preprocess_expression */
-#define EXPRKIND_QUAL		0
-#define EXPRKIND_TARGET		1
-#define EXPRKIND_RTFUNC		2
-#define EXPRKIND_VALUES		3
-#define EXPRKIND_LIMIT		4
-#define EXPRKIND_ININFO		5
-#define EXPRKIND_APPINFO	6
+#define EXPRKIND_QUAL			0
+#define EXPRKIND_TARGET			1
+#define EXPRKIND_RTFUNC			2
+#define EXPRKIND_VALUES			3
+#define EXPRKIND_LIMIT			4
+#define EXPRKIND_ININFO			5
+#define EXPRKIND_APPINFO		6
+#define EXPRKIND_WINDOW_BOUND	7
 
 static Node *preprocess_expression(PlannerInfo *root, Node *expr, int kind);
 static void preprocess_qual_conditions(PlannerInfo *root, Node *jtnode);
@@ -372,6 +373,24 @@ subquery_planner(Query *parse, double tuple_fraction,
 
 	parse->havingQual = preprocess_expression(root, parse->havingQual,
 											  EXPRKIND_QUAL);
+	
+	/* 
+	 * Do expression preprocessing on other expressions.
+	 */	 
+	foreach (l, parse->windowClause)
+	{
+		WindowSpec *w =(WindowSpec*)lfirst(l);
+		
+		if ( w != NULL && w->frame != NULL )
+		{
+			WindowFrame *f = w->frame;
+						
+			if (f->trail != NULL )
+				f->trail->val = preprocess_expression(root, f->trail->val, EXPRKIND_WINDOW_BOUND);
+			if ( f->lead != NULL )
+				f->lead->val = preprocess_expression(root, f->lead->val, EXPRKIND_WINDOW_BOUND);
+		}
+	}
 
 	parse->limitOffset = preprocess_expression(root, parse->limitOffset,
 											   EXPRKIND_LIMIT);

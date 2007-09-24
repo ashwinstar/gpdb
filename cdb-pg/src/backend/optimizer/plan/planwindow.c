@@ -32,6 +32,7 @@
 #include "parser/parse_clause.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_oper.h"
+#include "parser/parse_type.h"
 #include "parser/parsetree.h"
 #include "utils/debugbreak.h"
 #include "utils/lsyscache.h"
@@ -227,6 +228,8 @@ static int compare_order(List *a, List* b);
 static int compare_edge(WindowFrameEdge *a, WindowFrameEdge *b);
 static int compare_frame(WindowFrame *a, WindowFrame *b);
 static int compare_spec_info_ptr(const void *arg1, const void *arg2);
+static bool validateBound(Node *node, bool is_rows);
+static WindowFrameEdge *adjustFrameBound(WindowFrameEdge *edge, bool is_rows);
 static void make_lower_targetlist(Query *parse, WindowContext *context);
 static void set_window_keys(WindowContext *context, int wind_index);
 static void assign_window_info(WindowContext *context);
@@ -815,6 +818,11 @@ static void inventory_window_specs(List *window_specs, WindowContext *context)
 			frame->trail->val = frame->lead->val = offset;
 			sinfo->frame = frame;
 		}
+		else if ( sinfo->frame != NULL )
+		{
+			sinfo->frame->lead = adjustFrameBound(sinfo->frame->lead, sinfo->frame->is_rows);
+			sinfo->frame->trail = adjustFrameBound(sinfo->frame->trail, sinfo->frame->is_rows);
+		}
 		
 		sinfo->refset = bms_add_member(sinfo->refset, i);
 		
@@ -902,36 +910,6 @@ static void inventory_window_specs(List *window_specs, WindowContext *context)
 		
 		Assert( sinfo->specindex < ndistinct );
 		rinfo->specindex = sinfo->specindex;
-
-		/*
-		 * Re-set the frame type when the edge variable is not
-		 * a Const.
-		 */
-		if (sinfo->frame != NULL)
-		{
-			if (sinfo->frame->trail != NULL)
-			{
-				if (sinfo->frame->trail->val != NULL &&
-					!IsA(sinfo->frame->trail->val, Const))
-				{
-					if (sinfo->frame->trail->kind == WINDOW_BOUND_FOLLOWING)
-						sinfo->frame->trail->kind = WINDOW_DELAYED_BOUND_FOLLOWING;
-					else if (sinfo->frame->trail->kind == WINDOW_BOUND_PRECEDING)
-						sinfo->frame->trail->kind = WINDOW_DELAYED_BOUND_PRECEDING;
-				}
-			}
-			if (sinfo->frame->lead != NULL)
-			{
-				if (sinfo->frame->lead->val != NULL &&
-					!IsA(sinfo->frame->lead->val, Const))
-				{
-					if (sinfo->frame->lead->kind == WINDOW_BOUND_FOLLOWING)
-						sinfo->frame->lead->kind = WINDOW_DELAYED_BOUND_FOLLOWING;
-					else if (sinfo->frame->lead->kind == WINDOW_BOUND_PRECEDING)
-						sinfo->frame->lead->kind = WINDOW_DELAYED_BOUND_PRECEDING;
-				}
-			}
-		}
 	}		
 	pfree(specinfos);
 }
@@ -1165,69 +1143,103 @@ static int compare_edge(WindowFrameEdge *a, WindowFrameEdge *b)
 		return -1;
 	else if ( a->kind > b->kind )
 		return 1;
-	else if ( a->kind == WINDOW_BOUND_PRECEDING || a->kind == WINDOW_BOUND_FOLLOWING )
+	else if ( equal(a->val, b->val) )
+		return 0;
+	/* When the bounds aren't equal (since they may be expressions) we
+	 * just compare pointer values a->val and b->val.  The resulting order,
+	 * though arbitrary, is consistent.
+	 */
+	else if ( ((void*)a->val) < ((void*)b->val) )
+		return -1;
+
+	return 1;
+}
+
+
+/* If the node is a Const with a value and we understand the value
+ * well enough, make sure it is non-negative.
+ *
+ * The result is true, if the bound is constant and valid.
+ * The result is false if we must delay checking until run time.
+ * The function issues an error, if the bound is constant and invalid.
+ */
+static bool validateBound(Node *node, bool is_rows)
+{
+	Const *bound;
+	Operator tup;
+	Type typ;
+	Datum zero;
+	Oid funcoid;
+	bool isNeg;
+	
+	if ( node == NULL || !IsA(node,Const) )
+		return FALSE; /* Can't check here, wait until run time. */
+	
+	bound = (Const*)node;
+	
+	tup = ordering_oper(bound->consttype, TRUE);
+	if ( !HeapTupleIsValid(tup) )
+		return FALSE ; /* Can't check here, wait until run time. */
+	
+	typ = typeidType(bound->consttype);
+	funcoid = oprfuncid(tup);
+	zero = stringTypeDatum(typ, "0", exprTypmod(node));
+	isNeg = OidFunctionCall2(funcoid, bound->constvalue, zero);
+	
+	if ( isNeg )						
+		ereport(ERROR,
+				(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
+				 errmsg("%s parameter cannot be negative", is_rows ? "ROWS" : "RANGE")));
+	
+	ReleaseSysCache(tup);
+	ReleaseSysCache(typ);
+	
+	return TRUE;
+}
+
+
+/* Make any necessary adjustments to an ordinary window frame edge to
+ * prepare it for later planning stages and for execution.
+ *
+ * Currently this is just resetting the window frame bound to delayed
+ * if the value parameter can't be validated at planning time.  The
+ * function issues an error if the value parameter is a negative 
+ * constant.
+ *
+ * The function assumes the frame comes from the parser/rewriter so 
+ * it will reject a delayed frame bound.  So don't use this to adjust 
+ * edges of special frames such as those created for LAG/LEAD functions.
+ */
+static WindowFrameEdge *adjustFrameBound(WindowFrameEdge *edge, bool is_rows)
+{
+	WindowBoundingKind kind;
+	
+	if ( edge == NULL )
+		return NULL;
+		
+	kind = edge->kind;
+	
+	if ( kind == WINDOW_BOUND_PRECEDING || kind == WINDOW_BOUND_FOLLOWING )
 	{
-		/* Compare constant values represented by a->val and b->val. */
-		bool okay = TRUE;
-		Const *aconst, *bconst;
-		int64 aval = 0, bval = 0;
-		
-		okay = IsA(a->val,Const) && IsA(b->val,Const);
-		
-		if ( okay )
-		{
-			aconst = (Const*)a->val;
-			if ( aconst->consttype == INT4OID )
-				aval = DatumGetInt32(aconst->constvalue);
-			else if ( aconst->consttype == INT8OID )
-				aval = DatumGetInt64(aconst->constvalue);
-			else
-				okay = FALSE;
-
-			bconst = (Const*)b->val;
-			if ( bconst->consttype == INT4OID )
-				bval = DatumGetInt32(bconst->constvalue);
-			else if ( bconst->consttype == INT8OID )
-				bval = DatumGetInt64(bconst->constvalue);
-			else
-				okay = FALSE;
-
-			if ( aval < bval )
-				return -1;
-			else if ( aval > bval )
-				return 1;
-		}
+		if ( validateBound(edge->val, is_rows) )
+			;
 		else
 		{
-			/* Compare pointer value a->val and b->val. Ordering is
-			 * arbitrary but consistent.
-			 */
-			if ( ((void*)a->val) < ((void*)b->val) )
-				return -1;
-			else if ( ((void*)a->val) > ((void*)b->val) )
-				return 1;
+			edge = copyObject(edge);
+			if ( kind == WINDOW_BOUND_PRECEDING )
+				edge->kind = WINDOW_DELAYED_BOUND_PRECEDING;
+			else
+				edge->kind = WINDOW_DELAYED_BOUND_FOLLOWING;
 		}
 	}
-	else if (a->kind == WINDOW_DELAYED_BOUND_PRECEDING || a->kind == WINDOW_DELAYED_BOUND_FOLLOWING)
+	else if ( edge->kind == WINDOW_BOUND_PRECEDING 
+			|| edge->kind == WINDOW_BOUND_FOLLOWING
+			|| edge->val != NULL )
 	{
-		/* Compare pointer values a->val and b->val. 
-		 * Ordering is arbitrary but consistent.  The idea is that a given
-		 * value should be equal to itself and different from all others
-		 * in order to force delayed bounds into separate window keys.
-		 */
-		if ( ((void*)a->val) < ((void*)b->val) )
-			return -1;
-		else if ( ((void*)a->val) > ((void*)b->val) )
-			return 1;
+		elog(ERROR,"invalid window frame edge");
 	}
-	/*
-	else if (a->kind == WINDOW_DELAYED_BOUND_PRECEDING || a->kind == WINDOW_DELAYED_BOUND_FOLLOWING)
-		return -1;
-	else if (b->kind == WINDOW_DELAYED_BOUND_PRECEDING || b->kind == WINDOW_DELAYED_BOUND_FOLLOWING)
-		return 1;
-	*/
-
-	return 0;
+	
+	return edge;
 }
 
 
