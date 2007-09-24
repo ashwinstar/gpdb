@@ -240,10 +240,12 @@ static void ha_net_closed(gpcc_ha_t *ha, void *arg)
     gpcc_event_t *ev;
     apr_uint32_t *spin;
 
-    if (hainfo->index < 0)
-	return;
-
     spin = gpcc_spin_secure(gpfts.net_spin);
+    if (hainfo->index < 0) {
+	spin = gpcc_spin_release(gpfts.net_spin);
+	return;
+    }
+
     hainfo->ha = 0;
     ev = gpcc_event_alloc(NET_CLOSED_EVENT, gpfts.system_cmdidx, sizeof(int));
     memcpy(ev->edata, &hainfo->index, sizeof(int));
@@ -284,10 +286,12 @@ static apr_status_t ha_closed(gpcc_event_t *ev, void *_cmdslot)
     apr_uint32_t *spin;
 
     memcpy(&index, ev->edata, sizeof(int));
-    
-    if (!cmdslot->u.sys.hainfo || !cmdslot->u.sys.hainfo[index])
+
+    spin = gpcc_spin_secure(gpfts.net_spin);    
+    if (!cmdslot->u.sys.hainfo || !cmdslot->u.sys.hainfo[index]) {
+	spin = gpcc_spin_release(gpfts.net_spin);
 	return 0;
-    spin = gpcc_spin_secure(gpfts.net_spin);
+    }
     cmdslot->u.sys.hainfo[index]->ha = 0;
     free(cmdslot->u.sys.hainfo[index]);
     cmdslot->u.sys.hainfo[index] = 0;
