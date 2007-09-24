@@ -1149,3 +1149,10 @@ select cn,pn,qty,sum(qty) over (order by pn rows between 1 preceding and 1 follo
 sum(qty) over (order by pn rows between cn preceding and cn+2 following) from sale;
 select cn,pn,qty,sum(qty) over (order by pn rows between current row and cn following),
 sum(qty) over (order by pn rows between cn preceding and cn+2 following) from sale;
+
+select cn,pn,qty,sum(qty) over (order by pn range cn preceding) from sale;
+select cn,pn,qty,sum(qty) over (order by pn range between current row and cn following) from sale;
+select cn,pn,qty,sum(qty) over (order by cn range between current row and cn following) from sale;
+select cn,pn,qty,sum(qty) over (order by cn range between cn-1 preceding and cn following) from sale;
+select cn,pn,qty,sum(qty) over (partition by cn order by pn range between cn*100-50 preceding and cn*200 following) as sum from sale; --mvd 1->4
+select pn,vn,max(vn) over (order by pn range between cn-1 following and cn-2 following) as max from sale;
