@@ -304,7 +304,6 @@ gettime_elapsed_ms(struct timeval t0)
     return timeval_delta_ms(t1, t0);
 }
 
-
 #define getChunkTransportState(transportState, motNodeID, ppEntry) \
 	do { \
 		Assert((transportState) != NULL);		\
@@ -3944,53 +3943,59 @@ readRegisterMessage(ChunkTransportState *transportStates,
                                   conn->sockfd, conn->localHostAndPort)));
     }
 
-    /*
-     * Find state info for the specified Motion node.  The sender's slice
-     * number equals the motion node id.  (Don't use this ptr until after
-     * the bounds are checked, just below.)
-     */
-	getChunkTransportState(transportStates, msg.sendSliceIndex, &pEntry);
-	Assert(pEntry);
+	/* get rid of old connections first */
+	if (msg.srcSessionId != gp_session_id ||
+		msg.srcCommandCount < gp_command_count)
+	{
+		/* This is an old connection, which can be safely
+		 * ignored. We get this kind of stuff for cases in which
+		 * one gang participating in the interconnect exited a
+		 * query before calling SetupInterconnect(). Later queries
+		 * wind up receiving their registration messages. */
+		elog(LOG, "Received invalid, old registration message: "
+			 "will ignore ('expected:received' session %d:%d command-id %d:%d)",
+			 gp_session_id, msg.srcSessionId,
+			 gp_command_count, msg.srcCommandCount);
+
+		shutdown(conn->sockfd, SHUT_RDWR);
+		closesocket(conn->sockfd);
+		conn->sockfd = -1;
+
+		pfree(conn->pBuff);
+
+		return true;
+	}
 
     /* Verify that the message pertains to one of our receiving Motion nodes. */
     if (msg.sendSliceIndex > 0 &&
         msg.sendSliceIndex <= transportStates->size &&
         msg.recvSliceIndex == transportStates->sliceId &&
-        msg.srcContentId >= -1 &&
-        msg.srcSessionId == gp_session_id &&
-		msg.srcCommandCount <= gp_command_count)
+        msg.srcContentId >= -1)
     {
-		if (msg.srcCommandCount < gp_command_count)
-		{
-			/* This is an old connection, which can be safely
-			 * ignored. We get this kind of stuff for cases in which
-			 * one gang participating in the interconnect exited a
-			 * query before calling SetupInterconnect(). Later queries
-			 * wind up receiving their registration messages. */
-			elog(LOG, "Received invalid, old registration message: will ignore");
-			shutdown(conn->sockfd, SHUT_RDWR);
-			closesocket(conn->sockfd);
-			conn->sockfd = -1;
-
-			pfree(conn->pBuff);
-
- 			return true;
-		}
+		/* this is a good connection */
     }
     else
 	{
+		/* something is wrong */
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                         errmsg("Interconnect error: Invalid registration "
                                "message received from %s.",
                                conn->remoteHostAndPort),
                         errdetail("sendSlice=%d recvSlice=%d srcContentId=%d "
                                   "srcPid=%d srcListenerPort=%d "
-                                  "srcSessionId=%d srcCommandCount=%d valid=%d motnode=%d",
+                                  "srcSessionId=%d srcCommandCount=%d motnode=%d",
                                   msg.sendSliceIndex, msg.recvSliceIndex,
                                   msg.srcContentId, msg.srcPid,
                                   msg.srcListenerPort, msg.srcSessionId,
-                                  msg.srcCommandCount, pEntry->valid, pEntry->motNodeId)));
+                                  msg.srcCommandCount, msg.sendSliceIndex)));
 	}
+
+    /*
+     * Find state info for the specified Motion node.  The sender's slice
+     * number equals the motion node id.
+     */
+	getChunkTransportState(transportStates, msg.sendSliceIndex, &pEntry);
+	Assert(pEntry);
 
     /*
      * Find and verify the CdbProcess node for the sending process.
