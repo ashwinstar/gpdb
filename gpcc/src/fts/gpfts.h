@@ -84,6 +84,7 @@ struct cmdslot_t {
 	    struct {
 		apr_pool_t *pool;
 		gpcc_evqueue_t *outq;
+		struct json_object *reqobj;
 
 		union {
 		    struct {
@@ -164,6 +165,7 @@ struct gpfts_t {
     struct event timer_event;
     config_t     *config;
     apr_uint32_t spin[1];
+    apr_uint32_t net_spin[1];
 };
 
 extern gpfts_t gpfts;

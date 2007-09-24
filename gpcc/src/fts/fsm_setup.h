@@ -238,12 +238,16 @@ static void ha_net_closed(gpcc_ha_t *ha, void *arg)
 {
     hainfo_t *hainfo = (hainfo_t *) arg;
     gpcc_event_t *ev;
-    
+    apr_uint32_t *spin;
+
     if (hainfo->index < 0)
 	return;
 
+    spin = gpcc_spin_secure(gpfts.net_spin);
+    hainfo->ha = 0;
     ev = gpcc_event_alloc(NET_CLOSED_EVENT, gpfts.system_cmdidx, sizeof(int));
     memcpy(ev->edata, &hainfo->index, sizeof(int));
+    spin = gpcc_spin_release(gpfts.net_spin);
     gpcc_evqueue_put(gpfts.evq, ev);
 
 }
@@ -261,20 +265,33 @@ static void ha_net_recv(gpcc_ha_t *ha, gpcc_net_packet_t *packet, void *arg)
 
 }
 
+static apr_status_t hainfo_close(hainfo_t *hainfo)
+{
+    if (hainfo) {
+	hainfo->index = -1;
+	if (hainfo->ha) {
+	    gpcc_ha_close(hainfo->ha);
+	}
+	free(hainfo);    
+    }
+    return 0;
+}
 
 static apr_status_t ha_closed(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     int index;
-    
+    apr_uint32_t *spin;
+
     memcpy(&index, ev->edata, sizeof(int));
     
     if (!cmdslot->u.sys.hainfo || !cmdslot->u.sys.hainfo[index])
 	return 0;
-
+    spin = gpcc_spin_secure(gpfts.net_spin);
     cmdslot->u.sys.hainfo[index]->ha = 0;
     free(cmdslot->u.sys.hainfo[index]);
     cmdslot->u.sys.hainfo[index] = 0;
+    spin = gpcc_spin_release(gpfts.net_spin);
     cmdslot->u.sys.network_failure++;
     return 0;
 }
@@ -285,6 +302,9 @@ static apr_status_t setup_array_connect(gpcc_event_t *ev, void *_cmdslot)
     char addr[128];
     hainfo_t *hainfo;
     int i;
+    apr_uint32_t *spin;
+
+    spin = gpcc_spin_secure(gpfts.net_spin);
 
     if (p->u.sys.hainfo) {
 	free(p->u.sys.hainfo);
@@ -315,6 +335,7 @@ static apr_status_t setup_array_connect(gpcc_event_t *ev, void *_cmdslot)
 	
 	p->u.sys.hainfo[i] = hainfo;
     }
+    spin = gpcc_spin_release(gpfts.net_spin);
 
     if (p->u.sys.request.u.setup.ndisconnected == p->u.sys.nhainfo) {
 	gpcc_event_t *ev = gpcc_event_alloc(SETUP_SSH_EVENT, p->cmdidx, 0);
@@ -330,7 +351,9 @@ static apr_status_t setup_array_cleanup(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     int i;
+    apr_uint32_t *spin;
 
+    spin = gpcc_spin_secure(gpfts.net_spin);
     if (cmdslot->u.sys.hainfo) {
 	for (i = 0 ; i < cmdslot->u.sys.nhainfo ; i++) {
 	    if (cmdslot->u.sys.hainfo[i]) {
@@ -345,7 +368,7 @@ static apr_status_t setup_array_cleanup(gpcc_event_t *ev, void *_cmdslot)
 	free(cmdslot->u.sys.hainfo);
 	cmdslot->u.sys.hainfo = 0;
     }
-
+    spin = gpcc_spin_release(gpfts.net_spin);
     return 0;
 }
 

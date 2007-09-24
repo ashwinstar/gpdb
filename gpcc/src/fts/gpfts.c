@@ -437,6 +437,7 @@ int fts_do(const char *cmd, gpcc_evqueue_t *outq)
 	return APR_EINVAL;
     }
     p->u.sys.request.outq = outq;
+    p->u.sys.request.reqobj = obj;
 
     spin = gpcc_spin_release(gpfts.spin);
 
@@ -461,7 +462,6 @@ int fts_do(const char *cmd, gpcc_evqueue_t *outq)
 	return APR_EINVAL;
     }
     
-    json_object_put(obj);
     gpcc_evqueue_put(gpfts.evq, ev);
 
     return 0;

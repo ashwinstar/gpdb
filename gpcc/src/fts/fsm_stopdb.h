@@ -14,14 +14,18 @@ static apr_status_t stopdb_do(gpcc_event_t *ev, void *_cmdslot)
     int i, idx, e;
     hainfo_t *hainfo;
     struct json_object *obj;
+    gpcc_event_t *evt;
     char *msg;
+    apr_uint32_t *spin;
 
     for (i = 0 ;  i < cmdslot->u.sys.nseginfo ; i++) {
 	idx = cmdslot->u.sys.seginfo[i].haidx;
 	hainfo = cmdslot->u.sys.hainfo[idx];
 	if (!hainfo) {
 	    gpcc_warning(FLINE, "hainfo[%d] not found", idx);
-	    return APR_EINVAL;
+	    evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
+	    gpcc_evqueue_put(gpfts.evq, evt);
+	    return 0;
 	}
 
 	cmdslot->u.sys.request.u.stop.replied[i] = 0;
@@ -30,19 +34,25 @@ static apr_status_t stopdb_do(gpcc_event_t *ev, void *_cmdslot)
 	obj = gpcc_json_segment_request(obj,
 					cmdslot->u.sys.seginfo[i].name,
 					"stop",
-					"",
-					"",
+					gpcc_json_object_get_string(cmdslot->u.sys.request.reqobj, "mode", "immediate"),
+					cmdslot->u.sys.seginfo[i].host,
 					cmdslot->u.sys.seginfo[i].port,
 					cmdslot->u.sys.seginfo[i].dir);
 
 	msg = json_object_to_json_string(obj);
 
-	if (0 != (e = gpcc_ha_send(hainfo->ha, SEGMENT_REQUEST_MSG, msg, strlen(msg) + 1))) {
-	    gpcc_warning(FLINE, "send packet failed");
-	    json_object_put(obj);
-	    return APR_ECONNRESET;
+	spin = gpcc_spin_secure(gpfts.net_spin);
+	if (!hainfo->ha || 0 != (e = gpcc_ha_send(hainfo->ha, SEGMENT_REQUEST_MSG, msg, strlen(msg) + 1))) {
+	    gpcc_warning(FLINE, "send packet to %s failed", hainfo->host);
+	    hainfo_close(hainfo);
+	    cmdslot->u.sys.hainfo[i] = 0;
+	    cmdslot->u.sys.network_failure++;
+	    cmdslot->u.sys.request.u.stop.nreply++;
+	    cmdslot->u.sys.request.u.stop.replied[i]++;
+	    cmdslot->u.sys.request.u.stop.nfailed++;
 	}
-
+	spin = gpcc_spin_release(gpfts.net_spin);
+	
 	json_object_put(obj);
     }
 
@@ -177,9 +187,12 @@ static apr_status_t stopdb_cleanup(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
 
-    if (cmdslot->u.sys.config_json) {
-	json_object_put(cmdslot->u.sys.config_json);
+    cmdslot->u.sys.request.outq = 0;
+    if (cmdslot->u.sys.request.reqobj) {
+	json_object_put(cmdslot->u.sys.request.reqobj);
+	cmdslot->u.sys.request.reqobj = 0;
     }
+
     if (cmdslot->u.sys.request.pool) {
 	apr_pool_destroy(cmdslot->u.sys.request.pool);
 	cmdslot->u.sys.request.pool = 0;

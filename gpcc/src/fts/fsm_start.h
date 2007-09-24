@@ -20,26 +20,39 @@ static apr_status_t start_utility_qd(gpcc_event_t *ev, void *_cmdslot)
     seginfo_t *seginfo;
     gpcc_event_t *evt;
     char *msg;
+    apr_uint32_t *spin;
 
     seginfo = &cmdslot->u.sys.seginfo[0];    
     haidx = seginfo->haidx;
 
     if (!cmdslot->u.sys.hainfo || !cmdslot->u.sys.hainfo[haidx]) {
-	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpfts.evq, evt);
-	return APR_EINVAL;
+	return 0;
     }
 
-    obj = gpcc_json_segment_request(0, seginfo->name, "start", "utility", seginfo->host, seginfo->port, seginfo->dir);    
+    obj = gpcc_json_segment_request(0, 
+				    seginfo->name, 
+				    "start", 
+				    "utility", 
+				    seginfo->host, 
+				    seginfo->port, 
+				    seginfo->dir);    
+
     hainfo = cmdslot->u.sys.hainfo[haidx];
 
     msg = json_object_to_json_string(obj);
-    if (0 != (e = gpcc_ha_send(hainfo->ha, SEGMENT_REQUEST_MSG, msg, strlen(msg) + 1))){
-	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-	gpcc_evqueue_put(gpfts.evq, evt);
-	gpcc_warning(FLINE, "gpcc_ha_send failed");
-    }
 
+    spin = gpcc_spin_secure(gpfts.net_spin);
+    if (!hainfo->ha || 0 != (e = gpcc_ha_send(hainfo->ha, SEGMENT_REQUEST_MSG, msg, strlen(msg) + 1))){
+	gpcc_warning(FLINE, "gpcc_ha_send failed");
+	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
+	gpcc_evqueue_put(gpfts.evq, evt);
+	hainfo_close(hainfo);
+	cmdslot->u.sys.hainfo[haidx] = 0;
+	cmdslot->u.sys.network_failure++;
+    }
+    spin = gpcc_spin_release(gpfts.net_spin);
     json_object_put(obj);
     return 0;
 }
@@ -125,6 +138,7 @@ static apr_status_t start_utility_qd_stop(gpcc_event_t *ev, void *_cmdslot)
     seginfo_t *seginfo;
     gpcc_event_t *evt;
     char *msg;
+    apr_uint32_t *spin;
 
     seginfo = &cmdslot->u.sys.seginfo[0];    
     haidx = seginfo->haidx;
@@ -132,19 +146,30 @@ static apr_status_t start_utility_qd_stop(gpcc_event_t *ev, void *_cmdslot)
     if (!cmdslot->u.sys.hainfo || !cmdslot->u.sys.hainfo[haidx]) {
 	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpfts.evq, evt);
-	return APR_EINVAL;
+	return 0;
     }
 
-    obj = gpcc_json_segment_request(0, seginfo->name, "stop", "immediate", seginfo->host, seginfo->port, seginfo->dir);    
+    obj = gpcc_json_segment_request(0, 
+				    seginfo->name, 
+				    "stop", 
+				    "immediate", 
+				    seginfo->host, 
+				    seginfo->port, 
+				    seginfo->dir);    
     hainfo = cmdslot->u.sys.hainfo[haidx];
 
     msg = json_object_to_json_string(obj);
+    
+    spin = gpcc_spin_secure(gpfts.net_spin);
     if (0 != (e = gpcc_ha_send(hainfo->ha, SEGMENT_REQUEST_MSG, msg, strlen(msg) + 1))){
-	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-	gpcc_evqueue_put(gpfts.evq, evt);
 	gpcc_warning(FLINE, "gpcc_ha_send failed");
+	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
+	gpcc_evqueue_put(gpfts.evq, evt);
+	hainfo_close(hainfo);
+	cmdslot->u.sys.hainfo[haidx] = 0;
+	cmdslot->u.sys.network_failure++;
     }
-
+    spin = gpcc_spin_release(gpfts.net_spin);
     json_object_put(obj);
     return 0;
 }
@@ -212,6 +237,7 @@ static apr_status_t start_qes(gpcc_event_t *ev, void *_cmdslot)
     struct json_object *obj;
     hainfo_t *hainfo;
     char *msg;
+    apr_uint32_t *spin;
 
     if (!cmdslot->u.sys.hainfo) {
 	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
@@ -235,16 +261,27 @@ static apr_status_t start_qes(gpcc_event_t *ev, void *_cmdslot)
 	    break;
 
 	haidx = seginfo->haidx;
-	obj = gpcc_json_segment_request(0, seginfo->name, "start", "normal", seginfo->host, seginfo->port, seginfo->dir);
+	obj = gpcc_json_segment_request(0, 
+					seginfo->name, 
+					"start", 
+					"normal", 
+					seginfo->host, 
+					seginfo->port, 
+					seginfo->dir);
 	hainfo = cmdslot->u.sys.hainfo[haidx];
 
 	msg = json_object_to_json_string(obj);
-	if (0 != (e = gpcc_ha_send(hainfo->ha, SEGMENT_REQUEST_MSG, msg, strlen(msg) + 1))){
+	spin = gpcc_spin_secure(gpfts.net_spin);
+	if (!hainfo->ha || 0 != (e = gpcc_ha_send(hainfo->ha, SEGMENT_REQUEST_MSG, msg, strlen(msg) + 1))){
 	    gpcc_warning(FLINE, "gpcc_ha_send failed");
 	    cmdslot->u.sys.request.u.start.nreply++;
 	    cmdslot->u.sys.request.u.start.nfailed++;
+
+	    hainfo_close(hainfo);
+	    cmdslot->u.sys.hainfo[haidx] = 0;
+	    cmdslot->u.sys.network_failure++;
 	}
-	
+	spin = gpcc_spin_release(gpfts.net_spin);
 	json_object_put(obj);
 
 	cmdslot->u.sys.request.u.start.nrequest++;	
@@ -346,26 +383,39 @@ static apr_status_t start_qd(gpcc_event_t *ev, void *_cmdslot)
     seginfo_t *seginfo;
     gpcc_event_t *evt;
     char *msg;
+    apr_uint32_t *spin;
 
     seginfo = &cmdslot->u.sys.seginfo[0];    
     haidx = seginfo->haidx;
 
     if (!cmdslot->u.sys.hainfo || !cmdslot->u.sys.hainfo[haidx]) {
-	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpfts.evq, evt);
-	return APR_EINVAL;
+	return 0;
     }
 
-    obj = gpcc_json_segment_request(0, seginfo->name, "start", "normal", seginfo->host, seginfo->port, seginfo->dir);    
+    obj = gpcc_json_segment_request(0, 
+				    seginfo->name, 
+				    "start", 
+				    "normal", 
+				    seginfo->host, 
+				    seginfo->port, 
+				    seginfo->dir);    
     hainfo = cmdslot->u.sys.hainfo[haidx];
 
     msg = json_object_to_json_string(obj);
-    if (0 != (e = gpcc_ha_send(hainfo->ha, SEGMENT_REQUEST_MSG, msg, strlen(msg) + 1))){
-	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-	gpcc_evqueue_put(gpfts.evq, evt);
+    spin = gpcc_spin_secure(gpfts.net_spin);
+    if (!hainfo->ha || 0 != (e = gpcc_ha_send(hainfo->ha, SEGMENT_REQUEST_MSG, msg, strlen(msg) + 1))){
 	gpcc_warning(FLINE, "gpcc_ha_send failed");
-    }
+	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
+	gpcc_evqueue_put(gpfts.evq, evt);
 
+	hainfo_close(hainfo);
+	cmdslot->u.sys.hainfo[haidx] = 0;
+	cmdslot->u.sys.network_failure++;
+
+    }
+    spin = gpcc_spin_release(gpfts.net_spin);
     json_object_put(obj);
     return 0;
 }
@@ -432,7 +482,8 @@ static apr_status_t start_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     seginfo_t *seginfo;
     gpcc_event_t *evt;
     char *msg;
-    
+    apr_uint32_t *spin;
+
     idx = cmdslot->u.sys.nseginfo-1;
     if (strstr(cmdslot->u.sys.seginfo[idx].name, "gpdb.seg.m.") == 0) {
 	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
@@ -444,21 +495,31 @@ static apr_status_t start_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     haidx = seginfo->haidx;
 
     if (!cmdslot->u.sys.hainfo || !cmdslot->u.sys.hainfo[haidx]) {
-	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpfts.evq, evt);
-	return APR_EINVAL;
+	return 0;
     }
 
-    obj = gpcc_json_segment_request(0, seginfo->name, "start", "normal", seginfo->host, seginfo->port, seginfo->dir);    
+    obj = gpcc_json_segment_request(0, 
+				    seginfo->name, 
+				    "start", 
+				    "normal", 
+				    seginfo->host, 
+				    seginfo->port, 
+				    seginfo->dir);    
     hainfo = cmdslot->u.sys.hainfo[haidx];
 
     msg = json_object_to_json_string(obj);
-    if (0 != (e = gpcc_ha_send(hainfo->ha, SEGMENT_REQUEST_MSG, msg, strlen(msg) + 1))){
+    spin = gpcc_spin_secure(gpfts.net_spin);
+    if (!hainfo->ha || 0 != (e = gpcc_ha_send(hainfo->ha, SEGMENT_REQUEST_MSG, msg, strlen(msg) + 1))){
+	gpcc_warning(FLINE, "gpcc_ha_send failed");
 	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpfts.evq, evt);
-	gpcc_warning(FLINE, "gpcc_ha_send failed");
+	hainfo_close(hainfo);
+	cmdslot->u.sys.hainfo[haidx] = 0;
+	cmdslot->u.sys.network_failure++;
     }
-
+    spin = gpcc_spin_release(gpfts.net_spin);
     json_object_put(obj);
     return 0;
 }
@@ -556,6 +617,12 @@ static apr_status_t start_failure(gpcc_event_t *ev, void *_cmdslot)
 static apr_status_t start_cleanup(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+
+    cmdslot->u.sys.request.outq = 0;
+    if (cmdslot->u.sys.request.reqobj) {
+	json_object_put(cmdslot->u.sys.request.reqobj);
+	cmdslot->u.sys.request.reqobj = 0;
+    }
 
     if (cmdslot->u.sys.request.pool) {
 	apr_pool_destroy(cmdslot->u.sys.request.pool);
