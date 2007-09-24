@@ -143,6 +143,10 @@ s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY
 			print O "#define HAVE_READLINE_READLINE_H 1\n";
 			print O "#define HAVE_READLINE_HISTORY_H 1\n";
 			print O "#define USE_READLINE 1\n";
+			print O "#define HAVE_RL_COMPLETION_APPEND_CHARACTER 1\n";
+			print O "#define HAVE_RL_COMPLETION_MATCHES 1\n";
+			print O "#define HAVE_RL_FILENAME_COMPLETION_FUNCTION 1\n";
+
 			print O "#define USE_READLINE_STATIC 1\n";
 		}
 
