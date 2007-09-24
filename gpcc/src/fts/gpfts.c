@@ -433,6 +433,7 @@ int fts_do(const char *cmd, gpcc_evqueue_t *outq)
     if (p->u.sys.request.outq) {
 	gpcc_warning(FLINE, "fts is running on something else.");
 	spin = gpcc_spin_release(gpfts.spin);
+	json_object_put(obj);
 	return APR_EINVAL;
     }
     p->u.sys.request.outq = outq;

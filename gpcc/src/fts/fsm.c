@@ -63,6 +63,8 @@ APR_DECLARE(void) fsm_setup(void)
 		 initdb_success, initdb_cleanup, 0);
     gpcc_fsm_put(INITDB_CMDSTATE, FAILURE_EVENT, SYSTEM_READY_CMDSTATE,
 		 initdb_failure, initdb_cleanup, 0);
+    gpcc_fsm_put(INITDB_CMDSTATE, NET_FAILURE_EVENT, SYSTEM_FATAL_CMDSTATE,
+		 initdb_failure, initdb_cleanup, 0);
     gpcc_fsm_put(INITDB_CMDSTATE, NET_CLOSED_EVENT, INITDB_CMDSTATE,
 		 ha_closed, initdb_reply, 0);
 
@@ -76,6 +78,8 @@ APR_DECLARE(void) fsm_setup(void)
     gpcc_fsm_put(STOPDB_CMDSTATE, SUCCESS_EVENT, SYSTEM_READY_CMDSTATE,
 		 stopdb_success, stopdb_cleanup, 0);
     gpcc_fsm_put(STOPDB_CMDSTATE, FAILURE_EVENT, SYSTEM_READY_CMDSTATE,
+		 stopdb_failure, stopdb_cleanup, 0);
+    gpcc_fsm_put(STOPDB_CMDSTATE, NET_FAILURE_EVENT, SYSTEM_FATAL_CMDSTATE,
 		 stopdb_failure, stopdb_cleanup, 0);
     gpcc_fsm_put(STOPDB_CMDSTATE, NET_CLOSED_EVENT, STOPDB_CMDSTATE,
 		 ha_closed, stopdb_reply, 0);
@@ -91,11 +95,14 @@ APR_DECLARE(void) fsm_setup(void)
 		 status_success, status_cleanup, 0);
     gpcc_fsm_put(STATUS_CMDSTATE, FAILURE_EVENT, SYSTEM_READY_CMDSTATE,
 		 status_failure, status_cleanup, 0);
+    gpcc_fsm_put(STATUS_CMDSTATE, NET_FAILURE_EVENT, SYSTEM_FATAL_CMDSTATE,
+		 status_failure, status_cleanup, 0);
     gpcc_fsm_put(STATUS_CMDSTATE, NET_CLOSED_EVENT, STATUS_CMDSTATE,
 		 ha_closed, status_reply, 0);
 
 
     /* start */
+    /* start qd in utility mode */
     gpcc_fsm_put(SYSTEM_READY_CMDSTATE, ARRAY_START_EVENT, START_UTILITY_QD_CMDSTATE,
 		 start_init, start_utility_qd, 0);
     gpcc_fsm_put(START_UTILITY_QD_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, START_UTILITY_QD_CMDSTATE,
@@ -104,34 +111,70 @@ APR_DECLARE(void) fsm_setup(void)
 		 start_gpconf, 0);
     gpcc_fsm_put(START_UTILITY_QD_CMDSTATE, FAILURE_EVENT, SYSTEM_READY_CMDSTATE,
 		 start_failure, start_cleanup, 0);
+    gpcc_fsm_put(START_UTILITY_QD_CMDSTATE, NET_FAILURE_EVENT, SYSTEM_FATAL_CMDSTATE,
+		 start_failure, start_cleanup, 0);
+    gpcc_fsm_put(START_UTILITY_QD_CMDSTATE, NET_CLOSED_EVENT, START_UTILITY_QD_CMDSTATE,
+		 ha_closed, start_utility_qd_reply, 0);
+
+    /* update gp_configuration */
     gpcc_fsm_put(START_GPCONF_CMDSTATE, SUCCESS_EVENT, START_UTILITY_QD_STOP_CMDSTATE,
 		 start_utility_qd_stop, 0);
     gpcc_fsm_put(START_GPCONF_CMDSTATE, FAILURE_EVENT, START_GPCONF_FAILURE_CMDSTATE,
 		 start_utility_qd_stop, 0);
+    gpcc_fsm_put(START_GPCONF_CMDSTATE, NET_CLOSED_EVENT, START_GPCONF_CMDSTATE,
+		 ha_closed, 0);
+
     gpcc_fsm_put(START_GPCONF_FAILURE_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, SYSTEM_READY_CMDSTATE,
 		 start_failure, start_cleanup, 0);
+    gpcc_fsm_put(START_GPCONF_FAILURE_CMDSTATE, NET_FAILURE_EVENT, SYSTEM_FATAL_CMDSTATE,
+		 start_failure, start_cleanup, 0);
+    gpcc_fsm_put(START_GPCONF_FAILURE_CMDSTATE, NET_CLOSED_EVENT, START_GPCONF_FAILURE_CMDSTATE,
+		 ha_closed, start_gpconf_network_closed, 0);
 
+    /* stop qd */
     gpcc_fsm_put(START_UTILITY_QD_STOP_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, START_UTILITY_QD_STOP_CMDSTATE,
 		 start_utility_qd_stop_reply, 0);
     gpcc_fsm_put(START_UTILITY_QD_STOP_CMDSTATE, SUCCESS_EVENT, START_QES_CMDSTATE,
 		 start_qes, 0);
+    gpcc_fsm_put(START_UTILITY_QD_STOP_CMDSTATE, NET_FAILURE_EVENT, SYSTEM_FATAL_CMDSTATE,
+		 start_failure, start_cleanup, 0);
+    gpcc_fsm_put(START_UTILITY_QD_STOP_CMDSTATE, NET_CLOSED_EVENT, START_UTILITY_QD_STOP_CMDSTATE,
+		 ha_closed, start_utility_qd_stop_reply, 0);
+
+    /* start all qes */
     gpcc_fsm_put(START_QES_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, START_QES_CMDSTATE,
 		 start_qe_reply, 0);
     gpcc_fsm_put(START_QES_CMDSTATE, SUCCESS_EVENT, START_QD_CMDSTATE,
 		 start_qd, 0);
     gpcc_fsm_put(START_QES_CMDSTATE, FAILURE_EVENT, SYSTEM_READY_CMDSTATE,
-		 start_failure, start_cleanup, 0);		 
-
+		 start_failure, start_cleanup, 0);
+    gpcc_fsm_put(START_QES_CMDSTATE, NET_FAILURE_EVENT, SYSTEM_FATAL_CMDSTATE,
+		 start_failure, start_cleanup, 0);
+    gpcc_fsm_put(START_QES_CMDSTATE, NET_CLOSED_EVENT, START_QES_CMDSTATE,
+		 start_qe_reply, 0);
+		 
+    /* start qd */
     gpcc_fsm_put(START_QD_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, START_QD_CMDSTATE,
+		 start_qd_reply, 0);
+    gpcc_fsm_put(START_QD_CMDSTATE, NET_CLOSED_EVENT, START_QD_CMDSTATE,
 		 start_qd_reply, 0);
     gpcc_fsm_put(START_QD_CMDSTATE, SUCCESS_EVENT, START_STANDBY_QD_CMDSTATE,
 		 start_standby_qd, 0);
+    gpcc_fsm_put(START_QD_CMDSTATE, FAILURE_EVENT, SYSTEM_READY_CMDSTATE,
+		 start_failure, start_cleanup, 0);
+    gpcc_fsm_put(START_QD_CMDSTATE, NET_FAILURE_EVENT, SYSTEM_FATAL_CMDSTATE,
+		 start_failure, start_cleanup, 0);
+
+    /* start standby qd */
     gpcc_fsm_put(START_STANDBY_QD_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, START_STANDBY_QD_CMDSTATE,
+		 start_standby_qd_reply, 0);
+    gpcc_fsm_put(START_STANDBY_QD_CMDSTATE, NET_CLOSED_EVENT, START_STANDBY_QD_CMDSTATE,
 		 start_standby_qd_reply, 0);
     gpcc_fsm_put(START_STANDBY_QD_CMDSTATE, SUCCESS_EVENT, SYSTEM_READY_CMDSTATE,
 		 start_success, start_cleanup, 0);
     gpcc_fsm_put(START_STANDBY_QD_CMDSTATE, FAILURE_EVENT, SYSTEM_READY_CMDSTATE,
 		 start_failure, start_cleanup, 0);
-		 
+    gpcc_fsm_put(START_STANDBY_QD_CMDSTATE, NET_FAILURE_EVENT, SYSTEM_FATAL_CMDSTATE,
+		 start_failure, start_cleanup, 0);
    
 }

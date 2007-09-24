@@ -79,7 +79,8 @@ struct cmdslot_t {
 	    seginfo_t *seginfo;
 	    int nseginfo;
 	    struct json_object *config_json;
-	    
+	    int network_failure;
+
 	    struct {
 		apr_pool_t *pool;
 		gpcc_evqueue_t *outq;

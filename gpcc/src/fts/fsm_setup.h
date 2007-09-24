@@ -275,7 +275,7 @@ static apr_status_t ha_closed(gpcc_event_t *ev, void *_cmdslot)
     cmdslot->u.sys.hainfo[index]->ha = 0;
     free(cmdslot->u.sys.hainfo[index]);
     cmdslot->u.sys.hainfo[index] = 0;
-
+    cmdslot->u.sys.network_failure++;
     return 0;
 }
 

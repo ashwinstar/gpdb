@@ -73,7 +73,6 @@ static apr_status_t stopdb_reply(gpcc_event_t *ev, void *_cmdslot)
 		gpcc_warning(FLINE, "[Error] segment %s connection reset", cmdslot->u.sys.seginfo[i].name);
 	    }
 	}
-
 	break;
 	}
     case SEGMENT_REPLY_MSG_EVENT:
@@ -116,7 +115,11 @@ static apr_status_t stopdb_reply(gpcc_event_t *ev, void *_cmdslot)
 	    evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
 	    gpcc_evqueue_put(gpfts.evq, evt);
 	} else {
-	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	    if (cmdslot->u.sys.network_failure) {
+		evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
+	    } else {
+		evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	    }
 	    gpcc_evqueue_put(gpfts.evq, evt);
 	}
     }

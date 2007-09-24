@@ -44,7 +44,7 @@ static apr_status_t start_utility_qd(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-static apr_status_t start_utility_qd_reply(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t start_utility_qd_reply_segment_reply(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     gpcc_net_packet_t *pkt;
@@ -75,6 +75,27 @@ static apr_status_t start_utility_qd_reply(gpcc_event_t *ev, void *_cmdslot)
     json_object_put(obj);
     return 0;
 }
+
+static apr_status_t start_utility_qd_reply_net_closed(gpcc_event_t *ev, void *_cmdslot)
+{
+
+    
+    return 0;
+}
+
+static apr_status_t start_utility_qd_reply(gpcc_event_t *ev, void *_cmdslot)
+{
+    switch (ev->etype) {
+    case SEGMENT_REPLY_MSG_EVENT:
+	return start_utility_qd_reply_segment_reply(ev, _cmdslot);
+    case NET_CLOSED_EVENT:
+	return start_utility_qd_reply_net_closed(ev, _cmdslot);
+    default:
+	break;
+    }
+    return 0;
+}
+
 
 static apr_status_t start_gpconf(gpcc_event_t *ev, void *_cmdslot)
 {
@@ -129,6 +150,12 @@ static apr_status_t start_utility_qd_stop(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
+
+static apr_status_t start_gpconf_network_closed(gpcc_event_t *ev, void *_cmdslot)
+{
+
+    return 0;
+}
 
 static apr_status_t start_utility_qd_stop_reply(gpcc_event_t *ev, void *_cmdslot)
 {
