@@ -78,6 +78,7 @@
 #include "cdb/cdbcat.h"
 #include "cdb/cdbrelsize.h"
 #include "cdb/cdboidsync.h"
+#include "cdb/cdbsreh.h"
 
 
 
@@ -797,14 +798,9 @@ extern void	DefineExternalRelation(CreateExternalStmt *stmt)
 							"dropped.")));
 		
 		if(singlerowerrorDesc->errtable)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("Error tables are not yet supported.")));
-		
-			
-		/* TODO: verify and/or create the error table is requested */
-		fmtErrTblOid = InvalidOid; /* for now, pretent like no err tbl was requested */
-		
+			fmtErrTblOid = RangeVarGetRelid(singlerowerrorDesc->errtable, true);
+		else
+			fmtErrTblOid = InvalidOid; /* no err tbl was requested */			
 	}
 		
 		
@@ -827,6 +823,24 @@ extern void	DefineExternalRelation(CreateExternalStmt *stmt)
 						  rejectlimit,
 						  rejectlimittype,
 						  fmtErrTblOid);
+	
+	/*
+	 * record a dependency between the external table and its error table
+	 */
+	/* if(fmtErrTblOid != InvalidOid)
+	{
+		ObjectAddress	myself,		
+						referenced; 
+		
+		myself.classId = RelationRelationId;
+		myself.objectId = extRelOid;
+		myself.objectSubId = 0;
+		referenced.classId = RelationRelationId;
+		referenced.objectId = fmtErrTblOid;
+		referenced.objectSubId = 0;
+		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+
+	}*/
 }
 
 /*

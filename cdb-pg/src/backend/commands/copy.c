@@ -565,7 +565,7 @@ DoCopy(const CopyStmt *stmt)
 {		
 	CopyState	cstate;
 	bool		is_from = stmt->is_from;
-	bool		pipe = (stmt->filename == NULL);
+	bool		pipe = (stmt->filename == NULL || Gp_role == GP_ROLE_EXECUTE);
 	List	   *attnamelist = stmt->attlist;
 	List	   *force_quote = NIL;
 	List	   *force_notnull = NIL;
@@ -724,9 +724,6 @@ DoCopy(const CopyStmt *stmt)
 		if (sreh->errtable)
 		{
 			cstate->errMode = SREH_LOG;
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_FEATURE_NOT_YET),
-					 errmsg("Error tables are not yet supported")));			
 		}
 		else
 		{
@@ -744,7 +741,9 @@ DoCopy(const CopyStmt *stmt)
 					 errmsg("Segment reject limit in percentage is not yet supported")));			
 		
 	
-		cstate->cdbsreh = makeCdbSreh(sreh->is_keep, sreh->rejectlimit, sreh->is_limit_in_rows);
+		cstate->cdbsreh = makeCdbSreh(sreh->is_keep, sreh->rejectlimit, 
+									  sreh->is_limit_in_rows, sreh->errtable,
+									  stmt->filename, stmt->relation->relname);
 	}
 	else
 	{
@@ -1062,7 +1061,7 @@ DoCopy(const CopyStmt *stmt)
 	cstate->line_buf_converted = (Gp_role == GP_ROLE_EXECUTE ? true : false);
 
 	cstate->copy_dest = COPY_FILE;		/* default */
-	cstate->filename = stmt->filename;
+	cstate->filename = (Gp_role == GP_ROLE_EXECUTE ? NULL : stmt->filename); /* QE COPY always uses STDIN */
 	cstate->copy_file = NULL;
 	cstate->fe_msgbuf = NULL;
 	cstate->fe_eof = false;
@@ -1165,6 +1164,10 @@ DoCopy(const CopyStmt *stmt)
 		ExecutorEnd(cstate->queryDesc);
 		FreeQueryDesc(cstate->queryDesc);
 	}
+	
+	/* Clean up single row error handling related memory */
+	if(cstate->cdbsreh)
+		destroyCdbSreh(cstate->cdbsreh);
 	
 	/* Clean up storage (probably not really necessary) */
 	processed = cstate->processed;
@@ -1972,15 +1975,65 @@ if(cstate->errMode == ALL_OR_NOTHING) \
 	/* re-throw error and abort */ \
 	if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) \
 		cdbCopyEnd(cdbCopy); \
-			PG_RE_THROW(); \
+	PG_RE_THROW(); \
 } \
 else \
 { \
-	/* SREH - release error state */ \
+	/* SREH - release error state and handle error */ \
+\
+	ErrorData	*edata; \
+	MemoryContext oldcontext;\
+	bool	should_free = false; \
 	cur_row_rejected = true; \
-		if(!elog_dismiss(DEBUG5)) \
-			PG_RE_THROW(); /* <-- hope to never get here! */ \
-				HandleSingleRowError(cstate->cdbsreh); \
+\
+	/* save a copy of the error info */ \
+	oldcontext = MemoryContextSwitchTo(cstate->cdbsreh->badrowcontext);\
+	edata = CopyErrorData();\
+	MemoryContextSwitchTo(oldcontext);\
+\
+	if(!elog_dismiss(DEBUG5)) \
+		PG_RE_THROW(); /* <-- hope to never get here! */ \
+\
+	if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)\
+	{\
+		/* count this row in total rows processed on QD */ \
+		cstate->processed++; \
+\
+		Insist(cstate->err_loc_type == ROWNUM_ORIGINAL);\
+		cstate->cdbsreh->rawdata = (char *) palloc(strlen(cstate->line_buf.data) * \
+												   sizeof(char) + 1 + 24); \
+\
+		should_free = true; \
+		sprintf(cstate->cdbsreh->rawdata, "%d%c%s", \
+			    original_lineno_for_qe, \
+				ORIGINAL_LINENO_DELIM, \
+				cstate->line_buf.data);	\
+	}\
+	else\
+	{\
+		/* truncate trailing eol chars if we need to store this row in errtbl */ \
+		if(cstate->cdbsreh->errtbl) \
+			truncateEol(&cstate->line_buf, cstate->eol_type); \
+\
+		if(Gp_role == GP_ROLE_EXECUTE)\
+		{\
+			/* if line has embedded rownum, update the cursor to the pos right after */ \
+			Insist(cstate->err_loc_type == ROWNUM_EMBEDDED);\
+			cstate->line_buf.cursor = 0;\
+			cstate->cur_lineno = CopyExtractLineNum(cstate); \
+		}\
+\
+		cstate->cdbsreh->rawdata = cstate->line_buf.data + cstate->line_buf.cursor; \
+	}\
+\
+	cstate->cdbsreh->is_server_enc = cstate->line_buf_converted; \
+	cstate->cdbsreh->linenumber = cstate->cur_lineno; \
+	cstate->cdbsreh->errmsg = edata->message; \
+\
+	HandleSingleRowError(cstate->cdbsreh); \
+\
+	if(should_free) \
+		pfree(cstate->cdbsreh->rawdata); \
 }
 
 /*
@@ -2320,7 +2373,18 @@ CopyFromDispatch(CopyState cstate)
 		appendStringInfo(&cdbcopy_cmd, ")");
 	}
 	
-	appendStringInfo(&cdbcopy_cmd, " FROM STDIN WITH");
+	/* 
+	 * NOTE: we used to always pass STDIN here to the QEs. But since we want
+	 * the QEs to know the original file name for recording it in an error table
+	 * (if they use one) we actually pass the filename here, and in the QE COPY
+	 * we get it, save it, and then always revert back to actually using STDIN.
+	 * (if we originally use STDIN we just pass it along and record that in the
+	 * error table).
+	 */
+	if(cstate->filename)		
+		appendStringInfo(&cdbcopy_cmd, " FROM '%s' WITH", cstate->filename);
+	else
+		appendStringInfo(&cdbcopy_cmd, " FROM STDIN WITH");
 
 	if (cstate->oids)
 		appendStringInfo(&cdbcopy_cmd, " OIDS");
@@ -2353,7 +2417,9 @@ CopyFromDispatch(CopyState cstate)
 	{
 		if (cstate->errMode == SREH_LOG)
 		{
-			/* TODO: add LOG ERROR INTO clause when error tables are enabled */
+			appendStringInfo(&cdbcopy_cmd, " LOG ERRORS INTO %s.%s",
+							 quote_identifier(get_namespace_name(RelationGetNamespace(cstate->cdbsreh->errtbl))),
+							 quote_identifier(RelationGetRelationName(cstate->cdbsreh->errtbl)));
 		}
 		
 		appendStringInfo(&cdbcopy_cmd, " SEGMENT REJECT LIMIT %d %s", 
@@ -3236,13 +3302,9 @@ CopyFromDispatch(CopyState cstate)
 	{
 		int total_rejected = 0;
 		
-		/* 
-		 * cstate->processed holds the number of rows *successfully* processed
-		 * by QD COPY. Subtract total rejected by QE COPY and get total loaded.
-		 */
-		cstate->processed -= total_rejeted_from_qes;
-		
 		total_rejected = cstate->cdbsreh->rejectcount + total_rejeted_from_qes;
+		cstate->processed -= total_rejected;
+		
 		ReportSrehResults(cstate->cdbsreh, total_rejected);
 	}
 
@@ -3322,7 +3384,7 @@ CopyFrom(CopyState cstate)
 	bool		no_more_data;
 	ListCell   *cur;
 	bool		cur_row_rejected = false;
-
+	int			original_lineno_for_qe = 0; /* keep compiler happy (var referenced by macro) */
 	CdbCopy    *cdbCopy = NULL; /* never used... for compiling COPY_HANDLE_ERROR */
 
 
@@ -3605,13 +3667,29 @@ CopyFrom(CopyState cstate)
 												cstate->line_buf.len, 
 												true /* don't ereport */))
 							{
-								/* invalid server encoding. reconstruct QD error */
-								cstate->line_buf_converted = false;
-								(void) pg_client_to_server(cstate->line_buf.data,
-																   cstate->line_buf.len);
+								PG_TRY();
+								{
+									/* invalid server encoding. reconstruct QD error */
+									cstate->line_buf_converted = false;
+									(void) pg_client_to_server(cstate->line_buf.data,
+																	   cstate->line_buf.len);
+									
+									/* previous statement MUST report an error! */
+									Assert(false);
+								}
+								PG_CATCH();
+								{
+									/* got here? encoding conversion/check error occured */
+									COPY_HANDLE_ERROR;
+								}
+								PG_END_TRY();					
 								
-								/* previous statement MUST report an error! */
-								Assert(false); 
+								if(cur_row_rejected)
+								{
+									IF_REJECT_LIMIT_REACHED_ABORT;
+									QE_GOTO_NEXT_ROW;
+								}
+								
 							}
 						}
 					}
@@ -3741,6 +3819,9 @@ CopyFrom(CopyState cstate)
 								COPY_HANDLE_ERROR;
 							}
 							PG_END_TRY();
+							
+							if(cur_row_rejected)
+								break; /* get out of loop, don't parse next attributes */
 														
 							nulls[m] = ' ';
 							cstate->cur_attname = NULL;

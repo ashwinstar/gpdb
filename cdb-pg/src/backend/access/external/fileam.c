@@ -44,7 +44,9 @@
 #include "commands/copy.h"
 #include "utils/guc.h"
 #include "utils/builtins.h"
+#include "nodes/makefuncs.h"
 #include "cdb/cdbvars.h"
+
 
 
 typedef struct extvar_t extvar_t;
@@ -262,12 +264,18 @@ file_endscan(FileScanDesc scan)
     MemoryContextDelete(scan->fs_pstate->rowcontext);
     
 	/*
-	 * if SREH was active, send a libpq message to QD with num of rows 
-	 * rejected in this segment
+	 * if SREH was active:
+	 * 1) QEs: send a libpq message to QD with num of rows rejected in this segment
+	 * 2) Free SREH resources (includes closeing the error table if used).
 	 */
-	if(scan->fs_pstate->errMode != ALL_OR_NOTHING && Gp_role == GP_ROLE_EXECUTE)
-		SendNumRowsRejected(scan->fs_pstate->cdbsreh->rejectcount);
-	
+	if(scan->fs_pstate->errMode != ALL_OR_NOTHING)
+	{
+		if(Gp_role == GP_ROLE_EXECUTE)
+			SendNumRowsRejected(scan->fs_pstate->cdbsreh->rejectcount);
+		
+		destroyCdbSreh(scan->fs_pstate->cdbsreh);
+	}	
+
 	/*
 	 * free parse state memory
 	 */
@@ -374,9 +382,26 @@ if(pstate->errMode == ALL_OR_NOTHING) \
 else \
 { \
 	/* SREH - release error state */ \
+\
+	ErrorData	*edata; \
+	MemoryContext oldcontext;\
+\
 	cur_row_rejected = true; \
+\
+	/* save a copy of the error info */ \
+	oldcontext = MemoryContextSwitchTo(pstate->cdbsreh->badrowcontext);\
+	edata = CopyErrorData();\
+ 	MemoryContextSwitchTo(oldcontext);\
+\
 	if(!elog_dismiss(DEBUG5)) \
 		PG_RE_THROW(); /* <-- hope to never get here! */ \
+\
+	truncateEol(&pstate->line_buf, pstate->eol_type); \
+	pstate->cdbsreh->rawdata = pstate->line_buf.data; \
+	pstate->cdbsreh->is_server_enc = pstate->line_buf_converted; \
+	pstate->cdbsreh->linenumber = pstate->cur_lineno; \
+	pstate->cdbsreh->errmsg = edata->message; \
+\
 	HandleSingleRowError(pstate->cdbsreh); \
 }
 
@@ -740,17 +765,43 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 	}
 	else
 	{
-		/* Single row error handling */
-		pstate->cdbsreh = makeCdbSreh(false, rejectlimit, islimitinrows);
+		RangeVar *errtbl_rv;
 		
 		/* select the SREH mode */
 		if(fmterrtbl == InvalidOid)
-			pstate->errMode = SREH_IGNORE; /* no error table */
+		{
+			/* no error table */
+			pstate->errMode = SREH_IGNORE; 
+			errtbl_rv = NULL;
+		}
 		else
-			pstate->errMode = SREH_LOG; /* with error table */
+		{
+			/* with error table */
+			pstate->errMode = SREH_LOG; 
+			errtbl_rv = makeRangeVar(get_namespace_name(get_rel_namespace(fmterrtbl)),
+									 get_rel_name(fmterrtbl));
+			
+			
+			/* bummer... a non writer gang can't write to an error table! */
+			if(!Gp_is_writer && Gp_role != GP_ROLE_DISPATCH)
+				ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET),
+								errmsg("Error tables can not yet be used in queries "
+									   "with more than one table in the FROM clause. "
+									   "You can use the same query with single row "
+									   "error handling by redefining the external " 
+									   "table without an error table "
+									   )));
+		}
 		
+		/* Single row error handling */
+		pstate->cdbsreh = makeCdbSreh(false, 
+									  rejectlimit, 
+									  islimitinrows, 
+									  errtbl_rv, 
+									  pstate->filename,
+									  (char *)pstate->cur_relname);
 	}
-		
+			
 	initStringInfo(&pstate->attribute_buf);
 	initStringInfo(&pstate->line_buf);
 

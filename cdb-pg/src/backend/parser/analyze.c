@@ -46,6 +46,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
 #include "cdb/cdbhash.h"
+#include "cdb/cdbsreh.h"
 
 /* State shared by transformCreateSchemaStmt and its subroutines */
 typedef struct
@@ -168,6 +169,8 @@ static bool check_parameter_resolution_walker(Node *node,
 								check_parameter_resolution_context *context);
 
 static void setQryDistributionPolicy(SelectStmt *stmt, Query *qry);
+static void transformSingleRowErrorHandling(ParseState *pstate, CreateStmtContext *cxt,
+											SingleRowErrorDesc *sreh);
 
 /*
  * parse_analyze
@@ -376,6 +379,22 @@ transformStmt(ParseState *pstate, Node *parseTree,
 			{
 				CopyStmt   *n = (CopyStmt *) parseTree;
 
+				/*
+				 * Check if we need to create an error table. If so, add it to the 
+				 * before list.
+				 */
+				if(n->sreh && ((SingleRowErrorDesc *)n->sreh)->errtable)
+				{					
+					CreateStmtContext cxt;
+					cxt.blist = NIL;
+					cxt.alist = NIL;
+
+					
+					transformSingleRowErrorHandling(pstate, &cxt,
+													(SingleRowErrorDesc *)n->sreh);
+					*extras_before = list_concat(*extras_before, cxt.blist);
+				}
+				
 				result = makeNode(Query);
 				result->commandType = CMD_UTILITY;
 				if (n->query)
@@ -1155,6 +1174,14 @@ transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
 				break;
 		}
 	}
+	
+	/*
+	 * Check if we need to create an error table. If so, add it to the 
+	 * before list.
+	 */
+	if(stmt->sreh && ((SingleRowErrorDesc *)stmt->sreh)->errtable)
+		transformSingleRowErrorHandling(pstate, &cxt,
+										(SingleRowErrorDesc *) stmt->sreh);
 	
 	Assert(cxt.ckconstraints == NIL);
 	Assert(cxt.fkconstraints == NIL);
@@ -5725,3 +5752,128 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 			qry->intoPolicy = policy;
 	}
 }
+
+/*
+ * transformSingleRowErrorHandling
+ *
+ * If Single row error handling was specified with an error table, we first
+ * check if a table with the same name already exists. If yes, we verify that
+ * it has the correct pre-defined error table metadata format (and throw an
+ * error is it doesn't). If such a table doesn't exist, we add a CREATE TABLE
+ * statement to the before list of the CREATE EXTERNAL TABLE so that it will
+ * be created before the external table.
+ */
+static void
+transformSingleRowErrorHandling(ParseState *pstate, CreateStmtContext *cxt,
+								SingleRowErrorDesc *sreh)
+{
+	
+	/* check if error relation exists already */
+	Oid errreloid = RangeVarGetRelid(sreh->errtable, true);
+	bool errrelexists = OidIsValid(errreloid);
+	
+	/*
+	 * auto-generate a new error table or verify an existing one
+	 */
+	if(errrelexists)
+	{
+		/* 
+		 * this table already exists in the database. Verify that specified 
+		 * table is a valid error table 
+		 */
+		
+		Relation rel;
+				
+		rel = heap_openrv(sreh->errtable, AccessShareLock);
+		ValidateErrorTableMetaData(rel);
+		relation_close(rel, AccessShareLock);
+	}
+	else
+	{
+		/* 
+		 * no such table. auto create it by adding a CREATE TABLE <errortable> 
+		 * to the before list 
+		 */
+
+		CreateStmt *createStmt;
+		List	   *attrList;
+		int			i = 0;
+
+		ereport(NOTICE, 
+				(errmsg("Error table \"%s\" does not exist. Auto generating an "
+						"error table with the same name", sreh->errtable->relname)));
+		createStmt = makeNode(CreateStmt);
+		
+		/*
+		 * create a list of ColumnDef nodes based on the names and types of the
+		 * per-defined error table columns
+		 */
+		attrList = NIL;
+		
+		
+		for (i = 1; i <= NUM_ERRORTABLE_ATTR; i++)
+		{
+			ColumnDef  *coldef = makeNode(ColumnDef);
+			
+			coldef->inhcount = 0;
+			coldef->is_local = true;
+			coldef->is_not_null = false;
+			coldef->raw_default = NULL;
+			coldef->cooked_default = NULL;
+			coldef->constraints = NIL;
+			
+			switch (i)
+			{
+				case errtable_cmdtime:
+					coldef->typname = makeTypeNameFromOid(TIMESTAMPTZOID, -1);
+					coldef->colname = "cmdtime";
+					break;
+				case errtable_relname:
+					coldef->typname = makeTypeNameFromOid(TEXTOID, -1);
+					coldef->colname = "relname";
+					break;
+				case errtable_filename:
+					coldef->typname = makeTypeNameFromOid(TEXTOID, -1);
+					coldef->colname = "filename";
+					break;
+				case errtable_linenum:
+					coldef->typname = makeTypeNameFromOid(INT4OID, -1);
+					coldef->colname = "linenum";
+					break;
+				case errtable_bytenum:
+					coldef->typname = makeTypeNameFromOid(INT4OID, -1);
+					coldef->colname = "bytenum";
+					break;
+				case errtable_errmsg:
+					coldef->typname = makeTypeNameFromOid(TEXTOID, -1);
+					coldef->colname = "errmsg";
+					break;
+				case errtable_rawdata:
+					coldef->typname = makeTypeNameFromOid(TEXTOID, -1);
+					coldef->colname = "rawdata";
+					break;
+				case errtable_rawbytes:
+					coldef->typname = makeTypeNameFromOid(BYTEAOID, -1);
+					coldef->colname = "rawbytes";
+					break;
+			}
+			attrList = lappend(attrList, coldef);
+		}
+		
+		createStmt->relation = sreh->errtable;
+		createStmt->tableElts = attrList;
+		createStmt->inhRelations = NIL;
+		createStmt->constraints = NIL;
+		createStmt->options = NIL;
+		createStmt->oncommit = ONCOMMIT_NOOP;
+		createStmt->tablespacename = NULL;
+		createStmt->relKind = RELKIND_RELATION;
+		createStmt->distributedBy = list_make1(NULL); /* DISTRIBUTED RANDOMLY */
+		
+		
+		cxt->blist = lappend(cxt->blist, createStmt);
+		
+	}
+	
+}
+
