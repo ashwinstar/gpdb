@@ -202,7 +202,7 @@ DATA(insert ( 2158	float8_accum	float8_decum float8_amalg	float8_demalg float8_s
 DATA(insert ( 2159	numeric_accum	numeric_decum numeric_amalg	numeric_demalg numeric_stddev_samp	0	1231	"{0,0,0}" ));
 
 /* SQL2003 binary regression aggregates */
-DATA(insert ( 2818	int8inc_float8_float8	- -					- -							0	20		"0" ));
+DATA(insert ( 2818	int8inc_float8_float8	- int8pl					- -							0	20		"0" ));
 DATA(insert ( 2819	float8_regr_accum		- float8_regr_amalg	- float8_regr_sxx			0	1022	"{0,0,0,0,0,0}" ));
 DATA(insert ( 2820	float8_regr_accum		- float8_regr_amalg	- float8_regr_syy			0	1022	"{0,0,0,0,0,0}" ));
 DATA(insert ( 2821	float8_regr_accum		- float8_regr_amalg	- float8_regr_sxy			0	1022	"{0,0,0,0,0,0}" ));
