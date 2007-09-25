@@ -757,7 +757,7 @@ typedef enum NUMERIC_FUNC_ENUM
 } NUMERIC_FUNC_ENUM;
 
 /* Numeric function take on arg to produce result */
-static inline Datum numeric_1_func(Datum d0, NUMERIC_FUNC_ENUM f)
+static Datum numeric_1_func(Datum d0, NUMERIC_FUNC_ENUM f)
 {
 	NumericVar	arg;
 	Numeric		res;
@@ -875,7 +875,7 @@ static inline Datum numeric_1_func(Datum d0, NUMERIC_FUNC_ENUM f)
 }
 
 /* Numeric functions that take 2 numeric to produce a result */
-static inline Datum numeric_2_func(Datum d0, Datum d1, NUMERIC_FUNC_ENUM f)
+static Datum numeric_2_func(Datum d0, Datum d1, NUMERIC_FUNC_ENUM f)
 {
 	NumericVar	arg0;
 	NumericVar	arg1;
@@ -1800,7 +1800,7 @@ static inline Datum num_conv_from(Datum d, NUMERIC_FUNC_ENUM f)
 static inline Datum num_conv_to(Datum d0, NUMERIC_FUNC_ENUM f, const char* typestr)
 {
 	NumericVar	arg;
-	Datum res;
+	Datum res = 0;
 
 	char *p0; void *tofree0; int len0;
 	NumericDataNaked *num0;
@@ -1832,7 +1832,7 @@ static inline Datum num_conv_to(Datum d0, NUMERIC_FUNC_ENUM f, const char* types
 		case NUMERIC_F_TO_INT4:
 		case NUMERIC_F_TO_INT2:
 			{
-				int64 ival;
+				int64 ival = 0;
 				bool fOK = numericvar_to_int8(&arg, &ival);
 				if(fOK)
 				{
