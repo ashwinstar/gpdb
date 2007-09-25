@@ -230,7 +230,7 @@ static void net_recv_cb(gpcc_net_conn_t conn, void* arg)
 #endif
 
 /* callback from gpcc_net. this runs in the network thread */
-static void time_tick_cb(apr_time_t now)
+void time_tick_cb(apr_time_t now)
 {
     apr_uint32_t *spin;
     cmdslot_t* p = &gpfts.cmdslot[0];
@@ -267,16 +267,17 @@ static void * APR_THREAD_FUNC fts_thread_run(apr_thread_t *thread, void *arg)
 	if (ev) 
 	    gpcc_event_free(ev);
 
+	spin = gpcc_spin_release(gpfts.spin);
+
 	while ((ev = gpcc_evqueue_get(gpfts.evq)) == 0) {
 	    break;
 	}
 	
+	spin = gpcc_spin_secure(gpfts.spin);
+
 	if (ev == 0) {
 	    continue;
 	}
-
-	spin = gpcc_spin_release(gpfts.spin);
-	spin = gpcc_spin_secure(gpfts.spin);
 
 	/* map the cmdidx */
 	if (ev->cmdidx == 0) 	/* artificially match 0 to system_cmdidx */
