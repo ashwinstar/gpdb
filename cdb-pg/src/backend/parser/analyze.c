@@ -172,6 +172,12 @@ static void setQryDistributionPolicy(SelectStmt *stmt, Query *qry);
 static void transformSingleRowErrorHandling(ParseState *pstate, CreateStmtContext *cxt,
 											SingleRowErrorDesc *sreh);
 
+static RuleStmt *make_partition_rules(ParseState *pstate,
+		 CreateStmtContext *cxt, CreateStmt *stmt, 
+		 Node *partitionBy, PartitionElem *pElem,
+ 		 char *at_depth);
+
+
 /*
  * parse_analyze
  *		Analyze a raw parse tree and transform it to Query form.
@@ -2537,6 +2543,113 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 
 }
 
+static RuleStmt *make_partition_rules(ParseState *pstate,
+		 CreateStmtContext *cxt, CreateStmt *stmt, 
+		 Node *partitionBy, PartitionElem *pElem,
+ 		 char  *at_depth
+		)
+{
+	PartitionBy			*pBy    = (PartitionBy *)partitionBy;
+	PartitionBoundSpec	*pBSpec = NULL;
+
+	if (!pElem)
+		return NULL;
+
+	pBSpec = (PartitionBoundSpec *)pElem->boundSpec;
+
+	if (pBy->partType == PARTTYP_LIST)	
+	{
+		Node			*pIndAND = NULL;
+		Node			*pIndOR  = NULL;
+		List			*colElts = pBy->keys;
+		ListCell		*lc      = NULL;
+		List			*valElts = pBSpec->partStart;
+		ListCell		*lc_val  = NULL;
+
+		Assert(pBSpec->partStart);
+
+		lc_val = list_head(valElts);
+
+		/* number of values is a multiple of the number of columns */
+
+		for ( ; lc_val ; ) /* for all vals */
+		{
+			lc = list_head(colElts);
+			pIndAND = NULL;
+
+			for (; lc; lc = lnext(lc)) /* for all cols */
+			{
+				Node *pCol = lfirst(lc);
+				Node *pEq  = NULL;
+
+				if (NULL == lc_val)
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("Mismatched columns for VALUES%s",
+									at_depth),
+							 parser_errposition(pstate, pElem->location)));
+				}
+
+				/* equality expression: column = value */
+				pEq = (Node *) makeSimpleA_Expr(AEXPR_OP, "=", 
+												pCol,
+												lfirst(lc_val),
+												-1 /* position */);
+
+				/* for multiple cols - AND the matches eg: 
+				   (col = value) AND (col = value) 
+				*/
+				if (pIndAND)
+				{
+					pIndAND =
+						(Node *) makeA_Expr(AEXPR_AND, NIL, 
+											pIndAND,
+											pEq,
+											-1 /* position */);
+											}
+				else
+				{
+					pIndAND = pEq;
+				}
+
+				lc_val = lnext(lc_val);
+			} /* end for all cols */
+
+			/* if more VALUES than columns, then multiple matching
+			   conditions, so OR them eg: 
+			  
+			   ((col = value) AND (col = value)) OR
+			   ((col = value) AND (col = value)) OR
+			   ((col = value) AND (col = value))
+			   
+			*/
+
+			if (pIndOR)
+			{
+				pIndOR =
+					(Node *) makeA_Expr(AEXPR_OR, NIL, 
+										pIndOR,
+										pIndAND,
+										-1 /* position */);
+			}
+			else
+			{
+				pIndOR = pIndAND;
+			}
+
+		} /* end for all vals */
+
+		
+
+	} /* end if LIST */
+
+
+	return NULL;
+}
+
+
+
 /*
 
 transformPartitionBy
@@ -2596,7 +2709,7 @@ static void transformPartitionBy(ParseState *pstate,
 	int		  	partDepth;	/* depth (starting at zero, but display at 1) */  
 	char	  	depthstr[4];
 	char	   *at_depth = "";
-	char	  	at_buf[40];
+	char	  	at_buf[NAMEDATALEN];
 	int		  	partNumber = -1;	
 	int		  	ii;
 	List	   *partElts;
@@ -2617,7 +2730,8 @@ static void transformPartitionBy(ParseState *pstate,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("Too many subpartitions: partition depth > 99"
-						 )));
+						 ),
+				 parser_errposition(pstate, pBy->location)));
 	}
 	snprintf(depthstr, sizeof(depthstr), "%d", partDepth);
 
@@ -2660,8 +2774,8 @@ static void transformPartitionBy(ParseState *pstate,
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 					 errmsg("PARTITIONS clause requires a HASH partition%s",
-						at_depth
-							 )));
+							at_depth),
+					 parser_errposition(pstate, pBy->location)));
 		}
 
 		if (partNumber < 1)
@@ -2669,18 +2783,20 @@ static void transformPartitionBy(ParseState *pstate,
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 					 errmsg("PARTITIONS number cannot be less than one%s",
-						at_depth
-							 )));
+							at_depth),
+					 parser_errposition(pstate, pBy->location)));
 		}
 	} /* end partitions clause */
 
 	/* find number of partitions in the specification, and match it up
 	 * with the PARTITIONS clause if partitioned by HASH, and
-	 * determine the subpartition specifications 
+	 * determine the subpartition specifications.  Perform basic error
+	 * checking on boundary specifications.
 	 */
 	if (pBy->partSpec)
 	{
-		PartitionSpec	*pSpec   = (PartitionSpec *)pBy->partSpec;
+		PartitionSpec	*pSpec    = (PartitionSpec *)pBy->partSpec;
+		char			 namBuf[NAMEDATALEN];
 
 		/* NOTE: a top-level PartitionSpec never has a subSpec, but a
 		 * PartitionSpec derived from an inline SubPartition
@@ -2691,9 +2807,127 @@ static void transformPartitionBy(ParseState *pstate,
 
 		partElts = pSpec->partElem;
 
+		/* XXX XXX: should check for duplicate names as well !! */
+
 		foreach(lc, partElts)
 		{
+			PartitionElem *pElem = (PartitionElem *)lfirst(lc);
+			PartitionBoundSpec *pBSpec = NULL;
+
 			numElts++;
+
+			if (pElem)
+			{
+				pBSpec = (PartitionBoundSpec *)pElem->boundSpec;
+
+				if (pElem->partName)
+				{
+					snprintf(namBuf, sizeof(namBuf), " \"%s\"", 
+							 strVal(pElem->partName));
+				}
+				else
+				{
+					snprintf(namBuf, sizeof(namBuf), " number %d", 
+							 numElts);
+				}
+
+			}
+			else
+			{
+				snprintf(namBuf, sizeof(namBuf), " number %d", 
+							 numElts);
+			}
+
+			switch (pBy->partType)
+			{
+				case PARTTYP_HASH:
+					if (pBSpec)
+					{
+						char *specTName = "RANGE";
+
+						if (pBSpec->partType == PARTTYP_LIST)
+						{
+								specTName = "LIST";
+						}
+
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("Invalid use of %s boundary specification in partition%s of type HASH%s",
+										specTName,
+										namBuf,
+										at_depth),
+								 parser_errposition(pstate, pBSpec->location)));
+					}
+					break;
+				case PARTTYP_RANGE:
+					if (pBSpec)
+					{
+						char *specTName = "LIST";
+
+						if (pBSpec->partType == PARTTYP_LIST)
+						{
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+									 errmsg("Invalid use of %s boundary specification in partition%s of type RANGE%s",
+											specTName,
+											namBuf,
+											at_depth),
+									 parser_errposition(pstate, pBSpec->location)));
+							
+						}
+					}
+					else
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("Missing boundary specification in partition%s of type RANGE%s",
+										namBuf,
+										at_depth),
+									 parser_errposition(pstate, pElem->location)));
+
+					}
+
+					break;
+
+				case PARTTYP_LIST:
+					if (pBSpec)
+					{
+						char *specTName = "RANGE";
+
+						if (pBSpec->partType == PARTTYP_RANGE)
+						{
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+									 errmsg("Invalid use of %s boundary specification in partition%s of type LIST%s",
+											specTName,
+											namBuf,
+											at_depth),
+									 parser_errposition(pstate, pBSpec->location)));
+							
+						}
+					}
+					else
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("Missing boundary specification in partition%s of type LIST%s",
+										namBuf,
+										at_depth),
+								 parser_errposition(pstate, pElem->location)));
+
+					}
+					break;
+
+				case PARTTYP_REFERENCE: /* for future use... */
+				default:
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("Unknown partition type%s",
+									at_depth),
+									 parser_errposition(pstate, pBy->location)));
+					break;
+
+			}
 		}
 
 		if ((partNumber > -1) && (numElts != partNumber))
@@ -2702,8 +2936,8 @@ static void transformPartitionBy(ParseState *pstate,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 					 errmsg(
 							 "PARTITIONS \"%d\" must match \"%d\" elements in specification%s",
-							 partNumber, numElts, at_depth
-							 )));
+							 partNumber, numElts, at_depth),
+					 parser_errposition(pstate, pBy->location)));
 		}
 
 		partNumber = numElts;
@@ -2714,8 +2948,8 @@ static void transformPartitionBy(ParseState *pstate,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("No partitions specified at depth %d",
-						partDepth
-						 )));
+						partDepth),
+				 parser_errposition(pstate, pBy->location)));
 	}
 
 	if (partNumber > 999999)
@@ -2723,8 +2957,8 @@ static void transformPartitionBy(ParseState *pstate,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("Too many partitions: partition number > 999999 at depth %d",
-						partDepth
-						 )));
+						partDepth),
+				 parser_errposition(pstate, pBy->location)));
 	}
 
 	/*
@@ -2758,16 +2992,16 @@ static void transformPartitionBy(ParseState *pstate,
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 						 errmsg("Missing SUBPARTITION BY clause for subpartition specification%s",
-								at_depth
-								 )));
+								at_depth),
+						 parser_errposition(pstate, pBy->location)));
 			}
 			if (psubBy && psubBy->partSpec)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 						 errmsg("Subpartition specification conflict%s",
-								at_depth
-								 )));
+								at_depth),
+						 parser_errposition(pstate, psubBy->location)));
 			}
 
 			psubBy->partSpec = (Node *)subSpec;
@@ -2783,9 +3017,10 @@ static void transformPartitionBy(ParseState *pstate,
 
 	for (ii = 0; ii<partNumber; ii++)
 	{
-		char	  	prtstr[20];			
+		char	  	prtstr[NAMEDATALEN];			
 
 		PartitionBy	*newSub = NULL;
+		RuleStmt	*pRule  = NULL;
 
 		if (lc)
 		{
@@ -2825,8 +3060,8 @@ static void transformPartitionBy(ParseState *pstate,
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 							 errmsg("Missing SUBPARTITION BY clause for subpartition specification%s",
-								at_depth
-									 )));
+									at_depth),
+							 parser_errposition(pstate, pElem->location)));
 				}
 
 				if (psubBy && psubBy->partSpec)
@@ -2834,8 +3069,8 @@ static void transformPartitionBy(ParseState *pstate,
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 							 errmsg("Subpartition specification conflict%s",
-								at_depth
-						 )));
+									at_depth),
+							 parser_errposition(pstate, psubBy->location)));
 				}
 
 				newSub = makeNode(PartitionBy);
@@ -2846,12 +3081,20 @@ static void transformPartitionBy(ParseState *pstate,
 				newSub->partSpec  = pElem->subSpec; /* use the subspec */
 				newSub->partDepth = psubBy->partDepth;
 			}
+
+			pRule = make_partition_rules(pstate,
+										 cxt, stmt, 
+										 partitionBy, pElem, at_depth);
 			
-		}
+		} /* end lc */
 		else
 		{
+			/* might not have partition spec for hash partitions -
+			 * just name it using the loop number
+			 */
+
 			snprintf(prtstr, sizeof(prtstr), "prt_%d", ii+1);
-		}
+		} /* end not lc */
 
 		child_tab_name = makeNode(RangeVar);
 		child_tab_name->catalogname = cxt->relation->catalogname;
@@ -2881,6 +3124,11 @@ static void transformPartitionBy(ParseState *pstate,
 
 		child_tab_stmt->tableElts = stmt->tableElts;
 
+		/* XXX XXX: inheriting the parent causes a headache in
+		 * transformDistributedBy, since it assumes the parent exists
+		 * already.  Just add an "ALTER TABLE...INHERIT parent" after
+		 * the create child table
+		 */
 /*		child_tab_stmt->inhRelations = list_make1(parent_tab_name); */
 		child_tab_stmt->inhRelations = stmt->inhRelations; 
 
@@ -2890,7 +3138,9 @@ static void transformPartitionBy(ParseState *pstate,
 		child_tab_stmt->tablespacename = stmt->tablespacename;
 		child_tab_stmt->distributedBy = stmt->distributedBy;
 
-/*		child_tab_stmt->partitionBy = pBy->subPart; */
+		/* use the newSub as the partitionBy if the current 
+		 * partition elem had an inline subpartition declaration 
+		 */
 		child_tab_stmt->partitionBy = (newSub)
 				? (Node *) newSub : (Node *) psubBy;
 
@@ -2902,10 +3152,14 @@ static void transformPartitionBy(ParseState *pstate,
 		child_tab_stmt->relKind = RELKIND_RELATION;
 		child_tab_stmt->policy = 0;
 
-		/* copy the parent table's distribution policy if it has one.
-		 * Otherwise, transformDistributedBy will get annoyed that the
-		 * parent table doesn't exist yet when it attempts to build
-		 * the policy for the child table. 
+		/* XXX XXX: it would be nice to copy the parent table's
+		 * distribution policy if it has one.  Otherwise,
+		 * transformDistributedBy will get annoyed that the parent
+		 * table doesn't exist yet when it attempts to build the
+		 * policy for the child table. However, transformCreateStmt
+		 * will null out the policy, even if we supply it, so don't
+		 * bother.  Add an "ALTER TABLE...INHERIT parent" after the
+		 * create instead.
 		 */
 		if (0 && policy)
 		{
@@ -2928,7 +3182,14 @@ static void transformPartitionBy(ParseState *pstate,
 		}
 
 		cxt->alist = lappend(cxt->alist, child_tab_stmt);
-		
+
+		/* ALTER TABLE for inheritance after CREATE TABLE ... 
+
+		   Could remove this code if inheritance work and pass copy of
+		   parent policy to the create statement (and avoid
+		   transformDistributedBy problems)
+
+		*/
 		if (1)
 		{
 			AlterTableCmd  *atc = makeNode(AlterTableCmd);
@@ -2946,6 +3207,13 @@ static void transformPartitionBy(ParseState *pstate,
 		}
 
 		newSub = NULL; /* reset newSub */
+
+		/* add a partitioning rule */
+		if (pRule)
+		{
+			cxt->alist = lappend(cxt->alist, pRule);
+		}
+		pRule  = NULL;
 
 		if (lc)
 		{

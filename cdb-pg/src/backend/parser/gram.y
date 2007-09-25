@@ -2518,6 +2518,7 @@ OptTabPartitionSpec: '(' TabPartitionElemList ')'
                         PartitionSpec *n = makeNode(PartitionSpec); 
                         n->partElem  = $2;
                         n->subSpec   = NULL;
+                        n->location  = @2;
                         $$ = (Node *)n;
 				}
 			| /*EMPTY*/								{ $$ = NULL; }
@@ -2529,6 +2530,7 @@ OptTabSubPartitionSpec:
                         PartitionSpec *n = makeNode(PartitionSpec); 
                         n->partElem  = $2;
                         n->subSpec   = $3;
+                        n->location  = @2;
                         $$ = (Node *)n;
 				}
 			| /*EMPTY*/								{ $$ = NULL; }
@@ -2587,6 +2589,7 @@ TabPartitionBoundarySpec:
                         n->partStart = $3;
                         n->partEnd   = NULL;
                         n->partEvery = NULL;
+                        n->location  = @3;
                         $$ = (Node *)n;
 				}
 			| TabPartitionBoundarySpecStart
@@ -2598,6 +2601,7 @@ TabPartitionBoundarySpec:
                         n->partStart = $1;
                         n->partEnd   = $2;
                         n->partEvery = $3;
+                        n->location  = @1;
                         $$ = (Node *)n;
 				}
 			| TabPartitionBoundarySpecEnd
@@ -2608,6 +2612,7 @@ TabPartitionBoundarySpec:
                         n->partStart = NULL;
                         n->partEnd   = $1;
                         n->partEvery = $2;
+                        n->location  = @1;
                         $$ = (Node *)n;
 				}
             ;
@@ -2625,6 +2630,7 @@ TabPartitionElem:
                         n->partName  = $1;
                         n->boundSpec = $2;
                         n->subSpec   = $3;
+                        n->location  = @1;
                         $$ = (Node *)n;
 				}
 			| TabPartitionBoundarySpec 	OptTabSubPartitionSpec 
@@ -2633,6 +2639,7 @@ TabPartitionElem:
                         n->partName  = NULL;
                         n->boundSpec = $1;
                         n->subSpec   = $2;
+                        n->location  = @1;
                         $$ = (Node *)n;
 				}
             ;
@@ -2644,6 +2651,7 @@ TabSubPartitionElem:
                         n->partName  = $1;
                         n->boundSpec = $2;
                         n->subSpec   = NULL;
+                        n->location  = @1;
                         $$ = (Node *)n;
 				}
 			| TabPartitionBoundarySpec 	
@@ -2652,6 +2660,7 @@ TabSubPartitionElem:
                         n->partName  = NULL;
                         n->boundSpec = $1;
                         n->subSpec   = NULL;
+                        n->location  = @1;
                         $$ = (Node *)n;
 				}
             ;
@@ -2688,6 +2697,7 @@ OptTabPartitionBy:
                         n->subPart  = $8;
                         n->partSpec = $9;
                         n->partDepth = 0;
+                        n->location  = @3;
                         $$ = (Node *)n;
 				}
 			| /*EMPTY*/								{ $$ = NULL; }
@@ -2700,6 +2710,7 @@ OptTabSubPartitionTemplate:
                         PartitionSpec *n = makeNode(PartitionSpec); 
                         n->partElem  = $4;
                         n->subSpec   = NULL;
+                        n->location  = @3;
                         $$ = (Node *)n;
 				}
 			| /*EMPTY*/								{ $$ = NULL; }
@@ -2730,6 +2741,7 @@ TabSubPartitionBy:
                         n->subPart  = $9;
                         n->partSpec = $8;
                         n->partDepth = 0;
+                        n->location  = @3;
                         $$ = (Node *)n;
 				}
 
