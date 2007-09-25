@@ -327,13 +327,6 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 					ReleaseSysCache(typ);
 				}
 			}
-
-			/* Put e->val into the targetlist if it is an expression. */
-			if (!IsA(e->val, Const))
-			{
-				te = findTargetlistEntry(pstate, e->val, &qry->targetList,
-										 ORDER_CLAUSE);
-			}
 		}
 	}
 }

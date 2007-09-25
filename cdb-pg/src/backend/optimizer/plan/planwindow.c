@@ -29,6 +29,7 @@
 #include "optimizer/subselect.h"
 #include "optimizer/tlist.h"
 #include "optimizer/planshare.h"
+#include "optimizer/var.h"
 #include "parser/parse_clause.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_oper.h"
@@ -143,6 +144,14 @@ typedef struct RefInfo
 
 #define RefInfo_WindowImmediate(rinfo, context) \
 	( !(rinfo)->isagg && !(rinfo)->needcount )
+
+/* Does the given (WindowFrameEdge*) contain an expressioon that must be
+ * evaluated at run time (i.e., may contain a Var)?
+ */
+#define EDGE_IS_DELAYED(edge) ( (edge) != NULL \
+	&& ( (edge)->kind == WINDOW_DELAYED_BOUND_PRECEDING \
+		|| (edge)->kind == WINDOW_DELAYED_BOUND_FOLLOWING ) \
+	&& (edge)->val != NULL )
 
 /* SpecInfo represents a distinct, referenced WindowSpec from the query.
  * They are stored in the WindowContext's array (nspecinfos,specinfos).
@@ -1280,6 +1289,7 @@ make_lower_targetlist(Query *parse,
 					  WindowContext *context)
 {
 	List	   *tlist = parse->targetList;
+	List	   *extravars = NIL;
 	List	   *lower_tlist;
 	bool		need_tlist_eval;
 	int			i;
@@ -1289,17 +1299,38 @@ make_lower_targetlist(Query *parse,
 	Assert ( parse->hasWindFuncs );
 	
 	/* Start with a "flattened" tlist (having just the vars mentioned in 
-	 * the targetlist --- but no upper-level Vars; they will be replaced 
-	 * by Params later on).
+	 * the targetlist or the window clause --- but no upper-level Vars; 
+	 * they will be replaced  by Params later on).
 	 */
 	lower_tlist = flatten_tlist(tlist);
+	
+	/* Make sure Vars that may only occur in expression defining 
+	 * delayed window frame edge bounds are represented.
+	 */
+	for ( i = 0; i < context->nspecinfos; i++ )
+	{
+		WindowFrame *f = context->specinfos[i].frame;
+		if ( f == NULL )
+			continue;
+			
+		if ( EDGE_IS_DELAYED(f->trail) )
+		{
+			extravars = list_concat(extravars, 
+							pull_var_clause(f->trail->val, false));
+		}
+		if ( EDGE_IS_DELAYED(f->lead) )
+		{
+			extravars = list_concat(extravars, 
+							pull_var_clause(f->lead->val, false));
+		}
+	}
+	lower_tlist = add_to_flat_tlist(lower_tlist, extravars);
+	list_free(extravars);
+
 	need_tlist_eval = false;
 	
 	/* Find or add target list entries for partitioning or ordering exprs
 	 * mentioned in window specs to be fed by this targetlist. 
-	 * 
-	 * TODO Revisit this when we're ready to handle complicated cases.
-	 *      Probably need to track/reassign sortgroupref values. 
 	 */
 	dummy = makeNode(SortClause);
 	for ( i = 0; i < context->nspecinfos; i++ )
