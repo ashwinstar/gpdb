@@ -789,6 +789,11 @@ extern void	DefineExternalRelation(CreateExternalStmt *stmt)
 		/* get reject limit type - (r)ows or (p)ercent */
 		rejectlimittype = (singlerowerrorDesc->is_limit_in_rows ? 'r' : 'p');
 				
+		if(rejectlimittype == 'p')
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+					 errmsg("Reject limit in percentage is not yet supported")));
+		
 		/* KEEP only allowed for COPY */
 		if(singlerowerrorDesc->is_keep)
 			ereport(ERROR,
