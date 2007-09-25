@@ -180,76 +180,12 @@ static apr_status_t system_send_proto(gpcc_event_t* ev, void* cmdslot_)
 #endif
 
 
-
-
-
-
-#if 0
-
-/* callback from gpcc_net. this runs in the network thread */
-static void* net_opened_cb(gpcc_net_conn_t conn, void* arg, 
-			    int self_origin, apr_pool_t* pool)
-{
-    conninfo_t* conninfo;
-    eventinfo_t* ei;
-    gpcc_event_t* ev = gpcc_event_alloc(NET_OPENED_EVENT, 0, sizeof(*ei));
-
-    GPCC_DO(arg == 0);
-    conninfo = apr_pcalloc(pool, sizeof(*conninfo));
-    conninfo->pool = pool;
-    conninfo->conn = conn;
-    conninfo->self_origin = self_origin;
-    ei = (eventinfo_t*) ev->edata;
-    ei->conninfo = conninfo;
-    gpcc_evqueue_put(gpfts.evq, ev);
-    return conninfo;
-}
-
-
-/* callback from gpcc_net. this runs in the network thread */
-static void net_closed_cb(gpcc_net_conn_t conn, void* arg)
-{
-    eventinfo_t* ei;
-    gpcc_event_t* ev = gpcc_event_alloc(NET_CLOSED_EVENT, 0, sizeof(*ei));
-    ei = (eventinfo_t*) ev->edata;
-    ei->conninfo = arg;
-    gpcc_evqueue_put(gpfts.evq, ev);
-}
-
-
-/* callback from gpcc_net. this runs in the network thread */
-static void net_recv_cb(gpcc_net_conn_t conn, void* arg)
-{
-    eventinfo_t* ei;
-    gpcc_event_t* ev = gpcc_event_alloc(NET_RECEIVED_EVENT, 0, sizeof(*ei));
-    ei = (eventinfo_t*) ev->edata;
-    ei->conninfo = arg;
-    gpcc_evqueue_put(gpfts.evq, ev);
-}
-
-#endif
-
 /* callback from gpcc_net. this runs in the network thread */
 void time_tick_cb(apr_time_t now)
 {
-    apr_uint32_t *spin;
-    cmdslot_t* p = &gpfts.cmdslot[0];
-    cmdslot_t* q = &gpfts.cmdslot[CMDSLOT_MAX];
-    
-    spin = gpcc_spin_secure(gpfts.spin);
-
-    for ( ; p < q; p++) {
-	if (p->cmdidx && p->countdown > 0) {
-	    if (--p->countdown == 0)  {
-		gpcc_event_t* ev = gpcc_event_alloc(TIMEUP_EVENT, p->cmdidx, 0);
-		gpcc_evqueue_put(gpfts.evq, ev);
-	    }
-	}
-    }
-
-    spin = gpcc_spin_release(gpfts.spin);
+    gpcc_event_t *ev = gpcc_event_alloc(TICK_EVENT, gpfts.timer_cmdidx, 0);
+    gpcc_evqueue_put(gpfts.evq, ev);
 }
-
 
 
 /* Main program for the daemon */
@@ -368,6 +304,10 @@ int fts_initialize(config_t *config, gpcc_evqueue_t *alertq)
 
     /* set up the fsm */
     fsm_setup();
+
+    /* timer slot */
+    cp = cmdslot_alloc("TIMER", TIMER_CMDSTATE, 0);
+    gpfts.timer_cmdidx = cp->cmdidx;
 
     /* system slot */
     cp = cmdslot_alloc("SYSTEM", SYSTEM_CMDSTATE, 0);

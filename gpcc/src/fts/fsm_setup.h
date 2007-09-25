@@ -224,6 +224,7 @@ static apr_status_t system_init(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
+/* callback from gpcc_net. this runs in the network thread */
 static void *ha_net_opened(gpcc_ha_t *ha, void *arg)
 {
     hainfo_t *hainfo = (hainfo_t *) arg;
@@ -234,6 +235,7 @@ static void *ha_net_opened(gpcc_ha_t *ha, void *arg)
 
 }
 
+/* callback from gpcc_net. this runs in the network thread */
 static void ha_net_closed(gpcc_ha_t *ha, void *arg)
 {
     hainfo_t *hainfo = (hainfo_t *) arg;
@@ -254,7 +256,7 @@ static void ha_net_closed(gpcc_ha_t *ha, void *arg)
 
 }
 
-
+/* callback from gpcc_net. this runs in the network thread */
 static void ha_net_recv(gpcc_ha_t *ha, gpcc_net_packet_t *packet, void *arg)
 {
     hainfo_t *hainfo = (hainfo_t *) arg;
