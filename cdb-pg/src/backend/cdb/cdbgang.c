@@ -3324,14 +3324,7 @@ disconnectAndDestroyGang(Gang * gp)
 	 */
     if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
         elog(DEBUG5, "disconnectAndDestroyGang done");
-        
-	/*
-	 * Allow time the asynchronous close of the QEs to complete.
-	 * Otherwise, a reconnect and attempt to recreate the shared
-	 * snapshot slot can fail (FATAL:  SharedSnapshotAdd: writer gang
-	 * collision on id nnn).
-	 */
-	pg_usleep(5 * 1000000);		/* 5 sec */
+
 	
 }
 

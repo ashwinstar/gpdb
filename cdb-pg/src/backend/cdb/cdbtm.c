@@ -141,6 +141,7 @@ static void RemoveRedoUtilityModeFile(void);
 static void performDtxProtocolCommitPrepared(const char *gid, bool raiseErrorIfNotFound);
 static void performDtxProtocolAbortPrepared(const char *gid, bool raiseErrorIfNotFound);
 static DistributedTransactionId determineSegmentMaxDistributedXid(void);
+static void delayAfterDisconnect(void);
 
 /*=========================================================================
  * VISIBLE FUNCTIONS
@@ -304,6 +305,18 @@ char* DtxContextToString(DtxContext context)
 	default:
 		return "Unknown";
 	}
+}
+
+static void
+delayAfterDisconnect(void)
+{
+	/*
+	 * Allow time the asynchronous close of the QEs to complete.
+	 * Otherwise, a reconnect and attempt to recreate the shared
+	 * snapshot slot can fail (FATAL:  SharedSnapshotAdd: writer gang
+	 * collision on id nnn).
+	 */
+	pg_usleep(5 * 1000000);		/* 5 sec */
 }
 
 DistributedTransactionId
@@ -623,6 +636,8 @@ doNotifyingCommitPrepared(void)
 		elog(NOTICE,"Releasing gangs for retry broadcast.");
 		disconnectAndDestroyAllGangs();
 
+		delayAfterDisconnect();
+
 		getTmLock();
 		Assert(currentGxact->state == DTX_STATE_NOTIFYING_COMMIT_PREPARED);
 
@@ -678,6 +693,8 @@ doNotifyingAbort(void)
 			 */
 			elog(NOTICE,"Releasing gangs to finish aborting the transaction.");
 			disconnectAndDestroyAllGangs();
+			
+			delayAfterDisconnect();
 		}
 		else
 		{
@@ -723,6 +740,8 @@ doNotifyingAbort(void)
 			 */
 			elog(NOTICE,"Releasing gangs for retry broadcast.");
 			disconnectAndDestroyAllGangs();
+			
+			delayAfterDisconnect();
 			
 			getTmLock();
 			currentGxact->state = DTX_STATE_RETRY_ABORT_PREPARED;
@@ -1016,6 +1035,8 @@ rollbackDtxTransaction(void)
 			 */
 			elog(WARNING,"Releasing gangs since one or more segment connections failed.  This will abort the transactions in the segments that did not get prepared.");
 			disconnectAndDestroyAllGangs();
+			
+			delayAfterDisconnect();
 			currentGxact->state = DTX_STATE_RETRY_ABORT_PREPARED;
 			return;
 		}
@@ -1034,6 +1055,7 @@ rollbackDtxTransaction(void)
 		 */
 		elog(NOTICE,"Releasing gangs to finish aborting the transaction.");
 		disconnectAndDestroyAllGangs();
+		delayAfterDisconnect();
 		releaseGxact();
 		return;
 		
@@ -1095,6 +1117,7 @@ rollbackDtxTransaction(void)
 		 * segments.
 		 */
 		disconnectAndDestroyAllGangs();
+		delayAfterDisconnect();
 		releaseGxact();
 		return;
 	}
