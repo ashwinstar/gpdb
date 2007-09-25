@@ -3257,7 +3257,7 @@ forwardEdgeForRange(WindowStatePerLevel level_state,
 					bool is_lead_edge)
 {
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
-	bool has_entry;
+	bool has_entry=false;
 	FrameBufferEntry *entry = level_state->curr_entry_buf;
 	Datum new_edge_value = 0;
 	bool new_edge_value_isnull = true;
@@ -3707,7 +3707,7 @@ advanceEdgeForRange(WindowStatePerLevel level_state,
 					bool is_lead_edge)
 {
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
-	bool has_entry;
+	bool has_entry=false;
 	FrameBufferEntry *entry = level_state->curr_entry_buf;
 	Datum new_edge_value = 0;
 	bool new_edge_value_isnull = true;
