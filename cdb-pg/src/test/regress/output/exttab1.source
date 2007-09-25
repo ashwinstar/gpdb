@@ -406,3 +406,16 @@ SELECT * FROM EXT_NUMBERS ORDER BY a;
 ERROR:  Segment reject limit reached after encountering 3 data errors. Aborting operation.
 DETAIL: External table DUMMY_EX, line DUMMY_LINE of DUMMY_LOCATION
 DROP EXTERNAL TABLE EXT_NUMBERS;
+CREATE EXTERNAL TABLE EXT_INFO(d1 date, i1 integer, f1 float, t1 text)
+LOCATION ('file://@hostname@@abs_srcdir@/data/exttab1B.data')
+FORMAT 'text' (delimiter '|')
+SEGMENT REJECT LIMIT 1000;
+SELECT * FROM EXT_INFO ORDER BY 1, 2, 3, 4
+NOTICE:  Rejected 9 badly formatted rows.
+d1     | i1 | f1  |                                             t1                                              
+------------+----+-----+---------------------------------------------------------------------------------------------
+02-01-1970 | 11 | 1.1 | entry  1 is okay
+02-05-1971 | 22 | 2.2 | entry  2 : second  entry is also fine
+02-01-1972 | 33 | 3.3 | entry  3 : thrid entry, nonmatching  quotes but PostgreSQL's and GPDB's copy figures it out
+(3 rows)
+
