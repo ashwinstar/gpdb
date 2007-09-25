@@ -222,8 +222,7 @@ sub mkvcbuild
 		$psql->AddIncludeDir($solution->{options}->{readline} . '\include');
 		$psql->AddLibrary($solution->{options}->{readline} . '\lib\readline.lib');
 		$psql->AddLibrary($solution->{options}->{readline} . '\lib\history.lib');
-		#$psql->AddLibrary($solution->{options}->{readline} . '\lib\libreadline.a');
-		#$psql->AddLibrary($solution->{options}->{readline} . '\lib\libhistory.a');
+
     }
     $psql->AddFile('src\bin\psql\psqlscan.l');
 
