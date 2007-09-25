@@ -778,6 +778,21 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 		{
 			/* with error table */
 			pstate->errMode = SREH_LOG; 
+			
+			/*
+			 * we want to be sure that this error table is alive (wasn't dropped).
+			 * we must do this check until we have proper dependency recorded.
+			 */
+			if(RelationIdGetRelation(fmterrtbl) == NULL)
+				ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE),
+								errmsg("The specified error table for this "
+									   "external table doesn't appear to "
+									   "exist in the database. It may have "
+									   "been dropped."),
+								errhint("Refresh your external table definition.")
+									   ));
+			
+			
 			errtbl_rv = makeRangeVar(get_namespace_name(get_rel_namespace(fmterrtbl)),
 									 get_rel_name(fmterrtbl));
 			
