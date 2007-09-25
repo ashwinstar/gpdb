@@ -75,6 +75,7 @@ struct copy_options
 	char	   *escape;
 	char	   *force_quote_list;
 	char	   *force_notnull_list;
+	char	   *sreh;           /* single row error handling clause */
 };
 
 
@@ -413,6 +414,21 @@ parse_slash_copy(const char *args)
 				else
 					goto error;
 			}
+			else if (pg_strcasecmp(token, "segment") == 0 || pg_strcasecmp(token, "log") == 0)
+			{
+				/* SREH can start with LOG or SEGMENT. if so, shuv all the following tokens in a string */
+				result->sreh = pg_strdup(token);
+
+				for (;;)
+				{
+					token = strtokx(NULL, whitespace, ",", "\"",
+									0, false, false, pset.encoding);
+					if(!token)
+						break;
+					xstrcat(&result->sreh, " ");
+					xstrcat(&result->sreh, token);
+				}	
+			}
 			else
 				goto error;
 
@@ -521,6 +537,9 @@ do_copy(const char *args)
 	if (options->force_notnull_list)
 		appendPQExpBuffer(&query, " FORCE NOT NULL %s", options->force_notnull_list);
 
+	if (options->sreh)
+		appendPQExpBuffer(&query, " %s", options->sreh);
+	
 	if (options->file)
 		canonicalize_path(options->file);
 
