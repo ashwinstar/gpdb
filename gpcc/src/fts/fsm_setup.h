@@ -218,9 +218,6 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 
 static apr_status_t system_init(gpcc_event_t *ev, void *_cmdslot)
 {
-    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
-    
-    memset(&cmdslot->u.sys, 0, sizeof(cmdslot->u.sys));
     return 0;
 }
 
