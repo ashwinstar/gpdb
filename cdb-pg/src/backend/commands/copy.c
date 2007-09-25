@@ -721,6 +721,13 @@ DoCopy(const CopyStmt *stmt)
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("COPY single row error handling only available using COPY FROM")));
 		
+		if (sreh->is_keep)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+					 errmsg("Auto dropping error tables is not yet supported. "
+							"Therefore KEEP is not applicable as all error "
+							"tables are kept alive by default")));
+		
 		if (sreh->errtable)
 		{
 			cstate->errMode = SREH_LOG;
