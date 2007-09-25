@@ -331,8 +331,10 @@ static apr_status_t setup_array_connect(gpcc_event_t *ev, void *_cmdslot)
 	hainfo = malloc(sizeof(*hainfo) + strlen(p->u.sys.request.u.setup.hosts[i]));
 	strcpy(hainfo->host, p->u.sys.request.u.setup.hosts[i]);
 	hainfo->index = i;
+	gpcc_log_info("connect to HA %s", addr);
 	hainfo->ha = gpcc_ha_open(p->cmdidx, addr, ha_net_opened, ha_net_closed, ha_net_recv, hainfo);
 	if (!hainfo->ha) {
+	    gpcc_warning(FLINE, "gpcc_ha_open %s failed", hainfo->host);
 	    free(hainfo);
 	    hainfo = 0;
 	    p->u.sys.request.u.setup.ndisconnected++;
@@ -344,8 +346,8 @@ static apr_status_t setup_array_connect(gpcc_event_t *ev, void *_cmdslot)
     spin = gpcc_spin_release(gpfts.net_spin);
 
     if (p->u.sys.request.u.setup.ndisconnected == p->u.sys.nhainfo) {
-	gpcc_event_t *ev = gpcc_event_alloc(SETUP_SSH_EVENT, p->cmdidx, 0);
-	gpcc_evqueue_put(gpfts.evq, ev);	
+	gpcc_event_t *evt = gpcc_event_alloc(SETUP_SSH_EVENT, p->cmdidx, 0);
+	gpcc_evqueue_put(gpfts.evq, evt);	
     } 
 	
 	
@@ -405,7 +407,7 @@ static apr_status_t setup_init(gpcc_event_t *ev, void *_cmdslot)
 
     cmdslot->u.sys.request.u.setup.hosts = apr_pcalloc(cmdslot->u.sys.request.pool, sizeof(char *) * (i+1));
 
-    for (i = 0 ; ; i++) {
+    for (i = 0 ; i < cmdslot->u.sys.request.u.setup.nhost ; i++) {
 	sprintf(key, "node.%d", i);
 	value = config_get(gpfts.config, key);	
     
@@ -417,6 +419,8 @@ static apr_status_t setup_init(gpcc_event_t *ev, void *_cmdslot)
 	host[s - value - 1] = 0;
 	
 	cmdslot->u.sys.request.u.setup.hosts[i] = apr_pstrdup(cmdslot->u.sys.request.pool, host);
+
+	gpcc_log_info("node.%d = %s", i, cmdslot->u.sys.request.u.setup.hosts[i]);
     }
 
     return 0;
@@ -445,16 +449,17 @@ static apr_status_t setup_ha_opened(gpcc_event_t *ev, void *_cmdslot)
     
     memcpy(&index, ev->edata, sizeof(int));
     
+    gpcc_log_info("HA %s is connected", cmdslot->u.sys.hainfo[index]->host);
     cmdslot->u.sys.request.u.setup.nreply++;
     cmdslot->u.sys.request.u.setup.nconnected++;
 
     if (cmdslot->u.sys.request.u.setup.nreply == cmdslot->u.sys.nhainfo) {
 	if (cmdslot->u.sys.request.u.setup.nconnected == cmdslot->u.sys.nhainfo) {
-	    gpcc_event_t *ev = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
-	    gpcc_evqueue_put(gpfts.evq, ev);
+	    gpcc_event_t *evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
+	    gpcc_evqueue_put(gpfts.evq, evt);
 	} else {
-	    gpcc_event_t *ev = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-	    gpcc_evqueue_put(gpfts.evq, ev);	    
+	    gpcc_event_t *evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	    gpcc_evqueue_put(gpfts.evq, evt);	    
 	}
     }
 
@@ -471,11 +476,11 @@ static apr_status_t setup_ha_closed(gpcc_event_t *ev, void *_cmdslot)
 
     if (cmdslot->u.sys.request.u.setup.nreply == cmdslot->u.sys.nhainfo) {
 	if (cmdslot->u.sys.request.u.setup.ndisconnected == cmdslot->u.sys.nhainfo) {
-	    gpcc_event_t *ev = gpcc_event_alloc(SETUP_SSH_EVENT, cmdslot->cmdidx, 0);
-	    gpcc_evqueue_put(gpfts.evq, ev);
+	    gpcc_event_t *evt = gpcc_event_alloc(SETUP_SSH_EVENT, cmdslot->cmdidx, 0);
+	    gpcc_evqueue_put(gpfts.evq, evt);
 	} else {
-	    gpcc_event_t *ev = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-	    gpcc_evqueue_put(gpfts.evq, ev);	    
+	    gpcc_event_t *evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	    gpcc_evqueue_put(gpfts.evq, evt);	    
 	}
     }
 
@@ -490,6 +495,7 @@ static apr_status_t setup_ready(gpcc_event_t *ev, void *_cmdslot)
     char *objstr;
     gpcc_event_t *evt;
 
+    gpcc_log_info("setup ok");
     cmdslot->u.sys.config_json = config_to_json_object();
     setup_init_seginfo(ev, _cmdslot);
 
@@ -513,6 +519,7 @@ static apr_status_t setup_failure(gpcc_event_t *ev, void *_cmdslot)
     char *objstr;
     gpcc_event_t *evt;
 
+    gpcc_log_info("setup failed");
     obj = gpcc_json_array_reply("setup", "failed", 0);
     objstr = json_object_to_json_string(obj);
 
@@ -560,12 +567,12 @@ static apr_status_t setup_ssh_start(gpcc_event_t *ev, void *_cmdslot)
 	}
 
 	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-	gpcc_evqueue_put(gpfts.evq, ev);
-	return e;
+	gpcc_evqueue_put(gpfts.evq, evt);
+	return 0;
     }
     
     evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
-    gpcc_evqueue_put(gpfts.evq, ev);
+    gpcc_evqueue_put(gpfts.evq, evt);
 
     return 0;
 }

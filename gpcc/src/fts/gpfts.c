@@ -363,6 +363,7 @@ int fts_do(const char *cmd, gpcc_evqueue_t *outq)
     obj = json_tokener_parse((char *)cmd);
     action = gpcc_json_object_get_string(obj, "action", 0);
 
+
     spin = gpcc_spin_secure(gpfts.spin);
 
     if (gpfts.system_cmdidx == 0) {
@@ -371,9 +372,10 @@ int fts_do(const char *cmd, gpcc_evqueue_t *outq)
     } else {
 	p = cmdslot_get(gpfts.system_cmdidx);
     }
+
     if (p->u.sys.request.outq) {
-	gpcc_warning(FLINE, "fts is running on something else.");
 	spin = gpcc_spin_release(gpfts.spin);
+	gpcc_warning(FLINE, "fts is busy.");
 	json_object_put(obj);
 	return APR_EINVAL;
     }

@@ -6,6 +6,7 @@
 #include <apr_thread_proc.h>
 #include <gpcc_event.h>
 #include <gpcc_net.h>
+#include <gpcc_json.h>
 #include <json/json.h>
 #include <event.h>
 #include "fts.h"
@@ -46,6 +47,8 @@ int main(int argc, const char *argv[])
     int e;
     int started = 0;
     config_t *config = 0;
+    struct json_object *obj = 0;
+    gpcc_event_t *ev = 0;
 
     apr_app_initialize(&argc, (char const *const **) &argv, 0);
 
@@ -82,21 +85,27 @@ int main(int argc, const char *argv[])
 
     fts_initialize(config, alertq);
 
+    obj = gpcc_json_array_request("setup", "");
+    fts_do(json_object_to_json_string(obj), outq);
+    json_object_put(obj);
 
     printf("enter loop\n");
     for (;;) {
-	for (;;) {
+	
+	if (ev) 
+	    free(ev);
+
+	while ((ev = gpcc_evqueue_tryget(outq)) == 0) {
 	    if ((e = gpcc_net_once()))
 		break;
 	}
-	apr_sleep(10);
-	//printf("gpcc_net_once exit=%d\n", e);
-	/*
-	if (!started) {
-	    fts_do("start", outq);
-	    started = 1;
-	}
-	*/
+
+	if (!ev)
+	    continue;
+
+	
+	printf("result = %s\n", ev->edata);
+	
     }
     printf("exit loop\n");
 
