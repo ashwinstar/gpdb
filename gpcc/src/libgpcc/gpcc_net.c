@@ -382,6 +382,7 @@ APR_DECLARE(apr_status_t) gpcc_net_start(int port,
 
     spin = gpcc_spin_secure(net.net_spin);
     if (net.pool) {
+	gpcc_log_info("gpcc_net started");
 	spin = gpcc_spin_release(spin);
 	return 0;
     }
@@ -393,6 +394,7 @@ APR_DECLARE(apr_status_t) gpcc_net_start(int port,
 
     f = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (f < 0) {
+	gpcc_warning(FLINE, "socket create failed");
 	goto bail;
     }
 
@@ -408,29 +410,34 @@ APR_DECLARE(apr_status_t) gpcc_net_start(int port,
     linger.l_linger = 5;
     setsockopt(f, SOL_SOCKET, SO_LINGER, (void*) &linger, sizeof(linger));
 
-    if (bind(f, (void*) &a, sizeof(a)))
+    if (bind(f, (void*) &a, sizeof(a))) {
+	gpcc_warning(FLINE, "bind failed");
 	goto bail;
-
-    if (listen(f, 5))
+    }
+    if (listen(f, 5)) {
+	gpcc_warning(FLINE, "listen failed");
 	goto bail;
-
+    }
     net.listen_sock = f;
     net.cb.opened = opened;
     net.cb.closed = closed;
     net.cb.recv = recv;
     net.cb.tick = tick;
 
-    if (event_priority_init(10))
+    if (event_priority_init(10)) {
+	gpcc_warning(FLINE, "event_priority_init failed");
 	goto bail;
-
+    }
     event_set(&net.listen_event, net.listen_sock, EV_READ | EV_PERSIST, do_accept, 0);
 
-    if (event_priority_set(&net.listen_event, 0))
+    if (event_priority_set(&net.listen_event, 0)) {
+	gpcc_warning(FLINE, "event_priority_set failed");
 	goto bail;
-
-    if (event_add(&net.listen_event, 0))
+    }
+    if (event_add(&net.listen_event, 0)) {
+	gpcc_warning(FLINE, "event_add failed");
 	goto bail;
-
+    }
     /* add timer */
     evtimer_set(&net.timer_event, do_timeout, 0);
 
@@ -449,9 +456,10 @@ APR_DECLARE(apr_status_t) gpcc_net_start(int port,
     return 0;
 
     bail:
+
     if (spin) spin = gpcc_spin_release(spin);
     gpcc_net_stop();
-    return e;
+    return APR_EINVAL;
 }
 
 
@@ -490,7 +498,7 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* pconn, const char* addr
 {
     apr_pool_t* pool = 0;
     apr_uint32_t* spin = 0;
-    int e;
+    int e = 0;
     char* addr2;
     char* scope;
     apr_port_t port;
@@ -499,30 +507,41 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* pconn, const char* addr
     struct sockaddr_in serv_addr;
 
     spin = gpcc_spin_secure(net.net_spin);
-    if (0 != (e = apr_pool_create(&pool, net.pool)))
+    if (0 != (e = apr_pool_create(&pool, net.pool))) {
+	gpcc_warning(FLINE, "apr_pool_create failed");
 	goto bail;
+    }
     spin = gpcc_spin_release(spin);
 
     /* resolve addr */
-    if (0 != (e = apr_parse_addr_port(&addr2, &scope, &port, addr, pool)))
+    if (0 != (e = apr_parse_addr_port(&addr2, &scope, &port, addr, pool))) {
+	gpcc_warning(FLINE, "apr_parse_addr_port failed: %s", addr);
 	goto bail;
-
+    }
     sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (sock < 0)
+    if (sock < 0) {
+	gpcc_warning(FLINE, "socket create failed");
+	e = APR_ENOSOCKET;
 	goto bail;
+    }
 
     server = gethostbyname(addr2);
-    if (server == 0) 
+    if (server == 0) {
+	gpcc_warning(FLINE, "gethostbyname failed");
+	e = APR_EINVAL;
 	goto bail;
-    
+    }
+
     memset((char *) &serv_addr, 0, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     memcpy((char *) server->h_addr, (char *) &serv_addr.sin_addr.s_addr, server->h_length);
     serv_addr.sin_port = htons(port);
 
-    if (connect(sock, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
+    if (connect(sock, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
+	gpcc_warning(FLINE, "connect to host %s failed", addr);
+	e = APR_ECONNREFUSED;
 	goto bail;
-
+    }
     *pconn = mkitem(sock, arg, 
 		    1 /*is_connecting*/, 
 		    0 /*is_open*/, 
@@ -531,9 +550,11 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* pconn, const char* addr
 		    closed,
 		    recv,
 		    pool);
-    if (! (*pconn))
+    if (! (*pconn)) {
+	gpcc_warning(FLINE, "mkitem failed: not enough memory");
+	e = APR_ENOMEM;
 	goto bail;
-
+    }
     return 0;
 
     bail:
