@@ -369,7 +369,6 @@ APR_DECLARE(apr_status_t) gpcc_net_start(int port,
 					 gpcc_net_tick_t* tick,
 					 int threaded)
 {
-    int e = 0;
     apr_threadattr_t* ta;
     apr_uint32_t* spin = 0;
     struct sockaddr_in a;
@@ -399,9 +398,10 @@ APR_DECLARE(apr_status_t) gpcc_net_start(int port,
     }
 
 #ifndef WIN32
-    if (fcntl(f, F_SETFD, 1) == -1)
+    if (fcntl(f, F_SETFD, 1) == -1) {
+	gpcc_warning(FLINE, "fcntl failed");
 	goto bail;
-
+    }
 #endif
 
     setsockopt(f, SOL_SOCKET, SO_KEEPALIVE, (void*) &on, sizeof(on));
