@@ -1005,10 +1005,13 @@ describeOneTableDetails(const char *schemaname,
 		PGresult   *result;
 
 		printfPQExpBuffer(&buf,
-						  "SELECT x.location, x.fmttype, x.fmtopts, x.command\n"
-						  "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c\n"
-		  "WHERE x.reloid = c.oid AND c.oid = '%s'\n",
-						  oid);
+						  "SELECT x.location, x.fmttype, x.fmtopts, x.command, "
+						         "x.rejectlimit, x.rejectlimittype, "
+						         "(SELECT relname "
+						          "FROM pg_class "
+								  "WHERE Oid=x.fmterrtbl) AS errtblname " 
+						  "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c "
+						  "WHERE x.reloid = c.oid AND c.oid = '%s'\n", oid);
 						  
 		result = PSQLexec(buf.data, false);
 		if (!result)
@@ -1024,9 +1027,13 @@ describeOneTableDetails(const char *schemaname,
 			char	   *fmttype = PQgetvalue(result, 0, 1);
 			char	   *fmtopts = PQgetvalue(result, 0, 2);
 			char	   *command = PQgetvalue(result, 0, 3);
+			char	   *rejlim =  PQgetvalue(result, 0, 4);
+			char	   *rejlimtype = PQgetvalue(result, 0, 5);
+			char	   *errtblname = PQgetvalue(result, 0, 6);
+			
 			int			count_footers = 0;
 
-			footers = pg_malloc_zero(5 * sizeof(*footers));
+			footers = pg_malloc_zero(7 * sizeof(*footers));
 			
 			/* format type */
 			printfPQExpBuffer(&tmpbuf, _("Format type: %s"), fmttype[0] == 't' ? "text" : "csv");
@@ -1070,6 +1077,23 @@ describeOneTableDetails(const char *schemaname,
 				printfPQExpBuffer(&tmpbuf, _("External location: %s"), location);
 				footers[count_footers++] = pg_strdup(tmpbuf.data);				
 			}
+			
+			/* Single row error handling */
+			if(rejlim && strlen(rejlim) > 0)
+			{
+				/* reject limit and type */
+				printfPQExpBuffer(&tmpbuf, _("Segment reject limit: %s %s"),
+								  rejlim,
+								  (rejlimtype[0] == 'p' ? "percent" : "rows"));
+				footers[count_footers++] = pg_strdup(tmpbuf.data);
+			
+				if(errtblname && strlen(errtblname) > 0)
+				{
+					printfPQExpBuffer(&tmpbuf, _("Error table: %s"), errtblname);
+					footers[count_footers++] = pg_strdup(tmpbuf.data);					
+				}
+			}
+				
 			
 			add_tablespace_footer(tableinfo.relkind, tableinfo.tablespace,
 								  footers, &count_footers, tmpbuf, true);
