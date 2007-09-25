@@ -1014,19 +1014,34 @@ add_first_agg(PlannerInfo *root,
 
 /*
  * Generate a list of subplans based on context->subplan.
- *
- * Input sharing should be applied here by constructing appropriate
- * subplans to be used instead of repeated uses of the common subplan
- * from context->subplan.
  */
 static List *
 generate_list_subplans(PlannerInfo *root, int num_subplans,
 					   GroupExtContext *context)
 {
 	int group_no;
-	List *subplans;
+	List *subplans = NIL;
+	Cost share_cost;
+	Cost copy_cost;
 
-	subplans = share_plan(root, context->subplan, num_subplans);
+	/*
+	 * We consider both input sharing plan and a list of common
+	 * subplan copies, and choose the one which has the cheaper
+	 * cost.
+	 */
+	copy_cost = num_subplans * context->subplan->total_cost;
+	share_cost = cost_share_plan(context->subplan, num_subplans);
+
+	if (copy_cost > share_cost)
+		subplans = share_plan(root, context->subplan, num_subplans);
+	else
+	{
+		for (group_no = 0; group_no < num_subplans; group_no++)
+		{
+			Plan *copy_plan = copyObject(context->subplan);
+			subplans = lappend(subplans, copy_plan);
+		}
+	}
 
 	list_free(context->pathkeys);
 	context->pathkeys = NIL;
