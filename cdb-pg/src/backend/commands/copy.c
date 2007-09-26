@@ -1846,6 +1846,14 @@ copy_in_error_callback(void *arg)
 		lineno_str_len = lineno_delim - line_start + 1;
 		copy_of_line_buf.data += lineno_str_len; /* advance beyond original lineno */
 		copy_of_line_buf.len -= lineno_str_len;
+
+		/* skip target_seg */
+		line_start = copy_of_line_buf.data;
+		lineno_delim = memchr(line_start, ORIGINAL_LINENO_DELIM, 32);
+		Insist(lineno_delim && (lineno_delim != line_start));		
+		lineno_str_len = lineno_delim - line_start + 1;
+		copy_of_line_buf.data += lineno_str_len; /* advance beyond target_seg */
+		copy_of_line_buf.len -= lineno_str_len;
 	}
 	
 	/*
@@ -2011,8 +2019,10 @@ else \
 												   sizeof(char) + 1 + 24); \
 \
 		should_free = true; \
-		sprintf(cstate->cdbsreh->rawdata, "%d%c%s", \
+		sprintf(cstate->cdbsreh->rawdata, "%d%c%d%c%s", \
 			    original_lineno_for_qe, \
+				ORIGINAL_LINENO_DELIM, \
+				target_seg, \
 				ORIGINAL_LINENO_DELIM, \
 				cstate->line_buf.data);	\
 	}\
@@ -3215,9 +3225,11 @@ CopyFromDispatch(CopyState cstate)
 				}
 				else
 				{
-					/* modify the data to look like: "<lineno>^<data>" */
-					appendStringInfo(&line_buf_with_lineno, "%d%c%s", 
+					/* modify the data to look like: "<lineno>^<target_seg>^<data>" */
+					appendStringInfo(&line_buf_with_lineno, "%d%c%d%c%s", 
 									 original_lineno_for_qe, 
+									 ORIGINAL_LINENO_DELIM,
+									 target_seg, 
 									 ORIGINAL_LINENO_DELIM,
 									 cstate->line_buf.data);
 					
@@ -3393,7 +3405,7 @@ CopyFrom(CopyState cstate)
 	bool		cur_row_rejected = false;
 	int			original_lineno_for_qe = 0; /* keep compiler happy (var referenced by macro) */
 	CdbCopy    *cdbCopy = NULL; /* never used... for compiling COPY_HANDLE_ERROR */
-
+	int			target_seg = -1; /* not used in utility mode */
 
 	tupDesc = RelationGetDescr(cstate->rel);
 	attr = tupDesc->attrs;
@@ -5662,7 +5674,17 @@ int CopyExtractLineNum(CopyState cstate)
 
 	/* reposition line buf cursor to see real data (skip lineno) */
 	cstate->line_buf.cursor += lineno_str_len;
-				
+
+	/* skip target_seg */
+	line_start = cstate->line_buf.data + cstate->line_buf.cursor;
+	lineno_delim = memchr(line_start, ORIGINAL_LINENO_DELIM, 32);
+	Insist(lineno_delim && (lineno_delim != line_start));		
+	lineno_str_len = lineno_delim - line_start + 1;
+
+	/* reposition line buf cursor to see real data (skip target_seg) */
+	cstate->line_buf.cursor += lineno_str_len;
+
+			
 	return lineno;
 }
 
