@@ -992,7 +992,7 @@ static Datum numeric_2_func(Datum d0, Datum d1, NUMERIC_FUNC_ENUM f)
 	PG_RETURN_NUMERIC(res);
 }
 
-static inline Datum num_signfunc(Datum d, NUMERIC_FUNC_ENUM f)
+static Datum num_signfunc(Datum d, NUMERIC_FUNC_ENUM f)
 {
 	Numeric		res;
 
@@ -1126,7 +1126,7 @@ numeric_sign(PG_FUNCTION_ARGS)
  *	We allow negative 'scale', implying rounding before the decimal
  *	point --- Oracle interprets rounding that way.
  */
-static inline Datum num_truncfunc(Datum d, int scale, NUMERIC_FUNC_ENUM f)
+static Datum num_truncfunc(Datum d, int scale, NUMERIC_FUNC_ENUM f)
 {
 
 	Numeric		res;
@@ -1214,7 +1214,7 @@ numeric_floor(PG_FUNCTION_ARGS)
 	return numeric_1_func(d, NUMERIC_F_FLOOR);
 }
 
-static inline int
+static int
 cmp_numerics_ptr_len(char* p1, int len1, char* p2, int len2) 
 {
 	int			result;
@@ -1771,7 +1771,7 @@ numeric_power(PG_FUNCTION_ARGS)
  * ----------------------------------------------------------------------
  */
 
-static inline Datum num_conv_from(Datum d, NUMERIC_FUNC_ENUM f)
+static Datum num_conv_from(Datum d, NUMERIC_FUNC_ENUM f)
 {	
 	Numeric		res;
 	NumericVar	result;
@@ -1797,7 +1797,7 @@ static inline Datum num_conv_from(Datum d, NUMERIC_FUNC_ENUM f)
 	PG_RETURN_NUMERIC(res);
 }
 
-static inline Datum num_conv_to(Datum d0, NUMERIC_FUNC_ENUM f, const char* typestr)
+static Datum num_conv_to(Datum d0, NUMERIC_FUNC_ENUM f, const char* typestr)
 {
 	NumericVar	arg;
 	Datum res = 0;

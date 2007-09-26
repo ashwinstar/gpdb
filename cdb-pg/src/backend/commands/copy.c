@@ -2170,7 +2170,7 @@ CopyFromDispatch(CopyState cstate)
 	AttrNumber	h_attnum;		/* hash key attribute number */
 	Datum		h_key;			/* hash key value			 */
 	Oid			h_oid;			/* hash key data type		 */
-	unsigned int target_seg;	/* result segment of cdbhash */
+	unsigned int target_seg = 0;	/* result segment of cdbhash */
 	
 	tupDesc = RelationGetDescr(cstate->rel);
 	attr = tupDesc->attrs;
