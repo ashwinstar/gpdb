@@ -1169,16 +1169,24 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 			current_pathkeys = best_path->pathkeys;
 			current_locus = best_path->locus; /* just use keys, don't copy */
 
+			/* XXX
+			 * The following if(need_tlist_eval || use_hashed_groupping) 
+			 * is turned off by default.  (GUC).
+			 *
+			 * Reason: We are doing an aggregate on top.  No matter what we do,
+			 * hash or sort, we may spill.  Every unnecessary columns means useless
+			 * I/O, and heap_form/deform_tuple.  It is almost always better to
+			 * to the projection.
+			 */
+
 			/*
 			 * create_plan() returns a plan with just a "flat" tlist of
 			 * required Vars.  Usually we need to insert the sub_tlist as the
 			 * tlist of the top plan node.	However, we can skip that if we
 			 * determined that whatever query_planner chose to return will be
 			 * good enough.
-			 *
-			 * For hashagg, we always push down the projection.
 			 */
-			if (need_tlist_eval || use_hashed_grouping)
+			if (gp_agg_always_project || need_tlist_eval)
 			{
 				/*
 				 * If the top-level plan node is one that cannot do expression

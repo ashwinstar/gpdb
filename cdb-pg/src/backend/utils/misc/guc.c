@@ -1200,6 +1200,15 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_agg_always_project", PGC_USERSET, QUERY_TUNING_METHOD,
+            gettext_noop("Always project before doing aggregate."), 
+            gettext_noop("Reduces data spill.")
+		},
+		&gp_agg_always_project,
+		true, NULL, NULL
+	},
+
+	{
 		{"gp_hashagg_streambottom", PGC_USERSET, QUERY_TUNING_METHOD,
             gettext_noop("Stream the bottom stage of two stage hashagg"), 
             gettext_noop("Avoid spilling at the bootom stage of two stage hashagg")
