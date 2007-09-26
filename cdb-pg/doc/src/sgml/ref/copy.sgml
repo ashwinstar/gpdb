@@ -32,6 +32,7 @@ COPY <replaceable class="parameter">tablename</replaceable> [ ( <replaceable cla
                 [ QUOTE [ AS ] '<replaceable class="parameter">quote</replaceable>' ] 
                 [ ESCAPE [ AS ] '<replaceable class="parameter">escape</replaceable>' ]
                 [ FORCE NOT NULL <replaceable class="parameter">column</replaceable> [, ...] ]
+		[ [LOG ERRORS INTO <replaceable class="parameter">error_table</replaceable>] SEGMENT REJECT LIMIT <replaceable class="parameter">count</replaceable> [ROWS] [KEEP]]
 
 COPY { <replaceable class="parameter">tablename</replaceable> [ ( <replaceable class="parameter">column</replaceable> [, ...] ) ] | ( <replaceable class="parameter">query</replaceable> ) }
     TO { '<replaceable class="parameter">filename</replaceable>' | STDOUT }

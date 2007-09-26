@@ -26,6 +26,7 @@ CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } ] TABLE <replaceable>table_name
     [ ON COMMIT { PRESERVE ROWS | DELETE ROWS | DROP } ]
     [ TABLESPACE <replaceable class="PARAMETER">tablespace</replaceable> ]
     AS <replaceable>query</replaceable>
+	[ DISTRIBUTED BY (<replaceable>column</replaceable>, [ ... ] ) | DISTRIBUTED RANDOMLY ]
 </synopsis>
  </refsynopsisdiv>
   
