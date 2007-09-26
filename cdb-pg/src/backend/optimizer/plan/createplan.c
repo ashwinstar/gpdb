@@ -1258,6 +1258,14 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 				 total_primaries);
 		}
 		
+		if(list_length(rel->locationlist) > num_segs_participating)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("There are more external files (URLs) than primary "
+							"segments that can read them. Found %d URLs and "
+							"%d primary segments.",list_length(rel->locationlist),
+							num_segs_participating)));				
+		
 		/* 
 		 * restart location list and fill in new list until number of
 		 * locations equals the number of segments participating in this
