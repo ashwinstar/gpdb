@@ -590,10 +590,9 @@ cdbCopyEnd(CdbCopy *c)
 			 * total of rejected rows. Only count from primary segs.
 			 */
 			if(db == 0 && segment_rows_rejected > 0)
-			{
 				total_rows_rejected += segment_rows_rejected;
-				segment_rows_rejected = 0;
-			}
+			
+			segment_rows_rejected = 0;
 			
 			/* Lost the connection? */
 			if (PQstatus(q->conn) == CONNECTION_BAD)
