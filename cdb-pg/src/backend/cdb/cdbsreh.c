@@ -285,10 +285,18 @@ void InsertIntoErrorTable(CdbSreh *cdbsreh)
 void ReportSrehResults(CdbSreh *cdbsreh, int total_rejected)
 {
 	if(total_rejected > 0)
-		ereport(NOTICE, 
-				(errmsg("Rejected %d badly formatted rows.", total_rejected)));
-	
-	/* TODO: expand this function when error tables are enabled */
+	{
+		if(cdbsreh && cdbsreh->errtbl)
+			ereport(NOTICE, 
+					(errmsg("Rejected %d badly formatted rows. Errors logged into "
+							"error table \"%s\"", 
+							total_rejected, 
+							RelationGetRelationName(cdbsreh->errtbl))));
+		else
+			ereport(NOTICE, 
+					(errmsg("Rejected %d badly formatted rows.", 
+							total_rejected)));
+	}
 }
 
 
