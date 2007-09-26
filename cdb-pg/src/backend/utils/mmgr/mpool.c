@@ -39,6 +39,7 @@ struct mpool_context_t
 	/* Info about storage allocated in this context: */
 	mpool_block_t* free_tail;	/* points to tail of free list */
 	mpool_block_t* inuse_tail;	/* points to tail of inuse list */
+	int n_free, n_inuse;
     int blocks_allocated;
 	uint64 max_bytes_allocated;
 	uint64 bytes_allocated;
@@ -272,6 +273,8 @@ mpool_reset(MemoryContext context)
 		/* all of inuse is gone */
 		mpool->inuse_tail = 0;
 		mpool->bytes_allocated = 0;
+		mpool->n_free += mpool->n_inuse;
+		mpool->n_inuse = 0;
 	}
 }
 
@@ -307,10 +310,13 @@ mpool_delete(MemoryContext context)
 			PRINT((LOG, "mpool_delete %x: free block %x", context, head));
 			head = p;
 			mpool->blocks_allocated--;
+			mpool->n_free--;
 		}
 	}
 
 	Assert(mpool->blocks_allocated == 0);
+	Assert(mpool->n_free == 0);
+	Assert(mpool->n_inuse == 0);
 }
 
 /*
@@ -340,6 +346,7 @@ mpool_alloc(MemoryContext context, Size size)
 	/* need to get a block from free list ? */
 	if (!chunk && 0 != (bp = mpool->free_tail))
 	{
+		mpool->n_free--;
 		bp = bp->next;			/* pop the head of free list */
 		if (bp == mpool->free_tail)
 			mpool->free_tail = 0;
@@ -397,6 +404,9 @@ mpool_alloc(MemoryContext context, Size size)
 	else 
 		bp->next = bp;
 	mpool->inuse_tail = bp;
+	mpool->n_inuse++;
+
+	Assert(mpool->n_inuse + mpool->n_free == mpool->blocks_allocated);
 
 	do_alloc:
 	mpool->bytes_allocated += size;
