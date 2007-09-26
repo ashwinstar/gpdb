@@ -63,6 +63,7 @@
 #include "cdb/cdbdispatchresult.h"
 #include "cdb/ml_ipc.h"
 #include "cdb/cdbmotion.h"
+#include "cdb/cdbsreh.h"
 
 #include "utils/elog.h"
 
@@ -1951,6 +1952,9 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 				cdbdisp_maxLastOid(pr, estate->es_cur_slice_idx);
 		}
 
+		/* sum up rejected rows if any (single row error handling only) */
+		cdbdisp_sumRejectedRows(pr);
+		
 		/*
 		 * Check and free the results of all gangs. If any QE had an
 		 * error, report it and exit to our error handler via PG_THROW.

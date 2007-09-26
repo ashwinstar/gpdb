@@ -252,6 +252,15 @@ int64
 cdbdisp_sumCmdTuples(CdbDispatchResults *results, int sliceIndex);
 
 /*
+ * If several tuples were eliminated/rejected from the result because of
+ * bad data formatting (this is currenly only possible in external tables
+ * with single row error handling) - sum up the total rows rejected from
+ * all QE's and notify the client.
+ */
+void
+cdbdisp_sumRejectedRows(CdbDispatchResults *results);
+
+/*
  * max of the lastOid values returned from the QEs
  */
 Oid

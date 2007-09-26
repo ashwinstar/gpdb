@@ -1972,7 +1972,6 @@ thread_DispatchWait(DispatchCommandParms		*pParms)
 	CdbDispatchResult			*dispatchResult;
 	int							i, db_count = pParms->db_count;
 	int							timeoutCounter = 0;
-	int							totalRejected = 0;
 
 	/*
 	 * OK, we are finished submitting the command to the segdbs.
@@ -2108,8 +2107,6 @@ thread_DispatchWait(DispatchCommandParms		*pParms)
 				if (PQisBusy(dispatchResult->segdbDesc->conn))
 					write_log("We thought we were done, because finished==true, but libpq says we are still busy\n");
 				
-				/* only relevant in SREH - add num rows rejected from this QE to the total */
-				totalRejected += dispatchResult->numrowsrejected;
 			}
 			else
 				if (DEBUG4 >= log_min_messages)
@@ -2118,9 +2115,6 @@ thread_DispatchWait(DispatchCommandParms		*pParms)
 
 	}							/* some QEs running */
 	
-	/* This is only relevant in SREH mode (currently only with external tables) */
-	if(totalRejected > 0)
-		ReportSrehResults(NULL, totalRejected);
 }
 
 

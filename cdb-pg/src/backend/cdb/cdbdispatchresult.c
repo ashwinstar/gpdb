@@ -22,6 +22,7 @@
 
 #include "cdb/cdbconn.h"            /* SegmentDatabaseDescriptor */
 #include "cdb/cdbvars.h"
+#include "cdb/cdbsreh.h"
 #include "cdb/cdbdispatchresult.h"  /* me */
 
 
@@ -745,6 +746,38 @@ cdbdisp_sumCmdTuples(CdbDispatchResults *results, int sliceIndex)
     }
     return sum;
 }                               /* cdbdisp_sumCmdTuples */
+
+/*
+ * If several tuples were eliminated/rejected from the result because of
+ * bad data formatting (this is currenly only possible in external tables
+ * with single row error handling) - sum up the total rows rejected from
+ * all QE's and notify the client.
+ */
+void
+cdbdisp_sumRejectedRows(CdbDispatchResults *results)
+{
+    CdbDispatchResult  *dispatchResult;
+    CdbDispatchResult  *resultEnd = cdbdisp_resultEnd(results, -1);
+    PGresult           *pgresult;
+    int					totalRejected = 0;
+	
+    for (dispatchResult = cdbdisp_resultBegin(results, -1);
+         dispatchResult < resultEnd;
+         ++dispatchResult)
+    {
+        pgresult = cdbdisp_getPGresult(dispatchResult, dispatchResult->okindex);
+        if (pgresult &&
+            !dispatchResult->errcode)
+        {
+			/* add num rows rejected from this QE to the total */
+			totalRejected += dispatchResult->numrowsrejected;
+        }
+    }
+    
+	if(totalRejected > 0)
+		ReportSrehResults(NULL, totalRejected);
+
+}                               /* cdbdisp_sumRejectedRows */
 
 /*
  * Find the max of the lastOid values returned from the QEs
