@@ -5913,8 +5913,8 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 {		
 	CopyState	cstate;
 	bool		is_from = stmt->is_from;
-	bool		pipe = true;
-	List	   *attnamelist = stmt->attlist;
+
+
 	List	   *force_quote = NIL;
 	List	   *force_notnull = NIL;
 	ListCell   *option;
@@ -6111,7 +6111,7 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 				
 				while (!cstate->raw_buf_done)
 				{
-					Oid			loaded_oid = InvalidOid;
+
 
 					if (QueryCancelPending)
 					{
