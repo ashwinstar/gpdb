@@ -3420,8 +3420,7 @@ get_stats_option_name(const char *arg)
 
 #include "cdb/cdbgang.h"
 #include "commands/copy.h"
-extern void CopyToDispatch(CopyState cstate);
-extern void CopyFromDispatch(CopyState cstate);
+
 extern void SetSessionUserId(Oid userid, bool is_superuser);
 
 /*
@@ -3820,10 +3819,6 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				MemoryContext oldcontext;
 
 				Query 	*query;
-
-				//CopyState cstate;
-				/* Allocate workspace and zero all fields */
-				//cstate = (CopyStateData *) palloc0(sizeof(CopyStateData));
 				
 				/* 
 				 * A context safe to build parse trees in
@@ -3845,7 +3840,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			
 				
 				{
-				uint64		processed = DoCopy((CopyStmt *) query->utilityStmt);
+				uint64		processed = DoCopyDispatchAgent((CopyStmt *) query->utilityStmt);
 				
 				completionTag = palloc0(COMPLETION_TAG_BUFSIZE);
 				
@@ -3853,17 +3848,8 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 						 "COPY " UINT64_FORMAT, processed);
 				}
 
-				/*
-				pg_usleep(2*1000000);
-				if (copyIsFrom)
-				{
-					CopyFromDispatch(cstate);
-				}
-				else
-				{
-					CopyToDispatch(cstate);
-				}*/
-				
+				elog(NOTICE,"DA has finished doing copy statement %s",completionTag);
+
 				MemoryContextSwitchTo(oldcontext);
 			}
 			 
@@ -3906,6 +3892,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			return true;
 		}
 		break;
+
 		case 'T':	/* Transaction management commands */
 			{
 				char * completionTag = NULL;

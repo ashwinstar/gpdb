@@ -250,6 +250,6 @@ extern void CopyReadAttributesCSV(CopyState cstate, char *nulls, int *attr_offse
 extern void limit_printout_length(StringInfo buf);
 extern void truncateEol(StringInfo buf, EolType	eol_type);
 
-
+extern uint64 DoCopyDispatchAgent(const CopyStmt *stmt);
 
 #endif   /* COPY_H */

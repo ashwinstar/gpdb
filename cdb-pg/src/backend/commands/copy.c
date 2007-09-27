@@ -5906,3 +5906,338 @@ CreateCopyDestReceiver(void)
 	return (DestReceiver *) self;
 }
 
+
+
+uint64
+DoCopyDispatchAgent(const CopyStmt *stmt)
+{		
+	CopyState	cstate;
+	bool		is_from = stmt->is_from;
+	bool		pipe = true;
+	List	   *attnamelist = stmt->attlist;
+	List	   *force_quote = NIL;
+	List	   *force_notnull = NIL;
+	ListCell   *option;
+	//TupleDesc   tupDesc;
+	//int         num_phys_attrs;
+	uint64      processed;
+	CdbCopy    *cdbCopy;
+
+	/* Allocate workspace and zero all fields */
+	cstate = (CopyStateData *) palloc0(sizeof(CopyStateData));
+
+	/* Extract options from the statement node tree */
+	foreach(option, stmt->options)
+	{
+		DefElem    *defel = (DefElem *) lfirst(option);
+
+		if (strcmp(defel->defname, "binary") == 0)
+		{
+			cstate->binary = intVal(defel->arg);
+		}
+		else if (strcmp(defel->defname, "oids") == 0)
+		{
+			cstate->oids = intVal(defel->arg);
+		}
+		else if (strcmp(defel->defname, "delimiter") == 0)
+		{
+			cstate->delim = strVal(defel->arg);
+		}
+		else if (strcmp(defel->defname, "null") == 0)
+		{
+			cstate->null_print = strVal(defel->arg);
+		}
+		else if (strcmp(defel->defname, "csv") == 0)
+		{
+			cstate->csv_mode = intVal(defel->arg);
+		}
+		else if (strcmp(defel->defname, "header") == 0)
+		{
+			cstate->header_line = intVal(defel->arg);
+		}
+		else if (strcmp(defel->defname, "quote") == 0)
+		{
+			cstate->quote = strVal(defel->arg);
+		}
+		else if (strcmp(defel->defname, "escape") == 0)
+		{
+			cstate->escape = strVal(defel->arg);
+		}
+		else if (strcmp(defel->defname, "force_quote") == 0)
+		{
+			force_quote = (List *) defel->arg;
+		}
+		else if (strcmp(defel->defname, "force_notnull") == 0)
+		{
+			force_notnull = (List *) defel->arg;
+		}
+		else
+			elog(ERROR, "option \"%s\" not recognized",
+				 defel->defname);
+	}
+
+
+	/* Set defaults */
+	
+	cstate->err_loc_type = ROWNUM_ORIGINAL; 
+		
+	cstate->escape_off = false;
+	
+	if (!cstate->delim)
+		cstate->delim = cstate->csv_mode ? "," : "\t";
+
+	if (!cstate->null_print)
+		cstate->null_print = cstate->csv_mode ? "" : "\\N";
+
+	if (cstate->csv_mode)
+	{
+		if (!cstate->quote)
+			cstate->quote = "\"";
+		if (!cstate->escape)
+			cstate->escape = cstate->quote;
+	}
+
+	if (!cstate->binary && !cstate->csv_mode && !cstate->escape)
+		cstate->escape = "\\";			/* default escape for text mode */
+
+	cstate->cdbsreh = NULL; /* default - no SREH */
+	cstate->errMode = ALL_OR_NOTHING; /* default */
+
+	
+	elog(NOTICE,"DoCopyDispatchAgent starting");
+
+	/*
+	 * Set up variables to avoid per-attribute overhead.
+	 */
+	initStringInfo(&cstate->attribute_buf);
+	initStringInfo(&cstate->line_buf);
+	cstate->processed = 0;
+
+	/*
+	 * Set up encoding conversion info.  
+	 */
+	cstate->client_encoding = GetDatabaseEncoding();
+	cstate->need_transcoding = false;
+	cstate->encoding_embeds_ascii = PG_ENCODING_IS_CLIENT_ONLY(cstate->client_encoding);
+	cstate->line_buf_converted = true;
+
+	cstate->copy_dest = COPY_FILE;		/* default */
+	cstate->filename = NULL; /* QE COPY always uses STDIN */
+	cstate->copy_file = NULL;
+	cstate->fe_msgbuf = NULL;
+	cstate->fe_eof = false;
+	cstate->eol_type = EOL_UNKNOWN;
+	cstate->cur_relname = NULL;
+	cstate->cur_lineno = 0;
+	cstate->cur_attname = NULL;
+	cstate->err_loc_type = ROWNUM_ORIGINAL;
+	cstate->in_quote = false;
+	cstate->last_was_esc = false;
+
+
+	/*
+	 * some greenplum db specific vars
+	 */
+	cstate->is_copy_in = (is_from ? true : false);
+	if (is_from)
+	{
+		cstate->error_on_executor = false;
+		initStringInfo(&(cstate->executor_err_context));		
+	}
+
+	cdbCopy = makeCdbCopy(is_from);
+
+	if (is_from)				/* copy from file to database */
+	{			
+
+		bool no_more_data = false;
+		bool		cur_row_rejected = false;
+		StringInfoData line_buf_with_lineno;
+		int original_lineno_for_qe = -1;
+		int target_seg = -1;
+
+		ReceiveCopyBegin(cstate);
+
+		SendCopyBegin(cstate);
+		
+
+		//CopyFromDispatch(cstate);
+		/* Set up data buffer to hold a chunk of data */
+		MemSet(cstate->raw_buf, ' ', RAW_BUF_SIZE * sizeof(char));
+		cstate->raw_buf[RAW_BUF_SIZE] = '\0';
+
+		no_more_data = false;		/* no more input data to read from file or FE */
+		cstate->line_done = true;
+		cstate->raw_buf_done = false;
+
+		do
+		{
+			size_t		bytesread = 0;
+
+			/* read a chunk of data into the buffer */
+			if (!cstate->binary)
+			{
+				PG_TRY();
+				{
+					bytesread = CopyGetData(cstate, cstate->raw_buf, RAW_BUF_SIZE);	
+				}
+				PG_CATCH();
+				{
+					/* 
+					 * If we are here, we got some kind of communication error
+					 * with the client or a bad protocol message. clean up and 
+					 * re-throw error. Note that we don't handle this error in
+					 * any special way in SREH mode as it's not a data error.
+					 */
+					cdbCopyEnd(cdbCopy);
+					PG_RE_THROW();
+				}
+				PG_END_TRY();
+
+				cstate->raw_buf_done = false;
+
+				/* set buffer pointers to beginning of the buffer */
+				cstate->begloc = cstate->raw_buf;
+				cstate->raw_buf_index = 0;
+			}
+
+			/*
+			 * continue if some bytes were read or if we didn't reach EOF. if we
+			 * both reached EOF _and_ no bytes were read, quit the loop we are
+			 * done
+			 */
+			if (bytesread > 0 || !cstate->fe_eof || cstate->binary)
+			{
+				
+				while (!cstate->raw_buf_done)
+				{
+					Oid			loaded_oid = InvalidOid;
+
+					if (QueryCancelPending)
+					{
+						/* quit processing loop */
+						no_more_data = true;
+						break;
+					}
+
+						/* Get the line number of the first line of this data row */
+						//original_lineno_for_qe = cstate->cur_lineno + 1;
+
+						PG_TRY();
+						{
+							/* Actually read the line into memory here */
+							cstate->line_done = cstate->csv_mode ?
+								CopyReadLineCSV(cstate, bytesread) :
+								CopyReadLineText(cstate, bytesread);
+						}
+						PG_CATCH();
+						{
+							/* got here? encoding conversion/check error occured */
+							COPY_HANDLE_ERROR;
+						}
+						PG_END_TRY();					
+
+						if(cur_row_rejected)
+						{
+							IF_REJECT_LIMIT_REACHED_ABORT;
+							QD_GOTO_NEXT_ROW;
+						}
+							
+						
+						if(!cstate->line_done)
+						{
+							/*
+							 * We did not finish reading a complete data line.
+							 *
+							 * If eof is not yet reached, we skip att parsing
+							 * and read more data. But if eof _was_ reached it means
+							 * that the original last data line is defective and
+							 * we want to catch that error later on.
+							 */
+							if (!cstate->fe_eof || cstate->end_marker)
+								break;
+						}
+
+						
+
+
+						/* modify the data to look like: "<lineno>^<target_seg>^<data>" */
+						appendStringInfo(&line_buf_with_lineno, "%d%c%d%c%s", 
+										 original_lineno_for_qe, 
+										 ORIGINAL_LINENO_DELIM,
+										 target_seg, 
+										 ORIGINAL_LINENO_DELIM,
+										 cstate->line_buf.data);
+						
+						/* send modified data */
+						cdbCopySendData(cdbCopy, 
+										target_seg, 
+										line_buf_with_lineno.data, 
+										line_buf_with_lineno.len);
+						
+						RESET_LINEBUF_WITH_LINENO;
+					
+
+
+					cstate->processed++;
+					
+
+					RESET_LINEBUF;
+
+				}					/* end while(!raw_buf_done) */
+			}						/* end if (bytesread > 0 || !cstate->fe_eof) */
+			else
+				/* no bytes read, end of data */
+			{
+				no_more_data = true;
+			}
+		} while (!no_more_data);
+	
+	}
+	else		/* copy from database to file */
+	{
+		
+		cstate->fe_copy = true;
+
+		//CopyToDispatch(cstate);
+
+		while(true)
+		{
+			
+			bool done;
+			bool copy_cancel = (QueryCancelPending ? true : false);
+			
+			/* get a chunk of data rows from the QE's */
+			done = cdbCopyGetData(cdbCopy, copy_cancel, &cstate->processed);
+			
+			/* send the chunk of data rows to destination (file or stdout) */
+			if(cdbCopy->copy_out_buf.len > 0) /* conditional is important! */
+			{
+				/*
+				 * in the dispatcher we receive chunks of whole rows with row endings.
+				 * We don't want to use CopySendEndOfRow() b/c it adds row endings and
+				 * also b/c it's intended for a single row at a time. Therefore we need
+				 * to fill in the out buffer and just flush it instead.
+				 */
+				CopySendData(cstate, (void *) cdbCopy->copy_out_buf.data, cdbCopy->copy_out_buf.len);
+				CopyToDispatchFlush(cstate);
+			}
+
+		}
+		
+		/* we can throw the error now if QueryCancelPending was set previously */
+		CHECK_FOR_INTERRUPTS();
+	
+	}
+
+	
+	
+	/* Clean up storage (probably not really necessary) */
+	processed = cstate->processed;
+	
+	pfree(cstate->attribute_buf.data);
+	pfree(cstate->line_buf.data);
+	pfree(cstate);
+
+	return processed;
+}
