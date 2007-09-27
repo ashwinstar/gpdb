@@ -140,6 +140,7 @@ static gpcc_net_conn_t mkitem(SOCKET sock, void* arg,
     for (i = 0; i < GPCC_NET_CONN_MAX && net.tab.item[i]; i++) {;}
     if (i >= GPCC_NET_CONN_MAX) {
 	spin = gpcc_spin_release(spin);
+	gpcc_warning(FLINE, "max net slot reached");
 	return 0;
     }
     item = net.tab.item[i] = apr_palloc(pool, sizeof(*item));
@@ -173,7 +174,7 @@ static void do_closed(item_t *item)
     } else {
 	net.cb.closed(item->conn, item->arg);
     }
-    spin = gpcc_spin_secure(spin);
+    spin = gpcc_spin_secure(net.net_spin);
     event_del(&item->sock_event);
     for (i = 0 ; i < GPCC_NET_CONN_MAX && item != net.tab.item[i] ; i++){;}
     if (i < GPCC_NET_CONN_MAX) {
@@ -324,8 +325,13 @@ static void do_accept(int fd, short event, void *arg)
     item = getitem(conn);
     if (item) {
 	gpcc_spin_release(spin);
-	item->arg = net.cb.opened(item->conn, item->arg, 
-				  item->self_origin, item->pool);
+	if (item->cb.opened) {
+	    item->arg = item->cb.opened(item->conn, item->arg,
+					item->self_origin, item->pool);
+	} else {
+	    item->arg = net.cb.opened(item->conn, item->arg, 
+				      item->self_origin, item->pool);
+	}
 	gpcc_spin_secure(spin);
     }
     
@@ -505,6 +511,7 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* pconn, const char* addr
     SOCKET sock;
     struct hostent *server;
     struct sockaddr_in serv_addr;
+    item_t *item;
 
     spin = gpcc_spin_secure(net.net_spin);
     if (0 != (e = apr_pool_create(&pool, net.pool))) {
@@ -555,6 +562,21 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* pconn, const char* addr
 	e = APR_ENOMEM;
 	goto bail;
     }
+    spin = gpcc_spin_secure(net.net_spin);
+    item = getitem(*pconn);
+    if (item) {
+	gpcc_spin_release(spin);
+	if (item->cb.opened) {
+	    item->arg = item->cb.opened(item->conn, item->arg,
+					item->self_origin, item->pool);
+	} else {
+	    item->arg = net.cb.opened(item->conn, item->arg, 
+				      item->self_origin, item->pool);
+	}
+	gpcc_spin_secure(spin);
+    }
+    
+    gpcc_spin_release(spin);
     return 0;
 
     bail:
@@ -714,52 +736,66 @@ APR_DECLARE(apr_status_t) gpcc_net_sendv(gpcc_net_conn_t conn,
 {
     int tot = 0;
     int i;
-    apr_uint32_t* spin;
+    apr_uint32_t* spin = 0;
     int e = 0;
     item_t* item;
     buf_t* bb;
-    int bbfree;
+    int bbfree = 0;
 
     for (i = 0; i < nbuf; i++) {
 	if (bufsz[i] < 0) 
 	    return APR_EINVAL;
 	tot += bufsz[i];
     }
-    if (tot > sizeof(bb->buf)) {
-	gpcc_log_error("gpcc_net_sendv: packet too big (%d, max %d)", tot, sizeof(bb->buf));
-	return APR_EINVAL;
-    }
 
-    retry:
     spin = gpcc_spin_secure(net.net_spin);
+
     if (! (item = getitem(conn))) {
+	gpcc_warning(FLINE, "item not found");
+	spin = gpcc_spin_release(spin);
 	e = APR_EINVAL;
 	goto bail;
     }
     bb = &item->out;
-    bbfree = sizeof(bb->buf) - bb->top; /* freespace in buf */
 
+    if (tot > sizeof(bb->buf)) {
+	gpcc_log_error("gpcc_net_sendv: packet too big (%d, max %d)", tot, sizeof(bb->buf));
+	spin = gpcc_spin_release(spin);
+	return APR_EINVAL;
+    }
+
+    retry:
+    bbfree = sizeof(bb->buf) - bb->top;    
     if (bbfree < tot) {
 	/* compact buffer */
 	memmove(bb->buf, bb->buf + bb->bot, bb->top - bb->bot);
 	bb->top = bb->top - bb->bot;
 	bb->bot = 0;
 	bbfree = sizeof(bb->buf) - bb->top;
+
 	if (bbfree < tot) {
 	    if (do_write(item)) { /* flush */
+		gpcc_warning(FLINE, "network send error.  Close socket");
 		item->is_closing = 1;
 		e = APR_EINVAL;
 		goto CLOSED;
 	    }
-	    spin = gpcc_spin_release(spin);
 	    goto retry;
 	}
     }
-
+    
     for (i = 0; i < nbuf; i++) {
 	memcpy(bb->buf + bb->top, buf[i], bufsz[i]);
 	bb->top += bufsz[i];
     }
+
+    if (do_write(item)) {
+	gpcc_warning(FLINE, "network send error.  Close socket");
+	item->is_closing = 1;
+	e = APR_EINVAL;
+	goto CLOSED;
+    }	
+
     spin = gpcc_spin_release(spin);
     return 0;
 
@@ -867,7 +903,6 @@ APR_DECLARE(apr_status_t) gpcc_net_send_request(gpcc_net_conn_t conn,
 
     if (p == q)
 	return APR_EINVAL;
-
     return gpcc_net_send(conn, buf, p - buf);
 }
 
