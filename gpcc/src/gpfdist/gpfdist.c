@@ -1068,8 +1068,9 @@ void do_read(int fd, short event, void* arg)
 	}
     }
     else if (n == 0) {
-	/* didn't read anything */
-	;
+	/* socket close by peer will return 0 */
+	request_end(r);
+	return;
     }
     else {
 	/* check if a complete HTTP request is availble in header buf */
