@@ -144,7 +144,6 @@ bool		gp_enable_sort_distinct = FALSE;
 int			gp_sort_flags = 0;
 int 		gp_sort_max_distinct = 20000;
 bool 	    gp_window_shareinput = TRUE;
-bool 		gp_agg_always_project = TRUE;
 
 /* Greenplum memory context use mpool */
 int 		gp_use_mpool = 1;
