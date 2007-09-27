@@ -222,36 +222,3 @@ drop external table ext_whois;
 drop external table gpfdist_start;
 drop external table gpfdist_csv_start;
 drop external table gpfdist_stop;
-
--- --------------------------------------
--- Single row error handling tests
--- --------------------------------------
-
--- here we want to test rejecting all bad records, without error table
-CREATE EXTERNAL TABLE EXT_NUMBERS (a int, b int, c int)
-LOCATION ('file://@hostname@@abs_srcdir@/data/bad_data1.data', 
-'file://@hostname@@abs_srcdir@/data/bad_data2.data' )
-FORMAT 'text' (delimiter '|')
-SEGMENT REJECT LIMIT 1000;
-
-SELECT * FROM EXT_NUMBERS ORDER BY a;
-DROP EXTERNAL TABLE EXT_NUMBERS;
-
--- here we want to test reaching the segment reject limit and aborting
-CREATE EXTERNAL TABLE EXT_NUMBERS (a int, b int, c int)
-LOCATION ('file://@hostname@@abs_srcdir@/data/bad_data1.data', 
-'file://@hostname@@abs_srcdir@/data/bad_data2.data' )
-FORMAT 'text' (delimiter '|')
-SEGMENT REJECT LIMIT 3;
-
-SELECT * FROM EXT_NUMBERS ORDER BY a;
-DROP EXTERNAL TABLE EXT_NUMBERS;
-
-
-
-CREATE EXTERNAL TABLE EXT_INFO(d1 date, i1 integer, f1 float, t1 text)
-LOCATION ('file://@hostname@@abs_srcdir@/data/exttab1B.data') 
-FORMAT 'text' (delimiter '|')
-SEGMENT REJECT LIMIT 1000;
-
-SELECT * FROM EXT_INFO ORDER BY 1, 2, 3, 4
