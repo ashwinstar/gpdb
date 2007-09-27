@@ -1724,7 +1724,7 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 	pthread_mutex_unlock(&rx_thread_mutex);
 
     if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-        ereport(DEBUG1, (errmsg("SetupInterconnect will activate "
+        ereport(DEBUG1, (errmsg("SetupUDPInterconnect will activate "
                                 "%d incoming, %d outgoing routes.  "
                                 "Listening on ports=%d/%d sockfd=%d.",
                                 expectedTotalIncoming, expectedTotalOutgoing,
@@ -2540,8 +2540,7 @@ TeardownInterconnect(ChunkTransportState *transportStates,
                                  "%s; setup was %s",
                                  Gp_segment, mySlice->sliceIndex,
                                  forceEOS ? "force" : "normal",
-                                 transportStates->activated ? "completed" : "exited")
-                    ));
+                                 transportStates->activated ? "completed" : "exited")));
 
 	    /* if setup did not complete, log the slicetable */
         if (!transportStates->activated &&
@@ -2567,6 +2566,8 @@ TeardownInterconnect(ChunkTransportState *transportStates,
         gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
     	elog(DEBUG2, "Found incomplete conn. length %d", list_length(transportStates->incompleteConns));
 
+	/* These are connected inbound peers that we haven't dealt with
+	 * quite yet */
 	while ((cell = list_head(transportStates->incompleteConns)) != NULL)
 	{
 		MotionConn *conn = (MotionConn *) lfirst(cell);
@@ -2651,6 +2652,7 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 			{
 				flushIncomingData(conn->sockfd);
 				shutdown(conn->sockfd, SHUT_WR);
+
 				closesocket(conn->sockfd);
 				conn->sockfd = -1;
 			}
@@ -4847,7 +4849,7 @@ flushInterconnectListenerBacklog(void)
 		MPP_FD_ZERO(&rset);
 		MPP_FD_SET(listenerFd, &rset);
 		timeout.tv_sec = 0;
-		timeout.tv_usec = 0;
+		timeout.tv_usec = 10;
 
 		pendingConn = select(listenerFd + 1, (fd_set *)&rset, NULL, NULL, &timeout);
 		if (pendingConn > 0)
@@ -4870,28 +4872,31 @@ flushInterconnectListenerBacklog(void)
 					continue;
 				}
 
-                /* Get remote and local host:port strings for message. */
-                format_sockaddr((struct sockaddr *)&remoteAddr, remoteHostAndPort,
-                                sizeof(remoteHostAndPort));
-                addrsize = sizeof(localAddr);
-                if (getsockname(newfd, (struct sockaddr *)&localAddr, &addrsize))
-                {
-                    ereport(LOG, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-                                  errmsg("Interconnect error while clearing incoming connections."),
-                                  errdetail("%m%s sockfd=%d remote=%s",
-		                                    "getsockname",
-                                            newfd,
-                                            remoteHostAndPort)));
-                }
-                else
-                {
-                    format_sockaddr((struct sockaddr *)&localAddr, localHostAndPort,
-                                    sizeof(localHostAndPort));
-                    ereport(DEBUG2, (errmsg("Interconnect clearing incoming connection "
-                                            "from remote=%s to local=%s.  sockfd=%d.",
-                                            remoteHostAndPort, localHostAndPort,
-                                            newfd)));
-                }
+				if (gp_log_interconnect >= GPVARS_VERBOSITY_VERBOSE)
+				{
+					/* Get remote and local host:port strings for message. */
+					format_sockaddr((struct sockaddr *)&remoteAddr, remoteHostAndPort,
+									sizeof(remoteHostAndPort));
+					addrsize = sizeof(localAddr);
+					if (getsockname(newfd, (struct sockaddr *)&localAddr, &addrsize))
+					{
+						ereport(LOG, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+									  errmsg("Interconnect error while clearing incoming connections."),
+									  errdetail("%m%s sockfd=%d remote=%s",
+												"getsockname",
+												newfd,
+												remoteHostAndPort)));
+					}
+					else
+					{
+						format_sockaddr((struct sockaddr *)&localAddr, localHostAndPort,
+										sizeof(localHostAndPort));
+						ereport(DEBUG2, (errmsg("Interconnect clearing incoming connection "
+												"from remote=%s to local=%s.  sockfd=%d.",
+												remoteHostAndPort, localHostAndPort,
+												newfd)));
+					}
+				}
 
 				/* shutdown this socket */
 				flushIncomingData(newfd);
