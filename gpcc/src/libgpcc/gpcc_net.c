@@ -67,6 +67,7 @@ static struct {
     apr_pool_t* pool;
     apr_thread_t* thread;
     SOCKET listen_sock;
+    struct event_base *event_base;
     struct event listen_event;
     struct event timer_event;
     struct { /* callbacks */
@@ -158,6 +159,7 @@ static gpcc_net_conn_t mkitem(SOCKET sock, void* arg,
     item->in.bot = item->in.top = 0;
     item->out.bot = item->out.top = 0;
     event_set(&item->sock_event, item->sock, EV_READ | EV_PERSIST, do_read, item);
+    event_base_set(net.event_base, &item->sock_event);
     event_add(&item->sock_event, 0);
     conn = item->conn;
     spin = gpcc_spin_release(net.net_spin);
@@ -369,7 +371,7 @@ static void do_timeout(int fd, short event, void *arg)
 static void* APR_THREAD_FUNC net_run(apr_thread_t* thread, void* arg)
 {
     while (net.thread == thread) {
-	if (event_dispatch()) {
+	if (event_base_dispatch(net.event_base)) {
 	    break;
 	}
     }
@@ -379,7 +381,7 @@ static void* APR_THREAD_FUNC net_run(apr_thread_t* thread, void* arg)
 APR_DECLARE(apr_status_t) gpcc_net_once(void) 
 {
     int e;
-    e = event_loop(EVLOOP_ONCE| EVLOOP_NONBLOCK);
+    e = event_base_loop(net.event_base, EVLOOP_ONCE| EVLOOP_NONBLOCK);
     return e;
 }
 
@@ -444,22 +446,27 @@ APR_DECLARE(apr_status_t) gpcc_net_start(int port,
     net.cb.recv = recv;
     net.cb.tick = tick;
 
-    if (event_priority_init(10)) {
+    net.event_base = (struct event_base *) event_init();
+
+    if (event_base_priority_init(net.event_base, 10)) {
 	gpcc_warning(FLINE, "event_priority_init failed");
 	goto bail;
     }
     event_set(&net.listen_event, net.listen_sock, EV_READ | EV_PERSIST, do_accept, 0);
+    event_base_set(net.event_base, &net.listen_event);
 
     if (event_priority_set(&net.listen_event, 0)) {
 	gpcc_warning(FLINE, "event_priority_set failed");
 	goto bail;
     }
+    
     if (event_add(&net.listen_event, 0)) {
 	gpcc_warning(FLINE, "event_add failed");
 	goto bail;
     }
     /* add timer */
     evtimer_set(&net.timer_event, do_timeout, 0);
+    event_base_set(net.event_base, &net.timer_event);
 
     tm.tv_sec = 0;
     tm.tv_usec = 1000 * 1000;
@@ -501,6 +508,7 @@ APR_DECLARE(void) gpcc_net_stop(void)
 		event_del(&net.tab.item[i]->sock_event);
 	    }
 	}
+	event_base_free(net.event_base);
 	gpcc_spin_release(spin);
 	apr_thread_join(&status, thread);
     }
