@@ -1,0 +1,250 @@
+-- test single row error handling, both in COPY and external tables.
+-- ###########################################################
+-- COPY 
+-- ###########################################################
+CREATE TABLE sreh_copy(a int, b int, c int) distributed by(a);
+-- 
+-- reject limit only
+--
+COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' SEGMENT REJECT LIMIT 1000;
+NOTICE:  Rejected 10 badly formatted rows.
+SELECT * FROM sreh_copy ORDER BY a;
+ a  | b  | c  
+----+----+----
+  1 |  1 |  1
+  5 |  5 |  5
+  6 |  6 |  6
+  9 |  9 |  9
+ 10 | 10 | 10
+ 14 | 14 | 14
+(6 rows)
+
+-- 
+-- reject limit only - low value that gets reached
+--
+COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' SEGMENT REJECT LIMIT 2;
+ERROR:  Segment reject limit reached after encountering 2 data errors. Aborting operation.
+CONTEXT:  COPY sreh_copy, line 8: "bad|8|8"
+SELECT * FROM sreh_copy ORDER BY a;
+ a  | b  | c  
+----+----+----
+  1 |  1 |  1
+  5 |  5 |  5
+  6 |  6 |  6
+  9 |  9 |  9
+ 10 | 10 | 10
+ 14 | 14 | 14
+(6 rows)
+
+-- 
+-- error table (also testing that it gets automatically generated)
+--
+COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 1000;
+NOTICE:  Error table "sreh_copy_errtbl" does not exist. Auto generating an error table with the same name
+NOTICE:  Rejected 10 badly formatted rows. Errors logged into error table "sreh_copy_errtbl"
+SELECT * FROM sreh_copy ORDER BY a;
+ a  | b  | c  
+----+----+----
+  1 |  1 |  1
+  1 |  1 |  1
+  5 |  5 |  5
+  5 |  5 |  5
+  6 |  6 |  6
+  6 |  6 |  6
+  9 |  9 |  9
+  9 |  9 |  9
+ 10 | 10 | 10
+ 10 | 10 | 10
+ 14 | 14 | 14
+ 14 | 14 | 14
+(12 rows)
+
+SELECT relname,filename,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
+  relname  |                                         filename                                          | linenum |                 errmsg                  | rawdata 
+-----------+-------------------------------------------------------------------------------------------+---------+-----------------------------------------+---------
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       2 | missing data for column "b"             | 2
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       3 | missing data for column "c"             | 3|
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       4 | extra data after last expected column   | 4|4|4|4
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       7 | invalid input syntax for integer: "bad" | 7|7|bad
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       8 | invalid input syntax for integer: "bad" | bad|8|8
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      11 | missing data for column "b"             | eleven
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      12 | extra data after last expected column   | 12||||
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      13 | missing data for column "c"             | |,13,
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      15 | missing data for column "b"             | 15
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      16 | missing data for column "b"             | sixteen
+(10 rows)
+
+--
+-- error table - do the same thing again. this time error table exists and should get reused and data appended
+--
+COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 1000;
+NOTICE:  Rejected 10 badly formatted rows. Errors logged into error table "sreh_copy_errtbl"
+SELECT * FROM sreh_copy ORDER BY a;
+ a  | b  | c  
+----+----+----
+  1 |  1 |  1
+  1 |  1 |  1
+  1 |  1 |  1
+  5 |  5 |  5
+  5 |  5 |  5
+  5 |  5 |  5
+  6 |  6 |  6
+  6 |  6 |  6
+  6 |  6 |  6
+  9 |  9 |  9
+  9 |  9 |  9
+  9 |  9 |  9
+ 10 | 10 | 10
+ 10 | 10 | 10
+ 10 | 10 | 10
+ 14 | 14 | 14
+ 14 | 14 | 14
+ 14 | 14 | 14
+(18 rows)
+
+SELECT relname,filename,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
+  relname  |                                         filename                                          | linenum |                 errmsg                  | rawdata 
+-----------+-------------------------------------------------------------------------------------------+---------+-----------------------------------------+---------
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       2 | missing data for column "b"             | 2
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       2 | missing data for column "b"             | 2
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       3 | missing data for column "c"             | 3|
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       3 | missing data for column "c"             | 3|
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       4 | extra data after last expected column   | 4|4|4|4
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       4 | extra data after last expected column   | 4|4|4|4
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       7 | invalid input syntax for integer: "bad" | 7|7|bad
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       7 | invalid input syntax for integer: "bad" | 7|7|bad
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       8 | invalid input syntax for integer: "bad" | bad|8|8
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       8 | invalid input syntax for integer: "bad" | bad|8|8
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      11 | missing data for column "b"             | eleven
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      11 | missing data for column "b"             | eleven
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      12 | extra data after last expected column   | 12||||
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      12 | extra data after last expected column   | 12||||
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      13 | missing data for column "c"             | |,13,
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      13 | missing data for column "c"             | |,13,
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      15 | missing data for column "b"             | 15
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      15 | missing data for column "b"             | 15
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      16 | missing data for column "b"             | sixteen
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      16 | missing data for column "b"             | sixteen
+(20 rows)
+
+--
+-- error table - do the same thing again. this time use data from STDIN (should show in errtable)
+--
+COPY sreh_copy FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 1000;
+NOTICE:  Rejected 2 badly formatted rows. Errors logged into error table "sreh_copy_errtbl"
+SELECT * FROM sreh_copy ORDER BY a;
+  a  |  b  |  c  
+-----+-----+-----
+   1 |   1 |   1
+   1 |   1 |   1
+   1 |   1 |   1
+   5 |   5 |   5
+   5 |   5 |   5
+   5 |   5 |   5
+   6 |   6 |   6
+   6 |   6 |   6
+   6 |   6 |   6
+   9 |   9 |   9
+   9 |   9 |   9
+   9 |   9 |   9
+  10 |  10 |  10
+  10 |  10 |  10
+  10 |  10 |  10
+  14 |  14 |  14
+  14 |  14 |  14
+  14 |  14 |  14
+ 100 | 100 | 100
+ 300 | 300 | 300
+(20 rows)
+
+SELECT relname,filename,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
+  relname  |                                         filename                                          | linenum |                            errmsg                             |              rawdata              
+-----------+-------------------------------------------------------------------------------------------+---------+---------------------------------------------------------------+-----------------------------------
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       2 | missing data for column "b"                                   | 2
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       2 | missing data for column "b"                                   | 2
+ sreh_copy | <stdin>                                                                                   |       2 | missing data for column "b"                                   | 200 bad data from stdin
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       3 | missing data for column "c"                                   | 3|
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       3 | missing data for column "c"                                   | 3|
+ sreh_copy | <stdin>                                                                                   |       4 | invalid input syntax for integer: " more bad data from stdin" | 400|400| more bad data from stdin
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       4 | extra data after last expected column                         | 4|4|4|4
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       4 | extra data after last expected column                         | 4|4|4|4
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       7 | invalid input syntax for integer: "bad"                       | 7|7|bad
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       7 | invalid input syntax for integer: "bad"                       | 7|7|bad
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       8 | invalid input syntax for integer: "bad"                       | bad|8|8
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       8 | invalid input syntax for integer: "bad"                       | bad|8|8
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      11 | missing data for column "b"                                   | eleven
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      11 | missing data for column "b"                                   | eleven
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      12 | extra data after last expected column                         | 12||||
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      12 | extra data after last expected column                         | 12||||
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      13 | missing data for column "c"                                   | |,13,
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      13 | missing data for column "c"                                   | |,13,
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      15 | missing data for column "b"                                   | 15
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      15 | missing data for column "b"                                   | 15
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      16 | missing data for column "b"                                   | sixteen
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      16 | missing data for column "b"                                   | sixteen
+(22 rows)
+
+--
+-- error table - have low reject limit that gets reached, and see that data rolled back from both target table and err table
+--
+COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 2;
+ERROR:  Segment reject limit reached after encountering 2 data errors. Aborting operation.  (seg0 localhost:11001 pid=14441)
+CONTEXT:  COPY sreh_copy, line 3: "3|"
+SELECT * FROM sreh_copy ORDER BY a;
+  a  |  b  |  c  
+-----+-----+-----
+   1 |   1 |   1
+   1 |   1 |   1
+   1 |   1 |   1
+   5 |   5 |   5
+   5 |   5 |   5
+   5 |   5 |   5
+   6 |   6 |   6
+   6 |   6 |   6
+   6 |   6 |   6
+   9 |   9 |   9
+   9 |   9 |   9
+   9 |   9 |   9
+  10 |  10 |  10
+  10 |  10 |  10
+  10 |  10 |  10
+  14 |  14 |  14
+  14 |  14 |  14
+  14 |  14 |  14
+ 100 | 100 | 100
+ 300 | 300 | 300
+(20 rows)
+
+SELECT relname,filename,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
+  relname  |                                         filename                                          | linenum |                            errmsg                             |              rawdata              
+-----------+-------------------------------------------------------------------------------------------+---------+---------------------------------------------------------------+-----------------------------------
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       2 | missing data for column "b"                                   | 2
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       2 | missing data for column "b"                                   | 2
+ sreh_copy | <stdin>                                                                                   |       2 | missing data for column "b"                                   | 200 bad data from stdin
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       3 | missing data for column "c"                                   | 3|
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       3 | missing data for column "c"                                   | 3|
+ sreh_copy | <stdin>                                                                                   |       4 | invalid input syntax for integer: " more bad data from stdin" | 400|400| more bad data from stdin
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       4 | extra data after last expected column                         | 4|4|4|4
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       4 | extra data after last expected column                         | 4|4|4|4
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       7 | invalid input syntax for integer: "bad"                       | 7|7|bad
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       7 | invalid input syntax for integer: "bad"                       | 7|7|bad
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       8 | invalid input syntax for integer: "bad"                       | bad|8|8
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |       8 | invalid input syntax for integer: "bad"                       | bad|8|8
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      11 | missing data for column "b"                                   | eleven
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      11 | missing data for column "b"                                   | eleven
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      12 | extra data after last expected column                         | 12||||
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      12 | extra data after last expected column                         | 12||||
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      13 | missing data for column "c"                                   | |,13,
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      13 | missing data for column "c"                                   | |,13,
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      15 | missing data for column "b"                                   | 15
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      15 | missing data for column "b"                                   | 15
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      16 | missing data for column "b"                                   | sixteen
+ sreh_copy | @abs_srcdir@/data/bad_data1.data |      16 | missing data for column "b"                                   | sixteen
+(22 rows)
+
+DROP TABLE sreh_copy;
+DROP TABLE sreh_copy_errtable;
+ERROR:  table "sreh_copy_errtable" does not exist
+-- ###########################################################
+-- External Tables 
+-- ###########################################################
