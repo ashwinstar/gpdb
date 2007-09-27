@@ -65,7 +65,7 @@ makeCdbSreh(bool should_keep, int rejectlimit, bool is_limit_in_rows,
 	if(filename)
 		h->filename = pstrdup(filename);
 	else
-		h->filename = NULL;
+		h->filename = "<stdin>";
 	
 	
 	/* error table was specified open it (and create it first if necessary) */
