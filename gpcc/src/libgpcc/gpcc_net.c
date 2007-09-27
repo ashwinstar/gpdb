@@ -219,11 +219,13 @@ static void do_read(int fd, short event, void *arg)
 	    if (! ok) {
 		/* end request */
 		item->is_closing = 1;
+		gpcc_warning(FLINE, "do_read: recv error, close socket");
 	    }
 	}
 	else if (n == 0) {
 	    /* didn't read anything */
-	    ;
+	    item->is_closing = 1;
+	    gpcc_warning(FLINE, "do_read: zero byte received.  close socket");
 	}
 	else {
 	    bb->top += n;
@@ -261,6 +263,10 @@ static void do_read(int fd, short event, void *arg)
 	}
     }
 
+    if (item->is_closing) {
+	goto CLOSED;
+    }
+
     gpcc_spin_release(spin);
     return;
 
@@ -268,7 +274,6 @@ static void do_read(int fd, short event, void *arg)
     CLOSED:
 
     gpcc_spin_release(spin);
-
     do_closed(item);
 }
 
@@ -303,6 +308,8 @@ static void do_accept(int fd, short event, void *arg)
     gpcc_net_conn_t conn;
     apr_uint32_t *spin;
     item_t * item;
+    int e;
+    apr_pool_t *pool;
 
     /* do the accept */
     if ((sock = accept(fd, (void*) &a, &len)) < 0) {
@@ -310,12 +317,20 @@ static void do_accept(int fd, short event, void *arg)
 	return;
     }
 
+    spin = gpcc_spin_secure(net.net_spin);
+    if (0 != (e = apr_pool_create(&pool, net.pool))) {
+	spin = gpcc_spin_release(spin);
+	gpcc_warning(FLINE, "apr_pool_create failed");
+	return;
+    }
+    spin = gpcc_spin_release(spin);
+
     conn = mkitem(sock, 0 /* arg */,
 		  0 /*is_connecting */,
 		  1 /*is_open*/,
 		  0 /*self_origin*/,
 		  0, 0, 0, /* opened, closed, recv */
-		  net.pool);
+		  pool);
     if (! conn) {
 	gpcc_warning(FLINE, "do_accept: unable to accept new connection");
 	return;
@@ -348,7 +363,6 @@ static void do_timeout(int fd, short event, void *arg)
     tm.tv_sec = 0;
     tm.tv_usec = 1000 * 1000;
     evtimer_add(&net.timer_event, &tm);
-
 }
 
     
@@ -364,8 +378,9 @@ static void* APR_THREAD_FUNC net_run(apr_thread_t* thread, void* arg)
 
 APR_DECLARE(apr_status_t) gpcc_net_once(void) 
 {
-    return event_loop(EVLOOP_ONCE);
-
+    int e;
+    e = event_loop(EVLOOP_ONCE| EVLOOP_NONBLOCK);
+    return e;
 }
 
 APR_DECLARE(apr_status_t) gpcc_net_start(int port, 
@@ -387,7 +402,6 @@ APR_DECLARE(apr_status_t) gpcc_net_start(int port,
 
     spin = gpcc_spin_secure(net.net_spin);
     if (net.pool) {
-	gpcc_log_info("gpcc_net started");
 	spin = gpcc_spin_release(spin);
 	return 0;
     }
@@ -498,7 +512,7 @@ APR_DECLARE(void) gpcc_net_stop(void)
 APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* pconn, const char* addr, 
 					gpcc_net_opened_t* opened,
 					gpcc_net_closed_t* closed,
-					gpcc_net_recv_t* recv,
+					gpcc_net_recv_t* _recv,
 					void* arg)
 
 {
@@ -520,7 +534,7 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* pconn, const char* addr
     }
     spin = gpcc_spin_release(spin);
 
-    /* resolve addr */
+    /* Resolve addr */
     if (0 != (e = apr_parse_addr_port(&addr2, &scope, &port, addr, pool))) {
 	gpcc_warning(FLINE, "apr_parse_addr_port failed: %s", addr);
 	goto bail;
@@ -555,7 +569,7 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* pconn, const char* addr
 		    1 /*self_origin*/, 
 		    opened,
 		    closed,
-		    recv,
+		    _recv,
 		    pool);
     if (! (*pconn)) {
 	gpcc_warning(FLINE, "mkitem failed: not enough memory");
@@ -573,6 +587,7 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* pconn, const char* addr
 	    item->arg = net.cb.opened(item->conn, item->arg, 
 				      item->self_origin, item->pool);
 	}
+
 	gpcc_spin_secure(spin);
     }
     
@@ -903,6 +918,7 @@ APR_DECLARE(apr_status_t) gpcc_net_send_request(gpcc_net_conn_t conn,
 
     if (p == q)
 	return APR_EINVAL;
+
     return gpcc_net_send(conn, buf, p - buf);
 }
 
