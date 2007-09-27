@@ -550,7 +550,7 @@ CopyGetInt16(CopyState cstate, int16 *val)
  * NULL values as <null_print>.
  *
  * When loading in the text format from an input stream (as opposed to
- * a file), recognize a "." on a line by itself as EOF. Also recognize
+ * a file), recognize a "\." on a line by itself as EOF. Also recognize
  * a stream EOF.  When unloading in the text format to an output stream,
  * write a "." on a line by itself at the end of the data.
  *
@@ -615,6 +615,15 @@ DoCopy(const CopyStmt *stmt)
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("conflicting or redundant options")));
 			cstate->null_print = strVal(defel->arg);
+						
+			/* 
+			 * MPP-2010: unfortunately serialization function doesn't
+			 * distinguish between 0x0 and empty string. Therefore we
+			 * must assume that if NULL AS was indicated and has no value
+			 * the actual value is an empty string.
+			 */
+			if(!cstate->null_print)
+				cstate->null_print = "";
 		}
 		else if (strcmp(defel->defname, "csv") == 0)
 		{
