@@ -172,10 +172,10 @@ static void setQryDistributionPolicy(SelectStmt *stmt, Query *qry);
 static void transformSingleRowErrorHandling(ParseState *pstate, CreateStmtContext *cxt,
 											SingleRowErrorDesc *sreh);
 
-static RuleStmt *make_partition_rules(ParseState *pstate,
+static Node *make_partition_rules(ParseState *pstate,
 		 CreateStmtContext *cxt, CreateStmt *stmt, 
 		 Node *partitionBy, PartitionElem *pElem,
- 		 char *at_depth);
+ 		 char *at_depth, char *child_name_str);
 
 
 /*
@@ -2543,14 +2543,18 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 
 }
 
-static RuleStmt *make_partition_rules(ParseState *pstate,
+static Node *make_partition_rules(ParseState *pstate,
 		 CreateStmtContext *cxt, CreateStmt *stmt, 
 		 Node *partitionBy, PartitionElem *pElem,
- 		 char  *at_depth
+ 		 char  *at_depth, char *child_name_str
 		)
 {
 	PartitionBy			*pBy    = (PartitionBy *)partitionBy;
 	PartitionBoundSpec	*pBSpec = NULL;
+	Node				*pRule  = NULL;
+	InsertStmt			*pIns   = NULL;
+	RangeVar			*parent_tab_name;
+	RangeVar			*child_tab_name;
 
 	if (!pElem)
 		return NULL;
@@ -2565,6 +2569,14 @@ static RuleStmt *make_partition_rules(ParseState *pstate,
 		ListCell		*lc      = NULL;
 		List			*valElts = pBSpec->partStart;
 		ListCell		*lc_val  = NULL;
+		char			 exprBuf[10000];
+		char			 ANDBuf[10000];
+		char			 ORBuf[10000];
+		char			 ruleBuf[10000];
+
+		exprBuf[0] = '0';
+		ANDBuf[0]  = '0';
+		ORBuf[0]   = '0';
 
 		Assert(pBSpec->partStart);
 
@@ -2581,6 +2593,8 @@ static RuleStmt *make_partition_rules(ParseState *pstate,
 			{
 				Node *pCol = lfirst(lc);
 				Node *pEq  = NULL;
+				Value *pColConst;
+				A_Const *pValConst;
 
 				if (NULL == lc_val)
 				{
@@ -2596,21 +2610,41 @@ static RuleStmt *make_partition_rules(ParseState *pstate,
 												pCol,
 												lfirst(lc_val),
 												-1 /* position */);
+				pColConst = (Value *)pCol;
+				pValConst = (A_Const *)lfirst(lc_val);
+
+				Assert(pColConst->type == T_String);
+				Assert(pValConst->type == T_A_Const);
+
+				snprintf(exprBuf, sizeof(exprBuf), "%s = \'%s\'", 
+						 strVal(pColConst),
+						 strVal(&(pValConst->val))
+						 );
 
 				/* for multiple cols - AND the matches eg: 
 				   (col = value) AND (col = value) 
 				*/
 				if (pIndAND)
 				{
+					char *pfoo = pstrdup(ANDBuf);
+
 					pIndAND =
 						(Node *) makeA_Expr(AEXPR_AND, NIL, 
 											pIndAND,
 											pEq,
 											-1 /* position */);
-											}
+
+					snprintf(ANDBuf, sizeof(ANDBuf), "((%s) and %s)",
+							 exprBuf,
+							 pfoo
+						 );
+
+					pfree(pfoo);
+				}
 				else
 				{
 					pIndAND = pEq;
+					snprintf(ANDBuf, sizeof(ANDBuf), "(%s)", exprBuf);
 				}
 
 				lc_val = lnext(lc_val);
@@ -2627,25 +2661,108 @@ static RuleStmt *make_partition_rules(ParseState *pstate,
 
 			if (pIndOR)
 			{
+				char *pfoo = pstrdup(ORBuf);
+
 				pIndOR =
 					(Node *) makeA_Expr(AEXPR_OR, NIL, 
 										pIndOR,
 										pIndAND,
 										-1 /* position */);
+
+				snprintf(ORBuf, sizeof(ORBuf), "((%s) OR %s)",
+						 ANDBuf,
+						 pfoo
+						 );
+
+					pfree(pfoo);
+
 			}
 			else
 			{
 				pIndOR = pIndAND;
+				snprintf(ORBuf, sizeof(ORBuf), "(%s)", ANDBuf);
 			}
 
 		} /* end for all vals */
 
-		
+		parent_tab_name = makeNode(RangeVar);
+		parent_tab_name->catalogname = cxt->relation->catalogname;
+		parent_tab_name->schemaname  = cxt->relation->schemaname;
+		parent_tab_name->relname     = cxt->relation->relname;
+
+		child_tab_name = makeNode(RangeVar);
+		child_tab_name->catalogname = cxt->relation->catalogname;
+		child_tab_name->schemaname  = cxt->relation->schemaname;
+		child_tab_name->relname     = child_name_str;
+
+		snprintf(ruleBuf, sizeof(ruleBuf), 
+				 "CREATE RULE %s AS ON INSERT to %s WHERE %s DO INSTEAD INSERT INTO %s ", child_name_str, parent_tab_name->relname, ORBuf, child_name_str);
+
+#ifdef NEVER_EVER
+		pRule = makeNode(RuleStmt);
+		pRule->replace = false; /* do not replace */
+		pRule->relation = parent_tab_name;
+		pRule->rulename = pstrdup(child_name_str);
+		pRule->whereClause = pIndOR;
+		pRule->event = CMD_INSERT;
+		pRule->instead = true; /* do instead */
+		pRule->actions = NIL; /* XXX XXX XXX XXX */
+#endif
+
+		pIns = makeNode(InsertStmt);
+		pRule = (Node *)pIns;
+
+		pIns->relation = makeNode(RangeVar);
+		pIns->relation->catalogname = NULL;
+		pIns->relation->schemaname = NULL;
+		pIns->relation->relname = "partition_rule";
+		pIns->returningList = NULL;
+
+		pIns->cols = NIL;
+
+		if (1)
+		{
+			List *vl1 = NULL;
+
+			A_Const *acs = makeNode(A_Const);
+			acs->val.type = T_String;
+			acs->val.val.str = pstrdup(parent_tab_name->relname);
+			acs->typname = SystemTypeName("text");
+
+			vl1 = list_make1(acs);
+
+			acs = makeNode(A_Const);
+			acs->val.type = T_String;
+			acs->val.val.str = pstrdup(child_name_str);
+			acs->typname = SystemTypeName("text");
+
+			vl1 = lappend(vl1, acs);
+
+			acs = makeNode(A_Const);
+			acs->val.type = T_String;
+			acs->val.val.str = pstrdup(ORBuf);
+			acs->typname = SystemTypeName("text");
+
+			vl1 = lappend(vl1, acs);
+
+			acs = makeNode(A_Const);
+			acs->val.type = T_String;
+			acs->val.val.str = pstrdup(ruleBuf);
+			acs->typname = SystemTypeName("text");
+
+			vl1 = lappend(vl1, acs);
+				
+			pIns->selectStmt = (Node *)makeNode(SelectStmt);
+			((SelectStmt *)pIns->selectStmt)->valuesLists = 
+					list_make1(vl1);
+
+		}
+
 
 	} /* end if LIST */
 
 
-	return NULL;
+	return pRule;
 }
 
 
@@ -3017,14 +3134,17 @@ static void transformPartitionBy(ParseState *pstate,
 
 	for (ii = 0; ii<partNumber; ii++)
 	{
-		char	  	prtstr[NAMEDATALEN];			
-
+		char	  	 prtstr[NAMEDATALEN];			
 		PartitionBy	*newSub = NULL;
-		RuleStmt	*pRule  = NULL;
+		Node		*pRule  = NULL;
+		bool		 makeRule = false;
+		PartitionElem *pElem = NULL;
+
+		makeRule = false;
 
 		if (lc)
 		{
-			PartitionElem *pElem = (PartitionElem *)lfirst(lc);
+			pElem = (PartitionElem *)lfirst(lc);
 			
 			if (pElem->partName)
 			{
@@ -3082,10 +3202,8 @@ static void transformPartitionBy(ParseState *pstate,
 				newSub->partDepth = psubBy->partDepth;
 			}
 
-			pRule = make_partition_rules(pstate,
-										 cxt, stmt, 
-										 partitionBy, pElem, at_depth);
-			
+			makeRule = true; /* need child table name before make rule */
+
 		} /* end lc */
 		else
 		{
@@ -3118,6 +3236,16 @@ static void transformPartitionBy(ParseState *pstate,
 		parent_tab_name->catalogname = cxt->relation->catalogname;
 		parent_tab_name->schemaname  = cxt->relation->schemaname;
 		parent_tab_name->relname     = cxt->relation->relname;
+
+		/* now that we have the child table name, make the rule */
+
+		if (makeRule)
+		{
+			pRule = make_partition_rules(pstate,
+										 cxt, stmt, 
+										 partitionBy, pElem, at_depth, 
+										 tab_name_str);
+		}
 
 		child_tab_stmt = makeNode(CreateStmt);
 		child_tab_stmt->relation = child_tab_name;
