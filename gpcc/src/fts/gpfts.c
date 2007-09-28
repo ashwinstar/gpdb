@@ -298,6 +298,9 @@ int fts_initialize(config_t *config, gpcc_evqueue_t *alertq)
     if (0 != (e = apr_pool_create(&gpfts.pool, 0))) {
 	return e;
     }
+    
+    /* set fts event base */
+    gpfts.event_base = event_init();
 
     /* create the event queue */
     evq = gpfts.evq = gpcc_evqueue_create(1000, gpfts.pool);

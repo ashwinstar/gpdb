@@ -1,5 +1,3 @@
-#define HA_DEFAULT_PORT  9876
-
 
 static struct json_object *config_to_json_object() 
 {
@@ -323,12 +321,12 @@ static apr_status_t setup_array_connect(gpcc_event_t *ev, void *_cmdslot)
 
     for (i = 0 ; i < p->u.sys.nhainfo ; i++) {
 					
-	sprintf(addr, "%s:%d", p->u.sys.request.u.setup.hosts[i], HA_DEFAULT_PORT);
+	sprintf(addr, "%s:%d", p->u.sys.request.u.setup.hosts[i], DEFAULT_HA_PORT);
 	
 	hainfo = malloc(sizeof(*hainfo) + strlen(p->u.sys.request.u.setup.hosts[i]));
 	strcpy(hainfo->host, p->u.sys.request.u.setup.hosts[i]);
 	hainfo->index = i;
-	gpcc_log_info("connect to HA %s", addr);
+	gpcc_log_info("open connection to HA %s", addr);
 	hainfo->ha = gpcc_ha_open(p->cmdidx, addr, ha_net_opened, ha_net_closed, ha_net_recv, hainfo);
 	if (!hainfo->ha) {
 	    gpcc_warning(FLINE, "gpcc_ha_open %s failed", hainfo->host);
@@ -538,7 +536,8 @@ static apr_status_t setup_ssh_start(gpcc_event_t *ev, void *_cmdslot)
     int e;
     gpcc_event_t *evt;
 
-    sprintf(cmd, "%s/bin/gpha", getenv("GPHOME"));
+    sprintf(cmd, "%s/bin/gpha -p %d %s", getenv("GPHOME"), DEFAULT_HA_PORT, "/tmp");
+    gpcc_log_info("Execute '%s'", cmd);
     if (0 != (e = gpcc_proc_gpssh(&cmdslot->u.sys.request.u.setup.proc, 
 				  user, 
 				  (const char *const *)cmdslot->u.sys.request.u.setup.hosts, 
@@ -553,6 +552,7 @@ static apr_status_t setup_ssh_start(gpcc_event_t *ev, void *_cmdslot)
 #else
 	strcpy(cmd, "killall -9 gpha");
 #endif
+	gpcc_log_info("Execute '%s'", cmd);
 	if (0 != (e = gpcc_proc_gpssh(&cmdslot->u.sys.request.u.setup.proc,
 				      user,
 				      (const char *const *) cmdslot->u.sys.request.u.setup.hosts, 

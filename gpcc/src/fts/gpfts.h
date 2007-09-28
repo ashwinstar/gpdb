@@ -17,6 +17,8 @@
 #define DEFAULT_QD_PORT   	12100
 #define DEFAULT_QE_BASEPORT	12200
 #define DEFAULT_MIRROR_QE_BASEPORT  22200
+#define DEFAULT_HA_PORT  53333
+
 #define CMDSLOT_MAX    512
 
 
@@ -164,6 +166,7 @@ struct gpfts_t {
     apr_thread_t *thread;
     apr_threadattr_t *attr;
     struct event timer_event;
+    struct event_base *event_base;
     config_t     *config;
     apr_uint32_t spin[1];
     apr_uint32_t net_spin[1];

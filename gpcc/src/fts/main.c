@@ -11,6 +11,7 @@
 #include <event.h>
 #include "fts.h"
 
+static apr_pool_t *pool = 0;
 
 static void* net_opened(gpcc_net_conn_t conn, void* conn_arg, 
 		 int self_origin,
@@ -35,20 +36,47 @@ static void net_recv(gpcc_net_conn_t conn, void* conn_arg)
 /** callback every second */
 static void net_tick(apr_time_t now)
 {
-    //    printf("net_tick\n");   
+    printf("net_tick\n");   
 }
 
+void *APR_THREAD_FUNC fts_cmd(apr_thread_t *thread, void *arg) 
+{
+    struct json_object *obj;
+    gpcc_event_t *ev;
+    gpcc_evqueue_t *outq = 0;
+
+    outq = gpcc_evqueue_create(100, pool);
+
+    apr_sleep(2000);
+    
+    printf("Setup..........\n");
+    obj = gpcc_json_array_request("setup", "");
+    fts_do(json_object_to_json_string(obj), outq);
+    json_object_put(obj);
+
+    ev = gpcc_evqueue_get(outq);
+    if (!ev)
+	return 0;
+	
+    printf("result = %s\n", ev->edata);
+	
+    free(ev);
+
+    gpcc_evqueue_destroy(outq);
+    return 0;
+
+}
 
 int main(int argc, const char *argv[]) 
 {
-    apr_pool_t *pool;
-    gpcc_evqueue_t *alertq = 0;
-    gpcc_evqueue_t *outq = 0;
     int e;
     int started = 0;
     config_t *config = 0;
     struct json_object *obj = 0;
     gpcc_event_t *ev = 0;
+    apr_thread_t *thread;
+    apr_threadattr_t *attr;
+    gpcc_evqueue_t *alertq = 0;
 
     apr_app_initialize(&argc, (char const *const **) &argv, 0);
 
@@ -78,36 +106,36 @@ int main(int argc, const char *argv[])
 	return e;
     }
 
-    printf("fts_initialize...\n");
+
+    if (0 != (e = apr_threadattr_create(&attr, pool))) {
+	gpcc_warning(FLINE, "apr_threadattr_create failed");
+	return e;
+    }
+
+    if (0 != (e = apr_thread_create(&thread, attr, fts_cmd, 0, pool))) {
+	gpcc_warning(FLINE, "apr_thread_create failed");
+	return e;
+    }
+
+
     alertq = gpcc_evqueue_create(100, pool);
 
-    outq = gpcc_evqueue_create(100, pool);
+
+    printf("fts_initialize...\n");
 
     fts_initialize(config, alertq);
 
-    obj = gpcc_json_array_request("setup", "");
-    fts_do(json_object_to_json_string(obj), outq);
-    json_object_put(obj);
-
+    //    event_dispatch();
+    
     printf("enter loop\n");
     for (;;) {
-	
-	if (ev) 
-	    free(ev);
-
-	while ((ev = gpcc_evqueue_tryget(outq)) == 0) {
-	    if ((e = gpcc_net_once()))
-		break;
+	if ((e = gpcc_net_once()) < 0) {
+	    printf("gpcc_net_once error\n");
+	    break;
 	}
-
-	if (!ev)
-	    continue;
-
-	
-	printf("result = %s\n", ev->edata);
-	
     }
     printf("exit loop\n");
+    
 
     gpcc_net_stop();
 

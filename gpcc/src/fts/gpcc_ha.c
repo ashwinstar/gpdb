@@ -41,6 +41,7 @@ static apr_status_t send_gpcc_net_proto(gpcc_ha_t *ha)
 	return APR_EINVAL;
 
     ha->self.request.argc = 1;
+    ha->self.request.argv = apr_pcalloc(ha->pool, sizeof(char *) * (ha->self.request.argc + 1));
     ha->self.request.argv[0] = GPCC_NET_PROTO;
     return gpcc_net_send_request(ha->conn, &ha->self.request);
 }
@@ -52,14 +53,16 @@ void *ha_net_opened(gpcc_net_conn_t conn, void *conn_arg,
     gpcc_ha_t *ha = (gpcc_ha_t *) conn_arg;
     int e;
 
+    gpcc_log_info("ha_net_opened...");
     ha->pool = pool;
     /* send proto */
+    
     if (0 != (e = send_gpcc_net_proto(ha))) {
 	gpcc_warning(FLINE, "send gpcc net protocol failed");
 	gpcc_ha_close(ha);
 	return 0;
     }
-
+    
     return ha;
 }
 
@@ -67,6 +70,7 @@ void ha_net_closed(gpcc_net_conn_t conn, void *conn_arg)
 {
     gpcc_ha_t *ha = (gpcc_ha_t *) conn_arg;
 
+    gpcc_log_info("ha_net_closed...");
     if (ha) {
 	ha->cb.closed(ha, ha->arg);
 	free(ha);
@@ -78,6 +82,7 @@ void ha_net_recv(gpcc_net_conn_t conn, void *conn_arg)
     gpcc_ha_t *ha = (gpcc_ha_t *) conn_arg;
     int e;
 
+    gpcc_log_info("ha_net_recv...");
     if (!ha->peer.request) {
 	/* receive proto msg */
 	e = gpcc_net_read_request(ha->conn, &ha->peer.request, ha->pool);
