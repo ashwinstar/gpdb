@@ -417,14 +417,15 @@ static apr_status_t seg_initdb_qe_and_master_qd(gpcc_event_t *ev, void *_cmdslot
 
     /* check data_dir exists */
     if (gpcc_file_directory_exists(cmdslot->u.seg.request.data_dir)) {
-	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "data directory exists");
+	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "[%s] data directory %s exists", 
+			  cmdslot->cmdname, cmdslot->u.seg.request.data_dir);
 	json_object_put(obj);
 	return 0;
     }	
 
     /* check database is running (port)*/
     if (0 == (e = gpcc_pg_pid_active(cmdslot->u.seg.request.port, &pid, cmdslot->u.seg.request.subpool))) {
-	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "database is running");
+	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "[%s] database is running", cmdslot->cmdname);
 	json_object_put(obj);
 	return 0;	
     }
@@ -436,7 +437,7 @@ static apr_status_t seg_initdb_qe_and_master_qd(gpcc_event_t *ev, void *_cmdslot
 	max_connect *= 5;
     }
 
-    gpcc_log_info("start initdb %s...", cmdslot->cmdname);
+    gpcc_log_info("[%s] start initdb", cmdslot->cmdname);
     if (0 != (e = gpcc_proc_initdb(&cmdslot->u.seg.request.proc,
 				   cmdslot->u.seg.request.data_dir,
 				   gpcc_json_object_get_string(obj, "gpdb.encoding", "UNICODE"),
@@ -451,8 +452,6 @@ static apr_status_t seg_initdb_qe_and_master_qd(gpcc_event_t *ev, void *_cmdslot
 	return 0;
     }
 
-
-    gpcc_log_info("finish initdb %s", cmdslot->cmdname);
     cmdslot->u.seg.request.msg = obj;
     cmdslot->countdown = 1;
 
@@ -552,10 +551,9 @@ static apr_status_t seg_initdb_wait(gpcc_event_t* ev, void *_cmdslot)
     int e;
     gpcc_event_t *evt;
 
-    gpcc_log_info("seg_initdb_wait...");
     e = apr_proc_wait(&cmdslot->u.seg.request.proc, &ret, &exitwhy, APR_NOWAIT);
     if (e == APR_CHILD_DONE) {
-	gpcc_log_info("seg_initdb_wait...done");
+	gpcc_log_info("[%s] initdb done. retcode=%d", cmdslot->cmdname, ret);
 	if (ret == 0) {
 	    if (seg_is_standby_qd(cmdslot)) {
 		/* this is standby QD */
@@ -564,16 +562,17 @@ static apr_status_t seg_initdb_wait(gpcc_event_t* ev, void *_cmdslot)
 		return 0;
 	    }
 	    
-	    gpcc_log_info("update gpconfiguration");
 	    /* this is master QD or QEs */
 
 	    /* update pg_hba.conf */
+	    gpcc_log_info("[%s] update pg_hba.conf", cmdslot->cmdname);
 	    if (0 != (e = seg_initdb_pg_hba_append(ev, _cmdslot))) {
 		seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, e, "update pg_hba.conf failure");
 		return 0;
 	    }
 
 	    /* update postgresql.conf */
+	    gpcc_log_info("[%s] update postgresql.conf", cmdslot->cmdname);
 	    if (0 != (e = seg_initdb_pg_conf_update(ev, _cmdslot))) {
 		seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, e, "update postgresql.conf failure");
 		return 0;
@@ -582,6 +581,7 @@ static apr_status_t seg_initdb_wait(gpcc_event_t* ev, void *_cmdslot)
 	    /* start database */
 	    if (seg_is_master_qd(cmdslot)) {
 		/* start QD in admin/utility mode */
+		gpcc_log_info("[%s] start QD in admin mode", cmdslot->cmdname);
 		if (0 != (e = gpcc_proc_pg_ctl_start_master(&cmdslot->u.seg.request.proc,
 							    cmdslot->u.seg.request.port,
 							    cmdslot->u.seg.request.data_dir,
@@ -591,7 +591,7 @@ static apr_status_t seg_initdb_wait(gpcc_event_t* ev, void *_cmdslot)
 		    return 0;
 		}
 	    } else {
-		
+		gpcc_log_info("[%s] start QE", cmdslot->cmdname);
 		if (0 != (e = gpcc_proc_pg_ctl_start_segment(&cmdslot->u.seg.request.proc,
 							     cmdslot->u.seg.request.port,
 							     cmdslot->u.seg.request.data_dir,
@@ -605,8 +605,8 @@ static apr_status_t seg_initdb_wait(gpcc_event_t* ev, void *_cmdslot)
 	    evt = gpcc_event_alloc(SEG_INITDB_NEXT_EVENT, cmdslot->cmdidx, 0);
 	    gpcc_evqueue_put(gpha.evq, evt);
 	    
-	    gpcc_log_info("update gpconf done");
 	} else {
+	    gpcc_log_error("[%s] failed to run initdb", cmdslot->cmdname);
 	    seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, ret, proc_exit_reason(exitwhy));
 	}
 
@@ -759,11 +759,12 @@ static apr_status_t seg_initdb_start_wait(gpcc_event_t* ev, void *_cmdslot)
     int e;
     gpcc_event_t *evt;
 
-    gpcc_log_info("[%s] waiting initdb to finish", cmdslot->cmdname);
     e = apr_proc_wait(&cmdslot->u.seg.request.proc, &ret, &exitwhy, APR_NOWAIT);
     if (e == APR_CHILD_DONE) {
+	gpcc_log_info("[%s] start database done. retcode = %d", cmdslot->cmdname, ret);
 	if (ret == 0) {
 	    /* check pg_ctl status for sure */
+	    gpcc_log_info("[%s] check pg_ctl status", cmdslot->cmdname);
 	    if (0 != (e = gpcc_pg_ctl_status(cmdslot->u.seg.request.port,
 					     cmdslot->u.seg.request.data_dir,
 					     cmdslot->u.seg.request.subpool))) {
@@ -772,12 +773,14 @@ static apr_status_t seg_initdb_start_wait(gpcc_event_t* ev, void *_cmdslot)
 	    }
 
 	    /* update gp_id */
+	    gpcc_log_info("[%s] update gp_id", cmdslot->cmdname);
 	    if (0 != (e = seg_initdb_update_gp_id(ev, _cmdslot))) {
 		seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL2_EVENT, e, "update gp_id table failure");
 		return 0;
 	    }
 
 	    /* update gp_configuration */
+	    gpcc_log_info("[%s] update gp_configuration", cmdslot->cmdname);
 	    if (0 != (e = seg_initdb_update_gp_configuration(ev, _cmdslot))) {
 		seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL2_EVENT, e, "update gp_configuration table failure");
 		return 0;
@@ -786,8 +789,9 @@ static apr_status_t seg_initdb_start_wait(gpcc_event_t* ev, void *_cmdslot)
 	    evt = gpcc_event_alloc(SEG_INITDB_NEXT_EVENT, cmdslot->cmdidx, 0);
 	    gpcc_evqueue_put(gpha.evq, evt);
 	    
-	    gpcc_log_info("[%s] initdb done", cmdslot->cmdname);
+	    gpcc_log_info("[%s] update gpconf done", cmdslot->cmdname);
 	} else {
+	    gpcc_log_error("[%s] failed to start database.", cmdslot->cmdname);
 	    seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL2_EVENT, ret, proc_exit_reason(exitwhy));
 	}
 
@@ -812,6 +816,8 @@ static apr_status_t seg_initdb_backout1(gpcc_event_t *ev, void *_cmdslot)
     char *argv[2];
     int e;
 
+    gpcc_log_info("[%s] initdb backout level 1 start", cmdslot->cmdname);
+    gpcc_log_info("[%s] remove data directory %s", cmdslot->cmdname, cmdslot->u.seg.request.data_dir);
     sprintf(cmd, "rm -r %s", cmdslot->u.seg.request.data_dir);
     argv[0] = cmd;
     argv[1] = 0;
@@ -838,9 +844,14 @@ static apr_status_t seg_initdb_backout2(gpcc_event_t *ev, void *_cmdslot)
     char *argv[2];
     int e;
 
+    gpcc_log_info("[%s] initdb backout level 2 start", cmdslot->cmdname);
+
     sprintf(cmd, "rm -f /tmp/.s.PGSQL.%d* ; rm -f %s.log", 
 	    cmdslot->u.seg.request.port,
 	    cmdslot->u.seg.request.data_dir);
+
+    gpcc_log_info("[%s] Execute %s", cmdslot->cmdname, cmd);
+
     argv[0] = cmd;
     argv[1] = 0;
 
@@ -848,6 +859,7 @@ static apr_status_t seg_initdb_backout2(gpcc_event_t *ev, void *_cmdslot)
 	gpcc_warning(FLINE, "failed to run command: %s", cmd);
     }
     
+    gpcc_log_info("[%s] pg_ctl stop database", cmdslot->cmdname);
 
     if (0 != (e = gpcc_proc_pg_ctl_stop(&proc, cmdslot->u.seg.request.port,
 					cmdslot->u.seg.request.data_dir,

@@ -142,20 +142,24 @@ static apr_status_t a_system_net_received(gpcc_event_t* ev, void* cmdslot_)
 	    gpcc_event_t * ev;
 	    /* GPCC */
 	    /* get tuple (msg-type, rcvidx, sndidx, content-length, content) */
-	    e = gpcc_net_read_packet(conninfo->conn, &packet);
-	    if (e) {
-		gpcc_log_error("gpcc_net_read_packet failed");
-		goto bail;
+
+	    for (;;) {
+		e = gpcc_net_read_packet(conninfo->conn, &packet);
+		if (e) {
+		    goto bail;
+		}
+		
+		gpcc_log_info("dispatch to cmdslot %d, packet type = %d", packet->mh.rcvidx, packet->mh.type);
+		/* dispatch to cmdslot */
+		ev = gpcc_event_alloc(packet->mh.type, packet->mh.rcvidx, sizeof(*packet)+packet->mh.len-1);
+		memcpy(ev->edata, packet, sizeof(*packet)+packet->mh.len-1);
+		gpcc_evqueue_put(gpha.evq, ev);
+		
+		if (packet) {
+		    free(packet);
+		    packet = 0;
+		}
 	    }
-
-	    gpcc_log_info("dispatch to cmdslot %d, packet type = %d", packet->mh.rcvidx, packet->mh.type);
-	    /* dispatch to cmdslot */
-	    ev = gpcc_event_alloc(packet->mh.type, packet->mh.rcvidx, sizeof(*packet)+packet->mh.len-1);
-	    memcpy(ev->edata, packet, sizeof(*packet)+packet->mh.len-1);
-	    gpcc_evqueue_put(gpha.evq, ev);
-
-	    if (packet) 
-		free(packet);
 	}
 	else {
 	    /* HTTP */
