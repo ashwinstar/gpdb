@@ -384,6 +384,8 @@ static apr_status_t seg_initdb_qe_and_master_qd(gpcc_event_t *ev, void *_cmdslot
 	return 0;
     }
 
+    gpcc_log_info("json msg = %s", packet->mb);
+
     obj = json_tokener_parse(packet->mb);
     if (!obj) {
 	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "json_tokener_parse error");
@@ -653,13 +655,14 @@ static apr_status_t seg_initdb_update_gp_conf_per_segment(gpcc_event_t *ev, void
     char *data_dir;
     char *last;
 
-
     if ((seg = gpcc_json_object_get_string(msg, segname, 0)) == 0){
+	gpcc_log_error("seg %s not found in config", segname);
 	return 1;
     }
 
     seg = apr_pstrdup(cmdslot->u.seg.request.subpool, seg);
 	
+    gpcc_log_info("segment %s value = %s", segname, seg);
     node = apr_strtok(seg, ":", &last);
     if (!node) {
 	gpcc_warning(FLINE, "%s format error (%s)", segname,  gpcc_json_object_get_string(msg, segname, 0));
@@ -712,7 +715,8 @@ static apr_status_t seg_initdb_update_gp_configuration(gpcc_event_t *ev, void *_
     /* update gp_configuration table */
 
     /* master QD segment */
-    if (0 != (e = seg_initdb_update_gp_conf_per_segment(ev, _cmdslot, "gbdb.seg.m.0", dbid++, -1, "t", master_port))) {
+    if (0 != (e = seg_initdb_update_gp_conf_per_segment(ev, _cmdslot, "gpdb.seg.m.0", dbid++, -1, "t", master_port))) {
+	gpcc_log_error("[%s] update gp_configuration for entry gpdb.seg.m.0 failed", cmdslot->cmdname);
 	return 1;
     }
 
@@ -730,6 +734,7 @@ static apr_status_t seg_initdb_update_gp_configuration(gpcc_event_t *ev, void *_
 	    primary = (j == 0) ? "t" : "f";
 
 	    if (0 != (e = seg_initdb_update_gp_conf_per_segment(ev, _cmdslot, segname, dbid++, i, primary, port))) {
+		gpcc_log_error("[%s] update gp_configuration for entry %s failed", cmdslot->cmdname, segname);
 		return 1;
 	    }
 
@@ -744,6 +749,7 @@ static apr_status_t seg_initdb_update_gp_configuration(gpcc_event_t *ev, void *_
 	}
 
 	if (0 != (e = seg_initdb_update_gp_conf_per_segment(ev, _cmdslot, segname, dbid++, -1, "f", master_port))) {
+	    gpcc_log_error("[%s] update gp_configuration for entry %s failed", cmdslot->cmdname, segname);
 	    return 1;
 	}	
     }

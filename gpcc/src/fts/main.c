@@ -49,7 +49,7 @@ void *APR_THREAD_FUNC fts_cmd(apr_thread_t *thread, void *arg)
 
     apr_sleep(2000);
     
-    printf("Setup..........\n");
+    gpcc_log_info("setup..........");
     obj = gpcc_json_array_request("setup", "");
     fts_do(json_object_to_json_string(obj), outq);
     json_object_put(obj);
@@ -58,10 +58,27 @@ void *APR_THREAD_FUNC fts_cmd(apr_thread_t *thread, void *arg)
     if (!ev)
 	return 0;
 	
-    printf("result = %s\n", ev->edata);
-	
-    free(ev);
+    gpcc_log_info("result = %s", ev->edata);
 
+    free(ev);
+	
+    if (strstr(ev->edata, "fail"))
+	return 0;
+
+
+    gpcc_log_info("initdb...");
+    
+    obj = gpcc_json_array_request("init", "");
+    fts_do(json_object_to_json_string(obj), outq);
+    json_object_put(obj);
+
+    ev = gpcc_evqueue_get(outq);
+    if (!ev)
+	return 0;
+	
+    gpcc_log_info("result = %s", ev->edata);
+
+    
     gpcc_evqueue_destroy(outq);
     return 0;
 

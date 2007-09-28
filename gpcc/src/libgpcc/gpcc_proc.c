@@ -87,6 +87,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_run_shell(apr_proc_t *proc, const char *prog
 	cmdtype = APR_SHELLCMD_ENV;
     }
 
+    gpcc_log_info("Execute '%s'", prog);
     return gpcc_proc_run(proc, prog, argv, env, cmdtype, wait, p);
 
 }
@@ -112,7 +113,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_psql(apr_proc_t *proc, const char *hostname,
 
     *cmd = 0;
     if (utility)
-	strcpy(cmd, "PGOPTIONS=\"-c gp_session_role=utility\" ");
+	sprintf(cmd, "export LD_LIBRARY_PATH=%s && PGOPTIONS=\"-c gp_session_role=utility\" ", LD_LIBRARY_PATH);
     
     strcat(cmd, GPHOME);
     strcat(cmd, "/bin/psql");
@@ -124,11 +125,11 @@ APR_DECLARE(apr_status_t) gpcc_proc_psql(apr_proc_t *proc, const char *hostname,
     
     sprintf(cmd, "%s -p %d %s -A -t -c \"%s\"", cmd, port, dbname, sql);
 
-    gpcc_log_info("Execute: %s", cmd);
-
     argv[0] = cmd;
     argv[1] = 0;
     e = gpcc_proc_run_shell(proc, argv[0], (const char *const *) argv, 0, wait, p);
+
+    gpcc_log_info("Execute: %s [ret=%d]", cmd, e);
 
     return e;
 }

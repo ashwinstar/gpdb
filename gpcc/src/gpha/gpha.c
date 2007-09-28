@@ -449,6 +449,8 @@ int main(int argc, const char* argv[])
 	/* At this point, we are now a daemon */
     }
 
+    gpha.debug = 0;
+
     d_main();
     return 0;
 }

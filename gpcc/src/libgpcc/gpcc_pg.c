@@ -45,7 +45,7 @@ APR_DECLARE(apr_status_t) gpcc_pg_ctl_status(int port, const char *data_dir, apr
 	gpcc_log_error("pg_ctl status (%s)", line);
 	return 1;
     }
-
+    gpcc_log_info("gp_ctl status (%s)", line);
     return 0;
 }
 
@@ -122,13 +122,13 @@ APR_DECLARE(apr_status_t) gpcc_pg_pid_active(int port, int *pid, apr_pool_t *p)
     }
 
     if ((e = apr_file_gets(cmd, sizeof(cmd), proc.out)) != 0) {
-	gpcc_warning(FLINE, "No postgres process running with port = %d", port);
+	gpcc_log_info("No postgres process running with port = %d", port);
 	*cmd = 0;
     }
 
     if (*cmd == 0 && lockf_exist == 0) {
 	*pid = 0;
-	gpcc_log_error("no socket connection or lock file in /tmp found for postgres");
+	gpcc_log_info("no socket connection or lock file in /tmp found for postgres");
 	return 3;
     }
     else {
@@ -172,6 +172,7 @@ APR_DECLARE(apr_status_t) gpcc_pg_reset_invalid_segment(const char *hostname, in
     int e, nfail;
     char line[1024];
 
+    gpcc_log_info("gpcc_pg_reset_invalid_segment.");
     if ((e = gpcc_proc_psql(&proc, hostname, master_port, DEFAULT_GP_DBNAME, "show gp_fault_action", 1, 1, p)) != 0) {
 	gpcc_log_error("psql -c 'show gp_fault_action' error");
 	return e;
@@ -344,7 +345,7 @@ APR_DECLARE(apr_status_t) gpcc_pg_update_gp_configuration(const char *dbhost,
     int count = 0;
 
     /* check gp_configuration first */
-    sprintf(sql, "select count(*) from gp_configurationn where content=%d and definedprimary='%s'",
+    sprintf(sql, "select count(*) from gp_configuration where content=%d and definedprimary='%s'",
 	    content, primary);
     e = gpcc_proc_psql(&proc, dbhost, port, DEFAULT_GP_DBNAME, sql, 1, 1, p);
     if (e) {
