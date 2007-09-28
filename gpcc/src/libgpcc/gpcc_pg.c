@@ -435,7 +435,7 @@ APR_DECLARE(apr_status_t) gpcc_pg_update_postgresql_conf(const char *data_dir, g
 	subst[i].inserted = 0;
     }
 
-    for (tok = apr_strtok(buf, "\r\n", &last) ; tok ; tok = apr_strtok(buf, 0, &last)) {
+    for (tok = apr_strtok(buf, "\r\n", &last) ; tok ; tok = apr_strtok(0, "\r\n", &last)) {
 	for (i = 0 ; subst[i].pattern ; i++) {
 	    if (tok == strstr(tok, subst[i].pattern)) {
 		/* insert the line and # as comment*/

@@ -123,8 +123,11 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 
     cmdslot->u.sys.config_json = config_to_json_object();
 
+    strcpy(key, "gpdb.seg.master_port");
     master_port = config_get_or_set_int(gpfts.config, key, DEFAULT_QD_PORT);
+    strcpy(key, "gpdb.seg.base_port");
     base_port = config_get_or_set_int(gpfts.config, key, DEFAULT_QE_BASEPORT);
+    strcpy(key, "gpdb.seg.mirror_base_port");
     mirror_base_port = config_get_or_set_int(gpfts.config, key, DEFAULT_MIRROR_QE_BASEPORT);
 
     for (i = 0 ; ; i++) {
@@ -133,6 +136,12 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 	if (!value)
 	    break;
     }
+    
+    if (i == 0) {
+	gpcc_log_error("gpdb must have at least one master segment gpdb.seg.m.0");
+	return APR_EINVAL;
+    }
+	
 
     n = i;
 
@@ -157,6 +166,10 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 
     /* master QD */
     strcpy(key, "gpdb.seg.m.0");
+    value = config_get(gpfts.config, key);
+    if (!value)
+	return APR_EINVAL;
+
     dbid = 1;
     content = -1;
     if (sscanf(value, "node.%d:%s", &node, dir) != 2) {
@@ -431,9 +444,16 @@ static apr_status_t setup_cleanup(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
 
-    apr_pool_destroy(cmdslot->u.sys.request.pool);
+    if (cmdslot->u.sys.request.pool) {
+	apr_pool_destroy(cmdslot->u.sys.request.pool);
+	cmdslot->u.sys.request.pool = 0;
+    }
+    cmdslot->u.sys.request.outq = 0;
 
-
+    if (cmdslot->u.sys.request.reqobj) {
+	json_object_put(cmdslot->u.sys.request.reqobj);
+	cmdslot->u.sys.request.reqobj = 0;
+    }
     return 0;
 }
 
@@ -493,6 +513,22 @@ static apr_status_t setup_ready(gpcc_event_t *ev, void *_cmdslot)
     gpcc_log_info("setup ok");
     cmdslot->u.sys.config_json = config_to_json_object();
     setup_init_seginfo(ev, _cmdslot);
+
+    {
+	int i = 0;
+	for (i = 0 ; i < cmdslot->u.sys.nseginfo ; i++) {
+	    gpcc_log_info("seginfo[%d] = {name: %s, host: %s, dbid: %d, content: %d, port: %d, dir: %s, haidx: %d}",
+			  i,
+			  cmdslot->u.sys.seginfo[i].name,
+			  cmdslot->u.sys.seginfo[i].host,
+			  cmdslot->u.sys.seginfo[i].dbid,
+			  cmdslot->u.sys.seginfo[i].content,
+			  cmdslot->u.sys.seginfo[i].port,
+			  cmdslot->u.sys.seginfo[i].dir,
+			  cmdslot->u.sys.seginfo[i].haidx);
+	}
+    }
+
 
     obj = gpcc_json_array_reply("setup", "ok", 0);
     objstr = json_object_to_json_string(obj);

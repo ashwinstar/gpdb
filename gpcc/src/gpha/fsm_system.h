@@ -30,15 +30,11 @@ static apr_status_t u_send_get_identity(cmdslot_t* cmdslot)
 				cmdslot->cmdidx, 0, 0, 0);
 }
 
-#if 0
-static apr_status_t u_send_identity(conninfo_t* conninfo, apr_uint32_t rcvidx, char* json)
+static apr_status_t u_send_identity(cmdslot_t *cmdslot, int rcvidx)
 {
-    return gpcc_net_send_packet(conninfo->conn, IDENTITY_MSG,
-				0, rcvidx, json, strlen(json)+1);
+    return gpcc_net_send_packet(cmdslot->conninfo->conn, IDENTITY_MSG,
+				cmdslot->cmdidx, rcvidx, 0, 0);
 }
-
-#endif
-
 
 /* 
  *  This gets called every second. go thru all cmdslot to find anyone that 
@@ -213,3 +209,10 @@ static apr_status_t a_get_identity_send_request(gpcc_event_t* ev, void* cmdslot_
     return u_send_get_identity(cmdslot);
 }
 
+static apr_status_t a_identity_send_request(gpcc_event_t *ev, void *cmdslot_)
+{
+    cmdslot_t *cmdslot = cmdslot_;
+    gpcc_net_packet_t *packet = (gpcc_net_packet_t *) ev->edata;
+
+    return u_send_identity(cmdslot, packet->mh.sndidx);
+}

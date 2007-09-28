@@ -37,6 +37,8 @@ APR_DECLARE(void) fsm_setup(void)
     /* all slot -- get identity */
     gpcc_fsm_put(GET_IDENTITY_CMDSTATE, INIT_EVENT, GET_IDENTITY_CMDSTATE, 
 		 a_get_identity_send_request, 0);
+    gpcc_fsm_put(GET_IDENTITY_CMDSTATE, IDENTITY_MSG_EVENT, GET_IDENTITY_CMDSTATE,
+		 a_identity_send_request, 0);
     gpcc_fsm_put(GET_IDENTITY_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE, 
 		 a_close_conn, 0);
 

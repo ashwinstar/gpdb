@@ -88,7 +88,7 @@ static item_t* getitem(gpcc_net_conn_t conn)
     const int idx = conn & 0xffff;
     if (0 <= idx && idx < GPCC_NET_CONN_MAX) {
 	item_t* item = net.tab.item[idx];
-	if (item->conn == conn)
+	if (item && item->conn == conn)
 	    return item;
     }
     return 0;
