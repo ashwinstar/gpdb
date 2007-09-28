@@ -31,6 +31,7 @@ typedef struct mpool_block_t mpool_block_t;
 #define BLOCKSZ_STEP2   (128*1024)  /* 128K */
 #define BLOCKSZ_STEP3   (1024*1024) /* 1MB */
 
+#define BLOCK_KEEP  (3)
 
 typedef struct mpool_context_t mpool_context_t;
 struct mpool_context_t
@@ -40,6 +41,7 @@ struct mpool_context_t
 	mpool_block_t* free_tail;	/* points to tail of free list */
 	mpool_block_t* inuse_tail;	/* points to tail of inuse list */
 	int n_free, n_inuse;
+	int max_blocks_allocated;
     int blocks_allocated;
 	uint64 max_bytes_allocated;
 	uint64 bytes_allocated;
@@ -95,8 +97,8 @@ static mpool_block_t* mpool_block_alloc(mpool_context_t* mpool, int minsz)
 {
 	const int hdrsz = MAXALIGN(sizeof(mpool_block_t));
 	mpool_block_t* bp;
-	int tot = (mpool->blocks_allocated < 4 ? BLOCKSZ_STEP1
-			   : (mpool->blocks_allocated < 8 ? BLOCKSZ_STEP2 : BLOCKSZ_STEP3));
+	int tot = (mpool->max_blocks_allocated < 4 ? BLOCKSZ_STEP1
+			   : (mpool->max_blocks_allocated < 8 ? BLOCKSZ_STEP2 : BLOCKSZ_STEP3));
 
 	minsz = MAXALIGN(minsz);
 
@@ -113,9 +115,18 @@ static mpool_block_t* mpool_block_alloc(mpool_context_t* mpool, int minsz)
 		MemoryContextNoteAlloc(&mpool->header, tot);
 	}
 	mpool->blocks_allocated++;
+	if (mpool->blocks_allocated > mpool->max_blocks_allocated)
+		mpool->max_blocks_allocated = mpool->blocks_allocated;
 	return bp;
 }
 
+
+static inline void mpool_block_free(mpool_context_t* mpool, mpool_block_t* bp)
+{
+	MemoryContextNoteFree(&mpool->header, bp->end - (char*) bp);
+	mpool->blocks_allocated--;
+	free(bp);
+}
 
 /*
  *  Allocate a chunk in a block 
@@ -276,6 +287,14 @@ mpool_reset(MemoryContext context)
 		mpool->n_free += mpool->n_inuse;
 		mpool->n_inuse = 0;
 	}
+
+	/* give back some memory, keep max BLOCK_KEEP blocks */
+	while (mpool->n_free > BLOCK_KEEP) {
+		mpool->n_free--;
+		bp = mpool->free_tail;
+		mpool->free_tail = bp->next;
+		mpool_block_free(mpool, bp);
+	}
 }
 
 /*
@@ -305,12 +324,10 @@ mpool_delete(MemoryContext context)
 		while (head) 
 		{
 			mpool_block_t* p = head->next;
-			MemoryContextNoteFree(&mpool->header, head->end - (char*) head);
-			free(head);
 			PRINT((LOG, "mpool_delete %x: free block %x", context, head));
 			head = p;
-			mpool->blocks_allocated--;
 			mpool->n_free--;
+			mpool_block_free(mpool, head);
 		}
 	}
 
@@ -346,8 +363,9 @@ mpool_alloc(MemoryContext context, Size size)
 	/* need to get a block from free list ? */
 	if (!chunk && 0 != (bp = mpool->free_tail))
 	{
+		/* pop the head of free list */
 		mpool->n_free--;
-		bp = bp->next;			/* pop the head of free list */
+		bp = bp->next;
 		if (bp == mpool->free_tail)
 			mpool->free_tail = 0;
 		else
