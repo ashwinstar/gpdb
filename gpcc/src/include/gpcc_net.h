@@ -62,6 +62,7 @@ APR_DECLARE(apr_status_t) gpcc_net_once(void);
  *               the gpcc_net_opened_t callback function (see gpcc_net_start) 
  *               is called
  *  @param addr a network address in the form host:port
+ *  @param event_base the event base pass to libevent.  NULL means use default event_base.
  *  @param conn_arg pointer to user supplied data structure. This will be passed
  *		to the gpcc_net_opened callback.
  */
@@ -70,6 +71,7 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* pconn,
 					gpcc_net_opened_t* opened,
 					gpcc_net_closed_t* closed,
 					gpcc_net_recv_t* recv,
+					void *event_base,
 					void* conn_arg);
 
 /**

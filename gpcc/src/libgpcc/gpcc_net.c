@@ -95,7 +95,9 @@ static item_t* getitem(gpcc_net_conn_t conn)
 }
 
 
-static gpcc_net_conn_t mkitem(SOCKET sock, void* arg, 
+static gpcc_net_conn_t mkitem(SOCKET sock, 
+			      void* arg, 
+			      void *event_base,
 			      int is_connecting, 
 			      int is_open,
 			      int self_origin,
@@ -159,7 +161,8 @@ static gpcc_net_conn_t mkitem(SOCKET sock, void* arg,
     item->in.bot = item->in.top = 0;
     item->out.bot = item->out.top = 0;
     event_set(&item->sock_event, item->sock, EV_READ | EV_PERSIST, do_read, item);
-    event_base_set(net.event_base, &item->sock_event);
+    if (! event_base) event_base = net.event_base;
+    event_base_set(event_base, &item->sock_event);
     event_add(&item->sock_event, 0);
     conn = item->conn;
     spin = gpcc_spin_release(net.net_spin);
@@ -192,6 +195,8 @@ static void do_read(int fd, short event, void *arg)
     buf_t *bb = 0;
     int bbfree = 0;
     apr_uint32_t *spin = 0;
+
+    gpcc_log_info("do_read...");
 
     spin = gpcc_spin_secure(net.net_spin);
 
@@ -287,6 +292,7 @@ static apr_status_t do_write(item_t* item)
     int e = 0;
     
     if (n > 0) {
+	gpcc_log_info("do_write: send %d bytes", n);
 	e = send(item->sock, bb->buf + bb->bot, n, 0);
 	bb->bot += n;
 
@@ -327,7 +333,9 @@ static void do_accept(int fd, short event, void *arg)
     }
     spin = gpcc_spin_release(spin);
 
-    conn = mkitem(sock, 0 /* arg */,
+    conn = mkitem(sock, 
+		  0 /* arg */,
+		  0 /* event_base */,
 		  0 /*is_connecting */,
 		  1 /*is_open*/,
 		  0 /*self_origin*/,
@@ -380,9 +388,7 @@ static void* APR_THREAD_FUNC net_run(apr_thread_t* thread, void* arg)
 
 APR_DECLARE(apr_status_t) gpcc_net_once(void) 
 {
-    int e;
-    e = event_base_loop(net.event_base, EVLOOP_ONCE| EVLOOP_NONBLOCK);
-    return e;
+    return event_base_loop(net.event_base, EVLOOP_ONCE| EVLOOP_NONBLOCK);
 }
 
 APR_DECLARE(apr_status_t) gpcc_net_start(int port, 
@@ -517,10 +523,12 @@ APR_DECLARE(void) gpcc_net_stop(void)
     memset(&net, 0, sizeof(net));
 }
 
-APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* pconn, const char* addr, 
+APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* pconn, 
+					const char* addr, 
 					gpcc_net_opened_t* opened,
 					gpcc_net_closed_t* closed,
 					gpcc_net_recv_t* _recv,
+					void *event_base,
 					void* arg)
 
 {
@@ -571,9 +579,11 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* pconn, const char* addr
 	e = APR_ECONNREFUSED;
 	goto bail;
     }
-    *pconn = mkitem(sock, arg, 
-		    1 /*is_connecting*/, 
-		    0 /*is_open*/, 
+    *pconn = mkitem(sock, 
+		    arg, 
+		    event_base,
+		    0 /*is_connecting*/, 
+		    1 /*is_open*/, 
 		    1 /*self_origin*/, 
 		    opened,
 		    closed,
@@ -584,6 +594,7 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* pconn, const char* addr
 	e = APR_ENOMEM;
 	goto bail;
     }
+    
     spin = gpcc_spin_secure(net.net_spin);
     item = getitem(*pconn);
     if (item) {
@@ -598,8 +609,9 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* pconn, const char* addr
 
 	gpcc_spin_secure(spin);
     }
-    
+        
     gpcc_spin_release(spin);
+    
     return 0;
 
     bail:
