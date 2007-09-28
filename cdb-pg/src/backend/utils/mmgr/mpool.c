@@ -325,9 +325,9 @@ mpool_delete(MemoryContext context)
 		{
 			mpool_block_t* p = head->next;
 			PRINT((LOG, "mpool_delete %x: free block %x", context, head));
-			head = p;
-			mpool->n_free--;
 			mpool_block_free(mpool, head);
+			mpool->n_free--;
+			head = p;
 		}
 	}
 
