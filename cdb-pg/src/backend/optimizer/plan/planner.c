@@ -731,6 +731,7 @@ inheritance_planner(PlannerInfo *root)
 				{
 				case CdbLocusType_Entry:
 				case CdbLocusType_Hashed:
+				case CdbLocusType_HashedOJ:
 				case CdbLocusType_Strewn:
 					/* Loci of inheritance set must match. */
 					locus_ok = locus_ok && (locustype == append_locustype ||
@@ -744,7 +745,6 @@ inheritance_planner(PlannerInfo *root)
 				case CdbLocusType_Null:
 				case CdbLocusType_SingleQE:
 				case CdbLocusType_General:
-				case CdbLocusType_HashedOJ:
 				case CdbLocusType_Replicated:
 				default:
 					/* These loci not valid on base relations. */
@@ -808,6 +808,7 @@ inheritance_planner(PlannerInfo *root)
 			break;
 			
 		case CdbLocusType_Hashed:
+		case CdbLocusType_HashedOJ:
 		case CdbLocusType_Strewn:
 			/* Depend on caller to avoid incompatible hash keys. */
 			/* For our purpose (UPD/DEL target), strewn is good enough. */
