@@ -18,10 +18,14 @@
 
 APR_DECLARE(void) fsm_setup(void)
 {
+    gpcc_fsm_put(SYSTEM_CMDSTATE, INIT_EVENT, SYSTEM_CMDSTATE,
+		 0);
     gpcc_fsm_put(SYSTEM_CMDSTATE, TICK_EVENT, SYSTEM_CMDSTATE, 
 		 a_system_tick, 0);
     gpcc_fsm_put(SYSTEM_CMDSTATE, NET_OPENED_EVENT, SYSTEM_CMDSTATE, 
 		 a_system_net_opened, 0);
+    gpcc_fsm_put(SYSTEM_CMDSTATE, NET_CLOSED_EVENT, SYSTEM_CMDSTATE,
+		 a_system_net_closed, 0);
     gpcc_fsm_put(SYSTEM_CMDSTATE, NET_RECEIVED_EVENT, SYSTEM_CMDSTATE,
 		 a_system_net_received, 0);
 

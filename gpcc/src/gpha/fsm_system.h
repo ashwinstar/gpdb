@@ -19,6 +19,7 @@ static apr_status_t u_send_gpcc_net_proto(conninfo_t* conninfo)
 	return APR_EINVAL;
 
     conninfo->self.request.argc = 1;
+    conninfo->self.request.argv = apr_pcalloc(conninfo->pool, sizeof(char *) * (conninfo->self.request.argc + 1));
     conninfo->self.request.argv[0] = GPCC_NET_PROTO;
     return gpcc_net_send_request(conninfo->conn, &conninfo->self.request);
 }
@@ -74,7 +75,6 @@ static apr_status_t a_system_net_opened(gpcc_event_t* ev, void* cmdslot_)
     return 0;
 }
 
-#if 0
 static apr_status_t a_system_net_closed(gpcc_event_t* ev, void* cmdslot_)
 {
     /*
@@ -84,8 +84,6 @@ static apr_status_t a_system_net_closed(gpcc_event_t* ev, void* cmdslot_)
     /* queue a HA failure, or MA failure, or client failure event */
     return 0;
 }
-
-#endif
 
 static apr_status_t a_system_net_received(gpcc_event_t* ev, void* cmdslot_)
 {
@@ -141,6 +139,7 @@ static apr_status_t a_system_net_received(gpcc_event_t* ev, void* cmdslot_)
 	return 0;
     }
     else {
+	gpcc_log_info("Suppose GET_IDENTITY...");
 	if (1 == conninfo->peer.request->argc &&
 	    0 == strcmp(conninfo->peer.request->argv[0], GPCC_NET_PROTO)) {
 	    gpcc_net_packet_t *packet = 0;
@@ -149,9 +148,11 @@ static apr_status_t a_system_net_received(gpcc_event_t* ev, void* cmdslot_)
 	    /* get tuple (msg-type, rcvidx, sndidx, content-length, content) */
 	    e = gpcc_net_read_packet(conninfo->conn, &packet);
 	    if (e) {
+		gpcc_log_error("gpcc_net_read_packet failed");
 		goto bail;
 	    }
 
+	    gpcc_log_info("dispatch to cmdslot %d, packet type = %d", packet->mh.rcvidx, packet->mh.type);
 	    /* dispatch to cmdslot */
 	    ev = gpcc_event_alloc(packet->mh.type, packet->mh.rcvidx, sizeof(*packet)+packet->mh.len-1);
 	    memcpy(ev->edata, packet, sizeof(*packet)+packet->mh.len-1);
@@ -209,9 +210,6 @@ static apr_status_t a_get_identity_send_request(gpcc_event_t* ev, void* cmdslot_
     cmdslot_t* cmdslot = cmdslot_;
     /*    eventinfo_t* ei = (eventinfo_t*) ev->edata; */
     /* conninfo_t* conninfo = ei->conninfo; */
-    if (! u_send_get_identity(cmdslot)) { 
-	return APR_EINVAL;
-    }
-    return 0;
+    return u_send_get_identity(cmdslot);
 }
 

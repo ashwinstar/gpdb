@@ -1,15 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include "enum.h"
 #include <gpcc_ha.h>
-
-typedef enum msg_t msg_t;
-enum msg_t {
-    NULL_MSG,
-    GET_IDENTITY_MSG,
-    IDENTITY_MSG,
-
-    MSG_MAX,
-};
 
 struct gpcc_ha_t {
     int sndidx;
@@ -81,6 +73,7 @@ void ha_net_recv(gpcc_net_conn_t conn, void *conn_arg)
 {
     gpcc_ha_t *ha = (gpcc_ha_t *) conn_arg;
     int e;
+    gpcc_net_packet_t *packet = 0;
 
     gpcc_log_info("ha_net_recv...");
     if (!ha->peer.request) {
@@ -94,40 +87,48 @@ void ha_net_recv(gpcc_net_conn_t conn, void *conn_arg)
 	    gpcc_ha_close(ha);
 	    return;
 	}
-
+	gpcc_log_info("receive request and send GET_IDENTITY_MSG");
+	/*
 	e = gpcc_net_send_packet(ha->conn, GET_IDENTITY_MSG,
 				 ha->sndidx, 0, 0, 0);
 	if (e) {
 	    gpcc_ha_close(ha);
 	    return;
 	}
-    } else {
-	gpcc_net_packet_t *packet = 0;
-	/* get packet */
+	*/
+    } 
+
+    /* get packet */
+    for (;;) {
 	e = gpcc_net_read_packet(ha->conn, &packet);
 	if (e) {
 	    goto bail;
 	}
-
+	
+	gpcc_log_info("receive packet...");
 	if (ha->rcvidx == 0) {
 	    /* if IDENTITY_MSG, update rcvidx and sndidx else invalid message*/
 	    if (packet->mh.type == IDENTITY_MSG) {
 		/* session ready */
+		gpcc_log_info("recv IDENTITY_MSG snd= %d, rcv=%d", packet->mh.sndidx, packet->mh.rcvidx);
 		ha->rcvidx = packet->mh.sndidx;
 		ha->arg = ha->cb.opened(ha, ha->arg);
 	    } else if (packet->mh.type == GET_IDENTITY_MSG) {
+		gpcc_log_info("recv GET_IDENTITY_MSG snd= %d, rcv=%d", packet->mh.sndidx, packet->mh.rcvidx);
 		gpcc_net_send_packet(ha->conn, IDENTITY_MSG,
 				     ha->sndidx, packet->mh.sndidx, 0, 0);
 	    } else {
-		if (packet)
+		gpcc_log_info("invalid packet %s %d %d", event_str(packet->mh.type), packet->mh.sndidx, packet->mh.rcvidx);
+		if (packet) {
 		    free(packet);
-
-		gpcc_ha_close(ha);
+		    packet = 0;
+		}
 		return;
 	    }
-
+	    
 	} else {
 	    if (packet->mh.type == GET_IDENTITY_MSG) {
+		gpcc_log_info("recv GET_IDENTITY_MSG snd= %d, rcv=%d", packet->mh.sndidx, packet->mh.rcvidx);
 		ha->rcvidx = packet->mh.sndidx;
 		gpcc_net_send_packet(ha->conn, IDENTITY_MSG,
 				     ha->sndidx, ha->rcvidx, 0, 0);
@@ -136,18 +137,20 @@ void ha_net_recv(gpcc_net_conn_t conn, void *conn_arg)
 		ha->cb.recv(ha, packet, ha->arg);
 	    }
 	}
-
-	if (packet)
+	
+	if (packet) {
 	    free(packet);
+	    packet = 0;
+	}
     }
 
     return;
-
+    
     bail:
-
+    
     if (e == APR_EAGAIN)
 	return;
-
+    
     gpcc_ha_close(ha);
 }
 

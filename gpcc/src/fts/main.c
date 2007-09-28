@@ -36,7 +36,7 @@ static void net_recv(gpcc_net_conn_t conn, void* conn_arg)
 /** callback every second */
 static void net_tick(apr_time_t now)
 {
-    printf("net_tick\n");   
+    //    printf("net_tick\n");   
 }
 
 void *APR_THREAD_FUNC fts_cmd(apr_thread_t *thread, void *arg) 
@@ -81,8 +81,6 @@ int main(int argc, const char *argv[])
     apr_app_initialize(&argc, (char const *const **) &argv, 0);
 
     apr_pool_create(&pool, 0);
-
-    event_init();
 
     config = config_read("/Users/elam/w/head/cdb2/gpcc/src/fts/qa", "guid", 0, pool);
     if (!config) {

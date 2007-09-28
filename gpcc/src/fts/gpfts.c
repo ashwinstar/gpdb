@@ -284,7 +284,6 @@ static void do_timeout(int fd, short event, void *arg)
     struct timeval tm;
     apr_time_t now = apr_time_now();
 
-    gpcc_log_info("fts do_timeout");
     time_tick_cb(now);
     /* 1 sec timeout */
     tm.tv_sec = 0;

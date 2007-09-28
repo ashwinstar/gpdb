@@ -269,7 +269,7 @@ static void d_main(void)
 
     /* greetings */
     apr_rfc822_date(date, apr_time_now());
-    gpcc_log_info("[%s] started gpha %s %s", date, gpha.dir);
+    gpcc_log_info("[%s] started gpha %s", date, gpha.dir);
 
     /* network up */
     GPCC_DO(0 == gpcc_net_start(gpha.port,
@@ -386,13 +386,16 @@ static apr_status_t parse_cmdline(int argc, const char* argv[])
 	    break;
 	case 'p':
 	    gpha.port = strtol(optarg, 0, 0);
+	    break;
 	case '?':
 	    usage(argv[0], 0);
 	    break;
 	default:
 	    usage(argv[0], 1);
+	    break;
 	}
     }
+
     if (e != APR_EOF) 
 	usage(argv[0], 1);
     if (argc - handle->ind != 1)
@@ -439,7 +442,7 @@ int main(int argc, const char* argv[])
 
     GPCC_DO(0 == parse_cmdline(argc, argv));
 
-    GPCC_DO(0 == (gpha.gphome = getenv("GPHOME")));
+    GPCC_DO(0 != (gpha.gphome = getenv("GPHOME")));
 
     if (! gpha.debug) {
 	GPCC_DO(0 == apr_proc_detach(1));
