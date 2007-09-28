@@ -6,22 +6,22 @@ APR=apr-1.2.8
 APU=apr-util-1.2.8
 JSON=json-c-0.6
 LIBEVENT=libevent-1.3e
-INCLUDES=-I$(GPCC)/ext/include $$($(GPCC)/ext/bin/apr-1-config --includes) -I$(GPCC)/src/include -I.
+INCLUDES=-I$(GPCC)/ext/include $$($(GPCC)/ext/bin/apr-1-config --includes) -I$(GPCC)/src/include -I. $$($(GPCC)/ext/bin/apu-1-config --includes)
 CFLAGS=$(OPT) $$($(GPCC)/ext/bin/apr-1-config --cflags) -Wall
 APRLIBS=$$($(GPCC)/ext/bin/apr-1-config --link-ld --libs) 
-APULIBS= #$$($(GPCC)/ext/bin/apu-1-config --link-ld --libs)
+APULIBS= $$($(GPCC)/ext/bin/apu-1-config --link-ld --libs)
 GP_VERSION=$$(< $(GPCC)/../VERSION)
 CPPFLAGS=$$($(GPCC)/ext/bin/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)"
 
 
-all: mkext mkgpfdist 
+all: mkext mkgpfdist
 
 #mkgpma mkgp 
 
 mkgpfdist: 
 	@echo --- gpfdist --------------------------------------------------
 	(cd src/gpfdist; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
-		-o gpfdist *.c $(APRLIBS) $(APULIBS) -ljson -levent -lz)
+		-o gpfdist *.c $(APULIBS) $(APRLIBS) -ljson -levent -lz)
 	@mkdir -p build/bin
 	@cp src/gpfdist/gpfdist build/bin/
 
@@ -31,7 +31,19 @@ mkgp:
 mkgpma:
 	@echo --- gpma -----------------------------------------------------
 	@(cd src/gpma; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
-		-o gpma *.c -L../build/lib -lgpcc $(APRLIBS) $(APULIBS) -ljson)
+		-o gpma *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson)
+
+mkgpha:
+	@echo --- gpha -----------------------------------------------------
+	@(cd src/gpha; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
+		-o gpha *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson)
+
+mkfts:
+	@echo --- fts -----------------------------------------------------
+	@(cd src/fts; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
+		-o fts *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson)
+#	@(cd src/fts; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
+#		-c *.c)
 
 mklibgpcc:
 	@echo --- libgpcc --------------------------------------------------
@@ -46,7 +58,7 @@ mklibgpcc:
 	@(cp -r src/include/* src/build/include/ )
 	#@echo making test
 	#@(cd src/libgpcc/test; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
-	#	-o net1 net1.c -L../../build/lib -lgpcc $(APRLIBS) $(APULIBS) -ljson)
+	#	-o net1 net1.c -L../../build/lib -lgpcc $(APULIBS) $(APRLIBS) -ljson)
 
 
 mkext:
@@ -79,16 +91,16 @@ mkext:
 			--prefix=$(GPCC)/ext) ;\
 	fi
 	@(cd ext/apr; $(MAKE) all install >> out)
-	#@echo     -- apu
-	#@(cd ext; rm -f apu; ln -s $(APU) apu)
-	#@if ! [ -a ext/apu/Makefile ]; then \
+	@echo     -- apu
+	@(cd ext; rm -f apu; ln -s $(APU) apu)
+	@if ! [ -a ext/apu/Makefile ]; then \
 		(cd ext; gzip -d -c $(APU).tar.gz | tar xvf -) ;\
 		(cd ext/apu; ./configure --enable-shared=no \
 			--enable-static=yes --enable-threads \
 			--with-apr=../apr \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	# @(cd ext/apu; $(MAKE) all install >> out)
+	 @(cd ext/apu; $(MAKE) all install >> out)
 
 veryclean: clean
 	(cd ext; rm -rf apr apr-1.2.8 apu apr-util-1.2.8 json json-c-0.6 libevent libevent-1.3b-1)
