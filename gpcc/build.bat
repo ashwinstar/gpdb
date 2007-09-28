@@ -7,7 +7,7 @@ set APU128=%GPCC%\ext\apr-util-1.2.8
 set APR=%GPCC%\ext\apr
 set APU=%GPCC%\ext\apr-util
 set JSON=%GPCC%\ext\json-c-0.6
-set LIBEVENT=%GPCC%\ext\libevent-1.3b-1
+set LIBEVENT=%GPCC%\ext\libevent-1.3e
 set LIBGPCC=%GPCC%\WIN32\libgpcc
 set GPFDIST=%GPCC%\WIN32\gpfdist
 set ZLIB=%GPCC%\ext\zlib-1.2.3
@@ -34,10 +34,10 @@ if not exist json-c-0.6 (
 	del json-c-0.6.tar
 )
 
-if not exist libevent-1.3b-1 (
-	%GPCC%\WIN32\7za x libevent-1.3b-1.tar.gz -so > libevent-1.3b-1.tar
-	%GPCC%\WIN32\7za x libevent-1.3b-1.tar
-	del libevent-1.3b-1.tar
+if not exist libevent-1.3e (
+	%GPCC%\WIN32\7za x libevent-1.3e.tar.gz -so > libevent-1.3e.tar
+	%GPCC%\WIN32\7za x libevent-1.3e.tar
+	del libevent-1.3e.tar
 )
 
 if not exist zlib-1.2.3 (
