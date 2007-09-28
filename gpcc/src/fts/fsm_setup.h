@@ -327,7 +327,7 @@ static apr_status_t setup_array_connect(gpcc_event_t *ev, void *_cmdslot)
 	strcpy(hainfo->host, p->u.sys.request.u.setup.hosts[i]);
 	hainfo->index = i;
 	gpcc_log_info("open connection to HA %s", addr);
-	hainfo->ha = gpcc_ha_open(p->cmdidx, addr, ha_net_opened, ha_net_closed, ha_net_recv, hainfo);
+	hainfo->ha = gpcc_ha_open(p->cmdidx, addr, ha_net_opened, ha_net_closed, ha_net_recv, gpfts.event_base, hainfo);
 	if (!hainfo->ha) {
 	    gpcc_warning(FLINE, "gpcc_ha_open %s failed", hainfo->host);
 	    free(hainfo);

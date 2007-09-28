@@ -156,6 +156,7 @@ APR_DECLARE(gpcc_ha_t*) gpcc_ha_open(int cmdidx,
 				     gpcc_ha_opened_t *opened,
 				     gpcc_ha_closed_t *closed,
 				     gpcc_ha_recv_t *recv,
+				     void *event_base,
 				     void *arg)
 {
 			       
@@ -169,7 +170,8 @@ APR_DECLARE(gpcc_ha_t*) gpcc_ha_open(int cmdidx,
     }
     memset(ha, 0, sizeof(*ha));
 
-    if (0 != (e = gpcc_net_open(&ha->conn, addr, ha_net_opened, ha_net_closed, ha_net_recv, ha))) {
+    if (0 != (e = gpcc_net_open(&ha->conn, addr, 
+				ha_net_opened, ha_net_closed, ha_net_recv, event_base, ha))) {
 	gpcc_warning(FLINE, "gpcc_net_open failed");
 	free(ha);
 	return 0;

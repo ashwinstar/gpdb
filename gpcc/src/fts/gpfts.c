@@ -187,6 +187,10 @@ void time_tick_cb(apr_time_t now)
     gpcc_evqueue_put(gpfts.evq, ev);
 }
 
+static int fts_event_once() 
+{
+    return event_base_loop(gpfts.event_base, EVLOOP_ONCE | EVLOOP_NONBLOCK);
+}
 
 /* Main program for the daemon */
 static void * APR_THREAD_FUNC fts_thread_run(apr_thread_t *thread, void *arg)
@@ -205,8 +209,9 @@ static void * APR_THREAD_FUNC fts_thread_run(apr_thread_t *thread, void *arg)
 
 	spin = gpcc_spin_release(gpfts.spin);
 
-	while ((ev = gpcc_evqueue_get(gpfts.evq)) == 0) {
-	    break;
+	while ((ev = gpcc_evqueue_tryget(gpfts.evq)) == 0) {
+	    if (fts_event_once())
+		break;
 	}
 	
 	spin = gpcc_spin_secure(gpfts.spin);
@@ -279,6 +284,7 @@ static void do_timeout(int fd, short event, void *arg)
     struct timeval tm;
     apr_time_t now = apr_time_now();
 
+    gpcc_log_info("fts do_timeout");
     time_tick_cb(now);
     /* 1 sec timeout */
     tm.tv_sec = 0;
@@ -318,6 +324,7 @@ int fts_initialize(config_t *config, gpcc_evqueue_t *alertq)
 
     /* setup timer */
     evtimer_set(&gpfts.timer_event, do_timeout, 0);
+    event_base_set(gpfts.event_base, &gpfts.timer_event);
     tm.tv_sec = 0;
     tm.tv_usec = 1000 * 1000;
     evtimer_add(&gpfts.timer_event, &tm);

@@ -22,6 +22,7 @@ APR_DECLARE(gpcc_ha_t *) gpcc_ha_open(int cmdidx,
 				      gpcc_ha_opened_t *opened,
 				      gpcc_ha_closed_t *closed,
 				      gpcc_ha_recv_t *recv,
+				      void *event_base,
 				      void *arg);
 
 /**
