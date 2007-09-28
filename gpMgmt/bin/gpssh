@@ -194,7 +194,7 @@ class Session(cmd.Cmd):
 
     def default(self, line):
 	line = line.strip();
-	if line == 'EOF' or line == 'exit':
+	if line == 'EOF' or line == 'exit' or line == 'quit':
 	    sys.exit(0)
 	line = line.split('\\');
 	line = '\\\\'.join(line);
