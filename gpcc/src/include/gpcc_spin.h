@@ -14,7 +14,7 @@ APR_DECLARE(apr_uint32_t*) gpcc_spin_secure(apr_uint32_t* spin) ;
 /**
  *  Release a spin lock.
  */
-#define gpcc_spin_release(x)  ((void*) ((*(x) = 0), 0))
+#define gpcc_spin_release(x)  ((void*) ((*(x) = 0), NULL))
 
 
 
