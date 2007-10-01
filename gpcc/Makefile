@@ -58,10 +58,12 @@ mklibgpcc:
 		ranlib ../build/lib/libgpcc.a)
 	@echo copying include files
 	@(cp -r src/include/* src/build/include/ )
-	#@echo making test
-	#@(cd src/libgpcc/test; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
-	#	-o net1 net1.c -L../../build/lib -lgpcc $(APULIBS) $(APRLIBS) -ljson)
 
+
+mktest:
+	@echo --- test ------------------------------------------------------	
+	(cd test; $(CC) $(INCLUDES) $(CPPFLAS) $(CFLAGS) \
+			-o net1 net1.c -L../src/build/lib -lgpcc $(APULIBS) $(APRLIBS) -ljson)
 
 mkext:
 	@echo --- ext ------------------------------------------------------
@@ -92,17 +94,17 @@ mkext:
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd ext/apr; $(MAKE) all install >> out)
-	#@echo     -- apu
-	#@(cd ext; rm -f apu; ln -s $(APU) apu)
-	#@if ! [ -a ext/apu/Makefile ]; then \
-	#	(cd ext; gzip -d -c $(APU).tar.gz | tar xvf -) ;\
-	#	(cd ext/apu; ./configure --enable-shared=no \
-	#		--enable-static=yes --enable-threads \
-	#		--with-apr=../apr \
-	#		--prefix=$(GPCC)/ext) ;\
-	#fi
-	#@(cd ext/apu; $(MAKE) all install >> out)
+	@#(cd ext/apr; $(MAKE) all install >> out)
+	@#echo     -- apu
+	@#(cd ext; rm -f apu; ln -s $(APU) apu)
+	@#if ! [ -a ext/apu/Makefile ]; then \
+		(cd ext; gzip -d -c $(APU).tar.gz | tar xvf -) ;\
+		(cd ext/apu; ./configure --enable-shared=no \
+			--enable-static=yes --enable-threads \
+			--with-apr=../apr \
+			--prefix=$(GPCC)/ext) ;\
+	fi
+	@#(cd ext/apu; $(MAKE) all install >> out)
 
 veryclean: clean
 	(cd ext; rm -rf apr apr-1.2.8 apu apr-util-1.2.8 json json-c-0.6 libevent libevent-1.3b-1)
