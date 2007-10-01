@@ -164,9 +164,12 @@ extern TupleTableSlot *ExecStoreMinimalTuple(MinimalTuple mtup,
 extern TupleTableSlot *ExecClearTuple(TupleTableSlot *slot);
 extern TupleTableSlot *ExecStoreVirtualTuple(TupleTableSlot *slot);
 extern TupleTableSlot *ExecStoreAllNullTuple(TupleTableSlot *slot);
+
 extern HeapTuple ExecCopySlotTuple(TupleTableSlot *slot);
+extern HeapTuple ExecCopySlotHeapTupleTo(TupleTableSlot *slot, MemoryContext pctxt, char *dest, unsigned int *len);
 extern MinimalTuple ExecCopySlotMinimalTuple(TupleTableSlot *slot);
 extern bool ExecCopySlotMinimalTupleTo(TupleTableSlot *slot, char *dest, unsigned int *len);
+
 extern HeapTuple ExecFetchSlotTuple(TupleTableSlot *slot);
 extern MinimalTuple ExecFetchSlotMinimalTuple(TupleTableSlot *slot);
 extern HeapTuple ExecMaterializeSlot(TupleTableSlot *slot);

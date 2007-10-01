@@ -93,6 +93,7 @@
 
 #include "funcapi.h"
 #include "access/heapam.h"
+#include "access/htup.h"
 #include "catalog/pg_type.h"
 #include "executor/executor.h"
 #include "parser/parse_expr.h"
@@ -855,6 +856,195 @@ bool ExecCopySlotMinimalTupleTo(TupleTableSlot *slot, char *dest, unsigned int *
 	return false;
 }
 		
+/* --------------------------------
+ *		ExecCopySlotHeadTupleTo
+ * 			Copy heapTuple to a preallocated buffer.   Code adapted from ExecCopySlotTuple
+ *
+ * 			return the copied heaptule if there is enough space, or, if the memorycontext is 
+ *              not null, which the function will alloc enough space from the context.  One can
+ *				test if the tuple is alloced (ret == dest)
+ *
+ *			return NULL and set *len to space need if there is not enough space and the mem context is null.
+ *			return NULL if heap tuple is not valid, and set *len = 0.  See slot->tts_tuple case below.
+ * -------------------------------
+ */
+HeapTuple ExecCopySlotHeapTupleTo(TupleTableSlot *slot, MemoryContext pctxt, char* dest, unsigned int *len)
+{
+
+	unsigned int needed_len = 0;
+	HeapTuple ret = NULL;
+
+	Assert(!TupIsNull(slot));
+
+	if(slot->tts_tuple)
+	{
+		if(slot->tts_mintuple)
+		{
+			needed_len = slot->tts_mintuple->t_len + MINIMAL_TUPLE_OFFSET + HEAPTUPLESIZE;
+			if(*len >= needed_len)
+				ret = (HeapTuple) dest;
+			else if(pctxt)
+			{
+				ret = (HeapTuple) ctxt_alloc(pctxt, needed_len);  
+				*len = needed_len;
+			}
+			else
+			{
+				*len = needed_len;
+				return NULL;
+			}
+
+			ret->t_len = slot->tts_mintuple->t_len + MINIMAL_TUPLE_OFFSET;
+			ItemPointerSetInvalid(&ret->t_self);
+			ret->t_tableOid = InvalidOid;
+			ret->t_data = (HeapTupleHeader) ((char *) ret + HEAPTUPLESIZE);
+			memcpy((char*) ret->t_data + MINIMAL_TUPLE_OFFSET, slot->tts_mintuple, slot->tts_mintuple->t_len);
+			memset(ret->t_data, 0, offsetof(HeapTupleHeaderData, t_infomask2));
+
+			return ret;
+		}
+		else
+		{
+			if(!HeapTupleIsValid(slot->tts_tuple) || slot->tts_tuple->t_data == NULL)
+			{
+				*len = 0;
+				return NULL;
+			}
+
+			needed_len = slot->tts_tuple->t_len + HEAPTUPLESIZE;
+			if(*len >= needed_len)
+				ret = (HeapTuple) dest;
+			else if(pctxt)
+			{
+				ret = (HeapTuple) ctxt_alloc(pctxt, needed_len);  
+				*len = needed_len;
+			}
+			else
+			{
+				*len = needed_len;
+				return NULL;
+			}
+
+			ret->t_len = slot->tts_tuple->t_len;
+			ret->t_self = slot->tts_tuple->t_self;
+			ret->t_tableOid = slot->tts_tuple->t_tableOid;
+			ret->t_data = (HeapTupleHeader) ((char *) ret + HEAPTUPLESIZE);
+			memcpy((char *) ret->t_data, (char *) slot->tts_tuple->t_data, slot->tts_tuple->t_len);
+
+			return ret;
+		}
+	}
+	else 
+	{
+		int i = 0;
+		unsigned hoff, predicted_len, actual_len;
+		HeapTupleHeader td;
+		int numberOfAttributes = slot->tts_tupleDescriptor->natts;
+		Form_pg_attribute *att = slot->tts_tupleDescriptor->attrs;
+		Datum *values = slot->tts_values;
+		bool *isnull = slot->tts_isnull;
+		bool hasnull = false;
+
+		/*
+		 * Check for nulls and embedded tuples; expand any toasted attributes in
+		 * embedded tuples.  This preserves the invariant that toasting can only
+		 * go one level deep.
+		 *
+		 * We can skip calling toast_flatten_tuple_attribute() if the attribute
+		 * couldn't possibly be of composite type.  All composite datums are
+		 * varlena and have alignment 'd'; furthermore they aren't arrays. Also,
+		 * if an attribute is already toasted, it must have been sent to disk
+		 * already and so cannot contain toasted attributes.
+		 */
+		for (i = 0; i < numberOfAttributes; i++)
+		{
+			if (isnull[i])
+				hasnull = true;
+			else if (att[i]->attlen == -1 &&
+					att[i]->attalign == 'd' &&
+					att[i]->attndims == 0 &&
+					!VARATT_IS_EXTENDED_D(values[i]))
+			{
+				values[i] = toast_flatten_tuple_attribute(values[i],
+						att[i]->atttypid,
+						att[i]->atttypmod);
+			}
+		}
+
+		/*
+		 * Determine total space needed
+		 */
+		needed_len = offsetof(HeapTupleHeaderData, t_bits);
+
+		if (hasnull)
+			needed_len += BITMAPLEN(numberOfAttributes);
+
+		if (slot->tts_tupleDescriptor->tdhasoid)
+			needed_len += sizeof(Oid);
+
+		hoff = needed_len = MAXALIGN(needed_len); /* align user data safely */
+
+		predicted_len = heap_compute_data_size(slot->tts_tupleDescriptor, values, isnull);
+
+		needed_len += predicted_len;
+
+		if(*len >= needed_len)
+			ret = (HeapTuple) dest;
+		else if(pctxt)
+		{
+			ret = (HeapTuple) ctxt_alloc(pctxt, needed_len);  
+			*len = needed_len;
+		}
+		else
+		{
+			*len = needed_len;
+			return NULL;
+		}
+
+		ret->t_data = td = (HeapTupleHeader) ((char *) ret + HEAPTUPLESIZE);
+
+		/*
+		 * And fill in the information.  Note we fill the Datum fields even though
+		 * this tuple may never become a Datum.
+		 */
+		ret->t_len = needed_len;
+		ItemPointerSetInvalid(&(ret->t_self));
+		ret->t_tableOid = InvalidOid;
+
+		HeapTupleHeaderSetDatumLength(td, needed_len);
+		HeapTupleHeaderSetTypeId(td, slot->tts_tupleDescriptor->tdtypeid);
+		HeapTupleHeaderSetTypMod(td, slot->tts_tupleDescriptor->tdtypmod);
+
+		HeapTupleHeaderSetNatts(td, numberOfAttributes);
+		td->t_hoff = hoff;
+
+		if (slot->tts_tupleDescriptor->tdhasoid)		/* else leave infomask = 0 */
+			td->t_infomask = HEAP_HASOID;
+
+		actual_len = 
+			heap_fill_tuple(slot->tts_tupleDescriptor, 
+					values, 
+					isnull,
+					(char *) td + hoff,
+					&td->t_infomask,
+					(hasnull ? td->t_bits : NULL));
+	
+		Assert(predicted_len == actual_len);
+		return ret;
+	}
+
+	return NULL;
+}
+
+
+
+
+	
+			
+		
+		
+			
+	
 /* --------------------------------
  *		ExecFetchSlotTuple
  *			Fetch the slot's regular physical tuple.

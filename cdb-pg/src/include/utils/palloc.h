@@ -64,6 +64,8 @@ extern void *MemoryContextAllocZeroAlignedTagN(MemoryContext context, Size size,
 #define palloctagn(sz, tag, n) MemoryContextAllocTagN(CurrentMemoryContext, (sz), (tag), (n))
 #define palloc0tagn(sz, tag, n) MemoryContextAlloczeroTagN(CurrentMemoryContext, (sz), (tag), (n))
 
+#define ctxt_alloc(ctxt, sz) MemoryContextAllocTagN((ctxt), (sz), __FILE__, __LINE__)
+
 extern void pfree(void *ptr);
 extern void *repallocTagN(void *ptr, Size size, const char* tag, int n);
 #define repalloc(ptr, sz) repallocTagN(ptr, (sz), __FILE__, __LINE__)
@@ -78,6 +80,8 @@ extern void *MemoryContextAllocZeroAligned(MemoryContext context, Size size);
 
 #define palloc0(sz) MemoryContextAllocZero(CurrentMemoryContext, (sz))
 #define palloc0tagn(sz, tag, n) MemoryContextAllocZero(CurrentMemoryContext, (sz))
+
+#define ctxt_alloc(ctxt, sz) MemoryContextAlloc((ctxt), (sz))
 
 /*
  * The result of palloc() is always word-aligned, so we can skip testing
