@@ -420,6 +420,29 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 				   varno, 0, rte,
 				   subtlist, CMD_SELECT, 0);
 
+	if (parse->windowClause)
+	{
+		foreach(cell, parse->windowClause)
+		{
+			WindowSpec *win_spec = (WindowSpec *)lfirst(cell);
+			if (win_spec->frame)
+			{
+				WindowFrame *frame = win_spec->frame;
+				
+				if (frame->trail)
+					frame->trail->val = 
+						ResolveNew((Node *)frame->trail->val,
+								   varno, 0, rte,
+								   subtlist, CMD_SELECT, 0);
+				if (frame->lead)
+					frame->lead->val =
+						ResolveNew((Node *)frame->lead->val,
+								   varno, 0, rte,
+								   subtlist, CMD_SELECT, 0);
+			}
+		}
+	}
+
 	foreach(rt, parse->rtable)
 	{
 		RangeTblEntry *otherrte = (RangeTblEntry *) lfirst(rt);
