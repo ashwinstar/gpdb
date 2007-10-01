@@ -67,7 +67,7 @@ mktest:
 
 mkext:
 	@echo --- ext ------------------------------------------------------
-	@(cd ext; mkdir -p lib include)
+	@mkdir -p ext/lib ext/include
 	@echo     -- libevent
 	@(cd ext; rm -f libevent; ln -s $(LIBEVENT) libevent)
 	@if ! [ -a ext/libevent/Makefile ]; then \
@@ -94,7 +94,7 @@ mkext:
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@#(cd ext/apr; $(MAKE) all install >> out)
+	@(cd ext/apr; $(MAKE) all install >> out)
 	@#echo     -- apu
 	@#(cd ext; rm -f apu; ln -s $(APU) apu)
 	@#if ! [ -a ext/apu/Makefile ]; then \
