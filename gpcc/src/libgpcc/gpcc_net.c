@@ -1,118 +1,328 @@
+#include <gpcc_net.h>
+#include <gpcc_spin.h>
+#include <gpcc_strings.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include "event.h"		/* libevent */
 #include <fcntl.h>
-#ifndef WIN32
-#include <netdb.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netdb.h>
 #include <arpa/inet.h>
-#else
-#define WIN32_LEAN_AND_MEAN
-#include <winsock2.h>
-#include <windows.h>
-#include <io.h>
-#define SHUT_RD SD_RECEIVE
-#endif
 
-#include <signal.h>
-#include <gpcc_net.h>
-#include <gpcc_spin.h>
-#include <apr_network_io.h>
-#include <apr_thread_proc.h>
-#include <apr_poll.h>
-#include <apr_strings.h>
-#include <gpcc_strings.h>
-#include <stdlib.h>
-#include <apr_sha1.h>
 
-#include <event.h>
+APR_DECLARE(apr_status_t) gpcc_net_parse_request(gpcc_net_header_t** hdr, const char* buf, int* len, apr_pool_t* pool);
 
-#ifndef WIN32
-#define SOCKET int
-#define closesocket(x) close(x)
-#endif
+static gpcc_net_header_t* gpcc_net_header_copy(int argc, char** argv, int hc, 
+					       char** hname, char** hvalue, apr_pool_t* pool)
+{
+    gpcc_net_header_t* hdr = apr_palloc(pool, sizeof(*hdr));
+    int i;
 
-static unsigned short unique_gen = 1;
+    if (argc >= GPCC_NET_HEADER_ENTRYMAX) 
+	return 0;
+
+    if (hc >= GPCC_NET_HEADER_ENTRYMAX) 
+	return 0;
+
+    for (i = 0; i < argc; i++) 
+	hdr->argv[i] = argv[i];
+    
+    for (i = 0; i < hc; i++) {
+	hdr->hname[i] = hname[i];
+	hdr->hvalue[i] = hvalue[i];
+    }
+
+    return hdr;
+}
+
+static gpcc_net_header_t* gpcc_net_header_dup(gpcc_net_header_t* src, char* buf, int buflen)
+{
+    int i;
+    gpcc_net_header_t* hp;
+    int len;
+
+    len = sizeof(*hp);
+    for (i = 0; i < src->argc; i++)
+	len += strlen(src->argv[i]) + 1;
+    for (i = 0; i < src->hc; i++)
+	len += strlen(src->hname[i]) + 1 + strlen(src->hvalue[i]) + 1;
+    if (len > buflen)
+	return 0;
+
+    hp = (gpcc_net_header_t*) buf;
+    memset(hp, 0, sizeof(*hp));
+    hp->argc = src->argc;
+    for (i = 0; i < src->argc; i++) {
+	strcpy(buf, src->argv[i]);
+	hp->argv[i] = buf;
+	buf += strlen(buf) + 1;
+
+    }
+    hp->argv[i] = 0;
+
+    hp->hc = src->hc;
+    for (i = 0; i < src->hc; i++) {
+	strcpy(buf, src->hname[i]);
+	hp->hname[i] = buf;
+	buf += strlen(buf) + 1;
+	strcpy(buf, src->hvalue[i]);
+	hp->hvalue[i] = buf;
+	buf += strlen(buf) + 1;
+    }
+
+    return hp;
+}
+
+
+								  
+
+typedef int SOCKET;
+
+#define closesocket close
+
+#define CONN_MAX  256
+#define CONN_INDEX(conn)     (conn & 0xffff)
+#define CONN_UNIQUE(conn)    ((conn >> 16) & 0xffff)
+#define CONN_DEFINE(unique, index)   ((((apr_uint32_t) unique) << 16) | (index & 0xffff))
+
+#define STATE_NULL       0
+#define STATE_OPENING    1
+#define STATE_ACCEPTING  2
+#define STATE_READING    4
+#define STATE_WRITING    8
 
 
 typedef struct buf_t buf_t;
 struct buf_t {
-    char buf[1024*64];
+    char byte[1024*16];
     int bot, top;
 };
 
 
-typedef struct item_t item_t;
-struct item_t {
+typedef struct conncb_t conncb_t;
+struct conncb_t {
     gpcc_net_conn_t conn;
-    SOCKET    sock;
-    struct event sock_event;
-    void*           arg;			/* user supplied data ptr */
+    apr_uint32_t spin;
+    SOCKET sock;
     apr_pool_t* pool;
-    int is_connecting:1;
-    int is_open:1;
-    int is_closing:1;
-    int self_origin:1;
-    buf_t in, out;
+    char peer_addr[24];  /* format IP:port -- 123.456.789.012:34567 */
+    struct event ev;
     struct {
-	gpcc_net_opened_t *opened;
-	gpcc_net_closed_t *closed;
-	gpcc_net_recv_t *recv;
-    } cb;
+	buf_t* buf;
+	gpcc_net_header_t* hdr;
+    } to_peer, from_peer;
+    int do_read_header_attempts;
 };
 
-
-
-static struct {
-    apr_uint32_t net_spin[1];
+typedef struct net_t net_t;
+struct net_t {
+    gpcc_net_opened_t* opened;
+    gpcc_net_accepted_t* accepted;
+    gpcc_net_received_t* received;
+    gpcc_net_closed_t* closed;
     apr_pool_t* pool;
-    apr_thread_t* thread;
     SOCKET listen_sock;
-    struct event_base *event_base;
-    struct event listen_event;
-    struct event timer_event;
-    struct { /* callbacks */
-	gpcc_net_tick_t* tick;
-	gpcc_net_opened_t* opened;
-	gpcc_net_closed_t* closed;
-	gpcc_net_recv_t* recv;
-    } cb;
-    struct {
-	item_t* item[GPCC_NET_CONN_MAX];
-    } tab;
-} net = {{0}};
+    struct event ev_listen;
 
-static void do_read(int fd, short event, void *arg);
+    apr_uint16_t unique;
+    apr_uint32_t conntab_spin;
+    conncb_t conntab[CONN_MAX];
 
-static item_t* getitem(gpcc_net_conn_t conn) 
+};
+static net_t net = {0};
+
+static void zap(conncb_t* pconn, gpcc_net_conn_t conn)
 {
-    const int idx = conn & 0xffff;
-    if (0 <= idx && idx < GPCC_NET_CONN_MAX) {
-	item_t* item = net.tab.item[idx];
-	if (item && item->conn == conn)
-	    return item;
+    gpcc_spin_secure(&pconn->spin);
+    if (pconn->conn == conn) {
+	pconn->conn = 0;
+	event_del(&pconn->ev);
+	memset(&pconn->ev, 0, sizeof(pconn->ev));
+	if (pconn->sock) {
+	    shutdown(pconn->sock, SHUT_WR | SHUT_RD);
+	    closesocket(pconn->sock);
+	    pconn->sock = 0;
+	}
+	if (pconn->pool) {
+	    apr_pool_destroy(pconn->pool);
+	    pconn->pool = 0;
+	}
+	pconn->to_peer.buf = 0;
+	pconn->to_peer.hdr = 0;
+	pconn->from_peer.buf = 0;
+	pconn->from_peer.hdr = 0;
     }
-    return 0;
+    gpcc_spin_release(&pconn->spin);
+}
+
+static void do_ready(int fd, short event, void* arg)
+{
 }
 
 
-static gpcc_net_conn_t mkitem(SOCKET sock, 
-			      void* arg, 
-			      void *event_base,
-			      int is_connecting, 
-			      int is_open,
-			      int self_origin,
-			      gpcc_net_opened_t* opened,
-			      gpcc_net_closed_t* closed,
-			      gpcc_net_recv_t* recv,
-			      apr_pool_t* pool)
-{
-    apr_uint32_t* spin;
-    int i;
-    item_t* item;
-    gpcc_net_conn_t conn;
-    struct linger linger;
-    int on = 1;
 
+static void do_read_header(int fd, short event, void* arg)
+{
+    conncb_t* pconn = (conncb_t*) arg;
+    gpcc_net_conn_t conn;
+    buf_t* buf = pconn->from_peer.buf;
+    int len, n;
+    apr_uint32_t* spin = 0;
+
+    spin = gpcc_spin_secure(&pconn->spin);
+    conn = pconn->conn;
+    if (!conn) {
+	gpcc_warning(FLINE, "connection is NULL");
+	goto failure;
+    }
+    if (pconn->from_peer.hdr) {
+	gpcc_fatal(FLINE, "internal error: already have a header");
+    }
+    buf = pconn->from_peer.buf;
+    if (buf->top == sizeof(buf->byte)) {
+	/* overflow while waiting to read header */
+	gpcc_warning(FLINE, "buffer full while reading header");
+	goto failure;
+    }
+    if (pconn->do_read_header_attempts > 2) {
+	gpcc_warning(FLINE, "timeout while reading header");
+	goto failure;
+    }
+
+    n = sizeof(buf->byte) - buf->top;
+    n = recv(pconn->sock, buf->byte + buf->top, n, 0);
+    if (n < 0) {
+	goto failure;
+    }
+    buf->top += n;
+
+    len = buf->top - buf->bot;
+    if (gpcc_net_parse_request(&pconn->from_peer.hdr, 
+			       buf->byte + buf->bot, &len, pconn->pool))
+	goto failure;
+
+    buf->bot += len;
+    if (pconn->from_peer.hdr) {
+	/* we have a header ... do the callback */
+	goto do_callback;
+    }
+    else {
+	/* set up for do_read_header to be called again */
+	struct timeval tm;
+	event_set(&pconn->ev, pconn->sock, EV_READ, do_read_header, pconn);
+	tm.tv_sec = 0;
+	tm.tv_usec = 500*1000;
+	event_add(&pconn->ev, &tm);
+    }
+    spin = gpcc_spin_release(spin);
+    return;
+
+do_callback:
+    {
+	/* make a copy of net_header to pass back. it is not safe to pass 
+	   pconn->from_peer.hdr to the 'accepted' callback because we must
+	   release the spin lock before calling the callback. */
+	char from_peer_buf[1024*4], to_peer_buf[1024];
+	gpcc_net_header_t* to_peer_hdr = 0;
+	gpcc_net_header_t* from_peer_hdr = 0;
+
+	if (pconn->from_peer.hdr) {
+	    from_peer_hdr = gpcc_net_header_dup(pconn->from_peer.hdr, from_peer_buf, sizeof(from_peer_buf));
+	    if (! from_peer_hdr) {
+		gpcc_warning(FLINE, "error creating header from peer");
+		goto failure;
+	    }
+	}
+
+	if (pconn->to_peer.hdr) {
+	    to_peer_hdr = gpcc_net_header_dup(pconn->to_peer.hdr, to_peer_buf, sizeof(to_peer_buf));
+	    if (! to_peer_hdr) {
+		gpcc_warning(FLINE, "error creating header to peer");
+		goto failure;
+	    }
+	}
+
+	if (spin) 
+	    spin = gpcc_spin_release(spin);
+
+	if (to_peer_hdr) 
+	    net.opened(conn, to_peer_hdr, from_peer_hdr);
+	else 
+	    net.accepted(conn, from_peer_hdr);
+
+	event_set(&pconn->ev, pconn->sock, EV_READ|EV_WRITE, do_ready, pconn);
+	event_add(&pconn->ev, 0);
+    }
+    return;
+
+failure:
+    if (spin) 
+	spin = gpcc_spin_release(spin);
+    zap(pconn, conn);
+    return;
+}
+
+
+static void do_write_header(int fd, short event, void* arg)
+{
+    conncb_t* pconn = (conncb_t*) arg;
+    gpcc_net_conn_t conn;
+    apr_uint32_t* spin = 0;
+    int n;
+    buf_t* buf = pconn->to_peer.buf;
+
+    spin = gpcc_spin_secure(&pconn->spin);
+    conn = pconn->conn;
+    if (!conn) {
+	gpcc_warning(FLINE, "connection is NULL");
+	goto failure;
+    }
+    if (! pconn->to_peer.hdr) {
+	gpcc_fatal(FLINE, "internal error: missing to_peer header");
+    }
+
+    n = buf->top - buf->bot;
+    if (n > 0) {
+	n = send(pconn->sock, buf->byte + buf->bot, n, 0);
+	if (n < 0) {
+	    gpcc_warning(FLINE, "unable to send header to peer");
+	    goto failure;
+	}
+	buf->bot += n;
+    }
+    n = buf->top - buf->bot;
+    if (n == 0) {
+	/* finished sending header */
+	struct timeval tm;
+	event_set(&pconn->ev, pconn->sock, EV_READ, do_read_header, pconn);
+	tm.tv_sec = 0;
+	tm.tv_usec = 500*1000;
+	pconn->do_read_header_attempts = 0;
+	event_add(&pconn->ev, &tm);
+    }
+    else {
+	/* continue to send header */
+	event_set(&pconn->ev, pconn->sock, EV_WRITE, do_write_header, pconn);
+	event_add(&pconn->ev, 0);
+    }
+
+    if (spin)
+	spin = gpcc_spin_release(spin);
+
+    return;
+
+    failure:
+    if (spin)
+	spin = gpcc_spin_release(spin);
+    zap(pconn, conn);
+}
+
+
+
+static apr_status_t set_sockopt_nonblock(int sock)
+{
     /* set to non-blocking, and close-on-exec */
 #ifdef WIN32
     {
@@ -120,896 +330,354 @@ static gpcc_net_conn_t mkitem(SOCKET sock,
 	ioctlsocket(sock, FIONBIO, &nonblocking);
     }
 #else
-    if (fcntl(sock, F_SETFL, O_NONBLOCK) == -1) {
-	gpcc_warning(FLINE, "fcntl(F_SETFL, O_NONBLOCK) failed");
-	closesocket(sock);
-	return 0;
-    }
-    if (fcntl(sock, F_SETFD, 1) == -1) {
-	gpcc_warning(FLINE, "fcntl(F_SETFD) failed");
-	closesocket(sock);
-	return 0;
+    {
+	if (fcntl(sock, F_SETFL, O_NONBLOCK) == -1) {
+	    gpcc_warning(FLINE, "fcntl(F_SETFL, O_NONBLOCK) failed");
+	    return APR_FROM_OS_ERROR(errno);
+	}
+	if (fcntl(sock, F_SETFD, 1) == -1) {
+	    gpcc_warning(FLINE, "fcntl(F_SETFD) failed");
+	    return APR_FROM_OS_ERROR(errno);
+	}
     }
 #endif
 
     /* set keepalive, reuseaddr, and linger */
-    setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (void*) &on, sizeof(on));
-    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (void*) &on, sizeof(on));
-    linger.l_onoff = 1;
-    linger.l_linger = 5;
-    setsockopt(sock, SOL_SOCKET, SO_LINGER, (void*) &linger, sizeof(linger));
-
-    spin = gpcc_spin_secure(net.net_spin);
-    for (i = 0; i < GPCC_NET_CONN_MAX && net.tab.item[i]; i++) {;}
-    if (i >= GPCC_NET_CONN_MAX) {
-	spin = gpcc_spin_release(spin);
-	gpcc_warning(FLINE, "max net slot reached");
-	return 0;
-    }
-    item = net.tab.item[i] = apr_palloc(pool, sizeof(*item));
-    item->conn = (((int)unique_gen++) << 16) | i;
-    item->sock = sock;
-    item->arg = arg;
-    item->pool = pool;
-    item->is_connecting = is_connecting;
-    item->is_open = is_open;
-    item->is_closing = 0;
-    item->self_origin = self_origin;
-    item->cb.opened = opened;
-    item->cb.closed = closed;
-    item->cb.recv = recv;
-    item->in.bot = item->in.top = 0;
-    item->out.bot = item->out.top = 0;
-    event_set(&item->sock_event, item->sock, EV_READ | EV_PERSIST, do_read, item);
-    if (! event_base) event_base = net.event_base;
-    event_base_set(event_base, &item->sock_event);
-    event_add(&item->sock_event, 0);
-    conn = item->conn;
-    spin = gpcc_spin_release(net.net_spin);
-    return conn;
-}
-
-static void do_closed(item_t *item) 
-{
-    int i;
-    apr_uint32_t *spin = 0;
-
-    if (item->cb.closed) {
-	item->cb.closed(item->conn, item->arg);
-    } else {
-	net.cb.closed(item->conn, item->arg);
-    }
-    spin = gpcc_spin_secure(net.net_spin);
-    event_del(&item->sock_event);
-    for (i = 0 ; i < GPCC_NET_CONN_MAX && item != net.tab.item[i] ; i++){;}
-    if (i < GPCC_NET_CONN_MAX) {
-	net.tab.item[i] = 0;
-    }
-    apr_pool_destroy(item->pool);
-    gpcc_spin_release(spin);
-}
-
-static void do_read(int fd, short event, void *arg) 
-{
-    item_t *item = (item_t *) arg;
-    buf_t *bb = 0;
-    int bbfree = 0;
-    apr_uint32_t *spin = 0;
-
-    gpcc_log_info("do_read...");
-
-    spin = gpcc_spin_secure(net.net_spin);
-
-    bb = &item->in;
-    bbfree = sizeof(bb->buf) - bb->top; /* freespace in buf */
-    
-    if (bbfree < 32 && bb->bot != 0) {
-	/* compact buffer */
-	memmove(bb->buf, bb->buf + bb->bot, bb->top - bb->bot);
-	bb->top = bb->top - bb->bot;
-	bb->bot = 0;
-	bbfree = sizeof(bb->buf) - bb->top;
+    {
+	int on = 1;
+	struct linger linger;
+	setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (void*) &on, sizeof(on));
+	setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (void*) &on, sizeof(on));
+	linger.l_onoff = 1;
+	linger.l_linger = 5;
+	setsockopt(sock, SOL_SOCKET, SO_LINGER, (void*) &linger, sizeof(linger));
     }
 
-    /* read from network */
-    if (bbfree > 0) {
-	apr_size_t n = bbfree;
-	n = recv(item->sock, bb->buf + bb->top , n, 0);
-	if (n < 0) {
-#ifdef WIN32
-	    int e = WSAGetLastError();
-	    int ok = (e == WSAEINTR || e == WSAEWOULDBLOCK);
-#else
-	    int e = errno;
-	    int ok = (e == EINTR || e == EAGAIN);
-#endif
-	    if (! ok) {
-		/* end request */
-		item->is_closing = 1;
-		gpcc_warning(FLINE, "do_read: recv error, close socket");
-	    }
-	}
-	else if (n == 0) {
-	    /* didn't read anything */
-	    item->is_closing = 1;
-	    gpcc_warning(FLINE, "do_read: zero byte received.  close socket");
-	}
-	else {
-	    bb->top += n;
-	    bbfree -= n;
-	}
-    }
-
-    if (item->is_connecting) {
-	item->is_connecting = 0;
-	item->is_open = 1;
-	gpcc_spin_release(spin);
-	if (item->cb.opened) {
-	    item->arg = item->cb.opened(item->conn, item->arg,
-				       item->self_origin, item->pool);
-	} else {
-	    item->arg = net.cb.opened(item->conn, item->arg, 
-				      item->self_origin, item->pool);
-	}
-	gpcc_spin_secure(spin);
-	if (item->is_closing) {
-	    goto CLOSED;
-	}
-    }
-
-    if (bb->bot < bb->top) {
-	gpcc_spin_release(spin);
-	if (item->cb.recv) {
-	    item->cb.recv(item->conn, item->arg);
-	} else {
-	    net.cb.recv(item->conn, item->arg);
-	}
-	gpcc_spin_secure(spin);
-	if (item->is_closing) {
-	    goto CLOSED;
-	}
-    }
-
-    if (item->is_closing) {
-	goto CLOSED;
-    }
-
-    gpcc_spin_release(spin);
-    return;
-
-
-    CLOSED:
-
-    gpcc_spin_release(spin);
-    do_closed(item);
-}
-
-
-static apr_status_t do_write(item_t* item)
-{
-    buf_t* bb = &item->out;
-    apr_size_t n = bb->top - bb->bot;
-    int e = 0;
-    
-    if (n > 0) {
-	gpcc_log_info("do_write: send %d bytes", n);
-	e = send(item->sock, bb->buf + bb->bot, n, 0);
-	bb->bot += n;
-
-	if (e == -1) {
-	    return APR_EINVAL;
-	}
-	else if (e != n) {
-	    gpcc_warning(FLINE, "do_write: send error (%d != %d)", n, e);
-	}
-    }
     return 0;
 }
 
 
-
-static void do_accept(int fd, short event, void *arg)
+static void do_accept(int fd, short event, void* arg)
 {
-    struct sockaddr_in a;
-    socklen_t len = sizeof(a);
-    SOCKET sock;
-    gpcc_net_conn_t conn;
-    apr_uint32_t *spin;
-    item_t * item;
-    int e;
-    apr_pool_t *pool;
+    struct sockaddr_in sockaddr;
+    socklen_t sockaddr_len = sizeof(sockaddr);
+    SOCKET sock = -1;
+    apr_pool_t* pool = 0;
+    int i, unique;
+    conncb_t* pconn = 0;
+    apr_uint32_t* spin = 0;
 
     /* do the accept */
-    if ((sock = accept(fd, (void*) &a, &len)) < 0) {
+    if ((sock = accept(fd, (void*) &sockaddr, &sockaddr_len)) < 0) {
 	gpcc_warning(FLINE, "accept failed");
-	return;
+	goto failure;
     }
 
-    spin = gpcc_spin_secure(net.net_spin);
-    if (0 != (e = apr_pool_create(&pool, net.pool))) {
-	spin = gpcc_spin_release(spin);
-	gpcc_warning(FLINE, "apr_pool_create failed");
-	return;
-    }
-    spin = gpcc_spin_release(spin);
-
-    conn = mkitem(sock, 
-		  0 /* arg */,
-		  0 /* event_base */,
-		  0 /*is_connecting */,
-		  1 /*is_open*/,
-		  0 /*self_origin*/,
-		  0, 0, 0, /* opened, closed, recv */
-		  pool);
-    if (! conn) {
-	gpcc_warning(FLINE, "do_accept: unable to accept new connection");
-	return;
+    /* set to non-blocking, and close-on-exec */
+    if (set_sockopt_nonblock(sock)) {
+	gpcc_warning(FLINE, "unable to set sockopt");
+	goto failure;
     }
 
-    spin = gpcc_spin_secure(net.net_spin);
-    item = getitem(conn);
-    if (item) {
-	gpcc_spin_release(spin);
-	if (item->cb.opened) {
-	    item->arg = item->cb.opened(item->conn, item->arg,
-					item->self_origin, item->pool);
-	} else {
-	    item->arg = net.cb.opened(item->conn, item->arg, 
-				      item->self_origin, item->pool);
-	}
-	gpcc_spin_secure(spin);
+    /* create a pool container for this socket */
+    if (apr_pool_create(&pool, net.pool)) {
+	gpcc_warning(FLINE, "unable to accept connection - out of memory");
+	goto failure;
     }
-    
-    gpcc_spin_release(spin);
-}
 
-static void do_timeout(int fd, short event, void *arg)
-{
-    struct timeval tm;
-    apr_time_t now = apr_time_now();
-
-    net.cb.tick(now);
-    /* 1 sec timeout */
-    tm.tv_sec = 0;
-    tm.tv_usec = 1000 * 1000;
-    evtimer_add(&net.timer_event, &tm);
-}
-
-    
-static void* APR_THREAD_FUNC net_run(apr_thread_t* thread, void* arg)
-{
-    while (net.thread == thread) {
-	if (event_base_dispatch(net.event_base)) {
+    /* find a free slot */
+    spin = gpcc_spin_secure(&net.conntab_spin);
+    unique = net.unique++;
+    if (unique == 0) unique = net.unique++;
+    pconn = 0;
+    for (i = 0; i < CONN_MAX; i++) {
+	int index = (unique + i) % CONN_MAX;
+	if (0 == net.conntab[index].conn) {
+	    pconn = &net.conntab[index];
+	    pconn->conn = CONN_DEFINE(unique, index);
 	    break;
 	}
     }
-    return 0;
+    if (!pconn) {
+	gpcc_warning(FLINE, "unable to accept connection - connection table full");
+	goto failure;
+    }
+
+    /* crab over to pconn */
+    gpcc_spin_secure(&pconn->spin);
+    gpcc_spin_release(spin);
+    spin = &pconn->spin;
+
+    pconn->pool = pool;
+    pconn->sock = sock;
+    memset(&pconn->to_peer, 0, sizeof(pconn->to_peer));
+    memset(&pconn->from_peer, 0, sizeof(pconn->from_peer));
+    pconn->to_peer.buf = apr_palloc(pool, sizeof(buf_t));
+    pconn->from_peer.buf = apr_palloc(pool, sizeof(buf_t));
+    
+    pconn->do_read_header_attempts = 0;
+    {
+	/* set up to read the header */
+	struct timeval tm;
+	event_set(&pconn->ev, pconn->sock, EV_READ, do_read_header, pconn);
+	tm.tv_sec = 0;
+	tm.tv_usec = 500 * 1000;
+	event_add(&pconn->ev, &tm);
+    }
+
+    pconn->peer_addr[0] = 0;
+    if (! inet_ntop(sockaddr.sin_family, &sockaddr.sin_addr, pconn->peer_addr, sizeof(pconn->peer_addr) - 7)) {
+	gpcc_warning(FLINE, "inet_ntop failed");
+	goto failure;
+    }
+    sprintf(pconn->peer_addr + strlen(pconn->peer_addr), ":%d", ntohs(sockaddr.sin_port));
+    spin = gpcc_spin_release(spin);
+
+    return;			/* success */
+
+failure:
+    if (pconn)
+	pconn->conn = 0;
+    if (spin) 
+	gpcc_spin_release(spin);
+    if (pool)
+	apr_pool_destroy(pool);
+    if (sock >= 0)
+	closesocket(sock);
 }
 
-APR_DECLARE(apr_status_t) gpcc_net_once(void) 
-{
-    return event_base_loop(net.event_base, EVLOOP_ONCE| EVLOOP_NONBLOCK);
-}
 
-APR_DECLARE(apr_status_t) gpcc_net_start(int port, 
-					 gpcc_net_opened_t* opened,
-					 gpcc_net_closed_t* closed,
-					 gpcc_net_recv_t* recv,
-					 gpcc_net_tick_t* tick,
-					 int threaded)
+
+APR_DECLARE(apr_status_t) gpcc_net_init(int port,
+					gpcc_net_opened_t* opened,
+					gpcc_net_accepted_t* accepted,
+					gpcc_net_received_t* received,
+					gpcc_net_closed_t* closed)
 {
-    apr_threadattr_t* ta;
-    apr_uint32_t* spin = 0;
+    apr_pool_t* pool;
+    int e;
     struct sockaddr_in a;
-    SOCKET f;
+    SOCKET sock;
     int on = 1;
     struct linger linger;
-    struct timeval tm;
 
-    if (port <= 0) return APR_EINVAL;
-
-    spin = gpcc_spin_secure(net.net_spin);
     if (net.pool) {
-	spin = gpcc_spin_release(spin);
-	return 0;
+	gpcc_log_error("gpcc_net_init: already initialized (%s)", FLINE);
+	return APR_EINVAL;
     }
-    GPCC_DO(0 == apr_pool_create(&net.pool, 0));
+
+    if (!opened) {
+	gpcc_log_error("gpcc_net_init: invalid 'opened' param");
+	return APR_EINVAL;
+    }
+
+    if (!accepted) {
+	gpcc_log_error("gpcc_net_init: invalid 'accepted' param");
+	return APR_EINVAL;
+    }
+
+    if (!received) {
+	gpcc_log_error("gpcc_net_init: invalid 'received' param");
+	return APR_EINVAL;
+    }
+
+    if (!closed) {
+	gpcc_log_error("gpcc_net_init: invalid 'closed' param");
+	return APR_EINVAL;
+    }
+
+    if (0 != (e = apr_pool_create(&pool, 0)))
+	return e;
 
     a.sin_addr.s_addr = htonl(INADDR_ANY);
     a.sin_port = htons(port);
     a.sin_family = AF_INET;
 
-    f = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (f < 0) {
-	gpcc_warning(FLINE, "socket create failed");
-	goto bail;
-    }
+    sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (sock < 0)
+	gpcc_fatal(FLINE, "cannot create socket on port %d", port);
+    
+    if (fcntl(sock, F_SETFD, 1) == -1) 
+	gpcc_fatal(FLINE, "cannot create socket on port %d - fcntl(F_SETFD) failed", port);
 
-#ifndef WIN32
-    if (fcntl(f, F_SETFD, 1) == -1) {
-	gpcc_warning(FLINE, "fcntl failed");
-	goto bail;
-    }
-#endif
-
-    setsockopt(f, SOL_SOCKET, SO_KEEPALIVE, (void*) &on, sizeof(on));
-    setsockopt(f, SOL_SOCKET, SO_REUSEADDR, (void*) &on, sizeof(on));
+    setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (void*)&on, sizeof(on));
+    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (void*)&on, sizeof(on));
     linger.l_onoff = 1;
     linger.l_linger = 5;
-    setsockopt(f, SOL_SOCKET, SO_LINGER, (void*) &linger, sizeof(linger));
+    setsockopt(sock, SOL_SOCKET, SO_LINGER, (void*) &linger, sizeof(linger));
 
-    if (bind(f, (void*) &a, sizeof(a))) {
-	gpcc_warning(FLINE, "bind failed");
-	goto bail;
-    }
-    if (listen(f, 5)) {
-	gpcc_warning(FLINE, "listen failed");
-	goto bail;
-    }
-    net.listen_sock = f;
-    net.cb.opened = opened;
-    net.cb.closed = closed;
-    net.cb.recv = recv;
-    net.cb.tick = tick;
+    /* bind */
+    if (bind(sock, (void*) &a, sizeof(a)))
+	gpcc_fatal(FLINE, "cannot create socket on port %d - bind failed", port);
 
-    net.event_base = (struct event_base *) event_init();
+    if (listen(sock, 64))
+	gpcc_fatal(FLINE, "cannot listen on port %d", port);
 
-    if (event_base_priority_init(net.event_base, 10)) {
-	gpcc_warning(FLINE, "event_priority_init failed");
-	goto bail;
-    }
-    event_set(&net.listen_event, net.listen_sock, EV_READ | EV_PERSIST, do_accept, 0);
-    event_base_set(net.event_base, &net.listen_event);
+    memset(&net, 0, sizeof(net));
+    net.pool = pool;
+    net.opened = opened;
+    net.accepted = accepted;
+    net.received = received;
+    net.closed = closed;
+    net.listen_sock = sock;
 
-    if (event_priority_set(&net.listen_event, 0)) {
-	gpcc_warning(FLINE, "event_priority_set failed");
-	goto bail;
-    }
+    if (! event_init()) 
+	gpcc_fatal(FLINE, "event_init failed");
     
-    if (event_add(&net.listen_event, 0)) {
-	gpcc_warning(FLINE, "event_add failed");
-	goto bail;
-    }
-    /* add timer */
-    evtimer_set(&net.timer_event, do_timeout, 0);
-    event_base_set(net.event_base, &net.timer_event);
-
-    tm.tv_sec = 0;
-    tm.tv_usec = 1000 * 1000;
-    evtimer_add(&net.timer_event, &tm);
-
-    spin = gpcc_spin_release(spin);
-
-    if (threaded) {
-	GPCC_DO(0 == apr_threadattr_create(&ta, net.pool));
-	GPCC_DO(0 == apr_threadattr_detach_set(ta, 0));
-	GPCC_DO(0 == apr_thread_create(&net.thread, ta, net_run, &net, net.pool));
-    } 
+    event_set(&net.ev_listen, net.listen_sock, EV_READ | EV_PERSIST, do_accept, 0);
+    
+    if (event_add(&net.ev_listen, 0))
+	gpcc_fatal(FLINE, "event_add: cannot set up event on listen socket");
 
     return 0;
-
-    bail:
-
-    if (spin) spin = gpcc_spin_release(spin);
-    gpcc_net_stop();
-    return APR_EINVAL;
 }
 
 
-APR_DECLARE(void) gpcc_net_stop(void)
+APR_DECLARE(apr_status_t) gpcc_net_once();
+
+
+APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
+					char* peer_addr_str,
+					int argc, char** argv,
+					int hc, char** hname, char** hvalue)
 {
-    apr_thread_t* thread = net.thread;
-    apr_status_t status;
-    apr_uint32_t *spin = 0;
-    int i;
-
-    if (thread) {
-	net.thread = 0;
-
-	spin = gpcc_spin_secure(net.net_spin);
-	/* delete all events */
-	event_del(&net.listen_event);
-	for (i = 0 ; i < GPCC_NET_CONN_MAX ; i++){
-	    if (net.tab.item[i]) {
-		event_del(&net.tab.item[i]->sock_event);
-	    }
-	}
-	event_base_free(net.event_base);
-	gpcc_spin_release(spin);
-	apr_thread_join(&status, thread);
-    }
-    if (net.pool) 
-	apr_pool_destroy(net.pool);
-    memset(&net, 0, sizeof(net));
-}
-
-APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* pconn, 
-					const char* addr, 
-					gpcc_net_opened_t* opened,
-					gpcc_net_closed_t* closed,
-					gpcc_net_recv_t* _recv,
-					void *event_base,
-					void* arg)
-
-{
+    SOCKET sock = -1;
+    struct sockaddr_in peer_addr;
+    int port = 0;
+    char* p;
+    char addr[100];
+    struct hostent* hp;
+    int i, e = 0;
     apr_pool_t* pool = 0;
     apr_uint32_t* spin = 0;
-    int e = 0;
-    char* addr2;
-    char* scope;
-    apr_port_t port;
-    SOCKET sock;
-    struct hostent *server;
-    struct sockaddr_in serv_addr;
-    item_t *item;
+    int unique = 0;
+    conncb_t* pconn = 0;
+    gpcc_net_header_t* hdr = 0;
 
-    spin = gpcc_spin_secure(net.net_spin);
-    if (0 != (e = apr_pool_create(&pool, net.pool))) {
-	gpcc_warning(FLINE, "apr_pool_create failed");
-	goto bail;
-    }
-    spin = gpcc_spin_release(spin);
+    if (0 != (e = apr_pool_create(&pool, net.pool))) 
+	goto failure;
 
-    /* Resolve addr */
-    if (0 != (e = apr_parse_addr_port(&addr2, &scope, &port, addr, pool))) {
-	gpcc_warning(FLINE, "apr_parse_addr_port failed: %s", addr);
-	goto bail;
-    }
-    sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (sock < 0) {
-	gpcc_warning(FLINE, "socket create failed");
-	e = APR_ENOSOCKET;
-	goto bail;
-    }
-
-    server = gethostbyname(addr2);
-    if (server == 0) {
-	gpcc_warning(FLINE, "gethostbyname failed");
+    /* copy argc, argv, hc, hname, hvalue into gpcc_net_header */
+    hdr = gpcc_net_header_copy(argc, argv, hc, hname, hvalue, pool);
+    if ( ! hdr) {
 	e = APR_EINVAL;
-	goto bail;
+	goto failure;
     }
 
-    memset((char *) &serv_addr, 0, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    memcpy((char *) server->h_addr, (char *) &serv_addr.sin_addr.s_addr, server->h_length);
-    serv_addr.sin_port = htons(port);
+    /* parse the peer_addr_str into (hostname, ip) pair*/
+    strncpy(addr, peer_addr_str, sizeof(addr) - 1);
+    addr[sizeof(addr) - 1] = 0;
 
-    if (connect(sock, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
-	gpcc_warning(FLINE, "connect to host %s failed", addr);
-	e = APR_ECONNREFUSED;
-	goto bail;
+    if (0 == (p = strchr(addr, ':'))) {
+	e = APR_EINVAL;
+	goto failure;
     }
-    *pconn = mkitem(sock, 
-		    arg, 
-		    event_base,
-		    0 /*is_connecting*/, 
-		    1 /*is_open*/, 
-		    1 /*self_origin*/, 
-		    opened,
-		    closed,
-		    _recv,
-		    pool);
-    if (! (*pconn)) {
-	gpcc_warning(FLINE, "mkitem failed: not enough memory");
-	e = APR_ENOMEM;
-	goto bail;
+
+    *p++ = 0;
+    port = strtol(p, 0, 0);
+    if (! (0 <= port && port < (1 >> 16)))  {
+	e = APR_EINVAL;
+	goto failure;
     }
     
-    spin = gpcc_spin_secure(net.net_spin);
-    item = getitem(*pconn);
-    if (item) {
-	gpcc_spin_release(spin);
-	if (item->cb.opened) {
-	    item->arg = item->cb.opened(item->conn, item->arg,
-					item->self_origin, item->pool);
-	} else {
-	    item->arg = net.cb.opened(item->conn, item->arg, 
-				      item->self_origin, item->pool);
-	}
-
-	gpcc_spin_secure(spin);
+    /* get the host ip */
+    if (0 == (hp = gethostbyname(addr))) {
+	e = APR_EINVAL;
+	goto failure;
     }
-        
+    
+    /* make peer address */
+    peer_addr.sin_family = AF_INET;
+    peer_addr.sin_port = htons(port);
+    peer_addr.sin_addr = * (struct in_addr*) hp->h_addr_list[0];
+    memset(&peer_addr.sin_zero, 0, sizeof(peer_addr.sin_zero));
+
+    /* create socket */
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+	e = APR_FROM_OS_ERROR(errno);
+	goto failure;
+    }
+
+    if (0 != (e = set_sockopt_nonblock(sock))) 
+	goto failure;
+
+    /* find a free slot */
+    spin = gpcc_spin_secure(&net.conntab_spin);
+    unique = net.unique++;
+    if (unique == 0) unique = net.unique++;
+    pconn = 0;
+    for (i = 0; i < CONN_MAX; i++) {
+	int index = (unique + i) % CONN_MAX;
+	if (0 == net.conntab[index].conn) {
+	    pconn = &net.conntab[index];
+	    pconn->conn = CONN_DEFINE(unique, index);
+	    break;
+	}
+    }
+    if (!pconn) {
+	gpcc_warning(FLINE, "unable to open connection - connection table full");
+	goto failure;
+    }
+
+    /* crab over to pconn */
+    gpcc_spin_secure(&pconn->spin);
     gpcc_spin_release(spin);
-    
-    return 0;
+    spin = &pconn->spin;
 
-    bail:
-    if (spin) spin = gpcc_spin_release(spin);
-    if (pool) apr_pool_destroy(pool);
-    return e;
-}
+    pconn->pool = pool;
+    pconn->sock = sock;
+    memset(&pconn->to_peer, 0, sizeof(pconn->to_peer));
+    memset(&pconn->from_peer, 0, sizeof(pconn->from_peer));
+    pconn->to_peer.buf = apr_palloc(pool, sizeof(buf_t));
+    pconn->from_peer.buf = apr_palloc(pool, sizeof(buf_t));
+    pconn->do_read_header_attempts = 0;
+    pconn->to_peer.hdr = hdr;
 
-APR_DECLARE(apr_status_t) gpcc_net_close(gpcc_net_conn_t conn)
-{
-    item_t* item;
-    apr_uint32_t* spin;
-    spin = gpcc_spin_secure(net.net_spin);
-    if (! (item = getitem(conn))) {
-	spin = gpcc_spin_release(spin);
-	return APR_EINVAL;
-    }
-    item->is_closing = 1;
-    spin = gpcc_spin_release(spin);
-    do_closed(item);
-    return 0;
-}
-
-
-APR_DECLARE(apr_status_t) gpcc_net_read(gpcc_net_conn_t conn, 
-					char* buf, int len)
-{
-    apr_uint32_t* spin;
-    item_t* item;
-    buf_t* bb;
-    int n;
-
-    spin = gpcc_spin_secure(net.net_spin);
-    if (! (item = getitem(conn))) {
-	spin = gpcc_spin_release(spin);
-	return APR_EINVAL;
-    }
-
-    bb = &item->in;
-    n = bb->top - bb->bot;
-    if (n < len) {
-	spin = gpcc_spin_release(spin);
-	return APR_EAGAIN;
-    }
-	
-    memcpy(buf, bb->buf + bb->bot, len);
-    bb->bot += n;
-    spin = gpcc_spin_release(spin);
-    return 0;
-}
-
-
-APR_DECLARE(apr_status_t) gpcc_net_readln(gpcc_net_conn_t conn, 
-					  char* buf, int len)
-{
-    apr_uint32_t* spin;
-    item_t* item;
-    buf_t* bb;
-    int n;
-    char* p;
-    char* q;
-
-    spin = gpcc_spin_secure(net.net_spin);
-    if (! (item = getitem(conn))) {
-	spin = gpcc_spin_release(spin);
-	return APR_EINVAL;
-    }
-    bb = &item->in;
-    n = bb->top - bb->bot;
-    p = bb->buf + bb->bot;
-    q = memchr(p, '\n', n);
-    if (!q) {
-	spin = gpcc_spin_release(spin);
-	return APR_EAGAIN;
-    }
-    n = q + 1 - p;
-    if (n > len - 1) 		/* save 1 char for \0 */
-	n = len - 1;
-    memcpy(buf, p, n);
-    buf[n] = 0;
-
-    bb->bot += n;
-    spin = gpcc_spin_release(spin);
-    return 0;
-}
-
-APR_DECLARE(apr_status_t) gpcc_net_read_packet(gpcc_net_conn_t conn, 
-					       gpcc_net_packet_t** packet)
-{
-    gpcc_net_packet_t pkt;
-    char* p;
-    item_t* item;
-    buf_t* bb;
-    int n;
-    apr_uint32_t* spin;
-
-    spin = gpcc_spin_secure(net.net_spin);
-    if (! (item = getitem(conn))) {
-	spin = gpcc_spin_release(spin);
-	return APR_EINVAL;
-    }
-    bb = &item->in;
-    n = bb->top - bb->bot;
-    p = bb->buf + bb->bot;
-    if (n >= sizeof(pkt.mh)) {
-	memcpy(&pkt, p, sizeof(pkt.mh));
-	pkt.mh.type = ntohs(pkt.mh.type);
-	pkt.mh.len = ntohs(pkt.mh.len);
-	pkt.mh.sndidx = ntohl(pkt.mh.sndidx);
-	pkt.mh.rcvidx = ntohl(pkt.mh.rcvidx);
-    }
-    if (n < sizeof(pkt.mh) + pkt.mh.len)  {
-	spin = gpcc_spin_release(spin);
-	return APR_EAGAIN;
-    }
-    *packet = malloc(sizeof(**packet) + pkt.mh.len - 1);
-    (*packet)->mh = pkt.mh;
-    bb->bot += sizeof(pkt.mh);
-    p += sizeof(pkt.mh);
-    memcpy((*packet)->mb, p, pkt.mh.len);
-    bb->bot += pkt.mh.len;
-    spin = gpcc_spin_release(spin);
-    return 0;
-}
-
-APR_DECLARE(void) gpcc_net_free_packet(gpcc_net_packet_t* packet)
-{
-    free(packet);
-}
-
-
-APR_DECLARE(apr_status_t) gpcc_net_send_packet(gpcc_net_conn_t conn,
-					       int type, 
-					       int sndidx, int rcvidx,
-					       const char* buf, int len)
-{
-    gpcc_net_packet_t pkt;
-    const char* tbuf[2];
-    int tlen[2];
-    pkt.mh.type = htons(type);
-    pkt.mh.len = htons(len);
-    pkt.mh.sndidx = htonl(sndidx);
-    pkt.mh.rcvidx = htonl(rcvidx);
-
-    tbuf[0] = (char*) &pkt.mh, tlen[0] = sizeof(pkt.mh);
-    tbuf[1] = buf, tlen[1] = len;
-
-    return gpcc_net_sendv(conn, 2, tbuf, tlen);
-}
-
-
-
-
-APR_DECLARE(apr_status_t) gpcc_net_sendv(gpcc_net_conn_t conn, 
-					 int nbuf,
-					 const char* buf[], int bufsz[])
-{
-    int tot = 0;
-    int i;
-    apr_uint32_t* spin = 0;
-    int e = 0;
-    item_t* item;
-    buf_t* bb;
-    int bbfree = 0;
-
-    for (i = 0; i < nbuf; i++) {
-	if (bufsz[i] < 0) 
-	    return APR_EINVAL;
-	tot += bufsz[i];
-    }
-
-    spin = gpcc_spin_secure(net.net_spin);
-
-    if (! (item = getitem(conn))) {
-	gpcc_warning(FLINE, "item not found");
-	spin = gpcc_spin_release(spin);
-	e = APR_EINVAL;
-	goto bail;
-    }
-    bb = &item->out;
-
-    if (tot > sizeof(bb->buf)) {
-	gpcc_log_error("gpcc_net_sendv: packet too big (%d, max %d)", tot, sizeof(bb->buf));
-	spin = gpcc_spin_release(spin);
-	return APR_EINVAL;
-    }
-
-    retry:
-    bbfree = sizeof(bb->buf) - bb->top;    
-    if (bbfree < tot) {
-	/* compact buffer */
-	memmove(bb->buf, bb->buf + bb->bot, bb->top - bb->bot);
-	bb->top = bb->top - bb->bot;
-	bb->bot = 0;
-	bbfree = sizeof(bb->buf) - bb->top;
-
-	if (bbfree < tot) {
-	    if (do_write(item)) { /* flush */
-		gpcc_warning(FLINE, "network send error.  Close socket");
-		item->is_closing = 1;
-		e = APR_EINVAL;
-		goto CLOSED;
-	    }
-	    goto retry;
+    /* connect */
+    if (-1 == connect(sock, (struct sockaddr *) &peer_addr, sizeof(peer_addr))) {
+	if (e != EINPROGRESS) {
+	    e = APR_FROM_OS_ERROR(errno);
+	    goto failure;
 	}
     }
-    
-    for (i = 0; i < nbuf; i++) {
-	memcpy(bb->buf + bb->top, buf[i], bufsz[i]);
-	bb->top += bufsz[i];
+    {
+	/* set up to write the header */
+	event_set(&pconn->ev, pconn->sock, EV_WRITE, do_write_header, pconn);
+	event_add(&pconn->ev, 0);
     }
 
-    if (do_write(item)) {
-	gpcc_warning(FLINE, "network send error.  Close socket");
-	item->is_closing = 1;
-	e = APR_EINVAL;
-	goto CLOSED;
-    }	
-
-    spin = gpcc_spin_release(spin);
     return 0;
 
-    bail:
-    if (spin) spin = gpcc_spin_release(spin);
-    return e;
-
-    CLOSED:
-
-    if (spin) spin = gpcc_spin_release(spin);
-    do_closed(item);
+failure:
+    if (pconn)
+	pconn->conn = 0;
+    if (spin)
+	gpcc_spin_release(spin);
+    if (pool) 
+	apr_pool_destroy(pool);
+    if (sock >= 0) {
+	shutdown(sock, SHUT_WR | SHUT_RD);
+	closesocket(sock);
+    }
     return e;
 }
 
 
-APR_DECLARE(apr_status_t) gpcc_net_send(gpcc_net_conn_t conn, 
-					const char* buf, int buflen)
-{
-    return gpcc_net_sendv(conn, 1, &buf, &buflen);
-}
-
-
-
-#ifdef UNDEF
-APR_DECLARE(apr_status_t) gpcc_net_send(gpcc_net_conn_t conn, 
-					const gpcc_net_msghdr_t* msghdr, 
-					const char* msgbody)
-{
-    gpcc_net_msghdr_t nethdr;
-
-    nethdr.mtype = htons(msghdr->mtype);
-    nethdr.mlen = htons(msghdr->mlen);
-    nethdr.sndidx = htonl(msghdr->sndidx);
-    nethdr.rcvidx = htonl(msghdr->rcvidx);
-
-    return send_raw(conn, (char*) &nethdr, sizeof(nethdr), msgbody, msghdr->mlen);
-}
-#endif 
-
-
-APR_DECLARE(apr_status_t) gpcc_net_setarg(gpcc_net_conn_t conn, void* arg)
-{
-    item_t* item;
-    apr_uint32_t* spin;
-
-    spin = gpcc_spin_secure(net.net_spin);
-    if (! (item = getitem(conn))) {
-	spin = gpcc_spin_release(spin);
-	return APR_EINVAL;
-    }
-    item->arg = arg;
-    spin = gpcc_spin_release(spin);
-    return 0;
-}
-
-
-APR_DECLARE(void*) gpcc_net_getarg(gpcc_net_conn_t conn)
-{
-    item_t* item;
-    void* arg = 0;
-    apr_uint32_t* spin;
-
-    spin = gpcc_spin_secure(net.net_spin);
-    if (0 != (item = getitem(conn))) 
-	arg = item->arg;
-    spin = gpcc_spin_release(spin);
-    return arg;
-}
-
-
-
-
-APR_DECLARE(int) gpcc_net_get_conns(gpcc_net_conn_t conns[GPCC_NET_CONN_MAX])
-{
-    apr_uint32_t* spin;
-    item_t** p = &net.tab.item[0];
-    item_t** q = &net.tab.item[GPCC_NET_CONN_MAX];
-    int count = 0;
-
-    spin = gpcc_spin_secure(net.net_spin);
-    for ( ; p < q; p++) {
-	if (*p && (*p)->is_open)
-	    conns[count++] = (*p)->conn;
-    }
-    spin = gpcc_spin_release(spin);
-    return count;
-}
-
-
-APR_DECLARE(apr_status_t) gpcc_net_send_request(gpcc_net_conn_t conn,
-						const gpcc_net_request_t* req)
-{
-    char buf[1024*8];
-    char* p = buf;
-    char* q = buf + sizeof(buf);
-    int i;
-
-    for (i = 0; i < req->argc; i++) 
-	p += apr_snprintf(p, q - p, "%s ", req->argv[i]);
-    if (i) 
-	p += apr_snprintf(p, q - p, "\r\n");
-    for (i = 0; i < req->hc; i++) 
-	p += apr_snprintf(p, q - p, "%s: %s\r\n", req->hname[i], req->hvalue[i]);
-    p += apr_snprintf(p, q - p, "\r\n");
-
-    if (p == q)
-	return APR_EINVAL;
-
-    return gpcc_net_send(conn, buf, p - buf);
-}
-
-APR_DECLARE(apr_status_t) gpcc_net_read_request(gpcc_net_conn_t conn, 
-						gpcc_net_request_t** req, 
-						apr_pool_t* pool)
-{
-    apr_uint32_t* spin;
-    item_t* item;
-    buf_t* bb;
-    int n;
-
-    *req = 0;
-    spin = gpcc_spin_secure(net.net_spin);
-    if (! (item = getitem(conn))) {
-	spin = gpcc_spin_release(spin);
-	return APR_EINVAL;
-    }
-
-    bb = &item->in;
-    n = bb->top - bb->bot;
-    *req = gpcc_net_parse_request(bb->buf + bb->bot, &n, pool);
-    bb->bot += n;
-
-    spin = gpcc_spin_release(spin);
-    return *req ? 0 : APR_EAGAIN;
-}
 
     
-APR_DECLARE(apr_status_t) gpcc_net_read_request_data(gpcc_net_conn_t conn,
-						     gpcc_net_request_t *req)
-{
-    apr_uint32_t *spin;
-    item_t *item;
-    buf_t *bb;
-    int n, nn;
-
-    spin = gpcc_spin_secure(net.net_spin);
-    if (! (item = getitem(conn))) {
-	spin = gpcc_spin_release(spin);
-	return APR_EINVAL;
-    }
-
-    bb = &item->in;
-    n = bb->top - bb->bot;
-    if (n == 0) {
-	spin = gpcc_spin_release(spin);
-	return APR_EAGAIN;
-    }
- 
-    nn = req->datalen - req->offset;
-    
-    n = (n > nn) ? nn : n ;
-    memcpy(req->data + req->offset, bb->buf + bb->bot, n);
-    req->offset += n;
-    bb->bot += n;
-    spin = gpcc_spin_release(spin);
-
-    return (req->datalen == req->offset) ? 0 : APR_EAGAIN;
-}
-    
-    
-APR_DECLARE(gpcc_net_request_t*) gpcc_net_parse_request(const char* buf, int* len, apr_pool_t* pool)
+APR_DECLARE(apr_status_t) gpcc_net_parse_request(gpcc_net_header_t** hdr, const char* buf, int* len, apr_pool_t* pool)
 {
     int n = *len;
     const char* p;
     char* line;
     char* last;
-    gpcc_net_request_t* req = 0;
     char* colon;
     int empty, completed;
+    char** argv = 0;
+    int e;
+    gpcc_net_header_t* req = 0;
+
+    *hdr = 0;
 
     /* find an empty line */
     *len = 0;
@@ -1036,15 +704,19 @@ APR_DECLARE(gpcc_net_request_t*) gpcc_net_parse_request(const char* buf, int* le
     /* we have a complete HTTP-style HEADER request (terminated by empty line) */
     *len = n = p - buf; /* consume it */
     line = apr_pstrndup(pool, buf, n); /* dup it */
-    req = apr_pcalloc(pool, sizeof(gpcc_net_request_t));
+    req = apr_pcalloc(pool, sizeof(gpcc_net_header_t));
 
     /* for first line */
     line = apr_strtok(line, "\n", &last);
     line = gpcc_string_trim(line);
-    if (0 != apr_tokenize_to_argv(line, &req->argv, pool))
-	return req;
-    while (req->argv[req->argc]) 
-	req->argc++;
+    if (0 != (e = apr_tokenize_to_argv(line, &argv, pool)))
+	return e;
+
+    for ( ;argv[req->argc]; req->argc++)  {
+	if (req->argc >= GPCC_NET_HEADER_ENTRYMAX)
+	    return APR_EINVAL;
+	req->argv[req->argc] = argv[req->argc];
+    }
 
     /* for each subsequent lines */
     while (0 != (line = apr_strtok(0, "\n", &last))) {
@@ -1072,77 +744,15 @@ APR_DECLARE(gpcc_net_request_t*) gpcc_net_parse_request(const char* buf, int* le
 	    break;
 
 	/* save name, value pair */
-	req->hname[req->hc] = line;
+	req->hname[req->hc] = gpcc_string_tolower(line);
 	req->hvalue[req->hc] = gpcc_string_trim(colon);
 	req->hc++;
 
-	if (req->hc >= sizeof(req->hname) / sizeof(req->hname[0]))
-	    break;
+	if (req->hc >= GPCC_NET_HEADER_ENTRYMAX)
+	    return APR_EINVAL;
     }
 
-    return req;
-}
-
-
-
-static const char *_net_request_get_header(gpcc_net_request_t *req, const char *header)
-{
-    int i;
-
-    for (i = 0 ; i < req->hc ; i++){
-	if (apr_strnatcasecmp(req->hname[i], header) == 0) {
-	    return req->hvalue[i];
-	}
-    }
+    *hdr = req;
     return 0;
-}
-
-APR_DECLARE(const char *) gpcc_net_request_get_header(gpcc_net_request_t *req, const char * header,
-						      const char *def)
-{
-    const char *value = _net_request_get_header(req, header);
-    if (value)
-	return value;
-    return def;
-}
-
-APR_DECLARE(int) gpcc_net_request_get_header_int(gpcc_net_request_t *req, const char * header,
-						 int def)
-{
-    const char *value = _net_request_get_header(req, header);
-    if (value)
-	return atoi(value);
-    return def;
-}
-
-APR_DECLARE(float) gpcc_net_request_get_header_float(gpcc_net_request_t *req, const char * header,
-					       float def)
-{
-    const char *value = _net_request_get_header(req, header);
-    if (value)
-	return atof(value);
-    return def;
-}
-
-
-
-APR_DECLARE(gpcc_net_node_id_t) gpcc_net_get_node_id(void)
-{
-    static gpcc_net_node_id_t* my_node_id;
-
-    if (! my_node_id) {
-	gpcc_net_node_id_t* t = malloc(sizeof(gpcc_net_node_id_t));
-	apr_sha1_ctx_t sha1ctx;
-	char sha1buf[80];
-
-	GPCC_DO(0 == apr_generate_random_bytes((unsigned char*)sha1buf, 20));
-	sprintf(sha1buf + 20, " gpcc %lld ", apr_time_now());
-	apr_sha1_init(&sha1ctx);
-	apr_sha1_update(&sha1ctx, sha1buf, strlen(sha1buf));
-	apr_sha1_final(t->opaque, &sha1ctx);
-
-	my_node_id = t;
-    }
-    return *my_node_id;
 }
 

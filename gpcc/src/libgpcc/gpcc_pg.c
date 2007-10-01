@@ -1,3 +1,4 @@
+#ifdef UNDEF
 #ifdef WIN32
 #include <io.h>
 #else
@@ -21,6 +22,7 @@
 #include <apr_strings.h>
 
 #define DEFAULT_GP_DBNAME         "template1"
+
 
 
 APR_DECLARE(apr_status_t) gpcc_pg_ctl_status(int port, const char *data_dir, apr_pool_t *p) 
@@ -470,3 +472,4 @@ APR_DECLARE(apr_status_t) gpcc_pg_update_postgresql_conf(const char *data_dir, g
     return 0;
 }
 
+#endif
