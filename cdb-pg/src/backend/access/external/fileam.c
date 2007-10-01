@@ -817,7 +817,8 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 		}
 		
 		/* Single row error handling */
-		pstate->cdbsreh = makeCdbSreh(false, 
+		pstate->cdbsreh = makeCdbSreh(true, /* don't DROP errtable at end of execution */
+									  true, /* only relevant to COPY */
 									  rejectlimit, 
 									  islimitinrows, 
 									  errtbl_rv, 

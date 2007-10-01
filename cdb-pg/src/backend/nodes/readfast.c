@@ -235,6 +235,7 @@ _readSingleRowErrorDesc(const char ** str)
 	READ_INT_FIELD(rejectlimit);
 	READ_BOOL_FIELD(is_keep);
 	READ_BOOL_FIELD(is_limit_in_rows);
+	READ_BOOL_FIELD(reusing_existing_errtable);
 	
 	READ_DONE();
 }

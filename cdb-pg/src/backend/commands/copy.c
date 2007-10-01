@@ -730,13 +730,6 @@ DoCopy(const CopyStmt *stmt)
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("COPY single row error handling only available using COPY FROM")));
 		
-		if (sreh->is_keep)
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_FEATURE_NOT_YET),
-					 errmsg("Auto dropping error tables is not yet supported. "
-							"Therefore KEEP is not applicable as all error "
-							"tables are kept alive by default")));
-		
 		if (sreh->errtable)
 		{
 			cstate->errMode = SREH_LOG;
@@ -757,9 +750,13 @@ DoCopy(const CopyStmt *stmt)
 					 errmsg("Segment reject limit in percentage is not yet supported")));			
 		
 	
-		cstate->cdbsreh = makeCdbSreh(sreh->is_keep, sreh->rejectlimit, 
-									  sreh->is_limit_in_rows, sreh->errtable,
-									  stmt->filename, stmt->relation->relname);
+		cstate->cdbsreh = makeCdbSreh(sreh->is_keep, 
+									  sreh->reusing_existing_errtable,
+									  sreh->rejectlimit, 
+									  sreh->is_limit_in_rows, 
+									  sreh->errtable,
+									  stmt->filename, 
+									  stmt->relation->relname);
 	}
 	else
 	{
@@ -3333,7 +3330,12 @@ CopyFromDispatch(CopyState cstate)
 		total_rejected = cstate->cdbsreh->rejectcount + total_rejeted_from_qes;
 		cstate->processed -= total_rejected;
 		
+		/* emit a NOTICE with number of rejected rows */
 		ReportSrehResults(cstate->cdbsreh, total_rejected);
+		
+		/* See if we want to DROP error table when destroying cdbsreh */
+		if(cstate->cdbsreh->errtbl)
+			SetErrorTableVerdict(cstate->cdbsreh, total_rejected);
 	}
 
 

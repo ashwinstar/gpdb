@@ -1153,6 +1153,7 @@ typedef struct SingleRowErrorDesc
 	int			rejectlimit;		/* per segment error reject limit */
 	bool		is_keep;			/* true if KEEP indicated (COPY only) */
 	bool		is_limit_in_rows;	/* true for ROWS false for PERCENT */
+	bool		reusing_existing_errtable;  /* var used later in trasform... */
 } SingleRowErrorDesc;
 
 /* ----------------------

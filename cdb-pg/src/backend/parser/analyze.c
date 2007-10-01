@@ -6183,6 +6183,8 @@ transformSingleRowErrorHandling(ParseState *pstate, CreateStmtContext *cxt,
 		rel = heap_openrv(sreh->errtable, AccessShareLock);
 		ValidateErrorTableMetaData(rel);
 		relation_close(rel, AccessShareLock);
+		
+		sreh->reusing_existing_errtable = true;
 	}
 	else
 	{
@@ -6268,6 +6270,8 @@ transformSingleRowErrorHandling(ParseState *pstate, CreateStmtContext *cxt,
 		
 		
 		cxt->blist = lappend(cxt->blist, createStmt);
+		
+		sreh->reusing_existing_errtable = false;
 		
 	}
 	

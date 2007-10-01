@@ -2279,6 +2279,7 @@ _copySingleRowErrorDesc(SingleRowErrorDesc *from)
 	COPY_SCALAR_FIELD(rejectlimit);
 	COPY_SCALAR_FIELD(is_keep);
 	COPY_SCALAR_FIELD(is_limit_in_rows);
+	COPY_SCALAR_FIELD(reusing_existing_errtable);
 	
 	return newnode;	
 }

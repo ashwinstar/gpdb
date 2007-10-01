@@ -908,6 +908,7 @@ _equalSingleRowErrorDesc(SingleRowErrorDesc *a, SingleRowErrorDesc *b)
 	COMPARE_SCALAR_FIELD(rejectlimit);
 	COMPARE_SCALAR_FIELD(is_keep);
 	COMPARE_SCALAR_FIELD(is_limit_in_rows);
+	COMPARE_SCALAR_FIELD(reusing_existing_errtable);
 	
 	return true;
 }
