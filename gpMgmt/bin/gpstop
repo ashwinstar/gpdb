@@ -60,6 +60,7 @@ GPSEGSTOP=$WORKDIR/lib/gpsegstop.sh
 PARALLEL_STATUS_FILE=/tmp/gpstop_parallel_status_file.$$
 WAIT_LIMIT=600
 BATCH_DEFAULT=60
+CANCEL_ACTIVE=0
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -102,6 +103,8 @@ USAGE () {
 		$ECHO "      -u, upload new master postgresql.conf settings, does not stop Greenplum array,"
 		$ECHO "          issues a signal to the master segment postmaster process to reload"
 		$ECHO "      -B, <number> run this batch of stop segment processes in parallel [default $BATCH_DEFAULT]"
+		$ECHO "      -C, cancel active connections, calls pg_cancel_backend function for each active connection"
+		$ECHO "          prior to shutdown"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
@@ -147,13 +150,42 @@ DISPLAY_PARAM () {
 		exit 0
 }
 
+CANCEL_BACKEND () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	#Expects a PROCPID value to cancel
+	LOG_MSG "[INFO]:-Calling pg_cancel_backend on procpid $1" 1
+	${EXPORT_LIB_PATH};$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select pg_cancel_backend($1);" >> $LOG_FILE 2>&1	
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 STOP_ADMIN () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		LOG_MSG "[INFO]:-Stopping the Master instance in admin mode" 1
 		if [ ! -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
 				ERROR_EXIT "[FATAL]:- No $PG_PID file, is instance already stopped?" 1
 		fi
-		env PGOPTIONS="-c gp_session_role=utility" $PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE      >/dev/null 2>&1
+		#Check to see if we have any connections to the database at this stage
+		ACTIVE_CONNECTIONS=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select procpid from $ACTIVITY_TABLE where procpid != pg_backend_pid() and current_query<>'idle';"`)
+		if [ ${#ACTIVE_CONNECTIONS[@]} -ne 0 ] && [ $CANCEL_ACTIVE -eq 0 ];then
+			LOG_MSG "[FATAL]:-There are ${#ACTIVE_CONNECTIONS[@]} active connections to the database" 1
+			LOG_MSG "[FATAL]:-Option -C not supplied to cancel backend processes" 1
+			ERROR_EXIT "[FATAL]:-Unable to continue admin shutdown" 2
+		fi
+		if [ ${#ACTIVE_CONNECTIONS[@]} -ne 0 ] && [ $CANCEL_ACTIVE -eq 1 ];then
+			for PROCPID in ${ACTIVE_CONNECTIONS[@]}
+			do
+				CANCEL_BACKEND $PROCPID
+			done
+		fi
+		TOTAL_CONNECTIONS=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $ACTIVITY_TABLE where procpid != pg_backend_pid();"` 
+		if [ $TOTAL_CONNECTIONS -ne 0 ];then
+			LOG_MSG "[INFO]:-There are $TOTAL_CONNECTIONS connections to the database" 1
+			LOG_MSG "[INFO]:-Setting shutdown mode to immediate" 1
+			MODE=immediate
+		else
+			LOG_MSG "[INFO]:-There are $TOTAL_CONNECTIONS connections to the database" 1
+		fi
+		LOG_MSG "[INFO]:-Stopping the Master instance in admin mode" 1
+		env PGOPTIONS="-c gp_session_role=utility" $PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE >> $LOG_FILE 2>&1
 		ERROR_CHK $? "shutdown Master instance from admin mode" 2
 		LOG_MSG "[INFO]:-Successfully shutdown the Master instance in admin mode" 1
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -402,7 +434,7 @@ trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 #Check to see if we have a parameter supplied to script
 if [ $# -ne 0 ]; then
 		##MPP	while getopts ":viskft'?'aqnml:d:" opt;do
-		while getopts ":vuyrmiskzft'?'aqbl:d:!DB:" opt;do
+		while getopts ":vuyrmiskzft'?'aqbl:d:!DB:C" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						i ) MODE=immediate ;;
@@ -424,6 +456,7 @@ if [ $# -ne 0 ]; then
       						    USAGE ;;
 						D ) DEBUG_LEVEL=1 ;;
 						B ) BATCH_DEFAULT=$OPTARG ;;
+						C ) CANCEL_ACTIVE=1 ;;
 						* ) UNKNOWN_OPTION ;;
 				esac
 		done	
