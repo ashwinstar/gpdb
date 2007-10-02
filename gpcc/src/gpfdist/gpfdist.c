@@ -66,7 +66,8 @@ struct {
     const char* d;		/* directory */
     const char* q;		/* quote char */
     const char* x;		/* escape char */
-} opt = { 8080, 0, 0, 0, ".", 0, 0 };
+    const char* l;              /* log filename */
+} opt = { 8080, 0, 0, 0, ".", 0, 0, 0 };
 
 
 /*  A data block */
@@ -478,7 +479,7 @@ void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
     int ch;
     const char* arg;
     int e;
-    static apr_getopt_option_t option[10] = {
+    static apr_getopt_option_t option[11] = {
 	{      NULL, '?', 0, "print help screen" },
 	{      NULL, 'V', 0, "very verbose" },
 	{      NULL, 'v', 0, "verbose mode" },
@@ -487,6 +488,7 @@ void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
 	{      NULL, 'q', 1, "set quote character" },
 	{      NULL, 'x', 1, "set escape character" },
 	{      NULL, 'h', 0, "flag to skip first row in data files" },
+	{      NULL, 'l', 1, "log filename" },
 	{ "version", 256, 0, "print version number" }
     };
     
@@ -504,6 +506,7 @@ void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
 	case 'q': opt.q = arg; break;
 	case 'x': opt.x = arg; break;
 	case 'p': opt.p = atoi(arg); break;
+	case 'l': opt.l = arg; break;
 	case 256: print_version(); break;
 	}
     }
@@ -544,6 +547,37 @@ void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
 			       "Error: cannot access directory '%s'\n"
 			       "Please specify a valid directory for -d switch", opt.d));
 	opt.d = p;
+    }
+
+    /* validate opt.l */
+    if (opt.l) {
+	FILE *f;
+
+	char* p = gstring_trim(apr_pstrdup(pool, opt.l));
+	
+	/* collapse // */
+	while (p[0] == '/' && p[1] == '/') p++;
+	
+	/* disallow / */
+	if (0 == strcmp(p, "/")) 
+	    usage("Security Error: cannot run under root (/) directory");
+	
+	/* strip ending / */
+	while (p[0] && p[strlen(p) - 1] == '/')
+	    p[strlen(p) - 1] = 0;
+	opt.l = p;
+	
+	if (0 == strlen(opt.l))
+	    opt.l = ".";
+	
+	/* check that the file exists */
+	f = fopen(opt.l, "a");
+	if (!f) {
+	    fprintf(stderr, "unable to create log file %s\n", opt.l);
+	    exit(1);
+	}
+	fclose(f);
+
     }
 
     /* check quote and escape options */
@@ -1388,6 +1422,15 @@ int main(int argc, const char* const argv[])
     http_setup();
 
     printf("Serving HTTP on port %d, directory %s\n", opt.p, opt.d);
+    
+    /* redirect stderr and stdout to log */
+    if (opt.l) {
+	freopen(opt.l, "a", stderr);
+	setlinebuf(stderr);
+	freopen(opt.l, "a", stdout);
+	setlinebuf(stdout);
+    }
+
     event_dispatch();
 
     return 0;
