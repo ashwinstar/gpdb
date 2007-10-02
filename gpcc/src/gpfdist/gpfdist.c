@@ -1333,7 +1333,7 @@ int setup_read(request_t* r)
     event_set(&r->ev, r->sock, EV_READ, do_read, r);
 
     tm.tv_sec = 0;
-    tm.tv_usec = 500 * 1000;
+    tm.tv_usec = 2000 * 1000;
     return (event_add(&r->ev, &tm));
 }
 
