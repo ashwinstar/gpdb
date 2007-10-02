@@ -777,6 +777,7 @@ RecordTransactionCommit(void)
 	int			nchildren;
 	TransactionId *children;
 	bool		isDtxPrepared;
+	bool		omitCommitRecordForDirtyQEReader;
 	TMGXACT_LOG gxact_log;
 
 	/* Get data needed for commit record */
@@ -784,6 +785,7 @@ RecordTransactionCommit(void)
 	nchildren = xactGetCommittedChildren(&children);
 
 	isDtxPrepared = isPreparedDtxTransaction();
+	omitCommitRecordForDirtyQEReader = false;
 
 	/*
 	 * If we made neither any XLOG entries nor any temp-rel updates, and have
@@ -811,6 +813,12 @@ RecordTransactionCommit(void)
 			else
 			{
 				/*
+				 * We are allowing the QE Reader to write to support error tables.
+				 */
+				elog(DEBUG1, "omitting logging commit record for Reader qExec that has written changes.");
+				omitCommitRecordForDirtyQEReader = true;
+#ifdef nothing
+				/*
 				 * we better only do really minor things on the reader that result
 				 * in writing to the xlog here at commit.  for now sequences
 				 * should be the only one
@@ -822,12 +830,15 @@ RecordTransactionCommit(void)
 								   "Only the single Writer qExec can do so. "),
 						 errhint("This is most likely the result of a feature being turned "
 								 "on that violates the single WRITER principle")));
+#endif
 			}
 		}
 
 		/* Tell bufmgr and smgr to prepare for commit */
 		BufmgrCommit();
 
+		if (!omitCommitRecordForDirtyQEReader)
+		{
 		START_CRIT_SECTION();
 
 		/*
@@ -988,6 +999,7 @@ RecordTransactionCommit(void)
 			LWLockRelease(CheckpointStartLock);
 
 		END_CRIT_SECTION();
+	}
 	}
 
 	/* Break the chain of back-links in the XLOG records I output */
@@ -2039,6 +2051,10 @@ CommitTransaction(void)
 			 TransStateAsString(s->state));
 	Assert(s->parent == NULL);
 
+
+	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
+		elog(DEBUG1,"CommitTransaction: called as QE Reader");
+	
 	/*
 	 * Do pre-commit processing (most of this stuff requires database access,
 	 * and in fact could still cause an error...)
@@ -2777,6 +2793,10 @@ CommitTransactionCommand(void)
 {
 	TransactionState s = CurrentTransactionState;
 
+	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
+		elog(DEBUG1,"CommitTransactionCommand: called as QE Reader in state %s",
+		     BlockStateAsString(s->blockState));
+	
 	switch (s->blockState)
 	{
 			/*

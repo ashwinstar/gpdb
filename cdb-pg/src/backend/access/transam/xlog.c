@@ -580,6 +580,11 @@ XLogInsert(RmgrId rmid, uint8 info, XLogRecData *rdata)
 		}
 		else
 		{
+			/*
+			 * We are allowing the QE Reader to write to support error tables.
+			 */
+			elog(DEBUG1, "Reader qExec writing changes. (%d %d)", rmid, info);
+#ifdef nothing
 			ereport(ERROR,
 					(errmsg("Reader qExec had local changes to commit! (rmid = %u)",
 							rmid),
@@ -587,6 +592,7 @@ XLogInsert(RmgrId rmid, uint8 info, XLogRecData *rdata)
 							   "Only the single Writer qExec can do so. "),
 					 errhint("This is most likely the result of a feature being turned "
 							 "on that violates the single WRITER principle")));	
+#endif
 		}
  	}
 

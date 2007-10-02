@@ -804,7 +804,7 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 			errtbl_rv = makeRangeVar(get_namespace_name(get_rel_namespace(fmterrtbl)),
 									 get_rel_name(fmterrtbl));
 			
-			
+ #ifdef nothing			
 			/* bummer... a non writer gang can't write to an error table! */
 			if(!Gp_is_writer && Gp_role != GP_ROLE_DISPATCH)
 				ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET),
@@ -814,6 +814,7 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 									   "error handling by redefining the external " 
 									   "table without an error table "
 									   )));
+#endif
 		}
 		
 		/* Single row error handling */
