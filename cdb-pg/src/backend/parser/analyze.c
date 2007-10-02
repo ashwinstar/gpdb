@@ -177,6 +177,7 @@ static Node *make_partition_rules(ParseState *pstate,
 		 Node *partitionBy, PartitionElem *pElem,
  		 char *at_depth, char *child_name_str);
 
+static int deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize);
 
 /*
  * parse_analyze
@@ -2543,6 +2544,103 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 
 }
 
+static int deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize)
+{
+	if (!pNode)
+		return 0;
+
+	switch (nodeTag(pNode))
+	{
+		case T_Value:
+			break;
+		case T_String:
+				snprintf(outbuf, outsize, "%s", 
+						 strVal(pNode));
+			break;
+		case T_Integer:
+				snprintf(outbuf, outsize, "%ld", 
+						 intVal(pNode));
+			break;
+		case T_Float:
+				snprintf(outbuf, outsize, "%f", 
+						 floatVal(pNode));
+			break;
+		case T_A_Const:
+		{
+			A_Const *acs = (A_Const *)pNode;
+
+			if (acs->val.type == T_String)
+			{
+				if (acs->typname) /* deal with explicit types */
+				{
+					/* XXX XXX: simple types only -- need to 
+					 * handle Interval, etc */
+
+					snprintf(outbuf, outsize, "\'%s\'::%s", 
+							 acs->val.val.str, 
+							 TypeNameToString(acs->typname));
+				}
+				else
+				{
+					snprintf(outbuf, outsize, "\'%s\'", 
+							 acs->val.val.str);
+				}
+
+				return 1;
+			}
+			return (deparse_partition_rule((Node *)&(acs->val), 
+										   outbuf, outsize));
+		}
+			break;
+		case T_A_Expr:
+		{
+			A_Expr	*ax = (A_Expr *)pNode;
+			char	 leftBuf[10000];			
+			char	 rightBuf[10000];			
+			char    *infix_op;
+			
+			switch (ax->kind)
+			{
+				case AEXPR_OP:			/* normal operator */
+				case AEXPR_AND:			/* booleans - name field is unused */
+				case AEXPR_OR:
+					break;
+				default:
+					return 0;
+			}
+			if (!deparse_partition_rule(ax->lexpr, leftBuf, sizeof(leftBuf)))
+				return 0;
+			if (!deparse_partition_rule(ax->rexpr, rightBuf, sizeof(rightBuf)))
+				return 0;
+			switch (ax->kind)
+			{
+				case AEXPR_OP:			/* normal operator */
+					infix_op = strVal(lfirst(list_head(ax->name)));
+					break;
+				case AEXPR_AND:			/* booleans - name field is unused */
+					infix_op = "AND";
+					break;
+				case AEXPR_OR:
+					infix_op = "OR";
+					break;
+				default:
+					return 0;
+			}
+			snprintf(outbuf, outsize, "(%s %s %s)",
+					 leftBuf, infix_op, rightBuf);
+
+		}
+			break;
+		case T_Var:
+			{
+/*				Var		   *var = (Var *) node; */
+			}
+		default:
+				break;
+	}
+	return 1;
+}
+
 static Node *make_partition_rules(ParseState *pstate,
 		 CreateStmtContext *cxt, CreateStmt *stmt, 
 		 Node *partitionBy, PartitionElem *pElem,
@@ -2602,7 +2700,7 @@ static Node *make_partition_rules(ParseState *pstate,
 							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 							 errmsg("Mismatched columns for VALUES%s",
 									at_depth),
-							 parser_errposition(pstate, pElem->location)));
+							 parser_errposition(pstate, pBSpec->location)));
 				}
 
 				/* equality expression: column = value */
@@ -2614,13 +2712,29 @@ static Node *make_partition_rules(ParseState *pstate,
 				pValConst = (A_Const *)lfirst(lc_val);
 
 				Assert(pColConst->type == T_String);
-				Assert(pValConst->type == T_A_Const);
 
-				snprintf(exprBuf, sizeof(exprBuf), "%s = \'%s\'", 
-						 strVal(pColConst),
-						 strVal(&(pValConst->val))
-						 );
+				if (pValConst->type != T_A_Const)
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("Invalid use of non-constant type in boundary specification%s",
+									at_depth),
+							 parser_errposition(pstate, pBSpec->location)));
+						
+				}
 
+
+				if (!deparse_partition_rule((Node *)pEq, 
+											exprBuf, sizeof(exprBuf)))
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("Unknown type or operator%s",
+									at_depth),
+							 parser_errposition(pstate, pBSpec->location)));
+
+				}
+				
 				/* for multiple cols - AND the matches eg: 
 				   (col = value) AND (col = value) 
 				*/
@@ -2761,9 +2875,257 @@ static Node *make_partition_rules(ParseState *pstate,
 
 	} /* end if LIST */
 
+	if (pBy->partType == PARTTYP_RANGE)	
+	{
+		Node			*pIndAND = NULL;
+		Node			*pIndOR  = NULL;
+		List			*colElts = pBy->keys;
+		ListCell		*lc      = NULL;
+		List			*valElts = pBSpec->partStart;
+		ListCell		*lc_val  = NULL;
+		char			 exprBuf[10000];
+		char			 ANDBuf[10000];
+		char			 ORBuf[10000];
+		char			 ruleBuf[10000];
+		int				 range_idx;
+
+		exprBuf[0] = '0';
+		ANDBuf[0]  = '0';
+		ORBuf[0]   = '0';
+
+		/* number of values must equal of the number of columns */
+
+		for (range_idx = 0; range_idx < 2; range_idx++)
+		{
+			char *expr_op = ">";
+
+			if (range_idx)
+			{
+				valElts = pBSpec->partEnd;
+				expr_op = "<";
+			}
+
+			lc_val = list_head(valElts);
+
+			for ( ; lc_val ; ) /* for all vals */
+			{
+				lc = list_head(colElts);
+				pIndAND = NULL;
+
+				for (; lc; lc = lnext(lc)) /* for all cols */
+				{
+					Node *pCol = lfirst(lc);
+					Node *pEq  = NULL;
+					Value *pColConst;
+					A_Const *pValConst;
+
+					if (NULL == lc_val)
+					{
+						char *st_end = "START";
+
+						if (range_idx)
+						{
+							st_end = "END";
+						}
+
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("Too few columns in %s specification%s",
+										st_end,
+										at_depth),
+								 parser_errposition(pstate, pBSpec->location)));
+					}
+
+					/* equality expression: column = value */
+					pEq = (Node *) makeSimpleA_Expr(AEXPR_OP, 
+													expr_op, 
+													pCol,
+													lfirst(lc_val),
+													-1 /* position */);
+					pColConst = (Value *)pCol;
+					pValConst = (A_Const *)lfirst(lc_val);
+
+					Assert(pColConst->type == T_String);
+
+					if (pValConst->type != T_A_Const)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("Invalid use of non-constant type in boundary specification%s",
+										at_depth),
+								 parser_errposition(pstate, pBSpec->location)));
+						
+					}
+
+					if (!deparse_partition_rule((Node *)pEq, 
+												exprBuf, sizeof(exprBuf)))
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("Unknown type or operator%s",
+										at_depth),
+								 parser_errposition(pstate, pBSpec->location)));
+						
+					}
+
+					/* for multiple cols - AND the matches eg: 
+					   (col = value) AND (col = value) 
+					*/
+					if (pIndAND)
+					{
+						char *pfoo = pstrdup(ANDBuf);
+
+						pIndAND =
+							(Node *) makeA_Expr(AEXPR_AND, NIL, 
+												pIndAND,
+												pEq,
+												-1 /* position */);
+
+						snprintf(ANDBuf, sizeof(ANDBuf), "((%s) and %s)",
+								 exprBuf,
+								 pfoo
+							 );
+
+						pfree(pfoo);
+					}
+					else
+					{
+						pIndAND = pEq;
+						snprintf(ANDBuf, sizeof(ANDBuf), "(%s)", exprBuf);
+					}
+
+					lc_val = lnext(lc_val);
+				} /* end for all cols */
+
+				/* if more VALUES than columns, then complain
+				*/
+				if (lc_val)
+				{
+					char *st_end = "START";
+
+					if (range_idx)
+					{
+						st_end = "END";
+					}
+
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("Too many columns in %s specification%s",
+									st_end,
+									at_depth),
+							 parser_errposition(pstate, pBSpec->location)));
+				}
+
+				if (pIndOR)
+				{
+					char *pfoo = pstrdup(ORBuf);
+					/* XXX XXX build an AND for now.  But later we
+					 * split this to distinguish START and END
+					 * conditions */
+
+					pIndOR =
+						(Node *) makeA_Expr(AEXPR_AND, NIL, 
+											pIndOR,
+											pIndAND,
+											-1 /* position */);
+
+					snprintf(ORBuf, sizeof(ORBuf), "((%s) AND %s)",
+							 ANDBuf,
+							 pfoo
+							 );
+
+						pfree(pfoo);
+
+				}
+				else
+				{
+					pIndOR = pIndAND;
+					snprintf(ORBuf, sizeof(ORBuf), "(%s)", ANDBuf);
+				}
+
+			} /* end for all vals */
+
+		} /* end for range_idx */
+
+		parent_tab_name = makeNode(RangeVar);
+		parent_tab_name->catalogname = cxt->relation->catalogname;
+		parent_tab_name->schemaname  = cxt->relation->schemaname;
+		parent_tab_name->relname     = cxt->relation->relname;
+
+		child_tab_name = makeNode(RangeVar);
+		child_tab_name->catalogname = cxt->relation->catalogname;
+		child_tab_name->schemaname  = cxt->relation->schemaname;
+		child_tab_name->relname     = child_name_str;
+
+		snprintf(ruleBuf, sizeof(ruleBuf), 
+				 "CREATE RULE %s AS ON INSERT to %s WHERE %s DO INSTEAD INSERT INTO %s ", child_name_str, parent_tab_name->relname, ORBuf, child_name_str);
+
+#ifdef NEVER_EVER
+		pRule = makeNode(RuleStmt);
+		pRule->replace = false; /* do not replace */
+		pRule->relation = parent_tab_name;
+		pRule->rulename = pstrdup(child_name_str);
+		pRule->whereClause = pIndOR;
+		pRule->event = CMD_INSERT;
+		pRule->instead = true; /* do instead */
+		pRule->actions = NIL; /* XXX XXX XXX XXX */
+#endif
+
+		pIns = makeNode(InsertStmt);
+		pRule = (Node *)pIns;
+
+		pIns->relation = makeNode(RangeVar);
+		pIns->relation->catalogname = NULL;
+		pIns->relation->schemaname = NULL;
+		pIns->relation->relname = "partition_rule";
+		pIns->returningList = NULL;
+
+		pIns->cols = NIL;
+
+		if (1)
+		{
+			List *vl1 = NULL;
+
+			A_Const *acs = makeNode(A_Const);
+			acs->val.type = T_String;
+			acs->val.val.str = pstrdup(parent_tab_name->relname);
+			acs->typname = SystemTypeName("text");
+
+			vl1 = list_make1(acs);
+
+			acs = makeNode(A_Const);
+			acs->val.type = T_String;
+			acs->val.val.str = pstrdup(child_name_str);
+			acs->typname = SystemTypeName("text");
+
+			vl1 = lappend(vl1, acs);
+
+			acs = makeNode(A_Const);
+			acs->val.type = T_String;
+			acs->val.val.str = pstrdup(ORBuf);
+			acs->typname = SystemTypeName("text");
+
+			vl1 = lappend(vl1, acs);
+
+			acs = makeNode(A_Const);
+			acs->val.type = T_String;
+			acs->val.val.str = pstrdup(ruleBuf);
+			acs->typname = SystemTypeName("text");
+
+			vl1 = lappend(vl1, acs);
+				
+			pIns->selectStmt = (Node *)makeNode(SelectStmt);
+			((SelectStmt *)pIns->selectStmt)->valuesLists = 
+					list_make1(vl1);
+
+		}
+
+
+	} /* end if RANGE */
+
 
 	return pRule;
-}
+} /* end make_partition_rules */
 
 
 
@@ -2922,6 +3284,28 @@ static void transformPartitionBy(ParseState *pstate,
 
 		int			numElts = 0;
 
+		/* track previous boundary spec to check for this subtle problem:
+
+   		     (
+			  partition aa start (2007,1) end (2008,2),
+			  partition bb start (2008,2) end (2009,3)
+			  );
+		   This declaration would create four partitions:
+		   1. named aa, starting at 2007, 1
+		   2. unnamed, ending at 2008, 2
+		   3. named bb, starting at 2008, 2
+		   4. unnamed, ending at 2009, 3
+
+		   Warn user if they do this, since they probably wanted
+		   1. named aa, starting at 2007, 1 and ending at 2008, 2
+		   2. named bb, starting at 2008, 2 and ending at 2009, 3
+		   
+		   The extra comma between the start and end is the problem.
+		   
+		*/
+		bool		prevHadName  = false;
+		int			prevStartEnd = 0; /* add 1 for start, 2 for end */
+
 		partElts = pSpec->partElem;
 
 		/* XXX XXX: should check for duplicate names as well !! */
@@ -2930,6 +3314,8 @@ static void transformPartitionBy(ParseState *pstate,
 		{
 			PartitionElem *pElem = (PartitionElem *)lfirst(lc);
 			PartitionBoundSpec *pBSpec = NULL;
+
+			pBSpec = NULL;
 
 			numElts++;
 
@@ -3004,6 +3390,50 @@ static void transformPartitionBy(ParseState *pstate,
 
 					}
 
+					{
+						/* if the previous partition was named, and
+						 * current is not, and the prev and current
+						 * use single, complementary START/END specs,
+						 * then complain.
+						 */
+
+						/* must have a valid RANGE pBSpec now or else
+						 * would have error'd out... 
+						 */
+							
+						int currStartEnd = 0;
+
+						if (pBSpec->partStart)
+							currStartEnd += 1;
+						if (pBSpec->partEnd)
+							currStartEnd += 2;
+
+						/* Note: for first loop, prevStartEnd = 0, so
+						 * this test is ok */
+
+						if ((prevHadName && !(pElem->partName))
+							&&
+							(((prevStartEnd == 1)
+							 && (currStartEnd == 2))
+							||
+							((prevStartEnd == 2)
+							 && (currStartEnd == 1)))
+							)
+						{
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+									 errmsg("Invalid use of mixed named and unnamed RANGE boundary specifications%s",
+											at_depth),
+									 parser_errposition(pstate, 
+														pBSpec->location)));
+
+						}
+
+						prevStartEnd = currStartEnd;
+					}
+
+					prevHadName  = !!(pElem->partName); /* bool t/f */
+
 					break;
 
 				case PARTTYP_LIST:
@@ -3045,7 +3475,7 @@ static void transformPartitionBy(ParseState *pstate,
 					break;
 
 			}
-		}
+		} /* end foreach(lc, partElts) */
 
 		if ((partNumber > -1) && (numElts != partNumber))
 		{
@@ -3200,6 +3630,18 @@ static void transformPartitionBy(ParseState *pstate,
 				newSub->subPart	  = psubBy->subPart;
 				newSub->partSpec  = pElem->subSpec; /* use the subspec */
 				newSub->partDepth = psubBy->partDepth;
+
+				if (pElem->subSpec) /* get a good location for error msg */
+				{
+					/* use subspec location */
+					newSub->location  = 
+							((PartitionSpec *)pElem->subSpec)->location; 
+				}
+				else
+				{
+					newSub->location = 
+							pElem->location; 
+				}
 			}
 
 			makeRule = true; /* need child table name before make rule */

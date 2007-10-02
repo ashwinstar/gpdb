@@ -1379,7 +1379,10 @@ typedef struct PartitionEvery
 typedef struct PartitionBoundSpec
 {
 	NodeTag				type;			
-	PartitionByType		partType;		/* RANGE or LIST */
+	PartitionByType		partType;		/* RANGE or LIST 
+										 * (LIST partition type, not the 
+										 * "List" struct type )*/
+
 	List			   *partStart;		/* start (or VALUES for LIST)  */
 	List			   *partEnd;		/* end (or NULL for LIST ) */
 	Node			   *partEvery;		/* every */

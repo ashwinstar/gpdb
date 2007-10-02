@@ -1687,7 +1687,9 @@ opt_table_partition_exchange_validate:
 
 alter_table_partition_id_spec: 
             IDENT											{$$ = (Node *)$1; }
-            | FOR ctext_row									{$$ = (Node *)$2; }
+            | FOR 
+            '(' TabPartitionBoundarySpecValList ')'			{$$ = (Node *)$3; }
+/* XXX XXX: note that the POSITION function here is not the string operator */
             | FOR '(' POSITION '(' NumericOnly ')' ')'		{$$ = (Node *)$5; }
 		;
 
@@ -1751,7 +1753,8 @@ alter_table_partition_cmd:
 					$$ = (Node *)n;
 				}
 			| SPLIT PARTITION 
-            alter_table_partition_id_spec AT ctext_row
+            alter_table_partition_id_spec AT 
+            '(' TabPartitionBoundarySpecValList ')'	
             opt_table_partition_split_into	
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
@@ -2550,12 +2553,19 @@ TabSubPartitionElemList:
 /* Note: specstart is a list, but specend is a scalar.  Not sure if
    this is the best way to do this... */
 
+TabPartitionBoundarySpecValList:
+            AexprConst	    					{ $$ = list_make1($1); }
+			| TabPartitionBoundarySpecValList ',' 
+              AexprConst						{ $$ = lappend($1, $3); }
+		;
 TabPartitionBoundarySpecStart:
-			START opt_with ctext_row 				{ $$ = $3;}
+			START opt_with 
+            '(' TabPartitionBoundarySpecValList ')' { $$ = $4;}
             ;
 
 TabPartitionBoundarySpecEnd:
-			END_P opt_with ctext_row 				{ $$ = $3;}
+			END_P opt_with 
+            '(' TabPartitionBoundarySpecValList ')' { $$ = $4;}
             ;
 
 OptNumericOnly:
@@ -2571,12 +2581,6 @@ OptTabPartitionBoundarySpecEvery:
 OptTabPartitionBoundarySpecEnd:
             TabPartitionBoundarySpecEnd 			{ $$ = $1; }
 			| /*EMPTY*/								{ $$ = NULL; }
-		;
-
-TabPartitionBoundarySpecValList:
-            AexprConst	    					{ $$ = list_make1($1); }
-			| TabPartitionBoundarySpecValList ',' 
-              AexprConst						{ $$ = lappend($1, $3); }
 		;
 
 /* VALUES for LIST, start..end for RANGE. */
