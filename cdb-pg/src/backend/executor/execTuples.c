@@ -870,9 +870,12 @@ bool ExecCopySlotMinimalTupleTo(TupleTableSlot *slot, char *dest, unsigned int *
  */
 HeapTuple ExecCopySlotHeapTupleTo(TupleTableSlot *slot, MemoryContext pctxt, char* dest, unsigned int *len)
 {
-
 	unsigned int needed_len = 0;
 	HeapTuple ret = NULL;
+	unsigned int zero = 0;
+
+	if (!len) 
+		len = &zero;
 
 	Assert(!TupIsNull(slot));
 
