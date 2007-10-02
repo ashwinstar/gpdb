@@ -31,7 +31,6 @@ typedef struct mpool_block_t mpool_block_t;
 #define BLOCKSZ_STEP2   (128*1024)  /* 128K */
 #define BLOCKSZ_STEP3   (1024*1024) /* 1MB */
 
-#define BLOCK_KEEP  (3)
 
 typedef struct mpool_context_t mpool_context_t;
 struct mpool_context_t
@@ -261,40 +260,26 @@ static void
 mpool_reset(MemoryContext context)
 {
 	mpool_context_t* mpool = (mpool_context_t*) context;
-	mpool_block_t* bp;
 
 	AssertArg(NULL != mpool);
 
-	/* if something is inuse, then slip it into free list */
+	/* free the inuse list */
 	if (mpool->inuse_tail) 
 	{
-		if (mpool->free_tail)
-		{
-			/* slip at head of free list */
-			bp = mpool->free_tail->next; /* head of free list */
-			mpool->free_tail->next = mpool->inuse_tail->next; /* free head now head of inuse */
-			mpool->inuse_tail->next = bp;	 /* tail of inuse now new head of free list*/
-		}
-		else
-		{
-			mpool->free_tail = mpool->inuse_tail;
-		}
-		PRINT((LOG, "mpool_reset %x: slip inuse into free list", context));
-
-		/* all of inuse is gone */
+		mpool_block_t* head = mpool->inuse_tail->next;
+		mpool->inuse_tail->next = 0;
 		mpool->inuse_tail = 0;
-		mpool->bytes_allocated = 0;
-		mpool->n_free += mpool->n_inuse;
-		mpool->n_inuse = 0;
-	}
 
-	/* give back some memory, keep max BLOCK_KEEP blocks */
-	while (mpool->n_free > BLOCK_KEEP) {
-		mpool->n_free--;
-		bp = mpool->free_tail;
-		mpool->free_tail = bp->next;
-		mpool_block_free(mpool, bp);
+		while (head) 
+		{
+			mpool_block_t* bp = head->next;
+			mpool_block_free(mpool, head);
+			mpool->n_inuse--;
+			head = bp;
+		}
 	}
+	Assert(mpool->n_free == 0);
+	Assert(mpool->n_inuse == 0);
 }
 
 /*
