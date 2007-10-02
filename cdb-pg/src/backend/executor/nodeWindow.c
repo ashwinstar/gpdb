@@ -4449,6 +4449,9 @@ resetTransValue(WindowStatePerFunction funcstate,
 		funcstate->aggTransValue = 0;
 		funcstate->aggTransValueIsNull = true;
 		funcstate->aggNoTransValue = true;
+
+		funcstate->win_value = 0;
+		funcstate->win_value_is_null = true;
 	}
 }
 
@@ -4666,6 +4669,32 @@ checkOutputReady(WindowState *wstate)
 	return true;
 }
 
+/*
+ * coerceType -- coerce the frame parameter expression to a given type.
+ */
+static Expr *
+coerceType(Expr* expr, Oid new_type)
+{
+	Oid expr_type = 0;
+	int32 expr_typmod = 0;
+	Expr *new_expr = expr;
+	
+	expr_type = exprType((Node *)expr);
+	expr_typmod = exprTypmod((Node *)expr);
+
+	if (expr_type != new_type)
+	{
+		new_expr = (Expr *)coerce_to_target_type(NULL,
+											 (Node *)expr, 
+											 expr_type,
+											 new_type, expr_typmod,
+											 COERCION_EXPLICIT,
+											 COERCE_IMPLICIT_CAST);
+	}
+
+	return new_expr;
+}
+
 static void
 init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 						   AttrNumber attnum,
@@ -4691,7 +4720,9 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 	rtype = exprType(edge->val);
 	
 	varexpr = (Expr *)makeVar(0, attnum, ltype, vartypmod, 0);
-	n = ExecInitExpr((Expr *)edge->val, (PlanState *) wstate);
+
+	expr = coerceType((Expr *)edge->val, ltype);
+	n = ExecInitExpr((Expr *)expr, (PlanState *) wstate);
 
 	if (is_trail)
 	{
@@ -4961,11 +4992,14 @@ init_frames(WindowState *wstate)
 				{
 					long int rows_param = 0;
 					bool isnull = true;
+					Expr *expr = (Expr *)level_state->frame->trail->val;
+					expr = coerceType(expr, INT4OID);
 					
 					level_state->trail_expr =
-						ExecInitExpr((Expr *)level_state->frame->trail->val, 
+						ExecInitExpr((Expr *)expr, 
 									 (PlanState *) wstate); 
 
+					
 					if (!EDGE_IS_DELAYED_BOUND(frame->trail))
 					{
 						rows_param = ExecEvalExpr(level_state->trail_expr,
@@ -4989,9 +5023,11 @@ init_frames(WindowState *wstate)
 				{
 					long int rows_param = 0;
 					bool isnull = true;
+					Expr *expr = (Expr *)level_state->frame->lead->val;
+					expr = coerceType(expr, INT4OID);
 
 					level_state->lead_expr = 
-						ExecInitExpr((Expr *)level_state->frame->lead->val, 
+						ExecInitExpr((Expr *)expr, 
 									 (PlanState *) wstate); 
 
 					if (!EDGE_IS_DELAYED_BOUND(frame->lead))
@@ -5521,7 +5557,7 @@ do_ntile_prelim(WindowRefExprState *ref_state, int64 num_tiles)
 		
 	work[0] = Int64GetDatumFast(num_tiles); /* ntile argument */
 	work[1] = Int64GetDatumFast(window_state->row_index);
-		
+
 	return construct_array(work, 2, INT8OID, 8, true, 'd');
 }
  
