@@ -17,6 +17,7 @@ Usage: gpcheckos [--version] [-?v] [-p port] [-u user] [-h host] [-f hostfile]
 '''
 
 import os, sys, getopt, popen2, pickle
+from datetime import datetime, timedelta
 
 sys.path.append(sys.path[0] + '/lib')
 try:
@@ -215,6 +216,12 @@ def print_fix():
                 print 'soft %s %s' % (key, value)
                 print 'hard %s %s' % (key, value)
 
+        if 'sync' in errors[h]:
+            print
+            print '[FIX %s] please sync system time' % h
+            for (key, value) in errors[h]['sync']:
+                print 'check %s = %s' % (key, value)
+
         if 'others' in errors[h]:
 	    print
             print '[FIX %s] please add/modify the line(s)' % h
@@ -273,6 +280,18 @@ def matchMore(session, key, value):
             perr(p.x_peer, '%s invalid (value %s should be >= %s)' % (key, v, value))
             error(p.x_peer, key, value)
 
+def matchSyncTime(session, key, value):
+    ok = True
+    unow = value + timedelta(seconds=10)
+    lnow = value + timedelta(seconds=-10)
+    print 'checking: %s between (%s, %s)' % (key, lnow, unow)
+    for p in session:
+        v = p.x_res.get(key, datetime.today())
+        p.x_match = (v > lnow and v < unow)
+        if not p.x_match:
+            perr(p.x_peer, '%s not sync (value %s should between (%s, %s))'  % (key, v, lnow, unow))
+            error(p.x_peer, key, value)
+
 try:
     parseCommandLine()
     tab = []
@@ -320,6 +339,14 @@ try:
             perr(p.x_peer, 'python version unavailable')
         else:
             matchListMore(session, key, '2.3.5')
+
+    key = 'sync.time'
+    value = p0.x_res.get(key)
+    if not value:
+        perr(p0.x_peer, 'sync time unavailable')
+    else:
+        matchSyncTime(session, key, value)
+        
 
     key = 'platform.system'
     value = p0.x_res.get(key)

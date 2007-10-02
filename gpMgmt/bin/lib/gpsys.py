@@ -9,6 +9,7 @@ Usage: gpsys.py [-p] [-t]
 '''
 
 import os, platform, sys, getopt, pickle
+from datetime import datetime
 
 opt = {}
 opt['-p'] = False
@@ -109,6 +110,9 @@ def do_ulimit(res):
     return ok
 
 
+def do_sync(res):
+    res['sync.time'] = datetime.today()
+
 def do_platform(res):
     res['platform.platform'] = platform.platform()
     uname = platform.uname()
@@ -118,6 +122,7 @@ def do_platform(res):
     res['platform.version'] = uname[3]
     res['platform.machine'] = uname[4]
     res['platform.processor'] = uname[5]
+
     return True
 
 def do_python(res):
@@ -176,6 +181,7 @@ do_postgres_md5(res)
 do_postgres_version(res)
 do_python(res)
 do_platform(res)
+do_sync(res)
 system = res['platform.system']
 if system == 'sunos':
     do_system(res)
