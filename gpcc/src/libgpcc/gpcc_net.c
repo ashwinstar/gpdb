@@ -52,6 +52,7 @@ static gpcc_net_header_t* gpcc_net_header_dup(gpcc_net_header_t* src, char* buf,
 	return 0;
 
     hp = (gpcc_net_header_t*) buf;
+    buf += sizeof(*hp);
     memset(hp, 0, sizeof(*hp));
     hp->argc = src->argc;
     for (i = 0; i < src->argc; i++) {
@@ -252,8 +253,12 @@ do_callback:
 	else 
 	    net.accepted(conn, from_peer_hdr);
 
-	event_set(&pconn->ev, pconn->sock, EV_READ|EV_WRITE, do_ready, pconn);
-	event_add(&pconn->ev, 0);
+	spin = gpcc_spin_secure(&pconn->spin);
+	if (pconn->conn == conn) {
+	    event_set(&pconn->ev, pconn->sock, EV_READ|EV_WRITE, do_ready, pconn);
+	    event_add(&pconn->ev, 0);
+	}
+	spin = gpcc_spin_release(spin);
     }
     return;
 
@@ -533,7 +538,10 @@ APR_DECLARE(apr_status_t) gpcc_net_init(int port,
 }
 
 
-APR_DECLARE(apr_status_t) gpcc_net_once();
+APR_DECLARE(apr_status_t) gpcc_net_once()
+{
+    return event_loop(EVLOOP_ONCE);
+}
 
 
 APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
@@ -660,6 +668,29 @@ failure:
 	closesocket(sock);
     }
     return e;
+}
+
+APR_DECLARE(void) gpcc_net_close(gpcc_net_conn_t conn)
+{
+    conncb_t* pconn = 0;
+    apr_uint32_t* spin = 0;
+    int index = CONN_INDEX(conn);
+
+    if (! (0 <= index && index < CONN_MAX)) 
+	goto failure;
+
+    pconn = &net.conntab[index];
+
+    spin = gpcc_spin_secure(&pconn->spin);
+    if (pconn->conn != conn) 
+	goto failure;
+    spin = gpcc_spin_release(spin);
+    zap(pconn, conn);
+    return;
+
+ failure:
+    if (spin) 
+	gpcc_spin_release(spin);
 }
 
 

@@ -63,7 +63,7 @@ mklibgpcc:
 mktest:
 	@echo --- test ------------------------------------------------------	
 	(cd test; $(CC) $(INCLUDES) $(CPPFLAS) $(CFLAGS) \
-			-o net1 net1.c -L../src/build/lib -lgpcc $(APULIBS) $(APRLIBS) -ljson)
+			-o net1 net1.c -L../src/build/lib -lgpcc $(APULIBS) $(APRLIBS) -ljson -levent)
 
 mkext:
 	@echo --- ext ------------------------------------------------------

@@ -1,5 +1,17 @@
 #include "gpcc_strings.h"
 #include <stdlib.h>
+#include <ctype.h>
+
+APR_DECLARE(char*) gpcc_string_tolower(char* s)
+{
+    char* p;
+
+    for (p = s; *p; p++) 
+	*p = tolower(*p);
+
+    return s;
+}
+
 
 APR_DECLARE(char*) gpcc_string_trim(char* s)
 {

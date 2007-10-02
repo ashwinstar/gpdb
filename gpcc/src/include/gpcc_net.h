@@ -6,7 +6,8 @@
 
 #define GPCC_NET_PROTO		"gpcc/3.1"
 
-#define GPCC_NET_HEADER_ENTRYMAX  20
+#define GPCC_NET_HEADER_ENTRYMAX  (20)
+
 typedef struct gpcc_net_header_t gpcc_net_header_t;
 struct gpcc_net_header_t {
     int argc;
@@ -43,7 +44,7 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
 					int hc, char** hname, char** hvalue);
 
 
-APR_DECLARE(apr_status_t) gpcc_net_close(gpcc_net_conn_t conn);
+APR_DECLARE(void) gpcc_net_close(gpcc_net_conn_t conn);
 
 APR_DECLARE(apr_status_t) gpcc_net_send(gpcc_net_conn_t conn,
 					const char* buf, int buflen);
