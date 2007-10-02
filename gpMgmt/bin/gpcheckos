@@ -218,7 +218,7 @@ def print_fix():
 
         if 'sync' in errors[h]:
             print
-            print '[FIX %s] please sync system time' % h
+            print '[FIX %s] please synchronize system time across machines' % h
             for (key, value) in errors[h]['sync']:
                 print 'check %s = %s' % (key, value)
 
