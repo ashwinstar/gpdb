@@ -4,24 +4,37 @@
 
 void opened(gpcc_net_conn_t conn, gpcc_net_header_t* to_peer, gpcc_net_header_t* from_peer)
 {
-    printf("opened\n");
+    printf("----- opened --------------------------\n");
 }
 
 void accepted(gpcc_net_conn_t conn, gpcc_net_header_t* from_peer)
 {
-    printf("accepted\n");
+    char** p;
+    char** q;
+    printf("----- accepted --------------------------\n");
+    printf("  > ");
+    for (p = from_peer->argv; *p; p++) {
+	printf("%s ", *p);
+    }
+    printf("\n");
+
+    for (p = from_peer->hname, q = from_peer->hvalue; *p; p++, q++) {
+	printf("  > %s: %s\n", *p, *q);
+    }
+    printf("\n");
+    
     gpcc_net_close(conn);
 }
 
 int received(gpcc_net_conn_t conn, const char* buf, int buflen)
 {
-    printf("received\n");
+    printf("----- received --------------------------\n");
     return 0;
 }
 
 void closed(gpcc_net_conn_t conn)
 {
-    printf("closed\n");
+    printf("----- closed --------------------------\n");
 }
 
 
@@ -51,8 +64,8 @@ int main()
     while (1) {
 	static int i = 0;
 	i++;
-	/*printf("once %d\n", i);*/
-	e = gpcc_net_once();
+	printf("once %d\n", i);
+	e = gpcc_net_once(1);
 	checkerr(e, FLINE);
     }
 

@@ -11,10 +11,10 @@
 typedef struct gpcc_net_header_t gpcc_net_header_t;
 struct gpcc_net_header_t {
     int argc;
-    char* argv[GPCC_NET_HEADER_ENTRYMAX];
+    char* argv[GPCC_NET_HEADER_ENTRYMAX+1];
     int hc;
-    char* hname[GPCC_NET_HEADER_ENTRYMAX];
-    char* hvalue[GPCC_NET_HEADER_ENTRYMAX];
+    char* hname[GPCC_NET_HEADER_ENTRYMAX+1];
+    char* hvalue[GPCC_NET_HEADER_ENTRYMAX+1];
 };
 
 typedef apr_uint32_t gpcc_net_conn_t;
@@ -36,7 +36,8 @@ APR_DECLARE(apr_status_t) gpcc_net_init(int listen_port,
 					gpcc_net_accepted_t* accepted,
 					gpcc_net_received_t* received,
 					gpcc_net_closed_t* closed);
-APR_DECLARE(apr_status_t) gpcc_net_once();
+
+APR_DECLARE(apr_status_t) gpcc_net_once(int blocking);
 
 APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
 					char* peer_addr,

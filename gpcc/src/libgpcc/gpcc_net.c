@@ -28,11 +28,14 @@ static gpcc_net_header_t* gpcc_net_header_copy(int argc, char** argv, int hc,
 
     for (i = 0; i < argc; i++) 
 	hdr->argv[i] = argv[i];
+    hdr->argv[i] = 0;
     
     for (i = 0; i < hc; i++) {
 	hdr->hname[i] = hname[i];
 	hdr->hvalue[i] = hvalue[i];
     }
+    hdr->hname[i] = 0;
+    hdr->hvalue[i] = 0;
 
     return hdr;
 }
@@ -72,6 +75,8 @@ static gpcc_net_header_t* gpcc_net_header_dup(gpcc_net_header_t* src, char* buf,
 	hp->hvalue[i] = buf;
 	buf += strlen(buf) + 1;
     }
+    hp->hname[i] = 0;
+    hp->hvalue[i] = 0;
 
     return hp;
 }
@@ -156,6 +161,7 @@ static void zap(conncb_t* pconn, gpcc_net_conn_t conn)
 	pconn->from_peer.hdr = 0;
     }
     gpcc_spin_release(&pconn->spin);
+    net.closed(conn);
 }
 
 static void do_ready(int fd, short event, void* arg)
@@ -215,7 +221,10 @@ static void do_read_header(int fd, short event, void* arg)
 	event_set(&pconn->ev, pconn->sock, EV_READ, do_read_header, pconn);
 	tm.tv_sec = 0;
 	tm.tv_usec = 500*1000;
-	event_add(&pconn->ev, &tm);
+	if (event_add(&pconn->ev, &tm)) {
+	    gpcc_warning(FLINE, "event_add failed");
+	    goto failure;
+	}
     }
     spin = gpcc_spin_release(spin);
     return;
@@ -252,14 +261,18 @@ do_callback:
 	    net.opened(conn, to_peer_hdr, from_peer_hdr);
 	else 
 	    net.accepted(conn, from_peer_hdr);
-
-	spin = gpcc_spin_secure(&pconn->spin);
-	if (pconn->conn == conn) {
-	    event_set(&pconn->ev, pconn->sock, EV_READ|EV_WRITE, do_ready, pconn);
-	    event_add(&pconn->ev, 0);
-	}
-	spin = gpcc_spin_release(spin);
     }
+
+    /* set up to read/write the socket if it is still valid */
+    spin = gpcc_spin_secure(&pconn->spin);
+    if (pconn->conn == conn) {
+	event_set(&pconn->ev, pconn->sock, EV_READ|EV_WRITE, do_ready, pconn);
+	if (event_add(&pconn->ev, 0)) {
+	    gpcc_warning(FLINE, "event_add failed");
+	    goto failure;
+	}
+    }
+    spin = gpcc_spin_release(spin);
     return;
 
 failure:
@@ -299,18 +312,24 @@ static void do_write_header(int fd, short event, void* arg)
     }
     n = buf->top - buf->bot;
     if (n == 0) {
-	/* finished sending header */
+	/* finished sending header; set up to read reply header from peer */
 	struct timeval tm;
 	event_set(&pconn->ev, pconn->sock, EV_READ, do_read_header, pconn);
 	tm.tv_sec = 0;
 	tm.tv_usec = 500*1000;
 	pconn->do_read_header_attempts = 0;
-	event_add(&pconn->ev, &tm);
+	if (event_add(&pconn->ev, &tm)) {
+	    gpcc_warning(FLINE, "event_add failed");
+	    goto failure;
+	}
     }
     else {
 	/* continue to send header */
 	event_set(&pconn->ev, pconn->sock, EV_WRITE, do_write_header, pconn);
-	event_add(&pconn->ev, 0);
+	if (event_add(&pconn->ev, 0)) {
+	    gpcc_warning(FLINE, "event_add failed");
+	    goto failure;
+	}
     }
 
     if (spin)
@@ -427,7 +446,10 @@ static void do_accept(int fd, short event, void* arg)
 	event_set(&pconn->ev, pconn->sock, EV_READ, do_read_header, pconn);
 	tm.tv_sec = 0;
 	tm.tv_usec = 500 * 1000;
-	event_add(&pconn->ev, &tm);
+	if (event_add(&pconn->ev, &tm)) {
+	    gpcc_warning(FLINE, "event_add failed");
+	    goto failure;
+	}
     }
 
     pconn->peer_addr[0] = 0;
@@ -463,9 +485,8 @@ APR_DECLARE(apr_status_t) gpcc_net_init(int port,
     int e;
     struct sockaddr_in a;
     SOCKET sock;
-    int on = 1;
-    struct linger linger;
 
+    /* check param */
     if (net.pool) {
 	gpcc_log_error("gpcc_net_init: already initialized (%s)", FLINE);
 	return APR_EINVAL;
@@ -491,9 +512,11 @@ APR_DECLARE(apr_status_t) gpcc_net_init(int port,
 	return APR_EINVAL;
     }
 
+    /* make our own pool */
     if (0 != (e = apr_pool_create(&pool, 0)))
 	return e;
 
+    /* set up the server socket */
     a.sin_addr.s_addr = htonl(INADDR_ANY);
     a.sin_port = htons(port);
     a.sin_family = AF_INET;
@@ -501,23 +524,19 @@ APR_DECLARE(apr_status_t) gpcc_net_init(int port,
     sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sock < 0)
 	gpcc_fatal(FLINE, "cannot create socket on port %d", port);
-    
-    if (fcntl(sock, F_SETFD, 1) == -1) 
-	gpcc_fatal(FLINE, "cannot create socket on port %d - fcntl(F_SETFD) failed", port);
 
-    setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (void*)&on, sizeof(on));
-    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (void*)&on, sizeof(on));
-    linger.l_onoff = 1;
-    linger.l_linger = 5;
-    setsockopt(sock, SOL_SOCKET, SO_LINGER, (void*) &linger, sizeof(linger));
+    if (0 != (e = set_sockopt_nonblock(sock)))
+	gpcc_fatal(FLINE, "unable to set socket to nonblocking on port %d", port);
 
     /* bind */
     if (bind(sock, (void*) &a, sizeof(a)))
 	gpcc_fatal(FLINE, "cannot create socket on port %d - bind failed", port);
 
+    /* listen */
     if (listen(sock, 64))
 	gpcc_fatal(FLINE, "cannot listen on port %d", port);
 
+    /* save our callback functions */
     memset(&net, 0, sizeof(net));
     net.pool = pool;
     net.opened = opened;
@@ -526,11 +545,12 @@ APR_DECLARE(apr_status_t) gpcc_net_init(int port,
     net.closed = closed;
     net.listen_sock = sock;
 
+    /* initialize libevent */
     if (! event_init()) 
 	gpcc_fatal(FLINE, "event_init failed");
     
+    /* set up to accept connections listen_sock */
     event_set(&net.ev_listen, net.listen_sock, EV_READ | EV_PERSIST, do_accept, 0);
-    
     if (event_add(&net.ev_listen, 0))
 	gpcc_fatal(FLINE, "event_add: cannot set up event on listen socket");
 
@@ -538,9 +558,9 @@ APR_DECLARE(apr_status_t) gpcc_net_init(int port,
 }
 
 
-APR_DECLARE(apr_status_t) gpcc_net_once()
+APR_DECLARE(apr_status_t) gpcc_net_once(int blocking)
 {
-    return event_loop(EVLOOP_ONCE);
+    return event_loop(EVLOOP_ONCE | (blocking ? 0 : EVLOOP_NONBLOCK));
 }
 
 
