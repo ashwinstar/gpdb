@@ -1622,6 +1622,7 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
     int         iteration = 0;
 	struct timeval  startTime;
 	int             elapsed_ms = 0;
+	int             elapsed_timeout = 0;
 
 	ChunkTransportStateEntry *sendingChunkTransportState = NULL;
 
@@ -1732,147 +1733,153 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 
   	gettimeofday(&startTime, NULL);
 
+	if (interconnect_setup_timeout > 0)
+		elapsed_timeout = interconnect_setup_timeout * 1000;
+
 	/*
 	 * Loop until all connections are completed or time limit is exceeded.
+	 *
+	 * The UDP-IC works slightly differently, above we set up the
+	 * descriptors for the inbound connections, so we don't have to do
+	 * any *work* how for the inbounds -- we just have to count them
+	 * (so the loop below is broken in two, one for outbound and one
+	 * for inbound).
 	 */
-	while (outgoing_count < expectedTotalOutgoing ||
-           incoming_count < expectedTotalIncoming)
+	while (outgoing_count < expectedTotalOutgoing)
 	{
 		int		timeout;
         int		timeout_ms = 20*60*1000;
-
-#ifdef AMS_VERBOSE_LOGGING
-		elog(LOG, "outgoing count %d expected %d", outgoing_count, expectedTotalOutgoing);
-		elog(LOG, "incoming count %d expected %d", incoming_count, expectedTotalIncoming);
-#endif
+		struct pollfd nfd;
 
 		/* check for cancellation */
-		ML_CHECK_FOR_INTERRUPTS((*ppTransportStates)->teardownActive);
+		ML_CHECK_FOR_INTERRUPTS(false);
 
         iteration++;
 
-		if (outgoing_count < expectedTotalOutgoing)
-		{
-			struct pollfd nfd;
+		/* send message out, if we haven't already */
+		/* loop over outbound connections sending registration messages as needed */
+		n = sendingChunkTransportState ? sendingChunkTransportState->numConns : 0;
 
-			/* send message out, if we haven't already */
-			/* loop over outbound connections sending registration messages as needed */
-			n = sendingChunkTransportState ? sendingChunkTransportState->numConns : 0;
+		for (i = 0; i < n; i++)
+		{                       /* loop to set up outgoing connections */
+			conn = &sendingChunkTransportState->conns[i];
 
-			for (i = 0; i < n; i++)
-			{                       /* loop to set up outgoing connections */
-				conn = &sendingChunkTransportState->conns[i];
+			if (conn->state == mcsStarted)
+				continue;
 
-				if (conn->state == mcsStarted)
-					continue;
-
-				/* Time to (re)connect? */
-				if (conn->wakeup_ms <= elapsed_ms + 1)
+			/* Time to (re)connect? */
+			if (conn->wakeup_ms <= elapsed_ms + 1)
+			{
+				setupOutgoingUDPConnection(*ppTransportStates, sendingChunkTransportState, conn);
+				switch (conn->state)
 				{
-#ifdef AMS_VERBOSE_LOGGING
-					elog(LOG, "transmitting conn route %d state %d request %d @ %d (conn %p)", conn->route, conn->state, iteration, elapsed_ms, conn);
-#endif
-					setupOutgoingUDPConnection(*ppTransportStates, sendingChunkTransportState, conn);
-					switch (conn->state)
-					{
-						case mcsSetupOutgoingConnection:
-						case mcsConnecting:
-							/* Set time limit for connect() to complete. */
-							conn->wakeup_ms = UDP_CONNECT_RETRY_MS + elapsed_ms;
-							break;
-						default:
-							conn->wakeup_ms = 0;
-							break;
-					}
+					case mcsSetupOutgoingConnection:
+					case mcsConnecting:
+						/* Set time limit for connect() to complete. */
+						conn->wakeup_ms = UDP_CONNECT_RETRY_MS + elapsed_ms;
+						break;
+					default:
+						conn->wakeup_ms = 0;
+						break;
+				}
+			}
+
+			if (conn->wakeup_ms > 0)
+				timeout_ms = Min(timeout_ms, conn->wakeup_ms - elapsed_ms);
+		}     /* loop to set up outgoing connections */
+
+		/* if we're not going to wait for incoming; we want to wait on acks. */
+		timeout = Min(timeout_ms, ((interconnect_setup_timeout*1000) - elapsed_ms));
+		timeout = Min(100, timeout);
+		if (timeout < 0)
+			timeout = 0;
+
+		nfd.fd = sendingChunkTransportState->txfd;
+		nfd.events = POLLIN;
+
+		n = poll(&nfd, 1, timeout);
+		if (n < 0)
+		{
+			if (errno == EINTR)
+				continue;
+
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							errmsg("Interconnect error: %m%s", "poll")));
+		}
+		if (n == 1 && (nfd.events & POLLIN))
+		{
+			for (;;)
+			{
+				/* read ack */
+				struct sockaddr_in peer;
+				socklen_t peerlen;
+
+				struct icpkthdr pkt;
+				int read_count;
+
+				peerlen = sizeof(peer);
+				read_count = recvfrom(sendingChunkTransportState->txfd,
+									  (char *)&pkt, sizeof(pkt), 0, (struct sockaddr *)&peer, &peerlen);
+
+				if (read_count < 0)
+				{
+					if (errno == EWOULDBLOCK)
+						break;
+
+					if (errno == EINTR)
+						continue;
+
+					ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+									errmsg("Interconnect error: %m%s", "recvfrom")));
 				}
 
-				if (conn->wakeup_ms > 0)
-					timeout_ms = Min(timeout_ms, conn->wakeup_ms - elapsed_ms);
-			}     /* loop to set up outgoing connections */
+				if (read_count < sizeof(pkt))
+					ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+									errmsg("Interconnect error: %m%s short ack receive!", "recvfrom")));
 
-			/* if we're not going to wait for incoming; we want to wait on acks. */
-			timeout = Min(timeout_ms, ((interconnect_setup_timeout*1000) - elapsed_ms));
-			timeout = Min(100, timeout);
-			if (timeout < 0)
-				timeout = 0;
-
-			nfd.fd = sendingChunkTransportState->txfd;
-			nfd.events = POLLIN;
-
-			n = poll(&nfd, 1, timeout);
-			if (n < 0)
-			{
-				if (errno == EINTR)
-					continue;
-
-				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-								errmsg("Interconnect error: %m%s", "poll")));
-			}
-			if (n == 1 && (nfd.events & POLLIN))
-			{
-				for (;;)
+				conn = findConnByHeader(&pkt, NULL);
+				if (conn != NULL)
 				{
-					/* read ack */
-					struct sockaddr_in peer;
-					socklen_t peerlen;
-
-					struct icpkthdr pkt;
-					int read_count;
-
-					peerlen = sizeof(peer);
-					read_count = recvfrom(sendingChunkTransportState->txfd,
-										  (char *)&pkt, sizeof(pkt), 0, (struct sockaddr *)&peer, &peerlen);
-
-					if (read_count < 0)
+					if (conn->state == mcsSetupOutgoingConnection)
 					{
-						if (errno == EWOULDBLOCK)
-							break;
+						conn->state = mcsStarted;
+						conn->msgPos = NULL;
+						conn->msgSize = sizeof(conn->conn_info);
+						conn->stillActive = true;
+						conn->conn_info.seq++;
 
-						if (errno == EINTR)
-							continue;
-
-						ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-										errmsg("Interconnect error: %m%s", "recvfrom")));
-					}
-
-					if (read_count < sizeof(pkt))
-						ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-										errmsg("Interconnect error: %m%s short ack receive!", "recvfrom")));
-
-#ifdef AMS_VERBOSE_LOGGING
-					elog(LOG, "Got full packet");
-#endif
-
-					conn = findConnByHeader(&pkt, NULL);
-					if (conn != NULL)
-					{
-#ifdef AMS_VERBOSE_LOGGING
-						elog(LOG, "got ack for connection req. node %d route %d srcpid %d dstpid %d", pkt.motNodeId, conn->route, pkt.srcPid, pkt.dstPid);
-#endif
-						if (conn->state == mcsSetupOutgoingConnection)
-						{
-#ifdef AMS_VERBOSE_LOGGING
-							elog(LOG, "connected successfully node %d route %d", pkt.motNodeId, conn->route);
-#endif
-							conn->state = mcsStarted;
-							conn->msgPos = NULL;
-							conn->msgSize = sizeof(conn->conn_info);
-							conn->stillActive = true;
-							conn->conn_info.seq++;
-
-							outgoing_count++;
-						}
-						else
-							elog(LOG, "state not waiting for setup node %d route %d state %d conn %p", pkt.motNodeId, conn->route, conn->state, conn);
+						outgoing_count++;
 					}
 					else
-						elog(LOG, "Got ack for unknown connection node %d command %d dstpid %d", pkt.motNodeId, pkt.commandCount, pkt.dstPid);
-					/* if we have more available, don't wait at all --
-					 * we'll wait once we run out of acks */
-				} /* for (;;) */
-			}
+						elog(LOG, "state not waiting for setup node %d route %d state %d conn %p", pkt.motNodeId, conn->route, conn->state, conn);
+				}
+				else
+					elog(LOG, "Got ack for unknown connection node %d command %d dstpid %d", pkt.motNodeId, pkt.commandCount, pkt.dstPid);
+				/* if we have more available, don't wait at all --
+				 * we'll wait once we run out of acks */
+			} /* for (;;) */
 		}
 		/* done with outbound (for this iteration) */ 
+
+		/* The UDP interconnect doesn't *do* anything but count
+		 * completed connections for the inbound side. So we can just
+		 * continue, unless we've timed out. */
+		if (elapsed_timeout && outgoing_count < expectedTotalOutgoing)
+		{
+			if (elapsed_timeout <= elapsed_ms + 20)
+			{
+				/* timed out */
+				break;
+			}
+		}
+		elapsed_ms = gettime_elapsed_ms(startTime);
+	}
+
+	/* we've either timed out, or we're done. Time to count inbound. */
+	do {
+
+		/* check for cancellation */
+		ML_CHECK_FOR_INTERRUPTS(false);
 
 		/* now do inbound */
 		if (incoming_count < expectedTotalIncoming)
@@ -1930,9 +1937,11 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 										  interconnect_setup_timeout)));
 		}
 
+		pg_usleep(100);
+
 		/* Back to top of loop and look again. */
 		elapsed_ms = gettime_elapsed_ms(startTime);
-	}                        /* poll() loop */
+	} while (1);
 
 	(*ppTransportStates)->activated = true;
 
