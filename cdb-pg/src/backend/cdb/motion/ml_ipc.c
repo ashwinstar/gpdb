@@ -1656,7 +1656,7 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 	{
 		int			numProcs;
 		int			childId = lfirst_int(cell);
-	    ChunkTransportStateEntry *pEntry=NULL;
+		ChunkTransportStateEntry *pEntry=NULL;
 
 #ifdef AMS_VERBOSE_LOGGING
 		elog(DEBUG5, "Setting up RECEIVING motion node %d", childId);
@@ -1741,8 +1741,6 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 		int		timeout;
         int		timeout_ms = 20*60*1000;
 
-		struct pollfd nfd;
-
 #ifdef AMS_VERBOSE_LOGGING
 		elog(LOG, "outgoing count %d expected %d", outgoing_count, expectedTotalOutgoing);
 		elog(LOG, "incoming count %d expected %d", incoming_count, expectedTotalIncoming);
@@ -1755,6 +1753,8 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 
 		if (outgoing_count < expectedTotalOutgoing)
 		{
+			struct pollfd nfd;
+
 			/* send message out, if we haven't already */
 			/* loop over outbound connections sending registration messages as needed */
 			n = sendingChunkTransportState ? sendingChunkTransportState->numConns : 0;
@@ -1792,31 +1792,25 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 
 			/* if we're not going to wait for incoming; we want to wait on acks. */
 			timeout = Min(timeout_ms, ((interconnect_setup_timeout*1000) - elapsed_ms));
-			timeout = Min(500, timeout);
+			timeout = Min(100, timeout);
 			if (timeout < 0)
 				timeout = 0;
 
-			/* now process acks received (first poll() call has the real
-			 * timeout, thereafter it is 0 -- which doesn't wait at all). */
-			n = 1;
-			while (n == 1)
+			nfd.fd = sendingChunkTransportState->txfd;
+			nfd.events = POLLIN;
+
+			n = poll(&nfd, 1, timeout);
+			if (n < 0)
 			{
-				nfd.fd = sendingChunkTransportState->txfd;
-				nfd.events = POLLIN;
+				if (errno == EINTR)
+					continue;
 
-				n = poll(&nfd, 1, timeout);
-				if (n < 0)
-				{
-					if (errno == EINTR)
-					{
-						timeout = 0;
-						continue;
-					}
-
-					ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-									errmsg("Interconnect error: %m%s", "poll")));
-				}
-				if (n == 1 && (nfd.events & POLLIN))
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+								errmsg("Interconnect error: %m%s", "poll")));
+			}
+			if (n == 1 && (nfd.events & POLLIN))
+			{
+				for (;;)
 				{
 					/* read ack */
 					struct sockaddr_in peer;
@@ -1830,8 +1824,16 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 										  (char *)&pkt, sizeof(pkt), 0, (struct sockaddr *)&peer, &peerlen);
 
 					if (read_count < 0)
+					{
+						if (errno == EWOULDBLOCK)
+							break;
+
+						if (errno == EINTR)
+							continue;
+
 						ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 										errmsg("Interconnect error: %m%s", "recvfrom")));
+					}
 
 					if (read_count < sizeof(pkt))
 						ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
@@ -1867,8 +1869,7 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 						elog(LOG, "Got ack for unknown connection node %d command %d dstpid %d", pkt.motNodeId, pkt.commandCount, pkt.dstPid);
 					/* if we have more available, don't wait at all --
 					 * we'll wait once we run out of acks */
-					timeout = 0;
-				}
+				} /* for (;;) */
 			}
 		}
 		/* done with outbound (for this iteration) */ 
@@ -1903,31 +1904,31 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 			}
 		}
 
-        /* Break out of select() loop if completed all connections. */
-        if (outgoing_count == expectedTotalOutgoing &&
-            incoming_count == expectedTotalIncoming)
-            break;
+		/* Break out of select() loop if completed all connections. */
+		if (outgoing_count == expectedTotalOutgoing &&
+			incoming_count == expectedTotalIncoming)
+			break;
 
-        /*
-         * Been here long?  Bail if gp_interconnect_setup_timeout exceeded.
-         */
-        if (interconnect_setup_timeout > 0)
-        {
-            int to = interconnect_setup_timeout * 1000;
+		/*
+		 * Been here long?  Bail if gp_interconnect_setup_timeout exceeded.
+		 */
+		if (interconnect_setup_timeout > 0)
+		{
+			int to = interconnect_setup_timeout * 1000;
 
-            if (to <= elapsed_ms + 20)
-                ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-                                errmsg("Interconnect timeout: Unable to "
-                                       "complete setup of all connections "
-                                       "within time limit."),
-                                errdetail("Completed %d of %d incoming and "
-                                          "%d of %d outgoing connections.  "
-                                          "gp_interconnect_setup_timeout = %d "
-                                          "seconds.",
-                                          incoming_count, expectedTotalIncoming,
-                                          outgoing_count, expectedTotalOutgoing,
-                                          interconnect_setup_timeout)));
-        }
+			if (to <= elapsed_ms + 20)
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+								errmsg("Interconnect timeout: Unable to "
+									   "complete setup of all connections "
+									   "within time limit."),
+								errdetail("Completed %d of %d incoming and "
+										  "%d of %d outgoing connections.  "
+										  "gp_interconnect_setup_timeout = %d "
+										  "seconds.",
+										  incoming_count, expectedTotalIncoming,
+										  outgoing_count, expectedTotalOutgoing,
+										  interconnect_setup_timeout)));
+		}
 
 		/* Back to top of loop and look again. */
 		elapsed_ms = gettime_elapsed_ms(startTime);
@@ -1944,7 +1945,6 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
                  "%d outgoing routes.",
                  elapsed_ms, incoming_count, outgoing_count);
     }
-
 }
 
 /* See ml_ipc.h */
@@ -3389,6 +3389,12 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 	if (pEntry->txfd < 0)
 		goto error;
 
+	if (!pg_set_noblock(pEntry->txfd))
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+						errmsg("Interconnect Error: Could not set udp-tx socket"
+						       "to non-blocking mode."),
+			            errdetail("%m%s sockfd=%d", "fcntl", pEntry->txfd)));
+
 	MemSet(&saddr, 0, sizeof(saddr));
 	saddr.sin_family = AF_INET;
 	saddr.sin_port = 0;
@@ -3406,7 +3412,7 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 
 
 	pEntry->txport = saddr.sin_port;
-	elog(LOG, "Connecting from UDP port %d", ntohs(saddr.sin_port));
+//	elog(LOG, "Connecting from UDP port %d", ntohs(saddr.sin_port));
 
     return pEntry;
 
