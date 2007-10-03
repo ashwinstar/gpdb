@@ -1709,6 +1709,8 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 			conn->conn_info.sessionId = gp_session_id;
 			conn->conn_info.commandCount = gp_command_count;
 
+			(*ppTransportStates)->incompleteConns = lappend((*ppTransportStates)->incompleteConns, conn);
+
 			conn_addhash(conn);
 		}
 
@@ -1882,31 +1884,21 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 		ML_CHECK_FOR_INTERRUPTS(false);
 
 		/* now do inbound */
-		if (incoming_count < expectedTotalIncoming)
+		if (incoming_count < expectedTotalIncoming &&
+			list_length((*ppTransportStates)->incompleteConns) != 0)
 		{
-			/* count the number of inbound connections that have been established */
-			incoming_count = 0;
-
-			/* for each receiving motion node, walk each connection looking for established connections */
-			/* THIS APPROACH SEEMS REALLY INEFFICIENT! */
-			foreach(cell, mySlice->children)
+			/* We can't use foreach() because we're going to delete elements as we go */
+			cell = list_head((*ppTransportStates)->incompleteConns);
+			while (cell != NULL)
 			{
-				ChunkTransportStateEntry *pEntry=NULL;
-				int motid = lfirst_int(cell);
+				conn = (MotionConn *) lfirst(cell);
 
-				getChunkTransportState(*ppTransportStates, motid, &pEntry);
+				cell = lnext(cell);
 
-				Assert(pEntry);
-				Assert(pEntry->valid);
-
-				for (i=0; i < pEntry->numConns; i++)
+				if (conn->state == mcsStarted)
 				{
-					MotionConn *conn;
-
-					conn = pEntry->conns + i;
-
-					if (conn->state == mcsStarted)
-						incoming_count++;
+					incoming_count++;
+					(*ppTransportStates)->incompleteConns = list_delete_ptr((*ppTransportStates)->incompleteConns, conn);
 				}
 			}
 		}
@@ -2757,6 +2749,23 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
             gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 		    elog_node_display(DEBUG3, "local slice table", transportStates->sliceTable, true);
     }
+
+	/* remove any "extra" incompleteConns ? (these are only used by
+	 * one thread, no lock required) -- we're removing elements as we
+	 * go, so don't use foreach() () */
+	if (list_length(transportStates->incompleteConns) != 0)
+	{
+		cell = list_head(transportStates->incompleteConns);
+		while (cell != NULL)
+		{
+			conn = (MotionConn *) lfirst(cell);
+
+			cell = lnext(cell);
+
+			transportStates->incompleteConns =
+				list_delete_ptr(transportStates->incompleteConns, conn);
+		}
+	}
 
 	/*
 	 * Now "normal" connections which made it through our
