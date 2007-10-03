@@ -898,7 +898,7 @@ HeapTuple ExecCopySlotHeapTupleTo(TupleTableSlot *slot, MemoryContext pctxt, cha
 			}
 
 			ret->t_len = slot->tts_mintuple->t_len + MINIMAL_TUPLE_OFFSET;
-			ItemPointerSetInvalid(&ret->t_self);
+			ItemPointerSetInvalid(&(ret->t_self));
 			ret->t_tableOid = InvalidOid;
 			ret->t_data = (HeapTupleHeader) ((char *) ret + HEAPTUPLESIZE);
 			memcpy((char*) ret->t_data + MINIMAL_TUPLE_OFFSET, slot->tts_mintuple, slot->tts_mintuple->t_len);
@@ -989,7 +989,7 @@ HeapTuple ExecCopySlotHeapTupleTo(TupleTableSlot *slot, MemoryContext pctxt, cha
 
 		predicted_len = heap_compute_data_size(slot->tts_tupleDescriptor, values, isnull);
 
-		needed_len += predicted_len;
+		needed_len += predicted_len + HEAPTUPLESIZE;
 
 		if(*len >= needed_len)
 			ret = (HeapTuple) dest;
@@ -1010,11 +1010,11 @@ HeapTuple ExecCopySlotHeapTupleTo(TupleTableSlot *slot, MemoryContext pctxt, cha
 		 * And fill in the information.  Note we fill the Datum fields even though
 		 * this tuple may never become a Datum.
 		 */
-		ret->t_len = needed_len;
+		ret->t_len = needed_len - HEAPTUPLESIZE;
 		ItemPointerSetInvalid(&(ret->t_self));
 		ret->t_tableOid = InvalidOid;
 
-		HeapTupleHeaderSetDatumLength(td, needed_len);
+		HeapTupleHeaderSetDatumLength(td, needed_len - HEAPTUPLESIZE);
 		HeapTupleHeaderSetTypeId(td, slot->tts_tupleDescriptor->tdtypeid);
 		HeapTupleHeaderSetTypMod(td, slot->tts_tupleDescriptor->tdtypmod);
 

@@ -409,45 +409,6 @@ agg_hash_initial_pass(AggState *aggstate)
 				 */
 				if (gp_hashagg_recalc_density)
 				{
-#if 0
-					double act_tuples_per_group;
-					double groups, new_batches;
-					double entry_size;
-					double est_tuples_per_group;
-
-					act_tuples_per_group = ((double)ht->ntuple)/(double)ht->ngroup;
-
-					est_tuples_per_group = outer->plan->plan_rows / aggstate->ss.ps.plan->plan_rows;
-
-					/* assume that we're 10% ? */
-					groups = Max((outer->plan->plan_rows /* est_tuples */ / act_tuples_per_group),
-								 (10.0 * (double)ht->ntuple / act_tuples_per_group));
-
-					elog(HHA_MSG_LVL,
-						 "hybrid hash aggregation: recalculate batch count using %f groups (est density %f act density %f)",
-						 groups, est_tuples_per_group, act_tuples_per_group);
-
-					entry_size = ht->hats.workmem_per_entry;
-
-					new_batches = calcBatchCount(work_mem * 1024.0, 
-												 groups,
-												 entry_size,
-												 sizeBufFile(NULL),
-												 true);
-
-					if (new_batches > ht->nbatch)
-					{
-						/* Don't use more than 1024 batches if we weren't already using lots of batches */
-						if (new_batches > 1024 && ht->nbatch <= 512)
-							new_batches = 1024;
-
-						elog(HHA_MSG_LVL,
-							 "hybrid hash aggregation: increasing batch count from %d -> %f",
-							 ht->nbatch, new_batches);
-						destroy_batches(ht);
-						create_batches(ht, new_batches);
-					}
-#else
 					/* use planner estimated rows devide tuples we have processed to 
 					 * estimate batches 
 					 */
@@ -457,7 +418,6 @@ agg_hash_initial_pass(AggState *aggstate)
 					
 					destroy_batches(ht);
 					create_batches(ht, new_batches);
-#endif
 				}
 				/* NOTE: we never reduce the number of batches, respill passes are too risky */
 			}
@@ -1032,7 +992,7 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 	memset(entry, 0, ht->entrybuf.szper);
 	ht->entrybuf.cur += ht->entrybuf.szper;
 	/* cktan; use this instead ExecCopySlotHeapTupleTo */
-#if 0
+#if 1
 	entry->heaptuple = ExecCopySlotHeapTupleTo(aggstate->hashslot, 
 											   ht->entry_cxt, 0, 0);
 #else
