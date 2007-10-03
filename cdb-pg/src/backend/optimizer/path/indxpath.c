@@ -379,6 +379,49 @@ find_usable_indexes(PlannerInfo *root, RelOptInfo *rel,
 			index_pathkeys = build_index_pathkeys(root, index,
 												  ForwardScanDirection,
 												  true);
+            /*
+             * CDB: For appendrel child, pathkeys contain Var nodes in terms 
+             * of the child's baserel.  Transform the pathkey list to refer to 
+             * columns of the appendrel.  
+             */
+            if (rel->reloptkind == RELOPT_OTHER_MEMBER_REL)
+            {
+                AppendRelInfo  *appinfo = NULL;
+                RelOptInfo     *appendrel = NULL;
+		        ListCell       *appcell;
+                CdbPathLocus    notalocus;
+
+		        /* Find the appendrel of which this baserel is a child. */
+                foreach(appcell, root->append_rel_list)
+		        {
+			        appinfo = (AppendRelInfo *)lfirst(appcell);
+			        if (appinfo->child_relid == rel->relid)
+                        break;
+		        }
+                Assert(appinfo);
+                appendrel = find_base_rel(root, appinfo->parent_relid);
+
+                /*
+                 * The pathkey list happens to have the same format as the 
+                 * partitioning key of a Hashed locus, so by disguising it 
+                 * we can use cdbpathlocus_pull_above_projection() to do the 
+                 * transformation.
+                 */
+                CdbPathLocus_MakeHashed(&notalocus, index_pathkeys);
+                notalocus =
+                    cdbpathlocus_pull_above_projection(root,
+                                                       notalocus,
+                                                       rel->relids,
+                                                       rel->reltargetlist,
+                                                       appendrel->reltargetlist,
+                                                       appendrel->relid);
+                if (CdbPathLocus_IsHashed(notalocus))
+                    index_pathkeys = truncate_useless_pathkeys(root, appendrel,
+														       notalocus.partkey);
+                else
+                    index_pathkeys = NULL;
+            }
+
 			useful_pathkeys = truncate_useless_pathkeys(root, rel,
 														index_pathkeys);
 		}

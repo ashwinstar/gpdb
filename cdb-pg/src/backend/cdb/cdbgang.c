@@ -5,6 +5,7 @@
  *
  * Copyright (c) 2005-2007, greenplum inc
  *
+ *  $Id$
  * $Id$
  *
  *-------------------------------------------------------------------------
@@ -1401,12 +1402,10 @@ static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bo
      * user-settable GUC variables
      */
 
-#ifdef USE_ASSERT_CHECKING
 	appendPQExpBuffer(buffer, " -c gp_debug_linger=%d", gp_debug_linger);
-#endif
 
 	/*
-	 * It doesn't seem to work to quote the entire search path,
+	 * It doesn't seem to work to quote the entire sath,
 	 * so we need to remove any spaces so it's treated as one parameter.
 	 * and remove any quotes surrounding the whole thing.
 	 *
@@ -1496,10 +1495,8 @@ static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bo
 		appendPQExpBuffer(buffer, " -c gp_hashagg_spillbatch_min=%d", gp_hashagg_spillbatch_min);
 	if (gp_hashagg_spillbatch_max != 0)
 		appendPQExpBuffer(buffer, " -c gp_hashagg_spillbatch_max=%d", gp_hashagg_spillbatch_max);
-	if (gp_use_mpool != 1)
+	if (gp_use_mpool != 0)
 		appendPQExpBuffer(buffer, " -c gp_use_mpool=%d", gp_use_mpool);
-
-
 	appendPQExpBuffer(buffer, " -c DateStyle=");
 	switch (DateStyle)
 	{

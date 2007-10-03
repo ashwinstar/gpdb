@@ -1286,10 +1286,10 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 					break;
 				}
 
-                                if(list_length(modifiedloclist) > num_segs_participating)
-                                {
-                                        elog(ERROR, "External scan location list failed building distribution.");
-                                }
+				if(list_length(modifiedloclist) > num_segs_participating)
+				{
+					elog(ERROR, "External scan location list failed building distribution.");
+				}
 			}
 		}
 		

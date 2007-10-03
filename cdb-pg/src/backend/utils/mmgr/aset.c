@@ -83,6 +83,17 @@ extern pthread_t main_tid;
 /* Define this to detail debug alloc information */
 /* #define HAVE_ALLOCINFO */
 
+#ifdef CDB_PALLOC_CALLER_ID
+#define CDB_MCXT_WHERE(context) (context)->callerFile, (context)->callerLine
+#else
+#define CDB_MCXT_WHERE(context) __FILE__, __LINE__
+#endif
+
+#if defined(CDB_PALLOC_TAGS) && !defined(CDB_PALLOC_CALLER_ID)
+#error "If CDB_PALLOC_TAGS is defined, CDB_PALLOC_CALLER_ID must be defined too"
+#endif
+
+
 /*--------------------
  * Chunk freelist k holds chunks of size 1 << (k + ALLOC_MINBITS),
  * for k = 0 .. ALLOCSET_NUM_FREELISTS-1.
@@ -156,12 +167,9 @@ typedef struct AllocSetContext
 	Size		maxBlockSize;	/* maximum block size */
 	Size		nextBlockSize;	/* next block size to allocate */
 	AllocBlock	keeper;			/* if not NULL, keep this block over resets */
-
-#ifdef MEMORY_CONTEXT_CHECKING
+#ifdef CDB_PALLOC_TAGS
 	AllocChunk  allocList;
-	Size 		totalAllocSize; /* total allocated bytes out of the context */
 #endif
-
 } AllocSetContext;
 
 typedef AllocSetContext *AllocSet;
@@ -202,6 +210,8 @@ typedef struct AllocChunkData
 	/* when debugging memory usage, also store actual requested size */
 	/* this is zero in a free chunk */
 	Size		requested_size;
+#endif
+#ifdef CDB_PALLOC_TAGS
 	const char  *alloc_tag;
 	int 		alloc_n;
 	void *alloc_prev;
@@ -266,9 +276,15 @@ static MemoryContextMethods AllocSetMethods = {
  * Debug macros
  * ----------
  */
-#ifdef MEMORY_CONTEXT_CHECKING
+#ifdef CDB_PALLOC_TAGS
 
-extern void dump_memory_allocation_ctxt(FILE * ofile, void *ctxt);
+void dump_memory_allocation(const char* fname)
+{
+	FILE *ofile = fopen(fname, "w+");
+	dump_memory_allocation_ctxt(ofile, TopMemoryContext);
+	fclose(ofile);
+}
+
 void dump_memory_allocation_ctxt(FILE *ofile, void *ctxt)
 {
 	AllocSet set = (AllocSet) ctxt;
@@ -277,7 +293,11 @@ void dump_memory_allocation_ctxt(FILE *ofile, void *ctxt)
 
 	while(chunk)
 	{
-		fprintf(ofile, "%ld|%s|%d|%d|%d\n", (long) ctxt, chunk->alloc_tag, chunk->alloc_n, (int) chunk->size, (int) chunk->requested_size);
+#ifdef MEMORY_CONTEXT_CHECKING
+        fprintf(ofile, "%ld|%s|%d|%d|%d\n", (long) ctxt, chunk->alloc_tag, chunk->alloc_n, (int) chunk->size, (int) chunk->requested_size);
+#else
+		fprintf(ofile, "%ld|%s|%d|%d\n", (long) ctxt, chunk->alloc_tag, chunk->alloc_n, (int) chunk->size);
+#endif
 		chunk = chunk->alloc_next;
 	}
 
@@ -305,14 +325,18 @@ static void AllocFreeInfo(AllocSet set, AllocChunk chunk)
 	if(next != NULL)
 		next->alloc_prev = prev;
 
+	chunk->alloc_tag = set->header.callerFile;
+	chunk->alloc_n = set->header.callerLine;
+
 	chunk->alloc_prev = NULL;
 	chunk->alloc_next = NULL;
-
-	set->totalAllocSize -= chunk->size;
 }
 
 static void AllocAllocInfo(AllocSet set, AllocChunk chunk)
 {
+	chunk->alloc_tag = set->header.callerFile;
+	chunk->alloc_n = set->header.callerLine;
+
 	chunk->alloc_prev = NULL;
 	chunk->alloc_next = set->allocList;
 
@@ -320,7 +344,6 @@ static void AllocAllocInfo(AllocSet set, AllocChunk chunk)
 		set->allocList->alloc_prev = chunk;
 
 	set->allocList = chunk;
-	set->totalAllocSize += chunk->size;
 }
 #else
 #ifdef HAVE_ALLOCINFO
@@ -410,8 +433,7 @@ AllocSetContextCreate(MemoryContext parent,
 	context->maxBlockSize = maxBlockSize;
 	context->nextBlockSize = initBlockSize;
 
-#ifdef MEMORY_CONTEXT_CHECKING
-	context->totalAllocSize = 0;
+#ifdef CDB_PALLOC_TAGS
 	context->allocList = NULL;
 #endif
 
@@ -425,14 +447,10 @@ AllocSetContextCreate(MemoryContext parent,
 
 		block = (AllocBlock) malloc(blksize);
 		if (block == NULL)
-		{
-			MemoryContextStats(TopMemoryContext);
-			ereport(ERROR,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 errmsg("out of memory"),
-					 errdetail("Failed while creating memory context \"%s\".",
-							   name)));
-		}
+            MemoryContextError(ERRCODE_OUT_OF_MEMORY,
+                               &context->header, CDB_MCXT_WHERE(&context->header),
+                               "Out of memory.  Unable to allocate %lu bytes.",
+                               (unsigned long)blksize);
 		block->aset = context;
 		block->freeptr = ((char *) block) + ALLOC_BLOCKHDRSZ;
 		block->endptr = ((char *) block) + blksize;
@@ -495,8 +513,9 @@ AllocSetReset(MemoryContext context)
 #ifdef MEMORY_CONTEXT_CHECKING
 	/* Check for corruption and leaks before freeing */
 	AllocSetCheck(context);
-	set->totalAllocSize = 0;
-	set->allocList = NULL;
+#endif
+#ifdef CDB_PALLOC_TAGS
+    set->allocList = NULL;
 #endif
 
 	/* Clear chunk freelists */
@@ -615,15 +634,10 @@ AllocSetAlloc(MemoryContext context, Size size)
 		blksize = chunk_size + ALLOC_BLOCKHDRSZ + ALLOC_CHUNKHDRSZ;
 		block = (AllocBlock) malloc(blksize);
 		if (block == NULL)
-		{
-			MemoryContextStats(TopMemoryContext);
-			ereport(ERROR,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 errmsg("out of memory"),
-					 errdetail("Failed on request of size %lu for context '%s'.",
-							   (unsigned long) size,
-                               set->header.name) ));
-		}
+            MemoryContextError(ERRCODE_OUT_OF_MEMORY,
+                               &set->header, CDB_MCXT_WHERE(&set->header),
+                               "Out of memory.  Failed on request of size %lu bytes.",
+                               (unsigned long)size);
 		block->aset = set;
 		block->freeptr = block->endptr = ((char *) block) + blksize;
 
@@ -727,11 +741,11 @@ AllocSetAlloc(MemoryContext context, Size size)
 				 * freelist than the one we need to put this chunk on.	The
 				 * exception is when availchunk is exactly a power of 2.
 				 */
-				if (availchunk != (1 << (a_fidx + ALLOC_MINBITS)))
+				if (availchunk != ((Size)1 << (a_fidx + ALLOC_MINBITS)))
 				{
 					a_fidx--;
 					Assert(a_fidx >= 0);
-					availchunk = (1 << (a_fidx + ALLOC_MINBITS));
+					availchunk = ((Size)1 << (a_fidx + ALLOC_MINBITS));
 				}
 
 				chunk = (AllocChunk) (block->freeptr);
@@ -792,15 +806,10 @@ AllocSetAlloc(MemoryContext context, Size size)
 		}
 
 		if (block == NULL)
-		{
-			MemoryContextStats(TopMemoryContext);
-			ereport(ERROR,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 errmsg("out of memory"),
-					 errdetail("Failed on request of size %lu for context '%s'.",
-							   (unsigned long) size,
-                               set->header.name) ));
-		}
+            MemoryContextError(ERRCODE_OUT_OF_MEMORY,
+                               &set->header, CDB_MCXT_WHERE(&set->header),
+                               "Out of memory.  Failed on request of size %lu bytes.",
+                               (unsigned long)size);
 
 		block->aset = set;
 		block->freeptr = ((char *) block) + ALLOC_BLOCKHDRSZ;
@@ -874,8 +883,8 @@ AllocSetFree(MemoryContext context, void *pointer)
 	/* Test for someone scribbling on unused space in chunk */
 	if (chunk->requested_size < chunk->size)
 		if (((char *) pointer)[chunk->requested_size] != 0x7E)
-			elog(WARNING, "detected write past chunk end in %s %p",
-				 set->header.name, chunk);
+            elog(WARNING, "detected write past chunk end in %s %p (%s:%d)",
+				 set->header.name, chunk, CDB_MCXT_WHERE(&set->header));
 #endif
 
 	if (chunk->size > ALLOC_CHUNK_LIMIT)
@@ -895,7 +904,9 @@ AllocSetFree(MemoryContext context, void *pointer)
 			block = block->next;
 		}
 		if (block == NULL)
-			elog(ERROR, "could not find block containing chunk %p", chunk);
+            MemoryContextError(ERRCODE_INTERNAL_ERROR,
+                               &set->header, CDB_MCXT_WHERE(&set->header),
+                               "could not find block containing chunk %p", chunk);
 		/* let's just make sure chunk is the only one in the block */
 		Assert(block->freeptr == ((char *) block) +
 			   (chunk->size + ALLOC_BLOCKHDRSZ + ALLOC_CHUNKHDRSZ));
@@ -955,8 +966,8 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 	/* Test for someone scribbling on unused space in chunk */
 	if (chunk->requested_size < oldsize)
 		if (((char *) pointer)[chunk->requested_size] != 0x7E)
-			elog(WARNING, "detected write past chunk end in %s %p",
-				 set->header.name, chunk);
+            elog(WARNING, "detected write past chunk end in %s %p (%s:%d)",
+				 set->header.name, chunk, CDB_MCXT_WHERE(&set->header));
 #endif
 
 	/* isReset must be false already */
@@ -991,7 +1002,7 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 		AllocBlock	prevblock = NULL;
 		Size		chksize;
 		Size		blksize;
-        Size        oldsize;
+        Size        oldblksize;
 
 		AllocFreeInfo(set, chunk);
 
@@ -1003,29 +1014,24 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 			block = block->next;
 		}
 		if (block == NULL)
-			elog(ERROR, "could not find block containing chunk %p", chunk);
+            MemoryContextError(ERRCODE_INTERNAL_ERROR,
+                               &set->header, CDB_MCXT_WHERE(&set->header),
+                               "could not find block containing chunk %p", chunk);
 		/* let's just make sure chunk is the only one in the block */
 		Assert(block->freeptr == ((char *) block) +
 			   (chunk->size + ALLOC_BLOCKHDRSZ + ALLOC_CHUNKHDRSZ));
 
 		/* Do the realloc */
-        oldsize = block->endptr - (char *)block;
+        oldblksize = block->endptr - (char *)block;
 		chksize = MAXALIGN(size);
 		blksize = chksize + ALLOC_BLOCKHDRSZ + ALLOC_CHUNKHDRSZ;
 		block = (AllocBlock) realloc(block, blksize);
 		if (block == NULL)
-		{
-			MemoryContextStats(TopMemoryContext);
-			ereport(ERROR,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 errmsg("out of memory"),
-					 errdetail("Failed on request of size %lu for context '%s'.",
-							   (unsigned long) size,
-                               set->header.name) ));
-		}
+            MemoryContextError(ERRCODE_OUT_OF_MEMORY,
+                               &set->header, CDB_MCXT_WHERE(&set->header),
+                               "Out of memory.  Failed on request of size %lu bytes.",
+                               (unsigned long)size);
 		block->freeptr = block->endptr = ((char *) block) + blksize;
-        MemoryContextNoteFree(&set->header, oldsize);                   /*CDB*/
-        MemoryContextNoteAlloc(&set->header, blksize);                  /*CDB*/
 
 		/* Update pointers since block has likely been moved */
 		chunk = (AllocChunk) (((char *) block) + ALLOC_BLOCKHDRSZ);
@@ -1043,65 +1049,23 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 #endif
 
 		AllocAllocInfo(set, chunk);
+        MemoryContextNoteAlloc(&set->header, blksize - oldblksize); /*CDB*/
 		return AllocChunkGetPointer(chunk);
 	}
 	else
 	{
 		/*
-		 * Small-chunk case.  If the chunk is the last one in its block, there
-		 * might be enough free space after it that we can just enlarge the
-		 * chunk in-place.	It's relatively painful to find the containing
-		 * block in the general case, but we can detect last-ness quite
-		 * cheaply for the typical case where the chunk is in the active
-		 * (topmost) allocation block.	(At least with the regression tests
-		 * and code as of 1/2001, realloc'ing the last chunk of a non-topmost
-		 * block hardly ever happens, so it's not worth scanning the block
-		 * list to catch that case.)
-		 *
-		 * NOTE: must be careful not to create a chunk of a size that
-		 * AllocSetAlloc would not create, else we'll get confused later.
+		 * Small-chunk case.  We just do this by brute force, ie, allocate a
+		 * new chunk and copy the data.  Since we know the existing data isn't
+		 * huge, this won't involve any great memcpy expense, so it's not
+		 * worth being smarter.  (At one time we tried to avoid memcpy when
+		 * it was possible to enlarge the chunk in-place, but that turns out
+		 * to misbehave unpleasantly for repeated cycles of
+		 * palloc/repalloc/pfree: the eventually freed chunks go into the
+		 * wrong freelist for the next initial palloc request, and so we leak
+		 * memory indefinitely.  See pgsql-hackers archives for 2007-08-11.)
 		 */
 		AllocPointer newPointer;
-
-		if (size <= ALLOC_CHUNK_LIMIT)
-		{
-			AllocBlock	block = set->blocks;
-			char	   *chunk_end;
-
-			chunk_end = (char *) chunk + (oldsize + ALLOC_CHUNKHDRSZ);
-			if (chunk_end == block->freeptr)
-			{
-				/* OK, it's last in block ... is there room? */
-				Size		freespace = block->endptr - block->freeptr;
-				int			fidx;
-				Size		newsize;
-				Size		delta;
-
-				fidx = AllocSetFreeIndex(size);
-				newsize = 1 << (fidx + ALLOC_MINBITS);
-				Assert(newsize >= oldsize);
-				delta = newsize - oldsize;
-				if (freespace >= delta)
-				{
-					/* Yes, so just enlarge the chunk. */
-
-					AllocFreeInfo(set, chunk);
-
-					block->freeptr += delta;
-					chunk->size += delta;
-#ifdef MEMORY_CONTEXT_CHECKING
-					chunk->requested_size = size;
-					/* set mark to catch clobber of "unused" space */
-					if (size < chunk->size)
-						((char *) pointer)[size] = 0x7E;
-#endif
-					AllocAllocInfo(set, chunk);
-					return pointer;
-				}
-			}
-		}
-
-		/* Normal small-chunk case: just do it by brute force. */
 
 		/* allocate new chunk */
 		newPointer = AllocSetAlloc((MemoryContext) set, size);
@@ -1154,16 +1118,16 @@ AllocSetIsEmpty(MemoryContext context)
  *		Displays stats about memory consumption of an allocset.
  */
 
-/* Helper to portably right-justify an int64 in a field of specified width. */
+/* Helpers to portably right-justify a uint64 in a field of specified width. */
 static char *
-aset_rjfmt_int64(int64 v, int width, char **inout_bufpos, char *bufend)
+aset_rjfmt_uint64(uint64 v, int width, char **inout_bufpos, char *bufend)
 {
     char       *bp = *inout_bufpos;
     char        fmtbuf[32];
     int         len;
     int         pad;
 
-    snprintf(fmtbuf, sizeof(fmtbuf), INT64_FORMAT, v);
+    snprintf(fmtbuf, sizeof(fmtbuf), UINT64_FORMAT, v);
     len = strlen(fmtbuf);
     pad = Max(width - len, 0);
     if (pad + len >= bufend - bp)
@@ -1175,6 +1139,23 @@ aset_rjfmt_int64(int64 v, int width, char **inout_bufpos, char *bufend)
     return bp;
 }                               /* aset_rjfmt_int64 */
 
+static char *
+aset_rjfmt_mem64(uint64 v, int width, char **inout_bufpos, char *bufend)
+{
+    char   *bp;
+    char   *ip = *inout_bufpos;
+    char   *suffix = "kB";
+
+    v = (v + 1023) >> 10;
+    bp = aset_rjfmt_uint64(v, width, inout_bufpos, bufend - strlen(suffix));
+    if (bp == ip)
+    {
+        strcat(bp, suffix);
+        *inout_bufpos += strlen(suffix);
+    }
+    return bp;
+}                               /* aset_rjfmt_mem64 */
+
 
 static void
 AllocSetStats(MemoryContext context, const char* contextName)
@@ -1182,45 +1163,56 @@ AllocSetStats(MemoryContext context, const char* contextName)
 	AllocSet	set = (AllocSet) context;
 	long		nblocks = 0;
 	long		nchunks = 0;
-	long		totalspace = 0;
-	long		freespace = 0;
-	AllocBlock	block;
+	Size        totalspace = 0;
+	Size        freespace = 0;
+    Size        held;
+    AllocBlock	block;
 	AllocChunk	chunk;
 	int			fidx;
-    int64       held;
     char       *cfp;
     char       *efp;
-    char        fmtbuf[200];
+    char        fmtbuf[400];
 
-	for (block = set->blocks; block != NULL; block = block->next)
+    /* Total space obtained from host's memory manager */
+    for (block = set->blocks; block != NULL; block = block->next)
 	{
 		nblocks++;
 		totalspace += block->endptr - ((char *) block);
-		freespace += block->endptr - block->freeptr;
 	}
+
+    /* Space at end of first block is available for use. */
+    if (set->blocks)
+    {
+        nchunks++;
+        freespace += set->blocks->endptr - set->blocks->freeptr;
+    }
+
+    /* Freelists.  Count usable space only, not chunk headers. */
 	for (fidx = 0; fidx < ALLOCSET_NUM_FREELISTS; fidx++)
 	{
 		for (chunk = set->freelist[fidx]; chunk != NULL;
 			 chunk = (AllocChunk) chunk->aset)
 		{
 			nchunks++;
-			freespace += chunk->size + ALLOC_CHUNKHDRSZ;
+			freespace += chunk->size;
 		}
 	}
 
     efp = fmtbuf + sizeof(fmtbuf);
     cfp = fmtbuf;
     held = set->header.allBytesAlloc - set->header.allBytesFreed;
-    write_stderr("  Subtree: %s KB held; %s KB peak; %s KB lifetime sum."
-                 "   Node: %8lu KB held in %3ld blocks; %8lu KB in use"
-                 "; %8lu KB free in %3ld chunks)"
-                 "  %s\n",
-                 aset_rjfmt_int64((held + 1023) / 1024, 8, &cfp, efp),
-                 aset_rjfmt_int64((set->header.maxBytesHeld + 1023) / 1024, 8, &cfp, efp),
-                 aset_rjfmt_int64((set->header.allBytesAlloc + 1023) / 1024, 9, &cfp, efp),
-                 (totalspace + 1023) / 1024, nblocks,
-                 (totalspace - freespace + 1023) / 1024,
-                 (freespace + 1023) / 1024, nchunks,
+    write_stderr("  (Tree: %s held; %s peak; %s/%s cumulative taken/returned)"
+                 "  (Node: %s held in %3ld blocks; %s in use; "
+                 "  %s free in %3ld chunks)  %s\n",
+                 aset_rjfmt_mem64(held, 8, &cfp, efp),
+                 aset_rjfmt_mem64(set->header.maxBytesHeld, 8, &cfp, efp),
+                 aset_rjfmt_mem64(set->header.allBytesAlloc, 9, &cfp, efp),
+                 aset_rjfmt_mem64(set->header.allBytesFreed, 9, &cfp, efp),
+                 aset_rjfmt_mem64(totalspace, 8, &cfp, efp),
+                 nblocks,
+                 aset_rjfmt_mem64(totalspace - freespace, 8, &cfp, efp),
+                 aset_rjfmt_mem64(freespace, 8, &cfp, efp),
+                 nchunks,
                  contextName);
 }
 
@@ -1245,8 +1237,8 @@ AllocSetCheck(MemoryContext context)
 	for (block = set->blocks; block != NULL; block = block->next)
 	{
 		char	   *bpoz = ((char *) block) + ALLOC_BLOCKHDRSZ;
-		long		blk_used = block->freeptr - bpoz;
-		long		blk_data = 0;
+		Size		blk_used = block->freeptr - bpoz;
+		Size		blk_data = 0;
 		long		nchunks = 0;
 
 		/*
@@ -1255,8 +1247,8 @@ AllocSetCheck(MemoryContext context)
 		if (!blk_used)
 		{
 			if (set->keeper != block)
-				elog(WARNING, "problem in alloc set %s: empty block %p",
-					 name, block);
+                elog(WARNING, "problem in alloc set %s: empty block %p (%s:%d)",
+					 name, block, CDB_MCXT_WHERE(&set->header));
 		}
 
 		/*
@@ -1277,17 +1269,17 @@ AllocSetCheck(MemoryContext context)
 			 * Check chunk size
 			 */
 			if (dsize > chsize)
-				elog(WARNING, "problem in alloc set %s: req size > alloc size for chunk %p in block %p",
-					 name, chunk, block);
+                elog(WARNING, "problem in alloc set %s: req size > alloc size for chunk %p in block %p (%s:%d)",
+					 name, chunk, block, CDB_MCXT_WHERE(&set->header));
 			if (chsize < (1 << ALLOC_MINBITS))
-				elog(WARNING, "problem in alloc set %s: bad size %lu for chunk %p in block %p",
-					 name, (unsigned long) chsize, chunk, block);
+                elog(WARNING, "problem in alloc set %s: bad size %lu for chunk %p in block %p (%s:%d)",
+					 name, (unsigned long) chsize, chunk, block, CDB_MCXT_WHERE(&set->header));
 
 			/* single-chunk block? */
 			if (chsize > ALLOC_CHUNK_LIMIT &&
 				chsize + ALLOC_CHUNKHDRSZ != blk_used)
-				elog(WARNING, "problem in alloc set %s: bad single-chunk %p in block %p",
-					 name, chunk, block);
+                elog(WARNING, "problem in alloc set %s: bad single-chunk %p in block %p (%s:%d)",
+					 name, chunk, block, CDB_MCXT_WHERE(&set->header));
 
 			/*
 			 * If chunk is allocated, check for correct aset pointer. (If it's
@@ -1295,15 +1287,15 @@ AllocSetCheck(MemoryContext context)
 			 * easily...)
 			 */
 			if (dsize > 0 && chunk->aset != (void *) set)
-				elog(WARNING, "problem in alloc set %s: bogus aset link in block %p, chunk %p",
-					 name, block, chunk);
+                elog(WARNING, "problem in alloc set %s: bogus aset link in block %p, chunk %p (%s:%d)",
+					 name, block, chunk, CDB_MCXT_WHERE(&set->header));
 
 			/*
 			 * Check for overwrite of "unallocated" space in chunk
 			 */
 			if (dsize > 0 && dsize < chsize && *chdata_end != 0x7E)
-				elog(WARNING, "problem in alloc set %s: detected write past chunk end in block %p, chunk %p",
-					 name, block, chunk);
+                elog(WARNING, "problem in alloc set %s: detected write past chunk end in block %p, chunk %p (%s:%d)",
+					 name, block, chunk, CDB_MCXT_WHERE(&set->header));
 
 			blk_data += chsize;
 			nchunks++;
@@ -1312,8 +1304,8 @@ AllocSetCheck(MemoryContext context)
 		}
 
 		if ((blk_data + (nchunks * ALLOC_CHUNKHDRSZ)) != blk_used)
-			elog(WARNING, "problem in alloc set %s: found inconsistent memory block %p",
-				 name, block);
+            elog(WARNING, "problem in alloc set %s: found inconsistent memory block %p (%s:%d)",
+				 name, block, CDB_MCXT_WHERE(&set->header));
 	}
 }
 

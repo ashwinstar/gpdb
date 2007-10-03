@@ -181,6 +181,8 @@ typedef struct CdbPathLocus
         CdbPathLocus *_locus = (plocus);                \
         _locus->locustype = (_locustype);               \
         _locus->partkey = (_partkey);                   \
+        Assert(_locus->partkey == NULL ||               \
+               cdbpathlocus_is_valid(*_locus));         \
     } while (0)
 
 #define CdbPathLocus_MakeNull(plocus)                   \
@@ -252,14 +254,15 @@ cdbpathlocus_get_partkey_exprs(CdbPathLocus     locus,
  * Returns a strewn locus if the necessary inputs are not projected.
  *
  * 'relids' is the set of relids that may occur in the targetlist exprs.
- * 'targetlist' specifies the projection.  It is a List of TargetEntry 
+ * 'targetlist' specifies the projection.  It is a List of TargetEntry
  *      or merely a List of Expr.
- * 'newvarlist' is an optional List of Expr which may contain Var nodes
- *      referencing the result of the projection.  The Var nodes in the 
- *      new partkey are copied from ones in this list if possible, to
- *      ensure successful equal() comparison when finding matching pathkeys.
- * 'newrelid' is the RTE index of the projected result, for finding or 
+ * 'newvarlist' is an optional List of Expr, in 1-1 correspondence with
+ *      'targetlist'.  If specified, instead of creating a Var node to
+ *      reference a targetlist item, we plug in a copy of the corresponding
+ *      newvarlist item.
+ * 'newrelid' is the RTE index of the projected result, for finding or
  *      building Var nodes that reference the projected columns.
+ *      Ignored if 'newvarlist' is specified.
  */
 CdbPathLocus
 cdbpathlocus_pull_above_projection(struct PlannerInfo  *root,
@@ -301,5 +304,13 @@ cdbpathlocus_is_hashed_on_exprs(CdbPathLocus locus, List *exprlist);
  */
 bool
 cdbpathlocus_is_hashed_on_relids(CdbPathLocus locus, Bitmapset *relids);
+
+/*
+ * cdbpathlocus_is_valid
+ *
+ * Returns true if locus appears structurally valid.
+ */
+bool
+cdbpathlocus_is_valid(CdbPathLocus locus);
 
 #endif   /* CDBPATHLOCUS_H */

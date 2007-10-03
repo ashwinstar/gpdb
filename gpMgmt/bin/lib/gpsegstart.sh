@@ -81,6 +81,13 @@ QE_DIR_CHK () {
 }
 
 START_SEG () {
+	UPGRADE=0
+
+	if [ "$UPGRADE_TO" == "3.0" ] || [ "$UPGRADE_TO" == "3.1" ]
+	then
+		LOG_MSG "[INFO][$INST_COUNT]:-Switching database to version $UPGRADE_TO"
+		UPGRADE=1
+	fi 
 	if [ $QE_SWITCH_LOG -eq 1 ];then
 	#*************************************************************************************************************
 	# Start of switch log section
@@ -130,8 +137,27 @@ START_SEG () {
 			$TRUSTED_SHELL $QE_NAME "$RM -f ${QE_DIR}/$PG_PID"
 		fi
 	fi
+
+	EXTRA_START_OPTS=""
+	# upgrade mode?
+	if [ $UPGRADE -eq 1 ]; then
+		LOG_MSG "[INFO][$INST_COUNT]:-Starting in upgrade mode"
+
+		EXTRA_START_OPTS=" -c allow_system_table_mods=true "
+		if [ "$UPGRADE_TO" == "3.1" ]; then
+			LOG_MSG "[INFO][$INST_COUNT]:-Running control file upgrader"
+
+			$TRUSTED_SHELL $QE_NAME "$GPCONTROLMOD --catversion $UPGRADE_TO $QE_DIR"
+			RETVAL=$?
+
+			if [ $RETVAL -ne 0 ]; then
+				LOG_MSG "[WARN][$INST_COUNT]:-Encountered error modifying control file"
+			fi
+		fi
+	fi
+
 	LOG_MSG "[INFO][$INST_COUNT]:-Starting Segment instance $QE_NAME directory $QE_DIR"
-	$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL -w -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start >/dev/null 2>&1"
+	$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL -w -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT} $EXTRA_START_OPTS \" start >/dev/null 2>&1"
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ] && [ $START_INVALID -eq 1 ];then
 	#Have attempted to start an invalid segment which did not start
@@ -254,6 +280,7 @@ QE_VALID=$1;shift		#Status of segment either t or f
 START_INVALID=$1;shift	#0=Normal valid startup 1=attempt to start a segment marked as invalid
 INST_COUNT=$1;shift		#Unique number for this parallel script, starts at 0
 LOG_FILE=$1;shift
+UPGRADE_TO=$1; shift
 QD_DBNAME=$1;shift
 QE_LINE="${QE_NAME}:${QE_PORT}:${QE_DIR}"
 LOG_MSG "[INFO][$INST_COUNT]:-Start Main"

@@ -281,10 +281,12 @@ PROCESS_SHUTDOWN () {
 		if [ $STOP_INVALID -eq 1 ];then
 			BATCH_LIMIT=$QE_ARRAY_COUNT
 		else
-			BATCH_LIMIT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $GP_PG_VIEW where valid ='t' and content<>-1;"`
+			BATCH_LIMIT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select 1 from $GP_PG_VIEW gppg where valid ='t' and content<>-1;" | wc -l`
 		fi
 #		count connected processes, but don't count ourself.
-		CONNECTED=` env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c "select count(*) from pg_stat_activity where procpid != pg_backend_pid();"`
+		CONNECTED=` env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c " select backendid from 
+		(SELECT pg_stat_get_backend_idset() AS backendid) as s where 
+		pg_stat_get_backend_pid(s.backendid) != pg_backend_pid();"`
 		if [ $MODE == "smart" ]; then
 		if [ $CONNECTED -gt 0 ];then
 			LOG_MSG "[WARN]:-There are other connections to this instance, shutdown mode smart aborted" 1

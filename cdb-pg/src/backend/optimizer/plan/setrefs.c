@@ -544,7 +544,7 @@ cdb_build_identity_tlist(List *newtlist, Plan *subplan, Index subvarno)
         Var            *newvar;
 
         /* Make a Var node referencing the subplan's targetlist. */
-        newvar = cdbpullup_makeVar(subvarno, subtle->resno, NULL, subtle->expr);
+        newvar = cdbpullup_makeVar(subvarno, subtle->resno, subtle->expr);
 
 		/* Append new targetlist entry. */
         newtle = flatCopyTargetEntry(subtle);

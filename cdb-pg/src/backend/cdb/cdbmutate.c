@@ -1066,7 +1066,7 @@ getExprListFromTargetList(List         *tlist,
 
         /* After set_plan_references(), make a Var referencing subplan tlist. */
         if (useExecutorVarFormat)
-            elist = lappend(elist, cdbpullup_makeVar(OUTER, n, NULL, target->expr));
+            elist = lappend(elist, cdbpullup_makeVar(OUTER, n, target->expr));
 
         /* Before set_plan_references(), copy the subplan's result expr. */
         else

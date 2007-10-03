@@ -6,7 +6,7 @@
  * It can be used to buffer either ordinary C strings (null-terminated text)
  * or arbitrary binary data.  All storage is allocated with palloc().
  *
- * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2007, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	  $PostgreSQL: pgsql/src/backend/lib/stringinfo.c,v 1.43 2006/03/05 15:58:27 momjian Exp $
@@ -45,7 +45,7 @@ makeStringInfo(void)
 void
 initStringInfo(StringInfo str)
 {
-	int			size = 256;		/* initial default buffer size */
+	int			size = 1024;		/* initial default buffer size */
 
 	str->data = (char *) palloc(size);
 	str->maxlen = size;
@@ -71,6 +71,19 @@ initStringInfoOfSize(StringInfo str, int size)
 }
 
 
+/*
+ * resetStringInfo
+ *
+ * Reset the StringInfo: the data buffer remains valid, but its
+ * previous content, if any, is cleared.
+ */
+void
+resetStringInfo(StringInfo str)
+{
+	str->data[0] = '\0';
+	str->len = 0;
+	str->cursor = 0;
+}
 
 /*
  * appendStringInfo
@@ -262,14 +275,17 @@ enlargeStringInfo(StringInfo str, int needed)
 	int			newlen;
 
 	/*
-	 * Guard against ridiculous "needed" values, which can occur if we're fed
-	 * bogus data.	Without this, we can get an overflow or infinite loop in
-	 * the following.
+	 * Guard against out-of-range "needed" values.  Without this, we can get
+	 * an overflow or infinite loop in the following.
 	 */
-	if (needed < 0 ||
-		((Size) needed) >= (MaxAllocSize - (Size) str->len))
-		elog(ERROR, "invalid string enlargement request size %d",
-			 needed);
+	if (needed < 0)				/* should not happen */
+		elog(ERROR, "invalid string enlargement request size: %d", needed);
+	if (((Size) needed) >= (MaxAllocSize - (Size) str->len))
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("out of memory"),
+				 errdetail("Cannot enlarge string buffer containing %d bytes by %d more bytes.",
+						   str->len, needed)));
 
 	needed += str->len + 1;		/* total space required now */
 

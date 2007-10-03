@@ -130,11 +130,12 @@ cdbpullup_colIdx(struct Plan   *plan,
  *      expr -> X0, the expr in terms of the subplan S's targetlist
  *      targetlist -> TL (a List of TargetEntry), the plan P's targetlist
  *              (or can be a List of Expr)
- *      newvarlist -> an optional List of Expr which may contain Var nodes
- *              referencing the result of the projection.  The Var nodes in
- *              the new expr are copied from ones in this list if possible,
- *              to get their varnoold and varoattno settings.
- *      newvarno = varno to be used in new Var nodes
+ *      newvarlist -> an optional List of Expr, in 1-1 correspondence with
+ *              targetlist.  If specified, instead of creating a Var node to
+ *              reference a targetlist item, we plug in a copy of the
+ *              corresponding newvarlist item.
+ *      newvarno = varno to be used in new Var nodes.  Ignored if a non-NULL
+ *              newvarlist is given.
  *
  * When calling this function on an expr which has NOT yet been transformed
  * by set_plan_references(), newvarno should be the RTE index assigned to
@@ -164,6 +165,7 @@ pullUpExpr_mutator(Node *node, void *context)
 {
     struct pullUpExpr_context  *ctx = (struct pullUpExpr_context *)context;
     TargetEntry    *tle;
+    Node           *newnode;
     Var            *var;
 
     if (!node ||
@@ -177,13 +179,12 @@ pullUpExpr_mutator(Node *node, void *context)
 
         /* Outer reference?  Just copy it. */
         if (var->varlevelsup > 0)
-            var = (Var *)copyObject(var);
+            return (Node *)copyObject(var);
 
         if (!ctx->targetlist)
             goto fail;
 
         /* Is targetlist a List of TargetEntry?  (Plan nodes use this format) */
-        Assert(IsA(ctx->targetlist, List));
         if (IsA(linitial(ctx->targetlist), TargetEntry))
         {
 
@@ -201,10 +202,15 @@ pullUpExpr_mutator(Node *node, void *context)
             if (!tle)
                 goto fail;
 
+            /* Substitute the corresponding entry from newvarlist, if given. */
+            if (ctx->newvarlist)
+                newnode = (Node *)copyObject(list_nth(ctx->newvarlist,
+                                                      tle->resno - 1));
+
             /* Substitute a Var node referencing the targetlist entry. */
-            var = cdbpullup_makeVar(ctx->newvarno,
+            else
+                newnode = (Node *)cdbpullup_makeVar(ctx->newvarno,
                                     tle->resno,
-                                    ctx->newvarlist,
                                     (Expr *)var);
         }
 
@@ -212,24 +218,36 @@ pullUpExpr_mutator(Node *node, void *context)
         else
         {
             ListCell   *cell;
-            AttrNumber  targetindex = 1;
+            Expr       *tlistexpr = NULL;
+            AttrNumber  targetattno = 1;
 
             foreach(cell, ctx->targetlist)
             {
-	            if (equal(lfirst(cell), var))
+                tlistexpr = (Expr *)lfirst(cell);
+	            if (equal(tlistexpr, var))
                     break;
-                targetindex++;
+                targetattno++;
             }
             if (!cell)
                 goto fail;
 
+            /* Substitute the corresponding entry from newvarlist, if given. */
+            if (ctx->newvarlist)
+                newnode = (Node *)copyObject(list_nth(ctx->newvarlist,
+                                                      targetattno - 1));
+
             /* Substitute a Var node referencing the targetlist entry. */
-            var = cdbpullup_makeVar(ctx->newvarno,
-                                    targetindex,
-                                    ctx->newvarlist,
-                                    (Expr *)var);
+            else
+                newnode = (Node *)cdbpullup_makeVar(ctx->newvarno,
+                                                    targetattno,
+                                                    tlistexpr);
         }
-        return (Node *)var;
+
+        /* Make sure we haven't inadvertently changed the data type. */
+        Assert(exprType(newnode) == exprType(node) &&
+               exprTypmod(newnode) == exprTypmod(node));
+
+        return newnode;
     }
 
     /* The whole expr might be in the targetlist of a Plan node. */
@@ -238,12 +256,22 @@ pullUpExpr_mutator(Node *node, void *context)
              IsA(linitial(ctx->targetlist), TargetEntry) &&
              NULL != (tle = tlist_member(node, ctx->targetlist)))
     {
+        /* Substitute the corresponding entry from newvarlist, if given. */
+        if (ctx->newvarlist)
+            newnode = (Node *)copyObject(list_nth(ctx->newvarlist,
+                                                  tle->resno - 1));
+
         /* Replace expr with a Var node referencing the targetlist entry. */
-        var = cdbpullup_makeVar(ctx->newvarno,
+        else
+            newnode = (Node *)cdbpullup_makeVar(ctx->newvarno,
                                 tle->resno,
-                                ctx->newvarlist,
                                 tle->expr);
-        return (Node *)var;
+
+        /* Make sure we haven't inadvertently changed the data type. */
+        Assert(exprType(newnode) == exprType(node) &&
+               exprTypmod(newnode) == exprTypmod(node));
+
+        return newnode;
     }
 
     return expression_tree_mutator(node, pullUpExpr_mutator, context);
@@ -259,6 +287,9 @@ cdbpullup_expr(Expr *expr, List *targetlist, List *newvarlist, Index newvarno)
 {
     Expr       *newexpr;
     struct pullUpExpr_context   ctx;
+
+    Assert(!targetlist || IsA(targetlist, List));
+    Assert(!newvarlist || list_length(newvarlist) == list_length(targetlist));
 
     ctx.targetlist = targetlist;
     ctx.newvarlist = newvarlist;
@@ -363,8 +394,6 @@ cdbpullup_findPathKeyItemInTargetList(List         *pathkey,
 
     if (ptargetindex)
        *ptargetindex = 0;
-    if (!targetlist)
-        return NULL;
 
     foreach(pathkeycell, pathkey)
     {
@@ -376,6 +405,10 @@ cdbpullup_findPathKeyItemInTargetList(List         *pathkey,
         /* Constant expr?  Return it. */
         if (item->cdb_num_relids == 0)
             return item;
+
+        /* Bail if targetlist is empty. */
+        if (!targetlist)
+            break;
 
         /* Consider this item if all of its rels are in 'relids'. */
         if (bms_is_subset(item->cdb_key_relids, relids))
@@ -517,14 +550,9 @@ cdbpullup_isExprCoveredByTargetlist(Expr *expr, List *targetlist)
  *
  * Returns a new Var node with given 'varno' and 'varattno', and varlevelsup=0.
  *
- * The caller may optionally provide a 'newvarlist' which may contain a
- * suitable Var node (perhaps beneath a TargetEntry node).  If so, that
- * Var node is copied and returned.
- *
- * Otherwise NULL is returned, unless the caller has provided an 'oldexpr'
- * from which the vartype and vartypmod can be obtained to create a new
- * Var node.  (If oldexpr is a Var node, all fields are copied except for
- * varno, varattno and varlevelsup.)
+ * The caller must provide an 'oldexpr' from which we obtain the vartype and
+ * vartypmod for the new Var node.  If 'oldexpr' is a Var node, all fields are
+ * copied except for varno, varattno and varlevelsup.
  *
  * Copying an existing Var node preserves its varnoold and varoattno fields,
  * which are used by EXPLAIN to display the table and column name.
@@ -533,33 +561,11 @@ cdbpullup_isExprCoveredByTargetlist(Expr *expr, List *targetlist)
  * make_canonical_pathkey(), etc.
  */
 Var *
-cdbpullup_makeVar(Index varno, AttrNumber varattno, List *newvarlist, Expr *oldexpr)
+cdbpullup_makeVar(Index varno, AttrNumber varattno, Expr *oldexpr)
 {
-    ListCell   *newvarlistcell;
     Var        *var;
 
-    /* Is there a matching new Var node in caller's newvarlist? */
-    foreach(newvarlistcell, newvarlist)
-    {
-        Expr   *nvexpr = (Expr *)lfirst(newvarlistcell);
-
-        if (IsA(nvexpr, TargetEntry))
-            nvexpr = ((TargetEntry *)nvexpr)->expr;
-
-        if (IsA(nvexpr, Var))
-        {
-            var = (Var *)nvexpr;
-            if (var->varattno == varattno &&
-                var->varno == varno &&
-                var->varlevelsup == 0)
-            {
-                return copyObject(var);
-            }
-        }
-    }
-
-    if (!oldexpr)
-        return NULL;
+    Assert(oldexpr);
 
     /* If caller provided an old Var node, copy and modify it. */
     if (IsA(oldexpr, Var))
@@ -663,7 +669,6 @@ cdbpullup_targetentry(TargetEntry  *subplan_targetentry,
         /* Make a Var node referencing the subplan's targetlist entry. */
         newtle->expr = (Expr *)cdbpullup_makeVar(newvarno,
                                                  kidtle->resno,
-                                                 NULL,
                                                  kidtle->expr);
     }
 

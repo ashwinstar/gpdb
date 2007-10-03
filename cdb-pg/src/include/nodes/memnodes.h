@@ -61,9 +61,14 @@ typedef struct MemoryContextData
 	MemoryContext nextchild;	/* next child of same parent */
 	char	   *name;			/* context name (just for debugging) */
     /* CDB: Lifetime cumulative stats for this context and all descendants */
-    int64       allBytesAlloc;  /* bytes allocated from lower level mem mgr */
-    int64       allBytesFreed;  /* bytes returned to lower level mem mgr */
-    int64       maxBytesHeld;   /* high-water mark for total bytes held */
+    uint64      allBytesAlloc;  /* bytes allocated from lower level mem mgr */
+    uint64      allBytesFreed;  /* bytes returned to lower level mem mgr */
+    Size        maxBytesHeld;   /* high-water mark for total bytes held */
+    Size        localMinHeld;   /* low-water mark since last increase in hwm */
+#ifdef CDB_PALLOC_CALLER_ID
+    const char *callerFile;     /* __FILE__ of most recent caller */
+    int         callerLine;     /* __LINE__ of most recent caller */
+#endif
 } MemoryContextData;
 
 /* utils/palloc.h contains typedef struct MemoryContextData *MemoryContext */

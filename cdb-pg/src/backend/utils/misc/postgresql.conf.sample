@@ -111,6 +111,7 @@
 #work_mem = 32MB			# min 64kB
 #maintenance_work_mem = 64MB		# min 1MB
 #max_stack_depth = 2MB			# min 100kB
+#gp_process_memory_cutoff = 0           # in units of kB; 0 for no limit
 
 # - Free Space Map -
 

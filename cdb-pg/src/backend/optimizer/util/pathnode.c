@@ -1022,6 +1022,8 @@ void add_path(PlannerInfo *root, RelOptInfo *parent_rel, Path *new_path)
     if (!new_path)
         return;
 
+    Assert(cdbpathlocus_is_valid(new_path->locus));
+
    /*
      * CDB: Can we limit the rel to 1 row without affecting the query result?
      *
@@ -1562,6 +1564,14 @@ create_append_path(PlannerInfo *root, RelOptInfo *rel, List *subpaths)
 		if ( !subpath->rescannable )
 			pathnode->path.rescannable = false;
 	}
+
+    /*
+     * CDB: If there is exactly one subpath, its ordering is preserved.
+     * Child rel's pathkey exprs are already expressed in terms of the
+     * columns of the parent appendrel.  See find_usable_indexes().
+     */
+    if (list_length(subpaths) == 1)
+        pathnode->path.pathkeys = ((Path *)linitial(subpaths))->pathkeys;
 
 	return pathnode;
 }

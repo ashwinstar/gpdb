@@ -65,6 +65,7 @@ STOP_PROG=$GPSTOP
 PARALLEL_STATUS_FILE=/tmp/gpstart_parallel_status_file.$$
 GPSEGSTART=$WORKDIR/lib/gpsegstart.sh
 WAIT_LIMIT=600
+UPGRADE_TO=0
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -245,7 +246,7 @@ GET_DETAILS () {
 				fi
 			fi
 		else
-			BATCH_LIMIT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select 1 from $GP_PG_VIEW where valid ='t' and content<>-1;" | wc -l`
+			BATCH_LIMIT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select 1 from $GP_PG_VIEW as gppg where valid ='t' and content<>-1;" | wc -l`
 		fi
 		TOTAL_BATCH_LIMIT=$QE_ARRAY_COUNT
 		#Gather locale information MPP-972
@@ -402,7 +403,7 @@ PROCESS_STARTUP () {
 				VALID_SETTING=0
 			fi	
 			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-			$GPSEGSTART $$ $SWITCH_QE_LOG $QE_NAME $QE_PORT $QE_DIR $QE_VALID $VALID_SETTING $INST_COUNT $LOG_FILE $QD_DBNAME &
+			$GPSEGSTART $$ $SWITCH_QE_LOG $QE_NAME $QE_PORT $QE_DIR $QE_VALID $VALID_SETTING $INST_COUNT $LOG_FILE $UPGRADE_TO $QD_DBNAME &
 			PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 		fi
 	done
@@ -503,7 +504,13 @@ PROCESS_STARTUP () {
 	LOG_MSG "[INFO]:-Starting Master instance $QD_NAME directory $MASTER_DATA_DIRECTORY" 1
 	export PGPORT=${MASTER_PORT}
 	export PGPATH=${APP_PATH}
-	$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -E -p $MASTER_PORT " start -m $MODE  > /dev/null 2>&1
+
+	EXTRA_START_OPTS=""
+	if [ "$UPGRADE_TO" != "0" ]; then
+		EXTRA_START_OPTS=" -c allow_system_table_mods=true "
+	fi
+
+	$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -E -p $MASTER_PORT $EXTRA_START_OPTS" start -m $MODE  > /dev/null 2>&1
 	ERROR_CHK $? "startup Master instance" 2
 	RET_TEXT=`$PG_CTL status -D $MASTER_DATA_DIRECTORY`
 	RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
@@ -513,7 +520,7 @@ PROCESS_STARTUP () {
 	else
 		LOG_MSG "[INFO]:-Command pg_ctl reports Master $QD_NAME instance active" 1
 	fi
-	$PSQL -p $MASTER_PORT $DEFAULTDB -c"\l" >/dev/null 2>&1
+	$PSQL -p $MASTER_PORT $DEFAULTDB -c"$GPLISTDATABASEQTY" >/dev/null 2>&1
 	if [ $DUMP_STAT -ne 1 ] && [ $EXIT_STATUS -eq 0 ];then
 		LOG_MSG "[INFO]:-Database successfully started with no errors reported" 1
 	else
@@ -528,7 +535,7 @@ PROCESS_STARTUP () {
 #******************************************************************************
 trap '$RM -f $PARALLEL_STATUS_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":vt'?'abqyzsml:d:e!DB:" opt;do
+		while getopts ":vt'?'abqyzsml:d:e!DB:u:" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						t ) DISPLAY_PARAM ;;
@@ -547,10 +554,12 @@ if [ $# -ne 0 ]; then
 						    USAGE ;;
 						D ) DEBUG_LEVEL=1 ;;
 						B ) BATCH_DEFAULT=$OPTARG ;;
+						u ) UPGRADE_TO=$OPTARG ;;
 						* ) USAGE ;;
 				esac
 		done	
 fi
+
 if [ x"" != x"$LOG_DIR" ];then
 	CHK_DIR $LOG_DIR
 	if [ $EXISTS -eq 1 ]; then
@@ -561,6 +570,25 @@ if [ x"" != x"$LOG_DIR" ];then
 fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
+
+
+# upgrade mode, upgrade the master database's control file
+if [ "$UPGRADE_TO" != "0" ]; then
+	LOG_MSG "[INFO]:-Running in upgrade mode"
+	if [ "$UPGRADE_TO" == "3.1" ]; then
+
+		LOG_MSG "[INFO]:-Upgrading master control file to $UPGRADE_TO"
+		$GPCONTROLMOD --catversion $UPGRADE_TO $MASTER_DATA_DIRECTORY
+	fi
+
+	RETVAL=$?
+
+	if [ $RETVAL -ne 0 ]
+	then
+		LOG_MSG "[WARN]:-Control file update seems to have failed"
+	fi
+fi
+
 if [ x"" == x"$CHK_STANDBY" ];then
 	CHK_ON_PASSIVE_STANDBY
 fi

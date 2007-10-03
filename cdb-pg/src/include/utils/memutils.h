@@ -56,6 +56,8 @@ typedef struct StandardChunkHeader
 #ifdef MEMORY_CONTEXT_CHECKING
 	/* when debugging memory usage, also store actual requested size */
 	Size		requested_size;
+#endif
+#ifdef CDB_PALLOC_TAGS
 	const char *alloc_tag;
 	int 		alloc_n;
 	void *alloc_prev;
@@ -99,12 +101,22 @@ extern MemoryContext GetMemoryChunkContext(void *pointer);
 extern bool MemoryContextIsEmpty(MemoryContext context);
 
 /* Statistics */
-extern Size  MemoryContextGetCurrentSpace(MemoryContext context);
-extern int64 MemoryContextGetPeakSpace(MemoryContext context);
-extern int64 MemoryContextSetPeakSpace(MemoryContext context, int64 nbytes);
+extern Size MemoryContextGetCurrentSpace(MemoryContext context);
+extern Size MemoryContextGetPeakSpace(MemoryContext context);
+extern Size MemoryContextSetPeakSpace(MemoryContext context, Size nbytes);
 extern char *MemoryContextName(MemoryContext context, MemoryContext relativeTo,
                                char *buf, int bufsize);
 extern void MemoryContextStats(MemoryContext context);
+
+#ifdef CDB_PALLOC_CALLER_ID
+#define MemoryContextDelete(context)    (MemoryContextDeleteDbg(context, __FILE__, __LINE__))
+extern void MemoryContextDeleteDbg(MemoryContext context, const char* sfile, int sline);
+#endif
+
+#ifdef CDB_PALLOC_TAGS
+extern void dump_memory_allocation(const char* fname);
+extern void dump_memory_allocation_ctxt(FILE * ofile, void *ctxt);
+#endif
 
 #ifdef MEMORY_CONTEXT_CHECKING
 extern void MemoryContextCheck(MemoryContext context);
@@ -114,6 +126,13 @@ extern bool MemoryContextContains(MemoryContext context, void *pointer);
 /* Functions called only by context-type-specific memory managers... */
 extern void MemoryContextNoteAlloc(MemoryContext context, Size nbytes);
 extern void MemoryContextNoteFree(MemoryContext context, Size nbytes);
+#ifdef _MSC_VER
+__declspec(noreturn)
+#endif
+extern void MemoryContextError(int errorcode, MemoryContext context,
+                               const char *sfile, int sline,
+                               const char *fmt, ...)
+                              __attribute__((__noreturn__));
 
 /*
  * This routine handles the context-type-independent part of memory

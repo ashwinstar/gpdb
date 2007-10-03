@@ -2347,7 +2347,7 @@ static struct config_int ConfigureNamesInt[] =
 		 GUC_NOT_IN_SAMPLE
 		},
 		&gp_use_mpool,
-		1, 0, 1, NULL, NULL
+		0, 0, 1, NULL, NULL
 	},
 
 
@@ -2493,6 +2493,16 @@ static struct config_real ConfigureNamesReal[] =
 		},
 		&autovacuum_anl_scale,
 		0.1, 0.0, 100.0, NULL, NULL
+	},
+
+	{
+		{"gp_process_memory_cutoff", PGC_USERSET, RESOURCES_MEM,
+			gettext_noop("Virtual memory limit per process, in kilobytes."),
+			gettext_noop("0 for no limit.  Process is terminated if limit is exceeded."),
+			GUC_UNIT_KB
+		},
+		&gp_process_memory_cutoff,
+		0, 0, SIZE_MAX/2/1024, cdbvars_assign_gp_process_memory_cutoff, NULL
 	},
 
 	{
@@ -4628,14 +4638,54 @@ parse_int(const char *value, int *result, int flags)
  * result is not NULL, return the semantic value there.
  */
 static bool
-parse_real(const char *value, double *result)
+parse_real(const char *value, double *result, int flags)
 {
 	double		val;
 	char	   *endptr;
 
 	errno = 0;
 	val = strtod(value, &endptr);
-	if (endptr == value || *endptr != '\0' || errno == ERANGE)
+
+	if ((flags & GUC_UNIT_MEMORY) && endptr != value)
+	{
+		bool		used = false;
+
+		while (*endptr == ' ')
+			endptr++;
+
+		if (strcmp(endptr, "kB") == 0)
+		{
+			used = true;
+			endptr += 2;
+		}
+		else if (strcmp(endptr, "MB") == 0)
+		{
+			val *= KB_PER_MB;
+			used = true;
+			endptr += 2;
+		}
+		else if (strcmp(endptr, "GB") == 0)
+		{
+			val *= KB_PER_GB;
+			used = true;
+			endptr += 2;
+		}
+
+		if (used)
+		{
+			switch (flags & GUC_UNIT_MEMORY)
+			{
+				case GUC_UNIT_BLOCKS:
+					val /= (BLCKSZ / 1024);
+					break;
+				case GUC_UNIT_XBLOCKS:
+					val /= (XLOG_BLCKSZ / 1024);
+					break;
+			}
+		}
+	}
+
+    if (endptr == value || *endptr != '\0' || errno == ERANGE)
 	{
 		if (result)
 			*result = 0;		/* suppress compiler warning */
@@ -5018,7 +5068,7 @@ set_config_option(const char *name, const char *value,
 
 				if (value)
 				{
-					if (!parse_real(value, &newval))
+					if (!parse_real(value, &newval, conf->gen.flags))
 					{
 						ereport(elevel,
 								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -6361,8 +6411,46 @@ _ShowOption(struct config_generic * record, bool use_units)
 					val = (*conf->show_hook) ();
 				else
 				{
-					snprintf(buffer, sizeof(buffer), "%g",
-							 *conf->variable);
+					char		unit[4];
+					double		result = *conf->variable;
+
+					if (use_units && result > 0 && (record->flags & GUC_UNIT_MEMORY))
+					{
+                        double result_gb;
+                        double result_mb;
+
+                        switch (record->flags & GUC_UNIT_MEMORY)
+						{
+							case GUC_UNIT_BLOCKS:
+								result *= BLCKSZ / 1024;
+								break;
+							case GUC_UNIT_XBLOCKS:
+								result *= XLOG_BLCKSZ / 1024;
+								break;
+						}
+
+                        result_gb = result / KB_PER_GB;
+                        result_mb = result / KB_PER_MB;
+
+						if (result_gb >= 1.0 &&
+                            result_gb * KB_PER_GB == result)
+						{
+							result = result_gb;
+							strcpy(unit, "GB");
+						}
+						else if (result_mb >= 1.0 &&
+                                 result_mb * KB_PER_MB == result)
+						{
+							result = result_mb;
+							strcpy(unit, "MB");
+						}
+						else
+							strcpy(unit, "kB");
+					}
+					else
+						strcpy(unit, "");
+
+					snprintf(buffer, sizeof(buffer), "%g%s", result, unit);
 					val = buffer;
 				}
 			}
@@ -6528,7 +6616,7 @@ is_newvalue_equal(struct config_generic * record, const char *newvalue)
 				struct config_real *conf = (struct config_real *) record;
 				double		newval;
 
-				return parse_real(newvalue, &newval) && *conf->variable == newval;
+				return parse_real(newvalue, &newval, record->flags) && *conf->variable == newval;
 			}
 		case PGC_STRING:
 			{

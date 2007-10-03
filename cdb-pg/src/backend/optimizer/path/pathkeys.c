@@ -1383,12 +1383,13 @@ cdb_build_distribution_pathkeys(PlannerInfo      *root,
  * 'relids' is the set of relids that may occur in the targetlist exprs.
  * 'targetlist' specifies the projection.  It is a List of TargetEntry
  *      or merely a List of Expr.
- * 'newvarlist' is an optional List of Expr which may contain Var nodes
- *      referencing the result of the projection.  The Var nodes in the
- *      new pathkey are copied from ones in this list if possible, to
- *      ensure successful equal() comparison when finding matching pathkeys.
+ * 'newvarlist' is an optional List of Expr, in 1-1 correspondence with
+ *      'targetlist'.  If specified, instead of creating a Var node to
+ *      reference a targetlist item, we plug in a copy of the corresponding
+ *      newvarlist item.
  * 'newrelid' is the RTE index of the projected result, for finding or
  *      building Var nodes that reference the projected columns.
+ *      Ignored if 'newvarlist' is specified.
  *
  * NB: We ignore the presence or absence of a RelabelType node atop either
  * expr in determining whether a PathKeyItem expr matches a targetlist expr.
@@ -1405,54 +1406,33 @@ cdb_pull_up_pathkey(PlannerInfo    *root,
     Expr           *newexpr;
 
     Assert(pathkey);
-
-    /* Use constant expr if available.  Will be at head of list. */
-    if (CdbPathkeyEqualsConstant(pathkey))
-    {
-        item = (PathKeyItem *)linitial(pathkey);
-        newexpr = (Expr *)copyObject(item->key);
-    }
-
-    /* New vars for old! */
-    else
-    {
-        AttrNumber  targetindex;
+    Assert(!newvarlist ||
+           list_length(newvarlist) == list_length(targetlist));
 
         /* Find an expr that we can rewrite to use the projected columns. */
         item = cdbpullup_findPathKeyItemInTargetList(pathkey,
                                                      relids,
                                                      targetlist,
-                                                     &targetindex); // OUT
-        if (!item)
-            return NULL;
-
-        /* If found matching targetlist item, make a Var that references it. */
-        if (targetindex > 0)
-            newexpr = (Expr *)cdbpullup_makeVar(newrelid,
-                                                targetindex,
-                                                newvarlist,
-                                                (Expr *)item->key);
+                                                 NULL);
 
         /* Replace expr's Var nodes with new ones referencing the targetlist. */
-        else
+    if (item)
             newexpr = cdbpullup_expr((Expr *)item->key,
                                      targetlist,
                                      newvarlist,
                                      newrelid);
 
-        /* Pull up RelabelType node too, unless tlist expr has right type. */
-        if (IsA(item->key, RelabelType))
+    /* If not found, see if the equiv class contains a constant expr. */
+    else if (CdbPathkeyEqualsConstant(pathkey))
         {
-            RelabelType    *oldrelabel = (RelabelType *)item->key;
-
-            if (oldrelabel->resulttype != exprType((Node *)newexpr) ||
-                oldrelabel->resulttypmod != exprTypmod((Node *)newexpr))
-                newexpr = (Expr *)makeRelabelType(newexpr,
-                                                  oldrelabel->resulttype,
-                                                  oldrelabel->resulttypmod,
-                                                  oldrelabel->relabelformat);
-        }
+        item = (PathKeyItem *)linitial(pathkey);
+        newexpr = (Expr *)copyObject(item->key);
     }
+
+    /* Fail if no usable expr. */
+    else
+        return NULL;
+
     Insist(newexpr);
 
     /* Make new PathKeyItem, keeping same sortop. */

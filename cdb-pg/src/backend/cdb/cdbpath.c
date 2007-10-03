@@ -96,6 +96,9 @@ cdbpath_create_motion_path(PlannerInfo     *root __attribute__((unused)) ,
 {
     CdbMotionPath      *pathnode;
 
+    Assert(cdbpathlocus_is_valid(locus) &&
+           cdbpathlocus_is_valid(subpath->locus));
+
     /* Moving subpath output to a single executor process (qDisp or qExec)? */
     if (CdbPathLocus_IsBottleneck(locus))
     {
@@ -279,12 +282,15 @@ invalid_motion_request:
 /*
  * cdbpath_partkeyitem_eq_constant
  */
-static inline bool
+static inline List *
 cdbpath_partkeyitem_eq_constant(CdbLocusType   locustype,
                                  List          *partkeyitem)
 {
     if (locustype == CdbLocusType_Hashed)
-        return CdbPathkeyEqualsConstant(partkeyitem);
+    {
+        if (CdbPathkeyEqualsConstant(partkeyitem))
+            return partkeyitem;
+    }
     else if (locustype == CdbLocusType_HashedOJ)
     {
         ListCell   *cell;
@@ -292,12 +298,12 @@ cdbpath_partkeyitem_eq_constant(CdbLocusType   locustype,
         {
             List   *pathkey = (List*)lfirst(cell);
             if (CdbPathkeyEqualsConstant(pathkey))
-               return true;
+                return pathkey;
         }
     }
     else
         Assert(false);
-    return false;
+    return NIL;
 }                               /* cdbpath_partkeyitem_eq_constant */
 
 
@@ -326,7 +332,7 @@ static bool
 cdbpath_match_preds_to_partkey_tail(CdbpathMatchPredsContext   *ctx,
                                     ListCell                   *partkeycell)
 {
-    List       *copathkey = NIL;
+    List       *copathkey;
     List       *sublist;
     ListCell   *rcell;
 
@@ -343,11 +349,10 @@ cdbpath_match_preds_to_partkey_tail(CdbpathMatchPredsContext   *ctx,
      *  (Note that "T.D = <constant expr>" won't be in the mergeclause_list
      *  because it isn't a join pred.)
      */
-    if (cdbpath_partkeyitem_eq_constant(ctx->locus.locustype, sublist))
-        copathkey = sublist;
+    copathkey = cdbpath_partkeyitem_eq_constant(ctx->locus.locustype, sublist);
 
     /* Look for an equijoin comparison to the partkey item. */
-    else
+    if (!copathkey)
     {
         foreach(rcell, ctx->mergeclause_list)
         {
@@ -401,7 +406,10 @@ cdbpath_match_preds_to_partkey_tail(CdbpathMatchPredsContext   *ctx,
         else if (!partkeycell)
             CdbPathLocus_MakeHashed(ctx->colocus, list_make1(copathkey));
         else
+        {
             ctx->colocus->partkey = lcons(copathkey, ctx->colocus->partkey);
+            Assert(cdbpathlocus_is_valid(*ctx->colocus));
+        }
     }
     return true;
 }                               /* cdbpath_match_preds_to_partkey_tail */
@@ -431,7 +439,7 @@ cdbpath_match_preds_to_partkey(PlannerInfo     *root,
         !CdbPathLocus_IsHashedOJ(locus))
         return false;
 
-    Assert(CdbPathLocus_Degree(locus) > 0);
+    Assert(cdbpathlocus_is_valid(locus));
 
     ctx.root                = root;
     ctx.mergeclause_list    = mergeclause_list;
@@ -657,6 +665,9 @@ cdbpath_motion_for_join(PlannerInfo    *root,
     inner.locus = inner.path->locus;
     CdbPathLocus_MakeNull(&outer.move_to);
     CdbPathLocus_MakeNull(&inner.move_to);
+
+    Assert(cdbpathlocus_is_valid(outer.locus) &&
+           cdbpathlocus_is_valid(inner.locus));
 
     /* Caller can specify an ordering for each source path that is
      * the same as or weaker than the path's existing ordering.

@@ -550,10 +550,12 @@ ExecHashJoinOuterGetTuple(PlanState *outerNode,
 	HashJoinTable hashtable = hjstate->hj_HashTable;
 	int			curbatch = hashtable->curbatch;
 	TupleTableSlot *slot;
+    ExprContext    *econtext;
 
-	if (curbatch == 0)
-	{							/* if it is the first pass */
-
+	if (curbatch == 0)			/* if it is the first pass */
+	{
+		for (;;)
+		{
 		/*
 		 * Check to see if first outer tuple was already fetched by
 		 * ExecHashJoin() and not used yet.
@@ -578,21 +580,29 @@ ExecHashJoinOuterGetTuple(PlanState *outerNode,
 			else
 				slot = ExecProcNode(outerNode);
 		}
-		if (!TupIsNull(slot))
-		{
+
+            if (TupIsNull(slot))
+                break;
+
 			/*
 			 * We have to compute the tuple's hash value.
 			 */
-			ExprContext *econtext = hjstate->js.ps.ps_ExprContext;
-
+			econtext = hjstate->js.ps.ps_ExprContext;
 			econtext->ecxt_outertuple = slot;
-			*hashvalue = ExecHashGetHashValue(hashtable, econtext,
-											  hjstate->hj_OuterHashKeys);
-
+			if (ExecHashGetHashValue(hashtable, econtext,
+									 hjstate->hj_OuterHashKeys,
+									 (hjstate->js.jointype == JOIN_LEFT),
+									 hashvalue))
+			{
 			/* remember outer relation is not empty for possible rescan */
 			hjstate->hj_OuterNotEmpty = true;
 
 			return slot;
+		}
+			/*
+			 * That tuple couldn't match because of a NULL, so discard it
+			 * and continue with the next one.
+			 */
 		}
 
 		/*

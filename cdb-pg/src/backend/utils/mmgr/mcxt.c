@@ -22,8 +22,37 @@
 
 #include "postgres.h"
 
+#include "miscadmin.h"                      /* MyProcPid */
 #include "utils/memutils.h"
-#include "utils/debugbreak.h"
+
+#include "cdb/cdbvars.h"                    /* gp_process_memory_cutoff_bytes */
+
+#ifdef HAVE_STDINT_H
+#include <stdint.h>                         /* SIZE_MAX (C99) */
+#endif
+#ifndef SIZE_MAX                            
+#define SIZE_MAX ((Size)0-(Size)1)          /* for Solaris */
+#endif
+
+#ifdef CDB_PALLOC_CALLER_ID
+#undef MemoryContextAlloc
+#undef MemoryContextAllocZero
+#undef MemoryContextAllocZeroAligned
+#undef MemoryContextDelete
+#undef repalloc
+#undef pfree
+#define CDB_MCXT_WHERE(context) (context)->callerFile, (context)->callerLine
+#else
+#define CDB_MCXT_WHERE(context) __FILE__, __LINE__
+#endif
+
+#if defined(CDB_PALLOC_TAGS) && !defined(CDB_PALLOC_CALLER_ID)
+#error "If CDB_PALLOC_TAGS is defined, CDB_PALLOC_CALLER_ID must be defined too"
+#endif
+
+
+static void
+MemoryContextCutoff(MemoryContext top, Size held, MemoryContext allocContext, Size allocBytes);
 
 
 /*****************************************************************************
@@ -160,12 +189,24 @@ MemoryContextResetChildren(MemoryContext context)
  */
 void
 MemoryContextDelete(MemoryContext context)
+#ifdef CDB_PALLOC_CALLER_ID
+{
+    MemoryContextDeleteDbg(context, "unknown", 0);
+}
+void
+MemoryContextDeleteDbg(MemoryContext context, const char* sfile, int sline)
+#endif
 {
 	AssertArg(MemoryContextIsValid(context));
 	/* We had better not be deleting TopMemoryContext ... */
 	Assert(context != TopMemoryContext);
 	/* And not CurrentMemoryContext, either */
 	Assert(context != CurrentMemoryContext);
+
+#ifdef CDB_PALLOC_CALLER_ID
+    context->callerFile = sfile;
+    context->callerLine = sline;
+#endif
 
 	MemoryContextDeleteChildren(context);
 
@@ -325,19 +366,32 @@ MemoryContextIsEmpty(MemoryContext context)
 void
 MemoryContextNoteAlloc(MemoryContext context, Size nbytes)
 {
+    MemoryContext   allocContext = context;
+    Size            held;
+
 	AssertArg(MemoryContextIsValid(context));
+	AssertArg(AllocSizeIsValid(nbytes));
 
-    while (context)
+    for (;;)
     {
-        int64   held;
-
         Assert(context->allBytesAlloc >= context->allBytesFreed);
+        Assert(context->allBytesAlloc - context->allBytesFreed < SIZE_MAX - nbytes);
+
         context->allBytesAlloc += nbytes;
-        held = context->allBytesAlloc - context->allBytesFreed;
+
+        held = (Size)(context->allBytesAlloc - context->allBytesFreed);
         if (context->maxBytesHeld < held)
             context->maxBytesHeld = held;
+
+        if (!context->parent)
+            break;
         context = context->parent;
     }
+
+    /* Limit total memory held by top memory context plus all descendants. */
+    if (context->maxBytesHeld > gp_process_memory_warning_bytes &&
+        gp_process_memory_warning_bytes > 0)
+        MemoryContextCutoff(context, held, allocContext, nbytes);
 }                               /* MemoryContextNoteAlloc */
 
 /*
@@ -350,15 +404,141 @@ MemoryContextNoteAlloc(MemoryContext context, Size nbytes)
 void
 MemoryContextNoteFree(MemoryContext context, Size nbytes)
 {
+    Size    held;
+
 	AssertArg(MemoryContextIsValid(context));
+	AssertArg(AllocSizeIsValid(nbytes));
 
     while (context)
     {
+        Assert(context->allBytesAlloc >= context->allBytesFreed + nbytes);
+        Assert(context->allBytesFreed + nbytes >= context->allBytesFreed);
+
         context->allBytesFreed += nbytes;
-        Assert(context->allBytesAlloc >= context->allBytesFreed);
+
+        held = (Size)(context->allBytesAlloc - context->allBytesFreed);
+        if (context->localMinHeld > held)
+            context->localMinHeld = held;
+
         context = context->parent;
     }
 }                               /* MemoryContextNoteFree */
+
+/*
+ * MemoryContextCutoff
+ *		Called by MemoryContextNoteAlloc() to enforce limit on total allocation.
+ */
+void
+MemoryContextCutoff(MemoryContext top, Size held, MemoryContext allocContext, Size allocBytes)
+{
+    /* Keep quiet while updating shared memory, handling errors, etc. */
+    if (CritSectionCount > 0 ||
+        InterruptHoldoffCount > 0 ||
+        elog_geterrcode() != 0 ||
+        !IsNormalProcessingMode())
+        return;
+
+    /*
+     * Terminate process in case of runaway memory usage.
+     */
+    if (held > gp_process_memory_cutoff_bytes)
+    {
+        const char *fate = _("process terminated");
+
+        if (Gp_role == GP_ROLE_EXECUTE)
+            fate = _("worker process terminated");
+        else if (Gp_role == GP_ROLE_DISPATCH)
+            fate = _("session terminated");
+
+        MemoryContextStats(top);
+        ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
+                        errmsg("Virtual memory limit exceeded; "
+                               "%s.  "
+                               "%.0fkB in use.  "
+                               "gp_process_memory_cutoff=%.0fkB",
+                               fate,
+                               (double)held/1024,
+                               (double)gp_process_memory_cutoff_bytes/1024),
+                        errdetail("Last allocation was %.0f bytes in "
+                                  "context '%s'.  (%s:%d)",
+                                  (double)allocBytes,
+                                  allocContext->name,
+                                  CDB_MCXT_WHERE(allocContext)),
+                        errhint("This limit protects against runaway "
+                                "memory usage that could adversely affect "
+                                "other users and processes.")
+                ));
+    }
+
+    /*
+     * Warn if getting close to the memory limit.  After a warning,
+     * don't warn again until memory usage drops well below the
+     * warning level and then rises higher than before.
+     */
+    if (held > gp_process_memory_warning_bytes &&
+        top->localMinHeld < gp_process_memory_warning_bytes -
+            (gp_process_memory_cutoff_bytes - gp_process_memory_warning_bytes))
+    {
+        const char *who = _("Process");
+
+        if (Gp_role == GP_ROLE_EXECUTE)
+            who = _("Worker process");
+        else if (Gp_role == GP_ROLE_DISPATCH)
+            who = _("Server process");
+
+        MemoryContextStats(top);
+        ereport(WARNING, (errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+                          errmsg("%s has grown to "
+                                 "%.0f%% of its virtual memory limit.  "
+                                 "%.0fkB in use.  "
+                                 "gp_process_memory_cutoff=%.0fkB",
+                                 who,
+                                 (double)held / gp_process_memory_cutoff_bytes * 100,
+                                 (double)held / 1024,
+                                 (double)gp_process_memory_cutoff_bytes / 1024),
+                          errdetail("Last allocation was %.0f bytes in "
+                                    "context '%s'.  (%s:%d)",
+                                    (double)allocBytes,
+                                    allocContext->name,
+                                    CDB_MCXT_WHERE(allocContext))
+                ));
+
+        /* Raise low-water mark to current level. */
+        top->localMinHeld = held;
+    }
+}                               /* MemoryContextCutoff */
+
+
+/*
+ * MemoryContextError
+ *		Report failure of a memory context operation.  Does not return.
+ */
+void
+MemoryContextError(int errorcode, MemoryContext context,
+                   const char *sfile, int sline,
+                   const char *fmt, ...)
+{
+	va_list args;
+    char    buf[200];
+
+    MemoryContextStats(TopMemoryContext);
+
+	/* Format caller's message. */
+	va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf)-32, fmt, args);
+	va_end(args);
+
+    ereport(ERROR, (errcode(errorcode),
+                    errmsg("%s (context '%s') (%s:%d)",
+                           buf,
+                           context->name,
+                           sfile ? sfile : "",
+                           sline)
+            ));
+
+    /* not reached */
+    abort();
+}                               /* MemoryContextError */
 
 
 /*
@@ -367,15 +547,17 @@ MemoryContextNoteFree(MemoryContext context, Size nbytes)
  *
  * This is the amount of space obtained from the lower-level source of the
  * memory (e.g. malloc) and not yet released back to that source.  Includes
- * overhead and free space held and managed within this context by the 
+ * overhead and free space held and managed within this context by the
  * context-type-specific memory manager.
  */
 Size
 MemoryContextGetCurrentSpace(MemoryContext context)
 {
-	AssertArg(MemoryContextIsValid(context) &&
-              context->allBytesAlloc >= context->allBytesFreed);
-    return context->allBytesAlloc - context->allBytesFreed;
+	AssertArg(MemoryContextIsValid(context));
+    Assert(context->allBytesAlloc >= context->allBytesFreed);
+    Assert(context->allBytesAlloc - context->allBytesFreed < SIZE_MAX);
+
+    return (Size)(context->allBytesAlloc - context->allBytesFreed);
 }                               /* MemoryContextGetCurrentSpace */
 
 /*
@@ -385,7 +567,7 @@ MemoryContextGetCurrentSpace(MemoryContext context)
  * This is the maximum value reached by MemoryContextGetCurrentSpace() since
  * the context was created, or since reset by MemoryContextSetPeakSpace().
  */
-int64 
+Size
 MemoryContextGetPeakSpace(MemoryContext context)
 {
 	AssertArg(MemoryContextIsValid(context));
@@ -401,16 +583,21 @@ MemoryContextGetPeakSpace(MemoryContext context)
  * Can be used to observe local maximum usage over an interval and then to
  * restore the overall maximum.
  */
-int64 
-MemoryContextSetPeakSpace(MemoryContext context, int64 nbytes)
+Size
+MemoryContextSetPeakSpace(MemoryContext context, Size nbytes)
 {
-    int64   oldpeak;
+    Size    held;
+    Size    oldpeak;
 
-	AssertArg(MemoryContextIsValid(context) &&
-              context->allBytesAlloc >= context->allBytesFreed);
+	AssertArg(MemoryContextIsValid(context));
+    Assert(context->allBytesAlloc >= context->allBytesFreed);
+    Assert(context->allBytesAlloc - context->allBytesFreed < SIZE_MAX);
+
     oldpeak = context->maxBytesHeld;
-    context->maxBytesHeld = Max(nbytes,
-                                context->allBytesAlloc - context->allBytesFreed);
+
+    held = (Size)(context->allBytesAlloc - context->allBytesFreed);
+    context->maxBytesHeld = Max(held, nbytes);
+
     return oldpeak;
 }                               /* MemoryContextSetPeakSpace */
 
@@ -499,7 +686,7 @@ MemoryContextStats(MemoryContext context)
 	AssertArg(MemoryContextIsValid(context));
 
     name = MemoryContextName(context, NULL, namebuf, sizeof(namebuf));
-    write_stderr("Memory statistics for %s/\n", name);
+    write_stderr("pid %d: Memory statistics for %s/\n", MyProcPid, name);
 
     MemoryContextStats_recur(context, context, namebuf, sizeof(namebuf));
 }
@@ -640,7 +827,7 @@ MemoryContextCreate(NodeTag tag, Size size,
 	MemSet(node, 0, size);
 	node->type = tag;
 	node->methods = *methods;
-	node->parent = NULL;		/* for the moment */
+	node->parent = parent;
 	node->firstchild = NULL;
 	node->nextchild = NULL;
 	node->name = ((char *) node) + size;
@@ -652,7 +839,6 @@ MemoryContextCreate(NodeTag tag, Size size,
 	/* OK to link node to parent (if any) */
 	if (parent)
 	{
-		node->parent = parent;
 		node->nextchild = parent->firstchild;
 		parent->firstchild = node;
 	}
@@ -669,34 +855,30 @@ MemoryContextCreate(NodeTag tag, Size size,
  * nodes/memnodes.h into postgres.h which seems a bad idea.
  */
 void *
-#ifdef MEMORY_CONTEXT_CHECKING
-MemoryContextAllocTagN(MemoryContext context, Size size, const char* tag, int n)
-#else
 MemoryContextAlloc(MemoryContext context, Size size)
+#ifdef CDB_PALLOC_CALLER_ID
+{
+    return MemoryContextAllocDbg(context, size, "unknown", 0);
+}
+void *
+MemoryContextAllocDbg(MemoryContext context, Size size, const char* sfile, int sline)
 #endif
 {
-	void *ret;
-
 	AssertArg(MemoryContextIsValid(context));
 
-	if (!AllocSizeIsValid(size))
-		elog(ERROR, "invalid memory alloc request size %lu",
-			 (unsigned long) size);
-
-	ret = (*context->methods.alloc) (context, size);
-
-#ifdef MEMORY_CONTEXT_CHECKING
-	{
-		StandardChunkHeader *header;
-		header = (StandardChunkHeader *)
-			((char *) ret - STANDARDCHUNKHEADERSIZE);
-		header->alloc_tag = tag;
-		header->alloc_n = n;
-	}
+#ifdef CDB_PALLOC_CALLER_ID
+    context->callerFile = sfile;
+    context->callerLine = sline;
 #endif
-	return ret;
-}
 
+    if (!AllocSizeIsValid(size))
+        MemoryContextError(ERRCODE_INTERNAL_ERROR,
+                           context, CDB_MCXT_WHERE(context),
+                           "invalid memory alloc request size %lu",
+                           (unsigned long)size);
+
+	return (*context->methods.alloc) (context, size);
+}
 
 /*
  * MemoryContextAllocZero
@@ -706,36 +888,34 @@ MemoryContextAlloc(MemoryContext context, Size size)
  *	is a very common combination, so we provide the combined operation.
  */
 void *
-#ifdef MEMORY_CONTEXT_CHECKING
-MemoryContextAllocZeroTagN(MemoryContext context, Size size, const char* tag, int n)
-#else
 MemoryContextAllocZero(MemoryContext context, Size size)
+#ifdef CDB_PALLOC_CALLER_ID
+{
+    return MemoryContextAllocZeroDbg(context, size, "unknown", 0);
+}
+void *
+MemoryContextAllocZeroDbg(MemoryContext context, Size size, const char* sfile, int sline)
 #endif
 {
 	void	   *ret;
 
 	AssertArg(MemoryContextIsValid(context));
 
+#ifdef CDB_PALLOC_CALLER_ID
+    context->callerFile = sfile;
+    context->callerLine = sline;
+#endif
+
 	if (!AllocSizeIsValid(size))
-	{
-		debug_break();
-		elog(ERROR, "invalid memory alloc request size %lu",
-			 (unsigned long) size);
-	}
+        MemoryContextError(ERRCODE_INTERNAL_ERROR,
+                           context, CDB_MCXT_WHERE(context),
+                           "invalid memory alloc request size %lu",
+                           (unsigned long)size);
 
 	ret = (*context->methods.alloc) (context, size);
 
 	MemSetAligned(ret, 0, size);
 
-#ifdef MEMORY_CONTEXT_CHECKING
-	{
-		StandardChunkHeader *header;
-		header = (StandardChunkHeader *)
-			((char *) ret - STANDARDCHUNKHEADERSIZE);
-		header->alloc_tag = tag;
-		header->alloc_n = n;
-	}
-#endif
 	return ret;
 }
 
@@ -747,33 +927,34 @@ MemoryContextAllocZero(MemoryContext context, Size size)
  *	is so often called with compile-time-constant sizes.
  */
 void *
-#ifdef MEMORY_CONTEXT_CHECKING
-MemoryContextAllocZeroAlignedTagN(MemoryContext context, Size size, const char* tag, int n)
-#else
 MemoryContextAllocZeroAligned(MemoryContext context, Size size)
+#ifdef CDB_PALLOC_CALLER_ID
+{
+    return MemoryContextAllocZeroAlignedDbg(context, size, "unknown", 0);
+}
+void *
+MemoryContextAllocZeroAlignedDbg(MemoryContext context, Size size, const char* sfile, int sline)
 #endif
 {
 	void	   *ret;
 
 	AssertArg(MemoryContextIsValid(context));
 
+#ifdef CDB_PALLOC_CALLER_ID
+    context->callerFile = sfile;
+    context->callerLine = sline;
+#endif
+
 	if (!AllocSizeIsValid(size))
-		elog(ERROR, "invalid memory alloc request size %lu",
-			 (unsigned long) size);
+        MemoryContextError(ERRCODE_INTERNAL_ERROR,
+                           context, CDB_MCXT_WHERE(context),
+                           "invalid memory alloc request size %lu",
+                           (unsigned long)size);
 
 	ret = (*context->methods.alloc) (context, size);
 
 	MemSetLoop(ret, 0, size);
 
-#ifdef MEMORY_CONTEXT_CHECKING
-	{
-		StandardChunkHeader *header;
-		header = (StandardChunkHeader *)
-			((char *) ret - STANDARDCHUNKHEADERSIZE);
-		header->alloc_tag = tag;
-		header->alloc_n = n;
-	}
-#endif
 	return ret;
 }
 
@@ -783,6 +964,13 @@ MemoryContextAllocZeroAligned(MemoryContext context, Size size)
  */
 void
 pfree(void *pointer)
+#ifdef CDB_PALLOC_CALLER_ID
+{
+    pfreeDbg(pointer, "unknown", 0);
+}
+void
+pfreeDbg(void *pointer, const char *sfile, int sline)
+#endif
 {
 	StandardChunkHeader *header;
 
@@ -801,6 +989,11 @@ pfree(void *pointer)
 		((char *) pointer - STANDARDCHUNKHEADERSIZE);
 
 	AssertArg(MemoryContextIsValid(header->context));
+
+#ifdef CDB_PALLOC_CALLER_ID
+    header->context->callerFile = sfile;
+    header->context->callerLine = sline;
+#endif
 
 	if (header->context->methods.free_p)
 		(*header->context->methods.free_p) (header->context, pointer);
@@ -813,14 +1006,16 @@ pfree(void *pointer)
  *		Adjust the size of a previously allocated chunk.
  */
 void *
-#ifdef MEMORY_CONTEXT_CHECKING
-repallocTagN(void *pointer, Size size, const char* tag, int n)
-#else
 repalloc(void *pointer, Size size)
+#ifdef CDB_PALLOC_CALLER_ID
+{
+    return repallocDbg(pointer, size, "unknown", 0);
+}
+void *
+repallocDbg(void *pointer, Size size, const char* sfile, int sline)
 #endif
 {
 	StandardChunkHeader *header;
-	void *ret;
 
 	/*
 	 * Try to detect bogus pointers handed to us, poorly though we can.
@@ -838,46 +1033,21 @@ repalloc(void *pointer, Size size)
 
 	AssertArg(MemoryContextIsValid(header->context));
 
-	if (!AllocSizeIsValid(size))
-		elog(ERROR, "invalid memory alloc request size %lu",
-			 (unsigned long) size);
-
-	ret = (*header->context->methods.realloc) (header->context,
-												 pointer, size);
-#ifdef MEMORY_CONTEXT_CHECKING
-	{
-		StandardChunkHeader *header;
-		header = (StandardChunkHeader *)
-			((char *) ret - STANDARDCHUNKHEADERSIZE);
-		header->alloc_tag = tag;
-		header->alloc_n = n;
-	}
+#ifdef CDB_PALLOC_CALLER_ID
+    header->context->callerFile = sfile;
+    header->context->callerLine = sline;
 #endif
-	return ret;
+
+	if (!AllocSizeIsValid(size))
+        MemoryContextError(ERRCODE_INTERNAL_ERROR,
+                           header->context, CDB_MCXT_WHERE(header->context),
+                           "invalid memory alloc request size %lu",
+                           (unsigned long)size);
+
+	return (*header->context->methods.realloc) (header->context,
+												 pointer, size);
 }
 
-/*
- * MemoryContextSwitchTo
- *		Returns the current context; installs the given context.
- *
- * This is inlined when using GCC.
- *
- * TODO: investigate supporting inlining for some non-GCC compilers.
- */
-#ifndef __GNUC__
-
-MemoryContext
-MemoryContextSwitchTo(MemoryContext context)
-{
-	MemoryContext old;
-
-	AssertArg(MemoryContextIsValid(context));
-
-	old = CurrentMemoryContext;
-	CurrentMemoryContext = context;
-	return old;
-}
-#endif   /* ! __GNUC__ */
 
 /*
  * MemoryContextStrdup

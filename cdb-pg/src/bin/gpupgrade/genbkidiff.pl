@@ -28,12 +28,53 @@ Gavin Sherry
 # is space delimited AND all tables have a primary key, so we can be sure
 # that we do not UPDATE where we should ADD a new entry.
 
+sub outputsql
+{
+	my $name;
+
+	if ($is_upgrade)
+	{
+		$name = "upgrade_cmds";
+	}
+	else
+	{
+		$name = "downgrade_cmds";
+	}
+
+	print OUTFILE "/* 
+ * WARNING!!! This is a system generated file. Use gpbkidiff to generate it
+ * or bug Gavin Sherry.
+ */
+
+#ifndef GP" . uc($name) . "_H
+#define GP" . uc($name) . "_H
+
+const char *" . $name . "[] = {";
+
+	print OUTFILE $typebuf;
+	print OUTFILE $sqlbuf;
+	print OUTFILE "	NULL};
+
+#endif /* GP" . uc($name) . "_H */
+";
+}
+
 sub printsql
 {
 	my $str = shift;
 	$str =~ s/"/\\"/g;
 	chomp $str;
-	print OUTFILE "	\"$str\",\n";
+	$str =  "	\"$str\",\n";
+#	$str = $str . "\n";
+
+	if ($str =~ m/pg_type/)
+	{
+		$typebuf = $typebuf . $str;
+	}
+	else
+	{
+		$sqlbuf = $sqlbuf . $str;
+	}
 }
 
 sub mylog
@@ -74,6 +115,8 @@ sub process_line
 	local(*LINE) = shift;
 	my $state;
 
+	my $saveline = $line;
+
 	if ($line =~ /^insert/)
 	{
 		my $oid = undef;
@@ -89,7 +132,7 @@ sub process_line
 		my @larr = linegetarray($line);
 		$state = "INSERT";
 
-		return ($state, $oid, @larr);
+		return ($state, $saveline, $oid, @larr);
 	}
 	elsif ($line =~ /^create/)
 	{
@@ -111,6 +154,8 @@ sub process_line
 		{
 			$line = <LINE>;
 
+			$saveline = $line;
+
 			last if $line =~ m/^ \)$/;
 
 			$line =~ s/\s//g;
@@ -129,7 +174,7 @@ sub process_line
 
 #		print "dumping\n";
 #		print Dumper %ret;
-		return ("CREATE", $table_name, \%ret);
+		return ("CREATE", $saveline, $table_name, \%ret);
 
 	}
 	elsif ($line =~ m/^declare/ || $line =~ m/^build/ ||
@@ -144,11 +189,11 @@ sub process_line
 	elsif ($line =~ m/^close/)
 	{
 		mylog(DEBUG, "returning CLOSE\n");
-		return "CLOSE";
+		return ("CLOSE", $saveline);
 	}
 	else
 	{
-		die "BUG, unknown line $line";
+		die "BUG, unknown line $saveline";
 	}
 }
 
@@ -198,7 +243,6 @@ sub sqlify
 	my $colname = shift;
 	my $row = shift;
 	my $cols = shift;
-	my $colorder = shift;
 
 #	print Dumper($row);
 #	mylog(DEBUG, "colname = $colname, value = $row->{$colname}\n");
@@ -246,8 +290,10 @@ sub rowmakeupdate
 	
 	foreach $bar (keys %$row)
 	{
-		push @foo, ("\"$bar\" = " . sqlify($bar, \%$row, \%$cols, \@colorder)) if ($row->{$bar} ne $oldrow->{$bar});
-		mylog(DEBUG, "testing $row->{$bar} ne $oldrow->{$bar}\n");
+		# update all fields anyway, since we want to duplicate rows even
+		# if only the OID changed
+		push @foo, ("\"$bar\" = " . sqlify($bar, \%$row, \%$cols)); # if ($row->{$bar} ne $oldrow->{$bar});
+		#mylog(DEBUG, "testing $row->{$bar} ne $oldrow->{$bar}\n");
 	}
 
 	$found = scalar(@foo);
@@ -265,19 +311,26 @@ sub rowmakeupdate
 	
 		foreach $bar (@attrs)
 		{
-			mylog(DEBUG, "testing $row->{$bar} ne $oldrow->{$bar}\n");
-			push @foo, "$bar = " . sqlify($bar, \%$oldrow, \%$cols, \@oldcolorder);
+			push @foo, "$bar = " . sqlify($bar, \%$oldrow, \%$cols);
 		}
-		if ($found)
+		$sql = $sql . (join " AND ", @foo);
+
+		# add returning statement
+		if (defined($oid))
 		{
-			$sql = $sql . (join " AND ", @foo) . ";";
+#			$sql = $sql . " returning oid as oldoid, '$oid'::oid as newoid, " .
+#				"ctid, tableoid";
+			$sql = $sql . " returning gp_oid_update(oid, '$oid'::oid, ctid, 'pg_catalog.$table'::regclass::oid)";
 		}
+		$sql = $sql . ";";
 	}
 	else
 	{
 		# the difference must be OIDs!
-		die "BUG\n" if ($oid eq $oldoid);
-		mylog(SQL, "insert into __gpupgrademap values($table, $oldoid, $oid);\n");
+		die "BUG\n";
+
+#		 if ($oid eq $oldoid);
+#		mylog(SQL, "insert into __gpupgrademap values($table, $oldoid, $oid);\n");
 	}
 	return $sql;
 }
@@ -295,19 +348,65 @@ sub rowmakeinsert
 
 	$sql = $sql . "(" . (join ", ", keys(%$row)) . ") VALUES ";
 	$sql = $sql . "(" . (join ", ", 
-			map { $_ = sqlify($_, \%$row, \%$cols, \@colorder); } keys %$row) . ");";
+			map { $_ = sqlify($_, \%$row, \%$cols); } keys %$row) . ") ";
 
 	mylog(DEBUG, "222OID = $oid\n");
-	$sql = $sql . "--OID:$oid" if defined($oid);
+#	$sql = $sql . " returning oid as oldoid, " .
+#				"'$oid'::oid as newoid, ctid, tableoid" if defined($oid);
+	$sql = $sql . " returning gp_oid_update(oid, '$oid'::oid, ctid, tableoid);"
+		if defined($oid);
+
+	$sql = $sql . ";";
 	return $sql;
 }
 
+# given $table, $oid, %row, %cols, @colorder, pkey make a delete statement
+sub rowmakedelete
+{
+	my $table = shift;
+	my $oid = shift;
+	my $row = shift;
+	my $cols = shift;
+	my $colorder = shift;
+	my $pkey = shift;
 
-pod2usage() unless scalar(@ARGV) == 3;
+	my $sql = "DELETE FROM pg_catalog.\"$table\" WHERE ";
+
+	die "shouldn't get here - $table\n" unless exists $pkey->{$table};
+
+	my @attrs = @{$pkey->{$table}};
+
+	@foo = ();
+	my $bar;
+	
+	foreach $bar (@attrs)
+	{
+		push @foo, "$bar = " . sqlify($bar, \%$row, \%$cols);
+	}
+	$sql = $sql . (join " AND ", @foo);
+
+	return $sql;
+}
+
+pod2usage() unless scalar(@ARGV) >= 3;
+
+my $tmp = @ARGV[0];
+
+our $is_upgrade = 1;
+
+mylog(DEBUG, "tmp = $tmp\n");
+if ($tmp eq "-D")
+{
+	$is_upgrade = 0;
+} 
 
 our $outfile = pop @ARGV;
 my $f2 = pop @ARGV;
 my $f1 = pop @ARGV;
+
+# buffer sql
+our $typebuf;
+our $sqlbuf;
 
 mylog(DEBUG, "out = $outfile, f2 = $f2, f1 = $f1\n");
 
@@ -347,7 +446,7 @@ my %pkeys = ("pg_proc" => ["proname", "proargtypes", "pronamespace"],
 			 "pg_operator" => ["oprname", "oprleft", "oprright", "oprnamespace"],
 			 "pg_opclass" => ["opcamid", "opcname", "opcnamespace"],
 			 "pg_am" => ["amname"],
-			 "pg_amop" => ["amopopr, amopclaid"],
+			 "pg_amop" => ["amopopr", "amopclaid"],
 			 "pg_amproc" => ["amopclaid", "amprocsubtype", "amprocnum"],
 			 "pg_language" => ["lanname"] ,
 			 "pg_largeobject" => ["loid", "pageno"],
@@ -420,6 +519,7 @@ for (;;)
 		@ret = process_line($line1, *F1);
 
 		$state1 = shift(@ret);
+		$line1 = shift(@ret);
 	
 		if ($state1 =~ m/CREATE/)
 		{
@@ -484,6 +584,7 @@ for (;;)
 		@ret = process_line($line2, *F2);
 	
 		$state2 = shift(@ret);
+		$line2 = shift(@ret);
 	
 		if ($state2 =~ m/CREATE/)
 		{
@@ -553,6 +654,7 @@ for (;;)
 			if ($line1 eq $line2)
 			{
 				$READ_STATE = NEW_BOTH;
+				mylog(DEBUG, "strings are equal: \n\"$line1\"\n\"$line2\"");
 				mylog(DEBUG, "setting read state to NEW_BOTH\n");
 			}
 			else
@@ -581,14 +683,29 @@ for (;;)
 				}
 				else
 				{
-					# issue INSERT
+					# if we're doing an upgrade, it's an insert, if not,
+					# it's a delete
 	
-					mylog(DEBUG, "oid = $oid2\n");
-					mylog(SQL, rowmakeinsert($cur_table2,$oid2, 
-											 \%row2, \%cur_cols2) . "\n");
-					# state = GET_NEW_RIGHT
-					$READ_STATE = NEW_RIGHT;
-					mylog(DEBUG, "setting readstate to NEW_RIGHT\n");
+					if ($is_upgrade)
+					{
+						mylog(DEBUG, "oid = $oid2\n");
+						mylog(SQL, rowmakeinsert($cur_table2,$oid2, 
+												 \%row2, \%cur_cols2) . "\n");
+						# state = GET_NEW_RIGHT
+						$READ_STATE = NEW_RIGHT;
+						mylog(DEBUG, "setting readstate to NEW_RIGHT\n");
+					}
+					else
+					{
+						mylog(DEBUG, "oid = $oid1\n");
+						mylog(SQL, rowmakedelete($cur_table1, $oid1, 
+												 \%row1, \%cur_cols1, 
+												  \@cur_colorder1, \%pkeys) . 
+												"\n");
+						$READ_STATE = NEW_LEFT;
+						mylog(DEBUG, "setting readstate to NEW_LEFT\n");
+
+					}
 				}
 			}
 		}
@@ -597,15 +714,6 @@ for (;;)
 			# XXX: what now?
 			die "shouldn't get here - table1 = $cur_table1, $cur_table2\n";
 		}
-	}
-	elsif ($state1 =~ m/INSERT/ and $state2 =~ m/CLOSE/)
-	{
-		die "state mix up: cur_table1 = $cur_table1, cur_table2 = $cur_table2\n"
-			if $cur_table1 ne $cur_table2;
-
-		die "shouldn't get here - 3\n";
-		$READ_STATE = NEW_LEFT;
-		# Do DELETE
 	}
 	elsif ($state1 =~ m/CLOSE/ and $state2 =~ m/INSERT/)
 	{
@@ -628,6 +736,17 @@ for (;;)
 
 		$READ_STATE = NEW_BOTH;
 	}
+	elsif ($state1 =~ m/INSERT/ and $state2 =~ m/CLOSE/)
+	{
+		mylog(DEBUG, "state1 = insert, state2 = close\n");
+		die "state mix up: cur_table1 = $cur_table1, cur_table2 = $cur_table2\n"
+			if $cur_table1 ne $cur_table2;
+
+		mylog(SQL, rowmakedelete($cur_table2, $oid1, \%row1, \%cur_cols1, \@cur_colorder1, \%pkeys ) . "\n");
+
+		$READ_STATE = NEW_LEFT;
+
+	}
 	elsif (!defined($state1) and !defined($state2))
 	{
 		mylog(DEBUG, "END\n");
@@ -637,5 +756,7 @@ for (;;)
 		die "unprocessed state: $state1, $state2\n";
 	}
 }
+
+outputsql();
 
 exit(0);

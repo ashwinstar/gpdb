@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <fcntl.h>
 
 #include "catalog/pg_control.h"
@@ -77,14 +78,8 @@ main(int argc, char *argv[])
 	char		ControlFilePath[MAXPGPATH];
 	char	   *DataDir;
 	pg_crc32	crc;
-#if 0
-	char		pgctime_str[128];
-	char		ckpttime_str[128];
-	char		sysident_str[32];
-	char	   *strftime_fmt = "%c";
-#endif
 	const char *progname;
-	int argno = 0;
+	int argno = 1;
 
 	set_pglocale_pgservice(argv[0], "gp_controldata_mod");
 
@@ -135,10 +130,12 @@ main(int argc, char *argv[])
 		DataDir = argv[argno];
 	else
 		DataDir = getenv("PGDATA");
+	
 	if (DataDir == NULL)
 	{
 		fprintf(stderr, _("%s: no data directory specified\n"), progname);
 		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+		usage(progname);
 		exit(1);
 	}
 
@@ -199,6 +196,14 @@ main(int argc, char *argv[])
 		printf(_("New catalog version number: %u\n"), tover);
 
 		ControlFile.catalog_version_no = tover;
+
+		/* recalcualte the CRC. */
+		INIT_CRC32(crc);
+		COMP_CRC32(crc,
+				   (char *) &ControlFile,
+				   offsetof(ControlFileData, crc));
+		FIN_CRC32(crc);
+		ControlFile.crc = crc;
 
 		printf(_("Setting version number to: %u\n"), tover);
 

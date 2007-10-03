@@ -425,6 +425,30 @@ gpvars_show_gp_log_interconnect(void);
 
 
 /* --------------------------------------------------------------------------------------------------
+ * Resource management
+ */
+
+/*
+ * gp_process_memory_cutoff (real)
+ *
+ * Process will terminate if total amount of virtual memory allocated in
+ * TopMemoryContext exceeds this limit.   0 => no limit.
+ *
+ * For SET/SHOW the limit is given in units of 1024 bytes.  For internal use,
+ * gp_process_memory_cutoff_bytes and gp_process_memory_warning_bytes are
+ * kept in units of bytes.
+ */
+extern double   gp_process_memory_cutoff;           /* SET/SHOW in units of kB */
+extern Size     gp_process_memory_cutoff_bytes;     /* in units of bytes */
+extern Size     gp_process_memory_warning_bytes;    /* in units of bytes */
+
+bool
+cdbvars_assign_gp_process_memory_cutoff(double value, bool doit, GucSource source);
+const char *
+cdbvars_show_gp_process_memory_cutoff(void);
+
+
+/* --------------------------------------------------------------------------------------------------
  * Greenplum Optimizer GUCs
  */
 

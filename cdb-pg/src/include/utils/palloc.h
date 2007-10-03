@@ -18,6 +18,7 @@
  * everything that should be freed.  See utils/mmgr/README for more info.
  *
  *
+ * Portions Copyright (c) 2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -27,6 +28,38 @@
  */
 #ifndef PALLOC_H
 #define PALLOC_H
+
+/*
+ * Optional #defines for debugging...
+ *
+ * If CDB_PALLOC_CALLER_ID is defined, MemoryContext error and warning
+ * messages (such as "out of memory" and "invalid memory alloc request
+ * size") will include the caller's source file name and line number.
+ * This can be useful in optimized builds where the error handler's
+ * stack trace doesn't accurately identify the call site.  Overhead
+ * is minimal: two extra parameters to memory allocation functions,
+ * and 8 to 16 bytes per context.
+ *
+ * If CDB_PALLOC_TAGS is defined, every allocation from a standard
+ * memory context (aset.c) is tagged with an extra 16 to 32 bytes of
+ * debugging info preceding the first byte of the area.  The added
+ * header fields identify the allocation call site (source file name
+ * and line number).  Also each context keeps a linked list of all
+ * of its allocated areas.  The dump_memory_allocation() and
+ * dump_memory_allocation_ctxt() functions in aset.c may be called 
+ * from a debugger to write the area headers to a file.
+ */
+
+/*
+#define CDB_PALLOC_CALLER_ID
+*/
+
+#define CDB_PALLOC_TAGS
+
+/* CDB_PALLOC_TAGS implies CDB_PALLOC_CALLER_ID */
+#if defined(CDB_PALLOC_TAGS) && !defined(CDB_PALLOC_CALLER_ID)
+#define CDB_PALLOC_CALLER_ID
+#endif
 
 /*
  * Type MemoryContextData is declared in nodes/memnodes.h.	Most users
@@ -45,44 +78,30 @@ extern DLLIMPORT MemoryContext CurrentMemoryContext;
 /*
  * Fundamental memory-allocation operations (more are in utils/memutils.h)
  */
-#ifdef MEMORY_CONTEXT_CHECKING
-extern void *MemoryContextAllocTagN(MemoryContext context, Size size, const char* tag, int n);
-extern void *MemoryContextAllocZeroTagN(MemoryContext context, Size size, const char* tag, int n);
-extern void *MemoryContextAllocZeroAlignedTagN(MemoryContext context, Size size, const char* tag, int n);
-
-#define MemoryContextAlloc(ctxt, sz) MemoryContextAllocTagN(ctxt, (sz), __FILE__, __LINE__)
-#define MemoryContextAllocZero(ctxt, sz) MemoryContextAllocZeroTagN(ctxt, (sz), __FILE__, __LINE__)
-#define MemoryContextAllocZeroAligned(ctxt, sz) MemoryContextAllocZeroAlignedTagN(ctxt, (sz), __FILE__, __LINE__)
-
-#define palloc(sz) MemoryContextAllocTagN(CurrentMemoryContext, (sz), __FILE__, __LINE__)
-#define palloc0(sz) MemoryContextAllocZeroTagN(CurrentMemoryContext, (sz), __FILE__, __LINE__)
-#define palloc0fast(sz) \
-	( MemSetTest(0, sz) ? \
-	  MemoryContextAllocZeroAlignedTagN(CurrentMemoryContext, (sz), __FILE__, __LINE__) : \
-	  MemoryContextAllocZeroTagN(CurrentMemoryContext, (sz), __FILE__, __LINE__) )
-
-#define palloctagn(sz, tag, n) MemoryContextAllocTagN(CurrentMemoryContext, (sz), (tag), (n))
-#define palloc0tagn(sz, tag, n) MemoryContextAlloczeroTagN(CurrentMemoryContext, (sz), (tag), (n))
-
-#define ctxt_alloc(ctxt, sz) MemoryContextAllocTagN((ctxt), (sz), __FILE__, __LINE__)
-
-extern void pfree(void *ptr);
-extern void *repallocTagN(void *ptr, Size size, const char* tag, int n);
-#define repalloc(ptr, sz) repallocTagN(ptr, (sz), __FILE__, __LINE__)
-
-#else
 extern void *MemoryContextAlloc(MemoryContext context, Size size);
 extern void *MemoryContextAllocZero(MemoryContext context, Size size);
 extern void *MemoryContextAllocZeroAligned(MemoryContext context, Size size);
+extern void *repalloc(void *pointer, Size size);
+extern void pfree(void *pointer);
+
+#ifdef CDB_PALLOC_CALLER_ID
+#define MemoryContextAlloc(context, size)               (MemoryContextAllocDbg(context, size, __FILE__, __LINE__))
+#define MemoryContextAllocZero(context, size)           (MemoryContextAllocZeroDbg(context, size, __FILE__, __LINE__))
+#define MemoryContextAllocZeroAligned(context, size)    (MemoryContextAllocZeroAlignedDbg(context, size, __FILE__, __LINE__))
+#define repalloc(pointer, size)                         (repallocDbg(pointer, size, __FILE__, __LINE__))
+#define pfree(pointer)                                  (pfreeDbg(pointer, __FILE__, __LINE__))
+extern void *MemoryContextAllocDbg(MemoryContext context, Size size, const char* sfile, int sline);
+extern void *MemoryContextAllocZeroDbg(MemoryContext context, Size size, const char* sfile, int sline);
+extern void *MemoryContextAllocZeroAlignedDbg(MemoryContext context, Size size, const char* sfile, int sline);
+extern void *repallocDbg(void *pointer, Size size, const char* sfile, int sline);
+extern void pfreeDbg(void *pointer, const char* sfile, int sline);
+#endif
 
 #define palloc(sz)	MemoryContextAlloc(CurrentMemoryContext, (sz))
-#define palloctagn(sz, tag, n) MemoryContextAlloc(CurrentMemoryContext, (sz))
 
 #define palloc0(sz) MemoryContextAllocZero(CurrentMemoryContext, (sz))
-#define palloc0tagn(sz, tag, n) MemoryContextAllocZero(CurrentMemoryContext, (sz))
 
 #define ctxt_alloc(ctxt, sz) MemoryContextAlloc((ctxt), (sz))
-
 /*
  * The result of palloc() is always word-aligned, so we can skip testing
  * alignment of the pointer when deciding which MemSet variant to use.
@@ -96,18 +115,11 @@ extern void *MemoryContextAllocZeroAligned(MemoryContext context, Size size);
 		MemoryContextAllocZeroAligned(CurrentMemoryContext, sz) : \
 		MemoryContextAllocZero(CurrentMemoryContext, sz) )
 
-extern void pfree(void *pointer);
-
-extern void *repalloc(void *pointer, Size size);
-#endif
-
 /*
- * MemoryContextSwitchTo can't be a macro in standard C compilers.
- * But we can make it an inline function when using GCC.
+ * MemoryContextSwitchTo
+ *		Returns the current context; installs the given context.
  */
-#ifdef __GNUC__
-
-static __inline__ MemoryContext
+static inline MemoryContext
 MemoryContextSwitchTo(MemoryContext context)
 {
 	MemoryContext old = CurrentMemoryContext;
@@ -115,10 +127,6 @@ MemoryContextSwitchTo(MemoryContext context)
 	CurrentMemoryContext = context;
 	return old;
 }
-#else
-
-extern MemoryContext MemoryContextSwitchTo(MemoryContext context);
-#endif   /* __GNUC__ */
 
 /*
  * These are like standard strdup() except the copied string is

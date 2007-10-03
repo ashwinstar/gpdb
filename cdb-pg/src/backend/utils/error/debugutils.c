@@ -193,16 +193,3 @@ dotnode(void *node, const char *fname)
 	fprintf(ofile, "}\n");
 	fclose(ofile);
 }
-
-#ifdef MEMORY_CONTEXT_CHECKING
-extern void dump_memory_allocation_ctxt(FILE* ofile, void *ctxt);
-extern MemoryContext TopMemoryContext;
-
-void dump_memory_allocation(const char* fname)
-{
-	FILE *ofile = fopen(fname, "w+");
-	dump_memory_allocation_ctxt(ofile, TopMemoryContext);
-	fclose(ofile);
-}
-#endif
-	

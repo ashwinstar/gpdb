@@ -193,6 +193,14 @@ PSQL=$PSQLBIN/psql
 GP_DUMP=$PSQLBIN/gp_dump
 GP_RESTORE=$PSQLBIN/gp_restore
 GPSYNCMASTER=$PSQLBIN/gpsyncmaster
+GPCONTROLMOD=$PSQLBIN/gp_controldata_mod
+
+GPLISTDATABASEQTY="SELECT d.datname as \"Name\",
+       r.rolname as \"Owner\",
+       pg_catalog.pg_encoding_to_char(d.encoding) as \"Encoding\"
+FROM pg_catalog.pg_database d
+  JOIN pg_catalog.pg_authid r ON d.datdba = r.oid
+ORDER BY 1;"
 #******************************************************************************
 # Greenplum OS Settings 
 #******************************************************************************
@@ -213,7 +221,11 @@ SCHEMA_FILE=cdb_schema.sql
 DEFAULTDB=template1
 CONFIG_TABLE=gp_configuration
 GP_ID_TABLE=gp_id
-GP_PG_VIEW=gp_pgdatabase
+GP_PG_VIEW="(SELECT l.dbid, l.isprimary, l.content, l.\"valid\", 
+		l.definedprimary FROM gp_pgdatabase() l(dbid smallint, 
+		isprimary boolean, content smallint, \"valid\" boolean, 
+		definedprimary boolean))"
+
 GP_INITDB_VER_TABLE=gp_version_at_initdb
 DEFAULT_CHK_PT_SEG=8
 #DEFAULT_IP_ALLOW="0.0.0.0/0"
@@ -699,7 +711,12 @@ CHK_DB_RUNNING () {
 				ERROR_EXIT "[FATAL]:-No $MASTER_DATA_DIRECTORY/$PG_PID file" 2
 		fi		
 		GET_MASTER_PORT $MASTER_DATA_DIRECTORY
-		export $EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"\l" >> $LOG_FILE 2>&1
+		export $EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"SELECT d.datname as \"Name\",
+       r.rolname as \"Owner\",
+       pg_catalog.pg_encoding_to_char(d.encoding) as \"Encoding\"
+FROM pg_catalog.pg_database d
+  JOIN pg_catalog.pg_authid r ON d.datdba = r.oid
+ORDER BY 1;" >> $LOG_FILE 2>&1
 		if [ $? -ne 0 ];then
 			LOG_MSG "[FATAL]:-Have a postmaster.pid file for master instance on port $MASTER_PORT" 1
 			LOG_MSG "[FATAL]:-However, error reported on test psql access to master instance" 1
@@ -727,7 +744,7 @@ GET_QD_DB_NAME () {
 		fi
 		if [ x"" = x"$QD_DBNAME_THERE" ];then
 			LOG_MSG "[INFO]:-Checking for a non-system database"
-			QD_DBNAME=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"\l" 2>/dev/null|$GREP -v postgres|$GREP -v template0|$HEAD -1|$CUT -d"|" -f1`
+			QD_DBNAME=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"$GPLISTDATABASEQTY " 2>/dev/null|$GREP -v postgres|$GREP -v template0|$HEAD -1|$CUT -d"|" -f1`
 			ERROR_CHK $? "obtain database name" 2
 		fi
 		MASTER_DIR_CHK=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select 1 from ${CONFIG_TABLE};" | wc -l`
@@ -783,7 +800,11 @@ GET_QE_DETAILS () {
 GET_DB_LIST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	GET_MASTER_PORT $MASTER_DATA_DIRECTORY
-	DB_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"\l"|$GREP -v template0|$GREP -v postgres|$CUT -d"|" -f1`)
+	DB_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"select 1 from (SELECT l.dbid, l.isprimary, l.content, l.\"valid\", 
+                        l.definedprimary FROM gp_pgdatabase() l(dbid smallint, 
+                        isprimary boolean, content smallint, \"valid\" boolean, 
+                        definedprimary boolean)) as gppg where valid ='t' and 
+content<>-1;"|$GREP -v template0|$GREP -v postgres|$CUT -d"|" -f1`)
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 

@@ -182,14 +182,9 @@ cdbpullup_isExprCoveredByTargetlist(Expr *expr, List *targetlist);
  *
  * Returns a new Var node with given 'varno' and 'varattno', and varlevelsup=0.
  *
- * The caller may optionally provide a 'newvarlist' which may contain a
- * suitable Var node (perhaps beneath a TargetEntry node).  If so, that
- * Var node is copied and returned.
- *
- * Otherwise NULL is returned, unless the caller has provided an 'oldexpr'
- * from which the vartype and vartypmod can be obtained to create a new
- * Var node.  (If oldexpr is a Var node, all fields are copied except for
- * varno, varattno and varlevelsup.)
+ * The caller must provide an 'oldexpr' from which we obtain the vartype and
+ * vartypmod for the new Var node.  If 'oldexpr' is a Var node, all fields are
+ * copied except for varno, varattno and varlevelsup.
  *
  * Copying an existing Var node preserves its varnoold and varoattno fields,
  * which are used by EXPLAIN to display the table and column name.
@@ -198,7 +193,7 @@ cdbpullup_isExprCoveredByTargetlist(Expr *expr, List *targetlist);
  * make_canonical_pathkey(), etc.
  */
 Var *
-cdbpullup_makeVar(Index varno, AttrNumber varattno, List *newvarlist, Expr *oldexpr);
+cdbpullup_makeVar(Index varno, AttrNumber varattno, Expr *oldexpr);
 
 
 /*

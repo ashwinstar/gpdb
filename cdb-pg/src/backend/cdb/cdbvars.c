@@ -108,8 +108,52 @@ int			Gp_interconnect_type = INTERCONNECT_TYPE_TCP;
 bool		gp_interconnect_aggressive_retry=true; /* fast-track app-level retry */
 
 
+/* --------------------------------------------------------------------------------------------------
+ * Resource management
+ */
+
 /*
- * Greenplum Database Optimizer GUCs
+ * gp_process_memory_cutoff (real)
+ *
+ * Process will terminate if total amount of virtual memory allocated in
+ * TopMemoryContext exceeds this limit.   0 => no limit.
+ *
+ * For SET/SHOW the limit is given in units of 1024 bytes.  For internal use,
+ * gp_process_memory_cutoff_bytes and gp_process_memory_warning_bytes are
+ * kept in units of bytes.
+ */
+double  gp_process_memory_cutoff;           /* SET/SHOW in units of kB */
+Size    gp_process_memory_cutoff_bytes;     /* in units of bytes */
+Size    gp_process_memory_warning_bytes;    /* in units of bytes */
+
+
+double gp_hashagg_respill_bias = 1;
+
+
+/*
+ * cdbvars_assign_gp_process_memory_cutoff
+ */
+bool
+cdbvars_assign_gp_process_memory_cutoff(double value, bool doit, GucSource source)
+{
+	if (doit)
+    {
+        if (value < 1)
+            value = 0;
+        else
+        {
+            value = Min(value, SIZE_MAX/2/1024) * 1024;
+            value = Max(value, 4 * ALLOCSET_DEFAULT_MAXSIZE);
+        }
+        gp_process_memory_cutoff_bytes = (Size)value;
+        gp_process_memory_warning_bytes = (Size)(0.875 * value);
+    }
+    return true;
+}                               /* cdbvars_assign_gp_process_memory_cutoff */
+
+
+/* --------------------------------------------------------------------------------------------------
+ * Greenplum Optimizer GUCs
  */
 
 bool        enable_adaptive_nestloop = true;
@@ -146,7 +190,7 @@ int 		gp_sort_max_distinct = 20000;
 bool 	    gp_window_shareinput = TRUE;
 
 /* Greenplum memory context use mpool */
-int 		gp_use_mpool = 1;
+int 		gp_use_mpool = 0;
 
 /* --------------------------------------------------------------------------------------------------
  * Server debugging
