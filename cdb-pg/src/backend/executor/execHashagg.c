@@ -1032,8 +1032,12 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 	memset(entry, 0, ht->entrybuf.szper);
 	ht->entrybuf.cur += ht->entrybuf.szper;
 	/* cktan; use this instead ExecCopySlotHeapTupleTo */
+#if 0
 	entry->heaptuple = ExecCopySlotHeapTupleTo(aggstate->hashslot, 
 											   ht->entry_cxt, 0, 0);
+#else
+	entry->heaptuple = ExecCopySlotTuple(aggstate->hashslot);
+#endif
 	entry->hashvalue = hashvalue;
 	
 	MemoryContextSwitchTo(oldContext);
