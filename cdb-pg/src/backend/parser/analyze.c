@@ -175,7 +175,8 @@ static void transformSingleRowErrorHandling(ParseState *pstate, CreateStmtContex
 static Node *make_partition_rules(ParseState *pstate,
 		 CreateStmtContext *cxt, CreateStmt *stmt, 
 		 Node *partitionBy, PartitionElem *pElem,
- 		 char *at_depth, char *child_name_str);
+ 		 char *at_depth, char *child_name_str, 
+		 int partNumId, int maxPartNum);
 
 static int deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize);
 
@@ -2644,7 +2645,8 @@ static int deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize)
 static Node *make_partition_rules(ParseState *pstate,
 		 CreateStmtContext *cxt, CreateStmt *stmt, 
 		 Node *partitionBy, PartitionElem *pElem,
- 		 char  *at_depth, char *child_name_str
+		 char  *at_depth, char *child_name_str, 
+		 int partNumId, int maxPartNum
 		)
 {
 	PartitionBy			*pBy    = (PartitionBy *)partitionBy;
@@ -2654,10 +2656,153 @@ static Node *make_partition_rules(ParseState *pstate,
 	RangeVar			*parent_tab_name;
 	RangeVar			*child_tab_name;
 
-	if (!pElem)
-		return NULL;
+	if (pBy->partType != PARTTYP_HASH)	
+	{
+		Assert(pElem);
+	}
 
-	pBSpec = (PartitionBoundSpec *)pElem->boundSpec;
+	if (pElem)
+	{
+		pBSpec = (PartitionBoundSpec *)pElem->boundSpec;
+	}
+
+	if (pBy->partType == PARTTYP_HASH)	
+	{
+		List			*colElts = pBy->keys;
+		ListCell		*lc      = NULL;
+		char			 exprBuf[10000];
+		char			 ruleBuf[10000];
+		StringInfoData   sid;
+		int colcnt = 0;
+
+		exprBuf[0] = '0';
+
+		initStringInfo(&sid);
+
+		lc = list_head(colElts);
+
+		for (; lc; lc = lnext(lc)) /* for all cols */
+		{
+			Node *pCol = lfirst(lc);
+			Value *pColConst;
+
+			pColConst = (Value *)pCol;
+
+			Assert(pColConst->type == T_String);
+
+			if (!deparse_partition_rule((Node *)pCol,
+										exprBuf, sizeof(exprBuf)))
+			{
+				int loco = pBy->location;
+
+				if (pBSpec)
+					loco = pBSpec->location;
+
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("Unknown type or operator%s",
+								at_depth),
+						 parser_errposition(pstate, loco)));
+			}
+
+			if (colcnt)
+			{
+				appendStringInfo(&sid, ", ");
+			}
+
+			appendStringInfo(&sid, "%s", exprBuf);
+
+			colcnt++;
+		} /* end for all cols */
+
+		/* magic_hash: maximum number of partitions is maxPartNum
+		   current partition number is parNumId
+		*/
+
+		snprintf(exprBuf, sizeof(exprBuf), 
+				 "magic_hash(%d, %s) = %d",
+				 maxPartNum,
+				 sid.data,
+				 partNumId
+				);
+
+		pfree(sid.data);
+
+		parent_tab_name = makeNode(RangeVar);
+		parent_tab_name->catalogname = cxt->relation->catalogname;
+		parent_tab_name->schemaname  = cxt->relation->schemaname;
+		parent_tab_name->relname     = cxt->relation->relname;
+
+		child_tab_name = makeNode(RangeVar);
+		child_tab_name->catalogname = cxt->relation->catalogname;
+		child_tab_name->schemaname  = cxt->relation->schemaname;
+		child_tab_name->relname     = child_name_str;
+
+		snprintf(ruleBuf, sizeof(ruleBuf), 
+				 "CREATE RULE %s AS ON INSERT to %s WHERE %s DO INSTEAD INSERT INTO %s ", child_name_str, parent_tab_name->relname, exprBuf, child_name_str);
+
+#ifdef NEVER_EVER
+		pRule = makeNode(RuleStmt);
+		pRule->replace = false; /* do not replace */
+		pRule->relation = parent_tab_name;
+		pRule->rulename = pstrdup(child_name_str);
+		pRule->whereClause = pIndOR;
+		pRule->event = CMD_INSERT;
+		pRule->instead = true; /* do instead */
+		pRule->actions = NIL; /* XXX XXX XXX XXX */
+#endif
+
+		pIns = makeNode(InsertStmt);
+		pRule = (Node *)pIns;
+
+		pIns->relation = makeNode(RangeVar);
+		pIns->relation->catalogname = NULL;
+		pIns->relation->schemaname = NULL;
+		pIns->relation->relname = "partition_rule";
+		pIns->returningList = NULL;
+
+		pIns->cols = NIL;
+
+		if (1)
+		{
+			List *vl1 = NULL;
+
+			A_Const *acs = makeNode(A_Const);
+			acs->val.type = T_String;
+			acs->val.val.str = pstrdup(parent_tab_name->relname);
+			acs->typname = SystemTypeName("text");
+
+			vl1 = list_make1(acs);
+
+			acs = makeNode(A_Const);
+			acs->val.type = T_String;
+			acs->val.val.str = pstrdup(child_name_str);
+			acs->typname = SystemTypeName("text");
+
+			vl1 = lappend(vl1, acs);
+
+			acs = makeNode(A_Const);
+			acs->val.type = T_String;
+			acs->val.val.str = pstrdup(exprBuf);
+			acs->typname = SystemTypeName("text");
+
+			vl1 = lappend(vl1, acs);
+
+			acs = makeNode(A_Const);
+			acs->val.type = T_String;
+			acs->val.val.str = pstrdup(ruleBuf);
+			acs->typname = SystemTypeName("text");
+
+			vl1 = lappend(vl1, acs);
+				
+			pIns->selectStmt = (Node *)makeNode(SelectStmt);
+			((SelectStmt *)pIns->selectStmt)->valuesLists = 
+					list_make1(vl1);
+
+		}
+
+
+	} /* end if HASH */
 
 	if (pBy->partType == PARTTYP_LIST)	
 	{
@@ -2902,7 +3047,7 @@ static Node *make_partition_rules(ParseState *pstate,
 			if (range_idx)
 			{
 				valElts = pBSpec->partEnd;
-				expr_op = "<";
+				expr_op = "<=";
 			}
 
 			lc_val = list_head(valElts);
@@ -3305,6 +3450,7 @@ static void transformPartitionBy(ParseState *pstate,
 		*/
 		bool		prevHadName  = false;
 		int			prevStartEnd = 0; /* add 1 for start, 2 for end */
+		PartitionElem *prevElem = NULL;
 
 		partElts = pSpec->partElem;
 
@@ -3433,6 +3579,61 @@ static void transformPartitionBy(ParseState *pstate,
 					}
 
 					prevHadName  = !!(pElem->partName); /* bool t/f */
+
+					/* fixup boundaries for previous partition ending
+					 * if necessary 
+					 */
+					if (prevElem)
+					{
+						PartitionBoundSpec *prevBSpec = 
+								(PartitionBoundSpec *)prevElem->boundSpec;
+							
+						/* XXX XXX: can check for overlap here too */
+
+						if (prevBSpec)
+						{
+							if (pBSpec->partStart)
+							{
+								if (!prevBSpec->partEnd)
+								{
+									prevBSpec->partEnd = pBSpec->partStart;
+								}
+								else if (0) /* XXX XXX XXX XXX */
+								{
+									/* else if overlap complain */
+									ereport(ERROR,
+											(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+									 errmsg("Start of partition %s overlaps previous%s",
+											namBuf,
+											at_depth),
+									 parser_errposition(pstate, 
+														pBSpec->location)));
+
+								}
+
+							}
+						}
+						else /* no start, so use end of previous */
+						{
+							if (!prevBSpec->partEnd)
+							{
+								ereport(ERROR,
+										(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+										 errmsg("Cannot derive starting value of partition %s based upon ending of  previous%s",
+											namBuf,
+											at_depth),
+									 parser_errposition(pstate, 
+														pBSpec->location)));
+
+							}
+
+							pBSpec->partStart = 
+									prevBSpec->partEnd;
+
+						}
+
+					}
+					prevElem = pElem;
 
 					break;
 
@@ -3625,7 +3826,8 @@ static void transformPartitionBy(ParseState *pstate,
 
 				newSub = makeNode(PartitionBy);
 
-				newSub->keys 	  = psubBy->keys ;
+				newSub->partType  = psubBy->partType;
+				newSub->keys 	  = psubBy->keys;
 				newSub->partNum	  = psubBy->partNum;
 				newSub->subPart	  = psubBy->subPart;
 				newSub->partSpec  = pElem->subSpec; /* use the subspec */
@@ -3654,6 +3856,8 @@ static void transformPartitionBy(ParseState *pstate,
 			 */
 
 			snprintf(prtstr, sizeof(prtstr), "prt_%d", ii+1);
+
+			makeRule = true; /* need child table name before make rule */
 		} /* end not lc */
 
 		child_tab_name = makeNode(RangeVar);
@@ -3686,7 +3890,7 @@ static void transformPartitionBy(ParseState *pstate,
 			pRule = make_partition_rules(pstate,
 										 cxt, stmt, 
 										 partitionBy, pElem, at_depth, 
-										 tab_name_str);
+										 tab_name_str, ii+1, partNumber);
 		}
 
 		child_tab_stmt = makeNode(CreateStmt);

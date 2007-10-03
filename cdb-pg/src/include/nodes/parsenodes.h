@@ -1353,7 +1353,7 @@ typedef struct PartitionBy
 	Node			   *subPart;	/* optional subpartn (PartitionBy ptr) */
 	Node			   *partSpec;	/* specification or template */  
 	int				    partDepth;	/* depth (starting at zero) */  
-	int			location;		/* token location, or -1 if unknown */
+	int					location;	/* token location, or -1 if unknown */
 } PartitionBy;
 
 typedef struct PartitionElem
@@ -1362,18 +1362,8 @@ typedef struct PartitionElem
 	Node			   *partName;	/* partition name (optional) */
 	Node			   *boundSpec;	/* boundary specification */  
 	Node			   *subSpec;	/* subpartition spec */
-	int			location;		/* token location, or -1 if unknown */
+	int					location;	/* token location, or -1 if unknown */
 } PartitionElem;
-
-typedef struct PartitionEvery
-{
-	NodeTag				type;
-	List			   *keys;		/* key columns (Partition By ...) */
-	Node			   *partNum;	/* partitionS (constant number)*/
-	Node			   *subPart;	/* optional subpartn (PartitionBy ptr) */
-	Node			   *partSpec;	/* specification or template */  
-	int			location;		/* token location, or -1 if unknown */
-} PartitionEvery;
 
 /* partition boundary specification */
 typedef struct PartitionBoundSpec
@@ -1386,7 +1376,7 @@ typedef struct PartitionBoundSpec
 	List			   *partStart;		/* start (or VALUES for LIST)  */
 	List			   *partEnd;		/* end (or NULL for LIST ) */
 	Node			   *partEvery;		/* every */
-	int			location;		/* token location, or -1 if unknown */
+	int					location;		/* token location, or -1 if unknown */
 } PartitionBoundSpec;
 
 typedef struct PartitionSpec
@@ -1394,7 +1384,7 @@ typedef struct PartitionSpec
 	NodeTag				type;			
 	List			   *partElem;		/* partition element list */
 	Node			   *subSpec;		/* subpartition spec */
-	int			location;		/* token location, or -1 if unknown */
+	int					location;		/* token location, or -1 if unknown */
 } PartitionSpec;
 
 /* ----------------------
