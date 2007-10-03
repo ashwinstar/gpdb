@@ -116,22 +116,25 @@ int main(int argc, char* argv[])
 	checkerr(e, FLINE);
 	
 	printf("Listening on port %d\n", port);
-
-	while (1) {
-	    e = gpcc_net_once(1);
-	    checkerr(e, FLINE);
-	}
     }
     else {
 	gpcc_net_conn_t conn;
 	static char* av[] = {"HELLO", "1", "2", "3" };
 	static char* hn[] = { "N1", "N2", "N3" };
 	static char* hv[] = { "V1", "V2", "V3" };
+	char addr[100];
 
 	e = gpcc_net_init(0, clnt_opened, clnt_accepted, clnt_received, clnt_closed);
 	checkerr(e, FLINE);
 
-	e = gpcc_net_open(&conn, svr, 3, av, 3, hn, hv);
+	sprintf(addr, "%s:%d", svr, port);
+	printf("Connecting to %s\n", addr);
+	e = gpcc_net_open(&conn, addr, 3, av, 3, hn, hv);
+	checkerr(e, FLINE);
+    }
+
+    while (1) {
+	e = gpcc_net_once(1);
 	checkerr(e, FLINE);
     }
 

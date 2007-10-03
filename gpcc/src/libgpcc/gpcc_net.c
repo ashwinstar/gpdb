@@ -30,12 +30,12 @@ static gpcc_net_header_t* gpcc_net_header_copy(int argc, char** argv, int hc,
 	return 0;
 
     for (i = 0; i < argc; i++) 
-	hdr->argv[i] = argv[i];
+	hdr->argv[i] = apr_pstrdup(pool, argv[i]);
     hdr->argv[i] = 0;
     
     for (i = 0; i < hc; i++) {
-	hdr->hname[i] = hname[i];
-	hdr->hvalue[i] = hvalue[i];
+	hdr->hname[i] = apr_pstrdup(pool, hname[i]);
+	hdr->hvalue[i] = apr_pstrdup(pool, hvalue[i]);
     }
     hdr->hname[i] = 0;
     hdr->hvalue[i] = 0;
@@ -429,7 +429,7 @@ static void do_break(int fd, short event, void* arg)
 {
     gpcc_net_conn_t conn;
 
-    if (sizeof(conn) != read(fd, &conn, sizeof(conn))) 
+    if (sizeof(conn) != read(net.recv_break_fd, &conn, sizeof(conn))) 
 	gpcc_fatal(FLINE, "internal error: read failed");
     
     conn_setup_event(conn);
@@ -758,7 +758,14 @@ APR_DECLARE(apr_status_t) gpcc_net_init(int port,
 
 APR_DECLARE(apr_status_t) gpcc_net_once(int blocking)
 {
-    return event_loop(EVLOOP_ONCE | (blocking ? 0 : EVLOOP_NONBLOCK));
+    int e = 0;
+    if (event_loop(EVLOOP_ONCE | (blocking ? 0 : EVLOOP_NONBLOCK))) {
+	perror("event_loop");
+	e = errno;
+	e = APR_FROM_OS_ERROR(e);
+	return e;
+    }
+    return 0;
 }
 
 
@@ -861,8 +868,10 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
 
     /* connect */
     if (-1 == connect(sock, (struct sockaddr *) &peer_addr, sizeof(peer_addr))) {
+	e = errno;
 	if (e != EINPROGRESS) {
-	    e = APR_FROM_OS_ERROR(errno);
+	    perror("connect");
+	    e = APR_FROM_OS_ERROR(e);
 	    goto failure;
 	}
     }
