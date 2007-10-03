@@ -329,7 +329,8 @@ try:
             value = p.x_res.get('env.__GPHOME')
             perr(p.x_peer, 'GPHOME not set, default to ' + value)
             error(p.x_peer, key, 'GPHOME not set, default to ' + value)
-            
+        else:
+            match(session, key, GPHOME)
     # check postgres 
     key = 'postgres.md5'
     value = p0.x_res.get(key)
