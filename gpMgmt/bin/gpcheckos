@@ -79,7 +79,7 @@ def sshGpSys():
     session = []
     for (user, host, port) in opt['-h']:
         peer = user and ('%s@%s' % (user, host)) or host
-        cmd = ('export PATH=%s && export LD_LIBRARY_PATH=%s && %s/bin/lib/gpsys.py -p' % (os.getenv('PATH'), os.getenv('LD_LIBRARY_PATH'), GPHOME))
+        cmd = ('export __GPHOME=%s && $__GPHOME/bin/lib/gpsys.py -p' % GPHOME)
         ssh = gplib.ssh_prefix(user, host, port)
 	ssh = ssh + ' eval  \'%s\' ' % cmd
         if opt['-v']: print '[INFO %s] %s' % (peer, cmd)
@@ -274,11 +274,23 @@ def matchMore(session, key, value):
     print 'checking: %s >= %s' % (key, value)
     value = int(value)
     for p in session:
-        v = int(p.x_res.get(key, 0))
-        p.x_match = (v >= value)
-        if not p.x_match:
-            perr(p.x_peer, '%s invalid (value %s should be >= %s)' % (key, v, value))
+        v = p.x_res.get(key)
+        if v == None:
+            p.x_match = False
+            perr(p.x_peer, '%s invalid (value not set, should be >= %s)' % (key, value))
             error(p.x_peer, key, value)
+        else:
+            try:
+                if v.startswith('0x'): 
+                    v = int(v[2:], 16)
+                else:
+                    v = int(v)
+            except (TypeError, ValueError):
+                v = 0
+            p.x_match = (v >= value)
+            if not p.x_match:
+                perr(p.x_peer, '%s invalid (value %s should be >= %s)' % (key, v, value))
+                error(p.x_peer, key, value)
 
 def matchSyncTime(session, key, value):
     ok = True
@@ -314,8 +326,9 @@ try:
     for p in session:
         value = p.x_res.get(key)
         if not value:
-            perr(p.x_peer, 'GPHOME not set')
-            error(p.x_peer, key, 'GPHOME not set')
+            value = p.x_res.get('env.__GPHOME')
+            perr(p.x_peer, 'GPHOME not set, default to ' + value)
+            error(p.x_peer, key, 'GPHOME not set, default to ' + value)
             
     # check postgres 
     key = 'postgres.md5'
@@ -421,7 +434,7 @@ try:
             key = 'system.shmsys:shminfo_shmmax'
             matchMore(session, key, 0x2000000)
 
-            key = 'system.semsys:seminfo_semmi'
+            key = 'system.semsys:seminfo_semmni'
             match(session, key, '1024')
     
             print_fix()
