@@ -103,7 +103,7 @@ int main(int argc, char* argv[])
     else if (argc == 2) {
 	port = strtol(argv[1], 0, 0);
     }
-    if (! (0 < port && port < (1 >> 16)))
+    if (! (0 < port && port < (1 << 16)))
 	usage(argv[0]);
 
     e = apr_initialize();

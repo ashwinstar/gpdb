@@ -801,7 +801,7 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
 
     *p++ = 0;
     port = strtol(p, 0, 0);
-    if (! (0 <= port && port < (1 >> 16)))  {
+    if (! (0 <= port && port < (1 << 16)))  {
 	e = APR_EINVAL;
 	goto failure;
     }
