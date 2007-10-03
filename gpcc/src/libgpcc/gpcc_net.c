@@ -295,8 +295,12 @@ static void conn_read_header(gpcc_net_conn_t conn)
 	   pconn->from_peer.hdr to the 'accepted' callback because we must
 	   release the spin lock before calling the callback. */
 	char from_peer_buf[1024*4], to_peer_buf[1024];
+	char peer_addr[sizeof(pconn->peer_addr)];
 	gpcc_net_header_t* to_peer_hdr = 0;
 	gpcc_net_header_t* from_peer_hdr = 0;
+
+	strncpy(peer_addr, pconn->peer_addr, sizeof(peer_addr));
+	peer_addr[sizeof(peer_addr) - 1] = 0;
 
 	if (pconn->from_peer.hdr) {
 	    from_peer_hdr = gpcc_net_header_dup(pconn->from_peer.hdr, from_peer_buf, sizeof(from_peer_buf));
@@ -317,9 +321,9 @@ static void conn_read_header(gpcc_net_conn_t conn)
 	spin = gpcc_spin_release(spin); /* release prior to callback */
 
 	if (to_peer_hdr) 
-	    net.opened(conn, to_peer_hdr, from_peer_hdr);
+	    net.opened(conn, peer_addr, to_peer_hdr, from_peer_hdr);
 	else 
-	    net.accepted(conn, from_peer_hdr);
+	    net.accepted(conn, peer_addr, from_peer_hdr);
     }
     return;
 
@@ -380,7 +384,10 @@ static void do_ready(int fd, short event, void* arg)
 	}
 	if (in->top != sizeof(in->byte)) {
 	    int n = sizeof(in->byte) - in->top;
-	    n = read(fd, in->byte + in->top, n);
+	    n = recv(fd, in->byte + in->top, n, 0);
+	    if (n == 0) {
+		goto failure;	/* closed by remote peer */
+	    }
 	    if (n < 0 && errno != EAGAIN) {
 		gpcc_warning(FLINE, "read failed");
 		goto failure;
@@ -392,7 +399,10 @@ static void do_ready(int fd, short event, void* arg)
 	buf_t* out = pconn->to_peer.buf;
 	int      n = out->top - out->bot;
 	if (n > 0) {
-	    n = write(fd, out->byte + out->bot, n);
+	    n = send(fd, out->byte + out->bot, n, 0);
+	    if (n == 0) {
+		goto failure;	/* closed by remote peer */
+	    }
 	    if (n < 0 && errno != EAGAIN) {
 		gpcc_warning(FLINE, "write failed");
 		goto failure;
@@ -619,6 +629,14 @@ APR_DECLARE(apr_status_t) gpcc_net_sendv(gpcc_net_conn_t conn,
 	buf->top += n;
     }
 
+    /* the buffer was empty when we started. may need to kick the event loop */
+    if (avail == max) {
+	if (sizeof(conn) != write(net.send_break_fd, &conn, sizeof(conn)))  {
+	    gpcc_warning(FLINE, "unable to send conn to break event loop");
+	    goto failure;
+	}
+    }
+
     gpcc_spin_release(spin);
     return 0;
     
@@ -641,7 +659,7 @@ APR_DECLARE(apr_status_t) gpcc_net_init(int port,
     apr_pool_t* pool;
     int e;
     struct sockaddr_in a;
-    SOCKET sock;
+    SOCKET sock = 0;
 
     /* check param */
     if (net.pool) {
@@ -674,24 +692,26 @@ APR_DECLARE(apr_status_t) gpcc_net_init(int port,
 	return e;
 
     /* set up the server socket */
-    a.sin_addr.s_addr = htonl(INADDR_ANY);
-    a.sin_port = htons(port);
-    a.sin_family = AF_INET;
+    if (port > 0) {
+	a.sin_addr.s_addr = htonl(INADDR_ANY);
+	a.sin_port = htons(port);
+	a.sin_family = AF_INET;
 
-    sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (sock < 0)
-	gpcc_fatal(FLINE, "cannot create socket on port %d", port);
+	sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (sock < 0)
+	    gpcc_fatal(FLINE, "cannot create socket on port %d", port);
 
-    if (0 != (e = set_sockopt_nonblock(sock)))
-	gpcc_fatal(FLINE, "unable to set socket to nonblocking on port %d", port);
+	if (0 != (e = set_sockopt_nonblock(sock)))
+	    gpcc_fatal(FLINE, "unable to set socket to nonblocking on port %d", port);
 
-    /* bind */
-    if (bind(sock, (void*) &a, sizeof(a)))
-	gpcc_fatal(FLINE, "cannot create socket on port %d - bind failed", port);
+	/* bind */
+	if (bind(sock, (void*) &a, sizeof(a)))
+	    gpcc_fatal(FLINE, "cannot create socket on port %d - bind failed", port);
 
-    /* listen */
-    if (listen(sock, 64))
-	gpcc_fatal(FLINE, "cannot listen on port %d", port);
+	/* listen */
+	if (listen(sock, 64))
+	    gpcc_fatal(FLINE, "cannot listen on port %d", port);
+    }
 
     /* save our callback functions */
     memset(&net, 0, sizeof(net));

@@ -20,10 +20,12 @@ struct gpcc_net_header_t {
 typedef apr_uint32_t gpcc_net_conn_t;
 
 typedef void gpcc_net_opened_t(gpcc_net_conn_t conn, 
+			       const char* peer_addr,
 			       gpcc_net_header_t* to_peer, 
 			       gpcc_net_header_t* from_peer);
 
 typedef void gpcc_net_accepted_t(gpcc_net_conn_t conn,
+				 const char* peer_addr,
 				 gpcc_net_header_t* from_peer);
 
 typedef int gpcc_net_received_t(gpcc_net_conn_t conn, 
