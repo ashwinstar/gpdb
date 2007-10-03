@@ -51,12 +51,22 @@ APR_DECLARE(void) gpcc_net_close(gpcc_net_conn_t conn);
 
 typedef struct gpcc_net_datum_t gpcc_net_datum_t;
 struct gpcc_net_datum_t {
-    char* ptr;
+    const char* ptr;
     int   len;
 };
 
 APR_DECLARE(apr_status_t) gpcc_net_sendv(gpcc_net_conn_t conn,
 					 gpcc_net_datum_t* datum, int dcnt);
+
+
+static inline apr_status_t gpcc_net_send(gpcc_net_conn_t conn, 
+					 const char* buf, int buflen)
+{
+    gpcc_net_datum_t d;
+    d.ptr =buf;
+    d.len = buflen;
+    return gpcc_net_sendv(conn, &d, 1);
+}
 
 
 #endif /* GPCC_NET_H */

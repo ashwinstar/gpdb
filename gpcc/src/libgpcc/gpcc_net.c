@@ -322,11 +322,8 @@ static void conn_read_header(gpcc_net_conn_t conn)
     }
 
     len = buf->top - buf->bot;
-    if (gpcc_net_parse_request(&pconn->from_peer.hdr, 
-			       buf->byte + buf->bot, &len, pconn->pool)) {
-	gpcc_warning(FLINE, "gpcc_net_parse_request failed.");
-	goto failure;
-    }
+    (void) gpcc_net_parse_request(&pconn->from_peer.hdr, 
+				  buf->byte + buf->bot, &len, pconn->pool);
     buf->bot += len;
 
     if (! pconn->from_peer.hdr) {
@@ -388,7 +385,7 @@ static void conn_fire_read(gpcc_net_conn_t conn)
     conncb_t* pconn;
 
     printf("conn_fire_read.....\n");
-
+    again:
     if (! (spin = conn_secure(conn, &pconn)))
 	return;
     
@@ -398,13 +395,40 @@ static void conn_fire_read(gpcc_net_conn_t conn)
 	    /* newly accepted connection */
 	    spin = gpcc_spin_release(spin);
 	    conn_read_header(conn);
-	    return;
+	    goto again;		/* in case we have some more bytes in the buffer */
 	}
-	else {
-	    gpcc_fatal(FLINE, "not implemented");
+	if (in->top > in->bot) {
+	    char* byte = in->byte;
+	    int bot = in->bot;
+	    int top = in->top;
+	    int n = top - bot;
+
+	    /* release the spin lock and do the received callback. This is not very
+	       safe, but it would have to do. Upon return, we check that the buffer
+	       has not been modified. */
+	    gpcc_spin_release(spin);
+	    n = net.received(conn, byte + bot, n); /* do the callback */
+	    if (n < 0) {
+		gpcc_net_close(conn); /* callback indicated error, close it, and done. */
+		return;
+	    }
+	    gpcc_spin_secure(spin);
+	    if (conn != pconn->conn) 
+		goto done;
+	    /* check that buffer has not been touched */
+	    if (bot != in->bot || top != in->top || byte != in->byte) 
+		gpcc_fatal(FLINE, "internal error: buffer stolen");
+
+	    /* consume the bytes */
+	    if (in->bot + n <= in->top) 
+		in->bot += n;
+	    if (in->bot == in->top) 
+		in->bot = in->top = 0;
 	}
     }
 
+
+    done:
     gpcc_spin_release(spin);
     return;
 }
@@ -440,31 +464,42 @@ static void do_ready(int fd, short event, void* arg)
 		gpcc_log_info("socket closed by remote peer");
 		goto failure;	/* closed by remote peer */
 	    }
-	    if (n < 0 && errno != EAGAIN) {
-		gpcc_warning(FLINE, "read failed");
-		goto failure;
+	    if (n < 0) {
+		if (errno != EAGAIN) {
+		    gpcc_warning(FLINE, "read failed");
+		    goto failure;
+		}
 	    }
-	    in->top += n;
-	    gpcc_log_info("recv fd=%d, %d byte", fd, n);
+	    else if (n > 0) {
+		in->top += n;
+		gpcc_log_info("recv fd=%d, %d byte", fd, n);
+	    }
 	}
     }
     if (0 != (event & EV_WRITE)) {
 	buf_t* out = pconn->to_peer.buf;
-	int      n = out->top - out->bot;
+	int    nb  = out->top - out->bot;
 
 	gpcc_log_info("do_ready EV_WRITE");
-	if (n > 0) {
-	    n = send(fd, out->byte + out->bot, n, 0);
+	if (nb > 0) {
+	    const int n = send(fd, out->byte + out->bot, nb, 0);
 	    if (n == 0) {
 		gpcc_log_info("socket closed by remote peer");
 		goto failure;	/* closed by remote peer */
 	    }
-	    if (n < 0 && errno != EAGAIN) {
-		gpcc_warning(FLINE, "write failed");
-		goto failure;
+	    if (n < 0) {
+		if (errno != EAGAIN) {
+		    gpcc_warning(FLINE, "write failed");
+		    goto failure;
+		}
 	    }
-	    out->bot += n;
-	    gpcc_log_info("send fd=%d, %d byte", fd, n);
+	    else if (n > 0) {
+		if (nb == sizeof(out->byte)) {
+		    apr_thread_cond_broadcast(net.wait.notfull);
+		}
+		out->bot += n;
+		gpcc_log_info("send fd=%d, %d byte", fd, n);
+	    }
 	}
     }
 
@@ -969,6 +1004,7 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
     *conn = pconn->conn;
     if (sizeof(*conn) != write(net.send_break_fd, conn, sizeof(*conn)))  {
 	gpcc_warning(FLINE, "unable to send conn to break event loop");
+	e = APR_FROM_OS_ERROR(errno);
 	goto failure;
     }
 

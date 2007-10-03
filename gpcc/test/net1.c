@@ -2,6 +2,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+
+void checkerr(int e, const char* fline)
+{
+    if (e) {
+	fprintf(stderr, "%s: error %d\n", fline, e);
+	exit(1);
+    }
+}
+
+
 void svr_opened(gpcc_net_conn_t conn, const char* peer_addr, gpcc_net_header_t* to_peer, gpcc_net_header_t* from_peer)
 {
     printf("----- svr_opened --------------------------\n");
@@ -10,6 +20,8 @@ void svr_opened(gpcc_net_conn_t conn, const char* peer_addr, gpcc_net_header_t* 
 
 void svr_accepted(gpcc_net_conn_t conn, const char* peer_addr, gpcc_net_header_t* from_peer)
 {
+    int e;
+    char* s = "SERVER ACCEPTED\r\n\r\n";
     char** p;
     char** q;
     printf("----- svr_accepted --------------------------\n");
@@ -25,17 +37,26 @@ void svr_accepted(gpcc_net_conn_t conn, const char* peer_addr, gpcc_net_header_t
     }
     printf("\n");
     
-    gpcc_net_close(conn);
+    /* send a header */
+    e = gpcc_net_send(conn, s, strlen(s));
+    checkerr(e, FLINE);
+    /*gpcc_net_close(conn);*/
 }
 
 int svr_received(gpcc_net_conn_t conn, const char* buf, int buflen)
 {
+    int e;
+    int i;
     printf("----- svr_received --------------------------\n");
     if (buflen <= 0) {
 	gpcc_fatal(FLINE, "INTERNAL ERROR - buflen %d", buflen);
     }
-    putchar(*buf);
-    return 1;
+    for (i = 0; i < buflen; i++) {
+	putchar(buf[i]);
+    }
+    e = gpcc_net_send(conn, buf, buflen);
+    checkerr(e, FLINE);
+    return buflen;
 }
 
 void svr_closed(gpcc_net_conn_t conn)
@@ -44,10 +65,21 @@ void svr_closed(gpcc_net_conn_t conn)
 }
 
 
+void do_send(gpcc_net_conn_t conn)
+{
+    static int count = 0;
+    char buf[100];
+    int e;
+    sprintf(buf, " -- hello %d -- \n", ++count);
+    e = gpcc_net_send(conn, buf, strlen(buf));
+    checkerr(e, FLINE);
+}
+
 void clnt_opened(gpcc_net_conn_t conn, const char* peer_addr, gpcc_net_header_t* to_peer, gpcc_net_header_t* from_peer)
 {
     printf("----- clnt_opened --------------------------\n");
     printf("   peer_addr: %s\n", peer_addr);
+    do_send(conn);
 }
 
 
@@ -60,8 +92,26 @@ void clnt_accepted(gpcc_net_conn_t conn, const char* peer_addr, gpcc_net_header_
 
 int clnt_received(gpcc_net_conn_t conn, const char* buf, int buflen)
 {
+    const char* q = buf + buflen;
+    const char* p = buf;
     printf("----- clnt_received --------------------------\n");
-    return 0;
+    while (p < q) {
+	if (q[-1] == '\n')
+	    break;
+	q--;
+    }
+    if (p < q) {
+	int ch;
+	while (p < q) {
+	    ch = *p++;
+	    putchar(ch);
+	}
+	printf("Press [RETURN] to send the next line: ");
+	fflush(stdout);
+	ch = getchar();
+	do_send(conn);
+    }
+    return p - buf;
 }
 
 void clnt_closed(gpcc_net_conn_t conn)
@@ -70,13 +120,6 @@ void clnt_closed(gpcc_net_conn_t conn)
 }
 
 
-void checkerr(int e, const char* fline)
-{
-    if (e) {
-	fprintf(stderr, "%s: error %d\n", fline, e);
-	exit(1);
-    }
-}
 
 void usage(const char* pname)
 {
