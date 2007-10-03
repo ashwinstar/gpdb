@@ -7068,3 +7068,42 @@ select cn,qty,sum(qty) over(order by cn range cn preceding) as sum from (select 
   4 |    1 | 1144
 (12 rows)
 
+-- MPP-1744
+select cn,vn,ntile(cn) over(partition by cn order by vn) from sale; --mvd 1->3
+ cn | vn | ntile 
+----+----+-------
+  2 | 40 |     1
+  2 | 50 |     2
+  4 | 40 |     1
+  4 | 40 |     2
+  1 | 10 |     1
+  1 | 20 |     1
+  1 | 30 |     1
+  1 | 30 |     1
+  1 | 50 |     1
+  3 | 30 |     1
+  3 | 30 |     2
+  3 | 40 |     3
+(12 rows)
+
+select cn,vn,ntile(qty) over(partition by cn order by vn) from sale;
+ERROR:  NTILE function argument expression should be in PARTITION BY.
+select cn,vn,ntile(cn) over(partition by cn+vn order by vn) from sale;
+ERROR:  NTILE function argument expression should be in PARTITION BY.
+select cn,vn,ntile(cn+vn) over(partition by cn+vn order by vn) from sale; --mvd 1,2->3
+ cn | vn | ntile 
+----+----+-------
+  1 | 10 |     1
+  1 | 20 |     1
+  1 | 30 |     1
+  1 | 30 |     2
+  3 | 30 |     1
+  3 | 30 |     2
+  3 | 40 |     1
+  1 | 50 |     1
+  2 | 40 |     1
+  4 | 40 |     1
+  4 | 40 |     2
+  2 | 50 |     1
+(12 rows)
+

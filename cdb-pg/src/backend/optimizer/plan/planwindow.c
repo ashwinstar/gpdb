@@ -218,6 +218,8 @@ typedef struct WindowContext
 	
 	/* Transient state for preprocess_window_tlist */
 	RefInfo		   *cur_refinfo;
+	List           *win_specs;
+	List           *orig_tlist;
 } WindowContext;
 
 #define VarattnoAdjustment (-(FirstLowInvalidHeapAttributeNumber + 1))
@@ -328,6 +330,14 @@ window_planner(PlannerInfo *root, double tuple_fraction, List **pathkeys_ptr)
 	 * Var references in Bitmapsets.
 	 */
 	build_var_index(parse, context);
+
+	/*
+	 * Set context->win_specs and context->orig_tlist. These
+	 * are needed in preprecess_window_tlist() to check NTILE function
+	 * arguments.
+	 */
+	context->win_specs = parse->windowClause;
+	context->orig_tlist = parse->targetList;
 	
 	/* Create a copy of the input target list for our use.  Save pointers
 	 * to the contained WindowRef nodes on the side in a array of RefInfo
@@ -586,6 +596,94 @@ static void build_sortref_index(List *tlist, int *max_sortref, AttrNumber **sort
 	*sortref_resno = index;
 }
 
+/*
+ * ntile_argument_walker
+ *
+ * Walk through the expressions in the NTILE argument. Return false
+ * when the expression is a constant or the one that appears in
+ * part_tlist.
+ */
+static bool
+ntile_argument_walker(Node *node, List *part_tlist)
+{
+	ListCell *lc = NULL;
+	
+	if (node == NULL)
+		return false;
+	if (IsA(node, Const))
+		return false;
+
+	/*
+	 * Check if node appears in part_tlist.
+	 */
+	foreach(lc, part_tlist)
+	{
+		TargetEntry *tle = (TargetEntry*)lfirst(lc);
+
+		if (equal(tle->expr, node))
+			return false;
+	}
+	
+	if (IsA(node, Var))
+		return true;
+	
+	return expression_tree_walker(node, ntile_argument_walker, part_tlist);
+}
+
+/*
+ * check_ntile_argument
+ *
+ * Check expressions used in the NTILE function argument. These expressions
+ * should be either a constant or expressions in PARTITION BY clauses.
+ */
+static void
+check_ntile_argument(List *args, WindowSpec *win_spec, List *tlist)
+{
+	ListCell *lc;
+	List *part_tlist = NIL;
+	
+	if (list_length(win_spec->partition) > 0)
+	{
+		/*
+		 * Obtain the list of target entries for each expression in the
+		 * PARTITION BY clause. The PARTITION BY expressions should appear
+		 * in tlist.
+		 */
+		foreach (lc, win_spec->partition)
+		{
+			ListCell *tlist_lc = NULL;
+			
+			SortClause *sc = (SortClause *) lfirst(lc);
+			Assert(IsA(sc, SortClause));
+
+			foreach(tlist_lc, tlist)
+			{
+				TargetEntry *tle = (TargetEntry *)lfirst(tlist_lc);
+				if (tle->ressortgroupref == sc->tleSortGroupRef)
+				{
+					part_tlist = lappend(part_tlist,
+										 tle);
+					break;
+				}
+			}
+
+			if (tlist_lc == NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("PARTITION BY expression not appear in the targetlist.")));
+		}
+	}
+
+	foreach (lc, args)
+	{
+		Node *node = lfirst(lc);
+
+		if (ntile_argument_walker(node, part_tlist))
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("NTILE function argument expression should be in PARTITION BY.")));
+	}
+}
 
 /*  preprocess_window_tlist
  *
@@ -651,6 +749,24 @@ static Node * window_tlist_mutator(Node *node, WindowContext *context)
 		}
 		return (Node *) copyObject(node); /* Exact copy of the Var */
 	}
+	else if ( IsA(node, FuncExpr) )
+	{
+		/*
+		 * If this function is part of the argument for a NTILE function,
+		 * it is not allowed to be a volatilve function.
+		 */
+		if (context->cur_refinfo != NULL)
+		{
+			FuncExpr *expr = (FuncExpr *)node;
+
+			if (IS_NTILE(context->cur_refinfo->winkind) &&
+				func_volatile(expr->funcid))
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("NTILE function argument should not use volatile functions.")));
+		}
+	}
+	
 	else if ( IsA(node, WindowRef) )
 	{
 		WindowRef *window_ref = (WindowRef *)node;
@@ -667,6 +783,18 @@ static Node * window_tlist_mutator(Node *node, WindowContext *context)
 			
 			new_ref->args = (List *)
 				window_tlist_mutator((Node*)new_ref->args, context);
+
+			/*
+			 * If this function is a NTILE function, check if its argument
+			 * contains expressions that are constant or those in the
+			 * PARTITION BY clause.
+			 */
+			if (IS_NTILE(context->cur_refinfo->winkind))
+			{
+				WindowSpec *winspec = list_nth(context->win_specs, new_ref->winspec);
+				
+				check_ntile_argument(new_ref->args, winspec, context->orig_tlist);
+			}
 							
 			/* Record the WindowRef and its Vars referenced set. */
 			new_ref->winindex = list_length(context->refinfos);

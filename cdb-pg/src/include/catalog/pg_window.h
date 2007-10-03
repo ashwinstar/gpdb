@@ -88,7 +88,8 @@ typedef FormData_pg_window *Form_pg_window;
  * Constants for winkind attribute
  * ---------------
  */
-#define WINKIND_WINDOW		'w'		/* ordinary window function */
+#define WINKIND_WINDOW		'w'		/* ordinary window function, except for NTILE */
+#define WINKIND_NTILE       'n'     /* NTILE function */
 #define WINKIND_FIRST_VALUE	'f'		/* Oracle FIRST_VALUE function */
 #define WINKIND_LAST_VALUE	'l'		/* Oracle LAST_VALUE function */
 #define WINKIND_LEAD		'd'		/* Oracle LEAD function */
@@ -104,6 +105,7 @@ typedef FormData_pg_window *Form_pg_window;
 #define IS_LEAD(winkind) ((winkind)==WINKIND_LEAD)
 #define IS_LAG(winkind) ((winkind)==WINKIND_LAG)
 #define IS_LEAD_LAG(winkind) (IS_LEAD(winkind) || IS_LAG(winkind)) 
+#define IS_NTILE(winkind) ((winkind)==WINKIND_NTILE)
 
 
 /* ----------------
@@ -128,13 +130,13 @@ DATA(insert ( 7003	t f f t	0			7101		20			7303	w));
 DATA(insert ( 7004	t f t t	0			7204		20			7304	w));
 
 /* ntile(int) */
-DATA(insert ( 7005	t f f t	0			7205		1016		7305	w));
+DATA(insert ( 7005	t f f t	0			7205		1016		7305	n));
 
 /* ntile(bigint) */
-DATA(insert ( 7006	t f f t	0			7206		1016		7305	w));
+DATA(insert ( 7006	t f f t	0			7206		1016		7305	n));
 
 /* ntile(numeric) */
-DATA(insert ( 7007	t f f t	0			7207		1016		7305	w));
+DATA(insert ( 7007	t f f t	0			7207		1016		7305	n));
 
 /* ratio_to_report */
 /* XXX omitted for now; no way to represent auxiliary aggregate SUM(x). */

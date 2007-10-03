@@ -1159,3 +1159,9 @@ select pn,vn,max(vn) over (order by pn range between cn-1 following and cn-2 fol
 
 -- MPP-2036
 select cn,qty,sum(qty) over(order by cn range cn preceding) as sum from (select sale.* from sale,customer,vendor where sale.cn=customer.cn and sale.vn=vendor.vn) sale; --mvd 1->3
+
+-- MPP-1744
+select cn,vn,ntile(cn) over(partition by cn order by vn) from sale; --mvd 1->3
+select cn,vn,ntile(qty) over(partition by cn order by vn) from sale;
+select cn,vn,ntile(cn) over(partition by cn+vn order by vn) from sale;
+select cn,vn,ntile(cn+vn) over(partition by cn+vn order by vn) from sale; --mvd 1,2->3

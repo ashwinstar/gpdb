@@ -4721,7 +4721,7 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 	
 	varexpr = (Expr *)makeVar(0, attnum, ltype, vartypmod, 0);
 
-	expr = coerceType((Expr *)edge->val, ltype);
+	expr = (Expr *)edge->val;
 	n = ExecInitExpr((Expr *)expr, (PlanState *) wstate);
 
 	if (is_trail)
@@ -4856,8 +4856,6 @@ setEmptyFrame(WindowStatePerLevel level_state,
 		{
 			Oid ineq_ordfuncid;
 			Oid eq_ordfuncid;
-			TupleDesc tup = ExecGetResultType(wstate->ps.lefttree); 
-			AttrNumber attnum;
 			Datum ineq_datum;
 			Datum eq_datum;
 			FmgrInfo ineq_fcinfo;
@@ -4865,15 +4863,13 @@ setEmptyFrame(WindowStatePerLevel level_state,
 			Operator ineq_optup;
 			Operator eq_optup;
 			
-			attnum = level_state->sortColIdx[0];
-			
-			ineq_optup = ordering_oper(tup->attrs[attnum - 1]->atttypid,
+			ineq_optup = ordering_oper(exprType(level_state->frame->trail->val),
 									   false);
 			ineq_ordfuncid = oprfuncid(ineq_optup); 
 			ReleaseSysCache(ineq_optup);
 			fmgr_info(ineq_ordfuncid, &ineq_fcinfo);
 			
-			eq_optup = equality_oper(tup->attrs[attnum - 1]->atttypid,
+			eq_optup = equality_oper(exprType(level_state->frame->trail->val),
 									 false);
 			eq_ordfuncid = oprfuncid(eq_optup); 
 			ReleaseSysCache(eq_optup);
