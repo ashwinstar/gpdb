@@ -228,6 +228,15 @@ DEBUG_LEVEL=0
 BATCH_DEFAULT=60
 WAIT_LIMIT=1800
 WARN_MARK="<<<<<"
+ACTIVITY_TABLE=pg_stat_activity
+CLASS_TABLE=pg_class
+SCHEMA_TABLE=pg_namespace
+ATTRIBUTE_TABLE=pg_attribute
+INHERIT_TABLE=pg_inherits
+INDEX_TABLE=pg_indexes
+TYPE_TABLE=pg_type
+CONSTRAINT_TABLE=pg_constraint
+RULES_TABLE=pg_rules
 #******************************************************************************
 # Functions
 #******************************************************************************
