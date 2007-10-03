@@ -111,7 +111,7 @@ int main(int argc, char* argv[])
 
     atexit(apr_terminate);
 
-    if (svr) {
+    if (! svr) {
 	e = gpcc_net_init(port, svr_opened, svr_accepted, svr_received, svr_closed);
 	checkerr(e, FLINE);
 	
