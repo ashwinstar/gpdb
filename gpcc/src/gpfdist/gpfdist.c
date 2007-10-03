@@ -861,6 +861,7 @@ void sessions_cleanup()
     apr_hash_index_t *hi;
     int i, n = 0;
     int nargv;
+    void* entry;
     session_t **session, *s;
 
     nargv = apr_hash_count(gcb.session.tab);
@@ -873,7 +874,8 @@ void sessions_cleanup()
     }
 
     for  (hi = apr_hash_first(gcb.pool, gcb.session.tab) ; hi ; hi = apr_hash_next(hi)) {
-	apr_hash_this(hi, 0, 0, (void **) &s);
+	apr_hash_this(hi, 0, 0, &entry);
+	s = (session_t*) entry;
 	if (s->nrequest == 0 && (s->mtime < apr_time_now() - 3600 * APR_USEC_PER_SEC)) {
 	    session[n++] = s;
 	}
