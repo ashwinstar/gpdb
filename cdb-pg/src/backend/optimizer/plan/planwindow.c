@@ -919,7 +919,7 @@ static void inventory_window_specs(List *window_specs, WindowContext *context)
 				Const *c = (Const*)makeNode(Const);
 				c->consttype = INT8OID;
 				c->constlen = 8;
-				c->constvalue = Int8GetDatum(1);
+				c->constvalue = 1;
 				c->constisnull = false;
 				c->constbyval = true;
 				offset = (Node*)c;
