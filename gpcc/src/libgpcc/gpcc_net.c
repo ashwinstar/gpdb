@@ -40,6 +40,10 @@ static char* gpcc_net_header_serialize(gpcc_net_header_t* src, char* buf, int bu
 	}
     }
 
+    if (p < q) {
+	p += apr_snprintf(p, q - p, "\r\n");
+    }
+
     return p < q ? buf : 0;
 }
 
@@ -253,6 +257,8 @@ static void conn_setup_event(gpcc_net_conn_t conn)
     int flag = 0;
     struct timeval* ptm = 0;
 
+    gpcc_log_info("conn_setup_event...");
+
     tm.tv_sec = 0;
     tm.tv_usec = 500 * 1000;
 
@@ -262,10 +268,14 @@ static void conn_setup_event(gpcc_net_conn_t conn)
     out = pconn->to_peer.buf;
     in = pconn->from_peer.buf;
 
-    if (out->bot != out->top) 
+    if (out->bot != out->top) {
 	flag |= EV_WRITE;
-    if (in->top - in->bot != sizeof(in->byte))
+	gpcc_log_info("setup EV_WRITE %d bytes", out->top - out->bot);
+    }
+    if (in->top - in->bot != sizeof(in->byte)) {
 	flag |= EV_READ;
+	gpcc_log_info("setup EV_READ %d bytes", in->top - in->bot);
+    }
     if (0 != (flag & EV_READ) && !pconn->to_peer.hdr && !pconn->from_peer.hdr)
 	ptm = &tm;
 
@@ -313,8 +323,10 @@ static void conn_read_header(gpcc_net_conn_t conn)
 
     len = buf->top - buf->bot;
     if (gpcc_net_parse_request(&pconn->from_peer.hdr, 
-			       buf->byte + buf->bot, &len, pconn->pool))
+			       buf->byte + buf->bot, &len, pconn->pool)) {
+	gpcc_warning(FLINE, "gpcc_net_parse_request failed.");
 	goto failure;
+    }
     buf->bot += len;
 
     if (! pconn->from_peer.hdr) {
@@ -375,6 +387,8 @@ static void conn_fire_read(gpcc_net_conn_t conn)
     apr_uint32_t* spin;
     conncb_t* pconn;
 
+    printf("conn_fire_read.....\n");
+
     if (! (spin = conn_secure(conn, &pconn)))
 	return;
     
@@ -402,11 +416,15 @@ static void do_ready(int fd, short event, void* arg)
     apr_uint32_t* spin = 0;
     conncb_t* pconn;
 
+    gpcc_log_info("do_ready..fd = %d\n", fd);
+
     if (! (spin = conn_secure(conn, &pconn)))
 	return;
 
     if (0 != (event & EV_READ)) {
 	buf_t* in = pconn->from_peer.buf;
+
+	gpcc_log_info("do_ready EV_READ");
 	if (in->top == in->bot) 
 	    in->top = in->bot = 0;
 	else if (in->top == sizeof(in->byte) && in->bot != 0) {
@@ -419,6 +437,7 @@ static void do_ready(int fd, short event, void* arg)
 	    int n = sizeof(in->byte) - in->top;
 	    n = recv(fd, in->byte + in->top, n, 0);
 	    if (n == 0) {
+		gpcc_log_info("socket closed by remote peer");
 		goto failure;	/* closed by remote peer */
 	    }
 	    if (n < 0 && errno != EAGAIN) {
@@ -426,14 +445,18 @@ static void do_ready(int fd, short event, void* arg)
 		goto failure;
 	    }
 	    in->top += n;
+	    gpcc_log_info("recv fd=%d, %d byte", fd, n);
 	}
     }
     if (0 != (event & EV_WRITE)) {
 	buf_t* out = pconn->to_peer.buf;
 	int      n = out->top - out->bot;
+
+	gpcc_log_info("do_ready EV_WRITE");
 	if (n > 0) {
 	    n = send(fd, out->byte + out->bot, n, 0);
 	    if (n == 0) {
+		gpcc_log_info("socket closed by remote peer");
 		goto failure;	/* closed by remote peer */
 	    }
 	    if (n < 0 && errno != EAGAIN) {
@@ -441,6 +464,7 @@ static void do_ready(int fd, short event, void* arg)
 		goto failure;
 	    }
 	    out->bot += n;
+	    gpcc_log_info("send fd=%d, %d byte", fd, n);
 	}
     }
 
@@ -548,15 +572,19 @@ static void do_accept(int fd, short event, void* arg)
 	    pconn = 0;
 	    continue;
 	}
+	
 	gpcc_spin_secure(&pconn->spin);
 	if (pconn->conn) {
 	    gpcc_spin_release(&pconn->spin);
 	    pconn = 0;
 	    continue;
 	}
+	
 	pconn->conn = CONN_DEFINE(unique, index);
 	break;
     }
+
+    gpcc_log_info("accept connection %d", pconn->conn);
     if (!pconn) {
 	gpcc_warning(FLINE, "unable to accept connection - connection table full");
 	goto failure;
@@ -572,7 +600,9 @@ static void do_accept(int fd, short event, void* arg)
     memset(&pconn->to_peer, 0, sizeof(pconn->to_peer));
     memset(&pconn->from_peer, 0, sizeof(pconn->from_peer));
     pconn->to_peer.buf = apr_palloc(pool, sizeof(buf_t));
+    pconn->to_peer.buf->top = pconn->to_peer.buf->bot = 0;
     pconn->from_peer.buf = apr_palloc(pool, sizeof(buf_t));
+    pconn->from_peer.buf->top = pconn->from_peer.buf->bot = 0;
     pconn->peer_addr[0] = 0;
     if (! inet_ntop(sockaddr.sin_family, &sockaddr.sin_addr, pconn->peer_addr, sizeof(pconn->peer_addr) - 7)) {
 	gpcc_warning(FLINE, "inet_ntop failed");
@@ -829,6 +859,7 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
     /* copy argc, argv, hc, hname, hvalue into gpcc_net_header */
     hdr = gpcc_net_header_copy(argc, argv, hc, hname, hvalue, pool);
     if ( ! hdr) {
+	gpcc_warning(FLINE, "gpcc_net_header_copy failed");
 	e = APR_EINVAL;
 	goto failure;
     }
@@ -838,6 +869,7 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
     host[sizeof(host) - 1] = 0;
 
     if (0 == (p = strchr(host, ':'))) {
+	gpcc_warning(FLINE, "parse peer addr %s failed", peer_addr_str);
 	e = APR_EINVAL;
 	goto failure;
     }
@@ -845,12 +877,14 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
     *p++ = 0;
     port = strtol(p, 0, 0);
     if (! (0 <= port && port < (1 << 16)))  {
+	gpcc_warning(FLINE, "invalid port number %d", port);
 	e = APR_EINVAL;
 	goto failure;
     }
     
     /* get the host ip */
     if (0 == (hp = gethostbyname(host))) {
+	gpcc_warning(FLINE, "gethostbyname %s failed", host);
 	e = APR_EINVAL;
 	goto failure;
     }
@@ -863,6 +897,7 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
 
     /* create socket */
     if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+	gpcc_warning(FLINE, "create socket failed");
 	e = APR_FROM_OS_ERROR(errno);
 	goto failure;
     }
@@ -883,6 +918,7 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
 	    break;
 	}
     }
+    gpcc_log_info("open connection %d", pconn->conn);
     if (!pconn) {
 	gpcc_warning(FLINE, "unable to open connection - connection table full");
 	goto failure;
@@ -905,9 +941,10 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
     memset(&pconn->to_peer, 0, sizeof(pconn->to_peer));
     pconn->to_peer.hdr = hdr;
     pconn->to_peer.buf = apr_palloc(pool, sizeof(buf_t));
+    pconn->to_peer.buf->top = pconn->to_peer.buf->bot = 0;
     memset(&pconn->from_peer, 0, sizeof(pconn->from_peer));
     pconn->from_peer.buf = apr_palloc(pool, sizeof(buf_t));
-
+    pconn->from_peer.buf->top = pconn->from_peer.buf->bot = 0;
     pconn->do_read_header_attempts = 0;
 
     /* serialize the header into output buffer */
