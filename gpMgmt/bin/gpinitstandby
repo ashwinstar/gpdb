@@ -60,6 +60,9 @@ UPDATE_CATALOG=1
 TMP_PG_COMMENTS=/tmp/tmp_pga_comments.$$
 TMP_PG_VALUES=/tmp/tmp_pga_values.$$
 TMP_PG_NEW=/tmp/tmp_pga_new.$$
+PARALLEL_STATUS_FILE=/tmp/${PROG_NAME}_parallel_status_file.$$
+BATCH_DEFAULT=40
+GPSEGINITSB=${WORKDIR}/lib/gpseginitsb.sh
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -96,6 +99,7 @@ USAGE () {
 		$ECHO "      -n, do not update system catalog tables [default:- add standby host details]"
 		$ECHO "          Only use this option if standby host already recorded in the Greenplum Database system catalog"
 		$ECHO "          tables and only need to re-sync the standby master data directory"
+		$ECHO "      -B, <number> number of pg_hba.conf updates to run in parallel [default:-$BATCH_DEFAULT]"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
@@ -222,23 +226,30 @@ CHECK_PARAM () {
 UPDATE_PG_HBA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Processing Standby IP address checks, Please wait..." 1
+	BATCH_LIMIT=$QE_ARRAY_COUNT
+	if [ $BATCH_DEFAULT -gt $BATCH_LIMIT ];then
+		BATCH_DEFAULT=$BATCH_LIMIT
+	fi
+	PARALLEL_SETUP  $PARALLEL_STATUS_FILE	
+	COUNT=1
 	for TNODE in "${QE_ARRAY[@]}"
 	do
 		GP_HOSTNAME=`$ECHO $TNODE|$CUT -d'|' -f1`
 		GP_DIR=`$ECHO $TNODE|$CUT -d'|' -f2`
-		for STANDBY_IP in "${STANDBY_IP_ADDRESS[@]}"
-		do
-			CHK_COUNT=`$TRUSTED_SHELL $GP_HOSTNAME "$GREP -c \"${STANDBY_IP}/32\" ${GP_DIR}/$PG_HBA"`
-			if [ $CHK_COUNT -eq 0 ];then
-			LOG_MSG "[INFO]:-Adding address of $MASTER_STANDBY_HOSTNAME to $GP_HOSTNAME $PG_HBA file" 
-			RUN_COMMAND_REMOTE ${GP_HOSTNAME} "$ECHO host  all     $USER     ${STANDBY_IP}/32        trust >> ${GP_DIR}/$PG_HBA"
-			else
-			LOG_MSG "[INFO]:-Standby IP address already exists in $GP_HOSTNAME ${GP_DIR}/$PG_HBA" 
-			fi
-			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		done
+		IP_ADDRESS_LIST=`$ECHO ${STANDBY_IP_ADDRESS[@]}|$TR ' ' '~'`
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
+		$GPSEGINITSB $$ $COUNT $LOG_FILE $GP_HOSTNAME $GP_DIR $IP_ADDRESS_LIST $PARALLEL_STATUS_FILE &
+		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
+		((COUNT=$COUNT+1))
 	done	
 	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
+	PARALLEL_SUMMARY_STATUS_REPORT $PARALLEL_STATUS_FILE
+	if [ $REPORT_FAIL -ne 0 ];then
+		LOG_MSG "[WARN]:-Failures detected, check $LOG_FILE for more details" 1
+		EXIT_STATUS=1
+	fi
+	$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE
+	$RM -f $PARALLEL_STATUS_FILE
 	LOG_MSG "[INFO]:-Processing Standby IP address checks for Master $PG_HBA file" 1
 	CHANGE_REQD=0
 	for STANDBY_IP in "${STANDBY_IP_ADDRESS[@]}"
@@ -301,8 +312,9 @@ STOP_MASTER_DB () {
 
 DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:---------------------------------------------------" 1
 	LOG_MSG "[INFO]:-Greenplum standby master initialization parameters" 1
-	LOG_MSG "[INFO]:---------------------------------------------" 1
+	LOG_MSG "[INFO]:---------------------------------------------------" 1
 	LOG_MSG "[INFO]:-Greenplum master hostname               = $MASTER_HOSTNAME" 1
 	LOG_MSG "[INFO]:-Greenplum master data directory         = $MASTER_DATA_DIRECTORY" 1
 	LOG_MSG "[INFO]:-Greenplum master port                   = $MASTER_PORT" 1
@@ -310,6 +322,7 @@ DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Greenplum standby master port           = $MASTER_STANDBY_PORT" 1
 	LOG_MSG "[INFO]:-Greenplum array name                    = $MASTER_MPP_NAME" 1
 	LOG_MSG "[INFO]:-Greenplum standby master data directory = $MASTER_STANDBY_DATA_DIRECTORY" 1
+	LOG_MSG "[INFO]:-Parallel batch value                    = $BATCH_DEFAULT" 1
 	if [ x"" == x"$START_GPSYNC" ];then
 		LOG_MSG "[INFO]:-Greenplum Start gpsyncmaster process    = Off" 1
 	else
@@ -424,9 +437,9 @@ FAIL_PRIMARY_SEGMENTS () {
 #******************************************************************************
 # Main Section
 #******************************************************************************
-trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
+trap '$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE;$RM -f $PARALLEL_STATUS_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-	while getopts ":v'?'ainfqs:l:!D" opt;do
+	while getopts ":v'?'ainfqs:l:!DB:" opt;do
 		case $opt in
 			v ) VERSION_INFO ;;
 			'?' ) USAGE ;;
@@ -440,6 +453,7 @@ if [ $# -ne 0 ]; then
 			n ) UPDATE_CATALOG=0 ;;
 			f ) FAIL_PRI_SEG=1 ;;
 			D ) DEBUG_LEVEL=1 ;;
+			B ) BATCH_DEFAULT=$OPTARG ;;
 			* ) USAGE ;;
 		esac
 	done	
