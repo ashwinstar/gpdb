@@ -743,9 +743,11 @@ APR_DECLARE(apr_status_t) gpcc_net_init(int port,
 	gpcc_fatal(FLINE, "event_init failed");
     
     /* set up to accept connections listen_sock */
-    event_set(&net.ev_listen, net.listen_sock, EV_READ | EV_PERSIST, do_accept, 0);
-    if (ev_add(&net.ev_listen, 0))
-	gpcc_fatal(FLINE, "event_add: cannot set up event on listen socket");
+    if (port > 0) {
+	event_set(&net.ev_listen, net.listen_sock, EV_READ | EV_PERSIST, do_accept, 0);
+	if (ev_add(&net.ev_listen, 0))
+	    gpcc_fatal(FLINE, "event_add: cannot set up event on listen socket");
+    }
 
     /* set up to get break */
     event_set(&net.ev_break, net.recv_break_fd, EV_READ | EV_PERSIST, do_break, 0);
