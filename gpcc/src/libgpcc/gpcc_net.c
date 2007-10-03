@@ -10,9 +10,12 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <arpa/inet.h>
+#include <apr_thread_cond.h>
+#include <apr_thread_mutex.h>
 
 
-APR_DECLARE(apr_status_t) gpcc_net_parse_request(gpcc_net_header_t** hdr, const char* buf, int* len, apr_pool_t* pool);
+APR_DECLARE(apr_status_t) gpcc_net_parse_request(gpcc_net_header_t** hdr, const char* buf, int* len, 
+						 apr_pool_t* pool);
 
 static gpcc_net_header_t* gpcc_net_header_copy(int argc, char** argv, int hc, 
 					       char** hname, char** hvalue, apr_pool_t* pool)
@@ -89,9 +92,12 @@ typedef int SOCKET;
 #define closesocket close
 
 #define CONN_MAX  256
-#define CONN_INDEX(conn)     (conn & 0xffff)
+#define CONN_INDEX(conn)     (((int)(conn & 0xffff)) < 256 ? (int)(conn & 0xffff) : -1)
 #define CONN_UNIQUE(conn)    ((conn >> 16) & 0xffff)
 #define CONN_DEFINE(unique, index)   ((((apr_uint32_t) unique) << 16) | (index & 0xffff))
+#define CONN_TO_PTR(conn)    ((void*) ((char*)0 + (conn)))
+#define CONN_FROM_PTR(ptr)   ((gpcc_net_conn_t) ((char*)(ptr) - (char*)0))
+
 
 #define STATE_NULL       0
 #define STATE_OPENING    1
@@ -131,6 +137,13 @@ struct net_t {
     apr_pool_t* pool;
     SOCKET listen_sock;
     struct event ev_listen;
+    struct event ev_break;
+    int send_break_fd;
+    int recv_break_fd;
+    struct {
+	apr_thread_mutex_t* mutex;
+	apr_thread_cond_t*  notfull;
+    } wait;
 
     apr_uint16_t unique;
     apr_uint32_t conntab_spin;
@@ -139,13 +152,43 @@ struct net_t {
 };
 static net_t net = {0};
 
+
+static int ev_add(struct event* ev, struct timeval* tm)
+{
+    int e;
+    e = event_add(ev, tm);
+    return e;
+}
+
+
+static inline apr_uint32_t* conn_secure(gpcc_net_conn_t conn, conncb_t** ppconn)
+{
+    int index = CONN_INDEX(conn);
+    conncb_t* pconn;
+
+    *ppconn = NULL;
+    if (index < 0)
+	return NULL;
+
+    pconn = &net.conntab[index];
+    gpcc_spin_secure(&pconn->spin);
+    if (pconn->conn != conn) {
+	gpcc_spin_release(&pconn->spin);
+	return NULL;
+    }
+
+    *ppconn = pconn;
+    return &pconn->spin;
+}
+
+
+
 static void zap(conncb_t* pconn, gpcc_net_conn_t conn)
 {
     gpcc_spin_secure(&pconn->spin);
     if (pconn->conn == conn) {
 	pconn->conn = 0;
 	event_del(&pconn->ev);
-	memset(&pconn->ev, 0, sizeof(pconn->ev));
 	if (pconn->sock) {
 	    shutdown(pconn->sock, SHUT_WR | SHUT_RD);
 	    closesocket(pconn->sock);
@@ -164,26 +207,62 @@ static void zap(conncb_t* pconn, gpcc_net_conn_t conn)
     net.closed(conn);
 }
 
-static void do_ready(int fd, short event, void* arg)
+static void do_ready(int fd, short event, void* arg);
+
+
+static void conn_setup_event(gpcc_net_conn_t conn)
 {
-}
-
-
-
-static void do_read_header(int fd, short event, void* arg)
-{
-    conncb_t* pconn = (conncb_t*) arg;
-    gpcc_net_conn_t conn;
-    buf_t* buf = pconn->from_peer.buf;
-    int len, n;
+    conncb_t* pconn;
     apr_uint32_t* spin = 0;
+    buf_t* out;
+    buf_t* in;
+    struct timeval tm;
+    int flag = 0;
+    struct timeval* ptm = 0;
 
-    spin = gpcc_spin_secure(&pconn->spin);
-    conn = pconn->conn;
-    if (!conn) {
-	gpcc_warning(FLINE, "connection is NULL");
+    tm.tv_sec = 0;
+    tm.tv_usec = 500 * 1000;
+
+    if (! (spin = conn_secure(conn, &pconn)))
+	return;
+
+    out = pconn->to_peer.buf;
+    in = pconn->from_peer.buf;
+
+    if (out->bot != out->top) 
+	flag |= EV_WRITE;
+    if (in->top - in->bot != sizeof(in->byte))
+	flag |= EV_READ;
+    if (0 != (flag & EV_READ) && !pconn->to_peer.hdr && !pconn->from_peer.hdr)
+	ptm = &tm;
+
+    event_del(&pconn->ev);
+    event_set(&pconn->ev, pconn->sock, flag, do_ready, CONN_TO_PTR(conn));
+    if (event_add(&pconn->ev, ptm)) {
+	gpcc_warning(FLINE, "event_add failed");
 	goto failure;
     }
+
+    spin = gpcc_spin_release(spin);
+    return;
+
+    failure:
+    if (spin) 
+	spin = gpcc_spin_release(spin);
+    zap(pconn, conn);
+}
+
+static void conn_read_header(gpcc_net_conn_t conn)
+{
+    buf_t* buf;
+    int len;
+    apr_uint32_t* spin = 0;
+    conncb_t* pconn;
+
+    if (! (spin = conn_secure(conn, &pconn)))
+	return;
+
+    buf = pconn->from_peer.buf;
     if (pconn->from_peer.hdr) {
 	gpcc_fatal(FLINE, "internal error: already have a header");
     }
@@ -193,44 +272,25 @@ static void do_read_header(int fd, short event, void* arg)
 	gpcc_warning(FLINE, "buffer full while reading header");
 	goto failure;
     }
-    if (pconn->do_read_header_attempts > 2) {
+    if (pconn->do_read_header_attempts++ > 2) {
+	/* don't let this go on forever */
 	gpcc_warning(FLINE, "timeout while reading header");
 	goto failure;
     }
-
-    n = sizeof(buf->byte) - buf->top;
-    n = recv(pconn->sock, buf->byte + buf->top, n, 0);
-    if (n < 0) {
-	goto failure;
-    }
-    buf->top += n;
 
     len = buf->top - buf->bot;
     if (gpcc_net_parse_request(&pconn->from_peer.hdr, 
 			       buf->byte + buf->bot, &len, pconn->pool))
 	goto failure;
-
     buf->bot += len;
-    if (pconn->from_peer.hdr) {
-	/* we have a header ... do the callback */
-	goto do_callback;
-    }
-    else {
-	/* set up for do_read_header to be called again */
-	struct timeval tm;
-	event_set(&pconn->ev, pconn->sock, EV_READ, do_read_header, pconn);
-	tm.tv_sec = 0;
-	tm.tv_usec = 500*1000;
-	if (event_add(&pconn->ev, &tm)) {
-	    gpcc_warning(FLINE, "event_add failed");
-	    goto failure;
-	}
-    }
-    spin = gpcc_spin_release(spin);
-    return;
 
-do_callback:
+    if (! pconn->from_peer.hdr) {
+	spin = gpcc_spin_release(spin);
+	return;
+    }
+
     {
+	/* we have a header ... do the callback */
 	/* make a copy of net_header to pass back. it is not safe to pass 
 	   pconn->from_peer.hdr to the 'accepted' callback because we must
 	   release the spin lock before calling the callback. */
@@ -254,25 +314,13 @@ do_callback:
 	    }
 	}
 
-	if (spin) 
-	    spin = gpcc_spin_release(spin);
+	spin = gpcc_spin_release(spin); /* release prior to callback */
 
 	if (to_peer_hdr) 
 	    net.opened(conn, to_peer_hdr, from_peer_hdr);
 	else 
 	    net.accepted(conn, from_peer_hdr);
     }
-
-    /* set up to read/write the socket if it is still valid */
-    spin = gpcc_spin_secure(&pconn->spin);
-    if (pconn->conn == conn) {
-	event_set(&pconn->ev, pconn->sock, EV_READ|EV_WRITE, do_ready, pconn);
-	if (event_add(&pconn->ev, 0)) {
-	    gpcc_warning(FLINE, "event_add failed");
-	    goto failure;
-	}
-    }
-    spin = gpcc_spin_release(spin);
     return;
 
 failure:
@@ -283,65 +331,100 @@ failure:
 }
 
 
-static void do_write_header(int fd, short event, void* arg)
+
+static void conn_fire_read(gpcc_net_conn_t conn)
 {
-    conncb_t* pconn = (conncb_t*) arg;
-    gpcc_net_conn_t conn;
+    buf_t* in;
+    apr_uint32_t* spin;
+    conncb_t* pconn;
+
+    if (! (spin = conn_secure(conn, &pconn)))
+	return;
+    
+    in = pconn->from_peer.buf;
+    if (in->bot != in->top) {
+	if (pconn->to_peer.hdr == 0 && pconn->from_peer.hdr == 0) {
+	    /* newly accepted connection */
+	    spin = gpcc_spin_release(spin);
+	    conn_read_header(conn);
+	    return;
+	}
+	else {
+	    gpcc_fatal(FLINE, "not implemented");
+	}
+    }
+
+    gpcc_spin_release(spin);
+    return;
+}
+
+
+static void do_ready(int fd, short event, void* arg)
+{
+    gpcc_net_conn_t conn = CONN_FROM_PTR(arg);
     apr_uint32_t* spin = 0;
-    int n;
-    buf_t* buf = pconn->to_peer.buf;
+    conncb_t* pconn;
 
-    spin = gpcc_spin_secure(&pconn->spin);
-    conn = pconn->conn;
-    if (!conn) {
-	gpcc_warning(FLINE, "connection is NULL");
-	goto failure;
-    }
-    if (! pconn->to_peer.hdr) {
-	gpcc_fatal(FLINE, "internal error: missing to_peer header");
-    }
+    if (! (spin = conn_secure(conn, &pconn)))
+	return;
 
-    n = buf->top - buf->bot;
-    if (n > 0) {
-	n = send(pconn->sock, buf->byte + buf->bot, n, 0);
-	if (n < 0) {
-	    gpcc_warning(FLINE, "unable to send header to peer");
-	    goto failure;
+    if (0 != (event & EV_READ)) {
+	buf_t* in = pconn->from_peer.buf;
+	if (in->top == in->bot) 
+	    in->top = in->bot = 0;
+	else if (in->top == sizeof(in->byte) && in->bot != 0) {
+	    const int n = in->top - in->bot;
+	    memmove(in->byte, in->byte + in->bot, n);
+	    in->top = n;
+	    in->bot = 0;
 	}
-	buf->bot += n;
-    }
-    n = buf->top - buf->bot;
-    if (n == 0) {
-	/* finished sending header; set up to read reply header from peer */
-	struct timeval tm;
-	event_set(&pconn->ev, pconn->sock, EV_READ, do_read_header, pconn);
-	tm.tv_sec = 0;
-	tm.tv_usec = 500*1000;
-	pconn->do_read_header_attempts = 0;
-	if (event_add(&pconn->ev, &tm)) {
-	    gpcc_warning(FLINE, "event_add failed");
-	    goto failure;
+	if (in->top != sizeof(in->byte)) {
+	    int n = sizeof(in->byte) - in->top;
+	    n = read(fd, in->byte + in->top, n);
+	    if (n < 0 && errno != EAGAIN) {
+		gpcc_warning(FLINE, "read failed");
+		goto failure;
+	    }
+	    in->top += n;
 	}
     }
-    else {
-	/* continue to send header */
-	event_set(&pconn->ev, pconn->sock, EV_WRITE, do_write_header, pconn);
-	if (event_add(&pconn->ev, 0)) {
-	    gpcc_warning(FLINE, "event_add failed");
-	    goto failure;
+    if (0 != (event & EV_WRITE)) {
+	buf_t* out = pconn->to_peer.buf;
+	int      n = out->top - out->bot;
+	if (n > 0) {
+	    n = write(fd, out->byte + out->bot, n);
+	    if (n < 0 && errno != EAGAIN) {
+		gpcc_warning(FLINE, "write failed");
+		goto failure;
+	    }
+	    out->bot += n;
 	}
     }
 
-    if (spin)
-	spin = gpcc_spin_release(spin);
+    spin = gpcc_spin_release(spin);
+    if (0 != (event & EV_READ))
+	conn_fire_read(conn);
+    conn_setup_event(conn);
 
     return;
-
     failure:
-    if (spin)
-	spin = gpcc_spin_release(spin);
+    if (spin) gpcc_spin_release(spin);
     zap(pconn, conn);
 }
+
+
+
+
+static void do_break(int fd, short event, void* arg)
+{
+    gpcc_net_conn_t conn;
+
+    if (sizeof(conn) != read(fd, &conn, sizeof(conn))) 
+	gpcc_fatal(FLINE, "internal error: read failed");
+    
+    conn_setup_event(conn);
+}
+
 
 
 
@@ -390,6 +473,7 @@ static void do_accept(int fd, short event, void* arg)
     int i, unique;
     conncb_t* pconn = 0;
     apr_uint32_t* spin = 0;
+    gpcc_net_conn_t conn = 0;
 
     /* do the accept */
     if ((sock = accept(fd, (void*) &sockaddr, &sockaddr_len)) < 0) {
@@ -416,21 +500,29 @@ static void do_accept(int fd, short event, void* arg)
     pconn = 0;
     for (i = 0; i < CONN_MAX; i++) {
 	int index = (unique + i) % CONN_MAX;
-	if (0 == net.conntab[index].conn) {
-	    pconn = &net.conntab[index];
-	    pconn->conn = CONN_DEFINE(unique, index);
-	    break;
+	pconn = &net.conntab[index];
+	if (pconn->conn) {
+	    pconn = 0;
+	    continue;
 	}
+	gpcc_spin_secure(&pconn->spin);
+	if (pconn->conn) {
+	    gpcc_spin_release(&pconn->spin);
+	    pconn = 0;
+	    continue;
+	}
+	pconn->conn = CONN_DEFINE(unique, index);
+	break;
     }
     if (!pconn) {
 	gpcc_warning(FLINE, "unable to accept connection - connection table full");
 	goto failure;
     }
+    conn = pconn->conn;
 
     /* crab over to pconn */
-    gpcc_spin_secure(&pconn->spin);
     gpcc_spin_release(spin);
-    spin = &pconn->spin;
+    spin = &pconn->spin;	/* we grabbed the spin earlier in the loop above */
 
     pconn->pool = pool;
     pconn->sock = sock;
@@ -438,27 +530,18 @@ static void do_accept(int fd, short event, void* arg)
     memset(&pconn->from_peer, 0, sizeof(pconn->from_peer));
     pconn->to_peer.buf = apr_palloc(pool, sizeof(buf_t));
     pconn->from_peer.buf = apr_palloc(pool, sizeof(buf_t));
-    
-    pconn->do_read_header_attempts = 0;
-    {
-	/* set up to read the header */
-	struct timeval tm;
-	event_set(&pconn->ev, pconn->sock, EV_READ, do_read_header, pconn);
-	tm.tv_sec = 0;
-	tm.tv_usec = 500 * 1000;
-	if (event_add(&pconn->ev, &tm)) {
-	    gpcc_warning(FLINE, "event_add failed");
-	    goto failure;
-	}
-    }
-
     pconn->peer_addr[0] = 0;
     if (! inet_ntop(sockaddr.sin_family, &sockaddr.sin_addr, pconn->peer_addr, sizeof(pconn->peer_addr) - 7)) {
 	gpcc_warning(FLINE, "inet_ntop failed");
 	goto failure;
     }
     sprintf(pconn->peer_addr + strlen(pconn->peer_addr), ":%d", ntohs(sockaddr.sin_port));
+    
+    pconn->do_read_header_attempts = 0;
+    conn = pconn->conn;
     spin = gpcc_spin_release(spin);
+
+    conn_setup_event(conn);
 
     return;			/* success */
 
@@ -472,6 +555,80 @@ failure:
     if (sock >= 0)
 	closesocket(sock);
 }
+
+
+
+APR_DECLARE(apr_status_t) gpcc_net_sendv(gpcc_net_conn_t conn,
+					 gpcc_net_datum_t* datum, int dcnt)
+{
+    int tot, i;
+    const int max = sizeof(((buf_t*)0)->byte);
+    apr_uint32_t* spin = 0;
+    conncb_t* pconn;
+    buf_t* buf;
+    int e = 0;
+    int avail;
+
+    /* compute total length */
+    for (i = tot = 0; i < dcnt; i++)
+	tot += datum[i].len;
+
+    /* too long ? */
+    if (tot >= max) {
+	gpcc_warning(FLINE, "datum longer than %d", max);
+	e = APR_EINVAL;
+	goto failure;
+    }
+
+    again:
+    /* grab the conn */
+    if (! (spin = conn_secure(conn, &pconn)))
+	return APR_EINVAL;
+
+    /* while full wait */
+    buf = pconn->to_peer.buf;
+    avail = max - (buf->top - buf->bot);
+    if (avail < tot) {
+	spin = gpcc_spin_release(spin);
+	if (0 != (e = apr_thread_mutex_lock(net.wait.mutex)))
+	    goto failure;
+	if (0 != (e = apr_thread_cond_wait(net.wait.notfull, net.wait.mutex))) {
+	    apr_thread_mutex_unlock(net.wait.mutex);
+	    goto failure;
+	}
+	goto again;		/* retry  */
+    }
+
+    /* compact if necessary */
+    if (buf->top + tot > max) {
+	const int n = buf->top - buf->bot;
+	if (n < 0) 
+	    gpcc_fatal(FLINE, "internal error: top %d, bot %d", buf->top, buf->bot);
+	else if (n > 0) 
+	    memmove(buf->byte + buf->bot, buf->byte, n);
+	buf->bot = 0, buf->top = n;
+    }
+    avail = max - (buf->top - buf->bot);
+    if (avail < tot) 
+	gpcc_fatal(FLINE, "internal error: avail %d, tot %d", avail, tot);
+    
+    /* copy into buf */
+    for (i = 0; i < dcnt; i++) {
+	const int n = datum[i].len;
+	memcpy(buf->byte + buf->top, datum[i].ptr, n);
+	buf->top += n;
+    }
+
+    gpcc_spin_release(spin);
+    return 0;
+    
+ failure:
+    if (spin)
+	gpcc_spin_release(spin);
+    return e;
+}
+
+
 
 
 
@@ -545,13 +702,34 @@ APR_DECLARE(apr_status_t) gpcc_net_init(int port,
     net.closed = closed;
     net.listen_sock = sock;
 
+    /* create the mutex & cond */
+    if (0 != (e = apr_thread_mutex_create(&net.wait.mutex, 0, pool))) 
+	gpcc_fatal(FLINE, "apr_thread_mutex_create failed, error %d", e);
+    
+    if (0 != (e = apr_thread_cond_create(&net.wait.notfull, pool)))
+	gpcc_fatal(FLINE, "apr_thread_cond_create failed, error %d", e);
+
+    /* create a pipe to break the event loop */
+    {
+	int pfd[2];
+	if (pipe(pfd) < 0) 
+	    gpcc_fatal(FLINE, "pipe failed, errno %d", errno);
+	net.send_break_fd = pfd[1];
+	net.recv_break_fd = pfd[0];
+    }
+
     /* initialize libevent */
     if (! event_init()) 
 	gpcc_fatal(FLINE, "event_init failed");
     
     /* set up to accept connections listen_sock */
     event_set(&net.ev_listen, net.listen_sock, EV_READ | EV_PERSIST, do_accept, 0);
-    if (event_add(&net.ev_listen, 0))
+    if (ev_add(&net.ev_listen, 0))
+	gpcc_fatal(FLINE, "event_add: cannot set up event on listen socket");
+
+    /* set up to get break */
+    event_set(&net.ev_break, net.recv_break_fd, EV_READ | EV_PERSIST, do_break, 0);
+    if (ev_add(&net.ev_break, 0))
 	gpcc_fatal(FLINE, "event_add: cannot set up event on listen socket");
 
     return 0;
@@ -668,12 +846,12 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
 	    goto failure;
 	}
     }
-    {
-	/* set up to write the header */
-	event_set(&pconn->ev, pconn->sock, EV_WRITE, do_write_header, pconn);
-	event_add(&pconn->ev, 0);
+    if (sizeof(conn) != write(net.send_break_fd, &conn, sizeof(conn)))  {
+	gpcc_warning(FLINE, "unable to send conn to break event loop");
+	goto failure;
     }
 
+    gpcc_spin_release(spin);
     return 0;
 
 failure:
@@ -694,23 +872,11 @@ APR_DECLARE(void) gpcc_net_close(gpcc_net_conn_t conn)
 {
     conncb_t* pconn = 0;
     apr_uint32_t* spin = 0;
-    int index = CONN_INDEX(conn);
-
-    if (! (0 <= index && index < CONN_MAX)) 
-	goto failure;
-
-    pconn = &net.conntab[index];
-
-    spin = gpcc_spin_secure(&pconn->spin);
-    if (pconn->conn != conn) 
-	goto failure;
+    if (! (spin = conn_secure(conn, &pconn)))
+	return;
     spin = gpcc_spin_release(spin);
     zap(pconn, conn);
     return;
-
- failure:
-    if (spin) 
-	gpcc_spin_release(spin);
 }
 
 

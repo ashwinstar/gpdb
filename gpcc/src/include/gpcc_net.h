@@ -1,5 +1,5 @@
-#ifndef NET_H
-#define NET_H
+#ifndef GPCC_NET_H
+#define GPCC_NET_H
 
 #include <gpcc.h>
 #include <apr_time.h>
@@ -47,8 +47,14 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
 
 APR_DECLARE(void) gpcc_net_close(gpcc_net_conn_t conn);
 
-APR_DECLARE(apr_status_t) gpcc_net_send(gpcc_net_conn_t conn,
-					const char* buf, int buflen);
+typedef struct gpcc_net_datum_t gpcc_net_datum_t;
+struct gpcc_net_datum_t {
+    char* ptr;
+    int   len;
+};
+
+APR_DECLARE(apr_status_t) gpcc_net_sendv(gpcc_net_conn_t conn,
+					 gpcc_net_datum_t* datum, int dcnt);
 
 
-#endif /* NET_H */
+#endif /* GPCC_NET_H */
