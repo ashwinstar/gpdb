@@ -820,6 +820,76 @@ char **fpath_merge(char **fpath1, int n1, char **fpath2, int n2, int *n, apr_poo
     return fpath;
 }
 
+
+/* deallocate session, remove from hashtable */
+void session_free(session_t* s)
+{
+    if (opt.v) 
+	printf("[INFO] free session %s\n", s->key);
+
+    apr_hash_set(gcb.session.tab, s->key, APR_HASH_KEY_STRING, 0);
+    free((void*) s->key);
+    free((void*) s->tid);
+    free((void*) s->path);
+    free(s);
+}
+
+
+/* detach a request from a session */
+void session_detach(request_t* r)
+{
+    session_t* s = r->session;
+    r->session = 0;
+    if (s) {
+	if (s->nrequest == 0) 
+	    gfatal(FLINE, "assert failed");
+	s->nrequest--;
+	s->mtime = apr_time_now();
+
+	/* for auto-tid sessions, we can free it now */
+	if (0 == strncmp("auto-tid.", s->tid, 9)) {
+	    if (s->nrequest != 0) 
+		gfatal(FLINE, "assert failed");
+
+	    session_free(s);
+	}
+    }
+}
+
+void sessions_cleanup() 
+{
+    apr_hash_index_t *hi;
+    int i, n = 0;
+    int nargv;
+    session_t **session, *s;
+
+    nargv = apr_hash_count(gcb.session.tab);
+    if (nargv == 0)
+	return;
+
+    session = malloc(sizeof(session_t *) * nargv);
+    if (! session) {
+	gfatal(FLINE, "out of memory");
+    }
+
+    for  (hi = apr_hash_first(gcb.pool, gcb.session.tab) ; hi ; hi = apr_hash_next(hi)) {
+	apr_hash_this(hi, 0, 0, (void **) &s);
+	if (s->nrequest == 0 && (s->mtime < apr_time_now() - 3600 * APR_USEC_PER_SEC)) {
+	    session[n++] = s;
+	}
+    }
+
+    for (i = 0 ; i < n ; i++) {
+	if (opt.v) 
+	    printf("[INFO] remove out-dated session %s\n", session[i]->key);
+	session_free(session[i]);
+	session[i] = 0;
+    }
+
+    if (session) 
+	free(session);
+}
+
 void session_attach(request_t* r)
 {
     char key[1024];
@@ -960,46 +1030,16 @@ void session_attach(request_t* r)
     s->mtime = apr_time_now();
     r->session = s;
 
+
+    /* remove the session if it's too old */
+    sessions_cleanup();
+
     /* finally, tell peer that we are ready to send data */
     send_ok(r);
     return;
 }
 
 
-/* deallocate session, remove from hashtable */
-void session_free(session_t* s)
-{
-    if (opt.v) 
-	printf("[INFO] free session %s\n", s->key);
-
-    apr_hash_set(gcb.session.tab, s->key, APR_HASH_KEY_STRING, 0);
-    free((void*) s->key);
-    free((void*) s->tid);
-    free((void*) s->path);
-    free(s);
-}
-
-
-/* detach a request from a session */
-void session_detach(request_t* r)
-{
-    session_t* s = r->session;
-    r->session = 0;
-    if (s) {
-	if (s->nrequest == 0) 
-	    gfatal(FLINE, "assert failed");
-	s->nrequest--;
-	s->mtime = apr_time_now();
-
-	/* for auto-tid sessions, we can free it now */
-	if (0 == strncmp("auto-tid.", s->tid, 9)) {
-	    if (s->nrequest != 0) 
-		gfatal(FLINE, "assert failed");
-
-	    session_free(s);
-	}
-    }
-}
 
 
 
