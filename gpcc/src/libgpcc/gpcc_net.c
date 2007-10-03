@@ -17,6 +17,34 @@
 APR_DECLARE(apr_status_t) gpcc_net_parse_request(gpcc_net_header_t** hdr, const char* buf, int* len, 
 						 apr_pool_t* pool);
 
+
+
+static char* gpcc_net_header_serialize(gpcc_net_header_t* src, char* buf, int buflen)
+{
+    int i;
+    char* p = buf;
+    char* q = buf + buflen;
+
+    for (i = 0; i < src->argc; i++) {
+	if (p < q) {
+	    p += apr_snprintf(p, q - p, "%s ", src->argv[i]);
+	}
+    }
+    if (p < q) {
+	p += apr_snprintf(p, q - p, "\r\n");
+    }
+
+    for (i = 0; i < src->hc; i++) {
+	if (p < q) {
+	    p += apr_snprintf(p, q - p, "%s: %s\r\n", src->hname[i], src->hvalue[i]);
+	}
+    }
+
+    return p < q ? buf : 0;
+}
+
+
+
 static gpcc_net_header_t* gpcc_net_header_copy(int argc, char** argv, int hc, 
 					       char** hname, char** hvalue, apr_pool_t* pool)
 {
@@ -29,10 +57,12 @@ static gpcc_net_header_t* gpcc_net_header_copy(int argc, char** argv, int hc,
     if (hc >= GPCC_NET_HEADER_ENTRYMAX) 
 	return 0;
 
+    hdr->argc = argc;
     for (i = 0; i < argc; i++) 
 	hdr->argv[i] = apr_pstrdup(pool, argv[i]);
     hdr->argv[i] = 0;
     
+    hdr->hc = hc;
     for (i = 0; i < hc; i++) {
 	hdr->hname[i] = apr_pstrdup(pool, hname[i]);
 	hdr->hvalue[i] = apr_pstrdup(pool, hvalue[i]);
@@ -42,6 +72,9 @@ static gpcc_net_header_t* gpcc_net_header_copy(int argc, char** argv, int hc,
 
     return hdr;
 }
+
+
+
 
 static gpcc_net_header_t* gpcc_net_header_dup(gpcc_net_header_t* src, char* buf, int buflen)
 {
@@ -115,17 +148,17 @@ struct buf_t {
 
 typedef struct conncb_t conncb_t;
 struct conncb_t {
+    apr_uint32_t    spin;
     gpcc_net_conn_t conn;
-    apr_uint32_t spin;
-    SOCKET sock;
-    apr_pool_t* pool;
-    char peer_addr[24];  /* format IP:port -- 123.456.789.012:34567 */
-    struct event ev;
+    SOCKET          sock;
+    apr_pool_t*     pool;
+    char            peer_addr[24];  /* format IP:port -- 123.456.789.012:34567 */
+    struct event    ev;
     struct {
-	buf_t* buf;
+	buf_t*             buf;
 	gpcc_net_header_t* hdr;
-    } to_peer, from_peer;
-    int do_read_header_attempts;
+    }               to_peer, from_peer;
+    int             do_read_header_attempts;
 };
 
 typedef struct net_t net_t;
@@ -780,7 +813,7 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
     struct sockaddr_in peer_addr;
     int port = 0;
     char* p;
-    char addr[100];
+    char host[100];
     struct hostent* hp;
     int i, e = 0;
     apr_pool_t* pool = 0;
@@ -789,6 +822,7 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
     conncb_t* pconn = 0;
     gpcc_net_header_t* hdr = 0;
 
+    *conn = 0;
     if (0 != (e = apr_pool_create(&pool, net.pool))) 
 	goto failure;
 
@@ -800,10 +834,10 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
     }
 
     /* parse the peer_addr_str into (hostname, ip) pair*/
-    strncpy(addr, peer_addr_str, sizeof(addr) - 1);
-    addr[sizeof(addr) - 1] = 0;
+    strncpy(host, peer_addr_str, sizeof(host) - 1);
+    host[sizeof(host) - 1] = 0;
 
-    if (0 == (p = strchr(addr, ':'))) {
+    if (0 == (p = strchr(host, ':'))) {
 	e = APR_EINVAL;
 	goto failure;
     }
@@ -816,7 +850,7 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
     }
     
     /* get the host ip */
-    if (0 == (hp = gethostbyname(addr))) {
+    if (0 == (hp = gethostbyname(host))) {
 	e = APR_EINVAL;
 	goto failure;
     }
@@ -859,14 +893,31 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
     gpcc_spin_release(spin);
     spin = &pconn->spin;
 
-    pconn->pool = pool;
+    /* make sure we initialize every field other than spin & conn */
     pconn->sock = sock;
+    pconn->pool = pool;
+    {
+	unsigned char* s = (unsigned char*) &peer_addr.sin_addr;
+	sprintf(pconn->peer_addr, "%x.%x.%x.%x:%d", 
+		s[0], s[1], s[2], s[3], port);
+    }
+    memset(&pconn->ev, 0, sizeof(pconn->ev));
     memset(&pconn->to_peer, 0, sizeof(pconn->to_peer));
-    memset(&pconn->from_peer, 0, sizeof(pconn->from_peer));
-    pconn->to_peer.buf = apr_palloc(pool, sizeof(buf_t));
-    pconn->from_peer.buf = apr_palloc(pool, sizeof(buf_t));
-    pconn->do_read_header_attempts = 0;
     pconn->to_peer.hdr = hdr;
+    pconn->to_peer.buf = apr_palloc(pool, sizeof(buf_t));
+    memset(&pconn->from_peer, 0, sizeof(pconn->from_peer));
+    pconn->from_peer.buf = apr_palloc(pool, sizeof(buf_t));
+
+    pconn->do_read_header_attempts = 0;
+
+    /* serialize the header into output buffer */
+    if (0 == gpcc_net_header_serialize(hdr, pconn->to_peer.buf->byte, 
+				       sizeof(pconn->to_peer.buf->byte))) {
+	gpcc_warning(FLINE, "header lines too long");
+	e = APR_EINVAL;
+	goto failure;
+    }
+    pconn->to_peer.buf->top = strlen(pconn->to_peer.buf->byte);
 
     /* connect */
     if (-1 == connect(sock, (struct sockaddr *) &peer_addr, sizeof(peer_addr))) {
@@ -877,7 +928,9 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
 	    goto failure;
 	}
     }
-    if (sizeof(conn) != write(net.send_break_fd, &conn, sizeof(conn)))  {
+
+    *conn = pconn->conn;
+    if (sizeof(*conn) != write(net.send_break_fd, conn, sizeof(*conn)))  {
 	gpcc_warning(FLINE, "unable to send conn to break event loop");
 	goto failure;
     }
