@@ -334,7 +334,9 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     char *source;
     char *user;
     char *last;
-    
+    char *argv[5];
+    int argc;
+
     memset(&cmdslot->u.seg.request, 0, sizeof(cmdslot->u.seg.request));
     if (0 != (e = apr_pool_create(&cmdslot->u.seg.request.subpool, cmdslot->pool))) {
 	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, e, "apr_pool_create error");
@@ -399,7 +401,14 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     node = apr_strtok(seg, ":", &last);  /* TODO: get json object from node */
     m_data_dir = apr_strtok(0, ":", &last);
     
-    source = apr_psprintf(cmdslot->u.seg.request.subpool, "%s@%s:%s", user, node, m_data_dir);
+    argc = gpcc_lengthof(argv);
+    if ((0 != (e = getnode_addr(obj, node, argv, &argc, cmdslot->u.seg.request.subpool))) || argc == 0){
+	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, e, "get address from node %s failed", node);
+	json_object_put(obj);
+	return 0;
+    }
+
+    source = apr_psprintf(cmdslot->u.seg.request.subpool, "%s@%s:%s", user, argv[0], m_data_dir);
     if (0 != (e = gpcc_proc_scp(&cmdslot->u.seg.request.proc,
 				cmdslot->u.seg.request.port,
 				source,
