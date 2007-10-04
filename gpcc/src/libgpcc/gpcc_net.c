@@ -396,7 +396,12 @@ static void conn_fire_read(gpcc_net_conn_t conn)
 	    spin = gpcc_spin_release(spin);
 	    conn_read_header(conn);
 	    goto again;		/* in case we have some more bytes in the buffer */
-	}
+	} else if (pconn->to_peer.hdr && pconn->from_peer.hdr == 0) {
+	    /* newly opened connection */
+	    spin = gpcc_spin_release(spin);
+	    conn_read_header(conn);
+	    goto again;
+	} 
 	if (in->top > in->bot) {
 	    char* byte = in->byte;
 	    int bot = in->bot;
@@ -664,7 +669,21 @@ failure:
 	closesocket(sock);
 }
 
+APR_DECLARE(apr_status_t) gpcc_net_send_header(gpcc_net_conn_t conn,
+					       gpcc_net_header_t *hdr)
+{
+    char buf[1024], *b;
+    int len = sizeof(buf);
 
+    b = gpcc_net_header_serialize(hdr, buf, len);
+    if (!b) {
+	gpcc_log_error("header too long");
+	return APR_EINVAL;
+    }
+
+    return gpcc_net_send(conn, b, strlen(b));
+    
+}
 
 APR_DECLARE(apr_status_t) gpcc_net_sendv(gpcc_net_conn_t conn,
 					 gpcc_net_datum_t* datum, int dcnt)
@@ -969,7 +988,7 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
     pconn->pool = pool;
     {
 	unsigned char* s = (unsigned char*) &peer_addr.sin_addr;
-	sprintf(pconn->peer_addr, "%x.%x.%x.%x:%d", 
+	sprintf(pconn->peer_addr, "%d.%d.%d.%d:%d", 
 		s[0], s[1], s[2], s[3], port);
     }
     memset(&pconn->ev, 0, sizeof(pconn->ev));

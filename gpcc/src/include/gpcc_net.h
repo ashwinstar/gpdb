@@ -55,6 +55,9 @@ struct gpcc_net_datum_t {
     int   len;
 };
 
+APR_DECLARE(apr_status_t) gpcc_net_send_header(gpcc_net_conn_t conn,
+					       gpcc_net_header_t *hdr);
+
 APR_DECLARE(apr_status_t) gpcc_net_sendv(gpcc_net_conn_t conn,
 					 gpcc_net_datum_t* datum, int dcnt);
 
