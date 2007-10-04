@@ -111,6 +111,8 @@ static apr_status_t initdb_reply(gpcc_event_t *ev, void *_cmdslot)
 	char *seg, *status, *reason;
 	gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->edata;
 
+	gpcc_log_info("packet recv %d %s", pkt->mh.len, pkt->mb);
+
 	obj = json_tokener_parse(pkt->mb);
 	seg = gpcc_json_object_get_string(obj, "seg", 0);
 	status = gpcc_json_object_get_string(obj, "status", "failed");

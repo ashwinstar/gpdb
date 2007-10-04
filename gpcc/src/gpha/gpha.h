@@ -102,7 +102,7 @@ struct cmdslot_t {
 
 
 	struct {
-	    
+	    int rcvidx;
 	} ma;
     } u;
 };

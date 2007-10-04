@@ -269,8 +269,8 @@ static void ha_net_recv(gpcc_ha_t *ha, gpcc_net_packet_t *packet, void *arg)
 {
     hainfo_t *hainfo = (hainfo_t *) arg;
     gpcc_net_packet_t *pkt;
-    gpcc_event_t *ev = gpcc_event_alloc(NET_RECEIVED_EVENT, packet->mh.rcvidx, sizeof(gpcc_net_packet_t));
-    memcpy(ev->edata, packet, sizeof(*packet));
+    gpcc_event_t *ev = gpcc_event_alloc(packet->mh.type, packet->mh.rcvidx, sizeof(*packet)+packet->mh.len);
+    memcpy(ev->edata, packet, sizeof(*packet)+packet->mh.len);
     pkt = (gpcc_net_packet_t *) ev->edata;
     pkt->mh.rcvidx = hainfo->index;
     gpcc_evqueue_put(gpfts.evq, ev);    

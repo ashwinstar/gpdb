@@ -79,12 +79,27 @@ static apr_status_t ma_start_reply(gpcc_event_t *ev, void *_cmdslot)
 
 static apr_status_t ma_initdb_reply(gpcc_event_t *ev, void *_cmdslot)
 {
+    cmdslot_t *cmdslot = _cmdslot;
+    struct json_object *obj;
+    char *status;
+    char *seg;
 
-    return 0;
+    gpcc_log_info("ma_initdb_reply");
+
+    obj = json_tokener_parse(ev->edata);
+    status = gpcc_json_object_get_string(obj, "status", 0);
+    seg = gpcc_json_object_get_string(obj, "seg", 0);
+    gpcc_log_info("seg = %s, status = %s", seg, status);
+
+    json_object_put(obj);
+    return gpcc_net_send_packet(cmdslot->conninfo->conn, SEGMENT_REPLY_MSG, 
+				cmdslot->cmdidx, cmdslot->u.ma.rcvidx, ev->edata, ev->edatasz);
+
 }
 
 static apr_status_t ma_dispatch_segment(gpcc_event_t *ev, void *_cmdslot)
 {
+    cmdslot_t *cmdslot = _cmdslot;
     char *seg = 0;
     int i;
     cmdslot_t *slot;
@@ -99,6 +114,8 @@ static apr_status_t ma_dispatch_segment(gpcc_event_t *ev, void *_cmdslot)
 	gpcc_warning(FLINE, "json_tokener_parse error");
 	return 0;
     }
+
+    cmdslot->u.ma.rcvidx = packet->mh.sndidx;
     
     segobj = json_object_object_get(obj, "seg");
 
@@ -885,6 +902,7 @@ static apr_status_t seg_initdb_checkdb(gpcc_event_t* ev, void *_cmdslot)
     int e;
     char *user;
     char *passwd;
+    gpcc_event_t *evt;
 
     if (seg_is_qd(cmdslot)) {
 	/* this is QD */
@@ -913,6 +931,9 @@ static apr_status_t seg_initdb_checkdb(gpcc_event_t* ev, void *_cmdslot)
 	return 0;
     }
 
+    evt = gpcc_event_alloc(SEG_INITDB_DONE_EVENT, cmdslot->cmdidx, 0);
+    gpcc_evqueue_put(gpha.evq, evt);
+
     /* save the setting port and data_dir permanently */
     if (cmdslot->u.seg.port == 0) {
 	cmdslot->u.seg.port = cmdslot->u.seg.request.port;
@@ -921,7 +942,7 @@ static apr_status_t seg_initdb_checkdb(gpcc_event_t* ev, void *_cmdslot)
 	cmdslot->u.seg.data_dir = apr_pstrdup(cmdslot->pool, cmdslot->u.seg.request.data_dir);
     }
     
-
+    
     return 0;
 }
 
