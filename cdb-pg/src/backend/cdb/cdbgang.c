@@ -2533,7 +2533,7 @@ allocatePrimaryWriterGang(void)
 
 	Gang	   *gp = NULL;
 
-	Assert(Gp_role == GP_ROLE_DISPATCH);
+	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT);
 
 	if (primaryWriterGang == NULL)
 	{
@@ -2608,7 +2608,7 @@ allocateMirrorWriterGang(void)
 
 	Gang	   *gp = NULL;
 
-	Assert(Gp_role == GP_ROLE_DISPATCH);
+	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT);
 
 	if (mirrorWriterGang == NULL && !mirroringNotConfigured)
 	{
