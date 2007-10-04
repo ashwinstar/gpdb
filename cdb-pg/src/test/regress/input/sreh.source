@@ -23,14 +23,14 @@ SELECT * FROM sreh_copy ORDER BY a;
 --
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 1000;
 SELECT * FROM sreh_copy ORDER BY a;
-SELECT relname,filename,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
+SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
 
 --
 -- error table - do the same thing again. this time error table exists and should get reused and data appended
 --
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 1000;
 SELECT * FROM sreh_copy ORDER BY a;
-SELECT relname,filename,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
+SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
 
 --
 -- error table - do the same thing again. this time use data from STDIN (should show in errtable)
@@ -42,14 +42,14 @@ COPY sreh_copy FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT
 400|400| more bad data from stdin
 \.
 SELECT * FROM sreh_copy ORDER BY a;
-SELECT relname,filename,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
+SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
 
 --
 -- error table - have low reject limit that gets reached, and see that data rolled back from both target table and err table
 --
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 2;
 SELECT * FROM sreh_copy ORDER BY a;
-SELECT relname,filename,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
+SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
 
 DROP TABLE sreh_copy;
 DROP TABLE sreh_copy_errtable;

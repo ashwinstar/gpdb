@@ -59,19 +59,19 @@ SELECT * FROM sreh_copy ORDER BY a;
  14 | 14 | 14
 (12 rows)
 
-SELECT relname,filename,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
-  relname  |                                         filename                                          | linenum |                 errmsg                  | rawdata 
------------+-------------------------------------------------------------------------------------------+---------+-----------------------------------------+---------
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       2 | missing data for column "b"             | 2
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       3 | missing data for column "c"             | 3|
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       4 | extra data after last expected column   | 4|4|4|4
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       7 | invalid input syntax for integer: "bad" | 7|7|bad
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       8 | invalid input syntax for integer: "bad" | bad|8|8
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      11 | missing data for column "b"             | eleven
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      12 | extra data after last expected column   | 12||||
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      13 | missing data for column "c"             | |,13,
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      15 | missing data for column "b"             | 15
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      16 | missing data for column "b"             | sixteen
+SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
+  relname  | linenum |                 errmsg                  | rawdata 
+-----------+---------+-----------------------------------------+---------
+ sreh_copy |       2 | missing data for column "b"             | 2
+ sreh_copy |       3 | missing data for column "c"             | 3|
+ sreh_copy |       4 | extra data after last expected column   | 4|4|4|4
+ sreh_copy |       7 | invalid input syntax for integer: "bad" | 7|7|bad
+ sreh_copy |       8 | invalid input syntax for integer: "bad" | bad|8|8
+ sreh_copy |      11 | missing data for column "b"             | eleven
+ sreh_copy |      12 | extra data after last expected column   | 12||||
+ sreh_copy |      13 | missing data for column "c"             | |,13,
+ sreh_copy |      15 | missing data for column "b"             | 15
+ sreh_copy |      16 | missing data for column "b"             | sixteen
 (10 rows)
 
 --
@@ -102,29 +102,29 @@ SELECT * FROM sreh_copy ORDER BY a;
  14 | 14 | 14
 (18 rows)
 
-SELECT relname,filename,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
-  relname  |                                         filename                                          | linenum |                 errmsg                  | rawdata 
------------+-------------------------------------------------------------------------------------------+---------+-----------------------------------------+---------
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       2 | missing data for column "b"             | 2
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       2 | missing data for column "b"             | 2
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       3 | missing data for column "c"             | 3|
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       3 | missing data for column "c"             | 3|
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       4 | extra data after last expected column   | 4|4|4|4
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       4 | extra data after last expected column   | 4|4|4|4
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       7 | invalid input syntax for integer: "bad" | 7|7|bad
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       7 | invalid input syntax for integer: "bad" | 7|7|bad
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       8 | invalid input syntax for integer: "bad" | bad|8|8
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       8 | invalid input syntax for integer: "bad" | bad|8|8
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      11 | missing data for column "b"             | eleven
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      11 | missing data for column "b"             | eleven
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      12 | extra data after last expected column   | 12||||
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      12 | extra data after last expected column   | 12||||
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      13 | missing data for column "c"             | |,13,
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      13 | missing data for column "c"             | |,13,
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      15 | missing data for column "b"             | 15
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      15 | missing data for column "b"             | 15
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      16 | missing data for column "b"             | sixteen
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      16 | missing data for column "b"             | sixteen
+SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
+  relname  | linenum |                 errmsg                  | rawdata 
+-----------+---------+-----------------------------------------+---------
+ sreh_copy |       2 | missing data for column "b"             | 2
+ sreh_copy |       2 | missing data for column "b"             | 2
+ sreh_copy |       3 | missing data for column "c"             | 3|
+ sreh_copy |       3 | missing data for column "c"             | 3|
+ sreh_copy |       4 | extra data after last expected column   | 4|4|4|4
+ sreh_copy |       4 | extra data after last expected column   | 4|4|4|4
+ sreh_copy |       7 | invalid input syntax for integer: "bad" | 7|7|bad
+ sreh_copy |       7 | invalid input syntax for integer: "bad" | 7|7|bad
+ sreh_copy |       8 | invalid input syntax for integer: "bad" | bad|8|8
+ sreh_copy |       8 | invalid input syntax for integer: "bad" | bad|8|8
+ sreh_copy |      11 | missing data for column "b"             | eleven
+ sreh_copy |      11 | missing data for column "b"             | eleven
+ sreh_copy |      12 | extra data after last expected column   | 12||||
+ sreh_copy |      12 | extra data after last expected column   | 12||||
+ sreh_copy |      13 | missing data for column "c"             | |,13,
+ sreh_copy |      13 | missing data for column "c"             | |,13,
+ sreh_copy |      15 | missing data for column "b"             | 15
+ sreh_copy |      15 | missing data for column "b"             | 15
+ sreh_copy |      16 | missing data for column "b"             | sixteen
+ sreh_copy |      16 | missing data for column "b"             | sixteen
 (20 rows)
 
 --
@@ -157,38 +157,38 @@ SELECT * FROM sreh_copy ORDER BY a;
  300 | 300 | 300
 (20 rows)
 
-SELECT relname,filename,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
-  relname  |                                         filename                                          | linenum |                            errmsg                             |              rawdata              
------------+-------------------------------------------------------------------------------------------+---------+---------------------------------------------------------------+-----------------------------------
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       2 | missing data for column "b"                                   | 2
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       2 | missing data for column "b"                                   | 2
- sreh_copy | <stdin>                                                                                   |       2 | missing data for column "b"                                   | 200 bad data from stdin
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       3 | missing data for column "c"                                   | 3|
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       3 | missing data for column "c"                                   | 3|
- sreh_copy | <stdin>                                                                                   |       4 | invalid input syntax for integer: " more bad data from stdin" | 400|400| more bad data from stdin
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       4 | extra data after last expected column                         | 4|4|4|4
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       4 | extra data after last expected column                         | 4|4|4|4
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       7 | invalid input syntax for integer: "bad"                       | 7|7|bad
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       7 | invalid input syntax for integer: "bad"                       | 7|7|bad
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       8 | invalid input syntax for integer: "bad"                       | bad|8|8
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       8 | invalid input syntax for integer: "bad"                       | bad|8|8
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      11 | missing data for column "b"                                   | eleven
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      11 | missing data for column "b"                                   | eleven
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      12 | extra data after last expected column                         | 12||||
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      12 | extra data after last expected column                         | 12||||
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      13 | missing data for column "c"                                   | |,13,
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      13 | missing data for column "c"                                   | |,13,
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      15 | missing data for column "b"                                   | 15
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      15 | missing data for column "b"                                   | 15
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      16 | missing data for column "b"                                   | sixteen
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      16 | missing data for column "b"                                   | sixteen
+SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
+  relname  | linenum |                            errmsg                             |              rawdata              
+-----------+---------+---------------------------------------------------------------+-----------------------------------
+ sreh_copy |       2 | missing data for column "b"                                   | 2
+ sreh_copy |       2 | missing data for column "b"                                   | 2
+ sreh_copy |       2 | missing data for column "b"                                   | 200 bad data from stdin
+ sreh_copy |       3 | missing data for column "c"                                   | 3|
+ sreh_copy |       3 | missing data for column "c"                                   | 3|
+ sreh_copy |       4 | invalid input syntax for integer: " more bad data from stdin" | 400|400| more bad data from stdin
+ sreh_copy |       4 | extra data after last expected column                         | 4|4|4|4
+ sreh_copy |       4 | extra data after last expected column                         | 4|4|4|4
+ sreh_copy |       7 | invalid input syntax for integer: "bad"                       | 7|7|bad
+ sreh_copy |       7 | invalid input syntax for integer: "bad"                       | 7|7|bad
+ sreh_copy |       8 | invalid input syntax for integer: "bad"                       | bad|8|8
+ sreh_copy |       8 | invalid input syntax for integer: "bad"                       | bad|8|8
+ sreh_copy |      11 | missing data for column "b"                                   | eleven
+ sreh_copy |      11 | missing data for column "b"                                   | eleven
+ sreh_copy |      12 | extra data after last expected column                         | 12||||
+ sreh_copy |      12 | extra data after last expected column                         | 12||||
+ sreh_copy |      13 | missing data for column "c"                                   | |,13,
+ sreh_copy |      13 | missing data for column "c"                                   | |,13,
+ sreh_copy |      15 | missing data for column "b"                                   | 15
+ sreh_copy |      15 | missing data for column "b"                                   | 15
+ sreh_copy |      16 | missing data for column "b"                                   | sixteen
+ sreh_copy |      16 | missing data for column "b"                                   | sixteen
 (22 rows)
 
 --
 -- error table - have low reject limit that gets reached, and see that data rolled back from both target table and err table
 --
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 2;
-ERROR:  Segment reject limit reached after encountering 2 data errors. Aborting operation.  (seg0 localhost:11001 pid=14441)
+ERROR:  Segment reject limit reached after encountering 2 data errors. Aborting operation.  (seg0 localhost:11001 pid=12939)
 CONTEXT:  COPY sreh_copy, line 3: "3|"
 SELECT * FROM sreh_copy ORDER BY a;
   a  |  b  |  c  
@@ -215,31 +215,31 @@ SELECT * FROM sreh_copy ORDER BY a;
  300 | 300 | 300
 (20 rows)
 
-SELECT relname,filename,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
-  relname  |                                         filename                                          | linenum |                            errmsg                             |              rawdata              
------------+-------------------------------------------------------------------------------------------+---------+---------------------------------------------------------------+-----------------------------------
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       2 | missing data for column "b"                                   | 2
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       2 | missing data for column "b"                                   | 2
- sreh_copy | <stdin>                                                                                   |       2 | missing data for column "b"                                   | 200 bad data from stdin
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       3 | missing data for column "c"                                   | 3|
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       3 | missing data for column "c"                                   | 3|
- sreh_copy | <stdin>                                                                                   |       4 | invalid input syntax for integer: " more bad data from stdin" | 400|400| more bad data from stdin
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       4 | extra data after last expected column                         | 4|4|4|4
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       4 | extra data after last expected column                         | 4|4|4|4
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       7 | invalid input syntax for integer: "bad"                       | 7|7|bad
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       7 | invalid input syntax for integer: "bad"                       | 7|7|bad
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       8 | invalid input syntax for integer: "bad"                       | bad|8|8
- sreh_copy | @abs_srcdir@/data/bad_data1.data |       8 | invalid input syntax for integer: "bad"                       | bad|8|8
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      11 | missing data for column "b"                                   | eleven
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      11 | missing data for column "b"                                   | eleven
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      12 | extra data after last expected column                         | 12||||
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      12 | extra data after last expected column                         | 12||||
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      13 | missing data for column "c"                                   | |,13,
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      13 | missing data for column "c"                                   | |,13,
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      15 | missing data for column "b"                                   | 15
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      15 | missing data for column "b"                                   | 15
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      16 | missing data for column "b"                                   | sixteen
- sreh_copy | @abs_srcdir@/data/bad_data1.data |      16 | missing data for column "b"                                   | sixteen
+SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
+  relname  | linenum |                            errmsg                             |              rawdata              
+-----------+---------+---------------------------------------------------------------+-----------------------------------
+ sreh_copy |       2 | missing data for column "b"                                   | 2
+ sreh_copy |       2 | missing data for column "b"                                   | 2
+ sreh_copy |       2 | missing data for column "b"                                   | 200 bad data from stdin
+ sreh_copy |       3 | missing data for column "c"                                   | 3|
+ sreh_copy |       3 | missing data for column "c"                                   | 3|
+ sreh_copy |       4 | invalid input syntax for integer: " more bad data from stdin" | 400|400| more bad data from stdin
+ sreh_copy |       4 | extra data after last expected column                         | 4|4|4|4
+ sreh_copy |       4 | extra data after last expected column                         | 4|4|4|4
+ sreh_copy |       7 | invalid input syntax for integer: "bad"                       | 7|7|bad
+ sreh_copy |       7 | invalid input syntax for integer: "bad"                       | 7|7|bad
+ sreh_copy |       8 | invalid input syntax for integer: "bad"                       | bad|8|8
+ sreh_copy |       8 | invalid input syntax for integer: "bad"                       | bad|8|8
+ sreh_copy |      11 | missing data for column "b"                                   | eleven
+ sreh_copy |      11 | missing data for column "b"                                   | eleven
+ sreh_copy |      12 | extra data after last expected column                         | 12||||
+ sreh_copy |      12 | extra data after last expected column                         | 12||||
+ sreh_copy |      13 | missing data for column "c"                                   | |,13,
+ sreh_copy |      13 | missing data for column "c"                                   | |,13,
+ sreh_copy |      15 | missing data for column "b"                                   | 15
+ sreh_copy |      15 | missing data for column "b"                                   | 15
+ sreh_copy |      16 | missing data for column "b"                                   | sixteen
+ sreh_copy |      16 | missing data for column "b"                                   | sixteen
 (22 rows)
 
 DROP TABLE sreh_copy;
