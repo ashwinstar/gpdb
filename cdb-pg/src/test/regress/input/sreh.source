@@ -51,9 +51,182 @@ COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' LOG ERRORS 
 SELECT * FROM sreh_copy ORDER BY a;
 SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
 
+--
+-- autodrop - error table auto-dropped when auto created and no bad data
+--
+DROP TABLE sreh_copy_errtbl; 
+COPY sreh_copy FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 1000;
+1|1|1
+\.
+SELECT * FROM sreh_copy_errtbl; -- it should not exist
+
+--
+-- autodrop - error table not auto-dropped when KEEP specified
+--
+COPY sreh_copy FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl KEEP SEGMENT REJECT LIMIT 1000;
+1|1|1
+\.
+SELECT * FROM sreh_copy_errtbl; -- should exist and be empty
+
+--
+-- autodrop - error table not auto-dropped when it wasn't auto generated, even if no bad data
+--
+COPY sreh_copy FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 1000;
+1|1|1
+\.
+SELECT * FROM sreh_copy_errtbl; -- should exist and be empty
+
+--
+-- autodrop - error table not auto-dropped when there is bad data, even if auto-generated
+--
+DROP TABLE sreh_copy_errtbl; 
+COPY sreh_copy FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 1000;
+1|bad|1
+\.
+SELECT rawdata FROM sreh_copy_errtbl; -- should exist and have 1 row
+
+--
+-- constraint errors - data is rolled back from both target and error tables (CHECK)
+--
+TRUNCATE sreh_copy_errtbl;
+CREATE TABLE sreh_constr(a int check (a > 10));
+COPY sreh_constr FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl KEEP SEGMENT REJECT LIMIT 1000;
+12
+bad format (not int) data should get inserted into error table but later rolledback
+11
+10
+9
+\.
+SELECT * FROM sreh_copy_errtbl; -- should exist and be empty
+SELECT * FROM sreh_constr; -- should exist and be empty
+DROP TABLE sreh_constr;
+
+--
+-- constraint errors - data is rolled back from both target and error tables (UNIQUE)
+--
+TRUNCATE sreh_copy_errtbl;
+CREATE TABLE sreh_constr(a int unique);
+COPY sreh_constr FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl KEEP SEGMENT REJECT LIMIT 1000;
+12
+bad format (not int) data should get inserted into error table but later rolledback
+11
+9
+9
+\.
+SELECT * FROM sreh_copy_errtbl; -- should exist and be empty
+SELECT * FROM sreh_constr; -- should exist and be empty
+
+-- cleanup
 DROP TABLE sreh_copy;
-DROP TABLE sreh_copy_errtable;
+DROP TABLE sreh_constr;
+DROP TABLE sreh_copy_errtbl;
 
 -- ###########################################################
 -- External Tables 
 -- ###########################################################
+
+CREATE EXTERNAL WEB TABLE gpfdist_start (x text)
+execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_srcdir@/data  </dev/null >/dev/null 2>&1 &); sleep 5; echo "starting...") '
+on SEGMENT 0
+FORMAT 'text' (delimiter '|');
+
+CREATE EXTERNAL WEB TABLE gpfdist_stop (x text)
+execute E'(@ps_pidfirst@ | grep gpfdist |  grep \'@abs_srcdir@/data\' | 
+grep -v grep | awk \'{print "kill "$1}\' | sh ) ; echo "stopping..."'
+on SEGMENT 0
+FORMAT 'text' (delimiter '|');
+
+select * from gpfdist_stop;
+select * from gpfdist_start;
+
+-- create a target table to load into
+CREATE TABLE sreh_target(a int, b int, c int) distributed by(a);
+
+-- 
+-- reject limit only
+--
+CREATE EXTERNAL TABLE sreh_ext(a int, b int, c int)
+LOCATION ('gpfdist://@hostname@:8080/bad_data1.data' )
+FORMAT 'text' (delimiter '|')
+SEGMENT REJECT LIMIT 10000;
+
+SELECT * FROM sreh_ext;
+INSERT INTO sreh_target SELECT * FROM sreh_ext;
+SELECT count(*) FROM sreh_target;
+TRUNCATE sreh_target;
+DROP EXTERNAL TABLE sreh_ext;
+
+-- 
+-- reject limit only - low value that gets reached
+--
+CREATE EXTERNAL TABLE sreh_ext(a int, b int, c int)
+LOCATION ('gpfdist://@hostname@:8080/bad_data1.data' )
+FORMAT 'text' (delimiter '|')
+SEGMENT REJECT LIMIT 2;
+
+SELECT * FROM sreh_ext ORDER BY a;
+INSERT INTO sreh_target SELECT * FROM sreh_ext;
+SELECT count(*) FROM sreh_target;
+TRUNCATE sreh_target;
+DROP EXTERNAL TABLE sreh_ext;
+
+-- 
+-- error table (also testing that it gets automatically generated)
+--
+CREATE EXTERNAL TABLE sreh_ext(a int, b int, c int)
+LOCATION ('gpfdist://@hostname@:8080/bad_data1.data' )
+FORMAT 'text' (delimiter '|')
+LOG ERRORS INTO sreh_ext_errtbl
+SEGMENT REJECT LIMIT 1000;
+
+SELECT * FROM sreh_ext ORDER BY a;
+SELECT relname,errmsg,rawdata FROM sreh_ext_errtbl ORDER BY errmsg,rawdata;
+TRUNCATE sreh_ext_errtbl;
+
+INSERT INTO sreh_target SELECT * FROM sreh_ext;
+SELECT count(*) FROM sreh_target;
+SELECT relname,errmsg,rawdata FROM sreh_ext_errtbl ORDER BY errmsg,rawdata;
+TRUNCATE sreh_ext_errtbl;
+TRUNCATE sreh_target;
+DROP EXTERNAL TABLE sreh_ext;
+
+--
+-- error table - do the same thing again. this time error table exists and should get reused
+--
+CREATE EXTERNAL TABLE sreh_ext(a int, b int, c int)
+LOCATION ('gpfdist://@hostname@:8080/bad_data1.data' )
+FORMAT 'text' (delimiter '|')
+LOG ERRORS INTO sreh_ext_errtbl
+SEGMENT REJECT LIMIT 1000;
+
+SELECT * FROM sreh_ext ORDER BY a;
+SELECT relname,errmsg,rawdata FROM sreh_ext_errtbl ORDER BY errmsg,rawdata;
+TRUNCATE sreh_ext_errtbl;
+
+INSERT INTO sreh_target SELECT * FROM sreh_ext;
+SELECT count(*) FROM sreh_target;
+SELECT relname,errmsg,rawdata FROM sreh_ext_errtbl ORDER BY errmsg,rawdata;
+TRUNCATE sreh_target;
+TRUNCATE sreh_ext_errtbl;
+DROP EXTERNAL TABLE sreh_ext;
+
+--
+-- constraint errors - data is rolled back from both target and error tables (CHECK)
+--
+CREATE TABLE sreh_constr(a int, b int, c int check (c < 10));
+CREATE EXTERNAL TABLE sreh_ext(a int, b int, c int)
+LOCATION ('gpfdist://@hostname@:8080/bad_data1.data' )
+FORMAT 'text' (delimiter '|')
+LOG ERRORS INTO sreh_ext_errtbl
+SEGMENT REJECT LIMIT 1000;
+
+INSERT INTO sreh_constr SELECT * FROM sreh_ext;
+SELECT COUNT(*) FROM sreh_ext_errtbl; -- should be empty
+SELECT COUNT(*) FROM sreh_constr; -- should be empty
+
+-- cleanup
+select * from gpfdist_stop;
+DROP EXTERNAL WEB TABLE gpfdist_stop;
+DROP EXTERNAL WEB TABLE gpfdist_start;
+DROP TABLE sreh_target;
+DROP TABLE sreh_ext_errtbl;

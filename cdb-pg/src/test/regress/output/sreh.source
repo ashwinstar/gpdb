@@ -188,7 +188,7 @@ SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
 -- error table - have low reject limit that gets reached, and see that data rolled back from both target table and err table
 --
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 2;
-ERROR:  Segment reject limit reached after encountering 2 data errors. Aborting operation.  (seg0 localhost:11001 pid=12939)
+ERROR:  Segment reject limit reached after encountering 2 data errors. Aborting operation.  (seg0 @hostname@:11001 pid=14901)
 CONTEXT:  COPY sreh_copy, line 3: "3|"
 SELECT * FROM sreh_copy ORDER BY a;
   a  |  b  |  c  
@@ -242,9 +242,327 @@ SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
  sreh_copy |      16 | missing data for column "b"                                   | sixteen
 (22 rows)
 
+--
+-- autodrop - error table auto-dropped when auto created and no bad data
+--
+DROP TABLE sreh_copy_errtbl; 
+COPY sreh_copy FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 1000;
+NOTICE:  Error table "sreh_copy_errtbl" does not exist. Auto generating an error table with the same name
+NOTICE:  Dropping the auto-generated unused error table
+HINT:  Use KEEP in LOG INTO clause to force keeping the error table alive
+SELECT * FROM sreh_copy_errtbl; -- it should not exist
+ERROR:  relation "sreh_copy_errtbl" does not exist
+--
+-- autodrop - error table not auto-dropped when KEEP specified
+--
+COPY sreh_copy FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl KEEP SEGMENT REJECT LIMIT 1000;
+NOTICE:  Error table "sreh_copy_errtbl" does not exist. Auto generating an error table with the same name
+SELECT * FROM sreh_copy_errtbl; -- should exist and be empty
+ cmdtime | relname | filename | linenum | bytenum | errmsg | rawdata | rawbytes 
+---------+---------+----------+---------+---------+--------+---------+----------
+(0 rows)
+
+--
+-- autodrop - error table not auto-dropped when it wasn't auto generated, even if no bad data
+--
+COPY sreh_copy FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 1000;
+SELECT * FROM sreh_copy_errtbl; -- should exist and be empty
+ cmdtime | relname | filename | linenum | bytenum | errmsg | rawdata | rawbytes 
+---------+---------+----------+---------+---------+--------+---------+----------
+(0 rows)
+
+--
+-- autodrop - error table not auto-dropped when there is bad data, even if auto-generated
+--
+DROP TABLE sreh_copy_errtbl; 
+COPY sreh_copy FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 1000;
+NOTICE:  Error table "sreh_copy_errtbl" does not exist. Auto generating an error table with the same name
+NOTICE:  Rejected 1 badly formatted rows. Errors logged into error table "sreh_copy_errtbl"
+SELECT rawdata FROM sreh_copy_errtbl; -- should exist and have 1 row
+ rawdata 
+---------
+ 1|bad|1
+(1 row)
+
+--
+-- constraint errors - data is rolled back from both target and error tables (CHECK)
+--
+TRUNCATE sreh_copy_errtbl;
+CREATE TABLE sreh_constr(a int check (a > 10));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+COPY sreh_constr FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl KEEP SEGMENT REJECT LIMIT 1000;
+ERROR:  new row for relation "sreh_constr" violates check constraint "sreh_constr_a_check"  (seg0 @hostname@:11001 pid=14901)
+CONTEXT:  COPY sreh_constr, line 5: "9"
+SELECT * FROM sreh_copy_errtbl; -- should exist and be empty
+ cmdtime | relname | filename | linenum | bytenum | errmsg | rawdata | rawbytes 
+---------+---------+----------+---------+---------+--------+---------+----------
+(0 rows)
+
+SELECT * FROM sreh_constr; -- should exist and be empty
+ a 
+---
+(0 rows)
+
+DROP TABLE sreh_constr;
+--
+-- constraint errors - data is rolled back from both target and error tables (UNIQUE)
+--
+TRUNCATE sreh_copy_errtbl;
+CREATE TABLE sreh_constr(a int unique);
+NOTICE:  CREATE TABLE / UNIQUE will create implicit index "sreh_constr_a_key" for table "sreh_constr"
+COPY sreh_constr FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl KEEP SEGMENT REJECT LIMIT 1000;
+ERROR:  duplicate key violates unique constraint "sreh_constr_a_key"  (seg0 @hostname@:11001 pid=14901)
+CONTEXT:  COPY sreh_constr, line 5: "9"
+SELECT * FROM sreh_copy_errtbl; -- should exist and be empty
+ cmdtime | relname | filename | linenum | bytenum | errmsg | rawdata | rawbytes 
+---------+---------+----------+---------+---------+--------+---------+----------
+(0 rows)
+
+SELECT * FROM sreh_constr; -- should exist and be empty
+ a 
+---
+(0 rows)
+
+-- cleanup
 DROP TABLE sreh_copy;
-DROP TABLE sreh_copy_errtable;
-ERROR:  table "sreh_copy_errtable" does not exist
+DROP TABLE sreh_constr;
+DROP TABLE sreh_copy_errtbl;
 -- ###########################################################
 -- External Tables 
 -- ###########################################################
+CREATE EXTERNAL WEB TABLE gpfdist_start (x text)
+execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_srcdir@/data  </dev/null >/dev/null 2>&1 &); sleep 5; echo "starting...") '
+on SEGMENT 0
+FORMAT 'text' (delimiter '|');
+CREATE EXTERNAL WEB TABLE gpfdist_stop (x text)
+execute E'(@ps_pidfirst@ | grep gpfdist |  grep \'@abs_srcdir@/data\' | 
+grep -v grep | awk \'{print "kill "$1}\' | sh ) ; echo "stopping..."'
+on SEGMENT 0
+FORMAT 'text' (delimiter '|');
+select * from gpfdist_stop;
+      x      
+-------------
+ stopping...
+(1 row)
+
+select * from gpfdist_start;
+      x      
+-------------
+ starting...
+(1 row)
+
+-- create a target table to load into
+CREATE TABLE sreh_target(a int, b int, c int) distributed by(a);
+-- 
+-- reject limit only
+--
+CREATE EXTERNAL TABLE sreh_ext(a int, b int, c int)
+LOCATION ('gpfdist://@hostname@:8080/bad_data1.data' )
+FORMAT 'text' (delimiter '|')
+SEGMENT REJECT LIMIT 10000;
+SELECT * FROM sreh_ext;
+NOTICE:  Rejected 10 badly formatted rows.
+ a  | b  | c  
+----+----+----
+  1 |  1 |  1
+  5 |  5 |  5
+  6 |  6 |  6
+  9 |  9 |  9
+ 10 | 10 | 10
+ 14 | 14 | 14
+(6 rows)
+
+INSERT INTO sreh_target SELECT * FROM sreh_ext;
+NOTICE:  Rejected 10 badly formatted rows.
+SELECT count(*) FROM sreh_target;
+ count 
+-------
+     6
+(1 row)
+
+TRUNCATE sreh_target;
+DROP EXTERNAL TABLE sreh_ext;
+-- 
+-- reject limit only - low value that gets reached
+--
+CREATE EXTERNAL TABLE sreh_ext(a int, b int, c int)
+LOCATION ('gpfdist://@hostname@:8080/bad_data1.data' )
+FORMAT 'text' (delimiter '|')
+SEGMENT REJECT LIMIT 2;
+SELECT * FROM sreh_ext ORDER BY a;
+ERROR:  Segment reject limit reached after encountering 2 data errors. Aborting operation.  (seg1 slice1 @hostname@:11002 pid=14902)
+DETAIL:  External table sreh_ext, line 3 of gpfdist://@hostname@:8080/bad_data1.data: "3|"
+INSERT INTO sreh_target SELECT * FROM sreh_ext;
+ERROR:  Segment reject limit reached after encountering 2 data errors. Aborting operation.  (seg1 slice1 @hostname@:11002 pid=14919)
+DETAIL:  External table sreh_ext, line 3 of gpfdist://@hostname@:8080/bad_data1.data: "3|"
+SELECT count(*) FROM sreh_target;
+ count 
+-------
+     0
+(1 row)
+
+TRUNCATE sreh_target;
+DROP EXTERNAL TABLE sreh_ext;
+-- 
+-- error table (also testing that it gets automatically generated)
+--
+CREATE EXTERNAL TABLE sreh_ext(a int, b int, c int)
+LOCATION ('gpfdist://@hostname@:8080/bad_data1.data' )
+FORMAT 'text' (delimiter '|')
+LOG ERRORS INTO sreh_ext_errtbl
+SEGMENT REJECT LIMIT 1000;
+NOTICE:  Error table "sreh_ext_errtbl" does not exist. Auto generating an error table with the same name
+SELECT * FROM sreh_ext ORDER BY a;
+NOTICE:  Rejected 10 badly formatted rows.
+ a  | b  | c  
+----+----+----
+  1 |  1 |  1
+  5 |  5 |  5
+  6 |  6 |  6
+  9 |  9 |  9
+ 10 | 10 | 10
+ 14 | 14 | 14
+(6 rows)
+
+SELECT relname,errmsg,rawdata FROM sreh_ext_errtbl ORDER BY errmsg,rawdata;
+ relname  |                 errmsg                  | rawdata 
+----------+-----------------------------------------+---------
+ sreh_ext | extra data after last expected column   | 12||||
+ sreh_ext | extra data after last expected column   | 4|4|4|4
+ sreh_ext | invalid input syntax for integer: "bad" | 7|7|bad
+ sreh_ext | invalid input syntax for integer: "bad" | bad|8|8
+ sreh_ext | missing data for column "b"             | 15
+ sreh_ext | missing data for column "b"             | 2
+ sreh_ext | missing data for column "b"             | eleven
+ sreh_ext | missing data for column "b"             | sixteen
+ sreh_ext | missing data for column "c"             | 3|
+ sreh_ext | missing data for column "c"             | |,13,
+(10 rows)
+
+TRUNCATE sreh_ext_errtbl;
+INSERT INTO sreh_target SELECT * FROM sreh_ext;
+NOTICE:  Rejected 10 badly formatted rows.
+SELECT count(*) FROM sreh_target;
+ count 
+-------
+     6
+(1 row)
+
+SELECT relname,errmsg,rawdata FROM sreh_ext_errtbl ORDER BY errmsg,rawdata;
+ relname  |                 errmsg                  | rawdata 
+----------+-----------------------------------------+---------
+ sreh_ext | extra data after last expected column   | 12||||
+ sreh_ext | extra data after last expected column   | 4|4|4|4
+ sreh_ext | invalid input syntax for integer: "bad" | 7|7|bad
+ sreh_ext | invalid input syntax for integer: "bad" | bad|8|8
+ sreh_ext | missing data for column "b"             | 15
+ sreh_ext | missing data for column "b"             | 2
+ sreh_ext | missing data for column "b"             | eleven
+ sreh_ext | missing data for column "b"             | sixteen
+ sreh_ext | missing data for column "c"             | 3|
+ sreh_ext | missing data for column "c"             | |,13,
+(10 rows)
+
+TRUNCATE sreh_ext_errtbl;
+TRUNCATE sreh_target;
+DROP EXTERNAL TABLE sreh_ext;
+--
+-- error table - do the same thing again. this time error table exists and should get reused
+--
+CREATE EXTERNAL TABLE sreh_ext(a int, b int, c int)
+LOCATION ('gpfdist://@hostname@:8080/bad_data1.data' )
+FORMAT 'text' (delimiter '|')
+LOG ERRORS INTO sreh_ext_errtbl
+SEGMENT REJECT LIMIT 1000;
+SELECT * FROM sreh_ext ORDER BY a;
+NOTICE:  Rejected 10 badly formatted rows.
+ a  | b  | c  
+----+----+----
+  1 |  1 |  1
+  5 |  5 |  5
+  6 |  6 |  6
+  9 |  9 |  9
+ 10 | 10 | 10
+ 14 | 14 | 14
+(6 rows)
+
+SELECT relname,errmsg,rawdata FROM sreh_ext_errtbl ORDER BY errmsg,rawdata;
+ relname  |                 errmsg                  | rawdata 
+----------+-----------------------------------------+---------
+ sreh_ext | extra data after last expected column   | 12||||
+ sreh_ext | extra data after last expected column   | 4|4|4|4
+ sreh_ext | invalid input syntax for integer: "bad" | 7|7|bad
+ sreh_ext | invalid input syntax for integer: "bad" | bad|8|8
+ sreh_ext | missing data for column "b"             | 15
+ sreh_ext | missing data for column "b"             | 2
+ sreh_ext | missing data for column "b"             | eleven
+ sreh_ext | missing data for column "b"             | sixteen
+ sreh_ext | missing data for column "c"             | 3|
+ sreh_ext | missing data for column "c"             | |,13,
+(10 rows)
+
+TRUNCATE sreh_ext_errtbl;
+INSERT INTO sreh_target SELECT * FROM sreh_ext;
+NOTICE:  Rejected 10 badly formatted rows.
+SELECT count(*) FROM sreh_target;
+ count 
+-------
+     6
+(1 row)
+
+SELECT relname,errmsg,rawdata FROM sreh_ext_errtbl ORDER BY errmsg,rawdata;
+ relname  |                 errmsg                  | rawdata 
+----------+-----------------------------------------+---------
+ sreh_ext | extra data after last expected column   | 12||||
+ sreh_ext | extra data after last expected column   | 4|4|4|4
+ sreh_ext | invalid input syntax for integer: "bad" | 7|7|bad
+ sreh_ext | invalid input syntax for integer: "bad" | bad|8|8
+ sreh_ext | missing data for column "b"             | 15
+ sreh_ext | missing data for column "b"             | 2
+ sreh_ext | missing data for column "b"             | eleven
+ sreh_ext | missing data for column "b"             | sixteen
+ sreh_ext | missing data for column "c"             | 3|
+ sreh_ext | missing data for column "c"             | |,13,
+(10 rows)
+
+TRUNCATE sreh_target;
+TRUNCATE sreh_ext_errtbl;
+DROP EXTERNAL TABLE sreh_ext;
+--
+-- constraint errors - data is rolled back from both target and error tables (CHECK)
+--
+CREATE TABLE sreh_constr(a int, b int, c int check (c < 10));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+CREATE EXTERNAL TABLE sreh_ext(a int, b int, c int)
+LOCATION ('gpfdist://@hostname@:8080/bad_data1.data' )
+FORMAT 'text' (delimiter '|')
+LOG ERRORS INTO sreh_ext_errtbl
+SEGMENT REJECT LIMIT 1000;
+INSERT INTO sreh_constr SELECT * FROM sreh_ext;
+NOTICE:  Rejected 10 badly formatted rows.
+ERROR:  new row for relation "sreh_constr" violates check constraint "sreh_constr_c_check"  (seg1 @hostname@:11002 pid=14902)
+SELECT COUNT(*) FROM sreh_ext_errtbl; -- should be empty
+ count 
+-------
+     0
+(1 row)
+
+SELECT COUNT(*) FROM sreh_constr; -- should be empty
+ count 
+-------
+     0
+(1 row)
+
+-- cleanup
+select * from gpfdist_stop;
+      x      
+-------------
+ stopping...
+(1 row)
+
+DROP EXTERNAL WEB TABLE gpfdist_stop;
+DROP EXTERNAL WEB TABLE gpfdist_start;
+DROP TABLE sreh_target;
+DROP TABLE sreh_ext_errtbl;
