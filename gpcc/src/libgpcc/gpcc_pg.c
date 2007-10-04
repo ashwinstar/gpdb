@@ -13,7 +13,6 @@
 #include <limits.h>
 #include <string.h>
 #include <gpcc.h>
-/*#include <gpcc_config.h>*/
 #include <gpcc_proc.h>
 #include <gpcc_file.h>
 #include <gpcc_pg.h>
