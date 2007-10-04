@@ -1,4 +1,3 @@
-#ifdef UNDEF
 #ifdef WIN32
 #include <io.h>
 #else
@@ -472,4 +471,3 @@ APR_DECLARE(apr_status_t) gpcc_pg_update_postgresql_conf(const char *data_dir, g
     return 0;
 }
 
-#endif
