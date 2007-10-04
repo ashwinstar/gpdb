@@ -626,7 +626,7 @@ const char *downgrade_cmds[] = {	"UPDATE pg_catalog.\"pg_type\" SET \"typname\" 
 	"UPDATE pg_catalog.\"pg_aggregate\" SET \"agginvprelimfn\" = '-'::regproc, \"aggprelimfn\" = 'float8_amalg'::regproc, \"aggtransfn\" = 'float4_accum'::regproc, \"aggsortop\" = '0'::oid, \"agginitval\" = '{0,0,0}'::text, \"aggtranstype\" = '1022'::oid, \"aggfnoid\" = '2157'::regproc, \"agginvtransfn\" = '-'::regproc, \"aggfinalfn\" = 'float8_stddev_samp'::regproc WHERE aggfnoid = '2157'::regproc;",
 	"UPDATE pg_catalog.\"pg_aggregate\" SET \"agginvprelimfn\" = '-'::regproc, \"aggprelimfn\" = 'float8_amalg'::regproc, \"aggtransfn\" = 'float8_accum'::regproc, \"aggsortop\" = '0'::oid, \"agginitval\" = '{0,0,0}'::text, \"aggtranstype\" = '1022'::oid, \"aggfnoid\" = '2158'::regproc, \"agginvtransfn\" = '-'::regproc, \"aggfinalfn\" = 'float8_stddev_samp'::regproc WHERE aggfnoid = '2158'::regproc;",
 	"UPDATE pg_catalog.\"pg_aggregate\" SET \"agginvprelimfn\" = '-'::regproc, \"aggprelimfn\" = 'numeric_amalg'::regproc, \"aggtransfn\" = 'numeric_accum'::regproc, \"aggsortop\" = '0'::oid, \"agginitval\" = '{0,0,0}'::text, \"aggtranstype\" = '1231'::oid, \"aggfnoid\" = '2159'::regproc, \"agginvtransfn\" = '-'::regproc, \"aggfinalfn\" = 'numeric_stddev_samp'::regproc WHERE aggfnoid = '2159'::regproc;",
-#if 0
+	"UPDATE pg_catalog.\"pg_aggregate\" SET \"agginvprelimfn\" = '-'::regproc, \"aggprelimfn\" = '-'::regproc, \"aggtransfn\" = 'int8inc_float8_float8'::regproc, \"aggsortop\" = '0'::oid, \"agginitval\" = '0'::text, \"aggtranstype\" = '20'::oid, \"aggfnoid\" = '2818'::regproc, \"agginvtransfn\" = '-'::regproc, \"aggfinalfn\" = '-'::regproc WHERE aggfnoid = '2818'::regproc;",
 	"DELETE FROM pg_catalog.\"pg_window\" WHERE winfnoid = '7000'::regproc",
 	"DELETE FROM pg_catalog.\"pg_window\" WHERE winfnoid = '7001'::regproc",
 	"DELETE FROM pg_catalog.\"pg_window\" WHERE winfnoid = '7002'::regproc",
@@ -883,7 +883,6 @@ const char *downgrade_cmds[] = {	"UPDATE pg_catalog.\"pg_type\" SET \"typname\" 
 	"DELETE FROM pg_catalog.\"pg_window\" WHERE winfnoid = '7484'::regproc",
 	"DELETE FROM pg_catalog.\"pg_window\" WHERE winfnoid = '7486'::regproc",
 	"DELETE FROM pg_catalog.\"pg_window\" WHERE winfnoid = '7488'::regproc",
-#endif
 	NULL};
 
 #endif /* GPDOWNGRADE_CMDS_H */
