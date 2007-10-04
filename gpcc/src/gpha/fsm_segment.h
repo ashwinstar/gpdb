@@ -3,6 +3,38 @@
 #define seg_is_master_qd(c) (c->u.seg.isqd && c->u.seg.primary)
 #define seg_is_qd(c)  (c->u.seg.isqd)
 
+static apr_status_t getnode_addr(struct json_object *msg, const char *node, char **argv, int *argc, apr_pool_t *pool)
+{
+    int n = *argc;
+    char *bs, *es;
+    char *nodestr = gpcc_json_object_get_string(msg, (char *)node, 0);
+    char *tok, *last;
+    int i;
+
+    if (!nodestr){
+	*argc = 0;
+	return APR_EINVAL;
+    }
+
+    nodestr = apr_pstrdup(pool, nodestr);
+    bs = strchr(nodestr, '(');
+    es = strchr(nodestr, ')');
+
+    if (!bs || !es)
+	return APR_EINVAL;
+    
+    nodestr=bs+1;
+    *es = 0;
+    
+    for (i = 0, tok = apr_strtok(nodestr, " ,", &last) ; tok && i < n ; i++, tok = apr_strtok(0, " ,", &last)) {
+	argv[i] = apr_pstrdup(pool, gpcc_string_trim(tok));
+	gpcc_log_info("%d = %s", i, argv[i]);
+    }
+
+    *argc = i;
+    return 0;
+}
+
 static event_t segment_msg_get_event(struct json_object *obj) 
 {
     struct json_object *aobj = json_object_object_get(obj, "action");
@@ -493,13 +525,14 @@ static apr_status_t seg_initdb(gpcc_event_t* ev, void *_cmdslot)
 
 static apr_status_t seg_initdb_pg_hba_append(gpcc_event_t* ev, void *_cmdslot) 
 {
-    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
-    int i, j, nnode;
-    char nodename[64];
-    char *addr, *last, *tok;
-    char **hosts;
+#define MAX_HOSTS_PER_NODE  5
 
-#define MAX_HOSTS_PER_NODE  4
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    int i, j, n, nnode;
+    char nodename[64];
+    char **hosts;
+    char *argv[MAX_HOSTS_PER_NODE];
+    int argc;
 
     /* find number of nodes */
     nnode = 0;
@@ -511,16 +544,15 @@ static apr_status_t seg_initdb_pg_hba_append(gpcc_event_t* ev, void *_cmdslot)
     }
 
     hosts = apr_pcalloc(cmdslot->u.seg.request.subpool, sizeof(char *) * (nnode * MAX_HOSTS_PER_NODE + 1));
+    n = 0;
     for (i = 0 ; i < nnode ; i++) {
 	sprintf(nodename, "node.%d", i);
-	addr = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, nodename, 0);
-	addr = apr_pstrdup(cmdslot->u.seg.request.subpool, addr);
-	addr++;
-	addr[strlen(addr)-1] = 0;
-	for (tok = apr_strtok(addr, ",", &last), j = 0; 
-	     tok && j < MAX_HOSTS_PER_NODE; 
-	     tok = apr_strtok(0, ",", &last), j++) {
-	    hosts[i*MAX_HOSTS_PER_NODE+j] = apr_pstrdup(cmdslot->u.seg.request.subpool, tok);
+	argc = gpcc_lengthof(argv);
+	memset(argv, 0, sizeof(argv));
+	getnode_addr(cmdslot->u.seg.request.msg, nodename, argv, &argc, cmdslot->u.seg.request.subpool);
+
+	for (j = 1 ; j < argc ; j++) {
+	    hosts[n++] = argv[j];
 	}
     }
 
@@ -661,6 +693,8 @@ static apr_status_t seg_initdb_update_gp_id(gpcc_event_t *ev, void *_cmdslot)
 				cmdslot->u.seg.request.subpool);
 }
 
+
+
 static apr_status_t seg_initdb_update_gp_conf_per_segment(gpcc_event_t *ev, void *_cmdslot, char *segname, int dbid, 
 							  int content, char *primary, int port)
 {
@@ -671,6 +705,8 @@ static apr_status_t seg_initdb_update_gp_conf_per_segment(gpcc_event_t *ev, void
     char *node;
     char *data_dir;
     char *last;
+    int argc = 5;
+    char *argv[5];
 
     if ((seg = gpcc_json_object_get_string(msg, segname, 0)) == 0){
 	gpcc_log_error("seg %s not found in config", segname);
@@ -685,6 +721,12 @@ static apr_status_t seg_initdb_update_gp_conf_per_segment(gpcc_event_t *ev, void
 	gpcc_warning(FLINE, "%s format error (%s)", segname,  gpcc_json_object_get_string(msg, segname, 0));
 	return 1;
     }
+    
+    if (getnode_addr(msg, node, argv, &argc, cmdslot->u.seg.request.subpool) != 0 || argc == 0) {
+	gpcc_warning(FLINE, "get addresses from %s failed", node);
+	return APR_EINVAL;
+    }
+    
 
     data_dir = apr_strtok(0, ":", &last);
     if (! data_dir) {
@@ -697,7 +739,7 @@ static apr_status_t seg_initdb_update_gp_conf_per_segment(gpcc_event_t *ev, void
 						  dbid, 
 						  content, 
 						  primary,
-						  node,
+						  argv[0],
 						  port, 
 						  data_dir,
 						  cmdslot->u.seg.request.subpool))) {
