@@ -912,6 +912,9 @@ void session_attach(request_t* r)
 	char** fpath = 0;
 	fstream_t* fstream = 0;
 
+	/* remove any outdated sessions*/
+	sessions_cleanup();
+
 	/* do we have a pattern in r->path? */
 	if (! apr_fnmatch_test(r->path)) {
 	    n = 1;
@@ -1031,10 +1034,6 @@ void session_attach(request_t* r)
     s->nrequest++;
     s->mtime = apr_time_now();
     r->session = s;
-
-
-    /* remove the session if it's too old */
-    sessions_cleanup();
 
     /* finally, tell peer that we are ready to send data */
     send_ok(r);
