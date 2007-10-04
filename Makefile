@@ -10,7 +10,7 @@ GPDOCDIR=$(CURDIR)/docs/release
 
 DEFPORT=5432
 
-OPTFLAGS="-O3 --param large-function-growth=175 --param inline-unit-growth=300 -Winline -finline-limit=1800 -funroll-loops -fargument-noalias-global $(COPTX) -g"
+OPTFLAGS="-O3 --param large-function-growth=10000 --param inline-unit-growth=300 -Winline -finline-limit=1800 -funroll-loops -fargument-noalias-global $(COPTX) -g"
 
 ifeq (on, ${GPDBGINLINE})
 CFLAGS_INLINE=-Winline -finline-limit=1800

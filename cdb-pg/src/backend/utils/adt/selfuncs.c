@@ -935,8 +935,8 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
 	int			varRelid = PG_GETARG_INT32(3);
 	VariableStatData vardata;
 	Node	   *variable;
-	Node	   *other;
-	bool		varonleft;
+	Node	   *other=NULL;
+	bool		varonleft=false;
 	Datum		constval;
 	Oid			consttype;
 	Oid			vartype;

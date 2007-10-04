@@ -5254,7 +5254,7 @@ power_var(NumericVar *base, NumericVar *exp, NumericVar *result)
 	{
 		/* exact integer, but does it fit in int? */
 		NumericVar	x;
-		int64		expval64;
+		int64		expval64 = 0;
 
 		/* must copy because numericvar_to_int8() scribbles on input */
 		init_var_from_var(exp, &x);

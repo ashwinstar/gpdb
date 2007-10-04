@@ -1971,7 +1971,7 @@ DecodeDateTime(char **field, int *ftype, int nf,
 		  int *dtype, struct tm * tm, fsec_t *fsec, int *tzp, bool EuroDates)
 {
 	int			fmask = 0,
-				tmask,
+				tmask = 0,
 				type;
 	int			ptype = 0;		/* "prefix type" for ISO y2001m02d04 format */
 	int			i;
