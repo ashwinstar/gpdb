@@ -717,11 +717,13 @@ findConnByHeader(struct icpkthdr *hdr, int16 *srcRoute)
 
 	pthread_mutex_unlock(&conn_htab_mutex);
 
+#if 0
 	if (ret == NULL)
 		write_log("findConnByHeader: not found! "
-					 "(hdr->srcPid %d hdr->srcContentId %d hdr->dstContentId %d hdr->dstPid %d sess(%d:%d) cmd(%d:%d)) hashcode %d\n",
+				  "(hdr->srcPid %d hdr->srcContentId %d hdr->dstContentId %d hdr->dstPid %d sess(%d:%d) cmd(%d:%d)) hashcode %d\n",
 					 hdr->srcPid, hdr->srcContentId, hdr->dstContentId, hdr->dstPid, hdr->sessionId,
 					 gp_session_id, hdr->commandCount, gp_command_count, hashcode);
+#endif
 
 	return ret;
 }
@@ -977,7 +979,9 @@ SendEosToAMS(MotionLayerState *mlStates,
 		if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP &&
 			conn->state == mcsStarted)
 		{
+#if 0
 			elog(LOG, "sent eos to route %d tuplecount %d seq %d", conn->route, conn->tupleCount, conn->conn_info.seq);
+#endif
 
 			flushUDPBuffer(mlStates, transportStates, pEntry, conn, motNodeID);
 			conn->state = mcsEosSent;
@@ -4331,7 +4335,9 @@ flushUDPBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 
 		if (timeout <= elapsed_ms)
 		{
+#if 0
 			elog(LOG, "xmit retry @ %d", elapsed_ms);
+#endif
 
 			n = sendto(pEntry->txfd, conn->pBuff, conn->msgSize, 0,
 					   (struct sockaddr *)&conn->peer, (socklen_t)sizeof(conn->peer));
