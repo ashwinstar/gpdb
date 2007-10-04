@@ -38,6 +38,7 @@
 
 #include "outfuncs_3_0.h"
 
+typedef unsigned long oldDatum; /* for back compat */ 
 
 /*
  * Macros to simplify output of different kinds of fields.	Use these
@@ -233,7 +234,7 @@ _outDatum(StringInfo str, Datum value, int typlen, bool typbyval)
 	{
 		s = (char *) (&value);
 		appendStringInfo(str, "%u [ ", (unsigned int) length);
-		for (i = 0; i < (Size) sizeof(Datum); i++)
+		for (i = 0; i < (Size) sizeof(oldDatum); i++)
 			appendStringInfo(str, "%d ", (int) (s[i]));
 		appendStringInfoChar(str, ']');
 	}
