@@ -286,7 +286,7 @@ PROCESS_SHUTDOWN () {
 #		count connected processes, but don't count ourself.
 		CONNECTED=` env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c " select backendid from 
 		(SELECT pg_stat_get_backend_idset() AS backendid) as s where 
-		pg_stat_get_backend_pid(s.backendid) != pg_backend_pid();"`
+		pg_stat_get_backend_pid(s.backendid) != pg_backend_pid();" | wc -l`
 		if [ $MODE == "smart" ]; then
 		if [ $CONNECTED -gt 0 ];then
 			LOG_MSG "[WARN]:-There are other connections to this instance, shutdown mode smart aborted" 1
