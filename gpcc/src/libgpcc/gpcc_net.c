@@ -165,37 +165,43 @@ struct conncb_t {
     int             do_read_header_attempts;
 };
 
+
+/*
+ *  Global structure for the gpcc_net module 
+ */
 typedef struct net_t net_t;
 struct net_t {
+    apr_pool_t* pool;
+    SOCKET listen_sock;
+    apr_uint16_t unique;	/* use to generate (almost) unique connection ID */
+    /* callback functions */
     gpcc_net_opened_t* opened;
     gpcc_net_accepted_t* accepted;
     gpcc_net_received_t* received;
     gpcc_net_closed_t* closed;
-    apr_pool_t* pool;
-    SOCKET listen_sock;
-    struct event ev_listen;
-    struct event ev_break;
+    gpcc_net_tick_t* tick;
+    /* internal pipe to wake up libevent upon a send / open so it could set up
+       the new socket events properly */
     int send_break_fd;
     int recv_break_fd;
+    /* libevent structures */
+    struct event ev_listen;	/* for events on the listen_sock */
+    struct event ev_break;	/* for events on recv_break_fd */
+    struct event ev_tick;	/* for events on timer tick */
+
+    /* use to block send that could not get enough bytes in the conncb.to_peer.buf */
     struct {
 	apr_thread_mutex_t* mutex;
 	apr_thread_cond_t*  notfull;
     } wait;
 
-    apr_uint16_t unique;
-    apr_uint32_t conntab_spin;
+    /* connection table */
+    apr_uint32_t conntab_spin;	/* protects conntab */
     conncb_t conntab[CONN_MAX];
-
 };
 static net_t net = {0};
 
 
-static int ev_add(struct event* ev, struct timeval* tm)
-{
-    int e;
-    e = event_add(ev, tm);
-    return e;
-}
 
 
 static inline apr_uint32_t* conn_secure(gpcc_net_conn_t conn, conncb_t** ppconn)
@@ -392,7 +398,12 @@ static void conn_fire_read(gpcc_net_conn_t conn)
 	return;
     
     in = pconn->from_peer.buf;
-    if (in->bot != in->top) {
+    while (in->bot != in->top) {
+	char* byte = in->byte;
+	int bot = in->bot;
+	int top = in->top;
+	int n = top - bot;
+
 	if (pconn->from_peer.hdr == 0) {
 	    /* pending a header from peer, connection not opened or accepted yet */
 	    spin = gpcc_spin_release(spin);
@@ -402,38 +413,35 @@ static void conn_fire_read(gpcc_net_conn_t conn)
 	    goto again;		/* in case we have some more bytes in the buffer, 
 				   go to the top and do conn_secure again to reacquire lock */
 	} 
-	if (in->top > in->bot) {
-	    char* byte = in->byte;
-	    int bot = in->bot;
-	    int top = in->top;
-	    int n = top - bot;
 
-	    /* release the spin lock and do the received callback. This is not very
-	       safe, but it would have to do. Upon return, we check that the buffer
-	       has not been modified. */
-	    gpcc_spin_release(spin);
+	/* release the spin lock and do the received callback. This is not very
+	   safe, but it would have to do. Upon return, we check that the buffer
+	   has not been modified. */
+	spin = gpcc_spin_release(spin);
+	{
 	    n = net.received(conn, byte + bot, n); /* do the callback */
 	    if (n < 0) {
 		gpcc_net_close(conn); /* callback indicated error, close it, and done. */
-		return;
+		break;
 	    }
-	    gpcc_spin_secure(spin);
-	    if (conn != pconn->conn) 
-		goto done;
-	    /* check that buffer has not been touched */
-	    if (bot != in->bot || top != in->top || byte != in->byte) 
-		gpcc_fatal(FLINE, "internal error: buffer stolen");
-
-	    /* consume the bytes */
-	    if (in->bot + n <= in->top) 
-		in->bot += n;
-	    if (in->bot == in->top) 
-		in->bot = in->top = 0;
+	    if (n == 0)
+		break;
 	}
+	spin = gpcc_spin_secure(&pconn->spin);
+	if (conn != pconn->conn) 
+	    break;
+	/* check that buffer has not been touched */
+	if (bot != in->bot || top != in->top || byte != in->byte) 
+	    gpcc_fatal(FLINE, "internal error: buffer stolen");
+
+	/* consume the bytes */
+	if (in->bot + n <= in->top) 
+	    in->bot += n;
+	if (in->bot == in->top) 
+	    in->bot = in->top = 0;
     }
 
 
-    done:
     gpcc_spin_release(spin);
     return;
 }
@@ -524,15 +532,36 @@ static void do_ready(int fd, short event, void* arg)
 
 static void do_break(int fd, short event, void* arg)
 {
-    gpcc_net_conn_t conn;
-
-    if (sizeof(conn) != read(net.recv_break_fd, &conn, sizeof(conn))) 
-	gpcc_fatal(FLINE, "internal error: read failed");
+    if (0 != (event & EV_READ)) {
+	gpcc_net_conn_t conn;
+	if (sizeof(conn) != read(net.recv_break_fd, &conn, sizeof(conn))) 
+	    gpcc_fatal(FLINE, "internal error: read failed");
     
-    conn_setup_event(conn);
+	conn_setup_event(conn);
+    }
 }
 
 
+static void do_tick(int fd, short event, void* arg)
+{
+    if (0 != (event & EV_TIMEOUT)) {
+	apr_time_t now = apr_time_now();
+	apr_time_t next;
+	struct timeval tm;
+
+	net.tick(now);
+
+	/* setup for next tick */
+	next = apr_time_from_sec(apr_time_sec(now) + 1) - now;
+	if (! (0 < next && next < APR_USEC_PER_SEC))
+	    next = APR_USEC_PER_SEC - 1;
+	tm.tv_sec = 0;
+	tm.tv_usec = (int) next;
+	evtimer_set(&net.ev_tick, do_tick, 0);
+	if (evtimer_add(&net.ev_tick, &tm))
+	    gpcc_fatal(FLINE, "event_add: cannot set up event on listen socket");
+    }
+}
 
 
 static apr_status_t set_sockopt_nonblock(int sock)
@@ -771,7 +800,8 @@ APR_DECLARE(apr_status_t) gpcc_net_init(int port,
 					gpcc_net_opened_t* opened,
 					gpcc_net_accepted_t* accepted,
 					gpcc_net_received_t* received,
-					gpcc_net_closed_t* closed)
+					gpcc_net_closed_t* closed,
+					gpcc_net_tick_t* tick)
 {
     apr_pool_t* pool;
     int e;
@@ -803,6 +833,12 @@ APR_DECLARE(apr_status_t) gpcc_net_init(int port,
 	gpcc_log_error("gpcc_net_init: invalid 'closed' param");
 	return APR_EINVAL;
     }
+
+    if (!tick) {
+	gpcc_log_error("gpcc_net_init: invalid 'closed' param");
+	return APR_EINVAL;
+    }
+
 
     /* make our own pool */
     if (0 != (e = apr_pool_create(&pool, 0)))
@@ -837,6 +873,7 @@ APR_DECLARE(apr_status_t) gpcc_net_init(int port,
     net.accepted = accepted;
     net.received = received;
     net.closed = closed;
+    net.tick = tick;
     net.listen_sock = sock;
 
     /* create the mutex & cond */
@@ -862,14 +899,17 @@ APR_DECLARE(apr_status_t) gpcc_net_init(int port,
     /* set up to accept connections listen_sock */
     if (port > 0) {
 	event_set(&net.ev_listen, net.listen_sock, EV_READ | EV_PERSIST, do_accept, 0);
-	if (ev_add(&net.ev_listen, 0))
+	if (event_add(&net.ev_listen, 0))
 	    gpcc_fatal(FLINE, "event_add: cannot set up event on listen socket");
     }
 
     /* set up to get break */
-    event_set(&net.ev_break, net.recv_break_fd, EV_READ | EV_PERSIST, do_break, 0);
-    if (ev_add(&net.ev_break, 0))
+    event_set(&net.ev_break, net.recv_break_fd, EV_READ | EV_TIMEOUT | EV_PERSIST, do_break, 0);
+    if (event_add(&net.ev_break, 0))
 	gpcc_fatal(FLINE, "event_add: cannot set up event on listen socket");
+
+    /* set up to get tick */
+    do_tick(-1, EV_TIMEOUT, 0);
 
     return 0;
 }

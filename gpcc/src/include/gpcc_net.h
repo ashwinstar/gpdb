@@ -33,11 +33,15 @@ typedef int gpcc_net_received_t(gpcc_net_conn_t conn,
 
 typedef void gpcc_net_closed_t(gpcc_net_conn_t conn);
 
+typedef void gpcc_net_tick_t(apr_time_t now);
+
+
 APR_DECLARE(apr_status_t) gpcc_net_init(int listen_port,
 					gpcc_net_opened_t* opened,
 					gpcc_net_accepted_t* accepted,
 					gpcc_net_received_t* received,
-					gpcc_net_closed_t* closed);
+					gpcc_net_closed_t* closed,
+					gpcc_net_tick_t*  tick);
 
 APR_DECLARE(apr_status_t) gpcc_net_once(int blocking);
 

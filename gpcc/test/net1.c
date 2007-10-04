@@ -12,6 +12,17 @@ void checkerr(int e, const char* fline)
 }
 
 
+void tick(apr_time_t now)
+{
+    static int start_sec = 0;
+    int sec = apr_time_sec(now);
+    if (! start_sec)
+	start_sec = sec;
+    sec -= start_sec;
+    printf("tick: %d\n", sec);
+}
+
+
 void svr_opened(gpcc_net_conn_t conn, const char* peer_addr, gpcc_net_header_t* to_peer, gpcc_net_header_t* from_peer)
 {
     printf("----- svr_opened --------------------------\n");
@@ -155,7 +166,7 @@ int main(int argc, char* argv[])
     atexit(apr_terminate);
 
     if (! svr) {
-	e = gpcc_net_init(port, svr_opened, svr_accepted, svr_received, svr_closed);
+	e = gpcc_net_init(port, svr_opened, svr_accepted, svr_received, svr_closed, tick);
 	checkerr(e, FLINE);
 	
 	printf("Listening on port %d\n", port);
@@ -167,7 +178,7 @@ int main(int argc, char* argv[])
 	static char* hv[] = { "V1", "V2", "V3" };
 	char addr[100];
 
-	e = gpcc_net_init(0, clnt_opened, clnt_accepted, clnt_received, clnt_closed);
+	e = gpcc_net_init(0, clnt_opened, clnt_accepted, clnt_received, clnt_closed, tick);
 	checkerr(e, FLINE);
 
 	sprintf(addr, "%s:%d", svr, port);
