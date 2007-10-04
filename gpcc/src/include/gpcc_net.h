@@ -72,4 +72,40 @@ static inline apr_status_t gpcc_net_send(gpcc_net_conn_t conn,
 }
 
 
+#if defined(_MSC_VER)
+#pragma pack(push,1)
+#define GPCC_PACKED
+#else
+#define GPCC_PACKED __attribute__ ((__packed__))
+#endif
+
+
+typedef struct gpcc_net_packet_t gpcc_net_packet_t;
+struct gpcc_net_packet_t {
+    struct {
+        apr_uint16_t type;      /* packet type */
+        apr_uint16_t len;       /* #bytes in packet body */
+        apr_uint32_t sndidx;    /* sender cmdidx */
+        apr_uint32_t rcvidx;    /* receiver cmdidx */
+    } mh;
+    char mb[1];
+} GPCC_PACKED;
+
+#ifdef _MSC_VER
+#pragma pack(pop)
+#endif
+#undef GPCC_PACKED
+
+
+APR_DECLARE(apr_status_t) gpcc_net_read_packet(gpcc_net_conn_t conn, 
+                                               gpcc_net_packet_t** packet);
+
+APR_DECLARE(void) gpcc_net_free_packet(gpcc_net_packet_t* packet);
+
+APR_DECLARE(apr_status_t) gpcc_net_send_packet(gpcc_net_conn_t conn,
+                                               int type, 
+                                               int sndidx, int rcvidx,
+                                               const char* buf, int len);
+
+
 #endif /* GPCC_NET_H */
