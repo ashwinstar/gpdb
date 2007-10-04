@@ -121,6 +121,7 @@ downgrade_catalog_schema(config_t *conf)
 	exttableres = run_query(conf->conn, "select reloid, location, fmttype, "
 							"fmtopts, command from pg_exttable;",
 							conf->hostname);
+	mylog(UINFO, "found %u external table entries", PQntuples(exttableres));
 	
 #if 0
 	run_query(conf->conn, "drop index pg_exttable_reloid_index;",
@@ -147,12 +148,49 @@ downgrade_catalog_schema(config_t *conf)
 	/* add the rows */
 	for (i = 0; i < PQntuples(exttableres); i++)
 	{
-		snprintf(query, sizeof(query), "INSERT INTO pg_catalog.pg_exttable "
-				  "(reloid, location, fmttype, fmtopts, command) "
-				  "VALUES('%s', '%s', '%s', '%s', '%s');",
-				  PQgetvalue(exttableres, i, 0), PQgetvalue(exttableres, i, 1),
-				  PQgetvalue(exttableres, i, 2), PQgetvalue(exttableres, i, 3),
-				  PQgetvalue(exttableres, i, 4));
+		int j;
+		int len;
+
+		len = snprintf(query, sizeof(query), "INSERT INTO "
+					   "pg_catalog.pg_exttable "
+				 	   "(reloid, location, fmttype, fmtopts, command) "
+				  	   "VALUES(");
+		for (j = 0; j < 5; j++)
+		{
+			int len = PQgetlength(exttableres, i, j);
+			
+			if (PQgetisnull(exttableres, i, j))
+			{
+				strncat(query, j == 0 ? "NULL" : ", NULL",
+					   	sizeof(query) - len);
+				len += 6;
+			}
+			else
+			{
+				char *tmp, *tmp2;
+			
+				tmp = PQgetvalue(exttableres, i, j);
+				tmp2 = malloc(strlen(tmp) * 2 + 1);
+				
+				PQescapeStringConn(conf->conn, tmp2, tmp, len, NULL);
+				if (j != 0)
+				{
+					strncat(query, ", ", sizeof(query) - len);
+					len += 2;
+				}
+				strncat(query, "'", sizeof(query) - len);
+				len++;
+				strncat(query, tmp2, sizeof(query) - len);
+				len += strlen(tmp2);
+				strncat(query, "'", sizeof(query) - len);
+				len++;
+
+				free(tmp2);
+			}
+		}
+
+		strncat(query, ")", sizeof(query) - len);
+		
 		run_query(conf->conn, query, conf->hostname);
 	}
 
