@@ -1,3 +1,5 @@
+#if 0
+
 #include <gpcc.h>
 #include <gpcc_fsm.h>
 #include <gpcc_net.h>
@@ -26,3 +28,4 @@ APR_DECLARE(void) fsm_setup(void)
     gpcc_fsm_put(HTTP_REQUEST_CMDSTATE, INIT_EVENT, NULL_CMDSTATE,
 		 http_request, 0);
 }
+#endif

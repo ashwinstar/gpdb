@@ -4,9 +4,11 @@
 #include <gpcc.h>
 #include <apr_time.h>
 
-#define GPCC_NET_PROTO		"GPCC/3.1"
+#define GPCC_NET_PACKET_PROTO		"GPCC/3.1"
 
 #define GPCC_NET_HEADER_ENTRYMAX  (20)
+
+typedef struct gpcc_net_packet_t gpcc_net_packet_t;
 
 typedef struct gpcc_net_header_t gpcc_net_header_t;
 struct gpcc_net_header_t {
@@ -31,6 +33,9 @@ typedef void gpcc_net_accepted_t(gpcc_net_conn_t conn,
 typedef int gpcc_net_received_t(gpcc_net_conn_t conn, 
 				const char* buf, int buflen);
 
+typedef void gpcc_net_received_packet_t(gpcc_net_conn_t conn, 
+					gpcc_net_packet_t* pkt);
+
 typedef void gpcc_net_closed_t(gpcc_net_conn_t conn);
 
 typedef void gpcc_net_tick_t(apr_time_t now);
@@ -40,6 +45,7 @@ APR_DECLARE(apr_status_t) gpcc_net_init(int listen_port,
 					gpcc_net_opened_t* opened,
 					gpcc_net_accepted_t* accepted,
 					gpcc_net_received_t* received,
+					gpcc_net_received_packet_t* received_packet,
 					gpcc_net_closed_t* closed,
 					gpcc_net_tick_t*  tick);
 
@@ -74,38 +80,6 @@ static inline apr_status_t gpcc_net_send(gpcc_net_conn_t conn,
     d.len = buflen;
     return gpcc_net_sendv(conn, &d, 1);
 }
-
-
-
-#if defined(_MSC_VER)
-#pragma pack(push,1)
-#define GPCC_PACKED
-#else
-#define GPCC_PACKED __attribute__ ((__packed__))
-#endif
-
-
-typedef struct gpcc_net_packet_t gpcc_net_packet_t;
-struct gpcc_net_packet_t {
-    struct {
-	apr_uint32_t _reserved;	/* internal use */
-	apr_uint16_t type;      /* packet type */
-	apr_uint16_t len;       /* #bytes in packet body */
-	apr_uint32_t sndidx;    /* sender cmdidx */
-	apr_uint32_t rcvidx;    /* receiver cmdidx */
-    } mh;
-    char mb[1];
-} GPCC_PACKED;
-
-#ifdef _MSC_VER
-#pragma pack(pop)
-#endif
-#undef GPCC_PACKED
-
-
-APR_DECLARE(apr_status_t) gpcc_net_parse_packet(gpcc_net_packet_t** pkt, const char* buf, int* len);
-
-APR_DECLARE(void) gpcc_net_free_packet(gpcc_net_packet_t* packet);
 
 APR_DECLARE(apr_status_t) gpcc_net_send_packet(gpcc_net_conn_t conn, int type, 
                                                apr_uint32_t sndidx, apr_uint32_t rcvidx,

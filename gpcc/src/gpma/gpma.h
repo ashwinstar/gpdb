@@ -4,6 +4,7 @@
 #include "config.h"
 #include "enum.h"
 
+#if 0
 
 #define DEFAULT_QD_MAX_CONNECT  25
 #define DEFAULT_QE_MAX_CONNECT  25
@@ -88,6 +89,7 @@ APR_DECLARE(cmdslot_t*) cmdslot_alloc(const char* name,
 				      cmdstate_t init_state, conninfo_t* conninfo);
 APR_DECLARE(void) cmdslot_free(cmdslot_t* cp);
 
+#endif
 
 
 #endif /* GPMA_H */

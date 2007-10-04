@@ -70,6 +70,14 @@ int svr_received(gpcc_net_conn_t conn, const char* buf, int buflen)
     return buflen;
 }
 
+void received_packet(gpcc_net_conn_t conn, gpcc_net_packet_t* pkt)
+{
+    printf("----- received packet--------------------------\n");
+    gpcc_fatal(FLINE, "INTERNAL ERROR - this test does not exercise packet logic");
+}
+
+
+
 void svr_closed(gpcc_net_conn_t conn)
 {
     printf("----- svr_closed --------------------------\n");
@@ -166,7 +174,7 @@ int main(int argc, char* argv[])
     atexit(apr_terminate);
 
     if (! svr) {
-	e = gpcc_net_init(port, svr_opened, svr_accepted, svr_received, svr_closed, tick);
+	e = gpcc_net_init(port, svr_opened, svr_accepted, svr_received, received_packet, svr_closed, tick);
 	checkerr(e, FLINE);
 	
 	printf("Listening on port %d\n", port);
@@ -178,7 +186,7 @@ int main(int argc, char* argv[])
 	static char* hv[] = { "V1", "V2", "V3" };
 	char addr[100];
 
-	e = gpcc_net_init(0, clnt_opened, clnt_accepted, clnt_received, clnt_closed, tick);
+	e = gpcc_net_init(0, clnt_opened, clnt_accepted, clnt_received, received_packet, clnt_closed, tick);
 	checkerr(e, FLINE);
 
 	sprintf(addr, "%s:%d", svr, port);

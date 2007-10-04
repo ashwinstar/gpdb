@@ -3,18 +3,21 @@
 
 #include <gpcc.h>
 
-#define GPCC_EVENT_NULL		0
-#define GPCC_EVENT_MSG		1
+
+enum gpcc_event_type_t {
+    GPCC_EVENT_NULL = 0,
+    GPCC_EVENT_MSG = 1,
+};
+typedef enum gpcc_event_type_t gpcc_event_type_t;
 
 
 typedef struct gpcc_event_t gpcc_event_t;
 struct gpcc_event_t {
-    short etype;		/* event type */
-    short edatasz;		/* size of content data (edata[]) */
-    int cmdidx;			/* command index */
-    void* pdata;		/* if not null, points to something the user allocated */
-    void (*pfree)(void*);	/* howto free(pdata) */
-    char  edata[1];
+    gpcc_event_type_t etype;	/* event type */
+    int               edatasz;	/* size of content data (pdata[]) */
+    apr_uint32_t      cmdidx;	/* command index */
+    const char*       pdata;	/* point to the data */
+    void              (*pfree)(void*); /* internal use */
 };
 
 /**
@@ -25,7 +28,7 @@ struct gpcc_event_t {
  *  @param cdatasz payload size 
  *  @return a newly allocated event. Caller is responsible in filling cdata.
  */
-APR_DECLARE(gpcc_event_t*) gpcc_event_alloc(int type, int cmdidx, int cdatasz);
+APR_DECLARE(gpcc_event_t*) gpcc_event_alloc(int type, apr_uint32_t cmdidx, int cdatasz);
 
 /**
  *  Alternate allocate an event. To deallocate an event returned by this 
@@ -33,11 +36,12 @@ APR_DECLARE(gpcc_event_t*) gpcc_event_alloc(int type, int cmdidx, int cdatasz);
  *  @param type the event type
  *  @param cmdidx the command index
  *  @param pdata points to something the user allocated 
+ *  @param datasz #bytes in pdata
  *  @param pfree function to free pdata when event is destroyed
  *  @return a newly allocated event.
  */
-APR_DECLARE(gpcc_event_t*) gpcc_event_alloc_ex(int type, int cmdidx, 
-					       void* pdata, void (*pfree)(void*));
+APR_DECLARE(gpcc_event_t*) gpcc_event_alloc_ex(int type, apr_uint32_t cmdidx, 
+					       void* pdata, int datasz, void (*pfree)(void*));
 
 /**
  *  Free an event allocated with gpcc_event_alloc() and gpcc_event_alloc_ex()

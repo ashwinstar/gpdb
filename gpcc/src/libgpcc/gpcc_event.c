@@ -16,35 +16,38 @@ struct gpcc_evqueue_t {
 
 
 
-APR_DECLARE(gpcc_event_t*) gpcc_event_alloc(int type, int cmdidx, int datasz)
+APR_DECLARE(gpcc_event_t*) gpcc_event_alloc(int type, apr_uint32_t cmdidx, int datasz)
 {
-    int len = sizeof(gpcc_event_t) + datasz - 1;
+    int len = sizeof(gpcc_event_t) + datasz;
     gpcc_event_t* ret;
 
     GPCC_DO(datasz >= 0);
     if (0 == (ret = malloc(len))) 
 	gpcc_fatal(FLINE, "out of memory");
 
-    memset(ret, 0, len);
     ret->etype = type;
     ret->edatasz = datasz;
     ret->cmdidx = cmdidx;
+    ret->pfree = 0;
+    ret->pdata = ((char*) ret) + sizeof(*ret);
     return ret;
 }
 
-APR_DECLARE(gpcc_event_t*) gpcc_event_alloc_ex(int type, int cmdidx, 
-					       void* pdata, void (*pfree)(void*))
+APR_DECLARE(gpcc_event_t*) gpcc_event_alloc_ex(int type, apr_uint32_t cmdidx, 
+					       void* pdata, int datasz, 
+					       void (*pfree)(void*))
 {
     gpcc_event_t* ret = gpcc_event_alloc(type, cmdidx, 0);
     ret->pdata = pdata;
+    ret->edatasz = datasz;
     ret->pfree = pfree;
     return ret;
 }
 
 APR_DECLARE(void) gpcc_event_free(const gpcc_event_t* ev)
 {
-    if (ev->pdata)
-	ev->pfree(ev->pdata);
+    if (ev->pfree)
+	ev->pfree((void*) ev->pdata);
     free((void*)ev);
 }
 

@@ -14,6 +14,44 @@
 #include <apr_thread_mutex.h>
 
 
+
+#if defined(_MSC_VER)
+#pragma pack(push,1)
+#define GPCC_PACKED
+#else
+#define GPCC_PACKED __attribute__ ((__packed__))
+#endif
+
+
+struct gpcc_net_packet_t {
+    struct {
+	apr_uint32_t _reserved;	/* internal use */
+	apr_uint16_t type;      /* packet type */
+	apr_uint16_t len;       /* #bytes in packet body */
+	apr_uint32_t sndidx;    /* sender cmdidx */
+	apr_uint32_t rcvidx;    /* receiver cmdidx */
+    } mh;
+    char*        payload;
+} GPCC_PACKED;
+
+#ifdef _MSC_VER
+#pragma pack(pop)
+#endif
+#undef GPCC_PACKED
+
+/*
+ *  Get a new packet from buf[0..*len]
+ *  If there is a packet, fill up pkt, return APR_SUCCESS and #bytes consumed in buf in len.
+ *  If no packet can be read, return APR_SUCCESS and 0 in len.
+ */
+APR_DECLARE(apr_status_t) gpcc_net_parse_packet(gpcc_net_packet_t* pkt, const char* buf, int* len);
+
+
+/*
+ *  Parse buf[] for a net header.
+ *  If there is a header, return APR_SUCCESS, a newly allocated hdr from pool, and the #bytes consumed in len.
+ *  If no header available (yet), return APR_SUCCESS and NULL hdr, and 0 in len.
+ */
 APR_DECLARE(apr_status_t) gpcc_net_parse_request(gpcc_net_header_t** hdr, const char* buf, int* len, 
 						 apr_pool_t* pool);
 
@@ -163,6 +201,7 @@ struct conncb_t {
 	gpcc_net_header_t* hdr;
     }               to_peer, from_peer;
     int             do_read_header_attempts;
+    int             packet_mode; /* true if in packet mode (from_peer HDR == GPCC_NET_PACKET_PROTO)*/
 };
 
 
@@ -178,6 +217,7 @@ struct net_t {
     gpcc_net_opened_t* opened;
     gpcc_net_accepted_t* accepted;
     gpcc_net_received_t* received;
+    gpcc_net_received_packet_t* received_packet;
     gpcc_net_closed_t* closed;
     gpcc_net_tick_t* tick;
     /* internal pipe to wake up libevent upon a send / open so it could set up
@@ -264,13 +304,11 @@ static void conn_setup_event(gpcc_net_conn_t conn)
     struct timeval* ptm = 0;
 
     gpcc_log_info("conn_setup_event...");
-
-    tm.tv_sec = 0;
-    tm.tv_usec = 500 * 1000;
-
     if (! (spin = conn_secure(conn, &pconn)))
 	return;
 
+    tm.tv_sec = 0;
+    tm.tv_usec = 500 * 1000;
     out = pconn->to_peer.buf;
     in = pconn->from_peer.buf;
 
@@ -368,12 +406,18 @@ static apr_status_t conn_read_header(gpcc_net_conn_t conn)
 	    }
 	}
 
+	/* determine packet mode */
+	if (from_peer_hdr->argc == 1 && 0 == strcmp(from_peer_hdr->argv[0], GPCC_NET_PACKET_PROTO))
+	    pconn->packet_mode = 1;
+
 	spin = gpcc_spin_release(spin); /* release prior to callback */
 
 	if (to_peer_hdr) 
 	    net.opened(conn, peer_addr, to_peer_hdr, from_peer_hdr);
 	else 
 	    net.accepted(conn, peer_addr, from_peer_hdr);
+
+	    
     }
     return 0;
 
@@ -403,6 +447,8 @@ static void conn_fire_read(gpcc_net_conn_t conn)
 	int bot = in->bot;
 	int top = in->top;
 	int n = top - bot;
+	gpcc_net_packet_t pktbuf;
+	gpcc_net_packet_t* pkt = &pktbuf;
 
 	if (pconn->from_peer.hdr == 0) {
 	    /* pending a header from peer, connection not opened or accepted yet */
@@ -412,13 +458,27 @@ static void conn_fire_read(gpcc_net_conn_t conn)
 
 	    goto again;		/* in case we have some more bytes in the buffer, 
 				   go to the top and do conn_secure again to reacquire lock */
-	} 
+	}
 
-	/* release the spin lock and do the received callback. This is not very
-	   safe, but it would have to do. Upon return, we check that the buffer
-	   has not been modified. */
-	spin = gpcc_spin_release(spin);
-	{
+	if (pconn->packet_mode) {
+	    int e = gpcc_net_parse_packet(pkt, byte + bot, &n);
+	    spin = gpcc_spin_release(spin);
+	    if (e) {
+		gpcc_warning(FLINE, "bad packet - closing connection");
+		zap(pconn, conn);
+		return;
+	    }
+	    if (!pkt) 		/* no packet yet */
+		return;
+	    net.received_packet(conn, pkt);
+	}
+	else {
+	    pkt = 0; 
+
+	    /* release the spin lock and do the received callback. This is not very
+	       safe, but it would have to do. Upon return, we check that the buffer
+	       has not been modified. */
+	    spin = gpcc_spin_release(spin);
 	    n = net.received(conn, byte + bot, n); /* do the callback */
 	    if (n < 0) {
 		gpcc_net_close(conn); /* callback indicated error, close it, and done. */
@@ -680,6 +740,7 @@ static void do_accept(int fd, short event, void* arg)
     sprintf(pconn->peer_addr + strlen(pconn->peer_addr), ":%d", ntohs(sockaddr.sin_port));
     
     pconn->do_read_header_attempts = 0;
+    pconn->packet_mode = 0;
     conn = pconn->conn;
     spin = gpcc_spin_release(spin);
 
@@ -701,8 +762,9 @@ failure:
 APR_DECLARE(apr_status_t) gpcc_net_send_header(gpcc_net_conn_t conn,
 					       gpcc_net_header_t *hdr)
 {
-    char buf[1024], *b;
-    int len = sizeof(buf);
+    char buf[1024];
+    char* b;
+    int  len = sizeof(buf);
 
     b = gpcc_net_header_serialize(hdr, buf, len);
     if (!b) {
@@ -711,8 +773,8 @@ APR_DECLARE(apr_status_t) gpcc_net_send_header(gpcc_net_conn_t conn,
     }
 
     return gpcc_net_send(conn, b, strlen(b));
-    
 }
+
 
 APR_DECLARE(apr_status_t) gpcc_net_sendv(gpcc_net_conn_t conn,
 					 gpcc_net_datum_t* datum, int dcnt)
@@ -800,6 +862,7 @@ APR_DECLARE(apr_status_t) gpcc_net_init(int port,
 					gpcc_net_opened_t* opened,
 					gpcc_net_accepted_t* accepted,
 					gpcc_net_received_t* received,
+					gpcc_net_received_packet_t* received_packet,
 					gpcc_net_closed_t* closed,
 					gpcc_net_tick_t* tick)
 {
@@ -826,6 +889,11 @@ APR_DECLARE(apr_status_t) gpcc_net_init(int port,
 
     if (!received) {
 	gpcc_log_error("gpcc_net_init: invalid 'received' param");
+	return APR_EINVAL;
+    }
+
+    if (!received_packet) {
+	gpcc_log_error("gpcc_net_init: invalid 'received_packet' param");
 	return APR_EINVAL;
     }
 
@@ -1040,6 +1108,7 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
     pconn->from_peer.buf = apr_palloc(pool, sizeof(buf_t));
     pconn->from_peer.buf->top = pconn->from_peer.buf->bot = 0;
     pconn->do_read_header_attempts = 0;
+    pconn->packet_mode = 0;
 
     /* serialize the header into output buffer */
     if (0 == gpcc_net_header_serialize(hdr, pconn->to_peer.buf->byte, 
@@ -1193,48 +1262,29 @@ APR_DECLARE(apr_status_t) gpcc_net_parse_request(gpcc_net_header_t** hdr, const 
 #define GPCC_NET_PACKET_MAGIC (0x342ba90f)
 
 
-APR_DECLARE(apr_status_t) gpcc_net_parse_packet(gpcc_net_packet_t** retpkt, const char* buf, int* plen)
+APR_DECLARE(apr_status_t) gpcc_net_parse_packet(gpcc_net_packet_t* pkt, const char* buf, int* plen)
 {
     const char* p = buf;
     const char* q = buf + *plen;
-    gpcc_net_packet_t pkt;
-    gpcc_net_packet_t* newpkt = 0;
-    
     *plen = 0;
-    *retpkt = 0;
 
-    if (q - p < sizeof(pkt.mh))
+    if (q - p < sizeof(pkt->mh))
 	return 0;
-    memcpy(&pkt.mh, p, sizeof(pkt.mh));
-    p += sizeof(pkt.mh);
+    memcpy(&pkt->mh, p, sizeof(pkt->mh));
+    p += sizeof(pkt->mh);
 
-    if (pkt.mh._reserved != GPCC_NET_PACKET_MAGIC)  {
+    if (pkt->mh._reserved != GPCC_NET_PACKET_MAGIC)  {
 	gpcc_warning(FLINE, "gpcc_net_parse_packet: bad magic number in packet");
 	return APR_EINVAL;
     }
-    if (q - p < pkt.mh.len)
+    if (q - p < pkt->mh.len)
 	return 0;
 
-    q = p + pkt.mh.len;
-    newpkt = malloc(q - buf);
-    if (!newpkt) 
-	gpcc_fatal(FLINE, "out of memory");
-    memcpy(newpkt, buf, q - buf);
-    *retpkt = newpkt;
+    q = p + pkt->mh.len;
     *plen = q - buf;
     return 0;
 }
 
-
-APR_DECLARE(void) gpcc_net_free_packet(gpcc_net_packet_t* pkt)
-{
-    if (pkt->mh._reserved != GPCC_NET_PACKET_MAGIC)  {
-	gpcc_fatal(FLINE, "gpcc_net_free_packet: bad magic number in packet");
-	return;
-    }
-    pkt->mh._reserved = 0;
-    free(pkt);
-}
 
 
 #define UINT16_RANGE(x) ((0 < (x)) && ((x) < (1 << 16)))
