@@ -295,7 +295,8 @@ static void conn_setup_event(gpcc_net_conn_t conn)
     zap(pconn, conn);
 }
 
-static void conn_read_header(gpcc_net_conn_t conn)
+
+static apr_status_t conn_read_header(gpcc_net_conn_t conn)
 {
     buf_t* buf;
     int len;
@@ -303,7 +304,7 @@ static void conn_read_header(gpcc_net_conn_t conn)
     conncb_t* pconn;
 
     if (! (spin = conn_secure(conn, &pconn)))
-	return;
+	return APR_EINVAL;
 
     buf = pconn->from_peer.buf;
     if (pconn->from_peer.hdr) {
@@ -315,7 +316,7 @@ static void conn_read_header(gpcc_net_conn_t conn)
 	gpcc_warning(FLINE, "buffer full while reading header");
 	goto failure;
     }
-    if (pconn->do_read_header_attempts++ > 2) {
+    if (pconn->do_read_header_attempts++ > 4) {
 	/* don't let this go on forever */
 	gpcc_warning(FLINE, "timeout while reading header");
 	goto failure;
@@ -326,9 +327,10 @@ static void conn_read_header(gpcc_net_conn_t conn)
 				  buf->byte + buf->bot, &len, pconn->pool);
     buf->bot += len;
 
+    /* we con't have a header from the peer, yet */
     if (! pconn->from_peer.hdr) {
 	spin = gpcc_spin_release(spin);
-	return;
+	return APR_EINVAL;
     }
 
     {
@@ -367,13 +369,13 @@ static void conn_read_header(gpcc_net_conn_t conn)
 	else 
 	    net.accepted(conn, peer_addr, from_peer_hdr);
     }
-    return;
+    return 0;
 
 failure:
     if (spin) 
 	spin = gpcc_spin_release(spin);
     zap(pconn, conn);
-    return;
+    return APR_EINVAL;
 }
 
 
@@ -391,16 +393,14 @@ static void conn_fire_read(gpcc_net_conn_t conn)
     
     in = pconn->from_peer.buf;
     if (in->bot != in->top) {
-	if (pconn->to_peer.hdr == 0 && pconn->from_peer.hdr == 0) {
-	    /* newly accepted connection */
+	if (pconn->from_peer.hdr == 0) {
+	    /* pending a header from peer, connection not opened or accepted yet */
 	    spin = gpcc_spin_release(spin);
-	    conn_read_header(conn);
-	    goto again;		/* in case we have some more bytes in the buffer */
-	} else if (pconn->to_peer.hdr && pconn->from_peer.hdr == 0) {
-	    /* newly opened connection */
-	    spin = gpcc_spin_release(spin);
-	    conn_read_header(conn);
-	    goto again;
+	    if (conn_read_header(conn))
+		return; 	/* we don't have a header yet */
+
+	    goto again;		/* in case we have some more bytes in the buffer, 
+				   go to the top and do conn_secure again to reacquire lock */
 	} 
 	if (in->top > in->bot) {
 	    char* byte = in->byte;
@@ -1148,4 +1148,79 @@ APR_DECLARE(apr_status_t) gpcc_net_parse_request(gpcc_net_header_t** hdr, const 
     *hdr = req;
     return 0;
 }
+
+
+#define GPCC_NET_PACKET_MAGIC (0x342ba90f)
+
+
+APR_DECLARE(apr_status_t) gpcc_net_parse_packet(gpcc_net_packet_t** retpkt, const char* buf, int* plen)
+{
+    const char* p = buf;
+    const char* q = buf + *plen;
+    gpcc_net_packet_t pkt;
+    gpcc_net_packet_t* newpkt = 0;
+    
+    *plen = 0;
+    *retpkt = 0;
+
+    if (q - p < sizeof(pkt.mh))
+	return 0;
+    memcpy(&pkt.mh, p, sizeof(pkt.mh));
+    p += sizeof(pkt.mh);
+
+    if (pkt.mh._reserved != GPCC_NET_PACKET_MAGIC)  {
+	gpcc_warning(FLINE, "gpcc_net_parse_packet: bad magic number in packet");
+	return APR_EINVAL;
+    }
+    if (q - p < pkt.mh.len)
+	return 0;
+
+    q = p + pkt.mh.len;
+    newpkt = malloc(q - buf);
+    if (!newpkt) 
+	gpcc_fatal(FLINE, "out of memory");
+    memcpy(newpkt, buf, q - buf);
+    *retpkt = newpkt;
+    *plen = q - buf;
+    return 0;
+}
+
+
+APR_DECLARE(void) gpcc_net_free_packet(gpcc_net_packet_t* pkt)
+{
+    if (pkt->mh._reserved != GPCC_NET_PACKET_MAGIC)  {
+	gpcc_fatal(FLINE, "gpcc_net_free_packet: bad magic number in packet");
+	return;
+    }
+    pkt->mh._reserved = 0;
+    free(pkt);
+}
+
+
+#define UINT16_RANGE(x) ((0 < (x)) && ((x) < (1 << 16)))
+
+
+APR_DECLARE(apr_status_t) gpcc_net_send_packet(gpcc_net_conn_t conn, int type, 
+                                               apr_uint32_t sndidx, apr_uint32_t rcvidx,
+                                               const char* buf, int len)
+{
+    gpcc_net_datum_t datum[2];
+    gpcc_net_packet_t pkt;
+    if (! UINT16_RANGE(type))
+	return APR_EINVAL;
+    if (! UINT16_RANGE(len))
+	return APR_EINVAL;
+    pkt.mh._reserved = GPCC_NET_PACKET_MAGIC;
+    pkt.mh.type = (apr_uint16_t) type;
+    pkt.mh.len = (apr_uint16_t) len;
+    pkt.mh.sndidx = sndidx;
+    pkt.mh.rcvidx = rcvidx;
+
+    datum[0].ptr = (const char*) &pkt.mh;
+    datum[0].len = sizeof(pkt.mh);
+    datum[1].ptr = buf;
+    datum[1].len = len;
+    return gpcc_net_sendv(conn, datum, 2);
+}
+
 
