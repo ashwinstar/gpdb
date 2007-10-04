@@ -2,7 +2,6 @@
 #include <gpcc.h>
 #include <gpcc_fsm.h>
 #include <gpcc_net.h>
-#include <gpcc_http.h>
 #include <gpcc_proc.h>
 #include <gpcc_pg.h>
 #include <gpcc_json.h>
@@ -12,7 +11,6 @@
 #include <json/json.h>
 #include "gpha.h"
 
-#include "fsm_http.h"
 #include "fsm_system.h"
 #include "fsm_segment.h"
 
@@ -28,11 +26,6 @@ APR_DECLARE(void) fsm_setup(void)
 		 a_system_net_closed, 0);
     gpcc_fsm_put(SYSTEM_CMDSTATE, NET_RECEIVED_EVENT, SYSTEM_CMDSTATE,
 		 a_system_net_received, 0);
-
-    /* http slot */
-    gpcc_fsm_put(HTTP_REQUEST_CMDSTATE, INIT_EVENT, NULL_CMDSTATE,
-		 http_request, 0);
-
 
     /* all slot -- get identity */
     gpcc_fsm_put(GET_IDENTITY_CMDSTATE, INIT_EVENT, GET_IDENTITY_CMDSTATE, 

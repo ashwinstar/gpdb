@@ -100,6 +100,7 @@ struct cmdslot_t {
 
 		    struct {
 			char *mode;
+			int segidx;
 			int nreply;
 			int nsuccess;
 			int nfailed;

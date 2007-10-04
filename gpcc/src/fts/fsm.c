@@ -2,7 +2,6 @@
 #include <gpcc.h>
 #include <gpcc_fsm.h>
 #include <gpcc_net.h>
-#include <gpcc_http.h>
 #include <gpcc_proc.h>
 #include <gpcc_pg.h>
 #include <gpcc_json.h>
@@ -69,6 +68,8 @@ APR_DECLARE(void) fsm_setup(void)
 		 initdb_init, initdb_do, 0);
     gpcc_fsm_put(INITDB_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, INITDB_CMDSTATE,
 		 initdb_reply, 0);
+    gpcc_fsm_put(INITDB_CMDSTATE, CONTINUE_EVENT, INITDB_CMDSTATE,
+		 initdb_do, 0);
     gpcc_fsm_put(INITDB_CMDSTATE, SUCCESS_EVENT, SYSTEM_READY_CMDSTATE,
 		 initdb_success, initdb_cleanup, 0);
     gpcc_fsm_put(INITDB_CMDSTATE, FAILURE_EVENT, SYSTEM_READY_CMDSTATE,

@@ -106,32 +106,6 @@ static apr_status_t a_system_net_received(gpcc_event_t* ev, void* cmdslot_)
 		return 0;
 	    }
 	}
-	else {
-	    /* handle http */
-	    conninfo->peer.request->datalen = gpcc_net_request_get_header_int(conninfo->peer.request, 
-									      "content-length", 0);
-	    conninfo->peer.request->offset = 0;
-	    if (conninfo->peer.request->datalen > 0) {
-		/* get data */
-		conninfo->peer.request->data = apr_palloc(conninfo->pool, conninfo->peer.request->datalen);
-		e = gpcc_net_read_request_data(conninfo->conn, conninfo->peer.request);
-		if (e) {
-		    goto bail;
-		}
-	    }
-
-	    /* complete header and data */
-	    e = gpcc_http_parse_request(conninfo->peer.request, conninfo->pool);
-	    if (e) {
-		gpcc_net_close(conninfo->conn);
-		return 0;
-	    }
-
-	    if (! cmdslot_alloc("HTTP_REQUEST", HTTP_REQUEST_CMDSTATE, conninfo)) {
-		gpcc_net_close(conninfo->conn);
-		return 0;
-	    }
-	}
 	return 0;
     }
     else {
@@ -159,30 +133,6 @@ static apr_status_t a_system_net_received(gpcc_event_t* ev, void* cmdslot_)
 		    free(packet);
 		    packet = 0;
 		}
-	    }
-	}
-	else {
-	    /* HTTP */
-	    if (conninfo->peer.request->datalen == conninfo->peer.request->offset) {
-		/* extra packet from client. ignore the packet */
-		return 0;
-	    }
-
-	    e = gpcc_net_read_request_data(conninfo->conn, conninfo->peer.request);
-	    if (e) {
-		goto bail;
-	    }
-
-	    /* complete header and data */
-	    e = gpcc_http_parse_request(conninfo->peer.request, conninfo->pool);
-	    if (e) {
-		gpcc_net_close(conninfo->conn);
-		return 0;
-	    }
-
-	    if (! cmdslot_alloc("HTTP_REQUEST", HTTP_REQUEST_CMDSTATE, conninfo)) {
-		gpcc_net_close(conninfo->conn);
-		return 0;
 	    }
 	}
     }
