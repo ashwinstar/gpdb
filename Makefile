@@ -9,11 +9,11 @@ GPDOCDIR=$(CURDIR)/docs/release
 
 
 DEFPORT=5432
-
-OPTFLAGS="-O3 --param large-function-growth=10000 --param inline-unit-growth=300 -Winline -finline-limit=1800 -funroll-loops -fargument-noalias-global $(COPTX) -g"
+INLINE_FLAGS=--param max-inline-insns-single=800 --param large-function-growth=175 --param inline-unit-growth=300 -Winline
+OPTFLAGS="-O3 -funroll-loops -fargument-noalias-global $(COPTX) -g $(INLINE_FLAGS)"
 
 ifeq (on, ${GPDBGINLINE})
-CFLAGS_INLINE=-Winline -finline-limit=1800
+CFLAGS_INLINE=$(INLINE_FLAGS)
 else
 CFLAGS_INLINE=-fno-inline
 endif
