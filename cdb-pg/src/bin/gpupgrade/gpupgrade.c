@@ -885,7 +885,7 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
-	if (strncmp(version, "PostgreSQL 8.2.4",strlen("PostgreSQL 8.2.4")) != 0)
+	if (strncmp(version, "PostgreSQL 8.2.5",strlen("PostgreSQL 8.2.5")) != 0)
 	{
 		mylog(UERROR, "You must upgrade the Greenplum Database software to Greenplum Database 3.1");
 		mylog(UERROR, "and restart the system, before running this utility\n");
