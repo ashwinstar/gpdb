@@ -17,7 +17,7 @@ dnl Read the Autoconf manual for details.
 dnl
 m4_pattern_forbid(^PGAC_)dnl to catch undefined macros
 
-AC_INIT([Greenplum Database], [8.2.4], [support@greenplum.com])
+AC_INIT([Greenplum Database], [8.2.5], [support@greenplum.com])
 
 AC_PREREQ(2.59)
 AC_COPYRIGHT([Copyright (c) 1996-2006, PostgreSQL Global Development Group])
@@ -663,9 +663,9 @@ fi
 
 # Supply a numeric version string for use by 3rd party add-ons
 # awk -F is a regex on some platforms, and not on others, so make "." a tab
-PG_VERSION_NUM="`echo "$PACKAGE_VERSION" | sed 's/[A-Za-z].*$//' |
+[PG_VERSION_NUM="`echo "$PACKAGE_VERSION" | sed 's/[A-Za-z].*$//' |
 tr '.' '	' |
-$AWK '{printf \"%d%02d%02d\", $1, $2, (NF >= 3) ? $3 : 0}'`"
+$AWK '{printf "%d%02d%02d", $1, $2, (NF >= 3) ? $3 : 0}'`"]
 AC_DEFINE_UNQUOTED(PG_VERSION_NUM, $PG_VERSION_NUM, [PostgreSQL version as a number])
 
 ##
@@ -896,6 +896,15 @@ if test "$with_krb5" = yes; then
                                      [AC_MSG_ERROR([could not determine how to extract Kerberos 5 error messages])],
                                      [#include <krb5.h>])],
                    [#include <krb5.h>])
+
+# Win32 requires headers to be loaded for __stdcall, so can't use
+# AC_CHECK_FUNCS here.
+  AC_MSG_CHECKING(for krb5_free_unparsed_name)
+  AC_TRY_LINK([#include <krb5.h>],
+              [krb5_free_unparsed_name(NULL,NULL);],
+              [AC_DEFINE(HAVE_KRB5_FREE_UNPARSED_NAME, 1, [Define to 1 if you have krb5_free_unparsed_name]) 
+AC_MSG_RESULT(yes)],
+              [AC_MSG_RESULT(no)])
 fi
 
 

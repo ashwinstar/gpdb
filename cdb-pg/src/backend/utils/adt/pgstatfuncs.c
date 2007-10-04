@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/pgstatfuncs.c,v 1.34 2006/10/04 00:29:59 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/pgstatfuncs.c,v 1.34.2.1 2007/05/17 23:31:59 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -505,13 +505,7 @@ pg_stat_get_backend_client_addr(PG_FUNCTION_ARGS)
 	if (ret)
 		PG_RETURN_NULL();
 
-#ifdef HAVE_IPV6	
-	/* Special for broken MAC IPv6 stuff */
-	if (remote_host && strchr(remote_host,'%') != NULL)
-	{
-		strchr(remote_host,'%')[0]='\0';
-	}
-#endif
+	clean_ipv6_addr(beentry->st_clientaddr.addr.ss_family, remote_host);
 
 	return DirectFunctionCall1(inet_in, CStringGetDatum(remote_host));
 }

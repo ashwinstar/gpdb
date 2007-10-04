@@ -43,7 +43,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/error/elog.c,v 1.178.2.1 2007/02/11 15:12:21 mha Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/error/elog.c,v 1.178.2.4 2007/07/21 22:12:11 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -95,7 +95,7 @@ ErrorContextCallback *error_context_stack = NULL;
 
 sigjmp_buf *PG_exception_stack = NULL;
 
-extern pid_t SysLoggerPID;
+extern bool redirection_done;
 
 /* GUC parameters */
 PGErrorVerbosity Log_error_verbosity = PGERROR_VERBOSE;
@@ -143,6 +143,7 @@ static char *expand_fmt_string(const char *fmt, ErrorData *edata);
 static const char *useful_strerror(int errnum);
 static const char *error_severity(int elevel);
 static void append_with_tabs(StringInfo buf, const char *str);
+static void write_pipe_chunks(int fd, char *data, int len);
 static void elog_debug_linger(ErrorData *edata);
 
 #if (!defined(__darwin__)) && (!defined(pg_on_solaris))
@@ -306,10 +307,15 @@ errstart(int elevel, const char *filename, int lineno,
 
 		/*
 		 * If we recurse more than once, the problem might be something broken
-		 * in a context traceback routine.	Abandon them too.
+		 * in a context traceback routine.  Abandon them too.  We also
+		 * abandon attempting to print the error statement (which, if long,
+		 * could itself be the source of the recursive failure).
 		 */
 		if (recursion_depth > 2)
+		{
 			error_context_stack = NULL;
+			debug_query_string = NULL;
+		}
 	}
 	if (++errordata_stack_depth >= ERRORDATA_STACK_SIZE)
 	{
@@ -2250,11 +2256,18 @@ send_message_to_server_log(ErrorData *edata)
 		 * that's really a pipe to the syslogger process. Unless we're in the
 		 * postmaster, and the syslogger process isn't started yet.
 		 */
-		if ((!Redirect_stderr || am_syslogger || (!IsUnderPostmaster && SysLoggerPID==0)) && pgwin32_is_service())
+		if (pgwin32_is_service() && (!redirection_done || am_syslogger) )
 			write_eventlog(edata->elevel, buf.data);
 		else
 #endif
-			fprintf(stderr, "%s", buf.data);
+			/* only use the chunking protocol if we know the syslogger should
+			 * be catching stderr output, and we are not ourselves the
+			 * syslogger. Otherwise, go directly to stderr.
+			 */
+			if (redirection_done && !am_syslogger)
+				write_pipe_chunks(fileno(stderr), buf.data, buf.len);
+			else
+				write(fileno(stderr), buf.data, buf.len);
 	}
 
 	/* If in the syslogger process, try to write messages direct to file */
@@ -2263,6 +2276,37 @@ send_message_to_server_log(ErrorData *edata)
 
     pfree(prefix.data);
 	pfree(buf.data);
+}
+
+/*
+ * Send data to the syslogger using the chunked protocol
+ */
+static void
+write_pipe_chunks(int fd, char *data, int len)
+{
+	PipeProtoChunk p;
+
+	Assert(len > 0);
+
+	p.proto.nuls[0] = p.proto.nuls[1] = '\0';
+	p.proto.pid = MyProcPid;
+
+	/* write all but the last chunk */
+	while (len > PIPE_MAX_PAYLOAD)
+	{
+		p.proto.is_last = 'f';
+		p.proto.len = PIPE_MAX_PAYLOAD;
+		memcpy(p.proto.data, data, PIPE_MAX_PAYLOAD);
+		write(fd, &p, PIPE_HEADER_SIZE + PIPE_MAX_PAYLOAD);
+		data += PIPE_MAX_PAYLOAD;
+		len -= PIPE_MAX_PAYLOAD;
+	}
+
+	/* write the last chunk */
+	p.proto.is_last = 't';
+	p.proto.len = len;
+	memcpy(p.proto.data, data, len);
+	write(fd, &p, PIPE_HEADER_SIZE + len);
 }
 
 

@@ -16,7 +16,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/selfuncs.c,v 1.214.2.4 2007/01/28 02:53:42 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/selfuncs.c,v 1.214.2.6 2007/08/31 23:35:29 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -1427,10 +1427,23 @@ booltestsel(PlannerInfo *root, BoolTestType booltesttype, Node *arg,
  */
 Selectivity
 nulltestsel(PlannerInfo *root, NullTestType nulltesttype,
-			Node *arg, int varRelid)
+			Node *arg, int varRelid, JoinType jointype)
 {
 	VariableStatData vardata;
 	double		selec;
+
+	/*
+	 * Special hack: an IS NULL test being applied at an outer join should not
+	 * be taken at face value, since it's very likely being used to select the
+	 * outer-side rows that don't have a match, and thus its selectivity has
+	 * nothing whatever to do with the statistics of the original table
+	 * column.  We do not have nearly enough context here to determine its
+	 * true selectivity, so for the moment punt and guess at 0.5.  Eventually
+	 * the planner should be made to provide enough info about the clause's
+	 * context to let us do better.
+	 */
+	if (IS_OUTER_JOIN(jointype) && nulltesttype == IS_NULL)
+		return (Selectivity) 0.5;
 
 	examine_variable(root, arg, varRelid, &vardata);
 
@@ -3164,6 +3177,10 @@ convert_string_datum(Datum value, Oid typid)
 		 * from the second call than the first; thus the Assert must be <= not
 		 * == as you'd expect.  Can't any of these people program their way
 		 * out of a paper bag?
+		 *
+		 * XXX: strxfrm doesn't support UTF-8 encoding on Win32, it can return
+		 * bogus data or set an error. This is not really a problem unless it 
+		 * crashes since it will only give an estimation error and nothing fatal.
 		 */
 #if _MSC_VER == 1400			/* VS.Net 2005 */
 
@@ -3178,6 +3195,15 @@ convert_string_datum(Datum value, Oid typid)
 		}
 #else
 		xfrmlen = strxfrm(NULL, val, 0);
+#endif
+#ifdef WIN32
+		/*
+		 * On Windows, strxfrm returns INT_MAX when an error occurs. Instead of
+		 * trying to allocate this much memory (and fail), just return the
+		 * original string unmodified as if we were in the C locale.
+		 */
+		if (xfrmlen == INT_MAX)
+			return val;
 #endif
 		xfrmstr = (char *) palloc(xfrmlen + 1);
 		xfrmlen2 = strxfrm(xfrmstr, val, xfrmlen + 1);

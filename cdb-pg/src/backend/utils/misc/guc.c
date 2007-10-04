@@ -11,7 +11,7 @@
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/misc/guc.c,v 1.360 2006/11/29 14:50:07 petere Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/misc/guc.c,v 1.360.2.1 2007/04/23 15:13:30 neilc Exp $
  *
  *--------------------------------------------------------------------
  */
@@ -28,6 +28,7 @@
 
 
 #include "access/gin.h"
+#include "access/transam.h"
 #include "access/twophase.h"
 #include "access/xact.h"
 #include "access/transam.h"

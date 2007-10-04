@@ -12,7 +12,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/mmgr/portalmem.c,v 1.97 2006/11/23 01:14:59 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/mmgr/portalmem.c,v 1.97.2.1 2007/04/26 23:24:57 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -22,7 +22,6 @@
 #include "access/xact.h"
 #include "catalog/pg_type.h"
 #include "commands/portalcmds.h"
-#include "funcapi.h"
 #include "miscadmin.h"
 #include "nodes/execnodes.h"            /* EState */
 #include "utils/builtins.h"

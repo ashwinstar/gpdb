@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/datetime.c,v 1.174 2006/10/18 16:43:13 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/datetime.c,v 1.174.2.2 2007/06/12 15:58:39 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -721,11 +721,17 @@ DecodeDateTime(char **field, int *ftype, int nf,
 				}
 				/***
 				 * Already have a date? Then this might be a time zone name
-				 * with embedded punctuation (e.g. "America/New_York") or
-				 * a run-together time with trailing time zone (e.g. hhmmss-zz).
+				 * with embedded punctuation (e.g. "America/New_York") or a
+				 * run-together time with trailing time zone (e.g. hhmmss-zz).
 				 * - thomas 2001-12-25
+				 *
+				 * We consider it a time zone if we already have month & day.
+				 * This is to allow the form "mmm dd hhmmss tz year", which
+				 * we've historically accepted.
 				 ***/
-				else if ((fmask & DTK_DATE_M) == DTK_DATE_M || ptype != 0)
+				else if (ptype != 0 ||
+						 ((fmask & (DTK_M(MONTH) | DTK_M(DAY))) ==
+						  (DTK_M(MONTH) | DTK_M(DAY))))
 				{
 					/* No time zone accepted? Then quit... */
 					if (tzp == NULL)
@@ -924,6 +930,7 @@ DecodeDateTime(char **field, int *ftype, int nf,
 #else
 								*fsec = frac;
 #endif
+								tmask = DTK_ALL_SECS_M;
 							}
 							break;
 
@@ -1699,6 +1706,7 @@ DecodeTimeOnly(char **field, int *ftype, int nf,
 #else
 								*fsec = frac;
 #endif
+								tmask = DTK_ALL_SECS_M;
 							}
 							break;
 
@@ -2811,6 +2819,7 @@ DecodeInterval(char **field, int *ftype, int nf, int *dtype, struct pg_tm * tm, 
 #else
 						*fsec += (val + fval) * 1e-6;
 #endif
+						tmask = DTK_M(MICROSECOND);
 						break;
 
 					case DTK_MILLISEC:
@@ -2819,6 +2828,7 @@ DecodeInterval(char **field, int *ftype, int nf, int *dtype, struct pg_tm * tm, 
 #else
 						*fsec += (val + fval) * 1e-3;
 #endif
+						tmask = DTK_M(MILLISECOND);
 						break;
 
 					case DTK_SECOND:
@@ -2828,7 +2838,15 @@ DecodeInterval(char **field, int *ftype, int nf, int *dtype, struct pg_tm * tm, 
 #else
 						*fsec += fval;
 #endif
-						tmask = DTK_M(SECOND);
+						/*
+						 * If any subseconds were specified, consider
+						 * this microsecond and millisecond input as
+						 * well.
+						 */
+						if (fval == 0)
+							tmask = DTK_M(SECOND);
+						else
+							tmask = DTK_ALL_SECS_M;
 						break;
 
 					case DTK_MINUTE:

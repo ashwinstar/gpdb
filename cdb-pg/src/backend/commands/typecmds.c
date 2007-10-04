@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/typecmds.c,v 1.97 2006/10/04 00:29:51 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/typecmds.c,v 1.97.2.2 2007/06/20 18:15:57 tgl Exp $
  *
  * DESCRIPTION
  *	  The "DefineFoo" routines take the parse tree and pick out the
@@ -559,9 +559,9 @@ DefineDomain(CreateDomainStmt *stmt)
 	char		typtype;
 	Datum		datum;
 	bool		isnull;
-	Node	   *defaultExpr = NULL;
 	char	   *defaultValue = NULL;
 	char	   *defaultValueBin = NULL;
+	bool		saw_default = false;
 	bool		typNotNull = false;
 	bool		nullDefined = false;
 	int32		typNDims = list_length(stmt->typname->arrayBounds);
@@ -663,7 +663,6 @@ DefineDomain(CreateDomainStmt *stmt)
 	{
 		Node	   *newConstraint = lfirst(listptr);
 		Constraint *constr;
-		ParseState *pstate;
 
 		/* Check for unsupported constraint types */
 		if (IsA(newConstraint, FkConstraint))
@@ -684,35 +683,49 @@ DefineDomain(CreateDomainStmt *stmt)
 
 				/*
 				 * The inherited default value may be overridden by the user
-				 * with the DEFAULT <expr> statement.
+				 * with the DEFAULT <expr> clause ... but only once.
 				 */
-				if (defaultExpr)
+				if (saw_default)
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("multiple default expressions")));
+				saw_default = true;
 
-				/* Create a dummy ParseState for transformExpr */
-				pstate = make_parsestate(NULL);
+				if (constr->raw_expr)
+				{
+					ParseState *pstate;
+					Node	   *defaultExpr;
 
-				/*
-				 * Cook the constr->raw_expr into an expression. Note: Name is
-				 * strictly for error message
-				 */
-				defaultExpr = cookDefault(pstate, constr->raw_expr,
-										  basetypeoid,
-										  stmt->typname->typmod,
-										  domainName);
+					/* Create a dummy ParseState for transformExpr */
+					pstate = make_parsestate(NULL);
 
-				/*
-				 * Expression must be stored as a nodeToString result, but we
-				 * also require a valid textual representation (mainly to make
-				 * life easier for pg_dump).
-				 */
-				defaultValue = deparse_expression(defaultExpr,
-											  deparse_context_for(domainName,
-																  InvalidOid),
-												  false, false);
-				defaultValueBin = nodeToString(defaultExpr);
+					/*
+					 * Cook the constr->raw_expr into an expression.
+					 * Note: Name is strictly for error message
+					 */
+					defaultExpr = cookDefault(pstate, constr->raw_expr,
+											  basetypeoid,
+											  stmt->typname->typmod,
+											  domainName);
+
+					/*
+					 * Expression must be stored as a nodeToString result, but
+					 * we also require a valid textual representation (mainly
+					 * to make life easier for pg_dump).
+					 */
+					defaultValue = 
+						deparse_expression(defaultExpr,
+										   deparse_context_for(domainName,
+															   InvalidOid),
+										   false, false);
+					defaultValueBin = nodeToString(defaultExpr);
+				}
+				else
+				{
+					/* DEFAULT NULL is same as not having a default */
+					defaultValue = NULL;
+					defaultValueBin = NULL;
+				}
 				break;
 
 			case CONSTR_NOTNULL:
@@ -1648,6 +1661,10 @@ AlterDomainAddConstraint(List *names, Node *newConstraint)
  * the domain type.  We have opened each rel and acquired the specified lock
  * type on it.
  *
+ * We support nested domains by including attributes that are of derived
+ * domain types.  Current callers do not need to distinguish between attributes
+ * that are of exactly the given domain and those that are of derived domains.
+ *
  * XXX this is completely broken because there is no way to lock the domain
  * to prevent columns from being added or dropped while our command runs.
  * We can partially protect against column drops by locking relations as we
@@ -1657,9 +1674,11 @@ AlterDomainAddConstraint(List *names, Node *newConstraint)
  * trivial risk of deadlock.  We can minimize but not eliminate the deadlock
  * risk by using the weakest suitable lock (ShareLock for most callers).
  *
- * XXX to support domains over domains, we'd need to make this smarter,
- * or make its callers smarter, so that we could find columns of derived
- * domains.  Arrays of domains would be a problem too.
+ * XXX the API for this is not sufficient to support checking domain values
+ * that are inside composite types or arrays.  Currently we just error out
+ * if a composite type containing the target domain is stored anywhere.
+ * There are not currently arrays of domains; if there were, we could take
+ * the same approach, but it'd be nicer to fix it properly.
  *
  * Generally used for retrieving a list of tests when adding
  * new constraints to a domain.
@@ -1701,7 +1720,23 @@ get_rels_with_domain(Oid domainOid, LOCKMODE lockmode)
 		Form_pg_attribute pg_att;
 		int			ptr;
 
-		/* Ignore dependees that aren't user columns of relations */
+		/* Check for directly dependent types --- must be domains */
+		if (pg_depend->classid == TypeRelationId)
+		{
+			Assert(get_typtype(pg_depend->objid) == 'd');
+			/*
+			 * Recursively add dependent columns to the output list.  This
+			 * is a bit inefficient since we may fail to combine RelToCheck
+			 * entries when attributes of the same rel have different derived
+			 * domain types, but it's probably not worth improving.
+			 */
+			result = list_concat(result,
+								 get_rels_with_domain(pg_depend->objid,
+													  lockmode));
+			continue;
+		}
+
+		/* Else, ignore dependees that aren't user columns of relations */
 		/* (we assume system columns are never of domain types) */
 		if (pg_depend->classid != RelationRelationId ||
 			pg_depend->objsubid <= 0)
@@ -1727,7 +1762,16 @@ get_rels_with_domain(Oid domainOid, LOCKMODE lockmode)
 			/* Acquire requested lock on relation */
 			rel = relation_open(pg_depend->objid, lockmode);
 
-			/* It could be a view or composite type; if so ignore it */
+			/*
+			 * Check to see if rowtype is stored anyplace as a composite-type
+			 * column; if so we have to fail, for now anyway.
+			 */
+			if (OidIsValid(rel->rd_rel->reltype))
+				find_composite_type_dependencies(rel->rd_rel->reltype,
+												 NULL,
+												 format_type_be(domainOid));
+
+			/* Otherwise we can ignore views, composite types, etc */
 			if (rel->rd_rel->relkind != RELKIND_RELATION)
 			{
 				relation_close(rel, lockmode);

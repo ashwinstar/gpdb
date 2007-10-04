@@ -11,7 +11,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/createplan.c,v 1.217 2006/10/04 00:29:54 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/createplan.c,v 1.217.2.1 2007/07/31 19:53:49 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -2263,6 +2263,8 @@ create_nestloop_plan(CreatePlanContext *ctx,
 				select_nonredundant_join_clauses(ctx->root,
 												 joinrestrictclauses,
 												 innerpath->indexclauses,
+												 best_path->jpath.outerjoinpath->parent->relids,
+												 best_path->jpath.innerjoinpath->parent->relids,
 												 IS_OUTER_JOIN(best_path->jpath.jointype));
 		}
 	}
@@ -2295,6 +2297,8 @@ create_nestloop_plan(CreatePlanContext *ctx,
 				select_nonredundant_join_clauses(ctx->root,
 												 joinrestrictclauses,
 												 bitmapclauses,
+												 best_path->jpath.outerjoinpath->parent->relids,
+												 best_path->jpath.innerjoinpath->parent->relids,
 												 IS_OUTER_JOIN(best_path->jpath.jointype));
 		}
 	}

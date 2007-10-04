@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/nodes/outfuncs.c,v 1.285 2006/09/19 22:49:52 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/nodes/outfuncs.c,v 1.285.2.4 2007/08/31 01:44:14 tgl Exp $
  *
  * NOTES
  *	  Every node type that can appear in stored rules' parsetrees *must*
@@ -1640,7 +1640,8 @@ _outInnerIndexscanInfo(StringInfo str, InnerIndexscanInfo *node)
 	WRITE_NODE_TYPE("INNERINDEXSCANINFO");
 	WRITE_BITMAPSET_FIELD(other_relids);
 	WRITE_BOOL_FIELD(isouterjoin);
-	WRITE_NODE_FIELD(best_innerpath);
+	WRITE_NODE_FIELD(cheapest_startup_innerpath);
+	WRITE_NODE_FIELD(cheapest_total_innerpath);
 }
 
 static void
@@ -1650,8 +1651,11 @@ _outOuterJoinInfo(StringInfo str, OuterJoinInfo *node)
 
 	WRITE_BITMAPSET_FIELD(min_lefthand);
 	WRITE_BITMAPSET_FIELD(min_righthand);
+	WRITE_BITMAPSET_FIELD(syn_lefthand);
+	WRITE_BITMAPSET_FIELD(syn_righthand);
 	WRITE_BOOL_FIELD(is_full_join);
 	WRITE_BOOL_FIELD(lhs_strict);
+	WRITE_BOOL_FIELD(delay_upper_joins);
 }
 
 static void
@@ -2740,6 +2744,10 @@ _outValue(StringInfo str, Value *value)
 		case T_BitString:
 			/* internal representation already has leading 'b' */
 			appendStringInfoString(str, value->val.str);
+			break;
+		case T_Null:
+			/* this is seen only within A_Const, not in transformed trees */
+			appendStringInfoString(str, "NULL");
 			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) value->type);
