@@ -78,13 +78,13 @@ static apr_status_t parse_cmdline(int argc, const char* argv[])
     sprintf(msg, "GPDB ID must look like 'gpdb.XXXX' where XXXX is an alpha-numeric string");
     if (0 != strncmp(gpma.gpdb_id, "gpdb.", 5)) 
 	usage(argv[0], msg);
-    if (strlen(gpma.gpdb_id) <= 5) 
-	usage(argv[0], msg);
-    for (i = strlen(gpma.gpdb_id) - 1; i >= 0; i--) {
+    for (i = 5; gpma.gpdb_id[i]; i++) {
 	ch = gpma.gpdb_id[i];
 	if (! isalnum(ch)) 
 	    usage(argv[0], msg);
     }
+    if (i == 5) 
+	usage(argv[0], msg);
 
     /* check ma of the pattern: ma.N */
     sprintf(msg, "MA ID must look like 'ma.N' where N is a number between 0 and 2");
@@ -189,6 +189,7 @@ static void d_main(void)
 
     gpcc_log_info("gpma listening to port %d", config_get_int(gpma.cfg, "sys.ma.port"));
 
+    cmdslot_init(gpma.pool);
     gpma.cmdslot = cmdslot_alloc("GPMA", GPMA_CMDSTATE);
 
     for (;;) {
