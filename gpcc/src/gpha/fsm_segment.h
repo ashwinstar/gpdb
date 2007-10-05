@@ -454,12 +454,14 @@ static apr_status_t seg_initdb_qe_and_master_qd(gpcc_event_t *ev, void *_cmdslot
     cmdslot->u.seg.request.port = gpcc_json_object_get_int(obj, "port", 0);
     cmdslot->u.seg.request.mode = gpcc_json_object_get_string(obj, "mode", 0);
     cmdslot->u.seg.request.data_dir = gpcc_json_object_get_string(obj, "dir", 0);
-    cmdslot->u.seg.request.dbid = gpcc_json_object_get_int(obj, "dbid", 0);
-    cmdslot->u.seg.request.content = gpcc_json_object_get_int(obj, "content", 0);
+    cmdslot->u.seg.request.dbid = gpcc_json_object_get_int(obj, "dbid", -10);
+    cmdslot->u.seg.request.content = gpcc_json_object_get_int(obj, "content", -10);
 
     if (cmdslot->u.seg.request.port == 0 || 
 	cmdslot->u.seg.request.mode == 0 ||
-	cmdslot->u.seg.request.data_dir == 0) {	
+	cmdslot->u.seg.request.data_dir == 0 ||
+	cmdslot->u.seg.request.dbid == -10 || 
+	cmdslot->u.seg.request.content == -10) {	
 	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "parameter is missing");
 	json_object_put(obj);
 	return 0;
@@ -500,8 +502,8 @@ static apr_status_t seg_initdb_qe_and_master_qd(gpcc_event_t *ev, void *_cmdslot
     gpcc_log_info("[%s] start initdb", cmdslot->cmdname);
     if (0 != (e = gpcc_proc_initdb(&cmdslot->u.seg.request.proc,
 				   cmdslot->u.seg.request.data_dir,
-				   gpcc_json_object_get_string(obj, "gpdb.encoding", "UNICODE"),
-				   gpcc_json_object_get_string(obj, "gpdb.locale", "UNICODE"),
+				   gpcc_json_object_get_string(obj, "gpdb.encoding", "SQL_ASCII"),
+				   gpcc_json_object_get_string(obj, "gpdb.locale", "en_US.utf-8"),
 				   max_connect,
 				   gpcc_json_object_get_string(obj, "gpdb.shared_buffers", "128MB"),
 				   0,

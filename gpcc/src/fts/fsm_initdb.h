@@ -57,7 +57,8 @@ static apr_status_t initdb_do(gpcc_event_t *ev, void *_cmdslot)
 				    cmdslot->u.sys.seginfo[i].host,
 				    cmdslot->u.sys.seginfo[i].port,
 				    cmdslot->u.sys.seginfo[i].dir);
-    
+    json_object_object_add(obj, "dbid", json_object_new_int(cmdslot->u.sys.seginfo[i].dbid));
+    json_object_object_add(obj, "content", json_object_new_int(cmdslot->u.sys.seginfo[i].content));
     msg = json_object_to_json_string(obj);
     
     spin = gpcc_spin_secure(gpfts.net_spin);

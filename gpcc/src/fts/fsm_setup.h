@@ -26,11 +26,11 @@ static struct json_object *config_to_json_object()
     json_object_object_add(obj, key, json_object_new_int(intvalue));
 
     strcpy(key, "gpdb.encoding");
-    value = config_getx(gpfts.config, key, "UNICODE");
+    value = config_getx(gpfts.config, key, "SQL_ASCII");
     json_object_object_add(obj, key, json_object_new_string((char *)value));    
 
     strcpy(key, "gpdb.locale");
-    value = config_getx(gpfts.config, key, "UNICODE");
+    value = config_getx(gpfts.config, key, "en_US.utf-8");
     json_object_object_add(obj, key, json_object_new_string((char *)value));    
 
     strcpy(key, "gpdb.shared_buffers");
