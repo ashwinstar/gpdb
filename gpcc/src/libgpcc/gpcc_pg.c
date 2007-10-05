@@ -49,7 +49,8 @@ APR_DECLARE(apr_status_t) gpcc_pg_ctl_status(int port, const char *data_dir, apr
     return 0;
 }
 
-APR_DECLARE(apr_status_t) gpcc_pg_hba_append(const char *data_dir, const char *const *hosts, apr_pool_t *p) {
+APR_DECLARE(apr_status_t) gpcc_pg_hba_append(const char *data_dir, const char *const *hosts, apr_pool_t *p) 
+{
     int i;
     FILE *fp = 0;
     char fname[512];
@@ -62,13 +63,64 @@ APR_DECLARE(apr_status_t) gpcc_pg_hba_append(const char *data_dir, const char *c
     
     fprintf(fp, "# Greenplum Database Host Configuration\n");
     for (i = 0 ; hosts[i] ; i++) {
-	fprintf(fp, "host all all %s/32 trust\n", hosts[i]);
+	fprintf(fp, "host     all     all     %s/32     trust\n", hosts[i]);
     }
     
 
     if (fp)
 	fclose(fp);
 	
+    return 0;
+}
+
+APR_DECLARE(apr_status_t) gpcc_master_pg_hba_append(const char *user, const char *data_dir, const char *const *hosts, apr_pool_t *pool) 
+{
+#define TMP_PG_HBA_FILE "/tmp/pg_hba.conf"
+    int i;
+    FILE *fp;
+    char fname[512];
+    char *buf, *tok, *last, *p, *pp;
+    int len;
+
+    sprintf(fname, "%s/pg_hba.conf", data_dir);
+    len = gpcc_file_read_fully(fname, &buf, pool);
+    if (!len)
+	return APR_EINVAL;
+    
+    if ((fp = fopen(TMP_PG_HBA_FILE, "wb")) == 0) {
+	gpcc_log_error("open file %s failed", TMP_PG_HBA_FILE);
+	return APR_EINVAL;
+    }
+
+    for (tok = apr_strtok(buf, "\r\n", &last) ; tok ; tok = apr_strtok(0, "\r\n", &last)) {
+	if (*tok == '#') {
+	    fprintf(fp, "%s\n", tok);
+	} else if (tok == strstr(tok, "local")) {
+	    fprintf(fp, "local     all     %s     ident sameuser\n", user);
+	} else if (tok == strstr(tok, "host")) {
+	    for (i = 0, p = apr_strtok(tok, " \t", &pp) ; p && i < 4 ; i++, p = apr_strtok(0, " \t", &pp)) {
+		if (i==2) {
+		    fprintf(fp, "%s     ", user);
+		} else {
+		    fprintf(fp, "%s     ", p);
+		}
+		
+	    }
+	    fprintf(fp, "trust\n");
+	} else {
+	    fprintf(fp, "%s\n", tok);
+	}
+    }
+
+    fprintf(fp, "# Greenplum Database Host Configuration\n");
+    for (i = 0 ; hosts[i] ; i++) {
+	fprintf(fp, "host     all     %s     %s/32     trust\n", user, hosts[i]);
+    }
+
+
+    fclose(fp);
+
+    apr_file_rename(TMP_PG_HBA_FILE, fname, pool);
     return 0;
 }
 
@@ -81,9 +133,9 @@ APR_DECLARE(apr_status_t) gpcc_pg_log_rotate(const char *data_dir, apr_pool_t *p
 
     sprintf(clog, "%s.log", data_dir);
     apr_time_exp_lt(&exp, now);
-    sprintf(logf, "%s.log_%d%d%d", data_dir, exp.tm_year + 1900, exp.tm_mon + 1, exp.tm_mday);
+    sprintf(logf, "%s.log_%04d%02d%02d", data_dir, exp.tm_year + 1900, exp.tm_mon + 1, exp.tm_mday);
 
-    printf(logf);
+    gpcc_log_info("rotate log file %s", logf);
 
     if (gpcc_file_exists(clog)) {
 	if (gpcc_file_exists(logf)) {
