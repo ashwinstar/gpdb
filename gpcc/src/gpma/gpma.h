@@ -4,15 +4,16 @@
 #include "config.h"
 #include "enum.h"
 
+#define DEFAULT_MA_PORT   	20100
+#define DEFAULT_QD_PORT   	20200
+#define DEFAULT_QE_BASEPORT	20300
+
 #if 0
 
 #define DEFAULT_QD_MAX_CONNECT  25
 #define DEFAULT_QE_MAX_CONNECT  25
 #define DEFAULT_QD_MAX_BUFFER   "128mb"
 #define DEFAULT_QE_MAX_BUFFER   "128mb"
-#define DEFAULT_MA_PORT   	12000
-#define DEFAULT_QD_PORT   	12100
-#define DEFAULT_QE_BASEPORT	12200
 
 #define CMDSLOT_MAX    512
 
@@ -71,8 +72,6 @@ struct gpma_t {
     const char*  guid;		/* GUID */
     const char*  maid;		/* MA ID */
     const char*  dir;		/* MA data & log directory */
-    config_t*    cfg;		/* config  */
-    apr_uint64_t csn;		/* change seq number of config file */
     int          boot_flag;	/* TRUE if booting */
     int          debug;		/* TRUE if debug mode */
     const char*  logfpath;	/* path to log file */
@@ -90,6 +89,23 @@ APR_DECLARE(cmdslot_t*) cmdslot_alloc(const char* name,
 APR_DECLARE(void) cmdslot_free(cmdslot_t* cp);
 
 #endif
+
+/* Control block for GPMA */
+typedef struct gpma_t gpma_t;
+struct gpma_t {
+    apr_pool_t*  pool;
+    const char*  guid;	      /* Global unique ID (generated from gpdb_id) */
+    const char*  gpdb_id;     /* GPDB ID - e.g. gpdb.test_array*/
+    const char*  ma_id;	      /* MA ID - e.g. ma.0 */
+    const char*  dir;	      /* dir for config file, log file, etc */
+    const char*  logfpath;    /* pathname of log file */
+    int          boot_flag;   /* TRUE if this run is BOOT */
+    int          debug;	      /* TRUE if debug run, don't daemonize */
+    gpcc_evqueue_t* evq;      /* event queue */
+    config_t*    cfg;	      /* config  */
+    apr_uint64_t csn;	      /* change seq number of config file */
+};
+
 
 
 #endif /* GPMA_H */
