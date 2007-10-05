@@ -164,7 +164,8 @@ static void net_tick(apr_time_t now)
 static void d_main(void)
 {
     char date[APR_RFC822_DATE_LEN];
-    gpcc_evqueue_t* evq;
+    gpcc_evqueue_t* evq = 0;
+    gpcc_event_t* ev = 0;
 
     event_init();
 
@@ -188,6 +189,65 @@ static void d_main(void)
 
     gpcc_log_info("gpma listening to port %d", config_get_int(gpma.cfg, "sys.ma.port"));
 
+    gpma.cmdslot = cmdslot_alloc("GPMA", GPMA_CMDSTATE);
+
+    for (;;) {
+	int nxtstate;
+	gpcc_fsm_func_t** fn;
+	cmdslot_t* slot;
+	
+	if (ev)
+	    gpcc_event_free(ev);
+
+	while ((ev = gpcc_evqueue_tryget(evq)) == 0) {
+	    if (gpcc_net_once(1))
+		gpcc_fatal(FLINE, "error reading network");
+	}
+
+	if (ev->cmdidx == 0) 
+	    ev->cmdidx = gpma.cmdslot->cmdidx;
+
+	/* find the right slot for the event */
+	if (! (slot = cmdslot_find(ev->cmdidx))) {
+	    gpcc_log_info("Event %s contains unknown cmdidx %x", 
+			  event_str(ev->etype), ev->cmdidx);
+	    continue;
+	}
+
+	cutin:
+
+	/* retrieve the fsm record */
+	if (0 != gpcc_fsm_get(slot->cmdstate, ev->etype, &nxtstate, &fn)) {
+	    gpcc_log_info("FSM[%x]: %s + %s not found", slot->cmdidx,
+			  cmdstate_str(slot->cmdstate), event_str(ev->etype));
+	    continue;
+	}
+
+	/* dispatch the event */
+	for ( ; *fn && 0 == (*fn)(ev, slot); fn++);
+
+	/* error out ? */
+	if (! (*fn)) {
+	    gpcc_warning(FLINE, "FSM[%x]: FAILED - cancelling %s + %s = %s", 
+			 slot->cmdidx, cmdstate_str(slot->cmdstate), 
+			 event_str(ev->etype), cmdstate_str(nxtstate));
+
+	    ev->etype = FAILURE_EVENT;
+	    goto cutin;
+	}
+
+	/* effect the state transition */
+	if (gpma.debug) {
+	    gpcc_log_info("FSM[%x]: %s + %s = %s", slot->cmdidx,
+			  cmdstate_str(slot->cmdstate), 
+			  event_str(ev->etype), cmdstate_str(nxtstate));
+	}
+	slot->cmdstate = nxtstate;
+
+	if (nxtstate == NULL_CMDSTATE)
+	    cmdslot_free(slot->cmdidx);
+    }
+    /* not reached */
 }
 
 /*

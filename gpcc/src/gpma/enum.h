@@ -54,7 +54,8 @@ extern const char* event_str(event_t event);
 typedef enum cmdstate_t cmdstate_t;
 enum cmdstate_t {
     NULL_CMDSTATE,
-    SYSTEM_CMDSTATE,
+
+    GPMA_CMDSTATE,
 
     GET_IDENTITY_CMDSTATE,
 

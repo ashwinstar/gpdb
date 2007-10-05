@@ -22,7 +22,7 @@ static fsm_t fsm = {0};
     
     
     
-APR_DECLARE(apr_status_t) gpcc_fsm_put(int curstate,
+apr_status_t gpcc_fsm_put(int curstate,
                                        int evtype,
                                        int nxtstate,
                                        gpcc_fsm_func_t* func, ...)
@@ -66,9 +66,9 @@ APR_DECLARE(apr_status_t) gpcc_fsm_put(int curstate,
 }
 
 
-APR_DECLARE(apr_status_t) gpcc_fsm_get(int curstate, int evtype,
-                                       int* pnxtstate,
-                                       gpcc_fsm_func_t*** pfunc)
+apr_status_t gpcc_fsm_get(int curstate, int evtype,
+			  int* pnxtstate,
+			  gpcc_fsm_func_t*** pfunc)
 {
     fsmrec_t* rec;
     fsmrec_t tmp;

@@ -104,6 +104,7 @@ struct gpma_t {
     gpcc_evqueue_t* evq;      /* event queue */
     config_t*    cfg;	      /* config  */
     apr_uint64_t csn;	      /* change seq number of config file */
+    cmdslot_t*   cmdslot;
 };
 
 
