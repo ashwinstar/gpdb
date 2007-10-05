@@ -153,7 +153,7 @@ int main(int argc, const char *argv[])
     printf("gpdb.encoding=%s\n", config_get(config, "gpdb.encoding"));
     printf("gpdb.seg.m.0=%s\n", config_get(config, "gpdb.seg.m.0"));
     printf("gpdb.seg.0.0=%s\n", config_get(config, "gpdb.seg.0.0"));
-    printf("gpdb.seg.0.1=%s\n", config_get(config, "gpdb.seg.0.1"));
+    printf("gpdb.seg.1.0=%s\n", config_get(config, "gpdb.seg.1.0"));
     printf("gpdb.seg.master_port=%s\n", config_get(config, "gpdb.seg.master_port"));
 
     printf("gpcc_net_start...\n");

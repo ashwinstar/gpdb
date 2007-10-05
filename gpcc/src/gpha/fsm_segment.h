@@ -570,35 +570,71 @@ static apr_status_t seg_initdb_pg_hba_append(gpcc_event_t* ev, void *_cmdslot)
 
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     int i, j, n, nnode;
-    char nodename[64];
+    char nodename[64], segname[64];
     char **hosts;
     char *argv[MAX_HOSTS_PER_NODE];
     int argc;
 
-    /* find number of nodes */
-    nnode = 0;
-    while (1) {
-	sprintf(nodename, "node.%d", nnode);
-	if (gpcc_json_object_get_string(cmdslot->u.seg.request.msg, nodename, 0) == 0)
-	    break;
-	nnode++;
-    }
 
-    hosts = apr_pcalloc(cmdslot->u.seg.request.subpool, sizeof(char *) * (nnode * MAX_HOSTS_PER_NODE + 1));
-    n = 0;
-    for (i = 0 ; i < nnode ; i++) {
-	sprintf(nodename, "node.%d", i);
-	argc = gpcc_lengthof(argv);
-	memset(argv, 0, sizeof(argv));
-	getnode_addr(cmdslot->u.seg.request.msg, nodename, argv, &argc, cmdslot->u.seg.request.subpool);
+    if (seg_is_qd(cmdslot)) {
+	char *user = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, "gpdb.user", getenv("USER"));
 
-	for (j = 1 ; j < argc ; j++) {
-	    hosts[n++] = argv[j];
+	hosts = apr_pcalloc(cmdslot->u.seg.request.subpool, sizeof(char *) * (2 * MAX_HOSTS_PER_NODE + 1));	
+	n = 0;
+	for (i = 0 ; i < 2 ; i++) {
+	    char *s, *e;
+	    sprintf(segname, "gpdb.seg.m.%d", i);
+	    s = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, segname, 0);
+	    if (!s)
+		break;
+
+	    e = strchr(s, ':');
+	    if (!e) {
+		gpcc_warning(FLINE, "%s format error", segname);
+		return 0;
+	    }
+		
+	    strncpy(nodename, s, e - s);
+	    nodename[e-s] = 0;
+
+	    argc = gpcc_lengthof(argv);
+	    memset(argv, 0, sizeof(argv));
+	    getnode_addr(cmdslot->u.seg.request.msg, nodename, argv, &argc, cmdslot->u.seg.request.subpool);
+	    
+	    for (j = 1 ; j < argc ; j++) {
+		hosts[n++] = argv[j];
+	    }
 	}
+
+	return gpcc_master_pg_hba_append(user, cmdslot->u.seg.request.data_dir, (const char * const *) hosts, cmdslot->u.seg.request.subpool);	
+    } else {
+
+	/* find number of nodes */
+	nnode = 0;
+	while (1) {
+	    sprintf(nodename, "node.%d", nnode);
+	    if (gpcc_json_object_get_string(cmdslot->u.seg.request.msg, nodename, 0) == 0)
+		break;
+	    nnode++;
+	}
+	
+	hosts = apr_pcalloc(cmdslot->u.seg.request.subpool, sizeof(char *) * (nnode * MAX_HOSTS_PER_NODE + 1));
+	n = 0;
+	for (i = 0 ; i < nnode ; i++) {
+	    sprintf(nodename, "node.%d", i);
+	    argc = gpcc_lengthof(argv);
+	    memset(argv, 0, sizeof(argv));
+	    getnode_addr(cmdslot->u.seg.request.msg, nodename, argv, &argc, cmdslot->u.seg.request.subpool);
+	    
+	    for (j = 1 ; j < argc ; j++) {
+		hosts[n++] = argv[j];
+	    }
+	}
+	
+	return gpcc_pg_hba_append(cmdslot->u.seg.request.data_dir, (const char * const *) hosts, cmdslot->u.seg.request.subpool);
     }
 
-    return gpcc_pg_hba_append(cmdslot->u.seg.request.data_dir, (const char * const *) hosts, cmdslot->u.seg.request.subpool);
-
+    return APR_EINVAL;
 }
 
 static apr_status_t seg_initdb_pg_conf_update(gpcc_event_t *ev, void *_cmdslot)
