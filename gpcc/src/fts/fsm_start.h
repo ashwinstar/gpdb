@@ -43,6 +43,7 @@ static apr_status_t start_utility_qd(gpcc_event_t *ev, void *_cmdslot)
 
     msg = json_object_to_json_string(obj);
 
+    gpcc_log_info("start utility qd %s", msg);
     spin = gpcc_spin_secure(gpfts.net_spin);
     if (!hainfo->ha || 0 != (e = gpcc_ha_send(hainfo->ha, SEGMENT_REQUEST_MSG, msg, strlen(msg) + 1))){
 	gpcc_warning(FLINE, "gpcc_ha_send failed");
@@ -253,7 +254,11 @@ static apr_status_t start_qes(gpcc_event_t *ev, void *_cmdslot)
 	}
     }
 
-    memset(&cmdslot->u.sys.request.u, 0, sizeof(cmdslot->u.sys.request.u));
+    cmdslot->u.sys.request.u.start.nreply = 0;
+    cmdslot->u.sys.request.u.start.nfailed = 0;
+    cmdslot->u.sys.request.u.start.nsuccess = 0;
+    cmdslot->u.sys.request.u.start.nrequest = 0;
+    memset(cmdslot->u.sys.request.u.start.replied, 0, sizeof(int) * cmdslot->u.sys.nseginfo);
 
     for (i = 1; i < cmdslot->u.sys.nseginfo ; i++) {
 	seginfo = &cmdslot->u.sys.seginfo[i];

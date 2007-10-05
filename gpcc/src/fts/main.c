@@ -12,6 +12,7 @@
 #include "fts.h"
 
 static apr_pool_t *pool = 0;
+static char *action = 0;
 
 static void* net_opened(gpcc_net_conn_t conn, void* conn_arg, 
 		 int self_origin,
@@ -45,6 +46,8 @@ void *APR_THREAD_FUNC fts_cmd(apr_thread_t *thread, void *arg)
     gpcc_event_t *ev;
     gpcc_evqueue_t *outq = 0;
 
+    gpcc_log_info("action = %s", action);
+
     outq = gpcc_evqueue_create(100, pool);
 
     apr_sleep(2000);
@@ -65,18 +68,50 @@ void *APR_THREAD_FUNC fts_cmd(apr_thread_t *thread, void *arg)
     if (strstr(ev->edata, "fail"))
 	return 0;
 
-
-    gpcc_log_info("initdb...");
-    
-    obj = gpcc_json_array_request("init", "");
-    fts_do(json_object_to_json_string(obj), outq);
-    json_object_put(obj);
-
-    ev = gpcc_evqueue_get(outq);
-    if (!ev)
-	return 0;
+    if (strstr(action, "init") != 0) {
+	gpcc_log_info("initdb...");
 	
-    gpcc_log_info("result = %s", ev->edata);
+	obj = gpcc_json_array_request("init", "");
+	fts_do(json_object_to_json_string(obj), outq);
+	json_object_put(obj);
+	
+	ev = gpcc_evqueue_get(outq);
+	if (!ev)
+	    return 0;
+	
+	gpcc_log_info("result = %s", ev->edata);
+    }
+
+
+
+    if (strstr(action, "start") != 0) {
+	gpcc_log_info("start...");
+	
+	obj = gpcc_json_array_request("start", "");
+	fts_do(json_object_to_json_string(obj), outq);
+	json_object_put(obj);
+	
+	ev = gpcc_evqueue_get(outq);
+	if (!ev)
+	    return 0;
+	
+	gpcc_log_info("result = %s", ev->edata);
+    }
+
+
+    if (strstr(action, "stop") != 0) {
+	gpcc_log_info("stop...");
+	
+	obj = gpcc_json_array_request("stop", "immediate");
+	fts_do(json_object_to_json_string(obj), outq);
+	json_object_put(obj);
+	
+	ev = gpcc_evqueue_get(outq);
+	if (!ev)
+	    return 0;
+	
+	gpcc_log_info("result = %s", ev->edata);
+    }
 
     
     gpcc_evqueue_destroy(outq);
@@ -94,6 +129,13 @@ int main(int argc, const char *argv[])
     apr_thread_t *thread;
     apr_threadattr_t *attr;
     gpcc_evqueue_t *alertq = 0;
+
+    if (argc != 2) {
+	fprintf(stderr, "usage: %s [init|start|stop|init,start,stop]", argv[0]);
+	return -1;
+    }
+
+    action = argv[1];
 
     apr_app_initialize(&argc, (char const *const **) &argv, 0);
 

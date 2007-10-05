@@ -99,12 +99,42 @@ static apr_status_t ma_status_reply(gpcc_event_t *ev, void *_cmdslot)
 
 static apr_status_t ma_stop_reply(gpcc_event_t *ev, void *_cmdslot)
 {
+    cmdslot_t *cmdslot = _cmdslot;
+    struct json_object *obj;
+    char *status;
+    char *seg;
+
+    gpcc_log_info("ma_stop_reply");
+
+    obj = json_tokener_parse(ev->edata);
+    status = gpcc_json_object_get_string(obj, "status", 0);
+    seg = gpcc_json_object_get_string(obj, "seg", 0);
+    gpcc_log_info("seg = %s, status = %s", seg, status);
+
+    json_object_put(obj);
+    return gpcc_net_send_packet(cmdslot->conninfo->conn, SEGMENT_REPLY_MSG, 
+				cmdslot->cmdidx, cmdslot->u.ma.rcvidx, ev->edata, ev->edatasz);
 
     return 0;
 }
 
 static apr_status_t ma_start_reply(gpcc_event_t *ev, void *_cmdslot)
 {
+    cmdslot_t *cmdslot = _cmdslot;
+    struct json_object *obj;
+    char *status;
+    char *seg;
+
+    gpcc_log_info("ma_start_reply");
+
+    obj = json_tokener_parse(ev->edata);
+    status = gpcc_json_object_get_string(obj, "status", 0);
+    seg = gpcc_json_object_get_string(obj, "seg", 0);
+    gpcc_log_info("seg = %s, status = %s", seg, status);
+
+    json_object_put(obj);
+    return gpcc_net_send_packet(cmdslot->conninfo->conn, SEGMENT_REPLY_MSG, 
+				cmdslot->cmdidx, cmdslot->u.ma.rcvidx, ev->edata, ev->edatasz);
 
     return 0;
 }
@@ -1023,7 +1053,6 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
     obj = json_tokener_parse(packet->mb);
     if (!obj) {
 	seg_request_error(ev, _cmdslot, SEG_START_DONE_EVENT, 1, "json_tokener_parse error");
-	json_object_put(obj);
 	return 0;
     }
 
@@ -1044,6 +1073,7 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
     if (! seg_is_qd(cmdslot)) {
 	/* this is QE */
 
+	gpcc_log_info("start segment %s"), gpcc_json_object_get_string(obj, "seg", "");
 	if (0 != (e = gpcc_proc_pg_ctl_start_segment(&cmdslot->u.seg.request.proc,
 						     cmdslot->u.seg.request.port,
 						     cmdslot->u.seg.request.data_dir,
@@ -1060,11 +1090,18 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
 	}
 
 	if (seg_is_master_qd(cmdslot)) {
+	    int utility = 0;
 	    /* start master in utility mode or production mode */
+	    gpcc_log_info("start master %s in mode = %s", 
+			  gpcc_json_object_get_string(obj, "seg", ""),
+			  gpcc_json_object_get_string(obj, "mode", ""));
+	    if (strcmp(gpcc_json_object_get_string(obj, "mode", "normal"), "utility") == 0)
+		utility = 1;
+
 	    if (0 != (e = gpcc_proc_pg_ctl_start_master(&cmdslot->u.seg.request.proc,
 							cmdslot->u.seg.request.port,
 							cmdslot->u.seg.request.data_dir,
-							gpcc_json_object_get_int(cmdslot->u.seg.request.msg, "utility", 0),
+							utility,
 							1, 
 							0, 
 							cmdslot->u.seg.request.subpool))) {
@@ -1106,6 +1143,8 @@ static apr_status_t seg_start_wait(gpcc_event_t* ev, void *_cmdslot)
 	evt = gpcc_event_alloc(SEG_START_DONE_EVENT, cmdslot->cmdidx, 0);
 	cmdslot->u.seg.request.exitcode = ret;
 	cmdslot->u.seg.request.reason = proc_exit_reason(exitwhy);	
+
+	gpcc_log_info("seg_start exit = %d", ret);
 	gpcc_evqueue_put(gpha.evq, evt);
 
 	/* save the setting port and data_dir permanently */
@@ -1198,6 +1237,7 @@ static apr_status_t seg_stop_wait(gpcc_event_t* ev, void *_cmdslot)
 	cmdslot->u.seg.request.reason = proc_exit_reason(exitwhy);	
 	gpcc_evqueue_put(gpha.evq, evt);
 
+	gpcc_log_info("seg_stop_wait exit ret=%d reason =%s", ret, cmdslot->u.seg.request.reason);
 	/* save the setting port and data_dir permanently */
 	if (cmdslot->u.seg.port == 0) {
 	    cmdslot->u.seg.port = cmdslot->u.seg.request.port;
