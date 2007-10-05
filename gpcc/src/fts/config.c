@@ -89,7 +89,7 @@ int config_set_int(config_t* c, const char* key, int i)
 apr_int64_t config_set_int64(config_t* c, const char* key, apr_int64_t i)
 {
     char buf[50];
-    sprintf(buf, "%lld", i);
+    sprintf(buf, "%lld", (long long) i);
     config_set(c, key, buf);
     return i;
 }
@@ -167,7 +167,7 @@ config_t* config_read(const char* dirpath, const char* guid,
 	GPCC_DO(0 != (path = malloc(pathlenmin)));
     }
 
-    sprintf(path, "%s/gpcfg_%s.%lld", dirpath, guid, csn);
+    sprintf(path, "%s/gpcfg_%s.%lld", dirpath, guid, (long long) csn);
     fp = fopen(path, "r");
     if (!fp) 
 	return 0;
@@ -194,17 +194,21 @@ apr_status_t config_write(const char* dirpath, const char* guid,
 	GPCC_DO(0 != (newpath = malloc(pathlenmin)));
     }
 
-    sprintf(tmppath, "%s/~gpcfg_%s.%lld", dirpath, guid, csn);
-    sprintf(newpath, "%s/gpcfg_%s.%lld", dirpath, guid, csn);
+    sprintf(tmppath, "%s/~gpcfg_%s.%lld", dirpath, guid, (long long) csn);
+    sprintf(newpath, "%s/gpcfg_%s.%lld", dirpath, guid, (long long) csn);
 
     f = fopen(tmppath, "w");
     if (! f) {
 	gpcc_fatal(FLINE, "save_config: cannot write file %s", tmppath);
     }
     for (hi = apr_hash_first(0, cfg->htab); hi; hi = apr_hash_next(hi)) {
+	void* k;
+	void* v;
 	const char* key;
 	const char* value;
-	apr_hash_this(hi, (const void**) &key, 0, (void**) &value);
+	apr_hash_this(hi, &k, 0, &v);
+	key = k;
+	value = v;
 	fprintf(f, "%s=%s\n", key, value);
     }
     fclose(f);
