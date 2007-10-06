@@ -877,7 +877,7 @@ AtExitCleanup_ResPortals(void)
  *	don't want portal.h to need to include ressscheuler.h.
  */
 void
-TotalResPortalIncrements(int pid, Oid queueid, Cost *totalIncrements)
+TotalResPortalIncrements(int pid, Oid queueid, Cost *totalIncrements, int *num)
 {
 	HASH_SEQ_STATUS 	status;
 	PortalHashEnt		*hentry;
@@ -910,6 +910,9 @@ TotalResPortalIncrements(int pid, Oid queueid, Cost *totalIncrements)
 			incrementSet = ResIncrementFind(&portalTag);
 			if (!incrementSet)
 				continue;
+
+			/* Count it. */
+			(*num)++;
 
 			/* Add its increments to the total. */
 			for (i = 0; i < NUM_RES_LIMIT_TYPES; i++)

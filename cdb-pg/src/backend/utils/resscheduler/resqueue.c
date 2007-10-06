@@ -1126,7 +1126,8 @@ ResRemoveFromWaitQueue(PGPROC *proc, uint32 hashcode)
  *
  * What happens here is we scan our own set of portals and total up the
  * increments. If this exceeds any of the thresholds for the queue then
- * we need to signal that a self deadlock is about to occurr.
+ * we need to signal that a self deadlock is about to occurr - modulo some
+ * footwork for overcommit-able queues.
  */
 bool
 ResCheckSelfDeadLock(LOCK *lock)
@@ -1135,6 +1136,9 @@ ResCheckSelfDeadLock(LOCK *lock)
 	ResLimit		limits;
 	int				i;
 	Cost			incrementTotals[NUM_RES_LIMIT_TYPES];
+	int				numPortals;
+	bool			countThesholdOvercommitted = false;
+	bool			costThesholdOvercommitted = false;
 	bool			result = false;
 
 	/* Get the resource queue lock before checking the increments.*/
@@ -1144,8 +1148,9 @@ ResCheckSelfDeadLock(LOCK *lock)
 	queue = GetResQueueFromLock(lock);
 	limits = queue->limits;
 
-	/* Get the increment totals for this queue. */
-	TotalResPortalIncrements(MyProc->pid, queue->queueid, incrementTotals);
+	/* Get the increment totals and number of portals for this queue. */
+	TotalResPortalIncrements(MyProc->pid, queue->queueid, 
+							 incrementTotals, &numPortals);
 	
 	/* 
 	 * Now check them against the thresholds using the same logic as
@@ -1161,19 +1166,31 @@ ResCheckSelfDeadLock(LOCK *lock)
 			case RES_COUNT_LIMIT:
 			{
 				if (incrementTotals[i] > limits[i].threshold_value)
-					result = true;
+					countThesholdOvercommitted = true;
 			}
 			break;
 
 			case RES_COST_LIMIT:
 			{
 				if (incrementTotals[i] > limits[i].threshold_value)
-					result = true;
+					costThesholdOvercommitted = true;
 			}
 			break;
 		}
 	
 	}
+
+	/* If any threshold is overcommitted then set the result.*/
+	if (countThesholdOvercommitted || costThesholdOvercommitted)
+		result = true;
+
+	/*
+	 * If the queue can be overcommited and we are overcommitting with 1 portal
+	 * and *not* overcommitting the count threashold then don't trigger a 
+	 * self deadlock.
+	 */
+	if (queue->overcommit && numPortals == 1 && !countThesholdOvercommitted)
+		result = false;
 
 	LWLockRelease(ResQueueLock);
 

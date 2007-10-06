@@ -240,6 +240,6 @@ extern Query *PortalListGetPrimaryQuery(List *parseTrees);
 extern void PortalCreateHoldStore(Portal portal);
 extern void AtExitCleanup_ResPortals(void);
 extern void TotalResPortalIncrements(int pid, Oid queueid,
-									 Cost *totalIncrements);
+									 Cost *totalIncrements, int *num);
 
 #endif   /* PORTAL_H */
