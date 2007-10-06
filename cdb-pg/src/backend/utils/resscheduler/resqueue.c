@@ -1136,7 +1136,7 @@ ResCheckSelfDeadLock(LOCK *lock)
 	ResLimit		limits;
 	int				i;
 	Cost			incrementTotals[NUM_RES_LIMIT_TYPES];
-	int				numPortals;
+	int				numPortals = 0;
 	bool			countThesholdOvercommitted = false;
 	bool			costThesholdOvercommitted = false;
 	bool			result = false;
