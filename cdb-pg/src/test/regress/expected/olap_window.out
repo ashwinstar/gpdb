@@ -7107,3 +7107,23 @@ select cn,vn,ntile(cn+vn) over(partition by cn+vn order by vn) from sale; --mvd 
   2 | 50 |     1
 (12 rows)
 
+-- MPP-2045
+SELECT sale.cn,sale.qty,
+count(cn) OVER(order by sale.cn,sale.qty rows between sale.qty following and 4 following) as count
+from sale;
+ cn | qty  | count 
+----+------+-------
+  1 |    1 |     4
+  1 |    1 |     4
+  1 |    1 |     4
+  1 |    1 |     4
+  1 |   12 |     0
+  2 |    1 |     4
+  2 | 1100 |     0
+  3 |    1 |     4
+  3 |   12 |     0
+  3 |   12 |     0
+  4 |    1 |     1
+  4 |    1 |     0
+(12 rows)
+
