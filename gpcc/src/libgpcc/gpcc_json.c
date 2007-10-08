@@ -1,5 +1,16 @@
 #include <gpcc_json.h>
 
+struct json_object *gpcc_json_object_get_object(struct json_object *object, char *key, struct json_object *def)
+{
+    struct json_object *keyobj;
+    keyobj = json_object_object_get(object, key);
+    if (!keyobj) {
+	return def;
+    }
+
+    return keyobj;
+}
+
 char *gpcc_json_object_get_string(struct json_object *object, char *key, char *defvalue)
 {
     struct json_object *keyobj;

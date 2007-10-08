@@ -3,6 +3,9 @@
 
 #include <json/json.h>
 
+
+struct json_object *gpcc_json_object_get_object(struct json_object *object, char *key, struct json_object *def);
+
 /**
  *  get string from json_object
  *  @param object json object
