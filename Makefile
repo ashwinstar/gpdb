@@ -49,7 +49,7 @@ test2 :
 devel : INSTCFLAGS=$(DEBUGFLAGS)
 devel : INSTLOC=$(DEVPATH)
 devel : CONFIGFLAGS+=--enable-cassert --enable-debug
-devel : version HOMEDEP $(ISCONFIG)
+devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR); $(MAKE) install
 	@$(MAKE) groupSession
@@ -70,7 +70,7 @@ forceplan : HOMEDEP $(ISCONFIG)
 
 dist : INSTCFLAGS=$(OPTFLAGS)
 dist : INSTLOC=$(DISTPATH)
-dist : version GPROOTDEP RECONFIG $(ISCONFIG)
+dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR); $(MAKE) install
 	@$(MAKE) groupSession
@@ -206,3 +206,19 @@ version :
 	@if [ ! -f getversion ] ; then echo "getversion is not present, cannot create VERSION file"; exit 1; fi
 	@echo "Creating VERSION file"
 	@bash getversion > VERSION
+
+gccVersionCheck :
+	@echo "Checking GCC version" ; \
+	gcc --version > /dev/null 2>&1 ; \
+	if [ $$? -ne 0 ] ; then \
+ 	    echo "Error running gcc --version" ; \
+	    gcc --version ; \
+	    exit 1 ; \
+	fi
+	@gcc --version | head -n 1 | cut -d' ' -f3 | egrep '[0-3]\.[0-4]\.[0-1]' > /dev/null 2>&1 ; \
+	if [ $$? -eq 0 ] ; then \
+	    echo "Error: GPDB must be compiled with GCC 3.4.2 or later." ; \
+	    echo "Current GCC version:" ; \
+	    gcc --version ; \
+	    exit 1 ; \
+	fi
