@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <apr_hash.h>
+#include <apr_fnmatch.h>
 #include <apr_strings.h>
 #include <apr_file_io.h>
 #include <gpcc.h>
@@ -39,19 +40,19 @@ void config_gc(config_t* c)
 
 
 
-const char* config_getx(config_t* c, const char* key, const char* def)
+const char* config_getx(const config_t* c, const char* key, const char* def)
 {
     const char* v = apr_hash_get(c->htab, key, APR_HASH_KEY_STRING);
     return v ? v : def;
 }
 
 
-const char* config_get(config_t* c, const char* key)
+const char* config_get(const config_t* c, const char* key)
 {
     return (const char*) apr_hash_get(c->htab, key, APR_HASH_KEY_STRING);
 }
 
-int config_get_int(config_t* c, const char* key)
+int config_get_int(const config_t* c, const char* key)
 {
     const char* value = (const char*) apr_hash_get(c->htab, key, APR_HASH_KEY_STRING);
     return value ? strtol(value, 0, 0) : 0;
@@ -59,7 +60,7 @@ int config_get_int(config_t* c, const char* key)
 
 
 
-apr_int64_t config_get_int64(config_t* c, const char* key)
+apr_int64_t config_get_int64(const config_t* c, const char* key)
 {
     const char* value = (const char*) apr_hash_get(c->htab, key, APR_HASH_KEY_STRING);
     return value ? strtoll(value, 0, 0) : 0;
@@ -118,7 +119,6 @@ int config_get_or_set_int(config_t* c, const char* key, int value)
 }
 
 
-
 config_t* config_read_stream(FILE* fp, apr_pool_t* pool)
 {
     char* name;
@@ -154,40 +154,104 @@ config_t* config_read_stream(FILE* fp, apr_pool_t* pool)
     return cfg;
 }
 
-config_t* config_read(const char* dirpath, const char* guid, 
-		      apr_int64_t csn, apr_pool_t* pool)
-{
-    char pathbuf[256];
-    char* path = pathbuf;
-    const int pathlenmin = strlen(dirpath) + strlen(guid) + 20;
-    FILE* fp;
-    config_t* cfg;
 
-    if (sizeof(pathbuf) < pathlenmin) {
-	GPCC_DO(0 != (path = malloc(pathlenmin)));
+static char* path_basename(const char* path, apr_pool_t* pool)
+{
+    char* idx = strrchr(path, '/');
+    if (! idx) 
+	return apr_pstrdup(pool, ".");
+
+    return apr_pstrndup(pool, path, idx - path);
+}
+
+
+static char** glob(char* path, int* retcnt, apr_pool_t* pool)
+{
+    apr_array_header_t* arr;
+    char** elts;
+    int i, n;
+    char** fpath = 0;
+    char* bname = path_basename(path, pool);
+    char** p;
+
+    if (apr_match_glob(path, &arr, pool)) 
+	return 0;
+    n = arr->nelts;
+    fpath = apr_pcalloc(pool, sizeof(char*) * (n + 1));
+    elts = (char**) arr->elts;
+    p = fpath;
+    for (i = 0; i < n; i++) {
+	if (apr_filepath_merge(p, bname, elts[i], 0, pool))
+	    return 0;
+	p++;
+    }
+    
+    if (retcnt) 
+	*retcnt = p - fpath;
+
+
+    return fpath;
+}
+
+config_t* config_read(const char* dirpath, apr_pool_t* pool)
+{
+    apr_pool_t* subpool; 
+    config_t* cfg = 0;
+    int i, fcnt = 0;
+    char** fname = 0;
+    char* path;
+    char* maxfile = 0;
+    apr_int64_t csn = 0;
+    FILE* fp;
+
+    GPCC_DO(0 == apr_pool_create(&subpool, pool));
+
+    /* get a list of all filenames in dirpath matching gpcfg_* */
+    path = apr_psprintf(subpool, "%s/gpcfg_*", dirpath);
+    fname = glob(path, &fcnt, subpool);
+
+    /* go thru the list to determine biggest csn */
+    for (i = 0; i < fcnt; i++) {
+	char* csnstr = strrchr(fname[i], '.');
+	apr_int64_t ncsn;
+	if (!csnstr) continue;
+	*csnstr++ = 0;
+	ncsn = strtoll(csnstr, 0, 0);
+	if (maxfile && 0 != strcmp(maxfile, fname[i])) 
+	    gpcc_fatal(FLINE, "found config files of multiple GUID in dir %s", dirpath);
+	if (ncsn > csn) {
+	    maxfile = fname[i];
+	    csn = ncsn;
+	}
     }
 
-    sprintf(path, "%s/gpcfg_%s.%lld", dirpath, guid, (long long) csn);
-    fp = fopen(path, "r");
-    if (!fp) 
-	return 0;
-    cfg = config_read_stream(fp, pool);
-    fclose(fp);
+    if (maxfile) {
+	/* reconstruct the fname */
+	maxfile = apr_psprintf(subpool, "%s.%lld", maxfile, csn);
+	fp = fopen(maxfile, "r");
+	if (fp) 
+	    cfg = config_read_stream(fp, pool);
+	fclose(fp);
+    }
+    
+    apr_pool_destroy(subpool);
     return cfg;
 }
 
 
-
-
 apr_status_t config_write(const char* dirpath, const char* guid, 
-			  apr_int64_t csn, const config_t* cfg)
+			  config_t* cfg)
 {
     FILE* f;
     char tmpbuf[256], newbuf[256]; 
     char* tmppath = tmpbuf;
     char* newpath = newbuf;
     apr_hash_index_t* hi;
+    apr_int64_t csn;
     const int pathlenmin = strlen(dirpath) + strlen(guid) + 20;
+
+    csn = config_get_int64(cfg, "sys.csn") + 1;
+    config_set_int64(cfg, "sys.csn", csn);
 
     if (sizeof(tmpbuf) < pathlenmin) {
 	GPCC_DO(0 != (tmppath = malloc(pathlenmin)));
@@ -223,40 +287,3 @@ apr_status_t config_write(const char* dirpath, const char* guid,
     return 0;
 }
 
-apr_int64_t config_determine_csn(const char* dirpath, const char* guid)
-{
-    apr_pool_t* pool; 
-    apr_dir_t* dir;
-    apr_int64_t csn = 0;
-    apr_finfo_t finfo;
-    const char* prefixpath;
-    int prefixlen;
-
-    GPCC_DO(0 == apr_pool_create(&pool, 0));
-    GPCC_DO(0 == apr_dir_open(&dir, dirpath, pool));
-
-    prefixpath = apr_psprintf(pool, "%s/gpcfg_%s.", dirpath, guid);
-    prefixlen = strlen(prefixpath);
-
-    while (1) {
-	switch (apr_dir_read(&finfo, APR_FINFO_NAME, dir)) {
-	case APR_INCOMPLETE:
-	case 0:
-	    if (finfo.fname
-		&& 0 == strncmp(prefixpath, finfo.fname, prefixlen)) {
-		char* csnstr = strrchr(finfo.fname, '.') + 1;
-		apr_int64_t ncsn;
-		ncsn = strtoll(csnstr, 0, 0);
-		if (ncsn > csn) 
-		    csn = ncsn;
-	    }
-	    continue;
-	default: 
-	    break;
-	}
-	break;
-    }
-    apr_dir_close(dir);
-    apr_pool_destroy(pool);
-    return csn;
-}

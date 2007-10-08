@@ -24,6 +24,8 @@ cmdslot_t* cmdslot_alloc(const char* name, cmdstate_t state)
 	    p = slottab;
 	if (p->cmdidx == 0) {
 	    apr_uint32_t idx = unique++;
+	    if (idx == 0)
+		idx = unique++;
 	    idx = (idx << 16) | (p - slottab);
 	    p->cmdidx = idx;
 	    p->cmdname = name;

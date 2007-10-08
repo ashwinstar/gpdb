@@ -3,10 +3,11 @@
 
 #include "config.h"
 #include "enum.h"
+#include "cmdslot.h"
 
-#define DEFAULT_MA_PORT   	20100
-#define DEFAULT_QD_PORT   	20200
-#define DEFAULT_QE_BASEPORT	20300
+#define DEFAULT_MA_PORT                 20100
+#define DEFAULT_SEG_MASTER_PORT   	20200
+#define DEFAULT_SEG_BASE_PORT   	20300
 
 #if 0
 
@@ -72,7 +73,6 @@ struct gpma_t {
     const char*  guid;		/* GUID */
     const char*  maid;		/* MA ID */
     const char*  dir;		/* MA data & log directory */
-    int          boot_flag;	/* TRUE if booting */
     int          debug;		/* TRUE if debug mode */
     const char*  logfpath;	/* path to log file */
     gpcc_evqueue_t* evq;	/* the event queue */
@@ -94,19 +94,20 @@ APR_DECLARE(void) cmdslot_free(cmdslot_t* cp);
 typedef struct gpma_t gpma_t;
 struct gpma_t {
     apr_pool_t*  pool;
-    const char*  guid;	      /* Global unique ID (generated from gpdb_id) */
-    const char*  gpdb_id;     /* GPDB ID - e.g. gpdb.test_array*/
-    const char*  ma_id;	      /* MA ID - e.g. ma.0 */
-    const char*  dir;	      /* dir for config file, log file, etc */
-    const char*  logfpath;    /* pathname of log file */
-    int          boot_flag;   /* TRUE if this run is BOOT */
+    const char*  progname;    /* argv[0] of cmdline  */
+    const char*  guid; 	      /* Global unique ID (generated from gpdb_id) */
+    const char*  ma_unit;     /* MA ID - e.g. ma.0 */
+    const char*  datadir;	      /* dir for config file, log file, etc */
+    const char*  boot_fname;  /* NULL if not booting, otherwise the name of the cfgfile */
     int          debug;	      /* TRUE if debug run, don't daemonize */
     gpcc_evqueue_t* evq;      /* event queue */
     config_t*    cfg;	      /* config  */
-    apr_uint64_t csn;	      /* change seq number of config file */
     cmdslot_t*   cmdslot;
 };
 
+extern gpma_t gpma;
+
+APR_DECLARE(void) fsm_init(void);
 
 
 #endif /* GPMA_H */

@@ -595,7 +595,7 @@ static void do_tick(int fd, short event, void* arg)
 	tm.tv_usec = (int) next;
 	evtimer_set(&net.ev_tick, do_tick, 0);
 	if (evtimer_add(&net.ev_tick, &tm))
-	    gpcc_fatal(FLINE, "event_add: cannot set up event on listen socket");
+	    gpcc_fatal(FLINE, "event_add: cannot set up timer event");
     }
 }
 
@@ -846,6 +846,7 @@ APR_DECLARE(apr_status_t) gpcc_net_init(int port,
     int e;
     struct sockaddr_in a;
     SOCKET sock = 0;
+    struct timeval tm;
 
     /* check param */
     if (net.pool) {
@@ -953,7 +954,11 @@ APR_DECLARE(apr_status_t) gpcc_net_init(int port,
 	gpcc_fatal(FLINE, "event_add: cannot set up event on listen socket");
 
     /* set up to get tick */
-    do_tick(-1, EV_TIMEOUT, 0);
+    tm.tv_sec = 1;
+    tm.tv_usec = 0;
+    evtimer_set(&net.ev_tick, do_tick, 0);
+    if (evtimer_add(&net.ev_tick, &tm))
+	gpcc_fatal(FLINE, "event_add: cannot set up timer event");
 
     return 0;
 }

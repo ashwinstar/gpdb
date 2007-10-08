@@ -73,6 +73,10 @@ apr_status_t gpcc_fsm_get(int curstate, int evtype,
     fsmrec_t* rec;
     fsmrec_t tmp;
 
+    if (! fsm.pool) {
+	gpcc_fatal(FLINE, "fsm is not initialized");
+    }
+
     tmp.key.curstate = curstate;
     tmp.key.evtype = evtype;
 
