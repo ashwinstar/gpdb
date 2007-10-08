@@ -259,19 +259,24 @@ static apr_status_t verify_config(void)
     }
 
     /* default ma port if not set */
-    i = config_get_or_set_int(gpma.cfg, "ma.port", DEFAULT_MA_PORT);
-    if (! (0 < i && i < (1 << 16))) {
-	gpcc_fatal(FLINE, "config file error: ma.port invalid (value %d)", i);
+    if (! config_get(gpma.cfg, "ma.port")) {
+	gpcc_fatal(FLINE, "config file error: ma.port missing");
     }
 
     /* default master_port port if not set */
-    i = config_get_or_set_int(gpma.cfg, "gpdb.seg.master_port", DEFAULT_SEG_MASTER_PORT);
+    if (! config_get(gpma.cfg, "gpdb.seg.master_port")) {
+	gpcc_fatal(FLINE, "config file error: gpdb.seg.master_port missing");
+    }
+    i = config_get_int(gpma.cfg, "gpdb.seg.master_port");
     if (! (0 < i && i < (1 << 16))) {
 	gpcc_fatal(FLINE, "config file error: gpdb.seg.master_port invalid (value %d)", i);
     }
 
     /* default qe baseport if not set */
-    i = config_get_or_set_int(gpma.cfg, "gpdb.seg.base_port", DEFAULT_SEG_BASE_PORT);
+    if (! config_get(gpma.cfg, "gpdb.seg.base_port")) {
+	gpcc_fatal(FLINE, "config file error: gpdb.seg.base_port missing");
+    }
+    i = config_get_int(gpma.cfg, "gpdb.seg.base_port");
     if (! (0 < i && i < (1 << 16))) {
 	gpcc_fatal(FLINE, "config file error: gpdb.seg.base_port invalid (value %d)", i);
     }

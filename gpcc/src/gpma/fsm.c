@@ -15,8 +15,6 @@ apr_status_t a_system_tick(gpcc_event_t* ev, void* arg)
 
 APR_DECLARE(void) fsm_init(void)
 {
-    const apr_uint32_t gpma_cmdidx = gpma.cmdslot->cmdidx;
-
     gpcc_fsm_put(GPMA_CMDSTATE, TICK_EVENT, GPMA_CMDSTATE, 
 		 a_system_tick, 0);
 #if 0

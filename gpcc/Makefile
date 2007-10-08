@@ -1,12 +1,12 @@
 SHELL=bash
 CC=gcc
 GPCC=$(CURDIR)
-OPT=-O3
+OPT=-g -O3
 APR=apr-1.2.8
 APU=apr-util-1.2.8
 JSON=json-c-0.6
 LIBEVENT=libevent-1.3e
-INCLUDES=-g -I$(GPCC)/ext/include $$($(GPCC)/ext/bin/apr-1-config --includes) -I$(GPCC)/src/include -I. $$($(GPCC)/ext/bin/apu-1-config --includes)
+INCLUDES=-I$(GPCC)/ext/include $$($(GPCC)/ext/bin/apr-1-config --includes) -I$(GPCC)/src/include -I. $$($(GPCC)/ext/bin/apu-1-config --includes)
 CFLAGS=$(OPT) $$($(GPCC)/ext/bin/apr-1-config --cflags) -Wall
 APRLIBS=$$($(GPCC)/ext/bin/apr-1-config --link-ld --libs) 
 APULIBS= $$($(GPCC)/ext/bin/apu-1-config --link-ld --libs)
