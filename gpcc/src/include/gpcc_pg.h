@@ -11,7 +11,7 @@
  * @param p memory pool
  * @return APR_SUCCESS if server is running
  */
-APR_DECLARE(apr_status_t) gpcc_pg_ctl_status(int port, const char *data_dir, apr_pool_t *p);
+APR_DECLARE(apr_status_t) gpcc_pg_ctl_status(int port, const char *data_dir, char *status, int *len, apr_pool_t *p);
 
 
 

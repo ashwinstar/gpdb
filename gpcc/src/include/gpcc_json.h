@@ -162,9 +162,17 @@ struct json_object *gpcc_json_alert(const char *segment, const char *alert);
  */
 struct json_object *gpcc_json_error(const char *errmsg) ;
 
+/** 
+ *  create status request object
+ *  
+ *  @param segment segment name
+ *  @return json_object
+ */
+struct json_object *gpcc_json_status_request(const char *segment);
+
 
 /**
- *  create status object
+ *  create status reply object
  *
  *  @param segment     segment name
  *  @param health      health status
@@ -172,7 +180,7 @@ struct json_object *gpcc_json_error(const char *errmsg) ;
  *  @param alert       alert message
  *  @return json_object
  */
-struct json_object *gpcc_json_status(const char *segment, const char *health, const char *mode, const char *alert);
+struct json_object *gpcc_json_status_reply(const char *segment, const char *health, const char *alert, const char *status);
 
 /**
  *  free json object

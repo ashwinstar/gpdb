@@ -93,8 +93,11 @@ static apr_status_t initdb_check_params()
 
 static apr_status_t ma_status_reply(gpcc_event_t *ev, void *_cmdslot)
 {
+   cmdslot_t *cmdslot = _cmdslot;
 
-    return 0;
+    gpcc_log_info("ma_status_reply");
+    return gpcc_net_send_packet(cmdslot->conninfo->conn, STATUS_REPLY_MSG, 
+				cmdslot->cmdidx, cmdslot->u.ma.rcvidx, ev->edata, ev->edatasz);    
 }
 
 static apr_status_t ma_stop_reply(gpcc_event_t *ev, void *_cmdslot)
@@ -900,6 +903,8 @@ static apr_status_t seg_initdb_start_wait(gpcc_event_t* ev, void *_cmdslot)
     apr_exit_why_e exitwhy;
     int e;
     gpcc_event_t *evt;
+    char status[1024];
+    int len = sizeof(status);
 
     e = apr_proc_wait(&cmdslot->u.seg.request.proc, &ret, &exitwhy, APR_NOWAIT);
     if (e == APR_CHILD_DONE) {
@@ -909,8 +914,15 @@ static apr_status_t seg_initdb_start_wait(gpcc_event_t* ev, void *_cmdslot)
 	    gpcc_log_info("[%s] check pg_ctl status", cmdslot->cmdname);
 	    if (0 != (e = gpcc_pg_ctl_status(cmdslot->u.seg.request.port,
 					     cmdslot->u.seg.request.data_dir,
+					     status, 
+					     &len,
 					     cmdslot->u.seg.request.subpool))) {
 		seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL2_EVENT, e, "database is not running");
+		return 0;
+	    }
+
+	    if (strstr(status, "server is running") == 0) {
+		seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL2_EVENT, 1, "server is not running");
 		return 0;
 	    }
 
@@ -1308,22 +1320,37 @@ static apr_status_t seg_status(gpcc_event_t* ev, void *_cmdslot)
     struct json_object *obj;
     char *objstr;
     gpcc_event_t *evt;
+    char status[1024];
+    int len = sizeof(status);
 
-    if (cmdslot->u.seg.port == 0) {
+    memset(&cmdslot->u.seg.request, 0, sizeof(cmdslot->u.seg.request));
+    cmdslot->u.seg.request.parentidx = packet->mh.rcvidx;
+
+    obj = json_tokener_parse(packet->mb);
+    if (!obj) {
+	gpcc_warning(FLINE, "json_tokener_parse error");
+	cmdslot->u.seg.request.exitcode = 1;
+	cmdslot->u.seg.request.reason = "json_tokener_parse error";
+	goto bail;
+    }
+
+    cmdslot->u.seg.request.port = gpcc_json_object_get_int(obj, "port", 0);
+    cmdslot->u.seg.request.data_dir = gpcc_json_object_get_string(obj, "dir", 0);
+
+    if (cmdslot->u.seg.request.port == 0) {
 	gpcc_warning(FLINE, "port is missing");
 	cmdslot->u.seg.request.exitcode = 1;
 	cmdslot->u.seg.request.reason = "port is missing";
 	goto bail;
     }
 
-    if (cmdslot->u.seg.data_dir == 0) {
+    if (cmdslot->u.seg.request.data_dir == 0) {
 	gpcc_warning(FLINE, "data_dir is missing");
 	cmdslot->u.seg.request.exitcode = 2;
 	cmdslot->u.seg.request.reason = "data directory is missing";
 	goto bail;
     }
 
-    memset(&cmdslot->u.seg.request, 0, sizeof(cmdslot->u.seg.request));
     if (0 != (e = apr_pool_create(&cmdslot->u.seg.request.subpool, cmdslot->pool))) {
 	gpcc_warning(FLINE, "not enough memory");
 	cmdslot->u.seg.request.exitcode = e;
@@ -1331,19 +1358,27 @@ static apr_status_t seg_status(gpcc_event_t* ev, void *_cmdslot)
 	goto bail;
     }
     
-    if (0 != (e = gpcc_pg_ctl_status(cmdslot->u.seg.port,
-				     cmdslot->u.seg.data_dir,
+    if (0 != (e = gpcc_pg_ctl_status(cmdslot->u.seg.request.port,
+				     cmdslot->u.seg.request.data_dir,
+				     status,
+				     &len,
 				     cmdslot->u.seg.request.subpool))) {
-	gpcc_warning(FLINE, "server is not running");
+	gpcc_warning(FLINE, "pg_ctl status failed");
 	cmdslot->u.seg.request.exitcode = e;
-	cmdslot->u.seg.request.reason = "server is not running";
+	cmdslot->u.seg.request.reason = "pg_ctl status failed";
 	goto bail;
     }
 
-    cmdslot->u.seg.request.parentidx = packet->mh.rcvidx;
+    if (strstr(status, "server is running") == 0) {
+	cmdslot->u.seg.request.exitcode = e;
+	cmdslot->u.seg.request.reason = apr_pstrdup(cmdslot->u.seg.request.subpool, status);
+	goto bail;
+    }
+
+    gpcc_log_info("[%s] server is running", cmdslot->cmdname);
 
     /* reply -- server is running */
-    obj = gpcc_json_status(cmdslot->cmdname, "server is running", 0, 0);
+    obj = gpcc_json_status_reply(cmdslot->cmdname, "ok", "", status);
     objstr = json_object_to_json_string(obj);
     evt = gpcc_event_alloc(SEG_STATUS_REPLY_EVENT, cmdslot->u.seg.request.parentidx, strlen(objstr)+1);
     memcpy(evt->edata, objstr, strlen(objstr)+1);
@@ -1355,8 +1390,9 @@ static apr_status_t seg_status(gpcc_event_t* ev, void *_cmdslot)
 
     bail:
 
+    gpcc_log_info("[%s] server is not running", cmdslot->cmdname);
     /* reply -- error */
-    obj = gpcc_json_status(cmdslot->cmdname, "server is not running", 0, cmdslot->u.seg.request.reason);
+    obj = gpcc_json_status_reply(cmdslot->cmdname, "failed", "", cmdslot->u.seg.request.reason);
     objstr = json_object_to_json_string(obj);
     evt = gpcc_event_alloc(SEG_STATUS_REPLY_EVENT, cmdslot->u.seg.request.parentidx, strlen(objstr)+1);
     memcpy(evt->edata, objstr, strlen(objstr)+1);

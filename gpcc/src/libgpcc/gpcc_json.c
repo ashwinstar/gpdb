@@ -165,14 +165,27 @@ struct json_object *gpcc_json_error(const char *msg)
     return obj;
 }
 
-struct json_object *gpcc_json_status(const char *segment, const char *health, const char *mode, const char *alert)
+struct json_object *gpcc_json_status_request(const char *segment)
+{
+    struct json_object *obj = 0;
+    
+    obj = json_object_new_object();
+    if (segment) {
+	json_object_object_add(obj, "seg", json_object_new_string((char *) segment));
+    }
+    json_object_object_add(obj, "action", json_object_new_string("status"));
+
+    return obj;
+}
+
+struct json_object *gpcc_json_status_reply(const char *segment, const char *health, const char *alert, const char *status)
 {
     struct json_object *obj = 0;
     
     obj = json_object_new_object();
     json_object_object_add(obj, "seg", json_object_new_string((char *)segment));
     json_object_object_add(obj, "health", json_object_new_string((char *)health));
-    json_object_object_add(obj, "mode", json_object_new_string((char *)mode));
+    json_object_object_add(obj, "status", json_object_new_string((char *)status));
     json_object_object_add(obj, "alert", json_object_new_string((char *)alert));
 
     return obj;

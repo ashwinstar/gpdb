@@ -23,11 +23,12 @@
 
 
 
-APR_DECLARE(apr_status_t) gpcc_pg_ctl_status(int port, const char *data_dir, apr_pool_t *p) 
+APR_DECLARE(apr_status_t) gpcc_pg_ctl_status(int port, const char *data_dir, char *status, int *len, apr_pool_t *p) 
 {
     apr_proc_t proc;
     int e = 0;
-    char line[1024];
+    apr_size_t nbytes = *len;
+    apr_size_t nread = 0;
 
     e = gpcc_proc_pg_ctl_status(&proc, port, data_dir, 1, p);
     if (e) {
@@ -36,16 +37,13 @@ APR_DECLARE(apr_status_t) gpcc_pg_ctl_status(int port, const char *data_dir, apr
     }
 
     /* get the first line */
-    if ((e = apr_file_gets(line, sizeof(line), proc.out)) != 0) {
+    if ((e = apr_file_read_full(proc.out, status, nbytes, &nread)) != 0 && e != APR_EOF) {
 	gpcc_log_error("get string from pg_ctl status failure\n");
 	return e;
     }
     
-    if (strstr(line, "server is running") == 0) {
-	gpcc_log_error("pg_ctl status (%s)", line);
-	return 1;
-    }
-    gpcc_log_info("gp_ctl status (%s)", line);
+    status[nread] = 0;
+    gpcc_log_info(status);
     return 0;
 }
 

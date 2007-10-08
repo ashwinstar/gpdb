@@ -113,7 +113,19 @@ void *APR_THREAD_FUNC fts_cmd(apr_thread_t *thread, void *arg)
 	gpcc_log_info("result = %s", ev->edata);
     }
 
-    
+    if (strstr(action, "status") != 0) {
+	gpcc_log_info("status...");
+	
+	obj = gpcc_json_status_request(0);
+	fts_do(json_object_to_json_string(obj), outq);
+	json_object_put(obj);
+	
+	ev = gpcc_evqueue_get(outq);
+	if (!ev)
+	    return 0;
+	gpcc_log_info("result = %s", ev->edata);
+    }
+
     gpcc_evqueue_destroy(outq);
     return 0;
 
@@ -122,10 +134,7 @@ void *APR_THREAD_FUNC fts_cmd(apr_thread_t *thread, void *arg)
 int main(int argc, const char *argv[]) 
 {
     int e;
-    int started = 0;
     config_t *config = 0;
-    struct json_object *obj = 0;
-    gpcc_event_t *ev = 0;
     apr_thread_t *thread;
     apr_threadattr_t *attr;
     gpcc_evqueue_t *alertq = 0;

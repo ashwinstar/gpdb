@@ -30,7 +30,7 @@ static apr_status_t status_do(gpcc_event_t *ev, void *_cmdslot)
 
 	cmdslot->u.sys.request.u.status.replied[i] = 0;
 
-	obj = json_tokener_parse(json_object_to_json_string(cmdslot->u.sys.config_json));
+	obj = 0;
 	obj = gpcc_json_segment_request(obj,
 					cmdslot->u.sys.seginfo[i].name,
 					"status",
@@ -86,13 +86,15 @@ static apr_status_t status_reply(gpcc_event_t *ev, void *_cmdslot)
 	}
     case STATUS_REPLY_MSG_EVENT:
 	{
-	char *seg, *health, *mode, *alert;
+	char *seg, *health, *status, *alert;
 	gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->edata;
+
+	gpcc_log_info("[status_reply] %s", pkt->mb);
 
 	obj = json_tokener_parse(pkt->mb);
 	seg = gpcc_json_object_get_string(obj, "seg", 0);
 	health = gpcc_json_object_get_string(obj, "health", "failed");
-	mode = gpcc_json_object_get_string(obj, "mode", "");
+	status = gpcc_json_object_get_string(obj, "status", "");
 	alert = gpcc_json_object_get_string(obj, "alert", "");
 	
 	for (i = 0 ; i < cmdslot->u.sys.nseginfo ; i++) {
@@ -108,7 +110,7 @@ static apr_status_t status_reply(gpcc_event_t *ev, void *_cmdslot)
 	if (strcmp(health, "ok") == 0) {
 	    cmdslot->u.sys.request.u.status.nsuccess++;
 	} else {
-	    gpcc_warning(FLINE, "[Error] segment status failed.  %s health=%s, mode=%s, alert=%s", seg, health, mode, alert);
+	    gpcc_warning(FLINE, "[Error] segment status failed.  %s health=%s, alert=%s, status=%s", seg, health, alert, status);
 	    cmdslot->u.sys.request.u.status.nfailed++;
 	}
 	cmdslot->u.sys.request.u.status.nreply++;
