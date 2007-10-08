@@ -700,7 +700,7 @@ static apr_status_t seg_initdb_update_gp_id(gpcc_event_t *ev, void *_cmdslot)
 
     while (1) {
 	sprintf(segname, "gpdb.seg.%d.0", nsegment);
-	if (gpcc_json_object_get_string(cmdslot->u.seg.request.msg, segname, 0) == 0) {
+	if (gpcc_json_object_get_object(cmdslot->u.seg.request.msg, segname, 0) == 0) {
 	    break;
 	}
 	nsegment++;
