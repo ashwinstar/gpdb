@@ -384,7 +384,7 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     m_data_dir = gpcc_json_object_get_string(seg, "dir", 0);
 
     if (0 == (nodeobj = gpcc_json_object_get_object(obj, node, 0))) {
-	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "gpdb.seg.m.0 is missing");
+	seg_request_error(ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "%s is missing", node);
 	json_object_put(obj);
 	return 0;
     }
