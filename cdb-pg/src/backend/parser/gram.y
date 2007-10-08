@@ -370,22 +370,21 @@ static void doNegateFloat(Value *v);
 %type <boolean> constraints_set_mode
 %type <str>		OptTableSpace OptConsTableSpace OptTableSpaceOwner
 %type <list>    OptDistributedBy
-%type <ival>	TabPartitionByType
+%type <ival>	TabPartitionByType OptTabPartitionRangeInclusive
 %type <node>	OptTabPartitionBy TabSubPartitionBy 
 				OptTabSubPartitionBy OptTabSubSubPartitionBy
 %type <list>	opt_check_option
-%type <node>	OptTabPartitionsNumber OptTabSubPartitionsNumber /* XXX XXX: ??? */
+%type <node>	OptTabPartitionsNumber OptTabSubPartitionsNumber 
 %type <node>	OptTabPartitionSpec OptTabSubPartitionSpec OptTabSubPartitionTemplate      /* PartitionSpec */
 %type <list>	TabPartitionElemList TabSubPartitionElemList /* list of PartitionElem */
 
 %type <node> 	TabPartitionElem TabSubPartitionElem  /* PartitionElem */
 
 %type <node> 	TabPartitionBoundarySpec OptTabPartitionBoundarySpec  /* PartitionBoundSpec */
-%type <list> 	TabPartitionBoundarySpecValList        /* XXX XXX: need complex type */
-%type <list> 	TabPartitionBoundarySpecStart        /* XXX XXX: need complex type */
-%type <list> 	TabPartitionBoundarySpecEnd        /* XXX XXX: need complex type */
-%type <list> 	OptTabPartitionBoundarySpecEnd        /* XXX XXX: need complex type */
-%type <node> 	OptTabPartitionBoundarySpecEvery        /* XXX XXX: need complex type */
+%type <list> 	TabPartitionBoundarySpecValList        /* list of AexprConst */
+%type <node> 	TabPartitionBoundarySpecStart TabPartitionBoundarySpecEnd
+				OptTabPartitionBoundarySpecEnd        /* PartitionRangeItem */
+%type <node> 	OptTabPartitionBoundarySpecEvery      /* PartitionRangeItem */
 %type <value>	OptNumericOnly 
 %type <node> 	TabPartitionNameDecl TabSubPartitionNameDecl      /* string */
 
@@ -426,7 +425,9 @@ static void doNegateFloat(Value *v);
 
 	HANDLER HASH HAVING HEADER_P HOLD HOST HOUR_P
 
-	IF_P  ILIKE IMMEDIATE IMMUTABLE IMPLICIT_P IN_P INCLUDING INCREMENT
+	IF_P  ILIKE IMMEDIATE IMMUTABLE IMPLICIT_P IN_P INCLUDING
+	INCLUSIVE
+	INCREMENT
 	INDEX INDEXES INHERIT INHERITS INITIALLY INNER_P INOUT INPUT_P
 	INSENSITIVE INSERT INSTEAD INT_P INTEGER INTERSECT
 	INTERVAL INTO INVOKER IS ISNULL ISOLATION
@@ -2550,22 +2551,50 @@ TabSubPartitionElemList:
               TabSubPartitionElem					{ $$ = lappend($1, $3); }
 		;
 
-/* Note: specstart is a list, but specend is a scalar.  Not sure if
-   this is the best way to do this... */
-
 TabPartitionBoundarySpecValList:
             AexprConst	    					{ $$ = list_make1($1); }
 			| TabPartitionBoundarySpecValList ',' 
               AexprConst						{ $$ = lappend($1, $3); }
 		;
+
+OptTabPartitionRangeInclusive:
+			INCLUSIVE			{ $$ = 1; }
+			| EXCLUSIVE			{ $$ = 2; }
+			| /*EMPTY*/			{ $$ = 0; }
+		;
+
 TabPartitionBoundarySpecStart:
 			START opt_with 
-            '(' TabPartitionBoundarySpecValList ')' { $$ = $4;}
+            '(' TabPartitionBoundarySpecValList ')' 
+			OptTabPartitionRangeInclusive
+				{
+                        PartitionRangeItem *n = makeNode(PartitionRangeItem); 
+                        n->partEveryNum  = NULL; 
+                        n->partRangeVal  = $4;
+                        if (!($6))
+                            n->partInclusive = 1; /* INclusive */
+                        else
+                            n->partInclusive = $6;
+                        n->location  = @1;
+                        $$ = (Node *)n;
+				}
             ;
 
 TabPartitionBoundarySpecEnd:
 			END_P opt_with 
-            '(' TabPartitionBoundarySpecValList ')' { $$ = $4;}
+            '(' TabPartitionBoundarySpecValList ')' 
+			OptTabPartitionRangeInclusive
+				{
+                        PartitionRangeItem *n = makeNode(PartitionRangeItem); 
+                        n->partEveryNum  = NULL; 
+                        n->partRangeVal  = $4;
+                        if (!($6))
+                            n->partInclusive = 2; /* EXclusive */
+                        else
+                            n->partInclusive = $6;
+                        n->location  = @1;
+                        $$ = (Node *)n;
+				}
             ;
 
 OptNumericOnly:
@@ -2574,7 +2603,19 @@ OptNumericOnly:
             ;
 
 OptTabPartitionBoundarySpecEvery:
-            EVERY OptNumericOnly IDENT 		{ $$ = (Node *) makeString($3); }
+            EVERY OptNumericOnly 
+            '(' TabPartitionBoundarySpecValList ')' 
+				{
+                        PartitionRangeItem *n = makeNode(PartitionRangeItem); 
+                        if ($2)
+                            n->partEveryNum  = makeAConst($2); 
+                        else
+                            n->partEveryNum  = NULL; 
+                        n->partRangeVal  = $4;
+                        n->partInclusive = false;
+                        n->location  = @1;
+                        $$ = (Node *)n;
+				}
 			| /*EMPTY*/								{ $$ = NULL; }
             ;
 
@@ -2589,8 +2630,15 @@ TabPartitionBoundarySpec:
             VALUES '(' TabPartitionBoundarySpecValList ')'
 				{
                         PartitionBoundSpec *n = makeNode(PartitionBoundSpec); 
+                        PartitionRangeItem *ri = makeNode(PartitionRangeItem); 
+
+                        ri->partEveryNum  = NULL; 
+                        ri->partRangeVal  = $3;
+                        ri->partInclusive = 0; /* unspecified */
+                        ri->location  = @3;
+
                         n->partType  = PARTTYP_LIST;
-                        n->partStart = $3;
+                        n->partStart = (Node *)ri;
                         n->partEnd   = NULL;
                         n->partEvery = NULL;
                         n->location  = @3;
@@ -9646,6 +9694,7 @@ unreserved_keyword:
 			| IMMUTABLE
 			| IMPLICIT_P
 			| INCLUDING
+			| INCLUSIVE
 			| INCREMENT
 			| INDEX
 			| INDEXES

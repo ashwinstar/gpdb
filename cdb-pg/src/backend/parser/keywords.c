@@ -185,6 +185,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"implicit", IMPLICIT_P},
 	{"in", IN_P},
 	{"including", INCLUDING},
+	{"inclusive", INCLUSIVE},
 	{"increment", INCREMENT},
 	{"index", INDEX},
 	{"indexes", INDEXES},

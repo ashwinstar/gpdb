@@ -333,7 +333,7 @@ typedef enum NodeTag
 	T_WindowSpecParse,
 	T_PartitionBy,
 	T_PartitionElem,
-	T_PartitionEvery,
+	T_PartitionRangeItem,
 	T_PartitionBoundSpec,
 	T_PartitionSpec,
 

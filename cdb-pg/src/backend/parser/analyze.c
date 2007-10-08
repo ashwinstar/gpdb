@@ -48,6 +48,8 @@
 #include "cdb/cdbhash.h"
 #include "cdb/cdbsreh.h"
 
+#include "executor/spi.h"
+
 /* State shared by transformCreateSchemaStmt and its subroutines */
 typedef struct
 {
@@ -179,6 +181,12 @@ static Node *make_partition_rules(ParseState *pstate,
 		 int partNumId, int maxPartNum);
 
 static int deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize);
+static int validate_partition_spec(ParseState *pstate,
+								   CreateStmtContext *cxt, CreateStmt *stmt, 
+								   PartitionBy *partitionBy, 	
+								   char	   *at_depth,
+								   int		partNumber);
+
 
 /*
  * parse_analyze
@@ -2814,8 +2822,9 @@ static Node *make_partition_rules(ParseState *pstate,
 		Node			*pIndOR  = NULL;
 		List			*colElts = pBy->keys;
 		ListCell		*lc      = NULL;
-		List			*valElts = pBSpec->partStart;
+		List			*valElts = NULL;
 		ListCell		*lc_val  = NULL;
+		PartitionRangeItem *pRI  = NULL;
 		char			 exprBuf[10000];
 		char			 ANDBuf[10000];
 		char			 ORBuf[10000];
@@ -2826,7 +2835,10 @@ static Node *make_partition_rules(ParseState *pstate,
 		ORBuf[0]   = '0';
 
 		Assert(pBSpec->partStart);
+		pRI = (PartitionRangeItem *)(pBSpec->partStart);
+		Assert(pRI->partRangeVal);
 
+		valElts = pRI->partRangeVal;
 		lc_val = list_head(valElts);
 
 		/* number of values is a multiple of the number of columns */
@@ -3030,8 +3042,9 @@ static Node *make_partition_rules(ParseState *pstate,
 		Node			*pIndOR  = NULL;
 		List			*colElts = pBy->keys;
 		ListCell		*lc      = NULL;
-		List			*valElts = pBSpec->partStart;
+		List			*valElts = NULL;
 		ListCell		*lc_val  = NULL;
+		PartitionRangeItem *pRI  = NULL;
 		char			 exprBuf[10000];
 		char			 ANDBuf[10000];
 		char			 ORBuf[10000];
@@ -3042,16 +3055,35 @@ static Node *make_partition_rules(ParseState *pstate,
 		ANDBuf[0]  = '0';
 		ORBuf[0]   = '0';
 
+		pRI = (PartitionRangeItem *)(pBSpec->partStart);
+		
+		if (pRI)
+			valElts = pRI->partRangeVal;
+		else
+			valElts = NULL;						
+
 		/* number of values must equal of the number of columns */
 
 		for (range_idx = 0; range_idx < 2; range_idx++)
 		{
 			char *expr_op = ">";
 
+			if (pRI && (1 == pRI->partInclusive))
+				expr_op = ">=";
+
 			if (range_idx)
 			{
-				valElts = pBSpec->partEnd;
-				expr_op = "<=";
+				pRI = (PartitionRangeItem *)(pBSpec->partEnd);
+
+				if (pRI)
+					valElts = pRI->partRangeVal;
+				else
+					valElts = NULL;						
+
+				expr_op = "<";
+
+				if (pRI && (1 == pRI->partInclusive))
+					expr_op = "<=";
 			}
 
 			lc_val = list_head(valElts);
@@ -3277,6 +3309,379 @@ static Node *make_partition_rules(ParseState *pstate,
 } /* end make_partition_rules */
 
 
+static int validate_partition_spec(ParseState *pstate,
+								   CreateStmtContext *cxt, CreateStmt *stmt, 
+								   PartitionBy *pBy,
+								   char	   *at_depth,
+								   int		partNumber)
+{
+	PartitionSpec	*pSpec;
+	char			 namBuf[NAMEDATALEN];
+	int				 numElts = 0;
+	bool			 prevHadName  = false;
+	int				 prevStartEnd = 0; /* add 1 for start, 2 for end */
+	PartitionElem	*prevElem = NULL;
+	List			*partElts;
+	ListCell		*lc = NULL;
+		
+	Assert(pBy);
+
+	pSpec    = (PartitionSpec *)pBy->partSpec;
+
+	/* find number of partitions in the specification, and match it up
+	 * with the PARTITIONS clause if partitioned by HASH, and
+	 * determine the subpartition specifications.  Perform basic error
+	 * checking on boundary specifications.
+	 */
+
+	/* NOTE: a top-level PartitionSpec never has a subSpec, but a
+	 * PartitionSpec derived from an inline SubPartition
+	 * specification might have one  
+	 */
+
+
+	/* track previous boundary spec to check for this subtle problem:
+
+	(
+	partition aa start (2007,1) end (2008,2),
+	partition bb start (2008,2) end (2009,3)
+	);
+	This declaration would create four partitions:
+	1. named aa, starting at 2007, 1
+	2. unnamed, ending at 2008, 2
+	3. named bb, starting at 2008, 2
+	4. unnamed, ending at 2009, 3
+
+	Warn user if they do this, since they probably wanted
+	1. named aa, starting at 2007, 1 and ending at 2008, 2
+	2. named bb, starting at 2008, 2 and ending at 2009, 3
+		   
+	The extra comma between the start and end is the problem.
+		   
+	*/
+
+	partElts = pSpec->partElem;
+
+	/* XXX XXX: should check for duplicate names as well !! */
+
+	foreach(lc, partElts)
+	{
+		PartitionElem *pElem = (PartitionElem *)lfirst(lc);
+		PartitionBoundSpec *pBSpec = NULL;
+
+		pBSpec = NULL;
+		
+		numElts++;
+
+		if (pElem)
+		{
+			pBSpec = (PartitionBoundSpec *)pElem->boundSpec;
+
+			if (pElem->partName)
+			{
+				snprintf(namBuf, sizeof(namBuf), " \"%s\"", 
+						 strVal(pElem->partName));
+			}
+			else
+			{
+				snprintf(namBuf, sizeof(namBuf), " number %d", 
+						 numElts);
+			}
+			
+		}
+		else
+		{
+			snprintf(namBuf, sizeof(namBuf), " number %d", 
+					 numElts);
+		}
+
+		switch (pBy->partType)
+		{
+			case PARTTYP_HASH:
+				if (pBSpec)
+				{
+					char *specTName = "RANGE";
+					
+					if (pBSpec->partType == PARTTYP_LIST)
+					{
+						specTName = "LIST";
+					}
+
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("Invalid use of %s boundary specification in partition%s of type HASH%s",
+									specTName,
+									namBuf,
+									at_depth),
+							 parser_errposition(pstate, pBSpec->location)));
+				}
+				break;
+			case PARTTYP_RANGE:
+			{
+				PartitionBoundSpec *prevBSpec = NULL;
+
+				if (pBSpec)
+				{
+					char *specTName = "LIST";
+
+					if (pBSpec->partType == PARTTYP_LIST)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("Invalid use of %s boundary specification in partition%s of type RANGE%s",
+										specTName,
+										namBuf,
+										at_depth),
+								 parser_errposition(pstate, pBSpec->location)));
+						
+					}
+				}
+				else
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("Missing boundary specification in partition%s of type RANGE%s",
+									namBuf,
+									at_depth),
+							 parser_errposition(pstate, pElem->location)));
+					
+				}
+
+				{
+					/* if the previous partition was named, and
+					 * current is not, and the prev and current
+					 * use single, complementary START/END specs,
+					 * then complain.
+					 */
+
+					/* must have a valid RANGE pBSpec now or else
+					 * would have error'd out... 
+					 */
+					int currStartEnd = 0;
+
+					if (pBSpec->partStart)
+						currStartEnd += 1;
+					if (pBSpec->partEnd)
+						currStartEnd += 2;
+
+					/* Note: for first loop, prevStartEnd = 0, so
+					 * this test is ok */
+
+					if ((prevHadName && !(pElem->partName))
+						&&
+						(((prevStartEnd == 1)
+						  && (currStartEnd == 2))
+						 ||
+						 ((prevStartEnd == 2)
+						  && (currStartEnd == 1)))
+							)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("Invalid use of mixed named and unnamed RANGE boundary specifications%s",
+										at_depth),
+								 parser_errposition(pstate, 
+													pBSpec->location)));
+
+					}
+
+					prevStartEnd = currStartEnd;
+				}
+
+				prevHadName  = !!(pElem->partName); /* bool t/f */
+
+				/* fixup boundaries for previous partition ending
+				 * if necessary 
+				 */
+				if (!prevElem)
+					goto L_setprevElem;
+
+				prevBSpec = (PartitionBoundSpec *)prevElem->boundSpec;
+							
+				/* XXX XXX: can check for overlap here too */
+
+				if (!prevBSpec)
+					goto L_setprevElem;
+
+				if (pBSpec->partStart)
+				{
+					if (!prevBSpec->partEnd)
+					{
+						PartitionRangeItem *pRI =
+								(PartitionRangeItem *)
+								(pBSpec->partStart);
+						PartitionRangeItem *prevRI = 
+								makeNode(PartitionRangeItem); 
+
+						prevRI->partEveryNum  = NULL; 
+						prevRI->location  = 
+								pRI->location;
+
+						prevRI->partRangeVal  = 
+								list_copy(pRI->partRangeVal);
+
+						/* invert sense of inclusiveness */
+						prevRI->partInclusive = 
+								(1 == pRI->partInclusive) ? 
+								2 : 1;
+
+						prevBSpec->partEnd = (Node *)prevRI;
+					}
+					else if (0) /* XXX XXX XXX XXX */
+					{
+						/* else if overlap complain */
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+									 errmsg("Start of partition %s overlaps previous%s",
+											namBuf,
+											at_depth),
+									 parser_errposition(pstate, 
+														pBSpec->location)));
+							
+					}
+					
+				} /* end if current partStart */
+				else /* no start, so use END of previous */
+				{
+					if (!prevBSpec->partEnd)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("Cannot derive starting value of partition %s based upon ending of previous%s",
+										namBuf,
+										at_depth),
+								 parser_errposition(pstate, 
+													pBSpec->location)));
+						
+					}
+					else /* build ri for current */
+					{
+						PartitionRangeItem *pRI =
+								makeNode(PartitionRangeItem); 
+						PartitionRangeItem *prevRI = 
+								(PartitionRangeItem *)
+								(prevBSpec->partEnd);
+						
+						pRI->partEveryNum  = NULL; 
+						pRI->location  = 
+								prevRI->location;
+						
+						pRI->partRangeVal  = 
+								list_copy(prevRI->partRangeVal);
+
+						/* invert sense of inclusiveness */
+						pRI->partInclusive = 
+								(1 == prevRI->partInclusive) ? 
+								2 : 1;
+
+						pBSpec->partStart = (Node *)pRI;
+					} /* end build ri for current */
+				} /* end use END of previous */
+
+			L_setprevElem:
+
+				if (pBSpec->partStart &&
+					pBSpec->partEnd &&
+					pBSpec->partEvery)
+				{
+					int			spirc;
+
+					/*
+					 * Connect to SPI manager
+					 */
+					if (SPI_connect() != SPI_OK_CONNECT)
+						elog(ERROR, "SPI_connect failed");
+
+					spirc = SPI_execute("select date \'2001-01-01\' + interval \'1 week\' as ptcol1",
+										false, 1); /* true fails */
+
+
+					if (spirc != SPI_OK_SELECT)
+						elog(ERROR, "failed to get tuple");
+					if (SPI_processed == 1)
+					{
+						HeapTuple   rangetup;
+						TupleDesc   rangettc;
+						int			fno;
+						char	   *pFoo;
+
+						rangetup = SPI_tuptable->vals[0];
+						rangettc = SPI_tuptable->tupdesc;
+
+						fno = SPI_fnumber(rangettc, "ptcol1"); /* 1 */
+						pFoo = SPI_getvalue(rangetup, rangettc, fno);
+
+					}
+
+
+					/*
+					 * Disconnect from SPI manager
+					 */
+					if (SPI_finish() != SPI_OK_FINISH)
+						elog(ERROR, "SPI_finish failed");
+
+				}
+
+				prevElem = pElem;
+			}
+			break;
+
+			case PARTTYP_LIST:
+				if (pBSpec)
+				{
+					char *specTName = "RANGE";
+					
+					if (pBSpec->partType == PARTTYP_RANGE)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("Invalid use of %s boundary specification in partition%s of type LIST%s",
+										specTName,
+										namBuf,
+										at_depth),
+								 parser_errposition(pstate, pBSpec->location)));
+						
+					}
+				}
+				else
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("Missing boundary specification in partition%s of type LIST%s",
+									namBuf,
+									at_depth),
+							 parser_errposition(pstate, pElem->location)));
+
+				}
+
+
+				break;
+
+			case PARTTYP_REFERENCE: /* for future use... */
+			default:
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("Unknown partition type%s",
+								at_depth),
+						 parser_errposition(pstate, pBy->location)));
+				break;
+				
+		}
+	} /* end foreach(lc, partElts) */
+
+	if ((partNumber > -1) && (numElts != partNumber))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg(
+						 "PARTITIONS \"%d\" must match \"%d\" elements in specification%s",
+						 partNumber, numElts, at_depth),
+				 parser_errposition(pstate, pBy->location)));
+	}
+
+	return numElts;
+} /* end validate_partition_spec */
+
 
 /*
 
@@ -3422,278 +3827,8 @@ static void transformPartitionBy(ParseState *pstate,
 	 * checking on boundary specifications.
 	 */
 	if (pBy->partSpec)
-	{
-		PartitionSpec	*pSpec    = (PartitionSpec *)pBy->partSpec;
-		char			 namBuf[NAMEDATALEN];
-
-		/* NOTE: a top-level PartitionSpec never has a subSpec, but a
-		 * PartitionSpec derived from an inline SubPartition
-		 * specification might have one  
-		 */
-
-		int			numElts = 0;
-
-		/* track previous boundary spec to check for this subtle problem:
-
-   		     (
-			  partition aa start (2007,1) end (2008,2),
-			  partition bb start (2008,2) end (2009,3)
-			  );
-		   This declaration would create four partitions:
-		   1. named aa, starting at 2007, 1
-		   2. unnamed, ending at 2008, 2
-		   3. named bb, starting at 2008, 2
-		   4. unnamed, ending at 2009, 3
-
-		   Warn user if they do this, since they probably wanted
-		   1. named aa, starting at 2007, 1 and ending at 2008, 2
-		   2. named bb, starting at 2008, 2 and ending at 2009, 3
-		   
-		   The extra comma between the start and end is the problem.
-		   
-		*/
-		bool		prevHadName  = false;
-		int			prevStartEnd = 0; /* add 1 for start, 2 for end */
-		PartitionElem *prevElem = NULL;
-
-		partElts = pSpec->partElem;
-
-		/* XXX XXX: should check for duplicate names as well !! */
-
-		foreach(lc, partElts)
-		{
-			PartitionElem *pElem = (PartitionElem *)lfirst(lc);
-			PartitionBoundSpec *pBSpec = NULL;
-
-			pBSpec = NULL;
-
-			numElts++;
-
-			if (pElem)
-			{
-				pBSpec = (PartitionBoundSpec *)pElem->boundSpec;
-
-				if (pElem->partName)
-				{
-					snprintf(namBuf, sizeof(namBuf), " \"%s\"", 
-							 strVal(pElem->partName));
-				}
-				else
-				{
-					snprintf(namBuf, sizeof(namBuf), " number %d", 
-							 numElts);
-				}
-
-			}
-			else
-			{
-				snprintf(namBuf, sizeof(namBuf), " number %d", 
-							 numElts);
-			}
-
-			switch (pBy->partType)
-			{
-				case PARTTYP_HASH:
-					if (pBSpec)
-					{
-						char *specTName = "RANGE";
-
-						if (pBSpec->partType == PARTTYP_LIST)
-						{
-								specTName = "LIST";
-						}
-
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-								 errmsg("Invalid use of %s boundary specification in partition%s of type HASH%s",
-										specTName,
-										namBuf,
-										at_depth),
-								 parser_errposition(pstate, pBSpec->location)));
-					}
-					break;
-				case PARTTYP_RANGE:
-					if (pBSpec)
-					{
-						char *specTName = "LIST";
-
-						if (pBSpec->partType == PARTTYP_LIST)
-						{
-							ereport(ERROR,
-									(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-									 errmsg("Invalid use of %s boundary specification in partition%s of type RANGE%s",
-											specTName,
-											namBuf,
-											at_depth),
-									 parser_errposition(pstate, pBSpec->location)));
-							
-						}
-					}
-					else
-					{
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-								 errmsg("Missing boundary specification in partition%s of type RANGE%s",
-										namBuf,
-										at_depth),
-									 parser_errposition(pstate, pElem->location)));
-
-					}
-
-					{
-						/* if the previous partition was named, and
-						 * current is not, and the prev and current
-						 * use single, complementary START/END specs,
-						 * then complain.
-						 */
-
-						/* must have a valid RANGE pBSpec now or else
-						 * would have error'd out... 
-						 */
-							
-						int currStartEnd = 0;
-
-						if (pBSpec->partStart)
-							currStartEnd += 1;
-						if (pBSpec->partEnd)
-							currStartEnd += 2;
-
-						/* Note: for first loop, prevStartEnd = 0, so
-						 * this test is ok */
-
-						if ((prevHadName && !(pElem->partName))
-							&&
-							(((prevStartEnd == 1)
-							 && (currStartEnd == 2))
-							||
-							((prevStartEnd == 2)
-							 && (currStartEnd == 1)))
-							)
-						{
-							ereport(ERROR,
-									(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-									 errmsg("Invalid use of mixed named and unnamed RANGE boundary specifications%s",
-											at_depth),
-									 parser_errposition(pstate, 
-														pBSpec->location)));
-
-						}
-
-						prevStartEnd = currStartEnd;
-					}
-
-					prevHadName  = !!(pElem->partName); /* bool t/f */
-
-					/* fixup boundaries for previous partition ending
-					 * if necessary 
-					 */
-					if (prevElem)
-					{
-						PartitionBoundSpec *prevBSpec = 
-								(PartitionBoundSpec *)prevElem->boundSpec;
-							
-						/* XXX XXX: can check for overlap here too */
-
-						if (prevBSpec)
-						{
-							if (pBSpec->partStart)
-							{
-								if (!prevBSpec->partEnd)
-								{
-									prevBSpec->partEnd = pBSpec->partStart;
-								}
-								else if (0) /* XXX XXX XXX XXX */
-								{
-									/* else if overlap complain */
-									ereport(ERROR,
-											(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-									 errmsg("Start of partition %s overlaps previous%s",
-											namBuf,
-											at_depth),
-									 parser_errposition(pstate, 
-														pBSpec->location)));
-
-								}
-
-							}
-						}
-						else /* no start, so use end of previous */
-						{
-							if (!prevBSpec->partEnd)
-							{
-								ereport(ERROR,
-										(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-										 errmsg("Cannot derive starting value of partition %s based upon ending of  previous%s",
-											namBuf,
-											at_depth),
-									 parser_errposition(pstate, 
-														pBSpec->location)));
-
-							}
-
-							pBSpec->partStart = 
-									prevBSpec->partEnd;
-
-						}
-
-					}
-					prevElem = pElem;
-
-					break;
-
-				case PARTTYP_LIST:
-					if (pBSpec)
-					{
-						char *specTName = "RANGE";
-
-						if (pBSpec->partType == PARTTYP_RANGE)
-						{
-							ereport(ERROR,
-									(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-									 errmsg("Invalid use of %s boundary specification in partition%s of type LIST%s",
-											specTName,
-											namBuf,
-											at_depth),
-									 parser_errposition(pstate, pBSpec->location)));
-							
-						}
-					}
-					else
-					{
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-								 errmsg("Missing boundary specification in partition%s of type LIST%s",
-										namBuf,
-										at_depth),
-								 parser_errposition(pstate, pElem->location)));
-
-					}
-					break;
-
-				case PARTTYP_REFERENCE: /* for future use... */
-				default:
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-							 errmsg("Unknown partition type%s",
-									at_depth),
-									 parser_errposition(pstate, pBy->location)));
-					break;
-
-			}
-		} /* end foreach(lc, partElts) */
-
-		if ((partNumber > -1) && (numElts != partNumber))
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg(
-							 "PARTITIONS \"%d\" must match \"%d\" elements in specification%s",
-							 partNumber, numElts, at_depth),
-					 parser_errposition(pstate, pBy->location)));
-		}
-
-		partNumber = numElts;
-	}
+		partNumber = validate_partition_spec(pstate,cxt,stmt, pBy, at_depth, 
+											 partNumber);
 
 	if (partNumber < 1)
 	{

@@ -1365,6 +1365,17 @@ typedef struct PartitionElem
 	int					location;	/* token location, or -1 if unknown */
 } PartitionElem;
 
+typedef struct PartitionRangeItem
+{
+	Node			   *partEveryNum;	/*  (constant number) (EVERY only) */
+	List			   *partRangeVal;	/*  value */
+	int					partInclusive;	/* 0 if unspecified, 
+										   1 if inclusive, 
+										   2 if exclusive
+										   (START/END only) */
+	int					location;	/* token location, or -1 if unknown */
+} PartitionRangeItem;
+
 /* partition boundary specification */
 typedef struct PartitionBoundSpec
 {
@@ -1373,9 +1384,9 @@ typedef struct PartitionBoundSpec
 										 * (LIST partition type, not the 
 										 * "List" struct type )*/
 
-	List			   *partStart;		/* start (or VALUES for LIST)  */
-	List			   *partEnd;		/* end (or NULL for LIST ) */
-	Node			   *partEvery;		/* every */
+	Node			   *partStart;		/* start (or VALUES for LIST)  */
+	Node			   *partEnd;		/* end (or NULL for LIST ) */
+	Node 			   *partEvery;		/* every specification */
 	int					location;		/* token location, or -1 if unknown */
 } PartitionBoundSpec;
 
