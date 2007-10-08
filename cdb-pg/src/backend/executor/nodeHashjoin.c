@@ -389,11 +389,19 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 	 * would amount to betting that the hash will be a single batch.  Not
 	 * clear if this would be a win or not.
 	 */
-	outerNode = outerPlan(node);
 	hashNode = (Hash *) innerPlan(node);
+	outerNode = outerPlan(node);
 
-	outerPlanState(hjstate) = ExecInitNode(outerNode, estate, eflags);
+	/* 
+	 * XXX The following order are significant.  We init Hash first, then the outerNode
+	 * this is the same order as we execute (in the sense of the first exec called).
+	 * Until we have a better way to uncouple, share input needs this to be true.  If the
+	 * order is wrong, when both hash and outer node have share input and (both ?) have 
+	 * a subquery node, share input will fail because the estate of the nodes can not be
+	 * set up correctly.
+	 */
 	innerPlanState(hjstate) = ExecInitNode((Plan *) hashNode, estate, eflags);
+	outerPlanState(hjstate) = ExecInitNode(outerNode, estate, eflags);
 
 #define HASHJOIN_NSLOTS 3
 
