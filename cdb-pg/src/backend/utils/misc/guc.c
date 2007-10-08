@@ -2170,6 +2170,15 @@ static struct config_int ConfigureNamesInt[] =
         &Gp_interconnect_queue_depth,
         1, 1, 256, NULL, NULL
 	},
+
+	{
+		{"gp_interconnect_hash_multiplier", PGC_SUSET, GP_ARRAY_TUNING,
+            gettext_noop("Sets the number of hash buckets used by the UDP interconnect to track connections (the number of buckets is given by the product of the segment count and the hash multipliers)."),
+            NULL,
+        },
+        &Gp_interconnect_hash_multiplier,
+        2, 1, 256, NULL, NULL
+	},
 	
 	{
 		{"gp_command_count", PGC_INTERNAL, CLIENT_CONN_OTHER,

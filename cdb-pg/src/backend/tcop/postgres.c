@@ -3750,8 +3750,6 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 
 				DispatchCommandQueryParms queryParms;
 				
-
-				memset(&queryParms, 0, sizeof(queryParms));
 				/*
 				 * Ugh... Some of the QueryParms fields are char *, not const char *.
 				 * 
@@ -3760,6 +3758,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				 * strings.
 				 */
 				queryParms.strCommand = query_string;
+				queryParms.strCommandlen = query_string_len;
 				queryParms.serializedQuerytree = (char *) serializedQuerytree;
 				queryParms.serializedQuerytreelen = serializedQuerytreelen;
 				queryParms.serializedPlantree = (char *)serializedPlantree;
@@ -3784,9 +3783,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 						 &pPrimaryResults,		/* OUT */
 						 &pMirrorResults,       /* OUT */
 						 &dispatchThreads)	;	/* OUT */
-				
-				
-				 
+			   				 
 			}
 			elog(DEBUG2,"Dispatch Agent checking dispatch results");
 
@@ -3966,8 +3963,6 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				elog(DEBUG1, "redispatch DtxProtocolCommand: %s for gid = %s.  Dist Txn Id %u", 
 						loggingStr, gid, gxid);
 
-
-				memset(&dtxProtocolParms, 0, sizeof(dtxProtocolParms));
 				dtxProtocolParms.dtxProtocolCommand = dtxProtocolCommand;
 				dtxProtocolParms.flags = flags;
 				dtxProtocolParms.dtxProtocolCommandLoggingStr = (char *)loggingStr;

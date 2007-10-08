@@ -333,6 +333,17 @@ extern const char *gpvars_show_gp_interconnect_type(void);
 extern int	Gp_interconnect_queue_depth;
 
 /*
+ * Parameter Gp_interconnect_hash_multiplier
+ *
+ * The run-time parameter Gp_interconnect_hash_multiplier
+ * controls the number of hash buckets used to track 'connections.'
+ *
+ * This guc is specific to the UDP-interconnect.
+ *
+ */
+extern int	Gp_interconnect_hash_multiplier;
+
+/*
  * Parameter gp_interconnect_aggressive_retry
  *
  * The run-time parameter gp_interconnect_aggressive_retry controls the

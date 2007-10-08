@@ -230,6 +230,7 @@ struct conn_htab_bin {
 };
 
 struct conn_htab_bin	**conn_htab = NULL;
+#define DEFAULT_CONN_HTAB_SIZE (Max((GpIdentity.numsegments*Gp_interconnect_hash_multiplier), 16))
 int						conn_htab_size = 0;
 static pthread_mutex_t	conn_htab_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -584,10 +585,6 @@ RecvTupleChunk(MotionConn *conn, bool inTeardown)
 	return firstTcItem;
 }
 
-/*=========================================================================
- * VISIBLE FUNCTIONS
- */
-
 static void
 conn_addhash(MotionConn *conn)
 {
@@ -728,6 +725,65 @@ findConnByHeader(struct icpkthdr *hdr, int16 *srcRoute)
 	return ret;
 }
 
+/*
+ * This must be called with the rx_thread mutex held (maybe these locks need to be restructured a bit).
+ */
+static void
+conn_rehash(void)
+{
+	int i, new_hashcode;
+	int new_htab_size = DEFAULT_CONN_HTAB_SIZE;
+	struct conn_htab_bin		**new_conn_htab = NULL;
+	struct conn_htab_bin		*bin, *newbin;
+
+	new_conn_htab = (struct conn_htab_bin **)malloc(new_htab_size * sizeof(struct conn_htab_bin *));
+
+	if (new_conn_htab == NULL)
+	{
+		elog(ERROR, "Could not resize connection hash table (old size %d, new size %d)",
+			 conn_htab_size, new_htab_size);
+	}
+
+	for (i=0; i < new_htab_size; i++)
+		new_conn_htab[i] = NULL;
+
+	pthread_mutex_lock(&conn_htab_mutex);
+
+	/* For each bucket in the hash table */
+	for (i=0; i < conn_htab_size; i++)
+	{
+		/* for each entry in this bucket */
+		bin = conn_htab[i];
+
+		while (bin)
+		{
+			MotionConn *conn=bin->conn;
+
+			new_hashcode = ((conn->conn_info.srcPid ^ conn->conn_info.dstPid) +
+							conn->conn_info.dstContentId) % new_htab_size;
+
+			/* save a reference to this bin */
+			newbin = bin;
+			
+			/* advance to the next bin in the old table */
+			bin = bin->next;
+
+			/* add this bin to the new table */
+			newbin->next = new_conn_htab[new_hashcode];;
+		}
+	}
+
+	free(conn_htab);
+	conn_htab_size = new_htab_size;
+	conn_htab = new_conn_htab;
+
+	pthread_mutex_unlock(&conn_htab_mutex);
+}
+
+/*=========================================================================
+ * VISIBLE FUNCTIONS
+ */
+
 /* See ml_ipc.h */
 void
 InitMotionLayerIPC(void)
@@ -756,8 +812,7 @@ InitMotionLayerIPC(void)
 		elog(LOG, "Interconnect listening on tcp port %d udp port %d (0x%x)", tcp_listener, udp_listener, Gp_listener_port);
 
 	/* set up the connection hash table */
-//	conn_htab_size = Max((GpIdentity.numsegments/2), 16);
-	conn_htab_size = Max((GpIdentity.numsegments*2), 16);
+	conn_htab_size = DEFAULT_CONN_HTAB_SIZE;
 	conn_htab = (struct conn_htab_bin **)malloc(conn_htab_size * sizeof(struct conn_htab_bin *));
 
 	for (i=0; i < conn_htab_size; i++)
@@ -1655,6 +1710,12 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
            mySlice->sliceIndex == mySliceId);
 
 	pthread_mutex_lock(&rx_thread_mutex);
+
+	/* rearrange the connection hash table, if required */
+	if (conn_htab_size != DEFAULT_CONN_HTAB_SIZE)
+	{
+		conn_rehash();
+	}
 
 	/* now we'll do some setup for each of our Receiving Motion Nodes. */
 	foreach(cell, mySlice->children)

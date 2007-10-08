@@ -101,6 +101,8 @@ int			Gp_interconnect_queue_depth=1;	/* max number of messages
 											 * waiting in rx-queue
 											 * before we drop.*/
 
+int			Gp_interconnect_hash_multiplier=2;	/* sets the size of the hash table used by the UDP-IC */
+
 int			interconnect_setup_timeout=20;
 
 int			Gp_interconnect_type = INTERCONNECT_TYPE_TCP;
