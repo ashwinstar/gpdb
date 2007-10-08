@@ -7,6 +7,7 @@
 #include <gpcc_json.h>
 #include <gpcc_file.h>
 #include <gpcc_spin.h>
+#include <gpcc_strings.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <json/json.h>

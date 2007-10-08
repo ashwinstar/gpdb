@@ -1,3 +1,73 @@
+static apr_status_t config_addsegment(struct json_object *msg, char *key, const char *value)
+{
+    char *node, *last;
+    char *dir;
+    char *v = strdup(value);
+    struct json_object *obj;
+
+    node = apr_strtok(v, ":", &last);
+    if (!node)
+	goto bail;
+
+    dir = apr_strtok(0, ":", &last);
+    if (!dir)
+	goto bail;
+
+    obj = json_object_new_object();
+    if (!obj)
+	goto bail;
+
+    json_object_object_add(obj, "node", json_object_new_string(node));
+    json_object_object_add(obj, "dir", json_object_new_string(dir));
+    
+    json_object_object_add(msg, key, obj);
+
+    return 0;
+
+    bail:
+    if (v) free(v);
+    return APR_EINVAL;
+
+}
+
+static apr_status_t config_addnode(struct json_object *msg, char *key, const char *value)
+{
+    char *bs, *es;
+    char *nodestr = strdup(value);
+    char *tok, *last;
+    struct json_object *array;
+
+    if (!nodestr){
+	return APR_EINVAL;
+    }
+
+    array = json_object_new_array();
+    if (!array)
+	goto bail;
+
+    bs = strchr(nodestr, '(');
+    es = strchr(nodestr, ')');
+
+    if (!bs || !es)
+	goto bail;
+    
+    nodestr=bs+1;
+    *es = 0;
+    
+    for (tok = apr_strtok(nodestr, " ,", &last) ; tok ; tok = apr_strtok(0, " ,", &last)) {
+	json_object_array_add(array, json_object_new_string(gpcc_string_trim(tok)));
+    }
+
+    json_object_object_add(msg, key, array);
+
+    if (nodestr) free(nodestr);
+    return 0;
+
+    bail:
+
+    if (nodestr) free(nodestr);
+    return APR_EINVAL;
+}
 
 static struct json_object *config_to_json_object() 
 {
@@ -60,7 +130,7 @@ static struct json_object *config_to_json_object()
 	if (!value) 
 	    break;
 
-	json_object_object_add(obj, key, json_object_new_string((char *)value));    
+	config_addnode(obj, key, value);
     }
 
     for (i = 0 ; ; i++) {
@@ -68,7 +138,8 @@ static struct json_object *config_to_json_object()
 	value = config_get(gpfts.config, key);
 	if (!value)
 	    break;
-	json_object_object_add(obj, key, json_object_new_string((char *)value));    
+
+	config_addsegment(obj, key, value);
     }
 
     for (i = 0 ; ; i++) {
@@ -76,16 +147,16 @@ static struct json_object *config_to_json_object()
 	value = config_get(gpfts.config, key);
 	if (!value)
 	    break;
-	json_object_object_add(obj, key, json_object_new_string((char *)value));    
+	config_addsegment(obj, key, value);
 
 	sprintf(key, "gpdb.seg.%d.1", i);
 	value = config_get(gpfts.config, key);
 	if (!value)
 	    continue;
-	json_object_object_add(obj, key, json_object_new_string((char *)value));    
+	config_addsegment(obj, key, value);
     }
 
-
+    gpcc_log_info(json_object_to_json_string(obj));
 
     return obj;
 }
