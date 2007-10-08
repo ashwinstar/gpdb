@@ -14,37 +14,12 @@
 #include <apr_thread_mutex.h>
 
 
-
-#if defined(_MSC_VER)
-#pragma pack(push,1)
-#define GPCC_PACKED
-#else
-#define GPCC_PACKED __attribute__ ((__packed__))
-#endif
-
-
-struct gpcc_net_packet_t {
-    struct {
-	apr_uint32_t _reserved;	/* internal use */
-	apr_uint16_t type;      /* packet type */
-	apr_uint16_t len;       /* #bytes in packet body */
-	apr_uint32_t sndidx;    /* sender cmdidx */
-	apr_uint32_t rcvidx;    /* receiver cmdidx */
-    } mh;
-    char*        payload;
-} GPCC_PACKED;
-
-#ifdef _MSC_VER
-#pragma pack(pop)
-#endif
-#undef GPCC_PACKED
-
 /*
  *  Get a new packet from buf[0..*len]
  *  If there is a packet, fill up pkt, return APR_SUCCESS and #bytes consumed in buf in len.
  *  If no packet can be read, return APR_SUCCESS and 0 in len.
  */
-APR_DECLARE(apr_status_t) gpcc_net_parse_packet(gpcc_net_packet_t* pkt, const char* buf, int* len);
+APR_DECLARE(apr_status_t) gpcc_net_parse_packet(gpcc_net_packet_t** pkt, const char* buf, int* len);
 
 
 /*
@@ -447,8 +422,7 @@ static void conn_fire_read(gpcc_net_conn_t conn)
 	int bot = in->bot;
 	int top = in->top;
 	int n = top - bot;
-	gpcc_net_packet_t pktbuf;
-	gpcc_net_packet_t* pkt = &pktbuf;
+	gpcc_net_packet_t* pkt = 0;
 
 	if (pconn->from_peer.hdr == 0) {
 	    /* pending a header from peer, connection not opened or accepted yet */
@@ -461,7 +435,7 @@ static void conn_fire_read(gpcc_net_conn_t conn)
 	}
 
 	if (pconn->packet_mode) {
-	    int e = gpcc_net_parse_packet(pkt, byte + bot, &n);
+	    int e = gpcc_net_parse_packet(&pkt, byte + bot, &n);
 	    spin = gpcc_spin_release(spin);
 	    if (e) {
 		gpcc_warning(FLINE, "bad packet - closing connection");
@@ -471,6 +445,8 @@ static void conn_fire_read(gpcc_net_conn_t conn)
 	    if (!pkt) 		/* no packet yet */
 		return;
 	    net.received_packet(conn, pkt);
+
+	    free(pkt);
 	}
 	else {
 	    pkt = 0; 
@@ -1262,26 +1238,35 @@ APR_DECLARE(apr_status_t) gpcc_net_parse_request(gpcc_net_header_t** hdr, const 
 #define GPCC_NET_PACKET_MAGIC (0x342ba90f)
 
 
-APR_DECLARE(apr_status_t) gpcc_net_parse_packet(gpcc_net_packet_t* pkt, const char* buf, int* plen)
+APR_DECLARE(apr_status_t) gpcc_net_parse_packet(gpcc_net_packet_t** packet, const char* buf, int* plen)
 {
     const char* p = buf;
     const char* q = buf + *plen;
+    gpcc_net_packet_t pkt;
+
     *plen = 0;
 
-    if (q - p < sizeof(pkt->mh))
+    if (q - p < sizeof(pkt.mh)) {
+	*packet = 0;
 	return 0;
-    memcpy(&pkt->mh, p, sizeof(pkt->mh));
-    p += sizeof(pkt->mh);
+    }
+    memcpy(&pkt.mh, p, sizeof(pkt.mh));
+    p += sizeof(pkt.mh);
 
-    if (pkt->mh._reserved != GPCC_NET_PACKET_MAGIC)  {
+    if (pkt.mh._reserved != GPCC_NET_PACKET_MAGIC)  {
 	gpcc_warning(FLINE, "gpcc_net_parse_packet: bad magic number in packet");
 	return APR_EINVAL;
     }
-    if (q - p < pkt->mh.len)
+    if (q - p < pkt.mh.len) {
+	*packet = 0;
 	return 0;
+    }
 
-    q = p + pkt->mh.len;
+    q = p + pkt.mh.len;
     *plen = q - buf;
+
+    *packet = malloc(sizeof(pkt) + pkt.mh.len);
+    memcpy((char *) *packet, buf, *plen);
     return 0;
 }
 

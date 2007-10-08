@@ -10,6 +10,30 @@
 
 typedef struct gpcc_net_packet_t gpcc_net_packet_t;
 
+#if defined(_MSC_VER)
+#pragma pack(push,1)
+#define GPCC_PACKED
+#else
+#define GPCC_PACKED __attribute__ ((__packed__))
+#endif
+
+
+struct gpcc_net_packet_t {
+    struct {
+	apr_uint32_t _reserved;	/* internal use */
+	apr_uint16_t type;      /* packet type */
+	apr_uint16_t len;       /* #bytes in packet body */
+	apr_uint32_t sndidx;    /* sender cmdidx */
+	apr_uint32_t rcvidx;    /* receiver cmdidx */
+    } mh;
+    char        payload[1];
+} GPCC_PACKED;
+
+#ifdef _MSC_VER
+#pragma pack(pop)
+#endif
+#undef GPCC_PACKED
+
 typedef struct gpcc_net_header_t gpcc_net_header_t;
 struct gpcc_net_header_t {
     int argc;

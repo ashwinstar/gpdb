@@ -16,7 +16,7 @@ struct gpcc_event_t {
     gpcc_event_type_t etype;	/* event type */
     int               edatasz;	/* size of content data (pdata[]) */
     apr_uint32_t      cmdidx;	/* command index */
-    const char*       pdata;	/* point to the data */
+    char*             pdata;	/* point to the data */
     void              (*pfree)(void*); /* internal use */
 };
 
