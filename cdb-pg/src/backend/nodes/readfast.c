@@ -1640,6 +1640,35 @@ _readCreateStmt(const char ** str)
 	READ_DONE();
 }
 
+static ExtTableTypeDesc *
+_readExtTableTypeDesc(const char ** str)
+{
+	READ_LOCALS(ExtTableTypeDesc);
+	
+	READ_ENUM_FIELD(exttabletype, ExtTableType);
+	READ_NODE_FIELD(location_list);
+	READ_NODE_FIELD(on_clause);
+	READ_STRING_FIELD(command_string);
+	
+	READ_DONE();
+}
+
+static CreateExternalStmt *
+_readCreateExternalStmt(const char ** str)
+{
+	READ_LOCALS(CreateExternalStmt);
+	
+	READ_NODE_FIELD(relation);
+	READ_NODE_FIELD(tableElts);
+	READ_NODE_FIELD(exttypedesc);
+	READ_STRING_FIELD(format);
+	READ_NODE_FIELD(formatOpts);
+	READ_BOOL_FIELD(isweb);
+	READ_NODE_FIELD(sreh);
+	
+	READ_DONE();
+}
+
 static FkConstraint *
 _readFkConstraint(const char ** str)
 {
@@ -3224,6 +3253,12 @@ readNodeBinary(const char ** str)
 
 			case T_CreateStmt:
 				return_value = _readCreateStmt(str);
+				break;
+			case T_ExtTableTypeDesc:
+				return_value = _readExtTableTypeDesc(str);
+				break;
+			case T_CreateExternalStmt:
+				return_value = _readCreateExternalStmt(str);
 				break;
 			case T_IndexStmt:
 				return_value = _readIndexStmt(str);

@@ -239,7 +239,7 @@ static void doNegateFloat(Value *v);
 				OptInherit definition
 				OptWith opt_distinct opt_definition func_args func_args_list
 				func_as createfunc_opt_list alterfunc_opt_list
-				aggr_args aggr_args_list location_list old_aggr_definition old_aggr_list
+				aggr_args aggr_args_list old_aggr_definition old_aggr_list
 				oper_argtypes RuleActionList RuleActionMulti
 				cdb_string_list
 				opt_mirror_location
@@ -2847,7 +2847,7 @@ OptWeb:		WEB						{ $$ = TRUE; }
 						;
 
 ExtTypedesc:
-			LOCATION '(' location_list ')'		
+			LOCATION '(' cdb_string_list ')'		
 			{
 				ExtTableTypeDesc *n = makeNode(ExtTableTypeDesc);
 				n->exttabletype = EXTTBL_TYPE_LOCATION;
@@ -2902,11 +2902,6 @@ ext_on_clause_item:
 			{
 				$$ = makeDefElem("random", (Node *)makeInteger($2));
 			}
-			;
-	
-location_list:  	
-			Sconst								{ $$ = list_make1($1); }
-			| location_list ',' Sconst			{ $$ = lappend($1, $3); }
 			;
 
 format_opt: 

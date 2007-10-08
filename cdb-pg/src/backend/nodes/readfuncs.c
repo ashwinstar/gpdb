@@ -1819,6 +1819,35 @@ _readCreateStmt(void)
 	READ_DONE();
 }
 
+static ExtTableTypeDesc *
+_readExtTableTypeDesc(void)
+{
+	READ_LOCALS(ExtTableTypeDesc);
+	
+	READ_ENUM_FIELD(exttabletype, ExtTableType);
+	READ_NODE_FIELD(location_list);
+	READ_NODE_FIELD(on_clause);
+	READ_STRING_FIELD(command_string);
+	
+	READ_DONE();
+}
+
+static CreateExternalStmt *
+_readCreateExternalStmt(void)
+{
+	READ_LOCALS(CreateExternalStmt);
+	
+	READ_NODE_FIELD(relation);
+	READ_NODE_FIELD(tableElts);
+	READ_NODE_FIELD(exttypedesc);
+	READ_STRING_FIELD(format);
+	READ_NODE_FIELD(formatOpts);
+	READ_BOOL_FIELD(isweb);
+	READ_NODE_FIELD(sreh);
+	
+	READ_DONE();
+}
+
 static FkConstraint *
 _outFkConstraint(void)
 {
@@ -3040,6 +3069,7 @@ static ParseNodeInfo infoAr[] =
 	{"CREATECONVERSION", (ReadFn)_readCreateConversionStmt},
 	{"CREATEDBSTMT", (ReadFn)_readCreatedbStmt},
 	{"CREATEDOMAINSTMT", (ReadFn)_readCreateDomainStmt},
+	{"CREATEEXTERNALSTMT", (ReadFn)_readCreateExternalStmt},
 	{"CREATEFUNCSTMT", (ReadFn)_readCreateFunctionStmt},
 	{"CREATEOPCLASS", (ReadFn)_readCreateOpClassStmt},
 	{"CREATEOPCLASSITEM", (ReadFn)_readCreateOpClassItem},
@@ -3060,6 +3090,7 @@ static ParseNodeInfo infoAr[] =
 	{"DROPROLESTMT", (ReadFn)_readDropRoleStmt},
 	{"DROPSTMT", (ReadFn)_readDropStmt},
 	{"EXTERNALSCAN", (ReadFn)_readExternalScan},
+	{"EXTTABLETYPEDESC", (ReadFn)_readExtTableTypeDesc},
 	{"FIELDSELECT", (ReadFn)_readFieldSelect},
 	{"FIELDSTORE", (ReadFn)_readFieldStore},
 	{"FKCONSTRAINT", (ReadFn)_outFkConstraint},

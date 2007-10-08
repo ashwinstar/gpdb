@@ -278,10 +278,7 @@ static void update_ri_trigger_args(Oid relid,
 					   const char *newname,
 					   bool fk_scan,
 					   bool update_relname);
-static void StoreExternalRelation(Oid tbloid, Datum locations, Datum locationExec, 
-								  char *commandString, Datum formatopts, 
-								  char formattype, bool issreh, int rejectlimit, 
-								  char rejectlimittype, Oid errtbloid);
+static void StoreExternalRelation(CreateExternalStmt *stmt, Oid tbloid);
 static Datum transformLocationUris(List *locs, bool isweb);
 static Datum transformExecOnClause(List	*on_clause);
 static char transformFormatType(char *formatname);
@@ -603,7 +600,7 @@ DefineRelation_int(CreateStmt *stmt,
 										  &stmt->oidInfo.comptypeOid);
 
 	StoreCatalogInheritance(relationId, inheritOids);
-
+	
 	/*
 	 * We must bump the command counter to make the newly-created relation
 	 * tuple visible for opening.
@@ -672,6 +669,7 @@ DefineRelation_int(CreateStmt *stmt,
 										 pMirrorResults,
 										 pDispatchThreads,
 										 "DefineRelation_int");
+		
 	}
 
 	/*
@@ -683,22 +681,31 @@ DefineRelation_int(CreateStmt *stmt,
 	return relationId;
 }
 
-extern void	DefineExternalRelation(CreateExternalStmt *stmt)
+/* ----------------------------------------------------------------
+*		DefineExternalRelation
+*				Creates a new external relation.
+*
+* In here we first dispatch a normal DefineRelation() (with relkind
+* external) in order to create the external relation entries in pg_class
+* pg_type etc. Then once this is done we dispatch ourselves (DefineExternalRelation)
+* in order to create the pg_exttable entry accross the gp array and we
+* also record a dependency with the error table, if one exists.
+*
+* Why don't we just do all of this in one dispatch run? because that
+* involves duplicating the DefineRelation() code or severly modifying it
+* to have special cases for external tables. IMHO it's better and cleanwer
+* to leave it intact and do another dispatch. 
+* ----------------------------------------------------------------
+*/
+extern void	DefineExternalRelation(CreateExternalStmt *createExtStmt)
 {
+	bool	shouldDispatch = Gp_role == GP_ROLE_DISPATCH && IsNormalProcessingMode();
+	struct CdbDispatchResults *primaryResults = NULL;
+    struct CdbDispatchResults *mirrorResults = NULL;
+	CdbDispatchCmdThreads     *dispatchThreads = NULL;
 	
 	CreateStmt *createStmt = makeNode(CreateStmt);
-	ExtTableTypeDesc *exttypeDesc = NULL;
-	SingleRowErrorDesc *singlerowerrorDesc = NULL;
-	Oid			extRelOid;
-	Datum		locationUris = 0;
-	Datum		formatOptStr;
-	Datum		locationExec = 0;
-	char		formattype;
-	char		*commandString = NULL;
-	int			rejectlimit = -1;
-	char		rejectlimittype = '\0';
-	Oid			fmtErrTblOid = InvalidOid;
-	bool		issreh = false; /* is single row error handling requested? */
+	Oid reloid = 0;
 	
 	/*
 	 * Only superusers allowed to create an external table
@@ -712,8 +719,8 @@ extern void	DefineExternalRelation(CreateExternalStmt *stmt)
 	 * now set the parameters for keys/inheritance etc. Most of these are
 	 * uninteresting for external relations...
 	 */
-	createStmt->relation = stmt->relation;
-	createStmt->tableElts = stmt->tableElts;
+	createStmt->relation = createExtStmt->relation;
+	createStmt->tableElts = createExtStmt->tableElts;
 	createStmt->inhRelations = NIL;
 	createStmt->constraints = NIL;
 	createStmt->options = NIL;
@@ -723,7 +730,7 @@ extern void	DefineExternalRelation(CreateExternalStmt *stmt)
 	/*
 	 * Policy for external tables is a NULL policy (randomly distributed)
 	 */
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if (shouldDispatch)
 	{		
 		createStmt->policy = (GpPolicy *) palloc(sizeof(GpPolicy) + 
 										sizeof(createStmt->policy->attrs[0]));
@@ -737,113 +744,98 @@ extern void	DefineExternalRelation(CreateExternalStmt *stmt)
 		createStmt->policy = NULL;
 	}
 	
-	exttypeDesc = (ExtTableTypeDesc *)stmt->exttypedesc;
-	
-	switch(exttypeDesc->exttabletype)
-	{
-		case EXTTBL_TYPE_LOCATION:
-			
-			/* Parse and validate URI strings (LOCATION clause) */
-			locationUris = transformLocationUris(exttypeDesc->location_list,
-												 stmt->isweb);
-			break;
-			
-		case EXTTBL_TYPE_EXECUTE:
-			locationExec = transformExecOnClause(exttypeDesc->on_clause);
-			commandString = exttypeDesc->command_string;
-			
-			break;
-		
-		default:
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("Internal error: unknown external table type")));
-	}
-	
-	/*
-	 * Parse and validate FORMAT clause.
+    /*
+	 * First, create the pg_class and other regular relation catalog entries.
+	 * Under the covers this will dispatch a CREATE TABLE statement to all the
+	 * QEs.
 	 */
-	formattype = transformFormatType(stmt->format);
-	formatOptStr = transformFormatOpts(formattype, stmt->formatOpts);
-	
+	if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY)
+		reloid = DefineRelation(createStmt, RELKIND_EXTERNAL);
+		
 	/*
-	 * Parse single row error handling info if available
+	 * Now we take care of pg_exttable and dependency with error table (if any).
 	 */
-	singlerowerrorDesc = (SingleRowErrorDesc *)stmt->sreh;
-	
-	if(singlerowerrorDesc)
-	{
-		issreh = true;
+    PG_TRY();
+    {
 		
-		/* get reject limit */
-		rejectlimit = singlerowerrorDesc->rejectlimit;
-		
-		if(rejectlimit < 2)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("Segment reject limit for single row error handling "
-							"must be 2 or larger (got %d)", rejectlimit)));
-		
-		/* get reject limit type - (r)ows or (p)ercent */
-		rejectlimittype = (singlerowerrorDesc->is_limit_in_rows ? 'r' : 'p');
-				
-		if(rejectlimittype == 'p')
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_FEATURE_NOT_YET),
-					 errmsg("Reject limit in percentage is not yet supported")));
-		
-		/* KEEP only allowed for COPY */
-		if(singlerowerrorDesc->is_keep)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("KEEP is not supported in the external table definition. "
-							"Error table will be dropped when its external table is "
-							"dropped.")));
-		
-		if(singlerowerrorDesc->errtable)
-			fmtErrTblOid = RangeVarGetRelid(singlerowerrorDesc->errtable, true);
+		/*
+		 * get our pg_class external rel OID. If we're the QD we just created
+		 * it above. If we're a QE DefineRelation() was already dispatched to
+		 * us and therefore we have a local entry in pg_class. get the OID 
+		 * from cache.
+		 */
+		if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY)
+			Assert(reloid != InvalidOid);
 		else
-			fmtErrTblOid = InvalidOid; /* no err tbl was requested */			
-	}
+			reloid = RangeVarGetRelid(createExtStmt->relation, true);
 		
-		
-		
-	/*
-	 * Create the relation (pg_class, pg_type).
-	 */
-	extRelOid = DefineRelation(createStmt, RELKIND_EXTERNAL);
-	
-	/*
-	 * add an entry into pg_exttable using the reloid from DefineRelation.
-	 */
-	StoreExternalRelation(extRelOid, 
-						  locationUris, 
-						  locationExec, 
-						  commandString, 
-						  formatOptStr, 
-						  formattype,
-						  issreh,
-						  rejectlimit,
-						  rejectlimittype,
-						  fmtErrTblOid);
-	
-	/*
-	 * record a dependency between the external table and its error table
-	 */
-	/* if(fmtErrTblOid != InvalidOid)
-	{
-		ObjectAddress	myself,		
-						referenced; 
-		
-		myself.classId = RelationRelationId;
-		myself.objectId = extRelOid;
-		myself.objectSubId = 0;
-		referenced.classId = RelationRelationId;
-		referenced.objectId = fmtErrTblOid;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		/*
+		 * create a pg_exttable entry for this external table.
+		 *
+		 * NOTE: this should be done in all GP roles. However, since in earlier
+		 * releases we only done it on the QD, we continue this behavior until
+		 * our upgrade utility can deal with this change. We also make sure to
+		 * only DROP the pg_exttable entry on the QD.
+		 */
+		if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY)
+			StoreExternalRelation(createExtStmt, reloid);
 
-	}*/
+		/*
+		 * record a dependency between the external table and its error table (if one exists)
+		 */		
+/*	enable soon...	
+		if(((SingleRowErrorDesc *)createExtStmt->sreh)->errtable)
+		{
+			ObjectAddress	myself,		
+			referenced; 
+			Oid		fmtErrTblOid = RangeVarGetRelid(((SingleRowErrorDesc *)createExtStmt->sreh)->errtable, true);
+		
+			Assert(fmtErrTblOid != InvalidOid);
+			
+			myself.classId = RelationRelationId;
+			myself.objectId = fmtErrTblOid;
+			myself.objectSubId = 0;
+			referenced.classId = RelationRelationId;
+			referenced.objectId = reloid;
+			referenced.objectSubId = 0;
+			recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		}
+*/		
+		if (shouldDispatch)
+		{
+			
+			/* Dispatch the statement tree to all primary and mirror segdbs.
+			* Doesn't wait for the QEs to finish execution.
+			*/
+			cdbdisp_dispatchUtilityStatement((Node *)createExtStmt,
+											 true,      /* cancelOnError */
+											 true,      /* startTransaction */
+											 true,      /* withSnapshot */
+											 &primaryResults,
+											 &mirrorResults,
+											 &dispatchThreads,
+											 "DefineExternalRelation");
+		}
+    }
+	PG_CATCH();
+	{
+        /* If dispatched, stop QEs and clean up after them. */
+        if (primaryResults)
+            cdbdisp_handleError(primaryResults, mirrorResults, dispatchThreads);
+		
+        /* Carry on with error handling. */
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+	
+	/*
+	 * We successfully completed our work.	Now check the results from the
+	 * qExecs, if dispatched.  This waits for them to all finish, and exits
+	 * via ereport(ERROR,...) if unsuccessful.
+	 */
+	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
+	
+	
 }
 
 /*
@@ -912,7 +904,9 @@ RemoveExternalRelation(const RangeVar *relation, DropBehavior behavior)
 	performDeletion(&object, behavior);
 	
 	/*
-	 * now remove the pg_exttable entry (for now it's only on the QD)
+	 * now remove the pg_exttable entry 
+	 *
+	 * NOTE: for now it's only on the QD.
 	 */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
@@ -7942,15 +7936,93 @@ AtEOSubXact_on_commit_actions(bool isCommit, SubTransactionId mySubid,
  * in pg_class and a text array of external location URIs.
  */
 static void
-StoreExternalRelation(Oid tbloid, Datum uri_locations, Datum exec_locations, 
-					  char *commandString, Datum formatopts, char formattype,
-					  bool issreh, int rejectlimit, char rejectlimittype,
-					  Oid errtbloid)
+StoreExternalRelation(CreateExternalStmt *stmt, Oid tbloid)
 {
+	ExtTableTypeDesc *exttypeDesc = NULL;
+	SingleRowErrorDesc *singlerowerrorDesc = NULL;
+	Datum		locationUris = 0;
+	Datum		formatOptStr;
+	Datum		locationExec = 0;
+	char		formattype;
+	char		*commandString = NULL;
+	int			rejectlimit = -1;
+	char		rejectlimittype = '\0';
+	Oid			fmtErrTblOid = InvalidOid;
+	bool		issreh = false; /* is single row error handling requested? */
+	
 	Relation	pg_exttable_rel;
 	HeapTuple	pg_exttable_tuple = NULL;
 	char		nulls[Natts_pg_exttable];
 	Datum		values[Natts_pg_exttable];
+	
+	exttypeDesc = (ExtTableTypeDesc *)stmt->exttypedesc;
+	
+	switch(exttypeDesc->exttabletype)
+	{
+		case EXTTBL_TYPE_LOCATION:
+			
+			/* Parse and validate URI strings (LOCATION clause) */
+			locationUris = transformLocationUris(exttypeDesc->location_list,
+												 stmt->isweb);
+			break;
+			
+		case EXTTBL_TYPE_EXECUTE:
+			locationExec = transformExecOnClause(exttypeDesc->on_clause);
+			commandString = exttypeDesc->command_string;
+			
+			break;
+			
+		default:
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("Internal error: unknown external table type")));
+	}
+	
+	/*
+	 * Parse and validate FORMAT clause.
+	 */
+	formattype = transformFormatType(stmt->format);
+	formatOptStr = transformFormatOpts(formattype, stmt->formatOpts);
+	
+	/*
+	 * Parse single row error handling info if available
+	 */
+	singlerowerrorDesc = (SingleRowErrorDesc *)stmt->sreh;
+	
+	if(singlerowerrorDesc)
+	{
+		issreh = true;
+		
+		/* get reject limit */
+		rejectlimit = singlerowerrorDesc->rejectlimit;
+		
+		if(rejectlimit < 2)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("Segment reject limit for single row error handling "
+							"must be 2 or larger (got %d)", rejectlimit)));
+		
+		/* get reject limit type - (r)ows or (p)ercent */
+		rejectlimittype = (singlerowerrorDesc->is_limit_in_rows ? 'r' : 'p');
+		
+		if(rejectlimittype == 'p')
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+					 errmsg("Reject limit in percentage is not yet supported")));
+		
+		/* KEEP only allowed for COPY */
+		if(singlerowerrorDesc->is_keep)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("KEEP is not supported in the external table definition. "
+							"Error table will be dropped when its external table is "
+							"dropped.")));
+		
+		if(singlerowerrorDesc->errtable)
+			fmtErrTblOid = RangeVarGetRelid(singlerowerrorDesc->errtable, true);
+		else
+			fmtErrTblOid = InvalidOid; /* no err tbl was requested */			
+	}
 	
  	MemSet(values, 0, sizeof(values));
 	MemSet(nulls, ' ', sizeof(nulls));
@@ -7962,7 +8034,7 @@ StoreExternalRelation(Oid tbloid, Datum uri_locations, Datum exec_locations,
 	
 	values[Anum_pg_exttable_reloid - 1] = ObjectIdGetDatum(tbloid);
 	values[Anum_pg_exttable_fmtcode - 1] = CharGetDatum(formattype);
-	values[Anum_pg_exttable_fmtopts - 1] = formatopts;
+	values[Anum_pg_exttable_fmtopts - 1] = formatOptStr;
 	
 	if(commandString)
 	{
@@ -7970,14 +8042,14 @@ StoreExternalRelation(Oid tbloid, Datum uri_locations, Datum exec_locations,
 		
 		values[Anum_pg_exttable_command - 1] = 
 		DirectFunctionCall1(textin, CStringGetDatum(commandString));
-		values[Anum_pg_exttable_location - 1] = exec_locations;
+		values[Anum_pg_exttable_location - 1] = locationExec;
 		
 	}
 	else
 	{
 		/* LOCATION type table - store uri locations. command is NULL */
 		
-		values[Anum_pg_exttable_location - 1] = uri_locations;
+		values[Anum_pg_exttable_location - 1] = locationUris;
 		values[Anum_pg_exttable_command - 1] = 0;
 		nulls[Anum_pg_exttable_command - 1] = 'n';
 	}
@@ -7988,8 +8060,8 @@ StoreExternalRelation(Oid tbloid, Datum uri_locations, Datum exec_locations,
 		values[Anum_pg_exttable_rejectlimittype - 1] = CharGetDatum(rejectlimittype);
 		
 		/* if error table specified store its OID, otherwise put a NULL */
-		if(errtbloid != InvalidOid)
-			values[Anum_pg_exttable_fmterrtbl - 1] = ObjectIdGetDatum(errtbloid);
+		if(fmtErrTblOid != InvalidOid)
+			values[Anum_pg_exttable_fmterrtbl - 1] = ObjectIdGetDatum(fmtErrTblOid);
 		else
 			nulls[Anum_pg_exttable_fmterrtbl - 1] = 'n';
 	}
@@ -8013,6 +8085,7 @@ StoreExternalRelation(Oid tbloid, Datum uri_locations, Datum exec_locations,
      * end of transaction.
      */
     heap_close(pg_exttable_rel, NoLock);
+		
 }
 
 /*
@@ -8066,14 +8139,22 @@ static Datum transformLocationUris(List *locs, bool isweb)
 	{
 		Uri			*uri;
 		text		*t;
-		const char	*uri_str_orig = (char *) lfirst(cell);
-		char		*uri_str_final = (char *) palloc(strlen(uri_str_orig) * 
-												   sizeof(char) + 
-												   1 + 4 + 1 /* default port if added */);
+		char		*uri_str_orig;
+		char		*uri_str_final; 
 		Size		len;
+		Value		*v = lfirst(cell);
 		
+		/* get the current URI string from the command */
+		uri_str_orig = pstrdup(v->val.str);
+		
+		/* parse it to its components */
 		uri = ParseUriString(uri_str_orig);
 		
+		/* allocate memory for a modified URI string (if needs modification) */
+		uri_str_final = (char *) palloc(strlen(uri_str_orig) * 
+						  sizeof(char) + 
+						  1 + 4 + 1 /* default port if added */);
+
 		/* 
 		 * in here edit the uri string if needed 
 		 */
