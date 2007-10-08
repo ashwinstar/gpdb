@@ -41,7 +41,7 @@ APR_DECLARE(apr_status_t) gpcc_pg_ctl_status(int port, const char *data_dir, cha
 	gpcc_log_error("get string from pg_ctl status failure\n");
 	return e;
     }
-    
+    *len = nread;
     status[nread] = 0;
     gpcc_log_info(status);
     return 0;
