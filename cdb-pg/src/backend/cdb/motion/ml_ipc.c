@@ -3068,6 +3068,10 @@ setupUDPListeningSocket(int backlog, int *listenerSocketFd, uint16 *listenerPort
 	if (fd < 0)
 		goto error;
 
+    fun = "fcntl(O_NONBLOCK)";
+    if (!pg_set_noblock(fd))
+        goto error;
+
 	MemSet(&saddr, 0, sizeof(saddr));
 	saddr.sin_family = AF_INET;
 	saddr.sin_port = 0;
@@ -5105,6 +5109,7 @@ static void *
 ic_rx_thread_func(void *arg)
 {
 	struct icpkthdr *pkt=NULL;
+	bool	skip_poll=false;
 
 	for (;;)
 	{
@@ -5144,30 +5149,33 @@ ic_rx_thread_func(void *arg)
 			pthread_mutex_unlock(&rx_thread_mutex);
 		}
 
-		/* do we have inbound traffic to handle ?*/
-		nfd.fd = UDPlistenerFd;
-		nfd.events = POLLIN;
-
-		timeout = RX_THREAD_POLL_TIMEOUT;
-
-		n = poll(&nfd, 1, timeout);
-
-		if (n < 0)
+		if (!skip_poll)
 		{
-			if (errno == EINTR)
+			/* do we have inbound traffic to handle ?*/
+			nfd.fd = UDPlistenerFd;
+			nfd.events = POLLIN;
+
+			timeout = RX_THREAD_POLL_TIMEOUT;
+
+			n = poll(&nfd, 1, timeout);
+
+			if (n < 0)
+			{
+				if (errno == EINTR)
+				{
+					continue;
+				}
+				write_log("Interconnect error: poll %d\n", errno);
+				break;
+			}
+
+			if (n == 0)
 			{
 				continue;
 			}
-			write_log("Interconnect error: poll %d\n", errno);
-			break;
 		}
 
-		if (n == 0)
-		{
-			continue;
-		}
-
-		if (n == 1 && (nfd.events & POLLIN))
+		if (skip_poll || (n == 1 && (nfd.events & POLLIN)))
 		{
 			/* we've got something interesting to read */
 			/* handle incoming */
@@ -5189,9 +5197,17 @@ ic_rx_thread_func(void *arg)
 
 			if (read_count < 0)
 			{
+				if (errno == EWOULDBLOCK)
+				{
+					skip_poll = false;
+					continue;
+				}
 				write_log("Interconnect error: recvfrom\n");
 				break;
 			}
+
+			/* when we get a "good" recvfrom() result, we can skip poll() until we get a bad one. */
+			skip_poll = true;
 
 			if (read_count < sizeof(pkt))
 			{
