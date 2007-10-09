@@ -21,20 +21,16 @@ APR_DECLARE(void) fsm_setup(void)
 		 0);
     gpcc_fsm_put(SYSTEM_CMDSTATE, TICK_EVENT, SYSTEM_CMDSTATE, 
 		 a_system_tick, 0);
-    gpcc_fsm_put(SYSTEM_CMDSTATE, NET_OPENED_EVENT, SYSTEM_CMDSTATE, 
-		 a_system_net_opened, 0);
-    gpcc_fsm_put(SYSTEM_CMDSTATE, NET_CLOSED_EVENT, SYSTEM_CMDSTATE,
-		 a_system_net_closed, 0);
-    gpcc_fsm_put(SYSTEM_CMDSTATE, NET_RECEIVED_EVENT, SYSTEM_CMDSTATE,
-		 a_system_net_received, 0);
 
     /* all slot -- get identity */
+    /*
     gpcc_fsm_put(GET_IDENTITY_CMDSTATE, INIT_EVENT, GET_IDENTITY_CMDSTATE, 
 		 a_get_identity_send_request, 0);
     gpcc_fsm_put(GET_IDENTITY_CMDSTATE, IDENTITY_MSG_EVENT, GET_IDENTITY_CMDSTATE,
 		 a_identity_send_request, 0);
     gpcc_fsm_put(GET_IDENTITY_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE, 
 		 a_close_conn, 0);
+    */
 
 
     /* ma slot */
@@ -51,6 +47,8 @@ APR_DECLARE(void) fsm_setup(void)
 		 ma_start_reply, 0);
     gpcc_fsm_put(GET_IDENTITY_CMDSTATE, SEG_STOP_REPLY_EVENT, GET_IDENTITY_CMDSTATE,
 		 ma_stop_reply, 0);
+    gpcc_fsm_put(GET_IDENTITY_CMDSTATE, NET_CLOSED_EVENT, NULL_CMDSTATE,
+		 ma_cleanup, 0);
 
     /* Segment FSM */
     gpcc_fsm_put(SEG_INIT_CMDSTATE, INIT_EVENT, SEG_INIT_CMDSTATE,

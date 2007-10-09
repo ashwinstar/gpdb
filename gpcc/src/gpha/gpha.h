@@ -26,15 +26,13 @@ struct conninfo_t {
     struct {
 	role_t role;
 	const char* rolespec;
-	gpcc_net_node_id_t* node_id;
-	gpcc_net_request_t* request;
+
     } peer;
     struct {
 	role_t role;
 	const char*  rolespec;		/* for QE, "0.1", "m.0", etc
 					   for MA, "lead" or "",
 					*/
-	gpcc_net_request_t request;
     } self;
 };
 
@@ -128,6 +126,7 @@ struct gpha_t {
     apr_uint16_t cmdidx_gen;
     const char*  gphome;
     cmdslot_t    cmdslot[CMDSLOT_MAX];
+    apr_uint32_t spin[1];
 };
 
 extern gpha_t gpha;

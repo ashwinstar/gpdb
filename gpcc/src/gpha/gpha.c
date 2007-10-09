@@ -6,6 +6,7 @@
 #include <apr_thread_proc.h>
 #include <gpcc_event.h>
 #include <gpcc_net.h>
+#include <gpcc_spin.h>
 #include <gpcc_fsm.h>
 #include <json/json.h>
 #include <event.h>
@@ -65,186 +66,123 @@ APR_DECLARE(void) cmdslot_free(cmdslot_t* cp)
 }
 
 
-
-
-
-
-#ifdef UNDEF
-static apr_status_t get_proto_cancel(gpcc_event_t* ev, void* cmdslot_)
+static int cmdslot_get_by_conn(gpcc_net_conn_t conn)
 {
-    cmdslot_t* cmdslot = cmdslot_;
-    gpcc_warning(FLINE, "GET_PROTO cancelled");
-    gpcc_net_close(cmdslot->conninfo->conn);
-    return 0;
-}
-
-
-
-static apr_status_t get_proto_received(gpcc_event_t* ev, void* cmdslot_)
-{
-    cmdslot_t* cmdslot = cmdslot_;
-    net_msg_event_t* res = (net_msg_event_t*) ev->edata;
-    struct json_object* dict;
-    const char* protocol = 0;
-    const char* array_name = 0;
-    const char* guid = 0;
-    const char* peer_id = 0;
-    const char* role = 0;
-    apr_pool_t* pool = cmdslot->conninfo->pool;
-
-    GPCC_DO(ev->etype == PROTO_MSG);
-    dict = json_tokener_parse(res->mbody);
-    if (is_error(dict)) {
-	gpcc_warning(FLINE, "peer protocol packet not valid json");
-	queue_failure_event(cmdslot);
-	return APR_EINVAL;
-    }
-
-    protocol = json_object_object_get_string(dict, "protocol");
-    if (!protocol || 0 != strcmp(protocol, GPCC_NET_PROTO))  {
-	gpcc_warning(FLINE, "peer protocol error");
-	goto fail;
-    }
-
-    /*
-    guid = json_object_object_get_string(dict, "guid");
-    if (!guid || 0 != strcmp(guid, gpha.guid)) {
-	gpcc_warning(FLINE, "peer guid mismatch");
-	goto fail;
-    }
-    
-    array_name = json_object_object_get_string(dict, "array_name");
-    if (!array_name || 0 != strcmp(array_name, config_get(gpha.cfg, "sys.array_name"))) {
-	gpcc_warning(FLINE, "peer sys.array_name mismatch");
-	goto fail;
-    }
-    */
-
-    peer_id = json_object_object_get_string(dict, "peer_id");
-    if (!peer_id) {
-	gpcc_warning(FLINE, "missing peer_id");
-	goto fail;
-    }
-    cmdslot->conninfo->peer_id = apr_pstrdup(pool, peer_id);
-
-    role = json_object_object_get_string(dict, "role");
-    if (!role) {
-	gpcc_warning(FLINE, "missing peer role");
-	goto fail;
-    }
-    if (0 == strcmp("ma", role))
-	cmdslot->conninfo->peer_role = MA_ROLE;
-    else if (0 == strcmp("ha", role))
-	cmdslot->conninfo->peer_role = HA_ROLE;
-    else if (0 == strcmp("qd", role))
-	cmdslot->conninfo->peer_role = QD_ROLE;
-    else if (0 == strcmp("qe", role))
-	cmdslot->conninfo->peer_role = QE_ROLE;
-    else {
-	gpcc_warning(FLINE, "unknown peer role");
-	goto fail;
-    }
-
-    json_object_put(dict);
-
-    return 0;
-
-    fail:
-    queue_failure_event(cmdslot);
-    return APR_EINVAL;
-}
-
-
-static apr_status_t system_send_proto(gpcc_event_t* ev, void* cmdslot_)
-{
-    cmdslot_t* cmdslot = cmdslot_;
-    net_msg_event_t* req = (net_msg_event_t*) ev->edata;
-    gpcc_net_node_id_t nodeid;
-    char nodeidstr[sizeof(nodeid.opaque) * 2 + 1];
-    gpcc_proto_msghdr_t replyhdr;
     int i;
-    char buffer[1024];
     
-
-    nodeid = gpcc_net_my_node_id();
-    for (i = 0; i < sizeof(nodeid.opaque); i++)
-	sprintf(nodeidstr + i*2, "%x", nodeid.opaque[i]);
-
-    buffer[sizeof(buffer)-2] = 0;
-    apr_snprintf(buffer, sizeof(buffer), "{ "
-		 "protocol: '%s', "
-		 "peer_id: '%s', "
-		 "role: '%s' }", 
-		 GPCC_NET_PROTO,
-		 nodeidstr, 
-		 "ha");
-    GPCC_DO(buffer[sizeof(buffer)-2] == 0); /* make sure buffer not overflowed */
-
-    GPCC_NET_MSGHDR_FILL(&replyhdr, PROTO_MSG, strlen(buffer),
-			 req->mhdr.rcvidx, req->mhdr.sndidx);
-    if (gpcc_net_send(cmdslot->conninfo->conn, &replyhdr, buffer)) {
-	gpcc_net_close(cmdslot->conninfo->conn);
-	return 0;
+    for (i = 0 ; i < CMDSLOT_MAX ; i++) {
+	if (gpha.cmdslot[i].cmdidx == 0) 
+	    continue;
+	if (gpha.cmdslot[i].conninfo && gpha.cmdslot[i].conninfo->conn == conn) {
+	    return gpha.cmdslot[i].cmdidx;
+	}
     }
     return 0;
 }
-#endif
 
-
-
-
-
-
+/* callback from gpcc_net. this runs in the network thread */
+static void net_opened_cb(gpcc_net_conn_t conn,
+			  const char *peer_addr,
+			  gpcc_net_header_t *to_peer,
+			  gpcc_net_header_t *from_peer)
+{
+    /* NOT IMPLEMENTED */
+    return;
+}
 
 
 /* callback from gpcc_net. this runs in the network thread */
-static void* net_opened_cb(gpcc_net_conn_t conn, void* arg, 
-			    int self_origin, apr_pool_t* pool)
+static void net_accepted_cb(gpcc_net_conn_t conn,
+			    const char *peer_addr,
+			    gpcc_net_header_t *from_peer)
 {
-    conninfo_t* conninfo;
-    eventinfo_t* ei;
-    gpcc_event_t* ev = gpcc_event_alloc(NET_OPENED_EVENT, 0, sizeof(*ei));
+    int e;
+    gpcc_net_header_t hdr;
+    cmdslot_t *cmdslot;
+    conninfo_t *conninfo;
+    apr_uint32_t *spin;
 
-    GPCC_DO(arg == 0);
-    conninfo = apr_pcalloc(pool, sizeof(*conninfo));
-    conninfo->pool = pool;
+    if (from_peer->argc != 1 || strcmp(from_peer->argv[0], GPCC_NET_PACKET_PROTO) != 0){
+	gpcc_warning(FLINE, "peer header not match!");
+	gpcc_net_close(conn);
+	return;
+    }
+
+    /* create cmdslot */
+    spin = gpcc_spin_secure(gpha.spin);
+    cmdslot = cmdslot_alloc("MA->HA", GET_IDENTITY_CMDSTATE, 0);
+    conninfo = apr_pcalloc(cmdslot->pool, sizeof(*conninfo));
+    conninfo->pool = cmdslot->pool;
     conninfo->conn = conn;
-    conninfo->self_origin = self_origin;
-    ei = (eventinfo_t*) ev->edata;
-    ei->conninfo = conninfo;
-    gpcc_evqueue_put(gpha.evq, ev);
-    return conninfo;
+    cmdslot->conninfo = conninfo;
+    gpcc_spin_release(spin);
+
+    hdr.argc = 1;
+    hdr.argv[0] = GPCC_NET_PACKET_PROTO;
+    hdr.hc = 0;
+    if (0 != (e = gpcc_net_send_header(conn, &hdr))) {
+	gpcc_warning(FLINE, "gpcc_net_send_header failed");
+    }
 }
 
 /* callback from gpcc_net. this runs in the network thread */
-static void net_closed_cb(gpcc_net_conn_t conn, void* arg)
+static int net_recv_cb(gpcc_net_conn_t conn,
+		       const char *buf, int buflen)
 {
-    eventinfo_t* ei;
-    gpcc_event_t* ev = gpcc_event_alloc(NET_CLOSED_EVENT, 0, sizeof(*ei));
-    ei = (eventinfo_t*) ev->edata;
-    ei->conninfo = arg;
-    gpcc_evqueue_put(gpha.evq, ev);
+    /* NOT IMPLEMENTED */
+
+    return 0;
 }
-
-
+			  
 /* callback from gpcc_net. this runs in the network thread */
-static void net_recv_cb(gpcc_net_conn_t conn, void* arg)
+static void net_recv_packet_cb(gpcc_net_conn_t conn,
+			       gpcc_net_packet_t *pkt)
 {
-    eventinfo_t* ei;
-    gpcc_event_t* ev = gpcc_event_alloc(NET_RECEIVED_EVENT, 0, sizeof(*ei));
-    ei = (eventinfo_t*) ev->edata;
-    ei->conninfo = arg;
-    gpcc_evqueue_put(gpha.evq, ev);
+    gpcc_event_t *ev;
+    apr_uint32_t *spin;
+    int cmdidx = 0;
+
+    if (pkt->mh.rcvidx == 0) {
+	spin = gpcc_spin_secure(gpha.spin);
+	cmdidx = cmdslot_get_by_conn(conn);
+	gpcc_spin_release(spin);
+
+    } else {
+	cmdidx = pkt->mh.rcvidx;
+    }
+
+    if (! cmdidx) {
+	ev = gpcc_event_alloc(pkt->mh.type, cmdidx, sizeof(*pkt) + pkt->mh.len);
+	memcpy(ev->pdata, pkt, sizeof(*pkt) + pkt->mh.len);
+	gpcc_evqueue_put(gpha.evq, ev);
+    }
 }
 
 /* callback from gpcc_net. this runs in the network thread */
-static void time_tick_cb(apr_time_t now)
+static void net_closed_cb(gpcc_net_conn_t conn)
+{
+    gpcc_event_t *ev;
+    apr_uint32_t *spin;
+    int cmdidx = 0;
+
+    spin = gpcc_spin_secure(gpha.spin);
+    cmdidx = cmdslot_get_by_conn(conn);
+    gpcc_spin_release(spin);
+
+    if (! cmdidx) {
+	ev = gpcc_event_alloc(NET_CLOSED_EVENT, cmdidx, 0);
+	gpcc_evqueue_put(gpha.evq, ev);
+    }
+
+}
+
+/* callback from gpcc_net. this runs in the network thread */
+static void net_tick_cb(apr_time_t now)
 {
     gpcc_event_t* ev = gpcc_event_alloc(TICK_EVENT, 0, 0);
     gpcc_evqueue_put(gpha.evq, ev);
 }
-
-
+			  
 
 /* Main program for the daemon */
 static void d_main(void)
@@ -253,6 +191,7 @@ static void d_main(void)
     gpcc_event_t* ev = 0;
     gpcc_evqueue_t* evq;
     cmdslot_t* cp;
+    apr_uint32_t *spin;
 
     event_init();
 
@@ -272,32 +211,40 @@ static void d_main(void)
     gpcc_log_info("[%s] started gpha %s", date, gpha.dir);
 
     /* network up */
-    GPCC_DO(0 == gpcc_net_start(gpha.port,
-				net_opened_cb,
-				net_closed_cb,
-				net_recv_cb,
-				time_tick_cb, 0));
+    GPCC_DO(0 == gpcc_net_init(gpha.port,
+			       net_opened_cb,
+			       net_accepted_cb,
+			       net_recv_cb,
+			       net_recv_packet_cb,
+			       net_closed_cb,
+			       net_tick_cb));
 
     gpcc_log_info("gpha listening to port %d", gpha.port);
 
     cp = cmdslot_alloc("SYSTEM", SYSTEM_CMDSTATE, 0);
     gpha.system_cmdidx = cp->cmdidx;
 
+
+    spin = gpcc_spin_secure(gpha.spin);
     for (;;) {
 	int nxtstate;
 	gpcc_fsm_func_t** action;
+
+	spin = gpcc_spin_release(spin);
 
 	if (ev) 
 	    gpcc_event_free(ev);
 
 	while ((ev = gpcc_evqueue_tryget(evq)) == 0) {
-	    if (gpcc_net_once())
+	    if (gpcc_net_once(1))
 		break;
 	}
 
 	/* map the cmdidx */
 	if (ev->cmdidx == 0) 	/* artificially match 0 to system_cmdidx */
 	    ev->cmdidx = gpha.system_cmdidx;
+
+	spin = gpcc_spin_secure(spin);
 
 	if (! (cp = cmdslot_get(ev->cmdidx))) {
 	    gpcc_log_info("Event %s contains unknown cmdidx %x", 
@@ -332,8 +279,10 @@ static void d_main(void)
 			 event_str(ev->etype), 
 			 cmdstate_str(nxtstate));
 
+	    spin = gpcc_spin_release(spin);
 	    gpcc_evqueue_put(gpha.evq, 
 			     gpcc_event_alloc(FAILURE_EVENT, cp->cmdidx, 0));
+	    spin = gpcc_spin_secure(spin);
 	}
 
 	/* free up the cmdslot if necessary */
@@ -341,6 +290,7 @@ static void d_main(void)
 	    cmdslot_free(cp);
     }
 
+    spin = gpcc_spin_release(spin);
     if (ev) {
 	gpcc_event_free(ev);
     }
