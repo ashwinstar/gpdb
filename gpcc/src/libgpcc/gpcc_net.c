@@ -169,6 +169,7 @@ struct conncb_t {
     gpcc_net_conn_t conn;
     SOCKET          sock;
     apr_pool_t*     pool;
+    const char*     tag;
     char            peer_addr[24];  /* format IP:port -- 123.456.789.012:34567 */
     struct event    ev;
     struct {
@@ -213,10 +214,53 @@ struct net_t {
     /* connection table */
     apr_uint32_t conntab_spin;	/* protects conntab */
     conncb_t conntab[CONN_MAX];
+
+    /* tag table */
+    apr_uint32_t tagtab_spin;	/* protects tagtab */
+    int tagmax;
+    conncb_t* tagtab[CONN_MAX];
 };
 static net_t net = {0};
 
 
+
+static int tagtab_find(const char* tag, int* found)
+{
+    int lo, hi, mi;
+    lo = mi = 0;
+    hi = net.tagmax - 1;
+    *found = 0;
+    while (lo <= hi) {
+	int diff;
+	mi = (lo + hi) / 2;
+	diff = strcmp(tag, net.tagtab[mi]->tag);
+	if (diff > 0)
+	    lo = mi + 1;
+	else if (diff < 0)
+	    hi = mi - 1;
+	else
+	    return *found = 1, mi;
+    }
+    return (lo > mi) ? lo : mi;
+}
+
+static void tagtab_insert(int idx, conncb_t* pconn)
+{
+    if (! (0 <= idx && idx < net.tagmax)) 
+	gpcc_fatal(FLINE, "internal error: assertion failed");
+    memmove(&net.tagtab[idx+1], &net.tagtab[idx], (net.tagmax - idx) * sizeof(net.tagtab[0]));
+    net.tagtab[idx] = pconn;
+    net.tagmax++;
+}
+
+static void tagtab_remove(int idx)
+{
+    if (! (0 <= idx && idx < net.tagmax)) 
+	gpcc_fatal(FLINE, "internal error: assertion failed");
+    memmove(&net.tagtab[idx], &net.tagtab[idx+1], (net.tagmax - idx - 1) * sizeof(net.tagtab[0]));
+    net.tagmax--;
+    net.tagtab[net.tagmax] = 0;
+}
 
 
 static inline apr_uint32_t* conn_secure(gpcc_net_conn_t conn, conncb_t** ppconn)
@@ -703,6 +747,7 @@ static void do_accept(int fd, short event, void* arg)
 
     pconn->pool = pool;
     pconn->sock = sock;
+    pconn->tag = 0;
     memset(&pconn->to_peer, 0, sizeof(pconn->to_peer));
     memset(&pconn->from_peer, 0, sizeof(pconn->from_peer));
     pconn->to_peer.buf = apr_palloc(pool, sizeof(buf_t));
@@ -736,7 +781,7 @@ failure:
 	closesocket(sock);
 }
 
-APR_DECLARE(apr_status_t) gpcc_net_send_header(gpcc_net_conn_t conn,
+apr_status_t gpcc_net_send_header(gpcc_net_conn_t conn,
 					       gpcc_net_header_t *hdr)
 {
     char buf[1024];
@@ -753,7 +798,7 @@ APR_DECLARE(apr_status_t) gpcc_net_send_header(gpcc_net_conn_t conn,
 }
 
 
-APR_DECLARE(apr_status_t) gpcc_net_sendv(gpcc_net_conn_t conn,
+apr_status_t gpcc_net_sendv(gpcc_net_conn_t conn,
 					 gpcc_net_datum_t* datum, int dcnt)
 {
     int tot, i;
@@ -835,7 +880,7 @@ APR_DECLARE(apr_status_t) gpcc_net_sendv(gpcc_net_conn_t conn,
 
 
 
-APR_DECLARE(apr_status_t) gpcc_net_init(int port,
+apr_status_t gpcc_net_init(int port,
 					gpcc_net_opened_t* opened,
 					gpcc_net_accepted_t* accepted,
 					gpcc_net_received_t* received,
@@ -965,7 +1010,7 @@ APR_DECLARE(apr_status_t) gpcc_net_init(int port,
 }
 
 
-APR_DECLARE(apr_status_t) gpcc_net_once(int blocking)
+apr_status_t gpcc_net_once(int blocking)
 {
     int e = 0;
     if (event_loop(EVLOOP_ONCE | (blocking ? 0 : EVLOOP_NONBLOCK))) {
@@ -978,7 +1023,48 @@ APR_DECLARE(apr_status_t) gpcc_net_once(int blocking)
 }
 
 
-APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
+apr_status_t gpcc_net_tag(gpcc_net_conn_t conn, 
+			  const char* tag)
+{
+    apr_uint32_t* spin1 = 0;
+    apr_uint32_t* spin2 = 0;
+    conncb_t* pconn;
+    int idx, found;
+    int e = 0;
+
+    spin1 = gpcc_spin_secure(&net.tagtab_spin);
+    
+    if (! (spin2 = conn_secure(conn, &pconn))) {
+	e = APR_EINVAL;
+	goto failure;
+    }
+
+    if (pconn->tag) {
+	idx = tagtab_find(pconn->tag, &found);
+	if (0 <= idx && idx < net.tagmax && found && net.tagtab[idx] == pconn)
+	    tagtab_remove(idx);
+    }
+    pconn->tag = 0;
+    idx = tagtab_find(tag, &found);
+    if (found) {
+	e = APR_EEXIST;
+	goto failure;
+    }
+    pconn->tag = apr_pstrdup(pconn->pool, tag);
+    tagtab_insert(idx, pconn);
+    
+    spin2 = gpcc_spin_release(spin2);
+    spin1 = gpcc_spin_release(spin1);
+    return 0;
+
+    failure:
+    if (spin2) gpcc_spin_release(spin2);
+    if (spin1) gpcc_spin_release(spin1);
+    return e;
+}
+
+
+apr_status_t gpcc_net_open(gpcc_net_conn_t* conn,
 					char* peer_addr_str,
 					int argc, char** argv,
 					int hc, char** hname, char** hvalue)
@@ -1076,6 +1162,7 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
     /* make sure we initialize every field other than spin & conn */
     pconn->sock = sock;
     pconn->pool = pool;
+    pconn->tag = 0;
     {
 	unsigned char* s = (unsigned char*) &peer_addr.sin_addr;
 	sprintf(pconn->peer_addr, "%d.%d.%d.%d:%d", 
@@ -1135,7 +1222,7 @@ failure:
     return e;
 }
 
-APR_DECLARE(void) gpcc_net_close(gpcc_net_conn_t conn)
+void gpcc_net_close(gpcc_net_conn_t conn)
 {
     conncb_t* pconn = 0;
     apr_uint32_t* spin = 0;
@@ -1149,7 +1236,7 @@ APR_DECLARE(void) gpcc_net_close(gpcc_net_conn_t conn)
 
 
     
-APR_DECLARE(apr_status_t) gpcc_net_parse_request(gpcc_net_header_t** hdr, const char* buf, int* len, apr_pool_t* pool)
+apr_status_t gpcc_net_parse_request(gpcc_net_header_t** hdr, const char* buf, int* len, apr_pool_t* pool)
 {
     int n = *len;
     const char* p;
@@ -1244,7 +1331,7 @@ APR_DECLARE(apr_status_t) gpcc_net_parse_request(gpcc_net_header_t** hdr, const 
 #define GPCC_NET_PACKET_MAGIC (0x342ba90f)
 
 
-APR_DECLARE(apr_status_t) gpcc_net_parse_packet(gpcc_net_packet_t** packet, const char* buf, int* plen)
+apr_status_t gpcc_net_parse_packet(gpcc_net_packet_t** packet, const char* buf, int* plen)
 {
     const char* p = buf;
     const char* q = buf + *plen;
@@ -1281,7 +1368,7 @@ APR_DECLARE(apr_status_t) gpcc_net_parse_packet(gpcc_net_packet_t** packet, cons
 #define UINT16_RANGE(x) ((0 < (x)) && ((x) < (1 << 16)))
 
 
-APR_DECLARE(apr_status_t) gpcc_net_send_packet(gpcc_net_conn_t conn, int type, 
+apr_status_t gpcc_net_send_packet(gpcc_net_conn_t conn, int type, 
                                                apr_uint32_t sndidx, apr_uint32_t rcvidx,
                                                const char* buf, int len)
 {
@@ -1305,3 +1392,19 @@ APR_DECLARE(apr_status_t) gpcc_net_send_packet(gpcc_net_conn_t conn, int type,
 }
 
 
+apr_status_t gpcc_net_send_packetx(const char* tag, int type, 
+                                               apr_uint32_t sndidx, apr_uint32_t rcvidx,
+                                               const char* buf, int len)
+{
+    apr_uint32_t* spin = 0;
+    int idx, found;
+    gpcc_net_conn_t conn = 0;
+
+    spin = gpcc_spin_secure(&net.tagtab_spin);
+    idx = tagtab_find(tag, &found);
+    if (found) 
+	conn = net.tagtab[idx]->conn;
+    spin = gpcc_spin_release(spin);
+
+    return gpcc_net_send_packet(conn, type, sndidx, rcvidx, buf, len);
+}

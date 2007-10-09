@@ -83,6 +83,8 @@ APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
 
 APR_DECLARE(void) gpcc_net_close(gpcc_net_conn_t conn);
 
+APR_DECLARE(apr_status_t) gpcc_net_tag(gpcc_net_conn_t conn, const char* tag);
+
 typedef struct gpcc_net_datum_t gpcc_net_datum_t;
 struct gpcc_net_datum_t {
     const char* ptr;
@@ -106,6 +108,10 @@ static inline apr_status_t gpcc_net_send(gpcc_net_conn_t conn,
 }
 
 APR_DECLARE(apr_status_t) gpcc_net_send_packet(gpcc_net_conn_t conn, int type, 
+                                               apr_uint32_t sndidx, apr_uint32_t rcvidx,
+                                               const char* buf, int len);
+
+APR_DECLARE(apr_status_t) gpcc_net_send_packetx(const char* tag, int type, 
                                                apr_uint32_t sndidx, apr_uint32_t rcvidx,
                                                const char* buf, int len);
 
