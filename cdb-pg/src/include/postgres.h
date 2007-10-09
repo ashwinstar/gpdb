@@ -229,7 +229,7 @@ typedef union Datum_U
 {
 	Datum d;
 
-	float4 f4;
+	float4 f4[2];
 	float8 f8;
 
 	void *ptr;
@@ -292,8 +292,14 @@ static inline Datum CStringGetDatum(char *p) { return PointerGetDatum(p); }
 static inline Name DatumGetName(Datum d) { return (Name) DatumGetPointer(d); }
 static inline Datum NameGetDatum(Name n) { return PointerGetDatum(n); } 
 
-static inline float4 DatumGetFloat4(Datum d) { Datum_U du; du.d = d; return du.f4; } 
-static inline Datum Float4GetDatum(float4 f) { Datum_U du; du.d = 0; du.f4 = f; return du.d; } 
+#if BYTE_ORDER == LITTLE_ENDIAN 
+static inline float4 DatumGetFloat4(Datum d) { Datum_U du; du.d = d; return du.f4[0]; } 
+static inline Datum Float4GetDatum(float4 f) { Datum_U du; du.d = 0; du.f4[0] = f; return du.d; } 
+#endif
+#if BYTE_ORDER == BIG_ENDIAN
+static inline float4 DatumGetFloat4(Datum d) { Datum_U du; du.d = d; return du.f4[1]; } 
+static inline Datum Float4GetDatum(float4 f) { Datum_U du; du.d = 0; du.f4[1] = f; return du.d; } 
+#endif
 
 static inline float8 DatumGetFloat8(Datum d) { Datum_U du; du.d = d; return du.f8; } 
 static inline Datum Float8GetDatum(float8 f) { Datum_U du; du.f8 = f; return du.d; }
