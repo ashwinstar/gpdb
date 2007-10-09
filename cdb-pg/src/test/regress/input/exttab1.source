@@ -4,7 +4,7 @@
 --
 
 -- --------------------------------------
--- 'file' protocol
+-- 'file' protocol - (only CREATE, don't SELECT - won't work on distributed installation)
 -- --------------------------------------
 CREATE EXTERNAL TABLE EXT_NATION  ( N_NATIONKEY  INTEGER ,
                             N_NAME       CHAR(25) ,
@@ -18,10 +18,6 @@ CREATE EXTERNAL TABLE EXT_REGION  ( R_REGIONKEY  INTEGER ,
                             R_COMMENT    VARCHAR(152))
 location ('file://@hostname@@abs_srcdir@/data/region.tbl' )
 FORMAT 'text' (delimiter '|');
-
-SELECT * FROM EXT_NATION;
-SELECT * FROM EXT_REGION;
-SELECT * FROM EXT_REGION as r, EXT_NATION as n WHERE n.N_REGIONKEY = r.R_REGIONKEY;
 
 -- drop tables
 
