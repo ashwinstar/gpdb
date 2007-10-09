@@ -36,15 +36,8 @@ enum event_t {
     FAILURE_EVENT,
     BREAK_EVENT,
 
-    NET_OPENED_EVENT,
-    NET_CLOSED_EVENT,
-    NET_RECEIVED_EVENT,
-
-    GET_IDENTITY_MSG_EVENT,
-    IDENTITY_MSG_EVENT,
-
-    HTTP_REQUEST_EVENT,
     
+
 
     EVENT_MAX,
 };
@@ -56,10 +49,6 @@ enum cmdstate_t {
     NULL_CMDSTATE = 0,
 
     GPMA_CMDSTATE,
-
-    GET_IDENTITY_CMDSTATE,
-
-    HTTP_REQUEST_CMDSTATE,
 
     CMDSTATE_MAX,
 };

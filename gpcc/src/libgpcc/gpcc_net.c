@@ -366,7 +366,8 @@ static apr_status_t conn_read_header(gpcc_net_conn_t conn)
 	peer_addr[sizeof(peer_addr) - 1] = 0;
 
 	if (pconn->from_peer.hdr) {
-	    from_peer_hdr = gpcc_net_header_dup(pconn->from_peer.hdr, from_peer_buf, sizeof(from_peer_buf));
+	    from_peer_hdr = gpcc_net_header_dup(pconn->from_peer.hdr, 
+						from_peer_buf, sizeof(from_peer_buf));
 	    if (! from_peer_hdr) {
 		gpcc_warning(FLINE, "error creating header from peer");
 		goto failure;
