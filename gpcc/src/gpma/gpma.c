@@ -104,6 +104,19 @@ static void net_accepted(gpcc_net_conn_t conn,
 			 const char* peer_addr,
 			 gpcc_net_header_t* from_peer)
 {
+    if (from_peer->argc == 3) {
+	/* check for HTTP GET/POST */
+	if (0 == memcmp("HTTP/1.", from_peer->argv[2], 7)
+	    && 0 == memcmp("GET", from_peer->argv[0], 4)
+	    && 0 == memcmp("/gpcc?", from_peer->argv[1], 6)) {
+
+	}
+    }
+    else if (from_peer->argc == 1) {
+	/* check if it is GPCC_NET_PACKET_PROTO */
+    }
+    /* unknown protocol - reject the connection */
+    gpcc_net_close(conn);
 }
 
 
