@@ -18,6 +18,7 @@ struct seginfo_t {
     int port;
     char *dir;
     int haidx;
+    char *ha;
 };
 
 typedef struct cmdslot_t cmdslot_t;

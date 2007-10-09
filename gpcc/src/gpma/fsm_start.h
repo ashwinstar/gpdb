@@ -37,7 +37,7 @@ static apr_status_t start_utility_qd(gpcc_event_t *ev, void *_cmdslot)
     msg = json_object_to_json_string(obj);
 
     gpcc_log_info("start utility qd %s", msg);
-    if (0 != (e = gpcc_net_send_packetx(seginfo->name, SEGMENT_REQUEST_MSG, 
+    if (0 != (e = gpcc_net_send_packetx(seginfo->ha, SEGMENT_REQUEST_MSG, 
 					cmdslot->cmdidx,
 					cmdslot->u.sys.request.sndidx,
 					msg, strlen(msg) + 1))){
@@ -144,7 +144,7 @@ static apr_status_t start_utility_qd_stop(gpcc_event_t *ev, void *_cmdslot)
 
     msg = json_object_to_json_string(obj);
     
-    if (0 != (e = gpcc_net_send_packetx(seginfo->name, SEGMENT_REQUEST_MSG, 
+    if (0 != (e = gpcc_net_send_packetx(seginfo->ha, SEGMENT_REQUEST_MSG, 
 					cmdslot->cmdidx,
 					cmdslot->u.sys.request.sndidx,
 					msg, strlen(msg) + 1))){
@@ -247,7 +247,7 @@ static apr_status_t start_qes(gpcc_event_t *ev, void *_cmdslot)
 					seginfo->dir);
 
 	msg = json_object_to_json_string(obj);
-	if (0 != (e = gpcc_net_send_packetx(seginfo->name, SEGMENT_REQUEST_MSG, 
+	if (0 != (e = gpcc_net_send_packetx(seginfo->ha, SEGMENT_REQUEST_MSG, 
 					    cmdslot->cmdidx,
 					    cmdslot->u.sys.request.sndidx,
 					    msg, strlen(msg) + 1))){
@@ -376,7 +376,7 @@ static apr_status_t start_qd(gpcc_event_t *ev, void *_cmdslot)
 				    seginfo->dir);    
 
     msg = json_object_to_json_string(obj);
-    if (0 != (e = gpcc_net_send_packetx(seginfo->name, SEGMENT_REQUEST_MSG, 
+    if (0 != (e = gpcc_net_send_packetx(seginfo->ha, SEGMENT_REQUEST_MSG, 
 				  cmdslot->cmdidx,
 				  cmdslot->u.sys.request.sndidx,
 				  msg, strlen(msg) + 1))) {
@@ -478,7 +478,7 @@ static apr_status_t start_standby_qd(gpcc_event_t *ev, void *_cmdslot)
 				    seginfo->dir);    
 
     msg = json_object_to_json_string(obj);
-    if (0 != (e = gpcc_net_send_packetx(seginfo->name, SEGMENT_REQUEST_MSG, 
+    if (0 != (e = gpcc_net_send_packetx(seginfo->ha, SEGMENT_REQUEST_MSG, 
 				       cmdslot->cmdidx,
 				       cmdslot->u.sys.request.sndidx,
 				       msg, strlen(msg) + 1))){

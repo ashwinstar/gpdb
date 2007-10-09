@@ -42,7 +42,7 @@ static apr_status_t initdb_do(gpcc_event_t *ev, void *_cmdslot)
     json_object_object_add(obj, "content", json_object_new_int(seginfo->content));
     msg = json_object_to_json_string(obj);
     
-    if (0 != (e = gpcc_net_send_packetx(seginfo->name, SEGMENT_REQUEST_MSG, 
+    if (0 != (e = gpcc_net_send_packetx(seginfo->ha, SEGMENT_REQUEST_MSG, 
 					cmdslot->cmdidx,
 					cmdslot->u.sys.request.sndidx,
 					msg, strlen(msg) + 1))) {

@@ -35,7 +35,7 @@ static apr_status_t stopdb_do(gpcc_event_t *ev, void *_cmdslot)
 
 	msg = json_object_to_json_string(obj);
 
-	if (0 != (e = gpcc_net_send_packetx(cmdslot->u.sys.seginfo[i].name, 
+	if (0 != (e = gpcc_net_send_packetx(cmdslot->u.sys.seginfo[i].ha, 
 					    SEGMENT_REQUEST_MSG, 
 					    cmdslot->cmdidx,
 					    cmdslot->u.sys.request.sndidx,

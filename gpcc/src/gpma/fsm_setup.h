@@ -174,6 +174,7 @@ static inline void setup_set_segment(cmdslot_t *cmdslot, int idx, char *name, in
     cmdslot->u.sys.seginfo[idx].content = content;
     cmdslot->u.sys.seginfo[idx].port = port;
     cmdslot->u.sys.seginfo[idx].haidx = node;
+    cmdslot->u.sys.seginfo[idx].ha = apr_psprintf(pool, "node.%d", node);
     cmdslot->u.sys.seginfo[idx].dir = apr_pstrdup(pool, dir);
 
     sprintf(key, "node.%d", node);
