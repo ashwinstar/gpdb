@@ -5,6 +5,10 @@ static apr_status_t config_addsegment(struct json_object *msg, char *key, const 
     char *v = strdup(value);
     struct json_object *obj;
 
+    if (!v) {
+	gpcc_fatal(FLINE, "out of memory");
+    }
+
     node = apr_strtok(v, ":", &last);
     if (!node)
 	goto bail;
@@ -22,6 +26,7 @@ static apr_status_t config_addsegment(struct json_object *msg, char *key, const 
     
     json_object_object_add(msg, key, obj);
 
+    if (v) free(v);
     return 0;
 
     bail:
@@ -38,7 +43,7 @@ static apr_status_t config_addnode(struct json_object *msg, char *key, const cha
     struct json_object *array;
 
     if (!nodestr){
-	return APR_EINVAL;
+	gpcc_fatal(FLINE, "out of memory");
     }
 
     array = json_object_new_array();

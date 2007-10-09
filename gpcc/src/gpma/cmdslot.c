@@ -32,6 +32,8 @@ cmdslot_t* cmdslot_alloc(const char* name, cmdstate_t state)
 	    p->cmdstate = state;
 	    p->countdown = 0;
 	    memset(&p->u, 0, sizeof(p->u));
+	    if (0 != apr_pool_create(&p->pool, 0)) 
+		gpcc_fatal(FLINE, "out of memory");
 	    return p;
 	}
     }
@@ -53,8 +55,12 @@ cmdslot_t* cmdslot_find(apr_uint32_t cmdidx)
 void cmdslot_free(apr_uint32_t cmdidx)
 {
     cmdslot_t* p = cmdslot_find(cmdidx);
-    if (p) 
+    if (p) {
+	if (p->pool) {
+	    apr_pool_destroy(p->pool);
+	}
 	p->cmdidx = 0;
+    }
 }
 
 
