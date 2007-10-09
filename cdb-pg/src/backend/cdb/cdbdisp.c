@@ -280,8 +280,8 @@ write_log(const char *fmt,...)
 		strcat(logprefix,"MAIN");
 	else
 	{
-		sprintf(tempbuf,"%p",mythread());
-		strcat(logprefix,tempbuf);
+		sprintf(tempbuf,"%p", (void *)mythread());
+		strcat(logprefix, tempbuf);
 	}
 	strcat(logprefix,":  ");
 	
@@ -921,11 +921,11 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 					elog(FATAL, "CheckDispatchResult: pthread_join failed on thread %d (%p) of %d (returned %d attempting to join to %p)",
 						 i + 1, 
 #ifndef _WIN32
-						 (pthread_t) pParms->thread, 
+						 (void *) pParms->thread, 
 #else
-						 (pthread_t) pParms->thread.p,
+						 (void *) pParms->thread.p,
 #endif
-						 dispatchThreads->threadCount, pthread_err, mythread());
+						 dispatchThreads->threadCount, pthread_err, (void *)mythread());
 			}
 		}
 		HOLD_INTERRUPTS();
