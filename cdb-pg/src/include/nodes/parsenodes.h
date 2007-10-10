@@ -1349,6 +1349,7 @@ typedef struct PartitionBy
 	NodeTag				type;
 	PartitionByType		partType;
 	List			   *keys;		/* key columns (Partition By ...) */
+	int				    keyCount;	/* number of key columns */
 	Node			   *partNum;	/* partitionS (constant number)*/
 	Node			   *subPart;	/* optional subpartn (PartitionBy ptr) */
 	Node			   *partSpec;	/* specification or template */  

@@ -180,7 +180,18 @@ static Node *make_partition_rules(ParseState *pstate,
  		 char *at_depth, char *child_name_str, 
 		 int partNumId, int maxPartNum);
 
+static int partition_sql_test(const char *sql, char *outbuf);
 static int deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize);
+
+static int partition_range_compare(ParseState *pstate,
+								   CreateStmtContext *cxt, CreateStmt *stmt, 
+								   PartitionBy *pBy,
+								   char	   *at_depth,
+								   int		partNumber,
+								   char	   *compare_op,
+								   PartitionRangeItem *pRI1,
+								   PartitionRangeItem *pRI2);
+
 static int validate_partition_spec(ParseState *pstate,
 								   CreateStmtContext *cxt, CreateStmt *stmt, 
 								   PartitionBy *partitionBy, 	
@@ -3308,6 +3319,155 @@ static Node *make_partition_rules(ParseState *pstate,
 	return pRule;
 } /* end make_partition_rules */
 
+static int partition_sql_test(const char *sql, char *outbuf)
+{
+	int			rc = 0;
+	int			spirc;
+
+	/*
+	 * Connect to SPI manager
+	 */
+	if (SPI_connect() != SPI_OK_CONNECT)
+			elog(ERROR, "SPI_connect failed");
+
+	spirc = SPI_execute(sql,
+						false, 1); /* true fails */
+
+		
+	if (spirc != SPI_OK_SELECT)
+			elog(ERROR, "failed to get tuple");
+
+	if (SPI_processed == 1)
+	{
+			HeapTuple   rangetup;
+			TupleDesc   rangettc;
+			int			fno;
+			char	   *pFoo;
+
+			rangetup = SPI_tuptable->vals[0];
+			rangettc = SPI_tuptable->tupdesc;
+
+			fno = SPI_fnumber(rangettc, "ptcol1"); /* 1 */
+			pFoo = SPI_getvalue(rangetup, rangettc, fno);
+
+			rc = 1;
+	}
+
+	/*
+	 * Disconnect from SPI manager
+	 */
+	if (SPI_finish() != SPI_OK_FINISH)
+			elog(ERROR, "SPI_finish failed");
+	
+	return (rc);
+} /* end partition_sql_test */
+
+static int partition_range_compare(ParseState *pstate,
+								   CreateStmtContext *cxt, CreateStmt *stmt, 
+								   PartitionBy *pBy,
+								   char	   *at_depth,
+								   int		partNumber,
+								   char	   *compare_op, /* =, <, > only */
+								   PartitionRangeItem *pRI1,
+								   PartitionRangeItem *pRI2)
+{
+	int rc = -1;
+	ListCell		*lc1 = NULL;
+	ListCell		*lc2 = NULL;
+
+	if (!pRI1 || !pRI2) /* error */
+		return rc;
+
+	lc1 = list_head(pRI1->partRangeVal);
+	lc2 = list_head(pRI2->partRangeVal);
+
+ L_redoLoop:
+	for (; lc1 && lc2; )
+	{
+		Node *n1 = lfirst(lc1);
+		Node *n2 = lfirst(lc2);
+
+		if (!equal(n1, n2))
+			break;
+
+		lc1 = lnext(lc1);
+		lc2 = lnext(lc2);
+	}
+
+	if (!lc1 && !lc2) /* both empty, so all values are equal */
+	{
+		if (strcmp("=", compare_op) == 0)
+			return 1;
+		else
+			return 0;
+	}
+	else if (lc1 && lc2) /* both not empty, so last value was different */
+	{
+		char sqlbuf[999];
+		char outbuf[999];
+		char op1buf[999];
+		char op2buf[999];
+		int foo;
+		Node *n1 = lfirst(lc1);
+		Node *n2 = lfirst(lc2);
+
+		/* XXX XXX: can't trust equal() code on date types!!!!!! */
+		/* XXX XXX: must always do SQL compare!!!!!! */
+
+/*		if (strcmp("=", compare_op) == 0)
+		return 0; */
+
+		/* not equal, so need to compare */
+
+		if (!deparse_partition_rule(n1, op1buf, sizeof(op1buf)))
+			return -1;
+		if (!deparse_partition_rule(n2, op2buf, sizeof(op2buf)))
+			return -1;
+
+		snprintf(sqlbuf, sizeof(sqlbuf), 
+				 "select 1 as ptcol1 where %s %s %s",
+				 op1buf, compare_op, op2buf);
+					
+		foo = partition_sql_test(sqlbuf, outbuf);
+
+		/* XXX XXX: argh!! need to redo until reach end */
+		if (foo && strcmp("=", compare_op) == 0)
+		{
+			lc1 = lnext(lc1);
+			lc2 = lnext(lc2);
+
+			goto L_redoLoop;
+		}
+
+		return foo;
+
+	}
+	else if (lc1 || lc2)
+	{
+		/* lists of different lengths */
+		if (strcmp("=", compare_op) == 0)
+			return 0;
+
+		/* longer list is bigger? */
+
+		if (strcmp("<", compare_op) == 0)
+		{
+			if (lc1)
+				return 0;
+			else
+				return 1;
+		}
+		if (strcmp(">", compare_op) == 0)
+		{
+			if (lc1)
+				return 1;
+			else
+				return 0;
+		}
+	}
+
+	return rc;
+} /* end partition_range_compare */
 
 static int validate_partition_spec(ParseState *pstate,
 								   CreateStmtContext *cxt, CreateStmt *stmt, 
@@ -3323,6 +3483,9 @@ static int validate_partition_spec(ParseState *pstate,
 	PartitionElem	*prevElem = NULL;
 	List			*partElts;
 	ListCell		*lc = NULL;
+	List			*allListVals  = NIL;
+	List			*allRangeVals = NIL;
+	List			*allPartNames = NIL;
 		
 	Assert(pBy);
 
@@ -3381,6 +3544,17 @@ static int validate_partition_spec(ParseState *pstate,
 			{
 				snprintf(namBuf, sizeof(namBuf), " \"%s\"", 
 						 strVal(pElem->partName));
+
+				if (allPartNames && list_member(allPartNames, pElem->partName))
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("Duplicate partition name for partition%s%s",
+									namBuf,
+									at_depth),
+							 parser_errposition(pstate, pElem->location)));
+				}
+				allPartNames = lappend(allPartNames, pElem->partName);
 			}
 			else
 			{
@@ -3419,6 +3593,7 @@ static int validate_partition_spec(ParseState *pstate,
 			case PARTTYP_RANGE:
 			{
 				PartitionBoundSpec *prevBSpec = NULL;
+				bool bAppendRange = false;
 
 				if (pBSpec)
 				{
@@ -3494,14 +3669,24 @@ static int validate_partition_spec(ParseState *pstate,
 				 * if necessary 
 				 */
 				if (!prevElem)
+				{
+					bAppendRange = true;
 					goto L_setprevElem;
+				}
 
 				prevBSpec = (PartitionBoundSpec *)prevElem->boundSpec;
 							
 				/* XXX XXX: can check for overlap here too */
 
 				if (!prevBSpec)
+				{
+					/* XXX XXX: if the previous partition declaration
+					 * does not have a boundary spec then its end
+					 * needs to be the start of the current */
+
+					bAppendRange = true;
 					goto L_setprevElem;
+				}
 
 				if (pBSpec->partStart)
 				{
@@ -3512,6 +3697,38 @@ static int validate_partition_spec(ParseState *pstate,
 								(pBSpec->partStart);
 						PartitionRangeItem *prevRI = 
 								makeNode(PartitionRangeItem); 
+							
+						if (prevBSpec->partStart)
+						{
+							int				 compareRc = 0;
+							PartitionRangeItem *pRI1 = 
+									(PartitionRangeItem *)pBSpec->partStart;
+							PartitionRangeItem *pRI2 = 
+									(PartitionRangeItem *)prevBSpec->partStart;
+
+							compareRc = 
+									partition_range_compare(pstate,
+															cxt, stmt, 
+															pBy,
+															at_depth,
+															partNumber,
+															"<",
+															pRI2,
+															pRI1);
+
+							if (1 != compareRc)
+							{
+								ereport(ERROR,
+										(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+										 errmsg("START of partition%s less than START of previous%s",
+										namBuf,
+										at_depth),
+								 parser_errposition(pstate, 
+													pBSpec->location)));
+
+							}
+
+						}
 
 						prevRI->partEveryNum  = NULL; 
 						prevRI->location  = 
@@ -3526,13 +3743,17 @@ static int validate_partition_spec(ParseState *pstate,
 								2 : 1;
 
 						prevBSpec->partEnd = (Node *)prevRI;
+
+						/* don't need to check if range overlaps */
+						bAppendRange = true;
+
 					}
 					else if (0) /* XXX XXX XXX XXX */
 					{
 						/* else if overlap complain */
 							ereport(ERROR,
 									(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-									 errmsg("Start of partition %s overlaps previous%s",
+									 errmsg("Start of partition%s overlaps previous%s",
 											namBuf,
 											at_depth),
 									 parser_errposition(pstate, 
@@ -3547,7 +3768,7 @@ static int validate_partition_spec(ParseState *pstate,
 					{
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-								 errmsg("Cannot derive starting value of partition %s based upon ending of previous%s",
+								 errmsg("Cannot derive starting value of partition%s based upon ending of previous%s",
 										namBuf,
 										at_depth),
 								 parser_errposition(pstate, 
@@ -3575,50 +3796,386 @@ static int validate_partition_spec(ParseState *pstate,
 								2 : 1;
 
 						pBSpec->partStart = (Node *)pRI;
+
+						/* don't need to check if range overlaps */
+						bAppendRange = true;
 					} /* end build ri for current */
 				} /* end use END of previous */
 
 			L_setprevElem:
 
+				/* check for overlap, 
+				 * then add new partitions to sorted list,
+				 * then generate partitions for EVERY
+				 */
+
+				if (pBSpec->partStart &&
+					pBSpec->partEnd)
+				{
+					int				 compareRc = 0;
+					PartitionRangeItem *pRI1 = 
+							(PartitionRangeItem *)pBSpec->partStart;
+					PartitionRangeItem *pRI2 = 
+							(PartitionRangeItem *)pBSpec->partEnd;
+
+					compareRc = 
+							partition_range_compare(pstate,
+													cxt, stmt, 
+													pBy,
+													at_depth,
+													partNumber,
+													">",
+													pRI1,
+													pRI2);
+
+					if (0 != compareRc)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("START greater than END for partition%s%s",
+										namBuf,
+										at_depth),
+								 parser_errposition(pstate, 
+													pBSpec->location)));
+
+					}
+
+				}
+				
+				if (NIL == allRangeVals)
+					bAppendRange = true;
+
+				/* check previous first */
+				if (!bAppendRange &&
+					(pBSpec->partStart &&
+					 prevBSpec &&
+					 prevBSpec->partEnd))
+				{/* compare to last */
+					int				 compareRc = 0;
+					PartitionRangeItem *pRI1 = 
+							(PartitionRangeItem *)pBSpec->partStart;
+					PartitionRangeItem *pRI2 = 
+							(PartitionRangeItem *)prevBSpec->partEnd;
+
+					compareRc = 
+							partition_range_compare(pstate,
+													cxt, stmt, 
+													pBy,
+													at_depth,
+													partNumber,
+													"=",
+													pRI1,
+													pRI2);
+
+					if (
+						(pRI2->partInclusive == 1) &&
+						(pRI1->partInclusive == 1) &&
+						(1 == compareRc))
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("Starting value of partition%s overlaps previous range%s",
+										namBuf,
+										at_depth),
+								 parser_errposition(pstate, 
+													pBSpec->location)));
+
+					}
+
+					/* if values are equal, but not inclusive to both,
+					 * then append is possible */
+					if (1 != compareRc)
+						compareRc = 
+							partition_range_compare(pstate,
+													cxt, stmt, 
+													pBy,
+													at_depth,
+													partNumber,
+													">",
+													pRI1,
+													pRI2);
+
+					if (1 == compareRc)
+						bAppendRange = 1;
+
+
+					/* else could be start out of sequence, so must
+					 * search entire sorted list */
+
+					if (0)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("Starting value of partition%s overlaps previous range%s",
+										namBuf,
+										at_depth),
+								 parser_errposition(pstate, 
+													pBSpec->location)));
+					}
+
+				} /* end compare to last */
+
+
+				if (bAppendRange)
+				{
+					allRangeVals = lappend(allRangeVals, pBSpec);
+				}
+				else
+				{ /* find position for current range */
+					ListCell		*lc_all  = list_head(allRangeVals);
+					ListCell		*lc_allPrev = NULL;
+					int				 compareRc = 0;
+					/* set up pieces of error messages */
+					char			*currPartRI   = "Ending";
+					char			*otherPartPos = "next";
+
+					/* linear search sorted list of range specs:
+
+					   While the current start key is >= loop val
+					   start key advance.  
+
+					   If current start key < loop val start key,
+					   then see if curr start key < *previous* loop
+					   val end key, ie falls in previous range. 
+
+					   If so, error out, else splice current range in
+					   after previous.
+
+					*/
+
+					for ( ; lc_all ; lc_all = lnext(lc_all)) /* for lc_all */
+					{
+						PartitionBoundSpec *lcBSpec = 
+								(PartitionBoundSpec *) lfirst(lc_all);
+						PartitionRangeItem *pRI1 = 
+								(PartitionRangeItem *)pBSpec->partStart;
+						PartitionRangeItem *pRI2 = 
+								(PartitionRangeItem *)lcBSpec->partStart;
+
+						Assert(pBSpec->partStart);
+
+						if (lcBSpec->partStart)
+						{
+							compareRc = 
+								partition_range_compare(pstate,
+														cxt, stmt, 
+														pBy,
+														at_depth,
+														partNumber,
+														"=",
+														pRI1,
+														pRI2);
+
+							if (-1 == compareRc)
+								break;
+
+							if (
+								(pRI2->partInclusive == 1) &&
+								(pRI1->partInclusive == 1) &&
+								(1 == compareRc))
+							{
+								currPartRI   = "Starting";
+								otherPartPos = "previous";
+								compareRc = -2;
+								break;
+							}
+
+							compareRc = 
+								partition_range_compare(pstate,
+														cxt, stmt, 
+														pBy,
+														at_depth,
+														partNumber,
+														"<",
+														pRI1,
+														pRI2);
+
+						}
+						else
+							/* if first range spec has no start 
+							 * (ie start=MINVALUE) then current start
+							 * must be after it 
+							 */
+							compareRc = 0; /* current > MINVALUE */
+
+						if (-1 == compareRc)
+							break;
+
+						if (1 == compareRc) /* if curr less than loop val */
+						{
+							/* curr start is less than loop val, so
+							 * check that curr end is less than loop
+							 * val start (including equality case)
+							 */
+
+							pRI1 = 
+									(PartitionRangeItem *)pBSpec->partEnd;
+
+							if (!pRI1)
+							{
+								/* if current start is less than
+								 * loop val start but current end is
+								 * unterminated (ie ending=MAXVALUE)
+								 * then it must overlap
+								 */
+								currPartRI   = "Ending";
+								otherPartPos = "next";
+								compareRc = -2;
+								break;
+							}
+
+							compareRc =
+								partition_range_compare(pstate,
+														cxt, stmt, 
+														pBy,
+														at_depth,
+														partNumber,
+														"=",
+														pRI2,
+														pRI1);
+							
+							if (-1 == compareRc)
+								break;
+
+							if (
+								(pRI2->partInclusive == 1) &&
+								(pRI1->partInclusive == 1) &&
+								(1 == compareRc))
+							{
+								currPartRI   = "Ending";
+								otherPartPos = "next";
+								compareRc = -2;
+								break;
+							}
+
+							compareRc = partition_range_compare(pstate,
+																cxt, stmt, 
+																pBy,
+																at_depth,
+																partNumber,
+																"<",
+																pRI2,
+																pRI1);
+
+							if (-1 == compareRc)
+								break;
+
+							if (1 == compareRc)
+							{
+								currPartRI   = "Ending";
+								otherPartPos = "next";
+								compareRc = -2;
+								break;
+							}
+						
+							/* if current is less than loop val and no
+							 * previous, then append allRangeVals to
+							 * the current, instead of vice versa 
+							 */
+							if (!lc_allPrev)
+								break;
+
+							lcBSpec = 
+								(PartitionBoundSpec *) lfirst(lc_allPrev);
+
+							pRI2 = 
+								(PartitionRangeItem *)lcBSpec->partEnd;
+
+							compareRc = 
+									partition_range_compare(pstate,
+															cxt, stmt, 
+															pBy,
+															at_depth,
+															partNumber,
+															"=",
+															pRI1,
+															pRI2);
+
+							if (-1 == compareRc)
+								break;
+
+							if (
+								(pRI2->partInclusive == 1) &&
+								(pRI1->partInclusive == 1) &&
+								(1 == compareRc))
+							{
+								currPartRI   = "Starting";
+								otherPartPos = "previous";
+								compareRc = -2;
+								break;
+							}
+
+							compareRc = 
+									partition_range_compare(pstate,
+															cxt, stmt, 
+															pBy,
+															at_depth,
+															partNumber,
+															"<",
+															pRI1,
+															pRI2);
+
+							if (-1 == compareRc)
+								break;
+
+							if (1 == compareRc)
+							{
+								currPartRI   = "Starting";
+								otherPartPos = "previous";
+								compareRc = -2;
+								break;
+							}
+						} /* end if curr less than loop val */
+
+						lc_allPrev = lc_all;
+					} /* end for lc_all */
+
+					if (-1 == compareRc)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("Invalid range comparison for partition%s%s",
+										namBuf,
+										at_depth),
+								 parser_errposition(pstate, 
+													pBSpec->location)));
+
+					}
+
+					if (-2 == compareRc)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("%s value of partition%s overlaps %s range%s",
+										currPartRI,
+										namBuf,
+										otherPartPos,
+										at_depth),
+								 parser_errposition(pstate, 
+													pBSpec->location)));
+							}
+
+
+					if (lc_allPrev)
+					{
+						/* append cell returns new cell, not list */
+						lappend_cell(allRangeVals, 
+									 lc_allPrev, 
+									 pBSpec);
+					}
+					else /* no previous, so current is start */
+						allRangeVals = list_concat(list_make1(pBSpec),
+												   allRangeVals);
+				} /* end find position for current range */
+
 				if (pBSpec->partStart &&
 					pBSpec->partEnd &&
 					pBSpec->partEvery)
 				{
-					int			spirc;
-
-					/*
-					 * Connect to SPI manager
-					 */
-					if (SPI_connect() != SPI_OK_CONNECT)
-						elog(ERROR, "SPI_connect failed");
-
-					spirc = SPI_execute("select date \'2001-01-01\' + interval \'1 week\' as ptcol1",
-										false, 1); /* true fails */
-
-
-					if (spirc != SPI_OK_SELECT)
-						elog(ERROR, "failed to get tuple");
-					if (SPI_processed == 1)
-					{
-						HeapTuple   rangetup;
-						TupleDesc   rangettc;
-						int			fno;
-						char	   *pFoo;
-
-						rangetup = SPI_tuptable->vals[0];
-						rangettc = SPI_tuptable->tupdesc;
-
-						fno = SPI_fnumber(rangettc, "ptcol1"); /* 1 */
-						pFoo = SPI_getvalue(rangetup, rangettc, fno);
-
-					}
-
-
-					/*
-					 * Disconnect from SPI manager
-					 */
-					if (SPI_finish() != SPI_OK_FINISH)
-						elog(ERROR, "SPI_finish failed");
+					char outbuf[999];
+					int foo;
+					
+					foo = partition_sql_test("select 1 as ptcol1 where 1=1", outbuf);
 
 				}
 
@@ -3654,7 +4211,104 @@ static int validate_partition_spec(ParseState *pstate,
 
 				}
 
+				if (pBSpec->partStart)
+				{
+					PartitionRangeItem *pRI  = NULL;
 
+					pRI = (PartitionRangeItem *)(pBSpec->partStart);
+
+					if (pRI->partRangeVal)
+					{
+						List			*currVals = NULL;
+						List			*currSub  = NULL;
+						List			*valElts = NULL;
+						ListCell		*lc_val  = NULL;
+						int valCount = list_length(pRI->partRangeVal);
+						int vcnt     = valCount;
+
+						/* check if insufficient values, or 
+						   (num values) modulo (num keys)
+						*/
+						if ((valCount < pBy->keyCount)
+							|| (0 != (valCount % (pBy->keyCount))))
+						{
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+									 errmsg("Mismatched columns in partition%s for VALUES%s",
+											namBuf,
+											at_depth),
+									 parser_errposition(pstate, pBSpec->location)));
+						}
+
+						valElts = pRI->partRangeVal;
+						lc_val = list_head(valElts);
+
+						/* build temporary list of lists */
+						for ( ; lc_val ; lc_val = lnext(lc_val)) /* for all vals */
+						{
+							currSub = lappend(currSub, lfirst(lc_val));
+							vcnt--;
+
+							if (!vcnt)
+							{
+								vcnt = valCount;
+								currVals = lappend(currVals, currSub);
+								currSub = NIL;
+							}
+
+						} /* end for all vals */
+
+
+						if (NIL != allListVals)
+						{
+							ListCell		*lc_all  = list_head(allListVals);
+							ListCell		*lc_curr;
+
+							for ( ; lc_all ; lc_all = lnext(lc_all)) 
+							{
+								List	*l1_all = (List *)lfirst(lc_all);
+								List	*l1_diff;
+								
+								lc_curr = list_head(currVals);
+
+								for ( ; lc_curr ; lc_curr = lnext(lc_curr))
+								{
+									List *l1_curr = (List *)lfirst(lc_curr);
+
+									l1_diff = list_difference(l1_curr, l1_all);
+
+									if (l1_diff &&
+										list_length(l1_diff))
+									{
+											/* ok */
+									}
+									else
+									{
+										/* XXX XXX: better message !! */
+
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+									 errmsg("duplicate VALUES in partition%s%s",
+											namBuf,
+											at_depth),
+									 parser_errposition(pstate, pBSpec->location)));
+
+
+									}
+
+									if (l1_diff)
+										list_free(l1_diff);
+								}
+
+							}
+
+							
+								
+						}
+						allListVals = list_concat(allListVals, currVals);
+
+					}
+				}
 				break;
 
 			case PARTTYP_REFERENCE: /* for future use... */
@@ -3677,6 +4331,29 @@ static int validate_partition_spec(ParseState *pstate,
 						 "PARTITIONS \"%d\" must match \"%d\" elements in specification%s",
 						 partNumber, numElts, at_depth),
 				 parser_errposition(pstate, pBy->location)));
+	}
+
+	/* cleanup temporary lists */
+	if (allListVals)
+	{
+		ListCell		*lc_all  = list_head(allListVals);
+
+		for ( ; lc_all ; lc_all = lnext(lc_all)) 
+		{
+			List	*l1_all = (List *)lfirst(lc_all);
+			list_free(l1_all);
+		}
+		list_free(allListVals);
+	}
+
+	if (allRangeVals)
+	{
+		list_free(allRangeVals);
+	}
+
+	if (allPartNames)
+	{
+		list_free(allPartNames);
 	}
 
 	return numElts;
@@ -3820,6 +4497,15 @@ static void transformPartitionBy(ParseState *pstate,
 					 parser_errposition(pstate, pBy->location)));
 		}
 	} /* end partitions clause */
+
+	pBy->keyCount = 0;
+
+	if (pBy->keys)
+	{
+		List			*colElts = pBy->keys;
+
+		pBy->keyCount = list_length(colElts);
+	}
 
 	/* find number of partitions in the specification, and match it up
 	 * with the PARTITIONS clause if partitioned by HASH, and
