@@ -5814,7 +5814,7 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 	if (pstate->p_hasWindFuncs)
 		ereport(ERROR,
 				(errcode(ERRCODE_GROUPING_ERROR),
-				 errmsg("cannot use aggregate function in UPDATE")));
+				 errmsg("cannot use window function in UPDATE")));
 
 	/*
 	 * Now we are done with SELECT-like processing, and can get on with
