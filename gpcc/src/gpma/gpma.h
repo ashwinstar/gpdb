@@ -4,6 +4,7 @@
 #include "config.h"
 #include "enum.h"
 #include "cmdslot.h"
+#include <gpcc_event.h>
 #include <gpcc_net.h>
 
 #define DEFAULT_QD_MAX_CONNECT  25

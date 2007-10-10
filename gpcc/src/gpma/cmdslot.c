@@ -1,4 +1,4 @@
-#include "cmdslot.h"
+#include "gpma.h"
 #include <apr_pools.h>
 #include <apr_strings.h>
 
@@ -67,3 +67,16 @@ void cmdslot_free(apr_uint32_t cmdidx)
 
 
 
+void cmdslot_tick(void)
+{
+    int i;
+    for (i = 0; i < CMDSLOT_TABLE_MAX; i++) {
+	cmdslot_t* p = &slottab[i];
+	if (p->cmdidx && p->countdown > 0) {
+	    if (0 == (--p->countdown)) {
+		gpcc_event_t* ev = gpcc_event_alloc(TIMEUP_EVENT, p->cmdidx, 0);
+		gpcc_evqueue_put(gpma.evq, ev);
+	    }
+	}
+    }
+}

@@ -1,6 +1,7 @@
 #ifndef CONFIG_H 
 #define CONFIG_H
 
+#include <stdio.h>
 #include <apr_pools.h>
 
 typedef struct config_t config_t;

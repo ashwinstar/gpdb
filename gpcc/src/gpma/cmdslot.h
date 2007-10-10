@@ -89,6 +89,7 @@ struct cmdslot_t {
 	} sys;
 
 	struct {
+	    /* host IPs belonging to this node */
 	    int hosttab_max;	/* size of hosttab */
 	    char** hosttab;	/* array of IP */
 	} node;
@@ -100,6 +101,7 @@ APR_DECLARE(void) cmdslot_init(apr_pool_t* pool);
 APR_DECLARE(cmdslot_t*) cmdslot_alloc(const char* name, cmdstate_t state);
 APR_DECLARE(cmdslot_t*) cmdslot_find(apr_uint32_t cmdidx);
 APR_DECLARE(void) cmdslot_free(apr_uint32_t cmdidx);
+APR_DECLARE(void) cmdslot_tick(void);
 
 
 

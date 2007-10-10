@@ -254,10 +254,14 @@ void d_main(void)
 		gpcc_fatal(FLINE, "error reading network");
 	}
 
-	/*printf("event %s\n", event_str(ev->etype));*/
 
 	if (ev->cmdidx == 0) 
 	    ev->cmdidx = gpma.gpma_cmdslot->cmdidx;
+
+	/*
+	if (ev->etype != TICK_EVENT)
+	    printf("event %s, cmdidx %x\n", event_str(ev->etype), ev->cmdidx);
+	*/
 
 	/* find the right slot for the event */
 	if (! (slot = cmdslot_find(ev->cmdidx))) {
@@ -279,7 +283,7 @@ void d_main(void)
 	for ( ; *fn && 0 == (*fn)(ev, slot); fn++);
 
 	/* error out ? */
-	if (! (*fn)) {
+	if (*fn) {
 	    gpcc_warning(FLINE, "FSM[%x]: FAILED - cancelling %s + %s = %s", 
 			 slot->cmdidx, cmdstate_str(slot->cmdstate), 
 			 event_str(ev->etype), cmdstate_str(nxtstate));

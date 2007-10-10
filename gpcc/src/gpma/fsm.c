@@ -16,14 +16,16 @@
 
 apr_status_t a_system_tick(gpcc_event_t* ev, void* arg)
 {
-    printf("TICK\n");
+    cmdslot_tick();
     return 0;
 }
 
 
 apr_status_t a_node_ssh(gpcc_event_t* ev, void* arg)
 {
+    cmdslot_t* slot = arg;
     printf("NODE SSH\n");
+    slot->countdown = 3;
     return 0;
 }
 
