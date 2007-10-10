@@ -264,6 +264,14 @@ typedef struct WindowStatePerFunctionData
 	bool                final_aggTransValueIsNull;
 	bool                final_aggNoTransValue;
 
+	/*
+	 * The final transition value may be a copy of a value stored in the frame
+	 * buffre, or the above intermediate in-memory transition value. We should
+	 * free the copied value. This boolean is used to determine if
+	 * final_aggTransValue should be freed.
+	 */
+	bool                final_aggShouldFree;
+
 	/* frame does not require buffering and complexity of invokeWindowFuncs() */
 	bool				trivial_frame;
 
@@ -414,13 +422,10 @@ static void trimFrameBuffer(WindowFrameBuffer buffer);
 static void incrementCurrentRow(WindowFrameBuffer buffer, WindowState *wstate);
 static bool hasEnoughDataInRange(WindowFrameBuffer buffer,
 								 WindowStatePerLevel level_state,
-								 ExprContext *econtext,
-								 MemoryContext context,
 								 Datum tail_range,
 								 Datum lead_range);
 static bool hasEnoughDataInRows(WindowFrameBuffer buffer,
 								WindowStatePerLevel level_state,
-								ExprContext *econtext,
 								long int trail_rows,
 								long int lead_rows);
 static void computeFrameValue(WindowStatePerLevel level_state,
@@ -1417,8 +1422,6 @@ incrementCurrentRow(WindowFrameBuffer buffer,
 static bool
 hasEnoughDataInRange(WindowFrameBuffer buffer,
 					 WindowStatePerLevel level_state,
-					 ExprContext *econtext,
-					 MemoryContext context,
 					 Datum trail_range, Datum lead_range)
 {
 	if (level_state->empty_frame)
@@ -1439,7 +1442,6 @@ hasEnoughDataInRange(WindowFrameBuffer buffer,
 static bool
 hasEnoughDataInRows(WindowFrameBuffer buffer,
 					WindowStatePerLevel level_state,
-					ExprContext *econtext,
 					long int trail_rows, long int lead_rows)
 {
 	if (level_state->empty_frame)
@@ -1608,6 +1610,28 @@ hasTuplesInFrame(WindowStatePerLevel level_state,
 }
 
 /*
+ * freeTransValue -- release the space allocated for the given transition value.
+ */
+static inline void
+freeTransValue(Datum *transValue,
+			   bool transTypeByVal,
+			   bool *transValueIsNull,
+			   bool *noTransValue,
+			   bool shouldFree)
+{
+	if (!shouldFree)
+		return;
+	
+	if (!transTypeByVal && !(*noTransValue) && !(*transValueIsNull) &&
+		DatumGetPointer(*transValue) != NULL)
+		pfree(DatumGetPointer(*transValue));
+	
+	*transValue = 0;
+	*transValueIsNull = true;
+	*noTransValue = true;
+}
+
+/*
  * computeTransValuesThroughScan -- compute transition values
  * for those functions in the given level whose aggregate values
  * can only be computed through scanning through multiple entries
@@ -1672,6 +1696,12 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 			!funcstate->isAgg)
 			continue;
 		
+		freeTransValue(&funcstate->final_aggTransValue,
+					   funcstate->aggTranstypeByVal,
+					   &funcstate->final_aggTransValueIsNull,
+					   &funcstate->final_aggNoTransValue,
+					   funcstate->final_aggShouldFree);
+
 		oldcxt = MemoryContextSwitchTo(wstate->transcontext);
 		funcstate->final_aggTransValue =
 			datumCopy(funcstate->aggInitValue,
@@ -1680,6 +1710,7 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 		MemoryContextSwitchTo(oldcxt);
 		funcstate->final_aggTransValueIsNull = funcstate->aggInitValueIsNull;
 		funcstate->final_aggNoTransValue = funcstate->aggInitValueIsNull;
+		funcstate->final_aggShouldFree = !funcstate->aggInitValueIsNull;
 	}
 
 	if (has_tuples)
@@ -1756,6 +1787,7 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 										  &fcinfo, (void *)wstate,
 										  wstate->transcontext,
 										  econtext->ecxt_per_tuple_memory);
+				funcstate->final_aggShouldFree = true;
 			}
 		}
 		
@@ -1804,6 +1836,7 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 											  &fcinfo, (void *)wstate,
 											  wstate->transcontext,
 											  econtext->ecxt_per_tuple_memory);
+					funcstate->final_aggShouldFree = true;
 				}
 				else
 				{
@@ -1991,6 +2024,12 @@ computeFrameValue(WindowStatePerLevel level_state,
 				MemoryContext oldcxt;
 				bool has_tuples = true;
 
+				freeTransValue(&funcstate->final_aggTransValue,
+							   funcstate->aggTranstypeByVal,
+							   &funcstate->final_aggTransValueIsNull,
+							   &funcstate->final_aggNoTransValue,
+							   funcstate->final_aggShouldFree);
+
 				oldcxt = MemoryContextSwitchTo(wstate->transcontext);
 				if (lead_value != NULL)
 				{
@@ -2002,6 +2041,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 						lead_value->valueIsNull;
 
 					funcstate->final_aggNoTransValue = false;
+					funcstate->final_aggShouldFree = true;
 				}
 				else
 				{
@@ -2013,6 +2053,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 					funcstate->final_aggTransValueIsNull = 
 						funcstate->aggTransValueIsNull;
 					funcstate->final_aggNoTransValue = false;
+					funcstate->final_aggShouldFree = true;
 				}
 				MemoryContextSwitchTo(oldcxt);
 			
@@ -3015,6 +3056,12 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 			frame_buffer = level_state->frame_buffer;
 			Assert(frame_buffer != NULL);
 
+			freeTransValue(&funcstate->final_aggTransValue,
+						   funcstate->aggTranstypeByVal,
+						   &funcstate->final_aggTransValueIsNull,
+						   &funcstate->final_aggNoTransValue,
+						   funcstate->final_aggShouldFree);
+
 			/* When the current_row_reader is set, we retrieve the intermediate
 			 * accumulated aggregate value from the buffer.
 			 */
@@ -3041,6 +3088,7 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 				MemoryContextSwitchTo(oldcxt);
 				funcstate->final_aggTransValueIsNull = value->valueIsNull;
 				funcstate->final_aggNoTransValue = false;
+				funcstate->final_aggShouldFree = true;
 			}
 
 			/* Otherwise, the value for the current_rows is stored in aggTransValue.
@@ -3050,6 +3098,7 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 				funcstate->final_aggTransValue = funcstate->aggTransValue;
 				funcstate->final_aggTransValueIsNull = funcstate->aggTransValueIsNull;
 				funcstate->final_aggNoTransValue = funcstate->aggNoTransValue;
+				funcstate->final_aggShouldFree = false;
 			}
 		}
 			
@@ -3479,6 +3528,8 @@ finaliseFuncs(WindowState *wstate)
 	int funcno;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 
+	MemoryContext oldctx = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
+
 	/*
 	 * Put the current transition value into the econtext
 	 */
@@ -3527,6 +3578,8 @@ finaliseFuncs(WindowState *wstate)
 			isnulls[funcno] = funcstate->win_value_is_null;
 		}
 	}
+
+	MemoryContextSwitchTo(oldctx);
 }
 
 /*
@@ -4425,6 +4478,8 @@ ExecWindow(WindowState *wstate)
 			output_ready = true;
 	}
 
+	ResetExprContext(econtext);
+
 	econtext->ecxt_scantuple = wstate->curslot;
 	econtext->ecxt_outertuple = wstate->curslot;
 
@@ -4448,6 +4503,12 @@ resetTransValue(WindowStatePerFunction funcstate,
 {
 	if (funcstate->isAgg)
 	{
+		freeTransValue(&funcstate->aggTransValue,
+					   funcstate->aggTranstypeByVal,
+					   &funcstate->aggTransValueIsNull,
+					   &funcstate->aggNoTransValue,
+					   true);
+
 		if (!funcstate->aggTranstypeByVal  && !funcstate->aggTransValueIsNull &&
 			DatumGetPointer(funcstate->aggTransValue) != NULL)
 			pfree (DatumGetPointer(funcstate->aggTransValue));
@@ -4473,14 +4534,12 @@ resetTransValue(WindowStatePerFunction funcstate,
 		int argno = 1;
 		WindowRefExprState *wrxstate = funcstate->wrxstate;
 
-		if (wrxstate->argtypbyval &&
-			!wrxstate->argtypbyval[argno] && !funcstate->aggTransValueIsNull &&
-			DatumGetPointer(funcstate->aggTransValue) != NULL)
-			pfree(DatumGetPointer(funcstate->aggTransValue));
-
-		funcstate->aggTransValue = 0;
-		funcstate->aggTransValueIsNull = true;
-		funcstate->aggNoTransValue = true;
+		if (wrxstate->argtypbyval)
+			freeTransValue(&funcstate->aggTransValue,
+						   wrxstate->argtypbyval[argno],
+						   &funcstate->aggTransValueIsNull,
+						   &funcstate->aggNoTransValue,
+						   true);
 
 		funcstate->win_value = 0;
 		funcstate->win_value_is_null = true;
@@ -4686,7 +4745,6 @@ checkOutputReady(WindowState *wstate)
 		{
 			if (!hasEnoughDataInRows(level_state->frame_buffer,
 									 level_state,
-									 econtext,
 									 level_state->trail_rows,
 									 level_state->lead_rows))
 				return false;
@@ -4696,8 +4754,6 @@ checkOutputReady(WindowState *wstate)
 		{
 			if (!hasEnoughDataInRange(level_state->frame_buffer,
 									  level_state,
-									  econtext,
-									  wstate->transcontext,
 									  level_state->trail_range,
 									  level_state->lead_range))
 				return false;
