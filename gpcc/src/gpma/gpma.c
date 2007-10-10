@@ -36,7 +36,7 @@ static void usage(const char* msg)
 /*  Parse command line for - options and arguments according to 
  *  Usage Info 
  */
-apr_status_t parse_cmdline(int argc, const char* argv[])
+void parse_cmdline(int argc, const char* argv[])
 {
     apr_getopt_t* handle;
     char opt;
@@ -44,7 +44,33 @@ apr_status_t parse_cmdline(int argc, const char* argv[])
     int e;
     FILE* f;
     char msg[1024];
+    char* p;
 
+    switch (argv[0][0]) {
+    case '/': case '.': 
+	break;
+    default:
+	sprintf(msg, "please specify %s with an explicit full or relative path", argv[0]);
+	usage(msg);
+    }
+
+    /* get full path to gpma executable */
+    apr_filepath_merge(&p, NULL, argv[0],
+		       APR_FILEPATH_TRUENAME | APR_FILEPATH_NOTRELATIVE, 
+		       gpma.pool);
+
+    /* get full path to parent directory of gpma executable */
+    gpma.gphome = p;
+    p += strlen(p) + 1;
+    while (*p != '/') *p-- = 0;
+    if (p == gpma.gphome) {
+	sprintf(msg, "unable to set get GPHOME from path %s", gpma.gphome);
+	usage(msg);
+    }
+    *p-- = 0;
+    while (*p != '/') *p-- = 0;
+
+    /* parse command line options */
     GPCC_DO(0 == apr_getopt_init(&handle, gpma.pool, argc, argv));
     while (0 == (e = apr_getopt(handle, "?b:D", &opt, &optarg))) {
 	switch (opt) {
@@ -87,8 +113,6 @@ apr_status_t parse_cmdline(int argc, const char* argv[])
 	}
 	fclose(f);
     }
-    
-    return 0;
 }
 
 static void net_opened(gpcc_net_conn_t conn, 
@@ -319,12 +343,6 @@ static apr_status_t verify_config(void)
     int errcnt = 0;
     char* errmsg[100];
 
-    if (! (v = config_get(gpma.cfg, "gphome"))) 
-	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gphome not set");
-    
-    if (v && 0 != setenv("GPHOME", v, 1))
-	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gphome setenv error");
-
     /* at least 1 ma must be set */
     for (i = 0; i < 3; i++) {
 	sprintf(buf, "ma.%d", i);
@@ -424,7 +442,7 @@ static apr_status_t verify_config(void)
 /*
  * Load the config into gpma. 
  */
-apr_status_t load_config(void)
+void load_config(void)
 {
     if (gpma.boot_fname) {
 	apr_uint64_t guid;
@@ -472,8 +490,9 @@ apr_status_t load_config(void)
     if (0 != apr_dir_make_recursive(gpma.datadir, 0x700, gpma.pool)) 
 	gpcc_fatal(FLINE, "unable to create ma.datadir '%s'", gpma.datadir);
     GPCC_DO(0 == config_write(gpma.datadir, gpma.guid, gpma.cfg));
-    return 0;
 }
+
+
 
 int main(int argc, const char* argv[])
 {
@@ -486,9 +505,12 @@ int main(int argc, const char* argv[])
 
     GPCC_DO(0 == apr_pool_create(&gpma.pool, 0));
 
-    GPCC_DO(0 == parse_cmdline(argc, argv));
+    parse_cmdline(argc, argv);
 
-    GPCC_DO(0 == load_config());
+    GPCC_DO(0 == setenv("GPHOME", gpma.gphome, 1));
+    printf("GPHOME=%s\n", gpma.gphome);
+    
+    load_config();
 
     if (! gpma.debug) {
 	GPCC_DO(0 == apr_proc_detach(1));
