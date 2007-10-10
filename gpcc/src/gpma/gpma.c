@@ -184,6 +184,7 @@ static void node_init(void)
 	if (apr_tokenize_to_argv(node, &cp->u.node.hosttab, cp->pool)) {
 	    gpcc_fatal(FLINE, "Illegal format for entry '%s' in configuration", node_name);
 	}
+	cp->u.node.hostidx = 0;
     }
 }
 

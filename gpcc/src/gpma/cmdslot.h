@@ -87,6 +87,7 @@ struct cmdslot_t {
 	struct {
 	    /* host IPs belonging to this node */
 	    int hosttab_max;	/* size of hosttab */
+	    int    hostidx;
 	    char** hosttab;	/* array of IP */
 	} node;
     } u;
