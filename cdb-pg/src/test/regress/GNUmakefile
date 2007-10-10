@@ -143,8 +143,12 @@ installcheck: all
 installcheck-parallel: all
 	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/parallel_schedule --srcdir=$(abs_srcdir) --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE)
 
-installcheck-good: all
-	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/known_good_schedule --srcdir=$(abs_srcdir) --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE)
+installcheck-good: all $(srcdir)/current_good_schedule
+	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/current_good_schedule --srcdir=$(abs_srcdir) --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE)
+
+.PHONY: $(srcdir)/current_good_schedule
+$(srcdir)/current_good_schedule: $(srcdir)/known_good_schedule
+	./makeschedule $< $@
 
 # old interfaces follow...
 
@@ -173,6 +177,10 @@ clean distclean maintainer-clean: clean-lib
 	rm -f $(NAME)$(DLSUFFIX) $(OBJS)
 	$(MAKE) -C $(contribdir)/spi clean
 	rm -f $(output_files) $(input_files) pg_regress_main.o pg_regress.o pg_regress$(X)
+# things created by dynamic configs
+	rm -f current_good_schedule
+	find sql -type l | xargs rm -f
+	find expected -type l | xargs rm -f
 # things created by various check targets
 	rm -rf testtablespace
 	rm -rf results tmp_check log
