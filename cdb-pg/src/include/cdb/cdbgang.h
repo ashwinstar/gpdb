@@ -111,6 +111,9 @@ extern bool
 cleanupGang(Gang * gp);
 
 extern void
+cleanupIdleReaderGangs(void);
+
+extern void
 disconnectAndDestroyGangById(int gang_id);
 
 extern int numDispatchAgents(void);

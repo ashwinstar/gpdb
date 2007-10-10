@@ -24,6 +24,7 @@
 #include "access/twophase_rmgr.h"
 #include "access/xact.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbgang.h"
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "pgstat.h"
@@ -360,6 +361,11 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 								locktag->locktag_field1);
 		pgstat_record_start_queue_wait(incrementSet->portalId,
 									   locktag->locktag_field1);
+
+		/*
+		 * Free/destroy idle gangs as we are going to sleep.
+		 */
+		cleanupIdleReaderGangs();
 
 		/*
 		 * Sleep till someone wakes me up.

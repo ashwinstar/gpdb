@@ -54,7 +54,7 @@ static void build_gpdaid_params(PQExpBuffer buf);
 static Gang *createGang(GangType type, int gang_id, int size, int content, char *portal_name);
 
 static void disconnectAndDestroyGang(Gang * gp);
-static void disconnectAndDestroyAllReaderGangs(void);
+static void disconnectAndDestroyAllReaderGangs(bool destroyAllocated);
 static void disconnectAndDestroyDispatchAgents(void);
 
 static Gang *buildGangDefinition(GangType type, int gang_id, int size, int content, char *portal_name);
@@ -3080,6 +3080,23 @@ cleanupGang(Gang * gp)
 }
 
 /*
+ * Destroy all idle (i.e available) reader gangs.
+ */
+void
+cleanupIdleReaderGangs(void)
+{
+    if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
+	    elog(DEBUG4, "cleanupIdleReaderGangs beginning");
+
+	disconnectAndDestroyAllReaderGangs(false);
+
+    if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
+	    elog(DEBUG4, "cleanupIdleReaderGangs done");
+
+	return;
+}
+
+/*
  * This not only disconnects and destroys the gang, it also first removes the gang from
  * the available lists (if it exists in those lists).
  */
@@ -3297,7 +3314,7 @@ disconnectAndDestroyGang(Gang * gp)
 	 */
 	if (gp->type == GANGTYPE_PRIMARY_WRITER)
 	{
-		disconnectAndDestroyAllReaderGangs();
+		disconnectAndDestroyAllReaderGangs(true);
 		if (mirrorWriterGang)
 		{
 			disconnectAndDestroyGang(mirrorWriterGang);
@@ -3485,13 +3502,15 @@ freeGangsForPortal(char *portal_name)
  * Here we destroy all reader gangs regardless of the portal they belong to.
  * TODO: This may need to be done more carefully when multiple cursors are
  * enabled.
+ * If the parameter destroyAllocated is true, then destroy allocated as well as
+ * available gangs.
  */
 static void
-disconnectAndDestroyAllReaderGangs(void)
+disconnectAndDestroyAllReaderGangs(bool destroyAllocated)
 {
 	Gang	   *gp;
 
-	if (allocatedReaderGangsN != NIL)
+	if (allocatedReaderGangsN != NIL  && destroyAllocated)
 	{
 		gp = linitial(allocatedReaderGangsN);
 		while (gp != NULL)
@@ -3517,7 +3536,7 @@ disconnectAndDestroyAllReaderGangs(void)
 				gp = NULL;
 		}
 	}
-	if (allocatedReaderGangs1 != NIL)
+	if (allocatedReaderGangs1 != NIL  && destroyAllocated)
 	{
 		gp = linitial(allocatedReaderGangs1);
 		while (gp != NULL)
@@ -3543,9 +3562,12 @@ disconnectAndDestroyAllReaderGangs(void)
 				gp = NULL;
 		}
 	}
-	allocatedReaderGangsN = NIL;
+	if (destroyAllocated)
+		allocatedReaderGangsN = NIL;
 	availableReaderGangsN = NIL;
-	allocatedReaderGangs1 = NIL;
+
+	if (destroyAllocated)
+		allocatedReaderGangs1 = NIL;
 	availableReaderGangs1 = NIL;
 }
 
@@ -3681,7 +3703,7 @@ disconnectAndDestroyAllGangs(void)
 		elog(DEBUG2, "disconnectAndDestroyAllGangs");
 
 	/* for now, destroy all readers, regardless of the portal that owns them */
-	disconnectAndDestroyAllReaderGangs();
+	disconnectAndDestroyAllReaderGangs(true);
 
 	disconnectAndDestroyGang(mirrorWriterGang);
 	mirrorWriterGang = NULL;
@@ -3824,7 +3846,7 @@ reconnectSegDB(struct SegmentDatabaseDescriptor * failedDB)
 	 * then we'd only have to do the following if we were a writer gang.
 	 *
 	 */
-	disconnectAndDestroyAllReaderGangs();
+	disconnectAndDestroyAllReaderGangs(true);
 
 
 
