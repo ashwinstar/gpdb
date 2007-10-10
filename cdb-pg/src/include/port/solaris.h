@@ -28,10 +28,11 @@
 #endif
 
 #ifndef			BYTE_ORDER
+
 #ifdef __sparc__
 #define		  BYTE_ORDER	  BIG_ENDIAN
 #endif
-#ifdef __i386__
+#if defined(__i386__) || defined(__x86_64__) 
 #define		 BYTE_ORDER		 LITTLE_ENDIAN
 #endif
 #endif
