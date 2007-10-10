@@ -771,14 +771,8 @@ extern void	DefineExternalRelation(CreateExternalStmt *createExtStmt)
 		
 		/*
 		 * create a pg_exttable entry for this external table.
-		 *
-		 * NOTE: this should be done in all GP roles. However, since in earlier
-		 * releases we only done it on the QD, we continue this behavior until
-		 * our upgrade utility can deal with this change. We also make sure to
-		 * only DROP the pg_exttable entry on the QD.
 		 */
-		if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY)
-			StoreExternalRelation(createExtStmt, reloid);
+		StoreExternalRelation(createExtStmt, reloid);
 
 		/*
 		 * record a dependency between the external table and its error table (if one exists)
@@ -905,46 +899,36 @@ RemoveExternalRelation(const RangeVar *relation, DropBehavior behavior)
 	
 	/*
 	 * now remove the pg_exttable entry 
-	 *
-	 * NOTE: for now it's only on the QD.
 	 */
-	if (Gp_role == GP_ROLE_DISPATCH)
-	{
-		
-		/*
-		 * Check the pg_exttable relation to be certain the ext table 
-		 * is there. 
-		 */
-		pg_exttable_rel = heap_open(ExtTableRelationId, RowExclusiveLock);
-		pg_exttable_dsc = RelationGetDescr(pg_exttable_rel);
+	pg_exttable_rel = heap_open(ExtTableRelationId, RowExclusiveLock);
+	pg_exttable_dsc = RelationGetDescr(pg_exttable_rel);
 
-		ScanKeyInit(&key,
-					Anum_pg_exttable_reloid,
-					BTEqualStrategyNumber,
-					F_OIDEQ,
-					ObjectIdGetDatum(relOid));
+	ScanKeyInit(&key,
+				Anum_pg_exttable_reloid,
+				BTEqualStrategyNumber,
+				F_OIDEQ,
+				ObjectIdGetDatum(relOid));
 
-		extscan = systable_beginscan(pg_exttable_rel, ExtTableRelOidIndexId, true,
-									 SnapshotNow, 1, &key);
+	extscan = systable_beginscan(pg_exttable_rel, ExtTableRelOidIndexId, true,
+								 SnapshotNow, 1, &key);
 
-		tuple = systable_getnext(extscan);
-		if (!HeapTupleIsValid(tuple))
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("external table object id \"%d\" does not exist",
-							relOid)));
+	tuple = systable_getnext(extscan);
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("external table object id \"%d\" does not exist",
+						relOid)));
 
-		/*
-		 * Delete the external table entry from the catalog (pg_exttable).
-		 */
-		simple_heap_delete(pg_exttable_rel, &tuple->t_self);
+	/*
+	 * Delete the external table entry from the catalog (pg_exttable).
+	 */
+	simple_heap_delete(pg_exttable_rel, &tuple->t_self);
 
 
-		/* Finish up scan and close exttable catalog. */
-		systable_endscan(extscan);
+	/* Finish up scan and close exttable catalog. */
+	systable_endscan(extscan);
 
-		heap_close(pg_exttable_rel, NoLock);
-	}
+	heap_close(pg_exttable_rel, NoLock);
 	
 }
 
