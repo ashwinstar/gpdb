@@ -82,11 +82,11 @@
 #include <pthread.h>
 extern pthread_t main_tid;
 #ifndef _WIN32
-#define mythread() ((pthread_t) pthread_self())
-#define mainthread() ((pthread_t) main_tid)
+#define mythread() ((unsigned long) pthread_self())
+#define mainthread() ((unsigned long) main_tid)
 #else
-#define mythread() ((pthread_t) pthread_self().p)
-#define mainthread() ((pthread_t) main_tid.p)
+#define mythread() ((unsigned long) pthread_self().p)
+#define mainthread() ((unsigned long) main_tid.p)
 #endif 
 #endif
 

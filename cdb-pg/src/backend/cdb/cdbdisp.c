@@ -61,9 +61,9 @@
 
 extern pthread_t main_tid;
 #ifndef _WIN32
-#define mythread() ((pthread_t) pthread_self())
+#define mythread() ((unsigned long) pthread_self())
 #else
-#define mythread() ((pthread_t) pthread_self().p)
+#define mythread() ((unsigned long) pthread_self().p)
 #endif 
 
 /*
@@ -280,8 +280,8 @@ write_log(const char *fmt,...)
 		strcat(logprefix,"MAIN");
 	else
 	{
-		sprintf(tempbuf,"%p", (void *)mythread());
-		strcat(logprefix, tempbuf);
+		sprintf(tempbuf,"%lu",mythread());
+		strcat(logprefix,tempbuf);
 	}
 	strcat(logprefix,":  ");
 	
@@ -918,14 +918,14 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 				int			pthread_err = 0;
 				pthread_err = pthread_join(pParms->thread, NULL);
 				if (pthread_err != 0)
-					elog(FATAL, "CheckDispatchResult: pthread_join failed on thread %d (%p) of %d (returned %d attempting to join to %p)",
+					elog(FATAL, "CheckDispatchResult: pthread_join failed on thread %d (%lu) of %d (returned %d attempting to join to %lu)",
 						 i + 1, 
 #ifndef _WIN32
-						 (void *) pParms->thread, 
+						 (unsigned long) pParms->thread, 
 #else
-						 (void *) pParms->thread.p,
+						 (unsigned long) pParms->thread.p,
 #endif
-						 dispatchThreads->threadCount, pthread_err, (void *)mythread());
+						 dispatchThreads->threadCount, pthread_err, (unsigned long)mythread());
 			}
 		}
 		HOLD_INTERRUPTS();

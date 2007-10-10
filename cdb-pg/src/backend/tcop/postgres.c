@@ -3108,11 +3108,11 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
 	{
 		debug_break();
 #ifndef _WIN32
-		write_stderr("\nUnexpected internal error: QD %d received signal %d in worker thread %p (forwarding signal to main thread)\n\n",
-					 MyProcPid, postgres_signal_arg, (void  *)pthread_self());
+		write_stderr("\nUnexpected internal error: QD %d received signal %d in worker thread %lu (forwarding signal to main thread)\n\n",
+					 MyProcPid, postgres_signal_arg, (unsigned long)pthread_self());
 #else
-		write_stderr("\nUnexpected internal error: QD %d received signal %d in worker thread %p (forwarding signal to main thread)\n\n",
-					 MyProcPid, postgres_signal_arg, (void *)pthread_self().p);
+		write_stderr("\nUnexpected internal error: QD %d received signal %d in worker thread %lu (forwarding signal to main thread)\n\n",
+					 MyProcPid, postgres_signal_arg, (unsigned long)pthread_self().p);
 #endif 
 		pthread_kill(main_tid, postgres_signal_arg);
 		pthread_exit(NULL);
