@@ -174,20 +174,20 @@ static inline void setup_set_segment(cmdslot_t *cmdslot, int idx, char *name, in
     const char *value, *s;
     char addr[128];
 
-    cmdslot->u.sys.seginfo[idx].name = apr_pstrdup(pool, name);
-    cmdslot->u.sys.seginfo[idx].dbid = dbid;
-    cmdslot->u.sys.seginfo[idx].content = content;
-    cmdslot->u.sys.seginfo[idx].port = port;
-    cmdslot->u.sys.seginfo[idx].haidx = node;
-    cmdslot->u.sys.seginfo[idx].ha = apr_psprintf(pool, "node.%d", node);
-    cmdslot->u.sys.seginfo[idx].dir = apr_pstrdup(pool, dir);
+    cmdslot->u.fts.seginfo[idx].name = apr_pstrdup(pool, name);
+    cmdslot->u.fts.seginfo[idx].dbid = dbid;
+    cmdslot->u.fts.seginfo[idx].content = content;
+    cmdslot->u.fts.seginfo[idx].port = port;
+    cmdslot->u.fts.seginfo[idx].haidx = node;
+    cmdslot->u.fts.seginfo[idx].ha = apr_psprintf(pool, "node.%d", node);
+    cmdslot->u.fts.seginfo[idx].dir = apr_pstrdup(pool, dir);
 
     sprintf(key, "node.%d", node);
     value = config_get(gpma.cfg, key);
     s = strchr(value, ',');
     strncpy(addr, value+1, s - value - 1);
     addr[s-value-1] = 0;
-    cmdslot->u.sys.seginfo[idx].host = apr_pstrdup(pool, addr);
+    cmdslot->u.fts.seginfo[idx].host = apr_pstrdup(pool, addr);
 }
 
 static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
@@ -198,7 +198,7 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
     const char *value;
     int master_port, base_port, mirror_base_port;
 
-    cmdslot->u.sys.config_json = config_to_json_object();
+    cmdslot->u.fts.config_json = config_to_json_object();
 
     strcpy(key, "gpdb.seg.master_port");
     master_port = config_get_or_set_int(gpma.cfg, key, DEFAULT_QD_PORT);
@@ -238,8 +238,8 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 	n++;
     }	
 
-    cmdslot->u.sys.nseginfo = n;
-    cmdslot->u.sys.seginfo = apr_palloc(cmdslot->pool, sizeof(*cmdslot->u.sys.seginfo) * n);
+    cmdslot->u.fts.nseginfo = n;
+    cmdslot->u.fts.seginfo = apr_palloc(cmdslot->pool, sizeof(*cmdslot->u.fts.seginfo) * n);
 
     /* master QD */
     strcpy(key, "gpdb.seg.m.0");
@@ -309,22 +309,22 @@ static apr_status_t a_fts_setup_init(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
 
     gpcc_log_info("setup init");
-    if (cmdslot->u.sys.config_json == 0) {
-	cmdslot->u.sys.config_json = config_to_json_object();
+    if (cmdslot->u.fts.config_json == 0) {
+	cmdslot->u.fts.config_json = config_to_json_object();
 	setup_init_seginfo(ev, _cmdslot);
 	
 	{
 	    int i = 0;
-	    for (i = 0 ; i < cmdslot->u.sys.nseginfo ; i++) {
+	    for (i = 0 ; i < cmdslot->u.fts.nseginfo ; i++) {
 		gpcc_log_info("seginfo[%d] = {name: %s, host: %s, dbid: %d, content: %d, port: %d, dir: %s, haidx: %d}",
 			      i,
-			      cmdslot->u.sys.seginfo[i].name,
-			      cmdslot->u.sys.seginfo[i].host,
-			      cmdslot->u.sys.seginfo[i].dbid,
-			      cmdslot->u.sys.seginfo[i].content,
-			      cmdslot->u.sys.seginfo[i].port,
-			      cmdslot->u.sys.seginfo[i].dir,
-			      cmdslot->u.sys.seginfo[i].haidx);
+			      cmdslot->u.fts.seginfo[i].name,
+			      cmdslot->u.fts.seginfo[i].host,
+			      cmdslot->u.fts.seginfo[i].dbid,
+			      cmdslot->u.fts.seginfo[i].content,
+			      cmdslot->u.fts.seginfo[i].port,
+			      cmdslot->u.fts.seginfo[i].dir,
+			      cmdslot->u.fts.seginfo[i].haidx);
 	    }
 	}
     }

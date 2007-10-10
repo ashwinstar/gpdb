@@ -86,7 +86,7 @@ struct cmdslot_t {
 		} u;
 	    } request;
 
-	} sys;
+	} fts;
 
 	struct {
 	    /* host IPs belonging to this node */
