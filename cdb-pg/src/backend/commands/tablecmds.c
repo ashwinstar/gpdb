@@ -757,6 +757,7 @@ extern void	DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	 */
     PG_TRY();
     {
+		SingleRowErrorDesc *srehDesc = (SingleRowErrorDesc *)createExtStmt->sreh;
 		
 		/*
 		 * get our pg_class external rel OID. If we're the QD we just created
@@ -777,8 +778,7 @@ extern void	DefineExternalRelation(CreateExternalStmt *createExtStmt)
 		/*
 		 * record a dependency between the external table and its error table (if one exists)
 		 */		
-/*	enable soon...	
-		if(((SingleRowErrorDesc *)createExtStmt->sreh)->errtable)
+		if(srehDesc && srehDesc->errtable)
 		{
 			ObjectAddress	myself,		
 			referenced; 
@@ -787,14 +787,14 @@ extern void	DefineExternalRelation(CreateExternalStmt *createExtStmt)
 			Assert(fmtErrTblOid != InvalidOid);
 			
 			myself.classId = RelationRelationId;
-			myself.objectId = fmtErrTblOid;
+			myself.objectId = reloid;
 			myself.objectSubId = 0;
 			referenced.classId = RelationRelationId;
-			referenced.objectId = reloid;
+			referenced.objectId = fmtErrTblOid;
 			referenced.objectSubId = 0;
 			recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
 		}
-*/		
+		
 		if (shouldDispatch)
 		{
 			

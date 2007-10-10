@@ -332,7 +332,7 @@ DROP TABLE sreh_copy_errtbl;
 -- External Tables 
 -- ###########################################################
 CREATE EXTERNAL WEB TABLE gpfdist_start (x text)
-execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_srcdir@/data  </dev/null >/dev/null 2>&1 &); sleep 5; echo "starting...") '
+execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_srcdir@/data  </dev/null >/dev/null 2>&1 &); sleep 7; echo "starting...") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 CREATE EXTERNAL WEB TABLE gpfdist_stop (x text)
@@ -565,4 +565,9 @@ select * from gpfdist_stop;
 DROP EXTERNAL WEB TABLE gpfdist_stop;
 DROP EXTERNAL WEB TABLE gpfdist_start;
 DROP TABLE sreh_target;
-DROP TABLE sreh_ext_errtbl;
+DROP TABLE sreh_ext_errtbl; -- should fail by dependency
+NOTICE:  external table sreh_ext depends on table sreh_ext_errtbl
+ERROR:  cannot drop table sreh_ext_errtbl because other objects depend on it
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+DROP TABLE sreh_ext_errtbl CASCADE;
+NOTICE:  drop cascades to external table sreh_ext
