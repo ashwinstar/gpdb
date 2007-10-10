@@ -198,14 +198,17 @@ void d_main(void)
     gpcc_evqueue_t* evq = 0;
     gpcc_event_t* ev = 0;
     int i;
-    const char* logfpath = apr_psprintf(gpma.pool, "%s/%s-%s.log", 
-					gpma.datadir, gpma.guid, gpma.ma_unit);
+
+    gpma.logfpath = apr_psprintf(gpma.pool, "%s/%s-%s.log", 
+				 gpma.datadir, gpma.guid, gpma.ma_unit);
 
     /* redirect cerr to log */
-    if (! freopen(logfpath, "a", stderr)) 
-	gpcc_warning(FLINE, "unable to open log file '%s'", logfpath);
+    if (! freopen(gpma.logfpath, "a", stderr)) {
+	gpcc_warning(FLINE, "unable to open log file '%s'", gpma.logfpath);
+	gpma.logfpath = NULL;
+    }
     else {
-	printf("Logs will be written to %s\n", logfpath);
+	printf("Logs will be written to %s\n", gpma.logfpath);
 	setlinebuf(stderr);
 	/* freopen(logfpath, "a", stdout); */
     }
@@ -313,47 +316,11 @@ static apr_status_t verify_config(void)
     int i;
     const char* v;
     char buf[1024];
+    int errcnt = 0;
+    char* errmsg[100];
 
-    /* guid must match */
-    if (! config_eq(gpma.cfg, "gpdb.guid", gpma.guid)) {
-	gpcc_fatal(FLINE, "config file error: gpdb.guid mismatch (expect %s, receive %s)",
-		       gpma.guid, config_getx(gpma.cfg, "gpdb.guid", "[null]"));
-    }
-
-    /* name must exist */
-    if (! config_get(gpma.cfg, "gpdb.name")) {
-	gpcc_fatal(FLINE, "config file error: gpdb.name missing");
-    }
-
-    /* default ma port if not set */
-    if (! config_get(gpma.cfg, "ma.port")) {
-	gpcc_fatal(FLINE, "config file error: ma.port missing");
-    }
-
-    /* default master_port port if not set */
-    if (! config_get(gpma.cfg, "gpdb.seg.master_port")) {
-	gpcc_fatal(FLINE, "config file error: gpdb.seg.master_port missing");
-    }
-    i = config_get_int(gpma.cfg, "gpdb.seg.master_port");
-    if (! (0 < i && i < (1 << 16))) {
-	gpcc_fatal(FLINE, "config file error: gpdb.seg.master_port invalid (value %d)", i);
-    }
-
-    /* default qe baseport if not set */
-    if (! config_get(gpma.cfg, "gpdb.seg.base_port")) {
-	gpcc_fatal(FLINE, "config file error: gpdb.seg.base_port missing");
-    }
-    i = config_get_int(gpma.cfg, "gpdb.seg.base_port");
-    if (! (0 < i && i < (1 << 16))) {
-	gpcc_fatal(FLINE, "config file error: gpdb.seg.base_port invalid (value %d)", i);
-    }
-
-    /* default min mirror if not set */
-    i = config_get_or_set_int(gpma.cfg, "gpdb.min_mirror", 0);
-    if (! (0 <= i && i < 2)) {
-	gpcc_fatal(FLINE, "config file error: gpdb.min_mirror invalid (value %d)", i);
-    }
-
+    if (! config_get(gpma.cfg, "gphome")) 
+	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gphome not set");
 
     /* at least 1 ma must be set */
     for (i = 0; i < 3; i++) {
@@ -361,22 +328,62 @@ static apr_status_t verify_config(void)
 	if (! (v = config_get(gpma.cfg, buf)))
 	    break;
     }
-    if (i == 0)
-	gpcc_fatal(FLINE, "config file error: ma.0 not set");
+    if (i == 0) 
+	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- ma.0 not set");
+
+    /* default ma port if not set */
+    if (! config_get(gpma.cfg, "ma.port")) {
+	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- ma.port missing");
+    }
 
     /* ma.datadir */
     v = config_get(gpma.cfg, "ma.datadir");
     if (! v)
-	gpcc_fatal(FLINE, "config file error: ma.datadir not set");
+	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- ma.datadir not set");
     if (v[0] != '/') 
-	gpcc_fatal(FLINE, "config file error: ma.datadir must be an absolute path");
+	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- ma.datadir must be an absolute path");
     if (strlen(v) > 255)
-	gpcc_fatal(FLINE, "config file error: ma.datadir is too long (max 255 chars)");
+	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- ma.datadir is too long (max 255 chars)");
+
+    /* guid must match */
+    if (! config_eq(gpma.cfg, "gpdb.guid", gpma.guid)) {
+	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.guid mismatch (expect %s, receive %s)",
+					gpma.guid, config_getx(gpma.cfg, "gpdb.guid", "[null]"));
+    }
+
+    /* name must exist */
+    if (! config_get(gpma.cfg, "gpdb.name")) {
+	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.name missing");
+    }
+
+    /* default master_port port if not set */
+    if (! config_get(gpma.cfg, "gpdb.seg.master_port")) {
+	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.master_port missing");
+    }
+    i = config_get_int(gpma.cfg, "gpdb.seg.master_port");
+    if (! (0 < i && i < (1 << 16))) {
+	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.master_port invalid (value %d)", i);
+    }
+
+    /* default qe baseport if not set */
+    if (! config_get(gpma.cfg, "gpdb.seg.base_port")) {
+	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.base_port missing");
+    }
+    i = config_get_int(gpma.cfg, "gpdb.seg.base_port");
+    if (! (0 < i && i < (1 << 16))) {
+	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.base_port invalid (value %d)", i);
+    }
+
+    /* default min mirror if not set */
+    i = config_get_or_set_int(gpma.cfg, "gpdb.min_mirror", 0);
+    if (! (0 <= i && i < 2)) {
+	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.min_mirror invalid (value %d)", i);
+    }
 
     /* qd must exist */
     v = config_get(gpma.cfg, "gpdb.seg.m.0");
     if (!v) {
-	gpcc_fatal(FLINE, "config file error: gpdb.seg.m.0 not set");
+	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.m.0 not set");
     }
 
     /* minimum 2 QEs, max 512 QEs */
@@ -385,12 +392,21 @@ static apr_status_t verify_config(void)
 	v = config_get(gpma.cfg, buf);
 	if (!v) {
 	    if (i < 2) 
-		gpcc_fatal(FLINE, "config file error: %s not set", buf);
+		errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- %s not set", buf);
 	    break;
 	}
     }
     if (! (2 <= i && i < 512)) {
-	gpcc_fatal(FLINE, "config file error: too many segments (max 512)");
+	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- too many segments (max 512)");
+    }
+
+    /* fail out */
+    if (errcnt) {
+	gpcc_log_error("config file error:");
+	for (i = 0; i < errcnt; i++)
+	    gpcc_log_error("%s\n", errmsg[i]);
+
+	gpcc_fatal(FLINE, "config file error - see log file '%s'", gpma.logfpath ? gpma.logfpath : "-");
     }
 
     /* set the number of QEs */

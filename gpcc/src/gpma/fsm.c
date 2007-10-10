@@ -17,9 +17,6 @@
 #include "fsm_stopdb.h"
 
 
-/* temporary */
-#define GPHOME "/Users/cktan/w/head/cdb2/"
-
 
 apr_status_t a_system_tick(gpcc_event_t* ev, void* arg)
 {
@@ -36,7 +33,7 @@ apr_status_t a_node_ssh(gpcc_event_t* ev, void* arg)
     if (slot->u.node.hostidx >= slot->u.node.hosttab_max)
 	slot->u.node.hostidx = 0;
     sprintf(line, "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' %s 'GPHOME=%s && export GPHOME && $GPHOME/bin/gpha' &",
-	    slot->u.node.hosttab[slot->u.node.hostidx], GPHOME);
+	    slot->u.node.hosttab[slot->u.node.hostidx], config_get(gpma.cfg, "gphome"));
     system(line);
     slot->countdown = 2;
     return 0;

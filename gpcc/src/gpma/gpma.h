@@ -51,6 +51,7 @@ struct gpma_t {
     const char*  boot_fname;  /* NULL if not booting, otherwise the name of the cfgfile */
     int          debug;	      /* TRUE if debug run, don't daemonize */
     gpcc_evqueue_t* evq;      /* event queue */
+    const char*  logfpath;    /* log file path */
     config_t*    cfg;	      /* config  */
     cmdslot_t*   gpma_cmdslot;
 
