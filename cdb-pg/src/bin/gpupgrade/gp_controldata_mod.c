@@ -16,11 +16,12 @@
 #include <sys/types.h>
 #include <fcntl.h>
 
+#include "catalog/catversion.h"
 #include "catalog/pg_control.h"
 
 #define CATVERSION_3_0 200703112
 #define VERSION_3_0 "3.0"
-#define CATVERSION_3_1 200709171
+#define CATVERSION_3_1 CATALOG_VERSION_NO
 #define VERSION_3_1 "3.1"
 
 uint32 tover = 0;
