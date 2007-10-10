@@ -214,8 +214,6 @@ void d_main(void)
     cmdslot_init(gpma.pool);
     gpma.gpma_cmdslot = cmdslot_alloc("GPMA", GPMA_CMDSTATE);
 
-    gpma.fts_cmdslot = cmdslot_alloc("FTS", FTS_CMDSTATE);
-
     fsm_init();
 
     node_init();

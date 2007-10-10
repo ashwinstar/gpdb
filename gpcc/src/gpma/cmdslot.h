@@ -37,55 +37,51 @@ struct cmdslot_t {
 	    struct json_object *config_json;
 	    int network_failure;
 
-	    struct {
-		apr_pool_t *pool;
-		struct json_object *reqobj;
-		int sndidx;
+	    struct json_object *reqobj;
+	    int sndidx;
 
-		union {
-		    struct {
-			int nreply;
-			int nconnected;
-			int ndisconnected;
-			char **hosts;
-			int nhost;
-			apr_proc_t *proc;
-		    } setup;
-
-		    struct {
-			char *mode;
-			int segidx;
-			int nreply;
-			int nsuccess;
-			int nfailed;
-			int *replied;
-		    } initdb;
-
-		    struct {
-			int nrequest;
-			int nreply;
-			int nsuccess;
-			int nfailed;
-			int *replied;
-		    } start;
-
-		    struct {
-			int nreply;
-			int nsuccess;
-			int nfailed;
-			int *replied;
-		    } stop;
-
-		    struct {
-			int nreply;
-			int nsuccess;
-			int nfailed;
-			int *replied;
-		    } status;
-
-		} u;
-	    } request;
-
+	    union {
+		struct {
+		    int nreply;
+		    int nconnected;
+		    int ndisconnected;
+		    char **hosts;
+		    int nhost;
+		    apr_proc_t *proc;
+		} setup;
+		
+		struct {
+		    char *mode;
+		    int segidx;
+		    int nreply;
+		    int nsuccess;
+		    int nfailed;
+		    int *replied;
+		} initdb;
+		
+		struct {
+		    int nrequest;
+		    int nreply;
+		    int nsuccess;
+		    int nfailed;
+		    int *replied;
+		} start;
+		
+		struct {
+		    int nreply;
+		    int nsuccess;
+		    int nfailed;
+		    int *replied;
+		} stop;
+		
+		struct {
+		    int nreply;
+		    int nsuccess;
+		    int nfailed;
+		    int *replied;
+		} status;
+		
+	    } u;
 	} fts;
 
 	struct {

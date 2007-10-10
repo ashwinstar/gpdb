@@ -5,12 +5,11 @@ static apr_status_t a_fts_start_init(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
 
-    apr_pool_create(&cmdslot->u.fts.request.pool, 0);
-    memset(&cmdslot->u.fts.request.u, 0, sizeof(cmdslot->u.fts.request.u));
-    cmdslot->u.fts.request.u.start.replied = apr_pcalloc(cmdslot->u.fts.request.pool, sizeof(int) * cmdslot->u.fts.nseginfo);
+    memset(&cmdslot->u.fts.u, 0, sizeof(cmdslot->u.fts.u));
+    cmdslot->u.fts.u.start.replied = apr_pcalloc(cmdslot->pool, sizeof(int) * cmdslot->u.fts.nseginfo);
 
-    cmdslot->u.fts.request.sndidx = pkt->mh.sndidx;
-    cmdslot->u.fts.request.reqobj = json_tokener_parse(pkt->payload);
+    cmdslot->u.fts.sndidx = pkt->mh.sndidx;
+    cmdslot->u.fts.reqobj = json_tokener_parse(pkt->payload);
     return 0;
 }
 
@@ -39,7 +38,7 @@ static apr_status_t a_fts_start_utility_qd(gpcc_event_t *ev, void *_cmdslot)
     gpcc_log_info("start utility qd %s", msg);
     if (0 != (e = gpcc_net_send_packetx(seginfo->ha, SEGMENT_REQUEST_MSG, 
 					cmdslot->cmdidx,
-					cmdslot->u.fts.request.sndidx,
+					cmdslot->u.fts.sndidx,
 					msg, strlen(msg) + 1))){
 	gpcc_warning(FLINE, "gpcc_net_send_packetx failed");
 	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
@@ -110,7 +109,7 @@ static apr_status_t a_fts_start_gpconf(gpcc_event_t *ev, void *_cmdslot)
     gpcc_event_t *evt;
 
     seginfo = &cmdslot->u.fts.seginfo[0];
-    if (0 != (e = gpcc_pg_reset_invalid_segment(seginfo->host, seginfo->port, cmdslot->u.fts.request.pool))) {
+    if (0 != (e = gpcc_pg_reset_invalid_segment(seginfo->host, seginfo->port, cmdslot->pool))) {
 	gpcc_warning(FLINE, "gpcc_pg_reset_invalid_segment failed");
 	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
@@ -146,7 +145,7 @@ static apr_status_t a_fts_start_utility_qd_stop(gpcc_event_t *ev, void *_cmdslot
     
     if (0 != (e = gpcc_net_send_packetx(seginfo->ha, SEGMENT_REQUEST_MSG, 
 					cmdslot->cmdidx,
-					cmdslot->u.fts.request.sndidx,
+					cmdslot->u.fts.sndidx,
 					msg, strlen(msg) + 1))){
 	gpcc_warning(FLINE, "gpcc_net_send_packetx failed");
 	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
@@ -226,11 +225,11 @@ static apr_status_t a_fts_start_qes(gpcc_event_t *ev, void *_cmdslot)
     struct json_object *obj;
     char *msg;
 
-    cmdslot->u.fts.request.u.start.nreply = 0;
-    cmdslot->u.fts.request.u.start.nfailed = 0;
-    cmdslot->u.fts.request.u.start.nsuccess = 0;
-    cmdslot->u.fts.request.u.start.nrequest = 0;
-    memset(cmdslot->u.fts.request.u.start.replied, 0, sizeof(int) * cmdslot->u.fts.nseginfo);
+    cmdslot->u.fts.u.start.nreply = 0;
+    cmdslot->u.fts.u.start.nfailed = 0;
+    cmdslot->u.fts.u.start.nsuccess = 0;
+    cmdslot->u.fts.u.start.nrequest = 0;
+    memset(cmdslot->u.fts.u.start.replied, 0, sizeof(int) * cmdslot->u.fts.nseginfo);
 
     for (i = 1; i < cmdslot->u.fts.nseginfo ; i++) {
 	seginfo = &cmdslot->u.fts.seginfo[i];
@@ -249,16 +248,16 @@ static apr_status_t a_fts_start_qes(gpcc_event_t *ev, void *_cmdslot)
 	msg = json_object_to_json_string(obj);
 	if (0 != (e = gpcc_net_send_packetx(seginfo->ha, SEGMENT_REQUEST_MSG, 
 					    cmdslot->cmdidx,
-					    cmdslot->u.fts.request.sndidx,
+					    cmdslot->u.fts.sndidx,
 					    msg, strlen(msg) + 1))){
 	    gpcc_warning(FLINE, "gpcc_ha_send failed");
-	    cmdslot->u.fts.request.u.start.nreply++;
-	    cmdslot->u.fts.request.u.start.nfailed++;
+	    cmdslot->u.fts.u.start.nreply++;
+	    cmdslot->u.fts.u.start.nfailed++;
 	    cmdslot->u.fts.network_failure++;
 	}
 	json_object_put(obj);
 
-	cmdslot->u.fts.request.u.start.nrequest++;	
+	cmdslot->u.fts.u.start.nrequest++;	
     }
     
     
@@ -289,12 +288,12 @@ static apr_status_t a_fts_start_qe_reply(gpcc_event_t *ev, void *_cmdslot)
 
 	for (i = 0 ; i < cmdslot->u.fts.nseginfo ; i++) {
 	    if (cmdslot->u.fts.seginfo[i].haidx == index) {
-		if (cmdslot->u.fts.request.u.start.replied[i] == 0) {
-		    cmdslot->u.fts.request.u.start.nfailed++;
-		    cmdslot->u.fts.request.u.start.nreply++;
-		    cmdslot->u.fts.request.u.start.replied[i]++;
+		if (cmdslot->u.fts.u.start.replied[i] == 0) {
+		    cmdslot->u.fts.u.start.nfailed++;
+		    cmdslot->u.fts.u.start.nreply++;
+		    cmdslot->u.fts.u.start.replied[i]++;
 		} else {
-		    cmdslot->u.fts.request.u.start.nfailed++;
+		    cmdslot->u.fts.u.start.nfailed++;
 		}
 		gpcc_warning(FLINE, "[Error] segment %s connection reset", cmdslot->u.fts.seginfo[i].name);
 	    }
@@ -322,13 +321,13 @@ static apr_status_t a_fts_start_qe_reply(gpcc_event_t *ev, void *_cmdslot)
 		return 0;
 	    }
 	    
-	    cmdslot->u.fts.request.u.start.replied[i]++;
-	    cmdslot->u.fts.request.u.start.nreply++;
+	    cmdslot->u.fts.u.start.replied[i]++;
+	    cmdslot->u.fts.u.start.nreply++;
 
 	    if (strcmp(status, "ok") == 0) {
-		cmdslot->u.fts.request.u.start.nsuccess++;
+		cmdslot->u.fts.u.start.nsuccess++;
 	    } else {
-		cmdslot->u.fts.request.u.start.nfailed++;
+		cmdslot->u.fts.u.start.nfailed++;
 		gpcc_warning(FLINE, "[Error] segment reply failed: segment=%s, status=%s, reason=%s", seg, status, reason);
 	    }
 	    break;
@@ -337,8 +336,8 @@ static apr_status_t a_fts_start_qe_reply(gpcc_event_t *ev, void *_cmdslot)
 	break;
     }
 
-    if (cmdslot->u.fts.request.u.start.nreply == cmdslot->u.fts.request.u.start.nrequest) {
-	if (cmdslot->u.fts.request.u.start.nfailed == 0) {
+    if (cmdslot->u.fts.u.start.nreply == cmdslot->u.fts.u.start.nrequest) {
+	if (cmdslot->u.fts.u.start.nfailed == 0) {
 	    evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
 	} else {
 	    if (cmdslot->u.fts.network_failure) {
@@ -378,7 +377,7 @@ static apr_status_t a_fts_start_qd(gpcc_event_t *ev, void *_cmdslot)
     msg = json_object_to_json_string(obj);
     if (0 != (e = gpcc_net_send_packetx(seginfo->ha, SEGMENT_REQUEST_MSG, 
 				  cmdslot->cmdidx,
-				  cmdslot->u.fts.request.sndidx,
+				  cmdslot->u.fts.sndidx,
 				  msg, strlen(msg) + 1))) {
 	gpcc_warning(FLINE, "gpcc_net_send_packetx failed");
 	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
@@ -480,7 +479,7 @@ static apr_status_t a_fts_start_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     msg = json_object_to_json_string(obj);
     if (0 != (e = gpcc_net_send_packetx(seginfo->ha, SEGMENT_REQUEST_MSG, 
 				       cmdslot->cmdidx,
-				       cmdslot->u.fts.request.sndidx,
+				       cmdslot->u.fts.sndidx,
 				       msg, strlen(msg) + 1))){
 	gpcc_warning(FLINE, "gpcc_net_send_packetx failed");
 	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
@@ -562,12 +561,12 @@ static apr_status_t a_fts_start_success(gpcc_event_t *ev, void *_cmdslot)
     obj = gpcc_json_array_reply("start", "ok", 0);
     objstr = json_object_to_json_string(obj);
 
-    evt = gpcc_event_alloc(ARRAY_REPLY_MSG_EVENT, cmdslot->u.fts.request.sndidx, sizeof(*pkt) + strlen(objstr) + 1);
+    evt = gpcc_event_alloc(ARRAY_REPLY_MSG_EVENT, cmdslot->u.fts.sndidx, sizeof(*pkt) + strlen(objstr) + 1);
     pkt = (gpcc_net_packet_t *) evt->pdata;
     pkt->mh.type = ARRAY_REPLY_MSG_EVENT;
     pkt->mh.len = strlen(objstr)+1;
     pkt->mh.sndidx = cmdslot->cmdidx;
-    pkt->mh.rcvidx = cmdslot->u.fts.request.sndidx;
+    pkt->mh.rcvidx = cmdslot->u.fts.sndidx;
     memcpy(pkt->payload, objstr, strlen(objstr)+1);   
 
     gpcc_evqueue_put(gpma.evq, evt);
@@ -587,12 +586,12 @@ static apr_status_t a_fts_start_failure(gpcc_event_t *ev, void *_cmdslot)
     obj = gpcc_json_array_reply("start", "failed", 0);
     objstr = json_object_to_json_string(obj);
 
-    evt = gpcc_event_alloc(ARRAY_REPLY_MSG_EVENT, cmdslot->u.fts.request.sndidx, sizeof(*pkt) + strlen(objstr) + 1);
+    evt = gpcc_event_alloc(ARRAY_REPLY_MSG_EVENT, cmdslot->u.fts.sndidx, sizeof(*pkt) + strlen(objstr) + 1);
     pkt = (gpcc_net_packet_t *) evt->pdata;
     pkt->mh.type = ARRAY_REPLY_MSG_EVENT;
     pkt->mh.len = strlen(objstr)+1;
     pkt->mh.sndidx = cmdslot->cmdidx;
-    pkt->mh.rcvidx = cmdslot->u.fts.request.sndidx;
+    pkt->mh.rcvidx = cmdslot->u.fts.sndidx;
     memcpy(pkt->payload, objstr, strlen(objstr)+1);   
 
     gpcc_evqueue_put(gpma.evq, evt);
@@ -605,16 +604,14 @@ static apr_status_t a_fts_start_cleanup(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
 
-    if (cmdslot->u.fts.request.reqobj) {
-	json_object_put(cmdslot->u.fts.request.reqobj);
-	cmdslot->u.fts.request.reqobj = 0;
+    if (cmdslot->u.fts.reqobj) {
+	json_object_put(cmdslot->u.fts.reqobj);
+	cmdslot->u.fts.reqobj = 0;
     }
-
-    if (cmdslot->u.fts.request.pool) {
-	apr_pool_destroy(cmdslot->u.fts.request.pool);
-	cmdslot->u.fts.request.pool = 0;
-    }
-
+    if (cmdslot->u.fts.config_json) {
+	json_object_put(cmdslot->u.fts.config_json);
+	cmdslot->u.fts.config_json = 0;
+    }	
     return 0;
 }
 

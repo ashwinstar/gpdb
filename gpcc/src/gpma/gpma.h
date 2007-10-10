@@ -32,7 +32,6 @@ struct gpma_t {
     gpcc_evqueue_t* evq;      /* event queue */
     config_t*    cfg;	      /* config  */
     cmdslot_t*   gpma_cmdslot;
-    cmdslot_t*   fts_cmdslot;
 
     int          node_max;
     cmdslot_t**  node_cmdtab;
