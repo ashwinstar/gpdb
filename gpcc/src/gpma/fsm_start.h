@@ -17,13 +17,12 @@ static apr_status_t a_fts_start_utility_qd(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj = 0;
-    int e, haidx;
+    int e;
     seginfo_t *seginfo;
     gpcc_event_t *evt;
     char *msg;
 
     seginfo = &cmdslot->u.fts.seginfo[0];    
-    haidx = seginfo->haidx;
 
     obj = gpcc_json_segment_request(0, 
 				    seginfo->name, 
@@ -89,11 +88,10 @@ static apr_status_t a_fts_start_utility_qd_net_closed(gpcc_event_t *ev, void *_c
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     seginfo_t *seginfo = cmdslot->u.fts.seginfo;
-    int index;
     gpcc_event_t *evt;
+    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
 
-    memcpy(&index, ev->pdata, sizeof(int));
-    if (index == seginfo->haidx) {
+    if (strcmp(seginfo->ha, pkt->payload) == 0) {
 	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
     }
@@ -125,13 +123,12 @@ static apr_status_t a_fts_start_utility_qd_stop(gpcc_event_t *ev, void *_cmdslot
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj = 0;
-    int e, haidx;
+    int e;
     seginfo_t *seginfo;
     gpcc_event_t *evt;
     char *msg;
 
     seginfo = &cmdslot->u.fts.seginfo[0];    
-    haidx = seginfo->haidx;
 
     obj = gpcc_json_segment_request(0, 
 				    seginfo->name, 
@@ -161,18 +158,10 @@ static apr_status_t a_fts_start_gpconf_net_closed(gpcc_event_t *ev, void *_cmdsl
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     seginfo_t *seginfo = cmdslot->u.fts.seginfo;
-    int index;
     gpcc_event_t *evt;
     gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
 
-    if (1 != sscanf(pkt->payload, "node.%d", &index)) {
-	gpcc_warning(FLINE, "[Error] NET_CLOSED_EVENT format error");
-	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
-	gpcc_evqueue_put(gpma.evq, evt);
-	return 0;	 
-    }
-
-    if (index == seginfo->haidx) {
+    if (strcmp(seginfo->ha, pkt->payload) == 0) {
 	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
     }
@@ -220,7 +209,6 @@ static apr_status_t a_fts_start_qes(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     int i, e;
-    int haidx;
     seginfo_t *seginfo;
     struct json_object *obj;
     char *msg;
@@ -236,7 +224,6 @@ static apr_status_t a_fts_start_qes(gpcc_event_t *ev, void *_cmdslot)
 	if (strstr(seginfo->name, "gpdb.seg.m") != 0)
 	    break;
 
-	haidx = seginfo->haidx;
 	obj = gpcc_json_segment_request(0, 
 					seginfo->name, 
 					"start", 
@@ -277,17 +264,10 @@ static apr_status_t a_fts_start_qe_reply(gpcc_event_t *ev, void *_cmdslot)
     switch (ev->etype) {
     case NET_CLOSED_EVENT:
 	{
-	int index;
 	pkt = (gpcc_net_packet_t *) ev->pdata;
-	if (1 != sscanf(pkt->payload, "node.%d", &index)) {
-	    gpcc_warning(FLINE, "[Error] NET_CLOSED_EVENT format error");
-	    evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
-	    gpcc_evqueue_put(gpma.evq, evt);
-	    return 0;	 
-	}
 
 	for (i = 0 ; i < cmdslot->u.fts.nseginfo ; i++) {
-	    if (cmdslot->u.fts.seginfo[i].haidx == index) {
+	    if (strcmp(cmdslot->u.fts.seginfo[i].ha, pkt->payload) == 0) {
 		if (cmdslot->u.fts.u.start.replied[i] == 0) {
 		    cmdslot->u.fts.u.start.nfailed++;
 		    cmdslot->u.fts.u.start.nreply++;
@@ -358,13 +338,12 @@ static apr_status_t a_fts_start_qd(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj = 0;
-    int e, haidx;
+    int e;
     seginfo_t *seginfo;
     gpcc_event_t *evt;
     char *msg;
 
     seginfo = &cmdslot->u.fts.seginfo[0];    
-    haidx = seginfo->haidx;
 
     obj = gpcc_json_segment_request(0, 
 				    seginfo->name, 
@@ -429,18 +408,11 @@ static apr_status_t a_fts_start_qd_reply_net_closed(gpcc_event_t *ev, void *_cmd
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     seginfo_t *seginfo = cmdslot->u.fts.seginfo;
-    int index;
     gpcc_event_t *evt;
     gpcc_net_packet_t *pkt;
     
     pkt = (gpcc_net_packet_t *) ev->pdata;
-    if (1 != sscanf(pkt->payload, "node.%d", &index)) {
-	gpcc_warning(FLINE, "[Error] NET_CLOSED_EVENT format error");
-	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
-	gpcc_evqueue_put(gpma.evq, evt);
-	return 0;	 
-    }    
-    if (index == seginfo->haidx) {
+    if (strcmp(seginfo->ha, pkt->payload) == 0) {
 	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
     }
@@ -453,7 +425,7 @@ static apr_status_t a_fts_start_standby_qd(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj = 0;
-    int idx, e, haidx;
+    int idx, e;
     seginfo_t *seginfo;
     gpcc_event_t *evt;
     char *msg;
@@ -466,7 +438,6 @@ static apr_status_t a_fts_start_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     }
 	    
     seginfo = &cmdslot->u.fts.seginfo[idx];    
-    haidx = seginfo->haidx;
 
     obj = gpcc_json_segment_request(0, 
 				    seginfo->name, 
@@ -530,19 +501,11 @@ static apr_status_t a_fts_start_standby_qd_reply_net_closed(gpcc_event_t *ev, vo
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     seginfo_t *seginfo = cmdslot->u.fts.seginfo;
-    int index;
     gpcc_event_t *evt;
     gpcc_net_packet_t *pkt;
     
     pkt = (gpcc_net_packet_t *) ev->pdata;
-    if (1 != sscanf(pkt->payload, "node.%d", &index)) {
-	gpcc_warning(FLINE, "[Error] NET_CLOSED_EVENT format error");
-	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
-	gpcc_evqueue_put(gpma.evq, evt);
-	return 0;	 
-    }    
-    
-    if (index == seginfo->haidx) {
+    if (strcmp(seginfo->ha, pkt->payload) == 0) {
 	evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
     }

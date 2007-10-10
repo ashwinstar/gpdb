@@ -62,17 +62,10 @@ static apr_status_t a_fts_stopdb_reply(gpcc_event_t *ev, void *_cmdslot)
     switch (ev->etype) {
     case NET_CLOSED_EVENT:
 	{
-	int index;
 	gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
-	if (1 != sscanf(pkt->payload, "node.%d", &index)) {
-	    gpcc_warning(FLINE, "[Error] NET_CLOSED_EVENT format error");
-	    evt = gpcc_event_alloc(NET_FAILURE_EVENT, cmdslot->cmdidx, 0);
-	    gpcc_evqueue_put(gpma.evq, evt);
-	    return 0;	 
-	}	
 
 	for (i = 0 ; i < cmdslot->u.fts.nseginfo ; i++) {
-	    if (cmdslot->u.fts.seginfo[i].haidx == index) {
+	    if (strcmp(cmdslot->u.fts.seginfo[i].ha, pkt->payload) == 0) {
 		if (cmdslot->u.fts.u.stop.replied[i] == 0) {
 		    cmdslot->u.fts.u.stop.nfailed++;
 		    cmdslot->u.fts.u.stop.nreply++;
