@@ -319,8 +319,11 @@ static apr_status_t verify_config(void)
     int errcnt = 0;
     char* errmsg[100];
 
-    if (! config_get(gpma.cfg, "gphome")) 
+    if (! (v = config_get(gpma.cfg, "gphome"))) 
 	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gphome not set");
+    
+    if (v && 0 != setenv("GPHOME", v, 1))
+	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gphome setenv error");
 
     /* at least 1 ma must be set */
     for (i = 0; i < 3; i++) {
