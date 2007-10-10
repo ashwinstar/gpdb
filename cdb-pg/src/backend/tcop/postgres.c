@@ -3824,7 +3824,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 
 				QueryContext = CurrentMemoryContext;
 				
-				elog(NOTICE,"DA is doing copy statement %s",query_string);
+				elog(LOG,"DA is doing copy statement %s",query_string);
 				
 				query = (Query *) deserializeNode(serializedQuerytree,serializedQuerytreelen);
 
@@ -3845,7 +3845,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 						 "COPY " UINT64_FORMAT, processed);
 				}
 
-				elog(NOTICE,"DA has finished doing copy statement %s",completionTag);
+				elog(LOG,"DA has finished doing copy statement %s",completionTag);
 
 				MemoryContextSwitchTo(oldcontext);
 			}
