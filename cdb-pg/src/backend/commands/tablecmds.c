@@ -8101,12 +8101,14 @@ static Datum transformLocationUris(List *locs, bool isweb)
 	 */
 	foreach(cell, locs)
 	{
-		const char	*uri1 = (char *) lfirst(cell);
+		Value		*v1 = lfirst(cell);
+		const char	*uri1 = v1->val.str;
 		ListCell   *rest;
 		
 		for_each_cell(rest, lnext(cell))
 		{
-			const char	*uri2 = (char *) lfirst(rest);
+			Value		*v2 = lfirst(rest);
+			const char	*uri2 = v2->val.str;
 			
 			if (strcmp(uri1, uri2) == 0)
 				ereport(ERROR,
