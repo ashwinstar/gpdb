@@ -31,7 +31,7 @@ static cmdslot_t* cmdslot_get(int cmdidx)
 
 /* Find a free cmdslot */
 APR_DECLARE(cmdslot_t*) cmdslot_alloc(const char* name, 
-				      cmdstate_t init_state, conninfo_t* conninfo)
+				      cmdstate_t init_state, gpcc_net_conn_t conn)
 {
     int i;
     cmdslot_t* cmdslot = 0;
@@ -47,7 +47,7 @@ APR_DECLARE(cmdslot_t*) cmdslot_alloc(const char* name,
 	    seq = 1 << 16;	/* ensure that seq is never 0 */
 	cmdslot->cmdidx = seq | i;
 	cmdslot->cmdstate = init_state;
-	cmdslot->conninfo = conninfo;
+	cmdslot->conn = conn;
 	apr_pool_create(&cmdslot->pool, 0);
 	cmdslot->cmdname = (name ? apr_pstrdup(cmdslot->pool, name) : 0);
 
@@ -73,7 +73,7 @@ static int cmdslot_get_by_conn(gpcc_net_conn_t conn)
     for (i = 0 ; i < CMDSLOT_MAX ; i++) {
 	if (gpha.cmdslot[i].cmdidx == 0) 
 	    continue;
-	if (gpha.cmdslot[i].conninfo && gpha.cmdslot[i].conninfo->conn == conn) {
+	if (gpha.cmdslot[i].conn == conn) {
 	    return gpha.cmdslot[i].cmdidx;
 	}
     }
@@ -99,7 +99,6 @@ static void net_accepted_cb(gpcc_net_conn_t conn,
     int e;
     gpcc_net_header_t hdr;
     cmdslot_t *cmdslot;
-    conninfo_t *conninfo;
     apr_uint32_t *spin;
 
     if (from_peer->argc != 1 || strcmp(from_peer->argv[0], GPCC_NET_PACKET_PROTO) != 0){
@@ -110,11 +109,7 @@ static void net_accepted_cb(gpcc_net_conn_t conn,
 
     /* create cmdslot */
     spin = gpcc_spin_secure(gpha.spin);
-    cmdslot = cmdslot_alloc("MA->HA", GET_IDENTITY_CMDSTATE, 0);
-    conninfo = apr_pcalloc(cmdslot->pool, sizeof(*conninfo));
-    conninfo->pool = cmdslot->pool;
-    conninfo->conn = conn;
-    cmdslot->conninfo = conninfo;
+    cmdslot = cmdslot_alloc("MA->HA", GET_IDENTITY_CMDSTATE, conn);
     gpcc_spin_release(spin);
 
     hdr.argc = 1;

@@ -52,7 +52,7 @@ static apr_status_t ma_status_reply(gpcc_event_t *ev, void *_cmdslot)
    cmdslot_t *cmdslot = _cmdslot;
 
     gpcc_log_info("ma_status_reply");
-    return gpcc_net_send_packet(cmdslot->conninfo->conn, STATUS_REPLY_MSG, 
+    return gpcc_net_send_packet(cmdslot->conn, STATUS_REPLY_MSG, 
 				cmdslot->cmdidx, cmdslot->u.ma.rcvidx, ev->pdata, ev->edatasz);    
 }
 
@@ -71,7 +71,7 @@ static apr_status_t ma_stop_reply(gpcc_event_t *ev, void *_cmdslot)
     gpcc_log_info("seg = %s, status = %s", seg, status);
 
     json_object_put(obj);
-    return gpcc_net_send_packet(cmdslot->conninfo->conn, SEGMENT_REPLY_MSG, 
+    return gpcc_net_send_packet(cmdslot->conn, SEGMENT_REPLY_MSG, 
 				cmdslot->cmdidx, cmdslot->u.ma.rcvidx, ev->pdata, ev->edatasz);
 
 }
@@ -91,7 +91,7 @@ static apr_status_t ma_start_reply(gpcc_event_t *ev, void *_cmdslot)
     gpcc_log_info("seg = %s, status = %s", seg, status);
 
     json_object_put(obj);
-    return gpcc_net_send_packet(cmdslot->conninfo->conn, SEGMENT_REPLY_MSG, 
+    return gpcc_net_send_packet(cmdslot->conn, SEGMENT_REPLY_MSG, 
 				cmdslot->cmdidx, cmdslot->u.ma.rcvidx, ev->pdata, ev->edatasz);
 
 }
@@ -111,7 +111,7 @@ static apr_status_t ma_initdb_reply(gpcc_event_t *ev, void *_cmdslot)
     gpcc_log_info("seg = %s, status = %s", seg, status);
 
     json_object_put(obj);
-    return gpcc_net_send_packet(cmdslot->conninfo->conn, SEGMENT_REPLY_MSG, 
+    return gpcc_net_send_packet(cmdslot->conn, SEGMENT_REPLY_MSG, 
 				cmdslot->cmdidx, cmdslot->u.ma.rcvidx, ev->pdata, ev->edatasz);
 
 }

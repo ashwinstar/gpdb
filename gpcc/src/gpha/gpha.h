@@ -36,28 +36,6 @@
 #define CONFIG_MIRROR_BASE_PORT_VALUE              22200
 
 
-/* connection info, this is stored in gpcc_net via the conn_arg */
-typedef struct conninfo_t conninfo_t;
-struct conninfo_t {
-    apr_pool_t* pool;
-    gpcc_net_conn_t conn;
-    int    self_origin;
-    struct {
-	role_t role;
-	const char* rolespec;
-
-    } peer;
-    struct {
-	role_t role;
-	const char*  rolespec;		/* for QE, "0.1", "m.0", etc
-					   for MA, "lead" or "",
-					*/
-    } self;
-};
-
-
-
-
 typedef struct cmdslot_t cmdslot_t;
 struct cmdslot_t {
     int 	cmdidx;
@@ -65,7 +43,8 @@ struct cmdslot_t {
     cmdstate_t  cmdstate;
     int         countdown;	/* if > 0, will count down to 0 
 				   and generate a TIMEUP_EVENT */
-    conninfo_t* conninfo;
+
+    gpcc_net_conn_t conn;
 
     apr_pool_t *pool;
 
@@ -125,12 +104,6 @@ struct cmdslot_t {
 };
 
 
-typedef struct eventinfo_t eventinfo_t;
-struct eventinfo_t {
-    conninfo_t* conninfo;
-};
-
-
 /* Control block for GPHA */
 typedef struct gpha_t gpha_t;
 struct gpha_t {
@@ -152,7 +125,7 @@ extern gpha_t gpha;
 
 APR_DECLARE(void) fsm_setup(void);
 APR_DECLARE(cmdslot_t*) cmdslot_alloc(const char* name, 
-				      cmdstate_t init_state, conninfo_t* conninfo);
+				      cmdstate_t init_state, gpcc_net_conn_t conn);
 APR_DECLARE(void) cmdslot_free(cmdslot_t* cp);
 
 
