@@ -85,6 +85,8 @@ APR_DECLARE(void) gpcc_net_close(gpcc_net_conn_t conn);
 
 APR_DECLARE(apr_status_t) gpcc_net_tag(gpcc_net_conn_t conn, const char* tag);
 
+APR_DECLARE(gpcc_net_conn_t) gpcc_net_lookup(const char* tag);
+
 typedef struct gpcc_net_datum_t gpcc_net_datum_t;
 struct gpcc_net_datum_t {
     const char* ptr;

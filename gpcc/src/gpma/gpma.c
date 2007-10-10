@@ -5,7 +5,6 @@
 #include <apr_strings.h>
 #include <apr_thread_proc.h>
 #include <gpcc_event.h>
-#include <gpcc_net.h>
 #include <gpcc_fsm.h>
 #include <json/json.h>
 #include <event.h>
@@ -153,10 +152,40 @@ static void net_closed(gpcc_net_conn_t conn)
 
 static void net_tick(apr_time_t now)
 {
-    gpcc_event_t* ev = gpcc_event_alloc(TICK_EVENT, gpma.cmdslot->cmdidx, 0);
+    gpcc_event_t* ev = gpcc_event_alloc(TICK_EVENT, gpma.gpma_cmdslot->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, ev);
 }
 
+
+static void node_init(void)
+{
+    char node_name[100];
+    const char* node;
+    int cnt, i;
+    cmdslot_t* cp;
+
+    for (cnt = 0; ; cnt++) {
+	sprintf(node_name, "node.%d", cnt);
+	node = config_get(gpma.cfg, node_name);
+	if (!node) 
+	    break;
+    }
+
+    if (cnt == 0) {
+	gpcc_fatal(FLINE, "No node exists in configuration");
+    }
+    gpma.node_max = cnt;
+    gpma.node_cmdtab = apr_palloc(gpma.pool, (cnt + 1) * sizeof(gpma.node_cmdtab[0]));
+    memset(gpma.node_cmdtab, 0, (cnt + 1) * sizeof(gpma.node_cmdtab[0]));
+    for (i = 0; i < cnt; i++) {
+	sprintf(node_name, "node.%d", i);
+	node = config_get(gpma.cfg, node_name);
+	cp = gpma.node_cmdtab[i] = cmdslot_alloc(node_name, NODE_OFF_CMDSTATE);
+	if (apr_tokenize_to_argv(node, &cp->u.node.hosttab, cp->pool)) {
+	    gpcc_fatal(FLINE, "Illegal format for entry '%s' in configuration", node_name);
+	}
+    }
+}
 
 
 
@@ -167,8 +196,10 @@ void d_main(void)
     char date[APR_RFC822_DATE_LEN];
     gpcc_evqueue_t* evq = 0;
     gpcc_event_t* ev = 0;
+    int i;
     const char* logfpath = apr_psprintf(gpma.pool, "%s/%s-%s.log", 
 					gpma.datadir, gpma.guid, gpma.ma_unit);
+
     /* redirect cerr to log */
     if (! freopen(logfpath, "a", stderr)) 
 	gpcc_warning(FLINE, "unable to open log file '%s'", logfpath);
@@ -181,11 +212,13 @@ void d_main(void)
     event_init();
 
     cmdslot_init(gpma.pool);
-    gpma.cmdslot = cmdslot_alloc("GPMA", GPMA_CMDSTATE);
+    gpma.gpma_cmdslot = cmdslot_alloc("GPMA", GPMA_CMDSTATE);
 
     gpma.fts_cmdslot = cmdslot_alloc("FTS", FTS_CMDSTATE);
-    
+
     fsm_init();
+
+    node_init();
 
     /* create the event queue */
     evq = gpma.evq = gpcc_evqueue_create(1000, gpma.pool);
@@ -202,7 +235,12 @@ void d_main(void)
 
     gpcc_log_info("gpma listening to port %d", config_get_int(gpma.cfg, "ma.port"));
 
-
+    /* kick off all the nodes */
+    for (i = 0; i < gpma.node_max; i++) {
+	ev = gpcc_event_alloc(INIT_EVENT, gpma.node_cmdtab[i]->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, ev);
+    }
+    ev = 0;
     for (;;) {
 	int nxtstate;
 	gpcc_fsm_func_t** fn;
@@ -219,7 +257,7 @@ void d_main(void)
 	/*printf("event %s\n", event_str(ev->etype));*/
 
 	if (ev->cmdidx == 0) 
-	    ev->cmdidx = gpma.cmdslot->cmdidx;
+	    ev->cmdidx = gpma.gpma_cmdslot->cmdidx;
 
 	/* find the right slot for the event */
 	if (! (slot = cmdslot_find(ev->cmdidx))) {

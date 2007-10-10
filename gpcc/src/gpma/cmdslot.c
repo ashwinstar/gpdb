@@ -1,4 +1,6 @@
 #include "cmdslot.h"
+#include <apr_pools.h>
+#include <apr_strings.h>
 
 
 static apr_uint16_t unique = 0;
@@ -28,12 +30,12 @@ cmdslot_t* cmdslot_alloc(const char* name, cmdstate_t state)
 		idx = unique++;
 	    idx = (idx << 16) | (p - slottab);
 	    p->cmdidx = idx;
-	    p->cmdname = name;
 	    p->cmdstate = state;
 	    p->countdown = 0;
 	    memset(&p->u, 0, sizeof(p->u));
 	    if (0 != apr_pool_create(&p->pool, 0)) 
 		gpcc_fatal(FLINE, "out of memory");
+	    p->cmdname = apr_pstrdup(p->pool, name);
 	    return p;
 	}
     }

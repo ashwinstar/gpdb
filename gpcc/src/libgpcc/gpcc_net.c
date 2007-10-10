@@ -1023,6 +1023,22 @@ apr_status_t gpcc_net_once(int blocking)
 }
 
 
+gpcc_net_conn_t gpcc_net_lookup(const char* tag)
+{
+    apr_uint32_t* spin = 0;
+    int idx, found;
+    gpcc_net_conn_t conn = 0;
+
+    spin = gpcc_spin_secure(&net.tagtab_spin);
+    idx = tagtab_find(tag, &found);
+    if (found) 
+	conn = net.tagtab[idx]->conn;
+    spin = gpcc_spin_release(spin);
+    return conn;
+}
+
+
+
 apr_status_t gpcc_net_tag(gpcc_net_conn_t conn, 
 			  const char* tag)
 {
@@ -1396,15 +1412,6 @@ apr_status_t gpcc_net_send_packetx(const char* tag, int type,
                                                apr_uint32_t sndidx, apr_uint32_t rcvidx,
                                                const char* buf, int len)
 {
-    apr_uint32_t* spin = 0;
-    int idx, found;
-    gpcc_net_conn_t conn = 0;
-
-    spin = gpcc_spin_secure(&net.tagtab_spin);
-    idx = tagtab_find(tag, &found);
-    if (found) 
-	conn = net.tagtab[idx]->conn;
-    spin = gpcc_spin_release(spin);
-
+    gpcc_net_conn_t conn = gpcc_net_lookup(tag);
     return gpcc_net_send_packet(conn, type, sndidx, rcvidx, buf, len);
 }

@@ -28,7 +28,6 @@ struct cmdslot_t {
     cmdstate_t   cmdstate;
     int          countdown;	/* if > 0, will count down to 0 
 	                           and generate a TIMEUP_EVENT */
-    
     apr_pool_t *pool;
     
     union {
@@ -90,8 +89,9 @@ struct cmdslot_t {
 	} sys;
 
 	struct {
-	    
-	} a;
+	    int hosttab_max;	/* size of hosttab */
+	    char** hosttab;	/* array of IP */
+	} node;
     } u;
 };
 

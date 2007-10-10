@@ -4,6 +4,7 @@
 #include "config.h"
 #include "enum.h"
 #include "cmdslot.h"
+#include <gpcc_net.h>
 
 #define DEFAULT_QD_MAX_CONNECT  25
 #define DEFAULT_QE_MAX_CONNECT  25
@@ -14,6 +15,8 @@
 #define DEFAULT_QE_BASEPORT	12200
 #define DEFAULT_MIRROR_QE_BASEPORT  22200
 #define DEFAULT_HA_PORT  53333
+
+
 
 /* Control block for GPMA */
 typedef struct gpma_t gpma_t;
@@ -27,8 +30,11 @@ struct gpma_t {
     int          debug;	      /* TRUE if debug run, don't daemonize */
     gpcc_evqueue_t* evq;      /* event queue */
     config_t*    cfg;	      /* config  */
-    cmdslot_t*   cmdslot;
+    cmdslot_t*   gpma_cmdslot;
     cmdslot_t*   fts_cmdslot;
+
+    int          node_max;
+    cmdslot_t**  node_cmdtab;
 };
 
 extern gpma_t gpma;

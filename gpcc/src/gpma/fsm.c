@@ -21,10 +21,67 @@ apr_status_t a_system_tick(gpcc_event_t* ev, void* arg)
 }
 
 
+apr_status_t a_node_ssh(gpcc_event_t* ev, void* arg)
+{
+    printf("NODE SSH\n");
+    return 0;
+}
+
+apr_status_t a_node_check_ssh(gpcc_event_t* ev, void* arg)
+{
+    printf("NODE CHECK SSH\n");
+    return 0;
+}
+
+apr_status_t a_node_connect(gpcc_event_t* ev, void* arg)
+{
+    printf("NODE CONNECT\n");
+    return 0;
+}
+
+apr_status_t a_node_check_conn(gpcc_event_t* ev, void* arg)
+{
+    printf("NODE CHECK CONN\n");
+    return 0;
+}
+
+apr_status_t a_node_teardown(gpcc_event_t* ev, void* arg)
+{
+    printf("NODE TEARDOWN\n");
+    return 0;
+}
+
+apr_status_t a_node_ping(gpcc_event_t* ev, void* arg)
+{
+    printf("NODE PING\n");
+    return 0;
+}
+
+
+
 APR_DECLARE(void) fsm_init(void)
 {
     gpcc_fsm_put(GPMA_CMDSTATE, TICK_EVENT, GPMA_CMDSTATE, 
 		 a_system_tick, 0);
+
+    /* node */
+    gpcc_fsm_put(NODE_OFF_CMDSTATE, INIT_EVENT, NODE_SSHWAIT_CMDSTATE,
+		 a_node_ssh, 0);
+    gpcc_fsm_put(NODE_SSHWAIT_CMDSTATE, SUCCESS_EVENT, NODE_CONNWAIT_CMDSTATE,
+		 a_node_connect, 0);
+    gpcc_fsm_put(NODE_SSHWAIT_CMDSTATE, TIMEUP_EVENT, NODE_SSHWAIT_CMDSTATE,
+		 a_node_check_ssh, 0);
+    gpcc_fsm_put(NODE_SSHWAIT_CMDSTATE, FAILURE_EVENT, NODE_OFF_CMDSTATE,
+		 a_node_teardown, 0);
+    gpcc_fsm_put(NODE_CONNWAIT_CMDSTATE, SUCCESS_EVENT, NODE_ON_CMDSTATE, 0);
+    gpcc_fsm_put(NODE_CONNWAIT_CMDSTATE, TIMEUP_EVENT, NODE_CONNWAIT_CMDSTATE, 
+		 a_node_check_conn, 0);
+    gpcc_fsm_put(NODE_CONNWAIT_CMDSTATE, FAILURE_EVENT, NODE_OFF_CMDSTATE,
+		 a_node_teardown, 0);
+    gpcc_fsm_put(NODE_ON_CMDSTATE, TIMEUP_EVENT, NODE_ON_CMDSTATE,
+		 a_node_ping, 0);
+    gpcc_fsm_put(NODE_ON_CMDSTATE, FAILURE_EVENT, NODE_OFF_CMDSTATE, 
+		 a_node_teardown, 0);
 
     /* init */
     gpcc_fsm_put(FTS_CMDSTATE, ARRAY_INIT_EVENT, INITDB_CMDSTATE,

@@ -32,18 +32,6 @@ const char* msg_str(msg_t msg)
     return "UNKNOWN_MSG";
 }
 
-const char* role_str(role_t role)
-{
-    switch (role) {
-	CASESTR(NULL_ROLE);
-	CASESTR(MA_ROLE);
-	CASESTR(HA_ROLE);
-	CASESTR(QD_ROLE);
-	CASESTR(QE_ROLE);
-    case ROLE_MAX: break;
-    }
-    return "UNKNOWN_ROLE";
-}
 
 
 const char* event_str(event_t event)
@@ -142,7 +130,12 @@ const char* cmdstate_str(cmdstate_t cmdstate)
 	CASESTR(START_QES_CMDSTATE);
 	CASESTR(START_QD_CMDSTATE);
 	CASESTR(START_STANDBY_QD_CMDSTATE);
-		
+
+	CASESTR(NODE_OFF_CMDSTATE);
+	CASESTR(NODE_SSHWAIT_CMDSTATE);
+	CASESTR(NODE_CONNWAIT_CMDSTATE);
+	CASESTR(NODE_ON_CMDSTATE);
+
 	CASESTR(GPMA_CMDSTATE);
     case CMDSTATE_MAX: break;
     }

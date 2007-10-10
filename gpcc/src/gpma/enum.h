@@ -31,21 +31,9 @@ enum msg_t {
 extern const char* msg_str(msg_t msg);
 
 
-typedef enum role_t role_t;
-enum role_t {
-    NULL_ROLE,
-    MA_ROLE,
-    HA_ROLE,
-    QD_ROLE,
-    QE_ROLE,
-
-    ROLE_MAX,
-};
-
-extern const char* role_str(role_t role);
-
 typedef enum event_t event_t;
 enum event_t {
+    /* general purpose event */
     NULL_EVENT,
     TICK_EVENT,
     TIMEUP_EVENT,
@@ -108,7 +96,6 @@ enum event_t {
 
     
     
-    
     EVENT_MAX,
 };
 
@@ -116,7 +103,7 @@ extern const char* event_str(event_t event);
 
 typedef enum cmdstate_t cmdstate_t;
 enum cmdstate_t {
-    NULL_CMDSTATE,
+    NULL_CMDSTATE = 0,
     TIMER_CMDSTATE,
     SYSTEM_CMDSTATE,
     FTS_CMDSTATE,
@@ -147,7 +134,12 @@ enum cmdstate_t {
     START_QES_CMDSTATE,
     START_QD_CMDSTATE,
     START_STANDBY_QD_CMDSTATE,
-    
+
+    NODE_OFF_CMDSTATE,
+    NODE_SSHWAIT_CMDSTATE,
+    NODE_CONNWAIT_CMDSTATE,
+    NODE_ON_CMDSTATE,
+
     GPMA_CMDSTATE,
 
     CMDSTATE_MAX,
