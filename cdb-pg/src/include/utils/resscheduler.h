@@ -26,6 +26,7 @@ extern bool	ResourceScheduler;
 extern int	MaxResourceQueues;
 extern int	MaxResourcePortalsPerXact;
 extern bool	ResourceSelectOnly;
+extern bool	ResourceCleanupIdleGangs;
 
 
 /*

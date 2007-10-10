@@ -1410,6 +1410,14 @@ static struct config_bool ConfigureNamesBool[] =
 		&ResourceSelectOnly,
 		true, NULL, NULL
 	},
+	{
+		{"resource_cleanup_gangs_on_wait", PGC_USERSET, RESOURCES_MGM,
+			gettext_noop("Enable idle gang cleanup before resource lockwait."),
+			NULL
+		},
+		&ResourceCleanupIdleGangs,
+		true, NULL, NULL
+	},
 
 	{
 		{"allow_system_table_mods", PGC_POSTMASTER, DEVELOPER_OPTIONS,

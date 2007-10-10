@@ -506,6 +506,8 @@
 #max_resource_queues = 8		# no. of resource queues to create.
 #max_resource_portals_per_transaction = 64	# no. of portals per backend.
 #resource_select_only = on		# resource lock SELECT queries only.
+#resource_cleanup_gangs_on_wait = on	# Cleanup idle reader gangs before
+										# resource lockwait.
 
 #---------------------------------------------------------------------------
 # EXTERNAL TABLES

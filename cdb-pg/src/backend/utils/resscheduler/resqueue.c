@@ -365,7 +365,8 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 		/*
 		 * Free/destroy idle gangs as we are going to sleep.
 		 */
-		cleanupIdleReaderGangs();
+		if (ResourceCleanupIdleGangs)
+			cleanupIdleReaderGangs();
 
 		/*
 		 * Sleep till someone wakes me up.

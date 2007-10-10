@@ -45,6 +45,7 @@ int		MaxResourceQueues;						/* Max # of queues. */
 int		MaxResourcePortalsPerXact;				/* Max # tracked portals -
 												 * per backend . */
 bool	ResourceSelectOnly;						/* Only lock SELECT/DECLARE? */
+bool	ResourceCleanupIdleGangs;				/* Cleanup idle gangs? */
 
 
 /*
