@@ -82,7 +82,7 @@ sub linkFile
     my $tplfile = "$test.$arch.tpl";
     my $target = "$test.$suffix";
 
-    if (-f "$dir/$tplfile")
+    if (-f "$dir/$tplfile" && $arch ne "unknown")
     {
 	chdir($dir) || die;
 
@@ -96,7 +96,7 @@ sub linkFile
     }
 
 
-    print STDERR "Can't find test template for $dir/$test.$arch.$suffix.\n";
+    print STDERR "*** WARNING: Can't find test template to generate $dir/$test.$suffix for architecture '$arch'. ***\n";
     return 0;
 }
 
@@ -129,7 +129,7 @@ sub processTests
 
 &readSchedule(@ARGV[0]);
 my $arch = &getArch(&readArchConf("arch_config"));
-&processTests("sql", "input", "expected", $arch) unless $arch eq "unknown";
+&processTests("sql", "input", "expected", $arch);
 &writeSchedule(@ARGV[1]);
 
 #EOF

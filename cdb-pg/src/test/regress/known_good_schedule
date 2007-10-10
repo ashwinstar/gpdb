@@ -114,3 +114,4 @@ test: sreh
 test: olap_setup
 test: olap_group
 test: olap_window
+test: tpch500GB
