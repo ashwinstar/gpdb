@@ -84,48 +84,37 @@ static struct json_object *config_to_json_object()
 
     obj = json_object_new_object();
 
-    strcpy(key, "gpdb.name");
-    value = config_getx(gpma.cfg, key, "mygpdb");
+    value = config_getx(gpma.cfg, CONFIG_DBNAME_KEY, CONFIG_DBNAME_VALUE);
     json_object_object_add(obj, key, json_object_new_string((char *)value));    
 
-    strcpy(key, "gpdb.user");
-    value = config_getx(gpma.cfg, key, getenv("USER"));
+    value = config_getx(gpma.cfg, CONFIG_USER_KEY, getenv("USER"));
     json_object_object_add(obj, key, json_object_new_string((char *)value));    
 
-    strcpy(key, "gpdb.password");
-    value = config_getx(gpma.cfg, key, "mpparray");
+    value = config_getx(gpma.cfg, CONFIG_PASSWORD_KEY, CONFIG_PASSWORD_VALUE);
     json_object_object_add(obj, key, json_object_new_string((char *)value));    
 
-    strcpy(key, "gpdb.max_connect");
-    intvalue = config_get_or_set_int(gpma.cfg, key, 25);
+    intvalue = config_get_or_set_int(gpma.cfg, CONFIG_MAX_CONNECT_KEY, CONFIG_MAX_CONNECT_VALUE);
     json_object_object_add(obj, key, json_object_new_int(intvalue));
 
-    strcpy(key, "gpdb.encoding");
-    value = config_getx(gpma.cfg, key, "SQL_ASCII");
+    value = config_getx(gpma.cfg, CONFIG_ENCODING_KEY, CONFIG_ENCODING_VALUE);
     json_object_object_add(obj, key, json_object_new_string((char *)value));    
 
-    strcpy(key, "gpdb.locale");
-    value = config_getx(gpma.cfg, key, "en_US.utf-8");
+    value = config_getx(gpma.cfg, CONFIG_LOCALE_KEY, CONFIG_LOCALE_VALUE);
     json_object_object_add(obj, key, json_object_new_string((char *)value));    
 
-    strcpy(key, "gpdb.shared_buffers");
-    value = config_getx(gpma.cfg, key, "128MB");
+    value = config_getx(gpma.cfg, CONFIG_SHARED_BUFFERS_KEY, CONFIG_SHARED_BUFFERS_VALUE);
     json_object_object_add(obj, key, json_object_new_string((char *)value));    
 
-    strcpy(key, "gpdb.checkpoint_segments");
-    intvalue = config_get_or_set_int(gpma.cfg, key, 31);
+    intvalue = config_get_or_set_int(gpma.cfg, CONFIG_CHECKPOINT_SEGMENT_KEY, CONFIG_CHECKPOINT_SEGMENT_VALUE);
     json_object_object_add(obj, key, json_object_new_int(intvalue));
 
-    strcpy(key, "gpdb.seg.master_port");
-    intvalue = config_get_or_set_int(gpma.cfg, key, DEFAULT_QD_PORT);
+    intvalue = config_get_or_set_int(gpma.cfg, CONFIG_MASTER_PORT_KEY, CONFIG_MASTER_PORT_VALUE);
     json_object_object_add(obj, key, json_object_new_int(intvalue));
 
-    strcpy(key, "gpdb.seg.base_port");
-    intvalue = config_get_or_set_int(gpma.cfg, key, DEFAULT_QE_BASEPORT);
+    intvalue = config_get_or_set_int(gpma.cfg, CONFIG_BASE_PORT_KEY, CONFIG_BASE_PORT_VALUE);
     json_object_object_add(obj, key, json_object_new_int(intvalue));
 
-    strcpy(key, "gpdb.seg.mirror_base_port");
-    intvalue = config_get_or_set_int(gpma.cfg, key, DEFAULT_MIRROR_QE_BASEPORT);
+    intvalue = config_get_or_set_int(gpma.cfg, CONFIG_MIRROR_BASE_PORT_KEY, CONFIG_MIRROR_BASE_PORT_VALUE);
     json_object_object_add(obj, key, json_object_new_int(intvalue));
 
     
@@ -200,12 +189,9 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 
     cmdslot->u.fts.config_json = config_to_json_object();
 
-    strcpy(key, "gpdb.seg.master_port");
-    master_port = config_get_or_set_int(gpma.cfg, key, DEFAULT_QD_PORT);
-    strcpy(key, "gpdb.seg.base_port");
-    base_port = config_get_or_set_int(gpma.cfg, key, DEFAULT_QE_BASEPORT);
-    strcpy(key, "gpdb.seg.mirror_base_port");
-    mirror_base_port = config_get_or_set_int(gpma.cfg, key, DEFAULT_MIRROR_QE_BASEPORT);
+    master_port = config_get_or_set_int(gpma.cfg, CONFIG_MASTER_PORT_KEY, CONFIG_MASTER_PORT_VALUE);
+    base_port = config_get_or_set_int(gpma.cfg, CONFIG_BASE_PORT_KEY, CONFIG_BASE_PORT_VALUE);
+    mirror_base_port = config_get_or_set_int(gpma.cfg, CONFIG_MIRROR_BASE_PORT_KEY, CONFIG_MIRROR_BASE_PORT_VALUE);
 
     for (i = 0 ; ; i++) {
 	sprintf(key, "gpdb.seg.m.%d", i);

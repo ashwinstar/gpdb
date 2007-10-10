@@ -74,7 +74,6 @@ static apr_status_t ma_stop_reply(gpcc_event_t *ev, void *_cmdslot)
     return gpcc_net_send_packet(cmdslot->conninfo->conn, SEGMENT_REPLY_MSG, 
 				cmdslot->cmdidx, cmdslot->u.ma.rcvidx, ev->pdata, ev->edatasz);
 
-    return 0;
 }
 
 static apr_status_t ma_start_reply(gpcc_event_t *ev, void *_cmdslot)
@@ -95,7 +94,6 @@ static apr_status_t ma_start_reply(gpcc_event_t *ev, void *_cmdslot)
     return gpcc_net_send_packet(cmdslot->conninfo->conn, SEGMENT_REPLY_MSG, 
 				cmdslot->cmdidx, cmdslot->u.ma.rcvidx, ev->pdata, ev->edatasz);
 
-    return 0;
 }
 
 static apr_status_t ma_initdb_reply(gpcc_event_t *ev, void *_cmdslot)
@@ -491,10 +489,10 @@ static apr_status_t seg_initdb_qe_and_master_qd(gpcc_event_t *ev, void *_cmdslot
     gpcc_log_info("[%s] start initdb", cmdslot->cmdname);
     if (0 != (e = gpcc_proc_initdb(&cmdslot->u.seg.request.proc,
 				   cmdslot->u.seg.request.data_dir,
-				   gpcc_json_object_get_string(obj, "gpdb.encoding", "SQL_ASCII"),
-				   gpcc_json_object_get_string(obj, "gpdb.locale", "en_US.utf-8"),
+				   gpcc_json_object_get_string(obj, CONFIG_ENCODING_KEY, CONFIG_ENCODING_VALUE),
+				   gpcc_json_object_get_string(obj, CONFIG_LOCALE_KEY, CONFIG_LOCALE_VALUE),
 				   max_connect,
-				   gpcc_json_object_get_string(obj, "gpdb.shared_buffers", "128MB"),
+				   gpcc_json_object_get_string(obj, CONFIG_SHARED_BUFFERS_KEY, CONFIG_SHARED_BUFFERS_VALUE),
 				   0,
 				   cmdslot->u.seg.request.subpool))) {
 	
@@ -534,7 +532,7 @@ static apr_status_t seg_initdb_pg_hba_append(gpcc_event_t* ev, void *_cmdslot)
     struct json_object *hostarray;
 
     if (seg_is_qd(cmdslot)) {
-	char *user = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, "gpdb.user", getenv("USER"));
+	char *user = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, CONFIG_USER_KEY, getenv("USER"));
 
 	hosts = apr_pcalloc(cmdslot->u.seg.request.subpool, sizeof(char *) * (2 * MAX_HOSTS_PER_NODE + 1));	
 	n = 0;
@@ -701,7 +699,7 @@ static apr_status_t seg_initdb_update_gp_id(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     int nsegment = 0;
     char segname[32];
-    char *gpname = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, "gpdb.name", "mygpdb");
+    char *gpname = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, CONFIG_DBNAME_KEY, CONFIG_DBNAME_VALUE);
 
     while (1) {
 	sprintf(segname, "gpdb.seg.%d.0", nsegment);
@@ -776,9 +774,9 @@ static apr_status_t seg_initdb_update_gp_configuration(gpcc_event_t *ev, void *_
     if (! seg_is_qd(cmdslot))
 	return 0;
 
-    master_port = gpcc_json_object_get_int(msg, "gpdb.seg.master_port", DEFAULT_QD_PORT);
-    primary_port = gpcc_json_object_get_int(msg, "gpdb.seg.base_port", DEFAULT_QE_BASEPORT);
-    mirror_port = gpcc_json_object_get_int(msg, "gpdb.seg.mirror_base_port,", DEFAULT_MIRROR_QE_BASEPORT);
+    master_port = gpcc_json_object_get_int(msg, CONFIG_MASTER_PORT_KEY, CONFIG_MASTER_PORT_VALUE);
+    primary_port = gpcc_json_object_get_int(msg, CONFIG_BASE_PORT_KEY, CONFIG_BASE_PORT_VALUE);
+    mirror_port = gpcc_json_object_get_int(msg, CONFIG_MIRROR_BASE_PORT_KEY, CONFIG_MIRROR_BASE_PORT_VALUE);
 
     /* update gp_configuration table */
 
@@ -966,8 +964,8 @@ static apr_status_t seg_initdb_checkdb(gpcc_event_t* ev, void *_cmdslot)
 
     if (seg_is_qd(cmdslot)) {
 	/* this is QD */
-	user = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, "gpdb.user", getenv("USER"));
-	passwd = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, "gpdb.password", "mpparray");
+	user = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, CONFIG_USER_KEY, getenv("USER"));
+	passwd = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, CONFIG_PASSWORD_KEY, CONFIG_PASSWORD_VALUE);
 	if (0 != (e = gpcc_pg_change_password(0,
 					      cmdslot->u.seg.request.port,
 					      user,

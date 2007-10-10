@@ -7,15 +7,36 @@
 #include <gpcc_event.h>
 #include <gpcc_net.h>
 
-#define DEFAULT_QD_MAX_CONNECT  25
-#define DEFAULT_QE_MAX_CONNECT  25
-#define DEFAULT_QD_MAX_BUFFER   "128MB"
-#define DEFAULT_QE_MAX_BUFFER   "128MB"
-#define DEFAULT_MA_PORT   	12000
-#define DEFAULT_QD_PORT   	12100
-#define DEFAULT_QE_BASEPORT	12200
-#define DEFAULT_MIRROR_QE_BASEPORT  22200
 #define DEFAULT_HA_PORT  53333
+
+#define CONFIG_DBNAME_KEY                        "gpdb.name"
+#define CONFIG_USER_KEY                          "gpdb.user"
+#define CONFIG_PASSWORD_KEY                      "gpdb.password"
+#define CONFIG_MAX_CONNECT_KEY                   "gpdb.max_connect"
+#define CONFIG_ENCODING_KEY                      "gpdb.encoding"
+#define CONFIG_LOCALE_KEY                        "gpdb.locale"
+#define CONFIG_SHARED_BUFFERS_KEY                "gpdb.shared_buffers"
+#define CONFIG_CHECKPOINT_SEGMENT_KEY            "gpdb.checkpoint_segments"
+#define CONFIG_MASTER_PORT_KEY                   "gpdb.seg.master_port"
+#define CONFIG_BASE_PORT_KEY                     "gpdb.seg.base_port"
+#define CONFIG_MIRROR_BASE_PORT_KEY              "gpdb.seg.mirror_base_port"
+
+
+#define CONFIG_DBNAME_VALUE                        "mygpdb"
+#define CONFIG_USER_VALUE                          "user"
+#define CONFIG_PASSWORD_VALUE                      "mpparray"
+#define CONFIG_MAX_CONNECT_VALUE                   25
+#define CONFIG_ENCODING_VALUE                      "SQL_ASCII"
+#ifdef SOLARIS2
+#define CONFIG_LOCALE_VALUE                        "en_US.UTF-8"
+#else
+#define CONFIG_LOCALE_VALUE                        "en_US.utf-8"
+#endif
+#define CONFIG_SHARED_BUFFERS_VALUE                "128MB"
+#define CONFIG_CHECKPOINT_SEGMENT_VALUE            31
+#define CONFIG_MASTER_PORT_VALUE                   12000
+#define CONFIG_BASE_PORT_VALUE                     12100
+#define CONFIG_MIRROR_BASE_PORT_VALUE              22200
 
 
 
