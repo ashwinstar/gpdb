@@ -304,7 +304,7 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 }
 
 
-static apr_status_t setup_init(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_setup_init(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
 

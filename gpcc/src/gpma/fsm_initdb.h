@@ -1,4 +1,4 @@
-static apr_status_t initdb_init(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_initdb_init(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
@@ -13,7 +13,7 @@ static apr_status_t initdb_init(gpcc_event_t *ev, void *_cmdslot)
     cmdslot->u.sys.request.u.initdb.segidx = 0;
     return 0;
 }
-static apr_status_t initdb_do(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_initdb_do(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     int i, e;
@@ -59,7 +59,7 @@ static apr_status_t initdb_do(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-static apr_status_t initdb_reply(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_initdb_reply(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj = 0;
@@ -166,7 +166,7 @@ static apr_status_t initdb_reply(gpcc_event_t *ev, void *_cmdslot)
 
 }
 
-static apr_status_t initdb_success(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_initdb_success(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj;
@@ -191,7 +191,7 @@ static apr_status_t initdb_success(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-static apr_status_t initdb_failure(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_initdb_failure(gpcc_event_t *ev, void *_cmdslot)
 {
    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;    
     struct json_object *obj;
@@ -216,7 +216,7 @@ static apr_status_t initdb_failure(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-static apr_status_t initdb_cleanup(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_initdb_cleanup(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
 

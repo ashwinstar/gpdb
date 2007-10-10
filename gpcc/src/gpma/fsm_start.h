@@ -1,6 +1,6 @@
 
 
-static apr_status_t start_init(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_start_init(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
@@ -14,7 +14,7 @@ static apr_status_t start_init(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-static apr_status_t start_utility_qd(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_start_utility_qd(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj = 0;
@@ -50,7 +50,7 @@ static apr_status_t start_utility_qd(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-static apr_status_t start_utility_qd_segment_reply(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_start_utility_qd_segment_reply(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     gpcc_net_packet_t *pkt;
@@ -86,7 +86,7 @@ static apr_status_t start_utility_qd_segment_reply(gpcc_event_t *ev, void *_cmds
     return 0;
 }
 
-static apr_status_t start_utility_qd_net_closed(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_start_utility_qd_net_closed(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     seginfo_t *seginfo = cmdslot->u.sys.seginfo;
@@ -102,7 +102,7 @@ static apr_status_t start_utility_qd_net_closed(gpcc_event_t *ev, void *_cmdslot
     return 0;
 }
 
-static apr_status_t start_gpconf(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_start_gpconf(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     seginfo_t *seginfo;
@@ -122,7 +122,7 @@ static apr_status_t start_gpconf(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-static apr_status_t start_utility_qd_stop(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_start_utility_qd_stop(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj = 0;
@@ -158,7 +158,7 @@ static apr_status_t start_utility_qd_stop(gpcc_event_t *ev, void *_cmdslot)
 }
 
 
-static apr_status_t start_gpconf_net_closed(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_start_gpconf_net_closed(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     seginfo_t *seginfo = cmdslot->u.sys.seginfo;
@@ -181,7 +181,7 @@ static apr_status_t start_gpconf_net_closed(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-static apr_status_t start_utility_qd_stop_reply(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_start_utility_qd_stop_reply(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     gpcc_net_packet_t *pkt;
@@ -217,7 +217,7 @@ static apr_status_t start_utility_qd_stop_reply(gpcc_event_t *ev, void *_cmdslot
 }
 
 
-static apr_status_t start_qes(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_start_qes(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     int i, e;
@@ -266,7 +266,7 @@ static apr_status_t start_qes(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-static apr_status_t start_qe_reply(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_start_qe_reply(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     gpcc_net_packet_t *pkt;
@@ -355,7 +355,7 @@ static apr_status_t start_qe_reply(gpcc_event_t *ev, void *_cmdslot)
 }
 
 
-static apr_status_t start_qd(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_start_qd(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj = 0;
@@ -390,7 +390,7 @@ static apr_status_t start_qd(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-static apr_status_t start_qd_reply(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_start_qd_reply(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     gpcc_net_packet_t *pkt;
@@ -426,7 +426,7 @@ static apr_status_t start_qd_reply(gpcc_event_t *ev, void *_cmdslot)
 }
 
 
-static apr_status_t start_qd_reply_net_closed(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_start_qd_reply_net_closed(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     seginfo_t *seginfo = cmdslot->u.sys.seginfo;
@@ -450,7 +450,7 @@ static apr_status_t start_qd_reply_net_closed(gpcc_event_t *ev, void *_cmdslot)
 }
 
 
-static apr_status_t start_standby_qd(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_start_standby_qd(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj = 0;
@@ -491,7 +491,7 @@ static apr_status_t start_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-static apr_status_t start_standby_qd_reply(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_start_standby_qd_reply(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     gpcc_net_packet_t *pkt;
@@ -527,7 +527,7 @@ static apr_status_t start_standby_qd_reply(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-static apr_status_t start_standby_qd_reply_net_closed(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_start_standby_qd_reply_net_closed(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     seginfo_t *seginfo = cmdslot->u.sys.seginfo;
@@ -551,7 +551,7 @@ static apr_status_t start_standby_qd_reply_net_closed(gpcc_event_t *ev, void *_c
     return 0;
 }
 
-static apr_status_t start_success(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_start_success(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj;
@@ -576,7 +576,7 @@ static apr_status_t start_success(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-static apr_status_t start_failure(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_start_failure(gpcc_event_t *ev, void *_cmdslot)
 {
    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;    
     struct json_object *obj;
@@ -601,7 +601,7 @@ static apr_status_t start_failure(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-static apr_status_t start_cleanup(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_start_cleanup(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
 
