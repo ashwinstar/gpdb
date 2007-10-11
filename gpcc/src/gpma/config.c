@@ -227,7 +227,7 @@ config_t* config_read(const char* dirpath, apr_pool_t* pool)
 
     if (maxfile) {
 	/* reconstruct the fname */
-	maxfile = apr_psprintf(subpool, "%s.%lld", maxfile, csn);
+	maxfile = apr_psprintf(subpool, "%s.%lld", maxfile, (long long) csn);
 	fp = fopen(maxfile, "r");
 	if (fp) 
 	    cfg = config_read_stream(fp, pool);
