@@ -228,6 +228,7 @@ const char* scan_rec(const char* p, const char* q, int cnt)
 void fstream_free(fstream_t* fs)
 {
     int i;
+
     for (i = 0; i < fs->fn; i++) {
 	if (fs->fd[i]) {
 	    gfile_close(fs->fd[i]);
@@ -690,7 +691,11 @@ void print_request(gnet_request_t* r)
 
 
 
-/* Finished a request. Close socket and cleanup. */
+/* Finished a request. Close socket and cleanup. 
+   Note: ending a request does not mean that the session is ended.
+   Maybe there is a request out there (of the same session), that still 
+   has a block to send out.
+ */
 void request_end(request_t* r)
 {
     session_t* s = r->session;
@@ -722,8 +727,10 @@ block_t* session_get_block(session_t* s)
 {
     block_t* b;
 
-    if (s->is_error || 0 == s->fstream)
+    if (s->is_error || 0 == s->fstream) {
+	session_end(s, 0);
 	return 0;
+    }
 
     if (0 == (b = fstream_get_block(s->fstream))) {
 	if (s->fstream->ferror)
@@ -843,7 +850,7 @@ void session_detach(request_t* r)
     session_t* s = r->session;
     r->session = 0;
     if (s) {
-	if (s->nrequest == 0) 
+	if (s->nrequest <= 0) 
 	    gfatal(FLINE, "assert failed");
 	s->nrequest--;
 	s->mtime = apr_time_now();
@@ -854,6 +861,11 @@ void session_detach(request_t* r)
 		gfatal(FLINE, "assert failed");
 
 	    session_free(s);
+	}
+
+	if (s->fstream) {
+	    fstream_free(s->fstream);
+	    s->fstream = 0;
 	}
     }
 }
@@ -1174,10 +1186,8 @@ void do_read(int fd, short event, void* arg)
 
     /* Hurray, got a request !!! */
     if (opt.v) 
-	printf("[INFO] %s requests %s\n\tTID %s\n", 
-	       r->peer, r->in.req->argv[1] ? r->in.req->argv[1] : "(none)", 
-	       r->tid ? r->tid : "(none)");
-
+	printf("[INFO] %s requests %s\n", 
+	       r->peer, r->in.req->argv[1] ? r->in.req->argv[1] : "(none)");
 
     /* we don't need to read from the socket anymore */
     shutdown(r->sock, SHUT_RD);
@@ -1273,6 +1283,11 @@ void do_read(int fd, short event, void* arg)
 		cid = r->in.req->hvalue[i];
 	    else if (0 == strcmp("X-GP-SN", r->in.req->hname[i]))
 		sn = r->in.req->hvalue[i];
+	    /*
+	    if (r->in.req->hname[i][0] == 'X') {
+		printf("%s: %s\n", r->in.req->hname[i], r->in.req->hvalue[i]);
+	    }
+	    */
 	}
 	if (xid && cid && sn) {
 	    r->tid = apr_psprintf(r->pool, "%s.%s.%s", xid, cid, sn);
@@ -1309,7 +1324,7 @@ void do_accept(int fd, short event, void* arg)
     /* do the accept */
     if ((sock = accept(fd, (void*) &a, &len)) < 0) {
 	gwarning(FLINE, "accept failed");
-	return;
+	goto failure;
     }
 
     /* set to non-blocking, and close-on-exec */
@@ -1322,12 +1337,12 @@ void do_accept(int fd, short event, void* arg)
     if (fcntl(sock, F_SETFL, O_NONBLOCK) == -1) {
 	gwarning(FLINE, "fcntl(F_SETFL, O_NONBLOCK) failed");
 	closesocket(sock);
-	return;
+	goto failure;
     }
     if (fcntl(sock, F_SETFD, 1) == -1) {
 	gwarning(FLINE, "fcntl(F_SETFD) failed");
 	closesocket(sock);
-	return;
+	goto failure;
     }
 #endif
 
@@ -1362,20 +1377,29 @@ void do_accept(int fd, short event, void* arg)
 	send_error(r, 500, "internal error");
 	request_end(r);
     }
+
+    return;
+
+    failure:
+    printf("accept failed\n");
+    return;
 }
 
 int setup_write(request_t* r)
 {
     if (r->sock < 0) 
 	gfatal(FLINE, "assert failed");
+    event_del(&r->ev);
     event_set(&r->ev, r->sock, EV_WRITE, do_write, r);
     return (event_add(&r->ev, 0));
 }
 
 int setup_read(request_t* r)
 {
+    //    printf("r->fd = %d\n", r->sock);
     if (r->sock < 0) 
 	gfatal(FLINE, "assert failed");
+    event_del(&r->ev);
     event_set(&r->ev, r->sock, EV_READ, do_read, r);
 
     r->tm.tv_sec = 0;
@@ -1463,12 +1487,15 @@ int main(int argc, const char* const argv[])
     signal(SIGPIPE, SIG_IGN);
 #endif
 
+    /* kqueue not so stable in libevent */
+    setenv("EVENT_NOKQUEUE", "1", 1);
+    
     event_init();
 
     http_setup();
 
     printf("Serving HTTP on port %d, directory %s\n", opt.p, opt.d);
-    
+
     /* redirect stderr and stdout to log */
     if (opt.l) {
 	freopen(opt.l, "a", stderr);
