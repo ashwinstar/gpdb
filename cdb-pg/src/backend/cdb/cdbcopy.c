@@ -607,7 +607,7 @@ cdbCopyEnd(CdbCopy *c)
 	int			segment_rows_rejected = 0; /* num of rows rejected by this QE */
 	int			total_rows_rejected = 0; /* total num rows rejected by all QEs */
 	bool		err_header = false;
-	bool		primary_had_error; /* flag to consolidate pri/mir errors */
+	bool		primary_had_error = false; /* flag to consolidate pri/mir errors */
 	bool		first_error = true;
 	struct	SegmentDatabaseDescriptor *db_descriptors;
 	int size;
