@@ -708,6 +708,7 @@ void request_end(request_t* r)
     event_del(&r->ev);
     shutdown(r->sock, SHUT_WR | SHUT_RD);
     closesocket(r->sock);
+    r->sock = -1;
     apr_pool_destroy(r->pool);
 }
 
@@ -1364,6 +1365,8 @@ void do_accept(int fd, short event, void* arg)
 
 int setup_write(request_t* r)
 {
+    if (r->sock < 0) 
+	gfatal(FLINE, "assert failed");
     event_set(&r->ev, r->sock, EV_WRITE, do_write, r);
     return (event_add(&r->ev, 0));
 }
@@ -1371,6 +1374,9 @@ int setup_write(request_t* r)
 int setup_read(request_t* r)
 {
     struct timeval tm;
+
+    if (r->sock < 0) 
+	gfatal(FLINE, "assert failed");
     event_set(&r->ev, r->sock, EV_READ, do_read, r);
 
     tm.tv_sec = 0;
