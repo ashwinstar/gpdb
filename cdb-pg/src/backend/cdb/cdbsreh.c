@@ -371,7 +371,7 @@ void SendNumRowsRejected(int numrejected)
 {
 	StringInfoData buf;
 	
-	Insist(Gp_role == GP_ROLE_EXECUTE);
+	Insist(Gp_role == GP_ROLE_EXECUTE || Gp_role == GP_ROLE_DISPATCHAGENT);
 	pq_beginmessage(&buf, 'j'); /* 'j' is the msg code for rejected records */
 	pq_sendint(&buf, numrejected, 4);
 	pq_endmessage(&buf);	

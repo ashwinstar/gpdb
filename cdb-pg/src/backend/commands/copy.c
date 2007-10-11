@@ -1680,19 +1680,19 @@ CopyToDispatch(CopyState cstate)
 	 */
 	if (Gp_role != GP_ROLE_DISPATCHAGENT)
 	{
-	elog(DEBUG5, "COPY command sent to segdbs: %s", cdbcopy_cmd.data);
-	if (cdbCopyStart(cdbCopy, cdbcopy_cmd.data) == -1)
-	{
-		/* get error message from CopyStart */
-		appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
-		
-		/* TODO: end COPY in all the segdbs in progress */
-		//cdbCopyEnd(cdbCopy);
-		
-		ereport(ERROR,
-				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
-				 errmsg("%s", cdbcopy_err.data)));
-	}
+		elog(DEBUG5, "COPY command sent to segdbs: %s", cdbcopy_cmd.data);
+		if (cdbCopyStart(cdbCopy, cdbcopy_cmd.data) == -1)
+		{
+			/* get error message from CopyStart */
+			appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
+			
+			/* TODO: end COPY in all the segdbs in progress */
+			//cdbCopyEnd(cdbCopy);
+			
+			ereport(ERROR,
+					(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+					 errmsg("%s", cdbcopy_err.data)));
+		}
 	}
 	
 	if (cstate->binary)
@@ -1848,18 +1848,26 @@ copy_in_error_callback(void *arg)
 		char *line_start = copy_of_line_buf.data;
 		char *lineno_delim = memchr(line_start, ORIGINAL_LINENO_DELIM, 32);
 		
-		Insist(lineno_delim && (lineno_delim != line_start));
-		lineno_str_len = lineno_delim - line_start + 1;
-		copy_of_line_buf.data += lineno_str_len; /* advance beyond original lineno */
-		copy_of_line_buf.len -= lineno_str_len;
-
-		/* skip target_seg */
-		line_start = copy_of_line_buf.data;
-		lineno_delim = memchr(line_start, ORIGINAL_LINENO_DELIM, 32);
-		Insist(lineno_delim && (lineno_delim != line_start));		
-		lineno_str_len = lineno_delim - line_start + 1;
-		copy_of_line_buf.data += lineno_str_len; /* advance beyond target_seg */
-		copy_of_line_buf.len -= lineno_str_len;
+		/* Calling Insist or Assert here will cause recursive errors */
+		if (!(lineno_delim && (lineno_delim != line_start)))
+			write_log("Error in copy_in_error_callback: !(lineno_delim && (lineno_delim != line_start))\n");
+		else
+		{
+			lineno_str_len = lineno_delim - line_start + 1;
+			copy_of_line_buf.data += lineno_str_len; /* advance beyond original lineno */
+			copy_of_line_buf.len -= lineno_str_len;
+	
+			/* skip target_seg */
+			line_start = copy_of_line_buf.data;
+			lineno_delim = memchr(line_start, ORIGINAL_LINENO_DELIM, 32);
+			
+			if (lineno_delim && (lineno_delim != line_start))
+			{	
+				lineno_str_len = lineno_delim - line_start + 1;
+				copy_of_line_buf.data += lineno_str_len; /* advance beyond target_seg */
+				copy_of_line_buf.len -= lineno_str_len;
+			}
+		}
 	}
 	
 	/*
@@ -6013,9 +6021,83 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 
 	cstate->cdbsreh = NULL; /* default - no SREH */
 	cstate->errMode = ALL_OR_NOTHING; /* default */
+	
+	/* Set defaults */
+	
+	cstate->err_loc_type = ROWNUM_ORIGINAL; 
+		
+	cstate->escape_off = false;
+	
+	if (!cstate->delim)
+		cstate->delim = cstate->csv_mode ? "," : "\t";
+
+	if (!cstate->null_print)
+		cstate->null_print = cstate->csv_mode ? "" : "\\N";
+
+	if (cstate->csv_mode)
+	{
+		if (!cstate->quote)
+			cstate->quote = "\"";
+		if (!cstate->escape)
+			cstate->escape = cstate->quote;
+	}
+
+	if (!cstate->binary && !cstate->csv_mode && !cstate->escape)
+		cstate->escape = "\\";			/* default escape for text mode */
+
+#if 0
+	/*
+	 * Error handling setup
+	 */
+	if(stmt->sreh)
+	{		
+		/* Single row error handling requested */
+		SingleRowErrorDesc *sreh;
+		sreh = (SingleRowErrorDesc *)stmt->sreh;
+		
+		if (!is_from)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+					 errmsg("COPY single row error handling only available using COPY FROM")));
+		
+		if (sreh->errtable)
+		{
+			cstate->errMode = SREH_LOG;
+		}
+		else
+		{
+			cstate->errMode = SREH_IGNORE;
+			if (sreh->is_keep)
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+						errmsg("KEEP may only be specified with a LOG INTO errortable clause")));
+			
+		}
+		
+		if (!sreh->is_limit_in_rows)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+					 errmsg("Segment reject limit in percentage is not yet supported")));			
+		
+	
+		cstate->cdbsreh = makeCdbSreh(sreh->is_keep, 
+									  sreh->reusing_existing_errtable,
+									  sreh->rejectlimit, 
+									  sreh->is_limit_in_rows, 
+									  sreh->errtable,
+									  stmt->filename, 
+									  stmt->relation->relname);
+	}
+	else
+	{
+		/* No single row error handling requested. Use "all or nothing" */
+		cstate->cdbsreh = NULL; /* default - no SREH */
+		cstate->errMode = ALL_OR_NOTHING; /* default */
+	}
+#endif 
 
 	
-	elog(NOTICE,"DoCopyDispatchAgent starting");
+	elog(LOG,"DoCopyDispatchAgent starting");
 
 	/*
 	 * Set up variables to avoid per-attribute overhead.
@@ -6032,7 +6114,7 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 	cstate->encoding_embeds_ascii = PG_ENCODING_IS_CLIENT_ONLY(cstate->client_encoding);
 	cstate->line_buf_converted = true;
 
-	cstate->copy_dest = COPY_FILE;		/* default */
+	cstate->copy_dest = COPY_NEW_FE;	
 	cstate->filename = NULL; /* QE COPY always uses STDIN */
 	cstate->copy_file = NULL;
 	cstate->fe_msgbuf = NULL;
@@ -6063,16 +6145,18 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 
 		bool no_more_data = false;
 		bool		cur_row_rejected = false;
-		StringInfoData line_buf_with_lineno;
 		int original_lineno_for_qe = -1;
 		int target_seg = -1;
+		int total_rejeted_from_qes = 0;
 
+	    elog(LOG,"Copy is from file to database");
+	  
 		ReceiveCopyBegin(cstate);
-
-		SendCopyBegin(cstate);
 		
-
-		//CopyFromDispatch(cstate);
+	   
+		
+		cstate->err_loc_type = ROWNUM_EMBEDDED;
+ 
 		/* Set up data buffer to hold a chunk of data */
 		MemSet(cstate->raw_buf, ' ', RAW_BUF_SIZE * sizeof(char));
 		cstate->raw_buf[RAW_BUF_SIZE] = '\0';
@@ -6080,6 +6164,7 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 		no_more_data = false;		/* no more input data to read from file or FE */
 		cstate->line_done = true;
 		cstate->raw_buf_done = false;
+		RESET_LINEBUF;
 
 		do
 		{
@@ -6091,6 +6176,7 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 				PG_TRY();
 				{
 					bytesread = CopyGetData(cstate, cstate->raw_buf, RAW_BUF_SIZE);	
+					elog(DEBUG1,"CopyGetData, bytesread=%ld",bytesread);
 				}
 				PG_CATCH();
 				{
@@ -6133,6 +6219,7 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 
 						/* Get the line number of the first line of this data row */
 						//original_lineno_for_qe = cstate->cur_lineno + 1;
+						
 
 						PG_TRY();
 						{
@@ -6147,13 +6234,9 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 							COPY_HANDLE_ERROR;
 						}
 						PG_END_TRY();					
-
-						if(cur_row_rejected)
-						{
-							IF_REJECT_LIMIT_REACHED_ABORT;
-							QD_GOTO_NEXT_ROW;
-						}
 							
+						/* CopyReadLine moves the cursor past the line no and target info */
+						cstate->line_buf.cursor = 0;
 						
 						if(!cstate->line_done)
 						{
@@ -6169,24 +6252,59 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 								break;
 						}
 
+						if (cstate->line_buf.len > 0)
+						{
+						char *lineno_delim = NULL;
 						
+						/* 
+						 * Line_buf may have already skipped an OID column if WITH OIDS defined,
+						 * so we need to start from cursor not always from beginning of linebuf.
+						 */
+						char *line_start = cstate->line_buf.data + cstate->line_buf.cursor;
+						int  lineno_str_len = 0;
+												
+						lineno_delim = memchr(line_start, ORIGINAL_LINENO_DELIM, 32);
+						Insist(lineno_delim && (lineno_delim != line_start));		
+						lineno_str_len = lineno_delim - line_start + 1;
+						
+						/* change the lineno delim to null '\0' to look at the lineno */
+						*lineno_delim = '\0';
+						original_lineno_for_qe = atoi(line_start);
+						
+						/* restore the line_buf byte */
+						*lineno_delim = ORIGINAL_LINENO_DELIM;
+						
+						/* reposition line buf cursor to see real data (skip lineno) */
+						cstate->line_buf.cursor += lineno_str_len;
+
+						/* skip target_seg */
+						line_start = cstate->line_buf.data + cstate->line_buf.cursor;
+						lineno_delim = memchr(line_start, ORIGINAL_LINENO_DELIM, 32);
+						Insist(lineno_delim && (lineno_delim != line_start));		
+						lineno_str_len = lineno_delim - line_start + 1;
+
+						/* change the lineno delim to null '\0' to look at the lineno */
+						*lineno_delim = '\0';
+						target_seg = atoi(line_start);
+						
+						/* restore the line_buf byte */
+						*lineno_delim = ORIGINAL_LINENO_DELIM;
 
 
-						/* modify the data to look like: "<lineno>^<target_seg>^<data>" */
-						appendStringInfo(&line_buf_with_lineno, "%d%c%d%c%s", 
-										 original_lineno_for_qe, 
-										 ORIGINAL_LINENO_DELIM,
-										 target_seg, 
-										 ORIGINAL_LINENO_DELIM,
-										 cstate->line_buf.data);
+						/* reposition line buf cursor to see real data (skip target_seg) */
+						cstate->line_buf.cursor += lineno_str_len;
+
+								
 						
-						/* send modified data */
-						cdbCopySendData(cdbCopy, 
-										target_seg, 
-										line_buf_with_lineno.data, 
-										line_buf_with_lineno.len);
+							Assert(target_seg >= 0 && target_seg <= 10000);
+	
+							/* send unmodified data */
+							cdbCopySendData(cdbCopy, 
+											target_seg, 
+											cstate->line_buf.data, 
+											cstate->line_buf.len);
+						}
 						
-						RESET_LINEBUF_WITH_LINENO;
 					
 
 
@@ -6203,14 +6321,29 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 				no_more_data = true;
 			}
 		} while (!no_more_data);
+		
+		Assert(cstate->fe_eof);
+		
+		/*
+		 * Done reading input data and sending it off to the segment
+		 * databases Now we would like to end the copy command on
+		 * all segment databases across the cluster.
+		 */
+		total_rejeted_from_qes = cdbCopyEnd(cdbCopy);
+	
+		
+		//if(cstate->errMode != ALL_OR_NOTHING)
+		if(stmt->sreh)
+			SendNumRowsRejected(total_rejeted_from_qes);
+		
 	
 	}
 	else		/* copy from database to file */
 	{
-		
 		cstate->fe_copy = true;
 
-		//CopyToDispatch(cstate);
+		/* We use fe_msgbuf as a per-row buffer regardless of copy_dest */
+		cstate->fe_msgbuf = makeStringInfo();
 
 		while(true)
 		{
@@ -6218,20 +6351,15 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 			bool done;
 			bool copy_cancel = (QueryCancelPending ? true : false);
 			
-			/* get a chunk of data rows from the QE's */
-			done = cdbCopyGetData(cdbCopy, copy_cancel, &cstate->processed);
-			
-			/* send the chunk of data rows to destination (file or stdout) */
-			if(cdbCopy->copy_out_buf.len > 0) /* conditional is important! */
+			/* get a chunk of data rows from the QE's and relay to QD */
+			done = cdbCopyRelayData(cdbCopy, copy_cancel, &cstate->processed);
+
+			if(done)
 			{
-				/*
-				 * in the dispatcher we receive chunks of whole rows with row endings.
-				 * We don't want to use CopySendEndOfRow() b/c it adds row endings and
-				 * also b/c it's intended for a single row at a time. Therefore we need
-				 * to fill in the out buffer and just flush it instead.
-				 */
-				CopySendData(cstate, (void *) cdbCopy->copy_out_buf.data, cdbCopy->copy_out_buf.len);
-				CopyToDispatchFlush(cstate);
+				 //if(cdbCopy->remote_data_err || cdbCopy->local_data_err || cdbCopy->io_errors)
+				 //	appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
+	
+				break;
 			}
 
 		}
@@ -6239,10 +6367,14 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 		/* we can throw the error now if QueryCancelPending was set previously */
 		CHECK_FOR_INTERRUPTS();
 	
+		SendCopyEnd(cstate);
 	}
 
 	
 	
+	if(cstate->cdbsreh)
+		destroyCdbSreh(cstate->cdbsreh);
+		
 	/* Clean up storage (probably not really necessary) */
 	processed = cstate->processed;
 	
