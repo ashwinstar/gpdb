@@ -1170,3 +1170,8 @@ select cn,vn,ntile(cn+vn) over(partition by cn+vn order by vn) from sale; --mvd 
 SELECT sale.cn,sale.qty,
 count(cn) OVER(order by sale.cn,sale.qty rows between sale.qty following and 4 following) as count
 from sale;
+
+-- MPP-2068
+SELECT vn,cn,prc,
+COUNT(floor(sale.cn)) OVER(order by sale.vn asc,sale.cn asc,sale.prc rows prc preceding ) as count
+FROM sale;
