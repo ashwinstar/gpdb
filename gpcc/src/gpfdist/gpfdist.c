@@ -126,6 +126,7 @@ typedef struct request_t request_t;
 struct request_t {
     SOCKET sock;		/* the socket */
     apr_pool_t* pool;		/* memory pool container */
+    struct timeval tm;		/* timeout for struct event */
     struct event ev;		/* event we are watching for this request */
     const char* peer;		/* peer IP:port string */
     char* path;			/* path to file */
@@ -1373,15 +1374,13 @@ int setup_write(request_t* r)
 
 int setup_read(request_t* r)
 {
-    struct timeval tm;
-
     if (r->sock < 0) 
 	gfatal(FLINE, "assert failed");
     event_set(&r->ev, r->sock, EV_READ, do_read, r);
 
-    tm.tv_sec = 0;
-    tm.tv_usec = 2000 * 1000;
-    return (event_add(&r->ev, &tm));
+    r->tm.tv_sec = 0;
+    r->tm.tv_usec = 2000 * 1000;
+    return (event_add(&r->ev, &r->tm));
 }
 
 
