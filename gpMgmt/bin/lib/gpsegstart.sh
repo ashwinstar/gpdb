@@ -148,6 +148,8 @@ START_SEG () {
 			LOG_MSG "[INFO][$INST_COUNT]:-Running control file upgrader"
 
 			$TRUSTED_SHELL $QE_NAME "$GPCONTROLMOD --catversion $UPGRADE_TO $QE_DIR"
+			BACKOUT_COMMAND "$ECHO \"Reverting QE $QE_NAME:$QE_DIR control file to 3.0\"" 
+			BACKOUT_COMMAND "$TRUSTED_SHELL $QE_NAME \"$GPCONTROLMOD --catversion 3.0 $QE_DIR\""
 			RETVAL=$?
 
 			if [ $RETVAL -ne 0 ]; then
@@ -282,6 +284,7 @@ INST_COUNT=$1;shift		#Unique number for this parallel script, starts at 0
 LOG_FILE=$1;shift
 UPGRADE_TO=$1; shift
 QD_DBNAME=$1;shift
+BACKOUT_FILE=$1; shift
 QE_LINE="${QE_NAME}:${QE_PORT}:${QE_DIR}"
 LOG_MSG "[INFO][$INST_COUNT]:-Start Main"
 LOG_MSG "[INFO][$INST_COUNT]:-Command line options passed to utility = $*"

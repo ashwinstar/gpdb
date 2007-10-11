@@ -403,7 +403,7 @@ PROCESS_STARTUP () {
 				VALID_SETTING=0
 			fi	
 			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-			$GPSEGSTART $$ $SWITCH_QE_LOG $QE_NAME $QE_PORT $QE_DIR $QE_VALID $VALID_SETTING $INST_COUNT $LOG_FILE $UPGRADE_TO $QD_DBNAME &
+			$GPSEGSTART $$ $SWITCH_QE_LOG $QE_NAME $QE_PORT $QE_DIR $QE_VALID $VALID_SETTING $INST_COUNT $LOG_FILE $UPGRADE_TO $QD_DBNAME $BACKOUT_FILE &
 			PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 		fi
 	done
@@ -560,6 +560,9 @@ if [ $# -ne 0 ]; then
 		done	
 fi
 
+BACKOUT_FILE=/tmp/gpstart_backout.$$
+MASTER_HOSTNAME=`$HOSTNAME`
+
 if [ x"" != x"$LOG_DIR" ];then
 	CHK_DIR $LOG_DIR
 	if [ $EXISTS -eq 1 ]; then
@@ -579,6 +582,9 @@ if [ "$UPGRADE_TO" != "0" ]; then
 
 		LOG_MSG "[INFO]:-Upgrading master control file to $UPGRADE_TO"
 		$GPCONTROLMOD --catversion $UPGRADE_TO $MASTER_DATA_DIRECTORY
+		# include downgrade command
+		BACKOUT_COMMAND "$ECHO \"Reverting master control file to 3.0\""
+		BACKOUT_COMMAND "$GPCONTROLMOD --catversion 3.0 $MASTER_DATA_DIRECTORY"
 	fi
 
 	RETVAL=$?
