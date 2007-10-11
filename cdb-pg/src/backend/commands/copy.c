@@ -6176,7 +6176,7 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 				PG_TRY();
 				{
 					bytesread = CopyGetData(cstate, cstate->raw_buf, RAW_BUF_SIZE);	
-					elog(DEBUG1,"CopyGetData, bytesread=%ld",bytesread);
+					elog(DEBUG1,"CopyGetData, bytesread=%ld",(long)bytesread);
 				}
 				PG_CATCH();
 				{
