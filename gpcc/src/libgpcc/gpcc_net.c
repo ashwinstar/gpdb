@@ -178,6 +178,7 @@ struct conncb_t {
     }               to_peer, from_peer;
     int             do_read_header_attempts;
     int             packet_mode; /* true if in packet mode (from_peer HDR == GPCC_NET_PACKET_PROTO)*/
+    apr_uint64_t    arg;	 /* argument from gpcc_net_open */
 };
 
 
@@ -405,6 +406,7 @@ static apr_status_t conn_read_header(gpcc_net_conn_t conn)
 	char peer_addr[sizeof(pconn->peer_addr)];
 	gpcc_net_header_t* to_peer_hdr = 0;
 	gpcc_net_header_t* from_peer_hdr = 0;
+	apr_uint64_t arg = pconn->arg;
 
 	strncpy(peer_addr, pconn->peer_addr, sizeof(peer_addr));
 	peer_addr[sizeof(peer_addr) - 1] = 0;
@@ -433,7 +435,7 @@ static apr_status_t conn_read_header(gpcc_net_conn_t conn)
 	spin = gpcc_spin_release(spin); /* release prior to callback */
 
 	if (to_peer_hdr) 
-	    net.opened(conn, peer_addr, to_peer_hdr, from_peer_hdr);
+	    net.opened(conn, peer_addr, to_peer_hdr, from_peer_hdr, arg);
 	else 
 	    net.accepted(conn, peer_addr, from_peer_hdr);
 
@@ -1081,9 +1083,10 @@ apr_status_t gpcc_net_tag(gpcc_net_conn_t conn,
 
 
 apr_status_t gpcc_net_open(gpcc_net_conn_t* conn,
-					char* peer_addr_str,
-					int argc, char** argv,
-					int hc, char** hname, char** hvalue)
+			   char* peer_addr_str,
+			   int argc, char** argv,
+			   int hc, char** hname, char** hvalue,
+			   apr_uint64_t arg)
 {
     SOCKET sock = -1;
     struct sockaddr_in peer_addr;
@@ -1194,6 +1197,7 @@ apr_status_t gpcc_net_open(gpcc_net_conn_t* conn,
     pconn->from_peer.buf->top = pconn->from_peer.buf->bot = 0;
     pconn->do_read_header_attempts = 0;
     pconn->packet_mode = 0;
+    pconn->arg = arg;
 
     /* serialize the header into output buffer */
     if (0 == gpcc_net_header_serialize(hdr, pconn->to_peer.buf->byte, 

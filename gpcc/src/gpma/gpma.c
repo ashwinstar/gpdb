@@ -118,7 +118,8 @@ void parse_cmdline(int argc, const char* argv[])
 static void net_opened(gpcc_net_conn_t conn, 
 		       const char* peer_addr,
 		       gpcc_net_header_t* to_peer, 
-		       gpcc_net_header_t* from_peer)
+		       gpcc_net_header_t* from_peer,
+		       apr_uint64_t arg)
 {
 }
 

@@ -48,7 +48,8 @@ typedef apr_uint32_t gpcc_net_conn_t;
 typedef void gpcc_net_opened_t(gpcc_net_conn_t conn, 
 			       const char* peer_addr,
 			       gpcc_net_header_t* to_peer, 
-			       gpcc_net_header_t* from_peer);
+			       gpcc_net_header_t* from_peer,
+			       apr_uint64_t arg);
 
 typedef void gpcc_net_accepted_t(gpcc_net_conn_t conn,
 				 const char* peer_addr,
@@ -78,7 +79,8 @@ APR_DECLARE(apr_status_t) gpcc_net_once(int blocking);
 APR_DECLARE(apr_status_t) gpcc_net_open(gpcc_net_conn_t* conn,
 					char* peer_addr,
 					int argc, char** argv,
-					int hc, char** hname, char** hvalue);
+					int hc, char** hname, char** hvalue,
+					apr_uint64_t arg);
 
 
 APR_DECLARE(void) gpcc_net_close(gpcc_net_conn_t conn);
