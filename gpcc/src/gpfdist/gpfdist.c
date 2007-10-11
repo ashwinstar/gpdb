@@ -329,7 +329,7 @@ block_t* fstream_get_block(fstream_t* fs)
 	fs->fskip = opt.h;
 
 	if (opt.V) 
-	    printf("   opening %s\n", fs->fpath[fs->fidx]);
+	    gprint("   opening %s\n", fs->fpath[fs->fidx]);
 	if (0 == (fs->fd[fs->fidx] = gfile_open(fs->fpath[fs->fidx], O_RDONLY|O_BINARY))) {
 	    gwarning(FLINE, "unable to open file %s", fs->fpath[fs->fidx]);
 	    fs->ferror = 1;
@@ -619,7 +619,7 @@ void send_error(request_t* r, int code, const char* msg)
 {
     char buf[1024];
     int n;
-    printf("%s - %d %s\n", r->peer, code, msg);
+    gprint("%s - %d %s\n", r->peer, code, msg);
     n = apr_snprintf(buf, sizeof(buf), "HTTP/1.0 %d %s\r\n"
 		     "Content-length: 0\r\n"
 		     "Expires: 0\r\n"
@@ -644,7 +644,7 @@ void send_empty(request_t* r)
     static int n = 0;
     int m;
 
-    printf("%s - EMPTY\n", r->peer);
+    gprint("%s - EMPTY\n", r->peer);
 
     if (n == 0) 
 	n = strlen(buf);
@@ -666,7 +666,7 @@ void send_ok(request_t* r)
     static int n = 0;
     static int m;
 
-    printf("%s - OK\n", r->peer);
+    gprint("%s - OK\n", r->peer);
 
     if (n == 0) 
 	n = strlen(buf);
@@ -681,11 +681,11 @@ void print_request(gnet_request_t* r)
 {
     int i;
     for (i = 0; i < r->argc; i++) {
-        printf("  arg[%d] = %s\n", i, r->argv[i]);
+        gprint("  arg[%d] = %s\n", i, r->argv[i]);
     }
 
     for (i = 0; i < r->hc; i++) {
-        printf("  hdr[%s] = %s\n", r->hname[i], r->hvalue[i]);
+        gprint("  hdr[%s] = %s\n", r->hname[i], r->hvalue[i]);
     }
 }
 
@@ -834,7 +834,7 @@ char **fpath_merge(char **fpath1, int n1, char **fpath2, int n2, int *n, apr_poo
 void session_free(session_t* s)
 {
     if (opt.v) 
-	printf("[INFO] free session %s\n", s->key);
+	gprint("[INFO] free session %s\n", s->key);
 
     apr_hash_set(gcb.session.tab, s->key, APR_HASH_KEY_STRING, 0);
     free((void*) s->key);
@@ -897,7 +897,7 @@ void sessions_cleanup()
 
     for (i = 0 ; i < n ; i++) {
 	if (opt.v) 
-	    printf("[INFO] remove out-dated session %s\n", session[i]->key);
+	    gprint("[INFO] remove out-dated session %s\n", session[i]->key);
 	session_free(session[i]);
 	session[i] = 0;
     }
@@ -946,7 +946,7 @@ void session_attach(request_t* r)
 	    if (opt.v) {
 		int i;
 		for (i = 0; i < n; i++) 
-		    printf("  glob: %s\n", fpath[i]);
+		    gprint("  glob: %s\n", fpath[i]);
 	    }
 	}
 
@@ -1015,7 +1015,7 @@ void session_attach(request_t* r)
 	apr_hash_set(gcb.session.tab, s->key, APR_HASH_KEY_STRING, s);
 
 	if (opt.v) 
-	    printf("[INFO] new session (%s, %s)\n", s->path, s->tid);
+	    gprint("[INFO] new session (%s, %s)\n", s->path, s->tid);
     }
 
     /* found a session in hashtable*/
@@ -1035,7 +1035,7 @@ void session_attach(request_t* r)
     }
 
     if (opt.v) 
-	printf("[INFO] joined session (%s, %s)\n", s->path, s->tid);
+	gprint("[INFO] joined session (%s, %s)\n", s->path, s->tid);
 
     /* setup so receive EV_WRITE events to write to socket */
     if (setup_write(r)) {
@@ -1186,17 +1186,17 @@ void do_read(int fd, short event, void* arg)
 
     /* Hurray, got a request !!! */
     if (opt.v) 
-	printf("[INFO] %s requests %s\n", 
+	gprint("[INFO] %s requests %s\n", 
 	       r->peer, r->in.req->argv[1] ? r->in.req->argv[1] : "(none)");
 
     /* we don't need to read from the socket anymore */
     shutdown(r->sock, SHUT_RD);
 
     if (opt.V) {
-	printf("[INFO] request");
+	gprint("[INFO] request");
 	for (i = 0; i < r->in.req->argc; i++)
-	    printf(" %s", r->in.req->argv[i]);
-	printf("\n");
+	    gprint(" %s", r->in.req->argv[i]);
+	gprint("\n");
     }
 
     /* parse the HTTP request. Expect "GET /path HTTP/1.X" */
@@ -1381,7 +1381,7 @@ void do_accept(int fd, short event, void* arg)
     return;
 
     failure:
-    printf("accept failed\n");
+    gwarning(FLINE, "accept failed");
     return;
 }
 
@@ -1614,11 +1614,34 @@ APR_DECLARE(char*) gstring_trim(char* s)
     return s;
 }
 
+
+static char* datetime(void) 
+{
+    static char buf[100];
+    apr_time_exp_t t;
+    apr_time_exp_lt(&t, apr_time_now());
+    sprintf(buf, "%04d-%02d-%02d %02d:%02d:%02d",
+	    1900 + t.tm_year, 1 + t.tm_mon, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
+    return buf;
+}
+
+APR_DECLARE(int) gprint(const char* fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    fprintf(stdout, "[%s] ", datetime());
+    vfprintf(stdout, fmt, ap);
+    fprintf(stdout, "\n          ... exiting\n"); 
+    exit(1);
+    return 0;
+}
+
+
 APR_DECLARE(int) gfatal(const char* fline, const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    fprintf(stderr, "[INTERNAL ERROR] [%s] ", fline);
+    fprintf(stderr, "[%s] [INTERNAL ERROR %s] ", datetime(), fline);
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n          ... exiting\n"); 
     exit(1);
@@ -1630,7 +1653,7 @@ APR_DECLARE(int) gwarning(const char* fline, const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    fprintf(stderr, "[WRN] [%s] ", fline); 
+    fprintf(stderr, "[%s] [WRN %s] ", datetime(), fline); 
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
     return 0;

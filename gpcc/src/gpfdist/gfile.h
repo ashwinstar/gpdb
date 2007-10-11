@@ -12,6 +12,7 @@
 #define FLINE __FILE__ ":" APR_STRINGIFY(__LINE__)
 
 
+APR_DECLARE(int) gprint(const char* fmt, ...);
 APR_DECLARE(int) gfatal(const char* fline, const char* fmt, ...);
 APR_DECLARE(int) gwarning(const char* fline, const char* fmt, ...);
 
