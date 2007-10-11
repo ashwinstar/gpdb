@@ -51,15 +51,17 @@ bool query_failed = false;
 /* kinds of logging messages */
 #define UDEBUG 1
 #define UINFO 2
-#define UERROR 3
+#define UWARN 3
+#define UERROR 4
 
 #define lev2str(lev) \
  (lev == UDEBUG ? "DEBUG" : (lev == UINFO ? "INFO" : "ERROR"))
 
 static void mylog(int level, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
-static PGresult *run_query(PGconn *conn, const char *str, char *host);
+static PGresult *run_query(PGconn *conn, const char *str, char *host, 
+						   char async);
 
-	static void
+static void
 mylog(int level, const char *fmt, ...)
 {
 	char buf[1024];
@@ -120,7 +122,7 @@ downgrade_catalog_schema(config_t *conf)
 #endif
 	exttableres = run_query(conf->conn, "select reloid, location, fmttype, "
 							"fmtopts, command from pg_exttable;",
-							conf->hostname);
+							conf->hostname, 0);
 	mylog(UINFO, "found %u external table entries", PQntuples(exttableres));
 	
 #if 0
@@ -139,12 +141,12 @@ downgrade_catalog_schema(config_t *conf)
 #endif
 	snprintf(query, sizeof(query), "delete from pg_attribute where "
 			 "attnum > 5 AND attrelid = '%u';", ExtTableRelationId);
-	run_query(conf->conn, query, conf->hostname);
+	run_query(conf->conn, query, conf->hostname, 0);
 	snprintf(query, sizeof(query), "update pg_class set relnatts = '5' "
 			 "WHERE oid = '%u'", ExtTableRelationId);
-	run_query(conf->conn, query, conf->hostname);
+	run_query(conf->conn, query, conf->hostname, 0);
 	run_query(conf->conn, "truncate pg_catalog.pg_exttable;",
-			  conf->hostname);
+			  conf->hostname, 0);
 	/* add the rows */
 	for (i = 0; i < PQntuples(exttableres); i++)
 	{
@@ -191,19 +193,19 @@ downgrade_catalog_schema(config_t *conf)
 
 		strncat(query, ")", sizeof(query) - len);
 		
-		run_query(conf->conn, query, conf->hostname);
+		run_query(conf->conn, query, conf->hostname, 0);
 	}
 
 	PQclear(exttableres);
 
 	snprintf(query, sizeof(query), "delete from pg_attribute where "
 			 "attnum > 9 AND attrelid = '%u';", WindowRelationId);
-	run_query(conf->conn, query, conf->hostname);
+	run_query(conf->conn, query, conf->hostname, 0);
 	snprintf(query, sizeof(query), "update pg_class set relnatts = '9' "
 			 "WHERE oid = '%u'", WindowRelationId);
-	run_query(conf->conn, query, conf->hostname);
+	run_query(conf->conn, query, conf->hostname, 0);
 	run_query(conf->conn, "truncate pg_catalog.pg_window;",
-			  conf->hostname);
+			  conf->hostname, 0);
 #if 0
 	/* invalidate the catalog cache */
 	run_query(conf->conn, "select gp_invalidate_syscache();", conf->hostname);
@@ -335,20 +337,20 @@ schema_upgrade(config_t *conf)
 		/* exttable */
 		/* XXX: must be in this order */
 		run_query(conf->conn, "alter table pg_catalog.pg_exttable "
-				  "add column rejectlimit int;", conf->hostname);
+				  "add column rejectlimit int;", conf->hostname, 0);
 		run_query(conf->conn, "alter table pg_catalog.pg_exttable "
-				  "add column rejectlimittype \"char\";", conf->hostname);
+				  "add column rejectlimittype \"char\";", conf->hostname, 0);
 		run_query(conf->conn, "alter table pg_catalog.pg_exttable "
-				  "add column fmterrtbl oid;", conf->hostname);
+				  "add column fmterrtbl oid;", conf->hostname, 0);
 
 		/* pg_window */
 		run_query(conf->conn, "alter table pg_catalog.pg_window "
-				  "add column winkind \"char\";", conf->hostname);
+				  "add column winkind \"char\";", conf->hostname, 0);
 
 		run_query(conf->conn, "create or replace function "
 				  "gp_oid_update(oid, oid, tid, oid) returns bool "
 				  "as '$libdir/libgpupgradefuncs', 'gp_oid_update' "
-				  "LANGUAGE C VOLATILE STRICT;", conf->hostname);
+				  "LANGUAGE C VOLATILE STRICT;", conf->hostname, 0);
 
 		/* 
 		 * We create the function name as gp_str2node2str() so that we do
@@ -358,38 +360,35 @@ schema_upgrade(config_t *conf)
 		run_query(conf->conn, "create or replace function "
 				  "gp_str2node2str(text) returns text as "
 				  "'$libdir/libgpupgradefuncs.so', 'gp_str30_2node2str' "
-				  "language c strict volatile;", conf->hostname);
+				  "language c strict volatile;", conf->hostname, 0);
 }
 	else
 	{
 		/* downgrade case */
-//		mylog(UERROR, "DOWNGRADE NOT IMPLEMENTED!\n");
-//		exit(1);
-
-		
 		run_query(conf->conn, "create or replace function "
 				  "gp_oid_update(oid, oid, tid, oid) returns bool "
 				  "as '$libdir/libgpupgradefuncs', 'gp_oid_update' "
-				  "LANGUAGE C VOLATILE STRICT;", conf->hostname);
+				  "LANGUAGE C VOLATILE STRICT;", conf->hostname, 0);
 
 		run_query(conf->conn, "create or replace function "
 				  "gp_str2node2str(text) returns text as "
 				  "'$libdir/libgpupgradefuncs.so', 'gp_str31_2node2str'"
-				  "language c strict volatile;", conf->hostname);
+				  "language c strict volatile;", conf->hostname, 0);
 
 		run_query(conf->conn, "create or replace function "
 				  "gp_invalidate_syscache() returns bool as "
 				  "'$libdir/libgpupgradefuncs.so', 'gp_invalidate_syscache'"
-				  "language c strict volatile;", conf->hostname);
+				  "language c strict volatile;", conf->hostname, 0);
 
 		run_query(conf->conn, "create or replace function "
 				  "gp_forget_relation(oid) returns bool as "
 				  "'$libdir/libgpupgradefuncs.so', 'gp_forget_relation'"
-				  "language c strict volatile;", conf->hostname);
+				  "language c strict volatile;", conf->hostname, 0);
+		
 		run_query(conf->conn, "create or replace function "
 				  "gp_downgrade_controlfile() returns bool as "
 				  "'$libdir/libgpupgradefuncs.so', 'gp_downgrade_controlfile'"
-				  "language c strict volatile;", conf->hostname);
+				  "language c strict volatile;", conf->hostname, 0);
 		downgrade_catalog_schema(conf);
 	}
 
@@ -411,19 +410,17 @@ run_upgrade_commands(config_t *conf)
 	/* update serialised strings */
 	run_query(conf->conn, "update pg_rewrite set ev_action = "
 			  "gp_str2node2str(ev_action), ev_qual = gp_str2node2str(ev_qual);",
-			  conf->hostname);
+			  conf->hostname, 0);
 	run_query(conf->conn, "update pg_type set typdefaultbin = "
 			  "gp_str2node2str(typdefaultbin) WHERE "
-			  "typdefaultbin NOTNULL;", conf->hostname);
+			  "typdefaultbin NOTNULL;", conf->hostname, 0);
 	run_query(conf->conn, "update pg_constraint set conbin = "
 			  "gp_str2node2str(conbin) WHERE conbin NOTNULL;",
-			  conf->hostname);
+			  conf->hostname, 0);
 	run_query(conf->conn, "update pg_index set indexprs = "
 			  "gp_str2node2str(indexprs), indpred = gp_str2node2str(indpred) "
 			  "WHERE indexprs NOTNULL or indpred NOTNULL;",
-			  conf->hostname);
-
-//	Assert((sizeof(upgrade_cmds) / sizeof(char *)) < sizeof(uint16) * 8);
+			  conf->hostname, 0);
 
 	if (upgrade)
 		cmds = upgrade_cmds;
@@ -434,8 +431,7 @@ run_upgrade_commands(config_t *conf)
 	{
 		const char *cmd = cmds[i];
 
-		run_query(conf->conn, cmd, conf->hostname);
-
+		run_query(conf->conn, cmd, conf->hostname, 0);
 	}
 
 	/* reindex the affected tables */
@@ -444,7 +440,7 @@ run_upgrade_commands(config_t *conf)
 		char qry[128];
 		snprintf(qry, sizeof(qry), "reindex table pg_catalog.\"%s\";",
 				 reindex_tables[i]);
-		run_query(conf->conn, qry, conf->hostname);
+		run_query(conf->conn, qry, conf->hostname, 0);
 	}
 
 	/* update attributes using 64 bit types */
@@ -454,19 +450,19 @@ run_upgrade_commands(config_t *conf)
 			  "in('float4'::regtype, 'float8'::regtype, 'int8'::regtype, "
 			  "'time'::regtype, 'timestamp'::regtype, 'timestamptz'::regtype);",
 			  upgrade ? 't' : 'f', upgrade ? 't' : 'f');
-	run_query(conf->conn, query, conf->hostname);
+	run_query(conf->conn, query, conf->hostname, 0);
 }
 
 static void
 post_upgrade(config_t *conf)
 {
 	run_query(conf->conn, "drop function gp_oid_update(oid, oid, tid, oid);",
-			  conf->hostname);
+			  conf->hostname, 0);
 	run_query(conf->conn, "drop function gp_str2node2str(text);", 
-			  conf->hostname);
+			  conf->hostname, 0);
 	if (!upgrade)
 		run_query(conf->conn, "drop function gp_invalidate_syscache();",
-				  conf->hostname);
+				  conf->hostname, 0);
 }
 
 static void
@@ -527,28 +523,50 @@ check_ok(config_t **segdbs)
 }
 
 static PGresult *
-run_query(PGconn *conn, const char *str, char *host)
+run_query(PGconn *conn, const char *str, char *host, char async)
 {
-	PGresult *res;
-	
-	res = PQexec(conn, str);
-
 	if (verbose)
 		mylog(UDEBUG, str);
 
-	if (!(PQresultStatus(res) == PGRES_COMMAND_OK ||
-		  PQresultStatus(res) == PGRES_TUPLES_OK))
+	if (async)
 	{
-		mylog(UERROR, "QUERY FAILED: \"%s\", error: \"%s\", "
-			  "connection info: %s\n", str, PQerrorMessage(conn),
-			  host ? host : "default host");
-		PQclear(res);
+		if (!PQisnonblocking(conn))
+			PQsetnonblocking(conn, 1);
+	}
+	else
+	{
+		if (PQisnonblocking(conn))
+			PQsetnonblocking(conn, 0);
+	}
 
-		query_failed = true;
-
+	if (async)
+	{
+		PQsendQuery(conn, str);
+		while (PQflush(conn) > 0)
+			;
 		return NULL;
 	}
-	return res;
+	else
+	{
+		PGresult *res;
+	
+		res = PQexec(conn, str);
+	
+	
+		if (!(PQresultStatus(res) == PGRES_COMMAND_OK ||
+			  PQresultStatus(res) == PGRES_TUPLES_OK))
+		{
+			mylog(UERROR, "QUERY FAILED: \"%s\", error: \"%s\", "
+				  "connection info: %s\n", str, PQerrorMessage(conn),
+				  host ? host : "default host");
+			PQclear(res);
+	
+			query_failed = true;
+	
+			return NULL;
+		}
+		return res;
+	}
 }
 
 static char *
@@ -617,12 +635,12 @@ connect_to_db(char *conninfo, bool require_password)
 					 MyNoticeProcessor,
 					 NULL);
 	
-	res = run_query(conn, "BEGIN;", conninfo);
+	res = run_query(conn, "BEGIN;", conninfo, 0);
 	PQclear(res);
-	res = run_query(conn, "SET SEARCH_PATH = 'pg_catalog'", conninfo);
+	res = run_query(conn, "SET SEARCH_PATH = 'pg_catalog'", conninfo, 0);
 	PQclear(res);
 	/* we corrupt some indexes doing the upgrade, so turn off index scan */
-	res = run_query(conn, "set enable_indexscan to off;", conninfo);
+	res = run_query(conn, "set enable_indexscan to off;", conninfo, 0);
 	PQclear(res);
 	return conn;
 }
@@ -858,7 +876,7 @@ main(int argc, char **argv)
 	/* Make a connection to the database */
 	conn = connect_to_db(conninfo, force_password);
 	
-	res = run_query(conn, "SELECT VERSION()", host);
+	res = run_query(conn, "SELECT VERSION()", host, 0);
 
 	/* we don't have any segs up yet */
 	check_ok(NULL);
@@ -901,7 +919,7 @@ main(int argc, char **argv)
 					"pg_catalog.gp_configuration "
 					"cross join pg_catalog.pg_database where "
 					"dbid = 1 or content >= 0 order by content," 
-					"definedprimary desc, dbid;", host);
+					"definedprimary desc, dbid;", host, 0);
 
 	segdbcount = PQntuples(res);
 
@@ -934,7 +952,7 @@ main(int argc, char **argv)
 	segdbs[i] = NULL;
 	
 	PQclear(res);
-	run_query(conn, "abort;", conninfo);
+	run_query(conn, "abort;", conninfo, 0);
 	
 	mylog(UDEBUG, "got configuration information from entry db.");
 
@@ -963,7 +981,7 @@ main(int argc, char **argv)
 		
    		run_query(conf->conn, "update pg_database set "
 				  "datallowconn = 't' where datname='template0'",
-				  conf->hostname);
+				  conf->hostname, 0);
 
 		check_ok(segdbs);
 
@@ -972,9 +990,9 @@ main(int argc, char **argv)
 		 * our update is visible.
 		 */
 
-		run_query(conf->conn, "commit;", conf->hostname);
+		run_query(conf->conn, "commit;", conf->hostname, 0);
 		check_ok(segdbs);
-		run_query(conf->conn, "begin;", conf->hostname);
+		run_query(conf->conn, "begin;", conf->hostname, 0);
 		check_ok(segdbs);
    	}
 
@@ -1033,7 +1051,7 @@ main(int argc, char **argv)
 	
 		conn = segdbs[i]->conn;
 		run_query(conn, "update pg_database set datallowconn = 'f' "
-						"where datname='template0'", segdbs[i]->hostname);
+						"where datname='template0'", segdbs[i]->hostname, 0);
 		check_ok(segdbs);
 	}
 
@@ -1044,7 +1062,7 @@ main(int argc, char **argv)
 		snprintf(buf, sizeof(buf), "prepare transaction '%s-%s';",
 				 txn_str, segdbs[i]->dbname);
 		
-		run_query(segdbs[i]->conn, buf, segdbs[i]->hostname);
+		run_query(segdbs[i]->conn, buf, segdbs[i]->hostname, 0);
 		check_ok(segdbs);
 	}
 
@@ -1054,7 +1072,7 @@ main(int argc, char **argv)
 		snprintf(buf, sizeof(buf), "commit prepared '%s-%s';",
 				 txn_str, segdbs[i]->dbname);
 		
-		run_query(segdbs[i]->conn, buf, segdbs[i]->hostname);
+		run_query(segdbs[i]->conn, buf, segdbs[i]->hostname, 0);
 	}
 	
 	for (i = 0; i < segdbcount; i++)
@@ -1062,20 +1080,48 @@ main(int argc, char **argv)
 		if (strcmp(segdbs[i]->dbname, "template1") == 0 ||
 			strcmp(segdbs[i]->dbname,"template0") == 0)
 		{
-			run_query(segdbs[i]->conn, "VACUUM FULL", segdbs[i]->hostname);
-			run_query(segdbs[i]->conn, "VACUUM FREEZE", segdbs[i]->hostname);
+			/* run in parallel */
+			mylog(UINFO, "running parallel VACUUM on template database");
+			mylog(UDEBUG, "conninfo = %s", segdbs[i]->conninfo);
+			run_query(segdbs[i]->conn, "VACUUM FULL; VACUUM FREEZE;", 
+					  segdbs[i]->hostname, 1);
 		}
+	}
+
+	/* 
+	 * We don't need anything special here since run_query made sure to 
+	 * send the query to the server. Just block straight away.
+	 */
+	for (i = 0; i < segdbcount; i++)
+	{
+		if (strcmp(segdbs[i]->dbname, "template1") == 0 ||		
+			strcmp(segdbs[i]->dbname,"template0") == 0)
+		{
+			PGresult *res = PQgetResult(segdbs[i]->conn);
+
+			if (PQresultStatus(res) != PGRES_COMMAND_OK)
+				mylog(UWARN, "VACUUM returned error on host \"%s\", port %s, "
+					  "database \"%s\"", segdbs[i]->hostname, segdbs[i]->port,
+					  segdbs[i]->dbname);
+		}
+	}
+
+	for (i = 0; i < segdbcount; i++)
+	{
+		/* upgrade each host, not every database */
 		if (!upgrade)
 		{
-			run_query(segdbs[i]->conn, "select gp_downgrade_controlfile();",
-					  segdbs[i]->hostname);
+			if (strcmp(segdbs[i]->dbname, "template1") == 0)
+				run_query(segdbs[i]->conn, "select gp_downgrade_controlfile();",
+						  segdbs[i]->hostname, 0);
+	
 			run_query(segdbs[i]->conn, "drop function "
-					  "gp_downgrade_controlfile();", segdbs[i]->hostname);
+					  "gp_downgrade_controlfile();", segdbs[i]->hostname, 0);
 
 		}
 		PQfinish(segdbs[i]->conn);
 	}
-	printf("Done\n");
+	mylog(UINFO, "done");
 	/* close the connection to the database and cleanup */
 	return(0);	
 }
