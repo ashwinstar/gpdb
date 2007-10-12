@@ -3000,9 +3000,9 @@ add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 			 funcstate->aggNoTransValue))
 		{
 			int argno = 1;
-			MemoryContext oldcxt;
+			MemoryContext oldctx;
 			
-			oldcxt = MemoryContextSwitchTo(wstate->transcontext);
+			oldctx = MemoryContextSwitchTo(wstate->transcontext);
 			
 			funcstate->aggTransValue = 
 				datumCopy(fcinfo.arg[argno],
@@ -3011,13 +3011,16 @@ add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 			funcstate->aggTransValueIsNull = fcinfo.argnull[argno];
 			funcstate->aggNoTransValue = false;
 
-			MemoryContextSwitchTo(oldcxt);
+			MemoryContextSwitchTo(oldctx);
 		}
 
 		else
 		{
+			MemoryContext oldctx;
+			oldctx = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 			funcstate->win_value = FunctionCallInvoke(&fcinfo);
 			funcstate->win_value_is_null = fcinfo.isnull;
+			MemoryContextSwitchTo(oldctx);
 		}
 	}
 
