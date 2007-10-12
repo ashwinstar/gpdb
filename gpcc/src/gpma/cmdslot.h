@@ -83,6 +83,7 @@ struct cmdslot_t {
 	struct {
 	    seginfo_t* seginfo;
 	    int nseginfo;
+	    apr_uint32_t active_cmdidx;
 	} fts;
 #endif
 
@@ -91,14 +92,13 @@ struct cmdslot_t {
 	    gpcc_net_conn_t conn; /* if we need to send reply over http */
 	    int ntotal;
 	    int nsuccess, nfailed; /* finished -> nsuccess + nfailed == ntotal */
-	    apr_uint32_t* cmdidx;  /* one per unit */
+	    struct {
+		char unit[20];
+		char cmd[80];
+		char reply[160];
+	    } *req;		/* one for each unit, total of ntotal units */
 	} array_start;
 
-	struct {
-	    char unit[20];
-	    char cmd[80];
-	    char reply[160];
-	} unit;
 
 	struct {
 	    gpcc_net_conn_t conn;
