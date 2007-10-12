@@ -182,6 +182,41 @@ static void net_tick(apr_time_t now)
 }
 
 
+apr_status_t node_parse(const char *node, char ***argv, int *argc, apr_pool_t *pool)
+{
+    char *v = strdup(node);
+    char *tok, *last;
+    char *s, *e;
+    char *host[10];
+    int i, n = gpcc_lengthof(host);
+
+    s = strchr(v, '(');
+    e = strchr(v, ')');
+
+    if (!s || !e)
+	return APR_EINVAL;
+    
+    s++;
+    *e = 0;
+    for (i = 0, tok = apr_strtok(s, " ,", &last) ; 
+	 tok && i < n ; 
+	 tok = apr_strtok(0, " ,", &last)) {
+	if (*tok == 0)
+	    continue;
+
+	host[i++] = apr_pstrdup(pool, tok);
+    }
+    n = i;
+
+    *argv = apr_pcalloc(pool, sizeof(char **) * (n+1));
+    for (i = 0 ; i < n  ; i++) {
+	(*argv)[i] = host[i];
+    }
+    *argc = n;
+    free(v);
+    return 0;
+}
+
 static void node_init(void)
 {
     char node_name[100];
@@ -206,7 +241,7 @@ static void node_init(void)
 	sprintf(node_name, "node.%d", i);
 	node = config_get(gpma.cfg, node_name);
 	cp = gpma.node_cmdtab[i] = cmdslot_alloc(node_name, NODE_OFF_CMDSTATE);
-	if (apr_tokenize_to_argv(node, &cp->u.node.hosttab, cp->pool)) {
+	if (node_parse(node, &cp->u.node.hosttab, &cp->u.node.hosttab_max, cp->pool)) {
 	    gpcc_fatal(FLINE, "Illegal format for entry '%s' in configuration", node_name);
 	}
 	cp->u.node.hostidx = 0;

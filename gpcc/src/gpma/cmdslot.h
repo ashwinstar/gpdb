@@ -5,6 +5,7 @@
 #include "enum.h"
 #include <json/json.h>
 #include <apr_thread_proc.h>
+#include <gpcc_net.h>
 
 #define CMDSLOT_TABLE_MAX  512
 
@@ -28,6 +29,8 @@ struct cmdslot_t {
     cmdstate_t   cmdstate;
     int          countdown;	/* if > 0, will count down to 0 
 	                           and generate a TIMEUP_EVENT */
+
+    gpcc_net_conn_t conn;
     apr_pool_t *pool;
     
     union {
@@ -41,15 +44,6 @@ struct cmdslot_t {
 	    int sndidx;
 
 	    union {
-		struct {
-		    int nreply;
-		    int nconnected;
-		    int ndisconnected;
-		    char **hosts;
-		    int nhost;
-		    apr_proc_t *proc;
-		} setup;
-		
 		struct {
 		    char *mode;
 		    int segidx;
@@ -85,6 +79,7 @@ struct cmdslot_t {
 	} fts;
 
 	struct {
+	    apr_proc_t proc;
 	    /* host IPs belonging to this node */
 	    int hosttab_max;	/* size of hosttab */
 	    int    hostidx;

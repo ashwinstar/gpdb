@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include "gpma.h"
 
+#include "fsm_node.h"
 #include "fsm_setup.h"
 #include "fsm_initdb.h"
 #include "fsm_start.h"
@@ -21,63 +22,6 @@
 apr_status_t a_system_tick(gpcc_event_t* ev, void* arg)
 {
     cmdslot_tick();
-    return 0;
-}
-
-
-apr_status_t a_node_ssh(gpcc_event_t* ev, void* arg)
-{
-    cmdslot_t* slot = arg;
-    char line[160];
-    ++slot->u.node.hostidx;
-    if (slot->u.node.hostidx >= slot->u.node.hosttab_max)
-	slot->u.node.hostidx = 0;
-    sprintf(line, "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
-	    "%s 'GPHOME=%s && export GPHOME && $GPHOME/bin/gpha' &",
-	    slot->u.node.hosttab[slot->u.node.hostidx], config_get(gpma.cfg, "gphome"));
-    system(line);
-    slot->countdown = 2;
-    return 0;
-}
-
-apr_status_t a_node_check_ssh(gpcc_event_t* ev, void* arg)
-{
-    /* disregard exit status for now */
-    cmdslot_t* slot = arg;
-    gpcc_event_t* nev = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
-    gpcc_evqueue_put(gpma.evq, nev);
-    return 0;
-}
-
-apr_status_t a_node_connect(gpcc_event_t* ev, void* arg)
-{
-    cmdslot_t* slot = arg;
-    printf("NODE CONNECT\n");
-    /* use gpcc_net to connect to gpha here */
-    slot->countdown = 2;
-    return 0;
-}
-
-apr_status_t a_node_check_conn(gpcc_event_t* ev, void* arg)
-{
-    cmdslot_t* slot = arg;
-    gpcc_event_t* nev = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
-    gpcc_evqueue_put(gpma.evq, nev);
-    printf("NODE CHECK CONN\n");
-    return 0;
-}
-
-apr_status_t a_node_teardown(gpcc_event_t* ev, void* arg)
-{
-    cmdslot_t* slot = arg;
-    printf("NODE TEARDOWN\n");
-    slot->countdown = 2;
-    return 0;
-}
-
-apr_status_t a_node_ping(gpcc_event_t* ev, void* arg)
-{
-    printf("NODE PING\n");
     return 0;
 }
 
