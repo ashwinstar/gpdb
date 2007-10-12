@@ -1210,10 +1210,9 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 	{
 		/* If the leading edge is "x PRECEDING" and x > 0, simply return. */
 		if (EDGE_IS_BOUND_PRECEDING(level_state->frame->lead) &&
-			((level_state->is_rows && level_state->lead_rows != 0) ||
-			 (!level_state->is_rows && level_state->lead_range != 0)))
+			ntuplestore_acc_tell(level_state->lead_reader, NULL))
 			return;
-
+		
 		/* 
 		 * Adjust the leading edge when the edge is "x FOLLOWING" or
 		 * "CURRENT ROW".
@@ -1875,7 +1874,6 @@ computeFrameValue(WindowStatePerLevel level_state,
 				  NTupleStoreAccessor *lead_reader)
 {
 	ListCell *lc;
-	bool is_rows = level_state->is_rows;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 	WindowFrameBuffer buffer = level_state->frame_buffer;
 	FunctionCallInfoData fcinfo;
@@ -1955,7 +1953,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 			{
 				read_edge_value = true;
 
-				if (is_rows)
+				if (level_state->is_rows)
 				{
 					if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
 						level_state->num_lead_rows >= level_state->trail_rows)
@@ -1988,7 +1986,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 				}
 			}
 			
-			if (has_trail_entry)
+			if (!level_state->empty_frame && has_trail_entry)
 			{
 				Assert(list_length(trail_entry->func_values) > 
 					   funcstate->serial_index);
@@ -1998,7 +1996,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 											funcstate->serial_index);
 			}
 			
-			if (has_lead_entry)
+			if (!level_state->empty_frame && has_lead_entry)
 			{
 				Assert(list_length(lead_entry->func_values) > 
 					   funcstate->serial_index);
@@ -2019,16 +2017,16 @@ computeFrameValue(WindowStatePerLevel level_state,
 				fcinfo.argnull[1] = funcstate->aggInitValueIsNull;
 			}
 
+			freeTransValue(&funcstate->final_aggTransValue,
+						   funcstate->aggTranstypeByVal,
+						   &funcstate->final_aggTransValueIsNull,
+						   &funcstate->final_aggNoTransValue,
+						   funcstate->final_aggShouldFree);
+
 			if (lead_value != NULL || trail_value != NULL)
 			{
 				MemoryContext oldcxt;
 				bool has_tuples = true;
-
-				freeTransValue(&funcstate->final_aggTransValue,
-							   funcstate->aggTranstypeByVal,
-							   &funcstate->final_aggTransValueIsNull,
-							   &funcstate->final_aggNoTransValue,
-							   funcstate->final_aggShouldFree);
 
 				oldcxt = MemoryContextSwitchTo(wstate->transcontext);
 				if (lead_value != NULL)
@@ -2072,12 +2070,11 @@ computeFrameValue(WindowStatePerLevel level_state,
 				else
 				{
 					funcstate->final_aggTransValue = funcstate->aggInitValue;
-
 					funcstate->final_aggTransValueIsNull = 
 						funcstate->aggInitValueIsNull;
-
 					funcstate->final_aggNoTransValue = 
 						funcstate->aggInitValueIsNull;
+					funcstate->final_aggShouldFree = false;
 				}
 			}
 			
@@ -2093,12 +2090,14 @@ computeFrameValue(WindowStatePerLevel level_state,
 					funcstate->final_aggTransValue = funcstate->aggInitValue;
 					funcstate->final_aggTransValueIsNull = funcstate->aggInitValueIsNull;
 					funcstate->final_aggNoTransValue = funcstate->aggInitValueIsNull;
+					funcstate->final_aggShouldFree = false;
 				}
 				else
 				{
 					funcstate->final_aggTransValue = funcstate->aggTransValue;
 					funcstate->final_aggTransValueIsNull = funcstate->aggTransValueIsNull;
 					funcstate->final_aggNoTransValue = funcstate->aggNoTransValue;
+					funcstate->final_aggShouldFree = false;
 				}
 			}
 		}
@@ -3045,6 +3044,7 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 				funcstate->final_aggTransValue = funcstate->aggTransValue;
 				funcstate->final_aggTransValueIsNull = funcstate->aggTransValueIsNull;
 				funcstate->final_aggNoTransValue = funcstate->aggNoTransValue;
+				funcstate->final_aggShouldFree = false;
 			}
 		}
 		else if (funcstate->cumul_frame &&
@@ -3627,6 +3627,24 @@ invokeWindowFuncs(WindowState *wstate)
 }
 
 /*
+ * range_is_negative -- return true if the range expression
+ * is negative.
+ */
+static bool
+range_is_negative(ExprState *edge_expr,
+				  Datum value)
+{
+	/*
+	 * XXX Most likely not good enough to just compare the value
+	 * with 0 here.
+	 */
+	if (value < 0)
+		return true;
+	
+	return false;
+}
+
+/*
  * get_delay_edge -- evaluate the expression from the current row,
  * and return the value for the given DELAY_BOUND edge.
  */
@@ -3636,7 +3654,7 @@ get_delay_edge(WindowFrameEdge *edge,
 			   bool is_rows,
 			   WindowState *wstate)
 {
-	Datum rows_param = 0;
+	Datum edge_param = 0;
 	bool isnull = true;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 	
@@ -3649,7 +3667,7 @@ get_delay_edge(WindowFrameEdge *edge,
 				 errmsg("%s parameter cannot be NULL",
 						(is_rows ? "ROWS" : "RANGE"))));
 	
-	rows_param = ExecEvalExpr(edge_expr,
+	edge_param = ExecEvalExpr(edge_expr,
 							  econtext,
 							  &isnull,
 							  NULL);
@@ -3659,18 +3677,24 @@ get_delay_edge(WindowFrameEdge *edge,
 				 errmsg("%s parameter cannot be NULL",
 						(is_rows ? "ROWS" : "RANGE"))));
 
-	if (is_rows && rows_param < 0)
+	if (is_rows && edge_param < 0)
 		ereport(ERROR,
 				(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
 				 errmsg("%s parameter cannot be negative",
 						(is_rows ? "ROWS" : "RANGE"))));
 
-	/* XXX need to check if the range parameter is negative as well. */
+	/* Check if the range expression is negative. */
+	if (!is_rows)
+		if (range_is_negative(edge_expr, edge_param))
+			ereport(ERROR,
+					(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
+					 errmsg("%s parameter cannot be negative",
+							(is_rows ? "ROWS" : "RANGE"))));
 
 	if (is_rows && EDGE_IS_BOUND_PRECEDING(edge))
-		rows_param = 0 - rows_param;
+		edge_param = 0 - edge_param;
 
-	return rows_param;
+	return edge_param;
 }
 
 /*
@@ -3796,8 +3820,8 @@ advanceEdgeForRange(WindowStatePerLevel level_state,
 	Datum new_edge_value = 0;
 	bool new_edge_value_isnull = true;
 
-	bool is_less = true;
-	bool is_equal = true;
+	bool is_less = false;
+	bool is_equal = false;
 	bool lastrow_edge = false;
 	
 	if (is_lead_edge)
@@ -3825,9 +3849,7 @@ advanceEdgeForRange(WindowStatePerLevel level_state,
 
 	if (!EDGE_EQ_CURRENT_ROW(level_state, edge, is_lead_edge))
 	{
-		while (is_equal ||
-			   ((EDGE_IS_BOUND_FOLLOWING(edge) && is_less)  ||
-				(EDGE_IS_BOUND_PRECEDING(edge) && !is_less)))
+		do
 		{
 			has_entry = getCurrentValue(edge_reader, level_state, entry);
 
@@ -3843,25 +3865,9 @@ advanceEdgeForRange(WindowStatePerLevel level_state,
 										 level_state->eqfunctions,
 										 econtext->ecxt_per_tuple_memory,
 										 false);
-
-			if ((EDGE_IS_BOUND_FOLLOWING(edge) && !is_less) ||
-				(EDGE_IS_BOUND_PRECEDING(edge) && is_less))
-			{
-				is_equal =
-					cmp_deformed_tuple(entry->keys, entry->nulls,
-									   &new_edge_value,
-									   &new_edge_value_isnull,
-									   level_state->col_sort_asc,
-									   level_state->numSortCols,
-									   level_state->ltfunctions,
-									   level_state->eqfunctions,
-									   econtext->ecxt_per_tuple_memory,
-									   true);
-			}
 			
-			if (is_equal ||
-				((EDGE_IS_BOUND_FOLLOWING(edge) && is_less)  ||
-				 (EDGE_IS_BOUND_PRECEDING(edge) && !is_less)))
+			if ((EDGE_IS_BOUND_FOLLOWING(edge) && is_less)  ||
+				(EDGE_IS_BOUND_PRECEDING(edge) && !is_less))
 			{
 				if (EDGE_IS_BOUND_FOLLOWING(edge))
 					ntuplestore_acc_advance(edge_reader, 1);
@@ -3869,14 +3875,33 @@ advanceEdgeForRange(WindowStatePerLevel level_state,
 					ntuplestore_acc_advance(edge_reader, -1);
 			}
 			
-		}
+		} while ((EDGE_IS_BOUND_FOLLOWING(edge) && is_less)  ||
+				 (EDGE_IS_BOUND_PRECEDING(edge) && !is_less));
 		
 		if (has_entry)
 		{
-			if (EDGE_IS_BOUND_FOLLOWING(edge))
-				ntuplestore_acc_advance(edge_reader, -1);
-			else
-				ntuplestore_acc_advance(edge_reader, 1);
+			/*
+			 * The edge_reader currently may point to the value that is
+			 * equal to the new edge value. If this is the case, we don't
+			 * back off one position.
+			 */
+			is_equal = 
+				cmp_deformed_tuple(entry->keys, entry->nulls,
+								   &new_edge_value,
+								   &new_edge_value_isnull,
+								   level_state->col_sort_asc,
+								   level_state->numSortCols,
+								   level_state->ltfunctions,
+								   level_state->eqfunctions,
+								   econtext->ecxt_per_tuple_memory,
+								   true);
+			if (!is_equal)
+			{
+				if (EDGE_IS_BOUND_FOLLOWING(edge))
+					ntuplestore_acc_advance(edge_reader, -1);
+				else
+					ntuplestore_acc_advance(edge_reader, 1);
+			}
 
 			if (is_lead_edge)
 				level_state->lead_ready = true;
@@ -3887,6 +3912,31 @@ advanceEdgeForRange(WindowStatePerLevel level_state,
 			if (!EDGE_IS_BOUND_FOLLOWING(edge))
 			{
 				ntuplestore_acc_set_invalid(edge_reader);
+
+				/*
+				 * When the leading edge is "x preceding", check the first value
+				 * in the buffer. If this value is equal to the new edge value,
+				 * point the lead_reader to this value.
+				 */
+				if (is_lead_edge)
+				{
+					ntuplestore_acc_seek_first(edge_reader);
+					has_entry = getCurrentValue(edge_reader, level_state, entry);
+
+					is_equal =
+						cmp_deformed_tuple(entry->keys, entry->nulls,
+										   &new_edge_value,
+										   &new_edge_value_isnull,
+										   level_state->col_sort_asc,
+										   level_state->numSortCols,
+										   level_state->ltfunctions,
+										   level_state->eqfunctions,
+										   econtext->ecxt_per_tuple_memory,
+										   true);
+					if (!is_equal)
+						ntuplestore_acc_set_invalid(edge_reader);
+				}
+
 				return;
 			}
 			
@@ -4983,13 +5033,13 @@ setEmptyFrame(WindowStatePerLevel level_state,
 			Operator ineq_optup;
 			Operator eq_optup;
 			
-			ineq_optup = ordering_oper(exprType(level_state->frame->trail->val),
+			ineq_optup = ordering_oper(exprType((Node *)level_state->trail_expr->expr),
 									   false);
 			ineq_ordfuncid = oprfuncid(ineq_optup); 
 			ReleaseSysCache(ineq_optup);
 			fmgr_info(ineq_ordfuncid, &ineq_fcinfo);
 			
-			eq_optup = equality_oper(exprType(level_state->frame->trail->val),
+			eq_optup = equality_oper(exprType((Node *)level_state->trail_expr->expr),
 									 false);
 			eq_ordfuncid = oprfuncid(eq_optup); 
 			ReleaseSysCache(eq_optup);

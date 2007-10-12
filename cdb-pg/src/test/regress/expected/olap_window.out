@@ -4067,36 +4067,36 @@ select cn,pn,lead(pn,cn) over (order by pn) from sale;
   4 | 800 |     
 (12 rows)
 
-select vn,cn,pn,lead(pn,cn) over (partition by vn order by cn) from sale; --mvd 1->4
+select vn,cn,pn,lead(pn,cn) over (partition by vn order by cn,pn) from sale; --mvd 1->4
  vn | cn | pn  | lead 
 ----+----+-----+------
  10 |  1 | 200 |     
  20 |  1 | 100 |     
- 30 |  1 | 500 |  300
  30 |  1 | 300 |  500
+ 30 |  1 | 500 |  500
  30 |  3 | 500 |     
  30 |  3 | 600 |     
- 40 |  2 | 100 |  800
+ 40 |  2 | 100 |  700
  40 |  3 | 200 |     
- 40 |  4 | 800 |     
  40 |  4 | 700 |     
+ 40 |  4 | 800 |     
  50 |  1 | 400 |  400
  50 |  2 | 400 |     
 (12 rows)
 
-select vn,cn,pn,lag(pn,cn) over (partition by vn order by cn) from sale; --mvd 1->4
+select vn,cn,pn,lag(pn,cn) over (partition by vn order by cn,pn) from sale; --mvd 1->4
  vn | cn | pn  | lag 
 ----+----+-----+-----
  10 |  1 | 200 |    
  20 |  1 | 100 |    
- 30 |  1 | 500 |    
- 30 |  1 | 300 | 500
+ 30 |  1 | 300 |    
+ 30 |  1 | 500 | 300
  30 |  3 | 500 |    
- 30 |  3 | 600 | 500
+ 30 |  3 | 600 | 300
  40 |  2 | 100 |    
  40 |  3 | 200 |    
- 40 |  4 | 800 |    
  40 |  4 | 700 |    
+ 40 |  4 | 800 |    
  50 |  1 | 400 |    
  50 |  2 | 400 |    
 (12 rows)
@@ -7034,22 +7034,7 @@ select cn,pn,qty,sum(qty) over (partition by cn order by pn range between cn*100
 (12 rows)
 
 select pn,vn,max(vn) over (order by pn range between cn-1 following and cn-2 following) as max from sale;
- pn  | vn | max 
------+----+-----
- 100 | 20 |    
- 100 | 40 |    
- 200 | 10 |    
- 200 | 40 |    
- 300 | 30 |    
- 400 | 50 |    
- 400 | 50 |    
- 500 | 30 |    
- 500 | 30 |    
- 600 | 30 |    
- 700 | 40 |    
- 800 | 40 |    
-(12 rows)
-
+ERROR:  RANGE parameter cannot be negative
 -- MPP-2036
 select cn,qty,sum(qty) over(order by cn range cn preceding) as sum from (select sale.* from sale,customer,vendor where sale.cn=customer.cn and sale.vn=vendor.vn) sale; --mvd 1->3
  cn | qty  | sum  
@@ -7145,5 +7130,82 @@ FROM sale;
  40 |  4 |    1 |     2
  50 |  1 |    0 |     1
  50 |  2 |    0 |     1
+(12 rows)
+
+-- MPP-2075
+SELECT sale.vn,sale.cn,
+AVG(sale.pn) OVER(order by sale.vn asc range between vn preceding and vn-10 preceding ) as avg
+from sale;
+ vn | cn | avg 
+----+----+-----
+ 10 |  1 | 200
+ 20 |  1 | 200
+ 30 |  3 | 200
+ 30 |  1 | 200
+ 30 |  1 | 200
+ 30 |  3 | 200
+ 40 |  2 | 200
+ 40 |  4 | 200
+ 40 |  3 | 200
+ 40 |  4 | 200
+ 50 |  2 | 200
+ 50 |  1 | 200
+(12 rows)
+
+SELECT sale.qty,sale.cn,
+AVG(sale.pn) OVER(order by sale.vn asc range between 0 preceding and vn preceding ) as avg
+from sale;
+ qty  | cn | avg 
+------+----+-----
+    1 |  1 |    
+    1 |  1 |    
+   12 |  3 |    
+    1 |  1 |    
+   12 |  1 |    
+   12 |  3 |    
+ 1100 |  2 |    
+    1 |  4 |    
+    1 |  3 |    
+    1 |  4 |    
+    1 |  2 |    
+    1 |  1 |    
+(12 rows)
+
+SELECT sale.vn,sale.cn,
+min(sale.pn) OVER(order by sale.vn asc range between vn preceding and vn-10 preceding ) as min
+from sale;
+ vn | cn | min 
+----+----+-----
+ 10 |  1 | 200
+ 20 |  1 | 200
+ 30 |  3 | 200
+ 30 |  1 | 200
+ 30 |  1 | 200
+ 30 |  3 | 200
+ 40 |  2 | 200
+ 40 |  4 | 200
+ 40 |  3 | 200
+ 40 |  4 | 200
+ 50 |  2 | 200
+ 50 |  1 | 200
+(12 rows)
+
+SELECT sale.qty,sale.cn,
+min(sale.pn) OVER(order by sale.vn asc range between 0 preceding and vn preceding ) as min
+from sale;
+ qty  | cn | min 
+------+----+-----
+    1 |  1 |    
+    1 |  1 |    
+   12 |  3 |    
+    1 |  1 |    
+   12 |  1 |    
+   12 |  3 |    
+ 1100 |  2 |    
+    1 |  4 |    
+    1 |  3 |    
+    1 |  4 |    
+    1 |  2 |    
+    1 |  1 |    
 (12 rows)
 

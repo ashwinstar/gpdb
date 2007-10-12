@@ -898,8 +898,8 @@ from sale; --mvd 1,2->4
 
 select cn,pn,lag(pn,cn) over (order by pn) from sale;
 select cn,pn,lead(pn,cn) over (order by pn) from sale;
-select vn,cn,pn,lead(pn,cn) over (partition by vn order by cn) from sale; --mvd 1->4
-select vn,cn,pn,lag(pn,cn) over (partition by vn order by cn) from sale; --mvd 1->4
+select vn,cn,pn,lead(pn,cn) over (partition by vn order by cn,pn) from sale; --mvd 1->4
+select vn,cn,pn,lag(pn,cn) over (partition by vn order by cn,pn) from sale; --mvd 1->4
 
 -- MPP-1934
 SELECT sale.dt,sale.vn,sale.qty,sale.pn,sale.cn,
@@ -1175,3 +1175,17 @@ from sale;
 SELECT vn,cn,prc,
 COUNT(floor(sale.cn)) OVER(order by sale.vn asc,sale.cn asc,sale.prc rows prc preceding ) as count
 FROM sale;
+
+-- MPP-2075
+SELECT sale.vn,sale.cn,
+AVG(sale.pn) OVER(order by sale.vn asc range between vn preceding and vn-10 preceding ) as avg
+from sale;
+SELECT sale.qty,sale.cn,
+AVG(sale.pn) OVER(order by sale.vn asc range between 0 preceding and vn preceding ) as avg
+from sale;
+SELECT sale.vn,sale.cn,
+min(sale.pn) OVER(order by sale.vn asc range between vn preceding and vn-10 preceding ) as min
+from sale;
+SELECT sale.qty,sale.cn,
+min(sale.pn) OVER(order by sale.vn asc range between 0 preceding and vn preceding ) as min
+from sale;
