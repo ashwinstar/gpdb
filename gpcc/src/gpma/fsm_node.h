@@ -95,6 +95,14 @@ apr_status_t a_node_check_conn(gpcc_event_t* ev, void* arg)
     return 0;
 }
 
+apr_status_t a_node_broadcast_net_closed(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    cmdslot_broadcast_fts_net_closed(slot->cmdname);
+
+    return 0;
+}
+
 apr_status_t a_node_teardown(gpcc_event_t* ev, void* arg)
 {
     cmdslot_t* slot = arg;
@@ -102,7 +110,6 @@ apr_status_t a_node_teardown(gpcc_event_t* ev, void* arg)
     printf("NODE TEARDOWN\n");
     slot->countdown = 2;
     
-    cmdslot_broadcast_fts_net_closed(slot->cmdname);
     return 0;
 }
 
