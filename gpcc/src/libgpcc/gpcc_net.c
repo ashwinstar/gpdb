@@ -171,6 +171,7 @@ struct conncb_t {
     apr_pool_t*     pool;
     const char*     tag;
     char            peer_addr[24];  /* format IP:port -- 123.456.789.012:34567 */
+    struct timeval  tm;
     struct event    ev;
     struct {
 	buf_t*             buf;
@@ -319,7 +320,6 @@ static void conn_setup_event(gpcc_net_conn_t conn)
     apr_uint32_t* spin = 0;
     buf_t* out;
     buf_t* in;
-    struct timeval tm;
     int flag = 0;
     struct timeval* ptm = 0;
 
@@ -327,8 +327,8 @@ static void conn_setup_event(gpcc_net_conn_t conn)
     if (! (spin = conn_secure(conn, &pconn)))
 	return;
 
-    tm.tv_sec = 0;
-    tm.tv_usec = 500 * 1000;
+    pconn->tm.tv_sec = 0;
+    pconn->tm.tv_usec = 500 * 1000;
     out = pconn->to_peer.buf;
     in = pconn->from_peer.buf;
 
@@ -341,7 +341,7 @@ static void conn_setup_event(gpcc_net_conn_t conn)
 	gpcc_log_info("setup EV_READ %d bytes", in->top - in->bot);
     }
     if (0 != (flag & EV_READ) && !pconn->to_peer.hdr && !pconn->from_peer.hdr)
-	ptm = &tm;
+	ptm = &pconn->tm;
 
     event_del(&pconn->ev);
     event_set(&pconn->ev, pconn->sock, flag, do_ready, CONN_TO_PTR(conn));
@@ -630,7 +630,7 @@ static void do_tick(int fd, short event, void* arg)
     if (0 != (event & EV_TIMEOUT)) {
 	apr_time_t now = apr_time_now();
 	apr_time_t next;
-	struct timeval tm;
+	static struct timeval tm;
 
 	net.tick(now);
 

@@ -23,7 +23,9 @@ void tick(apr_time_t now)
 }
 
 
-void svr_opened(gpcc_net_conn_t conn, const char* peer_addr, gpcc_net_header_t* to_peer, gpcc_net_header_t* from_peer)
+void svr_opened(gpcc_net_conn_t conn, const char* peer_addr,
+		gpcc_net_header_t* to_peer, gpcc_net_header_t* from_peer,
+		apr_uint64_t arg)
 {
     printf("----- svr_opened --------------------------\n");
     gpcc_fatal(FLINE, "INTERNAL ERROR - server does not open\n");
@@ -94,7 +96,9 @@ void do_send(gpcc_net_conn_t conn)
     checkerr(e, FLINE);
 }
 
-void clnt_opened(gpcc_net_conn_t conn, const char* peer_addr, gpcc_net_header_t* to_peer, gpcc_net_header_t* from_peer)
+void clnt_opened(gpcc_net_conn_t conn, const char* peer_addr, 
+		 gpcc_net_header_t* to_peer, gpcc_net_header_t* from_peer,
+		 apr_uint64_t arg)
 {
     printf("----- clnt_opened --------------------------\n");
     printf("   peer_addr: %s\n", peer_addr);
@@ -191,7 +195,7 @@ int main(int argc, char* argv[])
 
 	sprintf(addr, "%s:%d", svr, port);
 	printf("Connecting to %s\n", addr);
-	e = gpcc_net_open(&conn, addr, 3, av, 3, hn, hv);
+	e = gpcc_net_open(&conn, addr, 3, av, 3, hn, hv, 0);
 	checkerr(e, FLINE);
     }
 
