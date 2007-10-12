@@ -1348,7 +1348,7 @@ PortalRunFetch(Portal portal,
 			if (qd != NULL && qd->estate != NULL)
 			{
 				oldcontext = MemoryContextSwitchTo(qd->estate->es_query_cxt);
-				mppExecutorCleanup(qd->estate);
+				mppExecutorCleanup(qd);
 				MemoryContextSwitchTo(oldcontext);
 			}
 		}
