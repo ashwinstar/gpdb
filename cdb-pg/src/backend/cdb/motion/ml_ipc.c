@@ -585,6 +585,48 @@ RecvTupleChunk(MotionConn *conn, bool inTeardown)
 	return firstTcItem;
 }
 
+/* MUST BE CALLED WITH rx_thread_mutex HELD! */
+static inline bool
+wait_on_receiver(int timeout_us)
+{
+	struct timeval tv;
+	struct timespec ts;
+	int wait;
+
+	gettimeofday(&tv, NULL);
+	ts.tv_sec = tv.tv_sec;
+	/*  leave in ms for this */
+	ts.tv_nsec = (tv.tv_usec + timeout_us);
+	if (ts.tv_nsec > 1000000)
+	{
+		ts.tv_sec++;
+		ts.tv_nsec -= 1000000;
+	}
+	ts.tv_nsec *= 1000; /* convert usec to nsec */
+
+#if 0
+	elog(LOG, "waiting (timed) on route %d %s", main_thread_waiting_route, 
+		 (main_thread_waiting_route == ANY_ROUTE ? "(any route)" : ""));
+#endif
+
+	/* we can't handle interrupts for the time we're waiting,
+	 * which is why we're using timedwaits in the first place */
+	HOLD_INTERRUPTS();
+
+	wait = pthread_cond_timedwait(&rx_thread_cond, &rx_thread_mutex, &ts);
+
+	RESUME_INTERRUPTS();
+
+	if (wait == ETIMEDOUT)
+	{
+		/* condition not met */
+		return false;
+	}
+
+	/* we didn't time out, condition met! */
+	return true;
+}
+
 static void
 conn_addhash(MotionConn *conn)
 {
@@ -1210,10 +1252,6 @@ receiveChunksUDP(ChunkTransportStateEntry *pEntry, int16 motNodeID, int16 *srcRo
 	/* we didn't have any data, so we've got to read it from the network. */
 	for (;;)
 	{
-		struct timeval tv;
-		struct timespec ts;
-		int wait;
-
 		/* 1. Do we have data ready */
 		if (directed && conn->pBuff)
 		{
@@ -1246,42 +1284,20 @@ receiveChunksUDP(ChunkTransportStateEntry *pEntry, int16 motNodeID, int16 *srcRo
 			return tcItem;
 		}
 
-		/* 2. wait for data to be ready */
-		gettimeofday(&tv, NULL);
-		ts.tv_sec = tv.tv_sec;
-		/*  leave in ms for this */
-		ts.tv_nsec = (tv.tv_usec + MAIN_THREAD_COND_TIMEOUT);
-		if (ts.tv_nsec > 1000000)
-		{
-			ts.tv_sec++;
-			ts.tv_nsec -= 1000000;
-		}
-		ts.tv_nsec *= 1000; /* convert usec to nsec */
+		/* 2. Wait for data to become ready */
+		if (wait_on_receiver(MAIN_THREAD_COND_TIMEOUT))
+			continue; /* success ! */
 
+		/* handle timeout, check for cancel */
 #if 0
-		elog(LOG, "waiting (timed) on route %d %sdirected", main_thread_waiting_route, directed ? "" : "un");
+		elog(LOG, "timed out waiting for data");
 #endif
+		pthread_mutex_unlock(&rx_thread_mutex);
 
-		/* we can't handle interrupts for the time we're waiting,
-		 * which is why we're using timedwaits in the first place */
-		HOLD_INTERRUPTS();
+		ML_CHECK_FOR_INTERRUPTS(inTeardown);
 
-		wait = pthread_cond_timedwait(&rx_thread_cond, &rx_thread_mutex, &ts);
-
-		RESUME_INTERRUPTS();
-
-		if (wait == ETIMEDOUT)
-		{
-#if 0
-			elog(LOG, "timed out waiting for data");
-#endif
-
-			pthread_mutex_unlock(&rx_thread_mutex);
-			ML_CHECK_FOR_INTERRUPTS(inTeardown);
-
-			/* if we made it here we need the lock again. */
-			pthread_mutex_lock(&rx_thread_mutex);
-		}
+		/* if we made it here we need the lock again. */
+		pthread_mutex_lock(&rx_thread_mutex);
 
 		continue;
 	}
@@ -2950,7 +2966,8 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 	}
 
 	elog(LOG, "TeardownUDPInterconnect: total pkt count " INT64_FORMAT
-		 " dropped acks " INT64_FORMAT " retransmits " INT64_FORMAT " conn mismatch " INT64_FORMAT " rx overrun " INT64_FORMAT,
+		 " dropped acks " INT64_FORMAT " retransmits " INT64_FORMAT
+		 " conn mismatch " INT64_FORMAT " rx overrun " INT64_FORMAT,
 		 ic_stats_pkt_count, ic_stats_dropped_acks, ic_stats_retrans,
 		 ic_stats_mismatch, ic_stats_rx_overrun);
 
@@ -3500,6 +3517,28 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 
 	pEntry->txport = saddr.sin_port;
 //	elog(LOG, "Connecting from UDP port %d", ntohs(saddr.sin_port));
+
+#if 0
+	{
+		int                 rcvbuf;
+		socklen_t           rcvbufsize=0;
+
+		fun = "getsockopt";
+		rcvbufsize = sizeof(rcvbuf);
+		if (getsockopt(pEntry->txfd, SOL_SOCKET, SO_RCVBUF, (char *)&rcvbuf, &rcvbufsize) < 0)
+			goto error;
+
+		elog(LOG, "XMIT DEFAULT RX SIZE IS %d", rcvbuf);
+
+		fun = "setsockopt";
+		rcvbuf = 128 * 1024;
+		rcvbufsize = sizeof(rcvbuf);
+		if (setsockopt(pEntry->txfd, SOL_SOCKET, SO_RCVBUF, (const char *)&rcvbuf, rcvbufsize) < 0)
+			goto error;
+
+		elog(LOG, "XMIT NEW RX SIZE IS %d", rcvbuf);
+	}
+#endif
 
     return pEntry;
 
