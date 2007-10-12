@@ -654,6 +654,9 @@ ProcRemoveRequestServer_UnderSpin(PGPROCRequestType requestType)
 	PGPROC *proc;
 	PROC_REQUEST_CLIENT *requestClient;
 	
+	// Silence the compiler.
+	requestInfo.requestServer = NULL;
+	
 	ProcGetRequestInfo(requestType, &requestInfo);
 	
 	proc = ProcGetRequest_UnderSpin(&requestInfo, &requestClient);
@@ -1734,6 +1737,10 @@ void
 ProcSetAcceptingNewRequests(PGPROCRequestType requestType, bool acceptingNewRequests)
 {
 	PROC_REQUEST_INFO requestInfo;
+	
+	// Silence the compiler.
+	requestInfo.requestServer = NULL;
+	
 	ProcGetRequestInfo(requestType, &requestInfo);
 	
 	HOLD_INTERRUPTS();
@@ -1756,6 +1763,10 @@ ProcGetRequest(PGPROCRequestType requestType, void *request, int requestSize, st
 
 	Assert(request != NULL);
 	Assert(responseCookie != NULL);
+	
+	// Silence the compiler.
+	requestInfo.requestServer = NULL;
+	
 	while (true)
 	{
 		/*
@@ -1844,6 +1855,9 @@ ProcSendRequest(PGPROCRequestType requestType, void *request, int requestSize, b
 
 	Assert(request != NULL);
 	Assert(serialNumber != NULL);
+	
+	// Silence the compiler.
+	requestInfo.requestServer = NULL;
 	
 	/*
 	 * Collect server and client information for the kind of request.
@@ -1941,6 +1955,9 @@ ProcSendResponse(PROC_RESPONSE_COOKIE *responseCookie, void *response, int respo
 	elog(DEBUG5,"ProcSendResponse: entering...");
 	Assert(responseCookie != NULL);
 	Assert(response != NULL);
+
+	// Silence the compiler.
+	responseInfo.requestServer = NULL;
 	
 	/*
 	 * Collect response related server and client information for the kind of request.
@@ -1996,6 +2013,9 @@ ProcWaitForResponse(PGPROCRequestType requestType, int serialNumber, void *respo
 	elog(DEBUG5,"ProcWaitForResponse enter...");
 	Assert(MyProc != NULL);
 	Assert(response != NULL);
+	
+	// Silence the compiler.
+	responseInfo.requestServer = NULL;
 	
 	/*
 	 * Collect response related server and client information for the kind of request.
