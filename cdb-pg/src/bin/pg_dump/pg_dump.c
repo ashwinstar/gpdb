@@ -7612,8 +7612,9 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			
 			policydef = PQgetvalue(res, 0, 0);
 			
-			if(strlen(policydef) > 0) /* make sure it's not an empty policy table... */
+			if(strlen(policydef) > 0)
 			{
+				/* policy indicates one or more columns to distribute on */
 				policydef[strlen(policydef)-1] = '\0';
 				policydef++;
 				policycol = nextToken(&policydef, ",");
@@ -7626,6 +7627,12 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				}
 				appendPQExpBuffer(q, ")");
 			}
+			else
+			{
+				/* policy has an empty policy - distribute randomly */
+				appendPQExpBuffer(q, " distributed randomly");
+			}
+			
 			PQclear(res);
 		}
 		/* END MPP ADDITION */
