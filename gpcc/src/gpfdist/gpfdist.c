@@ -1631,8 +1631,6 @@ APR_DECLARE(int) gprint(const char* fmt, ...)
     va_start(ap, fmt);
     fprintf(stdout, "[%s] ", datetime());
     vfprintf(stdout, fmt, ap);
-    fprintf(stdout, "\n          ... exiting\n"); 
-    exit(1);
     return 0;
 }
 
