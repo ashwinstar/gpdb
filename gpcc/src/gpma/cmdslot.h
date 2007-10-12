@@ -93,9 +93,12 @@ struct cmdslot_t {
 	    int ntotal;
 	    int nsuccess, nfailed; /* finished -> nsuccess + nfailed == ntotal */
 	    struct {
-		char unit[20];
-		char cmd[80];
-		char reply[160];
+		char* node;	/* which node to send to (e.g. node.2) */
+		char* unit;	/* which segment (e.g. seg.2.0)  */
+		int port;	/* which port for this segment */
+		char* datadir;	/* which dir for this segment */
+		/* other stuff here */
+		char* reply;	/* reply from the start command */
 	    } *req;		/* one for each unit, total of ntotal units */
 	} array_start;
 
