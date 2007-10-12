@@ -78,6 +78,23 @@ struct cmdslot_t {
 	    } u;
 	} fts;
 
+
+#if 0
+	struct {
+	    seginfo_t* seginfo;
+	    int nseginfo;
+	} fts;
+#endif
+
+	struct {
+	    /* use this to send a command to all nodes */
+	    gpcc_net_conn_t conn; /* if we need to send reply over http */
+	    char cmd[80];
+	    int ntotal;
+	    int nsuccess, nfailed; /* finished -> nsuccess + nfailed == ntotal */
+	    char** replies;	   /* this is the json reply string */
+	} array_cmd;
+
 	struct {
 	    gpcc_net_conn_t conn;
 	    apr_proc_t proc;
