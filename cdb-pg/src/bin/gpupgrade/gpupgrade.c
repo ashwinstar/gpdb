@@ -39,6 +39,17 @@ static bool verbose = false;
 static char *myname = NULL; /* argv[0] */
 static bool do_it = true; /* really do it? */
 
+/* 
+ * In 3.1, QEs have pg_exttable entries. In 3.0, this was not the case. So,
+ * to make everything play nice, we must replicate the QE entries to the 
+ * QDs.
+ */
+struct exttable_contents
+{
+	char *dbname;
+	PGresult *res;
+} **exttable_cts = NULL;
+
 /* signal handling */
 bool caught_signal = false;
 bool query_failed = false;
@@ -60,6 +71,41 @@ bool query_failed = false;
 static void mylog(int level, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 static PGresult *run_query(PGconn *conn, const char *str, char *host, 
 						   char async);
+static void setQDexttables(config_t *conf);
+
+/* save QD external tables catalog for each database, for later use */
+static void
+setQDexttables(config_t *conf)
+{
+	PGresult *res;
+	int i;
+
+	res = run_query(conf->conn, "select quote_ident(datname) from pg_database "
+					"WHERE datname <> 'template0';", PQhost(conf->conn), 0);
+
+	exttable_cts = malloc(sizeof(*exttable_cts) * (PQntuples(res) + 1));
+
+	for (i = 0; i < PQntuples(res); i++)
+	{
+		PGconn *conn = PQsetdbLogin(PQhost(conf->conn),
+									PQport(conf->conn),
+									PQoptions(conf->conn),
+									NULL,
+									PQgetvalue(res, i, 0),
+									PQuser(conf->conn),
+									PQpass(conf->conn));
+
+		exttable_cts[i] = malloc(sizeof(exttable_cts));
+		exttable_cts[i]->dbname = strdup(PQgetvalue(res, i, 0));
+		exttable_cts[i]->res = run_query(conn, "select reloid, location, "
+										 "fmttype, fmtopts, command from "
+										 "pg_exttable;",
+										 PQhost(conn), 0);
+	}
+	exttable_cts[i] = NULL;
+
+	PQclear(res);
+}
 
 static void
 mylog(int level, const char *fmt, ...)
@@ -91,62 +137,38 @@ mylog(int level, const char *fmt, ...)
 	}
 }
 
-/* 
- * To downgrade the 3.1 schema changes (addition of columns to pg_exttable
- * and pg_window), we must drop the table and recreate it because
- * alter table drop column simply work. This is because the routines which
- * interact with those tables (particularly pg_exttable) expect a layout
- * which matches their Form_pg_ schema. The dropped columns skew this
- * and so the mapping cannot be made.
- *
- * With pg_exttable we have to be careful insert the rows that we remove.
- *
- * We also need to remove internal dependencies on the system catalogs in order
- * to successfully drop the table... we must re-add these too of course.
- */
+static PGresult *
+dbgetexttableres(config_t *conf)
+{
+	int i;
+
+	for (i = 0; exttable_cts && exttable_cts[i]; i++)
+	{
+		if (strcmp(conf->dbname, exttable_cts[i]->dbname) == 0)
+			return (exttable_cts[i]->res);
+	}
+	return NULL;
+}
+
 static void
-downgrade_catalog_schema(config_t *conf)
+addexttablerows(config_t *conf)
 {
 	PGresult *exttableres;
-#if 0
-	PGresult *dependres;
-#endif
-	char query[1024];
 	int i;
+	char query[8196];
 	
-	/* Drop pg_exttab */
-#if 0
-	snprintf(query, sizeof(query), "DELETE FROM pg_depend where "
-			 "refobjid = '%u' returning *;", ExtTableRelationId);
-	dependres = run_query(conf->conn, query, conf->hostname);
-#endif
-	exttableres = run_query(conf->conn, "select reloid, location, fmttype, "
-							"fmtopts, command from pg_exttable;",
-							conf->hostname, 0);
-	mylog(UINFO, "found %u external table entries", PQntuples(exttableres));
+	exttableres = dbgetexttableres(conf);
 	
-#if 0
-	run_query(conf->conn, "drop index pg_exttable_reloid_index;",
-			  conf->hostname);
-#endif
-#if 0
-	run_query(conf->conn, "DROP TABLE pg_exttable;", conf->hostname);
-	snprintf(query, sizeof(query), "select gp_forget_relation('%u');",
-			 ExtTableRelationId);
-	run_query(conf->conn, query, conf->hostname);
-
-	/* by screwing with the catalogs, we don't get the type dropped */
-	run_query(conf->conn, "delete from pg_type where typname = 'pg_exttable' "
-			  "and typnamespace = '11';", conf->hostname);
-#endif
-	snprintf(query, sizeof(query), "delete from pg_attribute where "
-			 "attnum > 5 AND attrelid = '%u';", ExtTableRelationId);
-	run_query(conf->conn, query, conf->hostname, 0);
-	snprintf(query, sizeof(query), "update pg_class set relnatts = '5' "
-			 "WHERE oid = '%u'", ExtTableRelationId);
-	run_query(conf->conn, query, conf->hostname, 0);
 	run_query(conf->conn, "truncate pg_catalog.pg_exttable;",
 			  conf->hostname, 0);
+	
+	if (exttableres)
+		mylog(UINFO, "found %u external table entries for database %s", 
+			  PQntuples(exttableres), conf->dbname);
+	else
+		mylog(UINFO, "found no external table entries for database %s",
+			  conf->dbname);
+	
 	/* add the rows */
 	for (i = 0; i < PQntuples(exttableres); i++)
 	{
@@ -195,8 +217,35 @@ downgrade_catalog_schema(config_t *conf)
 		
 		run_query(conf->conn, query, conf->hostname, 0);
 	}
+}
 
-	PQclear(exttableres);
+
+/* 
+ * To downgrade the 3.1 schema changes (addition of columns to pg_exttable
+ * and pg_window), we must drop the table and recreate it because
+ * alter table drop column simply work. This is because the routines which
+ * interact with those tables (particularly pg_exttable) expect a layout
+ * which matches their Form_pg_ schema. The dropped columns skew this
+ * and so the mapping cannot be made.
+ *
+ * With pg_exttable we have to be careful insert the rows that we remove.
+ *
+ * We also need to remove internal dependencies on the system catalogs in order
+ * to successfully drop the table... we must re-add these too of course.
+ */
+static void
+downgrade_catalog_schema(config_t *conf)
+{
+	char query[1024];
+	
+	snprintf(query, sizeof(query), "delete from pg_attribute where "
+			 "attnum > 5 AND attrelid = '%u';", ExtTableRelationId);
+	run_query(conf->conn, query, conf->hostname, 0);
+	snprintf(query, sizeof(query), "update pg_class set relnatts = '5' "
+			 "WHERE oid = '%u'", ExtTableRelationId);
+	run_query(conf->conn, query, conf->hostname, 0);
+
+	addexttablerows(conf);
 
 	snprintf(query, sizeof(query), "delete from pg_attribute where "
 			 "attnum > 9 AND attrelid = '%u';", WindowRelationId);
@@ -206,125 +255,7 @@ downgrade_catalog_schema(config_t *conf)
 	run_query(conf->conn, query, conf->hostname, 0);
 	run_query(conf->conn, "truncate pg_catalog.pg_window;",
 			  conf->hostname, 0);
-#if 0
-	/* invalidate the catalog cache */
-	run_query(conf->conn, "select gp_invalidate_syscache();", conf->hostname);
-	/* pg_window is easier, just drop and recreate */
-	snprintf(query, sizeof(query), "DELETE FROM pg_depend where "
-			 "refobjid = '%u' returning *;", WindowRelationId);
-	dependres = run_query(conf->conn, query, conf->hostname);
-#endif
-
-#if 0
-	run_query(conf->conn, "drop index pg_window_fnoid_index;",
-			  conf->hostname);
-	run_query(conf->conn, "drop table pg_catalog.pg_window;", conf->hostname);
-	snprintf(query, sizeof(query), "select gp_forget_relation('%u');",
-			 WindowRelationId);
-	run_query(conf->conn, query, conf->hostname);
-	/* read above for why we do this */
-	run_query(conf->conn, "delete from pg_type where typname = 'pg_window' "
-			  "and typnamespace = '11';", conf->hostname);
-	
-#endif
-#if 0
-	/* start a new txn */
-	run_query(conf->conn, "COMMIT; BEGIN;", conf->hostname);
-	
-	run_query(conf->conn, "CREATE TABLE pg_catalog.pg_exttable"
-			  "(reloid oid not null, location text[], fmttype \"char\", "
-			  "fmtopts text, command text);", conf->hostname);
-#endif
-	
-#if 0
-	/* add the dependency */
-	snprintf(query, sizeof(query), "INSERT INTO pg_catalog.pg_depend "
-			  "(classid, objid, objsubid, refclassid, refobjid, refobjsubid, "
-			  "deptype) VALUES('%s', '%s', '%s', '%s', '%s', '%s', '%s');",
-			  PQgetvalue(dependres, i, 0), PQgetvalue(dependres, i, 1),
-			  PQgetvalue(dependres, i, 2), PQgetvalue(dependres, i, 3),
-			  PQgetvalue(dependres, i, 4), PQgetvalue(dependres, i, 5),
-			  PQgetvalue(dependres, i, 6));
-	run_query(conf->conn, query, conf->hostname);
-
-	PQclear(dependres);
-#endif
-#if 0
-	/* invalidate the catalog cache */
-	run_query(conf->conn, "select gp_invalidate_syscache();", conf->hostname);
-	run_query(conf->conn, "create table pg_catalog.pg_window ("
-			  "winfnoid regproc not null, winrequireorder boolean, "
-			  "winallowframe boolean, winpeercount boolean, "
-			  "wincount boolean, winfunc regproc, winprefunc regproc, "
-			  "winpretype oid, winfinfunc regproc);", conf->hostname);
-
-#endif
-#if 0
-	snprintf(query, sizeof(query), "SELECT oid, "
-			 "gp_oid_update(oid, %u, ctid, %u) "
-			 "FROM pg_catalog.pg_class WHERE relname = 'pg_exttable' AND "
-			 "relnamespace = '11'", ExtTableRelationId, RelationRelationId);
-	res = run_query(conf->conn, query, conf->hostname);
-
-	snprintf(query, sizeof(query), "select gp_forget_relation('%s');",
-			 PQgetvalue(res, 0, 0));
-	run_query(conf->conn, query, conf->hostname);
-	
-	/* invalidate the catalog cache */
-	run_query(conf->conn, "select gp_invalidate_syscache();", conf->hostname);
-	/* update pg_attribute and pg_type references */
-	snprintf(query, sizeof(query), "UPDATE pg_catalog.pg_attribute "
-			 "SET attrelid = '%u' WHERE attrelid = '%s'",
-			 ExtTableRelationId, PQgetvalue(res, 0, 0));
-	run_query(conf->conn, query, conf->hostname);
-	
-	snprintf(query, sizeof(query), "UPDATE pg_catalog.pg_type "
-			 "SET typrelid = '%u' WHERE typrelid = '%s'",
-			 ExtTableRelationId, PQgetvalue(res, 0, 0));
-	run_query(conf->conn, query, conf->hostname);
-	/* now pg_window */
-	snprintf(query, sizeof(query), "SELECT oid, "
-			 "gp_oid_update(oid, %u, ctid, %u) "
-			 "FROM pg_class WHERE relname = 'pg_window' AND "
-			 "relnamespace = '11'", WindowRelationId, RelationRelationId);
-
-	res = run_query(conf->conn, query, conf->hostname);
-	snprintf(query, sizeof(query), "select gp_forget_relation('%s');",
-			 PQgetvalue(res, 0, 0));
-	run_query(conf->conn, query, conf->hostname);
-
-	/* update pg_attribute and pg_type references */
-	snprintf(query, sizeof(query), "UPDATE pg_catalog.pg_attribute "
-			 "SET attrelid = '%u' WHERE attrelid = '%s'",
-			 WindowRelationId, PQgetvalue(res, 0, 0));
-	run_query(conf->conn, query, conf->hostname);
-	snprintf(query, sizeof(query), "UPDATE pg_catalog.pg_type "
-			 "SET typrelid = '%u' WHERE typrelid = '%s'",
-			 WindowRelationId, PQgetvalue(res, 0, 0));
-	run_query(conf->conn, query, conf->hostname);
-	
-	/* invalidate the catalog cache */
-	run_query(conf->conn, "select gp_invalidate_syscache();", conf->hostname);
-
-#endif
-	/*
-	run_query(conf->conn, "REVOKE ALL ON TABLE pg_catalog.pg_exttable "
-			 " FROM PUBLIC;"
-			 " GRANT SELECT ON TABLE pg_catalog.pg_exttable TO PUBLIC;",
-			 conf->hostname);
-	run_query(conf->conn, "REVOKE ALL ON TABLE pg_catalog.pg_window "
-			 " FROM PUBLIC;"
-			 " GRANT SELECT ON TABLE pg_catalog.pg_window TO PUBLIC;",
-			 conf->hostname);
-	run_query(conf->conn, "reindex table pg_class;", conf->hostname);
-	run_query(conf->conn, "select gp_invalidate_syscache();", conf->hostname);
-
-	run_query(conf->conn, "create unique index pg_exttable_reloid_index "
-			  "on pg_catalog.pg_exttable(reloid);", conf->hostname);
-	run_query(conf->conn, "create unique index pg_window_fnoid_index "
-			  "on pg_catalog.pg_window(winfnoid);", conf->hostname);
-	*/
-	}
+}
 
 /* 
  * Perform the ALTER TABLE operations necessary to upgrade from 3.0 to 3.1
@@ -342,6 +273,8 @@ schema_upgrade(config_t *conf)
 				  "add column rejectlimittype \"char\";", conf->hostname, 0);
 		run_query(conf->conn, "alter table pg_catalog.pg_exttable "
 				  "add column fmterrtbl oid;", conf->hostname, 0);
+
+		addexttablerows(conf);
 
 		/* pg_window */
 		run_query(conf->conn, "alter table pg_catalog.pg_window "
@@ -361,7 +294,7 @@ schema_upgrade(config_t *conf)
 				  "gp_str2node2str(text) returns text as "
 				  "'$libdir/libgpupgradefuncs.so', 'gp_str30_2node2str' "
 				  "language c strict volatile;", conf->hostname, 0);
-}
+	}
 	else
 	{
 		/* downgrade case */
@@ -393,8 +326,6 @@ schema_upgrade(config_t *conf)
 	}
 
 }
-
-
 
 static void
 run_upgrade_commands(config_t *conf)
@@ -569,6 +500,10 @@ run_query(PGconn *conn, const char *str, char *host, char async)
 	}
 }
 
+/* 
+ * Generate a transaction identifier for 2PC. Needs to be unique and
+ * descriptive.
+ */
 static char *
 ugstr(void)
 {
@@ -717,6 +652,7 @@ main(int argc, char **argv)
 	int		 i;
 	config_t **segdbs;  
 	int segdbcount = 0;
+	config_t lconn;
 	
 	
 	static struct option long_options[] =
@@ -911,9 +847,15 @@ main(int argc, char **argv)
 		exit(1);
 		
 	}
-	
 	PQclear(res);
-	
+
+	MemSet(&lconn, 0, sizeof(config_t));
+	lconn.conn = conn;
+
+	/* set up external table entries */
+	setQDexttables(&lconn);
+
+	/* get the list of databases and nodes in the cluster */
 	res = run_query(conn, "select content, definedprimary, dbid, isprimary,"
 					"valid, hostname, port, datname from "
 					"pg_catalog.gp_configuration "
