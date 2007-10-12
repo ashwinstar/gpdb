@@ -656,6 +656,10 @@ ProcRemoveRequestServer_UnderSpin(PGPROCRequestType requestType)
 	
 	// Silence the compiler.
 	requestInfo.requestServer = NULL;
+	requestInfo.requestClientOffset = 0;
+	requestInfo.requestLinkOffset = 0;
+	requestInfo.requestOffset = 0;
+	requestInfo.requestSize = 0;
 	
 	ProcGetRequestInfo(requestType, &requestInfo);
 	
@@ -1740,6 +1744,10 @@ ProcSetAcceptingNewRequests(PGPROCRequestType requestType, bool acceptingNewRequ
 	
 	// Silence the compiler.
 	requestInfo.requestServer = NULL;
+	requestInfo.requestClientOffset = 0;
+	requestInfo.requestLinkOffset = 0;
+	requestInfo.requestOffset = 0;
+	requestInfo.requestSize = 0;
 	
 	ProcGetRequestInfo(requestType, &requestInfo);
 	
@@ -1766,6 +1774,10 @@ ProcGetRequest(PGPROCRequestType requestType, void *request, int requestSize, st
 	
 	// Silence the compiler.
 	requestInfo.requestServer = NULL;
+	requestInfo.requestClientOffset = 0;
+	requestInfo.requestLinkOffset = 0;
+	requestInfo.requestOffset = 0;
+	requestInfo.requestSize = 0;
 	
 	while (true)
 	{
@@ -1858,6 +1870,10 @@ ProcSendRequest(PGPROCRequestType requestType, void *request, int requestSize, b
 	
 	// Silence the compiler.
 	requestInfo.requestServer = NULL;
+	requestInfo.requestClientOffset = 0;
+	requestInfo.requestLinkOffset = 0;
+	requestInfo.requestOffset = 0;
+	requestInfo.requestSize = 0;
 	
 	/*
 	 * Collect server and client information for the kind of request.
@@ -1958,6 +1974,9 @@ ProcSendResponse(PROC_RESPONSE_COOKIE *responseCookie, void *response, int respo
 
 	// Silence the compiler.
 	responseInfo.requestServer = NULL;
+	responseInfo.requestClientOffset = 0;
+	responseInfo.responseOffset = 0;
+	responseInfo.responseSize = 0;
 	
 	/*
 	 * Collect response related server and client information for the kind of request.
@@ -2016,6 +2035,9 @@ ProcWaitForResponse(PGPROCRequestType requestType, int serialNumber, void *respo
 	
 	// Silence the compiler.
 	responseInfo.requestServer = NULL;
+	responseInfo.requestClientOffset = 0;
+	responseInfo.responseOffset = 0;
+	responseInfo.responseSize = 0;
 	
 	/*
 	 * Collect response related server and client information for the kind of request.
