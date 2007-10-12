@@ -64,17 +64,19 @@ apr_status_t a_node_connect(gpcc_event_t* ev, void* arg)
     char *hvalue[1];
     gpcc_event_t *nev;
     int e;
+    char addr[128];
 
     argc = 1;
     argv[0] = GPCC_NET_PACKET_PROTO;
     hc = 1;
     hname[0] = "X-GPCC-ROLE";
     hvalue[0] = "GPMA";
-	
+
+    sprintf(addr, "%s:%d", slot->u.node.hosttab[slot->u.node.hostidx], DEFAULT_HA_PORT);
     printf("NODE CONNECT\n");
     /* use gpcc_net to connect to gpha here */
     if (0 != (e = gpcc_net_open(&slot->u.node.conn, 
-				slot->u.node.hosttab[slot->u.node.hostidx],
+				addr,
 				argc, argv,
 				hc, hname, hvalue, slot->cmdidx))) {
 	nev = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);

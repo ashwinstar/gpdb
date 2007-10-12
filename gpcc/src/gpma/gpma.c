@@ -181,7 +181,7 @@ static void net_accepted(gpcc_net_conn_t conn,
 	else if (0 == memcmp("/gpcc/stop?", from_peer->argv[1], 11)) {
 	    slot = cmdslot_alloc("fts_stop", FTS_CMDSTATE);
 	    slot->u.fts.conn = conn;
-	    obj = gpcc_json_array_request("stop", "");
+	    obj = gpcc_json_array_request("stop", "immediate");
 	    ev = mkfts_event(ARRAY_REQUEST_MSG_EVENT, slot->cmdidx, 0, slot->cmdidx, obj);
 	    gpcc_evqueue_put(gpma.evq, ev);
 	    json_object_put(obj);
@@ -322,10 +322,14 @@ static void node_init(void)
 	sprintf(node_name, "node.%d", i);
 	node = config_get(gpma.cfg, node_name);
 	cp = gpma.node_cmdtab[i] = cmdslot_alloc(node_name, NODE_OFF_CMDSTATE);
-	if (node_parse(node, &cp->u.node.hosttab, &cp->u.node.hosttab_max, cp->pool)) {
+	if (apr_tokenize_to_argv(node, &cp->u.node.hosttab, cp->pool)) {
 	    gpcc_fatal(FLINE, "Illegal format for entry '%s' in configuration", node_name);
 	}
+	for (cp->u.node.hosttab_max = 0 ; 
+	     cp->u.node.hosttab[cp->u.node.hosttab_max] ; 
+	     cp->u.node.hosttab_max++) ;
 	cp->u.node.hostidx = 0;
+	    
     }
 }
 
