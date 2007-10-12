@@ -6,6 +6,7 @@
 #include <apr_thread_proc.h>
 #include <gpcc_event.h>
 #include <gpcc_fsm.h>
+#include <gpcc_json.h>
 #include <json/json.h>
 #include <event.h>
 #include <ctype.h>
@@ -121,31 +122,88 @@ static void net_opened(gpcc_net_conn_t conn,
 		       gpcc_net_header_t* from_peer,
 		       apr_uint64_t arg)
 {
+    apr_uint32_t cmdidx = (apr_uint32_t) arg;
+    gpcc_event_t *ev;
+
+    if (from_peer->argc != 1 || strcmp(from_peer->argv[0], GPCC_NET_PACKET_PROTO) != 0) {
+	gpcc_net_close(conn);
+	return;
+    }
+    
+    ev = gpcc_event_alloc(NET_OPENED_EVENT, cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, ev);
+    return;
 }
 
 
+static gpcc_event_t *mkfts_event(event_t event, apr_uint32_t cmdidx, apr_uint32_t sndidx, apr_uint32_t rcvidx, struct json_object *obj)
+{
+    gpcc_event_t *ev;
+    gpcc_net_packet_t *pkt;
+    char *msg;
+    int len;
+
+    msg = json_object_to_json_string(obj);
+    len = strlen(msg)+1;
+    ev = gpcc_event_alloc(event, cmdidx, sizeof(*pkt)+len);
+    pkt = (gpcc_net_packet_t *) ev->pdata;
+    pkt->mh.type = event;
+    pkt->mh.len = len;
+    pkt->mh.sndidx = sndidx;
+    pkt->mh.rcvidx = rcvidx;
+    memcpy(pkt->payload, msg, len);
+    return ev;
+
+}
 static void net_accepted(gpcc_net_conn_t conn,
 			 const char* peer_addr,
 			 gpcc_net_header_t* from_peer)
 {
-    /*
-    apr_uint32_t cmdslot;
+    cmdslot_t *slot;
     gpcc_event_t* ev;
-    */
+    struct json_object *obj;
+
     if (from_peer->argc == 3
 	&& 0 == memcmp("HTTP/1.", from_peer->argv[2], 7)
 	&& 0 == memcmp("GET", from_peer->argv[0], 4)) {
 	
 	if (0 == memcmp("/gpcc/start?", from_peer->argv[1], 12)) {
 	    /* send startcmd_event to FTS cmdslot ? */
-
+	    slot = cmdslot_alloc("fts_start", FTS_CMDSTATE);
+	    slot->conn = conn;
+	    obj = gpcc_json_array_request("start", "");
+	    ev = mkfts_event(ARRAY_REQUEST_MSG_EVENT, slot->cmdidx, 0, slot->cmdidx, obj);
+	    gpcc_evqueue_put(gpma.evq, ev);
+	    json_object_put(obj);	    
 	}
 	else if (0 == memcmp("/gpcc/stop?", from_peer->argv[1], 11)) {
-
+	    slot = cmdslot_alloc("fts_stop", FTS_CMDSTATE);
+	    slot->conn = conn;
+	    obj = gpcc_json_array_request("stop", "");
+	    ev = mkfts_event(ARRAY_REQUEST_MSG_EVENT, slot->cmdidx, 0, slot->cmdidx, obj);
+	    gpcc_evqueue_put(gpma.evq, ev);
+	    json_object_put(obj);	    
 	}
 	else if (0 == memcmp("/gpcc/init?", from_peer->argv[1], 11)) {
-
+	    slot = cmdslot_alloc("fts_init", FTS_CMDSTATE);
+	    slot->conn = conn;
+	    obj = gpcc_json_array_request("init", "");
+	    ev = mkfts_event(ARRAY_REQUEST_MSG_EVENT, slot->cmdidx, 0, slot->cmdidx, obj);
+	    gpcc_evqueue_put(gpma.evq, ev);
+	    json_object_put(obj);	    
 	}
+	else if (0 == memcmp("/gpcc/status", from_peer->argv[1], 12)) {
+	    slot = cmdslot_alloc("fts_status", FTS_CMDSTATE);
+	    slot->conn = conn;
+	    obj = gpcc_json_status_request(0);
+	    ev = mkfts_event(ARRAY_REQUEST_MSG_EVENT, slot->cmdidx, 0, slot->cmdidx, obj);
+	    gpcc_evqueue_put(gpma.evq, ev);
+	    json_object_put(obj);	    
+	} else {
+	    gpcc_warning(FLINE, "invalid URL");
+	    gpcc_net_close(conn);
+	}
+	return;
     }
     else if (from_peer->argc == 1) {
 	/* check if it is GPCC_NET_PACKET_PROTO */
