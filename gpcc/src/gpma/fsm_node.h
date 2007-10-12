@@ -79,6 +79,7 @@ apr_status_t a_node_connect(gpcc_event_t* ev, void* arg)
 				hc, hname, hvalue, slot->cmdidx))) {
 	nev = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, nev);
+	return 0;
     }
 
     slot->countdown = 2;
