@@ -78,7 +78,11 @@ extern void PGSemaphoreLock(PGSemaphore sema, bool interruptOK);
  * Lock a semaphore (decrement count), blocking if count would be < 0.
  * Return true if the lock obtained or false if an interrupt occurred.
  */
-bool PGSemaphoreLockInterruptable(PGSemaphore sema);
+extern bool PGSemaphoreLockInterruptable(PGSemaphore sema);
+
+extern void PGSemaphoreHandleSigAlarm(SIGNAL_ARGS);
+
+extern bool PGSemaphoreLockTimed(PGSemaphore sema, struct timeval *timeout);
 
 /* Unlock a semaphore (increment count) */
 extern void PGSemaphoreUnlock(PGSemaphore sema);

@@ -49,14 +49,12 @@ SHMQueueInit(SHM_QUEUE *queue)
  * SHMQueueIsDetached -- TRUE if element is not currently
  *		in a queue.
  */
-#ifdef NOT_USED
 bool
 SHMQueueIsDetached(SHM_QUEUE *queue)
 {
 	Assert(SHM_PTR_VALID(queue));
-	return (queue)->prev == INVALID_OFFSET;
+	return ((queue)->prev == INVALID_OFFSET) && ((queue)->next== INVALID_OFFSET);
 }
-#endif
 
 /*
  * SHMQueueElemInit -- clear an element's links

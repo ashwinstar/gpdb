@@ -93,6 +93,7 @@ typedef struct
  * prototypes for functions in shmqueue.c
  */
 extern void SHMQueueInit(SHM_QUEUE *queue);
+extern bool SHMQueueIsDetached(SHM_QUEUE *queue);
 extern void SHMQueueElemInit(SHM_QUEUE *queue);
 extern void SHMQueueDelete(SHM_QUEUE *queue);
 extern void SHMQueueInsertBefore(SHM_QUEUE *queue, SHM_QUEUE *elem);

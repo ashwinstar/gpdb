@@ -12,13 +12,30 @@
 #include "utils/guc.h"
 #include "cdb/cdbgang.h"
 
+typedef enum QDMIRRORState
+{
+	QDMIRROR_STATE_NONE = 0,
+	QDMIRROR_STATE_NOTCONFIGURED,
+	QDMIRROR_STATE_POSITIONINGTOEND,
+	QDMIRROR_STATE_CATCHUPPENDING,
+	QDMIRROR_STATE_CATCHINGUP,
+	QDMIRROR_STATE_ENABLED,
+	QDMIRROR_STATE_DISABLED,
+	QDMIRROR_STATE_MAX /* must always be last */
+} QDMIRRORState;
+
 struct FtsQDMirrorInfo
 {
-	bool		enabled;
-	/* stored copies of QD parameters, required so that bg-writer
+	bool			configurationChecked;
+	QDMIRRORState 	state;
+
+	bool			haveNewCheckpointLocation;
+	XLogRecPtr		newCheckpointLocation;
+	
+	/* stored copies of QD parameters, required so that WalSendServer
 	 * process knows how to connect */
-	char		name[256];
-	uint16		port;
+	char			name[256];
+	uint16			port;
 };
 
 struct FtsSegDBState
@@ -68,6 +85,7 @@ extern bool FtsTestConnection(CdbComponentDatabaseInfo *db_to_test);
 extern bool FtsReConfigureMPP(void);
 extern void FtsHandleNetFailure(SegmentDatabaseDescriptor **, int);
 extern bool FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor *, int);
+extern void markStandbyStatus(int dbid, bool state);
 extern void markSegDBStatus(int, bool);
 extern const char *show_gp_set_read_only(void);
 extern bool assign_gp_set_read_only(bool, bool, GucSource);
@@ -79,8 +97,14 @@ extern CdbComponentDatabases *applyTransientState(CdbComponentDatabases *);
 extern void FtsEvaluateTransientState(void);
 extern bool isFtsReadOnlySet(void);
 
-extern void FtsUpdateQDMirrorInfo(struct CdbComponentDatabaseInfo *dbinfo);
 extern void FtsGetQDMirrorInfo(char **hostname, uint16 *port);
 void FtsDumpQDMirrorInfo(void);
+extern bool isMirrorQDConfigurationChecked(void);
+extern bool isQDMirroringPendingCatchup(void);
+extern void FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo);
+extern void FtsSetNoQDMirroring(void);
+extern void FtsQDMirroringCatchup(XLogRecPtr *flushedLocation);
+extern void FtsCheckReadyToSend(bool *ready, bool *haveNewCheckpointLocation, XLogRecPtr *newCheckpointLocation);
+extern void FtsQDMirroringNewCheckpointLoc(XLogRecPtr *newCheckpointLocation);
 
 #endif   /* CDBFTS_H */

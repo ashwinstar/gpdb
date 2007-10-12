@@ -10,8 +10,9 @@
 /* sync commands */
 typedef enum
 {
+	SYNC_POSITION_TO_END,		/* position to WAL end */
 	SYNC_XLOG,					/* xlog sync */
-	SYNC_CHECK,					/* verification */
+	SYNC_NEW_CHECKPOINT_LOC,	/* new checkpoint location */
 	SYNC_CLOSE					/* close */
 }	syncCommand;
 

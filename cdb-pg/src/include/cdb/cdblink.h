@@ -58,8 +58,14 @@ extern void *getEntrySegDB(int *);
 
 extern bool isQDMirroringEnabled(void);
 
-extern void write_qd_sync(char *, void *, int);
+extern bool isQDMirroringCatchingUp(void);
+
+extern bool write_qd_sync(char *, void *, int);
+
+extern bool write_position_to_end(XLogRecPtr *endLocation);
 
 extern void disconnectMirrorQD(void);
+
+extern void markStandbyInvalid(void);
 
 #endif   /* CDBLINK_H */

@@ -174,10 +174,16 @@ struct pg_result
 	PGNoticeHooks noticeHooks;
 	int			client_encoding;	/* encoding id */
 
+	/* Transaction information passed from EXECUTOR to DISPATCHER */
 	bool						QEWriter_HaveInfo;
 	DistributedTransactionId 	QEWriter_DistributedTransactionId;
 	CommandId 					QEWriter_CommandId;
 	bool 						QEWriter_Dirty;
+	
+	/* XLOG passed from Standby Master to Primary */
+	bool						Standby_HaveInfo;
+	uint32						Standby_xlogid;		/* log file #, 0 based */
+	uint32						Standby_xrecoff;	/* byte offset of location in log file */
 	
 	/*
 	 * Error information (all NULL if not an error result).  errMsg is the
@@ -314,11 +320,17 @@ struct pg_conn
 	PGAsyncStatusType asyncStatus;
 	PGTransactionStatusType xactStatus; /* never changes to ACTIVE */
 
+	/* Transaction information passed from EXECUTOR to DISPATCHER */
 	bool						QEWriter_HaveInfo;
 	DistributedTransactionId 	QEWriter_DistributedTransactionId;
 	CommandId 					QEWriter_CommandId;
 	bool 						QEWriter_Dirty;
 	
+	/* XLOG passed from Standby Master to Primary */
+	bool						Standby_HaveInfo;
+	uint32						Standby_xlogid;		/* log file #, 0 based */
+	uint32						Standby_xrecoff;	/* byte offset of location in log file */
+		
 	PGQueryClass queryclass;
 	char	   *last_query;		/* last SQL command, or NULL if unknown */
 	bool		options_valid;	/* true if OK to attempt connection */

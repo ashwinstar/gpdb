@@ -24,6 +24,7 @@
 #include "cdb/cdblink.h"
 #include "cdb/cdbtm.h"
 #include "libpq/libpq-be.h"
+#include "commands/dbcommands.h"
 
 #include "executor/spi.h"
 
@@ -82,9 +83,12 @@ FtsShmemInit(void)
 	{
 		shared->ControlLock = LWLockAssign();
 		ftsControlLock = shared->ControlLock;
-		ftsQDMirrorInfo->enabled = true; /* set default to true, will be set to
-										  * false if connection failed */
-		MemSet(ftsQDMirrorInfo->name, 0, sizeof(ftsQDMirrorInfo->name));
+
+		ftsQDMirrorInfo->configurationChecked = false;
+		ftsQDMirrorInfo->state = QDMIRROR_STATE_NONE;
+		ftsQDMirrorInfo->haveNewCheckpointLocation = false;
+		memset(&ftsQDMirrorInfo->newCheckpointLocation, 0, sizeof(XLogRecPtr));
+		memset(ftsQDMirrorInfo->name, 0, sizeof(ftsQDMirrorInfo->name));
 		ftsQDMirrorInfo->port = 0;
 
 		/* initialize */
@@ -274,17 +278,41 @@ CdbShutdown(void)
 void
 disableQDMirroring(void)
 {
+	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
+	LWLockRelease(ftsControlLock);
+	
 	elog(LOG, "FTS: QD mirroring disabled");
-	ftsQDMirrorInfo->enabled = false;
 }
 
 bool
 isQDMirroringEnabled(void)
 {
+	bool result;
+	
 	if (ftsQDMirrorInfo == NULL)
 		return false;
 	
-	return ftsQDMirrorInfo->enabled;
+	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	result = (ftsQDMirrorInfo->state == QDMIRROR_STATE_ENABLED);
+	LWLockRelease(ftsControlLock);
+
+	return result;
+}
+
+bool
+isQDMirroringCatchingUp(void)
+{
+	bool result;
+	
+	if (ftsQDMirrorInfo == NULL)
+		return false;
+	
+	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	result = (ftsQDMirrorInfo->state == QDMIRROR_STATE_CATCHINGUP);
+	LWLockRelease(ftsControlLock);
+
+	return result;
 }
 
 void
@@ -459,6 +487,13 @@ initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *username, char *dbName
 	appendPQExpBuffer(buffer, "dbname=%s ", dbName);
 	appendPQExpBuffer(buffer, "user=%s ", user);
 	appendPQExpBuffer(buffer, "connect_timeout=%d ", gp_segment_connect_timeout);
+}
+
+/* set seg db states */
+void
+markStandbyStatus(int dbid, bool state)
+{
+	markSegDBPersistentState(dbid, state);
 }
 
 /* set seg db states */
@@ -1011,22 +1046,262 @@ isFtsReadOnlySet(void)
 {
 	return *ftsReadOnlyFlag;
 }
+bool
+isMirrorQDConfigurationChecked(void)
+{
+	bool result;
+	
+	if (ftsQDMirrorInfo == NULL)
+		return false;
+	
+	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	result = ftsQDMirrorInfo->configurationChecked;
+	LWLockRelease(ftsControlLock);
 
+	return result;
+}
+
+bool
+isQDMirroringPendingCatchup(void)
+{
+	bool result;
+	
+	if (ftsQDMirrorInfo == NULL)
+		return false;
+	
+	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	result = (ftsQDMirrorInfo->state == QDMIRROR_STATE_CATCHUPPENDING);
+	LWLockRelease(ftsControlLock);
+
+	return result;
+}
+
+/*
+ * While checking the mirroring configuration, call this procedure to set
+ * that we are going to attempt connect and mirror to the standby.
+ */
 void
-FtsUpdateQDMirrorInfo(struct CdbComponentDatabaseInfo *dbinfo)
+FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 {
 	int len;
+	int serialNumber;
+	bool serverAcceptingNewRequests;
 
 	Assert(dbinfo != NULL);
 
+	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	if (ftsQDMirrorInfo->configurationChecked)
+	{
+		// Someone else finished the configuration check work first.
+		LWLockRelease(ftsControlLock);
+		return;
+	}
+
+	Assert(ftsQDMirrorInfo->state == QDMIRROR_STATE_NONE);
+
 	len = strlen(dbinfo->hostname);
 	if (len >= sizeof(ftsQDMirrorInfo->name))
-		elog(ERROR, "FtsUpdateQDMirrorInfo: hostname too long for fts QD mirror configuration storage");
+	{
+		LWLockRelease(ftsControlLock);
+		elog(ERROR, "hostname too long for fts QD mirror configuration storage");
+	}
 	memcpy(ftsQDMirrorInfo->name, dbinfo->hostname, len);
 	ftsQDMirrorInfo->name[len] = 0;
 	ftsQDMirrorInfo->port = dbinfo->port;
 
-	return;
+	/*
+	 * Tell the WalSendServer (queue while under lock) that it can
+	 * connect to the standby and position to the end of its WAL
+	 * 
+	 * We do NOT wait for a response while under the lock.  We'll pick
+	 * up the response at the end of this procedure.
+	 */
+	ftsQDMirrorInfo->configurationChecked = true;
+	ftsQDMirrorInfo->state = QDMIRROR_STATE_POSITIONINGTOEND;
+
+	serverAcceptingNewRequests = XLogQDMirrorQueuePositionToEnd(&serialNumber);
+	if (!serverAcceptingNewRequests)
+	{
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "WAL Send server not accepting new requests!");
+
+		ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
+		LWLockRelease(ftsControlLock);
+		return;
+	}
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"positioning standby master WAL to end");
+	LWLockRelease(ftsControlLock);
+
+	/*
+	 * Wait (without holding lock) for the position operation to complete.
+	 */
+	serverAcceptingNewRequests = XLogQDMirrorWaitForResponse(serialNumber);
+	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	if (!serverAcceptingNewRequests)
+	{
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "WAL Send server not accepting new requests!");
+
+		ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
+		LWLockRelease(ftsControlLock);
+		return;
+	}
+
+	ftsQDMirrorInfo->state = QDMIRROR_STATE_CATCHUPPENDING;
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"positioning QD mirror to end complete -- next step is catch-up");
+	LWLockRelease(ftsControlLock);
+}
+
+/*
+ * Initiate catchup.  Called by XLogWrite when the write and flushed locations
+ * are the same and a lock is held so those locations are momentarily stable.
+ *
+ * We queue the catchup request to the WAL Send server under the lock so the
+ * server will get that request from the fifo queue before new log write 
+ * requests (since we are enabling mirroring here).
+ */
+void
+FtsQDMirroringCatchup(XLogRecPtr *flushedLocation)
+{
+	bool serverAcceptingNewRequests;
+	int serialNumber;
+
+	Assert(flushedLocation != NULL);
+
+	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+
+	if (ftsQDMirrorInfo->state != QDMIRROR_STATE_CATCHUPPENDING)
+	{
+		LWLockRelease(ftsControlLock);
+		return;
+	}
+	
+	serverAcceptingNewRequests = XLogQDMirrorQueueCatchup(flushedLocation, &serialNumber);
+	if (!serverAcceptingNewRequests)
+	{
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "WAL Send server not accepting new requests!");
+
+		ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
+		LWLockRelease(ftsControlLock);
+		return;
+	}
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"catching up QD mirror");
+
+	Assert(ftsQDMirrorInfo->state = QDMIRROR_STATE_CATCHINGUP);
+	LWLockRelease(ftsControlLock);
+	
+	/*
+	 * Wait (without holding lock) for the catchup operation to complete.
+	 */
+	serverAcceptingNewRequests = XLogQDMirrorWaitForResponse(serialNumber);
+	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	if (!serverAcceptingNewRequests)
+	{
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "WAL Send server not accepting new requests!");
+
+		ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
+		LWLockRelease(ftsControlLock);
+		return;
+	}
+
+	ftsQDMirrorInfo->state = QDMIRROR_STATE_ENABLED;
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"finished catching up QD mirror");
+	LWLockRelease(ftsControlLock);
+}
+
+/*
+ * Save a new checkpoint location that the QD mirror can safely reply 
+ * through and release any XLOG files freed up by reply.
+ *
+ * The location will be saved and sent to the QD mirror on the WAL send
+ * request.
+ */
+void
+FtsQDMirroringNewCheckpointLoc(XLogRecPtr *newCheckpointLocation)
+{
+	Assert(newCheckpointLocation != NULL);
+	
+	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+
+	if(ftsQDMirrorInfo->state != QDMIRROR_STATE_ENABLED)
+	{
+		LWLockRelease(ftsControlLock);
+		return;
+	}
+
+	if (ftsQDMirrorInfo->haveNewCheckpointLocation &&
+		XLByteLT(*newCheckpointLocation, ftsQDMirrorInfo->newCheckpointLocation))
+	{
+		LWLockRelease(ftsControlLock);
+		return;
+	}
+
+	ftsQDMirrorInfo->haveNewCheckpointLocation = true;
+	ftsQDMirrorInfo->newCheckpointLocation = *newCheckpointLocation;
+	
+	LWLockRelease(ftsControlLock);
+}
+
+/*
+ * Used to see if sending to the QD mirror is enabled.
+ *
+ */
+void
+FtsCheckReadyToSend(bool *ready, bool *haveNewCheckpointLocation, XLogRecPtr *newCheckpointLocation)
+{
+	Assert(ready != NULL);
+	Assert(haveNewCheckpointLocation != NULL);
+	Assert(newCheckpointLocation != NULL);
+
+	*haveNewCheckpointLocation = false;
+	memset(newCheckpointLocation, 0, sizeof(XLogRecPtr));
+	
+	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+
+	if(ftsQDMirrorInfo->state != QDMIRROR_STATE_ENABLED)
+	{
+		LWLockRelease(ftsControlLock);
+		
+		*ready = false;
+		return;
+	}
+
+	if (ftsQDMirrorInfo->haveNewCheckpointLocation)
+	{
+		/*
+		 * Pass new checkpoint back and forget.
+		 */
+		*haveNewCheckpointLocation = true;
+		memcpy(newCheckpointLocation, &ftsQDMirrorInfo->newCheckpointLocation, sizeof(XLogRecPtr));
+
+		ftsQDMirrorInfo->haveNewCheckpointLocation = false;
+	}
+	
+	LWLockRelease(ftsControlLock);
+	
+	*ready = true;
+}
+
+/*
+ * While checking the mirroring configuration, call this procedure to set
+ * that we are NOT going do mirroring.
+ */
+void
+FtsSetNoQDMirroring(void)
+{
+	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	if (ftsQDMirrorInfo->configurationChecked)
+	{
+		// Someone else finished the configuration check work first.
+		LWLockRelease(ftsControlLock);
+		return;
+	}
+
+	Assert(ftsQDMirrorInfo->state == QDMIRROR_STATE_NONE);
+
+	ftsQDMirrorInfo->configurationChecked = true;
+	ftsQDMirrorInfo->state = QDMIRROR_STATE_NOTCONFIGURED;
+	
+	LWLockRelease(ftsControlLock);
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"set QD mirroring to disabled");
 }
 
 void
@@ -1050,8 +1325,7 @@ FtsGetQDMirrorInfo(char **hostname, uint16 *port)
 	Assert(hostname != NULL);
 	Assert(port != NULL);
 
-	if (!isQDMirroringEnabled() ||
-		ftsQDMirrorInfo->name[0] == 0 || ftsQDMirrorInfo->port == 0)
+	if (ftsQDMirrorInfo->name[0] == 0 || ftsQDMirrorInfo->port == 0)
 	{
 		*hostname = NULL;
 		*port = 0;

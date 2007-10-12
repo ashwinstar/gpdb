@@ -189,6 +189,8 @@ bool		Debug_pretty_print = false;
 bool		Explain_pretty_print = true;
 bool		Debug_print_full_dtm = false;
 bool		Debug_print_snapshot_dtm = false;
+bool		Debug_print_qd_mirroring = false;
+bool		Debug_permit_same_host_standby = false;
 bool		Debug_disable_distributed_snapshot = false;
 bool 		Debug_abort_after_distributed_prepared = false;
 
@@ -1457,6 +1459,26 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_print_snapshot_dtm,
+		false, NULL, NULL
+	},
+
+	{
+		{"debug_print_qd_mirroring", PGC_SUSET, LOGGING_WHAT,
+			gettext_noop("Prints QD mirroring information to server log."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_print_qd_mirroring,
+		false, NULL, NULL
+	},
+
+	{
+		{"debug_permit_same_host_standby", PGC_SUSET, LOGGING_WHAT,
+			gettext_noop("Permits QD mirroring standby to exist on same host as primary."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_permit_same_host_standby,
 		false, NULL, NULL
 	},
 

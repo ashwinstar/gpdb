@@ -43,7 +43,6 @@
  * Points to the SegmentDatabaseDescriptor of mirrored entry database
  */
 static SegmentDatabaseDescriptor *cdb_mirrored_entry_db = NULL;
-static bool resync = false;
 
 static bool cdblink_connectQD(SegmentDatabaseDescriptor * segdbDesc);
 
@@ -147,140 +146,95 @@ getgpsegmentCount(void)
 void
 buildMirrorQDDefinition(void)
 {
-	CdbComponentDatabases		*cdb_component_dbs;
+	CdbComponentDatabases *cdb_component_dbs;
+	CdbComponentDatabaseInfo *entryDb;
+	CdbComponentDatabaseInfo *mirrorDb;
 
-	if (!isQDMirroringEnabled())
+	if (isMirrorQDConfigurationChecked())
 		return;
 
 	cdb_component_dbs = getComponentDatabases();
 
-	if (cdb_component_dbs == NULL || cdb_component_dbs->total_entry_dbs <= 1)
+	if (cdb_component_dbs == NULL)
 	{
-		elog(DEBUG1, "QD Mirroring: no mirror components found");
-		disableQDMirroring();
+		FtsSetNoQDMirroring();
 		return;
 	}
+	
+	if (cdb_component_dbs->total_entry_dbs <= 1)
+	{
+		elog(LOG, "no QD mirroring standby configuration found");
+		FtsSetNoQDMirroring();
+		return;
+	}
+
+	/* it should have maximum 2 dbs now */
+	entryDb = cdb_component_dbs->entry_db_info;
 
 	/*
-	 * We now have a list of our components. We if we have QDmirroring
-	 * enabled, we should have more than one entry database
+	 * If the first entry is the primary, then the second is the mirror
+	 * if the first entry is the mirror, then the second is the primary.
+	 *
+	 * So we are assuming that we got back exactly two entry databases.
 	 */
-	if (cdb_component_dbs != NULL && cdb_component_dbs->total_entry_dbs > 1)
+	if (entryDb->dbid == GpIdentity.dbid)
+		mirrorDb = entryDb + 1;
+	else
 	{
-		/* it should have maximum 2 dbs now */
-		CdbComponentDatabaseInfo *entryDb = cdb_component_dbs->entry_db_info;
-		CdbComponentDatabaseInfo *mirrorDb;
-
-		/*
-		 * If the first entry is the primary, then the second is the mirror
-		 * if the first entry is the mirror, then the second is the primary.
-		 *
-		 * So we are assuming that we got back exactly two entry databases.
-		 */
-		if (entryDb->dbid == GpIdentity.dbid)
-			mirrorDb = entryDb + 1;
-		else
-		{
-			mirrorDb = entryDb;
-			entryDb = entryDb + 1;
-		}
-
-		/* The management scripts "activate" the warm-QD by doing an
-		 * update which points the QD-dbid at the warm-QD host. The
-		 * currently active QD always has the same dbid, so the only
-		 * way we can really *tell* that we're running in the
-		 * fail-over mode, is if the two hostnames are the same
-		 *
-		 * Someday the "isprimary" fields will be updated as well.
-		 */
-		if (mirrorDb->isprimary || strcmp(mirrorDb->hostname, entryDb->hostname) == 0)
-		{
-			/* We are running as the mirror! When running as the
-			 * mirror, we don't want to connect to ourselves! So we
-			 * turn off mirroring after issuing a 'NOTICE' message.
-			 */			
-			elog(NOTICE, "QD Mirroring: mirror active, don't connect to self.");
-			disableQDMirroring();
-			return;
-		}
-
-		/* we are the primary connecting to the mirror */
-
-		/* if it is set to invalid, do not connect */
-		if (!mirrorDb->valid)
-		{
-			ereport(LOG, (errcode(ERRCODE_WARNING_GP_INTERCONNECTION),
-						  errmsg("QD Mirroring disabled for entry db "
-								 "because it is not marked 'valid'.")));
-			return;
-		}
-
-		cdb_mirrored_entry_db = malloc(sizeof(SegmentDatabaseDescriptor));
-		MemSet(cdb_mirrored_entry_db, 0, sizeof(SegmentDatabaseDescriptor));
-		cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, mirrorDb);
-		/* connect to mirrored QD */
-		if (!cdblink_connectQD(cdb_mirrored_entry_db))
-		{
-			//disableQDMirroring();
-
-			ereport(WARNING, (errcode(ERRCODE_WARNING_GP_INTERCONNECTION),
-							  errmsg("QD Mirroring failed for entry db.  %s",
-									 cdb_mirrored_entry_db->error_message.data)
-						));
-			cdb_mirrored_entry_db->errcode = 0;
-			resetPQExpBuffer(&cdb_mirrored_entry_db->error_message);
-
-			/* mark the db as down */
-			/*
-			  markSegDBStatus(cdb_mirrored_entry_db->segment_database_info->dbid, false);
-			*/
-		}
-		else
-		{
-			FtsUpdateQDMirrorInfo(mirrorDb);
-			/* verify connection */
-			write_qd_sync("issyncmaster", NULL, 0);
-		}
+		mirrorDb = entryDb;
+		entryDb = entryDb + 1;
 	}
 
-	elog(DEBUG2, "QD mirror: connection status %s", PQstatus(cdb_mirrored_entry_db->conn) == CONNECTION_OK ? "good" : "bad");
-}
+	/* The management scripts "activate" the warm-QD by doing an
+	 * update which points the QD-dbid at the warm-QD host. The
+	 * currently active QD always has the same dbid, so the only
+	 * way we can really *tell* that we're running in the
+	 * fail-over mode, is if the two hostnames are the same
+	 *
+	 * Someday the "isprimary" fields will be updated as well.
+	 */
 
-static void
-parseOffsetsFromMessage(char *buf, int *pfileoff, int *mfileoff)
-{
-	char		*start,
-				*stop;
-	int			p,
-				m;
-
-	Assert(buf != NULL);
-	Assert(pfileoff != NULL);
-	Assert(mfileoff != NULL);
-
-	do {
-		start = strstr(buf, "pdboff: ");
-		if (start == NULL)
-			break;
-		stop = strstr(start, ",");
-		p = atoi(start+strlen("pdboff: "));
-
-		start = strstr(buf, "mdboff: ");
-		if (start == NULL)
-			break;
-		stop = strstr(start, ",");
-		m = atoi(start+strlen("mdboff: "));
-
-		*pfileoff = p;
-		*mfileoff = m;
-
+	
+	if (mirrorDb->isprimary || 
+		(strcmp(mirrorDb->hostname, entryDb->hostname) == 0 && !Debug_permit_same_host_standby))
+	{
+		/* We are running as the mirror! When running as the
+		 * mirror, we don't want to connect to ourselves! So we
+		 * turn off mirroring after issuing a 'NOTICE' message.
+		 */			
+		elog(LOG, "QD mirror active, don't connect to self.");
+		FtsSetNoQDMirroring();
 		return;
-	} while (0);
+	}
 
-	/* error ! */
-	ereport(ERROR, (errcode(ERRCODE_WARNING_GP_INTERCONNECTION),
-					errmsg("QD Mirroring: parse error on message returned from standby-QD (%s)", buf)));
+	/* we are the primary connecting to the mirror */
+
+	/* if it is set to invalid, do not connect */
+	if (!mirrorDb->valid)
+	{
+		elog(NOTICE, "QD mirroring disabled for entry db because it is not marked 'valid'.");
+		FtsSetNoQDMirroring();
+		return;
+	}
+
+	elog(LOG, "QD mirroring standby configuration found -- will attempt to connect and synchronize");
+	FtsSetQDMirroring(mirrorDb);
+
 }
+
+void
+markStandbyInvalid(void)
+{
+	if (cdb_mirrored_entry_db != NULL)
+	{
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"markStandbyInvalid: skipping calling to markStandbyStatus...");
+//		markStandbyStatus(cdb_mirrored_entry_db->segment_database_info->dbid, false);
+	}
+}
+
+static bool HaveStandbyMasterEndLocation = false;
+static uint32 StandbyMaster_xlogid = 0;
+static uint32 StandbyMaster_xrecoff = 0;
 
 /*
  * The bg-writer process needs to be able to build its communications
@@ -298,164 +252,154 @@ buildQDMirrorFromShmem(void)
 	FtsGetQDMirrorInfo(&mirrorDb.hostname, &port);
 	if (mirrorDb.hostname == NULL)
 	{
-		//elog(LOG, "buildQDMirrorFromShmem: no hostname for mirror");
-		return;
+		elog(ERROR, "no hostname for mirror");
 	}
 
 	mirrorDb.port = port;
 
 	cdb_mirrored_entry_db = malloc(sizeof(SegmentDatabaseDescriptor));
-	MemSet(cdb_mirrored_entry_db, 0, sizeof(SegmentDatabaseDescriptor));
+	memset(cdb_mirrored_entry_db, 0, sizeof(SegmentDatabaseDescriptor));
 	cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, &mirrorDb);
 
 	/* connect to mirrored QD */
 	if (!cdblink_connectQD(cdb_mirrored_entry_db))
 	{
-		ereport(WARNING, (errcode(ERRCODE_WARNING_GP_INTERCONNECTION),
-						  errmsg("QD Mirroring failed for entry db.  %s",
-								 cdb_mirrored_entry_db->error_message.data)
-					));
+		elog(ERROR, "QD mirroring connect failed for entry db. %s",
+			 cdb_mirrored_entry_db->error_message.data);
+
 		cdb_mirrored_entry_db->errcode = 0;
 		resetPQExpBuffer(&cdb_mirrored_entry_db->error_message);
 
-		/* mark the db as down */
-		/*
-		  markSegDBStatus(cdb_mirrored_entry_db->segment_database_info->dbid, false);
-		*/
 	}
-	else
-	{
-		/* verify connection */
-		write_qd_sync("issyncmaster", NULL, 0);
-	}
-
-	return;
 }
 
-void
+bool
+write_position_to_end(XLogRecPtr *endLocation)
+{
+	bool successful;
+	
+	HaveStandbyMasterEndLocation = false;
+	StandbyMaster_xlogid = 0;
+	StandbyMaster_xrecoff = 0;
+	successful = write_qd_sync("position_to_end", NULL, 0);
+	if (!successful)
+		return false;
+
+	if (!HaveStandbyMasterEndLocation)
+	{
+		elog(ERROR,"did not get standby master end location information");
+	}
+	
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"standby master returned end location: %X/%X",
+		 StandbyMaster_xlogid, StandbyMaster_xrecoff);
+
+	endLocation->xlogid = StandbyMaster_xlogid;
+	endLocation->xrecoff = StandbyMaster_xrecoff;
+
+	return true;
+}
+
+bool
 write_qd_sync(char *cmd, void *buf, int len)
 {
 	PGconn	   *conn;
 	bool		failed = false;
+	char       *msg;
 
-	if (cdb_mirrored_entry_db == NULL)
+	PG_TRY();
 	{
-		buildQDMirrorFromShmem();
-		/* did we successfully rebuild from shmem cache ? */
 		if (cdb_mirrored_entry_db == NULL)
 		{
-			//disableQDMirroring();
-			//elog(LOG, "QD mirror: no mirror");
-			return;
+			buildQDMirrorFromShmem();
+			/* did we successfully rebuild from shmem cache ? */
+			if (cdb_mirrored_entry_db == NULL)
+			{
+				elog(ERROR, "no QD mirror");
+			}
+			/* we were able to rebuild the mirror entry from our shared-memory cache */
 		}
-		/* we were able to rebuild the mirror entry from our shared-memory cache */
-	}
 
-	conn = cdb_mirrored_entry_db->conn;
+		conn = cdb_mirrored_entry_db->conn;
 
-	if (PQstatus(conn) != CONNECTION_OK)
-	{
-		elog(WARNING, "QD mirror: mirror connection failed");
-		return;
-	}
-
-	if (PQsendQuery(conn, cmd) == 0)
-	{
-		failed = true;
-	}
-	else if (len > 0)
-	{
-		if (pqPutMsgStart(0, false, conn) < 0 ||
-			pqPutnchar(buf, len, conn) < 0 ||
-			pqPutMsgEnd(conn) < 0)
-			failed = true;
-		else
-			pqFlush(conn);
-	}
-
-	if (!failed)
-	{
-		/* get response */
-		PGresult   *pRes = PQgetResult(conn);
-
-		if (pRes != NULL)
+		if (PQstatus(conn) != CONNECTION_OK)
 		{
-			ExecStatusType resultStatus = PQresultStatus(pRes);
-
-			if (PGRES_COMMAND_OK != resultStatus &&
-				PGRES_TUPLES_OK != resultStatus)
-			{
-				failed = true;
-				if (!resync && strstr(PQresultErrorMessage(pRes), "resync") != NULL)
-				{
-					int			pfileoff=0,
-								mfileoff=0;
-
-					/* be careful going into an infinite loop */
-					resync = true;
-
-					/* resync tmlog and xlog */
-					elog(DEBUG3, "write_qd_sync: result msg %s", PQresultErrorMessage(pRes));
-
-					parseOffsetsFromMessage(PQresultErrorMessage(pRes), &pfileoff, &mfileoff);
-
-					/* cleanup connection */
-					do
-					{
-						PQclear(pRes);
-					}
-					while ((pRes = PQgetResult(conn)) != NULL);
-
-					elog(DEBUG3, "write_qd_sync: pfileoff %d mfileoff %d", pfileoff, mfileoff);
-
-					/* failed = true; */
-					do
-					{
-						if (!resync_xlog_to_mirror())
-						{
-							elog(LOG, "write_qd_sync: xlog resync failed");
-							break;
-						}
-
-						/* resync is successful */
-						failed = false;
-					} while (0);
-
-
-					/* reset resync flag */
-					resync = false;
-				}
-			}
-			/* cleanup connection */
-			do
-			{
-				PQclear(pRes);
-			}
-			while ((pRes = PQgetResult(conn)) != NULL);
+			elog(ERROR, "QD mirror connection failed");
 		}
 
-		if (PQstatus(conn) == CONNECTION_BAD)
+		if (PQsendQuery(conn, cmd) == 0)
+		{
 			failed = true;
-	}
+		}
+		else if (len > 0)
+		{
+			if (pqPutMsgStart(0, false, conn) < 0 ||
+				pqPutnchar(buf, len, conn) < 0 ||
+				pqPutMsgEnd(conn) < 0)
+				failed = true;
+			else
+				pqFlush(conn);
+		}
 
-	if (failed)
+		if (!failed)
+		{
+			/* get response */
+			PGresult   *pRes = PQgetResult(conn);
+
+			if (pRes != NULL)
+			{
+				ExecStatusType resultStatus = PQresultStatus(pRes);
+
+				if (PGRES_COMMAND_OK != resultStatus &&
+					PGRES_TUPLES_OK != resultStatus)
+				{
+					failed = true;
+				}
+				/* cleanup connection */
+				do
+				{
+					if (pRes->Standby_HaveInfo)
+					{
+						elog(DEBUG5,"write_qd_sync found standby master info: %X/%X",
+							 pRes->Standby_xlogid, pRes->Standby_xrecoff);
+						HaveStandbyMasterEndLocation = true;
+						StandbyMaster_xlogid = pRes->Standby_xlogid;
+						StandbyMaster_xrecoff = pRes->Standby_xrecoff;
+					}
+					PQclear(pRes);
+				}
+				while ((pRes = PQgetResult(conn)) != NULL);
+
+			}
+
+			if (PQstatus(conn) == CONNECTION_BAD)
+				failed = true;
+		}
+
+		if (failed)
+		{
+			msg = pstrdup(PQerrorMessage(conn));
+			PQfinish(conn);
+			cdb_mirrored_entry_db->conn = NULL;
+			elog(ERROR, "QD mirrored entry database write error: %s",
+				 msg);
+		}
+		else
+		{
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "successfully executed the cmd %s for length %d",
+				 cmd, len);
+		}
+	}
+	PG_CATCH();
 	{
-		ereport(WARNING,
-				(errcode(ERRCODE_WARNING),		/* CDB TODO: better errcode */
-				 errmsg("QD mirrored entry database write error: %s",
-						PQerrorMessage(conn))));
-		PQfinish(conn);
-		cdb_mirrored_entry_db->conn = NULL;
-
-		/*
-		 * XXX: Uh, this disables mirroring for all subsequent sessions with
-		 * this database! That can't possibly be the right behavior.
-		 */
-		disableQDMirroring();
-		ereport(WARNING,
-				(errcode(ERRCODE_WARNING),		/* CDB TODO: better errcode */
-				 errmsg("QD mirror: disabling QD mirror")));
+		/* Report the error to the server log */
+		EmitErrorReport();
+		FlushErrorState();
+	
+		return false;
 	}
+	PG_END_TRY();
+
+	return true;
 }
 
 /* Connect to a QD-mirror as a client via libpq. */
@@ -504,7 +448,7 @@ cdblink_connectQD(SegmentDatabaseDescriptor * segdbDesc)
 						  buffer.data,
 						  PQerrorMessage(segdbDesc->conn));
 
-		elog(DEBUG2, segdbDesc->error_message.data);
+		elog(LOG, segdbDesc->error_message.data);
 
 		PQfinish(segdbDesc->conn);
 		segdbDesc->conn = NULL;
@@ -514,7 +458,7 @@ cdblink_connectQD(SegmentDatabaseDescriptor * segdbDesc)
 	 */
 	else
 	{
-		elog(DEBUG3, "Connected to mirror-QD %s with options %s\n",
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "Connected to mirror-QD %s with options %s\n",
 			 q->hostname,
 			 buffer.data);
 	}
@@ -543,6 +487,8 @@ disconnectMirrorQD(void)
 
 	write_qd_sync("close", NULL, 0);
 	PQfinish(cdb_mirrored_entry_db->conn);
+
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"QD mirror disconnected");
 
 	return;
 }

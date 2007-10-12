@@ -23,6 +23,8 @@
 
 #include "miscadmin.h"
 #include "storage/ipc.h"
+#include "storage/s_lock.h"
+#include "storage/spin.h"
 #include "storage/pg_sema.h"
 
 
@@ -41,6 +43,13 @@ static sem_t **mySemPointers;	/* keep track of created semaphores */
 static int	numSems;			/* number of semas acquired so far */
 static int	maxSems;			/* allocated size of mySemaPointers array */
 static int	nextSemKey;			/* next name to try */
+static bool initSpinPGSemaphoreLockTimed = false;
+								/* true if the spin lock below has been initialized */
+static slock_t  spinLockPGSemaphoreLockTimed;	
+								/* Guard the next global variables */
+static bool setPGSemaphoreLockTimed = false;
+static PGSemaphore semLockPGSemaphoreLockTimed;
+								/* Semaphore for PGSemaphoreLockTimed */
 
 
 static void ReleaseSemaphores(int status, Datum arg);
@@ -159,6 +168,12 @@ PGReserveSemaphores(int maxSemas, int port)
 	numSems = 0;
 	maxSems = maxSemas;
 	nextSemKey = port * 1000;
+
+	/*
+	 * This spin lock is used by the PGSemaphoreLockTimed procedure.
+	 */
+	SpinLockInit(&spinLockPGSemaphoreLockTimed);
+	initSpinPGSemaphoreLockTimed = true;
 
 	on_shmem_exit(ReleaseSemaphores, 0);
 }
@@ -306,6 +321,115 @@ PGSemaphoreLockInterruptable(PGSemaphore sema)
 
 	return true;
 }
+
+/*
+ * Signal handler for SIGALRM
+ *
+ * Process timeout check, as needed.
+ * To avoid various edge cases, we must be careful to do nothing
+ * when there is nothing to be done.
+ */
+void
+PGSemaphoreHandleSigAlarm(SIGNAL_ARGS)
+{
+	bool set;
+	PGSemaphore sema;
+	
+	if (initSpinPGSemaphoreLockTimed)
+	{
+		SpinLockAcquire(&spinLockPGSemaphoreLockTimed);
+		set = setPGSemaphoreLockTimed;
+		sema = semLockPGSemaphoreLockTimed;
+		SpinLockRelease(&spinLockPGSemaphoreLockTimed);
+
+		if (set)
+		{
+			/*
+			 * In the off chance we missed the wake up between setting
+			 * the timer and calling sem_wait, compensate.
+			 */
+			PGSemaphoreUnlock(sema);
+		}
+	}
+}
+
+
+/*
+ * PGSemaphoreLockTimed
+ *
+ * Lock a semaphore (decrement count), blocking if count would be < 0.
+ *
+ * Return true if the lock obtained or false if either a timeout or
+ * interrupt occurred.
+ *
+ * NOTES: 
+ * 1) Use of this routine ASSUMES setitimer is not being used for
+ *    other purposes!!!
+ * 2) The signal handler for timeouts has been set to
+ *    PGSemaphoreHandleSigAlarm.
+ * 3) Perhaps most important, false locking is possible.  The caller must
+ *    not assume that since the lock has been aquired that it means the
+ *    partner thread or process is the one that did the unlock.  In some
+ *    cases, this module will do the unlock to guard against losing the 
+ *    timeout.
+ *
+ * Jeff as informed this is "more than a little kludgy" !!!
+ *
+ */
+bool
+PGSemaphoreLockTimed(PGSemaphore sema, struct timeval *timeout)
+{
+	struct itimerval timeval;
+	int err;
+	int errStatus;
+	bool result;
+
+	Assert(initSpinPGSemaphoreLockTimed);
+
+	/* Save semaphore in global */
+	SpinLockAcquire(&spinLockPGSemaphoreLockTimed);
+	setPGSemaphoreLockTimed = true;
+	semLockPGSemaphoreLockTimed = sema;
+	SpinLockRelease(&spinLockPGSemaphoreLockTimed);
+	
+	MemSet(&timeval, 0, sizeof(struct itimerval));
+ 	memcpy(&timeval.it_value, timeout, sizeof(timeval));
+	err = setitimer(ITIMER_REAL, &timeval, NULL);
+	Assert(err == 0);
+
+//	elog(LOG,"PGSemaphoreLockTimed: set interrupt timer for %d seconds, %d microseconds",
+//		 timeout->tv_sec,
+//		 timeout->tv_usec);
+
+	while (true)
+	{
+		errStatus = sem_wait(PG_SEM_REF(sema));
+		if (errStatus < 0)
+		{
+			if (errno == EINTR)
+			{	
+				result = false;
+				break;
+			}
+			elog(FATAL, "sem_wait failed: %m");
+		}
+
+		result = true;
+		break;
+	}
+
+	/* Clear semaphore in global */
+	SpinLockAcquire(&spinLockPGSemaphoreLockTimed);
+	setPGSemaphoreLockTimed = false;
+	SpinLockRelease(&spinLockPGSemaphoreLockTimed);
+	
+	MemSet(&timeval, 0, sizeof(struct itimerval));
+	err = setitimer(ITIMER_REAL, &timeval, NULL);
+	Assert(err == 0);
+
+	return result;
+}
+
 
 /*
  * PGSemaphoreUnlock

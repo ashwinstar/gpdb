@@ -38,7 +38,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/postmaster/postmaster.c,v 1.505.2.5 2007/08/02 23:17:20 adunstan Exp $
+ *	  $PostgreSQL: pgsql/src/backend/postmaster/postmaster.c,v 1.505.2.3 2007/02/11 15:12:21 mha Exp $
  *
  * NOTES
  *
@@ -118,6 +118,7 @@
 #include "postmaster/pgarch.h"
 #include "postmaster/postmaster.h"
 #include "postmaster/seqserver.h"
+#include "postmaster/walsendserver.h"
 #include "postmaster/ddaserver.h"
 #include "postmaster/syslogger.h"
 #include "storage/fd.h"
@@ -164,11 +165,12 @@ static Dllist *BackendList;
 typedef enum pmsub_type
 {
 	SeqServerProc = 0,
+	WalSendServerProc = 1,
 #ifdef DO_DDA_SERV
-	DdaServerProc = 1, 
-	MaxPMSubType  = 2 /* must always be last */
+	DdaServerProc = 2, 
+	MaxPMSubType  = 3 /* must always be last */
 #else
-	MaxPMSubType  = 1 /* must always be last */
+	MaxPMSubType  = 2 /* must always be last */
 #endif
 } PMSubType;
 
@@ -256,6 +258,9 @@ static PMSubProc PMSubProcList[MaxPMSubType] =
 	{0, SeqServerProc, 
 	 (PMSubStartCallback*)&seqserver_start, 
 	 "seqserver process", true, false},
+	{0, WalSendServerProc, 
+	 (PMSubStartCallback*)&walsendserver_start, 
+	 "walsendserver process", true, false},
 #ifdef DO_DDA_SERV
 	{0, DdaServerProc, 
 	 (PMSubStartCallback*)&ddaserver_start, 
@@ -2098,7 +2103,11 @@ pmdie(SIGNAL_ARGS)
 					PMSubProc *subProc = &PMSubProcList[ii];
 
 					if (subProc->pid != 0)
+					{
+						elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"pmdie: For smart shutdown, send SIGUSR2 to pid %d",
+							 subProc->pid);
 						signal_child(subProc->pid, SIGUSR2);
+					}
 				}
 			}
 			/* Tell pgstat to shut down too; nothing left for it to do */
@@ -2165,7 +2174,11 @@ pmdie(SIGNAL_ARGS)
 					PMSubProc *subProc = &PMSubProcList[ii];
 
 					if (subProc->pid != 0)
+					{
+						elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"pmdie: For fast shutdown, send SIGQUIT to pid %d",
+							 subProc->pid);
 						signal_child(subProc->pid, SIGQUIT);
+					}
 				}
 			}
 			/* Tell pgstat to shut down too; nothing left for it to do */
@@ -2199,7 +2212,12 @@ pmdie(SIGNAL_ARGS)
 					PMSubProc *subProc = &PMSubProcList[ii];
 
 					if (subProc->pid != 0)
+					if (subProc->pid != 0)
+					{
+						elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"pmdie: For immediate shutdown request, send SIGQUIT to pid %d",
+							 subProc->pid);
 						signal_child(subProc->pid, SIGQUIT);
+					}
 				}
 			}
 			if (PgStatPID != 0)

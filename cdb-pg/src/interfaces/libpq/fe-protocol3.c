@@ -52,6 +52,7 @@ static int	getParameterStatus(PGconn *conn);
 static int	getNotify(PGconn *conn);
 static int	getCopyStart(PGconn *conn, ExecStatusType copytype);
 static int	getQEWriterTransactionInfo(PGconn *conn);
+static int	getStandbyMasterEndLocation(PGconn *conn);
 static int	getReadyForQuery(PGconn *conn);
 static int	getReadyForQuery_QEWriter(PGconn *conn);
 static void saveCdbStatMsg(PGresult *result, char *data, int len);
@@ -250,6 +251,18 @@ pqParseInput3(PGconn *conn)
 					if (getReadyForQuery_QEWriter(conn))
 						return;
 					conn->asyncStatus = PGASYNC_IDLE;
+					break;
+				case 's':		/* standby master command complete with XLOG end location */
+					if (getStandbyMasterEndLocation(conn))
+						return;
+					if (conn->result == NULL)
+					{
+						conn->result = PQmakeEmptyPGresult(conn,
+														   PGRES_COMMAND_OK);
+						if (!conn->result)
+							return;
+					}
+					conn->asyncStatus = PGASYNC_READY;
 					break;
 				case 'I':		/* empty query */
 					if (conn->result == NULL)
@@ -1385,6 +1398,24 @@ getQEWriterTransactionInfo(PGconn *conn)
 	conn->QEWriter_Dirty = (dirty == 'T');
 
 	conn->QEWriter_HaveInfo = true;
+
+	return 0;
+}
+
+/*
+ * getStandbyEndLocation - process standby master XLOG end location in remainer of message
+ */
+static int
+getStandbyMasterEndLocation(PGconn *conn)
+{
+	//
+	// Between the Standby Master and Primary, send back a XLOG end location.
+	//
+	if (pqGetInt((int*)&conn->Standby_xlogid, 4, conn))
+		return EOF;
+	if (pqGetInt((int*)&conn->Standby_xrecoff, 4, conn))
+		return EOF;
+	conn->Standby_HaveInfo = true;
 
 	return 0;
 }

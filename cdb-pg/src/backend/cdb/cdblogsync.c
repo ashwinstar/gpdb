@@ -11,46 +11,56 @@
 
 
 #include "utils/elog.h"
+#include "utils/guc.h"
 #include "access/xlog_internal.h"
 #include "miscadmin.h"
 #include "libpq/libpq.h"
+#include "libpq/pqformat.h"
 #include "storage/ipc.h"
+
+#include "tcop/dest.h"
 
 #include "cdb/cdblogsync.h"
 #include "cdb/cdbtm.h"
 
 /*
- * There is a protocol consisting of four messages from primary->mirror:
+ * There is a protocol consisting of 3 messages from primary->mirror:
  *
- * Q xlog filename woffset wlen [resync]
- * Q issyncmaster [resync]
- * Q close [resync]
+ * Q position_to_end
+ * Q xlog logid seg woffset wlen
+ * Q close
  */
 
 /* for xlog */
 static char xlogfilename[100];
 static int	xlogfilefd = -1;
+static uint32 xlogid = -1;
+static uint32 xseg = -1;
 static int	xlogfileoffset = -1;
 
 /* param sent by primary segdb */
 static int	cmdtype;
-static char wfilename[85];
+static uint32 wlogid;
+static uint32 wseg;
 static int	woffset;
 static int	wlen;
+
+static uint32 logidNewCheckpoint;
+static uint32 segNewCheckpoint;
+static int offsetNewCheckpoint;
 
 /* XXX: file global buffer, called "buf" ??? At least it is allocated and free()ed as needed. */
 static void *buf = NULL;
 static int	buflen;
-static bool resync = false;
 
 static void cdb_sync_xlog(void);
 static void parseCmd(const char *);
 static void readLogMessage(void *, int);
-static int	getLogFileSize(int fd);
 static void syncWriteLog(int, void *, int, int);
 static void ensureBufferSize(void);
-static bool xlogOpenFile(void);
 static void write_with_ereport(int fd, void *data, int len);
+static void cdb_position_to_end(void);
+static void cdb_new_checkpoint_loc(void);
 
 
 static void
@@ -86,7 +96,7 @@ cdb_init_log_sync(void)
 	{
 		char	   *cmd = "restore_command=''\n";
 
-		elog(LOG, "QDSYNC: creating recovery.conf file");
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QDSYNC: creating recovery.conf file");
 		rconffd = open(path, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
 		if (rconffd < 0)
 		{
@@ -108,7 +118,7 @@ cdb_init_log_sync(void)
 void
 cdb_sync_command(const char *cmd)
 {
-	elog(LOG, "QDSYNC: %s", cmd);
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QDSYNC: %s", cmd);
 	parseCmd(cmd);
 
 	getTmLock();
@@ -118,14 +128,14 @@ cdb_sync_command(const char *cmd)
 		case SYNC_XLOG:
 			cdb_sync_xlog();
 			break;
-		case SYNC_CHECK:
-			/*
-			 * check do nothing, this is used to determine postmaster or
-			 * gpsyncmaster
-			 */
+		case SYNC_POSITION_TO_END:
+			cdb_position_to_end();
+			break;
+		case SYNC_NEW_CHECKPOINT_LOC:
+			cdb_new_checkpoint_loc();
 			break;
 		case SYNC_CLOSE:
-			elog(LOG, "QDSYNC: server is terminated by client");
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QDSYNC: server is terminated by client");
 			break;
 	}
 	releaseTmLock();
@@ -134,204 +144,27 @@ cdb_sync_command(const char *cmd)
 }
 
 /*
- * cdb_sync_xlog - process xlog sync
- */
-static void
-cdb_sync_xlog(void)
-{
-	bool		fcreated = xlogOpenFile();
-
-	if (resync && fcreated)
-	{
-		/*
-		 * error case, log file does not exist during resync, previous file
-		 * may not have sync completely.
-		 */
-		ereport(FATAL,
-				(errcode_for_file_access(),
-				 errmsg("QDSYNC: xlog is not in sync, xlog file does not exist on mirror segdb")));
-	}
-
-	/*
-	 * no validation checking on xlog. xlog sync is by block and may repeat
-	 * the same block, so we do not have any way to check it now. we will rely
-	 * on tmlog checking for now.
-	 */
-	ensureBufferSize();
-	readLogMessage(buf, wlen);
-
-	elog(DEBUG4, "cdb_sync_xlog: woffset %d len %d", woffset, wlen);
-
-	syncWriteLog(xlogfilefd, buf, woffset, wlen);
-
-	if (resync)
-		elog(LOG, "QDSYNC: resyncing xlog offset %d len %d", woffset, wlen);
-}
-
-/*
- * We parse incoming commands into a file-local static set of parameters.
- */
-static void
-getCmdArgs(const char *cmdArgs)
-{
-	char	   *pos;
-	int			len;
-
-	do
-	{
-		pos = strchr(cmdArgs, ' ');
-		if (pos == NULL)
-			break;
-
-		len = pos - cmdArgs;
-		if (len > sizeof(wfilename) - 1)
-			break;
-
-		strncpy(wfilename, cmdArgs, len);
-		wfilename[len] = 0;
-
-		pos++;
-		woffset = atoi(pos);
-
-		pos = strchr(pos, ' ');
-		if (pos == NULL)
-			break;
-
-		pos++;
-		wlen = atoi(pos);
-
-		return;
-	} while (0);
-
-	elog(ERROR, "gpsyncmaster: Cannot parse cmd args '%s'", cmdArgs);
-	return;
-}
-
-/*
- * parse sync command
- */
-static void
-parseCmd(const char *cmd)
-{
-	resync = false;
-	if (strncmp(cmd, "xlog", 4) == 0)
-	{
-		/* xlog command */
-		cmdtype = SYNC_XLOG;
-		getCmdArgs(cmd + strlen("xlog") + 1);
-	}
-	else if (strncmp(cmd, "issyncmaster", 12) == 0)
-	{
-		cmdtype = SYNC_CHECK;
-	}
-	else if (strncmp(cmd, "close", 5) == 0)
-	{
-		cmdtype = SYNC_CLOSE;
-	}
-	else
-		ereport(FATAL,
-				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg("QDSYNC: invalid command '%s'", cmd),
-				 errhint("Failover-QD needs to be 'activated' before issuing queries")));
-
-	if (strstr(cmd, "resync") != NULL)
-		resync = true;
-}
-
-/*
- * readLogMessage - read log message sent from client
- */
-static void
-readLogMessage(void *buf, int plen)
-{
-	int32		len;
-
-	if (pq_getbytes((char *) &len, 4) == EOF)
-	{
-		ereport(FATAL,
-				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg("QDSYNC: incomplete log packet")));
-	}
-
-	len = ntohl(len);
-	len -= 4;
-	pq_getbytes(buf, len);
-
-	elog(DEBUG4, "readLogMessage: plen %d len: %d", plen, len);
-}
-
-
-/*
- * getLogFileSize
- */
-static int
-getLogFileSize(int fd)
-{
-	return lseek(fd, 0, SEEK_END);
-}
-
-/*
- * syncWriteLog - sync log
- */
-static void
-syncWriteLog(int fd, void *buf, int offset, int len)
-{
-	int			loffset = lseek(fd, offset, SEEK_SET);
-
-	if (loffset != offset)
-	{
-		elog(PANIC, "QDSYNC: error lseek lo: %d, offset: %d, errno: %d", loffset, offset, errno);
-	}
-	write_with_ereport(fd, buf, len);
-}
-
-/*
- * ensureBufferSize - increment buffer size to hold log message if necessary
- */
-static void
-ensureBufferSize(void)
-{
-	if (buf != NULL && buflen < wlen)
-	{
-		/* buf is smaller, reallocate it */
-		free(buf);
-		buf = NULL;
-	}
-
-	if (buf == NULL)
-	{
-		buf = malloc(wlen);
-		if (buf == NULL)
-			elog(PANIC, "QDSYNC: malloc failed in sync tmlog, possiblly running out of memory");
-		buflen = wlen;
-	}
-}
-
-/*
  * open xlog file
  */
-static bool
-xlogOpenFile(void)
+static void
+openXlogEnd(XLogRecPtr *endLocation)
 {
 	char		path[MAXPGPATH];
-	bool		ret = false;
+	uint32		logid;
+	uint32		seg;
 
-	elog(DEBUG3, "QDSYNC: opening xlog file %s", wfilename);
-
-	if (strcmp(xlogfilename, wfilename) == 0)
-	{
-		return ret;
-	}
-
-	elog(DEBUG1, "opening xlog file %s", wfilename);
+	XLByteToSeg(*endLocation, logid, seg);
+	XLogFileName(xlogfilename, ThisTimeLineID, logid, seg);
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QDSYNC: opening logid %d seg %d file %s",
+		 logid, seg, xlogfilename);
 
 	/* the first time or file is changed */
-	if (snprintf(path, MAXPGPATH, "%s/%s", XLOGDIR, wfilename) >= MAXPGPATH)
+	if (snprintf(path, MAXPGPATH, "%s/%s", XLOGDIR, xlogfilename) >= MAXPGPATH)
 	{
-		ereport(PANIC,
+		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("QDSYNC: could not create xlog file \"%s/%s\"",
-						XLOGDIR, wfilename)));
+						XLOGDIR, xlogfilename)));
 	}
 
 	if (xlogfilefd >= 0)
@@ -344,20 +177,453 @@ xlogOpenFile(void)
 	xlogfilefd = open(path, O_RDWR, 0);
 	if (xlogfilefd < 0)
 	{
-		elog(LOG, "QDSYNC: creating xlog file %s", wfilename);
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QDSYNC: creating xlog file %s", xlogfilename);
 		xlogfilefd = open(path, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
 		if (xlogfilefd < 0)
 		{
-			ereport(PANIC,
+			ereport(ERROR,
 					(errcode_for_file_access(),
 					 errmsg("QDSYNC: could not create xlog file \"%s\"",
 							path)));
 		}
-		ret = true;
 	}
 
-	strcpy(xlogfilename, wfilename);
-	xlogfileoffset = getLogFileSize(xlogfilefd);
+	xlogid = logid;
+	xseg = seg;
+	xlogfileoffset = endLocation->xrecoff % XLogSegSize;
 
-	return ret;
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"QDSYNC: opened '%s' offset 0x%X",
+		 xlogfilename, xlogfileoffset);
 }
+
+static void
+putEndLocationReply(XLogRecPtr *endLocation)
+{
+	StringInfoData buf;
+	
+	pq_beginmessage(&buf, 's');
+	pq_sendint(&buf, endLocation->xlogid, 4);
+	pq_sendint(&buf, endLocation->xrecoff, 4);
+	pq_endmessage(&buf);
+	pq_flush();
+}
+
+static XLogRecPtr syncRedoLoc;
+
+static void
+cdb_position_to_end(void)
+{
+	XLogRecPtr redoCheckpointLoc;
+	CheckPoint redoCheckpoint;
+	XLogRecPtr endLocation;
+
+	XLogGetRecoveryStart(&redoCheckpointLoc, &redoCheckpoint);
+	syncRedoLoc = redoCheckpoint.redo;
+
+	// UNDONE: Minimum of redoCheckpointLoc and redoCheckpoint.redo?
+	
+	XLogScanForEndLocation(&syncRedoLoc, &endLocation);
+	
+	ereport(LOG,
+	 (errmsg("QDSYNC: reporting recovery start location %s and scanned end location %s",
+		 XLogLocationToString(&syncRedoLoc),
+		 XLogLocationToString2(&endLocation))));
+
+	/*
+	 * Open up end location segment and set offset to end.
+	 */
+	openXlogEnd(&endLocation);
+
+	/*
+	 * Extra reply information that gives our standby master XLOG end location
+	 * to the primary.
+	 */
+	putEndLocationReply(&endLocation);
+}
+
+static void
+cdb_new_checkpoint_loc(void)
+{
+	XLogRecPtr newCheckpointLoc;
+	XLogRecPtr oldSyncRedoLoc;
+	XLogRecPtr redoCheckPointLoc;
+	CheckPoint	redoCheckPoint;
+	uint32 logid;
+	uint32 seg;
+	int nsegsremoved;
+	XLogRecPtr scanEndLoc;
+	XLogRecPtr writeEndLoc;
+
+	newCheckpointLoc.xlogid = logidNewCheckpoint;
+	newCheckpointLoc.xrecoff = segNewCheckpoint * XLogSegSize 
+		                     + offsetNewCheckpoint;
+	if (newCheckpointLoc.xlogid == 0 && newCheckpointLoc.xrecoff == 0)
+	{
+		elog(ERROR, "QDSYNC: found invalid new checkpoint location");
+	}
+
+	XLogGetRecoveryStart(&redoCheckPointLoc, &redoCheckPoint);
+	oldSyncRedoLoc = syncRedoLoc;
+	syncRedoLoc = redoCheckPoint.redo;
+	
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
+		 "QDSYNC: new checkpoint location %s (syncRedoLoc old %s, new %s)",
+		 XLogLocationToString(&newCheckpointLoc), 
+		 XLogLocationToString2(&oldSyncRedoLoc),
+		 XLogLocationToString3(&syncRedoLoc));
+
+	/*
+	 * Extra checking here!
+	 */
+	if (Debug_print_qd_mirroring)
+	{
+		XLogScanForEndLocation(&syncRedoLoc, &scanEndLoc);
+		
+		writeEndLoc.xlogid = xlogid;
+		writeEndLoc.xrecoff = xseg * XLogSegSize + 
+						      xlogfileoffset;
+
+		elog(LOG, "QDSYNC: scan end location %s, write end location %s",
+			 XLogLocationToString(&scanEndLoc),
+			 XLogLocationToString2(&writeEndLoc));
+	}
+
+	XLogRecoverRange(&redoCheckPointLoc, &redoCheckPoint, &newCheckpointLoc);
+
+	/*
+	 * Sample the recovery start location now to see if appling redo
+	 * processed checkpoint records and moved the restart location forward.
+	 */
+	XLogGetRecoveryStart(&redoCheckPointLoc, &redoCheckPoint);
+	oldSyncRedoLoc = syncRedoLoc;
+	syncRedoLoc = redoCheckPoint.redo;
+
+	if (XLByteLT(oldSyncRedoLoc,syncRedoLoc))
+	{
+		ereport(LOG,
+		 (errmsg("QDSYNC: transaction redo moved the restart location from %s to %s",
+			     XLogLocationToString(&oldSyncRedoLoc),
+			     XLogLocationToString2(&syncRedoLoc))));
+	}
+	else
+	{
+		Assert(XLByteEQ(oldSyncRedoLoc,syncRedoLoc));
+		ereport(LOG,
+		 (errmsg("QDSYNC: transaction redo did not move the restart location %s forward this pass",
+			     XLogLocationToString(&oldSyncRedoLoc))));
+	}
+
+	XLByteToSeg(syncRedoLoc, logid, seg);
+	
+	/*
+	 * Delete offline log files (those no longer needed even for previous
+	 * checkpoint).
+	 */
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
+	     "QDSYNC: keep log files as far back as (logid %d, seg %d)",
+		 logid, seg);
+
+	if (logid || seg)
+	{
+		PrevLogSeg(logid, seg);
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
+			 "QDSYNC: delete offline log files up to (logid %d, seg %d)",
+			 logid, seg);
+		
+		XLogRemoveStandbyLogs(logid, seg, &nsegsremoved);
+
+		if (nsegsremoved > 0)
+		{
+			ereport(LOG,
+			 (errmsg("QDSYNC: %d logs removed through logid %d, seg %d",
+				     nsegsremoved,
+				     logid, seg)));
+		}
+
+	}
+}
+
+
+/*
+ * open xlog file
+ */
+static void
+openXlogNextFile(void)
+{
+	char		path[MAXPGPATH];
+
+	XLogFileName(xlogfilename, ThisTimeLineID, xlogid, xseg);
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QDSYNC: opening next logid %d seg %d file %s",
+		 xlogid, xseg, xlogfilename);
+
+	/* the first time or file is changed */
+	if (snprintf(path, MAXPGPATH, "%s/%s", XLOGDIR, xlogfilename) >= MAXPGPATH)
+	{
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("QDSYNC: could not create xlog file \"%s/%s\"",
+						XLOGDIR, xlogfilename)));
+	}
+
+	xlogfilefd = open(path, O_RDWR, 0);
+	if (xlogfilefd < 0)
+	{
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QDSYNC: creating xlog file %s", xlogfilename);
+		xlogfilefd = open(path, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
+		if (xlogfilefd < 0)
+		{
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("QDSYNC: could not create xlog file \"%s\"",
+							path)));
+		}
+	}
+
+	xlogfileoffset = 0;
+
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
+		 "QDSYNC: openXlogNextFile: opened '%s' offset 0x%X",
+		 xlogfilename, xlogfileoffset);
+}
+
+/*
+ * cdb_sync_xlog - process xlog sync
+ */
+static void
+cdb_sync_xlog(void)
+{
+	uint32 currentBlockOffset;
+	XLogRecPtr writeLoc;
+
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QDSYNC: write logid %d seg %d woffset 0x%X, wlen 0x%X",
+		 wlogid, wseg, woffset, wlen);
+	if (woffset % XLOG_BLCKSZ != 0)
+	{
+		elog(ERROR,"QDSYNC: not on block boundaries 0x%X",
+			 woffset);
+	}
+
+	if (wlogid != xlogid || wseg != xseg)
+	{
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QDSYNC: closing previous file %s",
+		     xlogfilename);
+		if (xlogfilefd >= 0)
+		{
+			close(xlogfilefd);
+			xlogfilefd = -1;
+			xlogfileoffset = -1;
+		}
+		xlogid = wlogid;
+		xseg = wseg;
+		openXlogNextFile();
+
+		/*
+		 * Assume caller knows where to write.
+		 */
+		xlogfileoffset = woffset;
+	}
+	
+	/* 
+	 * Validate we are appending or overwritting previous block
+	 */
+	currentBlockOffset = (xlogfileoffset / XLOG_BLCKSZ) * XLOG_BLCKSZ;
+	if (woffset != currentBlockOffset && 
+		woffset + XLOG_BLCKSZ != currentBlockOffset)
+	{
+		elog(ERROR,"QDSYNC: not appending to end (primary: 0x%X, standby: 0x%X)",
+			   woffset, xlogfileoffset);
+	}
+	
+	/*
+	 * no validation checking on xlog. xlog sync is by block and may repeat
+	 * the same block, so we do not have any way to check it now. we will rely
+	 * on tmlog checking for now.
+	 */
+	ensureBufferSize();
+	readLogMessage(buf, wlen);
+	if ((wlen / XLOG_BLCKSZ) * XLOG_BLCKSZ != wlen)
+	{	
+		int roundedUp;
+		int padLen;
+		
+		/*
+		 * Pad buffer out with zeros.
+		 */
+		roundedUp = ((wlen + XLOG_BLCKSZ - 1) / XLOG_BLCKSZ) * XLOG_BLCKSZ;
+		Assert(buflen >= roundedUp);
+		padLen = roundedUp - wlen;
+		
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), 
+			 "QDSYNC: padding buffer with %d zeros (wlen %d, roundedUp %d)",
+			 padLen, wlen, roundedUp);
+		memset(&((char*) buf)[wlen], 0, padLen); 
+		
+		wlen = roundedUp;
+	}
+
+	writeLoc.xlogid = wlogid;
+	writeLoc.xrecoff = wseg * XLogSegSize + 
+					   woffset;
+	syncWriteLog(xlogfilefd, buf, woffset, wlen);
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), 
+		 "QDSYNC: wrote location %s len 0x%X", 
+		 XLogLocationToString(&writeLoc),
+		 wlen);
+
+	xlogfileoffset = woffset + wlen;
+}
+
+/*
+ * We parse incoming commands into a file-local static set of parameters.
+ */
+static void
+getXlogCmdArgs(const char *cmdArgs)
+{
+	char	   *pos;
+
+	wlogid = atoi(cmdArgs);
+
+	pos = strchr(cmdArgs, ' ');
+	if (pos == NULL)
+		elog(ERROR, "QDSYNC: Cannot parse cmd args '%s' -- no seg", cmdArgs);
+
+	pos++;
+	wseg = atoi(pos);
+
+	pos = strchr(pos, ' ');
+	if (pos == NULL)
+		elog(ERROR, "QDSYNC: Cannot parse cmd args '%s' -- no offset", cmdArgs);
+
+	pos++;
+	woffset = atoi(pos);
+
+	pos = strchr(pos, ' ');
+	if (pos == NULL)
+		elog(ERROR, "QDSYNC: Cannot parse cmd args '%s' -- no len", cmdArgs);
+
+	pos++;
+	wlen = atoi(pos);
+}
+
+/*
+ * We parse incoming commands into a file-local static set of parameters.
+ */
+static void
+getNewCheckpointLocCmdArgs(const char *cmdArgs)
+{
+	char	   *pos;
+
+	logidNewCheckpoint = atoi(cmdArgs);
+
+	pos = strchr(cmdArgs, ' ');
+	if (pos == NULL)
+		elog(ERROR, "QDSYNC: cannot parse cmd args '%s' -- no seg", cmdArgs);
+
+	pos++;
+	segNewCheckpoint = atoi(pos);
+
+	pos = strchr(pos, ' ');
+	if (pos == NULL)
+		elog(ERROR, "QDSYNC: cannot parse cmd args '%s' -- no offset", cmdArgs);
+
+	pos++;
+	offsetNewCheckpoint = atoi(pos);
+}
+
+/*
+ * parse sync command
+ */
+static void
+parseCmd(const char *cmd)
+{
+	if (strncmp(cmd, "xlog", 4) == 0)
+	{
+		/* xlog command */
+		cmdtype = SYNC_XLOG;
+		getXlogCmdArgs(cmd + strlen("xlog") + 1);
+	}
+	else if (strncmp(cmd, "position_to_end", 15) == 0)
+	{
+		cmdtype = SYNC_POSITION_TO_END;
+	}
+	else if (strncmp(cmd, "new_checkpoint_location", 23) == 0)
+	{
+		cmdtype = SYNC_NEW_CHECKPOINT_LOC;
+		getNewCheckpointLocCmdArgs(cmd + strlen("new_checkpoint_location") + 1);
+	}
+	else if (strncmp(cmd, "close", 5) == 0)
+	{
+		cmdtype = SYNC_CLOSE;
+	}
+	else
+		ereport(FATAL,
+				(errcode(ERRCODE_PROTOCOL_VIOLATION),
+				 errmsg("QDSYNC: invalid command '%s'", cmd),
+				 errhint("Failover-QD needs to be 'activated' before issuing queries")));
+
+}
+
+/*
+ * readLogMessage - read log message sent from client
+ */
+static void
+readLogMessage(void *buf, int plen)
+{
+	int32		len;
+
+	if (pq_getbytes((char *) &len, 4) == EOF)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_PROTOCOL_VIOLATION),
+				 errmsg("QDSYNC: incomplete log packet")));
+	}
+
+	len = ntohl(len);
+	len -= 4;
+	pq_getbytes(buf, len);
+
+	elog(DEBUG4, "QDSYNC: readLogMessage: plen %d len: %d", plen, len);
+}
+
+
+/*
+ * syncWriteLog - sync log
+ */
+static void
+syncWriteLog(int fd, void *buf, int offset, int len)
+{
+	int			loffset = lseek(fd, offset, SEEK_SET);
+
+	if (loffset != offset)
+	{
+		elog(ERROR, "QDSYNC: error lseek lo: %d, offset: %d, errno: %d", loffset, offset, errno);
+	}
+	write_with_ereport(fd, buf, len);
+}
+
+/*
+ * ensureBufferSize - increment buffer size to hold log message if necessary
+ */
+static void
+ensureBufferSize(void)
+{
+	int roundedUp;
+
+	roundedUp = ((wlen + XLOG_BLCKSZ - 1) / XLOG_BLCKSZ) * XLOG_BLCKSZ;
+	
+	if (buf != NULL && buflen < roundedUp)
+	{
+		/* buf is smaller, reallocate it */
+		free(buf);
+		buf = NULL;
+	}
+
+	if (buf == NULL)
+	{
+		buf = malloc(roundedUp);
+		if (buf == NULL)
+			elog(ERROR, "QDSYNC: malloc failed in sync tmlog, possiblly running out of memory");
+		buflen = roundedUp;
+	}
+}
+

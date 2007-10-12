@@ -6088,6 +6088,8 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 
 	PG_SETMASK(&BlockSig);		/* block everything except SIGQUIT */
 
+	// UNDONE: To allow us to perform recovery.
+	SetProcessingMode(BootstrapProcessing);
 
 	if (IsUnderPostmaster)
 	{

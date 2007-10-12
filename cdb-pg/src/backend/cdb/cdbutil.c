@@ -694,7 +694,7 @@ cdb_setup(void)
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		/* connect to mirrored entry db */
+		/* check mirrored entry db configuration */
 		buildMirrorQDDefinition();
 		/* initialize TM */
 		initTM();

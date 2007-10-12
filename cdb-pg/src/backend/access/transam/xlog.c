@@ -40,6 +40,8 @@
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/bgwriter.h"
+#include "postmaster/walsendserver.h"
+#include "storage/proc.h"
 #include "storage/bufpage.h"
 #include "storage/fd.h"
 #include "storage/pmsignal.h"
@@ -51,6 +53,12 @@
 
 #include "cdb/cdblink.h"
 #include "cdb/cdbvars.h"
+
+// Avoid trying to pull in cdbfts.h
+extern bool isQDMirroringPendingCatchup(void);
+extern void FtsQDMirroringCatchup(XLogRecPtr *flushedLocation);
+extern void FtsCheckReadyToSend(bool *ready, bool *haveNewCheckpointLocation, XLogRecPtr *newCheckpointLocation);
+extern void FtsQDMirroringNewCheckpointLoc(XLogRecPtr *newCheckpointLocation);
 
 /*
  *	Because O_DIRECT bypasses the kernel buffers, and because we never
@@ -510,13 +518,15 @@ static void ReadControlFile(void);
 static char *str_time(time_t tnow);
 static void issue_xlog_fsync(void);
 
-#ifdef WAL_DEBUG
 static void xlog_outrec(StringInfo buf, XLogRecord *record);
-#endif
 static bool read_backup_label(XLogRecPtr *checkPointLoc,
 				  XLogRecPtr *minRecoveryLoc);
 static void rm_redo_error_callback(void *arg);
 
+static void XLogQDMirrorSend(int startidx, int npages, TimeLineID timeLineID, uint32 logId, uint32 logSeg, uint32 logOff);
+static bool XLogCatchupQDSegment(uint32 logId, uint32 seg, uint32 offset, uint32 end);
+
+static void CloseReadRecord(void);
 
 /*
  * Insert an XLOG record having the specified RMID and info bytes,
@@ -984,6 +994,22 @@ begin:;
 		pfree(buf.data);
 	}
 #endif
+	if (Debug_print_qd_mirroring)
+	{
+		StringInfoData buf;
+
+		initStringInfo(&buf);
+		appendStringInfo(&buf, "INSERT @ %s: ",
+						 XLogLocationToString(&RecPtr));
+		xlog_outrec(&buf, record);
+		if (rdata->data != NULL)
+		{
+			appendStringInfo(&buf, " - ");
+			RmgrTable[record->xl_rmid].rm_desc(&buf, record->xl_info, rdata->data);
+		}
+		elog(LOG, "%s", buf.data);
+		pfree(buf.data);
+	}
 
 	/* Record begin of record in appropriate places */
 	if (!no_tran)
@@ -1488,6 +1514,347 @@ AdvanceXLInsertBuffer(bool new_segment)
 	return update_needed;
 }
 
+void XLogGetBuffer(int startidx, int npages, char **from, Size *nbytes)
+{
+	*from = XLogCtl->pages + startidx * (Size) XLOG_BLCKSZ;
+	*nbytes = npages * (Size) XLOG_BLCKSZ;
+}
+
+static bool
+XLogCatchupQDSegment(uint32 logId, uint32 seg, uint32 offset, uint32 end)
+{
+	char		fname[MAXPGPATH];
+	char		path[MAXPGPATH];
+	int			fd;
+	int			seekEnd;
+	char		buf[XLOG_BLCKSZ];	// UNDONE: Any issues with having this as a local?
+	int			remainingLen;
+	int			requestLen;
+	int			readLen;
+	char 		cmd[MAXFNAMELEN + 30];
+	bool		successful;
+	
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "catchup segment logId %u, seg %u, offset 0x%X, end 0x%X",
+		 logId, seg, offset, end);
+	Assert(offset < end);
+
+	XLogFileName(fname, ThisTimeLineID, logId, seg);
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"formed '%s' for time-line %u, log %u, seg %u",
+		 fname, ThisTimeLineID, logId, seg);
+    if (snprintf(path, MAXPGPATH, "%s/%s", XLOGDIR, fname) >= MAXPGPATH)
+	{
+		elog(ERROR, "QDSYNC: could not generate xlog filename (%s/%s)", XLOGDIR, fname);
+	}
+
+	fd = BasicOpenFile(path, O_RDONLY | PG_BINARY, 0);
+	if (fd < 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+		   errmsg("could not open file \"%s\" (log file %u, segment %u): %m",
+				  path, logId, seg)));
+
+	if (end == -1)
+	{
+		/*
+		 * Determine the end.
+		 */
+		seekEnd = lseek(fd, 0, SEEK_END);
+		if (seekEnd < 0)
+			ereport(ERROR,
+					(errcode_for_file_access(),
+			   errmsg("could not seek to end of file \"%s\" (log file %u, segment %u): %m",
+					  path, logId, seg)));
+		end = seekEnd;
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"determined end of \"%s\" to be 0x%X",
+			 path, end);
+	}
+
+	if (lseek(fd, (off_t) offset, SEEK_SET) < 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+		   errmsg("could not seek to offset %u file \"%s\" (log file %u, segment %u): %m",
+				  offset, path, logId, seg)));
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"seek to offset 0x%X in file \"%s\"",
+		 offset, path);
+
+	while(true)
+	{
+		remainingLen = end - offset;
+		if (remainingLen == 0)
+			break;
+
+		if (remainingLen < XLOG_BLCKSZ)
+			requestLen = end - offset;
+		else
+			requestLen = XLOG_BLCKSZ;
+		
+		readLen = read(fd, buf, requestLen);
+        if (readLen == -1)
+        {
+			ereport(ERROR,
+					(errcode_for_file_access(),
+			   errmsg("could not read at offset %u file \"%s\" (log file %u, segment %u): %m",
+					  offset, path, logId, seg)));
+        }
+		if (readLen != requestLen)
+		{
+			elog(ERROR,"XLogCatchupQDSegment: short read (request %d, actual %d)",
+				 requestLen, readLen);
+		}
+
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "succesfully read buffer at 0x%X for length 0x%X",
+			 offset, readLen);
+
+        if (snprintf(cmd, sizeof(cmd), "xlog %d %d %d %d", 
+			         logId, seg, offset, requestLen) >= sizeof(cmd))
+		{
+            elog(ERROR, "XLogCatchupQDSegment: error formatting command to mirror 'xlog %d %d %d %d' (insufficient space)", logId, seg, offset, requestLen);
+		}
+		
+        successful = write_qd_sync(cmd, buf, requestLen);
+		if (!successful)
+			return false;
+		
+		offset += requestLen;
+	}
+
+	close(fd);
+
+	return true;
+}
+
+/*
+ * Send primary XLOG to standby master to catch it up.
+ */
+bool
+XLogCatchupQDMirror(XLogRecPtr *standbyLocation, XLogRecPtr *flushedLocation)
+{
+	uint32		standbyLogId;
+	uint32		standbySeg;
+	uint32		flushedLogId;
+	uint32		flushedSeg;
+	uint32		logId;
+	uint32		seg;
+	uint32		offset;
+	uint32		end;
+	bool        successful;
+
+	Assert(XLByteLT(*standbyLocation, *flushedLocation));
+	XLByteToSeg(*standbyLocation, standbyLogId, standbySeg);
+	XLByteToSeg(*flushedLocation, flushedLogId, flushedSeg);
+
+	logId = standbyLogId;
+	seg = standbySeg;
+	while(true)
+	{
+		if (logId == standbyLogId && seg == standbySeg)
+		{
+			offset = standbyLocation->xrecoff % XLogSegSize;
+
+			/* Round down to block */
+			offset = (offset / XLOG_BLCKSZ) * XLOG_BLCKSZ;
+		}
+		else
+			offset = 0;
+
+		if (logId == flushedLogId && seg == flushedSeg)
+			end = flushedLocation->xrecoff % XLogSegSize;
+		else
+			end = -1;
+
+		successful = XLogCatchupQDSegment(logId, seg, offset, end);
+		if (!successful)
+			return false;
+
+		if (logId == flushedLogId && seg == flushedSeg)
+			break;
+
+		NextLogSeg(logId, seg);
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "next logId %u seg %u", logId, seg);
+	}
+
+	return true;
+}
+
+bool
+XLogQDMirrorQueuePositionToEnd(int *serialNumber)
+{
+	WalSendRequest walSendRequest;
+	bool serverAcceptingNewRequests;
+
+	MemSet(&walSendRequest, 0, sizeof(walSendRequest));
+	walSendRequest.command = PositionToEnd;
+
+	serverAcceptingNewRequests = ProcSendRequest(
+									PGPROC_REQUEST_WALSEND, 
+									&walSendRequest, sizeof(walSendRequest), 
+									/* responseNeeded */ true,
+									serialNumber);
+
+	if (serverAcceptingNewRequests)
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), 
+		      "queued PositionToEnd with serial number %d",
+		     *serialNumber);
+
+	return serverAcceptingNewRequests;
+}
+
+bool
+XLogQDMirrorWaitForResponse(int serialNumber)
+{
+	WalSendResponse walSendResponse;
+	PGPROCGetRequestResult result;
+	
+	while(true)
+	{
+		result = ProcWaitForResponse(
+							PGPROC_REQUEST_WALSEND, 
+							serialNumber, 
+							&walSendResponse, sizeof(walSendResponse));
+		if (result == PGPROC_GETRESPONSE_OK)
+		{
+			break;
+		}
+		else if (result == PGPROC_GETRESPONSE_INTERRUPT)
+		{
+//			elog(LOG,"QD Mirror Send: interrupt bubbled up...");
+//			CHECK_FOR_INTERRUPTS();
+		}
+		else if (result == PGPROC_GETRESPONSE_QUEUEDISABLED)
+		{
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"server %s not accepting requests",
+				 ProcRequestTypeToString(PGPROC_REQUEST_WALSEND));
+			return false;
+		}
+		else
+		{
+			elog(FATAL,"unexpected result %d", (int)result);
+		}
+	}
+	
+	if (!walSendResponse.ok)
+		elog(ERROR,"response returned not OK");
+	else
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
+		      "response returned OK for serial number %d",
+		      serialNumber);
+
+	return true;
+}
+
+bool
+XLogQDMirrorQueueCatchup(XLogRecPtr *flushedLocation, int *serialNumber)
+{
+	WalSendRequest walSendRequest;
+	bool serverAcceptingNewRequests;
+
+	Assert(flushedLocation != NULL);
+
+	MemSet(&walSendRequest, 0, sizeof(walSendRequest));
+	walSendRequest.command = Catchup;
+	walSendRequest.flushedLocation = *flushedLocation;
+
+	serverAcceptingNewRequests = ProcSendRequest(
+									PGPROC_REQUEST_WALSEND, 
+									&walSendRequest, sizeof(walSendRequest), 
+									/* responseNeeded */ true,
+									serialNumber);
+
+	if (serverAcceptingNewRequests)
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), 
+		      "queued Catchup with serial number %d",
+		     *serialNumber);
+	
+	return serverAcceptingNewRequests;
+}
+
+static void
+XLogQDMirrorSend(int startidx, int npages, TimeLineID timeLineID, uint32 logId, uint32 logSeg, uint32 logOff)
+{
+	bool ready;
+	bool haveNewCheckpointLocation;
+	XLogRecPtr newCheckpointLocation;
+	WalSendRequest walSendRequest;
+	WalSendResponse walSendResponse;
+	int serialNumber;
+	bool serverAcceptingNewRequests;
+	PGPROCGetRequestResult result;
+
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"QD mirroring WriteWalPages parameters startidx %d, npages %d, timeLineID %d, logId %u, logSeg %u, logOff %X",
+		 startidx, npages, timeLineID, logId, logSeg, logOff);
+
+	FtsCheckReadyToSend(&ready, 
+		                &haveNewCheckpointLocation, &newCheckpointLocation);
+	if (!ready)
+	{
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"Skipping QD mirroring -- not enabled");
+		return;
+	}
+//	if (shmDtmStarted == NULL || !*shmDtmStarted)
+//	{
+//		elog(LOG,"XLogQDMirrorSend: Skipping... DTM not started");
+//		return;
+//	}
+	walSendRequest.command = WriteWalPages;
+	walSendRequest.startidx = startidx;
+	walSendRequest.npages = npages;
+	walSendRequest.timeLineID = timeLineID;
+	walSendRequest.logId = logId;
+	walSendRequest.logSeg = logSeg;
+	walSendRequest.logOff = logOff;
+	walSendRequest.haveNewCheckpointLocation = haveNewCheckpointLocation;
+	walSendRequest.newCheckpointLocation = newCheckpointLocation;
+
+	serverAcceptingNewRequests = ProcSendRequest(
+									PGPROC_REQUEST_WALSEND, 
+									&walSendRequest, sizeof(walSendRequest),
+									/* responseNeeded */ true,
+									&serialNumber);
+	if (!serverAcceptingNewRequests)
+	{
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "WAL Send server not accepting new requests");
+		return;
+	}
+
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), 
+		 "queued WriteWalRequest on WAL Send server with serial number %d",
+		 serialNumber);
+	
+	while(true)
+	{
+		result = ProcWaitForResponse(
+							PGPROC_REQUEST_WALSEND, 
+							serialNumber, 
+							&walSendResponse, sizeof(walSendResponse));
+		if (result == PGPROC_GETRESPONSE_OK)
+		{
+			break;
+		}
+		else if (result == PGPROC_GETRESPONSE_INTERRUPT)
+		{
+//			elog(LOG,"QD Mirror Send: interrupt bubbled up...");
+//			CHECK_FOR_INTERRUPTS();
+		}
+		else if (result == PGPROC_GETRESPONSE_QUEUEDISABLED)
+		{
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"WAL Send server %s not accepting requests",
+				 ProcRequestTypeToString(PGPROC_REQUEST_WALSEND));
+			return;
+		}
+		else
+		{
+			elog(FATAL,"unexpected result %d", (int)result);
+		}
+	}
+	
+	if (!walSendResponse.ok)
+		elog(ERROR,"WriteWalPages returned not OK");
+	else
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
+		     "WriteWalPages returned OK for serial number %d",
+		     serialNumber);
+}
+
 /*
  * Write and/or fsync the log at least as far as WriteRqst indicates.
  *
@@ -1623,6 +1990,8 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible, bool xlog_switch)
 						if (XLOG_DEBUG)
 							elog(LOG, "time for a checkpoint, signaling bgwriter");
 #endif
+						if (Debug_print_qd_mirroring)
+							elog(LOG, "time for a checkpoint, signaling bgwriter");
 						RequestCheckpoint(false, true);
 					}
 				}
@@ -1698,24 +2067,13 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible, bool xlog_switch)
 	         * if qd mirroring is on, sync the xlog write to mirrorred qd.
 	         * ***********************************************************
 	         */
-	        if (isQDMirroringEnabled())
-	        {
-				char cmd[MAXFNAMELEN + 30], tmpfname[MAXFNAMELEN];
-    
-				XLogFileName(tmpfname, ThisTimeLineID, openLogId, openLogSeg);
-
-				/* 
-				   elog(LOG, "**XLogWrite- %s offset: %d   len: %d",
-				   tmpfname, openLogOff, nbytes);
-				*/
-				if (snprintf(cmd, sizeof(cmd),"xlog %s %d %d", tmpfname, openLogOff, (int)nbytes) >= sizeof(cmd))
-					ereport(ERROR,
-							(errcode_for_file_access(),
-							 errmsg("could not create cmd for qd mirror \"%s\"", tmpfname)));
-				
-				write_qd_sync(cmd, from, nbytes);
-	        }
-
+			XLogQDMirrorSend(
+						startidx,
+						npages,
+						ThisTimeLineID,
+						openLogId,
+						openLogSeg,
+						openLogOff);
 
 			/* Update state for write */
 			openLogOff += nbytes;
@@ -1736,11 +2094,18 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible, bool xlog_switch)
 			 * segment is ready to copy to archival storage, and to update the
 			 * timer for archive_timeout.
 			 */
-			if (finishing_seg || (xlog_switch && last_iteration))
+			if (finishing_seg || (xlog_switch && last_iteration) ||
+				isQDMirroringPendingCatchup())
 			{
 				issue_xlog_fsync();
 				LogwrtResult.Flush = LogwrtResult.Write;		/* end of page */
 
+				if (isQDMirroringPendingCatchup())
+				{
+					elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"synchronize rendezvous (write and flushed = %s)",
+						 XLogLocationToString(&LogwrtResult.Flush));
+					FtsQDMirroringCatchup(&LogwrtResult.Flush);
+				}
 				if (XLogArchivingActive())
 					XLogArchiveNotifySeg(openLogId, openLogSeg);
 
@@ -1829,6 +2194,12 @@ XLogFlush(XLogRecPtr record)
 	/* Disabled during REDO */
 	if (InRedo)
 		return;
+
+	if (Debug_print_qd_mirroring)
+		elog(LOG, "xlog flush request %s; write %s; flush %s",
+			 XLogLocationToString(&record),
+			 XLogLocationToString2(&LogwrtResult.Write),
+			 XLogLocationToString3(&LogwrtResult.Flush));
 
 	/* Quick exit if already known flushed */
 	if (XLByteLE(record, LogwrtResult.Flush))
@@ -2350,6 +2721,8 @@ XLogFileRead(uint32 log, uint32 seg, int emode)
 		else
 			XLogFilePath(path, tli, log, seg);
 
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"opening \"%s\" for reading (log %u, seg %u)",
+			 path, log, seg);
 		fd = BasicOpenFile(path, O_RDONLY | PG_BINARY, 0);
 		if (fd >= 0)
 		{
@@ -2742,6 +3115,108 @@ MoveOfflineLogs(uint32 log, uint32 seg, XLogRecPtr endptr,
 }
 
 /*
+ * Remove log files older or equal to passed log/seg# on the standby
+ *
+ * This is a modified version of MoveOfflineLogs.
+ *
+ */
+void
+XLogRemoveStandbyLogs(uint32 log, uint32 seg, int *nsegsremoved)
+{
+	DIR		   *xldir;
+	struct dirent *xlde;
+	char		lastoff[MAXFNAMELEN];
+	char		path[MAXPGPATH];
+
+	Assert(nsegsremoved != NULL);
+
+	*nsegsremoved = 0;
+
+	xldir = AllocateDir(XLOGDIR);
+	if (xldir == NULL)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("QDSYNC: could not open standby transaction log directory \"%s\": %m",
+						XLOGDIR)));
+
+	XLogFileName(lastoff, ThisTimeLineID, log, seg);
+
+	while ((xlde = ReadDir(xldir, XLOGDIR)) != NULL)
+	{
+		/*
+		 * We ignore the timeline part of the XLOG segment identifiers in
+		 * deciding whether a segment is still needed.	This ensures that we
+		 * won't prematurely remove a segment from a parent timeline. We could
+		 * probably be a little more proactive about removing segments of
+		 * non-parent timelines, but that would be a whole lot more
+		 * complicated.
+		 *
+		 * We use the alphanumeric sorting property of the filenames to decide
+		 * which ones are earlier than the lastoff segment.
+		 */
+		if (strlen(xlde->d_name) == 24 &&
+			strspn(xlde->d_name, "0123456789ABCDEF") == 24 &&
+			strcmp(xlde->d_name + 8, lastoff + 8) <= 0)
+		{
+			snprintf(path, MAXPGPATH, XLOGDIR "/%s", xlde->d_name);
+			
+			if (unlink(path) < 0)
+			{
+				ereport(WARNING,
+						(errcode_for_file_access(),
+						 errmsg("QDSYNC: could not unlink standby transaction log file \"%s\": %m", 
+						        xlde->d_name)));
+
+			}
+			else
+			{
+				ereport(LOG,
+						(errmsg("QDSYNC: removed standby transaction log file \"%s\"",
+								xlde->d_name)));
+				(*nsegsremoved)++;
+			}
+		}
+	}
+
+	FreeDir(xldir);
+}
+
+
+/*
+ * Print log files in the system log.
+ *
+ */
+void
+XLogPrintLogNames(void)
+{
+	DIR		   *xldir;
+	struct dirent *xlde;
+	int count = 0;
+
+	xldir = AllocateDir(XLOGDIR);
+	if (xldir == NULL)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not open transaction log directory \"%s\": %m",
+						XLOGDIR)));
+
+	while ((xlde = ReadDir(xldir, XLOGDIR)) != NULL)
+	{
+		if (strlen(xlde->d_name) == 24 &&
+			strspn(xlde->d_name, "0123456789ABCDEF") == 24)
+		{
+			elog(LOG,"found log file \"%s\"",
+				 xlde->d_name);
+			count++;
+		}
+	}
+
+	FreeDir(xldir);
+
+	elog(LOG,"%d files found", count);
+}
+
+/*
  * Remove previous backup history files.  This also retries creation of
  * .ready files for any backup history files for which XLogArchiveNotify
  * failed earlier.
@@ -2934,7 +3409,8 @@ ReadRecord(XLogRecPtr *RecPtr, int emode)
 	uint32		targetPageOff;
 	uint32		targetRecOff;
 	uint32		pageHeaderSize;
-
+	uint32		actual_len;
+	
 	if (readBuf == NULL)
 	{
 		/*
@@ -3198,12 +3674,23 @@ got_record:;
 					goto next_record_is_invalid;
 				readOff = 0;
 			}
-			if (read(readFile, readBuf, XLOG_BLCKSZ) != XLOG_BLCKSZ)
+			Assert(readFile >= 0);
+			actual_len = read(readFile, readBuf, XLOG_BLCKSZ);
+			if (actual_len < 0)
 			{
+				elog(LOG,"read failed #3 offset 0x%X", readOff);
+			
 				ereport(emode,
 						(errcode_for_file_access(),
 						 errmsg("could not read from log file %u, segment %u, offset %u: %m",
 								readId, readSeg, readOff)));
+				goto next_record_is_invalid;
+			}
+			if (actual_len != XLOG_BLCKSZ)
+			{
+				ereport(emode,
+						 (errmsg("short read for log file %u, segment %u, offset %u (expected %d, found %d)",
+								readId, readSeg, readOff,XLOG_BLCKSZ,actual_len)));
 				goto next_record_is_invalid;
 			}
 			if (!ValidXLOGHeader((XLogPageHeader) readBuf, emode))
@@ -3291,6 +3778,27 @@ next_record_is_invalid:;
 	readFile = -1;
 	nextRecord = NULL;
 	return NULL;
+}
+
+void
+CloseReadRecord(void)
+{
+	if (readFile >= 0)
+	{
+		close(readFile);
+		readFile = -1;
+	}
+	else
+		Assert(readFile == -1);
+	
+	readId = 0;
+	readSeg = 0;
+	nextRecord = NULL;
+
+	memset(&ReadRecPtr, 0, sizeof(XLogRecPtr));
+	memset(&EndRecPtr, 0, sizeof(XLogRecPtr));
+
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"close read record");
 }
 
 /*
@@ -4829,8 +5337,8 @@ StartupXLOG(void)
 		 */
 		checkPointLoc = ControlFile->checkPoint;
 
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),"StartupXLOG going to call ReadCheckpointRecord(checkPointLoc, 1) at %X/%X",
-			 checkPointLoc.xlogid, checkPointLoc.xrecoff);
+		elog((Debug_print_full_dtm ? LOG : DEBUG5),"StartupXLOG going to call ReadCheckpointRecord(checkPointLoc, 1) at %s",
+			 XLogLocationToString(&checkPointLoc));
 		record = ReadCheckpointRecord(checkPointLoc, 1);
 		if (record != NULL)
 		{
@@ -4841,8 +5349,8 @@ StartupXLOG(void)
 		else
 		{
 			checkPointLoc = ControlFile->prevCheckPoint;
-			elog((Debug_print_full_dtm ? LOG : DEBUG5),"StartupXLOG going to call ReadCheckpointRecord(checkPointLoc, 2) at %X/%X",
-				 checkPointLoc.xlogid, checkPointLoc.xrecoff);
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),"StartupXLOG going to call ReadCheckpointRecord(checkPointLoc, 2) at %s",
+				 XLogLocationToString(&checkPointLoc));
 			record = ReadCheckpointRecord(checkPointLoc, 2);
 			if (record != NULL)
 			{
@@ -5035,6 +5543,22 @@ StartupXLOG(void)
 					pfree(buf.data);
 				}
 #endif
+				if (Debug_print_qd_mirroring)
+				{
+					StringInfoData buf;
+
+					initStringInfo(&buf);
+					appendStringInfo(&buf, "REDO @ %s; LSN %s: ",
+									 XLogLocationToString(&ReadRecPtr),
+									 XLogLocationToString2(&EndRecPtr));
+					xlog_outrec(&buf, record);
+					appendStringInfo(&buf, " - ");
+					RmgrTable[record->xl_rmid].rm_desc(&buf,
+													   record->xl_info,
+													 XLogRecGetData(record));
+					elog(LOG, "%s", buf.data);
+					pfree(buf.data);
+				}
 
 				/*
 				 * Have we reached our recovery target?
@@ -5099,6 +5623,12 @@ StartupXLOG(void)
 	EndOfLog = EndRecPtr;
 	XLByteToPrevSeg(EndOfLog, endLogId, endLogSeg);
 
+	if (Debug_print_qd_mirroring)
+	{
+		elog(LOG,"EndOfLog %s",
+			 XLogLocationToString(&EndOfLog));
+	}
+	
 	/*
 	 * Complain if we did not roll forward far enough to render the backup
 	 * dump consistent.
@@ -5299,6 +5829,382 @@ StartupXLOG(void)
 }
 
 /*
+ * Determine the recovery redo start location from the pg_control file.
+ *
+ *    1) Only uses information from the pg_control file.
+ *    2) This simplified routine does not examine the offline recovery file or
+ *       the online backup labels, etc.
+ *    3) This routine is a heavily reduced version of StartXLOG.
+ *    4) IMPORTANT NOTE: This routine sets global variables that establish
+ *       the timeline context necessary to do ReadRecord.  The ThisTimeLineID
+ *       and expectedTLIs globals are set.
+ *
+ */
+void
+XLogGetRecoveryStart(XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint)
+{
+	CheckPoint	checkPoint;
+	XLogRecPtr	checkPointLoc;
+	XLogRecord *record;
+
+	Assert(redoCheckPointLoc != NULL);
+	Assert(redoCheckPoint != NULL);
+
+	ereport(LOG,
+			(errmsg("QDSYNC: determine restart location")));
+	
+	CloseReadRecord();
+
+	if (Debug_print_qd_mirroring)
+	{
+		XLogPrintLogNames();
+	}
+	
+	/*
+	 * Read control file and verify XLOG status looks valid.
+	 *
+	 */
+	ReadControlFile();
+
+	if (ControlFile->logSeg == 0 ||
+		ControlFile->state < DB_SHUTDOWNED ||
+		ControlFile->state > DB_IN_PRODUCTION ||
+		!XRecOffIsValid(ControlFile->checkPoint.xrecoff))
+		ereport(FATAL,
+				(errmsg("QDSYNC: control file contains invalid data")));
+
+	/*
+	 * Get the last valid checkpoint record.  If the latest one according
+	 * to pg_control is broken, try the next-to-last one.
+	 */
+	checkPointLoc = ControlFile->checkPoint;
+	ThisTimeLineID = ControlFile->checkPointCopy.ThisTimeLineID;
+	
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"ControlFile with ThisTimeLineID %u, checkpoint location %s",
+		 ThisTimeLineID, 
+		 XLogLocationToString(&checkPointLoc));
+	
+	/*
+	 * Check for recovery control file, and if so set up state for offline
+	 * recovery
+	 */
+	readRecoveryCommandFile();
+
+	/* Now we can determine the list of expected TLIs */
+	expectedTLIs = readTimeLineHistory(ThisTimeLineID);
+
+	record = ReadCheckpointRecord(checkPointLoc, 1);
+	if (record != NULL)
+	{
+		ereport(LOG,
+				(errmsg("QDSYNC: checkpoint record is at %s (LSN %s)",
+						XLogLocationToString(&checkPointLoc),
+						XLogLocationToString2(&EndRecPtr))));
+	}
+	else
+	{
+		checkPointLoc = ControlFile->prevCheckPoint;
+		record = ReadCheckpointRecord(checkPointLoc, 2);
+		if (record != NULL)
+		{
+			ereport(LOG,
+					(errmsg("QDSYNC: using previous checkpoint record at %s (LSN %s)",
+						    XLogLocationToString(&checkPointLoc),
+						    XLogLocationToString2(&EndRecPtr))));
+		}
+		else
+			ereport(ERROR,
+				 (errmsg("QDSYNC: could not locate a valid checkpoint record")));
+	}
+
+	memcpy(&checkPoint, XLogRecGetData(record), sizeof(CheckPoint));
+
+	if (XLByteEQ(checkPointLoc,checkPoint.redo))
+	{
+		ereport(LOG,
+		 (errmsg("QDSYNC: redo start is the checkpoint record")));
+	}
+ 	else if (XLByteLT(checkPointLoc, checkPoint.redo))
+	{
+		ereport(ERROR,
+				(errmsg("QDSYNC: invalid redo in checkpoint record")));
+	}
+	else
+	{
+		XLogRecord *record;
+		
+		record = ReadRecord(&checkPoint.redo, LOG);
+		if (record == NULL)
+		{
+			ereport(ERROR,
+			 (errmsg("QDSYNC: first redo record before checkpoint not found at %s",
+					 XLogLocationToString(&checkPoint.redo))));
+		}
+		
+		ereport(LOG,
+		 (errmsg("QDSYNC: first redo record before the checkpoint at %s (LSN %s)",
+				 XLogLocationToString(&checkPoint.redo),
+				 XLogLocationToString2(&EndRecPtr))));
+	}
+	
+	CloseReadRecord();
+	
+	*redoCheckPointLoc = checkPointLoc;
+	*redoCheckPoint = checkPoint;
+
+}
+
+/*
+ * Scan the XLOG to determine the end of the XLOG.
+ *
+ */
+void
+XLogScanForEndLocation(XLogRecPtr *startLoc, XLogRecPtr *endLoc)
+{
+	XLogRecord *record;
+	XLogRecPtr	LastRec;
+	
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
+		 "scan with ThisTimeLineID %u, location %s",
+		 ThisTimeLineID, 
+		 XLogLocationToString(startLoc));
+	
+	CloseReadRecord();
+
+	record = ReadRecord(startLoc, DEBUG1);
+	if (record == NULL)
+	{
+		elog(ERROR,"QDSYNC: couldn't read start location %s",
+			 XLogLocationToString(startLoc));
+	}
+	
+	do
+	{
+		LastRec = ReadRecPtr;
+
+		record = ReadRecord(NULL, DEBUG1);
+	} while (record != NULL);
+
+	record = ReadRecord(&LastRec, ERROR);
+	*endLoc = EndRecPtr;
+	
+	CloseReadRecord();
+}
+
+/*
+ * Recover the database for a specified range of the XLOG.
+ *
+ * The last record position should be a checkpoint record.
+ *
+ */
+void
+XLogRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoint, XLogRecPtr *lastRecordLoc)
+{
+	XLogRecord *record;
+	StringInfoData buf;
+	int rmid;
+	ErrorContextCallback errcontext;
+	XLogRecPtr prevReadLoc;
+
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
+		 "recover range with ThisTimeLineID %u, checkpoint.redo %s, last record location %s",
+		 ThisTimeLineID, 
+		 XLogLocationToString(&redoCheckPoint->redo),
+		 XLogLocationToString2(lastRecordLoc));
+
+	if (XLByteLE(*lastRecordLoc,redoCheckPoint->redo))
+	{
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"QDSYNC: nothing to redo");
+		return;
+	}
+	
+	CloseReadRecord();
+
+	/*
+	 * Copy code from StartupXLOG necessary to do recovery.
+	 */
+	ereport((Debug_print_qd_mirroring ? LOG : DEBUG1),
+			(errmsg("QDSYNC: next transaction ID: %u/%u; next OID: %u",
+					redoCheckPoint->nextXidEpoch, redoCheckPoint->nextXid,
+					redoCheckPoint->nextOid)));
+	ereport((Debug_print_qd_mirroring ? LOG : DEBUG1),
+			(errmsg("QDSYNC: next MultiXactId: %u; next MultiXactOffset: %u",
+					redoCheckPoint->nextMulti, redoCheckPoint->nextMultiOffset)));
+	if (!TransactionIdIsNormal(redoCheckPoint->nextXid))
+		ereport(PANIC,
+				(errmsg("QDSYNC: invalid next transaction ID")));
+
+	ShmemVariableCache->nextXid = redoCheckPoint->nextXid;
+	ShmemVariableCache->nextOid = redoCheckPoint->nextOid;
+	ShmemVariableCache->oidCount = 0;
+	MultiXactSetNextMXact(redoCheckPoint->nextMulti, redoCheckPoint->nextMultiOffset);
+
+	/* Start up the recovery environment */
+	XLogInitRelationCache();
+
+	for (rmid = 0; rmid <= RM_MAX_ID; rmid++)
+	{
+		if (RmgrTable[rmid].rm_startup != NULL)
+			RmgrTable[rmid].rm_startup();
+	}
+
+	RedoRecPtr = redoCheckPoint->redo;
+
+	/*
+	 * Find the first record that logically follows the checkpoint --- it
+	 * might physically precede it, though.
+	 */
+	if (XLByteLT(redoCheckPoint->redo, *redoCheckpointLoc))
+	{
+		/* back up to find the record */
+		record = ReadRecord(&(redoCheckPoint->redo), DEBUG1);
+		if (record == NULL)
+		{
+			/*
+			 * Why don't we have the redo record?
+			 */
+			elog(ERROR,"QDSYNC: could not find first redo record %s",
+			     XLogLocationToString(&redoCheckPoint->redo));
+		}
+		ereport(LOG,
+				(errmsg("QDSYNC: redo starts at %s with the first redo record before the checkpoint",
+						XLogLocationToString(&ReadRecPtr))));
+	}
+	else
+	{
+		/* just have to read next record after CheckPoint */
+		record = ReadRecord(redoCheckpointLoc, DEBUG1);
+		if (record == NULL)
+		{
+			/*
+			 * Why couldn't we find the checkpoint record?
+			 */
+			elog(ERROR,"QDSYNC: could not find the checkpoint record %s",
+			     XLogLocationToString(redoCheckpointLoc));
+		}
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
+			 "QDSYNC: found the checkpoint record %s",
+		     XLogLocationToString(redoCheckpointLoc));
+		record = ReadRecord(NULL, DEBUG1);
+		if (record == NULL)
+		{
+			/*
+			 * We hit end of WAL first???
+			 */
+	
+			CloseReadRecord();
+			
+			elog(LOG,"QDSYNC: no records to process after checkpoint at %s",
+				 XLogLocationToString(redoCheckpointLoc));
+			return;
+		}
+		ereport(LOG,
+				(errmsg("QDSYNC: redo starts at %s with the first record after the checkpoint",
+						XLogLocationToString(&ReadRecPtr))));
+	}
+
+	InRecovery = true;
+	InRedo = true;
+	while (true)
+	{
+		if (XLByteEQ(*lastRecordLoc,ReadRecPtr))
+			break;
+		if (XLByteLT(*lastRecordLoc,ReadRecPtr))
+		{
+			/*
+			 * We shouldn't have been able to read past the specified last
+			 * record...
+			 */
+			elog(ERROR,"QDSYNC: read past specified last record location %s (record location %s)",
+			     XLogLocationToString(lastRecordLoc),
+			     XLogLocationToString2(&ReadRecPtr));
+		}
+		
+		if (Debug_print_qd_mirroring)
+		{
+			initStringInfo(&buf);
+			appendStringInfo(&buf, "apply @ %s; LSN %s: ",
+							 XLogLocationToString(&ReadRecPtr),
+							 XLogLocationToString2(&EndRecPtr));
+			xlog_outrec(&buf, record);
+			appendStringInfo(&buf, " - ");
+			RmgrTable[record->xl_rmid].rm_desc(&buf,
+											   record->xl_info,
+											   XLogRecGetData(record));
+			elog(LOG, "%s", buf.data);
+			pfree(buf.data);
+		}
+		
+		/* Setup error traceback support for ereport() */
+		errcontext.callback = rm_redo_error_callback;
+		errcontext.arg = (void *) record;
+		errcontext.previous = error_context_stack;
+		error_context_stack = &errcontext;
+
+		/* nextXid must be beyond record's xid */
+		if (TransactionIdFollowsOrEquals(record->xl_xid,
+										 ShmemVariableCache->nextXid))
+		{
+			ShmemVariableCache->nextXid = record->xl_xid;
+			TransactionIdAdvance(ShmemVariableCache->nextXid);
+		}
+
+		if (record->xl_info & XLR_BKP_BLOCK_MASK)
+			RestoreBkpBlocks(record, EndRecPtr);
+
+		RmgrTable[record->xl_rmid].rm_redo(EndRecPtr, record);
+
+		/* Pop the error context stack */
+		error_context_stack = errcontext.previous;
+
+		prevReadLoc = ReadRecPtr;
+		record = ReadRecord(NULL, DEBUG1);
+		if (record == NULL)
+		{
+			/*
+			 * We hit end of WAL first???
+			 */
+			elog(ERROR,"QDSYNC: hit end of WAL before finding %s (previous record %s)",
+			     XLogLocationToString(lastRecordLoc),
+			     XLogLocationToString2(&prevReadLoc));
+		}
+	}
+
+	InRedo = false;
+	InRecovery = false;
+	
+	/*
+	 * Allow resource managers to do any required cleanup.
+	 */
+	for (rmid = 0; rmid <= RM_MAX_ID; rmid++)
+	{
+		if (RmgrTable[rmid].rm_cleanup != NULL)
+			RmgrTable[rmid].rm_cleanup();
+	}
+
+	/*
+	 * Check to see if the XLOG sequence contained any unresolved
+	 * references to uninitialized pages.
+	 */
+	XLogCheckInvalidPages();
+
+	/*
+	 * Reset pgstat data, because it may be invalid after recovery.
+	 */
+	pgstat_reset_all();
+
+	/*
+	 * Close down recovery environment
+	 */
+	XLogCloseRelationCache();
+
+	CloseReadRecord();
+
+	ereport(LOG,
+			(errmsg("QDSYNC: finished redo pass")));
+}
+
+/*
  * Subroutine to try to fetch and validate a prior checkpoint record.
  *
  * whichChkpt identifies the checkpoint (merely for reporting purposes).
@@ -5337,6 +6243,8 @@ ReadCheckpointRecord(XLogRecPtr RecPtr, int whichChkpt)
 
 	if (record == NULL)
 	{
+	    elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"ReadCheckpointRecord call to ReadRecord at location %s returned no checkpoint #%d record",
+		     XLogLocationToString(&RecPtr), whichChkpt);
 		switch (whichChkpt)
 		{
 			case 1:
@@ -5764,6 +6672,11 @@ CreateCheckPoint(bool shutdown, bool force)
 	 * prior checkpoint's earliest info.
 	 */
 	XLByteToSeg(ControlFile->checkPointCopy.redo, _logId, _logSeg);
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
+		 "CreateCheckPoint: previous checkpoint's earliest info (copy redo location %s, previous checkpoint location %s)",
+		 XLogLocationToString(&ControlFile->checkPointCopy.redo),
+		 XLogLocationToString2(&ControlFile->prevCheckPoint));
+	FtsQDMirroringNewCheckpointLoc(&ControlFile->prevCheckPoint);
 
 	/*
 	 * Update the control file.
@@ -5861,7 +6774,7 @@ CheckPointGuts(XLogRecPtr checkPointRedo)
 static void
 RecoveryRestartPoint(const CheckPoint *checkPoint)
 {
-	int			elapsed_secs;
+//	int			elapsed_secs;
 	int			rmid;
 
 	/*
@@ -5873,9 +6786,11 @@ RecoveryRestartPoint(const CheckPoint *checkPoint)
 	 * Checking true elapsed time keeps us from doing restartpoints too often
 	 * while rapidly scanning large amounts of WAL.
 	 */
-	elapsed_secs = time(NULL) - ControlFile->time;
-	if (elapsed_secs < CheckPointTimeout / 2)
-		return;
+
+	// UNDONE: For now, turn this off!
+//	elapsed_secs = time(NULL) - ControlFile->time;
+//	if (elapsed_secs < CheckPointTimeout / 2)
+//		return;
 
 	/*
 	 * Is it safe to checkpoint?  We must ask each of the resource managers
@@ -5909,6 +6824,9 @@ RecoveryRestartPoint(const CheckPoint *checkPoint)
 	ereport(DEBUG2,
 			(errmsg("recovery restart point at %X/%X",
 					checkPoint->redo.xlogid, checkPoint->redo.xrecoff)));
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "RecoveryRestartPoint: checkpoint copy redo location %s, previous checkpoint location %s",
+		 XLogLocationToString(&ControlFile->checkPointCopy.redo),
+		 XLogLocationToString2(&ControlFile->prevCheckPoint));
 }
 
 /*
@@ -6095,8 +7013,6 @@ xlog_desc(StringInfo buf, uint8 xl_info, char *rec)
 		appendStringInfo(buf, "UNKNOWN");
 }
 
-#ifdef WAL_DEBUG
-
 static void
 xlog_outrec(StringInfo buf, XLogRecord *record)
 {
@@ -6114,7 +7030,6 @@ xlog_outrec(StringInfo buf, XLogRecord *record)
 
 	appendStringInfo(buf, ": %s", RmgrTable[record->xl_rmid].rm_name);
 }
-#endif   /* WAL_DEBUG */
 
 
 /*
@@ -6884,50 +7799,45 @@ rm_redo_error_callback(void *arg)
 	pfree(buf.data);
 }
 
-bool
-resync_xlog_to_mirror(void)
+static char *
+XLogLocationToBuffer(char *buffer, XLogRecPtr *loc)
 {
-#define blocksz  (64 * 1024) 
-    int			readlen, xlogfilefd, offset=0;
-    char		path[MAXPGPATH], buf[blocksz], tmpfname[MAXFNAMELEN];
-        
-    XLogFileName(tmpfname, ThisTimeLineID, openLogId, openLogSeg);
-    if (snprintf(path, MAXPGPATH, "%s/%s", XLOGDIR, tmpfname) >= MAXPGPATH)
+
+	if (Debug_print_qd_mirroring)
 	{
-		elog(LOG, "QDSYNC: could not generate xlog filename (%s/%s)", XLOGDIR, tmpfname);
-		return false;
+		uint32 seg = loc->xrecoff / XLogSegSize;
+		uint32 offset = loc->xrecoff % XLogSegSize;
+		sprintf(buffer,
+			    "%X/%X (==> seg %d, offset 0x%X)",
+			    loc->xlogid, loc->xrecoff,
+			    seg, offset);
 	}
-    xlogfilefd = open(path, O_RDONLY, 0);
-    if (xlogfilefd < 0)
-    {
-        elog(LOG, "QDSYNC: error opening xlog file %s", tmpfname);
-        return false;
-    }
-    
-    lseek(xlogfilefd, offset, SEEK_SET);
-    while ((readlen = read(xlogfilefd, buf, blocksz)) != 0)
-    {
-		char cmd[MAXFNAMELEN + 30];
+	else
+		sprintf(buffer,
+			    "%X/%X",
+			    loc->xlogid, loc->xrecoff);
 
-        if (readlen == -1)
-        {
-            elog(LOG, "QDSYNC: error reading xlog file %s at offset %d", tmpfname, offset);
-            return false;
-        }
+	return buffer;
+}
 
-        elog(DEBUG1, "xlog resync -   offset: %d   len: %d",
-            offset, readlen);
+static char xlogLocationBuffer[50];
+static char xlogLocationBuffer2[50];
+static char xlogLocationBuffer3[50];
 
-        if (snprintf(cmd, sizeof(cmd), "xlog %s %d %d resync", tmpfname, offset, readlen) >= sizeof(cmd))
-		{
-            elog(LOG, "QDSYNC: error formatting command to mirror 'xlog %s %d %d resync' (insufficient space)", tmpfname, offset, readlen);
-            return false;
-		}
-        write_qd_sync(cmd, buf, readlen);
-        offset += readlen;
-    }
-    
-    close(xlogfilefd);
-    /* finished successfully */
-    return true;
+char *
+XLogLocationToString(XLogRecPtr *loc)
+{
+	return XLogLocationToBuffer(xlogLocationBuffer, loc);
+}
+
+char *
+XLogLocationToString2(XLogRecPtr *loc)
+{
+	return XLogLocationToBuffer(xlogLocationBuffer2, loc);
+}
+
+char *
+XLogLocationToString3(XLogRecPtr *loc)
+{
+	return XLogLocationToBuffer(xlogLocationBuffer3, loc);
 }

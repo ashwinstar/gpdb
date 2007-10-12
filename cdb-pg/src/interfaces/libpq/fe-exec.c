@@ -163,10 +163,13 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 	result->curOffset = 0;
 	result->spaceLeft = 0;
     result->cdbstats = NULL;            /*CDB*/
-    result->QEWriter_HaveInfo = 0;
+    result->QEWriter_HaveInfo = false;
     result->QEWriter_DistributedTransactionId = 0;
     result->QEWriter_CommandId = 0;
-    result->QEWriter_Dirty = 0;
+    result->QEWriter_Dirty = false;
+    result->Standby_HaveInfo = false;
+    result->Standby_xlogid = 0;
+    result->Standby_xrecoff = 0;
 	
     result->extras = NULL;
     result->extraslen = 0;
@@ -185,6 +188,13 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 			result->QEWriter_DistributedTransactionId = conn->QEWriter_DistributedTransactionId;
 			result->QEWriter_CommandId= conn->QEWriter_CommandId;
 			result->QEWriter_Dirty = conn->QEWriter_Dirty;
+		}
+
+		if (conn->Standby_HaveInfo)
+		{
+			result->Standby_HaveInfo = true;
+			result->Standby_xlogid = conn->Standby_xlogid;
+			result->Standby_xrecoff = conn->Standby_xrecoff;
 		}
 
 		/* consider copying conn's errorMessage */
@@ -396,10 +406,14 @@ PQclear(PGresult *res)
 	/* res->curBlock was zeroed out earlier */
 	
 	
-	res->QEWriter_HaveInfo = 0;
+	res->QEWriter_HaveInfo = false;
 	res->QEWriter_DistributedTransactionId = 0;
 	res->QEWriter_CommandId = 0;
-	res->QEWriter_Dirty = 0;
+	res->QEWriter_Dirty = false;
+	
+	res->Standby_HaveInfo = false;
+	res->Standby_xlogid = 0;
+	res->Standby_xrecoff = 0;
 	
 	if (res->extras)
 		free(res->extras);

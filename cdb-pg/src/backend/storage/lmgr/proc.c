@@ -39,10 +39,11 @@
 #include "access/transam.h"
 #include "access/xact.h"
 #include "miscadmin.h"
+#include "postmaster/walsendserver.h"
 #include "storage/ipc.h"
+#include "storage/spin.h"
 #include "storage/proc.h"
 #include "storage/procarray.h"
-#include "storage/spin.h"
 #include "utils/resscheduler.h"
 #include "utils/timestamp.h"
 #include "utils/portal.h"
@@ -89,7 +90,9 @@ static void RemoveProcFromArray(int code, Datum arg);
 static void ProcKill(int code, Datum arg);
 static void DummyProcKill(int code, Datum arg);
 static bool CheckStatementTimeout(void);
-
+static bool ProcRemoveRequestServer_UnderSpin(PGPROCRequestType requestType);
+static PGPROC* ProcGetRequest_UnderSpin(PROC_REQUEST_INFO *requestInfo, PROC_REQUEST_CLIENT **requestClient);
+static void ProcGetRequestInfo(PGPROCRequestType requestType, PROC_REQUEST_INFO *requestInfo);
 
 /*
  * Report shared-memory space needed by InitProcGlobal.
@@ -117,8 +120,56 @@ ProcGlobalShmemSize(void)
 int
 ProcGlobalSemas(void)
 {
-	/* We need a sema per backend, plus one for each dummy process. */
-	return MaxBackends + NUM_DUMMY_PROCS;
+	/* We need two sema per backend, plus one for each dummy process. */
+	/* Plus another one for the global header */
+	int value = 1 + 2 * (MaxBackends + NUM_DUMMY_PROCS);
+//	elog(LOG,"ProcGlobalSemas returning %d (MaxBackends is %d)", value, MaxBackends);
+	return value;
+}
+
+static void
+InitRequestServer(PROC_REQUEST_SERVER *requestServer)
+{
+	requestServer->serverAcceptingNewRequests = false;
+	
+	requestServer->requestGlobalSerialNumber = 0;
+
+	PGSemaphoreCreate(&requestServer->semRequest);
+
+	SHMQueueInit(&(requestServer->requestQueue));
+}
+
+static void
+InitRequestClient(PROC_REQUEST_CLIENT *requestClient)
+{
+	SHMQueueElemInit(&(requestClient->linksRequest));
+	
+	requestClient->requestSerialNumber = 0;
+	requestClient->responseNeeded = false;
+	requestClient->responseSerialNumber = 0;
+	
+	PGSemaphoreCreate(&(requestClient->semResponse));
+}
+
+static bool
+ReinitRequestClient_UnderSpin(PROC_REQUEST_CLIENT *requestClient)
+{
+	if(!SHMQueueIsDetached(&(requestClient->linksRequest)))
+	{
+		return false;
+	}
+	
+	requestClient->requestSerialNumber = 0;
+	requestClient->responseNeeded = false;
+	requestClient->responseSerialNumber = 0;
+
+	return true;
+}
+
+static void
+ReinitRequestClient_NotUnderSpin(PROC_REQUEST_CLIENT *requestClient)
+{
+	PGSemaphoreReset(&(requestClient->semResponse));
 }
 
 /*
@@ -152,6 +203,7 @@ InitProcGlobal(void)
 	int			i;
 	bool		found;
 
+	
 	/* Create the ProcGlobal shared structure */
 	ProcGlobal = (PROC_HDR *)
 		ShmemInitStruct("Proc Header", sizeof(PROC_HDR), &found);
@@ -174,6 +226,16 @@ InitProcGlobal(void)
 	ProcGlobal->spins_per_delay = DEFAULT_SPINS_PER_DELAY;
 
 	/*
+	 * This spin lock is used by all request servers.
+	 */
+	SpinLockInit(&ProcGlobal->spinLockRequestServer);
+
+	/*
+	 * Initialize each PROC_REQUEST_SERVER struct in the global PROC_HDR.
+	 */
+	InitRequestServer(&ProcGlobal->walSendRequestServer);
+	
+	/*
 	 * Pre-create the PGPROC structures and create a semaphore for each.
 	 */
 	procs = (PGPROC *) ShmemAlloc(MaxBackends * sizeof(PGPROC));
@@ -185,6 +247,14 @@ InitProcGlobal(void)
 	for (i = 0; i < MaxBackends; i++)
 	{
 		PGSemaphoreCreate(&(procs[i].sem));
+
+		/* 
+		 * NOTE: We really only need this for the Master Instance.
+		 * This early initialization, can we detect if we are a
+		 * master or segment instance?
+		 */
+		InitRequestClient(&(procs[i].walSendRequestClient));
+		
 		procs[i].links.next = ProcGlobal->freeProcs;
 		ProcGlobal->freeProcs = MAKE_OFFSET(&procs[i]);
 	}
@@ -194,6 +264,8 @@ InitProcGlobal(void)
 	{
 		DummyProcs[i].pid = 0;	/* marks dummy proc as not in use */
 		PGSemaphoreCreate(&(DummyProcs[i].sem));
+		
+		InitRequestClient(&(DummyProcs[i].walSendRequestClient));
 	}
 
 	/* Create ProcStructLock spinlock, too */
@@ -208,6 +280,7 @@ void
 InitProcess(void)
 {
     int     mppLocalProcessSerial;
+	bool    successful;
 
 	/* use volatile pointer to prevent code rearrangement */
 	volatile PROC_HDR *procglobal = ProcGlobal;
@@ -241,7 +314,9 @@ InitProcess(void)
 	{
 		MyProc = (PGPROC *) MAKE_PTR(myOffset);
 		procglobal->freeProcs = MyProc->links.next;
+
         mppLocalProcessSerial = ++procglobal->mppLocalProcessCounter;
+
 		SpinLockRelease(ProcStructLock);
 		lockHolderProcPtr = MyProc;
 	}
@@ -280,11 +355,27 @@ InitProcess(void)
 	for (i = 0; i < NUM_LOCK_PARTITIONS; i++)
 		SHMQueueInit(&(MyProc->myProcLocks[i]));
 
+	SpinLockAcquire(&ProcGlobal->spinLockRequestServer);
+	
+	successful = ReinitRequestClient_UnderSpin(&(MyProc->walSendRequestClient));
+	if (!successful)
+	{
+		SpinLockRelease(&ProcGlobal->spinLockRequestServer);
+		elog(ERROR, "Request queued for WAL Send Server");
+	}
+
     /* 
      * mppLocalProcessSerial uniquely identifies this backend process among
      * all those that our parent postmaster process creates over its lifetime. 
-     */
+     *
+  	 * Since we use the process serial number to decide if we should
+	 * deliver a response from a server under this spin, we need to 
+	 * assign it under the spin lock.
+	 */
     MyProc->mppLocalProcessSerial = mppLocalProcessSerial;
+	SpinLockRelease(&ProcGlobal->spinLockRequestServer);
+
+	ReinitRequestClient_NotUnderSpin(&(MyProc->walSendRequestClient));
 
     /* 
      * A nonzero gp_session_id uniquely identifies an MPP client session 
@@ -555,6 +646,37 @@ LockWaitCancel(void)
 	return true;
 }
 
+static bool
+ProcRemoveRequestServer_UnderSpin(PGPROCRequestType requestType)
+{
+	PROC_REQUEST_INFO requestInfo;
+
+	PGPROC *proc;
+	PROC_REQUEST_CLIENT *requestClient;
+	
+	ProcGetRequestInfo(requestType, &requestInfo);
+	
+	proc = ProcGetRequest_UnderSpin(&requestInfo, &requestClient);
+
+	return (proc != NULL);
+}
+
+static void
+ProcRemoveFromRequestServers()
+{
+	bool walSendRemoved;
+	
+	SpinLockAcquire(&ProcGlobal->spinLockRequestServer);
+	
+	walSendRemoved = ProcRemoveRequestServer_UnderSpin(PGPROC_REQUEST_WALSEND);
+	
+	SpinLockRelease(&ProcGlobal->spinLockRequestServer);
+	
+	if (walSendRemoved)
+	{
+		elog(LOG, "Request removed from WAL Send Server queue");
+	}
+}
 
 /*
  * ProcReleaseLocks() -- release locks associated with current transaction
@@ -612,6 +734,12 @@ ProcKill(int code, Datum arg)
 	 */
 	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
 		AtExitCleanup_ResPortals();
+
+	/*
+	 * If this process has a request in queue to one of the servers,
+	 * remove it.
+	 */
+	ProcRemoveFromRequestServers();
 
 	/*
 	 * Release any LW locks I am holding.  There really shouldn't be any, but
@@ -1525,4 +1653,401 @@ ResLockWaitCancel(void)
 	PGSemaphoreReset(&MyProc->sem);
 
 	return;
+}
+
+/*
+ * Collect request related server and client information for the kind of request.
+ */
+char*
+ProcRequestTypeToString(PGPROCRequestType requestType)
+{
+	switch (requestType)
+	{
+	case PGPROC_REQUEST_WALSEND:	return "WAL Send server";
+
+	default: 
+		return "Unknown server";
+	}
+}
+
+static PGPROC* 
+ProcGetRequest_UnderSpin(PROC_REQUEST_INFO *requestInfo, PROC_REQUEST_CLIENT **requestClient)
+{
+	if (!SHMQueueEmpty(&(requestInfo->requestServer->requestQueue)))
+	{
+		PGPROC *proc;
+	
+		proc = (PGPROC *) SHMQueueNext(&(requestInfo->requestServer->requestQueue), 
+			                           &(requestInfo->requestServer->requestQueue),
+									   requestInfo->requestLinkOffset);
+
+		SHMQueueDelete((SHM_QUEUE*) (((char*)proc) + requestInfo->requestLinkOffset));		
+
+		*requestClient = (PROC_REQUEST_CLIENT*)(((char*)proc) + requestInfo->requestClientOffset);
+
+		return proc;
+	}
+	else
+	{
+		*requestClient = NULL;
+		return NULL;
+	}
+}
+
+/*
+ * Collect request related server and client information for the kind of request.
+ */
+static void
+ProcGetRequestInfo(PGPROCRequestType requestType, PROC_REQUEST_INFO *requestInfo)
+{
+	int clientOffset;
+	switch (requestType)
+	{
+	case PGPROC_REQUEST_WALSEND:
+		requestInfo->requestServer = &(ProcGlobal->walSendRequestServer);
+		
+		clientOffset = offsetof(PGPROC, walSendRequestClient);
+		requestInfo->requestOffset = offsetof(PGPROC, walSendRequest);
+		requestInfo->requestSize = sizeof(WalSendRequest);
+		break;
+
+	default:
+		elog(FATAL, "Unrecognized PGPROC RequestType: %d",
+			(int) requestType);
+	}
+
+	requestInfo->requestClientOffset = clientOffset;
+	requestInfo->requestLinkOffset = clientOffset +
+		                             offsetof(PROC_REQUEST_CLIENT, linksRequest);
+	
+	elog(DEBUG5,"ProcGetRequestInfo: request type %d, request server %p, request client offset %d, request link offset %d, request (offset %d, size %d)",
+		 requestType,
+		 requestInfo->requestServer,
+		 requestInfo->requestClientOffset,
+		 requestInfo->requestLinkOffset,
+		 requestInfo->requestOffset,
+		 requestInfo->requestSize);
+}
+
+void
+ProcSetAcceptingNewRequests(PGPROCRequestType requestType, bool acceptingNewRequests)
+{
+	PROC_REQUEST_INFO requestInfo;
+	ProcGetRequestInfo(requestType, &requestInfo);
+	
+	HOLD_INTERRUPTS();
+	SpinLockAcquire(&ProcGlobal->spinLockRequestServer);
+	requestInfo.requestServer->serverAcceptingNewRequests = acceptingNewRequests;
+	SpinLockRelease(&ProcGlobal->spinLockRequestServer);
+	RESUME_INTERRUPTS();
+}
+
+PGPROCGetRequestResult
+ProcGetRequest(PGPROCRequestType requestType, void *request, int requestSize, struct timeval *timeout, bool poll, PROC_RESPONSE_COOKIE *responseCookie)
+{
+	PROC_REQUEST_INFO requestInfo;
+	
+	PGPROC *proc;
+	PROC_REQUEST_CLIENT *requestClient;
+	int mppLocalProcessSerial;
+	int serialNumber;
+	bool locked;
+
+	Assert(request != NULL);
+	Assert(responseCookie != NULL);
+	while (true)
+	{
+		/*
+		 * Collect server and client information for the kind of request.
+		 */
+		ProcGetRequestInfo(requestType, &requestInfo);
+		Assert(requestSize == requestInfo.requestSize);
+		
+		/*
+		 * Attempt to get a request (general for all request kinds).
+		 */
+		HOLD_INTERRUPTS();
+		SpinLockAcquire(&ProcGlobal->spinLockRequestServer);
+
+		proc = ProcGetRequest_UnderSpin(&requestInfo, &requestClient);
+		if (proc != NULL)
+		{
+			/*
+			 * Important to get the serial number of the process while under spin lock.
+			 */
+			mppLocalProcessSerial = proc->mppLocalProcessSerial;
+
+			/*
+			 * Copy the request and request serial number.
+			 */
+			memcpy(request, (((char*)proc)) + requestInfo.requestOffset, requestInfo.requestSize);
+
+    		serialNumber = requestClient->requestSerialNumber;
+	
+			SpinLockRelease(&ProcGlobal->spinLockRequestServer);
+			RESUME_INTERRUPTS();
+
+			elog(DEBUG5, "ProcGetRequest returning request for type %d (serial number %d, process serial %d, PGPROC %p)",
+				 requestType, serialNumber, mppLocalProcessSerial, proc);
+			
+			/*
+			 * Fill in the cookie that allows the server process to
+			 * respond to the request later.
+			 */
+			responseCookie->requestType = requestType;
+			responseCookie->mppLocalProcessSerial = mppLocalProcessSerial;
+			responseCookie->requestSerialNumber = serialNumber;
+			responseCookie->responseNeeded = requestClient->responseNeeded;
+			responseCookie->proc = proc;
+
+			return PGPROC_GETREQUEST_OK;
+		}
+		else
+		{
+			SpinLockRelease(&ProcGlobal->spinLockRequestServer);
+			RESUME_INTERRUPTS();
+			
+			elog(DEBUG5, "ProcGetRequest no request found for type %d",
+				 requestType);
+		}
+
+		if (poll)
+		{
+			/*
+			 * We don't wait for new requests when poll is specified.
+			 */
+			return PGPROC_GETREQUEST_QUEUEEMPTY;
+		}
+
+		if (timeout != NULL)
+		{
+			locked = PGSemaphoreLockTimed(&(requestInfo.requestServer->semRequest), timeout);
+		}
+		else
+		{
+			locked = PGSemaphoreLockInterruptable(&(requestInfo.requestServer->semRequest));
+		}
+		if (!locked)
+		{
+			/* Interrupt bubbled up or timeout occurred (we don't know which) */
+			return PGPROC_GETREQUEST_INTERRUPT;
+		}
+	}
+}
+
+bool
+ProcSendRequest(PGPROCRequestType requestType, void *request, int requestSize, bool responseNeeded, int *serialNumber)
+{
+	PROC_REQUEST_INFO requestInfo;
+	PROC_REQUEST_CLIENT *requestClient;
+
+	Assert(request != NULL);
+	Assert(serialNumber != NULL);
+	
+	/*
+	 * Collect server and client information for the kind of request.
+	 */
+	ProcGetRequestInfo(requestType, &requestInfo);
+	Assert(requestSize == requestInfo.requestSize);
+
+	Assert(MyProc != NULL);
+	memcpy(((char*)MyProc) + requestInfo.requestOffset, request, requestInfo.requestSize);
+
+	requestClient = (PROC_REQUEST_CLIENT*)(((char*)MyProc) + requestInfo.requestClientOffset);
+	
+	elog(DEBUG5,"ProcSendRequest queuing request type %d for PGPROC %p (request link offset %d) on server %p",
+		 requestType, MyProc, requestInfo.requestLinkOffset,
+		 requestInfo.requestServer);
+	/*
+	 * Queue our PGPROC with the request inside.
+	 */		
+	HOLD_INTERRUPTS();
+	SpinLockAcquire(&ProcGlobal->spinLockRequestServer);
+
+	if (!requestInfo.requestServer->serverAcceptingNewRequests)
+	{
+		SpinLockRelease(&ProcGlobal->spinLockRequestServer);
+		RESUME_INTERRUPTS();
+
+		elog(DEBUG5, "'%s' not accepting new requests",
+			 ProcRequestTypeToString(requestType));
+		return false;
+	}
+	
+	if(!SHMQueueIsDetached(&(requestClient->linksRequest)))
+	{
+		SpinLockRelease(&ProcGlobal->spinLockRequestServer);
+		RESUME_INTERRUPTS();
+
+		elog(ERROR, "There should not be a request already queued");
+		return false;	// Should not reach this statement.
+	}
+	
+	SHMQueueInsertBefore(&(requestInfo.requestServer->requestQueue), 
+		                 (SHM_QUEUE*) (((char*)MyProc) + requestInfo.requestLinkOffset));
+
+	requestClient->requestSerialNumber = *serialNumber = 
+					++(requestInfo.requestServer->requestGlobalSerialNumber);
+	requestClient->responseNeeded = responseNeeded;
+	
+	SpinLockRelease(&ProcGlobal->spinLockRequestServer);
+	RESUME_INTERRUPTS();
+
+	elog(DEBUG5,"ProcSendRequest queued");
+
+	/*
+	 * Wake the server!
+	 */
+	PGSemaphoreUnlock(&(requestInfo.requestServer->semRequest));
+
+	return true;
+}
+
+
+/*
+ * Collect response related server and client information for the kind of request.
+ */
+static void
+ProcGetResponseInfo(PGPROCRequestType requestType, PROC_RESPONSE_INFO *responseInfo)
+{
+	switch (requestType)
+	{
+	case PGPROC_REQUEST_WALSEND:
+		responseInfo->requestServer = &(ProcGlobal->walSendRequestServer);
+		
+		responseInfo->requestClientOffset = offsetof(PGPROC, walSendRequestClient);
+		responseInfo->responseOffset = offsetof(PGPROC, walSendResponse);
+		responseInfo->responseSize = sizeof(WalSendResponse);
+		break;
+
+	default:
+		elog(FATAL, "Unrecognized PGPROC RequestType: %d",
+			(int) requestType);
+	}
+	
+	elog(DEBUG5,"pgprocGetResponseInfo: request client offset %d, request (offset %d, size %d)",
+		 responseInfo->requestClientOffset,
+		 responseInfo->responseOffset,
+		 responseInfo->responseSize);
+}
+
+void
+ProcSendResponse(PROC_RESPONSE_COOKIE *responseCookie, void *response, int responseSize)
+{
+	PROC_RESPONSE_INFO responseInfo;
+	PROC_REQUEST_CLIENT *requestClient;
+
+	elog(DEBUG5,"ProcSendResponse: entering...");
+	Assert(responseCookie != NULL);
+	Assert(response != NULL);
+	
+	/*
+	 * Collect response related server and client information for the kind of request.
+	 */
+	ProcGetResponseInfo(responseCookie->requestType, &responseInfo);
+	Assert(responseSize == responseInfo.responseSize);
+
+	/*
+	 * Copy the response into the PGPROC and wake the process.
+	 */		
+	HOLD_INTERRUPTS();
+	SpinLockAcquire(&ProcGlobal->spinLockRequestServer);
+
+	if (responseCookie->proc->mppLocalProcessSerial != responseCookie->mppLocalProcessSerial)
+	{
+		SpinLockRelease(&ProcGlobal->spinLockRequestServer);
+		RESUME_INTERRUPTS();
+		
+		/*
+		 * The backend process has been replaced by a new backend...
+		 */
+		return;
+	}
+
+	memcpy(((char*)responseCookie->proc) + responseInfo.responseOffset, response, responseInfo.responseSize);
+
+	requestClient = (PROC_REQUEST_CLIENT*)(((char*)responseCookie->proc) + responseInfo.requestClientOffset);
+
+	Assert(requestClient->responseNeeded);
+	requestClient->responseSerialNumber = responseCookie->requestSerialNumber;
+	
+	SpinLockRelease(&ProcGlobal->spinLockRequestServer);
+	RESUME_INTERRUPTS();
+
+	/*
+	 * Wake the client!
+	 */
+	PGSemaphoreUnlock(&(requestClient->semResponse));
+	
+	elog(DEBUG5,"ProcSendResponse copied response (serial number %d) and woke backend",
+		 responseCookie->requestSerialNumber);
+	
+}
+
+PGPROCGetRequestResult
+ProcWaitForResponse(PGPROCRequestType requestType, int serialNumber, void *response, int responseSize)
+{
+	PROC_RESPONSE_INFO responseInfo;
+	PROC_REQUEST_CLIENT *requestClient;
+	bool locked;
+	int currentResponseSerialNumber;
+	
+	elog(DEBUG5,"ProcWaitForResponse enter...");
+	Assert(MyProc != NULL);
+	Assert(response != NULL);
+	
+	/*
+	 * Collect response related server and client information for the kind of request.
+	 */
+	ProcGetResponseInfo(requestType, &responseInfo);
+
+	requestClient = (PROC_REQUEST_CLIENT*)(((char*)MyProc) + responseInfo.requestClientOffset);
+	
+	while (true)
+	{
+		HOLD_INTERRUPTS();
+		SpinLockAcquire(&ProcGlobal->spinLockRequestServer);
+
+		if (!responseInfo.requestServer->serverAcceptingNewRequests)
+		{
+			SpinLockRelease(&ProcGlobal->spinLockRequestServer);
+			RESUME_INTERRUPTS();
+			
+			elog(DEBUG5, "'%s' not accepting new requests",
+				 ProcRequestTypeToString(requestType));
+			return PGPROC_GETRESPONSE_QUEUEDISABLED;
+		}
+		SpinLockRelease(&ProcGlobal->spinLockRequestServer);
+		RESUME_INTERRUPTS();
+			
+		locked = PGSemaphoreLockInterruptable(&(requestClient->semResponse));
+		if (!locked)
+		{
+			/* Interrupt bubbled up */
+			return PGPROC_GETRESPONSE_INTERRUPT;
+		}
+
+		HOLD_INTERRUPTS();
+		SpinLockAcquire(&ProcGlobal->spinLockRequestServer);
+		currentResponseSerialNumber = requestClient->responseSerialNumber;
+		SpinLockRelease(&ProcGlobal->spinLockRequestServer);
+		RESUME_INTERRUPTS();
+		
+		if (currentResponseSerialNumber < serialNumber)
+		{
+			elog(DEBUG5,"ProcWaitForResponse miss... (current serial number %d, serial number %d)",
+				 currentResponseSerialNumber, serialNumber);
+			continue;
+		}
+
+		// UNDONE: Error if greater-than.
+
+		memcpy(response, ((char*)MyProc) + responseInfo.responseOffset, responseInfo.responseSize);
+		break;
+	}
+	
+	elog(DEBUG5,"ProcWaitForResponse woke up and returned the response (current serial number %d, serial number %d)",
+		 currentResponseSerialNumber, serialNumber);
+
+	return PGPROC_GETRESPONSE_OK;
 }

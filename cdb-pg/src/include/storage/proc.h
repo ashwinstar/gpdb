@@ -15,7 +15,9 @@
 #ifndef _PROC_H_
 #define _PROC_H_
 
+#include "postmaster/walsendserver.h"
 #include "storage/lock.h"
+#include "storage/spin.h"
 #include "storage/pg_sema.h"
 
 
@@ -38,6 +40,24 @@ struct XidCache
 	int			nxids;
 	TransactionId xids[PGPROC_MAX_CACHED_SUBXIDS];
 };
+
+// UNDONE: Add comment block
+typedef struct PROC_REQUEST_CLIENT
+{
+	SHM_QUEUE	linksRequest;			/* List link if this process has a 
+										 * request queued on the server.
+										 */
+
+	int			requestSerialNumber;
+
+	bool		responseNeeded;
+
+	int			responseSerialNumber;
+
+	PGSemaphoreData semResponse;		/* Semaphore to sleep on for response */
+	                                    /* from the server */
+} PROC_REQUEST_CLIENT;
+
 
 /*
  * Each backend has a PGPROC struct in shared memory.  There is also a list of
@@ -110,6 +130,19 @@ struct PGPROC
 	 * be waiting on.
 	 */
 	uint32		waitPortalId;	/* portal id we are waiting on */
+
+	/*
+	 * The following 3 fields are used to submit requests by this process
+	 * makes to the WAL Send server.
+	 */
+	PROC_REQUEST_CLIENT	walSendRequestClient;	/* Common client stuff for 
+										         * WAL Send request/response.
+										         */
+
+	WalSendRequest 	walSendRequest;		/* Request to the WAL Send server */
+
+	WalSendResponse walSendResponse;	/* Response from the WAL Send server */
+
 };
 
 /* NOTE: "typedef struct PGPROC PGPROC" appears in storage/lock.h. */
@@ -121,6 +154,72 @@ extern DLLIMPORT PGPROC *MyProc;
 extern DLLIMPORT PGPROC *lockHolderProcPtr;
 
 
+typedef enum PGPROCRequestType
+{
+	PGPROC_REQUEST_WALSEND = 0,
+	PGPROC_REQUEST_MAX  /* must always be last */
+} PGPROCRequestType;
+
+typedef enum PGPROCGetRequestResult
+{
+	PGPROC_GETREQUEST_OK = 0,
+	PGPROC_GETREQUEST_INTERRUPT,
+	PGPROC_GETREQUEST_QUEUEEMPTY,
+	PGPROC_GETREQUEST_MAX /* must always be last */
+} PGPROCGetRequestResult;
+
+typedef enum PGPROCGetResponseResult
+{
+	PGPROC_GETRESPONSE_OK = 0,
+	PGPROC_GETRESPONSE_INTERRUPT,
+	PGPROC_GETRESPONSE_QUEUEDISABLED,
+	PGPROC_GETRESPONSE_MAX  /* must always be last */
+} PGPROCGetResponseResult;
+
+
+typedef struct PROC_RESPONSE_COOKIE
+{
+	PGPROCRequestType 	requestType;
+	int					mppLocalProcessSerial;
+	int					requestSerialNumber;
+	bool				responseNeeded;
+	PGPROC 				*proc;
+} PROC_RESPONSE_COOKIE;
+
+typedef struct PROC_REQUEST_SERVER
+{
+	bool		serverAcceptingNewRequests;
+	
+	int			requestGlobalSerialNumber;
+										/* Unique serial number for each
+										 * request.
+										 */
+										 
+	PGSemaphoreData semRequest;			/* Semaphore to make requests of the
+	                                     * server
+	                                     */
+
+	SHM_QUEUE	requestQueue;			/* list of processes that want attention */
+
+} PROC_REQUEST_SERVER;
+
+typedef struct PROC_REQUEST_INFO
+{
+	PROC_REQUEST_SERVER *requestServer;
+	int 				requestClientOffset;
+	int 				requestLinkOffset;
+	int 				requestOffset;
+	int 				requestSize;
+} PROC_REQUEST_INFO;
+
+typedef struct PROC_RESPONSE_INFO
+{
+	PROC_REQUEST_SERVER *requestServer;
+	int 				requestClientOffset;
+	int 				responseOffset;
+	int 				responseSize;
+} PROC_RESPONSE_INFO;
+
 /*
  * There is one ProcGlobal struct for the whole database cluster.
  */
@@ -131,8 +230,21 @@ typedef struct PROC_HDR
 	/* Current shared estimate of appropriate spins_per_delay value */
 	int			spins_per_delay;
 
-    /* Counter for assigning mppLocalProcessSerial numbers */
+    /* Counter for assigning serial numbers to processes */
     int         mppLocalProcessCounter;
+
+	slock_t		spinLockRequestServer;	/* Locks request server variables.
+										 *
+										 * We DO NOT use LWLocks because it
+										 * relies on PGPROC.
+										 */
+										 
+	/*
+	 * The following field is used by the WAL Send server to handle requests
+	 * from backend processes.
+	 */
+	PROC_REQUEST_SERVER	walSendRequestServer;
+
 } PROC_HDR;
 
 /*
@@ -175,5 +287,11 @@ extern bool disable_sig_alarm(bool is_statement_timeout);
 extern void handle_sig_alarm(SIGNAL_ARGS);
 extern int	ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock);
 extern void ResLockWaitCancel(void);
+extern PGPROCGetRequestResult ProcGetRequest(PGPROCRequestType requestType, void *request, int requestSize, struct timeval *timeout, bool poll, PROC_RESPONSE_COOKIE *responseCookie);
+extern bool ProcSendRequest(PGPROCRequestType requestType, void *request, int requestSize, bool responseNeeded, int *serialNumber);
+extern void ProcSendResponse(PROC_RESPONSE_COOKIE *responseCookie, void *response, int responseSize);
+extern PGPROCGetRequestResult ProcWaitForResponse(PGPROCRequestType requestType, int serialNumber, void *response, int responseSize);
+extern char* ProcRequestTypeToString(PGPROCRequestType requestType);
+extern void ProcSetAcceptingNewRequests(PGPROCRequestType requestType, bool acceptingNewRequests);
 
 #endif   /* PROC_H */

@@ -90,6 +90,16 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		Size		size;
 		int			numSemas;
 
+#if defined(__darwin__)
+		if (MaxBackends > 50)
+		{
+			elog(LOG,"limiting maximum backends to 50 on Mac OS X (was %d)",
+				 MaxBackends);
+			MaxBackends = 50;
+		}
+#endif
+
+
 		/*
 		 * Size of the Postgres shared-memory block is estimated via
 		 * moderately-accurate estimates for the big hogs, plus 100K for the
@@ -124,6 +134,8 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, SInvalShmemSize());
 		size = add_size(size, FreeSpaceShmemSize());
 		size = add_size(size, BgWriterShmemSize());
+		size = add_size(size, FtsShmemSize());
+		size = add_size(size, tmShmemSize());
 		size = add_size(size, SeqServerShmemSize());
 #ifdef EXEC_BACKEND
 		size = add_size(size, ShmemBackendArraySize());
@@ -151,7 +163,8 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		 */
 		numSemas = ProcGlobalSemas();
 		numSemas += SpinlockSemas();
-//		numSemas += FtsProcessSemas();
+
+		elog(DEBUG5,"CreateSharedMemoryAndSemaphores calling PGReserveSemaphores with %d",numSemas);
 		PGReserveSemaphores(numSemas, port);
 	}
 	else
