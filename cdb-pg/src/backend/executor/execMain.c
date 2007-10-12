@@ -311,7 +311,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			}
 			PG_CATCH();
 			{
-				mppExecutorCleanup(estate);
+				mppExecutorCleanup(queryDesc);
 				PG_RE_THROW();
 			}
 			PG_END_TRY();
@@ -507,7 +507,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
     }
 	PG_CATCH();
 	{
-		mppExecutorCleanup(estate);
+		mppExecutorCleanup(queryDesc);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -705,14 +705,14 @@ ExecutorRun(QueryDesc *queryDesc,
             PG_CATCH();
             {
                 /* Close down interconnect etc. */
-                mppExecutorCleanup(estate);
+				mppExecutorCleanup(queryDesc);
 		        PG_RE_THROW();
             }
             PG_END_TRY();
         }
 
         /* Close down interconnect etc. */
-        mppExecutorCleanup(estate);
+		mppExecutorCleanup(queryDesc);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -786,7 +786,7 @@ ExecutorEnd(QueryDesc *queryDesc)
 		/*
 		 * we got an error. do all the necessary cleanup.
 		 */
-		mppExecutorCleanup(estate);
+		mppExecutorCleanup(queryDesc);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();

@@ -1986,8 +1986,13 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
  *
  * Will normally be called after an error from within a CATCH block.
  */
-void mppExecutorCleanup(EState *estate)
+void mppExecutorCleanup(QueryDesc *queryDesc)
 {
+	EState	   *estate;
+
+	/* caller must have switched into per-query memory context already */
+	estate = queryDesc->estate;
+
 	/*
 	 * Request any commands still executing on qExecs to stop.
 	 * Wait for them to finish and clean up the dispatching structures.
@@ -1995,6 +2000,15 @@ void mppExecutorCleanup(EState *estate)
 	 */
 	if (estate->primaryResults)
 	{
+		/*
+		 * If we are finishing a query before all the tuples of the query
+		 * plan were fetched we must call ExecSquelchNode before checking
+		 * the dispatch results in order to tell the nodes below we no longer
+		 * need any more tuples.
+		 */
+		if (estate->es_interconnect_is_setup && !estate->es_got_eos)
+			ExecSquelchNode(queryDesc->planstate);
+
 		cdbdisp_handleError(estate->primaryResults, estate->mirrorResults, estate->dispatchThreads);
 		estate->primaryResults = NULL;
 		estate->mirrorResults = NULL;

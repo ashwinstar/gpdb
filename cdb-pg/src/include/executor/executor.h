@@ -333,7 +333,7 @@ extern GpExecIdentity getGpExecIdentity(QueryDesc *queryDesc,
 										  ScanDirection direction,
 										  EState	   *estate);
 extern void mppExecutorFinishup(QueryDesc *queryDesc);
-extern void mppExecutorCleanup(EState *estate);
+extern void mppExecutorCleanup(QueryDesc *queryDesc);
 
 
 extern Slice *getCurrentSlice(EState* estate, int sliceIndex);
