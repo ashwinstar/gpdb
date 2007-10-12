@@ -463,8 +463,6 @@ static void advanceKeyLevelState(WindowState *wstate, int min_level);
 static void init_frames(WindowState *wstate);
 static void deform_window_tuple(TupleTableSlot *slot, int nattrs, AttrNumber *attnums, 
 								Datum *values, bool *nulls, MemoryContext ctx);
-static int findSerialIndex(WindowStatePerFunction funcstate,
-						   WindowStatePerLevel level_state);
 static void add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 							   ExprContext *econtext);
 static bool hasTuplesInFrame(WindowStatePerLevel level_state,
@@ -724,33 +722,6 @@ ensureSpace(char **p_serial_entry, Size *p_max_size,
 	}
 
 	return (*p_serial_entry + current_len);
-}
-
-/*
- * findSerialIndex -- find the index for a given function in a key level
- * when serializing all intermediate results before writing them to
- * the frame buffer.
- */
-static int findSerialIndex(WindowStatePerFunction funcstate,
-						   WindowStatePerLevel level_state)
-{
-	ListCell *lc;
-	int serial_index = -1;
-	foreach(lc, level_state->level_funcs)
-	{
-		WindowStatePerFunction curr_funcstate = (WindowStatePerFunction) lfirst(lc);
-		if (curr_funcstate->trivial_frame &&
-			!curr_funcstate->winpeercount)
-		{
-			/* ignore trivial window functions */
-			continue;
-		}
-
-		serial_index++;
-		if (curr_funcstate == funcstate)
-			break;
-	}
-	return serial_index;
 }
 
 /*
@@ -1221,18 +1192,10 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 		{
 			if (level_state->num_lead_rows < level_state->lead_rows)
 			{
-				if (!ntuplestore_acc_tell(level_state->lead_reader, NULL))
-				{
-					if (!last_peer)
-						level_state->num_lead_rows++;
-				}
-				else
-				{
-					bool found;
-					found = ntuplestore_acc_advance(level_state->lead_reader, 1);
-					Assert(found);
+				Assert(!ntuplestore_acc_tell(level_state->lead_reader, NULL));
+
+				if (!last_peer)
 					level_state->num_lead_rows++;
-				}
 			}
 			else if ((EDGE_IS_BOUND(level_state->frame->lead) ||
 					  EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->lead, true)) &&
@@ -1260,17 +1223,12 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 			if (EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->lead, 
 									true))
 			{
-				if (!ntuplestore_acc_tell(buffer->current_row_reader, NULL))
-					ntuplestore_acc_seek_last(level_state->lead_reader);
-				else
-				{
-					bool found;
-					NTupleStorePos pos;
-					
-					found = ntuplestore_acc_tell(buffer->current_row_reader, &pos);
-					Assert(found);
-					ntuplestore_acc_seek(level_state->lead_reader, &pos);
-				}
+				bool found;
+				NTupleStorePos pos;
+				
+				found = ntuplestore_acc_tell(buffer->current_row_reader, &pos);
+				Assert(found);
+				ntuplestore_acc_seek(level_state->lead_reader, &pos);
 				
 				level_state->lead_ready = true;
 			}
@@ -1725,10 +1683,10 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 					
 			has_curr_entry = getCurrentValue(level_state->trail_reader,
 											 level_state, curr_entry);
-			ntuplestore_acc_advance(level_state->trail_reader, 1);
 
-			if (!has_curr_entry)
-				continue;
+			Assert(has_curr_entry);
+			
+			ntuplestore_acc_advance(level_state->trail_reader, 1);
 
 			foreach(lc, level_state->level_funcs)
 			{
@@ -3075,8 +3033,7 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 				WindowValue *value = NULL;
 				MemoryContext oldcxt;
 				
-				if (funcstate->serial_index == -1)
-					funcstate->serial_index = findSerialIndex(funcstate, level_state);
+				Assert(funcstate->serial_index != -1);
 
 				has_entry =	getCurrentValue(frame_buffer->current_row_reader,
 											level_state, entry);
@@ -4402,14 +4359,7 @@ fetchTupleSlotThroughBuf(WindowState *wstate)
 	{
 		/* Advance the reader */
 		found = ntuplestore_acc_advance(buffer->reader, 1);
-
-		if (found)
-		{
-			found = ntuplestore_acc_current_tupleslot(buffer->reader,
-													  wstate->spare);
-			Assert(found);
-			wstate->cur_slot_is_new = false;
-		}
+		Assert(!found);
 	}
 	
 	
@@ -5012,14 +4962,12 @@ setEmptyFrame(WindowStatePerLevel level_state,
 
 	level_state->empty_frame = false;
 
-	if (frame->trail->kind == WINDOW_UNBOUND_FOLLOWING ||
-		frame->lead->kind == WINDOW_UNBOUND_PRECEDING ||
-		(EDGE_IS_BOUND_FOLLOWING(frame->trail) &&
-		 EDGE_IS_BOUND_PRECEDING(frame->lead)))
-	{
-		level_state->empty_frame = true;
-	}
-	else if ((EDGE_IS_BOUND_PRECEDING(frame->trail) &&
+	Assert (!(frame->trail->kind == WINDOW_UNBOUND_FOLLOWING ||
+			  frame->lead->kind == WINDOW_UNBOUND_PRECEDING ||
+			  (EDGE_IS_BOUND_FOLLOWING(frame->trail) &&
+			   EDGE_IS_BOUND_PRECEDING(frame->lead))));
+
+	if ((EDGE_IS_BOUND_PRECEDING(frame->trail) &&
 			  EDGE_IS_BOUND_PRECEDING(frame->lead)) ||
 			 (EDGE_IS_BOUND_FOLLOWING(frame->trail) &&
 			  EDGE_IS_BOUND_FOLLOWING(frame->lead)))
@@ -5125,17 +5073,6 @@ init_frames(WindowState *wstate)
 				frame->exclude == WINDOW_EXCLUSION_NULL)
 			{
 				funcstate->cumul_frame = true;
-			}
-			else
-			{
-				/* look for empty frames */
-				if (frame->trail->kind == WINDOW_UNBOUND_FOLLOWING ||
-					frame->lead->kind == WINDOW_UNBOUND_PRECEDING ||
-					(EDGE_IS_BOUND_FOLLOWING(frame->trail) &&
-					 EDGE_IS_BOUND_PRECEDING(frame->lead)))
-				{
-					level_state->empty_frame = true;
-				}
 			}
 		}
 		
