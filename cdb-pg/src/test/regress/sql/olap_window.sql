@@ -1189,3 +1189,8 @@ from sale;
 SELECT sale.qty,sale.cn,
 min(sale.pn) OVER(order by sale.vn asc range between 0 preceding and vn preceding ) as min
 from sale;
+
+-- MPP-2078
+SELECT sale.cn,sale.vn,
+COUNT(floor(sale.cn)) OVER(partition by sale.cn order by sale.vn asc range between 1 preceding and floor(sale.cn) preceding ) 
+FROM sale; --mvd 1,2->3

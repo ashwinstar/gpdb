@@ -3903,7 +3903,15 @@ advanceEdgeForRange(WindowStatePerLevel level_state,
 				if (EDGE_IS_BOUND_FOLLOWING(edge))
 					ntuplestore_acc_advance(edge_reader, -1);
 				else
-					ntuplestore_acc_advance(edge_reader, 1);
+				{
+					/*
+					 * When the leading edge is "x preceding", the
+					 * edge_reader points to the right position
+					 * already.
+					 */
+					if (!is_lead_edge)
+						ntuplestore_acc_advance(edge_reader, 1);
+				}
 			}
 
 			if (is_lead_edge)

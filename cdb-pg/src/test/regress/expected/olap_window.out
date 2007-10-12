@@ -7209,3 +7209,23 @@ from sale;
     1 |  1 |    
 (12 rows)
 
+-- MPP-2078
+SELECT sale.cn,sale.vn,
+COUNT(floor(sale.cn)) OVER(partition by sale.cn order by sale.vn asc range between 1 preceding and floor(sale.cn) preceding ) 
+FROM sale; --mvd 1,2->3
+ cn | vn | count 
+----+----+-------
+  1 | 10 |     0
+  1 | 20 |     0
+  1 | 30 |     0
+  1 | 30 |     0
+  1 | 50 |     0
+  3 | 30 |     0
+  3 | 30 |     0
+  3 | 40 |     0
+  2 | 40 |     0
+  2 | 50 |     0
+  4 | 40 |     0
+  4 | 40 |     0
+(12 rows)
+
