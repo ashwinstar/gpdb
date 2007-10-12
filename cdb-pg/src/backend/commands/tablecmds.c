@@ -697,9 +697,11 @@ DefineRelation_int(CreateStmt *stmt,
 * to leave it intact and do another dispatch. 
 * ----------------------------------------------------------------
 */
-extern void	DefineExternalRelation(CreateExternalStmt *createExtStmt)
+extern void
+DefineExternalRelation(CreateExternalStmt *createExtStmt)
 {
-	bool	shouldDispatch = Gp_role == GP_ROLE_DISPATCH && IsNormalProcessingMode();
+	bool shouldDispatch = (Gp_role == GP_ROLE_DISPATCH && 
+						   IsNormalProcessingMode());
 	struct CdbDispatchResults *primaryResults = NULL;
     struct CdbDispatchResults *mirrorResults = NULL;
 	CdbDispatchCmdThreads     *dispatchThreads = NULL;
