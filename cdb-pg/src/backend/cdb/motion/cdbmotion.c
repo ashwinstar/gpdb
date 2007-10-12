@@ -204,14 +204,28 @@ initMotionLayerStructs(MotionLayerState **mlStates)
 	MemoryContext ml_mctx;
 	HASHCTL		hctl;
 	HTAB	   *htab;
+	uint8	   *pData;
 
-	if(Gp_role == GP_ROLE_UTILITY)
+	if (Gp_role == GP_ROLE_UTILITY)
 		return;
 
 	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
 		Gp_max_tuple_chunk_size = Gp_max_packet_size - sizeof(struct icpkthdr) - TUPLE_CHUNK_HEADER_SIZE;
 	else
 		Gp_max_tuple_chunk_size = Gp_max_packet_size - PACKET_HEADER_SIZE - TUPLE_CHUNK_HEADER_SIZE;		
+
+	/*
+	 * Use the statically allocated chunk that is intended for sending end-of-
+	 * stream messages so that we don't incur allocation and deallocation
+	 * overheads.
+	 */
+	Assert(s_eos_chunk_data.p_next == NULL);
+	Assert(s_eos_chunk_data.chunk_length == TUPLE_CHUNK_HEADER_SIZE);
+
+	pData = s_eos_chunk_data.chunk_data;
+
+	SetChunkDataSize(pData, 0);
+	SetChunkType(pData, TC_END_OF_STREAM);
 	
 	/*
 	 * Create the memory-contexts that we will use within the Motion Layer.
@@ -518,6 +532,11 @@ SendTuple(MotionLayerState *mlStates,
 	return rc;
 }
 
+TupleChunkListItem
+get_eos_tuplechunklist(void)
+{
+	return &s_eos_chunk_data;
+}
 
 /* Sends a token to all peer Motion Nodes, indicating that this motion
  * node has no more tuples to send out.
@@ -528,7 +547,6 @@ SendEndOfStream(MotionLayerState       *mlStates,
                 int                     motNodeID)
 {
 	MotionNodeEntry *pMNEntry;
-	uint8	   *pData;
 
 	/*
 	 * Pull up the motion node entry with the node's details.  This includes
@@ -536,19 +554,6 @@ SendEndOfStream(MotionLayerState       *mlStates,
 	 * include backup segment-dbs.
 	 */
 	pMNEntry = getMotionNodeEntry(mlStates, motNodeID, "SendEndOfStream");
-
-	/*
-	 * Use the statically allocated chunk that is intended for sending end-of-
-	 * stream messages so that we don't incur allocation and deallocation
-	 * overheads.
-	 */
-	Assert(s_eos_chunk_data.p_next == NULL);
-	Assert(s_eos_chunk_data.chunk_length == TUPLE_CHUNK_HEADER_SIZE);
-
-	pData = s_eos_chunk_data.chunk_data;
-
-	SetChunkDataSize(pData, 0);
-	SetChunkType(pData, TC_END_OF_STREAM);
 
 	SendEosToAMS(mlStates, transportStates, motNodeID, &s_eos_chunk_data);
 

@@ -128,10 +128,10 @@ extern void SendStopMessage(MotionLayerState *mlStates,
  */
 extern void setExpectedReceivers(MotionLayerState *mlStates, int16 motNodeID, int expectedReceivers);
 
+
 /*
- * Used by ml_ipc to tell the intermediate layer that we were stopped
- * explicitly, so we should freak out about not being finished.
+ * Return a pointer to the internal "end-of-stream" message
  */
-extern void setNodeStopped(int16 motNodeID);
+extern TupleChunkListItem get_eos_tuplechunklist(void);
 
 #endif   /* CDBMOTION_H */

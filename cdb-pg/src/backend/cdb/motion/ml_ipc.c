@@ -257,7 +257,7 @@ static int main_thread_waiting_route = ANY_ROUTE;
 /* retry fallback definitions */
 #define UDP_CONNECT_RETRY_MS	(100)
 
-#define MAX_TRY (10)
+#define MAX_TRY (11)
 int
 timeouts[] =
 {
@@ -271,7 +271,8 @@ timeouts[] =
 	64,
 	128,
 	256,
-	256 /* MAX_TRY*/
+	512,
+	512 /* MAX_TRY*/
 };
 
 #define TIMEOUT(try) (try < MAX_TRY ? (timeouts[try]) : (timeouts[MAX_TRY]))
@@ -2556,7 +2557,7 @@ forceEosToPeers(MotionLayerState       *mlStates,
 	
 	transportStates->teardownActive = true;
 
-	SendEndOfStream(mlStates, transportStates, motNodeID);
+	SendEosToAMS(mlStates, transportStates, motNodeID, get_eos_tuplechunklist());
 
 	transportStates->teardownActive = false;
 }
