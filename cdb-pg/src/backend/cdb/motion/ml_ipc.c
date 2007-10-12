@@ -2929,8 +2929,9 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 		{
 			conn = pEntry->conns + i;
 
-			if (conn->stillActive)
-				elog(LOG, "teardownUDP: shutting down with a receiver still active ? this will confuse our peer.");
+			if (!forceEOS)
+				if (conn->stillActive)
+					elog(LOG, "teardownUDP: shutting down with a receiver still active ? this will confuse our peer.");
 
 			conn_delhash(conn);
 
@@ -3633,7 +3634,9 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 	conn->conn_info.srcContentId = Gp_segment;
 	conn->conn_info.dstContentId = conn->cdbProc->contentid;
 
+#if 0
 	elog(LOG, "setupOutgoingUDPConnection: node %d route %d srccontent %d dstcontent %d", pEntry->motNodeId, conn->route, Gp_segment, conn->cdbProc->contentid);
+#endif
 
 	conn->conn_info.srcListenerPort = (Gp_listener_port>>16) & 0x0ffff;
 	conn->conn_info.srcPid = MyProcPid;
