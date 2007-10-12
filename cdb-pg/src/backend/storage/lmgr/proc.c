@@ -1700,7 +1700,8 @@ ProcGetRequest_UnderSpin(PROC_REQUEST_INFO *requestInfo, PROC_REQUEST_CLIENT **r
 static void
 ProcGetRequestInfo(PGPROCRequestType requestType, PROC_REQUEST_INFO *requestInfo)
 {
-	int clientOffset;
+	int clientOffset=0;
+
 	switch (requestType)
 	{
 	case PGPROC_REQUEST_WALSEND:
