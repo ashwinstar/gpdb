@@ -1073,23 +1073,28 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 										 (InhRelation *) element);
 
 					/*
-					 * For Greenplum Database distributed tables, default to the same distribution as the first LIKE table,
-					 * unless we also have INHERITS
+					 * For Greenplum Database distributed tables, default to 
+					 * the same distribution as the first LIKE table, unless 
+					 * we also have INHERITS
 					 */
-					if (Gp_role == GP_ROLE_DISPATCH && stmt->distributedBy == NIL && stmt->inhRelations == NIL && isBeginning && stmt->policy == NULL)
+					if (Gp_role == GP_ROLE_DISPATCH && 
+						stmt->distributedBy == NIL && 
+						stmt->inhRelations == NIL && isBeginning && 
+						stmt->policy == NULL)
 					{
 						InhRelation *e = (InhRelation *) element;
-						Oid			relId = RangeVarGetRelid(e->relation, false);
+						Oid	relId = RangeVarGetRelid(e->relation, false);
+						GpPolicy  *oldTablePolicy = 
+							GpPolicyFetch(CurrentMemoryContext, relId);
 
-						GpPolicy  *oldTablePolicy = GpPolicyFetch(CurrentMemoryContext, relId);
-
-						if (oldTablePolicy != NULL && oldTablePolicy->ptype == POLICYTYPE_PARTITIONED)
+						if (oldTablePolicy != NULL && 
+							oldTablePolicy->ptype == POLICYTYPE_PARTITIONED)
 						{
 							int ia;
 					
 							for (ia=0;ia<oldTablePolicy->nattrs;ia++)
 							{
-								char * attname = get_attname(relId, oldTablePolicy->attrs[ia]);
+								char *attname = get_attname(relId, oldTablePolicy->attrs[ia]);
 								if (likeDistributedBy)
 										likeDistributedBy = lappend(likeDistributedBy, (Node *) makeString(attname));
 									else
