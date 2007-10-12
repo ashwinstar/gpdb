@@ -27,6 +27,9 @@
 #include <kernel/OS.h>
 #endif
 
+#include "storage/s_lock.h"
+#include "storage/spin.h"
+
 #include "miscadmin.h"
 #include "storage/ipc.h"
 #include "storage/pg_sema.h"
