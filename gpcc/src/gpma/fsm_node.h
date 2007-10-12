@@ -73,7 +73,7 @@ apr_status_t a_node_connect(gpcc_event_t* ev, void* arg)
 	
     printf("NODE CONNECT\n");
     /* use gpcc_net to connect to gpha here */
-    if (0 != (e = gpcc_net_open(&slot->conn, 
+    if (0 != (e = gpcc_net_open(&slot->u.node.conn, 
 				slot->u.node.hosttab[slot->u.node.hostidx],
 				argc, argv,
 				hc, hname, hvalue, slot->cmdidx))) {

@@ -118,7 +118,6 @@ struct gpha_t {
     apr_uint16_t cmdidx_gen;
     const char*  gphome;
     cmdslot_t    cmdslot[CMDSLOT_MAX];
-    apr_uint32_t spin[1];
 };
 
 extern gpha_t gpha;

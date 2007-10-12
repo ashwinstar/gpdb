@@ -307,7 +307,7 @@ static void zap(conncb_t* pconn, gpcc_net_conn_t conn)
 	pconn->from_peer.hdr = 0;
     }
     gpcc_spin_release(&pconn->spin);
-    net.closed(conn);
+    net.closed(conn, pconn->arg);
 }
 
 static void do_ready(int fd, short event, void* arg);
@@ -437,7 +437,7 @@ static apr_status_t conn_read_header(gpcc_net_conn_t conn)
 	if (to_peer_hdr) 
 	    net.opened(conn, peer_addr, to_peer_hdr, from_peer_hdr, arg);
 	else 
-	    net.accepted(conn, peer_addr, from_peer_hdr);
+	    net.accepted(conn, peer_addr, from_peer_hdr, &pconn->arg);
 
 	    
     }
@@ -491,7 +491,7 @@ static void conn_fire_read(gpcc_net_conn_t conn)
 	    }
 	    if (!pkt) 		/* no packet yet */
 		return;
-	    net.received_packet(conn, pkt);
+	    net.received_packet(conn, pkt, pconn->arg);
 
 	    free(pkt);
 	}
@@ -502,7 +502,7 @@ static void conn_fire_read(gpcc_net_conn_t conn)
 	       safe, but it would have to do. Upon return, we check that the buffer
 	       has not been modified. */
 	    spin = gpcc_spin_release(spin);
-	    n = net.received(conn, byte + bot, n); /* do the callback */
+	    n = net.received(conn, byte + bot, n, pconn->arg); /* do the callback */
 	    if (n < 0) {
 		gpcc_net_close(conn); /* callback indicated error, close it, and done. */
 		break;
@@ -1417,5 +1417,7 @@ apr_status_t gpcc_net_send_packetx(const char* tag, int type,
                                                const char* buf, int len)
 {
     gpcc_net_conn_t conn = gpcc_net_lookup(tag);
-    return gpcc_net_send_packet(conn, type, sndidx, rcvidx, buf, len);
+    if (conn)
+	return gpcc_net_send_packet(conn, type, sndidx, rcvidx, buf, len);
+    return APR_EINVAL;
 }

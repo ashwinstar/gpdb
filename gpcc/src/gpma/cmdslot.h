@@ -30,11 +30,11 @@ struct cmdslot_t {
     int          countdown;	/* if > 0, will count down to 0 
 	                           and generate a TIMEUP_EVENT */
 
-    gpcc_net_conn_t conn;
     apr_pool_t *pool;
     
     union {
 	struct {
+	    gpcc_net_conn_t conn;
 	    seginfo_t *seginfo;
 	    int nseginfo;
 	    struct json_object *config_json;
@@ -79,6 +79,7 @@ struct cmdslot_t {
 	} fts;
 
 	struct {
+	    gpcc_net_conn_t conn;
 	    apr_proc_t proc;
 	    /* host IPs belonging to this node */
 	    int hosttab_max;	/* size of hosttab */

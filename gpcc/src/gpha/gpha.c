@@ -66,25 +66,12 @@ APR_DECLARE(void) cmdslot_free(cmdslot_t* cp)
 }
 
 
-static int cmdslot_get_by_conn(gpcc_net_conn_t conn)
-{
-    int i;
-    
-    for (i = 0 ; i < CMDSLOT_MAX ; i++) {
-	if (gpha.cmdslot[i].cmdidx == 0) 
-	    continue;
-	if (gpha.cmdslot[i].conn == conn) {
-	    return gpha.cmdslot[i].cmdidx;
-	}
-    }
-    return 0;
-}
-
 /* callback from gpcc_net. this runs in the network thread */
 static void net_opened_cb(gpcc_net_conn_t conn,
 			  const char *peer_addr,
 			  gpcc_net_header_t *to_peer,
-			  gpcc_net_header_t *from_peer)
+			  gpcc_net_header_t *from_peer,
+			  apr_uint64_t arg)
 {
     /* NOT IMPLEMENTED */
     return;
@@ -94,12 +81,12 @@ static void net_opened_cb(gpcc_net_conn_t conn,
 /* callback from gpcc_net. this runs in the network thread */
 static void net_accepted_cb(gpcc_net_conn_t conn,
 			    const char *peer_addr,
-			    gpcc_net_header_t *from_peer)
+			    gpcc_net_header_t *from_peer, 
+			    apr_uint64_t *arg)
 {
     int e;
     gpcc_net_header_t hdr;
     cmdslot_t *cmdslot;
-    apr_uint32_t *spin;
 
     if (from_peer->argc != 1 || strcmp(from_peer->argv[0], GPCC_NET_PACKET_PROTO) != 0){
 	gpcc_warning(FLINE, "peer header not match!");
@@ -108,9 +95,8 @@ static void net_accepted_cb(gpcc_net_conn_t conn,
     }
 
     /* create cmdslot */
-    spin = gpcc_spin_secure(gpha.spin);
     cmdslot = cmdslot_alloc("MA->HA", GET_IDENTITY_CMDSTATE, conn);
-    gpcc_spin_release(spin);
+    *arg = cmdslot->cmdidx;
 
     hdr.argc = 1;
     hdr.argv[0] = GPCC_NET_PACKET_PROTO;
@@ -122,7 +108,7 @@ static void net_accepted_cb(gpcc_net_conn_t conn,
 
 /* callback from gpcc_net. this runs in the network thread */
 static int net_recv_cb(gpcc_net_conn_t conn,
-		       const char *buf, int buflen)
+		       const char *buf, int buflen, apr_uint64_t arg)
 {
     /* NOT IMPLEMENTED */
 
@@ -131,22 +117,13 @@ static int net_recv_cb(gpcc_net_conn_t conn,
 			  
 /* callback from gpcc_net. this runs in the network thread */
 static void net_recv_packet_cb(gpcc_net_conn_t conn,
-			       gpcc_net_packet_t *pkt)
+			       gpcc_net_packet_t *pkt,
+			       apr_uint64_t arg)
 {
     gpcc_event_t *ev;
-    apr_uint32_t *spin;
-    int cmdidx = 0;
+    apr_uint32_t cmdidx = (apr_uint32_t) arg;
 
-    if (pkt->mh.rcvidx == 0) {
-	spin = gpcc_spin_secure(gpha.spin);
-	cmdidx = cmdslot_get_by_conn(conn);
-	gpcc_spin_release(spin);
-
-    } else {
-	cmdidx = pkt->mh.rcvidx;
-    }
-
-    if (! cmdidx) {
+    if (cmdidx) {
 	ev = gpcc_event_alloc(pkt->mh.type, cmdidx, sizeof(*pkt) + pkt->mh.len);
 	memcpy(ev->pdata, pkt, sizeof(*pkt) + pkt->mh.len);
 	gpcc_evqueue_put(gpha.evq, ev);
@@ -154,17 +131,12 @@ static void net_recv_packet_cb(gpcc_net_conn_t conn,
 }
 
 /* callback from gpcc_net. this runs in the network thread */
-static void net_closed_cb(gpcc_net_conn_t conn)
+static void net_closed_cb(gpcc_net_conn_t conn, apr_uint64_t arg)
 {
     gpcc_event_t *ev;
-    apr_uint32_t *spin;
-    int cmdidx = 0;
+    apr_uint32_t cmdidx = (apr_uint32_t) arg;
 
-    spin = gpcc_spin_secure(gpha.spin);
-    cmdidx = cmdslot_get_by_conn(conn);
-    gpcc_spin_release(spin);
-
-    if (! cmdidx) {
+    if (cmdidx) {
 	ev = gpcc_event_alloc(NET_CLOSED_EVENT, cmdidx, 0);
 	gpcc_evqueue_put(gpha.evq, ev);
     }
@@ -186,7 +158,6 @@ static void d_main(void)
     gpcc_event_t* ev = 0;
     gpcc_evqueue_t* evq;
     cmdslot_t* cp;
-    apr_uint32_t *spin;
 
     event_init();
 
@@ -220,12 +191,9 @@ static void d_main(void)
     gpha.system_cmdidx = cp->cmdidx;
 
 
-    spin = gpcc_spin_secure(gpha.spin);
     for (;;) {
 	int nxtstate;
 	gpcc_fsm_func_t** action;
-
-	spin = gpcc_spin_release(spin);
 
 	if (ev) 
 	    gpcc_event_free(ev);
@@ -238,8 +206,6 @@ static void d_main(void)
 	/* map the cmdidx */
 	if (ev->cmdidx == 0) 	/* artificially match 0 to system_cmdidx */
 	    ev->cmdidx = gpha.system_cmdidx;
-
-	spin = gpcc_spin_secure(spin);
 
 	if (! (cp = cmdslot_get(ev->cmdidx))) {
 	    gpcc_log_info("Event %s contains unknown cmdidx %x", 
@@ -274,10 +240,8 @@ static void d_main(void)
 			 event_str(ev->etype), 
 			 cmdstate_str(nxtstate));
 
-	    spin = gpcc_spin_release(spin);
 	    gpcc_evqueue_put(gpha.evq, 
 			     gpcc_event_alloc(FAILURE_EVENT, cp->cmdidx, 0));
-	    spin = gpcc_spin_secure(spin);
 	}
 
 	/* free up the cmdslot if necessary */
@@ -285,7 +249,6 @@ static void d_main(void)
 	    cmdslot_free(cp);
     }
 
-    spin = gpcc_spin_release(spin);
     if (ev) {
 	gpcc_event_free(ev);
     }

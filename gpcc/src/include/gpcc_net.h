@@ -53,15 +53,16 @@ typedef void gpcc_net_opened_t(gpcc_net_conn_t conn,
 
 typedef void gpcc_net_accepted_t(gpcc_net_conn_t conn,
 				 const char* peer_addr,
-				 gpcc_net_header_t* from_peer);
+				 gpcc_net_header_t* from_peer,
+				 apr_uint64_t *arg);
 
 typedef int gpcc_net_received_t(gpcc_net_conn_t conn, 
-				const char* buf, int buflen);
+				const char* buf, int buflen, apr_uint64_t arg);
 
 typedef void gpcc_net_received_packet_t(gpcc_net_conn_t conn, 
-					gpcc_net_packet_t* pkt);
+					gpcc_net_packet_t* pkt, apr_uint64_t arg);
 
-typedef void gpcc_net_closed_t(gpcc_net_conn_t conn);
+typedef void gpcc_net_closed_t(gpcc_net_conn_t conn, apr_uint64_t arg);
 
 typedef void gpcc_net_tick_t(apr_time_t now);
 
