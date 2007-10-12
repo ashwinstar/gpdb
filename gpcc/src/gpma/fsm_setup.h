@@ -37,7 +37,6 @@ static apr_status_t config_addsegment(struct json_object *msg, char *key, const 
 
 static apr_status_t config_addnode(struct json_object *msg, char *key, const char *value)
 {
-    char *bs, *es;
     char *nodestr = strdup(value);
     char *tok, *last;
     struct json_object *array;
@@ -50,16 +49,9 @@ static apr_status_t config_addnode(struct json_object *msg, char *key, const cha
     if (!array)
 	goto bail;
 
-    bs = strchr(nodestr, '(');
-    es = strchr(nodestr, ')');
-
-    if (!bs || !es)
-	goto bail;
-    
-    nodestr=bs+1;
-    *es = 0;
-    
-    for (tok = apr_strtok(nodestr, " ,", &last) ; tok ; tok = apr_strtok(0, " ,", &last)) {
+    for (tok = apr_strtok(nodestr, " \t", &last) ; tok ; tok = apr_strtok(0, " \t", &last)) {
+	if (*tok == 0) 
+	    continue;
 	json_object_array_add(array, json_object_new_string(gpcc_string_trim(tok)));
     }
 
