@@ -2641,6 +2641,7 @@ TabPartitionBoundarySpec:
                         n->partStart = (Node *)ri;
                         n->partEnd   = NULL;
                         n->partEvery = NULL;
+                        n->everyGenList = NIL; 
                         n->location  = @3;
                         $$ = (Node *)n;
 				}
@@ -2653,6 +2654,7 @@ TabPartitionBoundarySpec:
                         n->partStart = $1;
                         n->partEnd   = $2;
                         n->partEvery = $3;
+                        n->everyGenList = NIL; 
                         n->location  = @1;
                         $$ = (Node *)n;
 				}
@@ -2664,6 +2666,7 @@ TabPartitionBoundarySpec:
                         n->partStart = NULL;
                         n->partEnd   = $1;
                         n->partEvery = $2;
+                        n->everyGenList = NIL; 
                         n->location  = @1;
                         $$ = (Node *)n;
 				}

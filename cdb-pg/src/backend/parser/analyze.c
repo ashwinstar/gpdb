@@ -178,9 +178,15 @@ static Node *make_partition_rules(ParseState *pstate,
 		 CreateStmtContext *cxt, CreateStmt *stmt, 
 		 Node *partitionBy, PartitionElem *pElem,
  		 char *at_depth, char *child_name_str, 
-		 int partNumId, int maxPartNum);
+		 int partNumId, int maxPartNum, 
+		 int everyOffset, int maxEveryOffset,
+		 ListCell	**pp_lc_anp);
 
 static int partition_sql_test(const char *sql, char *outbuf);
+static int deparse_partition_rule1(Node *pNode, char *outbuf, size_t outsize,
+								   char *typbuf, size_t tbsize
+								   );
+
 static int deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize);
 
 static int partition_range_compare(ParseState *pstate,
@@ -198,6 +204,10 @@ static int validate_partition_spec(ParseState *pstate,
 								   char	   *at_depth,
 								   int		partNumber);
 
+static int partition_range_every(ParseState *pstate,
+								 CreateStmtContext *cxt, CreateStmt *stmt, 
+								 PartitionBy *partitionBy, 	
+								 char	   *at_depth);
 
 /*
  * parse_analyze
@@ -2575,6 +2585,13 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 
 static int deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize)
 {
+	return (deparse_partition_rule1(pNode, outbuf, outsize,
+									NULL, 0));
+}
+
+static int deparse_partition_rule1(Node *pNode, char *outbuf, size_t outsize,
+								   char *typbuf, size_t tbsize)
+{
 	if (!pNode)
 		return 0;
 
@@ -2608,11 +2625,19 @@ static int deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize)
 					snprintf(outbuf, outsize, "\'%s\'::%s", 
 							 acs->val.val.str, 
 							 TypeNameToString(acs->typname));
+
+					if (typbuf && tbsize)
+						snprintf(typbuf, tbsize, "%s", 
+								 TypeNameToString(acs->typname));
 				}
 				else
 				{
 					snprintf(outbuf, outsize, "\'%s\'", 
 							 acs->val.val.str);
+
+					if (typbuf && tbsize)
+						snprintf(typbuf, tbsize,  
+								 "_STRING_");
 				}
 
 				return 1;
@@ -2674,7 +2699,9 @@ static Node *make_partition_rules(ParseState *pstate,
 		 CreateStmtContext *cxt, CreateStmt *stmt, 
 		 Node *partitionBy, PartitionElem *pElem,
 		 char  *at_depth, char *child_name_str, 
-		 int partNumId, int maxPartNum
+		 int partNumId, int maxPartNum, 
+		 int everyOffset, int maxEveryOffset,
+		 ListCell	**pp_lc_anp
 		)
 {
 	PartitionBy			*pBy    = (PartitionBy *)partitionBy;
@@ -3052,6 +3079,17 @@ static Node *make_partition_rules(ParseState *pstate,
 
 	} /* end if LIST */
 
+	/*
+	     For RANGE partitions with an EVERY clause, the following 
+		 fields are defined:
+		 int everyOffset - 0 for no EVERY, else 1 to maxEveryOffset
+		 int maxEveryOffset - 1 for no EVERY, else >1
+		 ListCell	**pp_lc_anp - the pointer to the pointer 
+		                          to the ListCell of [A]ll[N]ew[P]artitions,
+								  a list of lists of stringified values
+								  (as opposed to A_Const's).
+	*/
+
 	if (pBy->partType == PARTTYP_RANGE)	
 	{
 		Node			*pIndAND = NULL;
@@ -3067,6 +3105,9 @@ static Node *make_partition_rules(ParseState *pstate,
 		char			 ruleBuf[10000];
 		int				 range_idx;
 
+		ListCell		*lc_every_val = NULL;
+		List *allNewCols = NIL;
+
 		exprBuf[0] = '0';
 		ANDBuf[0]  = '0';
 		ORBuf[0]   = '0';
@@ -3078,14 +3119,39 @@ static Node *make_partition_rules(ParseState *pstate,
 		else
 			valElts = NULL;						
 
+		if (maxEveryOffset > 1) /* if have an EVERY clause */
+		{
+			ListCell	*lc_anp = NULL;
+
+			/* check the list of "all new partitions" */
+			if (pp_lc_anp)
+			{
+				lc_anp = *pp_lc_anp;
+				if (lc_anp)
+				{
+					allNewCols = lfirst(lc_anp);
+
+					/* find the list of columns for a new partition */
+					if (allNewCols)
+					{
+						lc_every_val = list_head(allNewCols);
+					}
+				}
+			}
+		} /* end if every */
+
 		/* number of values must equal of the number of columns */
 
 		for (range_idx = 0; range_idx < 2; range_idx++)
 		{
 			char *expr_op = ">";
 
-			if (pRI && (1 == pRI->partInclusive))
-				expr_op = ">=";
+			if (everyOffset > 0) /* for generated START for EVERY */
+				expr_op = ">=";  /* always be inclusive           */
+			else 
+				/* only inclusive set that way */
+				if (pRI && (1 == pRI->partInclusive))
+					expr_op = ">=";
 
 			if (range_idx)
 			{
@@ -3098,9 +3164,31 @@ static Node *make_partition_rules(ParseState *pstate,
 
 				expr_op = "<";
 
-				if (pRI && (1 == pRI->partInclusive))
+				/* for generated START for EVERY always be exclusive */
+				if ((everyOffset + 1) <  maxEveryOffset) 
 					expr_op = "<=";
-			}
+				else 
+					/* only be inclusive if set that way */
+					if (pRI && (1 == pRI->partInclusive))
+						expr_op = "<=";
+
+				/* If have EVERY, and not the very first START or last END */
+				if ((0 != everyOffset) && (everyOffset+1 < maxEveryOffset))
+				{
+					if (*pp_lc_anp)
+					{
+						*pp_lc_anp = lnext(*pp_lc_anp);
+
+						if (*pp_lc_anp)
+						{
+							allNewCols = lfirst(*pp_lc_anp);
+
+							if (allNewCols)
+								lc_every_val = list_head(allNewCols);
+						}
+					}
+				}
+			} /* end if range_idx != 0 */
 
 			lc_val = list_head(valElts);
 
@@ -3165,6 +3253,38 @@ static Node *make_partition_rules(ParseState *pstate,
 						
 					}
 
+					/* Remember all that work we did?  Well, if have
+					 * and EVERY, and not the first START or last END,
+					 * we don't need it!  Use the generated,
+					 * stringified value from partition_range_every in
+					 * the expression.  It might be nice to have an
+					 * A_Const instead...
+					 */
+					if (((0 == range_idx)
+						 && (everyOffset > 0))
+						|| ((1 == range_idx)
+							&& (everyOffset+1 < maxEveryOffset))
+							)
+					{
+						char			 colBuf[10000];
+						char *val_str;
+
+						if (!deparse_partition_rule((Node *)pCol, 
+												colBuf, sizeof(colBuf)))
+						{
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+									 errmsg("Unknown type or operator%s",
+											at_depth),
+									 parser_errposition(pstate, pBSpec->location)));
+						
+						}
+
+						val_str = lfirst(lc_every_val);
+						snprintf(exprBuf, sizeof(exprBuf), "%s %s %s",
+								 colBuf, expr_op, val_str);
+					} /* end redo work for EVERY */
+
 					/* for multiple cols - AND the matches eg: 
 					   (col = value) AND (col = value) 
 					*/
@@ -3192,6 +3312,19 @@ static Node *make_partition_rules(ParseState *pstate,
 					}
 
 					lc_val = lnext(lc_val);
+
+					if (((0 == range_idx)
+						 && (everyOffset > 0))
+						|| ((1 == range_idx)
+							&& (everyOffset+1 < maxEveryOffset))
+							)
+					{
+
+						if (lc_every_val)
+						{
+							lc_every_val = lnext(lc_every_val);
+						}
+					}
 				} /* end for all cols */
 
 				/* if more VALUES than columns, then complain
@@ -3356,6 +3489,9 @@ static int partition_sql_test(const char *sql, char *outbuf)
 			pFoo = SPI_getvalue(rangetup, rangettc, fno);
 
 			rc = 1;
+
+			if (outbuf)
+				strcpy(outbuf, pFoo);
 	}
 
 	/*
@@ -3529,8 +3665,6 @@ static int validate_partition_spec(ParseState *pstate,
 	*/
 
 	partElts = pSpec->partElem;
-
-	/* XXX XXX: should check for duplicate names as well !! */
 
 	foreach(lc, partElts)
 	{
@@ -3810,8 +3944,7 @@ static int validate_partition_spec(ParseState *pstate,
 			L_setprevElem:
 
 				/* check for overlap, 
-				 * then add new partitions to sorted list,
-				 * then generate partitions for EVERY
+				 * then add new partitions to sorted list
 				 */
 
 				if (pBSpec->partStart &&
@@ -4173,16 +4306,6 @@ static int validate_partition_spec(ParseState *pstate,
 												   allRangeVals);
 				} /* end find position for current range */
 
-				if (pBSpec->partStart &&
-					pBSpec->partEnd &&
-					pBSpec->partEvery)
-				{
-					char outbuf[999];
-					int foo;
-					
-					foo = partition_sql_test("select 1 as ptcol1 where 1=1", outbuf);
-
-				}
 
 				prevElem = pElem;
 			}
@@ -4364,6 +4487,223 @@ static int validate_partition_spec(ParseState *pstate,
 	return numElts;
 } /* end validate_partition_spec */
 
+static int partition_range_every(ParseState *pstate,
+								 CreateStmtContext *cxt, CreateStmt *stmt, 
+								 PartitionBy *pBy, 	
+								 char	   *at_depth)
+{
+	PartitionSpec	*pSpec;
+	char			 namBuf[NAMEDATALEN];
+	int				 numElts = 0;
+	List			*partElts;
+	ListCell		*lc = NULL;
+	ListCell		*lc_prev = NULL;
+		
+	Assert(pBy);
+	Assert(pBy->partType == PARTTYP_RANGE);
+
+	pSpec    = (PartitionSpec *)pBy->partSpec;
+
+	partElts = pSpec->partElem;
+
+	lc = list_head(partElts);
+
+	for( ; lc; ) /* foreach */
+	{
+		PartitionElem		*pElem = (PartitionElem *)lfirst(lc);
+		PartitionBoundSpec	*pBSpec = NULL;
+		int					 numCols  = 0;
+		int					 colCnt   = 0;
+		int					 everyCnt = 0;
+		PartitionRangeItem	*pRI_Start = NULL;
+		PartitionRangeItem	*pRI_End   = NULL;
+		PartitionRangeItem	*pRI_Every = NULL;
+		ListCell			*lc_Start = NULL;
+		ListCell			*lc_End   = NULL;
+		ListCell			*lc_Every = NULL;
+		List *allNewCols;
+		List *allNewPartns = NIL;
+
+		pBSpec = NULL;
+		
+		numElts++;
+
+		if (!pElem)
+			goto l_EveryLoopEnd;
+		else
+		{
+			pBSpec = (PartitionBoundSpec *)pElem->boundSpec;
+
+			if (!pBSpec)
+				goto l_EveryLoopEnd;
+
+			Assert (pBSpec->partType == PARTTYP_RANGE);
+
+			if (pElem->partName)
+			{
+				snprintf(namBuf, sizeof(namBuf), " \"%s\"", 
+						 strVal(pElem->partName));
+			}
+			else
+			{
+				snprintf(namBuf, sizeof(namBuf), " number %d", 
+						 numElts);
+			}
+		}
+
+		/* have a valid range bound spec */
+
+		if (!pBSpec->partEvery)
+			goto l_EveryLoopEnd;
+
+		/* valid EVERY needs a START and END */
+		if (!(pBSpec->partStart &&
+			  pBSpec->partEnd))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("EVERY clause in partition%s requires START and END%s",
+							namBuf,
+							at_depth),
+					 parser_errposition(pstate, pBSpec->location)));
+		}
+
+		everyCnt = 1;
+
+		pRI_Start = (PartitionRangeItem *)pBSpec->partStart;
+		pRI_End   = (PartitionRangeItem *)pBSpec->partEnd;
+		pRI_Every = (PartitionRangeItem *)pBSpec->partEvery;
+
+		numCols = list_length(pRI_Every->partRangeVal);
+
+		if ((numCols != list_length(pRI_Start->partRangeVal))
+			|| (numCols != list_length(pRI_End->partRangeVal)))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("Number of values in EVERY, START and END do not match in partition%s%s",
+							namBuf,
+							at_depth),
+					 parser_errposition(pstate, pBSpec->location)));
+
+		}
+
+		for ( ; ; ) /* loop until exceed end */
+		{
+			int sqlRc = 0;
+
+			lc_Start = list_head(pRI_Start->partRangeVal);
+			lc_End   = list_head(pRI_End->partRangeVal);
+			lc_Every = list_head(pRI_Every->partRangeVal);
+			colCnt = numCols;
+			allNewCols = NIL;
+
+			for ( ; lc_Start && lc_End && lc_Every ; ) /* for all cols */
+			{
+				Node *n1 = lfirst(lc_Start);
+				Node *n2 = lfirst(lc_End);
+				Node *n3 = lfirst(lc_Every);
+				char sqlbuf[999];
+				char outbuf[999];
+				char op1buf[999];
+				char typbuf[999];
+				char op2buf[999];
+				char op3buf[999];
+				char everyNumbuf[999];
+				char *compare_op = (1==colCnt) ? "<" : "<=";
+
+				typbuf[0] = '0';
+
+				if (!deparse_partition_rule1(n1, op1buf, sizeof(op1buf),
+											 typbuf, sizeof(typbuf)))
+					return -1;
+				if (!deparse_partition_rule(n2, op2buf, sizeof(op2buf)))
+					return -1;
+				if (!deparse_partition_rule(n3, op3buf, sizeof(op3buf)))
+					return -1;
+
+				/* optional "EveryNum" multiplier (1 if not specified) */
+				if (!pRI_Every->partEveryNum)
+					snprintf(everyNumbuf, sizeof(everyNumbuf), "1");
+				else
+				{
+					if (!deparse_partition_rule(pRI_Every->partEveryNum,
+												everyNumbuf, 
+												sizeof(everyNumbuf)))
+						return -1;
+				}
+
+				/* multiply the "every" factor by the loop iteration
+				 * and "everyNum", and add to start.  See if less than
+				 * end 
+				 */
+				snprintf(sqlbuf, sizeof(sqlbuf), 
+	 "select %s + (%d * %s * %s) as ptcol1 where %s + (%d * %s * %s) %s %s",
+						 op1buf, everyCnt, everyNumbuf, op3buf,
+						 op1buf, everyCnt, everyNumbuf, op3buf,
+						 compare_op,
+						 op2buf);
+
+				sqlRc = partition_sql_test(sqlbuf, outbuf);
+
+				if (!sqlRc)
+					break;
+
+				/* save the column */
+
+				if (strlen(typbuf))
+				{
+					if (strcmp("_STRING_", typbuf) == 0)
+					{
+						snprintf(op3buf, sizeof(op3buf), 
+								 "\'%s\'", outbuf);
+					}
+					else
+					{
+						snprintf(op3buf, sizeof(op3buf), 
+								 "\'%s\'::%s", outbuf, typbuf);
+					}
+
+					allNewCols = lappend(allNewCols, pstrdup(op3buf));
+				}
+				else
+					allNewCols = lappend(allNewCols, pstrdup(outbuf));
+			
+				lc_Start = lnext(lc_Start);
+				lc_End   = lnext(lc_End);
+				lc_Every = lnext(lc_Every);
+				colCnt--;
+			} /* end for all cols */
+
+			if (lc_Start || lc_End || lc_Every)
+			{ /* allNewCols is incomplete - don't use */
+				if (allNewCols)
+					list_free_deep(allNewCols);
+			}
+			else
+			{
+				allNewPartns = lappend(allNewPartns, allNewCols);
+			}
+
+			if (!sqlRc)
+				break;
+
+			everyCnt++;
+		} /* end loop until exceed end */
+
+	l_EveryLoopEnd:		
+			
+		pBSpec->everyGenList = allNewPartns;
+
+		lc_prev = lc;
+		lc = lnext(lc);
+	} /* end foreach */
+
+
+	return 1;
+} /* end partition_range_every */
+
+
 
 /*
 
@@ -4539,6 +4879,13 @@ static void transformPartitionBy(ParseState *pstate,
 				 parser_errposition(pstate, pBy->location)));
 	}
 
+	if (pBy->partType == PARTTYP_RANGE)	
+	{
+		int everyrc  = partition_range_every(pstate,cxt,stmt, pBy, at_depth);
+		everyrc++;
+	}
+
+
 	/*
 	 * Determine namespace and name to use for the child table.
 	 *
@@ -4595,6 +4942,12 @@ static void transformPartitionBy(ParseState *pstate,
 
 	for (ii = 0; ii<partNumber; ii++)
 	{
+		int	  		 maxEveryNum = 1;
+		int	  		 jj = 0;
+		ListCell	*lc_anp = NULL; /* columns for generated EVERY */
+			
+		for ( ; jj < maxEveryNum; jj++)
+		{
 		char	  	 prtstr[NAMEDATALEN];			
 		PartitionBy	*newSub = NULL;
 		Node		*pRule  = NULL;
@@ -4605,17 +4958,46 @@ static void transformPartitionBy(ParseState *pstate,
 
 		if (lc)
 		{
+			PartitionBoundSpec	*pBSpec = NULL;
+
 			pElem = (PartitionElem *)lfirst(lc);
-			
+
+			if (pElem)
+				pBSpec = (PartitionBoundSpec *)pElem->boundSpec;
+
+			/* check if have generated list of partitions from EVERY */
+			if ((1 == maxEveryNum) && pBSpec && pBSpec->everyGenList)
+			{
+				/* set the maxEveryNum to (1 + list of "all new
+				 * partitions").  Why?  Because for a range a START
+				 * and END, we create one table and one rule.  If we
+				 * subdivide the range, we have 3 boundary values, but
+				 * only 2 tables and 2 rules.  So for N boundaries we
+				 * have N-1 tables and rules.  The total number of
+				 * boundaries is 2 [start and end] plus the number of
+				 * new partitions.  So just add one to the list
+				 * length.
+				*/
+
+				maxEveryNum = list_length(pBSpec->everyGenList) + 1;
+				lc_anp      = list_head(pBSpec->everyGenList);
+			}
+
 			if (pElem->partName)
 			{
 				/* use the partition name as part of the child table name */
 				char *pName = strVal(pElem->partName);
-				snprintf(prtstr, sizeof(prtstr), "prt_%s", pName);
+				if (maxEveryNum == 1)
+					snprintf(prtstr, sizeof(prtstr), "prt_%s", pName);
+				else
+					snprintf(prtstr, sizeof(prtstr), "prt_%s%d", pName, jj);
 			}
 			else
 			{
-				snprintf(prtstr, sizeof(prtstr), "prt_%d", ii+1);
+				if (maxEveryNum == 1)
+					snprintf(prtstr, sizeof(prtstr), "prt_%d", ii+1);
+				else
+					snprintf(prtstr, sizeof(prtstr), "prt_%d_%d", ii+1, jj);
 			}
 
 			if (pElem->subSpec)
@@ -4720,7 +5102,8 @@ static void transformPartitionBy(ParseState *pstate,
 			pRule = make_partition_rules(pstate,
 										 cxt, stmt, 
 										 partitionBy, pElem, at_depth, 
-										 tab_name_str, ii+1, partNumber);
+										 tab_name_str, ii+1, partNumber,
+										 jj, maxEveryNum, &lc_anp);
 		}
 
 		child_tab_stmt = makeNode(CreateStmt);
@@ -4818,7 +5201,7 @@ static void transformPartitionBy(ParseState *pstate,
 			cxt->alist = lappend(cxt->alist, pRule);
 		}
 		pRule  = NULL;
-
+		} /* end jj < maxEverynum */
 		if (lc)
 		{
 			lc = lnext(lc);

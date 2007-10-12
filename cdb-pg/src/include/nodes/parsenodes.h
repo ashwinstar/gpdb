@@ -1388,6 +1388,7 @@ typedef struct PartitionBoundSpec
 	Node			   *partStart;		/* start (or VALUES for LIST)  */
 	Node			   *partEnd;		/* end (or NULL for LIST ) */
 	Node 			   *partEvery;		/* every specification */
+	List 			   *everyGenList;	/* generated EVERY partitions */
 	int					location;		/* token location, or -1 if unknown */
 } PartitionBoundSpec;
 
