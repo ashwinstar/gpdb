@@ -84,7 +84,7 @@ static void net_accepted_cb(gpcc_net_conn_t conn,
 			    gpcc_net_header_t *from_peer, 
 			    apr_uint64_t *arg)
 {
-    int e;
+    int i, e;
     gpcc_net_header_t hdr;
     cmdslot_t *cmdslot;
 
@@ -94,15 +94,22 @@ static void net_accepted_cb(gpcc_net_conn_t conn,
 	return;
     }
 
-    /* create cmdslot */
-    cmdslot = cmdslot_alloc("MA->HA", GET_IDENTITY_CMDSTATE, conn);
-    *arg = cmdslot->cmdidx;
+    for (i = 0 ; i < from_peer->hc ; i++) {
+	if (strcmp(from_peer->hname[i], "X-GPCC-ROLE") == 0) {
+	    if (strcmp(from_peer->hvalue[i], "GPMA") == 0) {
+		/* create cmdslot */
+		cmdslot = cmdslot_alloc("MA->HA", GET_IDENTITY_CMDSTATE, conn);
+		*arg = cmdslot->cmdidx;
 
-    hdr.argc = 1;
-    hdr.argv[0] = GPCC_NET_PACKET_PROTO;
-    hdr.hc = 0;
-    if (0 != (e = gpcc_net_send_header(conn, &hdr))) {
-	gpcc_warning(FLINE, "gpcc_net_send_header failed");
+		hdr.argc = 1;
+		hdr.argv[0] = GPCC_NET_PACKET_PROTO;
+		hdr.hc = 0;
+		if (0 != (e = gpcc_net_send_header(conn, &hdr))) {
+		    gpcc_warning(FLINE, "gpcc_net_send_header failed");
+		}
+		return;
+	    }
+	}
     }
 }
 

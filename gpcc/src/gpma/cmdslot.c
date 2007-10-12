@@ -80,3 +80,18 @@ void cmdslot_tick(void)
 	}
     }
 }
+
+
+APR_DECLARE(void) cmdslot_broadcast_fts_net_closed(const char *node)
+{
+    int i;
+
+    for (i = 0 ; i < CMDSLOT_TABLE_MAX ; i++) {
+	cmdslot_t *p = &slottab[i];
+	if (p->cmdidx && strstr(p->cmdname, "fts")) {
+	    gpcc_event_t *ev = gpcc_event_alloc(NET_CLOSED_EVENT, p->cmdidx, strlen(node)+1);
+	    memcpy(ev->pdata, node, strlen(node)+1);
+	    gpcc_evqueue_put(gpma.evq, ev);
+	}
+    }
+}

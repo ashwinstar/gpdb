@@ -95,7 +95,7 @@ APR_DECLARE(cmdslot_t*) cmdslot_alloc(const char* name, cmdstate_t state);
 APR_DECLARE(cmdslot_t*) cmdslot_find(apr_uint32_t cmdidx);
 APR_DECLARE(void) cmdslot_free(apr_uint32_t cmdidx);
 APR_DECLARE(void) cmdslot_tick(void);
-
+APR_DECLARE(void) cmdslot_broadcast_fts_net_closed(const char *node);
 
 
 #endif /* CMDSLOT_H */
