@@ -115,6 +115,16 @@ struct cmdslot_t {
 	    } *req;		/* one for each unit, total of ntotal units */
 	} status;
 
+	struct {
+	    gpcc_net_conn_t conn; /* if we need to send reply over http */
+	    apr_uint32_t parent_cmdidx;
+	} array_init;
+
+	struct {
+	    gpcc_net_conn_t conn; /* if we need to send reply over http */
+	    apr_uint32_t parent_cmdidx;
+	} segment_init;
+
 
 	struct {
 	    gpcc_net_conn_t conn; /* if we need to send reply over http */

@@ -14,12 +14,11 @@
 #include "fsm_fts.h"
 #include "fsm_initdb.h"
 #include "fsm_start.h"
-#include "fsm_array_start.h"
 #include "fsm_status.h"
 #include "fsm_stop.h"
-/*
+#include "fsm_array_start.h"
+#include "fsm_array_init.h"
 #include "fsm_array_stop.h"
-*/
 
 
 apr_status_t a_system_tick(gpcc_event_t* ev, void* arg)
@@ -54,7 +53,7 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(NODE_ON_CMDSTATE, TIMEUP_EVENT, NODE_ON_CMDSTATE,
 		 a_node_ping, 0);
     gpcc_fsm_put(NODE_ON_CMDSTATE, NET_CLOSED_EVENT, NODE_OFF_CMDSTATE, 
-		 a_node_broadcast_net_closed, a_node_teardown, 0);
+		 a_node_teardown, 0);
 
 
     /* fts */
@@ -68,7 +67,7 @@ APR_DECLARE(void) fsm_init(void)
 		 a_fts_busy_reply, 0);    
     gpcc_fsm_put(FTS_STARTING_CMDSTATE, ARRAY_STATUS_EVENT, FTS_STARTING_CMDSTATE,
 		 a_fts_busy_reply, 0);    
-    gpcc_fsm_put(FTS_STARTING_CMDSTATE, UNITS_REPLY_MSG_EVENT, FTS_STARTING_CMDSTATE,
+    gpcc_fsm_put(FTS_STARTING_CMDSTATE, ARRAY_REPLY_MSG_EVENT, FTS_STARTING_CMDSTATE,
 		 a_fts_array_start_reply, 0);
     gpcc_fsm_put(FTS_STARTING_CMDSTATE, SUCCESS_EVENT, FTS_RUNNING_CMDSTATE,
 		 a_fts_running, 0);
@@ -82,7 +81,7 @@ APR_DECLARE(void) fsm_init(void)
 		 a_fts_busy_reply, 0);    
     gpcc_fsm_put(FTS_STOPPING_CMDSTATE, ARRAY_STATUS_EVENT, FTS_STOPPING_CMDSTATE,
 		 a_fts_busy_reply, 0);    
-    gpcc_fsm_put(FTS_STOPPING_CMDSTATE, UNITS_REPLY_MSG_EVENT, FTS_STOPPING_CMDSTATE,
+    gpcc_fsm_put(FTS_STOPPING_CMDSTATE, ARRAY_REPLY_MSG_EVENT, FTS_STOPPING_CMDSTATE,
 		 a_fts_array_stop_reply, 0);
     gpcc_fsm_put(FTS_STOPPING_CMDSTATE, SUCCESS_EVENT, FTS_CMDSTATE,
 		 a_fts_stopped, 0);
@@ -143,6 +142,27 @@ APR_DECLARE(void) fsm_init(void)
 		 a_status_failure, 0);
     gpcc_fsm_put(FTS_STATUS_CMDSTATE, TIMEUP_EVENT, NULL_CMDSTATE,
 		 a_status_timeout, 0);
+
+    /* array stop */
+    gpcc_fsm_put(FTS_ARRAY_STOP_CMDSTATE, INIT_EVENT, FTS_ARRAY_STOP_WAIT_CMDSTATE,
+		 a_array_stop_do, 0);
+    gpcc_fsm_put(FTS_ARRAY_STOP_WAIT_CMDSTATE, UNITS_REPLY_MSG_EVENT, FTS_ARRAY_STOP_WAIT_CMDSTATE,
+		 a_array_stop_units_stop_reply, 0);
+    gpcc_fsm_put(FTS_ARRAY_STOP_WAIT_CMDSTATE, SUCCESS_EVENT, NULL_EVENT,
+		 a_array_stop_success, 0);
+    gpcc_fsm_put(FTS_ARRAY_STOP_WAIT_CMDSTATE, FAILURE_EVENT, NULL_EVENT,
+		 a_array_stop_failure, 0);
+
+    /* array initdb */
+    gpcc_fsm_put(FTS_ARRAY_INIT_CMDSTATE, INIT_EVENT, FTS_ARRAY_INIT_WAIT_CMDSTATE,
+		 a_array_init_do, 0);
+    gpcc_fsm_put(FTS_ARRAY_INIT_WAIT_CMDSTATE, UNITS_REPLY_MSG_EVENT, FTS_ARRAY_INIT_WAIT_CMDSTATE,
+		 a_array_init_units_init_reply, 0);
+    gpcc_fsm_put(FTS_ARRAY_INIT_WAIT_CMDSTATE, SUCCESS_EVENT, NULL_EVENT,
+		 a_array_init_success, 0);
+    gpcc_fsm_put(FTS_ARRAY_INIT_WAIT_CMDSTATE, FAILURE_EVENT, NULL_EVENT,
+		 a_array_init_failure, 0);
+		 
 
     /* array start */
     /* start qd in utility mode */
