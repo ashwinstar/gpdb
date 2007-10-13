@@ -93,12 +93,12 @@ static void a_start_send_json_reply(gpcc_event_t *ev, cmdslot_t *cmdslot, struct
 
     objstr = json_object_to_json_string(obj);    
     evt = gpcc_event_alloc(UNITS_REPLY_MSG_EVENT, 
-			   cmdslot->u.stop.parent_cmdidx, sizeof(*pkt) + strlen(objstr) + 1);
+			   cmdslot->u.start.parent_cmdidx, sizeof(*pkt) + strlen(objstr) + 1);
     pkt = (gpcc_net_packet_t *) evt->pdata;
     pkt->mh.type = UNITS_REPLY_MSG_EVENT;
     pkt->mh.len = strlen(objstr)+1;
     pkt->mh.sndidx = cmdslot->cmdidx;
-    pkt->mh.rcvidx = cmdslot->u.stop.parent_cmdidx;
+    pkt->mh.rcvidx = cmdslot->u.start.parent_cmdidx;
     memcpy(pkt->payload, objstr, strlen(objstr)+1);   
 
     gpcc_evqueue_put(gpma.evq, evt);

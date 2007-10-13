@@ -124,7 +124,7 @@ static apr_status_t a_stop_failure(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj;
 
-    obj = gpcc_json_array_reply("start", "failed", 0);
+    obj = gpcc_json_array_reply("stop", "failed", 0);
     a_stop_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
     return 0;
@@ -135,7 +135,7 @@ static apr_status_t a_stop_timeout(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj;
 
-    obj = gpcc_json_array_reply("start", "timeout", 0);
+    obj = gpcc_json_array_reply("stop", "timeout", 0);
     a_stop_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
     return 0;
