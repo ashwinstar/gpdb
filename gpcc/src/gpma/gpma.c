@@ -162,25 +162,21 @@ static void net_accepted(gpcc_net_conn_t conn,
 	    ev = mkfts_event(ARRAY_START_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
 			     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
 	    gpcc_evqueue_put(gpma.evq, ev);
-	    *arg = gpma.fts_cmdslot->cmdidx;
 	}
 	else if (0 == memcmp("/gpcc/stop?", from_peer->argv[1], 11)) {
 	    ev = mkfts_event(ARRAY_STOP_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
 			     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
 	    gpcc_evqueue_put(gpma.evq, ev);
-	    *arg = gpma.fts_cmdslot->cmdidx;
 	}
 	else if (0 == memcmp("/gpcc/init?", from_peer->argv[1], 11)) {
 	    ev = mkfts_event(ARRAY_INIT_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
 			     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
 	    gpcc_evqueue_put(gpma.evq, ev);
-	    *arg = gpma.fts_cmdslot->cmdidx;
 	}
 	else if (0 == memcmp("/gpcc/status", from_peer->argv[1], 12)) {
 	    ev = mkfts_event(ARRAY_STATUS_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
 			     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
 	    gpcc_evqueue_put(gpma.evq, ev);
-	    *arg = gpma.fts_cmdslot->cmdidx;
 	} else {
 	    gpcc_warning(FLINE, "invalid URL");
 	    gpcc_net_close(conn);
@@ -228,6 +224,11 @@ static void net_closed(gpcc_net_conn_t conn, apr_uint64_t arg)
     apr_uint32_t cmdidx = (apr_uint32_t) arg;
     gpcc_event_t *ev;
 
+    if (! cmdidx ) {
+	/* HTTP request */
+	gpcc_warning(FLINE, "HTTP connection closed by peer");
+	return;
+    }
     ev = gpcc_event_alloc(NET_CLOSED_EVENT, cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, ev);
 }
