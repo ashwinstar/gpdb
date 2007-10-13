@@ -20,7 +20,7 @@ static apr_status_t a_fts_start_do(gpcc_event_t *ev, void *_cmdslot)
 	if (0 != (e = gpcc_net_send_packetx(cmdslot->u.start.req[i].node,
 					    SEGMENT_REQUEST_MSG,
 					    cmdslot->cmdidx,
-					    0,
+					    cmdslot->u.start.parent_cmdidx,
 					    msg, len))) {
 	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
 	    gpcc_evqueue_put(gpma.evq, evt);

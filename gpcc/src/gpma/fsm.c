@@ -11,17 +11,10 @@
 #include "gpma.h"
 
 #include "fsm_node.h"
-/*
-#include "fsm_setup.h"
-*/
-/*
 #include "fsm_initdb.h"
-*/
 #include "fsm_start.h"
 #include "fsm_array_start.h"
-/*
 #include "fsm_status.h"
-*/
 #include "fsm_stop.h"
 /*
 #include "fsm_array_stop.h"
@@ -62,23 +55,20 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(NODE_ON_CMDSTATE, NET_CLOSED_EVENT, NODE_OFF_CMDSTATE, 
 		 a_node_broadcast_net_closed, a_node_teardown, 0);
 
+
     /* init */
-    /*
-    gpcc_fsm_put(FTS_CMDSTATE, ARRAY_INIT_EVENT, FTS_INITDB_CMDSTATE,
-		 a_fts_setup_init, a_fts_initdb_init, a_fts_initdb_do, 0);
+    gpcc_fsm_put(FTS_INITDB_CMDSTATE, INIT_EVENT, FTS_INITDB_CMDSTATE,
+		 a_fts_initdb_init, a_fts_initdb_do, 0);
     gpcc_fsm_put(FTS_INITDB_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, FTS_INITDB_CMDSTATE,
 		 a_fts_initdb_reply, 0);
     gpcc_fsm_put(FTS_INITDB_CMDSTATE, CONTINUE_EVENT, FTS_INITDB_CMDSTATE,
 		 a_fts_initdb_do, 0);
     gpcc_fsm_put(FTS_INITDB_CMDSTATE, SUCCESS_EVENT, NULL_CMDSTATE,
-		 a_fts_initdb_success, a_fts_initdb_cleanup, 0);
+		 a_fts_initdb_success, 0);
     gpcc_fsm_put(FTS_INITDB_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
-		 a_fts_initdb_failure, a_fts_initdb_cleanup, 0);
-    gpcc_fsm_put(FTS_INITDB_CMDSTATE, NET_FAILURE_EVENT, NULL_CMDSTATE,
-		 a_fts_initdb_failure, a_fts_initdb_cleanup, 0);
-    gpcc_fsm_put(FTS_INITDB_CMDSTATE, NET_CLOSED_EVENT, FTS_INITDB_CMDSTATE,
-		 a_fts_initdb_reply, 0);
-    */
+		 a_fts_initdb_failure, 0);
+    gpcc_fsm_put(FTS_INITDB_CMDSTATE, TIMEUP_EVENT, NULL_CMDSTATE,
+		 a_fts_initdb_timeout, 0);
 
     /* start */
     gpcc_fsm_put(FTS_START_CMDSTATE, INIT_EVENT, FTS_START_CMDSTATE,
@@ -88,8 +78,6 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(FTS_START_CMDSTATE, SUCCESS_EVENT, NULL_CMDSTATE,
 		 a_fts_start_success, 0);
     gpcc_fsm_put(FTS_START_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
-		 a_fts_start_failure, 0);
-    gpcc_fsm_put(FTS_START_CMDSTATE, NET_FAILURE_EVENT, NULL_CMDSTATE,
 		 a_fts_start_failure, 0);
     gpcc_fsm_put(FTS_START_CMDSTATE, TIMEUP_EVENT, NULL_CMDSTATE,
 		 a_fts_start_timeout, 0);
@@ -104,27 +92,22 @@ APR_DECLARE(void) fsm_init(void)
 		 a_fts_stop_success, 0);
     gpcc_fsm_put(FTS_STOP_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
 		 a_fts_stop_failure, 0);
-    gpcc_fsm_put(FTS_STOP_CMDSTATE, NET_FAILURE_EVENT, NULL_CMDSTATE,
-		 a_fts_stop_failure, 0);
     gpcc_fsm_put(FTS_STOP_CMDSTATE, TIMEUP_EVENT, NULL_CMDSTATE,
 		 a_fts_stop_timeout, 0);
 
  
    /* status */
-    /*
-    gpcc_fsm_put(FTS_CMDSTATE, ARRAY_STATUS_EVENT, FTS_STATUS_CMDSTATE,
-		 a_fts_setup_init, a_fts_status_init, a_fts_status_do, 0);
+    
+    gpcc_fsm_put(FTS_STATUS_CMDSTATE, INIT_EVENT, FTS_STATUS_CMDSTATE,
+		 a_fts_status_do, 0);
     gpcc_fsm_put(FTS_STATUS_CMDSTATE, STATUS_REPLY_MSG_EVENT, FTS_STATUS_CMDSTATE,
 		 a_fts_status_reply, 0);
     gpcc_fsm_put(FTS_STATUS_CMDSTATE, SUCCESS_EVENT, NULL_CMDSTATE,
-		 a_fts_status_success, a_fts_status_cleanup, 0);
+		 a_fts_status_success, 0);
     gpcc_fsm_put(FTS_STATUS_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
-		 a_fts_status_failure, a_fts_status_cleanup, 0);
-    gpcc_fsm_put(FTS_STATUS_CMDSTATE, NET_FAILURE_EVENT, NULL_CMDSTATE,
-		 a_fts_status_failure, a_fts_status_cleanup, 0);
-    gpcc_fsm_put(FTS_STATUS_CMDSTATE, NET_CLOSED_EVENT, FTS_STATUS_CMDSTATE,
-		 a_fts_status_reply, 0);
-    */
+		 a_fts_status_failure, 0);
+    gpcc_fsm_put(FTS_STATUS_CMDSTATE, TIMEUP_EVENT, NULL_CMDSTATE,
+		 a_fts_status_timeout, 0);
 
     /* array start */
     /* start qd in utility mode */

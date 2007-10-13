@@ -33,59 +33,34 @@ struct cmdslot_t {
     apr_pool_t *pool;
     
     union {
-	/*
-	struct {
-	    gpcc_net_conn_t conn;
-	    seginfo_t *seginfo;
-	    int nseginfo;
-	    struct json_object *config_json;
-	    int network_failure;
-
-	    struct json_object *reqobj;
-	    int sndidx;
-
-	    union {
-		struct {
-		    char *mode;
-		    int segidx;
-		    int nreply;
-		    int nsuccess;
-		    int nfailed;
-		    int *replied;
-		} initdb;
-		
-		struct {
-		    int nrequest;
-		    int nreply;
-		    int nsuccess;
-		    int nfailed;
-		    int *replied;
-		} start;
-		
-		struct {
-		    int nreply;
-		    int nsuccess;
-		    int nfailed;
-		    int *replied;
-		} stop;
-		
-		struct {
-		    int nreply;
-		    int nsuccess;
-		    int nfailed;
-		    int *replied;
-		} status;
-		
-	    } u;
-	} fts;
-
-	*/
 
 	struct {
 	    seginfo_t* seginfo;
 	    int nseginfo;
 	    apr_uint32_t active_cmdidx;
 	} fts;
+
+	struct {
+	    char *config;
+	    /* use this to send a command to all nodes */
+	    apr_uint32_t parent_cmdidx;
+	    int idx;
+	    int ntotal;
+	    int nsuccess, nfailed; /* finished -> nsuccess + nfailed == ntotal */
+	    struct {
+		char* node;	/* which node to send to (e.g. node.2) */
+		char* unit;	/* which segment (e.g. seg.2.0)  */
+		char* mode;
+		char* host;
+		int port;	/* which port for this segment */
+		char* datadir;	/* which dir for this segment */
+		int dbid;
+		int content;
+		/* other stuff here */
+		char* reply;	/* reply from the start command */
+	    } *req;		/* one for each unit, total of ntotal units */
+	} initdb;
+
 
 	struct {
 	    /* use this to send a command to all nodes */
@@ -121,6 +96,24 @@ struct cmdslot_t {
 		char* reply;	/* reply from the start command */
 	    } *req;		/* one for each unit, total of ntotal units */
 	} stop;
+
+
+	struct {
+	    /* use this to send a command to all nodes */
+	    apr_uint32_t parent_cmdidx;
+	    int ntotal;
+	    int nsuccess, nfailed; /* finished -> nsuccess + nfailed == ntotal */
+	    struct {
+		char* node;	/* which node to send to (e.g. node.2) */
+		char* unit;	/* which segment (e.g. seg.2.0)  */
+		char* mode;
+		char* host;
+		int port;	/* which port for this segment */
+		char* datadir;	/* which dir for this segment */
+		/* other stuff here */
+		char* reply;	/* reply from the start command */
+	    } *req;		/* one for each unit, total of ntotal units */
+	} status;
 
 
 	struct {
