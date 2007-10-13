@@ -1,7 +1,161 @@
+static apr_status_t config_addsegment(struct json_object *msg, char *key, const char *value)
+{
+    char *node, *last;
+    char *dir;
+    char *v = strdup(value);
+    struct json_object *obj;
+
+    if (!v) {
+	gpcc_fatal(FLINE, "out of memory");
+    }
+
+    node = apr_strtok(v, ":", &last);
+    if (!node)
+	goto bail;
+
+    dir = apr_strtok(0, ":", &last);
+    if (!dir)
+	goto bail;
+
+    obj = json_object_new_object();
+    if (!obj)
+	goto bail;
+
+    json_object_object_add(obj, "node", json_object_new_string(node));
+    json_object_object_add(obj, "dir", json_object_new_string(dir));
+    
+    json_object_object_add(msg, key, obj);
+
+    if (v) free(v);
+    return 0;
+
+    bail:
+    if (v) free(v);
+    return APR_EINVAL;
+
+}
+
+static apr_status_t config_addnode(struct json_object *msg, char *key, const char *value)
+{
+    char *nodestr = strdup(value);
+    char *tok, *last;
+    struct json_object *array;
+
+    if (!nodestr){
+	gpcc_fatal(FLINE, "out of memory");
+    }
+
+    array = json_object_new_array();
+    if (!array)
+	goto bail;
+
+    for (tok = apr_strtok(nodestr, " \t", &last) ; tok ; tok = apr_strtok(0, " \t", &last)) {
+	if (*tok == 0) 
+	    continue;
+	json_object_array_add(array, json_object_new_string(gpcc_string_trim(tok)));
+    }
+
+    json_object_object_add(msg, key, array);
+
+    if (nodestr) free(nodestr);
+    return 0;
+
+    bail:
+
+    if (nodestr) free(nodestr);
+    return APR_EINVAL;
+}
+
+static struct json_object *config_to_json_object() 
+{
+    struct json_object *obj;
+    char key[128];
+    int i;
+    const char *value;
+    int intvalue;
+
+    obj = json_object_new_object();
+
+    value = config_getx(gpma.cfg, CONFIG_DBNAME_KEY, CONFIG_DBNAME_VALUE);
+    json_object_object_add(obj, key, json_object_new_string((char *)value));    
+
+    value = config_getx(gpma.cfg, CONFIG_USER_KEY, getenv("USER"));
+    json_object_object_add(obj, key, json_object_new_string((char *)value));    
+
+    value = config_getx(gpma.cfg, CONFIG_PASSWORD_KEY, CONFIG_PASSWORD_VALUE);
+    json_object_object_add(obj, key, json_object_new_string((char *)value));    
+
+    intvalue = config_get_or_set_int(gpma.cfg, CONFIG_MAX_CONNECT_KEY, CONFIG_MAX_CONNECT_VALUE);
+    json_object_object_add(obj, key, json_object_new_int(intvalue));
+
+    value = config_getx(gpma.cfg, CONFIG_ENCODING_KEY, CONFIG_ENCODING_VALUE);
+    json_object_object_add(obj, key, json_object_new_string((char *)value));    
+
+    value = config_getx(gpma.cfg, CONFIG_LOCALE_KEY, CONFIG_LOCALE_VALUE);
+    json_object_object_add(obj, key, json_object_new_string((char *)value));    
+
+    value = config_getx(gpma.cfg, CONFIG_SHARED_BUFFERS_KEY, CONFIG_SHARED_BUFFERS_VALUE);
+    json_object_object_add(obj, key, json_object_new_string((char *)value));    
+
+    intvalue = config_get_or_set_int(gpma.cfg, CONFIG_CHECKPOINT_SEGMENT_KEY, CONFIG_CHECKPOINT_SEGMENT_VALUE);
+    json_object_object_add(obj, key, json_object_new_int(intvalue));
+
+    intvalue = config_get_or_set_int(gpma.cfg, CONFIG_MASTER_PORT_KEY, CONFIG_MASTER_PORT_VALUE);
+    json_object_object_add(obj, key, json_object_new_int(intvalue));
+
+    intvalue = config_get_or_set_int(gpma.cfg, CONFIG_BASE_PORT_KEY, CONFIG_BASE_PORT_VALUE);
+    json_object_object_add(obj, key, json_object_new_int(intvalue));
+
+    intvalue = config_get_or_set_int(gpma.cfg, CONFIG_MIRROR_BASE_PORT_KEY, CONFIG_MIRROR_BASE_PORT_VALUE);
+    json_object_object_add(obj, key, json_object_new_int(intvalue));
+
+    
+    for (i = 0 ;  ; i++) {
+	sprintf(key, "node.%d", i);
+	value = config_get(gpma.cfg, key);
+	if (!value) 
+	    break;
+
+	config_addnode(obj, key, value);
+    }
+
+    for (i = 0 ; ; i++) {
+	sprintf(key, "gpdb.seg.m.%d", i);
+	value = config_get(gpma.cfg, key);
+	if (!value)
+	    break;
+
+	config_addsegment(obj, key, value);
+    }
+
+    for (i = 0 ; ; i++) {
+	sprintf(key, "gpdb.seg.%d.0", i);
+	value = config_get(gpma.cfg, key);
+	if (!value)
+	    break;
+	config_addsegment(obj, key, value);
+
+	sprintf(key, "gpdb.seg.%d.1", i);
+	value = config_get(gpma.cfg, key);
+	if (!value)
+	    continue;
+	config_addsegment(obj, key, value);
+    }
+
+    gpcc_log_info(json_object_to_json_string(obj));
+
+    return obj;
+}
+
+
 static apr_status_t a_initdb_init(gpcc_event_t *ev, void *_cmdslot)
 {
-    /* build config in json object */
-
+    cmdslot_t *cmdslot = _cmdslot;
+    struct json_object *obj = config_to_json_object();
+    char *msg = json_object_to_json_string(obj);
+    
+    cmdslot->u.initdb.config = apr_pstrdup(cmdslot->pool, msg);
+    json_object_put(obj);
     return 0;
 }
 
