@@ -1,6 +1,6 @@
 
 
-static apr_status_t a_fts_array_start_units_start_reply(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_array_start_units_start_reply(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     gpcc_net_packet_t *pkt;
@@ -25,7 +25,7 @@ static apr_status_t a_fts_array_start_units_start_reply(gpcc_event_t *ev, void *
     return 0;
 }
 
-static apr_status_t a_fts_array_start_units_stop_reply(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_array_start_units_stop_reply(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     gpcc_net_packet_t *pkt;
@@ -50,7 +50,7 @@ static apr_status_t a_fts_array_start_units_stop_reply(gpcc_event_t *ev, void *_
     return 0;
 }
 
-static apr_status_t a_fts_array_start_utility_qd(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_array_start_utility_qd(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     cmdslot_t *p;
@@ -72,7 +72,7 @@ static apr_status_t a_fts_array_start_utility_qd(gpcc_event_t *ev, void *_cmdslo
     return 0;
 }
 
-static apr_status_t a_fts_array_start_gpconf(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_array_start_gpconf(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     seginfo_t *seginfo;
@@ -92,7 +92,7 @@ static apr_status_t a_fts_array_start_gpconf(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-static apr_status_t a_fts_array_start_utility_qd_stop(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_array_start_utility_qd_stop(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     cmdslot_t *p;
@@ -115,7 +115,7 @@ static apr_status_t a_fts_array_start_utility_qd_stop(gpcc_event_t *ev, void *_c
 }
 
 
-static apr_status_t a_fts_array_start_qes(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_array_start_qes(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     cmdslot_t *p;
@@ -149,7 +149,7 @@ static apr_status_t a_fts_array_start_qes(gpcc_event_t *ev, void *_cmdslot)
 
 }
 
-static apr_status_t a_fts_array_start_qd(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_array_start_qd(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     cmdslot_t *p;
@@ -171,7 +171,7 @@ static apr_status_t a_fts_array_start_qd(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-static apr_status_t a_fts_array_start_standby_qd(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_array_start_standby_qd(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     cmdslot_t *p;
@@ -201,7 +201,7 @@ static apr_status_t a_fts_array_start_standby_qd(gpcc_event_t *ev, void *_cmdslo
 
 }
 
-static apr_status_t a_fts_array_start_success(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_array_start_success(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj;
@@ -226,7 +226,7 @@ static apr_status_t a_fts_array_start_success(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-static apr_status_t a_fts_array_start_failure(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_array_start_failure(gpcc_event_t *ev, void *_cmdslot)
 {
    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;    
     struct json_object *obj;
@@ -251,7 +251,7 @@ static apr_status_t a_fts_array_start_failure(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-static apr_status_t a_fts_array_start_cleanup(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_array_start_cleanup(gpcc_event_t *ev, void *_cmdslot)
 {
     return 0;
 }

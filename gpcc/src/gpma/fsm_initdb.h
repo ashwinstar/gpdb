@@ -1,4 +1,4 @@
-static apr_status_t a_fts_initdb_init(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_initdb_init(gpcc_event_t *ev, void *_cmdslot)
 {
     /* build config in json object */
 
@@ -6,7 +6,7 @@ static apr_status_t a_fts_initdb_init(gpcc_event_t *ev, void *_cmdslot)
 }
 
 
-static apr_status_t a_fts_initdb_do(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_initdb_do(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = _cmdslot;
     int i, e;
@@ -41,12 +41,12 @@ static apr_status_t a_fts_initdb_do(gpcc_event_t *ev, void *_cmdslot)
     }
     json_object_put(obj);
 
-    cmdslot->countdown = 60 * 10;
+    cmdslot->countdown = 60 * 60;
     return 0;
 }
 
 
-static apr_status_t a_fts_initdb_reply(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_initdb_reply(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     gpcc_net_packet_t *pkt;
@@ -54,6 +54,8 @@ static apr_status_t a_fts_initdb_reply(gpcc_event_t *ev, void *_cmdslot)
     gpcc_event_t *evt = 0;
     char *seg, *status, *reason;
     int i, success = 0;
+
+    cmdslot->countdown = 0;
 
     pkt = (gpcc_net_packet_t *) ev->pdata;
     obj = json_tokener_parse(pkt->payload);
@@ -92,6 +94,7 @@ static apr_status_t a_fts_initdb_reply(gpcc_event_t *ev, void *_cmdslot)
 	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);	
 	}
 	gpcc_evqueue_put(gpma.evq, evt);
+	cmdslot->countdown = 0;
     } else {
 	if (success) {
 	    evt = gpcc_event_alloc(CONTINUE_EVENT, cmdslot->cmdidx, 0);
@@ -99,6 +102,7 @@ static apr_status_t a_fts_initdb_reply(gpcc_event_t *ev, void *_cmdslot)
 	} else {
 	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
 	    gpcc_evqueue_put(gpma.evq, evt);
+	    cmdslot->countdown = 0;
 	}
     }
 
@@ -106,7 +110,7 @@ static apr_status_t a_fts_initdb_reply(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-static void a_fts_initdb_send_json_reply(gpcc_event_t *ev, cmdslot_t *cmdslot, struct json_object *obj)
+static void a_initdb_send_json_reply(gpcc_event_t *ev, cmdslot_t *cmdslot, struct json_object *obj)
 {
     gpcc_event_t *evt;
     gpcc_net_packet_t *pkt;
@@ -127,37 +131,37 @@ static void a_fts_initdb_send_json_reply(gpcc_event_t *ev, cmdslot_t *cmdslot, s
 }
 
 
-static apr_status_t a_fts_initdb_success(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_initdb_success(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj;
 
     obj = gpcc_json_array_reply("stop", "ok", 0);
-    a_fts_initdb_send_json_reply(ev, cmdslot, obj);
+    a_initdb_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
     return 0;
 
 }
 
 
-static apr_status_t a_fts_initdb_failure(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_initdb_failure(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj;
 
     obj = gpcc_json_array_reply("start", "failed", 0);
-    a_fts_initdb_send_json_reply(ev, cmdslot, obj);
+    a_initdb_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
     return 0;
 }
 
-static apr_status_t a_fts_initdb_timeout(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_initdb_timeout(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj;
 
     obj = gpcc_json_array_reply("start", "timeout", 0);
-    a_fts_initdb_send_json_reply(ev, cmdslot, obj);
+    a_initdb_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
     return 0;
 

@@ -11,6 +11,7 @@
 #include "gpma.h"
 
 #include "fsm_node.h"
+#include "fsm_fts.h"
 #include "fsm_initdb.h"
 #include "fsm_start.h"
 #include "fsm_array_start.h"
@@ -56,113 +57,147 @@ APR_DECLARE(void) fsm_init(void)
 		 a_node_broadcast_net_closed, a_node_teardown, 0);
 
 
+    /* fts */
+    gpcc_fsm_put(FTS_CMDSTATE, INIT_EVENT, FTS_CMDSTATE,
+		 a_fts_init, 0);
+    gpcc_fsm_put(FTS_CMDSTATE, ARRAY_START_EVENT, FTS_STARTING_CMDSTATE,
+		 a_fts_array_start, 0);
+    gpcc_fsm_put(FTS_STARTING_CMDSTATE, ARRAY_START_EVENT, FTS_STARTING_CMDSTATE,
+		 a_fts_busy_reply, 0);    
+    gpcc_fsm_put(FTS_STARTING_CMDSTATE, ARRAY_STOP_EVENT, FTS_STARTING_CMDSTATE,
+		 a_fts_busy_reply, 0);    
+    gpcc_fsm_put(FTS_STARTING_CMDSTATE, ARRAY_STATUS_EVENT, FTS_STARTING_CMDSTATE,
+		 a_fts_busy_reply, 0);    
+    gpcc_fsm_put(FTS_STARTING_CMDSTATE, UNITS_REPLY_MSG_EVENT, FTS_STARTING_CMDSTATE,
+		 a_fts_array_start_reply, 0);
+    gpcc_fsm_put(FTS_STARTING_CMDSTATE, SUCCESS_EVENT, FTS_RUNNING_CMDSTATE,
+		 a_fts_running, 0);
+    gpcc_fsm_put(FTS_STARTING_CMDSTATE, FAILURE_EVENT, FTS_ERROR_CMDSTATE,
+		 a_fts_failure, 0);
+    gpcc_fsm_put(FTS_RUNNING_CMDSTATE, ARRAY_STOP_EVENT, FTS_STOPPING_CMDSTATE,
+		 a_fts_array_stop, 0);
+    gpcc_fsm_put(FTS_STOPPING_CMDSTATE, ARRAY_START_EVENT, FTS_STOPPING_CMDSTATE,
+		 a_fts_busy_reply, 0);    
+    gpcc_fsm_put(FTS_STOPPING_CMDSTATE, ARRAY_STOP_EVENT, FTS_STOPPING_CMDSTATE,
+		 a_fts_busy_reply, 0);    
+    gpcc_fsm_put(FTS_STOPPING_CMDSTATE, ARRAY_STATUS_EVENT, FTS_STOPPING_CMDSTATE,
+		 a_fts_busy_reply, 0);    
+    gpcc_fsm_put(FTS_STOPPING_CMDSTATE, UNITS_REPLY_MSG_EVENT, FTS_STOPPING_CMDSTATE,
+		 a_fts_array_stop_reply, 0);
+    gpcc_fsm_put(FTS_STOPPING_CMDSTATE, SUCCESS_EVENT, FTS_CMDSTATE,
+		 a_fts_stopped, 0);
+    gpcc_fsm_put(FTS_STOPPING_CMDSTATE, FAILURE_EVENT, FTS_ERROR_CMDSTATE,
+		 a_fts_failure, 0);
+
+
+
     /* init */
     gpcc_fsm_put(FTS_INITDB_CMDSTATE, INIT_EVENT, FTS_INITDB_CMDSTATE,
-		 a_fts_initdb_init, a_fts_initdb_do, 0);
+		 a_initdb_init, a_initdb_do, 0);
     gpcc_fsm_put(FTS_INITDB_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, FTS_INITDB_CMDSTATE,
-		 a_fts_initdb_reply, 0);
+		 a_initdb_reply, 0);
     gpcc_fsm_put(FTS_INITDB_CMDSTATE, CONTINUE_EVENT, FTS_INITDB_CMDSTATE,
-		 a_fts_initdb_do, 0);
+		 a_initdb_do, 0);
     gpcc_fsm_put(FTS_INITDB_CMDSTATE, SUCCESS_EVENT, NULL_CMDSTATE,
-		 a_fts_initdb_success, 0);
+		 a_initdb_success, 0);
     gpcc_fsm_put(FTS_INITDB_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
-		 a_fts_initdb_failure, 0);
+		 a_initdb_failure, 0);
     gpcc_fsm_put(FTS_INITDB_CMDSTATE, TIMEUP_EVENT, NULL_CMDSTATE,
-		 a_fts_initdb_timeout, 0);
+		 a_initdb_timeout, 0);
 
     /* start */
     gpcc_fsm_put(FTS_START_CMDSTATE, INIT_EVENT, FTS_START_CMDSTATE,
-		 a_fts_start_do, 0);
+		 a_start_do, 0);
     gpcc_fsm_put(FTS_START_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, FTS_START_CMDSTATE,
-		 a_fts_start_reply, 0);
+		 a_start_reply, 0);
     gpcc_fsm_put(FTS_START_CMDSTATE, SUCCESS_EVENT, NULL_CMDSTATE,
-		 a_fts_start_success, 0);
+		 a_start_success, 0);
     gpcc_fsm_put(FTS_START_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
-		 a_fts_start_failure, 0);
+		 a_start_failure, 0);
     gpcc_fsm_put(FTS_START_CMDSTATE, TIMEUP_EVENT, NULL_CMDSTATE,
-		 a_fts_start_timeout, 0);
+		 a_start_timeout, 0);
 
     /* stop */
     
     gpcc_fsm_put(FTS_STOP_CMDSTATE, INIT_EVENT, FTS_STOP_CMDSTATE,
-		 a_fts_stop_do, 0);
+		 a_stop_do, 0);
     gpcc_fsm_put(FTS_STOP_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, FTS_STOP_CMDSTATE,
-		 a_fts_stop_reply, 0);
+		 a_stop_reply, 0);
     gpcc_fsm_put(FTS_STOP_CMDSTATE, SUCCESS_EVENT, NULL_CMDSTATE,
-		 a_fts_stop_success, 0);
+		 a_stop_success, 0);
     gpcc_fsm_put(FTS_STOP_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
-		 a_fts_stop_failure, 0);
+		 a_stop_failure, 0);
     gpcc_fsm_put(FTS_STOP_CMDSTATE, TIMEUP_EVENT, NULL_CMDSTATE,
-		 a_fts_stop_timeout, 0);
+		 a_stop_timeout, 0);
 
  
    /* status */
     
     gpcc_fsm_put(FTS_STATUS_CMDSTATE, INIT_EVENT, FTS_STATUS_CMDSTATE,
-		 a_fts_status_do, 0);
+		 a_status_do, 0);
     gpcc_fsm_put(FTS_STATUS_CMDSTATE, STATUS_REPLY_MSG_EVENT, FTS_STATUS_CMDSTATE,
-		 a_fts_status_reply, 0);
+		 a_status_reply, 0);
     gpcc_fsm_put(FTS_STATUS_CMDSTATE, SUCCESS_EVENT, NULL_CMDSTATE,
-		 a_fts_status_success, 0);
+		 a_status_success, 0);
     gpcc_fsm_put(FTS_STATUS_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
-		 a_fts_status_failure, 0);
+		 a_status_failure, 0);
     gpcc_fsm_put(FTS_STATUS_CMDSTATE, TIMEUP_EVENT, NULL_CMDSTATE,
-		 a_fts_status_timeout, 0);
+		 a_status_timeout, 0);
 
     /* array start */
     /* start qd in utility mode */
     gpcc_fsm_put(FTS_ARRAY_START_CMDSTATE, INIT_EVENT, FTS_START_UTILITY_QD_CMDSTATE,
-		 a_fts_array_start_utility_qd, 0);
+		 a_array_start_utility_qd, 0);
     gpcc_fsm_put(FTS_START_UTILITY_QD_CMDSTATE, UNITS_REPLY_MSG_EVENT, FTS_START_UTILITY_QD_CMDSTATE,
-		 a_fts_array_start_units_start_reply, 0);
+		 a_array_start_units_start_reply, 0);
     gpcc_fsm_put(FTS_START_UTILITY_QD_CMDSTATE, SUCCESS_EVENT, FTS_START_GPCONF_CMDSTATE,
-		 a_fts_array_start_gpconf, 0);
+		 a_array_start_gpconf, 0);
     gpcc_fsm_put(FTS_START_UTILITY_QD_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
-		 a_fts_array_start_failure, a_fts_array_start_cleanup, 0);
+		 a_array_start_failure, a_array_start_cleanup, 0);
 
     /* update gp_configuration */
     gpcc_fsm_put(FTS_START_GPCONF_CMDSTATE, SUCCESS_EVENT, FTS_START_UTILITY_QD_STOP_CMDSTATE,
-		 a_fts_array_start_utility_qd_stop, 0);
+		 a_array_start_utility_qd_stop, 0);
     gpcc_fsm_put(FTS_START_GPCONF_CMDSTATE, FAILURE_EVENT, FTS_START_GPCONF_FAILURE_CMDSTATE,
-		 a_fts_array_start_utility_qd_stop, 0);
+		 a_array_start_utility_qd_stop, 0);
 
     gpcc_fsm_put(FTS_START_GPCONF_FAILURE_CMDSTATE, UNITS_REPLY_MSG_EVENT, FTS_START_GPCONF_FAILURE_CMDSTATE,
-		 a_fts_array_start_units_stop_reply, 0);
+		 a_array_start_units_stop_reply, 0);
     gpcc_fsm_put(FTS_START_GPCONF_FAILURE_CMDSTATE, SUCCESS_EVENT, NULL_CMDSTATE,
-		 a_fts_array_start_failure, a_fts_array_start_cleanup, 0);
+		 a_array_start_failure, a_array_start_cleanup, 0);
     gpcc_fsm_put(FTS_START_GPCONF_FAILURE_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
-		 a_fts_array_start_failure, a_fts_array_start_cleanup, 0);
+		 a_array_start_failure, a_array_start_cleanup, 0);
 
     /* stop qd */
     gpcc_fsm_put(FTS_START_UTILITY_QD_STOP_CMDSTATE, UNITS_REPLY_MSG_EVENT, FTS_START_UTILITY_QD_STOP_CMDSTATE,
-		 a_fts_array_start_units_stop_reply, 0);
+		 a_array_start_units_stop_reply, 0);
     gpcc_fsm_put(FTS_START_UTILITY_QD_STOP_CMDSTATE, SUCCESS_EVENT, FTS_START_QES_CMDSTATE,
-		 a_fts_array_start_qes, 0);
+		 a_array_start_qes, 0);
     gpcc_fsm_put(FTS_START_UTILITY_QD_STOP_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
-		 a_fts_array_start_failure, a_fts_array_start_cleanup, 0);
+		 a_array_start_failure, a_array_start_cleanup, 0);
 
     /* start all qes */
     gpcc_fsm_put(FTS_START_QES_CMDSTATE, UNITS_REPLY_MSG_EVENT, FTS_START_QES_CMDSTATE,
-		 a_fts_array_start_units_start_reply, 0);
+		 a_array_start_units_start_reply, 0);
     gpcc_fsm_put(FTS_START_QES_CMDSTATE, SUCCESS_EVENT, FTS_START_QD_CMDSTATE,
-		 a_fts_array_start_qd, 0);
+		 a_array_start_qd, 0);
     gpcc_fsm_put(FTS_START_QES_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
-		 a_fts_array_start_failure, a_fts_array_start_cleanup, 0);
+		 a_array_start_failure, a_array_start_cleanup, 0);
 		 
     /* start qd */
     gpcc_fsm_put(FTS_START_QD_CMDSTATE, UNITS_REPLY_MSG_EVENT, FTS_START_QD_CMDSTATE,
-		 a_fts_array_start_units_start_reply, 0);
+		 a_array_start_units_start_reply, 0);
     gpcc_fsm_put(FTS_START_QD_CMDSTATE, SUCCESS_EVENT, FTS_START_STANDBY_QD_CMDSTATE,
-		 a_fts_array_start_standby_qd, 0);
+		 a_array_start_standby_qd, 0);
     gpcc_fsm_put(FTS_START_QD_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
-		 a_fts_array_start_failure, a_fts_array_start_cleanup, 0);
+		 a_array_start_failure, a_array_start_cleanup, 0);
 
     /* start standby qd */
     gpcc_fsm_put(FTS_START_STANDBY_QD_CMDSTATE, UNITS_REPLY_MSG_EVENT, FTS_START_STANDBY_QD_CMDSTATE,
-		 a_fts_array_start_units_start_reply, 0);
+		 a_array_start_units_start_reply, 0);
     gpcc_fsm_put(FTS_START_STANDBY_QD_CMDSTATE, SUCCESS_EVENT, NULL_CMDSTATE,
-		 a_fts_array_start_success, a_fts_array_start_cleanup, 0);
+		 a_array_start_success, a_array_start_cleanup, 0);
     gpcc_fsm_put(FTS_START_STANDBY_QD_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
-		 a_fts_array_start_failure, a_fts_array_start_cleanup, 0);
+		 a_array_start_failure, a_array_start_cleanup, 0);
 
 }
