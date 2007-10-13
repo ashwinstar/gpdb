@@ -33,6 +33,7 @@ struct cmdslot_t {
     apr_pool_t *pool;
     
     union {
+	/*
 	struct {
 	    gpcc_net_conn_t conn;
 	    seginfo_t *seginfo;
@@ -78,31 +79,71 @@ struct cmdslot_t {
 	    } u;
 	} fts;
 
+	*/
 
-#if 0
 	struct {
 	    seginfo_t* seginfo;
 	    int nseginfo;
 	    apr_uint32_t active_cmdidx;
 	} fts;
-#endif
 
 	struct {
 	    /* use this to send a command to all nodes */
-	    gpcc_net_conn_t conn; /* if we need to send reply over http */
+	    apr_uint32_t parent_cmdidx;
 	    int ntotal;
 	    int nsuccess, nfailed; /* finished -> nsuccess + nfailed == ntotal */
 	    struct {
 		char* node;	/* which node to send to (e.g. node.2) */
 		char* unit;	/* which segment (e.g. seg.2.0)  */
+		char* mode;
+		char* host;
 		int port;	/* which port for this segment */
 		char* datadir;	/* which dir for this segment */
 		/* other stuff here */
 		char* reply;	/* reply from the start command */
 	    } *req;		/* one for each unit, total of ntotal units */
+	} start;
+
+
+	struct {
+	    /* use this to send a command to all nodes */
+	    apr_uint32_t parent_cmdidx;
+	    int ntotal;
+	    int nsuccess, nfailed; /* finished -> nsuccess + nfailed == ntotal */
+	    struct {
+		char* node;	/* which node to send to (e.g. node.2) */
+		char* unit;	/* which segment (e.g. seg.2.0)  */
+		char* mode;
+		char* host;
+		int port;	/* which port for this segment */
+		char* datadir;	/* which dir for this segment */
+		/* other stuff here */
+		char* reply;	/* reply from the start command */
+	    } *req;		/* one for each unit, total of ntotal units */
+	} stop;
+
+
+	struct {
+	    gpcc_net_conn_t conn; /* if we need to send reply over http */
+	    apr_uint32_t parent_cmdidx;
 	} array_start;
 
+	struct {
+	    gpcc_net_conn_t conn; /* if we need to send reply over http */
+	    apr_uint32_t parent_cmdidx;
+	} segment_start;
 
+	struct {
+	    gpcc_net_conn_t conn; /* if we need to send reply over http */
+	    apr_uint32_t parent_cmdidx;
+	} array_stop;
+
+	struct {
+	    gpcc_net_conn_t conn; /* if we need to send reply over http */
+	    apr_uint32_t parent_cmdidx;
+	} segment_stop;
+
+	
 	struct {
 	    gpcc_net_conn_t conn;
 	    apr_proc_t proc;

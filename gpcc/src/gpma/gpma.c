@@ -160,7 +160,6 @@ static void net_accepted(gpcc_net_conn_t conn,
 			 gpcc_net_header_t* from_peer,
 			 apr_uint64_t *arg)
 {
-    cmdslot_t *slot;
     gpcc_event_t* ev;
     struct json_object *obj;
 
@@ -170,40 +169,32 @@ static void net_accepted(gpcc_net_conn_t conn,
 	
 	if (0 == memcmp("/gpcc/start?", from_peer->argv[1], 12)) {
 	    /* send startcmd_event to FTS cmdslot ? */
-	    slot = cmdslot_alloc("fts_start", FTS_CMDSTATE);
-	    slot->u.fts.conn = conn;
 	    obj = gpcc_json_array_request("start", "");
-	    ev = mkfts_event(ARRAY_REQUEST_MSG_EVENT, slot->cmdidx, 0, slot->cmdidx, obj);
+	    ev = mkfts_event(ARRAY_REQUEST_MSG_EVENT, gpma.fts_cmdslot->cmdidx, 0, gpma.fts_cmdslot->cmdidx, obj);
 	    gpcc_evqueue_put(gpma.evq, ev);
 	    json_object_put(obj);
-	    *arg = slot->cmdidx;
+	    *arg = gpma.fts_cmdslot->cmdidx;
 	}
 	else if (0 == memcmp("/gpcc/stop?", from_peer->argv[1], 11)) {
-	    slot = cmdslot_alloc("fts_stop", FTS_CMDSTATE);
-	    slot->u.fts.conn = conn;
 	    obj = gpcc_json_array_request("stop", "immediate");
-	    ev = mkfts_event(ARRAY_REQUEST_MSG_EVENT, slot->cmdidx, 0, slot->cmdidx, obj);
+	    ev = mkfts_event(ARRAY_REQUEST_MSG_EVENT, gpma.fts_cmdslot->cmdidx, 0, gpma.fts_cmdslot->cmdidx, obj);
 	    gpcc_evqueue_put(gpma.evq, ev);
 	    json_object_put(obj);
-	    *arg = slot->cmdidx;	    
+	    *arg = gpma.fts_cmdslot->cmdidx;
 	}
 	else if (0 == memcmp("/gpcc/init?", from_peer->argv[1], 11)) {
-	    slot = cmdslot_alloc("fts_init", FTS_CMDSTATE);
-	    slot->u.fts.conn = conn;
 	    obj = gpcc_json_array_request("init", "");
-	    ev = mkfts_event(ARRAY_REQUEST_MSG_EVENT, slot->cmdidx, 0, slot->cmdidx, obj);
+	    ev = mkfts_event(ARRAY_REQUEST_MSG_EVENT, gpma.fts_cmdslot->cmdidx, 0, gpma.fts_cmdslot->cmdidx, obj);
 	    gpcc_evqueue_put(gpma.evq, ev);
 	    json_object_put(obj);
-	    *arg = slot->cmdidx;	    
+	    *arg = gpma.fts_cmdslot->cmdidx;
 	}
 	else if (0 == memcmp("/gpcc/status", from_peer->argv[1], 12)) {
-	    slot = cmdslot_alloc("fts_status", FTS_CMDSTATE);
-	    slot->u.fts.conn = conn;
 	    obj = gpcc_json_status_request(0);
-	    ev = mkfts_event(ARRAY_REQUEST_MSG_EVENT, slot->cmdidx, 0, slot->cmdidx, obj);
+	    ev = mkfts_event(STATUS_REQUEST_MSG_EVENT, gpma.fts_cmdslot->cmdidx, 0, gpma.fts_cmdslot->cmdidx, obj);
 	    gpcc_evqueue_put(gpma.evq, ev);
 	    json_object_put(obj);
-	    *arg = slot->cmdidx;	    
+	    *arg = gpma.fts_cmdslot->cmdidx;
 	} else {
 	    gpcc_warning(FLINE, "invalid URL");
 	    gpcc_net_close(conn);
