@@ -190,7 +190,8 @@ static apr_status_t a_fts_busy_reply(gpcc_event_t *ev, void *_cmdslot)
 
 static apr_status_t a_fts_running(gpcc_event_t *ev, void *_cmdslot)
 {
-
+    cmdslot_t *cmdslot = _cmdslot;
+    cmdslot->u.fts.active_cmdidx = 0;
 
     return 0;
 }
@@ -242,7 +243,8 @@ static apr_status_t a_fts_array_stop_reply(gpcc_event_t *ev, void *_cmdslot)
 
 static apr_status_t a_fts_stopped(gpcc_event_t *ev, void *_cmdslot)
 {
-
+    cmdslot_t *cmdslot = _cmdslot;
+    cmdslot->u.fts.active_cmdidx = 0;
     return 0;
 }
 

@@ -33,7 +33,7 @@ static apr_status_t a_array_init_do(gpcc_event_t *ev, void *_cmdslot)
     gpcc_event_t *evt;
     int i;
     
-    p = cmdslot_alloc("STOP", FTS_STOP_CMDSTATE);
+    p = cmdslot_alloc("INITDB", FTS_INITDB_CMDSTATE);
     p->u.initdb.parent_cmdidx = cmdslot->cmdidx;
     p->u.initdb.ntotal = nseginfo;
 
