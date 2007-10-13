@@ -2730,7 +2730,7 @@ static Node *make_partition_rules(ParseState *pstate,
 		StringInfoData   sid;
 		int colcnt = 0;
 
-		exprBuf[0] = '0';
+		exprBuf[0] = '\0';
 
 		initStringInfo(&sid);
 
@@ -2873,9 +2873,9 @@ static Node *make_partition_rules(ParseState *pstate,
 		char			 ORBuf[10000];
 		char			 ruleBuf[10000];
 
-		exprBuf[0] = '0';
-		ANDBuf[0]  = '0';
-		ORBuf[0]   = '0';
+		exprBuf[0] = '\0';
+		ANDBuf[0]  = '\0';
+		ORBuf[0]   = '\0';
 
 		Assert(pBSpec->partStart);
 		pRI = (PartitionRangeItem *)(pBSpec->partStart);
@@ -3108,9 +3108,9 @@ static Node *make_partition_rules(ParseState *pstate,
 		ListCell		*lc_every_val = NULL;
 		List *allNewCols = NIL;
 
-		exprBuf[0] = '0';
-		ANDBuf[0]  = '0';
-		ORBuf[0]   = '0';
+		exprBuf[0] = '\0';
+		ANDBuf[0]  = '\0';
+		ORBuf[0]   = '\0';
 
 		pRI = (PartitionRangeItem *)(pBSpec->partStart);
 		
@@ -3166,7 +3166,7 @@ static Node *make_partition_rules(ParseState *pstate,
 
 				/* for generated START for EVERY always be exclusive */
 				if ((everyOffset + 1) <  maxEveryOffset) 
-					expr_op = "<=";
+					expr_op = "<";
 				else 
 					/* only be inclusive if set that way */
 					if (pRI && (1 == pRI->partInclusive))
@@ -4612,7 +4612,7 @@ static int partition_range_every(ParseState *pstate,
 				char everyNumbuf[999];
 				char *compare_op = (1==colCnt) ? "<" : "<=";
 
-				typbuf[0] = '0';
+				typbuf[0] = '\0';
 
 				if (!deparse_partition_rule1(n1, op1buf, sizeof(op1buf),
 											 typbuf, sizeof(typbuf)))
