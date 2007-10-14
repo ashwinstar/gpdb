@@ -111,7 +111,7 @@ def checkCommandLine():
 
 def hitMA(cmd, params):
     params = urlllib.urlencode(params)
-    url = 'http://%s:%d/%s?%s' % (gp_opt['-h'], gp_opt['-p'], cmd, params)
+    url = 'http://%s:%d/gpcc/%s?%s' % (gp_opt['-h'], gp_opt['-p'], cmd, params)
     f = None
     try:
         f = urllib.urlopen(url)
