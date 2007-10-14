@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <apr_hash.h>
 #include <apr_fnmatch.h>
 #include <apr_strings.h>
@@ -18,7 +19,8 @@ struct config_t {
 config_t* config_create(apr_pool_t* pool)
 {
     config_t* c = apr_pcalloc(pool, sizeof(config_t));
-    GPCC_DO(0 == apr_pool_create(&c->pool, pool));
+    if (apr_pool_create(&c->pool, pool))
+	gpcc_fatal(FLINE, "out of memory");
     c->htab = apr_hash_make(c->pool);
     return c;
 }
@@ -29,7 +31,8 @@ void config_gc(config_t* c)
 {
     apr_pool_t* npool;
     apr_hash_t* nhtab;
-    GPCC_DO(0 == apr_pool_create(&npool, apr_pool_parent_get(c->pool)));
+    if (apr_pool_create(&npool, apr_pool_parent_get(c->pool)))
+	gpcc_fatal(FLINE, "out of memory");
     nhtab = apr_hash_copy(npool, c->htab);
     apr_pool_destroy(c->pool);
     c->pool = npool;
@@ -204,7 +207,8 @@ config_t* config_read(const char* dirpath, apr_pool_t* pool)
     apr_int64_t csn = 0;
     FILE* fp;
 
-    GPCC_DO(0 == apr_pool_create(&subpool, pool));
+    if (apr_pool_create(&subpool, pool)) 
+	gpcc_fatal(FLINE, "out of memory");
 
     /* get a list of all filenames in dirpath matching gpcfg_* */
     path = apr_psprintf(subpool, "%s/gpcfg_*", dirpath);
@@ -254,8 +258,11 @@ apr_status_t config_write(const char* dirpath, const char* guid,
     config_set_int64(cfg, "sys.csn", csn);
 
     if (sizeof(tmpbuf) < pathlenmin) {
-	GPCC_DO(0 != (tmppath = malloc(pathlenmin)));
-	GPCC_DO(0 != (newpath = malloc(pathlenmin)));
+	if (! (tmppath = malloc(pathlenmin)))
+	    gpcc_fatal(FLINE, "out of memory");
+
+	if (! (newpath = malloc(pathlenmin)))
+	    gpcc_fatal(FLINE, "out of memory");
     }
 
     sprintf(tmppath, "%s/~gpcfg_%s.%lld", dirpath, guid, (long long) csn);
@@ -287,3 +294,25 @@ apr_status_t config_write(const char* dirpath, const char* guid,
     return 0;
 }
 
+
+void config_clean_dir(const char* dirpath, apr_pool_t* pool)
+{
+    apr_pool_t* subpool;
+    char** fname = 0;
+    char* path;
+    int fcnt, i;
+    
+    if (apr_pool_create(&subpool, pool)) 
+	gpcc_fatal(FLINE, "out of memory");
+
+    /* get a list of all filenames in dirpath matching gpcfg_* */
+    path = apr_psprintf(subpool, "%s/gpcfg_*", dirpath);
+    fname = glob(path, &fcnt, subpool);
+
+    /* go thru the list and delete one by one. */
+    for (i = 0; i < fcnt; i++) {
+	if (unlink(fname[i]) == -1) {
+	    gpcc_fatal(FLINE, "unable to delete file %s", fname[i]);
+	}
+    }
+}

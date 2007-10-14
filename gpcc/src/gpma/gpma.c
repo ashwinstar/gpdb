@@ -20,9 +20,10 @@ gpma_t gpma = {0};
 /* Print usage info */
 static void usage(const char* msg)
 {
-    fprintf(stderr, "\nUsage: %s [-D?] [-b cfgfile] ma_unit ma_dir\n\n", gpma.progname);
+    fprintf(stderr, "\nUsage: %s [-D?f] [-b cfgfile] ma_unit ma_dir\n\n", gpma.progname);
     fprintf(stderr, "    -?         : print this help screen\n");
     fprintf(stderr, "    -D         : debug mode and do not run as daemon\n");
+    fprintf(stderr, "    -f         : for the -b option, force the creation of new config\n");
     fprintf(stderr, "    -b cfgfile : boot the Master Agent with cfgfile ('-' for stdin)\n");
     fprintf(stderr, "    ma_unit    : the Master Agent Unit (e.g. ma.1) \n");
     fprintf(stderr, "    ma_dir     : the data directory for storing Master Agent data files\n");
@@ -78,6 +79,9 @@ void parse_cmdline(int argc, const char* argv[])
     GPCC_DO(0 == apr_getopt_init(&handle, gpma.pool, argc, argv));
     while (0 == (e = apr_getopt(handle, "?b:D", &opt, &optarg))) {
 	switch (opt) {
+	case 'f':
+	    gpma.boot_force = 1;
+	    break;
 	case 'b': 
 	    gpma.boot_fname = optarg;
 	    break;
@@ -424,7 +428,7 @@ void d_main(void)
 /*
  *  Sanity check on config info.
  */
-static apr_status_t verify_config(void)
+static void verify_config(void)
 {
     int i;
     const char* v;
@@ -521,8 +525,6 @@ static apr_status_t verify_config(void)
 
     /* set the number of QEs */
     config_set_int(gpma.cfg, "gpdb.seg.max", i);
-    
-    return 0;
 }
 
 
@@ -544,6 +546,9 @@ void load_config(void)
 	gpma.cfg = config_read_stream(f, gpma.pool);
 	fclose(f);
 
+	/* set the csn */
+	config_set_int64(gpma.cfg, "ma.csn", 1);
+
 	/* generate a guid */
 	guid = now;
 	rand = random();
@@ -556,28 +561,39 @@ void load_config(void)
 	gpma.guid = apr_pstrdup(gpma.pool, guidstr);
 	config_set(gpma.cfg, "gpdb.guid", gpma.guid);
 
-	config_set_int64(gpma.cfg, "ma.csn", 1);
-	GPCC_DO(0 == verify_config());
+	/* check if config is legit */
+	verify_config();
 	
+	/* prep the datadir */
 	gpma.datadir = config_get(gpma.cfg, "ma.datadir");
+	if (0 != apr_dir_make_recursive(gpma.datadir, 0x700, gpma.pool)) 
+	    gpcc_fatal(FLINE, "unable to create ma.datadir '%s'", gpma.datadir);
+
+	if (gpma.boot_force) {
+	    config_clean_dir(gpma.datadir, gpma.pool);
+	}
+
+	/* see if another config existed */
+	if (config_read(gpma.datadir, gpma.pool)) {
+	    gpcc_fatal(FLINE, "found another config file in dir %s; run with -f to force cleanup?", 
+		       gpma.datadir);
+	}
     }
     else {
 	gpma.cfg = config_read(gpma.datadir, gpma.pool);
-	if (gpma.cfg == 0) {
-	    fprintf(stderr, "ERROR: config file not found in dir %s\n", gpma.datadir);
-	    exit(1);
-	}
+	if (gpma.cfg == 0) 
+	    gpcc_fatal(FLINE, "config file not found in dir %s", gpma.datadir);
+
 	gpma.guid = config_get(gpma.cfg, "gpdb.guid");
-	if (! gpma.guid) {
-	    fprintf(stderr, "ERROR: config file does not specify gpdb.guid\n");
-	    exit(1);
-	}
+	if (! gpma.guid) 
+	    gpcc_fatal(FLINE, "config file does not specify gpdb.guid");
+
 	gpma.guid = apr_pstrdup(gpma.pool, gpma.guid);
-	GPCC_DO(0 == verify_config());
+
+	/* check if config is legit */
+	verify_config();
     }
 
-    if (0 != apr_dir_make_recursive(gpma.datadir, 0x700, gpma.pool)) 
-	gpcc_fatal(FLINE, "unable to create ma.datadir '%s'", gpma.datadir);
     GPCC_DO(0 == config_write(gpma.datadir, gpma.guid, gpma.cfg));
 }
 

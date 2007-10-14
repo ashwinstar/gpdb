@@ -47,7 +47,8 @@ struct gpma_t {
     const char*  progname;    /* argv[0] of cmdline  */
     const char*  guid; 	      /* Global unique ID (generated from gpdb_id) */
     const char*  ma_unit;     /* MA ID - e.g. ma.0 */
-    const char*  datadir;	      /* dir for config file, log file, etc */
+    const char*  datadir;     /* dir for config file, log file, etc */
+    int          boot_force;  /* force the creation of boot_fname cfg file */
     const char*  boot_fname;  /* NULL if not booting, otherwise the name of the cfgfile */
     int          debug;	      /* TRUE if debug run, don't daemonize */
     gpcc_evqueue_t* evq;      /* event queue */
