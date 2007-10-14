@@ -62,6 +62,8 @@ void parse_cmdline(int argc, const char* argv[])
 
     /* get full path to parent directory of gpma executable */
     gpma.gphome = p;
+    setenv("GPHOME", p, 1);
+
     p += strlen(p) + 1;
     while (*p != '/') *p-- = 0;
     if (p == gpma.gphome) {
@@ -241,41 +243,6 @@ static void net_tick(apr_time_t now)
 }
 
 
-apr_status_t node_parse(const char *node, char ***argv, int *argc, apr_pool_t *pool)
-{
-    char *v = strdup(node);
-    char *tok, *last;
-    char *s, *e;
-    char *host[10];
-    int i, n = gpcc_lengthof(host);
-
-    s = strchr(v, '(');
-    e = strchr(v, ')');
-
-    if (!s || !e)
-	return APR_EINVAL;
-    
-    s++;
-    *e = 0;
-    for (i = 0, tok = apr_strtok(s, " ,", &last) ; 
-	 tok && i < n ; 
-	 tok = apr_strtok(0, " ,", &last)) {
-	if (*tok == 0)
-	    continue;
-
-	host[i++] = apr_pstrdup(pool, tok);
-    }
-    n = i;
-
-    *argv = apr_pcalloc(pool, sizeof(char **) * (n+1));
-    for (i = 0 ; i < n  ; i++) {
-	(*argv)[i] = host[i];
-    }
-    *argc = n;
-    free(v);
-    return 0;
-}
-
 static void node_init(void)
 {
     char node_name[100];
@@ -333,7 +300,8 @@ void d_main(void)
     else {
 	printf("Logs will be written to %s\n", gpma.logfpath);
 	setlinebuf(stderr);
-	/* freopen(logfpath, "a", stdout); */
+	freopen(gpma.logfpath, "a", stdout);
+	setlinebuf(stdout);
     }
 
     event_init();
