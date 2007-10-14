@@ -315,4 +315,13 @@ void config_clean_dir(const char* dirpath, apr_pool_t* pool)
 	    gpcc_fatal(FLINE, "unable to delete file %s", fname[i]);
 	}
     }
+
+    /* get a list of all filenames in dirpath matching xxxx-xxxx-xxxx-xxxx-ma.?.log */
+    path = apr_psprintf(subpool, "%s/\?\?\?\?-\?\?\?\?-\?\?\?\?-\?\?\?\?-ma.\?.log", dirpath);
+    fname = glob(path, &fcnt, subpool);
+
+    /* go thru and delete one by one */
+    for (i = 0; i < fcnt; i++) {
+	(void) unlink(fname[i]);
+    }
 }

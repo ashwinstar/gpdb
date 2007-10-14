@@ -77,7 +77,7 @@ void parse_cmdline(int argc, const char* argv[])
 
     /* parse command line options */
     GPCC_DO(0 == apr_getopt_init(&handle, gpma.pool, argc, argv));
-    while (0 == (e = apr_getopt(handle, "?b:D", &opt, &optarg))) {
+    while (0 == (e = apr_getopt(handle, "?fb:D", &opt, &optarg))) {
 	switch (opt) {
 	case 'f':
 	    gpma.boot_force = 1;
@@ -359,6 +359,13 @@ void d_main(void)
 	ev = gpcc_event_alloc(INIT_EVENT, gpma.node_cmdtab[i]->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, ev);
     }
+
+    /* MAIN LOOP - 
+     *     - get an event from queue
+     *     - find the target slot of the event
+     *     - get the FSM of the slot 
+     *     - dispatch the event to the FSM
+     */
     ev = 0;
     for (;;) {
 	int nxtstate;
@@ -536,6 +543,9 @@ static void verify_config(void)
 void load_config(void)
 {
     if (gpma.boot_fname) {
+
+	/* booting - generate and write a new config file. */
+
 	apr_uint64_t guid;
 	apr_uint64_t rand;
 	char guidstr[16 + 4];
@@ -580,6 +590,9 @@ void load_config(void)
 	}
     }
     else {
+
+	/* regular case. read an old config file. */
+	 
 	gpma.cfg = config_read(gpma.datadir, gpma.pool);
 	if (gpma.cfg == 0) 
 	    gpcc_fatal(FLINE, "config file not found in dir %s", gpma.datadir);
