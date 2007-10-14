@@ -20,11 +20,12 @@ gpma_t gpma = {0};
 /* Print usage info */
 static void usage(const char* msg)
 {
-    fprintf(stderr, "\nUsage: %s [-D?] [-b cfgfile] ma_unit\n\n", gpma.progname);
+    fprintf(stderr, "\nUsage: %s [-D?] [-b cfgfile] ma_unit ma_dir\n\n", gpma.progname);
     fprintf(stderr, "    -?         : print this help screen\n");
     fprintf(stderr, "    -D         : debug mode and do not run as daemon\n");
     fprintf(stderr, "    -b cfgfile : boot the Master Agent with cfgfile ('-' for stdin)\n");
     fprintf(stderr, "    ma_unit    : the Master Agent Unit (e.g. ma.1) \n");
+    fprintf(stderr, "    ma_dir     : the data directory for storing Master Agent data files\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "e.g. %s mycluster ma.0\n", gpma.progname);
     fprintf(stderr, "\n");
@@ -94,10 +95,11 @@ void parse_cmdline(int argc, const char* argv[])
     if (e != APR_EOF) 
 	usage("bad command line");
 
-    if (argc - handle->ind != 1)
-	usage("Please specify ma_unit");
+    if (argc - handle->ind != 2)
+	usage("Please specify ma_unit ma_dir");
 
     gpma.ma_unit = argv[handle->ind++];
+    gpma.datadir = argv[handle->ind++];
 
     /* check ma of the pattern: ma.N */
     sprintf(msg, "MA ID must look like 'ma.N' where N is a number between 0 and 2");
