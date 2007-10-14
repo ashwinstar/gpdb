@@ -248,17 +248,19 @@ static int tagtab_find(const char* tag, int* found)
 
 static void tagtab_insert(int idx, conncb_t* pconn)
 {
-    if (! (0 <= idx && idx < net.tagmax)) 
-	gpcc_fatal(FLINE, "internal error: assertion failed");
-    memmove(&net.tagtab[idx+1], &net.tagtab[idx], (net.tagmax - idx) * sizeof(net.tagtab[0]));
+    if (! (0 <= idx && idx <= net.tagmax))
+	gpcc_fatal(FLINE, "internal error: assertion failed. idx = %d", idx);
+    if (net.tagmax > 0) {
+	memmove(&net.tagtab[idx+1], &net.tagtab[idx], (net.tagmax - idx) * sizeof(net.tagtab[0]));
+    }
     net.tagtab[idx] = pconn;
     net.tagmax++;
 }
 
 static void tagtab_remove(int idx)
 {
-    if (! (0 <= idx && idx < net.tagmax)) 
-	gpcc_fatal(FLINE, "internal error: assertion failed");
+    if (! (0 <= idx && idx < net.tagmax))
+	gpcc_fatal(FLINE, "internal error: assertion failed. idx = %d", idx);
     memmove(&net.tagtab[idx], &net.tagtab[idx+1], (net.tagmax - idx - 1) * sizeof(net.tagtab[0]));
     net.tagmax--;
     net.tagtab[net.tagmax] = 0;
@@ -460,9 +462,11 @@ static void conn_fire_read(gpcc_net_conn_t conn)
 
     printf("conn_fire_read.....\n");
     again:
-    if (! (spin = conn_secure(conn, &pconn)))
+    if (! (spin = conn_secure(conn, &pconn))) {
+	gpcc_warning(FLINE, "conn_secure failed");
 	return;
-    
+    }
+
     in = pconn->from_peer.buf;
     while (in->bot != in->top) {
 	char* byte = in->byte;
@@ -482,6 +486,7 @@ static void conn_fire_read(gpcc_net_conn_t conn)
 	}
 
 	if (pconn->packet_mode) {
+	    gpcc_log_info("net_parse_packet...");
 	    int e = gpcc_net_parse_packet(&pkt, byte + bot, &n);
 	    spin = gpcc_spin_release(spin);
 	    if (e) {
@@ -491,6 +496,7 @@ static void conn_fire_read(gpcc_net_conn_t conn)
 	    }
 	    if (!pkt) 		/* no packet yet */
 		return;
+	    gpcc_log_info("pkt recved... %d byte", n);
 	    net.received_packet(conn, pkt, pconn->arg);
 
 	    free(pkt);
@@ -557,7 +563,7 @@ static void do_ready(int fd, short event, void* arg)
 	    int n = sizeof(in->byte) - in->top;
 	    n = recv(fd, in->byte + in->top, n, 0);
 	    if (n == 0) {
-		gpcc_log_info("socket closed by remote peer");
+		gpcc_warning(FLINE, "recv: socket closed by remote peer");
 		goto failure;	/* closed by remote peer */
 	    }
 	    if (n < 0) {
@@ -580,7 +586,7 @@ static void do_ready(int fd, short event, void* arg)
 	if (nb > 0) {
 	    const int n = send(fd, out->byte + out->bot, nb, 0);
 	    if (n == 0) {
-		gpcc_log_info("socket closed by remote peer");
+		gpcc_warning(FLINE, "send: socket closed by remote peer");
 		goto failure;	/* closed by remote peer */
 	    }
 	    if (n < 0) {
@@ -965,6 +971,7 @@ apr_status_t gpcc_net_init(int port,
     net.opened = opened;
     net.accepted = accepted;
     net.received = received;
+    net.received_packet = received_packet;
     net.closed = closed;
     net.tick = tick;
     net.listen_sock = sock;
@@ -1417,7 +1424,10 @@ apr_status_t gpcc_net_send_packetx(const char* tag, int type,
                                                const char* buf, int len)
 {
     gpcc_net_conn_t conn = gpcc_net_lookup(tag);
-    if (conn)
+    if (conn) {
+	gpcc_log_info("gpcc_net_lookup success %s", tag);
 	return gpcc_net_send_packet(conn, type, sndidx, rcvidx, buf, len);
+    }
+    gpcc_log_info("gpcc_net_lookup failure");
     return APR_EINVAL;
 }
