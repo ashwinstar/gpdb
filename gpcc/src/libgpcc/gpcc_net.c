@@ -1512,15 +1512,30 @@ gpcc_net_uri_t* gpcc_net_uri_alloc(const char* uristr)
     uri = (gpcc_net_uri_t*) buf;
     memset(uri, 0, sizeof(*uri));
 
+    /* make a copy of uristr in buf */
     p = buf + sizeof(*uri);
     strcpy(p, uristr);
-    q = p + strlen(p);
+
+    /* path points to start of uri */
     uri->path = p;
+
+    /* cutoff the fragment, and point q to end of uri after cutting off fragment */
+    q = strrchr(p, '#');
+    if (q) {
+	uri->fragment = q+1;
+	*q = 0;
+    }
+    else {
+	q = p + strlen(p);
+    }
+
+    /* locate start of query, and NUL terminate path */
     p = strchr(p, '?');
     if (!p)
 	return uri;
     *p++ = 0;
 
+    /* parse param */
     for (  ; p && p < q && uri->pc < gpcc_lengthof(uri->pname); uri->pc++) {
 	uri->pname[uri->pc] = p;
 	p = strpbrk(p, "&=");
@@ -1536,8 +1551,17 @@ gpcc_net_uri_t* gpcc_net_uri_alloc(const char* uristr)
 	    *p++ = 0;		/* this must be '&' */
     }
 
+    /* if overflow, return NULL */
+    if (uri->pc >= gpcc_lengthof(uri->pname)) {
+	free(uri);
+	return 0;
+    }
+
+    /* perform uri unquote on all components of the uri */
     if (uri->path)
 	uri_unquote(uri->path);
+    if (uri->fragment)
+	uri_unquote(uri->fragment);
     for (i = 0; i < uri->pc; i++) {
 	if (uri->pname[i])
 	    uri_unquote(uri->pname[i]);

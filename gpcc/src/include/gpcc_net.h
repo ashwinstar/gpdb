@@ -46,10 +46,18 @@ struct gpcc_net_header_t {
 
 typedef struct gpcc_net_uri_t gpcc_net_uri_t;
 struct gpcc_net_uri_t {
+    /* uri: a/b/c?d=e&f=g#k 
+       -> path = /a/b/c
+       -> pc = 2
+       -> pname[0], pvalue[0] = d, e
+       -> pname[1], pvalue[1] = f, g
+       -> fragment = k
+    */
     char* path;
     int   pc;
     char* pname[20];
     char* pvalue[20];
+    char* fragment;
 };
 
 
