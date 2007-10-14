@@ -82,8 +82,7 @@ static void net_opened_cb(gpcc_net_conn_t conn,
 /* callback from gpcc_net. this runs in the network thread */
 static void net_accepted_cb(gpcc_net_conn_t conn,
 			    const char *peer_addr,
-			    gpcc_net_header_t *from_peer, 
-			    apr_uint64_t *arg)
+			    gpcc_net_header_t *from_peer)
 {
     int i, e;
     gpcc_net_header_t hdr;
@@ -102,7 +101,7 @@ static void net_accepted_cb(gpcc_net_conn_t conn,
 		/* create cmdslot */
 
 		cmdslot = cmdslot_alloc("MA->HA", GET_IDENTITY_CMDSTATE, conn);
-		*arg = cmdslot->cmdidx;
+		gpcc_net_set_arg(conn, cmdslot->cmdidx);
 		gpcc_log_info("create MA socket...%d", cmdslot->cmdidx);
 
 		hdr.argc = 1;

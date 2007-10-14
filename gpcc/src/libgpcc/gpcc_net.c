@@ -248,7 +248,7 @@ static int tagtab_find(const char* tag, int* found)
 
 static void tagtab_insert(int idx, conncb_t* pconn)
 {
-    if (net.tagmax > 0 && ! (0 <= idx && idx < net.tagmax)) 
+    if (! (0 <= idx && idx <= net.tagmax))
 	gpcc_fatal(FLINE, "internal error: assertion failed. idx = %d", idx);
     if (net.tagmax > 0) {
 	memmove(&net.tagtab[idx+1], &net.tagtab[idx], (net.tagmax - idx) * sizeof(net.tagtab[0]));
@@ -259,7 +259,7 @@ static void tagtab_insert(int idx, conncb_t* pconn)
 
 static void tagtab_remove(int idx)
 {
-    if (net.tagmax > 0 && ! (0 <= idx && idx < net.tagmax)) 
+    if (! (0 <= idx && idx < net.tagmax))
 	gpcc_fatal(FLINE, "internal error: assertion failed. idx = %d", idx);
     memmove(&net.tagtab[idx], &net.tagtab[idx+1], (net.tagmax - idx - 1) * sizeof(net.tagtab[0]));
     net.tagmax--;
@@ -439,9 +439,7 @@ static apr_status_t conn_read_header(gpcc_net_conn_t conn)
 	if (to_peer_hdr) 
 	    net.opened(conn, peer_addr, to_peer_hdr, from_peer_hdr, arg);
 	else 
-	    net.accepted(conn, peer_addr, from_peer_hdr, &pconn->arg);
-
-	    
+	    net.accepted(conn, peer_addr, from_peer_hdr);
     }
     return 0;
 
@@ -771,6 +769,7 @@ static void do_accept(int fd, short event, void* arg)
     
     pconn->do_read_header_attempts = 0;
     pconn->packet_mode = 0;
+    pconn->arg = 0;
     conn = pconn->conn;
     spin = gpcc_spin_release(spin);
 
@@ -1044,6 +1043,20 @@ gpcc_net_conn_t gpcc_net_lookup(const char* tag)
 	conn = net.tagtab[idx]->conn;
     spin = gpcc_spin_release(spin);
     return conn;
+}
+
+
+apr_status_t gpcc_net_set_arg(gpcc_net_conn_t conn, apr_uint64_t arg)
+{
+    apr_uint32_t* spin;
+    conncb_t* pconn;
+
+    if (! (spin = conn_secure(conn, &pconn))) 
+	return APR_EINVAL;
+
+    pconn->arg = arg;
+    spin = gpcc_spin_release(spin);
+    return 0;
 }
 
 

@@ -154,8 +154,7 @@ static gpcc_event_t *mkfts_event(event_t event, gpcc_net_conn_t conn, apr_uint32
 }
 static void net_accepted(gpcc_net_conn_t conn,
 			 const char* peer_addr,
-			 gpcc_net_header_t* from_peer,
-			 apr_uint64_t *arg)
+			 gpcc_net_header_t* from_peer)
 {
     gpcc_event_t* ev;
 
