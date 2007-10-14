@@ -122,7 +122,7 @@ static int net_recv_cb(gpcc_net_conn_t conn,
 		       const char *buf, int buflen, apr_uint64_t arg)
 {
     /* NOT IMPLEMENTED */
-
+    gpcc_log_info("net_recv_cb");
     return 0;
 }
 			  
@@ -134,7 +134,6 @@ static void net_recv_packet_cb(gpcc_net_conn_t conn,
     gpcc_event_t *ev;
     apr_uint32_t cmdidx = (apr_uint32_t) arg;
 
-    gpcc_log_info("net_recv_packet_cb");
     if (cmdidx) {
 	ev = gpcc_event_alloc(pkt->mh.type, cmdidx, sizeof(*pkt) + pkt->mh.len);
 	memcpy(ev->pdata, pkt, sizeof(*pkt) + pkt->mh.len);
@@ -149,7 +148,6 @@ static void net_closed_cb(gpcc_net_conn_t conn, apr_uint64_t arg)
     apr_uint32_t cmdidx = (apr_uint32_t) arg;
 
     if (cmdidx) {
-	gpcc_log_info("do net_clsed %d", cmdidx);
 	ev = gpcc_event_alloc(NET_CLOSED_EVENT, cmdidx, 0);
 	gpcc_evqueue_put(gpha.evq, ev);
     }

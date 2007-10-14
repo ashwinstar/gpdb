@@ -248,7 +248,7 @@ static int tagtab_find(const char* tag, int* found)
 
 static void tagtab_insert(int idx, conncb_t* pconn)
 {
-    if (! (0 <= idx && idx <= net.tagmax))
+    if (net.tagmax > 0 && ! (0 <= idx && idx < net.tagmax)) 
 	gpcc_fatal(FLINE, "internal error: assertion failed. idx = %d", idx);
     if (net.tagmax > 0) {
 	memmove(&net.tagtab[idx+1], &net.tagtab[idx], (net.tagmax - idx) * sizeof(net.tagtab[0]));
@@ -259,7 +259,7 @@ static void tagtab_insert(int idx, conncb_t* pconn)
 
 static void tagtab_remove(int idx)
 {
-    if (! (0 <= idx && idx < net.tagmax))
+    if (net.tagmax > 0 && ! (0 <= idx && idx < net.tagmax)) 
 	gpcc_fatal(FLINE, "internal error: assertion failed. idx = %d", idx);
     memmove(&net.tagtab[idx], &net.tagtab[idx+1], (net.tagmax - idx - 1) * sizeof(net.tagtab[0]));
     net.tagmax--;
