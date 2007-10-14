@@ -60,6 +60,7 @@ static apr_status_t a_array_start_utility_qd(gpcc_event_t *ev, void *_cmdslot)
     p = cmdslot_alloc("START_UTILITY_QD", FTS_START_CMDSTATE);
     p->u.start.parent_cmdidx = cmdslot->cmdidx;
     p->u.start.ntotal = 1;
+    p->u.start.req = apr_palloc(p->pool, sizeof(*p->u.start.req));
     p->u.start.req[0].node = apr_pstrdup(p->pool, seginfo->ha);
     p->u.start.req[0].unit = apr_pstrdup(p->pool, seginfo->name);
     p->u.start.req[0].mode = "utility";
@@ -102,6 +103,7 @@ static apr_status_t a_array_start_utility_qd_stop(gpcc_event_t *ev, void *_cmdsl
     p = cmdslot_alloc("STOP_UTILITY_QD", FTS_STOP_CMDSTATE);
     p->u.stop.parent_cmdidx = cmdslot->cmdidx;
     p->u.stop.ntotal = 1;
+    p->u.stop.req = apr_palloc(p->pool, sizeof(*p->u.start.req));
     p->u.stop.req[0].node = apr_pstrdup(p->pool, seginfo->ha);
     p->u.stop.req[0].unit = apr_pstrdup(p->pool, seginfo->name);
     p->u.stop.req[0].mode = "immediate";
@@ -159,6 +161,7 @@ static apr_status_t a_array_start_qd(gpcc_event_t *ev, void *_cmdslot)
     p = cmdslot_alloc("START_PRODUCTION_QD", FTS_START_CMDSTATE);
     p->u.start.parent_cmdidx = cmdslot->cmdidx;
     p->u.start.ntotal = 1;
+    p->u.start.req = apr_palloc(p->pool, sizeof(*p->u.start.req));
     p->u.start.req[0].node = apr_pstrdup(p->pool, seginfo->ha);
     p->u.start.req[0].unit = apr_pstrdup(p->pool, seginfo->name);
     p->u.start.req[0].mode = "normal";
@@ -188,6 +191,7 @@ static apr_status_t a_array_start_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     p = cmdslot_alloc("START_STANDBY_QD", FTS_START_CMDSTATE);
     p->u.start.parent_cmdidx = cmdslot->cmdidx;
     p->u.start.ntotal = 1;
+    p->u.start.req = apr_palloc(p->pool, sizeof(*p->u.start.req));
     p->u.start.req[0].node = apr_pstrdup(p->pool, seginfo->ha);
     p->u.start.req[0].unit = apr_pstrdup(p->pool, seginfo->name);
     p->u.start.req[0].mode = "normal";
