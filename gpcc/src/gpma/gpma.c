@@ -142,7 +142,9 @@ static void net_opened(gpcc_net_conn_t conn,
 }
 
 
-static gpcc_event_t *mkfts_event(event_t event, gpcc_net_conn_t conn, apr_uint32_t cmdidx, apr_uint32_t sndidx, apr_uint32_t rcvidx, char *msg, int len)
+static gpcc_event_t *mkfts_event(event_t event, gpcc_net_conn_t conn, 
+				 apr_uint32_t cmdidx, apr_uint32_t sndidx, apr_uint32_t rcvidx,
+				 char *msg, int len)
 {
     gpcc_event_t *ev;
 
@@ -150,8 +152,12 @@ static gpcc_event_t *mkfts_event(event_t event, gpcc_net_conn_t conn, apr_uint32
     memcpy(ev->pdata, &conn, sizeof(conn));
     memcpy(ev->pdata+sizeof(conn), msg, len);
     return ev;
-
 }
+
+
+
+
+
 static void net_accepted(gpcc_net_conn_t conn,
 			 const char* peer_addr,
 			 gpcc_net_header_t* from_peer)

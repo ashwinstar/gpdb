@@ -43,6 +43,16 @@ struct gpcc_net_header_t {
     char* hvalue[GPCC_NET_HEADER_ENTRYMAX+1];
 };
 
+
+typedef struct gpcc_net_uri_t gpcc_net_uri_t;
+struct gpcc_net_uri_t {
+    char* path;
+    int   pc;
+    char* pname[20];
+    char* pvalue[20];
+};
+
+
 typedef apr_uint32_t gpcc_net_conn_t;
 
 typedef void gpcc_net_opened_t(gpcc_net_conn_t conn, 
@@ -121,5 +131,8 @@ APR_DECLARE(apr_status_t) gpcc_net_send_packetx(const char* tag, int type,
                                                apr_uint32_t sndidx, apr_uint32_t rcvidx,
                                                const char* buf, int len);
 
+
+APR_DECLARE(gpcc_net_uri_t*) gpcc_net_uri_alloc(const char* uristr);
+APR_DECLARE(void) gpcc_net_uri_free(gpcc_net_uri_t*);
 
 #endif /* GPCC_NET_H */

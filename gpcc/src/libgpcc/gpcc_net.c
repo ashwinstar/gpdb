@@ -1444,3 +1444,111 @@ apr_status_t gpcc_net_send_packetx(const char* tag, int type,
     gpcc_log_info("gpcc_net_lookup failure");
     return APR_EINVAL;
 }
+
+
+
+
+static void uri_unquote(char* s)
+{
+    int x, y;
+    char* p = s;
+    while (*s) {
+	switch (*s) {
+	case '%':
+	    x = s[1];
+	    y = s[2];
+	    if (!x || !y) 
+		goto done;
+
+	    if ('0' <= x && x <= '9')
+		x = x - '0';
+	    else if ('a' <= x && x <= 'f')
+		x = x - 'a' + 10;
+	    else if ('A' <= x && x <= 'F')
+		x = x - 'A' + 10;
+	    else 
+		goto done;
+
+	    if ('0' <= y && y <= '9')
+		y = y - '0';
+	    else if ('a' <= y && y <= 'f')
+		y = y - 'a' + 10;
+	    else if ('A' <= y && y <= 'F')
+		y = y - 'A' + 10;
+	    else 
+		goto done;
+
+	    *p++ = (char) ((x << 4) | y);
+	    s += 3;
+	    break;
+	    
+	case '+':
+	    *p++ = ' ';
+	    s++;
+	    break;
+
+	default:
+	    *p++ = *s++;
+	    break;
+	}
+    }
+
+    done:
+    if (p != s)
+	*p = 0;
+}
+
+
+gpcc_net_uri_t* gpcc_net_uri_alloc(const char* uristr)
+{
+    gpcc_net_uri_t* uri = 0;
+    char* buf = malloc(sizeof(*uri) + strlen(uristr) + 1);
+    if (!buf) 
+	gpcc_fatal(FLINE, "out of memory");
+    char* p;
+    char* q;
+    int i;
+
+    uri = (gpcc_net_uri_t*) buf;
+    memset(uri, 0, sizeof(*uri));
+
+    p = buf + sizeof(*uri);
+    strcpy(p, uristr);
+    q = p + strlen(p);
+    uri->path = p;
+    p = strchr(p, '?');
+    if (!p)
+	return uri;
+    *p++ = 0;
+
+    for (  ; p && p < q && uri->pc < gpcc_lengthof(uri->pname); uri->pc++) {
+	uri->pname[uri->pc] = p;
+	p = strpbrk(p, "&=");
+	if (p && *p == '=') {
+	    *p++ = 0;
+	    uri->pvalue[uri->pc] = p;
+	    p = strchr(p, '&');
+	}
+	else {
+	    uri->pvalue[uri->pc] = "";
+	}
+	if (p) 
+	    *p++ = 0;		/* this must be '&' */
+    }
+
+    if (uri->path)
+	uri_unquote(uri->path);
+    for (i = 0; i < uri->pc; i++) {
+	if (uri->pname[i])
+	    uri_unquote(uri->pname[i]);
+	if (uri->pvalue[i])
+	    uri_unquote(uri->pvalue[i]);
+    }
+
+    return uri;
+}
+
+void gpcc_net_uri_free(gpcc_net_uri_t* uri)
+{
+    free(uri);
+}
