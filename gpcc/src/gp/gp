@@ -2,7 +2,19 @@
 """
 gp -- Greenplum Terminal Control
 
-Usage: gp [gp_options] [gp_object] command [command_options] [command_args]
+Usage: gp [gp_options] command [command_options] [command_args]
+
+gp_options:
+    -v verbose
+    -a array_name
+    -h host_name
+    -p port
+
+command:
+    start 
+    stop
+
+
 """
 
 import os, sys, getopt, types, time, popen2, urllib
@@ -13,281 +25,138 @@ if sys.version_info < (2, 3):
 
 sys.path.append(sys.path[0] + '/lib')
 try:
-    import json
+    import simplejson
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
+
 
 def usage(exitarg):
     help_path = os.path.join(sys.path[0], '..', 'doc', 'gp_help');
     try:
-        f = open(help_path);
+        f = open(help_path)
         for line in f:
             print line,
     except:
         print __doc__
     sys.exit(exitarg)
 
-def urandom(seed = None):
-    import random
-    if seed: random.seed(seed)
-    return random.randint(0, 9999)
-    
-
-class GPError(Exception):
-    pass
-
-def arrayUsage(exitarg, cmdargs = None):
-    if cmdargs:
-	exitarg = '%s following %s' % (exitarg, cmdargs)
-    usage(exitarg)
-
-def segmentUsage(exitarg, cmdargs = None):
-    if cmdargs:
-	exitarg = '%s following %s' % (exitarg, cmdargs)
-    usage(exitarg)
-
-def hostUsage(exitarg, cmdargs = None):
-    if cmdargs:
-	exitarg = '%s following %s' % (exitarg, cmdargs)
-    usage(exitArg)
-
-
-gp_opt = {'-a': None, '-v': False, '-f': False}
-gp_object = None
+gp_opt = {}
 gp_cmd = None
-gp_cmdopt = {}
-gp_cmdargs = []
+gp_args = []
 
-def parseArrayCmd(args):
-    if args and args[0] == '-?':
-	arrayUsage(0)
-    try:
-	obj = 'array'
-	if not args:
-	    arrayUsage('missing arguments')
-	if args[0] == 'init':
-	    (cmd, args) = (args[0], args[1:])
-	    opt = {'-c': ''}
-	    (options, args) = getopt.getopt(args, 'c:')
-	    for (switch, val) in options:
-		if switch == '-c': opt[switch] = val
-	elif args[0] == 'start':
-	    (cmd, args) = (args[0], args[1:])
-	    opt = {}
-	    if args and args[0] == 'ro': pass
-	    elif args and args[0] == 'rw': pass
-            else:
-		arrayUsage('invalid arguments', 'start')
-	elif args[0] == 'stop':
-	    (cmd, args) = (args[0], args[1:])
-	    opt = {'-i': False, '-f': False}
-	    (options, args) = getopt.getopt(args, 'if')
-	    for (switch, val) in options:
-		if (switch[1] in 'if'): opt[switch] = True
-	    if args:
-		arrayUsage('invalid arguments' 'stop')
-	else:
-	    arrayUsage('invalid command')
-    except getopt.GetoptError:
-	arrayUsage('invalid options', cmd)
-    return (obj, cmd, opt, args)
+def resetCommandLine():
+    global gp_opt, gp_cmd, gp_args
+    gp_opt = { 
+        '-v': False,
+        '-a': os.environ.get('GPARRAY', None),
+        '-h': os.environ.get('GPHOST', None),
+        '-p': os.environ.get('GPPORT', None),
+        }
+    gp_cmd = None
+    gp_args = []
     
 
-def parseSegmentCmd(args):
-    if args and args[0] == '-?':
-	segmentUsage(0)
-    try:
-	try: int(args[0])
-        except ValueError:
-	    segmentUsage('missing segment id. Eg, segment 0.0 for primary segment 0')
-	obj = 'seg.' + args[0]
-	args = args[1:]
-	if not args: 
-	    segmentUsage('invalid options', 'segment')
-	if args[0] == 'start':
-	    (cmd, args) = (args[0], args[1:])
-	    opt = {}
-	    if args:
-		segmentUsage('invalid options', 'segment start')
-	elif args[0] == 'stop':
-	    (cmd, args) = (args[0], args[1:])
-	    opt = {'-i': False, '-f': False}
-	    (options, args) = getopt.getopt(args, 'if')
-	    for (switch, val) in options:
-		if (switch[1] in 'if'): opt[switch] = True
-	    if args:
-		segmentUsage('invalid arguments', 'segment stop')
-	else:
-	    segmentUsage('invalid command', 'segment ' + cmd)
-    except getopt.GetoptError:
-	segmentUsage('invalid options', 'segment ' + cmd)
-    return (obj, cmd, opt, args)
-
-
-def parseHostCmd(args):
-    sys.exit('host command not implemented')
-
-def parseCommandLine():
-    global gp_opt, gp_object, gp_cmd, gp_cmdopt, gp_cmdargs
-    try:
-	(options, args) = getopt.getopt(sys.argv[1:], '?vfa:')
-    except Exception, e:
-	usage('Error: ' + str(e))
-
-    if os.environ.get('GPARRAY'): opt['-a'] = os.environ.get('GPARRAY')
-
+def parseCommandLine(argv):
+    global gp_opt, gp_cmd, gp_args
+    (options, args) = getopt.getopt(argv[1:], '?va:')
     for (switch, val) in options:
-	if switch == '-?': usage(0)
-        elif switch[1] in 'vf': gp_opt[switch] = True
-        elif switch[1] in 'a': gp_opt[switch] = val
-
-    if not args:
-	usage(1)
-    if args[0] == 'segment':
-	(gp_object, gp_cmd, gp_cmdopt, gp_cmdargs) = parseSegmentCmd(args[1:])
-    elif args[0] == 'host':
-	(gp_object, gp_cmd, gp_cmdopt, gp_cmdargs) = parseHostCmd(args[1:])
-    else:
-	(gp_object, gp_cmd, gp_cmdopt, gp_cmdargs) = parseArrayCmd(args)
-
-def parseConfigFile(f):
-    fp = (type(f) == types.FileType and f or open(f))
-    cfg={}
-    prop = None
-    lno = 0
-    for line in fp:
-	lno = lno + 1
-	line = line.split('#', 1)[0]
-	line = line.strip()
-	if len(line) == 0: continue
-	nv = line.split('=', 1)
-	if len(nv) != 2:
-	    raise GPError, 'syntax error at line %d' % lno
-	(name, value) = (nv[0].strip(), nv[1].strip())
-	if not nv[1]:
-	    raise GPError, 'syntax error at line %d' % lno
-	cfg[name] = value
-    if not cfg.has_key('sys.name'):
-	raise GPError, 'missing sys.name in config'
-    return cfg
+        if switch == '-?': gp_opt[switch] = True
+        elif switch == '-v': gp_opt[switch] = True
+        elif switch == '-a': gp_opt[switch] = val
+    if args:
+        gp_cmd = args[0]
+        gp_args = args[1:]
 
 
-def parseConfigMA(cfg):
+def readRCFile():
+    global gp_opt, gp_cmd, gp_args
+    f = None
     try:
-	ma = (cfg['ma.0'].split(':', 1), cfg['ma.1'].split(':', 1), cfg['ma.2'].split(':', 1))
-	if len(ma[0]) != 2: 
-	    raise GPError, 'invalid ma.0 value... expected host:dir'
-	if len(ma[1]) != 2:
-	    raise GPError, 'invalid ma.1 value... expected host:dir'
-	if len(ma[2]) != 2:
-	    raise GPError, 'invalid ma.2 value... expected host:dir'
-    except KeyError:
-	raise GPError, 'missing ma.0, ma.1, or ma.2 values in config'
-    return ma
+        fname = os.environ.get('HOME', '/') + '/.gprc'
+        try:
+            f = open(fname)
+        except IOError:
+            return
+        for line in f:
+            if line.startswith('gp '):
+                argv = line.split()
+                try:
+                    parseCommandLine(argv)
+                    if gp_cmd or gp_args:
+                        raise SystemExit
+                    gp_opt['-?'] = False
+                except (SystemExit, getopt.GetoptError):
+                    print "Warning: error in '%s'. Ignored." % fname
+                    resetCommandLine()
+                    return
+    finally:
+        if f: f.close()
 
-def parseConfigMAPort(cfg):
+
+def checkCommandLine():
+    if gp_opt['-?']: usage(0)
+    if not gp_opt['-a']: usage('Error: please specify -a array_name')
+    if not gp_opt['-h']: usage('Error: please specify -h host_name')
+    if not gp_opt['-p']: usage('Error: please specify -p port')
+    if not gp_cmd: usage('Error: please specify command')
     try:
-	print cfg['sys.ma.port']
-	port = int(cfg['sys.ma.port'])
-	if not (0 < port and port <= 65535): 
-	    raise GPError, 'sys.ma.port must be positive number less than 65535'
-    except KeyError:
-	raise GPError, 'missing sys.ma.port value in config'
+        gp_opt['-p'] = int(gp_opt['-p'])
     except ValueError:
-	raise GPError, 'invalid sys.ma.port value in config'
-    return port
+        usage('Error: bad -p port parameter')
 
 
-def ma_start(ma, guid, cfg = None):
-    for i in xrange(3):
-	(host, dir) = ma[i]
-	ssh = 'ssh -o "BatchMode yes" -o "StrictHostKeyChecking no"'
-	ssh = '%s %s gpma' % (ssh, host)
-	if cfg: ssh = ssh + ' -b'
-	ssh = '%s %s %d' % (ssh, guid, i)
-	if gp_opt['-v']: print '[INFO] exec', ssh
-	p = popen2.Popen4(ssh)
-	if cfg:
-	    for key in cfg:
-		if p.poll() != -1:
-		    p.tochild.write('%s=%s\n' % (key, cfg[key]))
-	p.tochild.close()
-	out = []
-	permissionDenied = False
-	for line in p.fromchild:
-	    out.append(line)
-	    if gp_opt['-v']: print '[INFO %s] %s' % (host, line)
-	    permissionDenied = permissionDenied or (line.find('Permission denied') >= 0)
-	status = p.wait()
-	if permissionDenied:
-	    print
-	    print 'Error: unable to ssh to', host
-	    print '     - check if host is alive'
-	    print '     - use gpssh-exkeys to setup public-key authentication between hosts'
-	    print
-	    sys.exit(1)
-	if status:
-	    print
-	    print 'Error: problem starting gpma on', host
-	    if not gp_opt['-v']: print '\n'.join(out)
-	    sys.exit(1)
-	
 
-def ma_get(host, port, guid, obj, cmd, params):
-    params = urllib.urlencode(params)
-    url = 'http://%s:%d/%s/%s/%s?%s' % (host, port, guid, obj, cmd, params)
-    if gp_opt['-v']: print '[INFO] GET', url
+def hitMA(cmd, params):
+    params = urlllib.urlencode(params)
+    url = 'http://%s:%d/%s?%s' % (gp_opt['-h'], gp_opt['-p'], cmd, params)
+    f = None
     try:
-	try:
-	    f = None
-	    f = urllib.urlopen(url)
-	    res = ''
-	    while 1:
-		r = f.read()
-		if not r: break
-		res = res + r
-	    res = json.read(res)
-	finally:
-	    if f: f.close()
-    except IOError:
-	return False    # return False so caller will try another host
-    except json.ReadException:
-	raise GPError, 'bad result from MA'
-    return res
-
-def gpArrayInit():
-    import commands
-    try:
-	cfg = parseConfigFile(gp_cmdopt['-c'] == '-' and sys.stdin or gp_cmdopt['-c'])
-	gp_opt['-a'] = cfg['sys.name']
-	if not cfg.has_key('sys.guid'):
-	    lsout = commands.getoutput('ls -la /')
-	    seed = cfg['sys.name'] + time.ctime() + lsout
-	    cfg['sys.guid'] = '%04d%04d-%04d%04d' % (urandom(seed), 
-						     urandom(time.ctime()), 
-						     urandom(cfg['sys.name'] + str(urandom())),
-						     urandom(lsout + str(time.time())))
-	ma = parseConfigMA(cfg)
-	ma_port = parseConfigMAPort(cfg)
-	ma_start(ma, cfg['sys.guid'], cfg)
-	ma_get(ma[0][0], ma_port, cfg['sys.guid'], 'array', 'init', {})
-    except GPError, e:
-	sys.exit('Error(GP): ' + str(e))
-    except IOError, e:
-	sys.exit('Error(I/O): %s while reading config file "%s"' % (e[1], gp_cmdopt['-c']))
-
-    sys.exit(0)
-
+        f = urllib.urlopen(url)
+        json = simplejson.loads(f.read(-1))
+    finally:
+        if f: f.close()
+    return json
     
-parseCommandLine()
-if gp_object == 'array':
-    if gp_cmd == 'init':  gpArrayInit()
-    elif gp_cmd == 'start': gpArrayStart()
-    elif gp_cmd == 'stop':  gpArrayStop()
+def printError(json):
+    errmsg = json.get('errmsg', None)
+    if not errmsg:
+        print '%s: %s' % ('Error', 'unknown error')
+        return
+    if errmsg.get('_', None):
+        print '%s: %s' % ('Error', errmsg.get('_'))
+    for key in errmsg: 
+        if key != '_': 
+            print '%s: %s' % (key, errmsg.get(key))
 
-elif gp_object.find('seg.') == 0:
-    if gp_cmd == 'start': gpSegmentStart(gp_object)
-    elif gp_cmd == 'stop': gpSegmentStop(gp_object)
+def doStart(args):
+    params = {'a': gp_opt['-a']}
+    json = hitMA('start', params)
+    if json.status != 'ok':
+        printError(json)
+        return
+    print 'ok'
 
-# not reached
-sys.exit('Internal Error')
+def doStop(args):
+    params = {'a': gp_opt['-a']}
+    json = hitMA('stop', params)
+    if json.status != 'ok':
+        printError(json)
+        return
+    print 'ok'
+
+def main():
+    readRCFile()
+    parseCommandLine(sys.argv)
+    checkCommandLine()
+    if gp_cmd == 'start':
+        doStart(gp_args)
+    elif gp_cmd == 'stop':
+        doStop(gp_args)
+    else:
+        usage('Invalid command')
+
+
+if __name__ == '__main__':
+    main()
+    
+        
