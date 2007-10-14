@@ -9,7 +9,7 @@ static apr_status_t a_start_do(gpcc_event_t *ev, void *_cmdslot)
 	char *msg;
 	int len = 0;
 	obj = gpcc_json_segment_request(0,
-					cmdslot->u.start.req[i].node,
+					cmdslot->u.start.req[i].unit,
 					"start",
 					cmdslot->u.start.req[i].mode,
 					cmdslot->u.start.req[i].host,
@@ -24,6 +24,8 @@ static apr_status_t a_start_do(gpcc_event_t *ev, void *_cmdslot)
 					    msg, len))) {
 	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
 	    gpcc_evqueue_put(gpma.evq, evt);
+	    json_object_put(obj);
+	    return 0;
 	}
 	json_object_put(obj);
     }

@@ -14,9 +14,13 @@ static inline void setup_set_segment(cmdslot_t *cmdslot, int idx, char *name, in
 
     sprintf(key, "node.%d", node);
     value = config_get(gpma.cfg, key);
-    s = strchr(value, ',');
-    strncpy(addr, value+1, s - value - 1);
-    addr[s-value-1] = 0;
+    s = strchr(value, ' ');
+    if (!s) {
+	strcpy(addr, value);
+    } else {
+	strncpy(addr, value, s - value);
+	addr[s-value] = 0;
+    }
     cmdslot->u.fts.seginfo[idx].host = apr_pstrdup(pool, addr);
 }
 
@@ -132,7 +136,21 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 
 static apr_status_t a_fts_init(gpcc_event_t *ev, void *_cmdslot)
 {
+    cmdslot_t *cmdslot = _cmdslot;
+    int i;
     setup_init_seginfo(ev, _cmdslot);
+
+    for (i = 0 ; i < cmdslot->u.fts.nseginfo ; i++) {
+	gpcc_log_info("name=%s, host =%s, dbid = %d, content =%d, port = %d, dir = %s, haidx = %d, ha=%s",
+		      cmdslot->u.fts.seginfo[i].name,
+		      cmdslot->u.fts.seginfo[i].host,
+		      cmdslot->u.fts.seginfo[i].dbid,
+		      cmdslot->u.fts.seginfo[i].content,
+		      cmdslot->u.fts.seginfo[i].port,
+		      cmdslot->u.fts.seginfo[i].dir,
+		      cmdslot->u.fts.seginfo[i].haidx,
+		      cmdslot->u.fts.seginfo[i].ha);
+    }
 
     return 0;
 }
@@ -149,7 +167,7 @@ static apr_status_t a_fts_array_start(gpcc_event_t *ev, void *_cmdslot)
     memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
     url = ev->pdata + sizeof(gpcc_net_conn_t);
     
-    p = cmdslot_alloc("ARRAY_START", FTS_START_CMDSTATE);
+    p = cmdslot_alloc("ARRAY_START", FTS_ARRAY_START_CMDSTATE);
     p->u.array_start.parent_cmdidx = cmdslot->cmdidx;
     p->u.array_start.conn = conn;
     cmdslot->u.fts.active_cmdidx = p->cmdidx;
@@ -208,7 +226,7 @@ static apr_status_t a_fts_array_stop(gpcc_event_t *ev, void *_cmdslot)
     memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
     url = ev->pdata + sizeof(gpcc_net_conn_t);
     
-    p = cmdslot_alloc("ARRAY_STOP", FTS_STOP_CMDSTATE);
+    p = cmdslot_alloc("ARRAY_STOP", FTS_ARRAY_STOP_CMDSTATE);
     p->u.array_stop.parent_cmdidx = cmdslot->cmdidx;
     p->u.array_stop.conn = conn;
     cmdslot->u.fts.active_cmdidx = p->cmdidx;

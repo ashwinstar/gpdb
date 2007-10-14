@@ -92,6 +92,13 @@ apr_status_t a_node_connect(gpcc_event_t* ev, void* arg)
     return 0;
 }
 
+apr_status_t a_node_ready(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    gpcc_net_tag(slot->u.node.conn, slot->cmdname);
+    return 0;
+}
+
 apr_status_t a_node_check_conn(gpcc_event_t* ev, void* arg)
 {
     cmdslot_t* slot = arg;

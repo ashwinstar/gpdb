@@ -36,10 +36,13 @@ static apr_status_t a_array_stop_do(gpcc_event_t *ev, void *_cmdslot)
     p = cmdslot_alloc("STOP", FTS_STOP_CMDSTATE);
     p->u.stop.parent_cmdidx = cmdslot->cmdidx;
     p->u.stop.ntotal = nseginfo;
+    
+    gpcc_log_info("a_array_stop_do total = %d", p->u.stop.ntotal);
 
     p->u.stop.req = apr_palloc(p->pool, sizeof(*p->u.stop.req) * p->u.stop.ntotal);
     for (i = 0 ; i < p->u.stop.ntotal ; i++) {
-	const seginfo_t *info = &seginfo[i+1];
+	const seginfo_t *info = &seginfo[i];
+
 	p->u.stop.req[i].node = apr_pstrdup(p->pool, info->ha);
 	p->u.stop.req[i].unit = apr_pstrdup(p->pool, info->name);
 	p->u.stop.req[i].mode = "immediate";

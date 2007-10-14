@@ -175,7 +175,7 @@ static apr_status_t a_initdb_do(gpcc_event_t *ev, void *_cmdslot)
 
     obj = json_tokener_parse(cmdslot->u.initdb.config);
     obj = gpcc_json_segment_request(obj,
-				    cmdslot->u.initdb.req[i].node,
+				    cmdslot->u.initdb.req[i].unit,
 				    "init",
 				    cmdslot->u.initdb.req[i].mode,
 				    cmdslot->u.initdb.req[i].host,
@@ -192,6 +192,8 @@ static apr_status_t a_initdb_do(gpcc_event_t *ev, void *_cmdslot)
 					msg, len))) {
 	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
+	json_object_put(obj);
+	return 0;
     }
     json_object_put(obj);
 

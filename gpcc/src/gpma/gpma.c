@@ -159,10 +159,14 @@ static void net_accepted(gpcc_net_conn_t conn,
 {
     gpcc_event_t* ev;
 
+    gpcc_log_info("net_accepted");
+
     if (from_peer->argc == 3
 	&& 0 == memcmp("HTTP/1.", from_peer->argv[2], 7)
 	&& 0 == memcmp("GET", from_peer->argv[0], 4)) {
 	
+	gpcc_log_info("HTTP %s", from_peer->argv[1]);
+
 	if (0 == memcmp("/gpcc/start?", from_peer->argv[1], 12)) {
 	    /* send startcmd_event to FTS cmdslot ? */
 	    ev = mkfts_event(ARRAY_START_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
@@ -311,7 +315,10 @@ void d_main(void)
     event_init();
 
     cmdslot_init(gpma.pool);
+    /* GPMA slot */
     gpma.gpma_cmdslot = cmdslot_alloc("GPMA", GPMA_CMDSTATE);
+
+    /* FTS slot */
     gpma.fts_cmdslot = cmdslot_alloc("FTS", FTS_CMDSTATE);
 
     fsm_init();
@@ -332,6 +339,11 @@ void d_main(void)
 			       net_closed, net_tick));
 
     gpcc_log_info("gpma listening to port %d", config_get_int(gpma.cfg, "ma.port"));
+
+    /* kick of FTS slot */
+    ev = gpcc_event_alloc(INIT_EVENT, gpma.fts_cmdslot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, ev);
+
 
     /* kick off all the nodes */
     for (i = 0; i < gpma.node_max; i++) {

@@ -5,11 +5,19 @@ static apr_status_t a_stop_do(gpcc_event_t *ev, void *_cmdslot)
     struct json_object *obj;
     gpcc_event_t *evt;
 
+    gpcc_log_info("a_stop_do...total = %d", cmdslot->u.stop.ntotal);
     for (i = 0 ; i < cmdslot->u.stop.ntotal ; i++) {
 	char *msg;
 	int len = 0;
+
+	gpcc_log_info("node=%s, mode = %s, host = %s, port =%d, dir=%s",
+		      cmdslot->u.stop.req[i].node,
+		      cmdslot->u.stop.req[i].mode,
+		      cmdslot->u.stop.req[i].host,
+		      cmdslot->u.stop.req[i].port,
+		      cmdslot->u.stop.req[i].datadir);		      
 	obj = gpcc_json_segment_request(0,
-					cmdslot->u.stop.req[i].node,
+					cmdslot->u.stop.req[i].unit,
 					"stop",
 					cmdslot->u.stop.req[i].mode,
 					cmdslot->u.stop.req[i].host,
@@ -17,15 +25,23 @@ static apr_status_t a_stop_do(gpcc_event_t *ev, void *_cmdslot)
 					cmdslot->u.stop.req[i].datadir);
 	msg = json_object_to_json_string(obj);
 	len = strlen(msg) + 1;
+
+	gpcc_log_info("send packetx %d bytes: %s", len, msg);
 	if (0 != (e = gpcc_net_send_packetx(cmdslot->u.stop.req[i].node,
 					    SEGMENT_REQUEST_MSG,
 					    cmdslot->cmdidx,
 					    0,
 					    msg, len))) {
+	    gpcc_warning(FLINE, "gpcc_net_send_packetx %d bytes to host %s failed",
+			 len, cmdslot->u.stop.req[i].node);
 	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
 	    gpcc_evqueue_put(gpma.evq, evt);
+	    json_object_put(obj);
+	    return 0;
 	}
 	json_object_put(obj);
+
+	gpcc_log_info("send packetx end");
     }
 
     cmdslot->countdown = 2 * 60;
