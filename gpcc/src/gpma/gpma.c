@@ -133,6 +133,8 @@ static void net_opened(gpcc_net_conn_t conn,
 	gpcc_net_close(conn);
 	return;
     }
+
+    gpcc_log_info("net_opened...");
     
     ev = gpcc_event_alloc(NET_OPENED_EVENT, cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, ev);

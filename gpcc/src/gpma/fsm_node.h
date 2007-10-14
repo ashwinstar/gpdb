@@ -7,12 +7,14 @@ apr_status_t a_node_ssh(gpcc_event_t* ev, void* arg)
     const char *user = config_getx(gpma.cfg, CONFIG_USER_KEY, getenv("USER"));
     gpcc_event_t *nev;
 
+    gpcc_log_info("a_node_ssh......");
+
     ++slot->u.node.hostidx;
     if (slot->u.node.hostidx >= slot->u.node.hosttab_max)
 	slot->u.node.hostidx = 0;
 
-
-    sprintf(cmd, "export GPHOME=%s && $GPHOME/bin/gpha /tmp", config_get(gpma.cfg, "gphome"));
+    gpcc_log_info("a_node_ssh");
+    sprintf(cmd, "export GPHOME=%s && $GPHOME/bin/gpha /tmp", getenv("GPHOME"));
     if (0 != (e = gpcc_proc_ssh(&slot->u.node.proc, 
 				user, 
 				slot->u.node.hosttab[slot->u.node.hostidx], 
@@ -38,9 +40,11 @@ apr_status_t a_node_check_ssh(gpcc_event_t* ev, void* arg)
     int e, ret;
     apr_exit_why_e exitwhy;
 
+    gpcc_log_info("check ssh\n");
     e = apr_proc_wait(&slot->u.node.proc, &ret, &exitwhy, APR_NOWAIT);
     if (e == APR_CHILD_DONE) {
 	if (ret == 0) {
+	    gpcc_log_info("done....success.");
 	    nev = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
 	    gpcc_evqueue_put(gpma.evq, nev);
 	    return 0;
@@ -84,7 +88,7 @@ apr_status_t a_node_connect(gpcc_event_t* ev, void* arg)
 	return 0;
     }
 
-    slot->countdown = 2;
+    //    slot->countdown = 2;
     return 0;
 }
 
