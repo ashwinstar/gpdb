@@ -43,7 +43,7 @@ static char *proc_exit_reason(apr_exit_why_e exitwhy)
 
 static apr_status_t ma_cleanup(gpcc_event_t *ev, void *_cmdslot)
 {
-
+    gpcc_fatal(FLINE, "MA connection closed....shutdown");
     return 0;
 }
 

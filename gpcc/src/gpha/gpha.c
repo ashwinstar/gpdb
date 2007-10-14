@@ -74,6 +74,7 @@ static void net_opened_cb(gpcc_net_conn_t conn,
 			  apr_uint64_t arg)
 {
     /* NOT IMPLEMENTED */
+    gpcc_log_info("net_opened_cb");
     return;
 }
 
@@ -88,6 +89,7 @@ static void net_accepted_cb(gpcc_net_conn_t conn,
     gpcc_net_header_t hdr;
     cmdslot_t *cmdslot;
 
+    gpcc_log_info("net_accepted_cb");
     if (from_peer->argc != 1 || strcmp(from_peer->argv[0], GPCC_NET_PACKET_PROTO) != 0){
 	gpcc_warning(FLINE, "peer header not match!");
 	gpcc_net_close(conn);
@@ -95,11 +97,13 @@ static void net_accepted_cb(gpcc_net_conn_t conn,
     }
 
     for (i = 0 ; i < from_peer->hc ; i++) {
-	if (strcmp(from_peer->hname[i], "X-GPCC-ROLE") == 0) {
+	if (apr_strnatcasecmp(from_peer->hname[i], "X-GPCC-ROLE") == 0) {
 	    if (strcmp(from_peer->hvalue[i], "GPMA") == 0) {
 		/* create cmdslot */
+
 		cmdslot = cmdslot_alloc("MA->HA", GET_IDENTITY_CMDSTATE, conn);
 		*arg = cmdslot->cmdidx;
+		gpcc_log_info("create MA socket...%d", cmdslot->cmdidx);
 
 		hdr.argc = 1;
 		hdr.argv[0] = GPCC_NET_PACKET_PROTO;
@@ -130,6 +134,7 @@ static void net_recv_packet_cb(gpcc_net_conn_t conn,
     gpcc_event_t *ev;
     apr_uint32_t cmdidx = (apr_uint32_t) arg;
 
+    gpcc_log_info("net_recv_packet_cb");
     if (cmdidx) {
 	ev = gpcc_event_alloc(pkt->mh.type, cmdidx, sizeof(*pkt) + pkt->mh.len);
 	memcpy(ev->pdata, pkt, sizeof(*pkt) + pkt->mh.len);
@@ -144,6 +149,7 @@ static void net_closed_cb(gpcc_net_conn_t conn, apr_uint64_t arg)
     apr_uint32_t cmdidx = (apr_uint32_t) arg;
 
     if (cmdidx) {
+	gpcc_log_info("do net_clsed %d", cmdidx);
 	ev = gpcc_event_alloc(NET_CLOSED_EVENT, cmdidx, 0);
 	gpcc_evqueue_put(gpha.evq, ev);
     }
@@ -175,6 +181,7 @@ static void d_main(void)
     freopen(gpha.logfpath, "a", stderr);
     setlinebuf(stderr);
     freopen(gpha.logfpath, "a", stdout);
+    setlinebuf(stdout);
 
     /* set up the fsm */
     fsm_setup();

@@ -35,6 +35,8 @@ APR_DECLARE(void) fsm_setup(void)
 
     /* ma slot */
     /* forward requests to segment */
+    gpcc_fsm_put(GET_IDENTITY_CMDSTATE, INIT_EVENT, GET_IDENTITY_CMDSTATE,
+		 0);
     gpcc_fsm_put(GET_IDENTITY_CMDSTATE, SEGMENT_REQUEST_MSG_EVENT, GET_IDENTITY_CMDSTATE,
 		 ma_dispatch_segment, 0);
     gpcc_fsm_put(GET_IDENTITY_CMDSTATE, STATUS_REQUEST_MSG_EVENT, GET_IDENTITY_CMDSTATE,
