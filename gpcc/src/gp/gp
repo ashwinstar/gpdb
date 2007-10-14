@@ -4,16 +4,15 @@ gp -- Greenplum Terminal Control
 
 Usage: gp [gp_options] command [command_options] [command_args]
 
-gp_options:
-    -v verbose
-    -a array_name
-    -h host_name
-    -p port
+	gp_options:
+	    -v verbose
+	    -a array_name
+	    -h host_name
+	    -p port
 
-command:
-    start 
-    stop
-
+	command:
+	    start 
+	    stop
 
 """
 
@@ -44,10 +43,11 @@ gp_opt = {}
 gp_cmd = None
 gp_args = []
 
-def resetCommandLine():
+def resetCommandOptions():
     global gp_opt, gp_cmd, gp_args
     gp_opt = { 
         '-v': False,
+        '-?': False,
         '-a': os.environ.get('GPARRAY', None),
         '-h': os.environ.get('GPHOST', None),
         '-p': os.environ.get('GPPORT', None),
@@ -58,11 +58,11 @@ def resetCommandLine():
 
 def parseCommandLine(argv):
     global gp_opt, gp_cmd, gp_args
-    (options, args) = getopt.getopt(argv[1:], '?va:')
+    (options, args) = getopt.getopt(argv[1:], '?va:h:p:')
     for (switch, val) in options:
         if switch == '-?': gp_opt[switch] = True
         elif switch == '-v': gp_opt[switch] = True
-        elif switch == '-a': gp_opt[switch] = val
+        elif switch[1] in ('a', 'h', 'p'): gp_opt[switch] = val
     if args:
         gp_cmd = args[0]
         gp_args = args[1:]
@@ -87,10 +87,13 @@ def readRCFile():
                     gp_opt['-?'] = False
                 except (SystemExit, getopt.GetoptError):
                     print "Warning: error in '%s'. Ignored." % fname
-                    resetCommandLine()
+                    resetCommandOptions()
                     return
     finally:
         if f: f.close()
+    print 'opt-', gp_opt
+    print 'cmd-', gp_cmd
+    print 'args-', gp_args
 
 
 def checkCommandLine():
@@ -145,6 +148,7 @@ def doStop(args):
     print 'ok'
 
 def main():
+    resetCommandOptions()
     readRCFile()
     parseCommandLine(sys.argv)
     checkCommandLine()
