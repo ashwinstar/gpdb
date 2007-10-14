@@ -1502,7 +1502,7 @@ static void uri_unquote(char* s)
 gpcc_net_uri_t* gpcc_net_uri_alloc(const char* uristr)
 {
     gpcc_net_uri_t* uri = 0;
-    char* buf = malloc(sizeof(*uri) + strlen(uristr) + 1);
+    char* buf = malloc(sizeof(*uri) + 2 * (strlen(uristr) + 1));
     if (!buf) 
 	gpcc_fatal(FLINE, "out of memory");
     char* p;
@@ -1514,6 +1514,11 @@ gpcc_net_uri_t* gpcc_net_uri_alloc(const char* uristr)
 
     /* make a copy of uristr in buf */
     p = buf + sizeof(*uri);
+    strcpy(p, uristr);
+    uri->uri = p;
+    p += strlen(p) + 1;
+    
+    /* make another copy of uristr for parsing */
     strcpy(p, uristr);
 
     /* path points to start of uri */

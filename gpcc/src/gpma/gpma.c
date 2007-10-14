@@ -166,40 +166,45 @@ static void net_accepted(gpcc_net_conn_t conn,
 			 const char* peer_addr,
 			 gpcc_net_header_t* from_peer)
 {
-    gpcc_event_t* ev;
-
     gpcc_log_info("net_accepted");
 
     if (from_peer->argc == 3
 	&& 0 == memcmp("HTTP/1.", from_peer->argv[2], 7)
 	&& 0 == memcmp("GET", from_peer->argv[0], 4)) {
-	
-	gpcc_log_info("HTTP %s", from_peer->argv[1]);
 
-	if (0 == memcmp("/gpcc/start?", from_peer->argv[1], 12)) {
-	    /* send startcmd_event to FTS cmdslot ? */
-	    ev = mkfts_event(ARRAY_START_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
-			     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+	gpcc_net_uri_t* uri = gpcc_net_uri_alloc(from_peer->argv[1]);
+	char* a = (uri ? gpcc_net_uri_param(uri, "a") : 0);
+	gpcc_event_t* ev = 0;
+
+	if (a && 0 == strcmp(a, gpma.array_name)) {
+	    if (0 == strcmp("/gpcc/start", uri->path)) {
+		/* send startcmd_event to FTS cmdslot ? */
+		ev = mkfts_event(ARRAY_START_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+				 gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+	    }
+	    else if (0 == strcmp("/gpcc/stop", uri->path)) {
+		ev = mkfts_event(ARRAY_STOP_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+				 gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+	    }
+	    else if (0 == strcmp("/gpcc/init", uri->path)) {
+		ev = mkfts_event(ARRAY_INIT_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+				 gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+	    }
+	    else if (0 == strcmp("/gpcc/status", uri->path)) {
+		ev = mkfts_event(ARRAY_STATUS_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+				 gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+	    }
+	}
+
+	if (ev) {
 	    gpcc_evqueue_put(gpma.evq, ev);
 	}
-	else if (0 == memcmp("/gpcc/stop?", from_peer->argv[1], 11)) {
-	    ev = mkfts_event(ARRAY_STOP_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
-			     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-	    gpcc_evqueue_put(gpma.evq, ev);
-	}
-	else if (0 == memcmp("/gpcc/init?", from_peer->argv[1], 11)) {
-	    ev = mkfts_event(ARRAY_INIT_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
-			     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-	    gpcc_evqueue_put(gpma.evq, ev);
-	}
-	else if (0 == memcmp("/gpcc/status", from_peer->argv[1], 12)) {
-	    ev = mkfts_event(ARRAY_STATUS_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
-			     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-	    gpcc_evqueue_put(gpma.evq, ev);
-	} else {
-	    gpcc_warning(FLINE, "invalid URL");
+	else {
+	    gpcc_warning(FLINE, "invalid URI: %s", from_peer->argv[1]);
 	    gpcc_net_close(conn);
 	}
+
+	gpcc_net_uri_free(uri);
 	return;
     }
     else if (from_peer->argc == 1) {
@@ -420,9 +425,10 @@ void d_main(void)
 
 	/* effect the state transition */
 	if (gpma.debug) {
-	    gpcc_log_info("FSM[%x]: %s + %s = %s", slot->cmdidx,
-			  cmdstate_str(slot->cmdstate), 
-			  event_str(ev->etype), cmdstate_str(nxtstate));
+	    if (ev->etype != TICK_EVENT && slot != gpma.gpma_cmdslot)
+		gpcc_log_info("FSM[%x]: %s + %s = %s", slot->cmdidx,
+			      cmdstate_str(slot->cmdstate), 
+			      event_str(ev->etype), cmdstate_str(nxtstate));
 	}
 	slot->cmdstate = nxtstate;
 
@@ -601,15 +607,25 @@ void load_config(void)
 	if (! gpma.guid) 
 	    gpcc_fatal(FLINE, "config file does not specify gpdb.guid");
 
-	gpma.guid = apr_pstrdup(gpma.pool, gpma.guid);
-
 	/* check if config is legit */
 	verify_config();
     }
+    gpma.array_name = config_get(gpma.cfg, "gpdb.name");
 
     GPCC_DO(0 == config_write(gpma.datadir, gpma.guid, gpma.cfg));
 }
 
+
+void check_gphome(void)
+{
+    char ls[300];
+    apr_snprintf(ls, sizeof(ls), "ls %s/bin/gpha > /dev/null 2>&1", gpma.gphome);
+    if (0 != system(ls))
+	gpcc_fatal(FLINE, "gpha executable not found in GPHOME %s", gpma.gphome);
+    apr_snprintf(ls, sizeof(ls), "ls %s/bin/postgres > /dev/null 2>&1", gpma.gphome);
+    if (0 != system(ls))
+	gpcc_fatal(FLINE, "postgres executable not found in GPHOME %s", gpma.gphome);
+}
 
 
 int main(int argc, const char* argv[])
@@ -627,7 +643,8 @@ int main(int argc, const char* argv[])
 
     GPCC_DO(0 == setenv("GPHOME", gpma.gphome, 1));
     printf("GPHOME=%s\n", gpma.gphome);
-    
+
+    check_gphome();
     load_config();
 
     if (! gpma.debug) {
