@@ -33,6 +33,7 @@ CATALOG(pg_resqueue,6026) BKI_SHARED_RELATION
 	float4		rsqcountlimit;	/* max active count limit */
 	float4		rsqcostlimit;	/* max cost limit */
 	bool		rsqovercommit;	/* allow overcommit on suitable  limits */
+	float4		rsqignorecostlimit;	/* ignore queries with cost less than */
 
 } FormData_pg_resqueue;
 
@@ -49,11 +50,12 @@ typedef FormData_pg_resqueue *Form_pg_resqueue;
  *		compiler constants for pg_resqueue
  * ----------------
  */
-#define Natts_pg_resqueue					4
+#define Natts_pg_resqueue					5
 #define Anum_pg_resqueue_rsqname			1
 #define Anum_pg_resqueue_rsqcountlimit		2
 #define Anum_pg_resqueue_rsqcostlimit		3
 #define Anum_pg_resqueue_rsqovercommit		4
+#define Anum_pg_resqueue_rsqignorecostlimit	5
 
 /* No initial contents. */
 

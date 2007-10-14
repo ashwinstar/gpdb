@@ -1,36 +1,36 @@
 -- SQL coverage of RESOURCE QUEUE
 CREATE RESOURCE QUEUE regressq ACTIVE THRESHOLD 1;
 SELECT * FROM pg_resqueue WHERE rsqname='regressq';
- rsqname  | rsqcountlimit | rsqcostlimit | rsqovercommit 
-----------+---------------+--------------+---------------
- regressq |             1 |           -1 | f
+ rsqname  | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
+----------+---------------+--------------+---------------+--------------------
+ regressq |             1 |           -1 | f             |                  0
 (1 row)
 
 ALTER RESOURCE QUEUE regressq ACTIVE THRESHOLD 2 COST THRESHOLD 2000.00;
 SELECT * FROM pg_resqueue WHERE rsqname='regressq';
- rsqname  | rsqcountlimit | rsqcostlimit | rsqovercommit 
-----------+---------------+--------------+---------------
- regressq |             2 |         2000 | f
+ rsqname  | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
+----------+---------------+--------------+---------------+--------------------
+ regressq |             2 |         2000 | f             |                  0
 (1 row)
 
 ALTER RESOURCE QUEUE regressq COST THRESHOLD 3000.00 OVERCOMMIT;
 SELECT * FROM pg_resqueue WHERE rsqname='regressq';
- rsqname  | rsqcountlimit | rsqcostlimit | rsqovercommit 
-----------+---------------+--------------+---------------
- regressq |             2 |         3000 | t
+ rsqname  | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
+----------+---------------+--------------+---------------+--------------------
+ regressq |             2 |         3000 | t             |                  0
 (1 row)
 
 ALTER RESOURCE QUEUE regressq COST THRESHOLD 4e+3 NOOVERCOMMIT;
 SELECT * FROM pg_resqueue WHERE rsqname='regressq';
- rsqname  | rsqcountlimit | rsqcostlimit | rsqovercommit 
-----------+---------------+--------------+---------------
- regressq |             2 |         4000 | f
+ rsqname  | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
+----------+---------------+--------------+---------------+--------------------
+ regressq |             2 |         4000 | f             |                  0
 (1 row)
 
 DROP RESOURCE QUEUE regressq;
 SELECT * FROM pg_resqueue WHERE rsqname='regressq';
- rsqname | rsqcountlimit | rsqcostlimit | rsqovercommit 
----------+---------------+--------------+---------------
+ rsqname | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
+---------+---------------+--------------+---------------+--------------------
 (0 rows)
 
 -- negative

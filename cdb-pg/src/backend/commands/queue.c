@@ -58,9 +58,13 @@ CreateQueue(CreateQueueStmt *stmt)
 	/* overcommit indicator */
 	bool		overcommit = false;
 
+	/* cost ignore limit for queries */
+	float4		ignorelimit = 0;
+
 	DefElem     *dactivelimit = NULL;
 	DefElem     *dcostlimit = NULL;
 	DefElem     *dovercommit = NULL;
+	DefElem     *dignorelimit = NULL;
 	bool		queueok = false;
 
 
@@ -99,6 +103,14 @@ CreateQueue(CreateQueueStmt *stmt)
 						 errmsg("conflicting or redundant options")));
 			dovercommit = defel;
 		}
+		else if (strcmp(defel->defname, "ignorecostlimit") == 0)
+		{
+			if (dignorelimit)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			dignorelimit = defel;
+		}
 		else
 			elog(ERROR, "option \"%s\" not recognized",
 				 defel->defname);
@@ -129,6 +141,17 @@ CreateQueue(CreateQueueStmt *stmt)
 	{
 		overcommit = intVal(dovercommit->arg);
 	}
+
+	if(dignorelimit)
+	{
+		ignorelimit = (Cost) defGetNumeric(dignorelimit);
+		if (ignorelimit < 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("ignore cost threshold cannot be less than %d or equal to 0", 
+							INVALID_RES_LIMIT_THRESHOLD)));
+	}
+
 
 	/*
 	 * Check that at least one threshold is to be set.
@@ -196,6 +219,9 @@ CreateQueue(CreateQueueStmt *stmt)
 	new_record[Anum_pg_resqueue_rsqovercommit - 1] = 
 		BoolGetDatum(overcommit);
 
+	new_record[Anum_pg_resqueue_rsqignorecostlimit - 1] = 
+		Float4GetDatum(ignorelimit);
+
 
 	tuple = heap_formtuple(pg_resqueue_dsc, new_record, new_record_nulls);
 
@@ -215,7 +241,7 @@ CreateQueue(CreateQueueStmt *stmt)
 		thresholds[RES_COUNT_LIMIT] = activelimit;
 		thresholds[RES_COST_LIMIT] = costlimit;
 
-		queueok = ResCreateQueue(queueid, thresholds, overcommit);
+		queueok = ResCreateQueue(queueid, thresholds, overcommit, ignorelimit);
 
 		LWLockRelease(ResQueueLock);
 
@@ -266,9 +292,13 @@ AlterQueue(AlterQueueStmt *stmt)
 	/* overcommit indicator */
 	bool		overcommit = false;
 
+	/* cost ignore limit for queries */
+	float4		ignorelimit = 0;
+
 	DefElem     *dactivelimit = NULL;
 	DefElem     *dcostlimit = NULL;
 	DefElem     *dovercommit = NULL;
+	DefElem     *dignorelimit = NULL;
 	ResAlterQueueResult		queueok;
 
 
@@ -307,6 +337,14 @@ AlterQueue(AlterQueueStmt *stmt)
 						 errmsg("conflicting or redundant options")));
 			dovercommit = defel;
 		}
+		else if (strcmp(defel->defname, "ignorecostlimit") == 0)
+		{
+			if (dignorelimit)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			dignorelimit = defel;
+		}
 		else
 			elog(ERROR, "option \"%s\" not recognized",
 				 defel->defname);
@@ -338,13 +376,23 @@ AlterQueue(AlterQueueStmt *stmt)
 		overcommit = intVal(dovercommit->arg);
 	}
 
+	if(dignorelimit)
+	{
+		ignorelimit = (Cost) defGetNumeric(dignorelimit);
+		if (ignorelimit < 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("ignore cost threshold cannot be less than %d or equal to 0", 
+							INVALID_RES_LIMIT_THRESHOLD)));
+	}
+
 	/*
 	 * Check that at least one threshold is to be set.
 	 */
-	if (!dactivelimit && !dcostlimit && !dovercommit)
+	if (!dactivelimit && !dcostlimit && !dovercommit && !dignorelimit)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("at least one threshold or overcommit must be specified")));
+				 errmsg("at least one threshold, overcommit or ignore limit must be specified")));
 
 
 	/*
@@ -384,6 +432,10 @@ AlterQueue(AlterQueueStmt *stmt)
 	if (!dovercommit)
 		overcommit = ((Form_pg_resqueue) GETSTRUCT(tuple))->rsqovercommit;
 
+	/* Also set ignore cost limit if it was *not* specified. */
+	if (!dignorelimit)
+		ignorelimit = ((Form_pg_resqueue) GETSTRUCT(tuple))->rsqignorecostlimit;
+
 
 	/*
 	 * Build a tuple to update.
@@ -419,6 +471,14 @@ AlterQueue(AlterQueueStmt *stmt)
 
 	}
 
+	if (dignorelimit)
+	{
+		new_record[Anum_pg_resqueue_rsqignorecostlimit - 1] = 
+			Float4GetDatum(ignorelimit);
+		new_record_repl[Anum_pg_resqueue_rsqignorecostlimit - 1] = 'r';
+	}
+
+
 	/*
 	 * Check we are not going to set all the thresholds to be invalid.
 	 */
@@ -449,7 +509,7 @@ AlterQueue(AlterQueueStmt *stmt)
 	{
 		LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
 
-		queueok = ResAlterQueue(queueid, thresholds, overcommit);
+		queueok = ResAlterQueue(queueid, thresholds, overcommit, ignorelimit);
 
 		LWLockRelease(ResQueueLock);
 

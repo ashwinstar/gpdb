@@ -181,6 +181,7 @@ InitResQueues(void)
 	Oid					queueid;
 	int					numQueues = 0;
 	bool				overcommit;
+	float4				ignorelimit;
 	Cost				thresholds[NUM_RES_LIMIT_TYPES];
 	char				*queuename;
 	bool				queuesok = true;
@@ -220,8 +221,9 @@ InitResQueues(void)
 		thresholds[RES_COUNT_LIMIT] = queueform->rsqcountlimit;
 		thresholds[RES_COST_LIMIT] = queueform->rsqcostlimit;
 		overcommit = queueform->rsqovercommit;
+		ignorelimit = queueform->rsqignorecostlimit;
 
-		queuesok = ResCreateQueue(queueid, thresholds, overcommit);
+		queuesok = ResCreateQueue(queueid, thresholds, overcommit, ignorelimit);
 	}
 	heap_endscan(scan);
 	
@@ -252,7 +254,8 @@ InitResQueues(void)
  *	calling this - unless we are the startup process.
  */
 bool
-ResCreateQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit)
+ResCreateQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit,
+			   float4 ignorelimit)
 {
 
 	ResQueue		queue = ResQueueHashNew(queueid);
@@ -270,6 +273,9 @@ ResCreateQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit)
 
 	/* Set overcommit.*/
 	queue->overcommit = overcommit;
+
+	/* Set ignore cost limit. */
+	queue->ignorecostlimit = ignorelimit;
 
 	/* Now run through all the possible limit types.*/
 	for (i = 0 ; i < NUM_RES_LIMIT_TYPES; i++)
@@ -311,7 +317,8 @@ ResCreateQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit)
  *	calling this.
  */
 ResAlterQueueResult
-ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit)
+ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit,
+			  float4 ignorelimit)
 {
 
 	ResQueue		queue = ResQueueHashFind(queueid);
@@ -404,6 +411,10 @@ ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit)
 		/* Set overcommit if that has changed. */
 		if (queue->overcommit != overcommit)
 			queue->overcommit = overcommit;
+
+		/* Set ignore cost limit if that has changed. */
+		if ( queue->ignorecostlimit != ignorelimit)
+			queue->ignorecostlimit = ignorelimit;
 	}
 	
 	return result;
@@ -535,6 +546,31 @@ ResLockPortal(Portal portal, Plan *plan)
 			case T_SelectStmt:
 			{
 				/*
+				 * if the plan is cheap enough... don't queue it.
+				 */
+				ResQueue		queue;
+				float4			ignorelimit;
+
+				LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
+
+				queue = ResQueueHashFind(queueid);
+				if (!queue)
+				{
+					LWLockRelease(ResQueueLock);
+					elog(ERROR, "cannot find queue id %d", queueid);
+				}
+				ignorelimit = queue->ignorecostlimit;
+
+				LWLockRelease(ResQueueLock);
+
+				if (plan->total_cost < ignorelimit )
+				{
+					takeLock = false;
+					returnReleaseOk = false;
+					break;
+				}
+
+				/*
 				 * Setup the resource portal increments, ready to be added.
 				 */
 				incData.pid = MyProc->pid;
@@ -553,6 +589,30 @@ ResLockPortal(Portal portal, Plan *plan)
 			 */
 			case T_DeclareCursorStmt:
 			{
+				/*
+				 * if the plan is cheap enough... don't queue it.
+				 */
+				ResQueue		queue;
+				float4			ignorelimit;
+
+				LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
+
+				queue = ResQueueHashFind(queueid);
+				if (!queue)
+				{
+					LWLockRelease(ResQueueLock);
+					elog(ERROR, "cannot find queue id %d", queueid);
+				}
+				ignorelimit = queue->ignorecostlimit;
+
+				LWLockRelease(ResQueueLock);
+
+				if (plan->total_cost < ignorelimit )
+				{
+					takeLock = false;
+					returnReleaseOk = false;
+					break;
+				}
 				/*
 				 * Setup the resource portal increments, ready to be added.
 				 */

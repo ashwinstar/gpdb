@@ -425,7 +425,7 @@ static void doNegateFloat(Value *v);
 
 	HANDLER HASH HAVING HEADER_P HOLD HOST HOUR_P
 
-	IF_P  ILIKE IMMEDIATE IMMUTABLE IMPLICIT_P IN_P INCLUDING
+	IF_P  IGNORE ILIKE IMMEDIATE IMMUTABLE IMPLICIT_P IN_P INCLUDING
 	INCLUSIVE
 	INCREMENT
 	INDEX INDEXES INHERIT INHERITS INITIALLY INNER_P INOUT INPUT_P
@@ -682,6 +682,10 @@ OptQueueElem:
 			| COST THRESHOLD FloatOnly
 				{
 					$$ = makeDefElem("costlimit", (Node *)$3);
+				}
+			| IGNORE THRESHOLD FloatOnly
+				{
+					$$ = makeDefElem("ignorecostlimit", (Node *)$3);
 				}
 			| OVERCOMMIT
 				{
