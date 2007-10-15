@@ -199,17 +199,62 @@ static apr_status_t a_fts_array_start_reply(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-
-static apr_status_t a_fts_busy_reply(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_array_status_reply(gpcc_event_t *ev, void *_cmdslot)
 {
-    char *url;
+    cmdslot_t *cmdslot = _cmdslot;
     gpcc_net_conn_t conn;
     struct json_object *obj = 0;
+    char *url;
+    char *state;
 
     memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
     url = ev->pdata + sizeof(gpcc_net_conn_t);
-    obj = gpcc_json_http_reply("", "pending", "state conflict");
-    gpcc_net_http_close(conn, 200, "pending", json_object_to_json_string(obj));
+
+    /* send the current state */
+    if (cmdslot->cmdstate == FTS_STOPPED_CMDSTATE) {
+	state = "stopped";
+    } else if (cmdslot->cmdstate ==  FTS_STARTING_CMDSTATE) {
+	state = "starting";
+    } else if (cmdslot->cmdstate == FTS_RUNNING_CMDSTATE) {
+	state = "running";
+    } else if (cmdslot->cmdstate ==  FTS_STOPPING_CMDSTATE) {
+	state = "stopping";
+    } else {
+	state = "invalid state";
+    }
+
+    obj = gpcc_json_http_status_reply("ok", state);
+    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+    json_object_put(obj);
+    return 0;
+}
+
+static apr_status_t a_fts_busy_reply(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    char *url;
+    gpcc_net_conn_t conn;
+    struct json_object *obj = 0;
+    char *msg;
+
+    if (cmdslot->cmdstate ==  FTS_CMDSTATE) {
+	msg = "server in initializing";
+    } else if (cmdslot->cmdstate ==  FTS_STOPPED_CMDSTATE) {
+	msg = "server is not running";
+    } else if (cmdslot->cmdstate ==  FTS_STARTING_CMDSTATE) {
+	msg = "server is starting";
+    } else if (cmdslot->cmdstate == FTS_RUNNING_CMDSTATE) {
+	msg = "server is running";
+    } else if (cmdslot->cmdstate == FTS_STOPPING_CMDSTATE) {
+	msg = "server is stopping";
+    } else {
+	msg = "invalid server state";
+    }
+
+    memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
+    url = ev->pdata + sizeof(gpcc_net_conn_t);
+    obj = gpcc_json_http_reply("", "failure", msg);
+    gpcc_net_http_close(conn, 200, "failure", json_object_to_json_string(obj));
     json_object_put(obj);
     return 0;
 }

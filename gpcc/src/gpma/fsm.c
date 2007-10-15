@@ -73,12 +73,14 @@ APR_DECLARE(void) fsm_init(void)
 		 a_fts_init, 0);
     gpcc_fsm_put(FTS_STOPPED_CMDSTATE, ARRAY_START_EVENT, FTS_STARTING_CMDSTATE,
 		 a_fts_array_start, 0);
+    gpcc_fsm_put(FTS_STOPPED_CMDSTATE, ARRAY_STATUS_EVENT, FTS_STOPPED_CMDSTATE,
+		 a_fts_array_status_reply, 0);    
     gpcc_fsm_put(FTS_STARTING_CMDSTATE, ARRAY_START_EVENT, FTS_STARTING_CMDSTATE,
 		 a_fts_busy_reply, 0);    
     gpcc_fsm_put(FTS_STARTING_CMDSTATE, ARRAY_STOP_EVENT, FTS_STARTING_CMDSTATE,
 		 a_fts_busy_reply, 0);    
     gpcc_fsm_put(FTS_STARTING_CMDSTATE, ARRAY_STATUS_EVENT, FTS_STARTING_CMDSTATE,
-		 a_fts_busy_reply, 0);    
+		 a_fts_array_status_reply, 0);    
     gpcc_fsm_put(FTS_STARTING_CMDSTATE, ARRAY_REPLY_MSG_EVENT, FTS_STARTING_CMDSTATE,
 		 a_fts_array_start_reply, 0);
     gpcc_fsm_put(FTS_STARTING_CMDSTATE, SUCCESS_EVENT, FTS_RUNNING_CMDSTATE,
@@ -87,12 +89,16 @@ APR_DECLARE(void) fsm_init(void)
 		 a_fts_failure, 0);
     gpcc_fsm_put(FTS_RUNNING_CMDSTATE, ARRAY_STOP_EVENT, FTS_STOPPING_CMDSTATE,
 		 a_fts_array_stop, 0);
+    gpcc_fsm_put(FTS_RUNNING_CMDSTATE, ARRAY_STATUS_EVENT, FTS_RUNNING_CMDSTATE,
+		 a_fts_array_status_reply, 0);
+    gpcc_fsm_put(FTS_RUNNING_CMDSTATE, ARRAY_START_EVENT, FTS_RUNNING_CMDSTATE,
+		 a_fts_busy_reply, 0);
     gpcc_fsm_put(FTS_STOPPING_CMDSTATE, ARRAY_START_EVENT, FTS_STOPPING_CMDSTATE,
 		 a_fts_busy_reply, 0);    
     gpcc_fsm_put(FTS_STOPPING_CMDSTATE, ARRAY_STOP_EVENT, FTS_STOPPING_CMDSTATE,
 		 a_fts_busy_reply, 0);    
     gpcc_fsm_put(FTS_STOPPING_CMDSTATE, ARRAY_STATUS_EVENT, FTS_STOPPING_CMDSTATE,
-		 a_fts_busy_reply, 0);    
+		 a_fts_array_status_reply, 0);    
     gpcc_fsm_put(FTS_STOPPING_CMDSTATE, ARRAY_REPLY_MSG_EVENT, FTS_STOPPING_CMDSTATE,
 		 a_fts_array_stop_reply, 0);
     gpcc_fsm_put(FTS_STOPPING_CMDSTATE, SUCCESS_EVENT, FTS_STOPPED_CMDSTATE,
