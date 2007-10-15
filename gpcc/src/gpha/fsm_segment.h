@@ -1160,6 +1160,8 @@ static apr_status_t seg_stop(gpcc_event_t* ev, void *_cmdslot)
     gpcc_net_packet_t *packet = (gpcc_net_packet_t *) ev->pdata;
     struct json_object *obj;
     int e;
+    char status[1024];
+    int len = sizeof(status);
 
     memset(&cmdslot->u.seg.request, 0, sizeof(cmdslot->u.seg.request));
     cmdslot->u.seg.request.parentidx = packet->mh.sndidx;
@@ -1188,6 +1190,24 @@ static apr_status_t seg_stop(gpcc_event_t* ev, void *_cmdslot)
 	return 0;
     }
     
+    /* check pg_ctl status for sure */
+    gpcc_log_info("[%s] check pg_ctl status", cmdslot->cmdname);
+    if (0 != (e = gpcc_pg_ctl_status(cmdslot->u.seg.request.port,
+				     cmdslot->u.seg.request.data_dir,
+				     status, 
+				     &len,
+				     cmdslot->u.seg.request.subpool))) {
+	seg_request_error(FLINE, ev, _cmdslot, SEG_STOP_DONE_EVENT, 0, "server is not running");
+	json_object_put(obj);
+	return 0;
+    }
+    
+    if (strstr(status, "server is running") == 0) {
+	seg_request_error(FLINE, ev, _cmdslot, SEG_STOP_DONE_EVENT, 0, "server is not running");
+	json_object_put(obj);
+	return 0;
+    }
+
     if (0 != (e = gpcc_proc_pg_ctl_stop(&cmdslot->u.seg.request.proc,
 					cmdslot->u.seg.request.port,
 					cmdslot->u.seg.request.data_dir,
