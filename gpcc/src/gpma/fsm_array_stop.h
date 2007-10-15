@@ -92,7 +92,7 @@ static apr_status_t a_array_stop_failure(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;    
 
     a_array_stop_reply(ev, _cmdslot);
-    gpcc_net_http_close(cmdslot->u.array_stop.conn, 500, "INTERNAL ERROR", ev->pdata);
+    gpcc_net_http_close(cmdslot->u.array_stop.conn, 200, "failure", ev->pdata);
     return 0;
 }
 
