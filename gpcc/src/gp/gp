@@ -112,7 +112,7 @@ def hitMA(cmd, params):
     json = ''
     try:
         f = httplib.HTTPConnection("%s:%d" % (gp_opt['-h'], gp_opt['-p']))
-        f.request("GET", "/%s?%s" % (cmd, params))
+        f.request("GET", "%s?%s" % (cmd, params))
         response = f.getresponse();
         if response.status == 200:
             s = response.read()
@@ -135,7 +135,7 @@ def printError(json):
 
 def doStart(args):
     params = {'a': gp_opt['-a']}
-    json = hitMA('start', params)
+    json = hitMA('/gpcc/start', params)
     if json['status'] != 'ok':
         printError(json)
         return
@@ -143,7 +143,7 @@ def doStart(args):
 
 def doStop(args):
     params = {'a': gp_opt['-a']}
-    json = hitMA('stop', params)
+    json = hitMA('/gpcc/stop', params)
     if json['status'] != 'ok':
         printError(json)
         return
