@@ -61,20 +61,22 @@ apr_status_t a_node_check_ssh(gpcc_event_t* ev, void* arg)
 apr_status_t a_node_connect(gpcc_event_t* ev, void* arg)
 {
     cmdslot_t* slot = arg;
-    char *argv[1];
+    const char* argv[1];
     int argc;
     int hc;
-    char *hname[1];
-    char *hvalue[1];
-    gpcc_event_t *nev;
+    const char* hname[2];
+    const char* hvalue[2];
+    gpcc_event_t* nev;
     int e;
     char addr[128];
 
     argc = 1;
     argv[0] = GPCC_NET_PACKET_PROTO;
-    hc = 1;
+    hc = 2;
     hname[0] = "X-GPCC-ROLE";
     hvalue[0] = "GPMA";
+    hname[1] = "X-GPCC-GUID";
+    hvalue[1] = gpma.guid;
 
     sprintf(addr, "%s:%d", slot->u.node.hosttab[slot->u.node.hostidx], DEFAULT_HA_PORT);
     printf("NODE CONNECT\n");
@@ -96,6 +98,7 @@ apr_status_t a_node_ready(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
     gpcc_net_tag(slot->u.node.conn, slot->cmdname);
+    printf("NODE %s READY\n", slot->cmdname);
     return 0;
 }
 

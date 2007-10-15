@@ -62,8 +62,10 @@ static char* gpcc_net_header_serialize(gpcc_net_header_t* src, char* buf, int bu
 
 
 
-static gpcc_net_header_t* gpcc_net_header_copy(int argc, char** argv, int hc, 
-					       char** hname, char** hvalue, apr_pool_t* pool)
+static gpcc_net_header_t* 
+    gpcc_net_header_copy(int argc, const char** argv, int hc, 
+			 const char** hname, const char** hvalue,
+			 apr_pool_t* pool)
 {
     gpcc_net_header_t* hdr = apr_palloc(pool, sizeof(*hdr));
     int i;
@@ -1104,8 +1106,8 @@ apr_status_t gpcc_net_tag(gpcc_net_conn_t conn,
 
 apr_status_t gpcc_net_open(gpcc_net_conn_t* conn,
 			   char* peer_addr_str,
-			   int argc, char** argv,
-			   int hc, char** hname, char** hvalue,
+			   int argc, const char** argv,
+			   int hc, const char** hname, const char** hvalue,
 			   apr_uint64_t arg)
 {
     SOCKET sock = -1;
@@ -1581,3 +1583,36 @@ void gpcc_net_uri_free(gpcc_net_uri_t* uri)
 {
     free(uri);
 }
+
+
+void gpcc_net_http_close(gpcc_net_conn_t conn, int status, const char* msg, const char* json)
+{
+    gpcc_net_header_t hdr;
+    char statusbuf[10];
+    char lenbuf[10];
+    int hc, len;
+
+    if (! json)
+	json = "";
+
+    len = strlen(json);
+
+    sprintf(statusbuf, "%d", status);
+    sprintf(lenbuf, "%d", len);
+
+    hdr.argc = 3;
+    hdr.argv[0] = statusbuf;
+    hdr.argv[1] = msg;
+    hdr.argv[2] = "HTTP/1.0";
+    hc = 0;
+    hdr.hname[hc] = "Content-type";
+    hdr.hvalue[hc++] = "text/plain";
+    hdr.hname[hc] = "Content-length";
+    hdr.hvalue[hc++] = lenbuf;
+    hdr.hc = hc;
+
+    (void) gpcc_net_send_header(conn, &hdr);
+    (void) gpcc_net_send(conn, json, len);
+    gpcc_net_close(conn);
+}
+

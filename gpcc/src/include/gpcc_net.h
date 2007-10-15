@@ -43,10 +43,10 @@ typedef struct gpcc_net_header_t gpcc_net_header_t;
 struct gpcc_net_header_t {
 #define GPCC_NET_HEADER_ENTRYMAX  (20)
     int argc;
-    char* argv[GPCC_NET_HEADER_ENTRYMAX+1];
+    const char* argv[GPCC_NET_HEADER_ENTRYMAX+1];
     int hc;
-    char* hname[GPCC_NET_HEADER_ENTRYMAX+1];
-    char* hvalue[GPCC_NET_HEADER_ENTRYMAX+1];
+    const char* hname[GPCC_NET_HEADER_ENTRYMAX+1];
+    const char* hvalue[GPCC_NET_HEADER_ENTRYMAX+1];
 };
 
 
@@ -175,8 +175,8 @@ APR_DECLARE(apr_status_t)
 APR_DECLARE(apr_status_t) 
     gpcc_net_open(gpcc_net_conn_t* conn,
 		  char* peer_addr,
-		  int argc, char** argv,
-		  int hc, char** hname, char** hvalue,
+		  int argc, const char** argv,
+		  int hc, const char** hname, const char** hvalue,
 		  apr_uint64_t arg);
 
 
@@ -318,5 +318,12 @@ static inline char* gpcc_net_uri_param(gpcc_net_uri_t* uri, const char* name)
 	    return uri->pvalue[i];
     return 0;
 }
+
+
+/**
+ *  Send a http response and close the connection.
+ */
+APR_DECLARE(void)
+    gpcc_net_http_close(gpcc_net_conn_t conn, int status, const char* msg, const char* json);
 
 #endif /* GPCC_NET_H */
