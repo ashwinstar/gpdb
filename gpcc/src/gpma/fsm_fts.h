@@ -229,6 +229,36 @@ static apr_status_t a_fts_array_status_reply(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
+static apr_status_t a_fts_busy_ok_reply(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    char *url;
+    gpcc_net_conn_t conn;
+    struct json_object *obj = 0;
+    char *msg;
+
+    if (cmdslot->cmdstate ==  FTS_CMDSTATE) {
+	msg = "server is initializing";
+    } else if (cmdslot->cmdstate ==  FTS_STOPPED_CMDSTATE) {
+	msg = "server stopped";
+    } else if (cmdslot->cmdstate ==  FTS_STARTING_CMDSTATE) {
+	msg = "server is starting";
+    } else if (cmdslot->cmdstate == FTS_RUNNING_CMDSTATE) {
+	msg = "server is running";
+    } else if (cmdslot->cmdstate == FTS_STOPPING_CMDSTATE) {
+	msg = "server is stopping";
+    } else {
+	msg = "invalid server state";
+    }
+
+    memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
+    url = ev->pdata + sizeof(gpcc_net_conn_t);
+    obj = gpcc_json_http_reply("", "ok", msg);
+    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+    json_object_put(obj);
+    return 0;
+}
+
 static apr_status_t a_fts_busy_reply(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = _cmdslot;
@@ -325,7 +355,7 @@ static apr_status_t a_fts_failure(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-
+#if 0
 static apr_status_t a_fts_array_init(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = _cmdslot;
@@ -373,3 +403,4 @@ static apr_status_t a_fts_initialized(gpcc_event_t *ev, void *_cmdslot)
 {
     return 0;
 }
+#endif
