@@ -140,7 +140,7 @@ def printError(json):
 def getStatus():
     params = { 'a': gp_opt['-a'] }
     json = hitMA('/gpcc/status', params)
-    print '/gpcc/status:', json
+    # print '/gpcc/status:', json
     status = json.get('status', '')
     x = json.get('rset', {})
     x = x.get('result', [])
@@ -151,6 +151,12 @@ def getStatus():
     return (json, status, x)
 
 
+def printDotSleep():
+    sys.stdout.write('.')
+    sys.stdout.flush()
+    time.sleep(1)
+
+
 def doStart(args):
     params = {'a': gp_opt['-a']}
     json = hitMA('/gpcc/start', params)
@@ -159,8 +165,7 @@ def doStart(args):
         return
     cur = 'starting'
     for i in xrange(30):
-        print '.',
-        time.sleep(1)
+        printDotSleep()
         (json, status, array_status) = getStatus()
         if status != 'ok':
             print
@@ -189,8 +194,7 @@ def doStop(args):
         return
     cur = 'stopping'
     for i in xrange(30):
-        print '.',
-        time.sleep(1)
+        printDotSleep()
         (json, status, array_status) = getStatus()
         if status != 'ok':
             print
