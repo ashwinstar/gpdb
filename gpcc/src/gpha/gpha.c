@@ -87,6 +87,8 @@ static void net_accepted_cb(gpcc_net_conn_t conn,
     int i, e;
     gpcc_net_header_t hdr;
     cmdslot_t *cmdslot;
+    const char *role = 0;
+    const char *guid = 0;
 
     gpcc_log_info("net_accepted_cb");
     if (from_peer->argc != 1 || strcmp(from_peer->argv[0], GPCC_NET_PACKET_PROTO) != 0){
@@ -97,22 +99,27 @@ static void net_accepted_cb(gpcc_net_conn_t conn,
 
     for (i = 0 ; i < from_peer->hc ; i++) {
 	if (apr_strnatcasecmp(from_peer->hname[i], "X-GPCC-ROLE") == 0) {
-	    if (strcmp(from_peer->hvalue[i], "GPMA") == 0) {
-		/* create cmdslot */
-
-		cmdslot = cmdslot_alloc("MA->HA", GET_IDENTITY_CMDSTATE, conn);
-		gpcc_net_set_arg(conn, cmdslot->cmdidx);
-		gpcc_log_info("create MA socket...%d", cmdslot->cmdidx);
-
-		hdr.argc = 1;
-		hdr.argv[0] = GPCC_NET_PACKET_PROTO;
-		hdr.hc = 0;
-		if (0 != (e = gpcc_net_send_header(conn, &hdr))) {
-		    gpcc_warning(FLINE, "gpcc_net_send_header failed");
-		}
-		return;
-	    }
+	    role = from_peer->hvalue[i];
+	} else if (apr_strnatcasecmp(from_peer->hname[i], "X-GPCC-GUID") == 0) {
+	    guid = from_peer->hvalue[i];
 	}
+    }
+
+    if (role && strcmp(role, "GPMA") == 0 && guid && strcmp(guid, gpha.guid) == 0) {
+	/* create cmdslot */
+	
+	cmdslot = cmdslot_alloc("MA->HA", GET_IDENTITY_CMDSTATE, conn);
+	gpcc_net_set_arg(conn, cmdslot->cmdidx);
+	gpcc_log_info("role = %s, guid = %s, create MA socket...%d", role, guid, cmdslot->cmdidx);
+	
+	hdr.argc = 1;
+	hdr.argv[0] = GPCC_NET_PACKET_PROTO;
+	hdr.hc = 0;
+	if (0 != (e = gpcc_net_send_header(conn, &hdr))) {
+	    gpcc_warning(FLINE, "gpcc_net_send_header failed");
+	}
+    } else {
+	gpcc_net_close(conn, 0);
     }
 }
 
@@ -185,7 +192,7 @@ static void d_main(void)
 
     /* greetings */
     apr_rfc822_date(date, apr_time_now());
-    gpcc_log_info("[%s] started gpha %s", date, gpha.dir);
+    gpcc_log_info("[%s] started gpha %s %s", date, gpha.guid, gpha.dir);
 
     /* network up */
     GPCC_DO(0 == gpcc_net_init(gpha.port,
@@ -272,11 +279,12 @@ static void d_main(void)
 /* Print usage info */
 static void usage(const char* program, int status)
 {
-    fprintf(stderr, "\nUsage: %s [-?bD] [-p port] dir\n\n", program);
+    fprintf(stderr, "\nUsage: %s [-?bD] [-p port] guid dir\n\n", program);
     fprintf(stderr, "    -?   : print this help screen\n");
     fprintf(stderr, "    -b   : boot the Host Agent\n");
     fprintf(stderr, "    -D   : debug mode and do not run as daemon\n");
     fprintf(stderr, "    -p   : port number\n");
+    fprintf(stderr, "    guid : guid\n");
     fprintf(stderr, "    dir  : agent local storage directory\n");
     fprintf(stderr, "\n");
     exit(status);
@@ -317,8 +325,9 @@ static apr_status_t parse_cmdline(int argc, const char* argv[])
 
     if (e != APR_EOF) 
 	usage(argv[0], 1);
-    if (argc - handle->ind != 1)
+    if (argc - handle->ind != 2)
 	usage(argv[0], 1);
+    gpha.guid = argv[handle->ind++];
     gpha.dir = argv[handle->ind++];
 
     if (gpha.port == 0) {
