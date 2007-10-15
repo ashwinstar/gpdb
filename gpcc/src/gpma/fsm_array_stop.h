@@ -49,6 +49,7 @@ static apr_status_t a_array_stop_do(gpcc_event_t *ev, void *_cmdslot)
 	p->u.stop.req[i].host = apr_pstrdup(p->pool, info->host);
 	p->u.stop.req[i].port = info->port;
 	p->u.stop.req[i].datadir = apr_pstrdup(p->pool, info->dir);
+	p->u.stop.req[i].reply = 0;
     }
 
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
@@ -66,7 +67,7 @@ static apr_status_t a_array_stop_success(gpcc_event_t *ev, void *_cmdslot)
     gpcc_event_t *evt;
     gpcc_net_packet_t *pkt;
 
-    obj = gpcc_json_array_reply("stop", "ok", 0);
+    obj = gpcc_json_http_reply("stop", "ok", 0);
     objstr = json_object_to_json_string(obj);
 
     evt = gpcc_event_alloc(ARRAY_REPLY_MSG_EVENT, cmdslot->u.array_stop.parent_cmdidx, sizeof(*pkt) + strlen(objstr) + 1);
@@ -78,6 +79,8 @@ static apr_status_t a_array_stop_success(gpcc_event_t *ev, void *_cmdslot)
     memcpy(pkt->payload, objstr, strlen(objstr)+1);   
 
     gpcc_evqueue_put(gpma.evq, evt);
+
+    gpcc_net_http_close(cmdslot->u.array_start.conn, 200, "OK", objstr);
 
     json_object_put(obj);
     return 0;
@@ -85,13 +88,13 @@ static apr_status_t a_array_stop_success(gpcc_event_t *ev, void *_cmdslot)
 
 static apr_status_t a_array_stop_failure(gpcc_event_t *ev, void *_cmdslot)
 {
-   cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;    
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;    
     struct json_object *obj;
     char *objstr;
     gpcc_event_t *evt;
     gpcc_net_packet_t *pkt;
 
-    obj = gpcc_json_array_reply("stop", "failed", 0);
+    obj = gpcc_json_http_reply("stop", "failure", 0);
     objstr = json_object_to_json_string(obj);
 
     evt = gpcc_event_alloc(ARRAY_REPLY_MSG_EVENT, cmdslot->u.array_stop.parent_cmdidx, sizeof(*pkt) + strlen(objstr) + 1);
@@ -104,6 +107,7 @@ static apr_status_t a_array_stop_failure(gpcc_event_t *ev, void *_cmdslot)
 
     gpcc_evqueue_put(gpma.evq, evt);
 
+    gpcc_net_http_close(cmdslot->u.array_start.conn, 500, "FAILED", objstr);
     json_object_put(obj);
     return 0;
 }

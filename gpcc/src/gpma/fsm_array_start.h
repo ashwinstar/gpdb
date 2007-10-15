@@ -67,6 +67,7 @@ static apr_status_t a_array_start_utility_qd(gpcc_event_t *ev, void *_cmdslot)
     p->u.start.req[0].host = apr_pstrdup(p->pool, seginfo->host);
     p->u.start.req[0].port = seginfo->port;
     p->u.start.req[0].datadir = apr_pstrdup(p->pool, seginfo->dir);
+    p->u.start.req[0].reply = 0;
 
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);
@@ -110,6 +111,7 @@ static apr_status_t a_array_start_utility_qd_stop(gpcc_event_t *ev, void *_cmdsl
     p->u.stop.req[0].host = apr_pstrdup(p->pool, seginfo->host);
     p->u.stop.req[0].port = seginfo->port;
     p->u.stop.req[0].datadir = apr_pstrdup(p->pool, seginfo->dir);
+    p->u.stop.req[0].reply = 0;
 
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);
@@ -143,6 +145,7 @@ static apr_status_t a_array_start_qes(gpcc_event_t *ev, void *_cmdslot)
 	p->u.start.req[i].host = apr_pstrdup(p->pool, info->host);
 	p->u.start.req[i].port = info->port;
 	p->u.start.req[i].datadir = apr_pstrdup(p->pool, info->dir);
+	p->u.start.req[i].reply = 0;
     }
 
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
@@ -168,6 +171,7 @@ static apr_status_t a_array_start_qd(gpcc_event_t *ev, void *_cmdslot)
     p->u.start.req[0].host = apr_pstrdup(p->pool, seginfo->host);
     p->u.start.req[0].port = seginfo->port;
     p->u.start.req[0].datadir = apr_pstrdup(p->pool, seginfo->dir);
+    p->u.start.req[0].reply = 0;
 
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);
@@ -198,6 +202,7 @@ static apr_status_t a_array_start_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     p->u.start.req[0].host = apr_pstrdup(p->pool, seginfo->host);
     p->u.start.req[0].port = seginfo->port;
     p->u.start.req[0].datadir = apr_pstrdup(p->pool, seginfo->dir);
+    p->u.start.req[0].reply = 0;
 
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);
@@ -213,7 +218,7 @@ static apr_status_t a_array_start_success(gpcc_event_t *ev, void *_cmdslot)
     gpcc_event_t *evt;
     gpcc_net_packet_t *pkt;
 
-    obj = gpcc_json_array_reply("start", "ok", 0);
+    obj = gpcc_json_http_reply("start", "ok", 0);
     objstr = json_object_to_json_string(obj);
 
     evt = gpcc_event_alloc(ARRAY_REPLY_MSG_EVENT, cmdslot->u.array_start.parent_cmdidx, sizeof(*pkt) + strlen(objstr) + 1);
@@ -225,6 +230,8 @@ static apr_status_t a_array_start_success(gpcc_event_t *ev, void *_cmdslot)
     memcpy(pkt->payload, objstr, strlen(objstr)+1);   
 
     gpcc_evqueue_put(gpma.evq, evt);
+
+    gpcc_net_http_close(cmdslot->u.array_start.conn, 200, "OK", objstr);
 
     json_object_put(obj);
     return 0;
@@ -232,13 +239,13 @@ static apr_status_t a_array_start_success(gpcc_event_t *ev, void *_cmdslot)
 
 static apr_status_t a_array_start_failure(gpcc_event_t *ev, void *_cmdslot)
 {
-   cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;    
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;    
     struct json_object *obj;
     char *objstr;
     gpcc_event_t *evt;
     gpcc_net_packet_t *pkt;
 
-    obj = gpcc_json_array_reply("start", "failed", 0);
+    obj = gpcc_json_http_reply("start", "failure", 0);
     objstr = json_object_to_json_string(obj);
 
     evt = gpcc_event_alloc(ARRAY_REPLY_MSG_EVENT, cmdslot->u.array_start.parent_cmdidx, sizeof(*pkt) + strlen(objstr) + 1);
@@ -251,6 +258,7 @@ static apr_status_t a_array_start_failure(gpcc_event_t *ev, void *_cmdslot)
 
     gpcc_evqueue_put(gpma.evq, evt);
 
+    gpcc_net_http_close(cmdslot->u.array_start.conn, 500, "FAILED", objstr);
     json_object_put(obj);
     return 0;
 }

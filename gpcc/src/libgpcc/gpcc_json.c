@@ -155,6 +155,24 @@ struct json_object *gpcc_json_array_reply(const char *action, const char *status
     return obj;
 }
 
+struct json_object *gpcc_json_http_reply(const char *action, const char *status, const char *errmsg)
+{
+    const char *r = (errmsg ? errmsg : "");
+    struct json_object *obj = 0;
+    struct json_object *errobj = 0;
+
+    obj = json_object_new_object();
+    json_object_object_add(obj, "action", json_object_new_string((char *) action));
+    json_object_object_add(obj, "status", json_object_new_string((char *)status));
+    errobj = json_object_new_object();
+    json_object_object_add(errobj, "_", json_object_new_string((char *) r));
+    json_object_object_add(obj, "errmsg", errobj);
+
+    return obj;
+}
+
+
+
 struct json_object *gpcc_json_alert(const char *segment, const char *alert) 
 {
     struct json_object *obj = 0;

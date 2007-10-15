@@ -149,6 +149,16 @@ struct json_object *gpcc_json_array_request(const char *action, const char *mode
 struct json_object *gpcc_json_array_reply(const char *action, const char *status, const char *reason);
 
 /**
+ *  create http reply object
+ *
+ *  @param action 
+ *  @param status
+ *  @param reason
+ *  @return json_object
+ */
+struct json_object *gpcc_json_http_reply(const char *action, const char *status, const char *errmsg);
+
+/**
  *  create alert object
  *
  *  @param segment   segment name

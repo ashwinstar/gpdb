@@ -77,8 +77,7 @@ static apr_status_t a_stop_reply(gpcc_event_t *ev, void *_cmdslot)
 	return 0;
     }
     
-    cmdslot->u.stop.req[i].reply = apr_palloc(cmdslot->pool, ev->edatasz);
-    memcpy(cmdslot->u.stop.req[i].reply, ev->pdata, ev->edatasz);
+    cmdslot->u.stop.req[i].reply = apr_pstrdup(cmdslot->pool, pkt->payload);
     
     if (strcmp(status, "ok") == 0) {
 	cmdslot->u.stop.nsuccess++;
@@ -121,13 +120,36 @@ static void a_stop_send_json_reply(gpcc_event_t *ev, cmdslot_t *cmdslot, struct 
 
 }
 
+static struct json_object * mkjson_stop_reply(gpcc_event_t *ev, void *_cmdslot, 
+					      const char *action, const char *status, const char *reason)
+{
+    cmdslot_t *cmdslot = (cmdslot_t*) _cmdslot;
+    struct json_object *obj, *rsetobj, *arrobj;
+    int i, n;
+
+    obj = gpcc_json_http_reply(action, status, reason);
+    rsetobj = json_object_new_object();
+    arrobj = json_object_new_array();
+    for (i = 0, n = 0 ; i < cmdslot->u.stop.ntotal ; i++) {
+	if (cmdslot->u.stop.req[i].reply) {
+	    json_object_array_add(arrobj, json_object_new_string(cmdslot->u.stop.req[i].reply));
+	    n++;
+	}
+    }
+    json_object_object_add(rsetobj, "total", json_object_new_int(n));
+    json_object_object_add(rsetobj, "result", arrobj);
+    json_object_object_add(obj, "rset", rsetobj);
+
+    return obj;
+}
+
 
 static apr_status_t a_stop_success(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj;
 
-    obj = gpcc_json_array_reply("stop", "ok", 0);
+    obj = mkjson_stop_reply(ev, _cmdslot, "stop", "ok", 0);
     a_stop_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
     return 0;
@@ -140,7 +162,7 @@ static apr_status_t a_stop_failure(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj;
 
-    obj = gpcc_json_array_reply("stop", "failed", 0);
+    obj = mkjson_stop_reply(ev, _cmdslot, "stop", "failure", 0);
     a_stop_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
     return 0;
@@ -151,7 +173,7 @@ static apr_status_t a_stop_timeout(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj;
 
-    obj = gpcc_json_array_reply("stop", "timeout", 0);
+    obj = mkjson_stop_reply(ev, _cmdslot, "stop", "failure", "timeout");
     a_stop_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
     return 0;
