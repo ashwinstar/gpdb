@@ -1399,14 +1399,26 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	queryParms.serializedDtxContextInfo = 
 			qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, withSnapshot, generateTxnOptions(needTwoPhase), "cdbdisp_dispatchCommand");
 
-	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent)
+	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent && dispatchToMirrors && !dispatchToPrimaries)
 	{
 		/*
 		 * If we are the QD, and sending via Dispatch Agents, we want to send only
 		 * once.  The DA will send to the primary and/or mirror gang based on what we tell it.
 		 */
-		dispatchToPrimaries = true;
-		dispatchToMirrors = false;
+		
+		elog(LOG,"mirror only dispatch");
+		
+		*pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
+	    cdbdisp_dispatchToGang(pDispatchThreads, 
+							   GP_DISPATCH_COMMAND_TYPE_QUERY,
+							   &queryParms,
+							   mirrorGang, *pMirrorResults, -1, 1);
+	    
+	    /*
+	     * make sure we don't dispatch again 
+	     */
+	    dispatchToPrimaries = false; 
+	    dispatchToMirrors = false;
 	}
 	
 	/*
@@ -3460,10 +3472,12 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 
 		
 
-		Assert(primaryGang != NULL);	/* Must have a gang to dispatch to */
-		Assert(primaryGang->size > 0);
-		Assert((*pPrimaryResults) &&
-				(*pPrimaryResults)->resultArray);
+		Assert(primaryGang != NULL || mirrorGang != NULL);	/* Must have a gang to dispatch to */
+		if (primaryGang)
+		{
+			Assert((*pPrimaryResults) &&
+					(*pPrimaryResults)->resultArray);
+		}
 
 		/* Bail out if already got an error or cancellation request. */
 		if (cancelOnError)
@@ -3480,6 +3494,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		 * Dispatch the plan to our primaryGang.
 		 * Doesn't wait for it to finish.
 		 */
+		if (primaryGang != NULL)
 		cdbdisp_dispatchToGang(pDispatchThreads,
 							   GP_DISPATCH_COMMAND_TYPE_QUERY,
 							   pQueryParms,

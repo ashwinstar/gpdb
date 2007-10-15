@@ -423,6 +423,9 @@ cdbdisp_debugDispatchResult(CdbDispatchResult  *dispatchResult,
     if (elevel_error < log_min_messages &&
         elevel_success < log_min_messages)
         return;
+    
+    if (dispatchResult == NULL)
+    	return;
 
     /* PGresult messages */
     nres = cdbdisp_numPGresult(dispatchResult);
@@ -454,7 +457,7 @@ cdbdisp_debugDispatchResult(CdbDispatchResult  *dispatchResult,
             char   *sqlstate = PQresultErrorField(pgresult, PG_DIAG_SQLSTATE);
             char   *pri = PQresultErrorField(pgresult, PG_DIAG_MESSAGE_PRIMARY);
             char   *dtl = PQresultErrorField(pgresult, PG_DIAG_MESSAGE_DETAIL);
-            int     lenpri = strlen(pri);
+            int     lenpri = (pri == NULL)? 0 :strlen(pri);
 
             if (!sqlstate)
                 sqlstate = "no SQLSTATE";
@@ -469,7 +472,7 @@ cdbdisp_debugDispatchResult(CdbDispatchResult  *dispatchResult,
                         sqlstate,
                         PQresStatus(PQresultStatus(pgresult)),
                         lenpri,
-                        pri,
+                        pri ? pri : "",
                         whoami),
                  errdetail("(%s:%s) %s",
                            PQresultErrorField(pgresult, PG_DIAG_SOURCE_FILE),
@@ -905,7 +908,7 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 	TupleDesc typeinfo;
 	CdbDispatchResults *gangResults;
 	CdbDispatchResult *dispatchResult;
-	struct pg_result * p;
+	struct pg_result * p = NULL;
 	char * completionTag = NULL;
 	StringInfoData buf;
 	long sum = 0;
@@ -923,19 +926,46 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 	 */
 	
 	elog(DEBUG2,"relayResults is starting");
-
-	dispatchResult = &pPrimaryResults->resultArray[0];
-	Assert(dispatchResult);
-	p = ((struct pg_result **)dispatchResult->resultbuf->data)[0];
-	Assert(p);
-	completionTag = palloc0(COMPLETION_TAG_BUFSIZE);
-	strcpy(completionTag,p->cmdStatus);
+	
+	p = NULL;
+	if (pPrimaryResults && pPrimaryResults->resultCount > 0)
+	{
+		dispatchResult = &pPrimaryResults->resultArray[0];
+		if (dispatchResult)
+		{
+			if (dispatchResult->resultbuf) 
+			{
+				Assert(dispatchResult->resultbuf->data);
+				p = ((struct pg_result **)dispatchResult->resultbuf->data)[0];
+				Assert(p);
+				completionTag = palloc0(COMPLETION_TAG_BUFSIZE);
+				strcpy(completionTag,p->cmdStatus);
+			}
+		}
+	}
+	
+	/* No Primary Results?  look in mirror */
+	if (completionTag == NULL && pMirrorResults && pMirrorResults->resultCount > 0)
+	{
+		dispatchResult = &pMirrorResults->resultArray[0];
+		if (dispatchResult)
+		{
+			if (dispatchResult->resultbuf) 
+			{
+				Assert(dispatchResult->resultbuf->data);
+				p = ((struct pg_result **)dispatchResult->resultbuf->data)[0];
+				Assert(p);
+				completionTag = palloc0(COMPLETION_TAG_BUFSIZE);
+				strcpy(completionTag,p->cmdStatus);
+			}
+		}
+	}
 	 
 	/*
 	 * Not only the results need to get relayed.  Also the DTX info
 	 */
 
-	if (p->QEWriter_HaveInfo)
+	if (p && p->QEWriter_HaveInfo)
 	{
 		elog(DEBUG3,"First result: distributedXid %d, curcid %d, is dirty %d",p->QEWriter_DistributedTransactionId,
 				p->QEWriter_CommandId,p->QEWriter_Dirty);
@@ -1221,7 +1251,7 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 	 * If any of the QEs say they modified tuples, we need to relay that
 	 * back to the QD as part of the completionTag.
 	 */
-	if (sum > 0)
+	if (sum > 0 && completionTag)
 	{
 		if (strncmp(completionTag,"INSERT ",7)==0)
 		{
