@@ -47,6 +47,8 @@ static apr_status_t a_array_init_do(gpcc_event_t *ev, void *_cmdslot)
 	p->u.initdb.req[i].host = apr_pstrdup(p->pool, info->host);
 	p->u.initdb.req[i].port = info->port;
 	p->u.initdb.req[i].datadir = apr_pstrdup(p->pool, info->dir);
+	p->u.initdb.req[i].dbid = info->dbid;
+	p->u.initdb.req[i].content = info->content;
 	p->u.initdb.req[i].reply = 0;
     }
 
