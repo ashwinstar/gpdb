@@ -175,8 +175,10 @@ static void net_accepted(gpcc_net_conn_t conn,
 	gpcc_net_uri_t* uri = gpcc_net_uri_alloc(from_peer->argv[1]);
 	char* a = (uri ? gpcc_net_uri_param(uri, "a") : 0);
 	gpcc_event_t* ev = 0;
+	int is_bad_uri = 0;
+	int is_bad_array_name = ! (a && 0 == strcmp(a, gpma.array_name));
 
-	if (a && 0 == strcmp(a, gpma.array_name)) {
+	if (! is_bad_array_name) {
 	    if (0 == strcmp("/gpcc/start", uri->path)) {
 		/* send startcmd_event to FTS cmdslot ? */
 		ev = mkfts_event(ARRAY_START_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
@@ -194,6 +196,8 @@ static void net_accepted(gpcc_net_conn_t conn,
 		ev = mkfts_event(ARRAY_STATUS_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
 				 gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
 	    }
+	    else 
+		is_bad_uri = 1;
 	}
 
 	if (ev) {
@@ -201,7 +205,7 @@ static void net_accepted(gpcc_net_conn_t conn,
 	}
 	else {
 	    gpcc_warning(FLINE, "invalid URI: %s", from_peer->argv[1]);
-	    if (a) 
+	    if (!is_bad_uri && is_bad_array_name) 
 		gpcc_net_http_close(conn, 200, "OK", "{ \"status\": \"failure\", \"errmsg\": { \"_\": \"bad array name\" } }");
 	    else
 		gpcc_net_http_close(conn, 200, "OK", "{ \"status\": \"failure\", \"errmsg\": { \"_\": \"illegal URI\" }}");
