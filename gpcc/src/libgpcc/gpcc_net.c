@@ -33,7 +33,8 @@ APR_DECLARE(apr_status_t) gpcc_net_parse_request(gpcc_net_header_t** hdr, const 
 
 #define TPR(x) printf x
 
-static char* gpcc_net_header_serialize(gpcc_net_header_t* src, char* buf, int buflen)
+static char* 
+gpcc_net_header_serialize(gpcc_net_header_t* src, char* buf, int buflen)
 {
     int i;
     char* p = buf;
@@ -1632,9 +1633,9 @@ void gpcc_net_http_close(gpcc_net_conn_t conn, int status, const char* msg, cons
     sprintf(lenbuf, "%d", len);
 
     hdr.argc = 3;
-    hdr.argv[0] = statusbuf;
-    hdr.argv[1] = msg;
-    hdr.argv[2] = "HTTP/1.0";
+    hdr.argv[0] = "HTTP/1.0";
+    hdr.argv[1] = statusbuf;
+    hdr.argv[2] = msg;
     hc = 0;
     hdr.hname[hc] = "Content-type";
     hdr.hvalue[hc++] = "text/plain";
