@@ -154,7 +154,7 @@ def getStatus():
 def doStart(args):
     params = {'a': gp_opt['-a']}
     json = hitMA('/gpcc/start', params)
-    if not json.get('status') in ('ok', 'pending')
+    if not json.get('status') in ('ok', 'pending'):
         printError(json)
         return
     cur = 'starting'
@@ -184,7 +184,7 @@ def doStart(args):
 def doStop(args):
     params = {'a': gp_opt['-a']}
     json = hitMA('/gpcc/stop', params)
-    if not json.get('status') in ('ok', 'pending')
+    if not json.get('status') in ('ok', 'pending'):
         printError(json)
         return
     cur = 'stopping'
