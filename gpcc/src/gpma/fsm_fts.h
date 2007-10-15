@@ -208,8 +208,8 @@ static apr_status_t a_fts_busy_reply(gpcc_event_t *ev, void *_cmdslot)
 
     memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
     url = ev->pdata + sizeof(gpcc_net_conn_t);
-    obj = gpcc_json_http_reply("", "failure", "state conflict");
-    gpcc_net_http_close(conn, 409, "STATE CONFLICT", json_object_to_json_string(obj));
+    obj = gpcc_json_http_reply("", "pending", "state conflict");
+    gpcc_net_http_close(conn, 200, "pending", json_object_to_json_string(obj));
     json_object_put(obj);
     return 0;
 }
