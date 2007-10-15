@@ -101,7 +101,7 @@ apr_status_t a_node_ready(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
     gpcc_net_tag(slot->u.node.conn, slot->cmdname);
-    printf("NODE %s READY\n", slot->cmdname);
+    gpcc_log_info("------------------------------------------- NODE %s READY", slot->cmdname);
     return 0;
 }
 

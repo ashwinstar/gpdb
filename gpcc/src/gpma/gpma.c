@@ -202,9 +202,9 @@ static void net_accepted(gpcc_net_conn_t conn,
 	else {
 	    gpcc_warning(FLINE, "invalid URI: %s", from_peer->argv[1]);
 	    if (a) 
-		gpcc_net_http_close(conn, 200, "OK", "{ status: 'failure', errmsg: { '_': 'bad array name' } }");
+		gpcc_net_http_close(conn, 200, "OK", "{ \"status\": \"failure\", \"errmsg\": { \"_\": \"bad array name\" } }");
 	    else
-		gpcc_net_http_close(conn, 200, "OK", "{ status: 'failure', errmsg: { '_': 'illegal URI' }}");
+		gpcc_net_http_close(conn, 200, "OK", "{ \"status\": \"failure\", \"errmsg\": { \"_\": \"illegal URI\" }}");
 	}
 
 	gpcc_net_uri_free(uri);
@@ -254,13 +254,10 @@ static void net_closed(gpcc_net_conn_t conn, apr_uint64_t arg)
     apr_uint32_t cmdidx = (apr_uint32_t) arg;
     gpcc_event_t *ev;
 
-    if (! cmdidx ) {
-	/* HTTP request */
-	gpcc_warning(FLINE, "HTTP connection closed by peer");
-	return;
+    if (cmdidx) {
+	ev = gpcc_event_alloc(NET_CLOSED_EVENT, cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, ev);
     }
-    ev = gpcc_event_alloc(NET_CLOSED_EVENT, cmdidx, 0);
-    gpcc_evqueue_put(gpma.evq, ev);
 }
 
 
