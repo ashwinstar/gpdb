@@ -12,7 +12,7 @@ static apr_time_exp_t exp = {0};
 
 #define TMLEN  sizeof("2007-10-14 22:25:43")
 
-static char* mktime(char buf[TMLEN])
+static char* mktimestr(char buf[TMLEN])
 {
     if (exptime != gpcc_net_tick) {
 	exptime = gpcc_net_tick;
@@ -31,7 +31,7 @@ APR_DECLARE(int) gpcc_fatal(const char* fline, const char* fmt, ...)
     char tmbuf[TMLEN];
     va_list ap;
     va_start(ap, fmt);
-    fprintf(stderr, "[%s FATAL] [%s] ", mktime(tmbuf), fline);
+    fprintf(stderr, "[%s FATAL] [%s] ", mktimestr(tmbuf), fline);
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n          ... exiting\n"); 
     exit(1);
@@ -44,7 +44,7 @@ APR_DECLARE(int) gpcc_warning(const char* fline, const char* fmt, ...)
     char tmbuf[TMLEN];
     va_list ap;
     va_start(ap, fmt);
-    fprintf(stderr, "[%s WRN] [%s] ", mktime(tmbuf), fline); 
+    fprintf(stderr, "[%s WRN] [%s] ", mktimestr(tmbuf), fline); 
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
     return 0;
@@ -55,7 +55,7 @@ APR_DECLARE(int) gpcc_log_info(const char* fmt, ...)
     char tmbuf[TMLEN];
     va_list ap;
     va_start(ap, fmt);
-    fprintf(stderr, "[%s INF] ", mktime(tmbuf));
+    fprintf(stderr, "[%s INF] ", mktimestr(tmbuf));
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
     return 0;
@@ -66,7 +66,7 @@ APR_DECLARE(int) gpcc_log_error(const char* fmt, ...)
     char tmbuf[TMLEN];
     va_list ap;
     va_start(ap, fmt);
-    fprintf(stderr, "[%s ERR] ", mktime(tmbuf));
+    fprintf(stderr, "[%s ERR] ", mktimestr(tmbuf));
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
     return 0;
