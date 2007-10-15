@@ -16,7 +16,7 @@ Usage: gp [gp_options] command [command_options] [command_args]
 
 """
 
-import os, sys, getopt, types, time, popen2, urllib
+import os, sys, getopt, types, time, popen2, urllib, httplib
 
 if sys.version_info < (2, 3):
     sys.exit("Error: gp is supported on Python versions 2.3 or greater\n"
@@ -91,9 +91,6 @@ def readRCFile():
                     return
     finally:
         if f: f.close()
-    print 'opt-', gp_opt
-    print 'cmd-', gp_cmd
-    print 'args-', gp_args
 
 
 def checkCommandLine():
@@ -110,12 +107,17 @@ def checkCommandLine():
 
 
 def hitMA(cmd, params):
-    params = urlllib.urlencode(params)
-    url = 'http://%s:%d/gpcc/%s?%s' % (gp_opt['-h'], gp_opt['-p'], cmd, params)
+    params = urllib.urlencode(params)
     f = None
+    json = ''
     try:
-        f = urllib.urlopen(url)
-        json = simplejson.loads(f.read(-1))
+        f = httplib.HTTPConnection("%s:%d" % (gp_opt['-h'], gp_opt['-p']))
+        f.request("GET", "/%s?%s" % (cmd, params))
+        response = f.getresponse();
+        if response.status == 200:
+            s = response.read()
+            # print s
+            json = simplejson.loads(s)
     finally:
         if f: f.close()
     return json
@@ -134,7 +136,7 @@ def printError(json):
 def doStart(args):
     params = {'a': gp_opt['-a']}
     json = hitMA('start', params)
-    if json.status != 'ok':
+    if json['status'] != 'ok':
         printError(json)
         return
     print 'ok'
@@ -142,7 +144,7 @@ def doStart(args):
 def doStop(args):
     params = {'a': gp_opt['-a']}
     json = hitMA('stop', params)
-    if json.status != 'ok':
+    if json['status'] != 'ok':
         printError(json)
         return
     print 'ok'
