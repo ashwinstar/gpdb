@@ -3832,7 +3832,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			        !IsA(query, Query))
 			        elog(ERROR, "DispatchAgent: received invalid query for copy stmt");
 			    
-			    if (IsA(query->utilityStmt,CopyStmt))
+			    if (query != NULL && query->utilityStmt != NULL && IsA(query->utilityStmt,CopyStmt))
 				{
 					uint64		processed = DoCopyDispatchAgent((CopyStmt *) query->utilityStmt);
 					
