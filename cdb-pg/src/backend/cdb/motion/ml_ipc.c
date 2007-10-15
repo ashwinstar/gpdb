@@ -232,7 +232,6 @@ struct conn_htab_bin {
 struct conn_htab_bin	**conn_htab = NULL;
 #define DEFAULT_CONN_HTAB_SIZE (Max((GpIdentity.numsegments*Gp_interconnect_hash_multiplier), 16))
 int						conn_htab_size = 0;
-static pthread_mutex_t	conn_htab_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* synchronization */
 #define RX_THREAD_POLL_TIMEOUT (250) /* 1/4 sec in msec */
@@ -636,8 +635,6 @@ conn_addhash(MotionConn *conn)
 
 	hashcode = ((conn->conn_info.srcPid ^ conn->conn_info.dstPid) + conn->conn_info.dstContentId) % conn_htab_size;
 
-	pthread_mutex_lock(&conn_htab_mutex);
-
 	/* check for collision ? */
 	for (bin = conn_htab[hashcode]; bin != NULL; bin = bin->next)
 	{
@@ -648,7 +645,6 @@ conn_addhash(MotionConn *conn)
 			bin->conn->conn_info.dstPid == conn->conn_info.dstPid)
 		{
 			elog(LOG, "conn_addhash(): duplicate ?! node %d route %d", conn->conn_info.motNodeId, conn->route);
-			pthread_mutex_unlock(&conn_htab_mutex);
 			return;
 		}
 	}
@@ -658,7 +654,6 @@ conn_addhash(MotionConn *conn)
 	newbin->next = conn_htab[hashcode];
 	conn_htab[hashcode] = newbin;
 
-	pthread_mutex_unlock(&conn_htab_mutex);
 }
 
 static void
@@ -668,8 +663,6 @@ conn_delhash(MotionConn *conn)
 	struct conn_htab_bin *c, *p, *trash;
 
 	hashcode = ((conn->conn_info.srcPid ^ conn->conn_info.dstPid) + conn->conn_info.dstContentId) % conn_htab_size;
-
-	pthread_mutex_lock(&conn_htab_mutex);
 
 	c = conn_htab[hashcode];
 
@@ -692,7 +685,6 @@ conn_delhash(MotionConn *conn)
 	/* not found ? */
 	if (c == NULL)
 	{
-		pthread_mutex_unlock(&conn_htab_mutex);
 		return;
 	}
 
@@ -703,8 +695,6 @@ conn_delhash(MotionConn *conn)
 		conn_htab[hashcode] = c->next;
 	else
 		p->next = c->next;
-
-	pthread_mutex_unlock(&conn_htab_mutex);
 
 	free(trash);
 	return;
@@ -718,8 +708,6 @@ findConnByHeader(struct icpkthdr *hdr, int16 *srcRoute)
 	struct MotionConn *ret=NULL;
 
 	hashcode = ((hdr->srcPid ^ hdr->dstPid) + hdr->dstContentId) % conn_htab_size;
-
-	pthread_mutex_lock(&conn_htab_mutex);
 
 	for (bin = conn_htab[hashcode]; bin != NULL; bin = bin->next)
 	{
@@ -755,8 +743,6 @@ findConnByHeader(struct icpkthdr *hdr, int16 *srcRoute)
 		}
 	}
 
-	pthread_mutex_unlock(&conn_htab_mutex);
-
 #if 0
 	if (ret == NULL)
 		write_log("findConnByHeader: not found! "
@@ -790,8 +776,6 @@ conn_rehash(void)
 	for (i=0; i < new_htab_size; i++)
 		new_conn_htab[i] = NULL;
 
-	pthread_mutex_lock(&conn_htab_mutex);
-
 	/* For each bucket in the hash table */
 	for (i=0; i < conn_htab_size; i++)
 	{
@@ -819,8 +803,6 @@ conn_rehash(void)
 	free(conn_htab);
 	conn_htab_size = new_htab_size;
 	conn_htab = new_conn_htab;
-
-	pthread_mutex_unlock(&conn_htab_mutex);
 }
 
 /*=========================================================================
@@ -866,7 +848,6 @@ InitMotionLayerIPC(void)
 		pthread_mutexattr_t m_atts;
 
 		pthread_mutexattr_init(&m_atts);
-		//pthread_mutexattr_settype(&m_atts, PTHREAD_MUTEX_RECURSIVE);
 		pthread_mutexattr_settype(&m_atts, PTHREAD_MUTEX_ERRORCHECK);
 
 		pthread_mutex_init(&rx_thread_mutex, &m_atts);
@@ -3562,9 +3543,8 @@ error:
  *
  * On return, state is:
  *      mcsSetupOutgoingConnection if failed and caller should retry.
- *      mcsConnecting if non-blocking connect() is pending.  Caller should
- *          send registration message when socket becomes write-ready.
- *      mcsSendRegMsg or mcsStarted if connect() completed successfully.
+ *		state then transitions to mcsStarted (once connection request is
+ * acked by remote peer).
  */
 void
 setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn)
