@@ -3832,20 +3832,19 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			        !IsA(query, Query))
 			        elog(ERROR, "DispatchAgent: received invalid query for copy stmt");
 			    
-			    if (!IsA(query->utilityStmt,CopyStmt))
-			    	elog(ERROR, "Not a copy statement?");
-			
-				
+			    if (IsA(query->utilityStmt,CopyStmt))
 				{
-				uint64		processed = DoCopyDispatchAgent((CopyStmt *) query->utilityStmt);
-				
-				completionTag = palloc0(COMPLETION_TAG_BUFSIZE);
-				
-				snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
-						 "COPY " UINT64_FORMAT, processed);
+					uint64		processed = DoCopyDispatchAgent((CopyStmt *) query->utilityStmt);
+					
+					completionTag = palloc0(COMPLETION_TAG_BUFSIZE);
+					
+					snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
+							 "COPY " UINT64_FORMAT, processed);
+							 
+					elog(LOG,"DA has finished doing copy statement %s",completionTag);
 				}
-
-				elog(LOG,"DA has finished doing copy statement %s",completionTag);
+				else
+					elog(LOG, "Not a copy statement?");
 
 				MemoryContextSwitchTo(oldcontext);
 			}
