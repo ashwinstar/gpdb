@@ -81,7 +81,8 @@ typedef struct
  *
  * Notes and critisms:
  *
- *	Returns LOCKACQUIRE_OK.
+ *	Returns LOCKACQUIRE_OK if we get the lock,
+ *	        LOCKACQUIRE_NOT_AVAIL if we don't want to take the lock after all.
  *
  *	Analogous to LockAcquire, but the lockmode and session boolean are not
  *	required in the function prototype as we are *always* lockmode ExclusiveLock
@@ -109,6 +110,7 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 	LWLockId		partitionLock;
 	bool			found;
 	ResourceOwner	owner;
+	ResQueue		queue;
 	int				status;
 
 	/* Setup the lock method bits. */
@@ -265,11 +267,32 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 	lock->requested[lockmode]++;
 	Assert((lock->nRequested > 0) && (lock->requested[lockmode] > 0));
 
-	/*
-	 * Add an increment to the increment hash for this process
-	 */
+
 	LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
 
+	/*
+	 * If the query cost is smaller than the ignore cost limit for this queue
+	 * then don't try to take a lock at all.
+	 */
+	queue = GetResQueueFromLock(lock);
+	if (incrementSet->increments[RES_COST_LIMIT] < queue->ignorecostlimit)
+	{
+		/* Decrement requested, but leave lock objects themselves.*/
+		lock->nRequested--;
+		lock->requested[lockmode]--;
+		Assert((lock->nRequested >= 0) && (lock->requested[lockmode] >= 0));
+
+		LWLockRelease(ResQueueLock);
+		LWLockRelease(partitionLock);
+
+		return LOCKACQUIRE_NOT_AVAIL;
+	}
+	
+
+	/*
+	 * Otherwise, we are going to take a lock, Add an increment to the 
+	 * increment hash for this process.
+	 */
 	incrementSet = ResIncrementAdd(incrementSet, proclock, owner);
 	if (!incrementSet)
 	{

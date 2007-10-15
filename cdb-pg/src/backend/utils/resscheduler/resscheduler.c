@@ -546,31 +546,6 @@ ResLockPortal(Portal portal, Plan *plan)
 			case T_SelectStmt:
 			{
 				/*
-				 * if the plan is cheap enough... don't queue it.
-				 */
-				ResQueue		queue;
-				float4			ignorelimit;
-
-				LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
-
-				queue = ResQueueHashFind(queueid);
-				if (!queue)
-				{
-					LWLockRelease(ResQueueLock);
-					elog(ERROR, "cannot find queue id %d", queueid);
-				}
-				ignorelimit = queue->ignorecostlimit;
-
-				LWLockRelease(ResQueueLock);
-
-				if (plan->total_cost < ignorelimit )
-				{
-					takeLock = false;
-					returnReleaseOk = false;
-					break;
-				}
-
-				/*
 				 * Setup the resource portal increments, ready to be added.
 				 */
 				incData.pid = MyProc->pid;
@@ -589,30 +564,6 @@ ResLockPortal(Portal portal, Plan *plan)
 			 */
 			case T_DeclareCursorStmt:
 			{
-				/*
-				 * if the plan is cheap enough... don't queue it.
-				 */
-				ResQueue		queue;
-				float4			ignorelimit;
-
-				LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
-
-				queue = ResQueueHashFind(queueid);
-				if (!queue)
-				{
-					LWLockRelease(ResQueueLock);
-					elog(ERROR, "cannot find queue id %d", queueid);
-				}
-				ignorelimit = queue->ignorecostlimit;
-
-				LWLockRelease(ResQueueLock);
-
-				if (plan->total_cost < ignorelimit )
-				{
-					takeLock = false;
-					returnReleaseOk = false;
-					break;
-				}
 				/*
 				 * Setup the resource portal increments, ready to be added.
 				 */
@@ -663,8 +614,15 @@ ResLockPortal(Portal portal, Plan *plan)
 			SET_LOCKTAG_RESOURCE_QUEUE(tag, queueid);
 			lockResult = ResLockAcquire(&tag, &incData);
 
-			/* Count holdable cursors.*/
-			if (portal->cursorOptions & CURSOR_OPT_HOLD)
+			/* 
+			 * See if query was too small to bother locking at all, i.e had
+			 * cost smaller than the IGNORE threshold for the queue.
+			 */
+			if (lockResult == LOCKACQUIRE_NOT_AVAIL)
+				returnReleaseOk = false;
+
+			/* Count holdable cursors (if we are locking this one) .*/
+			if (portal->cursorOptions & CURSOR_OPT_HOLD && returnReleaseOk)
 				numHoldPortals++;
 		}
 
