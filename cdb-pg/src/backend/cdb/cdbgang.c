@@ -2689,6 +2689,17 @@ Gang * findGangById(int gang_id)
 	if (mirrorWriterGang && mirrorWriterGang->gang_id == gang_id)
 		return mirrorWriterGang;
 	
+	if (gang_id == 1)
+	{
+		elog(LOG,"findGangById: primary writer didn't exist when we expected it to");
+		return allocatePrimaryWriterGang();
+	}
+	else if (gang_id == 2)
+	{
+		elog(LOG,"findGangById: mirror writer didn't exist when we expected it to");
+		return allocateMirrorWriterGang();
+	}
+	
 	/*
 	 * Now we iterate through the list of reader gangs
 	 * to find the one that matches
