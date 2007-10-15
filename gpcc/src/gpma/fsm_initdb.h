@@ -286,13 +286,37 @@ static void a_initdb_send_json_reply(gpcc_event_t *ev, cmdslot_t *cmdslot, struc
 
 }
 
+static struct json_object * mkjson_initdb_reply(gpcc_event_t *ev, void *_cmdslot, 
+						const char *action, const char *status, const char *reason)
+{
+    cmdslot_t *cmdslot = (cmdslot_t*) _cmdslot;
+    struct json_object *obj, *rsetobj, *arrobj;
+    int i, n;
+
+    obj = gpcc_json_http_reply(action, status, reason);
+    rsetobj = json_object_new_object();
+    arrobj = json_object_new_array();
+    for (i = 0, n = 0 ; i < cmdslot->u.initdb.ntotal ; i++) {
+	if (cmdslot->u.initdb.req[i].reply) {
+	    json_object_array_add(arrobj, json_object_new_string(cmdslot->u.initdb.req[i].reply));
+	    n++;
+	}
+    }
+    json_object_object_add(rsetobj, "total", json_object_new_int(n));
+    json_object_object_add(rsetobj, "result", arrobj);
+    json_object_object_add(obj, "rset", rsetobj);
+
+    return obj;
+}
+
+
 
 static apr_status_t a_initdb_success(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj;
 
-    obj = gpcc_json_array_reply("init", "ok", 0);
+    obj = mkjson_initdb_reply(ev, _cmdslot, "init", "ok", 0);
     a_initdb_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
     return 0;
@@ -305,7 +329,7 @@ static apr_status_t a_initdb_failure(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj;
 
-    obj = gpcc_json_array_reply("init", "failed", 0);
+    obj = mkjson_initdb_reply(ev, _cmdslot, "init", "failure", 0);
     a_initdb_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
     return 0;
@@ -316,7 +340,7 @@ static apr_status_t a_initdb_timeout(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj;
 
-    obj = gpcc_json_array_reply("init", "timeout", 0);
+    obj = mkjson_initdb_reply(ev, _cmdslot, "init", "failure", "timeout");
     a_initdb_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
     return 0;

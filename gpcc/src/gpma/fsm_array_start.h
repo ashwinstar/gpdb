@@ -6,18 +6,19 @@ static apr_status_t a_array_start_units_start_reply(gpcc_event_t *ev, void *_cmd
     gpcc_net_packet_t *pkt;
     struct json_object *obj;
     gpcc_event_t *evt;
-    char *status, *reason;
+    char *status;
 
     pkt = (gpcc_net_packet_t *) ev->pdata;
     obj = json_tokener_parse(pkt->payload);
-    status = gpcc_json_object_get_string(obj, "status", "failed");
-    reason = gpcc_json_object_get_string(obj, "reason", "");
+    status = gpcc_json_object_get_string(obj, "status", "failure");
 
     if (strcmp(status, "ok") == 0) {
-	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
+	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, pkt->mh.len);
+	memcpy(evt->pdata, pkt->payload, pkt->mh.len);
     } else {
-	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-	gpcc_warning(FLINE, "[Error] start utility qd failed: status=%d, reason=%s", status, reason);
+	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, pkt->mh.len);
+	memcpy(evt->pdata, pkt->payload, pkt->mh.len);
+	gpcc_warning(FLINE, "[Error] start utility qd failed: status=%d, error=%s", status, pkt->payload);
     }
     
     gpcc_evqueue_put(gpma.evq, evt);
@@ -31,18 +32,19 @@ static apr_status_t a_array_start_units_stop_reply(gpcc_event_t *ev, void *_cmds
     gpcc_net_packet_t *pkt;
     struct json_object *obj;
     gpcc_event_t *evt;
-    char *status, *reason;
+    char *status;
 
     pkt = (gpcc_net_packet_t *) ev->pdata;
     obj = json_tokener_parse(pkt->payload);
-    status = gpcc_json_object_get_string(obj, "status", "failed");
-    reason = gpcc_json_object_get_string(obj, "reason", "");
+    status = gpcc_json_object_get_string(obj, "status", "failure");
 
     if (strcmp(status, "ok") == 0) {
-	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
+	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, pkt->mh.len);
+	memcpy(evt->pdata, pkt->payload, pkt->mh.len);
     } else {
-	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-	gpcc_warning(FLINE, "[Error] start utility qd failed: status=%d, reason=%s", status, reason);
+	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, pkt->mh.len);
+	memcpy(evt->pdata, pkt->payload, pkt->mh.len);
+	gpcc_warning(FLINE, "[Error] start utility qd failed: status=%d, error=%s", status, pkt->payload);
     }
     
     gpcc_evqueue_put(gpma.evq, evt);
@@ -187,7 +189,12 @@ static apr_status_t a_array_start_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     gpcc_event_t *evt;
 
     if (strstr(seginfo->name, "gpdb.seg.m.") == 0) {
-	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
+	struct json_object *obj;
+	char *msg = 0;
+	obj = gpcc_json_http_reply("start", "ok", 0);
+	msg = json_object_to_json_string(obj);
+	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, strlen(msg)+1);
+	memcpy(evt->pdata, msg, strlen(msg)+1);
 	gpcc_evqueue_put(gpma.evq, evt);
 	return 0;
     }
@@ -210,56 +217,41 @@ static apr_status_t a_array_start_standby_qd(gpcc_event_t *ev, void *_cmdslot)
 
 }
 
-static apr_status_t a_array_start_success(gpcc_event_t *ev, void *_cmdslot)
+
+static apr_status_t a_array_start_reply(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
-    struct json_object *obj;
-    char *objstr;
     gpcc_event_t *evt;
     gpcc_net_packet_t *pkt;
 
-    obj = gpcc_json_http_reply("start", "ok", 0);
-    objstr = json_object_to_json_string(obj);
-
-    evt = gpcc_event_alloc(ARRAY_REPLY_MSG_EVENT, cmdslot->u.array_start.parent_cmdidx, sizeof(*pkt) + strlen(objstr) + 1);
+    evt = gpcc_event_alloc(ARRAY_REPLY_MSG_EVENT, cmdslot->u.array_start.parent_cmdidx, sizeof(*pkt) + ev->edatasz);
     pkt = (gpcc_net_packet_t *) evt->pdata;
     pkt->mh.type = ARRAY_REPLY_MSG_EVENT;
-    pkt->mh.len = strlen(objstr)+1;
+    pkt->mh.len = ev->edatasz;
     pkt->mh.sndidx = cmdslot->cmdidx;
     pkt->mh.rcvidx = cmdslot->u.array_start.parent_cmdidx;
-    memcpy(pkt->payload, objstr, strlen(objstr)+1);   
+    memcpy(pkt->payload, ev->pdata, ev->edatasz);   
 
     gpcc_evqueue_put(gpma.evq, evt);
 
-    gpcc_net_http_close(cmdslot->u.array_start.conn, 200, "OK", objstr);
+    return 0;
+}
 
-    json_object_put(obj);
+static apr_status_t a_array_start_success(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+ 
+    a_array_start_reply(ev, _cmdslot);
+    gpcc_net_http_close(cmdslot->u.array_start.conn, 200, "OK", ev->pdata);
     return 0;
 }
 
 static apr_status_t a_array_start_failure(gpcc_event_t *ev, void *_cmdslot)
 {
-    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;    
-    struct json_object *obj;
-    char *objstr;
-    gpcc_event_t *evt;
-    gpcc_net_packet_t *pkt;
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
 
-    obj = gpcc_json_http_reply("start", "failure", 0);
-    objstr = json_object_to_json_string(obj);
-
-    evt = gpcc_event_alloc(ARRAY_REPLY_MSG_EVENT, cmdslot->u.array_start.parent_cmdidx, sizeof(*pkt) + strlen(objstr) + 1);
-    pkt = (gpcc_net_packet_t *) evt->pdata;
-    pkt->mh.type = ARRAY_REPLY_MSG_EVENT;
-    pkt->mh.len = strlen(objstr)+1;
-    pkt->mh.sndidx = cmdslot->cmdidx;
-    pkt->mh.rcvidx = cmdslot->u.array_start.parent_cmdidx;
-    memcpy(pkt->payload, objstr, strlen(objstr)+1);   
-
-    gpcc_evqueue_put(gpma.evq, evt);
-
-    gpcc_net_http_close(cmdslot->u.array_start.conn, 500, "FAILED", objstr);
-    json_object_put(obj);
+    a_array_start_reply(ev, _cmdslot);
+    gpcc_net_http_close(cmdslot->u.array_start.conn, 500, "INTERNAL ERROR", ev->pdata);
     return 0;
 }
 
