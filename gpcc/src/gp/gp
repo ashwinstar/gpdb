@@ -140,6 +140,7 @@ def printError(json):
 def getStatus():
     params = { 'a': gp_opt['-a'] }
     json = hitMA('/gpcc/status', params)
+    print '/gpcc/status:', json
     status = json.get('status', '')
     x = json.get('rset', {})
     x = x.get('result', [])
@@ -210,6 +211,15 @@ def doStop(args):
     return
 
 
+def doStatus(args):
+    params = { 'a': gp_opt['-a'] }
+    (json, status, array_status) = getStatus()
+    if status != 'ok':
+        printError(json)
+        return
+    print array_status
+
+
 def main():
     resetCommandOptions()
     readRCFile()
@@ -219,6 +229,8 @@ def main():
         doStart(gp_args)
     elif gp_cmd == 'stop':
         doStop(gp_args)
+    elif gp_cmd == 'status':
+        doStatus(gp_args)
     else:
         usage('Invalid command')
 
