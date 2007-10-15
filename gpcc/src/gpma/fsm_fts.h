@@ -188,7 +188,7 @@ static apr_status_t a_fts_array_start_reply(gpcc_event_t *ev, void *_cmdslot)
 
     obj = json_tokener_parse(pkt->payload);
 
-    status = gpcc_json_object_get_string(obj, "status", "failed");
+    status = gpcc_json_object_get_string(obj, "status", "failure");
     if (strcmp(status, "ok") == 0) {
 	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
     } else {
@@ -300,7 +300,7 @@ static apr_status_t a_fts_array_stop_reply(gpcc_event_t *ev, void *_cmdslot)
 
     obj = json_tokener_parse(pkt->payload);
 
-    status = gpcc_json_object_get_string(obj, "status", "failed");
+    status = gpcc_json_object_get_string(obj, "status", "failure");
     if (strcmp(status, "ok") == 0) {
 	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
     } else {
