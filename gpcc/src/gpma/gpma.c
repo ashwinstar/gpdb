@@ -213,6 +213,7 @@ static void net_accepted(gpcc_net_conn_t conn,
     
     if (from_peer->argc == 1) {
 	/* check if it is GPCC_NET_PACKET_PROTO */
+	/* This is usually a connection from another MA */
     }
 
     /* unknown protocol - reject the connection */

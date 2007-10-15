@@ -37,6 +37,12 @@ struct gpcc_net_packet_t {
 
 
 /**
+ *  Current tick, updated once every second
+ */
+extern apr_int64_t gpcc_net_tick;
+
+
+/**
  *  HTTP or GPCC_NET_PACKET_PROTO header
  */
 typedef struct gpcc_net_header_t gpcc_net_header_t;

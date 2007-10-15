@@ -228,6 +228,7 @@ struct net_t {
 };
 static net_t net = {0};
 
+apr_int64_t gpcc_net_tick = 0;
 
 
 static int tagtab_find(const char* tag, int* found)
@@ -650,10 +651,11 @@ static void do_break(int fd, short event, void* arg)
 static void do_tick(int fd, short event, void* arg)
 {
     if (0 != (event & EV_TIMEOUT)) {
-	apr_time_t now = apr_time_now();
 	apr_time_t next;
 	static struct timeval tm;
+	apr_int64_t now = apr_time_now();
 
+	gpcc_net_tick = now;
 	net.tick(now);
 
 	/* setup for next tick */
@@ -919,6 +921,8 @@ apr_status_t gpcc_net_init(int port,
     struct sockaddr_in a;
     SOCKET sock = 0;
     struct timeval tm;
+
+    gpcc_net_tick = apr_time_now();
 
     /* check param */
     if (net.pool) {
