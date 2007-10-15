@@ -202,7 +202,14 @@ static apr_status_t a_fts_array_start_reply(gpcc_event_t *ev, void *_cmdslot)
 
 static apr_status_t a_fts_busy_reply(gpcc_event_t *ev, void *_cmdslot)
 {
+    char *url;
+    gpcc_net_conn_t conn;
+    struct json_object *obj = 0;
 
+    memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
+    url = ev->pdata + sizeof(gpcc_net_conn_t);
+    obj = gpcc_json_http_reply("", "failure", "state conflict");
+    gpcc_net_http_close(conn, 409, "STATE CONFLICT", json_object_to_json_string(obj));
     return 0;
 }
 

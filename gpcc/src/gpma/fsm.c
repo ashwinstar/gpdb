@@ -57,10 +57,7 @@ APR_DECLARE(void) fsm_init(void)
 		 a_node_teardown, 0);
 
     /* fts */
-    gpcc_fsm_put(FTS_CMDSTATE, INIT_EVENT, FTS_CMDSTATE,
-		 a_fts_init, 0);
-    gpcc_fsm_put(FTS_CMDSTATE, ARRAY_START_EVENT, FTS_STARTING_CMDSTATE,
-		 a_fts_array_start, 0);
+    /*
     gpcc_fsm_put(FTS_CMDSTATE, ARRAY_STOP_EVENT, FTS_STOPPING_CMDSTATE,
 		 a_fts_array_stop, 0);
     gpcc_fsm_put(FTS_CMDSTATE, ARRAY_INIT_EVENT, FTS_INITIALIZING_CMDSTATE,
@@ -71,6 +68,11 @@ APR_DECLARE(void) fsm_init(void)
 		 a_fts_initialized, 0);
     gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, FAILURE_EVENT, FTS_CMDSTATE,
 		 a_fts_failure, 0);
+    */
+    gpcc_fsm_put(FTS_CMDSTATE, INIT_EVENT, FTS_STOPPED_CMDSTATE,
+		 a_fts_init, 0);
+    gpcc_fsm_put(FTS_STOPPED_CMDSTATE, ARRAY_START_EVENT, FTS_STARTING_CMDSTATE,
+		 a_fts_array_start, 0);
     gpcc_fsm_put(FTS_STARTING_CMDSTATE, ARRAY_START_EVENT, FTS_STARTING_CMDSTATE,
 		 a_fts_busy_reply, 0);    
     gpcc_fsm_put(FTS_STARTING_CMDSTATE, ARRAY_STOP_EVENT, FTS_STARTING_CMDSTATE,
@@ -81,7 +83,7 @@ APR_DECLARE(void) fsm_init(void)
 		 a_fts_array_start_reply, 0);
     gpcc_fsm_put(FTS_STARTING_CMDSTATE, SUCCESS_EVENT, FTS_RUNNING_CMDSTATE,
 		 a_fts_running, 0);
-    gpcc_fsm_put(FTS_STARTING_CMDSTATE, FAILURE_EVENT, FTS_ERROR_CMDSTATE,
+    gpcc_fsm_put(FTS_STARTING_CMDSTATE, FAILURE_EVENT, FTS_STOPPED_CMDSTATE,
 		 a_fts_failure, 0);
     gpcc_fsm_put(FTS_RUNNING_CMDSTATE, ARRAY_STOP_EVENT, FTS_STOPPING_CMDSTATE,
 		 a_fts_array_stop, 0);
@@ -93,9 +95,9 @@ APR_DECLARE(void) fsm_init(void)
 		 a_fts_busy_reply, 0);    
     gpcc_fsm_put(FTS_STOPPING_CMDSTATE, ARRAY_REPLY_MSG_EVENT, FTS_STOPPING_CMDSTATE,
 		 a_fts_array_stop_reply, 0);
-    gpcc_fsm_put(FTS_STOPPING_CMDSTATE, SUCCESS_EVENT, FTS_CMDSTATE,
+    gpcc_fsm_put(FTS_STOPPING_CMDSTATE, SUCCESS_EVENT, FTS_STOPPED_CMDSTATE,
 		 a_fts_stopped, 0);
-    gpcc_fsm_put(FTS_STOPPING_CMDSTATE, FAILURE_EVENT, FTS_ERROR_CMDSTATE,
+    gpcc_fsm_put(FTS_STOPPING_CMDSTATE, FAILURE_EVENT, FTS_STOPPED_CMDSTATE,
 		 a_fts_failure, 0);
 
 
