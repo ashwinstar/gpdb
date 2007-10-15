@@ -33,6 +33,9 @@ APR_DECLARE(apr_status_t) gpcc_net_parse_request(gpcc_net_header_t** hdr, const 
 
 #define TPR(x) printf x
 
+#undef TPR
+#define TPR(x)
+
 static char* 
 gpcc_net_header_serialize(gpcc_net_header_t* src, char* buf, int buflen)
 {
@@ -341,11 +344,11 @@ static void conn_setup_event(gpcc_net_conn_t conn)
 
     if (out->bot != out->top) {
 	flag |= EV_WRITE;
-	gpcc_log_info("setup EV_WRITE %d bytes", out->top - out->bot);
+	TPR(("setup EV_WRITE %d bytes", out->top - out->bot));
     }
     if (in->top - in->bot != sizeof(in->byte) && !pconn->flush_and_close) {
 	flag |= EV_READ;
-	gpcc_log_info("setup EV_READ %d bytes", in->top - in->bot);
+	TPR(("setup EV_READ %d bytes", in->top - in->bot));
     }
     if (0 != (flag & EV_READ) && !pconn->to_peer.hdr && !pconn->from_peer.hdr)
 	ptm = &pconn->tm;
@@ -490,7 +493,6 @@ static void conn_fire_read(gpcc_net_conn_t conn)
 	}
 
 	if (pconn->packet_mode) {
-	    gpcc_log_info("net_parse_packet...");
 	    int e = gpcc_net_parse_packet(&pkt, byte + bot, &n);
 	    spin = gpcc_spin_release(spin);
 	    if (e) {
@@ -500,7 +502,6 @@ static void conn_fire_read(gpcc_net_conn_t conn)
 	    }
 	    if (!pkt) 		/* no packet yet */
 		return;
-	    gpcc_log_info("pkt recved... %d byte", n);
 	    net.received_packet(conn, pkt, pconn->arg);
 
 	    free(pkt);
@@ -553,7 +554,7 @@ static void do_ready(int fd, short event, void* arg)
     if (0 != (event & EV_READ)) {
 	buf_t* in = pconn->from_peer.buf;
 
-	gpcc_log_info("do_ready EV_READ");
+	TPR(("do_ready EV_READ"));
 	if (in->top == in->bot) 
 	    in->top = in->bot = 0;
 	else if (in->top == sizeof(in->byte) && in->bot != 0) {
@@ -577,7 +578,7 @@ static void do_ready(int fd, short event, void* arg)
 	    }
 	    else if (n > 0) {
 		in->top += n;
-		gpcc_log_info("recv fd=%d, %d byte", fd, n);
+		TPR(("recv fd=%d, %d byte", fd, n));
 	    }
 	}
     }
@@ -585,7 +586,7 @@ static void do_ready(int fd, short event, void* arg)
 	buf_t* out = pconn->to_peer.buf;
 	int    nb  = out->top - out->bot;
 
-	gpcc_log_info("do_ready EV_WRITE");
+	TPR(("do_ready EV_WRITE"))
 	if (nb > 0) {
 	    const int n = send(fd, out->byte + out->bot, nb, 0);
 	    if (n == 0) {
@@ -603,7 +604,7 @@ static void do_ready(int fd, short event, void* arg)
 		    apr_thread_cond_broadcast(net.wait.notfull);
 		}
 		out->bot += n;
-		gpcc_log_info("send fd=%d, %d byte", fd, n);
+		TPR(("send fd=%d, %d byte", fd, n));
 	    }
 	}
 	if (pconn->flush_and_close) {
@@ -1472,10 +1473,8 @@ apr_status_t gpcc_net_send_packetx(const char* tag, int type,
 {
     gpcc_net_conn_t conn = gpcc_net_lookup(tag);
     if (conn) {
-	gpcc_log_info("gpcc_net_lookup success %s", tag);
 	return gpcc_net_send_packet(conn, type, sndidx, rcvidx, buf, len);
     }
-    gpcc_log_info("gpcc_net_lookup failure");
     return APR_EINVAL;
 }
 
