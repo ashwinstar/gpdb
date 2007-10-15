@@ -159,6 +159,15 @@ struct json_object *gpcc_json_array_reply(const char *action, const char *status
 struct json_object *gpcc_json_http_reply(const char *action, const char *status, const char *errmsg);
 
 /**
+ *  create http status reply object
+ *
+ *  @param status
+ *  @param result
+ *  @return json_object
+ */
+struct json_object *gpcc_json_http_status_reply(const char *status, const char *result);
+
+/**
  *  create alert object
  *
  *  @param segment   segment name
