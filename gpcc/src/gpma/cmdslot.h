@@ -127,7 +127,7 @@ struct cmdslot_t {
 
 
 	struct {
-	    gpcc_net_conn_t conn; /* if we need to send reply over http */
+	    /* gpcc_net_conn_t conn;  if we need to send reply over http */
 	    apr_uint32_t parent_cmdidx;
 	} array_start;
 
@@ -137,7 +137,7 @@ struct cmdslot_t {
 	} segment_start;
 
 	struct {
-	    gpcc_net_conn_t conn; /* if we need to send reply over http */
+	    /* gpcc_net_conn_t conn;  if we need to send reply over http */
 	    apr_uint32_t parent_cmdidx;
 	} array_stop;
 

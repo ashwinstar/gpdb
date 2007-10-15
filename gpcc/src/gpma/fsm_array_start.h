@@ -239,19 +239,19 @@ static apr_status_t a_array_start_reply(gpcc_event_t *ev, void *_cmdslot)
 
 static apr_status_t a_array_start_success(gpcc_event_t *ev, void *_cmdslot)
 {
-    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    /*    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot; */
  
     a_array_start_reply(ev, _cmdslot);
-    gpcc_net_http_close(cmdslot->u.array_start.conn, 200, "OK", ev->pdata);
+    /*    gpcc_net_http_close(cmdslot->u.array_start.conn, 200, "OK", ev->pdata); */
     return 0;
 }
 
 static apr_status_t a_array_start_failure(gpcc_event_t *ev, void *_cmdslot)
 {
-    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    /*    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot; */
 
     a_array_start_reply(ev, _cmdslot);
-    gpcc_net_http_close(cmdslot->u.array_start.conn, 200, "failure", ev->pdata);
+    /*    gpcc_net_http_close(cmdslot->u.array_start.conn, 200, "failure", ev->pdata); */
     return 0;
 }
 

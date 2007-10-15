@@ -163,17 +163,21 @@ static apr_status_t a_fts_array_start(gpcc_event_t *ev, void *_cmdslot)
     gpcc_net_conn_t conn;
     cmdslot_t *p;
     gpcc_event_t *evt;
+    struct json_object *obj;
 
     memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
     url = ev->pdata + sizeof(gpcc_net_conn_t);
     
     p = cmdslot_alloc("ARRAY_START", FTS_ARRAY_START_CMDSTATE);
     p->u.array_start.parent_cmdidx = cmdslot->cmdidx;
-    p->u.array_start.conn = conn;
     cmdslot->u.fts.active_cmdidx = p->cmdidx;
     
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);
+
+    obj = gpcc_json_http_reply("start", "pending", "pending");
+    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+    json_object_put(obj);
 
     return 0;
 }
@@ -305,17 +309,21 @@ static apr_status_t a_fts_array_stop(gpcc_event_t *ev, void *_cmdslot)
     gpcc_net_conn_t conn;
     cmdslot_t *p;
     gpcc_event_t *evt;
+    struct json_object *obj;
 
     memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
     url = ev->pdata + sizeof(gpcc_net_conn_t);
     
     p = cmdslot_alloc("ARRAY_STOP", FTS_ARRAY_STOP_CMDSTATE);
     p->u.array_stop.parent_cmdidx = cmdslot->cmdidx;
-    p->u.array_stop.conn = conn;
     cmdslot->u.fts.active_cmdidx = p->cmdidx;
     
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);
+
+    obj = gpcc_json_http_reply("stop", "pending", "pending");
+    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+    json_object_put(obj);
 
     return 0;
 }
