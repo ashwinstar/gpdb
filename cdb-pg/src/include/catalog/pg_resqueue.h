@@ -34,7 +34,6 @@ CATALOG(pg_resqueue,6026) BKI_SHARED_RELATION
 	float4		rsqcostlimit;	/* max cost limit */
 	bool		rsqovercommit;	/* allow overcommit on suitable  limits */
 	float4		rsqignorecostlimit;	/* ignore queries with cost less than */
-
 } FormData_pg_resqueue;
 
 
