@@ -123,7 +123,10 @@ def hitMA(cmd, params):
     return json
     
 def printError(json):
-    errmsg = json.get('errmsg', None)
+    status = json.get('status')
+    if status:
+        print 'Status:', status
+    errmsg = json.get('errmsg')
     if not errmsg:
         print '%s: %s' % ('Error', 'unknown error')
         return
@@ -136,7 +139,7 @@ def printError(json):
 def doStart(args):
     params = {'a': gp_opt['-a']}
     json = hitMA('/gpcc/start', params)
-    if json['status'] != 'ok':
+    if json.get('status') != 'ok':
         printError(json)
         return
     print 'ok'
@@ -144,7 +147,7 @@ def doStart(args):
 def doStop(args):
     params = {'a': gp_opt['-a']}
     json = hitMA('/gpcc/stop', params)
-    if json['status'] != 'ok':
+    if json.get('status') != 'ok':
         printError(json)
         return
     print 'ok'
