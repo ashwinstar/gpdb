@@ -3432,7 +3432,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			if (Gp_role == GP_ROLE_DISPATCHAGENT)
 			{
 				elog(WARNING,"*DA* Using default writer gang");
-				primaryGang = findGangById(1);
+				primaryGang = allocatePrimaryWriterGang();  /* we could use findGangById(1) here */
 			}
 			else
 			{
