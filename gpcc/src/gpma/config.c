@@ -41,6 +41,24 @@ void config_gc(config_t* c)
 }
 
 
+const char** config_keys(config_t* c, apr_pool_t* pool)
+{
+    int count = apr_hash_count(c->htab);
+    const char** argv = apr_palloc(pool, sizeof(const const char*) * (count + 1));
+    int i;
+    apr_hash_index_t* hi = apr_hash_first(pool, c->htab);
+
+    for (i = 0; i < count && hi; i++, hi = apr_hash_next(hi)) {
+	const void* key;
+	apr_hash_this(hi, &key, 0, 0);
+	if (!key) 
+	    break;
+	argv[i] = (const char*) key;
+    }
+    argv[i] = 0;
+    return argv;
+}
+
 
 
 const char* config_getx(const config_t* c, const char* key, const char* def)

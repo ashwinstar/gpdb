@@ -159,7 +159,67 @@ static gpcc_event_t *mkfts_event(event_t event, gpcc_net_conn_t conn,
 }
 
 
+static int keycmp(const void* a, const void* b)
+{
+    const char** aa = (const char**) a;
+    const char** bb = (const char**) b;
+    return strcmp(*aa, *bb);
+}
 
+static void process_lscfg(gpcc_net_conn_t conn)
+{
+    apr_pool_t* pool;
+    const char** keys;
+    int count, i, e;
+    char* buf;
+    int buflen;
+    char* p;
+    char* q;
+    const char* prev_value;
+
+    if (0 != (e = apr_pool_create(&pool, gpma.pool))) {
+	gpcc_fatal(FLINE, "out of memory");
+    }
+    keys = config_keys(gpma.cfg, pool);
+    for (count = 0; keys[count]; count++);
+    qsort(keys, count, sizeof(*keys), keycmp);
+
+    buflen = 16 * 1024;
+    buf = apr_palloc(pool, buflen);
+    p = buf;
+    q = buf + buflen;
+
+    apr_snprintf(p, q - p, "{ \"status\": \"ok\", ");
+    p += strlen(p);
+    apr_snprintf(p, q - p, "\"rset\": { \"total\": 1, ");
+    p += strlen(p);
+    apr_snprintf(p, q - p, "\"offset\": %d, ", 0);
+    p += strlen(p);
+    apr_snprintf(p, q - p, "\"result\": [ ");
+    p += strlen(p);
+
+    prev_value = 0;
+    for (i = 0; i < count; i++) {
+	const char* value = config_get(gpma.cfg, keys[i]);
+	if (value) {
+	    apr_snprintf(p, q - p, "%s [ \"%s\", \"%s\" ]", 
+			 prev_value ? "," : "",
+			 keys[i], value);
+	    p += strlen(p);
+	}
+	prev_value = value;
+    }
+    apr_snprintf(p, q - p, " ] } }");
+    p += strlen(p);
+
+    if (p >= q) {
+	gpcc_net_http_close(conn, 500, "Internal error", "");
+    }
+    else {
+	gpcc_net_http_close(conn, 200, "OK", buf);
+    }
+    apr_pool_destroy(pool);
+}
 
 
 static void net_accepted(gpcc_net_conn_t conn,
@@ -196,6 +256,9 @@ static void net_accepted(gpcc_net_conn_t conn,
 		ev = mkfts_event(ARRAY_STATUS_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
 				 gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
 	    }
+	    else if (0 == strcmp("/gpcc/lscfg", uri->path)) {
+		process_lscfg(conn);
+	    }
 	    else 
 		is_bad_uri = 1;
 	}
@@ -203,12 +266,15 @@ static void net_accepted(gpcc_net_conn_t conn,
 	if (ev) {
 	    gpcc_evqueue_put(gpma.evq, ev);
 	}
-	else {
+	else if (is_bad_uri) {
 	    gpcc_warning(FLINE, "invalid URI: %s", from_peer->argv[1]);
-	    if (!is_bad_uri && is_bad_array_name) 
-		gpcc_net_http_close(conn, 200, "OK", "{ \"status\": \"failure\", \"errmsg\": { \"_\": \"bad array name\" } }");
-	    else
-		gpcc_net_http_close(conn, 200, "OK", "{ \"status\": \"failure\", \"errmsg\": { \"_\": \"illegal URI\" }}");
+	    gpcc_net_http_close(conn, 200, "OK", 
+				"{ \"status\": \"failure\", \"errmsg\": { \"_\": \"invalid URI\" }}");
+	} 
+	else if (is_bad_array_name) {
+	    gpcc_warning(FLINE, "invalid URI: %s", from_peer->argv[1]);
+	    gpcc_net_http_close(conn, 200, "OK",
+				"{ \"status\": \"failure\", \"errmsg\": { \"_\": \"bad array name\" } }");
 	}
 
 	gpcc_net_uri_free(uri);

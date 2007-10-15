@@ -224,6 +224,22 @@ def doStatus(args):
     print array_status
 
 
+def doListConfig(args):
+    params = { 'a': gp_opt['-a'] }
+    json = hitMA('/gpcc/lscfg', params)
+    if json.get('status') != 'ok':
+        printError(json)
+        return
+    cfg = json.get('rset', {})
+    cfg = cfg.get('result', [])
+    if not len(cfg):
+        print 'error: unknown; cannot get configuration'
+        return
+    for i in cfg:
+        print i[0], ':', i[1]
+    print
+
+
 def main():
     resetCommandOptions()
     readRCFile()
@@ -235,6 +251,8 @@ def main():
         doStop(gp_args)
     elif gp_cmd == 'status':
         doStatus(gp_args)
+    elif gp_cmd == 'lscfg':
+        doListConfig(gp_args)
     else:
         usage('Invalid command')
 

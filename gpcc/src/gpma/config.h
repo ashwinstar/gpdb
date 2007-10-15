@@ -12,6 +12,11 @@ typedef struct config_t config_t;
 void config_clean_dir(const char* dirpath, apr_pool_t* pool);
 
 /**
+ *  Get all keys in the config.
+ */
+const char** config_keys(config_t* c, apr_pool_t* pool);
+
+/**
  *  Create a new configuration.
  */
 config_t* config_create(apr_pool_t* pool);
