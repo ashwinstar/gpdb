@@ -134,7 +134,7 @@ static void net_opened(gpcc_net_conn_t conn,
     gpcc_event_t *ev;
 
     if (from_peer->argc != 1 || strcmp(from_peer->argv[0], GPCC_NET_PACKET_PROTO) != 0) {
-	gpcc_net_close(conn);
+	gpcc_net_close(conn, 0);
 	return;
     }
 
@@ -170,16 +170,13 @@ static void net_accepted(gpcc_net_conn_t conn,
 
     if (from_peer->argc == 3
 	&& 0 == memcmp("HTTP/1.", from_peer->argv[2], 7)
-	&& 0 == memcmp("GET", from_peer->argv[0], 4)) {
+	&& 0 == strcmp("GET", from_peer->argv[0])) {
 
 	gpcc_net_uri_t* uri = gpcc_net_uri_alloc(from_peer->argv[1]);
 	char* a = (uri ? gpcc_net_uri_param(uri, "a") : 0);
 	gpcc_event_t* ev = 0;
 
-	if (a && 0 != strcmp(a, gpma.array_name))
-	    a = 0;
-
-	if (a) {
+	if (a && 0 == strcmp(a, gpma.array_name)) {
 	    if (0 == strcmp("/gpcc/start", uri->path)) {
 		/* send startcmd_event to FTS cmdslot ? */
 		ev = mkfts_event(ARRAY_START_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
@@ -213,11 +210,13 @@ static void net_accepted(gpcc_net_conn_t conn,
 	gpcc_net_uri_free(uri);
 	return;
     }
-    else if (from_peer->argc == 1) {
+    
+    if (from_peer->argc == 1) {
 	/* check if it is GPCC_NET_PACKET_PROTO */
     }
+
     /* unknown protocol - reject the connection */
-    gpcc_net_close(conn);
+    gpcc_net_http_close(conn, 403, "Forbidden", "Bad protocol");
 }
 
 

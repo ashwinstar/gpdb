@@ -183,9 +183,10 @@ APR_DECLARE(apr_status_t)
 /**
  *  Close the connection.
  *  @param conn The connection.
+ *  @param flush If set, then flush prior to close. Otherwise, close immediately.
  */
 APR_DECLARE(void) 
-    gpcc_net_close(gpcc_net_conn_t conn);
+    gpcc_net_close(gpcc_net_conn_t conn, int flush);
 
     
 /**

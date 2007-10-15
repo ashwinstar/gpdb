@@ -31,6 +31,7 @@ APR_DECLARE(apr_status_t) gpcc_net_parse_request(gpcc_net_header_t** hdr, const 
 						 apr_pool_t* pool);
 
 
+#define TPR(x) printf x
 
 static char* gpcc_net_header_serialize(gpcc_net_header_t* src, char* buf, int buflen)
 {
@@ -172,6 +173,7 @@ struct conncb_t {
     SOCKET          sock;
     apr_pool_t*     pool;
     const char*     tag;
+    int             flush_and_close;
     char            peer_addr[24];  /* format IP:port -- 123.456.789.012:34567 */
     struct timeval  tm;
     struct event    ev;
@@ -327,7 +329,6 @@ static void conn_setup_event(gpcc_net_conn_t conn)
     int flag = 0;
     struct timeval* ptm = 0;
 
-    gpcc_log_info("conn_setup_event...");
     if (! (spin = conn_secure(conn, &pconn)))
 	return;
 
@@ -340,7 +341,7 @@ static void conn_setup_event(gpcc_net_conn_t conn)
 	flag |= EV_WRITE;
 	gpcc_log_info("setup EV_WRITE %d bytes", out->top - out->bot);
     }
-    if (in->top - in->bot != sizeof(in->byte)) {
+    if (in->top - in->bot != sizeof(in->byte) && !pconn->flush_and_close) {
 	flag |= EV_READ;
 	gpcc_log_info("setup EV_READ %d bytes", in->top - in->bot);
     }
@@ -460,7 +461,8 @@ static void conn_fire_read(gpcc_net_conn_t conn)
     apr_uint32_t* spin;
     conncb_t* pconn;
 
-    printf("conn_fire_read.....\n");
+    TPR(("conn_fire_read.....\n"));
+
     again:
     if (! (spin = conn_secure(conn, &pconn))) {
 	gpcc_warning(FLINE, "conn_secure failed");
@@ -510,7 +512,7 @@ static void conn_fire_read(gpcc_net_conn_t conn)
 	    spin = gpcc_spin_release(spin);
 	    n = net.received(conn, byte + bot, n, pconn->arg); /* do the callback */
 	    if (n < 0) {
-		gpcc_net_close(conn); /* callback indicated error, close it, and done. */
+		gpcc_net_close(conn, 0); /* callback indicated error, close it, and done. */
 		break;
 	    }
 	    if (n == 0)
@@ -541,8 +543,7 @@ static void do_ready(int fd, short event, void* arg)
     gpcc_net_conn_t conn = CONN_FROM_PTR(arg);
     apr_uint32_t* spin = 0;
     conncb_t* pconn;
-
-    gpcc_log_info("do_ready..fd = %d\n", fd);
+    int do_zap = 0;
 
     if (! (spin = conn_secure(conn, &pconn)))
 	return;
@@ -603,14 +604,29 @@ static void do_ready(int fd, short event, void* arg)
 		gpcc_log_info("send fd=%d, %d byte", fd, n);
 	    }
 	}
+	if (pconn->flush_and_close) {
+	    nb = out->top - out->bot;
+	    do_zap = (nb <= 0);
+	    TPR(("flush and close, do_zap %d\n", do_zap));
+	}
     }
 
     spin = gpcc_spin_release(spin);
+
+    /* if we are closing down, then try to zap */
+    if (do_zap) {
+	zap(pconn, conn);
+	return;
+    }
+
+    /* if we read something, then try to invoke callback received routine */
     if (0 != (event & EV_READ))
 	conn_fire_read(conn);
-    conn_setup_event(conn);
 
+    /* set up the I/O event for next read/write ready, and done */
+    conn_setup_event(conn);
     return;
+
     failure:
     if (spin) gpcc_spin_release(spin);
     zap(pconn, conn);
@@ -756,6 +772,7 @@ static void do_accept(int fd, short event, void* arg)
     pconn->pool = pool;
     pconn->sock = sock;
     pconn->tag = 0;
+    pconn->flush_and_close = 0;
     memset(&pconn->to_peer, 0, sizeof(pconn->to_peer));
     memset(&pconn->from_peer, 0, sizeof(pconn->from_peer));
     pconn->to_peer.buf = apr_palloc(pool, sizeof(buf_t));
@@ -890,12 +907,12 @@ apr_status_t gpcc_net_sendv(gpcc_net_conn_t conn,
 
 
 apr_status_t gpcc_net_init(int port,
-					gpcc_net_opened_t* opened,
-					gpcc_net_accepted_t* accepted,
-					gpcc_net_received_t* received,
-					gpcc_net_received_packet_t* received_packet,
-					gpcc_net_closed_t* closed,
-					gpcc_net_tick_t* tick)
+			   gpcc_net_opened_t* opened,
+			   gpcc_net_accepted_t* accepted,
+			   gpcc_net_received_t* received,
+			   gpcc_net_received_packet_t* received_packet,
+			   gpcc_net_closed_t* closed,
+			   gpcc_net_tick_t* tick)
 {
     apr_pool_t* pool;
     int e;
@@ -1204,6 +1221,7 @@ apr_status_t gpcc_net_open(gpcc_net_conn_t* conn,
     pconn->sock = sock;
     pconn->pool = pool;
     pconn->tag = 0;
+    pconn->flush_and_close = 0;
     {
 	unsigned char* s = (unsigned char*) &peer_addr.sin_addr;
 	sprintf(pconn->peer_addr, "%d.%d.%d.%d:%d", 
@@ -1264,14 +1282,23 @@ failure:
     return e;
 }
 
-void gpcc_net_close(gpcc_net_conn_t conn)
+void gpcc_net_close(gpcc_net_conn_t conn, int flush)
 {
     conncb_t* pconn = 0;
     apr_uint32_t* spin = 0;
+
     if (! (spin = conn_secure(conn, &pconn)))
 	return;
+    if (flush) {
+	pconn->flush_and_close = 1;
+	shutdown(pconn->sock, SHUT_RD);
+	if (pconn->to_peer.buf->bot != pconn->to_peer.buf->top)
+	    conn = 0;		/* don't zap immediately */
+    }
     spin = gpcc_spin_release(spin);
-    zap(pconn, conn);
+
+    if (conn)
+	zap(pconn, conn);
     return;
 }
 
@@ -1613,6 +1640,6 @@ void gpcc_net_http_close(gpcc_net_conn_t conn, int status, const char* msg, cons
 
     (void) gpcc_net_send_header(conn, &hdr);
     (void) gpcc_net_send(conn, json, len);
-    gpcc_net_close(conn);
+    gpcc_net_close(conn, 1);
 }
 

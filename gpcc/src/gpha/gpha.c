@@ -91,7 +91,7 @@ static void net_accepted_cb(gpcc_net_conn_t conn,
     gpcc_log_info("net_accepted_cb");
     if (from_peer->argc != 1 || strcmp(from_peer->argv[0], GPCC_NET_PACKET_PROTO) != 0){
 	gpcc_warning(FLINE, "peer header not match!");
-	gpcc_net_close(conn);
+	gpcc_net_close(conn, 0);
 	return;
     }
 
