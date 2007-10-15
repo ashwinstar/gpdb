@@ -14,7 +14,10 @@ apr_status_t a_node_ssh(gpcc_event_t* ev, void* arg)
 	slot->u.node.hostidx = 0;
 
     gpcc_log_info("a_node_ssh");
-    sprintf(cmd, "export GPHOME=%s && $GPHOME/bin/gpha /tmp", getenv("GPHOME"));
+    sprintf(cmd, "export GPHOME=%s && $GPHOME/bin/gpha %s %s", 
+	    getenv("GPHOME"), 
+	    config_get(gpma.cfg, "gpdb.guid"),
+	    config_getx(gpma.cfg, "ha.datadir", "/tmp"));
     if (0 != (e = gpcc_proc_ssh(&slot->u.node.proc, 
 				user, 
 				slot->u.node.hosttab[slot->u.node.hostidx], 
