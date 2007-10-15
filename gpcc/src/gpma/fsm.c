@@ -69,8 +69,32 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, FAILURE_EVENT, FTS_CMDSTATE,
 		 a_fts_failure, 0);
     */
-    gpcc_fsm_put(FTS_CMDSTATE, INIT_EVENT, FTS_STOPPED_CMDSTATE,
+    gpcc_fsm_put(FTS_CMDSTATE, INIT_EVENT, FTS_WAIT_CMDSTATE,
 		 a_fts_init, 0);
+    gpcc_fsm_put(FTS_WAIT_CMDSTATE, NET_OPENED_EVENT, FTS_WAIT_CMDSTATE,
+		 a_fts_node_opened, 0);
+    gpcc_fsm_put(FTS_WAIT_CMDSTATE, NET_CLOSED_EVENT, FTS_WAIT_CMDSTATE,
+		 a_fts_node_closed, 0);
+    gpcc_fsm_put(FTS_STOPPED_CMDSTATE, NET_OPENED_EVENT, FTS_STOPPED_CMDSTATE,
+		 a_fts_node_opened, 0);
+    gpcc_fsm_put(FTS_STOPPED_CMDSTATE, NET_CLOSED_EVENT, FTS_STOPPED_CMDSTATE,
+		 a_fts_node_closed, 0);
+    gpcc_fsm_put(FTS_STOPPING_CMDSTATE, NET_OPENED_EVENT, FTS_STOPPING_CMDSTATE,
+		 a_fts_node_opened, 0);
+    gpcc_fsm_put(FTS_STOPPING_CMDSTATE, NET_CLOSED_EVENT, FTS_STOPPING_CMDSTATE,
+		 a_fts_node_closed, 0);
+    gpcc_fsm_put(FTS_RUNNING_CMDSTATE, NET_OPENED_EVENT, FTS_RUNNING_CMDSTATE,
+		 a_fts_node_opened, 0);
+    gpcc_fsm_put(FTS_RUNNING_CMDSTATE, NET_CLOSED_EVENT, FTS_RUNNING_CMDSTATE,
+		 a_fts_node_closed, 0);
+    gpcc_fsm_put(FTS_STARTING_CMDSTATE, NET_OPENED_EVENT, FTS_STARTING_CMDSTATE,
+		 a_fts_node_opened, 0);
+    gpcc_fsm_put(FTS_STARTING_CMDSTATE, NET_CLOSED_EVENT, FTS_STARTING_CMDSTATE,
+		 a_fts_node_closed, 0);
+
+
+    gpcc_fsm_put(FTS_WAIT_CMDSTATE, SUCCESS_EVENT, FTS_STOPPING_CMDSTATE,
+		 a_fts_array_stop_forsure, 0);
     gpcc_fsm_put(FTS_STOPPED_CMDSTATE, ARRAY_START_EVENT, FTS_STARTING_CMDSTATE,
 		 a_fts_array_start, 0);
     gpcc_fsm_put(FTS_STOPPED_CMDSTATE, ARRAY_STOP_EVENT, FTS_STOPPED_CMDSTATE,

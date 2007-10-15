@@ -138,7 +138,19 @@ static apr_status_t a_fts_init(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = _cmdslot;
     int i;
+    char key[20];
+    const char *v;
+
     setup_init_seginfo(ev, _cmdslot);
+
+    for (i = 0 ;  ; i++) {
+	sprintf(key, "node.%d", i);
+	v = config_get(gpma.cfg, key);
+	if (!v)
+	    break;
+    }
+    cmdslot->u.fts.nnode = i;
+    cmdslot->u.fts.nopened = 0;
 
     for (i = 0 ; i < cmdslot->u.fts.nseginfo ; i++) {
 	gpcc_log_info("name=%s, host =%s, dbid = %d, content =%d, port = %d, dir = %s, haidx = %d, ha=%s",
@@ -155,6 +167,26 @@ static apr_status_t a_fts_init(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
+static apr_status_t a_fts_node_opened(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    gpcc_event_t *evt;
+
+    cmdslot->u.fts.nopened++;
+    if (cmdslot->u.fts.nopened == cmdslot->u.fts.nnode && cmdslot->cmdstate == FTS_WAIT_CMDSTATE){
+	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+    }
+    return 0;
+}
+
+static apr_status_t a_fts_node_closed(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    
+    cmdslot->u.fts.nopened--;
+    return 0;
+}
 
 static apr_status_t a_fts_array_start(gpcc_event_t *ev, void *_cmdslot)
 {
@@ -272,8 +304,11 @@ static apr_status_t a_fts_busy_reply(gpcc_event_t *ev, void *_cmdslot)
     char *msg;
 
     if (cmdslot->cmdstate ==  FTS_CMDSTATE) {
-	msg = "server in initializing";
-    } else if (cmdslot->cmdstate ==  FTS_STOPPED_CMDSTATE) {
+	msg = "server is initializing";
+    } else if (cmdslot->cmdstate ==  FTS_WAIT_CMDSTATE) {
+	msg = "server is setting up"; 
+    }
+    else if (cmdslot->cmdstate ==  FTS_STOPPED_CMDSTATE) {
 	msg = "server is not running";
     } else if (cmdslot->cmdstate ==  FTS_STARTING_CMDSTATE) {
 	msg = "server is starting";

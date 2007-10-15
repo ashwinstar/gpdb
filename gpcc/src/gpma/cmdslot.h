@@ -37,6 +37,8 @@ struct cmdslot_t {
 	struct {
 	    seginfo_t* seginfo;
 	    int nseginfo;
+	    int nopened;
+	    int nnode;
 	    apr_uint32_t active_cmdidx;
 	} fts;
 
