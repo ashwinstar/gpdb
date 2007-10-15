@@ -125,7 +125,7 @@ def hitMA(cmd, params):
 def printError(json):
     status = json.get('status')
     if status:
-        print 'Status:', status
+        print 'status:', status
     errmsg = json.get('errmsg')
     if not errmsg:
         print '%s: %s' % ('Error', 'unknown error')
@@ -136,13 +136,49 @@ def printError(json):
         if key != '_': 
             print '%s: %s' % (key, errmsg.get(key))
 
+
+def getStatus():
+    params = { 'a': gp_opt['-a'] }
+    json = hitMA('/gpcc/status', params)
+    status = json.get('status', '')
+    x = json.get('rset', {})
+    x = x.get('result', [])
+    if len(x): 
+        x = x[0] 
+    else:
+        x = ''
+    return (json, status, x)
+
+
 def doStart(args):
     params = {'a': gp_opt['-a']}
     json = hitMA('/gpcc/start', params)
     if json.get('status') != 'ok':
         printError(json)
         return
-    print 'ok'
+    cur = 'starting'
+    for i in xrange(30):
+        print '.',
+        time.sleep(1)
+        (json, status, array_status) = getStatus()
+        if status != 'ok':
+            print
+            printError(json)
+            return
+        if array_status != cur:
+            cur = array_status
+            break
+    print
+    if cur == 'starting':
+        print 'error: timeout'
+    elif cur == 'running':
+        print 'ok:', cur
+    elif cur == 'stopping' or cur == 'stopped':
+        print 'error:', cur
+    else:
+        print 'error: unknown; not started.'
+    return
+
 
 def doStop(args):
     params = {'a': gp_opt['-a']}
@@ -150,7 +186,29 @@ def doStop(args):
     if json.get('status') != 'ok':
         printError(json)
         return
-    print 'ok'
+    cur = 'stopping'
+    for i in xrange(30):
+        print '.',
+        time.sleep(1)
+        (json, status, array_status) = getStatus()
+        if status != 'ok':
+            print
+            printError(json)
+            return
+        if array_status != cur:
+            cur = array_status
+            break
+    print
+    if cur == 'stopping':
+        print 'error: timeout'
+    elif cur == 'stopped':
+        print 'ok:', cur
+    elif cur == 'starting' or cur == 'running':
+        print 'error:', cur
+    else:
+        print 'error: unknown; not stopped.'
+    return
+
 
 def main():
     resetCommandOptions()
