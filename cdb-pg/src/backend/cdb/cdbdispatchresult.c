@@ -442,7 +442,8 @@ cdbdisp_debugDispatchResult(CdbDispatchResult  *dispatchResult,
         if (resultStatus == PGRES_COMMAND_OK ||
             resultStatus == PGRES_TUPLES_OK ||
             resultStatus == PGRES_COPY_IN ||
-            resultStatus == PGRES_COPY_OUT)
+            resultStatus == PGRES_COPY_OUT ||
+            resultStatus == PGRES_EMPTY_QUERY)
         {
             char *cmdStatus = PQcmdStatus(pgresult);
 
@@ -511,6 +512,142 @@ cdbdisp_debugDispatchResult(CdbDispatchResult  *dispatchResult,
     }
 }                               /* cdbdisp_debugDispatchResult */
 
+static
+void
+cdbdisp_relayDispatchResult(CdbDispatchResult       *dispatchResult);
+static
+void
+cdbdisp_relayDispatchResult(CdbDispatchResult       *dispatchResult)
+{
+    SegmentDatabaseDescriptor  *segdbDesc = dispatchResult->segdbDesc;
+    int     ires;
+    int     nres;
+
+    if (!dispatchResult )
+        return;
+
+    /* Format PGresult messages */
+    nres = cdbdisp_numPGresult(dispatchResult);
+    for (ires = 0; ires < nres; ++ires)
+    {                           /* for each PGresult */
+        PGresult       *pgresult = cdbdisp_getPGresult(dispatchResult, ires);
+        ExecStatusType  resultStatus = PQresultStatus(pgresult);
+        char   *whoami = PQresultErrorField(pgresult, PG_DIAG_GP_PROCESS_TAG);
+
+        /* QE success */
+        if (resultStatus == PGRES_COMMAND_OK ||
+            resultStatus == PGRES_TUPLES_OK ||
+            resultStatus == PGRES_COPY_IN ||
+            resultStatus == PGRES_COPY_OUT ||
+            resultStatus == PGRES_EMPTY_QUERY)
+        {
+            
+        }
+
+        /* QE error or libpq error */
+        else
+        {
+        		PGMessageField *pfield;
+        		int elevel = ERROR;
+        		char * sqlstate = "XX000";
+        		char * severity = "ERROR";
+        		char * file = "";
+        		char * line = NULL;
+        		char * func = "";
+        		char  message[1024];
+        		char * detail = NULL;
+        		char * hint = NULL;
+        		char * context = NULL;
+        		int linenum = 0;
+        		PGresult *res = pgresult;
+        		
+        		 
+        		if (!res)
+        			return;
+        			
+        		
+        		strcpy(message,"missing error text");
+        		
+        		for (pfield = res->errFields; pfield != NULL; pfield = pfield->next)
+        		{
+        			switch (pfield->code)
+        			{
+        				case PG_DIAG_SEVERITY:
+        					severity = pfield->contents;
+        					if (strcmp(pfield->contents,"PANIC")==0)
+        						elevel = PANIC;
+        					else if (strcmp(pfield->contents,"FATAL")==0)
+        						elevel = FATAL;
+        					else
+        						elevel = ERROR;
+        					break;
+        				case PG_DIAG_SQLSTATE:
+        					sqlstate = pfield->contents;
+        					break;
+        				case PG_DIAG_MESSAGE_PRIMARY:
+        					strncpy(message, pfield->contents, 800);
+        					message[800] = '\0';
+        					if (segdbDesc && segdbDesc->whoami && strlen(segdbDesc->whoami) < 200)
+        					{
+        						strcat(message,"  (");
+        						strcat(message, segdbDesc->whoami);
+        						strcat(message,")");
+        					}
+        					break;
+        				case PG_DIAG_MESSAGE_DETAIL:
+        					detail = pfield->contents;
+        					break;
+        				case PG_DIAG_MESSAGE_HINT:
+        					hint = pfield->contents;
+        					break;
+        				case PG_DIAG_STATEMENT_POSITION:
+        				case PG_DIAG_INTERNAL_POSITION:
+        				case PG_DIAG_INTERNAL_QUERY:
+        					break;
+        				case PG_DIAG_CONTEXT:
+        					context = pfield->contents;
+        					break;
+        				case PG_DIAG_SOURCE_FILE:
+        					file = pfield->contents;
+        					break;
+        				case PG_DIAG_SOURCE_LINE:
+        					line = pfield->contents;
+        					if (line)
+        						linenum = atol(line);
+        					break;
+        				case PG_DIAG_SOURCE_FUNCTION:
+        					func = pfield->contents;
+        					break;
+        				case PG_DIAG_GP_PROCESS_TAG:
+        					whoami = pfield->contents;
+        					break;
+        				default:
+        					break;
+        				
+        			}
+        		}
+        		errstart(elevel,file,linenum,func);
+        		if (message)
+        			errmsg_internal("%s",message);
+        		if (sqlstate)
+        		{
+        			errcode(MAKE_SQLSTATE(sqlstate[0],sqlstate[1],sqlstate[2],sqlstate[3],sqlstate[4]));
+        		}
+        		if (detail)
+        			errdetail("%s",detail);
+        		if (hint)
+        			errhint("%s",hint);
+        		if (context)
+        			errcontext("%s",context);
+        		if (func)
+        			errfunction(func);
+        		//errposition(position);
+        		errfinish(0);
+    }                           /* for each PGresult */
+    }
+
+
+}           
 
 /* Format a CdbDispatchResult into a StringInfo buffer provided by caller.
  * If verbose = true, reports all info; else reports at most one error.
@@ -540,7 +677,8 @@ cdbdisp_dumpDispatchResult(CdbDispatchResult       *dispatchResult,
         if (resultStatus == PGRES_COMMAND_OK ||
             resultStatus == PGRES_TUPLES_OK ||
             resultStatus == PGRES_COPY_IN ||
-            resultStatus == PGRES_COPY_OUT)
+            resultStatus == PGRES_COPY_OUT ||
+            resultStatus == PGRES_EMPTY_QUERY)
         {
             if (verbose)
             {
@@ -561,7 +699,15 @@ cdbdisp_dumpDispatchResult(CdbDispatchResult       *dispatchResult,
             char   *ctx = PQresultErrorField(pgresult, PG_DIAG_CONTEXT);
 
             oneTrailingNewline(buf);
-            appendStringInfoString(buf, pri);
+            if (pri)
+            {
+            	appendStringInfoString(buf, pri);
+            }
+            else
+            {
+            	elog(LOG,"No primary message?");
+            	appendStringInfoString(buf,PQresultErrorMessage(pgresult));
+            }
 
             if (whoami)
             {
@@ -1065,7 +1211,7 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 			dispatchResult = &gangResults->resultArray[i];
 
 			/* Append error messages. */
-			cdbdisp_dumpDispatchResult(dispatchResult, false, &errmsgbuf);
+			cdbdisp_relayDispatchResult(dispatchResult);
 			
 			/*
 			 * Now this is a problem.  We might have multiple result sets from this QE
@@ -1182,7 +1328,7 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 			dispatchResult = &gangResults->resultArray[i];
 
 			/* Append error messages. */
-			cdbdisp_dumpDispatchResult(dispatchResult, false, &errmsgbuf);
+			cdbdisp_relayDispatchResult(dispatchResult);
 			
 			nr = dispatchResult->resultbuf->len/sizeof(struct pg_result *);
 			
@@ -1270,10 +1416,10 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 		}
 	}
 	
-	elog(DEBUG2,"relayresults is done. completionTag %s  errmsgbuf.len=%d",completionTag, errmsgbuf.len);
+	elog(DEBUG2,"relayresults is done. completionTag %s ",completionTag);
 	
-	if (errmsgbuf.len > 0)
-		ereport(ERROR, (errmsg("%s", errmsgbuf.data)));
+	//if (errmsgbuf.len > 0)
+	//	ereport(ERROR, (errmsg("%s", errmsgbuf.data)));
 
 	
 	return completionTag;
