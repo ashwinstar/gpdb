@@ -2304,7 +2304,7 @@ CopyFromDispatch(CopyState cstate)
 	/*
 	 * get the CDB policy for this table and prepare for hashing.
 	 */
-	policy = cstate->rel->rd_cdbpolicy;
+	policy = GpPolicyCopy(CurrentMemoryContext, cstate->rel->rd_cdbpolicy);
 	
 	/* policy should be PARTITIONED (normal tables) or ENTRY (no column tables) */
 	Insist(Gp_role == GP_ROLE_DISPATCHAGENT || (policy &&
@@ -3379,7 +3379,10 @@ CopyFromDispatch(CopyState cstate)
 	pfree(cdbcopy_err.data);
 	pfree(line_buf_with_lineno.data);
 	pfree(cdbCopy);
-
+	
+	if(policy)
+		pfree(policy);
+	
 	ExecDropSingleTupleTableSlot(slot);
 	
 	ExecCloseIndices(resultRelInfo);
