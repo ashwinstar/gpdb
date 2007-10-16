@@ -1406,7 +1406,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 		 * once.  The DA will send to the primary and/or mirror gang based on what we tell it.
 		 */
 		
-		elog(LOG,"mirror only dispatch");
+		elog(DEBUG1,"mirror only dispatch");
 		
 		*pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
 	    cdbdisp_dispatchToGang(pDispatchThreads, 

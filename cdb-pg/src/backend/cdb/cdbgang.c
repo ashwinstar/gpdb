@@ -239,8 +239,7 @@ createDispatchAgents(void)
 		
 		elog(LOG,"Using dispatch agent on %s %d segindex %d",q->hostname,q->port,q->segindex);
 		 
-		cdbconn_initSegmentDescriptor(&dispatchagents->db_descriptors[i],
-				  q);
+		cdbconn_initSegmentDescriptor(&dispatchagents->db_descriptors[i],  q);
 		
 		dispatchagents->size++;
 		//dispatchagents->db_descriptors[i]->segindex = -2;
@@ -2041,11 +2040,11 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
 
 	oldContext = MemoryContextSwitchTo(GangContext);
 
-	elog(LOG,"Gang create fragment, id = %d, type = %d",conninfo->gang_id, conninfo->type);
+	elog(DEBUG1,"Gang create fragment, id = %d, type = %d",conninfo->gang_id, conninfo->type);
 	
 	for (i = 0 ; i<conninfo->nsegs;i++)
     {
-    	elog(LOG,"Gang connect segindex=%d, isprimary=%d, host=%s, port=%d",
+    	elog(DEBUG1,"Gang connect segindex=%d, isprimary=%d, host=%s, port=%d",
     			conninfo->seginfo[i].segindex,
     			conninfo->seginfo[i].isprimary,
     			conninfo->seginfo[i].hostname,
@@ -2248,7 +2247,7 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
 				   segdbDesc->error_message.len == 0);
 
             if (gp_log_gang >= GPVARS_VERBOSITY_VERBOSE || DEBUG4 >= log_min_messages)
-                elog(LOG, "Connected to %s motionListenerPorts=%d/%d with options %s",
+                elog(DEBUG1, "Connected to %s motionListenerPorts=%d/%d with options %s",
 				     segdbDesc->whoami,
 					 (segdbDesc->motionListener & 0x0ffff),
 					 ((segdbDesc->motionListener>>16) & 0x0ffff),
@@ -2270,7 +2269,7 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
     if (conninfo->nsegs != successful_connections ||
     		conninfo->nsegs != newGangDefinition->size)
     {
-        elog(LOG, "createGang: %d processes requested; %d segments online; "
+        elog(DEBUG1, "createGang: %d processes requested; %d segments online; "
              "%d successful connections", conninfo->nsegs, newGangDefinition->size,
              successful_connections);
     }
@@ -2301,7 +2300,7 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
 		r[i].motionListener = newGangDefinition->db_descriptors[i].motionListener;
 		r[i].pid = PQbackendPID(newGangDefinition->db_descriptors[i].conn);
 		//strncpy(r[i].hostip, ?);	// Do we need this?
-		elog(LOG,"Gang response motionListener %d/%d, pid %d",
+		elog(DEBUG1,"Gang response motionListener %d/%d, pid %d",
 				 (r[i].motionListener & 0x0ffff),
 				 ((r[i].motionListener>>16) & 0x0ffff),
 				 r[i].pid);
@@ -2865,7 +2864,7 @@ getCdbProcessList(Gang *gang, int sliceIndex)
 			process->routeid = k++;
 
             if (gp_log_gang >= GPVARS_VERBOSITY_VERBOSE || DEBUG4 >= log_min_messages)
-                elog(LOG, "Gang assignment (gang_id %d): slice%d %s%d %s:%d pid=%d",
+                elog(DEBUG1, "Gang assignment (gang_id %d): slice%d %s%d %s:%d pid=%d",
                 	 gang->gang_id,
                      sliceIndex,
                      gang->type == GANGTYPE_MIRROR_WRITER ? "mir" : "seg",
