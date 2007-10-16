@@ -7229,3 +7229,43 @@ FROM sale; --mvd 1,2->3
   4 | 40 |     0
 (12 rows)
 
+-- MPP-2080
+SELECT sale.vn,qty,
+COUNT(qty) OVER(order by sale.vn desc range between unbounded preceding and 1 preceding) 
+FROM sale;
+ vn | qty  | count 
+----+------+-------
+ 50 |    1 |     0
+ 50 |    1 |     0
+ 40 | 1100 |     2
+ 40 |    1 |     2
+ 40 |    1 |     2
+ 40 |    1 |     2
+ 30 |   12 |     6
+ 30 |    1 |     6
+ 30 |   12 |     6
+ 30 |   12 |     6
+ 20 |    1 |    10
+ 10 |    1 |    11
+(12 rows)
+
+-- MPP-2081
+SELECT cn,qty,floor(prc/cn),
+COUNT(floor(sale.pn*sale.prc)) OVER(order by sale.cn asc range between floor(sale.qty) preceding and floor(sale.prc/sale.cn) preceding) 
+from sale;
+ cn | qty  | floor | count 
+----+------+-------+-------
+  1 |    1 |     0 |     5
+  1 |    1 |     0 |     5
+  1 |    1 |     0 |     5
+  1 |    1 |     0 |     5
+  1 |   12 |     5 |     0
+  2 | 1100 |  1200 |     0
+  2 |    1 |     0 |     7
+  3 |    1 |     0 |     5
+  3 |   12 |     1 |     7
+  3 |   12 |     1 |     7
+  4 |    1 |     0 |     5
+  4 |    1 |     0 |     5
+(12 rows)
+

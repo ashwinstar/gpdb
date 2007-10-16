@@ -1194,3 +1194,13 @@ from sale;
 SELECT sale.cn,sale.vn,
 COUNT(floor(sale.cn)) OVER(partition by sale.cn order by sale.vn asc range between 1 preceding and floor(sale.cn) preceding ) 
 FROM sale; --mvd 1,2->3
+
+-- MPP-2080
+SELECT sale.vn,qty,
+COUNT(qty) OVER(order by sale.vn desc range between unbounded preceding and 1 preceding) 
+FROM sale;
+
+-- MPP-2081
+SELECT cn,qty,floor(prc/cn),
+COUNT(floor(sale.pn*sale.prc)) OVER(order by sale.cn asc range between floor(sale.qty) preceding and floor(sale.prc/sale.cn) preceding) 
+from sale;
