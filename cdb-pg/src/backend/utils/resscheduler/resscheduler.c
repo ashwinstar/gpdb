@@ -616,14 +616,25 @@ ResLockPortal(Portal portal, Plan *plan)
 
 			/* 
 			 * See if query was too small to bother locking at all, i.e had
-			 * cost smaller than the IGNORE threshold for the queue.
+			 * cost smaller than the ignore cost threshold for the queue.
 			 */
 			if (lockResult == LOCKACQUIRE_NOT_AVAIL)
+			{
+				elog(DEBUG1, "cancel resource lock for queue %u (portal %u)", 
+					 queueid, portal->portalId);
+				/* 
+				 * Reset portalId and queueid for this portal so the queue
+				 * and increment accounting tests continue to work properly.
+				 */
+				portal->queueId = InvalidOid;
+				portal->portalId = INVALID_PORTALID;
 				returnReleaseOk = false;
+			}
 
 			/* Count holdable cursors (if we are locking this one) .*/
 			if (portal->cursorOptions & CURSOR_OPT_HOLD && returnReleaseOk)
 				numHoldPortals++;
+
 		}
 
 	}

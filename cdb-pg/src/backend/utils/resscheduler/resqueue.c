@@ -285,6 +285,11 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 		LWLockRelease(ResQueueLock);
 		LWLockRelease(partitionLock);
 
+		/*
+		 * To avoid queue accounting problems, we will need to reset the
+		 * queueId and portalId for this portal *after* returning from
+		 * here.
+		 */
 		return LOCKACQUIRE_NOT_AVAIL;
 	}
 	
