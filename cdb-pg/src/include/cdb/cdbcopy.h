@@ -60,7 +60,8 @@ typedef struct CdbCopy
 CdbCopy    *makeCdbCopy(bool copy_in);
 int			cdbCopyGetDbCount(int total_segs, int seg);
 int			cdbCopyStart(CdbCopy *cdbCopy, char *copyCmd);
-void		cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer, int nbytes);
+void		cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer, int nbytes, bool dontaddflag);
+void		cdbCopySendDataSingle(CdbCopy *c, int target_seg, const char *buffer, int nbytes, bool primary);
 bool		cdbCopyGetData(CdbCopy *c, bool cancel, uint64 *rows_processed);
 bool cdbCopyRelayData(CdbCopy *c, bool copy_cancel, uint64 *rows_processed);
 int			cdbCopyEnd(CdbCopy *c);

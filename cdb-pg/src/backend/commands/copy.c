@@ -2620,7 +2620,7 @@ CopyFromDispatch(CopyState cstate)
 		{
 			for (i = 0; i < cdbCopy->total_segs; i++)
 			{
-				cdbCopySendData(cdbCopy, i, header_buf.data, header_buf.len);
+				cdbCopySendData(cdbCopy, i, header_buf.data, header_buf.len, true);
 
 				if (cdbCopy->io_errors)
 					appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
@@ -3235,12 +3235,13 @@ CopyFromDispatch(CopyState cstate)
 					cdbCopySendData(cdbCopy, 
 									target_seg, 
 									cstate->line_buf.data, 
-									cstate->line_buf.len);									
+									cstate->line_buf.len, true);									
 				}
 				else
 				{
-					/* modify the data to look like: "<lineno>^<target_seg>^<data>" */
-					appendStringInfo(&line_buf_with_lineno, "%d%c%d%c%s", 
+					/* modify the data to look like: "<lineno>^<target_seg><space>^<data>" */
+					/* The space will be filled in by cdbCopySendData with P or M (primary or mirror) */
+					appendStringInfo(&line_buf_with_lineno, "%d%c%d %c%s", 
 									 original_lineno_for_qe, 
 									 ORIGINAL_LINENO_DELIM,
 									 target_seg, 
@@ -3251,7 +3252,7 @@ CopyFromDispatch(CopyState cstate)
 					cdbCopySendData(cdbCopy, 
 									target_seg, 
 									line_buf_with_lineno.data, 
-									line_buf_with_lineno.len);
+									line_buf_with_lineno.len, false);
 					
 					RESET_LINEBUF_WITH_LINENO;
 					
@@ -6152,7 +6153,7 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 		int target_seg = -1;
 		int total_rejeted_from_qes = 0;
 
-	    elog(LOG,"Copy is from file to database");
+	    elog(DEBUG1,"Copy is from file to database");
 	  
 		ReceiveCopyBegin(cstate);
 		
@@ -6265,6 +6266,7 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 						 */
 						char *line_start = cstate->line_buf.data + cstate->line_buf.cursor;
 						int  lineno_str_len = 0;
+						bool primary = true;
 												
 						lineno_delim = memchr(line_start, ORIGINAL_LINENO_DELIM, 32);
 						Insist(lineno_delim && (lineno_delim != line_start));		
@@ -6289,6 +6291,8 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 						/* change the lineno delim to null '\0' to look at the lineno */
 						*lineno_delim = '\0';
 						target_seg = atoi(line_start);
+						Assert(*(lineno_delim-1) == 'P' || *(lineno_delim-1) == 'M');
+						primary = *(lineno_delim-1) == 'P';
 						
 						/* restore the line_buf byte */
 						*lineno_delim = ORIGINAL_LINENO_DELIM;
@@ -6299,13 +6303,15 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 
 								
 						
-							Assert(target_seg >= 0 && target_seg <= 10000);
-	
-							/* send unmodified data */
-							cdbCopySendData(cdbCopy, 
-											target_seg, 
-											cstate->line_buf.data, 
-											cstate->line_buf.len);
+						Assert(target_seg >= 0 && target_seg <= 10000);
+
+						/* send unmodified data */
+						cdbCopySendDataSingle(cdbCopy, 
+										target_seg, 
+										cstate->line_buf.data, 
+										cstate->line_buf.len, primary);
+							
+							
 						}
 						
 					

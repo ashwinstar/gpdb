@@ -29,6 +29,7 @@
 #include "cdb/cdbdispatchresult.h"
 #include "utils/memutils.h"
 #include "cdb/cdbsrlz.h"
+#include "commands/copy.h"
 
 extern int	pq_putmessage(char msgtype, const char *s, size_t len);
 /*
@@ -281,18 +282,37 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
  */
 void
 cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer,
-				int nbytes)
+				int nbytes, bool dontaddflag)
 {
 	SegmentDatabaseDescriptor *q;
 	Gang	   *gp;
 	int			db;
 	int			result;
+	char *flagloc = NULL;
 
 	/* clean err message */
 	c->err_msg.len = 0;
 	c->err_msg.data[0] = '\0';
 	c->err_msg.cursor = 0;
-
+ 
+	if (!dontaddflag)
+	{
+		char temp[60];
+		
+		/* Add mirror vs primary flag */
+		sprintf(temp,"%c%d %c", ORIGINAL_LINENO_DELIM,
+								 target_seg, 
+								 ORIGINAL_LINENO_DELIM);
+		flagloc = strstr(buffer,temp);
+		Assert(flagloc);
+		flagloc = strchr(flagloc+1, ORIGINAL_LINENO_DELIM);
+		Assert(flagloc);
+		Assert(*flagloc == ORIGINAL_LINENO_DELIM);
+		flagloc--;
+		Assert(*flagloc == ' ');
+	}
+	
+	
 	for (db = 0; db < c->mirror_map[target_seg]; db++)
 	{
 
@@ -302,6 +322,14 @@ cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer,
 			gp = c->mirror_writer;
 
 		q = getSegmentDescriptorFromGang(gp, target_seg);
+		
+		if (!dontaddflag && flagloc)
+		{
+			if (db == 0)
+				*flagloc = 'P';
+			else
+				*flagloc = 'M';
+		}
 
 		/* transmit the COPY data */
 		result = PQputCopyData(q->conn, buffer, nbytes);
@@ -321,6 +349,56 @@ cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer,
 			c->io_errors = true;
 		}
 	}
+}
+
+/*
+ * sends data to a copy command on a specific segment (usually
+ * the hash result of the data value).
+ */
+void
+cdbCopySendDataSingle(CdbCopy *c, int target_seg, const char *buffer,
+				int nbytes, bool primary)
+{
+	SegmentDatabaseDescriptor *q;
+	Gang	   *gp;
+	int			result;
+
+	/* clean err message */
+	c->err_msg.len = 0;
+	c->err_msg.data[0] = '\0';
+	c->err_msg.cursor = 0;
+ 
+	
+
+	if (primary)
+		gp = c->primary_writer;
+	else
+		gp = c->mirror_writer;
+	
+	Assert(gp);
+
+	q = getSegmentDescriptorFromGang(gp, target_seg);
+
+	/* transmit the COPY data */
+	elog(DEBUG4,"PQputCopyData to %s segment %d\n",
+									 (primary ? "primary" : "mirror"), target_seg);
+	result = PQputCopyData(q->conn, buffer, nbytes);
+
+	if (result != 1)
+	{
+		if (result == 0)
+			appendStringInfo(&(c->err_msg),
+							 "Failed to send data to %s segment %d, attempt blocked\n",
+							 (primary ? "primary" : "mirror"), target_seg);
+
+		if (result == -1)
+			appendStringInfo(&(c->err_msg),
+							 "Failed to send data to %s segment %d: %s\n",
+							 (primary ? "primary" : "mirror"), target_seg, PQerrorMessage(q->conn));
+
+		c->io_errors = true;
+	}
+ 
 }
 
 /*
