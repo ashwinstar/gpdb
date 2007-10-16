@@ -159,7 +159,7 @@ START_SEG () {
 	fi
 
 	LOG_MSG "[INFO][$INST_COUNT]:-Starting Segment instance $QE_NAME directory $QE_DIR"
-	$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL -w -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT} $EXTRA_START_OPTS \" start >/dev/null 2>&1"
+	$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};export GPHOME=${GPHOME};$PG_CTL -w -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT} $EXTRA_START_OPTS \" start >/dev/null 2>&1"
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ] && [ $START_INVALID -eq 1 ];then
 	#Have attempted to start an invalid segment which did not start
@@ -285,6 +285,7 @@ LOG_FILE=$1;shift
 UPGRADE_TO=$1; shift
 QD_DBNAME=$1;shift
 BACKOUT_FILE=$1; shift
+GPHOME=${GPHOME}
 QE_LINE="${QE_NAME}:${QE_PORT}:${QE_DIR}"
 LOG_MSG "[INFO][$INST_COUNT]:-Start Main"
 LOG_MSG "[INFO][$INST_COUNT]:-Command line options passed to utility = $*"
