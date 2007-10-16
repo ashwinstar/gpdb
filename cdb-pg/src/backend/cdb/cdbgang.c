@@ -3762,6 +3762,18 @@ gangOK(Gang * gp)
 		/*
 		 * Gang is indirect via dispatch agents.
 		 */
+		
+		if (gp->dispatchagents == NULL)
+		{
+			elog(NOTICE,"Gang is missing it's dispatchagents");
+			return false;
+		}
+		
+		if (gp->dispatchagents->size > 100000)
+		{
+			elog(NOTICE,"Gang dispatchagents are garbage");
+			return false;
+		}
 	 
 		for (i = 0; i < gp->dispatchagents->size; i++)
 		{

@@ -1128,7 +1128,9 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 		QEDtxContextInfo.distributedSnapshotData.curcid = p->QEWriter_CommandId;
 		if (p->QEWriter_Dirty)
 		{
-			Assert(QEDtxContextInfo.distributedXid != 0 || QEDtxContextInfo.distributedSnapshotData.curcid != 0 );
+			if (QEDtxContextInfo.distributedXid == 0 && QEDtxContextInfo.distributedSnapshotData.curcid == 0)
+				elog(NOTICE,"First QE reported it is dirty, but QE DtxContextInfo doesn't have a distributed xid");
+			
 			/*
 			 * Don't mark our local transaction dirty, because this slows us down
 			 * because EndTransaction will try to write to the WAL.
@@ -1300,7 +1302,9 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 					}
 					if (p->QEWriter_Dirty)
 					{
-						Assert(QEDtxContextInfo.distributedXid != 0 || QEDtxContextInfo.distributedSnapshotData.curcid != 0 );
+						if (QEDtxContextInfo.distributedXid == 0 && QEDtxContextInfo.distributedSnapshotData.curcid == 0)
+										elog(NOTICE,"a Primary QE reported it is dirty, but QE DtxContextInfo doesn't have a distributed xid");
+
 						/*
 						 * Don't mark our local transaction dirty, because this slows us down
 						 * because EndTransaction will try to write to the WAL.
@@ -1376,7 +1380,9 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 					}
 					if (p->QEWriter_Dirty)
 					{
-						Assert(QEDtxContextInfo.distributedXid != 0 || QEDtxContextInfo.distributedSnapshotData.curcid != 0 );
+						if (QEDtxContextInfo.distributedXid == 0 && QEDtxContextInfo.distributedSnapshotData.curcid == 0)
+							elog(NOTICE,"Mirror QE reported it is dirty, but QE DtxContextInfo doesn't have a distributed xid");
+
 						/*
 						 * Don't mark our local transaction dirty, because this slows us down
 						 * because EndTransaction will try to write to the WAL.
