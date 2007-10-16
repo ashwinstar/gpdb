@@ -16,6 +16,7 @@
 #include "gpdowngrade_cmds.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_exttable.h"
+#include "catalog/pg_resqueue.h"
 #include "catalog/pg_window.h"
 
 typedef struct 
@@ -49,6 +50,9 @@ struct exttable_contents
 	char *dbname;
 	PGresult *res;
 } **exttable_cts = NULL;
+
+/* Convenient for passing the contents of pg_resqueue around */
+PGresult *pg_resqueue_cts = NULL;
 
 /* signal handling */
 bool caught_signal = false;
@@ -115,6 +119,12 @@ mylog(int level, const char *fmt, ...)
 {
 	char buf[1024];
 	va_list ap;
+	char dt[30];
+	struct timeval tv;
+
+	gettimeofday(&tv, NULL);
+	strftime(dt, sizeof(dt), "%Y-%m-%d %H:%M:%S", 
+			 localtime(&tv.tv_sec));		 
 	
 	va_start(ap, fmt);
 
@@ -124,18 +134,18 @@ mylog(int level, const char *fmt, ...)
 	{
 		if (verbose)
 		{
-			printf("%s: %s\n", lev2str(level), buf);
+			printf("%s [%s]: %s\n", lev2str(level), dt, buf);
 			fflush(stdout);
 		}
 	}
 	else if (level == UINFO)
 	{
-		printf("%s: %s\n", lev2str(level), buf);
+		printf("%s [%s]: %s\n", lev2str(level), dt, buf);
 		fflush(stdout);
 	}
 	else
 	{
-		fprintf(stderr, "%s: %s\n", lev2str(level), buf);
+		fprintf(stderr, "%s [%s]: %s\n", lev2str(level), dt, buf);
 		fflush(stderr);
 	}
 }
@@ -221,6 +231,14 @@ addexttablerows(config_t *conf)
 	}
 }
 
+static void
+downgrade_pg_resqueue(config_t *conf)
+{
+	run_query(conf, 0, "delete from pg_attribute where "
+			  "attnum > 4 AND attrelid = '%u';", ResQueueRelationId);
+	run_query(conf, 0, "update pg_class set relnatts = '4' "
+			 "WHERE oid = '%u'", ResQueueRelationId);
+}
 
 /* 
  * To downgrade the 3.1 schema changes (addition of columns to pg_exttable
@@ -238,6 +256,7 @@ addexttablerows(config_t *conf)
 static void
 downgrade_catalog_schema(config_t *conf)
 {
+	/* pg_exttable */
 	run_query(conf, 0, "delete from pg_attribute where "
 			  "attnum > 5 AND attrelid = '%u';", ExtTableRelationId);
 	run_query(conf, 0, "update pg_class set relnatts = '5' "
@@ -245,11 +264,106 @@ downgrade_catalog_schema(config_t *conf)
 	
 	addexttablerows(conf);
 
+	/* pg_window */
 	run_query(conf, 0, "delete from pg_attribute where "
 			 "attnum > 9 AND attrelid = '%u';", WindowRelationId);
 	run_query(conf, 0, "update pg_class set relnatts = '9' "
 			 "WHERE oid = '%u'", WindowRelationId);
 	run_query(conf, 0, "truncate pg_catalog.pg_window;");
+
+	/* pg_resqueue */
+	downgrade_pg_resqueue(conf);
+}
+
+/*
+ * standalone routine to upgrade pg_resqueue. Since it's shared, the time at
+ * which we perform the upgrade is sensitive.
+ */
+static void
+upgrade_pg_resqueue(config_t *conf)
+{
+	/*
+	 * This is a potentially problematic change, because resource queues
+	 * affect the execution of queries and any execution of the resource
+	 * queue code while we're making these kinds of changes could be
+	 * very dangerous. We're safe, however, because ProcessQuery() is
+	 * smart enough to only run the resource queue code when we're
+	 * running in DISPATCH mode. Since we're connecting to all backends
+	 * in UTILITY mode, we're fine.
+	 *
+	 * It's also painful because pg_resqueue is a shared relation and
+	 * so we cannot use ALTER TABLE to update it, since the meta data
+	 * will not be updated in other databases. So, we just use raw
+	 * SQL.
+	 */
+	run_query(conf, 0, "insert into pg_attribute (attrelid, attname, "
+				  "atttypid, attstattarget, attlen, attnum, attndims, "
+				  "attcacheoff, atttypmod, attbyval, attstorage, attalign, "
+				  "attnotnull, atthasdef, attisdropped, attislocal, "
+				  "attinhcount) values('pg_catalog.pg_resqueue'::regclass, "
+				  "'rsqignorecostlimit', 'float4'::regtype, '-1', '4', '5', "
+				  "'0', '-1', '-1', 't', 'p', 'i', 't', 'f', 'f', 't', '0');");
+	run_query(conf, 0, "update pg_class set relnatts = relnatts + 1 WHERE "
+				  "oid = 'pg_catalog.pg_resqueue'::regclass;");
+}
+
+static void
+readd_pg_resqueue_cts(config_t *conf)
+{
+	int i;
+
+	/* add the rows */
+	mylog(UDEBUG, "re-adding '%u' pg_resqueue_ctsqueue entries",
+		  PQntuples(pg_resqueue_cts));
+	for (i = 0; i < PQntuples(pg_resqueue_cts); i++)
+	{
+		int j;
+		int len;
+		char query[8196];
+
+		len = snprintf(query, sizeof(query), "INSERT INTO "
+					   "pg_catalog.pg_resqueue "
+				 	   "(rsqname, rsqcountlimit, rsqcostlimit, "
+					   "rsqovercommit%s) "
+				  	   "VALUES(", upgrade ? ", rsqignorecostlimit" : "");
+		for (j = 0; j < PQnfields(pg_resqueue_cts); j++)
+		{
+			int len = PQgetlength(pg_resqueue_cts, i, j);
+			
+			if (PQgetisnull(pg_resqueue_cts, i, j))
+			{
+				strncat(query, j == 0 ? "NULL" : ", NULL",
+					   	sizeof(query) - len);
+				len += 6;
+			}
+			else
+			{
+				char *tmp, *tmp2;
+			
+				tmp = PQgetvalue(pg_resqueue_cts, i, j);
+				tmp2 = malloc(strlen(tmp) * 2 + 1);
+				
+				PQescapeStringConn(conf->conn, tmp2, tmp, len, NULL);
+				if (j != 0)
+				{
+					strncat(query, ", ", sizeof(query) - len);
+					len += 2;
+				}
+				strncat(query, "'", sizeof(query) - len);
+				len++;
+				strncat(query, tmp2, sizeof(query) - len);
+				len += strlen(tmp2);
+				strncat(query, "'", sizeof(query) - len);
+				len++;
+
+				free(tmp2);
+			}
+		}
+
+		strncat(query, upgrade ? ", 0);" : ");", sizeof(query) - len);
+		
+		run_query(conf, 0, query);
+	}
 }
 
 /* 
@@ -261,7 +375,6 @@ schema_upgrade(config_t *conf)
 	if (upgrade)
 	{
 		/* exttable */
-		/* XXX: must be in this order */
 		run_query(conf, 0, "alter table pg_catalog.pg_exttable "
 				  "add column rejectlimit int;");
 		run_query(conf, 0, "alter table pg_catalog.pg_exttable "
@@ -275,6 +388,8 @@ schema_upgrade(config_t *conf)
 		run_query(conf, 0, "alter table pg_catalog.pg_window "
 				  "add column winkind \"char\";");
 
+
+		/* convenience functions for the upgrade */
 		run_query(conf, 0, "create or replace function "
 				  "gp_oid_update(oid, oid, tid, oid) returns bool "
 				  "as '$libdir/libgpupgradefuncs', 'gp_oid_update' "
@@ -378,6 +493,10 @@ post_upgrade(config_t *conf)
 	run_query(conf, 0, "drop function gp_str2node2str(text);");
 	if (!upgrade)
 		run_query(conf, 0, "drop function gp_invalidate_syscache();");
+
+	/* must be done after 64 bit upgrade */
+	if (upgrade)
+		upgrade_pg_resqueue(conf);
 }
 
 static void
@@ -678,6 +797,7 @@ main(int argc, char **argv)
 	bool force_password = false;
 
 	char *txn_str = ugstr(); /* for 2PC */
+
 	
 	myname = argv[0];
 	
@@ -852,6 +972,7 @@ main(int argc, char **argv)
 	/* set up external table entries */
 	setQDexttables(&lconn);
 
+
 	/* get the list of databases and nodes in the cluster */
 	res = run_query(&lconn, 0, "select content, definedprimary, dbid, "
 					"isprimary,"
@@ -910,7 +1031,7 @@ main(int argc, char **argv)
 		mylog(UDEBUG, "updating segdb content %d definedprimary %d dbid %d",
 			  conf->content,conf->definedprimary,conf->dbid);
 
-		sprintf(connstr,"host=%s port=%s dbname=%s " CONNOPTIONS,
+		sprintf(connstr, "host=%s port=%s dbname=%s " CONNOPTIONS,
 				conf->hostname, conf->port, conf->dbname);
 	
 		/* Make a connection to the database */
@@ -973,13 +1094,26 @@ main(int argc, char **argv)
 
 		/* run the upgrade command */
 		run_upgrade_commands(segdbs[i]);
+
+		/* 
+		 * Do it only on the master. We must do it after the upgrade commands
+		 * because resqueue uses float4.
+		 */
+		if (i == 0)
+			pg_resqueue_cts = run_query(segdbs[i], 0, 
+								"delete from pg_catalog.pg_resqueue"
+								" returning rsqname, rsqcountlimit, "
+								"rsqcostlimit, rsqovercommit;");
 		check_ok(segdbs);		
 		post_upgrade(segdbs[i]);
 	}
 	
 	for (i = 0; i < segdbcount; i++)
 	{ 	
-
+		/* master */
+		if (i == 0)
+			readd_pg_resqueue_cts(segdbs[i]);
+		
 		if (strcmp(segdbs[i]->dbname, "template1") != 0)
 			continue;
 		
