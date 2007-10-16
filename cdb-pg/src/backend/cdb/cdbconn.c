@@ -300,10 +300,14 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
 
     appendPQExpBuffer(&buffer, "port=%u ", q->port);
 
+	/* 
+	 * XXX: PQconnectdb() doesn't handle embedded quotes (') but they can be
+	 * in a valid database name.
+	 */
     if (MyProcPort->database_name)
-        appendPQExpBuffer(&buffer, "dbname=%s ", MyProcPort->database_name);
+        appendPQExpBuffer(&buffer, "dbname='%s' ", MyProcPort->database_name);
 
-    appendPQExpBuffer(&buffer, "user=%s ", MyProcPort->user_name);
+    appendPQExpBuffer(&buffer, "user='%s' ", MyProcPort->user_name);
 
     appendPQExpBuffer(&buffer, "connect_timeout=%d ", gp_segment_connect_timeout);
 
