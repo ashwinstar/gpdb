@@ -46,6 +46,7 @@
 #include "utils/builtins.h"
 #include "nodes/makefuncs.h"
 #include "cdb/cdbvars.h"
+#include "postmaster/postmaster.h"  /*postmaster port*/
 
 
 
@@ -62,7 +63,8 @@ struct extvar_t
 	char GP_XID[TMGIDSIZE];		/* global transaction id */
 	char GP_CID[10];		/* command id */
 	char GP_SN[10];		/* scan number */
-	char GP_CONTENT_ID[6];  /*segments content id*/	
+	char GP_SEGMENT_ID[6];  /*segments content id*/
+	char GP_SEG_PORT[10];
 };
 
 #include "url.i"
@@ -997,7 +999,8 @@ open_external_file(FileScanDesc scan)
 
 	sprintf(extvar.GP_CID, "%x", QEDtxContextInfo.distributedSnapshotData.curcid);
 	sprintf(extvar.GP_SN, "%x", scan->fs_scancounter);
-	sprintf(extvar.GP_CONTENT_ID, "%d", Gp_segment);
+	sprintf(extvar.GP_SEGMENT_ID, "%d", Gp_segment);
+    sprintf(extvar.GP_SEG_PORT, "%d", PostPortNumber);
     
     /*
      * Open the url with url_open().
