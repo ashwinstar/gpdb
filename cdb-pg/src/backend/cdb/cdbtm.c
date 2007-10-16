@@ -22,7 +22,7 @@
 #include "storage/shmem.h"
 #include "storage/ipc.h"
 #include "cdb/cdbdisp.h"
-#include "cdb/cdbdispatchresult.h"		/* cdbdisp_dumpDispatchResults() */
+
 #include "cdb/cdbvars.h"
 #include "libpq-fe.h"
 #include "access/transam.h"
