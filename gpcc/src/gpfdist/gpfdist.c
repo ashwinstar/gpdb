@@ -111,6 +111,7 @@ struct fstream_t {
 /*  A session */
 typedef struct session_t session_t;
 struct session_t {
+    apr_pool_t* pool;
     const char* key;
     const char* tid;
     const char* path;
@@ -234,34 +235,28 @@ void fstream_free(fstream_t* fs)
 	    gfile_close(fs->fd[i]);
 	    fs->fd[i] = 0;
 	}
-	if (fs->fpath[i]) 
-	    free((char*)fs->fpath[i]);
     }
     if (fs->fblock) {
 	block_put(fs->fblock);
 	fs->fblock = 0;
     }
-    
-    free(fs->fpath);
-    free(fs->fd);
-    free(fs);
 }
 
 
 /* alloc a new file stream */
-fstream_t* fstream_alloc(char** path, int npath)
+fstream_t* fstream_alloc(char** path, int npath, apr_pool_t* pool)
 {
     int i;
     fstream_t* fs;
 
-    if (0 == (fs = malloc(sizeof(fstream_t))))
+    if (0 == (fs = apr_palloc(pool, sizeof(fstream_t))))
 	gfatal(FLINE, "out of memory");
     
     memset(fs, 0, sizeof(*fs));
 
     fs->fn = npath;
-    fs->fpath = malloc(sizeof(char*) * npath);
-    fs->fd = malloc(sizeof(gfile_t*) * npath);
+    fs->fpath = apr_palloc(pool, sizeof(char*) * npath);
+    fs->fd = apr_palloc(pool, sizeof(gfile_t*) * npath);
     if (0 == fs->fpath || 0 == fs->fd) 
 	gfatal(FLINE, "out of memory");
 
@@ -269,11 +264,11 @@ fstream_t* fstream_alloc(char** path, int npath)
     memset(fs->fd, 0, sizeof(gfile_t*) * npath);
 	
     for (i = 0; i < npath; i++) {
-	if (0 == (fs->fpath[i] = strdup(path[i])))
+	if (0 == (fs->fpath[i] = apr_pstrdup(pool, path[i])))
 	    gfatal(FLINE, "out of memory");
 
 	/* check READ access right */
-	if (0 == (fs->fd[i] = gfile_open(path[i], O_RDONLY|O_BINARY))) {
+	if (0 == (fs->fd[i] = gfile_open(path[i], O_RDONLY|O_BINARY, pool))) {
 	    gwarning(FLINE, "unable to open file %s", path[i]);
 	    fstream_free(fs);
 	    return 0;
@@ -295,7 +290,7 @@ fstream_t* fstream_alloc(char** path, int npath)
 
 
 /* get a block from the file stream */
-block_t* fstream_get_block(fstream_t* fs)
+block_t* fstream_get_block(fstream_t* fs, apr_pool_t* pool)
 {
     block_t* b;
     int n;
@@ -330,7 +325,7 @@ block_t* fstream_get_block(fstream_t* fs)
 
 	if (opt.V) 
 	    gprint("   opening %s\n", fs->fpath[fs->fidx]);
-	if (0 == (fs->fd[fs->fidx] = gfile_open(fs->fpath[fs->fidx], O_RDONLY|O_BINARY))) {
+	if (0 == (fs->fd[fs->fidx] = gfile_open(fs->fpath[fs->fidx], O_RDONLY|O_BINARY, pool))) {
 	    gwarning(FLINE, "unable to open file %s", fs->fpath[fs->fidx]);
 	    fs->ferror = 1;
 	    block_put(b);
@@ -609,6 +604,7 @@ int setup_write(request_t* r);
 void session_attach(request_t* r);
 void session_detach(request_t* r);
 void session_end(session_t* s, int error);
+void session_free(session_t* s);
 void request_end(request_t* r);
 block_t* session_get_block(session_t* s);
 char* path_basename(const char* path, apr_pool_t* pool);
@@ -732,7 +728,7 @@ block_t* session_get_block(session_t* s)
 	return 0;
     }
 
-    if (0 == (b = fstream_get_block(s->fstream))) {
+    if (0 == (b = fstream_get_block(s->fstream, s->pool))) {
 	if (s->fstream->ferror)
 	    session_end(s, 1);
 	else
@@ -820,7 +816,9 @@ char **fpath_merge(char **fpath1, int n1, char **fpath2, int n2, int *n, apr_poo
 	return fpath2;
     }
 
-    fpath = apr_palloc(p, sizeof(char *) * (n1 + n2));
+    if (0 == (fpath = apr_palloc(p, sizeof(char *) * (n1 + n2)))) 
+	gfatal(FLINE, "out of memory");
+
     *n = n1 + n2;
 
     memcpy(fpath, fpath1, sizeof(char*) * n1);
@@ -836,11 +834,13 @@ void session_free(session_t* s)
     if (opt.v) 
 	gprint("[INFO] free session %s\n", s->key);
 
+    if (s->fstream) {
+	fstream_free(s->fstream);
+	s->fstream = 0;
+    }
+
     apr_hash_set(gcb.session.tab, s->key, APR_HASH_KEY_STRING, 0);
-    free((void*) s->key);
-    free((void*) s->tid);
-    free((void*) s->path);
-    free(s);
+    apr_pool_destroy(s->pool);
 }
 
 
@@ -862,11 +862,6 @@ void session_detach(request_t* r)
 
 	    session_free(s);
 	}
-
-	if (s->fstream) {
-	    fstream_free(s->fstream);
-	    s->fstream = 0;
-	}
     }
 }
 
@@ -874,23 +869,22 @@ void sessions_cleanup()
 {
     apr_hash_index_t *hi;
     int i, n = 0;
-    int nargv;
     void* entry;
     session_t **session, *s;
+    int nses;
 
-    nargv = apr_hash_count(gcb.session.tab);
-    if (nargv == 0)
+    nses = apr_hash_count(gcb.session.tab);
+    if (nses == 0)
 	return;
-
-    session = malloc(sizeof(session_t *) * nargv);
-    if (! session) {
+    
+    if (! (session = malloc(sizeof(session_t *) * nses))) 
 	gfatal(FLINE, "out of memory");
-    }
 
-    for  (hi = apr_hash_first(gcb.pool, gcb.session.tab) ; hi ; hi = apr_hash_next(hi)) {
+    hi = apr_hash_first(gcb.pool, gcb.session.tab);
+    for (i = 0; hi && i < nses; i++, hi = apr_hash_next(hi)) {
 	apr_hash_this(hi, 0, 0, &entry);
 	s = (session_t*) entry;
-	if (s->nrequest == 0 && (s->mtime < apr_time_now() - 3600 * APR_USEC_PER_SEC)) {
+	if (s->nrequest == 0 && (s->mtime < apr_time_now() - 300 * APR_USEC_PER_SEC)) {
 	    session[n++] = s;
 	}
     }
@@ -902,8 +896,7 @@ void sessions_cleanup()
 	session[i] = 0;
     }
 
-    if (session) 
-	free(session);
+    free(session);
 }
 
 void session_attach(request_t* r)
@@ -925,9 +918,17 @@ void session_attach(request_t* r)
 	int n = 0;
 	char** fpath = 0;
 	fstream_t* fstream = 0;
+	apr_pool_t* pool;
 
 	/* remove any outdated sessions*/
 	sessions_cleanup();
+
+	if (apr_pool_create(&pool, gcb.pool)) {
+	    gwarning(FLINE, "out of memory");
+	    send_error(r, 500, "internal error - out of memory");
+	    request_end(r);
+	    return;
+	}
 
 	/* do we have a pattern in r->path? */
 	if (! apr_fnmatch_test(r->path)) {
@@ -936,11 +937,12 @@ void session_attach(request_t* r)
 	}
 	else {
 	    /* glob for all files matching r->path pattern */
-	    fpath = glob(r->path, &n, r->pool);
+	    fpath = glob(r->path, &n, pool);
 	    if (!fpath || n == 0) {
 		gwarning(FLINE, "bad path: %s", r->path);
 		send_error(r, 404, "not found");
 		request_end(r);
+		apr_pool_destroy(pool);
 		return;
 	    }
 	    if (opt.v) {
@@ -951,7 +953,7 @@ void session_attach(request_t* r)
 	}
 
 				    
-	if (fpath_all_directories(fpath, n, r->pool)) {
+	if (fpath_all_directories(fpath, n, pool)) {
 	    int i;
 	    int nn = 0;
 	    char **ffpath = 0;
@@ -961,20 +963,21 @@ void session_attach(request_t* r)
 		char* newpath = 0;
 		char **dirfpath = 0;
 		int dirnf = 0;
-		if (apr_filepath_merge(&newpath, fpath[i], "*", 0, r->pool)) {
+		if (apr_filepath_merge(&newpath, fpath[i], "*", 0, pool)) {
 		    gwarning(FLINE, "bad path: %s (filepathmerge)", r->path);
 		    send_error(r, 404, "not found");
 		    request_end(r);
+		    apr_pool_destroy(pool);
 		    return;
 		}
-		dirfpath = glob(newpath, &dirnf, r->pool);
+		dirfpath = glob(newpath, &dirnf, pool);
 		if (!dirfpath || dirnf == 0) {
 		    gwarning(FLINE, "%s is empty directory", fpath[i]);
 		    continue;
 		}
 
 		/* append dirfpath to fpath */
-		ffpath = fpath_merge(ffpath, nn, dirfpath, dirnf, &nn, r->pool);
+		ffpath = fpath_merge(ffpath, nn, dirfpath, dirnf, &nn, pool);
 	    }
 
 	    fpath = ffpath;
@@ -984,32 +987,34 @@ void session_attach(request_t* r)
 		gwarning(FLINE, "bad path: %s", r->path);
 		send_error(r, 404, "not found");
 		request_end(r);
+		apr_pool_destroy(pool);
 		return;
 	    }
 	}
 
 	/* try opening the fstream */
-	fstream = fstream_alloc(fpath, n);
+	fstream = fstream_alloc(fpath, n, pool);
 	if (! fstream) {
 	    gwarning(FLINE, "reject request from %s, path %s\n", r->peer, r->path);
 	    send_error(r, 404, "not found");
 	    request_end(r);
+	    apr_pool_destroy(pool);
 	    return;
 	}
 
 	/* allocate session */
-	if (0 == (s = malloc(sizeof(session_t)))) 
+	if (0 == (s = apr_palloc(pool, sizeof(session_t))))
 	    gfatal(FLINE, "out of memory");
-
 	memset(s, 0, sizeof(*s));
 
-	if (0 == (s->tid = strdup(r->tid)) 
-	    || 0 == (s->path = strdup(r->path))
-	    || 0 == (s->key = strdup(key))) {
+	if (0 == (s->tid = apr_pstrdup(pool, r->tid)) 
+	    || 0 == (s->path = apr_pstrdup(pool, r->path))
+	    || 0 == (s->key = apr_pstrdup(pool, key))) {
 	    gfatal(FLINE, "out of memory");
 	}
 
 	s->fstream = fstream;
+	s->pool = pool;
 
 	/* insert into hashtable */
 	apr_hash_set(gcb.session.tab, s->key, APR_HASH_KEY_STRING, s);

@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <apr_file_info.h>
 #ifdef WIN32
 #include <io.h>
 #endif
@@ -118,25 +119,22 @@ static gfile_t* gz_file_open(const char *fpath, int oflag)
     return fd;
 }
 
-static apr_status_t gfile_is_directory(const char *fpath, int *is_dir)
+static apr_status_t gfile_is_directory(const char *fpath, int *is_dir, apr_pool_t* pool)
 {
-  struct stat buf;
-  int e;
-
-  if (0 != (e = stat(fpath, &buf))) {
-      return e;
-  }
-
-  *is_dir = S_ISDIR(buf.st_mode);
-  return 0;
+    apr_finfo_t finfo;
+    int e = apr_stat(&finfo, fpath, APR_FINFO_TYPE, pool);
+    if (e) 
+	return e;
+    *is_dir = (finfo.filetype == APR_DIR);
+    return 0;
 }
 
-APR_DECLARE(gfile_t*) gfile_open(const char *fpath, int oflag)
+APR_DECLARE(gfile_t*) gfile_open(const char *fpath, int oflag, apr_pool_t* pool)
 {
     char *s;
     int is_dir = 0;
 
-    if (gfile_is_directory(fpath, &is_dir) != 0) {
+    if (gfile_is_directory(fpath, &is_dir, pool) != 0) {
 	gwarning(FLINE, "stat %s failure", fpath);
 	return 0;
     }
