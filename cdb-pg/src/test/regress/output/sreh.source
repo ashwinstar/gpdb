@@ -8,7 +8,7 @@ CREATE TABLE sreh_copy(a int, b int, c int) distributed by(a);
 --
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' SEGMENT REJECT LIMIT 1000;
 NOTICE:  Rejected 10 badly formatted rows.
-SELECT * FROM sreh_copy ORDER BY a;
+SELECT * FROM sreh_copy ORDER BY a,b,c;
  a  | b  | c  
 ----+----+----
   1 |  1 |  1
@@ -25,7 +25,7 @@ SELECT * FROM sreh_copy ORDER BY a;
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' SEGMENT REJECT LIMIT 2;
 ERROR:  Segment reject limit reached after encountering 2 data errors. Aborting operation.
 CONTEXT:  COPY sreh_copy, line 8: "bad|8|8"
-SELECT * FROM sreh_copy ORDER BY a;
+SELECT * FROM sreh_copy ORDER BY a,b,c;
  a  | b  | c  
 ----+----+----
   1 |  1 |  1
@@ -42,7 +42,7 @@ SELECT * FROM sreh_copy ORDER BY a;
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 1000;
 NOTICE:  Error table "sreh_copy_errtbl" does not exist. Auto generating an error table with the same name
 NOTICE:  Rejected 10 badly formatted rows. Errors logged into error table "sreh_copy_errtbl"
-SELECT * FROM sreh_copy ORDER BY a;
+SELECT * FROM sreh_copy ORDER BY a,b,c;
  a  | b  | c  
 ----+----+----
   1 |  1 |  1
@@ -59,7 +59,7 @@ SELECT * FROM sreh_copy ORDER BY a;
  14 | 14 | 14
 (12 rows)
 
-SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
+SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,rawdata;
   relname  | linenum |                 errmsg                  | rawdata 
 -----------+---------+-----------------------------------------+---------
  sreh_copy |       2 | missing data for column "b"             | 2
@@ -79,7 +79,7 @@ SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
 --
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 1000;
 NOTICE:  Rejected 10 badly formatted rows. Errors logged into error table "sreh_copy_errtbl"
-SELECT * FROM sreh_copy ORDER BY a;
+SELECT * FROM sreh_copy ORDER BY a,b,c;
  a  | b  | c  
 ----+----+----
   1 |  1 |  1
@@ -102,7 +102,7 @@ SELECT * FROM sreh_copy ORDER BY a;
  14 | 14 | 14
 (18 rows)
 
-SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
+SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,rawdata;
   relname  | linenum |                 errmsg                  | rawdata 
 -----------+---------+-----------------------------------------+---------
  sreh_copy |       2 | missing data for column "b"             | 2
@@ -132,7 +132,7 @@ SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
 --
 COPY sreh_copy FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 1000;
 NOTICE:  Rejected 2 badly formatted rows. Errors logged into error table "sreh_copy_errtbl"
-SELECT * FROM sreh_copy ORDER BY a;
+SELECT * FROM sreh_copy ORDER BY a,b,c;
   a  |  b  |  c  
 -----+-----+-----
    1 |   1 |   1
@@ -157,7 +157,7 @@ SELECT * FROM sreh_copy ORDER BY a;
  300 | 300 | 300
 (20 rows)
 
-SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
+SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,rawdata;
   relname  | linenum |                            errmsg                             |              rawdata              
 -----------+---------+---------------------------------------------------------------+-----------------------------------
  sreh_copy |       2 | missing data for column "b"                                   | 2
@@ -190,7 +190,7 @@ SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 2;
 ERROR:  Segment reject limit reached after encountering 2 data errors. Aborting operation.  (seg0 @hostname@:11001 pid=14901)
 CONTEXT:  COPY sreh_copy, line 3: "3|"
-SELECT * FROM sreh_copy ORDER BY a;
+SELECT * FROM sreh_copy ORDER BY a,b,c;
   a  |  b  |  c  
 -----+-----+-----
    1 |   1 |   1
@@ -215,7 +215,7 @@ SELECT * FROM sreh_copy ORDER BY a;
  300 | 300 | 300
 (20 rows)
 
-SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum;
+SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,rawdata;
   relname  | linenum |                            errmsg                             |              rawdata              
 -----------+---------+---------------------------------------------------------------+-----------------------------------
  sreh_copy |       2 | missing data for column "b"                                   | 2
