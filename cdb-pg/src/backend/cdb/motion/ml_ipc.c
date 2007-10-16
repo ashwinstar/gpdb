@@ -833,8 +833,7 @@ InitMotionLayerIPC(void)
 
 	Gp_listener_port = (udp_listener<<16) | tcp_listener;
 
-	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP || log_min_messages >= DEBUG1)
-		elog(LOG, "Interconnect listening on tcp port %d udp port %d (0x%x)", tcp_listener, udp_listener, Gp_listener_port);
+	elog(DEBUG1, "Interconnect listening on tcp port %d udp port %d (0x%x)", tcp_listener, udp_listener, Gp_listener_port);
 
 	/* set up the connection hash table */
 	conn_htab_size = DEFAULT_CONN_HTAB_SIZE;
