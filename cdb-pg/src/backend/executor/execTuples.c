@@ -881,67 +881,56 @@ HeapTuple ExecCopySlotHeapTupleTo(TupleTableSlot *slot, MemoryContext pctxt, cha
 
 	if(slot->tts_tuple)
 	{
-		if(slot->tts_mintuple)
+		if (slot->tts_mintuple)
 		{
 			needed_len = slot->tts_mintuple->t_len + MINIMAL_TUPLE_OFFSET + HEAPTUPLESIZE;
-			if(*len >= needed_len)
+			if (*len >= needed_len)
 				ret = (HeapTuple) dest;
 			else if(pctxt)
-			{
 				ret = (HeapTuple) ctxt_alloc(pctxt, needed_len);  
-				*len = needed_len;
-			}
-			else
+
+			if (ret) 
 			{
-				*len = needed_len;
-				return NULL;
+				ret->t_len = slot->tts_mintuple->t_len + MINIMAL_TUPLE_OFFSET;
+				ItemPointerSetInvalid(&(ret->t_self));
+				ret->t_tableOid = InvalidOid;
+				ret->t_data = (HeapTupleHeader) ((char *) ret + HEAPTUPLESIZE);
+				memcpy((char*) ret->t_data + MINIMAL_TUPLE_OFFSET, slot->tts_mintuple, slot->tts_mintuple->t_len);
+				memset(ret->t_data, 0, offsetof(HeapTupleHeaderData, t_infomask2));
 			}
 
-			ret->t_len = slot->tts_mintuple->t_len + MINIMAL_TUPLE_OFFSET;
-			ItemPointerSetInvalid(&(ret->t_self));
-			ret->t_tableOid = InvalidOid;
-			ret->t_data = (HeapTupleHeader) ((char *) ret + HEAPTUPLESIZE);
-			memcpy((char*) ret->t_data + MINIMAL_TUPLE_OFFSET, slot->tts_mintuple, slot->tts_mintuple->t_len);
-			memset(ret->t_data, 0, offsetof(HeapTupleHeaderData, t_infomask2));
-
+			*len = needed_len;
 			return ret;
 		}
-		else
-		{
-			if(!HeapTupleIsValid(slot->tts_tuple) || slot->tts_tuple->t_data == NULL)
-			{
-				*len = 0;
-				return NULL;
-			}
 
+		needed_len = 0;
+		if(!HeapTupleIsValid(slot->tts_tuple) || slot->tts_tuple->t_data == NULL)
+			;
+		else 
+		{
 			needed_len = slot->tts_tuple->t_len + HEAPTUPLESIZE;
 			if(*len >= needed_len)
 				ret = (HeapTuple) dest;
 			else if(pctxt)
-			{
-				ret = (HeapTuple) ctxt_alloc(pctxt, needed_len);  
-				*len = needed_len;
-			}
-			else
-			{
-				*len = needed_len;
-				return NULL;
-			}
+				ret = (HeapTuple) ctxt_alloc(pctxt, needed_len);
+		}
 
+		if (ret) 
+		{
 			ret->t_len = slot->tts_tuple->t_len;
 			ret->t_self = slot->tts_tuple->t_self;
 			ret->t_tableOid = slot->tts_tuple->t_tableOid;
 			ret->t_data = (HeapTupleHeader) ((char *) ret + HEAPTUPLESIZE);
 			memcpy((char *) ret->t_data, (char *) slot->tts_tuple->t_data, slot->tts_tuple->t_len);
-
-			return ret;
 		}
+
+		*len = needed_len;
+		return ret;
 	}
-	else 
+
 	{
 		int i = 0;
 		unsigned hoff, predicted_len, actual_len;
-		HeapTupleHeader td;
 		int numberOfAttributes = slot->tts_tupleDescriptor->natts;
 		Form_pg_attribute *att = slot->tts_tupleDescriptor->attrs;
 		Datum *values = slot->tts_values;
@@ -991,52 +980,49 @@ HeapTuple ExecCopySlotHeapTupleTo(TupleTableSlot *slot, MemoryContext pctxt, cha
 
 		needed_len += predicted_len + HEAPTUPLESIZE;
 
-		if(*len >= needed_len)
+		if (*len >= needed_len)
 			ret = (HeapTuple) dest;
 		else if(pctxt)
-		{
 			ret = (HeapTuple) ctxt_alloc(pctxt, needed_len);  
-			*len = needed_len;
-		}
-		else
+		
+		if (ret)
 		{
-			*len = needed_len;
-			return NULL;
+			HeapTupleHeader td;
+			ret->t_data = td = (HeapTupleHeader) ((char *) ret + HEAPTUPLESIZE);
+
+			/*
+			 * And fill in the information.  Note we fill the Datum fields even though
+			 * this tuple may never become a Datum.
+			 */
+			ret->t_len = needed_len - HEAPTUPLESIZE;
+			ItemPointerSetInvalid(&(ret->t_self));
+			ret->t_tableOid = InvalidOid;
+
+			HeapTupleHeaderSetDatumLength(td, needed_len - HEAPTUPLESIZE);
+			HeapTupleHeaderSetTypeId(td, slot->tts_tupleDescriptor->tdtypeid);
+			HeapTupleHeaderSetTypMod(td, slot->tts_tupleDescriptor->tdtypmod);
+
+			HeapTupleHeaderSetNatts(td, numberOfAttributes);
+			td->t_hoff = hoff;
+
+			if (slot->tts_tupleDescriptor->tdhasoid)		/* else leave infomask = 0 */
+				td->t_infomask = HEAP_HASOID;
+
+			actual_len = 
+				heap_fill_tuple(slot->tts_tupleDescriptor, 
+								values, 
+								isnull,
+								(char *) td + hoff,
+								&td->t_infomask,
+								(hasnull ? td->t_bits : NULL));
+	
+			if (predicted_len != actual_len)
+				elog(ERROR, "predicted_len (%d) != actual_len (%d)", predicted_len, actual_len);
 		}
 
-		ret->t_data = td = (HeapTupleHeader) ((char *) ret + HEAPTUPLESIZE);
-
-		/*
-		 * And fill in the information.  Note we fill the Datum fields even though
-		 * this tuple may never become a Datum.
-		 */
-		ret->t_len = needed_len - HEAPTUPLESIZE;
-		ItemPointerSetInvalid(&(ret->t_self));
-		ret->t_tableOid = InvalidOid;
-
-		HeapTupleHeaderSetDatumLength(td, needed_len - HEAPTUPLESIZE);
-		HeapTupleHeaderSetTypeId(td, slot->tts_tupleDescriptor->tdtypeid);
-		HeapTupleHeaderSetTypMod(td, slot->tts_tupleDescriptor->tdtypmod);
-
-		HeapTupleHeaderSetNatts(td, numberOfAttributes);
-		td->t_hoff = hoff;
-
-		if (slot->tts_tupleDescriptor->tdhasoid)		/* else leave infomask = 0 */
-			td->t_infomask = HEAP_HASOID;
-
-		actual_len = 
-			heap_fill_tuple(slot->tts_tupleDescriptor, 
-					values, 
-					isnull,
-					(char *) td + hoff,
-					&td->t_infomask,
-					(hasnull ? td->t_bits : NULL));
-	
-		Assert(predicted_len == actual_len);
+		*len = needed_len;
 		return ret;
 	}
-
-	return NULL;
 }
 
 
