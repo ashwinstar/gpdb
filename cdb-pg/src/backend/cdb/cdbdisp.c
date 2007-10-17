@@ -3529,22 +3529,6 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
                                    si, sliceLim);
 		}
 		
-		/*
-		 * If we are doing sliced execution, and have multiple slices, let the 
-		 * message to the writer gangs get out before we dispatch to the readers,
-		 * hopefully letting them set up the shared snapshot and avoiding the busy wait
-		 * the readers would do if it isn't set up.
-		 * 
-		 * This delay is really short, just enough to cause us to give up our 
-		 * timeslice.  But don't be fooled... Unix can delay as long as 1ms before 
-		 * returning, regardless of what we say.
-		 */
-		if (sliceVector && slice && iSlice+1 < nSlices && slice->primary_gang_id == 1)
-		{
-			elog(DEBUG1,"sleep...");
-			pg_usleep(200); /* time in microsecs */
-			elog(DEBUG1,"sleep done");
-		}
 	}
 
 	
