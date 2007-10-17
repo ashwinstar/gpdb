@@ -494,7 +494,7 @@ ResDestroyQueue(Oid queueid)
 
 
 /*
- * ResLockPortal -- get a resource lock for a PortalRun.
+ * ResLockPortal -- get a resource lock for Portal execution.
  *
  * Returns:
  *	true if the lock has been taken
@@ -559,8 +559,8 @@ ResLockPortal(Portal portal, Plan *plan)
 			break;
 	
 			/*
-			 * We are declaring a cursor, we get the lock, but do not let it 
-			 * get released yet.
+			 * We are declaring a cursor - do the same as T_SelectStmt, but
+			 * need to additionally consider setting the isHold option.
 			 */
 			case T_DeclareCursorStmt:
 			{
@@ -575,17 +575,6 @@ ResLockPortal(Portal portal, Plan *plan)
 
 	
 				takeLock = true;
-				returnReleaseOk = true;
-			}
-			break;
-	
-			/*
-			 * We are closing a cursor, we hold a lock already, so indicate that
-			 * unlock should happen.
-			 */
-			case T_ClosePortalStmt:
-			{
-				takeLock = false;
 				returnReleaseOk = true;
 			}
 			break;
