@@ -480,7 +480,7 @@ static void XLogArchiveNotify(const char *xlog);
 static void XLogArchiveNotifySeg(uint32 log, uint32 seg);
 static bool XLogArchiveCheckDone(const char *xlog);
 static void XLogArchiveCleanup(const char *xlog);
-static void readRecoveryCommandFile(void);
+static void readRecoveryCommandFile(int emode);
 static void exitArchiveRecovery(TimeLineID endTLI,
 					uint32 endLogId, uint32 endLogSeg);
 static bool recoveryStopsHere(XLogRecord *record, bool *includeThis);
@@ -4815,7 +4815,7 @@ str_time(time_t tnow)
  * possibly use a flex lexer similar to the GUC one
  */
 static void
-readRecoveryCommandFile(void)
+readRecoveryCommandFile(int emode)
 {
 	FILE	   *fd;
 	char		cmdline[MAXPGPATH];
@@ -4834,7 +4834,7 @@ readRecoveryCommandFile(void)
 						RECOVERY_COMMAND_FILE)));
 	}
 
-	ereport(LOG,
+	ereport(emode,
 			(errmsg("starting archive recovery")));
 
 	/*
@@ -4879,7 +4879,7 @@ readRecoveryCommandFile(void)
 		if (strcmp(tok1, "restore_command") == 0)
 		{
 			recoveryRestoreCommand = pstrdup(tok2);
-			ereport(LOG,
+			ereport(emode,
 					(errmsg("restore_command = \"%s\"",
 							recoveryRestoreCommand)));
 		}
@@ -4898,10 +4898,10 @@ readRecoveryCommandFile(void)
 									tok2)));
 			}
 			if (rtli)
-				ereport(LOG,
+				ereport(emode,
 						(errmsg("recovery_target_timeline = %u", rtli)));
 			else
-				ereport(LOG,
+				ereport(emode,
 						(errmsg("recovery_target_timeline = latest")));
 		}
 		else if (strcmp(tok1, "recovery_target_xid") == 0)
@@ -4912,7 +4912,7 @@ readRecoveryCommandFile(void)
 				ereport(FATAL,
 				 (errmsg("recovery_target_xid is not a valid number: \"%s\"",
 						 tok2)));
-			ereport(LOG,
+			ereport(emode,
 					(errmsg("recovery_target_xid = %u",
 							recoveryTargetXid)));
 			recoveryTarget = true;
@@ -4937,7 +4937,7 @@ readRecoveryCommandFile(void)
 			recoveryTargetTime = (time_t)
 				DatumGetAbsoluteTime(DirectFunctionCall1(abstimein,
 													 CStringGetDatum(tok2)));
-			ereport(LOG,
+			ereport(emode,
 					(errmsg("recovery_target_time = %s",
 							DatumGetCString(DirectFunctionCall1(abstimeout,
 				AbsoluteTimeGetDatum((AbsoluteTime) recoveryTargetTime))))));
@@ -4954,7 +4954,7 @@ readRecoveryCommandFile(void)
 				recoveryTargetInclusive = false;
 				tok2 = "false";
 			}
-			ereport(LOG,
+			ereport(emode,
 					(errmsg("recovery_target_inclusive = %s", tok2)));
 		}
 		else
@@ -5289,7 +5289,7 @@ StartupXLOG(void)
 	 * Check for recovery control file, and if so set up state for offline
 	 * recovery
 	 */
-	readRecoveryCommandFile();
+	readRecoveryCommandFile(LOG);
 
 	/* Now we can determine the list of expected TLIs */
 	expectedTLIs = readTimeLineHistory(recoveryTargetTLI);
@@ -5841,17 +5841,20 @@ StartupXLOG(void)
  *
  */
 void
-XLogGetRecoveryStart(XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint)
+XLogGetStandbyRecoveryStart(char *reasonStr, XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint)
 {
 	CheckPoint	checkPoint;
 	XLogRecPtr	checkPointLoc;
 	XLogRecord *record;
+	bool previous;
+	XLogRecPtr checkPointLSN;
 
 	Assert(redoCheckPointLoc != NULL);
 	Assert(redoCheckPoint != NULL);
 
-	ereport(LOG,
-			(errmsg("QDSYNC: determine restart location")));
+	ereport((Debug_print_qd_mirroring ? LOG : DEBUG1),
+			(errmsg("QDSYNC: determine restart location %s",
+			 reasonStr)));
 	
 	CloseReadRecord();
 
@@ -5888,7 +5891,7 @@ XLogGetRecoveryStart(XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint)
 	 * Check for recovery control file, and if so set up state for offline
 	 * recovery
 	 */
-	readRecoveryCommandFile();
+	readRecoveryCommandFile(DEBUG5);
 
 	/* Now we can determine the list of expected TLIs */
 	expectedTLIs = readTimeLineHistory(ThisTimeLineID);
@@ -5896,18 +5899,20 @@ XLogGetRecoveryStart(XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint)
 	record = ReadCheckpointRecord(checkPointLoc, 1);
 	if (record != NULL)
 	{
-		ereport(LOG,
+		previous = false;
+		ereport((Debug_print_qd_mirroring ? LOG : DEBUG1),
 				(errmsg("QDSYNC: checkpoint record is at %s (LSN %s)",
 						XLogLocationToString(&checkPointLoc),
 						XLogLocationToString2(&EndRecPtr))));
 	}
 	else
 	{
+		previous = true;
 		checkPointLoc = ControlFile->prevCheckPoint;
 		record = ReadCheckpointRecord(checkPointLoc, 2);
 		if (record != NULL)
 		{
-			ereport(LOG,
+			ereport((Debug_print_qd_mirroring ? LOG : DEBUG1),
 					(errmsg("QDSYNC: using previous checkpoint record at %s (LSN %s)",
 						    XLogLocationToString(&checkPointLoc),
 						    XLogLocationToString2(&EndRecPtr))));
@@ -5918,11 +5923,15 @@ XLogGetRecoveryStart(XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint)
 	}
 
 	memcpy(&checkPoint, XLogRecGetData(record), sizeof(CheckPoint));
+	checkPointLSN = EndRecPtr;
 
 	if (XLByteEQ(checkPointLoc,checkPoint.redo))
 	{
 		ereport(LOG,
-		 (errmsg("QDSYNC: redo start is the checkpoint record")));
+		 (errmsg("QDSYNC: control file has restart %scheckpoint record at %s (LSN %s).  Redo starts at checkpoint",
+		 		  (previous ? "previous " : ""),
+			      XLogLocationToString(&checkPointLoc),
+			      XLogLocationToString2(&checkPointLSN))));
 	}
  	else if (XLByteLT(checkPointLoc, checkPoint.redo))
 	{
@@ -5932,7 +5941,7 @@ XLogGetRecoveryStart(XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint)
 	else
 	{
 		XLogRecord *record;
-		
+
 		record = ReadRecord(&checkPoint.redo, LOG);
 		if (record == NULL)
 		{
@@ -5942,7 +5951,10 @@ XLogGetRecoveryStart(XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint)
 		}
 		
 		ereport(LOG,
-		 (errmsg("QDSYNC: first redo record before the checkpoint at %s (LSN %s)",
+		 (errmsg("QDSYNC: control file has restart %scheckpoint at %s (LSN %s).  Redo starts at location %s (LSN %s)",
+		 		 (previous ? "previous " : ""),
+				 XLogLocationToString3(&checkPointLoc),
+				 XLogLocationToString4(&checkPointLSN),
 				 XLogLocationToString(&checkPoint.redo),
 				 XLogLocationToString2(&EndRecPtr))));
 	}
@@ -5959,10 +5971,12 @@ XLogGetRecoveryStart(XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint)
  *
  */
 void
-XLogScanForEndLocation(XLogRecPtr *startLoc, XLogRecPtr *endLoc)
+XLogScanForStandbyEndLocation(XLogRecPtr *startLoc, XLogRecPtr *endLoc)
 {
 	XLogRecord *record;
 	XLogRecPtr	LastRec;
+
+	elog(LOG,"QDSYNC: scan forward starting at restart location to determine end location");
 	
 	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
 		 "scan with ThisTimeLineID %u, location %s",
@@ -5998,7 +6012,7 @@ XLogScanForEndLocation(XLogRecPtr *startLoc, XLogRecPtr *endLoc)
  *
  */
 void
-XLogRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoint, XLogRecPtr *lastRecordLoc)
+XLogStandbyRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoint, XLogRecPtr *lastRecordLoc)
 {
 	XLogRecord *record;
 	StringInfoData buf;
@@ -6067,8 +6081,9 @@ XLogRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoint, XLog
 			     XLogLocationToString(&redoCheckPoint->redo));
 		}
 		ereport(LOG,
-				(errmsg("QDSYNC: redo starts at %s with the first redo record before the checkpoint",
-						XLogLocationToString(&ReadRecPtr))));
+				(errmsg("QDSYNC: starting redo at %s from the redo location in the checkpoint at %s",
+						XLogLocationToString(&ReadRecPtr),
+						XLogLocationToString2(redoCheckpointLoc))));
 	}
 	else
 	{
@@ -6099,8 +6114,9 @@ XLogRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoint, XLog
 			return;
 		}
 		ereport(LOG,
-				(errmsg("QDSYNC: redo starts at %s with the first record after the checkpoint",
-						XLogLocationToString(&ReadRecPtr))));
+				(errmsg("QDSYNC: starting at %s with the first record after the checkpoint at %s",
+						XLogLocationToString(&ReadRecPtr),
+						XLogLocationToString2(redoCheckpointLoc))));
 	}
 
 	InRecovery = true;
@@ -7823,6 +7839,7 @@ XLogLocationToBuffer(char *buffer, XLogRecPtr *loc)
 static char xlogLocationBuffer[50];
 static char xlogLocationBuffer2[50];
 static char xlogLocationBuffer3[50];
+static char xlogLocationBuffer4[50];
 
 char *
 XLogLocationToString(XLogRecPtr *loc)
@@ -7841,3 +7858,10 @@ XLogLocationToString3(XLogRecPtr *loc)
 {
 	return XLogLocationToBuffer(xlogLocationBuffer3, loc);
 }
+
+char *
+XLogLocationToString4(XLogRecPtr *loc)
+{
+	return XLogLocationToBuffer(xlogLocationBuffer4, loc);
+}
+

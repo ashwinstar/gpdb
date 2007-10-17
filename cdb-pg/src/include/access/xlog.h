@@ -168,13 +168,12 @@ extern XLogRecPtr GetRedoRecPtr(void);
 extern void GetNextXidAndEpoch(TransactionId *xid, uint32 *epoch);
 
 extern void XLogGetBuffer(int startidx, int npages, char **from, Size *nbytes);
-extern void XLogGetRecoveryStart(XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint);
-extern void XLogScanForEndLocation(XLogRecPtr *startLoc, XLogRecPtr *endLoc);
-extern void XLogRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoint, XLogRecPtr *lastRecordLoc);
+extern void XLogGetStandbyRecoveryStart(char *reasonStr, XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint);
+extern void XLogScanForStandbyEndLocation(XLogRecPtr *startLoc, XLogRecPtr *endLoc);
+extern void XLogStandbyRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoint, XLogRecPtr *lastRecordLoc);
 extern bool XLogQDMirrorQueuePositionToEnd(int *serialNumber);
 extern bool XLogQDMirrorWaitForResponse(int serialNumber);
 extern bool XLogQDMirrorQueueCatchup(XLogRecPtr *flushedLocation, int *serialNumber);
-extern void XLogCatchupMirror(XLogRecPtr *endLocation, XLogRecPtr *flushedLocation);
 extern bool XLogCatchupQDMirror(XLogRecPtr *standbyLocation, XLogRecPtr *flushedLocation);
 extern void XLogRemoveStandbyLogs(uint32 log, uint32 seg, int *nsegsremoved);
 extern void XLogPrintLogNames(void);
@@ -182,6 +181,7 @@ extern void XLogPrintLogNames(void);
 extern char *XLogLocationToString(XLogRecPtr *loc);
 extern char *XLogLocationToString2(XLogRecPtr *loc);
 extern char *XLogLocationToString3(XLogRecPtr *loc);
+extern char *XLogLocationToString4(XLogRecPtr *loc);
 
 
 #endif   /* XLOG_H */

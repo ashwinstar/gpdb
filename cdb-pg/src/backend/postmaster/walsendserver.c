@@ -189,7 +189,7 @@ ss_quickdie(SIGNAL_ARGS)
 	 * backend.  This is necessary precisely because we don't clean up our
 	 * shared memory state.
 	 */
-	elog(LOG,"ss_quickdie: calling exit(2)");
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"ss_quickdie: calling exit(2)");
 	exit(2);
 }
 
@@ -298,6 +298,9 @@ WalSendServerLoop(void)
 	XLogRecPtr endLocation;
 	XLogRecPtr oldEndLocation;
 	bool successful;
+	uint32 periodicLen;
+	uint32 periodicReportLen;
+	XLogRecPtr periodicLocation;
 
 	MemSet(&originalEndLocation, 0, sizeof(originalEndLocation));
 	
@@ -314,6 +317,13 @@ WalSendServerLoop(void)
 
 	postmasterDied = false;
 	drain = false;
+
+	periodicLen = 0;
+	periodicReportLen = 1024 * 1024;	// 1 megabyte.
+//	if (!Debug_print_qd_mirroring)
+//		periodicReportLen *= 10;		// 10 megabytes.
+	
+	memset(&periodicLocation, 0, sizeof(XLogRecPtr));
 
 	ProcSetAcceptingNewRequests(PGPROC_REQUEST_WALSEND, true);
 
@@ -421,10 +431,14 @@ WalSendServerLoop(void)
 					
 					if (successful)
 					{
-						elog(NOTICE,"QD Mirror successfully synchronized to %s",
-						     XLogLocationToString(&walSendRequest.flushedLocation));
+						elog(LOG,"successfully copied transaction log from locations %s through %s to QD Mirror to synchronize it",
+						     XLogLocationToString(&originalEndLocation),
+						     XLogLocationToString2(&walSendRequest.flushedLocation));
 						
 						endLocation = walSendRequest.flushedLocation;
+
+						periodicLen = 0;
+						periodicLocation = endLocation;
 					}
 					else
 					{
@@ -480,14 +494,33 @@ WalSendServerLoop(void)
 						endLocation.xlogid = walSendRequest.logId;
 						endLocation.xrecoff = walSendRequest.logSeg * XLogSegSize +
 							                  walSendRequest.logOff;
-						elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
-							 "Send to QD mirror successful.  New end location %s (old %s)",
-							 XLogLocationToString(&endLocation),
-							 XLogLocationToString2(&oldEndLocation));
+
+						if (XLByteLT(oldEndLocation,endLocation))
+						{
+							periodicLen += nbytes;
+							if (periodicLen > periodicReportLen)
+							{
+								elog(LOG,
+									 "periodic report: %d bytes successfully send to QD mirror for locations %s through %s",
+									 periodicLen,
+									 XLogLocationToString(&periodicLocation),
+									 XLogLocationToString2(&endLocation));
+
+								periodicLen = 0;
+								periodicLocation = endLocation;
+							}
+						}
+						else
+						{
+							elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
+								 "Send to QD mirror successful.  New end location %s (old %s)",
+								 XLogLocationToString(&endLocation),
+								 XLogLocationToString2(&oldEndLocation));
+						}
 					}
 					else
 					{
-						elog(NOTICE,"disabling QD mirror (unable to write new log)");
+						elog(NOTICE,"disabling QD mirror (unable to send new log)");
 						disableQDMirroring();
 					}
 					

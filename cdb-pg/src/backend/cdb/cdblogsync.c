@@ -217,18 +217,24 @@ cdb_position_to_end(void)
 	CheckPoint redoCheckpoint;
 	XLogRecPtr endLocation;
 
-	XLogGetRecoveryStart(&redoCheckpointLoc, &redoCheckpoint);
+	// Throw in extra new line to make log more readable.
+	elog(LOG,"--------------------------");
+	
+	XLogGetStandbyRecoveryStart("to get initial restart location", &redoCheckpointLoc, &redoCheckpoint);
 	syncRedoLoc = redoCheckpoint.redo;
 
 	// UNDONE: Minimum of redoCheckpointLoc and redoCheckpoint.redo?
 	
-	XLogScanForEndLocation(&syncRedoLoc, &endLocation);
-	
+	XLogScanForStandbyEndLocation(&syncRedoLoc, &endLocation);
+
 	ereport(LOG,
 	 (errmsg("QDSYNC: reporting recovery start location %s and scanned end location %s",
 		 XLogLocationToString(&syncRedoLoc),
 		 XLogLocationToString2(&endLocation))));
 
+	// Throw in extra new line to make log more readable.
+	elog(LOG,"--------------------------");
+	
 	/*
 	 * Open up end location segment and set offset to end.
 	 */
@@ -262,7 +268,7 @@ cdb_new_checkpoint_loc(void)
 		elog(ERROR, "QDSYNC: found invalid new checkpoint location");
 	}
 
-	XLogGetRecoveryStart(&redoCheckPointLoc, &redoCheckPoint);
+	XLogGetStandbyRecoveryStart("for redo apply", &redoCheckPointLoc, &redoCheckPoint);
 	oldSyncRedoLoc = syncRedoLoc;
 	syncRedoLoc = redoCheckPoint.redo;
 	
@@ -277,7 +283,7 @@ cdb_new_checkpoint_loc(void)
 	 */
 	if (Debug_print_qd_mirroring)
 	{
-		XLogScanForEndLocation(&syncRedoLoc, &scanEndLoc);
+		XLogScanForStandbyEndLocation(&syncRedoLoc, &scanEndLoc);
 		
 		writeEndLoc.xlogid = xlogid;
 		writeEndLoc.xrecoff = xseg * XLogSegSize + 
@@ -288,13 +294,13 @@ cdb_new_checkpoint_loc(void)
 			 XLogLocationToString2(&writeEndLoc));
 	}
 
-	XLogRecoverRange(&redoCheckPointLoc, &redoCheckPoint, &newCheckpointLoc);
+	XLogStandbyRecoverRange(&redoCheckPointLoc, &redoCheckPoint, &newCheckpointLoc);
 
 	/*
 	 * Sample the recovery start location now to see if appling redo
 	 * processed checkpoint records and moved the restart location forward.
 	 */
-	XLogGetRecoveryStart(&redoCheckPointLoc, &redoCheckPoint);
+	XLogGetStandbyRecoveryStart("for redo progress check", &redoCheckPointLoc, &redoCheckPoint);
 	oldSyncRedoLoc = syncRedoLoc;
 	syncRedoLoc = redoCheckPoint.redo;
 
@@ -334,13 +340,16 @@ cdb_new_checkpoint_loc(void)
 
 		if (nsegsremoved > 0)
 		{
+		// Throw in extra new line to make log more readable.
 			ereport(LOG,
-			 (errmsg("QDSYNC: %d logs removed through logid %d, seg %d",
+			 (errmsg("QDSYNC: %d logs removed through logid %d, seg %d\n",
 				     nsegsremoved,
 				     logid, seg)));
 		}
 
 	}
+	// Throw in extra new line to make log more readable.
+	elog(LOG,"--------------------------");
 }
 
 
