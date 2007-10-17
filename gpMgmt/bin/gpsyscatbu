@@ -1,0 +1,206 @@
+#!/bin/bash
+#	Filename:-		gpsyscatbu
+#	Version:-		$Revision$
+#	Updated:-		$Date$
+#	Status:-		Development
+#	Author:-		Gavin Sherry
+#	Contact:-		swm@alcove.com.au
+# Copyright Greenplum
+#
+# Backup system catalog files across a cluster
+WORKDIR=`dirname $0`
+FUNCTIONS=$WORKDIR/lib/gp_bash_functions.sh
+if [ -f $FUNCTIONS ]; then
+		. $FUNCTIONS
+else
+		echo "[FATAL:]-Cannot source $FUNCTIONS file Script Exits!"
+		exit 2
+fi
+#******************************************************************************
+# Location Variables
+#******************************************************************************
+
+#******************************************************************************
+# Command Variables
+#******************************************************************************
+
+#******************************************************************************
+# Functions
+#******************************************************************************
+#
+USAGE () {
+	if [ -f ${GPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then		
+		$MORE ${GPDOCDIR}/$HELP_DOC_NAME
+		exit 0
+	else
+		$ECHO	
+		$ECHO "	  `basename $0`"
+		$ECHO
+		$ECHO "	  Starts the full Greenplum Database instance, or Master instance only in utility mode"
+		$ECHO
+		$ECHO "	  Usage:"
+		$ECHO "	  $0 [OPTIONS]"
+		$ECHO
+		$ECHO "	  General options:"
+		$ECHO "	  -?, display this help message & exit" 
+		$ECHO "	  -v, display version information & exit"
+		$ECHO "	  -t, display default parameter settings & exit"
+		$ECHO
+		$ECHO "	  Logging options:"
+		$ECHO "	  -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
+		$ECHO "	  -l, <logfile directory> alternative logfile directory [optional]"
+		$ECHO "	  -a, don't ask to confirm startup [default:- ask]"
+		$ECHO "	  -D, set log output to debug level, shows all function calls"
+		$ECHO
+		$ECHO "	  Connection options:"
+		$ECHO "	  -d, <Master instance directory> name of alternative Master instance to start up [optional]"
+		$ECHO
+		$ECHO "	  Database startup options:"
+		$ECHO "	  -m, start master instance only in maintenance mode [default:- full Greenplum database startup]"
+		$ECHO "	  -z, force startup of segment instance marked as invalid"
+		$ECHO "	  -y, do not start master standby server [default:- start standby server process]"
+		$ECHO "	  -s, switch master log file, moves current logfile to <log file>.YYYYMMDD"
+		$ECHO "	  -e, switch segment instance log files, moves current logfile to <log file>.YYYYMMDD"
+		$ECHO "		  not applicable in master maintenance mode startup"
+		$ECHO "	  -B, <number> run this batch of start segment processes in parallel [default $BATCH_DEFAULT]"
+		$ECHO
+		$ECHO "	  Return codes:"
+		$ECHO "	  0 No problems encountered with requested operation"
+		$ECHO "	  1 Warning generated, but instance operational"
+		$ECHO "	  2 Fatal error, instance not started, or in an inconsistent state"
+		$ECHO
+		exit $EXIT_STATUS
+	fi
+}
+
+UNKNOWN_OPTION () {
+		$ECHO
+		$ECHO "[ERROR]:-Unknown option $1"
+		USAGE
+}
+
+DISPLAY_PARAM () {
+		if [ -z $MASTER_PORT ]; then
+				MASTER_PORT="Not set in ENV"
+		fi
+		$ECHO
+		$ECHO "Current Default Startup Parameters"
+		$ECHO "----------------------------------"
+		$ECHO "Greenplum Master instance port		= $MASTER_PORT	  [Override with -p <port number>]"
+		$ECHO "Greenplum Master instance directory   = $MASTER_DATA_DIRECTORY [Override with -d <Master directory>]"
+		if [ $INTERACTIVE ]; then
+				$ECHO "Interactive				 = True			[Override with -a]"
+		else
+				$ECHO "Interactive				 = False"
+		fi
+		if [ $VERBOSE ]; then
+				$ECHO "Verbose					 = True			[Override with -q]"
+		else
+				$ECHO "Verbose					 = False"
+		fi 
+		if [ "$WAIT" == "-w" ]; then
+				$ECHO "Wait for startup			= True			[Override with -n]"
+		else
+				$ECHO "Wait for startup			= False"
+		fi 
+		$ECHO
+		exit $EXIT_STATUS
+}
+
+
+CHK_QD_DB_RUNNING () {
+		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		if [  -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
+			LOG_MSG "[WARN]:-$PG_PID file exists on Master, checking if recovery startup required" 1
+		fi
+		LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+
+#******************************************************************************
+# Main Section
+#******************************************************************************
+trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
+
+VERBOSE=1
+MASTER_HOSTNAME=`$HOSTNAME`
+GPTARFILES=bin/lib/gptarfiles.sh
+
+if [ $# -ne 0 ]; then
+		while getopts ":vt'?'abqyzsml:d:e!DB:u:" opt;do
+				case $opt in
+						d ) MASTER_DATA_DIRECTORY=$OPTARG ;;
+						q ) VERBOSE=0 ;;
+						* )  ;;
+				esac
+		done
+fi
+LOG_MSG "[INFO]:-Performing cluster wide system catalog backup"
+
+LOG_MSG "[INFO]:-Checking that cluster is shutdown"
+$GPSTART -a $*
+
+GET_MASTER_PORT $MASTER_DATA_DIRECTORY
+GET_QD_DB_NAME
+
+NODE_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.definedprimary, c.datname, c.oid from $CONFIG_TABLE a, $GP_PG_VIEW b, pg_database c where a.dbid=b.dbid;"`) > /dev/null 2>&1
+
+FILELIST=()
+j=0
+for NODE in "${NODE_ARRAY[@]}"
+do 
+	NODE_NAME=`$ECHO $NODE|$CUT -d"|" -f1`
+	NODE_DIR=`$ECHO $NODE|$CUT -d"|" -f2`
+	NODE_PORT=`$ECHO $NODE|$CUT -d"|" -f3`
+	NODE_VALID=`$ECHO $NODE|$CUT -d"|" -f4`
+	NODE_PRIMARY=`$ECHO $NODE|$CUT -d"|" -f5`
+	NODE_DB=`$ECHO $NODE|$CUT -d"|" -f6`
+	NODE_DBOID=`$ECHO $NODE|$CUT -d"|" -f7`
+
+	if [ "$NODE_DB" == "template0" ]; then
+		# do template0 and global directory
+		FILELIST[$j]="$NODE_NAME|$NODE_DIR|global/*"
+		j=$[$j+1]
+#		echo "$NODE_NAME|$NODE_DIR|global/*"
+		tmp0oid=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $NODE_PORT template1 -A -t -c"select oid from pg_database where datname = 'template0'"` > /dev/null 2>&1
+		FILELIST[$j]="$NODE_NAME|$NODE_DIR|base/$tmp0oid/*"
+		j=$[$j+1]
+#		echo "$NODE_NAME|$NODE_DIR|base/$tmp0oid/*"
+	else
+		tmp=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $NODE_PORT $NODE_DB -A -t -c"select case when spcname = 'pg_default' and spclocation = '' then 'base/' || '$NODE_DBOID'::text || '/' else spclocation || '/' end || c.relfilenode from pg_class c, pg_tablespace p, pg_namespace n where c.relkind in ('r', 'i', 't') and relisshared = 'f' and (c.reltablespace = p.oid OR (c.reltablespace = 0 AND p.spcname = 'pg_default')) and relnamespace = n.oid and n.nspname = 'pg_catalog' and (c.relname like 'pg_%' OR c.relname like 'gp_%');"`) > /dev/null 2>&1
+		files=""
+		for tmpfile in "${tmp[@]}"
+		do
+			f="$tmpfile $tmpfile.*"
+			if [ "$files"x == ""x ]; then
+				files=$f
+			else
+				files="$files $f"
+			fi
+		done
+#		echo "$NODE_NAME|$NODE_DIR|$files"
+		FILELIST[$j]="$NODE_NAME|$NODE_DIR|$files"
+		j=$[$j+1]
+	fi
+done
+
+date=`$DATE '+%Y-%m-%d-%H.%M.%S'`
+
+for i in "${FILELIST[@]}"
+do
+	NODE_NAME=`$ECHO $i|$CUT -d"|" -f1`
+	NODE_DIR=`$ECHO $i|$CUT -d"|" -f2`
+	FILES=`$ECHO $i|$CUT -d"|" -f3`
+	LOG_MSG "[INFO]:-Backing up \"$NODE_NAME:$NODE_DIR\""
+	$TRUSTED_SHELL $NODE_NAME "cd $NODE_DIR ; $GTAR --ignore-failed-read -zcf gpcatalog_backup-$date.tar.gz $FILES" > /dev/null 2>&1
+	if [ $? -ne 0 ]
+	then
+		LOG_MSG "[WARN]:-Backup command returned non-zero exit status on node $NODE_NAME, directory $NODE_DIR"
+	else
+		LOG_MSG "[INFO]:-Backup successful"
+	fi
+done
+
+$GPSTOP -a -d $MASTER_DATA_DIRECTORY
+LOG_MSG "[INFO]:-End Main"
+exit $EXIT_STATUS
