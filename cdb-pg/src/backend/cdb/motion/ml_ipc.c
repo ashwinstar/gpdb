@@ -1551,7 +1551,10 @@ DeregisterReadInterest(ChunkTransportState *transportStates,
 	ChunkTransportStateEntry *pEntry = NULL;
 	MotionConn *conn;
 
-	Insist(transportStates && transportStates->activated);
+	Insist(transportStates);
+
+	if (!transportStates->activated)
+		return;
 
 	getChunkTransportState(transportStates, motNodeID, &pEntry);
 	conn = pEntry->conns + srcRoute;
