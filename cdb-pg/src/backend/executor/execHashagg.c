@@ -247,6 +247,7 @@ void reset_agg_hash_table(AggState *aggstate)
 	MemoryContextReset(aggstate->transcontext);
 	ht->nentries = 0;
 	memset(&ht->entrybuf, 0, sizeof(ht->entrybuf));
+	memset(&ht->tuplebuf, 0, sizeof(ht->tuplebuf));
 	init_agg_hash_iter(ht);
 }
 
@@ -946,6 +947,7 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 	Datum *values = aggstate->hashslot->tts_values;
 	bool *isnull = aggstate->hashslot->tts_isnull;
 	ListCell *lc;
+	unsigned int tuplen;
 
 	if (inputslot->tts_nvalid >= linitial_int(aggstate->hash_needed))
 	{
@@ -971,6 +973,7 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 
 	oldContext = MemoryContextSwitchTo(ht->entry_cxt);
 
+	/* take a slot in entrybuf */
 	if (ht->entrybuf.szper == 0) 
 	{
 		ht->entrybuf.szper = sizeof(HashAggEntry) 
@@ -979,6 +982,7 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 			   : (aggstate->numaggs - 1) * sizeof(AggStatePerGroupData));
 		ht->entrybuf.szper = MAXALIGN(ht->entrybuf.szper);
 	}
+
 
 	if (ht->entrybuf.base == 0 || ht->entrybuf.cur >= ht->entrybuf.end)
 	{
@@ -991,9 +995,38 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 	entry = (HashAggEntry*) ht->entrybuf.cur;
 	memset(entry, 0, ht->entrybuf.szper);
 	ht->entrybuf.cur += ht->entrybuf.szper;
-	/* cktan; use this instead ExecCopySlotHeapTupleTo */
-	entry->heaptuple = ExecCopySlotHeapTupleTo(aggstate->hashslot, 
-											   ht->entry_cxt, 0, 0);
+
+	/* take a slot in tuplebuf */
+	if (ht->tuplebuf.base == 0)
+	{
+		const int n = 64 * 1024 - 32;
+		ht->tuplebuf.base = palloc(n);
+		ht->tuplebuf.end = ht->tuplebuf.base + n;
+		ht->tuplebuf.cur = ht->tuplebuf.base;
+	}
+	tuplen = ht->tuplebuf.end - ht->tuplebuf.cur;
+	entry->heaptuple = ExecCopySlotHeapTupleTo(aggstate->hashslot, 0, ht->tuplebuf.cur, &tuplen);
+	if (! entry->heaptuple) 
+	{
+		if (ht->tuplebuf.end - ht->tuplebuf.cur < 8 * 1024) 
+		{
+			const int n = 64 * 1024 - 32;
+			ht->tuplebuf.base = palloc(n);
+			ht->tuplebuf.end = ht->tuplebuf.base + n;
+			ht->tuplebuf.cur = ht->tuplebuf.base;
+			tuplen = ht->tuplebuf.end - ht->tuplebuf.cur;
+			entry->heaptuple = ExecCopySlotHeapTupleTo(aggstate->hashslot, 0, ht->tuplebuf.cur, &tuplen);
+		}
+
+		if (! entry->heaptuple)
+		{
+			entry->heaptuple = ExecCopySlotHeapTupleTo(aggstate->hashslot, 
+													   ht->entry_cxt, 0, 0);
+			tuplen = 0;
+		}
+	}
+
+	ht->tuplebuf.cur += MAXALIGN(tuplen);
 	entry->hashvalue = hashvalue;
 	
 	MemoryContextSwitchTo(oldContext);

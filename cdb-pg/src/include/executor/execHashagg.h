@@ -86,6 +86,11 @@ typedef struct HashAggTable
 		char *end;		/* end of allocated memory */
 		int  szper;		/* #bytes per entry */
 	} entrybuf;					/* preallocated entries */
+	struct {
+		char* base;
+		char* cur;
+		char* end;
+	} tuplebuf;
 	unsigned		max_entries;
 	unsigned		nentries;
 	
