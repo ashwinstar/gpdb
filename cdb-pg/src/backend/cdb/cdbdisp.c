@@ -2139,7 +2139,7 @@ thread_DispatchWaitSingle(DispatchCommandParms		*pParms)
 	
 	/* Assert() cannot be used in threads */
 	if (pParms->db_count != 1)
-		write_log("Bug... therad_dispatchWaitSingle called with db_count %d",pParms->db_count);
+		write_log("Bug... thread_dispatchWaitSingle called with db_count %d",pParms->db_count);
 	
 	dispatchResult = pParms->dispatchResultPtrArray[0];
 	segdbDesc = dispatchResult->segdbDesc;
@@ -2591,6 +2591,8 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 	for (i = 0; i < db_count; i++)
 	{							/* loop to check connection status */
 		dispatchResult = pParms->dispatchResultPtrArray[i];
+		if (dispatchResult == NULL)
+			continue;
 		segdbDesc = dispatchResult->segdbDesc;
 		meleeResults = dispatchResult->meleeResults;
 
