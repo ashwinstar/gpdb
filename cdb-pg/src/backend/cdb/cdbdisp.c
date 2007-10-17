@@ -2305,7 +2305,10 @@ thread_DispatchCommand(void *arg)
 
 	if (thread_DispatchOut(pParms))
 	{
-		if (pParms->db_count == 1)
+		/*
+		 * thread_DispatchWaitSingle might have a problem with interupts
+		 */
+		if (pParms->db_count == 1 && false)
 			thread_DispatchWaitSingle(pParms);
 		else
 			thread_DispatchWait(pParms);
