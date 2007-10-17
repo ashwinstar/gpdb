@@ -158,6 +158,9 @@ createDispatchAgents(void)
 	
 	if (getgpsegmentCount()<=1)	/* some developers use a single segment, I think */
 		size = 1;
+	
+	if (dispatchagents && dispatchagentsOk(dispatchagents))
+		return dispatchagents;
 
 	elog(DEBUG1,"createDispatchAgents");
 	
@@ -334,7 +337,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	/*
 	 * If we are going to use Dispatch Agents, we need to make sure they are running
 	 */
-	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent && dispatchagents==NULL)
+	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent && (dispatchagents==NULL || !dispatchagentsOk(dispatchagents)))
 		createDispatchAgents();
 
 	/*
@@ -3729,6 +3732,38 @@ disconnectAndDestroyAllGangs(void)
 }
 
 bool
+dispatchagentsOk(DispatchAgentSet * das)
+{
+	int			i;
+
+	if (das == NULL)
+		return false;
+	
+	if (das->size > 100000 || das->size < 1)
+		return false;
+
+	
+	 
+	for (i = 0; i < das->size; i++)
+	{
+		SegmentDatabaseDescriptor *segdbDesc = &(das->db_descriptors[i]);
+		
+		if (segdbDesc == NULL)
+			return false;
+
+		if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)
+			return false;
+	}
+	/*
+	 * TODO:  Should we send a message to the dispatch agent, asking that it verify the
+	 * integrity of the gang?
+	 */
+
+	return true;
+}
+
+
+bool
 gangOK(Gang * gp)
 {
 	int			i;
@@ -3743,7 +3778,7 @@ gangOK(Gang * gp)
 	 * Loop through the segment_database_descriptors array looking for
 	 * invalid connections
 	 */
-	if (!gp_use_dispatch_agent || Gp_role == GP_ROLE_DISPATCHAGENT)
+	if (!gp_use_dispatch_agent || Gp_role == GP_ROLE_DISPATCHAGENT || gp->type == GANGTYPE_ENTRYDB_READER)
 	{
 		/*
 		 * Gang is direct-connect (no agents).
@@ -3768,23 +3803,10 @@ gangOK(Gang * gp)
 			elog(NOTICE,"Gang is missing it's dispatchagents");
 			return false;
 		}
-		
-		if (gp->dispatchagents->size > 100000)
-		{
-			elog(NOTICE,"Gang dispatchagents are garbage");
+				
+		if (!dispatchagentsOk(gp->dispatchagents))
 			return false;
-		}
-	 
-		for (i = 0; i < gp->dispatchagents->size; i++)
-		{
-			SegmentDatabaseDescriptor *segdbDesc = &(gp->dispatchagents->db_descriptors[i]);
-			
-			if (segdbDesc == NULL)
-				return false;
-	
-			if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)
-				return false;
-		}
+		
 		/*
 		 * TODO:  Should we send a message to the dispatch agent, asking that it verify the
 		 * integrity of the gang?

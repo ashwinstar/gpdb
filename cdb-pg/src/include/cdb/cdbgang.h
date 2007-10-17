@@ -76,6 +76,8 @@ extern Gang *allocateMirrorWriterGang(void);
 
 extern List *getCdbProcessList(Gang *gang, int sliceIndex);
 
+extern bool dispatchagentsOk(DispatchAgentSet * das);
+
 extern bool gangOK(Gang * gp);
 
 extern List *getCdbProcessesForQD(int isPrimary);
