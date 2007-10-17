@@ -568,6 +568,13 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 			url_fclose(file);
 			return NULL;
 		}
+		if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4)))
+		{
+			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_IPRESOLVE error (%d - %s)",
+				 e, curl_easy_strerror(e));
+			url_fclose(file);
+			return NULL;
+		}
 	
 		file->u.curl.x_httpheader = 0;
 		if (set_httpheader(file, "X-GP-MASTER_HOST", ev->GP_MASTER_HOST)
