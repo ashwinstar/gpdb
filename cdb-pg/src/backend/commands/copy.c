@@ -730,6 +730,11 @@ DoCopy(const CopyStmt *stmt)
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("COPY single row error handling only available using COPY FROM")));
 		
+		if (cstate->binary)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+					 errmsg("COPY single row error handling is not supported in BINARY format")));
+		
 		if (sreh->errtable)
 		{
 			cstate->errMode = SREH_LOG;
