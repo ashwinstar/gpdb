@@ -181,6 +181,8 @@ MAILFILE=$SCRIPTDIR/mail_contacts
 HMAILFILE=$HOME/mail_contacts
 GPDOCDIR=${GPHOME}/docs/cli_help/
 GPSUBSCRIPTDIR=${SCRIPTDIR}/lib
+GPUPGRADE=$SCRIPTDIR/gpupgrade
+GPSYSCATBU=$SCRIPTDIR/gpsyscatbu
 #******************************************************************************
 # Greenplum Command Variables
 #******************************************************************************
@@ -304,7 +306,7 @@ ERROR_EXIT () {
 				if [ -s $BACKOUT_FILE ]; then
 						LOG_MSG "[WARN]:-Script has left Greenplum Database configuration in an incomplete state"
 						LOG_MSG "[WARN]:-Run command /bin/bash $BACKOUT_FILE to remove these changes"
-						BACKOUT_COMMAND "if [ $MASTER_HOSTNAME != \`$HOSTNAME\` ];then $ECHO \"[FATAL]:-Not on original master host $MASTER_HOSTNAME, backout script exiting!\";exit 2;fi"
+						BACKOUT_COMMAND "if [ "$MASTER_HOSTNAME" != \`$HOSTNAME\` ];then $ECHO \"[FATAL]:-Not on original master host $MASTER_HOSTNAME, backout script exiting!\";exit 2;fi"
 						$ECHO "$RM -f $BACKOUT_FILE" >> $BACKOUT_FILE
 				fi
 		fi

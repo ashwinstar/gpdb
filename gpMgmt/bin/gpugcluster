@@ -1,0 +1,165 @@
+#!/bin/bash
+#	Filename:-		gpugcluster
+#	Version:-		$Revision$
+#	Updated:-		$Date$
+#	Status:-		Development
+#	Author:-		Gavin Sherry
+#	Contact:-		swm@alcove.com.au
+# Copyright Greenplum
+#
+# Upgrade (or downgrade) a database cluster
+#
+WORKDIR=`dirname $0`
+FUNCTIONS=$WORKDIR/lib/gp_bash_functions.sh
+if [ -f $FUNCTIONS ]; then
+		. $FUNCTIONS
+else
+		echo "[FATAL:]-Cannot source $FUNCTIONS file Script Exits!"
+		exit 2
+fi
+#******************************************************************************
+# Functions
+#******************************************************************************
+#
+USAGE () {
+	if [ -f ${GPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then		
+		$MORE ${GPDOCDIR}/$HELP_DOC_NAME
+		exit 0
+	else
+		$ECHO	
+		$ECHO "	  `basename $0`"
+		$ECHO
+		$ECHO "	  Upgrade a Greenplum 3.0 series database system to 3.1."
+		$ECHO "   Downgrade a Greenplum 3.1 series database system to 3.0."
+		$ECHO
+		$ECHO "   System must be stopped with 3.1 series software installed."
+		$ECHO
+		$ECHO "	  Usage:"
+		$ECHO "	  $0 [OPTIONS]"
+		$ECHO
+		$ECHO "	  General options:"
+		$ECHO "	  -?, display this help message & exit" 
+		$ECHO "	  -v, display version information & exit"
+		$ECHO
+		$ECHO "	  Logging options:"
+		$ECHO "	  -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
+		$ECHO "	  -l, <logfile directory> alternative logfile directory [optional]"
+		$ECHO "	  -a, don't ask to confirm startup [default:- ask]"
+		$ECHO "	  -D, set log output to debug level, shows all function calls"
+		$ECHO
+		$ECHO "	  Connection options:"
+		$ECHO "	  -d, <Master instance directory> name of alternative Master instance to start up [optional]"
+		$ECHO
+		$ECHO "	  Database startup options (to be passed to gpstart):"
+		$ECHO "	  -m, start master instance only in maintenance mode [default:- full Greenplum database startup]"
+		$ECHO "	  -z, force startup of segment instance marked as invalid"
+		$ECHO "	  -y, do not start master standby server [default:- start standby server process]"
+		$ECHO "	  -s, switch master log file, moves current logfile to <log file>.YYYYMMDD"
+		$ECHO "	  -e, switch segment instance log files, moves current logfile to <log file>.YYYYMMDD"
+		$ECHO "		  not applicable in master maintenance mode startup"
+		$ECHO "	  -B, <number> run this batch of start segment processes in parallel [default $BATCH_DEFAULT]"
+		$ECHO
+		$ECHO "	  Return codes:"
+		$ECHO "	  0 No problems encountered with requested operation"
+		$ECHO "	  1 Warning generated, but instance operational"
+		$ECHO "	  2 Fatal error, instance not started, or in an inconsistent state"
+		$ECHO
+		exit $EXIT_STATUS
+	fi
+}
+
+UNKNOWN_OPTION () {
+		$ECHO
+		$ECHO "[ERROR]:-Unknown option $1"
+		USAGE
+}
+
+CHK_QD_DB_RUNNING () {
+		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		if [  -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
+			LOG_MSG "[WARN]:-$PG_PID file exists on Master, checking if recovery startup required" 1
+		fi
+		LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+
+#******************************************************************************
+# Main Section
+#******************************************************************************
+trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
+
+VERBOSE=1
+MASTER_HOSTNAME=`$HOSTNAME`
+BACKUP=0
+UPGRADE_TO=0;
+DEBUG_LEVEL=0
+
+START_ARGS=""
+STOP_ARGS=""
+UG_ARGS=""
+
+if [ $# -ne 0 ]; then
+		while getopts ":vt'?'acbqyzsml:d:e!DB:u:h:p:U:" opt;do
+				case $opt in
+						d ) 
+							MASTER_DATA_DIRECTORY=$OPTARG
+							START_ARGS="$START_ARGS -d $OPTARG "
+							STOP_ARGS="$STOP_ARGS -d $OPTARG "
+						;;
+						q ) 
+							VERBOSE=0
+							START_ARGS="$START_ARGS -q "
+							STOP_ARGS="$STOP_ARGS -q "
+						;;
+						c ) BACKUP=1 ;;
+						D ) 
+							DEBUG_LEVEL=1
+							START_ARGS="$START_ARGS -D "
+							STOP_ARGS="$STOP_ARGS -D "
+							UG_ARGS="$UG_ARGS -d "
+						;;
+						u ) 
+							UPGRADE_TO=$OPTARG
+							START_ARGS="$START_ARGS -u $OPTARG "
+							if [ $UPGRADE_TO == "3.0" ]; then
+								UG_ARGS="$UG_ARGS -D "
+							fi
+						;;
+						
+						h ) UG_ARGS="$UG_ARGS -h $OPTARG " ;;
+						p ) UG_ARGS="$UG_ARGS -p $OPTARG " ;;
+						U ) UG_ARGS="$UG_ARGS -U \"$OPTARG\" " ;;
+						* ) START_ARGS="-$opt $OPTARG ";;
+				esac
+		done
+fi
+
+if [ $BACKUP -eq 1 ]; 
+then
+	echo "do backup"
+fi
+
+$GPSTART -a $START_ARGS
+
+if [ $? -ne 0 ]
+then
+	LOG_MSG "[FATAL]:-gpstart returned non-zero return status, exiting"
+	exit 2
+fi
+
+$GPUPGRADE $UG_ARGS
+
+if [ $? -ne 0 ]
+then
+	LOG_MSG "[WARN]:-gpupgrade returned non-zero return status"
+fi
+
+$GPSTOP -a $STOP_ARGS
+
+if [ $? -ne 0 ]
+then
+	LOG_MSG "[WARN]:-gpstop returned non-zero return status"
+fi
+
+LOG_MSG "[INFO]:-End Main"
+exit $EXIT_STATUS
