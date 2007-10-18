@@ -1237,6 +1237,8 @@ typedef struct CreateExternalStmt
 	List	   *formatOpts;		/* List of DefElem nodes for data format */
 	bool		isweb;
 	Node	   *sreh;			/* Single row error handling info */
+	List	   *encoding;		/* List (size 1 max) of DefElem nodes for 
+								   data encoding */
 } CreateExternalStmt;
 
 /* ----------

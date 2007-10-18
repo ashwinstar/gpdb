@@ -90,6 +90,7 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 	rel->rejectlimit = -1;
 	rel->rejectlimittype = '\0';
 	rel->fmterrtbl = InvalidOid;
+	rel->ext_encoding = -1;
 	rel->isrescannable = true;
 	rel->baserestrictinfo = NIL;
 	rel->baserestrictcost.startup = 0;

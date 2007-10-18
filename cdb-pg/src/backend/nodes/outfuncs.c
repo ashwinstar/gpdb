@@ -392,7 +392,8 @@ _outExternalScan(StringInfo str, ExternalScan *node)
 	WRITE_BOOL_FIELD(isText);
 	WRITE_INT_FIELD(rejLimit);
 	WRITE_BOOL_FIELD(rejLimitInRows);
-	WRITE_OID_FIELD(fmterrtbl);	
+	WRITE_OID_FIELD(fmterrtbl);
+	WRITE_INT_FIELD(encoding);
 	WRITE_INT_FIELD(scancounter);
 }
 
@@ -1541,6 +1542,7 @@ _outRelOptInfo(StringInfo str, RelOptInfo *node)
 	WRITE_INT_FIELD(rejectlimit);
 	WRITE_CHAR_FIELD(rejectlimittype);
 	WRITE_OID_FIELD(fmterrtbl);
+	WRITE_INT_FIELD(ext_encoding);
 	WRITE_BOOL_FIELD(isrescannable);
 	WRITE_NODE_FIELD(baserestrictinfo);
 	WRITE_NODE_FIELD(joininfo);
@@ -1732,6 +1734,7 @@ _outCreateExternalStmt(StringInfo str, CreateExternalStmt *node)
 	WRITE_NODE_FIELD(formatOpts);
 	WRITE_BOOL_FIELD(isweb);
 	WRITE_NODE_FIELD(sreh);
+	WRITE_NODE_FIELD(encoding);
 }
 
 static void

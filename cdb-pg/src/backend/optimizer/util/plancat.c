@@ -46,6 +46,7 @@
 #include "miscadmin.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbrelsize.h"
+#include "mb/pg_wchar.h"
 
 
 /* GUC parameter */
@@ -317,6 +318,7 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 	Datum		rejectlimit;
 	Datum		rejectlimittype;
 	Datum		fmterrtbl;
+	Datum		encoding;
 	char	   *loc_str = NULL;
 	bool		isNull;
 	Datum	   *elems;
@@ -465,7 +467,17 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 		rel->fmterrtbl = InvalidOid;
 	else
 		rel->fmterrtbl = DatumGetObjectId(fmterrtbl);
+
+	/*
+	 * data encoding
+	 */
+	encoding = heap_getattr(tuple, 
+							Anum_pg_exttable_encoding, 
+							pg_exttable_rel->rd_att, 
+							&isNull);
 	
+	rel->ext_encoding = DatumGetInt32(encoding);
+	Insist(PG_VALID_ENCODING(rel->ext_encoding));
 	
 	/* Finish up scan and close exttable catalog. */
 	systable_endscan(extscan);

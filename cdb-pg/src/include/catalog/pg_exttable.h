@@ -27,6 +27,7 @@ CATALOG(pg_exttable,6040) BKI_WITHOUT_OIDS
 	int4		rejectlimit;	/* error count reject limit per segment */
 	char		rejectlimittype; /* 'r' (rows) or 'p' (percent) */
 	Oid			fmterrtbl;		/* the data format error table oid in pg_class */
+	int4		encoding;		/* character encoding of this external table */
 
 } FormData_pg_exttable;
 
@@ -38,7 +39,7 @@ CATALOG(pg_exttable,6040) BKI_WITHOUT_OIDS
 */
 typedef FormData_pg_exttable *Form_pg_exttable;
 
-#define Natts_pg_exttable			8
+#define Natts_pg_exttable			9
 #define Anum_pg_exttable_reloid		1
 #define Anum_pg_exttable_location	2
 #define Anum_pg_exttable_fmtcode	3
@@ -47,6 +48,7 @@ typedef FormData_pg_exttable *Form_pg_exttable;
 #define Anum_pg_exttable_rejectlimit 6
 #define Anum_pg_exttable_rejectlimittype 7
 #define Anum_pg_exttable_fmterrtbl 8
+#define Anum_pg_exttable_encoding 9
 
 /* No initial contents. */
 

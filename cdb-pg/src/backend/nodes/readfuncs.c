@@ -1844,6 +1844,7 @@ _readCreateExternalStmt(void)
 	READ_NODE_FIELD(formatOpts);
 	READ_BOOL_FIELD(isweb);
 	READ_NODE_FIELD(sreh);
+	READ_NODE_FIELD(encoding);
 	
 	READ_DONE();
 }
@@ -2344,7 +2345,8 @@ _readExternalScan(void)
 	READ_BOOL_FIELD(isText);
 	READ_INT_FIELD(rejLimit);
 	READ_BOOL_FIELD(rejLimitInRows);
-	READ_OID_FIELD(fmterrtbl);	
+	READ_OID_FIELD(fmterrtbl);
+	READ_INT_FIELD(encoding);
 	READ_INT_FIELD(scancounter);
 	
 	READ_DONE();

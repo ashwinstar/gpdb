@@ -69,7 +69,7 @@
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 #include "utils/uri.h"
-
+#include "mb/pg_wchar.h"
 
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdispatchresult.h"      /* cdbdisp_destroyDispatchResults() */
@@ -7935,6 +7935,9 @@ StoreExternalRelation(CreateExternalStmt *stmt, Oid tbloid)
 	char		rejectlimittype = '\0';
 	Oid			fmtErrTblOid = InvalidOid;
 	bool		issreh = false; /* is single row error handling requested? */
+	ListCell   *option;
+	DefElem    *dencoding = NULL;
+	int			encoding = -1;
 	
 	Relation	pg_exttable_rel;
 	HeapTuple	pg_exttable_tuple = NULL;
@@ -8010,6 +8013,57 @@ StoreExternalRelation(CreateExternalStmt *stmt, Oid tbloid)
 			fmtErrTblOid = InvalidOid; /* no err tbl was requested */			
 	}
 	
+	/*
+	 * Parse external table data encoding
+	 */
+	foreach(option, stmt->encoding)
+	{
+		DefElem    *defel = (DefElem *) lfirst(option);
+		
+		Assert(strcmp(defel->defname, "encoding") == 0);
+		
+		if (dencoding)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("conflicting or redundant ENCODING specification")));
+		dencoding = defel;
+	}
+	
+	if (dencoding && dencoding->arg)
+	{
+		const char *encoding_name;
+		
+		if (IsA(dencoding->arg, Integer))
+		{
+			encoding = intVal(dencoding->arg);
+			encoding_name = pg_encoding_to_char(encoding);
+			if (strcmp(encoding_name, "") == 0 ||
+				pg_valid_server_encoding(encoding_name) < 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_OBJECT),
+						 errmsg("%d is not a valid encoding code",
+								encoding)));
+		}
+		else if (IsA(dencoding->arg, String))
+		{
+			encoding_name = strVal(dencoding->arg);
+			if (pg_valid_server_encoding(encoding_name) < 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_OBJECT),
+						 errmsg("%s is not a valid encoding name",
+								encoding_name)));
+			encoding = pg_char_to_encoding(encoding_name);
+		}
+		else
+			elog(ERROR, "unrecognized node type: %d",
+				 nodeTag(dencoding->arg));
+	}
+
+	/* If encoding is defaulted, use database encoding */
+	if (encoding < 0)
+		encoding = pg_get_client_encoding();
+	
+	
  	MemSet(values, 0, sizeof(values));
 	MemSet(nulls, ' ', sizeof(nulls));
 	
@@ -8058,6 +8112,9 @@ StoreExternalRelation(CreateExternalStmt *stmt, Oid tbloid)
 		nulls[Anum_pg_exttable_fmterrtbl - 1] = 'n';
 	}
 
+	values[Anum_pg_exttable_encoding - 1] = Int32GetDatum(encoding);
+		
+		
 	pg_exttable_tuple = heap_formtuple(RelationGetDescr(pg_exttable_rel), 
 									   values, nulls);
 	

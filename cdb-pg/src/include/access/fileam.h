@@ -23,7 +23,8 @@
 extern FileScanDesc file_beginscan(Relation relation, Index scanrelid, 
 								   uint32 scancounter, List *uriList, 
 								   List *fmtOpts, bool isText, int rejLimit,
-								   bool rejLimitInRows, Oid fmterrtbl);
+								   bool rejLimitInRows, Oid fmterrtbl,
+								   int encoding);
 extern void file_rescan(FileScanDesc scan);
 extern void file_endscan(FileScanDesc scan);
 extern HeapTuple file_getnext(FileScanDesc scan, ScanDirection direction);

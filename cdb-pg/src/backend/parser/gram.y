@@ -190,8 +190,10 @@ static void doNegateFloat(Value *v);
 
 %type <list>	createdb_opt_list alterdb_opt_list copy_opt_list
 				ext_on_clause_list format_opt format_opt_list transaction_mode_list
+				ext_opt_encoding_list
 %type <defelt>	createdb_opt_item alterdb_opt_item copy_opt_item
 				ext_on_clause_item format_opt_item transaction_mode_item
+				ext_opt_encoding_item
 
 %type <ival>	opt_lock lock_type cast_context
 %type <boolean>	opt_force opt_or_replace
@@ -2874,7 +2876,7 @@ CreateAsElement:
  *****************************************************************************/
 	
 CreateExternalStmt:	CREATE EXTERNAL OptWeb OptTemp TABLE qualified_name '(' OptExtTableElementList ')' 
-					ExtTypedesc FORMAT Sconst format_opt OptSingleRowErrorHandling
+					ExtTypedesc FORMAT Sconst format_opt OptSingleRowErrorHandling ext_opt_encoding_list
 						{
 							CreateExternalStmt *n = makeNode(CreateExternalStmt);
 							n->isweb = $3;
@@ -2885,6 +2887,7 @@ CreateExternalStmt:	CREATE EXTERNAL OptWeb OptTemp TABLE qualified_name '(' OptE
 							n->format = $12;
 							n->formatOpts = $13;
 							n->sreh = $14;
+							n->encoding = $15;
 							
 							if(((ExtTableTypeDesc *) n->exttypedesc)->exttabletype == EXTTBL_TYPE_EXECUTE &&
 							   !(n->isweb))
@@ -2892,7 +2895,7 @@ CreateExternalStmt:	CREATE EXTERNAL OptWeb OptTemp TABLE qualified_name '(' OptE
 										(errcode(ERRCODE_SYNTAX_ERROR),
 										 errmsg("EXECUTE may not be used with a regular external table"),
 										 errhint("Use CREATE EXTERNAL WEB TABLE instead")));							
-								
+							
 							$$ = (Node *)n;							
 						}
 						;
@@ -3066,7 +3069,24 @@ OptSrehKeep:
 		| /* empty */		{ $$ = FALSE; }
 		;
 
-
+/*
+ * ENCODING. (we cheat a little and use a list, even though it's 1 item max).
+ */
+ext_opt_encoding_list:
+		ext_opt_encoding_list ext_opt_encoding_item		{ $$ = lappend($1, $2); }
+		| /* EMPTY */									{ $$ = NIL; }
+		;
+	
+ext_opt_encoding_item:
+		ENCODING opt_equal Sconst
+		{
+			$$ = makeDefElem("encoding", (Node *)makeString($3));
+		}
+		| ENCODING opt_equal Iconst
+		{
+			$$ = makeDefElem("encoding", (Node *)makeInteger($3));
+		}
+		
 
 /*****************************************************************************
  *

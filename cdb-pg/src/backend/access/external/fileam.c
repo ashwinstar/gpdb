@@ -72,7 +72,7 @@ struct extvar_t
 static HeapTuple filegettup(FileScanDesc scan, ScanDirection dir);
 static void initParseState(CopyState pstate, Relation relation, List *fmtOpts, 
 						   bool isText, char *uri, int rejectlimit, 
-						   bool islimitinrows, Oid fmterrtbl);
+						   bool islimitinrows, Oid fmterrtbl, int encoding);
 static void open_external_file(FileScanDesc scan);
 static int	file_getdata(URL_FILE *extfile, CopyState pstate, int maxread);
 static void file_scan_error_callback(void *arg);
@@ -113,7 +113,7 @@ static char *g_dataSourceName = NULL;
 FileScanDesc
 file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 			   List *uriList, List *fmtOpts, bool isText, int rejLimit,
-			   bool rejLimitInRows, Oid fmterrtbl)
+			   bool rejLimitInRows, Oid fmterrtbl, int encoding)
 {
 	FileScanDesc scan;
 	TupleDesc	tupDesc = NULL;
@@ -205,7 +205,7 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 	 */
 	scan->fs_pstate = (CopyStateData *) palloc0(sizeof(CopyStateData));
 	initParseState(scan->fs_pstate, relation, fmtOpts, isText, scan->fs_uri,
-				   rejLimit, rejLimitInRows, fmterrtbl);
+				   rejLimit, rejLimitInRows, fmterrtbl, encoding);
 
 	/* Set up callback to identify error line number */
 	scan->errcontext.callback = file_scan_error_callback;
@@ -732,7 +732,8 @@ else\
  */
 static void
 initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, 
-			   char *uri, int rejectlimit, bool islimitinrows, Oid fmterrtbl )
+			   char *uri, int rejectlimit, bool islimitinrows, Oid fmterrtbl,
+			   int encoding)
 {
 	TupleDesc	tupDesc = NULL;
 	char	   *format_str = NULL;
@@ -844,7 +845,8 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 	 * encodings are the same, we must apply pg_client_to_server() to validate
 	 * data in multibyte encodings.
 	 */
-	pstate->client_encoding = pg_get_client_encoding();
+	Insist(PG_VALID_ENCODING(encoding));
+	pstate->client_encoding = encoding;
 	pstate->need_transcoding = (pstate->client_encoding != GetDatabaseEncoding() ||
 								pg_database_encoding_max_length() > 1);
 	pstate->encoding_embeds_ascii = PG_ENCODING_IS_CLIENT_ONLY(pstate->client_encoding);

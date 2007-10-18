@@ -159,7 +159,8 @@ ExecInitExternalScan(ExternalScan *node, EState *estate, int eflags)
 									 node->isText,
 									 node->rejLimit,
 									 node->rejLimitInRows,
-									 node->fmterrtbl);
+									 node->fmterrtbl,
+									 node->encoding);
 	
 	externalstate->ss.ss_currentRelation = currentRelation;
 	externalstate->ess_ScanDesc = currentScanDesc;
