@@ -34,7 +34,7 @@
 #include "miscadmin.h"
 #include "storage/ipc.h"
 #include "storage/pg_sema.h"
-#include "util/guc.h"
+#include "utils/guc.h"
 
 
 #ifndef HAVE_UNION_SEMUN
