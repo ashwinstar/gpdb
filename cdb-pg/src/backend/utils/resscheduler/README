@@ -56,10 +56,10 @@ Portal Increment -
     The resource related information for a statement. This consists of the
     process id, portal id and the set of additional changes to the limit
     counters that will be applied should this portal execute. A portal that
-    is managed by the scheduler *always* has increments - portals for queries
-    that are not going to be locked have portalId set to InvalidOid (either
-    because the owning role is not in a queue or the query has cost smaller than
-    the queue's "ignore" limit - see Queues above).
+    is managed by the scheduler [1] *always* has increments - portals for 
+    queries that are not going to be locked have portalId set to InvalidOid 
+    (either because the owning role is not in a queue or the query has cost 
+    smaller than the queue's "ignore" limit - see Queues above). 
 
 Proclock -
      Some changes have been made to the proclock structure... this should be
@@ -259,3 +259,18 @@ Views:
     pg_authid.rolresqueue
  pg_resqueue_status (new)
 
+-----------------------------------------------------------------------------
+
+Notes
+-----
+
+[1] "Managed by the Resource Scheduler" - this deserves some explanation,
+     In the current incarnation of the code it means:
+
+       portal->queueId != InvalidOid
+       portal->releaseResLock == true
+
+     
+     Typically every portal gets queueId set at creation, but this may get 
+     reset when the to-lock-or-not-to-lock decision comes around (see 
+     ResLockPortal).
