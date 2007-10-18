@@ -1367,7 +1367,7 @@ apr_status_t seg_status(gpcc_event_t *ev, void *_cmdslot)
     } else if (cmdslot->cmdstate == SEG_STOPPING_CMDSTATE) {
 	state = "stopping";
     } else {
-	state = "invalid state";
+	state = "initializing";
     }
 
 
