@@ -66,6 +66,7 @@ struct cmdslot_t {
 		apr_pool_t *subpool;
 		struct json_object *msg;
 		int parentidx;
+		int maidx;
 		char *action;
 		char *mode;
 		char *data_dir;
@@ -98,7 +99,6 @@ struct cmdslot_t {
 
 
 	struct {
-	    int rcvidx;
 	} ma;
     } u;
 };

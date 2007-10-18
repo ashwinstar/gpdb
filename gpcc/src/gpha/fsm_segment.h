@@ -50,10 +50,11 @@ static apr_status_t ma_cleanup(gpcc_event_t *ev, void *_cmdslot)
 static apr_status_t ma_status_reply(gpcc_event_t *ev, void *_cmdslot)
 {
    cmdslot_t *cmdslot = _cmdslot;
-
+    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
+   
     gpcc_log_info("ma_status_reply");
     return gpcc_net_send_packet(cmdslot->conn, STATUS_REPLY_MSG, 
-				cmdslot->cmdidx, cmdslot->u.ma.rcvidx, ev->pdata, ev->edatasz);    
+				cmdslot->cmdidx, pkt->mh.rcvidx, pkt->payload, pkt->mh.len);    
 }
 
 static apr_status_t ma_stop_reply(gpcc_event_t *ev, void *_cmdslot)
@@ -62,17 +63,18 @@ static apr_status_t ma_stop_reply(gpcc_event_t *ev, void *_cmdslot)
     struct json_object *obj;
     char *status;
     char *seg;
+    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
 
     gpcc_log_info("ma_stop_reply");
 
-    obj = json_tokener_parse((char *) ev->pdata);
+    obj = json_tokener_parse((char *) pkt->payload);
     status = gpcc_json_object_get_string(obj, "status", 0);
     seg = gpcc_json_object_get_string(obj, "seg", 0);
     gpcc_log_info("seg = %s, status = %s", seg, status);
 
     json_object_put(obj);
     return gpcc_net_send_packet(cmdslot->conn, SEGMENT_REPLY_MSG, 
-				cmdslot->cmdidx, cmdslot->u.ma.rcvidx, ev->pdata, ev->edatasz);
+				cmdslot->cmdidx, pkt->mh.rcvidx, pkt->payload, pkt->mh.len);
 
 }
 
@@ -82,17 +84,18 @@ static apr_status_t ma_start_reply(gpcc_event_t *ev, void *_cmdslot)
     struct json_object *obj;
     char *status;
     char *seg;
+    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
 
     gpcc_log_info("ma_start_reply");
 
-    obj = json_tokener_parse((char *) ev->pdata);
+    obj = json_tokener_parse((char *) pkt->payload);
     status = gpcc_json_object_get_string(obj, "status", 0);
     seg = gpcc_json_object_get_string(obj, "seg", 0);
     gpcc_log_info("seg = %s, status = %s", seg, status);
 
     json_object_put(obj);
     return gpcc_net_send_packet(cmdslot->conn, SEGMENT_REPLY_MSG, 
-				cmdslot->cmdidx, cmdslot->u.ma.rcvidx, ev->pdata, ev->edatasz);
+				cmdslot->cmdidx, pkt->mh.rcvidx, pkt->payload, pkt->mh.len);
 
 }
 
@@ -102,17 +105,18 @@ static apr_status_t ma_initdb_reply(gpcc_event_t *ev, void *_cmdslot)
     struct json_object *obj;
     char *status;
     char *seg;
+    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
 
     gpcc_log_info("ma_initdb_reply");
 
-    obj = json_tokener_parse((char *) ev->pdata);
+    obj = json_tokener_parse((char *) pkt->payload);
     status = gpcc_json_object_get_string(obj, "status", 0);
     seg = gpcc_json_object_get_string(obj, "seg", 0);
     gpcc_log_info("seg = %s, status = %s", seg, status);
 
     json_object_put(obj);
     return gpcc_net_send_packet(cmdslot->conn, SEGMENT_REPLY_MSG, 
-				cmdslot->cmdidx, cmdslot->u.ma.rcvidx, ev->pdata, ev->edatasz);
+				cmdslot->cmdidx, pkt->mh.rcvidx, pkt->payload, pkt->mh.len);
 
 }
 
@@ -133,8 +137,6 @@ static apr_status_t ma_dispatch_segment(gpcc_event_t *ev, void *_cmdslot)
 	return 0;
     }
 
-    cmdslot->u.ma.rcvidx = packet->mh.sndidx;
-    
     segobj = json_object_object_get(obj, "seg");
 
 
@@ -170,8 +172,7 @@ static apr_status_t ma_dispatch_segment(gpcc_event_t *ev, void *_cmdslot)
 	    evt = gpcc_event_alloc(etype, slot->cmdidx, sizeof(*packet) + packet->mh.len);
 	    memcpy(evt->pdata, packet, sizeof(*packet) + packet->mh.len - 1);
 	    packet = (gpcc_net_packet_t *) evt->pdata;
-	    packet->mh.sndidx = cmdslot->cmdidx;
-	    packet->mh.rcvidx = slot->cmdidx;
+	    packet->mh.rcvidx = cmdslot->cmdidx;
 	    gpcc_evqueue_put(gpha.evq, evt);
 	    json_object_put(obj);
 	    return 0;
@@ -183,8 +184,7 @@ static apr_status_t ma_dispatch_segment(gpcc_event_t *ev, void *_cmdslot)
     evt = gpcc_event_alloc(etype, slot->cmdidx, sizeof(*packet) + packet->mh.len);
     memcpy(evt->pdata, packet, sizeof(*packet) + packet->mh.len - 1);
     packet = (gpcc_net_packet_t *) evt->pdata;
-    packet->mh.sndidx = cmdslot->cmdidx;
-    packet->mh.rcvidx = slot->cmdidx;
+    packet->mh.rcvidx = cmdslot->cmdidx;
     gpcc_evqueue_put(gpha.evq, evt);    
     
     json_object_put(obj);
@@ -214,13 +214,19 @@ static apr_status_t seg_request_reply(gpcc_event_t* ev, void *_cmdslot, event_t 
     struct json_object *obj;
     char *objstr;
     gpcc_event_t *evt;
+    gpcc_net_packet_t *pkt;
 
     status = (cmdslot->u.seg.request.exitcode == 0) ? "ok" : "failure";
 
     obj = gpcc_json_segment_reply(cmdslot->cmdname, status, cmdslot->u.seg.request.reason);
     objstr = json_object_to_json_string(obj);
-    evt = gpcc_event_alloc(event, cmdslot->u.seg.request.parentidx, strlen(objstr)+1);
-    memcpy(evt->pdata, objstr, strlen(objstr)+1);
+    evt = gpcc_event_alloc(event, cmdslot->u.seg.request.parentidx, sizeof(*pkt) + strlen(objstr)+1);
+    pkt = (gpcc_net_packet_t *) evt->pdata;
+    pkt->mh.type = event;
+    pkt->mh.len = strlen(objstr)+1;
+    pkt->mh.sndidx = cmdslot->cmdidx;
+    pkt->mh.rcvidx = cmdslot->u.seg.request.maidx;
+    memcpy(pkt->payload, objstr, strlen(objstr)+1);
     gpcc_evqueue_put(gpha.evq, evt);
     json_object_put(obj);
 
@@ -328,7 +334,8 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     char *host;
 
     memset(&cmdslot->u.seg.request, 0, sizeof(cmdslot->u.seg.request));
-    cmdslot->u.seg.request.parentidx = packet->mh.sndidx;
+    cmdslot->u.seg.request.maidx = packet->mh.sndidx;
+    cmdslot->u.seg.request.parentidx = packet->mh.rcvidx;
 
     if (0 != (e = apr_pool_create(&cmdslot->u.seg.request.subpool, cmdslot->pool))) {
 	seg_request_error(FLINE, ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, e, "apr_pool_create error");
@@ -429,7 +436,8 @@ static apr_status_t seg_initdb_qe_and_master_qd(gpcc_event_t *ev, void *_cmdslot
     int max_connect = 0;
 
     memset(&cmdslot->u.seg.request, 0, sizeof(cmdslot->u.seg.request));
-    cmdslot->u.seg.request.parentidx = packet->mh.sndidx;
+    cmdslot->u.seg.request.maidx = packet->mh.sndidx;
+    cmdslot->u.seg.request.parentidx = packet->mh.rcvidx;
 
     if (0 != (e = apr_pool_create(&cmdslot->u.seg.request.subpool, cmdslot->pool))) {
 	seg_request_error(FLINE, ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, e, "apr_pool_create error");
@@ -1026,7 +1034,8 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
     int e;
 
     memset(&cmdslot->u.seg.request, 0, sizeof(cmdslot->u.seg.request));
-    cmdslot->u.seg.request.parentidx = packet->mh.sndidx;
+    cmdslot->u.seg.request.maidx = packet->mh.sndidx;
+    cmdslot->u.seg.request.parentidx = packet->mh.rcvidx;
 
     if (0 != (e = apr_pool_create(&cmdslot->u.seg.request.subpool, cmdslot->pool))) {
 	seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, e, "apr_pool_create error");
@@ -1168,7 +1177,8 @@ static apr_status_t seg_stop(gpcc_event_t* ev, void *_cmdslot)
     int len = sizeof(status);
 
     memset(&cmdslot->u.seg.request, 0, sizeof(cmdslot->u.seg.request));
-    cmdslot->u.seg.request.parentidx = packet->mh.sndidx;
+    cmdslot->u.seg.request.maidx = packet->mh.sndidx;
+    cmdslot->u.seg.request.parentidx = packet->mh.rcvidx;
 
     if (0 != (e = apr_pool_create(&cmdslot->u.seg.request.subpool, cmdslot->pool))) {
 	seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, e, "apr_pool_create error");
@@ -1288,7 +1298,8 @@ static apr_status_t seg_pg_ctl_status(gpcc_event_t* ev, void *_cmdslot)
     int len = sizeof(status);
 
     memset(&cmdslot->u.seg.request, 0, sizeof(cmdslot->u.seg.request));
-    cmdslot->u.seg.request.parentidx = packet->mh.sndidx;
+    cmdslot->u.seg.request.maidx = packet->mh.sndidx;
+    cmdslot->u.seg.request.parentidx = packet->mh.rcvidx;
 
     obj = json_tokener_parse(packet->payload);
     if (!obj) {
@@ -1378,6 +1389,7 @@ apr_status_t seg_busy_reply(gpcc_event_t *ev, void *_cmdslot, const char *status
     char *objstr;
     gpcc_event_t *evt;
     gpcc_net_packet_t *packet = (gpcc_net_packet_t *) ev->pdata;
+    gpcc_net_packet_t *pkt;
 
     if (cmdslot->cmdstate == SEG_INIT_CMDSTATE) {
 	msg = "segment is initializing";
@@ -1405,8 +1417,13 @@ apr_status_t seg_busy_reply(gpcc_event_t *ev, void *_cmdslot, const char *status
 
     obj = gpcc_json_segment_reply(cmdslot->cmdname, status, msg);
     objstr = json_object_to_json_string(obj);
-    evt = gpcc_event_alloc(etype, packet->mh.sndidx, strlen(objstr)+1);
-    memcpy(evt->pdata, objstr, strlen(objstr)+1);
+    evt = gpcc_event_alloc(etype, packet->mh.rcvidx, sizeof(*packet) + strlen(objstr)+1);
+    pkt = (gpcc_net_packet_t *) evt->pdata;
+    pkt->mh.type = etype;
+    pkt->mh.len = strlen(objstr)+1;
+    pkt->mh.sndidx = cmdslot->cmdidx;
+    pkt->mh.rcvidx = packet->mh.sndidx;
+    memcpy(pkt->payload, objstr, strlen(objstr)+1);
     gpcc_evqueue_put(gpha.evq, evt);
     json_object_put(obj);
     return 0;
@@ -1434,6 +1451,7 @@ apr_status_t seg_status(gpcc_event_t *ev, void *_cmdslot)
     char *objstr;
     gpcc_event_t *evt;
     char *state;
+    gpcc_net_packet_t *pkt;
 
     /* send the current state */
     if (cmdslot->cmdstate == SEG_STOPPED_CMDSTATE) {
@@ -1451,8 +1469,13 @@ apr_status_t seg_status(gpcc_event_t *ev, void *_cmdslot)
 
     obj = gpcc_json_status_reply(cmdslot->cmdname, "ok", "", state);
     objstr = json_object_to_json_string(obj);
-    evt = gpcc_event_alloc(SEG_STATUS_REPLY_EVENT, packet->mh.sndidx, strlen(objstr)+1);
-    memcpy(evt->pdata, objstr, strlen(objstr)+1);
+    evt = gpcc_event_alloc(SEG_STATUS_REPLY_EVENT, packet->mh.rcvidx, sizeof(*packet) + strlen(objstr)+1);
+    pkt = (gpcc_net_packet_t *) evt->pdata;
+    pkt->mh.type = SEG_STATUS_REPLY_EVENT;
+    pkt->mh.len = strlen(objstr)+1;
+    pkt->mh.sndidx = cmdslot->cmdidx;
+    pkt->mh.rcvidx = packet->mh.sndidx;
+    memcpy(pkt->payload, objstr, strlen(objstr)+1);
     gpcc_evqueue_put(gpha.evq, evt);
     json_object_put(obj);
 
