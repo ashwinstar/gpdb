@@ -191,6 +191,7 @@ bool		Debug_print_full_dtm = false;
 bool		Debug_print_snapshot_dtm = false;
 bool		Debug_print_qd_mirroring = false;
 bool		Debug_permit_same_host_standby = false;
+bool 		Debug_print_semaphore_detail = false;
 bool		Debug_disable_distributed_snapshot = false;
 bool 		Debug_abort_after_distributed_prepared = false;
 
@@ -1479,6 +1480,16 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_permit_same_host_standby,
+		false, NULL, NULL
+	},
+
+	{
+		{"Debug_print_semaphore_detail", PGC_SUSET, LOGGING_WHAT,
+			gettext_noop("Print semaphore detailed information."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_print_semaphore_detail,
 		false, NULL, NULL
 	},
 

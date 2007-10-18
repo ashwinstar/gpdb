@@ -34,6 +34,7 @@
 #include "miscadmin.h"
 #include "storage/ipc.h"
 #include "storage/pg_sema.h"
+#include "util/guc.h"
 
 
 #ifndef HAVE_UNION_SEMUN
@@ -280,6 +281,10 @@ IpcSemaphoreCreate(int numSems)
 	mysema.semNum = numSems;
 	PGSemaphoreUnlock(&mysema);
 
+	elog((Debug_print_semaphore_detail ? LOG : DEBUG5),
+		 "created SYSV semaphore set semId %d, semNum %d",
+		 mysema.semId, mysema.semNum);
+
 	return semId;
 }
 
@@ -312,6 +317,10 @@ PGReserveSemaphores(int maxSemas, int port)
 	numSemaSets = 0;
 	nextSemaKey = port * 1000;
 	nextSemaNumber = SEMAS_PER_SET;		/* force sema set alloc on 1st call */
+
+	elog((Debug_print_semaphore_detail ? LOG : DEBUG5),
+		 "maxSemaSets %d, nextSemaKey %d, nextSemaNumber %d",
+		 maxSemaSets, nextSemaKey, nextSemaNumber);
 
 	/*
 	 * This spin lock is used by the PGSemaphoreLockTimed procedure.
@@ -362,6 +371,10 @@ PGSemaphoreCreate(PGSemaphore sema)
 	sema->semNum = nextSemaNumber++;
 	/* Initialize it to count 1 */
 	IpcSemaphoreInitialize(sema->semId, sema->semNum, 1);
+	
+	elog((Debug_print_semaphore_detail ? LOG : DEBUG5),
+		 "created SYSV semaphore semId %d, semNum %d",
+		 sema->semId, sema->semNum);
 }
 
 /*
@@ -431,7 +444,7 @@ PGSemaphoreLock(PGSemaphore sema, bool interruptOK)
 	} while (errStatus < 0 && errno == EINTR);
 
 	if (errStatus < 0)
-		elog(FATAL, "semop(id=%d) failed: %m", sema->semId);
+		elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
 }
 
 /*
@@ -455,7 +468,7 @@ PGSemaphoreLockInterruptable(PGSemaphore sema)
 	{
 		if (errno == EINTR)
 			return false;
-		elog(FATAL, "semop(id=%d) failed: %m", sema->semId);
+		elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
 	}
 
 	return true;
@@ -555,7 +568,7 @@ PGSemaphoreLockTimed(PGSemaphore sema, struct timeval *timeout)
 				result = false;
 				break;
 			}
-			elog(FATAL, "semop(id=%d) failed: %m", sema->semId);
+			elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
 		}
 
 		result = true;
@@ -602,7 +615,7 @@ PGSemaphoreUnlock(PGSemaphore sema)
 	} while (errStatus < 0 && errno == EINTR);
 
 	if (errStatus < 0)
-		elog(FATAL, "semop(id=%d) failed: %m", sema->semId);
+			elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
 }
 
 /*
@@ -642,7 +655,7 @@ PGSemaphoreTryLock(PGSemaphore sema)
 			return false;		/* failed to lock it */
 #endif
 		/* Otherwise we got trouble */
-		elog(FATAL, "semop(id=%d) failed: %m", sema->semId);
+		elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
 	}
 
 	return true;

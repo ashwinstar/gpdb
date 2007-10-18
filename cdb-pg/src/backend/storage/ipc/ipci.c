@@ -164,7 +164,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		numSemas = ProcGlobalSemas();
 		numSemas += SpinlockSemas();
 
-		elog(DEBUG5,"CreateSharedMemoryAndSemaphores calling PGReserveSemaphores with %d",numSemas);
+		elog(LOG,"reserving %d semaphores",numSemas);
 		PGReserveSemaphores(numSemas, port);
 	}
 	else
