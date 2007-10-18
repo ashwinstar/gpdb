@@ -108,7 +108,7 @@ static void net_accepted_cb(gpcc_net_conn_t conn,
     if (role && strcmp(role, "GPMA") == 0 && guid && strcmp(guid, gpha.guid) == 0) {
 	/* create cmdslot */
 	
-	cmdslot = cmdslot_alloc("MA->HA", GET_IDENTITY_CMDSTATE, conn);
+	cmdslot = cmdslot_alloc("MA->HA", MA_CMDSTATE, conn);
 	gpcc_net_set_arg(conn, cmdslot->cmdidx);
 	gpcc_log_info("role = %s, guid = %s, create MA socket...%d", role, guid, cmdslot->cmdidx);
 	

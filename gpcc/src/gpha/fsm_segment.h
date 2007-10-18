@@ -215,7 +215,7 @@ static apr_status_t seg_request_reply(gpcc_event_t* ev, void *_cmdslot, event_t 
     char *objstr;
     gpcc_event_t *evt;
 
-    status = (cmdslot->u.seg.request.exitcode == 0) ? "ok" : "failed";
+    status = (cmdslot->u.seg.request.exitcode == 0) ? "ok" : "failure";
 
     obj = gpcc_json_segment_reply(cmdslot->cmdname, status, cmdslot->u.seg.request.reason);
     objstr = json_object_to_json_string(obj);
@@ -1029,13 +1029,13 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
     cmdslot->u.seg.request.parentidx = packet->mh.sndidx;
 
     if (0 != (e = apr_pool_create(&cmdslot->u.seg.request.subpool, cmdslot->pool))) {
-	seg_request_error(FLINE, ev, _cmdslot, SEG_START_DONE_EVENT, e, "apr_pool_create error");
+	seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, e, "apr_pool_create error");
 	return 0;
     }
     
     obj = json_tokener_parse(packet->payload);
     if (!obj) {
-	seg_request_error(FLINE, ev, _cmdslot, SEG_START_DONE_EVENT, 1, "json_tokener_parse error");
+	seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, 1, "json_tokener_parse error");
 	return 0;
     }
 
@@ -1046,7 +1046,7 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
     if (cmdslot->u.seg.request.port == 0 ||
 	cmdslot->u.seg.request.mode == 0 ||
 	cmdslot->u.seg.request.data_dir == 0) {
-	seg_request_error(FLINE, ev, _cmdslot, SEG_START_DONE_EVENT, 1, "request error: parameter is missing");
+	seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, 1, "request error: parameter is missing");
 	json_object_put(obj);
 	return 0;
     }
@@ -1061,7 +1061,7 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
 						     cmdslot->u.seg.request.data_dir,
 						     0, 1, 0, 
 						     cmdslot->u.seg.request.subpool))) {
-	    seg_request_error(FLINE, ev, _cmdslot, SEG_START_DONE_EVENT, e, "pg_ctl start segment failure");
+	    seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, e, "pg_ctl start segment failure");
 	    json_object_put(obj);
 	    return 0;
 	}
@@ -1087,7 +1087,7 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
 							1, 
 							0, 
 							cmdslot->u.seg.request.subpool))) {
-		seg_request_error(FLINE, ev, _cmdslot, SEG_START_DONE_EVENT, e, "pg_ctl start master failure");
+		seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, e, "pg_ctl start master failure");
 		json_object_put(obj);
 		return 0;
 	    }
@@ -1098,7 +1098,7 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
 						       cmdslot->u.seg.request.data_dir,
 						       0, 0, 
 						       cmdslot->u.seg.request.subpool))) {
-		seg_request_error(FLINE, ev, _cmdslot, SEG_START_DONE_EVENT, e, "gpsyncmaster start failure");
+		seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, e, "gpsyncmaster start failure");
 		json_object_put(obj);
 		return 0;
 	    }
@@ -1122,7 +1122,11 @@ static apr_status_t seg_start_wait(gpcc_event_t* ev, void *_cmdslot)
 
     e = apr_proc_wait(&cmdslot->u.seg.request.proc, &ret, &exitwhy, APR_NOWAIT);
     if (e == APR_CHILD_DONE) {
-	evt = gpcc_event_alloc(SEG_START_DONE_EVENT, cmdslot->cmdidx, 0);
+	if (ret == 0) {
+	    evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
+	} else {
+	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	}
 	cmdslot->u.seg.request.exitcode = ret;
 	cmdslot->u.seg.request.reason = proc_exit_reason(exitwhy);	
 
@@ -1167,13 +1171,13 @@ static apr_status_t seg_stop(gpcc_event_t* ev, void *_cmdslot)
     cmdslot->u.seg.request.parentidx = packet->mh.sndidx;
 
     if (0 != (e = apr_pool_create(&cmdslot->u.seg.request.subpool, cmdslot->pool))) {
-	seg_request_error(FLINE, ev, _cmdslot, SEG_STOP_DONE_EVENT, e, "apr_pool_create error");
+	seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, e, "apr_pool_create error");
 	return 0;
     }
 
     obj = json_tokener_parse(packet->payload);
     if (!obj) {
-	seg_request_error(FLINE, ev, _cmdslot, SEG_STOP_DONE_EVENT, 1, "json_tokenr_parse error");
+	seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, 1, "json_tokenr_parse error");
 	json_object_put(obj);
 	return 0;
     }
@@ -1185,7 +1189,7 @@ static apr_status_t seg_stop(gpcc_event_t* ev, void *_cmdslot)
     if (cmdslot->u.seg.request.port == 0 ||
 	cmdslot->u.seg.request.mode == 0 ||
 	cmdslot->u.seg.request.data_dir == 0) {
-	seg_request_error(FLINE, ev, _cmdslot, SEG_STOP_DONE_EVENT, 1, "request error: parameter is missing");
+	seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, 1, "request error: parameter is missing");
 	json_object_put(obj);
 	return 0;
     }
@@ -1197,13 +1201,13 @@ static apr_status_t seg_stop(gpcc_event_t* ev, void *_cmdslot)
 				     status, 
 				     &len,
 				     cmdslot->u.seg.request.subpool))) {
-	seg_request_error(FLINE, ev, _cmdslot, SEG_STOP_DONE_EVENT, 0, "server is not running");
+	seg_request_error(FLINE, ev, _cmdslot, SUCCESS_EVENT, 0, "server is not running");
 	json_object_put(obj);
 	return 0;
     }
     
     if (strstr(status, "server is running") == 0) {
-	seg_request_error(FLINE, ev, _cmdslot, SEG_STOP_DONE_EVENT, 0, "server is not running");
+	seg_request_error(FLINE, ev, _cmdslot, SUCCESS_EVENT, 0, "server is not running");
 	json_object_put(obj);
 	return 0;
     }
@@ -1215,7 +1219,7 @@ static apr_status_t seg_stop(gpcc_event_t* ev, void *_cmdslot)
 					1, 0, 
 					cmdslot->u.seg.request.subpool))) {
 
-	seg_request_error(FLINE, ev, _cmdslot, SEG_STOP_DONE_EVENT, e, "pg_ctl stop failure");
+	seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, e, "pg_ctl stop failure");
 	json_object_put(obj);
 	return 0;
     }
@@ -1235,7 +1239,12 @@ static apr_status_t seg_stop_wait(gpcc_event_t* ev, void *_cmdslot)
 
     e = apr_proc_wait(&cmdslot->u.seg.request.proc, &ret, &exitwhy, APR_NOWAIT);
     if (e == APR_CHILD_DONE) {
-	evt = gpcc_event_alloc(SEG_STOP_DONE_EVENT, cmdslot->cmdidx, 0);
+	if (ret == 0) {
+	    evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
+	} else {
+	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	}
+
 	cmdslot->u.seg.request.exitcode = ret;
 	cmdslot->u.seg.request.reason = proc_exit_reason(exitwhy);	
 	gpcc_evqueue_put(gpha.evq, evt);
@@ -1265,9 +1274,9 @@ static apr_status_t seg_stop_reply(gpcc_event_t* ev, void *_cmdslot)
 }
 
 
-
+#if 0
 /* segment status */
-static apr_status_t seg_status(gpcc_event_t* ev, void *_cmdslot)
+static apr_status_t seg_pg_ctl_status(gpcc_event_t* ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     gpcc_net_packet_t *packet = (gpcc_net_packet_t *) ev->pdata;
@@ -1347,7 +1356,7 @@ static apr_status_t seg_status(gpcc_event_t* ev, void *_cmdslot)
 
     gpcc_log_info("[%s] server is not running", cmdslot->cmdname);
     /* reply -- error */
-    obj = gpcc_json_status_reply(cmdslot->cmdname, "failed", "", cmdslot->u.seg.request.reason);
+    obj = gpcc_json_status_reply(cmdslot->cmdname, "failure", "", cmdslot->u.seg.request.reason);
     objstr = json_object_to_json_string(obj);
     evt = gpcc_event_alloc(SEG_STATUS_REPLY_EVENT, cmdslot->u.seg.request.parentidx, strlen(objstr)+1);
     memcpy(evt->pdata, objstr, strlen(objstr)+1);
@@ -1355,5 +1364,97 @@ static apr_status_t seg_status(gpcc_event_t* ev, void *_cmdslot)
     json_object_put(obj);
 
     if (cmdslot->u.seg.request.subpool) apr_pool_destroy(cmdslot->u.seg.request.subpool);
+    return 0;
+}
+#endif
+
+
+apr_status_t seg_busy_reply(gpcc_event_t *ev, void *_cmdslot, const char *status)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    char *msg;
+    event_t etype;
+    struct json_object *obj;
+    char *objstr;
+    gpcc_event_t *evt;
+    gpcc_net_packet_t *packet = (gpcc_net_packet_t *) ev->pdata;
+
+    if (cmdslot->cmdstate == SEG_INIT_CMDSTATE) {
+	msg = "segment is initializing";
+    } else if (cmdslot->cmdstate == SEG_STOPPED_CMDSTATE) {
+	msg = "segment stopped";
+    } else if (cmdslot->cmdstate == SEG_STARTING_CMDSTATE) {
+	msg = "segment is starting";
+    } else if (cmdslot->cmdstate == SEG_RUNNING_CMDSTATE) {
+	msg = "segment is running";
+    } else if (cmdslot->cmdstate == SEG_STOPPING_CMDSTATE) {
+	msg = "segment is stopping";
+    } else {
+	msg = "invalid segment state";
+    }
+
+    if (ev->etype == SEG_INITDB_EVENT) {
+	etype = SEG_INITDB_REPLY_EVENT;
+    } else if (ev->etype == SEG_START_EVENT) {
+	etype = SEG_START_REPLY_EVENT;
+    } else if (ev->etype == SEG_STOP_EVENT) {
+	etype = SEG_STOP_REPLY_EVENT;
+    } else {
+	etype = SEG_STATUS_REPLY_EVENT;
+    }
+
+    obj = gpcc_json_segment_reply(cmdslot->cmdname, status, msg);
+    objstr = json_object_to_json_string(obj);
+    evt = gpcc_event_alloc(etype, packet->mh.sndidx, strlen(objstr)+1);
+    memcpy(evt->pdata, objstr, strlen(objstr)+1);
+    gpcc_evqueue_put(gpha.evq, evt);
+    json_object_put(obj);
+    return 0;
+}
+
+apr_status_t seg_busy_ok_reply(gpcc_event_t *ev, void *_cmdslot)
+{
+    seg_busy_reply(ev, _cmdslot, "ok");
+    return 0;
+}
+
+
+apr_status_t seg_busy_fail_reply(gpcc_event_t *ev, void *_cmdslot)
+{
+
+    seg_busy_reply(ev, _cmdslot, "failure");
+    return 0;
+}
+
+apr_status_t seg_status(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    gpcc_net_packet_t *packet = (gpcc_net_packet_t *) ev->pdata;
+    struct json_object *obj;
+    char *objstr;
+    gpcc_event_t *evt;
+    char *state;
+
+    /* send the current state */
+    if (cmdslot->cmdstate == SEG_STOPPED_CMDSTATE) {
+	state = "stopped";
+    } else if (cmdslot->cmdstate == SEG_STARTING_CMDSTATE) {
+	state = "starting";
+    } else if (cmdslot->cmdstate == SEG_RUNNING_CMDSTATE) {
+	state = "running";
+    } else if (cmdslot->cmdstate == SEG_STOPPING_CMDSTATE) {
+	state = "stopping";
+    } else {
+	state = "invalid state";
+    }
+
+
+    obj = gpcc_json_status_reply(cmdslot->cmdname, "ok", "", state);
+    objstr = json_object_to_json_string(obj);
+    evt = gpcc_event_alloc(SEG_STATUS_REPLY_EVENT, packet->mh.sndidx, strlen(objstr)+1);
+    memcpy(evt->pdata, objstr, strlen(objstr)+1);
+    gpcc_evqueue_put(gpha.evq, evt);
+    json_object_put(obj);
+
     return 0;
 }

@@ -22,34 +22,23 @@ APR_DECLARE(void) fsm_setup(void)
     gpcc_fsm_put(SYSTEM_CMDSTATE, TICK_EVENT, SYSTEM_CMDSTATE, 
 		 a_system_tick, 0);
 
-    /* all slot -- get identity */
-    /*
-    gpcc_fsm_put(GET_IDENTITY_CMDSTATE, INIT_EVENT, GET_IDENTITY_CMDSTATE, 
-		 a_get_identity_send_request, 0);
-    gpcc_fsm_put(GET_IDENTITY_CMDSTATE, IDENTITY_MSG_EVENT, GET_IDENTITY_CMDSTATE,
-		 a_identity_send_request, 0);
-    gpcc_fsm_put(GET_IDENTITY_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE, 
-		 a_close_conn, 0);
-    */
-
-
     /* ma slot */
     /* forward requests to segment */
-    gpcc_fsm_put(GET_IDENTITY_CMDSTATE, INIT_EVENT, GET_IDENTITY_CMDSTATE,
+    gpcc_fsm_put(MA_CMDSTATE, INIT_EVENT, MA_CMDSTATE,
 		 0);
-    gpcc_fsm_put(GET_IDENTITY_CMDSTATE, SEGMENT_REQUEST_MSG_EVENT, GET_IDENTITY_CMDSTATE,
+    gpcc_fsm_put(MA_CMDSTATE, SEGMENT_REQUEST_MSG_EVENT, MA_CMDSTATE,
 		 ma_dispatch_segment, 0);
-    gpcc_fsm_put(GET_IDENTITY_CMDSTATE, STATUS_REQUEST_MSG_EVENT, GET_IDENTITY_CMDSTATE,
+    gpcc_fsm_put(MA_CMDSTATE, STATUS_REQUEST_MSG_EVENT, MA_CMDSTATE,
 		 ma_dispatch_segment, 0);
-    gpcc_fsm_put(GET_IDENTITY_CMDSTATE, SEG_STATUS_REPLY_EVENT, GET_IDENTITY_CMDSTATE,
+    gpcc_fsm_put(MA_CMDSTATE, SEG_STATUS_REPLY_EVENT, MA_CMDSTATE,
 		 ma_status_reply, 0);
-    gpcc_fsm_put(GET_IDENTITY_CMDSTATE, SEG_INITDB_REPLY_EVENT, GET_IDENTITY_CMDSTATE,
+    gpcc_fsm_put(MA_CMDSTATE, SEG_INITDB_REPLY_EVENT, MA_CMDSTATE,
 		 ma_initdb_reply, 0);
-    gpcc_fsm_put(GET_IDENTITY_CMDSTATE, SEG_START_REPLY_EVENT, GET_IDENTITY_CMDSTATE,
+    gpcc_fsm_put(MA_CMDSTATE, SEG_START_REPLY_EVENT, MA_CMDSTATE,
 		 ma_start_reply, 0);
-    gpcc_fsm_put(GET_IDENTITY_CMDSTATE, SEG_STOP_REPLY_EVENT, GET_IDENTITY_CMDSTATE,
+    gpcc_fsm_put(MA_CMDSTATE, SEG_STOP_REPLY_EVENT, MA_CMDSTATE,
 		 ma_stop_reply, 0);
-    gpcc_fsm_put(GET_IDENTITY_CMDSTATE, NET_CLOSED_EVENT, NULL_CMDSTATE,
+    gpcc_fsm_put(MA_CMDSTATE, NET_CLOSED_EVENT, NULL_CMDSTATE,
 		 ma_cleanup, 0);
 
     /* Segment FSM */
@@ -83,24 +72,55 @@ APR_DECLARE(void) fsm_setup(void)
 		 seg_initdb_reply, seg_request_cleanup, 0);
 
 
-    /* segment start */
-    gpcc_fsm_put(SEG_INIT_CMDSTATE, SEG_START_EVENT, SEG_START_CMDSTATE,
+
+    /* segment init */
+    gpcc_fsm_put(SEG_INIT_CMDSTATE, SEG_START_EVENT, SEG_STARTING_CMDSTATE,
 		 seg_start, 0);
-    gpcc_fsm_put(SEG_START_CMDSTATE, TIMEUP_EVENT, SEG_START_CMDSTATE,
+    gpcc_fsm_put(SEG_INIT_CMDSTATE, SEG_STOP_EVENT, SEG_STOPPING_CMDSTATE,
+		 seg_stop, 0);
+
+    /* segment stopped */
+    gpcc_fsm_put(SEG_STOPPED_CMDSTATE, SEG_START_EVENT, SEG_STARTING_CMDSTATE,
+		 seg_start, 0);
+    gpcc_fsm_put(SEG_STOPPED_CMDSTATE, SEG_STOP_EVENT, SEG_STOPPED_CMDSTATE,
+		 seg_busy_ok_reply, 0);
+
+    /* segment starting */
+    gpcc_fsm_put(SEG_STARTING_CMDSTATE, SEG_START_EVENT, SEG_STARTING_CMDSTATE,
+		 seg_busy_ok_reply, 0);
+    gpcc_fsm_put(SEG_STARTING_CMDSTATE, SEG_STOP_EVENT, SEG_STARTING_CMDSTATE,
+		 seg_busy_fail_reply, 0);
+    gpcc_fsm_put(SEG_STARTING_CMDSTATE, TIMEUP_EVENT, SEG_STARTING_CMDSTATE,
 		 seg_start_wait, 0);
-    gpcc_fsm_put(SEG_START_CMDSTATE, SEG_START_DONE_EVENT, SEG_INIT_CMDSTATE,
+    gpcc_fsm_put(SEG_STARTING_CMDSTATE, SUCCESS_EVENT, SEG_RUNNING_CMDSTATE,
+		 seg_start_reply, seg_request_cleanup, 0);
+    gpcc_fsm_put(SEG_STARTING_CMDSTATE, FAILURE_EVENT, SEG_STOPPED_CMDSTATE,
 		 seg_start_reply, seg_request_cleanup, 0);
 
-    /* segment stop */
-    gpcc_fsm_put(SEG_INIT_CMDSTATE, SEG_STOP_EVENT, SEG_STOP_CMDSTATE,
+    /* segment running */
+    gpcc_fsm_put(SEG_RUNNING_CMDSTATE, SEG_START_EVENT, SEG_RUNNING_CMDSTATE,
+		 seg_busy_ok_reply, 0);
+    gpcc_fsm_put(SEG_RUNNING_CMDSTATE, SEG_STOP_EVENT, SEG_STOPPING_CMDSTATE,
 		 seg_stop, 0);
-    gpcc_fsm_put(SEG_STOP_CMDSTATE, TIMEUP_EVENT, SEG_STOP_CMDSTATE,
+
+    /* segment stop */
+    gpcc_fsm_put(SEG_STOPPING_CMDSTATE, TIMEUP_EVENT, SEG_STOPPING_CMDSTATE,
 		 seg_stop_wait, 0);
-    gpcc_fsm_put(SEG_STOP_CMDSTATE, SEG_STOP_DONE_EVENT, SEG_INIT_CMDSTATE,
+    gpcc_fsm_put(SEG_STOPPING_CMDSTATE, SUCCESS_EVENT, SEG_STOPPED_CMDSTATE,
+		 seg_stop_reply, seg_request_cleanup, 0);
+    gpcc_fsm_put(SEG_STOPPING_CMDSTATE, FAILURE_EVENT, SEG_STOPPED_CMDSTATE,
 		 seg_stop_reply, seg_request_cleanup, 0);
     
     /* segment status */
     gpcc_fsm_put(SEG_INIT_CMDSTATE, SEG_STATUS_EVENT, SEG_INIT_CMDSTATE,
+		 seg_status, 0);
+    gpcc_fsm_put(SEG_STARTING_CMDSTATE, SEG_STATUS_EVENT, SEG_STARTING_CMDSTATE,
+		 seg_status, 0);
+    gpcc_fsm_put(SEG_RUNNING_CMDSTATE, SEG_STATUS_EVENT, SEG_RUNNING_CMDSTATE,
+		 seg_status, 0);
+    gpcc_fsm_put(SEG_STOPPING_CMDSTATE, SEG_STATUS_EVENT, SEG_STOPPING_CMDSTATE,
+		 seg_status, 0);
+    gpcc_fsm_put(SEG_STOPPED_CMDSTATE, SEG_STATUS_EVENT, SEG_STOPPED_CMDSTATE,
 		 seg_status, 0);
 		 
 
