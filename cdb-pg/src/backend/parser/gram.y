@@ -2683,6 +2683,7 @@ OptTabPartitionBoundarySpec:
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
+/* a "Partition Element" closely corresponds to a "Partition Declaration" */
 TabPartitionElem: 
             TabPartitionNameDecl 
             OptTabPartitionBoundarySpec	OptTabSubPartitionSpec 

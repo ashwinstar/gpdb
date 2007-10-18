@@ -1346,7 +1346,7 @@ typedef enum PartitionByType			/* types of Partitions */
 	PARTTYP_REFERENCE /* for future use... */
 } PartitionByType;
 
-typedef struct PartitionBy
+typedef struct PartitionBy			/* the Partition By clause */
 {
 	NodeTag				type;
 	PartitionByType		partType;
@@ -1359,7 +1359,8 @@ typedef struct PartitionBy
 	int					location;	/* token location, or -1 if unknown */
 } PartitionBy;
 
-typedef struct PartitionElem
+typedef struct PartitionElem		/* a Partition "Element" is the
+									 * start of a partition	declaration */
 {
 	NodeTag				type;
 	Node			   *partName;	/* partition name (optional) */
@@ -1368,6 +1369,8 @@ typedef struct PartitionElem
 	int					location;	/* token location, or -1 if unknown */
 } PartitionElem;
 
+/* a "Range Item" is the "values" portition of a LIST partition, or
+ * the "values" of a START, END, or EVERY spec in a RANGE partition */
 typedef struct PartitionRangeItem
 {
 	Node			   *partEveryNum;	/*  (constant number) (EVERY only) */
@@ -1394,7 +1397,7 @@ typedef struct PartitionBoundSpec
 	int					location;		/* token location, or -1 if unknown */
 } PartitionBoundSpec;
 
-typedef struct PartitionSpec
+typedef struct PartitionSpec			/* a Partition Specification */
 {
 	NodeTag				type;			
 	List			   *partElem;		/* partition element list */
