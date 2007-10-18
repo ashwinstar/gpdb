@@ -119,6 +119,7 @@
 #include "postmaster/postmaster.h"
 #include "postmaster/seqserver.h"
 #include "postmaster/walsendserver.h"
+#include "postmaster/walredoserver.h"
 #include "postmaster/ddaserver.h"
 #include "postmaster/syslogger.h"
 #include "storage/fd.h"
@@ -166,11 +167,12 @@ typedef enum pmsub_type
 {
 	SeqServerProc = 0,
 	WalSendServerProc = 1,
+	WalRedoServerProc = 2,
 #ifdef DO_DDA_SERV
-	DdaServerProc = 2, 
-	MaxPMSubType  = 3 /* must always be last */
+	DdaServerProc = 3, 
+	MaxPMSubType  = 4 /* must always be last */
 #else
-	MaxPMSubType  = 2 /* must always be last */
+	MaxPMSubType  = 3 /* must always be last */
 #endif
 } PMSubType;
 
@@ -243,28 +245,41 @@ static pid_t StartupPID = 0,
 
 /* CDB */
 
+typedef enum PMSUBPROC_FLAGS
+{
+	PMSUBPROC_FLAG_QD 			= 0x1,
+	PMSUBPROC_FLAG_STANDBY 		= 0x2,
+	PMSUBPROC_FLAG_QE 			= 0x4,
+	PMSUBPROC_FLAG_QD_AND_QE 	= PMSUBPROC_FLAG_QD & PMSUBPROC_FLAG_QE,
+} PMSUBPROC_FLAGS;
+
+
+
 typedef struct pmsubproc
 {
 	pid_t		pid;			/* process id (0 when not running) */	  
 	PMSubType   procType;       /* process type */
 	PMSubStartCallback *serverStart; /* server start function */
 	char       *procName;
-	bool       QDproc;          /* start process on QD */
-	bool       QEproc;          /* start process on all QE's */
+	int        flags;          /* flags indicating in which kind
+							    * of instance to start the process */
 } PMSubProc;
 
 static PMSubProc PMSubProcList[MaxPMSubType] = 
 {
 	{0, SeqServerProc, 
 	 (PMSubStartCallback*)&seqserver_start, 
-	 "seqserver process", true, false},
+	 "seqserver process", PMSUBPROC_FLAG_QD},
 	{0, WalSendServerProc, 
 	 (PMSubStartCallback*)&walsendserver_start, 
-	 "walsendserver process", true, false},
+	 "walsendserver process", PMSUBPROC_FLAG_QD},
+	{0, WalRedoServerProc, 
+	 (PMSubStartCallback*)&walredoserver_start, 
+	 "walredoserver process", PMSUBPROC_FLAG_STANDBY},
 #ifdef DO_DDA_SERV
 	{0, DdaServerProc, 
 	 (PMSubStartCallback*)&ddaserver_start, 
-	 "ddaserver process", true, true},
+	 "ddaserver process", PMSUBPROC_FLAG_QD_AND_QE},
 #endif
 };
 
@@ -324,6 +339,7 @@ static void LogChildExit(int lev, const char *procname,
 static void BackendInitialize(Port *port);
 static int	BackendRun(Port *port);
 static void ExitPostmaster(int status);
+static bool SubProcStartable(PMSubProc *subProc);
 static int	ServerLoop(void);
 static int	BackendStartup(Port *port);
 static int	ProcessStartupPacket(Port *port, bool SSLdone);
@@ -1244,6 +1260,27 @@ pmdaemonize(void)
 #endif   /* WIN32 */
 }
 
+static bool
+SubProcStartable(PMSubProc *subProc)
+{
+	int flagNeeded;
+	bool result;
+
+	flagNeeded = 0;
+	if (!SyncMaster)
+	{
+		if (Gp_entry_postmaster)
+			flagNeeded = PMSUBPROC_FLAG_QD;
+		else
+			flagNeeded = PMSUBPROC_FLAG_QE;
+	}
+	else
+		flagNeeded = PMSUBPROC_FLAG_STANDBY;
+
+	result = ((subProc->flags & flagNeeded) != 0);
+
+	return result;
+}
 
 /*
  * Main idle loop of postmaster
@@ -1394,7 +1431,7 @@ ServerLoop(void)
 			StartupPID == 0 && !FatalError && Shutdown == NoShutdown && !SyncMaster)
 			PgStatPID = pgstat_start();
 		
-		/* MPP: If we have lost the sequence Server, try to start a new one */
+		/* MPP: If we have lost one of our servers, try to start a new one */
 		{
 			int ii;
 
@@ -1402,15 +1439,21 @@ ServerLoop(void)
 			{
 				PMSubProc *subProc = &PMSubProcList[ii];
 
+				Assert(subProc->procName != NULL &&
+					   isalpha((unsigned char)subProc->procName[0]));
+
 				if (subProc->pid == 0 && 
-					((Gp_entry_postmaster && subProc->QDproc) ||
-					 (!Gp_entry_postmaster && subProc->QEproc)) &&
 					StartupPID == 0 && 
-					!FatalError && Shutdown == NoShutdown && !SyncMaster)
-						subProc->pid = 
-							(subProc->serverStart)();
+					!FatalError && 
+					Shutdown == NoShutdown &&
+					SubProcStartable(subProc))
+				{
+					subProc->pid = 
+						(subProc->serverStart)();
+				}
 			}
 		}
+		
 		/*
 		 * Touch the socket and lock file every 58 minutes, to ensure that
 		 * they are not removed by overzealous /tmp-cleaning tasks.  We assume
@@ -2212,7 +2255,6 @@ pmdie(SIGNAL_ARGS)
 					PMSubProc *subProc = &PMSubProcList[ii];
 
 					if (subProc->pid != 0)
-					if (subProc->pid != 0)
 					{
 						elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"pmdie: For immediate shutdown request, send SIGQUIT to pid %d",
 							 subProc->pid);
@@ -2343,9 +2385,11 @@ reaper(SIGNAL_ARGS)
 					{
 						PMSubProc *subProc = &PMSubProcList[ii];
 
+						Assert(subProc->procName != NULL &&
+							   isalpha((unsigned char)subProc->procName[0]));
+
 						if (subProc->pid == 0 && 
-							((Gp_entry_postmaster && subProc->QDproc) ||
-							 (!Gp_entry_postmaster && subProc->QEproc)))
+							SubProcStartable(subProc))
 							subProc->pid = 
 								(subProc->serverStart)();
 					}
@@ -2448,10 +2492,12 @@ reaper(SIGNAL_ARGS)
 			{
 				PMSubProc *subProc = &PMSubProcList[ii];
 
+				Assert(subProc->procName != NULL &&
+					   isalpha((unsigned char)subProc->procName[0]));
+
 				if (subProc->pid != 0 && 
 					pid == subProc->pid && 
-					((Gp_entry_postmaster && subProc->QDproc) ||
-					 (!Gp_entry_postmaster && subProc->QEproc)))
+					SubProcStartable(subProc))
 				{
 					subProc->pid = 0;
 					if (!EXIT_STATUS_0(exitstatus))

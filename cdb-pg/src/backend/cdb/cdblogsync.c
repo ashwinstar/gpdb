@@ -22,6 +22,8 @@
 
 #include "cdb/cdblogsync.h"
 #include "cdb/cdbtm.h"
+#include "catalog/pg_control.h"
+#include "postmaster/walredoserver.h"
 
 /*
  * There is a protocol consisting of 3 messages from primary->mirror:
@@ -251,14 +253,7 @@ static void
 cdb_new_checkpoint_loc(void)
 {
 	XLogRecPtr newCheckpointLoc;
-	XLogRecPtr oldSyncRedoLoc;
-	XLogRecPtr redoCheckPointLoc;
-	CheckPoint	redoCheckPoint;
-	uint32 logid;
-	uint32 seg;
-	int nsegsremoved;
-	XLogRecPtr scanEndLoc;
-	XLogRecPtr writeEndLoc;
+	bool successful;
 
 	newCheckpointLoc.xlogid = logidNewCheckpoint;
 	newCheckpointLoc.xrecoff = segNewCheckpoint * XLogSegSize 
@@ -268,58 +263,53 @@ cdb_new_checkpoint_loc(void)
 		elog(ERROR, "QDSYNC: found invalid new checkpoint location");
 	}
 
-	XLogGetStandbyRecoveryStart("for redo apply", &redoCheckPointLoc, &redoCheckPoint);
-	oldSyncRedoLoc = syncRedoLoc;
-	syncRedoLoc = redoCheckPoint.redo;
-	
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
-		 "QDSYNC: new checkpoint location %s (syncRedoLoc old %s, new %s)",
-		 XLogLocationToString(&newCheckpointLoc), 
-		 XLogLocationToString2(&oldSyncRedoLoc),
-		 XLogLocationToString3(&syncRedoLoc));
-
-	/*
-	 * Extra checking here!
-	 */
-	if (Debug_print_qd_mirroring)
+	successful = WalRedoServerNewCheckpointLocation(&newCheckpointLoc);
+	if (!successful)
 	{
-		XLogScanForStandbyEndLocation(&syncRedoLoc, &scanEndLoc);
-		
-		writeEndLoc.xlogid = xlogid;
-		writeEndLoc.xrecoff = xseg * XLogSegSize + 
-						      xlogfileoffset;
-
-		elog(LOG, "QDSYNC: scan end location %s, write end location %s",
-			 XLogLocationToString(&scanEndLoc),
-			 XLogLocationToString2(&writeEndLoc));
+		elog(ERROR, "QDSYNC: redo error occurred");
 	}
+}
 
-	XLogStandbyRecoverRange(&redoCheckPointLoc, &redoCheckPoint, &newCheckpointLoc);
+void
+cdb_perform_redo(XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint, XLogRecPtr *newCheckpointLoc)
+{
+	CheckPoint oldRedoCheckpoint;
+	uint32 logid;
+	uint32 seg;
+	int nsegsremoved;
+	
+	if (redoCheckPointLoc->xlogid == 0 && redoCheckPointLoc->xrecoff == 0)
+	{
+		XLogGetStandbyRecoveryStart("for redo apply", redoCheckPointLoc, redoCheckPoint);
+	}
+	
+	XLogStandbyRecoverRange(redoCheckPointLoc, redoCheckPoint, newCheckpointLoc);
 
 	/*
 	 * Sample the recovery start location now to see if appling redo
 	 * processed checkpoint records and moved the restart location forward.
 	 */
-	XLogGetStandbyRecoveryStart("for redo progress check", &redoCheckPointLoc, &redoCheckPoint);
-	oldSyncRedoLoc = syncRedoLoc;
-	syncRedoLoc = redoCheckPoint.redo;
+	oldRedoCheckpoint = *redoCheckPoint;
 
-	if (XLByteLT(oldSyncRedoLoc,syncRedoLoc))
+	XLogGetStandbyRecoveryStart("for redo progress check", redoCheckPointLoc, redoCheckPoint);
+
+	if (XLByteLT(oldRedoCheckpoint.redo,redoCheckPoint->redo))
 	{
 		ereport(LOG,
 		 (errmsg("QDSYNC: transaction redo moved the restart location from %s to %s",
-			     XLogLocationToString(&oldSyncRedoLoc),
-			     XLogLocationToString2(&syncRedoLoc))));
+			     XLogLocationToString(&oldRedoCheckpoint.redo),
+			     XLogLocationToString2(&redoCheckPoint->redo))));
 	}
 	else
 	{
-		Assert(XLByteEQ(oldSyncRedoLoc,syncRedoLoc));
+		Assert(XLByteEQ(oldRedoCheckpoint.redo,redoCheckPoint->redo));
 		ereport(LOG,
 		 (errmsg("QDSYNC: transaction redo did not move the restart location %s forward this pass",
-			     XLogLocationToString(&oldSyncRedoLoc))));
+			     XLogLocationToString(&oldRedoCheckpoint.redo))));
+		return;
 	}
 
-	XLByteToSeg(syncRedoLoc, logid, seg);
+	XLByteToSeg(redoCheckPoint->redo, logid, seg);
 	
 	/*
 	 * Delete offline log files (those no longer needed even for previous
@@ -351,7 +341,6 @@ cdb_new_checkpoint_loc(void)
 	// Throw in extra new line to make log more readable.
 	elog(LOG,"--------------------------");
 }
-
 
 /*
  * open xlog file

@@ -67,27 +67,6 @@ static bool am_walsendserver = false;
  * VISIBLE FUNCTIONS
  */
 
-#ifdef Nothing
-int WalSendServerShmemSize(void)
-{
-	
-	/* just our one int4 */
-	return sizeof(WalSendServerControlBlock);
-}
-
-
-void WalSendServerShmemInit(void)
-{
-	bool		found;
-	
-	
-	/* Create or attach to the SharedSnapshot shared structure */
-	seqServerCtl = (WalSendServerControlBlock *) ShmemInitStruct("Sequence Server", WalSendServerShmemSize(), &found);
-	
-}
-#endif
-
-
 /*
  * Main entry point for walsendserver controller process.
  *
