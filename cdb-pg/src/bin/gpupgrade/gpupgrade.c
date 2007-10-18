@@ -381,6 +381,8 @@ schema_upgrade(config_t *conf)
 				  "add column rejectlimittype \"char\";");
 		run_query(conf, 0, "alter table pg_catalog.pg_exttable "
 				  "add column fmterrtbl oid;");
+		run_query(conf, 0, "alter table pg_catalog.pg_exttable "
+				  "add column encoding int4;");
 
 		addexttablerows(conf);
 
