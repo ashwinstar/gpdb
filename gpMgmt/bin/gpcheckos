@@ -347,12 +347,7 @@ try:
             match(session, key, value)
 
     key = 'python.version'
-    for p in session:
-        value = p.x_res.get(key)
-        if not value:
-            perr(p.x_peer, 'python version unavailable')
-        else:
-            matchListMore(session, key, '2.3.5')
+    matchListMore(session, key, '2.3.0')
 
     key = 'sync.time'
     value = p0.x_res.get(key)
