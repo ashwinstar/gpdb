@@ -59,7 +59,7 @@ Portal Increment -
     is managed by the scheduler *always* has increments - portals for queries
     that are not going to be locked have portalId set to InvalidOid (either
     because the owning role is not in a queue or the query has cost smaller than
-    the queue's "ignore" limit).
+    the queue's "ignore" limit - see Queues above).
 
 Proclock -
      Some changes have been made to the proclock structure... this should be
@@ -131,6 +131,9 @@ results in overly agressive detection and rollback of deadocks. However, safety
 is the *initial* goal! More sophisticated detection logic is an obvious next
 step.
 
+Also deadlocks with oneself are possible, usually only achiveable with several
+open cursors:
+    ResCheckSelfDeadLock(LOCK *lock);
 -----------------------------------------------------------------------------
 
 Lock Design
@@ -172,9 +175,13 @@ Queues can be created, altered and dropped via the CREATE|ALTER|DROP QUEUE
 commands. 
 
 CREATE RESOURCE QUEUE <name> [ACTIVE THRESHOLD <int value>] 
-                             [COST THRESHOLD <float value>];
+                             [COST THRESHOLD <float value>]
+                             [IGNORE THRESHOLD <float value>]
+                             [OVERCOMMIT|NOOVERCOMMIT];
 ALTER RESOURCE QUEUE <name>  [ACTIVE THRESHOLD <int value>] 
-                             [COST THRESHOLD <float value>];
+                             [COST THRESHOLD <float value>]
+                             [IGNORE THRESHOLD <float value>]
+                             [OVERCOMMIT|NOOVERCOMMIT];
 DROP RESOURCE QUEUE <name>;
 
 The value used for the cost threshold *must* be a float - i.e. 2.0 or 2e+0
@@ -182,6 +189,13 @@ not 2. This slightly annoying syntax is needed to allow values of 1e+19 or
 larger to be accepted. At this point we don't really have a good idea for what
 a maximum reasonable threshold for cost is likely to be, so we allow very large
 values.
+The ignore threshold sets a lower limit for queries to be locked for execution -
+query cost < this limit means locking will be skipped.
+The overcommit parameter controls what happens for a query whose cost > cost
+limit for the queue - it either aborts (the default) or waits until noone else
+is executing. This is to avoid the situation of querys being in the wait state 
+forever.
+These last two parameters complicate the logic considerably, needless to say!
 
 The ALTER RESOURCE QUEUE command will only allow the thresholds to be amended 
 to a value larger than the current counter for the in-memory queues. This is a 
