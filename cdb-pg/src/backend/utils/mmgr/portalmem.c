@@ -868,13 +868,13 @@ AtExitCleanup_ResPortals(void)
 
 
 /*
- * TotalResPortalIncrements --  Calculate a total increment for all my 
- * resource portals for a given queueid.
+ * TotalResPortalIncrements --  Calculate increment totals and count of portals
+ * for all my portals with a given queueid.
  *
  * Note:
  *	Requires the ResQueueLock to be held before calling.
  *	We are deliberately obscure about the type of totalIncrements as
- *	don't want portal.h to need to include ressscheuler.h.
+ *	don't want portal.h to need to include resscheuler.h.
  */
 void
 TotalResPortalIncrements(int pid, Oid queueid, Cost *totalIncrements, int *num)
@@ -901,7 +901,7 @@ TotalResPortalIncrements(int pid, Oid queueid, Cost *totalIncrements, int *num)
 		{
 			/*
 			 * Get the increment for this portal, skip if we can't find an
-			 * increment (should never happen in fact).
+			 * increment, as that portal is uninteresting.
 			 */
 			MemSet(&portalTag, 0, sizeof(ResPortalTag));
 			portalTag.pid = pid;
