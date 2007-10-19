@@ -28,6 +28,29 @@
 
 #include "cdb/cdbrelsize.h"
 
+#define relsize_cache_size 100
+
+struct relsize_cache_entry 
+{
+	Oid	relOid;
+	int64 size;
+};
+
+static struct relsize_cache_entry relsize_cache[relsize_cache_size] = { {0,0} };
+
+static int last_cache_entry = -1;		/* -1 for cache not initialized yet */
+
+void clear_relsize_cache(void)
+{
+	int i;
+	for (i=0; i < relsize_cache_size; i++)
+	{
+		relsize_cache[i].relOid = InvalidOid;
+		relsize_cache[i].size = 0;
+	}
+	last_cache_entry = -1;
+}
+
 int64 cdbRelSize(Oid relOid)
 {
 
@@ -35,9 +58,17 @@ int64 cdbRelSize(Oid relOid)
 	int		i;
 	int 	resultCount = 0;
 	struct pg_result **results = NULL;
-	
 	StringInfoData errbuf;
 	StringInfoData buffer;
+	
+	if (last_cache_entry  >= 0)
+		for (i=0; i < relsize_cache_size; i++)
+		{
+			if (relsize_cache[i].relOid == relOid)
+				return relsize_cache[i].size;
+		}
+	
+	
 	/*
 	 * Let's ask the QEs for the size of the relation
 	 */
@@ -100,6 +131,18 @@ int64 cdbRelSize(Oid relOid)
 	
 		free(results);
 	}
+	
+
+	if (size > 0)
+	{
+		if (last_cache_entry < 0)
+			last_cache_entry = 0;
+		relsize_cache[last_cache_entry].relOid = relOid;
+		relsize_cache[last_cache_entry].size = size;
+		last_cache_entry = (last_cache_entry+1) % relsize_cache_size;
+	}
+	
+		
 	
 	return size;
 

@@ -12,6 +12,7 @@
 #ifndef CDBRELSIZE_H_
 #define CDBRELSIZE_H_
 
+void clear_relsize_cache(void);
 
 int64 cdbRelSize(Oid relOid);
 

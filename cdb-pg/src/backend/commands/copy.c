@@ -48,6 +48,7 @@
 #include "cdb/cdbhash.h"
 #include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbsreh.h"
+#include "cdb/cdbrelsize.h"
 
 
 /* DestReceiver for COPY (SELECT) TO */
@@ -6162,7 +6163,7 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 	  
 		ReceiveCopyBegin(cstate);
 		
-	   
+		clear_relsize_cache();
 		
 		cstate->err_loc_type = ROWNUM_EMBEDDED;
  

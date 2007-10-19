@@ -50,6 +50,7 @@
 #include "cdb/cdbtm.h"
 #include "cdb/cdbllize.h"
 #include "cdb/cdbsreh.h"
+#include "cdb/cdbrelsize.h"
 #include "libpq-fe.h"
 #include "libpq/libpq-be.h"
 //#undef socket
@@ -3704,6 +3705,9 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		if (queryDesc->parsetree->jointree != NULL)
 			if (queryDesc->parsetree->jointree->fromlist == NIL)
 				pcontext.single_row_insert = true;
+		
+		if (queryDesc->operation == CMD_INSERT && !pcontext.single_row_insert)
+			clear_relsize_cache();
 	}
 
 	if (queryDesc->operation == CMD_INSERT ||

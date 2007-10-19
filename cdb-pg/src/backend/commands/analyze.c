@@ -38,6 +38,7 @@
 
 #include "cdb/cdbvars.h"
 #include "cdb/cdbanalyze.h"
+#include "cdb/cdbrelsize.h"
 
 /* Data structure for Algorithm S from Knuth 3.4.2 */
 typedef struct
@@ -119,6 +120,9 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 		elevel = INFO;
 	else
 		elevel = DEBUG2;
+	
+	if (Gp_role == GP_ROLE_DISPATCH)
+		clear_relsize_cache();
 		
 	if (Gp_role == GP_ROLE_DISPATCH)
 		elevel = DEBUG2; /* vacuum and analyze messages aren't interesting from the QD */
