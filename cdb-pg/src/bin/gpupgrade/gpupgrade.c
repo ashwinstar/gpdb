@@ -504,7 +504,7 @@ post_upgrade(config_t *conf)
 static void
 MyNoticeProcessor (void *arg, const char *message)
 {
-	mylog(UINFO, message);
+	mylog(UDEBUG, message);
 } 
 
 static void
@@ -1149,7 +1149,7 @@ main(int argc, char **argv)
 			strcmp(segdbs[i]->dbname,"template0") == 0)
 		{
 			/* run in parallel */
-			mylog(UINFO, "running parallel VACUUM on template database");
+			mylog(UDEBUG, "running parallel VACUUM on template database");
 			mylog(UDEBUG, "conninfo = %s", segdbs[i]->conninfo);
 			run_query(segdbs[i], 1, "VACUUM FULL; VACUUM FREEZE;");
 		}
