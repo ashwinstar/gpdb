@@ -7766,7 +7766,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
         
         /* Now get required information from pg_exttable */
         appendPQExpBuffer(query,
-                          "SELECT x.location, x.fmttype, x.fmtopts, x.command, x.encoding "
+                          "SELECT x.location, x.fmttype, x.fmtopts, x.command, pg_catalog.pg_encoding_to_char(x.encoding) "
                           "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c "
                           "WHERE x.reloid = c.oid AND c.oid = '%u'::oid",
                           tbinfo->dobj.catId.oid);
@@ -7879,7 +7879,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
                           escape_backslashes((const char*)fmtopts));
 
 		/* add ENCODING clause */
-        appendPQExpBuffer(q, "ENCODING %s;\n", extencoding);
+        appendPQExpBuffer(q, "ENCODING '%s';\n", extencoding);
 
         PQclear(res);
         
