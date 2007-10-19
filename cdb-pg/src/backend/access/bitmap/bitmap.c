@@ -41,6 +41,8 @@ typedef struct BMStreamOpaque
 {
 	IndexScanDesc scan;
 	PagetableEntry *entry;
+	/* Indicate that this stream contains no more bitmap words. */
+	bool is_done;
 } BMStreamOpaque;
 
 /*
@@ -607,12 +609,39 @@ pull_stream(StreamNode *self, PagetableEntry *e)
 		memcpy(e, next, sizeof(PagetableEntry));
 		return true;
 	}
+	else if (so->is_done)
+	{
+		/* cleanup so if this is the last call. */
+		if (so != NULL)
+		{
+			IndexScanDesc tmp_scan = so->scan;
+			BMScanOpaque tmp_scanopq = (BMScanOpaque)tmp_scan->opaque;
+			
+			if(tmp_scanopq->bm_currPos)
+			{
+				/* Do not release the lov buffer */
+				cleanup_pos(tmp_scanopq->bm_currPos);
+				tmp_scanopq->bm_currPos = NULL;
+			}
+			if(tmp_scanopq->bm_markPos)
+			{
+				/* Do not release the lov buffer */
+				cleanup_pos(tmp_scanopq->bm_markPos);
+				tmp_scanopq->bm_markPos = NULL;
+			}
+		}
+
+		is->opaque = NULL;
+		return false;
+	}
 	
 	MemSet(e, 0, sizeof(PagetableEntry));
 
 	scan = so->scan;
 	scanPos = ((BMScanOpaque)scan->opaque)->bm_currPos;
 	e->blockno = is->nextblock;
+
+	so->is_done = false;
 
 	while(true)
 	{
@@ -636,7 +665,7 @@ pull_stream(StreamNode *self, PagetableEntry *e)
 			/* Are there any more words available from the index itself? */
 			if(!res)
 			{
-				is->opaque = NULL;
+				so->is_done = true;
 				res = true;
 				break;
 			}
@@ -657,25 +686,6 @@ pull_stream(StreamNode *self, PagetableEntry *e)
 		so->entry = (PagetableEntry *) palloc(sizeof(PagetableEntry));
 	memcpy(so->entry, e, sizeof(PagetableEntry));
 
-	/* XXX cleanup so if this is the last call. */
-	if (is->opaque == NULL && so != NULL)
-	{
-		IndexScanDesc tmp_scan = so->scan;
-		BMScanOpaque tmp_scanopq = (BMScanOpaque)tmp_scan->opaque;
-
-		if(tmp_scanopq->bm_currPos)
-		{
-			/* Do not release the lov buffer */
-			cleanup_pos(tmp_scanopq->bm_currPos);
-			tmp_scanopq->bm_currPos = NULL;
-		}
-		if(tmp_scanopq->bm_markPos)
-		{
-			/* Do not release the lov buffer */
-			cleanup_pos(tmp_scanopq->bm_markPos);
-			tmp_scanopq->bm_markPos = NULL;
-		}
-	}
 	return res;
 }
 
