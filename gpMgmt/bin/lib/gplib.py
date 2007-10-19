@@ -3,9 +3,9 @@ import os, sys
 progname = os.path.split(sys.argv[0])[-1]
 
 
-if sys.version_info < (2, 3):
+if sys.version_info < (2, 3, 5):
     sys.exit(
-'''Error: %s is supported on Python versions 2.3 or greater
+'''Error: %s is supported on Python versions 2.3.5 or greater
 Please upgrade python installed on this machine.''' % progname)
 
 
