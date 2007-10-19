@@ -7338,6 +7338,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
         char       *fmttype;
         char       *fmtopts;
 		char	   *command = NULL;
+		char	   *extencoding;
         
         reltypename = "TABLE";
         /*
@@ -7351,7 +7352,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
         
         /* Now get required information from pg_exttable */
         appendPQExpBuffer(query,
-                          "SELECT x.location, x.fmttype, x.fmtopts, x.command "
+                          "SELECT x.location, x.fmttype, x.fmtopts, x.command, x.encoding "
                           "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c "
                           "WHERE x.reloid = c.oid AND c.oid = '%u'::oid",
                           tbinfo->dobj.catId.oid);
@@ -7377,6 +7378,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
         fmttype = PQgetvalue(res, 0, 1);
         fmtopts = PQgetvalue(res, 0, 2);
 		command = PQgetvalue(res, 0, 3);
+		extencoding = PQgetvalue(res, 0, 4);
                 
 		if((command && strlen(command) > 0) ||
 		   (strncmp(locations + 1, "http", strlen("http")) == 0))
@@ -7459,10 +7461,13 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		}
 		
         /* add FORMAT clause */
-        appendPQExpBuffer(q, "FORMAT '%s' (%s);\n", 
+        appendPQExpBuffer(q, "FORMAT '%s' (%s)\n", 
                           fmttype[0] == 't' ? "text" : "csv",
                           escape_backslashes((const char*) fmtopts));
         
+		/* add ENCODING clause */
+        appendPQExpBuffer(q, "ENCODING %s;\n", extencoding);
+		
         PQclear(res);
         
     }
