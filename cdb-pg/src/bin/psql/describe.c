@@ -1009,7 +1009,8 @@ describeOneTableDetails(const char *schemaname,
 						         "x.rejectlimit, x.rejectlimittype, "
 						         "(SELECT relname "
 						          "FROM pg_class "
-								  "WHERE Oid=x.fmterrtbl) AS errtblname " 
+								  "WHERE Oid=x.fmterrtbl) AS errtblname, "
+								  "pg_catalog.pg_encoding_to_char(x.encoding) "
 						  "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c "
 						  "WHERE x.reloid = c.oid AND c.oid = '%s'\n", oid);
 						  
@@ -1030,10 +1031,14 @@ describeOneTableDetails(const char *schemaname,
 			char	   *rejlim =  PQgetvalue(result, 0, 4);
 			char	   *rejlimtype = PQgetvalue(result, 0, 5);
 			char	   *errtblname = PQgetvalue(result, 0, 6);
-			
+			char	   *extencoding = PQgetvalue(result, 0, 7);
 			int			count_footers = 0;
 
-			footers = pg_malloc_zero(7 * sizeof(*footers));
+			footers = pg_malloc_zero(8 * sizeof(*footers));
+			
+			/* encoding */
+			printfPQExpBuffer(&tmpbuf, _("Encoding: %s"), extencoding);
+			footers[count_footers++] = pg_strdup(tmpbuf.data);
 			
 			/* format type */
 			printfPQExpBuffer(&tmpbuf, _("Format type: %s"), fmttype[0] == 't' ? "text" : "csv");
