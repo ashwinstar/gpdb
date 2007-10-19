@@ -3,7 +3,7 @@
 '''
 gpcheckos -- check os for consistency and compatibility with GPDB.
 
-Usage: gpcheckos [--version] [-?v] [-p port] [-u user] [-h host] [-f hostfile] 
+Usage: gpcheckos [--version] [-?v] [-p port] [-u user] [-h host] [-f hostfile] [-c checkfile]
 
 
           --version : print version information
@@ -13,6 +13,7 @@ Usage: gpcheckos [--version] [-?v] [-p port] [-u user] [-h host] [-f hostfile]
           -u user   : the user to run command
           -h host   : the host to connect to (multiple -h is okay)
           -f file   : a file listing all hosts to connect to
+          -c file   : a file containing specific checks for this installation
 
 '''
 
@@ -32,9 +33,106 @@ opt['-p'] = None
 opt['-u'] = os.environ.get('LOGNAME') or os.environ.get('USER')
 opt['-h'] = []
 opt['-f'] = False
+opt['-c'] = None
 GPHOME = os.environ.get('GPHOME')
 if not GPHOME:
     sys.exit('GPHOME env not set')
+
+
+linuxconf = '''
+sysctl.kernel.shmmax			int	>= 500000000
+sysctl.kernel.shmmni			int	>= 4096
+sysctl.kernel.shmall			int	= 4000000000
+sysctl.kernel.sem			intlist = 250 64000 100 512
+sysctl.net.ip4.tcp_tw_recycle		int	>= 1
+sysctl.net.ipv4.tcp_max_syn_backlog	int	= 4096
+sysctl.net.core.netdev_max_backlog	int	= 10000
+sysctl.vm.overcommit_memory		int	= 2
+ulimit.nofile				int	>= 65536
+ulimit.nproc				int	>= 131072
+'''
+
+
+sunosconf = '''
+ndd.tcp_conn_req_max_q			int	= 4096
+ndd.tcp_conn_req_max_q0			int	= 4096
+ndd.tcp_largest_anon_port		int	= 65535
+ndd.tcp_smallest_anon_port		int	= 4096
+ndd.tcp_time_wait_interval		int	= 100
+system.rlim_fd_max			int	= 262144
+system.rlim_fd_cur			int	= 65536
+system.shmsys:shminfo_shmmax		int	>= 0x2000000
+system.semsys:seminfo_semmni		int	= 1024
+'''
+
+def to_int(s):
+    s = s.strip()
+    if s.startswith('0x'):
+        s = int(s[2:], 16)
+    else:
+        s = int(s)
+    return s
+
+def to_intlist(s):
+    s = s.strip()
+    r = []
+    for i in s.split():
+        i = to_int(i)
+        r.append(i)
+    return r
+
+
+class Config:
+
+    def __init__(self):
+        self.etab = {}
+
+    def loads(self, s, fname=None, overwrite=True):
+        cnt = 0
+        for line in s.split('\n'):
+            cnt = cnt + 1
+            if not line:
+                continue
+
+            try:
+                c = line.split(None, 4);
+            except TypeError:
+                sys.exit('while processing: %s\nerror: bad config line at %s %s'
+                         % (line, cnt, fname and 'in file ' + fname or ''))
+                
+            if c[1] == 'int':
+                c[1] = 'to_int'
+            elif c[1] == 'intlist':
+                c[1] = 'to_intstr'
+            else:
+                sys.exit('while processing: %s\nerror: bad config line at %s %s'
+                         % (line, cnt, fname and 'in file ' + fname or ''))
+            
+            if c[2] == '=':
+                c[2] = '=='
+            elif c[2] == '>' or c[2] == '>=':
+                pass
+            elif c[2] == '<' or c[2] == '<=':
+                pass
+            else:
+                sys.exit('while processing: %s\nerror: bad config line at %s %s'
+                         % (line, cnt, fname and 'in file ' + fname or ''))
+            
+            if not overwrite and self.etab.get(c[0]):
+                print 'key', c[0], 'exists - passed'
+                pass
+            else:
+                self.etab[c[0]] = ('%s %s %s' % (c[0], c[2], c[3]), 
+                                   '%s("%%s") %s %s("%s")' % (c[1], c[2], c[1], c[3]), 
+                                   c[3])
+    
+        print self.etab
+
+    def getCheck(self, key):
+        e = self.etab.get(key)
+        if not e:
+            return ('', lambda x: False)
+        return (e[0], lambda x: eval(e[1] % x), e[2])
 
 ################
 def usage(exitarg):
@@ -51,14 +149,14 @@ def print_version():
 def parseCommandLine():
     global opt, argcmd
     try:
-	(options, args) = getopt.getopt(sys.argv[1:], '?evp:u:h:f:', ['version'])
+	(options, args) = getopt.getopt(sys.argv[1:], '?evp:u:h:f:c:', ['version'])
     except Exception, e:
 	usage('Error: ' + str(e))
 
     for (switch, val) in options:
 	if (switch == '-?'):	      usage(0)
 	elif (switch[1] in 'v'):      opt[switch] = True
-	elif (switch[1] in 'uf'):     opt[switch] = val
+	elif (switch[1] in 'ucf'):     opt[switch] = val
 	elif (switch == '-h'):        opt[switch].append(val)
 	elif (switch == '-p'):        opt[switch] = gplib.parse_port(val)
         elif (switch == '--version'): print_version()
@@ -303,6 +401,22 @@ def matchSyncTime(session, key, value):
         if not p.x_match:
             perr(p.x_peer, '%s not sync (value %s should between (%s, %s))'  % (key, v, lnow, unow))
             error(p.x_peer, key, value)
+            ok = False
+    return ok
+
+def matchConfig(session, conf):
+    ok = True
+    for key in conf.etab:
+        (desc, check, correct_val) = conf.getCheck(key)
+        print 'checking:', desc
+        for p in session:
+            val = p.x_res.get(key, '')
+            p.x_match = check(val)
+            if not p.x_match:
+                perr(p.x_peer, '"%s" failed (current value is %s)' % (desc, val))
+                error(p.x_peer, key, correct_val)
+            ok = False
+    return ok
 
 try:
     parseCommandLine()
@@ -316,21 +430,30 @@ try:
     if len(tab) == 0:
         usage('Error: missing hosts in -h and/or -f arguments')
 
+    conf = Config()
+    if opt['-c']:
+        print 'reading config file: %s' % opt['-c']
+        f = open(opt['-c'])
+        s = f.read()
+        f.close()
+        conf.loads(s, opt['-c'])
+
     opt['-h'] = tab
     session = sshGpSys()
     waitSession(session)
 
     p0 = session[0]
     # check gphome
-    key = 'env.GPHOME'
-    for p in session:
-        value = p.x_res.get(key)
-        if not value:
-            value = p.x_res.get('env.__GPHOME')
-            perr(p.x_peer, 'GPHOME not set, default to ' + value)
-            error(p.x_peer, key, 'GPHOME not set, default to ' + value)
-        else:
-            match(session, key, GPHOME)
+    #key = 'env.GPHOME'
+    #for p in session:
+    #    value = p.x_res.get(key)
+    #    if not value:
+    #        value = p.x_res.get('env.__GPHOME')
+    #        perr(p.x_peer, 'GPHOME not set, default to ' + value)
+    #        error(p.x_peer, key, 'GPHOME not set, default to ' + value)
+    #    else:
+    #        match(session, key, GPHOME)
+
     # check postgres 
     key = 'postgres.md5'
     value = p0.x_res.get(key)
@@ -347,7 +470,7 @@ try:
             match(session, key, value)
 
     key = 'python.version'
-    matchListMore(session, key, '2.3.0')
+    matchListMore(session, key, '2.3.5')
 
     key = 'sync.time'
     value = p0.x_res.get(key)
@@ -366,37 +489,9 @@ try:
         if v.find('2.6') != 0:
             perr(p.x_peer, 'Linux version (version %s should be >= 2.6)' % v)
         elif match(session, key, v):
-            # check shm
-            key = 'sysctl.kernel.shmmax'
-            matchMore(session, key, 500000000)
-            key = 'sysctl.kernel.shmmni'
-            matchMore(session, key, 4096)
-            key = 'sysctl.kernel.shmall'
-            matchMore(session, key, 4000000000)
-
-            # check sem
-            key = 'sysctl.kernel.sem'
-            matchList(session, key, '250 64000 100 512')
-
-            # check net
-            key = 'sysctl.net.ipv4.tcp_tw_recycle'
-            matchMore(session, key, 1)
-            key = 'sysctl.net.ipv4.tcp_max_syn_backlog'
-            match(session, key, '4096')
-            key = 'sysctl.net.core.netdev_max_backlog'
-            match(session, key, '10000')
-
-            # check overcommit memory
-            key = 'sysctl.vm.overcommit_memory'
-            match(session, key, '2')
-
-            # check ulimit
-            key = 'ulimit.nofile'
-            matchMore(session, key, 65536)
-            key = 'ulimit.nproc'
-            matchMore(session, key, 131072)
-	
-	    print_fix()
+            conf.loads(linuxconf, overwrite=False)
+            matchConfig(session, conf)
+            print_fix()
 
     elif value == 'sunos' and match(session, key, 'sunos'):
         key = 'platform.release'
@@ -404,35 +499,8 @@ try:
         if v.find('5.10') != 0:
             perr(p.x_peer, 'Solaris version (version %s should be >= 5.10)' % v)
         elif match(session, key, v):
-            # check ndd
-            key = 'ndd.tcp_conn_req_max_q'
-            match(session, key, '4096')
-
-            key = 'ndd.tcp_conn_req_max_q0'
-            match(session, key, '4096')
-
-            key = 'ndd.tcp_largest_anon_port'
-            match(session, key, '65535')
-            
-            key = 'ndd.tcp_smallest_anon_port'
-            match(session, key, '4096')
-
-            key = 'ndd.tcp_time_wait_interval'
-            match(session, key, '100')
-
-            # check system
-            key = 'system.rlim_fd_max'
-            match(session, key, '262144')
-            
-            key = 'system.rlim_fd_cur'
-            match(session, key, '65536')
-
-            key = 'system.shmsys:shminfo_shmmax'
-            matchMore(session, key, 0x2000000)
-
-            key = 'system.semsys:seminfo_semmni'
-            match(session, key, '1024')
-    
+            conf.loads(sunosconf, overwrite=False)
+            matchConfig(session, conf)
             print_fix()
     else:
         perr(p0.x_peer, 'unknown system (key %s should be either Linux or SunOS)' % key)
