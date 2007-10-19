@@ -4969,8 +4969,8 @@ flushInterconnectListenerBacklog(void)
 		MPP_FD_ZERO(&rset);
 		MPP_FD_SET(listenerFd, &rset);
 		timeout.tv_sec = 0;
-		timeout.tv_usec = 10;
-
+		timeout.tv_usec = 0;
+	
 		pendingConn = select(listenerFd + 1, (fd_set *)&rset, NULL, NULL, &timeout);
 		if (pendingConn > 0)
 		{
