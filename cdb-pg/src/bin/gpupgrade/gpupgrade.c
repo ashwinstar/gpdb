@@ -175,10 +175,10 @@ addexttablerows(config_t *conf)
 	run_query(conf, 0, "truncate pg_catalog.pg_exttable;");
 	
 	if (exttableres)
-		mylog(UINFO, "found %u external table entries for database %s", 
+		mylog(UDEBUG, "found %u external table entries for database %s", 
 			  PQntuples(exttableres), conf->dbname);
 	else
-		mylog(UINFO, "found no external table entries for database %s",
+		mylog(UDEBUG, "found no external table entries for database %s",
 			  conf->dbname);
 	
 	/* add the rows */
