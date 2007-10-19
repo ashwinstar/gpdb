@@ -4171,10 +4171,6 @@ adjustDelayBoundEdgeForRows(WindowStatePerLevel level_state,
 				ntuplestore_acc_set_invalid(edge_reader);
 
 				*p_num_rows = 0 - frame_buffer->num_rows_before;
-
-				/* if (!ntuplestore_acc_tell(frame_buffer->current_row_reader, NULL) &&
-					level_state->agg_filled)
-					(*p_num_rows)--;*/
 			}
 		}
 	}

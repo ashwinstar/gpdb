@@ -760,7 +760,7 @@ static Node * window_tlist_mutator(Node *node, WindowContext *context)
 			FuncExpr *expr = (FuncExpr *)node;
 
 			if (IS_NTILE(context->cur_refinfo->winkind) &&
-				func_volatile(expr->funcid))
+				(func_volatile(expr->funcid) == PROVOLATILE_VOLATILE))
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("NTILE function argument should not use volatile functions.")));
