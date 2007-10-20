@@ -177,7 +177,7 @@ def sshGpSys():
     session = []
     for (user, host, port) in opt['-h']:
         peer = user and ('%s@%s' % (user, host)) or host
-        cmd = ('export __GPHOME=%s && $__GPHOME/bin/lib/gpsys.py -p' % GPHOME)
+        cmd = ('GPHOME=%s && export GPHOME && $GPHOME/bin/lib/gpsys.py -p' % GPHOME)
         ssh = gplib.ssh_prefix(user, host, port)
 	ssh = ssh + ' eval  \'%s\' ' % cmd
         if opt['-v']: print '[INFO %s] %s' % (peer, cmd)
@@ -213,7 +213,12 @@ def waitSession(session):
                 else:
                     errmsg = '[ERROR %s] bad output while %s' % (p.x_peer, p.x_ssh)
             print errmsg
-        if opt['-v']: print p.x_res
+        if opt['-v']: 
+            keys = p.x_res.keys()
+            keys.sort()
+            for key in keys:
+                print '[INFO %s] %s: %s' % (p.x_peer, key, p.x_res[key])
+            print
 	status = p.wait()
 	if status:
 	    errmsg = '[ERROR %s] Command failed. Exit status = %s. Command = %s' % (p.x_peer, status, p.x_ssh)
