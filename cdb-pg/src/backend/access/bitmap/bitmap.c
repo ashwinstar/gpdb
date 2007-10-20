@@ -208,6 +208,7 @@ bmgetmulti(PG_FUNCTION_ARGS)
 		sp = ((BMScanOpaque)copy->opaque)->bm_currPos;
 		so->scan = copy;
 		so->entry = NULL;
+		so->is_done = false;
 		is->opaque = (void *)so;
 
 		if(!bm)
