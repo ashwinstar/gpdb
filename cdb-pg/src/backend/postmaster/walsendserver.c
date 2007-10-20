@@ -43,6 +43,7 @@
 // To avoid pulling in cdbfts.h
 extern bool isQDMirroringEnabled(void);	
 extern void disableQDMirroring(void);
+extern void unexpectedErrorQDMirroring(void);
 
 /*=========================================================================
  * FUNCTIONS PROTOTYPES
@@ -54,6 +55,8 @@ static pid_t walsendserver_forkexec(void);
 #endif
 NON_EXEC_STATIC void WalSendServerMain(int argc, char *argv[]);
 
+static void WalSendServerInitContext(void);
+static void WalSendServerDoRequest(WalSendRequest *walSendRequest, PROC_RESPONSE_COOKIE *responseCookie);
 static void WalSendServerLoop(void);
 
 /*=========================================================================
@@ -263,6 +266,247 @@ WalSendServerMain(int argc, char *argv[])
 	proc_exit(0);
 }
 
+static XLogRecPtr 	originalEndLocation;
+static XLogRecPtr 	currentEndLocation;
+static uint32 		periodicLen;
+static uint32 		periodicReportLen;
+static XLogRecPtr 	periodicLocation;
+
+static void
+WalSendServerInitContext(void)
+{
+	memset(&originalEndLocation, 0, sizeof(XLogRecPtr));
+	memset(&currentEndLocation, 0, sizeof(XLogRecPtr));
+	
+	periodicLen = 0;
+	periodicReportLen = 1024 * 1024;	// 1 megabyte.
+	if (!Debug_print_qd_mirroring)
+		periodicReportLen *= 10;		// 10 megabytes.
+	
+	memset(&periodicLocation, 0, sizeof(XLogRecPtr));
+
+}
+
+static void
+WalSendServerDoRequest(WalSendRequest *walSendRequest, PROC_RESPONSE_COOKIE *responseCookie)
+{
+	WalSendResponse walSendResponse;
+	bool successful;
+	
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "request command %d = '%s' (mppLocalProcessSerial = %d, requestSerialNumber %d, responseNeeded %s)",
+		 walSendRequest->command, WalSendRequestCommandToString(walSendRequest->command),
+		 responseCookie->mppLocalProcessSerial,
+		 responseCookie->requestSerialNumber,
+		 (responseCookie->responseNeeded ? "true" : "false"));
+
+	switch (walSendRequest->command)
+	{
+	case PositionToEnd:
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "PositionToEnd");
+
+		successful = write_position_to_end(&originalEndLocation);
+		if (successful)
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"end location %s",
+				 XLogLocationToString(&originalEndLocation));
+		else
+		{
+			elog(NOTICE,"disabling QD mirror (unable to connect to standby and determine log end location)");
+			disableQDMirroring();
+		}
+		break;
+		
+	case Catchup:
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "Catchup");
+
+        if (isQDMirroringCatchingUp())
+    	{
+			if (XLByteLT(originalEndLocation, walSendRequest->flushedLocation))
+			{
+				/*
+				 * Standby master is behind the primary.  Send catchup WAL.
+				 */
+				 
+				/* 
+				 * Use a TRY block to catch errors from our attempt to read
+				 * the primary's WAL.  Errors from sending to the standby
+				 * come up as a boolean return (successful).
+				 */
+				PG_TRY();
+				{
+					successful = XLogCatchupQDMirror(&originalEndLocation, &walSendRequest->flushedLocation);
+				}
+				PG_CATCH();
+				{
+					/* 
+					 * Report the error related to reading the primary's WAL
+					 * to the server log 
+					 */
+					EmitErrorReport();
+					FlushErrorState();
+
+					elog(NOTICE,"Mirror cannot be synchronized because it is too far behind (unable to read old primary log during catchup)");
+					markStandbyInvalid();
+					successful = false;
+				}
+				PG_END_TRY();
+				
+				if (successful)
+				{
+					elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
+						 "catchup send from standby end %s through primary flushed location %s",
+						 XLogLocationToString(&originalEndLocation),
+						 XLogLocationToString2(&walSendRequest->flushedLocation));
+				}
+			}
+			else
+			{
+				elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"Mirror was already caught up");
+				successful = true;
+			}
+			
+			if (successful)
+			{
+				elog(LOG,"successfully copied transaction log from locations %s through %s to QD Mirror to synchronize it",
+				     XLogLocationToString(&originalEndLocation),
+				     XLogLocationToString2(&walSendRequest->flushedLocation));
+				
+				currentEndLocation = walSendRequest->flushedLocation;
+
+				periodicLen = 0;
+				periodicLocation = currentEndLocation;
+			}
+			else
+			{
+				elog(NOTICE,"disabling QD mirror (unable to synchronize at this time)");
+				disableQDMirroring();
+			}
+		}
+		else
+		{
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QD Mirror Send: QD mirroring not catching-up");
+		}
+		
+		break;
+		
+	case WriteWalPages:
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "WriteWalPages");
+        if (isQDMirroringEnabled())
+        {
+			XLogRecPtr 	writeLoc;
+			char 		cmd[MAXFNAMELEN + 50];
+			char	   *from;
+			Size		nbytes;
+
+			XLogGetBuffer(walSendRequest->startidx, walSendRequest->npages,
+				          &from, &nbytes);
+
+			writeLoc.xlogid = walSendRequest->logId;
+			writeLoc.xrecoff = walSendRequest->logSeg * XLogSegSize
+				             + walSendRequest->logOff;
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG1), 
+				"QD Mirror Send: WriteWalPages startidx %d, npages %d, timeLineID %d, logId %u, logSeg %u, logOff 0x%X, write loc %X/%X, nbytes 0x%X",
+				walSendRequest->startidx,
+				walSendRequest->npages,
+				walSendRequest->timeLineID,
+				walSendRequest->logId,
+				walSendRequest->logSeg,
+				walSendRequest->logOff,
+				writeLoc.xlogid,
+				writeLoc.xrecoff,
+				(int)nbytes);
+
+			if (snprintf(cmd, sizeof(cmd),"xlog %d %d %d %d", 
+						 walSendRequest->logId, walSendRequest->logSeg,
+				         walSendRequest->logOff, (int)nbytes) >= sizeof(cmd))
+				elog(ERROR,"could not create cmd for qd mirror logid %d seg %d", 
+				     walSendRequest->logId, walSendRequest->logSeg);
+			
+			successful = write_qd_sync(cmd, from, nbytes);
+			if (successful)
+			{
+				XLogRecPtr oldEndLocation;
+				
+				oldEndLocation = currentEndLocation;
+				
+				currentEndLocation.xlogid = walSendRequest->logId;
+				currentEndLocation.xrecoff = walSendRequest->logSeg * XLogSegSize +
+					                  walSendRequest->logOff;
+
+				if (XLByteLT(oldEndLocation,currentEndLocation))
+				{
+					periodicLen += nbytes;
+					if (periodicLen > periodicReportLen)
+					{
+						elog(LOG,
+							 "periodic report: %d bytes successfully send to QD mirror for locations %s through %s",
+							 periodicLen,
+							 XLogLocationToString(&periodicLocation),
+							 XLogLocationToString2(&currentEndLocation));
+
+						periodicLen = 0;
+						periodicLocation = currentEndLocation;
+					}
+				}
+				else
+				{
+					elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
+						 "Send to QD mirror successful.  New end location %s (old %s)",
+						 XLogLocationToString(&currentEndLocation),
+						 XLogLocationToString2(&oldEndLocation));
+				}
+			}
+			else
+			{
+				elog(NOTICE,"disabling QD mirror (unable to send new log)");
+				disableQDMirroring();
+			}
+			
+			if (successful && walSendRequest->haveNewCheckpointLocation)
+			{
+				uint32 logid;
+				uint32 seg;
+				uint32 offset;
+				
+	        	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"New previous checkpoint location %s",
+				     XLogLocationToString(&walSendRequest->newCheckpointLocation));
+				XLByteToSeg(walSendRequest->newCheckpointLocation, logid, seg);
+				offset = walSendRequest->newCheckpointLocation.xrecoff % XLogSegSize;
+				
+				if (snprintf(cmd, sizeof(cmd),"new_checkpoint_location %d %d %d", 
+							 logid, seg, offset) >= sizeof(cmd))
+					elog(ERROR,"could not create cmd for qd mirror logid %d seg %d offset %d", 
+					     logid, seg, offset);
+				
+				successful = write_qd_sync(cmd, NULL, 0);
+				if (successful)
+				{
+					elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"Send of new checkpoint location to QD mirror successful");
+				}
+				else
+				{
+					elog(NOTICE,"disabling QD mirror (unable to send new checkpoint location)");
+					disableQDMirroring();
+				}
+			}
+			
+        }
+		else
+		{
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QD Mirror Send: QD mirroring not enabled");
+		}
+		
+		break;
+		
+	default:
+		elog(ERROR, "Unknown WalSendRequestCommand %d", walSendRequest->command);
+	}
+
+
+	walSendResponse.ok = true;
+	
+	ProcSendResponse(responseCookie, &walSendResponse, sizeof(walSendResponse));
+}
+
 void 
 WalSendServerLoop(void)
 {
@@ -270,16 +514,8 @@ WalSendServerLoop(void)
 	PGPROCGetRequestResult getRequestResult;
 	WalSendRequest walSendRequest;
 	PROC_RESPONSE_COOKIE responseCookie;
-	WalSendResponse walSendResponse;
 	bool postmasterDied;
 	bool drain;
-	XLogRecPtr originalEndLocation;
-	XLogRecPtr endLocation;
-	XLogRecPtr oldEndLocation;
-	bool successful;
-	uint32 periodicLen;
-	uint32 periodicReportLen;
-	XLogRecPtr periodicLocation;
 
 	MemSet(&originalEndLocation, 0, sizeof(originalEndLocation));
 	
@@ -288,7 +524,35 @@ WalSendServerLoop(void)
 	Assert(CurrentMemoryContext == TopMemoryContext);
 
 	/*
-	 * Come up for air every 2 seconds to see if the postmaster has died, a
+	 * Before we enter the main request loop, hang out here if the
+	 * mirror configuration is unknown, there is no mirror, or we
+	 * have disabled the QD mirror (and perhaps this server process has been
+	 * restarted?).
+	 */
+	while (true)
+	{
+		if (isQDMirroringNotKnownYet())
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
+				 "QD mirroring configuration not known yet");
+		else if (isQDMirroringNotConfigured())
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
+				 "QD mirroring not configured");
+		else if (isQDMirroringUnexpectedError())
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
+				 "QD mirroring unexpected error condition");
+		else
+			break;
+		
+		if (!PostmasterIsAlive(true))
+		{
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"postmaster has died.");
+			return;
+		}
+		pg_usleep(1000000);		/* 1 sec */
+	}
+	
+	/*
+	 * Come up for air every 1 second to see if the postmaster has died, a
 	 * shutdown has been requested, etc.
 	 */
 	timeout.tv_sec = 1;
@@ -297,273 +561,87 @@ WalSendServerLoop(void)
 	postmasterDied = false;
 	drain = false;
 
-	periodicLen = 0;
-	periodicReportLen = 1024 * 1024;	// 1 megabyte.
-//	if (!Debug_print_qd_mirroring)
-//		periodicReportLen *= 10;		// 10 megabytes.
-	
-	memset(&periodicLocation, 0, sizeof(XLogRecPtr));
-
-	ProcSetAcceptingNewRequests(PGPROC_REQUEST_WALSEND, true);
-
-	while(true)
+	/* 
+	 * Use a TRY block to catch unexpected errors that bubble up to this level
+	 * and disable QD mirroring.
+	 */
+	PG_TRY();
 	{
-		getRequestResult = ProcGetRequest(
-								PGPROC_REQUEST_WALSEND, 
-								&walSendRequest, sizeof(walSendRequest),
-								&timeout,
-								drain,
-								&responseCookie);
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
+			 "entering main request loop");
 		
-		if (!PostmasterIsAlive(true))
-		{
-			/*
-			 * Gracefully drain our queue so requesting backend don't get hung
-			 * even though the postmaster has croaked.
-			 */
-			elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"postmaster has died -- draining.");
-			ProcSetAcceptingNewRequests(PGPROC_REQUEST_WALSEND, false);
-			postmasterDied = true;
-			drain = true;
-		}
+//		ProcSetAcceptingNewRequests(PGPROC_REQUEST_WALSEND, true);
 
-		if (getRequestResult == PGPROC_GETREQUEST_INTERRUPT)
+		WalSendServerInitContext();
+
+		while(true)
 		{
-			CHECK_FOR_INTERRUPTS();
+			getRequestResult = ProcGetRequest(
+									PGPROC_REQUEST_WALSEND, 
+									&walSendRequest, sizeof(walSendRequest),
+									&timeout,
+									drain,
+									&responseCookie);
 			
-			if (walsend_shutdown_requested && !drain)
+			if (!PostmasterIsAlive(true))
 			{
 				/*
-				 * Gracefully drain our queue so requesting backends can finish
-				 * on shutdown.
+				 * Gracefully drain our queue so requesting backend don't get hung
+				 * even though the postmaster has croaked.
 				 */
-				elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"shutdown requested -- draining.");
+				elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"postmaster has died -- draining.");
 				ProcSetAcceptingNewRequests(PGPROC_REQUEST_WALSEND, false);
+				postmasterDied = true;
 				drain = true;
 			}
-			
-			continue;
-		}
-		else if (getRequestResult == PGPROC_GETREQUEST_QUEUEEMPTY)
-		{
-			Assert(drain);
-			break;
-		}
-		else
-		{
-			Assert(getRequestResult == PGPROC_GETREQUEST_OK);
-		}
-		
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "request command %d = '%s' (mppLocalProcessSerial = %d, requestSerialNumber %d, responseNeeded %s)",
-			 walSendRequest.command, WalSendRequestCommandToString(walSendRequest.command),
-			 responseCookie.mppLocalProcessSerial,
-			 responseCookie.requestSerialNumber,
-			 (responseCookie.responseNeeded ? "true" : "false"));
 
-		/* 
-		 * Use a TRY block to catch errors from our attempt to read
-		 * the primary's WAL.  Errors from sending to the standby
-		 * come up as a boolean return (successful).
-		 */
-		PG_TRY();
-		{
-			switch (walSendRequest.command)
+			if (getRequestResult == PGPROC_GETREQUEST_INTERRUPT)
 			{
-			case PositionToEnd:
-				elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "PositionToEnd");
-
-				successful = write_position_to_end(&originalEndLocation);
-				if (successful)
-					elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"end location %s",
-						 XLogLocationToString(&originalEndLocation));
-				else
+				CHECK_FOR_INTERRUPTS();
+				
+				if (walsend_shutdown_requested && !drain)
 				{
-					elog(NOTICE,"disabling QD mirror (unable to connect to standby and determine log end location)");
-					disableQDMirroring();
+					/*
+					 * Gracefully drain our queue so requesting backends can finish
+					 * on shutdown.
+					 */
+					elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"shutdown requested -- draining.");
+					ProcSetAcceptingNewRequests(PGPROC_REQUEST_WALSEND, false);
+					drain = true;
 				}
+				
+				continue;
+			}
+			else if (getRequestResult == PGPROC_GETREQUEST_QUEUEEMPTY)
+			{
+				Assert(drain);
 				break;
-				
-			case Catchup:
-				elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "Catchup");
-
-		        if (isQDMirroringCatchingUp())
-	        	{
-					if (XLByteLT(originalEndLocation, walSendRequest.flushedLocation))
-					{
-						/*
-						 * Standby master is behind the primary.  Send catchup WAL.
-						 */
-						successful = XLogCatchupQDMirror(&originalEndLocation, &walSendRequest.flushedLocation);
-						if (successful)
-						{
-							elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
-								 "catchup send from standby end %s through primary flushed location %s",
-								 XLogLocationToString(&originalEndLocation),
-								 XLogLocationToString2(&walSendRequest.flushedLocation));
-						}
-					}
-					else
-					{
-						elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"Mirror was already caught up");
-						successful = true;
-					}
-					
-					if (successful)
-					{
-						elog(LOG,"successfully copied transaction log from locations %s through %s to QD Mirror to synchronize it",
-						     XLogLocationToString(&originalEndLocation),
-						     XLogLocationToString2(&walSendRequest.flushedLocation));
-						
-						endLocation = walSendRequest.flushedLocation;
-
-						periodicLen = 0;
-						periodicLocation = endLocation;
-					}
-					else
-					{
-						elog(NOTICE,"disabling QD mirror (unable to synchronize at this time)");
-						disableQDMirroring();
-					}
-				}
-				else
-				{
-					elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QD Mirror Send: QD mirroring not catching-up");
-				}
-				
-				break;
-				
-			case WriteWalPages:
-				elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "WriteWalPages");
-		        if (isQDMirroringEnabled())
-		        {
-					XLogRecPtr 	writeLoc;
-					char 		cmd[MAXFNAMELEN + 50];
-					char	   *from;
-					Size		nbytes;
-
-					XLogGetBuffer(walSendRequest.startidx, walSendRequest.npages,
-						          &from, &nbytes);
-
-					writeLoc.xlogid = walSendRequest.logId;
-					writeLoc.xrecoff = walSendRequest.logSeg * XLogSegSize
-						             + walSendRequest.logOff;
-					elog((Debug_print_qd_mirroring ? LOG : DEBUG1), 
-						"QD Mirror Send: WriteWalPages startidx %d, npages %d, timeLineID %d, logId %u, logSeg %u, logOff 0x%X, write loc %X/%X, nbytes 0x%X",
-						walSendRequest.startidx,
-						walSendRequest.npages,
-						walSendRequest.timeLineID,
-						walSendRequest.logId,
-						walSendRequest.logSeg,
-						walSendRequest.logOff,
-						writeLoc.xlogid,
-						writeLoc.xrecoff,
-						(int)nbytes);
-
-					if (snprintf(cmd, sizeof(cmd),"xlog %d %d %d %d", 
-								 walSendRequest.logId, walSendRequest.logSeg,
-						         walSendRequest.logOff, (int)nbytes) >= sizeof(cmd))
-						elog(ERROR,"could not create cmd for qd mirror logid %d seg %d", 
-						     walSendRequest.logId, walSendRequest.logSeg);
-					
-					successful = write_qd_sync(cmd, from, nbytes);
-					if (successful)
-					{
-						oldEndLocation = endLocation;
-						
-						endLocation.xlogid = walSendRequest.logId;
-						endLocation.xrecoff = walSendRequest.logSeg * XLogSegSize +
-							                  walSendRequest.logOff;
-
-						if (XLByteLT(oldEndLocation,endLocation))
-						{
-							periodicLen += nbytes;
-							if (periodicLen > periodicReportLen)
-							{
-								elog(LOG,
-									 "periodic report: %d bytes successfully send to QD mirror for locations %s through %s",
-									 periodicLen,
-									 XLogLocationToString(&periodicLocation),
-									 XLogLocationToString2(&endLocation));
-
-								periodicLen = 0;
-								periodicLocation = endLocation;
-							}
-						}
-						else
-						{
-							elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
-								 "Send to QD mirror successful.  New end location %s (old %s)",
-								 XLogLocationToString(&endLocation),
-								 XLogLocationToString2(&oldEndLocation));
-						}
-					}
-					else
-					{
-						elog(NOTICE,"disabling QD mirror (unable to send new log)");
-						disableQDMirroring();
-					}
-					
-					if (successful && walSendRequest.haveNewCheckpointLocation)
-					{
-						uint32 logid;
-						uint32 seg;
-						uint32 offset;
-						
-			        	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"New previous checkpoint location %s",
-						     XLogLocationToString(&walSendRequest.newCheckpointLocation));
-						XLByteToSeg(walSendRequest.newCheckpointLocation, logid, seg);
-						offset = walSendRequest.newCheckpointLocation.xrecoff % XLogSegSize;
-						
-						if (snprintf(cmd, sizeof(cmd),"new_checkpoint_location %d %d %d", 
-									 logid, seg, offset) >= sizeof(cmd))
-							elog(ERROR,"could not create cmd for qd mirror logid %d seg %d offset %d", 
-							     logid, seg, offset);
-						
-						successful = write_qd_sync(cmd, NULL, 0);
-						if (successful)
-						{
-							elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"Send of new checkpoint location to QD mirror successful");
-						}
-						else
-						{
-							elog(NOTICE,"disabling QD mirror (unable to send new checkpoint location)");
-							disableQDMirroring();
-						}
-					}
-					
-		        }
-				else
-				{
-					elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QD Mirror Send: QD mirroring not enabled");
-				}
-				
-				break;
-				
-			default:
-				elog(ERROR, "Unknown WalSendRequestCommand %d", walSendRequest.command);
+			}
+			else
+			{
+				Assert(getRequestResult == PGPROC_GETREQUEST_OK);
 			}
 
+			WalSendServerDoRequest(&walSendRequest,&responseCookie);
 		}
-		PG_CATCH();
-		{
-			/* 
-			 * Report the error related to reading the primary's WAL
-			 * to the server log 
-			 */
-			EmitErrorReport();
-			FlushErrorState();
 
-			elog(NOTICE,"Mirror cannot be synchronized because it is too far behind (unable to read old primary log during catchup)");
-			markStandbyInvalid();
-			disableQDMirroring();
-		}
-		PG_END_TRY();
-
-		walSendResponse.ok = true;
-		
-		ProcSendResponse(&responseCookie, &walSendResponse, sizeof(walSendResponse));
+		disableQDMirroring();
 	}
+	PG_CATCH();
+	{
+		/* 
+		 * Report the unexpected error.
+		 */
+		EmitErrorReport();
+		FlushErrorState();
 
+		elog(NOTICE,"disabling QD mirroring (unexpected error encountered)");
+		unexpectedErrorQDMirroring();
+	}
+	PG_END_TRY();
+		
+	ProcSetAcceptingNewRequests(PGPROC_REQUEST_WALSEND, false);
+	
 	disconnectMirrorQD();
 	
 	return;

@@ -25,6 +25,7 @@
 #include "cdb/cdbtm.h"
 #include "libpq/libpq-be.h"
 #include "commands/dbcommands.h"
+#include "storage/proc.h"
 
 #include "executor/spi.h"
 
@@ -278,11 +279,21 @@ CdbShutdown(void)
 void
 disableQDMirroring(void)
 {
+	Assert(ftsQDMirrorInfo != NULL);
+	
 	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
 	LWLockRelease(ftsControlLock);
+}
+
+void
+unexpectedErrorQDMirroring(void)
+{
+	Assert(ftsQDMirrorInfo != NULL);
 	
-	elog(LOG, "FTS: QD mirroring disabled");
+	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	ftsQDMirrorInfo->state = QDMIRROR_STATE_UNEXPECTEDERROR;
+	LWLockRelease(ftsControlLock);
 }
 
 bool
@@ -291,7 +302,7 @@ isQDMirroringEnabled(void)
 	bool result;
 	
 	if (ftsQDMirrorInfo == NULL)
-		return false;
+		return false;	// Don't know yet.
 	
 	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
 	result = (ftsQDMirrorInfo->state == QDMIRROR_STATE_ENABLED);
@@ -306,7 +317,7 @@ isQDMirroringCatchingUp(void)
 	bool result;
 	
 	if (ftsQDMirrorInfo == NULL)
-		return false;
+		return false;	// Don't know yet.
 	
 	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
 	result = (ftsQDMirrorInfo->state == QDMIRROR_STATE_CATCHINGUP);
@@ -314,6 +325,67 @@ isQDMirroringCatchingUp(void)
 
 	return result;
 }
+
+bool
+isQDMirroringNotConfigured(void)
+{
+	bool result;
+	
+	if (ftsQDMirrorInfo == NULL)
+		return false;	// Don't know yet.
+	
+	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	result = (ftsQDMirrorInfo->state == QDMIRROR_STATE_NOTCONFIGURED);
+	LWLockRelease(ftsControlLock);
+
+	return result;
+}
+
+bool
+isQDMirroringNotKnownYet(void)
+{
+	bool result;
+	
+	if (ftsQDMirrorInfo == NULL)
+		return true;	// Assume.
+	
+	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	result = (ftsQDMirrorInfo->state == QDMIRROR_STATE_NONE);
+	LWLockRelease(ftsControlLock);
+
+	return result;
+}
+
+bool
+isQDMirroringDisabled(void)
+{
+	bool result;
+	
+	if (ftsQDMirrorInfo == NULL)
+		return false;	// Don't know yet.
+	
+	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	result = (ftsQDMirrorInfo->state == QDMIRROR_STATE_DISABLED);
+	LWLockRelease(ftsControlLock);
+
+	return result;
+}
+
+bool
+isQDMirroringUnexpectedError(void)
+{
+	bool result;
+	
+	if (ftsQDMirrorInfo == NULL)
+		return false;	// Don't know yet.
+	
+	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	result = (ftsQDMirrorInfo->state == QDMIRROR_STATE_UNEXPECTEDERROR);
+	LWLockRelease(ftsControlLock);
+
+	return result;
+}
+
 
 void
 FtsHandleNetFailure(SegmentDatabaseDescriptor ** segDB, int numOfFailed)
@@ -1116,13 +1188,14 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 	 * We do NOT wait for a response while under the lock.  We'll pick
 	 * up the response at the end of this procedure.
 	 */
+	ProcSetAcceptingNewRequests(PGPROC_REQUEST_WALSEND, true);
 	ftsQDMirrorInfo->configurationChecked = true;
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_POSITIONINGTOEND;
 
 	serverAcceptingNewRequests = XLogQDMirrorQueuePositionToEnd(&serialNumber);
 	if (!serverAcceptingNewRequests)
 	{
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "WAL Send server not accepting new requests!");
+		elog(LOG, "disabling QD mirroring (request PositionToEnd -- WAL Send server not accepting new requests)");
 
 		ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
 		LWLockRelease(ftsControlLock);
@@ -1138,7 +1211,7 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
 	if (!serverAcceptingNewRequests)
 	{
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "WAL Send server not accepting new requests!");
+		elog(LOG, "disabling QD mirroring (wait for PositionToEnd response -- WAL Send server not accepting new requests)");
 
 		ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
 		LWLockRelease(ftsControlLock);
@@ -1301,7 +1374,6 @@ FtsSetNoQDMirroring(void)
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_NOTCONFIGURED;
 	
 	LWLockRelease(ftsControlLock);
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"set QD mirroring to disabled");
 }
 
 void

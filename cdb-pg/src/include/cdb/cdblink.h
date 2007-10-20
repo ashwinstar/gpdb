@@ -59,6 +59,10 @@ extern void *getEntrySegDB(int *);
 extern bool isQDMirroringEnabled(void);
 
 extern bool isQDMirroringCatchingUp(void);
+extern bool isQDMirroringNotConfigured(void);
+extern bool isQDMirroringNotKnownYet(void);
+extern bool isQDMirroringDisabled(void);
+extern bool isQDMirroringUnexpectedError(void);
 
 extern bool write_qd_sync(char *, void *, int);
 

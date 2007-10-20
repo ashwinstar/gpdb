@@ -21,6 +21,7 @@ typedef enum QDMIRRORState
 	QDMIRROR_STATE_CATCHINGUP,
 	QDMIRROR_STATE_ENABLED,
 	QDMIRROR_STATE_DISABLED,
+	QDMIRROR_STATE_UNEXPECTEDERROR,
 	QDMIRROR_STATE_MAX /* must always be last */
 } QDMIRRORState;
 
@@ -93,6 +94,7 @@ extern int	convertFaultActionValue(char *);
 extern bool verifyFtsSyncCount(void);
 extern void FtsCondSetTxnReadOnly(bool *);
 extern void disableQDMirroring(void);
+extern void unexpectedErrorQDMirroring(void);
 extern CdbComponentDatabases *applyTransientState(CdbComponentDatabases *);
 extern void FtsEvaluateTransientState(void);
 extern bool isFtsReadOnlySet(void);

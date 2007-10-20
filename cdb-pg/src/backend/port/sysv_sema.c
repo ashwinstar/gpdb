@@ -444,7 +444,9 @@ PGSemaphoreLock(PGSemaphore sema, bool interruptOK)
 	} while (errStatus < 0 && errno == EINTR);
 
 	if (errStatus < 0)
-		elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
+		// UNDONE: For the moment, make this an ERROR
+//		elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
+		elog(ERROR, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
 }
 
 /*
@@ -468,7 +470,9 @@ PGSemaphoreLockInterruptable(PGSemaphore sema)
 	{
 		if (errno == EINTR)
 			return false;
-		elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
+		// UNDONE: For the moment, make this an ERROR
+//		elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
+		elog(ERROR, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
 	}
 
 	return true;
@@ -568,7 +572,9 @@ PGSemaphoreLockTimed(PGSemaphore sema, struct timeval *timeout)
 				result = false;
 				break;
 			}
-			elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
+			// UNDONE: For the moment, make this an ERROR
+//			elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
+			elog(ERROR, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
 		}
 
 		result = true;
@@ -615,7 +621,9 @@ PGSemaphoreUnlock(PGSemaphore sema)
 	} while (errStatus < 0 && errno == EINTR);
 
 	if (errStatus < 0)
-			elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
+		// UNDONE: For the moment, make this an ERROR
+//		elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
+		elog(ERROR, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
 }
 
 /*
@@ -655,7 +663,9 @@ PGSemaphoreTryLock(PGSemaphore sema)
 			return false;		/* failed to lock it */
 #endif
 		/* Otherwise we got trouble */
-		elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
+		// UNDONE: For the moment, make this an ERROR
+//		elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
+		elog(ERROR, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
 	}
 
 	return true;
