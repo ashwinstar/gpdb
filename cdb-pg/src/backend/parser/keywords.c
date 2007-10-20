@@ -179,7 +179,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"host", HOST},
 	{"hour", HOUR_P},
 	{"if", IF_P},
-	{"ignore", IGNORE},
+	{"ignore", IGNORE_P},
 	{"ilike", ILIKE},
 	{"immediate", IMMEDIATE},
 	{"immutable", IMMUTABLE},
