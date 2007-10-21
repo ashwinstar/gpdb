@@ -36,7 +36,7 @@ USAGE () {
 		$ECHO	
 		$ECHO "	  `basename $0`"
 		$ECHO
-		$ECHO "	  Starts the full Greenplum Database instance, or Master instance only in utility mode"
+		$ECHO "	  Backup all the system catalog files, cluster wide."
 		$ECHO
 		$ECHO "	  Usage:"
 		$ECHO "	  $0 [OPTIONS]"
@@ -49,10 +49,9 @@ USAGE () {
 		$ECHO "	  Logging options:"
 		$ECHO "	  -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
 		$ECHO "	  -l, <logfile directory> alternative logfile directory [optional]"
-		$ECHO "	  -a, don't ask to confirm startup [default:- ask]"
 		$ECHO "	  -D, set log output to debug level, shows all function calls"
 		$ECHO
-		$ECHO "	  Connection options:"
+		$ECHO "	  Connection options (passed to gpstart):"
 		$ECHO "	  -d, <Master instance directory> name of alternative Master instance to start up [optional]"
 		$ECHO
 		$ECHO "	  Database startup options:"
@@ -79,34 +78,6 @@ UNKNOWN_OPTION () {
 		USAGE
 }
 
-DISPLAY_PARAM () {
-		if [ -z $MASTER_PORT ]; then
-				MASTER_PORT="Not set in ENV"
-		fi
-		$ECHO
-		$ECHO "Current Default Startup Parameters"
-		$ECHO "----------------------------------"
-		$ECHO "Greenplum Master instance port		= $MASTER_PORT	  [Override with -p <port number>]"
-		$ECHO "Greenplum Master instance directory   = $MASTER_DATA_DIRECTORY [Override with -d <Master directory>]"
-		if [ $INTERACTIVE ]; then
-				$ECHO "Interactive				 = True			[Override with -a]"
-		else
-				$ECHO "Interactive				 = False"
-		fi
-		if [ $VERBOSE ]; then
-				$ECHO "Verbose					 = True			[Override with -q]"
-		else
-				$ECHO "Verbose					 = False"
-		fi 
-		if [ "$WAIT" == "-w" ]; then
-				$ECHO "Wait for startup			= True			[Override with -n]"
-		else
-				$ECHO "Wait for startup			= False"
-		fi 
-		$ECHO
-		exit $EXIT_STATUS
-}
-
 
 CHK_QD_DB_RUNNING () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
@@ -124,13 +95,13 @@ trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 
 VERBOSE=1
 MASTER_HOSTNAME=`$HOSTNAME`
-GPTARFILES=bin/lib/gptarfiles.sh
 
 if [ $# -ne 0 ]; then
 		while getopts ":vt'?'abqyzsml:d:e!DB:u:" opt;do
 				case $opt in
 						d ) MASTER_DATA_DIRECTORY=$OPTARG ;;
 						q ) VERBOSE=0 ;;
+						'?' ) USAGE ;;
 						* )  ;;
 				esac
 		done

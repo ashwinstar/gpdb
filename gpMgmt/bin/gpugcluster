@@ -29,8 +29,7 @@ USAGE () {
 		$ECHO	
 		$ECHO "	  `basename $0`"
 		$ECHO
-		$ECHO "	  Upgrade a Greenplum 3.0 series database system to 3.1."
-		$ECHO "   Downgrade a Greenplum 3.1 series database system to 3.0."
+		$ECHO "   Migrate a Greenplum database between 3.0 and 3.1 binary formats."
 		$ECHO
 		$ECHO "   System must be stopped with 3.1 series software installed."
 		$ECHO
@@ -129,9 +128,21 @@ if [ $# -ne 0 ]; then
 						h ) UG_ARGS="$UG_ARGS -h $OPTARG " ;;
 						p ) UG_ARGS="$UG_ARGS -p $OPTARG " ;;
 						U ) UG_ARGS="$UG_ARGS -U \"$OPTARG\" " ;;
+						'?' ) USAGE ;;
 						* ) START_ARGS="-$opt $OPTARG ";;
 				esac
 		done
+fi
+
+LOG_MSG "[INFO]:-Performing cluster wide upgrade"
+
+# test gpuprade
+$GPUPGRADE --help > /dev/null 2>&1
+
+if [ $? -ne 0 ];
+then
+	LOG_MSG "[FATAL]:-Could not successfully execute gpupgrade, exiting."
+	exit 2
 fi
 
 if [ $BACKUP -eq 1 ]; 
