@@ -13,7 +13,7 @@ subdir = src/bin/gpupgrade
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses, $(LIBS))
+LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl, $(LIBS))
 
 override CPPFLAGS := -DFRONTEND -I$(libpq_srcdir) $(CPPFLAGS)
 
