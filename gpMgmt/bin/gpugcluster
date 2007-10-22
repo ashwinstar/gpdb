@@ -31,7 +31,7 @@ USAGE () {
 		$ECHO
 		$ECHO "   Migrate a Greenplum database between 3.0 and 3.1 binary formats."
 		$ECHO
-		$ECHO "   System must be stopped with 3.1 series software installed."
+		$ECHO "   The cluster must be shut down."
 		$ECHO
 		$ECHO "	  Usage:"
 		$ECHO "	  $0 [OPTIONS]"
