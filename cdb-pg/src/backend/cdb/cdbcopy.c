@@ -868,8 +868,8 @@ cdbCopyEnd(CdbCopy *c)
 	for (seg = 0; seg < size; seg++)
 	{
 		
-			q = getSegmentDescriptorFromGang(gp, seg);
-
+			q = &db_descriptors[seg];
+			
 			/* end this COPY command */
 			result = PQputCopyEnd(q->conn, NULL);
 
