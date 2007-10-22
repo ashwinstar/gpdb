@@ -141,6 +141,7 @@ createDispatchAgents(void)
 
 	PQExpBufferData buffer;
 	int i, j;
+	int segDB_port;
 	char lasthost[255];
 	
 	/*
@@ -212,6 +213,7 @@ createDispatchAgents(void)
 	
 	j = 0;	/* Starting point for the search */
 	lasthost[0] = '\0';
+	segDB_port = cdb_component_dbs->segment_db_info[0].port;
 	
 	for (i = 0; i < size; i++)
 	{
@@ -229,13 +231,36 @@ createDispatchAgents(void)
 		 */
 		q = &cdb_component_dbs->segment_db_info[j++];
 		while ((!q->isprimary  || !q->valid || 
-				q->port != cdb_component_dbs->segment_db_info[0].port || 
+				q->port != segDB_port || 
 				strcmp(lasthost,q->hostname)==0) && 
 					j < cdb_component_dbs->total_segment_dbs)
 			q = &cdb_component_dbs->segment_db_info[j++];
 		
 		if (j >= cdb_component_dbs->total_segment_dbs)
-			break;
+		{
+			int k;
+			/* Ran through the list of segDBs.  Do we have our DispatchAgents ? */
+			if (dispatchagents->size >= 2 || (size == 1 && dispatchagents->size == 1))
+				break;
+			
+			/*
+			 * Ok, we have one (or none?).  We want at least 2 for testing reasons
+			 * Let's try some more, this time allowing more than one on the same host.
+			 */
+			
+			if (segDB_port != cdb_component_dbs->segment_db_info[0].port)
+				break;
+			/* Try the loop again, looking at second port /second segdb */
+			lasthost[0] = '\0';
+			k = 1;
+			while (!cdb_component_dbs->segment_db_info[k].isprimary)
+				k++;
+			segDB_port = cdb_component_dbs->segment_db_info[k].port;
+			
+			j = 0;
+			i =0;
+			continue;
+		}
 	 
 		if (strcmp(q->hostname,"localhost")!=0)
 			strcpy(lasthost, q->hostname);
