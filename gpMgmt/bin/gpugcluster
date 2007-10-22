@@ -14,7 +14,7 @@ FUNCTIONS=$WORKDIR/lib/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
 else
-		echo "[FATAL:]-Cannot source $FUNCTIONS file Script Exits!"
+		echo "[FATAL:]-Cannot source $FUNCTIONS file Script Exits!" 2
 		exit 2
 fi
 #******************************************************************************
@@ -91,7 +91,6 @@ VERBOSE=1
 MASTER_HOSTNAME=`$HOSTNAME`
 BACKUP=0
 UPGRADE_TO=0;
-DEBUG_LEVEL=0
 
 START_ARGS=""
 STOP_ARGS=""
@@ -134,42 +133,71 @@ if [ $# -ne 0 ]; then
 		done
 fi
 
-LOG_MSG "[INFO]:-Performing cluster wide upgrade"
+LOG_MSG "[INFO]:-Performing cluster wide upgrade" 1
 
 # test gpuprade
 $GPUPGRADE --help > /dev/null 2>&1
 
 if [ $? -ne 0 ];
 then
-	LOG_MSG "[FATAL]:-Could not successfully execute gpupgrade, exiting."
+	LOG_MSG "[FATAL]:-Could not successfully execute gpupgrade, exiting." 2
 	exit 2
 fi
 
+OPT_START_ARGS=""
 if [ $BACKUP -eq 1 ]; 
 then
-	echo "do backup"
+	LOG_MSG "[INFO]:-Performing system catalog backup." 1
+	# first, do the control file upgrade if we're upgrading to 3.1
+	if [ $UPGRADE_TO == "3.1" ]; then
+		$GPSTART -a $START_ARGS > /dev/null 2>&1
+		if [ $? -ne 0 ]; then
+			LOG_MSG "[FATAL]:- gpstart exited with non-zero status, exiting." 2
+			exit 2;
+		fi
+
+		$GPSTOP -a > /dev/null 2>&1
+		if [ $? -ne 0 ]; then
+			LOG_MSG "[FATAL]:- gpstop exited with non-zero status, exiting." 2
+			exit 2;
+		fi
+		OPT_START_ARGS="-N"
+	fi
+	$GPSYSCATBU -q $START_ARGS > /dev/null 2>&1
 fi
 
-$GPSTART -a $START_ARGS
+$GPSTART -a $START_ARGS $OPT_START_ARGS > /dev/null 2>&1
 
 if [ $? -ne 0 ]
 then
-	LOG_MSG "[FATAL]:-gpstart returned non-zero return status, exiting"
+	LOG_MSG "[FATAL]:-gpstart returned non-zero return status, exiting" 2
 	exit 2
+else
+	LOG_MSG "[INFO]:-Started cluster" 1
 fi
 
-$GPUPGRADE $UG_ARGS
+$GPUPGRADE $UG_ARGS > /dev/null 2>&1
 
 if [ $? -ne 0 ]
 then
-	LOG_MSG "[WARN]:-gpupgrade returned non-zero return status"
+	LOG_MSG "[WARN]:-gpupgrade returned non-zero return status" 1
+else
+	LOG_MSG "[INFO]:-Finished upgrading all nodes" 1
 fi
 
-$GPSTOP -a $STOP_ARGS
+$GPSTOP -a $STOP_ARGS > /dev/null 2>&1
 
 if [ $? -ne 0 ]
 then
-	LOG_MSG "[WARN]:-gpstop returned non-zero return status"
+	LOG_MSG "[WARN]:-gpstop returned non-zero return status" 1
+else
+	LOG_MSG "[INFO]:-Stopped cluster" 1
+fi
+
+if [ $UPGRADE_TO == "3.1" ]; then
+	LOG_MSG "[INFO]:-Upgrade successful" 1
+else
+	LOG_MSG "[INFO]:-Downgrade successful" 1
 fi
 
 LOG_MSG "[INFO]:-End Main"

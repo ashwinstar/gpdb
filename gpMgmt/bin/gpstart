@@ -66,6 +66,7 @@ PARALLEL_STATUS_FILE=/tmp/gpstart_parallel_status_file.$$
 GPSEGSTART=$WORKDIR/lib/gpsegstart.sh
 WAIT_LIMIT=600
 UPGRADE_TO=0
+PGCONTROL_UPGRADE=1
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -105,6 +106,10 @@ USAGE () {
 		$ECHO "      -e, switch segment instance log files, moves current logfile to <log file>.YYYYMMDD"
 		$ECHO "          not applicable in master maintenance mode startup"
 		$ECHO "      -B, <number> run this batch of start segment processes in parallel [default $BATCH_DEFAULT]"
+		$ECHO
+		$ECHO "      Upgrade options (shouldn't be used directly):"
+		$ECHO "      -u <3.1 | 3.0>, Upgrade (downgrade) to 3.1 (3.0)"
+		$ECHO "      -N, don't attempt to upgrade pg_control files"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
@@ -403,7 +408,7 @@ PROCESS_STARTUP () {
 				VALID_SETTING=0
 			fi	
 			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-			$GPSEGSTART $$ $SWITCH_QE_LOG $QE_NAME $QE_PORT $QE_DIR $QE_VALID $VALID_SETTING $INST_COUNT $LOG_FILE $UPGRADE_TO $QD_DBNAME $BACKOUT_FILE &
+			$GPSEGSTART $$ $SWITCH_QE_LOG $QE_NAME $QE_PORT $QE_DIR $QE_VALID $VALID_SETTING $INST_COUNT $LOG_FILE $UPGRADE_TO $PGCONTROL_UPGRADE $QD_DBNAME $BACKOUT_FILE &
 			PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 		fi
 	done
@@ -535,7 +540,7 @@ PROCESS_STARTUP () {
 #******************************************************************************
 trap '$RM -f $PARALLEL_STATUS_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":vt'?'abqyzsml:d:e!DB:u:" opt;do
+		while getopts ":vt'?'abqyzsml:d:e!DB:u:N" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						t ) DISPLAY_PARAM ;;
@@ -555,6 +560,7 @@ if [ $# -ne 0 ]; then
 						D ) DEBUG_LEVEL=1 ;;
 						B ) BATCH_DEFAULT=$OPTARG ;;
 						u ) UPGRADE_TO=$OPTARG ;;
+						N ) PGCONTROL_UPGRADE=0 ;;
 						* ) USAGE ;;
 				esac
 		done	
@@ -578,7 +584,7 @@ LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 # upgrade mode, upgrade the master database's control file
 if [ "$UPGRADE_TO" != "0" ]; then
 	LOG_MSG "[INFO]:-Running in upgrade mode"
-	if [ "$UPGRADE_TO" == "3.1" ]; then
+	if [ "$UPGRADE_TO" == "3.1" ] && [ $PGCONTROL_UPGRADE -eq 1 ]; then
 
 		LOG_MSG "[INFO]:-Upgrading master control file to $UPGRADE_TO"
 		$GPCONTROLMOD --catversion $UPGRADE_TO $MASTER_DATA_DIRECTORY

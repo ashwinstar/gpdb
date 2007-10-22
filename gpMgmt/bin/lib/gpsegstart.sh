@@ -83,7 +83,7 @@ QE_DIR_CHK () {
 START_SEG () {
 	UPGRADE=0
 
-	if [ "$UPGRADE_TO" == "3.0" ] || [ "$UPGRADE_TO" == "3.1" ]
+	if [ "$UPGRADE_TO" == "3.1" ]
 	then
 		LOG_MSG "[INFO][$INST_COUNT]:-Switching database to version $UPGRADE_TO"
 		UPGRADE=1
@@ -144,7 +144,7 @@ START_SEG () {
 		LOG_MSG "[INFO][$INST_COUNT]:-Starting in upgrade mode"
 
 		EXTRA_START_OPTS=" -c allow_system_table_mods=true "
-		if [ "$UPGRADE_TO" == "3.1" ]; then
+		if [ "$UPGRADE_TO" == "3.1" ] && [ $PGCONTROL_UPGRADE -eq 1 ]; then
 			LOG_MSG "[INFO][$INST_COUNT]:-Running control file upgrader"
 
 			$TRUSTED_SHELL $QE_NAME "$GPCONTROLMOD --catversion $UPGRADE_TO $QE_DIR"
@@ -282,7 +282,8 @@ QE_VALID=$1;shift		#Status of segment either t or f
 START_INVALID=$1;shift	#0=Normal valid startup 1=attempt to start a segment marked as invalid
 INST_COUNT=$1;shift		#Unique number for this parallel script, starts at 0
 LOG_FILE=$1;shift
-UPGRADE_TO=$1; shift
+UPGRADE_TO=$1; shift	# doing an upgrade
+PGCONTROL_UPGRADE=$1; shift	#upgrade control file too?
 QD_DBNAME=$1;shift
 BACKOUT_FILE=$1; shift
 GPHOME=${GPHOME}
