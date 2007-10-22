@@ -436,8 +436,8 @@ SELECT relname,errmsg,rawdata FROM sreh_ext_errtbl ORDER BY errmsg,rawdata;
  sreh_ext | missing data for column "b"             | 2
  sreh_ext | missing data for column "b"             | eleven
  sreh_ext | missing data for column "b"             | sixteen
- sreh_ext | missing data for column "c"             | 3|
  sreh_ext | missing data for column "c"             | |,13,
+ sreh_ext | missing data for column "c"             | 3|
 (10 rows)
 
 TRUNCATE sreh_ext_errtbl;
@@ -460,8 +460,8 @@ SELECT relname,errmsg,rawdata FROM sreh_ext_errtbl ORDER BY errmsg,rawdata;
  sreh_ext | missing data for column "b"             | 2
  sreh_ext | missing data for column "b"             | eleven
  sreh_ext | missing data for column "b"             | sixteen
- sreh_ext | missing data for column "c"             | 3|
  sreh_ext | missing data for column "c"             | |,13,
+ sreh_ext | missing data for column "c"             | 3|
 (10 rows)
 
 TRUNCATE sreh_ext_errtbl;
@@ -498,8 +498,8 @@ SELECT relname,errmsg,rawdata FROM sreh_ext_errtbl ORDER BY errmsg,rawdata;
  sreh_ext | missing data for column "b"             | 2
  sreh_ext | missing data for column "b"             | eleven
  sreh_ext | missing data for column "b"             | sixteen
- sreh_ext | missing data for column "c"             | 3|
  sreh_ext | missing data for column "c"             | |,13,
+ sreh_ext | missing data for column "c"             | 3|
 (10 rows)
 
 TRUNCATE sreh_ext_errtbl;
@@ -522,8 +522,8 @@ SELECT relname,errmsg,rawdata FROM sreh_ext_errtbl ORDER BY errmsg,rawdata;
  sreh_ext | missing data for column "b"             | 2
  sreh_ext | missing data for column "b"             | eleven
  sreh_ext | missing data for column "b"             | sixteen
- sreh_ext | missing data for column "c"             | 3|
  sreh_ext | missing data for column "c"             | |,13,
+ sreh_ext | missing data for column "c"             | 3|
 (10 rows)
 
 TRUNCATE sreh_target;
