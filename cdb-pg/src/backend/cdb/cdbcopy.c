@@ -571,6 +571,19 @@ bool cdbCopyRelayData(CdbCopy *c,  bool copy_cancel, uint64 *rows_processed)
 					
 			q = getSegmentDescriptorFromGang(gp, source_seg);
 			
+			if (q == NULL)
+			{
+				/* not a segment we control?? */
+				c->outseglist = list_delete_int(c->outseglist, source_seg);
+				
+				/* no more segments with data on the list. we are done */
+				if(list_length(c->outseglist) == 0)
+					return true; /* done */
+				
+				break;
+			}
+				
+			
 			/* send a query cancel request to that segdb */
 			if(copy_cancel)
 				PQrequestCancel(q->conn);
