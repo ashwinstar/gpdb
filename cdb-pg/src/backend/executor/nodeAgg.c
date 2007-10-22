@@ -925,6 +925,9 @@ agg_retrieve_direct(AggState *aggstate)
 	 */
 	if (aggstate->num_repeats > 0)
 	{
+		/* clear the per-output tuple memory context. */
+		ResetExprContext(econtext);
+		
 		/*
 		 * XXX We do the projection here again. It may be cheaper to simply
 		 * update the GROUP_ID column, but it seems that it is so much easier
