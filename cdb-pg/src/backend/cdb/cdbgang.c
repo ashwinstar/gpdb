@@ -27,6 +27,8 @@
 #include "nodes/execnodes.h"    /* CdbProcess, Slice, SliceTable */
 #include "postmaster/postmaster.h"
 #include "tcop/tcopprot.h"
+#include "utils/portal.h"
+#include "tcop/pquery.h"
 
 extern int	CommitDelay;
 extern int	CommitSiblings;
@@ -115,12 +117,17 @@ static void addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
 						 SegmentDatabaseDescriptor * segdbDesc);
  
 
-static DispatchAgentSet * dispatchagents = NULL;
+static DispatchAgentSet * unnamedPortalDispatchAgents = NULL;
+
+struct DispatchAgentSet * getUnamedPortalDispatchAgents(void) 
+{
+	return unnamedPortalDispatchAgents;
+}
 
 int numDispatchAgents(void)
 {
-	if (dispatchagents)
-		return dispatchagents->size;
+	if (unnamedPortalDispatchAgents)
+		return unnamedPortalDispatchAgents->size;
 	else
 		return 0;
 }
@@ -133,7 +140,7 @@ int largestGangsize(void)
  * create Dispatch Agents for this session
  */
 static DispatchAgentSet *
-createDispatchAgents(void)
+createDispatchAgents(Portal portal)
 {
 	MemoryContext oldContext;
 
@@ -143,6 +150,7 @@ createDispatchAgents(void)
 	int i, j;
 	int segDB_port;
 	char lasthost[255];
+	DispatchAgentSet * dispatchagents = NULL;
 	
 	/*
 	 * Not a lot of thought has gone into tuning this.
@@ -160,8 +168,15 @@ createDispatchAgents(void)
 	if (getgpsegmentCount()<=1)	/* some developers use a single segment, I think */
 		size = 1;
 	
-	if (dispatchagents && dispatchagentsOk(dispatchagents))
-		return dispatchagents;
+	
+	if (portal && portal->dispatchagents && dispatchagentsOk(portal->dispatchagents))
+		return portal->dispatchagents;
+	
+	if (portal == NULL || strcmp(portal->name,"")==0)
+	{
+		if (unnamedPortalDispatchAgents && dispatchagentsOk(unnamedPortalDispatchAgents))
+				return unnamedPortalDispatchAgents;
+	}
 
 	elog(DEBUG1,"createDispatchAgents");
 	
@@ -316,6 +331,12 @@ createDispatchAgents(void)
 	
 	MemoryContextSwitchTo(oldContext);
 	
+	if (portal)
+		portal->dispatchagents = dispatchagents;
+	
+	if (portal == NULL || strcmp(portal->name,"")==0)
+		unnamedPortalDispatchAgents = dispatchagents;
+	
 	return dispatchagents;
 }
 
@@ -340,6 +361,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	Gang	   *newGangDefinition;
 	MemoryContext oldContext;
 	int			successful_connections = 0;
+	DispatchAgentSet * dispatchagents = NULL;
 
 	SegmentDatabaseDescriptor *segdbDesc;
 	CdbComponentDatabaseInfo *q;
@@ -349,6 +371,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	int			segdbs_in_thread_pool;
 	int			segdb_count;
 	int			i;
+	Portal		portal = NULL;
 
 	Assert(size == 1 || size == getgpsegmentCount());
 
@@ -358,12 +381,18 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	Assert(size <= getgpsegmentCount());
 	
 	Assert(CurrentResourceOwner != NULL);
+	
+	if (portal_name!=0)
+	{
+		/* Using a named portal */
+		portal = GetPortalByName(portal_name);
+	}
 
 	/*
 	 * If we are going to use Dispatch Agents, we need to make sure they are running
 	 */
-	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent && (dispatchagents==NULL || !dispatchagentsOk(dispatchagents)))
-		createDispatchAgents();
+	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent)
+		createDispatchAgents(portal);
 
 	/*
 	 * MemoryContexts used in this routine.
@@ -389,6 +418,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 
 	Assert(newGangDefinition != NULL);
 
+
 	/*
 	 * Loop through the segment_database_descriptors items inside newGangDefinition.
 	 * For each segdb , attempt to get
@@ -405,6 +435,10 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	Assert(gp_connections_per_thread >= 0);
 	Assert(segdb_count > 0);
 	
+	if (portal)
+			dispatchagents = portal->dispatchagents;
+	else
+			dispatchagents = unnamedPortalDispatchAgents;
 	/*
 	 * If we are using Dispatch Agents, assign the segDBs to the agents, and ask them to set 
 	 * up the gang.
@@ -419,8 +453,6 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 		GpSegmentConnectionResponse *gresp;
 		GpSegmentConnectionInfoSet * conninfo;
 		GpSegmentConnectionInfoSet ** conninfoarray = palloc0(sizeof(void*)*dispatchagents->size);
-		
-		
 		
 		Assert(Gp_role == GP_ROLE_DISPATCH);
 		
@@ -3613,9 +3645,13 @@ void
 disconnectAndDestroyDispatchAgents(void)
 {
 	int			i;
-
-	if (dispatchagents == NULL)
+	
+	if (Gp_role == GP_ROLE_UTILITY)
 		return;
+
+	if (unnamedPortalDispatchAgents == NULL)
+		return;
+	
 
     if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 	    elog(DEBUG5, "disconnectAndDestroyDispatchAgents entered");
@@ -3653,9 +3689,9 @@ disconnectAndDestroyDispatchAgents(void)
 	 *	   2) disconnect the session, and
 	 *	   3) discard any connection error message.
 	 */
-	for (i = 0; i < dispatchagents->size; i++)
+	for (i = 0; i < unnamedPortalDispatchAgents->size; i++)
 	{
-		SegmentDatabaseDescriptor *segdbDesc = &(dispatchagents->db_descriptors[i]);
+		SegmentDatabaseDescriptor *segdbDesc = &(unnamedPortalDispatchAgents->db_descriptors[i]);
 		if (segdbDesc == NULL)
 			continue;
 
@@ -3722,13 +3758,13 @@ disconnectAndDestroyDispatchAgents(void)
 	/*
 	 * Discard the segment array and the cluster descriptor
 	 */
-	pfree(dispatchagents->db_descriptors);
-	dispatchagents->db_descriptors = NULL;
-	dispatchagents->size = 0;
+	pfree(unnamedPortalDispatchAgents->db_descriptors);
+	unnamedPortalDispatchAgents->db_descriptors = NULL;
+	unnamedPortalDispatchAgents->size = 0;
 	
-	pfree(dispatchagents);
+	pfree(unnamedPortalDispatchAgents);
 	
-	dispatchagents = NULL;
+	unnamedPortalDispatchAgents = NULL;
 
     if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
         elog(DEBUG5, "disconnectAndDestroyDispatchAgents done");
@@ -3737,6 +3773,9 @@ disconnectAndDestroyDispatchAgents(void)
 void
 disconnectAndDestroyAllGangs(void)
 {
+	if (Gp_role == GP_ROLE_UTILITY)
+		return;
+	
     if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 		elog(DEBUG2, "disconnectAndDestroyAllGangs");
 

@@ -32,6 +32,7 @@
 
 #include "cdb/cdbdisp.h"                /* CdbShutdownPortals, CdbCheckDispatchResult */
 #include "cdb/cdbvars.h"
+#include "cdb/cdbgang.h"
 
 /*
  * Estimate of the maximum number of open portals a user would have,
@@ -241,6 +242,11 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 
 
 	portal->is_cursor = false; /* default value */
+	
+	if (strcmp(name,"")==0 && Gp_role == GP_ROLE_DISPATCH)
+		portal->dispatchagents = getUnamedPortalDispatchAgents();
+	else
+		portal->dispatchagents = NULL;
 	
 	/* put portal in table (sets portal->name) */
 	PortalHashTableInsert(portal, name);

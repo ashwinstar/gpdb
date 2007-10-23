@@ -193,6 +193,9 @@ typedef struct PortalData
 	
 	/* MPP: is this portal a CURSOR, or protocol level portal? */	
 	bool		is_cursor;
+	
+	/* DispatchAgents are per Portal */
+	struct DispatchAgentSet * dispatchagents;
 } PortalData;
 
 /*

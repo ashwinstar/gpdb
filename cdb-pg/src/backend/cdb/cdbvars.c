@@ -478,7 +478,7 @@ assign_gp_use_dispatch_agent(bool newval, bool doit, GucSource source __attribut
 		 * TODO: check for being in a transaction, or owning temp tables, as disconnecting all gangs
 		 * will wipe them out.
 		 */
-		if (newval != gp_use_dispatch_agent)
+		if (newval != gp_use_dispatch_agent && Gp_role != GP_ROLE_UTILITY)
 			disconnectAndDestroyAllGangs();
 		gp_use_dispatch_agent = newval;
 	}

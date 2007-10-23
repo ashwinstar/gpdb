@@ -120,6 +120,7 @@ disconnectAndDestroyGangById(int gang_id);
 
 extern int numDispatchAgents(void);
 extern int largestGangsize(void);
+extern struct DispatchAgentSet * getUnamedPortalDispatchAgents(void);
 
 /*
  * cdbgang_parse_gpqeid_params
