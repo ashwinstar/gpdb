@@ -994,7 +994,8 @@ GetSnapshotData(Snapshot snapshot, bool serializable,
 		if (proc == MyProc ||
 			!TransactionIdIsNormal(xid) ||
 			TransactionIdFollowsOrEquals(xid, xmax) ||
-			proc->inVacuum)
+			proc->inVacuum ||
+			proc->mppIsDispatchAgent)
 			continue;
 
 		if (!Debug_disable_distributed_snapshot)

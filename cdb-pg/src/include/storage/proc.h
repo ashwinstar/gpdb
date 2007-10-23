@@ -100,6 +100,7 @@ struct PGPROC
     int         mppSessionId;   /* serial num of the qDisp process */
     int         mppLocalProcessSerial;  /* this backend's PGPROC serial num */
     bool		mppIsWriter;	/* The writer gang member, holder of locks */
+    bool     mppIsDispatchAgent;  /* This is a PROC entry for a dispatch agent */
 
 	bool		inVacuum;		/* true if current xact is a LAZY VACUUM */
 

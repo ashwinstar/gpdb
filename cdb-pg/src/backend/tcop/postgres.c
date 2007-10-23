@@ -3436,6 +3436,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 	elog(DEBUG5, "Message type %c received by Dispatch Agent", firstchar);
 	SetClientEncoding(GetDatabaseEncoding(), true);	
 	XactReadOnly = true;  /* Make sure we can't update anything */
+	MyProc->mppIsDispatchAgent = true;
 
 
 	switch (firstchar)
