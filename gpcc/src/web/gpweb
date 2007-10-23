@@ -8,8 +8,7 @@ Usage: gpweb.py port
 
 import sys
 
-sys.path.append(sys.path[0] + '/lib/mako')
-sys.path.append(sys.path[0] + '/lib/web')
+sys.path.append(sys.path[0] + '/lib')
 try:
     import web
     from mako.template import Template
