@@ -1677,6 +1677,10 @@ ProcRequestTypeToString(PGPROCRequestType requestType)
 	}
 }
 
+
+/*
+ * Peek at the top request while under the spin lock.
+ */
 static PGPROC* 
 ProcGetRequest_UnderSpin(PROC_REQUEST_INFO *requestInfo, PROC_REQUEST_CLIENT **requestClient)
 {
@@ -1687,8 +1691,6 @@ ProcGetRequest_UnderSpin(PROC_REQUEST_INFO *requestInfo, PROC_REQUEST_CLIENT **r
 		proc = (PGPROC *) SHMQueueNext(&(requestInfo->requestServer->requestQueue), 
 			                           &(requestInfo->requestServer->requestQueue),
 									   requestInfo->requestLinkOffset);
-
-		SHMQueueDelete((SHM_QUEUE*) (((char*)proc) + requestInfo->requestLinkOffset));		
 
 		*requestClient = (PROC_REQUEST_CLIENT*)(((char*)proc) + requestInfo->requestClientOffset);
 
@@ -1707,7 +1709,7 @@ ProcGetRequest_UnderSpin(PROC_REQUEST_INFO *requestInfo, PROC_REQUEST_CLIENT **r
 static void
 ProcGetRequestInfo(PGPROCRequestType requestType, PROC_REQUEST_INFO *requestInfo)
 {
-	int clientOffset=0;
+	int clientOffset = 0;
 
 	switch (requestType)
 	{
@@ -1741,6 +1743,8 @@ void
 ProcSetAcceptingNewRequests(PGPROCRequestType requestType, bool acceptingNewRequests)
 {
 	PROC_REQUEST_INFO requestInfo;
+	PGPROC *proc;
+	PROC_REQUEST_CLIENT *requestClient;
 	
 	// Silence the compiler.
 	requestInfo.requestServer = NULL;
@@ -1753,7 +1757,36 @@ ProcSetAcceptingNewRequests(PGPROCRequestType requestType, bool acceptingNewRequ
 	
 	HOLD_INTERRUPTS();
 	SpinLockAcquire(&ProcGlobal->spinLockRequestServer);
+
+	/*
+	 * Set the new flag value before waking clients below.
+	 */
 	requestInfo.requestServer->serverAcceptingNewRequests = acceptingNewRequests;
+
+	if (!acceptingNewRequests)
+	{
+		while (!SHMQueueEmpty(&(requestInfo.requestServer->requestQueue)))
+		{
+			proc = ProcGetRequest_UnderSpin(&requestInfo, &requestClient);
+
+			/*
+			 * Remove request.
+			 */
+			SHMQueueDelete((SHM_QUEUE*) (((char*)proc) + requestInfo.requestLinkOffset));		
+			
+			SpinLockRelease(&ProcGlobal->spinLockRequestServer);
+			
+			/*
+			 * Wake the client not under the spin lock.
+			 * The client waiting for a response should notice the server
+			 * is disabled and return.
+			 */
+			PGSemaphoreUnlock(&(requestClient->semResponse));
+			
+			SpinLockAcquire(&ProcGlobal->spinLockRequestServer);
+		}
+	}
+	
 	SpinLockRelease(&ProcGlobal->spinLockRequestServer);
 	RESUME_INTERRUPTS();
 }
@@ -1807,6 +1840,11 @@ ProcGetRequest(PGPROCRequestType requestType, void *request, int requestSize, st
 			memcpy(request, (((char*)proc)) + requestInfo.requestOffset, requestInfo.requestSize);
 
     		serialNumber = requestClient->requestSerialNumber;
+
+			if (!requestClient->responseNeeded)
+			{
+				SHMQueueDelete((SHM_QUEUE*) (((char*)proc) + requestInfo.requestLinkOffset));		
+			}
 	
 			SpinLockRelease(&ProcGlobal->spinLockRequestServer);
 			RESUME_INTERRUPTS();
@@ -1941,12 +1979,14 @@ ProcSendRequest(PGPROCRequestType requestType, void *request, int requestSize, b
 static void
 ProcGetResponseInfo(PGPROCRequestType requestType, PROC_RESPONSE_INFO *responseInfo)
 {
+	int clientOffset = 0;
+
 	switch (requestType)
 	{
 	case PGPROC_REQUEST_WALSEND:
 		responseInfo->requestServer = &(ProcGlobal->walSendRequestServer);
 		
-		responseInfo->requestClientOffset = offsetof(PGPROC, walSendRequestClient);
+		clientOffset = offsetof(PGPROC, walSendRequestClient);
 		responseInfo->responseOffset = offsetof(PGPROC, walSendResponse);
 		responseInfo->responseSize = sizeof(WalSendResponse);
 		break;
@@ -1955,6 +1995,10 @@ ProcGetResponseInfo(PGPROCRequestType requestType, PROC_RESPONSE_INFO *responseI
 		elog(FATAL, "Unrecognized PGPROC RequestType: %d",
 			(int) requestType);
 	}
+	
+	responseInfo->requestClientOffset = clientOffset;
+	responseInfo->requestLinkOffset = clientOffset +
+		                             offsetof(PROC_REQUEST_CLIENT, linksRequest);
 	
 	elog(DEBUG5,"pgprocGetResponseInfo: request client offset %d, request (offset %d, size %d)",
 		 responseInfo->requestClientOffset,
@@ -1967,7 +2011,8 @@ ProcSendResponse(PROC_RESPONSE_COOKIE *responseCookie, void *response, int respo
 {
 	PROC_RESPONSE_INFO responseInfo;
 	PROC_REQUEST_CLIENT *requestClient;
-
+	PGPROC *proc = NULL;
+	
 	elog(DEBUG5,"ProcSendResponse: entering...");
 	Assert(responseCookie != NULL);
 	Assert(response != NULL);
@@ -1975,6 +2020,7 @@ ProcSendResponse(PROC_RESPONSE_COOKIE *responseCookie, void *response, int respo
 	// Silence the compiler.
 	responseInfo.requestServer = NULL;
 	responseInfo.requestClientOffset = 0;
+	responseInfo.requestLinkOffset = 0;
 	responseInfo.responseOffset = 0;
 	responseInfo.responseSize = 0;
 	
@@ -2001,13 +2047,55 @@ ProcSendResponse(PROC_RESPONSE_COOKIE *responseCookie, void *response, int respo
 		return;
 	}
 
-	memcpy(((char*)responseCookie->proc) + responseInfo.responseOffset, response, responseInfo.responseSize);
+	if (SHMQueueEmpty(&(responseInfo.requestServer->requestQueue)))
+	{
+		SpinLockRelease(&ProcGlobal->spinLockRequestServer);
+		RESUME_INTERRUPTS();
+		
+		/*
+		 * The backend process abandoned the request (part 1)?
+		 */
+		return;
+	}
+
+	/*
+	 * Get pointer to the top request in the queue.
+	 */
+	proc = (PGPROC *) SHMQueueNext(&(responseInfo.requestServer->requestQueue), 
+		                           &(responseInfo.requestServer->requestQueue),
+								   responseInfo.requestLinkOffset);
 
 	requestClient = (PROC_REQUEST_CLIENT*)(((char*)responseCookie->proc) + responseInfo.requestClientOffset);
 
-	Assert(requestClient->responseNeeded);
+	if (proc != responseCookie->proc ||
+		requestClient->requestSerialNumber != responseCookie->requestSerialNumber)
+	{
+		SpinLockRelease(&ProcGlobal->spinLockRequestServer);
+		RESUME_INTERRUPTS();
+		
+		/*
+		 * The backend process abandoned the request (part 2)?
+		 */
+		return;
+	}
+
+	if (!requestClient->responseNeeded)
+	{
+		SpinLockRelease(&ProcGlobal->spinLockRequestServer);
+		RESUME_INTERRUPTS();
+		
+		elog(ERROR,"response not needed");
+	}
+	
 	requestClient->responseSerialNumber = responseCookie->requestSerialNumber;
 	
+	memcpy(((char*)responseCookie->proc) + responseInfo.responseOffset, response, responseInfo.responseSize);
+
+	/*
+	 * Let's formally remove the backend from the server queue.
+	 */
+	SHMQueueDelete((SHM_QUEUE*) (((char*)proc) + responseInfo.requestLinkOffset));		
+
 	SpinLockRelease(&ProcGlobal->spinLockRequestServer);
 	RESUME_INTERRUPTS();
 
@@ -2036,6 +2124,7 @@ ProcWaitForResponse(PGPROCRequestType requestType, int serialNumber, void *respo
 	// Silence the compiler.
 	responseInfo.requestServer = NULL;
 	responseInfo.requestClientOffset = 0;
+	responseInfo.requestLinkOffset = 0;
 	responseInfo.responseOffset = 0;
 	responseInfo.responseSize = 0;
 	
@@ -2055,7 +2144,11 @@ ProcWaitForResponse(PGPROCRequestType requestType, int serialNumber, void *respo
 		{
 			SpinLockRelease(&ProcGlobal->spinLockRequestServer);
 			RESUME_INTERRUPTS();
-			
+
+			/*
+			 * If the server process dies and disables the queue, it will
+			 * wake all requestors...
+			 */
 			elog(DEBUG5, "'%s' not accepting new requests",
 				 ProcRequestTypeToString(requestType));
 			return PGPROC_GETRESPONSE_QUEUEDISABLED;

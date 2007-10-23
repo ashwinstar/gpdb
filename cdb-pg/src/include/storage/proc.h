@@ -216,6 +216,7 @@ typedef struct PROC_RESPONSE_INFO
 {
 	PROC_REQUEST_SERVER *requestServer;
 	int 				requestClientOffset;
+	int 				requestLinkOffset;
 	int 				responseOffset;
 	int 				responseSize;
 } PROC_RESPONSE_INFO;

@@ -526,8 +526,8 @@ WalSendServerLoop(void)
 	/*
 	 * Before we enter the main request loop, hang out here if the
 	 * mirror configuration is unknown, there is no mirror, or we
-	 * have disabled the QD mirror (and perhaps this server process has been
-	 * restarted?).
+	 * have an unexpected error condition (and perhaps this server process
+	 * has been restarted?).
 	 */
 	while (true)
 	{
@@ -570,8 +570,6 @@ WalSendServerLoop(void)
 		elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
 			 "entering main request loop");
 		
-//		ProcSetAcceptingNewRequests(PGPROC_REQUEST_WALSEND, true);
-
 		WalSendServerInitContext();
 
 		while(true)
