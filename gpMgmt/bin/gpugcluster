@@ -150,12 +150,14 @@ then
 	LOG_MSG "[INFO]:-Performing system catalog backup." 1
 	# first, do the control file upgrade if we're upgrading to 3.1
 	if [ $UPGRADE_TO == "3.1" ]; then
+		LOG_MSG "[INFO]:-Running gpstart to do control file upgrade"
 		$GPSTART -a $START_ARGS > /dev/null 2>&1
 		if [ $? -ne 0 ]; then
 			LOG_MSG "[FATAL]:- gpstart exited with non-zero status, exiting." 2
 			exit 2;
 		fi
 
+		LOG_MSG "[INFO]:-Running gpstop after control file upgrade"
 		$GPSTOP -a > /dev/null 2>&1
 		if [ $? -ne 0 ]; then
 			LOG_MSG "[FATAL]:- gpstop exited with non-zero status, exiting." 2
@@ -163,9 +165,11 @@ then
 		fi
 		OPT_START_ARGS="-N"
 	fi
+	LOG_MSG "[INFO]:-Running gpsyscatbu"
 	$GPSYSCATBU -q $START_ARGS > /dev/null 2>&1
 fi
 
+LOG_MSG "[INFO]:-Starting cluster to perform upgrade"
 $GPSTART -a $START_ARGS $OPT_START_ARGS > /dev/null 2>&1
 
 if [ $? -ne 0 ]
@@ -173,18 +177,30 @@ then
 	LOG_MSG "[FATAL]:-gpstart returned non-zero return status, exiting" 2
 	exit 2
 else
-	LOG_MSG "[INFO]:-Started cluster" 1
+	LOG_MSG "[INFO]:-Sucessfully started cluster" 1
 fi
 
-$GPUPGRADE $UG_ARGS > /dev/null 2>&1
+LOG_MSG "[INFO]:-Running gpupgrade"
+UGOUTFILE=/tmp/gpupgrade.$$
+$GPUPGRADE $UG_ARGS > $UGOUTFILE 2>&1
 
-if [ $? -ne 0 ]
+retval=$?
+
+if [ $DEBUG_LEVEL -eq 1 ]; then
+	$CAT $UGOUTFILE | while read
+	do
+		LOG_MSG "$REPLY"
+	done
+fi
+
+if [ $retval -ne 0 ]
 then
 	LOG_MSG "[WARN]:-gpupgrade returned non-zero return status" 1
 else
 	LOG_MSG "[INFO]:-Finished upgrading all nodes" 1
 fi
 
+LOG_MSG "[INFO]:-Stopping cluster after upgrade"
 $GPSTOP -a $STOP_ARGS > /dev/null 2>&1
 
 if [ $? -ne 0 ]
