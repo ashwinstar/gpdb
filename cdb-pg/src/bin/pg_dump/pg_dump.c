@@ -7476,9 +7476,14 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
                           fmttype[0] == 't' ? "text" : "csv",
                           escape_backslashes((const char*) fmtopts));
         
+		/* add ENCODING clause */
+        appendPQExpBuffer(q, "ENCODING '%s'", extencoding);
+
 		/* add Single Row Error Handling clause (if any) */
 		if(rejlim && strlen(rejlim) > 0)
 		{
+			appendPQExpBuffer(q, "\n");
+			
 			/*
 			 * NOTE: error tables get automatically generated if don't exist.
 			 * therefore we must be sure that this statment will be dumped after
@@ -7498,12 +7503,9 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				appendPQExpBuffer(q, " ROWS");
 			else
 				appendPQExpBuffer(q, " PERCENT");
-			
-			appendPQExpBuffer(q, "\n");
 		}
-		
-		/* add ENCODING clause */
-        appendPQExpBuffer(q, "ENCODING '%s';\n", extencoding);
+
+		appendPQExpBuffer(q, ";\n");
 		
         PQclear(res);
         
