@@ -1,0 +1,67 @@
+<%!
+
+def validate_exists(param, error, key):
+    if key not in param:
+       error[key] = key
+%>
+
+<%
+    web.header('Content-Type', 'text/html;charset=utf-8')
+    error = {}
+%>
+
+<html>
+
+% if 'submit' not in param:
+<!--  METHOD GET -->
+
+<div>
+<a href="logout.psp">logout</a><p>
+<form method='POST' name='login' action='#'>
+
+Username: <input name="user" type="text"><p>
+Password: <input name="password" type="password"><p>
+<input type="submit" name="submit" value="Submit"><p>
+</form>
+</div>
+
+
+
+% else:
+<!-- METHOD POST -->
+
+<% 
+   validate_exists(param, error, 'user')
+   validate_exists(param, error, 'password')
+%>
+
+%     if len(error) > 0:
+ 
+<div>
+<a href="logout.psp">logout</a><p>
+<form method='POST' name='login' action='#'>
+
+Username: <input name="user" type="text" value="${param.user}"><p>
+Password: <input name="password" type="password"><p>
+<input type="submit" name="submit" value="Submit"><p>
+</form>
+</div>
+
+%     else:
+
+<%
+session['X-GPCC-USER'] = param.user
+session.save()
+%>
+
+<%include file='control.psp'/>
+
+
+%     endif    
+
+
+%endif
+
+
+
+</html>

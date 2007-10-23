@@ -1,0 +1,76 @@
+#!/usr/bin/env python
+"""
+gpweb.py -- GPCC Web Server
+
+Usage: gpweb.py port
+       port - port number
+"""
+
+import sys
+
+sys.path.append(sys.path[0] + '/lib/mako')
+sys.path.append(sys.path[0] + '/lib/web')
+try:
+    import web
+    from mako.template import Template
+    from mako.lookup import TemplateLookup
+except ImportError, e:
+    sys.exit('Error: unable to import module: ' + str(e))
+
+
+web.config.db_parameters = {'dbn' : 'sqlite',
+                            'db' : 'web.db'}
+
+class mako_render:
+    def __init__(self, path):
+        self._lookup = TemplateLookup(directories=[path],
+                module_directory='mako_modules')
+    def serve_template(self, path, **kwargs):
+        mytemplate = self._lookup.get_template(path)
+        print mytemplate.render(**kwargs)
+
+render = mako_render('templates/')
+
+
+urls = (
+  '/(.*)', 'gpcc')
+
+sctx = {}
+
+class gpcc:
+    def _session_filter(self):
+        web.config.session_parameters.handler = 'file'
+        web.config.session_parameters.cookie_name = 'gpsessionid'
+        web.config.session_parameters.regenerate_id = False
+        s = web.ctx.session
+        s.start()
+        s.cleanup()
+        return s
+
+    def _session_check(self, s):
+        if 'X-GPCC-USER' not in s._data:
+            return False
+        return True
+
+    def GET(self, name):
+        sess = self._session_filter()
+        page = {}
+	param = web.input()
+
+        if self._session_check(sess):
+            render.serve_template(path=name, web=web, param=param, session=sess, sctx=sctx, page=page)
+        else:
+            render.serve_template(path='index.psp', web=web, param=param, session=sess, sctx=sctx, page=page)
+
+    def POST(self, name):
+        sess = self._session_filter()
+        page = {}
+        param = web.input()
+
+        if self._session_check(sess):
+            render.serve_template(path=name, web=web, param=param, session=sess, sctx=sctx, page=page)
+        else:
+            render.serve_template(path='index.psp', web=web, param=param, session=sess, sctx=sctx, page=page)
+        
+if __name__ == "__main__": web.run(urls, globals())
+
