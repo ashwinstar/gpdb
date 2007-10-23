@@ -268,11 +268,13 @@ get_sortgrouplist_exprs(List *sortClauses, List *targetList)
 
 /*
  * get_grouplist_exprs
- *     Find a list of referenced targetlist expressions used in a given
+ *     Find a list of unique referenced targetlist expressions used in a given
  *     list of GroupClauses or a GroupingClauses.
  *
  * All expressions will appear in the same order as they appear in the
  * given list of GroupClauses or a GroupingClauses.
+ *
+ * Note that the top-level empty sets will be removed here.
  */
 List *
 get_grouplist_exprs(List *groupClauses, List *targetList)
@@ -292,16 +294,20 @@ get_grouplist_exprs(List *groupClauses, List *targetList)
 			   IsA(groupClause, List));
 
 		if (IsA(groupClause, GroupClause))
-			result = lappend(result,
-							 get_sortgroupclause_expr((GroupClause*)groupClause,
-													  targetList));
+		{
+			Node *expr = get_sortgroupclause_expr((GroupClause*)groupClause,
+												  targetList);
+			
+			if (!list_member(result, expr))
+				result = lappend(result, expr);
+		}
 
 		else if (IsA(groupClause, List))
-			result = list_concat(result,
+			result = list_concat_unique(result,
 								 get_grouplist_exprs((List *)groupClause, targetList));
 
 		else
-			result = list_concat(result,
+			result = list_concat_unique(result,
 								 get_grouplist_exprs(((GroupingClause*)groupClause)->groupsets,
 													 targetList));
 	}

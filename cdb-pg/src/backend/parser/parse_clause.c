@@ -74,7 +74,7 @@ static List *findListTargetlistEntries(ParseState *pstate, Node *node,
 									   List **tlist, bool in_grpext,
 									   bool ignore_in_grpext);
 static TargetEntry *getTargetBySortGroupRef(Index ref, List *tl);
-static List *reorderGroupList(List *grouplist, bool in_grpext);
+static List *reorderGroupList(List *grouplist);
 static List *transformRowExprToList(ParseState *pstate, RowExpr *rowexpr,
 									List *groupsets, List *targetList);
 static List *transformRowExprToGroupClauses(ParseState *pstate, RowExpr *rowexpr,
@@ -2272,7 +2272,7 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 	 *
 	 *   XXX: the above transformation doesn't make sense -gs
 	 */
-	reorder_grouplist = reorderGroupList(grouplist, false);
+	reorder_grouplist = reorderGroupList(grouplist);
 
 	foreach(l, reorder_grouplist)
 	{
@@ -2719,13 +2719,9 @@ getTargetBySortGroupRef(Index ref, List *tl)
  *
  * We make a fresh copy for each entries in the result list. The caller
  * needs to free the list eventually.
- *
- * Note that we remove any empty sets not immediate unders a grouping extension.
- * For example, the '()' is removed from GROUP BY (a,b),(). However, the '()'
- * is not removed from GROUP BY GROUPING SETS ( (a,b), () ).
  */ 
 static List *
-reorderGroupList(List *grouplist, bool in_grpext)
+reorderGroupList(List *grouplist)
 {
 	List *result = NIL;
 	ListCell *gl;
@@ -2737,9 +2733,8 @@ reorderGroupList(List *grouplist, bool in_grpext)
 
 		if (node == NULL)
 		{
-			/* Append an empty set only when it is in a grouping extension. */
-			if (in_grpext)
-				result = list_concat(result, list_make1(NIL));
+			/* Append an empty set. */
+			result = list_concat(result, list_make1(NIL));
 		}
 
 		else if (IsA(node, GroupingClause))
@@ -2748,7 +2743,7 @@ reorderGroupList(List *grouplist, bool in_grpext)
 			GroupingClause *new_gc = makeNode(GroupingClause);
 
 			new_gc->groupType = gc->groupType;
-			new_gc->groupsets = reorderGroupList(gc->groupsets, true);
+			new_gc->groupsets = reorderGroupList(gc->groupsets);
 			
 			sub_list = lappend(sub_list, new_gc);
 		}

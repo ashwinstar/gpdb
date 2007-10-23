@@ -245,9 +245,20 @@ plan_grouping_extension(PlannerInfo *root,
 
 	/* Set the proper resno for Grouping column in *p_grpColIdx.
 	 */
-	*p_grpColIdx =
-		(AttrNumber *)repalloc(*p_grpColIdx,
-							   (*p_numGroupCols + 1) * sizeof(AttrNumber));
+	if (*p_grpColIdx != NULL)
+	{
+		*p_grpColIdx =
+			(AttrNumber *)repalloc(*p_grpColIdx,
+								   (*p_numGroupCols + 1) * sizeof(AttrNumber));
+	}
+	else
+	{
+		Assert(*p_numGroupCols == 0);
+		
+		*p_grpColIdx = 
+			(AttrNumber *)palloc0((*p_numGroupCols + 1) * sizeof(AttrNumber));
+	}
+	
 	(*p_numGroupCols)++;
 
 	*p_tlist = context.tlist;

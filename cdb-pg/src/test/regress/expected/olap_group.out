@@ -5634,3 +5634,29 @@ ORDER BY sale.vn asc,sale.pn desc,sale.vn asc,sale.vn asc; --mvd 1,2->3
     | 100 |        1 |     1
 (823 rows)
 
+-- Empty sets
+select * from sale group by ();
+ERROR:  column "sale.cn" must appear in the GROUP BY clause or be used in an aggregate function
+select * from sale group by grouping sets(());
+ERROR:  column "sale.cn" must appear in the GROUP BY clause or be used in an aggregate function
+select * from sale group by grouping sets((), ());
+ERROR:  column "sale.cn" must appear in the GROUP BY clause or be used in an aggregate function
+select count(*) from sale group by ();
+ count 
+-------
+    12
+(1 row)
+
+select count(*) from sale group by grouping sets(());
+ count 
+-------
+    12
+(1 row)
+
+select count(*) from sale group by grouping sets((), ());
+ count 
+-------
+    12
+    12
+(2 rows)
+

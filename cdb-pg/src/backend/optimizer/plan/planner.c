@@ -987,6 +987,16 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		canonical_grpsets = make_canonical_groupingsets(parse->groupClause);
 		numGroupCols = canonical_grpsets->num_distcols;
 
+		/*
+		 * Clean up parse->groupClause if the grouping set is an empty
+		 * set.
+		 */
+		if (numGroupCols == 0)
+		{
+			list_free(parse->groupClause);
+			parse->groupClause = NIL;
+		}
+
 		grpext = is_grouping_extension(canonical_grpsets);
 
 		/*
@@ -2387,6 +2397,9 @@ make_canonical_groupingsets(List *groupClause)
 		GroupingClause *gc;
 
 		Node *node = lfirst(lc);
+
+		if (node == NULL)
+			continue;
 
 		/* Note that the top-level empty sets have been removed
 		 * in the parser.

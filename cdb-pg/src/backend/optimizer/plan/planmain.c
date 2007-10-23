@@ -237,9 +237,12 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 
 		groupExprs = get_grouplist_exprs(parse->groupClause,
 										 parse->targetList);
-		*num_groups = estimate_num_groups(root,
-										  groupExprs,
-										  final_rel->rows);
+		if (groupExprs == NULL)
+			*num_groups = 1;
+		else
+			*num_groups = estimate_num_groups(root,
+											  groupExprs,
+											  final_rel->rows);
 
 		/*
 		 * In GROUP BY mode, an absolute LIMIT is relative to the number of

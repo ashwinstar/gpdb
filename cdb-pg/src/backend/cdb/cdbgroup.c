@@ -989,9 +989,14 @@ make_two_stage_agg_plan(PlannerInfo *root,
 											  result_plan);
 		/* Since we add Grouping as an additional grouping column,
 		 * we need to add it into prelimGroupColIdx. */
-		prelimGroupColIdx = (AttrNumber *)
-			repalloc(prelimGroupColIdx, 
-					 numGroupCols * sizeof(AttrNumber));
+		if (prelimGroupColIdx != NULL)
+			prelimGroupColIdx = (AttrNumber *)
+				repalloc(prelimGroupColIdx, 
+						 numGroupCols * sizeof(AttrNumber));
+		else
+			prelimGroupColIdx = (AttrNumber *)
+				palloc0(numGroupCols * sizeof(AttrNumber));
+		
 		prelimGroupColIdx[numGroupCols-1] = groupColIdx[numGroupCols-1];
 	}
 	
