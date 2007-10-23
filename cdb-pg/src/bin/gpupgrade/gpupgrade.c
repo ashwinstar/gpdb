@@ -57,6 +57,7 @@ PGresult *pg_resqueue_cts = NULL;
 /* signal handling */
 bool caught_signal = false;
 bool query_failed = false;
+bool detailed_log_msg = false;
 
 #define GPUP_VERSION "3.1.0-1"
 
@@ -121,10 +122,17 @@ mylog(int level, const char *fmt, ...)
 	va_list ap;
 	char dt[30];
 	struct timeval tv;
+	char prefix[100];
 
-	gettimeofday(&tv, NULL);
-	strftime(dt, sizeof(dt), "%Y-%m-%d %H:%M:%S", 
-			 localtime(&tv.tv_sec));		 
+	prefix[0] = '\0';
+	
+	if (detailed_log_msg)
+	{
+		gettimeofday(&tv, NULL);
+		strftime(dt, sizeof(dt), "%Y-%m-%d %H:%M:%S", 
+				 localtime(&tv.tv_sec));		 
+		snprintf(prefix, sizeof(prefix), "%s [%s]:-",dt, lev2str(level));
+	}
 	
 	va_start(ap, fmt);
 
@@ -134,18 +142,18 @@ mylog(int level, const char *fmt, ...)
 	{
 		if (verbose)
 		{
-			printf("%s [%s]: %s\n", lev2str(level), dt, buf);
+			printf("%s%s\n", prefix, buf);
 			fflush(stdout);
 		}
 	}
 	else if (level == UINFO)
 	{
-		printf("%s [%s]: %s\n", lev2str(level), dt, buf);
+		printf("%s%s\n", prefix, buf);
 		fflush(stdout);
 	}
 	else
 	{
-		fprintf(stderr, "%s [%s]: %s\n", lev2str(level), dt, buf);
+		fprintf(stderr, "%s%s\n", prefix, buf);
 		fflush(stderr);
 	}
 }
@@ -757,6 +765,7 @@ help(void)
 	printf(_("  -D, --downgrade        downgrade from 3.1 to 3.0\n"));
 	printf(_("  -t, --test             do everything but the actual upgrade\n"));
 	printf(_("                         (prints SQL, connection info, etc)\n"));
+	printf(_("  -L, --log-detail       print a log message with time details\n"));
 }
 
 int
@@ -782,6 +791,7 @@ main(int argc, char **argv)
 		{"help", no_argument, NULL, '?'},
 		{"downgrade", no_argument, NULL, 'D'},
 		{"test", no_argument, NULL, 't'},
+		{"log-detail", no_argument, NULL, 'L'},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -818,7 +828,7 @@ main(int argc, char **argv)
 		}
 	}
 
-	while ((c = getopt_long(argc, argv, "h:p:U:dD?tVW",
+	while ((c = getopt_long(argc, argv, "h:p:U:dD?tVWL",
 							long_options, &optindex)) != -1)
 	{
 		switch (c)
@@ -850,6 +860,9 @@ main(int argc, char **argv)
 				break;
 			case 'D':
 				upgrade = false;
+				break;
+			case 'L':
+				detailed_log_msg = true;
 				break;
 			default:
 				mylog(UERROR, "unrecognised argument '%c'", c);
