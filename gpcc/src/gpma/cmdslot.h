@@ -157,6 +157,14 @@ struct cmdslot_t {
 	    int    hostidx;
 	    char** hosttab;	/* array of IP */
 	} node;
+
+	struct {
+	    gpcc_net_conn_t conn;
+	    int port;
+	    const char* ma_unit;
+	    const char* node_unit;
+	    cmdslot_t* node;
+	} ma;
     } u;
 };
 

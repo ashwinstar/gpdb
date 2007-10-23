@@ -61,6 +61,9 @@ struct gpma_t {
 
     int          node_max;
     cmdslot_t**  node_cmdtab;
+
+    int          ma_max;
+    cmdslot_t**  ma_cmdtab;
 };
 
 extern gpma_t gpma;

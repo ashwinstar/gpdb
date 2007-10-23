@@ -125,7 +125,7 @@ apr_status_t a_node_teardown(gpcc_event_t* ev, void* arg)
     gpcc_event_t *evt;
 
     printf("NODE TEARDOWN\n");
-    slot->countdown = 2;
+    slot->countdown = 3;
     
     evt = gpcc_event_alloc(NET_CLOSED_EVENT, gpma.fts_cmdslot->cmdidx, strlen(slot->cmdname)+1);
     memcpy(evt->pdata, slot->cmdname, strlen(slot->cmdname)+1);

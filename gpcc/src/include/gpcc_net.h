@@ -180,7 +180,7 @@ APR_DECLARE(apr_status_t)
  */
 APR_DECLARE(apr_status_t) 
     gpcc_net_open(gpcc_net_conn_t* conn,
-		  char* peer_addr,
+		  const char* peer_addr,
 		  int argc, const char** argv,
 		  int hc, const char** hname, const char** hvalue,
 		  apr_uint64_t arg);

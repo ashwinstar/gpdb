@@ -184,39 +184,46 @@ static void process_lscfg(gpcc_net_conn_t conn)
     for (count = 0; keys[count]; count++);
     qsort(keys, count, sizeof(*keys), keycmp);
 
-    buflen = 16 * 1024;
-    buf = apr_palloc(pool, buflen);
-    p = buf;
-    q = buf + buflen;
-
-    apr_snprintf(p, q - p, "{ \"status\": \"ok\", ");
-    p += strlen(p);
-    apr_snprintf(p, q - p, "\"rset\": { \"total\": 1, ");
-    p += strlen(p);
-    apr_snprintf(p, q - p, "\"offset\": %d, ", 0);
-    p += strlen(p);
-    apr_snprintf(p, q - p, "\"result\": [ ");
-    p += strlen(p);
-
-    prev_value = 0;
-    for (i = 0; i < count; i++) {
-	const char* value = config_get(gpma.cfg, keys[i]);
-	if (value) {
-	    apr_snprintf(p, q - p, "%s [ \"%s\", \"%s\" ]", 
-			 prev_value ? "," : "",
-			 keys[i], value);
-	    p += strlen(p);
+    if (!conn) {
+	for (i = 0; i < count; i++) {
+	    const char* value = config_get(gpma.cfg, keys[i]);
+	    if (value) 
+		printf("%s: %s\n", keys[i], value);
 	}
-	prev_value = value;
-    }
-    apr_snprintf(p, q - p, " ] } }");
-    p += strlen(p);
-
-    if (p >= q) {
-	gpcc_net_http_close(conn, 500, "Internal error", "");
     }
     else {
-	gpcc_net_http_close(conn, 200, "OK", buf);
+	buflen = 16 * 1024;
+	buf = apr_palloc(pool, buflen);
+	p = buf;
+	q = buf + buflen;
+
+	apr_snprintf(p, q - p, "{ \"status\": \"ok\", ");
+	p += strlen(p);
+	apr_snprintf(p, q - p, "\"rset\": { \"total\": 1, ");
+	p += strlen(p);
+	apr_snprintf(p, q - p, "\"offset\": %d, ", 0);
+	p += strlen(p);
+	apr_snprintf(p, q - p, "\"result\": [ ");
+	p += strlen(p);
+
+	prev_value = 0;
+	for (i = 0; i < count; i++) {
+	    const char* value = config_get(gpma.cfg, keys[i]);
+	    if (value) {
+		apr_snprintf(p, q - p, "%s [ \"%s\", \"%s\" ]", 
+			     prev_value ? "," : "",
+			     keys[i], value);
+		p += strlen(p);
+	    }
+	    prev_value = value;
+	}
+	apr_snprintf(p, q - p, " ] } }");
+	p += strlen(p);
+
+	if (p >= q) 
+	    gpcc_net_http_close(conn, 500, "Internal error", "");
+	else 
+	    gpcc_net_http_close(conn, 200, "OK", buf);
     }
     apr_pool_destroy(pool);
 }
@@ -369,7 +376,51 @@ static void node_init(void)
 	     cp->u.node.hosttab[cp->u.node.hosttab_max] ; 
 	     cp->u.node.hosttab_max++) ;
 	cp->u.node.hostidx = 0;
-	    
+    }
+}
+
+void ma_init(void)
+{
+    char ma_name[100];
+    const char* ma;
+    int cnt, i, j;
+    cmdslot_t* cp;
+    char* p;
+    for (cnt = 0; cnt < 3; cnt++) {
+	sprintf(ma_name, "ma.%d", cnt);
+	ma = config_get(gpma.cfg, ma_name);
+	if (!ma)
+	    break;
+    }
+
+    if (cnt == 0) 
+	gpcc_fatal(FLINE, "No MA exists in configuration");
+
+    gpma.ma_max = cnt;
+    gpma.ma_cmdtab = apr_palloc(gpma.pool, (cnt + 1) * sizeof(gpma.ma_cmdtab[0]));
+    for (i = 0; i < cnt; i++) {
+	sprintf(ma_name, "ma.%d", i);
+	if (0 == strcmp(ma_name, gpma.ma_unit)) {
+	    gpma.ma_cmdtab[i] = 0;
+	    continue;
+	}
+
+	ma = config_get(gpma.cfg, ma_name);
+	cp = gpma.ma_cmdtab[i] = cmdslot_alloc(ma_name, MA_OFF_CMDSTATE);
+	cp->u.ma.node_unit = apr_pstrdup(gpma.pool, ma);
+	p = strchr(cp->u.ma.node_unit, ':');
+	*p++ = 0;
+	cp->u.ma.port = strtol(p, 0, 0);
+	if (! (0 < cp->u.ma.port && cp->u.ma.port < (1 << 16)))
+	    gpcc_fatal(FLINE, "Illegal ma port specification: %s", ma);
+	for (j = 0; j < gpma.node_max; j++) {
+	    if (0 == strcmp(cp->u.ma.node_unit, gpma.node_cmdtab[j]->cmdname)) {
+		cp->u.ma.node = gpma.node_cmdtab[j];
+		break;
+	    }
+	}
+	if (! cp->u.ma.node) 
+	    gpcc_fatal(FLINE, "Illegal ma node specification: %s", ma);
     }
 }
 
@@ -399,6 +450,9 @@ void d_main(void)
 	setlinebuf(stdout);
     }
 
+    /* dump the config */
+    process_lscfg(0);
+
     event_init();
 
     cmdslot_init(gpma.pool);
@@ -409,8 +463,9 @@ void d_main(void)
     gpma.fts_cmdslot = cmdslot_alloc("FTS", FTS_CMDSTATE);
 
     fsm_init();
-
     node_init();
+    ma_init();
+
 
     /* create the event queue */
     evq = gpma.evq = gpcc_evqueue_create(1000, gpma.pool);
@@ -434,8 +489,11 @@ void d_main(void)
 
     /* kick off all the nodes */
     for (i = 0; i < gpma.node_max; i++) {
-	ev = gpcc_event_alloc(INIT_EVENT, gpma.node_cmdtab[i]->cmdidx, 0);
-	gpcc_evqueue_put(gpma.evq, ev);
+	gpma.node_cmdtab[i]->countdown = 1;
+    }
+    for (i = 0; i < gpma.ma_max; i++) {
+	if (gpma.ma_cmdtab[i])
+	    gpma.ma_cmdtab[i]->countdown = 1;
     }
 
     /* MAIN LOOP - 
@@ -511,6 +569,23 @@ void d_main(void)
     /* not reached */
 }
 
+
+static const char* verify_ma(const char* ma)
+{
+    char buf[1024];
+    char* p;
+    strncpy(buf, ma, sizeof(buf));
+    buf[sizeof(buf)-1] = 0;
+    if (strlen(buf) == sizeof(buf) - 1) 
+	return "specification too long";
+
+    p = strchr(buf, ':');
+    if (!p || strchr(p+1, ':'))
+	return "illegal format - expects node:port";
+
+    return NULL;
+}
+
 /*
  *  Sanity check on config info.
  */
@@ -527,23 +602,12 @@ static void verify_config(void)
 	sprintf(buf, "ma.%d", i);
 	if (! (v = config_get(gpma.cfg, buf)))
 	    break;
+	v = verify_ma(v);
+	if (v)
+	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- ma.%d %s", i, v);
     }
     if (i == 0) 
 	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- ma.0 not set");
-
-    /* default ma port if not set */
-    if (! config_get(gpma.cfg, "ma.port")) {
-	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- ma.port missing");
-    }
-
-    /* ma.datadir */
-    v = config_get(gpma.cfg, "ma.datadir");
-    if (! v)
-	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- ma.datadir not set");
-    if (v[0] != '/') 
-	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- ma.datadir must be an absolute path");
-    if (strlen(v) > 255)
-	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- ma.datadir is too long (max 255 chars)");
 
     /* guid must match */
     if (! config_eq(gpma.cfg, "gpdb.guid", gpma.guid)) {
@@ -604,7 +668,7 @@ static void verify_config(void)
     if (errcnt) {
 	gpcc_log_error("config file error:");
 	for (i = 0; i < errcnt; i++)
-	    gpcc_log_error("%s\n", errmsg[i]);
+	    gpcc_log_error("%s", errmsg[i]);
 
 	gpcc_fatal(FLINE, "config file error - see log file '%s'", gpma.logfpath ? gpma.logfpath : "-");
     }
@@ -654,7 +718,6 @@ void load_config(void)
 	verify_config();
 	
 	/* prep the datadir */
-	gpma.datadir = config_get(gpma.cfg, "ma.datadir");
 	if (0 != apr_dir_make_recursive(gpma.datadir, 0x700, gpma.pool)) 
 	    gpcc_fatal(FLINE, "unable to create ma.datadir '%s'", gpma.datadir);
 
@@ -703,6 +766,10 @@ void check_gphome(void)
 
 int main(int argc, const char* argv[])
 {
+#ifdef SIGPIPE
+    signal(SIGPIPE, SIG_IGN);
+#endif
+
     GPCC_DO(0 == apr_app_initialize(&argc, (char const* const **) &argv, NULL));
     atexit(apr_terminate);
 

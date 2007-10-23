@@ -11,6 +11,7 @@
 #include "gpma.h"
 
 #include "fsm_node.h"
+#include "fsm_ma.h"
 #include "fsm_fts.h"
 #include "fsm_initdb.h"
 #include "fsm_start.h"
@@ -35,8 +36,6 @@ APR_DECLARE(void) fsm_init(void)
 		 a_system_tick, 0);
 
     /* node */
-    gpcc_fsm_put(NODE_OFF_CMDSTATE, INIT_EVENT, NODE_SSHWAIT_CMDSTATE,
-		 a_node_ssh, 0);
     gpcc_fsm_put(NODE_OFF_CMDSTATE, TIMEUP_EVENT, NODE_SSHWAIT_CMDSTATE,
 		 a_node_ssh, 0);
     gpcc_fsm_put(NODE_SSHWAIT_CMDSTATE, SUCCESS_EVENT, NODE_CONNWAIT_CMDSTATE,
@@ -55,6 +54,56 @@ APR_DECLARE(void) fsm_init(void)
 		 a_node_ping, 0);
     gpcc_fsm_put(NODE_ON_CMDSTATE, NET_CLOSED_EVENT, NODE_OFF_CMDSTATE, 
 		 a_node_teardown, 0);
+
+    /* ma */
+    gpcc_fsm_put(MA_OFF_CMDSTATE, TIMEUP_EVENT, MA_CONNWAIT_CMDSTATE,
+		 a_ma_connect, 0);
+    gpcc_fsm_put(MA_CONNWAIT_CMDSTATE, NET_OPENED_EVENT, MA_ON_CMDSTATE, 
+		 a_ma_ready, 0);
+    gpcc_fsm_put(MA_CONNWAIT_CMDSTATE, NET_CLOSED_EVENT, MA_OFF_CMDSTATE,
+		 a_ma_teardown, 0);
+    gpcc_fsm_put(MA_ON_CMDSTATE, NET_CLOSED_EVENT, MA_OFF_CMDSTATE,
+		 a_ma_teardown);
+
+    /* lma */
+#if 0
+    gpcc_fsm_put(LMA_OFF_CMDSTATE, INIT_EVENT, LMA_LEADLESS_CMDSTATE,
+		 a_lma_leadless, 0);
+    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_VOTEME_EVENT, LMA_LEADLESS_CMDSTATE,
+		 a_lma_vote_requested, 0); /* think about voting yes or no, if yes: gen SUCCESS event */
+    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, TIMEUP_EVENT, LMA_LEADLESS_CMDSTATE,
+		 a_lma_ponder_elect, 0); /* think about electing myself, if yes: gen ELECTSELF event */
+    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, SUCCESS_EVENT, LMA_VOTED_CMDSTATE, 0);
+    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_ELECTSELF_EVENT, LMA_VOTEME_CMDSTATE, 0);
+    gpcc_fsm_put(LMA_VOTED_CMDSTATE, LMA_VOTEME_EVENT, LMA_VOTED_CMDSTATE,
+		 a_lma_reject, 0); /* we voted for another ma, reject this. */
+    gpcc_fsm_put(LMA_VOTED_CMDSTATE, LMA_WINVOTE_EVENT, LMA_VOTED_CMDSTATE,
+		 a_lma_check_win, 0); /* check if this is who we voted for, if yes: gen SUCCESS event */
+    gpcc_fsm_put(LMA_VOTED_CMDSTATE, LMA_LOSTVOTE_EVENT, LMA_VOTED_CMDSTATE,
+		 a_lma_check_lost, 0); /* check if this is who we voted for, if yes: gen FAILURE event */
+    gpcc_fsm_put(LMA_VOTED_CMDSTATE, FAILURE_EVENT, LMA_LEADLESS_CMDSTATE, 
+		 a_lma_leadless, 0);
+    gpcc_fsm_put(LMA_VOTED_CMDSTATE, TIMEUP_EVENT, LMA_LEADLESS_CMDSTATE, 
+		 a_lma_leadless, 0);
+    gpcc_fsm_put(LMA_VOTED_CMDSTATE, SUCCESS_EVENT, LMA_STANDBY_CMDSTATE, 0);
+    
+    gpcc_fsm_put(LMA_STANDBY_CMDSTATE, FAILURE_EVENT, LMA_LEADLESS_CMDSTATE, 
+		 a_lma_leadless, 0);
+
+    gpcc_fsm_put(LMA_VOTEME_CMDSTATE, LMA_VOTEYES_EVENT, LMA_VOTEME_CMDSTATE, 
+		 a_lma_ponder_vote, 0);
+    gpcc_fsm_put(LMA_VOTEME_CMDSTATE, LMA_VOTENO_EVENT, LMA_VOTEME_CMDSTATE, 
+		 a_lma_ponder_vote, 0);
+    gpcc_fsm_put(LMA_VOTEME_CMDSTATE, FAILURE_EVENT, LMA_LEADLESS_CMDSTATE, 
+		 a_lma_leadless, 0);
+    gpcc_fsm_put(LMA_VOTEME_CMDSTATE, TIMEUP_EVENT, LMA_LEADLESS_CMDSTATE, 
+		 a_lma_leadless, 0);
+    gpcc_fsm_put(LMA_VOTEME_CMDSTATE, SUCCESS_EVENT, LMA_LEAD_CMDSTATE, 0);
+
+    gpcc_fsm_put(LMA_LEAD_CMDSTATE, FAILURE_EVENT, LMA_LEADLESS_CMDSTATE, 
+		 a_lma_leadless, 0);
+
+#endif
 
     /* fts */
     /*

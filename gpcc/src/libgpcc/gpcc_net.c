@@ -571,7 +571,7 @@ static void do_ready(int fd, short event, void* arg)
 		goto failure;	/* closed by remote peer */
 	    }
 	    if (n < 0) {
-		if (errno != EAGAIN) {
+		if (errno != EAGAIN && errno != EINTR) {
 		    gpcc_warning(FLINE, "read failed");
 		    goto failure;
 		}
@@ -594,8 +594,8 @@ static void do_ready(int fd, short event, void* arg)
 		goto failure;	/* closed by remote peer */
 	    }
 	    if (n < 0) {
-		if (errno != EAGAIN) {
-		    gpcc_warning(FLINE, "write failed");
+		if (errno != EAGAIN && errno != EINTR) {
+		    gpcc_warning(FLINE, "write failed, errno = %d", errno);
 		    goto failure;
 		}
 	    }
@@ -1128,7 +1128,7 @@ apr_status_t gpcc_net_tag(gpcc_net_conn_t conn,
 
 
 apr_status_t gpcc_net_open(gpcc_net_conn_t* conn,
-			   char* peer_addr_str,
+			   const char* peer_addr_str,
 			   int argc, const char** argv,
 			   int hc, const char** hname, const char** hvalue,
 			   apr_uint64_t arg)
@@ -1163,7 +1163,7 @@ apr_status_t gpcc_net_open(gpcc_net_conn_t* conn,
     host[sizeof(host) - 1] = 0;
 
     if (0 == (p = strchr(host, ':'))) {
-	gpcc_warning(FLINE, "parse peer addr %s failed", peer_addr_str);
+	gpcc_warning(FLINE, "parse peer addr '%s' failed", peer_addr_str);
 	e = APR_EINVAL;
 	goto failure;
     }
@@ -1171,14 +1171,14 @@ apr_status_t gpcc_net_open(gpcc_net_conn_t* conn,
     *p++ = 0;
     port = strtol(p, 0, 0);
     if (! (0 <= port && port < (1 << 16)))  {
-	gpcc_warning(FLINE, "invalid port number %d", port);
+	gpcc_warning(FLINE, "invalid port number '%d'", port);
 	e = APR_EINVAL;
 	goto failure;
     }
     
     /* get the host ip */
     if (0 == (hp = gethostbyname(host))) {
-	gpcc_warning(FLINE, "gethostbyname %s failed", host);
+	gpcc_warning(FLINE, "gethostbyname '%s' failed", host);
 	e = APR_EINVAL;
 	goto failure;
     }
@@ -1479,6 +1479,54 @@ apr_status_t gpcc_net_send_packetx(const char* tag, int type,
 }
 
 
+
+/*
+ *  Call with buf == NULL to get #bytes needed to quote s.
+ *  Call with non-NULL buf to copy and quote s into buf.
+ *  Must ensure that buf is sufficient for unquote,
+ */
+#if 0
+static int url_quote(const char* s, char* buf)
+{
+    char* p = buf;
+    int ch;
+    for ( ; 0 != (ch = * (unsigned char*) s); s++) {
+	if (('a' <= ch && ch <= 'z')
+	    || ('A' <= ch && ch <= 'Z')
+	    || ('0' <= ch && ch <= '9')
+	    || ('-' == ch)
+	    || ('.' == ch)
+	    || ('_' == ch)
+	    || ('~' == ch)) {
+	    if (buf)
+		*p = (char) ch;
+	    p++;
+	}
+	else if (' ' == ch) {
+	    if (buf)
+		*p = '+';
+	    p++;
+	}
+	else {
+	    if (buf) {
+		int x = ch >> 4;
+		int y = ch & 0xf;
+		x = (x < 10) ? x + '0' : x - 10 + 'A';
+		y = (y < 10) ? y + '0' : y - 10 + 'A';
+		p[0] = '%';
+		p[1] = x;
+		p[2] = y;
+	    }
+	    p += 3;
+	}
+    }
+    if (buf)
+	*p = 0;
+    p++;
+
+    return p - buf;
+}
+#endif
 
 
 static void uri_unquote(char* s)
