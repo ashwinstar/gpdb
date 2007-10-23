@@ -72,6 +72,7 @@ PARALLEL_STATUS_FILE=/tmp/gpinitsystem_parallel_status_file.$$
 GPCREATESEG=$WORKDIR/lib/gpcreateseg.sh
 ULIMIT_WARN=0
 PARALLEL_BUILD=1
+SINGLE_HOST_BATCH_LIMIT=4
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -338,7 +339,16 @@ CHK_PARAMS () {
 		#Number of QE hosts in this configuration
 		((NUM_QES=${#MACHINE_LIST[*]}))
 		if [ $NUM_QES -eq 0 ]; then
-				ERROR_EXIT "[FATAL]:-Number of Segment instances's 0 (zero)" 2
+			ERROR_EXIT "[FATAL]:-Number of Segment instances's 0 (zero)" 2
+		else
+			LOG_MSG "[INFO]:-Number of segment instance hosts = $NUM_QES"
+			if [ $NUM_QES -eq 1 ];then
+				#This is a single host array, re-tune the BATCH_DEFAULT value down
+				if [ $BATCH_DEFAULT -gt $SINGLE_HOST_BATCH_LIMIT ];then
+					LOG_MSG "[INFO]:-Detected a single host GPDB array build, reducing value of BATCH_DEFAULT from $BATCH_DEFAULT to $SINGLE_HOST_BATCH_LIMIT" 1
+					BATCH_DEFAULT=$SINGLE_HOST_BATCH_LIMIT
+				fi
+			fi
 		fi
 		#Mirror configuration
 		if [ $MIRROR_PORT_BASE ]; then
@@ -680,6 +690,13 @@ CREATE_QE_ARRAY () {
 			((QE_DIR_INDEX=$QE_DIR_INDEX+1))
 			((QE_NAME_INDEX=$QE_NAME_INDEX+1))
 		done
+		#Now re-order the array so that it is ordered by PORT to spread out the number of parallel processes initiated on each host
+		QE_REORDER_ARRAY=(`$ECHO ${QE_PRIMARY_ARRAY[@]}|$TR ' ' '\n'|$SORT -t":" -k2,2|$TR '\n' ' '`)
+		QE_PRIMARY_ARRAY=(${QE_REORDER_ARRAY[@]})
+		if [ $MIRRORING -eq 1 ]; then
+			QE_REORDER_ARRAY=(`$ECHO ${QE_MIRROR_ARRAY[@]}|$TR ' ' '\n'|$SORT -t":" -k2,2|$TR '\n' ' '`)
+			QE_MIRROR_ARRAY=(${QE_REORDER_ARRAY[@]})
+		fi
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
 		LOG_MSG "[INFO]:-Building segment instance array, Completed" 1
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
