@@ -402,6 +402,9 @@ void ma_init(void)
 	sprintf(ma_name, "ma.%d", i);
 	if (0 == strcmp(ma_name, gpma.ma_unit)) {
 	    gpma.ma_cmdtab[i] = 0;
+	    ma = config_get(gpma.cfg, ma_name);
+	    p = strchr(ma, ':');
+	    gpma.ma_port = strtol(++p, 0, 0);
 	    continue;
 	}
 
@@ -475,12 +478,12 @@ void d_main(void)
     gpcc_log_info("[%s] started gpma %s %s %s", date, gpma.guid, gpma.ma_unit, gpma.datadir);
 
     /* network up */
-    GPCC_DO(0 == gpcc_net_init(config_get_int(gpma.cfg, "ma.port"), 
+    GPCC_DO(0 == gpcc_net_init(gpma.ma_port,
 			       net_opened, net_accepted, 
 			       net_received, net_received_packet,
 			       net_closed, net_tick));
 
-    gpcc_log_info("gpma listening to port %d", config_get_int(gpma.cfg, "ma.port"));
+    gpcc_log_info("gpma listening to port %d", gpma.ma_port);
 
     /* kick of FTS slot */
     ev = gpcc_event_alloc(INIT_EVENT, gpma.fts_cmdslot->cmdidx, 0);
