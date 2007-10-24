@@ -384,9 +384,14 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest, PROC_RESPONSE_COOKIE *res
 				disableQDMirroring();
 			}
 		}
+		else if (isQDMirroringDisabled())
+		{
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QD Mirror Send: QD mirroring not catching-up (state is disabled)");
+		}
 		else
 		{
-			elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QD Mirror Send: QD mirroring not catching-up");
+			elog(ERROR,"unexpected QD mirroring state %s",
+				 QDMirroringStateString());
 		}
 		
 		break;
@@ -493,9 +498,14 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest, PROC_RESPONSE_COOKIE *res
 			}
 			
         }
-		else
+		else if (isQDMirroringDisabled())
 		{
 			elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QD Mirror Send: QD mirroring not enabled");
+		}
+		else
+		{
+			elog(ERROR,"unexpected QD mirroring state %s",
+				 QDMirroringStateString());
 		}
 		
 		break;

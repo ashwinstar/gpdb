@@ -386,6 +386,46 @@ isQDMirroringUnexpectedError(void)
 	return result;
 }
 
+char *
+QDMirroringStateString(void)
+{
+	QDMIRRORState state;
+	
+	if (ftsQDMirrorInfo == NULL)
+		return "don't know yet";
+
+	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	state = ftsQDMirrorInfo->state;
+	LWLockRelease(ftsControlLock);
+
+	switch (state)
+	{
+		case QDMIRROR_STATE_NONE:
+			return "none";
+
+		case QDMIRROR_STATE_NOTCONFIGURED:
+			return "not configured";
+
+		case QDMIRROR_STATE_POSITIONINGTOEND:
+			return "positioning to end";
+
+		case QDMIRROR_STATE_CATCHUPPENDING:
+			return "catchup pending";
+
+		case QDMIRROR_STATE_CATCHINGUP:
+			return "catching up";
+
+		case QDMIRROR_STATE_ENABLED:
+			return "enabled";
+
+		case QDMIRROR_STATE_DISABLED:
+			return "unexpected error";
+
+		default:
+			return "unknown";
+	}
+	
+}
 
 void
 FtsHandleNetFailure(SegmentDatabaseDescriptor ** segDB, int numOfFailed)
@@ -1189,6 +1229,7 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 	 * up the response at the end of this procedure.
 	 */
 	ProcSetAcceptingNewRequests(PGPROC_REQUEST_WALSEND, true);
+	
 	ftsQDMirrorInfo->configurationChecked = true;
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_POSITIONINGTOEND;
 
@@ -1247,6 +1288,7 @@ FtsQDMirroringCatchup(XLogRecPtr *flushedLocation)
 		return;
 	}
 	
+	ftsQDMirrorInfo->state = QDMIRROR_STATE_CATCHINGUP;
 	serverAcceptingNewRequests = XLogQDMirrorQueueCatchup(flushedLocation, &serialNumber);
 	if (!serverAcceptingNewRequests)
 	{
@@ -1258,7 +1300,6 @@ FtsQDMirroringCatchup(XLogRecPtr *flushedLocation)
 	}
 	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"catching up QD mirror");
 
-	Assert(ftsQDMirrorInfo->state = QDMIRROR_STATE_CATCHINGUP);
 	LWLockRelease(ftsControlLock);
 	
 	/*

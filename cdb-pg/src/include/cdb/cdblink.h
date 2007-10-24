@@ -64,6 +64,8 @@ extern bool isQDMirroringNotKnownYet(void);
 extern bool isQDMirroringDisabled(void);
 extern bool isQDMirroringUnexpectedError(void);
 
+extern char *QDMirroringStateString(void);
+
 extern bool write_qd_sync(char *, void *, int);
 
 extern bool write_position_to_end(XLogRecPtr *endLocation);
