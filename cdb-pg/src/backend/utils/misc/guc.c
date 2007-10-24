@@ -1228,7 +1228,7 @@ static struct config_bool ConfigureNamesBool[] =
 		{"gp_selectivity_damping_for_scans", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Damping of selectivities for clauses over the same base relation."),
 			NULL,
-			GUC_NOT_IN_SAMPLE
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
   		},
 		&gp_selectivity_damping_for_scans,
 		false, NULL, NULL
@@ -1238,7 +1238,7 @@ static struct config_bool ConfigureNamesBool[] =
 		{"gp_selectivity_damping_for_joins", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Damping of selectivities in join clauses."),
 			NULL,
-			GUC_NOT_IN_SAMPLE
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
   		},
 		&gp_selectivity_damping_for_joins,
 		false, NULL, NULL
@@ -1248,7 +1248,7 @@ static struct config_bool ConfigureNamesBool[] =
 		{"gp_selectivity_damping_sigsort", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Sort selectivities by ascending significance, i.e. smallest first"),
 			NULL,
-			GUC_NOT_IN_SAMPLE
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
   		},
 		&gp_selectivity_damping_sigsort,
 		true, NULL, NULL
