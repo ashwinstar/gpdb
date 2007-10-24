@@ -47,8 +47,8 @@ class gpcc:
         return s
 
     def _session_check(self, s):
-        if 'X-GPCC-USER' not in s._data:
-            return False
+#        if 'X-GPCC-USER' not in s._data:
+#            return False
         return True
 
     def GET(self, name):
