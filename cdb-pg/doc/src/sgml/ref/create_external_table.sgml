@@ -30,6 +30,7 @@ CREATE EXTERNAL TABLE <replaceable class="PARAMETER">table_name</replaceable> (<
                [HEADER]
                [QUOTE [AS] '<replaceable class="PARAMETER">quote</replaceable>'] 
                [FORCE NOT NULL <replaceable class="PARAMETER">column</replaceable> [, ...] )]
+	  [ ENCODING '<replaceable class="parameter">encoding</replaceable>' ]
 	  [ [LOG ERRORS INTO <replaceable class="parameter">error_table</replaceable>] SEGMENT REJECT LIMIT <replaceable class="parameter">count</replaceable> [ROWS] ]
 
 CREATE EXTERNAL WEB TABLE <replaceable class="PARAMETER">table_name</replaceable> (<replaceable class="PARAMETER">column_name</replaceable> <replaceable class="PARAMETER">data_type</replaceable> [, ...])
@@ -46,6 +47,7 @@ CREATE EXTERNAL WEB TABLE <replaceable class="PARAMETER">table_name</replaceable
                [HEADER]
                [QUOTE [AS] '<replaceable class="PARAMETER">quote</replaceable>'] 
                [FORCE NOT NULL <replaceable class="PARAMETER">column</replaceable> [, ...] )]
+	 [ ENCODING '<replaceable class="parameter">encoding</replaceable>' ]
 	 [ [LOG ERRORS INTO <replaceable class="parameter">error_table</replaceable>] SEGMENT REJECT LIMIT <replaceable class="parameter">count</replaceable> [ROWS] ]
 </synopsis>
 

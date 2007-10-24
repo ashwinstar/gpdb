@@ -20,7 +20,7 @@ PostgreSQL documentation
 
  <refsynopsisdiv>
 <synopsis>
-CREATE RESOURCE QUEUE <replaceable class="PARAMETER">name</replaceable> [ ACTIVE THRESHOLD <replaceable class="PARAMETER">integer</replaceable>] [ COST THRESHOLD <replaceable class="PARAMETER">float</replaceable> ] [ NOOVERCOMMIT | OVERCOMMIT ]
+CREATE RESOURCE QUEUE <replaceable class="PARAMETER">name</replaceable> [ ACTIVE THRESHOLD <replaceable class="PARAMETER">integer</replaceable>] [ COST THRESHOLD <replaceable class="PARAMETER">float</replaceable> ] [ IGNORE THRESHOLD  <replaceable class="PARAMETER">float</replaceable> ] [ NOOVERCOMMIT | OVERCOMMIT ]
 </synopsis>
  </refsynopsisdiv>
 
