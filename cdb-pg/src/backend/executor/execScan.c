@@ -22,6 +22,9 @@
 #include "executor/executor.h"
 #include "miscadmin.h"
 #include "utils/memutils.h"
+#include "utils/debugbreak.h"
+
+#include <unistd.h>
 
 
 static bool tlist_matches_tupdesc(PlanState *ps, List *tlist, Index varno, TupleDesc tupdesc);

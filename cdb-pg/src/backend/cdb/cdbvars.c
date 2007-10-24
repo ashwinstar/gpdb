@@ -189,7 +189,6 @@ bool		gp_enable_sort_limit = FALSE;
 bool		gp_enable_sort_distinct = FALSE;
 int			gp_sort_flags = 0;
 int 		gp_sort_max_distinct = 20000;
-bool 	    gp_window_shareinput = TRUE;
 
 /* Greenplum memory context use mpool */
 int 		gp_use_mpool = 0;

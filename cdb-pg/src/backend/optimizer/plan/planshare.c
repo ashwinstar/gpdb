@@ -173,57 +173,49 @@ List *share_plan(PlannerInfo *root, Plan *common, int numpartners)
 		return shared_nodes;
 	}
 
-	if(!gp_window_shareinput)
+	if(IsA(common, Material))
 	{
-		for(i=0; i<numpartners; ++i)
-			shared_nodes = lappend(shared_nodes, copyObject(common));
+		Material *m = (Material *) common;
+
+		Assert(m->share_type == SHARE_NOTSHARED);
+		Assert(m->share_id == SHARE_ID_NOT_SHARED);
+
+		stype = xslice ? SHARE_MATERIAL_XSLICE : SHARE_MATERIAL; 
+		m->share_id = SHARE_ID_NOT_ASSIGNED;
+		m->share_type = stype;
+	}
+	else if (IsA(common, Sort))
+	{
+		Sort *s = (Sort *) common;
+
+		Assert(s->share_type == SHARE_NOTSHARED);
+		stype = xslice ? SHARE_SORT_XSLICE : SHARE_SORT;
+		s->share_id = SHARE_ID_NOT_ASSIGNED;
+		s->share_type = stype;
 	}
 	else
 	{
-		if(IsA(common, Material))
-		{
-			Material *m = (Material *) common;
+		Path matpath;
+		Material *m = make_material(common);
+		shared = (Plan *) m;
 
-			Assert(m->share_type == SHARE_NOTSHARED);
-			Assert(m->share_id == SHARE_ID_NOT_SHARED);
+		cost_material(&matpath, common->total_cost, common->plan_rows, common->plan_width);
+		shared->startup_cost = matpath.startup_cost;
+		shared->total_cost = matpath.total_cost;
+		shared->plan_rows = common->plan_rows;
+		shared->plan_width = common->plan_width;
+		shared->dispatch = common->dispatch;
+		shared->flow = copyObject(common->flow); 
 
-			stype = xslice ? SHARE_MATERIAL_XSLICE : SHARE_MATERIAL; 
-			m->share_id = SHARE_ID_NOT_ASSIGNED;
-			m->share_type = stype;
-		}
-		else if (IsA(common, Sort))
-		{
-			Sort *s = (Sort *) common;
+		stype = xslice ? SHARE_MATERIAL_XSLICE : SHARE_MATERIAL; 
+		m->share_id = SHARE_ID_NOT_ASSIGNED;
+		m->share_type = stype;
+	}
 
-			Assert(s->share_type == SHARE_NOTSHARED);
-			stype = xslice ? SHARE_SORT_XSLICE : SHARE_SORT;
-			s->share_id = SHARE_ID_NOT_ASSIGNED;
-			s->share_type = stype;
-		}
-		else
-		{
-			Path matpath;
-			Material *m = make_material(common);
-			shared = (Plan *) m;
-
-			cost_material(&matpath, common->total_cost, common->plan_rows, common->plan_width);
-			shared->startup_cost = matpath.startup_cost;
-			shared->total_cost = matpath.total_cost;
-			shared->plan_rows = common->plan_rows;
-			shared->plan_width = common->plan_width;
-			shared->dispatch = common->dispatch;
-			shared->flow = copyObject(common->flow); 
-
-			stype = xslice ? SHARE_MATERIAL_XSLICE : SHARE_MATERIAL; 
-			m->share_id = SHARE_ID_NOT_ASSIGNED;
-			m->share_type = stype;
-		}
-
-		for(i=0; i<numpartners; ++i)
-		{
-			Plan *p = (Plan *) make_shareinputscan(shared);
-			shared_nodes = lappend(shared_nodes, p);
-		}
+	for(i=0; i<numpartners; ++i)
+	{
+		Plan *p = (Plan *) make_shareinputscan(shared);
+		shared_nodes = lappend(shared_nodes, p);
 	}
 
 	return shared_nodes;

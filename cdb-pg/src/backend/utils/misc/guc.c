@@ -1195,18 +1195,10 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"gp_window_shareinput", PGC_USERSET, QUERY_TUNING_METHOD,
-            gettext_noop("Enable window function planner sharing subplan using share input."),
-            gettext_noop("Reduces duplicate subplan execution.")
-		},
-		&gp_window_shareinput,
-		true, NULL, NULL
-	},
-
-	{
 		{"gp_hashagg_streambottom", PGC_USERSET, QUERY_TUNING_METHOD,
             gettext_noop("Stream the bottom stage of two stage hashagg"), 
-            gettext_noop("Avoid spilling at the bootom stage of two stage hashagg")
+            gettext_noop("Avoid spilling at the bootom stage of two stage hashagg"),
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_hashagg_streambottom,
 		true, NULL, NULL
@@ -2365,7 +2357,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_hashagg_groups_per_bucket", PGC_USERSET, GP_ARRAY_TUNING,
 		 gettext_noop("Target density of hashtable used by Hashagg during execution"),
 		 gettext_noop("A smaller value will tend to produce larger hashtables, which increases agg performance"),
-		 GUC_NOT_IN_SAMPLE
+		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&gp_hashagg_groups_per_bucket,
 		5, 1, 25, NULL, NULL
@@ -2375,7 +2367,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_hashagg_spillbatch_min", PGC_USERSET, GP_ARRAY_TUNING,
 		 gettext_noop("Minimum number of spill batches of HashAgg"), 
 		 gettext_noop("Controlling number of spill batches, if too small, hashagg may respill"),
-		 GUC_NOT_IN_SAMPLE
+		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&gp_hashagg_spillbatch_min,
 		0, 0, 1000000, NULL, NULL
@@ -2385,7 +2377,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_hashagg_spillbatch_max", PGC_USERSET, GP_ARRAY_TUNING,
 		 gettext_noop("Maximum number of spill batches of HashAgg"), 
 		 gettext_noop("Controlling number of spill batches, if too big, hashagg spill I/O will be slow"), 
-		 GUC_NOT_IN_SAMPLE
+		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&gp_hashagg_spillbatch_max,
 		0, 0, 1000000, NULL, NULL
@@ -2395,7 +2387,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_use_mpool", PGC_USERSET, GP_ARRAY_TUNING,
 		 gettext_noop("Use mpool memory context"), 
 		 gettext_noop("Mpool is a faster memory allocator"), 
-		 GUC_NOT_IN_SAMPLE
+		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&gp_use_mpool,
 		0, 0, 1, NULL, NULL
