@@ -26,6 +26,8 @@ mkgpfdist:
 	@mkdir -p build/bin
 	@cp src/gpfdist/gpfdist build/bin/
 
+
+
 mkgp:
 	@echo --- gp -------------------------------------------------------
 
@@ -105,6 +107,9 @@ mkext:
 			--prefix=$(GPCC)/ext) ;\
 	fi
 	@(cd ext/apu; $(MAKE) all install >> out)
+
+	@echo     -- dbgen
+	@(cd ext/tpch; $(MAKE) >> out && cp dbgen ../bin/)
 
 veryclean: clean
 	(cd ext; rm -rf apr apr-1.2.8 apu apr-util-1.2.8 json json-c-0.6 libevent libevent-1.3b-1)
