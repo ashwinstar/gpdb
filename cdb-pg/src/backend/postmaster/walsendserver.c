@@ -306,7 +306,7 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest, PROC_RESPONSE_COOKIE *res
 
 		successful = write_position_to_end(&originalEndLocation);
 		if (successful)
-			elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"end location %s",
+			elog(LOG,"QD Mirror returned end location %s",
 				 XLogLocationToString(&originalEndLocation));
 		else
 		{
@@ -320,6 +320,9 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest, PROC_RESPONSE_COOKIE *res
 
         if (isQDMirroringCatchingUp())
     	{
+    		elog(LOG,"QD Primary is flushed through location %s",
+				 XLogLocationToString(&walSendRequest->flushedLocation));
+			
 			if (XLByteLT(originalEndLocation, walSendRequest->flushedLocation))
 			{
 				/*
