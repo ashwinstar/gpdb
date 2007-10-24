@@ -693,7 +693,7 @@ DefineRelation_int(CreateStmt *stmt,
 *
 * Why don't we just do all of this in one dispatch run? because that
 * involves duplicating the DefineRelation() code or severly modifying it
-* to have special cases for external tables. IMHO it's better and cleanwer
+* to have special cases for external tables. IMHO it's better and cleaner
 * to leave it intact and do another dispatch. 
 * ----------------------------------------------------------------
 */

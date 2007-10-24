@@ -2710,6 +2710,7 @@ static Node *make_partition_rules(ParseState *pstate,
 	InsertStmt			*pIns   = NULL;
 	RangeVar			*parent_tab_name;
 	RangeVar			*child_tab_name;
+	char				 newVals[10000];
 
 	if (pBy->partType != PARTTYP_HASH)	
 	{
@@ -2719,6 +2720,38 @@ static Node *make_partition_rules(ParseState *pstate,
 	if (pElem)
 	{
 		pBSpec = (PartitionBoundSpec *)pElem->boundSpec;
+	}
+
+	{
+		List			*coldefs = stmt->tableElts;
+		ListCell		*lc      = NULL;
+		StringInfoData   sid;
+		int colcnt = 0;
+
+		initStringInfo(&sid);
+
+		lc = list_head(coldefs);
+
+		for (; lc; lc = lnext(lc)) /* for all cols */
+		{
+			Node *pCol = lfirst(lc);
+			ColumnDef *pColDef;
+
+			pColDef = (ColumnDef *)pCol;
+
+			if (colcnt)
+			{
+				appendStringInfo(&sid, ", ");
+			}
+
+			appendStringInfo(&sid, "new.%s", pColDef->colname);
+
+			colcnt++;
+		} /* end for all cols */
+
+		newVals[0] = '\0';
+		snprintf(newVals, sizeof(newVals), "VALUES (%s)", sid.data);
+		pfree(sid.data);
 	}
 
 	if (pBy->partType == PARTTYP_HASH)	
@@ -2794,7 +2827,7 @@ static Node *make_partition_rules(ParseState *pstate,
 		child_tab_name->relname     = child_name_str;
 
 		snprintf(ruleBuf, sizeof(ruleBuf), 
-				 "CREATE RULE %s AS ON INSERT to %s WHERE %s DO INSTEAD INSERT INTO %s ", child_name_str, parent_tab_name->relname, exprBuf, child_name_str);
+				 "CREATE RULE %s AS ON INSERT to %s WHERE %s DO INSTEAD INSERT INTO %s %s", child_name_str, parent_tab_name->relname, exprBuf, child_name_str, newVals);
 
 #ifdef NEVER_EVER
 		pRule = makeNode(RuleStmt);
@@ -3014,7 +3047,7 @@ static Node *make_partition_rules(ParseState *pstate,
 		child_tab_name->relname     = child_name_str;
 
 		snprintf(ruleBuf, sizeof(ruleBuf), 
-				 "CREATE RULE %s AS ON INSERT to %s WHERE %s DO INSTEAD INSERT INTO %s ", child_name_str, parent_tab_name->relname, ORBuf, child_name_str);
+				 "CREATE RULE %s AS ON INSERT to %s WHERE %s DO INSTEAD INSERT INTO %s %s", child_name_str, parent_tab_name->relname, ORBuf, child_name_str, newVals);
 
 #ifdef NEVER_EVER
 		pRule = makeNode(RuleStmt);
@@ -3164,7 +3197,7 @@ static Node *make_partition_rules(ParseState *pstate,
 
 				expr_op = "<";
 
-				/* for generated START for EVERY always be exclusive */
+				/* for generated END for EVERY always be exclusive */
 				if ((everyOffset + 1) <  maxEveryOffset) 
 					expr_op = "<";
 				else 
@@ -3388,7 +3421,7 @@ static Node *make_partition_rules(ParseState *pstate,
 		child_tab_name->relname     = child_name_str;
 
 		snprintf(ruleBuf, sizeof(ruleBuf), 
-				 "CREATE RULE %s AS ON INSERT to %s WHERE %s DO INSTEAD INSERT INTO %s ", child_name_str, parent_tab_name->relname, ORBuf, child_name_str);
+				 "CREATE RULE %s AS ON INSERT to %s WHERE %s DO INSTEAD INSERT INTO %s %s", child_name_str, parent_tab_name->relname, ORBuf, child_name_str, newVals);
 
 #ifdef NEVER_EVER
 		pRule = makeNode(RuleStmt);
@@ -4948,259 +4981,260 @@ static void transformPartitionBy(ParseState *pstate,
 			
 		for ( ; jj < maxEveryNum; jj++)
 		{
-		char	  	 prtstr[NAMEDATALEN];			
-		PartitionBy	*newSub = NULL;
-		Node		*pRule  = NULL;
-		bool		 makeRule = false;
-		PartitionElem *pElem = NULL;
+			char	  	 prtstr[NAMEDATALEN];			
+			PartitionBy	*newSub = NULL;
+			Node		*pRule  = NULL;
+			bool		 makeRule = false;
+			PartitionElem *pElem = NULL;
 
-		makeRule = false;
+			makeRule = false;
 
-		if (lc)
-		{
-			PartitionBoundSpec	*pBSpec = NULL;
-
-			pElem = (PartitionElem *)lfirst(lc);
-
-			if (pElem)
-				pBSpec = (PartitionBoundSpec *)pElem->boundSpec;
-
-			/* check if have generated list of partitions from EVERY */
-			if ((1 == maxEveryNum) && pBSpec && pBSpec->everyGenList)
+			if (lc)
 			{
-				/* set the maxEveryNum to (1 + list of "all new
-				 * partitions").  Why?  Because for a range a START
-				 * and END, we create one table and one rule.  If we
-				 * subdivide the range, we have 3 boundary values, but
-				 * only 2 tables and 2 rules.  So for N boundaries we
-				 * have N-1 tables and rules.  The total number of
-				 * boundaries is 2 [start and end] plus the number of
-				 * new partitions.  So just add one to the list
-				 * length.
-				*/
+				PartitionBoundSpec	*pBSpec = NULL;
 
-				maxEveryNum = list_length(pBSpec->everyGenList) + 1;
-				lc_anp      = list_head(pBSpec->everyGenList);
-			}
+				pElem = (PartitionElem *)lfirst(lc);
 
-			if (pElem->partName)
-			{
-				/* use the partition name as part of the child table name */
-				char *pName = strVal(pElem->partName);
-				if (maxEveryNum == 1)
-					snprintf(prtstr, sizeof(prtstr), "prt_%s", pName);
+				if (pElem)
+					pBSpec = (PartitionBoundSpec *)pElem->boundSpec;
+
+				/* check if have generated list of partitions from EVERY */
+				if ((1 == maxEveryNum) && pBSpec && pBSpec->everyGenList)
+				{
+					/* set the maxEveryNum to (1 + list of "all new
+					 * partitions").  Why?  Because for a range a START
+					 * and END, we create one table and one rule.  If we
+					 * subdivide the range, we have 3 boundary values, but
+					 * only 2 tables and 2 rules.  So for N boundaries we
+					 * have N-1 tables and rules.  The total number of
+					 * boundaries is 2 [start and end] plus the number of
+					 * new partitions.  So just add one to the list
+					 * length.
+					*/
+
+					maxEveryNum = list_length(pBSpec->everyGenList) + 1;
+					lc_anp      = list_head(pBSpec->everyGenList);
+				}
+
+				if (pElem->partName)
+				{
+					/* use the partition name as part of the child
+					 * table name */
+					char *pName = strVal(pElem->partName);
+					if (maxEveryNum == 1)
+						snprintf(prtstr, sizeof(prtstr), "prt_%s", pName);
+					else
+						snprintf(prtstr, sizeof(prtstr), "prt_%s%d", pName, jj);
+				}
 				else
-					snprintf(prtstr, sizeof(prtstr), "prt_%s%d", pName, jj);
-			}
+				{
+					if (maxEveryNum == 1)
+						snprintf(prtstr, sizeof(prtstr), "prt_%d", ii+1);
+					else
+						snprintf(prtstr, sizeof(prtstr), "prt_%d_%d", ii+1, jj);
+				}
+
+				if (pElem->subSpec)
+				{
+					/* if the current partition element has a subspec,
+					 * then that is the spec for the child.  So we'd
+					 * better have a SUBPARTITION BY clause for the child,
+					 * and that clause cannot contain a SUBPARTITION
+					 * TEMPLATE (which is a spec).  Note that we might
+					 * have just updated the subBy partition spec with the
+					 * subspec of the current spec, which would be a
+					 * conflict.  If the psubBy has a null spec, we make a
+					 * copy of the node and update it -- the subSpec
+					 * becomes the specification for the child.  And if
+					 * the subspec has a subspec it gets handled at the
+					 * top of this loop as the subspec of the current spec
+					 * when transformPartitionBy is re-invoked for the
+					 * child table.
+					*/
+
+					if (NULL == psubBy)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("Missing SUBPARTITION BY clause for subpartition specification%s",
+										at_depth),
+								 parser_errposition(pstate, pElem->location)));
+					}
+
+					if (psubBy && psubBy->partSpec)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("Subpartition specification conflict%s",
+										at_depth),
+								 parser_errposition(pstate, psubBy->location)));
+					}
+
+					newSub = makeNode(PartitionBy);
+
+					newSub->partType  = psubBy->partType;
+					newSub->keys 	  = psubBy->keys;
+					newSub->partNum	  = psubBy->partNum;
+					newSub->subPart	  = psubBy->subPart;
+					newSub->partSpec  = pElem->subSpec; /* use the subspec */
+					newSub->partDepth = psubBy->partDepth;
+
+					if (pElem->subSpec) /* get a good location for error msg */
+					{
+						/* use subspec location */
+						newSub->location  = 
+								((PartitionSpec *)pElem->subSpec)->location; 
+					}
+					else
+					{
+						newSub->location = 
+								pElem->location; 
+					}
+				}
+
+				makeRule = true; /* need child table name before make rule */
+
+			} /* end lc */
 			else
 			{
-				if (maxEveryNum == 1)
-					snprintf(prtstr, sizeof(prtstr), "prt_%d", ii+1);
-				else
-					snprintf(prtstr, sizeof(prtstr), "prt_%d_%d", ii+1, jj);
-			}
+				/* might not have partition spec for hash partitions -
+				 * just name it using the loop number
+				 */
 
-			if (pElem->subSpec)
-			{
-				/* if the current partition element has a subspec,
-				 * then that is the spec for the child.  So we'd
-				 * better have a SUBPARTITION BY clause for the child,
-				 * and that clause cannot contain a SUBPARTITION
-				 * TEMPLATE (which is a spec).  Note that we might
-				 * have just updated the subBy partition spec with the
-				 * subspec of the current spec, which would be a
-				 * conflict.  If the psubBy has a null spec, we make a
-				 * copy of the node and update it -- the subSpec
-				 * becomes the specification for the child.  And if
-				 * the subspec has a subspec it gets handled at the
-				 * top of this loop as the subspec of the current spec
-				 * when transformPartitionBy is re-invoked for the
-				 * child table.
-				*/
+				snprintf(prtstr, sizeof(prtstr), "prt_%d", ii+1);
 
-				if (NULL == psubBy)
-				{
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-							 errmsg("Missing SUBPARTITION BY clause for subpartition specification%s",
-									at_depth),
-							 parser_errposition(pstate, pElem->location)));
-				}
+				makeRule = true; /* need child table name before make rule */
+			} /* end not lc */
 
-				if (psubBy && psubBy->partSpec)
-				{
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-							 errmsg("Subpartition specification conflict%s",
-									at_depth),
-							 parser_errposition(pstate, psubBy->location)));
-				}
+			child_tab_name = makeNode(RangeVar);
+			child_tab_name->catalogname = cxt->relation->catalogname;
+			child_tab_name->schemaname  = cxt->relation->schemaname;
 
-				newSub = makeNode(PartitionBy);
-
-				newSub->partType  = psubBy->partType;
-				newSub->keys 	  = psubBy->keys;
-				newSub->partNum	  = psubBy->partNum;
-				newSub->subPart	  = psubBy->subPart;
-				newSub->partSpec  = pElem->subSpec; /* use the subspec */
-				newSub->partDepth = psubBy->partDepth;
-
-				if (pElem->subSpec) /* get a good location for error msg */
-				{
-					/* use subspec location */
-					newSub->location  = 
-							((PartitionSpec *)pElem->subSpec)->location; 
-				}
-				else
-				{
-					newSub->location = 
-							pElem->location; 
-				}
-			}
-
-			makeRule = true; /* need child table name before make rule */
-
-		} /* end lc */
-		else
-		{
-			/* might not have partition spec for hash partitions -
-			 * just name it using the loop number
-			 */
-
-			snprintf(prtstr, sizeof(prtstr), "prt_%d", ii+1);
-
-			makeRule = true; /* need child table name before make rule */
-		} /* end not lc */
-
-		child_tab_name = makeNode(RangeVar);
-		child_tab_name->catalogname = cxt->relation->catalogname;
-		child_tab_name->schemaname  = cxt->relation->schemaname;
-
-		tab_name_str = 
-			ChooseRelationName(cxt->relation->relname,
-							   depthstr,	/* depth */
-							   prtstr, 		/* object "type" = 
+			tab_name_str = 
+				ChooseRelationName(cxt->relation->relname,
+								   depthstr, /* depth */
+								   prtstr, 	/* object "type" = 
 											   partition + (number or name) */
-							   snamespaceid);
+								   snamespaceid);
 
-		ereport(NOTICE,
-				(errmsg("%s will create child table \"%s\" for table \"%s\"",
-						cxt->stmtType, tab_name_str,
-						cxt->relation->relname)));
+			ereport(NOTICE,
+					(errmsg("%s will create child table \"%s\" for table \"%s\"",
+							cxt->stmtType, tab_name_str,
+							cxt->relation->relname)));
 
-		child_tab_name->relname     = tab_name_str;
+			child_tab_name->relname     = tab_name_str;
 
-		parent_tab_name = makeNode(RangeVar);
-		parent_tab_name->catalogname = cxt->relation->catalogname;
-		parent_tab_name->schemaname  = cxt->relation->schemaname;
-		parent_tab_name->relname     = cxt->relation->relname;
+			parent_tab_name = makeNode(RangeVar);
+			parent_tab_name->catalogname = cxt->relation->catalogname;
+			parent_tab_name->schemaname  = cxt->relation->schemaname;
+			parent_tab_name->relname     = cxt->relation->relname;
 
-		/* now that we have the child table name, make the rule */
+			/* now that we have the child table name, make the rule */
 
-		if (makeRule)
-		{
-			pRule = make_partition_rules(pstate,
-										 cxt, stmt, 
-										 partitionBy, pElem, at_depth, 
-										 tab_name_str, ii+1, partNumber,
-										 jj, maxEveryNum, &lc_anp);
-		}
-
-		child_tab_stmt = makeNode(CreateStmt);
-		child_tab_stmt->relation = child_tab_name;
-
-		child_tab_stmt->tableElts = stmt->tableElts;
-
-		/* XXX XXX: inheriting the parent causes a headache in
-		 * transformDistributedBy, since it assumes the parent exists
-		 * already.  Just add an "ALTER TABLE...INHERIT parent" after
-		 * the create child table
-		 */
-/*		child_tab_stmt->inhRelations = list_make1(parent_tab_name); */
-		child_tab_stmt->inhRelations = stmt->inhRelations; 
-
-		child_tab_stmt->constraints = stmt->constraints;
-		child_tab_stmt->options = stmt->options;
-		child_tab_stmt->oncommit = stmt->oncommit;
-		child_tab_stmt->tablespacename = stmt->tablespacename;
-		child_tab_stmt->distributedBy = stmt->distributedBy;
-
-		/* use the newSub as the partitionBy if the current 
-		 * partition elem had an inline subpartition declaration 
-		 */
-		child_tab_stmt->partitionBy = (newSub)
-				? (Node *) newSub : (Node *) psubBy;
-
-		child_tab_stmt->oidInfo.relOid = 0;
-		child_tab_stmt->oidInfo.comptypeOid = 0;
-		child_tab_stmt->oidInfo.toastOid = 0;
-		child_tab_stmt->oidInfo.toastIndexOid = 0;
-		child_tab_stmt->oidInfo.toastComptypeOid = 0;
-		child_tab_stmt->relKind = RELKIND_RELATION;
-		child_tab_stmt->policy = 0;
-
-		/* XXX XXX: it would be nice to copy the parent table's
-		 * distribution policy if it has one.  Otherwise,
-		 * transformDistributedBy will get annoyed that the parent
-		 * table doesn't exist yet when it attempts to build the
-		 * policy for the child table. However, transformCreateStmt
-		 * will null out the policy, even if we supply it, so don't
-		 * bother.  Add an "ALTER TABLE...INHERIT parent" after the
-		 * create instead.
-		 */
-		if (0 && policy)
-		{
-			GpPolicy   *newpolicy = NULL;
-			int			maxattrs  = 200;
-			int			ii_attrs  = 0;
-			
-			newpolicy = 
-				(GpPolicy *) palloc(
-					sizeof(GpPolicy) + maxattrs * sizeof(newpolicy->attrs[0]));
-			newpolicy->ptype  = policy->ptype;
-			newpolicy->nattrs = policy->nattrs;
-					
-			for (ii_attrs = 0; ii_attrs < policy->nattrs; ii_attrs++)
+			if (makeRule)
 			{
-				newpolicy->attrs[ii_attrs] = policy->attrs[ii_attrs];
+				pRule = make_partition_rules(pstate,
+											 cxt, stmt, 
+											 partitionBy, pElem, at_depth, 
+											 tab_name_str, ii+1, partNumber,
+											 jj, maxEveryNum, &lc_anp);
 			}
 
-			child_tab_stmt->policy = newpolicy;
-		}
+			child_tab_stmt = makeNode(CreateStmt);
+			child_tab_stmt->relation = child_tab_name;
 
-		cxt->alist = lappend(cxt->alist, child_tab_stmt);
+			child_tab_stmt->tableElts = stmt->tableElts;
 
-		/* ALTER TABLE for inheritance after CREATE TABLE ... 
+			/* XXX XXX: inheriting the parent causes a headache in
+			 * transformDistributedBy, since it assumes the parent exists
+			 * already.  Just add an "ALTER TABLE...INHERIT parent" after
+			 * the create child table
+			 */
+	/*		child_tab_stmt->inhRelations = list_make1(parent_tab_name); */
+			child_tab_stmt->inhRelations = stmt->inhRelations; 
 
-		   Could remove this code if inheritance work and pass copy of
-		   parent policy to the create statement (and avoid
-		   transformDistributedBy problems)
+			child_tab_stmt->constraints = stmt->constraints;
+			child_tab_stmt->options = stmt->options;
+			child_tab_stmt->oncommit = stmt->oncommit;
+			child_tab_stmt->tablespacename = stmt->tablespacename;
+			child_tab_stmt->distributedBy = stmt->distributedBy;
 
-		*/
-		if (1)
-		{
-			AlterTableCmd  *atc = makeNode(AlterTableCmd);
-			AlterTableStmt *ats = makeNode(AlterTableStmt);
+			/* use the newSub as the partitionBy if the current 
+			 * partition elem had an inline subpartition declaration 
+			 */
+			child_tab_stmt->partitionBy = (newSub)
+					? (Node *) newSub : (Node *) psubBy;
 
-			/* alter table child inherits parent */
-			atc->subtype = AT_AddInherit;
-			atc->def = (Node *) parent_tab_name; 
+			child_tab_stmt->oidInfo.relOid = 0;
+			child_tab_stmt->oidInfo.comptypeOid = 0;
+			child_tab_stmt->oidInfo.toastOid = 0;
+			child_tab_stmt->oidInfo.toastIndexOid = 0;
+			child_tab_stmt->oidInfo.toastComptypeOid = 0;
+			child_tab_stmt->relKind = RELKIND_RELATION;
+			child_tab_stmt->policy = 0;
 
-			ats->relation = child_tab_name;
-			ats->cmds 	  = list_make1((Node *)atc);
-			ats->relkind  = OBJECT_TABLE;
+			/* XXX XXX: it would be nice to copy the parent table's
+			 * distribution policy if it has one.  Otherwise,
+			 * transformDistributedBy will get annoyed that the parent
+			 * table doesn't exist yet when it attempts to build the
+			 * policy for the child table. However, transformCreateStmt
+			 * will null out the policy, even if we supply it, so don't
+			 * bother.  Add an "ALTER TABLE...INHERIT parent" after the
+			 * create instead.
+			 */
+			if (0 && policy)
+			{
+				GpPolicy   *newpolicy = NULL;
+				int			maxattrs  = 200;
+				int			ii_attrs  = 0;
 
-			cxt->alist = lappend(cxt->alist, ats);
-		}
+				newpolicy = 
+					(GpPolicy *) palloc(
+						sizeof(GpPolicy) + maxattrs * sizeof(newpolicy->attrs[0]));
+				newpolicy->ptype  = policy->ptype;
+				newpolicy->nattrs = policy->nattrs;
 
-		newSub = NULL; /* reset newSub */
+				for (ii_attrs = 0; ii_attrs < policy->nattrs; ii_attrs++)
+				{
+					newpolicy->attrs[ii_attrs] = policy->attrs[ii_attrs];
+				}
 
-		/* add a partitioning rule */
-		if (pRule)
-		{
-			cxt->alist = lappend(cxt->alist, pRule);
-		}
-		pRule  = NULL;
+				child_tab_stmt->policy = newpolicy;
+			}
+
+			cxt->alist = lappend(cxt->alist, child_tab_stmt);
+
+			/* ALTER TABLE for inheritance after CREATE TABLE ... 
+
+			   Could remove this code if inheritance work and pass copy of
+			   parent policy to the create statement (and avoid
+			   transformDistributedBy problems)
+
+			*/
+			if (1)
+			{
+				AlterTableCmd  *atc = makeNode(AlterTableCmd);
+				AlterTableStmt *ats = makeNode(AlterTableStmt);
+
+				/* alter table child inherits parent */
+				atc->subtype = AT_AddInherit;
+				atc->def = (Node *) parent_tab_name; 
+
+				ats->relation = child_tab_name;
+				ats->cmds 	  = list_make1((Node *)atc);
+				ats->relkind  = OBJECT_TABLE;
+
+				cxt->alist = lappend(cxt->alist, ats);
+			}
+
+			newSub = NULL; /* reset newSub */
+
+			/* add a partitioning rule */
+			if (pRule)
+			{
+				cxt->alist = lappend(cxt->alist, pRule);
+			}
+			pRule  = NULL;
 		} /* end jj < maxEverynum */
 		if (lc)
 		{
