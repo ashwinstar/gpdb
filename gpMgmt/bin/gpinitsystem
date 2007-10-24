@@ -690,16 +690,21 @@ CREATE_QE_ARRAY () {
 			((QE_DIR_INDEX=$QE_DIR_INDEX+1))
 			((QE_NAME_INDEX=$QE_NAME_INDEX+1))
 		done
-		#Now re-order the array so that it is ordered by PORT to spread out the number of parallel processes initiated on each host
-		QE_REORDER_ARRAY=(`$ECHO ${QE_PRIMARY_ARRAY[@]}|$TR ' ' '\n'|$SORT -t":" -k2,2|$TR '\n' ' '`)
-		QE_PRIMARY_ARRAY=(${QE_REORDER_ARRAY[@]})
-		if [ $MIRRORING -eq 1 ]; then
-			QE_REORDER_ARRAY=(`$ECHO ${QE_MIRROR_ARRAY[@]}|$TR ' ' '\n'|$SORT -t":" -k2,2|$TR '\n' ' '`)
-			QE_MIRROR_ARRAY=(${QE_REORDER_ARRAY[@]})
-		fi
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
 		LOG_MSG "[INFO]:-Building segment instance array, Completed" 1
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+ARRAY_REORDER () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	#Now re-order the array so that it is ordered by PORT to spread out the number of parallel processes initiated on each host
+	QE_REORDER_ARRAY=(`$ECHO ${QE_PRIMARY_ARRAY[@]}|$TR ' ' '\n'|$SORT -t":" -k2,2|$TR '\n' ' '`)
+	QE_PRIMARY_ARRAY=(${QE_REORDER_ARRAY[@]})
+	if [ $MIRRORING -eq 1 ]; then
+		QE_REORDER_ARRAY=(`$ECHO ${QE_MIRROR_ARRAY[@]}|$TR ' ' '\n'|$SORT -t":" -k2,2|$TR '\n' ' '`)
+		QE_MIRROR_ARRAY=(${QE_REORDER_ARRAY[@]})
+	fi	
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 DISPLAY_CONFIG () {
@@ -1272,8 +1277,8 @@ CHK_PARAMS
 CREATE_QE_ARRAY
 CHK_QES
 DISPLAY_CONFIG
+ARRAY_REORDER
 CREATE_QD_DB		
-
 if [ $QD_ONLY ]; then
 		LOG_MSG "[INFO]:-----------------------------------------" 1
 		LOG_MSG "[INFO]:-Master build only completed successfully" 1
