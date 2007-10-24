@@ -4,6 +4,9 @@
 * Revision History
 * ===================
 * $Log: driver.c,v $
+* Revision 1.1  2007/10/24 20:25:23  cktan
+* new
+*
 * Revision 1.6  2007/09/12 21:55:05  cmcdevitt
 * fix a lot of incorrect format specifiers, and fix some 64-bit issues
 *
@@ -110,9 +113,6 @@
 * Function prototypes
 */
 void	usage (void);
-int		prep_direct (char *);
-int		close_direct (void);
-int		finish_one_load(int tnum);
 void	kill_load (void);
 int		pload (int tbl);
 void	gen_tbl (int tnum, DSS_HUGE start, DSS_HUGE count, long upd_num);
@@ -173,19 +173,6 @@ int pr_part_psupp (part_t * p, int mode);
 int pr_nation (code_t * c, int mode);
 int pr_region (code_t * c, int mode);
 
-/*
-* inline load functions; used with -D(irect) option
-*/
-int ld_cust (customer_t * c, int mode);
-int ld_line (order_t * o, int mode);
-int ld_order (order_t * o, int mode);
-int ld_part (part_t * p, int mode);
-int ld_psupp (part_t * p, int mode);
-int ld_supp (supplier_t * s, int mode);
-int ld_order_line (order_t * o, int mode);
-int ld_part_psupp (part_t * p, int mode);
-int ld_nation (code_t * c, int mode);
-int ld_region (code_t * c, int mode);
 
 /*
 * seed generation functions; used with '-O s' option
@@ -231,25 +218,25 @@ int vrf_region (code_t * c, int mode);
 tdef tdefs[] =
 {
 	{"part.tbl", "part table", 200000, hd_part,
-		{pr_part, ld_part}, sd_part, vrf_part, PSUPP, 0},
+		{pr_part, 0}, sd_part, vrf_part, PSUPP, 0},
 	{"partsupp.tbl", "partsupplier table", 200000, hd_psupp,
-		{pr_psupp, ld_psupp}, sd_psupp, vrf_psupp, NONE, 0},
+		{pr_psupp, 0}, sd_psupp, vrf_psupp, NONE, 0},
 	{"supplier.tbl", "suppliers table", 10000, hd_supp,
-		{pr_supp, ld_supp}, sd_supp, vrf_supp, NONE, 0},
+		{pr_supp, 0}, sd_supp, vrf_supp, NONE, 0},
 	{"customer.tbl", "customers table", 150000, hd_cust,
-		{pr_cust, ld_cust}, sd_cust, vrf_cust, NONE, 0},
+		{pr_cust, 0}, sd_cust, vrf_cust, NONE, 0},
 	{"orders.tbl", "order table", 150000, hd_order,
-		{pr_order, ld_order}, sd_order, vrf_order, LINE, 0},
+		{pr_order, 0}, sd_order, vrf_order, LINE, 0},
 	{"lineitem.tbl", "lineitem table", 150000, hd_line,
-		{pr_line, ld_line}, sd_line, vrf_line, NONE, 0},
+		{pr_line, 0}, sd_line, vrf_line, NONE, 0},
 	{"orders.tbl", "orders/lineitem tables", 150000, hd_order_line,
-		{pr_order_line, ld_order_line}, sd_order, vrf_order_line, LINE, 0},
+		{pr_order_line, 0}, sd_order, vrf_order_line, LINE, 0},
 	{"part.tbl", "part/partsupplier tables", 200000, hd_part_psupp,
-		{pr_part_psupp, ld_part_psupp}, sd_part, vrf_part_psupp, PSUPP, 0},
+		{pr_part_psupp, 0}, sd_part, vrf_part_psupp, PSUPP, 0},
 	{"nation.tbl", "nation table", NATIONS_MAX, hd_nation,
-		{pr_nation, ld_nation}, NO_LFUNC, vrf_nation, NONE, 0},
+		{pr_nation, 0}, NO_LFUNC, vrf_nation, NONE, 0},
 	{"region.tbl", "region table", NATIONS_MAX, hd_region,
-		{pr_region, ld_region}, NO_LFUNC, vrf_region, NONE, 0},
+		{pr_region, 0}, NO_LFUNC, vrf_region, NONE, 0},
 };
 
 int *pids;
@@ -475,8 +462,6 @@ gen_tbl (int tnum, DSS_HUGE start, DSS_HUGE count, long upd_num)
 		}
 	}
 	completed |= 1 << tnum;
-	if (direct)
-		finish_one_load(tnum);
 }
 
 
@@ -998,9 +983,7 @@ main (int ac, char **av)
 /*
  * open database connection or set all the file names, as appropriate
  */
-	if (direct)
-		prep_direct ((db_name) ? db_name : DBNAME);
-	else if (fnames)
+	if (fnames)
 		for (i = PART; i <= REGION; i++)
 		{
 			if (table & (1 << i))
@@ -1063,9 +1046,6 @@ main (int ac, char **av)
 					printf("Validation checksum for %s at %ld GB: %0x\n", 
 						 tdefs[i].name, scale, (unsigned int) tdefs[i].vtotal);
 		}
-			
-		if (direct)
-			close_direct ();
 			
 		return (0);
 }

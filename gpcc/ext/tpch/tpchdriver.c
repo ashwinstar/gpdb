@@ -82,8 +82,6 @@ __declspec(dllimport) void __stdcall Sleep(DWORD dwMillseconds);
 
 #undef VERSION
 
-#include "libpq-fe.h"
-
 /* includes from QGEN */
 #include "config.h"
 #include "release.h"
@@ -114,11 +112,6 @@ int ac1;
 char **av1;
 int *pids;
 
-
-PGconn * conn_list[MAXSESS + 1];
-
-
-PGconn * conn = 0;
 
 #define LINE_SIZE 512
 
@@ -733,180 +726,6 @@ BOOL canRetry(const char * SqlState)
 
 
 
-int 
-Fetch_and_Display_All_Rows (PGresult   *res, int qnum)
-{
-
-
-	char ColTitle[60];
-	long actualLen;
-	int icol;
-	int maxcol;
-	long totalRows;
-	long columnDisplaySize[200];
-	long columnSQLType[200];
-	long currow;
-
-	char SqlState[6];
-
-
-	maxcol = 0;
-	totalRows = 0;
-
-
-	if (PQresultStatus(res) == PGRES_COMMAND_OK)
-	{
-		char * rowsaffected = PQcmdTuples(res);
-		fprintf (fdetail, "\n SQL statement complete.  %s\n",rowsaffected);
-		fprintf (stdout, " SQL statement complete.  %s\n",rowsaffected);
-		return 0;
-	}
-	else if (PQresultStatus(res) == PGRES_TUPLES_OK)
-	{
-		totalRows = PQntuples(res);
-		maxcol = PQnfields(res);
-
-		if (qnum > 0)
-		{
-			fprintf (fdetail, "\n Query %d complete, %ld rows returned\n", qnum, totalRows);
-			fprintf (stdout, " Query %d complete, %ld rows returned\n", qnum, totalRows);
-		}
-		else
-		{
-			fprintf (fdetail, "\n Query complete, %ld rows returned\n", totalRows);
-			fprintf (stdout, " Query complete, %ld rows returned\n", totalRows);
-		}
-
-		if (!(flags & EXPLAIN))
-			if (rowcnt > 0 && rowcnt < totalRows)
-			{
-				fprintf (fdetail, " only displaying %d rows per TPC-H spec\n", rowcnt);
-				totalRows = rowcnt;
-			}
-			fprintf (fdetail, "\n\n");
-	}
-	else
-	{
-
-		SqlState[0] = '\0';
-		if (PQresultErrorField(res, PG_DIAG_SQLSTATE) != NULL)
-			strcpy(SqlState, PQresultErrorField(res, PG_DIAG_SQLSTATE));
-		// ERRCODE_UNIQUE_VIOLATION 23505
-		return -1;
-
-	}
-	currow = 0;
-	actualLen = 0;
-	if (totalRows != 0 && maxcol > 0)
-	{
-		for (icol = 0; icol < maxcol; icol++)
-		{
-			ColTitle[0] = '\0';
-			strcpy(ColTitle, PQfname(res, icol));
-
-			{
-				Oid			ftype = PQftype(res, icol);
-				int  		ftmod = PQfmod(res, icol);
-
-
-				if (ftype == 20 ||		/* int8 */
-					ftype == 21 ||		/* int2 */
-					ftype == 23 ||		/* int4 */
-					(ftype >= 26 && ftype <= 30) ||		/* ?id */
-					ftype == 700 ||		/* float4 */
-					ftype == 701 ||		/* float8 */
-					ftype == 790 ||		/* money */
-					ftype == 1700		/* numeric */
-					)
-					columnSQLType[icol] = 'r';
-				else
-					columnSQLType[icol] = 'l';
-
-				switch(ftype)
-				{
-				case 20:
-					columnDisplaySize[icol] = 12;
-					break;
-				case 21:
-					columnDisplaySize[icol] = 6;
-					break;
-				case 23:
-					columnDisplaySize[icol] = 10;
-					break;
-				case 701:
-					columnDisplaySize[icol] = 22;
-					break;
-				case 1700:
-					columnDisplaySize[icol] = 19;
-					break;
-				case 1082:  /*date*/
-					columnDisplaySize[icol] = 10;
-					break;
-				default:
-					if (ftmod > 0)
-						columnDisplaySize[icol] = ftmod;
-					else
-						columnDisplaySize[icol] = 6;
-
-				}
-			}
-
-			fprintf (fdetail, "%c", '|');
-			actualLen = strlen (ColTitle);
-			if (columnDisplaySize[icol] < actualLen)
-				columnDisplaySize[icol] = actualLen;
-
-
-			if (columnSQLType[icol] == 'r')
-				while (columnDisplaySize[icol] > actualLen++ && actualLen < 81)
-					fprintf (fdetail, "%c", '_'); 
-
-			fprintf (fdetail, "%s", ColTitle);
-
-			if (columnSQLType[icol] != 'r')
-				while (columnDisplaySize[icol] > actualLen++ && actualLen < 81)
-					fprintf (fdetail, "%c", '_');
-		}
-		fprintf (fdetail, "|\n");
-	}
-
-	currow = -1;
-	if (totalRows > 0 && maxcol > 0)
-		for (currow = 0; currow < totalRows; currow++)	/* records */
-		{
-
-			actualLen = 0;
-
-			for (icol = 0; icol < maxcol; icol++)
-			{
-				char * dValue;
-				dValue = PQgetvalue(res, currow, icol);
-				if (dValue)
-					actualLen = strlen(dValue);
-				else
-					actualLen = 0;
-
-				fprintf (fdetail, "%c", '|');
-				if (columnSQLType[icol] == 'r')
-					while (columnDisplaySize[icol] > actualLen++ && actualLen < 81)
-						fprintf (fdetail, "%c", ' ');
-
-				fprintf (fdetail, "%s", dValue);
-
-				if (columnSQLType[icol] != 'r')
-					while (columnDisplaySize[icol] > actualLen++ && actualLen < 81)
-						fprintf (fdetail, "%c", ' ');
-
-			}
-			fprintf (fdetail, "|\n");
-
-		}
-		fprintf (fdetail, "\n");
-
-
-		PQclear(res);
-		return 0;
-}
 
 DSS_HUGE start;
 DSS_HUGE last;

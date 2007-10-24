@@ -4,6 +4,9 @@
 # Revision History
 # ===================
 # $Log: Makefile,v $
+# Revision 1.1  2007/10/24 20:26:26  cktan
+# new
+#
 # Revision 1.7  2007/09/12 21:55:05  cmcdevitt
 # fix a lot of incorrect format specifiers, and fix some 64-bit issues
 #
@@ -79,16 +82,14 @@ LDFLAGS = -g -L$(GPHOME)/lib
 #  Windows NT
 OBJ     = .o
 EXE     =
-LIBS    = -lm -lpq
+LIBS    = -lm 
 #
 # NO CHANGES SHOULD BE NECESSARY BELOW THIS LINE
 ###############
 TREE_ROOT=/tmp/tree
 #
 PROG1 = dbgen$(EXE)
-PROG2 = qgen$(EXE)
-PROG3 = tpchdriver$(EXE)
-PROGS = $(PROG1) $(PROG2) $(PROG3)
+PROGS = $(PROG1) 
 #
 HDR1 = dss.h rnd.h config.h dsstypes.h shared.h bcd2.h rng64.h cdbhash.h
 HDR2 = tpcd.h permute.h
@@ -98,7 +99,6 @@ HDR  = $(HDR1) $(HDR2)
 SRC1 = build.c driver.c bm_utils.c rnd.c print.c load_stub.c bcd2.c \
 	speed_seed.c text.c permute.c rng64.c cdbhash.c
 SRC2 = qgen.c varsub.c 
-SRC3 = tpchdriver.c vsub.c
 SRC  = $(SRC1) $(SRC2) $(SRC3)
 #
 OBJ1 = build$(OBJ) driver$(OBJ) bm_utils$(OBJ) rnd$(OBJ) print$(OBJ) \
