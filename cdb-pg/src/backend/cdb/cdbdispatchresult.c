@@ -1422,7 +1422,10 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 		}
 	}
 	
-	elog(DEBUG2,"relayresults is done. completionTag %s ",completionTag);
+	if (completionTag)
+		elog(DEBUG2,"relayresults is done. completionTag %s ",completionTag);
+	else
+		elog(DEBUG2,"relayresults is done.  No completion Tag");
 	
 	//if (errmsgbuf.len > 0)
 	//	ereport(ERROR, (errmsg("%s", errmsgbuf.data)));
