@@ -35,7 +35,7 @@ $(function() {
           if (json.rset.result[0] == "stopping" ||
               json.rset.result[0] == "starting" ||
               json.rset.result[0] == "pending") {
-              $.getJSON("/status.psp?s=stopped", function(json) {
+              $.getJSON("/status.psp", function(json) {
                   status_confirm(json);
               });
               $("#switch").unbind('click', switch_click);           
@@ -46,7 +46,7 @@ $(function() {
       }
   }
 
-  $.getJSON("/status.psp?s=stopping", function(json) {
+  $.getJSON("/status.psp", function(json) {
        status_confirm(json);
   });
 
@@ -82,5 +82,5 @@ please click the button to start/stop the database.
 </div>
 <hr>
 <address></address>
-<!-- hhmts start --> Last modified: Wed Oct 24 16:40:00 HKT 2007 <!-- hhmts end -->
+<!-- hhmts start --> Last modified: Wed Oct 24 18:31:15 HKT 2007 <!-- hhmts end -->
 </body> </html>
