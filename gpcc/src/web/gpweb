@@ -17,8 +17,8 @@ except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
 
-web.config.db_parameters = {'dbn' : 'sqlite',
-                            'db' : 'web.db'}
+#web.config.db_parameters = {'dbn' : 'sqlite',
+#                            'db' : 'web.db'}
 
 class mako_render:
     def __init__(self, path):
