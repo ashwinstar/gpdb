@@ -15,7 +15,7 @@ CPPFLAGS=$$($(GPCC)/ext/bin/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)
 
 
 #all: mkext mkgpfdist mklibgpcc mkgpha mkfts
-all: mkext mkgpfdist mklibgpcc mkgpma mkgpha
+all: mkdir mkext mkgpfdist mklibgpcc mkgpma mkgpha
 
 #mkgpma mkgp 
 
@@ -48,10 +48,11 @@ mkfts:
 #	@(cd src/fts; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
 #		-c *.c)
 
-
-mklibgpcc:
-	@echo --- libgpcc --------------------------------------------------
+mkdir:
 	@mkdir -p src/build/lib src/build/include
+
+mklibgpcc: mkdir
+	@echo --- libgpcc --------------------------------------------------
 	@echo compiling
 	@(cd src/libgpcc; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -c *.c)
 	@echo creating library
@@ -67,7 +68,7 @@ mktest:
 	(cd test; $(CC) $(INCLUDES) $(CPPFLAS) $(CFLAGS) \
 			-o net1 net1.c -L../src/build/lib -lgpcc $(APULIBS) $(APRLIBS) -ljson -levent)
 
-mkext:
+mkext: mkdir
 	@echo --- ext ------------------------------------------------------
 	@mkdir -p ext/lib ext/include
 	@echo     -- libevent
@@ -109,7 +110,7 @@ mkext:
 	@(cd ext/apu; $(MAKE) all install >> out)
 
 	@echo     -- dbgen
-	@(cd ext/tpch; $(MAKE) >> out && cp dbgen ../bin/)
+	@(cd ext/tpch; $(MAKE) >> out && cp dbgen ../../build/bin/)
 
 veryclean: clean
 	(cd ext; rm -rf apr apr-1.2.8 apu apr-util-1.2.8 json json-c-0.6 libevent libevent-1.3b-1)
