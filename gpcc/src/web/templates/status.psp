@@ -1,10 +1,42 @@
-<%
-  web.header('Content-Type', 'text/html;charset=utf-8')
+<%!
+import os, sys, urllib, httplib
+
+def hitMA(cmd, params):
+    params = urllib.urlencode(params)
+    f = None
+    res = ''
+    try:
+        f = httplib.HTTPConnection('%s:%d' % ('localhost', 11000))
+        f.request('GET', '%s?%s' % (cmd, params))
+        response = f.getresponse()
+        if response.status == 200:
+            res = response.read()
+    finally:
+        if f: f.close()
+    return res
+  
 %>
-{ status: "ok", 
-  rset : { 
-  total: 1,
-  offset: 0,
-   result : ["${param.s}"] 
-   }
+
+<%
+web.header('Content-Type', 'text/html;charset=utf-8')
+%>
+
+% if 'a' not in param:
+{ status: "failure",
+    rset : {
+            total: 1,
+	    offset: 0,
+	    result : ["missing parameter 'a'"]
+    }
 }
+
+% else: 
+
+<%
+params = { 'a' : param['a'] }
+response = hitMA('/gpcc/status', params)
+%>
+${response}
+% endif
+
+
