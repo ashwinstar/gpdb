@@ -1,37 +1,86 @@
-
 <%
-    error = {}
+   web.header('Content-Type', 'text/html;charset=utf-8')
 %>
 
-% if 'submit' not in param:
-<!--  METHOD GET -->
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+<html> <head>
+<title>Greenplum Database Management</title>
 
-<div>
-<a href="logout.psp">logout</a><p>
-<form method='POST' name='login' action='control.psp'>
+<script type="text/javascript" src="/static/js/jquery-1.2.1.min.js"></script>
 
-Username: <input name="user" type="text" value="${param.user}"><p>
-Password: <input name="password" type="password"><p>
-<input type="submit" name="submit" value="Submit"><p>
-</form>
+<script type="text/javascript">
+
+  var state = "stopped";
+
+$(function() {
+
+  function switch_label() {
+      if (state == "stopped") {
+          $("#switch").text("Start");
+      } else if (state == "running") {
+          $("#switch").text("Stop");
+      } else if (state == "stopping") {
+          $("#switch").text("Stopping");          
+      } else if (state == "starting") {
+          $("#switch").text("Starting");          
+      } else if (state == "pending") {
+          $("#switch").text("Pending");
+      }
+  }
+
+  function status_confirm(json) {
+      alert("check status when start "  + json.status + json.rset.result[0]);
+      state = json.rset.result[0];
+      if (json.status == "ok") {
+          if (json.rset.result[0] == "stopping" ||
+              json.rset.result[0] == "starting" ||
+              json.rset.result[0] == "pending") {
+              $.getJSON("/status.psp?s=stopped", function(json) {
+                  status_confirm(json);
+              });
+              $("#switch").unbind('click', switch_click);           
+          } else {
+              $("#switch").bind('click', switch_click);           
+          }
+          switch_label();
+      }
+  }
+
+  $.getJSON("/status.psp?s=stopping", function(json) {
+       status_confirm(json);
+  });
+
+
+  function switch_click() {
+     url = '';
+     if (state == "stopped") {
+        url = "/start.psp";
+     } else {
+        url = "/stop.psp";
+     }
+
+     $(this).unbind('click', switch_click);
+      $.getJSON(url, function(json) {
+          status_confirm(json);
+      })
+  }
+
+  $("#switch").click(switch_click);
+
+
+})
+
+</script>
+</head>
+
+
+<body>
+<h1></h1>
+<div id="control_bar">
+<a id="switch" href="#">Start up now!</a>
+please click the button to start/stop the database.
 </div>
-
-
-
-% else:
-<!-- METHOD POST -->
-
-Control Control...<p>
-
-<div>
-<a href="logout.psp">logout</a><p>
-<form method='POST' name='control' action='control.psp'>
-
-Username: <input name="user" type="text" value="${param.user}"><p>
-Password: <input name="password" type="password"><p>
-<input type="submit" name="submit" value="Submit"><p>
-</form>
-</div>
-
-% endif
-
+<hr>
+<address></address>
+<!-- hhmts start --> Last modified: Wed Oct 24 16:40:00 HKT 2007 <!-- hhmts end -->
+</body> </html>

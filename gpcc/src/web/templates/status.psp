@@ -1,0 +1,10 @@
+<%
+  web.header('Content-Type', 'text/html;charset=utf-8')
+%>
+{ status: "ok", 
+  rset : { 
+  total: 1,
+  offset: 0,
+   result : ["${param.s}"] 
+   }
+}
