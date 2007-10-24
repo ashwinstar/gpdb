@@ -57,7 +57,7 @@ static Gang *createGang(GangType type, int gang_id, int size, int content, char 
 
 static void disconnectAndDestroyGang(Gang * gp);
 static void disconnectAndDestroyAllReaderGangs(bool destroyAllocated);
-static void disconnectAndDestroyDispatchAgents(void);
+
 
 static Gang *buildGangDefinition(GangType type, int gang_id, int size, int content, char *portal_name);
 static Gang *buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo);
@@ -136,6 +136,8 @@ int largestGangsize(void)
 {
 	return largest_gangsize;
 }
+
+static int DAset_id_counter = 1;
 /*
  * create Dispatch Agents for this session
  */
@@ -280,7 +282,10 @@ createDispatchAgents(Portal portal)
 		if (strcmp(q->hostname,"localhost")!=0)
 			strcpy(lasthost, q->hostname);
 		
-		elog(LOG,"Using dispatch agent on %s %d segindex %d",q->hostname,q->port,q->segindex);
+		if (portal == NULL || strcmp(portal->name,"")==0)
+			elog(LOG,"Using dispatch agent on %s %d segindex %d",q->hostname,q->port,q->segindex);
+		else
+			elog(LOG,"Portal %s using dispatch agent on %s %d segindex %d",portal->name,q->hostname,q->port,q->segindex);
 		 
 		cdbconn_initSegmentDescriptor(&dispatchagents->db_descriptors[i],  q);
 		
@@ -313,7 +318,9 @@ createDispatchAgents(Portal portal)
 	}
 
     free(buffer.data);
-    elog(DEBUG1, "createDispatchAgent completed successfully");
+    
+    dispatchagents->DAset_id = DAset_id_counter++;
+    elog(DEBUG1, "createDispatchAgent completed successfully.  DAset_id = %d", dispatchagents->DAset_id);
     
     largest_gangsize = dispatchagents->size;
     
@@ -386,6 +393,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	{
 		/* Using a named portal */
 		portal = GetPortalByName(portal_name);
+		Assert(portal);
 	}
 
 	/*
@@ -445,7 +453,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	 * 
 	 * NOTE:  Entry DB gangs do NOT use dispatch agents.
 	 */
-	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent && dispatchagents && type != GANGTYPE_ENTRYDB_READER)
+	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent  && type != GANGTYPE_ENTRYDB_READER)
 	{
 		PGresult   *result;
 		int i, j;
@@ -455,6 +463,9 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 		GpSegmentConnectionInfoSet ** conninfoarray = palloc0(sizeof(void*)*dispatchagents->size);
 		
 		Assert(Gp_role == GP_ROLE_DISPATCH);
+		Assert(dispatchagents);
+		
+		elog(DEBUG1,"CreateGang using dispatchagent set id %d",dispatchagents->DAset_id);
 		
 		/*
 		 * make one conninfo structure per dispatch agent
@@ -599,7 +610,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 		 * If we ever support gangs that are > 1, but < number of segments, we'd need to update this.
 		 * 
 		 */
-		if (newGangDefinition->dispatchagents==NULL || newGangDefinition->size > 1)
+		if (newGangDefinition->dispatchagents==NULL)
 			newGangDefinition->dispatchagents = dispatchagents;
 			
 		newGangDefinition->all_valid_segdbs_connected = true;
@@ -3642,19 +3653,19 @@ disconnectAndDestroyAllReaderGangs(bool destroyAllocated)
 }
 
 void
-disconnectAndDestroyDispatchAgents(void)
+disconnectAndDestroyDispatchAgents(struct DispatchAgentSet * das)
 {
 	int			i;
 	
 	if (Gp_role == GP_ROLE_UTILITY)
 		return;
 
-	if (unnamedPortalDispatchAgents == NULL)
+	if (das == NULL)
 		return;
 	
 
     if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
-	    elog(DEBUG5, "disconnectAndDestroyDispatchAgents entered");
+	    elog(DEBUG1, "disconnectAndDestroyDispatchAgents entered, DAset_id %d",das->DAset_id);
     
     if (Gp_role != GP_ROLE_DISPATCH)
     	elog(ERROR,"Non-dispatch has dispatch agents?");
@@ -3689,9 +3700,9 @@ disconnectAndDestroyDispatchAgents(void)
 	 *	   2) disconnect the session, and
 	 *	   3) discard any connection error message.
 	 */
-	for (i = 0; i < unnamedPortalDispatchAgents->size; i++)
+	for (i = 0; i < das->size; i++)
 	{
-		SegmentDatabaseDescriptor *segdbDesc = &(unnamedPortalDispatchAgents->db_descriptors[i]);
+		SegmentDatabaseDescriptor *segdbDesc = &(das->db_descriptors[i]);
 		if (segdbDesc == NULL)
 			continue;
 
@@ -3758,13 +3769,14 @@ disconnectAndDestroyDispatchAgents(void)
 	/*
 	 * Discard the segment array and the cluster descriptor
 	 */
-	pfree(unnamedPortalDispatchAgents->db_descriptors);
-	unnamedPortalDispatchAgents->db_descriptors = NULL;
-	unnamedPortalDispatchAgents->size = 0;
+	pfree(das->db_descriptors);
+	das->db_descriptors = NULL;
+	das->size = 0;
+	das->DAset_id = 0;
 	
-	pfree(unnamedPortalDispatchAgents);
+	pfree(das);
 	
-	unnamedPortalDispatchAgents = NULL;
+	das = NULL;
 
     if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
         elog(DEBUG5, "disconnectAndDestroyDispatchAgents done");
@@ -3789,7 +3801,8 @@ disconnectAndDestroyAllGangs(void)
 	primaryWriterGang = NULL;
 	
 
-	disconnectAndDestroyDispatchAgents();
+	disconnectAndDestroyDispatchAgents(unnamedPortalDispatchAgents);
+	unnamedPortalDispatchAgents = NULL;
 	
     if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 		elog(DEBUG3, "disconnectAndDestroyAllGangs done");

@@ -21,6 +21,7 @@ struct QueryDesc;               /* #include "executor/execdesc.h" */
 typedef struct DispatchAgentSet
 {
 	int		size;
+	int		DAset_id;
 	struct	SegmentDatabaseDescriptor *db_descriptors;
 } DispatchAgentSet;
 
@@ -117,6 +118,8 @@ cleanupIdleReaderGangs(void);
 
 extern void
 disconnectAndDestroyGangById(int gang_id);
+
+extern void disconnectAndDestroyDispatchAgents(struct DispatchAgentSet * das);
 
 extern int numDispatchAgents(void);
 extern int largestGangsize(void);

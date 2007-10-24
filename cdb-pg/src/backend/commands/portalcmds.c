@@ -323,6 +323,12 @@ PortalCleanup(Portal portal)
 			CurrentResourceOwner = saveResourceOwner;
 		}
 	}
+	
+	if (portal->dispatchagents)
+		if (portal->name && strcmp(portal->name,"")!=0)
+		{
+			disconnectAndDestroyDispatchAgents(portal->dispatchagents);
+		}
 }
 
 /*
