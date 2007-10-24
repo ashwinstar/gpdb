@@ -277,10 +277,14 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 	queue = GetResQueueFromLock(lock);
 	if (incrementSet->increments[RES_COST_LIMIT] < queue->ignorecostlimit)
 	{
-		/* Decrement requested, but leave lock objects themselves.*/
+		/* Decrement requested. */
 		lock->nRequested--;
 		lock->requested[lockmode]--;
 		Assert((lock->nRequested >= 0) && (lock->requested[lockmode] >= 0));
+
+		/* Clean up this lock. */
+		RemoveLocalLock(locallock);
+		ResCleanUpLock(lock, proclock, hashcode, false);
 
 		LWLockRelease(ResQueueLock);
 		LWLockRelease(partitionLock);
@@ -332,7 +336,7 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 
 		/* Clean up this lock. */
 		RemoveLocalLock(locallock);
-		ResCleanUpLock(lock, proclock, hashcode);
+		ResCleanUpLock(lock, proclock, hashcode, false);
 
 		/* Kill off the increment. */
 		MemSet(&portalTag, 0, sizeof(ResPortalTag));
@@ -537,7 +541,7 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 	/*
 	 * Perform clean-up, waking up any waiters!
 	 */
-	ResCleanUpLock(lock, proclock, hashcode);
+	ResCleanUpLock(lock, proclock, hashcode, true);
 
 	/* 
 	 * Clean up the increment set. 
@@ -880,7 +884,8 @@ ResUnGrantLock(LOCK *lock, PROCLOCK *proclock)
  *	waking up waiters.
  */
 void
-ResCleanUpLock(LOCK *lock, PROCLOCK *proclock, uint32 hashcode)
+ResCleanUpLock(LOCK *lock, PROCLOCK *proclock, uint32 hashcode, 
+			   bool wakeupNeeded)
 {
 	/*LOCKMODE	lockmode = ExclusiveLock; */
 
@@ -918,9 +923,10 @@ ResCleanUpLock(LOCK *lock, PROCLOCK *proclock, uint32 hashcode)
 	}
 
 	/*
-	 * Awaken any waiters (we don't check if there are any)
+	 * If appropriate, awaken any waiters.
 	 */
-	ResProcLockWakeup(lock);
+	if (wakeupNeeded)
+		ResProcLockWakeup(lock);
 
 	return;
 }
@@ -1152,7 +1158,7 @@ ResRemoveFromWaitQueue(PGPROC *proc, uint32 hashcode)
 	 * LockRelease expects there to be no remaining proclocks.) Then see if
      * any other waiters for the lock can be woken up now.
    	 */
-   	ResCleanUpLock(waitLock, (PROCLOCK *) proclock, hashcode);
+   	ResCleanUpLock(waitLock, (PROCLOCK *) proclock, hashcode, true);
 }
 
 
