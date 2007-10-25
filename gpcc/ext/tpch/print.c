@@ -4,6 +4,9 @@
 * Revision History
 * ===================
 * $Log: print.c,v $
+* Revision 1.1  2007/10/24 20:25:23  cktan
+* new
+*
 * Revision 1.4  2007/09/12 20:49:18  cmcdevitt
 * fix 64-bit portability issue
 *
@@ -54,26 +57,15 @@
 #include "dsstypes.h"
 #include <string.h>
 
-#include "cdbhash.h"
-
-/*
- * Cdb usage additions.
- */
-static CdbHash * h = 0;
-
-#define CDB_ALLOCATE_FILEHANDLE_ARRAY   ((FILE **)calloc( sizeof(FILE *),  numSegs))
-
-static void initCdbFileHandleArray(int mode, FILE **fpp, int tableid);
-
 
 /*
  * Function Prototypes
  */
-FILE *print_prep PROTO((int table, int update, int seg));
+FILE *print_prep PROTO((int table, int update));
 int pr_drange PROTO((int tbl, DSS_HUGE min, DSS_HUGE cnt, long num));
 
 FILE *
-print_prep(int table, int update, int seg)
+print_prep(int table, int update)
 {
 	char upath[128];
 	FILE *res;
@@ -113,7 +105,7 @@ print_prep(int table, int update, int seg)
 				}
 		return(fopen(upath, "w"));
         }
-    res = tbl_open(table, "w", seg);
+    res = tbl_open(table, "w");
     OPEN_CHECK(res, tdefs[table].name);
     return(res);
 }
@@ -208,38 +200,9 @@ int
 pr_cust(customer_t *c, int mode)
 {
 	static FILE *fp = NULL;
-	static FILE **fpp_c = NULL;
 
-    if (numSegs == 0)
-	{
-		if (fp == NULL)
-			 fp = print_prep(CUST, 0, 0);
-	}
-	else
-	{
-		int segIndex = 0;
-	   
-		if (fpp_c == NULL)
-		{
-			fpp_c = CDB_ALLOCATE_FILEHANDLE_ARRAY;
-			initCdbFileHandleArray(mode, fpp_c, CUST);
-		}
-		
-		if ( h == NULL )
-			h = makeCdbHash(numSegs, HASH_FNV_1); 
-
-		cdbhashinit(h);
-		cdbhash(h, (DSS_HUGE )(c->custkey)); 
-
-		segIndex = cdbhashreduce(h);
-		if ( !segIndexFlags[segIndex] )
-			return(0);
-		
-		fp = fpp_c[segIndex];
-	}
-
-
-
+	if (fp == NULL)
+		fp = print_prep(CUST, 0);
 
    PR_STRT(fp);
    PR_HUGE(fp, &c->custkey);
@@ -269,44 +232,14 @@ pr_order(order_t *o, int mode)
     static FILE *fp_o = NULL;
     static int last_mode = 0;
 
-	static FILE **fpp_o = NULL;
 
-	if (numSegs == 0)
+	if (fp_o == NULL || mode != last_mode)
 	{
-		if (fp_o == NULL || mode != last_mode)
-		{
-			if (fp_o) 
-				fclose(fp_o);
-			fp_o = print_prep(ORDER, mode, 0);
-			last_mode = mode;
-		} 
-	}
-	else
-	{
-		int segIndex;
-		if (fpp_o == NULL || mode != last_mode )
-		{
-			if ( fpp_o == NULL )
-				fpp_o = CDB_ALLOCATE_FILEHANDLE_ARRAY;
-
-			initCdbFileHandleArray(mode, fpp_o, ORDER);
-
-			last_mode = mode;
-		}
-		
-		if ( h == NULL )
-			h = makeCdbHash(numSegs, HASH_FNV_1); 
-
-		cdbhashinit(h);
-		cdbhash(h, (DSS_HUGE )(o->okey));
-		segIndex = cdbhashreduce(h);
-
-		if ( !segIndexFlags[segIndex] )
-			return(0);
-
-		fp_o = fpp_o[segIndex];
-	}
-    
+		if (fp_o) 
+			fclose(fp_o);
+		fp_o = print_prep(ORDER, mode);
+		last_mode = mode;
+	} 
 
     PR_STRT(fp_o);
     PR_HUGE(fp_o, &o->okey);
@@ -331,56 +264,19 @@ int
 pr_line(order_t *o, int mode)
 {
     static FILE *fp_l = NULL;
-	static FILE **fpp_l = NULL;
-
     static int last_mode = 0;
     long      i;
-	int segIndex = 0;
         
-	if (numSegs == 0)
+	if (fp_l == NULL || mode != last_mode)
 	{
-		 if (fp_l == NULL || mode != last_mode)
-			{
-			if (fp_l) 
-				fclose(fp_l);
-			fp_l = print_prep(LINE, mode, 0);
-			last_mode = mode;
-			} 
-	}
-	else
-	{
-
-		if (fpp_l == NULL || mode != last_mode )
-		{
-			if ( fpp_l == NULL )
-				fpp_l = CDB_ALLOCATE_FILEHANDLE_ARRAY;
-
-			initCdbFileHandleArray(mode, fpp_l, LINE);
-
-			last_mode = mode;
-		}
-		
-		if ( h == NULL )
-			h = makeCdbHash(numSegs, HASH_FNV_1); 
-	
-	}
+		if (fp_l) 
+			fclose(fp_l);
+		fp_l = print_prep(LINE, mode);
+		last_mode = mode;
+	} 
 
     for (i = 0; i < o->lines; i++)
-        {
-
-		if (numSegs > 0)
-		{
-			cdbhashinit(h);
-			cdbhash(h, (DSS_HUGE )(o->l[i].okey)); 
-			segIndex = cdbhashreduce(h);
-			
-			if ( !segIndexFlags[segIndex] )
-				continue;
-
-			fp_l = fpp_l[segIndex];
-		}
-
-
+    {
         PR_STRT(fp_l);
         PR_HUGE(fp_l, &o->l[i].okey);
         PR_HUGE(fp_l, &o->l[i].partkey);
@@ -400,7 +296,7 @@ pr_line(order_t *o, int mode)
         PR_VSTR_LAST(fp_l, o->l[i].comment, 
             (columnar)?(long)(ceil(L_CMNT_LEN * V_STR_HGH)):o->l[i].clen);
         PR_END(fp_l);
-        }
+	}
 
    return(0);
 }
@@ -425,37 +321,10 @@ int
 pr_part(part_t *part, int mode)
 {
 	static FILE *p_fp = NULL;
-	static FILE **fpp_p = NULL;
 
 
-	if (numSegs == 0)
-	{
-		if (p_fp == NULL)
-			p_fp = print_prep(PART, 0, 0); 
-	}
-	else
-	{
-
-		int segIndex;
-	   
-		if (fpp_p == NULL)
-		{
-			fpp_p = CDB_ALLOCATE_FILEHANDLE_ARRAY;
-			initCdbFileHandleArray(mode, fpp_p, PART);
-		}
-		
-		if ( h == NULL )
-			h = makeCdbHash(numSegs, HASH_FNV_1); 
-
-		cdbhashinit(h);
-		cdbhash(h, (DSS_HUGE )(part->partkey)); 
-		segIndex = cdbhashreduce(h);
-
-		if ( !segIndexFlags[segIndex] )
-			return(0);
-
-		p_fp = fpp_p[segIndex];
-	}
+	if (p_fp == NULL)
+		p_fp = print_prep(PART, 0); 
 
    PR_STRT(p_fp);
    PR_HUGE(p_fp, &part->partkey);
@@ -483,52 +352,24 @@ pr_psupp(part_t *part, int mode)
 {
     static FILE *ps_fp = NULL;
     long      i;
-	static FILE **fpp_ps = NULL;
-	int segIndex = 0;
 
-	if (numSegs == 0)
+	if (ps_fp == NULL)
+		ps_fp = print_prep(PSUPP, mode); 
+
+
+	for (i = 0; i < SUPP_PER_PART; i++)
 	{
-		if (ps_fp == NULL)
-			ps_fp = print_prep(PSUPP, mode, 0); 
-	}
-	else
-	{
-		if (fpp_ps == NULL)
-		{
-			fpp_ps = CDB_ALLOCATE_FILEHANDLE_ARRAY;
-			initCdbFileHandleArray(mode, fpp_ps, PSUPP);
-		}
-	        
-		if ( h == NULL )
-			h = makeCdbHash(numSegs, HASH_FNV_1); 
+		PR_STRT(ps_fp);
+		PR_HUGE(ps_fp, &part->s[i].partkey);
+		PR_HUGE(ps_fp, &part->s[i].suppkey);
+		PR_HUGE(ps_fp, &part->s[i].qty);
+		PR_MONEY(ps_fp, &part->s[i].scost);
+		PR_VSTR_LAST(ps_fp, part->s[i].comment, 
+					 (columnar)?(long)(ceil(PS_CMNT_LEN * V_STR_HGH)):part->s[i].clen);
+		PR_END(ps_fp);
 	}
 
-
-   for (i = 0; i < SUPP_PER_PART; i++)
-      {
-		  if (numSegs > 0)
-		  {
-			cdbhashinit(h);
-			cdbhash(h, (DSS_HUGE )(part->s[i].partkey)); 
-			segIndex = cdbhashreduce(h);
-
-			if ( !segIndexFlags[segIndex] )
-			   continue;
-
-			ps_fp = fpp_ps[segIndex];
-		  }
-
-      PR_STRT(ps_fp);
-      PR_HUGE(ps_fp, &part->s[i].partkey);
-      PR_HUGE(ps_fp, &part->s[i].suppkey);
-      PR_HUGE(ps_fp, &part->s[i].qty);
-      PR_MONEY(ps_fp, &part->s[i].scost);
-      PR_VSTR_LAST(ps_fp, part->s[i].comment, 
-       (columnar)?(long)(ceil(PS_CMNT_LEN * V_STR_HGH)):part->s[i].clen);
-      PR_END(ps_fp);
-      }
-
-   return(0);
+	return(0);
 }
 
 /*
@@ -548,145 +389,61 @@ int
 pr_supp(supplier_t *supp, int mode)
 {
 	static FILE *fp = NULL;
-   	static FILE **fpp_s = NULL;
+
+	if (fp == NULL)
+		fp = print_prep(SUPP, mode); 
 
 
-	if (numSegs == 0)
-	{
-		if (fp == NULL)
-			fp = print_prep(SUPP, mode, 0); 
-	}
-	else
-	{
+	PR_STRT(fp);
+	PR_HUGE(fp, &supp->suppkey);
+	PR_STR(fp, supp->name, S_NAME_LEN);
+	PR_VSTR(fp, supp->address, 
+			(columnar)?(long)(ceil(S_ADDR_LEN * V_STR_HGH)):supp->alen);
+	PR_HUGE(fp, &supp->nation_code);
+	PR_STR(fp, supp->phone, PHONE_LEN);
+	PR_MONEY(fp, &supp->acctbal);
+	PR_VSTR_LAST(fp, supp->comment, 
+				 (columnar)?(long)(ceil(S_CMNT_LEN * V_STR_HGH)):supp->clen);
+	PR_END(fp);
 
-		int segIndex;
-   
-		if (fpp_s == NULL)
-		{
-			fpp_s = CDB_ALLOCATE_FILEHANDLE_ARRAY;
-			initCdbFileHandleArray(mode, fpp_s, SUPP);
-		}
-
-		if ( h == NULL)
-			h = makeCdbHash(numSegs, HASH_FNV_1); 
-
-		cdbhashinit(h);
-		cdbhash(h, (DSS_HUGE)(supp->suppkey));
-		segIndex = cdbhashreduce(h);
-
-		if ( !segIndexFlags[segIndex] )
-			return(0);
-
-		fp = fpp_s[segIndex];
-	}
-
-
-   PR_STRT(fp);
-   PR_HUGE(fp, &supp->suppkey);
-   PR_STR(fp, supp->name, S_NAME_LEN);
-   PR_VSTR(fp, supp->address, 
-       (columnar)?(long)(ceil(S_ADDR_LEN * V_STR_HGH)):supp->alen);
-   PR_HUGE(fp, &supp->nation_code);
-   PR_STR(fp, supp->phone, PHONE_LEN);
-   PR_MONEY(fp, &supp->acctbal);
-   PR_VSTR_LAST(fp, supp->comment, 
-       (columnar)?(long)(ceil(S_CMNT_LEN * V_STR_HGH)):supp->clen);
-   PR_END(fp);
-
-   return(0);
+	return(0);
 }
 
 int
 pr_nation(code_t *c, int mode)
 {
-static FILE *fp = NULL;
-	static FILE **fpp_n = NULL;
+	static FILE *fp = NULL;
 
-      
-	if (numSegs == 0)
-	{
-		if (fp == NULL)
-			fp = print_prep(NATION, mode, 0); 
-	}
-	else
-	{
-		int segIndex;
+	if (fp == NULL)
+		fp = print_prep(NATION, mode); 
 
-		if (fpp_n == NULL)
-		{
-			fpp_n = CDB_ALLOCATE_FILEHANDLE_ARRAY;
-			initCdbFileHandleArray(mode, fpp_n, NATION);
-		}
-	 
-		if ( h == NULL )
-			h = makeCdbHash(numSegs, HASH_FNV_1); 
+	PR_STRT(fp);
+	PR_HUGE(fp, &c->code);
+	PR_STR(fp, c->text, NATION_LEN);
+	PR_INT(fp, c->join);
+	PR_VSTR_LAST(fp, c->comment, 
+				 (columnar)?(long)(ceil(N_CMNT_LEN * V_STR_HGH)):c->clen);
+	PR_END(fp);
 
-		cdbhashinit(h);
-		cdbhash(h, (DSS_HUGE)(c->code)); 
-		segIndex = cdbhashreduce(h);
-
-		if ( !segIndexFlags[segIndex] )
-			return(0);
-
-		fp = fpp_n[segIndex];
-	}
-
-
-   PR_STRT(fp);
-   PR_HUGE(fp, &c->code);
-   PR_STR(fp, c->text, NATION_LEN);
-   PR_INT(fp, c->join);
-   PR_VSTR_LAST(fp, c->comment, 
-       (columnar)?(long)(ceil(N_CMNT_LEN * V_STR_HGH)):c->clen);
-   PR_END(fp);
-
-   return(0);
+	return(0);
 }
 
 int
 pr_region(code_t *c, int mode)
 {
-static FILE *fp = NULL;
-	static FILE **fpp_r = NULL;
+	static FILE *fp = NULL;
 
-        
-	if (numSegs == 0)
-	{
-		if (fp == NULL)
-			fp = print_prep(REGION, mode, 0); 
-	}
-	else
-	{
+	if (fp == NULL)
+		fp = print_prep(REGION, mode); 
 
-		int segIndex;
-   
-		if (fpp_r == NULL)
-		{
-			fpp_r = CDB_ALLOCATE_FILEHANDLE_ARRAY;
-			initCdbFileHandleArray(mode, fpp_r, REGION);
-		}
-	       
-		if ( h == NULL )
-			h = makeCdbHash(numSegs, HASH_FNV_1); 
+	PR_STRT(fp);
+	PR_HUGE(fp, &c->code);
+	PR_STR(fp, c->text, REGION_LEN);
+	PR_VSTR_LAST(fp, c->comment, 
+				 (columnar)?(long)(ceil(R_CMNT_LEN * V_STR_HGH)):c->clen);
+	PR_END(fp);
 
-		cdbhashinit(h);
-		cdbhash(h, (DSS_HUGE)(c->code)); 
-		segIndex = cdbhashreduce(h);
-
-		if ( !segIndexFlags[segIndex] )
-			return(0);
-
-		fp = fpp_r[segIndex];
-	}
-
-   PR_STRT(fp);
-   PR_HUGE(fp, &c->code);
-   PR_STR(fp, c->text, REGION_LEN);
-   PR_VSTR_LAST(fp, c->comment, 
-       (columnar)?(long)(ceil(R_CMNT_LEN * V_STR_HGH)):c->clen);
-   PR_END(fp);
-
-   return(0);
+	return(0);
 }
 
 /* 
@@ -707,73 +464,72 @@ pr_drange(int tbl, DSS_HUGE min, DSS_HUGE cnt, long num)
 	static DSS_HUGE rows_this_segment=0;
 
     if (last_num != num)
-        {
+    {
         if (dfp)
             fclose(dfp);
-        dfp = print_prep(tbl, -num, 0);
+        dfp = print_prep(tbl, -num);
         if (dfp == NULL)
             return(-1);
         last_num = num;
 		rows_this_segment=0;
-        }
+    }
 
     start = MK_SPARSE(min, num/ (10000 / refresh));
     last = start - 1;
     for (child=min; cnt > 0; child++, cnt--)
-        {
+    {
         new = MK_SPARSE(child, num/ (10000 / refresh));
         if (gen_rng == 1 && new - last == 1)
-            {
+        {
             last = new;
             continue;
-            }
-	if (gen_sql)
+		}
+		if (gen_sql)
 	    {
-	    fprintf(dfp, 
-		"delete from %s where %s between %ld and %ld;\n",
-		    tdefs[ORDER].name, "o_orderkey", (long)start, (long)last);
-	    fprintf(dfp, 
-		"delete from %s where %s between %ld and %ld;\n",
-		    tdefs[LINE].name, "l_orderkey", (long)start, (long)last);
-	    fprintf(dfp, "commit work;\n");
+			fprintf(dfp, 
+					"delete from %s where %s between %ld and %ld;\n",
+					tdefs[ORDER].name, "o_orderkey", (long)start, (long)last);
+			fprintf(dfp, 
+					"delete from %s where %s between %ld and %ld;\n",
+					tdefs[LINE].name, "l_orderkey", (long)start, (long)last);
+			fprintf(dfp, "commit work;\n");
 	    }
-	else 
-	    if (gen_rng)
-                {
-                PR_STRT(dfp);
-                PR_HUGE(dfp, &start);
-                PR_HUGE(dfp, &last);
-                PR_END(dfp);
-                }
-            else
-                {
-				if (delete_segments)
-					{
+		else if (gen_rng)
+        {
+			PR_STRT(dfp);
+			PR_HUGE(dfp, &start);
+			PR_HUGE(dfp, &last);
+			PR_END(dfp);
+		}
+		else
+        {
+			if (delete_segments)
+			{
+				if(rows_per_segment==0) 
+					rows_per_segment = (cnt / delete_segments) + 1;
+				if((++rows_this_segment) > rows_per_segment)
+				{
+					fclose(dfp);
+					dfp = print_prep(tbl, -num);
+					if (dfp == NULL) return(-1);
+					last_num = num;
+					rows_this_segment=1;
+				}
+			}
+			PR_STRT(dfp);
+			PR_HUGE(dfp, &new);
+			PR_END(dfp);
+		}
+		start = new;
+		last = new;
+	}
 
-					if(rows_per_segment==0) 
-						rows_per_segment = (cnt / delete_segments) + 1;
-					if((++rows_this_segment) > rows_per_segment)
-						{
-						fclose(dfp);
-						dfp = print_prep(tbl, -num, 0);
-						if (dfp == NULL) return(-1);
-						last_num = num;
-						rows_this_segment=1;
-						}
-					}
-                PR_STRT(dfp);
-                PR_HUGE(dfp, &new);
-                PR_END(dfp);
-                }
-	start = new;
-	last = new;
-        }
     if (gen_rng)
 	{
-	PR_STRT(dfp);
-	PR_HUGE(dfp, &start);
-	PR_HUGE(dfp, &last);
-	PR_END(dfp);
+		PR_STRT(dfp);
+		PR_HUGE(dfp, &start);
+		PR_HUGE(dfp, &last);
+		PR_END(dfp);
 	}
     
     return(0);
@@ -964,17 +720,3 @@ vrf_region(code_t *c, int mode)
    return(0);
 }
 
-void initCdbFileHandleArray(int mode, FILE **fpp, int tableid)
-{
-	int i;
-	for ( i=0; i<numSegs; i++ )
-	{
-		if ( segIndexFlags[i] )
-		{
-			if ( fpp[i] )
-				fclose( fpp[i] );
-
-			fpp[i] =  print_prep(tableid, mode, i);
-		}
-	}
-}

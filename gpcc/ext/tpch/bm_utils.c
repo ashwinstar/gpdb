@@ -4,6 +4,9 @@
 * Revision History
 * ===================
 * $Log: bm_utils.c,v $
+* Revision 1.1  2007/10/24 20:25:23  cktan
+* new
+*
 * Revision 1.5  2007/09/12 21:55:05  cmcdevitt
 * fix a lot of incorrect format specifiers, and fix some 64-bit issues
 *
@@ -386,7 +389,7 @@ long      weight,
  */
 
 FILE     *
-tbl_open(int tbl, char *mode, int seg)
+tbl_open(int tbl, char *mode)
 {
     char      prompt[256];
     char      fullpath[256];
@@ -395,24 +398,11 @@ tbl_open(int tbl, char *mode, int seg)
     int      retcode;
 
 
-	if (numSegs == 0)
-	{
-		if (*tdefs[tbl].name == PATH_SEP)
-			strcpy(fullpath, tdefs[tbl].name);
-		else
+    if (*tdefs[tbl].name == PATH_SEP)
+	strcpy(fullpath, tdefs[tbl].name);
+    else
         sprintf(fullpath, "%s%c%s",
             env_config(PATH_TAG, PATH_DFLT), PATH_SEP, tdefs[tbl].name);
-	    
-	}
-	else
-	{
-
-		if (*tdefs[tbl].name == PATH_SEP)
-			sprintf(fullpath, "%s_%d",tdefs[tbl].name,seg);
-		else
-			sprintf(fullpath, "%s%c%s_%d",
-				env_config(PATH_TAG, PATH_DFLT), PATH_SEP, tdefs[tbl].name,seg);
-	}
 
     retcode = stat(fullpath, &fstats);
     if (retcode && (errno != ENOENT))

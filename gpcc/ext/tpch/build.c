@@ -4,6 +4,9 @@
 * Revision History
 * ===================
 * $Log: build.c,v $
+* Revision 1.1  2007/10/24 20:25:23  cktan
+* new
+*
 * Revision 1.4  2007/04/07 22:56:16  cmcdevitt
 * Fix stupid bug
 *
@@ -67,8 +70,6 @@ extern adhoc_t adhocs[];
 #endif /* ADHOC */
 #include "rng64.h"
 
-#include "cdbhash.h"
-static CdbHash * h = 0;
 
 #define LEAP_ADJ(yr, mnth)      \
 ((LEAP(yr) && (mnth) >= 2) ? 1 : 0)
@@ -134,20 +135,6 @@ mk_cust(DSS_HUGE n_cust, customer_t *c)
 	
 	c->custkey = n_cust;
 	
-	if (numSegs > 0 )
-	{
-		int segIndex = 0;
-
-		if ( h == NULL )
- 			h = makeCdbHash(numSegs, HASH_FNV_1); 
-	 
- 		cdbhashinit(h);
- 		cdbhash(h, (DSS_HUGE )(c->custkey));
- 		segIndex = cdbhashreduce(h);
-	 
- 		if ( !segIndexFlags[segIndex] )
- 			return(1);
-	}
 	
 	sprintf(c->name, szFormat, C_NAME_TAG, n_cust);
 	V_STR(C_ADDR_LEN, C_ADDR_SD, c->address);
@@ -214,20 +201,6 @@ mk_order(DSS_HUGE index, order_t *o, long upd_num)
 	mk_sparse (index, &o->okey,
 		(upd_num == 0) ? 0 : 1 + upd_num / (10000 / refresh));
 
-	if (numSegs > 0 && upd_num <= 0)
-	{
-		int segIndex = 0;
-
-		if ( h == NULL )
- 			h = makeCdbHash(numSegs, HASH_FNV_1); 
-	 
- 		cdbhashinit(h);
- 		cdbhash(h, (DSS_HUGE )(o->okey));
- 		segIndex = cdbhashreduce(h);
-	 
- 		if ( !segIndexFlags[segIndex] )
- 			return(1);
-	}
 
    if (scale >= 30000 || O_CKEY_MAX >= 2147483647)
 		RANDOM64(o->custkey, O_CKEY_MIN, O_CKEY_MAX, O_CKEY_SD);
@@ -342,21 +315,6 @@ mk_part(DSS_HUGE index, part_t *p)
 	
 	p->partkey = index;
 	
-	if (numSegs > 0 )
-	{
-		int segIndex = 0;
-
-		if ( h == NULL )
- 			h = makeCdbHash(numSegs, HASH_FNV_1); 
-	 
- 		cdbhashinit(h);
- 		cdbhash(h, (DSS_HUGE )(p->partkey));
- 		segIndex = cdbhashreduce(h);
-	 
- 		if ( !segIndexFlags[segIndex] )
- 			return(1);
-	}
-	
 	
 	agg_str(&colors, (long)P_NAME_SCL, (long)P_NAME_SD, p->name); 
 	RANDOM(temp, P_MFG_MIN, P_MFG_MAX, P_MFG_SD);
@@ -402,20 +360,6 @@ mk_supp(DSS_HUGE index, supplier_t *s)
 	
 	s->suppkey = index;
 	
-	if (numSegs > 0 )
-	{
-		int segIndex = 0;
-
-		if ( h == NULL )
- 			h = makeCdbHash(numSegs, HASH_FNV_1); 
-	 
- 		cdbhashinit(h);
- 		cdbhash(h, (DSS_HUGE )(s->suppkey));
- 		segIndex = cdbhashreduce(h);
-	 
- 		if ( !segIndexFlags[segIndex] )
- 			return(1);
-	}
 	
 	sprintf(s->name, szFormat, S_NAME_TAG, index); 
 	V_STR(S_ADDR_LEN, S_ADDR_SD, s->address);

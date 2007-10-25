@@ -4,6 +4,9 @@
 * Revision History
 * ===================
 * $Log: driver.c,v $
+* Revision 1.2  2007/10/24 21:22:38  cktan
+* make dbgen only, no direct load
+*
 * Revision 1.1  2007/10/24 20:25:23  cktan
 * new
 *
@@ -119,11 +122,6 @@ void	gen_tbl (int tnum, DSS_HUGE start, DSS_HUGE count, long upd_num);
 int		pr_drange (int tbl, DSS_HUGE min, DSS_HUGE cnt, long num);
 int		set_files (int t, int pload);
 int		partial (int, int);
-
-/*
- * Cdb usage additions
- */
-void	generateCdbSegIndexes(char *parm);
 
 
 extern int optind, opterr;
@@ -379,49 +377,57 @@ gen_tbl (int tnum, DSS_HUGE start, DSS_HUGE count, long upd_num)
 			if (mk_order (i, &o, upd_num % 10000)==1)
 				continue;
 
-		  if (insert_segments  && (upd_num > 0))
-			if((upd_num / 10000) < residual_rows)
+			if (insert_segments  && (upd_num > 0))
+			{
+				if((upd_num / 10000) < residual_rows)
 				{
-				if((++rows_this_segment) > rows_per_segment) 
+					if((++rows_this_segment) > rows_per_segment) 
 					{						
-					rows_this_segment=0;
-					upd_num += 10000;					
+						rows_this_segment=0;
+						upd_num += 10000;					
 					}
 				}
-			else
+				else
 				{
-				if((++rows_this_segment) >= rows_per_segment) 
+					if((++rows_this_segment) >= rows_per_segment) 
 					{
-					rows_this_segment=0;
-					upd_num += 10000;
+						rows_this_segment=0;
+						upd_num += 10000;
 					}
 				}
+			}
 
 			if (set_seeds == 0)
+			{
 				if (validate)
 					tdefs[tnum].verify(&o, 0);
 				else
 					tdefs[tnum].loader[direct] (&o, upd_num);
+			}
 			break;
 		case SUPP:
 			if (mk_supp (i, &supp)==1)
 				continue;
 				
 			if (set_seeds == 0)
+			{
 				if (validate)
 					tdefs[tnum].verify(&supp, 0);
 				else
 					tdefs[tnum].loader[direct] (&supp, upd_num);
+			}
 			break;
 		case CUST:
 			if (mk_cust (i, &cust)==1)
 				continue;
 				
 			if (set_seeds == 0)
+			{
 				if (validate)
 					tdefs[tnum].verify(&cust, 0);
 				else
 					tdefs[tnum].loader[direct] (&cust, upd_num);
+			}
 			break;
 		case PSUPP:
 		case PART:
@@ -430,28 +436,34 @@ gen_tbl (int tnum, DSS_HUGE start, DSS_HUGE count, long upd_num)
 				continue;
 				
 			if (set_seeds == 0)
+			{
 				if (validate)
 					tdefs[tnum].verify(&part, 0);
 				else
 					tdefs[tnum].loader[direct] (&part, upd_num);
+			}
 			break;
 		case NATION:
 			if (mk_nation (i, &code)==1)
 				continue;
 			if (set_seeds == 0)
+			{
 				if (validate)
 					tdefs[tnum].verify(&code, 0);
 				else
 					tdefs[tnum].loader[direct] (&code, 0);
+			}
 			break;
 		case REGION:
 			if (mk_region (i, &code)==1)
 				continue;
 			if (set_seeds == 0)
+			{
 				if (validate)
 					tdefs[tnum].verify(&code, 0);
 				else
 					tdefs[tnum].loader[direct] (&code, 0);
+			}
 			break;
 		}
 		row_stop(tnum);
@@ -472,7 +484,7 @@ usage (void)
 	fprintf (stderr, "%s\n%s\n\t%s\n%s %s\n\n",
 		"USAGE:",
 		"dbgen [-{vfFD}] [-O {fhmsv}][-T {pcsoPSOL}]",
-		"[-s <scale>][-C <procs>][-S <step>][-x <numCdbSegments>][-y <thisSegIndex>]",
+		"[-s <scale>][-C <procs>][-S <step>]",
 		"dbgen [-v] [-O {dfhmr}] [-s <scale>]",
 		"[-U <updates>] [-r <percent>]");
 	fprintf (stderr, "-b <s> -- load distributions for <s>\n");
@@ -509,8 +521,6 @@ usage (void)
 	fprintf (stderr, "-T S   -- generate partsupp ONLY\n");
 	fprintf (stderr, "-U <s> -- generate <s> update sets\n");
 	fprintf (stderr, "-v     -- enable VERBOSE mode\n");
-	fprintf (stderr, "-x <n> -- number of Cdb Segments\n");
-	fprintf (stderr, "-y <\"s1,s2,...\"> -- Cdb segindexes (will limit output to rows that hash to one of these segIndexes)\n");
 
 	fprintf (stderr,
 		"\nTo generate the SF=1 (1GB), validation database population, use:\n");
@@ -625,7 +635,6 @@ void
 process_options (int count, char **vector)
 {
 	int option;
-	char *segIndexParm = NULL;
 
 	
 	while ((option = getopt (count, vector,
@@ -793,12 +802,6 @@ process_options (int count, char **vector)
 			 * and segIndex is the desired result from cdbhashreduce.
 			 * If the row doesn't hashreduce to segIndex, it doesn't get stored.
 			 */
-			  case 'x':
-				  numSegs = atoi( optarg);
-				  break;
-			  case 'y':
-				  segIndexParm = strdup(optarg);
-				  break;
 				  
 			  case 'p':
 			  		isPartitioned = 1;
@@ -830,25 +833,6 @@ process_options (int count, char **vector)
 		exit(1);
 		}
 #endif /* DOS */
-
-	/*
-	 * Cdb usage validity checks
-	 */
-	if ( numSegs == 0 )
-	{
-		// Doing normal dbgen 
-	}
-	else
-	{
-		if ( segIndexParm == NULL )
-		{
-			fprintf(stderr, "ERROR: -y (Cdb SegIndexes ) must be specified\n");
-			exit(1);
-		}
-
-		generateCdbSegIndexes(segIndexParm);
-		free(segIndexParm);
-	}
 
 
 
@@ -901,8 +885,6 @@ main (int ac, char **av)
 	gen_rng = 0;
 	children = 1;
 	d_path = NULL;
-	numSegs = 0;
-	segIndexFlags = NULL;
 
 	
 #ifdef NO_SUPPORT
@@ -1050,82 +1032,3 @@ main (int ac, char **av)
 		return (0);
 }
 
-/*
- * generateCdbSegIndexes:
- * Cdb usage addition.
- * Takes a comma separated list of segindexes
- * and creates a bool array of length numSegs
- * that indicates whether each segIndex was conatined in the list
- */
-void generateCdbSegIndexes(char *parm)
-{
-	int i;
-	//int nSegIndexes;
-	int len = strlen(parm);
-	char *p;
-	char comma = ',';
-
-	/* 
-	 * First validate that all non comma characters are digits or whitespace
-	 */
-	for ( i=0; i<len; i++ )
-	{
-		char c = parm[i];
-		switch( c )
-		{
-			case ',':
-			case '\t':
-			case ' ':
-			case '\n':
-				break;
-
-			default:
-				if ( !isdigit(c) )
-				{
-					fprintf(stderr, "ERROR: -y (Cdb SegIndexes List) \"%s\" contains some invalid characters\n", parm );
-					exit(1);
-				}
-				break;
-		}
-	}
-
-	/*
-	 * Allocate space for a flag for each segindex between 0 and numSegs-1 inclusive
-	 */
-	segIndexFlags = (int *)calloc( sizeof(int), numSegs);
-
-	/*
-	 * Now convert the parm string to segindexes and set the appropriate flag on,
-	 * by finding each comma and converting what's in between the commas 
-	 * into numbers.
-	 */
-	p = parm;
-	while ( p != NULL )
-	{
-		int segIndex;
-		char *newp = strchr(p, comma);
-		if ( newp != NULL )
-			*newp = '\0';
-			
-		segIndex = atoi(p);
-		if ( newp != NULL )
-		{
-			*newp = comma;
-			p = newp+1;
-		}
-		else
-		{
-			p = NULL;
-		}
-
-		if ( segIndex < 0 || segIndex >= numSegs )
-		{
-			fprintf(stderr, "ERROR: -y (Cdb SegIndexes List) must only contain values >= 0 and < -x (Cdb Number of Segments)\n");
-			exit(1);
-		}
-		
-		segIndexFlags[segIndex] = 1;
-		
-	}
-
-}

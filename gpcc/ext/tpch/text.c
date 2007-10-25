@@ -4,6 +4,9 @@
 * Revision History
 * ===================
 * $Log: text.c,v $
+* Revision 1.1  2007/10/24 20:25:23  cktan
+* new
+*
 * Revision 1.2  2007/04/07 08:10:40  cmcdevitt
 * Fixes for dbgen with large scale factors
 *
@@ -298,6 +301,9 @@ dbg_text(char *tgt, int min, int max, int sd)
    static char szTextPool[TEXT_POOL_SIZE + 1];
    static int bInit = 0;
    int nLifeNoise = 0;
+
+   if (verbose <= 0)
+       return;
    
    if (!bInit)
    {

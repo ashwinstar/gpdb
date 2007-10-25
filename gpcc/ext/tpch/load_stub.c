@@ -4,6 +4,9 @@
 * Revision History
 * ===================
 * $Log: load_stub.c,v $
+* Revision 1.2  2007/10/24 21:22:38  cktan
+* make dbgen only, no direct load
+*
 * Revision 1.1  2007/10/24 20:25:23  cktan
 * new
 *
@@ -81,68 +84,10 @@
 #include "dss.h"
 #include "dsstypes.h"
 
-#include "cdbhash.h"
-
 static const char BinarySignature[11] = "PGCOPY\n\377\r\n\0";
-static int flags = 0;
-static int hext = 0;
-
-
-static int isMPP = 0;
-
-static CdbHash * h = 0;
 
 int isPartitioned = 0;
 
-
-static char * base_orders_name = "ORDERS";
-static char * base_lineitem_name = "LINEITEM";
-
-static int numparts = 16;
-
-static char * partnames[] = { "",
-							"_child_depth_1_y_1992_year",
-							"_child_depth_1_y_1993_year",
-							"_child_depth_1_y_1994_year",
-							"_child_depth_1_y_1995_year",
-							"_child_depth_1_y_1996_year",
-							"_child_depth_1_y_1997_year",
-							"_child_depth_2_ym_1998_01_month",
-							"_child_depth_2_ym_1998_02_month",
-							"_child_depth_2_ym_1998_03_month",
-							"_child_depth_2_ym_1998_04_month",
-							"_child_depth_2_ym_1998_05_month",
-							"_child_depth_2_ym_1998_06_month",
-							"_child_depth_2_ym_1998_07_month",
-							"_child_depth_2_ym_1998_08_month",
-							"_child_depth_1_y_1998_year",
-							0};
-							
-
-	
-static char * part_start[] = { "", 
-								"1992-01-01",
-								"1993-01-01",			
-								"1994-01-01",	
-								"1995-01-01",	
-								"1996-01-01",	
-								"1997-01-01",	
-								"1998-01-01",	
-								"1998-02-01",
-								"1998-03-01",
-								"1998-04-01",
-								"1998-05-01",
-								"1998-06-01",
-								"1998-07-01",
-								"1998-08-01",
-								"1998-09-01",
-								"1999-01-01",
-								0 }; /* must be one longer than partnames */
-					
-		
-								
-								
-								
 
 
 

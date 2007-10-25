@@ -4,6 +4,9 @@
 * Revision History
 * ===================
 * $Log: bcd2.c,v $
+* Revision 1.1  2007/10/24 20:25:23  cktan
+* new
+*
 * Revision 1.2  2007/04/07 08:10:40  cmcdevitt
 * Fixes for dbgen with large scale factors
 *
@@ -150,25 +153,27 @@ bcd2_mul(long *bcd_low, long *bcd_high, long multiplier)
     *bcd_high = 0;
     carry = 0;
     for (ldigit=0; ldigit < 14; ldigit++)
-        {
+    {
         m1 = GET_DIGIT(ldigit, m_lo, m_hi); 
         carry = 0;
         for (udigit=0; udigit < 14; udigit++)
-            {
+        {
             m2 = GET_DIGIT(udigit, tmp_lo, tmp_hi);
             res = m1 * m2;
             res += carry;
             if (udigit + ldigit < 14)
-                {
+            {
                 carry = GET_DIGIT(udigit + ldigit, *bcd_low, *bcd_high);
                 res += carry;
-                }
+	    }
             carry = res / 10;
             res %= 10;
             if (udigit + ldigit < 14)
+	    {
                 SET_DIGIT(res, udigit + ldigit, bcd_low, bcd_high);
-            }
-        }
+	    }
+	}
+    }
     return(carry);
 }
 

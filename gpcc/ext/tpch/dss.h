@@ -4,6 +4,9 @@
 * Revision History
 * ===================
 * $Log: dss.h,v $
+* Revision 1.1  2007/10/24 20:25:23  cktan
+* new
+*
 * Revision 1.5  2007/09/12 21:55:05  cmcdevitt
 * fix a lot of incorrect format specifiers, and fix some 64-bit issues
 *
@@ -214,7 +217,7 @@ void     a_rnd PROTO((int min, int max, int column, char *dest));
 int     tx_rnd PROTO((long min, long max, long column, char *tgt));
 long	julian PROTO((long date));
 long	unjulian PROTO((long date));
-FILE	*tbl_open PROTO((int tbl, char *mode, int seg));
+FILE	*tbl_open PROTO((int tbl, char *mode));
 long	dssncasecmp PROTO((char *s1, char *s2, int n));
 long	dsscasecmp PROTO((char *s1, char *s2));
 int		pick_str PROTO((distribution * s, int c, char *target));
