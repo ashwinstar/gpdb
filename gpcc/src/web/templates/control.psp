@@ -35,7 +35,7 @@ $(function() {
           if (json.rset.result[0] == "stopping" ||
               json.rset.result[0] == "starting" ||
               json.rset.result[0] == "pending") {
-              $.getJSON("/status.psp", function(json) {
+              $.getJSON("/status.psp?a=${sctx['gpdb.name']}", function(json) {
                   status_confirm(json);
               });
               $("#switch").unbind('click', switch_click);           
@@ -46,7 +46,7 @@ $(function() {
       }
   }
 
-  $.getJSON("/status.psp", function(json) {
+  $.getJSON("/status.psp?a=${sctx['gpdb.name']}", function(json) {
        status_confirm(json);
   });
 
@@ -54,9 +54,9 @@ $(function() {
   function switch_click() {
      url = '';
      if (state == "stopped") {
-        url = "/start.psp";
+        url = "/start.psp?a=${sctx['gpdb.name']}";
      } else {
-        url = "/stop.psp";
+        url = "/stop.psp?a=${sctx['gpdb.name']}";
      }
 
      $(this).unbind('click', switch_click);
@@ -82,5 +82,5 @@ please click the button to start/stop the database.
 </div>
 <hr>
 <address></address>
-<!-- hhmts start --> Last modified: Wed Oct 24 18:31:15 HKT 2007 <!-- hhmts end -->
+<!-- hhmts start --> Last modified: Thu Oct 25 10:51:19 HKT 2007 <!-- hhmts end -->
 </body> </html>

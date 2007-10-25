@@ -1,12 +1,14 @@
 <%!
 import os, sys, urllib, httplib
+%>
 
+<%
 def hitMA(cmd, params):
     params = urllib.urlencode(params)
     f = None
     res = ''
     try:
-        f = httplib.HTTPConnection('%s:%d' % ('localhost', 11000))
+        f = httplib.HTTPConnection('%s:%d' % (sctx['ma.host'], sctx['ma.port']))
         f.request('GET', '%s?%s' % (cmd, params))
         response = f.getresponse()
         if response.status == 200:
@@ -19,6 +21,7 @@ def hitMA(cmd, params):
 
 <%
 web.header('Content-Type', 'text/html;charset=utf-8')
+
 %>
 
 % if 'a' not in param:
