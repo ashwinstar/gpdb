@@ -18,6 +18,7 @@
 #include "catalog/heap.h"
 #include "catalog/index.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "commands/prepare.h"
@@ -32,7 +33,7 @@
 #include "parser/parse_clause.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
-#include "parser/parse_expr.h"
+#include "parser/parse_oper.h"
 #include "parser/parse_relation.h"
 #include "parser/parse_target.h"
 #include "parser/parse_type.h"
@@ -182,7 +183,6 @@ static Node *make_partition_rules(ParseState *pstate,
 		 int everyOffset, int maxEveryOffset,
 		 ListCell	**pp_lc_anp);
 
-static int partition_sql_test(const char *sql, char *outbuf);
 static int deparse_partition_rule1(Node *pNode, char *outbuf, size_t outsize,
 								   char *typbuf, size_t tbsize
 								   );
@@ -208,6 +208,8 @@ static int partition_range_every(ParseState *pstate,
 								 CreateStmtContext *cxt, CreateStmt *stmt, 
 								 PartitionBy *partitionBy, 	
 								 char	   *at_depth);
+static Datum eval_basic_opexpr(ParseState *pstate, List *oprname, 
+							   Node *leftarg, Node *rightarg, Oid *restypid);
 
 /*
  * parse_analyze
@@ -2583,14 +2585,16 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 
 }
 
-static int deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize)
+static int 
+deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize)
 {
 	return (deparse_partition_rule1(pNode, outbuf, outsize,
 									NULL, 0));
 }
 
-static int deparse_partition_rule1(Node *pNode, char *outbuf, size_t outsize,
-								   char *typbuf, size_t tbsize)
+static int 
+deparse_partition_rule1(Node *pNode, char *outbuf, size_t outsize, 
+						char *typbuf, size_t tbsize)
 {
 	if (!pNode)
 		return 0;
@@ -2695,14 +2699,12 @@ static int deparse_partition_rule1(Node *pNode, char *outbuf, size_t outsize,
 	return 1;
 }
 
-static Node *make_partition_rules(ParseState *pstate,
-		 CreateStmtContext *cxt, CreateStmt *stmt, 
-		 Node *partitionBy, PartitionElem *pElem,
-		 char  *at_depth, char *child_name_str, 
-		 int partNumId, int maxPartNum, 
-		 int everyOffset, int maxEveryOffset,
-		 ListCell	**pp_lc_anp
-		)
+static Node *
+make_partition_rules(ParseState *pstate, CreateStmtContext *cxt, 
+					 CreateStmt *stmt, Node *partitionBy, 
+					 PartitionElem *pElem, char *at_depth, 
+					 char *child_name_str, int partNumId, int maxPartNum, 
+		 			 int everyOffset, int maxEveryOffset, ListCell **pp_lc_anp)
 {
 	PartitionBy			*pBy    = (PartitionBy *)partitionBy;
 	PartitionBoundSpec	*pBSpec = NULL;
@@ -3490,64 +3492,18 @@ static Node *make_partition_rules(ParseState *pstate,
 	return pRule;
 } /* end make_partition_rules */
 
-static int partition_sql_test(const char *sql, char *outbuf)
-{
-	int			rc = 0;
-	int			spirc;
-
-	/*
-	 * Connect to SPI manager
-	 */
-	if (SPI_connect() != SPI_OK_CONNECT)
-			elog(ERROR, "SPI_connect failed");
-
-	spirc = SPI_execute(sql,
-						false, 1); /* true fails */
-
-		
-	if (spirc != SPI_OK_SELECT)
-			elog(ERROR, "failed to get tuple");
-
-	if (SPI_processed == 1)
-	{
-			HeapTuple   rangetup;
-			TupleDesc   rangettc;
-			int			fno;
-			char	   *pFoo;
-
-			rangetup = SPI_tuptable->vals[0];
-			rangettc = SPI_tuptable->tupdesc;
-
-			fno = SPI_fnumber(rangettc, "ptcol1"); /* 1 */
-			pFoo = SPI_getvalue(rangetup, rangettc, fno);
-
-			rc = 1;
-
-			if (outbuf)
-				strcpy(outbuf, pFoo);
-	}
-
-	/*
-	 * Disconnect from SPI manager
-	 */
-	if (SPI_finish() != SPI_OK_FINISH)
-			elog(ERROR, "SPI_finish failed");
-	
-	return (rc);
-} /* end partition_sql_test */
-
-static int partition_range_compare(ParseState *pstate,
-								   CreateStmtContext *cxt, CreateStmt *stmt, 
-								   PartitionBy *pBy,
-								   char	   *at_depth,
-								   int		partNumber,
-								   char	   *compare_op, /* =, <, > only */
-								   PartitionRangeItem *pRI1,
-								   PartitionRangeItem *pRI2)
+static int
+partition_range_compare(ParseState *pstate, CreateStmtContext *cxt,
+						CreateStmt *stmt, PartitionBy *pBy,
+						char *at_depth, int partNumber,
+						char *compare_op, /* =, <, > only */
+						PartitionRangeItem *pRI1,
+						PartitionRangeItem *pRI2)
 {
 	int rc = -1;
 	ListCell		*lc1 = NULL;
 	ListCell		*lc2 = NULL;
+	List			*cop = lappend(NIL, makeString(compare_op));
 
 	if (!pRI1 || !pRI2) /* error */
 		return rc;
@@ -3577,35 +3533,13 @@ static int partition_range_compare(ParseState *pstate,
 	}
 	else if (lc1 && lc2) /* both not empty, so last value was different */
 	{
-		char sqlbuf[999];
-		char outbuf[999];
-		char op1buf[999];
-		char op2buf[999];
-		int foo;
-		Node *n1 = lfirst(lc1);
-		Node *n2 = lfirst(lc2);
+		Datum res;
+		Node *n1 = transformExpr(pstate, lfirst(lc1));
+		Node *n2 = transformExpr(pstate, lfirst(lc2));
 
-		/* XXX XXX: can't trust equal() code on date types!!!!!! */
-		/* XXX XXX: must always do SQL compare!!!!!! */
-
-/*		if (strcmp("=", compare_op) == 0)
-		return 0; */
-
-		/* not equal, so need to compare */
-
-		if (!deparse_partition_rule(n1, op1buf, sizeof(op1buf)))
-			return -1;
-		if (!deparse_partition_rule(n2, op2buf, sizeof(op2buf)))
-			return -1;
-
-		snprintf(sqlbuf, sizeof(sqlbuf), 
-				 "select 1 as ptcol1 where %s %s %s",
-				 op1buf, compare_op, op2buf);
-					
-		foo = partition_sql_test(sqlbuf, outbuf);
-
-		/* XXX XXX: argh!! need to redo until reach end */
-		if (foo && strcmp("=", compare_op) == 0)
+		res = eval_basic_opexpr(pstate, cop, n1, n2, NULL);
+		
+		if (DatumGetBool(res) && strcmp("=", compare_op) == 0)
 		{
 			lc1 = lnext(lc1);
 			lc2 = lnext(lc2);
@@ -3613,8 +3547,7 @@ static int partition_range_compare(ParseState *pstate,
 			goto L_redoLoop;
 		}
 
-		return foo;
-
+		return DatumGetBool(res);
 	}
 	else if (lc1 || lc2)
 	{
@@ -3643,11 +3576,10 @@ static int partition_range_compare(ParseState *pstate,
 	return rc;
 } /* end partition_range_compare */
 
-static int validate_partition_spec(ParseState *pstate,
-								   CreateStmtContext *cxt, CreateStmt *stmt, 
-								   PartitionBy *pBy,
-								   char	   *at_depth,
-								   int		partNumber)
+static int
+validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt, 
+						CreateStmt *stmt, PartitionBy *pBy,
+						char *at_depth, int	partNumber)
 {
 	PartitionSpec	*pSpec;
 	char			 namBuf[NAMEDATALEN];
@@ -4520,10 +4452,116 @@ static int validate_partition_spec(ParseState *pstate,
 	return numElts;
 } /* end validate_partition_spec */
 
-static int partition_range_every(ParseState *pstate,
-								 CreateStmtContext *cxt, CreateStmt *stmt, 
-								 PartitionBy *pBy, 	
-								 char	   *at_depth)
+/* 
+ * Get the actual value from the expression. There are only a limited range
+ * of cases we must cover because the parser guarantees constant input.
+ */
+static Datum
+arg_get_val(Node *node)
+{
+	switch (nodeTag(node))
+	{
+		case T_FuncExpr:
+			{
+				/* must have been cast to the operator. */
+				FuncExpr *fe = (FuncExpr *)node;
+				Datum d;
+				Const *c;
+				
+				Assert(list_length(fe->args) == 1);
+				Assert(IsA(linitial(fe->args), Const));
+				
+				c = (Const *)linitial(fe->args);
+				d = OidFunctionCall1(fe->funcid, c->constvalue);
+				return d;
+			}
+			break;
+		case T_Const:
+			return ((Const *)node)->constvalue;
+			break;
+		default:
+			elog(ERROR, "unknown partitioning argument type: %d",
+				 nodeTag(node));
+			break;
+
+	}
+	return 0; /* quieten GCC */
+}
+
+/*
+ * Evaluate a basic operator expression from a partitioning specification.
+ * The expression will only be an op expr but the sides might contain
+ * a coercion function. The underlying value will be a simple constant,
+ * however.
+ *
+ * If restypid is non-NULL and *restypid is set to InvalidOid, we tell the 
+ * caller what the return type of the operator is. If it is anything but 
+ * InvalidOid, coerce the operation's result to that type.
+ */
+static Datum
+eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg, 
+				  Node *rightarg, Oid *restypid)
+{
+	Datum res;
+	Datum lhs;
+	Datum rhs;
+	OpExpr *opexpr;
+	HeapTuple optup;
+	
+	opexpr = (OpExpr *)make_op(pstate, oprname, leftarg, rightarg, 0);
+	optup = SearchSysCache(OPEROID, ObjectIdGetDatum(opexpr->opno),
+						   0, 0, 0);
+
+	if (optup == NULL)	  /* should not fail */
+		elog(ERROR, "cache lookup failed for operator %u", opexpr->opno);
+	opexpr->opfuncid = ((Form_pg_operator)GETSTRUCT(optup))->oprcode;
+
+	ReleaseSysCache(optup);
+
+	/* args to the function must be Const */
+	lhs = arg_get_val((Node *)linitial(opexpr->args));
+	rhs = arg_get_val((Node *)lsecond(opexpr->args));
+	res = OidFunctionCall2(opexpr->opfuncid, lhs, rhs);
+
+	/* If the caller supplied a target result type, coerce if necesssary */
+	if (PointerIsValid(restypid))
+	{
+		if (OidIsValid(*restypid))
+		{
+			if (*restypid != opexpr->opresulttype)
+			{
+				Expr *e;
+				Type typ = typeidType(opexpr->opresulttype);
+				int32 typmod;
+				Const *c;
+	
+				c = makeConst(opexpr->opresulttype, typeLen(typ), res,
+							  false, typeByVal(typ));
+				ReleaseSysCache(typ);
+
+				typ = typeidType(*restypid);
+				typmod = ((Form_pg_type)typ)->typtypmod;
+				ReleaseSysCache(typ);
+
+				e = (Expr *)coerce_to_target_type(NULL, (Node *)c, 
+												  opexpr->opresulttype,
+												  *restypid, typmod,
+												  COERCION_EXPLICIT,
+												  COERCE_IMPLICIT_CAST);
+				Assert(PointerIsValid(e));
+				res = arg_get_val((Node *)e);
+			}
+		}
+		else
+			*restypid = opexpr->opresulttype;
+	}
+	
+	return res;
+}
+
+static int 
+partition_range_every(ParseState *pstate, CreateStmtContext *cxt, 
+					  CreateStmt *stmt, PartitionBy *pBy, char *at_depth)
 {
 	PartitionSpec	*pSpec;
 	char			 namBuf[NAMEDATALEN];
@@ -4541,13 +4579,13 @@ static int partition_range_every(ParseState *pstate,
 
 	lc = list_head(partElts);
 
-	for( ; lc; ) /* foreach */
+	for ( ; lc; ) /* foreach */
 	{
 		PartitionElem		*pElem = (PartitionElem *)lfirst(lc);
 		PartitionBoundSpec	*pBSpec = NULL;
 		int					 numCols  = 0;
 		int					 colCnt   = 0;
-		int					 everyCnt = 0;
+		Const				*everyCnt;
 		PartitionRangeItem	*pRI_Start = NULL;
 		PartitionRangeItem	*pRI_End   = NULL;
 		PartitionRangeItem	*pRI_Every = NULL;
@@ -4601,7 +4639,7 @@ static int partition_range_every(ParseState *pstate,
 					 parser_errposition(pstate, pBSpec->location)));
 		}
 
-		everyCnt = 1;
+		everyCnt = make_const(makeInteger(1));
 
 		pRI_Start = (PartitionRangeItem *)pBSpec->partStart;
 		pRI_End   = (PartitionRangeItem *)pBSpec->partEnd;
@@ -4624,7 +4662,6 @@ static int partition_range_every(ParseState *pstate,
 		for ( ; ; ) /* loop until exceed end */
 		{
 			int sqlRc = 0;
-
 			lc_Start = list_head(pRI_Start->partRangeVal);
 			lc_End   = list_head(pRI_End->partRangeVal);
 			lc_Every = list_head(pRI_Every->partRangeVal);
@@ -4636,72 +4673,107 @@ static int partition_range_every(ParseState *pstate,
 				Node *n1 = lfirst(lc_Start);
 				Node *n2 = lfirst(lc_End);
 				Node *n3 = lfirst(lc_Every);
-				char sqlbuf[999];
-				char outbuf[999];
-				char op1buf[999];
-				char typbuf[999];
-				char op2buf[999];
-				char op3buf[999];
-				char everyNumbuf[999];
-				char *compare_op = (1==colCnt) ? "<" : "<=";
+				char *compare_op = (1 == colCnt) ? "<" : "<=";
+				Node *n1t, *n2t, *n3t;
+				Datum res;
+				Const *c;
+				List *oprmul, *oprplus, *oprcompare;
+				Oid restypid;
+				Type typ;
 
-				typbuf[0] = '\0';
+				oprmul = lappend(NIL, makeString("*"));
+				oprplus = lappend(NIL, makeString("+"));
+				oprcompare = lappend(NIL, makeString(compare_op));
+				
+				n1t = transformExpr(pstate, n1);
+				n2t = transformExpr(pstate, n2);
+				n3t = transformExpr(pstate, n3);
 
-				if (!deparse_partition_rule1(n1, op1buf, sizeof(op1buf),
-											 typbuf, sizeof(typbuf)))
-					return -1;
-				if (!deparse_partition_rule(n2, op2buf, sizeof(op2buf)))
-					return -1;
-				if (!deparse_partition_rule(n3, op3buf, sizeof(op3buf)))
-					return -1;
+				Assert(IsA(n3t, Const));
+				Assert(IsA(n2t, Const));
+				Assert(IsA(n1t, Const));
 
-				/* optional "EveryNum" multiplier (1 if not specified) */
-				if (!pRI_Every->partEveryNum)
-					snprintf(everyNumbuf, sizeof(everyNumbuf), "1");
+				/* formula is n1t + (every_cnt * every_num * n3t) [<|<=] n2t */
+				
+				/* every_cnt * n3t */
+				restypid = InvalidOid;
+				res = eval_basic_opexpr(pstate, oprmul, (Node *)everyCnt, n3t,
+										&restypid);
+				typ = typeidType(restypid);
+				c = makeConst(restypid, typeLen(typ), res, false,
+							  typeByVal(typ));
+				ReleaseSysCache(typ);
+				
+				/* every_num * (every_cnt * n3t) */
+				if (pRI_Every->partEveryNum)
+				{
+					Node *et = transformExpr(pstate, pRI_Every->partEveryNum);
+					
+					restypid = InvalidOid;
+					res = eval_basic_opexpr(pstate, oprmul, (Node *)c,
+											et, &restypid);
+					pfree(c);
+					typ = typeidType(restypid);
+					c = makeConst(restypid, typeLen(typ), res, false,
+								  typeByVal(typ));
+					ReleaseSysCache(typ);
+				}
+				
+				/* 
+				 * n1t + (...) 
+				 * NOTE: order is important because several useful operators,
+				 * like date + interval, only have a built in function when
+				 * the order is this way (the reverse is implemented using
+				 * an SQL function which we cannot evaluate at the moment).
+				 */
+				restypid = exprType(n1t);
+				res = eval_basic_opexpr(pstate, oprplus, n1t, (Node *)c, 
+										&restypid);
+				typ = typeidType(restypid);
+				c = makeConst(restypid, typeLen(typ), res, false,
+							  typeByVal(typ));
+				ReleaseSysCache(typ);
+
+				/* the comparison */
+				restypid = InvalidOid;
+				res = eval_basic_opexpr(pstate, oprcompare, (Node *)c, n2t,
+										&restypid);
+				
+				if (!DatumGetBool(res))
+				{
+					sqlRc = 0;
+					break;
+				}
 				else
 				{
-					if (!deparse_partition_rule(pRI_Every->partEveryNum,
-												everyNumbuf, 
-												sizeof(everyNumbuf)))
+					char outbuf[999];
+					char op3buf[999];
+					char typbuf[999];
+
+					typbuf[0] = '\0';
+
+					if (!deparse_partition_rule(n3, op3buf, sizeof(op3buf)))
 						return -1;
-				}
 
-				/* multiply the "every" factor by the loop iteration
-				 * and "everyNum", and add to start.  See if less than
-				 * end 
-				 */
-				snprintf(sqlbuf, sizeof(sqlbuf), 
-	 "select %s + (%d * %s * %s) as ptcol1 where %s + (%d * %s * %s) %s %s",
-						 op1buf, everyCnt, everyNumbuf, op3buf,
-						 op1buf, everyCnt, everyNumbuf, op3buf,
-						 compare_op,
-						 op2buf);
-
-				sqlRc = partition_sql_test(sqlbuf, outbuf);
-
-				if (!sqlRc)
-					break;
-
-				/* save the column */
-
-				if (strlen(typbuf))
-				{
-					if (strcmp("_STRING_", typbuf) == 0)
+					/* save the column */
+					if (strlen(typbuf))
 					{
-						snprintf(op3buf, sizeof(op3buf), 
-								 "\'%s\'", outbuf);
+						if (strcmp("_STRING_", typbuf) == 0)
+						{
+							snprintf(op3buf, sizeof(op3buf), 
+									 "\'%s\'", outbuf);
+						}
+						else
+						{
+							snprintf(op3buf, sizeof(op3buf), 
+									 "\'%s\'::%s", outbuf, typbuf);
+						}
+						allNewCols = lappend(allNewCols, pstrdup(op3buf));
 					}
 					else
-					{
-						snprintf(op3buf, sizeof(op3buf), 
-								 "\'%s\'::%s", outbuf, typbuf);
-					}
-
-					allNewCols = lappend(allNewCols, pstrdup(op3buf));
+						allNewCols = lappend(allNewCols, pstrdup(outbuf));
+					sqlRc = 1;
 				}
-				else
-					allNewCols = lappend(allNewCols, pstrdup(outbuf));
-			
 				lc_Start = lnext(lc_Start);
 				lc_End   = lnext(lc_End);
 				lc_Every = lnext(lc_Every);
@@ -4721,7 +4793,8 @@ static int partition_range_every(ParseState *pstate,
 			if (!sqlRc)
 				break;
 
-			everyCnt++;
+			/* XXX: we're cheating here! */
+			everyCnt->constvalue++;
 		} /* end loop until exceed end */
 
 	l_EveryLoopEnd:		
@@ -4784,9 +4857,9 @@ We need to move the subpartition specifications to the correct spots.
 
 */
 
-static void transformPartitionBy(ParseState *pstate,
-		   CreateStmtContext *cxt, CreateStmt *stmt, 
-		   Node *partitionBy, GpPolicy *policy)
+static void 
+transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt, 
+					 CreateStmt *stmt, Node *partitionBy, GpPolicy *policy)
 {
 	CreateStmt	*child_tab_stmt;		
 	RangeVar	*child_tab_name;
