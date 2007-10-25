@@ -1,10 +1,64 @@
-<%
-  web.header('Content-Type', 'text/html;charset=utf-8')
+<%!
+import os, sys, urllib, httplib
+
+error = {}
+
+def validate_exists(error, param, key, valueset = None):
+    if key not in param:
+        error[key] = key
+    elif valueset is not None and param[key] not in valueset:
+        error[key] = key
+	   
+
+def param_set_default(param, key, defvalue):
+    if key not in param:
+        param[key] = defvalue
+
 %>
-{ status: "ok", 
-  rset : { 
-  total: 1,
-  offset: 0,
-   result : ["pending"] 
-   }
+
+<%
+def hitMA(cmd, params):
+    params = urllib.urlencode(params)
+    f = None
+    res = ''
+    try:
+        f = httplib.HTTPConnection('%s:%d' % (sctx['ma.host'], sctx['ma.port']))
+        f.request('GET', '%s?%s' % (cmd, params))
+        response = f.getresponse()
+        if response.status == 200:
+            res = response.read()
+    finally:
+        if f: f.close()
+    return res
+  
+%>
+
+<%
+web.header('Content-Type', 'text/html;charset=utf-8')
+
+validate_exists(error, param, 'a')
+param_set_default(param, 'mode', 'immediate')
+validate_exists(error, param, 'mode', ('smart', 'fast', 'immediate'))
+
+%>
+
+% if len(error) > 0:
+{ status: "failure",
+    rset : {
+            total: 1,
+	    offset: 0,
+	    errmsg : { "_" : "missing parameters" }
+    }
 }
+
+% else: 
+
+<%
+params = { 'a' : param['a'], 'mode' : param['mode'] }
+
+response = hitMA('/gpcc/stop', params)
+%>
+${response}
+% endif
+
+
