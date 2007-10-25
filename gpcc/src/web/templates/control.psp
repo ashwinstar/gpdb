@@ -28,16 +28,18 @@ $(function() {
       }
   }
 
-  function status_confirm(json) {
-      alert("check status when start "  + json.status + json.rset.result[0]);
+  function status_response(json) {
       state = json.rset.result[0];
       if (json.status == "ok") {
           if (json.rset.result[0] == "stopping" ||
-              json.rset.result[0] == "starting" ||
-              json.rset.result[0] == "pending") {
-              $.getJSON("/status.psp?a=${sctx['gpdb.name']}", function(json) {
-                  status_confirm(json);
-              });
+              json.rset.result[0] == "starting") {
+
+              setTimeout(function() {
+                 $.getJSON("/status.psp?a=${sctx['gpdb.name']}", function(json) {
+                     status_response(json);
+                 })
+              }, 1000);
+              
               $("#switch").unbind('click', switch_click);           
           } else {
               $("#switch").bind('click', switch_click);           
@@ -47,9 +49,25 @@ $(function() {
   }
 
   $.getJSON("/status.psp?a=${sctx['gpdb.name']}", function(json) {
-       status_confirm(json);
+       status_response(json);
   });
 
+
+  function command_response(json) {
+      if (json.status == "ok") {
+           $("#switch").bind('click', switch_click);
+      } else if (json.status == "pending") {
+           $("#switch").unbind('click', switch_click);
+      } else if (json.status == "failure") {
+           ;
+      }
+
+      setTimeout(function() {
+           $.getJSON("/status.psp?a=${sctx['gpdb.name']}", function(json) {
+                status_response(json);
+           })
+      }, 1000);
+  }
 
   function switch_click() {
      url = '';
@@ -61,7 +79,7 @@ $(function() {
 
      $(this).unbind('click', switch_click);
       $.getJSON(url, function(json) {
-          status_confirm(json);
+          command_response(json);
       })
   }
 
@@ -82,5 +100,5 @@ please click the button to start/stop the database.
 </div>
 <hr>
 <address></address>
-<!-- hhmts start --> Last modified: Thu Oct 25 10:51:19 HKT 2007 <!-- hhmts end -->
+<!-- hhmts start --> Last modified: Thu Oct 25 12:09:48 HKT 2007 <!-- hhmts end -->
 </body> </html>
