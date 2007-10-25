@@ -166,7 +166,7 @@ bool		gp_enable_preunique = TRUE;
 bool		gp_eager_preunique = FALSE;
 double		gp_hashagg_rewrite_limit = 1;
 bool		gp_hashagg_recalc_density = true;
-bool 		gp_hashagg_streambottom = false;
+bool 		gp_hashagg_streambottom = true;
 
 bool		gp_enable_motion_deadlock_sanity = FALSE; /* planning time sanity check */
 bool		gp_adjust_selectivity_for_outerjoins = TRUE;
