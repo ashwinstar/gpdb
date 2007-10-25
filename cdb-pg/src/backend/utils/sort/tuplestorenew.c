@@ -160,9 +160,8 @@ struct NTupleStore
 	BufFile *plobfile;  /* underlying backed file for lobs (entries does not fit one page) */
 	long     lobbytes;  /* number of bytes written to lob file */
 
-	/* some stats, which are not restictly required */
-	int racc_cnt;   
-	int wacc_cnt;
+	List *accessors;    /* all current accessors of the store */
+	bool fwacc; 		/* if I had already has a write acc */
 
 	/* instrumentation for explain analyze */
 	Instrumentation *instrument;
@@ -663,13 +662,23 @@ static void ntuplestore_cleanup(NTupleStore *ts, bool fNormal)
 
 #ifdef DEBUG
 	verify_ts_page_list(ts);
+#endif
 
+	/* normal case: for each accessor, we mark it has no owning store.
+     * This do not need to, actually, cannot be called in error out case,
+	 * because the memory context of ts->accessor has already been 
+	 * cleaned up
+	 */
 	if(fNormal)
 	{
-		Assert(ts->racc_cnt == 0 || !"NTupleStore leaking a read accessor");
-		Assert(ts->wacc_cnt == 0 || !"NTupleStore leaking a write accessor");
+		ListCell *cell;
+		foreach(cell, ts->accessors)
+		{
+			NTupleStoreAccessor *acc = (NTupleStoreAccessor *) lfirst(cell);
+			acc->store = NULL;
+			acc->page = NULL;
+		}
 	}
-#endif
 
 	while(p)
 	{
@@ -735,8 +744,8 @@ extern NTupleStore *ntuplestore_create(int maxBytes)
 	store->first_free_page = NULL;
 
 	store->rwflag = NTS_NOT_READERWRITER;
-	store->racc_cnt = 0;
-	store->wacc_cnt = 0;
+	store->accessors = NULL;
+	store->fwacc = false;
 
 	store->instrument = NULL;
 
@@ -798,8 +807,8 @@ extern NTupleStore *ntuplestore_create_readerwriter(const char *filename, int ma
 		store->last_page = NULL;
 		store->first_free_page = NULL;
 
-		store->racc_cnt = 0;
-		store->wacc_cnt = 0;
+		store->accessors = NULL;
+		store->fwacc = false;
 
 		store->instrument = NULL;
 		RegisterXactCallbackOnce(XCallBack_NTS, (void *) store);
@@ -811,7 +820,8 @@ extern void ntuplestore_reset(NTupleStore *ts)
 {
 	NTupleStorePage *p = ts->first_page;
 
-	Assert(ts->wacc_cnt == 0 && ts->racc_cnt == 0);
+	Assert(list_length(ts->accessors) == 0); 
+	Assert(!ts->fwacc);
 	Assert(ts->rwflag == NTS_NOT_READERWRITER || !"Reset NYI for reader writer");
 
 	while(p)
@@ -889,37 +899,37 @@ extern NTupleStoreAccessor* ntuplestore_create_accessor(NTupleStore *ts, bool is
 
 	ntuplestore_acc_seek_first(acc);
 
-	if(isWriter) 
-	{
-		Assert(ts->rwflag != NTS_IS_READER);
-		Assert(ts->wacc_cnt == 0);
-		++ts->wacc_cnt;
-	}
-	else
-		++ts->racc_cnt;
+	ts->accessors = lappend(ts->accessors, acc);
+
+	AssertImply(isWriter, ts->rwflag != NTS_IS_READER);
+	AssertImply(isWriter, !ts->fwacc);
+	if(isWriter)
+		ts->fwacc = true;
 
 	return acc;
 }
 	
 void ntuplestore_destroy_accessor(NTupleStoreAccessor *acc)
 {
-	Assert(acc->store);
-
-	if(acc->isWriter)
+	if(!acc->store)
 	{
-		Assert(acc->store->wacc_cnt == 1);
-		--acc->store->wacc_cnt;
+		Assert(!acc->page);
+		pfree(acc);
 	}
 	else
 	{
-		Assert(acc->store->racc_cnt > 0);
-		--acc->store->racc_cnt;
+		if(acc->isWriter)
+		{
+			Assert(acc->store->fwacc);
+			acc->store->fwacc = false;
+		}
+
+		if(acc->page)
+			nts_unpin_page(acc->store, acc->page);
+
+		acc->store->accessors = list_delete_ptr(acc->store->accessors, acc);
+		pfree(acc);
 	}
-
-	if(acc->page)
-		nts_unpin_page(acc->store, acc->page);
-
-	pfree(acc);
 }
 
 static long ntuplestore_put_lob(NTupleStore *nts, char* data, NTupleStoreLobRef *lobref)
