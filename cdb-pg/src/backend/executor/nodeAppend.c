@@ -320,7 +320,7 @@ ExecEndAppend(AppendState *node)
 	/*
 	 * shut down each of the subscans (that we've initialized)
 	 */
-	for (i = 0; i < nplans; i++)
+	for (i = nplans-1; i >= 0; --i) 
 	{
 		if (appendplans[i])
 			ExecEndNode(appendplans[i]);
