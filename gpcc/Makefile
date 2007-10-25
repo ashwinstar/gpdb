@@ -49,7 +49,7 @@ mkfts:
 #		-c *.c)
 
 mkdir:
-	@mkdir -p src/build/lib src/build/include
+	@mkdir -p src/build/lib src/build/include build/bin
 
 mklibgpcc: mkdir
 	@echo --- libgpcc --------------------------------------------------
