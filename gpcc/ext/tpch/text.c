@@ -4,6 +4,9 @@
 * Revision History
 * ===================
 * $Log: text.c,v $
+* Revision 1.2  2007/10/25 05:44:25  cktan
+* more cleanup
+*
 * Revision 1.1  2007/10/24 20:25:23  cktan
 * new
 *
@@ -302,9 +305,6 @@ dbg_text(char *tgt, int min, int max, int sd)
    static int bInit = 0;
    int nLifeNoise = 0;
 
-   if (verbose <= 0)
-       return;
-   
    if (!bInit)
    {
       cp = &szTextPool[0];
