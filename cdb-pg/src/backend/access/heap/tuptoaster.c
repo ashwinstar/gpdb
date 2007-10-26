@@ -679,7 +679,6 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup)
 		toast_values[i] = toast_save_datum(rel, toast_values[i]);
 		if (toast_free[i])
 			pfree(DatumGetPointer(old_value));
-
 		toast_free[i] = true;
 
 		need_change = true;
