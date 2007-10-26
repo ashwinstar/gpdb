@@ -4,6 +4,9 @@
 * Revision History
 * ===================
 * $Log: print.c,v $
+* Revision 1.2  2007/10/25 05:44:25  cktan
+* more cleanup
+*
 * Revision 1.1  2007/10/24 20:25:23  cktan
 * new
 *
@@ -68,8 +71,8 @@ FILE *
 print_prep(int table, int update)
 {
 	char upath[128];
-	FILE *res;
-
+	FILE *res = stdout;
+#if 0
 	if (updates)
 		{
 		if (update > 0) /* updates */
@@ -107,6 +110,9 @@ print_prep(int table, int update)
         }
     res = tbl_open(table, "w");
     OPEN_CHECK(res, tdefs[table].name);
+
+#endif
+
     return(res);
 }
 
