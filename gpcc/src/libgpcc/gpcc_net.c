@@ -344,11 +344,11 @@ static void conn_setup_event(gpcc_net_conn_t conn)
 
     if (out->bot != out->top) {
 	flag |= EV_WRITE;
-	TPR(("setup EV_WRITE %d bytes", out->top - out->bot));
+	TPR(("setup EV_WRITE %d bytes\n", out->top - out->bot));
     }
     if (in->top - in->bot != sizeof(in->byte) && !pconn->flush_and_close) {
 	flag |= EV_READ;
-	TPR(("setup EV_READ %d bytes", in->top - in->bot));
+	TPR(("setup EV_READ %d bytes\n", in->top - in->bot));
     }
     if (0 != (flag & EV_READ) && !pconn->to_peer.hdr && !pconn->from_peer.hdr)
 	ptm = &pconn->tm;
@@ -496,12 +496,13 @@ static void conn_fire_read(gpcc_net_conn_t conn)
 	    int e = gpcc_net_parse_packet(&pkt, byte + bot, &n);
 	    spin = gpcc_spin_release(spin);
 	    if (e) {
-		gpcc_warning(FLINE, "bad packet - closing connection");
+		gpcc_warning(FLINE, "bad packet - closing connection buffer left = %d", top-bot);
 		zap(pconn, conn);
 		return;
 	    }
 	    if (!pkt) 		/* no packet yet */
 		return;
+	    TPR(("PACKET READ = %d\n", n));
 	    net.received_packet(conn, pkt, pconn->arg);
 
 	    free(pkt);
@@ -554,7 +555,7 @@ static void do_ready(int fd, short event, void* arg)
     if (0 != (event & EV_READ)) {
 	buf_t* in = pconn->from_peer.buf;
 
-	TPR(("do_ready EV_READ"));
+	TPR(("do_ready EV_READ\n"));
 	if (in->top == in->bot) 
 	    in->top = in->bot = 0;
 	else if (in->top == sizeof(in->byte) && in->bot != 0) {
@@ -578,7 +579,7 @@ static void do_ready(int fd, short event, void* arg)
 	    }
 	    else if (n > 0) {
 		in->top += n;
-		TPR(("recv fd=%d, %d byte", fd, n));
+		TPR(("recv fd=%d, %d byte\n", fd, n));
 	    }
 	}
     }
@@ -586,7 +587,7 @@ static void do_ready(int fd, short event, void* arg)
 	buf_t* out = pconn->to_peer.buf;
 	int    nb  = out->top - out->bot;
 
-	TPR(("do_ready EV_WRITE"))
+	TPR(("do_ready EV_WRITE\n"));
 	if (nb > 0) {
 	    const int n = send(fd, out->byte + out->bot, nb, 0);
 	    if (n == 0) {
@@ -604,7 +605,7 @@ static void do_ready(int fd, short event, void* arg)
 		    apr_thread_cond_broadcast(net.wait.notfull);
 		}
 		out->bot += n;
-		TPR(("send fd=%d, %d byte", fd, n));
+		TPR(("send fd=%d, %d byte\n", fd, n));
 	    }
 	}
 	if (pconn->flush_and_close) {
@@ -874,8 +875,8 @@ apr_status_t gpcc_net_sendv(gpcc_net_conn_t conn,
 	const int n = buf->top - buf->bot;
 	if (n < 0) 
 	    gpcc_fatal(FLINE, "internal error: top %d, bot %d", buf->top, buf->bot);
-	else if (n > 0) 
-	    memmove(buf->byte + buf->bot, buf->byte, n);
+	else if (n > 0)
+	    memmove(buf->byte, buf->byte + buf->bot, n);
 	buf->bot = 0, buf->top = n;
     }
     avail = max - (buf->top - buf->bot);
@@ -1422,7 +1423,7 @@ apr_status_t gpcc_net_parse_packet(gpcc_net_packet_t** packet, const char* buf, 
     p += sizeof(pkt.mh);
 
     if (pkt.mh._reserved != GPCC_NET_PACKET_MAGIC)  {
-	gpcc_warning(FLINE, "gpcc_net_parse_packet: bad magic number in packet");
+	gpcc_warning(FLINE, "gpcc_net_parse_packet: bad magic number in packet (%x != %x)", pkt.mh._reserved, GPCC_NET_PACKET_MAGIC);
 	return APR_EINVAL;
     }
     if (q - p < pkt.mh.len) {
@@ -1463,6 +1464,8 @@ apr_status_t gpcc_net_send_packet(gpcc_net_conn_t conn, int type,
     datum[0].len = sizeof(pkt.mh);
     datum[1].ptr = buf;
     datum[1].len = len;
+
+    TPR(("PACKET_SEND %d\n", datum[0].len + datum[1].len));
     return gpcc_net_sendv(conn, datum, 2);
 }
 
