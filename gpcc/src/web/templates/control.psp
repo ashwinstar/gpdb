@@ -31,13 +31,21 @@ $(function() {
 
   function switch_label() {
       if (state == "stopped") {
+          $("#status").text("Database stopped.");
           $("#switch").text("start");
+	  $("#switch_click_msg").show();
       } else if (state == "running") {
+          $("#status").text("Database is running.");
           $("#switch").text("stop");
+	  $("#switch_click_msg").show();
       } else if (state == "stopping") {
-          $("#switch").text("stopping");          
+          $("#status").text("Database is stopping.  Please wait.");
+          $("#switch").text("stop");          
+	  $("#switch_click_msg").hide();
       } else if (state == "starting") {
-          $("#switch").text("starting");          
+          $("#status").text("Database is starting.  Please wait.");
+          $("#switch").text("start");          
+	  $("#switch_click_msg").hide();
       } else if (state == "pending") {
           $("#switch").text("pending");
       }
@@ -168,7 +176,10 @@ $(function() {
 
 <div id="clear">&nbsp;</div>
 
-            <p style="margin-top: 0pt;">Click to <a id="switch" href="">start</a> the database.</p>
+
+            <p style="margin-top: 0pt;">
+            <span id="status">Database stopped.  </span>
+	    <span id="switch_click_msg">Click to <a id="switch" href="">start</a> the database.<span></p>
 
 
             <p>&nbsp;</p>
