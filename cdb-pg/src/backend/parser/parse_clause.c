@@ -2674,6 +2674,10 @@ targetIsInSortGroupList(TargetEntry *tle, List *sortgroupList)
 	{
 		Node *node = (Node *) lfirst(l);
 
+		/* Skip the empty grouping set */
+		if (node == NULL)
+			continue;
+
 		if (IsA(node, GroupClause) || IsA(node, SortClause))
 		{
 			GroupClause *gc = (GroupClause*) node;
