@@ -164,7 +164,8 @@ $(function() {
          <table cellspacing="0" cellpadding="4" border="0">
     <tbody>
         <tr valign="top">
-            <td width="435"><div id="gpNav"><a href="/index.php?page=greenplum-database"><img alt="" src="/images/features-but-sel.gif" /></a>                          <a href="/index.php?page=greenplum-db-specifications"><img alt="" src="/images/specs-but.gif" />                          </a><a href="/index.php?page=greenplum-db-faqs"><img alt="" src="/images/faqs-but.gif" /></a>                          <a href="/index.php?page=greenplum-db-support"><img alt="" src="/images/support-but.gif" /></a>                          <a href="/index.php?page=next-steps"><img alt="" src="/images/purchase-but.gif" /></a></div>
+            <td width="435">
+
 <div id="clear">&nbsp;</div>
 
             <p style="margin-top: 0pt;">Click to <a id="switch" href="">start</a> the database.</p>
