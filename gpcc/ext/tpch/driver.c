@@ -4,6 +4,9 @@
 * Revision History
 * ===================
 * $Log: driver.c,v $
+* Revision 1.3  2007/10/25 05:44:25  cktan
+* more cleanup
+*
 * Revision 1.2  2007/10/24 21:22:38  cktan
 * make dbgen only, no direct load
 *
@@ -638,14 +641,9 @@ process_options (int count, char **vector)
 
 	
 	while ((option = getopt (count, vector,
-		"b:C:Dd:Ffi:hn:O:P:pqr:s:S:T:U:vw:x:y:")) != -1)
+		"d:i:hO:P:pqr:s:S:T:U:vw:x:y:")) != -1)
 	switch (option)
 		{
-		case 'b':				/* load distributions from named file */
-			d_path = (char *)malloc(strlen(optarg) + 1);
-			MALLOC_CHECK(d_path);
-			strcpy(d_path, optarg);
-			break;
 		case 'q':				/* all prompts disabled */
 			verbose = -1;
 			break;
@@ -660,9 +658,6 @@ process_options (int count, char **vector)
 		  break;
 	  case 'v':				/* life noises enabled */
 		  verbose = 1;
-		  break;
-	  case 'f':				/* blind overwrites; Force */
-		  force = 1;
 		  break;
 	  case 'T':				/* generate a specifc table */
 		  switch (*optarg)
@@ -769,27 +764,11 @@ process_options (int count, char **vector)
 				  exit (1);
 			  }
 			  break;
-			  case 'D':				/* direct load of generated data */
-				  direct = 1;
-				  break;
-			  case 'F':				/* generate flat files for later loading */
-				  direct = 0;
-				  break;
 			  case 'U':				/* generate flat files for update stream */
 				  updates = atoi (optarg);
 				  break;
 			  case 'r':				/* set the refresh (update) percentage */
 				  refresh = atoi (optarg);
-				  break;
-#ifndef DOS
-			  case 'C':
-				  children = atoi (optarg);
-				  break;
-#endif /* !DOS */
-			  case 'n':				/* set name of database for direct load */
-				  db_name = (char *) malloc (strlen (optarg) + 1);
-				  MALLOC_CHECK (db_name);
-				  strcpy (db_name, optarg);
 				  break;
 			  case 'w':
 				  schema_name = (char *) malloc (strlen(optarg)+1);
