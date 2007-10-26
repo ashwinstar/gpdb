@@ -872,6 +872,111 @@ ExecAgg(AggState *node)
 }
 
 /*
+ * get_repeat_slot -- return the tuple slot that needs to be returned
+ * multiple times with a decreasing GROUP_ID value.
+ *
+ * Return NULL if the GROUP_ID is less than 0.
+ */
+static TupleTableSlot *
+get_repeat_slot(AggState *aggstate)
+{
+	Agg		   *node = (Agg *) aggstate->ss.ps.plan;
+	bool        input_has_grouping = node->inputHasGrouping;
+	bool        is_final_rollup_agg =
+		(node->lastAgg ||
+		 (input_has_grouping && node->numNullCols == 0));
+	ExprContext *econtext;
+	ExprContext *tmpcontext;
+	ProjectionInfo *projInfo;
+
+	econtext = aggstate->ss.ps.ps_ExprContext;
+	tmpcontext = aggstate->tmpcontext;
+	projInfo = aggstate->ss.ps.ps_ProjInfo;
+
+	/*
+	 * We can not clear/reset the per-output tuple memory context here,
+	 * because we still need aggregate values stored in econtext to verify
+	 * the qual. However, if we don't reset the per-output tuple memory
+	 * context, when group_id is very large, we are likely to run out of
+	 * memory (see MPP-1995, MPP-2118). The compromise here is that we
+	 * only reset econtext when group_id is large (>1000). However, to
+	 * be able to do that, we make a copy of aggregate values from econtext
+	 * before resetting it, and then copy them back to econtext after
+	 * that. This would definitely slow down the performance, but this
+	 * case should be fairly rare.
+	 */
+	if (aggstate->num_repeats > 1000)
+	{
+		/*
+		 * Make a copy for all aggregate values.Use per-input tuple
+		 * memory context.
+		 */
+		Datum *aggvalues;
+		bool *aggnulls;
+		MemoryContext old_ctx;
+		int aggno;
+
+		ResetExprContext(tmpcontext);
+		old_ctx = MemoryContextSwitchTo(tmpcontext->ecxt_per_tuple_memory);
+		
+		aggvalues = (Datum *) palloc0(sizeof(Datum) * aggstate->numaggs);;
+		aggnulls = (bool *) palloc0(sizeof(bool) * aggstate->numaggs);
+
+		for (aggno=0; aggno<aggstate->numaggs; aggno++)
+		{
+			AggStatePerAgg peraggstate = &aggstate->peragg[aggno];
+			aggvalues[aggno] = datumCopy(econtext->ecxt_aggvalues[aggno],
+										 peraggstate->resulttypeByVal,
+										 peraggstate->resulttypeLen);
+			aggnulls[aggno] = econtext->ecxt_aggnulls[aggno];
+		}
+
+		MemoryContextSwitchTo(old_ctx);
+		
+		/* Reset the per-output tuple memory context */
+		ResetExprContext(econtext);
+
+		/* Copy aggregate values back. */
+		old_ctx = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
+		for (aggno=0; aggno<aggstate->numaggs; aggno++)
+		{
+			AggStatePerAgg peraggstate = &aggstate->peragg[aggno];
+			econtext->ecxt_aggvalues[aggno] = datumCopy(aggvalues[aggno],
+														peraggstate->resulttypeByVal,
+														peraggstate->resulttypeLen);
+			econtext->ecxt_aggnulls[aggno] = aggnulls[aggno];
+		}
+		
+		MemoryContextSwitchTo(old_ctx);
+
+		pfree(aggvalues);
+		pfree(aggnulls);
+	}
+	
+	econtext->ecxt_scantuple = aggstate->prev_aggslot;
+	econtext->group_id = aggstate->num_repeats;
+
+	/* Get grouping from the input tuple or the Agg node. */
+	if (is_final_rollup_agg)
+		econtext->grouping =
+			get_grouping(econtext->ecxt_scantuple,
+						 node->grpColIdx[node->numCols-node->numNullCols-1]);
+	else
+		econtext->grouping = node->grouping;
+	
+	while (econtext->group_id > 0)
+	{
+		econtext->group_id--;
+		aggstate->num_repeats--;
+		
+		if (ExecQual(aggstate->ss.ps.qual, econtext, false))
+			return ExecProject(projInfo, NULL);
+	}
+	
+	return NULL;
+}
+
+/*
  * ExecAgg for non-hashed case
  */
 static TupleTableSlot *
@@ -925,33 +1030,9 @@ agg_retrieve_direct(AggState *aggstate)
 	 */
 	if (aggstate->num_repeats > 0)
 	{
-		/* clear the per-output tuple memory context. */
-		ResetExprContext(econtext);
-		
-		/*
-		 * XXX We do the projection here again. It may be cheaper to simply
-		 * update the GROUP_ID column, but it seems that it is so much easier
-		 * to just do the projection again.
-		 */
-		econtext->ecxt_scantuple = aggstate->prev_aggslot;
-		econtext->group_id = aggstate->num_repeats;
-
-		/* Get grouping from the input tuple or the Agg node. */
-		if (is_final_rollup_agg)
-			econtext->grouping =
-				get_grouping(econtext->ecxt_scantuple,
-							 node->grpColIdx[node->numCols-node->numNullCols-1]);
-		else
-			econtext->grouping = node->grouping;
-
-		while (econtext->group_id > 0)
-		{
-			econtext->group_id--;
-			aggstate->num_repeats--;
-
-			if (ExecQual(aggstate->ss.ps.qual, econtext, false))
-				return ExecProject(projInfo, NULL);
-		}
+		TupleTableSlot *slot = get_repeat_slot(aggstate);
+		if (slot != NULL)
+			return slot;
 	}
 
 	/* Do not need to release the space since this is just a pointer
