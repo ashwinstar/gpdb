@@ -598,8 +598,10 @@ ResLockPortal(Portal portal, Plan *plan)
 		 */
 		if(takeLock)
 		{
+#ifdef RESLOCK_DEBUG
 			elog(DEBUG1, "acquire resource lock for queue %u (portal %u)", 
 				 queueid, portal->portalId);
+#endif
 			SET_LOCKTAG_RESOURCE_QUEUE(tag, queueid);
 			lockResult = ResLockAcquire(&tag, &incData);
 
@@ -609,8 +611,10 @@ ResLockPortal(Portal portal, Plan *plan)
 			 */
 			if (lockResult == LOCKACQUIRE_NOT_AVAIL)
 			{
+#ifdef RESLOCK_DEBUG
 				elog(DEBUG1, "cancel resource lock for queue %u (portal %u)", 
 					 queueid, portal->portalId);
+#endif
 				/* 
 				 * Reset portalId and queueid for this portal so the queue
 				 * and increment accounting tests continue to work properly.
@@ -649,8 +653,10 @@ ResUnLockPortal(Portal portal)
 	 */
 	if (queueid != InvalidOid)
 	{
+#ifdef RESLOCK_DEBUG
 		elog(DEBUG1, "release resource lock for queue %u (portal %u)", 
 				 queueid, portal->portalId);
+#endif
 		SET_LOCKTAG_RESOURCE_QUEUE(tag, queueid);
 
 

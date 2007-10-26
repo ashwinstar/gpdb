@@ -261,6 +261,15 @@ Views:
 
 -----------------------------------------------------------------------------
 
+Debugging Code
+--------------
+
+There are a number of (hopefully) helpful elog messages at the DEBUG1 level -
+however the symbol RESLOCK_DEBUG must be defined before they are enabled 
+(usually done in src/include/pg_config_manual.h)
+
+-----------------------------------------------------------------------------
+
 Notes
 -----
 

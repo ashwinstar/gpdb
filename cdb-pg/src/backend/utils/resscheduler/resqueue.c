@@ -626,8 +626,10 @@ ResLockCheckLimit(LOCK *lock, PROCLOCK *proclock,
 					limits[i].threshold_value)
 					over_limit = true;
 
+#ifdef RESLOCK_DEBUG
 				elog(DEBUG1, "checking count limit threshold %.0f current %.0f",
 					 limits[i].threshold_value, limits[i].current_value);
+#endif
 			}
 			break;
 
@@ -671,8 +673,10 @@ ResLockCheckLimit(LOCK *lock, PROCLOCK *proclock,
 						over_limit = true;
 				}
 
+#ifdef RESLOCK_DEBUG
 				elog(DEBUG1, "checking cost limit threshold %.2f current %.2f",
 					 limits[i].threshold_value, limits[i].current_value);
+#endif
 			}
 			break;
 
@@ -743,8 +747,10 @@ ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock,
 				}
 				limits[i].current_value += increment_amt;
 				Assert((limits[i].current_value <= limits[i].threshold_value));
+#ifdef RESLOCK_DEBUG
 				elog(DEBUG1, "setting count limit threshold %.0f current %.0f",
 					 limits[i].threshold_value, limits[i].current_value);
+#endif
 			}
 			break;
 
@@ -768,8 +774,10 @@ ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock,
 						((increment_amt - limits[i].current_value < 0.1)
 						&& queue->overcommit));
 
+#ifdef RESLOCK_DEBUG
 				elog(DEBUG1, "setting cost limit threshold %.2f current %.2f",
 					 limits[i].threshold_value, limits[i].current_value);
+#endif
 			}
 			break;
 
@@ -1427,7 +1435,9 @@ ResQueueHashTableInit(void)
 	info.hash = tag_hash;
 	hash_flags = (HASH_ELEM | HASH_FUNCTION);
 
+#ifdef RESLOCK_DEBUG
 	elog(DEBUG1, "Creating hash table for %d queues", MaxResourceQueues);
+#endif
 	ResQueueHash = ShmemInitHash("Queue Hash",
 								 MaxResourceQueues,
 								 MaxResourceQueues,
