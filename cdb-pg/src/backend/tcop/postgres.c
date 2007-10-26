@@ -5575,6 +5575,10 @@ ResetUsage(void)
 	/* ResetTupleCount(); */
 }
 
+#ifdef  pg_on_solaris
+#include <procfs.h>
+#endif 
+
 void
 ShowUsage(const char *title)
 {
@@ -5604,6 +5608,38 @@ ShowUsage(const char *title)
 		r.ru_stime.tv_sec--;
 		r.ru_stime.tv_usec += 1000000;
 	}
+	
+#ifdef  pg_on_solaris
+	{
+	        char pathname[100];
+	        int fd;
+	        psinfo_t psinfo;
+	        psinfo_t *psi = &psinfo;
+
+	        (void) sprintf(pathname, "/proc/%d/psinfo", (int)getpid());
+	        if ((fd = open(pathname, O_RDONLY)) >= 0)
+	        {
+		        if (read(fd, &psinfo, sizeof (psinfo)) == sizeof (psinfo))
+		        {
+		        	 uint_t value;	/* need 32 bits to compute with */
+		          
+		               elog(LOG,"Process size:.................%ld KB", psi->pr_size);
+		               elog(LOG,"Resident Set Size:.........%ld KB", psi->pr_rssize);
+		               
+		                value = psi->pr_pctmem;
+		                value = ((value * 1000) + 0x7000) >> 15;	/* [0 .. 1000] */
+		                elog(LOG,"Percent of memory:......%3u.%u%%", value / 10, value % 10);
+		                
+		        }
+           }
+
+           (void) close(fd);
+        
+   }
+
+
+	
+#endif 
 
 	/*
 	 * the only stats we don't show here are for memory usage -- i can't
