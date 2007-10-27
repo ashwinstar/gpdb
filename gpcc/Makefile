@@ -110,7 +110,9 @@ mkext: mkdir
 	@(cd ext/apu; $(MAKE) all install >> out)
 
 	@echo     -- dbgen
-	@(cd ext/tpch; $(MAKE) >> out && cp dbgen ../../build/bin/)
+	@(cd ext/tpch; $(MAKE) >> out)
+	@(cd ext/tpch; cp dbgen ../../build/bin/)
+	@(cd ext/tpch; cp dists.dss ../../build/bin/)
 
 veryclean: clean
 	(cd ext; rm -rf apr apr-1.2.8 apu apr-util-1.2.8 json json-c-0.6 libevent libevent-1.3b-1)
