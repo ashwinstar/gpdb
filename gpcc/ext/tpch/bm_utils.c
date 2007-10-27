@@ -4,6 +4,9 @@
 * Revision History
 * ===================
 * $Log: bm_utils.c,v $
+* Revision 1.2  2007/10/25 05:44:24  cktan
+* more cleanup
+*
 * Revision 1.1  2007/10/24 20:25:23  cktan
 * new
 *
@@ -311,7 +314,7 @@ long      weight,
          count = 0,
          name_set = 0;
 
-    if (d_path == NULL)
+    if (o_d_path == NULL)
 		{
 		sprintf(line, "%s%c%s", 
 			env_config(CONFIG_TAG, CONFIG_DFLT), PATH_SEP, path);
@@ -320,8 +323,8 @@ long      weight,
 		}
 	else
 		{
-		fp = fopen(d_path, "r");
-		OPEN_CHECK(fp, d_path);
+		fp = fopen(o_d_path, "r");
+		OPEN_CHECK(fp, o_d_path);
 		}
     while (fgets(line, sizeof(line), fp) != NULL)
         {
@@ -384,53 +387,6 @@ long      weight,
     return;
 }
 
-/*
- * standard file open with life noise
- */
-
-FILE     *
-tbl_open(int tbl, char *mode)
-{
-    char      prompt[256];
-    char      fullpath[256];
-    FILE     *f;
-    struct stat fstats;
-    int      retcode;
-
-
-    if (*tdefs[tbl].name == PATH_SEP)
-	strcpy(fullpath, tdefs[tbl].name);
-    else
-        sprintf(fullpath, "%s%c%s",
-            env_config(PATH_TAG, PATH_DFLT), PATH_SEP, tdefs[tbl].name);
-
-    retcode = stat(fullpath, &fstats);
-    if (retcode && (errno != ENOENT))
-        {
-        fprintf(stderr, "stat(%s) failed.\n", fullpath);
-        exit(-1);
-        }
-    if (S_ISREG(fstats.st_mode) && !force && *mode != 'r' )
-        {
-        sprintf(prompt, "Do you want to overwrite %s ?", fullpath);
-        if (!yes_no(prompt))
-            exit(0);
-        }
-
-    if (S_ISFIFO(fstats.st_mode))
-        {
-        retcode =
-            open(fullpath, ((*mode == 'r')?O_RDONLY:O_WRONLY)|O_CREAT);
-        f = fdopen(retcode, mode);
-        }
-    else
-        f = fopen(fullpath, mode);
-    OPEN_CHECK(f, fullpath);
-    if (header && columnar && tdefs[tbl].header != NULL)
-        tdefs[tbl].header(f);
-
-    return (f);
-}
 
 
 /*

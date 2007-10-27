@@ -4,6 +4,9 @@
 * Revision History
 * ===================
 * $Log: speed_seed.c,v $
+* Revision 1.1  2007/10/24 20:25:23  cktan
+* new
+*
 * Revision 1.2  2007/04/07 08:10:40  cmcdevitt
 * Fixes for dbgen with large scale factors
 *
@@ -116,7 +119,7 @@ void NthElement (DSS_HUGE N, DSS_HUGE *StartSeed)
    static int ln=-1;
    int i;
 
-   if ((verbose > 0) && ++ln % 1000 == 0)
+   if ((o_verbose > 0) && ++ln % 1000 == 0)
        {
        i = ln % LN_CNT;
        fprintf(stderr, "%c\b", lnoise[i]);
@@ -178,7 +181,7 @@ sd_line(int child, DSS_HUGE skip_count)
 	for (j=0; j < O_LCNT_MAX; j++)
 	{
 		for (i=L_QTY_SD; i<= L_RFLG_SD; i++)
-			if (scale >= 30000 && i == L_PKEY_SD)
+			if (o_scale >= 30000 && i == L_PKEY_SD)
 				ADVANCE_STREAM64(i, skip_count);
 			else
 				ADVANCE_STREAM(i, skip_count);
@@ -199,7 +202,7 @@ long
 sd_order(int child, DSS_HUGE skip_count)        
 {
 	ADVANCE_STREAM(O_LCNT_SD, skip_count);
-	if (scale >= 30000)
+	if (o_scale >= 30000)
 		ADVANCE_STREAM64(O_CKEY_SD, skip_count);
 	else
 		ADVANCE_STREAM(O_CKEY_SD, skip_count);

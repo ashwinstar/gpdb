@@ -4,6 +4,9 @@
 * Revision History
 * ===================
 * $Log: build.c,v $
+* Revision 1.2  2007/10/25 05:44:25  cktan
+* more cleanup
+*
 * Revision 1.1  2007/10/24 20:25:23  cktan
 * new
 *
@@ -78,7 +81,7 @@ extern adhoc_t adhocs[];
 #define JDAY(date) ((date) - STARTDATE + JDAY_BASE + 1)
 #define PART_SUPP_BRIDGE(tgt, p, s) \
     { \
-    DSS_HUGE tot_scnt = tdefs[SUPP].base * scale; \
+    DSS_HUGE tot_scnt = tdefs[SUPP].base * o_scale; \
     tgt = (p + s *  (tot_scnt / SUPP_PER_PART +  \
 	(long) ((p - 1) / tot_scnt))) % tot_scnt + 1; \
     }
@@ -199,10 +202,10 @@ mk_order(DSS_HUGE index, order_t *o, long upd_num)
 	if (asc_date == NULL)
         asc_date = mk_ascdate();
 	mk_sparse (index, &o->okey,
-		(upd_num == 0) ? 0 : 1 + upd_num / (10000 / refresh));
+		(upd_num == 0) ? 0 : 1 + upd_num / (10000 / o_refresh));
 
 
-   if (scale >= 30000 || O_CKEY_MAX >= 2147483647)
+   if (o_scale >= 30000 || O_CKEY_MAX >= 2147483647)
 		RANDOM64(o->custkey, O_CKEY_MIN, O_CKEY_MAX, O_CKEY_SD);
 	else
 		RANDOM(o->custkey, O_CKEY_MIN, O_CKEY_MAX, O_CKEY_SD);
@@ -218,7 +221,7 @@ mk_order(DSS_HUGE index, order_t *o, long upd_num)
     strcpy(o->odate, asc_date[tmp_date - STARTDATE]);
 	
     pick_str(&o_priority_set, O_PRIO_SD, o->opriority);
-	RANDOM(clk_num, 1, MAX((scale * O_CLRK_SCL), O_CLRK_SCL), O_CLRK_SD);
+	RANDOM(clk_num, 1, MAX((o_scale * O_CLRK_SCL), O_CLRK_SCL), O_CLRK_SD);
     sprintf(o->clerk, szFormat, O_CLRK_TAG, clk_num);
     TEXT(O_CMNT_LEN, O_CMNT_SD, o->comment);
 	o->clen = strlen(o->comment);
@@ -243,7 +246,7 @@ mk_order(DSS_HUGE index, order_t *o, long upd_num)
         pick_str(&l_smode_set, L_SMODE_SD, o->l[lcnt].shipmode);
         TEXT(L_CMNT_LEN, L_CMNT_SD, o->l[lcnt].comment);
 		o->l[lcnt].clen = strlen(o->l[lcnt].comment);
-    if (scale >= 10000 || L_PKEY_MAX > 2147483647)
+    if (o_scale >= 10000 || L_PKEY_MAX > 2147483647)
         RANDOM64(o->l[lcnt].partkey, L_PKEY_MIN, L_PKEY_MAX, L_PKEY_SD);
 	else
         RANDOM(o->l[lcnt].partkey, L_PKEY_MIN, L_PKEY_MAX, L_PKEY_SD);

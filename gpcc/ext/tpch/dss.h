@@ -4,6 +4,9 @@
 * Revision History
 * ===================
 * $Log: dss.h,v $
+* Revision 1.2  2007/10/25 05:44:25  cktan
+* more cleanup
+*
 * Revision 1.1  2007/10/24 20:25:23  cktan
 * new
 *
@@ -122,7 +125,7 @@
 #define LN_CNT  4
 static char lnoise[4] = {'|', '/', '-', '\\' };
 #define LIFENOISE(n, var)	\
-	if (verbose > 0) fprintf(stderr, "%c\b", lnoise[(var%LN_CNT)])
+	if (o_verbose > 0) fprintf(stderr, "%c\b", lnoise[(var%LN_CNT)])
 
 #define MALLOC_CHECK(var) \
     if ((var) == NULL) \
@@ -278,26 +281,27 @@ EXTERN distribution vp;
 EXTERN distribution grammar;
 
 
-EXTERN long scale;
-EXTERN int refresh;
-EXTERN int resume;
-EXTERN long verbose;
-EXTERN long force;
-EXTERN long header;
-EXTERN long columnar;
-EXTERN long direct;
-EXTERN long updates;
-EXTERN long table;
-EXTERN long children;
-EXTERN long fnames;
-EXTERN int  gen_sql;
-EXTERN int  gen_rng;
-EXTERN char *db_name;
-EXTERN char *schema_name;
-EXTERN int  step;
-EXTERN int	set_seeds;
-EXTERN int  validate;
-EXTERN char *d_path;
+
+EXTERN long o_scale;
+EXTERN int o_refresh;
+EXTERN int o_resume;
+EXTERN long o_verbose;
+EXTERN long o_force;
+EXTERN long o_header;
+EXTERN long o_columnar;
+EXTERN long o_direct;
+EXTERN long o_updates;
+EXTERN long o_table;
+EXTERN long o_fnames;
+EXTERN int  o_gen_sql;
+EXTERN int  o_gen_rng;
+EXTERN char *o_db_name;
+EXTERN char *o_schema_name;
+EXTERN int  o_step;
+EXTERN long o_stepmax;
+EXTERN int	o_set_seeds;
+EXTERN int  o_validate;
+EXTERN char *o_d_path;
 
 /* added for segmented updates */
 EXTERN int insert_segments;
@@ -379,7 +383,7 @@ extern tdef tdefs[];
  */
 #define  PS_SIZE      145
 #define  PS_SKEY_MIN  0
-#define  PS_SKEY_MAX  ((tdefs[SUPP].base - 1) * scale)
+#define  PS_SKEY_MAX  ((tdefs[SUPP].base - 1) * o_scale)
 #define  PS_SCST_MIN  100
 #define  PS_SCST_MAX  100000
 #define  PS_QTY_MIN   1
@@ -398,7 +402,7 @@ extern tdef tdefs[];
  */
 #define  O_SIZE          109
 #define  O_CKEY_MIN      1
-#define  O_CKEY_MAX      (tdefs[CUST].base * scale)
+#define  O_CKEY_MAX      (tdefs[CUST].base * o_scale)
 #define  O_ODATE_MIN     STARTDATE
 #define  O_ODATE_MAX     (STARTDATE + TOTDATE - \
                          (L_SDTE_MAX + L_RDTE_MAX) - 1)
@@ -419,7 +423,7 @@ extern tdef tdefs[];
 #define  L_DCNT_MIN   0
 #define  L_DCNT_MAX   10
 #define  L_PKEY_MIN   1
-#define  L_PKEY_MAX   (tdefs[PART].base * scale)
+#define  L_PKEY_MAX   (tdefs[PART].base * o_scale)
 #define  L_SDTE_MIN   1
 #define  L_SDTE_MAX   121
 #define  L_CDTE_MIN   30

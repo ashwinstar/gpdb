@@ -1,47 +1,50 @@
 /*
-* $Id$
-*
-* Revision History
-* ===================
-* $Log: text.c,v $
-* Revision 1.2  2007/10/25 05:44:25  cktan
-* more cleanup
-*
-* Revision 1.1  2007/10/24 20:25:23  cktan
-* new
-*
-* Revision 1.2  2007/04/07 08:10:40  cmcdevitt
-* Fixes for dbgen with large scale factors
-*
-* Revision 1.6  2006/07/31 17:23:09  jms
-* fix to parallelism problem
-*
-* Revision 1.5  2006/05/18 23:50:00  jms
-* commit text generation change with larger buffer
-*
-* Revision 1.4  2006/05/16 16:26:51  jms
-* remove calls to FAKE_V_STR
-*
-* Revision 1.3  2006/05/16 15:55:58  jms
-* first cut to Meikel
-*
-* Revision 1.2  2005/01/03 20:08:59  jms
-* change line terminations
-*
-* Revision 1.1.1.1  2004/11/24 23:31:47  jms
-* re-establish external server
-*
-* Revision 1.1.1.1  2003/08/07 17:58:34  jms
-* recreation after CVS crash
-*
-* Revision 1.2  2003/08/07 17:58:34  jms
-* Convery RNG to 64bit space as preparation for new large scale RNG
-*
-* Revision 1.1.1.1  2003/04/03 18:54:21  jms
-* initial checkin
-*
-*
-*/
+ * $Id$
+ *
+ * Revision History
+ * ===================
+ * $Log: text.c,v $
+ * Revision 1.3  2007/10/25 09:27:37  cktan
+ * fixed.
+ *
+ * Revision 1.2  2007/10/25 05:44:25  cktan
+ * more cleanup
+ *
+ * Revision 1.1  2007/10/24 20:25:23  cktan
+ * new
+ *
+ * Revision 1.2  2007/04/07 08:10:40  cmcdevitt
+ * Fixes for dbgen with large scale factors
+ *
+ * Revision 1.6  2006/07/31 17:23:09  jms
+ * fix to parallelism problem
+ *
+ * Revision 1.5  2006/05/18 23:50:00  jms
+ * commit text generation change with larger buffer
+ *
+ * Revision 1.4  2006/05/16 16:26:51  jms
+ * remove calls to FAKE_V_STR
+ *
+ * Revision 1.3  2006/05/16 15:55:58  jms
+ * first cut to Meikel
+ *
+ * Revision 1.2  2005/01/03 20:08:59  jms
+ * change line terminations
+ *
+ * Revision 1.1.1.1  2004/11/24 23:31:47  jms
+ * re-establish external server
+ *
+ * Revision 1.1.1.1  2003/08/07 17:58:34  jms
+ * recreation after CVS crash
+ *
+ * Revision 1.2  2003/08/07 17:58:34  jms
+ * Convery RNG to 64bit space as preparation for new large scale RNG
+ *
+ * Revision 1.1.1.1  2003/04/03 18:54:21  jms
+ * initial checkin
+ *
+ *
+ */
 /*
  * text.c --- pseaudo text generator for use in DBGEN 2.0
  *
@@ -113,50 +116,47 @@
  *	Calls: pick_str() 
  */
 static int
-txt_vp(char *dest, int sd) 
+    txt_vp(char *dest, int sd) 
 {
-	char syntax[MAX_GRAMMAR_LEN + 1],
-		*cptr,
-		*parse_target;
-	distribution *src;
-	int i,
-		res = 0;
-
+    char syntax[MAX_GRAMMAR_LEN + 1],
+	*cptr,
+	*parse_target;
+    distribution *src;
+    int i,
+	res = 0;
 	
-	pick_str(&vp, sd, &syntax[0]);
-	parse_target = syntax;
-	while ((cptr = strtok(parse_target, " ")) != NULL)
-	{
-		src = NULL;
-		switch(*cptr)
-		{
-		case 'D':
-			src = &adverbs;
-			break;
-		case 'V':
-			src = &verbs;
-			break;
-		case 'X': 
-			src = &auxillaries;
-			break;
-		}	/* end of POS switch statement */
-		i = pick_str(src, sd, dest);
-		i = strlen(DIST_MEMBER(src, i));
-		dest += i;
-		res += i;
-		if (*(++cptr))	/* miscelaneous fillagree, like punctuation */
-		{
-			dest += 1;
-			res += 1;
-			*dest = *cptr;
-		}
-		*dest = ' ';
-		dest++;
-		res++;
-		parse_target = NULL;
-	}	/* end of while loop */
+    pick_str(&vp, sd, &syntax[0]);
+    parse_target = syntax;
+    while ((cptr = strtok(parse_target, " ")) != NULL) {
+	src = NULL;
+	switch(*cptr) {
+	case 'D':
+	    src = &adverbs;
+	    break;
+	case 'V':
+	    src = &verbs;
+	    break;
+	case 'X': 
+	    src = &auxillaries;
+	    break;
+	}	/* end of POS switch statement */
+	i = pick_str(src, sd, dest);
+	i = strlen(DIST_MEMBER(src, i));
+	dest += i;
+	res += i;
+	if (*(++cptr))	{
+	    /* miscelaneous fillagree, like punctuation */
+	    dest += 1;
+	    res += 1;
+	    *dest = *cptr;
+	}
+	*dest = ' ';
+	dest++;
+	res++;
+	parse_target = NULL;
+    }	/* end of while loop */
 
-	return(res);
+    return(res);
 }
 
 /* 
@@ -172,53 +172,51 @@ txt_vp(char *dest, int sd)
  *	Calls: pick_str(), 
  */
 static int
-txt_np(char *dest, int sd) 
+    txt_np(char *dest, int sd) 
 {
-	char syntax[MAX_GRAMMAR_LEN + 1],
-		*cptr,
-		*parse_target;
-	distribution *src;
-	int i,
-		res = 0;
+    char syntax[MAX_GRAMMAR_LEN + 1],
+	*cptr,
+	*parse_target;
+    distribution *src;
+    int i,
+	res = 0;
 
 	
-	pick_str(&np, sd, &syntax[0]);
-	parse_target = syntax;
-	while ((cptr = strtok(parse_target, " ")) != NULL)
-	{
-		src = NULL;
-		switch(*cptr)
-		{
-		case 'A':
-			src = &articles;
-			break;
-		case 'J':
-			src = &adjectives;
-			break;
-		case 'D':
-			src = &adverbs;
-			break;
-		case 'N': 
-			src = &nouns;
-			break;
-		}	/* end of POS switch statement */
-		i = pick_str(src, sd, dest);
-		i = strlen(DIST_MEMBER(src, i));
-		dest += i;
-		res += i;
-		if (*(++cptr))	/* miscelaneous fillagree, like punctuation */
-		{
-			*dest = *cptr;
-			dest += 1;
-			res += 1;
-		}
-		*dest = ' ';
-		dest++;
-		res++;
-		parse_target = NULL;
-	}	/* end of while loop */
-
-	return(res);
+    pick_str(&np, sd, &syntax[0]);
+    parse_target = syntax;
+    while ((cptr = strtok(parse_target, " ")) != NULL) {
+	src = NULL;
+	switch(*cptr) {
+	case 'A':
+	    src = &articles;
+	    break;
+	case 'J':
+	    src = &adjectives;
+	    break;
+	case 'D':
+	    src = &adverbs;
+	    break;
+	case 'N': 
+	    src = &nouns;
+	    break;
+	}	/* end of POS switch statement */
+	i = pick_str(src, sd, dest);
+	i = strlen(DIST_MEMBER(src, i));
+	dest += i;
+	res += i;
+	if (*(++cptr))	{
+	    /* miscelaneous fillagree, like punctuation */
+	    *dest = *cptr;
+	    dest += 1;
+	    res += 1;
+	}
+	*dest = ' ';
+	dest++;
+	res++;
+	parse_target = NULL;
+    }	/* end of while loop */
+    
+    return(res);
 }
 
 /* 
@@ -234,56 +232,55 @@ txt_np(char *dest, int sd)
  *	Calls: pick_str(), txt_np(), txt_vp() 
  */
 static int
-txt_sentence(char *dest, int sd) 
+    txt_sentence(char *dest, int sd) 
 {
-	char syntax[MAX_GRAMMAR_LEN + 1],
-		*cptr;
-	int i,
-		res = 0,
-		len = 0;
+    char syntax[MAX_GRAMMAR_LEN + 1],
+	*cptr;
+    int i,
+	res = 0,
+	len = 0;
 
 	
-	pick_str(&grammar, sd, syntax);
-	cptr = syntax;
+    pick_str(&grammar, sd, syntax);
+    cptr = syntax;
 
-next_token:	/* I hate goto's, but can't seem to have parent and child use strtok() */
-	while (*cptr && *cptr == ' ')
-		cptr++;
-	if (*cptr == '\0')
-		goto done;
-	switch(*cptr)
-		{
-		case 'V':
-			len = txt_vp(dest, sd);
-			break;
-		case 'N': 
-			len = txt_np(dest, sd);
-			break;
-		case 'P':
-			i = pick_str(&prepositions, sd, dest);
-			len = strlen(DIST_MEMBER(&prepositions, i));
-			strcpy((dest + len), " the ");
-			len += 5;
-			len += txt_np(dest + len, sd);
-			break;
-		case 'T':
-			i = pick_str(&terminators, sd, --dest); /*terminators should abut previous word */
-			len = strlen(DIST_MEMBER(&terminators, i));
-			break;
-		}	/* end of POS switch statement */
-		dest += len;
-		res += len;
-		cptr++;
-		if (*cptr && *cptr != ' ')	/* miscelaneous fillagree, like punctuation */
-		{
-			dest += 1;
-			res += 1;
-			*dest = *cptr;
-		}
-		goto next_token;
-done:
-	*dest = '\0';
-	return(--res);
+    next_token:	/* I hate goto's, but can't seem to have parent and child use strtok() */
+    while (*cptr && *cptr == ' ')
+	cptr++;
+    if (*cptr == '\0')
+	goto done;
+    switch(*cptr) {
+    case 'V':
+	len = txt_vp(dest, sd);
+	break;
+    case 'N': 
+	len = txt_np(dest, sd);
+	break;
+    case 'P':
+	i = pick_str(&prepositions, sd, dest);
+	len = strlen(DIST_MEMBER(&prepositions, i));
+	strcpy((dest + len), " the ");
+	len += 5;
+	len += txt_np(dest + len, sd);
+	break;
+    case 'T':
+	i = pick_str(&terminators, sd, --dest); /*terminators should abut previous word */
+	len = strlen(DIST_MEMBER(&terminators, i));
+	break;
+    }	/* end of POS switch statement */
+    dest += len;
+    res += len;
+    cptr++;
+    if (*cptr && *cptr != ' ')	{
+	/* miscelaneous fillagree, like punctuation */
+	dest += 1;
+	res += 1;
+	*dest = *cptr;
+    }
+    goto next_token;
+    done:
+    *dest = '\0';
+    return(--res);
 }
 
 /*
@@ -292,104 +289,100 @@ done:
  *		generated sentence as required
  */
 void
-dbg_text(char *tgt, int min, int max, int sd)
+    dbg_text(char *tgt, int min, int max, int sd)
 {
-   DSS_HUGE hgLength = 0,
-      hgOffset,
-      wordlen = 0,
-      s_len,
-      needed;
-   char sentence[MAX_SENT_LEN + 1],
-      *cp;
-   static char szTextPool[TEXT_POOL_SIZE + 1];
-   static int bInit = 0;
-   int nLifeNoise = 0;
+    DSS_HUGE hgLength = 0,
+	hgOffset,
+	wordlen = 0,
+	s_len,
+	needed;
+    char sentence[MAX_SENT_LEN + 1],
+	*cp;
+    static char szTextPool[TEXT_POOL_SIZE + 1];
+    static int bInit = 0;
+    int nLifeNoise = 0;
 
-   if (!bInit)
-   {
-      cp = &szTextPool[0];
-      if (verbose)
-         fprintf(stderr, "\nPreloading text ... ");
-      
-      while (wordlen < TEXT_POOL_SIZE)
-      {
-         if (verbose && (wordlen > nLifeNoise))
-         {
-            nLifeNoise += 200000;
-            fprintf(stderr, "%3.0f%%\b\b\b\b", (100.0 * wordlen)/TEXT_POOL_SIZE);
-         }
-         
-         s_len = txt_sentence(sentence, 5);
-         if ( s_len < 0)
-            INTERNAL_ERROR("Bad sentence formation");
-         needed = TEXT_POOL_SIZE - wordlen;
-         if (needed >= (s_len + 1))	/* need the entire sentence */
-         {
-            strcpy(cp, sentence);
-            cp += s_len;
-            wordlen += s_len + 1;
-            *(cp++) = ' ';
-         }
-         else /* chop the new sentence off to match the length target */
-         {
-            sentence[needed] = '\0';
-            strcpy(cp, sentence);
-            wordlen += needed;
-            cp += needed;
-         }
-      }
-      *cp = '\0';
-      bInit = 1;
-      if (verbose)
-         fprintf(stderr, "\n");
-   }
+    if (!bInit) {
+	cp = &szTextPool[0];
+	if (o_verbose)
+	    fprintf(stderr, "\nPreloading text ... ");
+	
+	while (wordlen < TEXT_POOL_SIZE) {
+	    if (o_verbose && (wordlen > nLifeNoise)) {
+		nLifeNoise += 200000;
+		fprintf(stderr, "%3.0f%%\b\b\b\b", (100.0 * wordlen)/TEXT_POOL_SIZE);
+	    }
+	    
+	    s_len = txt_sentence(sentence, 5);
+	    if ( s_len < 0)
+		INTERNAL_ERROR("Bad sentence formation");
+	    needed = TEXT_POOL_SIZE - wordlen;
+	    if (needed >= (s_len + 1))	{
+		/* need the entire sentence */
+		strcpy(cp, sentence);
+		cp += s_len;
+		wordlen += s_len + 1;
+		*(cp++) = ' ';
+	    }
+	    else {
+		/* chop the new sentence off to match the length target */
+		sentence[needed] = '\0';
+		strcpy(cp, sentence);
+		wordlen += needed;
+		cp += needed;
+	    }
+	}
+	*cp = '\0';
+	bInit = 1;
+	if (o_verbose)
+	    fprintf(stderr, "\n");
+    }
 
-   RANDOM(hgOffset, 0, TEXT_POOL_SIZE - max, sd);
-   RANDOM(hgLength, min, max, sd);
-   strncpy(&tgt[0], &szTextPool[hgOffset], (int)hgLength);
-   tgt[hgLength] = '\0';
+    RANDOM(hgOffset, 0, TEXT_POOL_SIZE - max, sd);
+    RANDOM(hgLength, min, max, sd);
+    strncpy(&tgt[0], &szTextPool[hgOffset], (int)hgLength);
+    tgt[hgLength] = '\0';
 
-	return;
+    return;
 }
 
 #ifdef TEXT_TEST
 tdef tdefs[1] = { NULL };
 distribution nouns,
-      verbs,
-      adjectives,
-      adverbs,
-      auxillaries,
-      terminators,
-      articles,
-      prepositions,
-      grammar,
-      np,
-      vp;
+    verbs,
+    adjectives,
+    adverbs,
+    auxillaries,
+    terminators,
+    articles,
+    prepositions,
+    grammar,
+    np,
+    vp;
 
 main()
 {
-	char prattle[401];
+    char prattle[401];
 	
-	verbose = 1;
+    verbose = 1;
    
-   read_dist (env_config (DIST_TAG, DIST_DFLT), "nouns", &nouns);
-	read_dist (env_config (DIST_TAG, DIST_DFLT), "verbs", &verbs);
-	read_dist (env_config (DIST_TAG, DIST_DFLT), "adjectives", &adjectives);
-	read_dist (env_config (DIST_TAG, DIST_DFLT), "adverbs", &adverbs);
-	read_dist (env_config (DIST_TAG, DIST_DFLT), "auxillaries", &auxillaries);
-	read_dist (env_config (DIST_TAG, DIST_DFLT), "terminators", &terminators);
-	read_dist (env_config (DIST_TAG, DIST_DFLT), "articles", &articles);
-	read_dist (env_config (DIST_TAG, DIST_DFLT), "prepositions", &prepositions);
-	read_dist (env_config (DIST_TAG, DIST_DFLT), "grammar", &grammar);
-	read_dist (env_config (DIST_TAG, DIST_DFLT), "np", &np);
-	read_dist (env_config (DIST_TAG, DIST_DFLT), "vp", &vp);
+    read_dist (env_config (DIST_TAG, DIST_DFLT), "nouns", &nouns);
+    read_dist (env_config (DIST_TAG, DIST_DFLT), "verbs", &verbs);
+    read_dist (env_config (DIST_TAG, DIST_DFLT), "adjectives", &adjectives);
+    read_dist (env_config (DIST_TAG, DIST_DFLT), "adverbs", &adverbs);
+    read_dist (env_config (DIST_TAG, DIST_DFLT), "auxillaries", &auxillaries);
+    read_dist (env_config (DIST_TAG, DIST_DFLT), "terminators", &terminators);
+    read_dist (env_config (DIST_TAG, DIST_DFLT), "articles", &articles);
+    read_dist (env_config (DIST_TAG, DIST_DFLT), "prepositions", &prepositions);
+    read_dist (env_config (DIST_TAG, DIST_DFLT), "grammar", &grammar);
+    read_dist (env_config (DIST_TAG, DIST_DFLT), "np", &np);
+    read_dist (env_config (DIST_TAG, DIST_DFLT), "vp", &vp);
 
-	while (1)
-	{
-		dbg_text(&prattle[0], 300, 400, 0);
-		printf("<%s>\n", prattle);
-	}
+    while (1) {
+	dbg_text(&prattle[0], 300, 400, 0);
+	printf("<%s>\n", prattle);
+    }
 
-	return(0);
+    return(0);
 }
 #endif /* TEST */

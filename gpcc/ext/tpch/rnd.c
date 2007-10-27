@@ -4,6 +4,9 @@
 * Revision History
 * ===================
 * $Log: rnd.c,v $
+* Revision 1.1  2007/10/24 20:25:23  cktan
+* new
+*
 * Revision 1.4  2007/09/12 21:55:05  cmcdevitt
 * fix a lot of incorrect format specifiers, and fix some 64-bit issues
 *
@@ -132,7 +135,7 @@ row_stop(int t)	\
 	for (i=0; i <= MAX_STREAM; i++)
 		if ((Seed[i].table == t) || (Seed[i].table == tdefs[t].child))
 			{ 
-			if (set_seeds && (Seed[i].usage > Seed[i].boundary))
+			if (o_set_seeds && (Seed[i].usage > Seed[i].boundary))
 				{
 				fprintf(stderr, "\nSEED CHANGE: seed[%d].usage = %lld\n", 
 					i, Seed[i].usage); 
