@@ -4,6 +4,9 @@
  * Revision History
  * ===================
  * $Log: driver.c,v $
+ * Revision 1.6  2007/10/27 07:03:59  cktan
+ * add -b load distributions path
+ *
  * Revision 1.5  2007/10/27 01:29:56  cktan
  * output partial table
  *
@@ -715,7 +718,7 @@ int
     o_gen_rng = 0;
     o_d_path = NULL;
 
-    o_step = -1;
+    o_step = 1;
     o_stepmax = 1;
 
 	
