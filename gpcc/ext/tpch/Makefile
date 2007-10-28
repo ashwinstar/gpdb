@@ -4,6 +4,9 @@
 # Revision History
 # ===================
 # $Log: Makefile,v $
+# Revision 1.3  2007/10/25 05:44:24  cktan
+# more cleanup
+#
 # Revision 1.2  2007/10/24 21:22:38  cktan
 # make dbgen only, no direct load
 #
@@ -67,7 +70,7 @@
 ################
 ## CHANGE NAME OF ANSI COMPILER HERE
 ################
-CC      = gcc -g -funroll-loops -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE=1 -Wall
+CC      = gcc -O3 -funroll-loops -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE=1 -Wall
 # Current values for DATABASE are: INFORMIX, DB2, TDAT (Teradata)
 #                                  SQLSERVER, SYBASE
 # Current values for MACHINE are:  ATT, DOS, HP, IBM, ICL, MVS, 
