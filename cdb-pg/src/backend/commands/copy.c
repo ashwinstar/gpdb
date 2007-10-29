@@ -1120,6 +1120,11 @@ DoCopy(const CopyStmt *stmt)
 								RelationGetRelationName(cstate->rel))));
 		}
 		
+		if(stmt->sreh && !cstate->rel->rd_cdbpolicy)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+					 errmsg("COPY single row error handling only available for distributed user tables")));		
+		
 		if (pipe)
 		{
 			if (whereToSendOutput == DestRemote)
@@ -1149,10 +1154,12 @@ DoCopy(const CopyStmt *stmt)
 			}
 		}
 		
-		if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)
+		if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) 
+			&& cstate->rel->rd_cdbpolicy != NULL)
+			/* data needs to get dispatched to segment databases */
 			CopyFromDispatch(cstate);
 		else
-			/* execute or utility mode */
+			/* data needs to get inserted locally */
 			CopyFrom(cstate);
 		
 		if (!pipe)
@@ -1284,12 +1291,14 @@ DoCopyTo(CopyState cstate)
 		
 		/*
 		 * We want to dispatch COPY TO commands only in the case that
-		 * we are the dispatcher and we are copying from a relation.
+		 * we are the dispatcher and we are copying from a user relation
+		 * (a relation where data is distributed in the segment databases).
 		 * Otherwize, if we are not the dispatcher *or* if we are
 		 * doing COPY (SELECT) we just go straight to work, without
 		 * dispatching COPY commands to executors.
 		 */
-		if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && cstate->rel)
+		if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) 
+			&& cstate->rel && cstate->rel->rd_cdbpolicy)
 			CopyToDispatch(cstate);		
 		else
 			CopyTo(cstate);		
@@ -2314,7 +2323,7 @@ CopyFromDispatch(CopyState cstate)
 	
 	/* policy should be PARTITIONED (normal tables) or ENTRY (no column tables) */
 	Insist(Gp_role == GP_ROLE_DISPATCHAGENT || (policy &&
-           policy->ptype != POLICYTYPE_UNDEFINED));
+												policy->ptype != POLICYTYPE_UNDEFINED));
 	
 	if (policy)
 		p_nattrs = policy->nattrs;	/* number of partitioning keys */
