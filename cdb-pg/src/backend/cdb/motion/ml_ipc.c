@@ -5222,12 +5222,12 @@ ic_rx_thread_func(void *arg)
 
 			if (read_count < 0)
 			{
-				if (errno == EWOULDBLOCK)
+				if (errno == EWOULDBLOCK || errno == EINTR)
 				{
 					skip_poll = false;
 					continue;
 				}
-				write_log("Interconnect error: recvfrom\n");
+				write_log("Interconnect error: recvfrom (%d)\n", errno);
 				break;
 			}
 
