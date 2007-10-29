@@ -96,6 +96,21 @@ CREATE RESOURCE QUEUE <replaceable class="PARAMETER">name</replaceable> [ ACTIVE
      </varlistentry>
 
      <varlistentry>
+      <term><literal>IGNORE THRESHOLD</literal> <replaceable class="parameter">float</replaceable></term>
+       <listitem>
+       <para>
+        If a Resource queue has <literal>IGNORE THRESHOLD</literal> &gt; 0 
+        any query whose cost is &lt; this value s not queued i.e it is ignored
+        for resource scheduling purposes.
+       </para>
+
+       <para>
+        A value of 0.0 means all no queries are ignored. This is the default.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><literal>NOOVERCOMMIT</literal></term>
       <term><literal>OVERCOMMIT</literal></term>
        <listitem>
