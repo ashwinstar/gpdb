@@ -3259,7 +3259,9 @@ DATA(insert OID = 2798 (  min				PGNSP PGUID 12 t f f f i 1 27 f "27" _null_ _nu
 
 /* count has two forms: count(any) and count(*) */
 DATA(insert OID = 2147 (  count				PGNSP PGUID 12 t f f f i 1 20 f "2276" _null_ _null_ _null_  aggregate_dummy - _null_ ));
+#define COUNT_ANY_OID 2147
 DATA(insert OID = 2803 (  count				PGNSP PGUID 12 t f f f i 0 20 f "" _null_ _null_ _null_  aggregate_dummy - _null_ ));
+#define COUNT_STAR_OID  2803
 
 DATA(insert OID = 2718 (  var_pop			PGNSP PGUID 12 t f f f i 1 1700 f "20" _null_ _null_ _null_  aggregate_dummy - _null_ ));
 DATA(insert OID = 2719 (  var_pop			PGNSP PGUID 12 t f f f i 1 1700 f "23" _null_ _null_ _null_  aggregate_dummy - _null_ ));
