@@ -888,6 +888,57 @@ DoCopy(const CopyStmt *stmt)
 				 errhint("Anyone can COPY to stdout or from stdin. "
 						 "psql's \\copy command also works for anyone.")));
 
+	cstate->copy_dest = COPY_FILE;		/* default */
+	cstate->filename = (Gp_role == GP_ROLE_EXECUTE ? NULL : stmt->filename); /* QE COPY always uses STDIN */
+	cstate->copy_file = NULL;
+	cstate->fe_msgbuf = NULL;
+	cstate->fe_eof = false;
+	
+	if(!is_from)
+	{
+		if (pipe)
+		{
+			if (whereToSendOutput == DestRemote)
+				cstate->fe_copy = true;
+			else
+				cstate->copy_file = stdout;
+		}
+		else
+		{
+			mode_t		oumask; /* Pre-existing umask value */
+			struct stat st;
+			
+			/*
+			 * Prevent write to relative path ... too easy to shoot oneself in the
+			 * foot by overwriting a database file ...
+			 */
+			if (!is_absolute_path(cstate->filename))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_NAME),
+						 errmsg("relative path not allowed for COPY to file")));
+			
+			oumask = umask((mode_t) 022);
+			cstate->copy_file = AllocateFile(cstate->filename, PG_BINARY_W);
+			umask(oumask);
+			
+			if (cstate->copy_file == NULL)
+				ereport(ERROR,
+						(errcode_for_file_access(),
+						 errmsg("could not open file \"%s\" for writing: %m",
+								cstate->filename)));
+			
+			fstat(fileno(cstate->copy_file), &st);
+			if (S_ISDIR(st.st_mode))
+			{
+				FreeFile(cstate->copy_file);
+				ereport(ERROR,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("\"%s\" is a directory", cstate->filename)));
+			}
+		}
+		
+	}
+	
 	elog(DEBUG1,"DoCopy starting");
 	if (stmt->relation)
 	{
@@ -943,6 +994,7 @@ DoCopy(const CopyStmt *stmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("COPY (SELECT INTO) is not supported")));
+		
 		
 		/*
 		 * The query has already been through parse analysis, but not
@@ -1079,12 +1131,6 @@ DoCopy(const CopyStmt *stmt)
 	cstate->encoding_embeds_ascii = PG_ENCODING_IS_CLIENT_ONLY(cstate->client_encoding);
 	cstate->line_buf_converted = (Gp_role == GP_ROLE_EXECUTE ? true : false);
 
-	cstate->copy_dest = COPY_FILE;		/* default */
-	cstate->filename = (Gp_role == GP_ROLE_EXECUTE ? NULL : stmt->filename); /* QE COPY always uses STDIN */
-	cstate->copy_file = NULL;
-	cstate->fe_msgbuf = NULL;
-	cstate->fe_eof = false;
-
 	/*
 	 * some greenplum db specific vars
 	 */
@@ -1211,7 +1257,7 @@ DoCopy(const CopyStmt *stmt)
  */
 static void
 DoCopyTo(CopyState cstate)
-{
+{	
 	bool		pipe = (cstate->filename == NULL);
 	
 	if (cstate->rel)
@@ -1242,48 +1288,7 @@ DoCopyTo(CopyState cstate)
 								RelationGetRelationName(cstate->rel))));
 		}
 	}
-	
-	if (pipe)
-	{
-		if (whereToSendOutput == DestRemote)
-			cstate->fe_copy = true;
-		else
-			cstate->copy_file = stdout;
-	}
-	else
-	{
-		mode_t		oumask; /* Pre-existing umask value */
-		struct stat st;
 		
-		/*
-		 * Prevent write to relative path ... too easy to shoot oneself in the
-		 * foot by overwriting a database file ...
-		 */
-		if (!is_absolute_path(cstate->filename))
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_NAME),
-					 errmsg("relative path not allowed for COPY to file")));
-		
-		oumask = umask((mode_t) 022);
-		cstate->copy_file = AllocateFile(cstate->filename, PG_BINARY_W);
-		umask(oumask);
-		
-		if (cstate->copy_file == NULL)
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not open file \"%s\" for writing: %m",
-							cstate->filename)));
-		
-		fstat(fileno(cstate->copy_file), &st);
-		if (S_ISDIR(st.st_mode))
-		{
-			FreeFile(cstate->copy_file);
-			ereport(ERROR,
-					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("\"%s\" is a directory", cstate->filename)));
-		}
-	}
-	
 	PG_TRY();
 	{
 		if (cstate->fe_copy)
