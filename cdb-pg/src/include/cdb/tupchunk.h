@@ -42,32 +42,6 @@ typedef enum TupleChunkType
  */
 #define TUPLE_CHUNK_HEADER_SIZE 4
 
-/* MPP-2099: tkordas 10/29/2007 */
-#if 0
-/* XXX: WARNING WARNING WARNING WARNING: THE COMMENTS BELOW ARE INCREDIBLY OUT OF DATE */
-
-/* The target segment index also encodes whether the data should go only to
- * the active segment-database for the segment-index, or to all segment-
- * databases for that segment-index, in the top bit.  (0 = active only;
- * 1 = all seg-dbs for the seg-index.)	In addition, the segment-index 0x7FFF
- * means "broadcast."
- */
-
-/* TODO HACK: this no longer works now that segIdx is based on the "content" id.
- *			  since it can be negative.  segIdX is no longer unsigned so we cant
- *			  use the top bit anymore.
- *
- *		  Below you'll see we have essentially disabled the difference
- *			  between "active" segdb and backup
- */
-
-/*#define BROADCAST_SEGIDX		  0x7FFF*/
-#define BROADCAST_SEGIDX		0xFF /* OUT OF DATE, NOT USED SEE BELOW */
-/*#define ALL_SEGDBS_MASK		  0x8000*/
-
-/* XXX: WARNING WARNING WARNING WARNING: THE COMMENTS ABOVE ARE INCREDIBLY OUT OF DATE */
-#endif
-
 /* see MPP-2099, let's not run into this one again! NOTE: the
  * definition of BROADCAST_SEGIDX is *key*.
  *
