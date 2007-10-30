@@ -249,7 +249,7 @@ getCdbComponentInfo(void)
 	 * Initial size for info arrays.
 	 */
 	int			segment_array_size = 500;
-	int			entry_array_size = 4;
+	int			entry_array_size = 4; /* we currently support a max of 2 */
 
 	/*
 	 * isNull and attr are used when getting the data for a specific column from a HeapTuple
@@ -337,17 +337,27 @@ getCdbComponentInfo(void)
 
 		if (content >= 0)
 		{
-			if (component_databases->total_segment_dbs >= segment_array_size)
+			/* if we have a dbid bigger than our array we'll have to grow the array. (MPP-2104) */
+			if (dbid >= segment_array_size || component_databases->total_segment_dbs >= segment_array_size)
 			{
 				CdbComponentDatabaseInfo *pOld;
 
 				/*
 				 * Expand CdbComponentDatabaseInfo array if we've used up currently allocated space
 				 */
-				segment_array_size *= 2;
+				segment_array_size = Max((segment_array_size * 2), dbid * 2);
 				pOld = component_databases->segment_db_info;
 				component_databases->segment_db_info = (CdbComponentDatabaseInfo *)
 					repalloc(pOld, sizeof(CdbComponentDatabaseInfo) * segment_array_size);
+
+				/* MPP-2104: We have to grow this as well. */
+				if (segment_ip_cache != NULL)
+				{
+					segment_ip_cache = repalloc(segment_ip_cache, sizeof(char *) * segment_array_size);
+					for (i=segment_ip_cache_limit; i < segment_array_size; i++)
+						segment_ip_cache[i] = NULL;
+					segment_ip_cache_limit = segment_array_size;
+				}
 			}
 
 			pRow = &component_databases->segment_db_info[component_databases->total_segment_dbs];
