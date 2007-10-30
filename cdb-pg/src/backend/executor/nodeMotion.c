@@ -1240,7 +1240,7 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 			Assert(motion->numOutputSegs == 1);
 			/*
 			 * Actually, since we can only send to a single output segment
-			 * here, we are guarantted that we only have a single
+			 * here, we are guaranteed that we only have a single
 			 * targetRoute setup that we could possibly send to.  So we
 			 * can cheat and just fix the targetRoute to 0 (the 1st
 			 * route).
@@ -1253,17 +1253,29 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 		uint32		hval = 0;
 
 		/*
-		 * hashSegIdx structure doesn not include support for the QD. so 0
+		 * hashSegIdx structure doesn't not include support for the QD. so 0
 		 * maps to segID with contentId = 0
 		 */
-
 		Assert(motion->numHashSegs > 0);
 		Assert(motion->hashSegIdx != NULL);
 
 		econtext->ecxt_outertuple = outerTupleSlot;
+
 		hval = evalHashKey(econtext, node->hashExpr,
 				motion->hashDataTypes, node->cdbhash);
+
+		/* hashSegIdx takes our uint32 and maps it to an int, and here
+		 * we assign it to an int16. See below. */
 		targetRoute = motion->hashSegIdx[hval];
+
+		/* see MPP-2099, let's not run into this one again! NOTE: the
+		 * definition of BROADCAST_SEGIDX is key here, it *cannot* be
+		 * a valid route which our map (above) will *ever* return.
+		 * 
+		 * Note the "mapping" is generated at *planning* time in
+		 * makeDefaultSegIdxArray() in cdbmutate.c (it is the trivial
+		 * map, and is passed around our system a fair amount!). */
+		Assert(targetRoute != BROADCAST_SEGIDX);
 	}
 
 	tuple = ExecFetchSlotTuple(outerTupleSlot);

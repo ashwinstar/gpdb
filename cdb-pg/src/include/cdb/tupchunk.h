@@ -42,6 +42,9 @@ typedef enum TupleChunkType
  */
 #define TUPLE_CHUNK_HEADER_SIZE 4
 
+/* MPP-2099: tkordas 10/29/2007 */
+#if 0
+/* XXX: WARNING WARNING WARNING WARNING: THE COMMENTS BELOW ARE INCREDIBLY OUT OF DATE */
 
 /* The target segment index also encodes whether the data should go only to
  * the active segment-database for the segment-index, or to all segment-
@@ -59,8 +62,22 @@ typedef enum TupleChunkType
  */
 
 /*#define BROADCAST_SEGIDX		  0x7FFF*/
-#define BROADCAST_SEGIDX		0xFF
+#define BROADCAST_SEGIDX		0xFF /* OUT OF DATE, NOT USED SEE BELOW */
 /*#define ALL_SEGDBS_MASK		  0x8000*/
+
+/* XXX: WARNING WARNING WARNING WARNING: THE COMMENTS ABOVE ARE INCREDIBLY OUT OF DATE */
+#endif
+
+/* see MPP-2099, let's not run into this one again! NOTE: the
+ * definition of BROADCAST_SEGIDX is *key*.
+ *
+ * We don't support hash-motion to the QD, so any value that will not
+ * appear in our hash-mapping (see nodeMotion.c) will work 
+ * 
+ * Before changing this value make sure that you look for all uses of
+ * BROADCAST_SEGIDX */
+#define BROADCAST_SEGIDX		-2 /* to avoid confusion with a QD-content-id, I'll avoid -1 */
+
 
 #define ANY_ROUTE -100
 
