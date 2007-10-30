@@ -20,6 +20,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <unistd.h>
+#include <sys/time.h>
 
 #include "miscadmin.h"
 #include "storage/ipc.h"
