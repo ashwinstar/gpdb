@@ -56,7 +56,7 @@ ifneq ($(PORTNAME),darwin)
 	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(ALLOBJS) $(EXTRA_OBJS) $(libpq)
 else
 	# Force a static link.
-	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(ALLOBJS) $(EXTRA_OBJS) $(libpq_builddir)/libpq.a -unexported_symbols_list libpq_local.sym.mac
+	if [ -x /usr/bin/ld_classic ]; then /usr/bin/ld_classic $(LDREL) $(LDOUT) SUBSYS.o $(ALLOBJS) $(EXTRA_OBJS) $(libpq_builddir)/libpq.a -unexported_symbols_list libpq_local.sym.mac; else $(LD) $(LDREL) $(LDOUT) SUBSYS.o $(ALLOBJS) $(EXTRA_OBJS) $(libpq_builddir)/libpq.a -unexported_symbols_list libpq_local.sym.mac; fi
 endif
 
 ifeq ($(PORTNAME),freebsd)
