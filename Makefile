@@ -4,6 +4,7 @@ GPCC=gpcc
 ISCONFIG=$(GPPGDIR)/GNUmakefile
 
 RELEASE=`$(CURDIR)/releasetag`
+#RELEASE=$(shell $(CURDIR)/releasetag)
 GPDIR=greenplum-db$(RELEASE)
 GPDOCDIR=$(CURDIR)/docs/release
 
@@ -222,3 +223,14 @@ gccVersionCheck :
 	    gcc --version ; \
 	    exit 1 ; \
 	fi
+
+pygres: GPROOTDEP
+	rm -rf PyGreSQL-3.8.1
+	cvs co ThirdPartyTools/src/PyGreSQL-3.8.1 > pygres-3.8.1-co.log 2>&1
+	(cd ThirdPartyTools/src/PyGreSQL-3.8.1 && \
+	python setup.py build --build-lib=libs && \
+	if test -d $(DISTPATH)/lib ; then \
+	    cp -p libs/* $(DISTPATH)/lib ; \
+	else \
+	    cp -p libs/* $(DEVPATH)/lib ; \
+	fi)
