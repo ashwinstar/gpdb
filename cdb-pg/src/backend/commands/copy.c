@@ -2034,7 +2034,8 @@ else \
 \
 	ErrorData	*edata; \
 	MemoryContext oldcontext;\
-	bool	should_free = false; \
+	bool	rawdata_is_a_copy = false; \
+	bool	errmsg_is_a_copy = false; \
 	cur_row_rejected = true; \
 \
 	/* save a copy of the error info */ \
@@ -2054,7 +2055,7 @@ else \
 		cstate->cdbsreh->rawdata = (char *) palloc(strlen(cstate->line_buf.data) * \
 												   sizeof(char) + 1 + 24); \
 \
-		should_free = true; \
+		rawdata_is_a_copy = true; \
 		sprintf(cstate->cdbsreh->rawdata, "%d%c%d%c%s", \
 			    original_lineno_for_qe, \
 				ORIGINAL_LINENO_DELIM, \
@@ -2081,12 +2082,31 @@ else \
 \
 	cstate->cdbsreh->is_server_enc = cstate->line_buf_converted; \
 	cstate->cdbsreh->linenumber = cstate->cur_lineno; \
-	cstate->cdbsreh->errmsg = edata->message; \
 \
+	/* set the error message. Use original msg and add column name if availble */ \
+	if (cstate->cur_attname)\
+	{\
+		cstate->cdbsreh->errmsg = (char *) palloc((strlen(edata->message) + \
+												  strlen(cstate->cur_attname) + \
+												  10 + 1) * sizeof(char)); \
+		errmsg_is_a_copy = true; \
+		sprintf(cstate->cdbsreh->errmsg, "%s, column %s", \
+				edata->message, \
+				cstate->cur_attname); \
+	}\
+	else\
+	{\
+		cstate->cdbsreh->errmsg = edata->message; \
+	}\
+\
+	/* after all the prep work let cdbsreh do the real work */ \
 	HandleSingleRowError(cstate->cdbsreh); \
 \
-	if(should_free) \
+	/* cleanup any extra memory copies we made */\
+	if(rawdata_is_a_copy) \
 		pfree(cstate->cdbsreh->rawdata); \
+	if(errmsg_is_a_copy) \
+		pfree(cstate->cdbsreh->errmsg); \
 }
 
 /*

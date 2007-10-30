@@ -60,18 +60,18 @@ SELECT * FROM sreh_copy ORDER BY a,b,c;
 (12 rows)
 
 SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,rawdata;
-  relname  | linenum |                 errmsg                  | rawdata 
------------+---------+-----------------------------------------+---------
- sreh_copy |       2 | missing data for column "b"             | 2
- sreh_copy |       3 | missing data for column "c"             | 3|
- sreh_copy |       4 | extra data after last expected column   | 4|4|4|4
- sreh_copy |       7 | invalid input syntax for integer: "bad" | 7|7|bad
- sreh_copy |       8 | invalid input syntax for integer: "bad" | bad|8|8
- sreh_copy |      11 | missing data for column "b"             | eleven
- sreh_copy |      12 | extra data after last expected column   | 12||||
- sreh_copy |      13 | missing data for column "c"             | 13|,13,
- sreh_copy |      15 | missing data for column "b"             | 15
- sreh_copy |      16 | missing data for column "b"             | sixteen
+  relname  | linenum |                      errmsg                       | rawdata 
+-----------+---------+---------------------------------------------------+---------
+ sreh_copy |       2 | missing data for column "b"                       | 2
+ sreh_copy |       3 | missing data for column "c"                       | 3|
+ sreh_copy |       4 | extra data after last expected column             | 4|4|4|4
+ sreh_copy |       7 | invalid input syntax for integer: "bad", column c | 7|7|bad
+ sreh_copy |       8 | invalid input syntax for integer: "bad", column a | bad|8|8
+ sreh_copy |      11 | missing data for column "b"                       | eleven
+ sreh_copy |      12 | extra data after last expected column             | 12||||
+ sreh_copy |      13 | missing data for column "c"                       | 13|,13,
+ sreh_copy |      15 | missing data for column "b"                       | 15
+ sreh_copy |      16 | missing data for column "b"                       | sixteen
 (10 rows)
 
 --
@@ -103,28 +103,28 @@ SELECT * FROM sreh_copy ORDER BY a,b,c;
 (18 rows)
 
 SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,rawdata;
-  relname  | linenum |                 errmsg                  | rawdata 
------------+---------+-----------------------------------------+---------
- sreh_copy |       2 | missing data for column "b"             | 2
- sreh_copy |       2 | missing data for column "b"             | 2
- sreh_copy |       3 | missing data for column "c"             | 3|
- sreh_copy |       3 | missing data for column "c"             | 3|
- sreh_copy |       4 | extra data after last expected column   | 4|4|4|4
- sreh_copy |       4 | extra data after last expected column   | 4|4|4|4
- sreh_copy |       7 | invalid input syntax for integer: "bad" | 7|7|bad
- sreh_copy |       7 | invalid input syntax for integer: "bad" | 7|7|bad
- sreh_copy |       8 | invalid input syntax for integer: "bad" | bad|8|8
- sreh_copy |       8 | invalid input syntax for integer: "bad" | bad|8|8
- sreh_copy |      11 | missing data for column "b"             | eleven
- sreh_copy |      11 | missing data for column "b"             | eleven
- sreh_copy |      12 | extra data after last expected column   | 12||||
- sreh_copy |      12 | extra data after last expected column   | 12||||
- sreh_copy |      13 | missing data for column "c"             | 13|,13,
- sreh_copy |      13 | missing data for column "c"             | 13|,13,
- sreh_copy |      15 | missing data for column "b"             | 15
- sreh_copy |      15 | missing data for column "b"             | 15
- sreh_copy |      16 | missing data for column "b"             | sixteen
- sreh_copy |      16 | missing data for column "b"             | sixteen
+  relname  | linenum |                      errmsg                       | rawdata 
+-----------+---------+---------------------------------------------------+---------
+ sreh_copy |       2 | missing data for column "b"                       | 2
+ sreh_copy |       2 | missing data for column "b"                       | 2
+ sreh_copy |       3 | missing data for column "c"                       | 3|
+ sreh_copy |       3 | missing data for column "c"                       | 3|
+ sreh_copy |       4 | extra data after last expected column             | 4|4|4|4
+ sreh_copy |       4 | extra data after last expected column             | 4|4|4|4
+ sreh_copy |       7 | invalid input syntax for integer: "bad", column c | 7|7|bad
+ sreh_copy |       7 | invalid input syntax for integer: "bad", column c | 7|7|bad
+ sreh_copy |       8 | invalid input syntax for integer: "bad", column a | bad|8|8
+ sreh_copy |       8 | invalid input syntax for integer: "bad", column a | bad|8|8
+ sreh_copy |      11 | missing data for column "b"                       | eleven
+ sreh_copy |      11 | missing data for column "b"                       | eleven
+ sreh_copy |      12 | extra data after last expected column             | 12||||
+ sreh_copy |      12 | extra data after last expected column             | 12||||
+ sreh_copy |      13 | missing data for column "c"                       | 13|,13,
+ sreh_copy |      13 | missing data for column "c"                       | 13|,13,
+ sreh_copy |      15 | missing data for column "b"                       | 15
+ sreh_copy |      15 | missing data for column "b"                       | 15
+ sreh_copy |      16 | missing data for column "b"                       | sixteen
+ sreh_copy |      16 | missing data for column "b"                       | sixteen
 (20 rows)
 
 --
@@ -158,30 +158,30 @@ SELECT * FROM sreh_copy ORDER BY a,b,c;
 (20 rows)
 
 SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,rawdata;
-  relname  | linenum |                            errmsg                             |              rawdata              
------------+---------+---------------------------------------------------------------+-----------------------------------
- sreh_copy |       2 | missing data for column "b"                                   | 2
- sreh_copy |       2 | missing data for column "b"                                   | 2
- sreh_copy |       2 | missing data for column "b"                                   | 200 bad data from stdin
- sreh_copy |       3 | missing data for column "c"                                   | 3|
- sreh_copy |       3 | missing data for column "c"                                   | 3|
- sreh_copy |       4 | invalid input syntax for integer: " more bad data from stdin" | 400|400| more bad data from stdin
- sreh_copy |       4 | extra data after last expected column                         | 4|4|4|4
- sreh_copy |       4 | extra data after last expected column                         | 4|4|4|4
- sreh_copy |       7 | invalid input syntax for integer: "bad"                       | 7|7|bad
- sreh_copy |       7 | invalid input syntax for integer: "bad"                       | 7|7|bad
- sreh_copy |       8 | invalid input syntax for integer: "bad"                       | bad|8|8
- sreh_copy |       8 | invalid input syntax for integer: "bad"                       | bad|8|8
- sreh_copy |      11 | missing data for column "b"                                   | eleven
- sreh_copy |      11 | missing data for column "b"                                   | eleven
- sreh_copy |      12 | extra data after last expected column                         | 12||||
- sreh_copy |      12 | extra data after last expected column                         | 12||||
- sreh_copy |      13 | missing data for column "c"                                   | 13|,13,
- sreh_copy |      13 | missing data for column "c"                                   | 13|,13,
- sreh_copy |      15 | missing data for column "b"                                   | 15
- sreh_copy |      15 | missing data for column "b"                                   | 15
- sreh_copy |      16 | missing data for column "b"                                   | sixteen
- sreh_copy |      16 | missing data for column "b"                                   | sixteen
+  relname  | linenum |                                 errmsg                                  |              rawdata              
+-----------+---------+-------------------------------------------------------------------------+-----------------------------------
+ sreh_copy |       2 | missing data for column "b"                                             | 2
+ sreh_copy |       2 | missing data for column "b"                                             | 2
+ sreh_copy |       2 | missing data for column "b"                                             | 200 bad data from stdin
+ sreh_copy |       3 | missing data for column "c"                                             | 3|
+ sreh_copy |       3 | missing data for column "c"                                             | 3|
+ sreh_copy |       4 | invalid input syntax for integer: " more bad data from stdin", column c | 400|400| more bad data from stdin
+ sreh_copy |       4 | extra data after last expected column                                   | 4|4|4|4
+ sreh_copy |       4 | extra data after last expected column                                   | 4|4|4|4
+ sreh_copy |       7 | invalid input syntax for integer: "bad", column c                       | 7|7|bad
+ sreh_copy |       7 | invalid input syntax for integer: "bad", column c                       | 7|7|bad
+ sreh_copy |       8 | invalid input syntax for integer: "bad", column a                       | bad|8|8
+ sreh_copy |       8 | invalid input syntax for integer: "bad", column a                       | bad|8|8
+ sreh_copy |      11 | missing data for column "b"                                             | eleven
+ sreh_copy |      11 | missing data for column "b"                                             | eleven
+ sreh_copy |      12 | extra data after last expected column                                   | 12||||
+ sreh_copy |      12 | extra data after last expected column                                   | 12||||
+ sreh_copy |      13 | missing data for column "c"                                             | 13|,13,
+ sreh_copy |      13 | missing data for column "c"                                             | 13|,13,
+ sreh_copy |      15 | missing data for column "b"                                             | 15
+ sreh_copy |      15 | missing data for column "b"                                             | 15
+ sreh_copy |      16 | missing data for column "b"                                             | sixteen
+ sreh_copy |      16 | missing data for column "b"                                             | sixteen
 (22 rows)
 
 --
@@ -216,30 +216,30 @@ SELECT * FROM sreh_copy ORDER BY a,b,c;
 (20 rows)
 
 SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,rawdata;
-  relname  | linenum |                            errmsg                             |              rawdata              
------------+---------+---------------------------------------------------------------+-----------------------------------
- sreh_copy |       2 | missing data for column "b"                                   | 2
- sreh_copy |       2 | missing data for column "b"                                   | 2
- sreh_copy |       2 | missing data for column "b"                                   | 200 bad data from stdin
- sreh_copy |       3 | missing data for column "c"                                   | 3|
- sreh_copy |       3 | missing data for column "c"                                   | 3|
- sreh_copy |       4 | invalid input syntax for integer: " more bad data from stdin" | 400|400| more bad data from stdin
- sreh_copy |       4 | extra data after last expected column                         | 4|4|4|4
- sreh_copy |       4 | extra data after last expected column                         | 4|4|4|4
- sreh_copy |       7 | invalid input syntax for integer: "bad"                       | 7|7|bad
- sreh_copy |       7 | invalid input syntax for integer: "bad"                       | 7|7|bad
- sreh_copy |       8 | invalid input syntax for integer: "bad"                       | bad|8|8
- sreh_copy |       8 | invalid input syntax for integer: "bad"                       | bad|8|8
- sreh_copy |      11 | missing data for column "b"                                   | eleven
- sreh_copy |      11 | missing data for column "b"                                   | eleven
- sreh_copy |      12 | extra data after last expected column                         | 12||||
- sreh_copy |      12 | extra data after last expected column                         | 12||||
- sreh_copy |      13 | missing data for column "c"                                   | 13|,13,
- sreh_copy |      13 | missing data for column "c"                                   | 13|,13,
- sreh_copy |      15 | missing data for column "b"                                   | 15
- sreh_copy |      15 | missing data for column "b"                                   | 15
- sreh_copy |      16 | missing data for column "b"                                   | sixteen
- sreh_copy |      16 | missing data for column "b"                                   | sixteen
+  relname  | linenum |                                 errmsg                                  |              rawdata              
+-----------+---------+-------------------------------------------------------------------------+-----------------------------------
+ sreh_copy |       2 | missing data for column "b"                                             | 2
+ sreh_copy |       2 | missing data for column "b"                                             | 2
+ sreh_copy |       2 | missing data for column "b"                                             | 200 bad data from stdin
+ sreh_copy |       3 | missing data for column "c"                                             | 3|
+ sreh_copy |       3 | missing data for column "c"                                             | 3|
+ sreh_copy |       4 | invalid input syntax for integer: " more bad data from stdin", column c | 400|400| more bad data from stdin
+ sreh_copy |       4 | extra data after last expected column                                   | 4|4|4|4
+ sreh_copy |       4 | extra data after last expected column                                   | 4|4|4|4
+ sreh_copy |       7 | invalid input syntax for integer: "bad", column c                       | 7|7|bad
+ sreh_copy |       7 | invalid input syntax for integer: "bad", column c                       | 7|7|bad
+ sreh_copy |       8 | invalid input syntax for integer: "bad", column a                       | bad|8|8
+ sreh_copy |       8 | invalid input syntax for integer: "bad", column a                       | bad|8|8
+ sreh_copy |      11 | missing data for column "b"                                             | eleven
+ sreh_copy |      11 | missing data for column "b"                                             | eleven
+ sreh_copy |      12 | extra data after last expected column                                   | 12||||
+ sreh_copy |      12 | extra data after last expected column                                   | 12||||
+ sreh_copy |      13 | missing data for column "c"                                             | 13|,13,
+ sreh_copy |      13 | missing data for column "c"                                             | 13|,13,
+ sreh_copy |      15 | missing data for column "b"                                             | 15
+ sreh_copy |      15 | missing data for column "b"                                             | 15
+ sreh_copy |      16 | missing data for column "b"                                             | sixteen
+ sreh_copy |      16 | missing data for column "b"                                             | sixteen
 (22 rows)
 
 --
@@ -426,18 +426,18 @@ NOTICE:  Rejected 10 badly formatted rows.
 (6 rows)
 
 SELECT relname,errmsg,rawdata FROM sreh_ext_errtbl ORDER BY errmsg,rawdata;
- relname  |                 errmsg                  | rawdata 
-----------+-----------------------------------------+---------
- sreh_ext | extra data after last expected column   | 12||||
- sreh_ext | extra data after last expected column   | 4|4|4|4
- sreh_ext | invalid input syntax for integer: "bad" | 7|7|bad
- sreh_ext | invalid input syntax for integer: "bad" | bad|8|8
- sreh_ext | missing data for column "b"             | 15
- sreh_ext | missing data for column "b"             | 2
- sreh_ext | missing data for column "b"             | eleven
- sreh_ext | missing data for column "b"             | sixteen
- sreh_ext | missing data for column "c"             | 13|,13,
- sreh_ext | missing data for column "c"             | 3|
+ relname  |                      errmsg                       | rawdata 
+----------+---------------------------------------------------+---------
+ sreh_ext | extra data after last expected column             | 12||||
+ sreh_ext | extra data after last expected column             | 4|4|4|4
+ sreh_ext | invalid input syntax for integer: "bad", column a | bad|8|8
+ sreh_ext | invalid input syntax for integer: "bad", column c | 7|7|bad
+ sreh_ext | missing data for column "b"                       | 15
+ sreh_ext | missing data for column "b"                       | 2
+ sreh_ext | missing data for column "b"                       | eleven
+ sreh_ext | missing data for column "b"                       | sixteen
+ sreh_ext | missing data for column "c"                       | 13|,13,
+ sreh_ext | missing data for column "c"                       | 3|
 (10 rows)
 
 TRUNCATE sreh_ext_errtbl;
@@ -450,18 +450,18 @@ SELECT count(*) FROM sreh_target;
 (1 row)
 
 SELECT relname,errmsg,rawdata FROM sreh_ext_errtbl ORDER BY errmsg,rawdata;
- relname  |                 errmsg                  | rawdata 
-----------+-----------------------------------------+---------
- sreh_ext | extra data after last expected column   | 12||||
- sreh_ext | extra data after last expected column   | 4|4|4|4
- sreh_ext | invalid input syntax for integer: "bad" | 7|7|bad
- sreh_ext | invalid input syntax for integer: "bad" | bad|8|8
- sreh_ext | missing data for column "b"             | 15
- sreh_ext | missing data for column "b"             | 2
- sreh_ext | missing data for column "b"             | eleven
- sreh_ext | missing data for column "b"             | sixteen
- sreh_ext | missing data for column "c"             | 13|,13,
- sreh_ext | missing data for column "c"             | 3|
+ relname  |                      errmsg                       | rawdata 
+----------+---------------------------------------------------+---------
+ sreh_ext | extra data after last expected column             | 12||||
+ sreh_ext | extra data after last expected column             | 4|4|4|4
+ sreh_ext | invalid input syntax for integer: "bad", column a | bad|8|8
+ sreh_ext | invalid input syntax for integer: "bad", column c | 7|7|bad
+ sreh_ext | missing data for column "b"                       | 15
+ sreh_ext | missing data for column "b"                       | 2
+ sreh_ext | missing data for column "b"                       | eleven
+ sreh_ext | missing data for column "b"                       | sixteen
+ sreh_ext | missing data for column "c"                       | 13|,13,
+ sreh_ext | missing data for column "c"                       | 3|
 (10 rows)
 
 TRUNCATE sreh_ext_errtbl;
@@ -488,18 +488,18 @@ NOTICE:  Rejected 10 badly formatted rows.
 (6 rows)
 
 SELECT relname,errmsg,rawdata FROM sreh_ext_errtbl ORDER BY errmsg,rawdata;
- relname  |                 errmsg                  | rawdata 
-----------+-----------------------------------------+---------
- sreh_ext | extra data after last expected column   | 12||||
- sreh_ext | extra data after last expected column   | 4|4|4|4
- sreh_ext | invalid input syntax for integer: "bad" | 7|7|bad
- sreh_ext | invalid input syntax for integer: "bad" | bad|8|8
- sreh_ext | missing data for column "b"             | 15
- sreh_ext | missing data for column "b"             | 2
- sreh_ext | missing data for column "b"             | eleven
- sreh_ext | missing data for column "b"             | sixteen
- sreh_ext | missing data for column "c"             | 13|,13,
- sreh_ext | missing data for column "c"             | 3|
+ relname  |                      errmsg                       | rawdata 
+----------+---------------------------------------------------+---------
+ sreh_ext | extra data after last expected column             | 12||||
+ sreh_ext | extra data after last expected column             | 4|4|4|4
+ sreh_ext | invalid input syntax for integer: "bad", column a | bad|8|8
+ sreh_ext | invalid input syntax for integer: "bad", column c | 7|7|bad
+ sreh_ext | missing data for column "b"                       | 15
+ sreh_ext | missing data for column "b"                       | 2
+ sreh_ext | missing data for column "b"                       | eleven
+ sreh_ext | missing data for column "b"                       | sixteen
+ sreh_ext | missing data for column "c"                       | 13|,13,
+ sreh_ext | missing data for column "c"                       | 3|
 (10 rows)
 
 TRUNCATE sreh_ext_errtbl;
@@ -512,18 +512,18 @@ SELECT count(*) FROM sreh_target;
 (1 row)
 
 SELECT relname,errmsg,rawdata FROM sreh_ext_errtbl ORDER BY errmsg,rawdata;
- relname  |                 errmsg                  | rawdata 
-----------+-----------------------------------------+---------
- sreh_ext | extra data after last expected column   | 12||||
- sreh_ext | extra data after last expected column   | 4|4|4|4
- sreh_ext | invalid input syntax for integer: "bad" | 7|7|bad
- sreh_ext | invalid input syntax for integer: "bad" | bad|8|8
- sreh_ext | missing data for column "b"             | 15
- sreh_ext | missing data for column "b"             | 2
- sreh_ext | missing data for column "b"             | eleven
- sreh_ext | missing data for column "b"             | sixteen
- sreh_ext | missing data for column "c"             | 13|,13,
- sreh_ext | missing data for column "c"             | 3|
+ relname  |                      errmsg                       | rawdata 
+----------+---------------------------------------------------+---------
+ sreh_ext | extra data after last expected column             | 12||||
+ sreh_ext | extra data after last expected column             | 4|4|4|4
+ sreh_ext | invalid input syntax for integer: "bad", column a | bad|8|8
+ sreh_ext | invalid input syntax for integer: "bad", column c | 7|7|bad
+ sreh_ext | missing data for column "b"                       | 15
+ sreh_ext | missing data for column "b"                       | 2
+ sreh_ext | missing data for column "b"                       | eleven
+ sreh_ext | missing data for column "b"                       | sixteen
+ sreh_ext | missing data for column "c"                       | 13|,13,
+ sreh_ext | missing data for column "c"                       | 3|
 (10 rows)
 
 TRUNCATE sreh_target;

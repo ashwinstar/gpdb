@@ -388,6 +388,7 @@ else \
 \
 	ErrorData	*edata; \
 	MemoryContext oldcontext;\
+	bool	errmsg_is_a_copy = false; \
 \
 	cur_row_rejected = true; \
 \
@@ -403,9 +404,27 @@ else \
 	pstate->cdbsreh->rawdata = pstate->line_buf.data; \
 	pstate->cdbsreh->is_server_enc = pstate->line_buf_converted; \
 	pstate->cdbsreh->linenumber = pstate->cur_lineno; \
-	pstate->cdbsreh->errmsg = edata->message; \
+\
+	/* set the error message. Use original msg and add column name if availble */ \
+	if (pstate->cur_attname)\
+	{\
+		pstate->cdbsreh->errmsg = (char *) palloc((strlen(edata->message) + \
+												   strlen(pstate->cur_attname) + \
+												   10 + 1) * sizeof(char)); \
+		errmsg_is_a_copy = true; \
+		sprintf(pstate->cdbsreh->errmsg, "%s, column %s", \
+				edata->message, \
+				pstate->cur_attname); \
+	}\
+	else\
+	{\
+		pstate->cdbsreh->errmsg = edata->message; \
+	}\
 \
 	HandleSingleRowError(pstate->cdbsreh); \
+\
+	if(errmsg_is_a_copy) \
+		pfree(pstate->cdbsreh->errmsg); \
 }
 
 /*
