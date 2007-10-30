@@ -1206,6 +1206,7 @@ typedef struct CreateStmt
 	TableOidInfo oidInfo;
 	char	    relKind;         /* CDB: force relkind to this */
 	GpPolicy  *policy;
+	Node       *postCreate;      /* CDB: parse and process after the CREATE */
 } CreateStmt;
 
 /* ----------------------

@@ -2040,6 +2040,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->oidInfo.toastComptypeOid = 0;
 					n->relKind = RELKIND_RELATION;
 					n->policy = 0;
+                    n->postCreate = NULL;
 					
 					$$ = (Node *)n;
 				}
@@ -2066,6 +2067,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->oidInfo.toastComptypeOid = 0;
 					n->relKind = RELKIND_RELATION;
 					n->policy = 0;
+                    n->postCreate = NULL;
 					
 					$$ = (Node *)n;
 				}

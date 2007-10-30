@@ -60,6 +60,7 @@
 #include "parser/parser.h"
 #include "rewrite/rewriteHandler.h"
 #include "storage/smgr.h"
+#include "tcop/utility.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
@@ -832,6 +833,52 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
 	
 	
+}
+
+/* ----------------------------------------------------------------
+*		DefinePartitionedRelation
+*				Create the rewrite rule for a partitioned table
+*
+* parse/analyze.c/transformPartitionBy does the bulk of the work for
+* partitioned tables, converting a single CREATE TABLE into a series
+* of statements to create the child tables for each partition.  Each
+* child table has a check constraint and a rewrite rule to ensure that
+* INSERTs to the parent end up in the correct child table (partition).
+* However, we cannot add a RuleStmt for a non-existent table to the
+* a(fter)list for the Create statement (believe me, I tried, really
+* hard).  Thus, we create the "parsed" RuleStmt in analyze, and
+* finally parse_analyze it here *after* the relation is created, the
+* use process_utility to dispatch.
+* ----------------------------------------------------------------
+*/
+void
+DefinePartitionedRelation(CreateStmt *stmt)
+{
+	if (stmt->postCreate)
+	{
+		List *pQry;
+		Node *pUtl;
+		DestReceiver *dest = None_Receiver;
+	
+		pQry = parse_analyze(stmt->postCreate, NULL, NULL, 0);
+
+		if (!pQry)
+			return;
+
+		/* just grab the first guy - "There Can Be Only One"(TM) */
+		pUtl = linitial(pQry);
+
+		if (!pUtl)
+			return;
+
+		Assert(IsA(pUtl, Query));
+        Assert(((Query *)pUtl)->commandType == CMD_UTILITY);
+
+		ProcessUtility(
+				(Node *)
+				(((Query *)pUtl)->utilityStmt),
+				NULL, dest, NULL);		
+	}
 }
 
 /*
