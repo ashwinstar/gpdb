@@ -3671,7 +3671,7 @@ static void
 validate_range_partition(partValidationState *vstate)
 {
 	bool bAppendRange = false;
-	PartitionBoundSpec *prevBSpec;
+	PartitionBoundSpec *prevBSpec = NULL;
 
 	if (vstate->pBSpec)
 	{
