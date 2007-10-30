@@ -69,7 +69,7 @@ SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,raw
  sreh_copy |       8 | invalid input syntax for integer: "bad" | bad|8|8
  sreh_copy |      11 | missing data for column "b"             | eleven
  sreh_copy |      12 | extra data after last expected column   | 12||||
- sreh_copy |      13 | missing data for column "c"             | |,13,
+ sreh_copy |      13 | missing data for column "c"             | 13|,13,
  sreh_copy |      15 | missing data for column "b"             | 15
  sreh_copy |      16 | missing data for column "b"             | sixteen
 (10 rows)
@@ -119,8 +119,8 @@ SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,raw
  sreh_copy |      11 | missing data for column "b"             | eleven
  sreh_copy |      12 | extra data after last expected column   | 12||||
  sreh_copy |      12 | extra data after last expected column   | 12||||
- sreh_copy |      13 | missing data for column "c"             | |,13,
- sreh_copy |      13 | missing data for column "c"             | |,13,
+ sreh_copy |      13 | missing data for column "c"             | 13|,13,
+ sreh_copy |      13 | missing data for column "c"             | 13|,13,
  sreh_copy |      15 | missing data for column "b"             | 15
  sreh_copy |      15 | missing data for column "b"             | 15
  sreh_copy |      16 | missing data for column "b"             | sixteen
@@ -176,8 +176,8 @@ SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,raw
  sreh_copy |      11 | missing data for column "b"                                   | eleven
  sreh_copy |      12 | extra data after last expected column                         | 12||||
  sreh_copy |      12 | extra data after last expected column                         | 12||||
- sreh_copy |      13 | missing data for column "c"                                   | |,13,
- sreh_copy |      13 | missing data for column "c"                                   | |,13,
+ sreh_copy |      13 | missing data for column "c"                                   | 13|,13,
+ sreh_copy |      13 | missing data for column "c"                                   | 13|,13,
  sreh_copy |      15 | missing data for column "b"                                   | 15
  sreh_copy |      15 | missing data for column "b"                                   | 15
  sreh_copy |      16 | missing data for column "b"                                   | sixteen
@@ -234,8 +234,8 @@ SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,raw
  sreh_copy |      11 | missing data for column "b"                                   | eleven
  sreh_copy |      12 | extra data after last expected column                         | 12||||
  sreh_copy |      12 | extra data after last expected column                         | 12||||
- sreh_copy |      13 | missing data for column "c"                                   | |,13,
- sreh_copy |      13 | missing data for column "c"                                   | |,13,
+ sreh_copy |      13 | missing data for column "c"                                   | 13|,13,
+ sreh_copy |      13 | missing data for column "c"                                   | 13|,13,
  sreh_copy |      15 | missing data for column "b"                                   | 15
  sreh_copy |      15 | missing data for column "b"                                   | 15
  sreh_copy |      16 | missing data for column "b"                                   | sixteen
@@ -436,7 +436,7 @@ SELECT relname,errmsg,rawdata FROM sreh_ext_errtbl ORDER BY errmsg,rawdata;
  sreh_ext | missing data for column "b"             | 2
  sreh_ext | missing data for column "b"             | eleven
  sreh_ext | missing data for column "b"             | sixteen
- sreh_ext | missing data for column "c"             | |,13,
+ sreh_ext | missing data for column "c"             | 13|,13,
  sreh_ext | missing data for column "c"             | 3|
 (10 rows)
 
@@ -460,7 +460,7 @@ SELECT relname,errmsg,rawdata FROM sreh_ext_errtbl ORDER BY errmsg,rawdata;
  sreh_ext | missing data for column "b"             | 2
  sreh_ext | missing data for column "b"             | eleven
  sreh_ext | missing data for column "b"             | sixteen
- sreh_ext | missing data for column "c"             | |,13,
+ sreh_ext | missing data for column "c"             | 13|,13,
  sreh_ext | missing data for column "c"             | 3|
 (10 rows)
 
@@ -498,7 +498,7 @@ SELECT relname,errmsg,rawdata FROM sreh_ext_errtbl ORDER BY errmsg,rawdata;
  sreh_ext | missing data for column "b"             | 2
  sreh_ext | missing data for column "b"             | eleven
  sreh_ext | missing data for column "b"             | sixteen
- sreh_ext | missing data for column "c"             | |,13,
+ sreh_ext | missing data for column "c"             | 13|,13,
  sreh_ext | missing data for column "c"             | 3|
 (10 rows)
 
@@ -522,7 +522,7 @@ SELECT relname,errmsg,rawdata FROM sreh_ext_errtbl ORDER BY errmsg,rawdata;
  sreh_ext | missing data for column "b"             | 2
  sreh_ext | missing data for column "b"             | eleven
  sreh_ext | missing data for column "b"             | sixteen
- sreh_ext | missing data for column "c"             | |,13,
+ sreh_ext | missing data for column "c"             | 13|,13,
  sreh_ext | missing data for column "c"             | 3|
 (10 rows)
 
