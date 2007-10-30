@@ -302,7 +302,7 @@ PROCESS_CHILD_CONSTRAINT () {
 			CHILD_CONSTRAINT_TEXT_TEMPLATE=`$ECHO $CHILD_CONSTRAINT_TEXT|$SED -e 's/AND/~/g'|$TR '~' '\n'|$SED -e 's/[0-9]*-[0-9]*-[0-9]*/%?%/g'|$AWK -F'%' '{print $1"'~SWAP'"NR$3}'|$SED -e 's/^ /AND /g'|$TR '\n' ' '`
 		fi
 	else
-	CHILD_CONSTRAINT_TEXT_TEMPLATE=`$ECHO $CHILD_CONSTRAINT_TEXT|$SED -e 's/AND/~/g'|$TR '~' '\n'|$SED -e 's/[0-9])/1 )/g'|$AWK '{print $1" "$2" SWAP"NR$4}'|$TR '\n' '~'|$SED -e 's/))~/))/g'|$SED -e 's/~/ AND /g'`
+	CHILD_CONSTRAINT_TEXT_TEMPLATE=`$ECHO $CHILD_CONSTRAINT_TEXT|$SED -e 's/AND/~/g'|$TR '~' '\n'|$SED -e 's/[0-9])/1 )/g'|$AWK '{print $1" "$2" SWAP"NR$4}'|$AWK '{printf("%s~", $0);} END{printf("\n");}'|$SED -e 's/))~/))/g'|$SED -e 's/~/ AND /g'`
 	fi
 	CHILD_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_class where relname='$CHILD_NAME'and relkind='r' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
 	ERROR_CHK $? "obtain child table OID value" 2
