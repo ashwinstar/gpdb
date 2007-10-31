@@ -138,7 +138,7 @@ $(function() {
       <table>
         <tbody><tr>
           <td colspan="3"></td>
-          <td><h1>Database Management</h1></td>
+          <td><h1>Database Control</h1></td>
         </tr>
         <tr>
          <td width="25"></td>
@@ -152,15 +152,15 @@ $(function() {
          <div id="leftNav">
           
 <ul id="leftMenu">
-<li><a href="http://www.greenplum.com/index.php?page=products" id="current"> Database Management
+<li><a href="/index.psp"> Database Management
  </a></li>
 </ul>
 
           
 <ul id="leftMenu">
-<li><a href="http://www.greenplum.com/index.php?page=greenplum-database"> Greenplum Database </a></li>
-<li><a href="http://www.greenplum.com/index.php?page=greenplum-network"> Greenplum Network </a></li>
-<li><a href="http://www.greenplum.com/index.php?page=open-source-community"> Open Source Community </a></li>
+<li><a href="/initialize.psp"> Database Initialization </a></li>
+<li><a href="/configure.psp"> Database Configuration </a></li>
+<li><a href="/control.psp" id="current"> Database Control </a></li>
 </ul>
 
 
