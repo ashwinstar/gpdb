@@ -1138,14 +1138,21 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 							oldTablePolicy->ptype == POLICYTYPE_PARTITIONED)
 						{
 							int ia;
-					
-							for (ia=0;ia<oldTablePolicy->nattrs;ia++)
+						
+							if (oldTablePolicy->nattrs > 0)
 							{
-								char *attname = get_attname(relId, oldTablePolicy->attrs[ia]);
-								if (likeDistributedBy)
+								for (ia=0;ia<oldTablePolicy->nattrs;ia++)
+								{
+									char *attname = get_attname(relId, oldTablePolicy->attrs[ia]);
+									if (likeDistributedBy)
 										likeDistributedBy = lappend(likeDistributedBy, (Node *) makeString(attname));
 									else
 										likeDistributedBy = list_make1((Node *) makeString(attname));
+								}
+							}
+							else
+							{	/* old table is distributed randomly. */
+								likeDistributedBy = list_make1((Node *) NULL);
 							}
 						}
 					}
