@@ -1374,6 +1374,8 @@ typedef struct NestLoopState
 
 	bool		shared_outer;
 	bool		prefetch_inner;
+	bool		reset_inner; /*CDB-OLAP*/
+	bool		require_inner_reset; /*CDB-OLAP*/
 
 	TupleTableSlot *nl_NullInnerTupleSlot;
 } NestLoopState;

@@ -1506,6 +1506,7 @@ MergeJoinState *
 ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 {
 	MergeJoinState *mergestate;
+	int markflag;
 
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
@@ -1553,11 +1554,13 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 	/*
 	 * initialize child nodes
 	 *
-	 * inner child must support MARK/RESTORE.
+	 * inner child must support MARK/RESTORE unless the outer plan is
+	 * known to have no duplicate merge keys.
 	 */
+	markflag = node->unique_outer ? 0 : EXEC_FLAG_MARK;
 	outerPlanState(mergestate) = ExecInitNode(outerPlan(node), estate, eflags);
 	innerPlanState(mergestate) = ExecInitNode(innerPlan(node), estate,
-											  eflags | EXEC_FLAG_MARK);
+											  eflags | markflag);
 
 #define MERGEJOIN_NSLOTS 4
 

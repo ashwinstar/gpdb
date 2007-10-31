@@ -1283,7 +1283,7 @@ explain_outNode(StringInfo str,
 				
 				if ( window->numPartCols > 0 )
 				{
-					show_grouping_keys(outerPlan(plan),
+					show_grouping_keys(plan,
 									   window->numPartCols,
 									   window->partColIdx,
 									   "Partition By",
@@ -1736,6 +1736,7 @@ show_grouping_keys(Plan        *plan,
     appendStringInfo(str, "  %s: ", qlabel);
 
     /* Generate deparse context */
+//	if (subplan && cdbpullup_exprHasSubplanRef((Expr *)subplan->targetlist))
 	if (cdbpullup_exprHasSubplanRef((Expr *)subplan->targetlist))
 	{
 		Node	   *outerctx;

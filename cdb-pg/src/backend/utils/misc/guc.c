@@ -1147,6 +1147,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_enable_sequential_window_plans", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Experimental feature: Enable non-parallel window plans."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_enable_sequential_window_plans,
+		false, NULL, NULL
+	},
+
+	{
 		{"gp_hashagg_recalc_density", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Executor can recalculate grouping density based on pre-spill real density."),
 			NULL,

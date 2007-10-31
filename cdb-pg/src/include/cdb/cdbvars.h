@@ -559,6 +559,14 @@ extern bool gp_enable_preunique;
  */
 extern bool gp_eager_preunique;
 
+/* May Greenplum use sequential window plans instead of parallel window
+ * plans? (OLAP Experimental.)
+ *
+ * The code does not currently use planner estimates for this.  If enabled,
+ * the tactic is used whenever possible.
+ */
+extern bool gp_enable_sequential_window_plans;
+
 /* May Greenplum dump statistics for all segments as a huge ugly string
  * during EXPLAIN ANALYZE? 
  *

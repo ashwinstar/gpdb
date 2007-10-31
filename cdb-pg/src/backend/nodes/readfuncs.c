@@ -2484,6 +2484,7 @@ _readNestLoop(void)
 
     READ_BOOL_FIELD(outernotreferencedbyinner); /*CDB*/
     READ_BOOL_FIELD(shared_outer);
+    READ_BOOL_FIELD(singleton_outer);
 
     READ_DONE();
 }
@@ -2514,6 +2515,7 @@ _readMergeJoin(void)
 	readJoinInfo((Join *)local_node);
 
 	READ_NODE_FIELD(mergeclauses);
+	READ_BOOL_FIELD(unique_outer);
 
 	READ_DONE();
 }

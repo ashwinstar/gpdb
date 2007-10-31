@@ -107,6 +107,7 @@ ExecNestLoop(NestLoopState *node)
 	if (node->prefetch_inner)
 	{
 		innerTupleSlot = ExecProcNode(innerPlan);
+		node->reset_inner = true;
 		econtext->ecxt_innertuple = innerTupleSlot;
 
 		if (TupIsNull(innerTupleSlot))
@@ -125,6 +126,7 @@ ExecNestLoop(NestLoopState *node)
 
 		node->nl_Untouched = false;
 		node->prefetch_inner = false;
+		node->reset_inner = false;
 	}
 
 	/*
@@ -195,7 +197,11 @@ ExecNestLoop(NestLoopState *node)
 			 * outer tuple (e.g. in index scans), that's why we pass our expr
 			 * context.
 			 */
-			ExecReScan(innerPlan, econtext);
+			if ( node->require_inner_reset || node->reset_inner )
+			{
+				ExecReScan(innerPlan, econtext);
+				node->reset_inner = false;
+			}
 		}
 
 		/*
@@ -204,6 +210,7 @@ ExecNestLoop(NestLoopState *node)
 		ENL1_printf("getting new inner tuple");
 
 		innerTupleSlot = ExecProcNode(innerPlan);
+		node->reset_inner = true;
 		econtext->ecxt_innertuple = innerTupleSlot;
 
 		if (TupIsNull(innerTupleSlot))
@@ -319,6 +326,10 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	nlstate->shared_outer = node->shared_outer;
 
 	nlstate->prefetch_inner = node->join.prefetch_inner;
+	
+	/*CDB-OLAP*/
+	nlstate->reset_inner = false;
+	nlstate->require_inner_reset = !node->singleton_outer;
 
 	/*
 	 * Miscellaneous initialization

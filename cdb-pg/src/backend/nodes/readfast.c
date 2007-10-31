@@ -2320,6 +2320,7 @@ _readNestLoop(const char ** str)
 
     READ_BOOL_FIELD(outernotreferencedbyinner); /*CDB*/
 	READ_BOOL_FIELD(shared_outer); 
+	READ_BOOL_FIELD(singleton_outer); /*CDB-OLAP*/
 
     READ_DONE();
 }
@@ -2350,6 +2351,7 @@ _readMergeJoin(const char ** str)
 	readJoinInfo(str, (Join *)local_node);
 
 	READ_NODE_FIELD(mergeclauses);
+	READ_BOOL_FIELD(unique_outer);
 
 	READ_DONE();
 }

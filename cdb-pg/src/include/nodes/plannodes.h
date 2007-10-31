@@ -412,6 +412,7 @@ typedef struct NestLoop
 
     bool		outernotreferencedbyinner;  /* true => inner has no OUTER Var */
 	bool		shared_outer;
+	bool		singleton_outer; /*CDB-OLAP true => outer is plain Agg */
 } NestLoop;
 
 /* ----------------
@@ -422,6 +423,7 @@ typedef struct MergeJoin
 {
 	Join		join;
 	List	   *mergeclauses;
+	bool		unique_outer; /*CDB-OLAP true => outer is unique in merge key */
 } MergeJoin;
 
 /* ----------------

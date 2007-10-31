@@ -137,10 +137,6 @@ static ValuesScan *make_valuesscan(List *qptlist, List *qpqual,
 				Index scanrelid);
 static BitmapAnd *make_bitmap_and(List *bitmapplans);
 static BitmapOr *make_bitmap_or(List *bitmapplans);
-static NestLoop *make_nestloop(List *tlist,
-							   List *joinclauses, List *otherclauses,
-							   Plan *lefttree, Plan *righttree,
-							   JoinType jointype);
 static AdaptiveNestLoop *
 make_adaptivenestloop(List     *tlist,
 					  Plan     *lefttree,
@@ -152,11 +148,6 @@ static HashJoin *make_hashjoin(List *tlist,
 			  Plan *lefttree, Plan *righttree,
 			  JoinType jointype);
 static Hash *make_hash(Plan *lefttree);
-static MergeJoin *make_mergejoin(List *tlist,
-			   List *joinclauses, List *otherclauses,
-			   List *mergeclauses,
-			   Plan *lefttree, Plan *righttree,
-			   JoinType jointype);
 static Sort *make_sort(PlannerInfo *root, Plan *lefttree, int numCols,
 		  AttrNumber *sortColIdx, Oid *sortOperators);
 
@@ -3221,7 +3212,7 @@ make_bitmap_or(List *bitmapplans)
 	return node;
 }
 
-static NestLoop *
+NestLoop *
 make_nestloop(List *tlist,
 			  List *joinclauses,
 			  List *otherclauses,
@@ -3308,7 +3299,7 @@ make_hash(Plan *lefttree)
 	return node;
 }
 
-static MergeJoin *
+MergeJoin *
 make_mergejoin(List *tlist,
 			   List *joinclauses,
 			   List *otherclauses,

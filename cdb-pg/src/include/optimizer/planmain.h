@@ -102,6 +102,15 @@ extern Group *make_group(PlannerInfo *root, List *tlist, List *qual,
 						 uint64 inputGrouping,  uint64 grouping,
 						 int rollupGSTimes,
 						 Plan *lefttree);
+extern NestLoop *make_nestloop(List *tlist,
+							   List *joinclauses, List *otherclauses,
+							   Plan *lefttree, Plan *righttree,
+							   JoinType jointype);
+extern MergeJoin *make_mergejoin(List *tlist,
+			   List *joinclauses, List *otherclauses,
+			   List *mergeclauses,
+			   Plan *lefttree, Plan *righttree,
+			   JoinType jointype);
 extern Window *make_window(PlannerInfo *root, List *tlist,
 		   int numPartCols, AttrNumber *partColIdx, List *windowKeys,
 		   Plan *lefttree);

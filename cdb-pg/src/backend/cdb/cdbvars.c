@@ -164,6 +164,7 @@ int         gp_segments_for_planner = 0;
 bool		enable_agg_restruct = true;
 bool		gp_enable_preunique = TRUE;
 bool		gp_eager_preunique = FALSE;
+bool		gp_enable_sequential_window_plans = FALSE;
 double		gp_hashagg_rewrite_limit = 1;
 bool		gp_hashagg_recalc_density = true;
 bool 		gp_hashagg_streambottom = true;

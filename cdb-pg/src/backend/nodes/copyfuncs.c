@@ -474,6 +474,7 @@ _copyNestLoop(NestLoop *from)
 
     COPY_SCALAR_FIELD(outernotreferencedbyinner);   /*CDB*/
     COPY_SCALAR_FIELD(shared_outer);
+    COPY_SCALAR_FIELD(singleton_outer); /*CDB-OLAP*/
 
     return newnode;
 }
@@ -511,6 +512,7 @@ _copyMergeJoin(MergeJoin *from)
 	 * copy remainder of node
 	 */
 	COPY_NODE_FIELD(mergeclauses);
+	COPY_SCALAR_FIELD(unique_outer);
 
 	return newnode;
 }

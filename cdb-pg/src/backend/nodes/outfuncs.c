@@ -489,6 +489,7 @@ _outNestLoop(StringInfo str, NestLoop *node)
 
     WRITE_BOOL_FIELD(outernotreferencedbyinner);    /*CDB*/
 	WRITE_BOOL_FIELD(shared_outer);
+	WRITE_BOOL_FIELD(singleton_outer); /*CDB-OLAP*/
 }
 
 static void
@@ -509,6 +510,7 @@ _outMergeJoin(StringInfo str, MergeJoin *node)
 	_outJoinPlanInfo(str, (Join *) node);
 
 	WRITE_NODE_FIELD(mergeclauses);
+	WRITE_BOOL_FIELD(unique_outer);
 }
 
 static void

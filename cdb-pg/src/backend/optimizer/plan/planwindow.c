@@ -38,9 +38,7 @@
 #include "utils/debugbreak.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
-#ifdef BRIAN_SANDBOX
 #include "utils/selfuncs.h"
-#endif /*BRIAN_SANDBOX*/
 
 #include "cdb/cdbgroup.h"					/* cdbpathlocus_collocates() */
 #include "cdb/cdbllize.h"                   /* pull_up_Flow() */
@@ -126,7 +124,8 @@ typedef struct RefInfo
 	
 	int			trans_space;
 	
-	Expr	   *resultexpr; /* Result expression for upper target list */
+	Expr	   *resultexpr; /* Result expression for upper target list in parallel target list */
+	AttrNumber	resno; /* Attribute number of result in sequential target list */
 } RefInfo;
 
 /* Macros to determine what kind of window function a RefInfo represents
@@ -194,6 +193,10 @@ typedef struct WindowContext
 	bool			has_unordered_aggs;
 	bool			has_deferred_window_fns;
 	
+	 /* Only for sequential plans */
+	bool			original_range;
+	Query		   *subquery;
+	
 	/* Map (varno,varattno) <--> (integer) for use in Bitmapsets recording
 	 * use of vars from the window query's range table.
 	 */
@@ -202,6 +205,7 @@ typedef struct WindowContext
 	int			   *offset_varnos;
 	int				offset_lim;
 	
+	/* Offset map for final targetlist translation for parallel plans. */
 	AttrNumber	   *offset_upper_varattrnos;
 	
 	/* Target list for the "common subquery".
@@ -247,13 +251,13 @@ static void assign_window_info(WindowContext *context);
 static bool is_order_prefix_of(List *sca, List *scb);
 static void lookup_window_function(RefInfo *rinfo);
 static Plan *plan_trivial_window_query(PlannerInfo *root, WindowContext *context, List **pathkeys_ptr);
-#ifdef BRIAN_SANDBOX
 static Plan *plan_sequential_window_query(PlannerInfo *root, WindowContext *context, List **pathkeys_ptr);
 static Plan *plan_sequential_stage(PlannerInfo *root, WindowContext *context, 
 		int hi_windex, int lo_windex,
 		Plan *input_plan, CdbPathLocus *locus_ptr, List **pathkeys_ptr);
 static Plan *assure_order(PlannerInfo *root, Plan *input_plan, List *sortclause, List **pathkeys_ptr);
-#endif /* BRIAN_SANDBOX */
+static Expr * make_mergeclause(Index lftvarno, AttrNumber lftattrno, Node *rgtexpr);
+static List *translate_upper_tlist_sequential(List *orig_tlist, List *window_tlist, WindowContext *context);
 static Plan *plan_parallel_window_query(PlannerInfo *root, WindowContext *context, List **pathkeys_ptr);
 static void plan_windowinfo_coplans(PlannerInfo *root, WindowContext *context, int window_index);
 static List * plan_window_rtable(PlannerInfo* root, WindowContext *context);
@@ -265,41 +269,21 @@ static Plan *assure_collocation_and_order(PlannerInfo *root, Plan *input_plan,
 static AttrNumber addTargetToCoplan(Node *target, Coplan *coplan, WindowContext *context);
 static Aggref* makeWindowAggref(WindowRef *winref);
 static Aggref* makeAuxCountAggref(void);
-static List *translate_upper_tlist(List *orig_tlist, WindowContext *context);
-static Node * translate_upper_tlist_mutator(Node *node, WindowContext *context);
+static List *translate_upper_tlist_parallel(List *orig_tlist, WindowContext *context);
 static FromExpr *plan_window_jointree(PlannerInfo *root, WindowContext *context);
 static Expr *make_window_join_term(Oid type, Index lftvarno, AttrNumber lftattrno, Index rgtvarno, AttrNumber rgtattrno);
 static Oid *get_window_attr_types(List *targetlist, int nattrs, AttrNumber *attrs);
 static RangeTblEntry *package_plan_as_rte(Query *query, Plan *plan, Alias *eref, List *pathkeys);
 
-
-#ifdef BRIAN_SANDBOX
-
-static bool gp_enable_sequential_window_plans = true;
-
-/* Helper function to get nth windowinfo's partkey len */
-static int get_windowctxt_partkey_len(void *ctxt, int nth)
-{
-	WindowContext *winctxt = (WindowContext *) ctxt;
-	WindowInfo* winfo;
-	
-	Assert(nth <= winctxt->nwindowinfos);
-	winfo = &(winctxt->windowinfos[nth]);
-
-	return winfo->partkey_len;
-}
-/* Helper function to get nth windowinfo's sort clause */
-static List *get_windowctxt_sortclause(void *ctxt, int nth)
-{
-	WindowContext *winctxt = (WindowContext *) ctxt;
-	WindowInfo* winfo;
-	
-	Assert(nth <= winctxt->nwindowinfos);
-	winfo = &(winctxt->windowinfos[nth]);
-
-	return winfo->sortclause;
-}
-#endif /* BRIAN_SANDBOX */
+static Plan *wrap_plan(Plan *plan, Query *query, List *pathkeys, 
+       const char *alias_name, List *col_names, Query **query_p);
+static Plan *add_join_to_wrapper(Plan *plan, Query *query, List *join_tlist,
+								 unsigned partkey_len, 
+								 const char *alias_name, List *col_names, 
+								 Query *wrapper_query);
+static Query *copy_common_subquery(Query *original, List *targetList);
+static char *get_function_name(Oid proid, const char *dflt);
+static Value *get_tle_name(TargetEntry *tle, List* rtable, const char *default_name);
 
 
 Plan *
@@ -376,14 +360,10 @@ window_planner(PlannerInfo *root, double tuple_fraction, List **pathkeys_ptr)
 	}
 	else
 	{
-#ifdef BRIAN_SANDBOX
 		if ( gp_enable_sequential_window_plans )
 			return plan_sequential_window_query(root, context, pathkeys_ptr);
 		else
 			return plan_parallel_window_query(root, context, pathkeys_ptr);
-#else
-		return plan_parallel_window_query(root, context, pathkeys_ptr);
-#endif /* BRIAN_SANDBOX */
 	}
 
 	/* TODO Check our API.
@@ -421,6 +401,9 @@ static WindowContext *newWindowContext()
 	context->coplan_count = 0;
 	context->has_unordered_aggs = false;
 	context->has_deferred_window_fns = false;
+
+	context->original_range = true;
+	context->subquery = NULL;
 	
 	context->max_varno = 0;
 	context->varattno_offsets = NULL;
@@ -1052,6 +1035,15 @@ static void inventory_window_specs(List *window_specs, WindowContext *context)
 }
 
 
+/* assign_window_info
+ *
+ * Assigns a WindowInfo to each group of compatible SpecInfo structures in
+ * the context. The groups will be contiguous in array context->specinfos
+ * due to the sort order established by inventory_window_specs.
+ *
+ * Ultimately each WindowInfo will correspond to a Window node and the
+ * notion of "compatible" is based on the requirements of Window nodes.
+ */
 static void assign_window_info(WindowContext *context)
 {
 	int i, j, k, n;
@@ -1710,11 +1702,14 @@ lookup_window_function(RefInfo *rinfo)
 	}
 }
 
-
+/*
+ *
+ */
 static Plan *plan_common_subquery(PlannerInfo *root, List *lower_tlist,
 								  List *order_hint,
 								  CdbPathLocus *result_locus,
-								  List **result_pathkeys)
+								  List **result_pathkeys
+								  )
 {
 	Plan *result_plan = NULL;
 	Path *cheapest_path = NULL;
@@ -1781,8 +1776,9 @@ Plan *assure_collocation_and_order(
 		int partkey_len,
 		AttrNumber *partkey_attrs,
 		List *sortclause,								 
-		CdbPathLocus input_locus,
-		List **pathkeys_ptr)
+		CdbPathLocus input_locus, /*OUT*/
+		List **pathkeys_ptr /*OUT*/
+		)
 {
 	Plan *result_plan;
 	List *pathkeys;
@@ -1801,7 +1797,8 @@ Plan *assure_collocation_and_order(
 	if ( sortclause != NIL )
 	{
 		sort_pathkeys = make_pathkeys_for_sortclauses(sortclause, input_plan->targetlist);
-		sort_pathkeys = canonicalize_pathkeys(root, sort_pathkeys);
+		if ( root != NULL )
+			sort_pathkeys = canonicalize_pathkeys(root, sort_pathkeys);
 		Assert(sort_pathkeys != NULL);
 	}
 	
@@ -1843,7 +1840,8 @@ Plan *assure_collocation_and_order(
 			dist_keys = lappend(dist_keys, lfirst(lc));
 		}
 		dist_pathkeys = make_pathkeys_for_sortclauses(dist_keys, input_plan->targetlist);
-		dist_pathkeys = canonicalize_pathkeys(root, dist_pathkeys);
+		if ( root != NULL )
+			dist_pathkeys = canonicalize_pathkeys(root, dist_pathkeys);
 		
 		/* Assure the required distribution. */
 		if ( ! cdbpathlocus_collocates(input_locus, dist_pathkeys) )
@@ -1876,7 +1874,6 @@ Plan *assure_collocation_and_order(
 	return result_plan;
 }
 
-#ifdef BRIAN_SANDBOX
 /* Assure that the given input plan meets the sort order requirements 
  * by adding a Sort node, if necessary.
  *
@@ -1902,7 +1899,8 @@ Plan *assure_order(
 	if ( sortclause != NIL )
 	{
 		sort_pathkeys = make_pathkeys_for_sortclauses(sortclause, input_plan->targetlist);
-		sort_pathkeys = canonicalize_pathkeys(root, sort_pathkeys);
+		if ( root != NULL )
+			sort_pathkeys = canonicalize_pathkeys(root, sort_pathkeys);
 		Assert(sort_pathkeys != NULL);
 	}
 
@@ -1918,7 +1916,16 @@ Plan *assure_order(
 
 	return result_plan;
 }
-#endif /* BRIAN_SANDBOX */
+
+
+Expr *make_mergeclause(Index varno, AttrNumber attrno, Node *expr)
+{
+	Oid type = exprType(expr);
+	Node *lft = (Node*)makeVar(varno, attrno, type, -1, 0);
+	Node *rgt = copyObject(expr);
+	
+	return make_op(NULL, list_make1(makeString("=")), lft, rgt, -1);
+}
 
 
 /* Plan a window query that can be implemented without any joins or 
@@ -1985,7 +1992,6 @@ static Plan *plan_trivial_window_query(PlannerInfo *root, WindowContext *context
 	return result_plan;
 }
 
-#ifdef BRIAN_SANDBOX
 
 /* Construct a sequential plan for a non-trivial window query.  A non-trivial
  * window query is one that involves more than one partition/sort order or
@@ -2005,47 +2011,50 @@ static Plan *plan_trivial_window_query(PlannerInfo *root, WindowContext *context
 static Plan *plan_sequential_window_query(PlannerInfo *root, WindowContext *context, List **pathkeys_ptr)
 {
 	Plan *result_plan;
-	List *result_pathkeys;
+	List *result_pathkeys = NIL;
 	CdbPathLocus locus;
 	List *pathkeys = NIL;
 	List *targetlist;
-	List *rtable;
-	FromExpr *jointree;
 	List *sort_hint;
 	int hi, lo;
 	TargetEntry *tle;
 	AttrNumber resno;
 	ListCell *lc;
+	QualCost tlist_cost;
 		
 	Assert ( pathkeys_ptr != NULL );
+	Assert ( context->original_range );
 	
+	/* Plan common subquery. */
 	sort_hint = context->windowinfos[context->nwindowinfos-1].sortclause;
-
 	result_plan = plan_common_subquery(root, context->lower_tlist,
 									   sort_hint,
 									   &locus,
 									   &pathkeys);
 	
+	/* Record common subquery information in context. 
+	 *
+	 * It's not clear that we need this for the sequential strategy.
+	 * Set the input parse tree for plan_sequential_stage().
+	 */
+	context->subplan = result_plan;
+	context->subplan_locus = locus;
+	context->subplan_pathkeys = pathkeys;
+	context->subquery = copy_common_subquery(root->parse, context->lower_tlist);
+		
 	/* Be tidy: no row key used in the sequential strategy. */
 	context->rowkey_len = 0;
 	context->rowkey_attrs = NULL;	
 	context->keyed_lower_tlist = NULL;	
 	
-	/* Record common subquery information in context. 
-	 *
-	 * It's not clear that we need this for the sequential strategy.
-	 */
-	context->subplan = result_plan;
-	context->subplan_locus = locus;
-	context->subplan_pathkeys = pathkeys;
-	
 	/* Initialize an array to convert the index of a Var from the lower 
 	 * range to its position (resno) in the target list we are producing.  
-	 * This will be used later to mutate Vars on the original range table 
-	 * (from the original target list) to Vars on the final range table.
+	 * This will be used later by translate_upper_tlist_sequential to mutate 
+	 * Vars on the original range table (from the original target list) to 
+	 * Vars on the final range table.
 	 */	
 	resno = 0;
-	context->offset_upper_varattrnos = palloc0(context->offset_lim * sizeof(Var*));
+	context->offset_upper_varattrnos = palloc0(context->offset_lim * sizeof(AttrNumber));
 	
 	foreach ( lc, context->lower_tlist )
 	{
@@ -2063,7 +2072,7 @@ static Plan *plan_sequential_window_query(PlannerInfo *root, WindowContext *cont
 	}
 	
 	/* 
-	 * A stage comprises a set of WindowInfos with the same partitioning.
+	 * A stage is a set of WindowInfos with the same partitioning.
 	 *
 	 * We construct plan stages from the last window info to the first.
 	 * This is because the window info sort places non-partitioned windows 
@@ -2094,78 +2103,38 @@ static Plan *plan_sequential_window_query(PlannerInfo *root, WindowContext *cont
 											&pathkeys
 											);
 	}
+			
+	/* Mutate the upper target list to compute the final result. */
+	targetlist = translate_upper_tlist_sequential(context->upper_tlist, 
+												  result_plan->targetlist, 
+												  context);
 	
-	elog(ERROR, "End of working code in plan_sequential_window_query().");
-	/* Generate coplans for each WindowInfo								  								  
-	context->coplan_count = 0;
-	
-	for ( i = 0; i < context->nwindowinfos; i++ )
-	{
-		plan_windowinfo_coplans(root, context, i);
-	} 
-	*/
-	
-	/* Construct the range table for the join query to be constructed. */
-	rtable = plan_window_rtable(root, context);
-	
-	/* Mutate the upper target list to refer to the new range table. */
-	targetlist = translate_upper_tlist(context->upper_tlist, context);
-	
-	/* Arrange to join the coplans back together. */
-	jointree = plan_window_jointree(root,  context);
-	
-	/* XXX This is the evil part!
+	/* Adjust root so the table expression portion of the parse tree looks 
+	 * like the output of the final stage. */
+	root->parse->rtable = context->subquery->rtable;
+	root->parse->jointree = context->subquery->jointree;
+	/* XXX I don't think the quals are used later so no need to translate. 
+	 *     They would either be empty or represent a join on the last
+	 *     partitioning key processed by plan_sequential_stage.
 	 *
-	 * Modify the input query to look like a new upper level join
-	 * query.  Retain what's above  the jointree (ordering, etc)
-	 * from the original.  This works because the targetlist is
-	 * "conformable" with the original w.r.t. sort/group refs,
-	 * resnos, types, etc.
+	 * XXX There won't be any grouping stuff because of the semantic
+	 *     transformation that pushes grouping below windowing.  There
+	 *     may, however, be expression to translate in the limit/offset
+	 *     clauses.  Distinct and sort use sort/group refs which are
+	 *     preserved in the targetlist.
+	 */
+
+	/* Set target list and adjust costs since it may have expressions.  
 	 *
-	 * We don't need to descend into the range table to fix varlevelsup
-	 * due to the new query level we're adding, because the range table
-	 * has already been planned. (Right?)
+	 * XXX Could track this and avoid, but not yet.
 	 */
 	root->parse->targetList = targetlist;
-	root->parse->rtable = rtable;
-	root->parse->jointree = jointree;
-	root->parse->windowClause = NIL;
-	
-	/* Plan the join.
-	 */
-	{
-		Path *cheapest_path;
-		Path *best_path;
-		Path *sorted_path;
-		double ngroups;
-		QualCost tlist_cost;
-						
-		root->group_pathkeys = NIL;
-		root->sort_pathkeys = 
-			make_pathkeys_for_sortclauses(root->parse->sortClause, targetlist);
-		root->query_pathkeys = root->sort_pathkeys;
-		
-		query_planner(root, targetlist, 0.0, &cheapest_path, &sorted_path, &ngroups);
-		
-		if ( sorted_path != NULL )
-			best_path = sorted_path;
-		else
-			best_path = cheapest_path;
-		
-		result_plan = create_plan(root, best_path);
-		result_pathkeys = best_path->pathkeys;
-		
-		/* Adjust target list (create_plan returns a flat one) and costs
-		 * since our target list may have expressions.  (Could track this
-		 * and avoid, but not yet.)
-		 */
-		result_plan = plan_pushdown_tlist(result_plan, targetlist);
-		cost_qual_eval(&tlist_cost, targetlist);
-		result_plan->startup_cost += tlist_cost.startup;
-		result_plan->total_cost += tlist_cost.startup + tlist_cost.per_tuple * result_plan->plan_rows;
+	result_plan = plan_pushdown_tlist(result_plan, targetlist);
+	cost_qual_eval(&tlist_cost, targetlist);
+	result_plan->startup_cost += tlist_cost.startup;
+	result_plan->total_cost += tlist_cost.startup + tlist_cost.per_tuple * result_plan->plan_rows;
 
-		Assert( result_plan->flow != NULL );
-	}
+	Assert( result_plan->flow != NULL );
 
 	*pathkeys_ptr = result_pathkeys;
 	return result_plan;
@@ -2179,9 +2148,9 @@ static Plan *plan_sequential_window_query(PlannerInfo *root, WindowContext *cont
  * WindowInfo structures (from lo_windex to hi_windex) in the WindowContext.
  *
  * A stage comprises a chain of Window nodes (with an initial motion and 
- * intervening sorts as required) and, if needed, an Agg node which is merge
- * joined to the head of the Window node chain on the common partition key.
- * By construction, this key is the high-order term of any sorts.
+ * intervening sorts as required) and, if needed, an Agg node which is 
+ * merge-joined to the head of the Window node chain on the common partition 
+ * key.  By construction, this key is the high-order term of any sorts.
  *
  * Thus a simple (no Agg) stage looks like
  *
@@ -2193,6 +2162,11 @@ static Plan *plan_sequential_window_query(PlannerInfo *root, WindowContext *cont
  *                            |                            |
  *                            +------------>Agg------------+
  *
+ * The input plan is the window plan to date.  Some invariants are
+ * - the lower target list is a prefix of the input plan target list
+ * - the lower range table is a prefix of the input plan range table.
+ * The input plan may have additional targets and range table entries
+ * added by previous planning stages. 
  */
 static Plan *plan_sequential_stage(PlannerInfo *root, 
 								   WindowContext *context, 
@@ -2203,26 +2177,84 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 {
 	Plan *window_plan;
 	Plan *agg_plan = NULL;
+	PlannerInfo *local_root;
 	WindowInfo *winfo;
 	int i;
+	ListCell *lc;
+	Index win_varno = 1;
+	Index agg_varno = 2;
+	AttrNumber aux_attrno = 0;
+	AttrNumber agg_attrno = 0;
+	List * win_names = NIL; /* for Window sub-query RTEs */
+	List * agg_names = NIL; /* for Agg sub-query RTE */
+	List * join_tlist = NIL;
+	Query *agg_subquery;
+	bool hasaux, hasagg;
 
 	/* In-Out parameters */
 	CdbPathLocus locus = *locus_ptr;
 	List *pathkeys = *pathkeys_ptr;
+	
+	/* elog(NOTICE, "Start of plan_sequential_stage()."); */
+	
+	/* In case this is the initial stage, local root is actual root. */
+	if ( context->original_range )
+		local_root = root;
+	else
+		local_root = NULL;
 
-	/* Does this stage require external aggregations? */
-	bool hasagg = FALSE;
-	for ( i = lo_windex; i <= hi_windex; i++ )
+	/* Determine whether this stage requires external aggregation and an
+	 * auxilliary aggregate. 
+	 */
 	{
-		winfo = &context->windowinfos[i];
-		hasagg = hasagg || winfo->needpartkey || winfo->needauxcount;
-		if ( hasagg ) break;
+		hasaux = false;
+		hasagg = false;
+
+		for ( i = lo_windex; i <= hi_windex; i++ )
+		{
+			winfo = &context->windowinfos[i];
+			hasaux = hasaux || winfo->needauxcount;
+			hasagg = hasagg || hasaux || winfo->needpartkey;
+		}
 	}
+	
+	/* Derive names for the targets in the initial Window subquery and,
+	 * if we'll use a join, set up the beginning of the join targetlist. 
+	 */
+	i = 1;
+	foreach ( lc, input_plan->targetlist )
+	{
+		Value *tle_name;
+		char buf[50];
+		TargetEntry *tle = (TargetEntry*)lfirst(lc);
+		AttrNumber resno = i++;
+		
+		sprintf(buf,"unnamed_attr_%d", resno);
+		tle_name = get_tle_name(tle, context->subquery->rtable, buf);
+		win_names = lappend(win_names, tle_name);
+		
+		if ( hasagg )
+		{
+			Var *join_var = makeVar(win_varno, resno, 
+									exprType((Node*)tle->expr), 
+									exprTypmod((Node*)tle->expr), 0);
+			
+			char *cname = pstrdup(tle_name->val.str);
+									
+			TargetEntry *join_tle = makeTargetEntry((Expr*)join_var,
+													resno,
+													cname,
+													false);
+			join_tlist = lappend(join_tlist, join_tle);
+		}
+	}
+
 
 	/* Assure collocation on the partition key and ordering for the first
 	 * WindowInfo in the stage.
 	 */
-	window_plan = assure_collocation_and_order(root, 
+	winfo = &context->windowinfos[lo_windex];
+	window_plan = assure_collocation_and_order(local_root, 
 											   input_plan, 
 											   winfo->partkey_len,
 											   winfo->partkey_attrs,
@@ -2237,39 +2269,49 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 		AttrNumber *grpcolidx = NULL;
 		List *share_partners = NIL;
 		List *tlist = NIL;
-		
+			
+		/* elog(NOTICE, "Fn plan_sequential_stage(): Preparing for Agg."); */
+
 		/* Since we'll be encountering some Agg targets.  Prepare for that 
 		 * by sharing the input window plan locally (within the slice) so
 		 * we can develop an Agg and a Window chain within the stage. 
 		 */
-		share_partners = share_plan(root, window_plan, 2);
+		share_partners = share_plan(local_root, window_plan, 2);
 		window_plan = list_nth(share_partners, 0);
 		agg_plan = list_nth(share_partners, 1);
 		list_free(share_partners);
+		
+		/* An agg plan will have a base subquery like the first window plan. */
+		agg_subquery = copyObject(context->subquery);
 		
 		/* If there's a partition key, we'll group on that, else default
 		 * to a plain aggregation.
 		 */
 		if ( winfo->partkey_len > 0 )
 		{
-			int i;
-			double d;
 			size_t sz;
-			List *part_exprs = NIL;
 			
-			/* Estimate the number of parts in the partition. */
-			for ( i = 0; i < winfo->partkey_len; i++ )
+			/* Estimate the number of parts in the partition.  Note that
+			 * we use the global root for this, but retain only the estimate.
+			 */
 			{
-				TargetEntry *tle; 
-				tle = get_tle_by_resno(input_plan->targetlist, 
-									   winfo->partkey_attrs[i]);
-				part_exprs = lappend(part_exprs, tle->expr);
+				int i;
+				double d;
+				List *part_exprs = NIL;
+			
+				for ( i = 0; i < winfo->partkey_len; i++ )
+				{
+					TargetEntry *tle; 
+					tle = get_tle_by_resno(root->parse->targetList, 
+										   winfo->partkey_attrs[i]);
+					part_exprs = lappend(part_exprs, tle->expr);
+				}
+				d = estimate_num_groups(root, part_exprs, window_plan->plan_rows);
+				num_groups = (d<0)? 0: (d>LONG_MAX)? LONG_MAX: (long)d;
+				list_free(part_exprs);
 			}
-			d = estimate_num_groups(root, part_exprs, window_plan->plan_rows);
-			num_groups = (d<0)? 0: (d>LONG_MAX)? LONG_MAX: (long)d;
-			list_free(part_exprs);
-			part_exprs = NIL;
 
+			/* Set up for grouped aggregation */
 			strategy = AGG_SORTED;
 			sz = winfo->partkey_len * sizeof(AttrNumber);
 			grpcolidx = (AttrNumber*)palloc(sz);
@@ -2282,15 +2324,32 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 				tle = copyObject(tle);
 				grpcolidx[i] = tle->resno = i+1;
 				tlist = lappend(tlist, tle);
-			}
+				agg_names = lappend(agg_names,
+								    makeString(pstrdup(tle->resname? 
+											   tle->resname:
+											   "part_key")));
+			}			
+		}
+		
+		/* If any WindowRefs need a partition count (auxiliary aggregate)
+		 * add a target for it and remember where it is.
+		 */
+		if ( hasaux )
+		{
+			TargetEntry *tle;
+			Aggref *aggref = makeAuxCountAggref();
+			aux_attrno = 1 + list_length(tlist);
+			tle = makeTargetEntry((Expr*)aggref, aux_attrno, pstrdup("parition_count"), false);
 			
+			tlist = lappend(tlist, tle);
+			agg_names = lappend(agg_names, makeString(pstrdup(tle->resname)));
 		}
 		
 		/* Put the Agg node atop the Agg plan. It's targetlist is, however,
 		 * incomplete at this point.  We'll fill it in as we go.
 		 */
 		agg_plan = (Plan *)make_agg(
-					root,
+					local_root,
 					tlist, /* just partkey (if any) at this point */
 					NIL, /* qual */
 					strategy, false,
@@ -2305,23 +2364,40 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 					0, /* transSpace */
 					agg_plan /* now just the shared input */
 					);
+		
+		agg_plan->flow = pull_up_Flow(agg_plan, agg_plan->lefttree, true);
+		
+		/* Later we'll package this Agg plan as the second sub-query RTE
+		 * in a fake Query representing a two-way join of Window sub-query 
+		 * to Agg sub-query. We keep track of the attribute number (resno) 
+		 * of the next Aggref target we'll add to the Agg plan.
+		 */
+		 agg_attrno = 1 + list_length(agg_plan->targetlist);
+	}
+	else
+	{
+		agg_subquery = NULL; /* tidy */
 	}
 	
-	/* Put Window node (and required Sort) atop the Window plan for each
+	/* Put Window node (and any required Sort) atop the Window plan for each
 	 * WindowInfo in the stage.
 	 */
 	for ( i = lo_windex; i <= hi_windex; i++ )
 	{
+		int j;
 		winfo = &context->windowinfos[i];
 
 		if ( i > lo_windex )
 		{
 			/* [Re]condition input for this window info.  At most this may
 			 * add a Sort node, but the partitioning and the partitioning
-			 * sort order will be preserved so we don't need to Sort the 
+			 * sort order will be preserved so we don't need to reSort the 
 			 * agg_plan (if any).
+			 *
+			 * XXX If we had a partitioned Sort operator, we could use 
+			 *     it here on a partitioned window plan.  
 			 */
-			window_plan = assure_order(root, 
+			window_plan = assure_order(local_root, 
 									   window_plan, 
 									   winfo->sortclause,
 									   &pathkeys);
@@ -2329,39 +2405,243 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 		 
 		/* Initialize a Window node for this WindowInfo. 
 		 */
-		window_plan = (Plan *)make_window(
-						root,
-						copyObject(window_plan->targetlist),
-						winfo->partkey_len,
-						NULL, /* TODO partColIdx */
-						NIL, /* TODO windowKeys */
-						window_plan);
+		{
+			size_t sz = winfo->partkey_len * sizeof(AttrNumber);
+			AttrNumber *partkey = NULL;
+			
+			/* elog(NOTICE, "Fn plan_sequential_stage(): Adding Window node."); */
 
+			if ( winfo->partkey_len > 0 )
+			{
+				partkey = (AttrNumber*)palloc(sz);
+				memcpy(partkey, winfo->partkey_attrs, sz);
+			}
+			
+			window_plan = (Plan *)make_window(
+							local_root,
+							copyObject(window_plan->targetlist),
+							winfo->partkey_len,
+							partkey,
+							winfo->key_list, /* XXX mutate windowKeys to translate any Var nodes in frame vals. */
+							window_plan);
+							
+			window_plan->flow = pull_up_Flow(window_plan, window_plan->lefttree, true);
+		}
 
-	elog(ERROR, "End of working code in plan_sequential_stage().");
 		
-		/* Per SpecInfo */
-		/*  Per WindowRef/RefInfo 
-		 *
-		 *    Add targets to the window node.
-		 *    Add targets to the agg node.
+		/* Add a target to the window plan (and, if needed, the agg plan)
+		 * for each RefInfo controlled by each SpecInfo of the current
+		 * WindowInfo.
 		 */
+		for ( j = 0; j < winfo->numspecindex; j++ )
+		{
+			ListCell *lc;
+			SpecInfo *sinfo = &context->specinfos[j+winfo->firstspecindex];
+			
+			/* Per RefInfo */
+			foreach ( lc, context->refinfos )
+			{
+				WindowRef *ref;
+				Aggref *aggref;
+				AttrNumber win_resno;
+				Var *var;
+				TargetEntry *tle;
+				RefInfo *rinfo = (RefInfo *)lfirst(lc);
+				
+				if ( rinfo->specindex != sinfo->specindex )
+					continue;
+					
+				ref = rinfo->ref; /* XXX mutate ref's args to translate any Vars */
+				win_resno = 1 + list_length(window_plan->targetlist);
+				rinfo->resno = win_resno;
+
+
+				/* Finish target based on function type. */
+				if ( RefInfo_AggregateUnordered(rinfo, context) )
+				{
+					/* Plan unordered aggregate */
+					char *agg_resname;
+					AttrNumber agg_resno = agg_attrno++;
+					
+					/* Add target to window plan. */
+					tle = makeTargetEntry((Expr*)makeNullConst(ref->restype), 
+										  win_resno, 
+										  pstrdup("dummy"), 
+										  false);
+					window_plan->targetlist = lappend(window_plan->targetlist, tle); 
+					win_names = lappend(win_names, get_tle_name(tle, context->subquery->rtable, NULL));
+				
+					
+					/* Add target to the aggregation plan */
+					aggref = makeWindowAggref(ref);
+					agg_resname = get_function_name(aggref->aggfnoid, "partition_aggregate");					
+
+					tle = makeTargetEntry((Expr*)aggref, agg_resno, agg_resname, false);
+					agg_plan->targetlist = lappend(agg_plan->targetlist, tle);
+					agg_names = lappend(agg_names, makeString(pstrdup(tle->resname)));
+					
+					Assert( list_length(agg_names) == list_length(agg_plan->targetlist) );
+					Assert( agg_resno == list_length(agg_plan->targetlist) );
+					
+					/* Result is reference to joined aggregate value. */
+					var = makeVar(agg_varno, agg_resno, ref->restype, -1, false);
+					tle = makeTargetEntry((Expr *)var, win_resno, 
+										   get_function_name(ref->winfnoid, "window_function"), 
+										   false);
+					join_tlist = lappend(join_tlist, tle);
+				}
+				else if ( RefInfo_WindowDeferred(rinfo, context) )
+				{
+					/* Plan deferred window function */
+					FuncExpr *func;
+					Var *win_var;
+					Var *aux_var;
+					Oid counttype = 20; /* TODO count(*) type in pg_proc */
+					Oid restype = ref->restype;
+					
+					/* Adjust WindowRef */
+					ref->winstage = WINSTAGE_PRELIMINARY;
+					ref->restype = rinfo->winpretype;
+					
+					/* Add target to window plan. */
+					tle = makeTargetEntry((Expr*)ref, 
+										  win_resno, 
+										  get_function_name(ref->winfnoid, "window_function"), 
+										  false);
+					window_plan->targetlist = lappend(window_plan->targetlist, tle); 
+					win_names = lappend(win_names, get_tle_name(tle, context->subquery->rtable, NULL));
+					
+					/* Result is finalization of partial window with joined auxiliary count. */
+					win_var = makeVar(win_varno, win_resno, ref->restype, -1, false);					
+					aux_var = makeVar(agg_varno, aux_attrno, counttype , -1, false);
+					func = makeFuncExpr(rinfo->winfinfunc, restype, list_make2(win_var, aux_var), COERCE_DONTCARE);
+					tle = makeTargetEntry((Expr*)func, win_resno,
+										   get_function_name(ref->winfnoid, "window_function"),
+										   false);
+					join_tlist = lappend(join_tlist, tle);
+				}
+				else if ( RefInfo_WindowImmediate(rinfo, context) || 
+						  RefInfo_AggregateOrdered(rinfo, context) )
+				{
+					/* Plan immediate window function or ordered window agg) */
+					Var *win_var;
+					
+					/* Adjust WindowRef */
+					ref->winstage = WINSTAGE_IMMEDIATE;
+
+					/* Add target to window plan. */
+					tle = makeTargetEntry((Expr*)ref, 
+										  win_resno, 
+										  get_function_name(ref->winfnoid, "window_function"), 
+										  false);
+					window_plan->targetlist = lappend(window_plan->targetlist, tle); 
+					win_names = lappend(win_names, get_tle_name(tle, context->subquery->rtable, NULL));
+				
+					/* If the stage has a join, add a join target. */
+					if ( hasagg )
+					{
+						win_var = makeVar(win_varno, win_resno, ref->restype, -1, false);
+						tle = makeTargetEntry((Expr*)win_var, win_resno,
+											  get_function_name(ref->winfnoid, "window_function"),
+											  false);
+						join_tlist = lappend(join_tlist, tle);
+					}
+				}
+			}
+		}
+		
+		/* Now the next Window node in this stage's chain is ready. 
+		 * Package it as a subquery RTE for use in the phony query we'll 
+		 * produce as the next level in the stage.  This will be either 
+		 * a simple select from one subquery (in the case of an intermediate
+		 * level or a top-level with no aggregation), or a join of this RTE
+		 * and the Agg RTE produced at the end of this stage. 
+		 */
+		{
+			Query *wquery;
+			List *win_pathkeys = NIL;
+			
+			window_plan = wrap_plan(window_plan, 
+									context->subquery, win_pathkeys, 
+									"coplan", win_names, 
+									&wquery);
+			
+			context->subquery = wquery; /* the "input query" for the next time through */
+			context->original_range = false; /* range is now our introduced range */
+			local_root = NULL; /* root is no longer universally correct. */
+		}
 	}
+	
 	
 	if ( hasagg )
 	{
-		/* Add MergeJoin of SubqueryScans and make necessary adjustments
-		 * to root->parse (push a Query with rangetable into it).
+		Plan *join_plan = NULL;	
+		
+		agg_plan = add_join_to_wrapper(agg_plan, agg_subquery, join_tlist,
+									   winfo->partkey_len,
+									   "coplan", agg_names,
+									   context->subquery);
+		agg_subquery = NULL;
+		
+		/* Finally, join the aggregation query to the main query.  
+		 * This will be either be cartesian product (NestLoop) or 
+		 * a many-to-one join on the partitioning key (MergeJoin).
+		 * In both cases, the aggregation query should be the outer
+		 * plan since this is more efficient for joining a single
+		 * tuple (outer) to a sequence of consecutive tuples (inner).
 		 *
-		 * stuff the result in window_plan
-		 */
+		 * Make any necessary adjustments to root->parse (e.g., push 
+		 * a Query into  its rangetable).
+		 *
+		 * Return the result in window_plan
+		 */		
+		 if ( winfo->partkey_len > 0 )
+		 {
+			List *mergeclauses = NIL;
+			
+			for ( i = 0; i < winfo->partkey_len; i++ )
+			{
+				TargetEntry *tle;
+				Expr *mc;
+				Node *rgt;
+				
+				tle = get_tle_by_resno(window_plan->targetlist, winfo->partkey_attrs[i]);
+				rgt = (Node*)tle->expr;
+				
+				mc = make_mergeclause(agg_varno, i+1, copyObject(rgt));
+				mergeclauses = lappend(mergeclauses, mc);
+			}
+			
+			join_plan = (Plan *)make_mergejoin(join_tlist,
+											   NIL, NIL,
+											   mergeclauses,
+											   agg_plan, window_plan,
+											   JOIN_INNER);
+			((MergeJoin*)join_plan)->unique_outer = true;
+		 }
+		 else
+		 {
+			/* Cartesian product: 1 x MANY. */
+			join_plan = (Plan *)make_nestloop(join_tlist,
+											   NIL, NIL,
+											   agg_plan, window_plan,
+											   JOIN_INNER);
+			((NestLoop*)join_plan)->singleton_outer = true;
+		 }
+		join_plan->startup_cost = agg_plan->startup_cost + window_plan->startup_cost;
+		join_plan->plan_rows = window_plan->plan_rows;
+		join_plan->plan_width = agg_plan->plan_width + window_plan->plan_width;
+		
+		join_plan->total_cost = agg_plan->total_cost + window_plan->total_cost;
+		join_plan->total_cost += cpu_tuple_cost * join_plan->plan_rows;
+		
+		join_plan->flow = pull_up_Flow(join_plan, join_plan->lefttree, true);
+		window_plan = join_plan;
 	}	
 
-	
+	/* elog(NOTICE, "End of plan_sequential_stage()."); */
 	return window_plan;
 }
-
-#endif /* BRIAN_SANDBOX */
 
 
 /* Construct a parallel plan for a non-trivial window query.  A non-trivial
@@ -2450,7 +2730,7 @@ static Plan *plan_parallel_window_query(PlannerInfo *root, WindowContext *contex
 	rtable = plan_window_rtable(root, context);
 	
 	/* Mutate the upper target list to refer to the new range table. */
-	targetlist = translate_upper_tlist(context->upper_tlist, context);
+	targetlist = translate_upper_tlist_parallel(context->upper_tlist, context);
 	
 	/* Arrange to join the coplans back together. */
 	jointree = plan_window_jointree(root,  context);
@@ -2520,7 +2800,6 @@ static void plan_windowinfo_coplans(PlannerInfo *root, WindowContext *context, i
 {
 	Coplan *window_coplan = NULL;
 	Coplan *agg_coplan = NULL;
-	size_t sz = 0;
 	int i;
 	ListCell *lc;
 	WindowInfo *winfo = context->windowinfos + window_index;
@@ -2554,13 +2833,13 @@ static void plan_windowinfo_coplans(PlannerInfo *root, WindowContext *context, i
 		 * to the same range -- that of the common subquery.  But soon the 
 		 * upper list will refer to the middle range we are about to build.  
 		 *
-		 * Here, we initialize the Var translation map we'll used to adjust
-		 * upper Vars to reference the new middle range. During processing 
-		 * we add an entry to this map for the entries corresponding to plain 
-		 * Vars.  By construction, this will include an entry for each 
-		 * distinct Var in the range.
+		 * Here, we initialize the Var translation map used later by
+		 * translate_upper_tlist_parallel to adjust upper Vars to reference 
+		 * the new middle range. During processing we add an entry to this 
+		 * map for the entries corresponding to plain Vars.  By construction, 
+		 * this will include an entry for each distinct Var in the range.
 		 */		
-		context->offset_upper_varattrnos = palloc0(context->offset_lim * sizeof(Var*));
+		context->offset_upper_varattrnos = palloc0(context->offset_lim * sizeof(AttrNumber));
 		
 		foreach ( lc, context->keyed_lower_tlist )
 		{
@@ -2582,22 +2861,22 @@ static void plan_windowinfo_coplans(PlannerInfo *root, WindowContext *context, i
 		 */
 		if ( context->rowkey_len > 0 )
 		{
+			size_t sz = context->rowkey_len * sizeof(AttrNumber);
 			window_coplan->rowkey_len = context->rowkey_len;
-			sz = context->rowkey_len * sizeof(AttrNumber);
 			window_coplan->rowkey_attrs = palloc(sz);
 			memcpy(window_coplan->rowkey_attrs, context->rowkey_attrs, sz);
 		}
 
 		if ( winfo->partkey_len > 0 )
 		{
-			sz = winfo->partkey_len * sizeof(AttrNumber);
+			size_t sz = winfo->partkey_len * sizeof(AttrNumber);
 			window_coplan->partkey_attrs = palloc(sz);
 			memcpy(window_coplan->partkey_attrs, winfo->partkey_attrs, sz);
-			window_coplan->partkey_len = winfo->partkey_len;
 		}
 			
 		if ( (agg_coplan != NULL) && winfo->partkey_len > 0 )
 		{
+			size_t sz = winfo->partkey_len * sizeof(AttrNumber*);
 			agg_coplan->partkey_len = winfo->partkey_len;
 			agg_coplan->partkey_attrs = palloc(sz);
 			for ( i = 0; i < winfo->partkey_len; i ++ )
@@ -2617,8 +2896,8 @@ static void plan_windowinfo_coplans(PlannerInfo *root, WindowContext *context, i
 		/* Include input key, if any. */
 		if ( context->rowkey_len > 0 )
 		{
+			size_t sz = winfo->rowkey_len * sizeof(AttrNumber);
 			window_coplan->rowkey_len = context->rowkey_len;
-			sz = winfo->rowkey_len * sizeof(AttrNumber);
 			window_coplan->rowkey_attrs = palloc(sz);
 			for ( i = 0; i < context->rowkey_len; i ++ )
 			{
@@ -2636,7 +2915,7 @@ static void plan_windowinfo_coplans(PlannerInfo *root, WindowContext *context, i
 		/* Include partition key, if needed. */
 		if ( (agg_coplan != NULL) && winfo->partkey_len > 0 )
 		{
-			sz = winfo->partkey_len * sizeof(AttrNumber);
+			size_t sz = winfo->partkey_len * sizeof(AttrNumber);
 			window_coplan->partkey_len = winfo->partkey_len;
 			window_coplan->partkey_attrs = (AttrNumber*)palloc(sz);
 			agg_coplan->partkey_len = winfo->partkey_len;
@@ -2965,17 +3244,22 @@ static RangeTblEntry *rte_for_coplan(
 /* Package a plan as a pre-planned subquery RTE.
  *
  * Note that the input query is usually root->parse (since that is the
- * query from which this invocation of the planner takes its context).
+ * query from which this invocation of the planner takes its context),
+ * but may be a derived query in the case of sequential window plans.
  * 
  * Note also that the supplied plan's target list must be congruent with
- * the range of the underlying planner context.
+ * the supplied query: its Var nodes must refer to RTEs in the range 
+ * table of the Query node, it should conserve sort/group reference
+ * values, and its SubqueryScan nodes should match up with the query's
+ * Subquery RTEs.
  *
  * The result is a pre-planned subquery RTE which incorporates the given
- * plan, alias, and pathkeys (if any) directly.  The input query is copied,
- * not modified.
+ * plan, alias, and pathkeys (if any) directly.  The input query is not
+ * modified.
  *
- * The caller must install the RTE in an appropriate query's range table
- * and reference its results through a SubqueryScan node.
+ * The caller must install the RTE in the range table of an appropriate query 
+ * and the corresponding plan should reference its results through a 
+ * SubqueryScan node.
  */
 static RangeTblEntry *package_plan_as_rte(Query *query, Plan *plan, Alias *eref, List *pathkeys)
 {
@@ -3000,6 +3284,8 @@ static RangeTblEntry *package_plan_as_rte(Query *query, Plan *plan, Alias *eref,
 	subquery->intoOnCommit = ONCOMMIT_NOOP;
 	subquery->intoTableSpaceName = NULL;
 	
+	subquery->rtable = copyObject(subquery->rtable);
+
 	subquery->targetList = copyObject(plan->targetlist);
 	subquery->windowClause = NIL;
 	
@@ -3190,22 +3476,11 @@ static Oid *get_window_attr_types(List *targetlist, int nattrs, AttrNumber *attr
  *
  * TODO Avoid reevaluating sort/group expressions that have already been
  *      evaluated in the common subquery. 
+ *
+ * This translator is specific to parallel window plans!
  */
-static List *translate_upper_tlist(List *orig_tlist, WindowContext *context)
-{
-	List *new_tlist;
-	
-	new_tlist =  (List*)  
-		expression_tree_mutator((Node*)orig_tlist,
-								 translate_upper_tlist_mutator, 
-								 (void*)context );
-	
-	return new_tlist;
-}
 
-/* Subroutine for translate_upper_tlist.
- */
-static Node * translate_upper_tlist_mutator(Node *node, WindowContext *context)
+static Node * translate_upper_tlist_parallel_mutator(Node *node, WindowContext *context)
 {
 	if ( node == NULL )
 		return NULL;
@@ -3236,8 +3511,375 @@ static Node * translate_upper_tlist_mutator(Node *node, WindowContext *context)
 	{
 		WindowRef *ref = (WindowRef *)node;
 		RefInfo *rinfo = (RefInfo *)list_nth(context->refinfos, ref->winindex);
-		return copyObject(rinfo->resultexpr);
+		return copyObject(rinfo->resultexpr); /* XXX why copy? */
 	}
 	
-	return expression_tree_mutator(node, translate_upper_tlist_mutator, (void*) context);
+	return expression_tree_mutator(node, translate_upper_tlist_parallel_mutator, (void*) context);
 }
+
+static List *translate_upper_tlist_parallel(List *orig_tlist, WindowContext *context)
+{
+	List *new_tlist;
+	
+	new_tlist =  (List*)  
+		expression_tree_mutator((Node*)orig_tlist,
+								 translate_upper_tlist_parallel_mutator, 
+								 (void*)context );
+	
+	return new_tlist;
+}
+
+
+/* This translator is specific to sequential window plans!
+ */
+typedef struct xut_context
+{
+	WindowContext *context;
+	List *window_tlist;
+} xut_context;
+
+static Node * translate_upper_tlist_sequential_mutator(Node *node, xut_context *ctxt)
+{
+	WindowContext *context = ctxt->context;
+	
+	if ( node == NULL )
+		return NULL;
+		
+	if ( IsA(node, Var) )
+	{
+		Var *new_var;
+		Var *var = (Var *)node;
+		
+		/* We don't descend into WindowRefs, so Var isn't in one. */
+		if ( var->varlevelsup == 0 )
+		{
+			int idx = index_of_var(var, context);
+			AttrNumber attrno = context->offset_upper_varattrnos[idx];
+			new_var = makeVar(
+						1, /* first RTE has all entries */
+						attrno,
+						var->vartype,
+						var->vartypmod,
+						0 /* levels up known 0 */);
+		}
+		else
+			new_var = copyObject(var);
+
+		return (Node *) new_var;
+	}
+	else if ( IsA(node, WindowRef) )
+	{
+		WindowRef *ref = (WindowRef *)node;
+		RefInfo *rinfo = (RefInfo *)list_nth(context->refinfos, ref->winindex);
+		TargetEntry *tle = get_tle_by_resno(ctxt->window_tlist, rinfo->resno);
+		return copyObject(tle->expr);
+	}
+	
+	return expression_tree_mutator(node, translate_upper_tlist_sequential_mutator, (void*) ctxt);
+}
+
+
+static List *translate_upper_tlist_sequential(List *orig_tlist, List *window_tlist, WindowContext *context)
+{
+	xut_context ctxt;
+	List *new_tlist;
+	
+	ctxt.context = context;
+	ctxt.window_tlist = window_tlist;
+		
+	new_tlist =  (List*)  
+		expression_tree_mutator((Node*)orig_tlist,
+								 translate_upper_tlist_sequential_mutator, 
+								 &ctxt);
+	
+	return new_tlist;
+}
+
+
+
+/* Utility to get a name for a function to use as an eref. */
+char *get_function_name(Oid proid, const char *dflt)
+{
+	char	   *result;
+
+	if (proid == InvalidOid)
+	{
+		result = pstrdup(dflt);
+	}
+	else
+	{
+		HeapTuple proctup = SearchSysCache(PROCOID,
+										   ObjectIdGetDatum(proid),
+										   0, 0, 0);
+	
+		if (HeapTupleIsValid(proctup))
+		{
+			Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(proctup);
+			result = pstrdup(NameStr(procform->proname));	
+			ReleaseSysCache(proctup);
+		}
+		else
+		{
+			result = pstrdup(dflt);
+		}
+	}
+
+	return result;
+}
+
+/* Utility to get a name for a tle to use as an eref. */
+Value *get_tle_name(TargetEntry *tle, List *rtable, const char *default_name)
+{
+	char *name = NULL;
+	Node *expr = (Node*)tle->expr;
+	
+	if ( tle->resname != NULL )
+	{
+		name = pstrdup(tle->resname);
+	}
+	else if ( IsA(tle->expr, Var) && rtable != NULL )
+	{
+		Var *var = (Var*)tle->expr;
+		RangeTblEntry *rte = rt_fetch(var->varno, rtable);
+		name = pstrdup(get_rte_attribute_name(rte, var->varattno));
+	}
+	else if ( IsA(tle->expr, WindowRef) )
+	{
+		if ( default_name == NULL ) default_name = "window_func";
+		name = get_function_name(((WindowRef*)expr)->winfnoid, default_name);
+	}
+	else if ( IsA(tle->expr, Aggref) )
+	{
+		if ( default_name == NULL ) default_name = "aggregate_func";
+		name = get_function_name(((Aggref*)expr)->aggfnoid, default_name);
+	}
+	
+	if ( name == NULL )
+	{
+		if (default_name == NULL ) default_name = "unnamed_attr";
+		name = pstrdup(default_name);
+	}
+	
+	return makeString(name);
+}
+
+
+/* Wrap a window plan under construction in a SubqueryScan thereby 
+ * renumbering its attributes so that its targetlist becomes a list 
+ * of Var nodes on a single entry range table (thus the only varno 
+ * is 1).
+ *
+ * The input consists of
+ * - the window Plan (with attached Flow) under development
+ * - the pathkeys corresponding to the plan
+ * - the Query tree corresponding to the plan
+ * 
+ * The output consists of
+ * - the Plan modified by the addition of a SubqueryScan node
+ *   (explicit result), and
+ * - a Query tree representing simple select of all targets
+ *   from the sub-query (in location query_p).
+ *
+ * Input query table expression gets pushed down into a sqry RTE.
+ * 
+ * The caller is responsible for translating pathkeys and locus, if needed.
+ *
+ * XXX Is it necessary to adjust varlevelsup in the plan and query trees?
+ *     I don't think so.
+ */
+Plan *wrap_plan(Plan *plan, Query *query, 
+				List *pathkeys, 
+				const char *alias_name, List *col_names, 
+				Query **query_p)	
+{
+	Query *subquery;
+	Alias *eref;
+	RangeTblEntry *rte;
+	RangeTblRef *rtr;
+	FromExpr *jointree;
+	List *subq_tlist = NIL;
+	Index varno = 1;
+	
+	Assert( query_p != NULL );
+	
+	/* Make the subquery RTE. Note that this will include a Query derived
+	 * from the input Query.
+	 */
+	eref = makeNode(Alias);
+	eref->aliasname = pstrdup(alias_name);
+	eref->colnames = col_names;
+
+	rte = package_plan_as_rte(query, plan, eref, pathkeys);
+	
+	/* Make the target list for the plan and for the wrapper Query
+	 * that will correspond to it.
+	 */
+	subq_tlist = generate_subquery_tlist(varno, plan->targetlist);
+	
+	/* Make the plan. 
+	 */
+	plan = (Plan*)make_subqueryscan(subq_tlist, NIL, varno, plan);
+	plan->flow = pull_up_Flow(plan, ((SubqueryScan*)plan)->subplan, true);
+	
+	/* Make the corresponding Query.
+	 */
+	subquery = makeNode(Query);
+	
+	subquery->commandType = CMD_SELECT;
+	subquery->querySource = QSRC_PLANNER;
+	subquery->canSetTag = false;
+	subquery->intoOnCommit = ONCOMMIT_NOOP;
+	subquery->rtable = list_make1(rte);	
+	rtr = makeNode(RangeTblRef);
+	rtr->rtindex = varno;
+	jointree = makeNode(FromExpr);
+	jointree->fromlist = list_make1(rtr);
+	subquery->jointree = jointree;
+	subquery->targetList = subq_tlist;
+	subquery->windowClause = copyObject(query->windowClause); /* XXX need translation for frame vals */
+
+	/* The rest may default to zero ...
+	
+	subquery->utilityStmt = NULL;
+	subquery->resultRelation = 0;
+	subquery->into = NULL;
+	subquery->intoOptions = NIL;
+	subquery->intoTableSpaceName = NULL;
+	subquery->hasAggs = false;
+	subquery->hasWindFuncs = false;
+	subquery->hasSubLinks = false;
+	subquery->returningList = NIL;
+	subquery->groupClause = NIL;
+	subquery->havingClause = NULL;
+	subquery->distinctClause = NIL;
+	subquery->sortClause = NIL;
+	subquery->limitOffset = NULL;
+	subquery->limitCount = NULL;
+	subquery->rowMarks = NIL;
+	subquery->setOperations = NULL;
+	subquery->resultRelations = NIL;
+	subquery->returningLists = NIL;
+	subquery->intoOidInfo = InvalidOid;
+	subquery->intoPolicy = NULL;
+	
+	... */
+		
+	*query_p = subquery;	
+	return plan;
+}
+
+/* Include the auxiliary aggregation plan into a wrapper query (a window 
+ * query with a singleton range table and null quals) by adding a new 
+ * subquery RTE representing the aggregation plan.  Add a corresponding
+ * subquery scan node to the top of the aggregation plan.
+ */
+Plan *add_join_to_wrapper(
+				Plan *plan, Query *query, /* the auxiliary aggregate to join */
+				List *join_tlist,
+				unsigned partkey_len, /* count of leading key columns of auxiliary */
+				const char *alias_name, List *col_names, /* for auxiliary RTE */
+				Query *wrapper_query /* the window query to modify */
+				)
+{
+	Alias *eref;
+	RangeTblEntry *rte;
+	RangeTblRef *rtr;
+	List *subq_tlist = NIL;
+	Index varno = 2; /* Always */
+	List *pathkeys = NIL;
+	
+	Insist( list_length(wrapper_query->rtable) == 1 );
+	Insist( wrapper_query->jointree->quals == NULL );
+	
+	/* Make the new subquery RTE. Note that this will include a Query derived
+	 * from the input Query.
+	 */
+	eref = makeNode(Alias);
+	eref->aliasname = pstrdup(alias_name);
+	eref->colnames = col_names;
+
+	rte = package_plan_as_rte(query, plan, eref, pathkeys);
+	
+	/* Make the target list for the plan and for the wrapper Query
+	 * that will correspond to it.
+	 */
+	subq_tlist = generate_subquery_tlist(varno, plan->targetlist);
+	
+	/* Make the plan. 
+	 */
+	plan = (Plan*)make_subqueryscan(subq_tlist, NIL, varno, plan);
+	plan->flow = pull_up_Flow(plan, ((SubqueryScan*)plan)->subplan, true);
+
+	
+	/* Add new RTE */
+	wrapper_query->rtable = lappend(wrapper_query->rtable, rte);	
+	
+	rtr = makeNode(RangeTblRef);
+	rtr->rtindex = varno;
+	wrapper_query->jointree->fromlist = lappend(wrapper_query->jointree->fromlist, rtr);
+	
+	wrapper_query->targetList = copyObject(join_tlist);
+	
+	/* XXX Do we need to add a join qual? I don't think so. */	
+	
+	return plan;
+}
+
+/* Copy the given query but use the given target list instead of the one
+ * in the query.  The given target list should be "flat" and conformable
+ * to the range table of the query and any sort/group refs.  In particular,
+ * it may not include aggregate or window functions.  Null out the "windowing 
+ * and above" portions of the copy but retain the windowClause so that
+ * EXPLAIN can use it.
+ *
+ * We expect the grouping specification to be null already (due to the
+ * syntactic transformation that separates windowing from grouping)  so 
+ * we assert that.
+ * 
+ * This produces the initial value of the windowing subquery
+ * from root->parse for sequential window planning.
+ */
+Query *copy_common_subquery(Query *original, List *targetList)
+{
+	/* Flat-copy the input */
+	Query *common = makeNode(Query);
+	memcpy(common, original, sizeof(Query));
+
+	/* Perhaps not strictly necessary, but its what we expect. */
+	Assert (common->groupClause == NIL && common->havingQual == NULL);
+	Assert (common->hasAggs == false);
+	Assert (common->setOperations == NULL);
+	
+	/* Leave rtable and jointree alone. */
+	
+	/* New target list must assure no aggregation or windowing. */
+	common->targetList = targetList;
+	
+	common->commandType = CMD_SELECT;
+	common->querySource = QSRC_PLANNER;
+	common->canSetTag = false;
+	common->intoOnCommit = ONCOMMIT_NOOP;
+	common->windowClause = copyObject(original->windowClause);
+	
+	/* The rest is "blank". */
+	common->resultRelation = 0;
+	common->utilityStmt = NULL;
+	common->into = NULL;
+	common->intoOptions = NIL;
+	common->intoTableSpaceName = NULL;
+	common->hasWindFuncs = false;
+	common->hasSubLinks = false; /* XXX */
+	common->returningList = NIL;
+	common->distinctClause = NIL;
+	common->sortClause = NIL;
+	common->limitOffset = NULL;
+	common->limitCount = NULL;
+	common->rowMarks = NIL;
+	common->resultRelations = NIL;
+	common->returningLists = NIL;
+	memset(&common->intoOidInfo, 0, sizeof(common->intoOidInfo));
+	common->intoPolicy = NULL;
+	
+	return common;
+}
+
