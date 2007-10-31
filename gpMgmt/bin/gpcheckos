@@ -63,6 +63,7 @@ system.rlim_fd_max			int	= 262144
 system.rlim_fd_cur			int	= 65536
 system.shmsys:shminfo_shmmax		int	>= 0x2000000
 system.semsys:seminfo_semmni		int	= 1024
+solaris.release				str	= Solaris 10 8/07 s10x_u4wos_12b X86
 '''
 
 def to_int(s):
@@ -81,6 +82,8 @@ def to_intlist(s):
         r.append(i)
     return r
 
+def to_str(s):
+    return s.strip()
 
 class Config:
 
@@ -95,15 +98,17 @@ class Config:
                 continue
 
             try:
-                c = line.split(None, 4);
+                c = line.split(None, 3);
             except TypeError:
                 sys.exit('while processing: %s\nerror: bad config line at %s %s'
                          % (line, cnt, fname and 'in file ' + fname or ''))
-                
+
             if c[1] == 'int':
                 c[1] = 'to_int'
             elif c[1] == 'intlist':
-                c[1] = 'to_intstr'
+                c[1] = 'to_intlist'
+	    elif c[1] == 'str':
+		c[1] = 'to_str'
             else:
                 sys.exit('while processing: %s\nerror: bad config line at %s %s'
                          % (line, cnt, fname and 'in file ' + fname or ''))
@@ -126,7 +131,7 @@ class Config:
                                    '%s("%%s") %s %s("%s")' % (c[1], c[2], c[1], c[3]), 
                                    c[3])
     
-        print self.etab
+        #print self.etab
 
     def getCheck(self, key):
         e = self.etab.get(key)
@@ -142,7 +147,7 @@ def usage(exitarg):
 
 #############
 def print_version():
-    print '%s version $Revision$' % script_name
+    print '%s version cvs Head build dev' % script_name
     sys.exit(0)
 
 #############

@@ -195,8 +195,9 @@ def do_solaris(res):
     lines = f.readlines();
     f.close();
     for i in lines:
+	i = i.strip()
         if i.startswith('Solaris 10'):
-            res['solaris.release'] = i.strip()
+            res['solaris.release'] = i
     
 
 parseCommandLine()
@@ -212,6 +213,7 @@ system = res['platform.system']
 if system == 'sunos':
     do_system(res)
     do_ndd(res)
+    do_solaris(res)
 elif system == 'linux':
     do_sysctl(res)
     do_ulimit(res)
