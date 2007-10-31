@@ -437,6 +437,9 @@ PortalDrop(Portal portal, bool isTopCommit)
 		MemoryContextSwitchTo(oldcontext);
 		portal->holdStore = NULL;
 	}
+	
+	if (Gp_role == GP_ROLE_DISPATCH)
+		cleanupPortalGangs(portal);
 
 	/* delete tuplestore storage, if any */
 	if (portal->holdContext)

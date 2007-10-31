@@ -117,6 +117,9 @@ extern void
 cleanupIdleReaderGangs(void);
 
 extern void
+cleanupPortalGangs(Portal portal);
+
+extern void
 disconnectAndDestroyGangById(int gang_id);
 
 extern void disconnectAndDestroyDispatchAgents(struct DispatchAgentSet * das);

@@ -45,7 +45,8 @@ extern char *default_tablespace;
 #include "libpq/libpq-be.h"
 #include "libpq/ip.h"
 
-
+#define MAX_CACHED_N_GANGS 5
+#define MAX_CACHED_1_GANGS 1
 /*
  *	thread_DoConnect is the thread proc used to perform the connection to one of the qExecs.
  */
@@ -63,7 +64,7 @@ static Gang *buildGangDefinition(GangType type, int gang_id, int size, int conte
 static Gang *buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo);
 
 
-static bool isTargetPortal(char *p1, char *p2);
+static bool isTargetPortal(const char *p1, const char *p2);
 
 static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bool isprimary, bool i_am_superuser);
 
@@ -3178,6 +3179,72 @@ cleanupIdleReaderGangs(void)
 }
 
 /*
+ * Portal drop... Clean up what gangs we hold
+ */
+void
+cleanupPortalGangs(Portal portal)
+{
+	MemoryContext oldContext;
+	const char *portal_name;
+	Gang * gp;
+	
+	if (portal->name && strcmp(portal->name,"")!=0)
+	{
+		portal_name = portal->name;
+		elog(DEBUG3,"cleanupPortalGangs %s", portal_name);
+	}
+	else
+	{
+		portal_name = NULL;
+		elog(DEBUG3,"cleanupPortalGangs (unamed portal)");
+	}
+		
+	
+	if (GangContext)
+		oldContext = MemoryContextSwitchTo(GangContext);
+	else
+		oldContext = MemoryContextSwitchTo(TopMemoryContext);
+
+	
+	if (availableReaderGangsN != NIL)
+	{
+		gp = linitial(availableReaderGangsN);
+		while (gp != NULL && list_length(availableReaderGangsN) > MAX_CACHED_N_GANGS)
+		{
+			disconnectAndDestroyGang(gp);
+			availableReaderGangsN = list_delete_first(availableReaderGangsN);
+			if (availableReaderGangsN != NIL)
+				gp = linitial(availableReaderGangsN);
+			else
+				gp = NULL;
+		}
+	}
+	
+	if (availableReaderGangs1 != NIL)
+	{
+		
+		gp = linitial(availableReaderGangs1);
+		while (gp != NULL && list_length(availableReaderGangs1) > MAX_CACHED_1_GANGS)
+		{
+			disconnectAndDestroyGang(gp);
+			availableReaderGangs1 = list_delete_first(availableReaderGangs1);
+			if (availableReaderGangs1 != NIL)
+				gp = linitial(availableReaderGangs1);
+			else
+				gp = NULL;
+		}
+	}
+	
+	elog(DEBUG4, "cleanupPortalGangs '%s'. Reader gang inventory: "
+	             "allocatedN=%d availableN=%d allocated1=%d available1=%d",
+		    	 (portal_name ? portal_name : "unnamed portal"),
+	             list_length(allocatedReaderGangsN), list_length(availableReaderGangsN),
+			     list_length(allocatedReaderGangs1), list_length(availableReaderGangs1));
+	
+	MemoryContextSwitchTo(oldContext);
+}
+
+/*
  * This not only disconnects and destroys the gang, it also first removes the gang from
  * the available lists (if it exists in those lists).
  */
@@ -3419,7 +3486,7 @@ disconnectAndDestroyGang(Gang * gp)
 	 */
     if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
         elog(DEBUG5, "disconnectAndDestroyGang done");
-
+ 
 	
 }
 
@@ -3441,7 +3508,7 @@ freeGangsForPortal(char *portal_name)
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;	
-
+	
     if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
         elog(DEBUG4, "freeGangsForPortal '%s'. Reader gang inventory: "
              "allocatedN=%d availableN=%d allocated1=%d available1=%d",
@@ -4069,7 +4136,7 @@ SetSeqServerInfo(struct QueryDesc *queryDesc)
  * otherwise.
  */
 static
-bool isTargetPortal(char *p1, char *p2)
+bool isTargetPortal(const char *p1, const char *p2)
 {
 	/* both are unnamed portals (represented as NULL) */
 	if (!p1 && !p2)
