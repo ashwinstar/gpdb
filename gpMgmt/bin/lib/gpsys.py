@@ -187,6 +187,16 @@ def do_ndd(res):
         (ok, out) = run('/usr/sbin/ndd /dev/tcp ' + key)
         if ok and len(out) == 1:
             res['ndd.' + key] = out[0].strip()
+
+def do_solaris(res):
+    if not os.path.exists('/etc/release'):
+        return False
+    f = open('/etc/release')
+    lines = f.readlines();
+    f.close();
+    for i in lines:
+        if i.startswith('Solaris 10'):
+            res['solaris.release'] = i.strip()
     
 
 parseCommandLine()
