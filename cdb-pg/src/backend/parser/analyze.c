@@ -2634,14 +2634,16 @@ static A_Const *make_a_const(A_Const *pValConst, char *val_str)
 	A_Const *pNewValConst = makeNode(A_Const);
 	int estat = 0;
 
+	Assert(val_str);
+
 	pNewValConst->val.type = pValConst->val.type;
 	pNewValConst->typname = pValConst->typname;
 	
 	switch (pValConst->val.type)
 	{
 		case T_Integer:
-			estat = scanf(val_str, "%ld", 
-						  &(pNewValConst->val.val.ival));
+			estat = sscanf(val_str, "%ld", 
+						   &(pNewValConst->val.val.ival));
 			break;
 		case T_Float:
 /*			estat = scanf(val_str, "%f", 
@@ -2658,7 +2660,7 @@ static A_Const *make_a_const(A_Const *pValConst, char *val_str)
 			break;
 	}
 
-	if (!estat)
+	if (estat < 1)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),

@@ -509,3 +509,26 @@ select * from rank_1_prt_girls_2_prt_1_0 ;
 select * from rank_1_prt_girls_2_prt_1_1 ;
 
 drop table rank cascade;
+
+create table ggg (id integer, a integer)
+distributed by (id)
+partition by range (a)
+(start (1) end (10) every (1));
+
+insert into ggg values (1, 1);
+insert into ggg values (2, 2);
+insert into ggg values (3, 3);
+insert into ggg values (4, 4);
+insert into ggg values (5, 5);
+insert into ggg values (6, 6);
+insert into ggg values (7, 7);
+insert into ggg values (8, 8);
+insert into ggg values (9, 9);
+insert into ggg values (10, 10);
+
+select * from ggg;
+
+select * from ggg_1_prt_1_0;
+select * from ggg_1_prt_1_1;
+select * from ggg_1_prt_1_2;
+select * from ggg_1_prt_1_3;
