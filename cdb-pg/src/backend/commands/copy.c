@@ -5454,6 +5454,7 @@ CopyAttributeOutText(CopyState cstate, char *string)
 	char	   *start;
 	char		c;
 	char		delimc = cstate->delim[0];
+	char		escapec = cstate->escape[0];
 	
 	if (cstate->need_transcoding)
 		ptr = pg_server_to_client(string, strlen(string));
@@ -5475,44 +5476,115 @@ CopyAttributeOutText(CopyState cstate, char *string)
 		{
 			case '\b':
 				DUMPSOFAR();
-				CopySendString(cstate, "\\b");
+				if(cstate->escape_off)
+				{
+					/* 1 byte of unescaped char */
+					CopySendChar(cstate, '\b');
+				}
+				else
+				{
+					/* 2 byte escape sequence */
+					CopySendChar(cstate, escapec);
+					CopySendChar(cstate, 'b');
+				}
 				start = ++ptr;
 				break;
 			case '\f':
 				DUMPSOFAR();
-				CopySendString(cstate, "\\f");
+				if(cstate->escape_off)
+				{
+					/* 1 byte of unescaped char */
+					CopySendChar(cstate, '\f');
+				}
+				else
+				{
+					/* 2 byte escape sequence */
+					CopySendChar(cstate, escapec);
+					CopySendChar(cstate, 'f');
+				}
 				start = ++ptr;
 				break;
 			case '\n':
 				DUMPSOFAR();
-				CopySendString(cstate, "\\n");
+				if(cstate->escape_off)
+				{
+					/* 1 byte of unescaped char */
+					CopySendChar(cstate, '\n');
+				}
+				else
+				{
+					/* 2 byte escape sequence */
+					CopySendChar(cstate, escapec);
+					CopySendChar(cstate, 'n');
+				}
 				start = ++ptr;
 				break;
 			case '\r':
 				DUMPSOFAR();
-				CopySendString(cstate, "\\r");
+				if(cstate->escape_off)
+				{
+					/* 1 byte of unescaped char */
+					CopySendChar(cstate, '\r');
+				}
+				else
+				{
+					/* 2 byte escape sequence */
+					CopySendChar(cstate, escapec);
+					CopySendChar(cstate, 'r');
+				}
 				start = ++ptr;
 				break;
 			case '\t':
 				DUMPSOFAR();
-				CopySendString(cstate, "\\t");
+				if(cstate->escape_off)
+				{
+					/* 1 byte of unescaped char */
+					CopySendChar(cstate, '\t');
+				}
+				else
+				{
+					/* 2 byte escape sequence */
+					CopySendChar(cstate, escapec);
+					CopySendChar(cstate, 't');
+				}
 				start = ++ptr;
 				break;
 			case '\v':
 				DUMPSOFAR();
-				CopySendString(cstate, "\\v");
+				if(cstate->escape_off)
+				{
+					/* 1 byte of unescaped char */
+					CopySendChar(cstate, '\v');
+				}
+				else
+				{
+					/* 2 byte escape sequence */
+					CopySendChar(cstate, escapec);
+					CopySendChar(cstate, 'v');
+				}
 				start = ++ptr;
 				break;
 			case '\\':
 				DUMPSOFAR();
-				CopySendString(cstate, "\\\\");
+				if(cstate->escape_off)
+				{
+					/* 1 byte of unescaped char */
+					CopySendChar(cstate, '\\');
+				}
+				else
+				{
+					/* 2 byte escape sequence */
+					CopySendChar(cstate, escapec);
+					CopySendChar(cstate, '\\');
+				}
 				start = ++ptr;
 				break;
 			default:
 				if (c == delimc)
 				{
 					DUMPSOFAR();
-					CopySendChar(cstate, '\\');
+					if(!cstate->escape_off)
+						CopySendChar(cstate, escapec);
 					start = ptr; /* we include char in next run */
 				}
 				
