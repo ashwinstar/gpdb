@@ -14,7 +14,7 @@ BEFORE YOU BEGIN
 ******************************************************************
 
 Before running GP demo, you must at least 110 MB of free disk space, 
-and have ports 18501, 10000, 10001, and 10002 free.
+and have ports 18501, 18506, 18507, and 18508 free.
 
 PREREQUISITES FOR SOLARIS USERS
 
