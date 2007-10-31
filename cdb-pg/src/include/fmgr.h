@@ -560,21 +560,6 @@ extern void load_file(const char *filename, bool restricted);
 extern void **find_rendezvous_variable(const char *varName);
 
 
-/*
- * !!! OLD INTERFACE !!!
- *
- * fmgr() is the only remaining vestige of the old-style caller support
- * functions.  It's no longer used anywhere in the Postgres distribution,
- * but we should leave it around for a release or two to ease the transition
- * for user-supplied C functions.  OidFunctionCallN() replaces it for new
- * code.
- */
-
-/*
- * DEPRECATED, DO NOT USE IN NEW CODE
- */
-extern char *fmgr(Oid procedureId,...);
-
 #endif   /* FMGR_H */
 
 
