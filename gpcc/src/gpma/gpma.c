@@ -245,7 +245,10 @@ static void net_accepted(gpcc_net_conn_t conn,
 	int is_bad_uri = 0;
 	int is_bad_array_name = ! (a && 0 == strcmp(a, gpma.array_name));
 
-	if (! is_bad_array_name) {
+	if (0 == strcmp("/gpcc/lscfg", uri->path)) {
+	    process_lscfg(conn);
+	}
+	else if (! is_bad_array_name) {
 	    if (0 == strcmp("/gpcc/start", uri->path)) {
 		/* send startcmd_event to FTS cmdslot ? */
 		ev = mkfts_event(ARRAY_START_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
@@ -262,9 +265,6 @@ static void net_accepted(gpcc_net_conn_t conn,
 	    else if (0 == strcmp("/gpcc/status", uri->path)) {
 		ev = mkfts_event(ARRAY_STATUS_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
 				 gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-	    }
-	    else if (0 == strcmp("/gpcc/lscfg", uri->path)) {
-		process_lscfg(conn);
 	    }
 	    else 
 		is_bad_uri = 1;
