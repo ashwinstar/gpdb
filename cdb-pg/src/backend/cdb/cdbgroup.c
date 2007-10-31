@@ -607,7 +607,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	 *
 	 * HAVING clause, if any, becomes qual of the Agg or Group node.
 	 */
-	if (use_hashed_grouping)
+	if (!is_grpext && use_hashed_grouping)
 	{
 		/* Hashed aggregate plan --- no sort needed */
 		result_plan = (Plan *) make_agg(root,
@@ -680,7 +680,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 
 		else
 		{
-			result_plan = plan_grouping_extension(root, path,
+			result_plan = plan_grouping_extension(root, path, ctx->tuple_fraction,
 												  &tlist, sub_tlist,
 												  true, false,
 												  (List *) parse->havingQual,
@@ -732,7 +732,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 
 		else
 		{
-			result_plan = (Plan *) plan_grouping_extension(root, path,
+			result_plan = (Plan *) plan_grouping_extension(root, path, ctx->tuple_fraction,
 														   &tlist, sub_tlist,
 														   false, false,
 														   (List *) parse->havingQual,
@@ -975,7 +975,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 
 	else
 	{
-		result_plan = plan_grouping_extension(root, path,
+		result_plan = plan_grouping_extension(root, path, ctx->tuple_fraction,
 											  &prelim_tlist, sub_tlist,
 											  true, true,
 											  NIL, /* no havingQual */
@@ -997,7 +997,9 @@ make_two_stage_agg_plan(PlannerInfo *root,
 			prelimGroupColIdx = (AttrNumber *)
 				palloc0(numGroupCols * sizeof(AttrNumber));
 		
+		Assert(numGroupCols >= 2);
 		prelimGroupColIdx[numGroupCols-1] = groupColIdx[numGroupCols-1];
+		prelimGroupColIdx[numGroupCols-2] = groupColIdx[numGroupCols-2];
 	}
 	
 	/*
@@ -1012,8 +1014,8 @@ make_two_stage_agg_plan(PlannerInfo *root,
 		{
 			TargetEntry *tle;
 
-			/* skip Grouping column */
-			if (is_grpext && i == numGroupCols-1)
+			/* skip Grouping/GroupId columns */
+			if (is_grpext && (i == numGroupCols-1 || i == numGroupCols-2))
 				continue;
 
 			tle = get_tle_by_resno(prelim_tlist, prelimGroupColIdx[i]);
@@ -1355,7 +1357,7 @@ void generate_three_tlists(List *tlist,
 			new_aggref->agglevelsup = 0;
 			new_aggref->aggstar = false;
 			new_aggref->aggdistinct = false; /* handled in preliminary aggregation */
-			new_aggref->aggstage = AGGSTAGE_PARTIAL;
+			new_aggref->aggstage = AGGSTAGE_INTERMEDIATE;
 
 			new_expr = (Expr *)new_aggref;
 		}
@@ -1393,14 +1395,14 @@ void generate_three_tlists(List *tlist,
 		if (twostage)
 			tle->resjunk = false;
 
-		/* We also set aggstage to AGGSTAGE_PARTIAL if this is in
+		/* We also set aggstage to AGGSTAGE_INTERMEDIATE if this is in
 		 * a two-stage aggregation, because the agg node in
 		 * the second stage aggregation will do the finalize.
 		 */
 		if (twostage && IsA(tle->expr, Aggref))
 		{
 			Aggref *aggref = (Aggref *)tle->expr;
-			aggref->aggstage = AGGSTAGE_PARTIAL;
+			aggref->aggstage = AGGSTAGE_INTERMEDIATE;
 		}
 	}
 }
@@ -1864,7 +1866,8 @@ add_second_stage_agg(PlannerInfo *root,
 	}
 
 	/* Add an Agg/Group node */
-	if (is_agg)
+	if (is_agg ||
+		aggstrategy == AGG_HASHED)
 	{
 		/* convert current_numGroups to long int */
 		long lNumGroups = (long) Min(numGroups, (double) LONG_MAX);

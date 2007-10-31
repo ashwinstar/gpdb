@@ -83,8 +83,8 @@ ExecGroup(GroupState *node)
 
 		if (is_final_rollup_group)
 			econtext->grouping =
-				get_grouping(econtext->ecxt_scantuple,
-							 group_node->grpColIdx[numCols-1]);
+				get_grouping_groupid(econtext->ecxt_scantuple,
+									 group_node->grpColIdx[numCols-2]);
 		else
 			econtext->grouping = group_node->grouping;
 
@@ -136,7 +136,7 @@ ExecGroup(GroupState *node)
 
 				outer_grouping =
 					tuple_grouping(firsttupleslot, numCols, input_grouping, input_has_grouping,
-							   group_node->grpColIdx[numCols-1]);
+							   group_node->grpColIdx[numCols-2]);
 				
 				if (outer_grouping < input_grouping)
 					node->is_passthru = true;
@@ -180,7 +180,7 @@ ExecGroup(GroupState *node)
 
 			outer_grouping =
 				tuple_grouping(outerslot, numCols, input_grouping, input_has_grouping,
-							   group_node->grpColIdx[numCols-1]);
+							   group_node->grpColIdx[numCols-2]);
 
 			Assert (outer_grouping <= input_grouping);
 		
@@ -196,8 +196,8 @@ ExecGroup(GroupState *node)
 				int match_numcols = numCols;
 				
 				if (outer_grouping < input_grouping)
-					/* ignore grouping column */
-					match_numcols--;
+					/* ignore grouping/groupid column */
+					match_numcols -= 2;
 					
 				/* Check if we've acrossed the group boundary. */
 				if (!TupIsNull(firsttupleslot) && 
@@ -246,11 +246,9 @@ ExecGroup(GroupState *node)
 		 */
 		if (is_final_rollup_group ||
 			(passthru_ready && is_middle_rollup_group))
-		{
-			uint32 gid;
-			gid = get_group_id(econtext->ecxt_scantuple);
-			econtext->group_id = gid;
-		}
+			econtext->group_id =
+				get_grouping_groupid(econtext->ecxt_scantuple,
+									 group_node->grpColIdx[numCols-1]);
 		else
 			econtext->group_id = group_node->rollupGSTimes;
 
@@ -258,8 +256,8 @@ ExecGroup(GroupState *node)
 		if (is_final_rollup_group ||
 			(passthru_ready && is_middle_rollup_group))
 			econtext->grouping =
-				get_grouping(econtext->ecxt_scantuple,
-							 group_node->grpColIdx[numCols-1]);
+				get_grouping_groupid(econtext->ecxt_scantuple,
+									 group_node->grpColIdx[numCols-2]);
 		else
 			econtext->grouping = group_node->grouping;
 		

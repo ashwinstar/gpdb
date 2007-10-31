@@ -187,6 +187,11 @@ typedef enum AggStage
 {
 	AGGSTAGE_NORMAL = 0,
 	AGGSTAGE_PARTIAL, /* First (lower, earlier) stage of 2-stage aggregation. */
+	AGGSTAGE_INTERMEDIATE, /* The intermediate stage between AGGSTAGE_PARTIAL and
+							* AGGSTAGE_FINAL that handles the higher aggregation
+							* level in a (partial) ROLLUP grouping extension
+							* query.
+							*/
 	AGGSTAGE_FINAL /* Second (upper, later) stage of 2-stage aggregation. */
 } AggStage;
 

@@ -53,7 +53,7 @@ window
 
 select count(*) over (w2) from customer
 window
-    w1 as (partition by a order by b),
+    w1 as (partition by cloc order by cname),
     w2 as (w1 order by cn); --error - can't reorder the ordering window
 
 select  count(*) over (w2) from customer
@@ -67,7 +67,7 @@ window
     wa as (w order by cn),
     wb as (w order by vn),
     waf as (wa rows between 2 preceding and 3 preceding),
-    wbf as (wb range between 2 preceding and 3 preceding);
+    wbf as (wb range between 2 preceding and 3 preceding); --mvd 3->1
     
 select * from customer
 window 

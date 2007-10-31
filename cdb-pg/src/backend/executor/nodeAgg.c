@@ -959,8 +959,8 @@ get_repeat_slot(AggState *aggstate)
 	/* Get grouping from the input tuple or the Agg node. */
 	if (is_final_rollup_agg)
 		econtext->grouping =
-			get_grouping(econtext->ecxt_scantuple,
-						 node->grpColIdx[node->numCols-node->numNullCols-1]);
+			get_grouping_groupid(econtext->ecxt_scantuple,
+								 node->grpColIdx[node->numCols-node->numNullCols-2]);
 	else
 		econtext->grouping = node->grouping;
 	
@@ -1144,7 +1144,7 @@ agg_retrieve_direct(AggState *aggstate)
 					tuple_grouping(firstSlot, node->numCols-node->numNullCols,
 								   input_grouping, input_has_grouping,
 								   (node->numCols-node->numNullCols) > 0 ?
-								   node->grpColIdx[node->numCols-node->numNullCols-1]: 0);
+								   node->grpColIdx[node->numCols-node->numNullCols-2]: 0);
 
 				Assert(outer_grouping <= input_grouping);
 			}
@@ -1218,15 +1218,15 @@ agg_retrieve_direct(AggState *aggstate)
 							tuple_grouping(outerslot, node->numCols-node->numNullCols,
 										   input_grouping, input_has_grouping,
 										   (node->numCols-node->numNullCols) > 0 ?
-										   node->grpColIdx[node->numCols-node->numNullCols-1]: 0);
+										   node->grpColIdx[node->numCols-node->numNullCols-2]: 0);
 
 						Assert(outer_grouping <= input_grouping);
 						
 						if (outer_grouping == input_grouping)
 							match_numcols = node->numCols - node->numNullCols;
 						else
-							/* ignore Grouping column */
-							match_numcols = node->numCols - node->numNullCols - 1;
+							/* ignore Grouping/GroupId column */
+							match_numcols = node->numCols - node->numNullCols - 2;
 						
 						tuple_match = execTuplesMatch(firstSlot, outerslot,
 													  match_numcols, node->grpColIdx,
@@ -1336,11 +1336,9 @@ agg_retrieve_direct(AggState *aggstate)
 		 */
 		if (is_final_rollup_agg ||
 			(passthru_ready && is_middle_rollup_agg))
-		{
-			uint32 gid;
-			gid = get_group_id(econtext->ecxt_scantuple);
-			econtext->group_id = gid;
-		}
+			econtext->group_id =
+				get_grouping_groupid(econtext->ecxt_scantuple,
+									 node->grpColIdx[node->numCols-node->numNullCols-1]);
 		else
 			econtext->group_id = node->rollupGSTimes;
 
@@ -1348,8 +1346,8 @@ agg_retrieve_direct(AggState *aggstate)
 		if (is_final_rollup_agg ||
 			(passthru_ready && is_middle_rollup_agg))
 			econtext->grouping =
-				get_grouping(econtext->ecxt_scantuple,
-							 node->grpColIdx[node->numCols-node->numNullCols-1]);
+				get_grouping_groupid(econtext->ecxt_scantuple,
+									 node->grpColIdx[node->numCols-node->numNullCols-2]);
 		else
 			econtext->grouping = node->grouping;
 
@@ -1464,6 +1462,11 @@ agg_retrieve_hash_table(AggState *aggstate)
 	AggStatePerGroup pergroup;
 	TupleTableSlot *firstSlot;
 	int			aggno;
+	Agg		   *node = (Agg *) aggstate->ss.ps.plan;
+	bool        input_has_grouping = node->inputHasGrouping;
+	bool        is_final_rollup_agg =
+		(node->lastAgg ||
+		 (input_has_grouping && node->numNullCols == 0));
 
 	/*
 	 * get state info from node
@@ -1475,6 +1478,25 @@ agg_retrieve_hash_table(AggState *aggstate)
 	projInfo = aggstate->ss.ps.ps_ProjInfo;
 	peragg = aggstate->peragg;
 	firstSlot = aggstate->ss.ss_ScanTupleSlot;
+
+	/*
+	 * If the previous aggregated result needs to be outputed
+	 * several times, we simple return the previous output tuple.
+	 */
+	if (aggstate->num_repeats > 0)
+	{
+		TupleTableSlot *slot = get_repeat_slot(aggstate);
+		if (slot != NULL)
+			return slot;
+	}
+
+	/* Do not need to release the space since this is just a pointer
+	 * to a slot, which will be released somewhere else.
+	 */
+	aggstate->prev_aggslot = NULL;
+
+	if (aggstate->agg_done)
+		return NULL;
 
 	/*
 	 * We loop retrieving groups until we find one satisfying
@@ -1529,19 +1551,49 @@ agg_retrieve_hash_table(AggState *aggstate)
 		 */
 		econtext->ecxt_scantuple = firstSlot;
 
-		/*
-		 * Check the qual (HAVING clause); if the group does not match, ignore
-		 * it and loop back to try to process another group.
-		 */
-		if (ExecQual(aggstate->ss.ps.qual, econtext, false))
+		if (is_final_rollup_agg)
 		{
-			/*
-			 * Form and return a projection tuple using the aggregate results
-			 * and the representative input tuple.	Note we do not support
-			 * aggregates returning sets ...
-			 */
-			return ExecProject(projInfo, NULL);
+			econtext->group_id =
+				get_grouping_groupid(econtext->ecxt_scantuple,
+									 node->grpColIdx[node->numCols-node->numNullCols-1]);
+			econtext->grouping =
+				get_grouping_groupid(econtext->ecxt_scantuple,
+									 node->grpColIdx[node->numCols-node->numNullCols-2]);
 		}
+		
+		/*
+		 * Since one tuple may be outputted several times with different
+		 * GROUP_ID values, and when the GROUP_ID() is appeared in
+		 * the HAVING clause, we want to loop here to find the first
+		 * tuple that satisfies the qual.
+		 */
+		do
+		{
+			if ((peragg->aggref == NULL && node->lastAgg) ||
+				(peragg->aggref != NULL &&
+				 (peragg->aggref->aggstage == AGGSTAGE_FINAL ||
+				  peragg->aggref->aggstage == AGGSTAGE_NORMAL)))
+			{
+				aggstate->prev_aggslot = econtext->ecxt_scantuple;
+				aggstate->num_repeats = econtext->group_id - 1;
+				if (econtext->group_id > 0)
+					econtext->group_id--;
+			}
+			
+			/*
+			 * Check the qual (HAVING clause); if the group does not match, ignore
+			 * it and loop back to try to process another group.
+			 */
+			if (ExecQual(aggstate->ss.ps.qual, econtext, false))
+			{
+				/*
+				 * Form and return a projection tuple using the aggregate results
+				 * and the representative input tuple.	Note we do not support
+				 * aggregates returning sets ...
+				 */
+				return ExecProject(projInfo, NULL);
+			}
+		} while (econtext->group_id > 0);
 	}
 
 	/* No more groups */
@@ -1830,21 +1882,16 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 			peraggstate->transfn_oid = transfn_oid = aggform->aggtransfn;
 			peraggstate->finalfn_oid = finalfn_oid = aggform->aggfinalfn;
 			break;
-			
-		case AGGSTAGE_PARTIAL: /* Two-stage aggregation or rollup - preliminary stage */
-			/* the perliminary stage for two-stage aggregation */
-			if (!node->inputHasGrouping || node->numNullCols == 0)
-			{
-				peraggstate->transfn_oid = transfn_oid = aggform->aggtransfn;
-				peraggstate->finalfn_oid = finalfn_oid = InvalidOid;
-			}
 
-			/* the preliminary stage for a rollup aggregation */
-			else
-			{
-				peraggstate->transfn_oid = transfn_oid = aggform->aggprelimfn;
-				peraggstate->finalfn_oid = finalfn_oid = InvalidOid;
-			}
+		case AGGSTAGE_PARTIAL:/* Two-stage aggregation -- preliminary stage */
+			/* the perliminary stage for two-stage aggregation */
+			peraggstate->transfn_oid = transfn_oid = aggform->aggtransfn;
+			peraggstate->finalfn_oid = finalfn_oid = InvalidOid;
+			break;
+
+		case AGGSTAGE_INTERMEDIATE:
+			peraggstate->transfn_oid = transfn_oid = aggform->aggprelimfn;
+			peraggstate->finalfn_oid = finalfn_oid = InvalidOid;
 			break;
 
 		case AGGSTAGE_FINAL: /* Two-stage aggregation - final stage */
@@ -2275,45 +2322,16 @@ tuple_grouping(TupleTableSlot *outerslot, int numGroupCols,
 }
 
 /*
- * Extract the value for GROUP_ID from the given tupleslot.
- *
- * GROUP_ID should always the last column in the given tupleslot.
+ * get_grouping_groupid() -- return either grouping or group_id
+ * as given in 'grping_attno'.
  */
-uint32
-get_group_id(TupleTableSlot *tupleslot)
-{
-	Datum gid_datum;
-	uint32 gid;
-	bool isnull;
-	int natts;
-
-	/* GROUP_ID should be the last column in tupleslot. Obtain
-	 * the number of attributes for the given tupleslot.
-	 */
-	natts = tupleslot->tts_tupleDescriptor->natts;
-	if (tupleslot->tts_tuple != NULL &&
-		HeapTupleHeaderGetNatts(tupleslot->tts_tuple->t_data) < natts)
-		natts = HeapTupleHeaderGetNatts(tupleslot->tts_tuple->t_data);
-	
-	/* Obtain GROUP_ID value, which should always the be last column
-	 * in the input tuple.
-	 */
-	gid_datum = slot_getattr(tupleslot, natts, &isnull);
-
-	Assert(!isnull && gid_datum != 0);
-	
-	gid = DatumGetInt32(gid_datum);
-
-	return gid;
-}
-
 uint64
-get_grouping(TupleTableSlot *slot, int grping_attno)
+get_grouping_groupid(TupleTableSlot *slot, int grping_attno)
 {
 	bool isnull;
 	uint64 grouping;
 	
-	/* Obtain grouping from input */
+	/* Obtain grouping or group_id from input */
 	Datum grping_datum = slot_getattr(slot,
 									  grping_attno,
 									  &isnull);

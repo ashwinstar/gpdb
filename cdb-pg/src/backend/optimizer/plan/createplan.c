@@ -3683,6 +3683,8 @@ make_sort_from_reordered_groupcols(PlannerInfo *root,
 								   AttrNumber *orig_grpColIdx,
 								   AttrNumber *new_grpColIdx,
 								   TargetEntry *grouping,
+								   TargetEntry *groupid,
+								   int req_ngrpkeys,
 								   Plan *lefttree)
 {
 	List	   *sub_tlist = lefttree->targetlist;
@@ -3697,10 +3699,14 @@ make_sort_from_reordered_groupcols(PlannerInfo *root,
 	 */
 	numgrpkeys = num_distcols_in_grouplist(groupcls);
 
+	Assert(req_ngrpkeys <= numgrpkeys);
+
 	if (grouping != NULL)
 	{
-		sortColIdx = (AttrNumber *) palloc((numgrpkeys + 1) * sizeof(AttrNumber));
-		sortOperators = (Oid *) palloc((numgrpkeys + 1) * sizeof(Oid));
+		Assert(groupid != NULL);
+		
+		sortColIdx = (AttrNumber *) palloc((numgrpkeys + 2) * sizeof(AttrNumber));
+		sortOperators = (Oid *) palloc((numgrpkeys + 2) * sizeof(Oid));
 	}
 	else
 	{
@@ -3712,7 +3718,7 @@ make_sort_from_reordered_groupcols(PlannerInfo *root,
 
 	flat_groupcls = flatten_grouping_list(groupcls);
 
-	for (grpno=0; grpno < numgrpkeys; grpno++)
+	for (grpno=0; grpno < req_ngrpkeys; grpno++)
 	{
 		GroupClause *grpcl;
 		TargetEntry *tle;
@@ -3748,6 +3754,11 @@ make_sort_from_reordered_groupcols(PlannerInfo *root,
 		Oid sort_op = ordering_oper_opid(exprType((Node *)grouping->expr));
 
 		numsortkeys = add_sort_column(grouping->resno, sort_op,
+									  numsortkeys, sortColIdx, sortOperators);
+
+		sort_op = ordering_oper_opid(exprType((Node *)groupid->expr));
+
+		numsortkeys = add_sort_column(groupid->resno, sort_op,
 									  numsortkeys, sortColIdx, sortOperators);
 	}
 

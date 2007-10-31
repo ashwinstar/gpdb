@@ -56,6 +56,7 @@ extern Plan *window_planner(PlannerInfo *root, double tuple_fraction, List **pat
  */
 extern Plan *plan_grouping_extension(PlannerInfo *root,
 									 Path *path,
+									 double tuple_fraction,
 									 List **p_tlist, List *sub_tlist,
 									 bool is_agg, bool twostage,
 									 List *qual,
@@ -84,6 +85,8 @@ extern Sort *make_sort_from_reordered_groupcols(PlannerInfo *root,
 												AttrNumber *orig_grpColIdx,
 												AttrNumber *new_grpColIdx,
 												TargetEntry *grouping,
+												TargetEntry *groupid,
+												int req_ngrpkeys,
 												Plan *lefttree);
 extern Agg *make_agg(PlannerInfo *root, List *tlist, List *qual,
 					 AggStrategy aggstrategy, bool streaming,

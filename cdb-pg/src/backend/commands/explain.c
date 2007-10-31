@@ -1784,14 +1784,24 @@ show_grouping_keys(Plan        *plan,
 	    AttrNumber      keyresno = subplanColIdx[keyno];
 	    TargetEntry    *target = get_tle_by_resno(subplan->targetlist, keyresno);
 		char grping_str[50];
-		sprintf(grping_str, "grouping");
 
 	    if (!target)
 		    elog(ERROR, "no tlist entry for key %d", keyresno);
 
 		if (IsA(target->expr, Grouping))
+		{
+			sprintf(grping_str, "grouping");
 			/* Append "grouping" explicitly. */
 			exprstr = grping_str;
+		}
+		
+		else if (IsA(target->expr, GroupId))
+		{
+			sprintf(grping_str, "groupid");
+			/* Append "groupid" explicitly. */
+			exprstr = grping_str;
+		}
+		
 		else
 			/* Deparse the expression, showing any top-level cast */
 			exprstr = deparse_expr_sweet((Node *) target->expr, context,

@@ -76,9 +76,6 @@ static bool is_dummy_plan(Plan *plan);
 static double preprocess_limit(PlannerInfo *root,
 				 double tuple_fraction,
 				 int64 *offset_est, int64 *count_est);
-static bool choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
-					   Path *cheapest_path, Path *sorted_path,
-					   double dNumGroups, AggClauseCounts *agg_counts);
 static bool hash_safe_grouping(PlannerInfo *root);
 static List *make_subplanTargetList(PlannerInfo *root, List *tlist,
 					   AttrNumber **groupColIdx, bool *need_tlist_eval);
@@ -1065,16 +1062,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		sort_pathkeys = root->sort_pathkeys;
 
 		/*
-		 * XXX: if this is a grouping extension, we will not choose the hash aggregation.
-		 */
-		if (grpext)
-		{
-			use_hashed_grouping = false;
-		}
-
-		else
-
-		/*
 		 * If grouping, decide whether we want to use hashed grouping.
 		 */
 	    if (parse->groupClause)
@@ -1092,8 +1079,11 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		 * Select the best path.  If we are doing hashed grouping, we will
 		 * always read all the input tuples, so use the cheapest-total path.
 		 * Otherwise, trust query_planner's decision about which to use.
+		 *
+		 * For grouping extension queries, we use SORT-based path only
+		 * for now.
 		 */
-		if (use_hashed_grouping || !sorted_path)
+		if ((!grpext && use_hashed_grouping) || !sorted_path)
 		{
             best_path = cheapest_path;
              /* elog(DEBUG1, "Path chosen: unordered"); CDB*/
@@ -1239,7 +1229,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 			 *
 			 * HAVING clause, if any, becomes qual of the Agg or Group node.
 			 */
-			if (use_hashed_grouping)
+			if (!grpext && use_hashed_grouping)
 			{
 				/* Hashed aggregate plan --- no sort needed */
 				result_plan = (Plan *) make_agg(root,
@@ -1342,7 +1332,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 						}
 					}
 
-					result_plan = plan_grouping_extension(root, best_path,
+					result_plan = plan_grouping_extension(root, best_path, tuple_fraction,
 														  &new_tlist, result_plan->targetlist,
 														  true, false,
 														  (List *) parse->havingQual,
@@ -1431,7 +1421,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 					}
 
 					result_plan = (Plan *)
-						plan_grouping_extension(root, best_path,
+						plan_grouping_extension(root, best_path, tuple_fraction,
 												&new_tlist, result_plan->targetlist,
 												false, false,
 												(List *) parse->havingQual,
@@ -1951,7 +1941,7 @@ preprocess_limit(PlannerInfo *root, double tuple_fraction,
 /*
  * choose_hashed_grouping - should we use hashed grouping?
  */
-static bool
+bool
 choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 					   Path *cheapest_path, Path *sorted_path,
 					   double dNumGroups, AggClauseCounts *agg_counts)
