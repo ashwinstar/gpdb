@@ -218,6 +218,8 @@ static Node *make_prule_rulestmt(ParseState *pstate,
 		 Node *pWhere							 
 		);
 
+static A_Const *make_a_const(A_Const *pValConst, char *val_str);
+
 static int deparse_partition_rule1(Node *pNode, char *outbuf, size_t outsize,
 								   char *typbuf, size_t tbsize
 								   );
@@ -2627,6 +2629,46 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 
 }
 
+static A_Const *make_a_const(A_Const *pValConst, char *val_str)
+{
+	A_Const *pNewValConst = makeNode(A_Const);
+	int estat = 0;
+
+	pNewValConst->val.type = pValConst->val.type;
+	pNewValConst->typname = pValConst->typname;
+	
+	switch (pValConst->val.type)
+	{
+		case T_Integer:
+			estat = scanf(val_str, "%ld", 
+						  &(pNewValConst->val.val.ival));
+			break;
+		case T_Float:
+/*			estat = scanf(val_str, "%f", 
+			(pNewValConst->val.val.str)); */
+
+		case T_String:
+			pNewValConst->val.val.str = val_str;
+
+			estat = 1;
+			break;
+
+		default:
+
+			break;
+	}
+
+	if (!estat)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("unknown type or operator: %s",
+						val_str)));
+	}
+	
+	return (pNewValConst);
+} /* end make_a_const */
+
 static int 
 deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize)
 {
@@ -3028,7 +3070,7 @@ static List *make_partition_rules(ParseState *pstate,
 
 			pColConst = (Value *)pCol;
 
-			Assert(pColConst->type == T_String);
+			Assert(IsA(pColConst, String));
 
 			if (!deparse_partition_rule((Node *)pCol,
 										exprBuf, sizeof(exprBuf)))
@@ -3136,16 +3178,17 @@ static List *make_partition_rules(ParseState *pstate,
 				pColConst = (Value *)pCol;
 				pValConst = (A_Const *)lfirst(lc_val);
 
-				Assert(pColConst->type == T_String);
+				Assert(IsA(pColConst, String));
 
 				pCRef->location = -1;
 				pCRef->fields = list_make1(pColConst);
 
-				if (pValConst->type != T_A_Const)
+				if (!(IsA(pValConst, A_Const)))
 				{
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-							 errmsg("invalid use of non-constant type in boundary specification%s",
+							 errmsg("invalid use of non-constant type "
+									"in boundary specification%s",
 									at_depth),
 							 parser_errposition(pstate, pBSpec->location)));
 						
@@ -3403,7 +3446,7 @@ static List *make_partition_rules(ParseState *pstate,
 					pColConst = (Value *)pCol;
 					pValConst = (A_Const *)lfirst(lc_val);
 
-					Assert(pColConst->type == T_String);
+					Assert(IsA(pColConst, String));
 
 					pCRef->location = -1;
 					pCRef->fields = list_make1(pColConst);
@@ -3412,11 +3455,33 @@ static List *make_partition_rules(ParseState *pstate,
 					{
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-								 errmsg("invalid use of non-constant type in boundary specification%s",
+								 errmsg("invalid use of non-constant type "
+										"in boundary specification%s",
 										at_depth),
 								 parser_errposition(pstate, pBSpec->location)));
 						
 					}
+
+					/* if have an EVERY, and not the first START or
+					 * last END, then use the generated, stringified
+					 * value from partition_range_every to build a new
+					 * a_const in the expression.
+					 */
+					if (((0 == range_idx)
+						 && (everyOffset > 0))
+						|| ((1 == range_idx)
+							&& (everyOffset+1 < maxEveryOffset))
+							)
+					{
+						char *val_str;
+						A_Const *pNewValConst;
+
+						val_str = lfirst(lc_every_val);
+
+						pNewValConst = make_a_const(pValConst, val_str);
+
+						pValConst = pNewValConst;
+					} /* end redo work for EVERY */
 
 					/* equality expression: column = value */
 					pEq = (Node *) makeSimpleA_Expr(AEXPR_OP, 
@@ -3424,7 +3489,6 @@ static List *make_partition_rules(ParseState *pstate,
 													(Node *)pCRef,
 													(Node *)pValConst,
 													-1 /* position */);
-
 
 					if (!deparse_partition_rule((Node *)pEq, 
 												exprBuf, sizeof(exprBuf)))
@@ -3437,37 +3501,6 @@ static List *make_partition_rules(ParseState *pstate,
 						
 					}
 
-					/* Remember all that work we did?  Well, if have
-					 * and EVERY, and not the first START or last END,
-					 * we don't need it!  Use the generated,
-					 * stringified value from partition_range_every in
-					 * the expression.  It might be nice to have an
-					 * A_Const instead...
-					 */
-					if (((0 == range_idx)
-						 && (everyOffset > 0))
-						|| ((1 == range_idx)
-							&& (everyOffset+1 < maxEveryOffset))
-							)
-					{
-						char			 colBuf[10000];
-						char *val_str;
-
-						if (!deparse_partition_rule((Node *)pCol, 
-												colBuf, sizeof(colBuf)))
-						{
-							ereport(ERROR,
-									(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-									 errmsg("unknown type or operator%s",
-											at_depth),
-									 parser_errposition(pstate, pBSpec->location)));
-						
-						}
-
-						val_str = lfirst(lc_every_val);
-						snprintf(exprBuf, sizeof(exprBuf), "%s %s %s",
-								 colBuf, expr_op, val_str);
-					} /* end redo work for EVERY */
 
 					/* for multiple cols - AND the matches eg: 
 					   (col = value) AND (col = value) 
@@ -3970,7 +4003,8 @@ L_setprevElem:
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("starting value of partition%s overlaps previous range%s",
+					 errmsg("starting value of partition%s "
+							"overlaps previous range%s",
 							vstate->namBuf,
 							vstate->at_depth),
 					 parser_errposition(vstate->pstate, 
@@ -4002,7 +4036,8 @@ L_setprevElem:
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("starting value of partition%s overlaps previous range%s",
+					 errmsg("starting value of partition%s "
+							"overlaps previous range%s",
 							vstate->namBuf,
 							vstate->at_depth),
 					 parser_errposition(vstate->pstate, 
@@ -4287,7 +4322,8 @@ validate_list_partition(partValidationState *vstate)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("missing boundary specification in partition%s of type LIST%s",
+				 errmsg("missing boundary specification in "
+						"partition%s of type LIST%s",
 						vstate->namBuf,
 						vstate->at_depth),
 				 parser_errposition(vstate->pstate, vstate->pElem->location)));
@@ -4317,7 +4353,8 @@ validate_list_partition(partValidationState *vstate)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-						 errmsg("mismatched columns in partition%s for VALUES%s",
+						 errmsg("mismatched columns in "
+								"partition%s for VALUES%s",
 								vstate->namBuf,
 								vstate->at_depth),
 						 parser_errposition(vstate->pstate, vstate->pBSpec->location)));
@@ -4370,7 +4407,8 @@ validate_list_partition(partValidationState *vstate)
 
 							ereport(ERROR,
 									(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-									 errmsg("duplicate VALUES in partition%s%s",
+									 errmsg("duplicate VALUES "
+											"in partition%s%s",
 											vstate->namBuf,
 											vstate->at_depth),
 									 parser_errposition(vstate->pstate, vstate->pBSpec->location)));
@@ -4470,7 +4508,8 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 				{
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-							 errmsg("duplicate partition name for partition%s%s",
+							 errmsg("duplicate partition name "
+									"for partition%s%s",
 									namBuf,
 									at_depth),
 							 parser_errposition(pstate, pElem->location)));
@@ -4751,7 +4790,8 @@ partition_range_every(ParseState *pstate, CreateStmtContext *cxt,
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("EVERY clause in partition%s requires START and END%s",
+					 errmsg("EVERY clause in partition%s "
+							"requires START and END%s",
 							namBuf,
 							at_depth),
 					 parser_errposition(pstate, pBSpec->location)));
@@ -4770,7 +4810,8 @@ partition_range_every(ParseState *pstate, CreateStmtContext *cxt,
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("mismatch between EVERY, START and END in partition%s%s",
+					 errmsg("mismatch between EVERY, START and END "
+							"in partition%s%s",
 							namBuf,
 							at_depth),
 					 parser_errposition(pstate, pBSpec->location)));
@@ -4798,6 +4839,7 @@ partition_range_every(ParseState *pstate, CreateStmtContext *cxt,
 				List *oprmul, *oprplus, *oprcompare;
 				Oid restypid;
 				Type typ;
+				char *outputstr;
 
 				oprmul = lappend(NIL, makeString("*"));
 				oprplus = lappend(NIL, makeString("+"));
@@ -4850,6 +4892,23 @@ partition_range_every(ParseState *pstate, CreateStmtContext *cxt,
 				typ = typeidType(restypid);
 				c = makeConst(restypid, typeLen(typ), res, false,
 							  typeByVal(typ));
+
+
+				/* get the string for the calculated type */
+				{
+					Oid ooutput;
+					bool isvarlena;
+					FmgrInfo finfo;
+ 
+					getTypeOutputInfo(restypid, &ooutput, &isvarlena);
+					fmgr_info(ooutput, &finfo);
+ 
+					if (isvarlena)
+						res = PointerGetDatum(PG_DETOAST_DATUM(res));
+ 
+					outputstr = OutputFunctionCall(&finfo, res);
+				}
+
 				ReleaseSysCache(typ);
 
 				/* the comparison */
@@ -4859,37 +4918,19 @@ partition_range_every(ParseState *pstate, CreateStmtContext *cxt,
 				
 				if (!DatumGetBool(res))
 				{
+					if (outputstr)
+						pfree(outputstr);
+
 					sqlRc = 0;
 					break;
 				}
 				else
 				{
-					char outbuf[999];
-					char op3buf[999];
-					char typbuf[999];
+					allNewCols = lappend(allNewCols, pstrdup(outputstr));
 
-					typbuf[0] = '\0';
+					if (outputstr)
+						pfree(outputstr);
 
-					if (!deparse_partition_rule(n3, op3buf, sizeof(op3buf)))
-						return -1;
-
-					/* save the column */
-					if (strlen(typbuf))
-					{
-						if (strcmp("_STRING_", typbuf) == 0)
-						{
-							snprintf(op3buf, sizeof(op3buf), 
-									 "\'%s\'", outbuf);
-						}
-						else
-						{
-							snprintf(op3buf, sizeof(op3buf), 
-									 "\'%s\'::%s", outbuf, typbuf);
-						}
-						allNewCols = lappend(allNewCols, pstrdup(op3buf));
-					}
-					else
-						allNewCols = lappend(allNewCols, pstrdup(outbuf));
 					sqlRc = 1;
 				}
 				lc_Start = lnext(lc_Start);
@@ -5098,7 +5139,8 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("too many partitions: partition number > 999999 at depth %d",
+				 errmsg("too many partitions: partition number > 999999 at "
+						"depth %d",
 						partDepth),
 				 parser_errposition(pstate, pBy->location)));
 	}
@@ -5140,7 +5182,8 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-						 errmsg("missing SUBPARTITION BY clause for subpartition specification%s",
+						 errmsg("missing SUBPARTITION BY clause for "
+								"subpartition specification%s",
 								at_depth),
 						 parser_errposition(pstate, pBy->location)));
 			}
@@ -5195,7 +5238,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 				if ((1 == maxEveryNum) && pBSpec && pBSpec->everyGenList)
 				{
 					/* set the maxEveryNum to (1 + list of "all new
-					 * partitions").  Why?  Because for a range a START
+					 * partitions").  Why?  Because for a range of a START
 					 * and END, we create one table and one rule.  If we
 					 * subdivide the range, we have 3 boundary values, but
 					 * only 2 tables and 2 rules.  So for N boundaries we
@@ -5249,7 +5292,8 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 					{
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-								 errmsg("missing SUBPARTITION BY clause for subpartition specification%s",
+								 errmsg("missing SUBPARTITION BY clause "
+										"for subpartition specification%s",
 										at_depth),
 								 parser_errposition(pstate, pElem->location)));
 					}
@@ -5311,7 +5355,8 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 								   snamespaceid);
 
 			ereport(NOTICE,
-					(errmsg("%s will create child table \"%s\" for table \"%s\"",
+					(errmsg("%s will create child table \"%s\" for "
+							"table \"%s\"",
 							cxt->stmtType, tab_name_str,
 							cxt->relation->relname)));
 
@@ -5378,7 +5423,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 			child_tab_stmt = makeNode(CreateStmt);
 			child_tab_stmt->relation = child_tab_name;
 
-			/* */
+			/* set the "Post Create" rule if it exists */
 			child_tab_stmt->postCreate = pPostCreate; 
 
 			/* shallow copy the parent list because we need to add
