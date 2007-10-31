@@ -6,7 +6,7 @@ SHELL=/bin/bash
 #
 # VARIABLES
 #
-MASTER_PORT=5432
+MASTER_PORT=18501
 PORT_BASE=10000
 
 all: clean check cluster probe

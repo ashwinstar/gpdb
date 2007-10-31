@@ -14,7 +14,7 @@ BEFORE YOU BEGIN
 ******************************************************************
 
 Before running GP demo, you must at least 110 MB of free disk space, 
-and have ports 5432, 10000, 10001, and 10002 free.
+and have ports 18501, 10000, 10001, and 10002 free.
 
 PREREQUISITES FOR SOLARIS USERS
 
@@ -52,7 +52,7 @@ RUNNING GP DEMO
    system running on the local host. You can connect to it using the 
    psql client program as follows:
 
-	psql template1 -p 5432
+	psql template1 -p 18501
 
 7. To exit the psql client program:
 
