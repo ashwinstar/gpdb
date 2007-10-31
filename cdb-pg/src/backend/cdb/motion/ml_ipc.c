@@ -19,7 +19,6 @@
 #include "postgres.h"
 
 #include <pthread.h>
-#include <errno.h>
 
 #include "nodes/execnodes.h"            /* Slice, SliceTable */
 #include "nodes/pg_list.h"

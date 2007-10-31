@@ -60,3 +60,13 @@
 #define pg_on_solaris 1
 #endif
 #endif
+
+/* this is defined by pg_config.h, which is included by the time we get here. */
+#ifdef ENABLE_THREAD_SAFETY
+/*
+ * MPP-2105: Make sure that multithreaded code can get the right errno.
+ * (any such code also needs to explicitly include /usr/include/errno.h)
+ */
+#define _REENTRANT 1
+#include <errno.h>
+#endif
