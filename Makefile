@@ -127,7 +127,6 @@ mgmtcopy :
 		$(INSTLOC)/bin/gprebuildsystem \
 		$(INSTLOC)/bin/gprecoverseg \
 		$(INSTLOC)/bin/gpscp \
-		$(INSTLOC)/bin/gpscp2 \
 		$(INSTLOC)/bin/gpsizecalc \
 		$(INSTLOC)/bin/gpskew \
 		$(INSTLOC)/bin/gpssh \
