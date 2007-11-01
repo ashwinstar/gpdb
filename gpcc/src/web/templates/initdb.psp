@@ -1,0 +1,33 @@
+<%!
+import os, sys, urllib, httplib
+%>
+
+<%
+def hitMA(cmd, params):
+    params = urllib.urlencode(params)
+    f = None
+    res = ''
+    try:
+        f = httplib.HTTPConnection('%s:%d' % (sctx['ma.host'], sctx['ma.port']))
+        f.request('GET', '%s?%s' % (cmd, params))
+        response = f.getresponse()
+        if response.status == 200:
+            res = response.read()
+    finally:
+        if f: f.close()
+    return res
+  
+%>
+
+<%
+web.header('Content-Type', 'text/html;charset=utf-8')
+
+%>
+
+<% 
+sys.stderr.write(param['fileToUpload']) 
+%>
+
+
+{ "status" : "pending", "rset" : { "total" : 1, "offset" : 0, "result" : []} }
+

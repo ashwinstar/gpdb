@@ -22,6 +22,8 @@
 </script>
 
 <script type="text/javascript" src="/static/js/jquery-1.2.1.min.js"></script>
+<script type="text/javascript" src="/static/js/ajaxfileupload.js"></script>
+
 
 <script type="text/javascript">
 
@@ -29,84 +31,100 @@
 
 $(function() {
 
-  function switch_label() {
-      if (state == "stopped") {
-          $("#status").text("Database stopped.");
-          $("#switch").text("start");
-	  $("#switch_click_msg").show();
-      } else if (state == "running") {
-          $("#status").text("Database is running.");
-          $("#switch").text("stop");
-	  $("#switch_click_msg").show();
-      } else if (state == "stopping") {
-          $("#status").text("Database is stopping.  Please wait.");
-          $("#switch").text("stop");          
-	  $("#switch_click_msg").hide();
-      } else if (state == "starting") {
-          $("#status").text("Database is starting.  Please wait.");
-          $("#switch").text("start");          
-	  $("#switch_click_msg").hide();
-      } else if (state == "pending") {
-          $("#switch").text("pending");
-      }
-  }
-
   function status_response(json) {
       state = json.rset.result[0];
       if (json.status == "ok") {
-          if (json.rset.result[0] == "stopping" ||
-              json.rset.result[0] == "starting") {
-
-              setTimeout(function() {
-                 $.getJSON("/status.psp?a=${sctx['gpdb.name']}", function(json) {
-                     status_response(json);
-                 })
-              }, 1000);
+          if (typeof(json.array) == 'undefined') {
+	    $("#initdb_div").show();
+	    $("#msg").text("Greenplum database initialization failed.");
+	  } else {
+	    $("#initdb_div").hide();
+            if (json.rset.result[0] == "initializing") {
+	        $("#msg").text("Greenplum database is initializing.  Please wait.");
+                setTimeout(function() {
+                   $.getJSON("/status.psp", function(json) {
+                       status_response(json);
+                   })
+                }, 1000);
               
-              $("#switch").unbind('click', switch_click);           
-          } else {
-              $("#switch").bind('click', switch_click);           
-          }
-          switch_label();
+                $("#submit").unbind('click', ajaxFileUpload);           
+            } else { 
+		$("#msg").text("Greenplum database '" + json.array + "' was initialized.");
+				 		
+            }
+	  }
+      } 
+  }
+
+
+  function BEGIN_status_response(json) {
+      state = json.rset.result[0];
+      if (json.status == "ok") {
+          if (typeof(json.array) == 'undefined') {
+	    $("#initdb_div").show();
+	  } else {
+	    $("#initdb_div").hide();
+	    $("#msg").text("Greenplum database '" + json.array + "' was initialized.");
+	  }
       }
   }
 
-  $.getJSON("/status.psp?a=${sctx['gpdb.name']}", function(json) {
-       status_response(json);
+  $.getJSON("/status.psp", function(json) {
+       BEGIN_status_response(json);
   });
 
 
-  function command_response(json) {
+  function initdb_response(json) {
       if (json.status == "ok") {
-           $("#switch").bind('click', switch_click);
+           $("#initdb_div").hide();
+           $("#msg").text('Greenplum database was initialized.');
       } else if (json.status == "pending") {
-           $("#switch").unbind('click', switch_click);
+           ;
       } else if (json.status == "failure") {
            ;
       }
 
       setTimeout(function() {
-           $.getJSON("/status.psp?a=${sctx['gpdb.name']}", function(json) {
+           $.getJSON("/status.psp", function(json) {
                 status_response(json);
            })
       }, 1000);
   }
 
-  function switch_click() {
-     url = '';
-     if (state == "stopped") {
-        url = "/start.psp?a=${sctx['gpdb.name']}";
-     } else {
-        url = "/stop.psp?a=${sctx['gpdb.name']}";
-     }
+  function ajaxFileUpload()  {
 
-     $(this).unbind('click', switch_click);
-      $.getJSON(url, function(json) {
-          command_response(json);
-      })
-  }
+        $(this).unbind('click', ajaxFileUpload);
 
-  $("#switch").click(switch_click);
+	$("#msg")
+	.ajaxStart(function(){
+		$(this).text('Greenplum database is initializing.');
+	})
+	.ajaxComplete(function(){
+	        ;
+	});
+
+	$.ajaxFileUpload
+	(
+		{
+			url:'/initdb.psp',
+			secureuri:false,
+			fileElementId:'fileToUpload',
+			dataType: 'json',
+			success: function (data, status) {
+				initdb_response(data);
+			},
+			error: function (data, status, e) {
+				initdb_response(data);
+			}
+		}
+	)
+		
+	return false;
+
+  }  
+
+
+  $("#submit").click(ajaxFileUpload);
 
 
 })
@@ -178,8 +196,25 @@ $(function() {
 
 
             <p style="margin-top: 0pt;">
-            <span id="status">Database stopped.  </span>
-	    <span id="switch_click_msg">Click to <a id="switch" href="">start</a> the database.<span></p>
+
+	    <span id="msg"></span>
+	    <div id="initdb_div">
+	    <form id="initdb" method="POST" enctype="multipart/form-data">
+	       <table cellpadding="0" cellspacing="0">
+	         <thead> <tr> <th>Upload the configuration file</th></tr>
+		 </thead>
+		 <tbody>
+		   <tr>
+	               <td><input id="fileToUpload" type="file" size="35" name="fileToUpload"></td>
+		   </tr>
+		   <tr>
+		       <td><button id="submit">Upload</button></td>
+		   </tr>
+		 </tbody>
+	       </table>
+            </form>
+	    </div>
+	    </p>
 
 
             <p>&nbsp;</p>
@@ -229,7 +264,7 @@ $(function() {
      </tr></tbody></table>
    </div>
 </div>
-<script type="text/javascript" src="/static/js/sfga.js"></script>
+<script type="text/javascript" src="https://lct.salesforce.com/sfga.js"></script>
 <script type="text/javascript">__sfga();</script>
 <!-- Generated in 0.09727 seconds by CMS Made Simple using 29 SQL queries -->
 <!-- CMS Made Simple - Released under the GPL - http://cmsmadesimple.org -->

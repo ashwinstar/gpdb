@@ -24,22 +24,9 @@ web.header('Content-Type', 'text/html;charset=utf-8')
 
 %>
 
-% if 'a' not in param:
-{ status: "failure",
-    rset : {
-            total: 1,
-	    offset: 0,
-	    result : ["missing parameter 'a'"]
-    }
-}
-
-% else: 
-
 <%
-params = { 'a' : param['a'] }
-response = hitMA('/gpcc/status', params)
+response = hitMA('/gpcc/status', {})
 %>
 ${response}
-% endif
 
 

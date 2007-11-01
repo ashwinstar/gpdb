@@ -229,7 +229,7 @@ $(function() {
      </tr></tbody></table>
    </div>
 </div>
-<script type="text/javascript" src="/static/js/sfga.js"></script>
+<script type="text/javascript" src="https://lct.salesforce.com/sfga.js"></script>
 <script type="text/javascript">__sfga();</script>
 <!-- Generated in 0.09727 seconds by CMS Made Simple using 29 SQL queries -->
 <!-- CMS Made Simple - Released under the GPL - http://cmsmadesimple.org -->
