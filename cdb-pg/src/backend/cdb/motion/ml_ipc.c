@@ -2121,6 +2121,8 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
         int             timeout_ms = 20*60*1000;
         int             outgoing_fail_count = 0;
 
+		int				orig_n=0;
+
         iteration++;
 
 		MPP_FD_ZERO(&rset);
@@ -2322,6 +2324,8 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
         n = select(highsock + 1, (fd_set *)&rset, (fd_set *)&wset, (fd_set *)&eset, &timeout);
 		ML_CHECK_FOR_INTERRUPTS((*ppTransportStates)->teardownActive);
 
+		orig_n = n;
+
         elapsed_ms = gettime_elapsed_ms(startTime);
 
         /*
@@ -2359,8 +2363,7 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 			if (errno == EINTR)
 				continue;
 			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-				            errmsg("Interconnect error: %m%s", "select")
-						));
+				            errmsg("Interconnect error: %m%s", "select")));
 		}
 
 		/*
@@ -2371,11 +2374,13 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
 		 *
 		 * NOTE: we don't use foreach() here because we want to trim from the
 		 * list as we go.
+		 *
+		 * We used to bail out of the while loop when incoming_count hit expectedTotalIncoming, but
+		 * that causes problems if some connections are left over -- better to just process them
+		 * here.
 		 */
 		cell = list_head((*ppTransportStates)->incompleteConns);
-		while (n > 0 &&
-               incoming_count < expectedTotalIncoming &&
-               cell != NULL)
+		while (n > 0 && cell != NULL)
 		{
 			conn = (MotionConn *) lfirst(cell);
 
