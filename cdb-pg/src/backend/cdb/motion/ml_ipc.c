@@ -2302,16 +2302,18 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
         if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
         {
             initStringInfo(&logbuf);
+
             format_fd_set(&logbuf, highsock+1, rset, "r={", "} ");
             format_fd_set(&logbuf, highsock+1, wset, "w={", "} ");
             format_fd_set(&logbuf, highsock+1, eset, "e={", "}");
+
             elapsed_ms = gettime_elapsed_ms(startTime);
+
             ereport(DEBUG1, (errmsg("SetupInterconnect+%dms:   select()  "
                                     "Interest: %s.  timeout=%dms "
                                     "outgoing_fail=%d iteration=%d",
                                     elapsed_ms, logbuf.data, timeout_ms,
-                                    outgoing_fail_count, iteration)
-						));
+                                    outgoing_fail_count, iteration)));
             pfree(logbuf.data);
             MemSet(&logbuf, 0, sizeof(logbuf));
         }
@@ -2388,6 +2390,9 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
                 n--;
                 if (readRegisterMessage(*ppTransportStates, conn))
                 {
+					/* We're done with this connection (either it is
+					 * bogus (and has been dropped), or we've added it to the appropriate
+					 * hash table) */
                     (*ppTransportStates)->incompleteConns = list_delete_ptr((*ppTransportStates)->incompleteConns, conn);
 
 					/* is the connection ready ? */
@@ -4014,12 +4019,11 @@ readRegisterMessage(ChunkTransportState *transportStates,
             conn->msgPos += bytesReceived;
  		else if (bytesReceived == 0)
 		{
-            ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-                            errmsg("Interconnect error reading register message "
-                                   "from %s: connection closed",
-                                   conn->remoteHostAndPort),
-                            errdetail("recv() sockfd=%d local=%s",
-                                      conn->sockfd, conn->localHostAndPort)));
+			elog(LOG, "Interconnect error reading register message from %s: connection closed",
+				 conn->remoteHostAndPort);
+
+			/* maybe this peer is already retrying ? */
+			goto old_conn;
 		}
         else if (errno == EWOULDBLOCK)
             return false;       /* call me again to receive the rest */
@@ -4077,13 +4081,7 @@ readRegisterMessage(ChunkTransportState *transportStates,
 			 gp_session_id, msg.srcSessionId,
 			 gp_command_count, msg.srcCommandCount);
 
-		shutdown(conn->sockfd, SHUT_RDWR);
-		closesocket(conn->sockfd);
-		conn->sockfd = -1;
-
-		pfree(conn->pBuff);
-
-		return true;
+		goto old_conn;
 	}
 
     /* Verify that the message pertains to one of our receiving Motion nodes. */
@@ -4205,7 +4203,19 @@ readRegisterMessage(ChunkTransportState *transportStates,
 	dumpEntryConnections(DEBUG4, pEntry);
 #endif
 
+	/* we've completed registration of this connection */
     return true;
+
+old_conn:
+	shutdown(conn->sockfd, SHUT_RDWR);
+	closesocket(conn->sockfd);
+	conn->sockfd = -1;
+
+	pfree(conn->pBuff);
+
+	/* this connection is done, but with sockfd == -1 isn't a
+	 * "success" */
+	return true;
 }                               /* readRegisterMessage */
 
 
@@ -5018,8 +5028,17 @@ flushInterconnectListenerBacklog(void)
 					}
 				}
 
-				/* shutdown this socket */
-				flushIncomingData(newfd);
+				/* make socket non-blocking */
+				if (!pg_set_noblock(newfd))
+				{
+					elog(LOG, "During incoming queue flush, could not set non-blocking.");
+				}
+				else
+				{
+					/* shutdown this socket */
+					flushIncomingData(newfd);
+				}
+
 				shutdown(newfd, SHUT_WR);
 				closesocket(newfd);
 			}
