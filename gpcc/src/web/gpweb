@@ -13,6 +13,7 @@ try:
     import web
     from mako.template import Template
     from mako.lookup import TemplateLookup
+    import simplejson
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
@@ -37,6 +38,11 @@ urls = (
 sctx = {'ma.host' : 'localhost', 'ma.port': 11000, 'gpdb.name' : 'gpdb'}
 
 class gpcc:
+    def _url_filter(self, name):
+        if name == '':
+            return 'index.psp'
+        return name
+
     def _session_filter(self):
         web.config.session_parameters.handler = 'file'
         web.config.session_parameters.cookie_name = 'gpsessionid'
@@ -52,9 +58,12 @@ class gpcc:
         return True
 
     def GET(self, name):
+        name = self._url_filter(name)
         sess = self._session_filter()
         page = {}
 	param = web.input()
+
+        sys.stderr.write('name  = %s\n' % name)
 
         if self._session_check(sess):
             render.serve_template(path=name, web=web, param=param, session=sess, sctx=sctx, page=page)
@@ -62,6 +71,7 @@ class gpcc:
             render.serve_template(path='index.psp', web=web, param=param, session=sess, sctx=sctx, page=page)
 
     def POST(self, name):
+        name = self._url_filter(name)
         sess = self._session_filter()
         page = {}
         param = web.input()
