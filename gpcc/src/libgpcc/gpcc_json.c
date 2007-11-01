@@ -171,7 +171,7 @@ struct json_object *gpcc_json_http_reply(const char *action, const char *status,
     return obj;
 }
 
-struct json_object *gpcc_json_http_status_reply(const char *status, const char *result) 
+struct json_object *gpcc_json_http_status_reply(const char *array, const char *status, const char *result) 
 {
     struct json_object *obj = 0;
     struct json_object *resobj = 0;
@@ -179,6 +179,11 @@ struct json_object *gpcc_json_http_status_reply(const char *status, const char *
 
     obj = json_object_new_object();
     json_object_object_add(obj, "status", json_object_new_string((char *)status));
+
+    if (array) {
+	json_object_object_add(obj, "array", json_object_new_string((char *) array));
+    }
+
     resobj = json_object_new_object();
 
     arrobj = json_object_new_array();
