@@ -89,7 +89,7 @@
 
             <p style="margin-top: 0pt;">Key Features of Greenplum database management</p>
 	    <ul style="margin-top: -0.8em;">
-	        <li><a href="/initiallize.psp">Initialize the Greenplum database array</a></li>
+	        <li><a href="/initialize.psp">Initialize the Greenplum database array</a></li>
 		<li><a href="/configure.psp">View the configuration of the Greenplum database</a></li>
 		<li><a href="/control.psp">Start/Stop the Greenplum database</a></li>
 	    </ul>
