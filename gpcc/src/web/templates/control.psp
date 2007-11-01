@@ -26,6 +26,7 @@
 <script type="text/javascript">
 
   var state = "stopped";
+  var array = "";
 
 $(function() {
 
@@ -54,24 +55,30 @@ $(function() {
   function status_response(json) {
       state = json.rset.result[0];
       if (json.status == "ok") {
-          if (json.rset.result[0] == "stopping" ||
-              json.rset.result[0] == "starting") {
-
-              setTimeout(function() {
-                 $.getJSON("/status.psp?a=${sctx['gpdb.name']}", function(json) {
-                     status_response(json);
-                 })
-              }, 1000);
-              
-              $("#switch").unbind('click', switch_click);           
+          if (typeof(json.array) == "undefined") {
+	       $("#status").text("Database is not initialized.  Please do the <a href='/initialize.psp'>initialization</a>.");
+	       $("#switch_click_msg").hide();
           } else {
-              $("#switch").bind('click', switch_click);           
-          }
-          switch_label();
+            array = json.array;
+            if (json.rset.result[0] == "stopping" ||
+                json.rset.result[0] == "starting") {
+
+                setTimeout(function() {
+                   $.getJSON("/status.psp", function(json) {
+                       status_response(json);
+                   })
+                }, 1000);
+              
+                $("#switch").unbind('click', switch_click);           
+            } else {
+                $("#switch").bind('click', switch_click);           
+            }
+            switch_label();
+         }
       }
   }
 
-  $.getJSON("/status.psp?a=${sctx['gpdb.name']}", function(json) {
+  $.getJSON("/status.psp", function(json) {
        status_response(json);
   });
 
@@ -86,7 +93,7 @@ $(function() {
       }
 
       setTimeout(function() {
-           $.getJSON("/status.psp?a=${sctx['gpdb.name']}", function(json) {
+           $.getJSON("/status.psp?a=" + array, function(json) {
                 status_response(json);
            })
       }, 1000);
@@ -95,9 +102,9 @@ $(function() {
   function switch_click() {
      url = '';
      if (state == "stopped") {
-        url = "/start.psp?a=${sctx['gpdb.name']}";
+        url = "/start.psp?a=" + array;
      } else {
-        url = "/stop.psp?a=${sctx['gpdb.name']}";
+        url = "/stop.psp?a=" + array;
      }
 
      $(this).unbind('click', switch_click);
