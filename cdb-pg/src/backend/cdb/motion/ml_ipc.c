@@ -2121,8 +2121,6 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
         int             timeout_ms = 20*60*1000;
         int             outgoing_fail_count = 0;
 
-		int				orig_n=0;
-
         iteration++;
 
 		MPP_FD_ZERO(&rset);
