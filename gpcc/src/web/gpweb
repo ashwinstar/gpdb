@@ -63,8 +63,6 @@ class gpcc:
         page = {}
 	param = web.input()
 
-        sys.stderr.write('name  = %s\n' % name)
-
         if self._session_check(sess):
             render.serve_template(path=name, web=web, param=param, session=sess, sctx=sctx, page=page)
         else:
