@@ -463,7 +463,8 @@ SendStopMessage(MotionLayerState *mlStates,
 	MotionNodeEntry *pEntry = getMotionNodeEntry(mlStates, motNodeID, "SendStopMessage");
 
 	pEntry->stopped = true;
-	doSendStopMessage(transportStates, motNodeID);
+	if (transportStates != NULL)
+		doSendStopMessage(transportStates, motNodeID);
 }
 
 /*
