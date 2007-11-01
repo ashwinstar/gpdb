@@ -259,7 +259,7 @@ static apr_status_t a_fts_array_status_reply(gpcc_event_t *ev, void *_cmdslot)
 	state = "invalid state";
     }
 
-    obj = gpcc_json_http_status_reply("ok", state);
+    obj = gpcc_json_http_status_reply(config_get(gpma.cfg, "gpdb.name"), "ok", state);
     gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
     json_object_put(obj);
     return 0;

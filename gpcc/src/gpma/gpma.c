@@ -237,7 +237,8 @@ static void net_accepted(gpcc_net_conn_t conn,
 
     if (from_peer->argc == 3
 	&& 0 == memcmp("HTTP/1.", from_peer->argv[2], 7)
-	&& 0 == strcmp("GET", from_peer->argv[0])) {
+	&& (0 == strcmp("GET", from_peer->argv[0]) ||
+	    0 == strcmp("POST", from_peer->argv[0]))) {
 
 	gpcc_net_uri_t* uri = gpcc_net_uri_alloc(from_peer->argv[1]);
 	char* a = (uri ? gpcc_net_uri_param(uri, "a") : 0);
@@ -248,6 +249,14 @@ static void net_accepted(gpcc_net_conn_t conn,
 	if (0 == strcmp("/gpcc/lscfg", uri->path)) {
 	    process_lscfg(conn);
 	}
+	else if (0 == strcmp("/gpcc/status", uri->path)) {
+	    ev = mkfts_event(ARRAY_STATUS_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+			     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+	}
+	else if (0 == strcmp("/gpcc/init", uri->path)) {
+	    ev = mkfts_event(ARRAY_INIT_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+			     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+	}
 	else if (! is_bad_array_name) {
 	    if (0 == strcmp("/gpcc/start", uri->path)) {
 		/* send startcmd_event to FTS cmdslot ? */
@@ -256,14 +265,6 @@ static void net_accepted(gpcc_net_conn_t conn,
 	    }
 	    else if (0 == strcmp("/gpcc/stop", uri->path)) {
 		ev = mkfts_event(ARRAY_STOP_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
-				 gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-	    }
-	    else if (0 == strcmp("/gpcc/init", uri->path)) {
-		ev = mkfts_event(ARRAY_INIT_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
-				 gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-	    }
-	    else if (0 == strcmp("/gpcc/status", uri->path)) {
-		ev = mkfts_event(ARRAY_STATUS_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
 				 gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
 	    }
 	    else 
