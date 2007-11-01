@@ -2322,8 +2322,6 @@ SetupInterconnect(ChunkTransportState **ppTransportStates,
         n = select(highsock + 1, (fd_set *)&rset, (fd_set *)&wset, (fd_set *)&eset, &timeout);
 		ML_CHECK_FOR_INTERRUPTS((*ppTransportStates)->teardownActive);
 
-		orig_n = n;
-
         elapsed_ms = gettime_elapsed_ms(startTime);
 
         /*
