@@ -40,6 +40,9 @@ USAGE () {
 		$ECHO "	  -?, display this help message & exit" 
 		$ECHO "	  -v, display version information & exit"
 		$ECHO
+		$ECHO "   Upgrade options:"
+		$ECHO "   -u <3.1|3.0>, Upgrade to 3.1 (downgrade to 3.0)"
+		$ECHO
 		$ECHO "	  Logging options:"
 		$ECHO "	  -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
 		$ECHO "	  -l, <logfile directory> alternative logfile directory [optional]"
@@ -131,6 +134,11 @@ if [ $# -ne 0 ]; then
 						* ) START_ARGS="-$opt $OPTARG ";;
 				esac
 		done
+fi
+
+if [ $UPGRADE_TO == "0" ]; then
+	LOG_MSG "[ERROR]:-A target Greenplum database version to upgrade to must be specified, exiting" 2
+	exit 1;
 fi
 
 LOG_MSG "[INFO]:-Performing cluster wide upgrade" 1
