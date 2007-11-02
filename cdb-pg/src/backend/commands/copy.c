@@ -1166,9 +1166,7 @@ DoCopy(const CopyStmt *stmt)
 								RelationGetRelationName(cstate->rel))));
 		}
 		
-		if(stmt->sreh && 
-		   (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) &&
-		   !cstate->rel->rd_cdbpolicy)
+		if(stmt->sreh && Gp_role != GP_ROLE_EXECUTE && !cstate->rel->rd_cdbpolicy)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("COPY single row error handling only available for distributed user tables")));		
