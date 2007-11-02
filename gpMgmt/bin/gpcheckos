@@ -97,6 +97,9 @@ class Config:
             if not line:
                 continue
 
+            if line.startswith('#'):
+                continue
+
             try:
                 c = line.split(None, 3);
             except TypeError:
