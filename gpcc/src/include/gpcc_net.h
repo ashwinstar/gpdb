@@ -53,6 +53,7 @@ struct gpcc_net_header_t {
     int hc;
     const char* hname[GPCC_NET_HEADER_ENTRYMAX+1];
     const char* hvalue[GPCC_NET_HEADER_ENTRYMAX+1];
+    const char* post;
 };
 
 

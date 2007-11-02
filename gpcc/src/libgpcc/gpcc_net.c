@@ -70,6 +70,7 @@ gpcc_net_header_serialize(gpcc_net_header_t* src, char* buf, int buflen)
 static gpcc_net_header_t* 
     gpcc_net_header_copy(int argc, const char** argv, int hc, 
 			 const char** hname, const char** hvalue,
+			 const char* post, int postlen,
 			 apr_pool_t* pool)
 {
     gpcc_net_header_t* hdr = apr_palloc(pool, sizeof(*hdr));
@@ -94,6 +95,9 @@ static gpcc_net_header_t*
     hdr->hname[i] = 0;
     hdr->hvalue[i] = 0;
 
+    if (post) 
+	hdr->post = apr_pstrndup(pool, post, postlen);
+
     return hdr;
 }
 
@@ -105,12 +109,16 @@ static gpcc_net_header_t* gpcc_net_header_dup(gpcc_net_header_t* src, char* buf,
     int i;
     gpcc_net_header_t* hp;
     int len;
+    int postlen;
 
     len = sizeof(*hp);
     for (i = 0; i < src->argc; i++)
 	len += strlen(src->argv[i]) + 1;
     for (i = 0; i < src->hc; i++)
 	len += strlen(src->hname[i]) + 1 + strlen(src->hvalue[i]) + 1;
+
+    postlen = src->post ? strlen(src->post) : 0;
+    len += postlen;
     if (len > buflen)
 	return 0;
 
@@ -137,6 +145,11 @@ static gpcc_net_header_t* gpcc_net_header_dup(gpcc_net_header_t* src, char* buf,
     }
     hp->hname[i] = 0;
     hp->hvalue[i] = 0;
+
+    if (src->post) {
+	strcpy(buf, src->post);
+	hp->post = buf;
+    }
 
     return hp;
 }
@@ -1152,7 +1165,7 @@ apr_status_t gpcc_net_open(gpcc_net_conn_t* conn,
 	goto failure;
 
     /* copy argc, argv, hc, hname, hvalue into gpcc_net_header */
-    hdr = gpcc_net_header_copy(argc, argv, hc, hname, hvalue, pool);
+    hdr = gpcc_net_header_copy(argc, argv, hc, hname, hvalue, 0, 0, pool);
     if ( ! hdr) {
 	gpcc_warning(FLINE, "gpcc_net_header_copy failed");
 	e = APR_EINVAL;
@@ -1310,19 +1323,77 @@ void gpcc_net_close(gpcc_net_conn_t conn, int flush)
 }
 
 
+static apr_status_t parse_request_in_place(gpcc_net_header_t* hdr, char* buf, int len)
+{
+    char* line[1024];
+    int line_top = 0, i;
+    char* p = buf;
+    char* q = buf + len;
+    char* last;
+
+    memset(hdr, 0, sizeof(*hdr));
+
+    while (p < q && line_top < gpcc_lengthof(line)) {
+	line[line_top++] = p;
+	while (p < q && *p != '\n')
+	    p++;
+	if (p < q) *p++ = 0;
+    }
+
+    if (! (p < q && line_top < gpcc_lengthof(line)))
+	return APR_EINVAL;
+
+    if (line_top > 0) {
+	for (p = apr_strtok(line[0], " \t", &last); 
+	     p; p = apr_strtok(0, " \t", &last)) {
+	    hdr->argv[hdr->argc++] = p;
+	    if (hdr->argc >= GPCC_NET_HEADER_ENTRYMAX)
+		break;
+	}
+    }
+   
+    /* subsequent lines */
+    for (i = 1; i < line_top; i++) {
+	p = line[i];
+	if (*p == ' ' || *p == '\t') {
+	    /* continuation */
+	    if (hdr->hc == 0) 
+		return APR_EINVAL;
+	    p = gpcc_string_trim(p);
+	    if (*p == 0)
+		break;		/* empty line */
+	    strcat((char*) hdr->hvalue[hdr->hc-1], " ");
+	    strcat((char*) hdr->hvalue[hdr->hc-1], p);
+	    continue;
+	}
+	/* find a colon, and break line into two */
+	for (q = p; *q && *q != ':'; q++) ;
+	if (*q) 
+	    *q++ = 0;
+	p = gpcc_string_trim(p);
+	q = gpcc_string_trim(q);
+	hdr->hname[hdr->hc] = gpcc_string_tolower(p);
+	hdr->hvalue[hdr->hc] = gpcc_string_trim(q);
+	hdr->hc++;
+
+	if (hdr->hc >= GPCC_NET_HEADER_ENTRYMAX)
+	    return APR_EINVAL;
+    }
+
+    return 0;
+}
 
     
 apr_status_t gpcc_net_parse_request(gpcc_net_header_t** hdr, const char* buf, int* len, apr_pool_t* pool)
 {
     int n = *len;
     const char* p;
-    char* line;
-    char* last;
-    char* colon;
     int empty, completed;
-    char** argv = 0;
-    int e;
     gpcc_net_header_t* req = 0;
+    char tmpbuf[1024*16];
+    gpcc_net_header_t tmphdr;
+    const char* post = 0;
+    int postlen = 0;
 
     *hdr = 0;
 
@@ -1347,59 +1418,37 @@ apr_status_t gpcc_net_parse_request(gpcc_net_header_t** hdr, const char* buf, in
     }
     if (! completed)
 	return 0;
-    
+
     /* we have a complete HTTP-style HEADER request (terminated by empty line) */
-    *len = n = p - buf; /* consume it */
-    line = apr_pstrndup(pool, buf, n); /* dup it */
-    req = apr_pcalloc(pool, sizeof(gpcc_net_header_t));
-
-    /* for first line */
-    line = apr_strtok(line, "\n", &last);
-    line = gpcc_string_trim(line);
-    if (0 != (e = apr_tokenize_to_argv(line, &argv, pool)))
-	return e;
-
-    for ( ;argv[req->argc]; req->argc++)  {
-	if (req->argc >= GPCC_NET_HEADER_ENTRYMAX)
-	    return APR_EINVAL;
-	req->argv[req->argc] = argv[req->argc];
+    n = p - buf;
+    if (n >= sizeof(tmpbuf)) {
+	/* header too long */
+	return APR_EINVAL;
     }
+    memcpy(tmpbuf, buf, n);
+    if (0 != parse_request_in_place(&tmphdr, tmpbuf, n))
+	return APR_EINVAL;
 
-    /* for each subsequent lines */
-    while (0 != (line = apr_strtok(0, "\n", &last))) {
-	if (*line == ' ' || *line == '\t') {
-	    /* continuation */
-	    if (req->hc == 0)	/* illegal - missing first header */
-		break;
-	    line = gpcc_string_trim(line);
-	    if (*line == 0)	/* empty line */
-		break;
-	    /* add to previous hvalue */
-	    req->hvalue[req->hc-1] 
-		= gpcc_string_trim(apr_pstrcat(pool, req->hvalue[req->hc-1], 
-					       " ", line, 0));
-	    continue;
+    if (tmphdr.argc > 0 && 0 == memcmp(tmphdr.argv[0], "POST", 5)) {
+	int i;
+	for (i = 0; i < tmphdr.hc && 0 != memcmp(tmphdr.hname[i], "content-length", 15); i++);
+	if (i < tmphdr.hc) {
+	    postlen = atoi(tmphdr.hvalue[i]);
+	    if (postlen && *len - n < postlen)
+		return 0;	/* not completed yet */
+	    
+	    post = buf + n;
+	    n += postlen;
 	}
-	/* find a colon, and break the line in two */
-	if (! (colon = strchr(line, ':')))
-	    colon = line + strlen(line); 
-	else
-	    *colon++ = 0;
-
-	line = gpcc_string_trim(line);
-	if (*line == 0) 	/* empty line */
-	    break;
-
-	/* save name, value pair */
-	req->hname[req->hc] = gpcc_string_tolower(line);
-	req->hvalue[req->hc] = gpcc_string_trim(colon);
-	req->hc++;
-
-	if (req->hc >= GPCC_NET_HEADER_ENTRYMAX)
-	    return APR_EINVAL;
     }
+
+    req = gpcc_net_header_copy(tmphdr.argc, tmphdr.argv, 
+			       tmphdr.hc, tmphdr.hname, tmphdr.hvalue, 
+			       post, postlen,
+			       pool);
 
     *hdr = req;
+    *len = n;
     return 0;
 }
 
