@@ -247,7 +247,13 @@ static apr_status_t a_fts_array_status_reply(gpcc_event_t *ev, void *_cmdslot)
     url = ev->pdata + sizeof(gpcc_net_conn_t);
 
     /* send the current state */
-    if (cmdslot->cmdstate == FTS_STOPPED_CMDSTATE) {
+    if (cmdslot->cmdstate == FTS_WAIT_CMDSTATE) {
+	state = "connecting";
+    } else if (cmdslot->cmdstate == FTS_EMPTY_CMDSTATE) {
+	state = "none";
+    } else if (cmdslot->cmdstate == FTS_INITIALIZING_CMDSTATE) {
+	state = "initializing";
+    } else if (cmdslot->cmdstate == FTS_STOPPED_CMDSTATE) {
 	state = "stopped";
     } else if (cmdslot->cmdstate ==  FTS_STARTING_CMDSTATE) {
 	state = "starting";
@@ -274,6 +280,12 @@ static apr_status_t a_fts_busy_ok_reply(gpcc_event_t *ev, void *_cmdslot)
     char *msg;
 
     if (cmdslot->cmdstate ==  FTS_CMDSTATE) {
+	msg = "server is waking up";
+    } else if (cmdslot->cmdstate ==  FTS_WAIT_CMDSTATE) {	
+	msg = "server is connecting";
+    } else if (cmdslot->cmdstate ==  FTS_EMPTY_CMDSTATE) {	
+	msg = "array is absent";
+    } else if (cmdslot->cmdstate ==  FTS_INITIALIZING_CMDSTATE) {	
 	msg = "server is initializing";
     } else if (cmdslot->cmdstate ==  FTS_STOPPED_CMDSTATE) {
 	msg = "server stopped";
@@ -414,7 +426,6 @@ static apr_status_t a_fts_failure(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-#if 0
 static apr_status_t a_fts_array_init(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = _cmdslot;
@@ -462,4 +473,18 @@ static apr_status_t a_fts_initialized(gpcc_event_t *ev, void *_cmdslot)
 {
     return 0;
 }
-#endif
+
+static apr_status_t a_fts_array_present(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    gpcc_event_t *evt;
+
+    if (config_get(gpma.cfg, "gpdb.name") == 0) {
+	evt = gpcc_event_alloc(ARRAY_ABSENT_EVENT, cmdslot->cmdidx, 0);
+    } else {
+	evt = gpcc_event_alloc(ARRAY_PRESENT_EVENT, cmdslot->cmdidx, 0);
+    }
+
+    gpcc_evqueue_put(gpma.evq, evt);
+    return 0;
+}
