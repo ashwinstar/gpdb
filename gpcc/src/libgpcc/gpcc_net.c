@@ -1385,7 +1385,7 @@ apr_status_t parse_request_in_place(gpcc_net_header_t* hdr, char* buf, int len)
     
 apr_status_t gpcc_net_parse_request(gpcc_net_header_t** hdr, const char* buf, int* len, apr_pool_t* pool)
 {
-    int n = *len;
+    int n = *len, tot= *len;
     const char* p;
     int empty, completed;
     gpcc_net_header_t* req = 0;
@@ -1433,7 +1433,7 @@ apr_status_t gpcc_net_parse_request(gpcc_net_header_t** hdr, const char* buf, in
 	for (i = 0; i < tmphdr.hc && 0 != memcmp(tmphdr.hname[i], "content-length", 15); i++);
 	if (i < tmphdr.hc) {
 	    postlen = atoi(tmphdr.hvalue[i]);
-	    if (postlen && *len - n < postlen)
+	    if (postlen && tot - n < postlen)
 		return 0;	/* not completed yet */
 	    
 	    post = buf + n;
