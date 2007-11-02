@@ -244,7 +244,7 @@ static void net_accepted(gpcc_net_conn_t conn,
 	char* a = (uri ? gpcc_net_uri_param(uri, "a") : 0);
 	gpcc_event_t* ev = 0;
 	int is_bad_uri = 0;
-	int is_bad_array_name = ! (a && 0 == strcmp(a, gpma.array_name));
+	int is_bad_array_name = ! (gpma.array_name && a && 0 == strcmp(a, gpma.array_name));
 
 	if (0 == strcmp("/gpcc/lscfg", uri->path)) {
 	    process_lscfg(conn);
@@ -614,58 +614,60 @@ static void verify_config(void)
 	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- ma.0 not set");
 
     /* guid must match */
-    if (! config_eq(gpma.cfg, "gpdb.guid", gpma.guid)) {
-	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.guid mismatch (expect %s, receive %s)",
-					gpma.guid, config_getx(gpma.cfg, "gpdb.guid", "[null]"));
+    if (! config_eq(gpma.cfg, "sys.guid", gpma.guid)) {
+	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- sys.guid mismatch (expect %s, receive %s)",
+					gpma.guid, config_getx(gpma.cfg, "sys.guid", "[null]"));
     }
 
     /* name must exist */
-    if (! config_get(gpma.cfg, "gpdb.name")) {
-	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.name missing");
-    }
+    if (config_get(gpma.cfg, "gpdb.name")) {
 
-    /* default master_port port if not set */
-    if (! config_get(gpma.cfg, "gpdb.seg.master_port")) {
-	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.master_port missing");
-    }
-    i = config_get_int(gpma.cfg, "gpdb.seg.master_port");
-    if (! (0 < i && i < (1 << 16))) {
-	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.master_port invalid (value %d)", i);
-    }
-
-    /* default qe baseport if not set */
-    if (! config_get(gpma.cfg, "gpdb.seg.base_port")) {
-	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.base_port missing");
-    }
-    i = config_get_int(gpma.cfg, "gpdb.seg.base_port");
-    if (! (0 < i && i < (1 << 16))) {
-	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.base_port invalid (value %d)", i);
-    }
-
-    /* default min mirror if not set */
-    i = config_get_or_set_int(gpma.cfg, "gpdb.min_mirror", 0);
-    if (! (0 <= i && i < 2)) {
-	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.min_mirror invalid (value %d)", i);
-    }
-
-    /* qd must exist */
-    v = config_get(gpma.cfg, "gpdb.seg.m.0");
-    if (!v) {
-	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.m.0 not set");
-    }
-
-    /* minimum 2 QEs, max 512 QEs */
-    for (i = 0; i < 512; i++) {
-	sprintf(buf, "gpdb.seg.%d.0", i);
-	v = config_get(gpma.cfg, buf);
-	if (!v) {
-	    if (i < 2) 
-		errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- %s not set", buf);
-	    break;
+	/* default master_port port if not set */
+	if (! config_get(gpma.cfg, "gpdb.seg.master_port")) {
+	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.master_port missing");
 	}
-    }
-    if (! (2 <= i && i < 512)) {
-	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- too many segments (max 512)");
+	i = config_get_int(gpma.cfg, "gpdb.seg.master_port");
+	if (! (0 < i && i < (1 << 16))) {
+	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.master_port invalid (value %d)", i);
+	}
+	
+	/* default qe baseport if not set */
+	if (! config_get(gpma.cfg, "gpdb.seg.base_port")) {
+	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.base_port missing");
+	}
+	i = config_get_int(gpma.cfg, "gpdb.seg.base_port");
+	if (! (0 < i && i < (1 << 16))) {
+	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.base_port invalid (value %d)", i);
+	}
+	
+	/* default min mirror if not set */
+	i = config_get_or_set_int(gpma.cfg, "gpdb.min_mirror", 0);
+	if (! (0 <= i && i < 2)) {
+	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.min_mirror invalid (value %d)", i);
+	}
+	
+	/* qd must exist */
+	v = config_get(gpma.cfg, "gpdb.seg.m.0");
+	if (!v) {
+	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.m.0 not set");
+	}
+	
+	/* minimum 2 QEs, max 512 QEs */
+	for (i = 0; i < 512; i++) {
+	    sprintf(buf, "gpdb.seg.%d.0", i);
+	    v = config_get(gpma.cfg, buf);
+	    if (!v) {
+		if (i < 2) 
+		    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- %s not set", buf);
+		break;
+	    }
+	}
+	if (! (2 <= i && i < 512)) {
+	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- too many segments (max 512)");
+	}
+
+	/* set the number of QEs */
+	config_set_int(gpma.cfg, "gpdb.seg.max", i);
     }
 
     /* fail out */
@@ -677,8 +679,6 @@ static void verify_config(void)
 	gpcc_fatal(FLINE, "config file error - see log file '%s'", gpma.logfpath ? gpma.logfpath : "-");
     }
 
-    /* set the number of QEs */
-    config_set_int(gpma.cfg, "gpdb.seg.max", i);
 }
 
 
@@ -716,7 +716,7 @@ void load_config(void)
 		0xffffU & (int) (guid >> 48), 0xffffU & (int) (guid >> 32),
 		0xffffU & (int) (guid >> 16), 0xffffU & (int) (guid));
 	gpma.guid = apr_pstrdup(gpma.pool, guidstr);
-	config_set(gpma.cfg, "gpdb.guid", gpma.guid);
+	config_set(gpma.cfg, "sys.guid", gpma.guid);
 
 	/* check if config is legit */
 	verify_config();
@@ -743,9 +743,9 @@ void load_config(void)
 	if (gpma.cfg == 0) 
 	    gpcc_fatal(FLINE, "config file not found in dir %s", gpma.datadir);
 
-	gpma.guid = config_get(gpma.cfg, "gpdb.guid");
+	gpma.guid = config_get(gpma.cfg, "sys.guid");
 	if (! gpma.guid) 
-	    gpcc_fatal(FLINE, "config file does not specify gpdb.guid");
+	    gpcc_fatal(FLINE, "config file does not specify sys.guid");
 
 	/* check if config is legit */
 	verify_config();
