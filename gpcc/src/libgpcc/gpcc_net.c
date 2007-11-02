@@ -1343,8 +1343,8 @@ apr_status_t parse_request_in_place(gpcc_net_header_t* hdr, char* buf, int len)
 	return APR_EINVAL;
 
     if (line_top > 0) {
-	for (p = apr_strtok(line[0], " \t", &last); 
-	     p && *p; p = apr_strtok(0, " \t", &last)) {
+	for (p = apr_strtok(line[0], " \t\r\n", &last); 
+	     p && *p; p = apr_strtok(0, " \t\r\n", &last)) {
 	    hdr->argv[hdr->argc++] = p;
 	    if (hdr->argc >= GPCC_NET_HEADER_ENTRYMAX)
 		break;
