@@ -385,17 +385,6 @@ transformWindowClause(ParseState *pstate, Query *qry)
 	Index clauseno = -1;
 	
 	/*
-	 * Skip processing the window clause if there are no window functions
-	 * -- i.e., foo() OVER (bar) -- in the target list
-	 */
-	if (!pstate->p_hasWindFuncs)
-	{
-		pstate->p_win_clauses = NIL;
-		qry->windowClause = NIL;
-		return;
-	}
-
-	/*
 	 * We have two lists of window specs: one in the ParseState -- put there
 	 * when we find the OVER(...) clause in the targetlist and the other
 	 * is windowClause, a list of named window clauses. So, we concatenate
@@ -589,7 +578,7 @@ transformWindowClause(ParseState *pstate, Query *qry)
 			 * Framing is only supported on specifications with an ordering
 			 * clause.
 			 */
-			if (!ws->order)
+			if (!ws->order && !newspec->order)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("window specifications with a framing clause "
@@ -658,7 +647,19 @@ transformWindowClause(ParseState *pstate, Query *qry)
 		
 		winout = lappend(winout, newspec);
 	}
-	qry->windowClause = winout;
+
+	/* If there are no window functions in the targetlist,
+	 * forget the window clause.
+	 */
+	if (!pstate->p_hasWindFuncs)
+	{
+		pstate->p_win_clauses = NIL;
+		qry->windowClause = NIL;
+	}
+	else
+	{
+		qry->windowClause = winout;
+	}
 }
 
 /*

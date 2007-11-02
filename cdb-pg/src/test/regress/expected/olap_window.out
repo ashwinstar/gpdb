@@ -173,24 +173,10 @@ select * from customer
 window 
     w as (partition by cn), 
     w as (w order by cname); --error - can't refer to window in its definition
- cn |    cname     |     cloc     
-----+--------------+--------------
-  1 | Macbeth      | Inverness
-  3 | Lady Macbeth | Inverness
-  2 | Duncan       | Forres
-  4 | Witches, Inc | Lonely Heath
-(4 rows)
-
+ERROR:  window "w" cannot reference itself
 select * from customer
 window w as (w order by cname); --error - can't refer to window in its definition
- cn |    cname     |     cloc     
-----+--------------+--------------
-  1 | Macbeth      | Inverness
-  3 | Lady Macbeth | Inverness
-  2 | Duncan       | Forres
-  4 | Witches, Inc | Lonely Heath
-(4 rows)
-
+ERROR:  window "w" cannot reference itself
 -- test the frame parser
 select cn, 
   count(*) over (order by cn range '1'::interval preceding) 
