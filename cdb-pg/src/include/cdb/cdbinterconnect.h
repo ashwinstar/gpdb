@@ -88,6 +88,7 @@ typedef struct MotionConn
 	int			tupleCount;
 	
 	bool		stillActive;
+	bool		stopRequested;
 	
     MotionConnState state;
 	

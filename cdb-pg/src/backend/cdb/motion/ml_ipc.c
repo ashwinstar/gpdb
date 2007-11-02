@@ -701,7 +701,7 @@ conn_delhash(MotionConn *conn)
 }
 
 static MotionConn *
-findConnByHeader(struct icpkthdr *hdr, int16 *srcRoute)
+findConnByHeader(struct icpkthdr *hdr)
 {
 	int hashcode;
 	struct conn_htab_bin *bin;
@@ -729,9 +729,6 @@ findConnByHeader(struct icpkthdr *hdr, int16 *srcRoute)
 #if 0
 			write_log("findConnByHeader: found. route %d state %d hashcode %d conn %p\n", ret->route, ret->state, hashcode, ret);
 #endif
-
-			if (srcRoute != NULL)
-				*srcRoute = ret->route;
 
 			if (hdr->sessionId != gp_session_id)
 				write_log("findConnByHeader: session mismatch %d/%d\n", hdr->sessionId, gp_session_id);
@@ -1040,6 +1037,9 @@ SendEosToAMS(MotionLayerState *mlStates,
 	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 		elog(DEBUG3, "Interconnect seg%d slice%d sending end-of-stream to slice%d",
 			 Gp_segment, motNodeID, pEntry->recvSlice->sliceIndex);
+
+	elog(LOG, "Interconnect seg%d slice%d sending end-of-stream to slice%d",
+		 Gp_segment, motNodeID, pEntry->recvSlice->sliceIndex);
 
 	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
 		pEntry->sendingEos = true;
@@ -1904,7 +1904,7 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 					ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 									errmsg("Interconnect error: %m%s short ack receive!", "recvfrom")));
 
-				conn = findConnByHeader(&pkt, NULL);
+				conn = findConnByHeader(&pkt);
 				if (conn != NULL)
 				{
 					if (conn->state == mcsSetupOutgoingConnection)
@@ -2902,7 +2902,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 
 		aSlice = (Slice *) list_nth(transportStates->sliceTable->slices, childId);
 
-		pEntry = removeChunkTransportState(transportStates, aSlice->sliceIndex);
+		getChunkTransportState(transportStates, aSlice->sliceIndex, &pEntry);
 		Assert(pEntry);
 
         if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
@@ -2917,10 +2917,13 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 		for (i = 0; i < pEntry->numConns; i++)
 		{
 			conn = pEntry->conns + i;
-
+#if 0
 			if (!forceEOS)
 				if (conn->stillActive)
 					elog(LOG, "teardownUDP: shutting down with a receiver still active ? this will confuse our peer.");
+#endif
+			if (conn->stillActive)
+				elog(LOG, "teardownUDP: shutting down with a receiver still active ? this will confuse our peer.");
 
 			conn_delhash(conn);
 
@@ -2935,6 +2938,9 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 		}
 		rx_buf_maxcount -= pEntry->numConns;
 		pfree(pEntry->conns);
+
+		/* remove it */
+		removeChunkTransportState(transportStates, aSlice->sliceIndex);
 	}
 
 	/* now that we've moved active rx-buffers to the freelist, we can prune the freelist itself */
@@ -3208,6 +3214,7 @@ createChunkTransportState(ChunkTransportState *transportStates,
         conn->msgSize = 0;
         conn->tupleCount = 0;
         conn->stillActive = false;
+        conn->stopRequested = false;
         conn->wakeup_ms = 0;
         conn->cdbProc = NULL;
     }
@@ -4378,6 +4385,56 @@ sendChunk(MotionLayerState *mlStates, ChunkTransportState *transportStates, Chun
 	return true;
 }
 
+/*
+ * This is a helper function for flushUDPBuffer(). We're essentially
+ * acknowledging the stop message, and agreeing that the connection is
+ * done. Note that as we do this we may be getting more stop messages;
+ * which we have to handle too (so we re-scan our list as we get those
+ * kind of responses).
+ *
+ * Called from flushBuffer(), after noticing the return from
+ * flushUDPBuffer().
+ */
+static void
+handleStopMsgs(MotionLayerState *mlStates, ChunkTransportState *transportStates,
+			   ChunkTransportStateEntry *pEntry, int16 motionId)
+{
+	int i=0;
+	bool res=false;
+
+	elog(LOG, "handleStopMsgs: node %d", motionId);
+
+	while (i < pEntry->numConns)
+	{
+		MotionConn *conn=NULL;
+
+		conn = pEntry->conns + i;
+
+		/* we're guaranteed to have recently flushed ... so the
+		 * outbound buffer is empty when we get here. */
+		if (conn->stillActive && conn->stopRequested)
+		{
+			conn->conn_info.flags |= FLAGS_EOS;
+			conn->pBuff[conn->msgSize] = 'S';
+			conn->msgSize += 1;
+
+			elog(LOG, "handleStopMsgs: node %d route %d", motionId, i);
+			res = flushUDPBuffer(mlStates, transportStates, pEntry, conn, motionId);
+
+			conn->stillActive = false;
+			conn->stopRequested = false;
+
+			if (!res)
+			{
+				i=0;
+				continue;
+			}
+		}
+
+		i++;
+	}
+}
+
 /* Function flushBuffer() is used to write the contents of a MotionConn buffer
  * out to the network.	This function blocks until the entire contents have
  * been written to the socket.
@@ -4545,37 +4602,62 @@ flushUDPBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 			if (pkt.motNodeId == conn->conn_info.motNodeId &&
 				pkt.srcContentId == conn->conn_info.srcContentId &&
 				pkt.srcPid == conn->conn_info.srcPid &&
-				pkt.dstPid == conn->conn_info.dstPid &&
 				pkt.srcListenerPort == ((Gp_listener_port>>16) & 0x0ffff) &&
-				pkt.dstListenerPort == conn->conn_info.dstListenerPort &&
 				pkt.sessionId == gp_session_id &&
 				pkt.commandCount == gp_command_count)
 			{
-				/* this was for me */
+				/* packet is for me */
 				if (pkt.flags & FLAGS_STOP)
 				{
-#if 0
-					elog(LOG, "got ack with stop; not advancing seq, setting stillactive <- false srcpid %d dstpid %d cmd %d", pkt.srcPid, pkt.dstPid, pkt.commandCount);
+					MotionConn *stopConn = NULL;
+#if 1
+					elog(LOG, "got ack with stop; srcpid %d dstpid %d cmd %d flags 0x%x seq %d", pkt.srcPid, pkt.dstPid, pkt.commandCount, pkt.flags, pkt.seq);
 #endif
-					result = false;
-					conn->stillActive = false;
-					conn->conn_info.seq++;
-					break;
-				}
-				if (pkt.flags & FLAGS_ACK)
-				{
-					if (pkt.seq != conn->conn_info.seq)
+					stopConn = findConnByHeader(&pkt);
+
+					if (!stopConn)
 					{
-#if 0
-						elog(LOG, "ack with bad seq?! expected %d got %d", conn->conn_info.seq, pkt.seq);
-#endif
+						elog(LOG, "got ack with stop, but can't find connection!");
 						continue;
 					}
-					conn->conn_info.seq++;
+
+					result = false; /* regardless of which connection this is, we'll need to count later */
+//					conn->stillActive = false;
+					stopConn->stopRequested = true;
+					stopConn->conn_info.flags |= FLAGS_STOP;
+
+					if (stopConn == conn && pkt.seq == conn->conn_info.seq)
+					{
+						conn->conn_info.seq++;
+						break;
+					}
+
+					elog(LOG, "stopped conn was 'other' %d (expected seq %d) than the sending conn %d",
+						 stopConn->route, stopConn->conn_info.seq, conn->route);
+
+					continue;
+				}				
+
+				if (pkt.dstPid == conn->conn_info.dstPid &&
+					pkt.dstListenerPort == conn->conn_info.dstListenerPort)
+				{
+					/* this was a reply to the packet we just sent */
+
+					if (pkt.flags & FLAGS_ACK)
+					{
+						if (pkt.seq != conn->conn_info.seq)
+						{
 #if 0
-					elog(LOG, "got good ack with seq %d node %d route %d peer %d", pkt.seq, pkt.motNodeId, conn->route, pkt.dstPid);
+							elog(LOG, "ack with bad seq?! expected %d got %d", conn->conn_info.seq, pkt.seq);
 #endif
-					break;
+							continue;
+						}
+						conn->conn_info.seq++;
+#if 1
+						elog(LOG, "got good ack with seq %d node %d route %d peer %d", pkt.seq, pkt.motNodeId, conn->route, pkt.dstPid);
+#endif
+						break;
+					}
 				}
 			}
 			else
@@ -4620,7 +4702,15 @@ flushBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 #endif
 
 	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
-		return flushUDPBuffer(mlStates, transportStates, pEntry, conn, motionId);
+	{
+		if (!flushUDPBuffer(mlStates, transportStates, pEntry, conn, motionId))
+		{
+			handleStopMsgs(mlStates, transportStates, pEntry, motionId);
+			return false;
+		}
+		else
+			return true;
+	}
 
 	pMNEntry = getMotionNodeEntry(mlStates, motionId, "flushBuffer");
 
@@ -4814,22 +4904,36 @@ doSendStopMessage(ChunkTransportState *transportStates, int16 motNodeID)
 	 */
 	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
 	{
-		pthread_mutex_lock(&rx_thread_mutex);
+
 		for (i = 0; i < pEntry->numConns; i++)
 		{
 			conn = pEntry->conns + i;
 
+			pthread_mutex_lock(&rx_thread_mutex);
 			if (conn->stillActive)
 			{
-//			sendAck(conn, true);
-				conn->conn_info.flags |= FLAGS_STOP;
-				elog(LOG, "sent stop message; should shut down read interest");
+				if (conn->conn_info.flags & FLAGS_EOS)
+				{
+					/* we have a queued packet that has EOS in it. We've acked it, so we're done */
+					elog(LOG, "do sendstop: already have queued EOS packet, we're done. node %d route %d", motNodeID, i);
+					Assert(conn->pBuff != NULL);
+					conn->stillActive = false;
 
-				/* CRITICAL TO AVOID DEADLOCK */
-				conn->stillActive = false;
+					while (conn->pBuff != NULL)
+					{
+						put_rx_buffer(conn); /* as a side-effect this may wake the rx_thread */
+					}
+				}
+				else
+				{
+					conn->stopRequested = true;
+					conn->conn_info.flags |= FLAGS_STOP;
+					sendAck(conn, true);
+					elog(LOG, "sent stop message. node %d route %d seq %d", motNodeID, i, conn->conn_info.seq);
+				}
 			}
+			pthread_mutex_unlock(&rx_thread_mutex);
 		}
-		pthread_mutex_unlock(&rx_thread_mutex);
 	}
 	else /* TCP interconnect */
 	{
@@ -5273,7 +5377,7 @@ ic_rx_thread_func(void *arg)
 
 			pthread_mutex_lock(&rx_thread_mutex);
 
-			conn = findConnByHeader(pkt, NULL);
+			conn = findConnByHeader(pkt);
 			if (conn != NULL)
 			{
 				/* Is this a connection request ? */
@@ -5351,6 +5455,33 @@ ic_rx_thread_func(void *arg)
 						if (DEBUG3 >= log_min_messages)
 							write_log("received packet with EOS motid %d route %d seq %d\n",
 									  pkt->motNodeId, conn->route, pkt->seq);
+
+					if (conn->stopRequested && conn->stillActive)
+					{
+						write_log("rx_thread got packet on active connection marked stopRequested. (flags 0x%x) node %d route %d seq %d",
+								  pkt->flags, pkt->motNodeId, conn->route, pkt->seq);
+
+						/* can we update stillActive ? */
+						if (!(pkt->flags & FLAGS_STOP))
+							write_log("stop requested but no stop flag on return packet ?!");
+
+						if (pkt->flags & FLAGS_EOS)
+							conn->stillActive = false;
+						sendAck(conn, true);
+
+						/* we may need to wake a waiter */
+						if (main_thread_waiting && main_thread_waiting_node == pkt->motNodeId)
+						{
+							if (main_thread_waiting_route == conn->route)
+							{
+								/* WAKE MAIN THREAD HERE */
+								pthread_cond_signal(&rx_thread_cond);
+							}
+						}
+
+						pthread_mutex_unlock(&rx_thread_mutex);
+						continue;
+					}
 
 					/* dropped ack ? */
 					if (pkt->seq < conn->conn_info.seq)
@@ -5433,6 +5564,12 @@ ic_rx_thread_func(void *arg)
 					conn->pkt_q_size++;
 
 					conn->conn_info.seq++;
+
+					/* we need to know about packets which we may have
+					 * "in queue" which have EOS, so we don't bother
+					 * with things like stop messages */
+					if (pkt->flags & FLAGS_EOS)
+						conn->conn_info.flags |= FLAGS_EOS;
 
 					/* Was the main thread waiting for something ? */
 					if (main_thread_waiting && main_thread_waiting_node == pkt->motNodeId)
