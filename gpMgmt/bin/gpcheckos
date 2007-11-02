@@ -68,18 +68,24 @@ solaris.release				str	= Solaris 10 8/07 s10x_u4wos_12b X86
 
 def to_int(s):
     s = s.strip()
-    if s.startswith('0x'):
-        s = int(s[2:], 16)
-    else:
-        s = int(s)
+    try:
+        if s.startswith('0x'):
+            s = int(s[2:], 16)
+        else:
+            s = int(s)
+    except ValueError, TypeError:
+        s = -1;
     return s
 
 def to_intlist(s):
     s = s.strip()
     r = []
-    for i in s.split():
-        i = to_int(i)
-        r.append(i)
+    try:
+        for i in s.split():
+            i = to_int(i)
+            r.append(i)
+    except ValueError, TypeError:
+        r = []
     return r
 
 def to_str(s):
