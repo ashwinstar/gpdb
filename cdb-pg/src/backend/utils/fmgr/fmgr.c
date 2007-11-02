@@ -354,7 +354,7 @@ fmgr_info_C_lang(Oid functionId, FmgrInfo *finfo, HeapTuple procedureTuple)
 	switch (inforec->api_version)
 	{
 		case 0:
-			elog(ERROR, "Old style C functions (API version 0) are not longer supported by Greenplum");
+			elog(ERROR, "Old style C functions (API version 0) are no longer supported by Greenplum");
 			break;
 		case 1:
 			/* New style: call directly */
