@@ -1323,7 +1323,7 @@ void gpcc_net_close(gpcc_net_conn_t conn, int flush)
 }
 
 
-static apr_status_t parse_request_in_place(gpcc_net_header_t* hdr, char* buf, int len)
+apr_status_t parse_request_in_place(gpcc_net_header_t* hdr, char* buf, int len)
 {
     char* line[1024];
     int line_top = 0, i;
@@ -1340,7 +1340,7 @@ static apr_status_t parse_request_in_place(gpcc_net_header_t* hdr, char* buf, in
 	if (p < q) *p++ = 0;
     }
 
-    if (! (p < q && line_top < gpcc_lengthof(line)))
+    if (! (line_top < gpcc_lengthof(line)))
 	return APR_EINVAL;
 
     if (line_top > 0) {
