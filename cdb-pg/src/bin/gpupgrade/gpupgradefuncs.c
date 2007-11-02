@@ -22,8 +22,11 @@
 
 #include "access/heapam.h"
 #include "access/htup.h"
+#include "access/xlog_internal.h"
 #include "catalog/pg_control.h"
+#include "catalog/pg_type.h"
 #include "nodes/nodes.h"
+#include "optimizer/clauses.h"
 #include "storage/backendid.h" /* MyBackendId */
 #include "storage/fd.h" /* BasicOpenFile() */
 #include "storage/lwlock.h"
@@ -31,7 +34,6 @@
 #include "storage/buf.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
-#include "access/xlog_internal.h"
 
 PG_MODULE_MAGIC;
 
@@ -149,6 +151,7 @@ str2node2str(text *instr, bool is30)
 	else
 		str = nodeToString30((void *)node);
 
+	elog(NOTICE, "updated serialized node to %s", str);
 	outstr = (text *) palloc(strlen(str) + VARHDRSZ);
 
     memcpy(VARDATA(outstr), str, strlen(str));

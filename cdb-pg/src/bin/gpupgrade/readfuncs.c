@@ -17,12 +17,14 @@
 #include <math.h>
 #include <ctype.h>
 
+#include "catalog/pg_type.h"
 #include "nodes/parsenodes.h"
 #include "nodes/execnodes.h" /* Just for Slice and SliceTable */
-#include "utils/lsyscache.h"  /* For get_typlenbyval */
 #include "nodes/pg_list.h"
 #include "nodes/value.h"
 #include "nodes/readfuncs.h"
+#include "utils/date.h"
+#include "utils/lsyscache.h"  /* For get_typlenbyval */
 
 #include "readfuncs_3_0.h"
 
@@ -522,6 +524,23 @@ _readVar(void)
 	READ_DONE();
 }
 
+static bool
+typ_now_byval(Oid typid)
+{
+	switch (typid)
+	{
+		case FLOAT4OID:
+		case FLOAT8OID:
+		case INT8OID:
+		case TIMESTAMPOID:
+		case TIMESTAMPTZOID:
+		case TIMEOID:
+			return true;
+		default:
+			return false;
+	}
+}
+
 /*
  * _readConst
  */
@@ -539,8 +558,41 @@ _readConst(void)
 	if (local_node->constisnull)
 		token = pg_30strtok(&length);		/* skip "<>" */
 	else
+	{
 		local_node->constvalue = readDatum(local_node->constbyval);
-
+		if (typ_now_byval(local_node->consttype))
+		{
+			switch (local_node->consttype)
+			{
+				case FLOAT4OID:
+					local_node->constvalue = Float4GetDatum(*(float4 *)(unsigned long int)local_node->constvalue);
+					break;
+				case FLOAT8OID:
+					local_node->constvalue = Float8GetDatum(*(float8 *)(unsigned long int)local_node->constvalue);
+					local_node->constlen = 8;
+					break;
+				case INT8OID:
+					local_node->constvalue = Int64GetDatum(*(int64 *)(unsigned long int)local_node->constvalue);
+					local_node->constlen = 8;
+					break;
+				case TIMEOID:
+					local_node->constvalue = TimeADTGetDatum(*(TimeADT *)(unsigned long int)local_node->constvalue);
+					local_node->constlen = 8;
+					break;
+				case TIMESTAMPOID:
+					local_node->constvalue = TimestampGetDatum(*(Timestamp *)(unsigned long int)local_node->constvalue);
+					local_node->constlen = 8;
+					break;
+				case TIMESTAMPTZOID:
+					local_node->constvalue = TimestampTzGetDatum(*(TimestampTz *)(unsigned long int)local_node->constvalue);
+					local_node->constlen = 8;
+					break;
+				default:
+					break;
+			}
+			local_node->constbyval = true;
+		}
+	}
 	READ_DONE();
 }
 

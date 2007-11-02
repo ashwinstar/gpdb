@@ -467,6 +467,8 @@ run_upgrade_commands(config_t *conf)
 	run_query(conf, 0, "update pg_index set indexprs = "
 			  "gp_str2node2str(indexprs), indpred = gp_str2node2str(indpred) "
 			  "WHERE indexprs NOTNULL or indpred NOTNULL;");
+	run_query(conf, 0, "update pg_attrdef set adbin = "
+			  "gp_str2node2str(adbin) WHERE adbin NOTNULL;");
 
 	if (upgrade)
 		cmds = upgrade_cmds;
@@ -494,6 +496,16 @@ run_upgrade_commands(config_t *conf)
 			  "in('float4'::regtype, 'float8'::regtype, 'int8'::regtype, "
 			  "'time'::regtype, 'timestamp'::regtype, 'timestamptz'::regtype);",
 			  upgrade ? 't' : 'f', upgrade ? 't' : 'f');
+	/* handle domains too */
+	run_query(conf, 0, "update pg_type set typbyval = '%c' where typbasetype "
+			  "in ('float4'::regtype, 'float8'::regtype, 'int8'::regtype, "
+			  "'time'::regtype, 'timestamp'::regtype, "
+			  "'timestamptz'::regtype);", upgrade ? 't' : 'f');
+	run_query(conf, 0, "update pg_attribute set attbyval = '%c' where "
+			  "atttypid in (select oid from pg_type where typbasetype "
+			  "in('float4'::regtype, 'float8'::regtype, 'int8'::regtype, "
+			  "'time'::regtype, 'timestamp'::regtype, "
+			  "'timestamptz'::regtype));", upgrade ? 't' : 'f');
 }
 
 static void
