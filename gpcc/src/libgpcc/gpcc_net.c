@@ -1329,14 +1329,13 @@ apr_status_t parse_request_in_place(gpcc_net_header_t* hdr, char* buf, int len)
     int line_top = 0, i;
     char* p = buf;
     char* q = buf + len;
-    char* last;
+    char* last = 0;
 
     memset(hdr, 0, sizeof(*hdr));
 
     while (p < q && line_top < gpcc_lengthof(line)) {
 	line[line_top++] = p;
-	while (p < q && *p != '\n')
-	    p++;
+	for ( ;p < q && *p != '\n'; p++);
 	if (p < q) *p++ = 0;
     }
 
@@ -1345,7 +1344,7 @@ apr_status_t parse_request_in_place(gpcc_net_header_t* hdr, char* buf, int len)
 
     if (line_top > 0) {
 	for (p = apr_strtok(line[0], " \t", &last); 
-	     p; p = apr_strtok(0, " \t", &last)) {
+	     p && *p; p = apr_strtok(0, " \t", &last)) {
 	    hdr->argv[hdr->argc++] = p;
 	    if (hdr->argc >= GPCC_NET_HEADER_ENTRYMAX)
 		break;
