@@ -53,7 +53,7 @@ paramiko:
 	else  \
 		(cd $(PYLIB_SRC)/ && tar -xzf $(PARAMIKO_DIR).tgz);\
 	fi
-	@(cd $(PYLIB_SRC)/$(PARAMIKO_DIR) && NO_M64=TRUE python setup.py build > /dev/null 2>&1 )
+	@(cd $(PYLIB_SRC)/$(PARAMIKO_DIR) && python setup.py build > /dev/null 2>&1 )
 	@cp -r $(PYLIB_SRC)/$(PARAMIKO_DIR)/build/lib/paramiko  $(LIB_DIR)/
 
 
@@ -70,7 +70,7 @@ pycrypto:
 	else  \
 		(cd $(PYLIB_SRC)/; tar -xzf $(PYCRYPTO_DIR).tar.gz)\
 	fi
-	@(cd $(PYLIB_SRC)/$(PYCRYPTO_DIR) && NO_M64=TRUE python setup.py build > /dev/null 2>&1 )
+	@(cd $(PYLIB_SRC)/$(PYCRYPTO_DIR) && python setup.py build > /dev/null 2>&1 )
 	@cp -r $(PYLIB_SRC)/$(PYCRYPTO_DIR)/build/lib.*/Crypto $(LIB_DIR)
 
 solarisTest:
