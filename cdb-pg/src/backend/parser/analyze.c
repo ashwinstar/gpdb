@@ -5971,7 +5971,7 @@ wingroupmutator(Node *node, void *context)
 	 */
 	if (ctx->update_winref && IsA(node, Var) && ctx->in_winref)
 	{
-		TargetEntry *te;
+		TargetEntry *te = NULL;
 		ListCell *lc = NULL;
 		bool done = false;
 
