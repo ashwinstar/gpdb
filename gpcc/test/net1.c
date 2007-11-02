@@ -35,8 +35,8 @@ void svr_accepted(gpcc_net_conn_t conn, const char* peer_addr, gpcc_net_header_t
 {
     int e;
     char* s = "SERVER ACCEPTED\r\n\r\n";
-    char** p;
-    char** q;
+    const char** p;
+    const char** q;
     printf("----- svr_accepted --------------------------\n");
     printf("  peer_addr: %s\n", peer_addr);
     printf("  > ");
@@ -56,7 +56,7 @@ void svr_accepted(gpcc_net_conn_t conn, const char* peer_addr, gpcc_net_header_t
     /*gpcc_net_close(conn);*/
 }
 
-int svr_received(gpcc_net_conn_t conn, const char* buf, int buflen)
+int svr_received(gpcc_net_conn_t conn, const char* buf, int buflen, apr_uint64_t arg)
 {
     int e;
     int i;
@@ -72,7 +72,7 @@ int svr_received(gpcc_net_conn_t conn, const char* buf, int buflen)
     return buflen;
 }
 
-void received_packet(gpcc_net_conn_t conn, gpcc_net_packet_t* pkt)
+void received_packet(gpcc_net_conn_t conn, gpcc_net_packet_t* pkt, apr_uint64_t arg)
 {
     printf("----- received packet--------------------------\n");
     gpcc_fatal(FLINE, "INTERNAL ERROR - this test does not exercise packet logic");
@@ -80,7 +80,7 @@ void received_packet(gpcc_net_conn_t conn, gpcc_net_packet_t* pkt)
 
 
 
-void svr_closed(gpcc_net_conn_t conn)
+void svr_closed(gpcc_net_conn_t conn, apr_uint64_t arg)
 {
     printf("----- svr_closed --------------------------\n");
 }
@@ -113,7 +113,7 @@ void clnt_accepted(gpcc_net_conn_t conn, const char* peer_addr, gpcc_net_header_
     gpcc_fatal(FLINE, "INTERNAL ERROR - client does not accept");
 }
 
-int clnt_received(gpcc_net_conn_t conn, const char* buf, int buflen)
+int clnt_received(gpcc_net_conn_t conn, const char* buf, int buflen, apr_uint64_t arg)
 {
     const char* q = buf + buflen;
     const char* p = buf;
@@ -137,7 +137,7 @@ int clnt_received(gpcc_net_conn_t conn, const char* buf, int buflen)
     return p - buf;
 }
 
-void clnt_closed(gpcc_net_conn_t conn)
+void clnt_closed(gpcc_net_conn_t conn, apr_uint64_t arg)
 {
     printf("----- clnt_closed --------------------------\n");
 }
@@ -185,9 +185,9 @@ int main(int argc, char* argv[])
     }
     else {
 	gpcc_net_conn_t conn;
-	static char* av[] = {"HELLO", "1", "2", "3" };
-	static char* hn[] = { "N1", "N2", "N3" };
-	static char* hv[] = { "V1", "V2", "V3" };
+	static const char* av[] = {"HELLO", "1", "2", "3" };
+	static const char* hn[] = { "N1", "N2", "N3" };
+	static const char* hv[] = { "V1", "V2", "V3" };
 	char addr[100];
 
 	e = gpcc_net_init(0, clnt_opened, clnt_accepted, clnt_received, received_packet, clnt_closed, tick);
