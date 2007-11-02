@@ -28,11 +28,13 @@
 
 #include <ctype.h>
 
+#include "catalog/pg_type.h"
 #include "lib/stringinfo.h"
 #include "nodes/plannodes.h"
 #include "nodes/execnodes.h"
 #include "nodes/relation.h"
 #include "utils/datum.h"
+#include "utils/date.h"
 #include "utils/lsyscache.h"  /* For get_typlenbyval */
 #include "cdb/cdbvars.h"
 
@@ -734,11 +736,67 @@ _outVar(StringInfo str, Var *node)
 	WRITE_INT_FIELD(varoattno);
 }
 
+extern bool typ_now_byval(Oid typid);
+
 static void
 _outConst(StringInfo str, Const *node)
 {
+	Datum d = node->constvalue;
+	void *tofree = NULL;
+
 	WRITE_NODE_TYPE("CONST");
 
+		if (typ_now_byval(node->consttype))
+		{
+			switch (node->consttype)
+			{
+				case FLOAT4OID:
+					{
+						float4 *f = tofree = palloc(sizeof(float4));
+						*f = DatumGetFloat4(d);
+						d = (Datum)(unsigned long int)f;
+					}
+					break;
+				case FLOAT8OID:
+					{
+						float8 *f = tofree = palloc(sizeof(float8));
+						*f = DatumGetFloat8(d);
+						d = (Datum)(unsigned long int)f;
+					}
+					break;
+				case INT8OID:
+					{
+						int64 *f = tofree = palloc(sizeof(int64));
+						*f = DatumGetInt64(d);
+						d = (Datum)(unsigned long int)f;
+					}
+					break;
+				case TIMEOID:
+					{
+						TimeADT *f = tofree = palloc(sizeof(TimeADT));
+						*f = DatumGetTimeADT(d);
+						d = (Datum)(unsigned long int)f;
+					}
+					break;
+				case TIMESTAMPOID:
+					{
+						Timestamp *f = tofree = palloc(sizeof(Timestamp));
+						*f = DatumGetTimestamp(d);
+						d = (Datum)(unsigned long int)f;
+					}
+					break;
+				case TIMESTAMPTZOID:
+					{
+						TimestampTz *f = tofree = palloc(sizeof(TimestampTz));
+						*f = DatumGetTimestampTz(d);
+						d = (Datum)(unsigned long int)f;
+					}
+					break;
+				default:
+					break;
+			}
+			node->constbyval = false;
+		}
 	WRITE_OID_FIELD(consttype);
 	WRITE_INT_FIELD(constlen);
 	WRITE_BOOL_FIELD(constbyval);
@@ -748,7 +806,11 @@ _outConst(StringInfo str, Const *node)
 	if (node->constisnull)
 		appendStringInfoLiteral(str, "<>");
 	else
-		_outDatum(str, node->constvalue, node->constlen, node->constbyval);
+	{
+		_outDatum(str, d, node->constlen, node->constbyval);
+		if (tofree)
+			pfree(tofree);
+	}
 }
 
 static void

@@ -44,6 +44,8 @@ Datum		gp_invalidate_syscache(PG_FUNCTION_ARGS);
 Datum		gp_forget_relation(PG_FUNCTION_ARGS);
 Datum		gp_downgrade_controlfile(PG_FUNCTION_ARGS);
 
+bool		typ_now_byval(Oid typid);
+
 PG_FUNCTION_INFO_V1(gp_oid_update);
 PG_FUNCTION_INFO_V1(gp_str30_2node2str);
 PG_FUNCTION_INFO_V1(gp_str31_2node2str);
@@ -151,7 +153,6 @@ str2node2str(text *instr, bool is30)
 	else
 		str = nodeToString30((void *)node);
 
-	elog(NOTICE, "updated serialized node to %s", str);
 	outstr = (text *) palloc(strlen(str) + VARHDRSZ);
 
     memcpy(VARDATA(outstr), str, strlen(str));
@@ -273,3 +274,21 @@ gp_downgrade_controlfile(PG_FUNCTION_ARGS)
 
 	PG_RETURN_BOOL(true);
 }
+
+bool
+typ_now_byval(Oid typid)
+{
+	switch (typid)
+	{
+		case FLOAT4OID:
+		case FLOAT8OID:
+		case INT8OID:
+		case TIMESTAMPOID:
+		case TIMESTAMPTZOID:
+		case TIMEOID:
+			return true;
+		default:
+			return false;
+	}
+}
+

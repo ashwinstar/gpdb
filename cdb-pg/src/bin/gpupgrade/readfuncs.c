@@ -524,22 +524,7 @@ _readVar(void)
 	READ_DONE();
 }
 
-static bool
-typ_now_byval(Oid typid)
-{
-	switch (typid)
-	{
-		case FLOAT4OID:
-		case FLOAT8OID:
-		case INT8OID:
-		case TIMESTAMPOID:
-		case TIMESTAMPTZOID:
-		case TIMEOID:
-			return true;
-		default:
-			return false;
-	}
-}
+extern bool typ_now_byval(Oid typid);
 
 /*
  * _readConst
