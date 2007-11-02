@@ -17,7 +17,7 @@ static apr_status_t a_array_init_units_init_reply(gpcc_event_t *ev, void *_cmdsl
     } else {
 	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, pkt->mh.len);
 	memcpy(evt->pdata, pkt->payload, pkt->mh.len);
-	gpcc_warning(FLINE, "[Error] stop array failed: status=%d, error=%s", status, pkt->payload);
+	gpcc_warning(FLINE, "[Error] init array failed: status=%s, error=%s", status, pkt->payload);
     }
     
     gpcc_evqueue_put(gpma.evq, evt);

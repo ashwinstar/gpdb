@@ -260,6 +260,49 @@ config_t* config_read(const char* dirpath, apr_pool_t* pool)
     return cfg;
 }
 
+apr_status_t config_parse(config_t *cfg, const char *buf, int len)
+{
+    char *p, *tok, *last;
+    char bb[64*1000];
+    int lno = 0;
+    char *eq = 0;
+    char *value = 0;
+    char *name = 0;
+    int i, n = 0;
+    char *keys[1000];
+    char *values[1000];
+
+    if (len >= gpcc_lengthof(bb)) {	
+	gpcc_warning(FLINE, "config buffer is too big");
+	return APR_EINVAL;
+    }
+    strncpy(bb, buf, len);
+    bb[len] = 0;
+    p = bb;
+
+    for (tok = apr_strtok(p, "\r\n", &last), n = 0, lno = 0 ; tok && n < gpcc_lengthof(keys) ; tok = apr_strtok(0, "\r\n", &last), lno++) {
+	name = tok;
+	if (strchr(name, '#'))
+	    *(strchr(name, '#')) = 0;
+	if (! *(name = gpcc_string_trim(name)))
+	    continue;
+	if (! (eq = strchr(name, '='))) {
+	    gpcc_log_error("config file error: bad syntax at line %d", lno);
+	    return APR_EINVAL;
+	}
+	*eq = 0;
+	value = eq + 1;
+	keys[n] = gpcc_string_trim(name);
+	values[n++] = gpcc_string_trim(value);
+    }
+
+    for (i = 0 ; i < n ; i++) {
+	config_set(cfg, keys[i], values[i]);
+    }
+
+    return 0;
+}
+
 
 apr_status_t config_write(const char* dirpath, const char* guid, 
 			  config_t* cfg)

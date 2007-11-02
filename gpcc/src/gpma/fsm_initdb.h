@@ -184,6 +184,7 @@ static apr_status_t a_initdb_do(gpcc_event_t *ev, void *_cmdslot)
     json_object_object_add(obj, "content", json_object_new_int(cmdslot->u.initdb.req[i].content));	
     msg = json_object_to_json_string(obj);
     len = strlen(msg) + 1;
+    
     if (0 != (e = gpcc_net_send_packetx(cmdslot->u.initdb.req[i].node,
 					SEGMENT_REQUEST_MSG,
 					cmdslot->cmdidx,

@@ -99,4 +99,9 @@ config_t* config_read(const char* dirpath, apr_pool_t* pool);
  */
 apr_status_t config_write(const char* dirpath, const char* guid, config_t* cfg);
 
+/**
+ *  Parse the config from the buffer.
+ */
+apr_status_t config_parse(config_t *cfg, const char *buf, int len);
+
 #endif /* CONFIG_H*/
