@@ -2786,7 +2786,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 						bool forceEOS)
 {
 	ListCell   *cell;
-	ChunkTransportStateEntry *pEntry;
+	ChunkTransportStateEntry *pEntry=NULL;
 	int			i;
 	Slice	   *mySlice;
 	MotionConn *conn;
