@@ -99,8 +99,10 @@ typedef struct
 
 typedef struct
 {
-	AttrNumber subattno; /* current attno for sub query */
 	List	  *subtlist; /* target list for sub query */
+	List      *vars_for_aggrefs; /* list of Vars to replace Aggrefs. */
+	bool       update_winref; /* indicate if we want to update WindowRefs. */
+	bool       in_winref; /* indicate if a node appears inside a WindowRef. */
 } grouped_window_ctx;
 
 typedef struct
@@ -5960,21 +5962,67 @@ wingroupmutator(Node *node, void *context)
 
 	if (!node)
 		return NULL;
+
+	/*
+	 * If the node is a Var and it occurs inside the argument list
+	 * of a WindowRef, we modify its attno to point to the correct
+	 * resno in the subquery. Such a Var should appear in one of
+	 * the target entry in the subquery targetlist.
+	 */
+	if (ctx->update_winref && IsA(node, Var) && ctx->in_winref)
+	{
+		TargetEntry *te;
+		ListCell *lc = NULL;
+		bool done = false;
+
+		/*
+		 * If this Var is in ctx->vars_for_aggref, it has already
+		 * had the right value. Otherwise, find the corresponding
+		 * entry in the ctx->subtlist, and construct a new Var.
+		 */
+		foreach (lc, ctx->vars_for_aggrefs)
+		{
+			Var *var = (Var *)lfirst(lc);
+			Assert(IsA(var, Var));
+			if (equal(node, var))
+			{
+				done = true;
+				break;
+			}
+		}
+
+		if (done)
+			return node;
+
+		/* Find this var in the subquery targetlist. */
+		foreach (lc, ctx->subtlist)
+		{
+			te = (TargetEntry *)lfirst(lc);
+			if (equal(te->expr, node))
+				break;
+		}
+		Assert(lc != NULL);
+
+		return (Node *)makeVar(1, te->resno, exprType(node), exprTypmod(node), 0);
+	}
 	
-	/* We've encountered and Aggref, push it into the sub query */
-	if (IsA(node, Aggref))
+	/* We've encountered an Aggref/GroupingFunc/GroupId, push it into the sub query */
+	if (!ctx->update_winref &&
+		(IsA(node, Aggref) ||
+		 IsA(node, GroupingFunc) ||
+		 IsA(node, GroupId)))
 	{
 		ListCell *tmp;
 		TargetEntry *te;
 		Var *v;
+		int attno = 0;
 
 		/*
-		 * If there's already a TargetEntry for this Aggref, just return
+		 * If there's already a TargetEntry for this node, just return
 		 * a Var pointing to the entry in the sub query.
 		 *
 		 * The code further up the call tree should have been smart enough
-		 * smart enough to produce unique Aggrefs for us but, just in case
-		 * we should do this.
+		 * to produce unique Aggrefs for us but, just in case we should do this.
 		 */
 		foreach(tmp, ctx->subtlist)
 		{
@@ -5984,56 +6032,109 @@ wingroupmutator(Node *node, void *context)
 			{
 				/* Found a match, time to construct the Var */
 				v = makeVar(1, te->resno, exprType(node), exprTypmod(node), 0);
-
+				return (Node *)v;
 			}
 		}
-		
-		te = makeTargetEntry((Expr *)node, ctx->subattno,
+
+		attno = list_length(ctx->subtlist) + 1;
+		te = makeTargetEntry((Expr *)node, attno,
 							 FigureColname(node), false);
 		/* seems like we should see if we need to update sort group settings */
 		ctx->subtlist = lappend(ctx->subtlist, te);
 		
-		v = makeVar(1, ctx->subattno, exprType(node), exprTypmod(node), 0);
-		ctx->subattno++;
+		v = makeVar(1, attno, exprType(node), exprTypmod(node), 0);
+		ctx->vars_for_aggrefs = lappend(ctx->vars_for_aggrefs, v);
 
 		return (Node *)v;
 	}
-	
+
+	if (ctx->update_winref && IsA(node, WindowRef))
+	{
+		/*
+		 * Change the attno of all Var nodes in the arguments of this WindowRef.
+		 * These attnos should point to the new resno in the subquery.
+		 */
+		ListCell *arg_lc;
+		List *new_args = NIL;
+
+		ctx->in_winref = true;
+		
+		foreach(arg_lc, ((WindowRef*)node)->args)
+		{
+			Node *arg = lfirst(arg_lc);
+		    Node *new_arg;
+			
+			new_arg = wingroupmutator(arg, context);
+			new_args = lappend(new_args, new_arg);
+		}
+
+		list_free(((WindowRef *)node)->args);
+		((WindowRef*) node)->args = new_args;
+
+		return node;
+	}
 
 	if (IsA(node, TargetEntry))
 	{
 		TargetEntry *te = (TargetEntry *)node;
-		
-		result = expression_tree_mutator((Node *)te->expr, wingroupmutator, 
-										 context);
-		te->expr = (Expr *)result;
-		if (checkExprHasWindFuncs(result))
-		{
-			Assert(!checkExprHasAggs(result));
 
-			/* we received a TE in, so a TE must go out */
-			return (Node *)te;
-		}
-		else
+		ctx->in_winref = false;
+		result = wingroupmutator((Node *)te->expr, context);
+
+		/* When the original te->expr is a Var, let it be one
+		 * new target entry in the subtlist. We construct
+		 * a new Var with a new attno for the original
+		 * targetlist.
+		 */
+		if (IsA(te->expr, Var) &&
+			!ctx->update_winref)
 		{
-			Var *v = makeNode(Var);
 			TargetEntry *subte = te;
-			TargetEntry *topte;
+			Var *new_var;
+			int attno;
 
-			/* XXX: check if we have an entry already */
-			v = makeVar(1, ctx->subattno, exprType((Node *)subte->expr),
-						exprTypmod((Node *)subte->expr), 0);
+			attno = list_length(ctx->subtlist) + 1;
+			new_var = makeVar(1, attno,
+							  exprType((Node *)subte->expr),
+							  exprTypmod((Node *)subte->expr), 0);
+			
+			te = makeTargetEntry((Expr *)new_var,
+								 subte->resno,
+								 te->resname,
+								 te->resjunk);
+			te->ressortgroupref = subte->ressortgroupref;
 
-			topte = makeTargetEntry((Expr *)v, subte->resno,
-									subte->resname, subte->resjunk);
-			topte->ressortgroupref = subte->ressortgroupref;
-
-			subte->resno = ctx->subattno;
-			ctx->subattno++;
+			subte->resno = attno;
 			ctx->subtlist = lappend(ctx->subtlist, subte);
-
-			return (Node *)topte;
 		}
+
+		/*
+		 * When the original te->expr is a Aggref/GroupingFunc/Groupid,
+		 * we have put it into the subtlist. The result is a Var
+		 * now, so we generate a new target entry with this Var
+		 * to replace the original node.
+		 */
+		else if (!ctx->update_winref &&
+				 (IsA(te->expr, Aggref) ||
+				  IsA(te->expr, GroupingFunc) ||
+				  IsA(te->expr, GroupId)))
+		{
+			Index ressortgroupref = te->ressortgroupref;
+			Assert(IsA(result, Var));
+			
+			te = makeTargetEntry((Expr *)result,
+								 te->resno,
+								 te->resname,
+								 te->resjunk);
+			te->ressortgroupref = ressortgroupref;
+		}
+
+		else if (!ctx->update_winref)
+		{
+			te->expr = (Expr *)result;
+		}
+
+		return (Node *)te;
 	}
 
 	/* if we've reached this point, just pass the node to the walker */
@@ -6261,11 +6362,18 @@ transformGroupedWindows(Query *qry)
 	 *          ORDER BY v1, v4
 	 *          OFFSET 10 LIMIT 10;
 	 */
-	ctx.subattno = 1;
 	ctx.subtlist = NIL;
-
+	ctx.vars_for_aggrefs = NIL;
+	ctx.update_winref = false;
+	ctx.in_winref = false;
 	newtl = (List *)expression_tree_mutator((Node *)qry->targetList, 
 											wingroupmutator, &ctx);
+	ctx.update_winref = true;
+	ctx.in_winref = false;
+	newtl = (List *)expression_tree_mutator((Node *)newtl, 
+											wingroupmutator, &ctx);
+
+
 	Assert(PointerIsValid(newtl));
 	Assert(IsA(newtl, List));
 	qry->targetList = newtl;

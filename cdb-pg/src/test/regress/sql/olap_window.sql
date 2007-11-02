@@ -1204,3 +1204,9 @@ FROM sale;
 SELECT cn,qty,floor(prc/cn),
 COUNT(floor(sale.pn*sale.prc)) OVER(order by sale.cn asc range between floor(sale.qty) preceding and floor(sale.prc/sale.cn) preceding) 
 from sale;
+
+-- MPP-2135
+select cn,sum(qty) over(order by cn), sum(qty) from sale group by cn,qty; --mvd 1->2
+select cn,sum(sum(qty)) over(order by cn), sum(qty) from sale group by cn,qty; --mvd 1->2
+select cn,sum(sum(qty) + 1) over(order by cn), sum(qty) + 1 from sale group by cn,qty; --mvd 1->2
+select cn,sum(qty+1) over(order by cn), sum(qty+1) from sale group by cn,qty; --mvd 1->2

@@ -3824,10 +3824,6 @@ expression_tree_mutator(Node *node,
 			{
 				GroupingFunc *newnode;
 
-#if 0
-				FLATCOPY(newnode, gf, GroupingFunc);
-				MUTATE(newnode->args, gf->args, List *);
-#endif
 				newnode = copyObject(node);
 				return (Node *)newnode;
 			}
