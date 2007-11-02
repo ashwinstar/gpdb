@@ -62,6 +62,11 @@ gpcc_net_header_serialize(gpcc_net_header_t* src, char* buf, int buflen)
 	p += apr_snprintf(p, q - p, "\r\n");
     }
 
+    if (p + src->postlen < q) {
+	memcpy(p, src->post, src->postlen);
+	p += src->postlen;
+    }
+
     return p < q ? buf : 0;
 }
 
@@ -95,8 +100,11 @@ static gpcc_net_header_t*
     hdr->hname[i] = 0;
     hdr->hvalue[i] = 0;
 
-    if (post) 
-	hdr->post = apr_pstrndup(pool, post, postlen);
+    if (post) {
+	hdr->post = apr_pmemdup(pool, post, postlen+1);
+	((char*)hdr->post)[postlen] = 0;
+	hdr->postlen = postlen;
+    }
 
     return hdr;
 }
@@ -109,7 +117,6 @@ static gpcc_net_header_t* gpcc_net_header_dup(gpcc_net_header_t* src, char* buf,
     int i;
     gpcc_net_header_t* hp;
     int len;
-    int postlen;
 
     len = sizeof(*hp);
     for (i = 0; i < src->argc; i++)
@@ -117,8 +124,7 @@ static gpcc_net_header_t* gpcc_net_header_dup(gpcc_net_header_t* src, char* buf,
     for (i = 0; i < src->hc; i++)
 	len += strlen(src->hname[i]) + 1 + strlen(src->hvalue[i]) + 1;
 
-    postlen = src->post ? strlen(src->post) : 0;
-    len += postlen;
+    len += src->postlen;
     if (len > buflen)
 	return 0;
 
@@ -147,8 +153,9 @@ static gpcc_net_header_t* gpcc_net_header_dup(gpcc_net_header_t* src, char* buf,
     hp->hvalue[i] = 0;
 
     if (src->post) {
-	strcpy(buf, src->post);
+	memcpy(buf, src->post, src->postlen);
 	hp->post = buf;
+	hp->postlen = src->postlen;
     }
 
     return hp;
