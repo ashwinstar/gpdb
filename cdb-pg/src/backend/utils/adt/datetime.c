@@ -3215,8 +3215,27 @@ EncodeDateOnly(struct pg_tm * tm, int style, char *str)
 		case USE_ISO_DATES:
 			/* compatible with ISO date formats */
 			if (tm->tm_year > 0)
+#if 0
 				sprintf(str, "%04d-%02d-%02d",
 						tm->tm_year, tm->tm_mon, tm->tm_mday);
+#else
+			{
+				/*
+				 * sprintf is slow.  We can do a lot better.
+				 */
+				str[0] = tm->tm_year/1000 + '0';
+				str[1] = tm->tm_year/100 % 10 + '0';
+				str[2] = tm->tm_year/10 % 10 + '0';
+				str[3] = tm->tm_year % 10 + '0';
+				str[4] = '-';
+				str[5] = tm->tm_mon/10 + '0';
+				str[6] = tm->tm_mon % 10 + '0';
+				str[7] = '-';
+				str[8] = tm->tm_mday/10 + '0';
+				str[9] = tm->tm_mday % 10 + '0';
+				str[10] = '\0';
+			}
+#endif 
 			else
 				sprintf(str, "%04d-%02d-%02d %s",
 						-(tm->tm_year - 1), tm->tm_mon, tm->tm_mday, "BC");
@@ -3270,7 +3289,16 @@ EncodeTimeOnly(struct pg_tm * tm, fsec_t fsec, int *tzp, int style, char *str)
 	if (tm->tm_hour < 0 || tm->tm_hour > HOURS_PER_DAY)
 		return -1;
 
+#if 0
 	sprintf(str, "%02d:%02d", tm->tm_hour, tm->tm_min);
+#else
+	str[0] = tm->tm_hour/10 + '0';
+	str[1] = tm->tm_hour % 10 + '0';
+	str[2] = ':';
+	str[3] = tm->tm_min/10 + '0';
+	str[4] = tm->tm_min % 10 + '0';
+	str[5] = '\0';
+#endif 
 
 	/*
 	 * Print fractional seconds if any.  The fractional field widths here
@@ -3280,14 +3308,37 @@ EncodeTimeOnly(struct pg_tm * tm, fsec_t fsec, int *tzp, int style, char *str)
 	if (fsec != 0)
 	{
 #ifdef HAVE_INT64_TIMESTAMP
+#if 0
 		sprintf(str + strlen(str), ":%02d.%06d", tm->tm_sec, fsec);
+#else
+				str[5] = ':';
+				str[6] = tm->tm_sec / 10 + '0';
+				str[7] = tm->tm_sec % 10 + '0';
+				str[8] = '.';
+				str[9] = fsec / 100000 + '0';
+				str[10] = fsec / 10000 % 10 + '0';
+				str[11] = fsec / 1000 % 10 + '0';
+				str[12] = fsec / 100 % 10 + '0';
+				str[13] = fsec / 10 % 10 + '0';
+				str[14] = fsec % 10 + '0';
+				str[15] = '\0';
+#endif 
 #else
 		sprintf(str + strlen(str), ":%013.10f", tm->tm_sec + fsec);
 #endif
 		TrimTrailingZeros(str);
 	}
 	else
+#if 0
 		sprintf(str + strlen(str), ":%02d", tm->tm_sec);
+#else
+		{
+			str[5] = ':';
+			str[6] = tm->tm_sec / 10 + '0';
+			str[7] = tm->tm_sec % 10 + '0';
+			str[8] = '\0';
+		}
+#endif 
 
 	if (tzp != NULL)
 		EncodeTimezone(str, *tzp);
@@ -3322,10 +3373,36 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, int *tzp, char **tzn, int style, 
 	{
 		case USE_ISO_DATES:
 			/* Compatible with ISO-8601 date formats */
-
+#if 0
 			sprintf(str, "%04d-%02d-%02d %02d:%02d",
 					(tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1),
 					tm->tm_mon, tm->tm_mday, tm->tm_hour, tm->tm_min);
+			
+#else
+			{
+				/*
+				 * sprintf is slow.  We can do a lot better.
+				 */
+				int y = (tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1);
+				str[0] = y/1000 + '0';
+				str[1] = y/100 % 10 + '0';
+				str[2] = y/10 % 10 + '0';
+				str[3] = y % 10 + '0';
+				str[4] = '-';
+				str[5] = tm->tm_mon/10 + '0'; 
+				str[6] = tm->tm_mon % 10 + '0';
+				str[7] = '-';
+				str[8] = tm->tm_mday/10 + '0';
+				str[9] = tm->tm_mday % 10 + '0';
+				str[10] = ' ';
+				str[11] = tm->tm_hour/10 + '0';
+				str[12] = tm->tm_hour % 10 + '0';
+				str[13] = ':';
+				str[14] = tm->tm_min/10 + '0';
+				str[15] = tm->tm_min % 10 + '0';
+				str[16] = '\0';
+			}
+#endif 
 
 			/*
 			 * Print fractional seconds if any.  The field widths here should
@@ -3337,7 +3414,21 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, int *tzp, char **tzn, int style, 
 #ifdef HAVE_INT64_TIMESTAMP
 			if (fsec != 0)
 			{
+#if 0
 				sprintf(str + strlen(str), ":%02d.%06d", tm->tm_sec, fsec);
+#else
+				str[16] = ':';
+				str[17] = tm->tm_sec / 10 + '0';
+				str[18] = tm->tm_sec % 10 + '0';
+				str[19] = '.';
+				str[20] = fsec / 100000 + '0';
+				str[21] = fsec / 10000 % 10 + '0';
+				str[22] = fsec / 1000 % 10 + '0';
+				str[23] = fsec / 100 % 10 + '0';
+				str[24] = fsec / 10 % 10 + '0';
+				str[25] = fsec % 10 + '0';
+				str[26] = '\0';
+#endif
 				TrimTrailingZeros(str);
 			}
 #else
@@ -3348,7 +3439,16 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, int *tzp, char **tzn, int style, 
 			}
 #endif
 			else
+#if 0
 				sprintf(str + strlen(str), ":%02d", tm->tm_sec);
+#else
+				{
+				str[16] = ':';
+				str[17] = tm->tm_sec / 10 + '0';
+				str[18] = tm->tm_sec % 10 + '0';
+				str[19] = '\0';
+				}
+#endif
 
 			/*
 			 * tzp == NULL indicates that we don't want *any* time zone info

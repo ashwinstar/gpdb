@@ -20,7 +20,9 @@
 #include "libpq/pqformat.h"
 #include "tcop/pquery.h"
 #include "utils/lsyscache.h"
-
+#include "catalog/pg_type.h"
+extern void varattrib_untoast_ptr_len(Datum d, char **datastart, int *len, void **tofree);
+extern char * pg_server_to_client(const char *s, int len);
 
 static void printtup_startup(DestReceiver *self, int operation,
 				 TupleDesc typeinfo);
@@ -29,7 +31,6 @@ static void printtup_20(TupleTableSlot *slot, DestReceiver *self);
 static void printtup_internal_20(TupleTableSlot *slot, DestReceiver *self);
 static void printtup_shutdown(DestReceiver *self);
 static void printtup_destroy(DestReceiver *self);
-
 
 /* ----------------------------------------------------------------
  *		printtup / debugtup support
@@ -305,7 +306,9 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 
 		if (slot->tts_isnull[i])
 		{
-			pq_sendint(&buf, -1, 4);
+			/* -1 is the same in both byte orders.  This is the same as pg_sendint */
+			int32 n32 = -1;
+			appendBinaryStringInfo(&buf, (char *) &n32, 4);
 			continue;
 		}
 
@@ -321,22 +324,219 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 		if (thisState->format == 0)
 		{
 			/* Text output */
-			char	   *outputstr;
+			char str[256];
+			int32 n32;
 
-			outputstr = OutputFunctionCall(&thisState->finfo, attr);
-			pq_sendcountedtext(&buf, outputstr, strlen(outputstr), false);
-			pfree(outputstr);
+			switch (typeinfo->attrs[i]->atttypid)
+			{
+			case INT2OID: /* int2 */
+			case INT4OID: /* int4 */
+				{
+					/* 
+					 * The standard postgres way is to call the output function, but that involves one or more pallocs,
+					 * and a call to sprintf, followed by a conversion to client charset.  
+					 * Do a fast conversion to string instead.
+					 */
+					char tmp[33];
+					char *tp = tmp;
+					char *sp;
+					long i = 0;
+					unsigned long v;
+					long value;
+					bool sign;
+					if (typeinfo->attrs[i]->atttypid == INT2OID)
+						value =(long)DatumGetInt16(attr);
+					else
+						value =(long)DatumGetInt32(attr);
+					sign = (value < 0);
+					if (sign)
+						v = -value;
+					else
+						v = (unsigned long)value;
+					while (v || tp == tmp)
+					{
+						i = v % 10;
+						v = v / 10;
+						*tp++ = i+'0';
+					}
+					sp = str;
+					if (sign)
+						*sp++ = '-';
+					while (tp > tmp)
+						*sp++ = *--tp;
+					*sp = 0;
+					/* send the size as a 4 byte big-endian int (same as pg_sendint) */
+#if BYTE_ORDER == LITTLE_ENDIAN
+					n32 = (uint32)((sp-str) << 24);  /* We know len is < 127, so this works, replaces htonl */
+#elif BYTE_ORDER == BIG_ENDIAN
+					n32 = (uint32) (sp-str);
+#else
+#error BYTE_ORDER must be BIG_ENDIAN or LITTLE_ENDIAN
+#endif
+					appendBinaryStringInfo(&buf, (char *) &n32, 4);
+					appendBinaryStringInfo(&buf, str, strlen(str));
+				}
+				break;
+			case INT8OID: /* int8 */
+				{
+					char tmp[33];
+					char *tp = tmp;
+					char *sp;
+					uint64 v;
+					long i = 0;
+					int64 value =DatumGetInt64(attr);
+					bool sign = (value < 0);
+					if (sign)
+						v = -value;
+					else
+						v = (uint64)value;
+					while (v || tp == tmp)
+					{
+						i = v % 10;
+						v = v / 10;
+						*tp++ = i+'0';
+					}
+					sp = str;
+					if (sign)
+						*sp++ = '-';
+					while (tp > tmp)
+						*sp++ = *--tp;
+					*sp = 0;
+#if BYTE_ORDER == LITTLE_ENDIAN
+					n32 = (uint32)((sp-str) << 24);  /* We know len is < 127, so this works, replaces htonl */
+#else
+					n32 = (uint32) (sp-str);
+#endif
+					appendBinaryStringInfo(&buf, (char *) &n32, 4);
+					appendBinaryStringInfo(&buf, str, strlen(str));
+				}
+				break;
+
+			case VARCHAROID:
+			case TEXTOID:
+			case BPCHAROID:
+				{
+					const char *s;
+					char *p;
+					int len;
+	
+					/* We called PG_DETOAST_DATUM up above, so we don't need to do it again */
+					s = VARDATA(attr);
+					len = VARSIZE(attr) - VARHDRSZ;
+
+					p = pg_server_to_client(s, len);
+					if (p != s)				/* actual conversion has been done? */
+					{
+						len = strlen(p);
+						n32 = htonl((uint32) len);
+						appendBinaryStringInfo(&buf, (char *) &n32, 4);
+						appendBinaryStringInfo(&buf, p, len);
+						pfree(p);
+					}
+					else
+					{
+						n32 = htonl((uint32) len);
+						appendBinaryStringInfo(&buf, (char *) &n32, 4);
+						appendBinaryStringInfo(&buf, s, len);
+					}
+
+				}
+				break;
+				
+			default:
+				{
+					char *outputstr;
+					outputstr = OutputFunctionCall(&thisState->finfo, attr);
+					pq_sendcountedtext(&buf, outputstr, strlen(outputstr), false);
+					pfree(outputstr);
+				}
+			}
 		}
 		else
 		{
 			/* Binary output */
-			bytea	   *outputbytes;
+			int32 n32;
 
-			outputbytes = SendFunctionCall(&thisState->finfo, attr);
-			pq_sendint(&buf, VARSIZE(outputbytes) - VARHDRSZ, 4);
-			pq_sendbytes(&buf, VARDATA(outputbytes),
-						 VARSIZE(outputbytes) - VARHDRSZ);
-			pfree(outputbytes);
+			switch (typeinfo->attrs[i]->atttypid)
+			{
+			case INT2OID: /* int2 */
+				{
+					short int2 = DatumGetInt16(attr);
+#if BYTE_ORDER == LITTLE_ENDIAN
+					n32 = (uint32)(2 << 24);   /* replaced htonl */
+#else
+					n32 = (uint32) 2;
+#endif
+					appendBinaryStringInfo(&buf, (char *) &n32, 4);
+					appendBinaryStringInfo(&buf, &int2, 2);
+				}
+				break;
+			case INT4OID: /* int4 */
+				{
+					int32 int4 = DatumGetInt32(attr);
+#if BYTE_ORDER == LITTLE_ENDIAN
+					n32 = (uint32)(4 << 24);   /* replaced htonl */
+#else
+					n32 = (uint32) 4;
+#endif
+					appendBinaryStringInfo(&buf, (char *) &n32, 4);
+					appendBinaryStringInfo(&buf, &int4, 4);
+				}
+				break;
+			case INT8OID: /* int8 */
+				{
+					int64 int8 = DatumGetInt64(attr);
+#if BYTE_ORDER == LITTLE_ENDIAN
+					n32 = (uint32)(8 << 24);   /* replaced htonl */
+#else
+					n32 = (uint32) 8;
+#endif
+					appendBinaryStringInfo(&buf, (char *) &n32, 4);
+					appendBinaryStringInfo(&buf, &int8, 8);
+				}
+				break;
+
+			case VARCHAROID:
+			case TEXTOID:
+			case BPCHAROID:
+				{
+					const char *s;
+					char *p;
+					int len;
+	
+					/* We called PG_DETOAST_DATUM up above, so we don't need to do it again */
+					s = VARDATA(attr);
+					len = VARSIZE(attr) - VARHDRSZ;
+
+					p = pg_server_to_client(s, len);
+					if (p != s)				/* actual conversion has been done? */
+					{
+						len = strlen(p);
+						n32 = htonl((uint32) len);
+						appendBinaryStringInfo(&buf, (char *) &n32, 4);
+						appendBinaryStringInfo(&buf, p, len);
+						pfree(p);
+					}
+					else
+					{
+						n32 = htonl((uint32) len);
+						appendBinaryStringInfo(&buf, (char *) &n32, 4);
+						appendBinaryStringInfo(&buf, s, len);
+					}
+
+				}
+				break;
+				
+			default:
+				{
+					bytea *outputbytes;
+					outputbytes = SendFunctionCall(&thisState->finfo, attr);
+					pq_sendint(&buf, VARSIZE(outputbytes) - VARHDRSZ, 4);
+					pq_sendbytes(&buf, VARDATA(outputbytes), 
+					VARSIZE(outputbytes) - VARHDRSZ);
+					pfree(outputbytes);
+				}
+			}
 		}
 
 		/* Clean up detoasted copy, if any */

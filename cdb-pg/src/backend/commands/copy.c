@@ -41,6 +41,7 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/builtins.h"
 
 #include "cdb/cdbvars.h"
 #include "cdb/cdblink.h"
@@ -460,6 +461,16 @@ CopyGetData(CopyState cstate, void *databuf, int datasize)
 	return bytesread;
 }
 
+#if BYTE_ORDER == LITTLE_ENDIAN
+static uint32 constant_four = (4 << 24);
+static uint32 constant_two = (2 << 24);
+#elif BYTE_ORDER == BIG_ENDIAN
+static uint32 constant_four = 4;
+static uint32 constant_two = 2;
+#else
+#error BYTE_ORDER not defined
+#endif 
+static int32 constant_negone = -1;  /* same in big vs little endian format */
 
 /*
  * These functions do apply some data conversion
@@ -1520,7 +1531,7 @@ CopyOneRowTo(CopyState cstate, Oid tupleOid, Datum *values, bool *nulls)
 		if (cstate->oids)
 		{
 			/* Hack --- assume Oid is same size as int32 */
-			CopySendInt32(cstate, sizeof(int32));
+			CopySendData(cstate, &constant_four, sizeof(constant_four));
 			CopySendInt32(cstate, tupleOid);
 		}
 	}
@@ -1555,30 +1566,77 @@ CopyOneRowTo(CopyState cstate, Oid tupleOid, Datum *values, bool *nulls)
 			if (!cstate->binary)
 				CopySendString(cstate, cstate->null_print_client);
 			else
-				CopySendInt32(cstate, -1);
+				CopySendData(cstate, &constant_negone, sizeof(constant_negone));
 		}
 		else
 		{
 			if (!cstate->binary)
 			{
-				string = OutputFunctionCall(&out_functions[attnum - 1],
-											value);
-				if (cstate->csv_mode)
-					CopyAttributeOutCSV(cstate, string,
-										cstate->force_quote_flags[attnum - 1],
-										list_length(cstate->attnumlist) == 1);
+				
+				/* int2out or int4out ? */
+				if (out_functions[attnum -1].fn_oid == 39 ||  /* int2out or int4out */
+					out_functions[attnum -1].fn_oid == 43 )
+				{
+					char tmp[33];
+					/* 
+					 * The standard postgres way is to call the output function, but that involves one or more pallocs,
+					 * and a call to sprintf, followed by a conversion to client charset.  
+					 * Do a fast conversion to string instead.
+					 */
+					
+					if (out_functions[attnum -1].fn_oid ==  39)
+						pg_itoa(DatumGetInt16(value),tmp);
+					else
+						pg_ltoa(DatumGetInt32(value),tmp);
+					
+					/*
+					 * integers shouldn't need quoting, and shouldn't need transcoding to client char set
+					 */
+					CopySendData(cstate, tmp, strlen(tmp));
+				}
+				else if (out_functions[attnum -1].fn_oid == 1702)   /* numeric_out */
+				{
+					string = OutputFunctionCall(&out_functions[attnum - 1],
+																	value);
+					/*
+					 * numeric shouldn't need quoting, and shouldn't need transcoding to client char set
+					 */
+					CopySendData(cstate, string, strlen(string));	
+				}
 				else
-					CopyAttributeOutText(cstate, string);
+				{
+					string = OutputFunctionCall(&out_functions[attnum - 1],
+												value);
+					if (cstate->csv_mode)
+						CopyAttributeOutCSV(cstate, string,
+											cstate->force_quote_flags[attnum - 1],
+											list_length(cstate->attnumlist) == 1);
+					else
+						CopyAttributeOutText(cstate, string);
+				}
 			}
 			else
 			{
 				bytea	   *outputbytes;
 				
+				if (out_functions[attnum -1].fn_oid ==  2047)
+				{
+					CopySendData(cstate, &constant_four, sizeof(constant_four));
+					CopySendInt32(cstate, value);
+				}
+				else if (out_functions[attnum -1].fn_oid ==  2045)
+				{
+					CopySendData(cstate, &constant_two, sizeof(constant_two));
+					CopySendInt16(cstate, value);
+				}
+				else
+				{
 				outputbytes = SendFunctionCall(&out_functions[attnum - 1],
 											   value);
 				CopySendInt32(cstate, VARSIZE(outputbytes) - VARHDRSZ);
 				CopySendData(cstate, VARDATA(outputbytes),
 							 VARSIZE(outputbytes) - VARHDRSZ);
+				}
 			}
 		}
 	}
