@@ -419,10 +419,14 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 					const char *s;
 					char *p;
 					int len;
+					char *dptr = DatumGetPointer(attr);
 	
-					/* We called PG_DETOAST_DATUM up above, so we don't need to do it again */
-					s = VARDATA(attr);
-					len = VARSIZE(attr) - VARHDRSZ;
+					/* 
+					 * We called PG_DETOAST_DATUM up above, so we don't 
+					 * need to do it again
+					 */
+					s = VARDATA(dptr);
+					len = VARSIZE(dptr) - VARHDRSZ;
 
 					p = pg_server_to_client(s, len);
 					if (p != s)				/* actual conversion has been done? */
@@ -503,10 +507,14 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 					const char *s;
 					char *p;
 					int len;
+					char *dptr = DatumGetPointer(attr);
 	
-					/* We called PG_DETOAST_DATUM up above, so we don't need to do it again */
-					s = VARDATA(attr);
-					len = VARSIZE(attr) - VARHDRSZ;
+					/* 
+					 * We called PG_DETOAST_DATUM up above, so we don't need
+					 * to do it again
+					 */
+					s = VARDATA(dptr);
+					len = VARSIZE(dptr) - VARHDRSZ;
 
 					p = pg_server_to_client(s, len);
 					if (p != s)				/* actual conversion has been done? */
