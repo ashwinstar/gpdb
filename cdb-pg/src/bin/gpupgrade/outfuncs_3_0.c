@@ -746,57 +746,57 @@ _outConst(StringInfo str, Const *node)
 
 	WRITE_NODE_TYPE("CONST");
 
-		if (typ_now_byval(node->consttype))
+	if (typ_now_byval(node->consttype))
+	{
+		switch (node->consttype)
 		{
-			switch (node->consttype)
-			{
-				case FLOAT4OID:
-					{
-						float4 *f = tofree = palloc(sizeof(float4));
-						*f = DatumGetFloat4(d);
-						d = (Datum)(unsigned long int)f;
-					}
-					break;
-				case FLOAT8OID:
-					{
-						float8 *f = tofree = palloc(sizeof(float8));
-						*f = DatumGetFloat8(d);
-						d = (Datum)(unsigned long int)f;
-					}
-					break;
-				case INT8OID:
-					{
-						int64 *f = tofree = palloc(sizeof(int64));
-						*f = DatumGetInt64(d);
-						d = (Datum)(unsigned long int)f;
-					}
-					break;
-				case TIMEOID:
-					{
-						TimeADT *f = tofree = palloc(sizeof(TimeADT));
-						*f = DatumGetTimeADT(d);
-						d = (Datum)(unsigned long int)f;
-					}
-					break;
-				case TIMESTAMPOID:
-					{
-						Timestamp *f = tofree = palloc(sizeof(Timestamp));
-						*f = DatumGetTimestamp(d);
-						d = (Datum)(unsigned long int)f;
-					}
-					break;
-				case TIMESTAMPTZOID:
-					{
-						TimestampTz *f = tofree = palloc(sizeof(TimestampTz));
-						*f = DatumGetTimestampTz(d);
-						d = (Datum)(unsigned long int)f;
-					}
-					break;
-				default:
-					break;
-			}
-			node->constbyval = false;
+			case FLOAT4OID:
+				{
+					float4 *f = tofree = palloc(sizeof(float4));
+					*f = DatumGetFloat4(d);
+					d = (Datum)(unsigned long int)f;
+				}
+				break;
+			case FLOAT8OID:
+				{
+					float8 *f = tofree = palloc(sizeof(float8));
+					*f = DatumGetFloat8(d);
+					d = (Datum)(unsigned long int)f;
+				}
+				break;
+			case INT8OID:
+				{
+					int64 *f = tofree = palloc(sizeof(int64));
+					*f = DatumGetInt64(d);
+					d = (Datum)(unsigned long int)f;
+				}
+				break;
+			case TIMEOID:
+				{
+					TimeADT *f = tofree = palloc(sizeof(TimeADT));
+					*f = DatumGetTimeADT(d);
+					d = (Datum)(unsigned long int)f;
+				}
+				break;
+			case TIMESTAMPOID:
+				{
+					Timestamp *f = tofree = palloc(sizeof(Timestamp));
+					*f = DatumGetTimestamp(d);
+					d = (Datum)(unsigned long int)f;
+				}
+				break;
+			case TIMESTAMPTZOID:
+				{
+					TimestampTz *f = tofree = palloc(sizeof(TimestampTz));
+					*f = DatumGetTimestampTz(d);
+					d = (Datum)(unsigned long int)f;
+				}
+				break;
+			default:
+				break;
 		}
+		node->constbyval = false;
+	}
 	WRITE_OID_FIELD(consttype);
 	WRITE_INT_FIELD(constlen);
 	WRITE_BOOL_FIELD(constbyval);
