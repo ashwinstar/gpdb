@@ -912,7 +912,7 @@ explain_outNode(StringInfo str,
 			{
 				ShareInputScan *sisc = (ShareInputScan *) plan;
 				appendStringInfo(str, "ShareInputScan (share slice:id %d:%d)", 
-						currentSlice->sliceIndex, sisc->share_id);
+						currentSlice ? currentSlice->sliceIndex : -1, sisc->share_id);
 				pname = "";
 			}
 			break;

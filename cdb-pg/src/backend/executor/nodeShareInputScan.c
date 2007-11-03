@@ -229,7 +229,7 @@ ExecSliceDependencyShareInputScan(ShareInputScanState *node)
 
 	elog(LOG, "SISC exec dependency on slice %d, driver_slice is %d", currentSliceId, sisc->driver_slice);
 
-	if(sisc->driver_slice == currentSliceId)
+	if(sisc->driver_slice >= 0 && sisc->driver_slice == currentSliceId)
 		node->share_lk_ctxt = shareinput_reader_waitready(sisc->share_id);
 }
 

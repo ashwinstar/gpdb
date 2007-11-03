@@ -361,11 +361,34 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	 * nodeIndexscan doesn't actually care about REWIND, there's no point in
 	 * dealing with that refinement.)
 	 */
-	if (!node->shared_outer)
-		outerPlanState(nlstate) = ExecInitNode(outerPlan(node), estate, eflags);
+	/*
+	 * XXX ftian: Because share input need to make the whole thing into a tree,
+	 * we can put the underlying share only under one shareinputscan.  During execution,
+	 * we need the shareinput node that has underlying subtree be inited/executed first.
+	 * This means, 
+	 * 	1. Init and first ExecProcNode call must be in the same order
+	 *	2. Init order above is the same as the tree walking order in cdbmutate.c
+	 * For nest loop join, it is more strange than others.  Depends on prefetch_inner,
+	 * the execution order may change.  Handle this correctly here.
+	 * 
+	 * Until we find a better way to handle the dependency of ShareInputScan on 
+	 * execution order, this is pretty much what we have to deal with.
+	 */
+	if (nlstate->prefetch_inner)
+	{
+		innerPlanState(nlstate) = ExecInitNode(innerPlan(node), estate,
+				eflags | EXEC_FLAG_REWIND);
+		if (!node->shared_outer)
+			outerPlanState(nlstate) = ExecInitNode(outerPlan(node), estate, eflags);
+	}
+	else
+	{
+		if (!node->shared_outer)
+			outerPlanState(nlstate) = ExecInitNode(outerPlan(node), estate, eflags);
 
-	innerPlanState(nlstate) = ExecInitNode(innerPlan(node), estate,
-										   eflags | EXEC_FLAG_REWIND);
+		innerPlanState(nlstate) = ExecInitNode(innerPlan(node), estate,
+				eflags | EXEC_FLAG_REWIND);
+	}
 
 #define NESTLOOP_NSLOTS 2
 
