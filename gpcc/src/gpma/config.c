@@ -31,9 +31,19 @@ void config_gc(config_t* c)
 {
     apr_pool_t* npool;
     apr_hash_t* nhtab;
+    apr_hash_index_t *hi;
+    void *val;
+    const void* key;
+
     if (apr_pool_create(&npool, apr_pool_parent_get(c->pool)))
 	gpcc_fatal(FLINE, "out of memory");
-    nhtab = apr_hash_copy(npool, c->htab);
+    nhtab = apr_hash_make(npool);
+
+    for (hi = apr_hash_first(c->pool, c->htab); hi ; hi = apr_hash_next(hi)) {
+	apr_hash_this(hi, &key, 0, &val);
+	apr_hash_set(nhtab, apr_pstrdup(npool, key), APR_HASH_KEY_STRING, apr_pstrdup(npool, val));
+    }
+
     apr_pool_destroy(c->pool);
     c->pool = npool;
     c->htab = nhtab;
@@ -91,10 +101,15 @@ apr_int64_t config_get_int64(const config_t* c, const char* key)
 
 const char* config_set(config_t* c, const char* key, const char* value)
 {
-    key = apr_pstrdup(c->pool, key);
-    value = apr_pstrdup(c->pool, value);
-    apr_hash_set(c->htab, key, APR_HASH_KEY_STRING, value);
+    if (value) {
+	key = apr_pstrdup(c->pool, key);
+	value = apr_pstrdup(c->pool, value);
+	apr_hash_set(c->htab, key, APR_HASH_KEY_STRING, value);
+    } else {
+	apr_hash_set(c->htab, key, APR_HASH_KEY_STRING, 0);
+    }
     c->mcount++;
+
     return value;
 }
 

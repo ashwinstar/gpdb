@@ -24,6 +24,17 @@ static inline void setup_set_segment(cmdslot_t *cmdslot, int idx, char *name, in
     cmdslot->u.fts.seginfo[idx].host = apr_pstrdup(pool, addr);
 }
 
+static apr_status_t setup_cleanup_seginfo(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+
+    cmdslot->u.fts.nseginfo = 0;
+    cmdslot->u.fts.seginfo = 0;
+    cmdslot->u.fts.nnode = 0;
+    cmdslot->u.fts.nopened = 0;
+    return 0;
+}
+
 static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *)_cmdslot;
@@ -579,8 +590,27 @@ static apr_status_t a_fts_array_init_reply(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
-static apr_status_t a_fts_initialized(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_array_init_success(gpcc_event_t *ev, void *_cmdslot)
 {
+    config_write(gpma.datadir, gpma.guid, gpma.cfg);
+    return 0;
+}
+
+static apr_status_t a_fts_array_init_failure(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    const char **keys;
+    int i;
+
+    keys = config_keys(gpma.cfg, cmdslot->pool);
+    for (i = 0 ; keys[i] ; i++) {
+	if (strstr(keys[i], "gpdb.") == keys[i]) {
+	    config_set(gpma.cfg, keys[i], 0);
+	}
+    }
+    config_gc(gpma.cfg);
+    setup_cleanup_seginfo(ev, _cmdslot);
+    apr_pool_clear(cmdslot->pool);
     return 0;
 }
 

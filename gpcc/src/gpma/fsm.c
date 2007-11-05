@@ -170,9 +170,9 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, ARRAY_REPLY_MSG_EVENT, FTS_INITIALIZING_CMDSTATE,
 		 a_fts_array_init_reply, 0);
     gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, SUCCESS_EVENT, FTS_STOPPED_CMDSTATE,
-		 a_fts_initialized, 0);
+		 a_fts_array_init_success, 0);
     gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, FAILURE_EVENT, FTS_EMPTY_CMDSTATE,
-		 a_fts_failure, 0);
+		 a_fts_array_init_failure, 0);
     gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, ARRAY_INIT_EVENT, FTS_INITIALIZING_CMDSTATE,
 		 a_fts_busy_ok_reply, 0);
     gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, ARRAY_START_EVENT, FTS_INITIALIZING_CMDSTATE,
