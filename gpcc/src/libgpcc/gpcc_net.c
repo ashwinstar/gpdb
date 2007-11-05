@@ -1747,6 +1747,7 @@ void gpcc_net_http_close(gpcc_net_conn_t conn, int status, const char* msg, cons
     hdr.hname[hc] = "Content-length";
     hdr.hvalue[hc++] = lenbuf;
     hdr.hc = hc;
+    hdr.postlen = 0;
 
     (void) gpcc_net_send_header(conn, &hdr);
     (void) gpcc_net_send(conn, json, len);
