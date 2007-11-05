@@ -56,7 +56,7 @@ $(function() {
       state = json.rset.result[0];
       if (json.status == "ok") {
           if (typeof(json.array) == "undefined") {
-	       $("#status").text("Database is not initialized.  Please do the <a href='/initialize.psp'>initialization</a>.");
+	       $("#status").html("Database is not initialized.  Please do the <a href='/initialize.psp'>initialization</a>.");
 	       $("#switch_click_msg").hide();
           } else {
             array = json.array;
