@@ -593,6 +593,9 @@ static apr_status_t a_fts_array_init_reply(gpcc_event_t *ev, void *_cmdslot)
 
 static apr_status_t a_fts_array_init_success(gpcc_event_t *ev, void *_cmdslot)
 {
+    cmdslot_t *cmdslot = _cmdslot;
+
+    cmdslot->u.fts.active_cmdidx = 0;
     config_write(gpma.datadir, gpma.guid, gpma.cfg);
     return 0;
 }
