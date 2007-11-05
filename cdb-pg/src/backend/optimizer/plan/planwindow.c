@@ -270,6 +270,7 @@ static AttrNumber addTargetToCoplan(Node *target, Coplan *coplan, WindowContext 
 static Aggref* makeWindowAggref(WindowRef *winref);
 static Aggref* makeAuxCountAggref(void);
 static List *translate_upper_tlist_parallel(List *orig_tlist, WindowContext *context);
+static Node *translate_upper_vars_sequential(Node *node, WindowContext *context);
 static FromExpr *plan_window_jointree(PlannerInfo *root, WindowContext *context);
 static Expr *make_window_join_term(Oid type, Index lftvarno, AttrNumber lftattrno, Index rgtvarno, AttrNumber rgtattrno);
 static Oid *get_window_attr_types(List *targetlist, int nattrs, AttrNumber *attrs);
@@ -2245,6 +2246,7 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 													resno,
 													cname,
 													false);
+			join_tle->ressortgroupref = tle->ressortgroupref;
 			join_tlist = lappend(join_tlist, join_tle);
 		}
 	}
@@ -2322,7 +2324,8 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 									   winfo->partkey_attrs[i]);
 
 				tle = copyObject(tle);
-				grpcolidx[i] = tle->resno = i+1;
+				grpcolidx[i] = tle->resno;
+				tle->resno = i+1;
 				tlist = lappend(tlist, tle);
 				agg_names = lappend(agg_names,
 								    makeString(pstrdup(tle->resname? 
@@ -2422,7 +2425,7 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 							copyObject(window_plan->targetlist),
 							winfo->partkey_len,
 							partkey,
-							winfo->key_list, /* XXX mutate windowKeys to translate any Var nodes in frame vals. */
+							(List*) translate_upper_vars_sequential((Node*)winfo->key_list, context), /* XXX mutate windowKeys to translate any Var nodes in frame vals. */
 							window_plan);
 							
 			window_plan->flow = pull_up_Flow(window_plan, window_plan->lefttree, true);
@@ -2451,7 +2454,7 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 				if ( rinfo->specindex != sinfo->specindex )
 					continue;
 					
-				ref = rinfo->ref; /* XXX mutate ref's args to translate any Vars */
+				ref = (WindowRef*)translate_upper_vars_sequential((Node*)rinfo->ref, context); /* XXX mutate ref's args to translate any Vars */
 				win_resno = 1 + list_length(window_plan->targetlist);
 				rinfo->resno = win_resno;
 
@@ -3593,6 +3596,124 @@ static List *translate_upper_tlist_sequential(List *orig_tlist, List *window_tli
 								 &ctxt);
 	
 	return new_tlist;
+}
+
+
+/* This translator is specific to sequential window plans. It converts Vars
+ * the given tree (including top-level WindowRef node args, and WindowFrameEdge 
+ * vals from the input range to the intermediate range used in sequential
+ * planning.
+ */
+typedef struct xuv_context
+{
+	WindowContext *context;
+	bool is_top_level;
+} xuv_context;
+
+static Node * translate_upper_vars_sequential_mutator(Node *node, xuv_context *ctxt)
+{
+	WindowContext *context = ctxt->context;
+	
+	if ( node == NULL )
+		return NULL;
+		
+	if ( IsA(node, Var) )
+	{
+		Var *new_var;
+		Var *var = (Var *)node;
+		
+		/* We don't descend into WindowRefs, so Var isn't in one. */
+		if ( var->varlevelsup == 0 )
+		{
+			int idx = index_of_var(var, context);
+			AttrNumber attrno = context->offset_upper_varattrnos[idx];
+			new_var = makeVar(
+						1, /* first RTE has all entries */
+						attrno,
+						var->vartype,
+						var->vartypmod,
+						0 /* levels up known 0 */);
+		}
+		else
+			new_var = copyObject(var);
+
+		return (Node *) new_var;
+	}
+	else if ( IsA(node, WindowRef) )
+	{
+		/* XXX We violate the spirit of the thing here by actually modifying
+		 *     and returning the WindowRef itself.  We can't copy it because
+		 *     its RefInfo's link must still find it.
+		 */
+		WindowRef *ref = (WindowRef *)node;
+		
+		if ( ! ctxt->is_top_level )
+			elog(ERROR, "nested window reference invalid");		
+		ctxt->is_top_level = false;
+		
+		ref->args = (List*)expression_tree_mutator((Node*)ref->args, translate_upper_vars_sequential_mutator, (void*) ctxt);
+		
+		ctxt->is_top_level = true;
+		return (Node*)ref;
+	}
+	else if( IsA(node, WindowKey) )
+	{
+		WindowKey *key = (WindowKey*)node;
+		WindowKey *newkey;
+		
+		if ( ! ctxt->is_top_level )
+			elog(ERROR, "nested window key invalid");		
+		ctxt->is_top_level = false;
+		
+		newkey = makeNode(WindowKey);
+		memcpy(newkey, key, sizeof(WindowKey));
+		if ( key->numSortCols > 0 )
+		{
+			size_t sz;
+			
+			sz = key->numSortCols * sizeof(AttrNumber);
+			newkey->sortColIdx = (AttrNumber*)palloc(sz);
+			memcpy(newkey->sortColIdx, key->sortColIdx, sz);
+			
+			sz = key->numSortCols * sizeof(Oid);
+			newkey->sortOperators = (Oid*)palloc(sz);
+			memcpy(newkey->sortOperators, key->sortOperators, sz);
+		}
+		
+		newkey->frame = (WindowFrame*)expression_tree_mutator(
+										(Node*)key->frame, 
+										translate_upper_vars_sequential_mutator, 
+										(void*) ctxt);
+		
+		ctxt->is_top_level = true;
+		return (Node*)newkey;
+	}
+	
+	return expression_tree_mutator(node, translate_upper_vars_sequential_mutator, (void*) ctxt);
+}
+
+
+static Node *translate_upper_vars_sequential(Node *node, WindowContext *context)
+{
+	Node *result;
+	xuv_context ctxt;
+	
+	ctxt.context = context;
+	ctxt.is_top_level = true;
+	
+	if ( context->original_range )
+	{
+		result = node;
+	}
+	else
+	{
+		result =  
+			expression_tree_mutator(node,
+									translate_upper_vars_sequential_mutator, 
+									&ctxt);
+	}
+	
+	return result;
 }
 
 

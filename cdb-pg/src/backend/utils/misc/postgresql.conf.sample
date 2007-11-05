@@ -198,6 +198,8 @@
 #enable_groupagg = on
 #enable_hashagg = on
 
+#gp_enable_sequential_window_plans = off
+
 #enable_sort = on
 #gp_enable_sort_limit = on
 #gp_enable_sort_distinct = on

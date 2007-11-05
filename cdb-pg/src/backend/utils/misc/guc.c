@@ -612,7 +612,7 @@ static struct config_bool ConfigureNamesBool[] =
 						 "an operating system or hardware crash.")
 		},
 		&enableFsync,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 	{
 		{"zero_damaged_pages", PGC_SUSET, DEVELOPER_OPTIONS,
@@ -1149,11 +1149,11 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"gp_enable_sequential_window_plans", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Experimental feature: Enable non-parallel window plans."),
-			NULL,
-            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+			gettext_noop("The planner will evaluate window functions associated with separate "
+						 "window specifications sequentially rather that in parallel.")
 		},
 		&gp_enable_sequential_window_plans,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 
 	{
