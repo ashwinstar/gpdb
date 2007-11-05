@@ -292,7 +292,7 @@ def doInit(args):
     if cur == 'initializing':
         print 'error: timeout'
     elif cur == 'stopped':
-        print 'ok:', cur
+        print 'ok: initialized.'
     elif cur == 'none':
         print 'error: not initialized.'
     else:
