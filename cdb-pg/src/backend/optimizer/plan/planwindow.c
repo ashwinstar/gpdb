@@ -215,6 +215,10 @@ typedef struct WindowContext
 	Plan		   *subplan;
 	CdbPathLocus	subplan_locus;
 	List		   *subplan_pathkeys;
+
+	/* List of PathKeys, one for each coplan. */
+	List           *subplans_pathkeys;
+	
 		
 	/* Map (ressortgrpref) --> (resno) in lower_tlist */
 	int				max_sortref;
@@ -3165,17 +3169,9 @@ static RangeTblEntry *rte_for_coplan(
 		Coplan *coplan)
 {
 	RangeTblEntry *rte;
-	Plan *new_plan;
+	Plan *new_plan = input_plan;
 	Alias *new_eref;
 	
-	new_plan = assure_collocation_and_order(root,
-						input_plan,
-						winfo->partkey_len, 
-						winfo->partkey_attrs,
-						winfo->sortclause,
-						subplan_locus,
-						&subplan_pathkeys);
-
 	/* Now new_plan is suitable input for a coplan of this winfo. 
 	 * Add the coplan processing.
 	 */
@@ -3310,6 +3306,92 @@ static RangeTblEntry *package_plan_as_rte(Query *query, Plan *plan, Alias *eref,
 	return rte;
 }
 
+/*
+ * construct_share_plans - construct share plans for both window
+ * coplans and aggregate coplans. When one WindowInfo contains
+ * both a window coplan and an aggregate coplan, we share
+ * more than just the given subplan. This function takes care
+ * of that.
+ *
+ * For two different WindowInfos, the given subplan is shared.
+ */
+static List *
+construct_share_plans(PlannerInfo *root, WindowContext *context)
+{
+	List *lower_share_nodes = NIL;
+	List *share_nodes = NIL;
+	int i;
+	ListCell *lc;
+	
+	if (context->nwindowinfos > 1)
+	{
+		lower_share_nodes = share_plan(root, context->subplan,
+									   context->nwindowinfos);
+	}
+	else
+	{
+		Assert(context->nwindowinfos == 1);
+		lower_share_nodes = list_make1(context->subplan);
+	}
+
+	lc = list_head(lower_share_nodes);
+
+	context->subplans_pathkeys = NIL;
+	for (i = 0; i < context->nwindowinfos; i++)
+	{
+		WindowInfo *winfo = context->windowinfos + i;
+		Plan *share_node;
+		
+		Assert(lc);
+		share_node = (Plan *)lfirst(lc);
+
+		if (winfo->window_coplan != NULL &&
+			winfo->agg_coplan != NULL)
+		{
+			List *new_share_nodes = NIL;
+			List *pathKeys = (List *)copyObject(context->subplan_pathkeys);
+			
+			Plan *new_plan =
+				assure_collocation_and_order(root,
+											 share_node,
+											 winfo->partkey_len, 
+											 winfo->partkey_attrs,
+											 winfo->sortclause,
+											 context->subplan_locus,
+											 &pathKeys);
+			new_share_nodes = share_plan(root, new_plan, 2);
+			share_nodes = list_concat(share_nodes, new_share_nodes);
+
+			/* Append two copies of new pathkeys */
+			context->subplans_pathkeys = lappend(context->subplans_pathkeys,
+												 pathKeys);
+			context->subplans_pathkeys = lappend(context->subplans_pathkeys,
+												 pathKeys);
+		}
+
+		else if (winfo->window_coplan != NULL ||
+				 winfo->agg_coplan != NULL)
+		{
+			List *pathKeys = (List *)copyObject(context->subplan_pathkeys);
+			Plan *new_plan =
+				assure_collocation_and_order(root,
+											 share_node,
+											 winfo->partkey_len, 
+											 winfo->partkey_attrs,
+											 winfo->sortclause,
+											 context->subplan_locus,
+											 &pathKeys);
+			share_nodes = lappend(share_nodes, new_plan);
+			
+			context->subplans_pathkeys = lappend(context->subplans_pathkeys,
+												 pathKeys);
+		}
+
+		lc = lnext(lc);
+	}
+
+	return share_nodes;
+}
 
 /* 
  * plan_window_rtable is the stub for plan_window_rtable_dup/share.
@@ -3325,11 +3407,13 @@ List *plan_window_rtable(PlannerInfo *root, WindowContext *context)
 	List *sharedNodes = NIL;
 	List *rtable = NIL;
 	ListCell *lc = NULL;
+	ListCell *pk_lc = NULL;
 
-	sharedNodes = share_plan(root, context->subplan, context->coplan_count);
+	sharedNodes = construct_share_plans(root, context);
 	Assert(list_length(sharedNodes) == context->coplan_count);
 
 	lc = list_head(sharedNodes);
+	pk_lc = list_head(context->subplans_pathkeys);
 
 	for ( i = 0; i < context->nwindowinfos; i++ )
 	{
@@ -3337,26 +3421,32 @@ List *plan_window_rtable(PlannerInfo *root, WindowContext *context)
 		if ( winfo->window_coplan != NULL )
 		{
 			Assert(lc);
+			Assert(pk_lc);
+			
 			rte = rte_for_coplan(root, 
 					(Plan *) lfirst(lc),
 					context->subplan_locus,
-					context->subplan_pathkeys,
+					(List *)lfirst(pk_lc),
 					winfo,
 					winfo->window_coplan);
 			lc = lnext(lc);
+			pk_lc = lnext(pk_lc);
 			rtable = lappend(rtable, rte);
 
 		}
 
 		if ( winfo->agg_coplan != NULL )
 		{
+			Assert(lc);
+			Assert(pk_lc);
 			rte = rte_for_coplan(root, 
 					(Plan *) lfirst(lc),
 					context->subplan_locus,
-					context->subplan_pathkeys,
+					(List *)lfirst(pk_lc),
 					winfo,
 					winfo->agg_coplan);
 			lc = lnext(lc);
+			pk_lc = lnext(pk_lc);
 			rtable = lappend(rtable, rte);
 		}
 	}
