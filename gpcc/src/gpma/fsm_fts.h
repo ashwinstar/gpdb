@@ -168,6 +168,17 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 	    gpcc_warning(FLINE, "value format error. %s = %s", key, value);
 	    return APR_EINVAL;
 	}
+
+	if (node >= cmdslot->u.fts.nnode) {
+	    gpcc_warning(FLINE, "segment %s value error.  node should be (%d < %d)", key, node, cmdslot->u.fts.nnode);
+	    return APR_EINVAL;
+	}
+
+	if (dir[0] != '/') {
+	    gpcc_warning(FLINE, "segment %s data directory %s must be in full path", key, dir);
+	    return APR_EINVAL;
+	}
+
 	dbid++;
 	setup_set_segment(cmdslot, dbid-1, key, dbid, content, master_port, node, dir, cmdslot->pool);
     }	
