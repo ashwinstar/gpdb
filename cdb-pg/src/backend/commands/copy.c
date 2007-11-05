@@ -4421,8 +4421,9 @@ CopyReadLineText(CopyState cstate, size_t bytesread)
 		
 		if (cstate->need_transcoding)
 		{
-			cvt = (char *) pg_client_to_server(cstate->line_buf.data,
-											   cstate->line_buf.len);
+			cvt = (char *) pg_custom_client_to_server(cstate->line_buf.data,
+													  cstate->line_buf.len,
+													  cstate->client_encoding);
 			if (cvt != cstate->line_buf.data)
 			{
 				/* transfer converted data back to line_buf */
