@@ -30,8 +30,6 @@ static apr_status_t setup_cleanup_seginfo(gpcc_event_t *ev, void *_cmdslot)
 
     cmdslot->u.fts.nseginfo = 0;
     cmdslot->u.fts.seginfo = 0;
-    cmdslot->u.fts.nnode = 0;
-    cmdslot->u.fts.nopened = 0;
     return 0;
 }
 
@@ -485,11 +483,24 @@ static apr_status_t a_fts_failure(gpcc_event_t *ev, void *_cmdslot)
 }
 
 static apr_status_t a_fts_array_config_verify() {
-    int i;
+    int i, n;
     const char *v;
     int errcnt = 0;
     char buf[1024];
+    int nnode = 0;
+    char dir[1024];
 
+    /* node.X */
+    for (i = 0 ; ; i++) {
+	sprintf(buf, "node.%d", i);
+	if (config_get(gpma.cfg, buf) == 0) 
+	    break;
+    }
+    nnode = i;
+    if (nnode == 0) {
+	gpcc_log_error("\t- node.0 missing");
+	errcnt++;
+    }
 
     /* name must exist */
     if (! config_get(gpma.cfg, "gpdb.name")) {
@@ -531,8 +542,25 @@ static apr_status_t a_fts_array_config_verify() {
     if (!v) {
 	gpcc_log_error("\t- gpdb.seg.m.0 not set");
 	errcnt++;
-    }
+    } else {
     
+	if (sscanf(v, "node.%d:%s", &n, dir) == 2) {
+	    
+	    if (n >= nnode) {
+		gpcc_log_error("\t- segment %s value error.  node should be (%d < %d)", "gpdb.seg.m.0", n, nnode);
+		errcnt++;
+	    }
+	    
+	    if (dir[0] != '/') {
+		gpcc_log_error("\t- segment %s data directory %s must be in full path", "gpdb.seg.m.0", dir);
+		errcnt++;
+	    }
+	} else {
+	    gpcc_log_error("\t- %s value syntax error", v);
+	    errcnt++;
+	}
+    }
+
     /* minimum 2 QEs, max 512 QEs */
     for (i = 0; i < 512; i++) {
 	sprintf(buf, "gpdb.seg.%d.0", i);
@@ -543,6 +571,23 @@ static apr_status_t a_fts_array_config_verify() {
 		errcnt++;
 	    }
 	    break;
+	} else {
+
+	    if (sscanf(v, "node.%d:%s", &n, dir) == 2) {
+		
+		if (n >= nnode) {
+		    gpcc_log_error("\t- segment %s value error.  node should be (%d < %d)", buf, n, nnode);
+		    errcnt++;
+		}
+		
+		if (dir[0] != '/') {
+		    gpcc_log_error("\t- segment %s data directory %s must be in full path", buf, dir);
+		    errcnt++;
+		}
+	    } else {
+		gpcc_log_error("\t- %s value syntax error", v);
+		errcnt++;
+	    }
 	}
     }
     if (! (2 <= i && i < 512)) {
@@ -571,11 +616,12 @@ static apr_status_t a_fts_array_init(gpcc_event_t *ev, void *_cmdslot)
     gpcc_event_t *evt;
     struct json_object *obj;
     int i;
-
+    int len = ev->edatasz;
     memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
+    len -= sizeof(gpcc_net_conn_t);
     config = ev->pdata + sizeof(gpcc_net_conn_t);
     
-    if (config_parse(gpma.cfg, config, strlen(config)) || a_fts_array_config_verify()) {
+    if (config_parse(gpma.cfg, config, len) || a_fts_array_config_verify()) {
 	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
 	obj = gpcc_json_http_reply("init", "failure", "config syntax error");

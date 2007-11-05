@@ -256,7 +256,7 @@ static void net_accepted(gpcc_net_conn_t conn,
 	}
 	else if (0 == strcmp("/gpcc/init", uri->path)) {
 	    ev = mkfts_event(ARRAY_INIT_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
-			     gpma.fts_cmdslot->cmdidx, from_peer->post, strlen(from_peer->post)+1);
+			     gpma.fts_cmdslot->cmdidx, from_peer->post, from_peer->postlen);
 	}
 	else if (! is_bad_array_name) {
 	    if (0 == strcmp("/gpcc/start", uri->path)) {
