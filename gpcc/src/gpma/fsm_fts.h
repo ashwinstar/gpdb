@@ -94,6 +94,16 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 	return APR_EINVAL;
     }	
     
+    if (node >= cmdslot->u.fts.nnode) {
+	gpcc_warning(FLINE, "segment %s value error.  node should be (%d < %d)", key, node, cmdslot->u.fts.nnode);
+	return APR_EINVAL;
+    }
+
+    if (dir[0] != '/') {
+	gpcc_warning(FLINE, "segment %s data directory %s must be in full path", key, dir);
+	return APR_EINVAL;
+    }
+	
     setup_set_segment(cmdslot, dbid-1, key, dbid, content, master_port, node, dir, cmdslot->pool);
     
     for (i = 0 ;  ; i++) {
@@ -107,6 +117,17 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 	    gpcc_warning(FLINE, "value format error. %s = %s", key, value);
 	    return APR_EINVAL;
 	}	
+
+	if (node >= cmdslot->u.fts.nnode) {
+	    gpcc_warning(FLINE, "segment %s value error.  node should be (%d < %d)", key, node, cmdslot->u.fts.nnode);
+	    return APR_EINVAL;
+	}
+
+	if (dir[0] != '/') {
+	    gpcc_warning(FLINE, "segment %s data directory %s must be in full path", key, dir);
+	    return APR_EINVAL;
+	}
+	
 	dbid++;
 	content++;
 	setup_set_segment(cmdslot, dbid-1, key, dbid, content, base_port++, node, dir, cmdslot->pool);
@@ -152,10 +173,6 @@ static apr_status_t a_fts_init(gpcc_event_t *ev, void *_cmdslot)
     char key[20];
     const char *v;
 
-    if (config_get(gpma.cfg, "gpdb.name")) {
-	setup_init_seginfo(ev, _cmdslot);
-    }
-
     for (i = 0 ;  ; i++) {
 	sprintf(key, "node.%d", i);
 	v = config_get(gpma.cfg, key);
@@ -164,6 +181,11 @@ static apr_status_t a_fts_init(gpcc_event_t *ev, void *_cmdslot)
     }
     cmdslot->u.fts.nnode = i;
     cmdslot->u.fts.nopened = 0;
+
+    if (config_get(gpma.cfg, "gpdb.name")) {
+	if (setup_init_seginfo(ev, _cmdslot))
+	    gpcc_fatal(FLINE, "seginfo setup error.");
+    }
 
     for (i = 0 ; i < cmdslot->u.fts.nseginfo ; i++) {
 	gpcc_log_info("name=%s, host =%s, dbid = %d, content =%d, port = %d, dir = %s, haidx = %d, ha=%s",
@@ -540,7 +562,8 @@ static apr_status_t a_fts_array_init(gpcc_event_t *ev, void *_cmdslot)
 	return 0;
     }
 
-    setup_init_seginfo(ev, _cmdslot);
+    if (setup_init_seginfo(ev, _cmdslot))
+	gpcc_fatal(FLINE, "seginfo setup error.");
  
     for (i = 0 ; i < cmdslot->u.fts.nseginfo ; i++) {
 	gpcc_log_info("name=%s, host =%s, dbid = %d, content =%d, port = %d, dir = %s, haidx = %d, ha=%s",
