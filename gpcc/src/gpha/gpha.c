@@ -92,7 +92,10 @@ static void net_accepted_cb(gpcc_net_conn_t conn,
 
     gpcc_log_info("net_accepted_cb");
     if (from_peer->argc != 1 || strcmp(from_peer->argv[0], GPCC_NET_PACKET_PROTO) != 0){
-	gpcc_warning(FLINE, "peer header not match!");
+	gpcc_warning(FLINE, "peer header not match! argc=%d", from_peer->argc);
+	for (i = 0 ; i < from_peer->argc ; i++) {
+	    gpcc_warning(FLINE, "argv[%d] = %s", i , from_peer->argv[i]);
+	}
 	gpcc_net_close(conn, 0);
 	return;
     }
@@ -115,6 +118,7 @@ static void net_accepted_cb(gpcc_net_conn_t conn,
 	hdr.argc = 1;
 	hdr.argv[0] = GPCC_NET_PACKET_PROTO;
 	hdr.hc = 0;
+	hdr.postlen = 0;
 	if (0 != (e = gpcc_net_send_header(conn, &hdr))) {
 	    gpcc_warning(FLINE, "gpcc_net_send_header failed");
 	}
