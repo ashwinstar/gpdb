@@ -13,6 +13,7 @@ Usage: gp [gp_options] command [command_options] [command_args]
 	command:
 	    start 
 	    stop
+            init config_file
 
 """
 
@@ -122,6 +123,23 @@ def hitMA(cmd, params):
         if f: f.close()
     return json
     
+
+def hitMAbyPost(cmd, params, data):
+    params = urllib.urlencode(params)
+    f = None
+    json = ''
+    try:
+        f = httplib.HTTPConnection("%s:%d" % (gp_opt['-h'], gp_opt['-p']))
+        f.request("POST", "%s?%s" % (cmd, params), data)
+        response = f.getresponse();
+        if response.status == 200:
+            s = response.read()
+            # print s
+            json = simplejson.loads(s)
+    finally:
+        if f: f.close()
+    return json
+
 def printError(json):
     status = json.get('status')
     if status:
@@ -240,6 +258,48 @@ def doListConfig(args):
     print
 
 
+def doInit(args):
+    if len(args) == 0:
+        usage(1)
+    if not os.path.exists(args[0]):
+        print 'error: config file not found'
+        return
+    content = ''
+    try:
+        f = open(args[0], "r")
+        content = f.read()
+        f.close()
+    except IOError:
+        print 'error: open config file failed'
+        return
+
+    json = hitMAbyPost('/gpcc/init', {}, content)
+    if not json.get('status') in ('ok', 'pending'):
+        printError(json)
+        return
+    cur = 'initializing'
+    for i in xrange(3600):
+        printDotSleep()
+        (json, status, array_status) = getStatus()
+        if status != 'ok':
+            print
+            printError(json)
+            return
+        if array_status != cur:
+            cur = array_status
+            break
+    print
+    if cur == 'initializing':
+        print 'error: timeout'
+    elif cur == 'stopped':
+        print 'ok:', cur
+    elif cur == 'none':
+        print 'error: not initialized.'
+    else:
+        print 'error: unknown; not initialized.'
+    return
+
+
 def main():
     resetCommandOptions()
     readRCFile()
@@ -253,6 +313,8 @@ def main():
         doStatus(gp_args)
     elif gp_cmd == 'lscfg':
         doListConfig(gp_args)
+    elif gp_cmd == 'init':
+        doInit(gp_args)
     else:
         usage('Invalid command')
 
