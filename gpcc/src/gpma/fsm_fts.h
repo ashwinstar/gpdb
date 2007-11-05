@@ -435,7 +435,8 @@ static apr_status_t a_fts_stopped(gpcc_event_t *ev, void *_cmdslot)
 
 static apr_status_t a_fts_failure(gpcc_event_t *ev, void *_cmdslot)
 {
-
+    cmdslot_t *cmdslot = _cmdslot;
+    cmdslot->u.fts.active_cmdidx = 0;
     return 0;
 }
 
@@ -601,6 +602,8 @@ static apr_status_t a_fts_array_init_failure(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *cmdslot = _cmdslot;
     const char **keys;
     int i;
+
+    cmdslot->u.fts.active_cmdidx = 0;
 
     keys = config_keys(gpma.cfg, cmdslot->pool);
     for (i = 0 ; keys[i] ; i++) {
