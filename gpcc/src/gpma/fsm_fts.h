@@ -152,7 +152,7 @@ static apr_status_t a_fts_init(gpcc_event_t *ev, void *_cmdslot)
     char key[20];
     const char *v;
 
-    if (gpma.array_name) {
+    if (config_get(gpma.cfg, "gpdb.name")) {
 	setup_init_seginfo(ev, _cmdslot);
     }
 

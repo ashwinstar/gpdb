@@ -242,9 +242,10 @@ static void net_accepted(gpcc_net_conn_t conn,
 
 	gpcc_net_uri_t* uri = gpcc_net_uri_alloc(from_peer->argv[1]);
 	char* a = (uri ? gpcc_net_uri_param(uri, "a") : 0);
+	const char *array_name = config_get(gpma.cfg, "gpdb.name");
 	gpcc_event_t* ev = 0;
 	int is_bad_uri = 0;
-	int is_bad_array_name = ! (gpma.array_name && a && 0 == strcmp(a, gpma.array_name));
+	int is_bad_array_name = ! (array_name && a && 0 == strcmp(a, array_name));
 
 	if (0 == strcmp("/gpcc/lscfg", uri->path)) {
 	    process_lscfg(conn);
@@ -750,7 +751,6 @@ void load_config(void)
 	/* check if config is legit */
 	verify_config();
     }
-    gpma.array_name = config_get(gpma.cfg, "gpdb.name");
 
     GPCC_DO(0 == config_write(gpma.datadir, gpma.guid, gpma.cfg));
 }

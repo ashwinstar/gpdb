@@ -49,7 +49,6 @@ struct gpma_t {
     const char*  ma_unit;     /* MA ID - e.g. ma.0 */
     int          ma_port;     /* MA Port */
     const char*  datadir;     /* dir for config file, log file, etc */
-    const char*  array_name;
     int          boot_force;  /* force the creation of boot_fname cfg file */
     const char*  boot_fname;  /* NULL if not booting, otherwise the name of the cfgfile */
     int          debug;	      /* TRUE if debug run, don't daemonize */
