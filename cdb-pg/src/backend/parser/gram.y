@@ -2020,7 +2020,8 @@ opt_using:
  *****************************************************************************/
 
 CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
-			OptInherit OptWith OnCommitOption OptTableSpace OptDistributedBy OptTabPartitionBy
+			OptInherit OptWith OnCommitOption OptTableSpace OptDistributedBy 
+			OptTabPartitionBy
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 					$4->istemp = $2;
