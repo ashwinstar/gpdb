@@ -217,6 +217,9 @@ static inline TupleChunkListItem RecvTupleChunk(MotionConn *conn, bool inTeardow
 
 static void TeardownUDPInterconnect(ChunkTransportState *transportStates, MotionLayerState *mlStates, bool forceEOS);
 
+static void handleStopMsgs(MotionLayerState *mlStates, ChunkTransportState *transportStates,
+						   ChunkTransportStateEntry *pEntry, int16 motionId);
+
 static bool flushUDPBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates, 
 						   ChunkTransportStateEntry *pEntry, MotionConn * conn, int16 motionId);
 
@@ -1026,6 +1029,7 @@ SendEosToAMS(MotionLayerState *mlStates,
 	ChunkTransportStateEntry *pEntry = NULL;
 	MotionConn *conn;
 	int			i;
+	bool		stopRace=false;
 
 	Insist(transportStates && (transportStates->activated || transportStates->teardownActive));
 
@@ -1057,13 +1061,17 @@ SendEosToAMS(MotionLayerState *mlStates,
 		if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP &&
 			conn->state == mcsStarted)
 		{
-#if 0
-			elog(LOG, "sent eos to route %d tuplecount %d seq %d", conn->route, conn->tupleCount, conn->conn_info.seq);
-#endif
+			elog(DEBUG2, "sent eos to route %d tuplecount %d seq %d flags 0x%x stillActive %s", conn->route, conn->tupleCount, conn->conn_info.seq, conn->conn_info.flags, (conn->stillActive ? "true" : "false"));
 
-			flushUDPBuffer(mlStates, transportStates, pEntry, conn, motNodeID);
-			conn->state = mcsEosSent;
-			conn->stillActive = false;
+			if (!flushUDPBuffer(mlStates, transportStates, pEntry, conn, motNodeID))
+			{
+				stopRace = true;
+			}
+			else
+			{
+				conn->state = mcsEosSent;
+				conn->stillActive = false;
+			}
 		}
 		else if (conn->sockfd >= 0 &&
 				 conn->state == mcsStarted)
@@ -1073,6 +1081,9 @@ SendEosToAMS(MotionLayerState *mlStates,
 		elog(DEBUG5, "SendEosToAMS() Leaving");
 #endif
 	}
+
+	if (stopRace)
+		handleStopMsgs(mlStates, transportStates, pEntry, motNodeID);
 }
 
 /* we use bit operations to test these, flags are powers of two only*/
@@ -1904,6 +1915,11 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 					ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 									errmsg("Interconnect error: %m%s short ack receive!", "recvfrom")));
 
+				if (pkt.flags & FLAGS_STOP)
+				{
+					elog(DEBUG1, "during setup received ack with STOP. node %d route %d state %d pktseq %d connseq %d", pkt.motNodeId, conn->route, conn->state, pkt.seq, conn->conn_info.seq);
+				}
+
 				conn = findConnByHeader(&pkt);
 				if (conn != NULL)
 				{
@@ -1918,7 +1934,7 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 						outgoing_count++;
 					}
 					else
-						elog(LOG, "state not waiting for setup node %d route %d state %d conn %p", pkt.motNodeId, conn->route, conn->state, conn);
+						elog(DEBUG1, "state not waiting for setup node %d route %d state %d conn %p pktflags %d", pkt.motNodeId, conn->route, conn->state, conn, pkt.flags);
 				}
 				else
 					elog(LOG, "Got ack for unknown connection node %d command %d dstpid %d", pkt.motNodeId, pkt.commandCount, pkt.dstPid);
@@ -2890,6 +2906,84 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 	}
 	pthread_mutex_lock(&rx_thread_mutex);
 
+	/* if we have issued *any* stop requests, we may have peers which
+	 * we will mess up if we just start ignoring them (they depend on
+	 * our ability to acknowledge their final messages) */
+	if (!forceEOS)
+	{
+		List *pendingStop = NIL;
+
+		foreach(cell, mySlice->children)
+   		{
+			Slice	*aSlice;
+			int		childId = lfirst_int(cell);
+
+			aSlice = (Slice *) list_nth(transportStates->sliceTable->slices, childId);
+
+			getChunkTransportState(transportStates, aSlice->sliceIndex, &pEntry);
+			Assert(pEntry);
+
+			for (i = 0; i < pEntry->numConns; i++)
+			{
+				conn = pEntry->conns + i;
+
+				if (conn->stillActive)
+				{
+					pendingStop = lappend(pendingStop, conn);
+				}
+			}
+		}
+
+		elog(LOG, "TeardownUDP: %d pending stops", list_length(pendingStop));
+
+		while ((cell = list_head(pendingStop)) != NULL)
+		{
+			conn = (MotionConn *)lfirst(cell);
+
+			if (!conn->stillActive)
+			{
+				/* remove from the list */
+				pendingStop = list_delete_ptr(pendingStop, conn);
+
+				elog(LOG, "TeardownUDP: %d pending stops", list_length(pendingStop));
+				continue;
+			}
+
+			main_thread_waiting = true;
+			main_thread_waiting_node = conn->conn_info.motNodeId;
+			main_thread_waiting_route = conn->route;
+
+			if (wait_on_receiver(MAIN_THREAD_COND_TIMEOUT))
+			{
+				main_thread_waiting_route = ANY_ROUTE;
+				main_thread_waiting_node = -1;
+				main_thread_waiting = false;
+
+				/* success, remove list (as above) */
+				pendingStop = list_delete_ptr(pendingStop, conn);
+
+				elog(LOG, "TeardownUDP: %d pending stops", list_length(pendingStop));
+
+				continue;
+			}
+			else
+			{
+				main_thread_waiting_route = ANY_ROUTE;
+				main_thread_waiting_node = -1;
+				main_thread_waiting = false;
+
+				pthread_mutex_unlock(&rx_thread_mutex);
+
+				/* if requested we want to bail-out to handle errors,
+				 * so we use "false" */
+				ML_CHECK_FOR_INTERRUPTS(false);
+
+				/* if we made it here we need the lock again. */
+				pthread_mutex_lock(&rx_thread_mutex);
+			}
+		}
+	}
+
 	/*
 	 * cleanup all of our Receiving Motion nodes, these get closed
 	 * immediately (the receiver know for real if they want to shut
@@ -3516,7 +3610,6 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 	pEntry->txport = saddr.sin_port;
 //	elog(LOG, "Connecting from UDP port %d", ntohs(saddr.sin_port));
 
-#if 0
 	{
 		int                 rcvbuf;
 		socklen_t           rcvbufsize=0;
@@ -3526,17 +3619,17 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 		if (getsockopt(pEntry->txfd, SOL_SOCKET, SO_RCVBUF, (char *)&rcvbuf, &rcvbufsize) < 0)
 			goto error;
 
-		elog(LOG, "XMIT DEFAULT RX SIZE IS %d", rcvbuf);
+		elog(DEBUG1, "UDP-IC: xmit default rx-size %d bytes", rcvbuf);
 
 		fun = "setsockopt";
 		rcvbuf = 128 * 1024;
+//		rcvbuf = 8192; /* small buffer to force lots of drops */
 		rcvbufsize = sizeof(rcvbuf);
 		if (setsockopt(pEntry->txfd, SOL_SOCKET, SO_RCVBUF, (const char *)&rcvbuf, rcvbufsize) < 0)
 			goto error;
 
-		elog(LOG, "XMIT NEW RX SIZE IS %d", rcvbuf);
+		elog(DEBUG1, "UDP-IC: xmit will use rx size of %d bytes", rcvbuf);
 	}
-#endif
 
     return pEntry;
 
@@ -4622,7 +4715,6 @@ flushUDPBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 					}
 
 					result = false; /* regardless of which connection this is, we'll need to count later */
-//					conn->stillActive = false;
 					stopConn->stopRequested = true;
 					stopConn->conn_info.flags |= FLAGS_STOP;
 
@@ -4676,6 +4768,11 @@ flushUDPBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 	/* now, reset so that we're ready to send more. */
 	conn->tupleCount = 0;
 	conn->msgSize = sizeof(conn->conn_info);
+
+	if (!result)
+	{
+		elog(DEBUG3, "flushUDPBuffer(): pending stop messages.");
+	}
 
 	return result;
 }
@@ -5421,7 +5518,14 @@ ic_rx_thread_func(void *arg)
 						ic_stats_dropped_acks++;
 
 						if (DEBUG3 >= log_min_messages)
-							write_log("duplicate conn request ?!\n");
+						{
+							write_log("duplicate connection request from node %d route %d, seq 0\n",
+									  pkt->motNodeId, conn->route);
+							if (conn->stopRequested)
+							{
+								write_log("duplicate conn request, stopRequested!\n");
+							}
+						}
 
 						seq = conn->conn_info.seq;
 						conn->conn_info.seq = pkt->seq;
@@ -5450,7 +5554,6 @@ ic_rx_thread_func(void *arg)
 					}
 
 					/* data packet */
-
 					if (pkt->flags & FLAGS_EOS)
 						if (DEBUG3 >= log_min_messages)
 							write_log("received packet with EOS motid %d route %d seq %d\n",
@@ -5458,24 +5561,33 @@ ic_rx_thread_func(void *arg)
 
 					if (conn->stopRequested && conn->stillActive)
 					{
-						write_log("rx_thread got packet on active connection marked stopRequested. (flags 0x%x) node %d route %d seq %d",
-								  pkt->flags, pkt->motNodeId, conn->route, pkt->seq);
+#if 0
+						write_log("rx_thread got packet on active connection marked stopRequested. (flags 0x%x) node %d route %d pkt seq %d conn seq %d",
+								  pkt->flags, pkt->motNodeId, conn->route, pkt->seq, conn->conn_info.seq);
+#endif
 
 						/* can we update stillActive ? */
-						if (!(pkt->flags & FLAGS_STOP))
-							write_log("stop requested but no stop flag on return packet ?!");
+						if (DEBUG2 >= log_min_messages)
+							if (!(pkt->flags & FLAGS_STOP) &&
+								!(pkt->flags & FLAGS_EOS))
+								write_log("stop requested but no stop flag on return packet ?!");
 
-						if (pkt->flags & FLAGS_EOS)
-							conn->stillActive = false;
 						sendAck(conn, true);
 
-						/* we may need to wake a waiter */
-						if (main_thread_waiting && main_thread_waiting_node == pkt->motNodeId)
+						/* we only update stillActive if eos has been sent by peer. */
+						if (pkt->flags & FLAGS_EOS)
 						{
-							if (main_thread_waiting_route == conn->route)
+							write_log("stop requested and acknowledged by sending peer");
+							conn->stillActive = false;
+
+							/* we may need to wake a waiter */
+							if (main_thread_waiting && main_thread_waiting_node == pkt->motNodeId)
 							{
-								/* WAKE MAIN THREAD HERE */
-								pthread_cond_signal(&rx_thread_cond);
+								if (main_thread_waiting_route == conn->route)
+								{
+									/* WAKE MAIN THREAD HERE */
+									pthread_cond_signal(&rx_thread_cond);
+								}
 							}
 						}
 
@@ -5492,8 +5604,8 @@ ic_rx_thread_func(void *arg)
 
 						if (DEBUG3 >= log_min_messages)
 							write_log("dropped ack ? ignored data packet w/ cmd %d node %d route %d seq %d expected %d flags 0x%x\n",
-										 pkt->commandCount, pkt->motNodeId,
-										 conn->route, pkt->seq, conn->conn_info.seq, pkt->flags);
+									  pkt->commandCount, pkt->motNodeId,
+									  conn->route, pkt->seq, conn->conn_info.seq, pkt->flags);
 
 						seq = conn->conn_info.seq;
 						conn->conn_info.seq = pkt->seq;
@@ -5602,7 +5714,7 @@ ic_rx_thread_func(void *arg)
 				ic_stats_mismatch++;
 
 				if (DEBUG4 >= log_min_messages)
-					write_log("dropping packet from command-id %d seq %d\n", pkt->commandCount, pkt->seq);
+					write_log("dropping packet from command-id %d seq %d (my cmd %d)\n", pkt->commandCount, pkt->seq, gp_command_count);
 				/* we want to ack old packets; but *must* avoid acking connection requests */
 				if (pkt->seq > 0 && pkt->sessionId == gp_session_id && gp_command_count == 0)
 				{
