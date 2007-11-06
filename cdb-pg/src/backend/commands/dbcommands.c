@@ -67,14 +67,11 @@ static bool have_createdb_privilege(void);
 static void remove_dbtablespaces(Oid db_id);
 static bool check_db_file_conflict(Oid db_id);
 
-static void
-createdb_int(CreatedbStmt *stmt,
-             struct CdbDispatchResults    **pPrimaryResults,
-             struct CdbDispatchResults    **pMirrorResults,
-			 struct CdbDispatchCmdThreads        **pDispatchThreads);
-
-static void
-gp_cleanup_createdb(const char *dbname);
+static void createdb_int(CreatedbStmt *stmt,
+             			 struct CdbDispatchResults **pPrimaryResults,
+             			 struct CdbDispatchResults **pMirrorResults,
+			 			 struct CdbDispatchCmdThreads **pDispatchThreads);
+static void gp_cleanup_createdb(const char *dbname);
 
 /*
  * CREATE DATABASE
@@ -162,7 +159,7 @@ gp_cleanup_createdb(const char *dbname)
 		cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
 }
 
-void
+static void
 createdb_int(CreatedbStmt *stmt,
              struct CdbDispatchResults    **pPrimaryResults,
              struct CdbDispatchResults    **pMirrorResults,
