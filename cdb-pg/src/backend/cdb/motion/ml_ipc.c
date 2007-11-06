@@ -524,11 +524,8 @@ RecvTupleChunk(MotionConn *conn, bool inTeardown)
 	}
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG5, "read packet recv bytes %d msgsize %d", conn->recvBytes, conn->msgSize);
-#endif
-
-#if 0
-	elog(LOG, "recvtuple chunk conn->pBuff %p conn->msgPos: %p", conn->pBuff, conn->msgPos);
+	elog(DEBUG5, "recvtuple chunk recv bytes %d msgsize %d conn->pBuff %p conn->msgPos: %p",
+		 conn->recvBytes, conn->msgSize, conn->pBuff, conn->msgPos);
 #endif
 
 	while (bytesProcessed != conn->msgSize)
@@ -607,10 +604,9 @@ wait_on_receiver(int timeout_us)
 	}
 	ts.tv_nsec *= 1000; /* convert usec to nsec */
 
-#if 0
-	elog(LOG, "waiting (timed) on route %d %s", main_thread_waiting_route, 
-		 (main_thread_waiting_route == ANY_ROUTE ? "(any route)" : ""));
-#endif
+   	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+		elog(DEBUG5, "waiting (timed) on route %d %s", main_thread_waiting_route, 
+			 (main_thread_waiting_route == ANY_ROUTE ? "(any route)" : ""));
 
 	/* we can't handle interrupts for the time we're waiting,
 	 * which is why we're using timedwaits in the first place */
@@ -714,13 +710,6 @@ findConnByHeader(struct icpkthdr *hdr)
 
 	for (bin = conn_htab[hashcode]; bin != NULL; bin = bin->next)
 	{
-#if 0
-		write_log("findConnByHeader: scanning code %d. node %d srccontent %d "
-					 "srcpid %d dstpid %d dstcontent %d conn %p\n", hashcode,
-					 bin->conn->conn_info.motNodeId, bin->conn->conn_info.srcContentId,
-					 bin->conn->conn_info.srcPid, bin->conn->conn_info.dstPid,
-					 bin->conn->conn_info.dstContentId, bin->conn);
-#endif
 		if (bin->conn->conn_info.motNodeId == hdr->motNodeId &&
 			bin->conn->conn_info.dstContentId == hdr->dstContentId &&
 			bin->conn->conn_info.srcContentId == hdr->srcContentId &&
@@ -729,9 +718,8 @@ findConnByHeader(struct icpkthdr *hdr)
 		{
 			ret = bin->conn;
 
-#if 0
-			write_log("findConnByHeader: found. route %d state %d hashcode %d conn %p\n", ret->route, ret->state, hashcode, ret);
-#endif
+			if (DEBUG5 >= log_min_messages)
+				write_log("findConnByHeader: found. route %d state %d hashcode %d conn %p\n", ret->route, ret->state, hashcode, ret);
 
 			if (hdr->sessionId != gp_session_id)
 				write_log("findConnByHeader: session mismatch %d/%d\n", hdr->sessionId, gp_session_id);
@@ -743,13 +731,14 @@ findConnByHeader(struct icpkthdr *hdr)
 		}
 	}
 
-#if 0
 	if (ret == NULL)
-		write_log("findConnByHeader: not found! "
-				  "(hdr->srcPid %d hdr->srcContentId %d hdr->dstContentId %d hdr->dstPid %d sess(%d:%d) cmd(%d:%d)) hashcode %d\n",
-					 hdr->srcPid, hdr->srcContentId, hdr->dstContentId, hdr->dstPid, hdr->sessionId,
-					 gp_session_id, hdr->commandCount, gp_command_count, hashcode);
-#endif
+	{
+		if (DEBUG5 >= log_min_messages)
+			write_log("findConnByHeader: not found! (hdr->srcPid %d "
+					  "hdr->srcContentId %d hdr->dstContentId %d hdr->dstPid %d sess(%d:%d) cmd(%d:%d)) hashcode %d\n",
+					  hdr->srcPid, hdr->srcContentId, hdr->dstContentId, hdr->dstPid, hdr->sessionId,
+					  gp_session_id, hdr->commandCount, gp_command_count, hashcode);
+	}
 
 	return ret;
 }
@@ -1136,10 +1125,6 @@ put_rx_buffer(MotionConn *conn)
 		conn->pkt_q_head = 0;
 	conn->pkt_q_size--;
 
-#if 0
-	elog(DEBUG5, "put_rx_buffer: buff %p", buf);
-#endif
-
 	*(char **)buf = rx_buf_freelist;
 	rx_buf_freelist = (char *)buf;
 
@@ -1281,9 +1266,6 @@ receiveChunksUDP(ChunkTransportStateEntry *pEntry, int16 motNodeID, int16 *srcRo
 			continue; /* success ! */
 
 		/* handle timeout, check for cancel */
-#if 0
-		elog(LOG, "timed out waiting for data");
-#endif
 		pthread_mutex_unlock(&rx_thread_mutex);
 
 		ML_CHECK_FOR_INTERRUPTS(inTeardown);
@@ -3011,11 +2993,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 		for (i = 0; i < pEntry->numConns; i++)
 		{
 			conn = pEntry->conns + i;
-#if 0
-			if (!forceEOS)
-				if (conn->stillActive)
-					elog(LOG, "teardownUDP: shutting down with a receiver still active ? this will confuse our peer.");
-#endif
+
 			if (conn->stillActive)
 				elog(LOG, "teardownUDP: shutting down with a receiver still active ? this will confuse our peer.");
 
@@ -3722,9 +3700,8 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 	conn->conn_info.srcContentId = Gp_segment;
 	conn->conn_info.dstContentId = conn->cdbProc->contentid;
 
-#if 0
-	elog(LOG, "setupOutgoingUDPConnection: node %d route %d srccontent %d dstcontent %d", pEntry->motNodeId, conn->route, Gp_segment, conn->cdbProc->contentid);
-#endif
+	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+		elog(DEBUG3, "setupOutgoingUDPConnection: node %d route %d srccontent %d dstcontent %d", pEntry->motNodeId, conn->route, Gp_segment, conn->cdbProc->contentid);
 
 	conn->conn_info.srcListenerPort = (Gp_listener_port>>16) & 0x0ffff;
 	conn->conn_info.srcPid = MyProcPid;
@@ -4586,10 +4563,6 @@ flushUDPBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 
 		if (timeout <= elapsed_ms)
 		{
-#if 0
-			elog(LOG, "xmit retry @ %d", elapsed_ms);
-#endif
-
 			n = sendto(pEntry->txfd, conn->pBuff, conn->msgSize, 0,
 					   (struct sockaddr *)&conn->peer, (socklen_t)sizeof(conn->peer));
 			if (n < 0)
@@ -4703,9 +4676,10 @@ flushUDPBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 				if (pkt.flags & FLAGS_STOP)
 				{
 					MotionConn *stopConn = NULL;
-#if 1
-					elog(LOG, "got ack with stop; srcpid %d dstpid %d cmd %d flags 0x%x seq %d", pkt.srcPid, pkt.dstPid, pkt.commandCount, pkt.flags, pkt.seq);
-#endif
+
+					if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+						elog(DEBUG2, "got ack with stop; srcpid %d dstpid %d cmd %d flags 0x%x seq %d", pkt.srcPid, pkt.dstPid, pkt.commandCount, pkt.flags, pkt.seq);
+
 					stopConn = findConnByHeader(&pkt);
 
 					if (!stopConn)
@@ -4724,8 +4698,9 @@ flushUDPBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 						break;
 					}
 
-					elog(LOG, "stopped conn was 'other' %d (expected seq %d) than the sending conn %d",
-						 stopConn->route, stopConn->conn_info.seq, conn->route);
+					if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+						elog(DEBUG4, "stopped conn was 'other' %d (expected seq %d) than the sending conn %d",
+							 stopConn->route, stopConn->conn_info.seq, conn->route);
 
 					continue;
 				}				
@@ -4739,15 +4714,15 @@ flushUDPBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 					{
 						if (pkt.seq != conn->conn_info.seq)
 						{
-#if 0
-							elog(LOG, "ack with bad seq?! expected %d got %d", conn->conn_info.seq, pkt.seq);
-#endif
+							if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+								elog(DEBUG2, "ack with bad seq?! expected %d got %d", conn->conn_info.seq, pkt.seq);
+
 							continue;
 						}
 						conn->conn_info.seq++;
-#if 0
-						elog(LOG, "got good ack with seq %d node %d route %d peer %d", pkt.seq, pkt.motNodeId, conn->route, pkt.dstPid);
-#endif
+
+						if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+							elog(DEBUG5, "got good ack with seq %d node %d route %d peer %d", pkt.seq, pkt.motNodeId, conn->route, pkt.dstPid);
 						break;
 					}
 				}
@@ -5561,10 +5536,10 @@ ic_rx_thread_func(void *arg)
 
 					if (conn->stopRequested && conn->stillActive)
 					{
-#if 0
-						write_log("rx_thread got packet on active connection marked stopRequested. (flags 0x%x) node %d route %d pkt seq %d conn seq %d",
-								  pkt->flags, pkt->motNodeId, conn->route, pkt->seq, conn->conn_info.seq);
-#endif
+						if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG && DEBUG5 >= log_min_messages)
+							write_log("rx_thread got packet on active connection marked stopRequested. "
+									  "(flags 0x%x) node %d route %d pkt seq %d conn seq %d",
+									  pkt->flags, pkt->motNodeId, conn->route, pkt->seq, conn->conn_info.seq);
 
 						/* can we update stillActive ? */
 						if (DEBUG2 >= log_min_messages)
