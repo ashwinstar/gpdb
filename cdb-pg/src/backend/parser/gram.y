@@ -184,7 +184,7 @@ static void doNegateFloat(Value *v);
 %type <list>	alter_table_cmds alter_rel_cmds 
 				opt_table_partition_merge_into 
 				opt_table_partition_split_into
-%type <ival>	opt_table_partition_exchange_validate
+%type <ival>	opt_table_partition_exchange_validate partition_keyword
 
 %type <dbehavior>	opt_drop_behavior
 
@@ -1701,40 +1701,40 @@ alter_table_partition_id_spec:
 		;
 
 alter_table_partition_cmd:
-			ADD_P PARTITION 
+			ADD_P partition_keyword 
             OptTabPartitionBoundarySpec	OptTabSubPartitionSpec 
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_PartAdd;
 					$$ = (Node *)n;
 				}
-			| ADD_P PARTITION IDENT	
+			| ADD_P partition_keyword IDENT	
             OptTabPartitionBoundarySpec	OptTabSubPartitionSpec 
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_PartAdd;
 					$$ = (Node *)n;
 				}
-			| COALESCE PARTITION 	 
+			| COALESCE partition_keyword 	 
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_PartCoalesce;
 					$$ = (Node *)n;
 				}
-			| COALESCE PARTITION IDENT	 
+			| COALESCE partition_keyword IDENT	 
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_PartCoalesce;
 					$$ = (Node *)n;
 				}
-			| DROP PARTITION 
+			| DROP partition_keyword 
             alter_table_partition_id_spec	 
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_PartDrop;
 					$$ = (Node *)n;
 				}
-			| EXCHANGE PARTITION 
+			| EXCHANGE partition_keyword 
             alter_table_partition_id_spec 
             WITH TABLE relation_expr 
             opt_table_partition_exchange_validate	
@@ -1743,7 +1743,7 @@ alter_table_partition_cmd:
 					n->subtype = AT_PartExchange;
 					$$ = (Node *)n;
 				}
-			| MERGE PARTITION 
+			| MERGE partition_keyword 
             alter_table_partition_id_spec ','
             PARTITION alter_table_partition_id_spec 
             opt_table_partition_merge_into	
@@ -1752,14 +1752,14 @@ alter_table_partition_cmd:
 					n->subtype = AT_PartMerge;
 					$$ = (Node *)n;
 				}
-			| RENAME PARTITION 
+			| RENAME partition_keyword 
             alter_table_partition_id_spec TO IDENT	
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_PartRename;
 					$$ = (Node *)n;
 				}
-			| SPLIT PARTITION 
+			| SPLIT partition_keyword 
             alter_table_partition_id_spec AT 
             '(' TabPartitionBoundarySpecValList ')'	
             opt_table_partition_split_into	
@@ -1768,7 +1768,7 @@ alter_table_partition_cmd:
 					n->subtype = AT_PartSplit;
 					$$ = (Node *)n;
 				}
-			| TRUNCATE PARTITION 
+			| TRUNCATE partition_keyword 
             alter_table_partition_id_spec	 
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
@@ -2748,24 +2748,32 @@ TabPartitionByType:
 			| LIST				{ $$ = PARTTYP_LIST; }
 		;
 
+partition_keyword: 			PARTITION 
+				{
+                    /* special rule to disable the use of partitioned
+                       tables with nice syntax error.  
+
+                       XXX XXX REMOVE when partitions are in
+                       production 
+                    */
+
+                    if (!gp_enable_partitioned_tables)
+                    {
+                        yyerror("syntax error");
+                    }
+
+                    $$ = 1;
+                }
+		;
+
 OptTabPartitionBy:
-			PARTITION BY 
+			partition_keyword BY 
             TabPartitionByType '(' columnList ')' 
             OptTabPartitionsNumber 
             OptTabSubPartitionBy
             OptTabPartitionSpec						
 				{
                         PartitionBy *n = makeNode(PartitionBy); 
-
-                        if (!gp_enable_partitioned_tables)
-                        {
-                            ereport(ERROR,
-                                    (errcode(ERRCODE_SYNTAX_ERROR),
-                                     errmsg("syntax error at or near \"%s\"",
-                                            $1)
-                                     ));
-                        }
-
 
                         n->partType = $3;
                         n->keys     = $5; 

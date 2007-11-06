@@ -1,3 +1,11 @@
+-- disabled by default
+create table ggg (a char(1), b char(2), d char(3))
+distributed by (a)
+partItion by hash(b)
+partitions 3;
+
+-- enable
+set gp_enable_partitioned_tables=1;
 
 -- missing subpartition by
 create table ggg (a char(1), b char(2), d char(3))

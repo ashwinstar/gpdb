@@ -1127,13 +1127,13 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"gp_enable_partitioned_tables", PGC_USERSET, QUERY_TUNING_METHOD,
+		{"gp_enable_partitioned_tables", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable partioned tables syntax."),
 			NULL,
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_enable_partitioned_tables,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 
 	{

@@ -1,3 +1,13 @@
+-- disabled by default
+create table ggg (a char(1), b char(2), d char(3))
+distributed by (a)
+partItion by hash(b)
+partitions 3;
+ERROR:  syntax error at or near "partItion"
+LINE 3: partItion by hash(b)
+        ^
+-- enable
+set gp_enable_partitioned_tables=1;
 -- missing subpartition by
 create table ggg (a char(1), b char(2), d char(3))
 distributed by (a)
@@ -84,10 +94,24 @@ NOTICE:  CREATE TABLE will create child table "ggg_1_prt_bb_2_prt_dd" for table 
 drop table ggg cascade;
 NOTICE:  drop cascades to table ggg_1_prt_bb
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_dd on table ggg_1_prt_bb
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_check on table ggg_1_prt_bb_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_cc on table ggg_1_prt_bb
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_cc_check on table ggg_1_prt_bb_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb
 NOTICE:  drop cascades to table ggg_1_prt_aa
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_dd on table ggg_1_prt_aa
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_check on table ggg_1_prt_aa_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_cc
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_cc on table ggg_1_prt_aa
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_cc_check on table ggg_1_prt_aa_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa
 -- should work
 create table ggg (a char(1), b char(2), d char(3))
 distributed by (a)
@@ -124,17 +148,63 @@ drop table ggg cascade;
 NOTICE:  drop cascades to table ggg_1_prt_bb
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_dd_3_prt_ff on table ggg_1_prt_bb_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_3_prt_ff_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ff
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_dd_3_prt_ee on table ggg_1_prt_bb_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_3_prt_ee_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_dd on table ggg_1_prt_bb
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_check on table ggg_1_prt_bb_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_cc_3_prt_ff on table ggg_1_prt_bb_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_cc_3_prt_ff_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_cc_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ff
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_cc_3_prt_ee on table ggg_1_prt_bb_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_cc_3_prt_ee_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_cc_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_cc on table ggg_1_prt_bb
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_cc_check on table ggg_1_prt_bb_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb
 NOTICE:  drop cascades to table ggg_1_prt_aa
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_dd_3_prt_ff on table ggg_1_prt_aa_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_3_prt_ff_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ff
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_dd_3_prt_ee on table ggg_1_prt_aa_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_3_prt_ee_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_dd on table ggg_1_prt_aa
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_check on table ggg_1_prt_aa_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_cc
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_cc_3_prt_ff on table ggg_1_prt_aa_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_cc_3_prt_ff_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_cc_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ff
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_cc_3_prt_ee on table ggg_1_prt_aa_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_cc_3_prt_ee_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_cc_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_cc on table ggg_1_prt_aa
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_cc_check on table ggg_1_prt_aa_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa
 -- should work
 create table ggg (a char(1), b char(2), d char(3))
 distributed by (a)
@@ -167,17 +237,63 @@ drop table ggg cascade;
 NOTICE:  drop cascades to table ggg_1_prt_bb
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_dd_3_prt_ff on table ggg_1_prt_bb_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_3_prt_ff_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ff
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_dd_3_prt_ee on table ggg_1_prt_bb_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_3_prt_ee_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_dd on table ggg_1_prt_bb
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_check on table ggg_1_prt_bb_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_cc_3_prt_ff on table ggg_1_prt_bb_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_cc_3_prt_ff_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_cc_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ff
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_cc_3_prt_ee on table ggg_1_prt_bb_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_cc_3_prt_ee_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_cc_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_cc on table ggg_1_prt_bb
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_cc_check on table ggg_1_prt_bb_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb
 NOTICE:  drop cascades to table ggg_1_prt_aa
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_dd_3_prt_ff on table ggg_1_prt_aa_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_3_prt_ff_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ff
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_dd_3_prt_ee on table ggg_1_prt_aa_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_3_prt_ee_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_dd on table ggg_1_prt_aa
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_check on table ggg_1_prt_aa_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_cc
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_cc_3_prt_ff on table ggg_1_prt_aa_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_cc_3_prt_ff_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_cc_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ff
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_cc_3_prt_ee on table ggg_1_prt_aa_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_cc_3_prt_ee_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_cc_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_cc on table ggg_1_prt_aa
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_cc_check on table ggg_1_prt_aa_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa
 -- doesn't work because cannot have nested declaration in template
 create table ggg (a char(1), b char(2), d char(3))
 distributed by (a)
@@ -437,126 +553,892 @@ NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_2 on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_1 on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2 on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_2 on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_1 on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1 on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2 on table ggg_1_prt_2_2_prt_2_3_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_2 on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_1 on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2 on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_2 on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_1 on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1 on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1 on table ggg_1_prt_2_2_prt_2_3_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_2 on table ggg_1_prt_2_2_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_2 on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_1 on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2 on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_2 on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_1 on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1 on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2 on table ggg_1_prt_2_2_prt_2_3_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_2 on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_1 on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2 on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_2 on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_1 on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1 on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1 on table ggg_1_prt_2_2_prt_2_3_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2_3_prt_1 on table ggg_1_prt_2_2_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2_3_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_3_prt_1_check on table ggg_1_prt_2_2_prt_2_3_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_2 on table ggg_1_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_2_check on table ggg_1_prt_2_2_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_2 on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_1 on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2 on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_2 on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_1 on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1 on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2 on table ggg_1_prt_2_2_prt_1_3_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_2 on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_1 on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2 on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_2 on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_1 on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1 on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1 on table ggg_1_prt_2_2_prt_1_3_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_2 on table ggg_1_prt_2_2_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_2 on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_1 on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2 on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_2 on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_1 on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1 on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2 on table ggg_1_prt_2_2_prt_1_3_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_2 on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_1 on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2 on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_2 on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_1 on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1 on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1 on table ggg_1_prt_2_2_prt_1_3_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1_4_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1_3_prt_1 on table ggg_1_prt_2_2_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1_3_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_3_prt_1_check on table ggg_1_prt_2_2_prt_1_3_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_2_2_prt_1 on table ggg_1_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2_2_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_2_prt_1_check on table ggg_1_prt_2_2_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_2_check on table ggg_1_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_2 on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_1 on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2 on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_2 on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_1 on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1 on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2 on table ggg_1_prt_1_2_prt_2_3_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_2 on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_1 on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2 on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_2 on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_1 on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1 on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1 on table ggg_1_prt_1_2_prt_2_3_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_2 on table ggg_1_prt_1_2_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_2 on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_1 on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2 on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_2 on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_1 on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1 on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2 on table ggg_1_prt_1_2_prt_2_3_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_2 on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_1 on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2 on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_2 on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_1 on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1 on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1 on table ggg_1_prt_1_2_prt_2_3_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2_3_prt_1 on table ggg_1_prt_1_2_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2_3_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_3_prt_1_check on table ggg_1_prt_1_2_prt_2_3_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_2 on table ggg_1_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_2_check on table ggg_1_prt_1_2_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_2 on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_1 on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2 on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_2 on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_1 on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1 on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_5_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2 on table ggg_1_prt_1_2_prt_1_3_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_2 on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_1 on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2 on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_2 on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_1 on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1 on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1 on table ggg_1_prt_1_2_prt_1_3_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2_4_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_2 on table ggg_1_prt_1_2_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_2 on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_1 on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2 on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_2 on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_1 on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1 on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_5_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2 on table ggg_1_prt_1_2_prt_1_3_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_2 on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_1 on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2 on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_2 on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_2_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_1 on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1_6_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1 on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1 on table ggg_1_prt_1_2_prt_1_3_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1_4_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1_3_prt_1 on table ggg_1_prt_1_2_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_3_prt_1_check on table ggg_1_prt_1_2_prt_1_3_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_1_2_prt_1 on table ggg_1_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1_2_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_2_prt_1_check on table ggg_1_prt_1_2_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_1_check on table ggg_1_prt_1
 -- named, inline subpartitions
 create table ggg (a char(1), b char(2), d char(3))
 distributed by (a)
@@ -575,10 +1457,24 @@ NOTICE:  CREATE TABLE will create child table "ggg_1_prt_bb_2_prt_dd" for table 
 drop table ggg cascade;
 NOTICE:  drop cascades to table ggg_1_prt_bb
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_dd on table ggg_1_prt_bb
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_check on table ggg_1_prt_bb_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_cc on table ggg_1_prt_bb
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_cc_check on table ggg_1_prt_bb_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb
 NOTICE:  drop cascades to table ggg_1_prt_aa
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_dd on table ggg_1_prt_aa
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_check on table ggg_1_prt_aa_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_cc
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_cc on table ggg_1_prt_aa
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_cc_check on table ggg_1_prt_aa_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa
 -- subpartitions with templates
 create table ggg (a char(1), b char(2), d char(3), e numeric)
 distributed by (a)
@@ -615,17 +1511,63 @@ drop table ggg cascade;
 NOTICE:  drop cascades to table ggg_1_prt_bb
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_dd_3_prt_ff on table ggg_1_prt_bb_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_3_prt_ff_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ff
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_dd_3_prt_ee on table ggg_1_prt_bb_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_3_prt_ee_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_dd on table ggg_1_prt_bb
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_check on table ggg_1_prt_bb_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_cc_3_prt_ff on table ggg_1_prt_bb_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_cc_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_cc_3_prt_ff_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ff
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_cc_3_prt_ee on table ggg_1_prt_bb_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_cc_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_cc_3_prt_ee_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_cc on table ggg_1_prt_bb
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_cc_check on table ggg_1_prt_bb_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb
 NOTICE:  drop cascades to table ggg_1_prt_aa
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_dd_3_prt_ff on table ggg_1_prt_aa_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_3_prt_ff_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ff
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_dd_3_prt_ee on table ggg_1_prt_aa_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_3_prt_ee_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_dd on table ggg_1_prt_aa
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_check on table ggg_1_prt_aa_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_cc
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_cc_3_prt_ff on table ggg_1_prt_aa_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_cc_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_cc_3_prt_ff_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ff
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_cc_3_prt_ee on table ggg_1_prt_aa_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_cc_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_cc_3_prt_ee_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_cc on table ggg_1_prt_aa
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_cc_check on table ggg_1_prt_aa_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa
 -- mixed inline subpartition declarations with templates
 create table ggg (a char(1), b char(2), d char(3), e numeric)
 distributed by (a)
@@ -658,17 +1600,63 @@ drop table ggg cascade;
 NOTICE:  drop cascades to table ggg_1_prt_bb
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_dd_3_prt_ff on table ggg_1_prt_bb_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_3_prt_ff_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ff
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_dd_3_prt_ee on table ggg_1_prt_bb_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_3_prt_ee_check on table ggg_1_prt_bb_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_dd on table ggg_1_prt_bb
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_check on table ggg_1_prt_bb_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_cc_3_prt_ff on table ggg_1_prt_bb_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_cc_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_cc_3_prt_ff_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ff
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_cc_3_prt_ee on table ggg_1_prt_bb_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_cc_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_cc_3_prt_ee_check on table ggg_1_prt_bb_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_cc on table ggg_1_prt_bb
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_cc_check on table ggg_1_prt_bb_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb
 NOTICE:  drop cascades to table ggg_1_prt_aa
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_dd_3_prt_ff on table ggg_1_prt_aa_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_3_prt_ff_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ff
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_dd_3_prt_ee on table ggg_1_prt_aa_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_3_prt_ee_check on table ggg_1_prt_aa_2_prt_dd_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_dd on table ggg_1_prt_aa
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_dd
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_check on table ggg_1_prt_aa_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_cc
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_cc_3_prt_ff on table ggg_1_prt_aa_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_cc_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_cc_3_prt_ff_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ff
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_cc_3_prt_ee on table ggg_1_prt_aa_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_cc_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_cc_3_prt_ee_check on table ggg_1_prt_aa_2_prt_cc_3_prt_ee
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_cc on table ggg_1_prt_aa
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_cc_check on table ggg_1_prt_aa_2_prt_cc
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa
 -- basic list partition
 create table ggg (a char(1), b char(2), d char(3))
 distributed by (a)
@@ -909,27 +1897,39 @@ drop table ggg cascade;
 NOTICE:  drop cascades to table ggg_1_prt_bb
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_ee
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_ee_3_prt_3
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_ee_3_prt_3 on table ggg_1_prt_bb_2_prt_ee
 NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_ee_3_prt_3
 NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_ee_check on table ggg_1_prt_bb_2_prt_ee_3_prt_3
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_ee_3_prt_3_check on table ggg_1_prt_bb_2_prt_ee_3_prt_3
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_ee_3_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_ee_3_prt_2 on table ggg_1_prt_bb_2_prt_ee
 NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_ee_3_prt_2
 NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_ee_check on table ggg_1_prt_bb_2_prt_ee_3_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_ee_3_prt_2_check on table ggg_1_prt_bb_2_prt_ee_3_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_ee_3_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_ee_3_prt_1 on table ggg_1_prt_bb_2_prt_ee
 NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_ee_3_prt_1
 NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_ee_check on table ggg_1_prt_bb_2_prt_ee_3_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_ee_3_prt_1_check on table ggg_1_prt_bb_2_prt_ee_3_prt_1
 NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_ee on table ggg_1_prt_bb
 NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_ee
 NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_ee_check on table ggg_1_prt_bb_2_prt_ee
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd_3_prt_3
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_dd_3_prt_3 on table ggg_1_prt_bb_2_prt_dd
 NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_dd_3_prt_3
 NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_check on table ggg_1_prt_bb_2_prt_dd_3_prt_3
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_3_prt_3_check on table ggg_1_prt_bb_2_prt_dd_3_prt_3
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd_3_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_dd_3_prt_2 on table ggg_1_prt_bb_2_prt_dd
 NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_dd_3_prt_2
 NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_check on table ggg_1_prt_bb_2_prt_dd_3_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_3_prt_2_check on table ggg_1_prt_bb_2_prt_dd_3_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd_3_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_dd_3_prt_1 on table ggg_1_prt_bb_2_prt_dd
 NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_dd_3_prt_1
 NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_check on table ggg_1_prt_bb_2_prt_dd_3_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_3_prt_1_check on table ggg_1_prt_bb_2_prt_dd_3_prt_1
 NOTICE:  drop cascades to rule ggg_1_prt_bb_2_prt_dd on table ggg_1_prt_bb
 NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb_2_prt_dd
 NOTICE:  drop cascades to constraint ggg_1_prt_bb_2_prt_dd_check on table ggg_1_prt_bb_2_prt_dd
@@ -937,27 +1937,39 @@ NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb
 NOTICE:  drop cascades to table ggg_1_prt_aa
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_ee
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_ee_3_prt_3
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_ee_3_prt_3 on table ggg_1_prt_aa_2_prt_ee
 NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_ee_3_prt_3
 NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_ee_check on table ggg_1_prt_aa_2_prt_ee_3_prt_3
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_ee_3_prt_3_check on table ggg_1_prt_aa_2_prt_ee_3_prt_3
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_ee_3_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_ee_3_prt_2 on table ggg_1_prt_aa_2_prt_ee
 NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_ee_3_prt_2
 NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_ee_check on table ggg_1_prt_aa_2_prt_ee_3_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_ee_3_prt_2_check on table ggg_1_prt_aa_2_prt_ee_3_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_ee_3_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_ee_3_prt_1 on table ggg_1_prt_aa_2_prt_ee
 NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_ee_3_prt_1
 NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_ee_check on table ggg_1_prt_aa_2_prt_ee_3_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_ee_3_prt_1_check on table ggg_1_prt_aa_2_prt_ee_3_prt_1
 NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_ee on table ggg_1_prt_aa
 NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_ee
 NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_ee_check on table ggg_1_prt_aa_2_prt_ee
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd_3_prt_3
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_dd_3_prt_3 on table ggg_1_prt_aa_2_prt_dd
 NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_dd_3_prt_3
 NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_check on table ggg_1_prt_aa_2_prt_dd_3_prt_3
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_3_prt_3_check on table ggg_1_prt_aa_2_prt_dd_3_prt_3
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd_3_prt_2
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_dd_3_prt_2 on table ggg_1_prt_aa_2_prt_dd
 NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_dd_3_prt_2
 NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_check on table ggg_1_prt_aa_2_prt_dd_3_prt_2
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_3_prt_2_check on table ggg_1_prt_aa_2_prt_dd_3_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd_3_prt_1
+NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_dd_3_prt_1 on table ggg_1_prt_aa_2_prt_dd
 NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_dd_3_prt_1
 NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_check on table ggg_1_prt_aa_2_prt_dd_3_prt_1
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_3_prt_1_check on table ggg_1_prt_aa_2_prt_dd_3_prt_1
 NOTICE:  drop cascades to rule ggg_1_prt_aa_2_prt_dd on table ggg_1_prt_aa
 NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa_2_prt_dd
 NOTICE:  drop cascades to constraint ggg_1_prt_aa_2_prt_dd_check on table ggg_1_prt_aa_2_prt_dd
@@ -1377,11 +2389,11 @@ select * from rank;
 select * from rank_1_prt_boys;
  id | rank |    year    | gender 
 ----+------+------------+--------
+  2 |    1 | 02-15-2002 | M
+  5 |    1 | 05-15-2005 | M
   1 |    1 | 01-15-2001 | M
   3 |    1 | 03-15-2003 | M
   4 |    1 | 04-15-2004 | M
-  2 |    1 | 02-15-2002 | M
-  5 |    1 | 05-15-2005 | M
 (5 rows)
 
 select * from rank_1_prt_girls;
