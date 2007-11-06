@@ -3362,6 +3362,7 @@ int
 EncodeDateTime(struct pg_tm * tm, fsec_t fsec, int *tzp, char **tzn, int style, char *str)
 {
 	int			day;
+	int j = 0;
 
 	/*
 	 * Why are we checking only the month field? Change this to an assert...
@@ -3381,26 +3382,38 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, int *tzp, char **tzn, int style, 
 #else
 			{
 				/*
-				 * sprintf is slow.  We can do a lot better.
+				 * sprintf is very slow so we just convert the numbers to
+				 * a string manually. Since we allow dates in the range
+				 * 4713 BC to 5874897 AD, we have to check for years
+				 * with 7, 6 and 5 digits, being careful to not add
+				 * leading zeros for those. We only zero pad to four digits.
 				 */
 				int y = (tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1);
-				str[0] = y/1000 + '0';
-				str[1] = y/100 % 10 + '0';
-				str[2] = y/10 % 10 + '0';
-				str[3] = y % 10 + '0';
-				str[4] = '-';
-				str[5] = tm->tm_mon/10 + '0'; 
-				str[6] = tm->tm_mon % 10 + '0';
-				str[7] = '-';
-				str[8] = tm->tm_mday/10 + '0';
-				str[9] = tm->tm_mday % 10 + '0';
-				str[10] = ' ';
-				str[11] = tm->tm_hour/10 + '0';
-				str[12] = tm->tm_hour % 10 + '0';
-				str[13] = ':';
-				str[14] = tm->tm_min/10 + '0';
-				str[15] = tm->tm_min % 10 + '0';
-				str[16] = '\0';
+				
+				if (y >= 1000000)
+					str[j++] = y / 1000000 % 10 + '0';
+				if (y >= 100000)
+					str[j++] = y / 100000 % 10 + '0';
+				if (y >= 10000)
+					str[j++] = y / 10000 % 10 + '0';
+				
+				str[j++] = y/1000 % 10 + '0';
+				str[j++] = y/100 % 10 + '0';
+				str[j++] = y/10 % 10 + '0';
+				str[j++] = y % 10 + '0';
+				str[j++] = '-';
+				str[j++] = tm->tm_mon/10 + '0'; 
+				str[j++] = tm->tm_mon % 10 + '0';
+				str[j++] = '-';
+				str[j++] = tm->tm_mday/10 + '0';
+				str[j++] = tm->tm_mday % 10 + '0';
+				str[j++] = ' ';
+				str[j++] = tm->tm_hour/10 + '0';
+				str[j++] = tm->tm_hour % 10 + '0';
+				str[j++] = ':';
+				str[j++] = tm->tm_min/10 + '0';
+				str[j++] = tm->tm_min % 10 + '0';
+				str[j] = '\0';
 			}
 #endif 
 
@@ -3417,17 +3430,17 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, int *tzp, char **tzn, int style, 
 #if 0
 				sprintf(str + strlen(str), ":%02d.%06d", tm->tm_sec, fsec);
 #else
-				str[16] = ':';
-				str[17] = tm->tm_sec / 10 + '0';
-				str[18] = tm->tm_sec % 10 + '0';
-				str[19] = '.';
-				str[20] = fsec / 100000 + '0';
-				str[21] = fsec / 10000 % 10 + '0';
-				str[22] = fsec / 1000 % 10 + '0';
-				str[23] = fsec / 100 % 10 + '0';
-				str[24] = fsec / 10 % 10 + '0';
-				str[25] = fsec % 10 + '0';
-				str[26] = '\0';
+				str[j++] = ':';
+				str[j++] = tm->tm_sec / 10 + '0';
+				str[j++] = tm->tm_sec % 10 + '0';
+				str[j++] = '.';
+				str[j++] = fsec / 100000 + '0';
+				str[j++] = fsec / 10000 % 10 + '0';
+				str[j++] = fsec / 1000 % 10 + '0';
+				str[j++] = fsec / 100 % 10 + '0';
+				str[j++] = fsec / 10 % 10 + '0';
+				str[j++] = fsec % 10 + '0';
+				str[j] = '\0';
 #endif
 				TrimTrailingZeros(str);
 			}
@@ -3443,10 +3456,10 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, int *tzp, char **tzn, int style, 
 				sprintf(str + strlen(str), ":%02d", tm->tm_sec);
 #else
 				{
-				str[16] = ':';
-				str[17] = tm->tm_sec / 10 + '0';
-				str[18] = tm->tm_sec % 10 + '0';
-				str[19] = '\0';
+				str[j++] = ':';
+				str[j++] = tm->tm_sec / 10 + '0';
+				str[j++] = tm->tm_sec % 10 + '0';
+				str[j] = '\0';
 				}
 #endif
 
