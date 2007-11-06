@@ -95,5 +95,8 @@ GpPolicyStore(Oid tbloid, const GpPolicy *policy);
 void
 GpPolicyReplace(Oid tbloid, const GpPolicy *policy);
 
+void
+GpPolicyRemove(Oid tbloid);
+
 
 #endif /*_GP_POLICY_H_*/

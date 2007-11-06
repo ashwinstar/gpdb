@@ -350,3 +350,56 @@ GpPolicyReplace(Oid tbloid, const GpPolicy *policy)
      */
     heap_close(gp_policy_rel, NoLock);
 }                               /* GpPolicyReplace */
+
+
+/*
+ * Removes the policy of a table from the gp_distribution_policy table
+ *
+ * Calers must check that there actually *is* a policy for the relation.
+ */
+void
+GpPolicyRemove(Oid tbloid)
+{
+	Relation	gp_policy_rel;
+	HeapTuple	gp_policy_tuple = NULL;
+	ScanKeyData	key;
+	SysScanDesc	scan;
+
+
+    /*
+     * Open and lock the gp_distribution_policy catalog.
+     */
+	gp_policy_rel = heap_open(GpPolicyRelationId, RowExclusiveLock);
+
+	ScanKeyInit(&key,
+				Anum_gp_policy_localoid,
+                BTEqualStrategyNumber,
+                F_OIDEQ,
+                ObjectIdGetDatum(tbloid));
+
+	scan = systable_beginscan(gp_policy_rel, GpPolicyLocalOidIndexId, true,
+							  SnapshotNow, 1, &key);
+
+	gp_policy_tuple = systable_getnext(scan);
+	if(!HeapTupleIsValid(gp_policy_tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("distribution policy for relation \"%d\" does not exist",
+						tbloid)));
+
+	/* Delete the policy entry from the catalog. */
+	simple_heap_delete(gp_policy_rel, &gp_policy_tuple->t_self);
+
+	/* End the scan */
+	systable_endscan(scan);
+
+	/* update catalog indexes */
+	CatalogUpdateIndexes(gp_policy_rel, gp_policy_tuple);
+
+	/*
+     * Close the gp_distribution_policy relcache entry without unlocking.
+     * We have updated the catalog: consequently the lock must be held until
+     * end of transaction.
+     */
+    heap_close(gp_policy_rel, NoLock);
+}                               /* GpPolicyRemove */

@@ -1297,11 +1297,24 @@ void
 heap_drop_with_catalog(Oid relid)
 {
 	Relation	rel;
+	const struct GpPolicy *policy;
+	bool		removePolicy = false;
 
 	/*
 	 * Open and lock the relation.
 	 */
 	rel = relation_open(relid, AccessExclusiveLock);
+
+	/*
+ 	 * Get the distribution policy and figure out if it is to be removed.
+ 	 */
+	policy = rel->rd_cdbpolicy;
+	if (policy &&
+		policy->ptype == POLICYTYPE_PARTITIONED &&
+		Gp_role == GP_ROLE_DISPATCH &&
+		(rel->rd_rel->relkind == RELKIND_RELATION || 
+		 rel->rd_rel->relkind == RELKIND_EXTERNAL))
+		removePolicy = true;
 
 	/*
 	 * Schedule unlinking of the relation's physical file at commit.
@@ -1354,6 +1367,12 @@ heap_drop_with_catalog(Oid relid)
 	 * delete relation tuple
 	 */
 	DeleteRelationTuple(relid);
+
+	/*
+ 	 * delete distribution policy if present
+ 	 */
+	if (removePolicy)
+		GpPolicyRemove(relid);
 }
 
 
