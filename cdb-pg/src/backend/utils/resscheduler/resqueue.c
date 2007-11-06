@@ -1288,7 +1288,7 @@ ResPortalIncrementHashTableInit()
 
 
 /*
- * ResIncrementAdd -- Add a new incremnt element to the increment hash.
+ * ResIncrementAdd -- Add a new increment element to the increment hash.
  *
  * Notes:
  *	Return a pointer to where the new increment is stored, or NULL if we 
