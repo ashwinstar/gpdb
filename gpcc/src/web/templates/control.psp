@@ -3,23 +3,16 @@
 %>
 
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en"><head><title>Greenplum - World's Best Database for BI - Products Overview</title>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en"><head><title>Greenplum Database Control</title>
 
 
 
 <!-- base href="http://www.greenplum.com/" -->
 <meta name="Generator" content="CMS Made Simple - Copyright (C) 2004-6 Ted Kulp. All rights reserved.">
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-<meta name="description" content="Overview of Greenplum's Database Products">
+<meta name="description" content="Greenplum Database Control">
  
 <link rel="stylesheet" type="text/css" media="screen" href="http://www.greenplum.com/stylesheet.php?templateid=23&amp;mediatype=screen">
-
-<script src="http://www.google-analytics.com/urchin.js" type="text/javascript"></script>
-<script type="text/javascript">
-	_uacct = "UA-243452-1";
-	_udn="greenplum.com";
-	urchinTracker();
-</script>
 
 <script type="text/javascript" src="/static/js/jquery-1.2.1.min.js"></script>
 
@@ -125,20 +118,6 @@ $(function() {
    <div id="header">
            <a href="http://www.greenplum.com/index.php"><img src="http://www.greenplum.com/images/greenplum_logo.gif" alt="Greenplum - World's Best Database for BI" id="siteLogo"></a>
           
-<ul id="mainMenu">
-<li><a href="http://www.greenplum.com/index.php?page=products" id="current"> Products </a></li>
-<li><a href="http://www.greenplum.com/index.php?page=solutions"> Solutions </a></li>
-<li><a href="http://www.greenplum.com/index.php?page=partners"> Partners </a></li>
-<li><a href="http://www.greenplum.com/index.php?page=resource-center"> Resource Center </a></li>
-<li><a href="http://www.greenplum.com/index.php?page=news"> News </a></li>
-<li><a href="http://www.greenplum.com/index.php?page=about-us"> About Us </a></li>
-</ul>
-
-   </div>
-   <div id="banner">
-      <img src="http://www.greenplum.com/images/banner_top.gif">
-      <img src="http://www.greenplum.com/images/banner_Greenplum Database.jpg" alt="Greenplum Database">
-      <img src="http://www.greenplum.com/images/banner_bottom.gif">
    </div>
    <div id="content">
       <div id="submain">
@@ -191,26 +170,7 @@ $(function() {
 
             <p>&nbsp;</p>
             </td>
-            <td width="20">&nbsp;</td>
-            <td><div id="rightNav">
-<div id="spotHeader">Resources:</div>
-<div id="spotContent"><a href="http://www.greenplum.com/index.php?page=resource-center">Data Sheets</a></div>
-<div id="spotContent"><a href="http://www.greenplum.com/index.php?page=resource-center">White Papers</a></div>
-<div id="spotContent"><a href="http://www.greenplum.com/index.php?page=resource-center">Overview Guide</a></div>
-<div id="spotContent"><a href="http://www.greenplum.com/index.php?page=next-steps">Download Greenplum DB</a></div>
-<div id="spotContent"><a href="http://www.greenplum.com/index.php?page=our-customers">Customers</a></div>
-<div id="spotFooter">&nbsp;</div>
-</div><br>
-            <div id="rightNav">
-<div id="spotHeader">Information For:</div>
-<div id="spotContent"><a href="http://www.greenplum.com/index.php?page=industry-solutions">Manufacturing</a></div>
-<div id="spotContent"><a href="http://www.greenplum.com/index.php?page=industry-solutions">Retail</a></div>
-<div id="spotContent"><a href="http://www.greenplum.com/index.php?page=industry-solutions">Financial Services</a></div>
-<div id="spotContent"><a href="http://www.greenplum.com/index.php?page=industry-solutions">Transportation</a></div>
-<div id="spotContent"><a href="http://www.greenplum.com/index.php?page=industry-solutions">Media/Communications</a></div>
-<div id="spotContent"><a href="http://www.greenplum.com/index.php?page=industry-solutions">Government</a></div>
-<div id="spotFooter">&nbsp;</div>
-</div></td>
+
         </tr>
     </tbody>
 </table>
@@ -236,8 +196,6 @@ $(function() {
      </tr></tbody></table>
    </div>
 </div>
-<script type="text/javascript" src="https://lct.salesforce.com/sfga.js"></script>
-<script type="text/javascript">__sfga();</script>
 <!-- Generated in 0.09727 seconds by CMS Made Simple using 29 SQL queries -->
 <!-- CMS Made Simple - Released under the GPL - http://cmsmadesimple.org -->
 </div></body></html>
