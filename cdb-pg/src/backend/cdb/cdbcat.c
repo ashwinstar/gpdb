@@ -390,11 +390,11 @@ GpPolicyRemove(Oid tbloid)
 	/* Delete the policy entry from the catalog. */
 	simple_heap_delete(gp_policy_rel, &gp_policy_tuple->t_self);
 
-	/* End the scan */
-	systable_endscan(scan);
-
 	/* update catalog indexes */
 	CatalogUpdateIndexes(gp_policy_rel, gp_policy_tuple);
+
+	/* End the scan */
+	systable_endscan(scan);
 
 	/*
      * Close the gp_distribution_policy relcache entry without unlocking.
