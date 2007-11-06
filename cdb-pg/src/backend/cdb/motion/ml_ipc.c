@@ -643,7 +643,7 @@ conn_addhash(MotionConn *conn)
 			bin->conn->conn_info.srcPid == conn->conn_info.srcPid &&
 			bin->conn->conn_info.dstPid == conn->conn_info.dstPid)
 		{
-			elog(LOG, "conn_addhash(): duplicate ?! node %d route %d", conn->conn_info.motNodeId, conn->route);
+			elog(DEBUG5, "conn_addhash(): duplicate ?! node %d route %d", conn->conn_info.motNodeId, conn->route);
 			return;
 		}
 	}
@@ -1030,9 +1030,6 @@ SendEosToAMS(MotionLayerState *mlStates,
 	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 		elog(DEBUG3, "Interconnect seg%d slice%d sending end-of-stream to slice%d",
 			 Gp_segment, motNodeID, pEntry->recvSlice->sliceIndex);
-
-	elog(LOG, "Interconnect seg%d slice%d sending end-of-stream to slice%d",
-		 Gp_segment, motNodeID, pEntry->recvSlice->sliceIndex);
 
 	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
 		pEntry->sendingEos = true;
@@ -1919,7 +1916,7 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 						elog(DEBUG1, "state not waiting for setup node %d route %d state %d conn %p pktflags %d", pkt.motNodeId, conn->route, conn->state, conn, pkt.flags);
 				}
 				else
-					elog(LOG, "Got ack for unknown connection node %d command %d dstpid %d", pkt.motNodeId, pkt.commandCount, pkt.dstPid);
+					elog(DEBUG3, "Got ack for unknown connection node %d command %d dstpid %d", pkt.motNodeId, pkt.commandCount, pkt.dstPid);
 				/* if we have more available, don't wait at all --
 				 * we'll wait once we run out of acks */
 			} /* for (;;) */
@@ -2916,7 +2913,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 			}
 		}
 
-		elog(LOG, "TeardownUDP: %d pending stops", list_length(pendingStop));
+		elog(DEBUG3, "TeardownUDP: %d pending stops", list_length(pendingStop));
 
 		while ((cell = list_head(pendingStop)) != NULL)
 		{
@@ -2927,7 +2924,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 				/* remove from the list */
 				pendingStop = list_delete_ptr(pendingStop, conn);
 
-				elog(LOG, "TeardownUDP: %d pending stops", list_length(pendingStop));
+				elog(DEBUG3, "TeardownUDP: %d pending stops", list_length(pendingStop));
 				continue;
 			}
 
@@ -2944,7 +2941,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 				/* success, remove list (as above) */
 				pendingStop = list_delete_ptr(pendingStop, conn);
 
-				elog(LOG, "TeardownUDP: %d pending stops", list_length(pendingStop));
+				elog(DEBUG3, "TeardownUDP: %d pending stops", list_length(pendingStop));
 
 				continue;
 			}
@@ -4472,7 +4469,7 @@ handleStopMsgs(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 	int i=0;
 	bool res=false;
 
-	elog(LOG, "handleStopMsgs: node %d", motionId);
+	elog(DEBUG3, "handleStopMsgs: node %d", motionId);
 
 	while (i < pEntry->numConns)
 	{
@@ -4488,7 +4485,7 @@ handleStopMsgs(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 			conn->pBuff[conn->msgSize] = 'S';
 			conn->msgSize += 1;
 
-			elog(LOG, "handleStopMsgs: node %d route %d", motionId, i);
+			elog(DEBUG3, "handleStopMsgs: node %d route %d", motionId, i);
 			res = flushUDPBuffer(mlStates, transportStates, pEntry, conn, motionId);
 
 			conn->stillActive = false;
@@ -4684,7 +4681,7 @@ flushUDPBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 
 					if (!stopConn)
 					{
-						elog(LOG, "got ack with stop, but can't find connection!");
+						elog(DEBUG2, "got ack with stop, but can't find connection!");
 						continue;
 					}
 
@@ -4967,9 +4964,6 @@ doSendStopMessage(ChunkTransportState *transportStates, int16 motNodeID)
 		elog(DEBUG3, "Interconnect needs no more input from slice%d; notifying senders to stop.",
 			 motNodeID);
 
-	elog(LOG, "Interconnect needs no more input from slice%d; notifying senders to stop.",
-		 motNodeID);
-
 	/*
 	 * Note: we're only concerned with receivers here, so mirrors
 	 * don't matter
@@ -4987,7 +4981,7 @@ doSendStopMessage(ChunkTransportState *transportStates, int16 motNodeID)
 				if (conn->conn_info.flags & FLAGS_EOS)
 				{
 					/* we have a queued packet that has EOS in it. We've acked it, so we're done */
-					elog(LOG, "do sendstop: already have queued EOS packet, we're done. node %d route %d", motNodeID, i);
+					elog(DEBUG4, "do sendstop: already have queued EOS packet, we're done. node %d route %d", motNodeID, i);
 					Assert(conn->pBuff != NULL);
 					conn->stillActive = false;
 
@@ -5001,7 +4995,7 @@ doSendStopMessage(ChunkTransportState *transportStates, int16 motNodeID)
 					conn->stopRequested = true;
 					conn->conn_info.flags |= FLAGS_STOP;
 					sendAck(conn, true);
-					elog(LOG, "sent stop message. node %d route %d seq %d", motNodeID, i, conn->conn_info.seq);
+					elog(DEBUG4, "sent stop message. node %d route %d seq %d", motNodeID, i, conn->conn_info.seq);
 				}
 			}
 			pthread_mutex_unlock(&rx_thread_mutex);
