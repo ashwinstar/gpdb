@@ -61,7 +61,7 @@
 #include "utils/date.h"
 #include "utils/datetime.h"
 #include "utils/numeric.h"
-
+#include "cdb/cdbvars.h" /* CDB *//* gp_enable_partitioned_tables */
 
 /* Location tracking support --- simpler than bison's default */
 #define YYLLOC_DEFAULT(Current, Rhs, N) \
@@ -2755,6 +2755,17 @@ OptTabPartitionBy:
             OptTabPartitionSpec						
 				{
                         PartitionBy *n = makeNode(PartitionBy); 
+
+                        if (!gp_enable_partitioned_tables)
+                        {
+                            ereport(ERROR,
+                                    (errcode(ERRCODE_SYNTAX_ERROR),
+                                     errmsg("syntax error at or near \"%s\"",
+                                            $1)
+                                     ));
+                        }
+
+
                         n->partType = $3;
                         n->keys     = $5; 
                         n->partNum  = $7;
