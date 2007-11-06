@@ -245,7 +245,7 @@ static void net_accepted(gpcc_net_conn_t conn,
 	const char *array_name = config_get(gpma.cfg, "gpdb.name");
 	gpcc_event_t* ev = 0;
 	int is_bad_uri = 0;
-	int is_bad_array_name = ! (array_name && a && 0 == strcmp(a, array_name));
+	int is_bad_array_name = 0;
 
 	if (0 == strcmp("/gpcc/lscfg", uri->path)) {
 	    process_lscfg(conn);
@@ -258,18 +258,21 @@ static void net_accepted(gpcc_net_conn_t conn,
 	    ev = mkfts_event(ARRAY_INIT_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
 			     gpma.fts_cmdslot->cmdidx, from_peer->post, from_peer->postlen);
 	}
-	else if (! is_bad_array_name) {
-	    if (0 == strcmp("/gpcc/start", uri->path)) {
-		/* send startcmd_event to FTS cmdslot ? */
-		ev = mkfts_event(ARRAY_START_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
-				 gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+	else {
+	    is_bad_array_name = ! (array_name && a && 0 == strcmp(a, array_name));
+	    if (! is_bad_array_name) {
+		if (0 == strcmp("/gpcc/start", uri->path)) {
+		    /* send startcmd_event to FTS cmdslot ? */
+		    ev = mkfts_event(ARRAY_START_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+				     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		}
+		else if (0 == strcmp("/gpcc/stop", uri->path)) {
+		    ev = mkfts_event(ARRAY_STOP_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+				     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		}
+		else 
+		    is_bad_uri = 1;
 	    }
-	    else if (0 == strcmp("/gpcc/stop", uri->path)) {
-		ev = mkfts_event(ARRAY_STOP_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
-				 gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-	    }
-	    else 
-		is_bad_uri = 1;
 	}
 
 	if (ev) {
