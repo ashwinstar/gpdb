@@ -83,6 +83,7 @@ static apr_status_t a_array_start_gpconf(gpcc_event_t *ev, void *_cmdslot)
     int i, e, cnt;
     gpcc_event_t *evt;
     char line[1024], *last;
+    apr_proc_t proc;
 
     seginfo = gpma.fts_cmdslot->u.fts.seginfo;
     if (0 != (e = gpcc_pg_reset_invalid_segment(seginfo->host, seginfo->port, cmdslot->pool))) {
@@ -92,8 +93,8 @@ static apr_status_t a_array_start_gpconf(gpcc_event_t *ev, void *_cmdslot)
 	return 0;
     }
     
-    /* TODO: check for valid segment */
-    if ((e = gpcc_proc_psql(&cmdslot->u.array_start.proc, seginfo->host, seginfo->port, "template1", 
+    /* check for valid segment */
+    if ((e = gpcc_proc_psql(&proc, seginfo->host, seginfo->port, "template1", 
 			    "select count(*) from gp_configuration where valid='t' and content <> -1", 
 			    1, 1, cmdslot->pool)) != 0) {
 	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
@@ -101,7 +102,7 @@ static apr_status_t a_array_start_gpconf(gpcc_event_t *ev, void *_cmdslot)
 	return 0;
     }
     
-    if ((e = apr_file_gets(line, sizeof(line), cmdslot->u.array_start.proc.out) != 0)) {
+    if ((e = apr_file_gets(line, sizeof(line), proc.out) != 0)) {
 	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
 	return 0;
@@ -110,7 +111,7 @@ static apr_status_t a_array_start_gpconf(gpcc_event_t *ev, void *_cmdslot)
     cmdslot->u.array_start.nvalid = cnt = strtol(line, 0, 0);
     cmdslot->u.array_start.gpconf = apr_palloc(cmdslot->pool, sizeof(*cmdslot->u.array_start.gpconf) * cnt);
 
-    if ((e = gpcc_proc_psql(&cmdslot->u.array_start.proc, seginfo->host, seginfo->port, "template1", 
+    if ((e = gpcc_proc_psql(&proc, seginfo->host, seginfo->port, "template1", 
 			    "select * from gp_configuration where valid='t' and content <> -1", 
 			    1, 1, cmdslot->pool)) != 0) {
 	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
@@ -118,7 +119,7 @@ static apr_status_t a_array_start_gpconf(gpcc_event_t *ev, void *_cmdslot)
 	return 0;
     }
 
-    for (i = 0; i < cnt && apr_file_gets(line, sizeof(line), cmdslot->u.array_start.proc.out) == 0 ; i++) {
+    for (i = 0; i < cnt && apr_file_gets(line, sizeof(line), proc.out) == 0 ; i++) {
 	char *content, *definedprimary, *dbid, *isprimary, *valid, *hostname, *port, *datadir;
 	
 	content = apr_strtok(line, "|", &last);

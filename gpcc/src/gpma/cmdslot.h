@@ -131,7 +131,6 @@ struct cmdslot_t {
 	struct {
 	    /* gpcc_net_conn_t conn;  if we need to send reply over http */
 	    apr_uint32_t parent_cmdidx;
-	    apr_proc_t proc;
 	    struct {
 		int content;
 		char *definedprimary;
