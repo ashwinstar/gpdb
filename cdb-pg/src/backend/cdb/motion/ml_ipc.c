@@ -1684,7 +1684,7 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 	ListCell   *cell;
 	Slice	   *mySlice;
 	Slice	   *aSlice;
-    MotionConn *conn;
+    MotionConn *conn=NULL;
 	int			incoming_count = 0;
 	int			outgoing_count = 0;
 	int			expectedTotalIncoming = 0;
