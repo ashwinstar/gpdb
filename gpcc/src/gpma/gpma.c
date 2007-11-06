@@ -747,6 +747,7 @@ void load_config(void)
 	gpma.guid = config_get(gpma.cfg, "sys.guid");
 	if (! gpma.guid) 
 	    gpcc_fatal(FLINE, "config file does not specify sys.guid");
+	gpma.guid = apr_pstrdup(gpma.pool, gpma.guid);
 
 	/* check if config is legit */
 	verify_config();
