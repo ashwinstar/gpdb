@@ -3060,6 +3060,8 @@ static List *make_partition_rules(ParseState *pstate,
 		char			 exprBuf[10000];
 		StringInfoData   sid;
 		int colcnt = 0;
+		Node			*pHashArgs = NULL;
+		Node			*pExpr = NULL;
 
 		exprBuf[0] = '\0';
 
@@ -3093,7 +3095,29 @@ static List *make_partition_rules(ParseState *pstate,
 
 			if (colcnt)
 			{
-				appendStringInfo(&sid, ", ");
+				ColumnRef *pCRef = NULL;
+				Node *pAppOp = NULL;
+
+				pAppOp =
+						(Node *) makeSimpleA_Expr(AEXPR_OP, "||", 
+												  (Node *)pCRef, 
+												  pHashArgs, -1);
+
+				appendStringInfo(&sid, "||");
+
+				pHashArgs = pAppOp;
+			}
+			else
+			{
+				ColumnRef *pCRef;
+
+				pCRef = makeNode(ColumnRef);
+
+				pCRef->location = -1;
+
+				pCRef->fields = list_make1(pCol);
+
+				pHashArgs = (Node *)pCRef;
 			}
 
 			appendStringInfo(&sid, "%s", exprBuf);
@@ -3105,26 +3129,78 @@ static List *make_partition_rules(ParseState *pstate,
 		   current partition number is parNumId
 		*/
 
+		/* modulus arithmetic is 0 to N-1, so go to (partNumId-1).
+		 * Also, hashtext can return a negative, so fix it up */
+
 		snprintf(exprBuf, sizeof(exprBuf), 
-				 "magic_hash(%d, %s) = %d",
-				 maxPartNum,
+/*				 "magic_hash(%d, %s) = %d", */
+/* double % for % literal - ((hash(cols)%max + max) % max) */
+				 "(hashtext(%s)%%%d + %d)%%%d = %d",
 				 sid.data,
-				 partNumId
+				 maxPartNum,
+				 maxPartNum,
+				 maxPartNum,
+				 (partNumId-1)
 				);
 
 		pfree(sid.data);
+
+		{
+			Node *pPlusOp  = NULL;
+			Node *pModOp  = NULL;
+			A_Const *pModBy  = NULL;
+			A_Const *pPartID = NULL;
+			FuncCall *pFC = makeNode(FuncCall);
+
+			pFC->funcname = list_make1(makeString("hashtext"));
+			pFC->args = list_make1(pHashArgs);
+			pFC->agg_star = FALSE;
+			pFC->agg_distinct = FALSE;
+			pFC->location = -1;
+			pFC->over = NULL;
+
+			pModBy  = makeNode(A_Const);
+			pModBy->val.type = T_Integer;
+			pModBy->val.val.ival = maxPartNum;
+
+			pPartID  = makeNode(A_Const);
+			pPartID->val.type = T_Integer;
+			pPartID->val.val.ival = (partNumId - 1);
+
+			pModOp = (Node *)makeSimpleA_Expr(AEXPR_OP, "%", 
+									  (Node *)pFC, (Node *)pModBy, -1);
+
+			pPlusOp = (Node *)makeSimpleA_Expr(AEXPR_OP, "+", 
+									  (Node *)pModOp, (Node *)pModBy, -1);
+
+			pModOp = (Node *)makeSimpleA_Expr(AEXPR_OP, "%", 
+									  (Node *)pPlusOp, (Node *)pModBy, -1);
+
+			pExpr = (Node *)makeSimpleA_Expr(AEXPR_OP, "=", 
+									 pModOp, (Node *)pPartID, -1);
+
+		}
 
 		pRule = make_prule_catalog(pstate,
 								   cxt, stmt, 
 								   partitionBy, pElem,
 								   at_depth, child_name_str, 
 								   exprBuf,
-								   /* XXX XXX XXX XXX */
-								   NULL);
+								   pExpr);
 
+		/* first the INSERT statement, then the CHECK constraint, then
+		 * the RULE statement 
+		 */
 		allRules = list_make1(pRule);
-								/* XXX XXX XXX XXX */
-		allRules = lappend(allRules, NULL); 
+		allRules = lappend(allRules, pExpr); 
+
+		pRule = make_prule_rulestmt(pstate,
+									cxt, stmt, 
+									partitionBy, pElem,
+									at_depth, child_name_str, 
+									exprBuf,
+									pExpr);
+		allRules = lappend(allRules, pRule);
 
 
 	} /* end if HASH */
