@@ -10,14 +10,13 @@ copy nodetest from stdin delimiter '|';
 select testname,
 gp_str302node2str(oldnode) = newnode as upgrade,
 gp_str312node2str(newnode) = oldnode as downgrade
-from nodetest;
+from nodetest order by testname;
   testname   | upgrade | downgrade 
 -------------+---------+-----------
- int4        | t       | t
- int8        | t       | t
  float4      | t       | t
  float8      | t       | t
+ int8        | t       | t
  timestamp   | t       | t
  timestamptz | t       | t
-(6 rows)
+(5 rows)
 
