@@ -4745,7 +4745,7 @@ flushUDPBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 							continue;
 						}
 						conn->conn_info.seq++;
-#if 1
+#if 0
 						elog(LOG, "got good ack with seq %d node %d route %d peer %d", pkt.seq, pkt.motNodeId, conn->route, pkt.dstPid);
 #endif
 						break;
