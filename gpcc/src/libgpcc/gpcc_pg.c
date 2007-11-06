@@ -232,12 +232,14 @@ APR_DECLARE(apr_status_t) gpcc_pg_reset_invalid_segment(const char *hostname, in
 	return e;
     }
 
-    if (strcmp(line, "continue") != 0) {
+
+    if (strstr(line, "continue") != line) {
 	return 0;
     }
     
 
-    if ((e = gpcc_proc_psql(&proc, hostname, master_port, DEFAULT_GP_DBNAME, "select count(*) from gp_configuration where valid='f' and content <> -1", 1, 1, p)) != 0) {
+    if ((e = gpcc_proc_psql(&proc, hostname, master_port, DEFAULT_GP_DBNAME, 
+			    "select count(*) from gp_configuration where valid='f' and content <> -1", 1, 1, p)) != 0) {
 	gpcc_log_error("psql -c 'select count(*) from gp_configuration...' error");
 	return e;
     }
@@ -250,17 +252,20 @@ APR_DECLARE(apr_status_t) gpcc_pg_reset_invalid_segment(const char *hostname, in
 
     if (nfail > 0) {
 
-	if ((e = gpcc_proc_psql(&proc, hostname, master_port, DEFAULT_GP_DBNAME, "update gp_configuration set valid='t' where valid='f' and content <> -1", 1, 1, p)) != 0) {
+	if ((e = gpcc_proc_psql(&proc, hostname, master_port, DEFAULT_GP_DBNAME, 
+				"update gp_configuration set valid='t' where valid='f' and content <> -1", 1, 1, p)) != 0) {
 	    gpcc_log_error("psql -c 'update gp_configuration...(1)' error");
 	    return e;
 	}
 
-	if ((e = gpcc_proc_psql(&proc, hostname, master_port, DEFAULT_GP_DBNAME, "update gp_configuration set isprimary='t' where definedprimary='t' and isprimary='f' and content<>-1", 1, 1, p)) != 0) {
+	if ((e = gpcc_proc_psql(&proc, hostname, master_port, DEFAULT_GP_DBNAME, 
+				"update gp_configuration set isprimary='t' where definedprimary='t' and isprimary='f' and content<>-1", 1, 1, p)) != 0) {
 	    gpcc_log_error("psql -c 'update gp_configuration...(2)' error");
 	    return e;
 	}
 
-	if ((e = gpcc_proc_psql(&proc, hostname, master_port, DEFAULT_GP_DBNAME, "update gp_configuration set isprimary='f' where definedprimary='f' and isprimary='t' and content<>-1", 1, 1, p)) != 0) {
+	if ((e = gpcc_proc_psql(&proc, hostname, master_port, DEFAULT_GP_DBNAME, 
+				"update gp_configuration set isprimary='f' where definedprimary='f' and isprimary='t' and content<>-1", 1, 1, p)) != 0) {
 	    gpcc_log_error("psql -c 'update gp_configuration...(3)' error");
 	    return e;
 	}
