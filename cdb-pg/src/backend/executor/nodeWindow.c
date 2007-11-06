@@ -6381,6 +6381,76 @@ lead_xid(PG_FUNCTION_ARGS)
 }
 
 Datum
+lead_any(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_bytea(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_bit(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_generic(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lead_box(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, true, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
 lag_bool(PG_FUNCTION_ARGS)
 {   
     bool isnull;
@@ -6814,6 +6884,76 @@ lag_xid(PG_FUNCTION_ARGS)
     PG_RETURN_DATUM(d);
 }
 
+Datum
+lag_any(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, false, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lag_bytea(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, false, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lag_box(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, false, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lag_bit(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, false, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
+Datum
+lag_generic(PG_FUNCTION_ARGS)
+{   
+    bool isnull;
+    Datum d;
+    
+    d = lead_lag_internal(fcinfo, false, &isnull);
+    
+    if (isnull)
+        PG_RETURN_NULL();
+
+    PG_RETURN_DATUM(d);
+}
+
 static Datum
 last_value_internal(WindowRefExprState *wrxstate, bool *isnull)
 {
@@ -6894,6 +7034,21 @@ last_value_internal(WindowRefExprState *wrxstate, bool *isnull)
 }
 
 Datum
+last_value_generic(PG_FUNCTION_ARGS)
+{
+	Datum d;
+	bool isnull = false;
+	
+	d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+							&isnull);
+	
+	if (isnull)
+	   PG_RETURN_NULL();
+
+	return d;
+}
+
+	Datum
 last_value_smallint(PG_FUNCTION_ARGS)
 {
 	Datum d;
@@ -7457,6 +7612,21 @@ first_value_internal(WindowRefExprState *wrxstate, bool *isnull)
 
 Datum
 first_value_bool(PG_FUNCTION_ARGS)
+{
+    Datum d;
+    bool isnull = false;
+
+    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+                            &isnull);
+
+    if (isnull)
+       PG_RETURN_NULL();
+
+    return d;
+}
+
+Datum
+first_value_generic(PG_FUNCTION_ARGS)
 {
     Datum d;
     bool isnull = false;

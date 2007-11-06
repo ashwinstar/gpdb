@@ -1948,9 +1948,21 @@ SELECT sale.pn,sale.cn,sale.prc,
 select p.proname, p.proargtypes from pg_window w, pg_proc p, pg_proc p2 where w.winfunc = p.oid and w.winfnoid = p2.oid and p2.proname = 'lead' order by 1,2;
      proname      |    proargtypes    
 ------------------+-------------------
+ lead_any         | 2281 2277
+ lead_any         | 2281 2277 20
+ lead_any         | 2281 2277 20 2277
+ lead_bit         | 2281 1560
+ lead_bit         | 2281 1560 20
+ lead_bit         | 2281 1560 20 1560
  lead_bool        | 2281 16
  lead_bool        | 2281 16 20
  lead_bool        | 2281 16 20 16
+ lead_box         | 2281 603
+ lead_box         | 2281 603 20
+ lead_box         | 2281 603 20 603
+ lead_bytea       | 2281 17
+ lead_bytea       | 2281 17 20
+ lead_bytea       | 2281 17 20 17
  lead_char        | 2281 18
  lead_char        | 2281 18 20
  lead_char        | 2281 18 20 18
@@ -2041,7 +2053,7 @@ select p.proname, p.proargtypes from pg_window w, pg_proc p, pg_proc p2 where w.
  lead_xid         | 2281 28
  lead_xid         | 2281 28 20
  lead_xid         | 2281 28 20 28
-(93 rows)
+(105 rows)
 
 select lead(cn) from sale;
 ERROR:  function lead(integer) may only be called as a window function  (seg0 slice1 localhost:10001 pid=14114)
@@ -2117,9 +2129,21 @@ order by 1, 2, 3;
 select p.proname, p.proargtypes from pg_window w, pg_proc p, pg_proc p2 where w.winfunc = p.oid and w.winfnoid = p2.oid and p2.proname = 'lag' order by 1,2;
      proname     |    proargtypes    
 -----------------+-------------------
+ lag_any         | 2281 2277
+ lag_any         | 2281 2277 20
+ lag_any         | 2281 2277 20 2277
+ lag_bit         | 2281 1560
+ lag_bit         | 2281 1560 20
+ lag_bit         | 2281 1560 20 1560
  lag_bool        | 2281 16
  lag_bool        | 2281 16 20
  lag_bool        | 2281 16 20 16
+ lag_box         | 2281 603
+ lag_box         | 2281 603 20
+ lag_box         | 2281 603 20 603
+ lag_bytea       | 2281 17
+ lag_bytea       | 2281 17 20
+ lag_bytea       | 2281 17 20 17
  lag_char        | 2281 18
  lag_char        | 2281 18 20
  lag_char        | 2281 18 20 18
@@ -2210,7 +2234,7 @@ select p.proname, p.proargtypes from pg_window w, pg_proc p, pg_proc p2 where w.
  lag_xid         | 2281 28
  lag_xid         | 2281 28 20
  lag_xid         | 2281 28 20 28
-(93 rows)
+(105 rows)
 
 -- actual LAG tests
 select cn, cname, lag(cname, 2, 'undefined') over (order by cn) from customer;
@@ -2405,6 +2429,52 @@ unbounded following) as fv from sale;
   4 | 700 | 1600
   4 | 800 | 1600
 (12 rows)
+
+-- Test obscure types
+create table typetest (i int[], j box, k bit, l bytea, m text[]);
+insert into typetest values('{1, 2, 3}', '(1, 2), (3, 4)', '1', E'\012\001', 
+'{foo, bar}');
+insert into typetest values('{4, 5, 6}', '(3, 4), (6, 7)', '0', E'\002', 
+'{bar, baz}');
+select i, lead(i, 1, '{1}') over (w), 
+lead(j, 1, '(0, 0), (1, 1)') over (w), lead(k, 1) over(w),
+lead(l, 1, E'\015') over (w), lead(m, 1, '{test}') over (w)
+from typetest window w as (order by i);
+    i    |  lead   |    lead     | lead | lead |   lead    
+---------+---------+-------------+------+------+-----------
+ {1,2,3} | {4,5,6} | (6,7),(3,4) | 0    | \002 | {bar,baz}
+ {4,5,6} | {1}     | (1,1),(0,0) |      | \015 | {test}
+(2 rows)
+
+select i, lag(i, 1, '{1}') over (w), 
+lag(j, 1, '(0, 0), (1, 1)') over (w), lag(k, 1) over(w),
+lag(l, 1, E'\015') over (w), lag(m, 1, '{test}') over (w)
+from typetest window w as (order by i);
+    i    |   lag   |     lag     | lag |   lag    |    lag    
+---------+---------+-------------+-----+----------+-----------
+ {1,2,3} | {1}     | (1,1),(0,0) |     | \015     | {test}
+ {4,5,6} | {1,2,3} | (3,4),(1,2) | 1   | \012\001 | {foo,bar}
+(2 rows)
+
+select i, first_value(i) over (w), 
+first_value(j) over (w), first_value(k) over(w),
+first_value(l) over (w), first_value(m) over (w)
+from typetest window w as (order by i rows 1 preceding);
+    i    | first_value | first_value | first_value | first_value | first_value 
+---------+-------------+-------------+-------------+-------------+-------------
+ {1,2,3} | {1,2,3}     | (3,4),(1,2) | 1           | \012\001    | {foo,bar}
+ {4,5,6} | {1,2,3}     | (3,4),(1,2) | 1           | \012\001    | {foo,bar}
+(2 rows)
+
+select i, last_value(i) over (w), 
+last_value(j) over (w), last_value(k) over(w),
+last_value(l) over (w), last_value(m) over (w)
+from typetest window w as (order by i rows between current row and 1 following);
+    i    | last_value | last_value  | last_value | last_value | last_value 
+---------+------------+-------------+------------+------------+------------
+ {1,2,3} | {4,5,6}    | (6,7),(3,4) | 0          | \002       | {bar,baz}
+ {4,5,6} | {4,5,6}    | (6,7),(3,4) | 0          | \002       | {bar,baz}
+(2 rows)
 
 -- MPP-1881
 SELECT sale.pn,

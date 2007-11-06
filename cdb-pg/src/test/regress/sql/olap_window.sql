@@ -671,6 +671,34 @@ SELECT sale.cn,sale.pn,
 last_VALUE(sale.pn+sale.pn) OVER(order by sale.cn range between current row and
 unbounded following) as fv from sale;
 
+-- Test obscure types
+create table typetest (i int[], j box, k bit, l bytea, m text[]);
+insert into typetest values('{1, 2, 3}', '(1, 2), (3, 4)', '1', E'\012\001', 
+'{foo, bar}');
+insert into typetest values('{4, 5, 6}', '(3, 4), (6, 7)', '0', E'\002', 
+'{bar, baz}');
+
+select i, lead(i, 1, '{1}') over (w), 
+lead(j, 1, '(0, 0), (1, 1)') over (w), lead(k, 1) over(w),
+lead(l, 1, E'\015') over (w), lead(m, 1, '{test}') over (w)
+from typetest window w as (order by i);
+
+select i, lag(i, 1, '{1}') over (w), 
+lag(j, 1, '(0, 0), (1, 1)') over (w), lag(k, 1) over(w),
+lag(l, 1, E'\015') over (w), lag(m, 1, '{test}') over (w)
+from typetest window w as (order by i);
+
+select i, first_value(i) over (w), 
+first_value(j) over (w), first_value(k) over(w),
+first_value(l) over (w), first_value(m) over (w)
+from typetest window w as (order by i rows 1 preceding);
+
+select i, last_value(i) over (w), 
+last_value(j) over (w), last_value(k) over(w),
+last_value(l) over (w), last_value(m) over (w)
+from typetest window w as (order by i rows between current row and 1 following);
+
+
 -- MPP-1881
 SELECT sale.pn,
 COUNT(pn) OVER(order by sale.pn asc range between unbounded preceding and unbounded following) 
