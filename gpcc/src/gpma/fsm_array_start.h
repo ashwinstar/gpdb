@@ -186,9 +186,8 @@ static apr_status_t a_array_start_qes(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     cmdslot_t *p;
     seginfo_t *seginfo = gpma.fts_cmdslot->u.fts.seginfo;
-    int nseginfo = gpma.fts_cmdslot->u.fts.nseginfo;
     gpcc_event_t *evt;
-    int i, j;
+    int i;
 
 
     p = cmdslot_alloc("START_QES", FTS_START_CMDSTATE);
@@ -198,16 +197,8 @@ static apr_status_t a_array_start_qes(gpcc_event_t *ev, void *_cmdslot)
     p->u.start.req = apr_palloc(p->pool, sizeof(*p->u.start.req) * p->u.start.ntotal);
 
     for (i = 0 ; i < p->u.start.ntotal ; i++) {
-	seginfo_t *info;
 	int dbid = cmdslot->u.array_start.gpconf[i].dbid;
-	for (j = 0 ; seginfo[j].dbid != dbid && j < nseginfo ; j++) ;
-	if (j >= nseginfo) {
-	    gpcc_warning(FLINE, "gpconf and seginfo not match for dbid=%d", dbid);
-	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-	    gpcc_evqueue_put(gpma.evq, evt);
-	    return 0;
-	}
-	info = &seginfo[j];
+	const seginfo_t *info = &seginfo[dbid-1];
 	p->u.start.req[i].node = apr_pstrdup(p->pool, info->ha);
 	p->u.start.req[i].unit = apr_pstrdup(p->pool, info->name);
 	p->u.start.req[i].mode = "normal";
