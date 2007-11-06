@@ -33,24 +33,24 @@ typedef struct LogicalTapeSet LogicalTapeSet;
 extern LogicalTape *LogicalTapeCreate(LogicalTapeSet *lts, LogicalTape *lt); 
 extern LogicalTapeSet *LogicalTapeSetCreate(int ntapes);
 extern LogicalTapeSet *LogicalTapeSetCreate_ReaderWriter(const char* rwfile_prefix, int ntapes); 
+extern LogicalTapeSet *LoadLogicalTapeSetState(BufFile *pfile, const char* rwfile_prefix);
+
 extern void LogicalTapeSetClose(LogicalTapeSet *lts);
 extern void LogicalTapeSetForgetFreeSpace(LogicalTapeSet *lts);
 
-extern size_t LogicalTapeRead(LogicalTapeSet *lts, int tapenum, void *ptr, size_t size);
-extern void LogicalTapeWrite(LogicalTapeSet *lts, int tapenum, void *ptr, size_t size);
-
-extern void LogicalTapeRewind(LogicalTapeSet *lts, int tapenum, bool forWrite);
-
-extern void LogicalTapeFreeze(LogicalTapeSet *lts, int tapenum);
-extern void LogicalTapeFlush(LogicalTapeSet *lts, int tapenum, BufFile *pstatefile);
-extern LogicalTapeSet *LoadLogicalTapeSetState(BufFile *pfile, const char* rwfile_prefix);
-
-extern bool LogicalTapeBackspace(LogicalTapeSet *lts, int tapenum, size_t size);
-extern bool LogicalTapeSeek(LogicalTapeSet *lts, int tapenum, LogicalTapePos *pos); 
-extern void LogicalTapeTell(LogicalTapeSet *lts, int tapenum, LogicalTapePos *pos);
+extern size_t LogicalTapeRead(LogicalTapeSet *lts, LogicalTape *lt, void *ptr, size_t size);
+extern void LogicalTapeWrite(LogicalTapeSet *lts, LogicalTape *lt, void *ptr, size_t size);
+extern void LogicalTapeFlush(LogicalTapeSet *lts, LogicalTape *lt, BufFile *pstatefile);
+extern void LogicalTapeRewind(LogicalTapeSet *lts, LogicalTape *lt, bool forWrite);
+extern void LogicalTapeFreeze(LogicalTapeSet *lts, LogicalTape *lt);
+extern bool LogicalTapeBackspace(LogicalTapeSet *lts, LogicalTape *lt, size_t size);
+extern bool LogicalTapeSeek(LogicalTapeSet *lts, LogicalTape *lt, LogicalTapePos *pos); 
+extern void LogicalTapeTell(LogicalTapeSet *lts, LogicalTape *lt, LogicalTapePos *pos);
 
 extern long LogicalTapeSetBlocks(LogicalTapeSet *lts);
-
 extern void LogicalTapeSetForgetFreeSpace(LogicalTapeSet *lts);
+
+extern LogicalTape *LogicalTapeSetGetTape(LogicalTapeSet *lts, int tapenum);
+extern LogicalTape *LogicalTapeSetDuplicateTape(LogicalTapeSet *lts, LogicalTape *lt);
 
 #endif   /* LOGTAPE_H */

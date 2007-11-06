@@ -379,15 +379,11 @@ LogicalTapeSetForgetFreeSpace(LogicalTapeSet *lts)
  * There are no error returns; we ereport() on failure.
  */
 void
-LogicalTapeWrite(LogicalTapeSet *lts, int tapenum,
-				 void *ptr, size_t size)
+LogicalTapeWrite(LogicalTapeSet *lts, LogicalTape *lt, void *ptr, size_t size)
 {
-	LogicalTape *lt;
 	long        tmpBlkNum;
 	size_t		nthistime;
 
-	Assert(tapenum >= 0 && tapenum < lts->nTapes);
-	lt = &lts->tapes[tapenum];
 	Assert(lt->writing);
 
 	if(lt->firstBlkNum == -1)
@@ -437,12 +433,8 @@ LogicalTapeWrite(LogicalTapeSet *lts, int tapenum,
  * opposite of the previous tape state.
  */
 void 
-LogicalTapeRewind(LogicalTapeSet *lts, int tapenum, bool forWrite)
+LogicalTapeRewind(LogicalTapeSet *lts, LogicalTape *lt, bool forWrite)
 {
-	LogicalTape *lt;
-
-	Assert(tapenum >= 0 && tapenum < lts->nTapes);
-	lt = &lts->tapes[tapenum];
 	AssertEquivalent(lt->firstBlkNum==-1, lt->currPos.blkNum == -1);
 
 	if (!forWrite)
@@ -494,14 +486,10 @@ LogicalTapeRewind(LogicalTapeSet *lts, int tapenum, bool forWrite)
  * Early EOF is indicated by return value less than #bytes requested.
  */
 size_t
-LogicalTapeRead(LogicalTapeSet *lts, int tapenum, void *ptr, size_t size)
+LogicalTapeRead(LogicalTapeSet *lts, LogicalTape *lt, void *ptr, size_t size)
 {
-	LogicalTape *lt;
 	size_t		nread = 0;
 	size_t		nthistime;
-
-	Assert(tapenum >= 0 && tapenum < lts->nTapes);
-	lt = &lts->tapes[tapenum];
 
 	Assert(!lt->writing);
 
@@ -565,16 +553,11 @@ LogicalTapeRead(LogicalTapeSet *lts, int tapenum, void *ptr, size_t size)
  * for-read call is OK but not necessary.
  */
 void
-LogicalTapeFreeze(LogicalTapeSet *lts, int tapenum)
+LogicalTapeFreeze(LogicalTapeSet *lts, LogicalTape *lt) 
 {
-	LogicalTape *lt;
-
-	Assert(tapenum >= 0 && tapenum < lts->nTapes);
-	lt = &lts->tapes[tapenum];
-
 	Assert(lt->writing);
 
-	LogicalTapeRewind(lts, tapenum, false); 
+	LogicalTapeRewind(lts, lt, false); 
 	lt->writing = false;
 	lt->frozen = true;
 }
@@ -582,14 +565,9 @@ LogicalTapeFreeze(LogicalTapeSet *lts, int tapenum)
 /* Flush the destination tape so the logtapeset can be used by shareinput.
  * We assume the tape has been frozen before this call 
  */
-void LogicalTapeFlush(LogicalTapeSet *lts, int ntape, BufFile *pstatefile)
+void LogicalTapeFlush(LogicalTapeSet *lts, LogicalTape *lt, BufFile *pstatefile)
 {
-	LogicalTape *lt;
-
 	Assert(lts && lts->pfile);
-	Assert(ntape >= 0 && ntape < lts->nTapes);
-
-	lt = &lts->tapes[ntape];
 	Assert(lt->frozen);
 
 	BufFileFlush(lts->pfile);
@@ -608,15 +586,9 @@ void LogicalTapeFlush(LogicalTapeSet *lts, int ntape, BufFile *pstatefile)
  * data before the current point (in which case there's no state change).
  */
 bool
-LogicalTapeBackspace(LogicalTapeSet *lts, int tapenum, size_t size)
+LogicalTapeBackspace(LogicalTapeSet *lts, LogicalTape *lt, size_t size)
 {
-	LogicalTape *lt;
-
-	Assert(tapenum >= 0 && tapenum < lts->nTapes);
-	lt = &lts->tapes[tapenum];
-
-	Assert(lt->frozen);
-
+	Assert(lt && lt->frozen);
 	while(size > 0)
 	{
 		if(lt->currPos.blkNum == -1)
@@ -641,6 +613,13 @@ LogicalTapeBackspace(LogicalTapeSet *lts, int tapenum, size_t size)
 	return true;
 }
 
+/* Get a logical tape given tape number */
+LogicalTape *LogicalTapeSetGetTape(LogicalTapeSet *lts, int tapenum)
+{
+	Assert(tapenum >= 0 && tapenum < lts->nTapes);
+	return &lts->tapes[tapenum];
+}
+
 /*
  * Seek to an arbitrary position in a logical tape.
  *
@@ -649,13 +628,8 @@ LogicalTapeBackspace(LogicalTapeSet *lts, int tapenum, size_t size)
  * valid postion on this tape.  The return value is ALWAYS true.
  */
 bool
-LogicalTapeSeek(LogicalTapeSet *lts, int tapenum, LogicalTapePos *pos)
+LogicalTapeSeek(LogicalTapeSet *lts, LogicalTape *lt, LogicalTapePos *pos)
 {
-	LogicalTape *lt;
-
-	Assert(tapenum >= 0 && tapenum < lts->nTapes);
-	lt = &lts->tapes[tapenum];
-
 	Assert(lt->frozen);
 	Assert(lt->firstBlkNum != -1L);
 
@@ -672,13 +646,8 @@ LogicalTapeSeek(LogicalTapeSet *lts, int tapenum, LogicalTapePos *pos)
  * Obtain current position in a form suitable for a later LogicalTapeSeek.
  */
 void
-LogicalTapeTell(LogicalTapeSet *lts, int tapenum, LogicalTapePos *pos)
+LogicalTapeTell(LogicalTapeSet *lts, LogicalTape *lt, LogicalTapePos *pos)
 {
-	LogicalTape *lt;
-
-	Assert(tapenum >= 0 && tapenum < lts->nTapes);
-	lt = &lts->tapes[tapenum];
-
 	Assert(lt->frozen);
 	pos->blkNum = lt->currPos.blkNum;
 	pos->offset = lt->currPos.offset;
@@ -691,4 +660,14 @@ long
 LogicalTapeSetBlocks(LogicalTapeSet *lts)
 {
 	return lts->nFileBlocks;
+}
+
+LogicalTape *LogicalTapeSetDuplicateTape(LogicalTapeSet *lts, LogicalTape *lt)
+{
+	LogicalTape *dup = (LogicalTape *) palloc(sizeof(LogicalTape));
+
+	Assert(lt->frozen);
+	memcpy(dup, lt, sizeof(LogicalTape));
+
+	return dup;
 }
