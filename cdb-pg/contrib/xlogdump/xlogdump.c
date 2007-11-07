@@ -268,7 +268,7 @@ restart:
 
 	if (record->xl_len == 0)
 	{
-		printf("ReadRecord: record with zero len at %u/%08X\n",
+		printf("ReadRecord: record with zero len at %X/%X\n",
 			   curRecPtr.xlogid, curRecPtr.xrecoff);
 		/* Attempt to recover on new page, but give up after a few... */
 		logRecOff = 0;
@@ -728,7 +728,7 @@ dumpXLogRecord(XLogRecord *record)
 	if(strcmp("ALL  ", rmname) && pg_strcasecmp(RM_names[record->xl_rmid], rmname))
 		return;
 
-	printf("%u/%08X: prv %u/%08X",
+	printf("%X/%X: prv %X/%X",
 		   curRecPtr.xlogid, curRecPtr.xrecoff,
 		   record->xl_prev.xlogid, record->xl_prev.xrecoff);
 
@@ -770,7 +770,7 @@ dumpXLogRecord(XLogRecord *record)
 			{
 				CheckPoint	*checkpoint = (CheckPoint*) XLogRecGetData(record);
 				if(!hideTimestamps)
-					printf("checkpoint: redo %u/%08X; undo %u/%08X; tli %u; nextxid %u;\n"
+					printf("checkpoint: redo %X/%X; undo %X/%X; tli %u; nextxid %u;\n"
 						   "  nextoid %u; nextmulti %u; nextoffset %u; %s at %s\n",
 						   checkpoint->redo.xlogid, checkpoint->redo.xrecoff,
 						   checkpoint->undo.xlogid, checkpoint->undo.xrecoff,
@@ -782,7 +782,7 @@ dumpXLogRecord(XLogRecord *record)
 						   "shutdown" : "online",
 						   str_time(checkpoint->time));
 				else
-					printf("checkpoint: redo %u/%08X; undo %u/%08X; tli %u; nextxid %u;\n"
+					printf("checkpoint: redo %X/%X; undo %X/%X; tli %u; nextxid %u;\n"
 						   "  nextoid %u; nextmulti %u; nextoffset %u; %s\n",
 						   checkpoint->redo.xlogid, checkpoint->redo.xrecoff,
 						   checkpoint->undo.xlogid, checkpoint->undo.xrecoff,
