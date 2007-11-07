@@ -188,6 +188,9 @@ extern bool gp_is_callback;
  */
 extern bool gp_use_dispatch_agent;
 
+/*How many gangs to keep around from stmt to stmt.*/
+extern int			gp_cached_gang_threshold;
+
 /* Parameter debug_print_prelim_plan
  *
  * This run-time parameter is closely related to the PostgreSQL parameter

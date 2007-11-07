@@ -2254,6 +2254,17 @@ static struct config_int ConfigureNamesInt[] =
 	},
 	
 	{
+		{"gp_cached_gang_threshold", PGC_USERSET, GP_ARRAY_TUNING,
+			gettext_noop("Sets the maximum number of gangs to cache between statements."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&gp_cached_gang_threshold,
+		5, 0, INT_MAX, NULL, NULL
+		},
+		
+		
+	{
 #ifdef USE_ASSERT_CHECKING
 		{"gp_debug_linger", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Number of seconds for QD/QE process to linger upon fatal internal error."),

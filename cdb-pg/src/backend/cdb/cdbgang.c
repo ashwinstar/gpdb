@@ -45,7 +45,7 @@ extern char *default_tablespace;
 #include "libpq/libpq-be.h"
 #include "libpq/ip.h"
 
-#define MAX_CACHED_N_GANGS 5
+
 #define MAX_CACHED_1_GANGS 1
 /*
  *	thread_DoConnect is the thread proc used to perform the connection to one of the qExecs.
@@ -3209,7 +3209,7 @@ cleanupPortalGangs(Portal portal)
 	if (availableReaderGangsN != NIL)
 	{
 		gp = linitial(availableReaderGangsN);
-		while (gp != NULL && list_length(availableReaderGangsN) > MAX_CACHED_N_GANGS)
+		while (gp != NULL && list_length(availableReaderGangsN) > gp_cached_gang_threshold)
 		{
 			disconnectAndDestroyGang(gp);
 			availableReaderGangsN = list_delete_first(availableReaderGangsN);

@@ -77,6 +77,7 @@ int			gp_external_max_segs;      /* max segdbs per gpfdist URI */
 int			gp_connections_per_thread; /* How many libpq connections are
 										 * handled in each thread */
 
+int			gp_cached_gang_threshold; /*How many gangs to keep around from stmt to stmt.*/
 
 int			Gp_segment = UNDEF_SEGMENT;		/* What content this QE is
 												 * handling. */
