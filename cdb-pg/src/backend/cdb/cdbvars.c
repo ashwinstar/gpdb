@@ -110,6 +110,7 @@ int			Gp_interconnect_type = INTERCONNECT_TYPE_TCP;
 
 bool		gp_interconnect_aggressive_retry=true; /* fast-track app-level retry */
 
+bool		gp_udp_ic_cleanup = false; /* for cleanup, when a QE dies (UDP-IC specific, obviously) */
 
 /* --------------------------------------------------------------------------------------------------
  * Resource management

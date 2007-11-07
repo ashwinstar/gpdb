@@ -1258,6 +1258,18 @@ receiveChunksUDP(ChunkTransportStateEntry *pEntry, int16 motNodeID, int16 *srcRo
 			return tcItem;
 		}
 
+		if (gp_udp_ic_cleanup)
+		{
+			pthread_mutex_unlock(&rx_thread_mutex);
+
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							errmsg("Interconnect error QD lost contact with QE"),
+			                errdetail("%m%s", "select")));
+
+			/* not reached */
+			return NULL;
+		}
+
 		/* 2. Wait for data to become ready */
 		if (wait_on_receiver(MAIN_THREAD_COND_TIMEOUT))
 			continue; /* success ! */
@@ -1698,6 +1710,8 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
     Assert(mySlice &&
            IsA(mySlice, Slice) &&
            mySlice->sliceIndex == mySliceId);
+
+	gp_udp_ic_cleanup = false;
 
 	pthread_mutex_lock(&rx_thread_mutex);
 
@@ -2785,6 +2799,8 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 	int			i;
 	Slice	   *mySlice;
 	MotionConn *conn;
+
+	gp_udp_ic_cleanup = false;
 
 	Insist(transportStates->sliceTable != NULL);
 

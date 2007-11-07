@@ -2773,6 +2773,12 @@ processResults(CdbDispatchResult * dispatchResult)
 		segdbDesc->conn = NULL;
 		dispatchResult->stillRunning = false;
 
+		if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
+		{
+			write_log("UDP interconnect, peer may have gone missing, force teardown.");
+			gp_udp_ic_cleanup = true;
+		}
+
 		return true;			/* done; stick a fork in it */
 	}							/* handle PQconsumeInput error */
 

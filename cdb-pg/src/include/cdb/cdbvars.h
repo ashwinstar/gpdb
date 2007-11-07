@@ -347,6 +347,15 @@ extern int	Gp_interconnect_queue_depth;
 extern int	Gp_interconnect_hash_multiplier;
 
 /*
+ * When the QE sending to the QD "just dies" we no longer can count on
+ * the OS to handle things for us. Instead we have to notice and clean
+ * up ourselves.
+ *
+ * This is used by the dispatcher to notify the IC to issue an error.
+ */
+extern bool gp_udp_ic_cleanup;
+
+/*
  * Parameter gp_interconnect_aggressive_retry
  *
  * The run-time parameter gp_interconnect_aggressive_retry controls the
