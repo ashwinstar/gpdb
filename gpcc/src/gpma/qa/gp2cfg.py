@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import unittest, os, popen2, time, sys, getopt, StringIO
 
+OS = os.uname()
 MYD = os.path.abspath(os.path.dirname(__file__))
 mkpath = lambda *x: os.path.join(MYD, *x)
 
@@ -136,12 +137,26 @@ def getnodeID(node, key):
 	i+=1
     return -1
 
+def getIPAddress(host):
+    opt = ''
+    if OS[0] == 'SunOS':
+        opt = '-a inet'
+    (ok, addr) = shell.run('ssh %s ifconfig %s | grep "inet " | grep -v "127.0." | awk \'{print $2}\' | cut -d: -f2' % (host, opt))
+    if ok:
+        return addr
+    else:
+        print '[%s] %s' % (host, addr)
+
 
 print '# please add the IP addresses of the nodes'
 node = getnode()
 i = 0
 for n in node:
-    print 'node.%d=%s' % (i, n)
+    s = 'node.%d=%s' % (i, n)
+    addr = getIPAddress(n)
+    for a in addr:
+        s += ' %s' % a.strip()
+    print s
 
 print
 print '# gpdb segment configurations'
