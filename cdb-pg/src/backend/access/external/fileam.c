@@ -423,7 +423,7 @@ else \
 \
 	HandleSingleRowError(pstate->cdbsreh); \
 \
-	if(errmsg_is_a_copy) \
+	if(errmsg_is_a_copy && !IsRejectLimitReached(pstate->cdbsreh)) \
 		pfree(pstate->cdbsreh->errmsg); \
 }
 
@@ -438,12 +438,18 @@ cur_row_rejected = false; /* reset for next run */ \
 continue; /* move on to the next data line */
 
 #define FILEAM_IF_REJECT_LIMIT_REACHED_ABORT \
-if(pstate->cdbsreh->rejectcount >= pstate->cdbsreh->rejectlimit) \
+if(IsRejectLimitReached(pstate->cdbsreh)) \
 { \
+	char *rejectmsg = "Segment reject limit reached. Aborting operation. Last error was:";\
+	char *finalmsg = (char *) palloc((strlen(pstate->cdbsreh->errmsg) + \
+									  strlen(rejectmsg) + 12 + 1)\
+									  * sizeof(char)); \
+\
+    sprintf(finalmsg, "%s %s", rejectmsg, pstate->cdbsreh->errmsg); \
+\
 	ereport(ERROR, \
 			(errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \
-			(errmsg("Segment reject limit reached after encountering %d data errors. " \
-					"Aborting operation.",pstate->cdbsreh->rejectcount) \
+			(errmsg(finalmsg) \
 			))); \
 }
 

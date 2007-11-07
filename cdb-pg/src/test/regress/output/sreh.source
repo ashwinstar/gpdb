@@ -23,7 +23,7 @@ SELECT * FROM sreh_copy ORDER BY a,b,c;
 -- reject limit only - low value that gets reached
 --
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' SEGMENT REJECT LIMIT 2;
-ERROR:  Segment reject limit reached after encountering 2 data errors. Aborting operation.
+ERROR:  Segment reject limit reached. Aborting operation. Last error was: invalid input syntax for integer: "bad", column a
 CONTEXT:  COPY sreh_copy, line 8: "bad|8|8"
 SELECT * FROM sreh_copy ORDER BY a,b,c;
  a  | b  | c  
@@ -188,7 +188,7 @@ SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,raw
 -- error table - have low reject limit that gets reached, and see that data rolled back from both target table and err table
 --
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 2;
-ERROR:  Segment reject limit reached after encountering 2 data errors. Aborting operation.  (seg0 @hostname@:11001 pid=14901)
+ERROR:  Segment reject limit reached. Aborting operation. Last error was: missing data for column "c"  (seg0 @hostname@:11001 pid=14901)
 CONTEXT:  COPY sreh_copy, line 3: "3|"
 SELECT * FROM sreh_copy ORDER BY a,b,c;
   a  |  b  |  c  
@@ -391,10 +391,10 @@ LOCATION ('gpfdist://@hostname@:8080/bad_data1.data' )
 FORMAT 'text' (delimiter '|')
 SEGMENT REJECT LIMIT 2;
 SELECT * FROM sreh_ext ORDER BY a;
-ERROR:  Segment reject limit reached after encountering 2 data errors. Aborting operation.  (seg1 slice1 @hostname@:11002 pid=14902)
+ERROR:  Segment reject limit reached. Aborting operation. Last error was: missing data for column "c"  (seg1 slice1 @hostname@:11002 pid=14902)
 DETAIL:  External table sreh_ext, line 3 of gpfdist://@hostname@:8080/bad_data1.data: "3|"
 INSERT INTO sreh_target SELECT * FROM sreh_ext;
-ERROR:  Segment reject limit reached after encountering 2 data errors. Aborting operation.  (seg1 slice1 @hostname@:11002 pid=14919)
+ERROR:  Segment reject limit reached. Aborting operation. Last error was: missing data for column "c"  (seg1 slice1 @hostname@:11002 pid=14919)
 DETAIL:  External table sreh_ext, line 3 of gpfdist://@hostname@:8080/bad_data1.data: "3|"
 SELECT count(*) FROM sreh_target;
  count 

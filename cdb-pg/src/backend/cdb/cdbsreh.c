@@ -143,7 +143,7 @@ void HandleSingleRowError(CdbSreh *cdbsreh)
 	 * if reached the segment reject limit don't do anything.
 	 * (this will get checked and handled later on by the caller).
 	 */
-	if(cdbsreh->rejectcount >= cdbsreh->rejectlimit)
+	if(IsRejectLimitReached(cdbsreh))
 		return;
 	
 	/*
@@ -512,6 +512,15 @@ SetErrorTableVerdict(CdbSreh *cdbsreh, int total_rejected)
 	}
 }
 
+/*
+ * IsRejectLimitReached
+ *
+ * Returns true if seg reject limit reached, false otherwise.
+ */
+bool IsRejectLimitReached(CdbSreh *cdbsreh)
+{
+	return (cdbsreh->rejectcount >= cdbsreh->rejectlimit);
+}
 
 /*
  * GetNextSegid

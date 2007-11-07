@@ -2161,7 +2161,7 @@ else \
 	/* cleanup any extra memory copies we made */\
 	if(rawdata_is_a_copy) \
 		pfree(cstate->cdbsreh->rawdata); \
-	if(errmsg_is_a_copy) \
+	if(errmsg_is_a_copy && !IsRejectLimitReached(cstate->cdbsreh)) \
 		pfree(cstate->cdbsreh->errmsg); \
 }
 
@@ -2183,18 +2183,24 @@ cur_row_rejected = false; /* reset for next run */ \
 continue; /* move on to the next data line */
 
 #define IF_REJECT_LIMIT_REACHED_ABORT \
-if(cstate->cdbsreh->rejectcount >= cstate->cdbsreh->rejectlimit) \
+if(IsRejectLimitReached(cstate->cdbsreh)) \
 { \
+\
+	char *rejectmsg = "Segment reject limit reached. Aborting operation. Last error was:";\
+	char *finalmsg = (char *) palloc((strlen(cstate->cdbsreh->errmsg) + \
+									  strlen(rejectmsg) + 12 + 1)\
+									  * sizeof(char)); \
+\
 	if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) \
 		cdbCopyEnd(cdbCopy); \
-			\
+\
+	sprintf(finalmsg, "%s %s", rejectmsg, cstate->cdbsreh->errmsg); \
+\
 	ereport(ERROR, \
 			(errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \
-			 (errmsg("Segment reject limit reached after encountering %d data errors. " \
-					 "Aborting operation.",cstate->cdbsreh->rejectcount) \
+			 (errmsg(finalmsg) \
 			  ))); \
 }
-
 
 /*
  * Copy FROM file to relation.

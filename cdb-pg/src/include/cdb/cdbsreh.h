@@ -85,6 +85,7 @@ extern void ReportSrehResults(CdbSreh *cdbsreh, int total_rejected);
 extern void SendNumRowsRejected(int numrejected);
 extern void ValidateErrorTableMetaData(Relation rel);
 extern void SetErrorTableVerdict(CdbSreh *cdbsreh, int total_rejected);
+extern bool IsRejectLimitReached(CdbSreh *cdbsreh);
 
 
 #endif /* CDBSREH_H */
