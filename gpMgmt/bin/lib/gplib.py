@@ -63,7 +63,7 @@ def parse_hostline(line, defuser, defport):
 def read_hostfile(fname, user, port):
     retList = []
     if not fname: return retList
-    f = None; lno = 0; host = {}
+    f = None; lno = 0; host = {}; hostlist=[]
     try:
 	try:
 	    f = open(fname, 'r')
@@ -72,8 +72,12 @@ def read_hostfile(fname, user, port):
 		h = parse_hostline(line, user, port)
 		if not h: continue
 		key = '%s@%s' % (h[0], h[1])
-		host[key] = h
-	    for n in host: retList.append(host[n])
+		if host.get(key, -1) >= 0:
+		   hostlist[host.get(key)] = h
+		else:
+		   host[key] = len(hostlist)
+		   hostlist.append(h)
+	    for h in hostlist: retList.append(h)
 	except IOError:
 	    sys.exit('[ERROR] cannot read host file ' + fname 
 		     + (lno > 0 and (' (line %d)' % lno) or ''))
