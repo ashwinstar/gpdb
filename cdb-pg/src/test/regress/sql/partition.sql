@@ -518,6 +518,7 @@ select * from rank_1_prt_girls_2_prt_1_1 ;
 
 drop table rank cascade;
 
+-- integer ranges work too
 create table ggg (id integer, a integer)
 distributed by (id)
 partition by range (a)
@@ -540,3 +541,82 @@ select * from ggg_1_prt_1_0;
 select * from ggg_1_prt_1_1;
 select * from ggg_1_prt_1_2;
 select * from ggg_1_prt_1_3;
+
+drop table ggg cascade;
+
+-- hash tests
+
+create table ggg (a char(1), b varchar(2), d varchar(2))
+distributed by (a)
+partition by hash(b)
+partitions 3;
+
+insert into ggg values (1,1,1);
+insert into ggg values (2,2,1);
+insert into ggg values (1,3,1);
+insert into ggg values (2,2,3);
+insert into ggg values (1,4,5);
+insert into ggg values (2,2,4);
+insert into ggg values (1,5,6);
+insert into ggg values (2,7,3);
+insert into ggg values (1,'a','b');
+insert into ggg values (2,'c','c');
+
+select * from ggg;
+
+select * from ggg_1_prt_1;
+select * from ggg_1_prt_2;
+select * from ggg_1_prt_3;
+
+drop table ggg cascade;
+
+-- use multiple cols
+create table ggg (a char(1), b varchar(2), d varchar(2))
+distributed by (a)
+partition by hash(b,d)
+partitions 3;
+
+insert into ggg values (1,1,1);
+insert into ggg values (2,2,1);
+insert into ggg values (1,3,1);
+insert into ggg values (2,2,3);
+insert into ggg values (1,4,5);
+insert into ggg values (2,2,4);
+insert into ggg values (1,5,6);
+insert into ggg values (2,7,3);
+insert into ggg values (1,'a','b');
+insert into ggg values (2,'c','c');
+
+select * from ggg;
+
+select * from ggg_1_prt_1;
+select * from ggg_1_prt_2;
+select * from ggg_1_prt_3;
+
+drop table ggg cascade;
+
+-- use multiple cols of different types
+create table ggg (a char(1), b varchar(2), d integer, e date)
+distributed by (a)
+partition by hash(b,d,e)
+partitions 3;
+
+insert into ggg values (1,1,1,date '2001-01-15');
+insert into ggg values (2,2,1,date '2001-01-15');
+insert into ggg values (1,3,1,date '2001-01-15');
+insert into ggg values (2,2,3,date '2001-01-15');
+insert into ggg values (1,4,5,date '2001-01-15');
+insert into ggg values (2,2,4,date '2001-01-15');
+insert into ggg values (1,5,6,date '2001-01-15');
+insert into ggg values (2,7,3,date '2001-01-15');
+insert into ggg values (1,'a',33,date '2001-01-15');
+insert into ggg values (2,'c',44,date '2001-01-15');
+
+select * from ggg;
+
+select * from ggg_1_prt_1;
+select * from ggg_1_prt_2;
+select * from ggg_1_prt_3;
+
+drop table ggg cascade;
+

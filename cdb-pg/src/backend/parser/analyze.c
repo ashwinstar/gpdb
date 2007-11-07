@@ -3073,6 +3073,7 @@ static List *make_partition_rules(ParseState *pstate,
 		{
 			Node *pCol = lfirst(lc);
 			Value *pColConst;
+			ColumnRef *pCRef = NULL;
 
 			pColConst = (Value *)pCol;
 
@@ -3093,30 +3094,25 @@ static List *make_partition_rules(ParseState *pstate,
 						 parser_errposition(pstate, loco)));
 			}
 
+			pCRef = makeNode(ColumnRef);
+			pCRef->location = -1;
+			pCRef->fields = list_make1(pCol);
+
 			if (colcnt)
 			{
-				ColumnRef *pCRef = NULL;
 				Node *pAppOp = NULL;
 
 				pAppOp =
 						(Node *) makeSimpleA_Expr(AEXPR_OP, "||", 
+												  pHashArgs,
 												  (Node *)pCRef, 
-												  pHashArgs, -1);
+												  -1);
+				pHashArgs = pAppOp;
 
 				appendStringInfo(&sid, "||");
-
-				pHashArgs = pAppOp;
 			}
 			else
 			{
-				ColumnRef *pCRef;
-
-				pCRef = makeNode(ColumnRef);
-
-				pCRef->location = -1;
-
-				pCRef->fields = list_make1(pCol);
-
 				pHashArgs = (Node *)pCRef;
 			}
 
