@@ -106,7 +106,7 @@ def parseMemorySize(line):
 
 #############
 def print_version():
-    print '%s version cvs Head build dev' % script_name
+    print '%s version $Revision$' % script_name
     sys.exit(0)
 
 #############
