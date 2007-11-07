@@ -2775,7 +2775,8 @@ processResults(CdbDispatchResult * dispatchResult)
 
 		if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
 		{
-			write_log("UDP interconnect, peer may have gone missing, force teardown.");
+			if (DEBUG1 >= log_min_messages)
+				write_log("UDP interconnect, peer may have gone missing, force teardown.");
 			gp_udp_ic_cleanup = true;
 		}
 
