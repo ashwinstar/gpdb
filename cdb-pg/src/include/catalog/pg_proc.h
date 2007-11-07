@@ -4355,195 +4355,102 @@ DATA(insert OID = 7101 (  rank_immed   PGNSP PGUID 12 f f t f i 1 20 f "2281" _n
 DESCR("window immediate function");
 DATA(insert OID = 7102 (  dense_rank_immed   PGNSP PGUID 12 f f t f i 1 20 f "2281" _null_ _null_ _null_ dense_rank_immed - _null_ ));
 DESCR("window immediate function");
-#define LAG_3_FUNC_BOOL_OID 7490
-DATA(insert OID = 7490 (  lag_bool	PGNSP	PGUID 12 f f t f i 4 16 f "2281 16 20 16" _null_ _null_ _null_ lag_bool - _null_ ));
-#define LAG_2_FUNC_BOOL_OID 7492
-DATA(insert OID = 7492 (  lag_bool	PGNSP	PGUID 12 f f t f i 3 16 f "2281 16 20" _null_ _null_ _null_ lag_bool - _null_ ));
-#define LAG_1_FUNC_BOOL_OID 7494
-DATA(insert OID = 7494 (  lag_bool	PGNSP	PGUID 12 f f t f i 2 16 f "2281 16" _null_ _null_ _null_ lag_bool - _null_ ));
-#define LAG_3_FUNC_CHAR_OID 7496
-DATA(insert OID = 7496 (  lag_char	PGNSP	PGUID 12 f f t f i 4 18 f "2281 18 20 18" _null_ _null_ _null_ lag_char - _null_ ));
-#define LAG_2_FUNC_CHAR_OID 7498
-DATA(insert OID = 7498 (  lag_char	PGNSP	PGUID 12 f f t f i 3 18 f "2281 18 20" _null_ _null_ _null_ lag_char - _null_ ));
-#define LAG_1_FUNC_CHAR_OID 7500
-DATA(insert OID = 7500 (  lag_char	PGNSP	PGUID 12 f f t f i 2 18 f "2281 18" _null_ _null_ _null_ lag_char - _null_ ));
-#define LAG_3_FUNC_CIDR_OID 7502
-DATA(insert OID = 7502 (  lag_cidr	PGNSP	PGUID 12 f f t f i 4 650 f "2281 650 20 650" _null_ _null_ _null_ lag_cidr - _null_ ));
-#define LAG_2_FUNC_CIDR_OID 7504
-DATA(insert OID = 7504 (  lag_cidr	PGNSP	PGUID 12 f f t f i 3 650 f "2281 650 20" _null_ _null_ _null_ lag_cidr - _null_ ));
-#define LAG_1_FUNC_CIDR_OID 7506
-DATA(insert OID = 7506 (  lag_cidr	PGNSP	PGUID 12 f f t f i 2 650 f "2281 650" _null_ _null_ _null_ lag_cidr - _null_ ));
-#define LAG_3_FUNC_CIRCLE_OID 7508
-DATA(insert OID = 7508 (  lag_circle	PGNSP	PGUID 12 f f t f i 4 718 f "2281 718 20 718" _null_ _null_ _null_ lag_circle - _null_ ));
-#define LAG_2_FUNC_CIRCLE_OID 7510
-DATA(insert OID = 7510 (  lag_circle	PGNSP	PGUID 12 f f t f i 3 718 f "2281 718 20" _null_ _null_ _null_ lag_circle - _null_ ));
-#define LAG_1_FUNC_CIRCLE_OID 7512
-DATA(insert OID = 7512 (  lag_circle	PGNSP	PGUID 12 f f t f i 2 718 f "2281 718" _null_ _null_ _null_ lag_circle - _null_ ));
-#define LAG_3_FUNC_FLOAT4_OID 7514
-DATA(insert OID = 7514 (  lag_float4	PGNSP	PGUID 12 f f t f i 4 700 f "2281 700 20 700" _null_ _null_ _null_ lag_float4 - _null_ ));
-#define LAG_2_FUNC_FLOAT4_OID 7516
-DATA(insert OID = 7516 (  lag_float4	PGNSP	PGUID 12 f f t f i 3 700 f "2281 700 20" _null_ _null_ _null_ lag_float4 - _null_ ));
-#define LAG_1_FUNC_FLOAT4_OID 7518
-DATA(insert OID = 7518 (  lag_float4	PGNSP	PGUID 12 f f t f i 2 700 f "2281 700" _null_ _null_ _null_ lag_float4 - _null_ ));
-#define LAG_3_FUNC_FLOAT8_OID 7520
-DATA(insert OID = 7520 (  lag_float8	PGNSP	PGUID 12 f f t f i 4 701 f "2281 701 20 701" _null_ _null_ _null_ lag_float8 - _null_ ));
-#define LAG_2_FUNC_FLOAT8_OID 7522
-DATA(insert OID = 7522 (  lag_float8	PGNSP	PGUID 12 f f t f i 3 701 f "2281 701 20" _null_ _null_ _null_ lag_float8 - _null_ ));
-#define LAG_1_FUNC_FLOAT8_OID 7524
-DATA(insert OID = 7524 (  lag_float8	PGNSP	PGUID 12 f f t f i 2 701 f "2281 701" _null_ _null_ _null_ lag_float8 - _null_ ));
-#define LAG_3_FUNC_INET_OID 7526
-DATA(insert OID = 7526 (  lag_inet	PGNSP	PGUID 12 f f t f i 4 869 f "2281 869 20 869" _null_ _null_ _null_ lag_inet - _null_ ));
-#define LAG_2_FUNC_INET_OID 7528
-DATA(insert OID = 7528 (  lag_inet	PGNSP	PGUID 12 f f t f i 3 869 f "2281 869 20" _null_ _null_ _null_ lag_inet - _null_ ));
-#define LAG_1_FUNC_INET_OID 7530
-DATA(insert OID = 7530 (  lag_inet	PGNSP	PGUID 12 f f t f i 2 869 f "2281 869" _null_ _null_ _null_ lag_inet - _null_ ));
-#define LAG_3_FUNC_INTERVAL_OID 7532
-DATA(insert OID = 7532 (  lag_interval	PGNSP	PGUID 12 f f t f i 4 1186 f "2281 1186 20 1186" _null_ _null_ _null_ lag_interval - _null_ ));
-#define LAG_2_FUNC_INTERVAL_OID 7534
-DATA(insert OID = 7534 (  lag_interval	PGNSP	PGUID 12 f f t f i 3 1186 f "2281 1186 20" _null_ _null_ _null_ lag_interval - _null_ ));
-#define LAG_1_FUNC_INTERVAL_OID 7536
-DATA(insert OID = 7536 (  lag_interval	PGNSP	PGUID 12 f f t f i 2 1186 f "2281 1186" _null_ _null_ _null_ lag_interval - _null_ ));
-#define LAG_3_FUNC_LINE_OID 7538
-DATA(insert OID = 7538 (  lag_line	PGNSP	PGUID 12 f f t f i 4 628 f "2281 628 20 628" _null_ _null_ _null_ lag_line - _null_ ));
-#define LAG_2_FUNC_LINE_OID 7540
-DATA(insert OID = 7540 (  lag_line	PGNSP	PGUID 12 f f t f i 3 628 f "2281 628 20" _null_ _null_ _null_ lag_line - _null_ ));
-#define LAG_1_FUNC_LINE_OID 7542
-DATA(insert OID = 7542 (  lag_line	PGNSP	PGUID 12 f f t f i 2 628 f "2281 628" _null_ _null_ _null_ lag_line - _null_ ));
-#define LAG_3_FUNC_LSEG_OID 7544
-DATA(insert OID = 7544 (  lag_lseg	PGNSP	PGUID 12 f f t f i 4 601 f "2281 601 20 601" _null_ _null_ _null_ lag_lseg - _null_ ));
-#define LAG_2_FUNC_LSEG_OID 7546
-DATA(insert OID = 7546 (  lag_lseg	PGNSP	PGUID 12 f f t f i 3 601 f "2281 601 20" _null_ _null_ _null_ lag_lseg - _null_ ));
-#define LAG_1_FUNC_LSEG_OID 7548
-DATA(insert OID = 7548 (  lag_lseg	PGNSP	PGUID 12 f f t f i 2 601 f "2281 601" _null_ _null_ _null_ lag_lseg - _null_ ));
-#define LAG_3_FUNC_MACADDR_OID 7550
-DATA(insert OID = 7550 (  lag_macaddr	PGNSP	PGUID 12 f f t f i 4 829 f "2281 829 20 829" _null_ _null_ _null_ lag_macaddr - _null_ ));
-#define LAG_2_FUNC_MACADDR_OID 7552
-DATA(insert OID = 7552 (  lag_macaddr	PGNSP	PGUID 12 f f t f i 3 829 f "2281 829 20" _null_ _null_ _null_ lag_macaddr - _null_ ));
-#define LAG_1_FUNC_MACADDR_OID 7554
-DATA(insert OID = 7554 (  lag_macaddr	PGNSP	PGUID 12 f f t f i 2 829 f "2281 829" _null_ _null_ _null_ lag_macaddr - _null_ ));
-#define LAG_3_FUNC_SMALLINT_OID 7556
-DATA(insert OID = 7556 (  lag_smallint	PGNSP	PGUID 12 f f t f i 4 21 f "2281 21 20 21" _null_ _null_ _null_ lag_smallint - _null_ ));
-#define LAG_2_FUNC_SMALLINT_OID 7558
-DATA(insert OID = 7558 (  lag_smallint	PGNSP	PGUID 12 f f t f i 3 21 f "2281 21 20" _null_ _null_ _null_ lag_smallint - _null_ ));
-#define LAG_1_FUNC_SMALLINT_OID 7560
-DATA(insert OID = 7560 (  lag_smallint	PGNSP	PGUID 12 f f t f i 2 21 f "2281 21" _null_ _null_ _null_ lag_smallint - _null_ ));
-#define LAG_3_FUNC_INT4_OID 7562
-DATA(insert OID = 7562 (  lag_int4	PGNSP	PGUID 12 f f t f i 4 23 f "2281 23 20 23" _null_ _null_ _null_ lag_int4 - _null_ ));
-#define LAG_2_FUNC_INT4_OID 7564
-DATA(insert OID = 7564 (  lag_int4	PGNSP	PGUID 12 f f t f i 3 23 f "2281 23 20" _null_ _null_ _null_ lag_int4 - _null_ ));
-#define LAG_1_FUNC_INT4_OID 7566
-DATA(insert OID = 7566 (  lag_int4	PGNSP	PGUID 12 f f t f i 2 23 f "2281 23" _null_ _null_ _null_ lag_int4 - _null_ ));
-#define LAG_3_FUNC_INT8_OID 7568
-DATA(insert OID = 7568 (  lag_int8	PGNSP	PGUID 12 f f t f i 4 20 f "2281 20 20 20" _null_ _null_ _null_ lag_int8 - _null_ ));
-#define LAG_2_FUNC_INT8_OID 7570
-DATA(insert OID = 7570 (  lag_int8	PGNSP	PGUID 12 f f t f i 3 20 f "2281 20 20" _null_ _null_ _null_ lag_int8 - _null_ ));
-#define LAG_1_FUNC_INT8_OID 7572
-DATA(insert OID = 7572 (  lag_int8	PGNSP	PGUID 12 f f t f i 2 20 f "2281 20" _null_ _null_ _null_ lag_int8 - _null_ ));
-#define LAG_3_FUNC_MONEY_OID 7574
-DATA(insert OID = 7574 (  lag_money	PGNSP	PGUID 12 f f t f i 4 790 f "2281 790 20 790" _null_ _null_ _null_ lag_money - _null_ ));
-#define LAG_2_FUNC_MONEY_OID 7576
-DATA(insert OID = 7576 (  lag_money	PGNSP	PGUID 12 f f t f i 3 790 f "2281 790 20" _null_ _null_ _null_ lag_money - _null_ ));
-#define LAG_1_FUNC_MONEY_OID 7578
-DATA(insert OID = 7578 (  lag_money	PGNSP	PGUID 12 f f t f i 2 790 f "2281 790" _null_ _null_ _null_ lag_money - _null_ ));
-#define LAG_3_FUNC_NAME_OID 7580
-DATA(insert OID = 7580 (  lag_name	PGNSP	PGUID 12 f f t f i 4 19 f "2281 19 20 19" _null_ _null_ _null_ lag_name - _null_ ));
-#define LAG_2_FUNC_NAME_OID 7582
-DATA(insert OID = 7582 (  lag_name	PGNSP	PGUID 12 f f t f i 3 19 f "2281 19 20" _null_ _null_ _null_ lag_name - _null_ ));
-#define LAG_1_FUNC_NAME_OID 7584
-DATA(insert OID = 7584 (  lag_name	PGNSP	PGUID 12 f f t f i 2 19 f "2281 19" _null_ _null_ _null_ lag_name - _null_ ));
-#define LAG_3_FUNC_NUMERIC_OID 7586
-DATA(insert OID = 7586 (  lag_numeric	PGNSP	PGUID 12 f f t f i 4 1700 f "2281 1700 20 1700" _null_ _null_ _null_ lag_numeric - _null_ ));
-#define LAG_2_FUNC_NUMERIC_OID 7588
-DATA(insert OID = 7588 (  lag_numeric	PGNSP	PGUID 12 f f t f i 3 1700 f "2281 1700 20" _null_ _null_ _null_ lag_numeric - _null_ ));
-#define LAG_1_FUNC_NUMERIC_OID 7590
-DATA(insert OID = 7590 (  lag_numeric	PGNSP	PGUID 12 f f t f i 2 1700 f "2281 1700" _null_ _null_ _null_ lag_numeric - _null_ ));
-#define LAG_3_FUNC_OID_OID 7592
-DATA(insert OID = 7592 (  lag_oid	PGNSP	PGUID 12 f f t f i 4 26 f "2281 26 20 26" _null_ _null_ _null_ lag_oid - _null_ ));
-#define LAG_2_FUNC_OID_OID 7594
-DATA(insert OID = 7594 (  lag_oid	PGNSP	PGUID 12 f f t f i 3 26 f "2281 26 20" _null_ _null_ _null_ lag_oid - _null_ ));
-#define LAG_1_FUNC_OID_OID 7596
-DATA(insert OID = 7596 (  lag_oid	PGNSP	PGUID 12 f f t f i 2 26 f "2281 26" _null_ _null_ _null_ lag_oid - _null_ ));
-#define LAG_3_FUNC_PATH_OID 7598
-DATA(insert OID = 7598 (  lag_path	PGNSP	PGUID 12 f f t f i 4 602 f "2281 602 20 602" _null_ _null_ _null_ lag_path - _null_ ));
-#define LAG_2_FUNC_PATH_OID 7600
-DATA(insert OID = 7600 (  lag_path	PGNSP	PGUID 12 f f t f i 3 602 f "2281 602 20" _null_ _null_ _null_ lag_path - _null_ ));
-#define LAG_1_FUNC_PATH_OID 7602
-DATA(insert OID = 7602 (  lag_path	PGNSP	PGUID 12 f f t f i 2 602 f "2281 602" _null_ _null_ _null_ lag_path - _null_ ));
-#define LAG_3_FUNC_POINT_OID 7604
-DATA(insert OID = 7604 (  lag_point	PGNSP	PGUID 12 f f t f i 4 600 f "2281 600 20 600" _null_ _null_ _null_ lag_point - _null_ ));
-#define LAG_2_FUNC_POINT_OID 7606
-DATA(insert OID = 7606 (  lag_point	PGNSP	PGUID 12 f f t f i 3 600 f "2281 600 20" _null_ _null_ _null_ lag_point - _null_ ));
-#define LAG_1_FUNC_POINT_OID 7608
-DATA(insert OID = 7608 (  lag_point	PGNSP	PGUID 12 f f t f i 2 600 f "2281 600" _null_ _null_ _null_ lag_point - _null_ ));
-#define LAG_3_FUNC_POLYGON_OID 7610
-DATA(insert OID = 7610 (  lag_polygon	PGNSP	PGUID 12 f f t f i 4 604 f "2281 604 20 604" _null_ _null_ _null_ lag_polygon - _null_ ));
-#define LAG_2_FUNC_POLYGON_OID 7612
-DATA(insert OID = 7612 (  lag_polygon	PGNSP	PGUID 12 f f t f i 3 604 f "2281 604 20" _null_ _null_ _null_ lag_polygon - _null_ ));
-#define LAG_1_FUNC_POLYGON_OID 7614
-DATA(insert OID = 7614 (  lag_polygon	PGNSP	PGUID 12 f f t f i 2 604 f "2281 604" _null_ _null_ _null_ lag_polygon - _null_ ));
-#define LAG_3_FUNC_RELTIME_OID 7616
-DATA(insert OID = 7616 (  lag_reltime	PGNSP	PGUID 12 f f t f i 4 703 f "2281 703 20 703" _null_ _null_ _null_ lag_reltime - _null_ ));
-#define LAG_2_FUNC_RELTIME_OID 7618
-DATA(insert OID = 7618 (  lag_reltime	PGNSP	PGUID 12 f f t f i 3 703 f "2281 703 20" _null_ _null_ _null_ lag_reltime - _null_ ));
-#define LAG_1_FUNC_RELTIME_OID 7620
-DATA(insert OID = 7620 (  lag_reltime	PGNSP	PGUID 12 f f t f i 2 703 f "2281 703" _null_ _null_ _null_ lag_reltime - _null_ ));
-#define LAG_3_FUNC_TEXT_OID 7622
-DATA(insert OID = 7622 (  lag_text	PGNSP	PGUID 12 f f t f i 4 25 f "2281 25 20 25" _null_ _null_ _null_ lag_text - _null_ ));
-#define LAG_2_FUNC_TEXT_OID 7624
-DATA(insert OID = 7624 (  lag_text	PGNSP	PGUID 12 f f t f i 3 25 f "2281 25 20" _null_ _null_ _null_ lag_text - _null_ ));
-#define LAG_1_FUNC_TEXT_OID 7626
-DATA(insert OID = 7626 (  lag_text	PGNSP	PGUID 12 f f t f i 2 25 f "2281 25" _null_ _null_ _null_ lag_text - _null_ ));
-#define LAG_3_FUNC_TID_OID 7628
-DATA(insert OID = 7628 (  lag_tid	PGNSP	PGUID 12 f f t f i 4 27 f "2281 27 20 27" _null_ _null_ _null_ lag_tid - _null_ ));
-#define LAG_2_FUNC_TID_OID 7630
-DATA(insert OID = 7630 (  lag_tid	PGNSP	PGUID 12 f f t f i 3 27 f "2281 27 20" _null_ _null_ _null_ lag_tid - _null_ ));
-#define LAG_1_FUNC_TID_OID 7632
-DATA(insert OID = 7632 (  lag_tid	PGNSP	PGUID 12 f f t f i 2 27 f "2281 27" _null_ _null_ _null_ lag_tid - _null_ ));
-#define LAG_3_FUNC_TIME_OID 7634
-DATA(insert OID = 7634 (  lag_time	PGNSP	PGUID 12 f f t f i 4 1083 f "2281 1083 20 1083" _null_ _null_ _null_ lag_time - _null_ ));
-#define LAG_2_FUNC_TIME_OID 7636
-DATA(insert OID = 7636 (  lag_time	PGNSP	PGUID 12 f f t f i 3 1083 f "2281 1083 20" _null_ _null_ _null_ lag_time - _null_ ));
-#define LAG_1_FUNC_TIME_OID 7638
-DATA(insert OID = 7638 (  lag_time	PGNSP	PGUID 12 f f t f i 2 1083 f "2281 1083" _null_ _null_ _null_ lag_time - _null_ ));
-#define LAG_3_FUNC_TIMESTAMP_OID 7640
-DATA(insert OID = 7640 (  lag_timestamp	PGNSP	PGUID 12 f f t f i 4 1114 f "2281 1114 20 1114" _null_ _null_ _null_ lag_timestamp - _null_ ));
-#define LAG_2_FUNC_TIMESTAMP_OID 7642
-DATA(insert OID = 7642 (  lag_timestamp	PGNSP	PGUID 12 f f t f i 3 1114 f "2281 1114 20" _null_ _null_ _null_ lag_timestamp - _null_ ));
-#define LAG_1_FUNC_TIMESTAMP_OID 7644
-DATA(insert OID = 7644 (  lag_timestamp	PGNSP	PGUID 12 f f t f i 2 1114 f "2281 1114" _null_ _null_ _null_ lag_timestamp - _null_ ));
-#define LAG_3_FUNC_TIMESTAMPTZ_OID 7646
-DATA(insert OID = 7646 (  lag_timestamptz	PGNSP	PGUID 12 f f t f i 4 1184 f "2281 1184 20 1184" _null_ _null_ _null_ lag_timestamptz - _null_ ));
-#define LAG_2_FUNC_TIMESTAMPTZ_OID 7648
-DATA(insert OID = 7648 (  lag_timestamptz	PGNSP	PGUID 12 f f t f i 3 1184 f "2281 1184 20" _null_ _null_ _null_ lag_timestamptz - _null_ ));
-#define LAG_1_FUNC_TIMESTAMPTZ_OID 7650
-DATA(insert OID = 7650 (  lag_timestamptz	PGNSP	PGUID 12 f f t f i 2 1184 f "2281 1184" _null_ _null_ _null_ lag_timestamptz - _null_ ));
-#define LAG_3_FUNC_TIMETZ_OID 7652
-DATA(insert OID = 7652 (  lag_timetz	PGNSP	PGUID 12 f f t f i 4 1266 f "2281 1266 20 1266" _null_ _null_ _null_ lag_timetz - _null_ ));
-#define LAG_2_FUNC_TIMETZ_OID 7654
-DATA(insert OID = 7654 (  lag_timetz	PGNSP	PGUID 12 f f t f i 3 1266 f "2281 1266 20" _null_ _null_ _null_ lag_timetz - _null_ ));
-#define LAG_1_FUNC_TIMETZ_OID 7656
-DATA(insert OID = 7656 (  lag_timetz	PGNSP	PGUID 12 f f t f i 2 1266 f "2281 1266" _null_ _null_ _null_ lag_timetz - _null_ ));
-#define LAG_3_FUNC_VARBIT_OID 7658
-DATA(insert OID = 7658 (  lag_varbit	PGNSP	PGUID 12 f f t f i 4 1562 f "2281 1562 20 1562" _null_ _null_ _null_ lag_varbit - _null_ ));
-#define LAG_2_FUNC_VARBIT_OID 7660
-DATA(insert OID = 7660 (  lag_varbit	PGNSP	PGUID 12 f f t f i 3 1562 f "2281 1562 20" _null_ _null_ _null_ lag_varbit - _null_ ));
-#define LAG_1_FUNC_VARBIT_OID 7662
-DATA(insert OID = 7662 (  lag_varbit	PGNSP	PGUID 12 f f t f i 2 1562 f "2281 1562" _null_ _null_ _null_ lag_varbit - _null_ ));
-#define LAG_3_FUNC_VARCHAR_OID 7664
-DATA(insert OID = 7664 (  lag_varchar	PGNSP	PGUID 12 f f t f i 4 1043 f "2281 1043 20 1043" _null_ _null_ _null_ lag_varchar - _null_ ));
-#define LAG_2_FUNC_VARCHAR_OID 7666
-DATA(insert OID = 7666 (  lag_varchar	PGNSP	PGUID 12 f f t f i 3 1043 f "2281 1043 20" _null_ _null_ _null_ lag_varchar - _null_ ));
-#define LAG_1_FUNC_VARCHAR_OID 7668
-DATA(insert OID = 7668 (  lag_varchar	PGNSP	PGUID 12 f f t f i 2 1043 f "2281 1043" _null_ _null_ _null_ lag_varchar - _null_ ));
-#define LAG_3_FUNC_XID_OID 7670
-DATA(insert OID = 7670 (  lag_xid	PGNSP	PGUID 12 f f t f i 4 28 f "2281 28 20 28" _null_ _null_ _null_ lag_xid - _null_ ));
-#define LAG_2_FUNC_XID_OID 7672
-DATA(insert OID = 7672 (  lag_xid	PGNSP	PGUID 12 f f t f i 3 28 f "2281 28 20" _null_ _null_ _null_ lag_xid - _null_ ));
-#define LAG_1_FUNC_XID_OID 7674
-DATA(insert OID = 7674 (  lag_xid	PGNSP	PGUID 12 f f t f i 2 28 f "2281 28" _null_ _null_ _null_ lag_xid - _null_ ));
-DATA(insert OID = 7208 (  lag_any	PGNSP	PGUID 12 f f t f i 4 2277 t "2281 2277 20 2277" _null_ _null_ _null_ lag_any - _null_ ));
-DATA(insert OID = 7209 (  lag_any	PGNSP	PGUID 12 f f t f i 3 2277 t "2281 2277 20" _null_ _null_ _null_ lag_any - _null_ ));
-DATA(insert OID = 7210 (  lag_any	PGNSP	PGUID 12 f f t f i 2 2277 t "2281 2277" _null_ _null_ _null_ lag_any - _null_ ));
+DATA(insert OID = 7490 (  lag_bool	PGNSP	PGUID 12 f f t f i 4 16 t "2281 16 20 16" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7492 (  lag_bool	PGNSP	PGUID 12 f f t f i 3 16 t "2281 16 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7494 (  lag_bool	PGNSP	PGUID 12 f f t f i 2 16 t "2281 16" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7496 (  lag_char	PGNSP	PGUID 12 f f t f i 4 18 t "2281 18 20 18" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7498 (  lag_char	PGNSP	PGUID 12 f f t f i 3 18 t "2281 18 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7500 (  lag_char	PGNSP	PGUID 12 f f t f i 2 18 t "2281 18" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7502 (  lag_cidr	PGNSP	PGUID 12 f f t f i 4 650 t "2281 650 20 650" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7504 (  lag_cidr	PGNSP	PGUID 12 f f t f i 3 650 t "2281 650 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7506 (  lag_cidr	PGNSP	PGUID 12 f f t f i 2 650 t "2281 650" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7508 (  lag_circle	PGNSP	PGUID 12 f f t f i 4 718 t "2281 718 20 718" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7510 (  lag_circle	PGNSP	PGUID 12 f f t f i 3 718 t "2281 718 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7512 (  lag_circle	PGNSP	PGUID 12 f f t f i 2 718 t "2281 718" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7514 (  lag_float4	PGNSP	PGUID 12 f f t f i 4 700 t "2281 700 20 700" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7516 (  lag_float4	PGNSP	PGUID 12 f f t f i 3 700 t "2281 700 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7518 (  lag_float4	PGNSP	PGUID 12 f f t f i 2 700 t "2281 700" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7520 (  lag_float8	PGNSP	PGUID 12 f f t f i 4 701 t "2281 701 20 701" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7522 (  lag_float8	PGNSP	PGUID 12 f f t f i 3 701 t "2281 701 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7524 (  lag_float8	PGNSP	PGUID 12 f f t f i 2 701 t "2281 701" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7526 (  lag_inet	PGNSP	PGUID 12 f f t f i 4 869 t "2281 869 20 869" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7528 (  lag_inet	PGNSP	PGUID 12 f f t f i 3 869 t "2281 869 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7530 (  lag_inet	PGNSP	PGUID 12 f f t f i 2 869 t "2281 869" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7532 (  lag_interval	PGNSP	PGUID 12 f f t f i 4 1186 t "2281 1186 20 1186" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7534 (  lag_interval	PGNSP	PGUID 12 f f t f i 3 1186 t "2281 1186 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7536 (  lag_interval	PGNSP	PGUID 12 f f t f i 2 1186 t "2281 1186" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7538 (  lag_line	PGNSP	PGUID 12 f f t f i 4 628 t "2281 628 20 628" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7540 (  lag_line	PGNSP	PGUID 12 f f t f i 3 628 t "2281 628 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7542 (  lag_line	PGNSP	PGUID 12 f f t f i 2 628 t "2281 628" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7544 (  lag_lseg	PGNSP	PGUID 12 f f t f i 4 601 t "2281 601 20 601" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7546 (  lag_lseg	PGNSP	PGUID 12 f f t f i 3 601 t "2281 601 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7548 (  lag_lseg	PGNSP	PGUID 12 f f t f i 2 601 t "2281 601" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7550 (  lag_macaddr	PGNSP	PGUID 12 f f t f i 4 829 t "2281 829 20 829" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7552 (  lag_macaddr	PGNSP	PGUID 12 f f t f i 3 829 t "2281 829 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7554 (  lag_macaddr	PGNSP	PGUID 12 f f t f i 2 829 t "2281 829" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7556 (  lag_smallint	PGNSP	PGUID 12 f f t f i 4 21 t "2281 21 20 21" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7558 (  lag_smallint	PGNSP	PGUID 12 f f t f i 3 21 t "2281 21 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7560 (  lag_smallint	PGNSP	PGUID 12 f f t f i 2 21 t "2281 21" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7562 (  lag_int4	PGNSP	PGUID 12 f f t f i 4 23 t "2281 23 20 23" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7564 (  lag_int4	PGNSP	PGUID 12 f f t f i 3 23 t "2281 23 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7566 (  lag_int4	PGNSP	PGUID 12 f f t f i 2 23 t "2281 23" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7568 (  lag_int8	PGNSP	PGUID 12 f f t f i 4 20 t "2281 20 20 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7570 (  lag_int8	PGNSP	PGUID 12 f f t f i 3 20 t "2281 20 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7572 (  lag_int8	PGNSP	PGUID 12 f f t f i 2 20 t "2281 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7574 (  lag_money	PGNSP	PGUID 12 f f t f i 4 790 t "2281 790 20 790" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7576 (  lag_money	PGNSP	PGUID 12 f f t f i 3 790 t "2281 790 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7578 (  lag_money	PGNSP	PGUID 12 f f t f i 2 790 t "2281 790" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7580 (  lag_name	PGNSP	PGUID 12 f f t f i 4 19 t "2281 19 20 19" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7582 (  lag_name	PGNSP	PGUID 12 f f t f i 3 19 t "2281 19 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7584 (  lag_name	PGNSP	PGUID 12 f f t f i 2 19 t "2281 19" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7586 (  lag_numeric	PGNSP	PGUID 12 f f t f i 4 1700 t "2281 1700 20 1700" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7588 (  lag_numeric	PGNSP	PGUID 12 f f t f i 3 1700 t "2281 1700 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7590 (  lag_numeric	PGNSP	PGUID 12 f f t f i 2 1700 t "2281 1700" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7592 (  lag_oid	PGNSP	PGUID 12 f f t f i 4 26 t "2281 26 20 26" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7594 (  lag_oid	PGNSP	PGUID 12 f f t f i 3 26 t "2281 26 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7596 (  lag_oid	PGNSP	PGUID 12 f f t f i 2 26 t "2281 26" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7598 (  lag_path	PGNSP	PGUID 12 f f t f i 4 602 t "2281 602 20 602" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7600 (  lag_path	PGNSP	PGUID 12 f f t f i 3 602 t "2281 602 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7602 (  lag_path	PGNSP	PGUID 12 f f t f i 2 602 t "2281 602" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7604 (  lag_point	PGNSP	PGUID 12 f f t f i 4 600 t "2281 600 20 600" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7606 (  lag_point	PGNSP	PGUID 12 f f t f i 3 600 t "2281 600 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7608 (  lag_point	PGNSP	PGUID 12 f f t f i 2 600 t "2281 600" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7610 (  lag_polygon	PGNSP	PGUID 12 f f t f i 4 604 t "2281 604 20 604" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7612 (  lag_polygon	PGNSP	PGUID 12 f f t f i 3 604 t "2281 604 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7614 (  lag_polygon	PGNSP	PGUID 12 f f t f i 2 604 t "2281 604" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7616 (  lag_reltime	PGNSP	PGUID 12 f f t f i 4 703 t "2281 703 20 703" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7618 (  lag_reltime	PGNSP	PGUID 12 f f t f i 3 703 t "2281 703 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7620 (  lag_reltime	PGNSP	PGUID 12 f f t f i 2 703 t "2281 703" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7622 (  lag_text	PGNSP	PGUID 12 f f t f i 4 25 t "2281 25 20 25" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7624 (  lag_text	PGNSP	PGUID 12 f f t f i 3 25 t "2281 25 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7626 (  lag_text	PGNSP	PGUID 12 f f t f i 2 25 t "2281 25" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7628 (  lag_tid	PGNSP	PGUID 12 f f t f i 4 27 t "2281 27 20 27" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7630 (  lag_tid	PGNSP	PGUID 12 f f t f i 3 27 t "2281 27 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7632 (  lag_tid	PGNSP	PGUID 12 f f t f i 2 27 t "2281 27" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7634 (  lag_time	PGNSP	PGUID 12 f f t f i 4 1083 t "2281 1083 20 1083" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7636 (  lag_time	PGNSP	PGUID 12 f f t f i 3 1083 t "2281 1083 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7638 (  lag_time	PGNSP	PGUID 12 f f t f i 2 1083 t "2281 1083" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7640 (  lag_timestamp	PGNSP	PGUID 12 f f t f i 4 1114 t "2281 1114 20 1114" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7642 (  lag_timestamp	PGNSP	PGUID 12 f f t f i 3 1114 t "2281 1114 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7644 (  lag_timestamp	PGNSP	PGUID 12 f f t f i 2 1114 t "2281 1114" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7646 (  lag_timestamptz	PGNSP	PGUID 12 f f t f i 4 1184 t "2281 1184 20 1184" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7648 (  lag_timestamptz	PGNSP	PGUID 12 f f t f i 3 1184 t "2281 1184 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7650 (  lag_timestamptz	PGNSP	PGUID 12 f f t f i 2 1184 t "2281 1184" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7652 (  lag_timetz	PGNSP	PGUID 12 f f t f i 4 1266 t "2281 1266 20 1266" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7654 (  lag_timetz	PGNSP	PGUID 12 f f t f i 3 1266 t "2281 1266 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7656 (  lag_timetz	PGNSP	PGUID 12 f f t f i 2 1266 t "2281 1266" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7658 (  lag_varbit	PGNSP	PGUID 12 f f t f i 4 1562 t "2281 1562 20 1562" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7660 (  lag_varbit	PGNSP	PGUID 12 f f t f i 3 1562 t "2281 1562 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7662 (  lag_varbit	PGNSP	PGUID 12 f f t f i 2 1562 t "2281 1562" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7664 (  lag_varchar	PGNSP	PGUID 12 f f t f i 4 1043 t "2281 1043 20 1043" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7666 (  lag_varchar	PGNSP	PGUID 12 f f t f i 3 1043 t "2281 1043 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7668 (  lag_varchar	PGNSP	PGUID 12 f f t f i 2 1043 t "2281 1043" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7670 (  lag_xid	PGNSP	PGUID 12 f f t f i 4 28 t "2281 28 20 28" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7672 (  lag_xid	PGNSP	PGUID 12 f f t f i 3 28 t "2281 28 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7674 (  lag_xid	PGNSP	PGUID 12 f f t f i 2 28 t "2281 28" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7208 (  lag_any	PGNSP	PGUID 12 f f t f i 4 2277 t "2281 2277 20 2277" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7209 (  lag_any	PGNSP	PGUID 12 f f t f i 3 2277 t "2281 2277 20" _null_ _null_ _null_ lag_generic - _null_ ));
+DATA(insert OID = 7210 (  lag_any	PGNSP	PGUID 12 f f t f i 2 2277 t "2281 2277" _null_ _null_ _null_ lag_generic - _null_ ));
 DATA(insert OID = 7227 (  lag_bytea  PGNSP   PGUID 12 f f t f i 2 17 t "2281 17" _null_ _null_ _null_ lag_generic - _null_ ));
 DATA(insert OID = 7229 (  lag_bytea  PGNSP   PGUID 12 f f t f i 3 17 t "2281 17 20" _null_ _null_ _null_ lag_generic - _null_ ));
 DATA(insert OID = 7231 (  lag_bytea  PGNSP   PGUID 12 f f t f i 4 17 t "2281 17 20 17" _null_ _null_ _null_ lag_generic - _null_ ));
@@ -4553,194 +4460,101 @@ DATA(insert OID = 7255 (  lag_bit  PGNSP		PGUID 12 f f t f i 4 1560 t "2281 1560
 DATA(insert OID = 7267 (  lag_box  PGNSP		PGUID 12 f f t f i 2 603 t "2281 603" _null_ _null_ _null_ lag_generic - _null_ ));
 DATA(insert OID = 7269 (  lag_box  PGNSP		PGUID 12 f f t f i 3 603 t "2281 603 20" _null_ _null_ _null_ lag_generic - _null_ ));
 DATA(insert OID = 7271 (  lag_box  PGNSP		PGUID 12 f f t f i 4 603 t "2281 603 20 603" _null_ _null_ _null_ lag_generic - _null_ ));
-#define LEAD_3_FUNC_INT_OID 7106
-DATA(insert OID = 7106 (  lead_int   PGNSP PGUID 12 f f t f i 4 23 f "2281 23 20 23" _null_ _null_ _null_ lead_int - _null_ ));
-#define LEAD_2_FUNC_INT_OID 7105
-DATA(insert OID = 7104 (  lead_int   PGNSP PGUID 12 f f t f i 3 23 f "2281 23 20" _null_ _null_ _null_ lead_int - _null_ ));
-#define LEAD_1_FUNC_INT_OID 7104
-DATA(insert OID = 7105 (  lead_int   PGNSP PGUID 12 f f t f i 2 23 f "2281 23" _null_ _null_ _null_ lead_int - _null_ ));
-#define LEAD_3_FUNC_BOOL_OID 7311
-DATA(insert OID = 7311 (  lead_bool	PGNSP	PGUID 12 f f t f i 4 16 f "2281 16 20 16" _null_ _null_ _null_ lead_bool - _null_ ));
-#define LEAD_2_FUNC_BOOL_OID 7313
-DATA(insert OID = 7313 (  lead_bool	PGNSP	PGUID 12 f f t f i 3 16 f "2281 16 20" _null_ _null_ _null_ lead_bool - _null_ ));
-#define LEAD_1_FUNC_BOOL_OID 7315
-DATA(insert OID = 7315 (  lead_bool	PGNSP	PGUID 12 f f t f i 2 16 f "2281 16" _null_ _null_ _null_ lead_bool - _null_ ));
-#define LEAD_3_FUNC_CHAR_OID 7317
-DATA(insert OID = 7317 (  lead_char	PGNSP	PGUID 12 f f t f i 4 18 f "2281 18 20 18" _null_ _null_ _null_ lead_char - _null_ ));
-#define LEAD_2_FUNC_CHAR_OID 7319
-DATA(insert OID = 7319 (  lead_char	PGNSP	PGUID 12 f f t f i 3 18 f "2281 18 20" _null_ _null_ _null_ lead_char - _null_ ));
-#define LEAD_1_FUNC_CHAR_OID 7321
-DATA(insert OID = 7321 (  lead_char	PGNSP	PGUID 12 f f t f i 2 18 f "2281 18" _null_ _null_ _null_ lead_char - _null_ ));
-#define LEAD_3_FUNC_CIDR_OID 7323
-DATA(insert OID = 7323 (  lead_cidr	PGNSP	PGUID 12 f f t f i 4 650 f "2281 650 20 650" _null_ _null_ _null_ lead_cidr - _null_ ));
-#define LEAD_2_FUNC_CIDR_OID 7325
-DATA(insert OID = 7325 (  lead_cidr	PGNSP	PGUID 12 f f t f i 3 650 f "2281 650 20" _null_ _null_ _null_ lead_cidr - _null_ ));
-#define LEAD_1_FUNC_CIDR_OID 7327
-DATA(insert OID = 7327 (  lead_cidr	PGNSP	PGUID 12 f f t f i 2 650 f "2281 650" _null_ _null_ _null_ lead_cidr - _null_ ));
-#define LEAD_3_FUNC_CIRCLE_OID 7329
-DATA(insert OID = 7329 (  lead_circle	PGNSP	PGUID 12 f f t f i 4 718 f "2281 718 20 718" _null_ _null_ _null_ lead_circle - _null_ ));
-#define LEAD_2_FUNC_CIRCLE_OID 7331
-DATA(insert OID = 7331 (  lead_circle	PGNSP	PGUID 12 f f t f i 3 718 f "2281 718 20" _null_ _null_ _null_ lead_circle - _null_ ));
-#define LEAD_1_FUNC_CIRCLE_OID 7333
-DATA(insert OID = 7333 (  lead_circle	PGNSP	PGUID 12 f f t f i 2 718 f "2281 718" _null_ _null_ _null_ lead_circle - _null_ ));
-#define LEAD_3_FUNC_FLOAT4_OID 7335
-DATA(insert OID = 7335 (  lead_float4	PGNSP	PGUID 12 f f t f i 4 700 f "2281 700 20 700" _null_ _null_ _null_ lead_float4 - _null_ ));
-#define LEAD_2_FUNC_FLOAT4_OID 7337
-DATA(insert OID = 7337 (  lead_float4	PGNSP	PGUID 12 f f t f i 3 700 f "2281 700 20" _null_ _null_ _null_ lead_float4 - _null_ ));
-#define LEAD_1_FUNC_FLOAT4_OID 7339
-DATA(insert OID = 7339 (  lead_float4	PGNSP	PGUID 12 f f t f i 2 700 f "2281 700" _null_ _null_ _null_ lead_float4 - _null_ ));
-#define LEAD_3_FUNC_FLOAT8_OID 7341
-DATA(insert OID = 7341 (  lead_float8	PGNSP	PGUID 12 f f t f i 4 701 f "2281 701 20 701" _null_ _null_ _null_ lead_float8 - _null_ ));
-#define LEAD_2_FUNC_FLOAT8_OID 7343
-DATA(insert OID = 7343 (  lead_float8	PGNSP	PGUID 12 f f t f i 3 701 f "2281 701 20" _null_ _null_ _null_ lead_float8 - _null_ ));
-#define LEAD_1_FUNC_FLOAT8_OID 7345
-DATA(insert OID = 7345 (  lead_float8	PGNSP	PGUID 12 f f t f i 2 701 f "2281 701" _null_ _null_ _null_ lead_float8 - _null_ ));
-#define LEAD_3_FUNC_INET_OID 7347
-DATA(insert OID = 7347 (  lead_inet	PGNSP	PGUID 12 f f t f i 4 869 f "2281 869 20 869" _null_ _null_ _null_ lead_inet - _null_ ));
-#define LEAD_2_FUNC_INET_OID 7349
-DATA(insert OID = 7349 (  lead_inet	PGNSP	PGUID 12 f f t f i 3 869 f "2281 869 20" _null_ _null_ _null_ lead_inet - _null_ ));
-#define LEAD_1_FUNC_INET_OID 7351
-DATA(insert OID = 7351 (  lead_inet	PGNSP	PGUID 12 f f t f i 2 869 f "2281 869" _null_ _null_ _null_ lead_inet - _null_ ));
-#define LEAD_3_FUNC_INTERVAL_OID 7353
-DATA(insert OID = 7353 (  lead_interval	PGNSP	PGUID 12 f f t f i 4 1186 f "2281 1186 20 1186" _null_ _null_ _null_ lead_interval - _null_ ));
-#define LEAD_2_FUNC_INTERVAL_OID 7355
-DATA(insert OID = 7355 (  lead_interval	PGNSP	PGUID 12 f f t f i 3 1186 f "2281 1186 20" _null_ _null_ _null_ lead_interval - _null_ ));
-#define LEAD_1_FUNC_INTERVAL_OID 7357
-DATA(insert OID = 7357 (  lead_interval	PGNSP	PGUID 12 f f t f i 2 1186 f "2281 1186" _null_ _null_ _null_ lead_interval - _null_ ));
-#define LEAD_3_FUNC_LINE_OID 7359
-DATA(insert OID = 7359 (  lead_line	PGNSP	PGUID 12 f f t f i 4 628 f "2281 628 20 628" _null_ _null_ _null_ lead_line - _null_ ));
-#define LEAD_2_FUNC_LINE_OID 7361
-DATA(insert OID = 7361 (  lead_line	PGNSP	PGUID 12 f f t f i 3 628 f "2281 628 20" _null_ _null_ _null_ lead_line - _null_ ));
-#define LEAD_1_FUNC_LINE_OID 7363
-DATA(insert OID = 7363 (  lead_line	PGNSP	PGUID 12 f f t f i 2 628 f "2281 628" _null_ _null_ _null_ lead_line - _null_ ));
-#define LEAD_3_FUNC_LSEG_OID 7365
-DATA(insert OID = 7365 (  lead_lseg	PGNSP	PGUID 12 f f t f i 4 601 f "2281 601 20 601" _null_ _null_ _null_ lead_lseg - _null_ ));
-#define LEAD_2_FUNC_LSEG_OID 7367
-DATA(insert OID = 7367 (  lead_lseg	PGNSP	PGUID 12 f f t f i 3 601 f "2281 601 20" _null_ _null_ _null_ lead_lseg - _null_ ));
-#define LEAD_1_FUNC_LSEG_OID 7369
-DATA(insert OID = 7369 (  lead_lseg	PGNSP	PGUID 12 f f t f i 2 601 f "2281 601" _null_ _null_ _null_ lead_lseg - _null_ ));
-#define LEAD_3_FUNC_MACADDR_OID 7371
-DATA(insert OID = 7371 (  lead_macaddr	PGNSP	PGUID 12 f f t f i 4 829 f "2281 829 20 829" _null_ _null_ _null_ lead_macaddr - _null_ ));
-#define LEAD_2_FUNC_MACADDR_OID 7373
-DATA(insert OID = 7373 (  lead_macaddr	PGNSP	PGUID 12 f f t f i 3 829 f "2281 829 20" _null_ _null_ _null_ lead_macaddr - _null_ ));
-#define LEAD_1_FUNC_MACADDR_OID 7375
-DATA(insert OID = 7375 (  lead_macaddr	PGNSP	PGUID 12 f f t f i 2 829 f "2281 829" _null_ _null_ _null_ lead_macaddr - _null_ ));
-#define LEAD_3_FUNC_SMALLINT_OID 7377
-DATA(insert OID = 7377 (  lead_smallint	PGNSP	PGUID 12 f f t f i 4 21 f "2281 21 20 21" _null_ _null_ _null_ lead_smallint - _null_ ));
-#define LEAD_2_FUNC_SMALLINT_OID 7379
-DATA(insert OID = 7379 (  lead_smallint	PGNSP	PGUID 12 f f t f i 3 21 f "2281 21 20" _null_ _null_ _null_ lead_smallint - _null_ ));
-#define LEAD_1_FUNC_SMALLINT_OID 7381
-DATA(insert OID = 7381 (  lead_smallint	PGNSP	PGUID 12 f f t f i 2 21 f "2281 21" _null_ _null_ _null_ lead_smallint - _null_ ));
-#define LEAD_3_FUNC_INT8_OID 7383
-DATA(insert OID = 7383 (  lead_int8	PGNSP	PGUID 12 f f t f i 4 20 f "2281 20 20 20" _null_ _null_ _null_ lead_int8 - _null_ ));
-#define LEAD_2_FUNC_INT8_OID 7385
-DATA(insert OID = 7385 (  lead_int8	PGNSP	PGUID 12 f f t f i 3 20 f "2281 20 20" _null_ _null_ _null_ lead_int8 - _null_ ));
-#define LEAD_1_FUNC_INT8_OID 7387
-DATA(insert OID = 7387 (  lead_int8	PGNSP	PGUID 12 f f t f i 2 20 f "2281 20" _null_ _null_ _null_ lead_int8 - _null_ ));
-#define LEAD_3_FUNC_MONEY_OID 7389
-DATA(insert OID = 7389 (  lead_money	PGNSP	PGUID 12 f f t f i 4 790 f "2281 790 20 790" _null_ _null_ _null_ lead_money - _null_ ));
-#define LEAD_2_FUNC_MONEY_OID 7391
-DATA(insert OID = 7391 (  lead_money	PGNSP	PGUID 12 f f t f i 3 790 f "2281 790 20" _null_ _null_ _null_ lead_money - _null_ ));
-#define LEAD_1_FUNC_MONEY_OID 7393
-DATA(insert OID = 7393 (  lead_money	PGNSP	PGUID 12 f f t f i 2 790 f "2281 790" _null_ _null_ _null_ lead_money - _null_ ));
-#define LEAD_3_FUNC_NAME_OID 7395
-DATA(insert OID = 7395 (  lead_name	PGNSP	PGUID 12 f f t f i 4 19 f "2281 19 20 19" _null_ _null_ _null_ lead_name - _null_ ));
-#define LEAD_2_FUNC_NAME_OID 7397
-DATA(insert OID = 7397 (  lead_name	PGNSP	PGUID 12 f f t f i 3 19 f "2281 19 20" _null_ _null_ _null_ lead_name - _null_ ));
-#define LEAD_1_FUNC_NAME_OID 7399
-DATA(insert OID = 7399 (  lead_name	PGNSP	PGUID 12 f f t f i 2 19 f "2281 19" _null_ _null_ _null_ lead_name - _null_ ));
-#define LEAD_3_FUNC_NUMERIC_OID 7401
-DATA(insert OID = 7401 (  lead_numeric	PGNSP	PGUID 12 f f t f i 4 1700 f "2281 1700 20 1700" _null_ _null_ _null_ lead_numeric - _null_ ));
-#define LEAD_2_FUNC_NUMERIC_OID 7403
-DATA(insert OID = 7403 (  lead_numeric	PGNSP	PGUID 12 f f t f i 3 1700 f "2281 1700 20" _null_ _null_ _null_ lead_numeric - _null_ ));
-#define LEAD_1_FUNC_NUMERIC_OID 7405
-DATA(insert OID = 7405 (  lead_numeric	PGNSP	PGUID 12 f f t f i 2 1700 f "2281 1700" _null_ _null_ _null_ lead_numeric - _null_ ));
-#define LEAD_3_FUNC_OID_OID 7407
-DATA(insert OID = 7407 (  lead_oid	PGNSP	PGUID 12 f f t f i 4 26 f "2281 26 20 26" _null_ _null_ _null_ lead_oid - _null_ ));
-#define LEAD_2_FUNC_OID_OID 7409
-DATA(insert OID = 7409 (  lead_oid	PGNSP	PGUID 12 f f t f i 3 26 f "2281 26 20" _null_ _null_ _null_ lead_oid - _null_ ));
-#define LEAD_1_FUNC_OID_OID 7411
-DATA(insert OID = 7411 (  lead_oid	PGNSP	PGUID 12 f f t f i 2 26 f "2281 26" _null_ _null_ _null_ lead_oid - _null_ ));
-#define LEAD_3_FUNC_PATH_OID 7413
-DATA(insert OID = 7413 (  lead_path	PGNSP	PGUID 12 f f t f i 4 602 f "2281 602 20 602" _null_ _null_ _null_ lead_path - _null_ ));
-#define LEAD_2_FUNC_PATH_OID 7415
-DATA(insert OID = 7415 (  lead_path	PGNSP	PGUID 12 f f t f i 3 602 f "2281 602 20" _null_ _null_ _null_ lead_path - _null_ ));
-#define LEAD_1_FUNC_PATH_OID 7417
-DATA(insert OID = 7417 (  lead_path	PGNSP	PGUID 12 f f t f i 2 602 f "2281 602" _null_ _null_ _null_ lead_path - _null_ ));
-#define LEAD_3_FUNC_POINT_OID 7419
-DATA(insert OID = 7419 (  lead_point	PGNSP	PGUID 12 f f t f i 4 600 f "2281 600 20 600" _null_ _null_ _null_ lead_point - _null_ ));
-#define LEAD_2_FUNC_POINT_OID 7421
-DATA(insert OID = 7421 (  lead_point	PGNSP	PGUID 12 f f t f i 3 600 f "2281 600 20" _null_ _null_ _null_ lead_point - _null_ ));
-#define LEAD_1_FUNC_POINT_OID 7423
-DATA(insert OID = 7423 (  lead_point	PGNSP	PGUID 12 f f t f i 2 600 f "2281 600" _null_ _null_ _null_ lead_point - _null_ ));
-#define LEAD_3_FUNC_POLYGON_OID 7425
-DATA(insert OID = 7425 (  lead_polygon	PGNSP	PGUID 12 f f t f i 4 604 f "2281 604 20 604" _null_ _null_ _null_ lead_polygon - _null_ ));
-#define LEAD_2_FUNC_POLYGON_OID 7427
-DATA(insert OID = 7427 (  lead_polygon	PGNSP	PGUID 12 f f t f i 3 604 f "2281 604 20" _null_ _null_ _null_ lead_polygon - _null_ ));
-#define LEAD_1_FUNC_POLYGON_OID 7429
-DATA(insert OID = 7429 (  lead_polygon	PGNSP	PGUID 12 f f t f i 2 604 f "2281 604" _null_ _null_ _null_ lead_polygon - _null_ ));
-#define LEAD_3_FUNC_RELTIME_OID 7431
-DATA(insert OID = 7431 (  lead_reltime	PGNSP	PGUID 12 f f t f i 4 703 f "2281 703 20 703" _null_ _null_ _null_ lead_reltime - _null_ ));
-#define LEAD_2_FUNC_RELTIME_OID 7433
-DATA(insert OID = 7433 (  lead_reltime	PGNSP	PGUID 12 f f t f i 3 703 f "2281 703 20" _null_ _null_ _null_ lead_reltime - _null_ ));
-#define LEAD_1_FUNC_RELTIME_OID 7435
-DATA(insert OID = 7435 (  lead_reltime	PGNSP	PGUID 12 f f t f i 2 703 f "2281 703" _null_ _null_ _null_ lead_reltime - _null_ ));
-#define LEAD_3_FUNC_TEXT_OID 7437
-DATA(insert OID = 7437 (  lead_text	PGNSP	PGUID 12 f f t f i 4 25 f "2281 25 20 25" _null_ _null_ _null_ lead_text - _null_ ));
-#define LEAD_2_FUNC_TEXT_OID 7439
-DATA(insert OID = 7439 (  lead_text	PGNSP	PGUID 12 f f t f i 3 25 f "2281 25 20" _null_ _null_ _null_ lead_text - _null_ ));
-#define LEAD_1_FUNC_TEXT_OID 7441
-DATA(insert OID = 7441 (  lead_text	PGNSP	PGUID 12 f f t f i 2 25 f "2281 25" _null_ _null_ _null_ lead_text - _null_ ));
-#define LEAD_3_FUNC_TID_OID 7443
-DATA(insert OID = 7443 (  lead_tid	PGNSP	PGUID 12 f f t f i 4 27 f "2281 27 20 27" _null_ _null_ _null_ lead_tid - _null_ ));
-#define LEAD_2_FUNC_TID_OID 7445
-DATA(insert OID = 7445 (  lead_tid	PGNSP	PGUID 12 f f t f i 3 27 f "2281 27 20" _null_ _null_ _null_ lead_tid - _null_ ));
-#define LEAD_1_FUNC_TID_OID 7447
-DATA(insert OID = 7447 (  lead_tid	PGNSP	PGUID 12 f f t f i 2 27 f "2281 27" _null_ _null_ _null_ lead_tid - _null_ ));
-#define LEAD_3_FUNC_TIME_OID 7449
-DATA(insert OID = 7449 (  lead_time	PGNSP	PGUID 12 f f t f i 4 1083 f "2281 1083 20 1083" _null_ _null_ _null_ lead_time - _null_ ));
-#define LEAD_2_FUNC_TIME_OID 7451
-DATA(insert OID = 7451 (  lead_time	PGNSP	PGUID 12 f f t f i 3 1083 f "2281 1083 20" _null_ _null_ _null_ lead_time - _null_ ));
-#define LEAD_1_FUNC_TIME_OID 7453
-DATA(insert OID = 7453 (  lead_time	PGNSP	PGUID 12 f f t f i 2 1083 f "2281 1083" _null_ _null_ _null_ lead_time - _null_ ));
-#define LEAD_3_FUNC_TIMESTAMP_OID 7455
-DATA(insert OID = 7455 (  lead_timestamp	PGNSP	PGUID 12 f f t f i 4 1114 f "2281 1114 20 1114" _null_ _null_ _null_ lead_timestamp - _null_ ));
-#define LEAD_2_FUNC_TIMESTAMP_OID 7457
-DATA(insert OID = 7457 (  lead_timestamp	PGNSP	PGUID 12 f f t f i 3 1114 f "2281 1114 20" _null_ _null_ _null_ lead_timestamp - _null_ ));
-#define LEAD_1_FUNC_TIMESTAMP_OID 7459
-DATA(insert OID = 7459 (  lead_timestamp	PGNSP	PGUID 12 f f t f i 2 1114 f "2281 1114" _null_ _null_ _null_ lead_timestamp - _null_ ));
-#define LEAD_3_FUNC_TIMESTAMPTZ_OID 7461
-DATA(insert OID = 7461 (  lead_timestamptz	PGNSP	PGUID 12 f f t f i 4 1184 f "2281 1184 20 1184" _null_ _null_ _null_ lead_timestamptz - _null_ ));
-#define LEAD_2_FUNC_TIMESTAMPTZ_OID 7463
-DATA(insert OID = 7463 (  lead_timestamptz	PGNSP	PGUID 12 f f t f i 3 1184 f "2281 1184 20" _null_ _null_ _null_ lead_timestamptz - _null_ ));
-#define LEAD_1_FUNC_TIMESTAMPTZ_OID 7465
-DATA(insert OID = 7465 (  lead_timestamptz	PGNSP	PGUID 12 f f t f i 2 1184 f "2281 1184" _null_ _null_ _null_ lead_timestamptz - _null_ ));
-#define LEAD_3_FUNC_TIMETZ_OID 7467
-DATA(insert OID = 7467 (  lead_timetz	PGNSP	PGUID 12 f f t f i 4 1266 f "2281 1266 20 1266" _null_ _null_ _null_ lead_timetz - _null_ ));
-#define LEAD_2_FUNC_TIMETZ_OID 7469
-DATA(insert OID = 7469 (  lead_timetz	PGNSP	PGUID 12 f f t f i 3 1266 f "2281 1266 20" _null_ _null_ _null_ lead_timetz - _null_ ));
-#define LEAD_1_FUNC_TIMETZ_OID 7471
-DATA(insert OID = 7471 (  lead_timetz	PGNSP	PGUID 12 f f t f i 2 1266 f "2281 1266" _null_ _null_ _null_ lead_timetz - _null_ ));
-#define LEAD_3_FUNC_VARBIT_OID 7473
-DATA(insert OID = 7473 (  lead_varbit	PGNSP	PGUID 12 f f t f i 4 1562 f "2281 1562 20 1562" _null_ _null_ _null_ lead_varbit - _null_ ));
-#define LEAD_2_FUNC_VARBIT_OID 7475
-DATA(insert OID = 7475 (  lead_varbit	PGNSP	PGUID 12 f f t f i 3 1562 f "2281 1562 20" _null_ _null_ _null_ lead_varbit - _null_ ));
-#define LEAD_1_FUNC_VARBIT_OID 7477
-DATA(insert OID = 7477 (  lead_varbit	PGNSP	PGUID 12 f f t f i 2 1562 f "2281 1562" _null_ _null_ _null_ lead_varbit - _null_ ));
-#define LEAD_3_FUNC_VARCHAR_OID 7479
-DATA(insert OID = 7479 (  lead_varchar	PGNSP	PGUID 12 f f t f i 4 1043 f "2281 1043 20 1043" _null_ _null_ _null_ lead_varchar - _null_ ));
-#define LEAD_2_FUNC_VARCHAR_OID 7481
-DATA(insert OID = 7481 (  lead_varchar	PGNSP	PGUID 12 f f t f i 3 1043 f "2281 1043 20" _null_ _null_ _null_ lead_varchar - _null_ ));
-#define LEAD_1_FUNC_VARCHAR_OID 7483
-DATA(insert OID = 7483 (  lead_varchar	PGNSP	PGUID 12 f f t f i 2 1043 f "2281 1043" _null_ _null_ _null_ lead_varchar - _null_ ));
-#define LEAD_3_FUNC_XID_OID 7485
-DATA(insert OID = 7485 (  lead_xid	PGNSP	PGUID 12 f f t f i 4 28 f "2281 28 20 28" _null_ _null_ _null_ lead_xid - _null_ ));
-#define LEAD_2_FUNC_XID_OID 7487
-DATA(insert OID = 7487 (  lead_xid	PGNSP	PGUID 12 f f t f i 3 28 f "2281 28 20" _null_ _null_ _null_ lead_xid - _null_ ));
-#define LEAD_1_FUNC_XID_OID 7489
-DATA(insert OID = 7489 (  lead_xid	PGNSP	PGUID 12 f f t f i 2 28 f "2281 28" _null_ _null_ _null_ lead_xid - _null_ ));
-DATA(insert OID = 7217 (  lead_any	PGNSP	PGUID 12 f f t f i 4 2277 t "2281 2277 20 2277" _null_ _null_ _null_ lead_any - _null_ ));
-DATA(insert OID = 7218 (  lead_any	PGNSP	PGUID 12 f f t f i 3 2277 t "2281 2277 20" _null_ _null_ _null_ lead_any - _null_ ));
+DATA(insert OID = 7106 (  lead_int   PGNSP PGUID 12 f f t f i 4 23 t "2281 23 20 23" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7104 (  lead_int   PGNSP PGUID 12 f f t f i 3 23 t "2281 23 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7105 (  lead_int   PGNSP PGUID 12 f f t f i 2 23 t "2281 23" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7311 (  lead_bool	PGNSP	PGUID 12 f f t f i 4 16 t "2281 16 20 16" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7313 (  lead_bool	PGNSP	PGUID 12 f f t f i 3 16 t "2281 16 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7315 (  lead_bool	PGNSP	PGUID 12 f f t f i 2 16 t "2281 16" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7317 (  lead_char	PGNSP	PGUID 12 f f t f i 4 18 t "2281 18 20 18" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7319 (  lead_char	PGNSP	PGUID 12 f f t f i 3 18 t "2281 18 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7321 (  lead_char	PGNSP	PGUID 12 f f t f i 2 18 t "2281 18" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7323 (  lead_cidr	PGNSP	PGUID 12 f f t f i 4 650 t "2281 650 20 650" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7325 (  lead_cidr	PGNSP	PGUID 12 f f t f i 3 650 t "2281 650 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7327 (  lead_cidr	PGNSP	PGUID 12 f f t f i 2 650 t "2281 650" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7329 (  lead_circle	PGNSP	PGUID 12 f f t f i 4 718 t "2281 718 20 718" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7331 (  lead_circle	PGNSP	PGUID 12 f f t f i 3 718 t "2281 718 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7333 (  lead_circle	PGNSP	PGUID 12 f f t f i 2 718 t "2281 718" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7335 (  lead_float4	PGNSP	PGUID 12 f f t f i 4 700 t "2281 700 20 700" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7337 (  lead_float4	PGNSP	PGUID 12 f f t f i 3 700 t "2281 700 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7339 (  lead_float4	PGNSP	PGUID 12 f f t f i 2 700 t "2281 700" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7341 (  lead_float8	PGNSP	PGUID 12 f f t f i 4 701 t "2281 701 20 701" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7343 (  lead_float8	PGNSP	PGUID 12 f f t f i 3 701 t "2281 701 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7345 (  lead_float8	PGNSP	PGUID 12 f f t f i 2 701 t "2281 701" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7347 (  lead_inet	PGNSP	PGUID 12 f f t f i 4 869 t "2281 869 20 869" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7349 (  lead_inet	PGNSP	PGUID 12 f f t f i 3 869 t "2281 869 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7351 (  lead_inet	PGNSP	PGUID 12 f f t f i 2 869 t "2281 869" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7353 (  lead_interval	PGNSP	PGUID 12 f f t f i 4 1186 t "2281 1186 20 1186" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7355 (  lead_interval	PGNSP	PGUID 12 f f t f i 3 1186 t "2281 1186 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7357 (  lead_interval	PGNSP	PGUID 12 f f t f i 2 1186 t "2281 1186" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7359 (  lead_line	PGNSP	PGUID 12 f f t f i 4 628 t "2281 628 20 628" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7361 (  lead_line	PGNSP	PGUID 12 f f t f i 3 628 t "2281 628 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7363 (  lead_line	PGNSP	PGUID 12 f f t f i 2 628 t "2281 628" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7365 (  lead_lseg	PGNSP	PGUID 12 f f t f i 4 601 t "2281 601 20 601" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7367 (  lead_lseg	PGNSP	PGUID 12 f f t f i 3 601 t "2281 601 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7369 (  lead_lseg	PGNSP	PGUID 12 f f t f i 2 601 t "2281 601" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7371 (  lead_macaddr	PGNSP	PGUID 12 f f t f i 4 829 t "2281 829 20 829" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7373 (  lead_macaddr	PGNSP	PGUID 12 f f t f i 3 829 t "2281 829 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7375 (  lead_macaddr	PGNSP	PGUID 12 f f t f i 2 829 t "2281 829" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7377 (  lead_smallint	PGNSP	PGUID 12 f f t f i 4 21 t "2281 21 20 21" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7379 (  lead_smallint	PGNSP	PGUID 12 f f t f i 3 21 t "2281 21 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7381 (  lead_smallint	PGNSP	PGUID 12 f f t f i 2 21 t "2281 21" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7383 (  lead_int8	PGNSP	PGUID 12 f f t f i 4 20 t "2281 20 20 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7385 (  lead_int8	PGNSP	PGUID 12 f f t f i 3 20 t "2281 20 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7387 (  lead_int8	PGNSP	PGUID 12 f f t f i 2 20 t "2281 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7389 (  lead_money	PGNSP	PGUID 12 f f t f i 4 790 t "2281 790 20 790" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7391 (  lead_money	PGNSP	PGUID 12 f f t f i 3 790 t "2281 790 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7393 (  lead_money	PGNSP	PGUID 12 f f t f i 2 790 t "2281 790" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7395 (  lead_name	PGNSP	PGUID 12 f f t f i 4 19 t "2281 19 20 19" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7397 (  lead_name	PGNSP	PGUID 12 f f t f i 3 19 t "2281 19 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7399 (  lead_name	PGNSP	PGUID 12 f f t f i 2 19 t "2281 19" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7401 (  lead_numeric	PGNSP	PGUID 12 f f t f i 4 1700 t "2281 1700 20 1700" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7403 (  lead_numeric	PGNSP	PGUID 12 f f t f i 3 1700 t "2281 1700 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7405 (  lead_numeric	PGNSP	PGUID 12 f f t f i 2 1700 t "2281 1700" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7407 (  lead_oid	PGNSP	PGUID 12 f f t f i 4 26 t "2281 26 20 26" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7409 (  lead_oid	PGNSP	PGUID 12 f f t f i 3 26 t "2281 26 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7411 (  lead_oid	PGNSP	PGUID 12 f f t f i 2 26 t "2281 26" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7413 (  lead_path	PGNSP	PGUID 12 f f t f i 4 602 t "2281 602 20 602" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7415 (  lead_path	PGNSP	PGUID 12 f f t f i 3 602 t "2281 602 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7417 (  lead_path	PGNSP	PGUID 12 f f t f i 2 602 t "2281 602" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7419 (  lead_point	PGNSP	PGUID 12 f f t f i 4 600 t "2281 600 20 600" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7421 (  lead_point	PGNSP	PGUID 12 f f t f i 3 600 t "2281 600 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7423 (  lead_point	PGNSP	PGUID 12 f f t f i 2 600 t "2281 600" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7425 (  lead_polygon	PGNSP	PGUID 12 f f t f i 4 604 t "2281 604 20 604" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7427 (  lead_polygon	PGNSP	PGUID 12 f f t f i 3 604 t "2281 604 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7429 (  lead_polygon	PGNSP	PGUID 12 f f t f i 2 604 t "2281 604" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7431 (  lead_reltime	PGNSP	PGUID 12 f f t f i 4 703 t "2281 703 20 703" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7433 (  lead_reltime	PGNSP	PGUID 12 f f t f i 3 703 t "2281 703 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7435 (  lead_reltime	PGNSP	PGUID 12 f f t f i 2 703 t "2281 703" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7437 (  lead_text	PGNSP	PGUID 12 f f t f i 4 25 t "2281 25 20 25" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7439 (  lead_text	PGNSP	PGUID 12 f f t f i 3 25 t "2281 25 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7441 (  lead_text	PGNSP	PGUID 12 f f t f i 2 25 t "2281 25" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7443 (  lead_tid	PGNSP	PGUID 12 f f t f i 4 27 t "2281 27 20 27" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7445 (  lead_tid	PGNSP	PGUID 12 f f t f i 3 27 t "2281 27 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7447 (  lead_tid	PGNSP	PGUID 12 f f t f i 2 27 t "2281 27" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7449 (  lead_time	PGNSP	PGUID 12 f f t f i 4 1083 t "2281 1083 20 1083" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7451 (  lead_time	PGNSP	PGUID 12 f f t f i 3 1083 t "2281 1083 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7453 (  lead_time	PGNSP	PGUID 12 f f t f i 2 1083 t "2281 1083" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7455 (  lead_timestamp	PGNSP	PGUID 12 f f t f i 4 1114 t "2281 1114 20 1114" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7457 (  lead_timestamp	PGNSP	PGUID 12 f f t f i 3 1114 t "2281 1114 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7459 (  lead_timestamp	PGNSP	PGUID 12 f f t f i 2 1114 t "2281 1114" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7461 (  lead_timestamptz	PGNSP	PGUID 12 f f t f i 4 1184 t "2281 1184 20 1184" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7463 (  lead_timestamptz	PGNSP	PGUID 12 f f t f i 3 1184 t "2281 1184 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7465 (  lead_timestamptz	PGNSP	PGUID 12 f f t f i 2 1184 t "2281 1184" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7467 (  lead_timetz	PGNSP	PGUID 12 f f t f i 4 1266 t "2281 1266 20 1266" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7469 (  lead_timetz	PGNSP	PGUID 12 f f t f i 3 1266 t "2281 1266 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7471 (  lead_timetz	PGNSP	PGUID 12 f f t f i 2 1266 t "2281 1266" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7473 (  lead_varbit	PGNSP	PGUID 12 f f t f i 4 1562 t "2281 1562 20 1562" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7475 (  lead_varbit	PGNSP	PGUID 12 f f t f i 3 1562 t "2281 1562 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7477 (  lead_varbit	PGNSP	PGUID 12 f f t f i 2 1562 t "2281 1562" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7479 (  lead_varchar	PGNSP	PGUID 12 f f t f i 4 1043 t "2281 1043 20 1043" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7481 (  lead_varchar	PGNSP	PGUID 12 f f t f i 3 1043 t "2281 1043 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7483 (  lead_varchar	PGNSP	PGUID 12 f f t f i 2 1043 t "2281 1043" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7485 (  lead_xid	PGNSP	PGUID 12 f f t f i 4 28 t "2281 28 20 28" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7487 (  lead_xid	PGNSP	PGUID 12 f f t f i 3 28 t "2281 28 20" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7489 (  lead_xid	PGNSP	PGUID 12 f f t f i 2 28 t "2281 28" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7217 (  lead_any	PGNSP	PGUID 12 f f t f i 4 2277 t "2281 2277 20 2277" _null_ _null_ _null_ lead_generic - _null_ ));
+DATA(insert OID = 7218 (  lead_any	PGNSP	PGUID 12 f f t f i 3 2277 t "2281 2277 20" _null_ _null_ _null_ lead_generic - _null_ ));
 DATA(insert OID = 7219 (  lead_any	PGNSP	PGUID 12 f f t f i 2 2277 t "2281 2277" _null_ _null_ _null_ lead_generic - _null_ ));
 DATA(insert OID = 7221 (  lead_bytea  PGNSP   PGUID 12 f f t f i 2 17 t "2281 17" _null_ _null_ _null_ lead_generic - _null_ ));
 DATA(insert OID = 7223 (  lead_bytea  PGNSP   PGUID 12 f f t f i 3 17 t "2281 17 20" _null_ _null_ _null_ lead_generic - _null_ ));
@@ -4751,72 +4565,72 @@ DATA(insert OID = 7249 (  lead_bit  PGNSP		PGUID 12 f f t f i 4 1560 t "2281 156
 DATA(insert OID = 7261 (  lead_box  PGNSP		PGUID 12 f f t f i 2 603 t "2281 603" _null_ _null_ _null_ lead_generic - _null_ ));
 DATA(insert OID = 7263 (  lead_box  PGNSP		PGUID 12 f f t f i 3 603 t "2281 603 20" _null_ _null_ _null_ lead_generic - _null_ ));
 DATA(insert OID = 7265 (  lead_box  PGNSP		PGUID 12 f f t f i 4 603 t "2281 603 20 603" _null_ _null_ _null_ lead_generic - _null_ ));
-DATA(insert OID = 7111 (  first_value_bool  PGNSP   PGUID 12 f f t f i 2 16 f "2281 16" _null_ _null_ _null_ first_value_bool - _null_ ));
-DATA(insert OID = 7112 (  first_value_char	PGNSP	PGUID 12 f f t f i 2 18 f "2281 18" _null_ _null_ _null_ first_value_char - _null_ ));
-DATA(insert OID = 7113 (  first_value_cidr	PGNSP	PGUID 12 f f t f i 2 650 f "2281 650" _null_ _null_ _null_ first_value_cidr - _null_ ));
-DATA(insert OID = 7114 (  first_value_circle	PGNSP	PGUID 12 f f t f i 2 718 f "2281 718" _null_ _null_ _null_ first_value_circle - _null_ ));
-DATA(insert OID = 7115 (  first_value_float4	PGNSP	PGUID 12 f f t f i 2 700 f "2281 700" _null_ _null_ _null_ first_value_float4 - _null_ ));
-DATA(insert OID = 7116 (  first_value_float8	PGNSP	PGUID 12 f f t f i 2 701 f "2281 701" _null_ _null_ _null_ first_value_float8 - _null_ ));
-DATA(insert OID = 7117 (  first_value_inet	PGNSP	PGUID 12 f f t f i 2 869 f "2281 869" _null_ _null_ _null_ first_value_inet - _null_ ));
-DATA(insert OID = 7118 (  first_value_interval	PGNSP	PGUID 12 f f t f i 2 1186 f "2281 1186" _null_ _null_ _null_ first_value_interval - _null_ ));
-DATA(insert OID = 7119 (  first_value_line	PGNSP	PGUID 12 f f t f i 2 628 f "2281 628" _null_ _null_ _null_ first_value_line - _null_ ));
-DATA(insert OID = 7120 (  first_value_lseg	PGNSP	PGUID 12 f f t f i 2 601 f "2281 601" _null_ _null_ _null_ first_value_lseg - _null_ ));
-DATA(insert OID = 7121 (  first_value_macaddr	PGNSP	PGUID 12 f f t f i 2 829 f "2281 829" _null_ _null_ _null_ first_value_macaddr - _null_ ));
-DATA(insert OID = 7122 (  first_value_smallint	PGNSP	PGUID 12 f f t f i 2 21 f "2281 21" _null_ _null_ _null_ first_value_smallint - _null_ ));
-DATA(insert OID = 7123 (  first_value_int4	PGNSP	PGUID 12 f f t f i 2 23 f "2281 23" _null_ _null_ _null_ first_value_int4 - _null_ ));
-DATA(insert OID = 7124 (  first_value_int8	PGNSP	PGUID 12 f f t f i 2 20 f "2281 20" _null_ _null_ _null_ first_value_int8 - _null_ ));
-DATA(insert OID = 7125 (  first_value_money	PGNSP	PGUID 12 f f t f i 2 790 f "2281 790" _null_ _null_ _null_ first_value_money - _null_ ));
-DATA(insert OID = 7126 (  first_value_name	PGNSP	PGUID 12 f f t f i 2 19 f "2281 19" _null_ _null_ _null_ first_value_name - _null_ ));
-DATA(insert OID = 7127 (  first_value_numeric	PGNSP	PGUID 12 f f t f i 2 1700 f "2281 1700" _null_ _null_ _null_ first_value_numeric - _null_ ));
-DATA(insert OID = 7128 (  first_value_oid	PGNSP	PGUID 12 f f t f i 2 26 f "2281 26" _null_ _null_ _null_ first_value_oid - _null_ ));
-DATA(insert OID = 7129 (  first_value_path	PGNSP	PGUID 12 f f t f i 2 602 f "2281 602" _null_ _null_ _null_ first_value_path - _null_ ));
-DATA(insert OID = 7130 (  first_value_point	PGNSP	PGUID 12 f f t f i 2 600 f "2281 600" _null_ _null_ _null_ first_value_point - _null_ ));
-DATA(insert OID = 7131 (  first_value_polygon	PGNSP	PGUID 12 f f t f i 2 604 f "2281 604" _null_ _null_ _null_ first_value_polygon - _null_ ));
-DATA(insert OID = 7132 (  first_value_reltime	PGNSP	PGUID 12 f f t f i 2 703 f "2281 703" _null_ _null_ _null_ first_value_reltime - _null_ ));
-DATA(insert OID = 7133 (  first_value_text	PGNSP	PGUID 12 f f t f i 2 25 f "2281 25" _null_ _null_ _null_ first_value_text - _null_ ));
-DATA(insert OID = 7134 (  first_value_tid	PGNSP	PGUID 12 f f t f i 2 27 f "2281 27" _null_ _null_ _null_ first_value_tid - _null_ ));
-DATA(insert OID = 7135 (  first_value_time	PGNSP	PGUID 12 f f t f i 2 1083 f "2281 1083" _null_ _null_ _null_ first_value_time - _null_ ));
-DATA(insert OID = 7136 (  first_value_timestamp	PGNSP	PGUID 12 f f t f i 2 1114 f "2281 1114" _null_ _null_ _null_ first_value_timestamp - _null_ ));
-DATA(insert OID = 7137 (  first_value_timestamptz	PGNSP	PGUID 12 f f t f i 2 1184 f "2281 1184" _null_ _null_ _null_ first_value_timestamptz - _null_ ));
-DATA(insert OID = 7138 (  first_value_timetz	PGNSP	PGUID 12 f f t f i 2 1266 f "2281 1266" _null_ _null_ _null_ first_value_timetz - _null_ ));
-DATA(insert OID = 7139 (  first_value_varbit	PGNSP	PGUID 12 f f t f i 2 1562 f "2281 1562" _null_ _null_ _null_ first_value_varbit - _null_ ));
-DATA(insert OID = 7140 (  first_value_varchar	PGNSP	PGUID 12 f f t f i 2 1043 f "2281 1043" _null_ _null_ _null_ first_value_varchar - _null_ ));
-DATA(insert OID = 7141 (  first_value_xid	PGNSP	PGUID 12 f f t f i 2 28 f "2281 28" _null_ _null_ _null_ first_value_xid - _null_ ));
+DATA(insert OID = 7111 (  first_value_bool  PGNSP   PGUID 12 f f t f i 2 16 t "2281 16" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7112 (  first_value_char	PGNSP	PGUID 12 f f t f i 2 18 t "2281 18" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7113 (  first_value_cidr	PGNSP	PGUID 12 f f t f i 2 650 t "2281 650" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7114 (  first_value_circle	PGNSP	PGUID 12 f f t f i 2 718 t "2281 718" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7115 (  first_value_float4	PGNSP	PGUID 12 f f t f i 2 700 t "2281 700" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7116 (  first_value_float8	PGNSP	PGUID 12 f f t f i 2 701 t "2281 701" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7117 (  first_value_inet	PGNSP	PGUID 12 f f t f i 2 869 t "2281 869" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7118 (  first_value_interval	PGNSP	PGUID 12 f f t f i 2 1186 t "2281 1186" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7119 (  first_value_line	PGNSP	PGUID 12 f f t f i 2 628 t "2281 628" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7120 (  first_value_lseg	PGNSP	PGUID 12 f f t f i 2 601 t "2281 601" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7121 (  first_value_macaddr	PGNSP	PGUID 12 f f t f i 2 829 t "2281 829" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7122 (  first_value_smallint	PGNSP	PGUID 12 f f t f i 2 21 t "2281 21" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7123 (  first_value_int4	PGNSP	PGUID 12 f f t f i 2 23 t "2281 23" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7124 (  first_value_int8	PGNSP	PGUID 12 f f t f i 2 20 t "2281 20" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7125 (  first_value_money	PGNSP	PGUID 12 f f t f i 2 790 t "2281 790" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7126 (  first_value_name	PGNSP	PGUID 12 f f t f i 2 19 t "2281 19" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7127 (  first_value_numeric	PGNSP	PGUID 12 f f t f i 2 1700 t "2281 1700" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7128 (  first_value_oid	PGNSP	PGUID 12 f f t f i 2 26 t "2281 26" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7129 (  first_value_path	PGNSP	PGUID 12 f f t f i 2 602 t "2281 602" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7130 (  first_value_point	PGNSP	PGUID 12 f f t f i 2 600 t "2281 600" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7131 (  first_value_polygon	PGNSP	PGUID 12 f f t f i 2 604 t "2281 604" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7132 (  first_value_reltime	PGNSP	PGUID 12 f f t f i 2 703 t "2281 703" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7133 (  first_value_text	PGNSP	PGUID 12 f f t f i 2 25 t "2281 25" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7134 (  first_value_tid	PGNSP	PGUID 12 f f t f i 2 27 t "2281 27" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7135 (  first_value_time	PGNSP	PGUID 12 f f t f i 2 1083 t "2281 1083" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7136 (  first_value_timestamp	PGNSP	PGUID 12 f f t f i 2 1114 t "2281 1114" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7137 (  first_value_timestamptz	PGNSP	PGUID 12 f f t f i 2 1184 t "2281 1184" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7138 (  first_value_timetz	PGNSP	PGUID 12 f f t f i 2 1266 t "2281 1266" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7139 (  first_value_varbit	PGNSP	PGUID 12 f f t f i 2 1562 t "2281 1562" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7140 (  first_value_varchar	PGNSP	PGUID 12 f f t f i 2 1043 t "2281 1043" _null_ _null_ _null_ first_value_generic - _null_ ));
+DATA(insert OID = 7141 (  first_value_xid	PGNSP	PGUID 12 f f t f i 2 28 t "2281 28" _null_ _null_ _null_ first_value_generic - _null_ ));
 DATA(insert OID = 7233 (  first_value_bytea  PGNSP   PGUID 12 f f t f i 2 17 t "2281 17" _null_ _null_ _null_ first_value_generic - _null_ ));
 DATA(insert OID = 7257 (  first_value_bit  PGNSP		PGUID 12 f f t f i 2 1560 t "2281 1560" _null_ _null_ _null_ first_value_generic - _null_ ));
 DATA(insert OID = 7273 (  first_value_box  PGNSP		PGUID 12 f f t f i 2 603 t "2281 603" _null_ _null_ _null_ first_value_generic - _null_ ));
 DATA(insert OID = 7289 (  first_value_any  PGNSP		PGUID 12 f f t f i 2 2277 t "2281 2277" _null_ _null_ _null_ first_value_generic - _null_ ));
-DATA(insert OID = 7103 (  last_value_int   PGNSP PGUID 12 f f t f i 2 23 f "2281 23" _null_ _null_ _null_ last_value_int - _null_ ));
-DATA(insert OID = 7107 (  last_value_smallint   PGNSP PGUID 12 f f t f i 2 21 f "2281 21" _null_ _null_ _null_ last_value_smallint - _null_ ));
-DATA(insert OID = 7108 (  last_value_bigint   PGNSP PGUID 12 f f t f i 2 20 f "2281 20" _null_ _null_ _null_ last_value_bigint - _null_ ));
-DATA(insert OID = 7109 (  last_value_numeric   PGNSP PGUID 12 f f t f i 2 1700 f "2281 1700" _null_ _null_ _null_ last_value_numeric - _null_ ));
-DATA(insert OID = 7110 (  last_value_text   PGNSP PGUID 12 f f t f i 2 25 f "2281 25" _null_ _null_ _null_ last_value_text - _null_ ));
-DATA(insert OID = 7165 (  last_value_bool	PGNSP	PGUID 12 f f t f i 2 16 f "2281 16" _null_ _null_ _null_ last_value_bool - _null_ ));
-DATA(insert OID = 7166 (  last_value_char	PGNSP	PGUID 12 f f t f i 2 18 f "2281 18" _null_ _null_ _null_ last_value_char - _null_ ));
-DATA(insert OID = 7167 (  last_value_cidr	PGNSP	PGUID 12 f f t f i 2 650 f "2281 650" _null_ _null_ _null_ last_value_cidr - _null_ ));
-DATA(insert OID = 7168 (  last_value_circle	PGNSP	PGUID 12 f f t f i 2 718 f "2281 718" _null_ _null_ _null_ last_value_circle - _null_ ));
-DATA(insert OID = 7142 (  last_value_float4	PGNSP	PGUID 12 f f t f i 2 700 f "2281 700" _null_ _null_ _null_ last_value_float4 - _null_ ));
-DATA(insert OID = 7143 (  last_value_float8	PGNSP	PGUID 12 f f t f i 2 701 f "2281 701" _null_ _null_ _null_ last_value_float8 - _null_ ));
-DATA(insert OID = 7144 (  last_value_inet	PGNSP	PGUID 12 f f t f i 2 869 f "2281 869" _null_ _null_ _null_ last_value_inet - _null_ ));
-DATA(insert OID = 7145 (  last_value_interval	PGNSP	PGUID 12 f f t f i 2 1186 f "2281 1186" _null_ _null_ _null_ last_value_interval - _null_ ));
-DATA(insert OID = 7146 (  last_value_line	PGNSP	PGUID 12 f f t f i 2 628 f "2281 628" _null_ _null_ _null_ last_value_line - _null_ ));
-DATA(insert OID = 7147 (  last_value_lseg	PGNSP	PGUID 12 f f t f i 2 601 f "2281 601" _null_ _null_ _null_ last_value_lseg - _null_ ));
-DATA(insert OID = 7148 (  last_value_macaddr	PGNSP	PGUID 12 f f t f i 2 829 f "2281 829" _null_ _null_ _null_ last_value_macaddr - _null_ ));
-DATA(insert OID = 7149 (  last_value_money	PGNSP	PGUID 12 f f t f i 2 790 f "2281 790" _null_ _null_ _null_ last_value_money - _null_ ));
-DATA(insert OID = 7150 (  last_value_name	PGNSP	PGUID 12 f f t f i 2 19 f "2281 19" _null_ _null_ _null_ last_value_name - _null_ ));
-DATA(insert OID = 7151 (  last_value_oid	PGNSP	PGUID 12 f f t f i 2 26 f "2281 26" _null_ _null_ _null_ last_value_oid - _null_ ));
-DATA(insert OID = 7152 (  last_value_path	PGNSP	PGUID 12 f f t f i 2 602 f "2281 602" _null_ _null_ _null_ last_value_path - _null_ ));
-DATA(insert OID = 7153 (  last_value_point	PGNSP	PGUID 12 f f t f i 2 600 f "2281 600" _null_ _null_ _null_ last_value_point - _null_ ));
-DATA(insert OID = 7154 (  last_value_polygon	PGNSP	PGUID 12 f f t f i 2 604 f "2281 604" _null_ _null_ _null_ last_value_polygon - _null_ ));
-DATA(insert OID = 7155 (  last_value_reltime	PGNSP	PGUID 12 f f t f i 2 703 f "2281 703" _null_ _null_ _null_ last_value_reltime - _null_ ));
-DATA(insert OID = 7157 (  last_value_tid	PGNSP	PGUID 12 f f t f i 2 27 f "2281 27" _null_ _null_ _null_ last_value_tid - _null_ ));
-DATA(insert OID = 7158 (  last_value_time	PGNSP	PGUID 12 f f t f i 2 1083 f "2281 1083" _null_ _null_ _null_ last_value_time - _null_ ));
-DATA(insert OID = 7159 (  last_value_timestamp	PGNSP	PGUID 12 f f t f i 2 1114 f "2281 1114" _null_ _null_ _null_ last_value_timestamp - _null_ ));
-DATA(insert OID = 7160 (  last_value_timestamptz	PGNSP	PGUID 12 f f t f i 2 1184 f "2281 1184" _null_ _null_ _null_ last_value_timestamptz - _null_ ));
-DATA(insert OID = 7161 (  last_value_timetz	PGNSP	PGUID 12 f f t f i 2 1266 f "2281 1266" _null_ _null_ _null_ last_value_timetz - _null_ ));
-DATA(insert OID = 7162 (  last_value_varbit	PGNSP	PGUID 12 f f t f i 2 1562 f "2281 1562" _null_ _null_ _null_ last_value_varbit - _null_ ));
-DATA(insert OID = 7163 (  last_value_varchar	PGNSP	PGUID 12 f f t f i 2 1043 f "2281 1043" _null_ _null_ _null_ last_value_varchar - _null_ ));
-DATA(insert OID = 7164 (  last_value_xid	PGNSP	PGUID 12 f f t f i 2 28 f "2281 28" _null_ _null_ _null_ last_value_xid - _null_ ));
+DATA(insert OID = 7103 (  last_value_int   PGNSP PGUID 12 f f t f i 2 23 t "2281 23" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7107 (  last_value_smallint   PGNSP PGUID 12 f f t f i 2 21 t "2281 21" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7108 (  last_value_bigint   PGNSP PGUID 12 f f t f i 2 20 t "2281 20" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7109 (  last_value_numeric   PGNSP PGUID 12 f f t f i 2 1700 t "2281 1700" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7110 (  last_value_text   PGNSP PGUID 12 f f t f i 2 25 t "2281 25" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7165 (  last_value_bool	PGNSP	PGUID 12 f f t f i 2 16 t "2281 16" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7166 (  last_value_char	PGNSP	PGUID 12 f f t f i 2 18 t "2281 18" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7167 (  last_value_cidr	PGNSP	PGUID 12 f f t f i 2 650 t "2281 650" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7168 (  last_value_circle	PGNSP	PGUID 12 f f t f i 2 718 t "2281 718" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7142 (  last_value_float4	PGNSP	PGUID 12 f f t f i 2 700 t "2281 700" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7143 (  last_value_float8	PGNSP	PGUID 12 f f t f i 2 701 t "2281 701" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7144 (  last_value_inet	PGNSP	PGUID 12 f f t f i 2 869 t "2281 869" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7145 (  last_value_interval	PGNSP	PGUID 12 f f t f i 2 1186 t "2281 1186" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7146 (  last_value_line	PGNSP	PGUID 12 f f t f i 2 628 t "2281 628" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7147 (  last_value_lseg	PGNSP	PGUID 12 f f t f i 2 601 t "2281 601" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7148 (  last_value_macaddr	PGNSP	PGUID 12 f f t f i 2 829 t "2281 829" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7149 (  last_value_money	PGNSP	PGUID 12 f f t f i 2 790 t "2281 790" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7150 (  last_value_name	PGNSP	PGUID 12 f f t f i 2 19 t "2281 19" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7151 (  last_value_oid	PGNSP	PGUID 12 f f t f i 2 26 t "2281 26" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7152 (  last_value_path	PGNSP	PGUID 12 f f t f i 2 602 t "2281 602" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7153 (  last_value_point	PGNSP	PGUID 12 f f t f i 2 600 t "2281 600" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7154 (  last_value_polygon	PGNSP	PGUID 12 f f t f i 2 604 t "2281 604" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7155 (  last_value_reltime	PGNSP	PGUID 12 f f t f i 2 703 t "2281 703" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7157 (  last_value_tid	PGNSP	PGUID 12 f f t f i 2 27 t "2281 27" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7158 (  last_value_time	PGNSP	PGUID 12 f f t f i 2 1083 t "2281 1083" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7159 (  last_value_timestamp	PGNSP	PGUID 12 f f t f i 2 1114 t "2281 1114" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7160 (  last_value_timestamptz	PGNSP	PGUID 12 f f t f i 2 1184 t "2281 1184" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7161 (  last_value_timetz	PGNSP	PGUID 12 f f t f i 2 1266 t "2281 1266" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7162 (  last_value_varbit	PGNSP	PGUID 12 f f t f i 2 1562 t "2281 1562" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7163 (  last_value_varchar	PGNSP	PGUID 12 f f t f i 2 1043 t "2281 1043" _null_ _null_ _null_ last_value_generic - _null_ ));
+DATA(insert OID = 7164 (  last_value_xid	PGNSP	PGUID 12 f f t f i 2 28 t "2281 28" _null_ _null_ _null_ last_value_generic - _null_ ));
 DATA(insert OID = 7239 (  last_value_bytea  PGNSP   PGUID 12 f f t f i 2 17 t "2281 17" _null_ _null_ _null_ last_value_generic - _null_ ));
 DATA(insert OID = 7259 (  last_value_bit  PGNSP		PGUID 12 f f t f i 2 1560 t "2281 1560" _null_ _null_ _null_ last_value_generic - _null_ ));
 DATA(insert OID = 7275 (  last_value_box  PGNSP		PGUID 12 f f t f i 2 603 t "2281 603" _null_ _null_ _null_ last_value_generic - _null_ ));
