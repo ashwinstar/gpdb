@@ -196,7 +196,7 @@ def sshGpSys():
 	ssh = ssh + ' eval  \'%s\' ' % cmd
         if opt['-v']: print '[INFO %s] %s' % (peer, cmd)
         p = popen2.Popen4(ssh)
-        p.x_user = h[0] or ''; p.x_host = h[1]
+        p.x_user = user or ''; p.x_host = host
 	p.x_cmd = cmd;   p.x_ssh = ssh
 	p.x_peer = peer
 	p.tochild.close()
