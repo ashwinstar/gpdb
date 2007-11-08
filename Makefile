@@ -3,11 +3,9 @@ GPMGMT=gpMgmt
 GPCC=gpcc
 ISCONFIG=$(GPPGDIR)/GNUmakefile
 
-RELEASE=`$(CURDIR)/releasetag`
-#RELEASE=$(shell $(CURDIR)/releasetag)
+RELEASE=$(shell $(CURDIR)/releasetag)
 GPDIR=greenplum-db$(RELEASE)
 GPDOCDIR=$(CURDIR)/docs/release
-
 
 DEFPORT=5432
 INLINE_FLAGS=--param max-inline-insns-single=800 --param large-function-growth=175 --param inline-unit-growth=300 -Winline
@@ -39,6 +37,10 @@ CONFIGFLAGS+=--with-tcl-config=${TCL_CFG}
 endif
 endif
 
+ifeq (true, ${AUTH})
+CONFIGFLAGS+=--with-openssl --with-pam --with-krb5 --with-ldap --with-libraries="$(CURDIR)/openldap/lib $(CURDIR)/openssl/lib $(CURDIR)/krb5/lib" --with-includes="$(CURDIR)/openldap/include $(CURDIR)/openssl/include $(CURDIR)/krb5/include"
+endif
+
 all : devel
 
 .PHONY : RECONFIG GPROOTDEP HOMEDEP clean distclean distprep version
@@ -52,23 +54,7 @@ devel : INSTLOC=$(DEVPATH)
 devel : CONFIGFLAGS+=--enable-cassert --enable-debug
 devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
-	@cd $(GPPGDIR); $(MAKE) install
-	@$(MAKE) groupSession
-	@$(MAKE) mkgpcc
-	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
-	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
-
-forceplan : INSTCFLAGS=$(DEBUGFLAGS)
-forceplan : INSTLOC=$(DEVPATH)
-forceplan : CONFIGFLAGS+=--enable-cassert --enable-debug --enable-forceplan --enable-debugbreak --enable-debugntuplestore
-forceplan : HOMEDEP $(ISCONFIG)
-	@rm -rf $(INSTLOC)
-	@cd $(GPPGDIR); $(MAKE) install
-	@$(MAKE) groupSession
-	@$(MAKE) mkgpcc
-	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
-	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
-
+	@cd $(GPPGDIR); $(
 dist : INSTCFLAGS=$(OPTFLAGS)
 dist : INSTLOC=$(DISTPATH)
 dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
@@ -233,3 +219,30 @@ pygres: GPROOTDEP
 	else \
 	    cp -p libs/* $(DEVPATH)/lib ; \
 	fi)
+
+authlibs: GPROOTDEP
+	cvs co -d openldap-2.3.38 ThirdPartyTools/src/openldap-2.3.38 > openldap-2.3.38-co.log 2>&1
+	cvs co -d openssl-0.9.8g ThirdPartyTools/src/openssl-0.9.8g > openlssl-0.9.8g-co.log 2>&1
+	cvs co -d krb5-1.6.2 ThirdPartyTools/src/krb5-1.6.2 > krb5-1.6.2-co.log 2>&1
+
+	@echo "Building libraries required for authentication"
+	
+	echo "Building openssl"
+	(cd ${CURDIR}/openssl-0.9.8g && ./config --prefix=$(CURDIR)/openssl shared && make && make install)
+
+	echo "Building openldap"
+	(cd ${CURDIR}/openldap-2.3.38 && ./configure LDFLAGS="-L$(CURDIR)/openssl/lib" CPPFLAGS="-I$(CURDIR)/openssl/include" --prefix=$(CURDIR)/openldap --enable-slapd=no && make && make install)
+
+	echo "Building krb5"
+	(cd ${CURDIR}/krb5-1.6.2/src && ./configure --prefix=$(CURDIR)/krb5 && make && make install)
+	
+	@echo ""
+	@echo "openssl installed at $(CURDIR)/openssl"
+	@echo "openldap installed at $(CURDIR)/openldap"
+	@echo "krb5 installed at $(CURDIR)/krb5"
+	@echo ""
+
+	@echo "export LD_LIBRARY_PATH=$(CURDIR)/openssl/lib:$(CURDIR)/openldap/lib:$(CURDIR)/krb5/lib:\$$LD_LIBRARY_PATH" > authlib_libpath_setup.sh
+	@echo "export DYLD_LIBRARY_PATH=$(CURDIR)/openssl/lib:$(CURDIR)/openldap/lib:$(CURDIR)/krb5/lib:\$$DYLD_LIBRARY_PATH" >> authlib_libpath_setup.sh
+
+	@echo "To add the auth libs to your LD_LIBRARY_PATH or DYLD_LIBRARY_PATH source authlib_libpath_setup.sh"
