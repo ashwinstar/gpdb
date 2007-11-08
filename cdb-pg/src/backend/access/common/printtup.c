@@ -340,7 +340,7 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 					char tmp[33];
 					char *tp = tmp;
 					char *sp;
-					long i = 0;
+					long li = 0;
 					unsigned long v;
 					long value;
 					bool sign;
@@ -355,9 +355,9 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 						v = (unsigned long)value;
 					while (v || tp == tmp)
 					{
-						i = v % 10;
+						li = v % 10;
 						v = v / 10;
-						*tp++ = i+'0';
+						*tp++ = li+'0';
 					}
 					sp = str;
 					if (sign)
@@ -383,7 +383,7 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 					char *tp = tmp;
 					char *sp;
 					uint64 v;
-					long i = 0;
+					long li = 0;
 					int64 value =DatumGetInt64(attr);
 					bool sign = (value < 0);
 					if (sign)
@@ -392,9 +392,9 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 						v = (uint64)value;
 					while (v || tp == tmp)
 					{
-						i = v % 10;
+						li = v % 10;
 						v = v / 10;
-						*tp++ = i+'0';
+						*tp++ = li+'0';
 					}
 					sp = str;
 					if (sign)
