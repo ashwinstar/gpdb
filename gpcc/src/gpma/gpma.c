@@ -500,6 +500,9 @@ void d_main(void)
     ev = gpcc_event_alloc(INIT_EVENT, gpma.fts_cmdslot->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, ev);
 
+    /* kick of LMA slot */
+    ev = gpcc_event_alloc(INIT_EVENT, gpma.lma_cmdslot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, ev);
 
     /* kick off all the nodes */
     for (i = 0; i < gpma.node_max; i++) {

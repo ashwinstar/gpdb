@@ -178,6 +178,15 @@ struct cmdslot_t {
 	    const char* node_unit;
 	    cmdslot_t* node;
 	} ma;
+
+	struct {
+	    int nopened;
+	    int nvote;
+	    int nreplied;
+	    int nyes;
+	    int nno;
+	    char *ma_voted;
+	} lma;
     } u;
 };
 
