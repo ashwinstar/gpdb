@@ -3,11 +3,9 @@ GPMGMT=gpMgmt
 GPCC=gpcc
 ISCONFIG=$(GPPGDIR)/GNUmakefile
 
-RELEASE=`$(CURDIR)/releasetag`
-#RELEASE=$(shell $(CURDIR)/releasetag)
+RELEASE=$(shell $(CURDIR)/releasetag)
 GPDIR=greenplum-db$(RELEASE)
 GPDOCDIR=$(CURDIR)/docs/release
-
 
 DEFPORT=5432
 INLINE_FLAGS=--param max-inline-insns-single=800 --param large-function-growth=175 --param inline-unit-growth=300 -Winline
@@ -37,6 +35,10 @@ CONFIGFLAGS+=--with-perl
 ifdef TCL_CFG
 CONFIGFLAGS+=--with-tcl-config=${TCL_CFG}
 endif
+endif
+
+ifeq (true, ${AUTH})
+CONFIGFLAGS+=--with-openssl --with-pam --with-krb5 --with-ldap --with-libraries="$(CURDIR)/openldap/lib $(CURDIR)/openssl/lib $(CURDIR)/krb5/lib" --with-includes="$(CURDIR)/openldap/include $(CURDIR)/openssl/include $(CURDIR)/krb5/include"
 endif
 
 all : devel
@@ -146,9 +148,19 @@ mgmtcopy :
 copylibs :
 	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep readline | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi
 	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep gcc | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi
-	if [ -f /usr/local/lib/libcurl.so.4 ] ; then cp -p /usr/local/lib/libcurl.so.4 $(INSTLOC)/lib; fi
-	if [ -f /usr/local/lib/libcurl.4.dylib ] ; then cp -p /usr/local/lib/libcurl.4.dylib $(INSTLOC)/lib; fi
-	if [ `uname -s` = 'Linux' ]; then cp `ldd $(INSTLOC)/bin/psql | grep numa | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi
+	if [ `uname -s` = 'Darwin' ] ; then \
+	    LDD="otool -L" ; \
+	else \
+	    LDD="ldd" ; \
+	fi ; \
+	for lib in `$$LDD $(INSTLOC)/bin/postmaster | egrep 'libssl|libcrypto|libcom_err|libkrb5|curl|readline|numa' | awk '{print $$1}'`; do \
+	    echo "cp -p $$lib $(INSTLOC)/lib" ; \
+	    cp -p $$lib $(INSTLOC)/lib ; \
+	done ; \
+	for lib in `$$LDD $(INSTLOC)/bin/psql | egrep 'libssl|libcrypto|libcom_err|libkrb5|curl|readline|numa' | awk '{print $$1}'`; do \
+	    echo "cp -p $$lib $(INSTLOC)/lib" ; \
+	    cp -p $$lib $(INSTLOC)/lib ; \
+	done
 
 RECONFIG :
 	rm -f $(ISCONFIG)
@@ -233,3 +245,30 @@ pygres: GPROOTDEP
 	else \
 	    cp -p libs/* $(DEVPATH)/lib ; \
 	fi)
+
+authlibs: GPROOTDEP
+	cvs co -d openldap-2.3.38 ThirdPartyTools/src/openldap-2.3.38 > openldap-2.3.38-co.log 2>&1
+	cvs co -d openssl-0.9.8g ThirdPartyTools/src/openssl-0.9.8g > openlssl-0.9.8g-co.log 2>&1
+	cvs co -d krb5-1.6.2 ThirdPartyTools/src/krb5-1.6.2 > krb5-1.6.2-co.log 2>&1
+
+	@echo "Building libraries required for authentication"
+
+	echo "Building openssl"
+	(cd ${CURDIR}/openssl-0.9.8g && ./config --prefix=$(CURDIR)/openssl shared && make && make install)
+
+	echo "Building openldap"
+	(cd ${CURDIR}/openldap-2.3.38 && ./configure LDFLAGS="-L$(CURDIR)/openssl/lib" CPPFLAGS="-I$(CURDIR)/openssl/include" --prefix=$(CURDIR)/openldap --enable-slapd=no && make && make install)
+
+	echo "Building krb5"
+	(cd ${CURDIR}/krb5-1.6.2/src && ./configure --prefix=$(CURDIR)/krb5 && make && make install)
+
+	@echo ""
+	@echo "openssl installed at $(CURDIR)/openssl"
+	@echo "openldap installed at $(CURDIR)/openldap"
+	@echo "krb5 installed at $(CURDIR)/krb5"
+	@echo ""
+
+	@echo "export LD_LIBRARY_PATH=$(CURDIR)/openssl/lib:$(CURDIR)/openldap/lib:$(CURDIR)/krb5/lib:\$$LD_LIBRARY_PATH" > authlib_libpath_setup.sh
+	@echo "export DYLD_LIBRARY_PATH=$(CURDIR)/openssl/lib:$(CURDIR)/openldap/lib:$(CURDIR)/krb5/lib:\$$DYLD_LIBRARY_PATH" >> authlib_libpath_setup.sh
+
+	@echo "To add the auth libs to your LD_LIBRARY_PATH or DYLD_LIBRARY_PATH source authlib_libpath_setup.sh"
