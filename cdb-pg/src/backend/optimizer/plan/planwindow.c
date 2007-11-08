@@ -2308,7 +2308,7 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 				for ( i = 0; i < winfo->partkey_len; i++ )
 				{
 					TargetEntry *tle; 
-					tle = get_tle_by_resno(root->parse->targetList, 
+					tle = get_tle_by_resno(window_plan->targetlist,
 										   winfo->partkey_attrs[i]);
 					part_exprs = lappend(part_exprs, tle->expr);
 				}
