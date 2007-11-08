@@ -64,6 +64,8 @@ struct gpma_t {
 
     int          ma_max;
     cmdslot_t**  ma_cmdtab;
+    
+    cmdslot_t *  lma_cmdslot;  /* Lead MA */
 };
 
 extern gpma_t gpma;

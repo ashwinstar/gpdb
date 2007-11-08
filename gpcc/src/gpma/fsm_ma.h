@@ -55,3 +55,50 @@ apr_status_t a_ma_teardown(gpcc_event_t* ev, void* arg)
     
     return 0;
 }
+
+
+apr_status_t a_lma_leadless(gpcc_event_t *ev, void *arg)
+{
+
+    return 0;
+}
+
+apr_status_t a_lma_vote_requested(gpcc_event_t *ev, void *arg)
+{
+
+    return 0;
+}
+
+apr_status_t a_lma_ponder_elect(gpcc_event_t *ev, void *arg)
+{
+
+
+    return 0;
+}
+
+apr_status_t a_lma_reject(gpcc_event_t *ev, void *arg)
+{
+
+
+    return 0;
+}
+
+apr_status_t a_lma_check_win(gpcc_event_t *ev, void *arg)
+{
+
+    return 0;
+}
+
+apr_status_t a_lma_check_lost(gpcc_event_t *ev, void *arg)
+{
+
+    return 0;
+}
+
+
+apr_status_t a_lma_ponder_vote(gpcc_event_t *ev, void *arg)
+{
+
+    return 0;
+}
+

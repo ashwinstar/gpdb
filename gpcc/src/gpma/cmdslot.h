@@ -142,6 +142,7 @@ struct cmdslot_t {
 		char *datadir;
 	    } *gpconf;
 	    int nvalid;
+	    char *mode;
 	} array_start;
 
 	struct {
@@ -152,6 +153,7 @@ struct cmdslot_t {
 	struct {
 	    /* gpcc_net_conn_t conn;  if we need to send reply over http */
 	    apr_uint32_t parent_cmdidx;
+	    char *mode;
 	} array_stop;
 
 	struct {

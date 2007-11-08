@@ -46,7 +46,7 @@ static apr_status_t a_array_stop_do(gpcc_event_t *ev, void *_cmdslot)
 
 	p->u.stop.req[i].node = apr_pstrdup(p->pool, info->ha);
 	p->u.stop.req[i].unit = apr_pstrdup(p->pool, info->name);
-	p->u.stop.req[i].mode = "immediate";
+	p->u.stop.req[i].mode = apr_pstrdup(p->pool, cmdslot->u.array_stop.mode);
 	p->u.stop.req[i].host = apr_pstrdup(p->pool, info->host);
 	p->u.stop.req[i].port = info->port;
 	p->u.stop.req[i].datadir = apr_pstrdup(p->pool, info->dir);

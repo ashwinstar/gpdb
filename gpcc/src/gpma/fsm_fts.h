@@ -246,17 +246,38 @@ static apr_status_t a_fts_node_closed(gpcc_event_t *ev, void *_cmdslot)
 static apr_status_t a_fts_array_start(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = _cmdslot;
-    char *url;
+    char *url, *mode = "normal";
     gpcc_net_conn_t conn;
     cmdslot_t *p;
     gpcc_event_t *evt;
     struct json_object *obj;
+    gpcc_net_uri_t *uri;
 
     memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
     url = ev->pdata + sizeof(gpcc_net_conn_t);
-    
+
+    uri = gpcc_net_uri_alloc(url);
+    if (uri) {
+	char *m = gpcc_net_uri_param(uri, "mode");
+	if (m) {
+	    char *opt[2] = {"normal", "force"};
+	    int i;
+	    for (i = 0 ; i < gpcc_lengthof(opt) ; i++) {
+		if (apr_strnatcasecmp(m, opt[i]) == 0)
+		    break;
+	    }
+	    if (i >= gpcc_lengthof(opt)) {
+		evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+		gpcc_evqueue_put(gpma.evq, evt);
+		return 0;
+	    }
+	    mode = m;
+	}
+    }
+
     p = cmdslot_alloc("ARRAY_START", FTS_ARRAY_START_CMDSTATE);
     p->u.array_start.parent_cmdidx = cmdslot->cmdidx;
+    p->u.array_start.mode = apr_pstrdup(p->pool, mode);
     cmdslot->u.fts.active_cmdidx = p->cmdidx;
     
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
@@ -266,6 +287,8 @@ static apr_status_t a_fts_array_start(gpcc_event_t *ev, void *_cmdslot)
     gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
     json_object_put(obj);
 
+    if (uri)
+	gpcc_net_uri_free(uri);
     return 0;
 }
 
@@ -423,17 +446,40 @@ static apr_status_t a_fts_array_stop_forsure(gpcc_event_t *ev, void *_cmdslot)
 static apr_status_t a_fts_array_stop(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = _cmdslot;
-    char *url;
+    char *url, *mode = "immediate";
     gpcc_net_conn_t conn;
     cmdslot_t *p;
     gpcc_event_t *evt;
     struct json_object *obj;
+    gpcc_net_uri_t *uri;
 
     memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
     url = ev->pdata + sizeof(gpcc_net_conn_t);
     
+    uri = gpcc_net_uri_alloc(url);
+    if (uri) {
+	char *m = gpcc_net_uri_param(uri, "mode");
+	if (m) {
+	    char *opt[3] = {"immediate", "fast", "smart"};
+	    int i;
+	    for (i = 0 ; i < gpcc_lengthof(opt) ; i++) {
+		if (apr_strnatcasecmp(m, opt[i]) == 0)
+		    break;
+	    }
+	    if (i >= gpcc_lengthof(opt)) {
+		/* invalid mode */
+		evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+		gpcc_evqueue_put(gpma.evq, evt);
+		return 0;
+	    }
+	    
+	    mode = m;
+	}
+    }
+
     p = cmdslot_alloc("ARRAY_STOP", FTS_ARRAY_STOP_CMDSTATE);
     p->u.array_stop.parent_cmdidx = cmdslot->cmdidx;
+    p->u.array_stop.mode = apr_pstrdup(p->pool, mode);
     cmdslot->u.fts.active_cmdidx = p->cmdidx;
     
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);

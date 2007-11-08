@@ -66,7 +66,7 @@ APR_DECLARE(void) fsm_init(void)
 		 a_ma_teardown);
 
     /* lma */
-#if 0
+
     gpcc_fsm_put(LMA_OFF_CMDSTATE, INIT_EVENT, LMA_LEADLESS_CMDSTATE,
 		 a_lma_leadless, 0);
     gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_VOTEME_EVENT, LMA_LEADLESS_CMDSTATE,
@@ -103,7 +103,6 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(LMA_LEAD_CMDSTATE, FAILURE_EVENT, LMA_LEADLESS_CMDSTATE, 
 		 a_lma_leadless, 0);
 
-#endif
 
     /* fts */
     /*

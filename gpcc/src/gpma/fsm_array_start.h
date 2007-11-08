@@ -86,13 +86,16 @@ static apr_status_t a_array_start_gpconf(gpcc_event_t *ev, void *_cmdslot)
     apr_proc_t proc;
 
     seginfo = gpma.fts_cmdslot->u.fts.seginfo;
-    if (0 != (e = gpcc_pg_reset_invalid_segment(seginfo->host, seginfo->port, cmdslot->pool))) {
-	gpcc_warning(FLINE, "gpcc_pg_reset_invalid_segment failed");
-	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-	gpcc_evqueue_put(gpma.evq, evt);
-	return 0;
+
+    if (apr_strnatcasecmp(cmdslot->u.array_start.mode, "force") == 0) {
+	if (0 != (e = gpcc_pg_reset_invalid_segment(seginfo->host, seginfo->port, cmdslot->pool))) {
+	    gpcc_warning(FLINE, "gpcc_pg_reset_invalid_segment failed");
+	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	    gpcc_evqueue_put(gpma.evq, evt);
+	    return 0;
+	}
     }
-    
+
     /* check for valid segment */
     if ((e = gpcc_proc_psql(&proc, seginfo->host, seginfo->port, "template1", 
 			    "select count(*) from gp_configuration where valid='t' and content <> -1", 

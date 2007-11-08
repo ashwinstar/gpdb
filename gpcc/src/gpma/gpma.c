@@ -289,7 +289,8 @@ static void net_accepted(gpcc_net_conn_t conn,
 				"{ \"status\": \"failure\", \"errmsg\": { \"_\": \"bad array name\" } }");
 	}
 
-	gpcc_net_uri_free(uri);
+	if (uri) 
+	    gpcc_net_uri_free(uri);
 	return;
     }
     
@@ -433,7 +434,12 @@ void ma_init(void)
 }
 
 
+void lma_init(void) 
+{
 
+    gpma.lma_cmdslot = cmdslot_alloc("LMA", LMA_OFF_CMDSTATE);
+
+}
 
 /* Main program for the daemon */
 void d_main(void)
@@ -473,7 +479,7 @@ void d_main(void)
     fsm_init();
     node_init();
     ma_init();
-
+    lma_init();
 
     /* create the event queue */
     evq = gpma.evq = gpcc_evqueue_create(1000, gpma.pool);
