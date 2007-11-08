@@ -1163,7 +1163,7 @@ static struct config_bool ConfigureNamesBool[] =
 						 "window specifications sequentially rather that in parallel.")
 		},
 		&gp_enable_sequential_window_plans,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 
 	{
