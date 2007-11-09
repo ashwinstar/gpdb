@@ -146,21 +146,19 @@ mgmtcopy :
 	@rm -rf $(INSTLOC)/bin/src
 
 copylibs :
-	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep readline | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi
-	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep gcc | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi
+	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep gcc | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi	
 	if [ `uname -s` = 'Darwin' ] ; then \
-	    LDD="otool -L" ; \
-	else \
-	    LDD="ldd" ; \
-	fi ; \
-	for lib in `$$LDD $(INSTLOC)/bin/postmaster | egrep 'libssl|libcrypto|libcom_err|libkrb5|curl|readline|numa' | awk '{print $$1}'`; do \
-	    echo "cp -p $$lib $(INSTLOC)/lib" ; \
-	    cp -p $$lib $(INSTLOC)/lib ; \
-	done ; \
-	for lib in `$$LDD $(INSTLOC)/bin/psql | egrep 'libssl|libcrypto|libcom_err|libkrb5|curl|readline|numa' | awk '{print $$1}'`; do \
-	    echo "cp -p $$lib $(INSTLOC)/lib" ; \
-	    cp -p $$lib $(INSTLOC)/lib ; \
-	done
+	    for lib in `$$LDD $(INSTLOC)/bin/psql | egrep 'libssl|libcrypto|libcom_err|libkrb5|curl|readline|numa' | awk '{print $$1}'`; do \
+	        echo "cp -fp $$lib $(INSTLOC)/lib" ; \
+	        cp -fp $$lib $(INSTLOC)/lib ; \
+	    done ; \
+	fi
+	if [ `uname -s` != 'Darwin' ] ; then \
+	    for lib in `ldd $(INSTLOC)/bin/psql | egrep 'libssl|libcrypto|libcom_err|libkrb5|curl|readline|numa' | awk '{print $$3}' | sort -u`; do \
+	        echo "cp -fp $$lib $(INSTLOC)/lib" ; \
+	        cp -fp $$lib $(INSTLOC)/lib ; \
+	    done ; \
+	fi
 
 RECONFIG :
 	rm -f $(ISCONFIG)
