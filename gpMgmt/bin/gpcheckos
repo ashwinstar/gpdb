@@ -58,7 +58,7 @@ ndd.tcp_conn_req_max_q			int	= 4096
 ndd.tcp_conn_req_max_q0			int	= 4096
 ndd.tcp_largest_anon_port		int	= 65535
 ndd.tcp_smallest_anon_port		int	= 4096
-ndd.tcp_time_wait_interval		int	= 100
+ndd.tcp_time_wait_interval		int	between 500 1000
 system.rlim_fd_max			int	= 262144
 system.rlim_fd_cur			int	= 65536
 system.shmsys:shminfo_shmmax		int	>= 0x2000000
@@ -91,6 +91,17 @@ def to_intlist(s):
 def to_str(s):
     return s.strip()
 
+def cmp_eq(a, b): return a == b
+def cmp_gt(a, b): return a > b
+def cmp_gte(a, b): return a >= b
+def cmp_lt(a, b): return a < b
+def cmp_lte(a, b): return a <= b
+def cmp_between(a, b): 
+    if len(b) >= 2:
+        return b[0] <= a and a <= b[1]
+    else:
+        return False
+
 class Config:
 
     def __init__(self):
@@ -107,38 +118,48 @@ class Config:
                 continue
 
             try:
-                c = line.split(None, 3);
-            except TypeError:
+                (key, keytype, op, values) = line.split(None, 3);
+            except KeytypeError:
                 sys.exit('while processing: %s\nerror: bad config line at %s %s'
                          % (line, cnt, fname and 'in file ' + fname or ''))
 
-            if c[1] == 'int':
-                c[1] = 'to_int'
-            elif c[1] == 'intlist':
-                c[1] = 'to_intlist'
-	    elif c[1] == 'str':
-		c[1] = 'to_str'
+            if keytype == 'int':
+                keytype = 'to_int'
+            elif keytype == 'intlist':
+                keytype = 'to_intlist'
+	    elif keytype == 'str':
+		keytype = 'to_str'
             else:
                 sys.exit('while processing: %s\nerror: bad config line at %s %s'
                          % (line, cnt, fname and 'in file ' + fname or ''))
             
-            if c[2] == '=':
-                c[2] = '=='
-            elif c[2] == '>' or c[2] == '>=':
-                pass
-            elif c[2] == '<' or c[2] == '<=':
-                pass
+            if op == '=': 		fop = 'cmp_eq'
+            elif op == '>': 		fop = 'cmp_gt'
+            elif op == '>=':		fop = 'cmp_gte'
+            elif op == '<':		fop = 'cmp_lt'
+            elif op == '<=':		fop = 'cmp_lte'
+            elif op == 'between':	fop = 'cmp_between'
             else:
                 sys.exit('while processing: %s\nerror: bad config line at %s %s'
                          % (line, cnt, fname and 'in file ' + fname or ''))
-            
-            if not overwrite and self.etab.get(c[0]):
-                print 'key', c[0], 'exists - passed'
+
+            valuetype = keytype
+            if fop == 'cmp_between':
+                if keytype != 'to_int':
+                    sys.exit('while processing: %s\nerror: expect int for between operator at line %s %s'
+                             % (line, cnt, fname and 'in file ' + fname or ''))
+                if len(to_intlist(values)) != 2:
+                    sys.exit('while processing: %s\nerror: expect intlist of 2 elements for between operator at line %s %s'
+                             % (line, cnt, fname and 'in file ' + fname or ''))
+                valuetype = 'to_intlist'
+
+            if not overwrite and self.etab.get(key):
+                print 'key', key, 'exists - passed'
                 pass
             else:
-                self.etab[c[0]] = ('%s %s %s' % (c[0], c[2], c[3]), 
-                                   '%s("%%s") %s %s("%s")' % (c[1], c[2], c[1], c[3]), 
-                                   c[3])
+                self.etab[key] = ('%s %s %s' % (key, op, values),
+                                   '%s(%s("%%s"), %s("%s"))' % (fop, keytype, valuetype, values), 
+                                   values)
     
         #print self.etab
 
