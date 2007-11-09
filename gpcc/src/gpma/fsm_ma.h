@@ -111,12 +111,16 @@ apr_status_t a_lma_leadless(gpcc_event_t *ev, void *arg)
     cmdslot_t *slot = arg;
     gpcc_event_t *evt;
 
-    if (slot->u.lma.nopened == gpma.ma_max) {
+    if (gpma.ma_max == 1) {
 	/* LEADME is me */
 	evt = gpcc_event_alloc(LMA_ELECTSELF_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
     } else {
-	slot->countdown = 1;
+	int id = 0;
+	if (sscanf(gpma.ma_unit, "ma.%d", &id) != 1) {
+	    id = 0;
+	}
+	slot->countdown = 1 + id;
     }
     return 0;
 }
@@ -273,6 +277,7 @@ apr_status_t a_lma_check_lost(gpcc_event_t *ev, void *arg)
     if (strcmp(slot->u.lma.voted.ma, ma) == 0) {
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
+	slot->countdown = 5;
     }
 
     return 0;
@@ -287,10 +292,10 @@ apr_status_t a_lma_ponder_vote(gpcc_event_t *ev, void *arg)
 
     slot->u.lma.voteme.nreplied++;
     switch (pkt->mh.type) {
-    case LMA_VOTE_YES_MSG_EVENT:
+    case LMA_VOTE_YES_MSG:
 	slot->u.lma.voteme.nyes++;
 	break;
-    case LMA_VOTE_NO_MSG_EVENT:
+    case LMA_VOTE_NO_MSG:
 	slot->u.lma.voteme.nno++;
 	break;
     default:
