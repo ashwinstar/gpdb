@@ -38,7 +38,7 @@ endif
 endif
 
 ifeq (true, ${AUTH})
-CONFIGFLAGS+=--with-openssl --with-pam --with-krb5 --with-ldap --with-libraries="$(CURDIR)/openldap/lib $(CURDIR)/openssl/lib $(CURDIR)/krb5/lib" --with-includes="$(CURDIR)/openldap/include $(CURDIR)/openssl/include $(CURDIR)/krb5/include"
+CONFIGFLAGS+=--with-openssl --with-pam --with-krb5 --with-ldap --with-libraries="$(CURDIR)/curl/lib $(CURDIR)/openldap/lib $(CURDIR)/openssl/lib $(CURDIR)/krb5/lib" --with-includes="$(CURDIR)/curl/include $(CURDIR)/openldap/include $(CURDIR)/openssl/include $(CURDIR)/krb5/include"
 endif
 
 all : devel
@@ -147,16 +147,19 @@ mgmtcopy :
 
 copylibs :
 	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep gcc | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi	
+	if [ -f $(CURDIR)/krb5/lib/libk5crypto.so.3 ] ; then cp -p $(CURDIR)/krb5/lib/libk5crypto.so.3 $(INSTLOC)/lib ; fi
+	if [ -f $(CURDIR)/openldap/lib/libldap_r-2.3.so.0 ] ; then cp -p $(CURDIR)/openldap/lib/libldap_r-2.3.so.0 $(INSTLOC)/lib ; fi
+	if [ -f $(CURDIR)/openldap/lib/libldap-2.3.so.0 ] ; then cp -p $(CURDIR)/openldap/lib/libldap-2.3.so.0 $(INSTLOC)/lib ; fi
 	if [ `uname -s` = 'Darwin' ] ; then \
-	    for lib in `$$LDD $(INSTLOC)/bin/psql | egrep 'libssl|libcrypto|libcom_err|libkrb5|curl|readline|numa' | awk '{print $$1}'`; do \
-	        echo "cp -fp $$lib $(INSTLOC)/lib" ; \
-	        cp -fp $$lib $(INSTLOC)/lib ; \
+	    for lib in `otool -L $(INSTLOC)/bin/psql | egrep 'libssl|libcrypto|libcom_err|libkrb5|curl|readline|numa' | awk '{print $$1}'`; do \
+	        echo "cp -p $$lib $(INSTLOC)/lib" ; \
+	        cp -p $$lib $(INSTLOC)/lib ; \
 	    done ; \
 	fi
 	if [ `uname -s` != 'Darwin' ] ; then \
 	    for lib in `ldd $(INSTLOC)/bin/psql | egrep 'libssl|libcrypto|libcom_err|libkrb5|curl|readline|numa' | awk '{print $$3}' | sort -u`; do \
-	        echo "cp -fp $$lib $(INSTLOC)/lib" ; \
-	        cp -fp $$lib $(INSTLOC)/lib ; \
+	        echo "cp -p $$lib $(INSTLOC)/lib" ; \
+	        cp -p $$lib $(INSTLOC)/lib ; \
 	    done ; \
 	fi
 
@@ -248,17 +251,21 @@ authlibs: GPROOTDEP
 	cvs co -d openldap-2.3.38 ThirdPartyTools/src/openldap-2.3.38 > openldap-2.3.38-co.log 2>&1
 	cvs co -d openssl-0.9.8g ThirdPartyTools/src/openssl-0.9.8g > openlssl-0.9.8g-co.log 2>&1
 	cvs co -d krb5-1.6.2 ThirdPartyTools/src/krb5-1.6.2 > krb5-1.6.2-co.log 2>&1
+	cvs co -d curl-7.17.1 ThirdPartyTools/curl-7.17.1 > curl-7.17.1-co.log 2>&1
 
 	@echo "Building libraries required for authentication"
 
-	echo "Building openssl"
+	@echo "Building openssl"
 	(cd ${CURDIR}/openssl-0.9.8g && ./config --prefix=$(CURDIR)/openssl shared && make && make install)
 
-	echo "Building openldap"
+	@echo "Building openldap"
 	(cd ${CURDIR}/openldap-2.3.38 && ./configure LDFLAGS="-L$(CURDIR)/openssl/lib" CPPFLAGS="-I$(CURDIR)/openssl/include" --prefix=$(CURDIR)/openldap --enable-slapd=no && make && make install)
 
-	echo "Building krb5"
+	@echo "Building krb5"
 	(cd ${CURDIR}/krb5-1.6.2/src && ./configure --prefix=$(CURDIR)/krb5 --without-tcl && make && make install)
+
+	@echo "Building curl"
+	(cd $(CURDIR)/curl-7.17.1 && ./configure --prefix=$(CURDIR)/curl --disable-ldap --disable-ipv6 --without-ssl && make && make install)
 
 	@echo ""
 	@echo "openssl installed at $(CURDIR)/openssl"
@@ -266,7 +273,7 @@ authlibs: GPROOTDEP
 	@echo "krb5 installed at $(CURDIR)/krb5"
 	@echo ""
 
-	@echo "export LD_LIBRARY_PATH=$(CURDIR)/openssl/lib:$(CURDIR)/openldap/lib:$(CURDIR)/krb5/lib:\$$LD_LIBRARY_PATH" > authlib_libpath_setup.sh
-	@echo "export DYLD_LIBRARY_PATH=$(CURDIR)/openssl/lib:$(CURDIR)/openldap/lib:$(CURDIR)/krb5/lib:\$$DYLD_LIBRARY_PATH" >> authlib_libpath_setup.sh
+	@echo "export LD_LIBRARY_PATH=$(CURDIR)/curl/lib:$(CURDIR)/openssl/lib:$(CURDIR)/openldap/lib:$(CURDIR)/krb5/lib:\$$LD_LIBRARY_PATH" > authlib_libpath_setup.sh
+	@echo "export DYLD_LIBRARY_PATH=$(CURDIR)/curl/lib:$(CURDIR)/openssl/lib:$(CURDIR)/openldap/lib:$(CURDIR)/krb5/lib:\$$DYLD_LIBRARY_PATH" >> authlib_libpath_setup.sh
 
 	@echo "To add the auth libs to your LD_LIBRARY_PATH or DYLD_LIBRARY_PATH source authlib_libpath_setup.sh"
