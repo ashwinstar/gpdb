@@ -229,7 +229,7 @@ static apr_status_t a_fts_node_opened(gpcc_event_t *ev, void *_cmdslot)
 
     cmdslot->u.fts.nopened++;
     if (cmdslot->u.fts.nopened == cmdslot->u.fts.nnode && cmdslot->cmdstate == FTS_WAIT_CMDSTATE){
-	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
+	evt = gpcc_event_alloc(CONTINUE_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
     }
     return 0;
@@ -238,8 +238,13 @@ static apr_status_t a_fts_node_opened(gpcc_event_t *ev, void *_cmdslot)
 static apr_status_t a_fts_node_closed(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = _cmdslot;
-    
+    gpcc_event_t *evt;
+
     cmdslot->u.fts.nopened--;
+    if (cmdslot->u.fts.nopened == 0) {
+	evt = gpcc_event_alloc(BREAK_EVENT, cmdslot->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+    }
     return 0;
 }
 
