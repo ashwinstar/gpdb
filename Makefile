@@ -258,7 +258,7 @@ authlibs: GPROOTDEP
 	(cd ${CURDIR}/openldap-2.3.38 && ./configure LDFLAGS="-L$(CURDIR)/openssl/lib" CPPFLAGS="-I$(CURDIR)/openssl/include" --prefix=$(CURDIR)/openldap --enable-slapd=no && make && make install)
 
 	echo "Building krb5"
-	(cd ${CURDIR}/krb5-1.6.2/src && ./configure --prefix=$(CURDIR)/krb5 && make && make install)
+	(cd ${CURDIR}/krb5-1.6.2/src && ./configure --prefix=$(CURDIR)/krb5 --without-tcl && make && make install)
 
 	@echo ""
 	@echo "openssl installed at $(CURDIR)/openssl"
