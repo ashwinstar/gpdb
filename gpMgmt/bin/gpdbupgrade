@@ -215,10 +215,12 @@ CHK_DB_DOWN () {
 GET_VERSION () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	MASTER_VERSION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT "$DEFAULTDB" -c"select version();"`
-	CURRENT_VERSION=`$ECHO $MASTER_VERSION|$TR '(' '^'|$TR ')' '^'|$AWK -F"^" '{print $2}'|$AWK '{print $3}'`
-	if [ "$CURRENT_VERSION" != "$NEW_VERSION" ];then
+#	CURRENT_VERSION=`$ECHO $MASTER_VERSION|$TR '(' '^'|$TR ')' '^'|$AWK -F"^" '{print $2}'|$AWK '{print $3}'`
+#	if [ "$CURRENT_VERSION" != "$NEW_VERSION" ];then
+
+	if [ -z "`echo $MASTER_VERSION | grep 'PostgreSQL 8.2.5.*Greenplum Database'`" ]; then
 		$GPSTOP -qam -d $MASTER_DATA_DIRECTORY
-		ERROR_EXIT "[FATAL]:-Master instance version is $CURRENT_VERSION, expected version $NEW_VERSION" 2
+		ERROR_EXIT "[FATAL]:-Master instance version is $MASTER_VERSION, expected version PostgreSQL 8.2.5 Greenplum Database $NEW_VERSION" 2
 	else
 		LOG_MSG "[INFO]:-Master instance has correct version for $UPGRADE_TXT, will continue" 1
 	fi
