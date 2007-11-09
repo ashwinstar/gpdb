@@ -2254,8 +2254,8 @@ static struct config_int ConfigureNamesInt[] =
 	},
 	
 	{
-		{"gp_cached_gang_threshold", PGC_USERSET, GP_ARRAY_TUNING,
-			gettext_noop("Sets the maximum number of gangs to cache between statements."),
+		{"gp_cached_segworkers_threshold", PGC_USERSET, GP_ARRAY_TUNING,
+			gettext_noop("Sets the maximum number of segment workers to cache between statements."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
