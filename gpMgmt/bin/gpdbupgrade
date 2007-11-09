@@ -68,7 +68,6 @@ PARALLEL_STATUS_FILE=/tmp/${PROG_NAME}_parallel_status_file.$$
 BACKOUT_FILE=/tmp/${PROG_NAME}_backout_file_$CUR_DATE
 RUN_INITSTANDBY=0
 KEEP_ONLINE=1
-UG_ARGS=""
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -297,7 +296,7 @@ LOCK_ACCESS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Preventing remote access to the GPDB array" 1
 	$MV ${MASTER_DATA_DIRECTORY}/$PG_HBA ${MASTER_DATA_DIRECTORY}/${PG_HBA}$PG_SUFFIX
-	$CAT ${MASTER_DATA_DIRECTORY}/${PG_HBA}$PG_SUFFIX|$GREP $GPDB_ID|$GREP local > ${MASTER_DATA_DIRECTORY}/$PG_HBA
+	$CAT ${MASTER_DATA_DIRECTORY}/${PG_HBA}$PG_SUFFIX|$GREP $GPDB_ID|$GREP 'local\|127.0.0.1/32\|\::1/128' > ${MASTER_DATA_DIRECTORY}/$PG_HBA
 	BACKOUT_COMMAND "$ECHO \"Recovering original Master pg_hba.conf file\""
 	BACKOUT_COMMAND "if [ -f ${MASTER_DATA_DIRECTORY}/${PG_HBA}$PG_SUFFIX ];then $MV ${MASTER_DATA_DIRECTORY}/${PG_HBA}$PG_SUFFIX ${MASTER_DATA_DIRECTORY}/$PG_HBA;fi"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -366,6 +365,11 @@ UPGRADE_ARRAY () {
 #			ERROR_EXIT "[FATAL]:-Issue with GPDB array startup" 2
 #		fi
 		LOG_MSG "[INFO]:-Calling final stage of upgrade process" 1
+		
+		# if no port specified, give it the master port
+		if [ -z "`echo $UG_ARGS | grep '\-p'`" ]; then
+			UG_ARGS="$UG_ARGS -p $MASTER_PORT";
+		fi
 		$GPUPGRADE $UG_ARGS >> $LOG_FILE 2>&1
 		if [ $? -ne 0 ];then
 			ERROR_EXIT "[FATAL]:-$GPUPGRADE $UG_ARGS returned non-zero exit code" 2
@@ -512,7 +516,7 @@ CHK_STATUS
 if [ $INTERACTIVE ];then
 	PROMPT_CONTINUE
 fi
-#LOCK_ACCESS
+LOCK_ACCESS
 if [ $BACKUP -eq 1 ];then
 	CATALOG_BACKUP
 fi
@@ -520,7 +524,7 @@ if [ "$UPGRADE_TO" == "$NEW_VERSION" ];then
 	UPGRADE_ARRAY
 fi
 $RM -f $PARALLEL_STATUS_FILE
-#UNLOCK_ACCESS
+UNLOCK_ACCESS
 
 # After upgrade, we need to restart without special start options
 # i.e., allow_system_table_mods = yes.
