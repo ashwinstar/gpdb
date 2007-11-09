@@ -120,7 +120,7 @@ apr_status_t a_lma_leadless(gpcc_event_t *ev, void *arg)
 	if (sscanf(gpma.ma_unit, "ma.%d", &id) != 1) {
 	    id = 0;
 	}
-	slot->countdown = 1 + id;
+	slot->countdown += 1 + id;
     }
     return 0;
 }
@@ -197,14 +197,14 @@ apr_status_t a_lma_vote_me(gpcc_event_t *ev, void *arg)
 
     for (i = 0 ; i < gpma.ma_max ; i++) {
 	if (gpma.ma_cmdtab[i]) {
-	    nvote++;
 	    if (0 != (e = gpcc_net_send_packetx(gpma.ma_cmdtab[i]->cmdname, 
 						LMA_VOTE_ME_MSG, 
 						slot->cmdidx, 
 						0, msg, strlen(msg)+1))) {
-		gpcc_warning(FLINE, "send vote packet failed");
-		return 0;
+		gpcc_warning(FLINE, "send vote packet to %s failed", gpma.ma_cmdtab[i]->cmdname);
+		continue;
 	    }
+	    nvote++;
 	}
     }
 
@@ -235,7 +235,7 @@ apr_status_t a_lma_reject(gpcc_event_t *ev, void *arg)
     sprintf(msg, "{ \"ma\" : \"%s\"}", slot->cmdname);
     
     if (0 != (e = gpcc_net_send_packetx(ma, LMA_VOTE_NO_MSG, slot->cmdidx, pkt->mh.sndidx, msg, strlen(msg)+1))) {
-	gpcc_warning(FLINE, "send vote packet failed");
+	gpcc_warning(FLINE, "send vote packet to %s failed", ma);
 	return 0;
     }
 
@@ -314,3 +314,38 @@ apr_status_t a_lma_ponder_vote(gpcc_event_t *ev, void *arg)
     return 0;
 }
 
+apr_status_t a_lma_lead(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    char msg[64];
+    int i, e;
+
+    sprintf(msg, "{\"ma\" : \"%s\"}", slot->cmdname);
+    for (i = 0 ; i < gpma.ma_max ; i++) {
+	if (gpma.ma_cmdtab[i]) {
+	    if (0 != (e = gpcc_net_send_packetx(gpma.ma_cmdtab[i]->cmdname, LMA_VOTE_WIN_MSG, slot->cmdidx, 0, msg, strlen(msg)+1))) {
+		gpcc_warning(FLINE, "send win vote packet to %s failed", gpma.ma_cmdtab[i]->cmdname);
+	    }
+	}
+    }
+    return 0;
+}
+
+
+apr_status_t a_lma_lead_failure(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    char msg[64];
+    int i, e;
+
+    sprintf(msg, "{\"ma\" : \"%s\"}", slot->cmdname);
+    for (i = 0 ; i < gpma.ma_max ; i++) {
+	if (gpma.ma_cmdtab[i]) {
+	    if (0 != (e = gpcc_net_send_packetx(gpma.ma_cmdtab[i]->cmdname, LMA_VOTE_LOST_MSG, slot->cmdidx, 0, msg, strlen(msg)+1))) {
+		gpcc_warning(FLINE, "send lost vote packet to %s failed", gpma.ma_cmdtab[i]->cmdname);
+	    }
+	}
+    }
+    return 0;
+
+}
