@@ -1,0 +1,543 @@
+#!/bin/bash
+#	Filename:-		gpdbupgrade
+#	Version:-		$Revision$	
+#	Updated:-		$Date$
+#	Status:-		Released
+#	Author:-		G Coombe
+#	Contact:-		gcoombe@greenplum.com
+#	Release date:-		Nov 2007
+#	Release stat:-		Greenplum Co internal
+#                               Copyright (c) Metapa 2005. All Rights Reserved.
+#                               Copyright (c) Greenplum 2005. All Rights Reserved
+#	Brief descn:-		Wrapper to upgrade a GPDB array from 3.0 to 3.1.
+#******************************************************************************
+# Update History
+#******************************************************************************
+# Ver	Date		Who		Update
+#******************************************************************************
+# Detailed Description
+#******************************************************************************
+#
+#******************************************************************************
+# Prep Code
+# Source required functions file, this required for script to run
+# exit if cannot locate this file. Change location of FUNCTIONS variable
+# as required.
+WORKDIR=`dirname $0`
+FUNCTIONS=$WORKDIR/lib/gp_bash_functions.sh
+if [ -f $FUNCTIONS ]; then
+		. $FUNCTIONS
+else
+		echo "[FATAL:]-Cannot source $FUNCTIONS file Script Exits!"
+		exit 2
+fi
+#******************************************************************************
+# Location Variables
+#******************************************************************************
+
+#******************************************************************************
+# Command Variables
+#******************************************************************************
+
+#******************************************************************************
+# Script Specific Variables
+#******************************************************************************
+VERBOSE=1
+INTERACTIVE=1
+PROG_NAME=`$BASENAME $0`
+MASTER_HOSTNAME=`$HOSTNAME`
+HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
+TIME=`$DATE +%H":"%M":"%S`
+CUR_DATE=`$DATE +%Y%m%d`
+QD_NAME=`hostname`
+EXIT_STATUS=0
+WAIT_LIMIT=600
+PARALLEL_STATUS_FILE=/tmp/${PROG_NAME}_parallel_status_file.$$
+GPSEGUPDATE=$WORKDIR/lib/gpsegupdate.sh
+PGCONTROL_UPGRADE=1
+GPCONTROLMOD=$PSQLBIN/gp_controldata_mod
+GPUPGRADE=$WORKDIR/gpupgrade
+OLD_VERSION="3.0"
+NEW_VERSION="3.1"
+BACKUP=0
+START_ARGS=""
+STOP_ARGS=""
+UG_ARGS=""
+PG_SUFFIX="_upgrade_secure"
+PARALLEL_STATUS_FILE=/tmp/${PROG_NAME}_parallel_status_file.$$
+BACKOUT_FILE=/tmp/${PROG_NAME}_backout_file_$CUR_DATE
+RUN_INITSTANDBY=0
+KEEP_ONLINE=1
+UG_ARGS=""
+#******************************************************************************
+# Functions
+#******************************************************************************
+USAGE () {
+	if [ -f ${GPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
+		$MORE ${GPDOCDIR}/$HELP_DOC_NAME
+		exit 0
+	else
+		$ECHO
+		$ECHO "      `basename $0`"
+		$ECHO
+		$ECHO "      Migrate a GPDB array between $OLD_VERSION and $NEW_VERSION binary formats"
+		$ECHO "      The GPDB array must be shutdown prior to running this utility"
+		$ECHO
+		$ECHO "      Usage:"
+		$ECHO "      $0 [OPTIONS]"
+		$ECHO
+		$ECHO "      General options:"
+		$ECHO "      -?, display this help message & exit"
+		$ECHO "      -v, display version information & exit"
+		$ECHO
+		$ECHO "      Logging options:"
+		$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
+		$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
+		$ECHO "      -a, don't ask to confirm binary upgrade [default:- ask]"
+		$ECHO "      -D, set log output to debug level, shows all function calls"
+		$ECHO
+		$ECHO "      Connection options:"
+		$ECHO "      -d, <Master instance directory> name of alternative Master instance to upgrade"
+		$ECHO
+		$ECHO "      Upgrade/Downgrade options:"
+		$ECHO "      -u, <$NEW_VERSION | $OLD_VERSION>, Upgrade|downgrade a GPDB array to $NEW_VERSION ($OLD_VERSION) [mandatory]"
+		$ECHO "      -N, don't attempt to upgrade pg_control files [Default:- upgrade pg_control_files]" 
+		$ECHO "      -c, undertake a system catalogue backup [default:- no backup" 
+		$ECHO "      -s, shutdown the GPDB array after upgrade [default:- leave array online]"
+		$ECHO "      -B, <number> run this batch of state segment processes in parallel [default $BATCH_DEFAULT]"
+		$ECHO
+		$ECHO "      Return codes:"
+		$ECHO "      0 No problems encountered with requested upgrade|downgrade"
+		$ECHO "      1 Warning generated, but upgrade|downgrade completed"
+		$ECHO "      2 Fatal error, unable to complete requested upgrade|downgrade"
+		$ECHO
+		exit $EXIT_STATUS
+	fi
+}
+
+UNKNOWN_OPTION () {
+		$ECHO
+		$ECHO "[ERROR]:-Unknown option $1"
+		USAGE
+}
+
+CHK_GPDB_ID () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	GPDB_ID=`id|$TR '(' ' '|$TR ')' ' '|$AWK '{print $2}'`
+	if [ -f ${INITDB} ];then
+		MASTER_INITDB_ID=`ls -al ${INITDB}|$AWK '{print $3}'`
+		if [ $GPDB_ID != $MASTER_INITDB_ID ];then
+			ERROR_EXIT "[FATAL]:-User id mismatch, id returns $GPDB_ID, initdb owner is $MASTER_INITDB_ID" 2
+		else
+			LOG_MSG "[INFO]:-Current user id of $GPDB_ID, matches initdb id of $MASTER_INITDB_ID"
+		fi
+		if [ x"" != x"$USER" ];then
+			if [ $GPDB_ID != $USER ];then
+				ERROR_EXIT "[FATAL]:-\$USER mismatch, id returns $GPDB_ID, \$USER returns $USER" 2
+			fi
+		else
+			LOG_MSG "[WARN]:-Environment variable \$USER unset, will set to $GPDB_ID" 1
+			export USER=$GPDB_ID
+		fi
+		if [ x"" != x"$LOGNAME" ];then
+			if [ $GPDB_ID != $LOGNAME ];then
+				ERROR_EXIT "[FATAL]:-\$LOGNAME mismatch, id returns $GPDB_ID, \$LOGNAME returns $LOGNAME" 2
+			fi
+		else
+			LOG_MSG "[WARN]:-Environment variable \$LOGNAME unset, will set to $GPDB_ID" 1
+			export LOGNAME=$GPDB_ID
+		fi
+	else
+		LOG_MSG "[WARN]:-No initdb file, unable to verify id" 1
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+		
+VALIDATE_PARAM () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	if [ x"" = x"$UPGRADE_TO" ];then
+		ERROR_EXIT "[FATAL]:-Mandatory parameter -u not supplied" 2
+	else
+		#Now ensure has a value supplied with -u option 
+		if [ "$UPGRADE_TO" != "$OLD_VERSION" ] && [ "$UPGRADE_TO" != "$NEW_VERSION" ];then
+			ERROR_EXIT "[FATAL]:-Invalid version number supplied, expected $NEW_VERSION or $OLD_VERSION" 2
+		else
+			case "$UPGRADE_TO" in
+				"$OLD_VERSION" ) 
+				 	UPGRADE_TXT=downgrade
+				        UPGRADE=0 ;;
+				"$NEW_VERSION" ) 
+					UPGRADE_TXT=upgrade
+				        UPGRADE=1 ;;
+			esac
+			LOG_MSG "[INFO]:-Mode selected is GPDB array $UPGRADE_TXT" 1 
+		fi
+	fi
+	#Now check for required programs
+	for FILE_NAME in $GPCONTROLMOD $GPSTART $GPSTOP $GPSEGUPGRADE $GPINITSTANDBY $GPUPGRADE
+	do
+		CHK_FILE $FILE_NAME
+		if [ $EXISTS -ne 0 ];then
+			ERROR_EXIT "[FATAL]:-Could not locate $FILE_NAME" 2
+		fi	
+	done
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+
+CHK_DB_DOWN () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	GET_PG_PID_ACTIVE $MASTER_PORT
+	if [ $PID -ne 0 ];then
+		ERROR_EXIT "[FATAL]:-Master instance appears to be active on port $MASTER_PORT, expected database to be down" 2
+	else
+		LOG_MSG "[INFO]:-Master instance down as expected, will continue with $UPGRADE_TXT"
+	fi	
+	# We want to start the master but if we're doing an upgrade, we need to
+	# upgrade the control file first
+	if [ "$UPGRADE_TO" == "$NEW_VERSION" ] && [ $PGCONTROL_UPGRADE -eq 1 ]; then
+		LOG_MSG "[INFO]:-Upgrading master control file to $UPGRADE_TO"
+		$GPCONTROLMOD --catversion $UPGRADE_TO $MASTER_DATA_DIRECTORY >> $LOG_FILE 2>&1
+		RETVAL=$?
+		if [ $RETVAL -ne 0 ];then
+			LOG_MSG "[FATAL]:-Control file upgrade returned a non-zero return code" 1
+			ERROR_EXIT "[FATAL]:-Master control file upgrade failed" 2
+		fi
+		LOG_MSG "[INFO]:-Master control file upgrade completed" 1
+		BACKOUT_COMMAND "$ECHO \"Reverting master control file to $OLD_VERSION\""
+		BACKOUT_COMMAND "$GPCONTROLMOD --catversion $OLD_VERSION $MASTER_DATA_DIRECTORY"
+	fi
+	LOG_MSG "[INFO]:-Starting Master instance in admin mode" 1
+	$GPSTART -qm -d $MASTER_DATA_DIRECTORY
+	ERROR_CHK $? "start Master instance in admin mode" 2
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+GET_VERSION () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	MASTER_VERSION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT "$DEFAULTDB" -c"select version();"`
+	CURRENT_VERSION=`$ECHO $MASTER_VERSION|$TR '(' '^'|$TR ')' '^'|$AWK -F"^" '{print $2}'|$AWK '{print $3}'`
+	if [ "$CURRENT_VERSION" != "$NEW_VERSION" ];then
+		$GPSTOP -qam -d $MASTER_DATA_DIRECTORY
+		ERROR_EXIT "[FATAL]:-Master instance version is $CURRENT_VERSION, expected version $NEW_VERSION" 2
+	else
+		LOG_MSG "[INFO]:-Master instance has correct version for $UPGRADE_TXT, will continue" 1
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+CHK_INVALID () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	INVALID_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select 1 from $CONFIG_TABLE where valid='f' and content<>-1;"|$WC -l`
+	if [ $INVALID_COUNT -ne 0 ];then
+		$GPSTOP -mq -d $MASTER_DATA_DIRECTORY
+		ERROR_EXIT "[FATAL]:-GPDB array has $INVALID_COUNT segments, unable to continue" 2
+	else
+		LOG_MSG "[INFO]:-No invalid segments detected, will continue" 
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+CHK_STANDBY () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	RUN_INITSTANDBY=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select 1 from $CONFIG_TABLE where content=-1 and isprimary='f';"|$WC -l`
+	if [ $RUN_INITSTANDBY -ne 0 ];then	
+		WARM_MASTER_NAME=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select hostname from $CONFIG_TABLE where content=-1 and isprimary='f';"`
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+CHK_STATUS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Commencing GPDB array $UPGRADE_TXT pre-checks, please wait.." 1
+	#Check to see if database is running, expect the database to be down
+	CHK_DB_DOWN
+	#Check the current code version
+	GET_VERSION
+	#Check to see if we have any invalid segments
+	CHK_INVALID
+	#Check to see if we have a warm master standby
+	CHK_STANDBY
+	#Get details of segments in the GPDB array
+	GET_QE_DETAILS
+	#Stop the master in admin mode
+	$GPSTOP -qm -d $MASTER_DATA_DIRECTORY
+	#Checks complete, can now proceed with process
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+PROMPT_CONTINUE () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:----------------------------" 1
+	LOG_MSG "[INFO]:-Upgrade parameters" 1
+	LOG_MSG "[INFO]:----------------------------" 1
+	LOG_MSG "[INFO]:-MASTER_DATA_DIRECTORY      = $MASTER_DATA_DIRECTORY" 1
+	LOG_MSG "[INFO]:-Upgrade type               = $UPGRADE_TXT" 1
+	LOG_MSG "[INFO]:-Latest version             = $NEW_VERSION" 1
+	LOG_MSG "[INFO]:-Previous version           = $OLD_VERSION" 1
+	if [ $BACKUP -eq 0 ];then BACKUP_TXT=Off;else BACKUP_TXT=On;fi
+	LOG_MSG "[INFO]:-Catalog backup             = $BACKUP_TXT" 1
+	if [ $RUN_INITSTANDBY -eq 0 ];then WARM_TXT=Off;else WARM_TXT=On;fi
+	LOG_MSG "[INFO]:-Upgrade warm standby       = $WARM_TXT" 1
+	$ECHO
+	$ECHO "Continue with GPDB binary upgrade yY|nN >"
+	read REPLY
+	if [ -z $REPLY ]; then
+		LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
+		exit 1
+	fi
+	if [ $REPLY != Y ] && [ $REPLY != y ]; then
+		LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
+		exit 1
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+LOCK_ACCESS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Preventing remote access to the GPDB array" 1
+	$MV ${MASTER_DATA_DIRECTORY}/$PG_HBA ${MASTER_DATA_DIRECTORY}/${PG_HBA}$PG_SUFFIX
+	$CAT ${MASTER_DATA_DIRECTORY}/${PG_HBA}$PG_SUFFIX|$GREP $GPDB_ID|$GREP local > ${MASTER_DATA_DIRECTORY}/$PG_HBA
+	BACKOUT_COMMAND "$ECHO \"Recovering original Master pg_hba.conf file\""
+	BACKOUT_COMMAND "if [ -f ${MASTER_DATA_DIRECTORY}/${PG_HBA}$PG_SUFFIX ];then $MV ${MASTER_DATA_DIRECTORY}/${PG_HBA}$PG_SUFFIX ${MASTER_DATA_DIRECTORY}/$PG_HBA;fi"
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+UNLOCK_ACCESS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	if [ -f ${MASTER_DATA_DIRECTORY}/${PG_HBA}$PG_SUFFIX ];then
+		$MV ${MASTER_DATA_DIRECTORY}/${PG_HBA}$PG_SUFFIX ${MASTER_DATA_DIRECTORY}/$PG_HBA
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+DOWNGRADE_ARRAY () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+UPGRADE_ARRAY () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Commencing binary upgrade process, please wait..." 1
+	if [ "$UPGRADE_TO" == "$NEW_VERSION" ] && [ $PGCONTROL_UPGRADE -eq 1 ]; then
+		LOG_MSG "[INFO]:-Now processing the segment instance databases, please wait" 1
+		BATCH_LIMIT=${#QE_ARRAY[@]}
+		PARALLEL_SETUP  $PARALLEL_STATUS_FILE	
+		for QNODE in "${QE_ARRAY[@]}"
+		do
+			export OLD_VERSION
+			QE_NAME=`$ECHO $QNODE|$CUT -d"|" -f1`
+			QE_DIR=`$ECHO $QNODE|$CUT -d"|" -f2`
+			QE_PORT=`$ECHO $QNODE|$CUT -d"|" -f3`
+
+			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
+			${EXPORT_LIB_PATH};$GPSEGUPDATE $$ $QE_NAME $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE $UPGRADE_TO $PGCONTROL_UPGRADE $GPCONTROLMOD $PARALLEL_STATUS_FILE &
+			PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
+		done	
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
+		PARALLEL_SUMMARY_STATUS_REPORT $PARALLEL_STATUS_FILE
+		if [ $REPORT_FAIL -ne 0 ];then
+			$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE
+			$RM -f $PARALLEL_STATUS_FILE
+			BUILD_COMPOSITE_BACKOUT
+			ERROR_EXIT "[FATAL]:-Upgrade process failed, review $LOG_FILE" 2
+		fi
+		BUILD_COMPOSITE_BACKOUT
+#		LOG_MSG "[INFO]:-Completed upgrade of segment instance databases" 1
+#		LOG_MSG "[INFO]:-Closing down the GPDB array, in preparation of Master upgrade" 1
+#		$GPSTART -aqm -d $MASTER_DATA_DIRECTORY
+#		$GPSTOP -aq -d $MASTER_DATA_DIRECTORY
+#		if [ $? -ne 0 ];then
+#			ERROR_EXIT "[FATAL]:-Failed to shutdown the GPDB array" 2
+#		fi
+		EXTRA_START_OPTS=" -c allow_system_table_mods=true "
+		$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -E -p $MASTER_PORT $EXTRA_START_OPTS" start >> $LOG_FILE 2>&1
+		if [ $? -ne 0 ];then
+			ERROR_EXIT "[FATAL]:-Issue with startup of Master instance with options $EXTRA_START_OPTS" 2
+		fi
+		LOG_MSG "[INFO]:-Completed startup of Master instance with options $EXTRA_START_OPTS" 1
+#		LOG_MSG "[INFO]:-Commencing shutdown of Master in admin mode" 1
+#		$GPSTOP -qm -d $MASTER_DATA_DIRECTORY
+#		if [ $? -ne 0 ];then
+#			ERROR_EXIT "[FATAL]:-Issue with shutdown of Master in admin mode" 2
+#		fi
+#		$GPSTART -aq -d $MASTER_DATA_DIRECTORY
+#		if [ $? -ne 0 ];then
+#			ERROR_EXIT "[FATAL]:-Issue with GPDB array startup" 2
+#		fi
+		LOG_MSG "[INFO]:-Calling final stage of upgrade process" 1
+		$GPUPGRADE $UG_ARGS >> $LOG_FILE 2>&1
+		if [ $? -ne 0 ];then
+			ERROR_EXIT "[FATAL]:-$GPUPGRADE $UG_ARGS returned non-zero exit code" 2
+		else
+			LOG_MSG "[INFO]:-$GPUPGRADE $UG_ARGS returned zero exit code" 1
+		fi
+		if [ $RUN_INITSTANDBY -ne 0 ];then
+			LOG_MSG "[INFO]:-Upgrading warm master standby, please wait..." 1
+			$GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq
+			if [ $? -ne 0 ];then
+				ERROR_EXIT "[FATAL]:-Failed to $GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq" 2
+			fi
+			LOG_MSG "[INFO]:-Completed warm master standby upgrade" 1
+		fi
+		LOG_MSG "[INFO]:-Securing contents of backout file to log file" 1
+		$CAT $BACKOUT_FILE >> $LOG_FILE
+		$RM -f $BACKOUT_FILE
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+BUILD_COMPOSITE_BACKOUT () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	if [ `ls /tmp/gpsegupdate.sh_backout.* 2>/dev/null|$WC -l` -ne 0 ];then
+		LOG_MSG "[INFO]:-Building composite backout file, please wait..." 1
+		$MV $BACKOUT_FILE ${BACKOUT_FILE}_composite_pre
+		for SEG_BACK_FILE in /tmp/gpsegupdate.sh_backout.*
+		do
+			$CAT $SEG_BACK_FILE >> $BACKOUT_FILE
+			$RM -f $SEG_BACK_FILE
+		done
+		$CAT ${BACKOUT_FILE}_composite_pre >> $BACKOUT_FILE
+		$RM -f ${BACKOUT_FILE}_composite_pre
+	fi	
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+CATALOG_BACKUP () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	FILELIST=()
+	j=0
+	LOG_MSG "[INFO]:-Obtaining node array details" 1
+	NODE_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.definedprimary, c.datname, c.oid from $CONFIG_TABLE a, $GP_PG_VIEW b, pg_database c where a.dbid=b.dbid;"`) >> $LOG_FILE 2>&1
+	for NODE in "${NODE_ARRAY[@]}"
+	do
+		NODE_NAME=`$ECHO $NODE|$CUT -d"|" -f1`
+		NODE_DIR=`$ECHO $NODE|$CUT -d"|" -f2`
+		NODE_PORT=`$ECHO $NODE|$CUT -d"|" -f3`
+		NODE_VALID=`$ECHO $NODE|$CUT -d"|" -f4`
+		NODE_PRIMARY=`$ECHO $NODE|$CUT -d"|" -f5`
+		NODE_DB=`$ECHO $NODE|$CUT -d"|" -f6`
+		NODE_DBOID=`$ECHO $NODE|$CUT -d"|" -f7`
+		if [ "$NODE_DB" == "template0" ]; then
+			FILELIST[$j]="$NODE_NAME|$NODE_DIR|global/*"
+			j=$[$j+1]
+			tmp0oid=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $NODE_PORT template1 -A -t -c"select oid from pg_database where datname = 'template0'"` >> $LOG_FILE 2>&1
+			FILELIST[$j]="$NODE_NAME|$NODE_DIR|base/$tmp0oid/*"
+			j=$[$j+1]
+		else
+			tmp=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $NODE_PORT $NODE_DB -A -t -c"select case when spcname = 'pg_default' and spclocation = '' then 'base/' || '$NODE_DBOID'::text || '/' else spclocation || '/' end || c.relfilenode from pg_class c, pg_tablespace p, pg_namespace n where c.relkind in ('r', 'i', 't') and relisshared = 'f' and (c.reltablespace = p.oid OR (c.reltablespace = 0 AND p.spcname = 'pg_default')) and relnamespace = n.oid and n.nspname = 'pg_catalog' and (c.relname like 'pg_%' OR c.relname like 'gp_%');"`) >> $LOG_FILE 2>&1
+			files=""
+			for tmpfile in "${tmp[@]}"
+			do
+				f="$tmpfile $tmpfile.*"
+				if [ "$files"x == ""x ]; then
+					files=$f
+				else
+					files="$files $f"
+				fi
+			done
+			FILELIST[$j]="$NODE_NAME|$NODE_DIR|$files"
+			j=$[$j+1]
+		fi
+	done
+	date=`$DATE '+%Y-%m-%d-%H.%M.%S'`
+	for i in "${FILELIST[@]}"
+	do
+		NODE_NAME=`$ECHO $i|$CUT -d"|" -f1`
+		NODE_DIR=`$ECHO $i|$CUT -d"|" -f2`
+		FILES=`$ECHO $i|$CUT -d"|" -f3`
+		LOG_MSG "[INFO]:-Backing up \"$NODE_NAME:$NODE_DIR\""
+		$TRUSTED_SHELL $NODE_NAME "cd $NODE_DIR ; $GTAR --ignore-failed-read -zcf gpcatalog_backup-$date.tar.gz $FILES" >> $LOG_FILE 2>&1
+		if [ $? -ne 0 ];then
+			LOG_MSG "[WARN]:-Backup command returned non-zero exit status on node $NODE_NAME, directory $NODE_DIR"
+			EXIT_STATUS=1
+		else
+			LOG_MSG "[INFO]:-Backup successful $NODE_NAME, directory $NODE_DIR"
+		fi
+	done		
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+#******************************************************************************
+# Main Section
+#******************************************************************************
+#Check to see if we have a parameter supplied to script
+trap '$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE;$RM -f $PARALLEL_STATUS_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
+if [ $# -ne 0 ]; then
+	while getopts ":vq'?'!DB:Nu:l:cad:sh:p:" opt;do
+	case $opt in
+		v ) VERSION_INFO ;;
+		'?' ) USAGE ;;
+		! ) SCRIPT_USAGE=1
+		    USAGE ;;
+		d ) MASTER_DATA_DIRECTORY=$OPTARG ;;
+		q ) unset VERBOSE ;;
+		D ) DEBUG_LEVEL=1 ;;
+		B ) BATCH_DEFAULT=$OPTARG ;;
+		u ) UPGRADE_TO=$OPTARG 
+		    if [ $UPGRADE_TO == "$OLD_VERSION" ]; then
+			UG_ARGS="$UG_ARGS -D "
+		    fi ;; 
+		N ) PGCONTROL_UPGRADE=0 ;;
+		l ) LOG_DIR=$OPTARG ;;
+		c ) BACKUP=1 ;;
+		a ) unset INTERACTIVE ;;
+		s ) KEEP_ONLINE=0 ;;
+		h ) UG_ARGS="$UG_ARGS -h $OPTARG " ;;
+		p ) UG_ARGS="$UG_ARGS -p $OPTARG " ;;
+		* ) UNKNOWN_OPTION ;;
+		esac
+	done	
+fi
+if [ x"" != x"$LOG_DIR" ];then
+        CHK_DIR $LOG_DIR
+        if [ $EXISTS -eq 1 ]; then
+                LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory" 1
+                EXIT_STATUS=1
+else
+        LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
+        fi
+fi
+CHK_ON_PASSIVE_STANDBY
+LOG_MSG "[INFO]:-Start Main"
+LOG_MSG "[INFO]:-Command line options passed to utility = $*"
+CHK_GPDB_ID
+if [ "$UPGRADE_TO" == "$OLD_VERSION" ];then
+	#DOWNGRADE_ARRAY
+	$ECHO "This yet to be completed"
+	exit 1
+fi
+VALIDATE_PARAM
+GET_MASTER_PORT $MASTER_DATA_DIRECTORY
+CHK_STATUS
+if [ $INTERACTIVE ];then
+	PROMPT_CONTINUE
+fi
+#LOCK_ACCESS
+if [ $BACKUP -eq 1 ];then
+	CATALOG_BACKUP
+fi
+if [ "$UPGRADE_TO" == "$NEW_VERSION" ];then
+	UPGRADE_ARRAY
+fi
+$RM -f $PARALLEL_STATUS_FILE
+#UNLOCK_ACCESS
+
+# After upgrade, we need to restart without special start options
+# i.e., allow_system_table_mods = yes.
+
+if [ $KEEP_ONLINE -eq 0 ];then
+	LOG_MSG "[INFO]:-Commencing shutdown of the GPDB array post upgrade" 1
+else
+	LOG_MSG "[INFO]:-Restart GPDB array post upgrade" 1
+fi
+
+$GPSTOP -qa -d $MASTER_DATA_DIRECTORY
+
+if [ $KEEP_ONLINE -eq 1 ]; then
+	$GPSTART -qa -d $MASTER_DATA_DIRECTORY
+	ERROR_CHK $? "restart GPDB array" 1
+fi
+
+LOG_MSG "[INFO]:-Upgrade process completed without error" 1
+LOG_MSG "[INFO]:-End Main"
+exit $EXIT_STATUS
