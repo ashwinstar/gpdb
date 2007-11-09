@@ -47,7 +47,6 @@ enum event_t {
 
     LMA_ELECTSELF_EVENT,
     LMA_VOTED_EVENT,
-    LMA_READY_EVENT,
 
     HTTP_REQUEST_EVENT,
 

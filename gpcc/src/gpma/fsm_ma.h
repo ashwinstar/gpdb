@@ -73,7 +73,7 @@ apr_status_t a_lma_init(gpcc_event_t *ev, void *arg)
 
     slot->u.lma.nopened = 1;
     if (gpma.ma_max == slot->u.lma.nopened) {
-	evt = gpcc_event_alloc(LMA_READY_EVENT, slot->cmdidx, 0);
+	evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
     }
     return 0;
@@ -86,7 +86,7 @@ apr_status_t a_lma_ma_opened(gpcc_event_t *ev, void *arg)
 
     slot->u.lma.nopened++;
     if (slot->u.lma.nopened == gpma.ma_max) {
-	evt = gpcc_event_alloc(LMA_READY_EVENT, slot->cmdidx, 0);
+	evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
     }
     return 0;
