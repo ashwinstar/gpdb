@@ -73,7 +73,7 @@ apr_status_t a_lma_init(gpcc_event_t *ev, void *arg)
 
     slot->u.lma.nopened = 1;
     if (gpma.ma_max == slot->u.lma.nopened) {
-	evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
+	evt = gpcc_event_alloc(LMA_READY_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
     }
     return 0;
@@ -86,7 +86,7 @@ apr_status_t a_lma_ma_opened(gpcc_event_t *ev, void *arg)
 
     slot->u.lma.nopened++;
     if (slot->u.lma.nopened == gpma.ma_max) {
-	evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
+	evt = gpcc_event_alloc(LMA_READY_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
     }
     return 0;
@@ -111,7 +111,7 @@ apr_status_t a_lma_leadless(gpcc_event_t *ev, void *arg)
     cmdslot_t *slot = arg;
     gpcc_event_t *evt;
 
-    if (gpma.ma_max == 1) {
+    if (gpma.ma_max == 1 || slot->u.lma.nopened == 1) {
 	/* LEADME is me */
 	evt = gpcc_event_alloc(LMA_ELECTSELF_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
@@ -185,7 +185,7 @@ apr_status_t a_lma_vote_me(gpcc_event_t *ev, void *arg)
     int nvote = 0;
     char msg[64];
 
-    if (gpma.ma_max == 1) {
+    if (gpma.ma_max == 1 || slot->u.lma.nopened == 1) {
 	gpcc_event_t *evt;
 
 	evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
