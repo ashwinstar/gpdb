@@ -75,17 +75,17 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(LMA_WAIT_CMDSTATE, SUCCESS_EVENT, LMA_LEADLESS_CMDSTATE,
 		 a_lma_leadless, 0);
 
-    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_VOTEME_EVENT, LMA_LEADLESS_CMDSTATE,
+    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_VOTE_ME_MSG_EVENT, LMA_LEADLESS_CMDSTATE,
 		 a_lma_vote_requested, 0); /* think about voting yes or no, if yes: gen SUCCESS event */
     gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, TIMEUP_EVENT, LMA_LEADLESS_CMDSTATE,
 		 a_lma_ponder_elect, 0); /* think about electing myself, if yes: gen ELECTSELF event */
     gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, SUCCESS_EVENT, LMA_VOTED_CMDSTATE, 0);
     gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_ELECTSELF_EVENT, LMA_VOTEME_CMDSTATE, 0);
-    gpcc_fsm_put(LMA_VOTED_CMDSTATE, LMA_VOTEME_EVENT, LMA_VOTED_CMDSTATE,
+    gpcc_fsm_put(LMA_VOTED_CMDSTATE, LMA_VOTE_ME_MSG_EVENT, LMA_VOTED_CMDSTATE,
 		 a_lma_reject, 0); /* we voted for another ma, reject this. */
-    gpcc_fsm_put(LMA_VOTED_CMDSTATE, LMA_WINVOTE_EVENT, LMA_VOTED_CMDSTATE,
+    gpcc_fsm_put(LMA_VOTED_CMDSTATE, LMA_VOTE_WIN_MSG_EVENT, LMA_VOTED_CMDSTATE,
 		 a_lma_check_win, 0); /* check if this is who we voted for, if yes: gen SUCCESS event */
-    gpcc_fsm_put(LMA_VOTED_CMDSTATE, LMA_LOSTVOTE_EVENT, LMA_VOTED_CMDSTATE,
+    gpcc_fsm_put(LMA_VOTED_CMDSTATE, LMA_VOTE_LOST_MSG_EVENT, LMA_VOTED_CMDSTATE,
 		 a_lma_check_lost, 0); /* check if this is who we voted for, if yes: gen FAILURE event */
     gpcc_fsm_put(LMA_VOTED_CMDSTATE, FAILURE_EVENT, LMA_LEADLESS_CMDSTATE, 
 		 a_lma_leadless, 0);
@@ -96,9 +96,9 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(LMA_STANDBY_CMDSTATE, FAILURE_EVENT, LMA_LEADLESS_CMDSTATE, 
 		 a_lma_leadless, 0);
 
-    gpcc_fsm_put(LMA_VOTEME_CMDSTATE, LMA_VOTEYES_EVENT, LMA_VOTEME_CMDSTATE, 
+    gpcc_fsm_put(LMA_VOTEME_CMDSTATE, LMA_VOTE_YES_MSG_EVENT, LMA_VOTEME_CMDSTATE, 
 		 a_lma_ponder_vote, 0);
-    gpcc_fsm_put(LMA_VOTEME_CMDSTATE, LMA_VOTENO_EVENT, LMA_VOTEME_CMDSTATE, 
+    gpcc_fsm_put(LMA_VOTEME_CMDSTATE, LMA_VOTE_NO_MSG_EVENT, LMA_VOTEME_CMDSTATE, 
 		 a_lma_ponder_vote, 0);
     gpcc_fsm_put(LMA_VOTEME_CMDSTATE, FAILURE_EVENT, LMA_LEADLESS_CMDSTATE, 
 		 a_lma_leadless, 0);

@@ -4,17 +4,6 @@
 typedef enum msg_t msg_t;
 enum msg_t {
     NULL_MSG,
-    GET_IDENTITY_MSG = 100,
-    IDENTITY_MSG,
-    KEEP_ALIVE_MSG,
-    VOTE_ME_MSG = 110,
-    VOTE_REPLY_MSG,
-    CSN_GET_MSG = 120,
-    CSN_REPLY_MSG,
-    CONFIG_GET_MSG,
-    CONFIG_REPLY_MSG,
-    LEADMA_GET_MSG = 130,
-    LEADMA_REPLY_MSG,
     SEGMENT_REQUEST_MSG = 200,
     SEGMENT_REPLY_MSG,
     HOST_REQUEST_MSG,
@@ -76,9 +65,6 @@ enum event_t {
 
     SEG_STATUS_EVENT,
     SEG_STATUS_REPLY_EVENT,
-
-    GET_IDENTITY_MSG_EVENT = 100,
-    IDENTITY_MSG_EVENT,
 
 
     /* segment msg */

@@ -178,10 +178,10 @@ apr_status_t a_lma_ponder_vote(gpcc_event_t *ev, void *arg)
 
     slot->u.lma.nreplied++;
     switch (ev->etype) {
-    case LMA_VOTEYES_EVENT:
+    case LMA_VOTE_YES_MSG_EVENT:
 	slot->u.lma.nyes++;
 	break;
-    case LMA_VOTENO_EVENT:
+    case LMA_VOTE_NO_MSG_EVENT:
 	slot->u.lma.nno++;
 	break;
     default:
