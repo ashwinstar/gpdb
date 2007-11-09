@@ -434,6 +434,7 @@ static apr_status_t a_fts_array_stop_forsure(gpcc_event_t *ev, void *_cmdslot)
 
     p = cmdslot_alloc("ARRAY_STOP", FTS_ARRAY_STOP_CMDSTATE);
     p->u.array_stop.parent_cmdidx = cmdslot->cmdidx;
+    p->u.array_stop.mode = apr_pstrdup(p->pool, "immediate");
     cmdslot->u.fts.active_cmdidx = p->cmdidx;
     
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
