@@ -181,11 +181,16 @@ struct cmdslot_t {
 
 	struct {
 	    int nopened;
-	    int nvote;
-	    int nreplied;
-	    int nyes;
-	    int nno;
-	    char *ma_voted;
+
+	    struct {
+		int nvote;
+		int nreplied;
+		int nyes;
+		int nno;
+	    } voteme;
+	    struct {
+		char ma[5];
+	    } voted;
 	} lma;
     } u;
 };

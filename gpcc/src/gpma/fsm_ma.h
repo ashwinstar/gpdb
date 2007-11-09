@@ -96,7 +96,7 @@ apr_status_t a_lma_ma_closed(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
     gpcc_event_t *evt;
-
+    
     slot->u.lma.nopened--;
     if (strcmp(ev->pdata, gpma.ma_unit) == 0) {
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
@@ -108,7 +108,16 @@ apr_status_t a_lma_ma_closed(gpcc_event_t *ev, void *arg)
 
 apr_status_t a_lma_leadless(gpcc_event_t *ev, void *arg)
 {
+    cmdslot_t *slot = arg;
+    gpcc_event_t *evt;
 
+    if (slot->u.lma.nopened == gpma.ma_max) {
+	/* LEADME is me */
+	evt = gpcc_event_alloc(LMA_ELECTSELF_EVENT, slot->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+    } else {
+	slot->countdown = 1;
+    }
     return 0;
 }
 
@@ -120,9 +129,29 @@ apr_status_t a_lma_vote_requested(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
     gpcc_event_t *evt;
+    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
+    struct json_object *obj = json_tokener_parse(pkt->payload);
+    char *ma;
+    char msg[64];
+    int e;
 
+    ma = gpcc_json_object_get_string(obj, "ma", 0);
+    if (!ma) {
+	return 0;
+    }
+
+    strncpy(slot->u.lma.voted.ma, ma, sizeof(slot->u.lma.voted.ma));
+    json_object_put(obj);
+
+    sprintf(msg, "{ \"ma\" : \"%s\"}", slot->cmdname);
     
-    evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
+    if (0 != (e = gpcc_net_send_packetx(ma, LMA_VOTE_YES_MSG, slot->cmdidx, pkt->mh.sndidx, msg, strlen(msg)+1))) {
+	gpcc_warning(FLINE, "send vote packet failed");
+	return 0;
+    }
+
+    slot->countdown = 0;
+    evt = gpcc_event_alloc(LMA_VOTED_EVENT, slot->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);
 
     return 0;
@@ -143,11 +172,68 @@ apr_status_t a_lma_ponder_elect(gpcc_event_t *ev, void *arg)
 }
 
 /*
+ *  send voteme 
+ */ 
+apr_status_t a_lma_vote_me(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    int i, e;
+    int nvote = 0;
+    char msg[64];
+
+    if (gpma.ma_max == 1) {
+	gpcc_event_t *evt;
+
+	evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+	return 0;
+    }
+
+    sprintf(msg, "{ \"ma\" : \"%s\"}", slot->cmdname);
+
+    for (i = 0 ; i < gpma.ma_max ; i++) {
+	if (gpma.ma_cmdtab[i]) {
+	    nvote++;
+	    if (0 != (e = gpcc_net_send_packetx(gpma.ma_cmdtab[i]->cmdname, 
+						LMA_VOTE_ME_MSG, 
+						slot->cmdidx, 
+						0, msg, strlen(msg)+1))) {
+		gpcc_warning(FLINE, "send vote packet failed");
+		return 0;
+	    }
+	}
+    }
+
+    slot->u.lma.voteme.nvote = nvote;
+    slot->u.lma.voteme.nreplied = 0;
+    slot->u.lma.voteme.nyes = 0;
+    slot->u.lma.voteme.nno = 0;
+    return 0;
+}
+
+/*
   send LMA_VOTENO_EVENT to ma
 */
 apr_status_t a_lma_reject(gpcc_event_t *ev, void *arg)
 {
+    cmdslot_t *slot = arg;
+    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
+    struct json_object *obj = json_tokener_parse(pkt->payload);
+    char *ma;
+    char msg[64];
+    int e;
 
+    ma = gpcc_json_object_get_string(obj, "ma", 0);
+    if (!ma) {
+	return 0;
+    }
+
+    sprintf(msg, "{ \"ma\" : \"%s\"}", slot->cmdname);
+    
+    if (0 != (e = gpcc_net_send_packetx(ma, LMA_VOTE_NO_MSG, slot->cmdidx, pkt->mh.sndidx, msg, strlen(msg)+1))) {
+	gpcc_warning(FLINE, "send vote packet failed");
+	return 0;
+    }
 
     return 0;
 }
@@ -157,6 +243,17 @@ apr_status_t a_lma_reject(gpcc_event_t *ev, void *arg)
  */
 apr_status_t a_lma_check_win(gpcc_event_t *ev, void *arg)
 {
+    cmdslot_t *slot = arg;
+    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
+    struct json_object *obj = json_tokener_parse(pkt->payload);
+    char *ma;
+    gpcc_event_t *evt;
+
+    ma = gpcc_json_object_get_string(obj, "ma", 0);
+    if (strcmp(slot->u.lma.voted.ma, ma) == 0) {
+	evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+    } 
 
     return 0;
 }
@@ -166,6 +263,17 @@ apr_status_t a_lma_check_win(gpcc_event_t *ev, void *arg)
  */
 apr_status_t a_lma_check_lost(gpcc_event_t *ev, void *arg)
 {
+    cmdslot_t *slot = arg;
+    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
+    struct json_object *obj = json_tokener_parse(pkt->payload);
+    char *ma;
+    gpcc_event_t *evt;
+
+    ma = gpcc_json_object_get_string(obj, "ma", 0);
+    if (strcmp(slot->u.lma.voted.ma, ma) == 0) {
+	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+    }
 
     return 0;
 }
@@ -175,21 +283,22 @@ apr_status_t a_lma_ponder_vote(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
     gpcc_event_t *evt;
+    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
 
-    slot->u.lma.nreplied++;
-    switch (ev->etype) {
+    slot->u.lma.voteme.nreplied++;
+    switch (pkt->mh.type) {
     case LMA_VOTE_YES_MSG_EVENT:
-	slot->u.lma.nyes++;
+	slot->u.lma.voteme.nyes++;
 	break;
     case LMA_VOTE_NO_MSG_EVENT:
-	slot->u.lma.nno++;
+	slot->u.lma.voteme.nno++;
 	break;
     default:
 	break;
     }
 
-    if (slot->u.lma.nvote == slot->u.lma.nreplied) {
-	if (slot->u.lma.nvote == slot->u.lma.nyes) {
+    if (slot->u.lma.voteme.nvote == slot->u.lma.voteme.nreplied) {
+	if (slot->u.lma.voteme.nvote == slot->u.lma.voteme.nyes) {
 	    evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
 	} else {
 	    evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);

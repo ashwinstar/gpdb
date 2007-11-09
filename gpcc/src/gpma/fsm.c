@@ -79,8 +79,10 @@ APR_DECLARE(void) fsm_init(void)
 		 a_lma_vote_requested, 0); /* think about voting yes or no, if yes: gen SUCCESS event */
     gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, TIMEUP_EVENT, LMA_LEADLESS_CMDSTATE,
 		 a_lma_ponder_elect, 0); /* think about electing myself, if yes: gen ELECTSELF event */
-    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, SUCCESS_EVENT, LMA_VOTED_CMDSTATE, 0);
-    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_ELECTSELF_EVENT, LMA_VOTEME_CMDSTATE, 0);
+    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_VOTED_EVENT, LMA_VOTED_CMDSTATE, 0);
+    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_ELECTSELF_EVENT, LMA_VOTEME_CMDSTATE, 
+		 a_lma_vote_me, 0);
+    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, SUCCESS_EVENT, LMA_LEAD_CMDSTATE, 0);
     gpcc_fsm_put(LMA_VOTED_CMDSTATE, LMA_VOTE_ME_MSG_EVENT, LMA_VOTED_CMDSTATE,
 		 a_lma_reject, 0); /* we voted for another ma, reject this. */
     gpcc_fsm_put(LMA_VOTED_CMDSTATE, LMA_VOTE_WIN_MSG_EVENT, LMA_VOTED_CMDSTATE,
@@ -100,6 +102,8 @@ APR_DECLARE(void) fsm_init(void)
 		 a_lma_ponder_vote, 0);
     gpcc_fsm_put(LMA_VOTEME_CMDSTATE, LMA_VOTE_NO_MSG_EVENT, LMA_VOTEME_CMDSTATE, 
 		 a_lma_ponder_vote, 0);
+    gpcc_fsm_put(LMA_VOTEME_CMDSTATE, LMA_VOTE_ME_MSG_EVENT, LMA_VOTEME_CMDSTATE,
+		 a_lma_reject, 0);
     gpcc_fsm_put(LMA_VOTEME_CMDSTATE, FAILURE_EVENT, LMA_LEADLESS_CMDSTATE, 
 		 a_lma_leadless, 0);
     gpcc_fsm_put(LMA_VOTEME_CMDSTATE, TIMEUP_EVENT, LMA_LEADLESS_CMDSTATE, 
