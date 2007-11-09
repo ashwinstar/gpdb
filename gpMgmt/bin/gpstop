@@ -61,6 +61,14 @@ PARALLEL_STATUS_FILE=/tmp/gpstop_parallel_status_file.$$
 WAIT_LIMIT=600
 BATCH_DEFAULT=60
 CANCEL_ACTIVE=0
+
+CONNECTED_BACKEND_QUERY="select * from (select backendid, 
+pg_stat_get_backend_activity(s.backendid) as current_query,
+ pg_stat_get_backend_pid(s.backendid) AS procpid
+from
+ (SELECT pg_stat_get_backend_idset() AS backendid) as s) as t where  
+pg_stat_get_backend_pid(t.backendid) != pg_backend_pid()"
+
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -164,7 +172,7 @@ STOP_ADMIN () {
 				ERROR_EXIT "[FATAL]:- No $PG_PID file, is instance already stopped?" 1
 		fi
 		#Check to see if we have any connections to the database at this stage
-		ACTIVE_CONNECTIONS=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select procpid from $ACTIVITY_TABLE where procpid != pg_backend_pid() and current_query<>'idle';"`)
+		ACTIVE_CONNECTIONS=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select * from ($CONNECTED_BACKEND_QUERY) connected WHERE current_query<>'<IDLE>';"`)
 		if [ ${#ACTIVE_CONNECTIONS[@]} -ne 0 ] && [ $CANCEL_ACTIVE -eq 0 ];then
 			LOG_MSG "[FATAL]:-There are ${#ACTIVE_CONNECTIONS[@]} active connections to the database" 1
 			LOG_MSG "[FATAL]:-Option -C not supplied to cancel backend processes" 1
@@ -176,7 +184,7 @@ STOP_ADMIN () {
 				CANCEL_BACKEND $PROCPID
 			done
 		fi
-		TOTAL_CONNECTIONS=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $ACTIVITY_TABLE where procpid != pg_backend_pid();"` 
+		TOTAL_CONNECTIONS=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select 1 from ($CONNECTED_BACKEND_QUERY) connected  where procpid != pg_backend_pid();" | wc -l` 
 		if [ $TOTAL_CONNECTIONS -ne 0 ];then
 			LOG_MSG "[INFO]:-There are $TOTAL_CONNECTIONS connections to the database" 1
 			LOG_MSG "[INFO]:-Setting shutdown mode to immediate" 1
@@ -284,9 +292,7 @@ PROCESS_SHUTDOWN () {
 			BATCH_LIMIT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select 1 from $GP_PG_VIEW gppg where valid ='t' and content<>-1;" | wc -l`
 		fi
 #		count connected processes, but don't count ourself.
-		CONNECTED=` env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c " select backendid from 
-		(SELECT pg_stat_get_backend_idset() AS backendid) as s where 
-		pg_stat_get_backend_pid(s.backendid) != pg_backend_pid();" | wc -l`
+		CONNECTED=` env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c " select 1 from ($CONNECTED_BACKEND_QUERY) connected" | wc -l`
 		if [ $MODE == "smart" ]; then
 		if [ $CONNECTED -gt 0 ];then
 			LOG_MSG "[WARN]:-There are other connections to this instance, shutdown mode smart aborted" 1
@@ -481,6 +487,7 @@ CHK_DB_QD_SET
 GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 CHK_QD_DB_RUNNING
 READ_CHK
+GET_QD_DB_NAME # gpstop needs to know the QD_DB_NAME
 if [ $ADMIN -eq 1 ] || [ $READ_COUNT -ne 0 ]; then
 		STOP_ADMIN
 		exit
