@@ -555,13 +555,22 @@ stream_free(StreamNode *self)
 		if(s->bm_currPos)
 		{
 			cleanup_pos(s->bm_currPos);
+			pfree(s->bm_currPos);
 			s->bm_currPos = NULL;
 		}
 		if(s->bm_markPos)
 		{
 			cleanup_pos(s->bm_markPos);
+			pfree(s->bm_markPos);
 			s->bm_markPos = NULL;
 		}
+
+		if (so->entry != NULL)
+			pfree(so->entry);
+
+		pfree(s);
+		pfree(scan);
+		pfree(so);
 	}
 }
 
@@ -612,26 +621,7 @@ pull_stream(StreamNode *self, PagetableEntry *e)
 	}
 	else if (so->is_done)
 	{
-		/* cleanup so if this is the last call. */
-		if (so != NULL)
-		{
-			IndexScanDesc tmp_scan = so->scan;
-			BMScanOpaque tmp_scanopq = (BMScanOpaque)tmp_scan->opaque;
-			
-			if(tmp_scanopq->bm_currPos)
-			{
-				/* Do not release the lov buffer */
-				cleanup_pos(tmp_scanopq->bm_currPos);
-				tmp_scanopq->bm_currPos = NULL;
-			}
-			if(tmp_scanopq->bm_markPos)
-			{
-				/* Do not release the lov buffer */
-				cleanup_pos(tmp_scanopq->bm_markPos);
-				tmp_scanopq->bm_markPos = NULL;
-			}
-		}
-
+		stream_free(n);
 		is->opaque = NULL;
 		return false;
 	}

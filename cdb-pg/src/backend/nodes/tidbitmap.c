@@ -1226,11 +1226,9 @@ tbm_stream_free(StreamNode *self)
 	 * A reference to the plan is kept in the BitmapIndexScanState
 	 * so this is a no-op for now.
 	 */
-#ifdef NOT_USED
 	tbm_free(tbm);
 	pfree(op);
 	pfree(self);
-#endif
 }
 
 static void
@@ -1345,6 +1343,8 @@ restart:
 			}
 			else
 			{
+				pfree(new);
+				
 				if(n->type == BMS_AND)
 				{
 					/*
@@ -1458,6 +1458,9 @@ tbm_bitmap_free(Node *bm)
             if (sn &&
                 sn->free)
                 sn->free(sn);
+
+			pfree(sbm);
+			
             break;
         }
         default:

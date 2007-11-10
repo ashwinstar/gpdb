@@ -416,6 +416,7 @@ ExecBitmapHeapReScan(BitmapHeapScanState *node, ExprContext *exprCtxt)
 	node->tbm = NULL;
 	MemSet(node->tbmres, 0,
 	       sizeof(TBMIterateResult) + MAX_TUPLES_PER_PAGE * sizeof(OffsetNumber));
+	tbm_reset_bitmaps(outerPlanState(node));
 
 	/*
 	 * Always rescan the input immediately, to ensure we can pass down any
