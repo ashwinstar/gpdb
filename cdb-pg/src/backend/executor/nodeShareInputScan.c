@@ -255,6 +255,7 @@ void ExecEndShareInputScan(ShareInputScanState *node)
 
 	/* clean up tuple table */
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
+	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 
 	/* 
 	 * no need to call tuplestore end.  Underlying ShareInput will take
