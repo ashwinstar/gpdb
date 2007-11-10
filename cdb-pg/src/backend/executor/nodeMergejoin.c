@@ -931,6 +931,11 @@ ExecMergeJoin(MergeJoinState *node)
 				if (TupIsNull(innerTupleSlot))
 				{
 					node->mj_JoinState = EXEC_MJ_NEXTOUTER;
+
+					if (((MergeJoin*)node->js.ps.plan)->unique_outer)
+						/* we are done */
+						return NULL;
+					
 					break;
 				}
 
@@ -961,7 +966,7 @@ ExecMergeJoin(MergeJoinState *node)
 					node->mj_JoinState = EXEC_MJ_JOINTUPLES;
 				else
 				{
-					Assert(compareResult < 0);
+					Assert(compareResult < 0 || ((MergeJoin*)node->js.ps.plan)->unique_outer);
 					node->mj_JoinState = EXEC_MJ_NEXTOUTER;
 				}
 				break;
@@ -1046,8 +1051,12 @@ ExecMergeJoin(MergeJoinState *node)
 				/* Compute join values and check for unmatchability */
 				if (MJEvalOuterValues(node))
 				{
-					/* Go test the new tuple against the marked tuple */
-					node->mj_JoinState = EXEC_MJ_TESTOUTER;
+					if (((MergeJoin*)node->js.ps.plan)->unique_outer)
+						/* The current innerTuple will match with this outerTuple.*/
+						node->mj_JoinState = EXEC_MJ_JOINTUPLES;
+					else
+						/* Go test the new tuple against the marked tuple */
+						node->mj_JoinState = EXEC_MJ_TESTOUTER;
 				}
 				else
 				{
@@ -1152,7 +1161,7 @@ ExecMergeJoin(MergeJoinState *node)
 					 *	no more inners, we are done.
 					 * ----------------
 					 */
-					if (compareResult <= 0)
+					if (compareResult <= 0 && !((MergeJoin*)node->js.ps.plan)->unique_outer)
 						ereport(ERROR,
 								(errcode(ERRCODE_GP_INTERNAL_ERROR),
 								 errmsg("Mergejoin: compareResult > 0, bad plan ?")));
@@ -1240,9 +1249,12 @@ ExecMergeJoin(MergeJoinState *node)
 
 				if (compareResult == 0)
 				{
-					ExecMarkPos(innerPlan);
+					if (!((MergeJoin*)node->js.ps.plan)->unique_outer)
+					{
+						ExecMarkPos(innerPlan);
 
-					MarkInnerTuple(node->mj_InnerTupleSlot, node);
+						MarkInnerTuple(node->mj_InnerTupleSlot, node);
+					}
 
 					node->mj_JoinState = EXEC_MJ_JOINTUPLES;
 				}
