@@ -9,8 +9,7 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
-
-
+#include <pthread.h>
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -57,6 +56,9 @@ NON_EXEC_STATIC void WalSendServerMain(int argc, char *argv[]);
 
 static void WalSendServerInitContext(void);
 static void WalSendServerDoRequest(WalSendRequest *walSendRequest, PROC_RESPONSE_COOKIE *responseCookie);
+static void *WalSendServerTimerThread(void *arg);
+static void WalSendServerTimerCheck(void);
+static void WalSendServerCreateTimerThread(void);
 static void WalSendServerLoop(void);
 
 /*=========================================================================
@@ -214,7 +216,11 @@ WalSendServerMain(int argc, char *argv[])
 	pqsignal(SIGINT, StatementCancelHandler);
 	pqsignal(SIGTERM, die);
 	pqsignal(SIGQUIT, ss_quickdie);
-	pqsignal(SIGALRM, PGSemaphoreHandleSigAlarm);
+
+	/*
+	 * Since we are trying a timer thread, stop arming this.
+	 */
+//	pqsignal(SIGALRM, PGSemaphoreHandleSigAlarm);
 
 	pqsignal(SIGPIPE, SIG_IGN);
 	pqsignal(SIGUSR1, CatchupInterruptHandler);
@@ -279,9 +285,9 @@ WalSendServerInitContext(void)
 	memset(&currentEndLocation, 0, sizeof(XLogRecPtr));
 	
 	periodicLen = 0;
-	periodicReportLen = 1024 * 1024;	// 1 megabyte.
+	periodicReportLen = 10 * 1024 * 1024;	// 10 megabytes.
 	if (!Debug_print_qd_mirroring)
-		periodicReportLen *= 10;		// 10 megabytes.
+		periodicReportLen *= 10;		// 100 megabytes.
 	
 	memset(&periodicLocation, 0, sizeof(XLogRecPtr));
 
@@ -520,10 +526,84 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest, PROC_RESPONSE_COOKIE *res
 	ProcSendResponse(responseCookie, &walSendResponse, sizeof(walSendResponse));
 }
 
+static volatile bool timerCheckQueued;
+
+/*
+ * WalSendServerTimerThread is the thread proc used to ping the main process.
+ *
+ * NOTE: This function MUST NOT contain elog or ereport statements. (or most any other backend code)
+ *		 elog is NOT thread-safe.  Developers should instead use something like:
+ *
+ *	if (DEBUG3 >= log_min_messages)
+ *			write_log("my brilliant log statement here.\n");
+ *
+ * NOTE: In threads, we cannot use palloc, because it's not thread safe.
+ */
+void *
+WalSendServerTimerThread(void *arg)
+{
+	WalSendRequest walSendRequest;
+	bool serverAcceptingNewRequests;
+	int serialNumber;
+	
+	while (true)
+	{
+		pg_usleep(1000000);		/* 1 sec */
+
+		if (!timerCheckQueued)
+		{
+			timerCheckQueued = true;
+			walSendRequest.command = TimerCheck;
+			serverAcceptingNewRequests = ProcSendRequest(
+											PGPROC_REQUEST_WALSEND, 
+											&walSendRequest, sizeof(walSendRequest),
+											/* responseNeeded */ false,
+											&serialNumber);
+			if (!serverAcceptingNewRequests)
+				timerCheckQueued = false;
+		}
+	}
+	
+	return (NULL);
+}	/* thread_DispatchCommand */
+
+void
+WalSendServerTimerCheck(void)
+{
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "timer check");
+	timerCheckQueued = false;
+}
+
+static	pthread_t	timerThread;
+
+void
+WalSendServerCreateTimerThread(void)
+{
+	int		pthread_err = 0;
+			
+		/* attributes of the thread we're creating */
+	pthread_attr_t t_atts;
+	
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "creating timer thread");
+
+	/* save ourselves some memory: the defaults for thread stack
+	 * size are large (1M+) */
+	pthread_attr_init(&t_atts);
+#ifdef pg_on_solaris
+	/* Solaris doesn't have PTHREAD_STACK_MIN ? */
+	pthread_attr_setstacksize(&t_atts, (64*1024));
+#else
+	pthread_attr_setstacksize(&t_atts, Max(PTHREAD_STACK_MIN, (64*1024)));
+#endif
+
+	pthread_err = pthread_create(&timerThread, &t_atts, WalSendServerTimerThread, NULL);
+
+	pthread_attr_destroy(&t_atts);
+}
+
 void 
 WalSendServerLoop(void)
 {
-	struct timeval timeout;
 	PGPROCGetRequestResult getRequestResult;
 	WalSendRequest walSendRequest;
 	PROC_RESPONSE_COOKIE responseCookie;
@@ -566,10 +646,10 @@ WalSendServerLoop(void)
 	
 	/*
 	 * Come up for air every 1 second to see if the postmaster has died, a
-	 * shutdown has been requested, etc.
+	 * shutdown has been requested, etc.  Since semaphores don't support
+	 * timed semaphores well, let's use a thread to wake us up.
 	 */
-	timeout.tv_sec = 1;
-	timeout.tv_usec = 0;
+	WalSendServerCreateTimerThread();
 
 	postmasterDied = false;
 	drain = false;
@@ -590,7 +670,7 @@ WalSendServerLoop(void)
 			getRequestResult = ProcGetRequest(
 									PGPROC_REQUEST_WALSEND, 
 									&walSendRequest, sizeof(walSendRequest),
-									&timeout,
+									NULL,	// No timeout (infinite).
 									drain,
 									&responseCookie);
 			
@@ -631,6 +711,11 @@ WalSendServerLoop(void)
 			else
 			{
 				Assert(getRequestResult == PGPROC_GETREQUEST_OK);
+				if (walSendRequest.command == TimerCheck)
+				{
+					WalSendServerTimerCheck();
+					continue;
+				}
 			}
 
 			WalSendServerDoRequest(&walSendRequest,&responseCookie);
@@ -671,6 +756,9 @@ WalSendRequestCommandToString(WalSendRequestCommand command)
 
 	case WriteWalPages:
 		return "WriteWalPages";
+		
+	case TimerCheck:
+		return "TimerCheck";
 		
 	default:
 		return "Unknown";

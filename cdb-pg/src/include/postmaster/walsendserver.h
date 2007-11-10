@@ -18,7 +18,8 @@ typedef enum WalSendRequestCommand
 	PositionToEnd = 0,
 	Catchup = 1,
 	WriteWalPages = 2,
-	MaxWalSendRequestCommand  = 3 /* must always be last */
+	TimerCheck = 3,
+	MaxWalSendRequestCommand  = 4 /* must always be last */
 } WalSendRequestCommand;
 
 typedef struct WalSendRequest

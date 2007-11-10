@@ -1897,6 +1897,13 @@ ProcGetRequest(PGPROCRequestType requestType, void *request, int requestSize, st
 	}
 }
 
+/*
+ * NOTE: This function MUST NOT contain elog or ereport statements. (or most any other backend code)
+ *		 elog is NOT thread-safe.  Developers should instead use something like:
+ *
+ *	if (DEBUG3 >= log_min_messages)
+ *			write_log("my brilliant log statement here.\n");
+ */
 bool
 ProcSendRequest(PGPROCRequestType requestType, void *request, int requestSize, bool responseNeeded, int *serialNumber)
 {
@@ -1923,10 +1930,11 @@ ProcSendRequest(PGPROCRequestType requestType, void *request, int requestSize, b
 	memcpy(((char*)MyProc) + requestInfo.requestOffset, request, requestInfo.requestSize);
 
 	requestClient = (PROC_REQUEST_CLIENT*)(((char*)MyProc) + requestInfo.requestClientOffset);
-	
-	elog(DEBUG5,"ProcSendRequest queuing request type %d for PGPROC %p (request link offset %d) on server %p",
-		 requestType, MyProc, requestInfo.requestLinkOffset,
-		 requestInfo.requestServer);
+
+	if (DEBUG5 >= log_min_messages)
+		write_log("ProcSendRequest queuing request type %d for PGPROC %p (request link offset %d) on server %p",
+			 requestType, MyProc, requestInfo.requestLinkOffset,
+			 requestInfo.requestServer);
 	/*
 	 * Queue our PGPROC with the request inside.
 	 */		
@@ -1938,8 +1946,9 @@ ProcSendRequest(PGPROCRequestType requestType, void *request, int requestSize, b
 		SpinLockRelease(&ProcGlobal->spinLockRequestServer);
 		RESUME_INTERRUPTS();
 
-		elog(DEBUG5, "'%s' not accepting new requests",
-			 ProcRequestTypeToString(requestType));
+		if (DEBUG5 >= log_min_messages)
+			write_log("'%s' not accepting new requests",
+				 ProcRequestTypeToString(requestType));
 		return false;
 	}
 	
@@ -1948,7 +1957,7 @@ ProcSendRequest(PGPROCRequestType requestType, void *request, int requestSize, b
 		SpinLockRelease(&ProcGlobal->spinLockRequestServer);
 		RESUME_INTERRUPTS();
 
-		elog(ERROR, "There should not be a request already queued");
+		write_log("There should not be a request already queued");
 		return false;	// Should not reach this statement.
 	}
 	
@@ -1962,7 +1971,8 @@ ProcSendRequest(PGPROCRequestType requestType, void *request, int requestSize, b
 	SpinLockRelease(&ProcGlobal->spinLockRequestServer);
 	RESUME_INTERRUPTS();
 
-	elog(DEBUG5,"ProcSendRequest queued");
+	if (DEBUG5 >= log_min_messages)
+		write_log("ProcSendRequest queued");
 
 	/*
 	 * Wake the server!
