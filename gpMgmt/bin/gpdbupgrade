@@ -534,7 +534,7 @@ $RM -f $PARALLEL_STATUS_FILE
 if [ $KEEP_ONLINE -eq 0 ];then
 	LOG_MSG "[INFO]:-Commencing shutdown of the GPDB array post upgrade" 1
 else
-	LOG_MSG "[INFO]:-Restart GPDB array post upgrade" 1
+	LOG_MSG "[INFO]:-Restarting GPDB array post upgrade" 1
 fi
 
 $GPSTOP -qa -d $MASTER_DATA_DIRECTORY
