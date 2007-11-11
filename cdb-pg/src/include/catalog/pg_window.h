@@ -173,12 +173,10 @@ DATA(insert ( 7044  t t f f 7138		0		0		0	f ));
 DATA(insert ( 7045  t t f f 7139		0		0		0	f ));
 DATA(insert ( 7046  t t f f 7140		0		0		0	f ));
 DATA(insert ( 7047  t t f f 7141		0		0		0	f ));
-DATA(insert ( 7232  t t f f 7233        0       0      0   f ));
-DATA(insert ( 7234  t t f f 7235        0       0      0   f ));
-DATA(insert ( 7236  t t f f 7237        0       0      0   f ));
-DATA(insert ( 7256  t t f f 7257		0		0		0		f ));
-DATA(insert ( 7272  t t f f 7273		0		0		0		f ));
-DATA(insert ( 7288  t t f f 7289		0		0		0		f ));
+DATA(insert ( 7232  t t f f 7233        0       0		0   f ));
+DATA(insert ( 7256  t t f f 7257		0		0		0	f ));
+DATA(insert ( 7272  t t f f 7273		0		0		0	f ));
+DATA(insert ( 7288  t t f f 7289		0		0		0	f ));
 
 
 /* last_value */
@@ -213,12 +211,10 @@ DATA(insert ( 7068  t t f f 7161		0		0		0	l ));
 DATA(insert ( 7069  t t f f 7162		0		0		0	l ));
 DATA(insert ( 7070  t t f f 7163		0		0		0	l ));
 DATA(insert ( 7071  t t f f 7164		0		0		0	l ));
-DATA(insert ( 7238  t t f f 7239        0       0      0   l ));
-DATA(insert ( 7240  t t f f 7241        0       0      0   l ));
-DATA(insert ( 7242  t t f f 7243        0       0      0   l ));
-DATA(insert ( 7258  t t f f 7259		0		0		0		l ));
-DATA(insert ( 7274  t t f f 7275		0		0		0		l ));
-DATA(insert ( 7290  t t f f 7291		0		0		0		l ));
+DATA(insert ( 7238  t t f f 7239        0       0		0   l ));
+DATA(insert ( 7258  t t f f 7259		0		0		0	l ));
+DATA(insert ( 7274  t t f f 7275		0		0		0	l ));
+DATA(insert ( 7290  t t f f 7291		0		0		0	l ));
 
 /* lag */
 DATA(insert ( 7675  t f f f 7490		0		0		0	g ));
@@ -320,12 +316,12 @@ DATA(insert ( 7213  t f f f 7210		0		0		0	g ));
 DATA(insert ( 7226  t f f f 7227        0       0       0   g ));
 DATA(insert ( 7228  t f f f 7229        0       0       0   g ));
 DATA(insert ( 7230  t f f f 7231        0       0       0   g ));
-DATA(insert ( 7250  t f f f 7251		0		0		0		g ));
-DATA(insert ( 7252  t f f f 7253		0		0		0		g ));
-DATA(insert ( 7254  t f f f 7255		0		0		0		g ));
-DATA(insert ( 7266  t f f f 7267		0		0		0		g ));
-DATA(insert ( 7268  t f f f 7269		0		0		0		g ));
-DATA(insert ( 7270  t f f f 7271		0		0		0		g ));
+DATA(insert ( 7250  t f f f 7251		0		0		0	g ));
+DATA(insert ( 7252  t f f f 7253		0		0		0	g ));
+DATA(insert ( 7254  t f f f 7255		0		0		0	g ));
+DATA(insert ( 7266  t f f f 7267		0		0		0	g ));
+DATA(insert ( 7268  t f f f 7269		0		0		0	g ));
+DATA(insert ( 7270  t f f f 7271		0		0		0	g ));
 
 /* lead */
 DATA(insert ( 7011	t f f f	7106		0		0		0	d ));
