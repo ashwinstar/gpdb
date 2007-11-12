@@ -142,12 +142,7 @@ ShareInputNext(ShareInputScanState *node)
 			gotOK = tuplesort_gettupleslot_pos((Tuplesortstate *)node->ts_state, (TuplesortPos *)node->ts_pos, forward, slot);
 
 		if(!gotOK)
-		{
-			/* tuplesort_gettupleslot_pos will clear the tuple, so no need to do ExecClearTuple */ 
-			if(share_type == SHARE_MATERIAL || share_type == SHARE_MATERIAL_XSLICE)
-				return ExecClearTuple(slot);
-		}
-
+			return NULL;
 		return slot;
 	}
 

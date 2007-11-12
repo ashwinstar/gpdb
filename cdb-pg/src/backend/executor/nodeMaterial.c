@@ -309,7 +309,7 @@ ExecMaterial(MaterialState *node)
 	/*
 	 * Nothing left ...
 	 */
-	return ExecClearTuple(slot);
+	return NULL;
 }
 
 /* ----------------------------------------------------------------
@@ -430,12 +430,8 @@ void
 ExecEndMaterial(MaterialState *node)
 {
 	Material *ma = (Material *) node->ss.ps.plan;
-	/*
-	 * clean out the tuple table.  Normal case ps_ResultTupleSlot has
-	 * been cleared by Exec.  Only need to clear it for share input
-	 */
-	if(ma->share_type != SHARE_NOTSHARED) 
-		ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
+
+	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
 	/*
