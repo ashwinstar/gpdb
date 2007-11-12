@@ -5484,7 +5484,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 						pL1 = lappend(pL1, pInt1);     /* partition position */
 						pL1 = lappend(pL1, pInt2);     /* every position */
 
-						if (pElem->partName)
+						if (pElem && pElem->partName)
 						{
 							char *pName = strVal(pElem->partName);
 							
