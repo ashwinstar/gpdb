@@ -134,8 +134,8 @@ GET_SEGMENT_STATUS () {
 		#*************************************
 		#Process status mirror segment
 		#*************************************
-		QE_MIRROR_VALID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB  -A -t -c"select valid from $GP_PG_VIEW where dbid in (select dbid from $CONFIG_TABLE where port=$QE_PORT and datadir='${QE_DIR}');"`
-		QE_MIRROR_PRIMARY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB  -A -t -c"select isprimary from $GP_PG_VIEW where dbid in (select dbid from $CONFIG_TABLE where port=$QE_PORT and datadir='${QE_DIR}');"`
+		QE_MIRROR_VALID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB  -A -t -c"select valid from $GP_PG_VIEW as _gp_pg_view where dbid in (select dbid from $CONFIG_TABLE where port=$QE_PORT and datadir='${QE_DIR}');"`
+		QE_MIRROR_PRIMARY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB  -A -t -c"select isprimary from $GP_PG_VIEW as _gp_pg_view where dbid in (select dbid from $CONFIG_TABLE where port=$QE_PORT and datadir='${QE_DIR}');"`
 		if [ "$QE_MIRROR_PRIMARY" == "t" ]; then
 			LOG_MSG "[WARN][$INST_COUNT]:-Mirror $QE_DIR $QE_PORT on $QE_NAME is active"
 			QE_MIRROR_ACTIVE=1
@@ -154,7 +154,7 @@ GET_SEGMENT_STATUS () {
 		#Process status primary segment
 		#*************************************
 		#This is a primary segment 
-		QE_PRIMARY_VALID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB  -A -t -c"select valid from $GP_PG_VIEW where dbid in (select dbid from $CONFIG_TABLE where port=$QE_PORT and datadir='${QE_DIR}');"`
+		QE_PRIMARY_VALID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB  -A -t -c"select valid from $GP_PG_VIEW as _gp_pg_view where dbid in (select dbid from $CONFIG_TABLE where port=$QE_PORT and datadir='${QE_DIR}');"`
 		if [ "$QE_PRIMARY_VALID" == "f" ];then
 			LOG_MSG "[WARN][$INST_COUNT]:-Primary $QE_DIR $QE_PORT on $QE_NAME is marked as failed"
 			QE_PRIMARY_FAILED=1

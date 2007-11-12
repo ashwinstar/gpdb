@@ -820,7 +820,7 @@ CHK_MIRRORS_CONFIGURED () {
 
 GET_MIRROR_TYPE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MIR_NUM=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(distinct hostname) - (select distinct hostname from $CONFIG_TABLE where content<>-1 and hostname not in (select hostname from $CONFIG_TABLE where definedprimary='t' and content<>-1)) from $CONFIG_TABLE where content in (select content from $CONFIG_TABLE where hostname in (select hostname from $CONFIG_TABLE where content=0 and definedprimary='t') and content <>-1 and definedprimary='f');" | wc -l`
+	MIR_NUM=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(distinct hostname) - (select (distinct hostname) from $CONFIG_TABLE where content<>-1 and hostname not in (select hostname from $CONFIG_TABLE where definedprimary='t' and content<>-1)) from $CONFIG_TABLE where content in (select content from $CONFIG_TABLE where hostname in (select hostname from $CONFIG_TABLE where content=0 and definedprimary='t') and content <>-1 and definedprimary='f');" | wc -l`
 	if [ $MIR_NUM -eq 0 ];then
 		MIR_TYPE="No Mirror";MIR_TYPE_NUM=0;fi
 	if [ $MIR_NUM -ge 1 ] && [ $MIR_NUM -le 2 ];then

@@ -151,7 +151,7 @@ GET_SETTING () {
 			LOG_MSG "[FATAL]:-Try gp_stop -r -z or see the gp_restore command" 1
 			ERROR_EXIT "[FATAL]:-No further progress can be made" 2
 		fi
-		FAILED_INST_LIST=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $GP_PG_VIEW where valid='f';"`)
+		FAILED_INST_LIST=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $GP_PG_VIEW as _gp_pg_view where valid='f';"`)
 		RET_STATUS=$?
 		ERROR_CHK $RET_STATUS "obtain failed instance dbid's" 1
 		LOG_MSG "[INFO]:-There are ${#FAILED_INST_LIST[@]} failed segment(s)" 1
@@ -270,7 +270,7 @@ GET_MIRROR () {
 	do
 		FAILED_INSTANCE_ARRAY[$ARRAY_INDEX]=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid, content from $CONFIG_TABLE where dbid=${DBID};"`
 		ERROR_CHK $? "obtain failed segment details from master instance" 2
-		ACTIVE_DBID=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select dbid from $GP_PG_VIEW where content in (select content from $GP_PG_VIEW where dbid=${DBID}) and dbid<>${DBID};"`
+		ACTIVE_DBID=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select dbid from $GP_PG_VIEW as _gp_pg_view where content in (select content from $GP_PG_VIEW as _gp_pg_view2 where dbid=${DBID}) and dbid<>${DBID};"`
 		ACTIVE_INSTANCE_ARRAY[$ARRAY_INDEX]=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where valid='t' and content in (select content from $CONFIG_TABLE where dbid=${ACTIVE_DBID}) and dbid<>${DBID};"`
 		ERROR_CHK $? "obtain recovery segment details from master instance" 2
 		((ARRAY_INDEX=$ARRAY_INDEX+1))
@@ -508,7 +508,7 @@ RESET_QE_CONNECT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	TABLE_NAME=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select relname from pg_class where relkind='r' order by reltype desc limit(1);"`
 	$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from ${TABLE_NAME};" >> $LOG_FILE 2>&1
-	$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select * from ${GP_PG_VIEW};" >> $LOG_FILE 2>&1
+	$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select * from ${GP_PG_VIEW} as _gp_pg_view;" >> $LOG_FILE 2>&1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -680,7 +680,7 @@ GET_FAIL_COUNT_TYPE () {
 	PRI_FAIL_COUNT=0;MIR_FAIL_COUNT=0
 	for FAIL_DBID in ${FAILED_INST_LIST[@]}
 	do
-		DBID_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select definedprimary from $GP_PG_VIEW where dbid=${FAIL_DBID};"`
+		DBID_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select definedprimary from $GP_PG_VIEW as _gp_pg_view where dbid=${FAIL_DBID};"`
 		ERROR_CHK $? "obtain type for dbid = $FAIL_DBID" 2
 		case $DBID_TYPE in
 			t ) ((PRI_FAIL_COUNT=$PRI_FAIL_COUNT+1)) ;;
