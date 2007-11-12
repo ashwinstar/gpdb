@@ -34,6 +34,7 @@
 #include "access/heapam.h"
 #include "access/valid.h"
 #include "commands/dbcommands.h"
+#include "catalog/namespace.h"
 #include "pgstat.h"
 #include "miscadmin.h"
 #include "utils/relcache.h"
@@ -869,9 +870,16 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 	 * Set up encoding conversion info.  Even if the client and server
 	 * encodings are the same, we must apply pg_client_to_server() to validate
 	 * data in multibyte encodings.
+	 *
+	 * Each external table specifies the encoding of its external data. We will
+	 * therefore set a client encoding and client-to-server conversion procedure
+	 * in here and these will be used in the data conversion routines (in copy.c
+	 * CopyReadLineXXX()).
 	 */
 	Insist(PG_VALID_ENCODING(encoding));
 	pstate->client_encoding = encoding;
+	setEncodingConversionProc(pstate, encoding);
+
 	pstate->need_transcoding = (pstate->client_encoding != GetDatabaseEncoding() ||
 								pg_database_encoding_max_length() > 1);
 	pstate->encoding_embeds_ascii = PG_ENCODING_IS_CLIENT_ONLY(pstate->client_encoding);

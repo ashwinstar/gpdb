@@ -331,7 +331,8 @@ extern unsigned char *pg_do_encoding_conversion(unsigned char *src, int len,
 
 extern char *pg_client_to_server(const char *s, int len);
 extern char *pg_server_to_client(const char *s, int len);
-extern char *pg_custom_client_to_server(const char *s, int len, int src_encoding);
+extern char *pg_custom_client_to_server(const char *s, int len, int src_encoding,
+										FmgrInfo *custom_encoding_proc);
 
 extern unsigned short BIG5toCNS(unsigned short big5, unsigned char *lc);
 extern unsigned short CNStoBIG5(unsigned short cns, unsigned char lc);

@@ -46,7 +46,8 @@ static int	pending_client_encoding = PG_SQL_ASCII;
 /* Internal functions */
 static char *perform_default_encoding_conversion(const char *src,
 									int len, bool is_client_to_server,
-									int custom_client_encoding);
+									int custom_client_encoding,
+									FmgrInfo *custom_encoding_proc);
 static int	cliplen(const char *str, int len, int limit);
 
 
@@ -404,7 +405,7 @@ pg_client_to_server(const char *s, int len)
 		return (char *) s;
 	}
 
-	return perform_default_encoding_conversion(s, len, true, -1);
+	return perform_default_encoding_conversion(s, len, true, -1, NULL);
 }
 
 /*
@@ -424,7 +425,7 @@ pg_server_to_client(const char *s, int len)
 		DatabaseEncoding->encoding == PG_SQL_ASCII)
 		return (char *) s;		/* assume data is valid */
 
-	return perform_default_encoding_conversion(s, len, false, -1);
+	return perform_default_encoding_conversion(s, len, false, -1, NULL);
 }
 
 /*
@@ -441,7 +442,8 @@ pg_server_to_client(const char *s, int len)
  */
 static char *
 perform_default_encoding_conversion(const char *src, int len, bool is_client_to_server, 
-									int custom_client_encoding)
+									int custom_client_encoding, 
+									FmgrInfo *custom_encoding_proc)
 {
 	char	   *result;
 	int			src_encoding,
@@ -450,9 +452,20 @@ perform_default_encoding_conversion(const char *src, int len, bool is_client_to_
 
 	if (is_client_to_server)
 	{
-		src_encoding = (custom_client_encoding == -1 ? ClientEncoding->encoding : custom_client_encoding);
-		dest_encoding = DatabaseEncoding->encoding;
-		flinfo = ToServerConvProc;
+		if(custom_client_encoding == -1)
+		{
+			/* this is the normal path of execution */
+			src_encoding = ClientEncoding->encoding;
+			dest_encoding = DatabaseEncoding->encoding;
+			flinfo = ToServerConvProc;			
+		}
+		else
+		{
+			/* this is the custom path of execution, for external tbl encodings */
+			src_encoding = custom_client_encoding;
+			dest_encoding = DatabaseEncoding->encoding;
+			flinfo = custom_encoding_proc;
+		}
 	}
 	else
 	{
@@ -472,6 +485,7 @@ perform_default_encoding_conversion(const char *src, int len, bool is_client_to_
 				  CStringGetDatum((char *) src),
 				  CStringGetDatum(result),
 				  Int32GetDatum(len));
+		
 	return result;
 }
 
@@ -494,7 +508,8 @@ perform_default_encoding_conversion(const char *src, int len, bool is_client_to_
  * altering the global client_encoding variable for this local database.
  */
 char *
-pg_custom_client_to_server(const char *s, int len, int src_encoding)
+pg_custom_client_to_server(const char *s, int len, int src_encoding,
+						   FmgrInfo *custom_encoding_proc)
 {
 	Assert(DatabaseEncoding);
 	Assert(ClientEncoding);
@@ -542,7 +557,7 @@ pg_custom_client_to_server(const char *s, int len, int src_encoding)
 		return (char *) s;
 	}
 	
-	return perform_default_encoding_conversion(s, len, true, src_encoding);
+	return perform_default_encoding_conversion(s, len, true, src_encoding, custom_encoding_proc);
 }
 
 /* convert a multibyte string to a wchar */

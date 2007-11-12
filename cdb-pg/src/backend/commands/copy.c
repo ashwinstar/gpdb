@@ -1141,7 +1141,9 @@ DoCopy(const CopyStmt *stmt)
 		cstate->need_transcoding = false;
 	cstate->encoding_embeds_ascii = PG_ENCODING_IS_CLIENT_ONLY(cstate->client_encoding);
 	cstate->line_buf_converted = (Gp_role == GP_ROLE_EXECUTE ? true : false);
-
+	cstate->to_server_enc_proc = NULL; /* only used in external tables */
+	setEncodingConversionProc(cstate, pg_get_client_encoding());
+	
 	/*
 	 * some greenplum db specific vars
 	 */
@@ -4429,7 +4431,8 @@ CopyReadLineText(CopyState cstate, size_t bytesread)
 		{
 			cvt = (char *) pg_custom_client_to_server(cstate->line_buf.data,
 													  cstate->line_buf.len,
-													  cstate->client_encoding);
+													  cstate->client_encoding,
+													  cstate->to_server_enc_proc);
 			if (cvt != cstate->line_buf.data)
 			{
 				/* transfer converted data back to line_buf */
@@ -4698,7 +4701,8 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 		{
 			cvt = (char *) pg_custom_client_to_server(cstate->line_buf.data,
 													  cstate->line_buf.len,
-													  cstate->client_encoding);
+													  cstate->client_encoding,
+													  cstate->to_server_enc_proc);
 			if (cvt != cstate->line_buf.data)
 			{
 				/* transfer converted data back to line_buf */
@@ -6570,4 +6574,32 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 	pfree(cstate);
 
 	return processed;
+}
+
+/*
+ * setEncodingConversionProc
+ *
+ * COPY and External tables use a custom path to the encoding conversion
+ * API because external tables have their own encoding (which is not
+ * necessarily client_encoding). We therefore have to set the correct
+ * encoding conversion function pointer ourselves, to be later used in
+ * the conversion engine.
+ *
+ * The code here mimics a part of SetClientEncoding() in mbutils.c
+ */
+void setEncodingConversionProc(CopyState cstate, int client_encoding)
+{
+	Oid		to_server_proc = FindDefaultConversionProc(client_encoding,
+													   GetDatabaseEncoding());
+	if(OidIsValid(to_server_proc))
+	{
+		/* conversion proc found */
+		cstate->to_server_enc_proc = palloc(sizeof(FmgrInfo));
+		fmgr_info(to_server_proc, cstate->to_server_enc_proc);		
+	}
+	else
+	{
+		/* no conversion function (both encodings are probably the same) */
+		cstate->to_server_enc_proc = NULL;
+	}
 }

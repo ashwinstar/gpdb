@@ -119,6 +119,7 @@ typedef struct CopyStateData
 	int			client_encoding;	/* remote side's character encoding */
 	bool		need_transcoding;		/* client encoding diff from server? */
 	bool		encoding_embeds_ascii;	/* ASCII can be non-first byte? */
+	FmgrInfo   *to_server_enc_proc; /* conv proc from exttbl encoding to server */
 	uint64		processed;		/* # of tuples processed */
 	size_t		bytesread;
 	bool		no_more_data;
@@ -249,6 +250,7 @@ extern void CopyReadAttributesCSV(CopyState cstate, char *nulls, int *attr_offse
 					  int num_phys_attrs, Form_pg_attribute *attr);
 extern void limit_printout_length(StringInfo buf);
 extern void truncateEol(StringInfo buf, EolType	eol_type);
+extern void setEncodingConversionProc(CopyState cstate, int client_encoding);
 
 extern uint64 DoCopyDispatchAgent(const CopyStmt *stmt);
 
