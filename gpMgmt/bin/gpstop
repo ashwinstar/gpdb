@@ -346,13 +346,13 @@ PROCESS_SHUTDOWN () {
 					$GPSEGSTOP $$ $STOP_INVALID $QE_NAME $QE_PORT $QE_DIR $QE_VALID $MODE $INST_COUNT $LOG_FILE &
 					PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 				else
-					if [ $DEBUG_LEVEL -eq 0 ];then $ECHO;fi
+					if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
 					LOG_MSG "[WARN]:-Not processing $QE_NAME directory $QE_DIR marked invalid" 1
 					((INVALID_START_COUNT=$INVALID_START_COUNT+1))
 					EXIT_STATUS=1
 				fi
 		done
-	if [ $DEBUG_LEVEL -eq 0 ];then $ECHO;fi
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ]; then $ECHO;fi
 	DUMP_STAT=0
 	TOTAL_FAILED_COUNT=$INVALID_START_COUNT
 	PARALLEL_SUMMARY_STATUS_REPORT $PARALLEL_STATUS_FILE

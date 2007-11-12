@@ -1136,7 +1136,7 @@ PARALLEL_WAIT () {
 			ERROR_EXIT "[FATAL]:-Process timeout failure" 2
 		fi
 	done
-	if [ $DEBUG_LEVEL -eq 0 ];then $ECHO;fi
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 

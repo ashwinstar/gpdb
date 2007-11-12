@@ -394,7 +394,7 @@ PROCESS_STARTUP () {
 		QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
 		#If valid is false and no request to start invalis segment skip this instance
 		if [ $START_INVALID -eq 0 ] && [ $QE_VALID == 'f' ];then
-			if [ $DEBUG_LEVEL -eq 0 ];then $ECHO;fi
+			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
 			LOG_MSG "[WARN]:-Skipping startup of $QE_NAME $QE_DIR as marked as invalid" 1
 			((INVALID_START_COUNT=$INVALID_START_COUNT+1))
 		else
@@ -412,7 +412,7 @@ PROCESS_STARTUP () {
 			PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 		fi
 	done
-	if [ $DEBUG_LEVEL -eq 0 ];then $NOLINE_ECHO;fi
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO;fi
 	DUMP_STAT=0
 	TOTAL_FAILED_COUNT=$INVALID_START_COUNT
 	#Now check the status of the segment responses in the status file
