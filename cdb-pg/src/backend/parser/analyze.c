@@ -222,10 +222,6 @@ static Node *make_prule_rulestmt(ParseState *pstate,
 
 static A_Const *make_a_const(A_Const *pValConst, char *val_str);
 
-static int deparse_partition_rule1(Node *pNode, char *outbuf, size_t outsize,
-								   char *typbuf, size_t tbsize
-								   );
-
 static int deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize);
 
 static int partition_range_compare(ParseState *pstate,
@@ -2676,14 +2672,6 @@ static A_Const *make_a_const(A_Const *pValConst, char *val_str)
 static int 
 deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize)
 {
-	return (deparse_partition_rule1(pNode, outbuf, outsize,
-									NULL, 0));
-}
-
-static int 
-deparse_partition_rule1(Node *pNode, char *outbuf, size_t outsize, 
-						char *typbuf, size_t tbsize)
-{
 	if (!pNode)
 		return 0;
 
@@ -2756,19 +2744,11 @@ deparse_partition_rule1(Node *pNode, char *outbuf, size_t outsize,
 					snprintf(outbuf, outsize, "\'%s\'::%s", 
 							 acs->val.val.str, 
 							 TypeNameToString(acs->typname));
-
-					if (typbuf && tbsize)
-						snprintf(typbuf, tbsize, "%s", 
-								 TypeNameToString(acs->typname));
 				}
 				else
 				{
 					snprintf(outbuf, outsize, "\'%s\'", 
 							 acs->val.val.str);
-
-					if (typbuf && tbsize)
-						snprintf(typbuf, tbsize,  
-								 "_STRING_");
 				}
 
 				return 1;
@@ -5490,7 +5470,33 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 					lc_rule = lnext(lc_rule);
 					if (lc_rule)
 					{
-						pPostCreate = lfirst(lc_rule);
+						List *pL1 = NULL;
+						int  *pInt1;
+						int  *pInt2;
+
+						pInt1 = (int *)palloc(sizeof(int));
+						pInt2 = (int *)palloc(sizeof(int));
+
+						*pInt1 = ii+1;
+						*pInt2 = jj;
+
+						pL1 = list_make1(child_tab_name->relname); /* rule name */
+						pL1 = lappend(pL1, pInt1);     /* partition position */
+						pL1 = lappend(pL1, pInt2);     /* every position */
+
+						if (pElem->partName)
+						{
+							char *pName = strVal(pElem->partName);
+							
+							pL1 = lappend(pL1, pName);
+						}
+						else
+							pL1 = lappend(pL1, NULL);
+
+						pL1 = lappend(pL1, child_tab_name->relname);  /* child name */
+						pL1 = lappend(pL1, parent_tab_name->relname); /* parent name */
+
+						pPostCreate = (Node *)list_make2(lfirst(lc_rule), pL1);
 					}
 				}
 

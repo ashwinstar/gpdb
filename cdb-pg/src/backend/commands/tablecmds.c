@@ -852,15 +852,16 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 * ----------------------------------------------------------------
 */
 void
-DefinePartitionedRelation(CreateStmt *stmt)
+DefinePartitionedRelation(CreateStmt *stmt, Oid relOid)
 {
 	if (stmt->postCreate)
 	{
 		List *pQry;
 		Node *pUtl;
 		DestReceiver *dest = None_Receiver;
+		List *pL1 = (List *)stmt->postCreate;
 	
-		pQry = parse_analyze(stmt->postCreate, NULL, NULL, 0);
+		pQry = parse_analyze(linitial(pL1), NULL, NULL, 0);
 
 		if (!pQry)
 			return;
@@ -878,6 +879,109 @@ DefinePartitionedRelation(CreateStmt *stmt)
 				(Node *)
 				(((Query *)pUtl)->utilityStmt),
 				NULL, dest, NULL);		
+
+		if (gp_enable_partitioned_table_catalog)
+		{
+			ListCell *lc = NULL;  
+			List *pL2;
+			char *pRuleName;
+			int  *pInt1;
+			int  *pInt2;
+			char *pPartName;
+			char *pChildName;
+			char *pParentName;
+			RangeVar   *partRuleRV;
+			Relation    partRuleDesc;
+			Datum		datum[6];
+			char		nullarr[6];
+			HeapTuple	tuple;
+			Oid tupOid;
+
+			lc = list_head(pL1);
+
+			lc = lnext(lc); /* skip the first element, which was the
+							 * utility stmt */
+
+			pL2 = lfirst(lc);
+
+			lc = list_head(pL2);
+			pRuleName = lfirst(lc);
+			lc = lnext(lc);			
+			pInt1 = lfirst(lc);
+			lc = lnext(lc);			
+			pInt2 = lfirst(lc);
+			lc = lnext(lc);			
+			pPartName = lfirst(lc);
+			lc = lnext(lc);			
+			pChildName = lfirst(lc);
+			lc = lnext(lc);			
+			pParentName = lfirst(lc);
+
+			partRuleRV = makeNode(RangeVar);
+			partRuleRV->catalogname = NULL;
+			partRuleRV->schemaname  = NULL;
+			partRuleRV->relname     = "partition_rule";
+
+			partRuleDesc = heap_openrv(partRuleRV, RowExclusiveLock);
+
+			datum[0] = DirectFunctionCall1(varcharin, 
+										   CStringGetDatum(pRuleName));
+			datum[1] = Int16GetDatum(*pInt1);
+			datum[2] = Int16GetDatum(*pInt2);
+			datum[3] = pPartName ? DirectFunctionCall1(varcharin,
+										   CStringGetDatum(pPartName))
+					: DirectFunctionCall1(varcharin,
+										  CStringGetDatum(" "));
+
+			datum[4] = DirectFunctionCall1(varcharin,
+										   CStringGetDatum(pChildName));
+			datum[5] = DirectFunctionCall1(varcharin,
+										   CStringGetDatum(pParentName));
+
+			nullarr[0] = ' ';
+			nullarr[1] = ' ';
+			nullarr[2] = ' ';
+			nullarr[3] = pPartName ? ' ' : '1';
+			nullarr[4] = ' ';
+			nullarr[5] = ' ';
+
+			tuple = heap_formtuple(partRuleDesc->rd_att, datum, nullarr);
+
+			tupOid = simple_heap_insert(partRuleDesc, tuple);
+
+/*			CatalogUpdateIndexes(inhRelation, tuple); */
+
+			
+			/* XXX XXX XXX XXX: this doesn't work!!! */
+
+
+			/*
+			 * record a dependency between the partitioned table and
+			 * its rule table
+			 */		
+
+			Assert(tupOid != InvalidOid);
+
+			{
+				ObjectAddress	myself,		
+						referenced; 
+			
+				myself.classId = RelationRelationId;
+				myself.objectId = relOid;
+				myself.objectSubId = 0;
+				referenced.classId = RelationRelationId;
+				referenced.objectId = tupOid;
+				referenced.objectSubId = 0;
+				recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+			}
+
+			heap_freetuple(tuple); 
+
+			heap_close(partRuleDesc, RowExclusiveLock);			
+
+		}
+
+
 	}
 }
 

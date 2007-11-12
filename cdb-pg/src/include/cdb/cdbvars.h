@@ -618,6 +618,10 @@ extern int gp_sort_max_distinct;
 
 extern bool	gp_enable_partitioned_tables;
 
+/* turn the partitioned tables catalog on */
+
+extern bool	gp_enable_partitioned_table_catalog;
+
 /* The maximum number of times on average that the hybrid hashed aggregation
  * algorithm will plan to spill an input row to disk before including it in
  * an aggregation.  Increasing this parameter will cause the planner to choose 

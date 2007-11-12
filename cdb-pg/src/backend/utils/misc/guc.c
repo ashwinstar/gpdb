@@ -1137,6 +1137,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_enable_partitioned_table_catalog", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable partioned tables catalog."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_enable_partitioned_table_catalog,
+		false, NULL, NULL
+	},
+
+	{
 		{"gp_enable_preunique", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enable 2-phase duplicate removal."),
 			gettext_noop("If true, planner may choose to remove duplicates in "

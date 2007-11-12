@@ -592,7 +592,7 @@ ProcessUtility(Node *parsetree,
 				 */
 				CommandCounterIncrement();
 				
-				DefinePartitionedRelation((CreateStmt *) parsetree);
+				DefinePartitionedRelation((CreateStmt *) parsetree, relOid);
 
 				elog(DEBUG2,"CreateStmt: rel Oid %d toast Oid %d",relOid, ((CreateStmt *) parsetree)->oidInfo.toastOid);
 		

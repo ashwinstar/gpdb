@@ -509,8 +509,10 @@ perform_default_encoding_conversion(const char *src, int len, bool is_client_to_
  */
 char *
 pg_custom_client_to_server(const char *s, int len, int src_encoding,
-						   FmgrInfo *custom_encoding_proc)
+						   void *cep)
 {
+	FmgrInfo *custom_encoding_proc = (FmgrInfo *)cep;
+
 	Assert(DatabaseEncoding);
 	Assert(ClientEncoding);
 	
