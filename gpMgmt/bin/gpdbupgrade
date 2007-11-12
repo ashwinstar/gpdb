@@ -100,9 +100,9 @@ USAGE () {
 		$ECHO
 		$ECHO "      Upgrade/Downgrade options:"
 		$ECHO "      -u, <$NEW_VERSION | $OLD_VERSION>, Upgrade|downgrade a GPDB array to $NEW_VERSION ($OLD_VERSION) [mandatory]"
-		$ECHO "      -N, don't attempt to upgrade pg_control files [Default:- upgrade pg_control_files]" 
+		$ECHO "      -N, don't attempt to upgrade pg_control files [Default:- upgrade pg_control files during upgrade]" 
 		$ECHO "      -c, undertake a system catalogue backup [default:- no backup" 
-		$ECHO "      -s, shutdown the GPDB array after upgrade [default:- leave array online]"
+		$ECHO "      -s, shutdown the GPDB array after upgrade [default:- leave array online after upgrade; leave shutdown after downgrade]"
 		$ECHO "      -B, <number> run this batch of state segment processes in parallel [default $BATCH_DEFAULT]"
 		$ECHO
 		$ECHO "      Return codes:"
@@ -267,6 +267,12 @@ CHK_STATUS () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+# If in upgrade mode, wind the master back to 3.0
+ROLLBACK_STARTUP() {
+	LOG_MSG "[INFO]:-Rolling back master control file upgrade" 1
+	$GPCONTROLMOD --catversion $OLD_VERSION $MASTER_DATA_DIRECTORY >> $LOG_FILE 2>&1
+}
+
 PROMPT_CONTINUE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:----------------------------" 1
@@ -285,10 +291,12 @@ PROMPT_CONTINUE () {
 	read REPLY
 	if [ -z $REPLY ]; then
 		LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
+		ROLLBACK_STARTUP
 		exit 1
 	fi
 	if [ $REPLY != Y ] && [ $REPLY != y ]; then
 		LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
+		ROLLBACK_STARTUP
 		exit 1
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -298,7 +306,7 @@ LOCK_ACCESS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Preventing remote access to the GPDB array" 1
 	$MV ${MASTER_DATA_DIRECTORY}/$PG_HBA ${MASTER_DATA_DIRECTORY}/${PG_HBA}$PG_SUFFIX
-	$CAT ${MASTER_DATA_DIRECTORY}/${PG_HBA}$PG_SUFFIX|$GREP $GPDB_ID|$GREP 'local\|127.0.0.1/32\|\::1/128' > ${MASTER_DATA_DIRECTORY}/$PG_HBA
+	$CAT ${MASTER_DATA_DIRECTORY}/${PG_HBA}$PG_SUFFIX|$GREP $GPDB_ID|$EGREP 'local|127.0.0.1/32|::1/128' > ${MASTER_DATA_DIRECTORY}/$PG_HBA
 	BACKOUT_COMMAND "$ECHO \"Recovering original Master pg_hba.conf file\""
 	BACKOUT_COMMAND "if [ -f ${MASTER_DATA_DIRECTORY}/${PG_HBA}$PG_SUFFIX ];then $MV ${MASTER_DATA_DIRECTORY}/${PG_HBA}$PG_SUFFIX ${MASTER_DATA_DIRECTORY}/$PG_HBA;fi"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -314,6 +322,58 @@ UNLOCK_ACCESS () {
 
 DOWNGRADE_ARRAY () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Commencing binary downgrade process, please wait..." 1
+	LOG_MSG "[INFO]:-Now processing the segment instance databases, please wait" 1
+	BATCH_LIMIT=${#QE_ARRAY[@]}
+	PARALLEL_SETUP  $PARALLEL_STATUS_FILE	
+	for QNODE in "${QE_ARRAY[@]}"
+	do
+		export OLD_VERSION
+		QE_NAME=`$ECHO $QNODE|$CUT -d"|" -f1`
+		QE_DIR=`$ECHO $QNODE|$CUT -d"|" -f2`
+		QE_PORT=`$ECHO $QNODE|$CUT -d"|" -f3`
+
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
+		${EXPORT_LIB_PATH};$GPSEGUPDATE $$ $QE_NAME $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE $UPGRADE_TO 0 $GPCONTROLMOD $PARALLEL_STATUS_FILE &
+			PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
+	done	
+
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
+	PARALLEL_SUMMARY_STATUS_REPORT $PARALLEL_STATUS_FILE
+	if [ $REPORT_FAIL -ne 0 ];then
+		$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE
+		$RM -f $PARALLEL_STATUS_FILE
+		BUILD_COMPOSITE_BACKOUT
+		$GPSTOP -aq -d $MASTER_DATA_DIRECTORY
+		ERROR_EXIT "[FATAL]:-Upgrade process failed, review $LOG_FILE" 2
+	fi
+	BUILD_COMPOSITE_BACKOUT
+
+	EXTRA_START_OPTS=" -c allow_system_table_mods=true "
+	$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -E -p $MASTER_PORT $EXTRA_START_OPTS" start >> $LOG_FILE 2>&1
+	if [ $? -ne 0 ];then
+		ERROR_EXIT "[FATAL]:-Issue with startup of Master instance with options $EXTRA_START_OPTS" 2
+	fi
+	LOG_MSG "[INFO]:-Completed startup of Master instance with options $EXTRA_START_OPTS" 1
+	LOG_MSG "[INFO]:-Calling final stage of upgrade process" 1
+		
+	$GPUPGRADE $UG_ARGS >> $LOG_FILE 2>&1
+	if [ $? -ne 0 ];then
+		ERROR_EXIT "[FATAL]:-$GPUPGRADE $UG_ARGS returned non-zero exit code" 2
+	else
+		LOG_MSG "[INFO]:-$GPUPGRADE $UG_ARGS returned zero exit code" 1
+	fi
+	if [ $RUN_INITSTANDBY -ne 0 ];then
+		LOG_MSG "[INFO]:-Upgrading warm master standby, please wait..." 1
+		$GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq
+		if [ $? -ne 0 ];then
+			ERROR_EXIT "[FATAL]:-Failed to $GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq" 2
+		fi
+		LOG_MSG "[INFO]:-Completed warm master standby upgrade" 1
+	fi
+	LOG_MSG "[INFO]:-Securing contents of backout file to log file" 1
+	$CAT $BACKOUT_FILE >> $LOG_FILE
+	$RM -f $BACKOUT_FILE
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -481,7 +541,8 @@ if [ $# -ne 0 ]; then
 		B ) BATCH_DEFAULT=$OPTARG ;;
 		u ) UPGRADE_TO=$OPTARG 
 		    if [ $UPGRADE_TO == "$OLD_VERSION" ]; then
-			UG_ARGS="$UG_ARGS -D "
+				UG_ARGS="$UG_ARGS -D "
+				KEEP_ONLINE=0;
 		    fi ;; 
 		N ) PGCONTROL_UPGRADE=0 ;;
 		l ) LOG_DIR=$OPTARG ;;
@@ -507,26 +568,23 @@ CHK_ON_PASSIVE_STANDBY
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 CHK_GPDB_ID
-if [ "$UPGRADE_TO" == "$OLD_VERSION" ];then
-	#DOWNGRADE_ARRAY
-	$ECHO "This yet to be completed"
-	exit 1
-fi
 VALIDATE_PARAM
 GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 CHK_STATUS
 if [ $INTERACTIVE ];then
 	PROMPT_CONTINUE
 fi
-#LOCK_ACCESS
+LOCK_ACCESS
 if [ $BACKUP -eq 1 ];then
 	CATALOG_BACKUP
 fi
 if [ "$UPGRADE_TO" == "$NEW_VERSION" ];then
 	UPGRADE_ARRAY
+else
+	DOWNGRADE_ARRAY
 fi
 $RM -f $PARALLEL_STATUS_FILE
-#UNLOCK_ACCESS
+UNLOCK_ACCESS
 
 # After upgrade, we need to restart without special start options
 # i.e., allow_system_table_mods = yes.

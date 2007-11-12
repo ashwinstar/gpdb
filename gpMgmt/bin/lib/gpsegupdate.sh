@@ -82,19 +82,22 @@ QE_DIR_CHK () {
 
 START_SEG () {
 	LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO][$INST_COUNT]:-Running control file upgrader"
 	EXTRA_START_OPTS=" -c allow_system_table_mods=true "
-	$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};$GPCONTROLMOD --catversion $UPGRADE_TO $QE_DIR" >> $LOG_FILE 2>&1
-	RETVAL=$?
-	if [ $RETVAL -ne 0 ]; then
-		LOG_MSG "[FATAL][$INST_COUNT]:-Upgrade $QE_NAME directory $QE_DIR version $UPGRADE_TO failed"
-		QE_LINE="FAILED:${QE_LINE}:UPGRADE_FAILED"
-		$ECHO $QE_LINE  >> $PARALLEL_STATUS_FILE
-		exit 2
-	else
-		LOG_MSG "[INFO][$INST_COUNT]:-Upgrade $QE_NAME directory $QE_DIR version $UPGRADE_TO completed"
-		BACKOUT_COMMAND "$ECHO \"Reverting QE $QE_NAME:$QE_DIR control file to $OLD_VERSION\""
-		BACKOUT_COMMAND "$TRUSTED_SHELL $QE_NAME \"$GPCONTROLMOD --catversion $OLD_VERSION $QE_DIR\""	
+
+	if [ $PGCONTROL_UPGRADE -eq 1 ]; then
+		LOG_MSG "[INFO][$INST_COUNT]:-Running control file upgrader"
+		$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};$GPCONTROLMOD --catversion $UPGRADE_TO $QE_DIR" >> $LOG_FILE 2>&1
+		RETVAL=$?
+		if [ $RETVAL -ne 0 ]; then
+			LOG_MSG "[FATAL][$INST_COUNT]:-Upgrade control file for $QE_NAME directory $QE_DIR version $UPGRADE_TO failed"
+			QE_LINE="FAILED:${QE_LINE}:UPGRADE_FAILED"
+			$ECHO $QE_LINE  >> $PARALLEL_STATUS_FILE
+			exit 2
+		else
+			LOG_MSG "[INFO][$INST_COUNT]:-Upgrade $QE_NAME directory $QE_DIR version $UPGRADE_TO completed"
+			BACKOUT_COMMAND "$ECHO \"Reverting QE $QE_NAME:$QE_DIR control file to $OLD_VERSION\""
+			BACKOUT_COMMAND "$TRUSTED_SHELL $QE_NAME \"$GPCONTROLMOD --catversion $OLD_VERSION $QE_DIR\""	
+		fi
 	fi
 	LOG_MSG "[INFO][$INST_COUNT]:-Starting Segment instance $QE_NAME directory $QE_DIR"
 	$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL -w -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT} $EXTRA_START_OPTS\" start >/dev/null 2>&1"
@@ -144,6 +147,7 @@ if [ x"" != x"$GPHOME" ];then
 else
         APP_PATH=${BIZHOME}/bin
 fi
+LOG_MSG "[INFO][$INST_COUNT]:-PGCONTROL = $PGCONTROL_UPGRADE, $*" 1
 PARENT_PID=$1;shift		#PID of gpstart process calling this script
 CHK_CALL
 QE_NAME=$1;shift		#Hostname holding database segment
@@ -156,6 +160,8 @@ PGCONTROL_UPGRADE=$1; shift
 GPCONTROLMOD=$1; shift
 PARALLEL_STATUS_FILE=$1; shift
 QE_LINE="${QE_NAME}:${QE_PORT}:${QE_DIR}"
+
+
 LOG_MSG "[INFO][$INST_COUNT]:-Start Main"
 LOG_MSG "[INFO][$INST_COUNT]:-Command line options passed to utility = $*"
 PING_CHK
