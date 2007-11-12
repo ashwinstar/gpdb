@@ -497,7 +497,18 @@ cdbexplain_recvExecStats(struct PlanState              *planstate,
         if (iDispatch == 0)
             ctx.nStatInst = hdr->nInst;
         else
+		{
+			/* MPP-2140: what causes this ? */
+			if (ctx.nStatInst != hdr->nInst)
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+								errmsg("Invalid execution statistics "
+									   "received stats node-count mismatch: cdbexplain_recvExecStats() ctx.nStatInst %d hdr->nInst %d", ctx.nStatInst, hdr->nInst),
+								errhint("Please verify that all instances are using "
+										"the correct %s software version.",
+										PACKAGE_NAME)));
+
             Insist(ctx.nStatInst == hdr->nInst);
+		}
 
         /* Save lowest and highest segment id for which we have stats. */
         if (iDispatch == 0)
