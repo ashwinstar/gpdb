@@ -7372,3 +7372,23 @@ select cn,sum(qty+1) over(order by cn), sum(qty+1) from sale group by cn,qty; --
   4 | 1135 |    4
 (7 rows)
 
+-- MPP-2152
+SELECT cn, pn, dt, PERCENT_RANK() OVER(partition by cn,dt order by cn desc),
+                 LEAD(pn,cn,NULL) OVER(partition by cn,dt order by pn, cn desc)
+FROM sale; --mvd 1,3->4
+ cn | pn  |     dt     | percent_rank | lead 
+----+-----+------------+--------------+------
+  1 | 100 | 05-01-1401 |            0 |     
+  2 | 400 | 06-01-1401 |            0 |     
+  3 | 200 | 04-01-1401 |            0 |     
+  4 | 700 | 06-01-1401 |            0 |     
+  4 | 800 | 06-01-1401 |            0 |     
+  1 | 200 | 03-01-1401 |            0 |     
+  1 | 300 | 05-02-1401 |            0 |     
+  1 | 400 | 06-01-1401 |            0 |  500
+  1 | 500 | 06-01-1401 |            0 |     
+  2 | 100 | 01-01-1401 |            0 |     
+  3 | 500 | 06-01-1401 |            0 |     
+  3 | 600 | 06-01-1401 |            0 |     
+(12 rows)
+

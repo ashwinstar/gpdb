@@ -85,7 +85,7 @@ typedef struct WindowInfo
 	List   *sortclause;
 	int		partkey_len;
 	int		rowkey_len;
-	int		orderkeys_offset;
+	int     orderkeys_offset;
 	bool	needpartkey;
 	bool	needauxcount;
 	
@@ -168,6 +168,14 @@ typedef struct SpecInfo
 	Index			windowindex;	/* index of assigned Window node */
 	int				keylevel;		/* key level of spec in Window node */
 	List		   *partkey;		/* PARTITION BY clause - transient */
+	/*
+	 * Remaining SortClauses after removing keys that are
+	 * duplicates of partitioning keys or other ORDER BY keys.
+	 *
+	 * This is used to sort SpecInfos and group SpecInfos into a
+	 * WindowInfo.
+	 */
+	List           *unique_order; 
 } SpecInfo;
 
 
@@ -848,6 +856,8 @@ static void inventory_window_specs(List *window_specs, WindowContext *context)
 	{
 		WindowSpec *spec = (WindowSpec *) lfirst(lcs);
 		Bitmapset *map = NULL;
+		ListCell *lc;
+		Bitmapset *orderset = NULL;
 		
 		foreach ( lcp, spec->partition )
 		{
@@ -862,6 +872,30 @@ static void inventory_window_specs(List *window_specs, WindowContext *context)
 		specinfos[i].windowindex = 0;
 		specinfos[i].keylevel = 0;
 		specinfos[i].partkey = spec->partition;
+
+		/* Construct unique_order for each SpecInfo by removing
+		 * keys that are duplicates of partitioning keys and other
+		 * ORDER BY keys.
+		 */
+		specinfos[i].unique_order = NIL;
+		
+		foreach (lc, specinfos[i].order)
+		{
+			SortClause *sc = (SortClause *)lfirst(lc);
+			if (!bms_is_member(sc->tleSortGroupRef, specinfos[i].partset))
+			{
+				if (!bms_is_member(sc->tleSortGroupRef, orderset))
+				{
+					specinfos[i].unique_order =
+						lappend(specinfos[i].unique_order, sc);
+					orderset =
+						bms_add_member(orderset, sc->tleSortGroupRef);
+				}
+			}
+		}
+
+		bms_free(orderset);
+
 		i++;
 	}
 	
@@ -1066,7 +1100,7 @@ static void assign_window_info(WindowContext *context)
 	for ( i = 1, j = 0; i < context->nspecinfos; j = i, i++ )
 	{
 		if ( ! bms_equal(context->specinfos[j].partset, context->specinfos[i].partset) 
-			 || ! is_order_prefix_of(context->specinfos[j].order, context->specinfos[i].order) )
+			 || ! is_order_prefix_of(context->specinfos[j].unique_order, context->specinfos[i].unique_order) )
 		{
 			current++;
 		}
@@ -1081,8 +1115,6 @@ static void assign_window_info(WindowContext *context)
 	for ( i = k = 0; i < n; i++ )
 	{
 		SpecInfo *final_sinfo = NULL;
-		List *sortkey = NIL;
-		Bitmapset *partset = NULL;
 		WindowInfo *winfo = &context->windowinfos[i];
 		
 		j = k; /* j indexes first SpecInfo in this WindowInfo */
@@ -1100,37 +1132,12 @@ static void assign_window_info(WindowContext *context)
 
 		winfo->firstspecindex = j;
 		winfo->numspecindex = k-j;
-		
-		/* Remove order key prefix from temp part set to discover how much
-		 * sort key is just for partitioning, i.e., not overlapping an ORDER
-		 * BY specification.
-		 */
-		partset = bms_copy(final_sinfo->partset);
-		foreach ( lc, final_sinfo->order )
-		{
-			SortClause *sc = (SortClause *)lfirst(lc);
-			if ( ! bms_is_member(sc->tleSortGroupRef, partset) )
-				break;				
-			partset = bms_del_member(partset, sc->tleSortGroupRef);
-		}
 
-		/* Sort key begins with remaining part keys. Stictly speaking, key
-		 * order and sort direction is arbitrary in the partitioning key, 
-		 * however, mimic the final SpecInfo for this WindowInfo to minimize
-		 * user astonishment. 
-		 */
-		sortkey = NIL;
-		foreach ( lc, final_sinfo->partkey )
-		{
-			SortClause *sc = (SortClause *)lfirst(lc);
-			if ( bms_is_member(sc->tleSortGroupRef, partset) )
-				sortkey = lappend(sortkey, copyObject(sc));
-		}
+		winfo->sortclause = copyObject(final_sinfo->partkey);
+		winfo->sortclause = list_concat(winfo->sortclause,
+										final_sinfo->unique_order);
 		winfo->partkey_len = list_length(final_sinfo->partkey);
-		winfo->orderkeys_offset = list_length(sortkey);
-		
-		/* Remainder of sort key is the final ORDER BY key. */
-		winfo->sortclause = list_concat(sortkey, copyObject(final_sinfo->order));
+		winfo->orderkeys_offset = list_length(final_sinfo->partkey);
 	}
 	
 	/* Set up the partitioning and ordering key levels (WindowKeys)  */
@@ -1203,10 +1210,14 @@ static int compare_spec_info_ptr(const void *arg1, const void *arg2)
 		return n;
 	
 	/* order */
-	n = compare_order(a->order, b->order);
+	n = compare_order(a->unique_order, b->unique_order);
 	if ( n != 0 ) 
 		return n;
 	
+	n = compare_order(a->order, b->order);
+	if ( n != 0 ) 
+		return n;
+
 	/* frame */
 	return compare_frame(a->frame, b->frame);
 }
@@ -1593,6 +1604,9 @@ static void set_window_keys(WindowContext *context, int wind_index)
 			sinfo->keylevel = -1;  /* No ordering key, just partition key. */
 			continue;
 		}
+
+		keylen = list_length(sinfo->unique_order);
+
 		wkey = makeNode(WindowKey);
 		wkey->numSortCols = (keylen + skoffset) - nextsk;
 		
@@ -1610,6 +1624,20 @@ static void set_window_keys(WindowContext *context, int wind_index)
 				nextsk++;
 			}
 		}
+
+		else
+		{
+			SortClause *sc;
+			
+			/* Copy the first ORDER BY key into SortCols. */
+			wkey->numSortCols = 1;
+			wkey->sortColIdx = (AttrNumber *)palloc(sizeof(AttrNumber));
+			wkey->sortOperators = (Oid*)palloc(sizeof(Oid));
+			sc = (SortClause *)linitial(sinfo->order);
+			wkey->sortColIdx[0] = context->sortref_resno[sc->tleSortGroupRef];
+			wkey->sortOperators[0] = sc->sortop;
+		}
+		
 		wkey->frame = copyObject(sinfo->frame);
 		sinfo->keylevel = list_length(window_keys); /* WindowKey position. */
 		window_keys = lappend(window_keys,  wkey);
@@ -2310,6 +2338,7 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 					TargetEntry *tle; 
 					tle = get_tle_by_resno(window_plan->targetlist,
 										   winfo->partkey_attrs[i]);
+
 					part_exprs = lappend(part_exprs, tle->expr);
 				}
 				d = estimate_num_groups(root, part_exprs, window_plan->plan_rows);
@@ -2346,7 +2375,7 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 			TargetEntry *tle;
 			Aggref *aggref = makeAuxCountAggref();
 			aux_attrno = 1 + list_length(tlist);
-			tle = makeTargetEntry((Expr*)aggref, aux_attrno, pstrdup("parition_count"), false);
+			tle = makeTargetEntry((Expr*)aggref, aux_attrno, pstrdup("partition_count"), false);
 			
 			tlist = lappend(tlist, tle);
 			agg_names = lappend(agg_names, makeString(pstrdup(tle->resname)));
@@ -2614,7 +2643,7 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 				
 				tle = get_tle_by_resno(window_plan->targetlist, winfo->partkey_attrs[i]);
 				rgt = (Node*)tle->expr;
-				
+
 				mc = make_mergeclause(agg_varno, i+1, copyObject(rgt));
 				mergeclauses = lappend(mergeclauses, mc);
 			}

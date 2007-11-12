@@ -1238,3 +1238,8 @@ select cn,sum(qty) over(order by cn), sum(qty) from sale group by cn,qty; --mvd 
 select cn,sum(sum(qty)) over(order by cn), sum(qty) from sale group by cn,qty; --mvd 1->2
 select cn,sum(sum(qty) + 1) over(order by cn), sum(qty) + 1 from sale group by cn,qty; --mvd 1->2
 select cn,sum(qty+1) over(order by cn), sum(qty+1) from sale group by cn,qty; --mvd 1->2
+
+-- MPP-2152
+SELECT cn, pn, dt, PERCENT_RANK() OVER(partition by cn,dt order by cn desc),
+                 LEAD(pn,cn,NULL) OVER(partition by cn,dt order by pn, cn desc)
+FROM sale; --mvd 1,3->4
