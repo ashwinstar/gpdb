@@ -31,7 +31,7 @@ DEVPATH=$(HOME)/$(GPDIR)
 CONFIGFLAGS=--enable-thread-safety --enable-integer-datetimes --with-pgport=$(DEFPORT) 
 
 ifeq (true, ${PG_LANG})
-CONFIGFLAGS+=--with-perl
+CONFIGFLAGS+=--with-perl --with-python
 ifdef TCL_CFG
 CONFIGFLAGS+=--with-tcl-config=${TCL_CFG}
 endif
