@@ -1,0 +1,116 @@
+COMMAND NAME: gpcheckos
+
+Checks the operating system environment of the specified hosts to 
+make sure the configuration is compatible with Greenplum Database.
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+gpcheckos { -f <host_file> | - h <hostname> [-h <hostname> ...] } 
+[-u <os_user>] [-p <ssh_port>] [-c <config_file>] [-v]
+
+gpcheckos -? | --version
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+The gpcheckos utility checks the operating system environment of 
+the specified hosts to make sure it complies with the requirements 
+for running Greenplum Database. It performs the following checks:
+
+* Software Binaries — Makes sure that each host has the same 
+  Greenplum Database server binaries installed by comparing 
+  the checksum.
+* Software Version — Makes sure that the Greenplum Database 
+  software version installed on each host is the same.
+* Python Version — Makes sure that Python 2.3.5 is installed on 
+  each host. This exact version of Python is bundled with your 
+  Greenplum Database installation for use with the management 
+  utilities.
+* System Clocks — Makes sure the system clocks are synchronized 
+  on all hosts 
+* OS Platform — Makes sure that all hosts have a supported OS 
+  platform installed and that all hosts have the same OS 
+  platform version installed.
+* OS Settings — Makes sure that the recommended Greenplum Database 
+  system settings are correct in /etc/sysctl.conf
+* OS User Limits — Makes sure that the recommended Greenplum 
+  Database user limits are set correctly for the current user.
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+-f <host_file>
+   Specifies the name of a file that contains a list of hosts 
+   that will participate in the OS verification. The host name is 
+   required, and you can optionally specify an alternate user name 
+   and/or SSH port number per host. The syntax of the host file 
+   is one host per line as follows:
+   [<username>@]<hostname>[:<ssh_port>]
+
+-h <hostname>
+   Specifies a single host name that will participate in 
+   the performance test. You can use the -h option multiple 
+   times to specify multiple host names. The syntax of the 
+   host name is:
+   [<username>@]<hostname>[:<ssh_port>]
+
+-u <os_user>
+   Specifies the OS user to use when logging in to a remote 
+   host. If not specified, defaults to the current user (or 
+   the user specified in the host file, if any).
+
+-p <ssh_port>
+   Specifies the default SSH port to use when logging in 
+   to a remote host. If not specified, defaults to port 22 
+   (or the port specified in the host file, if any).
+
+-c <config_file>
+   Specifies a configuration file that defines additional 
+   checks or overrides existing checks. Additional checks 
+   are restricted to the parameter values already retrieved 
+   from all the hosts. You can see these values by running 
+   gpcheckos with the -v option. Check criteria is defined as 
+   follows with one check criteria per line and white space 
+   (space, tab) to separate fields:
+   <parameter_to_check> <parameter_type> <operator> <value>
+   where parameter_type is int, intlist, or str, 
+   operator is =, >=, <=, >, or < , and value is the 
+   parameter value you want to verify. 
+   For example:
+    system.shmsys:shminfo_shmmax int >= 0x2000000
+    sysctl.kernel.sem intlist = 250 64000 100 512
+    solaris.release str = Solaris 10 8/07 s10x_u4wos_12b X86
+
+-v (verbose)
+   Verbose mode shows progress and status messages of 
+   the OS verification tests as they are run.
+
+-? (help)
+   Displays the online help.
+
+--version
+  Displays the version of this utility.
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+Verify the OS environment on all the hosts in the 
+file host_file:
+
+gpcheckos -f host_file
+
+Verify the OS environment on the hosts named seg1 and 
+seg2 and run in verbose mode:
+
+gpcheckos -h seg1 -h seg2 -v
+
+*****************************************************
+SEE ALSO
+*****************************************************
+
+gpcheckperf

@@ -1,92 +1,118 @@
 COMMAND NAME: gpscp
 
-Copies a file from the local host to multiple hosts at once.
-
+Copies files between multiple hosts at once.
 
 *****************************************************
 SYNOPSIS
 *****************************************************
 
 gpscp { -f <host_file> | - h <hostname> [-h <hostname> ...] } 
-      [-p <scp_port>] [-u <os_user>] [-v] <local_file> <remote_path>
+[-p <ssh_port>] [-u <os_user>] [-J <character>] [-v] 
+[[<user>@]<hostname>:]<file_to_copy> [...] 
+[[<user>@]<hostname>:]<copy_to_path>
 
 gpscp -? | --version
-
 
 *****************************************************
 DESCRIPTION
 *****************************************************
 
-The gpscp utility allows you to copy a file from the local host to 
-a specified location on multiple hosts at once using SCP (secure copy).
 
-To specify the hosts involved in the SCP session, use the -f option to 
-specify a file containing a list of host names, or use the -h option to 
-name single host names on the command-line. At least one host name (-h) 
-or a host file (-f) is required.
+The gpscp utility allows you to copy one or more files from 
+the specified hosts to other specified hosts in one command 
+using SCP (secure copy). For example, you can copy a file 
+from the Greenplum Database master host to all of the segment 
+hosts at the same time.
 
-If a user name is not specified in the host list file or with the 
--u option, gpscp will copy files as the currently logged in user. To 
-determine the currently logged in user, do a whoami command. By default, 
-gpscp goes to $HOME of the session user on the remote hosts after login. 
-To ensure the file is copied to the correct location on the remote hosts, 
-it is recommended that you use absolute paths.
+To specify the hosts involved in the SCP session, use the -f 
+option to specify a file containing a list of host names, or use 
+the -h option to name single host names on the command-line. At 
+least one host name (-h) or a host file (-f) is required. The -J 
+option allows you to specify a single character to substitute for 
+the hostname in the copy from and to destination strings. If 
+-J is not specified, the default substitution character is an 
+equal sign (=). For example, the following command will copy 
+.bashrc from the local host to /home/gpadmin on all hosts named 
+in host_file:
 
-The gpscp utility requires Python 2.3 or higher. Python is installed 
-with most operating systems by default. If you have an older version of 
-Python, you must upgrade to 2.3 or higher (and make sure Python is in 
-your $PATH) in order to use gpssh.
+gpscp -f host_file .bashrc =:/home/gpadmin
 
-Before using gpscp, you must have a trusted host setup between the hosts 
-involved in the SCP session. You can use the utility gpssh-exkeys to 
-update the known host files and exchange public keys between hosts if 
-you have not done so already.
+If a user name is not specified in the host list file, with the 
+-u option, or with user@ in the file path, gpscp will copy files 
+as the currently logged in user. To determine the currently logged 
+in user, do a whoami command. By default, gpscp goes to $HOME of 
+the session user on the remote hosts after login. To ensure the 
+file is copied to the correct location on the remote hosts, it 
+is recommended that you use absolute paths.
 
+Before using gpscp, you must have a trusted host setup between 
+the hosts involved in the SCP session. You can use the utility 
+gpssh-exkeys to update the known host files and exchange public 
+keys between hosts if you have not done so already.
 
 *****************************************************
 OPTIONS
 *****************************************************
 
+
 -f <host_file>
 
-Specifies the name of a file that contains a list of hosts that will 
-participate in this SCP session. The host name is required, and you 
-can optionally specify an alternate user name and/or SCP port number 
-per host. The syntax of the host file is one host per line as follows:
-[username@]hostname[:scp_port]
+Specifies the name of a file that contains a list of hosts 
+that will participate in this SCP session. The host name is 
+required, and you can optionally specify an alternate user 
+name and/or SCP port number per host. The syntax of the host 
+file is one host per line as follows:
+
+[<username>@]<hostname>[:<scp_port>]
 
 -h <hostname>
 
-Specifies a single host name that will participate in this SCP 
-session. You can use the -h option multiple times to specify 
-multiple host names.
+Specifies a single host name that will participate in this 
+SCP session. You can use the -h option multiple times to 
+specify multiple host names.
 
 -p <scp_port>
 
-Specifies the default SCP port to use when logging in to a remote 
-host. If not specified, defaults to port 22 (or the port specified 
-in the host file, if any).
+Specifies the default SSH port to use when logging in to a 
+remote host. If not specified, defaults to port 22 (or the 
+port specified in the host file, if any).
 
 -u <os_user>
 
-Specifies the default operating system user account to use when 
-copying a file to a remote host. If not specified, defaults to the 
-currently logged in user (or the user specified in the host file, if any).
+Specifies the default operating system user account to use 
+when copying a file to a remote host. If not specified, 
+defaults to the currently logged in user, the user specified 
+in the host file, or user@ as specified in the file path 
+(if any).
+
+-J <character>
+
+The -J option allows you to specify a single character to 
+substitute for the hostname in the copy from and to destination 
+strings. If -J is not specified, the default substitution 
+character is an equal sign (=).
 
 -v (verbose mode)
 
-Optional. Reports additional messages.
+Optional. Reports additional messages in addition to the 
+SCP command output.
 
-<local_file>
+<file_to_copy>
 
-Required. The file name (or absolute path) of a file on the local 
-host that you want to copy over to the remote hosts.
+Required. The file name (or absolute path) of a file that 
+you want to copy to other hosts (or file locations). This 
+can be either a file on the local host or on another named 
+host.
 
-<remote_path>
+<copy_to_path>
 
-Required. The path where you want the file to be copied on the 
-remote hosts. If an absolute path is not used, the file will be 
-copied relative to $HOME of the session user.
+Required. The path where you want the file(s) to be copied 
+on the named hosts. If an absolute path is not used, the 
+file will be copied relative to $HOME of the session user. You 
+can also use the equal sign ‘=’ (or another character that you 
+specify with the -J option) in place of a hostname. This will 
+then substitute in each host name as specified in the supplied 
+host file (-f) or with the -h option.
 
 -? (help)
 
@@ -96,26 +122,26 @@ Displays the online help.
 
 Displays the version of this utility.
 
-
 *****************************************************
 EXAMPLES
 *****************************************************
 
+
 Copy the file named installer.tar to / on all the hosts in the 
 file host_file.
 
-gpscp -f host_file installer.tar /
-
+gpscp -f host_file installer.tar =:/
 
 Copy the file named myfuncs.so to the specified location on 
 the hosts named seg1 and seg2:
 
-gpscp -h seg1 -h seg2 myfuncs.so /usr/local/greenplum-db/gp-pgsql-2.3.1.0/lib
+gpscp -h seg1 -h seg2 myfuncs.so \
+=:/usr/local/greenplum-db-3.1.0.0/lib
 
 
 *****************************************************
 SEE ALSO
 *****************************************************
 
-gpssh, gpssh-exkeys
 
+gpssh-exkeys, gpssh
