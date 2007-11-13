@@ -1166,7 +1166,7 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 /*
  * All tuples have been provided; finish the sort.
  */
-void
+	void
 tuplesort_performsort(Tuplesortstate *state)
 {
 	MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
@@ -1174,7 +1174,7 @@ tuplesort_performsort(Tuplesortstate *state)
 #ifdef TRACE_SORT
 	if (trace_sort)
 		elog(LOG, "performsort starting: %s",
-			 pg_rusage_show(&state->ru_start));
+				pg_rusage_show(&state->ru_start));
 #endif
 
 	switch (state->status)
@@ -1215,15 +1215,15 @@ tuplesort_performsort(Tuplesortstate *state)
 			 */
 			dumptuples(state, true);
 
-            /* CDB: How much work_mem would be enough for in-memory sort? */
-            if (state->instrument)
-            {
-                int64   workmemwanted = state->allowedMem - state->availMem +
-                                        state->spilledBytes;
+			/* CDB: How much work_mem would be enough for in-memory sort? */
+			if (state->instrument)
+			{
+				int64   workmemwanted = state->allowedMem - state->availMem +
+					state->spilledBytes;
 
-                state->instrument->workmemwanted = 
-                    Max(state->instrument->workmemwanted, workmemwanted);
-            }
+				state->instrument->workmemwanted = 
+					Max(state->instrument->workmemwanted, workmemwanted);
+			}
 
 			mergeruns(state);
 			state->pos.eof_reached = false;
@@ -1250,7 +1250,7 @@ tuplesort_performsort(Tuplesortstate *state)
 #endif
 
 	/* MPP-1559 */
-    state->availMemMin01 = state->availMemMin;
+	state->availMemMin01 = state->availMemMin;
 
 	MemoryContextSwitchTo(oldcontext);
 }
@@ -2156,30 +2156,18 @@ static void
 dumptuples(Tuplesortstate *state, bool alltuples)
 {
 	int     bDumped = 0;
-    long    spilledBytes = state->availMem;
+	long    spilledBytes = state->availMem;
 	LogicalTape *lt = NULL;
 
 	while (alltuples ||
-		   (LACKMEM(state) && state->memtupcount > 1) ||
-		   state->memtupcount >= state->memtupsize)
+			(LACKMEM(state) && state->memtupcount > 1) ||
+			state->memtupcount >= state->memtupsize)
 	{
-		if (!bDumped) bDumped = 1;
-		/*
-		 * Dump the heap's frontmost entry, and sift up to remove it from the
-		 * heap.
-		 */
-		Assert(state->memtupcount > 0);
-
-		lt = LogicalTapeSetGetTape(state->tapeset, state->tp_tapenum[state->destTape]);
-		WRITETUP(state, lt, &state->memtuples[0]);
-		tuplesort_heap_siftup(state, true, 0);
-
 		/*
 		 * If the heap is empty *or* top run number has changed, we've
 		 * finished the current run.
 		 */
-		if (state->memtupcount == 0 ||
-			state->currentRun != state->memtuples[0].tupindex)
+		if (state->memtupcount == 0 || state->currentRun != state->memtuples[0].tupindex)
 		{
 			markrunend(state, state->tp_tapenum[state->destTape]);
 			state->currentRun++;
@@ -2189,9 +2177,9 @@ dumptuples(Tuplesortstate *state, bool alltuples)
 #ifdef TRACE_SORT
 			if (trace_sort)
 				elog(LOG, "finished writing%s run %d to tape %d: %s",
-					 (state->memtupcount == 0) ? " final" : "",
-					 state->currentRun, state->destTape,
-					 pg_rusage_show(&state->ru_start));
+						(state->memtupcount == 0) ? " final" : "",
+						state->currentRun, state->destTape,
+						pg_rusage_show(&state->ru_start));
 #endif
 
 			/*
@@ -2202,14 +2190,27 @@ dumptuples(Tuplesortstate *state, bool alltuples)
 			Assert(state->currentRun == state->memtuples[0].tupindex);
 			selectnewtape(state);
 		}
+
+		if (!bDumped) 
+			bDumped = 1;
+
+		/*
+		 * Dump the heap's frontmost entry, and sift up to remove it from the
+		 * heap.
+		 */
+		Assert(state->memtupcount > 0);
+
+		lt = LogicalTapeSetGetTape(state->tapeset, state->tp_tapenum[state->destTape]);
+		WRITETUP(state, lt, &state->memtuples[0]);
+		tuplesort_heap_siftup(state, true, 0);
 	}
 
 	if (bDumped) state->dumpcount++;
 
-    /* CDB: Accumulate total size of spilled tuples. */
-    spilledBytes = state->availMem - spilledBytes;
-    if (spilledBytes > 0)
-        state->spilledBytes += spilledBytes;
+	/* CDB: Accumulate total size of spilled tuples. */
+	spilledBytes = state->availMem - spilledBytes;
+	if (spilledBytes > 0)
+		state->spilledBytes += spilledBytes;
 }
 
 /*
