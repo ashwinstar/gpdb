@@ -661,7 +661,26 @@ checkExprHasWindFuncs_walker(Node *node, checkHasWindFuncs_context *context)
 			return true;		/* abort the tree traversal and return true */
 		/* else fall through to examine argument */
 	}
-	if (IsA(node, Query))
+	else if (IsA(node, SortBy))
+	{
+		SortBy *s = (SortBy *)node;
+		return checkExprHasWindFuncs_walker(s->node, context);
+	}
+	else if (IsA(node, WindowFrame))
+	{
+		WindowFrame *f = (WindowFrame *)node;
+		if (checkExprHasWindFuncs_walker((Node *)f->trail, context))
+			return true;
+		if (checkExprHasWindFuncs_walker((Node *)f->lead, context))
+			return true;
+	}
+	else if (IsA(node, WindowFrameEdge))
+	{
+		WindowFrameEdge *e = (WindowFrameEdge *)node;
+
+		return checkExprHasWindFuncs_walker(e->val, context);
+	}
+	else if (IsA(node, Query))
 	{
 		/* Recurse into subselects */
 		bool		result;

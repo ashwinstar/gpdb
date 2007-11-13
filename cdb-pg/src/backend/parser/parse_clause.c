@@ -29,6 +29,7 @@
 #include "optimizer/var.h"
 #include "parser/analyze.h"
 #include "parser/parsetree.h"
+#include "parser/parse_agg.h"
 #include "parser/parse_clause.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
@@ -404,6 +405,13 @@ transformWindowClause(ParseState *pstate, Query *qry)
 
 		clauseno++;
 
+		if (checkExprHasWindFuncs((Node *)ws))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_GROUPING_ERROR),
+					 errmsg("cannot use window function in a window "
+							"specification")));
+		}
 		/*
 		 * Loop through those clauses we've already processed to
 		 * a) check that the name passed in is not already taken and
