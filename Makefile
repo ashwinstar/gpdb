@@ -151,6 +151,10 @@ copylibs :
 	if [ -f $(CURDIR)/openldap/lib/libldap_r-2.3.so.0 ] ; then cp -p $(CURDIR)/openldap/lib/libldap_r-2.3.so.0 $(INSTLOC)/lib ; fi
 	if [ -f $(CURDIR)/openldap/lib/libldap-2.3.so.0 ] ; then cp -p $(CURDIR)/openldap/lib/libldap-2.3.so.0 $(INSTLOC)/lib ; fi
 	if [ -f $(CURDIR)/openldap/lib/liblber-2.3.so.0 ] ; then cp -p $(CURDIR)/openldap/lib/liblber-2.3.so.0 $(INSTLOC)/lib ; fi
+	if [ -f $(CURDIR)/krb5/lib/libk5crypto.3.dylib ] ; then cp -p $(CURDIR)/krb5/lib/libk5crypto.3.dylib $(INSTLOC)/lib ; fi
+	if [ -f $(CURDIR)/openldap/lib/libldap_r-2.3.0.dylib ] ; then cp -p $(CURDIR)/openldap/lib/libldap_r-2.3.0.dylib $(INSTLOC)/lib ; fi
+	if [ -f $(CURDIR)/openldap/lib/libldap-2.3.0.dylib ] ; then cp -p $(CURDIR)/openldap/lib/libldap-2.3.0.dylib $(INSTLOC)/lib ; fi
+	if [ -f $(CURDIR)/openldap/lib/liblber-2.3.0.dylib ] ; then cp -p $(CURDIR)/openldap/lib/liblber-2.3.0.dylib $(INSTLOC)/lib ; fi
 	if [ `uname -s` = 'Darwin' ] ; then \
 	    for lib in `otool -L $(INSTLOC)/bin/psql | egrep 'libssl|libcrypto|libcom_err|libkrb5|curl|readline|numa' | awk '{print $$1}'`; do \
 	        echo "cp -p $$lib $(INSTLOC)/lib" ; \
