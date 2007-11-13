@@ -2182,6 +2182,7 @@ continue; /* move on to the next data line */
 #define QE_GOTO_NEXT_ROW \
 RESET_LINEBUF; \
 cur_row_rejected = false; /* reset for next run */ \
+cstate->cur_attname = NULL;\
 continue; /* move on to the next data line */
 
 #define IF_REJECT_LIMIT_REACHED_ABORT \
