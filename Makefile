@@ -151,7 +151,7 @@ copylibs :
 	if [ -f $(CURDIR)/openldap/lib/libldap_r-2.3.so.0 ] ; then cp -p $(CURDIR)/openldap/lib/libldap_r-2.3.so.0 $(INSTLOC)/lib ; fi
 	if [ -f $(CURDIR)/openldap/lib/libldap-2.3.so.0 ] ; then cp -p $(CURDIR)/openldap/lib/libldap-2.3.so.0 $(INSTLOC)/lib ; fi
 	if [ -f $(CURDIR)/openldap/lib/liblber-2.3.so.0 ] ; then cp -p $(CURDIR)/openldap/lib/liblber-2.3.so.0 $(INSTLOC)/lib ; fi
-	if [ -f $(CURDIR)/krb5/lib/libk5crypto.3.dylib ] ; then cp -p $(CURDIR)/krb5/lib/libk5crypto.3.dylib $(INSTLOC)/lib ; fi
+	if [ -f $(CURDIR)/krb5/lib/libk5crypto.3.1.dylib ] ; then cp -p $(CURDIR)/krb5/lib/libk5crypto.3.1.dylib $(INSTLOC)/lib ; fi
 	if [ -f $(CURDIR)/openldap/lib/libldap_r-2.3.0.dylib ] ; then cp -p $(CURDIR)/openldap/lib/libldap_r-2.3.0.dylib $(INSTLOC)/lib ; fi
 	if [ -f $(CURDIR)/openldap/lib/libldap-2.3.0.dylib ] ; then cp -p $(CURDIR)/openldap/lib/libldap-2.3.0.dylib $(INSTLOC)/lib ; fi
 	if [ -f $(CURDIR)/openldap/lib/liblber-2.3.0.dylib ] ; then cp -p $(CURDIR)/openldap/lib/liblber-2.3.0.dylib $(INSTLOC)/lib ; fi
