@@ -3201,6 +3201,44 @@ EncodeTimezone(char *str, int tz)
 		sprintf(str, "%02d", hour);
 }
 
+/* 
+ * Convenience routine for encoding dates faster than sprintf does.
+ * tm is the the timestamp structure, str is the string, pos is position in
+ * the string which we are at. Upon returning, it is set to the offset of the
+ * last character we set in str.
+ */
+inline static void
+fast_encode_date(struct pg_tm * tm, char *str, int *pos)
+{
+	/*
+	 * sprintf() is very slow so we just convert the numbers to
+	 * a string manually. Since we allow dates in the range
+	 * 4713 BC to 5874897 AD, we have to check for years
+	 * with 7, 6 and 5 digits, being careful to not add
+	 * leading zeros for those. We only zero pad to four digits.
+	 */
+	int y = (tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1);
+	
+	if (y >= 1000000)
+		str[(*pos)++] = y / 1000000 % 10 + '0';
+	if (y >= 100000)
+		str[(*pos)++] = y / 100000 % 10 + '0';
+	if (y >= 10000)
+		str[(*pos)++] = y / 10000 % 10 + '0';
+	
+	str[(*pos)++] = y/1000 % 10 + '0';
+	str[(*pos)++] = y/100 % 10 + '0';
+	str[(*pos)++] = y/10 % 10 + '0';
+	str[(*pos)++] = y % 10 + '0';
+	str[(*pos)++] = '-';
+	str[(*pos)++] = tm->tm_mon/10 + '0'; 
+	str[(*pos)++] = tm->tm_mon % 10 + '0';
+	str[(*pos)++] = '-';
+	str[(*pos)++] = tm->tm_mday/10 + '0';
+	str[(*pos)++] = tm->tm_mday % 10 + '0';
+	str[(*pos)] = '\0';
+}
+
 /* EncodeDateOnly()
  * Encode date as local time.
  */
@@ -3215,27 +3253,10 @@ EncodeDateOnly(struct pg_tm * tm, int style, char *str)
 		case USE_ISO_DATES:
 			/* compatible with ISO date formats */
 			if (tm->tm_year > 0)
-#if 0
-				sprintf(str, "%04d-%02d-%02d",
-						tm->tm_year, tm->tm_mon, tm->tm_mday);
-#else
 			{
-				/*
-				 * sprintf is slow.  We can do a lot better.
-				 */
-				str[0] = tm->tm_year/1000 + '0';
-				str[1] = tm->tm_year/100 % 10 + '0';
-				str[2] = tm->tm_year/10 % 10 + '0';
-				str[3] = tm->tm_year % 10 + '0';
-				str[4] = '-';
-				str[5] = tm->tm_mon/10 + '0';
-				str[6] = tm->tm_mon % 10 + '0';
-				str[7] = '-';
-				str[8] = tm->tm_mday/10 + '0';
-				str[9] = tm->tm_mday % 10 + '0';
-				str[10] = '\0';
+				int j = 0;
+				fast_encode_date(tm, str, &j);
 			}
-#endif 
 			else
 				sprintf(str, "%04d-%02d-%02d %s",
 						-(tm->tm_year - 1), tm->tm_mon, tm->tm_mday, "BC");
@@ -3374,12 +3395,6 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, int *tzp, char **tzn, int style, 
 	{
 		case USE_ISO_DATES:
 			/* Compatible with ISO-8601 date formats */
-#if 0
-			sprintf(str, "%04d-%02d-%02d %02d:%02d",
-					(tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1),
-					tm->tm_mon, tm->tm_mday, tm->tm_hour, tm->tm_min);
-			
-#else
 			{
 				/*
 				 * sprintf is very slow so we just convert the numbers to
@@ -3388,25 +3403,7 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, int *tzp, char **tzn, int style, 
 				 * with 7, 6 and 5 digits, being careful to not add
 				 * leading zeros for those. We only zero pad to four digits.
 				 */
-				int y = (tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1);
-				
-				if (y >= 1000000)
-					str[j++] = y / 1000000 % 10 + '0';
-				if (y >= 100000)
-					str[j++] = y / 100000 % 10 + '0';
-				if (y >= 10000)
-					str[j++] = y / 10000 % 10 + '0';
-				
-				str[j++] = y/1000 % 10 + '0';
-				str[j++] = y/100 % 10 + '0';
-				str[j++] = y/10 % 10 + '0';
-				str[j++] = y % 10 + '0';
-				str[j++] = '-';
-				str[j++] = tm->tm_mon/10 + '0'; 
-				str[j++] = tm->tm_mon % 10 + '0';
-				str[j++] = '-';
-				str[j++] = tm->tm_mday/10 + '0';
-				str[j++] = tm->tm_mday % 10 + '0';
+				fast_encode_date(tm, str, &j);
 				str[j++] = ' ';
 				str[j++] = tm->tm_hour/10 + '0';
 				str[j++] = tm->tm_hour % 10 + '0';
@@ -3415,7 +3412,6 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, int *tzp, char **tzn, int style, 
 				str[j++] = tm->tm_min % 10 + '0';
 				str[j] = '\0';
 			}
-#endif 
 
 			/*
 			 * Print fractional seconds if any.  The field widths here should
