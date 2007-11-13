@@ -101,7 +101,7 @@ USAGE () {
 		$ECHO "      Upgrade/Downgrade options:"
 		$ECHO "      -u, <$NEW_VERSION | $OLD_VERSION>, Upgrade|downgrade a GPDB array to $NEW_VERSION ($OLD_VERSION) [mandatory]"
 		$ECHO "      -N, don't attempt to upgrade pg_control files [Default:- upgrade pg_control files during upgrade]" 
-		$ECHO "      -c, undertake a system catalogue backup [default:- no backup" 
+		$ECHO "      -c, undertake a system catalogue backup [default:- no backup]" 
 		$ECHO "      -s, shutdown the GPDB array after upgrade [default:- leave array online after upgrade; leave shutdown after downgrade]"
 		$ECHO "      -B, <number> run this batch of state segment processes in parallel [default $BATCH_DEFAULT]"
 		$ECHO
@@ -171,6 +171,11 @@ VALIDATE_PARAM () {
 			esac
 			LOG_MSG "[INFO]:-Mode selected is GPDB array $UPGRADE_TXT" 1 
 		fi
+	fi
+
+	if [ "$UPGRADE_TO" == "$OLD_VERSION" ] && [ $PGCONTROL_UPGRADE -eq 0 ]
+	then
+		ERROR_EXIT "[FATAL]:-Flag -N not supported with downgrades" 2
 	fi
 	#Now check for required programs
 	for FILE_NAME in $GPCONTROLMOD $GPSTART $GPSTOP $GPSEGUPGRADE $GPINITSTANDBY $GPUPGRADE
@@ -380,76 +385,59 @@ DOWNGRADE_ARRAY () {
 UPGRADE_ARRAY () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Commencing binary upgrade process, please wait..." 1
-	if [ "$UPGRADE_TO" == "$NEW_VERSION" ] && [ $PGCONTROL_UPGRADE -eq 1 ]; then
-		LOG_MSG "[INFO]:-Now processing the segment instance databases, please wait" 1
-		BATCH_LIMIT=${#QE_ARRAY[@]}
-		PARALLEL_SETUP  $PARALLEL_STATUS_FILE	
-		for QNODE in "${QE_ARRAY[@]}"
-		do
-			export OLD_VERSION
-			QE_NAME=`$ECHO $QNODE|$CUT -d"|" -f1`
-			QE_DIR=`$ECHO $QNODE|$CUT -d"|" -f2`
-			QE_PORT=`$ECHO $QNODE|$CUT -d"|" -f3`
+	LOG_MSG "[INFO]:-Now processing the segment instance databases, please wait" 1
+	BATCH_LIMIT=${#QE_ARRAY[@]}
+	PARALLEL_SETUP  $PARALLEL_STATUS_FILE	
+	for QNODE in "${QE_ARRAY[@]}"
+	do
+		export OLD_VERSION
+		QE_NAME=`$ECHO $QNODE|$CUT -d"|" -f1`
+		QE_DIR=`$ECHO $QNODE|$CUT -d"|" -f2`
+		QE_PORT=`$ECHO $QNODE|$CUT -d"|" -f3`
 
-			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-			${EXPORT_LIB_PATH};$GPSEGUPDATE $$ $QE_NAME $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE $UPGRADE_TO $PGCONTROL_UPGRADE $GPCONTROLMOD $PARALLEL_STATUS_FILE &
-			PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
-		done	
-		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
-		PARALLEL_SUMMARY_STATUS_REPORT $PARALLEL_STATUS_FILE
-		if [ $REPORT_FAIL -ne 0 ];then
-			$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE
-			$RM -f $PARALLEL_STATUS_FILE
-			BUILD_COMPOSITE_BACKOUT
-			ERROR_EXIT "[FATAL]:-Upgrade process failed, review $LOG_FILE" 2
-		fi
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
+		${EXPORT_LIB_PATH};$GPSEGUPDATE $$ $QE_NAME $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE $UPGRADE_TO $PGCONTROL_UPGRADE $GPCONTROLMOD $PARALLEL_STATUS_FILE &
+		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
+	done	
+
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
+	PARALLEL_SUMMARY_STATUS_REPORT $PARALLEL_STATUS_FILE
+	if [ $REPORT_FAIL -ne 0 ];then
+		$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE
+		$RM -f $PARALLEL_STATUS_FILE
 		BUILD_COMPOSITE_BACKOUT
-#		LOG_MSG "[INFO]:-Completed upgrade of segment instance databases" 1
-#		LOG_MSG "[INFO]:-Closing down the GPDB array, in preparation of Master upgrade" 1
-#		$GPSTART -aqm -d $MASTER_DATA_DIRECTORY
-#		$GPSTOP -aq -d $MASTER_DATA_DIRECTORY
-#		if [ $? -ne 0 ];then
-#			ERROR_EXIT "[FATAL]:-Failed to shutdown the GPDB array" 2
-#		fi
-		EXTRA_START_OPTS=" -c allow_system_table_mods=true "
-		$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -E -p $MASTER_PORT $EXTRA_START_OPTS" start >> $LOG_FILE 2>&1
-		if [ $? -ne 0 ];then
-			ERROR_EXIT "[FATAL]:-Issue with startup of Master instance with options $EXTRA_START_OPTS" 2
-		fi
-		LOG_MSG "[INFO]:-Completed startup of Master instance with options $EXTRA_START_OPTS" 1
-#		LOG_MSG "[INFO]:-Commencing shutdown of Master in admin mode" 1
-#		$GPSTOP -qm -d $MASTER_DATA_DIRECTORY
-#		if [ $? -ne 0 ];then
-#			ERROR_EXIT "[FATAL]:-Issue with shutdown of Master in admin mode" 2
-#		fi
-#		$GPSTART -aq -d $MASTER_DATA_DIRECTORY
-#		if [ $? -ne 0 ];then
-#			ERROR_EXIT "[FATAL]:-Issue with GPDB array startup" 2
-#		fi
-		LOG_MSG "[INFO]:-Calling final stage of upgrade process" 1
-		
-		# if no port specified, give it the master port
-		if [ -z "`echo $UG_ARGS | grep '\-p'`" ]; then
-			UG_ARGS="$UG_ARGS -p $MASTER_PORT";
-		fi
-		$GPUPGRADE $UG_ARGS >> $LOG_FILE 2>&1
-		if [ $? -ne 0 ];then
-			ERROR_EXIT "[FATAL]:-$GPUPGRADE $UG_ARGS returned non-zero exit code" 2
-		else
-			LOG_MSG "[INFO]:-$GPUPGRADE $UG_ARGS returned zero exit code" 1
-		fi
-		if [ $RUN_INITSTANDBY -ne 0 ];then
-			LOG_MSG "[INFO]:-Upgrading warm master standby, please wait..." 1
-			$GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq
-			if [ $? -ne 0 ];then
-				ERROR_EXIT "[FATAL]:-Failed to $GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq" 2
-			fi
-			LOG_MSG "[INFO]:-Completed warm master standby upgrade" 1
-		fi
-		LOG_MSG "[INFO]:-Securing contents of backout file to log file" 1
-		$CAT $BACKOUT_FILE >> $LOG_FILE
-		$RM -f $BACKOUT_FILE
+		ERROR_EXIT "[FATAL]:-Upgrade process failed, review $LOG_FILE" 2
 	fi
+	BUILD_COMPOSITE_BACKOUT
+	EXTRA_START_OPTS=" -c allow_system_table_mods=true "
+	$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -E -p $MASTER_PORT $EXTRA_START_OPTS" start >> $LOG_FILE 2>&1
+	if [ $? -ne 0 ];then
+		ERROR_EXIT "[FATAL]:-Issue with startup of Master instance with options $EXTRA_START_OPTS" 2
+	fi
+	LOG_MSG "[INFO]:-Completed startup of Master instance with options $EXTRA_START_OPTS" 1
+	LOG_MSG "[INFO]:-Calling final stage of upgrade process" 1
+	
+	# if no port specified, give it the master port
+	if [ -z "`echo $UG_ARGS | grep '\-p'`" ]; then
+		UG_ARGS="$UG_ARGS -p $MASTER_PORT";
+	fi
+	$GPUPGRADE $UG_ARGS >> $LOG_FILE 2>&1
+	if [ $? -ne 0 ];then
+		ERROR_EXIT "[FATAL]:-$GPUPGRADE $UG_ARGS returned non-zero exit code" 2
+	else
+		LOG_MSG "[INFO]:-$GPUPGRADE $UG_ARGS returned zero exit code" 1
+	fi
+	if [ $RUN_INITSTANDBY -ne 0 ];then
+		LOG_MSG "[INFO]:-Upgrading warm master standby, please wait..." 1
+		$GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq
+		if [ $? -ne 0 ];then
+			ERROR_EXIT "[FATAL]:-Failed to $GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq" 2
+		fi
+		LOG_MSG "[INFO]:-Completed warm master standby upgrade" 1
+	fi
+	LOG_MSG "[INFO]:-Securing contents of backout file to log file" 1
+	$CAT $BACKOUT_FILE >> $LOG_FILE
+	$RM -f $BACKOUT_FILE
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
