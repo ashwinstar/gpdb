@@ -2170,7 +2170,7 @@ dumptuples(Tuplesortstate *state, bool alltuples)
 		 */
 		Assert(state->memtupcount > 0);
 
-		lt = LogicalTapeSetGetTape(state->tapeset, state->destTape);
+		lt = LogicalTapeSetGetTape(state->tapeset, state->tp_tapenum[state->destTape]);
 		WRITETUP(state, lt, &state->memtuples[0]);
 		tuplesort_heap_siftup(state, true, 0);
 
