@@ -103,6 +103,7 @@ typedef struct
 	List      *vars_for_aggrefs; /* list of Vars to replace Aggrefs. */
 	bool       update_winref; /* indicate if we want to update WindowRefs. */
 	bool       in_winref; /* indicate if a node appears inside a WindowRef. */
+	Query     *query;    /* used to obtain WindowSpec to update frame clauses */
 } grouped_window_ctx;
 
 typedef struct
@@ -6042,10 +6043,10 @@ wingroupmutator(Node *node, void *context)
 		return NULL;
 
 	/*
-	 * If the node is a Var and it occurs inside the argument list
-	 * of a WindowRef, we modify its attno to point to the correct
-	 * resno in the subquery. Such a Var should appear in one of
-	 * the target entry in the subquery targetlist.
+	 * If the node is a Var and it occurs inside the argument list of
+	 * a WindowRef, we modify its attno to point to the correct resno
+	 * in the subquery. Such a Var should appear in one of the target
+	 * entry in the subquery targetlist.
 	 */
 	if (ctx->update_winref && IsA(node, Var) && ctx->in_winref)
 	{
@@ -6071,7 +6072,7 @@ wingroupmutator(Node *node, void *context)
 
 		if (done)
 			return node;
-
+		
 		/* Find this var in the subquery targetlist. */
 		foreach (lc, ctx->subtlist)
 		{
@@ -6081,6 +6082,9 @@ wingroupmutator(Node *node, void *context)
 		}
 		Assert(lc != NULL);
 
+		/* Set te->resjunk to false since the window query requires this Var. */
+		te->resjunk = false;
+		
 		return (Node *)makeVar(1, te->resno, exprType(node), exprTypmod(node), 0);
 	}
 	
@@ -6126,30 +6130,67 @@ wingroupmutator(Node *node, void *context)
 		return (Node *)v;
 	}
 
-	if (ctx->update_winref && IsA(node, WindowRef))
+	if (IsA(node, WindowRef))
 	{
-		/*
-		 * Change the attno of all Var nodes in the arguments of this WindowRef.
-		 * These attnos should point to the new resno in the subquery.
-		 */
-		ListCell *arg_lc;
-		List *new_args = NIL;
-
-		ctx->in_winref = true;
+		WindowRef *wref = (WindowRef *)node;
 		
-		foreach(arg_lc, ((WindowRef*)node)->args)
+		if (ctx->update_winref)
 		{
-			Node *arg = lfirst(arg_lc);
-		    Node *new_arg;
+			/*
+			 * Change the attno of all Var nodes in the arguments of this WindowRef.
+			 * These attnos should point to the new resno in the subquery.
+			 */
+			ListCell *arg_lc;
+			List *new_args = NIL;
 			
-			new_arg = wingroupmutator(arg, context);
-			new_args = lappend(new_args, new_arg);
+			ctx->in_winref = true;
+		
+			foreach(arg_lc, wref->args)
+			{
+				Node *arg = lfirst(arg_lc);
+				Node *new_arg;
+					
+				new_arg = wingroupmutator(arg, context);
+				new_args = lappend(new_args, new_arg);
+			}
+			
+			list_free(wref->args);
+			wref->args = new_args;
+
+			return node;
 		}
 
-		list_free(((WindowRef *)node)->args);
-		((WindowRef*) node)->args = new_args;
+		else
+		{
+			Node *new_node = expression_tree_mutator(node, wingroupmutator, ctx);
 
-		return node;
+			/* Walk through the frame clause as well. */
+			WindowSpec *spec =
+				(WindowSpec *)list_nth(ctx->query->windowClause, wref->winspec);
+			
+			if (spec->frame)
+			{
+				if (spec->frame->trail)
+				{
+					if (spec->frame->trail->val)
+					{
+						Node *new_val =	wingroupmutator(spec->frame->trail->val, ctx);
+						spec->frame->trail->val = new_val;
+					}
+				}
+
+				if (spec->frame->lead)
+				{
+					if (spec->frame->lead->val)
+					{
+						Node *new_val = wingroupmutator(spec->frame->lead->val, ctx);
+						spec->frame->lead->val = new_val;
+					}
+				}
+			}
+
+			return new_node;
+		}
 	}
 
 	if (IsA(node, TargetEntry))
@@ -6444,6 +6485,7 @@ transformGroupedWindows(Query *qry)
 	ctx.vars_for_aggrefs = NIL;
 	ctx.update_winref = false;
 	ctx.in_winref = false;
+	ctx.query = qry;
 	newtl = (List *)expression_tree_mutator((Node *)qry->targetList, 
 											wingroupmutator, &ctx);
 	ctx.update_winref = true;

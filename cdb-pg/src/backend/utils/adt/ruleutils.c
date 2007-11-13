@@ -4464,12 +4464,12 @@ get_windowspec_expr(WindowSpec *spec, deparse_context *context)
 		appendStringInfoString(buf, sep);
 		sep = " ";
 
-		appendStringInfo(buf, "%s", f->is_rows ? "ROWS" : "RANGE");
+		appendStringInfo(buf, "%s", f->is_rows ? "ROWS " : "RANGE ");
 		if (f->is_between)
 		{
-			appendStringInfo(buf, " BETWEEN");
+			appendStringInfo(buf, "BETWEEN ");
 			get_windowedge_expr(f->trail, context);
-			appendStringInfo(buf, " AND");
+			appendStringInfo(buf, "AND ");
 			get_windowedge_expr(f->lead, context);
 		}
 		else

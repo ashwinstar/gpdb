@@ -7392,3 +7392,21 @@ FROM sale; --mvd 1,3->4
   3 | 600 | 06-01-1401 |            0 |     
 (12 rows)
 
+-- MPP-2189
+create view v1 as
+select dt, sum(cn) over(order by grouping(cn) range grouping(cn) preceding) 
+from sale group by rollup(cn,dt);
+\d v1
+      View "public.v1"
+ Column |  Type  | Modifiers 
+--------+--------+-----------
+ dt     | date   | 
+ sum    | bigint | 
+View definition:
+ SELECT "Window".dt, sum("Window"."?column?") OVER( 
+ ORDER BY "Window"."grouping" RANGE "Window"."grouping" PRECEDING) AS sum
+   FROM ( SELECT sale.dt, grouping(sale.cn) AS "grouping", sale.cn
+           FROM sale
+          GROUP BY ROLLUP (sale.cn, sale.dt));
+
+drop view v1;

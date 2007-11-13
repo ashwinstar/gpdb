@@ -1243,3 +1243,10 @@ select cn,sum(qty+1) over(order by cn), sum(qty+1) from sale group by cn,qty; --
 SELECT cn, pn, dt, PERCENT_RANK() OVER(partition by cn,dt order by cn desc),
                  LEAD(pn,cn,NULL) OVER(partition by cn,dt order by pn, cn desc)
 FROM sale; --mvd 1,3->4
+
+-- MPP-2189
+create view v1 as
+select dt, sum(cn) over(order by grouping(cn) range grouping(cn) preceding) 
+from sale group by rollup(cn,dt);
+\d v1
+drop view v1;
