@@ -28,17 +28,17 @@ DEBUGFLAGS="$(CFLAGS_INLINE) $(CFLAGS_OPT) -g3"
 DISTPATH=$(GPROOT)/$(GPDIR)
 DEVPATH=$(HOME)/$(GPDIR)
 
-CONFIGFLAGS=--enable-thread-safety --enable-integer-datetimes --with-pgport=$(DEFPORT) 
+CONFIGFLAGS=--enable-thread-safety --enable-integer-datetimes --with-pgport=$(DEFPORT)
 
 ifeq (true, ${PG_LANG})
-CONFIGFLAGS+=--with-perl --with-python
+CONFIGFLAGS+= --with-perl --with-python
 ifdef TCL_CFG
-CONFIGFLAGS+=--with-tcl-config=${TCL_CFG}
+CONFIGFLAGS+= --with-tcl-config=${TCL_CFG}
 endif
 endif
 
 ifeq (true, ${AUTH})
-CONFIGFLAGS+=--with-openssl --with-pam --with-krb5 --with-ldap --with-libraries="$(CURDIR)/curl/lib $(CURDIR)/openldap/lib $(CURDIR)/openssl/lib $(CURDIR)/krb5/lib" --with-includes="$(CURDIR)/curl/include $(CURDIR)/openldap/include $(CURDIR)/openssl/include $(CURDIR)/krb5/include"
+CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap --with-libraries="$(CURDIR)/curl/lib $(CURDIR)/openldap/lib $(CURDIR)/openssl/lib $(CURDIR)/krb5/lib" --with-includes="$(CURDIR)/curl/include $(CURDIR)/openldap/include $(CURDIR)/openssl/include $(CURDIR)/krb5/include"
 endif
 
 all : devel
@@ -51,10 +51,10 @@ test2 :
 
 devel : INSTCFLAGS=$(DEBUGFLAGS)
 devel : INSTLOC=$(DEVPATH)
-devel : CONFIGFLAGS+=--enable-cassert --enable-debug
+devel : CONFIGFLAGS+= --enable-cassert --enable-debug
 devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
-	@cd $(GPPGDIR); $(MAKE) install
+	@cd $(GPPGDIR) && $(MAKE) install
 	@$(MAKE) groupSession
 	@$(MAKE) mkgpcc
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
@@ -62,10 +62,10 @@ devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 
 forceplan : INSTCFLAGS=$(DEBUGFLAGS)
 forceplan : INSTLOC=$(DEVPATH)
-forceplan : CONFIGFLAGS+=--enable-cassert --enable-debug --enable-forceplan --enable-debugbreak --enable-debugntuplestore
+forceplan : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-forceplan --enable-debugbreak --enable-debugntuplestore
 forceplan : HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
-	@cd $(GPPGDIR); $(MAKE) install
+	@cd $(GPPGDIR) && $(MAKE) install
 	@$(MAKE) groupSession
 	@$(MAKE) mkgpcc
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
@@ -75,7 +75,7 @@ dist : INSTCFLAGS=$(OPTFLAGS)
 dist : INSTLOC=$(DISTPATH)
 dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
-	@cd $(GPPGDIR); $(MAKE) install
+	@cd $(GPPGDIR) && $(MAKE) install
 	@$(MAKE) groupSession
 	@$(MAKE) mkgpcc
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
@@ -83,10 +83,10 @@ dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 
 groupSession:
-	@cd $(GPMGMT)/bin; $(MAKE) 
+	@cd $(GPMGMT)/bin && $(MAKE)
 
 mkgpcc:
-	@cd $(GPCC); $(MAKE)
+	@cd $(GPCC) && $(MAKE)
 
 
 copydocs :
@@ -98,7 +98,7 @@ copydocs :
 	cp $(GPDOCDIR)/README $(INSTLOC)/docs/README ; \
 	echo "Copying $(GPDOCDIR)/pdf/GP*.pdf " ; \
 	cp $(GPDOCDIR)/pdf/GP*.pdf $(INSTLOC)/docs/; \
-	fi 
+	fi
 
 
 mgmtcopy :
@@ -173,7 +173,7 @@ RECONFIG :
 	rm -f $(ISCONFIG)
 
 $(ISCONFIG) :
-	cd $(GPPGDIR); CFLAGS=$(INSTCFLAGS) ./configure $(CONFIGFLAGS) --prefix=$(INSTLOC) --with-docdir=$(INSTLOC)/doc --mandir=$(INSTLOC)/man
+	cd $(GPPGDIR) && CFLAGS=$(INSTCFLAGS) ./configure $(CONFIGFLAGS) --prefix=$(INSTLOC) --with-docdir=$(INSTLOC)/doc --mandir=$(INSTLOC)/man
 
 HOMEDEP :
 	@#If the HOME variable isn't set, then execute the usage() path
@@ -200,26 +200,26 @@ HOMEFAIL :
 
 clean :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, no need to clean"; exit 1; fi
-	@cd $(GPPGDIR); $(MAKE) clean
-	@cd $(GPMGMT)/bin; $(MAKE) clean
-	@cd $(GPCC); $(MAKE) clean
+	@if [ -d $(GPPGDIR) ]; then cd $(GPPGDIR); $(MAKE) clean; fi
+	@if [ -d $(GPMGMT)/bin ]; then cd $(GPMGMT)/bin; $(MAKE) clean; fi
+	@if [ -d $(GPCC) ]; then cd $(GPCC); $(MAKE) clean; fi
 
 distclean :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, no need to clean"; exit 1; fi
-	@cd $(GPPGDIR); $(MAKE) distclean
-	@cd $(GPMGMT)/bin; $(MAKE) clean
-	@cd $(GPCC); $(MAKE) clean
+	@if [ -d $(GPPGDIR) ]; then cd $(GPPGDIR); $(MAKE) distclean; fi
+	@if [ -d $(GPMGMT)/bin ]; then cd $(GPMGMT)/bin; $(MAKE) clean; fi
+	@if [ -d $(GPCC) ]; then cd $(GPCC); $(MAKE) clean; fi
 	
 distprep : $(ISCONFIG)
-	@cd $(GPPGDIR); $(MAKE) distprep
+	@cd $(GPPGDIR) && $(MAKE) distprep
 	
 installcheck-good :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, cannot check"; exit 1; fi
-	@cd $(GPPGDIR)/src/test/regress; $(MAKE) installcheck-good
+	@cd $(GPPGDIR)/src/test/regress && $(MAKE) installcheck-good
 
 installcheck-olaptest :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, cannot check"; exit 1; fi
-	@cd $(GPPGDIR)/src/test/regress; $(MAKE) installcheck-olaptest
+	@cd $(GPPGDIR)/src/test/regress && $(MAKE) installcheck-olaptest
 
 version :
 	@if [ ! -f getversion ] ; then echo "getversion is not present, cannot create VERSION file"; exit 1; fi
