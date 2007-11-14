@@ -497,7 +497,7 @@ prescan_walker(Node *node, PlanProfile * context)
 				SubqueryScan *subqueryscan = (SubqueryScan *) node;
 				Plan	   *subplan;
 
-                /* Make sure we have a valid index. */
+				/* Make sure we have a valid index. */
 				Assert(0 < rtindex && rtindex <= list_length(localRangeTable(context)));
 
 				/* All scan types have a range table entry. */
@@ -514,6 +514,18 @@ prescan_walker(Node *node, PlanProfile * context)
 				 */
 				subplan = subqueryscan->subplan;
 
+				/* MPP-1980 
+				 * walk targetlist, quals, and init-plan too to make sure
+				 * we didn't miss a subquery hiding in there
+				 */
+
+				if (prescan_walker((Node*)(subqueryscan->scan.plan.targetlist), context))
+				  return true;
+				if (prescan_walker((Node*)(subqueryscan->scan.plan.qual), context))
+				  return true;
+				if (prescan_walker((Node*)(subqueryscan->scan.plan.initPlan), context))
+				  return true;
+
 				/*
 				 * The subplan uses the range table of the Query node
 				 * attached to the subquery RTE. Also, the local context
@@ -524,7 +536,7 @@ prescan_walker(Node *node, PlanProfile * context)
 					return true;
 				popLocals(context);
 				
-				 return false;
+				return false;
 			}
 			break;				/* Fall through to report error. */
 
