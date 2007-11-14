@@ -25,6 +25,7 @@
 #define VERSION_3_1 "3.1"
 
 uint32 tover = 0;
+uint32 oldver = 0;
 
 static void
 usage(const char *progname)
@@ -112,9 +113,15 @@ main(int argc, char *argv[])
 			else
 			{
 				if (strcmp(argv[2], VERSION_3_0) == 0)
+				{
 					tover = CATVERSION_3_0;
+					oldver = CATVERSION_3_1;
+				}
 				else if (strcmp(argv[2], VERSION_3_1) == 0)
+				{
 					tover = CATVERSION_3_1;
+					oldver = CATVERSION_3_0;
+				}
 				else
 				{
 					printf(_("\n\"%s\" is not a valid version to "
@@ -190,6 +197,16 @@ main(int argc, char *argv[])
 			printf(_("\nFATAL ERROR\n\n"
 					 "Catalog version number is already set to %u\n\n"),
 				   tover);
+			close(fd);
+			exit(1);
+		}
+		else if (ControlFile.catalog_version_no != oldver)
+		{
+			/* must be something wrong if we want to do this */
+			printf(_("\nFATAL ERROR\n\n"
+					 "Catalog version number is invalid for control file"
+					 "upgrade. Got %u, expected %u\n\n"),
+				   ControlFile.catalog_version_no, tover);
 			close(fd);
 			exit(1);
 		}
