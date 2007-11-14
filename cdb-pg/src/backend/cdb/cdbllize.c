@@ -182,7 +182,18 @@ cdbparallelize(Plan *plan,
 	if (Debug_print_prelim_plan)
 		elog_node_display(DEBUG1, "preliminary plan", plan, Debug_pretty_print);
 
-
+	/* Don't parallelize plans rendered impotent be constraint exclusion. 
+	 * See MPP-2168.  We could fold this into prescan() but this quick
+	 * check is effective in the only case we know of.
+	 */
+	if ( IsA(plan, Result) && plan->lefttree == NULL 
+						   && plan->targetlist == NULL
+						   && plan->qual == NULL
+						   && plan->initPlan == NULL )
+	{
+		Assert(plan->dispatch != DISPATCH_PARALLEL);
+		return plan;
+	}
 
     /* Initialize the PlanProfile result ... */
 	context->resultSegments = false;
