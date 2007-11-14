@@ -266,6 +266,12 @@ _bitmap_insert_lov(Relation lovHeap, Relation lovIndex, Datum *datum,
 	tuple = heap_form_tuple(tupDesc, datum, nulls);
 	heap_insert(lovHeap, tuple, GetCurrentCommandId(), use_wal, true);
 
+	/*
+	 * We must bump the command counter to make the newly-inserted heap
+	 * tuple visible.
+	 */
+	CommandCounterIncrement();
+
 	/* insert a new tuple into the index */
 	indexDatum = palloc0((tupDesc->natts - 2) * sizeof(Datum));
 	indexNulls = palloc0((tupDesc->natts - 2) * sizeof(bool));

@@ -162,15 +162,28 @@ _bitmap_xlog_insert_lovitem(XLogRecPtr lsn, XLogRecord *record)
 		_bitmap_init_lovpage(reln, lovBuffer);
 	}
 
+	elog(DEBUG1, "In redo, processing a lovItem: (blockno, offset)=(%d,%d)",
+		 xlrec->bm_lov_blkno, xlrec->bm_lov_offset);
+
 	if (XLByteLT(PageGetLSN(lovPage), lsn))
 	{
 		OffsetNumber	newOffset, itemSize;
 
 		newOffset = OffsetNumberNext(PageGetMaxOffsetNumber(lovPage));
-		if (newOffset != xlrec->bm_lov_offset)
+		
+		if (newOffset > xlrec->bm_lov_offset)
 			elog(PANIC, "_bitmap_xlog_insert_lovitem: LOV item is not inserted "
-						"in pos %d(requested %d)",
+						"in pos %d (requested %d)",
 				 newOffset, xlrec->bm_lov_offset);
+
+		/*
+		 * The value newOffset could be smaller than xlrec->bm_lov_offset because
+		 * of aborted transactions.
+		 */
+		while (newOffset < xlrec->bm_lov_offset)
+		{
+			newOffset = OffsetNumberNext(PageGetMaxOffsetNumber(lovPage));
+		}
 
 		itemSize = sizeof(BMLOVItemData);
 		if (itemSize > PageGetFreeSpace(lovPage))
@@ -476,6 +489,11 @@ _bitmap_xlog_updateword(XLogRecPtr lsn, XLogRecord *record)
 	xlrec = (xl_bm_updateword *) XLogRecGetData(record);
 	reln = XLogOpenRelation(xlrec->bm_node);
 
+	elog(LOG, "_bitmap_xlog_updateword: (blkno, word_no, cword, hword)="
+		 "(%d, %d, %d, %d)", xlrec->bm_blkno,
+		 xlrec->bm_word_no, xlrec->bm_cword,
+		 xlrec->bm_hword);
+
 	bitmapBuffer = XLogReadBuffer(reln, xlrec->bm_blkno, false);
 	if (!BufferIsValid(bitmapBuffer))
 		elog(PANIC, "_bitmap_xlog_updateword block not found: %d",
@@ -519,6 +537,15 @@ _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
 	xlrec = (xl_bm_updatewords *) XLogRecGetData(record);
 	reln = XLogOpenRelation(xlrec->bm_node);
 
+	elog(DEBUG1, "_bitmap_xlog_updatewords: (first_blkno, num_cwords, last_tid, next_blkno)="
+		 "(%d, %lld, %lld, %d), (second_blkno, num_cwords, last_tid, next_blkno)="
+		 "(%d, %lld, %lld, %d)",
+		 xlrec->bm_first_blkno, xlrec->bm_first_num_cwords, xlrec->bm_first_last_tid,
+		 xlrec->bm_two_pages ? xlrec->bm_second_blkno : xlrec->bm_next_blkno,
+		 xlrec->bm_second_blkno, xlrec->bm_second_num_cwords,
+		 xlrec->bm_second_last_tid, xlrec->bm_next_blkno);
+	
+
 	firstBuffer = XLogReadBuffer(reln, xlrec->bm_first_blkno, false);
 	if (!BufferIsValid(firstBuffer))
 		elog(PANIC, "_bitmap_xlog_updatewords first block not found: %d",
@@ -550,7 +577,11 @@ _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
 			   BM_NUM_OF_HEADER_WORDS *	sizeof(BM_HRL_WORD));
 		firstOpaque->bm_hrl_words_used = xlrec->bm_first_num_cwords;
 		firstOpaque->bm_last_tid_location = xlrec->bm_first_last_tid;
-		firstOpaque->bm_bitmap_next = xlrec->bm_second_blkno;
+
+		if (xlrec->bm_two_pages)
+			firstOpaque->bm_bitmap_next = xlrec->bm_second_blkno;
+		else
+			firstOpaque->bm_bitmap_next = xlrec->bm_next_blkno;
 
 		if (xlrec->bm_two_pages)
 		{

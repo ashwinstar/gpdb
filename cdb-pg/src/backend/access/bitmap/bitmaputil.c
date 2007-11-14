@@ -736,6 +736,8 @@ _bitmap_log_newpage(Relation rel, uint8 info, Buffer buf)
 	xlNewPage.bm_node = rel->rd_node;
 	xlNewPage.bm_new_blkno = BufferGetBlockNumber(buf);
 
+	elog(DEBUG1, "_bitmap_log_newpage: blkno=%d", xlNewPage.bm_new_blkno);
+
 	rdata[0].buffer = InvalidBuffer;
 	rdata[0].data = (char *)&xlNewPage;
 	rdata[0].len = sizeof(xl_bm_newpage);
@@ -845,6 +847,9 @@ _bitmap_log_lovitem(Relation rel, Buffer lovBuffer, OffsetNumber offset,
 
 	PageSetLSN(lovPage, recptr);
 	PageSetTLI(lovPage, ThisTimeLineID);
+
+	elog(DEBUG1, "Insert a new lovItem at (blockno, offset): (%d,%d)",
+		 BufferGetBlockNumber(lovBuffer), offset);
 }
 
 /*
@@ -950,6 +955,11 @@ _bitmap_log_updateword(Relation rel, Buffer bitmapBuffer, int word_no)
 	xlBitmapWord.bm_word_no = word_no;
 	xlBitmapWord.bm_cword = bitmap->cwords[word_no];
 	xlBitmapWord.bm_hword = bitmap->hwords[word_no/BM_HRL_WORD_SIZE];
+
+	elog(DEBUG1, "_bitmap_log_updateword: (blkno, word_no, cword, hword)="
+		 "(%d, %d, %d, %d)", xlBitmapWord.bm_blkno,
+		 xlBitmapWord.bm_word_no, xlBitmapWord.bm_cword,
+		 xlBitmapWord.bm_hword);
 
 	rdata[0].buffer = InvalidBuffer;
 	rdata[0].data = (char*)&xlBitmapWord;

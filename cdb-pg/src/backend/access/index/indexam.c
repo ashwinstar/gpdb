@@ -249,11 +249,6 @@ index_beginscan_multi(Relation indexRelation,
 	IndexScanDesc scan;
 
 	scan = index_beginscan_internal(indexRelation, nkeys, key);
-	/*
-	 * Save additional parameters into the scandesc.  Everything else was
-	 * set up by RelationGetIndexScan.
-	 */
-	scan->xs_snapshot = snapshot;
 
 	/*
 	 * Save additional parameters into the scandesc.  Everything else was

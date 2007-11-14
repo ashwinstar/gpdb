@@ -447,8 +447,7 @@ _bitmap_findbitmaps(IndexScanDesc scan, ScanDirection dir)
 			scanPos->nvec++;
 		}
 
-		/* XXX: is SnapshotAny really the right choice? */
-		scanDesc = index_beginscan(lovHeap, lovIndex, SnapshotAny,
+		scanDesc = index_beginscan(lovHeap, lovIndex, CopySnapshot(GetTransactionSnapshot()),
 								   scan->numberOfKeys, scanKeys);
 
 		/*

@@ -19,6 +19,7 @@
 #include "access/tupdesc.h"
 #include "access/heapam.h"
 #include "access/bitmap.h"
+#include "access/transam.h"
 #include "parser/parse_oper.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
@@ -1452,12 +1453,12 @@ create_lovitem(Relation rel, Buffer metabuf, uint64 tidnum,
 		MarkBufferDirty(metabuf);
 
 		metapage->bm_lov_lastpage = BufferGetBlockNumber(currLovBuffer);
+
+		*lovOffsetP = OffsetNumberNext(PageGetMaxOffsetNumber(currLovPage));
+		*lovBlockP = BufferGetBlockNumber(currLovBuffer);
 	}
 
 	MarkBufferDirty(currLovBuffer);
-
-	*lovOffsetP = OffsetNumberNext(PageGetMaxOffsetNumber(currLovPage));
-	*lovBlockP = BufferGetBlockNumber(currLovBuffer);
 
 	lovDatum = palloc0((numOfAttrs + 2) * sizeof(Datum));
 	lovNulls = palloc0((numOfAttrs + 2) * sizeof(bool));
@@ -2202,7 +2203,7 @@ inserttuple(Relation rel, Buffer metabuf, uint64 tidnum,
 		}
 	}
 
-
+ top:
 	/*
 	 * if the inserting tuple has the value NULL, then the LOV item is
 	 * the first item in the lovBuffer.
@@ -2214,13 +2215,17 @@ inserttuple(Relation rel, Buffer metabuf, uint64 tidnum,
 	}
 	else
 	{
- 		bool res;
-	   
+ 		bool res = false;
+		Snapshot old_snapshot = scanDesc->xs_snapshot;
+		bool dirty_find = false;
+
 		/*
-		 * XXX: We lock the meta page to guard against a race condition where
-		 * by a concurrent writer is inserting the same key as us and they
-		 * create_lovitem() between us calling _bitmap_findvalue() and
-		 * create_lovitem().
+		 * XXX: We lock the meta page to guarantee that only one writer
+		 * will create a new lovItem at once. However, this does not
+		 * guard against a race condition where a concurrent writer is
+		 * inserting the same key as us. So we do another search with
+		 * SnapshotDirty. If such a key is found, we have to wait for
+		 * the other guy, and try again.
 		 *
 		 * The problem is, locking the metapage is pretty heavy handed 
 		 * because the read routines need a read lock on it. There are a
@@ -2229,8 +2234,45 @@ inserttuple(Relation rel, Buffer metabuf, uint64 tidnum,
 		 * constraint violation from the btree code.
 		 */
 		LockBuffer(metabuf, BM_WRITE);
+		
 		res = _bitmap_findvalue(lovHeap, lovIndex, scanKey, scanDesc, &lovBlock,
-							   	&blockNull, &lovOffset, &offsetNull);
+								&blockNull, &lovOffset, &offsetNull);
+
+		if (!res)
+		{
+			index_rescan(scanDesc, NULL);
+
+			scanDesc->xs_snapshot = SnapshotDirty;
+
+			dirty_find = _bitmap_findvalue(lovHeap, lovIndex, scanKey,
+										   scanDesc, &lovBlock,
+										   &blockNull, &lovOffset, &offsetNull);
+
+			elog(DEBUG1, "_bitmap_findvalue: dirty_find=%d, clean_find=%d", dirty_find, res);
+
+			if (dirty_find)
+			{
+				TransactionId xwait =
+					(TransactionIdIsValid(SnapshotDirty->xmin)) ?
+					SnapshotDirty->xmin : SnapshotDirty->xmax;
+
+				LockBuffer(metabuf, BUFFER_LOCK_UNLOCK);
+
+				elog(DEBUG1, "Transaction %d waiting for transaction %d", GetCurrentTransactionId(),
+					 xwait);
+
+				if (TransactionIdIsValid(xwait))
+					XactLockTableWait(xwait);
+
+				/* restart the scan */
+				index_rescan(scanDesc, NULL);
+
+				scanDesc->xs_snapshot = old_snapshot;
+				goto top;
+			}
+
+			scanDesc->xs_snapshot = old_snapshot;
+		}
 
 		if(!res)
 		{
@@ -2336,7 +2378,7 @@ _bitmap_doinsert(Relation rel, ItemPointerData ht_ctid, Datum *attdata,
 		}
 	}
 
-	scanDesc = index_beginscan(lovHeap, lovIndex, SnapshotAny, 
+	scanDesc = index_beginscan(lovHeap, lovIndex, GetTransactionSnapshot(),
 							   tupDesc->natts, scanKeys);
 
 	/* insert this new tuple into the bitmap index. */
