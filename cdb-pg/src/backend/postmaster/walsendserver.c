@@ -55,7 +55,7 @@ static pid_t walsendserver_forkexec(void);
 NON_EXEC_STATIC void WalSendServerMain(int argc, char *argv[]);
 
 static void WalSendServerInitContext(void);
-static void WalSendServerDoRequest(WalSendRequest *walSendRequest, PROC_RESPONSE_COOKIE *responseCookie);
+static void WalSendServerDoRequest(WalSendRequest *walSendRequest);
 static void *WalSendServerTimerThread(void *arg);
 static void WalSendServerTimerCheck(void);
 static void WalSendServerCreateTimerThread(void);
@@ -294,17 +294,10 @@ WalSendServerInitContext(void)
 }
 
 static void
-WalSendServerDoRequest(WalSendRequest *walSendRequest, PROC_RESPONSE_COOKIE *responseCookie)
+WalSendServerDoRequest(WalSendRequest *walSendRequest)
 {
-	WalSendResponse walSendResponse;
 	bool successful;
 	
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "request command %d = '%s' (mppLocalProcessSerial = %d, requestSerialNumber %d, responseNeeded %s)",
-		 walSendRequest->command, WalSendRequestCommandToString(walSendRequest->command),
-		 responseCookie->mppLocalProcessSerial,
-		 responseCookie->requestSerialNumber,
-		 (responseCookie->responseNeeded ? "true" : "false"));
-
 	switch (walSendRequest->command)
 	{
 	case PositionToEnd:
@@ -520,10 +513,6 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest, PROC_RESPONSE_COOKIE *res
 		elog(ERROR, "Unknown WalSendRequestCommand %d", walSendRequest->command);
 	}
 
-
-	walSendResponse.ok = true;
-	
-	ProcSendResponse(responseCookie, &walSendResponse, sizeof(walSendResponse));
 }
 
 static volatile bool timerCheckQueued;
@@ -607,6 +596,7 @@ WalSendServerLoop(void)
 	PGPROCGetRequestResult getRequestResult;
 	WalSendRequest walSendRequest;
 	PROC_RESPONSE_COOKIE responseCookie;
+	WalSendResponse walSendResponse;
 	bool postmasterDied;
 	bool drain;
 
@@ -718,10 +708,30 @@ WalSendServerLoop(void)
 				}
 			}
 
-			WalSendServerDoRequest(&walSendRequest,&responseCookie);
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "request command %d = '%s' (mppLocalProcessSerial = %d, requestSerialNumber %d, responseNeeded %s)",
+				 walSendRequest.command, 
+				 WalSendRequestCommandToString(walSendRequest.command),
+				 responseCookie.mppLocalProcessSerial,
+				 responseCookie.requestSerialNumber,
+				 (responseCookie.responseNeeded ? "true" : "false"));
+
+			WalSendServerDoRequest(&walSendRequest);
+
+			/*
+			 * Currently, all requests need a response.
+			 */
+			Assert(responseCookie.responseNeeded);
+			
+			walSendResponse.ok = true;
+			
+			ProcSendResponse(&responseCookie, &walSendResponse, sizeof(walSendResponse));
 		}
 
-		disableQDMirroring();
+		if (!isQDMirroringDisabled())
+		{
+			disableQDMirroring();
+			disconnectMirrorQD();
+		}
 	}
 	PG_CATCH();
 	{
@@ -737,8 +747,6 @@ WalSendServerLoop(void)
 	PG_END_TRY();
 		
 	ProcSetAcceptingNewRequests(PGPROC_REQUEST_WALSEND, false);
-	
-	disconnectMirrorQD();
 	
 	return;
 }

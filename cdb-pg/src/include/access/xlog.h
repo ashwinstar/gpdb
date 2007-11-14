@@ -177,7 +177,6 @@ extern bool XLogQDMirrorQueueCatchup(XLogRecPtr *flushedLocation, int *serialNum
 extern bool XLogCatchupQDMirror(XLogRecPtr *standbyLocation, XLogRecPtr *flushedLocation);
 extern void XLogRemoveStandbyLogs(uint32 log, uint32 seg, int *nsegsremoved);
 extern void XLogPrintLogNames(void);
-
 extern char *XLogLocationToString(XLogRecPtr *loc);
 extern char *XLogLocationToString2(XLogRecPtr *loc);
 extern char *XLogLocationToString3(XLogRecPtr *loc);

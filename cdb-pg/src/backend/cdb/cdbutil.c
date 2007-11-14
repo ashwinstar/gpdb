@@ -42,6 +42,7 @@
 #include "cdb/cdbtm.h"
 #include "cdb/cdbfts.h"
 #include "libpq/ip.h"
+#include "postmaster/bgwriter.h"
 
 /*
  * Helper Functions
@@ -706,6 +707,17 @@ cdb_setup(void)
 	{
 		/* check mirrored entry db configuration */
 		buildMirrorQDDefinition();
+
+		if (isQDMirroringPendingCatchup())
+		{
+			/* 
+			 * Do a checkpoint to cause a checkpoint xlog record to
+			 * to be written and force the QD mirror to get
+			 * synchronized.
+			 */
+			RequestCheckpoint(true, false);
+		}
+		
 		/* initialize TM */
 		initTM();
 	}
