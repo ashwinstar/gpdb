@@ -54,10 +54,13 @@ EXIT_STATUS=0
 WAIT_LIMIT=600
 PARALLEL_STATUS_FILE=/tmp/${PROG_NAME}_parallel_status_file.$$
 GPSEGUPDATE=$WORKDIR/lib/gpsegupdate.sh
+PG_CONTROLDATA=$PSQLBIN/pg_controldata
 PGCONTROL_UPGRADE=1
 GPUPGRADE=$WORKDIR/gpupgrade
 OLD_VERSION="3.0"
+OLD_CAT_VERSION="200703112"
 NEW_VERSION="3.1"
+NEW_CAT_VERSION="200711111"
 BACKUP=0
 START_ARGS=""
 STOP_ARGS=""
@@ -177,7 +180,7 @@ VALIDATE_PARAM () {
 		ERROR_EXIT "[FATAL]:-Flag -N not supported with downgrades" 2
 	fi
 	#Now check for required programs
-	for FILE_NAME in $GPCONTROLMOD $GPSTART $GPSTOP $GPSEGUPGRADE $GPINITSTANDBY $GPUPGRADE
+	for FILE_NAME in $GPCONTROLMOD $GPSTART $GPSTOP $GPSEGUPGRADE $GPINITSTANDBY $GPUPGRADE $PG_CONTROLDATA
 	do
 		CHK_FILE $FILE_NAME
 		if [ $EXISTS -ne 0 ];then
@@ -213,6 +216,30 @@ CHK_DB_DOWN () {
 	LOG_MSG "[INFO]:-Starting Master instance in admin mode" 1
 	$GPSTART -qm -d $MASTER_DATA_DIRECTORY
 	ERROR_CHK $? "start Master instance in admin mode" 2
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+GET_BINARY_VERSION() {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+
+	LOG_MSG "[INFO]:-Checking control file version information" 1
+	binver=`$PG_CONTROLDATA $MASTER_DATA_DIRECTORY | grep 'Catalog version number:' | cut -f2 -d":"`
+	if [ $binver != $OLD_CAT_VERSION ] && [ $binver != $NEW_CAT_VERSION ]
+	then
+		ERROR_EXIT "[FATAL]:-Master control file is not from 3.0 or 3.1" 2
+	fi
+
+	if [ "$UPGRADE_TO" == "$NEW_VERSION" ] && [ $binver == "$NEW_CAT_VERSION" ]
+	then
+		if [ $PGCONTROL_UPGRADE -eq 1 ]
+		then
+			ERROR_EXIT "[FATAL]:-Master control file is already set to version 3.1" 2
+		fi
+	elif [ "$UPGRADE_TO" == "$OLD_VERSION" ] && [ $binver == "$OLD_CAT_VERSION" ] 
+	then
+		ERROR_EXIT "[FATAL]:-Master control file is already set to version 3.0" 2
+	fi
+
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -255,6 +282,8 @@ CHK_STANDBY () {
 CHK_STATUS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Commencing GPDB array $UPGRADE_TXT pre-checks, please wait.." 1
+	# Check that the binary version is correct
+	GET_BINARY_VERSION
 	#Check to see if database is running, expect the database to be down
 	CHK_DB_DOWN
 	#Check the current code version
