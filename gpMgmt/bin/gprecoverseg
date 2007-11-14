@@ -53,6 +53,7 @@ VERBOSE=1
 TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
 PROG_NAME=`$BASENAME $0`
+HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
 PG_PID=postmaster.pid
 EXIT_STATUS=0
 FORCESTOP=0
@@ -64,7 +65,12 @@ BATCH_DEFAULT=4 #Specific limit for segment recovery
 # Functions
 #******************************************************************************
 USAGE () {
-        	$ECHO
+    if [ -f ${GPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
+
+        $MORE ${GPDOCDIR}/$HELP_DOC_NAME
+        exit 0
+    else
+       	$ECHO
 		$ECHO "      `basename $0`"
 		$ECHO
 		$ECHO "      Recovers Greenplum segment instances that are marked as invalid, if"
@@ -93,7 +99,7 @@ USAGE () {
 		$ECHO "         5. Greenplum superuser account configured"
 		$ECHO "         6. Sufficient capacity left to accommodate recovered segments"
 		$ECHO "      -s <Primary segment directory,Mirror segment directory>"
-		$ECHO "         example -p /data_p4/pri,/data_m4/mir, this assumes that the Greenplum array was"
+		$ECHO "         example -s /data_p4/pri,/data_m4/mir, this assumes that the Greenplum array was"
 		$ECHO "         configured with spare pool segment instance directories on each segment"
 		$ECHO "         instance host"
 		$ECHO "      -f, force Greenplum Database instance shutdown and restart"
@@ -111,7 +117,8 @@ USAGE () {
 		$ECHO "      1 Warning generated, but recovery completed"
 		$ECHO "      2 Fatal error, recovery failed"
 		$ECHO
-        	exit 0
+       	exit 0
+	fi
 }
 
 GET_SETTING () {
