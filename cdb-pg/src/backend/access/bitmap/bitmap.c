@@ -62,6 +62,9 @@ bmbuild(PG_FUNCTION_ARGS)
 	Oid indexOid = InvalidOid;
 	Oid heapOid = InvalidOid;
 
+	if (indexInfo->ii_Concurrent)
+		elog(ERROR, "CONCURRENTLY is not supported when creating bitmap indexes");
+
 	/* We expect this to be called exactly once. */
 	if (RelationGetNumberOfBlocks(index) != 0)
 		ereport (ERROR,

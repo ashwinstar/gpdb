@@ -345,4 +345,6 @@ select a.t from bm_test a where d in(select d from bm_test b where a.g=b.g);
 -- functional and predicate indexes
 select t from bm_test where upper(t3) = 'FOO';
 select t from bm_test where n ISNULL;
+-- bitmap index builds do not support concurrent building, test for this
+create index concurrently should_not_work on bm_test using bitmap(a);
 drop table bm_test;

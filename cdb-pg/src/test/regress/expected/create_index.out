@@ -679,4 +679,7 @@ select t from bm_test where n ISNULL;
  
 (1 row)
 
+-- bitmap index builds do not support concurrent building, test for this
+create index concurrently should_not_work on bm_test using bitmap(a);
+ERROR:  CONCURRENTLY is not supported when creating bitmap indexes (SOMEFILE:SOMEFUNC)
 drop table bm_test;
