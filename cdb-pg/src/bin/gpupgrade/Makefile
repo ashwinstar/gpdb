@@ -47,11 +47,11 @@ pg_crc.c: $(top_srcdir)/src/backend/utils/hash/pg_crc.c
 
 install: all installdirs
 	$(INSTALL_PROGRAM) gpupgrade$(X) '$(DESTDIR)$(bindir)'/gpupgrade$(X)
-	$(INSTALL_PROGRAM) gp_controldata_mod$(X) '$(DESTDIR)$(bindir)'/gp_controldata_mod$(X)
+	$(INSTALL_PROGRAM) gp_controldata_mod$(X) '$(DESTDIR)$(bindir)/lib'/gp_controldata_mod$(X)
 	$(INSTALL_SHLIB) lib$(NAME)$(DLSUFFIX) '$(DESTDIR)$(pkglibdir)';
 
 installdirs:
-	$(mkinstalldirs) '$(DESTDIR)$(bindir)'
+	$(mkinstalldirs) '$(DESTDIR)$(bindir)' '$(DESTDIR)$(bindir)/lib'
 
 uninstall:
 	rm -f '$(DESTDIR)$(bindir)'/, gpupgrade$(X)

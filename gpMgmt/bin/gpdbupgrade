@@ -55,7 +55,6 @@ WAIT_LIMIT=600
 PARALLEL_STATUS_FILE=/tmp/${PROG_NAME}_parallel_status_file.$$
 GPSEGUPDATE=$WORKDIR/lib/gpsegupdate.sh
 PGCONTROL_UPGRADE=1
-GPCONTROLMOD=$PSQLBIN/gp_controldata_mod
 GPUPGRADE=$WORKDIR/gpupgrade
 OLD_VERSION="3.0"
 NEW_VERSION="3.1"
@@ -359,14 +358,18 @@ DOWNGRADE_ARRAY () {
 	if [ $? -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Issue with startup of Master instance with options $EXTRA_START_OPTS" 2
 	fi
+	if [ $BACKUP -eq 1 ];then
+		CATALOG_BACKUP
+	fi
 	LOG_MSG "[INFO]:-Completed startup of Master instance with options $EXTRA_START_OPTS" 1
 	LOG_MSG "[INFO]:-Calling final stage of upgrade process" 1
 		
 	$GPUPGRADE $UG_ARGS >> $LOG_FILE 2>&1
 	if [ $? -ne 0 ];then
+		$GPSTOP -qa
 		ERROR_EXIT "[FATAL]:-$GPUPGRADE $UG_ARGS returned non-zero exit code" 2
 	else
-		LOG_MSG "[INFO]:-$GPUPGRADE $UG_ARGS returned zero exit code" 1
+		LOG_MSG "[INFO]:-$GPUPGRADE $UG_ARGS returned successfully" 1
 	fi
 	if [ $RUN_INITSTANDBY -ne 0 ];then
 		LOG_MSG "[INFO]:-Upgrading warm master standby, please wait..." 1
@@ -415,6 +418,12 @@ UPGRADE_ARRAY () {
 		ERROR_EXIT "[FATAL]:-Issue with startup of Master instance with options $EXTRA_START_OPTS" 2
 	fi
 	LOG_MSG "[INFO]:-Completed startup of Master instance with options $EXTRA_START_OPTS" 1
+
+
+	if [ $BACKUP -eq 1 ];then
+		CATALOG_BACKUP
+	fi
+
 	LOG_MSG "[INFO]:-Calling final stage of upgrade process" 1
 	
 	# if no port specified, give it the master port
@@ -425,15 +434,16 @@ UPGRADE_ARRAY () {
 	if [ $? -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-$GPUPGRADE $UG_ARGS returned non-zero exit code" 2
 	else
-		LOG_MSG "[INFO]:-$GPUPGRADE $UG_ARGS returned zero exit code" 1
+		LOG_MSG "[INFO]:-$GPUPGRADE $UG_ARGS returned successfully" 1
 	fi
 	if [ $RUN_INITSTANDBY -ne 0 ];then
 		LOG_MSG "[INFO]:-Upgrading warm master standby, please wait..." 1
 		$GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq
 		if [ $? -ne 0 ];then
-			ERROR_EXIT "[FATAL]:-Failed to $GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq" 2
+			LOG_MSG "[WARN]:-Failed to $GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq" 2
+		else
+			LOG_MSG "[INFO]:-Completed warm master standby upgrade" 1
 		fi
-		LOG_MSG "[INFO]:-Completed warm master standby upgrade" 1
 	fi
 	LOG_MSG "[INFO]:-Securing contents of backout file to log file" 1
 	$CAT $BACKOUT_FILE >> $LOG_FILE
@@ -461,6 +471,7 @@ CATALOG_BACKUP () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	FILELIST=()
 	j=0
+	LOG_MSG "[INFO]:-Performing catalog backup" 1
 	LOG_MSG "[INFO]:-Obtaining node array details" 1
 	NODE_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.definedprimary, c.datname, c.oid from $CONFIG_TABLE a, $GP_PG_VIEW b, pg_database c where a.dbid=b.dbid;"`) >> $LOG_FILE 2>&1
 	for NODE in "${NODE_ARRAY[@]}"
@@ -494,6 +505,7 @@ CATALOG_BACKUP () {
 			j=$[$j+1]
 		fi
 	done
+	# stop the master to ensure that the backup is valid
 	date=`$DATE '+%Y-%m-%d-%H.%M.%S'`
 	for i in "${FILELIST[@]}"
 	do
@@ -501,7 +513,7 @@ CATALOG_BACKUP () {
 		NODE_DIR=`$ECHO $i|$CUT -d"|" -f2`
 		FILES=`$ECHO $i|$CUT -d"|" -f3`
 		LOG_MSG "[INFO]:-Backing up \"$NODE_NAME:$NODE_DIR\""
-		$TRUSTED_SHELL $NODE_NAME "cd $NODE_DIR ; $GTAR --ignore-failed-read -zcf gpcatalog_backup-$date.tar.gz $FILES" >> $LOG_FILE 2>&1
+		$TRUSTED_SHELL $NODE_NAME "cd $NODE_DIR ; $GTAR --ignore-failed-read -c -f gpcatalog_backup-tmp-$date.tar $FILES; $GTAR -f gpcatalog_backup-$date.tar -A gpcatalog_backup-tmp-$date.tar; rm gpcatalog_backup-tmp-$date.tar " >> $LOG_FILE 2>&1
 		if [ $? -ne 0 ];then
 			LOG_MSG "[WARN]:-Backup command returned non-zero exit status on node $NODE_NAME, directory $NODE_DIR"
 			EXIT_STATUS=1
@@ -563,9 +575,6 @@ if [ $INTERACTIVE ];then
 	PROMPT_CONTINUE
 fi
 LOCK_ACCESS
-if [ $BACKUP -eq 1 ];then
-	CATALOG_BACKUP
-fi
 if [ "$UPGRADE_TO" == "$NEW_VERSION" ];then
 	UPGRADE_ARRAY
 else
