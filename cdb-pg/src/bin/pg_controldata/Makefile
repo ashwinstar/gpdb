@@ -13,6 +13,8 @@ subdir = src/bin/pg_controldata
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
+LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl -lcrypto -lz, $(LIBS))
+
 override CPPFLAGS += -DFRONTEND
 
 OBJS= pg_controldata.o pg_crc.o $(WIN32RES)
