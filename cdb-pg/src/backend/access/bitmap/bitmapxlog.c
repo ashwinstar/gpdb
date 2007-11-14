@@ -537,10 +537,18 @@ _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
 	xlrec = (xl_bm_updatewords *) XLogRecGetData(record);
 	reln = XLogOpenRelation(xlrec->bm_node);
 
-#if 0
+#ifdef HAVE_LONG_LONG_INT_64
 	elog(DEBUG1, "_bitmap_xlog_updatewords: (first_blkno, num_cwords, last_tid, next_blkno)="
 		 "(%d, %lld, %lld, %d), (second_blkno, num_cwords, last_tid, next_blkno)="
 		 "(%d, %lld, %lld, %d)",
+		 xlrec->bm_first_blkno, xlrec->bm_first_num_cwords, xlrec->bm_first_last_tid,
+		 xlrec->bm_two_pages ? xlrec->bm_second_blkno : xlrec->bm_next_blkno,
+		 xlrec->bm_second_blkno, xlrec->bm_second_num_cwords,
+		 xlrec->bm_second_last_tid, xlrec->bm_next_blkno);
+#else
+	elog(DEBUG1, "_bitmap_xlog_updatewords: (first_blkno, num_cwords, last_tid, next_blkno)="
+		 "(%d, %ld, %ld, %d), (second_blkno, num_cwords, last_tid, next_blkno)="
+		 "(%d, %ld, %ld, %d)",
 		 xlrec->bm_first_blkno, xlrec->bm_first_num_cwords, xlrec->bm_first_last_tid,
 		 xlrec->bm_two_pages ? xlrec->bm_second_blkno : xlrec->bm_next_blkno,
 		 xlrec->bm_second_blkno, xlrec->bm_second_num_cwords,
