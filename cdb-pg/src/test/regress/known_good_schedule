@@ -114,6 +114,7 @@ test: sreh
 test: olap_setup
 test: olap_group
 test: olap_window
+test: olap_window_seq
 test: tpch500GB
 test: partition
 test: gpupgrade

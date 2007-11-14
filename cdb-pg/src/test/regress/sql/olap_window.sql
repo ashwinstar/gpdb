@@ -1,7 +1,9 @@
 --
 -- OLAP_WINDOW 
 --
+-- Changes here should also be made to olap_window_seq.sql
 
+set gp_enable_sequential_window_plans to false;
 
 ---- 1 -- Null window specification -- OVER () ----
 
@@ -179,12 +181,13 @@ group by vn; -- mvd 3->1
 
 ---- X -- Miscellaneous (e.g. old bugs, etc.) ----
 
-select 
-    cn*100 + row_number() over (), 
-    cname, 
-    row_number() over () - 1, 
-    cn 
-from customer; -- mvd 4->1,3
+-- Why was this here? We can't guarantee all correct answers will pass!
+--select 
+--    cn*100 + row_number() over (), 
+--    cname, 
+--    row_number() over () - 1, 
+--    cn 
+--from customer; -- mvd 4->1,3
 
 -- !
 select row_number() over (), a,b 
@@ -698,6 +701,7 @@ last_value(j) over (w), last_value(k) over(w),
 last_value(l) over (w), last_value(m) over (w)
 from typetest window w as (order by i rows between current row and 1 following);
 
+drop table typetest;
 
 -- MPP-1881
 SELECT sale.pn,
@@ -1243,6 +1247,13 @@ select cn,sum(qty+1) over(order by cn), sum(qty+1) from sale group by cn,qty; --
 SELECT cn, pn, dt, PERCENT_RANK() OVER(partition by cn,dt order by cn desc),
                  LEAD(pn,cn,NULL) OVER(partition by cn,dt order by pn, cn desc)
 FROM sale; --mvd 1,3->4
+
+-- MPP-2163
+SELECT cn, pn, vn, dt, qty,
+  ROW_NUMBER() OVER( partition by vn, qty, dt order by cn asc ),
+  PERCENT_RANK() OVER( partition by vn, dt order by cn desc ),
+  PERCENT_RANK() OVER( order by pn asc )
+FROM (SELECT * FROM sale) sale; --mvd 3,4,5->6; 3,4->7
 
 -- MPP-2189
 create view v1 as

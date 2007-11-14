@@ -3,3 +3,4 @@
 test: olap_setup
 test: olap_group
 test: olap_window
+test: olap_window_seq
