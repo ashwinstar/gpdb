@@ -1742,7 +1742,7 @@ mergeruns(Tuplesortstate *state)
 	LogicalTape *lt = NULL;
 
 	Assert(state->status == TSS_BUILDRUNS);
-	Assert(state->memtupcount == 0);
+	AssertImply(state->memtupcount == 0, state->currentRun == 1);
 
 	/*
 	 * If we produced only one initial run (quite likely if the total data
@@ -2163,6 +2163,31 @@ dumptuples(Tuplesortstate *state, bool alltuples)
 			(LACKMEM(state) && state->memtupcount > 1) ||
 			state->memtupcount >= state->memtupsize)
 	{
+		/* ShareInput or sort: The sort may sort nothing, we still
+		 * need to handle it here 
+		 */
+		if (state->memtupcount == 0)
+		{
+			markrunend(state, state->tp_tapenum[state->destTape]);
+			state->currentRun++;
+			state->tp_runs[state->destTape]++;
+			state->tp_dummy[state->destTape]--; /* per Alg D step D2 */
+
+			break;
+		}
+
+		if (!bDumped) 
+			bDumped = 1;
+		/*
+		 * Dump the heap's frontmost entry, and sift up to remove it from the
+		 * heap.
+		 */
+		Assert(state->memtupcount > 0);
+
+		lt = LogicalTapeSetGetTape(state->tapeset, state->tp_tapenum[state->destTape]);
+		WRITETUP(state, lt, &state->memtuples[0]);
+		tuplesort_heap_siftup(state, true, 0);
+
 		/*
 		 * If the heap is empty *or* top run number has changed, we've
 		 * finished the current run.
@@ -2191,18 +2216,6 @@ dumptuples(Tuplesortstate *state, bool alltuples)
 			selectnewtape(state);
 		}
 
-		if (!bDumped) 
-			bDumped = 1;
-
-		/*
-		 * Dump the heap's frontmost entry, and sift up to remove it from the
-		 * heap.
-		 */
-		Assert(state->memtupcount > 0);
-
-		lt = LogicalTapeSetGetTape(state->tapeset, state->tp_tapenum[state->destTape]);
-		WRITETUP(state, lt, &state->memtuples[0]);
-		tuplesort_heap_siftup(state, true, 0);
 	}
 
 	if (bDumped) state->dumpcount++;

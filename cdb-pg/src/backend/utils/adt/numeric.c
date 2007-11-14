@@ -14,7 +14,7 @@
  * Copyright (c) 1998-2006, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/numeric.c,v 1.96.2.2 2007/07/09 16:14:05 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/numeric.c,v 1.96 2006/10/04 00:29:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -27,7 +27,6 @@
 #include <math.h>
 
 #include "access/hash.h"
-#include "access/tuptoaster.h"
 #include "catalog/pg_type.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
@@ -231,17 +230,6 @@ static void dump_var(const char *str, NumericVar *var);
 #define dump_var(s,v)
 #endif
 
-/* Naked numeric data, without leading vl_len_.
- * It MUST match the NumericData type in numeric.h
- */
-typedef struct NumericDataNaked
-{
-	int16		n_weight;		/* Weight of 1st digit	*/
-	uint16		n_sign_dscale;	/* Sign + display scale */
-	char		n_data[1];		/* Digits (really array of NumericDigit) */
-} NumericDataNaked;
-
-#define NUMERIC_NAKED_HDRSZ (sizeof(int16) + sizeof(uint16))
 /* ----------
  * a few Numeric access things not defined in numeric.h
  */
@@ -308,6 +296,8 @@ static void set_var_from_var(NumericVar *value, NumericVar *dest);
 static void init_var_from_var(NumericVar *value, NumericVar *dest);
 static void init_ro_var_from_var(NumericVar *value, NumericVar *dest);
 /*static void set_var_from_num(Numeric value, NumericVar *dest);*/
+static void init_var_from_num(Numeric value, NumericVar *dest);
+static void init_ro_var_from_num(Numeric value, NumericVar *dest);
 static char *get_str_from_var(NumericVar *var, int dscale);
 
 /* ----------
@@ -327,6 +317,7 @@ static void int8_to_numericvar(int64 val, NumericVar *var);
 static double numeric_to_double_no_overflow(Numeric num);
 static double numericvar_to_double_no_overflow(NumericVar *var);
 
+static int	cmp_numerics(Numeric num1, Numeric num2);
 static int	cmp_var(NumericVar *var1, NumericVar *var2);
 static int	cmp_var_common(const NumericDigit *var1digits, int var1ndigits,
 			   int var1weight, int var1sign,
@@ -362,82 +353,12 @@ static void sub_abs(NumericVar *var1, NumericVar *var2, NumericVar *result);
 static void round_var(NumericVar *var, int rscale);
 static void trunc_var(NumericVar *var, int rscale);
 static void strip_var(NumericVar *var);
+static void compute_bucket(Numeric operand, Numeric bound1, Numeric bound2,
+			   NumericVar *count_var, NumericVar *result_var);
 
 static ArrayType *do_numeric_amalg_demalg(ArrayType *aTransArray, 
 										  ArrayType *bTransArray,
 										  bool is_amalg); /* MPP */
-
-
-/* 
- * init (ro) var from pointer len, to avoid a possible memcpy of using
- * init (ro) var from numeric in PG_GETARG_NUMERIC (will call PG_UNTOAST_DATUM)
- */
-static inline void init_ro_var_from_ptr_len(NumericVar *dest, char* ptr, int len)
-{
-	NumericDataNaked *num = (NumericDataNaked *) ptr;
-
-	dest->ndigits = (len - sizeof(int16) - sizeof(uint16)) / sizeof(NumericDigit);
-	dest->weight = NUMERIC_WEIGHT(num);
-	dest->sign = NUMERIC_SIGN(num);
-	dest->dscale = NUMERIC_DSCALE(num);
-	dest->digits = NUMERIC_DIGITS(num);
-	dest->buf = dest->ndb;
-}
-
-static void
-init_var_from_ptr_len(NumericVar *dest, char* ptr, int len)
-{
-	int			ndigits;
-	NumericDataNaked *num = (NumericDataNaked *) ptr;
-
-	ndigits = (len - sizeof(int16) - sizeof(uint16)) / sizeof(NumericDigit);
-	init_alloc_var(dest, ndigits);
-
-	dest->weight = NUMERIC_WEIGHT(num);
-	dest->sign = NUMERIC_SIGN(num);
-	dest->dscale = NUMERIC_DSCALE(num);
-
-	memcpy(dest->digits, NUMERIC_DIGITS(num), ndigits * sizeof(NumericDigit));
-}
-
-/*
- * init (ro) var from numeric.  
- */
-static inline void
-init_var_from_num(Numeric num, NumericVar *dest)
-{
-	int			ndigits;
-
-	ndigits = NUMERIC_NDIGITS(num);
-
-	init_alloc_var(dest, ndigits);
-
-	dest->weight = NUMERIC_WEIGHT(num);
-	dest->sign = NUMERIC_SIGN(num);
-	dest->dscale = NUMERIC_DSCALE(num);
-
-	memcpy(dest->digits, NUMERIC_DIGITS(num), ndigits * sizeof(NumericDigit));
-}
-
-static inline void
-init_ro_var_from_num(Numeric num, NumericVar *dest)
-{
-	dest->ndigits = NUMERIC_NDIGITS(num);
-	dest->weight = NUMERIC_WEIGHT(num);
-	dest->sign = NUMERIC_SIGN(num);
-	dest->dscale = NUMERIC_DSCALE(num);
-	dest->digits = NUMERIC_DIGITS(num);
-	dest->buf = dest->ndb;
-}
-
-/* make result numeric from ptr, len.  This func pallocs */
-static inline Numeric make_numeric_from_ptr_len(char *p, int len)
-{
-	char* result = palloc(len + VARHDRSZ);
-	SET_VARSIZE(result, len+VARHDRSZ);
-	memcpy(result+VARHDRSZ, p, len);
-	return (Numeric) result;
-}
 
 
 /* ----------------------------------------------------------------------
@@ -446,6 +367,7 @@ static inline Numeric make_numeric_from_ptr_len(char *p, int len)
  *
  * ----------------------------------------------------------------------
  */
+
 
 /*
  * numeric_in() -
@@ -492,26 +414,15 @@ numeric_in(PG_FUNCTION_ARGS)
 Datum
 numeric_out(PG_FUNCTION_ARGS)
 {
+	Numeric		num = PG_GETARG_NUMERIC(0);
 	NumericVar	x;
 	char	   *str;
-
-	Datum d = PG_GETARG_DATUM(0);
-	char* p; void* tofree; int len;
-	NumericDataNaked *num;
-
-	varattrib_untoast_ptr_len(d, &p, &len, &tofree);
-	num = (NumericDataNaked *) p;
 
 	/*
 	 * Handle NaN
 	 */
 	if (NUMERIC_IS_NAN(num))
-	{
-		if(tofree)
-			pfree(tofree);
-
 		PG_RETURN_CSTRING(pstrdup("NaN"));
-	}
 
 	/*
 	 * Get the number in the variable format.
@@ -521,14 +432,11 @@ numeric_out(PG_FUNCTION_ARGS)
 	 * guarantees there is extra digit space in case we produce a carry out
 	 * from rounding.
 	 */
-	init_var_from_ptr_len(&x, p, len);
+	init_var_from_num(num, &x);
 
 	str = get_str_from_var(&x, x.dscale);
 
 	free_var(&x);
-
-	if(tofree)
-		pfree(tofree);
 
 	PG_RETURN_CSTRING(str);
 }
@@ -596,14 +504,12 @@ numeric_recv(PG_FUNCTION_ARGS)
 Datum
 numeric_send(PG_FUNCTION_ARGS)
 {
+	Numeric		num = PG_GETARG_NUMERIC(0);
 	NumericVar	x;
 	StringInfoData buf;
 	int			i;
 
-	Datum d = PG_GETARG_DATUM(0);
-	char* p; void* tofree; int len;
-	varattrib_untoast_ptr_len(d, &p, &len, &tofree);
-	init_ro_var_from_ptr_len(&x, p, len);
+	init_ro_var_from_num(num, &x);
 
 	pq_begintypsend(&buf);
 
@@ -615,9 +521,6 @@ numeric_send(PG_FUNCTION_ARGS)
 		pq_sendint(&buf, x.digits[i], sizeof(NumericDigit));
 
 	free_var(&x);
-
-	if(tofree)
-		pfree(tofree);
 
 	PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
 }
@@ -633,6 +536,7 @@ numeric_send(PG_FUNCTION_ARGS)
 Datum
 numeric		(PG_FUNCTION_ARGS)
 {
+	Numeric		num = PG_GETARG_NUMERIC(0);
 	int32		typmod = PG_GETARG_INT32(1);
 	Numeric		new;
 	int32		tmp_typmod;
@@ -642,23 +546,11 @@ numeric		(PG_FUNCTION_ARGS)
 	int			maxdigits;
 	NumericVar	var;
 
-	Datum d = PG_GETARG_DATUM(0);
-	char* p; void* tofree; int len;
-	NumericDataNaked *num;
-
-	varattrib_untoast_ptr_len(d, &p, &len, &tofree);
-	num = (NumericDataNaked *) p;
-
 	/*
 	 * Handle NaN
 	 */
-	if (NUMERIC_IS_NAN(num)) 
-	{
-		if(tofree)
-			pfree(tofree);
-
+	if (NUMERIC_IS_NAN(num))
 		PG_RETURN_NUMERIC(make_result(&const_nan));
-	}
 
 	/*
 	 * If the value isn't a valid type modifier, simply return a copy of the
@@ -666,10 +558,8 @@ numeric		(PG_FUNCTION_ARGS)
 	 */
 	if (typmod < (int32) (VARHDRSZ))
 	{
-		new = make_numeric_from_ptr_len(p, len);
-		if(tofree)
-			pfree(tofree);
-
+		new = (Numeric) palloc(VARSIZE(num));
+		memcpy(new, num, VARSIZE(num));
 		PG_RETURN_NUMERIC(new);
 	}
 
@@ -689,14 +579,10 @@ numeric		(PG_FUNCTION_ARGS)
 	ddigits = (NUMERIC_WEIGHT(num) + 1) * DEC_DIGITS;
 	if (ddigits <= maxdigits && scale >= NUMERIC_DSCALE(num))
 	{
-		new = make_numeric_from_ptr_len(p, len);
-
+		new = (Numeric) palloc(VARSIZE(num));
+		memcpy(new, num, VARSIZE(num));
 		NUMERIC_SIGN_DSCALE(new) = NUMERIC_SIGN(new) |
 			((uint16) scale & NUMERIC_DSCALE_MASK);
-
-		if(tofree)
-			pfree(tofree);
-
 		PG_RETURN_NUMERIC(new);
 	}
 
@@ -705,15 +591,13 @@ numeric		(PG_FUNCTION_ARGS)
 	 * variable and let apply_typmod() do it.
 	 */
 
-	init_var_from_ptr_len(&var, p, len); 
+	init_var_from_num(num, &var);
 	apply_typmod(&var, typmod);
 	new = make_result(&var);
 
-	if(tofree)
-		pfree(tofree);
-
 	PG_RETURN_NUMERIC(new);
 }
+
 
 /* ----------------------------------------------------------------------
  *
@@ -721,352 +605,77 @@ numeric		(PG_FUNCTION_ARGS)
  *
  * ----------------------------------------------------------------------
  */
-typedef enum NUMERIC_FUNC_ENUM
+
+Datum
+numeric_abs(PG_FUNCTION_ARGS)
 {
-	NUMERIC_F_ABS,
-	NUMERIC_F_PLUS,
-	NUMERIC_F_MINUS,
-
-	NUMERIC_F_TRUNC,
-	NUMERIC_F_ROUND,
-
-	NUMERIC_F_CEIL,
-	NUMERIC_F_FLOOR,
-
-	NUMERIC_F_ADD,
-	NUMERIC_F_SUB,
-	NUMERIC_F_MUL,
-	NUMERIC_F_DIV,
-	NUMERIC_F_MOD,
-
-	NUMERIC_F_INC,
-	NUMERIC_F_DEC,
-
-	NUMERIC_F_SQRT,
-	NUMERIC_F_EXP,
-	NUMERIC_F_LN,
-
-	NUMERIC_F_LOG,
-	NUMERIC_F_POW,
-
-	NUMERIC_F_FROM_INT4,
-	NUMERIC_F_TO_INT4,
-	NUMERIC_F_FROM_INT8,
-	NUMERIC_F_TO_INT8,
-	NUMERIC_F_FROM_INT2,
-	NUMERIC_F_TO_INT2,
-} NUMERIC_FUNC_ENUM;
-
-/* Numeric function take on arg to produce result */
-static Datum numeric_1_func(Datum d0, NUMERIC_FUNC_ENUM f)
-{
-	NumericVar	arg;
+	Numeric		num = PG_GETARG_NUMERIC(0);
 	Numeric		res;
-
-	char *p0; void *tofree0; int len0;
-	NumericDataNaked *num0;
-
-	varattrib_untoast_ptr_len(d0, &p0, &len0, &tofree0);
-	num0 = (NumericDataNaked *) p0;
-
-	/*
-	 * Handle NaN
-	 */
-	if (NUMERIC_IS_NAN(num0))
-	{
-		if(tofree0)
-			pfree(tofree0);
-
-		PG_RETURN_NUMERIC(make_result(&const_nan));
-	}
-
-	/*
-	 * Compute the result and return it
-	 */
-	init_ro_var_from_ptr_len(&arg, p0, len0);
-
-	switch(f)
-	{
-		case NUMERIC_F_CEIL:
-			ceil_var(&arg, &arg);
-			break;
-		case NUMERIC_F_FLOOR:
-			floor_var(&arg, &arg);
-			break;
-		case NUMERIC_F_INC:
-			add_var(&arg, &const_one, &arg);
-			break;
-		case NUMERIC_F_DEC:
-			sub_var(&arg, &const_one, &arg);
-			break;
-		case NUMERIC_F_SQRT:
-			{
-				/* Assume the input was normalized, so arg.weight is accurate */
-				int sweight = (arg.weight + 1) * DEC_DIGITS / 2 - 1;
-
-				int rscale = NUMERIC_MIN_SIG_DIGITS - sweight;
-				rscale = Max(rscale, arg.dscale);
-				rscale = Max(rscale, NUMERIC_MIN_DISPLAY_SCALE);
-				rscale = Min(rscale, NUMERIC_MAX_DISPLAY_SCALE);
-
-				/*
-				 * Let sqrt_var() do the calculation and return the result.
-				 */
-				sqrt_var(&arg, &arg, rscale);
-			}
-			break;
-		case NUMERIC_F_EXP:
-			{
-				/* e^arg */
-				/* convert input to float8, ignoring overflow */
-				int rscale;
-				double val = numericvar_to_double_no_overflow(&arg);
-
-				/*
-				 * log10(result) = num * log10(e), so this is approximately the decimal
-				 * weight of the result:
-				 */
-				val *= 0.434294481903252;
-
-				/* limit to something that won't cause integer overflow */
-				val = Max(val, -NUMERIC_MAX_RESULT_SCALE);
-				val = Min(val, NUMERIC_MAX_RESULT_SCALE);
-
-				rscale = NUMERIC_MIN_SIG_DIGITS - (int) val;
-				rscale = Max(rscale, arg.dscale);
-				rscale = Max(rscale, NUMERIC_MIN_DISPLAY_SCALE);
-				rscale = Min(rscale, NUMERIC_MAX_DISPLAY_SCALE);
-
-				/*
-				 * Let exp_var() do the calculation and return the result.
-				 */
-				exp_var(&arg, &arg, rscale);
-			} 
-			break;
-		case NUMERIC_F_LN:
-			{
-				/* Approx decimal digits before decimal point */
-				int dec_digits = (arg.weight + 1) * DEC_DIGITS;
-				int rscale;
-
-				if (dec_digits > 1)
-					rscale = NUMERIC_MIN_SIG_DIGITS - (int) log10(dec_digits - 1);
-				else if (dec_digits < 1)
-					rscale = NUMERIC_MIN_SIG_DIGITS - (int) log10(1 - dec_digits);
-				else
-					rscale = NUMERIC_MIN_SIG_DIGITS;
-
-				rscale = Max(rscale, arg.dscale);
-				rscale = Max(rscale, NUMERIC_MIN_DISPLAY_SCALE);
-				rscale = Min(rscale, NUMERIC_MAX_DISPLAY_SCALE);
-
-				ln_var(&arg, &arg, rscale);
-			}
-			break;
-
-
-		default:
-			Assert(!"Wrong func enum passed to numeric_1_func");
-	}
-
-	res = make_result(&arg);
-
-	free_var(&arg);
-	PG_RETURN_NUMERIC(res);
-}
-
-/* Numeric functions that take 2 numeric to produce a result */
-static Datum numeric_2_func(Datum d0, Datum d1, NUMERIC_FUNC_ENUM f)
-{
-	NumericVar	arg0;
-	NumericVar	arg1;
-	NumericVar	result;
-	Numeric		res;
-
-
-	char *p0; void *tofree0; int len0;
-	char *p1; void *tofree1; int len1;
-
-	NumericDataNaked *num0;
-	NumericDataNaked *num1;
-
-	varattrib_untoast_ptr_len(d0, &p0, &len0, &tofree0);
-	varattrib_untoast_ptr_len(d1, &p1, &len1, &tofree1);
-
-	num0 = (NumericDataNaked *) p0;
-	num1 = (NumericDataNaked *) p1;
-
-	/*
-	 * Handle NaN
-	 */
-	if (NUMERIC_IS_NAN(num0) || NUMERIC_IS_NAN(num1))
-	{
-		if(tofree0)
-			pfree(tofree0);
-		if(tofree1)
-			pfree(tofree1);
-
-		PG_RETURN_NUMERIC(make_result(&const_nan));
-	}
-
-	quick_init_var(&result);
-	
-	init_ro_var_from_ptr_len(&arg0, p0, len0);
-	init_ro_var_from_ptr_len(&arg1, p1, len1);
-
-	switch(f)
-	{
-		case NUMERIC_F_ADD:
-			add_var(&arg0, &arg1, &result);
-			break;
-		case NUMERIC_F_SUB:
-			sub_var(&arg0, &arg1, &result);
-			break;
-		case NUMERIC_F_MUL:
-			/*
-			 * Unpack the values, let mul_var() compute the result and return it.
-			 * Unlike add_var() and sub_var(), mul_var() will round its result. In the
-			 * case of numeric_mul(), which is invoked for the * operator on numerics,
-			 * we request exact representation for the product (rscale = sum(dscale of
-			 * arg1, dscale of arg2)).
-			 */
-			mul_var(&arg0, &arg1, &result, arg0.dscale + arg1.dscale);
-			break;
-		case NUMERIC_F_DIV:
-			{
-				/*
-				 * Select scale for division result
-				 */
-				int rscale = select_div_scale(&arg0, &arg1);
-
-				/*
-				 * Do the divide and return the result
-				 */
-				div_var(&arg0, &arg1, &result, rscale, true);
-			}
-			break;
-		case NUMERIC_F_MOD:
-			mod_var(&arg0, &arg1, &result);
-			break;
-		case NUMERIC_F_LOG:
-			log_var(&arg0, &arg1, &result);
-			break;
-		case NUMERIC_F_POW:
-			{
-				NumericVar arg1_trunc;
-				init_var_from_var(&arg1, &arg1_trunc);
-				trunc_var(&arg1_trunc, 0);
-
-				/*
-				 * Return special SQLSTATE error codes for a few conditions mandated by
-				 * the standard.
-				 */
-				if ((cmp_var(&arg0, &const_zero) == 0 &&
-							cmp_var(&arg1, &const_zero) < 0) ||
-						(cmp_var(&arg0, &const_zero) < 0 &&
-						 cmp_var(&arg1, &arg1_trunc) != 0))
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_ARGUMENT_FOR_POWER_FUNCTION),
-							 errmsg("invalid argument for power function")));
-
-				power_var(&arg0, &arg1, &result);
-
-				free_var(&arg1_trunc);
-			}
-			break;
-
-		default:
-			Assert(!"Wrong numeric function enum passed to numeric_2_func");
-	}
-
-	res = make_result(&result);
-
-	if(tofree0)
-		pfree(tofree0);
-	if(tofree1)
-		pfree(tofree1);
-
-	free_var(&arg0);
-	free_var(&arg1);
-	free_var(&result);
-
-	PG_RETURN_NUMERIC(res);
-}
-
-static Datum num_signfunc(Datum d, NUMERIC_FUNC_ENUM f)
-{
-	Numeric		res;
-
-	char* p; void* tofree; int len;
-	NumericDataNaked *num;
-
-	varattrib_untoast_ptr_len(d, &p, &len, &tofree);
-	num = (NumericDataNaked *) p;
 
 	/*
 	 * Handle NaN
 	 */
 	if (NUMERIC_IS_NAN(num))
-	{
-		if(tofree)
-			pfree(tofree);
-
 		PG_RETURN_NUMERIC(make_result(&const_nan));
-	}
 
 	/*
 	 * Do it the easy way directly on the packed format
 	 */
-	res = make_numeric_from_ptr_len(p, len);
+	res = (Numeric) palloc(VARSIZE(num));
+	memcpy(res, num, VARSIZE(num));
 
-	if(f == NUMERIC_F_ABS)
-		NUMERIC_SIGN_DSCALE(res) = NUMERIC_POS | NUMERIC_DSCALE(num);
-	else if(f == NUMERIC_F_MINUS)
-	{
-		/*
-		 * The packed format is known to be totally zero digit trimmed always. So
-		 * we can identify a ZERO by the fact that there are no digits at all.	Do
-		 * nothing to a zero.
-		 */
-		if (len != NUMERIC_NAKED_HDRSZ) 
-		{
-			/* Else, flip the sign */
-			if (NUMERIC_SIGN(num) == NUMERIC_POS)
-				NUMERIC_SIGN_DSCALE(res) = NUMERIC_NEG | NUMERIC_DSCALE(num);
-			else
-				NUMERIC_SIGN_DSCALE(res) = NUMERIC_POS | NUMERIC_DSCALE(num);
-		}
-	}
-	else
-		Assert(f == NUMERIC_F_PLUS);
-
-	if(tofree)
-		pfree(tofree);
+	NUMERIC_SIGN_DSCALE(res) = NUMERIC_POS | NUMERIC_DSCALE(num);
 
 	PG_RETURN_NUMERIC(res);
-}
-
-
-Datum
-numeric_abs(PG_FUNCTION_ARGS)
-{
-	Datum d = PG_GETARG_DATUM(0);
-	return num_signfunc(d, NUMERIC_F_ABS);
 }
 
 
 Datum
 numeric_uminus(PG_FUNCTION_ARGS)
 {
-	Datum d = PG_GETARG_DATUM(0);
-	return num_signfunc(d, NUMERIC_F_MINUS);
+	Numeric		num = PG_GETARG_NUMERIC(0);
+	Numeric		res;
+
+	/*
+	 * Handle NaN
+	 */
+	if (NUMERIC_IS_NAN(num))
+		PG_RETURN_NUMERIC(make_result(&const_nan));
+
+	/*
+	 * Do it the easy way directly on the packed format
+	 */
+	res = (Numeric) palloc(VARSIZE(num));
+	memcpy(res, num, VARSIZE(num));
+
+	/*
+	 * The packed format is known to be totally zero digit trimmed always. So
+	 * we can identify a ZERO by the fact that there are no digits at all.	Do
+	 * nothing to a zero.
+	 */
+	if (VARSIZE(num) != NUMERIC_HDRSZ)
+	{
+		/* Else, flip the sign */
+		if (NUMERIC_SIGN(num) == NUMERIC_POS)
+			NUMERIC_SIGN_DSCALE(res) = NUMERIC_NEG | NUMERIC_DSCALE(num);
+		else
+			NUMERIC_SIGN_DSCALE(res) = NUMERIC_POS | NUMERIC_DSCALE(num);
+	}
+
+	PG_RETURN_NUMERIC(res);
 }
+
 
 Datum
 numeric_uplus(PG_FUNCTION_ARGS)
 {
-	Datum d = PG_GETARG_DATUM(0);
-	return num_signfunc(d, NUMERIC_F_PLUS);
+	Numeric		num = PG_GETARG_NUMERIC(0);
+	Numeric		res;
+
+	res = (Numeric) palloc(VARSIZE(num));
+	memcpy(res, num, VARSIZE(num));
+
+	PG_RETURN_NUMERIC(res);
 }
 
 /*
@@ -1078,31 +687,21 @@ numeric_uplus(PG_FUNCTION_ARGS)
 Datum
 numeric_sign(PG_FUNCTION_ARGS)
 {
+	Numeric		num = PG_GETARG_NUMERIC(0);
 	Numeric		res;
 	NumericVar	result;
-	Datum d = PG_GETARG_DATUM(0);
-	char* p; void* tofree; int len;
-	NumericDataNaked *num;
-
-	varattrib_untoast_ptr_len(d, &p, &len, &tofree);
-	num = (NumericDataNaked *) p;
 
 	/*
 	 * Handle NaN
 	 */
 	if (NUMERIC_IS_NAN(num))
-	{
-		if(tofree)
-			pfree(tofree);
-
 		PG_RETURN_NUMERIC(make_result(&const_nan));
-	}
 
 	/*
 	 * The packed format is known to be totally zero digit trimmed always. So
 	 * we can identify a ZERO by the fact that there are no digits at all.
 	 */
-	if (len == NUMERIC_NAKED_HDRSZ) 
+	if (VARSIZE(num) == NUMERIC_HDRSZ)
 		init_ro_var_from_var(&const_zero, &result);
 	else
 	{
@@ -1116,39 +715,30 @@ numeric_sign(PG_FUNCTION_ARGS)
 
 	res = make_result(&result);
 
-	if(tofree)
-		pfree(tofree);
-
 	PG_RETURN_NUMERIC(res);
 }
 
+
 /*
- *	Truncate or round a value to have 'scale' digits after the decimal point.
+ * numeric_round() -
+ *
+ *	Round a value to have 'scale' digits after the decimal point.
  *	We allow negative 'scale', implying rounding before the decimal
  *	point --- Oracle interprets rounding that way.
  */
-static Datum num_truncfunc(Datum d, int scale, NUMERIC_FUNC_ENUM f)
+Datum
+numeric_round(PG_FUNCTION_ARGS)
 {
-
+	Numeric		num = PG_GETARG_NUMERIC(0);
+	int32		scale = PG_GETARG_INT32(1);
 	Numeric		res;
 	NumericVar	arg;
-
-	char* p; void* tofree; int len;
-	NumericDataNaked *num;
-
-	varattrib_untoast_ptr_len(d, &p, &len, &tofree);
-	num = (NumericDataNaked *) p;
 
 	/*
 	 * Handle NaN
 	 */
 	if (NUMERIC_IS_NAN(num))
-	{
-		if(tofree)
-			pfree(tofree);
-
 		PG_RETURN_NUMERIC(make_result(&const_nan));
-	}
 
 	/*
 	 * Limit the scale value to avoid possible overflow in calculations
@@ -1159,15 +749,9 @@ static Datum num_truncfunc(Datum d, int scale, NUMERIC_FUNC_ENUM f)
 	/*
 	 * Unpack the argument and round it at the proper digit position
 	 */
-	init_var_from_ptr_len(&arg, p, len);
+	init_var_from_num(num, &arg);
 
-	if(f == NUMERIC_F_TRUNC)
-		trunc_var(&arg, scale);
-	else
-	{
-		Assert(f == NUMERIC_F_ROUND);
-		round_var(&arg, scale);
-	}
+	round_var(&arg, scale);
 
 	/* We don't allow negative output dscale */
 	if (scale < 0)
@@ -1178,79 +762,173 @@ static Datum num_truncfunc(Datum d, int scale, NUMERIC_FUNC_ENUM f)
 	 */
 	res = make_result(&arg);
 
-	if(tofree)
-		pfree(tofree);
+	PG_RETURN_NUMERIC(res);
+}
+
+
+/*
+ * numeric_trunc() -
+ *
+ *	Truncate a value to have 'scale' digits after the decimal point.
+ *	We allow negative 'scale', implying a truncation before the decimal
+ *	point --- Oracle interprets truncation that way.
+ */
+Datum
+numeric_trunc(PG_FUNCTION_ARGS)
+{
+	Numeric		num = PG_GETARG_NUMERIC(0);
+	int32		scale = PG_GETARG_INT32(1);
+	Numeric		res;
+	NumericVar	arg;
+
+	/*
+	 * Handle NaN
+	 */
+	if (NUMERIC_IS_NAN(num))
+		PG_RETURN_NUMERIC(make_result(&const_nan));
+
+	/*
+	 * Limit the scale value to avoid possible overflow in calculations
+	 */
+	scale = Max(scale, -NUMERIC_MAX_RESULT_SCALE);
+	scale = Min(scale, NUMERIC_MAX_RESULT_SCALE);
+
+	/*
+	 * Unpack the argument and truncate it at the proper digit position
+	 */
+	init_var_from_num(num, &arg);
+
+	trunc_var(&arg, scale);
+
+	/* We don't allow negative output dscale */
+	if (scale < 0)
+		arg.dscale = 0;
+
+	/*
+	 * Return the truncated result
+	 */
+	res = make_result(&arg);
 
 	PG_RETURN_NUMERIC(res);
 }
 
-Datum
-numeric_round(PG_FUNCTION_ARGS)
-{
-	Datum d = PG_GETARG_DATUM(0);
-	int32		scale = PG_GETARG_INT32(1);
-	return num_truncfunc(d, scale, NUMERIC_F_ROUND);
-}
 
-Datum
-numeric_trunc(PG_FUNCTION_ARGS)
-{
-	Datum d = PG_GETARG_DATUM(0);
-	int32		scale = PG_GETARG_INT32(1);
-
-	return num_truncfunc(d, scale, NUMERIC_F_TRUNC);
-}
-
+/*
+ * numeric_ceil() -
+ *
+ *	Return the smallest integer greater than or equal to the argument
+ */
 Datum
 numeric_ceil(PG_FUNCTION_ARGS)
 {
-	Datum d = PG_GETARG_DATUM(0);
-	return numeric_1_func(d, NUMERIC_F_CEIL);
+	Numeric		num = PG_GETARG_NUMERIC(0);
+	Numeric		res;
+	NumericVar	result;
+
+	if (NUMERIC_IS_NAN(num))
+		PG_RETURN_NUMERIC(make_result(&const_nan));
+
+	init_ro_var_from_num(num, &result);
+	ceil_var(&result, &result);
+
+	res = make_result(&result);
+
+	PG_RETURN_NUMERIC(res);
 }
 
+
+/*
+ * numeric_floor() -
+ *
+ *	Return the largest integer equal to or less than the argument
+ */
 Datum
 numeric_floor(PG_FUNCTION_ARGS)
 {
-	Datum d = PG_GETARG_DATUM(0);
-	return numeric_1_func(d, NUMERIC_F_FLOOR);
+	Numeric		num = PG_GETARG_NUMERIC(0);
+	Numeric		res;
+	NumericVar	result;
+
+	if (NUMERIC_IS_NAN(num))
+		PG_RETURN_NUMERIC(make_result(&const_nan));
+
+	init_ro_var_from_num(num, &result);
+	floor_var(&result, &result);
+
+	res = make_result(&result);
+
+	PG_RETURN_NUMERIC(res);
 }
 
-static int
-cmp_numerics_ptr_len(char* p1, int len1, char* p2, int len2) 
+/*
+ * width_bucket_numeric() -
+ *
+ * 'bound1' and 'bound2' are the lower and upper bounds of the
+ * histogram's range, respectively. 'count' is the number of buckets
+ * in the histogram. width_bucket() returns an integer indicating the
+ * bucket number that 'operand' belongs in for an equiwidth histogram
+ * with the specified characteristics. An operand smaller than the
+ * lower bound is assigned to bucket 0. An operand greater than the
+ * upper bound is assigned to an additional bucket (with number
+ * count+1).
+ */
+Datum
+width_bucket_numeric(PG_FUNCTION_ARGS)
 {
-	int			result;
+	Numeric		operand = PG_GETARG_NUMERIC(0);
+	Numeric		bound1 = PG_GETARG_NUMERIC(1);
+	Numeric		bound2 = PG_GETARG_NUMERIC(2);
+	int32		count = PG_GETARG_INT32(3);
+	NumericVar	count_var;
+	NumericVar	result_var;
+	int32		result;
 
-	NumericDataNaked *num1 = (NumericDataNaked *) p1;
-	NumericDataNaked *num2 = (NumericDataNaked *) p2;
+	if (count <= 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_ARGUMENT_FOR_WIDTH_BUCKET_FUNCTION),
+				 errmsg("count must be greater than zero")));
 
-	int ndigits1 = (len1 - NUMERIC_NAKED_HDRSZ) / sizeof(NumericDigit);
-	int ndigits2 = (len2 - NUMERIC_NAKED_HDRSZ) / sizeof(NumericDigit);
+	quick_init_var(&result_var);
+	quick_init_var(&count_var);
 
-	/*
-	 * We consider all NANs to be equal and larger than any non-NAN. This is
-	 * somewhat arbitrary; the important thing is to have a consistent sort
-	 * order.
-	 */
-	if (NUMERIC_IS_NAN(num1))
+	/* Convert 'count' to a numeric, for ease of use later */
+	int8_to_numericvar((int64) count, &count_var);
+
+	switch (cmp_numerics(bound1, bound2))
 	{
-		if (NUMERIC_IS_NAN(num2))
-			result = 0;			/* NAN = NAN */
-		else
-			result = 1;			/* NAN > non-NAN */
-	}
-	else if (NUMERIC_IS_NAN(num2))
-	{
-		result = -1;			/* non-NAN < NAN */
-	}
-	else
-	{
-		result = cmp_var_common(NUMERIC_DIGITS(num1), ndigits1,
-								NUMERIC_WEIGHT(num1), NUMERIC_SIGN(num1),
-								NUMERIC_DIGITS(num2), ndigits2,
-								NUMERIC_WEIGHT(num2), NUMERIC_SIGN(num2));
+		case 0:
+			ereport(ERROR,
+				(errcode(ERRCODE_INVALID_ARGUMENT_FOR_WIDTH_BUCKET_FUNCTION),
+				 errmsg("lower bound cannot equal upper bound")));
+
+			/* bound1 < bound2 */
+		case -1:
+			if (cmp_numerics(operand, bound1) < 0)
+				set_var_from_var(&const_zero, &result_var);
+			else if (cmp_numerics(operand, bound2) >= 0)
+				add_var(&count_var, &const_one, &result_var);
+			else
+				compute_bucket(operand, bound1, bound2,
+							   &count_var, &result_var);
+			break;
+
+			/* bound1 > bound2 */
+		case 1:
+			if (cmp_numerics(operand, bound1) > 0)
+				set_var_from_var(&const_zero, &result_var);
+			else if (cmp_numerics(operand, bound2) <= 0)
+				add_var(&count_var, &const_one, &result_var);
+			else
+				compute_bucket(operand, bound1, bound2,
+							   &count_var, &result_var);
+			break;
 	}
 
-	return result;
+	free_var(&count_var);
+
+	result = numericvar_to_int4(&result_var);
+
+	PG_RETURN_INT32(result);
 }
 
 /*
@@ -1261,18 +939,16 @@ cmp_numerics_ptr_len(char* p1, int len1, char* p2, int len2)
  * are derived directly from the SQL2003 spec.
  */
 static void
-compute_bucket(char *op_p, int op_len,
-		       char *b1_p, int b1_len,
-			   char* b2_p, int b2_len, 
+compute_bucket(Numeric operand, Numeric bound1, Numeric bound2,
 			   NumericVar *count_var, NumericVar *result_var)
 {
 	NumericVar	bound1_var;
 	NumericVar	bound2_var;
 	NumericVar	operand_var;
 
-	init_ro_var_from_ptr_len(&bound1_var, b1_p, b1_len);
-	init_ro_var_from_ptr_len(&bound2_var, b2_p, b2_len);
-	init_ro_var_from_ptr_len(&operand_var, op_p, op_len);
+	init_ro_var_from_num(bound1, &bound1_var);
+	init_ro_var_from_num(bound2, &bound2_var);
+	init_ro_var_from_num(operand, &operand_var);
 
 	if (cmp_var(&bound1_var, &bound2_var) < 0)
 	{
@@ -1299,94 +975,6 @@ compute_bucket(char *op_p, int op_len,
 	floor_var(result_var, result_var);
 }
 
-/*
- * width_bucket_numeric() -
- *
- * 'bound1' and 'bound2' are the lower and upper bounds of the
- * histogram's range, respectively. 'count' is the number of buckets
- * in the histogram. width_bucket() returns an integer indicating the
- * bucket number that 'operand' belongs in for an equiwidth histogram
- * with the specified characteristics. An operand smaller than the
- * lower bound is assigned to bucket 0. An operand greater than the
- * upper bound is assigned to an additional bucket (with number
- * count+1).
- */
-Datum
-width_bucket_numeric(PG_FUNCTION_ARGS)
-{
-	Datum d0 = PG_GETARG_DATUM(0);
-	Datum d1 = PG_GETARG_DATUM(1);
-	Datum d2 = PG_GETARG_DATUM(2);
-
-	int32		count = PG_GETARG_INT32(3);
-	NumericVar	count_var;
-	NumericVar	result_var;
-	int32		result;
-
-	char* op_p; void *tofree0; int op_len;
-	char* b1_p; void *tofree1; int b1_len;
-	char* b2_p; void *tofree2; int b2_len;
-
-	if (count <= 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_ARGUMENT_FOR_WIDTH_BUCKET_FUNCTION),
-				 errmsg("count must be greater than zero")));
-
-	varattrib_untoast_ptr_len(d0, &op_p, &op_len, &tofree0);
-	varattrib_untoast_ptr_len(d1, &b1_p, &b1_len, &tofree1);
-	varattrib_untoast_ptr_len(d2, &b2_p, &b2_len, &tofree2);
-
-	quick_init_var(&result_var);
-	quick_init_var(&count_var);
-
-	/* Convert 'count' to a numeric, for ease of use later */
-	int8_to_numericvar((int64) count, &count_var);
-
-	switch (cmp_numerics_ptr_len(b1_p, b1_len, b2_p, b2_len)) 
-	{
-		case 0:
-			ereport(ERROR,
-				(errcode(ERRCODE_INVALID_ARGUMENT_FOR_WIDTH_BUCKET_FUNCTION),
-				 errmsg("lower bound cannot equal upper bound")));
-
-			/* bound1 < bound2 */
-		case -1:
-			if (cmp_numerics_ptr_len(op_p, op_len, b1_p, b1_len) < 0) 
-				set_var_from_var(&const_zero, &result_var);
-			else if (cmp_numerics_ptr_len(op_p, op_len, b2_p, b2_len) >= 0)
-				add_var(&count_var, &const_one, &result_var);
-			else
-				compute_bucket(op_p, op_len, b1_p, b1_len, b2_p, b2_len, 
-							   &count_var, &result_var);
-			break;
-
-			/* bound1 > bound2 */
-		case 1:
-			if (cmp_numerics_ptr_len(op_p, op_len, b1_p, b1_len) > 0) 
-				set_var_from_var(&const_zero, &result_var);
-			else if (cmp_numerics_ptr_len(op_p, op_len, b2_p, b2_len) <= 0)
-				add_var(&count_var, &const_one, &result_var);
-			else
-				compute_bucket(op_p, op_len, b1_p, b1_len, b2_p, b2_len, 
-							   &count_var, &result_var);
-			break;
-	}
-
-	result = numericvar_to_int4(&result_var);
-
-	free_var(&count_var);
-	free_var(&result_var);
-
-	if(tofree0)
-		pfree(tofree0);
-	if(tofree1)
-		pfree(tofree1);
-	if(tofree2)
-		pfree(tofree2);
-
-	PG_RETURN_INT32(result);
-}
-
 /* ----------------------------------------------------------------------
  *
  * Comparison functions
@@ -1397,118 +985,143 @@ width_bucket_numeric(PG_FUNCTION_ARGS)
  * ----------------------------------------------------------------------
  */
 
-static inline int cmp_numerics(Datum d0, Datum d1)
-{
-	char *p0; void *tofree0; int len0;
-	char *p1; void *tofree1; int len1;
-	int result;
-
-	varattrib_untoast_ptr_len(d0, &p0, &len0, &tofree0);
-	varattrib_untoast_ptr_len(d1, &p1, &len1, &tofree1);
-
-	result = cmp_numerics_ptr_len(p0, len0, p1, len1);
-
-	if(tofree0)
-		pfree(tofree0);
-	if(tofree1)
-		pfree(tofree1);
-
-	return result;
-}
 
 Datum
 numeric_cmp(PG_FUNCTION_ARGS)
 {
-	Datum d0 = PG_GETARG_DATUM(0);
-	Datum d1 = PG_GETARG_DATUM(1);
-	int result = cmp_numerics(d0, d1); 
+	Numeric		num1 = PG_GETARG_NUMERIC(0);
+	Numeric		num2 = PG_GETARG_NUMERIC(1);
+	int			result;
+
+	result = cmp_numerics(num1, num2);
+
+	PG_FREE_IF_COPY(num1, 0);
+	PG_FREE_IF_COPY(num2, 1);
 
 	PG_RETURN_INT32(result);
 }
 
+
 Datum
 numeric_eq(PG_FUNCTION_ARGS)
 {
-	Datum d0 = PG_GETARG_DATUM(0);
-	Datum d1 = PG_GETARG_DATUM(1);
-	int result = cmp_numerics(d0, d1); 
+	Numeric		num1 = PG_GETARG_NUMERIC(0);
+	Numeric		num2 = PG_GETARG_NUMERIC(1);
+	bool		result;
 
-	PG_RETURN_BOOL(result == 0);
+	result = cmp_numerics(num1, num2) == 0;
+
+	PG_FREE_IF_COPY(num1, 0);
+	PG_FREE_IF_COPY(num2, 1);
+
+	PG_RETURN_BOOL(result);
 }
 
 Datum
 numeric_ne(PG_FUNCTION_ARGS)
 {
-	Datum d0 = PG_GETARG_DATUM(0);
-	Datum d1 = PG_GETARG_DATUM(1);
-	int result = cmp_numerics(d0, d1); 
+	Numeric		num1 = PG_GETARG_NUMERIC(0);
+	Numeric		num2 = PG_GETARG_NUMERIC(1);
+	bool		result;
 
-	PG_RETURN_BOOL(result != 0);
+	result = cmp_numerics(num1, num2) != 0;
+
+	PG_FREE_IF_COPY(num1, 0);
+	PG_FREE_IF_COPY(num2, 1);
+
+	PG_RETURN_BOOL(result);
 }
 
 Datum
 numeric_gt(PG_FUNCTION_ARGS)
 {
-	Datum d0 = PG_GETARG_DATUM(0);
-	Datum d1 = PG_GETARG_DATUM(1);
-	int result = cmp_numerics(d0, d1); 
+	Numeric		num1 = PG_GETARG_NUMERIC(0);
+	Numeric		num2 = PG_GETARG_NUMERIC(1);
+	bool		result;
 
-	PG_RETURN_BOOL(result > 0);
+	result = cmp_numerics(num1, num2) > 0;
+
+	PG_FREE_IF_COPY(num1, 0);
+	PG_FREE_IF_COPY(num2, 1);
+
+	PG_RETURN_BOOL(result);
 }
 
 Datum
 numeric_ge(PG_FUNCTION_ARGS)
 {
-	Datum d0 = PG_GETARG_DATUM(0);
-	Datum d1 = PG_GETARG_DATUM(1);
-	int result = cmp_numerics(d0, d1); 
+	Numeric		num1 = PG_GETARG_NUMERIC(0);
+	Numeric		num2 = PG_GETARG_NUMERIC(1);
+	bool		result;
 
-	PG_RETURN_BOOL(result >= 0);
+	result = cmp_numerics(num1, num2) >= 0;
+
+	PG_FREE_IF_COPY(num1, 0);
+	PG_FREE_IF_COPY(num2, 1);
+
+	PG_RETURN_BOOL(result);
 }
 
 Datum
 numeric_lt(PG_FUNCTION_ARGS)
 {
-	Datum d0 = PG_GETARG_DATUM(0);
-	Datum d1 = PG_GETARG_DATUM(1);
-	int result = cmp_numerics(d0, d1); 
+	Numeric		num1 = PG_GETARG_NUMERIC(0);
+	Numeric		num2 = PG_GETARG_NUMERIC(1);
+	bool		result;
 
-	PG_RETURN_BOOL(result < 0);
+	result = cmp_numerics(num1, num2) < 0;
+
+	PG_FREE_IF_COPY(num1, 0);
+	PG_FREE_IF_COPY(num2, 1);
+
+	PG_RETURN_BOOL(result);
 }
 
 Datum
 numeric_le(PG_FUNCTION_ARGS)
 {
-	Datum d0 = PG_GETARG_DATUM(0);
-	Datum d1 = PG_GETARG_DATUM(1);
-	int result = cmp_numerics(d0, d1); 
+	Numeric		num1 = PG_GETARG_NUMERIC(0);
+	Numeric		num2 = PG_GETARG_NUMERIC(1);
+	bool		result;
 
-	PG_RETURN_BOOL(result <= 0);
+	result = cmp_numerics(num1, num2) <= 0;
+
+	PG_FREE_IF_COPY(num1, 0);
+	PG_FREE_IF_COPY(num2, 1);
+
+	PG_RETURN_BOOL(result);
 }
 
-/*
- * Smaller and larger: Use cmp_numerics so that this will agree with the comparison operators,
- * particularly as regards comparisons involving NaN.
- */
-
-Datum
-numeric_smaller(PG_FUNCTION_ARGS)
+static int
+cmp_numerics(Numeric num1, Numeric num2)
 {
-	Datum d0 = PG_GETARG_DATUM(0);
-	Datum d1 = PG_GETARG_DATUM(1);
+	int			result;
 
-	int result = cmp_numerics(d0, d1); 
-	return (result <= 0 ? d0 : d1);
-}
+	/*
+	 * We consider all NANs to be equal and larger than any non-NAN. This is
+	 * somewhat arbitrary; the important thing is to have a consistent sort
+	 * order.
+	 */
+	if (NUMERIC_IS_NAN(num1))
+	{
+		if (NUMERIC_IS_NAN(num2))
+			result = 0;			/* NAN = NAN */
+		else
+			result = 1;			/* NAN > non-NAN */
+	}
+	else if (NUMERIC_IS_NAN(num2))
+	{
+		result = -1;			/* non-NAN < NAN */
+	}
+	else
+	{
+		result = cmp_var_common(NUMERIC_DIGITS(num1), NUMERIC_NDIGITS(num1),
+								NUMERIC_WEIGHT(num1), NUMERIC_SIGN(num1),
+								NUMERIC_DIGITS(num2), NUMERIC_NDIGITS(num2),
+								NUMERIC_WEIGHT(num2), NUMERIC_SIGN(num2));
+	}
 
-Datum
-numeric_larger(PG_FUNCTION_ARGS)
-{
-	Datum d0 = PG_GETARG_DATUM(0);
-	Datum d1 = PG_GETARG_DATUM(1);
-
-	int result = cmp_numerics(d0, d1); 
-	return (result >= 0 ? d0 : d1);
+	return result;
 }
 
 Datum
@@ -1594,66 +1207,313 @@ hash_numeric(PG_FUNCTION_ARGS)
  * ----------------------------------------------------------------------
  */
 
+
+/*
+ * numeric_add() -
+ *
+ *	Add two numerics
+ */
 Datum
 numeric_add(PG_FUNCTION_ARGS)
 {
-	Datum d0 = PG_GETARG_DATUM(0);
-	Datum d1 = PG_GETARG_DATUM(1);
+	Numeric		num1 = PG_GETARG_NUMERIC(0);
+	Numeric		num2 = PG_GETARG_NUMERIC(1);
+	NumericVar	arg1;
+	NumericVar	arg2;
+	NumericVar	result;
+	Numeric		res;
 
-	return numeric_2_func(d0, d1, NUMERIC_F_ADD);
+	/*
+	 * Handle NaN
+	 */
+	if (NUMERIC_IS_NAN(num1) || NUMERIC_IS_NAN(num2))
+		PG_RETURN_NUMERIC(make_result(&const_nan));
+
+	/*
+	 * Unpack the values, let add_var() compute the result and return it.
+	 */
+	quick_init_var(&result);
+
+	init_ro_var_from_num(num1, &arg1);
+	init_ro_var_from_num(num2, &arg2);
+
+	add_var(&arg1, &arg2, &result);
+
+	res = make_result(&result);
+
+	PG_RETURN_NUMERIC(res);
 }
 
+
+/*
+ * numeric_sub() -
+ *
+ *	Subtract one numeric from another
+ */
 Datum
 numeric_sub(PG_FUNCTION_ARGS)
 {
-	Datum d0 = PG_GETARG_DATUM(0);
-	Datum d1 = PG_GETARG_DATUM(1);
+	Numeric		num1 = PG_GETARG_NUMERIC(0);
+	Numeric		num2 = PG_GETARG_NUMERIC(1);
+	NumericVar	arg1;
+	NumericVar	arg2;
+	NumericVar	result;
+	Numeric		res;
 
-	return numeric_2_func(d0, d1, NUMERIC_F_SUB);
+	/*
+	 * Handle NaN
+	 */
+	if (NUMERIC_IS_NAN(num1) || NUMERIC_IS_NAN(num2))
+		PG_RETURN_NUMERIC(make_result(&const_nan));
+
+	/*
+	 * Unpack the values, let sub_var() compute the result and return it.
+	 */
+	quick_init_var(&result);
+
+	init_ro_var_from_num(num1, &arg1);
+	init_ro_var_from_num(num2, &arg2);
+
+	sub_var(&arg1, &arg2, &result);
+
+	res = make_result(&result);
+
+	PG_RETURN_NUMERIC(res);
 }
 
+
+/*
+ * numeric_mul() -
+ *
+ *	Calculate the product of two numerics
+ */
 Datum
 numeric_mul(PG_FUNCTION_ARGS)
 {
-	Datum d0 = PG_GETARG_DATUM(0);
-	Datum d1 = PG_GETARG_DATUM(1);
+	Numeric		num1 = PG_GETARG_NUMERIC(0);
+	Numeric		num2 = PG_GETARG_NUMERIC(1);
+	NumericVar	arg1;
+	NumericVar	arg2;
+	NumericVar	result;
+	Numeric		res;
 
-	return numeric_2_func(d0, d1, NUMERIC_F_MUL);
+	/*
+	 * Handle NaN
+	 */
+	if (NUMERIC_IS_NAN(num1) || NUMERIC_IS_NAN(num2))
+		PG_RETURN_NUMERIC(make_result(&const_nan));
+
+	/*
+	 * Unpack the values, let mul_var() compute the result and return it.
+	 * Unlike add_var() and sub_var(), mul_var() will round its result. In the
+	 * case of numeric_mul(), which is invoked for the * operator on numerics,
+	 * we request exact representation for the product (rscale = sum(dscale of
+	 * arg1, dscale of arg2)).
+	 */
+	quick_init_var(&result);
+
+	init_ro_var_from_num(num1, &arg1);
+	init_ro_var_from_num(num2, &arg2);
+
+	mul_var(&arg1, &arg2, &result, arg1.dscale + arg2.dscale);
+
+	free_var(&arg1);
+	free_var(&arg2);
+
+	res = make_result(&result);
+
+	PG_RETURN_NUMERIC(res);
 }
 
+
+/*
+ * numeric_div() -
+ *
+ *	Divide one numeric into another
+ */
 Datum
 numeric_div(PG_FUNCTION_ARGS)
 {
-	Datum d0 = PG_GETARG_DATUM(0);
-	Datum d1 = PG_GETARG_DATUM(1);
+	Numeric		num1 = PG_GETARG_NUMERIC(0);
+	Numeric		num2 = PG_GETARG_NUMERIC(1);
+	NumericVar	arg1;
+	NumericVar	arg2;
+	NumericVar	result;
+	Numeric		res;
+	int			rscale;
 
-	return numeric_2_func(d0, d1, NUMERIC_F_DIV);
+	/*
+	 * Handle NaN
+	 */
+	if (NUMERIC_IS_NAN(num1) || NUMERIC_IS_NAN(num2))
+		PG_RETURN_NUMERIC(make_result(&const_nan));
+
+	/*
+	 * Unpack the arguments
+	 */
+	quick_init_var(&result);
+
+	init_ro_var_from_num(num1, &arg1);
+	init_ro_var_from_num(num2, &arg2);
+
+	/*
+	 * Select scale for division result
+	 */
+	rscale = select_div_scale(&arg1, &arg2);
+
+	/*
+	 * Do the divide and return the result
+	 */
+	div_var(&arg1, &arg2, &result, rscale, true);
+
+	free_var(&arg1);
+	free_var(&arg2);
+
+	res = make_result(&result);
+
+	PG_RETURN_NUMERIC(res);
 }
 
+
+/*
+ * numeric_mod() -
+ *
+ *	Calculate the modulo of two numerics
+ */
 Datum
 numeric_mod(PG_FUNCTION_ARGS)
 {
-	Datum d0 = PG_GETARG_DATUM(0);
-	Datum d1 = PG_GETARG_DATUM(1);
+	Numeric		num1 = PG_GETARG_NUMERIC(0);
+	Numeric		num2 = PG_GETARG_NUMERIC(1);
+	Numeric		res;
+	NumericVar	arg1;
+	NumericVar	arg2;
+	NumericVar	result;
 
-	return numeric_2_func(d0, d1, NUMERIC_F_MOD);
+	if (NUMERIC_IS_NAN(num1) || NUMERIC_IS_NAN(num2))
+		PG_RETURN_NUMERIC(make_result(&const_nan));
+
+	quick_init_var(&result);
+
+	init_ro_var_from_num(num1, &arg1);
+	init_ro_var_from_num(num2, &arg2);
+
+	mod_var(&arg1, &arg2, &result);
+
+	free_var(&arg2);
+	free_var(&arg1);
+
+	res = make_result(&result);
+
+	PG_RETURN_NUMERIC(res);
 }
 
-
-
+/*
+ * numeric_inc() -
+ *
+ *	Increment a number by one
+ */
 Datum
 numeric_inc(PG_FUNCTION_ARGS)
 {
-	Datum d = PG_GETARG_DATUM(0);
-	return numeric_1_func(d, NUMERIC_F_INC);
+	Numeric		num = PG_GETARG_NUMERIC(0);
+	NumericVar	arg;
+	Numeric		res;
+
+	/*
+	 * Handle NaN
+	 */
+	if (NUMERIC_IS_NAN(num))
+		PG_RETURN_NUMERIC(make_result(&const_nan));
+
+	/*
+	 * Compute the result and return it
+	 */
+
+	init_ro_var_from_num(num, &arg);
+
+	add_var(&arg, &const_one, &arg);
+
+	res = make_result(&arg);
+
+	PG_RETURN_NUMERIC(res);
 }
 
+/*
+ * numeric_dec() -
+ *
+ *	decrement a number by one
+ */
 Datum
 numeric_dec(PG_FUNCTION_ARGS)
 {
-	Datum d = PG_GETARG_DATUM(0);
-	return numeric_1_func(d, NUMERIC_F_DEC);
+	Numeric		num = PG_GETARG_NUMERIC(0);
+	NumericVar	arg;
+	Numeric		res;
+
+	/*
+	 * Handle NaN
+	 */
+	if (NUMERIC_IS_NAN(num))
+		PG_RETURN_NUMERIC(make_result(&const_nan));
+
+	/*
+	 * Compute the result and return it
+	 */
+
+	init_var_from_num(num, &arg);
+
+	sub_var(&arg, &const_one, &arg);
+
+	res = make_result(&arg);
+
+	PG_RETURN_NUMERIC(res);
 }
+
+
+/*
+ * numeric_smaller() -
+ *
+ *	Return the smaller of two numbers
+ */
+Datum
+numeric_smaller(PG_FUNCTION_ARGS)
+{
+	Numeric		num1 = PG_GETARG_NUMERIC(0);
+	Numeric		num2 = PG_GETARG_NUMERIC(1);
+
+	/*
+	 * Use cmp_numerics so that this will agree with the comparison operators,
+	 * particularly as regards comparisons involving NaN.
+	 */
+	if (cmp_numerics(num1, num2) < 0)
+		PG_RETURN_NUMERIC(num1);
+	else
+		PG_RETURN_NUMERIC(num2);
+}
+
+
+/*
+ * numeric_larger() -
+ *
+ *	Return the larger of two numbers
+ */
+Datum
+numeric_larger(PG_FUNCTION_ARGS)
+{
+	Numeric		num1 = PG_GETARG_NUMERIC(0);
+	Numeric		num2 = PG_GETARG_NUMERIC(1);
+
+	/*
+	 * Use cmp_numerics so that this will agree with the comparison operators,
+	 * particularly as regards comparisons involving NaN.
+	 */
+	if (cmp_numerics(num1, num2) > 0)
+		PG_RETURN_NUMERIC(num1);
+	else
+		PG_RETURN_NUMERIC(num2);
+}
+
 
 /* ----------------------------------------------------------------------
  *
@@ -1680,11 +1540,12 @@ numeric_fac(PG_FUNCTION_ARGS)
 		res = make_result(&const_one);
 		PG_RETURN_NUMERIC(res);
 	}
-	/* Fail immediately if the result would overflow */
+
+	/* Fail immediately if the result will overflow */
 	if (num > 32177)
-		ereport(ERROR,
-				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-				 errmsg("value overflows numeric format")));
+		ereport(ERROR, 
+			(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+			 errmsg("value overflows numeric format")));
 
 	quick_init_var(&fact);
 	quick_init_var(&result);
@@ -1693,7 +1554,7 @@ numeric_fac(PG_FUNCTION_ARGS)
 
 	for (num = num - 1; num > 1; num--)
 	{
-		/* this loop can take awhile, so allow it to be interrupted */
+		/* This loop can take a while so allow it to be interrupted */
 		CHECK_FOR_INTERRUPTS();
 
 		int8_to_numericvar(num, &fact);
@@ -1717,9 +1578,47 @@ numeric_fac(PG_FUNCTION_ARGS)
 Datum
 numeric_sqrt(PG_FUNCTION_ARGS)
 {
-	Datum d = PG_GETARG_DATUM(0);
-	return numeric_1_func(d, NUMERIC_F_SQRT);
+	Numeric		num = PG_GETARG_NUMERIC(0);
+	Numeric		res;
+	NumericVar	arg;
+	NumericVar	result;
+	int			sweight;
+	int			rscale;
+
+	/*
+	 * Handle NaN
+	 */
+	if (NUMERIC_IS_NAN(num))
+		PG_RETURN_NUMERIC(make_result(&const_nan));
+
+	/*
+	 * Unpack the argument and determine the result scale.	We choose a scale
+	 * to give at least NUMERIC_MIN_SIG_DIGITS significant digits; but in any
+	 * case not less than the input's dscale.
+	 */
+	quick_init_var(&result);
+
+	init_ro_var_from_num(num, &arg);
+
+	/* Assume the input was normalized, so arg.weight is accurate */
+	sweight = (arg.weight + 1) * DEC_DIGITS / 2 - 1;
+
+	rscale = NUMERIC_MIN_SIG_DIGITS - sweight;
+	rscale = Max(rscale, arg.dscale);
+	rscale = Max(rscale, NUMERIC_MIN_DISPLAY_SCALE);
+	rscale = Min(rscale, NUMERIC_MAX_DISPLAY_SCALE);
+
+	/*
+	 * Let sqrt_var() do the calculation and return the result.
+	 */
+	sqrt_var(&arg, &result, rscale);
+	free_var(&arg);
+
+	res = make_result(&result);
+
+	PG_RETURN_NUMERIC(res);
 }
+
 
 /*
  * numeric_exp() -
@@ -1729,9 +1628,58 @@ numeric_sqrt(PG_FUNCTION_ARGS)
 Datum
 numeric_exp(PG_FUNCTION_ARGS)
 {
-	Datum d = PG_GETARG_DATUM(0);
-	return numeric_1_func(d, NUMERIC_F_EXP);
+	Numeric		num = PG_GETARG_NUMERIC(0);
+	Numeric		res;
+	NumericVar	arg;
+	NumericVar	result;
+	int			rscale;
+	double		val;
+
+	/*
+	 * Handle NaN
+	 */
+	if (NUMERIC_IS_NAN(num))
+		PG_RETURN_NUMERIC(make_result(&const_nan));
+
+	/*
+	 * Unpack the argument and determine the result scale.	We choose a scale
+	 * to give at least NUMERIC_MIN_SIG_DIGITS significant digits; but in any
+	 * case not less than the input's dscale.
+	 */
+	quick_init_var(&result);
+
+	init_var_from_num(num, &arg);
+
+	/* convert input to float8, ignoring overflow */
+	val = numericvar_to_double_no_overflow(&arg);
+
+	/*
+	 * log10(result) = num * log10(e), so this is approximately the decimal
+	 * weight of the result:
+	 */
+	val *= 0.434294481903252;
+
+	/* limit to something that won't cause integer overflow */
+	val = Max(val, -NUMERIC_MAX_RESULT_SCALE);
+	val = Min(val, NUMERIC_MAX_RESULT_SCALE);
+
+	rscale = NUMERIC_MIN_SIG_DIGITS - (int) val;
+	rscale = Max(rscale, arg.dscale);
+	rscale = Max(rscale, NUMERIC_MIN_DISPLAY_SCALE);
+	rscale = Min(rscale, NUMERIC_MAX_DISPLAY_SCALE);
+
+	/*
+	 * Let exp_var() do the calculation and return the result.
+	 */
+	exp_var(&arg, &result, rscale);
+
+	free_var(&arg);
+
+	res = make_result(&result);
+
+	PG_RETURN_NUMERIC(res);
 }
+
 
 /*
  * numeric_ln() -
@@ -1741,9 +1689,46 @@ numeric_exp(PG_FUNCTION_ARGS)
 Datum
 numeric_ln(PG_FUNCTION_ARGS)
 {
-	Datum d = PG_GETARG_DATUM(0);
-	return numeric_1_func(d, NUMERIC_F_LN);
+	Numeric		num = PG_GETARG_NUMERIC(0);
+	Numeric		res;
+	NumericVar	arg;
+	NumericVar	result;
+	int			dec_digits;
+	int			rscale;
+
+	/*
+	 * Handle NaN
+	 */
+	if (NUMERIC_IS_NAN(num))
+		PG_RETURN_NUMERIC(make_result(&const_nan));
+
+	quick_init_var(&result);
+
+	init_ro_var_from_num(num, &arg);
+
+	/* Approx decimal digits before decimal point */
+	dec_digits = (arg.weight + 1) * DEC_DIGITS;
+
+	if (dec_digits > 1)
+		rscale = NUMERIC_MIN_SIG_DIGITS - (int) log10(dec_digits - 1);
+	else if (dec_digits < 1)
+		rscale = NUMERIC_MIN_SIG_DIGITS - (int) log10(1 - dec_digits);
+	else
+		rscale = NUMERIC_MIN_SIG_DIGITS;
+
+	rscale = Max(rscale, arg.dscale);
+	rscale = Max(rscale, NUMERIC_MIN_DISPLAY_SCALE);
+	rscale = Min(rscale, NUMERIC_MAX_DISPLAY_SCALE);
+
+	ln_var(&arg, &result, rscale);
+
+	free_var(&arg);
+
+	res = make_result(&result);
+
+	PG_RETURN_NUMERIC(res);
 }
+
 
 /*
  * numeric_log() -
@@ -1753,11 +1738,41 @@ numeric_ln(PG_FUNCTION_ARGS)
 Datum
 numeric_log(PG_FUNCTION_ARGS)
 {
-	Datum d0 = PG_GETARG_DATUM(0);
-	Datum d1 = PG_GETARG_DATUM(1);
+	Numeric		num1 = PG_GETARG_NUMERIC(0);
+	Numeric		num2 = PG_GETARG_NUMERIC(1);
+	Numeric		res;
+	NumericVar	arg1;
+	NumericVar	arg2;
+	NumericVar	result;
 
-	return numeric_2_func(d0, d1, NUMERIC_F_LOG);
+	/*
+	 * Handle NaN
+	 */
+	if (NUMERIC_IS_NAN(num1) || NUMERIC_IS_NAN(num2))
+		PG_RETURN_NUMERIC(make_result(&const_nan));
+
+	/*
+	 * Initialize things
+	 */
+	quick_init_var(&result);
+
+	init_ro_var_from_num(num1, &arg1);
+	init_ro_var_from_num(num2, &arg2);
+
+	/*
+	 * Call log_var() to compute and return the result; note it handles scale
+	 * selection itself.
+	 */
+	log_var(&arg1, &arg2, &result);
+
+	free_var(&arg2);
+	free_var(&arg1);
+
+	res = make_result(&result);
+
+	PG_RETURN_NUMERIC(res);
 }
+
 
 /*
  * numeric_power() -
@@ -1767,11 +1782,58 @@ numeric_log(PG_FUNCTION_ARGS)
 Datum
 numeric_power(PG_FUNCTION_ARGS)
 {
-	Datum d0 = PG_GETARG_DATUM(0);
-	Datum d1 = PG_GETARG_DATUM(1);
+	Numeric		num1 = PG_GETARG_NUMERIC(0);
+	Numeric		num2 = PG_GETARG_NUMERIC(1);
+	Numeric		res;
+	NumericVar	arg1;
+	NumericVar	arg2;
+	NumericVar	arg2_trunc;
+	NumericVar	result;
 
-	return numeric_2_func(d0, d1, NUMERIC_F_POW);
+	/*
+	 * Handle NaN
+	 */
+	if (NUMERIC_IS_NAN(num1) || NUMERIC_IS_NAN(num2))
+		PG_RETURN_NUMERIC(make_result(&const_nan));
+
+	/*
+	 * Initialize things
+	 */
+	quick_init_var(&result);
+
+	init_ro_var_from_num(num1, &arg1);
+	init_ro_var_from_num(num2, &arg2);
+	init_var_from_var(&arg2, &arg2_trunc);
+
+	trunc_var(&arg2_trunc, 0);
+
+	/*
+	 * Return special SQLSTATE error codes for a few conditions mandated by
+	 * the standard.
+	 */
+	if ((cmp_var(&arg1, &const_zero) == 0 &&
+		 cmp_var(&arg2, &const_zero) < 0) ||
+		(cmp_var(&arg1, &const_zero) < 0 &&
+		 cmp_var(&arg2, &arg2_trunc) != 0))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_ARGUMENT_FOR_POWER_FUNCTION),
+				 errmsg("invalid argument for power function")));
+
+	/*
+	 * Call power_var() to compute and return the result; note it handles
+	 * scale selection itself.
+	 */
+	power_var(&arg1, &arg2, &result);
+
+	free_var(&arg2);
+	free_var(&arg2_trunc);
+	free_var(&arg1);
+
+	res = make_result(&result);
+
+	PG_RETURN_NUMERIC(res);
 }
+
 
 /* ----------------------------------------------------------------------
  *
@@ -1780,120 +1842,42 @@ numeric_power(PG_FUNCTION_ARGS)
  * ----------------------------------------------------------------------
  */
 
-static Datum num_conv_from(Datum d, NUMERIC_FUNC_ENUM f)
-{	
+
+Datum
+int4_numeric(PG_FUNCTION_ARGS)
+{
+	int32		val = PG_GETARG_INT32(0);
 	Numeric		res;
 	NumericVar	result;
 
 	quick_init_var(&result);
 
-	switch(f)
-	{
-		case NUMERIC_F_FROM_INT4:
-			int8_to_numericvar(DatumGetInt32(d), &result);
-			break;
-		case NUMERIC_F_FROM_INT8:
-			int8_to_numericvar(DatumGetInt64(d), &result);
-			break;
-		case NUMERIC_F_FROM_INT2:
-			int8_to_numericvar(DatumGetInt16(d), &result);
-			break;
-		default:
-			Assert(!"Wrong numeric func enum passed to num_conv_from");
-	}
+	int8_to_numericvar((int64) val, &result);
 
 	res = make_result(&result);
+
 	PG_RETURN_NUMERIC(res);
 }
 
-static Datum num_conv_to(Datum d0, NUMERIC_FUNC_ENUM f, const char* typestr)
-{
-	NumericVar	arg;
-	Datum res = 0;
-
-	char *p0; void *tofree0; int len0;
-	NumericDataNaked *num0;
-
-	varattrib_untoast_ptr_len(d0, &p0, &len0, &tofree0);
-	num0 = (NumericDataNaked *) p0;
-
-	/*
-	 * Handle NaN
-	 */
-	if (NUMERIC_IS_NAN(num0))
-	{
-		if(tofree0)
-			pfree(tofree0);
-
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot convert NaN to %s", typestr)));
-	}
-
-	/*
-	 * Compute the result and return it
-	 */
-	init_ro_var_from_ptr_len(&arg, p0, len0);
-
-	switch(f)
-	{
-		case NUMERIC_F_TO_INT8:
-		case NUMERIC_F_TO_INT4:
-		case NUMERIC_F_TO_INT2:
-			{
-				int64 ival = 0;
-				bool fOK = numericvar_to_int8(&arg, &ival);
-				if(fOK)
-				{
-					res = Int64GetDatum(ival);
-
-					if(f == NUMERIC_F_TO_INT4)
-					{
-						Datum res2 = Int32GetDatum((int32) ival);
-						if(res != res2)
-							fOK = false;
-					}
-
-					if(f == NUMERIC_F_TO_INT2)
-					{
-						Datum res2 = Int16GetDatum((int16) ival);
-						if(res != res2)
-							fOK = false;
-					}
-				}
-
-				if(!fOK)
-				{
-					ereport(ERROR, 
-							(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-							 errmsg("%s out of range", typestr)));
-				}
-			}
-			break;
-
-		default:
-			Assert(!"Invalid func enum passed t num_conv_to");
-	}
-
-	if(tofree0)
-		pfree(tofree0);
-
-	return res;
-}
-
-
-Datum
-int4_numeric(PG_FUNCTION_ARGS)
-{
-	Datum d = PG_GETARG_DATUM(0);
-	return num_conv_from(d, NUMERIC_F_FROM_INT4);
-}
 
 Datum
 numeric_int4(PG_FUNCTION_ARGS)
 {
-	Datum d = PG_GETARG_DATUM(0);
-	return num_conv_to(d, NUMERIC_F_TO_INT4, "integer");
+	Numeric		num = PG_GETARG_NUMERIC(0);
+	NumericVar	x;
+	int32		result;
+
+	/* XXX would it be better to return NULL? */
+	if (NUMERIC_IS_NAN(num))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot convert NaN to integer")));
+
+	/* Convert to variable format, then convert to int4 */
+	init_var_from_num(num, &x);
+	result = numericvar_to_int4(&x);
+
+	PG_RETURN_INT32(result);
 }
 
 /*
@@ -1927,31 +1911,96 @@ numericvar_to_int4(NumericVar *var)
 Datum
 int8_numeric(PG_FUNCTION_ARGS)
 {
-	Datum d = PG_GETARG_DATUM(0);
-	return num_conv_from(d, NUMERIC_F_FROM_INT8);
+	int64		val = PG_GETARG_INT64(0);
+	Numeric		res;
+	NumericVar	result;
+
+	quick_init_var(&result);
+
+	int8_to_numericvar(val, &result);
+
+	res = make_result(&result);
+
+	PG_RETURN_NUMERIC(res);
 }
+
 
 Datum
 numeric_int8(PG_FUNCTION_ARGS)
 {
-	Datum d = PG_GETARG_DATUM(0);
-	return num_conv_to(d, NUMERIC_F_TO_INT8, "bigint");
+	Numeric		num = PG_GETARG_NUMERIC(0);
+	NumericVar	x;
+	int64		result = 0;
+
+	/* XXX would it be better to return NULL? */
+	if (NUMERIC_IS_NAN(num))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot convert NaN to bigint")));
+
+	/* Convert to variable format and thence to int8 */
+	init_var_from_num(num, &x);
+
+	if (!numericvar_to_int8(&x, &result))
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("bigint out of range")));
+
+	PG_RETURN_INT64(result);
 }
+
 
 Datum
 int2_numeric(PG_FUNCTION_ARGS)
 {
-	Datum d = PG_GETARG_DATUM(0);
-	return num_conv_from(d, NUMERIC_F_FROM_INT2);
+	int16		val = PG_GETARG_INT16(0);
+	Numeric		res;
+	NumericVar	result;
+
+	quick_init_var(&result);
+
+	int8_to_numericvar((int64) val, &result);
+
+	res = make_result(&result);
+
+	PG_RETURN_NUMERIC(res);
 }
 
 
 Datum
 numeric_int2(PG_FUNCTION_ARGS)
 {
-	Datum d = PG_GETARG_DATUM(0);
-	return num_conv_to(d, NUMERIC_F_TO_INT8, "bigint");
+	Numeric		num = PG_GETARG_NUMERIC(0);
+	NumericVar	x;
+	int64		val = 0;
+	int16		result;
+
+	/* XXX would it be better to return NULL? */
+	if (NUMERIC_IS_NAN(num))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot convert NaN to smallint")));
+
+	/* Convert to variable format and thence to int8 */
+	init_var_from_num(num, &x);
+
+	if (!numericvar_to_int8(&x, &val))
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("smallint out of range")));
+
+	/* Down-convert to int2 */
+	result = (int16) val;
+
+	/* Test for overflow by reverse-conversion. */
+	if ((int64) result != val)
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("smallint out of range")));
+
+	PG_RETURN_INT16(result);
 }
+
 
 Datum
 float8_numeric(PG_FUNCTION_ARGS)
@@ -3365,6 +3414,68 @@ init_var_from_str(const char *str, NumericVar *dest)
 	if (decdigits != tdd)
 		pfree(decdigits);
 }
+
+
+/*
+ * set_var_from_num() -
+ *
+ *	Convert the packed db format into a variable
+ */
+/*
+static void
+set_var_from_num(Numeric num, NumericVar *dest)
+{
+	int			ndigits;
+
+	ndigits = NUMERIC_NDIGITS(num);
+
+	alloc_var(dest, ndigits);
+
+	dest->weight = NUMERIC_WEIGHT(num);
+	dest->sign = NUMERIC_SIGN(num);
+	dest->dscale = NUMERIC_DSCALE(num);
+
+	memcpy(dest->digits, NUMERIC_DIGITS(num), ndigits * sizeof(NumericDigit));
+}
+*/
+
+/*
+ * init_var_from_num() -
+ *
+ *	Convert the packed db format into a variable
+ */
+static void
+init_var_from_num(Numeric num, NumericVar *dest)
+{
+	int			ndigits;
+
+	ndigits = NUMERIC_NDIGITS(num);
+
+	init_alloc_var(dest, ndigits);
+
+	dest->weight = NUMERIC_WEIGHT(num);
+	dest->sign = NUMERIC_SIGN(num);
+	dest->dscale = NUMERIC_DSCALE(num);
+
+	memcpy(dest->digits, NUMERIC_DIGITS(num), ndigits * sizeof(NumericDigit));
+}
+
+/*
+ * init_ro_var_from_num() -
+ *
+ *	Convert the packed db format into a variable
+ */
+static void
+init_ro_var_from_num(Numeric num, NumericVar *dest)
+{
+	dest->ndigits = NUMERIC_NDIGITS(num);
+	dest->weight = NUMERIC_WEIGHT(num);
+	dest->sign = NUMERIC_SIGN(num);
+	dest->dscale = NUMERIC_DSCALE(num);
+	dest->digits = NUMERIC_DIGITS(num);
+	dest->buf = dest->ndb;
+}
+
 
 /*
  * set_var_from_var() -
@@ -5263,7 +5374,7 @@ power_var(NumericVar *base, NumericVar *exp, NumericVar *result)
 	{
 		/* exact integer, but does it fit in int? */
 		NumericVar	x;
-		int64		expval64 = 0;
+		int64		expval64;
 
 		/* must copy because numericvar_to_int8() scribbles on input */
 		init_var_from_var(exp, &x);
