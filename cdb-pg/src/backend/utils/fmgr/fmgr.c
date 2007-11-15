@@ -667,7 +667,6 @@ fmgr_security_definer(PG_FUNCTION_ARGS)
  *		Support routines for callers of fmgr-compatible functions
  *-------------------------------------------------------------------------
  */
-
 /*
  * These are for invocation of a specifically named function with a
  * directly-computed parameter list.  Note that neither arguments nor result

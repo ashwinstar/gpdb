@@ -1473,7 +1473,7 @@ tuplesort_gettupleslot_pos(Tuplesortstate *state, TuplesortPos *pos,
 {
 	MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
 	SortTuple	stup;
-	bool		should_free;
+	bool		should_free = false;
 
 	if (!tuplesort_gettuple_common_pos(state, pos, forward, &stup, &should_free))
 		stup.tuple = NULL;

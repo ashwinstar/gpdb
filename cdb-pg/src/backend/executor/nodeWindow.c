@@ -1655,7 +1655,7 @@ hasTuplesInFrame(WindowStatePerLevel level_state,
 /*
  * freeTransValue -- release the space allocated for the given transition value.
  */
-static inline void
+static void
 freeTransValue(Datum *transValue,
 			   bool transTypeByVal,
 			   bool *transValueIsNull,

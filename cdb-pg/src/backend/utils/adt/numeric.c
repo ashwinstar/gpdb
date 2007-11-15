@@ -2162,7 +2162,7 @@ numeric_text(PG_FUNCTION_ARGS)
  * ----------------------------------------------------------------------
  */
 
-static ArrayType *
+static inline ArrayType *
 do_numeric_accum_decum(ArrayType *transarray, Numeric newval, bool accum)
 {
 	Datum	   *transdatums;

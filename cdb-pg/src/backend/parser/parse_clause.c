@@ -113,7 +113,7 @@ typedef struct winref_check_ctx
 void
 transformFromClause(ParseState *pstate, List *frmList)
 {
-	ListCell   *fl;
+	ListCell   *fl = NULL;
 
 	/*
 	 * The grammar will have produced a list of RangeVars, RangeSubselects,
@@ -124,10 +124,10 @@ transformFromClause(ParseState *pstate, List *frmList)
 	foreach(fl, frmList)
 	{
 		Node	   *n = lfirst(fl);
-		RangeTblEntry *rte;
-		int			rtindex;
-		List	   *relnamespace;
-		Relids		containedRels;
+		RangeTblEntry *rte = NULL;
+		int			rtindex = 0;
+		List	   *relnamespace = NULL;
+		Relids		containedRels = NULL;
 
 		n = transformFromClauseItem(pstate, n,
 									&rte,

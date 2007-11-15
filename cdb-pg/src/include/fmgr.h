@@ -449,6 +449,7 @@ extern int no_such_variable
  */
 extern Datum DirectFunctionCall1(PGFunction func, Datum arg1);
 extern Datum DirectFunctionCall2(PGFunction func, Datum arg1, Datum arg2);
+
 extern Datum DirectFunctionCall3(PGFunction func, Datum arg1, Datum arg2,
 					Datum arg3);
 extern Datum DirectFunctionCall4(PGFunction func, Datum arg1, Datum arg2,
