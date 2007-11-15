@@ -6098,6 +6098,8 @@ wingroupmutator(Node *node, void *context)
 		TargetEntry *te;
 		Var *v;
 		int attno = 0;
+		const int name_len = 50;
+		char *colname = (char *)palloc(name_len);
 
 		/*
 		 * If there's already a TargetEntry for this node, just return
@@ -6119,8 +6121,10 @@ wingroupmutator(Node *node, void *context)
 		}
 
 		attno = list_length(ctx->subtlist) + 1;
-		te = makeTargetEntry((Expr *)node, attno,
-							 FigureColname(node), false);
+		Assert (attno < name_len - 4);
+		sprintf(colname, "att_%d", attno);
+		
+		te = makeTargetEntry((Expr *)node, attno, colname, false);
 		/* seems like we should see if we need to update sort group settings */
 		ctx->subtlist = lappend(ctx->subtlist, te);
 		
@@ -6216,10 +6220,17 @@ wingroupmutator(Node *node, void *context)
 			new_var = makeVar(1, attno,
 							  exprType((Node *)subte->expr),
 							  exprTypmod((Node *)subte->expr), 0);
+			if (subte->resname == NULL)
+			{
+				const int name_len = 50;
+				subte->resname = (char *)palloc(name_len);
+				Assert (attno < name_len - 4);
+				sprintf(subte->resname, "att_%d", attno);
+			}
 			
 			te = makeTargetEntry((Expr *)new_var,
 								 subte->resno,
-								 te->resname,
+								 subte->resname,
 								 te->resjunk);
 			te->ressortgroupref = subte->ressortgroupref;
 
@@ -6509,6 +6520,7 @@ transformGroupedWindows(Query *qry)
 	/* do aliases */
 	a = makeNode(Alias);
 	a->aliasname = pstrdup("Window");
+	a->colnames = NIL;
 
 	mapsize = 8;
 	sortrefmap = (Index *)palloc0(mapsize * sizeof(Index));
@@ -6575,6 +6587,7 @@ transformGroupedWindows(Query *qry)
 		resname = te->resname ? te->resname : "?column?";
 		a->colnames = lappend(a->colnames, makeString(pstrdup(resname)));
 	}
+	rte->alias = a;
 	rte->eref = a;
 	
 	/* we forget the old rtable by overwriting it with this new RTE */

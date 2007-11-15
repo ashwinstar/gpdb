@@ -7422,10 +7422,10 @@ from sale group by rollup(cn,dt);
  dt     | date   | 
  sum    | bigint | 
 View definition:
- SELECT "Window".dt, sum("Window"."?column?") OVER( 
- ORDER BY "Window"."grouping" RANGE "Window"."grouping" PRECEDING) AS sum
-   FROM ( SELECT sale.dt, grouping(sale.cn) AS "grouping", sale.cn
+ SELECT "Window".dt, sum("Window".att_3) OVER( 
+ ORDER BY "Window".att_2 RANGE "Window".att_2 PRECEDING) AS sum
+   FROM ( SELECT sale.dt, grouping(sale.cn) AS att_2, sale.cn AS att_3
            FROM sale
-          GROUP BY ROLLUP (sale.cn, sale.dt));
+          GROUP BY ROLLUP (sale.cn, sale.dt)) "Window"(dt, att_2, att_3);
 
 drop view v1;
