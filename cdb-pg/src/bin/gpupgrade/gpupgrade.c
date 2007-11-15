@@ -281,6 +281,7 @@ downgrade_catalog_schema(config_t *conf)
 
 	/* pg_resqueue */
 	downgrade_pg_resqueue(conf);
+
 }
 
 /*
@@ -457,8 +458,18 @@ run_upgrade_commands(config_t *conf)
 								   "pg_amproc", /*"pg_window", "pg_exttable", */
 								   NULL};
 	/* update serialised strings */
-	run_query(conf, 0, "update pg_rewrite set ev_action = "
-			  "gp_str2node2str(ev_action), ev_qual = gp_str2node2str(ev_qual);");
+	if (upgrade)
+	{
+		run_query(conf, 0, "update pg_rewrite set ev_action = "
+			 "gp_str2node2str(ev_action), ev_qual = gp_str2node2str(ev_qual);");
+	}
+	else
+	{
+		run_query(conf, 0, "update pg_rewrite set ev_action = "
+			  "gp_str2node2str(ev_action), ev_qual = gp_str2node2str(ev_qual) "
+				  "WHERE ev_class != 'pg_stat_activity'::regclass;");
+
+	}
 	run_query(conf, 0, "update pg_type set typdefaultbin = "
 			  "gp_str2node2str(typdefaultbin) WHERE "
 			  "typdefaultbin NOTNULL;");
@@ -511,14 +522,66 @@ run_upgrade_commands(config_t *conf)
 static void
 post_upgrade(config_t *conf)
 {
-	run_query(conf, 0, "drop function gp_oid_update(oid, oid, tid, oid);");
-	run_query(conf, 0, "drop function gp_str2node2str(text);");
-	if (!upgrade)
-		run_query(conf, 0, "drop function gp_invalidate_syscache();");
 
 	/* must be done after 64 bit upgrade */
 	if (upgrade)
 		upgrade_pg_resqueue(conf);
+	/* drop and readd pg_stat_activity */
+	if (upgrade)
+	{
+		run_query(conf, 0, "DROP VIEW pg_catalog.pg_stat_activity;");
+		run_query(conf, 0, "CREATE VIEW pg_catalog.pg_stat_activity AS "
+   		 	"SELECT "
+            "D.oid AS datid, "
+            "D.datname AS datname, "
+            "pg_stat_get_backend_pid(S.backendid) AS procpid, "
+            "pg_stat_get_backend_session_id(S.backendid) AS sess_id, "
+            "pg_stat_get_backend_userid(S.backendid) AS usesysid, "
+            "U.rolname AS usename, "
+            "pg_stat_get_backend_activity(S.backendid) AS current_query, "
+            "pg_stat_get_backend_waiting(S.backendid) AS waiting, "
+            "pg_stat_get_backend_activity_start(S.backendid) AS query_start, "
+            "pg_stat_get_backend_start(S.backendid) AS backend_start, "
+            "pg_stat_get_backend_client_addr(S.backendid) AS client_addr, "
+            "pg_stat_get_backend_client_port(S.backendid) AS client_port "
+		    "FROM pg_database D,  "
+            "(SELECT pg_stat_get_backend_idset() AS backendid) AS S, "
+            "pg_authid U  "
+		    "WHERE pg_stat_get_backend_dbid(S.backendid) = D.oid AND "
+            "pg_stat_get_backend_userid(S.backendid) = U.oid;");
+		run_query(conf, 0, "REVOKE ALL on pg_catalog.pg_stat_activity FROM public;");
+	}
+	else
+	{
+			run_query(conf, 0, "DROP VIEW pg_catalog.pg_stat_activity;");
+			run_query(conf, 0, "CREATE VIEW pg_catalog.pg_stat_activity AS "
+   		 	"SELECT "
+            "D.oid AS datid, "
+            "D.datname AS datname, "
+            "pg_stat_get_backend_pid(S.backendid) AS procpid, "
+            "pg_stat_get_backend_userid(S.backendid) AS usesysid, "
+            "U.rolname AS usename, "
+            "pg_stat_get_backend_activity(S.backendid) AS current_query, "
+            "pg_stat_get_backend_waiting(S.backendid) AS waiting, "
+            "pg_stat_get_backend_activity_start(S.backendid) AS query_start, "
+            "pg_stat_get_backend_start(S.backendid) AS backend_start, "
+            "pg_stat_get_backend_client_addr(S.backendid) AS client_addr, "
+            "pg_stat_get_backend_client_port(S.backendid) AS client_port "
+		    "FROM pg_database D,  "
+            "(SELECT pg_stat_get_backend_idset() AS backendid) AS S, "
+            "pg_authid U  "
+		    "WHERE pg_stat_get_backend_dbid(S.backendid) = D.oid AND "
+            "pg_stat_get_backend_userid(S.backendid) = U.oid;");
+			run_query(conf, 0, "REVOKE ALL on pg_catalog.pg_stat_activity FROM public;");
+
+		run_query(conf, 0, "update pg_rewrite set ev_action = "
+		  "gp_str2node2str(ev_action), ev_qual = gp_str2node2str(ev_qual)"
+		  " WHERE ev_class = 'pg_stat_activity'::regclass;");
+	}
+	run_query(conf, 0, "drop function gp_oid_update(oid, oid, tid, oid);");
+	run_query(conf, 0, "drop function gp_str2node2str(text);");
+	if (!upgrade)
+		run_query(conf, 0, "drop function gp_invalidate_syscache();");
 }
 
 static void
