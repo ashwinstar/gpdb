@@ -549,7 +549,7 @@ post_upgrade(config_t *conf)
             "pg_authid U  "
 		    "WHERE pg_stat_get_backend_dbid(S.backendid) = D.oid AND "
             "pg_stat_get_backend_userid(S.backendid) = U.oid;");
-		run_query(conf, 0, "REVOKE ALL on pg_catalog.pg_stat_activity FROM public;");
+		run_query(conf, 0, "grant select on pg_catalog.pg_stat_activity to public;");
 	}
 	else
 	{
@@ -572,7 +572,7 @@ post_upgrade(config_t *conf)
             "pg_authid U  "
 		    "WHERE pg_stat_get_backend_dbid(S.backendid) = D.oid AND "
             "pg_stat_get_backend_userid(S.backendid) = U.oid;");
-			run_query(conf, 0, "REVOKE ALL on pg_catalog.pg_stat_activity FROM public;");
+		run_query(conf, 0, "grant select on pg_catalog.pg_stat_activity to public;");
 
 		run_query(conf, 0, "update pg_rewrite set ev_action = "
 		  "gp_str2node2str(ev_action), ev_qual = gp_str2node2str(ev_qual)"
