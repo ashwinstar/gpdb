@@ -150,6 +150,7 @@ mgmtcopy :
 copylibs :
 	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep gcc | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi	
 	if [ -f $(CURDIR)/krb5/lib/libk5crypto.so.3 ] ; then cp -p $(CURDIR)/krb5/lib/libk5crypto.so.3 $(INSTLOC)/lib ; fi
+	if [ -f $(CURDIR)/krb5/lib/libgssapi_krb5.so.2 ] ; then cp -p $(CURDIR)/krb5/lib/libgssapi_krb5.so.2 $(INSTLOC)/lib ; fi
 	if [ -f $(CURDIR)/openldap/lib/libldap_r-2.3.so.0 ] ; then cp -p $(CURDIR)/openldap/lib/libldap_r-2.3.so.0 $(INSTLOC)/lib ; fi
 	if [ -f $(CURDIR)/openldap/lib/libldap-2.3.so.0 ] ; then cp -p $(CURDIR)/openldap/lib/libldap-2.3.so.0 $(INSTLOC)/lib ; fi
 	if [ -f $(CURDIR)/openldap/lib/liblber-2.3.so.0 ] ; then cp -p $(CURDIR)/openldap/lib/liblber-2.3.so.0 $(INSTLOC)/lib ; fi
