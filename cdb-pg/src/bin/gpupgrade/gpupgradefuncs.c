@@ -32,6 +32,7 @@
 #include "storage/lwlock.h"
 #include "storage/sinvaladt.h" /* for cache invalidation */
 #include "storage/buf.h"
+#include "utils/builtins.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
 
@@ -167,8 +168,18 @@ gp_str31_2node2str(PG_FUNCTION_ARGS)
 	text *instr = PG_GETARG_TEXT_P(0);
 	text *outstr;
 	
-	outstr = str2node2str(instr, false);
-   	
+	PG_TRY();
+	{
+		outstr = str2node2str(instr, false);
+	}
+	PG_CATCH();
+	{
+		elog(NOTICE, "could not downgrade string %s",
+			 DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(instr))));
+		outstr = instr;
+	}
+   	PG_END_TRY();
+
 	PG_RETURN_TEXT_P(outstr);
 }
 
