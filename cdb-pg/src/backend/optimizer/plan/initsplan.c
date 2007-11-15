@@ -319,18 +319,18 @@ deconstruct_recurse(PlannerInfo *root, Node *jtnode, bool below_outer_join,
 	{
 		JoinExpr   *j = (JoinExpr *) jtnode;
 		Relids		leftids = NULL;
-		Relids      rightids = NULL;
-		Relids      left_inners,
-					right_inners,
-					nonnullable_rels,
-					ojscope;
+		Relids		rightids = NULL;
+		Relids		left_inners = NULL;
+		Relids		right_inners = NULL;
+		Relids		nonnullable_rels;
+		Relids		ojscope;
 		List	   *leftjoinlist,
 				   *rightjoinlist;
 		OuterJoinInfo *ojinfo;
         ListCell   *cell;
-        ListCell   *qual;
+		ListCell   *qual;
 
-        /*
+		/*
 		 * Order of operations here is subtle and critical.  First we recurse
 		 * to handle sub-JOINs.  Their join quals will be placed without
 		 * regard for whether this level is an outer join, which is correct.
@@ -351,8 +351,9 @@ deconstruct_recurse(PlannerInfo *root, Node *jtnode, bool below_outer_join,
 				rightjoinlist = deconstruct_recurse(root, j->rarg,
 													below_outer_join,
 													&rightids, &right_inners);
-				/* Inner join adds no restrictions for quals */
+				*qualscope = bms_union(leftids, rightids);
 				*inner_join_rels = *qualscope;
+				/* Inner join adds no restrictions for quals */
 				nonnullable_rels = NULL;
 				break;
 			case JOIN_LEFT:
@@ -362,6 +363,7 @@ deconstruct_recurse(PlannerInfo *root, Node *jtnode, bool below_outer_join,
 				rightjoinlist = deconstruct_recurse(root, j->rarg,
 													true,
 													&rightids, &right_inners);
+				*qualscope = bms_union(leftids, rightids);
 				*inner_join_rels = bms_union(left_inners, right_inners);
 				nonnullable_rels = leftids;
 				break;
@@ -372,9 +374,10 @@ deconstruct_recurse(PlannerInfo *root, Node *jtnode, bool below_outer_join,
 				rightjoinlist = deconstruct_recurse(root, j->rarg,
 													true,
 													&rightids, &right_inners);
+				*qualscope = bms_union(leftids, rightids);
 				*inner_join_rels = bms_union(left_inners, right_inners);
 				/* each side is both outer and inner */
-				nonnullable_rels = bms_union(leftids, rightids);
+				nonnullable_rels = *qualscope;
 				break;
 			case JOIN_RIGHT:
 				/* notice we switch leftids and rightids */
@@ -384,6 +387,7 @@ deconstruct_recurse(PlannerInfo *root, Node *jtnode, bool below_outer_join,
 				rightjoinlist = deconstruct_recurse(root, j->rarg,
 													below_outer_join,
 													&leftids, &left_inners);
+				*qualscope = bms_union(leftids, rightids);
 				*inner_join_rels = bms_union(left_inners, right_inners);
 				nonnullable_rels = leftids;
 				break;
@@ -409,12 +413,16 @@ deconstruct_recurse(PlannerInfo *root, Node *jtnode, bool below_outer_join,
         {
             List       *sub_joinlist;
 		    Relids		sub_qualscope = NULL;
+            Relids      sub_inners;
 
 		    sub_joinlist = deconstruct_recurse(root, lfirst(cell),
                                                below_outer_join ||
                                                     (j->jointype != JOIN_INNER),
-										       &sub_qualscope, NULL);
+										       &sub_qualscope,
+                                               &sub_inners);
 		    rightids = bms_add_members(rightids, sub_qualscope);
+            *qualscope = bms_add_members(*qualscope, sub_qualscope);
+            *inner_join_rels = bms_add_members(*inner_join_rels, rightids);
             switch (j->jointype)
             {
                 case JOIN_INNER:
@@ -428,8 +436,6 @@ deconstruct_recurse(PlannerInfo *root, Node *jtnode, bool below_outer_join,
                     Assert(0);
             }
         }
-
-        *qualscope = bms_union(leftids, rightids);
 
 		/*
 		 * For an OJ, form the OuterJoinInfo now, because we need the OJ's
@@ -626,6 +632,7 @@ make_outerjoininfo(PlannerInfo *root,
 		 * rel in the lower OJ's min_righthand, not its whole syn_righthand.
 		 */
 		if (bms_overlap(left_rels, otherinfo->syn_righthand) &&
+			bms_overlap(clause_relids, otherinfo->syn_righthand) &&
 			!bms_overlap(strict_relids, otherinfo->min_righthand))
 		{
 			min_lefthand = bms_add_members(min_lefthand,
@@ -638,7 +645,7 @@ make_outerjoininfo(PlannerInfo *root,
 		 * For a lower OJ in our RHS, if our join condition does not use the
 		 * lower join's RHS and the lower OJ's join condition is strict, we
 		 * can interchange the ordering of the two OJs; otherwise we must
-		 * add lower OJ's full syntactic relset to min_righthand. 
+		 * add lower OJ's full syntactic relset to min_righthand.
 		 *
 		 * Here, we have to consider that "our join condition" includes
 		 * any clauses that syntactically appeared above the lower OJ and
