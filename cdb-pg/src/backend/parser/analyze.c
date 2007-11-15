@@ -6122,7 +6122,7 @@ wingroupmutator(Node *node, void *context)
 
 		attno = list_length(ctx->subtlist) + 1;
 		Assert (attno < name_len - 4);
-		sprintf(colname, "att_%d", attno);
+		snprintf(colname, name_len, "att_%d", attno);
 		
 		te = makeTargetEntry((Expr *)node, attno, colname, false);
 		/* seems like we should see if we need to update sort group settings */
@@ -6225,7 +6225,7 @@ wingroupmutator(Node *node, void *context)
 				const int name_len = 50;
 				subte->resname = (char *)palloc(name_len);
 				Assert (attno < name_len - 4);
-				sprintf(subte->resname, "att_%d", attno);
+				snprintf(subte->resname, name_len, "att_%d", attno);
 			}
 			
 			te = makeTargetEntry((Expr *)new_var,
