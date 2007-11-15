@@ -603,14 +603,14 @@ CHK_STATUS
 if [ $INTERACTIVE ];then
 	PROMPT_CONTINUE
 fi
-LOCK_ACCESS
+#LOCK_ACCESS
 if [ "$UPGRADE_TO" == "$NEW_VERSION" ];then
 	UPGRADE_ARRAY
 else
 	DOWNGRADE_ARRAY
 fi
 $RM -f $PARALLEL_STATUS_FILE
-UNLOCK_ACCESS
+#UNLOCK_ACCESS
 
 # After upgrade, we need to restart without special start options
 # i.e., allow_system_table_mods = yes.
