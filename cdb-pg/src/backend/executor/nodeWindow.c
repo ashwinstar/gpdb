@@ -3882,13 +3882,12 @@ advanceEdgeForRange(WindowStatePerLevel level_state,
 	if (is_lead_edge)
 		level_state->lead_ready = false;
 
+	/*
+	 * Compute the new edge value. Note that this value can be
+	 * NULL.
+	 */
 	new_edge_value = ExecEvalExpr(edge_range_expr, econtext,
 								  &(new_edge_value_isnull), NULL);
-
-	if (new_edge_value_isnull)
-		ereport(ERROR,
-				(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
-				 errmsg("RANGE parameter cannot contain NULL value")));
 
 	if (!ntuplestore_acc_tell(edge_reader, NULL))
 	{
