@@ -124,7 +124,9 @@ ExecNestLoop(NestLoopState *node)
 		ExecReScan(innerPlan, econtext);
 		ResetExprContext(econtext);
 
-		node->nl_Untouched = false;
+		/* MPP-2235: nl_Untouched isn't a good name, something like
+		 * "nl_innerSquelchNeeded would be better */
+		node->nl_Untouched = false; /* we will never need to Squelch the inner, we've fetched it all */
 		node->prefetch_inner = false;
 		node->reset_inner = false;
 	}
@@ -158,6 +160,8 @@ ExecNestLoop(NestLoopState *node)
 					pfree(node->outer_q);
 					node->outer_q = NULL;
 
+					if (node->nl_Untouched)
+						ExecSquelchNode(innerPlan);
 					return NULL;
 				}
 			}
@@ -185,7 +189,7 @@ ExecNestLoop(NestLoopState *node)
 			econtext->ecxt_outertuple = outerTupleSlot;
 			node->nl_NeedNewOuter = false;
 			node->nl_MatchedOuter = false;
-			node->nl_Untouched = false; /* CDB */
+			/* MPP-2235: we leave nl_untouched alone here */
 
 			/*
 			 * now rescan the inner plan
