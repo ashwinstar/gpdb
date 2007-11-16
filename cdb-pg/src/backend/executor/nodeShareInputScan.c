@@ -74,7 +74,12 @@ ShareInputNext(ShareInputScanState *node)
 		if(snEntry)
 		{
 			snState = (PlanState *) snEntry->shareState;
-			slot = ExecProcNode(snState);
+			if(snState)
+				slot = ExecProcNode(snState);
+			else
+			{
+				Assert(share_type == SHARE_MATERIAL_XSLICE || share_type == SHARE_SORT_XSLICE);
+			}
 		}
 
 		if(share_type == SHARE_MATERIAL_XSLICE)
