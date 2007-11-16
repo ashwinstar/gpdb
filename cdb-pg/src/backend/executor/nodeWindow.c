@@ -3144,6 +3144,15 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 	}
 }
 
+/*
+ * cmp_deformed_tuple -- compare two given arrays of Datums.
+ *
+ * If is_equal is true, this function returns true when these two Datums are
+ * equal.
+ *
+ * If is_equal is false, this function return true if Datum a is ordered
+ * before Datum b. The ASC/DESC ordering is defined by 'asc_cols'.
+ */
 static bool
 cmp_deformed_tuple(Datum *a, bool *a_nulls, Datum *b, bool *b_nulls,
 				   bool *asc_cols, int ncols, FmgrInfo *ltfuncs, 
@@ -3196,11 +3205,27 @@ cmp_deformed_tuple(Datum *a, bool *a_nulls, Datum *b, bool *b_nulls,
 
 		if (isNull1 != isNull2)
 		{
-			result = false;		/* one null and one not; they aren't equal */
-			break;
+			if (is_equal)
+			{
+				result = false;		/* one null and one not; they aren't equal */
+				break;
+			}
+			else
+			{
+				/*
+				 * Currently, we assume NULLS LAST. In the future, when we
+				 * add support NULLS first to the window order-by clause,
+				 * we should take care of NULLS FIRST as well.
+				 */
+				if (isNull1)
+					result = false;
+				else
+					result = true;
+				break;
+			}
 		}
 
-		if (isNull1)
+		else if (isNull1)
 			continue;			/* both are null, treat as equal */
 
 		/* 
@@ -3380,13 +3405,12 @@ forwardEdgeForRange(WindowStatePerLevel level_state,
 	if (is_lead_edge)
 		level_state->lead_ready = false;
 
+	/*
+	 * Compute the new edge value. Note that this value could be
+	 * NULL.
+	 */
 	new_edge_value = ExecEvalExpr(edge_range_expr, econtext,
 								  &(new_edge_value_isnull), NULL);
-
-	if (new_edge_value_isnull)
-		ereport(ERROR,
-				(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
-				 errmsg("RANGE parameter cannot contain NULL value")));
 
 	if (!ntuplestore_acc_tell(edge_reader, NULL))
 		ntuplestore_acc_seek_first(edge_reader);
