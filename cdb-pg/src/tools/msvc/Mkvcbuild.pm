@@ -159,6 +159,7 @@ sub mkvcbuild
     $pgtypes->AddDefine('FRONTEND');
     #$pgtypes->AddReference($postgres,$libpgport);
     $pgtypes->AddReference($libpgport);
+    $pgtypes->UseDef('src\interfaces\ecpg\pgtypeslib\pgtypeslib.def');
     $pgtypes->AddIncludeDir('src\interfaces\ecpg\include');
 
     my $libecpg =$solution->AddProject('libecpg','dll','interfaces','src\interfaces\ecpg\ecpglib');
@@ -168,13 +169,15 @@ sub mkvcbuild
     $libecpg->AddIncludeDir('src\port');
     $libecpg->AddLibrary('wsock32.lib');
     $libecpg->AddLibrary($config->{'pthread'} . '\pthreadVC2.lib');
+    $libecpg->UseDef('src\interfaces\ecpg\ecpglib\ecpglib.def');
     $libecpg->AddReference($libpq,$pgtypes,$libpgport);
 
     my $libecpgcompat =
       $solution->AddProject('libecpg_compat','dll','interfaces','src\interfaces\ecpg\compatlib');
     $libecpgcompat->AddIncludeDir('src\interfaces\ecpg\include');
     $libecpgcompat->AddIncludeDir('src\interfaces\libpq');
-    $libecpgcompat->AddReference($pgtypes,$libecpg);
+    $libecpgcompat->UseDef('src\interfaces\ecpg\compatlib\compatlib.def');
+    $libecpgcompat->AddReference($pgtypes,$libecpg,$libpgport);
 
     my $ecpg = $solution->AddProject('ecpg','exe','interfaces','src\interfaces\ecpg\preproc');
     $ecpg->AddIncludeDir('src\interfaces\ecpg\include');
@@ -197,6 +200,8 @@ sub mkvcbuild
 
     # src/bin
     my $initdb = AddSimpleFrontend('initdb', 1);
+    $initdb->AddIncludeDir('src\interfaces\libpq');
+    $initdb->AddDefine('FRONTEND');
     $initdb->AddLibrary('wsock32.lib ws2_32.lib');
 
     my $pgconfig = AddSimpleFrontend('pg_config');

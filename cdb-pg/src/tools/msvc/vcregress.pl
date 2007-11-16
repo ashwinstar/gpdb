@@ -1,7 +1,7 @@
 
 # -*-perl-*- hey - emacs - this is a perl file
 
-# $PostgreSQL: pgsql/src/tools/msvc/vcregress.pl,v 1.1 2007/09/23 21:52:56 adunstan Exp $
+# $PostgreSQL: pgsql/src/tools/msvc/vcregress.pl,v 1.6 2007/11/13 22:49:47 tgl Exp $
 
 use strict;
 
@@ -36,7 +36,7 @@ else
 # use a capital C here because config.pl has $config
 my $Config = -e "release/postgres/postgres.exe" ? "Release" : "Debug";
 
-copy("$Config/refint/defint.dll","contrib/spi");
+copy("$Config/refint/refint.dll","contrib/spi");
 copy("$Config/autoinc/autoinc.dll","contrib/spi");
 copy("$Config/regress/regress.dll","src/test/regress");
 
@@ -139,7 +139,7 @@ sub ecpgcheck
         "../../../../$Config/pg_regress_ecpg/pg_regress_ecpg",
         "--psqldir=../../../$Config/psql",
         "--dbname=regress1,connectdb",
-        "--createrole=connectuser,connectdb",
+        "--create-role=connectuser,connectdb",
         "--schedule=${schedule}_schedule",
         "--multibyte=SQL_ASCII",
         "--load-language=plpgsql",
@@ -188,7 +188,9 @@ sub contribcheck
     my $mstat = 0;
     foreach my $module (glob("*"))
     {
-        next unless -d "$module/sql" && -d "$module/expected" && -f "Makefile";
+        next unless -d "$module/sql" && 
+			-d "$module/expected" && 
+			(-f "$module/Makefile" || -f "$module/GNUmakefile");
         chdir $module;
 		print "============================================================\n";
         print "Checking $module\n";
@@ -211,7 +213,7 @@ sub fetchTests
 
     my $handle;
     open($handle,"<Makefile")
-      || open($handle,"<GNUMakefile")
+      || open($handle,"<GNUmakefile")
       || die "Could not open Makefile";
     local($/) = undef;
     my $m = <$handle>;

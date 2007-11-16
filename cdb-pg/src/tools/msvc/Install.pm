@@ -10,11 +10,27 @@ use warnings;
 use Carp;
 use File::Basename;
 use File::Copy;
+use File::Find ();
 
 use Exporter;
 our (@ISA,@EXPORT_OK);
 @ISA = qw(Exporter);
 @EXPORT_OK = qw(Install);
+
+sub lcopy
+{
+	my $src = shift;
+	my $target = shift;
+
+        if (-f $target)
+        {
+           unlink $target || confess "Could not delete $target\n";
+        }
+
+	copy($src,$target)
+          || confess "Could not copy $src to $target\n";
+
+}
 
 sub Install
 {
@@ -42,21 +58,32 @@ sub Install
         'doc/contrib', 'symbols');
 
     CopySolutionOutput($conf, $target);
-    copy($target . '/lib/libpq.dll', $target . '/bin/libpq.dll');
-    CopySetOfFiles('config files', "*.sample", $target . '/share/');
+    lcopy($target . '/lib/libpq.dll', $target . '/bin/libpq.dll');
+    my $sample_files = [];
+	File::Find::find({wanted => 
+						  sub { /^.*\.sample\z/s && 
+									push(@$sample_files, $File::Find::name); 
+							} 
+				  }, 
+					 "src" );
+    CopySetOfFiles('config files', $sample_files , $target . '/share/');
     CopyFiles(
         'Import libraries',
         $target .'/lib/',
         "$conf\\", "postgres\\postgres.lib","libpq\\libpq.lib", "libecpg\\libecpg.lib", "libpgport\\libpgport.lib"
     );
-    CopySetOfFiles('timezone names', 'src\timezone\tznames\*.txt',$target . '/share/timezonesets/');
+    CopySetOfFiles('timezone names', 
+				   [ glob('src\timezone\tznames\*.txt') ] ,
+				   $target . '/share/timezonesets/');
     CopyFiles(
         'timezone sets',
         $target . '/share/timezonesets/',
         'src/timezone/tznames/', 'Default','Australia','India'
     );
-    CopySetOfFiles('BKI files', "src\\backend\\catalog\\postgres.*", $target .'/share/');
-    CopySetOfFiles('SQL files', "src\\backend\\catalog\\*.sql", $target . '/share/');
+    CopySetOfFiles('BKI files', [ glob("src\\backend\\catalog\\postgres.*") ], 
+				   $target .'/share/');
+    CopySetOfFiles('SQL files', [ glob("src\\backend\\catalog\\*.sql") ], 
+				   $target . '/share/');
     CopyFiles(
         'Information schema data',
         $target . '/share/',
@@ -94,8 +121,7 @@ sub CopyFiles
         print ".";
         $f = $basedir . $f;
         die "No file $f\n" if (!-f $f);
-        copy($f, $target . basename($f))
-          || carp "Could not copy $f to $target". basename($f). " to $target". basename($f) . "\n";
+        lcopy($f, $target . basename($f));
     }
     print "\n";
 }
@@ -103,26 +129,17 @@ sub CopyFiles
 sub CopySetOfFiles
 {
     my $what = shift;
-    my $spec = shift;
+    my $flist = shift;
     my $target = shift;
-    my $silent = shift;
-    my $norecurse = shift;
-    my $D;
-
-    my $subdirs = $norecurse?'':'/s';
-    print "Copying $what" unless ($silent);
-    open($D, "cmd /c dir /b $subdirs $spec |") || croak "Could not list $spec\n";
-    while (<$D>)
+    print "Copying $what" if $what;
+    foreach (@$flist)
     {
-        chomp;
         next if /regress/; # Skip temporary install in regression subdir
         next if /ecpg.test/; # Skip temporary install in regression subdir
         my $tgt = $target . basename($_);
         print ".";
-        my $src = $norecurse?(dirname($spec) . '/' . $_):$_;
-        copy($src, $tgt) || carp "Could not copy $src to $tgt: $!\n";
+        lcopy($_, $tgt) || croak "Could not copy $_: $!\n";
     }
-    close($D);
     print "\n";
 }
 
@@ -163,8 +180,8 @@ sub CopySolutionOutput
             # Static lib, such as libpgport, only used internally during build, don't install
             next;
         }
-        copy("$conf\\$pf\\$pf.$ext","$target\\$dir\\$pf.$ext") || carp "Could not copy $conf\\$pf\\$pf.$ext to $target\\$dir\\$pf.$ext\n";
-        copy("$conf\\$pf\\$pf.pdb","$target\\symbols\\$pf.pdb") || carp "Could not copy $pf.pdb\n";
+        lcopy("$conf\\$pf\\$pf.$ext","$target\\$dir\\$pf.$ext") || carp "Could not copy $conf\\$pf\\$pf.$ext to $target\\$dir\\$pf.$ext\n";
+        lcopy("$conf\\$pf\\$pf.pdb","$target\\symbols\\$pf.pdb") || carp "Could not copy $pf.pdb\n";
         print ".";
     }
     print "\n";
@@ -248,7 +265,7 @@ sub CopyContribFiles
               if ($d eq 'spi');
             foreach my $f (split /\s+/,$flist)
             {
-                copy('contrib/' . $d . '/' . $f,$target . '/share/contrib/' . basename($f))
+                lcopy('contrib/' . $d . '/' . $f,$target . '/share/contrib/' . basename($f))
                   || carp("Could not copy file $f in contrib $d");
                 print '.';
             }
@@ -266,7 +283,7 @@ sub CopyContribFiles
               if ($d eq 'spi');
             foreach my $f (split /\s+/,$flist)
             {
-                copy('contrib/' . $d . '/' . $f, $target . '/doc/contrib/' . $f)
+                lcopy('contrib/' . $d . '/' . $f, $target . '/doc/contrib/' . $f)
                   || carp("Could not copy file $f in contrib $d");
                 print '.';
             }
@@ -310,7 +327,7 @@ sub CopyIncludeFiles
         $target . '/include/',
         'src/include/', 'postgres_ext.h', 'pg_config.h', 'pg_config_os.h', 'pg_config_manual.h'
     );
-    copy('src/include/libpq/libpq-fs.h', $target . '/include/libpq/')
+    lcopy('src/include/libpq/libpq-fs.h', $target . '/include/libpq/')
       || carp 'Could not copy libpq-fs.h';
 
     CopyFiles('Libpq headers', $target . '/include/', 'src/interfaces/libpq/', 'libpq-fe.h');
@@ -325,7 +342,7 @@ sub CopyIncludeFiles
         $target . '/include/internal/',
         'src/include/', 'c.h', 'port.h', 'postgres_fe.h'
     );
-    copy('src/include/libpq/pqcomm.h', $target . '/include/internal/libpq/')
+	lcopy('src/include/libpq/pqcomm.h', $target . '/include/internal/libpq/')
       || carp 'Could not copy pqcomm.h';
 
     CopyFiles(
@@ -333,7 +350,9 @@ sub CopyIncludeFiles
         $target . '/include/server/',
         'src/include/', 'pg_config.h', 'pg_config_os.h'
     );
-    CopySetOfFiles('', "src\\include\\*.h", $target . '/include/server/', 1, 1);
+    CopySetOfFiles('', 
+				   [ glob( "src\\include\\*.h" ) ], 
+				   $target . '/include/server/');
     my $D;
     opendir($D, 'src/include') || croak "Could not opendir on src/include!\n";
 
@@ -373,25 +392,24 @@ sub GenerateNLSFiles
 {
     my $target = shift;
     my $nlspath = shift;
-    my $D;
 
     print "Installing NLS files...";
     EnsureDirectories($target, "share/locale");
-    open($D,"cmd /c dir /b /s nls.mk|") || croak "Could not list nls.mk\n";
-    while (<$D>)
+	my @flist;
+	File::Find::find({wanted => 
+						  sub { /^nls\.mk\z/s && 
+									!                                                                       push(@flist, $File::Find::name); 	
+							} 
+				  }, "src");
+    foreach (@flist)
     {
-        chomp;
         s/nls.mk/po/;
         my $dir = $_;
         next unless ($dir =~ /([^\\]+)\\po$/);
         my $prgm = $1;
         $prgm = 'postgres' if ($prgm eq 'backend');
-        my $E;
-        open($E,"cmd /c dir /b $dir\\*.po|") || croak "Could not list contents of $_\n";
-
-        while (<$E>)
+        foreach (glob("$dir/*.po"))
         {
-            chomp;
             my $lang;
             next unless /^(.*)\.po/;
             $lang = $1;
@@ -403,9 +421,7 @@ sub GenerateNLSFiles
               && croak("Could not run msgfmt on $dir\\$_");
             print ".";
         }
-        close($E);
     }
-    close($D);
     print "\n";
 }
 
