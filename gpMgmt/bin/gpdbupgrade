@@ -401,12 +401,14 @@ DOWNGRADE_ARRAY () {
 		LOG_MSG "[INFO]:-$GPUPGRADE $UG_ARGS returned successfully" 1
 	fi
 	if [ $RUN_INITSTANDBY -ne 0 ];then
-		LOG_MSG "[INFO]:-Upgrading warm master standby, please wait..." 1
-		$GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq
-		if [ $? -ne 0 ];then
-			ERROR_EXIT "[FATAL]:-Failed to $GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq" 2
-		fi
-		LOG_MSG "[INFO]:-Completed warm master standby upgrade" 1
+		LOG_MSG "[WARN]:-Master standby cannot be recreated during downgrade, please initialize it after the downgrade has finished" 2
+#		LOG_MSG "[INFO]:-Upgrading warm master standby, please wait..." 1
+#		$GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq
+#		if [ $? -ne 0 ];then
+#			LOG_MSG "[WARN]:-Failed to $GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq" 2
+#		else
+#			LOG_MSG "[INFO]:-Completed warm master standby upgrade" 1
+#		fi
 	fi
 	LOG_MSG "[INFO]:-Securing contents of backout file to log file" 1
 	$CAT $BACKOUT_FILE >> $LOG_FILE
@@ -469,7 +471,11 @@ UPGRADE_ARRAY () {
 		LOG_MSG "[INFO]:-Upgrading warm master standby, please wait..." 1
 		$GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq
 		if [ $? -ne 0 ];then
-			LOG_MSG "[WARN]:-Failed to $GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq" 2
+			if [ $? -eq 1 ]; then
+				LOG_MSG "[WARN]:-$GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq generated warnings, please consult the log" 2
+			else
+				LOG_MSG "[WARN]:-$GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq generated errors, please consult the log" 2
+			fi
 		else
 			LOG_MSG "[INFO]:-Completed warm master standby upgrade" 1
 		fi
