@@ -33,8 +33,7 @@ on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 
 CREATE EXTERNAL WEB TABLE gpfdist_stop (x text)
-execute E'(@ps_pidfirst@ | grep gpfdist |  grep \'@abs_srcdir@/data\' | 
-grep -v grep | awk \'{print "kill "$1}\' | sh ) ; echo "stopping..."'
+execute E'(@killall@ gpfdist ) ; echo "stopping..."'
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 

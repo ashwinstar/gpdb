@@ -69,10 +69,11 @@ The tokens are:
  from the gp_configuration table and replaces all 
  instances of the token @hostname@.
 
-=item ps_pidfirst
+=item killall
 
- generate a long ps listing with the pid first, equivalent to 
- ps -axww on osx
+ generate killall command
+ pkill for solaris
+ killall for other unix OS
 
 =item gpwhich_(executable)
 
@@ -237,11 +238,13 @@ if (1)
     }
 
     my $hostexp = '\\@hostname\\@';
-    my $psexp   = '\\@ps_pidfirst\\@';
-    my $locps   = 'ps axww';
+    my $psexp   = '\\@killall\\@';
+    my $locps   = 'killall';
 
     if ($^O !~ /darwin|mac|osx|linux/i)
     {
+         $psexp = '\\@killall\\@';
+         $locps = 'pkill';
         # error!
     }
 
