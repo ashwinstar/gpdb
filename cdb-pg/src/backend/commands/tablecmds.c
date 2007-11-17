@@ -8688,7 +8688,7 @@ static Datum transformFormatOpts(char formattype, List *formatOpts)
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("HEADER available only in CSV mode")));
 	
-	if(header_line)
+	if(header_line && Gp_role == GP_ROLE_DISPATCH)
 		ereport(NOTICE,
 				(errmsg("HEADER means that each one of the data files "
 				        "has a header row. Also, if you are using a file "
