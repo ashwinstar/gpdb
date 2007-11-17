@@ -250,8 +250,11 @@ format 'csv' ( quote as '"');
 -- "
 -- no header option because we specified it for gpfdist_csv...
 select count(*) from ext_whois;
-ERROR:  unterminated CSV quoted field
-DETAIL: External table DUMMY_EX, line DUMMY_LINE of DUMMY_LOCATION
+  count 
+ -------
+     23
+ (1 row)
+ 
 -- --------------------------------------
 -- some negative tests
 -- --------------------------------------

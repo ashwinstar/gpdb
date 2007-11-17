@@ -5342,9 +5342,18 @@ CopyReadAttributesCSV(CopyState cstate, char *nulls, int *attr_offsets,
 						 errmsg("extra data after last expected column")));
 			
 			if (in_quote)
-				ereport(ERROR,
-						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-						 errmsg("unterminated CSV quoted field")));
+			{
+				/* next c will usually be LF, but it could also be a quote
+				 * char if the last line of the file has no LF, and we don't 
+				 * want to error out in this case. 
+				 */
+				c = cstate->line_buf.data[cstate->line_buf.cursor];
+				if(c != quotec)
+					ereport(ERROR,
+							(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+							 errmsg("unterminated CSV quoted field")));
+				
+			}
 
 			if (lnext(cur) != NULL)
 				ereport(ERROR,
