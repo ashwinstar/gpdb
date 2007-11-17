@@ -1262,8 +1262,9 @@ from sale group by rollup(cn,dt);
 \d v1
 drop view v1;
 
--- MPP-2194
+-- MPP-2194, MPP-2236
 drop table if exists win_test;
 create table win_test (i int, j int);
 insert into win_test values (0,0), (1,null), (2, null), (3,null);
 select i,j,sum(i) over(order by j range 1 preceding) from win_test; --mvd 2->3
+select i,j,sum(j) over(order by i rows 1 preceding) from win_test;

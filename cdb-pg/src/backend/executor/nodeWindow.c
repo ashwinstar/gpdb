@@ -63,6 +63,18 @@
  */
 typedef struct WindowValue
 {
+	/*
+	 * Total number of not NULL argument for the function
+	 * associated with this value.
+	 *
+	 * This is only used for aggregate functions that have
+	 * inverse preliminary functions. For this kind of functions,
+	 * when their argument values are all NULLs in the current
+	 * frame, their result value should be NULL as well.
+	 * This value is used to tell if all argument values in
+	 * the current frame are all NULLs.
+	 */
+	uint64              numNotNulls;
 	Datum				value;
 	bool				valueIsNull;
 } WindowValue;
@@ -281,6 +293,12 @@ typedef struct WindowStatePerFunctionData
 	 * The initial value is -1.
 	 */
 	int                 serial_index;
+
+	/*
+	 * The total number of not NULL arguments for this function
+	 * so far.
+	 */
+	uint64              numNotNulls;
 } WindowStatePerFunctionData;
 
 #define FRAME_TRAIL_ROWS 	0
@@ -459,7 +477,8 @@ static void initializePartition(WindowState *wstate);
 static bool checkOutputReady(WindowState *wstate);
 static TupleTableSlot *fetchTupleSlotThroughBuf(WindowState *wstate);
 static int initFcinfo(WindowRefExprState *wrxstate, FunctionCallInfoData *fcinfo,
-					  WindowStatePerFunction funcstate, ExprContext *econtext);
+					  WindowStatePerFunction funcstate, ExprContext *econtext,
+					  bool check_nulls);
 static void adjustEdges(WindowFrameBuffer buffer, WindowState *wstate);
 static TupleTableSlot *fetchCurrentRow(WindowState *wstate);
 static TupleTableSlot *fetchTupleSlotThroughBuf(WindowState *wstate);
@@ -477,7 +496,7 @@ static void init_frames(WindowState *wstate);
 static void deform_window_tuple(TupleTableSlot *slot, int nattrs, AttrNumber *attnums, 
 								Datum *values, bool *nulls, MemoryContext ctx);
 static void add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
-							   ExprContext *econtext);
+							   ExprContext *econtext, bool check_nulls);
 static bool hasTuplesInFrame(WindowStatePerLevel level_state,
 							 WindowState *wstate);
 static Datum last_value_internal(WindowRefExprState *wrxstate, bool *isnull);
@@ -852,10 +871,24 @@ serializeFuncs(WindowStatePerLevel level_state,
 							   p_serial_entry, p_max_size,
 							   p_len, (written_pos - *p_serial_entry));
 		}
-		/* the function which has an inverse preliminary function */
+		/* the function which has an inverse preliminary function or
+		 * preliminary function.
+		 */
 		else if (OidIsValid(funcstate->invprelimfn_oid) ||
 				 OidIsValid(funcstate->prelimfn_oid))
 		{
+			/*
+			 * Store number of not NULLS when the function has a 
+			 * inverse preliminary function.
+			 */
+			if (OidIsValid(funcstate->invprelimfn_oid))
+			{
+				written_pos = ensureSpace(p_serial_entry, p_max_size,
+										  written_pos, sizeof(uint64));
+				memcpy(written_pos, &funcstate->numNotNulls, sizeof(uint64));
+				written_pos += sizeof(uint64);
+			}
+			
 			written_pos = 
 				serializeValue(funcstate->aggTransValue, 
 							   funcstate->aggTransValueIsNull,
@@ -1000,6 +1033,16 @@ deserializeFuncs(WindowStatePerLevel level_state,
 			 * The function which has an inverse preliminary function.
 			 */
 			value =	list_nth(func_values, funcstate->serial_index);
+
+			/* Read number of not nulls if this function has a preliminary
+			 * function.
+			 */
+			if (OidIsValid(funcstate->invprelimfn_oid))
+			{
+				memcpy(&(value->numNotNulls), read_pos, sizeof(uint64));
+				read_pos += sizeof(uint64);
+			}
+
 			read_pos = deserializeValue(read_pos, value,
 										funcstate->aggTranstypeByVal,
 										funcstate->aggTranstypeLen);
@@ -1881,7 +1924,7 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 					Assert(found);
 					
 					econtext->ecxt_scantuple = wstate->spare;
-					add_tuple_to_trans(funcstate, wstate, econtext);
+					add_tuple_to_trans(funcstate, wstate, econtext, false);
 					
 					/* Reset back to its orginial value */
 					econtext->ecxt_scantuple = slot;
@@ -1974,7 +2017,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 				ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
 												  wstate->spare);
 				econtext->ecxt_scantuple = wstate->spare;
-				add_tuple_to_trans(funcstate, wstate, econtext);
+				add_tuple_to_trans(funcstate, wstate, econtext, false);
 
 				/* Reset back to its orginial value */
 				econtext->ecxt_scantuple = slot;
@@ -1984,6 +2027,9 @@ computeFrameValue(WindowStatePerLevel level_state,
 		/* Aggregate functions with inverse preliminary functions. */
 		else if (funcstate->isAgg && OidIsValid(funcstate->invprelimfn_oid))
 		{
+			uint64 trail_num_not_nulls = 0;
+			uint64 lead_num_not_nulls = 0;
+			
 			if (!read_edge_value)
 			{
 				read_edge_value = true;
@@ -2045,11 +2091,13 @@ computeFrameValue(WindowStatePerLevel level_state,
 			{
 				fcinfo.arg[1] = trail_value->value;
 				fcinfo.argnull[1] = trail_value->valueIsNull;
+				trail_num_not_nulls = trail_value->numNotNulls;
 			}
 			else
 			{
 				fcinfo.arg[1] = funcstate->aggInitValue;
 				fcinfo.argnull[1] = funcstate->aggInitValueIsNull;
+				trail_num_not_nulls = 0;
 			}
 
 			freeTransValue(&funcstate->final_aggTransValue,
@@ -2075,6 +2123,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 
 					funcstate->final_aggNoTransValue = false;
 					funcstate->final_aggShouldFree = true;
+					lead_num_not_nulls = lead_value->numNotNulls;
 				}
 				else
 				{
@@ -2087,10 +2136,12 @@ computeFrameValue(WindowStatePerLevel level_state,
 						funcstate->aggTransValueIsNull;
 					funcstate->final_aggNoTransValue = false;
 					funcstate->final_aggShouldFree = true;
+					lead_num_not_nulls = funcstate->numNotNulls;
 				}
 				MemoryContextSwitchTo(oldcxt);
 			
-				if (has_tuples)
+				if (has_tuples &&
+					(lead_num_not_nulls - trail_num_not_nulls > 0))
 					funcstate->final_aggTransValue =
 						invoke_agg_trans_func(funcstate->invprelimfn,
 											  funcstate->invprelimfn.fn_nargs - 1,
@@ -2155,7 +2206,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 				FunctionCallInfoData fcinfo;
 
 				argno = initFcinfo(funcstate->wrxstate, &fcinfo, funcstate,
-								   econtext);
+								   econtext, false);
 
 				InitFunctionCallInfoData(fcinfo, 
 										 &funcstate->windowfn,
@@ -2977,10 +3028,12 @@ advanceKeyLevelState(WindowState *wstate, int min_level)
 
 static int
 initFcinfo(WindowRefExprState *wrxstate, FunctionCallInfoData *fcinfo,
-		   WindowStatePerFunction funcstate, ExprContext *econtext)
+		   WindowStatePerFunction funcstate, ExprContext *econtext,
+		   bool check_nulls)
 {
 	ListCell   *lcarg;
 	int argno;
+	bool  has_nulls = false;
 			
 	/* If this is an agg, the first arg will be the trans value */
 	if (funcstate->isAgg)
@@ -2993,20 +3046,26 @@ initFcinfo(WindowRefExprState *wrxstate, FunctionCallInfoData *fcinfo,
 		ExprState  *argstate = (ExprState *) lfirst(lcarg);
 		fcinfo->arg[argno] = ExecEvalExpr(argstate, econtext,
 										  fcinfo->argnull + argno, NULL);
+		if (fcinfo->argnull[argno])
+			has_nulls = true;
 		argno++;
 	}
+
+	if (check_nulls && !has_nulls)
+		funcstate->numNotNulls++;
+
 	return argno;
 }
 
 static void
 add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
-				   ExprContext *econtext)
+				   ExprContext *econtext, bool check_nulls)
 {
 	int argno;
 	FunctionCallInfoData fcinfo;
 			
 	/* Evaluate function arguments, save in fcinfo. */
-	argno = initFcinfo(funcstate->wrxstate, &fcinfo, funcstate, econtext);
+	argno = initFcinfo(funcstate->wrxstate, &fcinfo, funcstate, econtext, check_nulls);
 
 	if (funcstate->isAgg)
 	{
@@ -3075,7 +3134,7 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 		if (funcstate->trivial_frame)
 		{
 			econtext->ecxt_scantuple = wstate->curslot;
-			add_tuple_to_trans(funcstate, wstate, econtext);
+			add_tuple_to_trans(funcstate, wstate, econtext, false);
 
 			if (funcstate->isAgg)
 			{
@@ -4741,7 +4800,7 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 						WindowStatePerFunction funcstate =
 							(WindowStatePerFunction) lfirst(lc);
 						if (funcstate->winpeercount)
-							add_tuple_to_trans(funcstate, wstate, econtext);
+							add_tuple_to_trans(funcstate, wstate, econtext, false);
 					}
 				}
 
@@ -4820,7 +4879,7 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 					econtext->ecxt_scantuple = slot;
 					econtext->ecxt_outertuple = slot; /* XXX really need this? */
 					
-					add_tuple_to_trans(funcstate, wstate, econtext);
+					add_tuple_to_trans(funcstate, wstate, econtext, true);
 
 					level_state->agg_filled = true;
 				}
