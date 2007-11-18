@@ -1742,7 +1742,6 @@ mergeruns(Tuplesortstate *state)
 	LogicalTape *lt = NULL;
 
 	Assert(state->status == TSS_BUILDRUNS);
-	AssertImply(state->memtupcount == 0, state->currentRun <= 1);
 
 	/*
 	 * If we produced only one initial run (quite likely if the total data
