@@ -77,6 +77,7 @@ static void mylog(int level, const char *fmt, ...) __attribute__((format(printf,
 static PGresult *run_query(config_t *conf, char is_async, const char *str, 
 						   ...) __attribute__((format(printf, 3, 4)));
 static void setQDexttables(config_t *conf);
+static void readd_pg_resqueue_cts(config_t *conf);
 
 /* save QD external tables catalog for each database, for later use */
 static void
@@ -85,7 +86,12 @@ setQDexttables(config_t *conf)
 	PGresult *res;
 	int i;
 
-	res = run_query(conf, 0, "select quote_ident(datname) from pg_database "
+	/* 
+	 * Do not use quote_ident on datname as PQsetdbLogin() doesn't expect
+	 * to see " in it's db argument. It will still handle mixed case
+	 * database just fine.
+	 */
+	res = run_query(conf, 0, "select datname from pg_database "
 					"WHERE datname <> 'template0';");
 
 	exttable_cts = malloc(sizeof(*exttable_cts) * (PQntuples(res) + 1));
@@ -242,10 +248,23 @@ addexttablerows(config_t *conf)
 static void
 downgrade_pg_resqueue(config_t *conf)
 {
-	run_query(conf, 0, "delete from pg_attribute where "
-			  "attnum > 4 AND attrelid = '%u';", ResQueueRelationId);
-	run_query(conf, 0, "update pg_class set relnatts = '4' "
-			 "WHERE oid = '%u'", ResQueueRelationId);
+	{
+		if (strcmp(conf->dbname, "template1") == 0)
+		{
+			pg_resqueue_cts = run_query(conf, 0, 
+						"delete from pg_catalog.pg_resqueue"
+						" returning rsqname, rsqcountlimit, "
+						"rsqcostlimit, rsqovercommit, oid;");
+		}
+		mylog(UINFO, "found %u resqueues, countlimit = %s", 
+			  PQntuples(pg_resqueue_cts), 
+			  PQgetvalue(pg_resqueue_cts, 0, 1));
+		run_query(conf, 0, "delete from pg_attribute where "
+				  "attnum > 4 AND attrelid = '%u';", ResQueueRelationId);
+		run_query(conf, 0, "update pg_class set relnatts = '4' "
+				 "WHERE oid = '%u'", ResQueueRelationId);
+		readd_pg_resqueue_cts(conf);
+	}
 }
 
 /* 
@@ -305,15 +324,19 @@ upgrade_pg_resqueue(config_t *conf)
 	 * will not be updated in other databases. So, we just use raw
 	 * SQL.
 	 */
-	run_query(conf, 0, "insert into pg_attribute (attrelid, attname, "
+	if (1)
+	{
+		run_query(conf, 0, "insert into pg_attribute (attrelid, attname, "
 				  "atttypid, attstattarget, attlen, attnum, attndims, "
 				  "attcacheoff, atttypmod, attbyval, attstorage, attalign, "
 				  "attnotnull, atthasdef, attisdropped, attislocal, "
 				  "attinhcount) values('pg_catalog.pg_resqueue'::regclass, "
 				  "'rsqignorecostlimit', 'float4'::regtype, '-1', '4', '5', "
 				  "'0', '-1', '-1', 't', 'p', 'i', 't', 'f', 'f', 't', '0');");
-	run_query(conf, 0, "update pg_class set relnatts = relnatts + 1 WHERE "
+		run_query(conf, 0, "update pg_class set relnatts = relnatts + 1 WHERE "
 				  "oid = 'pg_catalog.pg_resqueue'::regclass;");
+	}
+
 }
 
 static void
@@ -321,6 +344,9 @@ readd_pg_resqueue_cts(config_t *conf)
 {
 	int i;
 
+	if (strcmp(conf->dbname, "template1") != 0)
+		return;
+			   
 	/* add the rows */
 	mylog(UDEBUG, "re-adding '%u' pg_resqueue_ctsqueue entries",
 		  PQntuples(pg_resqueue_cts));
@@ -335,7 +361,7 @@ readd_pg_resqueue_cts(config_t *conf)
 				 	   "(rsqname, rsqcountlimit, rsqcostlimit, "
 					   "rsqovercommit%s) "
 				  	   "VALUES(", upgrade ? ", rsqignorecostlimit" : "");
-		for (j = 0; j < PQnfields(pg_resqueue_cts); j++)
+		for (j = 0; j < PQnfields(pg_resqueue_cts) - 1; j++)
 		{
 			int len = PQgetlength(pg_resqueue_cts, i, j);
 			
@@ -369,7 +395,12 @@ readd_pg_resqueue_cts(config_t *conf)
 			}
 		}
 
-		strncat(query, upgrade ? ", 0);" : ");", sizeof(query) - len);
+		strncat(query, upgrade ? ", 0)" : ")", sizeof(query) - len);
+		len += 2;
+		snprintf(query, sizeof(query), "%s  returning "
+				 "gp_oid_update(oid, '%s'::oid, ctid, "
+				 "'pg_catalog.pg_resqueue'::regclass::oid)",
+				 query, PQgetvalue(pg_resqueue_cts, i, j));
 		
 		run_query(conf, 0, query);
 	}
@@ -578,7 +609,6 @@ post_upgrade(config_t *conf)
 		  "gp_str2node2str(ev_action), ev_qual = gp_str2node2str(ev_qual)"
 		  " WHERE ev_class = 'pg_stat_activity'::regclass;");
 	}
-	run_query(conf, 0, "drop function gp_oid_update(oid, oid, tid, oid);");
 	run_query(conf, 0, "drop function gp_str2node2str(text);");
 	if (!upgrade)
 		run_query(conf, 0, "drop function gp_invalidate_syscache();");
@@ -1187,22 +1217,30 @@ main(int argc, char **argv)
 
 		/* 
 		 * Do it only on the master. We must do it after the upgrade commands
-		 * because resqueue uses float4.
+		 * because resqueue uses float4. The downgrade case is handled
+		 * else where because we must do it before changing the float4 type.
 		 */
-		if (i == 0)
-			pg_resqueue_cts = run_query(segdbs[i], 0, 
+		if (upgrade)
+		{
+			if (segdbs[i]->content == -1 && 
+				strcmp(segdbs[i]->dbname, "template1") == 0)
+			{
+				pg_resqueue_cts = run_query(segdbs[i], 0, 
 								"delete from pg_catalog.pg_resqueue"
 								" returning rsqname, rsqcountlimit, "
-								"rsqcostlimit, rsqovercommit;");
+								"rsqcostlimit, rsqovercommit, oid;");
+				mylog(UINFO, "found %u resqueues, countlimit = %s", 
+					  PQntuples(pg_resqueue_cts), 
+					  PQgetvalue(pg_resqueue_cts, 0, 1));
+			}
+		}
 		check_ok(segdbs);		
+
 		post_upgrade(segdbs[i]);
 	}
 	
 	for (i = 0; i < segdbcount; i++)
 	{ 	
-		/* master */
-		if (i == 0)
-			readd_pg_resqueue_cts(segdbs[i]);
 		
 		if (strcmp(segdbs[i]->dbname, "template1") != 0)
 			continue;
@@ -1263,7 +1301,12 @@ main(int argc, char **argv)
 
 	for (i = 0; i < segdbcount; i++)
 	{
-		/* upgrade each host, not every database */
+		/* upgrade each host, not every database, upgrade case only */
+		if (strcmp(segdbs[i]->dbname, "template1") == 0 && 
+			segdbs[i]->content == -1 && upgrade)
+		{
+			readd_pg_resqueue_cts(segdbs[i]);
+		}
 		if (!upgrade)
 		{
 			if (strcmp(segdbs[i]->dbname, "template1") == 0)
@@ -1273,6 +1316,8 @@ main(int argc, char **argv)
 					  "gp_downgrade_controlfile();");
 
 		}
+		run_query(segdbs[i], 0, 
+				  "drop function gp_oid_update(oid, oid, tid, oid);");
 		PQfinish(segdbs[i]->conn);
 	}
 	mylog(UINFO, "done");

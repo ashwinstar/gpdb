@@ -302,8 +302,10 @@ CHK_STATUS () {
 
 # If in upgrade mode, wind the master back to 3.0
 ROLLBACK_STARTUP() {
-	LOG_MSG "[INFO]:-Rolling back master control file upgrade" 1
-	$GPCONTROLMOD --catversion $OLD_VERSION $MASTER_DATA_DIRECTORY >> $LOG_FILE 2>&1
+	if [ "$UPGRADE_TO" == "$NEW_VERSION" ] && [ $PGCONTROL_UPGRADE -eq 1 ]; then
+		LOG_MSG "[INFO]:-Rolling back master control file upgrade" 1
+		$GPCONTROLMOD --catversion $OLD_VERSION $MASTER_DATA_DIRECTORY >> $LOG_FILE 2>&1
+	fi
 }
 
 PROMPT_CONTINUE () {
