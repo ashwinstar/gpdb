@@ -181,8 +181,6 @@ MAILFILE=$SCRIPTDIR/mail_contacts
 HMAILFILE=$HOME/mail_contacts
 GPDOCDIR=${GPHOME}/docs/cli_help/
 GPSUBSCRIPTDIR=${SCRIPTDIR}/lib
-GPUPGRADE=$SCRIPTDIR/gpupgrade
-GPSYSCATBU=$SCRIPTDIR/gpsyscatbu
 #******************************************************************************
 # Greenplum Command Variables
 #******************************************************************************

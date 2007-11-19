@@ -13,7 +13,7 @@ subdir = src/bin/gpupgrade
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl, $(LIBS))
+LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl -lz -lpam -lkrb5 -lgssapi_krb5 -lcom_err -lk5crypto -lnuma -lkrb5support, $(LIBS))
 
 override CPPFLAGS := -DFRONTEND -I$(libpq_srcdir) $(CPPFLAGS)
 
@@ -46,7 +46,7 @@ pg_crc.c: $(top_srcdir)/src/backend/utils/hash/pg_crc.c
 	rm -f $@ && $(LN_S) $< .
 
 install: all installdirs
-	$(INSTALL_PROGRAM) gpupgrade$(X) '$(DESTDIR)$(bindir)'/gpupgrade$(X)
+	$(INSTALL_PROGRAM) gpupgrade$(X) '$(DESTDIR)$(bindir)'/lib/gpupgrade$(X)
 	$(INSTALL_PROGRAM) gp_controldata_mod$(X) '$(DESTDIR)$(bindir)/lib'/gp_controldata_mod$(X)
 	$(INSTALL_SHLIB) lib$(NAME)$(DLSUFFIX) '$(DESTDIR)$(pkglibdir)';
 
@@ -54,8 +54,8 @@ installdirs:
 	$(mkinstalldirs) '$(DESTDIR)$(bindir)' '$(DESTDIR)$(bindir)/lib'
 
 uninstall:
-	rm -f '$(DESTDIR)$(bindir)'/, gpupgrade$(X)
-	rm -f '$(DESTDIR)$(bindir)'/, gp_controldata_mod$(X)
+	rm -f '$(DESTDIR)$(bindir)'/lib, gpupgrade$(X)
+	rm -f '$(DESTDIR)$(bindir)'/lib, gp_controldata_mod$(X)
 
 clean distclean maintainer-clean: clean-lib
 	rm -f gpupgrade$(X) *.o pg_crc.c gp_controldata_mod

@@ -115,6 +115,7 @@ setQDexttables(config_t *conf)
 		exttable_cts[i]->res = run_query(tmpconf, 0, "select reloid, location, "
 										 "fmttype, fmtopts, command from "
 										 "pg_exttable;");
+		/* can't PQfinish() because we want to hang onto the result set */
 	}
 	exttable_cts[i] = NULL;
 
@@ -188,6 +189,13 @@ addexttablerows(config_t *conf)
 	
 	run_query(conf, 0, "truncate pg_catalog.pg_exttable;");
 	
+	/* 
+	 * We only want to add pg_exttable entries to the QD on downgrade, so
+	 * that we restore the system to the way it was during 3.0.
+	 */
+	if (!upgrade && !(conf->content == -1 && conf->isprimary == true))
+		return;
+
 	if (exttableres)
 		mylog(UDEBUG, "found %u external table entries for database %s", 
 			  PQntuples(exttableres), conf->dbname);
@@ -256,9 +264,8 @@ downgrade_pg_resqueue(config_t *conf)
 						" returning rsqname, rsqcountlimit, "
 						"rsqcostlimit, rsqovercommit, oid;");
 		}
-		mylog(UINFO, "found %u resqueues, countlimit = %s", 
-			  PQntuples(pg_resqueue_cts), 
-			  PQgetvalue(pg_resqueue_cts, 0, 1));
+		mylog(UDEBUG, "found %u resource queues", 
+			  PQntuples(pg_resqueue_cts)); 
 		run_query(conf, 0, "delete from pg_attribute where "
 				  "attnum > 4 AND attrelid = '%u';", ResQueueRelationId);
 		run_query(conf, 0, "update pg_class set relnatts = '4' "
@@ -290,7 +297,6 @@ downgrade_catalog_schema(config_t *conf)
 			 "WHERE oid = '%u'", ExtTableRelationId);
 	
 	addexttablerows(conf);
-
 	/* pg_window */
 	run_query(conf, 0, "delete from pg_attribute where "
 			 "attnum > 9 AND attrelid = '%u';", WindowRelationId);
@@ -1098,10 +1104,10 @@ main(int argc, char **argv)
 					"isprimary,"
 					"valid, hostname, port, datname from "
 					"pg_catalog.gp_configuration "
-					"cross join pg_catalog.pg_database where "
-					"dbid = 1 or content >= 0 order by content," 
+					"cross join pg_catalog.pg_database "
+					"order by content," 
 					"definedprimary desc, dbid;");
-
+	check_ok(NULL);
 	segdbcount = PQntuples(res);
 
 	/* 
@@ -1222,16 +1228,15 @@ main(int argc, char **argv)
 		 */
 		if (upgrade)
 		{
-			if (segdbs[i]->content == -1 && 
-				strcmp(segdbs[i]->dbname, "template1") == 0)
+			if (segdbs[i]->content == -1 && segdbs[i]->definedprimary == true
+				&& strcmp(segdbs[i]->dbname, "template1") == 0)
 			{
 				pg_resqueue_cts = run_query(segdbs[i], 0, 
 								"delete from pg_catalog.pg_resqueue"
 								" returning rsqname, rsqcountlimit, "
 								"rsqcostlimit, rsqovercommit, oid;");
-				mylog(UINFO, "found %u resqueues, countlimit = %s", 
-					  PQntuples(pg_resqueue_cts), 
-					  PQgetvalue(pg_resqueue_cts, 0, 1));
+				mylog(UDEBUG, "found %u resource queues", 
+					  PQntuples(pg_resqueue_cts));
 			}
 		}
 		check_ok(segdbs);		
@@ -1303,7 +1308,8 @@ main(int argc, char **argv)
 	{
 		/* upgrade each host, not every database, upgrade case only */
 		if (strcmp(segdbs[i]->dbname, "template1") == 0 && 
-			segdbs[i]->content == -1 && upgrade)
+			segdbs[i]->content == -1 && segdbs[i]->definedprimary == true
+			&& upgrade)
 		{
 			readd_pg_resqueue_cts(segdbs[i]);
 		}

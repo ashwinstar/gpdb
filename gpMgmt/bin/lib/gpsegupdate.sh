@@ -96,7 +96,7 @@ START_SEG () {
 		else
 			LOG_MSG "[INFO][$INST_COUNT]:-Upgrade $QE_NAME directory $QE_DIR version $UPGRADE_TO completed"
 			BACKOUT_COMMAND "$ECHO \"Reverting QE $QE_NAME:$QE_DIR control file to $OLD_VERSION\""
-			BACKOUT_COMMAND "$TRUSTED_SHELL $QE_NAME \"$GPCONTROLMOD --catversion $OLD_VERSION $QE_DIR\""	
+			BACKOUT_COMMAND "$TRUSTED_SHELL $QE_NAME \"${EXPORT_LIB_PATH}; $GPCONTROLMOD --catversion $OLD_VERSION $QE_DIR\""	
 		fi
 	fi
 	LOG_MSG "[INFO][$INST_COUNT]:-Starting Segment instance $QE_NAME directory $QE_DIR"

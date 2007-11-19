@@ -56,7 +56,7 @@ PARALLEL_STATUS_FILE=/tmp/${PROG_NAME}_parallel_status_file.$$
 GPSEGUPDATE=$WORKDIR/lib/gpsegupdate.sh
 PG_CONTROLDATA=$PSQLBIN/pg_controldata
 PGCONTROL_UPGRADE=1
-GPUPGRADE=$WORKDIR/gpupgrade
+GPUPGRADE=$WORKDIR/lib/gpupgrade
 OLD_VERSION="3.0"
 OLD_CAT_VERSION="200703112"
 NEW_VERSION="3.1"
@@ -96,6 +96,7 @@ USAGE () {
 		$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
 		$ECHO "      -a, don't ask to confirm binary upgrade [default:- ask]"
 		$ECHO "      -D, set log output to debug level, shows all function calls"
+		$ECHO "      -g, log SQL used in upgrade process"
 		$ECHO
 		$ECHO "      Connection options:"
 		$ECHO "      -d, <Master instance directory> name of alternative Master instance to upgrade"
@@ -294,6 +295,14 @@ CHK_STATUS () {
 	CHK_STANDBY
 	#Get details of segments in the GPDB array
 	GET_QE_DETAILS
+	# add details of standby QD
+	GET_STANDBY_DETAILS
+	ncount=${#QE_ARRAY[@]}
+	for sb in "${STANDBY_ARRAY[@]}"
+	do
+		QE_ARRAY[$ncount]=$sb
+		ncount=$[$ncount + 1]
+	done
 	#Stop the master in admin mode
 	$GPSTOP -qm -d $MASTER_DATA_DIRECTORY
 	#Checks complete, can now proceed with process
@@ -413,7 +422,7 @@ DOWNGRADE_ARRAY () {
 #		fi
 	fi
 	LOG_MSG "[INFO]:-Securing contents of backout file to log file" 1
-	$CAT $BACKOUT_FILE >> $LOG_FILE
+	$CAT $BACKOUT_FILE >> $LOG_FILE 2>/dev/null
 	$RM -f $BACKOUT_FILE
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -452,7 +461,6 @@ UPGRADE_ARRAY () {
 	fi
 	LOG_MSG "[INFO]:-Completed startup of Master instance with options $EXTRA_START_OPTS" 1
 
-
 	if [ $BACKUP -eq 1 ];then
 		CATALOG_BACKUP
 	fi
@@ -465,6 +473,7 @@ UPGRADE_ARRAY () {
 	fi
 	$GPUPGRADE $UG_ARGS >> $LOG_FILE 2>&1
 	if [ $? -ne 0 ];then
+		$GPSTOP -qa
 		ERROR_EXIT "[FATAL]:-$GPUPGRADE $UG_ARGS returned non-zero exit code" 2
 	else
 		LOG_MSG "[INFO]:-$GPUPGRADE $UG_ARGS returned successfully" 1
@@ -566,7 +575,7 @@ CATALOG_BACKUP () {
 #Check to see if we have a parameter supplied to script
 trap '$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE;$RM -f $PARALLEL_STATUS_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-	while getopts ":vq'?'!DB:Nu:l:cad:sh:p:" opt;do
+	while getopts ":vq'?'!DB:Nu:l:cad:sh:p:g" opt;do
 	case $opt in
 		v ) VERSION_INFO ;;
 		'?' ) USAGE ;;
@@ -588,6 +597,7 @@ if [ $# -ne 0 ]; then
 		s ) KEEP_ONLINE=0 ;;
 		h ) UG_ARGS="$UG_ARGS -h $OPTARG " ;;
 		p ) UG_ARGS="$UG_ARGS -p $OPTARG " ;;
+		g ) UG_ARGS="$UP_ARGS -d" ;;
 		* ) UNKNOWN_OPTION ;;
 		esac
 	done	
