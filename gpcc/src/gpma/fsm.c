@@ -13,6 +13,8 @@
 #include "fsm_node.h"
 #include "fsm_ma.h"
 #include "fsm_fts.h"
+#include "fsm_maset.h"
+#include "fsm_haset.h"
 #include "fsm_initdb.h"
 #include "fsm_start.h"
 #include "fsm_status.h"
@@ -36,6 +38,8 @@ APR_DECLARE(void) fsm_init(void)
 		 a_system_tick, 0);
 
     /* node */
+    gpcc_fsm_put(NODE_CMDSTATE, INIT_EVENT, NODE_OFF_CMDSTATE,
+		 a_node_init, 0);
     gpcc_fsm_put(NODE_OFF_CMDSTATE, TIMEUP_EVENT, NODE_SSHWAIT_CMDSTATE,
 		 a_node_ssh, 0);
     gpcc_fsm_put(NODE_SSHWAIT_CMDSTATE, SUCCESS_EVENT, NODE_CONNWAIT_CMDSTATE,
@@ -55,6 +59,8 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(NODE_ON_CMDSTATE, NET_CLOSED_EVENT, NODE_OFF_CMDSTATE, 
 		 a_node_teardown, 0);
 
+    
+
     /* ma */
     gpcc_fsm_put(MA_OFF_CMDSTATE, TIMEUP_EVENT, MA_CONNWAIT_CMDSTATE,
 		 a_ma_connect, 0);
@@ -65,46 +71,43 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(MA_ON_CMDSTATE, NET_CLOSED_EVENT, MA_OFF_CMDSTATE,
 		 a_ma_teardown);
 
+    /* ma set */
+    gpcc_fsm_put(MASET_OFF_CMDSTATE, INIT_EVENT, MASET_WAIT_CMDSTATE, 
+		 a_maset_init, 0);
+    gpcc_fsm_put(MASET_WAIT_CMDSTATE, NET_OPENED_EVENT, MASET_WAIT_CMDSTATE, 
+		 a_maset_opened, 0);
+    gpcc_fsm_put(MASET_WAIT_CMDSTATE, NET_CLOSED_EVENT, MASET_WAIT_CMDSTATE, 
+		 a_maset_wait_closed, 0);
+    gpcc_fsm_put(MASET_WAIT_CMDSTATE, SUCCESS_EVENT, MASET_READY_CMDSTATE, 
+		 a_maset_ready, 0);
+    gpcc_fsm_put(MASET_WAIT_CMDSTATE, FAILURE_EVENT, MASET_WAIT_CMDSTATE, 0);
+    gpcc_fsm_put(MASET_READY_CMDSTATE, NET_OPENED_EVENT, MASET_READY_CMDSTATE, 
+		 a_maset_opened, 0);
+    gpcc_fsm_put(MASET_READY_CMDSTATE, NET_CLOSED_EVENT, MASET_READY_CMDSTATE, 
+		 a_maset_ready_closed, 0);
+    gpcc_fsm_put(MASET_READY_CMDSTATE, SUCCESS_EVENT, MASET_READY_CMDSTATE, 0);
+    gpcc_fsm_put(MASET_READY_CMDSTATE, MASET_LEADMA_EVENT, MASET_READY_CMDSTATE, 
+		 a_maset_lead, 0);
+    gpcc_fsm_put(MASET_READY_CMDSTATE, FAILURE_EVENT, MASET_WAIT_CMDSTATE, 
+		 a_maset_failure, 0);
+
     /* lma */
     gpcc_fsm_put(LMA_OFF_CMDSTATE, INIT_EVENT, LMA_WAIT_CMDSTATE,
 		 a_lma_init, 0);
-    gpcc_fsm_put(LMA_WAIT_CMDSTATE, NET_OPENED_EVENT, LMA_WAIT_CMDSTATE,
-		 a_lma_ma_opened, 0);
-    gpcc_fsm_put(LMA_WAIT_CMDSTATE, NET_CLOSED_EVENT, LMA_WAIT_CMDSTATE,
-		 a_lma_ma_closed, 0);
+
     gpcc_fsm_put(LMA_WAIT_CMDSTATE, CONTINUE_EVENT, LMA_LEADLESS_CMDSTATE,
 		 a_lma_leadless, 0);
 
-
-    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, NET_OPENED_EVENT, LMA_LEADLESS_CMDSTATE,
-		 a_lma_ma_opened, 0);
-    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, NET_CLOSED_EVENT, LMA_LEADLESS_CMDSTATE,
-		 a_lma_ma_closed, 0);
-    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, CONTINUE_EVENT, LMA_LEADLESS_CMDSTATE, 0);
-
-    gpcc_fsm_put(LMA_VOTED_CMDSTATE, NET_OPENED_EVENT, LMA_VOTED_CMDSTATE,
-		 a_lma_ma_opened, 0);
-    gpcc_fsm_put(LMA_VOTED_CMDSTATE, NET_CLOSED_EVENT, LMA_VOTED_CMDSTATE,
-		 a_lma_ma_closed, 0);
-    gpcc_fsm_put(LMA_VOTED_CMDSTATE, CONTINUE_EVENT, LMA_VOTED_CMDSTATE, 0);
-
-    gpcc_fsm_put(LMA_VOTEME_CMDSTATE, NET_OPENED_EVENT, LMA_VOTEME_CMDSTATE,
-		 a_lma_ma_opened, 0);
-    gpcc_fsm_put(LMA_VOTEME_CMDSTATE, NET_CLOSED_EVENT, LMA_VOTEME_CMDSTATE,
-		 a_lma_ma_closed, 0);
-    gpcc_fsm_put(LMA_VOTEME_CMDSTATE, CONTINUE_EVENT, LMA_VOTEME_CMDSTATE, 0);
-
-    gpcc_fsm_put(LMA_STANDBY_CMDSTATE, NET_OPENED_EVENT, LMA_STANDBY_CMDSTATE,
-		 a_lma_ma_opened, 0);
-    gpcc_fsm_put(LMA_STANDBY_CMDSTATE, NET_CLOSED_EVENT, LMA_STANDBY_CMDSTATE,
-		 a_lma_ma_closed, 0);
-    gpcc_fsm_put(LMA_STANDBY_CMDSTATE, CONTINUE_EVENT, LMA_STANDBY_CMDSTATE, 0);
-
-    gpcc_fsm_put(LMA_LEAD_CMDSTATE, NET_OPENED_EVENT, LMA_LEAD_CMDSTATE,
-		 a_lma_ma_opened, 0);
-    gpcc_fsm_put(LMA_LEAD_CMDSTATE, NET_CLOSED_EVENT, LMA_LEAD_CMDSTATE,
-		 a_lma_ma_closed, 0);    
-    gpcc_fsm_put(LMA_LEAD_CMDSTATE, CONTINUE_EVENT, LMA_LEAD_CMDSTATE, 0);
+    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, BREAK_EVENT, LMA_LEADLESS_CMDSTATE, 
+		 a_lma_leadless, 0);
+    gpcc_fsm_put(LMA_VOTED_CMDSTATE, BREAK_EVENT, LMA_LEADLESS_CMDSTATE,
+		 a_lma_leadless, 0);
+    gpcc_fsm_put(LMA_VOTEME_CMDSTATE, BREAK_EVENT, LMA_LEADLESS_CMDSTATE,
+		 a_lma_leadless, 0);
+    gpcc_fsm_put(LMA_STANDBY_CMDSTATE, BREAK_EVENT, LMA_LEADLESS_CMDSTATE,
+		 a_lma_leadless, 0);
+    gpcc_fsm_put(LMA_LEAD_CMDSTATE, BREAK_EVENT, LMA_LEADLESS_CMDSTATE,
+		 a_lma_leadless, 0);
 
     gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_VOTE_ME_MSG_EVENT, LMA_LEADLESS_CMDSTATE,
 		 a_lma_vote_requested, 0); /* think about voting yes or no, if yes: gen SUCCESS event */
@@ -149,58 +152,44 @@ APR_DECLARE(void) fsm_init(void)
 		 a_lma_lead_failure, a_lma_leadless, 0);
 
 
+    /* ha set */
+    gpcc_fsm_put(HASET_OFF_CMDSTATE, INIT_EVENT, HASET_WAIT_CMDSTATE, 
+		 a_haset_init, 0);
+    gpcc_fsm_put(HASET_WAIT_CMDSTATE, NET_OPENED_EVENT, HASET_WAIT_CMDSTATE, 
+		 a_haset_opened, 0);
+    gpcc_fsm_put(HASET_WAIT_CMDSTATE, NET_CLOSED_EVENT, HASET_WAIT_CMDSTATE, 
+		 a_haset_closed, 0);
+    gpcc_fsm_put(HASET_WAIT_CMDSTATE, FAILURE_EVENT, HASET_WAIT_CMDSTATE, 0);
+    gpcc_fsm_put(HASET_WAIT_CMDSTATE, SUCCESS_EVENT, HASET_READY_CMDSTATE, 
+		 a_haset_ready, 0);
+
+    gpcc_fsm_put(HASET_READY_CMDSTATE, NET_OPENED_EVENT, HASET_READY_CMDSTATE, 
+		 a_haset_opened, 0);
+    gpcc_fsm_put(HASET_READY_CMDSTATE, NET_CLOSED_EVENT, HASET_READY_CMDSTATE, 
+		 a_haset_closed, 0);
+    gpcc_fsm_put(HASET_READY_CMDSTATE, FAILURE_EVENT, HASET_WAIT_CMDSTATE, 
+		 a_haset_failure, 0);
+
     /* fts */
-    /*
-    gpcc_fsm_put(FTS_CMDSTATE, ARRAY_STOP_EVENT, FTS_STOPPING_CMDSTATE,
-		 a_fts_array_stop, 0);
-    gpcc_fsm_put(FTS_CMDSTATE, ARRAY_INIT_EVENT, FTS_INITIALIZING_CMDSTATE,
-		 a_fts_array_init, 0);
-    gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, ARRAY_REPLY_MSG_EVENT, FTS_INITIALIZING_CMDSTATE,
-		 a_fts_array_init_reply, 0);
-    gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, SUCCESS_EVENT, FTS_CMDSTATE,
-		 a_fts_initialized, 0);
-    gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, FAILURE_EVENT, FTS_CMDSTATE,
-		 a_fts_failure, 0);
-    */
+
     gpcc_fsm_put(FTS_CMDSTATE, INIT_EVENT, FTS_WAIT_CMDSTATE,
 		 a_fts_init, 0);
-    gpcc_fsm_put(FTS_WAIT_CMDSTATE, NET_OPENED_EVENT, FTS_WAIT_CMDSTATE,
-		 a_fts_node_opened, 0);
-    gpcc_fsm_put(FTS_WAIT_CMDSTATE, NET_CLOSED_EVENT, FTS_WAIT_CMDSTATE,
-		 a_fts_node_closed, 0);
-    gpcc_fsm_put(FTS_EMPTY_CMDSTATE, NET_OPENED_EVENT, FTS_EMPTY_CMDSTATE,
-		 a_fts_node_opened, 0);
-    gpcc_fsm_put(FTS_EMPTY_CMDSTATE, NET_CLOSED_EVENT, FTS_EMPTY_CMDSTATE,
-		 a_fts_node_closed, 0);
-    gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, NET_OPENED_EVENT, FTS_INITIALIZING_CMDSTATE,
-		 a_fts_node_opened, 0);
-    gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, NET_CLOSED_EVENT, FTS_INITIALIZING_CMDSTATE,
-		 a_fts_node_closed, 0);
-    gpcc_fsm_put(FTS_STOPPED_CMDSTATE, NET_OPENED_EVENT, FTS_STOPPED_CMDSTATE,
-		 a_fts_node_opened, 0);
-    gpcc_fsm_put(FTS_STOPPED_CMDSTATE, NET_CLOSED_EVENT, FTS_STOPPED_CMDSTATE,
-		 a_fts_node_closed, 0);
-    gpcc_fsm_put(FTS_STOPPING_CMDSTATE, NET_OPENED_EVENT, FTS_STOPPING_CMDSTATE,
-		 a_fts_node_opened, 0);
-    gpcc_fsm_put(FTS_STOPPING_CMDSTATE, NET_CLOSED_EVENT, FTS_STOPPING_CMDSTATE,
-		 a_fts_node_closed, 0);
-    gpcc_fsm_put(FTS_RUNNING_CMDSTATE, NET_OPENED_EVENT, FTS_RUNNING_CMDSTATE,
-		 a_fts_node_opened, 0);
-    gpcc_fsm_put(FTS_RUNNING_CMDSTATE, NET_CLOSED_EVENT, FTS_RUNNING_CMDSTATE,
-		 a_fts_node_closed, 0);
-    gpcc_fsm_put(FTS_STARTING_CMDSTATE, NET_OPENED_EVENT, FTS_STARTING_CMDSTATE,
-		 a_fts_node_opened, 0);
-    gpcc_fsm_put(FTS_STARTING_CMDSTATE, NET_CLOSED_EVENT, FTS_STARTING_CMDSTATE,
-		 a_fts_node_closed, 0);
+
+    gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, BREAK_EVENT, FTS_WAIT_CMDSTATE, 0);
+    gpcc_fsm_put(FTS_STOPPED_CMDSTATE, BREAK_EVENT, FTS_WAIT_CMDSTATE, 0);
+    gpcc_fsm_put(FTS_RUNNING_CMDSTATE, BREAK_EVENT, FTS_WAIT_CMDSTATE, 0);
+    gpcc_fsm_put(FTS_STARTING_CMDSTATE, BREAK_EVENT, FTS_WAIT_CMDSTATE, 0);
+    gpcc_fsm_put(FTS_STOPPING_CMDSTATE, BREAK_EVENT, FTS_WAIT_CMDSTATE, 0);
 
     gpcc_fsm_put(FTS_WAIT_CMDSTATE, ARRAY_STATUS_EVENT, FTS_WAIT_CMDSTATE,
 		 a_fts_array_status_reply, 0);
+
+
     gpcc_fsm_put(FTS_WAIT_CMDSTATE, CONTINUE_EVENT, FTS_WAIT_CMDSTATE,
 		 a_fts_array_present, 0);
-
-
     gpcc_fsm_put(FTS_WAIT_CMDSTATE, ARRAY_ABSENT_EVENT, FTS_EMPTY_CMDSTATE,
 		 0);
+
     gpcc_fsm_put(FTS_EMPTY_CMDSTATE, ARRAY_INIT_EVENT, FTS_INITIALIZING_CMDSTATE,
 		 a_fts_array_init, 0);
     gpcc_fsm_put(FTS_EMPTY_CMDSTATE, ARRAY_START_EVENT, FTS_EMPTY_CMDSTATE,

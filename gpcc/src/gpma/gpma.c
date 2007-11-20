@@ -294,10 +294,31 @@ static void net_accepted(gpcc_net_conn_t conn,
 	return;
     }
     
-    if (from_peer->argc == 1) {
-	/* check if it is GPCC_NET_PACKET_PROTO */
-	/* This is usually a connection from another MA */
+    if (from_peer->argc == 1 && strcmp(from_peer->argv[0], GPCC_NET_PACKET_PROTO) == 0) {
+	int i, e;
+	const char *role = 0;
+	for (i = 0 ; i < from_peer->hc ; i++) {
+	    if (apr_strnatcasecmp(from_peer->hname[i], "X-GPCC-ROLE") == 0) {
+		role = from_peer->hvalue[i];
+	    }
+	}
+	if (role && apr_strnatcasecmp(role, "GPMA") == 0) {
+	    gpcc_net_header_t hdr;
+
+	    hdr.argc = 1;
+	    hdr.argv[0] = GPCC_NET_PACKET_PROTO;
+	    hdr.hc = 0;
+	    hdr.postlen = 0;
+	    if (0 != (e = gpcc_net_send_header(conn, &hdr))) {
+		gpcc_warning(FLINE, "gpcc_net_send header failed");
+	    }
+
+	    /* find the corresponding ma slot */
+
+	    return;
+	}
     }
+
 
     /* unknown protocol - reject the connection */
     gpcc_net_http_close(conn, 403, "Forbidden", "Bad protocol");
@@ -323,7 +344,7 @@ static void net_received_packet(gpcc_net_conn_t conn,
 
     if (cmdidx == 0) {
 	/* GPMA */
-	cmdidx = gpma.gpma_cmdslot->cmdidx;
+	cmdidx = gpma.lma_cmdslot->cmdidx;
     } 
 
     ev = gpcc_event_alloc(pkt->mh.type, cmdidx, sizeof(*pkt) + pkt->mh.len);
@@ -350,8 +371,7 @@ static void net_tick(apr_time_t now)
     gpcc_evqueue_put(gpma.evq, ev);
 }
 
-
-static void node_init(void)
+void node_init(void)
 {
     char node_name[100];
     const char* node;
@@ -374,7 +394,7 @@ static void node_init(void)
     for (i = 0; i < cnt; i++) {
 	sprintf(node_name, "node.%d", i);
 	node = config_get(gpma.cfg, node_name);
-	cp = gpma.node_cmdtab[i] = cmdslot_alloc(node_name, NODE_OFF_CMDSTATE);
+	cp = gpma.node_cmdtab[i] = cmdslot_alloc(node_name, NODE_CMDSTATE);
 	if (apr_tokenize_to_argv(node, &cp->u.node.hosttab, cp->pool)) {
 	    gpcc_fatal(FLINE, "Illegal format for entry '%s' in configuration", node_name);
 	}
@@ -383,6 +403,9 @@ static void node_init(void)
 	     cp->u.node.hosttab_max++) ;
 	cp->u.node.hostidx = 0;
     }
+
+    gpma.haset_cmdslot = cmdslot_alloc("HASET", HASET_OFF_CMDSTATE);
+    gpma.haset_cmdslot->u.haset.total = cnt;
 }
 
 void ma_init(void)
@@ -431,15 +454,15 @@ void ma_init(void)
 	if (! cp->u.ma.node) 
 	    gpcc_fatal(FLINE, "Illegal ma node specification: %s", ma);
     }
-}
 
-
-void lma_init(void) 
-{
+    /* MA set slot */
+    gpma.maset_cmdslot = cmdslot_alloc("MASET", MASET_OFF_CMDSTATE);
+    gpma.maset_cmdslot->u.maset.total = cnt;
 
     gpma.lma_cmdslot = cmdslot_alloc("LMA", LMA_OFF_CMDSTATE);
 
 }
+
 
 /* Main program for the daemon */
 void d_main(void)
@@ -470,16 +493,17 @@ void d_main(void)
     event_init();
 
     cmdslot_init(gpma.pool);
+
     /* GPMA slot */
     gpma.gpma_cmdslot = cmdslot_alloc("GPMA", GPMA_CMDSTATE);
 
     /* FTS slot */
     gpma.fts_cmdslot = cmdslot_alloc("FTS", FTS_CMDSTATE);
 
+    
     fsm_init();
     node_init();
     ma_init();
-    lma_init();
 
     /* create the event queue */
     evq = gpma.evq = gpcc_evqueue_create(1000, gpma.pool);
@@ -500,18 +524,26 @@ void d_main(void)
     ev = gpcc_event_alloc(INIT_EVENT, gpma.fts_cmdslot->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, ev);
 
+    /* MA */
+    /* kick of MASET slot */
+    ev = gpcc_event_alloc(INIT_EVENT, gpma.maset_cmdslot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, ev);
+
     /* kick of LMA slot */
     ev = gpcc_event_alloc(INIT_EVENT, gpma.lma_cmdslot->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, ev);
 
     /* kick off all the nodes */
-    for (i = 0; i < gpma.node_max; i++) {
-	gpma.node_cmdtab[i]->countdown = 1;
-    }
     for (i = 0; i < gpma.ma_max; i++) {
 	if (gpma.ma_cmdtab[i])
 	    gpma.ma_cmdtab[i]->countdown = 1;
     }
+
+    /* HA */
+    /* kick off HASET slot */
+    ev = gpcc_event_alloc(INIT_EVENT, gpma.haset_cmdslot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, ev);    
+
 
     /* MAIN LOOP - 
      *     - get an event from queue

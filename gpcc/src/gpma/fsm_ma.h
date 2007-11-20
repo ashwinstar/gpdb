@@ -45,7 +45,7 @@ apr_status_t a_ma_ready(gpcc_event_t *ev, void *arg)
 
     gpcc_log_info("------------------------------------------- MA %s READY", slot->cmdname);
 
-    evt = gpcc_event_alloc(NET_OPENED_EVENT, gpma.lma_cmdslot->cmdidx, strlen(slot->cmdname)+1);
+    evt = gpcc_event_alloc(NET_OPENED_EVENT, gpma.maset_cmdslot->cmdidx, strlen(slot->cmdname)+1);
     strcpy(evt->pdata, slot->cmdname);
     gpcc_evqueue_put(gpma.evq, evt);
     return 0;
@@ -59,7 +59,7 @@ apr_status_t a_ma_teardown(gpcc_event_t* ev, void* arg)
     printf("MA TEARDOWN\n");
     slot->countdown = 3;
     
-    evt = gpcc_event_alloc(NET_CLOSED_EVENT, gpma.lma_cmdslot->cmdidx, strlen(slot->cmdname)+1);
+    evt = gpcc_event_alloc(NET_CLOSED_EVENT, gpma.maset_cmdslot->cmdidx, strlen(slot->cmdname)+1);
     strcpy(evt->pdata, slot->cmdname);
     gpcc_evqueue_put(gpma.evq, evt);
     return 0;
@@ -68,40 +68,6 @@ apr_status_t a_ma_teardown(gpcc_event_t* ev, void* arg)
 
 apr_status_t a_lma_init(gpcc_event_t *ev, void *arg)
 {
-    cmdslot_t *slot = arg;
-    gpcc_event_t *evt;
-
-    slot->u.lma.nopened = 1;
-    if (gpma.ma_max == slot->u.lma.nopened) {
-	evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
-	gpcc_evqueue_put(gpma.evq, evt);
-    }
-    return 0;
-}
-
-apr_status_t a_lma_ma_opened(gpcc_event_t *ev, void *arg)
-{
-    cmdslot_t *slot = arg;
-    gpcc_event_t *evt;
-
-    slot->u.lma.nopened++;
-    if (slot->u.lma.nopened == gpma.ma_max) {
-	evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
-	gpcc_evqueue_put(gpma.evq, evt);
-    }
-    return 0;
-}
-
-apr_status_t a_lma_ma_closed(gpcc_event_t *ev, void *arg)
-{
-    cmdslot_t *slot = arg;
-    gpcc_event_t *evt;
-    
-    slot->u.lma.nopened--;
-    if (strcmp(ev->pdata, gpma.ma_unit) == 0) {
-	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
-	gpcc_evqueue_put(gpma.evq, evt);
-    }
 
     return 0;
 }
@@ -111,7 +77,7 @@ apr_status_t a_lma_leadless(gpcc_event_t *ev, void *arg)
     cmdslot_t *slot = arg;
     gpcc_event_t *evt;
 
-    if (gpma.ma_max == 1 || slot->u.lma.nopened == 1) {
+    if (gpma.ma_max == 1 /* || slot->u.lma.nopened == 1 */) {
 	/* LEADME is me */
 	evt = gpcc_event_alloc(LMA_ELECTSELF_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
@@ -185,7 +151,7 @@ apr_status_t a_lma_vote_me(gpcc_event_t *ev, void *arg)
     int nvote = 0;
     char msg[64];
 
-    if (gpma.ma_max == 1 || slot->u.lma.nopened == 1) {
+    if (gpma.ma_max == 1 /* || slot->u.lma.nopened == 1 */) {
 	gpcc_event_t *evt;
 
 	evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
@@ -319,6 +285,7 @@ apr_status_t a_lma_lead(gpcc_event_t *ev, void *arg)
     cmdslot_t *slot = arg;
     char msg[64];
     int i, e;
+    gpcc_event_t *evt;
 
     sprintf(msg, "{\"ma\" : \"%s\"}", slot->cmdname);
     for (i = 0 ; i < gpma.ma_max ; i++) {
@@ -328,6 +295,13 @@ apr_status_t a_lma_lead(gpcc_event_t *ev, void *arg)
 	    }
 	}
     }
+
+    /* kick off the nodes */
+    for (i = 0 ; i < gpma.node_max ; i++) {
+	evt = gpcc_event_alloc(INIT_EVENT, gpma.node_cmdtab[i]->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+    }
+
     return 0;
 }
 
@@ -346,6 +320,6 @@ apr_status_t a_lma_lead_failure(gpcc_event_t *ev, void *arg)
 	    }
 	}
     }
-    return 0;
 
+    return 0;
 }

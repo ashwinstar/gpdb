@@ -1,3 +1,9 @@
+apr_status_t a_node_init(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    slot->countdown = 1;
+    return 0;
+}
 
 apr_status_t a_node_ssh(gpcc_event_t* ev, void* arg)
 {
@@ -103,7 +109,7 @@ apr_status_t a_node_ready(gpcc_event_t *ev, void *arg)
     gpcc_event_t *evt;
 
     gpcc_net_tag(slot->u.node.conn, slot->cmdname);
-    evt = gpcc_event_alloc(NET_OPENED_EVENT, gpma.fts_cmdslot->cmdidx, strlen(slot->cmdname)+1);
+    evt = gpcc_event_alloc(NET_OPENED_EVENT, gpma.haset_cmdslot->cmdidx, strlen(slot->cmdname)+1);
     memcpy(evt->pdata, slot->cmdname, strlen(slot->cmdname)+1);
     gpcc_evqueue_put(gpma.evq, evt);
     gpcc_log_info("------------------------------------------- NODE %s READY", slot->cmdname);
@@ -127,7 +133,7 @@ apr_status_t a_node_teardown(gpcc_event_t* ev, void* arg)
     printf("NODE TEARDOWN\n");
     slot->countdown = 3;
     
-    evt = gpcc_event_alloc(NET_CLOSED_EVENT, gpma.fts_cmdslot->cmdidx, strlen(slot->cmdname)+1);
+    evt = gpcc_event_alloc(NET_CLOSED_EVENT, gpma.haset_cmdslot->cmdidx, strlen(slot->cmdname)+1);
     memcpy(evt->pdata, slot->cmdname, strlen(slot->cmdname)+1);
     gpcc_evqueue_put(gpma.evq, evt);
     return 0;

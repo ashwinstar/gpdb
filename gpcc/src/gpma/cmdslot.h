@@ -180,8 +180,6 @@ struct cmdslot_t {
 	} ma;
 
 	struct {
-	    int nopened;
-
 	    struct {
 		int nvote;
 		int nreplied;
@@ -192,6 +190,19 @@ struct cmdslot_t {
 		char ma[5];
 	    } voted;
 	} lma;
+
+	struct {
+	    int total;
+	    int nopened;
+	    char *leadma;
+	} maset;
+
+	struct {
+	    int total;
+	    int nopened;
+	    
+	} haset;
+	   
     } u;
 };
 

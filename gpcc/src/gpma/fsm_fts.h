@@ -222,6 +222,7 @@ static apr_status_t a_fts_init(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
+/*
 static apr_status_t a_fts_node_opened(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = _cmdslot;
@@ -247,6 +248,7 @@ static apr_status_t a_fts_node_closed(gpcc_event_t *ev, void *_cmdslot)
     }
     return 0;
 }
+*/
 
 static apr_status_t a_fts_array_start(gpcc_event_t *ev, void *_cmdslot)
 {

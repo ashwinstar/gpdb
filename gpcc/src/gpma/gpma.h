@@ -66,6 +66,9 @@ struct gpma_t {
     cmdslot_t**  ma_cmdtab;
     
     cmdslot_t *  lma_cmdslot;  /* Lead MA */
+
+    cmdslot_t *  maset_cmdslot;
+    cmdslot_t *  haset_cmdslot;
 };
 
 extern gpma_t gpma;
