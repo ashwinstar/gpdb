@@ -1,0 +1,179 @@
+COMMAND NAME: gpdbupgrade
+
+Upgrades an existing Greenplum Database 3.0 system to 3.1.
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+gpdbupgrade -u {3.1 | 3.0} [-d <master_data_directory>] [-N] [-c] 
+[-s] [-B <parallel_processes>] [-a] [-q] [-l <logfile_directory>] 
+[-D] [-?]
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+The gpdbupgrade utility upgrades an existing Greenplum Database 
+3.0 system to 3.1. It can also be used to downgrade a 3.1 system 
+back to 3.0. It updates the system catalog and the software version 
+number, but not the actual software binaries.
+
+If your Greenplum Database system has a standby master host configured, 
+the gpdbupgrade utility will not upgrade the standby master. It will 
+remove the standby master from your system configuration and then you 
+must re-add it back to your system after the upgrade is complete.
+
+To upgrade from 3.0 to 3.1 follow these general steps:
+
+1. Log in to your Greenplum master host as the Greenplum 
+   superuser (gpadmin).
+
+2. Stop your current Greenplum Database 3.0.0.x system:
+    gpstop
+
+3. Run the Greenplum Database 3.1.0.0 installer. When prompted, 
+   choose an installation location in the same base directory as 
+   your 3.0 installation. For example: 
+    /usr/local/greenplum-db-3.1.0.0
+
+4. Edit the environment of the Greenplum Database superuser 
+  (gpadmin) and make sure you are sourcing the greenplum_path.sh 
+  file for the 3.1 installation. For example change the following 
+  line in .bashrc or your chosen profile file:
+   source /usr/local/greenplum-db-3.0.0.x
+     to
+   source /usr/local/greenplum-db-3.1.0.0
+
+5. Source the environment file you just edited. For example:
+    source ~/.bashrc
+
+6. Install the 3.1.0.0 binaries on all of the segment hosts. 
+   You can tar the Greenplum installation directory, use gpscp 
+   to copy it to the segment hosts, then use gpssh to untar it at 
+   the segment hosts. For example:
+     tar -cvf /home/gpadmin/gp.tar /usr/local/greenplum-db-3.1.0.0
+     gpscp -f seghostname_file -u root /home/gpadmin/gp.tar =:/ 
+     gpssh -f seghostname_file -u root
+            => gtar --directory / -xvf /gp.tar
+            => chown -R gpadmin /usr/local/greenplum-db-3.1.0.0
+            => rm /gp.tar 
+
+7. Run the upgrade utility:
+    gpdbupgrade -u 3.1
+
+Additional steps for upgrading your standby master host for 
+systems that have master mirroring configured:
+
+8. On your standby master host, run the installer to install 
+   the 3.1.0.0 binaries. When prompted, choose an installation 
+   location in the same base directory as your 3.0 installation. 
+   For example: 
+     /usr/local/greenplum-db-3.1.0.0
+
+9. Edit the environment of the Greenplum Database superuser 
+   (gpadmin) and make sure you are sourcing the greenplum_path.sh 
+   file for the 3.1 installation. For example change the following 
+   line in .bashrc or your chosen profile file:
+     source /usr/local/greenplum-db-3.0.0.x
+       to
+     source /usr/local/greenplum-db-3.1.0.0
+
+10. Source the environment file you just edited. For example:
+      source ~/.bashrc
+
+11. Return to your primary master host machine and run the 
+    gpinitstandby utility. This will re-add the standby master 
+    host to your newly upgraded Greenplum Database system.
+      gpinitstandby -s standby_masterhost
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+-u 3.1 | 3.0
+
+Required. Specifies the version to upgrade (or downgrade) to. 
+For users currently on 3.0, you can upgrade to 3.1. For users 
+who have already upgraded to 3.1, there is also the option to 
+downgrade back to 3.0.
+
+
+-d <master_data_directory>
+
+Optional. The master host data directory. If not specified, 
+the value set for $MASTER_DATA_DIRECTORY will be used.
+
+
+-N (upgrade pg_control)
+
+Do not upgrade the pg_control files used by the write-ahead 
+log (WAL). The aim of WAL is to ensure that a log is written 
+before database records are altered. After a checkpoint has 
+been made and the log is flushed, the checkpoint’s position is 
+saved in the file pg_control. The default is to allow the 
+upgrade utility to modify pg_control.
+
+
+-c (backup catalog first)
+
+Creates a backup of the system catalog schema before performing 
+the upgrade. The default is to not back up the system catalogs.
+
+
+-s (stop system after upgrade)
+
+Shuts down Greenplum Database after the upgrade is 
+complete. The default is to leave the newly upgraded system 
+up and running.
+
+
+-B parallel_processes
+
+The number of segments to upgrade in parallel. If not specified, 
+the utility will start up to 60 parallel processes depending 
+on how many segment instances it needs to upgrade.
+
+
+-a (do not prompt)
+
+Do not prompt the user for confirmation.
+
+
+-q (no screen output)
+
+Run in quiet mode. Command output is not displayed on the 
+screen, but is still written to the log file.
+
+
+-l logfile_directory
+
+The directory to write the log file. Defaults to ~/gpAdminLogs.
+
+
+-D (debug)
+
+Sets logging level to debug.
+
+
+-? (help)
+
+Displays the online help.
+
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+
+Upgrade from Greenplum Database version 3.0 to version 3.1:
+
+gpdbupgrade -u 3.1 -d /dbfast1/gpdb-1
+
+
+*****************************************************
+SEE ALSO
+*****************************************************
+
+
+gpstop, gpinitstandby
