@@ -87,6 +87,21 @@ systems that have master mirroring configured:
     host to your newly upgraded Greenplum Database system.
       gpinitstandby -s standby_masterhost
 
+Additional steps for systems that are using external tables 
+with the gpfdist protocol:
+
+12. On your ETL host, stop all gpfdist programs. First find the 
+    gpfdist process id and then kill its process. For example:
+      ps ax | grep gpfdist (on Linux)
+      ps ef | grep gpfdist (on Solaris)
+      kill <gpfdist_pid>
+
+13. Copy the new gpfdist binary (located in $GPHOME/bin/gpfdist) 
+    from your 3.1 installation to your ETL host.
+
+14. Restart gpfdist using the new binary. For example:
+      gpfdist -d /var/load_files -p 8081 >> gpfdist.log 2>&1 & 
+
 *****************************************************
 DESCRIPTION
 *****************************************************
