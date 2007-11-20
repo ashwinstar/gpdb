@@ -1477,6 +1477,9 @@ apr_status_t gpcc_net_parse_packet(gpcc_net_packet_t** packet, const char* buf, 
     memcpy(&pkt.mh, p, sizeof(pkt.mh));
     p += sizeof(pkt.mh);
 
+    pkt.mh._reserved = ntohl(pkt.mh._reserved);
+    pkt.mh.len = ntohs(pkt.mh.len);
+
     if (pkt.mh._reserved != GPCC_NET_PACKET_MAGIC)  {
 	gpcc_warning(FLINE, "gpcc_net_parse_packet: bad magic number in packet (%x != %x)", pkt.mh._reserved, GPCC_NET_PACKET_MAGIC);
 	return APR_EINVAL;
@@ -1491,6 +1494,12 @@ apr_status_t gpcc_net_parse_packet(gpcc_net_packet_t** packet, const char* buf, 
 
     *packet = malloc(sizeof(pkt) + pkt.mh.len);
     memcpy((char *) *packet, buf, *plen);
+
+    (*packet)->mh._reserved = ntohl((*packet)->mh._reserved);
+    (*packet)->mh.type = ntohs((*packet)->mh.type);
+    (*packet)->mh.len = ntohs((*packet)->mh.len);
+    (*packet)->mh.sndidx = ntohl((*packet)->mh.sndidx);
+    (*packet)->mh.rcvidx = ntohl((*packet)->mh.rcvidx);
     return 0;
 }
 
@@ -1509,11 +1518,11 @@ apr_status_t gpcc_net_send_packet(gpcc_net_conn_t conn, int type,
 	return APR_EINVAL;
     if (! UINT16_RANGE(len))
 	return APR_EINVAL;
-    pkt.mh._reserved = GPCC_NET_PACKET_MAGIC;
-    pkt.mh.type = (apr_uint16_t) type;
-    pkt.mh.len = (apr_uint16_t) len;
-    pkt.mh.sndidx = sndidx;
-    pkt.mh.rcvidx = rcvidx;
+    pkt.mh._reserved = htonl(GPCC_NET_PACKET_MAGIC);
+    pkt.mh.type = htons((apr_uint16_t) type);
+    pkt.mh.len = htons((apr_uint16_t) len);
+    pkt.mh.sndidx = htonl(sndidx);
+    pkt.mh.rcvidx = htonl(rcvidx);
 
     datum[0].ptr = (const char*) &pkt.mh;
     datum[0].len = sizeof(pkt.mh);
