@@ -1568,6 +1568,9 @@ static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bo
 		appendPQExpBuffer(buffer, " -c gp_hashagg_spillbatch_max=%d", gp_hashagg_spillbatch_max);
 	if (gp_use_mpool != 0)
 		appendPQExpBuffer(buffer, " -c gp_use_mpool=%d", gp_use_mpool);
+	if (gp_hashjoin_bloomfilter != 0)
+		appendPQExpBuffer(buffer, " -c gp_hashjoin_bloomfilter=%d", gp_hashjoin_bloomfilter);
+
 	appendPQExpBuffer(buffer, " -c DateStyle=");
 	switch (DateStyle)
 	{

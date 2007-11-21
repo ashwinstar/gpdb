@@ -185,6 +185,9 @@ int			gp_hashagg_groups_per_bucket = 5;
 int 		gp_hashagg_spillbatch_min = 0;
 int 		gp_hashagg_spillbatch_max = 0;
 
+/* hash join to use bloom filter: default to 0, means not used */
+int 	 	gp_hashjoin_bloomfilter = 0;
+
 /* Greenplum Database Experimental Feature GUCs */
 bool		gp_enable_agg_distinct = FALSE;
 bool		gp_enable_explain_allstat = FALSE;

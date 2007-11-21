@@ -344,7 +344,9 @@ ExecHashTableCreate(Hash *node, List *hashOperators)
 
 	hashtable->buckets = (HashJoinTuple *)
 		palloc0(nbuckets * sizeof(HashJoinTuple));
-	hashtable->bloom = (uint64*) palloc0(nbuckets * sizeof(uint64));
+
+	if(gp_hashjoin_bloomfilter!=0)
+		hashtable->bloom = (uint64*) palloc0(nbuckets * sizeof(uint64));
 
 	MemoryContextSwitchTo(oldcxt);
 
@@ -643,7 +645,9 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 
 			tuple = nexttuple;
 		}
-		hashtable->bloom[i] = bloom;
+
+		if(gp_hashjoin_bloomfilter!=0)
+			hashtable->bloom[i] = bloom;
 	}
 
 #ifdef HJDEBUG
@@ -733,7 +737,9 @@ ExecHashTableInsert(HashJoinTable hashtable,
 		memcpy(HJTUPLE_MINTUPLE(hashTuple), tuple, tuple->t_len);
 		hashTuple->next = hashtable->buckets[bucketno];
 		hashtable->buckets[bucketno] = hashTuple;
-		hashtable->bloom[bucketno] |= BLOOMVAL(hashvalue);
+
+		if(gp_hashjoin_bloomfilter!=0)
+			hashtable->bloom[bucketno] |= BLOOMVAL(hashvalue);
 
 		/* Double the number of batches when too much data in hash table. */
 		if (batch->innerspace > hashtable->spaceAllowed ||
@@ -901,7 +907,7 @@ ExecScanHashBucket(HashJoinState *hjstate,
 	if (hashTuple == NULL)
     {
 	    /* if bloom filter fails, then no match - don't even bother to scan */
-	    if (0 != (hashtable->bloom[hjstate->hj_CurBucketNo] & BLOOMVAL(hashvalue)))
+		if (gp_hashjoin_bloomfilter == 0 || 0 != (hashtable->bloom[hjstate->hj_CurBucketNo] & BLOOMVAL(hashvalue)))
             hashTuple = hashtable->buckets[hjstate->hj_CurBucketNo];
     }
 	else
@@ -959,8 +965,9 @@ ExecHashTableReset(HashJoinTable hashtable)
 	/* Reallocate and reinitialize the hash bucket headers. */
 	hashtable->buckets = (HashJoinTuple *)
 		palloc0(nbuckets * sizeof(HashJoinTuple));
-	hashtable->bloom = (uint64*)
-		palloc0(nbuckets * sizeof(uint64));
+
+	if(gp_hashjoin_bloomfilter != 0)
+		hashtable->bloom = (uint64*) palloc0(nbuckets * sizeof(uint64));
 
 	hashtable->batches[hashtable->curbatch]->innerspace = 0;
 	hashtable->batches[hashtable->curbatch]->innertuples = 0;

@@ -643,6 +643,9 @@ extern int gp_hashagg_spillbatch_min;
 /* Hashagg spill: max number of spill batches */
 extern int gp_hashagg_spillbatch_max;
 
+/* Hashjoin use bloom filter */
+extern int gp_hashjoin_bloomfilter;
+
 /* Memory context mpool */
 extern int gp_use_mpool;
 
