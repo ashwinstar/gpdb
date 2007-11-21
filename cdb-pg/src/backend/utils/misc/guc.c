@@ -558,6 +558,20 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 	{
+		{"gp_enable_hashjoin_size_heuristic", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("In hash join plans, the smaller of the two inputs "
+                         "(as estimated) is used to build the hash table."),
+			gettext_noop("If false, either input could be used to build the "
+                         "hash table; the choice depends on the estimated hash "
+                         "join cost, which the planner computes for both "
+                         "alternatives.  Has no effect on outer or adaptive "
+                         "joins."),
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_enable_hashjoin_size_heuristic,
+		false, NULL, NULL
+	},
+	{
 		{"gp_enable_fallback_plan", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Plan types which are not enabled may be used when a "
                          "query would be infeasible without them."),

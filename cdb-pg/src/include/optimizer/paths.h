@@ -31,6 +31,7 @@ extern bool enable_groupagg;
 extern bool enable_nestloop;
 extern bool enable_mergejoin;
 extern bool enable_hashjoin;
+extern bool gp_enable_hashjoin_size_heuristic;          /*CDB*/
 extern bool gp_enable_fallback_plan;
 extern bool enable_geqo;
 extern int	geqo_threshold;

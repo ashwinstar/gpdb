@@ -17,9 +17,12 @@
 
 #include <math.h>
 
+#include "executor/nodeHash.h"                  /* ExecHashRowSize() */
 #include "optimizer/cost.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
+
+#include "cdb/cdbpath.h"                        /* cdbpath_rows() */
 
 
 static void sort_inner_and_outer(PlannerInfo *root, RelOptInfo *joinrel,
@@ -33,10 +36,11 @@ static void match_unsorted_outer(PlannerInfo *root, RelOptInfo *joinrel,
 static void
 hash_inner_and_outer(PlannerInfo *root,
                      RelOptInfo *joinrel,
-                     RelOptInfo *outerrel,
-                     RelOptInfo *innerrel,
+                     Path *outerpath,
+                     Path *innerpath,
                      List *restrictlist,
                      List *mergeclause_list,    /*CDB*/
+                     List *hashclause_list,     /*CDB*/
                      JoinType jointype);
 static Path *best_appendrel_indexscan(PlannerInfo *root, RelOptInfo *rel,
 						 RelOptInfo *outer_rel, JoinType jointype);
@@ -62,6 +66,7 @@ add_paths_to_joinrel(PlannerInfo *root,
 					 List *restrictlist)
 {
 	List	   *mergeclause_list = NIL;
+    List       *hashclause_list;
 
     Assert(outerrel->pathlist &&
            outerrel->cheapest_startup_path &&
@@ -121,10 +126,38 @@ add_paths_to_joinrel(PlannerInfo *root,
 	/*
 	 * 4. Consider paths where both outer and inner relations must be hashed
 	 * before being joined.
+     *
+	 * We consider both the cheapest-total-cost and cheapest-startup-cost
+	 * outer paths.  There's no need to consider any but the
+	 * cheapest-total-cost inner path, however.
 	 */
 	if (enable_hashjoin || mpp_trying_fallback_plan)
-		hash_inner_and_outer(root, joinrel, outerrel, innerrel,
-							 restrictlist, mergeclause_list, jointype);
+    {
+	    hashclause_list = hashclauses_for_join(restrictlist,
+                                               outerrel,
+                                               innerrel,
+                                               jointype);
+		if (hashclause_list)
+        {
+            hash_inner_and_outer(root,
+                                 joinrel,
+                                 outerrel->cheapest_total_path,
+                                 innerrel->cheapest_total_path,
+							     restrictlist,
+                                 mergeclause_list,
+                                 hashclause_list,
+                                 jointype);
+            if (outerrel->cheapest_startup_path != outerrel->cheapest_total_path)
+                hash_inner_and_outer(root,
+                                     joinrel,
+                                     outerrel->cheapest_startup_path,
+                                     innerrel->cheapest_total_path,
+							         restrictlist,
+                                     mergeclause_list,
+                                     hashclause_list,
+                                     jointype);
+        }
+    }
 }
 
 /*
@@ -507,7 +540,7 @@ match_unsorted_outer(PlannerInfo *root,
 		 * supports FULL JOIN, it's necessary to generate a clauseless
 		 * mergejoin path instead.
 		 */
-		if (mergeclauses == NIL || 
+		if (mergeclauses == NIL ||
             (!enable_mergejoin && !mpp_trying_fallback_plan))
 		{
 			if (jointype == JOIN_FULL)
@@ -742,8 +775,6 @@ hashclauses_for_join(List *restrictlist,
  *	  inner keys of each available hash clause.
  *
  * 'joinrel' is the join relation
- * 'outerrel' is the outer join relation
- * 'innerrel' is the inner join relation
  * 'restrictlist' contains all of the RestrictInfo nodes for restriction
  *		clauses that apply to this join
  * 'jointype' is the type of join to do
@@ -751,58 +782,60 @@ hashclauses_for_join(List *restrictlist,
 static void
 hash_inner_and_outer(PlannerInfo *root,
 					 RelOptInfo *joinrel,
-					 RelOptInfo *outerrel,
-					 RelOptInfo *innerrel,
+                     Path *outerpath,
+                     Path *innerpath,
 					 List *restrictlist,
                      List *mergeclause_list,    /*CDB*/
+                     List *hashclause_list,     /*CDB*/
 					 JoinType jointype)
 {
-	List	   *hashclauses;
+    HashPath   *hjpath;
 
 	/*
 	 * Hashjoin only supports inner and left joins.
 	 */
-    if (jointype != JOIN_INNER &&
-        jointype != JOIN_LEFT)
+    Assert(jointype == JOIN_INNER || jointype == JOIN_LEFT);
+    Assert(hashclause_list);
+
+    /*
+     * Consider hash join between the given outer path and inner path.
+     */
+    hjpath = create_hashjoin_path(root,
+								  joinrel,
+								  jointype,
+								  outerpath,
+								  innerpath,
+								  restrictlist,
+                                  mergeclause_list,
+								  hashclause_list,
+                                  false);
+    if (!hjpath)
         return;
 
-	hashclauses = hashclauses_for_join(restrictlist, outerrel, innerrel, jointype);
+    /*
+     * CDB: If gp_enable_hashjoin_size_heuristic is set, disallow inner
+     * joins where the inner rel is the larger of the two inputs.
+     *
+     * Note create_hashjoin_path() has to precede this so we can get
+     * the right jointype (in case of subquery dedup) and row count
+     * (in case Broadcast Motion is inserted above an input path).
+     */
+    if (hjpath->jpath.jointype == JOIN_INNER &&
+        gp_enable_hashjoin_size_heuristic &&
+        !mpp_trying_fallback_plan)
+    {
+        double  outersize = ExecHashRowSize(outerpath->parent->width) *
+                                cdbpath_rows(hjpath->jpath.outerjoinpath);
+        double  innersize = ExecHashRowSize(innerpath->parent->width) *
+                                cdbpath_rows(hjpath->jpath.innerjoinpath);
 
-	/* If we found any usable hashclauses, make a path */
-	if (hashclauses)
-	{
-		/*
-		 * We consider both the cheapest-total-cost and cheapest-startup-cost
-		 * outer paths.  There's no need to consider any but the
-		 * cheapest-total-cost inner path, however.
-		 */
-		Path	   *cheapest_startup_outer = outerrel->cheapest_startup_path;
-		Path	   *cheapest_total_outer = outerrel->cheapest_total_path;
-		Path	   *cheapest_total_inner = innerrel->cheapest_total_path;
+        if (outersize >= innersize)
+            add_path(root, joinrel, (Path *)hjpath);
+    }
+    else
+        add_path(root, joinrel, (Path *)hjpath);
+}                               /* hash_inner_and_outer */
 
-		add_path(root, joinrel, (Path *)
-				 create_hashjoin_path(root,
-									  joinrel,
-									  jointype,
-									  cheapest_total_outer,
-									  cheapest_total_inner,
-									  restrictlist,
-                                      mergeclause_list,
-									  hashclauses,
-                                      false));
-		if (cheapest_startup_outer != cheapest_total_outer)
-			add_path(root, joinrel, (Path *)
-					 create_hashjoin_path(root,
-										  joinrel,
-										  jointype,
-										  cheapest_startup_outer,
-										  cheapest_total_inner,
-										  restrictlist,
-                                          mergeclause_list,
-										  hashclauses,
-                                          false));
-	}
-}
 
 /*
  * best_appendrel_indexscan

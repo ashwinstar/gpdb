@@ -49,6 +49,7 @@ bool		enable_groupagg = true;
 bool		enable_nestloop = true;
 bool		enable_mergejoin = true;
 bool		enable_hashjoin = true;
+bool        gp_enable_hashjoin_size_heuristic = false;  /*CDB*/
 bool		gp_enable_fallback_plan = true;
 bool		enable_geqo = false;	/* just in case GUC doesn't set it */
 int			geqo_threshold;

@@ -372,6 +372,16 @@ static const int hprimes[] = {
 	67108913, 134217773, 268435463, 536870951, 1073741831
 };
 
+
+inline int
+ExecHashRowSize(int tupwidth)
+{
+    return HJTUPLE_OVERHEAD +
+		MAXALIGN(sizeof(MinimalTupleData)) +
+		MAXALIGN(tupwidth);
+}                               /* ExecHashRowSize */
+
+
 void
 ExecChooseHashTableSize(double ntuples, int tupwidth,
 						int *numbuckets,
@@ -393,9 +403,7 @@ ExecChooseHashTableSize(double ntuples, int tupwidth,
 	 * does not allow for any palloc overhead.	The manipulations of spaceUsed
 	 * don't count palloc overhead either.
 	 */
-	tupsize = HJTUPLE_OVERHEAD +
-		MAXALIGN(sizeof(MinimalTupleData)) +
-		MAXALIGN(tupwidth);
+	tupsize = ExecHashRowSize(tupwidth);
 	inner_rel_bytes = ntuples * tupsize;
 
 	/*
