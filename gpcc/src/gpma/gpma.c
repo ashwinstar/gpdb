@@ -140,7 +140,8 @@ static void net_opened(gpcc_net_conn_t conn,
 
     gpcc_log_info("net_opened...");
     
-    ev = gpcc_event_alloc(NET_OPENED_EVENT, cmdidx, 0);
+    ev = gpcc_event_alloc(NET_OPENED_EVENT, cmdidx, sizeof(gpcc_net_conn_t));
+    memcpy(ev->pdata, &conn, sizeof(gpcc_net_conn_t));
     gpcc_evqueue_put(gpma.evq, ev);
     return;
 }
@@ -359,7 +360,8 @@ static void net_closed(gpcc_net_conn_t conn, apr_uint64_t arg)
     gpcc_event_t *ev;
 
     if (cmdidx) {
-	ev = gpcc_event_alloc(NET_CLOSED_EVENT, cmdidx, 0);
+	ev = gpcc_event_alloc(NET_CLOSED_EVENT, cmdidx, sizeof(gpcc_net_conn_t));
+	memcpy(ev->pdata, &conn, sizeof(gpcc_net_conn_t));
 	gpcc_evqueue_put(gpma.evq, ev);
     }
 }
@@ -530,8 +532,7 @@ void d_main(void)
     gpcc_evqueue_put(gpma.evq, ev);
 
     /* kick of LMA slot */
-    ev = gpcc_event_alloc(INIT_EVENT, gpma.lma_cmdslot->cmdidx, 0);
-    gpcc_evqueue_put(gpma.evq, ev);
+    gpma.lma_cmdslot->countdown = 1;
 
     /* kick off all the nodes */
     for (i = 0; i < gpma.ma_max; i++) {

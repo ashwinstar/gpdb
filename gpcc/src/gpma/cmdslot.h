@@ -169,6 +169,7 @@ struct cmdslot_t {
 	    int hosttab_max;	/* size of hosttab */
 	    int    hostidx;
 	    char** hosttab;	/* array of IP */
+	    int opened;
 	} node;
 
 	struct {
@@ -177,9 +178,11 @@ struct cmdslot_t {
 	    const char* ma_unit;
 	    const char* node_unit;
 	    cmdslot_t* node;
+	    int opened;
 	} ma;
 
 	struct {
+	    int maset_ready;
 	    struct {
 		int nvote;
 		int nreplied;

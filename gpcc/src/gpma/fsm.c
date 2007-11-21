@@ -92,11 +92,11 @@ APR_DECLARE(void) fsm_init(void)
 		 a_maset_failure, 0);
 
     /* lma */
-    gpcc_fsm_put(LMA_OFF_CMDSTATE, INIT_EVENT, LMA_WAIT_CMDSTATE,
+    gpcc_fsm_put(LMA_OFF_CMDSTATE, TIMEUP_EVENT, LMA_LEADLESS_CMDSTATE,
 		 a_lma_init, 0);
 
-    gpcc_fsm_put(LMA_WAIT_CMDSTATE, CONTINUE_EVENT, LMA_LEADLESS_CMDSTATE,
-		 a_lma_leadless, 0);
+    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, CONTINUE_EVENT, LMA_LEADLESS_CMDSTATE,
+		 a_lma_maset_ready, 0);
 
     gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, BREAK_EVENT, LMA_LEADLESS_CMDSTATE, 
 		 a_lma_leadless, 0);
@@ -120,6 +120,8 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, FAILURE_EVENT, LMA_LEADLESS_CMDSTATE, 
 		 a_lma_leadless, 0);
 
+    gpcc_fsm_put(LMA_VOTED_CMDSTATE, CONTINUE_EVENT, LMA_VOTED_CMDSTATE,
+		 a_lma_maset_ready, 0);
     gpcc_fsm_put(LMA_VOTED_CMDSTATE, LMA_VOTE_ME_MSG_EVENT, LMA_VOTED_CMDSTATE,
 		 a_lma_reject, 0); /* we voted for another ma, reject this. */
     gpcc_fsm_put(LMA_VOTED_CMDSTATE, LMA_VOTE_WIN_MSG_EVENT, LMA_VOTED_CMDSTATE,
