@@ -322,6 +322,17 @@ static void zap(conncb_t* pconn, gpcc_net_conn_t conn)
 {
     gpcc_spin_secure(&pconn->spin);
     if (pconn->conn == conn) {
+	if (pconn->tag) {
+	    int found, idx;
+
+	    gpcc_spin_secure(&net.tagtab_spin);
+	    idx = tagtab_find(pconn->tag, &found);
+	    if (0 <= idx && idx < net.tagmax && found && net.tagtab[idx] == pconn)
+		tagtab_remove(idx);
+	    gpcc_spin_release(&net.tagtab_spin);
+	}
+	pconn->tag = 0;
+
 	pconn->conn = 0;
 	event_del(&pconn->ev);
 	if (pconn->sock) {
@@ -329,6 +340,7 @@ static void zap(conncb_t* pconn, gpcc_net_conn_t conn)
 	    closesocket(pconn->sock);
 	    pconn->sock = 0;
 	}
+
 	if (pconn->pool) {
 	    apr_pool_destroy(pconn->pool);
 	    pconn->pool = 0;
@@ -606,7 +618,6 @@ static void do_ready(int fd, short event, void* arg)
     if (0 != (event & EV_WRITE)) {
 	buf_t* out = pconn->to_peer.buf;
 	int    nb  = out->top - out->bot;
-
 	TPR(("do_ready EV_WRITE\n"));
 	if (nb > 0) {
 	    const int n = send(fd, out->byte + out->bot, nb, 0);
@@ -1129,6 +1140,13 @@ apr_status_t gpcc_net_tag(gpcc_net_conn_t conn,
 	    tagtab_remove(idx);
     }
     pconn->tag = 0;
+
+    if (!tag) {
+	spin2 = gpcc_spin_release(spin2);
+	spin1 = gpcc_spin_release(spin1);
+	return 0;
+    }
+
     idx = tagtab_find(tag, &found);
     if (found) {
 	e = APR_EEXIST;
