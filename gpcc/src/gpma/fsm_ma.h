@@ -64,8 +64,11 @@ apr_status_t a_ma_ready(gpcc_event_t *ev, void *arg)
     }
 
     if (!slot->u.ma.conn) {
+	gpcc_log_info("TAG CONNECTION %s", slot->cmdname);
 	slot->u.ma.conn = conn;
-	gpcc_net_tag(conn, slot->cmdname);
+	if (gpcc_net_tag(conn, slot->cmdname)) {
+	    gpcc_log_error("TAG %s error", slot->cmdname);
+	}
 	evt = gpcc_event_alloc(NET_OPENED_EVENT, gpma.maset_cmdslot->cmdidx, strlen(slot->cmdname)+1);
 	strcpy(evt->pdata, slot->cmdname);
 	gpcc_evqueue_put(gpma.evq, evt);
@@ -112,6 +115,9 @@ apr_status_t a_ma_teardown(gpcc_event_t* ev, void* arg)
 	return 0;
     }
 
+    /*  NO USE TO RECONNECT TO OTHER MA IF DISCONNECTED AND LET DEAD MA CONNECT TO ME AGAIN?
+    slot->countdown = 3;
+    */
     slot->u.ma.conn = 0;
 
     evt = gpcc_event_alloc(NET_CLOSED_EVENT, gpma.maset_cmdslot->cmdidx, strlen(slot->cmdname)+1);
@@ -221,10 +227,9 @@ apr_status_t a_lma_vote_me(gpcc_event_t *ev, void *arg)
     int i, e;
     int nvote = 0;
     char msg[64];
+    gpcc_event_t *evt;
 
     if (gpma.ma_max == 1 /* || slot->u.lma.nopened == 1 */) {
-	gpcc_event_t *evt;
-
 	evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
 	return 0;
@@ -246,10 +251,17 @@ apr_status_t a_lma_vote_me(gpcc_event_t *ev, void *arg)
 	}
     }
 
-    slot->u.lma.voteme.nvote = nvote;
-    slot->u.lma.voteme.nreplied = 0;
-    slot->u.lma.voteme.nyes = 0;
-    slot->u.lma.voteme.nno = 0;
+    if (nvote > 0) {
+	slot->u.lma.voteme.nvote = nvote;
+	slot->u.lma.voteme.nreplied = 0;
+	slot->u.lma.voteme.nyes = 0;
+	slot->u.lma.voteme.nno = 0;
+    } else {
+	/* all MAs are dead */
+	evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+    }
+
     return 0;
 }
 
@@ -381,6 +393,9 @@ apr_status_t a_lma_lead(gpcc_event_t *ev, void *arg)
 	}
     }
 
+    
+    strcpy(gpma.maset_cmdslot->u.maset.leadma, gpma.ma_unit);
+    
     /* kick off the nodes */
     for (i = 0 ; i < gpma.node_max ; i++) {
 	evt = gpcc_event_alloc(INIT_EVENT, gpma.node_cmdtab[i]->cmdidx, 0);
@@ -407,5 +422,13 @@ apr_status_t a_lma_lead_failure(gpcc_event_t *ev, void *arg)
 	}
     }
 
+    return 0;
+}
+
+apr_status_t a_lma_standby(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+
+    strcpy(gpma.maset_cmdslot->u.maset.leadma, slot->u.lma.voted.ma);
     return 0;
 }

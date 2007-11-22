@@ -5,6 +5,8 @@ apr_status_t a_node_init(gpcc_event_t *ev, void *arg)
     return 0;
 }
 
+#define LEOPARD
+
 apr_status_t a_node_ssh(gpcc_event_t* ev, void* arg)
 {
     cmdslot_t* slot = arg;
@@ -20,10 +22,17 @@ apr_status_t a_node_ssh(gpcc_event_t* ev, void* arg)
 	slot->u.node.hostidx = 0;
 
     gpcc_log_info("a_node_ssh");
+#ifdef LEOPARD
+    sprintf(cmd, "export GPHOME=%s && $GPHOME/bin/gpha -D %s %s", 
+	    getenv("GPHOME"), 
+	    config_get(gpma.cfg, "sys.guid"),
+	    config_getx(gpma.cfg, "ha.datadir", "/tmp"));
+#else
     sprintf(cmd, "export GPHOME=%s && $GPHOME/bin/gpha %s %s", 
 	    getenv("GPHOME"), 
 	    config_get(gpma.cfg, "sys.guid"),
 	    config_getx(gpma.cfg, "ha.datadir", "/tmp"));
+#endif
     if (0 != (e = gpcc_proc_ssh(&slot->u.node.proc, 
 				user, 
 				slot->u.node.hosttab[slot->u.node.hostidx], 
@@ -43,9 +52,15 @@ apr_status_t a_node_ssh(gpcc_event_t* ev, void* arg)
 
 apr_status_t a_node_check_ssh(gpcc_event_t* ev, void* arg)
 {
-    /* disregard exit status for now */
+
     cmdslot_t* slot = arg;
     gpcc_event_t* nev = 0;
+
+#ifdef LEOPARD
+    nev = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, nev);
+
+#else
     int e, ret;
     apr_exit_why_e exitwhy;
 
@@ -63,6 +78,7 @@ apr_status_t a_node_check_ssh(gpcc_event_t* ev, void* arg)
     } else {
 	slot->countdown = 2;
     }
+#endif
     
     return 0;
 }
@@ -108,6 +124,7 @@ apr_status_t a_node_ready(gpcc_event_t *ev, void *arg)
     cmdslot_t *slot = arg;
     gpcc_event_t *evt;
 
+    slot->u.node.opened = 1;
     gpcc_net_tag(slot->u.node.conn, slot->cmdname);
     evt = gpcc_event_alloc(NET_OPENED_EVENT, gpma.haset_cmdslot->cmdidx, strlen(slot->cmdname)+1);
     memcpy(evt->pdata, slot->cmdname, strlen(slot->cmdname)+1);
@@ -133,6 +150,10 @@ apr_status_t a_node_teardown(gpcc_event_t* ev, void* arg)
     printf("NODE TEARDOWN\n");
     slot->countdown = 3;
     
+    if (! slot->u.node.opened) 
+	return 0;
+    slot->u.node.opened = 0;
+
     evt = gpcc_event_alloc(NET_CLOSED_EVENT, gpma.haset_cmdslot->cmdidx, strlen(slot->cmdname)+1);
     memcpy(evt->pdata, slot->cmdname, strlen(slot->cmdname)+1);
     gpcc_evqueue_put(gpma.evq, evt);

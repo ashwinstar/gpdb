@@ -29,16 +29,6 @@ apr_status_t a_maset_opened(gpcc_event_t *ev, void *arg)
     return 0;
 }
 
-apr_status_t a_maset_lead(gpcc_event_t *ev, void *arg)
-{
-    cmdslot_t *slot = arg;
-    char *leadma = ev->pdata;
-
-    slot->u.maset.leadma = apr_pstrdup(slot->pool, leadma);
-
-    return 0;
-}
-
 apr_status_t a_maset_wait_closed(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
@@ -57,13 +47,15 @@ apr_status_t a_maset_ready_closed(gpcc_event_t *ev, void *arg)
     slot->u.maset.nopened--;
     
     if (slot->u.maset.nopened == 1) {
-	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
-	gpcc_evqueue_put(gpma.evq, evt);
+	if (*slot->u.maset.leadma && strcmp(slot->u.maset.leadma, ma) == 0) {
+	    evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
+	    gpcc_evqueue_put(gpma.evq, evt);
+	}
     } else {
 
-	if (slot->u.maset.leadma && strcmp(slot->u.maset.leadma, ma) == 0) {
-	    slot->u.maset.leadma = 0;
-	    apr_pool_clear(slot->pool);
+	if (*slot->u.maset.leadma && strcmp(slot->u.maset.leadma, ma) == 0) {
+	    gpcc_log_info("LEADME %s is dead", ma);
+	    *slot->u.maset.leadma = 0;
 	    evt = gpcc_event_alloc(BREAK_EVENT, gpma.lma_cmdslot->cmdidx, 0);
 	    gpcc_evqueue_put(gpma.evq, evt);
 	}

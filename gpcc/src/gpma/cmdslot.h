@@ -198,7 +198,7 @@ struct cmdslot_t {
 	struct {
 	    int total;
 	    int nopened;
-	    char *leadma;
+	    char leadma[5];
 	} maset;
 
 	struct {
