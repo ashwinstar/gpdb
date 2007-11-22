@@ -5,8 +5,6 @@ apr_status_t a_node_init(gpcc_event_t *ev, void *arg)
     return 0;
 }
 
-#define LEOPARD
-
 apr_status_t a_node_ssh(gpcc_event_t* ev, void* arg)
 {
     cmdslot_t* slot = arg;
@@ -22,7 +20,7 @@ apr_status_t a_node_ssh(gpcc_event_t* ev, void* arg)
 	slot->u.node.hostidx = 0;
 
     gpcc_log_info("a_node_ssh");
-#ifdef LEOPARD
+#ifdef DARWIN
     sprintf(cmd, "export GPHOME=%s && $GPHOME/bin/gpha -D %s %s", 
 	    getenv("GPHOME"), 
 	    config_get(gpma.cfg, "sys.guid"),
@@ -56,7 +54,7 @@ apr_status_t a_node_check_ssh(gpcc_event_t* ev, void* arg)
     cmdslot_t* slot = arg;
     gpcc_event_t* nev = 0;
 
-#ifdef LEOPARD
+#ifdef DARWIN
     nev = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, nev);
 
