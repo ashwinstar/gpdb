@@ -10,12 +10,14 @@ apr_status_t a_ma_connect(gpcc_event_t* ev, void* arg)
     const char* hvalue[2];
     int e;
     char naddr[200];
+    char buf[64];
 
+    sprintf(buf, "GPMA:%s", gpma.ma_unit);
     argc = 1;
     argv[0] = GPCC_NET_PACKET_PROTO;
     hc = 2;
     hname[0] = "X-GPCC-ROLE";
-    hvalue[0] = "GPMA";
+    hvalue[0] = buf;
     hname[1] = "X-GPCC-GUID";
     hvalue[1] = gpma.guid;
 
@@ -27,8 +29,10 @@ apr_status_t a_ma_connect(gpcc_event_t* ev, void* arg)
 		   slot->u.ma.node->u.node.hosttab[slot->u.ma.node->u.node.hostidx],
 		   slot->u.ma.port);
     }
+
+    gpcc_log_info("gpcc_net_open %s", buf);
     /* use gpcc_net to connect to gpma here */
-    if (0 != (e = gpcc_net_open(&slot->u.ma.conn, 
+    if (0 != (e = gpcc_net_open(&slot->u.ma.self_conn, 
 				naddr,
 				argc, argv,
 				hc, hname, hvalue, slot->cmdidx))) 
@@ -44,15 +48,42 @@ apr_status_t a_ma_ready(gpcc_event_t *ev, void *arg)
     gpcc_event_t *evt;
     gpcc_net_conn_t conn;
 
+    slot->countdown = 0;
     memcpy(&conn, ev->pdata, sizeof(conn));
+    
+    switch (ev->etype) {
+    case NET_OPENED_EVENT:
+	gpcc_log_info("------------ MA %s OPENED", slot->cmdname);
+	break;
+    case NET_ACCEPTED_EVENT:
+	gpcc_log_info("------------ MA %s ACCEPTED", slot->cmdname);
+	slot->u.ma.peer_conn = conn;
+	break;
+    default:
+	break;
+    }
 
-    gpcc_log_info("------------------------------------------- MA %s READY", slot->cmdname);
+    if (!slot->u.ma.conn) {
+	slot->u.ma.conn = conn;
+	gpcc_net_tag(conn, slot->cmdname);
+	evt = gpcc_event_alloc(NET_OPENED_EVENT, gpma.maset_cmdslot->cmdidx, strlen(slot->cmdname)+1);
+	strcpy(evt->pdata, slot->cmdname);
+	gpcc_evqueue_put(gpma.evq, evt);
+    } else {
+	/* choose to cut which connection */
+	if (strcmp(gpma.ma_unit, slot->cmdname) < 0) {
+	    if (slot->u.ma.peer_conn) {
+		if (slot->u.ma.peer_conn == slot->u.ma.conn) {
+		    gpcc_net_tag(slot->u.ma.conn, 0);   /* remove the tag */
+		    slot->u.ma.conn = slot->u.ma.self_conn;
+		    gpcc_net_tag(slot->u.ma.conn, slot->cmdname);
+		}
+		gpcc_net_close(slot->u.ma.peer_conn, 1);
+		gpcc_log_info("MA CLOSE SPARE CONNECTION %s", slot->cmdname);
+	    }
+	}
+    }
 
-    slot->u.ma.opened = 1;
-    gpcc_net_tag(slot->u.ma.conn, slot->cmdname);
-    evt = gpcc_event_alloc(NET_OPENED_EVENT, gpma.maset_cmdslot->cmdidx, strlen(slot->cmdname)+1);
-    strcpy(evt->pdata, slot->cmdname);
-    gpcc_evqueue_put(gpma.evq, evt);
     return 0;
 }
 
@@ -60,16 +91,29 @@ apr_status_t a_ma_teardown(gpcc_event_t* ev, void* arg)
 {
     cmdslot_t* slot = arg;
     gpcc_event_t *evt;
+    gpcc_net_conn_t conn;
 
-    printf("MA TEARDOWN\n");
+    memcpy(&conn, ev->pdata, sizeof(conn));
 
-    slot->countdown = 3;
+    gpcc_log_info("MA TEARDOWN %s", slot->cmdname);
 
-    if (! slot->u.ma.opened) {
+    if (slot->u.ma.self_conn == conn) 
+	slot->u.ma.self_conn = 0;
+    else if (slot->u.ma.peer_conn == conn)
+	slot->u.ma.peer_conn = 0;
+
+    if (slot->u.ma.conn) {
+	if (slot->u.ma.conn != conn) {
+	    gpcc_log_info("SPARE CONNECTION CLOSED");
+	    return 0;
+	}
+    } else {
+	slot->countdown = 3;
 	return 0;
     }
-    slot->u.ma.opened = 0;
-    
+
+    slot->u.ma.conn = 0;
+
     evt = gpcc_event_alloc(NET_CLOSED_EVENT, gpma.maset_cmdslot->cmdidx, strlen(slot->cmdname)+1);
     strcpy(evt->pdata, slot->cmdname);
     gpcc_evqueue_put(gpma.evq, evt);
@@ -115,12 +159,10 @@ apr_status_t a_lma_leadless(gpcc_event_t *ev, void *arg)
 
 /*
   got VOTEME -- reply yes or no
-  fire SUCCESS_EVENT if answer is yes
 */
 apr_status_t a_lma_vote_requested(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
-    gpcc_event_t *evt;
     gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
     struct json_object *obj = json_tokener_parse(pkt->payload);
     char *ma;
@@ -147,8 +189,6 @@ apr_status_t a_lma_vote_requested(gpcc_event_t *ev, void *arg)
     gpcc_log_info("SEND VOTE YES to %s", slot->u.lma.voted.ma);
 
     slot->countdown = 0;
-    evt = gpcc_event_alloc(LMA_VOTED_EVENT, slot->cmdidx, 0);
-    gpcc_evqueue_put(gpma.evq, evt);
 
     return 0;
 }
@@ -226,11 +266,6 @@ apr_status_t a_lma_reject(gpcc_event_t *ev, void *arg)
     int e;
 
     ma = gpcc_json_object_get_string(obj, "ma", 0);
-    if (!ma) {
-	json_object_put(obj);
-	return 0;
-    }
-
     gpcc_log_info("RECV VOTE ME from %s", ma);
 
     sprintf(msg, "{ \"ma\" : \"%s\"}", gpma.ma_unit);
@@ -258,11 +293,13 @@ apr_status_t a_lma_check_win(gpcc_event_t *ev, void *arg)
     gpcc_event_t *evt;
 
     ma = gpcc_json_object_get_string(obj, "ma", 0);
+    gpcc_log_info("RECV VOTE WIN from %s", ma);
     if (strcmp(slot->u.lma.voted.ma, ma) == 0) {
 	evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
     } 
 
+    json_object_put(obj);
     return 0;
 }
 
@@ -278,12 +315,14 @@ apr_status_t a_lma_check_lost(gpcc_event_t *ev, void *arg)
     gpcc_event_t *evt;
 
     ma = gpcc_json_object_get_string(obj, "ma", 0);
+    gpcc_log_info("RECV VOTE LOST from %s", ma);
     if (strcmp(slot->u.lma.voted.ma, ma) == 0) {
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
 	slot->countdown = 5;
     }
 
+    json_object_put(obj);
     return 0;
 }
 
@@ -338,6 +377,7 @@ apr_status_t a_lma_lead(gpcc_event_t *ev, void *arg)
 	    if (0 != (e = gpcc_net_send_packetx(gpma.ma_cmdtab[i]->cmdname, LMA_VOTE_WIN_MSG, slot->cmdidx, 0, msg, strlen(msg)+1))) {
 		gpcc_warning(FLINE, "send win vote packet to %s failed", gpma.ma_cmdtab[i]->cmdname);
 	    }
+	    gpcc_log_info("SEND WIN VOTE to %s", gpma.ma_cmdtab[i]->cmdname);
 	}
     }
 
@@ -363,6 +403,7 @@ apr_status_t a_lma_lead_failure(gpcc_event_t *ev, void *arg)
 	    if (0 != (e = gpcc_net_send_packetx(gpma.ma_cmdtab[i]->cmdname, LMA_VOTE_LOST_MSG, slot->cmdidx, 0, msg, strlen(msg)+1))) {
 		gpcc_warning(FLINE, "send lost vote packet to %s failed", gpma.ma_cmdtab[i]->cmdname);
 	    }
+	    gpcc_log_info("SEND LOST VOTE to %s", gpma.ma_cmdtab[i]->cmdname);
 	}
     }
 

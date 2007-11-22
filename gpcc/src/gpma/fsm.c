@@ -64,12 +64,19 @@ APR_DECLARE(void) fsm_init(void)
     /* ma */
     gpcc_fsm_put(MA_OFF_CMDSTATE, TIMEUP_EVENT, MA_CONNWAIT_CMDSTATE,
 		 a_ma_connect, 0);
+    gpcc_fsm_put(MA_OFF_CMDSTATE, NET_ACCEPTED_EVENT, MA_ON_CMDSTATE,
+		 a_ma_ready, 0);
     gpcc_fsm_put(MA_CONNWAIT_CMDSTATE, NET_OPENED_EVENT, MA_ON_CMDSTATE, 
+		 a_ma_ready, 0);
+    gpcc_fsm_put(MA_CONNWAIT_CMDSTATE, NET_ACCEPTED_EVENT, MA_ON_CMDSTATE,
 		 a_ma_ready, 0);
     gpcc_fsm_put(MA_CONNWAIT_CMDSTATE, NET_CLOSED_EVENT, MA_OFF_CMDSTATE,
 		 a_ma_teardown, 0);
     gpcc_fsm_put(MA_ON_CMDSTATE, NET_CLOSED_EVENT, MA_OFF_CMDSTATE,
 		 a_ma_teardown);
+    gpcc_fsm_put(MA_ON_CMDSTATE, NET_ACCEPTED_EVENT, MA_ON_CMDSTATE,
+		 a_ma_ready, 0);
+    
 
     /* ma set */
     gpcc_fsm_put(MASET_OFF_CMDSTATE, INIT_EVENT, MASET_WAIT_CMDSTATE, 
@@ -109,16 +116,16 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(LMA_LEAD_CMDSTATE, BREAK_EVENT, LMA_LEADLESS_CMDSTATE,
 		 a_lma_leadless, 0);
 
-    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_VOTE_ME_MSG_EVENT, LMA_LEADLESS_CMDSTATE,
-		 a_lma_vote_requested, 0); /* think about voting yes or no, if yes: gen SUCCESS event */
+    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_VOTE_ME_MSG_EVENT, LMA_VOTED_CMDSTATE,
+		 a_lma_vote_requested, 0); /* vote yes and goto voted state*/
     gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, TIMEUP_EVENT, LMA_LEADLESS_CMDSTATE,
 		 a_lma_ponder_elect, 0); /* think about electing myself, if yes: gen ELECTSELF event */
-    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_VOTED_EVENT, LMA_VOTED_CMDSTATE, 0);
     gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_ELECTSELF_EVENT, LMA_VOTEME_CMDSTATE, 
 		 a_lma_vote_me, 0);
     gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, SUCCESS_EVENT, LMA_LEAD_CMDSTATE, 0);
     gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, FAILURE_EVENT, LMA_LEADLESS_CMDSTATE, 
 		 a_lma_leadless, 0);
+    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_VOTE_LOST_MSG_EVENT, LMA_LEADLESS_CMDSTATE, 0);
 
     gpcc_fsm_put(LMA_VOTED_CMDSTATE, CONTINUE_EVENT, LMA_VOTED_CMDSTATE,
 		 a_lma_maset_ready, 0);
@@ -143,15 +150,16 @@ APR_DECLARE(void) fsm_init(void)
 		 a_lma_ponder_vote, 0);
     gpcc_fsm_put(LMA_VOTEME_CMDSTATE, LMA_VOTE_ME_MSG_EVENT, LMA_VOTEME_CMDSTATE,
 		 a_lma_reject, 0);
+    gpcc_fsm_put(LMA_VOTEME_CMDSTATE, LMA_VOTE_LOST_MSG_EVENT, LMA_VOTEME_CMDSTATE, 0);
     gpcc_fsm_put(LMA_VOTEME_CMDSTATE, FAILURE_EVENT, LMA_LEADLESS_CMDSTATE, 
-		 a_lma_leadless, 0);
+		 a_lma_lead_failure, a_lma_leadless, 0);
     gpcc_fsm_put(LMA_VOTEME_CMDSTATE, TIMEUP_EVENT, LMA_LEADLESS_CMDSTATE, 
 		 a_lma_leadless, 0);
     gpcc_fsm_put(LMA_VOTEME_CMDSTATE, SUCCESS_EVENT, LMA_LEAD_CMDSTATE, 
 		 a_lma_lead, 0);
 
     gpcc_fsm_put(LMA_LEAD_CMDSTATE, FAILURE_EVENT, LMA_LEADLESS_CMDSTATE, 
-		 a_lma_lead_failure, a_lma_leadless, 0);
+		 a_lma_leadless, 0);
 
 
     /* ha set */

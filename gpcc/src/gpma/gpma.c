@@ -234,6 +234,8 @@ static void net_accepted(gpcc_net_conn_t conn,
 			 const char* peer_addr,
 			 gpcc_net_header_t* from_peer)
 {
+    gpcc_event_t* ev = 0;
+
     gpcc_log_info("net_accepted");
 
     if (from_peer->argc == 3
@@ -244,7 +246,6 @@ static void net_accepted(gpcc_net_conn_t conn,
 	gpcc_net_uri_t* uri = gpcc_net_uri_alloc(from_peer->argv[1]);
 	char* a = (uri ? gpcc_net_uri_param(uri, "a") : 0);
 	const char *array_name = config_get(gpma.cfg, "gpdb.name");
-	gpcc_event_t* ev = 0;
 	int is_bad_uri = 0;
 	int is_bad_array_name = 0;
 
@@ -303,8 +304,10 @@ static void net_accepted(gpcc_net_conn_t conn,
 		role = from_peer->hvalue[i];
 	    }
 	}
-	if (role && apr_strnatcasecmp(role, "GPMA") == 0) {
+
+	if (role && strstr(role, "GPMA") == role) {
 	    gpcc_net_header_t hdr;
+	    char *s = 0;
 
 	    hdr.argc = 1;
 	    hdr.argv[0] = GPCC_NET_PACKET_PROTO;
@@ -314,10 +317,24 @@ static void net_accepted(gpcc_net_conn_t conn,
 		gpcc_warning(FLINE, "gpcc_net_send header failed");
 	    }
 
-	    /* find the corresponding ma slot */
 
-	    return;
+	    gpcc_log_info("ROLE = %s", role);
+	    /* find the corresponding ma slot */
+	    if (0 != (s = strchr(role, ':'))) {
+		s++;
+		gpcc_log_info("ACCEPTED (%d) MA = %s", gpma.ma_max, s);
+		for (i = 0 ; i < gpma.ma_max ; i++) {
+		    if (gpma.ma_cmdtab[i] && strcmp(gpma.ma_cmdtab[i]->cmdname, s) == 0) {
+			    gpcc_net_set_arg(conn, gpma.ma_cmdtab[i]->cmdidx);
+			    ev = gpcc_event_alloc(NET_ACCEPTED_EVENT, gpma.ma_cmdtab[i]->cmdidx, sizeof(gpcc_net_conn_t));
+			    memcpy(ev->pdata, &conn, sizeof(conn));
+			    gpcc_evqueue_put(gpma.evq, ev);
+			    return;
+		    }
+		}
+	    }
 	}
+	
     }
 
 

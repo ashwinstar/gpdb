@@ -173,12 +173,13 @@ struct cmdslot_t {
 	} node;
 
 	struct {
+	    gpcc_net_conn_t peer_conn;
+	    gpcc_net_conn_t self_conn;
 	    gpcc_net_conn_t conn;
 	    int port;
 	    const char* ma_unit;
 	    const char* node_unit;
 	    cmdslot_t* node;
-	    int opened;
 	} ma;
 
 	struct {
