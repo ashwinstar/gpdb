@@ -335,4 +335,11 @@ static inline char* gpcc_net_uri_param(gpcc_net_uri_t* uri, const char* name)
 APR_DECLARE(void)
     gpcc_net_http_close(gpcc_net_conn_t conn, int status, const char* msg, const char* json);
 
+
+/**
+ *  Send a http redirect response and close the connection.
+ */
+APR_DECLARE(void)
+    gpcc_net_http_redirect_close(gpcc_net_conn_t conn, const char *location, const char *content);
+
 #endif /* GPCC_NET_H */

@@ -1781,3 +1781,36 @@ void gpcc_net_http_close(gpcc_net_conn_t conn, int status, const char* msg, cons
     gpcc_net_close(conn, 1);
 }
 
+void gpcc_net_http_redirect_close(gpcc_net_conn_t conn, const char *location, const char *content)
+{
+    gpcc_net_header_t hdr;
+    char statusbuf[10];
+    char lenbuf[10];
+    int hc, len;
+
+    if (! content)
+	content = "";
+    
+    len = strlen(content);
+    
+    strcpy(statusbuf, "301");
+    sprintf(lenbuf, "%d", len);
+    
+    hdr.argc = 3;
+    hdr.argv[0] = "HTTP/1.0";
+    hdr.argv[1] = statusbuf;
+    hdr.argv[2] = "Moved Permanently";
+    hc = 0;
+    hdr.hname[hc] = "Content-type";
+    hdr.hvalue[hc++] = "text/html";
+    hdr.hname[hc] = "Content-length";
+    hdr.hvalue[hc++] = lenbuf;
+    hdr.hname[hc] = "Location";
+    hdr.hvalue[hc++] = location;
+    hdr.hc = hc;
+    hdr.postlen = 0;
+
+    (void) gpcc_net_send_header(conn, &hdr);
+    (void) gpcc_net_send(conn, content, len);
+    gpcc_net_close(conn, 1);
+}
