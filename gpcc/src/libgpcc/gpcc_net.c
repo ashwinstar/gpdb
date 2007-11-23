@@ -1802,7 +1802,7 @@ void gpcc_net_http_redirect_close(gpcc_net_conn_t conn, const char *location, co
     hdr.argv[2] = "Moved Permanently";
     hc = 0;
     hdr.hname[hc] = "Content-type";
-    hdr.hvalue[hc++] = "text/html";
+    hdr.hvalue[hc++] = "text/plain";
     hdr.hname[hc] = "Content-length";
     hdr.hvalue[hc++] = lenbuf;
     hdr.hname[hc] = "Location";

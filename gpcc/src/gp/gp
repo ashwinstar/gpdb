@@ -19,6 +19,7 @@ Usage: gp [gp_options] command [command_options] [command_args]
 
 import os, sys, getopt, types, time, popen2, urllib, httplib
 
+
 if sys.version_info < (2, 3):
     sys.exit("Error: gp is supported on Python versions 2.3 or greater\n"
              + "Please upgrade python installed on this machine.")
@@ -115,13 +116,13 @@ def hitMA(cmd, params):
         f = httplib.HTTPConnection("%s:%d" % (gp_opt['-h'], gp_opt['-p']))
         f.request("GET", "%s?%s" % (cmd, params))
         response = f.getresponse();
-        if response.status == 200:
+        if response.status == 200 or response.status == 301:
             s = response.read()
             # print s
             json = simplejson.loads(s)
     finally:
         if f: f.close()
-    return json
+    return (response.status, json)
     
 
 def hitMAbyPost(cmd, params, data):
@@ -132,13 +133,13 @@ def hitMAbyPost(cmd, params, data):
         f = httplib.HTTPConnection("%s:%d" % (gp_opt['-h'], gp_opt['-p']))
         f.request("POST", "%s?%s" % (cmd, params), data)
         response = f.getresponse();
-        if response.status == 200:
+        if response.status == 200 or response.status == 301:
             s = response.read()
             # print s
             json = simplejson.loads(s)
     finally:
         if f: f.close()
-    return json
+    return (response.status, json)
 
 def printError(json):
     status = json.get('status')
@@ -157,15 +158,26 @@ def printError(json):
 
 def getStatus():
     params = { 'a': gp_opt['-a'] }
-    json = hitMA('/gpcc/status', params)
+    redirect = 0
+    while redirect < 5:
+        (retcode, json) = hitMA('/gpcc/status', params)
     # print '/gpcc/status:', json
-    status = json.get('status', '')
-    x = json.get('rset', {})
-    x = x.get('result', [])
-    if len(x): 
-        x = x[0] 
-    else:
-        x = ''
+        if retcode == 200:
+            status = json.get('status', '')
+            x = json.get('rset', {})
+            x = x.get('result', [])
+            if len(x): 
+                x = x[0] 
+            else:
+                x = ''
+            break
+        elif retcode == 301:
+            location = json.get('location')
+            addr = location.split(':')
+            gp_opt['-h'] = addr[0]
+            gp_opt['-p'] = int(addr[1])
+            redirect += 1
+            print 'redirect to %s:%d' % (gp_opt['-h'], gp_opt['-p'])
     return (json, status, x)
 
 
@@ -177,61 +189,82 @@ def printDotSleep():
 
 def doStart(args):
     params = {'a': gp_opt['-a']}
-    json = hitMA('/gpcc/start', params)
-    if not json.get('status') in ('ok', 'pending'):
-        printError(json)
-        return
-    cur = 'starting'
-    for i in xrange(30):
-        printDotSleep()
-        (json, status, array_status) = getStatus()
-        if status != 'ok':
+    redirect = 0
+    while redirect < 5:
+        (retcode, json) = hitMA('/gpcc/start', params)
+        if retcode == 200:
+            if not json.get('status') in ('ok', 'pending'):
+                printError(json)
+                return
+            cur = 'starting'
+            for i in xrange(30):
+                printDotSleep()
+                (json, status, array_status) = getStatus()
+                if status != 'ok':
+                    print
+                    printError(json)
+                    return
+                if array_status != cur:
+                    cur = array_status
+                    break
             print
-            printError(json)
+            if cur == 'starting':
+                print 'error: timeout'
+            elif cur == 'running':
+                print 'ok:', cur
+            elif cur == 'stopping' or cur == 'stopped':
+                print 'error:', cur
+            else:
+                print 'error: unknown; not started.'
             return
-        if array_status != cur:
-            cur = array_status
-            break
-    print
-    if cur == 'starting':
-        print 'error: timeout'
-    elif cur == 'running':
-        print 'ok:', cur
-    elif cur == 'stopping' or cur == 'stopped':
-        print 'error:', cur
-    else:
-        print 'error: unknown; not started.'
-    return
+        elif retcode == 301:
+            location = json.get('location')
+            addr = location.split(':')
+            gp_opt['-h'] = addr[0]
+            gp_opt['-p'] = int(addr[1])
+            redirect += 1
+            print 'redirect to %s:%d' % (gp_opt['-h'], gp_opt['-p'])
+
+
 
 
 def doStop(args):
     params = {'a': gp_opt['-a']}
-    json = hitMA('/gpcc/stop', params)
-    if not json.get('status') in ('ok', 'pending'):
-        printError(json)
-        return
-    cur = 'stopping'
-    for i in xrange(30):
-        printDotSleep()
-        (json, status, array_status) = getStatus()
-        if status != 'ok':
+    redirect = 0
+    while redirect < 5:
+        (retcode, json) = hitMA('/gpcc/stop', params)
+        if retcode == 200:
+            if not json.get('status') in ('ok', 'pending'):
+                printError(json)
+                return
+            cur = 'stopping'
+            for i in xrange(30):
+                printDotSleep()
+                (json, status, array_status) = getStatus()
+                if status != 'ok':
+                    print
+                    printError(json)
+                    return
+                if array_status != cur:
+                    cur = array_status
+                    break
             print
-            printError(json)
+            if cur == 'stopping':
+                print 'error: timeout'
+            elif cur == 'stopped':
+                print 'ok:', cur
+            elif cur == 'starting' or cur == 'running':
+                print 'error:', cur
+            else:
+                print 'error: unknown; not stopped.'
             return
-        if array_status != cur:
-            cur = array_status
-            break
-    print
-    if cur == 'stopping':
-        print 'error: timeout'
-    elif cur == 'stopped':
-        print 'ok:', cur
-    elif cur == 'starting' or cur == 'running':
-        print 'error:', cur
-    else:
-        print 'error: unknown; not stopped.'
-    return
-
+        elif retcode == 301:
+            location = json.get('location')
+            addr = location.split(':')
+            gp_opt['-h'] = addr[0]
+            gp_opt['-p'] = int(addr[1])
+            redirect += 1
+            print 'redirect to %s:%d' % (gp_opt['-h'], gp_opt['-p'])
 
 def doStatus(args):
     params = { 'a': gp_opt['-a'] }
@@ -273,32 +306,42 @@ def doInit(args):
         print 'error: open config file failed'
         return
 
-    json = hitMAbyPost('/gpcc/init', {}, content)
-    if not json.get('status') in ('ok', 'pending'):
-        printError(json)
-        return
-    cur = 'initializing'
-    for i in xrange(3600):
-        printDotSleep()
-        (json, status, array_status) = getStatus()
-        if status != 'ok':
+    redirect = 0
+    while redirect < 5:
+        (retcode, json) = hitMAbyPost('/gpcc/init', {}, content)
+        if retcode == 200:
+            if not json.get('status') in ('ok', 'pending'):
+                printError(json)
+                return
+            cur = 'initializing'
+            for i in xrange(3600):
+                printDotSleep()
+                (json, status, array_status) = getStatus()
+                if status != 'ok':
+                    print
+                    printError(json)
+                    return
+                if array_status != cur:
+                    cur = array_status
+                    break
             print
-            printError(json)
+            if cur == 'initializing':
+                print 'error: timeout'
+            elif cur == 'stopped':
+                print 'ok: initialized.'
+            elif cur == 'none':
+                print 'error: not initialized.'
+            else:
+                print 'error: unknown; not initialized.'
             return
-        if array_status != cur:
-            cur = array_status
-            break
-    print
-    if cur == 'initializing':
-        print 'error: timeout'
-    elif cur == 'stopped':
-        print 'ok: initialized.'
-    elif cur == 'none':
-        print 'error: not initialized.'
-    else:
-        print 'error: unknown; not initialized.'
-    return
-
+        elif retcode == 301:
+            location = json.get('location')
+            addr = location.split(':')
+            gp_opt['-h'] = addr[0]
+            gp_opt['-p'] = int(addr[1])
+            redirect += 1
+            print 'redirect to %s:%d' % (gp_opt['-h'], gp_opt['-p'])
+            
 
 def main():
     resetCommandOptions()
