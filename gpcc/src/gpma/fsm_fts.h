@@ -206,9 +206,7 @@ static apr_status_t a_fts_http_redirect_leadma(gpcc_net_conn_t conn, const char 
 		return 0;
 	    }
 	}
-    } else {
-	gpcc_net_http_close(conn, 200, "ok", "{ \"status\" : \"failure\", \"errmsg\" : { \"_\": \"Lead MA is not determined\"}}");
-    }
+    } 
     return 0;
 }
 
@@ -273,16 +271,20 @@ static apr_status_t a_fts_waiting(gpcc_event_t *ev, void *_cmdslot)
 	break;
     }
 	
-    if (!IS_LEADMA) {
+    if (IS_NO_LEADMA) {
+	obj = gpcc_json_http_reply(cmd, "failure", "Lead MA is not determined");
+	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+	json_object_put(obj);
+    } else if (!IS_LEADMA) {
 	a_fts_http_redirect_leadma(conn, url);
-	return 0;
+    } else {
+	obj = gpcc_json_http_reply(cmd, "failure", "connecting");
+	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+	json_object_put(obj);
     }
-
-    obj = gpcc_json_http_reply(cmd, "failure", "connecting");
-    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
-    json_object_put(obj);
     return 0;
 }
+
 
 static apr_status_t a_fts_array_start(gpcc_event_t *ev, void *_cmdslot)
 {
@@ -296,13 +298,6 @@ static apr_status_t a_fts_array_start(gpcc_event_t *ev, void *_cmdslot)
 
     memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
     url = ev->pdata + sizeof(gpcc_net_conn_t);
-
-    if (!IS_LEADMA) {
-	a_fts_http_redirect_leadma(conn, url);
-	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-	gpcc_evqueue_put(gpma.evq, evt);
-	return 0;
-    }
 
     uri = gpcc_net_uri_alloc(url);
     if (uri) {
@@ -372,6 +367,15 @@ static apr_status_t a_fts_array_status_reply(gpcc_event_t *ev, void *_cmdslot)
 
     memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
     url = ev->pdata + sizeof(gpcc_net_conn_t);
+
+    if (IS_NO_LEADMA) {
+	obj = gpcc_json_http_status_reply(config_get(gpma.cfg, "gpdb.name"), "failure", "undetermined");
+	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+	json_object_put(obj);
+    } else if (!IS_LEADMA) {
+	a_fts_http_redirect_leadma(conn, url);
+	return 0;
+    }
 
     /* send the current state */
     if (cmdslot->cmdstate == FTS_WAIT_CMDSTATE) {
@@ -505,14 +509,6 @@ static apr_status_t a_fts_array_stop(gpcc_event_t *ev, void *_cmdslot)
 
     memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
     url = ev->pdata + sizeof(gpcc_net_conn_t);
-
-
-    if (!IS_LEADMA) {
-	a_fts_http_redirect_leadma(conn, url);
-	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-	gpcc_evqueue_put(gpma.evq, evt);
-	return 0;
-    }
     
     uri = gpcc_net_uri_alloc(url);
     if (uri) {
@@ -729,14 +725,6 @@ static apr_status_t a_fts_array_init(gpcc_event_t *ev, void *_cmdslot)
     len -= sizeof(gpcc_net_conn_t);
     config = ev->pdata + sizeof(gpcc_net_conn_t);
    
-    /* CHECK LEADMA */
-    if (!IS_LEADMA) {
-	a_fts_http_redirect_leadma(conn, "/gpcc/init");
-	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-	gpcc_evqueue_put(gpma.evq, evt);
-	return 0;
-    }
- 
     if (config_parse(gpma.cfg, config, len) || a_fts_array_config_verify()) {
 	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);

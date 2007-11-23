@@ -11,6 +11,7 @@
 #include "gpma.h"
 
 #define IS_LEADMA (*gpma.lma_cmdslot->u.lma.leadma && strcmp(gpma.lma_cmdslot->u.lma.leadma, gpma.ma_unit) == 0)
+#define IS_NO_LEADMA (*gpma.lma_cmdslot->u.lma.leadma == 0)
 
 #include "fsm_node.h"
 #include "fsm_ma.h"
@@ -193,14 +194,7 @@ APR_DECLARE(void) fsm_init(void)
 
     gpcc_fsm_put(FTS_CMDSTATE, INIT_EVENT, FTS_WAIT_CMDSTATE,
 		 a_fts_init, 0);
-    gpcc_fsm_put(FTS_WAIT_CMDSTATE, ARRAY_STOP_EVENT, FTS_WAIT_CMDSTATE,
-		 a_fts_waiting, 0);
-    gpcc_fsm_put(FTS_WAIT_CMDSTATE, ARRAY_INIT_EVENT, FTS_WAIT_CMDSTATE,
-		 a_fts_waiting, 0);
-    gpcc_fsm_put(FTS_WAIT_CMDSTATE, ARRAY_START_EVENT, FTS_WAIT_CMDSTATE,
-		 a_fts_waiting, 0);
-    gpcc_fsm_put(FTS_WAIT_CMDSTATE, ARRAY_STATUS_EVENT, FTS_WAIT_CMDSTATE,
-		 a_fts_busy_reply, 0);
+
 		 
     gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, BREAK_EVENT, FTS_WAIT_CMDSTATE, 0);
     gpcc_fsm_put(FTS_STOPPED_CMDSTATE, BREAK_EVENT, FTS_WAIT_CMDSTATE, 0);
@@ -210,7 +204,12 @@ APR_DECLARE(void) fsm_init(void)
 
     gpcc_fsm_put(FTS_WAIT_CMDSTATE, ARRAY_STATUS_EVENT, FTS_WAIT_CMDSTATE,
 		 a_fts_array_status_reply, 0);
-
+    gpcc_fsm_put(FTS_WAIT_CMDSTATE, ARRAY_STOP_EVENT, FTS_WAIT_CMDSTATE,
+		 a_fts_waiting, 0);
+    gpcc_fsm_put(FTS_WAIT_CMDSTATE, ARRAY_INIT_EVENT, FTS_WAIT_CMDSTATE,
+		 a_fts_waiting, 0);
+    gpcc_fsm_put(FTS_WAIT_CMDSTATE, ARRAY_START_EVENT, FTS_WAIT_CMDSTATE,
+		 a_fts_waiting, 0);
 
     gpcc_fsm_put(FTS_WAIT_CMDSTATE, CONTINUE_EVENT, FTS_WAIT_CMDSTATE,
 		 a_fts_array_present, 0);
