@@ -47,15 +47,15 @@ apr_status_t a_maset_ready_closed(gpcc_event_t *ev, void *arg)
     slot->u.maset.nopened--;
     
     if (slot->u.maset.nopened == 1) {
-	if (*slot->u.maset.leadma && strcmp(slot->u.maset.leadma, ma) == 0) {
+	if (*gpma.lma_cmdslot->u.lma.leadma && strcmp(gpma.lma_cmdslot->u.lma.leadma, ma) == 0) {
 	    evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 	    gpcc_evqueue_put(gpma.evq, evt);
 	}
     } else {
 
-	if (*slot->u.maset.leadma && strcmp(slot->u.maset.leadma, ma) == 0) {
+	if (*gpma.lma_cmdslot->u.lma.leadma && strcmp(gpma.lma_cmdslot->u.lma.leadma, ma) == 0) {
 	    gpcc_log_info("LEADME %s is dead", ma);
-	    *slot->u.maset.leadma = 0;
+	    *gpma.lma_cmdslot->u.lma.leadma = 0;
 	    evt = gpcc_event_alloc(BREAK_EVENT, gpma.lma_cmdslot->cmdidx, 0);
 	    gpcc_evqueue_put(gpma.evq, evt);
 	}

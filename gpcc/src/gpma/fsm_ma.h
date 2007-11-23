@@ -176,10 +176,6 @@ apr_status_t a_lma_vote_requested(gpcc_event_t *ev, void *arg)
     int e;
 
     ma = gpcc_json_object_get_string(obj, "ma", 0);
-    if (!ma || strlen(ma) >= sizeof(slot->u.lma.voted.ma)) {
-	return 0;
-    }
-
     gpcc_log_info("RECV VOTEME from %s", ma);
     strcpy(slot->u.lma.voted.ma, ma);
     
@@ -394,7 +390,7 @@ apr_status_t a_lma_lead(gpcc_event_t *ev, void *arg)
     }
 
     
-    strcpy(gpma.maset_cmdslot->u.maset.leadma, gpma.ma_unit);
+    strcpy(slot->u.lma.leadma, gpma.ma_unit);
     
     /* kick off the nodes */
     for (i = 0 ; i < gpma.node_max ; i++) {
@@ -429,6 +425,6 @@ apr_status_t a_lma_standby(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
 
-    strcpy(gpma.maset_cmdslot->u.maset.leadma, slot->u.lma.voted.ma);
+    strcpy(slot->u.lma.leadma, slot->u.lma.voted.ma);
     return 0;
 }
