@@ -874,7 +874,7 @@ CUME_DIST() OVER(partition by sale.cn,sale.pn order by sale.vn desc,sale.pn desc
 FROM sale; --mvd 1,2->4
 
 SELECT sale.cn,sale.vn,sale.pn,
-SUM(floor(sale.cn*sale.vn)) OVER(partition by sale.vn,sale.pn order by sale.pn asc rows between 1 following and unbounded following) as sum
+SUM((cn*100+pn/100)%100) OVER(partition by sale.vn,sale.pn order by sale.pn asc rows between 1 following and unbounded following) as sum
 from sale; --mvd 2,3->4
 
 -- MPP-1924
