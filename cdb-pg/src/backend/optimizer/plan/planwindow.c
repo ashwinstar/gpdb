@@ -1757,19 +1757,27 @@ static Plan *plan_common_subquery(PlannerInfo *root, List *lower_tlist,
 	
 	/* If an order hint is specified, try for it.   */
 	if ( order_hint != NIL )
-		root->sort_pathkeys = make_pathkeys_for_sortclauses(order_hint, lower_tlist);
+	{
+		root->query_pathkeys = make_pathkeys_for_sortclauses(order_hint, lower_tlist);
+		root->sort_pathkeys = root->query_pathkeys;
+	}
 
 
 	/* Generate the best unsorted and presorted paths for this Query. */
 	query_planner(root, lower_tlist, 0.0, 
 				  &cheapest_path, &sorted_path, &num_groups);
+					  
 	if ( order_hint != NIL &&
 		 sorted_path != NULL &&
 		 (	CdbPathLocus_IsEntry(sorted_path->locus) ||
 			CdbPathLocus_IsSingleQE(sorted_path->locus) ) )
+	{
 		best_path = sorted_path;
+	}
 	else
+	{
 		best_path = cheapest_path;
+	}
 	
 	/* Make the plan. */
 	result_plan = create_plan(root, best_path);
@@ -1786,7 +1794,7 @@ static Plan *plan_common_subquery(PlannerInfo *root, List *lower_tlist,
 
 	/* Set up results. */
 	*result_locus = best_path->locus;
-	*result_pathkeys = root->query_pathkeys;	
+	*result_pathkeys = best_path->pathkeys;	
 	return result_plan;
 }
 
