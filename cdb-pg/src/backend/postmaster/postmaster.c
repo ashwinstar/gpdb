@@ -4713,7 +4713,7 @@ setProcAffinity(int id)
 		return;
 	}
 
-	limit = numa_max_node();
+	limit = numa_max_node() + 1;
 
 	nodemask_zero(&mask);
 	nodemask_set(&mask, (id % limit));
