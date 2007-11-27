@@ -10,8 +10,6 @@
 #include <stdlib.h>
 #include "gpma.h"
 
-#define IS_LEADMA (*gpma.lma_cmdslot->u.lma.leadma && strcmp(gpma.lma_cmdslot->u.lma.leadma, gpma.ma_unit) == 0)
-#define IS_NO_LEADMA (*gpma.lma_cmdslot->u.lma.leadma == 0)
 
 #include "fsm_node.h"
 #include "fsm_ma.h"

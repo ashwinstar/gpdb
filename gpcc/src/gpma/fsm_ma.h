@@ -1,3 +1,5 @@
+#define IS_LEADMA (*gpma.lma_cmdslot->u.lma.leadma && strcmp(gpma.lma_cmdslot->u.lma.leadma, gpma.ma_unit) == 0)
+#define IS_NO_LEADMA (*gpma.lma_cmdslot->u.lma.leadma == 0)
 
 
 apr_status_t a_ma_connect(gpcc_event_t* ev, void* arg)
@@ -99,6 +101,19 @@ apr_status_t a_ma_ready(gpcc_event_t *ev, void *arg)
 		gpcc_log_info("MA CLOSE SPARE CONNECTION %s", slot->cmdname);
 	    } 
 	} else {
+	    if (ev->etype == NET_ACCEPTED_EVENT) {
+		gpcc_net_header_t hdr;
+		int e;
+		hdr.argc = 1;
+		hdr.argv[0] = GPCC_NET_PACKET_PROTO;
+		hdr.hc = 0;
+		hdr.postlen = 0;
+		if (0 != (e = gpcc_net_send_header(conn, &hdr))) {
+		    gpcc_warning(FLINE, "gpcc_net_send header failed");
+		    return 0;
+		}
+	    }
+
 	    /* use the peer connection */
 	    if (slot->u.ma.peer_conn) {
 		if (slot->u.ma.peer_conn != slot->u.ma.conn) {
