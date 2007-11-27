@@ -271,6 +271,16 @@ CHK_INVALID () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+REMOVE_STANDBY () {
+	if [ $RUN_INITSTANDBY -eq 1 ];
+	then
+		$GPSTART -mqa
+
+		${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"delete from $CONFIG_TABLE WHERE content=-1 and isprimary = 'f'" > /dev/null
+		$GPSTOP -mqa
+	fi
+}
+
 CHK_STANDBY () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	RUN_INITSTANDBY=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select 1 from $CONFIG_TABLE where content=-1 and isprimary='f';"|$WC -l`
@@ -295,14 +305,6 @@ CHK_STATUS () {
 	CHK_STANDBY
 	#Get details of segments in the GPDB array
 	GET_QE_DETAILS
-	# add details of standby QD
-	GET_STANDBY_DETAILS
-	ncount=${#QE_ARRAY[@]}
-	for sb in "${STANDBY_ARRAY[@]}"
-	do
-		QE_ARRAY[$ncount]=$sb
-		ncount=$[$ncount + 1]
-	done
 	#Stop the master in admin mode
 	$GPSTOP -qm -d $MASTER_DATA_DIRECTORY
 	#Checks complete, can now proceed with process
@@ -411,16 +413,6 @@ DOWNGRADE_ARRAY () {
 	else
 		LOG_MSG "[INFO]:-$GPUPGRADE $UG_ARGS returned successfully" 1
 	fi
-	if [ $RUN_INITSTANDBY -ne 0 ];then
-		LOG_MSG "[WARN]:-Master standby cannot be recreated during downgrade, please initialize it after the downgrade has finished" 2
-#		LOG_MSG "[INFO]:-Upgrading warm master standby, please wait..." 1
-#		$GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq
-#		if [ $? -ne 0 ];then
-#			LOG_MSG "[WARN]:-Failed to $GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq" 2
-#		else
-#			LOG_MSG "[INFO]:-Completed warm master standby upgrade" 1
-#		fi
-	fi
 	LOG_MSG "[INFO]:-Securing contents of backout file to log file" 1
 	$CAT $BACKOUT_FILE >> $LOG_FILE 2>/dev/null
 	$RM -f $BACKOUT_FILE
@@ -478,19 +470,6 @@ UPGRADE_ARRAY () {
 	else
 		LOG_MSG "[INFO]:-$GPUPGRADE $UG_ARGS returned successfully" 1
 	fi
-	if [ $RUN_INITSTANDBY -ne 0 ];then
-		LOG_MSG "[INFO]:-Upgrading warm master standby, please wait..." 1
-		$GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq
-		if [ $? -ne 0 ];then
-			if [ $? -eq 1 ]; then
-				LOG_MSG "[WARN]:-$GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq generated warnings, please consult the log" 2
-			else
-				LOG_MSG "[WARN]:-$GPINITSTANDBY -s $WARM_MASTER_NAME -n -aq generated errors, please consult the log" 2
-			fi
-		else
-			LOG_MSG "[INFO]:-Completed warm master standby upgrade" 1
-		fi
-	fi
 	LOG_MSG "[INFO]:-Securing contents of backout file to log file" 1
 	$CAT $BACKOUT_FILE >> $LOG_FILE
 	$RM -f $BACKOUT_FILE
@@ -532,11 +511,11 @@ CATALOG_BACKUP () {
 		if [ "$NODE_DB" == "template0" ]; then
 			FILELIST[$j]="$NODE_NAME|$NODE_DIR|global/*"
 			j=$[$j+1]
-			tmp0oid=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $NODE_PORT template1 -A -t -c"select oid from pg_database where datname = 'template0'"` >> $LOG_FILE 2>&1
+			tmp0oid=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $NODE_PORT -h $NODE_NAME template1 -A -t -c"select oid from pg_database where datname = 'template0'"` >> $LOG_FILE 2>&1
 			FILELIST[$j]="$NODE_NAME|$NODE_DIR|base/$tmp0oid/*"
 			j=$[$j+1]
 		else
-			tmp=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $NODE_PORT $NODE_DB -A -t -c"select case when spcname = 'pg_default' and spclocation = '' then 'base/' || '$NODE_DBOID'::text || '/' else spclocation || '/' end || c.relfilenode from pg_class c, pg_tablespace p, pg_namespace n where c.relkind in ('r', 'i', 't') and relisshared = 'f' and (c.reltablespace = p.oid OR (c.reltablespace = 0 AND p.spcname = 'pg_default')) and relnamespace = n.oid and n.nspname = 'pg_catalog' and (c.relname like 'pg_%' OR c.relname like 'gp_%');"`) >> $LOG_FILE 2>&1
+			tmp=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $NODE_PORT -h $NODE_NAME $NODE_DB -A -t -c"select case when spcname = 'pg_default' and spclocation = '' then 'base/' || '$NODE_DBOID'::text || '/' else spclocation || '/' end || c.relfilenode from pg_class c, pg_tablespace p, pg_namespace n where c.relkind in ('r', 'i', 't') and relisshared = 'f' and (c.reltablespace = p.oid OR (c.reltablespace = 0 AND p.spcname = 'pg_default')) and relnamespace = n.oid and n.nspname = 'pg_catalog' and (c.relname like 'pg_%' OR c.relname like 'gp_%');"`) >> $LOG_FILE 2>&1
 			files=""
 			for tmpfile in "${tmp[@]}"
 			do
@@ -597,7 +576,7 @@ if [ $# -ne 0 ]; then
 		s ) KEEP_ONLINE=0 ;;
 		h ) UG_ARGS="$UG_ARGS -h $OPTARG " ;;
 		p ) UG_ARGS="$UG_ARGS -p $OPTARG " ;;
-		g ) UG_ARGS="$UP_ARGS -d" ;;
+		g ) UG_ARGS="$UG_ARGS -d" ;;
 		* ) UNKNOWN_OPTION ;;
 		esac
 	done	
@@ -622,6 +601,7 @@ if [ $INTERACTIVE ];then
 	PROMPT_CONTINUE
 fi
 #LOCK_ACCESS
+REMOVE_STANDBY
 if [ "$UPGRADE_TO" == "$NEW_VERSION" ];then
 	UPGRADE_ARRAY
 else
@@ -633,17 +613,50 @@ $RM -f $PARALLEL_STATUS_FILE
 # After upgrade, we need to restart without special start options
 # i.e., allow_system_table_mods = yes.
 
+
+$GPSTOP -qa -d $MASTER_DATA_DIRECTORY
+
+if [ $UPGRADE_TO == $NEW_VERSION ];
+then
+	$GPSTART -qa -d $MASTER_DATA_DIRECTORY
+	ERROR_CHK $? "start cluster" 1
+fi
+
+if [ $RUN_INITSTANDBY -ne 0 ];then
+#	if [ $UPGRADE_TO == $OLD_VERSION ]; then
+#		LOG_MSG "[WARN]:-Master standby cannot be recreated during downgrade, please initialize it after the downgrade has finished" 2
+#	else
+#B
+#		LOG_MSG "[INFO]:-Upgrading warm master standby, please wait..." 1
+#		$GPINITSTANDBY -s $WARM_MASTER_NAME -aq
+#		if [ $? -ne 0 ];then
+#			if [ $? -eq 1 ]; then
+#				LOG_MSG "[WARN]:-$GPINITSTANDBY -s $WARM_MASTER_NAME  -aq generated warnings, please consult the log" 2
+#			else
+#				LOG_MSG "[WARN]:-$GPINITSTANDBY -s $WARM_MASTER_NAME -aq generated errors, please consult the log" 2
+#			fi
+#		else
+#			LOG_MSG "[INFO]:-Completed warm master standby upgrade" 1
+#		fi
+#	fi
+	LOG_MSG "[WARN]:-Upgrading and downgrading of clusters with standby masters is not supported" 2
+	LOG_MSG "[WARN]:-The configuration of your existing standby master has been removed" 2
+	LOG_MSG "[WARN]:-You can re-add it by running $GPINITSTANDBY -s $WARM_MASTER_NAME -aq after gpdbupgrade has finished" 2
+fi
+
 if [ $KEEP_ONLINE -eq 0 ];then
 	LOG_MSG "[INFO]:-Commencing shutdown of the GPDB array post upgrade" 1
 else
 	LOG_MSG "[INFO]:-Restarting GPDB array post upgrade" 1
 fi
 
-$GPSTOP -qa -d $MASTER_DATA_DIRECTORY
+if [ $UPGRADE_TO == $NEW_VERSION ];
+then
+	$GPSTOP -qa -d $MASTER_DATA_DIRECTORY
+fi
 
 if [ $KEEP_ONLINE -eq 1 ]; then
 	$GPSTART -qa -d $MASTER_DATA_DIRECTORY
-	ERROR_CHK $? "restart GPDB array" 1
 fi
 
 LOG_MSG "[INFO]:-Upgrade process completed without error" 1

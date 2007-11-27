@@ -360,7 +360,7 @@ readd_pg_resqueue_cts(config_t *conf)
 	{
 		int j;
 		int len;
-		char query[8196];
+		char query[8196], query2[8196];
 
 		len = snprintf(query, sizeof(query), "INSERT INTO "
 					   "pg_catalog.pg_resqueue "
@@ -403,12 +403,12 @@ readd_pg_resqueue_cts(config_t *conf)
 
 		strncat(query, upgrade ? ", 0)" : ")", sizeof(query) - len);
 		len += 2;
-		snprintf(query, sizeof(query), "%s  returning "
+		snprintf(query2, sizeof(query2), "%s  returning "
 				 "gp_oid_update(oid, '%s'::oid, ctid, "
 				 "'pg_catalog.pg_resqueue'::regclass::oid)",
 				 query, PQgetvalue(pg_resqueue_cts, i, j));
 		
-		run_query(conf, 0, query);
+		run_query(conf, 0, query2);
 	}
 }
 
@@ -1105,6 +1105,8 @@ main(int argc, char **argv)
 					"valid, hostname, port, datname from "
 					"pg_catalog.gp_configuration "
 					"cross join pg_catalog.pg_database "
+					"WHERE (content = -1 AND definedprimary = 't' AND isprimary = 't') "
+					" OR (content <> -1) "
 					"order by content," 
 					"definedprimary desc, dbid;");
 	check_ok(NULL);

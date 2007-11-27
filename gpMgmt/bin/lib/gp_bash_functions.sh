@@ -810,7 +810,7 @@ content<>-1;"|$GREP -v template0|$GREP -v postgres|$CUT -d"|" -f1`)
 
 CHK_MIRRORS_CONFIGURED () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MIRROR_COUNT=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid)/count(distinct(content)) from $CONFIG_TABLE where content<>-1;"`
+	MIRROR_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid)/count(distinct(content)) from $CONFIG_TABLE where content<>-1;"`
 	ERROR_CHK $? "obtain mirror count from master instance" 2
 	LOG_MSG "[INFO]:-Obtained $MIRROR_COUNT as check value"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
