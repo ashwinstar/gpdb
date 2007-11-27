@@ -465,5 +465,27 @@ apr_status_t a_lma_standby(gpcc_event_t *ev, void *arg)
     cmdslot_t *slot = arg;
 
     strcpy(slot->u.lma.leadma, slot->u.lma.voted.ma);
+    slot->countdown = 0;
+    return 0;
+}
+
+apr_status_t a_lma_leadma_broadcast(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
+    struct json_object *obj = json_tokener_parse(pkt->payload);
+    char *ma;
+    char msg[64];
+    int e;
+
+    ma = gpcc_json_object_get_string(obj, "ma", 0);
+    gpcc_log_info("LEADMA RECV VOTE LOST from %s", ma);
+
+    sprintf(msg, "{\"ma\" : \"%s\"}", gpma.ma_unit);
+    if (0 != (e = gpcc_net_send_packetx(ma, LMA_LEADMA_MSG, slot->cmdidx, pkt->mh.sndidx, msg, strlen(msg)+1))) {
+	gpcc_warning(FLINE, "send LEADMA packet to %s failed", ma);
+    }
+
+    json_object_put(obj);
     return 0;
 }
