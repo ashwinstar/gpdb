@@ -128,7 +128,7 @@ APR_DECLARE(void) fsm_init(void)
 		 a_lma_leadless, 0);
     gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_VOTE_LOST_MSG_EVENT, LMA_LEADLESS_CMDSTATE, 0);
     gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_LEADMA_MSG_EVENT, LMA_STANDBY_CMDSTATE, 
-		 a_lma_standby, 0);
+		 a_lma_get_leadma, 0);
 
     gpcc_fsm_put(LMA_VOTED_CMDSTATE, CONTINUE_EVENT, LMA_VOTED_CMDSTATE,
 		 a_lma_maset_ready, 0);

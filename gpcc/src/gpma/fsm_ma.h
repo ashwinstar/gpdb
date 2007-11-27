@@ -469,6 +469,20 @@ apr_status_t a_lma_standby(gpcc_event_t *ev, void *arg)
     return 0;
 }
 
+apr_status_t a_lma_get_leadma(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
+    struct json_object *obj = json_tokener_parse(pkt->payload);
+    char *ma;
+
+    ma = gpcc_json_object_get_string(obj, "ma", 0);
+    strcpy(slot->u.lma.leadma, ma);
+    json_object_put(obj);
+    slot->countdown = 0;
+    return 0;
+}
+
 apr_status_t a_lma_leadma_broadcast(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
