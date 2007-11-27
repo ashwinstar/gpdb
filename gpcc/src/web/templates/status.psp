@@ -1,5 +1,10 @@
 <%!
 import os, sys, urllib, httplib
+
+try:
+    import simplejson
+except ImportError, e:
+    sys.exit('Error: unable to import module: ' + str(e))
 %>
 
 <%
@@ -11,22 +16,29 @@ def hitMA(cmd, params):
         f = httplib.HTTPConnection('%s:%d' % (sctx['ma.host'], sctx['ma.port']))
         f.request('GET', '%s?%s' % (cmd, params))
         response = f.getresponse()
-        if response.status == 200:
-            res = response.read()
     finally:
         if f: f.close()
-    return res
+    return response
   
 %>
 
 <%
-web.header('Content-Type', 'text/html;charset=utf-8')
+redirect=0
 
+while redirect < 5:
+    response = hitMA('/gpcc/status', {})
+    if response.status == 200:
+        web.header('Content-Type', 'text/plain;charset=utf-8')
+        web.output(response.read())
+	break
+    elif response.status == 301:
+    	json = simplejson.loads(response.read())
+	location = json.get('location')
+	addr = location.split(':')
+	sctx['ma.host'] = addr[0]
+	sctx['ma.port'] = int(addr[1])
+	redirect += 1
 %>
 
-<%
-response = hitMA('/gpcc/status', {})
-%>
-${response}
 
 
