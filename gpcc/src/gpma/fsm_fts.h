@@ -313,6 +313,9 @@ static apr_status_t a_fts_array_start(gpcc_event_t *ev, void *_cmdslot)
 		evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
 		gpcc_evqueue_put(gpma.evq, evt);
 		gpcc_net_uri_free(uri);
+		obj = gpcc_json_http_reply("start", "failure", "parameter missing");
+		gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+		json_object_put(obj);
 		return 0;
 	    }
 	    mode = m;
@@ -525,6 +528,9 @@ static apr_status_t a_fts_array_stop(gpcc_event_t *ev, void *_cmdslot)
 		evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
 		gpcc_evqueue_put(gpma.evq, evt);
 		gpcc_net_uri_free(uri);
+		obj = gpcc_json_http_reply("stop", "failure", "parameter missing");
+		gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+		json_object_put(obj);
 		return 0;
 	    }
 	    
@@ -729,7 +735,7 @@ static apr_status_t a_fts_array_init(gpcc_event_t *ev, void *_cmdslot)
 	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
 	obj = gpcc_json_http_reply("init", "failure", "config syntax error");
-	gpcc_net_http_close(conn, 200, "failure", json_object_to_json_string(obj));
+	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
 	json_object_put(obj);	
 	return 0;
     }
