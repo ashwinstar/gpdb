@@ -64,17 +64,31 @@ apr_status_t a_ma_ready(gpcc_event_t *ev, void *arg)
     }
 
     if (!slot->u.ma.conn) {
+	if (ev->etype == NET_ACCEPTED_EVENT) {
+	    gpcc_net_header_t hdr;
+	    int e;
+	    hdr.argc = 1;
+	    hdr.argv[0] = GPCC_NET_PACKET_PROTO;
+	    hdr.hc = 0;
+	    hdr.postlen = 0;
+	    if (0 != (e = gpcc_net_send_header(conn, &hdr))) {
+		gpcc_warning(FLINE, "gpcc_net_send header failed");
+		return 0;
+	    }
+	}
+
 	gpcc_log_info("TAG CONNECTION %s", slot->cmdname);
 	slot->u.ma.conn = conn;
 	if (gpcc_net_tag(conn, slot->cmdname)) {
 	    gpcc_log_error("TAG %s error", slot->cmdname);
+	    return 0;
 	}
 	evt = gpcc_event_alloc(NET_OPENED_EVENT, gpma.maset_cmdslot->cmdidx, strlen(slot->cmdname)+1);
 	strcpy(evt->pdata, slot->cmdname);
 	gpcc_evqueue_put(gpma.evq, evt);
     } else {
-	/* choose to cut which connection */
 	if (strcmp(gpma.ma_unit, slot->cmdname) < 0) {
+	    /* cut peer connection */
 	    if (slot->u.ma.peer_conn) {
 		if (slot->u.ma.peer_conn == slot->u.ma.conn) {
 		    gpcc_net_tag(slot->u.ma.conn, 0);   /* remove the tag */
@@ -83,8 +97,18 @@ apr_status_t a_ma_ready(gpcc_event_t *ev, void *arg)
 		}
 		gpcc_net_close(slot->u.ma.peer_conn, 1);
 		gpcc_log_info("MA CLOSE SPARE CONNECTION %s", slot->cmdname);
+	    } 
+	} else {
+	    /* use the peer connection */
+	    if (slot->u.ma.peer_conn) {
+		if (slot->u.ma.peer_conn != slot->u.ma.conn) {
+		    gpcc_net_tag(slot->u.ma.conn, 0);
+		    slot->u.ma.conn = slot->u.ma.peer_conn;
+		    gpcc_net_tag(slot->u.ma.conn, slot->cmdname);
+		}
 	    }
 	}
+
     }
 
     return 0;

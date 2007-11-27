@@ -297,7 +297,7 @@ static void net_accepted(gpcc_net_conn_t conn,
     }
     
     if (from_peer->argc == 1 && strcmp(from_peer->argv[0], GPCC_NET_PACKET_PROTO) == 0) {
-	int i, e;
+	int i;
 	const char *role = 0;
 	for (i = 0 ; i < from_peer->hc ; i++) {
 	    if (apr_strnatcasecmp(from_peer->hname[i], "X-GPCC-ROLE") == 0) {
@@ -306,17 +306,7 @@ static void net_accepted(gpcc_net_conn_t conn,
 	}
 
 	if (role && strstr(role, "GPMA") == role) {
-	    gpcc_net_header_t hdr;
 	    char *s = 0;
-
-	    hdr.argc = 1;
-	    hdr.argv[0] = GPCC_NET_PACKET_PROTO;
-	    hdr.hc = 0;
-	    hdr.postlen = 0;
-	    if (0 != (e = gpcc_net_send_header(conn, &hdr))) {
-		gpcc_warning(FLINE, "gpcc_net_send header failed");
-	    }
-
 
 	    gpcc_log_info("ROLE = %s", role);
 	    /* find the corresponding ma slot */
