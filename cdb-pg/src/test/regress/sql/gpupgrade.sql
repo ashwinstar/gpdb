@@ -17,3 +17,25 @@ select testname,
 gp_str302node2str(oldnode) = newnode as upgrade,
 gp_str312node2str(newnode) = oldnode as downgrade
 from nodetest order by testname;
+drop table nodetest;
+-- test that a variety of nodes can be downgraded and upgraded
+create view ugtest1 as select oid, sum(reltuples) from pg_class group by 1
+  having(sum(reltuples) > 100) order by 2;
+
+create view ugtest2 as select 1000000000000000 as a,
+'2007-01-01 11:11:11'::timestamp as b,
+'2007-01-01 11:11:11 PST'::timestamptz as c,
+'200000.0000'::float4 as d,
+'2000.00000000'::float8 as e,
+123 as f;
+
+create view ugtest3 as select * from pg_database limit 5;
+
+create view ugtest4 as select relname, length(relname) from pg_class
+where oid in (select distinct oid from pg_attribute);
+
+create view ugtest5 as select array[ '10000000000000000'::int8 ] as test;
+
+select gp_str302node2str(gp_str312node2str(ev_action)) = ev_action from
+pg_rewrite where ev_class in('ugtest1'::regclass, 'ugtest2'::regclass,
+'ugtest3'::regclass, 'ugtest4'::regclass, 'ugtest5'::regclass);
