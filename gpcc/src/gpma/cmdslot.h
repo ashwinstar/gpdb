@@ -199,12 +199,17 @@ struct cmdslot_t {
 	struct {
 	    int total;
 	    int nopened;
+	    struct {
+		int opened;
+	    } *matab;
 	} maset;
 
 	struct {
 	    int total;
 	    int nopened;
-	    
+	    struct {
+		int opened;
+	    } *nodetab;
 	} haset;
 	   
     } u;
