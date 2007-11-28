@@ -347,4 +347,60 @@ select t from bm_test where upper(t3) = 'FOO';
 select t from bm_test where n ISNULL;
 -- bitmap index builds do not support concurrent building, test for this
 create index concurrently should_not_work on bm_test using bitmap(a);
+-- test updates
+update bm_test set i4 = 3;
+-- should return nothing
+select * from bm_test where i4 = 1;
+-- should return all
+select * from bm_test where i4=3;
+-- should return one row
+select * from bm_test where i2=1;
+-- test splitting of words
+-- We distribute by k and only insert a single distinct value in that 
+-- field so that we can be guaranteed of behaviour. We're not testing
+-- the parallel mechanism here so it's fine to harass a single backend
+create table bm_test2 (i int, j int, k int) distributed by (k);
+create index bm_test2_i_idx on bm_test2 using bitmap(i);
+insert into bm_test2 select 1,
+case when (i % (16 * 16 + 8)) = 0 then 2  else 1 end, 1
+from generate_series(1, 16 * 16 * 16) i;
+select count(*) from bm_test2 where i = 1;
+select count(*) from bm_test2 where j = 2;
+-- break some compressed words
+update bm_test2 set i = 2 where j = 2;
+select count(*) from bm_test2 where i = 1;
+select count(*) from bm_test2 where i = 2;
+update bm_test2 set i = 3 where i = 1;
+select count(*) from bm_test2 where i = 1;
+select count(*) from bm_test2 where i = 2;
+select count(*) from bm_test2 where i = 3;
+-- now try and break a whole page
+-- bitmap words are 16 bits so, with no compression we get about 
+-- 16500 words per 32K page. So, what we want to do is, insert
+-- 8250 uncompressed words, then a compressed word, then more uncompressed
+-- words until the page is full. After this, we can break the compressed word
+-- and there by test the word spliting system
+create table bm_test3 (i int, j int, k int) distributed by (k);
+create index bm_test3_i_idx on bm_test3 using bitmap(i);
+insert into bm_test3 select i, 1, 1 from
+generate_series(1, 8250 * 8) g, generate_series(1, 2) i;
+insert into bm_test3 
+
+select 17, 1, 1 from generate_series(1, 16 * 16) i;
+insert into bm_test3 values(17, 2, 1);
+insert into bm_test3
+select 17, 1, 1 from generate_series(1, 16 * 16) i;
+
+insert into bm_test3 select i, 1, 1 from
+generate_series(1, 8250 * 8) g, generate_series(1, 2) i;
+select count(*) from bm_test3 where i = 1;
+select count(*) from bm_test3 where i = 17;
+select count(*) from bm_test3 where i = 17 and j = 2;
+update bm_test3 set i = 18 where i = 17 and j = 2;
+select count(*) from bm_test3 where i = 1;
+select count(*) from bm_test3 where i = 2;
+select count(*) from bm_test3 where i = 17;
+select count(*) from bm_test3 where i = 18;
 drop table bm_test;
+drop table bm_test2;
+drop table bm_test3;
