@@ -18,6 +18,21 @@
 #include "storage/fd.h"
 #include "utils/guc.h"
 
+int GUC_yylex_destroy  (void);
+int GUC_yyget_lineno  (void);
+FILE *GUC_yyget_in  (void);
+FILE *GUC_yyget_out  (void);
+int GUC_yyget_leng  (void);
+char *GUC_yyget_text  (void);
+void GUC_yyset_lineno (int  line_number );
+void GUC_yyset_in (FILE *  in_str );
+void GUC_yyset_out (FILE *  out_str );
+int GUC_yyget_debug  (void);
+void GUC_yyset_debug (int  bdebug );
+int GUC_yylex_destroy  (void);
+
+
+
 
 /* Avoid exit() on fatal scanner errors (a bit ugly -- see yy_fatal_error) */
 #undef fprintf

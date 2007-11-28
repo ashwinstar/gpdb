@@ -36,6 +36,22 @@
 #include "storage/off.h"
 #include "utils/rel.h"
 
+int boot_yyget_lineno  (void);
+FILE *boot_yyget_in  (void);
+FILE *boot_yyget_out  (void);
+int boot_yyget_leng  (void);
+char *boot_yyget_text  (void);
+void boot_yyset_lineno (int  line_number );
+void boot_yyset_in (FILE *  in_str );
+void boot_yyset_out (FILE *  out_str );
+int boot_yyget_debug  (void);
+void boot_yyset_debug (int  bdebug );
+int boot_yylex_destroy  (void);
+
+
+
+
+
 /* Not needed now that this file is compiled as part of bootparse. */
 /* #include "bootstrap_tokens.h" */
 

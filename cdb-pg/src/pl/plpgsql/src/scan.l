@@ -26,6 +26,19 @@
 #undef fprintf
 #define fprintf(file, fmt, msg)  ereport(ERROR, (errmsg_internal("%s", msg)))
 
+int plpgsql_base_yyget_lineno  (void);
+FILE *plpgsql_base_yyget_in  (void);
+FILE *plpgsql_base_yyget_out  (void);
+int plpgsql_base_yyget_leng  (void);
+char *plpgsql_base_yyget_text  (void);
+void plpgsql_base_yyset_lineno (int  line_number );
+void plpgsql_base_yyset_in (FILE *  in_str );
+void plpgsql_base_yyset_out (FILE *  out_str );
+int plpgsql_base_yyget_debug  (void);
+void plpgsql_base_yyset_debug (int  bdebug );
+int plpgsql_base_yylex_destroy  (void);
+
+
 /* Handles to the buffer that the lexer uses internally */
 static YY_BUFFER_STATE scanbufhandle;
 static char *scanbuf;

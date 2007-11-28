@@ -40,6 +40,20 @@
 #include "parser/scansup.h"
 #include "mb/pg_wchar.h"
 
+int base_yyget_lineno  (void);
+FILE *base_yyget_in  (void);
+FILE *base_yyget_out  (void);
+int base_yyget_leng  (void);
+char *base_yyget_text  (void);
+void base_yyset_lineno (int  line_number );
+void base_yyset_in (FILE *  in_str );
+void base_yyset_out (FILE *  out_str );
+int base_yyget_debug  (void);
+void base_yyset_debug (int  bdebug );
+int base_yylex_destroy  (void);
+
+
+
 
 /* Avoid exit() on fatal scanner errors (a bit ugly -- see yy_fatal_error) */
 #undef fprintf
