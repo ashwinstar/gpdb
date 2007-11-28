@@ -29,6 +29,8 @@
 #include "utils/tuplestorenew.h"
 #include "miscadmin.h"
 
+#include "utils/debugbreak.h"
+
 static TupleTableSlot *ShareInputNext(ShareInputScanState *node);
 
 /* ------------------------------------------------------------------

@@ -35,6 +35,7 @@
 #include "parser/parse_expr.h"
 #include "utils/memutils.h"
 #include "utils/lsyscache.h"
+#include "utils/debugbreak.h"
 
 #include "cdb/cdbvars.h"
 
@@ -997,6 +998,9 @@ ExecHashTableExplainInit(HashJoinState *hjstate,
 {
     MemoryContext   oldcxt;
     int             nbatch = Max(hashtable->nbatch, 1);
+
+   
+    debug_break();
 
     /* Switch to a memory context that survives until ExecutorEnd. */
     oldcxt = MemoryContextSwitchTo(hjstate->js.ps.state->es_query_cxt);

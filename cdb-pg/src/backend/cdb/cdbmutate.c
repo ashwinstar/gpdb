@@ -1673,8 +1673,14 @@ static bool shareinput_find_sharenode(ApplyShareInputContext *ctxt, int share_id
 	return false;
 }
 
-/* Adjust share_type of underlying Material or Sort if necessary */
-static bool shareinput_mutator_xslice(Node* node, ApplyShareInputContext *ctxt, bool fPop)
+/* 
+ * First walk on shareinput xslice.  It does the following,
+ *  	1. build the sharedNodes in context.
+ *  	2. Build teh sliceMask in context.
+ *  	3. If a shared is cross slice, mark the shared node xslice.
+ *  	4. Build a list a share on QD
+ */
+static bool shareinput_mutator_xslice_1(Node* node, ApplyShareInputContext *ctxt, bool fPop)
 {
 	Plan *plan = (Plan *) node;
 
@@ -1698,6 +1704,13 @@ static bool shareinput_mutator_xslice(Node* node, ApplyShareInputContext *ctxt, 
 		int motId = shareinput_peekmot(ctxt);
 		Plan *shared = plan->lefttree;
 		
+		Assert(sisc->plan.flow);
+		if(sisc->plan.flow->flotype == FLOW_SINGLETON)
+		{
+			if(sisc->plan.flow->segindex < 0) 
+				ctxt->qdShares = list_append_unique_int(ctxt->qdShares, sisc->share_id);
+		}
+
 		if(!shared)
 		{
 			ShareNodeWithSliceMark plan_slicemark = {NULL /* plan */,0 /* slice_mark */};
@@ -1730,17 +1743,34 @@ static bool shareinput_mutator_xslice(Node* node, ApplyShareInputContext *ctxt, 
 	return true;
 }
 
-/* Adjust the share_type of the ShareInputScan */
-static bool shareinput_mutator_xslice_si(Node *node, ApplyShareInputContext *ctxt, bool fPop)
+/* 
+ * Second pass
+ * 	1. Mark shareinput scan xslice,
+ * 	2. Bulid a list of QD slices
+ */
+static bool shareinput_mutator_xslice_2(Node *node, ApplyShareInputContext *ctxt, bool fPop)
 {
 	Plan *plan = (Plan *) node;
 
 	if(fPop)
+	{
+		if(IsA(plan, Motion))
+			shareinput_popmot(ctxt);
 		return false;
+	}
+
+	if(IsA(plan, Motion))
+	{
+		Motion *motion = (Motion *) plan;
+		shareinput_pushmot(ctxt, motion->motionID);
+		return true;
+	}
 
 	if(IsA(plan, ShareInputScan))
 	{
 		ShareInputScan *sisc = (ShareInputScan *) plan;
+		int motId = shareinput_peekmot(ctxt);
+
 		ShareNodeWithSliceMark plan_slicemark = { NULL, 0 };
 		ShareType stype = SHARE_NOTSHARED;
 
@@ -1761,6 +1791,52 @@ static bool shareinput_mutator_xslice_si(Node *node, ApplyShareInputContext *ctx
 				Assert(sisc->share_type == stype);
 				break;
 		}
+
+		if(list_member_int(ctxt->qdShares, sisc->share_id))
+		{
+			Assert(sisc->plan.flow);
+			Assert(sisc->plan.flow->flotype == FLOW_SINGLETON);
+			ctxt->qdSlices = list_append_unique_int(ctxt->qdSlices, motId);
+		}
+	}
+	return true;
+}
+
+/* 
+ * The third pass.  If a shareinput is running on QD, then all slices in this share 
+ * must be on QD.  Move them to QD.
+ */
+
+static bool shareinput_mutator_xslice_3(Node *node, ApplyShareInputContext *ctxt, bool fPop)
+{
+	Plan *plan = (Plan *) node;
+	int motId = shareinput_peekmot(ctxt);
+
+	if(fPop)
+	{
+		if(IsA(plan, Motion))
+			shareinput_popmot(ctxt);
+		return false;
+	}
+
+	if(IsA(plan, Motion))
+	{
+		Motion *motion = (Motion *) plan;
+		shareinput_pushmot(ctxt, motion->motionID);
+		/* Do not return.  Motion need to be adjusted as well */
+	}
+
+	/* Well, the following test can be optimized if we record the test
+	 * result so we test just once for all node in one slice.  But this
+	 * code is not perf critical so be lazy.
+	 */
+	if(list_member_int(ctxt->qdSlices, motId))
+	{
+		if(plan->flow)
+		{
+			Assert(plan->flow->flotype == FLOW_SINGLETON);
+			plan->flow->segindex = -1;
+		}
 	}
 	return true;
 }
@@ -1770,16 +1846,19 @@ Plan *apply_shareinput_xslice(Plan *plan, ApplyShareInputContext *ctxt)
 	ctxt->sharedNodes = NULL;
 	ctxt->sliceMarks = NULL;
 	ctxt->motStack = NULL;
+	ctxt->qdShares = NULL;
+	ctxt->qdSlices = NULL;
 
 	shareinput_pushmot(ctxt, 0);
 	
-	/* First adjust the share_type of underlying Material or Sort,
-	 * then adjust the share_type of the ShareInputScan.  
-	 * Note: We depends on the contxt of first adjustment to do the
-	 * second.   So, do not reset the context between calls.
+	/* 
+	 * Walk the tree.  See comment for each pass for what each pass will do.
+	 * Note: We depends on the contxt of between the passes, so do not reset 
+	 * the context between calls.
 	 */
-	shareinput_walker(shareinput_mutator_xslice, (Node *) plan, ctxt); 
-	shareinput_walker(shareinput_mutator_xslice_si, (Node *) plan, ctxt); 
+	shareinput_walker(shareinput_mutator_xslice_1, (Node *) plan, ctxt); 
+	shareinput_walker(shareinput_mutator_xslice_2, (Node *) plan, ctxt); 
+	shareinput_walker(shareinput_mutator_xslice_3, (Node *) plan, ctxt); 
 	
 	return plan;
 }

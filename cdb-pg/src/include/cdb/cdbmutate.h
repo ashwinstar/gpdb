@@ -46,6 +46,8 @@ typedef struct ApplyShareInputContext
 	List *sharedNodes;
 	List *sliceMarks;
 	List *motStack;
+	List *qdShares;
+	List *qdSlices;
 } ApplyShareInputContext;
 
 extern Plan *apply_shareinput_dag_to_tree(Plan *plan, ApplyShareInputContext *ctxt); 

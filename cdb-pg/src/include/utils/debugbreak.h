@@ -11,7 +11,7 @@
 #define DEBUG_BREAK_POINT_EXCEPTION 	(1 << 1)
 
 #ifdef USE_DEBUG_BREAK
-extern void debug_break();
+extern void debug_break(void);
 extern void debug_break_n(int n);
 extern void enable_debug_break_n(int n);
 extern void disable_debug_break_n(int n);
