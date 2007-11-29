@@ -956,6 +956,9 @@ make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels)
  * to the executor state of their Window node.  If a pushed-down qual 
  * removed a tuple, the state seen by later tuples (hence the values
  * of window functions) could be affected.
+ *
+ * 5. Do not push down quals if the subquery is a grouping extension
+ * query, since this may change the meaning of the query.
  */
 static bool
 subquery_is_pushdown_safe(Query *subquery, Query *topquery,
@@ -969,6 +972,11 @@ subquery_is_pushdown_safe(Query *subquery, Query *topquery,
 	
 	/* Check point 4 */
 	if ( contain_window_functions((Node*)subquery->targetList) )
+		return false;
+
+	/* See point 5. */
+	if (subquery->groupClause != NULL &&
+		contain_extended_grouping(subquery->groupClause))
 		return false;
 
 	/* Are we at top level, or looking at a setop component? */
