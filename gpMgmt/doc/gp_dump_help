@@ -22,8 +22,7 @@ DESCRIPTION
 The gp_dump utility dumps the contents of a Greenplum database 
 into SQL script files, which can then be used to restore the database 
 schema and user data at a later time using gp_restore. During a dump 
-operation, users will still have read-only access to the database. 
-However, write operations will be blocked during the dump operation.
+operation, users will still have full access to the database. 
 The functionality of gp_dump is analogous to PostgreSQLs pg_dump utility, 
 which writes out (or dumps) the content of a database into a script file. 
 The script file contains SQL commands that can be used to restore the 
