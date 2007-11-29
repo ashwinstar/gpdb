@@ -2750,7 +2750,8 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 		/* cleanup a Sending motion node. */
 		pEntry = removeChunkTransportState(transportStates, mySlice->sliceIndex);
 
-		waitOnOutbound(pEntry);
+		if (!forceEOS)
+			waitOnOutbound(pEntry);
 
 		for (i = 0; i < pEntry->numConns; i++)
 		{
