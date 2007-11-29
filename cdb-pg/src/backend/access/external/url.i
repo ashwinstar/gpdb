@@ -54,6 +54,7 @@
 
 #include <curl/curl.h>
 
+#include "storage/fd.h"
 #ifndef FALSE
 #define FALSE 0
 #endif
@@ -502,7 +503,7 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 		}
 
 		file->type = CFTYPE_FILE; /* marked as local FILE */
-		file->u.file.fp = fopen(path, operation);
+		file->u.file.fp = AllocateFile(path, operation);
 		
 		/* couldn't open local file. return NULL to display proper error */
 		if (!file->u.file.fp)
@@ -652,7 +653,7 @@ url_fclose(URL_FILE *file)
     switch (file->type)
     {
     case CFTYPE_FILE:
-        ret=fclose(file->u.file.fp); /* passthrough */
+        ret=FreeFile(file->u.file.fp); /* passthrough */
         break;
 
     case CFTYPE_EXEC:
