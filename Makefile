@@ -117,7 +117,6 @@ mgmtcopy :
 		$(INSTLOC)/bin/gpactivatestandby \
 		$(INSTLOC)/bin/gpaddmirrors \
 		$(INSTLOC)/bin/gpaddpart \
-		$(INSTLOC)/bin/gpcheckdb \
 		$(INSTLOC)/bin/gpcheckos \
 		$(INSTLOC)/bin/gpcheckperf \
 		$(INSTLOC)/bin/gpcreatepart \
