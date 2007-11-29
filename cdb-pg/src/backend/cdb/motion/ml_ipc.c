@@ -209,7 +209,7 @@ static void	print_connection(ChunkTransportState *transportStates, int fd, const
 static void format_fd_set(StringInfo buf, int nfds, mpp_fd_set fds, char* pfx, char *sfx);
 static char *format_sockaddr(struct sockaddr *sa, char* buf, int bufsize);
 
-static void waitOnSocketDone(int);
+static void waitOnOutbound(ChunkTransportStateEntry *pEntry);
 
 static void flushInterconnectListenerBacklog(void);
 
@@ -2750,14 +2750,14 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 		/* cleanup a Sending motion node. */
 		pEntry = removeChunkTransportState(transportStates, mySlice->sliceIndex);
 
+		waitOnOutbound(pEntry);
+
 		for (i = 0; i < pEntry->numConns; i++)
 		{
 			conn = pEntry->conns + i;
 
 			if (conn->sockfd >= 0)
 			{
-				if (!forceEOS)
-					waitOnSocketDone(conn->sockfd);
 				closesocket(conn->sockfd);
 				conn->sockfd = -1;
 			}
@@ -5272,30 +5272,50 @@ flushInterconnectListenerBacklog(void)
  * QueryCancelPending
  */
 static void
-waitOnSocketDone(int fd)
+waitOnOutbound(ChunkTransportStateEntry *pEntry)
 {
-	int			count,
-		n,
-		saved_err;
-	char		buf;
+	MotionConn *conn;
+
 	struct timeval timeout;
-	mpp_fd_set		rset;
+	mpp_fd_set	waitset, curset;
+	int			maxfd=-1;
+	int			i, n, conn_count=0;
+
+	MPP_FD_ZERO(&waitset);
+
+	for (i = 0; i < pEntry->numConns; i++)
+	{
+		conn = pEntry->conns + i;
+
+		if (conn->sockfd >= 0)
+		{
+			MPP_FD_SET(conn->sockfd, &waitset);
+			if (conn->sockfd > maxfd)
+				maxfd = conn->sockfd;
+			conn_count++;
+		}
+	}
 
 	for (;;)
 	{
+		int saved_err;
+
+		if (conn_count == 0)
+			return;
+
 		if (InterruptPending)
 		{
 #ifdef AMS_VERBOSE_LOGGING
-			elog(DEBUG3, "waitOnSocketDone(): interrupt pending fast-track");
+			elog(DEBUG3, "waitOnOutbound(): interrupt pending fast-track");
 #endif
 			return;
 		}
 
-		MPP_FD_ZERO(&rset);
-		MPP_FD_SET(fd, &rset);
 		timeout = tval;
 
-		n = select(fd + 1, (fd_set *)&rset, NULL, NULL, &timeout);
+		memcpy(&curset, &waitset, sizeof(mpp_fd_set));
+
+		n = select(maxfd + 1, (fd_set *)&curset, NULL, NULL, &timeout);
 		if (n == 0 || (n < 0 && errno == EINTR))
 		{
 			continue;
@@ -5311,26 +5331,45 @@ waitOnSocketDone(int fd)
 			 * Something unexpected, but probably not horrible warn
 			 * and return
 			 */
-			elog(LOG, "TeardownInterconnect: waitOnSocketDone select errno=%d", saved_err);
+			elog(LOG, "TeardownInterconnect: waitOnOutbound select errno=%d", saved_err);
 			break;
 		}
 
-		/* ready to read. */
-		count = recv(fd, &buf, sizeof(buf), 0);
-		if (count == 0)			/* done ! */
-			break;
-		if (count > 0 || (count < 0 && errno == EAGAIN))
-			continue;
-		/* Some other kind of error happened */
-		if (errno == EINTR)
-			continue;
+		for (i = 0; i < pEntry->numConns; i++)
+		{
+			conn = pEntry->conns + i;
 
-		/*
-		 * Something unexpected, but probably not horrible warn and
-		 * return
-		 */
-		elog(LOG, "TeardownInterconnect: waitOnSocketDone %m%s", "recv");
-		break;
+			if (conn->sockfd >= 0 && MPP_FD_ISSET(conn->sockfd, &waitset))
+			{
+				int		count;
+				char	buf;
+
+				/* ready to read. */
+				count = recv(conn->sockfd, &buf, sizeof(buf), 0);
+				if (count == 0)			/* done ! */
+				{					
+					MPP_FD_CLR(conn->sockfd, &waitset);
+					/* we may have finished */
+					conn_count--;
+					continue;
+				}
+				if (count > 0 || (count < 0 && errno == EAGAIN))
+					continue;
+				/* Some other kind of error happened */
+				if (errno == EINTR)
+					continue;
+
+				/*
+				 * Something unexpected, but probably not horrible warn and
+				 * return
+				 */
+				MPP_FD_CLR(conn->sockfd, &waitset);
+				/* we may have finished */
+				conn_count--;
+				elog(LOG, "TeardownInterconnect: waitOnOutbound %m%s", "recv");
+				continue;
+			}
+		}
 	}
 
 	return;
