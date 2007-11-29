@@ -6286,7 +6286,7 @@ do \
 	{ \
 		Index newsz = ref + 1; \
 		Assert(ref > 0); /* check overflow */ \
-		ctx->sortref = realloc(ctx->sortref, sizeof(Index) * newsz); \
+		ctx->sortref = (Index *)repalloc(ctx->sortref, sizeof(Index) * newsz); \
 		MemSet(&(ctx->sortref[ctx->size]), \
 			   0, (newsz - ctx->size) * sizeof(Index)); \
 		ctx->size = newsz; \
