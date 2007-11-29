@@ -13,13 +13,13 @@ RUNNING THE GREENPLUM DATABASE INSTALLER
 
 2. Execute the installer using bash:
 
-   /bin/sh greenplum-db-3.0.0.0-PLATFORM.bin 
+   /bin/bash greenplum-db-3.1.0.0-<PLATFORM>.bin 
 
 3. When prompted, type 'yes' to accept the license agreement.
 
 4. When prompted, provide an installation path. For example:
 
-   /usr/local/greenplum-db-3.0.0.0
+   /usr/local/greenplum-db-3.1.0.0
 
 
 ***********************************************************
@@ -108,23 +108,23 @@ $GPHOME/docs.
    This user must exist on all Greenplum hosts.
 
 2. Source the greenplum_path.sh file in your 'gpadmin' user 
-   profile (.bashrc). This sets the environment variables 
-   needed by Greenplum Database.
+   profile (.bashrc) of your master host. This sets the 
+   environment variables needed by Greenplum Database.
 
 3. Create your data directory locations on all Greenplum hosts.
 
-4. Use the gpssh-exkeys utility to exchange SSH keys between all 
-   hosts in your Greenplum array. Note that for a single host 
-   configuration you still must exchange ssh keys between the 
-   current host and itself.
+4. Use the gpssh-exkeys utility on the master host to exchange 
+   SSH keys between all hosts in your Greenplum array. Note that 
+   for a single host 'demo' configuration you still must exchange 
+   ssh keys between the current host and itself.
 
 5. (multi-host configuration only) Use the gpscp and gpssh 
-   utilities to copy and install the Greenplum Database software 
-   on all segment hosts.
+   utilities on the master host to copy and install the 
+   Greenplum Database software on all segment hosts.
 
-6. Use the gpinitsystem utility to initialize and start your 
-   Greenplum Database system. This utility requires a 
-   configuration file. For example:
+6. Use the gpinitsystem utility on the master host to 
+   initialize and start your Greenplum Database system. This 
+   utility requires a configuration file. For example:
 
    gpinitsystem -c gp_init_config
 
@@ -141,7 +141,7 @@ ABOUT YOUR INSTALLATION
 The Greenplum Database installer installs the following files and 
 directories:
 
-* greenplum_path.sh  Greenplum Database 3.0 environment variables.
+* greenplum_path.sh  Greenplum Database 3.1 environment variables.
 
 * bin - Greenplum Database server programs, client programs, and 
         management tools.
@@ -149,6 +149,9 @@ directories:
 * demo  Greenplum Database demonstration programs. 
 
 * docs  Greenplum Database documentation.
+
+* ext - Bundled programs (such as python) used by some 
+        Greenplum Database utilies.
 
 * include  Greenplum Database and PostgreSQL header files.
 
