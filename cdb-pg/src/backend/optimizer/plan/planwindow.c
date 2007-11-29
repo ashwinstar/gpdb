@@ -1116,6 +1116,7 @@ static void assign_window_info(WindowContext *context)
 	{
 		SpecInfo *final_sinfo = NULL;
 		WindowInfo *winfo = &context->windowinfos[i];
+		int sortgroupref = 0;
 		
 		j = k; /* j indexes first SpecInfo in this WindowInfo */
 		
@@ -1133,7 +1134,31 @@ static void assign_window_info(WindowContext *context)
 		winfo->firstspecindex = j;
 		winfo->numspecindex = k-j;
 
-		winfo->sortclause = copyObject(final_sinfo->partkey);
+		winfo->sortclause = NIL;
+
+		/* Append part keys into sortclause in the order defined by
+		 * final_sinfo->partset. This guarantees that same part keys
+		 * in all WindowInfos are in the same order.
+		 */
+		sortgroupref = bms_first_from(final_sinfo->partset, 0);
+		while (sortgroupref >= 0)
+		{
+			foreach (lc, final_sinfo->partkey)
+			{
+				SortClause *sc = (SortClause *)lfirst(lc);
+				
+				if (sc->tleSortGroupRef == sortgroupref)
+				{
+					winfo->sortclause = lappend(winfo->sortclause, sc);
+					break;
+				}
+			}
+
+			Assert(lc != NULL);
+			
+			sortgroupref = bms_first_from(final_sinfo->partset, sortgroupref+1);
+		}
+		
 		winfo->sortclause = list_concat(winfo->sortclause,
 										final_sinfo->unique_order);
 		winfo->partkey_len = list_length(final_sinfo->partkey);
