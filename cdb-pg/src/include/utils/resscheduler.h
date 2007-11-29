@@ -75,7 +75,7 @@ typedef struct ResSchedulerData
 {
 	int		num_queues;					/* Current # of queues.*/
 } ResSchedulerData;
-ResSchedulerData	*ResScheduler;
+extern ResSchedulerData	*ResScheduler;
 
 /* Portal and increments  */
 #define INVALID_PORTALID 				(-1)
