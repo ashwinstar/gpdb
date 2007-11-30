@@ -284,7 +284,7 @@ static Aggref* makeAuxCountAggref(void);
 static List *translate_upper_tlist_parallel(List *orig_tlist, WindowContext *context);
 static Node *translate_upper_vars_sequential(Node *node, WindowContext *context);
 static FromExpr *plan_window_jointree(PlannerInfo *root, WindowContext *context);
-static Expr *make_window_join_term(Oid type, Index lftvarno, AttrNumber lftattrno, Index rgtvarno, AttrNumber rgtattrno);
+static Expr *make_window_join_term(Oid type, Index lftvarno, AttrNumber lftattrno, Index rgtvarno, AttrNumber rgtattrno, bool no_nulls);
 static Oid *get_window_attr_types(List *targetlist, int nattrs, AttrNumber *attrs);
 static RangeTblEntry *package_plan_as_rte(Query *query, Plan *plan, Alias *eref, List *pathkeys);
 
@@ -3567,7 +3567,8 @@ static FromExpr *plan_window_jointree(PlannerInfo *root, WindowContext *context)
 													   base_window_coplan->varno,
 													   base_window_coplan->rowkey_attrs[j],
 													   winfo->window_coplan->varno,
-													   winfo->window_coplan->rowkey_attrs[j]);
+													   winfo->window_coplan->rowkey_attrs[j],
+													   true); /* true - no nulls */
 					quals = lappend(quals, term);
 				}
 			}
@@ -3587,7 +3588,8 @@ static FromExpr *plan_window_jointree(PlannerInfo *root, WindowContext *context)
 												   winfo->window_coplan->varno,
 												   winfo->window_coplan->partkey_attrs[j],
 												   winfo->agg_coplan->varno,
-												   winfo->agg_coplan->partkey_attrs[j]);
+												   winfo->agg_coplan->partkey_attrs[j],
+												   false); /* false - may contain nulls */
 				quals = lappend(quals, term);
 			}
 			
@@ -3604,12 +3606,20 @@ static FromExpr *plan_window_jointree(PlannerInfo *root, WindowContext *context)
 	return jointree;
 }
 
-static Expr *make_window_join_term(Oid type, Index lftvarno, AttrNumber lftattrno, Index rgtvarno, AttrNumber rgtattrno)
+static Expr *make_window_join_term(Oid type, Index lftvarno, AttrNumber lftattrno, Index rgtvarno, AttrNumber rgtattrno, bool no_nulls)
 {
 	Var *lft = makeVar(lftvarno, lftattrno, type, -1, 0);
 	Var *rgt = makeVar(rgtvarno, rgtattrno, type, -1, 0);
+	Expr *xpr = make_op(NULL, list_make1(makeString("=")), (Node*)lft, (Node*)rgt, -1);
 	
-	return make_op(NULL, list_make1(makeString("=")), (Node*)lft, (Node*)rgt, -1);
+	if ( ! no_nulls )
+	{
+		/* Change the equality OpExpr into <NOT IS DISTINCT> */
+		xpr->type = T_DistinctExpr;
+		xpr = make_notclause(xpr);
+	}
+
+	return xpr;
 }
 
 static Oid *get_window_attr_types(List *targetlist, int nattrs, AttrNumber *attrs)
