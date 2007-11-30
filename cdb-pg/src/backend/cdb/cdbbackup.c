@@ -359,7 +359,7 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 		if (pszBackupFileName == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("No Backup FileName could be found to restore dbid %d from directory %s with backup key %s", target_dbid, pszBackupDirectory, pszBackupKey)));
+					 errmsg("Attempt to restore dbid %d failed. No acceptable dump file name found in directory %s with backup key %s and source dbid key %d", target_dbid, pszBackupDirectory, pszBackupKey, segid)));
 
 		/* 
 		 * If --gp-c is on make sure our file name has a .gz suffix.
