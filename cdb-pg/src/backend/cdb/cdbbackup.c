@@ -287,7 +287,7 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 	bool		bOnErrorStop = false;
 	int			instid;			/* dispatch node */
 	int			segid;
-	int			target_dbid;
+	int			target_dbid = 0; /* keep compiler quiet. value will get replaced */
 	char	   *pszOnErrorStop;
 	char	   *pszBackupFileName;
 	char	   *pszStatusFileName;
