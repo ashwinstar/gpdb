@@ -231,3 +231,6 @@ SELECT '' AS to_timestamp_13, to_timestamp('95-1116', 'YY-MMDD');
 SELECT '' AS to_timestamp_14, to_timestamp('995-1116', 'YYY-MMDD');
 
 SET DateStyle TO DEFAULT;
+
+-- Make sure timeofdate() and current_time() are doing roughly the same thing
+select timeofday()::date = current_timestamp::date;
