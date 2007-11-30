@@ -163,9 +163,9 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 		/* No need for a WARNING if we already complained during VACUUM */
 		if (!vacstmt->vacuum)
 			if (Gp_role != GP_ROLE_EXECUTE)
-			ereport(WARNING,
-					(errmsg("skipping \"%s\" --- only table or database owner can analyze it",
-							RelationGetRelationName(onerel))));
+				ereport(WARNING,
+						(errmsg("skipping \"%s\" --- only table or database owner can analyze it",
+								RelationGetRelationName(onerel))));
 		relation_close(onerel, ShareUpdateExclusiveLock);
 		return;
 	}
