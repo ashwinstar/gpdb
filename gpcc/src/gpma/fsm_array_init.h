@@ -50,6 +50,7 @@ static apr_status_t a_array_init_do(gpcc_event_t *ev, void *_cmdslot)
 	p->u.initdb.req[i].dbid = info->dbid;
 	p->u.initdb.req[i].content = info->content;
 	p->u.initdb.req[i].reply = 0;
+	p->u.initdb.req[i].status = 0;
     }
 
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);

@@ -60,7 +60,12 @@ struct cmdslot_t {
 		int content;
 		/* other stuff here */
 		char* reply;	/* reply from the start command */
+		int status;     /* 0 - not started, 1 - running, 2 - finished */
 	    } *req;		/* one for each unit, total of ntotal units */
+	    struct {
+		char *unit;
+		int requesting;
+	    } *node;
 	} initdb;
 
 
