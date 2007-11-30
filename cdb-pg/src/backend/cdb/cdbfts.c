@@ -282,7 +282,14 @@ disableQDMirroring(void)
 	Assert(ftsQDMirrorInfo != NULL);
 	
 	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
-	ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
+	if (ftsQDMirrorInfo->state != QDMIRROR_STATE_DISABLED &&
+		ftsQDMirrorInfo->state != QDMIRROR_STATE_UNEXPECTEDERROR)
+	{
+		/*
+		 * Don't overwrite an unexpected error.
+		 */
+		ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
+	}
 	LWLockRelease(ftsControlLock);
 }
 
@@ -405,6 +412,9 @@ QDMirroringStateString(void)
 
 		case QDMIRROR_STATE_NOTCONFIGURED:
 			return "not configured";
+
+		case QDMIRROR_STATE_LOCALCONNECTING:
+			return "connecting to WAL Send server";
 
 		case QDMIRROR_STATE_POSITIONINGTOEND:
 			return "positioning to end";
@@ -1196,8 +1206,8 @@ void
 FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 {
 	int len;
-	int serialNumber;
-	bool serverAcceptingNewRequests;
+	bool connected;
+	bool successful;
 
 	Assert(dbinfo != NULL);
 
@@ -1222,46 +1232,58 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 	ftsQDMirrorInfo->port = dbinfo->port;
 
 	/*
-	 * Tell the WalSendServer (queue while under lock) that it can
-	 * connect to the standby and position to the end of its WAL
+	 * Connect to our WAL Send server, but not under lock.
 	 * 
-	 * We do NOT wait for a response while under the lock.  We'll pick
-	 * up the response at the end of this procedure.
 	 */
-	ProcSetAcceptingNewRequests(PGPROC_REQUEST_WALSEND, true);
-	
 	ftsQDMirrorInfo->configurationChecked = true;
-	ftsQDMirrorInfo->state = QDMIRROR_STATE_POSITIONINGTOEND;
-
-	serverAcceptingNewRequests = XLogQDMirrorQueuePositionToEnd(&serialNumber);
-	if (!serverAcceptingNewRequests)
-	{
-		elog(LOG, "disabling QD mirroring (request PositionToEnd -- WAL Send server not accepting new requests)");
-
-		ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
-		LWLockRelease(ftsControlLock);
-		return;
-	}
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"positioning standby master WAL to end");
+	ftsQDMirrorInfo->state = QDMIRROR_STATE_LOCALCONNECTING;
 	LWLockRelease(ftsControlLock);
 
-	/*
-	 * Wait (without holding lock) for the position operation to complete.
-	 */
-	serverAcceptingNewRequests = XLogQDMirrorWaitForResponse(serialNumber);
+	connected = WalSendServerClientConnect();
+
 	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
-	if (!serverAcceptingNewRequests)
+	if (ftsQDMirrorInfo->state == QDMIRROR_STATE_DISABLED ||
+		ftsQDMirrorInfo->state == QDMIRROR_STATE_UNEXPECTEDERROR)
 	{
-		elog(LOG, "disabling QD mirroring (wait for PositionToEnd response -- WAL Send server not accepting new requests)");
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QD mirroring already disabled (connecting)");
+
+		LWLockRelease(ftsControlLock);
+		return;
+	}
+	if (!connected)
+	{
+		elog(NOTICE, "disabling QD mirroring (cannot connect to WAL Send server)");
 
 		ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
 		LWLockRelease(ftsControlLock);
 		return;
 	}
-
-	ftsQDMirrorInfo->state = QDMIRROR_STATE_CATCHUPPENDING;
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"positioning QD mirror to end complete -- next step is catch-up");
+	
+	ftsQDMirrorInfo->state = QDMIRROR_STATE_POSITIONINGTOEND;
 	LWLockRelease(ftsControlLock);
+
+	successful = XLogQDMirrorPositionToEnd();
+	
+	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	if (ftsQDMirrorInfo->state == QDMIRROR_STATE_DISABLED ||
+		ftsQDMirrorInfo->state == QDMIRROR_STATE_UNEXPECTEDERROR)
+	{
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QD mirroring already disabled (request PositionToEnd -- could not send to WAL Send server)");
+
+		LWLockRelease(ftsControlLock);
+		return;
+	}
+	if (!successful)
+	{
+		elog(NOTICE, "disabling QD mirroring (request PositionToEnd -- could not send to WAL Send server)");
+
+		ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
+		LWLockRelease(ftsControlLock);
+		return;
+	}
+	ftsQDMirrorInfo->state = QDMIRROR_STATE_CATCHUPPENDING;
+	LWLockRelease(ftsControlLock);
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"positioning QD mirror to end complete -- next step is catch-up");
 }
 
 /*
@@ -1275,8 +1297,7 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 void
 FtsQDMirroringCatchup(XLogRecPtr *flushedLocation)
 {
-	bool serverAcceptingNewRequests;
-	int serialNumber;
+	bool successful;
 
 	Assert(flushedLocation != NULL);
 
@@ -1289,36 +1310,30 @@ FtsQDMirroringCatchup(XLogRecPtr *flushedLocation)
 	}
 	
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_CATCHINGUP;
-	serverAcceptingNewRequests = XLogQDMirrorQueueCatchup(flushedLocation, &serialNumber);
-	if (!serverAcceptingNewRequests)
-	{
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "WAL Send server not accepting new requests!");
-
-		ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
-		LWLockRelease(ftsControlLock);
-		return;
-	}
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"catching up QD mirror");
-
 	LWLockRelease(ftsControlLock);
 	
-	/*
-	 * Wait (without holding lock) for the catchup operation to complete.
-	 */
-	serverAcceptingNewRequests = XLogQDMirrorWaitForResponse(serialNumber);
+	successful = XLogQDMirrorCatchup(flushedLocation);
+	
 	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
-	if (!serverAcceptingNewRequests)
+	if (ftsQDMirrorInfo->state == QDMIRROR_STATE_DISABLED ||
+		ftsQDMirrorInfo->state == QDMIRROR_STATE_UNEXPECTEDERROR)
 	{
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "WAL Send server not accepting new requests!");
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QD mirroring already disabled (request Catchup -- could not send to WAL Send server)");
+
+		LWLockRelease(ftsControlLock);
+		return;
+	}
+	if (!successful)
+	{
+		elog(NOTICE, "disabling QD mirroring (request Catchup -- could not send to WAL Send server)");
 
 		ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
 		LWLockRelease(ftsControlLock);
 		return;
 	}
-
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_ENABLED;
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"finished catching up QD mirror");
 	LWLockRelease(ftsControlLock);
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"finished catching up QD mirror");
 }
 
 /*

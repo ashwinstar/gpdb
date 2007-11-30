@@ -27,6 +27,7 @@
 #include "commands/sequence.h"
 #include "postmaster/fork_process.h"
 #include "postmaster/postmaster.h"
+#include "postmaster/service.h"
 #include "postmaster/walsendserver.h"
 #include "storage/ipc.h"
 #include "storage/proc.h"
@@ -52,14 +53,22 @@ extern void unexpectedErrorQDMirroring(void);
 #ifdef EXEC_BACKEND
 static pid_t walsendserver_forkexec(void);
 #endif
-NON_EXEC_STATIC void WalSendServerMain(int argc, char *argv[]);
+
 
 static void WalSendServerInitContext(void);
 static void WalSendServerDoRequest(WalSendRequest *walSendRequest);
-static void *WalSendServerTimerThread(void *arg);
-static void WalSendServerTimerCheck(void);
-static void WalSendServerCreateTimerThread(void);
-static void WalSendServerLoop(void);
+
+/*
+ * The following are standard procedure signatures needed by
+ * the Service shared library.
+ */
+static void WalSendServer_ServiceRequestShutdown(SIGNAL_ARGS);
+static void WalSendServer_ServicePostgresInit(void);
+static void WalSendServer_ServiceInit(int listenerPort);
+static bool WalSendServer_ServiceShutdownRequested(void);
+static bool WalSendServer_ServiceRequest(ServiceCtrl *serviceCtrl, int sockfd, uint8 *request);
+
+
 
 /*=========================================================================
  * GLOBAL STATE VARIABLES
@@ -67,10 +76,52 @@ static void WalSendServerLoop(void);
 
 static bool am_walsendserver = false;
 
+static ServiceConfig WalSendServer_ServiceConfig =
+	{"WALSND",
+	"WAL Send Server", "WAL Send Server process", "walsendserver",
+	sizeof(WalSendRequest), sizeof(WalSendResponse),
+	{1,0},		// shutdownTimeout = 1 second.
+	{0,250000},	// readClientTimeout = 0.25 second.
+	WalSendServer_ServiceRequestShutdown,
+	WalSendServer_ServicePostgresInit,
+	WalSendServer_ServiceInit,
+	WalSendServer_ServiceShutdownRequested,
+	WalSendServer_ServiceRequest};
+
+static ServiceCtrl WalSendServer_ServiceCtrl;
+
 
 /*=========================================================================
  * VISIBLE FUNCTIONS
  */
+
+typedef struct WalSendServerShmem
+{
+	int	listenerPort;
+	
+} WalSendServerShmem;
+
+static WalSendServerShmem *WalSendServerShared = NULL;
+
+int WalSendServerShmemSize(void)
+{
+	return MAXALIGN(sizeof(WalSendServerShmem));
+}
+
+
+void WalSendServerShmemInit(void)
+{
+	bool		found;
+	
+	
+	/* Create or attach to the SharedSnapshot shared structure */
+	WalSendServerShared = (WalSendServerShmem *) ShmemInitStruct("WAL Send Server", WalSendServerShmemSize(), &found);
+	if (!WalSendServerShared)
+		elog(FATAL, "could not initialize WAL Send server shared memory");
+	
+	if (!found)
+		WalSendServerShared->listenerPort = -1;
+}
 
 /*
  * Main entry point for walsendserver controller process.
@@ -101,7 +152,8 @@ walsendserver_start(void)
 			/* Close the postmaster's sockets */
 			ClosePostmasterPorts(false);
 
-			WalSendServerMain(0, NULL);
+			ServiceInit(&WalSendServer_ServiceConfig, &WalSendServer_ServiceCtrl);
+			ServiceMain(&WalSendServer_ServiceCtrl);
 			break;
 #endif
 		default:
@@ -112,6 +164,7 @@ walsendserver_start(void)
 	/* shouldn't get here */
 	return 0;
 }
+
 
 /*=========================================================================
  * HELPER FUNCTIONS
@@ -144,132 +197,83 @@ walsendserver_forkexec(void)
 bool walsend_shutdown_requested=false;
 
 static void
-RequestShutdown(SIGNAL_ARGS)
+WalSendServer_ServiceRequestShutdown(SIGNAL_ARGS)
 {
 	walsend_shutdown_requested = true;
 }
 
-/*
- * ss_quickdie() occurs when signalled SIGQUIT by the postmaster.
- *
- * Some backend has bought the farm,
- * so we need to stop what we're doing and exit.
- */
 static void
-ss_quickdie(SIGNAL_ARGS)
+WalSendServer_ServicePostgresInit(void)
 {
-	PG_SETMASK(&BlockSig);
-
-	// UNDONE: Is this wise?
-	ProcSetAcceptingNewRequests(PGPROC_REQUEST_WALSEND, false);
-	
-	/*
-	 * DO NOT proc_exit() -- we're here because shared memory may be
-	 * corrupted, so we don't want to try to clean up our transaction. Just
-	 * nail the windows shut and get out of town.
-	 *
-	 * Note we do exit(2) not exit(0).	This is to force the postmaster into a
-	 * system reset cycle if some idiot DBA sends a manual SIGQUIT to a random
-	 * backend.  This is necessary precisely because we don't clean up our
-	 * shared memory state.
-	 */
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"ss_quickdie: calling exit(2)");
-	exit(2);
-}
-
-/*
- * AutoVacMain
- */
-NON_EXEC_STATIC void
-WalSendServerMain(int argc, char *argv[])
-{
-	sigjmp_buf	local_sigjmp_buf;
-
-	IsUnderPostmaster = true;
-	am_walsendserver = true;
-	
-	/* reset MyProcPid */
-	MyProcPid = getpid();
-	
-	/* Lose the postmaster's on-exit routines */
-	on_exit_reset();
-
-	/* Identify myself via ps */
-	init_ps_display("walsendserver process", "", "", "");
-
-	SetProcessingMode(InitProcessing);
-
-	/*
-	 * Set up signal handlers.	We operate on databases much like a regular
-	 * backend, so we use the same signal handling.  See equivalent code in
-	 * tcop/postgres.c.
-	 *
-	 * Currently, we don't pay attention to postgresql.conf changes that
-	 * happen during a single daemon iteration, so we can ignore SIGHUP.
-	 */
-	pqsignal(SIGHUP, SIG_IGN);
-
-	/*
-	 * Presently, SIGINT will lead to autovacuum shutdown, because that's how
-	 * we handle ereport(ERROR).  It could be improved however.
-	 */
-	pqsignal(SIGINT, StatementCancelHandler);
-	pqsignal(SIGTERM, die);
-	pqsignal(SIGQUIT, ss_quickdie);
-
-	/*
-	 * Since we are trying a timer thread, stop arming this.
-	 */
-//	pqsignal(SIGALRM, PGSemaphoreHandleSigAlarm);
-
-	pqsignal(SIGPIPE, SIG_IGN);
-	pqsignal(SIGUSR1, CatchupInterruptHandler);
-	/* We don't listen for async notifies */
-	pqsignal(SIGUSR2, RequestShutdown);
-	pqsignal(SIGFPE, FloatExceptionHandler);
-	pqsignal(SIGCHLD, SIG_DFL);
-
-	/* Early initialization */
-	BaseInit();
-
 	/* See InitPostgres()... */
     InitProcess();	
 	InitBufferPoolBackend();
 	InitXLOGAccess();
 
-	SetProcessingMode(NormalProcessing);
+}
 
-	/*
-	 * If an exception is encountered, processing resumes here.
-	 *
-	 * See notes in postgres.c about the design of this coding.
-	 */
-	if (sigsetjmp(local_sigjmp_buf, 1) != 0)
-	{
-		/* Prevents interrupts while cleaning up */
-		HOLD_INTERRUPTS();
+static void
+WalSendServer_ServiceInit(int listenerPort)
+{
+	elog(LOG,"listenerPort %d",listenerPort);
 
-		/* Report the error to the server log */
-		EmitErrorReport();
+	if (WalSendServerShared == NULL)
+		elog(FATAL,"WAL Send server shared memory not initialized");
+	
+	WalSendServerShared->listenerPort = listenerPort;
+	
+	am_walsendserver = true;
 
-		/*
-		 * We can now go away.	Note that because we'll call InitProcess, a
-		 * callback will be registered to do ProcKill, which will clean up
-		 * necessary state.
-		 */
-		proc_exit(0);
-	}
+	WalSendServerInitContext();
+}
 
-	/* We can now handle ereport(ERROR) */
-	PG_exception_stack = &local_sigjmp_buf;
+static bool
+WalSendServer_ServiceShutdownRequested(void)
+{
+	if (walsend_shutdown_requested)
+		elog(LOG,"shutdown requested is true");
+	return walsend_shutdown_requested;
+}
 
-	PG_SETMASK(&UnBlockSig);
+/*
+ * Process local static that contains the connection to the WAL send server.
+ */
+static ServiceClient WalSendServerClient = {NULL,-1};
 
-	/* main loop */
-	WalSendServerLoop();
+bool
+WalSendServerClientConnect(void)
+{
+	bool connected;
+	
+	if (WalSendServerShared == NULL)
+		elog(FATAL,"WAL Send server shared memory not initialized");
 
-	/* One iteration done, go away */
-	proc_exit(0);
+	connected = ServiceClientConnect(&WalSendServer_ServiceConfig, 
+									WalSendServerShared->listenerPort,
+									&WalSendServerClient);
+
+	return connected;
+}
+
+
+bool
+WalSendServerClientSendRequest(WalSendRequest* walSendRequest)
+{
+	bool successful;
+	
+	successful = ServiceClientSendRequest(&WalSendServerClient, walSendRequest, sizeof(WalSendRequest));
+
+	return successful;
+}
+
+bool
+WalSendServerClientReceiveResponse(WalSendResponse* walSendResponse, struct timeval *timeout)
+{
+	bool successful;
+	
+	successful = ServiceClientReceiveResponse(&WalSendServerClient, walSendResponse, sizeof(WalSendResponse), timeout);
+
+	return successful;
 }
 
 static XLogRecPtr 	originalEndLocation;
@@ -301,7 +305,7 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 	switch (walSendRequest->command)
 	{
 	case PositionToEnd:
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "PositionToEnd");
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "PositionToEnd");
 
 		successful = write_position_to_end(&originalEndLocation);
 		if (successful)
@@ -315,7 +319,7 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 		break;
 		
 	case Catchup:
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "Catchup");
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "Catchup");
 
         if (isQDMirroringCatchingUp())
     	{
@@ -354,7 +358,7 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 				
 				if (successful)
 				{
-					elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
+					elog((Debug_print_qd_mirroring ? LOG : DEBUG5),
 						 "catchup send from standby end %s through primary flushed location %s",
 						 XLogLocationToString(&originalEndLocation),
 						 XLogLocationToString2(&walSendRequest->flushedLocation));
@@ -362,7 +366,7 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 			}
 			else
 			{
-				elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"Mirror was already caught up");
+				elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"Mirror was already caught up");
 				successful = true;
 			}
 			
@@ -385,7 +389,7 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 		}
 		else if (isQDMirroringDisabled())
 		{
-			elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QD Mirror Send: QD mirroring not catching-up (state is disabled)");
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QD Mirror Send: QD mirroring not catching-up (state is disabled)");
 		}
 		else
 		{
@@ -396,7 +400,9 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 		break;
 		
 	case WriteWalPages:
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "WriteWalPages");
+		if (Debug_print_qd_mirroring)
+			elog(LOG, "WriteWalPages");
+		
         if (isQDMirroringEnabled())
         {
 			XLogRecPtr 	writeLoc;
@@ -410,17 +416,18 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 			writeLoc.xlogid = walSendRequest->logId;
 			writeLoc.xrecoff = walSendRequest->logSeg * XLogSegSize
 				             + walSendRequest->logOff;
-			elog((Debug_print_qd_mirroring ? LOG : DEBUG1), 
-				"QD Mirror Send: WriteWalPages startidx %d, npages %d, timeLineID %d, logId %u, logSeg %u, logOff 0x%X, write loc %X/%X, nbytes 0x%X",
-				walSendRequest->startidx,
-				walSendRequest->npages,
-				walSendRequest->timeLineID,
-				walSendRequest->logId,
-				walSendRequest->logSeg,
-				walSendRequest->logOff,
-				writeLoc.xlogid,
-				writeLoc.xrecoff,
-				(int)nbytes);
+			if (Debug_print_qd_mirroring)
+				elog(LOG,
+					 "QD Mirror Send: WriteWalPages startidx %d, npages %d, timeLineID %d, logId %u, logSeg %u, logOff 0x%X, write loc %X/%X, nbytes 0x%X",
+					 walSendRequest->startidx,
+					 walSendRequest->npages,
+					 walSendRequest->timeLineID,
+					 walSendRequest->logId,
+					 walSendRequest->logSeg,
+					 walSendRequest->logOff,
+					 writeLoc.xlogid,
+					 writeLoc.xrecoff,
+					 (int)nbytes);
 
 			if (snprintf(cmd, sizeof(cmd),"xlog %d %d %d %d", 
 						 walSendRequest->logId, walSendRequest->logSeg,
@@ -456,10 +463,11 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 				}
 				else
 				{
-					elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
-						 "Send to QD mirror successful.  New end location %s (old %s)",
-						 XLogLocationToString(&currentEndLocation),
-						 XLogLocationToString2(&oldEndLocation));
+					if (Debug_print_qd_mirroring)
+						elog(LOG,
+						     "Send to QD mirror successful.  New end location %s (old %s)",
+						     XLogLocationToString(&currentEndLocation),
+						     XLogLocationToString2(&oldEndLocation));
 				}
 			}
 			else
@@ -474,7 +482,7 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 				uint32 seg;
 				uint32 offset;
 				
-	        	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"New previous checkpoint location %s",
+	        	elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"New previous checkpoint location %s",
 				     XLogLocationToString(&walSendRequest->newCheckpointLocation));
 				XLByteToSeg(walSendRequest->newCheckpointLocation, logid, seg);
 				offset = walSendRequest->newCheckpointLocation.xrecoff % XLogSegSize;
@@ -487,7 +495,7 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 				successful = write_qd_sync(cmd, NULL, 0);
 				if (successful)
 				{
-					elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"Send of new checkpoint location to QD mirror successful");
+					elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"Send of new checkpoint location to QD mirror successful");
 				}
 				else
 				{
@@ -499,7 +507,7 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
         }
 		else if (isQDMirroringDisabled())
 		{
-			elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QD Mirror Send: QD mirroring not enabled");
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QD Mirror Send: QD mirroring not enabled");
 		}
 		else
 		{
@@ -515,223 +523,33 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 
 }
 
-static volatile bool timerCheckQueued;
-
-/*
- * WalSendServerTimerThread is the thread proc used to ping the main process.
- *
- * NOTE: This function MUST NOT contain elog or ereport statements. (or most any other backend code)
- *		 elog is NOT thread-safe.  Developers should instead use something like:
- *
- *	if (DEBUG3 >= log_min_messages)
- *			write_log("my brilliant log statement here.\n");
- *
- * NOTE: In threads, we cannot use palloc, because it's not thread safe.
- */
-void *
-WalSendServerTimerThread(void *arg)
+static bool WalSendServer_ServiceRequest(ServiceCtrl *serviceCtrl, int sockfd, uint8 *request)
 {
-	WalSendRequest walSendRequest;
-	bool serverAcceptingNewRequests;
-	int serialNumber;
-	
-	while (true)
-	{
-		pg_usleep(1000000);		/* 1 sec */
-
-		if (!timerCheckQueued)
-		{
-			timerCheckQueued = true;
-			walSendRequest.command = TimerCheck;
-			serverAcceptingNewRequests = ProcSendRequest(
-											PGPROC_REQUEST_WALSEND, 
-											&walSendRequest, sizeof(walSendRequest),
-											/* responseNeeded */ false,
-											&serialNumber);
-			if (!serverAcceptingNewRequests)
-				timerCheckQueued = false;
-		}
-	}
-	
-	return (NULL);
-}	/* thread_DispatchCommand */
-
-void
-WalSendServerTimerCheck(void)
-{
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "timer check");
-	timerCheckQueued = false;
-}
-
-static	pthread_t	timerThread;
-
-void
-WalSendServerCreateTimerThread(void)
-{
-	int		pthread_err = 0;
-			
-		/* attributes of the thread we're creating */
-	pthread_attr_t t_atts;
-	
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "creating timer thread");
-
-	/* save ourselves some memory: the defaults for thread stack
-	 * size are large (1M+) */
-	pthread_attr_init(&t_atts);
-#ifdef pg_on_solaris
-	/* Solaris doesn't have PTHREAD_STACK_MIN ? */
-	pthread_attr_setstacksize(&t_atts, (64*1024));
-#else
-	pthread_attr_setstacksize(&t_atts, Max(PTHREAD_STACK_MIN, (64*1024)));
-#endif
-
-	pthread_err = pthread_create(&timerThread, &t_atts, WalSendServerTimerThread, NULL);
-
-	pthread_attr_destroy(&t_atts);
-}
-
-void 
-WalSendServerLoop(void)
-{
-	PGPROCGetRequestResult getRequestResult;
-	WalSendRequest walSendRequest;
-	PROC_RESPONSE_COOKIE responseCookie;
+	WalSendRequest *walSendRequest = (WalSendRequest*)request;
 	WalSendResponse walSendResponse;
-	bool postmasterDied;
-	bool drain;
+	bool result = false;
 
-	MemSet(&originalEndLocation, 0, sizeof(originalEndLocation));
+	//*** Missing: On normal shutdown, disable and disconnect.
 	
-	Assert(TopMemoryContext != NULL);
-	MemoryContextSwitchTo(TopMemoryContext);
-	Assert(CurrentMemoryContext == TopMemoryContext);
-
-	/*
-	 * Before we enter the main request loop, hang out here if the
-	 * mirror configuration is unknown, there is no mirror, or we
-	 * have an unexpected error condition (and perhaps this server process
-	 * has been restarted?).
-	 */
-	while (true)
-	{
-		if (isQDMirroringNotKnownYet())
-			elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
-				 "QD mirroring configuration not known yet");
-		else if (isQDMirroringNotConfigured())
-			elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
-				 "QD mirroring not configured");
-		else if (isQDMirroringUnexpectedError())
-			elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
-				 "QD mirroring unexpected error condition");
-		else
-			break;
-		
-		if (!PostmasterIsAlive(true))
-		{
-			elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"postmaster has died.");
-			return;
-		}
-		pg_usleep(1000000);		/* 1 sec */
-	}
-	
-	/*
-	 * Come up for air every 1 second to see if the postmaster has died, a
-	 * shutdown has been requested, etc.  Since semaphores don't support
-	 * timed semaphores well, let's use a thread to wake us up.
-	 */
-	WalSendServerCreateTimerThread();
-
-	postmasterDied = false;
-	drain = false;
-
 	/* 
 	 * Use a TRY block to catch unexpected errors that bubble up to this level
 	 * and disable QD mirroring.
 	 */
 	PG_TRY();
 	{
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
-			 "entering main request loop");
-		
-		WalSendServerInitContext();
+		if (Debug_print_qd_mirroring)
+			elog(LOG, "request command %d = '%s'",
+			     walSendRequest->command, 
+			     WalSendRequestCommandToString(walSendRequest->command));
 
-		while(true)
-		{
-			getRequestResult = ProcGetRequest(
-									PGPROC_REQUEST_WALSEND, 
-									&walSendRequest, sizeof(walSendRequest),
-									NULL,	// No timeout (infinite).
-									drain,
-									&responseCookie);
-			
-			if (!PostmasterIsAlive(true))
-			{
-				/*
-				 * Gracefully drain our queue so requesting backend don't get hung
-				 * even though the postmaster has croaked.
-				 */
-				elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"postmaster has died -- draining.");
-				ProcSetAcceptingNewRequests(PGPROC_REQUEST_WALSEND, false);
-				postmasterDied = true;
-				drain = true;
-			}
+		WalSendServerDoRequest(walSendRequest);
 
-			if (getRequestResult == PGPROC_GETREQUEST_INTERRUPT)
-			{
-				CHECK_FOR_INTERRUPTS();
-				
-				if (walsend_shutdown_requested && !drain)
-				{
-					/*
-					 * Gracefully drain our queue so requesting backends can finish
-					 * on shutdown.
-					 */
-					elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"shutdown requested -- draining.");
-					ProcSetAcceptingNewRequests(PGPROC_REQUEST_WALSEND, false);
-					drain = true;
-				}
-				
-				continue;
-			}
-			else if (getRequestResult == PGPROC_GETREQUEST_QUEUEEMPTY)
-			{
-				Assert(drain);
-				break;
-			}
-			else
-			{
-				Assert(getRequestResult == PGPROC_GETREQUEST_OK);
-				if (walSendRequest.command == TimerCheck)
-				{
-					WalSendServerTimerCheck();
-					continue;
-				}
-			}
+		/*
+		 * Currently, all requests need a response.
+		 */
+		walSendResponse.ok = true;
 
-			elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "request command %d = '%s' (mppLocalProcessSerial = %d, requestSerialNumber %d, responseNeeded %s)",
-				 walSendRequest.command, 
-				 WalSendRequestCommandToString(walSendRequest.command),
-				 responseCookie.mppLocalProcessSerial,
-				 responseCookie.requestSerialNumber,
-				 (responseCookie.responseNeeded ? "true" : "false"));
-
-			WalSendServerDoRequest(&walSendRequest);
-
-			/*
-			 * Currently, all requests need a response.
-			 */
-			Assert(responseCookie.responseNeeded);
-			
-			walSendResponse.ok = true;
-			
-			ProcSendResponse(&responseCookie, &walSendResponse, sizeof(walSendResponse));
-		}
-
-		if (!isQDMirroringDisabled())
-		{
-			disableQDMirroring();
-			disconnectMirrorQD();
-		}
+		result = ServiceProcessRespond(serviceCtrl, sockfd, (uint8*)&walSendResponse, sizeof(walSendResponse));
 	}
 	PG_CATCH();
 	{
@@ -743,12 +561,12 @@ WalSendServerLoop(void)
 
 		elog(NOTICE,"disabling QD mirroring (unexpected error encountered)");
 		unexpectedErrorQDMirroring();
+
+		result = false;
 	}
 	PG_END_TRY();
-		
-	ProcSetAcceptingNewRequests(PGPROC_REQUEST_WALSEND, false);
-	
-	return;
+
+	return result;
 }
 
 extern char* 
@@ -764,9 +582,6 @@ WalSendRequestCommandToString(WalSendRequestCommand command)
 
 	case WriteWalPages:
 		return "WriteWalPages";
-		
-	case TimerCheck:
-		return "TimerCheck";
 		
 	default:
 		return "Unknown";

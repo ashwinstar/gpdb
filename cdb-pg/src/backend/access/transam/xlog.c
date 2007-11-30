@@ -59,6 +59,7 @@ extern bool isQDMirroringPendingCatchup(void);
 extern void FtsQDMirroringCatchup(XLogRecPtr *flushedLocation);
 extern void FtsCheckReadyToSend(bool *ready, bool *haveNewCheckpointLocation, XLogRecPtr *newCheckpointLocation);
 extern void FtsQDMirroringNewCheckpointLoc(XLogRecPtr *newCheckpointLocation);
+extern void disableQDMirroring(void);
 
 /*
  *	Because O_DIRECT bypasses the kernel buffers, and because we never
@@ -1677,76 +1678,48 @@ XLogCatchupQDMirror(XLogRecPtr *standbyLocation, XLogRecPtr *flushedLocation)
 }
 
 bool
-XLogQDMirrorQueuePositionToEnd(int *serialNumber)
+XLogQDMirrorPositionToEnd(void)
 {
 	WalSendRequest walSendRequest;
-	bool serverAcceptingNewRequests;
+	bool successful;
 
 	MemSet(&walSendRequest, 0, sizeof(walSendRequest));
 	walSendRequest.command = PositionToEnd;
 
-	serverAcceptingNewRequests = ProcSendRequest(
-									PGPROC_REQUEST_WALSEND, 
-									&walSendRequest, sizeof(walSendRequest), 
-									/* responseNeeded */ true,
-									serialNumber);
+	successful = WalSendServerClientSendRequest(&walSendRequest);
 
-	if (serverAcceptingNewRequests)
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), 
-		      "queued PositionToEnd with serial number %d",
-		     *serialNumber);
+	if (successful)
+	{
+		/*
+		 * Infinite timeout since we do not know how long it will
+		 * take to determine the end position.
+		 */
+		successful = XLogQDMirrorWaitForResponse(NULL);
+	}
 
-	return serverAcceptingNewRequests;
+	return successful;
 }
 
 bool
-XLogQDMirrorWaitForResponse(int serialNumber)
+XLogQDMirrorWaitForResponse(struct timeval *timeout)
 {
 	WalSendResponse walSendResponse;
-	PGPROCGetRequestResult result;
+	bool receiveSuccessful;
 	
-	while(true)
-	{
-		result = ProcWaitForResponse(
-							PGPROC_REQUEST_WALSEND, 
-							serialNumber, 
-							&walSendResponse, sizeof(walSendResponse));
-		if (result == PGPROC_GETRESPONSE_OK)
-		{
-			break;
-		}
-		else if (result == PGPROC_GETRESPONSE_INTERRUPT)
-		{
-//			elog(LOG,"QD Mirror Send: interrupt bubbled up...");
-//			CHECK_FOR_INTERRUPTS();
-		}
-		else if (result == PGPROC_GETRESPONSE_QUEUEDISABLED)
-		{
-			elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"server %s not accepting requests",
-				 ProcRequestTypeToString(PGPROC_REQUEST_WALSEND));
-			return false;
-		}
-		else
-		{
-			elog(FATAL,"unexpected result %d", (int)result);
-		}
-	}
-	
-	if (!walSendResponse.ok)
-		elog(ERROR,"response returned not OK");
-	else
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
-		      "response returned OK for serial number %d",
-		      serialNumber);
+	receiveSuccessful = WalSendServerClientReceiveResponse(&walSendResponse, timeout);
 
-	return true;
+	if (receiveSuccessful && !walSendResponse.ok)
+		elog(ERROR,"response returned not OK");
+
+	return receiveSuccessful;
 }
 
 bool
-XLogQDMirrorQueueCatchup(XLogRecPtr *flushedLocation, int *serialNumber)
+XLogQDMirrorCatchup(XLogRecPtr *flushedLocation)
 {
 	WalSendRequest walSendRequest;
-	bool serverAcceptingNewRequests;
+	bool connected;
+	bool successful;
 
 	Assert(flushedLocation != NULL);
 
@@ -1754,31 +1727,39 @@ XLogQDMirrorQueueCatchup(XLogRecPtr *flushedLocation, int *serialNumber)
 	walSendRequest.command = Catchup;
 	walSendRequest.flushedLocation = *flushedLocation;
 
-	serverAcceptingNewRequests = ProcSendRequest(
-									PGPROC_REQUEST_WALSEND, 
-									&walSendRequest, sizeof(walSendRequest), 
-									/* responseNeeded */ true,
-									serialNumber);
+	connected = WalSendServerClientConnect();
+	if (!connected)
+	{
+		// UNDONE: Disable QD mirroring...
+		elog(LOG, "disabling QD mirroring (cannot connect to WAL Send server)");
 
-	if (serverAcceptingNewRequests)
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), 
-		      "queued Catchup with serial number %d",
-		     *serialNumber);
-	
-	return serverAcceptingNewRequests;
+		return false;
+	}
+
+	successful = WalSendServerClientSendRequest(&walSendRequest);
+
+	if (successful)
+	{
+		/*
+		 * Infinite timeout since we do not know how long it will
+		 * take to catch-up.
+		 */
+		successful = XLogQDMirrorWaitForResponse(NULL);
+	}
+
+	return successful;
 }
 
 static void
 XLogQDMirrorSend(int startidx, int npages, TimeLineID timeLineID, uint32 logId, uint32 logSeg, uint32 logOff)
 {
 	bool ready;
+	bool connected;
 	bool haveNewCheckpointLocation;
 	XLogRecPtr newCheckpointLocation;
 	WalSendRequest walSendRequest;
-	WalSendResponse walSendResponse;
-	int serialNumber;
-	bool serverAcceptingNewRequests;
-	PGPROCGetRequestResult result;
+	bool successful;
+	struct timeval timeout = {0,250000};		// 0.25 seconds.
 
 	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"QD mirroring WriteWalPages parameters startidx %d, npages %d, timeLineID %d, logId %u, logSeg %u, logOff %X",
 		 startidx, npages, timeLineID, logId, logSeg, logOff);
@@ -1787,7 +1768,8 @@ XLogQDMirrorSend(int startidx, int npages, TimeLineID timeLineID, uint32 logId, 
 		                &haveNewCheckpointLocation, &newCheckpointLocation);
 	if (!ready)
 	{
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"Skipping QD mirroring -- not enabled");
+		if (Debug_print_qd_mirroring)
+			elog(LOG,"Skipping QD mirroring -- not enabled");
 		return;
 	}
 //	if (shmDtmStarted == NULL || !*shmDtmStarted)
@@ -1795,6 +1777,15 @@ XLogQDMirrorSend(int startidx, int npages, TimeLineID timeLineID, uint32 logId, 
 //		elog(LOG,"XLogQDMirrorSend: Skipping... DTM not started");
 //		return;
 //	}
+
+	connected = WalSendServerClientConnect();
+	if (!connected)
+	{
+		elog(NOTICE, "disabling QD mirroring (cannot connect to WAL Send server)");
+		disableQDMirroring();
+		return;
+	}
+
 	walSendRequest.command = WriteWalPages;
 	walSendRequest.startidx = startidx;
 	walSendRequest.npages = npages;
@@ -1805,54 +1796,23 @@ XLogQDMirrorSend(int startidx, int npages, TimeLineID timeLineID, uint32 logId, 
 	walSendRequest.haveNewCheckpointLocation = haveNewCheckpointLocation;
 	walSendRequest.newCheckpointLocation = newCheckpointLocation;
 
-	serverAcceptingNewRequests = ProcSendRequest(
-									PGPROC_REQUEST_WALSEND, 
-									&walSendRequest, sizeof(walSendRequest),
-									/* responseNeeded */ true,
-									&serialNumber);
-	if (!serverAcceptingNewRequests)
+	successful = WalSendServerClientSendRequest(&walSendRequest);
+	
+	if (!successful)
 	{
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "WAL Send server not accepting new requests");
+		elog(NOTICE, "disabling QD mirroring (request WriteWalPages -- could not send to WAL Send server)");
+		disableQDMirroring();
 		return;
 	}
 
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), 
-		 "queued WriteWalRequest on WAL Send server with serial number %d",
-		 serialNumber);
+	successful = XLogQDMirrorWaitForResponse(&timeout);
 	
-	while(true)
+	if (!successful)
 	{
-		result = ProcWaitForResponse(
-							PGPROC_REQUEST_WALSEND, 
-							serialNumber, 
-							&walSendResponse, sizeof(walSendResponse));
-		if (result == PGPROC_GETRESPONSE_OK)
-		{
-			break;
-		}
-		else if (result == PGPROC_GETRESPONSE_INTERRUPT)
-		{
-//			elog(LOG,"QD Mirror Send: interrupt bubbled up...");
-//			CHECK_FOR_INTERRUPTS();
-		}
-		else if (result == PGPROC_GETRESPONSE_QUEUEDISABLED)
-		{
-			elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"WAL Send server %s not accepting requests",
-				 ProcRequestTypeToString(PGPROC_REQUEST_WALSEND));
-			return;
-		}
-		else
-		{
-			elog(FATAL,"unexpected result %d", (int)result);
-		}
+		elog(NOTICE, "disabling QD mirroring (request WriteWalPages -- could not receive from WAL Send server)");
+		disableQDMirroring();
+		return;
 	}
-	
-	if (!walSendResponse.ok)
-		elog(ERROR,"WriteWalPages returned not OK");
-	else
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
-		     "WriteWalPages returned OK for serial number %d",
-		     serialNumber);
 }
 
 /*

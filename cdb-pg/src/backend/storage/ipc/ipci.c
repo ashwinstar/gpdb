@@ -138,6 +138,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, FtsShmemSize());
 		size = add_size(size, tmShmemSize());
 		size = add_size(size, SeqServerShmemSize());
+		size = add_size(size, WalSendServerShmemSize());
 		size = add_size(size, WalRedoServerShmemSize());
 #ifdef EXEC_BACKEND
 		size = add_size(size, ShmemBackendArraySize());
@@ -263,6 +264,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	PMSignalInit();
 	BgWriterShmemInit();
 	SeqServerShmemInit();
+	WalSendServerShmemInit();
 	WalRedoServerShmemInit();
 
 	/*

@@ -16,10 +16,9 @@
 typedef enum WalSendRequestCommand
 {
 	PositionToEnd = 0,
-	Catchup = 1,
-	WriteWalPages = 2,
-	TimerCheck = 3,
-	MaxWalSendRequestCommand  = 4 /* must always be last */
+	Catchup,
+	WriteWalPages,
+	MaxWalSendRequestCommand /* must always be last */
 } WalSendRequestCommand;
 
 typedef struct WalSendRequest
@@ -53,6 +52,12 @@ typedef struct WalSendResponse
 
 extern int	walsendserver_start(void);
 extern bool IsWalSendProcess(void);
+
+extern void WalSendServerShmemInit(void);
+extern int WalSendServerShmemSize(void);
+extern bool WalSendServerClientConnect(void);
+extern bool WalSendServerClientSendRequest(WalSendRequest* walSendRequest);
+extern bool WalSendServerClientReceiveResponse(WalSendResponse* walSendResponse, struct timeval *timeout);
 extern char* WalSendRequestCommandToString(WalSendRequestCommand command);
 
 
