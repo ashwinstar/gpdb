@@ -174,7 +174,7 @@ extern void XLogStandbyRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *r
 extern bool XLogQDMirrorPositionToEnd(void);
 extern bool XLogQDMirrorWaitForResponse(struct timeval *timeout);
 extern bool XLogQDMirrorCatchup(XLogRecPtr *flushedLocation);
-extern bool XLogCatchupQDMirror(XLogRecPtr *standbyLocation, XLogRecPtr *flushedLocation);
+extern bool XLogCatchupQDMirror(XLogRecPtr *standbyLocation, XLogRecPtr *flushedLocation, struct timeval *timeout);
 extern void XLogRemoveStandbyLogs(uint32 log, uint32 seg, int *nsegsremoved);
 extern void XLogPrintLogNames(void);
 extern char *XLogLocationToString(XLogRecPtr *loc);

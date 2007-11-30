@@ -525,7 +525,7 @@ static bool read_backup_label(XLogRecPtr *checkPointLoc,
 static void rm_redo_error_callback(void *arg);
 
 static void XLogQDMirrorSend(int startidx, int npages, TimeLineID timeLineID, uint32 logId, uint32 logSeg, uint32 logOff);
-static bool XLogCatchupQDSegment(uint32 logId, uint32 seg, uint32 offset, uint32 end);
+static bool XLogCatchupQDSegment(uint32 logId, uint32 seg, uint32 offset, uint32 end, struct timeval *timeout);
 
 static void CloseReadRecord(void);
 
@@ -1522,7 +1522,7 @@ void XLogGetBuffer(int startidx, int npages, char **from, Size *nbytes)
 }
 
 static bool
-XLogCatchupQDSegment(uint32 logId, uint32 seg, uint32 offset, uint32 end)
+XLogCatchupQDSegment(uint32 logId, uint32 seg, uint32 offset, uint32 end, struct timeval *timeout)
 {
 	char		fname[MAXPGPATH];
 	char		path[MAXPGPATH];
@@ -1612,7 +1612,7 @@ XLogCatchupQDSegment(uint32 logId, uint32 seg, uint32 offset, uint32 end)
             elog(ERROR, "XLogCatchupQDSegment: error formatting command to mirror 'xlog %d %d %d %d' (insufficient space)", logId, seg, offset, requestLen);
 		}
 		
-        successful = write_qd_sync(cmd, buf, requestLen);
+        successful = write_qd_sync(cmd, buf, requestLen, timeout);
 		if (!successful)
 			return false;
 		
@@ -1628,7 +1628,7 @@ XLogCatchupQDSegment(uint32 logId, uint32 seg, uint32 offset, uint32 end)
  * Send primary XLOG to standby master to catch it up.
  */
 bool
-XLogCatchupQDMirror(XLogRecPtr *standbyLocation, XLogRecPtr *flushedLocation)
+XLogCatchupQDMirror(XLogRecPtr *standbyLocation, XLogRecPtr *flushedLocation, struct timeval *timeout)
 {
 	uint32		standbyLogId;
 	uint32		standbySeg;
@@ -1663,7 +1663,7 @@ XLogCatchupQDMirror(XLogRecPtr *standbyLocation, XLogRecPtr *flushedLocation)
 		else
 			end = -1;
 
-		successful = XLogCatchupQDSegment(logId, seg, offset, end);
+		successful = XLogCatchupQDSegment(logId, seg, offset, end, timeout);
 		if (!successful)
 			return false;
 

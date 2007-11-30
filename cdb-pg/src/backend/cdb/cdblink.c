@@ -281,7 +281,7 @@ write_position_to_end(XLogRecPtr *endLocation)
 	HaveStandbyMasterEndLocation = false;
 	StandbyMaster_xlogid = 0;
 	StandbyMaster_xrecoff = 0;
-	successful = write_qd_sync("position_to_end", NULL, 0);
+	successful = write_qd_sync("position_to_end", NULL, 0, NULL);
 	if (!successful)
 		return false;
 
@@ -300,11 +300,15 @@ write_position_to_end(XLogRecPtr *endLocation)
 }
 
 bool
-write_qd_sync(char *cmd, void *buf, int len)
+write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout)
 {
 	PGconn	   *conn;
 	bool		failed = false;
 	char       *msg;
+	int			sock;
+	fd_set		rset;
+	int			n;
+	bool		result = false;
 
 	PG_TRY();
 	{
@@ -342,8 +346,42 @@ write_qd_sync(char *cmd, void *buf, int len)
 
 		if (!failed)
 		{
+			PGresult   *pRes;
+		
+			/*
+			 * If we are doing a timed send, then use a timed select to wait
+			 * for the connection to get a result.
+			 */
+			if (timeout != NULL)
+			{
+				/* Add socket to fd_set if still connected. */
+				sock = PQsocket(conn);
+				if (sock >= 0 &&
+					PQstatus(conn) != CONNECTION_BAD)
+				{
+					FD_ZERO(&rset);
+					FD_SET(sock, &rset);
+					while (true)
+					{
+						n = select(sock + 1, &rset, NULL, NULL, timeout);
+						if (n == 0)
+						{
+							elog(ERROR,"QD mirror connection read timed out (sockfd %d, %u seconds, %u milliseconds)",
+								 sock,
+								 (unsigned int)timeout->tv_sec, 
+						 		 (unsigned int)timeout->tv_usec / 1000);
+						}
+						else if (n < 0 && errno == EINTR)
+							continue;
+						
+						if (FD_ISSET(sock, &rset))
+							break;
+					}
+				}
+			}
+			
 			/* get response */
-			PGresult   *pRes = PQgetResult(conn);
+			pRes = PQgetResult(conn);
 
 			if (pRes != NULL)
 			{
@@ -388,6 +426,7 @@ write_qd_sync(char *cmd, void *buf, int len)
 			elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "successfully executed the cmd %s for length %d",
 				 cmd, len);
 		}
+		result = true;
 	}
 	PG_CATCH();
 	{
@@ -395,11 +434,11 @@ write_qd_sync(char *cmd, void *buf, int len)
 		EmitErrorReport();
 		FlushErrorState();
 	
-		return false;
+		result = false;
 	}
 	PG_END_TRY();
 
-	return true;
+	return result;
 }
 
 /* Connect to a QD-mirror as a client via libpq. */
@@ -485,7 +524,7 @@ disconnectMirrorQD(void)
 		PQstatus(cdb_mirrored_entry_db->conn) != CONNECTION_OK)
 		return;
 
-	write_qd_sync("close", NULL, 0);
+	write_qd_sync("close", NULL, 0, NULL);
 	PQfinish(cdb_mirrored_entry_db->conn);
 
 	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"QD mirror disconnected");

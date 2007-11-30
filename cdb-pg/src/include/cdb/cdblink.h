@@ -66,7 +66,7 @@ extern bool isQDMirroringUnexpectedError(void);
 
 extern char *QDMirroringStateString(void);
 
-extern bool write_qd_sync(char *, void *, int);
+extern bool write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout);
 
 extern bool write_position_to_end(XLogRecPtr *endLocation);
 

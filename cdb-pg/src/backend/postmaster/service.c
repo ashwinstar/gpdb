@@ -274,7 +274,7 @@ ServiceClientWrite(ServiceClient *serviceClient, void* request, int requestLen)
 					{
 						elog(NOTICE,"socket write to '%s' timed out (sockfd %d, %u seconds, %u milliseconds)",
 							 serviceConfig->title,
-							 serviceClient->sockfd + 1,
+							 serviceClient->sockfd,
 							 (unsigned int)clientTransferTimeout.tv_sec, 
 					 		 (unsigned int)clientTransferTimeout.tv_usec / 1000);
 						return false;
@@ -390,7 +390,7 @@ ServiceClientRead(ServiceClient *serviceClient, void* response, int responseLen,
 						if (timeout != NULL)
 							elog(NOTICE,"socket read from '%s' timed out (sockfd %d, %u seconds, %u milliseconds)",
 								 serviceConfig->title,
-								 serviceClient->sockfd + 1,
+								 serviceClient->sockfd,
 								 (unsigned int)timeout->tv_sec, 
 						 		 (unsigned int)timeout->tv_usec / 1000);
 						return false;

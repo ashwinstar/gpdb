@@ -215,8 +215,6 @@ WalSendServer_ServicePostgresInit(void)
 static void
 WalSendServer_ServiceInit(int listenerPort)
 {
-	elog(LOG,"listenerPort %d",listenerPort);
-
 	if (WalSendServerShared == NULL)
 		elog(FATAL,"WAL Send server shared memory not initialized");
 	
@@ -301,6 +299,7 @@ static void
 WalSendServerDoRequest(WalSendRequest *walSendRequest)
 {
 	bool successful;
+	struct timeval temporaryTimeout = {2,0};
 	
 	switch (walSendRequest->command)
 	{
@@ -339,7 +338,10 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 				 */
 				PG_TRY();
 				{
-					successful = XLogCatchupQDMirror(&originalEndLocation, &walSendRequest->flushedLocation);
+					successful = XLogCatchupQDMirror(
+									&originalEndLocation, 
+									&walSendRequest->flushedLocation,
+									&temporaryTimeout);
 				}
 				PG_CATCH();
 				{
@@ -435,7 +437,7 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 				elog(ERROR,"could not create cmd for qd mirror logid %d seg %d", 
 				     walSendRequest->logId, walSendRequest->logSeg);
 			
-			successful = write_qd_sync(cmd, from, nbytes);
+			successful = write_qd_sync(cmd, from, nbytes, &temporaryTimeout);
 			if (successful)
 			{
 				XLogRecPtr oldEndLocation;
@@ -492,7 +494,7 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 					elog(ERROR,"could not create cmd for qd mirror logid %d seg %d offset %d", 
 					     logid, seg, offset);
 				
-				successful = write_qd_sync(cmd, NULL, 0);
+				successful = write_qd_sync(cmd, NULL, 0, NULL);
 				if (successful)
 				{
 					elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"Send of new checkpoint location to QD mirror successful");
