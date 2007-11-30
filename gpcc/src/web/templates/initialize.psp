@@ -99,7 +99,17 @@ $(function() {
 	    $("#initdb").show();
 	  } else {
 	    $("#initdb").hide();
-	    $("#msg").text("Greenplum database '" + json.array + "' was initialized.");
+            if (json.rset.result[0] == "initializing") {
+	        $("#msg").text("Greenplum database is initializing.  Please wait.");
+                setTimeout(function() {
+                   $.getJSON("/status.psp", function(json) {
+                       status_response(json);
+                   })
+                }, 1000);
+            } else { 
+		$("#msg").text("Greenplum database '" + json.array + "' was initialized.");
+				 		
+            }
 	  }
       }
   }
@@ -109,14 +119,15 @@ $(function() {
   });
 
 
-  function initdb_response(json, textstatus) {
+  function initdb_response(msg, textstatus) {
+      var json = eval('(' + msg + ')');
       if (json.status == "ok") {
            $("#initdb").hide();
            $("#msg").text('Greenplum database was initialized.');
       } else if (json.status == "pending") {
-           ;
+      	   ;
       } else if (json.status == "failure") {
-           ;
+      	   ;
       }
 
       setTimeout(function() {
@@ -126,39 +137,8 @@ $(function() {
       }, 1000);
   }
 
-  function ajaxFileUpload()  {
-
-        $(this).unbind('click', ajaxFileUpload);
-
-	$("#msg")
-	.ajaxStart(function(){
-		$(this).text('Greenplum database is initializing.');
-	})
-	.ajaxComplete(function(){
-	        ;
-	});
-
-	$.ajaxFileUpload
-	(
-		{
-			url:'/initdb.psp',
-			secureuri:false,
-			fileElementId:'fileToUpload',
-			dataType: 'json',
-			success: function (data, status) {
-				initdb_response(data);
-			},
-			error: function (data, status, e) {
-				initdb_response(data);
-			}
-		}
-	)
-		
-	return false;
-
-  }  
-  
   function ajaxConfig() {
+
   	var i = 0;
   	var err = []
         var myform = $("#initdb_form").getForm();
@@ -178,8 +158,13 @@ $(function() {
 	}
 
 	if (err.length == 0) {
+  	    $(this).unbind('click', ajaxConfig);
+	    $("#msg")
+	    .ajaxStart(function() {
+	  	$(this).text('Greenplum database is initializing.');
+	    });
+	
 	    $.post('/initdb.psp', myform.vars, initdb_response);
-	    return true;
 	} else {
 	    var item = "#initdb_form ";
 	    for (i = 0 ; i < err.length ; i++) {
@@ -188,10 +173,9 @@ $(function() {
 	    $("#initdb_form td[@name]").css('color', 'black');
 	    $(item).css('color', 'red');
 
-	    return false;
 	}
 
-	return true;
+	return false;
   }
 
   $("#submit").click(ajaxConfig);
@@ -301,14 +285,9 @@ $(function() {
 		   <tr>
 		      <td>Number of segments per machine:</td>
 		      <td><select name="nseg_per_node">
-		              <option value="1">1</option>	
-		              <option value="2">2</option>
-		              <option value="3">3</option>	
-		              <option value="4">4</option>	
-		              <option value="5">5</option>	
-		              <option value="6">6</option>	
-		              <option value="7">7</option>	
-		              <option value="8">8</option>	
+% for i in range(1, 9):
+		              <option value="${i}">${i}</option>	
+% endfor
 			  </select>
 		      </td>
 		   </tr>
@@ -316,11 +295,6 @@ $(function() {
 		      <td>Has Mirror Segment:</td>
 		      <td><input type="checkbox" name="mirror" checked></td>
 		   </tr>
-<!--
-		   <tr>
-	               <td><input id="fileToUpload" type="file" size="35" name="fileToUpload"></td>
-		   </tr>
--->
 		   <tr>
 		       <td><button id="submit">Submit</button></td>
 		   </tr>
