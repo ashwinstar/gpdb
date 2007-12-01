@@ -359,13 +359,21 @@ write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout)
 				if (sock >= 0 &&
 					PQstatus(conn) != CONNECTION_BAD)
 				{
+					struct timeval rundownTimeout = {0,0};
+						// Use local variable since select modifies
+						// the timeout parameter with remaining time.
+
+					if (timeout != NULL)
+						rundownTimeout = *timeout;
+					
 					FD_ZERO(&rset);
 					FD_SET(sock, &rset);
 					while (true)
 					{
-						n = select(sock + 1, &rset, NULL, NULL, timeout);
+						n = select(sock + 1, &rset, NULL, NULL, (timeout == NULL ? NULL : &rundownTimeout));
 						if (n == 0)
 						{
+							Assert(timeout != NULL);
 							elog(ERROR,"QD mirror connection read timed out (sockfd %d, %u seconds, %u milliseconds)",
 								 sock,
 								 (unsigned int)timeout->tv_sec, 

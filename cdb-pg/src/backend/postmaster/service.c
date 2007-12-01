@@ -212,10 +212,14 @@ ServiceClientWrite(ServiceClient *serviceClient, void* request, int requestLen)
 	int    bytesWritten = 0;
 	int			saved_err;
 	fd_set		wset;
+	struct timeval rundownTimeout;
+		// Use local variable since select modifies
+		// the timeout parameter with remaining time.
 	
 	Assert(serviceClient != NULL);
 	serviceConfig = (ServiceConfig*)serviceClient->serviceConfig;
 	Assert(serviceConfig != NULL);
+	rundownTimeout = serviceConfig->clientTransferTimeout;
 	Assert(request != NULL);
 		
 	if (serviceClient->sockfd == -1)
@@ -226,7 +230,6 @@ ServiceClientWrite(ServiceClient *serviceClient, void* request, int requestLen)
 	 */	
 	while( bytesWritten < requestLen )
 	{
-		
 //		CHECK_FOR_INTERRUPTS();
 					
 		n = write(serviceClient->sockfd, 
@@ -263,20 +266,18 @@ ServiceClientWrite(ServiceClient *serviceClient, void* request, int requestLen)
 				 */
 				do
 				{
-					struct timeval clientTransferTimeout = serviceConfig->clientTransferTimeout;
-					
 //					CHECK_FOR_INTERRUPTS();
 					
 					FD_ZERO(&wset);
 					FD_SET(serviceClient->sockfd, &wset);
-					n = select(serviceClient->sockfd + 1, NULL, &wset, NULL, &clientTransferTimeout);
+					n = select(serviceClient->sockfd + 1, NULL, &wset, NULL, &rundownTimeout);
 					if (n == 0)
 					{
 						elog(NOTICE,"socket write to '%s' timed out (sockfd %d, %u seconds, %u milliseconds)",
 							 serviceConfig->title,
 							 serviceClient->sockfd,
-							 (unsigned int)clientTransferTimeout.tv_sec, 
-					 		 (unsigned int)clientTransferTimeout.tv_usec / 1000);
+							 (unsigned int)serviceConfig->clientTransferTimeout.tv_sec, 
+					 		 (unsigned int)serviceConfig->clientTransferTimeout.tv_usec / 1000);
 						return false;
 					}
 					else if (n < 0 && errno == EINTR)
@@ -336,11 +337,16 @@ ServiceClientRead(ServiceClient *serviceClient, void* response, int responseLen,
 	int	   bytesRead = 0;
 	int			saved_err;
 	fd_set		rset;
+	struct timeval rundownTimeout = {0,0};
+		// Use local variable since select modifies
+		// the timeout parameter with remaining time.
 
 	Assert(serviceClient != NULL);
 	serviceConfig = serviceClient->serviceConfig;
 	Assert(serviceConfig != NULL);
 	Assert(response != NULL);
+	if (timeout != NULL)
+		rundownTimeout = *timeout;
 
 	/*
 	 * read the response
@@ -384,7 +390,7 @@ ServiceClientRead(ServiceClient *serviceClient, void* response, int responseLen,
 					
 					FD_ZERO(&rset);
 					FD_SET(serviceClient->sockfd, &rset);
-					n = select(serviceClient->sockfd + 1, &rset, NULL, NULL, timeout);
+					n = select(serviceClient->sockfd + 1, &rset, NULL, NULL, (timeout == NULL ? NULL : &rundownTimeout));
 					if (n == 0)
 					{
 						if (timeout != NULL)
@@ -591,7 +597,6 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 				newsockfd;
 	fd_set		rset,
 				rrset;
-	struct timeval shutdownTimeout;
 	
 	struct sockaddr_in addr;
 	socklen_t	addrlen;
@@ -603,8 +608,6 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 	MemoryContextSwitchTo(TopMemoryContext);
 	Assert(CurrentMemoryContext == TopMemoryContext);
 
-	shutdownTimeout = serviceConfig->shutdownTimeout;
-	
 	/*
 	 * Setup scratch buffer.
 	 */
@@ -619,6 +622,10 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 	 */
 	while(true)
 	{
+		struct timeval rundownTimeout = serviceConfig->shutdownTimeout;
+			// Use local variable since select modifies
+			// the timeout parameter with remaining time.
+	
 		CHECK_FOR_INTERRUPTS();
 
 		if (serviceConfig->ServiceShutdownRequested())
@@ -633,7 +640,7 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 		
 		memcpy(&rrset, &rset, sizeof(fd_set));
 		
-		n = select(highsock + 1, &rrset, NULL, NULL, &shutdownTimeout);
+		n = select(highsock + 1, &rrset, NULL, NULL, &rundownTimeout);
 		if (n == 0 || (n < 0 && errno == EINTR))
 		{
 			/* intr or timeout: Have we been here too long ? */			
@@ -747,6 +754,10 @@ ServiceProcessRequest(ServiceCtrl *serviceCtrl, int sockfd, uint8 *inputBuff, bo
 	
 	int			saved_err;
 	fd_set		rset;
+	struct timeval rundownTimeout = serviceConfig->clientTransferTimeout;
+		// Use local variable since select modifies
+		// the timeout parameter with remaining time.
+	
 	
 	int n;
 	int bytesRead = 0;
@@ -798,15 +809,12 @@ ServiceProcessRequest(ServiceCtrl *serviceCtrl, int sockfd, uint8 *inputBuff, bo
 
 			if (saved_err == EWOULDBLOCK)
 			{
-				struct timeval clientTransferTimeout = serviceConfig->clientTransferTimeout;
-				
 				/* we shouldn't really get here since we are dealing with
 				 * small messages, but once we've read a bit of data we
 				 * need to finish out reading till we get the message (or error)
 				 */
 				do
 				{
-					
 					CHECK_FOR_INTERRUPTS();
 					
 					if (serviceConfig->ServiceShutdownRequested())
@@ -814,14 +822,14 @@ ServiceProcessRequest(ServiceCtrl *serviceCtrl, int sockfd, uint8 *inputBuff, bo
 		
 					FD_ZERO(&rset);
 					FD_SET(sockfd, &rset);
-					n = select(sockfd + 1, &rset, NULL, NULL, &clientTransferTimeout);
+					n = select(sockfd + 1, &rset, NULL, NULL, &rundownTimeout);
 					if (n == 0)
 					{
 						elog(NOTICE,"'%s': socket read from backend process timed out (sockfd %d, %u seconds, %u milliseconds)",
 							 serviceConfig->title,
 							 sockfd,
-							 (unsigned int)clientTransferTimeout.tv_sec, 
-					 		 (unsigned int)clientTransferTimeout.tv_usec / 1000);
+							 (unsigned int)serviceConfig->clientTransferTimeout.tv_sec, 
+					 		 (unsigned int)serviceConfig->clientTransferTimeout.tv_usec / 1000);
 						return false;
 					}
 					if (n < 0 && errno == EINTR)
@@ -864,6 +872,11 @@ ServiceProcessRespond(ServiceCtrl *serviceCtrl, int sockfd, uint8 *response, int
 	fd_set		wset;
 	
 	int bytesWritten = 0;
+	
+	struct timeval rundownTimeout = serviceConfig->clientTransferTimeout;
+		// Use local variable since select modifies
+		// the timeout parameter with remaining time.
+	
 
 //	elog(LOG,"ServiceProcessRespond called for sockfd %d, responseLen %d",
 //		 sockfd, responseLen);
@@ -899,8 +912,6 @@ ServiceProcessRespond(ServiceCtrl *serviceCtrl, int sockfd, uint8 *response, int
 
 			if (saved_err == EWOULDBLOCK)
 			{
-				struct timeval clientTransferTimeout = serviceConfig->clientTransferTimeout;
-					
 				/* we shouldn't really get here since we are dealing with
 				 * small messages, but once we've read a bit of data we
 				 * need to finish out reading till we get the message (or error)
@@ -911,14 +922,14 @@ ServiceProcessRespond(ServiceCtrl *serviceCtrl, int sockfd, uint8 *response, int
 					
 					FD_ZERO(&wset);
 					FD_SET(sockfd, &wset);
-					n = select(sockfd + 1, NULL, &wset, NULL, &clientTransferTimeout);
+					n = select(sockfd + 1, NULL, &wset, NULL, &rundownTimeout);
 					if (n == 0)
 					{
 						elog(NOTICE,"'%s': socket write from backend process timed out (sockfd %d, %u seconds, %u milliseconds)",
 							 serviceConfig->title,
 							 sockfd,
-							 (unsigned int)clientTransferTimeout.tv_sec, 
-					 		 (unsigned int)clientTransferTimeout.tv_usec / 1000);
+							 (unsigned int)serviceConfig->clientTransferTimeout.tv_sec, 
+					 		 (unsigned int)serviceConfig->clientTransferTimeout.tv_usec / 1000);
 						return false;
 					}
 					if (n < 0 && errno == EINTR)
