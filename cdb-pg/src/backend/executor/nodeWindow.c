@@ -912,11 +912,14 @@ serializeFuncs(WindowStatePerLevel level_state,
 				ExprState *argstate = (ExprState *)lfirst(ref_lc);
 				Datum value;
 				bool isnull;
+				MemoryContext oldctx;
 
 				typid = exprType((Node *)argstate->expr);
 				get_typlenbyval(typid, &arglen, &byval);
 
+				oldctx = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 				value = ExecEvalExpr(argstate, econtext, &isnull, NULL);
+				MemoryContextSwitchTo(oldctx);
 
 				written_pos = 
 					serializeValue(value, isnull,
@@ -1639,13 +1642,18 @@ hasTuplesInFrame(WindowStatePerLevel level_state,
 				bool new_edge_value_isnull = false;
 				bool in_trail_edge = false;
 				bool in_lead_edge = false;
+				MemoryContext oldctx;
 
 				has_tuples = false;
 
 				/* Check if the last row is within the edges */
+
+				oldctx = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 				new_edge_value =
 					ExecEvalExpr(level_state->trail_range_expr, econtext,
 								 &(new_edge_value_isnull), NULL);
+				MemoryContextSwitchTo(oldctx);
+
 				in_trail_edge =
 					checkLastRowForEdge(level_state, wstate,
 										level_state->frame->trail,
@@ -1657,9 +1665,12 @@ hasTuplesInFrame(WindowStatePerLevel level_state,
 				in_lead_edge = true;
 				if (level_state->lead_range_expr != NULL)
 				{
+					oldctx = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 					new_edge_value =
 						ExecEvalExpr(level_state->lead_range_expr, econtext,
 									 &(new_edge_value_isnull), NULL);
+					MemoryContextSwitchTo(oldctx);
+
 					in_lead_edge =
 						checkLastRowForEdge(level_state, wstate,
 											level_state->frame->lead,
@@ -3034,6 +3045,7 @@ initFcinfo(WindowRefExprState *wrxstate, FunctionCallInfoData *fcinfo,
 	ListCell   *lcarg;
 	int argno;
 	bool  has_nulls = false;
+	MemoryContext oldctx;
 			
 	/* If this is an agg, the first arg will be the trans value */
 	if (funcstate->isAgg)
@@ -3041,6 +3053,9 @@ initFcinfo(WindowRefExprState *wrxstate, FunctionCallInfoData *fcinfo,
 	else
 		argno = 0;
 	
+	/* Switch memory context just once for all args */
+	oldctx = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
+
 	foreach (lcarg, wrxstate->args)
 	{
 		ExprState  *argstate = (ExprState *) lfirst(lcarg);
@@ -3050,6 +3065,7 @@ initFcinfo(WindowRefExprState *wrxstate, FunctionCallInfoData *fcinfo,
 			has_nulls = true;
 		argno++;
 	}
+	MemoryContextSwitchTo(oldctx);
 
 	if (check_nulls && !has_nulls)
 		funcstate->numNotNulls++;
@@ -3454,6 +3470,7 @@ forwardEdgeForRange(WindowStatePerLevel level_state,
 	FrameBufferEntry *entry = level_state->curr_entry_buf;
 	Datum new_edge_value = 0;
 	bool new_edge_value_isnull = true;
+	MemoryContext oldctx;
 
 	bool is_less = true;
 	bool is_equal = true;
@@ -3464,12 +3481,16 @@ forwardEdgeForRange(WindowStatePerLevel level_state,
 	if (is_lead_edge)
 		level_state->lead_ready = false;
 
+	oldctx = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
+
 	/*
 	 * Compute the new edge value. Note that this value could be
 	 * NULL.
 	 */
 	new_edge_value = ExecEvalExpr(edge_range_expr, econtext,
 								  &(new_edge_value_isnull), NULL);
+
+	MemoryContextSwitchTo(oldctx);
 
 	if (!ntuplestore_acc_tell(edge_reader, NULL))
 		ntuplestore_acc_seek_first(edge_reader);
@@ -3773,6 +3794,7 @@ get_delay_edge(WindowFrameEdge *edge,
 	Datum edge_param = 0;
 	bool isnull = true;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
+	MemoryContext oldctx;
 	
 	Assert(EDGE_IS_DELAYED(edge));
 
@@ -3783,10 +3805,14 @@ get_delay_edge(WindowFrameEdge *edge,
 				 errmsg("%s parameter cannot be NULL",
 						(is_rows ? "ROWS" : "RANGE"))));
 	
+	oldctx = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
+
 	edge_param = ExecEvalExpr(edge_expr,
 							  econtext,
 							  &isnull,
 							  NULL);
+	MemoryContextSwitchTo(oldctx);
+
 	if (isnull)
 		ereport(ERROR,
 				(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
@@ -3937,9 +3963,12 @@ advanceEdgeForRange(WindowStatePerLevel level_state,
 	bool is_less = false;
 	bool is_equal = false;
 	bool lastrow_edge = false;
+	MemoryContext oldctx;
 	
 	if (is_lead_edge)
 		level_state->lead_ready = false;
+
+	oldctx = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 
 	/*
 	 * Compute the new edge value. Note that this value can be
@@ -3947,6 +3976,8 @@ advanceEdgeForRange(WindowStatePerLevel level_state,
 	 */
 	new_edge_value = ExecEvalExpr(edge_range_expr, econtext,
 								  &(new_edge_value_isnull), NULL);
+
+	MemoryContextSwitchTo(oldctx);
 
 	if (!ntuplestore_acc_tell(edge_reader, NULL))
 	{
