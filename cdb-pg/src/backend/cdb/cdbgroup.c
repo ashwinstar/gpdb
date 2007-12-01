@@ -65,15 +65,6 @@
  * MPP_GRP_PREP_HASH_DISTINCT
  *    Redistribute the input on the sole distinct expression used as
  *    an aggregate argument.
- * MPP_GRP_PREP_CULL_GROUPS
- *    Use hash on grouping attributes to convert replicated input into
- *    input partitioned to collocate groups.
- * MPP_GRP_PREP_CULL_DISTINCT
- *    Use hash on the sole distinct expression used as an aggregate
- *    argument to convert replicated input into input partitioned to
- *    collocate groups.
- * MPP_GRP_PREP_CULL_QE
- *    Focus a replicated input on the utility QE.
  * MPP_GRP_PREP_FOCUS_QE
  *    Focus a partitioned input on the utility QE.
  * MPP_GRP_PREP_FOCUS_QD
@@ -86,9 +77,6 @@ typedef enum MppGroupPrep
 	MPP_GRP_PREP_NONE = 0,
 	MPP_GRP_PREP_HASH_GROUPS,
 	MPP_GRP_PREP_HASH_DISTINCT,
-	MPP_GRP_PREP_CULL_GROUPS,
-	MPP_GRP_PREP_CULL_DISTINCT,
-	MPP_GRP_PREP_CULL_QE,
 	MPP_GRP_PREP_FOCUS_QE,
 	MPP_GRP_PREP_FOCUS_QD,
 	MPP_GRP_PREP_BROADCAST
@@ -350,8 +338,14 @@ cdb_grouping_planner(PlannerInfo* root,
 		{
 			if ( agg_counts->numDistinctAggs ==  1 )
 			{
-				List *distinct_pathkeys = cdb_make_pathkey_for_expr(root,
-						(Node *) agg_counts->distinctExpr,
+				List *dqaArgList;
+				List *distinct_pathkeys;
+				
+				Insist( IsA(agg_counts->dqaArgs, List) &&
+				        list_length((List*)agg_counts->dqaArgs) == 1 );
+				dqaArgList = list_make1(linitial(agg_counts->dqaArgs));
+				distinct_pathkeys = cdb_make_pathkey_for_expr(root,
+						linitial(dqaArgList),
 						list_make1(makeString("=")));
 				distinct_pathkeys =list_make1(distinct_pathkeys);
 
@@ -517,9 +511,6 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	switch ( ctx->prep )
 	{
 	case MPP_GRP_PREP_NONE:
-	case MPP_GRP_PREP_CULL_GROUPS:
-	case MPP_GRP_PREP_CULL_DISTINCT:
-	case MPP_GRP_PREP_CULL_QE:
 	case MPP_GRP_PREP_FOCUS_QE:
 	case MPP_GRP_PREP_FOCUS_QD:
 		path = best_path; /* Can preserve sort order, so retain best. */
@@ -589,9 +580,6 @@ make_one_stage_agg_plan(PlannerInfo *root,
 			break;
 		
 	case MPP_GRP_PREP_HASH_DISTINCT:
-	case MPP_GRP_PREP_CULL_GROUPS:
-	case MPP_GRP_PREP_CULL_DISTINCT:
-	case MPP_GRP_PREP_CULL_QE:
 	case MPP_GRP_PREP_BROADCAST:
 			ereport(ERROR,
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
@@ -854,9 +842,10 @@ make_two_stage_agg_plan(PlannerInfo *root,
 		break;
 			
 	case MPP_GRP_PREP_HASH_DISTINCT:
-		Assert( ctx->agg_counts->numDistinctAggs == 1
-				&& ctx->agg_counts->distinctExpr != NULL);
-		distinctExpr = list_make1(copyObject(ctx->agg_counts->distinctExpr));
+		Assert( ctx->agg_counts->numDistinctAggs == 1 );
+		Assert( ctx->agg_counts->dqaArgs != NIL);
+		distinctExpr = list_make1(linitial(ctx->agg_counts->dqaArgs));
+		distinctExpr = copyObject(distinctExpr);
 		result_plan = (Plan*)make_motion_hash(root, result_plan, distinctExpr);
 		result_plan->total_cost += motion_cost_per_row * result_plan->plan_rows;
 		current_pathkeys = NIL; /* No longer sorted. */
@@ -865,9 +854,6 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	case MPP_GRP_PREP_FOCUS_QD:
 	case MPP_GRP_PREP_FOCUS_QE:
 	case MPP_GRP_PREP_HASH_GROUPS:
-	case MPP_GRP_PREP_CULL_GROUPS:
-	case MPP_GRP_PREP_CULL_DISTINCT:
-	case MPP_GRP_PREP_CULL_QE:
 	case MPP_GRP_PREP_BROADCAST:
 			ereport(ERROR,
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),

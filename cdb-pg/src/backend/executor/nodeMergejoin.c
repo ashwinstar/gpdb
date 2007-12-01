@@ -139,6 +139,12 @@ typedef struct MergeJoinClauseData
 	 * null and one non-null input.
 	 */
 	bool		mergestrict;
+	
+	/*
+	 * CDB: Remember whether the mergejoin operation was actually an "is
+	 *      not distinct from" predicate.
+	 */
+	bool		notdistinct;
 
 	/*
 	 * The comparison strategy in use, and the lookup info to let us call the
@@ -170,6 +176,10 @@ typedef struct MergeJoinClauseData
  * per comparison.	Hence we try to find a btree opclass that matches the
  * mergejoinable operator.	If we cannot find one, we'll have to call both
  * the "=" and (often) the "<" operator for each comparison.
+ *
+ * CDB: We also recognize the "is not distinct from" predicate which is
+ *      interesting for sequential window plans.  The pseudo-Lisp for this
+ *      predicate is (BoolExpr_NOT (DistinctExpr_= leftexpr rightexpr)).
  */
 static MergeJoinClause
 MJExamineQuals(List *qualList, PlanState *parent)
@@ -195,7 +205,25 @@ MJExamineQuals(List *qualList, PlanState *parent)
 		int			i;
 
 		if (!IsA(qual, OpExpr))
-			elog(ERROR, "mergejoin clause is not an OpExpr");
+		{
+			BoolExpr *bx = (BoolExpr*)qual;
+			bool ok = false;
+			
+			if ( IsA(bx, BoolExpr) && bx->boolop == NOT_EXPR && list_length(bx->args) == 1 )
+			{
+				DistinctExpr *dx = (DistinctExpr*)linitial(bx->args);
+				
+				if ( IsA(dx, DistinctExpr) )
+				{
+					clause->notdistinct = true;
+					qual = (OpExpr *)dx;
+					ok = true;
+				}
+			}
+			
+			if ( !ok )
+				elog(ERROR, "mergejoin clause is not an OpExpr");
+		}
 
 		/*
 		 * Prepare the input expressions for execution.
@@ -418,7 +446,7 @@ MJCompare(MergeJoinState *mergestate)
 						continue;
 					}
 				}
-				nulleqnull = true;
+				nulleqnull = !clause->notdistinct;
 				continue;
 			}
 			/* NULL > non-NULL */
@@ -443,7 +471,7 @@ MJCompare(MergeJoinState *mergestate)
 			fresult = FunctionCallInvoke(&fcinfo);
 			if (fcinfo.isnull)
 			{
-				nulleqnull = true;
+				nulleqnull = !clause->notdistinct;
 				continue;
 			}
 			else if (DatumGetBool(fresult))
@@ -460,7 +488,7 @@ MJCompare(MergeJoinState *mergestate)
 			fresult = FunctionCallInvoke(&fcinfo);
 			if (fcinfo.isnull)
 			{
-				nulleqnull = true;
+				nulleqnull = !clause->notdistinct;
 				continue;
 			}
 			else if (DatumGetBool(fresult))
@@ -488,7 +516,7 @@ MJCompare(MergeJoinState *mergestate)
 			fresult = FunctionCallInvoke(&fcinfo);
 			if (fcinfo.isnull)
 			{
-				nulleqnull = true;
+				nulleqnull = !clause->notdistinct;
 				continue;
 			}
 			else if (DatumGetInt32(fresult) == 0)

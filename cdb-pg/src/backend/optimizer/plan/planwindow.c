@@ -1989,8 +1989,11 @@ Expr *make_mergeclause(Index varno, AttrNumber attrno, Node *expr)
 	Oid type = exprType(expr);
 	Node *lft = (Node*)makeVar(varno, attrno, type, -1, 0);
 	Node *rgt = copyObject(expr);
+	Expr *xpr = make_op(NULL, list_make1(makeString("=")), lft, rgt, -1);
 	
-	return make_op(NULL, list_make1(makeString("=")), lft, rgt, -1);
+	xpr->type = T_DistinctExpr;
+	
+	return make_notclause(xpr);
 }
 
 

@@ -997,6 +997,25 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		grpext = is_grouping_extension(canonical_grpsets);
 
 		/*
+		 * Will need actual number of aggregates for estimating costs.
+		 *
+		 * Note: we do not attempt to detect duplicate aggregates here; a
+		 * somewhat-overestimated count is okay for our present purposes.
+		 *
+		 * Note: think not that we can turn off hasAggs if we find no aggs. It
+		 * is possible for constant-expression simplification to remove all
+		 * explicit references to aggs, but we still have to follow the
+		 * aggregate semantics (eg, producing only one output row).
+		 */
+		MemSet(&agg_counts, 0, sizeof(AggClauseCounts));
+
+		if (parse->hasAggs)
+		{
+			count_agg_clauses((Node *) tlist, &agg_counts);
+			count_agg_clauses(parse->havingQual, &agg_counts);
+		}
+
+		/*
 		 * Generate appropriate target list for subplan; may be different from
 		 * tlist if grouping or aggregation is needed.
 		 */
@@ -1012,25 +1031,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 			make_pathkeys_for_groupclause(parse->groupClause, tlist);
 		root->sort_pathkeys =
 			make_pathkeys_for_sortclauses(parse->sortClause, tlist);
-
-		MemSet(&agg_counts, 0, sizeof(AggClauseCounts));
-
-		/*
-		 * Will need actual number of aggregates for estimating costs.
-		 *
-		 * Note: we do not attempt to detect duplicate aggregates here; a
-		 * somewhat-overestimated count is okay for our present purposes.
-		 *
-		 * Note: think not that we can turn off hasAggs if we find no aggs. It
-		 * is possible for constant-expression simplification to remove all
-		 * explicit references to aggs, but we still have to follow the
-		 * aggregate semantics (eg, producing only one output row).
-		 */
-		if (parse->hasAggs)
-		{
-			count_agg_clauses((Node *) tlist, &agg_counts);
-			count_agg_clauses(parse->havingQual, &agg_counts);
-		}
 
 		/*
 		 * Figure out whether we need a sorted result from query_planner.
@@ -1955,6 +1955,9 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 	Path		sorted_p;
 
 	HashAggTableSizes   hash_info;
+	bool		hash_ok = true;
+	bool		has_dqa = false;
+	bool		hash_cheaper = false;
 
 	/*
 	 * Check can't-do-it conditions, including whether the grouping operators
@@ -1963,130 +1966,137 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 	 * Executor doesn't support hashed aggregation with DISTINCT aggregates.
 	 * (Doing so would imply storing *all* the input values in the hash table,
 	 * which seems like a certain loser.)
-	 */
-	if (!enable_hashagg)
-		return false;
-	if (agg_counts->numDistinctAggs != 0)
-		return false;
-	if (!hash_safe_grouping(root))
-		return false;
-
-	/*
-	 * Don't do it if it doesn't look like the hashtable will fit into
-	 * work_mem.
 	 *
-	 * Beware here of the possibility that cheapest_path->parent is NULL. This
-	 * could happen if user does something silly like SELECT 'foo' GROUP BY 1;
+	 * CDB: The parallel grouping planner can use hashed aggregation
+	 * with DISTINCT-qualified aggregates in some cases, so in case we
+	 * don't choose hashed grouping here, we make note in agg_counts to 
+	 * indicate whether DQAs are the only reason.
 	 */
-	if (cheapest_path->parent)
-	{
-		cheapest_path_rows = cheapest_path->parent->rows;
-		cheapest_path_width = cheapest_path->parent->width;
-	}
-	else
-	{
-		cheapest_path_rows = 1; /* assume non-set result */
-		cheapest_path_width = 100;		/* arbitrary */
-	}
+	hash_ok = enable_hashagg && hash_safe_grouping(root);
+	
+	has_dqa = agg_counts->numDistinctAggs != 0;
 
-	/* Estimate per-hash-entry space at tuple width... */
-	/* (Should improve this estimate since not all
-	 *  attributes are saved in a hash table entry's
-	 *  grouping key tuple.)
-	 */
-	hashentrysize = MAXALIGN(cheapest_path_width) + MAXALIGN(sizeof(MinimalTupleData));
-	/* plus space for pass-by-ref transition values... */
-	hashentrysize += agg_counts->transitionSpace;
-	/* plus the per-hash-entry overhead */
-	hashentrysize += hash_agg_entry_size(agg_counts->numAggs);
-
-	if (!calcHashAggTableSizes(1024.0 * (double)work_mem,
-							   dNumGroups,
-							   agg_counts->numAggs,
-							   /* The following estimate is very rough but good enough for planning. */
-							   sizeof(HeapTupleData) + sizeof(HeapTupleHeaderData) + cheapest_path_width,
-							   agg_counts->transitionSpace,
-							   false,
-							   &hash_info))
-		return false;
-
-	/*
-	 * See if the estimated cost is no more than doing it the other way. While
-	 * avoiding the need for sorted input is usually a win, the fact that the
-	 * output won't be sorted may be a loss; so we need to do an actual cost
-	 * comparison.
-	 *
-	 * We need to consider cheapest_path + hashagg [+ final sort] versus
-	 * either cheapest_path [+ sort] + group or agg [+ final sort] or
-	 * presorted_path + group or agg [+ final sort] where brackets indicate a
-	 * step that may not be needed. We assume query_planner() will have
-	 * returned a presorted path only if it's a winner compared to
-	 * cheapest_path for this purpose.
-	 *
-	 * These path variables are dummies that just hold cost fields; we don't
-	 * make actual Paths for these steps.
-	 */
-	cost_agg(&hashed_p, root, AGG_HASHED, agg_counts->numAggs,
-			 numGroupCols, dNumGroups,
-			 cheapest_path->startup_cost, cheapest_path->total_cost,
-			 cheapest_path_rows, hash_info.workmem_per_entry,
-			 hash_info.spill ? hash_info.nbatches : 1.0);
-	/* Result of hashed agg is always unsorted */
-	if (root->sort_pathkeys)
-		cost_sort(&hashed_p, root, root->sort_pathkeys, hashed_p.total_cost,
-				  dNumGroups, cheapest_path_width);
-
-	if (sorted_path)
+	if ( hash_ok )
 	{
-		sorted_p.startup_cost = sorted_path->startup_cost;
-		sorted_p.total_cost = sorted_path->total_cost;
-		current_pathkeys = sorted_path->pathkeys;
-	}
-	else
-	{
-		sorted_p.startup_cost = cheapest_path->startup_cost;
-		sorted_p.total_cost = cheapest_path->total_cost;
-		current_pathkeys = cheapest_path->pathkeys;
-	}
-	if (!pathkeys_contained_in(root->group_pathkeys, current_pathkeys))
-	{
-		cost_sort(&sorted_p, root, root->group_pathkeys, sorted_p.total_cost,
-				  cheapest_path_rows, cheapest_path_width);
-		current_pathkeys = root->group_pathkeys;
-	}
+		/*
+		 * Don't do it if it doesn't look like the hashtable will fit into
+		 * work_mem.
+		 *
+		 * Beware here of the possibility that cheapest_path->parent is NULL. This
+		 * could happen if user does something silly like SELECT 'foo' GROUP BY 1;
+		 */
+		if (cheapest_path->parent)
+		{
+			cheapest_path_rows = cheapest_path->parent->rows;
+			cheapest_path_width = cheapest_path->parent->width;
+		}
+		else
+		{
+			cheapest_path_rows = 1; /* assume non-set result */
+			cheapest_path_width = 100;		/* arbitrary */
+		}
 
-	if (root->parse->hasAggs)
-		cost_agg(&sorted_p, root, AGG_SORTED, agg_counts->numAggs,
+		/* Estimate per-hash-entry space at tuple width... */
+		/* (Should improve this estimate since not all
+		 *  attributes are saved in a hash table entry's
+		 *  grouping key tuple.)
+		 */
+		hashentrysize = MAXALIGN(cheapest_path_width) + MAXALIGN(sizeof(MinimalTupleData));
+		/* plus space for pass-by-ref transition values... */
+		hashentrysize += agg_counts->transitionSpace;
+		/* plus the per-hash-entry overhead */
+		hashentrysize += hash_agg_entry_size(agg_counts->numAggs);
+
+		hash_ok = calcHashAggTableSizes(1024.0 * (double)work_mem,
+								   dNumGroups,
+								   agg_counts->numAggs,
+								   /* The following estimate is very rough but good enough for planning. */
+								   sizeof(HeapTupleData) + sizeof(HeapTupleHeaderData) + cheapest_path_width,
+								   agg_counts->transitionSpace,
+								   false,
+								   &hash_info);
+	}
+	
+	if ( hash_ok)
+	{
+		/*
+		 * See if the estimated cost is no more than doing it the other way. While
+		 * avoiding the need for sorted input is usually a win, the fact that the
+		 * output won't be sorted may be a loss; so we need to do an actual cost
+		 * comparison.
+		 *
+		 * We need to consider cheapest_path + hashagg [+ final sort] versus
+		 * either cheapest_path [+ sort] + group or agg [+ final sort] or
+		 * presorted_path + group or agg [+ final sort] where brackets indicate a
+		 * step that may not be needed. We assume query_planner() will have
+		 * returned a presorted path only if it's a winner compared to
+		 * cheapest_path for this purpose.
+		 *
+		 * These path variables are dummies that just hold cost fields; we don't
+		 * make actual Paths for these steps.
+		 */
+		cost_agg(&hashed_p, root, AGG_HASHED, agg_counts->numAggs,
 				 numGroupCols, dNumGroups,
-				 sorted_p.startup_cost, sorted_p.total_cost,
-				 cheapest_path_rows, 0.0, 0.0);
-	else
-		cost_group(&sorted_p, root, numGroupCols, dNumGroups,
-				   sorted_p.startup_cost, sorted_p.total_cost,
-				   cheapest_path_rows);
-	/* The Agg or Group node will preserve ordering */
-	if (root->sort_pathkeys &&
-		!pathkeys_contained_in(root->sort_pathkeys, current_pathkeys))
-		cost_sort(&sorted_p, root, root->sort_pathkeys, sorted_p.total_cost,
-				  dNumGroups, cheapest_path_width);
+				 cheapest_path->startup_cost, cheapest_path->total_cost,
+				 cheapest_path_rows, hash_info.workmem_per_entry,
+				 hash_info.spill ? hash_info.nbatches : 1.0);
+		/* Result of hashed agg is always unsorted */
+		if (root->sort_pathkeys)
+			cost_sort(&hashed_p, root, root->sort_pathkeys, hashed_p.total_cost,
+					  dNumGroups, cheapest_path_width);
 
-	/*
-	 * Now make the decision using the top-level tuple fraction.  First we
-	 * have to convert an absolute count (LIMIT) into fractional form.
-	 */
-	if (tuple_fraction >= 1.0)
-		tuple_fraction /= dNumGroups;
+		if (sorted_path)
+		{
+			sorted_p.startup_cost = sorted_path->startup_cost;
+			sorted_p.total_cost = sorted_path->total_cost;
+			current_pathkeys = sorted_path->pathkeys;
+		}
+		else
+		{
+			sorted_p.startup_cost = cheapest_path->startup_cost;
+			sorted_p.total_cost = cheapest_path->total_cost;
+			current_pathkeys = cheapest_path->pathkeys;
+		}
+		if (!pathkeys_contained_in(root->group_pathkeys, current_pathkeys))
+		{
+			cost_sort(&sorted_p, root, root->group_pathkeys, sorted_p.total_cost,
+					  cheapest_path_rows, cheapest_path_width);
+			current_pathkeys = root->group_pathkeys;
+		}
 
-	if (!enable_groupagg)
-		return true;
+		if (root->parse->hasAggs)
+			cost_agg(&sorted_p, root, AGG_SORTED, agg_counts->numAggs,
+					 numGroupCols, dNumGroups,
+					 sorted_p.startup_cost, sorted_p.total_cost,
+					 cheapest_path_rows, 0.0, 0.0);
+		else
+			cost_group(&sorted_p, root, numGroupCols, dNumGroups,
+					   sorted_p.startup_cost, sorted_p.total_cost,
+					   cheapest_path_rows);
+		/* The Agg or Group node will preserve ordering */
+		if (root->sort_pathkeys &&
+			!pathkeys_contained_in(root->sort_pathkeys, current_pathkeys))
+			cost_sort(&sorted_p, root, root->sort_pathkeys, sorted_p.total_cost,
+					  dNumGroups, cheapest_path_width);
 
-	if (compare_fractional_path_costs(&hashed_p, &sorted_p,
-									  tuple_fraction) < 0)
-	{
-		/* Hashed is cheaper, so use it */
-		return true;
+		/*
+		 * Now make the decision using the top-level tuple fraction.  First we
+		 * have to convert an absolute count (LIMIT) into fractional form.
+		 */
+		if (tuple_fraction >= 1.0)
+			tuple_fraction /= dNumGroups;
+
+		if (!enable_groupagg)
+			hash_cheaper = true;
+		else
+			hash_cheaper = 0 > compare_fractional_path_costs(&hashed_p, 
+															 &sorted_p, 
+															 tuple_fraction);
 	}
-	return false;
+	
+	agg_counts->canHashAgg = hash_ok; /* costing is wrong if there are DQAs */
+	
+	return hash_ok && !has_dqa && hash_cheaper;
 }
 
 /*

@@ -417,11 +417,16 @@ count_agg_clauses_walker(Node *node, AggClauseCounts *counts)
 		counts->numAggs++;
 		if (aggref->aggdistinct)
 		{
+			ListCell *a;
+			
 			counts->numDistinctAggs++;
-			if ( counts->numDistinctAggs == 1 ) /* CDB */
-				counts->distinctExpr = linitial(aggref->args); /*should this be linitial(aggref->args) or just aggref->args ?? */
-			else
-				counts->distinctExpr = NULL;
+			
+			foreach ( a, aggref->args )
+			{
+				Node *arg = (Node*)lfirst(a);
+				if ( !list_member(counts->dqaArgs, arg) )
+					counts->dqaArgs = lappend(counts->dqaArgs, arg);
+			}
 		}
 
 		/* extract argument types */
