@@ -66,6 +66,7 @@ struct extvar_t
 	char GP_SN[10];		/* scan number */
 	char GP_SEGMENT_ID[6];  /*segments content id*/
 	char GP_SEG_PORT[10];
+	char GP_SESSION_ID[10];  /* session id */
 };
 
 #include "url.i"
@@ -1036,7 +1037,7 @@ open_external_file(FileScanDesc scan)
 	sprintf(extvar.GP_SN, "%x", scan->fs_scancounter);
 	sprintf(extvar.GP_SEGMENT_ID, "%d", Gp_segment);
     sprintf(extvar.GP_SEG_PORT, "%d", PostPortNumber);
-    
+    sprintf(extvar.GP_SESSION_ID, "%d", gp_session_id);
     /*
      * Open the url with url_open().
      */

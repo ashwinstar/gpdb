@@ -342,6 +342,7 @@ static int make_command(const char* cmd, extvar_t* ev, char* buf)
 	sz += make_export("GP_SN", ev->GP_SN, buf ? buf + sz : 0);
 	sz += make_export("GP_SEGMENT_ID", ev->GP_SEGMENT_ID, buf ? buf + sz : 0);
 	sz += make_export("GP_SEG_PORT", ev->GP_SEG_PORT, buf ? buf + sz : 0);
+	sz += make_export("GP_SESSION_ID", ev->GP_SESSION_ID, buf ? buf + sz : 0);
 	
 	if (buf)
 		strcpy(buf + sz, cmd);
@@ -428,6 +429,8 @@ static int make_url(const char* url, extvar_t* ev, char* buf)
 				p += encode_url(ev->GP_SEGMENT_ID, p);
 			else if (0 == strcmp(url, "GP_SEG_PORT"))
 				p += encode_url(ev->GP_SEG_PORT,p);
+			else if (0 == strcmp(url, "GP_SESSION_ID"))
+				p += encode_url(ev->GP_SESSION_ID, p);	
 			else
 				return -1;
 		}
@@ -587,7 +590,8 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 			|| set_httpheader(file, "X-GP-CID", ev->GP_CID)
 			|| set_httpheader(file, "X-GP-SN", ev->GP_SN)
 			|| set_httpheader(file, "X-GP-SEGMENT-ID", ev->GP_SEGMENT_ID)  
-			|| set_httpheader(file, "X-GP-SEG-PORT", ev->GP_SEG_PORT))
+			|| set_httpheader(file, "X-GP-SEG-PORT", ev->GP_SEG_PORT)
+			|| set_httpheader(file, "X-GP-SESSION-ID", ev->GP_SESSION_ID))
 		{
 			elog(ERROR, "internal error: some variable value is too long");
 			url_fclose(file);
