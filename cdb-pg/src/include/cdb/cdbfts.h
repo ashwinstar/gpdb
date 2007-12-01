@@ -57,6 +57,7 @@ typedef struct FtsControlBlock
 	int			ftsAction;
 	bool		ftsReadOnlyFlag;
 
+	LWLockId ftsQDMirrorLock;
 	struct FtsQDMirrorInfo	ftsQDMirror;
 
 	int			ftsSegDBTransientCount;

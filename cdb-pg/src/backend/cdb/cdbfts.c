@@ -41,6 +41,7 @@ static int *ftsSegDBTransientCount;
 static int	localFtsSyncCount = -1;
 static bool InReConfigure = false;
 
+static LWLockId ftsQDMirrorLock;
 static struct FtsQDMirrorInfo *ftsQDMirrorInfo=NULL;
 
 static void CdbShutdown(void);
@@ -76,6 +77,7 @@ FtsShmemInit(void)
 	ftsAction = &shared->ftsAction;
 	ftsReadOnlyFlag = &shared->ftsReadOnlyFlag;
 
+	ftsQDMirrorLock = shared->ftsQDMirrorLock;
 	ftsQDMirrorInfo = &shared->ftsQDMirror;
 	ftsSegDBTransientState = shared->ftsSegDBTransientState;
 	ftsSegDBTransientCount = &shared->ftsSegDBTransientCount;
@@ -85,6 +87,9 @@ FtsShmemInit(void)
 		shared->ControlLock = LWLockAssign();
 		ftsControlLock = shared->ControlLock;
 
+		shared->ftsQDMirrorLock = LWLockAssign();
+		ftsQDMirrorLock = shared->ftsQDMirrorLock;
+		
 		ftsQDMirrorInfo->configurationChecked = false;
 		ftsQDMirrorInfo->state = QDMIRROR_STATE_NONE;
 		ftsQDMirrorInfo->haveNewCheckpointLocation = false;
@@ -281,7 +286,7 @@ disableQDMirroring(void)
 {
 	Assert(ftsQDMirrorInfo != NULL);
 	
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	if (ftsQDMirrorInfo->state != QDMIRROR_STATE_DISABLED &&
 		ftsQDMirrorInfo->state != QDMIRROR_STATE_UNEXPECTEDERROR)
 	{
@@ -290,7 +295,7 @@ disableQDMirroring(void)
 		 */
 		ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
 	}
-	LWLockRelease(ftsControlLock);
+	LWLockRelease(ftsQDMirrorLock);
 }
 
 void
@@ -298,9 +303,9 @@ unexpectedErrorQDMirroring(void)
 {
 	Assert(ftsQDMirrorInfo != NULL);
 	
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_UNEXPECTEDERROR;
-	LWLockRelease(ftsControlLock);
+	LWLockRelease(ftsQDMirrorLock);
 }
 
 bool
@@ -311,9 +316,9 @@ isQDMirroringEnabled(void)
 	if (ftsQDMirrorInfo == NULL)
 		return false;	// Don't know yet.
 	
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	result = (ftsQDMirrorInfo->state == QDMIRROR_STATE_ENABLED);
-	LWLockRelease(ftsControlLock);
+	LWLockRelease(ftsQDMirrorLock);
 
 	return result;
 }
@@ -326,9 +331,9 @@ isQDMirroringCatchingUp(void)
 	if (ftsQDMirrorInfo == NULL)
 		return false;	// Don't know yet.
 	
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	result = (ftsQDMirrorInfo->state == QDMIRROR_STATE_CATCHINGUP);
-	LWLockRelease(ftsControlLock);
+	LWLockRelease(ftsQDMirrorLock);
 
 	return result;
 }
@@ -341,9 +346,9 @@ isQDMirroringNotConfigured(void)
 	if (ftsQDMirrorInfo == NULL)
 		return false;	// Don't know yet.
 	
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	result = (ftsQDMirrorInfo->state == QDMIRROR_STATE_NOTCONFIGURED);
-	LWLockRelease(ftsControlLock);
+	LWLockRelease(ftsQDMirrorLock);
 
 	return result;
 }
@@ -356,9 +361,9 @@ isQDMirroringNotKnownYet(void)
 	if (ftsQDMirrorInfo == NULL)
 		return true;	// Assume.
 	
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	result = (ftsQDMirrorInfo->state == QDMIRROR_STATE_NONE);
-	LWLockRelease(ftsControlLock);
+	LWLockRelease(ftsQDMirrorLock);
 
 	return result;
 }
@@ -371,9 +376,9 @@ isQDMirroringDisabled(void)
 	if (ftsQDMirrorInfo == NULL)
 		return false;	// Don't know yet.
 	
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	result = (ftsQDMirrorInfo->state == QDMIRROR_STATE_DISABLED);
-	LWLockRelease(ftsControlLock);
+	LWLockRelease(ftsQDMirrorLock);
 
 	return result;
 }
@@ -386,9 +391,9 @@ isQDMirroringUnexpectedError(void)
 	if (ftsQDMirrorInfo == NULL)
 		return false;	// Don't know yet.
 	
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	result = (ftsQDMirrorInfo->state == QDMIRROR_STATE_UNEXPECTEDERROR);
-	LWLockRelease(ftsControlLock);
+	LWLockRelease(ftsQDMirrorLock);
 
 	return result;
 }
@@ -401,9 +406,9 @@ QDMirroringStateString(void)
 	if (ftsQDMirrorInfo == NULL)
 		return "don't know yet";
 
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	state = ftsQDMirrorInfo->state;
-	LWLockRelease(ftsControlLock);
+	LWLockRelease(ftsQDMirrorLock);
 
 	switch (state)
 	{
@@ -1176,9 +1181,9 @@ isMirrorQDConfigurationChecked(void)
 	if (ftsQDMirrorInfo == NULL)
 		return false;
 	
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	result = ftsQDMirrorInfo->configurationChecked;
-	LWLockRelease(ftsControlLock);
+	LWLockRelease(ftsQDMirrorLock);
 
 	return result;
 }
@@ -1191,9 +1196,9 @@ isQDMirroringPendingCatchup(void)
 	if (ftsQDMirrorInfo == NULL)
 		return false;
 	
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	result = (ftsQDMirrorInfo->state == QDMIRROR_STATE_CATCHUPPENDING);
-	LWLockRelease(ftsControlLock);
+	LWLockRelease(ftsQDMirrorLock);
 
 	return result;
 }
@@ -1211,11 +1216,11 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 
 	Assert(dbinfo != NULL);
 
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	if (ftsQDMirrorInfo->configurationChecked)
 	{
 		// Someone else finished the configuration check work first.
-		LWLockRelease(ftsControlLock);
+		LWLockRelease(ftsQDMirrorLock);
 		return;
 	}
 
@@ -1224,7 +1229,7 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 	len = strlen(dbinfo->hostname);
 	if (len >= sizeof(ftsQDMirrorInfo->name))
 	{
-		LWLockRelease(ftsControlLock);
+		LWLockRelease(ftsQDMirrorLock);
 		elog(ERROR, "hostname too long for fts QD mirror configuration storage");
 	}
 	memcpy(ftsQDMirrorInfo->name, dbinfo->hostname, len);
@@ -1237,17 +1242,17 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 	 */
 	ftsQDMirrorInfo->configurationChecked = true;
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_LOCALCONNECTING;
-	LWLockRelease(ftsControlLock);
+	LWLockRelease(ftsQDMirrorLock);
 
 	connected = WalSendServerClientConnect();
 
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	if (ftsQDMirrorInfo->state == QDMIRROR_STATE_DISABLED ||
 		ftsQDMirrorInfo->state == QDMIRROR_STATE_UNEXPECTEDERROR)
 	{
 		elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QD mirroring already disabled (connecting)");
 
-		LWLockRelease(ftsControlLock);
+		LWLockRelease(ftsQDMirrorLock);
 		return;
 	}
 	if (!connected)
@@ -1255,22 +1260,22 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 		elog(NOTICE, "disabling QD mirroring (cannot connect to WAL Send server)");
 
 		ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
-		LWLockRelease(ftsControlLock);
+		LWLockRelease(ftsQDMirrorLock);
 		return;
 	}
 	
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_POSITIONINGTOEND;
-	LWLockRelease(ftsControlLock);
+	LWLockRelease(ftsQDMirrorLock);
 
 	successful = XLogQDMirrorPositionToEnd();
 	
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	if (ftsQDMirrorInfo->state == QDMIRROR_STATE_DISABLED ||
 		ftsQDMirrorInfo->state == QDMIRROR_STATE_UNEXPECTEDERROR)
 	{
 		elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QD mirroring already disabled (request PositionToEnd -- could not send to WAL Send server)");
 
-		LWLockRelease(ftsControlLock);
+		LWLockRelease(ftsQDMirrorLock);
 		return;
 	}
 	if (!successful)
@@ -1278,11 +1283,11 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 		elog(NOTICE, "disabling QD mirroring (request PositionToEnd -- could not send to WAL Send server)");
 
 		ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
-		LWLockRelease(ftsControlLock);
+		LWLockRelease(ftsQDMirrorLock);
 		return;
 	}
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_CATCHUPPENDING;
-	LWLockRelease(ftsControlLock);
+	LWLockRelease(ftsQDMirrorLock);
 	elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"positioning QD mirror to end complete -- next step is catch-up");
 }
 
@@ -1301,26 +1306,26 @@ FtsQDMirroringCatchup(XLogRecPtr *flushedLocation)
 
 	Assert(flushedLocation != NULL);
 
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 
 	if (ftsQDMirrorInfo->state != QDMIRROR_STATE_CATCHUPPENDING)
 	{
-		LWLockRelease(ftsControlLock);
+		LWLockRelease(ftsQDMirrorLock);
 		return;
 	}
 	
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_CATCHINGUP;
-	LWLockRelease(ftsControlLock);
+	LWLockRelease(ftsQDMirrorLock);
 	
 	successful = XLogQDMirrorCatchup(flushedLocation);
 	
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	if (ftsQDMirrorInfo->state == QDMIRROR_STATE_DISABLED ||
 		ftsQDMirrorInfo->state == QDMIRROR_STATE_UNEXPECTEDERROR)
 	{
 		elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QD mirroring already disabled (request Catchup -- could not send to WAL Send server)");
 
-		LWLockRelease(ftsControlLock);
+		LWLockRelease(ftsQDMirrorLock);
 		return;
 	}
 	if (!successful)
@@ -1328,11 +1333,11 @@ FtsQDMirroringCatchup(XLogRecPtr *flushedLocation)
 		elog(NOTICE, "disabling QD mirroring (request Catchup -- could not send to WAL Send server)");
 
 		ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
-		LWLockRelease(ftsControlLock);
+		LWLockRelease(ftsQDMirrorLock);
 		return;
 	}
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_ENABLED;
-	LWLockRelease(ftsControlLock);
+	LWLockRelease(ftsQDMirrorLock);
 	elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"finished catching up QD mirror");
 }
 
@@ -1348,25 +1353,25 @@ FtsQDMirroringNewCheckpointLoc(XLogRecPtr *newCheckpointLocation)
 {
 	Assert(newCheckpointLocation != NULL);
 	
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 
 	if(ftsQDMirrorInfo->state != QDMIRROR_STATE_ENABLED)
 	{
-		LWLockRelease(ftsControlLock);
+		LWLockRelease(ftsQDMirrorLock);
 		return;
 	}
 
 	if (ftsQDMirrorInfo->haveNewCheckpointLocation &&
 		XLByteLT(*newCheckpointLocation, ftsQDMirrorInfo->newCheckpointLocation))
 	{
-		LWLockRelease(ftsControlLock);
+		LWLockRelease(ftsQDMirrorLock);
 		return;
 	}
 
 	ftsQDMirrorInfo->haveNewCheckpointLocation = true;
 	ftsQDMirrorInfo->newCheckpointLocation = *newCheckpointLocation;
 	
-	LWLockRelease(ftsControlLock);
+	LWLockRelease(ftsQDMirrorLock);
 }
 
 /*
@@ -1383,11 +1388,11 @@ FtsCheckReadyToSend(bool *ready, bool *haveNewCheckpointLocation, XLogRecPtr *ne
 	*haveNewCheckpointLocation = false;
 	memset(newCheckpointLocation, 0, sizeof(XLogRecPtr));
 	
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 
 	if(ftsQDMirrorInfo->state != QDMIRROR_STATE_ENABLED)
 	{
-		LWLockRelease(ftsControlLock);
+		LWLockRelease(ftsQDMirrorLock);
 		
 		*ready = false;
 		return;
@@ -1404,7 +1409,7 @@ FtsCheckReadyToSend(bool *ready, bool *haveNewCheckpointLocation, XLogRecPtr *ne
 		ftsQDMirrorInfo->haveNewCheckpointLocation = false;
 	}
 	
-	LWLockRelease(ftsControlLock);
+	LWLockRelease(ftsQDMirrorLock);
 	
 	*ready = true;
 }
@@ -1416,11 +1421,11 @@ FtsCheckReadyToSend(bool *ready, bool *haveNewCheckpointLocation, XLogRecPtr *ne
 void
 FtsSetNoQDMirroring(void)
 {
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	if (ftsQDMirrorInfo->configurationChecked)
 	{
 		// Someone else finished the configuration check work first.
-		LWLockRelease(ftsControlLock);
+		LWLockRelease(ftsQDMirrorLock);
 		return;
 	}
 
@@ -1429,7 +1434,7 @@ FtsSetNoQDMirroring(void)
 	ftsQDMirrorInfo->configurationChecked = true;
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_NOTCONFIGURED;
 	
-	LWLockRelease(ftsControlLock);
+	LWLockRelease(ftsQDMirrorLock);
 }
 
 void
