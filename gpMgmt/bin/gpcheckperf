@@ -18,7 +18,8 @@ Usage: gpcheckperf <options>
                  Supported test flags are:
                        d: runs only disk tests
                        s: runs only stream benchmark
-                       n: runs only netperf
+                       n: runs only netperf tests (serial)
+                       N: runs only netperf tests (parallel)
     -B size    : where size specifies the block size for disk performance tests
                  [default=32KB] e.g. 1KB, 4MB
     -S size    : where size specifies the file size for disk performance tests
@@ -53,7 +54,7 @@ opt['-d'] = []
 opt['-D'] = False
 opt['-v'] = False
 opt['-V'] = False
-opt['-r'] = 'dsn'
+opt['-r'] = 'dsN'
 opt['-B'] = 1024 * 32
 opt['-S'] = 0
 opt['-p'] = None
@@ -71,7 +72,7 @@ def killall(procname):
 
 #############
 def gpssh(cmd):
-    s = 'gpssh'
+    s = '%s/bin/gpssh' % GPHOME
     if opt['-p']: s += ' -p %d' % opt['-p']
     if (opt['-f']):
 	s = s + ' -f ' + opt['-f']
@@ -81,7 +82,7 @@ def gpssh(cmd):
 
 #############
 def gpscp(cmd):
-    s = 'gpscp'
+    s = '%s/bin/gpscp' % GPHOME
     if opt['-p']: s += ' -p %d' % opt['-p']
     if (opt['-f']):
 	s = s + ' -f ' + opt['-f']
@@ -371,11 +372,40 @@ def startNetServer():
 
     return 0
 
+
 #############
-def runNetperfTestBetween(x, y, netperf_path, netserver_port):
+def spawnNetperfTestBetween(x, y, netperf_path, netserver_port):
     cmd = gplib.ssh_prefix(x[0], x[1], x[2])
-    cmd += ' %s -H %s -p %d -t TCP_STREAM -l 5 -f M -P 0' % (netperf_path, y[1], netserver_port)
-    (ok, out) = run(cmd)
+    cmd += ' %s -H %s -p %d -t TCP_STREAM -l 5 -f M -P 0 ' % (netperf_path, y[1], netserver_port)
+    proc = None
+    try: 
+        if opt['-v']: print '[Info]', cmd
+        proc = os.popen(cmd)
+    except KeyboardInterrupt:
+        if proc: proc.close()
+        raise
+    if not proc:
+        print '[Warning] netperf failed on %s -> %s' % (x[1], y[1])
+        return (None, None, None)
+
+    return (proc, x, y)
+
+
+#############
+def reapNetperfTest(proc, x, y):
+    try:
+        out = proc.read()
+        ok = not proc.close()
+    finally:
+        if proc: proc.close()
+        proc = None
+    
+    if opt['-v'] and out and out != '': print '[Info]',out
+    if out and out.find('Permission denied') >= 0 and out.find('publickey') >= 0 : 
+	if not opt['-v']: print out
+	print '[Error] Please use gpssh-exkeys to exchange keys ...'
+	sys.exit(1)
+
     if not ok: 
         print '[Warning] netperf failed on %s -> %s' % (x[1], y[1])
         return []
@@ -389,12 +419,23 @@ def runNetperfTestBetween(x, y, netperf_path, netserver_port):
             print '[Info] %s -> %s : %s' % (x[1], y[1], str(line))
 	return l
 
-    print '[Warning] netperf failed on %s -> %s' % (x[1], y[1])
+    print '[Warning] netperf failed on %s -> %s (invalid result)' % (x[1], y[1])
     print '[Info]', out
     return []
 
+
+
 #############
-def runNetPerfTest():
+def runNetperfTestBetween(x, y, netperf_path, netserver_port):
+    (proc, x, y) = spawnNetperfTestBetween(x, y, netperf_path, netserver_port)
+    if not proc: 
+        return []
+
+    return reapNetperfTest(proc, x, y)
+
+
+#############
+def setupNetPerfTest():
     print
     print '-------------------'
     print '--  NETPERF TEST'
@@ -408,30 +449,71 @@ def runNetPerfTest():
     
     if len(hostlist) == 1:
         print '[Warning] single host only - abandon netperf test'
-        return None
+        return (None, None, None)
 
     # start netserver
     netserver_port = startNetServer()
     if netserver_port == 0:
         print '[Error] unable to start netserver ... abort netperf test'
-        return None
+        return (None, None, None)
     
     netperf = copyExecOver('netperf')
+    return (netperf, hostlist, netserver_port)
+    
+
+#############
+def runNetPerfTest():
+    (netperf, hostlist, netserver_port) = setupNetPerfTest()
+    if not netperf:
+        return None
 
     # make sure we have even number of hosts
-    if len(hostlist) & 1 == 1:
-        hostlist.append(hostlist[0])
+    h = hostlist[:]
+    if len(h) & 1 == 1:
+        h.append(h[0])
 
     # run netperf test between host[0] & host[1], host[2] & host[3], ...
     result = []
-    for i in xrange(len(hostlist)):
+    for i in xrange(len(h)):
         if i & 1 == 0: continue
-        x = hostlist[i-1]
-        y = hostlist[i]
+        x = h[i-1]
+        y = h[i]
         res = runNetperfTestBetween(x, y, netperf, netserver_port)
-        result.append(res)
+	if res and len(res) >= 6: result.append(res)
         res = runNetperfTestBetween(y, x, netperf, netserver_port)
-        result.append(res)
+	if res and len(res) >= 6: result.append(res)
+
+    return result
+
+
+#############
+def runNetPerfTestParallel():
+    (netperf, hostlist, netserver_port) = setupNetPerfTest()
+    if not netperf:
+        return None
+
+    # make sure we have even number of hosts
+    h = hostlist[:]
+    if len(h) & 1 == 1:
+        h.append(h[0])
+
+    # run netperf test between host[0] & host[1], host[2] & host[3], ...
+    result = []
+    procList = []
+    for i in xrange(len(h)):
+        if i & 1 == 0: continue
+        x = h[i-1]
+        y = h[i]
+        p = spawnNetperfTestBetween(x, y, netperf, netserver_port)
+        if p[0]: 
+            procList.append(p)
+        p = spawnNetperfTestBetween(y, x, netperf, netserver_port)
+        if p[0]:
+            procList.append(p)
+    
+    for (proc, x, y) in procList:
+        res = reapNetperfTest(proc, x, y)
+	if res and len(res) >= 6: result.append(res)
 
     return result
 
@@ -523,6 +605,8 @@ try:
 
         if opt['-r'].find('n') >= 0:
             netResult = runNetPerfTest()
+        elif opt['-r'].find('N') >= 0:
+            netResult = runNetPerfTestParallel()
 
 	runTeardown()
 
