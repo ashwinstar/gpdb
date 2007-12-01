@@ -285,9 +285,6 @@ def error(host, key, value):
         type = key[0:index]
         key = key[index+1:]
     
-    if type == 'sysctl' and key == 'vm.overcommit_memory':
-        type = 'vm'
-
     if not type in errors[host]:
         errors[host][type] = []
 
@@ -300,12 +297,6 @@ def print_fix():
     print ''
     for h in errors.keys():
 
-        if 'vm' in errors[h]:
-	    print
-            print '[FIX %s] please execute the following command(s)' % h
-	    for (key, value) in errors[h]['vm']:
-                print '/sbin/sysctl -w %s=%s' % (key, value)
-            
         if 'sysctl' in errors[h]:
 	    print
             print '[FIX %s] please add/modify the following line(s) in /etc/sysctl.conf' % h
