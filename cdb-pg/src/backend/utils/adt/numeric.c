@@ -2739,8 +2739,10 @@ static inline Datum intfloat_avg_amalg_demalg(IntFloatAvgTransdata* tr0, IntFloa
 {
 	if(tr0 == NULL || VARSIZE(tr0) != sizeof(IntFloatAvgTransdata))
 	{
-		Assert(amalg);
-		return PointerGetDatum(tr1);
+		tr0 = (IntFloatAvgTransdata *) palloc(sizeof(IntFloatAvgTransdata));
+		SET_VARSIZE(tr0, sizeof(IntFloatAvgTransdata));
+		tr0->count = 0;
+		tr0->sum = 0;
 	}
 
 	if(tr1 == NULL || VARSIZE(tr1) != sizeof(IntFloatAvgTransdata))
