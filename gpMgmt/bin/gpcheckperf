@@ -374,9 +374,9 @@ def startNetServer():
 
 
 #############
-def spawnNetperfTestBetween(x, y, netperf_path, netserver_port):
+def spawnNetperfTestBetween(x, y, netperf_path, netserver_port, sec=5):
     cmd = gplib.ssh_prefix(x[0], x[1], x[2])
-    cmd += ' %s -H %s -p %d -t TCP_STREAM -l 5 -f M -P 0 ' % (netperf_path, y[1], netserver_port)
+    cmd += ' %s -H %s -p %d -t TCP_STREAM -l %s -f M -P 0 ' % (netperf_path, y[1], netserver_port, sec)
     proc = None
     try: 
         if opt['-v']: print '[Info]', cmd
@@ -504,16 +504,27 @@ def runNetPerfTestParallel():
         if i & 1 == 0: continue
         x = h[i-1]
         y = h[i]
-        p = spawnNetperfTestBetween(x, y, netperf, netserver_port)
+        p = spawnNetperfTestBetween(x, y, netperf, netserver_port, 15)
         if p[0]: 
-            procList.append(p)
-        p = spawnNetperfTestBetween(y, x, netperf, netserver_port)
-        if p[0]:
             procList.append(p)
     
     for (proc, x, y) in procList:
         res = reapNetperfTest(proc, x, y)
 	if res and len(res) >= 6: result.append(res)
+
+    # second round: test between host[1] & host[0], host[3] & host[2], ...
+    for i in xrange(len(h)):
+        if i & 1 == 0: continue
+        x = h[i-1]
+        y = h[i]
+        p = spawnNetperfTestBetween(y, x, netperf, netserver_port, 15)
+        if p[0]: 
+            procList.append(p)
+    
+    for (proc, x, y) in procList:
+        res = reapNetperfTest(proc, x, y)
+	if res and len(res) >= 6: result.append(res)
+
 
     return result
 
