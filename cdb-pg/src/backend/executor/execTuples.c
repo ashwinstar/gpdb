@@ -642,7 +642,7 @@ ExecStoreAllNullTuple(TupleTableSlot *slot)
 	 */
 	MemSet(slot->tts_values, 0,
 		   slot->tts_tupleDescriptor->natts * sizeof(Datum));
-	memset(slot->tts_isnull, true,
+	MemSet(slot->tts_isnull, true,
 		   slot->tts_tupleDescriptor->natts * sizeof(bool));
 
 	return ExecStoreVirtualTuple(slot);

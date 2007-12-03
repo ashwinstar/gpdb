@@ -1849,7 +1849,7 @@ no_function_result:
 			MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 			nulldatums = (Datum *) palloc0(natts * sizeof(Datum));
 			nullflags = (bool *) palloc(natts * sizeof(bool));
-			memset(nullflags, true, natts * sizeof(bool));
+			MemSetAligned(nullflags, true, natts * sizeof(bool));
 			tuple = heap_form_tuple(expectedDesc, nulldatums, nullflags);
 			MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
 			tuplestore_puttuple(tupstore, tuple);
@@ -2805,7 +2805,7 @@ ExecEvalRow(RowExprState *rstate,
 	isnull = (bool *) palloc(natts * sizeof(bool));
 
 	/* preset to nulls in case rowtype has some later-added columns */
-	memset(isnull, true, natts * sizeof(bool));
+	MemSetAligned(isnull, true, natts * sizeof(bool));
 
 	/* Evaluate field values */
 	i = 0;
@@ -3450,7 +3450,7 @@ ExecEvalFieldStore(FieldStoreState *fstate,
 	else
 	{
 		/* Convert null input tuple into an all-nulls row */
-		memset(isnull, true, tupDesc->natts * sizeof(bool));
+		MemSetAligned(isnull, true, tupDesc->natts * sizeof(bool));
 	}
 
 	/* Result is never null */
