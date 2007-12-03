@@ -3048,7 +3048,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 		elog(LOG, "During teardownUDP, rx_thread is waiting");
 	}
 
-	elog(LOG, "TeardownUDPInterconnect: total pkt count " INT64_FORMAT
+	elog(DEBUG1, "TeardownUDPInterconnect: total pkt count " INT64_FORMAT
 		 " dropped acks " INT64_FORMAT " retransmits " INT64_FORMAT
 		 " conn mismatch " INT64_FORMAT " rx overrun " INT64_FORMAT,
 		 ic_stats_pkt_count, ic_stats_dropped_acks, ic_stats_retrans,
