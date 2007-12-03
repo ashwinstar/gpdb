@@ -50,6 +50,7 @@ sysctl.net.core.netdev_max_backlog	int	= 10000
 sysctl.vm.overcommit_memory		int	= 2
 ulimit.nofile				int	>= 65536
 ulimit.nproc				int	>= 131072
+net.link_speed                          int     = 1000
 '''
 
 
@@ -64,6 +65,7 @@ system.rlim_fd_cur			int	= 65536
 system.shmsys:shminfo_shmmax		int	>= 0x2000000
 system.semsys:seminfo_semmni		int	= 1024
 solaris.release				str	= Solaris 10 8/07 s10x_u4wos_12b X86
+net.link_speed                          int     = 1000
 '''
 
 def to_int(s):
@@ -296,6 +298,12 @@ def print_fix():
 
     print ''
     for h in errors.keys():
+
+        if 'net' in errors[h]:
+            print
+            print '[FIX %s] please check your network link' % h
+            for (key, value) in errors[h]['net']:
+                print '%s = %s' % (key, value)
 
         if 'sysctl' in errors[h]:
 	    print
