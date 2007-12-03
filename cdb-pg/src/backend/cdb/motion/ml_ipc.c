@@ -5602,7 +5602,8 @@ ic_rx_thread_func(void *arg)
 						/* we only update stillActive if eos has been sent by peer. */
 						if (pkt->flags & FLAGS_EOS)
 						{
-							write_log("stop requested and acknowledged by sending peer");
+							if (DEBUG2 >= log_min_messages)
+								write_log("stop requested and acknowledged by sending peer");
 							conn->stillActive = false;
 
 							/* we may need to wake a waiter */
