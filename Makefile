@@ -209,7 +209,7 @@ clean :
 distclean :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, no need to clean"; exit 1; fi
 	@if [ -d $(GPPGDIR) ]; then cd $(GPPGDIR); $(MAKE) distclean; fi
-	@if [ -d $(GPMGMT)/bin ]; then cd $(GPMGMT)/bin; $(MAKE) clean; fi
+	@if [ -d $(GPMGMT)/bin ]; then cd $(GPMGMT)/bin; $(MAKE) distclean; fi
 	@if [ -d $(GPCC) ]; then cd $(GPCC); $(MAKE) clean; fi
 	
 distprep : $(ISCONFIG)
