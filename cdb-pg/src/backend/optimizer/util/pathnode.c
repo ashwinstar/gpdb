@@ -1494,85 +1494,121 @@ create_append_path(PlannerInfo *root, RelOptInfo *rel, List *subpaths)
 {
 	AppendPath *pathnode = makeNode(AppendPath);
 	ListCell   *l;
-
+	
 	pathnode->path.pathtype = T_Append;
 	pathnode->path.parent = rel;
 	pathnode->path.pathkeys = NIL;		/* result is always considered
 										 * unsorted */
-	pathnode->subpaths = subpaths;
-
+	pathnode->subpaths = NIL;
+	
     pathnode->path.motionHazard = false;
     pathnode->path.rescannable = true;
-
+	
 	pathnode->path.startup_cost = 0;
 	pathnode->path.total_cost = 0;
-
+	
     /* If no subpath, any worker can execute this Append.  Result has 0 rows. */
     if (!subpaths)
         CdbPathLocus_MakeGeneral(&pathnode->path.locus);
-
-	foreach(l, subpaths)
+	
+    else
 	{
-		Path	       *subpath = (Path *) lfirst(l);
-        CdbPathLocus    projectedlocus;
-
-		if (l == list_head(subpaths))	/* first node? */
-			pathnode->path.startup_cost = subpath->startup_cost;
-		pathnode->path.total_cost += subpath->total_cost;
-
-        /* Transform subpath locus into the appendrel's space for comparison. */
-        if (subpath->parent == rel ||
-            subpath->parent->reloptkind != RELOPT_OTHER_MEMBER_REL)
-            projectedlocus = subpath->locus;
-        else
-            projectedlocus =
-                cdbpathlocus_pull_above_projection(root,
-                                                   subpath->locus,
-                                                   subpath->parent->relids,
-                                                   subpath->parent->reltargetlist,
-                                                   rel->reltargetlist,
-                                                   rel->relid);
-
-        /*
-         * CDB: This function is called only when combining rel scans in an
-         * inheritance tree.  If all the scans are distributed alike, set
-         * the result locus to match.  Otherwise, if all are partitioned,
-         * set it to strewn.  A mixture of partitioned and non-partitioned
-         * scans should not occur.
-         *
-         * CDB TODO: When the scans are not all partitioned alike, and the
-         * result is joined with another rel, consider pushing the join
-         * below the Append so that child tables that are properly
-         * distributed can be joined in place.
-         */
-        if (l == list_head(subpaths))
-            pathnode->path.locus = projectedlocus;
-        else if (cdbpathlocus_compare(CdbPathLocus_Comparison_Equal,
-                                      pathnode->path.locus, projectedlocus))
-        {}
-        else if (CdbPathLocus_IsPartitioned(pathnode->path.locus) &&
-                 CdbPathLocus_IsPartitioned(projectedlocus))
-            CdbPathLocus_MakeStrewn(&pathnode->path.locus);
-        else
-            ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
-                            errmsg_internal("Table inherits from parent with "
-                                            "incompatible distribution") ));
-
-        if (subpath->motionHazard)
-            pathnode->path.motionHazard = true;
+		bool fIsNotPartitioned = false;
 		
-		if ( !subpath->rescannable )
-			pathnode->path.rescannable = false;
+		/*
+		 * Do a first pass over the children to determine if
+		 * there's any child which is not partitioned, i.e. a bottleneck or replicated
+		 */
+		foreach(l, subpaths)
+		{
+			Path *subpath = (Path *) lfirst(l);
+			
+			if (CdbPathLocus_IsBottleneck(subpath->locus) ||
+				CdbPathLocus_IsReplicated(subpath->locus))
+			{
+				fIsNotPartitioned = true;
+				break;
+			}
+		}
+		
+		
+		foreach(l, subpaths)
+		{
+			Path	       *subpath = (Path *) lfirst(l);
+			CdbPathLocus    projectedlocus;
+			
+			/*
+			 * In case any of the children is not partitioned convert all children
+			 * to have singleQE locus
+			 */
+			if (fIsNotPartitioned && 
+				!CdbPathLocus_IsSingleQE(subpath->locus))
+			{
+				CdbPathLocus    singleQE;
+				CdbPathLocus_MakeSingleQE(&singleQE);
+				
+				subpath = cdbpath_create_motion_path(root, subpath, NIL, false, singleQE);
+			}
+			
+			/* Transform subpath locus into the appendrel's space for comparison. */
+			if (subpath->parent == rel ||
+				subpath->parent->reloptkind != RELOPT_OTHER_MEMBER_REL)
+				projectedlocus = subpath->locus;
+			else
+				projectedlocus =
+					cdbpathlocus_pull_above_projection(root,
+													   subpath->locus,
+													   subpath->parent->relids,
+													   subpath->parent->reltargetlist,
+													   rel->reltargetlist,
+													   rel->relid);
+			
+			
+			if (l == list_head(subpaths))	/* first node? */
+				pathnode->path.startup_cost = subpath->startup_cost;
+			pathnode->path.total_cost += subpath->total_cost;
+			
+			/*
+			 * CDB: If all the scans are distributed alike, set
+			 * the result locus to match.  Otherwise, if all are partitioned,
+			 * set it to strewn.  A mixture of partitioned and non-partitioned
+			 * scans should not occur after above correction;
+			 *
+			 * CDB TODO: When the scans are not all partitioned alike, and the
+			 * result is joined with another rel, consider pushing the join
+			 * below the Append so that child tables that are properly
+			 * distributed can be joined in place.
+			 */
+			if (l == list_head(subpaths))
+				pathnode->path.locus = projectedlocus;
+			else if (cdbpathlocus_compare(CdbPathLocus_Comparison_Equal,
+										  pathnode->path.locus, projectedlocus))
+			{}
+			else if (CdbPathLocus_IsPartitioned(pathnode->path.locus) &&
+					 CdbPathLocus_IsPartitioned(projectedlocus))
+				CdbPathLocus_MakeStrewn(&pathnode->path.locus);
+			else
+				ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+								errmsg_internal("Cannot append paths with "
+												"incompatible distribution")));
+			
+			if (subpath->motionHazard)
+				pathnode->path.motionHazard = true;
+			
+			if ( !subpath->rescannable )
+				pathnode->path.rescannable = false;
+			
+			pathnode->subpaths = lappend(pathnode->subpaths, subpath);
+		}
+		
+		/*
+		 * CDB: If there is exactly one subpath, its ordering is preserved.
+		 * Child rel's pathkey exprs are already expressed in terms of the
+		 * columns of the parent appendrel.  See find_usable_indexes().
+		 */
+		if (list_length(subpaths) == 1)
+			pathnode->path.pathkeys = ((Path *)linitial(subpaths))->pathkeys;
 	}
-
-    /*
-     * CDB: If there is exactly one subpath, its ordering is preserved.
-     * Child rel's pathkey exprs are already expressed in terms of the
-     * columns of the parent appendrel.  See find_usable_indexes().
-     */
-    if (list_length(subpaths) == 1)
-        pathnode->path.pathkeys = ((Path *)linitial(subpaths))->pathkeys;
-
 	return pathnode;
 }
 
