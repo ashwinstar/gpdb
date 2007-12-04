@@ -87,4 +87,5 @@ clean :
 	fi
 	@rm -rf *.pyc lib/*.pyc
 
-    
+distclean: clean
+	@rm -rf $(NETPERF_DIR)    
