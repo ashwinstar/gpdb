@@ -341,7 +341,7 @@ MJEvalOuterValues(MergeJoinState *mergestate)
 		clause->ldatum = ExecEvalExpr(clause->lexpr, econtext,
 									  &clause->lisnull, NULL);
 		if (clause->lisnull && clause->mergestrict)
-			canmatch = false;
+			canmatch = clause->notdistinct;
 	}
 
 	MemoryContextSwitchTo(oldContext);
@@ -377,7 +377,7 @@ MJEvalInnerValues(MergeJoinState *mergestate, TupleTableSlot *innerslot)
 		clause->rdatum = ExecEvalExpr(clause->rexpr, econtext,
 									  &clause->risnull, NULL);
 		if (clause->risnull && clause->mergestrict)
-			canmatch = false;
+			canmatch = clause->notdistinct;
 	}
 
 	MemoryContextSwitchTo(oldContext);
