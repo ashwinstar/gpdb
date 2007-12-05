@@ -682,6 +682,9 @@ bpcmp(Datum d0, Datum d1)
 	varattrib_untoast_ptr_len(d0, &p0, &len0, &tofree0);
 	varattrib_untoast_ptr_len(d1, &p1, &len1, &tofree1);
 
+	len0 = bcTruelen(p0, len0);
+	len1 = bcTruelen(p1, len1);
+
 	result = varstr_cmp(p0, len0, p1, len1);
 
 	if(tofree0)
