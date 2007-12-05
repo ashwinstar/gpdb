@@ -322,7 +322,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 			location= pstrdup(v->val.str);
 			if (Gp_segment < 0 || i== (Gp_segment % numSegsPerHost))
 				break;
-			
+			i++;
 		}
 	}
 	else
@@ -333,7 +333,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 			location= pstrdup(v->val.str);
 			if (Gp_segment < 0 || i== (Gp_segment % numSegsPerHost))
 				break;
-			
+			i++;
 		}
 	}
 	
