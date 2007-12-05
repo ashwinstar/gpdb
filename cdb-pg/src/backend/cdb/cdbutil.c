@@ -740,8 +740,6 @@ cdb_cleanup(int code __attribute__((unused)) , Datum arg __attribute__((unused))
 
 	disconnectAndDestroyAllGangs();
 
-	disconnectMirrorQD();
-
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		if (cdb_total_plans > 0)

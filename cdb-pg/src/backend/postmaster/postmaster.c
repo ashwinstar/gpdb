@@ -2274,6 +2274,7 @@ pmdie(SIGNAL_ARGS)
 
 	errno = save_errno;
 
+// #ifdef nothing
     /* for CdbSyncMaster */
     if (SyncMaster)
     {
@@ -2282,6 +2283,7 @@ pmdie(SIGNAL_ARGS)
                 (errmsg("Greenplum Database sync master is shut down")));
         exit(0);
     }
+// #endif
 }
 
 /*

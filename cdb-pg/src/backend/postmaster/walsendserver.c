@@ -67,7 +67,7 @@ static void WalSendServer_ServicePostgresInit(void);
 static void WalSendServer_ServiceInit(int listenerPort);
 static bool WalSendServer_ServiceShutdownRequested(void);
 static bool WalSendServer_ServiceRequest(ServiceCtrl *serviceCtrl, int sockfd, uint8 *request);
-
+static void WalSendServer_ServiceShutdown(void);
 
 
 /*=========================================================================
@@ -83,10 +83,12 @@ static ServiceConfig WalSendServer_ServiceConfig =
 	{1,0},		// shutdownTimeout = 1 second.
 	{0,250000},	// readClientTimeout = 0.25 second.
 	WalSendServer_ServiceRequestShutdown,
+	NULL,		// No EarlyInit.
 	WalSendServer_ServicePostgresInit,
 	WalSendServer_ServiceInit,
 	WalSendServer_ServiceShutdownRequested,
-	WalSendServer_ServiceRequest};
+	WalSendServer_ServiceRequest,
+	WalSendServer_ServiceShutdown};
 
 static ServiceCtrl WalSendServer_ServiceCtrl;
 
@@ -196,6 +198,11 @@ walsendserver_forkexec(void)
 
 bool walsend_shutdown_requested=false;
 
+/*
+ * The following are standard procedure signatures needed by
+ * the Service shared library.
+ */
+
 static void
 WalSendServer_ServiceRequestShutdown(SIGNAL_ARGS)
 {
@@ -229,8 +236,34 @@ static bool
 WalSendServer_ServiceShutdownRequested(void)
 {
 	if (walsend_shutdown_requested)
-		elog(LOG,"shutdown requested is true");
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"shutdown requested is true");
 	return walsend_shutdown_requested;
+}
+
+static void
+WalSendServer_ServiceShutdown(void)
+{
+	elog(LOG,"service shutting down");
+	PG_TRY();
+	{
+		if (disconnectMirrorQD())
+			elog(LOG,"QD mirror disconnected");
+	}
+	PG_CATCH();
+	{
+		/* 
+		 * Report the error related to reading the primary's WAL
+		 * to the server log 
+		 */
+	    if (!elog_demote(NOTICE))
+    	{
+    		elog(LOG,"unable to demote error");
+        	PG_RE_THROW();
+    	}
+		EmitErrorReport();
+		FlushErrorState();
+	}
+	PG_END_TRY();
 }
 
 /*
@@ -571,7 +604,7 @@ static bool WalSendServer_ServiceRequest(ServiceCtrl *serviceCtrl, int sockfd, u
 	return result;
 }
 
-extern char* 
+char* 
 WalSendRequestCommandToString(WalSendRequestCommand command)
 {
 	switch (command)

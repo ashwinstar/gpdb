@@ -1730,7 +1730,6 @@ XLogQDMirrorCatchup(XLogRecPtr *flushedLocation)
 	connected = WalSendServerClientConnect();
 	if (!connected)
 	{
-		// UNDONE: Disable QD mirroring...
 		elog(LOG, "disabling QD mirroring (cannot connect to WAL Send server)");
 
 		return false;

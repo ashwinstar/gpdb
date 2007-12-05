@@ -439,6 +439,11 @@ write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout)
 	PG_CATCH();
 	{
 		/* Report the error to the server log */
+	    if (!elog_demote(NOTICE))
+    	{
+    		elog(LOG,"unable to demote error");
+        	PG_RE_THROW();
+    	}
 		EmitErrorReport();
 		FlushErrorState();
 	
@@ -525,17 +530,17 @@ getEntrySegDB(int *count)
 	return cdb_component_dbs->entry_db_info;
 }
 
-void
+bool
 disconnectMirrorQD(void)
 {
 	if (cdb_mirrored_entry_db == NULL || 
 		PQstatus(cdb_mirrored_entry_db->conn) != CONNECTION_OK)
-		return;
+		return false;
 
 	write_qd_sync("close", NULL, 0, NULL);
 	PQfinish(cdb_mirrored_entry_db->conn);
 
 	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"QD mirror disconnected");
 
-	return;
+	return true;
 }

@@ -86,6 +86,7 @@ typedef struct ServiceConnectionResponseMsg
 
 static bool ServiceDoConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *serviceClient);
 static bool ServiceClientRead(ServiceClient *serviceClient, void* response, int responseLen, struct timeval *timeout);
+static bool ServiceClientPollRead(ServiceClient *serviceClient, void* response, int responseLen, bool *pollResponseReceived);
 static bool ServiceClientWrite(ServiceClient *serviceClient, void* request, int requestLen);
 static void ServiceQuickDie(SIGNAL_ARGS);
 static void ServiceListenLoop(ServiceCtrl *serviceCtrl);
@@ -124,6 +125,7 @@ ServiceDoConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *
 						 errmsg("Interconnect Error: Could not connect to '%s'.", 
 						        serviceConfig->title),
 		                 errdetail("%m%s", "connect")));
+		serviceClient->sockfd = -1;
 		return false;
 	}
 	
@@ -134,6 +136,8 @@ ServiceDoConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *
 						 errmsg("Interconnect Error: Could not set '%s' socket"
 						        "to non-blocking mode.", serviceConfig->title),
 			             errdetail("%m%s sockfd=%d", "fcntl", serviceClient->sockfd)));
+		close(serviceClient->sockfd);
+		serviceClient->sockfd = -1;
 		return false;
 	}
 
@@ -153,16 +157,15 @@ ServiceClientConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClie
 	Assert(serviceConfig != NULL);
 	Assert(serviceClient != NULL);
 
-	if (serviceClient->serviceConfig != NULL)
+	if (serviceClient->sockfd != -1)
 	{
 		/*
-		 * Assume we are already connected.
+		 * We are already connected.
 		 */
 		return true;
 	}
 
 	serviceClient->serviceConfig = serviceConfig;
-	serviceClient->sockfd = -1;		// UNDONE
 
 	connected = ServiceDoConnect(serviceConfig, listenerPort, serviceClient);
 
@@ -430,6 +433,88 @@ ServiceClientRead(ServiceClient *serviceClient, void* response, int responseLen,
 	return true;
 }
 
+/*
+ * Used by clients to receive a response from a service.
+ */
+bool
+ServiceClientPollResponse(ServiceClient *serviceClient, void* response, int responseLen, bool *pollResponseReceived)
+{	
+	ServiceConfig *serviceConfig;
+	bool successful;
+
+	Assert(serviceClient != NULL);
+	serviceConfig = serviceClient->serviceConfig;
+	Assert(serviceConfig != NULL);
+	Assert(response != NULL);
+	Assert(responseLen == serviceClient->serviceConfig->responseLen);
+
+	successful = ServiceClientPollRead(serviceClient, response, responseLen, pollResponseReceived);
+
+	return successful;
+}
+
+static bool
+ServiceClientPollRead(ServiceClient *serviceClient, void* response, int responseLen, bool *pollResponseReceived)
+{
+	ServiceConfig 	*serviceConfig;
+	int				n;
+	int				saved_err;
+
+	Assert(serviceClient != NULL);
+	serviceConfig = serviceClient->serviceConfig;
+	Assert(serviceConfig != NULL);
+	Assert(response != NULL);
+
+	/*
+	 * Attempt to read the response
+	 */	
+	while (true)
+	{
+//		CHECK_FOR_INTERRUPTS();
+			
+		n = read(serviceClient->sockfd, 
+			     ((char *)response), 
+			     responseLen);
+		saved_err = errno;
+		
+		if (n == 0)
+		{
+			elog( NOTICE, "'%s' socket is closed", serviceConfig->title);
+			return false;
+		}
+		else if (n < 0)
+		{
+			if (saved_err == EWOULDBLOCK)
+			{
+				*pollResponseReceived = false;
+				return true;
+			}
+			
+			if (saved_err == EINTR)
+				continue;
+			
+			elog( NOTICE, "Error: Could not read() message from '%s'."
+						   "(error:%d). Closing connection.", 
+						   serviceConfig->title,
+						   saved_err);
+			return false;
+		}
+
+		if (n != responseLen)
+		{
+			elog(NOTICE,"expecting message length %d and read %d",
+				 responseLen, n);
+			return false;
+		}
+
+		*pollResponseReceived = true;
+		break;
+	}
+
+	return true;
+}
+
+
 #ifdef EXEC_BACKEND
 /*
  * ServiceForkExec()
@@ -502,13 +587,21 @@ ServiceMain(ServiceCtrl *serviceCtrl)
 	/* reset MyProcPid */
 	MyProcPid = getpid();
 	
+
 	/* Lose the postmaster's on-exit routines */
 	on_exit_reset();
 
 	/* Identify myself via ps */
 	init_ps_display(serviceConfig->psTitle, "", "", "");
 
-	SetProcessingMode(InitProcessing);
+	if (serviceConfig->ServiceEarlyInit != NULL)
+	{
+		serviceConfig->ServiceEarlyInit();
+	}
+	else
+	{
+		SetProcessingMode(InitProcessing);
+	}
 
 	/*
 	 * Set up signal handlers.	We operate on databases much like a regular
@@ -629,7 +722,13 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 		CHECK_FOR_INTERRUPTS();
 
 		if (serviceConfig->ServiceShutdownRequested())
+		{
+			if (serviceConfig->ServiceShutdown != NULL)
+			{
+				serviceConfig->ServiceShutdown();
+			}
 			break;
+		}
 		
 		/* no need to live on if postmaster has died */
 		if (!PostmasterIsAlive(true))
@@ -739,6 +838,9 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 			}	
 		}
 	}
+
+	elog(LOG,"exiting");
+	exit(1);
 
 }
 

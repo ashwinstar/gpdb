@@ -70,7 +70,7 @@ extern bool write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout
 
 extern bool write_position_to_end(XLogRecPtr *endLocation);
 
-extern void disconnectMirrorQD(void);
+extern bool disconnectMirrorQD(void);
 
 extern void markStandbyInvalid(void);
 

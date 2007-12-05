@@ -63,6 +63,7 @@ static void ensureBufferSize(void);
 static void write_with_ereport(int fd, void *data, int len);
 static void cdb_position_to_end(void);
 static void cdb_new_checkpoint_loc(void);
+static void cdb_close(void);
 
 
 static void
@@ -98,7 +99,7 @@ cdb_init_log_sync(void)
 	{
 		char	   *cmd = "restore_command=''\n";
 
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QDSYNC: creating recovery.conf file");
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QDSYNC: creating recovery.conf file");
 		rconffd = open(path, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
 		if (rconffd < 0)
 		{
@@ -120,10 +121,8 @@ cdb_init_log_sync(void)
 void
 cdb_sync_command(const char *cmd)
 {
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QDSYNC: %s", cmd);
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QDSYNC: %s", cmd);
 	parseCmd(cmd);
-
-	getTmLock();
 
 	switch (cmdtype)
 	{
@@ -137,10 +136,10 @@ cdb_sync_command(const char *cmd)
 			cdb_new_checkpoint_loc();
 			break;
 		case SYNC_CLOSE:
-			elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QDSYNC: server is terminated by client");
+			cdb_close();
+			elog(LOG,"QDSYNC: master is closing...");
 			break;
 	}
-	releaseTmLock();
 
 	return;
 }
@@ -157,7 +156,7 @@ openXlogEnd(XLogRecPtr *endLocation)
 
 	XLByteToSeg(*endLocation, logid, seg);
 	XLogFileName(xlogfilename, ThisTimeLineID, logid, seg);
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QDSYNC: opening logid %d seg %d file %s",
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QDSYNC: opening logid %d seg %d file %s",
 		 logid, seg, xlogfilename);
 
 	/* the first time or file is changed */
@@ -179,7 +178,7 @@ openXlogEnd(XLogRecPtr *endLocation)
 	xlogfilefd = open(path, O_RDWR, 0);
 	if (xlogfilefd < 0)
 	{
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QDSYNC: creating xlog file %s", xlogfilename);
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QDSYNC: creating xlog file %s", xlogfilename);
 		xlogfilefd = open(path, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
 		if (xlogfilefd < 0)
 		{
@@ -194,7 +193,7 @@ openXlogEnd(XLogRecPtr *endLocation)
 	xseg = seg;
 	xlogfileoffset = endLocation->xrecoff % XLogSegSize;
 
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"QDSYNC: opened '%s' offset 0x%X",
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"QDSYNC: opened '%s' offset 0x%X",
 		 xlogfilename, xlogfileoffset);
 }
 
@@ -315,14 +314,14 @@ cdb_perform_redo(XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint, XLog
 	 * Delete offline log files (those no longer needed even for previous
 	 * checkpoint).
 	 */
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG5),
 	     "QDSYNC: keep log files as far back as (logid %d, seg %d)",
 		 logid, seg);
 
 	if (logid || seg)
 	{
 		PrevLogSeg(logid, seg);
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG5),
 			 "QDSYNC: delete offline log files up to (logid %d, seg %d)",
 			 logid, seg);
 		
@@ -342,6 +341,12 @@ cdb_perform_redo(XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint, XLog
 	elog(LOG,"--------------------------");
 }
 
+static void
+cdb_close(void)
+{
+	WalRedoServerQuiesce();
+}
+
 /*
  * open xlog file
  */
@@ -351,7 +356,7 @@ openXlogNextFile(void)
 	char		path[MAXPGPATH];
 
 	XLogFileName(xlogfilename, ThisTimeLineID, xlogid, xseg);
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QDSYNC: opening next logid %d seg %d file %s",
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QDSYNC: opening next logid %d seg %d file %s",
 		 xlogid, xseg, xlogfilename);
 
 	/* the first time or file is changed */
@@ -366,7 +371,7 @@ openXlogNextFile(void)
 	xlogfilefd = open(path, O_RDWR, 0);
 	if (xlogfilefd < 0)
 	{
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QDSYNC: creating xlog file %s", xlogfilename);
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QDSYNC: creating xlog file %s", xlogfilename);
 		xlogfilefd = open(path, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
 		if (xlogfilefd < 0)
 		{
@@ -379,7 +384,7 @@ openXlogNextFile(void)
 
 	xlogfileoffset = 0;
 
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG5),
 		 "QDSYNC: openXlogNextFile: opened '%s' offset 0x%X",
 		 xlogfilename, xlogfileoffset);
 }
@@ -393,7 +398,7 @@ cdb_sync_xlog(void)
 	uint32 currentBlockOffset;
 	XLogRecPtr writeLoc;
 
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QDSYNC: write logid %d seg %d woffset 0x%X, wlen 0x%X",
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QDSYNC: write logid %d seg %d woffset 0x%X, wlen 0x%X",
 		 wlogid, wseg, woffset, wlen);
 	if (woffset % XLOG_BLCKSZ != 0)
 	{
@@ -403,7 +408,7 @@ cdb_sync_xlog(void)
 
 	if (wlogid != xlogid || wseg != xseg)
 	{
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "QDSYNC: closing previous file %s",
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QDSYNC: closing previous file %s",
 		     xlogfilename);
 		if (xlogfilefd >= 0)
 		{
@@ -451,7 +456,7 @@ cdb_sync_xlog(void)
 		Assert(buflen >= roundedUp);
 		padLen = roundedUp - wlen;
 		
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), 
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG5), 
 			 "QDSYNC: padding buffer with %d zeros (wlen %d, roundedUp %d)",
 			 padLen, wlen, roundedUp);
 		memset(&((char*) buf)[wlen], 0, padLen); 
@@ -463,7 +468,7 @@ cdb_sync_xlog(void)
 	writeLoc.xrecoff = wseg * XLogSegSize + 
 					   woffset;
 	syncWriteLog(xlogfilefd, buf, woffset, wlen);
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), 
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG5), 
 		 "QDSYNC: wrote location %s len 0x%X", 
 		 XLogLocationToString(&writeLoc),
 		 wlen);

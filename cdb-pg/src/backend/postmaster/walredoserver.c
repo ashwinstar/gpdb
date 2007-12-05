@@ -30,6 +30,7 @@
 #include "postmaster/fork_process.h"
 #include "postmaster/postmaster.h"
 #include "catalog/pg_control.h"
+#include "postmaster/service.h"
 #include "postmaster/walredoserver.h"
 #include "storage/ipc.h"
 #include "storage/proc.h"
@@ -50,33 +51,59 @@
  * FUNCTIONS PROTOTYPES
  */
 
-static bool WalRedoServerGetCheckpointLocation(XLogRecPtr *newCheckpointLocation);
-static void WalRedoServerMarkError(void);
 
 #ifdef EXEC_BACKEND
 static pid_t walredoserver_forkexec(void);
 #endif
-NON_EXEC_STATIC void WalRedoServerMain(int argc, char *argv[]);
 
-static void WalRedoServerLoop(void);
+static void WalRedoServerInitContext(void);
+
+/*
+ * The following are standard procedure signatures needed by
+ * the Service shared library.
+ */
+static void WalRedoServer_ServiceRequestShutdown(SIGNAL_ARGS);
+static void WalRedoServer_ServiceEarlyInit(void);
+static void WalRedoServer_ServicePostgresInit(void);
+static void WalRedoServer_ServiceInit(int listenerPort);
+static bool WalRedoServer_ServiceShutdownRequested(void);
+static bool WalRedoServer_ServiceRequest(ServiceCtrl *serviceCtrl, int sockfd, uint8 *request);
+static void WalRedoServer_ServiceShutdown(void);
+
 
 /*=========================================================================
  * GLOBAL STATE VARIABLES
  */
 
-typedef struct WalRedoServerControlBlock
-{
-	slock_t		spinLockWalRedoServer;	/* Locks WAL redo server variables. */
-	bool		redoErrorOccurred;
-	bool		updated;
-	XLogRecPtr  highWaterMark;
-}	WalRedoServerControlBlock;
-
-
-static WalRedoServerControlBlock *walRedoServerCtl = NULL;
-
 static bool am_walredoserver = false;
 
+static ServiceConfig WalRedoServer_ServiceConfig =
+	{"WALRDO",
+	"WAL Redo Server", "WAL Redo Server process", "walredoserver",
+	sizeof(WalRedoRequest), sizeof(WalRedoResponse),
+	{1,0},		// shutdownTimeout = 1 second.
+	{0,250000},	// readClientTimeout = 0.25 second.
+	WalRedoServer_ServiceRequestShutdown,
+	WalRedoServer_ServiceEarlyInit,
+	WalRedoServer_ServicePostgresInit,
+	WalRedoServer_ServiceInit,
+	WalRedoServer_ServiceShutdownRequested,
+	WalRedoServer_ServiceRequest,
+	WalRedoServer_ServiceShutdown};
+
+static ServiceCtrl WalRedoServer_ServiceCtrl;
+
+/*=========================================================================
+ * GLOBAL STATE VARIABLES
+ */
+
+typedef struct WalRedoServerShmem
+{
+	int			listenerPort;
+}	WalRedoServerShmem;
+
+
+static WalRedoServerShmem *WalRedoServerShared = NULL;
 
 /*=========================================================================
  * VISIBLE FUNCTIONS
@@ -86,7 +113,7 @@ int
 WalRedoServerShmemSize(void)
 {
 	
-	return sizeof(WalRedoServerControlBlock);
+	return sizeof(WalRedoServerShmem);
 }
 
 
@@ -97,85 +124,92 @@ WalRedoServerShmemInit(void)
 	
 	
 	/* Create or attach to the SharedSnapshot shared structure */
-	walRedoServerCtl = (WalRedoServerControlBlock *) ShmemInitStruct("WAL Redo Server", WalRedoServerShmemSize(), &found);
+	WalRedoServerShared = (WalRedoServerShmem *) ShmemInitStruct("WAL Redo Server", WalRedoServerShmemSize(), &found);
 
 	if (!found)
 	{
-		SpinLockInit(&walRedoServerCtl->spinLockWalRedoServer);
-		walRedoServerCtl->redoErrorOccurred = false;
-		walRedoServerCtl->updated = false;
-		memset(&walRedoServerCtl->highWaterMark, 0, sizeof(XLogRecPtr));
+		WalRedoServerShared->listenerPort = -1;
 	}
 }
 
 bool 
 WalRedoServerNewCheckpointLocation(XLogRecPtr *newCheckpointLocation)
 {
-	bool redoErrorOccurred;
-	
-	if (walRedoServerCtl != NULL)
+	WalRedoRequest walRedoRequest;
+	WalRedoResponse walRedoResponse;
+	bool connected;
+	bool successful;
+	bool pollResponseReceived;
+
+	MemSet(&walRedoRequest, 0, sizeof(walRedoRequest));
+	walRedoRequest.command = NewCheckpointLocation;
+	walRedoRequest.newCheckpointLocation= *newCheckpointLocation;
+
+	connected = WalRedoServerClientConnect();
+	if (!connected)
 	{
-		SpinLockAcquire(&walRedoServerCtl->spinLockWalRedoServer);
+		elog(LOG, "cannot connect to WAL Redo server)");
 
-		redoErrorOccurred = walRedoServerCtl->redoErrorOccurred;
-
-		if (!redoErrorOccurred)
-		{
-			walRedoServerCtl->updated = true;
-			walRedoServerCtl->highWaterMark = *newCheckpointLocation;
-		}
-		
-		SpinLockRelease(&walRedoServerCtl->spinLockWalRedoServer);
-
-		return !redoErrorOccurred;
+		return false;
 	}
 
-	return false;
-}
+	successful = WalRedoServerClientSendRequest(&walRedoRequest);
 
-static bool 
-WalRedoServerGetCheckpointLocation(XLogRecPtr *newCheckpointLocation)
-{
-	bool updated;
-	
-	if (walRedoServerCtl != NULL)
+	if (successful)
 	{
-		SpinLockAcquire(&walRedoServerCtl->spinLockWalRedoServer);
-
-		if (!walRedoServerCtl->redoErrorOccurred)
+		/*
+		 * See if the optional redo server error message was sent...
+		 */
+		successful = WalRedoServerClientPollResponse(&walRedoResponse, &pollResponseReceived);
+		if (pollResponseReceived)
 		{
-			updated = walRedoServerCtl->updated;
-			if (updated)
-			{
-				*newCheckpointLocation = walRedoServerCtl->highWaterMark;
-				walRedoServerCtl->updated = false;
-			}
+			Assert(walRedoResponse.response == RedoUnexpectedError);
+			elog(LOG,"redo encountered an unexpected error");
+			successful = false;
 		}
-		else
-			updated = false;
-		
-		SpinLockRelease(&walRedoServerCtl->spinLockWalRedoServer);
-
-		return updated;
 	}
 
-	return false;
+	return successful;
 }
 
-static void 
-WalRedoServerMarkError(void)
+bool
+WalRedoServerQuiesce(void)
 {
-	Assert(walRedoServerCtl != NULL);
-	
-	SpinLockAcquire(&walRedoServerCtl->spinLockWalRedoServer);
+	WalRedoRequest walRedoRequest;
+	WalRedoResponse walRedoResponse;
+	bool connected;
+	bool successful;
+	bool pollResponseReceived;
 
-	walRedoServerCtl->redoErrorOccurred = true;
+	elog(LOG,"quiesce");
 	
-	SpinLockRelease(&walRedoServerCtl->spinLockWalRedoServer);
+	MemSet(&walRedoRequest, 0, sizeof(walRedoRequest));
+	walRedoRequest.command = Quiesce;
 
+	connected = WalRedoServerClientConnect();
+	if (!connected)
+	{
+		elog(LOG, "cannot connect to WAL Redo server)");
+
+		return false;
+	}
+
+	successful = WalRedoServerClientSendRequest(&walRedoRequest);
+	if (successful)
+	{
+		/*
+		 * See if we received a quiesced response.
+		 */
+		successful = WalRedoServerClientReceiveResponse(&walRedoResponse, &WalRedoServer_ServiceConfig.clientTransferTimeout);
+		if (successful && pollResponseReceived)
+		{
+//			elog(LOG,"received response %s",
+//				 WalRedoResponseCommandToString(walRedoResponse.response));
+		}
+	}
+
+	return successful;
 }
-
-
 
 /*
  * Main entry point for walredoserver controller process.
@@ -206,7 +240,8 @@ walredoserver_start(void)
 			/* Close the postmaster's sockets */
 			ClosePostmasterPorts(false);
 
-			WalRedoServerMain(0, NULL);
+			ServiceInit(&WalRedoServer_ServiceConfig, &WalRedoServer_ServiceCtrl);
+			ServiceMain(&WalRedoServer_ServiceCtrl);
 			break;
 #endif
 		default:
@@ -249,183 +284,233 @@ walredoserver_forkexec(void)
 bool walredo_shutdown_requested=false;
 
 static void
-RequestShutdown(SIGNAL_ARGS)
+WalRedoServer_ServiceRequestShutdown(SIGNAL_ARGS)
 {
 	walredo_shutdown_requested = true;
 }
 
-/*
- * ss_quickdie() occurs when signalled SIGQUIT by the postmaster.
- *
- * Some backend has bought the farm,
- * so we need to stop what we're doing and exit.
- */
 static void
-ss_quickdie(SIGNAL_ARGS)
+WalRedoServer_ServiceEarlyInit(void)
 {
-	PG_SETMASK(&BlockSig);
-
-	/*
-	 * DO NOT proc_exit() -- we're here because shared memory may be
-	 * corrupted, so we don't want to try to clean up our transaction. Just
-	 * nail the windows shut and get out of town.
-	 *
-	 * Note we do exit(2) not exit(0).	This is to force the postmaster into a
-	 * system reset cycle if some idiot DBA sends a manual SIGQUIT to a random
-	 * backend.  This is necessary precisely because we don't clean up our
-	 * shared memory state.
-	 */
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"ss_quickdie: calling exit(2)");
-	exit(2);
+	// UNDONE: Kludge that allow initialization of components for recovery purposes.
+	SetProcessingMode(BootstrapProcessing);
 }
 
-/*
- * AutoVacMain
- */
-NON_EXEC_STATIC void
-WalRedoServerMain(int argc, char *argv[])
+static void
+WalRedoServer_ServicePostgresInit(void)
 {
-	sigjmp_buf	local_sigjmp_buf;
-
-	IsUnderPostmaster = true;
-	am_walredoserver = true;
-	
-	/* reset MyProcPid */
-	MyProcPid = getpid();
-	
-	/* Lose the postmaster's on-exit routines */
-	on_exit_reset();
-
-	/* Identify myself via ps */
-	init_ps_display("walredoserver process", "", "", "");
-
-	// UNDONE: To allow us to perform recovery.
-	SetProcessingMode(BootstrapProcessing);
-
-	/*
-	 * Set up signal handlers.	We operate on databases much like a regular
-	 * backend, so we use the same signal handling.  See equivalent code in
-	 * tcop/postgres.c.
-	 *
-	 * Currently, we don't pay attention to postgresql.conf changes that
-	 * happen during a single daemon iteration, so we can ignore SIGHUP.
-	 */
-	pqsignal(SIGHUP, SIG_IGN);
-
-	/*
-	 * Presently, SIGINT will lead to autovacuum shutdown, because that's how
-	 * we handle ereport(ERROR).  It could be improved however.
-	 */
-	pqsignal(SIGINT, StatementCancelHandler);
-	pqsignal(SIGTERM, die);
-	pqsignal(SIGQUIT, ss_quickdie);
-	pqsignal(SIGALRM, PGSemaphoreHandleSigAlarm);
-
-	pqsignal(SIGPIPE, SIG_IGN);
-	pqsignal(SIGUSR1, CatchupInterruptHandler);
-	/* We don't listen for async notifies */
-	pqsignal(SIGUSR2, RequestShutdown);
-	pqsignal(SIGFPE, FloatExceptionHandler);
-	pqsignal(SIGCHLD, SIG_DFL);
-
-	/* Early initialization */
-	BaseInit();
-
 	/* See InitPostgres()... */
     InitProcess();	
 	InitBufferPoolBackend();
 	InitXLOGAccess();
 
-	SetProcessingMode(NormalProcessing);
-
-	/*
-	 * If an exception is encountered, processing resumes here.
-	 *
-	 * See notes in postgres.c about the design of this coding.
-	 */
-	if (sigsetjmp(local_sigjmp_buf, 1) != 0)
-	{
-		/* Prevents interrupts while cleaning up */
-		HOLD_INTERRUPTS();
-
-		/* Report the error to the server log */
-		EmitErrorReport();
-
-		/*
-		 * We can now go away.	Note that because we'll call InitProcess, a
-		 * callback will be registered to do ProcKill, which will clean up
-		 * necessary state.
-		 */
-		proc_exit(0);
-	}
-
-	/* We can now handle ereport(ERROR) */
-	PG_exception_stack = &local_sigjmp_buf;
-
-	PG_SETMASK(&UnBlockSig);
-
-	/* main loop */
-	WalRedoServerLoop();
-
-	/* One iteration done, go away */
-	proc_exit(0);
 }
 
-void 
-WalRedoServerLoop(void)
+static void
+WalRedoServer_ServiceInit(int listenerPort)
 {
-	bool updated;
-	XLogRecPtr newCheckpointLocation;
-	XLogRecPtr redoCheckPointLoc;
-	CheckPoint redoCheckpoint;
+	if (WalRedoServerShared == NULL)
+		elog(FATAL,"WAL Redo server shared memory not initialized");
 	
-	Assert(TopMemoryContext != NULL);
-	MemoryContextSwitchTo(TopMemoryContext);
-	Assert(CurrentMemoryContext == TopMemoryContext);
+	WalRedoServerShared->listenerPort = listenerPort;
+	
+	am_walredoserver = true;
 
-	memset(&redoCheckPointLoc, 0, sizeof(XLogRecPtr));
+	WalRedoServerInitContext();
+}
+
+static bool
+WalRedoServer_ServiceShutdownRequested(void)
+{
+	if (walredo_shutdown_requested)
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"shutdown requested is true");
+	return walredo_shutdown_requested;
+}
+
+static void
+WalRedoServer_ServiceShutdown(void)
+{
+	// Empty.
+}
+
+/*
+ * Process local static that contains the connection to the WAL Redo server.
+ */
+static ServiceClient WalRedoServerClient = {NULL,-1};
+
+bool
+WalRedoServerClientConnect(void)
+{
+	bool connected;
 	
-	while(true)
+	if (WalRedoServerShared == NULL)
+		elog(FATAL,"WAL Redo server shared memory not initialized");
+
+	connected = ServiceClientConnect(&WalRedoServer_ServiceConfig, 
+									WalRedoServerShared->listenerPort,
+									&WalRedoServerClient);
+
+	return connected;
+}
+
+bool
+WalRedoServerClientSendRequest(WalRedoRequest* walRedoRequest)
+{
+	bool successful;
+	
+	successful = ServiceClientSendRequest(&WalRedoServerClient, walRedoRequest, sizeof(WalRedoRequest));
+
+	return successful;
+}
+
+bool
+WalRedoServerClientReceiveResponse(WalRedoResponse* walRedoResponse, struct timeval *timeout)
+{
+	bool successful;
+	
+	successful = ServiceClientReceiveResponse(&WalRedoServerClient, walRedoResponse, sizeof(WalRedoResponse), timeout);
+
+	return successful;
+}
+
+bool
+WalRedoServerClientPollResponse(WalRedoResponse* walRedoResponse, bool *pollResponseReceived)
+{
+	bool successful;
+	
+	successful = ServiceClientPollResponse(&WalRedoServerClient, walRedoResponse, sizeof(WalRedoResponse), pollResponseReceived);
+
+	return successful;
+}
+
+static bool	   		RedoQuiesce;
+static bool	   		RedoServerError;
+static XLogRecPtr 	RedoCheckPointLoc;
+static CheckPoint 	RedoCheckpoint;
+
+static void
+WalRedoServerInitContext(void)
+{
+	RedoQuiesce = false;
+	RedoServerError = false;
+	memset(&RedoCheckPointLoc, 0, sizeof(XLogRecPtr));
+	memset(&RedoCheckpoint, 0, sizeof(CheckPoint));
+}
+
+static bool WalRedoServer_ServiceRequest(ServiceCtrl *serviceCtrl, int sockfd, uint8 *request)
+{
+	WalRedoRequest *walRedoRequest = (WalRedoRequest*)request;
+	WalRedoResponse walRedoResponse;
+	bool result;
+
+	//*** Missing: On normal shutdown, disable and disconnect.
+
+	result = true;	// Assume.
+
+	/* 
+	 * Use a TRY block to catch unexpected errors that bubble up to this level
+	 * and disable QD mirroring.
+	 */
+	PG_TRY();
 	{
-		/*
-		 * Come up for air every 1 seconds to see if there is work to do,
-		 * if postmaster has died, a shutdown has been requested, etc.
-		 */
-		pg_usleep(1000000);		/* 1 sec */
-		
-		if (!PostmasterIsAlive(true))
+		if (Debug_print_qd_mirroring)
+			elog(LOG, "request command %d = '%s'",
+			     walRedoRequest->command, 
+			     WalRedoRequestCommandToString(walRedoRequest->command));
+
+		switch (walRedoRequest->command)
 		{
-			/*
-			 * Gracefully drain our queue so requesting backend don't get hung
-			 * even though the postmaster has croaked.
-			 */
-			elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"postmaster has died -- draining.");
+		case NewCheckpointLocation:
+			{
+				if (!RedoQuiesce && !RedoServerError)
+				{
+					elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"new checkpoint location %s",
+						 XLogLocationToString(&walRedoRequest->newCheckpointLocation));
+
+					PG_TRY();
+					{
+						cdb_perform_redo(&RedoCheckPointLoc, &RedoCheckpoint, &walRedoRequest->newCheckpointLocation);
+					}
+					PG_CATCH();
+					{
+						/* 
+						 * Report the error related to reading the primary's WAL
+						 * to the server log 
+						 */
+						EmitErrorReport();
+						FlushErrorState();
+
+						elog(NOTICE,"error occurred during redo");
+						RedoServerError = true;
+						
+						walRedoResponse.response = RedoUnexpectedError;
+
+						result = ServiceProcessRespond(serviceCtrl, sockfd, (uint8*)&walRedoResponse, sizeof(walRedoResponse));
+
+					}
+					PG_END_TRY();
+				}
+				break;
+			}
+
+		case Quiesce:
+			RedoQuiesce = true;
+			
+			walRedoResponse.response = Quiesced;
+
+			result = ServiceProcessRespond(serviceCtrl, sockfd, (uint8*)&walRedoResponse, sizeof(walRedoResponse));
 			break;
-		}
 
-		updated = WalRedoServerGetCheckpointLocation(&newCheckpointLocation);
-		if (updated)
-		{
-			elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"new checkpoint location %s",
-				 XLogLocationToString(&newCheckpointLocation));
-
-			PG_TRY();
-			{
-				cdb_perform_redo(&redoCheckPointLoc, &redoCheckpoint, &newCheckpointLocation);
-			}
-			PG_CATCH();
-			{
-				/* 
-				 * Report the error related to reading the primary's WAL
-				 * to the server log 
-				 */
-				EmitErrorReport();
-				FlushErrorState();
-
-				elog(NOTICE,"error occurred during redo");
-				WalRedoServerMarkError();
-			}
-			PG_END_TRY();
+		default:
+			elog(ERROR, "Unknown WalRedoRequestCommand %d", walRedoRequest->command);
 		}
 	}
+	PG_CATCH();
+	{
+		/* 
+		 * Report the unexpected error.
+		 */
+		EmitErrorReport();
+		FlushErrorState();
+
+		elog(NOTICE,"disabling redo (unexpected error encountered)");
+
+		result = false;
+	}
+	PG_END_TRY();
+
+	return result;
 }
+
+char* 
+WalRedoRequestCommandToString(WalRedoRequestCommand command)
+{
+	switch (command)
+	{
+	case NewCheckpointLocation:
+		return "NewCheckpointLocation";
+
+	case Quiesce:
+		return "Quiesce";
+
+	default:
+		return "Unknown";
+	}
+}
+
+char* 
+WalRedoResponseCommandToString(WalRedoResponseCommand command)
+{
+	switch (command)
+	{
+	case Quiesced:
+		return "Quiesced";
+
+	case RedoUnexpectedError:
+		return "RedoUnexpectedError";
+
+	default:
+		return "Unknown";
+	}
+}
+
