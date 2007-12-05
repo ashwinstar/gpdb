@@ -303,7 +303,10 @@ def print_fix():
             print
             print '[FIX %s] please check your network link' % h
             for (key, value) in errors[h]['net']:
-                print '%s = %s' % (key, value)
+                if opt['-u'] != 'root':
+                    print 'please run gpcheckos as root to check the network link.'
+                else:
+                    print '%s = %s' % (key, value)
 
         if 'sysctl' in errors[h]:
 	    print
