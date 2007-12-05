@@ -1075,7 +1075,7 @@ START_SYNC_PROCESS () {
 
 STOP_SYNC_PROCESS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	if [ $# -ne 2 ];then ERROR_EXIT "[FATAL:-Expected 2 parameters got $# " 2;fi
+	if [ $# -ne 2 ];then ERROR_EXIT "[FATAL]:-Expected 2 parameters got $# " 2;fi
 	MASTER_STANDBY_HOSTNAME=$1;shift
 	MASTER_STANDBY_DATA_DIRECTORY=$1
 	LOG_MSG "[INFO]:-Stopping gpsyncmaster on standby host ${MASTER_STANDBY_HOSTNAME}" 1
