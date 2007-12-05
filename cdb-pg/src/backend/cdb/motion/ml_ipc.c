@@ -626,13 +626,15 @@ wait_on_receiver(int timeout_us)
 	return true;
 }
 
+#define CONN_HASH_VALUE(icpkt) ((uint32)((((icpkt)->srcPid ^ (icpkt)->dstPid)) + (icpkt)->dstContentId))
+
 static void
 conn_addhash(MotionConn *conn)
 {
-	int hashcode;
+	uint32 hashcode;
 	struct conn_htab_bin *bin, *newbin;
 
-	hashcode = ((conn->conn_info.srcPid ^ conn->conn_info.dstPid) + conn->conn_info.dstContentId) % conn_htab_size;
+	hashcode = CONN_HASH_VALUE(&conn->conn_info) % conn_htab_size;
 
 	/* check for collision ? */
 	for (bin = conn_htab[hashcode]; bin != NULL; bin = bin->next)
@@ -658,10 +660,10 @@ conn_addhash(MotionConn *conn)
 static void
 conn_delhash(MotionConn *conn)
 {
-	int hashcode;
+	uint32 hashcode;
 	struct conn_htab_bin *c, *p, *trash;
 
-	hashcode = ((conn->conn_info.srcPid ^ conn->conn_info.dstPid) + conn->conn_info.dstContentId) % conn_htab_size;
+	hashcode = CONN_HASH_VALUE(&conn->conn_info) % conn_htab_size;
 
 	c = conn_htab[hashcode];
 
@@ -702,11 +704,11 @@ conn_delhash(MotionConn *conn)
 static MotionConn *
 findConnByHeader(struct icpkthdr *hdr)
 {
-	int hashcode;
+	uint32 hashcode;
 	struct conn_htab_bin *bin;
 	struct MotionConn *ret=NULL;
 
-	hashcode = ((hdr->srcPid ^ hdr->dstPid) + hdr->dstContentId) % conn_htab_size;
+	hashcode = CONN_HASH_VALUE(hdr) % conn_htab_size;
 
 	for (bin = conn_htab[hashcode]; bin != NULL; bin = bin->next)
 	{
@@ -749,7 +751,8 @@ findConnByHeader(struct icpkthdr *hdr)
 static void
 conn_rehash(void)
 {
-	int i, new_hashcode;
+	int i;
+	uint32 new_hashcode;
 	int new_htab_size = DEFAULT_CONN_HTAB_SIZE;
 	struct conn_htab_bin		**new_conn_htab = NULL;
 	struct conn_htab_bin		*bin, *newbin;
@@ -775,8 +778,7 @@ conn_rehash(void)
 		{
 			MotionConn *conn=bin->conn;
 
-			new_hashcode = ((conn->conn_info.srcPid ^ conn->conn_info.dstPid) +
-							conn->conn_info.dstContentId) % new_htab_size;
+			new_hashcode = CONN_HASH_VALUE(&conn->conn_info) % new_htab_size;
 
 			/* save a reference to this bin */
 			newbin = bin;
