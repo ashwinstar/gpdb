@@ -2277,6 +2277,7 @@ CopyFromDispatch(CopyState cstate)
 	 */
 	GpPolicy  *policy;			/* the partitioning policy for this table			 */
 	int			p_nattrs;		/* num of partitioning keys in the policy			 */
+	Oid       *p_attr_types;	/* types for each partition key attribute. */
 
 	/*
 	 * Variables for original row number tracking
@@ -2290,7 +2291,6 @@ CopyFromDispatch(CopyState cstate)
 	CdbHash    *cdbHash;		/* a CdbHash API object		 */
 	AttrNumber	h_attnum;		/* hash key attribute number */
 	Datum		h_key;			/* hash key value			 */
-	Oid			h_oid;			/* hash key data type		 */
 	unsigned int target_seg = 0;	/* result segment of cdbhash */
 	
 	tupDesc = RelationGetDescr(cstate->rel);
@@ -2423,6 +2423,32 @@ CopyFromDispatch(CopyState cstate)
 		p_nattrs = 0;
 	cdbHash = makeCdbHash(cdbCopy->total_segs, HASH_FNV_1);		/* Create hash API
 		* reference */
+
+	/*
+	 * Extract types for each partition key from the tuple descriptor,
+	 * and convert them when necessary. We don't want to do this
+	 * for each tuple since get_typtype() is quite expensive when called
+	 * lots of times.
+	 */
+	p_attr_types = (Oid *)palloc(p_nattrs * sizeof(Oid));
+	for (i = 0; i < p_nattrs; i++)
+	{
+		h_attnum = policy->attrs[i];
+
+		/*
+		 * get the data type of this attribute. If it's an
+		 * array type use anyarray, or else just use as is.
+		 */
+		if(attr[h_attnum - 1]->attndims > 0)
+			p_attr_types[i] = ANYARRAYOID;
+		else
+		{
+			/* If this type is a domain type, get its base type. */
+			p_attr_types[i] = attr[h_attnum - 1]->atttypid;
+			if (get_typtype(p_attr_types[i]) == 'd')
+			    p_attr_types[i] = getBaseType(p_attr_types[i]);
+		}
+	}
 	
 	/* allocate memory for error and copy strings */
 	initStringInfo(&cdbcopy_err);
@@ -3305,22 +3331,8 @@ CopyFromDispatch(CopyState cstate)
 														 * cdb policy */
 					h_key = values[h_attnum - 1];		/* value of this attr			   */
 					
-					/*
-					 * get the data type of this attribute. If it's an
-					 * array type use anyarray, or else just use as is.
-					 */
-					if(attr[h_attnum - 1]->attndims > 0)
-						h_oid = ANYARRAYOID;
-					else
-					{
-						/* If this type is a domain type, get its base type. */
-						h_oid = attr[h_attnum - 1]->atttypid;
-						if (get_typtype(h_oid) == 'd')
-							h_oid = getBaseType(h_oid);
-					}
-					
 					if (nulls[h_attnum - 1] != 'n')
-						cdbhash(cdbHash, h_key, h_oid);
+						cdbhash(cdbHash, h_key, p_attr_types[i]);
 					else
 						cdbhashnull(cdbHash);
 				}
@@ -3389,6 +3401,9 @@ CopyFromDispatch(CopyState cstate)
 			no_more_data = true;
 		}
 	} while (!no_more_data);
+
+	/* Free p_attr_types */
+	pfree(p_attr_types);
 
 	/*
 	 * Done reading input data and sending it off to the segment
