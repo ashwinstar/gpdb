@@ -216,7 +216,20 @@ struct cmdslot_t {
 		int opened;
 	    } *nodetab;
 	} haset;
-	   
+	
+
+	struct {
+	    int content;
+	    int definedprimary;
+	    int dbid;
+	    int isprimary;
+	    int valid;
+	    char *host;
+	    int port;
+	    char *datadir;
+	    int nodeid;
+	    char *node;
+	} segment;
     } u;
 };
 

@@ -69,6 +69,9 @@ struct gpma_t {
 
     cmdslot_t *  maset_cmdslot;
     cmdslot_t *  haset_cmdslot;
+
+    int          seg_max;
+    cmdslot_t**  seg_cmdtab;
 };
 
 extern gpma_t gpma;

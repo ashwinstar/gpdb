@@ -23,6 +23,7 @@
 #include "fsm_array_start.h"
 #include "fsm_array_init.h"
 #include "fsm_array_stop.h"
+#include "fsm_unit.h"
 
 
 apr_status_t a_system_tick(gpcc_event_t* ev, void* arg)
@@ -230,7 +231,7 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, ARRAY_REPLY_MSG_EVENT, FTS_INITIALIZING_CMDSTATE,
 		 a_fts_array_init_reply, 0);
     gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, SUCCESS_EVENT, FTS_STOPPED_CMDSTATE,
-		 a_fts_array_init_success, 0);
+		 a_fts_array_init_success, a_fts_create_segment_slot, 0);
     gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, FAILURE_EVENT, FTS_EMPTY_CMDSTATE,
 		 a_fts_array_init_failure, 0);
     gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, ARRAY_INIT_EVENT, FTS_INITIALIZING_CMDSTATE,
@@ -244,7 +245,7 @@ APR_DECLARE(void) fsm_init(void)
     
 
     gpcc_fsm_put(FTS_WAIT_CMDSTATE, ARRAY_PRESENT_EVENT, FTS_STOPPING_CMDSTATE,
-		 a_fts_array_stop_forsure, 0);
+		 a_fts_create_segment_slot, a_fts_array_stop_forsure, 0);
     gpcc_fsm_put(FTS_STOPPED_CMDSTATE, ARRAY_START_EVENT, FTS_STARTING_CMDSTATE,
 		 a_fts_array_start, 0);
     gpcc_fsm_put(FTS_STOPPED_CMDSTATE, ARRAY_STOP_EVENT, FTS_STOPPED_CMDSTATE,
@@ -423,5 +424,27 @@ APR_DECLARE(void) fsm_init(void)
 		 a_array_start_success, a_array_start_cleanup, 0);
     gpcc_fsm_put(FTS_START_STANDBY_QD_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
 		 a_array_start_failure, a_array_start_cleanup, 0);
+
+
+
+    /* segment unit */
+    gpcc_fsm_put(UNIT_CMDSTATE, UNIT_STOP_EVENT, UNIT_STOPPING_CMDSTATE,
+		 a_unit_stop, 0);
+    gpcc_fsm_put(UNIT_STOPPING_CMDSTATE, TIMEUP_EVENT, UNIT_INVALID_CMDSTATE,
+		 a_unit_invalid, 0);
+    gpcc_fsm_put(UNIT_STOPPING_CMDSTATE, SUCCESS_EVENT, UNIT_STOPPED_CMDSTATE,
+		 a_unit_stopped, 0);
+    gpcc_fsm_put(UNIT_STOPPING_CMDSTATE, FAILURE_EVENT, UNIT_INVALID_CMDSTATE,
+		 a_unit_invalid, 0);
+    gpcc_fsm_put(UNIT_STOPPED_CMDSTATE, UNIT_START_EVENT, UNIT_STARTING_CMDSTATE,
+		 a_unit_start, 0);
+    gpcc_fsm_put(UNIT_STARTING_CMDSTATE, TIMEUP_EVENT, UNIT_INVALID_CMDSTATE,
+		 a_unit_invalid, 0);
+    gpcc_fsm_put(UNIT_STARTING_CMDSTATE, SUCCESS_EVENT, UNIT_RUNNING_CMDSTATE,
+		 a_unit_running, 0);
+    gpcc_fsm_put(UNIT_STARTING_CMDSTATE, FAILURE_EVENT, UNIT_INVALID_CMDSTATE,
+		 a_unit_invalid, 0);
+    gpcc_fsm_put(UNIT_RUNNING_CMDSTATE, UNIT_STOP_EVENT, UNIT_STOPPING_CMDSTATE,
+		 a_unit_stop, 0);
 
 }
