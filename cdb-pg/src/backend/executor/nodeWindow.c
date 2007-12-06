@@ -2971,21 +2971,14 @@ freeInputBuffer(WindowState *wstate)
  * Advance values related to computing peer count.
  */
 static void
-advancePeerCount(WindowState *wstate, int min_level)
+advancePeerCount(WindowStatePerLevel level_state,
+				 int curr_level, int min_level)
 {
-	WindowStatePerLevel level_state;
-	int i;
-	
-	for (i = 0; i < wstate->numlevels; i++)
+	if (curr_level >= min_level && min_level != -1)
 	{
-		level_state = &wstate->level_state[i];
-
-		if (i >= min_level && min_level != -1)
-		{
-			level_state->prior_non_peer_count += level_state->peer_count + 1;
-			level_state->peer_index = 0;
-			level_state->peer_count = 0;
-		}
+		level_state->prior_non_peer_count += level_state->peer_count + 1;
+		level_state->peer_index = 0;
+		level_state->peer_count = 0;
 	}
 }
 
@@ -4899,7 +4892,7 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 						wstate->cur_slot_key_break != -1 &&
 						wstate->cur_slot_key_break < wstate->numlevels)
 					{
-						advancePeerCount(wstate, wstate->cur_slot_key_break);
+						advancePeerCount(level_state, level, wstate->cur_slot_key_break);
 					}
 
 					adv_peercount = true;
