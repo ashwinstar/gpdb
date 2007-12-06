@@ -1671,6 +1671,7 @@ typedef struct TruncateStmt
 	List	   *relids;
 	List	   *new_heap_oids;
 	List	   *new_toast_oids;
+	List	   *new_ind_oids;
 } TruncateStmt;
 
 /* ----------------------

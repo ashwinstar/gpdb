@@ -1837,6 +1837,7 @@ _outTruncateStmt(StringInfo str, TruncateStmt *node)
 	WRITE_NODE_FIELD(relids);
 	WRITE_NODE_FIELD(new_heap_oids);
 	WRITE_NODE_FIELD(new_toast_oids);	
+	WRITE_NODE_FIELD(new_ind_oids);
 }
 
 static void

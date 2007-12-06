@@ -1237,7 +1237,8 @@ setNewRelfilenode(Relation relation)
 
 	if (Gp_role == GP_ROLE_EXECUTE)
 	{
-		elog(DEBUG1,"setNewRelfilenode called in EXECUTE mode, newrelfilenode=%d",newrelfilenode);
+		elog(DEBUG1, "setNewRelfilenode called in EXECUTE mode, "
+			 "newrelfilenode=%d", newrelfilenode);
 	}
 
 	/*
@@ -1307,11 +1308,11 @@ setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode)
 	/* Can't change for shared tables or indexes */
 	Assert(!relation->rd_rel->relisshared);
 	
-	elog(DEBUG3,"setNewRelfilenodeToOid called.  newrelfilenode = %d",newrelfilenode);
+	elog(DEBUG3, "setNewRelfilenodeToOid called.  newrelfilenode = %d",
+		 newrelfilenode);
 
 	CheckNewRelFileNodeIsOk(newrelfilenode, relation->rd_rel->reltablespace,
-									   relation->rd_rel->relisshared,
-									   NULL);
+							relation->rd_rel->relisshared, NULL);
 	/*
 	 * Find the pg_class tuple for the given relation.	This is not used
 	 * during bootstrap, so okay to use heap_update always.
@@ -1994,10 +1995,13 @@ IndexGetRelation(Oid indexId)
 }
 
 /*
- * reindex_index - This routine is used to recreate a single index
+ * reindex_index - This routine is used to recreate a single index.
+ *
+ * GPDB: we return the new relfilenode for transmission to QEs. If
+ * newrelfilenode is valid, we use that Oid instead.
  */
-void
-reindex_index(Oid indexId)
+Oid
+reindex_index(Oid indexId, Oid newrelfilenode)
 {
 	Relation	iRel,
 				heapRelation,
@@ -2006,6 +2010,7 @@ reindex_index(Oid indexId)
 	bool		inplace;
 	HeapTuple	indexTuple;
 	Form_pg_index indexForm;
+	Oid 		retrelfilenode;
 
 	/*
 	 * Open and lock the parent heap relation.	ShareLock is sufficient since
@@ -2051,13 +2056,22 @@ reindex_index(Oid indexId)
 		{
 			/* Truncate the actual file (and discard buffers) */
 			RelationTruncate(iRel, 0);
+			retrelfilenode = iRel->rd_rel->relfilenode;
+			Assert(newrelfilenode == newrelfilenode || 
+				   !OidIsValid(newrelfilenode));
 		}
 		else
 		{
 			/*
 			 * We'll build a new physical relation for the index.
 			 */
-			setNewRelfilenode(iRel);
+			if (OidIsValid(newrelfilenode))
+			{
+				setNewRelfilenodeToOid(iRel, newrelfilenode);
+				retrelfilenode = newrelfilenode;	
+			}
+			else
+				retrelfilenode = setNewRelfilenode(iRel);
 		}
 
 		/* Initialize the index and rebuild */
@@ -2098,6 +2112,8 @@ reindex_index(Oid indexId)
 	/* Close rels, but keep locks */
 	index_close(iRel, NoLock);
 	heap_close(heapRelation, NoLock);
+
+	return retrelfilenode;
 }
 
 /*
@@ -2106,9 +2122,13 @@ reindex_index(Oid indexId)
  *
  * Returns true if any indexes were rebuilt.  Note that a
  * CommandCounterIncrement will occur after each index rebuild.
+ *
+ * If build_map is true, build a map of index relation OID -> new relfilenode.
+ * If it is false but *oidmap is valid and we're on a QE, use the
+ * new relfilenode specified in the map.
  */
 bool
-reindex_relation(Oid relid, bool toast_too)
+reindex_relation(Oid relid, bool toast_too, List **oidmap, bool build_map)
 {
 	Relation	rel;
 	Oid			toast_relid;
@@ -2162,13 +2182,44 @@ reindex_relation(Oid relid, bool toast_too)
 	foreach(indexId, indexIds)
 	{
 		Oid			indexOid = lfirst_oid(indexId);
+		Oid			newrelfilenode;
+		Oid			mapoid = InvalidOid;
 
 		if (is_pg_class)
 			RelationSetIndexList(rel, doneIndexes, InvalidOid);
 
-		reindex_index(indexOid);
+		if (Gp_role == GP_ROLE_EXECUTE && !build_map && oidmap &&
+			*oidmap)
+		{
+			ListCell *c;
+			
+			/* Yes, this is O(N^2) but N is small */
+			foreach(c, *oidmap)
+			{
+				List *map = lfirst(c);
+				Oid ind = linitial_oid(map);
+				
+				if (ind == indexOid)
+				{
+					mapoid = lsecond_oid(map);
+					break;
+				}	
+			}
+			Assert(OidIsValid(mapoid));
+		}
+
+		newrelfilenode = reindex_index(indexOid, mapoid);
+
+		Assert(!OidIsValid(mapoid) || newrelfilenode == mapoid);
 
 		CommandCounterIncrement();
+
+		if (oidmap && build_map)
+		{
+			List *map = list_make2_oid(indexOid, newrelfilenode);
+			
+			*oidmap = lappend(*oidmap, map);
+		}
 
 		if (is_pg_class)
 			doneIndexes = lappend_oid(doneIndexes, indexOid);
@@ -2189,7 +2240,7 @@ reindex_relation(Oid relid, bool toast_too)
 	 * still hold the lock on the master table.
 	 */
 	if (toast_too && OidIsValid(toast_relid))
-		result |= reindex_relation(toast_relid, false);
+		result |= reindex_relation(toast_relid, false, oidmap, build_map);
 
 	return result;
 }

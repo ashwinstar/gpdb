@@ -470,10 +470,7 @@ GetNewRelFileNode(Oid reltablespace, bool relisshared, Relation pg_class)
 		if (pg_class)
 			rnode.relNode = GetNewOid(pg_class);
 		else
-		{	
 			rnode.relNode = GetNewObjectId();
-			elog(DEBUG1,"GetNewRelFileNode without pg_class.  newoid = %d",rnode.relNode);
-		}
 
 		/* Check for existing file of same name */
 		rpath = relpath(rnode);
@@ -505,19 +502,22 @@ GetNewRelFileNode(Oid reltablespace, bool relisshared, Relation pg_class)
 	} while (collides);
 	
 	if (Gp_role == GP_ROLE_EXECUTE)
-	{
-		if (pg_class)
-			elog(ERROR,"Calling GetNewRelFileNode (with pg_class) in EXECUTE mode.  New relOid = %d", rnode.relNode );
-		else
-			elog(DEBUG1,"Calling GetNewRelFileNode in EXECUTE mode.  New relOid = %d", rnode.relNode );
-	}
+		Insist(!PointerIsValid(pg_class));
+
+	elog(DEBUG1, "Calling GetNewRelFileNode in %s mode %s pg_class. "
+		 "New relOid = %d", 
+		 (Gp_role == GP_ROLE_EXECUTE ? "execute" :
+		  Gp_role == GP_ROLE_UTILITY ? "utility" :
+		  "dispatch"), pg_class ? "with" : "without",
+		 rnode.relNode );
 
 	return rnode.relNode;
 }
 
 
 bool
-CheckNewRelFileNodeIsOk(Oid newOid, Oid reltablespace, bool relisshared, Relation pg_class)
+CheckNewRelFileNodeIsOk(Oid newOid, Oid reltablespace, bool relisshared, 
+						Relation pg_class)
 {
 	RelFileNode rnode;
 	char	   *rpath;
@@ -556,7 +556,8 @@ CheckNewRelFileNodeIsOk(Oid newOid, Oid reltablespace, bool relisshared, Relatio
 		index_close(indexrel, AccessShareLock);
 		
 		if (collides)
-			elog(ERROR,"QE tried to re-use and OID already allocated in pg_class when creating an object.  Oid = %d", newOid );	
+			elog(ERROR, "relfilenode %d already in use in \"pg_class\"",
+				 newOid);	
 		
 	}
 
@@ -582,7 +583,7 @@ CheckNewRelFileNodeIsOk(Oid newOid, Oid reltablespace, bool relisshared, Relatio
 	pfree(rpath);
 	
 	if (collides && !relisshared)
-		elog(ERROR,"Tried to re-use a relfilenode already in use.  refilenode = %d", newOid );	
+		elog(ERROR, "oid %d already in use", newOid);	
 
 	while(GetNewObjectId() < newOid);
 

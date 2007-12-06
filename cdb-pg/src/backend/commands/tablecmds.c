@@ -46,6 +46,7 @@
 #include "executor/executor.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "nodes/print.h"
 #include "optimizer/clauses.h"
 #include "optimizer/plancat.h"
 #include "optimizer/prep.h"
@@ -1104,6 +1105,7 @@ ExecuteTruncate(TruncateStmt *stmt)
 	List	   *relids = NIL;
 	List	   *new_heap_oids = NIL;
 	List	   *new_toast_oids = NIL;
+	List	   *new_ind_oids = NIL;
 	ListCell   *cell;
 
 	/*
@@ -1189,10 +1191,11 @@ ExecuteTruncate(TruncateStmt *stmt)
 			Oid			toast_relid;
 			Oid			new_heap_oid = InvalidOid;
 			Oid			new_toast_oid = InvalidOid;
+			List	   *indoids = NIL;
 	
 			/*
-			 * Create a new empty storage file for the relation, and assign it as
-			 * the relfilenode value.	The old storage file is scheduled for
+			 * Create a new empty storage file for the relation, and assign it
+			 * as the relfilenode value. The old storage file is scheduled for
 			 * deletion at commit.
 			 */
 			new_heap_oid = setNewRelfilenode(rel);
@@ -1216,18 +1219,21 @@ ExecuteTruncate(TruncateStmt *stmt)
 			
 			new_toast_oids = lappend_oid(new_toast_oids, new_toast_oid);
 			
+			elog(DEBUG5, "Truncate in DISPATCH mode: new heap oid %u, new "
+				 "toast oid %u", new_heap_oid, new_toast_oid);
 			/*
 			 * Reconstruct the indexes to match, and we're done.
 			 */
-			reindex_relation(heap_relid, true);
+			reindex_relation(heap_relid, true, &indoids, true);
+			new_ind_oids = lappend(new_ind_oids, indoids);
 		}
-		
 		
 		if (Gp_role == GP_ROLE_DISPATCH)
 		{
 			stmt->relids = relids;
 			stmt->new_heap_oids = new_heap_oids;
 			stmt->new_toast_oids = new_toast_oids;
+			stmt->new_ind_oids = new_ind_oids;
 			
 			CdbDispatchUtilityStatement((Node *) stmt, "ExecuteTruncate");
 		}
@@ -1237,20 +1243,21 @@ ExecuteTruncate(TruncateStmt *stmt)
 		ListCell   *cell2;
 		ListCell   *cell3;
 		ListCell   *cell4;
+		ListCell   *ind_cell;
 
 #ifdef USE_ASSERT_CHECKING
 		int			len = list_length(relids);
-		Assert(len==list_length(stmt->relids));
-		Assert(len==list_length(stmt->new_heap_oids));
-		Assert(len==list_length(stmt->new_toast_oids));
+		Assert(len == list_length(stmt->relids));
+		Assert(len == list_length(stmt->new_heap_oids));
+		Assert(len == list_length(stmt->new_toast_oids));
+		Assert(len == list_length(stmt->new_ind_oids));
 #endif /* USE_ASSERT_CHECKING */
 		
 		cell2 = list_head(stmt->relids); 
 		cell3 = list_head(stmt->new_heap_oids); 
 		cell4 = list_head(stmt->new_toast_oids); 
+		ind_cell = list_head(stmt->new_ind_oids);
 		
-		
-	
 		foreach(cell, rels)
 		{
 			Relation	rel = (Relation) lfirst(cell);
@@ -1258,13 +1265,14 @@ ExecuteTruncate(TruncateStmt *stmt)
 			Oid			toast_relid;
 			Oid			new_heap_oid = lfirst_oid(cell3);
 			Oid			new_toast_oid = lfirst_oid(cell4);
+			List	   *ind_oids = ind_cell ? lfirst(ind_cell) : NIL;
 	
 			/*
-			 * Create a new empty storage file for the relation, and assign it as
-			 * the relfilenode value.	The old storage file is scheduled for
+			 * Create a new empty storage file for the relation, and assign it
+			 * as the relfilenode value. The old storage file is scheduled for
 			 * deletion at commit.
 			 */
-			setNewRelfilenodeToOid(rel,new_heap_oid);
+			setNewRelfilenodeToOid(rel, new_heap_oid);
 	
 			heap_relid = RelationGetRelid(rel);			
 			toast_relid = rel->rd_rel->reltoastrelid;
@@ -1280,15 +1288,18 @@ ExecuteTruncate(TruncateStmt *stmt)
 				setNewRelfilenodeToOid(rel, new_toast_oid);
 				heap_close(rel, NoLock);
 			}
+			elog(DEBUG5, "Truncate in EXECUTE mode: new heap oid %u, new "
+				 "toast oid %u", new_heap_oid, new_toast_oid);
 			
 			/*
 			 * Reconstruct the indexes to match, and we're done.
 			 */
-			reindex_relation(heap_relid, true);
+			reindex_relation(heap_relid, true, &ind_oids, false);
 			
 			cell2 = lnext(cell2);
 			cell3 = lnext(cell3);
 			cell4 = lnext(cell4);
+			ind_cell = ind_cell ? lnext(ind_cell) : NULL;
 		}
 	}
 }
@@ -3300,7 +3311,7 @@ ATRewriteTables(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 			 * which is all-new anyway).  We do not need
 			 * CommandCounterIncrement() because reindex_relation does it.
 			 */
-			reindex_relation(tab->relid, false);
+			reindex_relation(tab->relid, false, NULL, false);
 		}
 		else
 		{

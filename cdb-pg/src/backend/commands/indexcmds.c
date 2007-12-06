@@ -1318,7 +1318,7 @@ ReindexIndex(RangeVar *indexRelation)
 
 	ReleaseSysCache(tuple);
 
-	reindex_index(indOid);
+	reindex_index(indOid, InvalidOid);
 }
 
 /*
@@ -1359,7 +1359,7 @@ ReindexTable(RangeVar *relation)
 
 	ReleaseSysCache(tuple);
 
-	if (!reindex_relation(heapOid, true))
+	if (!reindex_relation(heapOid, true, NULL, false))
 		if (Gp_role != GP_ROLE_EXECUTE)
 		ereport(NOTICE,
 				(errmsg("table \"%s\" has no indexes",
@@ -1483,7 +1483,7 @@ ReindexDatabase(const char *databaseName, bool do_system, bool do_user)
 		StartTransactionCommand();
 		/* functions in indexes may want a snapshot set */
 		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
-		if (reindex_relation(relid, true))
+		if (reindex_relation(relid, true, NULL, false))
 			ereport(NOTICE,
 					(errmsg("table \"%s\" was reindexed",
 							get_rel_name(relid))));

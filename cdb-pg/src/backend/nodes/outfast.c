@@ -188,12 +188,10 @@ _outList(StringInfo str, List *node)
 		}
 		else if (IsA(node, OidList))
 		{
-			Oid n = lfirst_int(lc);
+			Oid n = lfirst_oid(lc);
 			appendBinaryStringInfo(str, (const char *)&n, sizeof(Oid));
 		}
-		 
 	}
-
 }
 
 /*
@@ -1771,6 +1769,7 @@ _outTruncateStmt(StringInfo str, TruncateStmt *node)
 	WRITE_NODE_FIELD(relids);
 	WRITE_NODE_FIELD(new_heap_oids);
 	WRITE_NODE_FIELD(new_toast_oids);
+	WRITE_NODE_FIELD(new_ind_oids);
 }
 
 static void

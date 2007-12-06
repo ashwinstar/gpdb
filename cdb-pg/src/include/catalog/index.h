@@ -116,7 +116,8 @@ extern double IndexBuildHeapScan(Relation heapRelation,
 
 extern void validate_index(Oid heapId, Oid indexId, Snapshot snapshot);
 
-extern void reindex_index(Oid indexId);
-extern bool reindex_relation(Oid relid, bool toast_too);
+extern Oid reindex_index(Oid indexId, Oid newrelfilenode);
+extern bool reindex_relation(Oid relid, bool toast_too, List **oidmap, 
+							 bool build_map);
 
 #endif   /* INDEX_H */
