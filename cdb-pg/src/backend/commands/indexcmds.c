@@ -557,7 +557,7 @@ DefineIndex(RangeVar *heapRelation,
 			
 			cdb_sync_oid_to_segments();
 			
-			pg_class = heap_open(RelationRelationId, ShareRowExclusiveLock);
+			pg_class = heap_open(RelationRelationId, RowExclusiveLock);
 			
 			indexRelationId = GetNewRelFileNode(tablespaceId, false, pg_class);
 		    iiopaque->heapOid = GetNewRelFileNode(tablespaceId, false, pg_class);
@@ -566,7 +566,7 @@ DefineIndex(RangeVar *heapRelation,
 			/* done with pg_class */
 			heap_close(pg_class, NoLock);
 
-			pg_type = heap_open(TypeRelationId, ShareRowExclusiveLock);
+			pg_type = heap_open(TypeRelationId, RowExclusiveLock);
 			iiopaque->comptypeOid = GetNewOid(pg_type);
 			heap_close(pg_type, NoLock);		
 			

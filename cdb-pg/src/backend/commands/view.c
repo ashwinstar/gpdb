@@ -488,9 +488,9 @@ RemoveView(const RangeVar *view, DropBehavior behavior)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		LockRelationOid(RelationRelationId, ShareRowExclusiveLock);
-		LockRelationOid(TypeRelationId, ShareRowExclusiveLock);
-		LockRelationOid(DependRelationId, ShareRowExclusiveLock);
+		LockRelationOid(RelationRelationId, RowExclusiveLock);
+		LockRelationOid(TypeRelationId, RowExclusiveLock);
+		LockRelationOid(DependRelationId, RowExclusiveLock);
 	}
 
 	performDeletion(&object, behavior);

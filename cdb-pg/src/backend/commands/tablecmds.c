@@ -513,12 +513,12 @@ DefineRelation_int(CreateStmt *stmt,
 		MemoryContext oldContext;
 	
 		/* 
-		 * We use a ShareRowExclusiveLock rather than a RowExclusiveLock so that two
-		 * DDL operations will serialize on the QD, and not deadlock between QEs
+		 * We use a RowExclusiveLock but hold it till end of transaction so that two
+		 * DDL operations will not deadlock between QEs
 		 */
-		pg_class_desc = heap_open(RelationRelationId, ShareRowExclusiveLock);
-		pg_type_desc = heap_open(TypeRelationId, ShareRowExclusiveLock);
-		LockRelationOid(DependRelationId, ShareRowExclusiveLock);
+		pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
+		pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
+		LockRelationOid(DependRelationId, RowExclusiveLock);
 		
 		cdb_sync_oid_to_segments();
 	
@@ -1006,9 +1006,9 @@ RemoveRelation(const RangeVar *relation, DropBehavior behavior)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		LockRelationOid(RelationRelationId, ShareRowExclusiveLock);
-		LockRelationOid(TypeRelationId, ShareRowExclusiveLock);
-		LockRelationOid(DependRelationId, ShareRowExclusiveLock);
+		LockRelationOid(RelationRelationId, RowExclusiveLock);
+		LockRelationOid(TypeRelationId, RowExclusiveLock);
+		LockRelationOid(DependRelationId, RowExclusiveLock);
 	}
 
 	performDeletion(&object, behavior);
@@ -2045,7 +2045,7 @@ setRelhassubclassInRelation(Oid relationId, bool relhassubclass)
 	 * If the tuple already has the right relhassubclass setting, we don't
 	 * need to update it, but we still need to issue an SI inval message.
 	 */
-	relationRelation = heap_open(RelationRelationId, Gp_role == GP_ROLE_DISPATCH ? ShareRowExclusiveLock : RowExclusiveLock);
+	relationRelation = heap_open(RelationRelationId, RowExclusiveLock);
 	tuple = SearchSysCacheCopy(RELOID,
 							   ObjectIdGetDatum(relationId),
 							   0, 0, 0);
@@ -2068,7 +2068,7 @@ setRelhassubclassInRelation(Oid relationId, bool relhassubclass)
 	}
 
 	heap_freetuple(tuple);
-	heap_close(relationRelation, Gp_role == GP_ROLE_DISPATCH ? ShareRowExclusiveLock : RowExclusiveLock);
+	heap_close(relationRelation, NoLock);
 }
 
 
@@ -2332,7 +2332,7 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 	/*
 	 * Find relation's pg_class tuple, and make sure newrelname isn't in use.
 	 */
-	relrelation = heap_open(RelationRelationId, Gp_role == GP_ROLE_DISPATCH ? ShareRowExclusiveLock : RowExclusiveLock);
+	relrelation = heap_open(RelationRelationId, RowExclusiveLock);
 
 	reltup = SearchSysCacheCopy(RELOID,
 								ObjectIdGetDatum(myrelid),
@@ -2358,7 +2358,7 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 	CatalogUpdateIndexes(relrelation, reltup);
 
 	heap_freetuple(reltup);
-	heap_close(relrelation, Gp_role == GP_ROLE_DISPATCH ? ShareRowExclusiveLock :RowExclusiveLock);
+	heap_close(relrelation, NoLock);
 
 	/*
 	 * Also rename the associated type, if any.
@@ -2646,9 +2646,9 @@ AlterTable(AlterTableStmt *stmt)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		LockRelationOid(RelationRelationId, ShareRowExclusiveLock);
-		LockRelationOid(TypeRelationId, ShareRowExclusiveLock);
-		LockRelationOid(DependRelationId, ShareRowExclusiveLock);
+		LockRelationOid(RelationRelationId, RowExclusiveLock);
+		LockRelationOid(TypeRelationId, RowExclusiveLock);
+		LockRelationOid(DependRelationId, RowExclusiveLock);
 	}
 	
 	ATController(rel,
@@ -3019,7 +3019,7 @@ ATAddToastIfNeeded(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 				
 				Assert(m<oidInfoCount);
 				
-				pg_class_desc = heap_open(RelationRelationId, ShareRowExclusiveLock);
+				pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
 				rel = heap_open(tab->relid, AccessExclusiveLock);
 			
 				if (rel->rd_rel->reltoastrelid == InvalidOid)
