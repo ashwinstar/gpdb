@@ -3308,12 +3308,16 @@ CopyFromDispatch(CopyState cstate)
 					/*
 					 * get the data type of this attribute. If it's an
 					 * array type use anyarray, or else just use as is.
-					 * (base types for domains are handled in cdbhash.c).
 					 */
 					if(attr[h_attnum - 1]->attndims > 0)
 						h_oid = ANYARRAYOID;
 					else
+					{
+						/* If this type is a domain type, get its base type. */
 						h_oid = attr[h_attnum - 1]->atttypid;
+						if (get_typtype(h_oid) == 'd')
+							h_oid = getBaseType(h_oid);
+					}
 					
 					if (nulls[h_attnum - 1] != 'n')
 						cdbhash(cdbHash, h_key, h_oid);

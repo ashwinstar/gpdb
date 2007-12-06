@@ -878,6 +878,11 @@ void add_slice_to_motion(Motion *motion,
             /* Get the equality operator's operand type. */
             op_input_types( eqopoid, &lefttype, &righttype );
             Assert( lefttype == righttype );
+
+			/* If this type is a domain type, get its base type. */
+			if (get_typtype(lefttype) == 'd')
+				lefttype = getBaseType(lefttype);
+
             motion->hashDataTypes = lappend_oid(motion->hashDataTypes, lefttype);
         }
         list_free_deep(eq);

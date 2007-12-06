@@ -158,6 +158,11 @@ cdbhashinit(CdbHash *h)
  * Add an attribute to the hash calculation.
  * **IMPORTANT: any new hard coded support for a data type in here
  * must be added to isGreenplumDbHashable() below!
+ *
+ * Note that the caller should provide the base type if the datum is
+ * of a domain type. It is quite expensive to call get_typtype() and
+ * getBaseType() here since this function gets called a lot for the
+ * same set of Datums.
  */
 void
 cdbhash(CdbHash *h, Datum datum, Oid type)
@@ -212,12 +217,6 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 	uint32		nanbuf;
 	uint32		invalidbuf;
 
-	/*
-	 * if this type is a domain type, get its base type.
-	 */
-	if (get_typtype(type) == 'd')
-		type = getBaseType(type);
-	
 	/*
 	 * Select the hash to be performed according to the field type we are adding to the
 	 * hash.
