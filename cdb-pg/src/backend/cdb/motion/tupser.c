@@ -329,10 +329,9 @@ typedef struct TupSerHeader
  *
  * This code is based on the printtup_internal_20() function in printtup.c.
  */
-TupleChunkList
-SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, int MaxChunkDataSize)
+void
+SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, TupleChunkList tcList, int MaxChunkDataSize)
 {
-	TupleChunkList tcList = NULL;
 	TupleChunkListItem tcItem = NULL;
 	MemoryContext oldCtxt;
 	TupleDesc	tupdesc;
@@ -340,6 +339,7 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, int MaxChunkDat
 		natts;
 	bool		fHandled;
 
+	AssertArg(tcList != NULL);
 	AssertArg(tuple != NULL);
 	AssertArg(pSerInfo != NULL);
 
@@ -347,12 +347,10 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, int MaxChunkDat
 	natts = tupdesc->natts;
 
 	/* get ready to go */
-	tcList = (TupleChunkList) palloc0(sizeof(TupleChunkListData));
-	if (tcList == NULL)
-	{
-		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
-						errmsg("Could not allocate space for new chunk list.")));
-	}
+	tcList->p_first = NULL;
+	tcList->p_last = NULL;
+	tcList->num_chunks = 0;
+	tcList->serialized_data_length = 0;
 	tcList->max_chunk_length = MaxChunkDataSize;
 
 	if (natts == 0)
@@ -369,7 +367,7 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, int MaxChunkDat
 		tcItem->chunk_length = TUPLE_CHUNK_HEADER_SIZE;
 		appendChunkToTCList(tcList, tcItem);
 
-		return tcList;
+		return;
 	}
 
 	tcItem = (TupleChunkListItem)
@@ -624,7 +622,7 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, int MaxChunkDat
 		 */
 	}
 
-	return tcList;
+	return;
 }
 
 /* Deserialize a HeapTuple's data from a byte-array.

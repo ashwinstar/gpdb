@@ -479,7 +479,7 @@ SendTuple(MotionLayerState *mlStates,
 		  int16 targetRoute)
 {
 	MotionNodeEntry *pMNEntry;
-	TupleChunkList tcList;
+	TupleChunkListData tcList;
 	MemoryContext oldCtxt;
 	SendReturnCode rc;
 
@@ -499,7 +499,7 @@ SendTuple(MotionLayerState *mlStates,
 	/* Create and store the serialized form, and some stats about it. */
 	oldCtxt = MemoryContextSwitchTo(mlStates->motion_layer_mctx);
 
-	tcList = SerializeTupleIntoChunks(tuple, &pMNEntry->ser_tup_info, Gp_max_tuple_chunk_size);
+	SerializeTupleIntoChunks(tuple, &pMNEntry->ser_tup_info, &tcList, Gp_max_tuple_chunk_size);
 
 	MemoryContextSwitchTo(oldCtxt);
 
@@ -509,12 +509,12 @@ SendTuple(MotionLayerState *mlStates,
 		 "\t%d bytes in serial form\n"
 		 "\tbroken into %d chunks",
 		 targetRoute,
-		 tcList->serialized_data_length,
-		 tcList->num_chunks);
+		 tcList.serialized_data_length,
+		 tcList.num_chunks);
 #endif
 
 	/* do the send. */
-	if (!SendTupleChunkToAMS(mlStates, transportStates, motNodeID, targetRoute, tcList->p_first))
+	if (!SendTupleChunkToAMS(mlStates, transportStates, motNodeID, targetRoute, tcList.p_first))
 	{
 		pMNEntry->stopped = true;
 		rc = STOP_SENDING;
@@ -522,13 +522,13 @@ SendTuple(MotionLayerState *mlStates,
 	else
 	{
 		/* update stats */
-		statSendTuple(mlStates, pMNEntry, tcList);
+		statSendTuple(mlStates, pMNEntry, &tcList);
 
 		rc = SEND_COMPLETE;
 	}
 
 	/* cleanup */
-	deleteTCList(&tcList);
+	clearTCList(&tcList);
 
 	return rc;
 }

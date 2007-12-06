@@ -87,7 +87,8 @@ extern void InitSerTupInfo(TupleDesc tupdesc, SerTupInfo * pSerInfo);
 extern void CleanupSerTupInfo(SerTupInfo * pSerInfo);
 
 /* Convert a HeapTuple into chunks ready to send out, in one pass */
-extern TupleChunkList SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, int MaxChunkDataSize);
+extern void SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo,
+									 TupleChunkList tcList, int MaxChunkDataSize);
 
 /* Deserialize a HeapTuple's data from a byte-array. */
 extern HeapTuple DeserializeTuple(SerTupInfo * pSerInfo, StringInfo serialTup);

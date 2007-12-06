@@ -66,17 +66,3 @@ clearTCList(TupleChunkList tcList)
 	tcList->serialized_data_length = 0;
 }
 
-
-/* Free the contents of a dynamically-allocated tuple chunk list, and then
- * free the list anchor itself.  A pointer to a pointer to the anchor is
- * passed in so that the pointer can be NULLed out after freeing it.
- */
-void
-deleteTCList(TupleChunkList * pTCList)
-{
-	AssertArg(pTCList != NULL);
-
-	clearTCList(*pTCList);
-	pfree(*pTCList);
-	*pTCList = NULL;
-}
