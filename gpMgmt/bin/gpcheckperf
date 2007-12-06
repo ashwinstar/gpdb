@@ -537,12 +537,12 @@ def printNetResult(result):
     for h in result:
         print '%s -> %s = %f' % (h[0], h[1], h[6])
 
-    sum = min = max = average = 0
+    sum = min = max = avg = 0
     n = map(lambda x: float(x[6]), result)
     sum = reduce(lambda x, y: x + y, n)
     min = reduce(lambda x, y: x > y and y or x, n, 9999999999)
     max = reduce(lambda x, y: x > y and x or y, n)
-    ave = float(sum) / len(result)
+    avg = float(sum) / len(result)
     
     copy = n[:]
     copy.sort()
@@ -553,7 +553,7 @@ def printNetResult(result):
     print 'sum = %.2f MB/sec' % sum
     print 'min = %.2f MB/sec' % min
     print 'max = %.2f MB/sec' % max
-    print 'ave = %.2f MB/sec' % ave
+    print 'avg = %.2f MB/sec' % avg
     print 'median = %.2f MB/sec' % median
     print ''
 
