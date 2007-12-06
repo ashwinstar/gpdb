@@ -179,7 +179,6 @@ WalRedoServerQuiesce(void)
 	WalRedoResponse walRedoResponse;
 	bool connected;
 	bool successful;
-	bool pollResponseReceived;
 
 	elog(LOG,"quiesce");
 	
@@ -201,10 +200,10 @@ WalRedoServerQuiesce(void)
 		 * See if we received a quiesced response.
 		 */
 		successful = WalRedoServerClientReceiveResponse(&walRedoResponse, &WalRedoServer_ServiceConfig.clientTransferTimeout);
-		if (successful && pollResponseReceived)
+		if (successful)
 		{
-//			elog(LOG,"received response %s",
-//				 WalRedoResponseCommandToString(walRedoResponse.response));
+			elog(LOG,"received response %s",
+				 WalRedoResponseCommandToString(walRedoResponse.response));
 		}
 	}
 
