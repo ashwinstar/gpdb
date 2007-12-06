@@ -513,6 +513,8 @@ def runNetPerfTestParallel():
 	if res and len(res) >= 6: result.append(res)
 
     # second round: test between host[1] & host[0], host[3] & host[2], ...
+    result = []
+    procList = []
     for i in xrange(len(h)):
         if i & 1 == 0: continue
         x = h[i-1]
