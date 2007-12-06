@@ -86,7 +86,15 @@ extern TupleChunkListItem makeTupleChunkListItem(TupleChunkType chunkType,
 /* Add another item to the end of a tuple chunk list. */
 extern void appendChunkToTCList(TupleChunkList tcList, TupleChunkListItem tcItem);
 
+/* Provide a chunk-list-item cache */
+typedef struct {
+	int len;
+	TupleChunkListItem items;
+} TupleChunkListCache;
+
+extern TupleChunkListItem getChunkFromCache(TupleChunkListCache *cache);
+
 /* Remove the contents of a TupleChunkList, and reset its state to "empty." */
-extern void clearTCList(TupleChunkList tcList);
+extern void clearTCList(TupleChunkListCache *cache, TupleChunkList tcList);
 
 #endif   /* TUPCHUNKLIST_H */

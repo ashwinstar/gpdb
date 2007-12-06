@@ -499,7 +499,7 @@ SendTuple(MotionLayerState *mlStates,
 	/* Create and store the serialized form, and some stats about it. */
 	oldCtxt = MemoryContextSwitchTo(mlStates->motion_layer_mctx);
 
-	SerializeTupleIntoChunks(tuple, &pMNEntry->ser_tup_info, &tcList, Gp_max_tuple_chunk_size);
+	SerializeTupleIntoChunks(tuple, &pMNEntry->ser_tup_info, &tcList);
 
 	MemoryContextSwitchTo(oldCtxt);
 
@@ -528,7 +528,7 @@ SendTuple(MotionLayerState *mlStates,
 	}
 
 	/* cleanup */
-	clearTCList(&tcList);
+	clearTCList(&pMNEntry->ser_tup_info.chunkCache, &tcList);
 
 	return rc;
 }
@@ -841,7 +841,7 @@ EndMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool flushCommLa
 		 * Clean up the chunk-sorter entry, then remove it from the hash
 		 * table.
 		 */
-		clearTCList(&pCSEntry->chunk_list);
+		clearTCList(&pMNEntry->ser_tup_info.chunkCache, &pCSEntry->chunk_list);
 		if (pMNEntry->preserve_order)	/* Clean up the tuple-store. */
 			htfifo_destroy(pCSEntry->ready_tuples);
 

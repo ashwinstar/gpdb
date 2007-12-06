@@ -11,6 +11,7 @@
 #include "postgres.h"
 
 #include "catalog/pg_type.h"
+#include "cdb/cdbmotion.h"
 #include "cdb/tupser.h"
 #include "libpq/pqformat.h"
 #include "storage/smgr.h"
@@ -29,20 +30,20 @@
  */
 static MemoryContext s_tupSerMemCtxt = NULL;
 
-static void addByteStringToChunkList(TupleChunkList tcList, char *data, int datalen);
+static void addByteStringToChunkList(TupleChunkList tcList, char *data, int datalen, TupleChunkListCache *cache);
 
-#define addCharToChunkList(tcList, x) \
+#define addCharToChunkList(tcList, x, c)							\
 	do															\
 	{															\
 		char y = (x);											\
-		addByteStringToChunkList((tcList), (char *)&y, sizeof(y));	\
+		addByteStringToChunkList((tcList), (char *)&y, sizeof(y), (c));	\
 	} while (0)
 
-#define addInt32ToChunkList(tcList, x) \
+#define addInt32ToChunkList(tcList, x, c)							\
 	do															\
 	{															\
 		int32 y = (x);											\
-		addByteStringToChunkList((tcList), (char *)&y, sizeof(y));	\
+		addByteStringToChunkList((tcList), (char *)&y, sizeof(y), (c));	\
 	} while (0)
 
 
@@ -116,6 +117,9 @@ InitSerTupInfo(TupleDesc tupdesc, SerTupInfo * pSerInfo)
 
 	/* Store the tuple-descriptor so we can use it later. */
 	pSerInfo->tupdesc = tupdesc;
+
+	pSerInfo->chunkCache.len = 0;
+	pSerInfo->chunkCache.items = NULL;
 
 	/*
 	 * If we have some attributes, go ahead and prepare the information for
@@ -234,7 +238,6 @@ CleanupSerTupInfo(SerTupInfo * pSerInfo)
 	 *
 	 * NOTE:  This works because data-structure was bzero()ed in init call.
 	 */
-
 	if (pSerInfo->myinfo != NULL)
 		pfree(pSerInfo->myinfo);
 	pSerInfo->myinfo = NULL;
@@ -248,6 +251,15 @@ CleanupSerTupInfo(SerTupInfo * pSerInfo)
 	pSerInfo->nulls = NULL;
 
 	pSerInfo->tupdesc = NULL;
+
+	while (pSerInfo->chunkCache.items != NULL)
+	{
+		TupleChunkListItem item;
+
+		item = pSerInfo->chunkCache.items;
+		pSerInfo->chunkCache.items = item->p_next;
+		pfree(item);
+	}
 }
 
 /*
@@ -257,7 +269,7 @@ CleanupSerTupInfo(SerTupInfo * pSerInfo)
  * heap overruns and that way lies pain.
  */
 static void
-addByteStringToChunkList(TupleChunkList tcList, char *data, int datalen)
+addByteStringToChunkList(TupleChunkList tcList, char *data, int datalen, TupleChunkListCache *chunkCache)
 {
 	TupleChunkListItem tcItem;
 	int			remain,
@@ -302,8 +314,7 @@ addByteStringToChunkList(TupleChunkList tcList, char *data, int datalen)
 		if (remain == 0)
 			break;
 
-		tcItem = (TupleChunkListItem)
-			palloc0(sizeof(TupleChunkListItemData) + tcList->max_chunk_length);
+		tcItem = getChunkFromCache(chunkCache);
 		if (tcItem == NULL)
 		{
 			ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
@@ -330,7 +341,7 @@ typedef struct TupSerHeader
  * This code is based on the printtup_internal_20() function in printtup.c.
  */
 void
-SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, TupleChunkList tcList, int MaxChunkDataSize)
+SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, TupleChunkList tcList)
 {
 	TupleChunkListItem tcItem = NULL;
 	MemoryContext oldCtxt;
@@ -351,12 +362,11 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, TupleChunkList 
 	tcList->p_last = NULL;
 	tcList->num_chunks = 0;
 	tcList->serialized_data_length = 0;
-	tcList->max_chunk_length = MaxChunkDataSize;
+	tcList->max_chunk_length = Gp_max_tuple_chunk_size;
 
 	if (natts == 0)
 	{
-		tcItem = (TupleChunkListItem)
-			palloc0(sizeof(TupleChunkListItemData) + TUPLE_CHUNK_HEADER_SIZE);
+		tcItem = getChunkFromCache(&pSerInfo->chunkCache);
 		if (tcItem == NULL)
 		{
 			ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
@@ -370,8 +380,7 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, TupleChunkList 
 		return;
 	}
 
-	tcItem = (TupleChunkListItem)
-		palloc0(sizeof(TupleChunkListItemData) + tcList->max_chunk_length);
+	tcItem = getChunkFromCache(&pSerInfo->chunkCache);
 	if (tcItem == NULL)
 	{
 		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
@@ -402,15 +411,15 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, TupleChunkList 
 		tsh.natts = HeapTupleHeaderGetNatts(t_data);
 		tsh.infomask = t_data->t_infomask;
 
-		addByteStringToChunkList(tcList, (char *)&tsh, sizeof(TupSerHeader));
+		addByteStringToChunkList(tcList, (char *)&tsh, sizeof(TupSerHeader), &pSerInfo->chunkCache);
 		/* If we don't have any attributes which have been toasted, we
 		 * can be very very simple: just send the raw data. */
 		if ((tsh.infomask & (HEAP_HASEXTERNAL | HEAP_HASEXTENDED)) == 0)
 		{
 			if (nullslen)
-				addByteStringToChunkList(tcList, (char *)t_data->t_bits, nullslen);
+				addByteStringToChunkList(tcList, (char *)t_data->t_bits, nullslen, &pSerInfo->chunkCache);
 
-			addByteStringToChunkList(tcList, (char *)t_data + t_data->t_hoff, datalen);
+			addByteStringToChunkList(tcList, (char *)t_data + t_data->t_hoff, datalen, &pSerInfo->chunkCache);
 		}
 		else
 		{
@@ -427,7 +436,7 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, TupleChunkList 
 			MemoryContextSwitchTo(oldCtxt);
 
 			/* Send the nulls character-array. */
-			addByteStringToChunkList(tcList, pSerInfo->nulls, natts);
+			addByteStringToChunkList(tcList, pSerInfo->nulls, natts, &pSerInfo->chunkCache);
 
 			/*
 			 * send the attributes of this tuple: NOTE anything which allocates
@@ -473,10 +482,10 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, TupleChunkList 
 				switch (attrInfo->atttypid)
 				{
 					case INT4OID:
-						addInt32ToChunkList(tcList, DatumGetInt32(attr));
+						addInt32ToChunkList(tcList, DatumGetInt32(attr), &pSerInfo->chunkCache);
 						break;
 					case CHAROID:
-						addCharToChunkList(tcList, DatumGetChar(attr));
+						addCharToChunkList(tcList, DatumGetChar(attr), &pSerInfo->chunkCache);
 						break;
 					case BPCHAROID:
 					case VARCHAROID:
@@ -487,15 +496,15 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, TupleChunkList 
 						text	   *pText = DatumGetTextP(attr);
 						int32		textSize = VARSIZE(pText) - VARHDRSZ;
 
-						addInt32ToChunkList(tcList, textSize);
-						addByteStringToChunkList(tcList, (char *) VARDATA(pText), textSize);
+						addInt32ToChunkList(tcList, textSize, &pSerInfo->chunkCache);
+						addByteStringToChunkList(tcList, (char *) VARDATA(pText), textSize, &pSerInfo->chunkCache);
 						break;
 					}
 					case DATEOID:
 					{
 						DateADT date = DatumGetDateADT(attr);
 
-						addByteStringToChunkList(tcList, (char *) &date, sizeof(DateADT));
+						addByteStringToChunkList(tcList, (char *) &date, sizeof(DateADT), &pSerInfo->chunkCache);
 						break;
 					}
 					case NUMERICOID:
@@ -508,8 +517,8 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, TupleChunkList 
 						Numeric		num = DatumGetNumeric(attr);
 						int32		numSize = VARSIZE(num) - VARHDRSZ;
 
-						addInt32ToChunkList(tcList, numSize);
-						addByteStringToChunkList(tcList, (char *) VARDATA(num), numSize);
+						addInt32ToChunkList(tcList, numSize, &pSerInfo->chunkCache);
+						addByteStringToChunkList(tcList, (char *) VARDATA(num), numSize, &pSerInfo->chunkCache);
 						break;
 					}
 
@@ -523,8 +532,8 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, TupleChunkList 
 																		   PointerGetDatum(aip)));
 
 						aclSize = strlen(outputstring);
-						addInt32ToChunkList(tcList, aclSize);
-						addByteStringToChunkList(tcList, outputstring,aclSize);
+						addInt32ToChunkList(tcList, aclSize, &pSerInfo->chunkCache);
+						addByteStringToChunkList(tcList, outputstring,aclSize, &pSerInfo->chunkCache);
 						break;
 					}	
 
@@ -535,8 +544,8 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, TupleChunkList 
 
 						smgrstr = DatumGetCString(DirectFunctionCall1(smgrout, 0));
 						strsize = strlen(smgrstr);
-						addInt32ToChunkList(tcList, strsize);
-						addByteStringToChunkList(tcList, smgrstr, strsize);
+						addInt32ToChunkList(tcList, strsize, &pSerInfo->chunkCache);
+						addByteStringToChunkList(tcList, smgrstr, strsize, &pSerInfo->chunkCache);
 						break;
 					}
 
@@ -580,9 +589,9 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, TupleChunkList 
 				MemoryContextSwitchTo(oldCtxt);
 
 				/* We assume the result will not have been toasted */
-				addInt32ToChunkList(tcList, VARSIZE(outputbytes) - VARHDRSZ);
+				addInt32ToChunkList(tcList, VARSIZE(outputbytes) - VARHDRSZ, &pSerInfo->chunkCache);
 				addByteStringToChunkList(tcList, VARDATA(outputbytes),
-										 VARSIZE(outputbytes) - VARHDRSZ);
+										 VARSIZE(outputbytes) - VARHDRSZ, &pSerInfo->chunkCache);
 
 				/*
 				 * this was allocated in our reset-able context, but we *are* done
@@ -882,7 +891,7 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 			 * the sender is indicating that there was a row with no attributes:
 			 * return a NULL tuple
 			 */
-			clearTCList(tcList);
+			clearTCList(NULL, tcList);
 
 			htup = heap_formtuple(pSerInfo->tupdesc, pSerInfo->values, pSerInfo->nulls);
 
@@ -964,7 +973,7 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 	while (tcItem != NULL);
 
 	/* we've finished with the TCList, free it now. */
-	clearTCList(tcList);
+	clearTCList(NULL, tcList);
 
 	{
 		TupSerHeader *tshp;

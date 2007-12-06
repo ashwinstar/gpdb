@@ -12,7 +12,7 @@
 
 #include <arpa/inet.h>
 
-#include "cdb/tupchunk.h"
+#include "cdb/cdbmotion.h"
 #include "cdb/tupser.h"
 #include "lib/stringinfo.h"
 
@@ -43,8 +43,48 @@ appendChunkToTCList(TupleChunkList tcList, TupleChunkListItem tcItem)
 	}
 }
 
+static int gp_interconnect_chunk_cache=10;
+
+TupleChunkListItem
+getChunkFromCache(TupleChunkListCache *cache)
+{
+	TupleChunkListItem item;
+
+	if (cache->items != NULL)
+	{
+		item = cache->items;
+		cache->items = item->p_next;
+		cache->len = cache->len - 1;
+
+		MemSetAligned(item, 0, sizeof(TupleChunkListItemData) + Gp_max_tuple_chunk_size);
+	}
+	else
+	{
+		item = (TupleChunkListItem)
+			palloc0(sizeof(TupleChunkListItemData) + Gp_max_tuple_chunk_size);
+	}
+
+	return item;
+}
+
+static void
+putChunkToCache(TupleChunkListCache *cache, TupleChunkListItem item)
+{
+	if (cache->len > gp_interconnect_chunk_cache)
+	{
+		pfree(item);
+	}
+	else
+	{
+		item->p_next = cache->items;
+		cache->items = item;
+		cache->len = cache->len + 1;
+	}
+	return;
+}
+
 void
-clearTCList(TupleChunkList tcList)
+clearTCList(TupleChunkListCache *cache, TupleChunkList tcList)
 {
 	TupleChunkListItem tcItem,
 				tcNext;
@@ -55,7 +95,12 @@ clearTCList(TupleChunkList tcList)
 	while (tcItem != NULL)
 	{
 		tcNext = tcItem->p_next;
-		pfree(tcItem);
+
+		if (cache != NULL)
+			putChunkToCache(cache, tcItem);
+		else
+			pfree(tcItem);
+
 		tcItem = tcNext;
 	}
 

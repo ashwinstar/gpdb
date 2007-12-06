@@ -36,7 +36,8 @@ typedef enum ReceiveReturnCode
 }	ReceiveReturnCode;
 
 
-
+/* Max message size */
+extern int Gp_max_tuple_chunk_size;
 
 /* API FUNCTION CALLS */
 

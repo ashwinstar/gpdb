@@ -63,12 +63,13 @@ typedef struct SerAttrInfo
 #endif
 }	SerAttrInfo;
 
-
 /* The information for sending and receiving tuples that match a particular
  * description.
  */
 typedef struct SerTupInfo
 {
+	TupleChunkListCache chunkCache;
+
 	TupleDesc	tupdesc;		/* The attr info we are set up for */
 
 	SerAttrInfo *myinfo;		/* Cached info about each attr */
@@ -87,8 +88,7 @@ extern void InitSerTupInfo(TupleDesc tupdesc, SerTupInfo * pSerInfo);
 extern void CleanupSerTupInfo(SerTupInfo * pSerInfo);
 
 /* Convert a HeapTuple into chunks ready to send out, in one pass */
-extern void SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo,
-									 TupleChunkList tcList, int MaxChunkDataSize);
+extern void SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, TupleChunkList tcList);
 
 /* Deserialize a HeapTuple's data from a byte-array. */
 extern HeapTuple DeserializeTuple(SerTupInfo * pSerInfo, StringInfo serialTup);
