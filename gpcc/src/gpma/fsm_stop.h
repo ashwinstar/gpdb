@@ -1,15 +1,16 @@
 static apr_status_t a_stop_do(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = _cmdslot;
-    int i, e;
+    int i;
     struct json_object *obj;
     gpcc_event_t *evt;
+    gpcc_net_packet_t *pkt;
 
     gpcc_log_info("a_stop_do...total = %d", cmdslot->u.stop.ntotal);
     for (i = 0 ; i < cmdslot->u.stop.ntotal ; i++) {
 	char *msg;
 	int len = 0;
-
+	int j = 0;
 	gpcc_log_info("node=%s, mode = %s, host = %s, port =%d, dir=%s",
 		      cmdslot->u.stop.req[i].node,
 		      cmdslot->u.stop.req[i].mode,
@@ -17,24 +18,17 @@ static apr_status_t a_stop_do(gpcc_event_t *ev, void *_cmdslot)
 		      cmdslot->u.stop.req[i].port,
 		      cmdslot->u.stop.req[i].datadir);	
 
-	{
-	    int j = 0;
-	    
-	    for (j = 0 ; j < gpma.seg_max ; j++) {
-		if (strcmp(cmdslot->u.start.req[i].unit, gpma.seg_cmdtab[j]->cmdname) == 0)
-		    break;
-	    }
-	    if (j >= gpma.seg_max) {
-		gpcc_warning(FLINE, "[Error] invalid segment name %s", cmdslot->u.start.req[i].unit);
-		evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-		gpcc_evqueue_put(gpma.evq, evt);
-		return 0;
-	    }
-	    
-	    evt = gpcc_event_alloc(UNIT_STOP_EVENT, gpma.seg_cmdtab[j]->cmdidx, 0);
-	    gpcc_evqueue_put(gpma.evq, evt);
+	for (j = 0 ; j < gpma.seg_max ; j++) {
+	    if (strcmp(cmdslot->u.start.req[i].unit, gpma.seg_cmdtab[j]->cmdname) == 0)
+		break;
 	}
-	      
+	if (j >= gpma.seg_max) {
+	    gpcc_warning(FLINE, "[Error] invalid segment name %s", cmdslot->u.start.req[i].unit);
+	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	    gpcc_evqueue_put(gpma.evq, evt);
+	    return 0;
+	}
+
 	obj = gpcc_json_segment_request(0,
 					cmdslot->u.stop.req[i].unit,
 					"stop",
@@ -45,22 +39,15 @@ static apr_status_t a_stop_do(gpcc_event_t *ev, void *_cmdslot)
 	msg = json_object_to_json_string(obj);
 	len = strlen(msg) + 1;
 
-	gpcc_log_info("send packetx %d bytes: %s", len, msg);
-	if (0 != (e = gpcc_net_send_packetx(cmdslot->u.stop.req[i].node,
-					    SEGMENT_REQUEST_MSG,
-					    cmdslot->cmdidx,
-					    0,
-					    msg, len))) {
-	    gpcc_warning(FLINE, "gpcc_net_send_packetx %d bytes to host %s failed",
-			 len, cmdslot->u.stop.req[i].node);
-	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-	    gpcc_evqueue_put(gpma.evq, evt);
-	    json_object_put(obj);
-	    return 0;
-	}
+	evt = gpcc_event_alloc(UNIT_STOP_EVENT, gpma.seg_cmdtab[j]->cmdidx, sizeof(*pkt) + len);
+	pkt = (gpcc_net_packet_t *) evt->pdata;
+	pkt->mh.sndidx = cmdslot->cmdidx;
+	pkt->mh.rcvidx = cmdslot->u.start.parent_cmdidx;
+	pkt->mh.len = len;
+	strcpy(pkt->payload, msg);
+	gpcc_evqueue_put(gpma.evq, evt);
+    
 	json_object_put(obj);
-
-	gpcc_log_info("send packetx end");
     }
 
     cmdslot->countdown = 2 * 60;
@@ -75,7 +62,7 @@ static apr_status_t a_stop_reply(gpcc_event_t *ev, void *_cmdslot)
     struct json_object *obj = 0;
     gpcc_event_t *evt = 0;
     char *seg, *status, *reason;
-    int i, j;
+    int i;
 
     pkt = (gpcc_net_packet_t *) ev->pdata;
     obj = json_tokener_parse(pkt->payload);
@@ -83,17 +70,6 @@ static apr_status_t a_stop_reply(gpcc_event_t *ev, void *_cmdslot)
     status = gpcc_json_object_get_string(obj, "status", "failed");
     reason = gpcc_json_object_get_string(obj, "reason", "");
     
-    for (j = 0 ; j < gpma.seg_max ; j++) {
-	if (strcmp(seg, gpma.seg_cmdtab[j]->cmdname) == 0)
-	    break;
-    }
-    if (j >= gpma.seg_max) {
-	gpcc_warning(FLINE, "[Error] invalid segment name %s", seg);
-	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-	gpcc_evqueue_put(gpma.evq, evt);
-	return 0;
-    }
-	    
     for (i = 0 ; i < cmdslot->u.stop.ntotal ; i++) {
 	if (strcmp(seg, cmdslot->u.stop.req[i].unit) == 0) 
 	    break;
@@ -110,12 +86,8 @@ static apr_status_t a_stop_reply(gpcc_event_t *ev, void *_cmdslot)
     
     if (strcmp(status, "ok") == 0) {
 	cmdslot->u.stop.nsuccess++;
-	evt = gpcc_event_alloc(SUCCESS_EVENT, gpma.seg_cmdtab[j]->cmdidx, 0);
-	gpcc_evqueue_put(gpma.evq, evt);
     } else {
 	cmdslot->u.stop.nfailed++;
-	evt = gpcc_event_alloc(FAILURE_EVENT, gpma.seg_cmdtab[j]->cmdidx, 0);
-	gpcc_evqueue_put(gpma.evq, evt);
 	gpcc_warning(FLINE, "[Error] segment reply failed: segment=%s, status=%s, reason=%s", seg, status, reason);
     }
 

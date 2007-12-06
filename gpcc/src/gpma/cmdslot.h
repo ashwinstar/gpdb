@@ -229,6 +229,7 @@ struct cmdslot_t {
 	    char *datadir;
 	    int nodeid;
 	    char *node;
+	    int parentidx;
 	} segment;
     } u;
 };
