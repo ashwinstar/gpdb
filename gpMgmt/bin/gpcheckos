@@ -304,7 +304,7 @@ def print_fix():
             print '[FIX %s] please check your network link' % h
             for (key, value) in errors[h]['net']:
                 if opt['-u'] != 'root':
-                    print 'please run gpcheckos as root to check the network link.'
+                    print 'warning: network speed not checked because of insufficient privilege'
                 else:
                     print '%s = %s' % (key, value)
 
