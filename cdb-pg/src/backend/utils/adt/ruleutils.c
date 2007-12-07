@@ -2318,6 +2318,7 @@ get_rule_grouplist(List *grplist, List *tlist,
 		if (node == NULL)
 		{
 			/* do nothing */
+			continue;
 		}
 
 		else if (IsA(node, List))
@@ -4408,20 +4409,16 @@ static void
 get_windowspec_expr(WindowSpec *spec, deparse_context *context)
 {
 	StringInfo buf = context->buf;
-	char *sep = "";
 
 	appendStringInfoChar(buf, '(');
 
 	if (spec->parent)
 	{
-		appendStringInfo(buf, "%s%s", sep, quote_identifier(spec->parent));
-		sep = " ";
+		appendStringInfo(buf, "%s", quote_identifier(spec->parent));
 	}
 	else
 	{
 		/* parent and partition are mutually exclusive */
-		appendStringInfoString(buf, sep);
-		sep = " ";
 		if (spec->partition)
 			get_sortlist_expr(spec->partition, context, "PARTITION BY ");
 	}	
@@ -4451,9 +4448,7 @@ get_windowspec_expr(WindowSpec *spec, deparse_context *context)
 		}
 		if (display_order)
 		{
-			appendStringInfoString(buf, sep);
-			sep = " ";
-			get_sortlist_expr(spec->order, context, "ORDER BY ");
+			get_sortlist_expr(spec->order, context, " ORDER BY ");
 		}
 	}
 	
@@ -4461,15 +4456,12 @@ get_windowspec_expr(WindowSpec *spec, deparse_context *context)
 	{
 		WindowFrame *f = spec->frame;
 		
-		appendStringInfoString(buf, sep);
-		sep = " ";
-
-		appendStringInfo(buf, "%s", f->is_rows ? "ROWS " : "RANGE ");
+		appendStringInfo(buf, " %s ", f->is_rows ? "ROWS" : "RANGE");
 		if (f->is_between)
 		{
 			appendStringInfo(buf, "BETWEEN ");
 			get_windowedge_expr(f->trail, context);
-			appendStringInfo(buf, "AND ");
+			appendStringInfo(buf, " AND ");
 			get_windowedge_expr(f->lead, context);
 		}
 		else
