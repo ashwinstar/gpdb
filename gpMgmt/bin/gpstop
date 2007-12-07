@@ -303,10 +303,12 @@ PROCESS_SHUTDOWN () {
 			LOG_MSG "[INFO]:-No current instance connections identified, will continue with shutdown"
 		fi	
 		fi
-		#Shutdown QD hosts first
+
+		#Collect information for QD standby shutdown
 		if [ x"" != x"$STOP_SYNC" ];then
-			STOP_STANDBY_SERVER
+			STOP_STANDBY_SERVER_COLLECT
 		fi
+		
 		LOG_MSG "[INFO]:-Commencing Master instance shutdown with mode=$MODE" 1
 		LOG_MSG "[INFO]:-Master host=$QD_NAME" 1
 		LOG_MSG "[INFO]:-Master segment instance directory=$MASTER_DATA_DIRECTORY" 1
@@ -333,6 +335,12 @@ PROCESS_SHUTDOWN () {
 				$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE -l ${MASTER_DATA_DIRECTORY}.log >/dev/null 2>&1
 				ERROR_CHK $? "shutdown Master instance on $QD_NAME" 2 ;;
 		esac
+		
+		#Shutdown QD standby second
+		if [ x"" != x"$STOP_SYNC" ];then
+			STOP_STANDBY_SERVER_EXECUTE
+		fi		
+		
 		PARALLEL_SETUP  $PARALLEL_STATUS_FILE
 		TOTAL_FAILED_COUNT=0
 		for QNODE in "${QE_ARRAY[@]}"
@@ -421,6 +429,29 @@ STOP_STANDBY_SERVER () {
 		GET_STANDBY_DETAILS
 		STANDBY_HOSTNAME=`$ECHO ${STANDBY_ARRAY[@]}|$CUT -d"|" -f1`
 		STANDBY_DATADIR=`$ECHO ${STANDBY_ARRAY[@]}|$CUT -d"|" -f2`
+		STOP_SYNC_PROCESS $STANDBY_HOSTNAME $STANDBY_DATADIR
+	else
+		LOG_MSG "[INFO]:-No standby master host configured" 1
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+STOP_STANDBY_SERVER_COLLECT () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Collecting information for standby server shutdown" 1
+	GET_STANDBY_COUNT
+	if [ $STANDBY_COUNT -ne 0 ];then
+		GET_STANDBY_DETAILS
+		STANDBY_HOSTNAME=`$ECHO ${STANDBY_ARRAY[@]}|$CUT -d"|" -f1`
+		STANDBY_DATADIR=`$ECHO ${STANDBY_ARRAY[@]}|$CUT -d"|" -f2`
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+STOP_STANDBY_SERVER_EXECUTE () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Processing standby server shutdown" 1
+	if [ $STANDBY_COUNT -ne 0 ];then
 		STOP_SYNC_PROCESS $STANDBY_HOSTNAME $STANDBY_DATADIR
 	else
 		LOG_MSG "[INFO]:-No standby master host configured" 1

@@ -39,6 +39,7 @@
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "pgstat.h"
+#include "postmaster/postmaster.h"
 #include "postmaster/bgwriter.h"
 #include "postmaster/walsendserver.h"
 #include "storage/proc.h"
@@ -6421,11 +6422,16 @@ ShutdownXLOG(int code __attribute__((unused)) , Datum arg __attribute__((unused)
 	ereport(LOG,
 			(errmsg("shutting down")));
 
-	CreateCheckPoint(true, true);
-	ShutdownCLOG();
-	ShutdownSUBTRANS();
-	ShutdownMultiXact();
-	ShutdownDistributedXidMap();
+	if (!GPStandby())
+	{
+		CreateCheckPoint(true, true);
+		ShutdownCLOG();
+		ShutdownSUBTRANS();
+		ShutdownMultiXact();
+		ShutdownDistributedXidMap();
+	}
+	else
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"skipping shutdown steps for standby");
 
 	ereport(LOG,
 			(errmsg("database system is shut down")));

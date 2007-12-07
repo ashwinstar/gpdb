@@ -367,6 +367,8 @@ BackgroundWriterMain(void)
 			ShutdownXLOG(0, 0);
 			DumpFreeSpaceMap(0, 0);
 			/* Normal exit from the bgwriter is here */
+			ereport((Debug_print_qd_mirroring ? LOG : DEBUG5),
+					(errmsg("normal exit from background writer")));
 			proc_exit(0);		/* done */
 		}
 

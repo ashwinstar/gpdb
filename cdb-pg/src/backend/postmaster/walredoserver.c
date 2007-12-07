@@ -202,8 +202,8 @@ WalRedoServerQuiesce(void)
 		successful = WalRedoServerClientReceiveResponse(&walRedoResponse, &WalRedoServer_ServiceConfig.clientTransferTimeout);
 		if (successful)
 		{
-			elog(LOG,"received response %s",
-				 WalRedoResponseCommandToString(walRedoResponse.response));
+//			elog(LOG,"received response %s",
+//				 WalRedoResponseCommandToString(walRedoResponse.response));
 		}
 	}
 

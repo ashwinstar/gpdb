@@ -457,6 +457,11 @@ bool GPPostmaster()
 	return (Gp_entry_postmaster);
 }
 
+bool GPStandby()
+{
+	return (SyncMaster);
+}
+
 /*
  * gpsyncMaster main entry point
  */
@@ -2273,17 +2278,6 @@ pmdie(SIGNAL_ARGS)
 	PG_SETMASK(&UnBlockSig);
 
 	errno = save_errno;
-
-// #ifdef nothing
-    /* for CdbSyncMaster */
-    if (SyncMaster)
-    {
-        shmem_exit(0);
-        ereport(LOG,
-                (errmsg("Greenplum Database sync master is shut down")));
-        exit(0);
-    }
-// #endif
 }
 
 /*
