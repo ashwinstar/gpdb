@@ -4455,18 +4455,44 @@ get_windowspec_expr(WindowSpec *spec, deparse_context *context)
 	if (spec->frame)
 	{
 		WindowFrame *f = spec->frame;
+
+		/*
+		 * Like the ORDER-BY clause, if spec has a parent and that
+		 * parent defines framing, don't display the frame clause
+		 * here.
+		 */
+		bool display_frame = true;
 		
-		appendStringInfo(buf, " %s ", f->is_rows ? "ROWS" : "RANGE");
-		if (f->is_between)
+		if (spec->parent)
 		{
-			appendStringInfo(buf, "BETWEEN ");
-			get_windowedge_expr(f->trail, context);
-			appendStringInfo(buf, " AND ");
-			get_windowedge_expr(f->lead, context);
+			ListCell *l;
+			foreach(l, context->query->windowClause)
+			{
+				WindowSpec *tmp = (WindowSpec *)lfirst(l);
+
+				if (tmp->name && strcmp(spec->parent, tmp->name) == 0 &&
+					tmp->frame)
+				{
+					display_frame = false;
+					break;
+				}
+			}
 		}
-		else
+
+		if (display_frame)
 		{
-			get_windowedge_expr(f->trail, context);
+			appendStringInfo(buf, " %s ", f->is_rows ? "ROWS" : "RANGE");
+			if (f->is_between)
+			{
+				appendStringInfo(buf, "BETWEEN ");
+				get_windowedge_expr(f->trail, context);
+				appendStringInfo(buf, " AND ");
+				get_windowedge_expr(f->lead, context);
+			}
+			else
+			{
+				get_windowedge_expr(f->trail, context);
+			}
 		}
 
 		/* exclusion statement */
