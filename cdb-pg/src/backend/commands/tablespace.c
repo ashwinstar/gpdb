@@ -54,6 +54,7 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_tablespace.h"
+#include "catalog/pg_type.h"
 #include "commands/comment.h"
 #include "commands/tablespace.h"
 #include "miscadmin.h"
@@ -411,6 +412,76 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	values[Anum_pg_tablespace_spclocation - 1] =
 		DirectFunctionCall1(textin, CStringGetDatum(location));
 	nulls[Anum_pg_tablespace_spcacl - 1] = 'n';
+
+	/* CDB include the distinct primary and mirror directory locations on QD */
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		ArrayType	*prilocations = NULL;
+		ArrayType	*mirlocations = NULL;
+		char		*loc;
+		Datum		p;
+		Datum		m;
+		int			pindex = 0;
+		int			mindex = 0;
+		
+		/* Primaries */
+		if (stmt->locations)
+		{
+			foreach(cell, stmt->locations)
+			{
+				Value * v = lfirst(cell);
+				loc = pstrdup(v->val.str);
+				p = DirectFunctionCall1(textin, CStringGetDatum(loc));
+				pindex++;		/* array starts at 1 */
+
+				if (prilocations) 
+				{
+					prilocations =  array_set(prilocations, 1, &pindex,
+											  p, false, -1, -1, false, 'i');
+				}
+				else
+				{
+					prilocations = construct_array(&p, 1, 
+												   TEXTOID, -1, false, 'i');
+				}
+
+			}
+
+			values[Anum_pg_tablespace_spcprilocations - 1] =
+				PointerGetDatum(prilocations);
+		}
+
+		/* Mirrors */
+		if (stmt->mirrorlocations)
+		{
+			foreach(cell, stmt->mirrorlocations)
+			{
+				Value * v = lfirst(cell);
+				loc = pstrdup(v->val.str);
+				m = DirectFunctionCall1(textin, CStringGetDatum(loc));
+				mindex++;		/* array starts at 1 */
+
+				if (mirlocations) 
+				{
+					mirlocations =  array_set(mirlocations, 1, &mindex, 
+											  m, false, -1, -1, false, 'i');
+				}
+				else
+				{
+					mirlocations = construct_array(&m, 1, 
+												   TEXTOID, -1, false, 'i');
+				}
+
+			}
+
+			values[Anum_pg_tablespace_spcmirlocations - 1] =
+				PointerGetDatum(mirlocations);
+		}
+		else
+		{
+			nulls[Anum_pg_tablespace_spcmirlocations - 1] = 'n';
+		}
+	}
 
 	tuple = heap_formtuple(rel->rd_att, values, nulls);
 
