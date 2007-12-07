@@ -194,6 +194,7 @@ bool		Debug_permit_same_host_standby = false;
 bool 		Debug_print_semaphore_detail = false;
 bool		Debug_disable_distributed_snapshot = false;
 bool 		Debug_abort_after_distributed_prepared = false;
+bool		Debug_print_tablespace = false;
 
 #define DEBUG_DTM_ACTION_PRIMARY_DEFAULT true
 bool		Debug_dtm_action_primary = DEBUG_DTM_ACTION_PRIMARY_DEFAULT;
@@ -1546,6 +1547,16 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_abort_after_distributed_prepared,
+		false, NULL, NULL
+	},
+	
+	{
+		{"debug_print_tablespace", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print TABLESPACE debugging information."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_print_tablespace,
 		false, NULL, NULL
 	},
 	

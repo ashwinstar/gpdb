@@ -251,7 +251,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 		
 		for (i = 0;i< cdb_component_dbs->total_segment_dbs;i++)
 		{
-			elog(DEBUG5,"%d %s",cdb_component_dbs->segment_db_info[i].segindex,cdb_component_dbs->segment_db_info[i].hostname);
+			elog((Debug_print_tablespace ? LOG : DEBUG5),"%d %s",cdb_component_dbs->segment_db_info[i].segindex,cdb_component_dbs->segment_db_info[i].hostname);
 			if (cdb_component_dbs->segment_db_info[i].definedprimary && 
 				cdb_component_dbs->segment_db_info[i].segindex >=0 &&
 			    strcmp(firsthost, cdb_component_dbs->segment_db_info[i].hostname)==0)
@@ -337,7 +337,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 		}
 	}
 	
-	elog(DEBUG3,"Create Tablespace Using location %s", location);
+	elog((Debug_print_tablespace ? LOG : DEBUG3),"Create Tablespace Using location %s", location);
 	
 		
 	/* Unix-ify the offered path, and strip any trailing slashes */
@@ -539,6 +539,9 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 				appendStringInfo(&buffer, " '%s'", v->val.str);
 			}
 		}
+
+		elog((Debug_print_tablespace ? LOG : DEBUG5),
+			 "Dispatching '%s'", buffer.data);
 		
 		CdbDoCommand(buffer.data, false, /*no txn */ false, 
 					 /* mirrors */ true, /* primaries */ true);

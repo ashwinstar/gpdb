@@ -122,6 +122,7 @@ extern bool Debug_permit_same_host_standby;
 extern bool Debug_print_semaphore_detail;
 extern bool Debug_disable_distributed_snapshot;
 extern bool Debug_abort_after_distributed_prepared;
+extern bool Debug_print_tablespace;
 extern bool	Debug_dtm_action_primary;
 
 extern bool log_parser_stats;
