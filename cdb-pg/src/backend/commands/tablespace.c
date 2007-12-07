@@ -482,6 +482,12 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 			nulls[Anum_pg_tablespace_spcmirlocations - 1] = 'n';
 		}
 	}
+	else
+	{
+		/* we don't store the full array of locations on the QE's */
+		nulls[Anum_pg_tablespace_spcprilocations - 1] = 'n';
+		nulls[Anum_pg_tablespace_spcmirlocations - 1] = 'n';
+	}
 
 	tuple = heap_formtuple(rel->rd_att, values, nulls);
 
