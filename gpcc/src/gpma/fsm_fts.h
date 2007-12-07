@@ -842,9 +842,12 @@ static apr_status_t a_fts_create_segment_slot(gpcc_event_t *ev, void *_cmdslot)
     int i;
     cmdstate_t state = UNIT_CMDSTATE;
 
+    if (gpma.unit_cmdtab)
+	return 0;
+
     gpma.unit_max = slot->u.fts.nseginfo;
     gpma.unit_cmdtab = apr_palloc(gpma.pool, (gpma.unit_max+1) * sizeof(gpma.unit_cmdtab[0]));
-
+    
     if (slot->cmdstate == FTS_INITIALIZING_CMDSTATE)
 	state = UNIT_STOPPED_CMDSTATE;
     
@@ -857,6 +860,22 @@ static apr_status_t a_fts_create_segment_slot(gpcc_event_t *ev, void *_cmdslot)
 	gpma.unit_cmdtab[i]->u.unit.node = apr_pstrdup(gpma.unit_cmdtab[i]->pool, slot->u.fts.seginfo[i].ha);
 	gpma.unit_cmdtab[i]->u.unit.datadir = apr_pstrdup(gpma.unit_cmdtab[i]->pool, slot->u.fts.seginfo[i].dir);
 	gpma.unit_cmdtab[i]->u.unit.host = apr_pstrdup(gpma.unit_cmdtab[i]->pool, slot->u.fts.seginfo[i].host);
+    }
+
+    return 0;
+}
+
+static apr_status_t a_fts_break(gpcc_event_t *ev, void *arg)
+{
+    int i;
+    gpcc_event_t *evt;
+
+    if (!gpma.unit_cmdtab)
+	return 0;
+
+    for (i = 0 ; i < gpma.unit_max ; i++) {
+	evt = gpcc_event_alloc(BREAK_EVENT, gpma.unit_cmdtab[i]->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
     }
 
     return 0;

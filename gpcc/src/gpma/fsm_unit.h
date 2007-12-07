@@ -66,6 +66,7 @@ static apr_status_t a_unit_stop_reply(gpcc_event_t *ev, void *arg)
     json_object_put(obj);
     slot->u.unit.parentidx = 0;
 
+    slot->countdown = 0;
     return 0;
 }
 
@@ -172,6 +173,7 @@ static apr_status_t a_unit_start_reply(gpcc_event_t *ev, void *arg)
     gpcc_evqueue_put(gpma.evq, evt);
     json_object_put(obj);
     slot->u.unit.parentidx = 0;
+    slot->countdown = 0;
     return 0;
 }
 
