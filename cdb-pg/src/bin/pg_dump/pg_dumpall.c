@@ -838,7 +838,7 @@ dumpTablespaces(PGconn *conn)
 	if (server_version >= 80200)
 		res = executeQuery(conn, "SELECT spcname, "
 						 "pg_catalog.pg_get_userbyid(spcowner) AS spcowner, "
-						   "spclocation, spcacl, "
+						   "spcprilocations, spcmirlocations, spcacl, "
 						"pg_catalog.shobj_description(oid, 'pg_tablespace') "
 						   "FROM pg_catalog.pg_tablespace "
 						   "WHERE spcname !~ '^pg_' "
@@ -846,7 +846,7 @@ dumpTablespaces(PGconn *conn)
 	else
 		res = executeQuery(conn, "SELECT spcname, "
 						 "pg_catalog.pg_get_userbyid(spcowner) AS spcowner, "
-						   "spclocation, spcacl, "
+						   "spcprilocations, spcmirlocations, spcacl, "
 						   "null "
 						   "FROM pg_catalog.pg_tablespace "
 						   "WHERE spcname !~ '^pg_' "
@@ -860,11 +860,17 @@ dumpTablespaces(PGconn *conn)
 		PQExpBuffer buf = createPQExpBuffer();
 		char	   *spcname = PQgetvalue(res, i, 0);
 		char	   *spcowner = PQgetvalue(res, i, 1);
-		char	   *spclocation = PQgetvalue(res, i, 2);
-		char	   *spcacl = PQgetvalue(res, i, 3);
-		char	   *spccomment = PQgetvalue(res, i, 4);
+		/*char	   *spclocation = PQgetvalue(res, i, 2);*/
+		char	   *spcprilocation = PQgetvalue(res, i, 2);
+		char	   *spcmirlocation = PQgetvalue(res, i, 3);
+		char	   *spcacl = PQgetvalue(res, i, 4);
+		char	   *spccomment = PQgetvalue(res, i, 5);
 		char	   *fspcname;
-
+		char	  **prilocitems = NULL;	
+		char	  **mirlocitems = NULL;			
+		int			nitems = 0;
+		int			i = 0;
+		
 		/* needed for buildACLCommands() */
 		fspcname = strdup(fmtId(spcname));
 
@@ -873,9 +879,52 @@ dumpTablespaces(PGconn *conn)
 
 		appendPQExpBuffer(buf, "CREATE TABLESPACE %s", fspcname);
 		appendPQExpBuffer(buf, " OWNER %s", fmtId(spcowner));
-
 		appendPQExpBuffer(buf, " LOCATION ");
-		appendStringLiteralConn(buf, spclocation, conn);
+		
+		/* parse and construct the primary location strings */
+		if (!parsePGArray(spcprilocation, &prilocitems, &nitems))
+		{
+			fprintf(stderr, _("%s: could not parse LOCATION array (%s) for tablespace \"%s\"\n"),
+					progname, spcprilocation, fspcname);
+			PQfinish(conn);
+			exit(1);
+		}
+		
+		for(i = 0; i < nitems ; i++)
+		{
+			if(i > 0)
+				appendPQExpBuffer(buf, ",");
+			
+			appendStringLiteralConn(buf, prilocitems[0], conn);
+		}
+		
+		free(prilocitems);
+		
+		/* parse and construct the mirror location strings (if exists) */
+		if(spcmirlocation && strlen(spcmirlocation) > 0)
+		{
+			nitems = 0;
+			appendPQExpBuffer(buf, " MIRROR LOCATION ");
+			
+			if (!parsePGArray(spcmirlocation, &mirlocitems, &nitems))
+			{
+				fprintf(stderr, _("%s: could not parse MIRROR LOCATION array (%s) for tablespace \"%s\"\n"),
+						progname, spcmirlocation, fspcname);
+				PQfinish(conn);
+				exit(1);
+			}
+			
+			for(i = 0; i < nitems ; i++)
+			{
+				if(i > 0)
+					appendPQExpBuffer(buf, ",");
+				
+				appendStringLiteralConn(buf, mirlocitems[0], conn);
+			}
+			
+			free(mirlocitems);
+		}
+		
 		appendPQExpBuffer(buf, ";\n");
 
 		if (!skip_acls &&
