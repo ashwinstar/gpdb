@@ -895,7 +895,7 @@ dumpTablespaces(PGconn *conn)
 			if(i > 0)
 				appendPQExpBuffer(buf, ",");
 			
-			appendStringLiteralConn(buf, prilocitems[0], conn);
+			appendStringLiteralConn(buf, prilocitems[i], conn);
 		}
 		
 		free(prilocitems);
@@ -919,7 +919,7 @@ dumpTablespaces(PGconn *conn)
 				if(i > 0)
 					appendPQExpBuffer(buf, ",");
 				
-				appendStringLiteralConn(buf, mirlocitems[0], conn);
+				appendStringLiteralConn(buf, mirlocitems[i], conn);
 			}
 			
 			free(mirlocitems);
