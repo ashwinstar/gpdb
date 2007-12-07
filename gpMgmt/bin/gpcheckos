@@ -296,6 +296,8 @@ def error(host, key, value):
 def print_fix():
     global errors
 
+    network_device = (os.uname()[0] == 'SunOS') and '/dev/e1000g0' or 'eth0'
+
     print ''
     for h in errors.keys():
 
@@ -304,7 +306,7 @@ def print_fix():
             print '[FIX %s] please check your network link' % h
             for (key, value) in errors[h]['net']:
                 if opt['-u'] != 'root':
-                    print 'warning: network speed not checked because of insufficient privilege'
+                    print 'warning: network speed not checked because of insufficient privilege or device driver %s is missing' % network_device
                 else:
                     print '%s = %s' % (key, value)
 
