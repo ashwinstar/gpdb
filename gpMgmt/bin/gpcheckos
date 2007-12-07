@@ -306,9 +306,9 @@ def print_fix():
             print '[FIX %s] please check your network link' % h
             for (key, value) in errors[h]['net']:
                 if opt['-u'] != 'root':
-                    print 'warning: network speed not checked because of insufficient privilege or device driver %s is missing' % network_device
+                    print 'warning: network speed not checked because of insufficient privilege or device driver %s not found' % network_device
                 else:
-                    print '%s = %s' % (key, value)
+                    print 'warning: network speed != %s or device driver %s not found' % (value, network_device)
 
         if 'sysctl' in errors[h]:
 	    print
