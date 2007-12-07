@@ -277,3 +277,40 @@ static apr_status_t a_unit_busy_error_reply(gpcc_event_t *ev, void *arg)
 
     return 0;
 }
+
+
+static apr_status_t a_unit_status(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    gpcc_net_conn_t conn;
+    char *state;
+    struct json_object *obj;
+
+    memcpy(&conn, ev->pdata, sizeof(conn));
+
+    switch (slot->cmdstate) {
+    case UNIT_CMDSTATE:
+	state = "undefined";
+	break;
+    case UNIT_STOPPING_CMDSTATE:
+	state = "stopping";
+	break;
+    case UNIT_STOPPED_CMDSTATE:
+	state = "stopped";
+	break;
+    case UNIT_STARTING_CMDSTATE:
+	state = "starting";
+	break;
+    case UNIT_RUNNING_CMDSTATE:
+	state = "running";
+	break;
+    default:
+	state = "invalid";
+	break;
+    }
+    
+    obj = gpcc_json_http_segment_status_reply(slot->cmdname, "ok", state);
+    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+    json_object_put(obj);
+    return 0;
+}

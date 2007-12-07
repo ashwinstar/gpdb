@@ -260,6 +260,21 @@ static void net_accepted(gpcc_net_conn_t conn,
 	    ev = mkfts_event(ARRAY_INIT_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
 			     gpma.fts_cmdslot->cmdidx, from_peer->post, from_peer->postlen);
 	}
+	else if (0 == strcmp("/gpcc/segment/status", uri->path)) {
+	    int i;
+	    char *seg = (uri ? gpcc_net_uri_param(uri, "s") : 0);
+	    if (gpma.unit_cmdtab) {
+		for (i = 0 ; i < gpma.unit_max && strcmp(seg, gpma.unit_cmdtab[i]->cmdname) != 0 ; i++) {;}
+		if (i < gpma.unit_max) {
+		    ev = mkfts_event(UNIT_STATUS_EVENT, conn, gpma.unit_cmdtab[i]->cmdidx, 0,
+				     gpma.unit_cmdtab[i]->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		} else {
+		    gpcc_net_http_close(conn, 200, "ok", "{\"status\":\"failure\", \"rset\": {\"result\": [], \"total\" : 0, \"offset\": 0}}");
+		}
+	    } else {
+		gpcc_net_http_close(conn, 200, "ok", "{\"status\":\"failure\", \"rset\": {\"result\": [], \"total\" : 0, \"offset\": 0}}");
+	    }
+	}
 	else {
 	    is_bad_array_name = ! (array_name && a && 0 == strcmp(a, array_name));
 	    if (! is_bad_array_name) {

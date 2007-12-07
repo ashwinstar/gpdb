@@ -44,7 +44,7 @@ apr_status_t a_node_ssh(gpcc_event_t* ev, void* arg)
 	return 0;
     }
 
-    slot->countdown = 2;
+    slot->countdown = 5;
     return 0;
 }
 
@@ -74,7 +74,7 @@ apr_status_t a_node_check_ssh(gpcc_event_t* ev, void* arg)
 	nev = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, nev);
     } else {
-	slot->countdown = 2;
+	slot->countdown = 5;
     }
 #endif
     
@@ -146,7 +146,7 @@ apr_status_t a_node_teardown(gpcc_event_t* ev, void* arg)
     gpcc_event_t *evt;
 
     printf("NODE TEARDOWN\n");
-    slot->countdown = 3;
+    slot->countdown = 5;
     
     if (! slot->u.node.opened) 
 	return 0;

@@ -474,6 +474,15 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(UNIT_STARTING_CMDSTATE, BREAK_EVENT, UNIT_CMDSTATE, 0);
     gpcc_fsm_put(UNIT_RUNNING_CMDSTATE, BREAK_EVENT, UNIT_CMDSTATE, 0);
 
-
+    gpcc_fsm_put(UNIT_CMDSTATE, UNIT_STATUS_EVENT, UNIT_CMDSTATE, 
+		 a_unit_status, 0);
+    gpcc_fsm_put(UNIT_STOPPING_CMDSTATE, UNIT_STATUS_EVENT, UNIT_STOPPING_CMDSTATE,
+		 a_unit_status, 0);
+    gpcc_fsm_put(UNIT_STOPPED_CMDSTATE, UNIT_STATUS_EVENT, UNIT_STOPPED_CMDSTATE,
+		 a_unit_status, 0);
+    gpcc_fsm_put(UNIT_STARTING_CMDSTATE, UNIT_STATUS_EVENT, UNIT_STARTING_CMDSTATE,
+		 a_unit_status, 0);
+    gpcc_fsm_put(UNIT_RUNNING_CMDSTATE, UNIT_STATUS_EVENT, UNIT_RUNNING_CMDSTATE,
+		 a_unit_status, 0);
 
 }
