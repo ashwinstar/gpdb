@@ -842,21 +842,21 @@ static apr_status_t a_fts_create_segment_slot(gpcc_event_t *ev, void *_cmdslot)
     int i;
     cmdstate_t state = UNIT_CMDSTATE;
 
-    gpma.seg_max = slot->u.fts.nseginfo;
-    gpma.seg_cmdtab = apr_palloc(gpma.pool, (gpma.seg_max+1) * sizeof(gpma.seg_cmdtab[0]));
+    gpma.unit_max = slot->u.fts.nseginfo;
+    gpma.unit_cmdtab = apr_palloc(gpma.pool, (gpma.unit_max+1) * sizeof(gpma.unit_cmdtab[0]));
 
     if (slot->cmdstate == FTS_INITIALIZING_CMDSTATE)
 	state = UNIT_STOPPED_CMDSTATE;
     
-    for (i = 0 ; i < gpma.seg_max ; i++) {
-	gpma.seg_cmdtab[i] = cmdslot_alloc(slot->u.fts.seginfo[i].name, state);
-	gpma.seg_cmdtab[i]->u.segment.content = slot->u.fts.seginfo[i].content;
-	gpma.seg_cmdtab[i]->u.segment.dbid = slot->u.fts.seginfo[i].dbid;
-	gpma.seg_cmdtab[i]->u.segment.port = slot->u.fts.seginfo[i].port;
-	gpma.seg_cmdtab[i]->u.segment.nodeid = slot->u.fts.seginfo[i].haidx;
-	gpma.seg_cmdtab[i]->u.segment.node = apr_pstrdup(gpma.seg_cmdtab[i]->pool, slot->u.fts.seginfo[i].ha);
-	gpma.seg_cmdtab[i]->u.segment.datadir = apr_pstrdup(gpma.seg_cmdtab[i]->pool, slot->u.fts.seginfo[i].dir);
-	gpma.seg_cmdtab[i]->u.segment.host = apr_pstrdup(gpma.seg_cmdtab[i]->pool, slot->u.fts.seginfo[i].host);
+    for (i = 0 ; i < gpma.unit_max ; i++) {
+	gpma.unit_cmdtab[i] = cmdslot_alloc(slot->u.fts.seginfo[i].name, state);
+	gpma.unit_cmdtab[i]->u.unit.content = slot->u.fts.seginfo[i].content;
+	gpma.unit_cmdtab[i]->u.unit.dbid = slot->u.fts.seginfo[i].dbid;
+	gpma.unit_cmdtab[i]->u.unit.port = slot->u.fts.seginfo[i].port;
+	gpma.unit_cmdtab[i]->u.unit.nodeid = slot->u.fts.seginfo[i].haidx;
+	gpma.unit_cmdtab[i]->u.unit.node = apr_pstrdup(gpma.unit_cmdtab[i]->pool, slot->u.fts.seginfo[i].ha);
+	gpma.unit_cmdtab[i]->u.unit.datadir = apr_pstrdup(gpma.unit_cmdtab[i]->pool, slot->u.fts.seginfo[i].dir);
+	gpma.unit_cmdtab[i]->u.unit.host = apr_pstrdup(gpma.unit_cmdtab[i]->pool, slot->u.fts.seginfo[i].host);
     }
 
     return 0;

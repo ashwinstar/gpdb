@@ -430,27 +430,38 @@ APR_DECLARE(void) fsm_init(void)
     /* segment unit */
     gpcc_fsm_put(UNIT_CMDSTATE, UNIT_STOP_EVENT, UNIT_STOPPING_CMDSTATE,
 		 a_unit_stop, 0);
+    gpcc_fsm_put(UNIT_STOPPING_CMDSTATE, UNIT_STOP_EVENT, UNIT_STOPPING_CMDSTATE,
+		 a_unit_busy_ok_reply, 0);
+    gpcc_fsm_put(UNIT_STOPPING_CMDSTATE, UNIT_START_EVENT, UNIT_STOPPING_CMDSTATE,
+		 a_unit_busy_error_reply, 0);
     gpcc_fsm_put(UNIT_STOPPING_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, UNIT_STOPPING_CMDSTATE,
 		 a_unit_stop_reply, 0);
     gpcc_fsm_put(UNIT_STOPPING_CMDSTATE, TIMEUP_EVENT, UNIT_INVALID_CMDSTATE,
-		 a_unit_invalid, 0);
+		 a_unit_timeout, 0);
     gpcc_fsm_put(UNIT_STOPPING_CMDSTATE, SUCCESS_EVENT, UNIT_STOPPED_CMDSTATE,
 		 a_unit_stopped, 0);
     gpcc_fsm_put(UNIT_STOPPING_CMDSTATE, FAILURE_EVENT, UNIT_INVALID_CMDSTATE,
 		 a_unit_invalid, 0);
     gpcc_fsm_put(UNIT_STOPPED_CMDSTATE, UNIT_START_EVENT, UNIT_STARTING_CMDSTATE,
 		 a_unit_start, 0);
+    gpcc_fsm_put(UNIT_STOPPED_CMDSTATE, UNIT_STOP_EVENT, UNIT_STARTING_CMDSTATE,
+		 a_unit_busy_ok_reply, 0);
     gpcc_fsm_put(UNIT_STARTING_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, UNIT_STARTING_CMDSTATE,
 		 a_unit_start_reply, 0);
     gpcc_fsm_put(UNIT_STARTING_CMDSTATE, TIMEUP_EVENT, UNIT_INVALID_CMDSTATE,
-		 a_unit_invalid, 0);
+		 a_unit_timeout, 0);
     gpcc_fsm_put(UNIT_STARTING_CMDSTATE, SUCCESS_EVENT, UNIT_RUNNING_CMDSTATE,
 		 a_unit_running, 0);
     gpcc_fsm_put(UNIT_STARTING_CMDSTATE, FAILURE_EVENT, UNIT_INVALID_CMDSTATE,
 		 a_unit_invalid, 0);
+    gpcc_fsm_put(UNIT_STARTING_CMDSTATE, UNIT_START_EVENT, UNIT_STARTING_CMDSTATE,
+		 a_unit_busy_ok_reply, 0);
+    gpcc_fsm_put(UNIT_STARTING_CMDSTATE, UNIT_STOP_EVENT, UNIT_STARTING_CMDSTATE,
+		 a_unit_busy_error_reply, 0);
     gpcc_fsm_put(UNIT_RUNNING_CMDSTATE, UNIT_STOP_EVENT, UNIT_STOPPING_CMDSTATE,
 		 a_unit_stop, 0);
-    gpcc_fsm_put(UNIT_STOPPING_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, UNIT_STOPPING_CMDSTATE,
-		 a_unit_stop_reply, 0);
+    gpcc_fsm_put(UNIT_RUNNING_CMDSTATE, UNIT_START_EVENT, UNIT_RUNNING_CMDSTATE,
+		 a_unit_busy_ok_reply, 0);
+
 
 }
