@@ -29,11 +29,6 @@ the -h option to name single host names on the command-line. At
 least one host name (-h) or a host file (-f) is required. Note that 
 the current host is included in the key exchange by default.
 
-The gpssh-exkeys utility requires Python 2.3 or higher. Python is 
-installed with most operating systems by default. If you have an 
-older version of Python, you must upgrade to 2.3 or higher (and make 
-sure Python is in your $PATH) in order to use gpssh.
-
 Greenplum recommends performing the key exchange process twice: 
 once as root and once as the gpadmin user (the user designated 
 to own your Greenplum Database installation). The Greenplum Database 
