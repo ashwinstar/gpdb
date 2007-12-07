@@ -2317,14 +2317,16 @@ get_rule_grouplist(List *grplist, List *tlist,
 
 		if (node == NULL)
 		{
-			/* do nothing */
-			continue;
+			if (!in_grpsets)
+				appendStringInfoString(buf, "()");
+			else
+				continue; /* do nothing */
 		}
 
 		else if (IsA(node, List))
 		{
 			appendStringInfoString(buf, "(");
-			get_rule_grouplist((List *)node, tlist, false, context);
+			get_rule_grouplist((List *)node, tlist, in_grpsets, context);
 			appendStringInfoString(buf, ")");
 		}
 

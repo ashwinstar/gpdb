@@ -489,3 +489,14 @@ select * from sale group by grouping sets((), ());
 select count(*) from sale group by ();
 select count(*) from sale group by grouping sets(());
 select count(*) from sale group by grouping sets((), ());
+
+-- MPP-2312
+create view grp_v1 as select count(*) from sale group by ();
+create view grp_v2 as select count(*) from sale group by grouping sets(());
+create view grp_v3 as select count(*) from sale group by grouping sets((), ());
+\d grp_v1;
+\d grp_v2;
+\d grp_v3;
+drop view grp_v1;
+drop view grp_v2;
+drop view grp_v3;

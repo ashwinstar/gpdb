@@ -2894,7 +2894,7 @@ create view gs_view as select cn,vn,grouping(vn,cn) from sale group by grouping 
 View definition:
  SELECT sale.cn, sale.vn, grouping(sale.vn, sale.cn) AS "grouping"
    FROM sale
-  GROUP BY GROUPING SETS ((sale.vn), (sale.cn), (), (sale.cn, sale.vn));
+  GROUP BY GROUPING SETS ((sale.vn), (sale.cn), (), ((sale.cn), (sale.vn)));
 
 -- GROUP_ID function --
 select pn, sum(qty), group_id() from sale group by rollup(pn);
@@ -5660,3 +5660,40 @@ select count(*) from sale group by grouping sets((), ());
     12
 (2 rows)
 
+-- MPP-2312
+create view grp_v1 as select count(*) from sale group by ();
+create view grp_v2 as select count(*) from sale group by grouping sets(());
+create view grp_v3 as select count(*) from sale group by grouping sets((), ());
+\d grp_v1;
+    View "public.grp_v1"
+ Column |  Type  | Modifiers 
+--------+--------+-----------
+ count  | bigint | 
+View definition:
+ SELECT count(*) AS count
+   FROM sale
+  GROUP BY ();
+
+\d grp_v2;
+    View "public.grp_v2"
+ Column |  Type  | Modifiers 
+--------+--------+-----------
+ count  | bigint | 
+View definition:
+ SELECT count(*) AS count
+   FROM sale
+  GROUP BY GROUPING SETS (());
+
+\d grp_v3;
+    View "public.grp_v3"
+ Column |  Type  | Modifiers 
+--------+--------+-----------
+ count  | bigint | 
+View definition:
+ SELECT count(*) AS count
+   FROM sale
+  GROUP BY GROUPING SETS ((), ());
+
+drop view grp_v1;
+drop view grp_v2;
+drop view grp_v3;
