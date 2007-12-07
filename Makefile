@@ -8,8 +8,7 @@ GPDIR=greenplum-db$(RELEASE)
 GPDOCDIR=$(CURDIR)/docs/release
 
 DEFPORT=5432
-# INLINE_FLAGS=--param max-inline-insns-single=800 --param large-function-growth=175 --param inline-unit-growth=300 -Winline
-INLINE_FLAGS=-finline-limit=2000 --param large-function-growth=50000000 --param inline-unit-growth=300  
+INLINE_FLAGS=-finline-limit=1800
 
 OPTFLAGS="-O3 -funroll-loops -fargument-noalias-global $(COPTX) -g $(INLINE_FLAGS)"
 
