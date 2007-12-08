@@ -410,6 +410,24 @@ static XLogCtlData *XLogCtl = NULL;
  */
 static ControlFileData *ControlFile = NULL;
 
+typedef struct ControlFileWatch
+{
+	bool		watcherInitialized;
+	XLogRecPtr	current_checkPointLoc;		/* current last check point record ptr */
+	XLogRecPtr	current_prevCheckPointLoc;  /* current previous check point record ptr */
+	XLogRecPtr	current_checkPointCopy_redo;  
+								/* current checkpointCopy value for
+								 * next RecPtr available when we began to
+								 * create CheckPoint (i.e. REDO start point) */
+
+} ControlFileWatch;
+
+
+/*
+ * We keep the watcher in shared memory.
+ */
+static ControlFileWatch *ControlFileWatcher = NULL;
+
 /*
  * Macros for managing XLogInsert state.  In most cases, the calling routine
  * has local copies of XLogCtl->Insert and/or XLogCtl->Insert->curridx,
@@ -515,6 +533,8 @@ static TimeLineID findNewestTimeLine(TimeLineID startTLI);
 static void writeTimeLineHistory(TimeLineID newTLI, TimeLineID parentTLI,
 					 TimeLineID endTLI,
 					 uint32 endLogId, uint32 endLogSeg);
+static void ControlFileWatcherSaveInitial(void);
+static void ControlFileWatcherCheckForChange(void);
 static void WriteControlFile(void);
 static void ReadControlFile(void);
 static char *str_time(time_t tnow);
@@ -4211,6 +4231,39 @@ writeTimeLineHistory(TimeLineID newTLI, TimeLineID parentTLI,
 	XLogArchiveNotify(histfname);
 }
 
+static void
+ControlFileWatcherSaveInitial(void)
+{
+	ControlFileWatcher->current_checkPointLoc = ControlFile->checkPoint;
+	ControlFileWatcher->current_prevCheckPointLoc = ControlFile->prevCheckPoint;
+	ControlFileWatcher->current_checkPointCopy_redo = ControlFile->checkPointCopy.redo;
+
+	elog(LOG,"ControlFileWatcher: initial values (checkpoint loc %s, previous loc %s, copy's redo loc %s)",
+		 XLogLocationToString(&ControlFile->checkPoint),
+		 XLogLocationToString2(&ControlFile->prevCheckPoint),
+		 XLogLocationToString3(&ControlFile->checkPointCopy.redo));
+
+	ControlFileWatcher->watcherInitialized = true;
+}
+
+static void
+ControlFileWatcherCheckForChange(void)
+{
+	if (!XLByteEQ(ControlFileWatcher->current_checkPointLoc,ControlFile->checkPoint) ||
+		!XLByteEQ(ControlFileWatcher->current_prevCheckPointLoc,ControlFile->prevCheckPoint) ||
+		!XLByteEQ(ControlFileWatcher->current_checkPointCopy_redo,ControlFile->checkPointCopy.redo))
+	{
+		ControlFileWatcher->current_checkPointLoc = ControlFile->checkPoint;
+		ControlFileWatcher->current_prevCheckPointLoc = ControlFile->prevCheckPoint;
+		ControlFileWatcher->current_checkPointCopy_redo = ControlFile->checkPointCopy.redo;
+
+		elog(LOG,"ControlFileWatcher: change (checkpoint loc %s, previous loc %s, copy's redo loc %s)",
+			 XLogLocationToString(&ControlFile->checkPoint),
+			 XLogLocationToString2(&ControlFile->prevCheckPoint),
+			 XLogLocationToString3(&ControlFile->checkPointCopy.redo));
+	}
+}
+
 /*
  * I/O routines for pg_control
  *
@@ -4316,6 +4369,8 @@ WriteControlFile(void)
 		ereport(PANIC,
 				(errcode_for_file_access(),
 				 errmsg("could not close control file: %m")));
+
+	ControlFileWatcherSaveInitial();
 }
 
 static void
@@ -4483,6 +4538,15 @@ ReadControlFile(void)
 					PGC_INTERNAL, PGC_S_OVERRIDE);
 	SetConfigOption("lc_ctype", ControlFile->lc_ctype,
 					PGC_INTERNAL, PGC_S_OVERRIDE);
+
+	if (!ControlFileWatcher->watcherInitialized)
+	{
+		ControlFileWatcherSaveInitial();
+	}
+	else
+	{
+		ControlFileWatcherCheckForChange();
+	}
 }
 
 void
@@ -4525,6 +4589,10 @@ UpdateControlFile(void)
 		ereport(PANIC,
 				(errcode_for_file_access(),
 				 errmsg("could not close control file: %m")));
+	
+	Assert (ControlFileWatcher->watcherInitialized);
+
+	ControlFileWatcherCheckForChange();
 }
 
 /*
@@ -4550,6 +4618,10 @@ XLOGShmemSize(void)
 	 * routine again below to compute the actual allocation size.
 	 */
 
+	/*
+	 * Similary, we also don't PgControlWatch for the above reasons, too.
+	 */
+
 	return size;
 }
 
@@ -4557,18 +4629,21 @@ void
 XLOGShmemInit(void)
 {
 	bool		foundCFile,
-				foundXLog;
+				foundXLog,
+				foundCFileWatcher;
 	char	   *allocptr;
 
 	ControlFile = (ControlFileData *)
 		ShmemInitStruct("Control File", sizeof(ControlFileData), &foundCFile);
+	ControlFileWatcher = (ControlFileWatch *)
+		ShmemInitStruct("Control File Watcher", sizeof(ControlFileWatch), &foundCFileWatcher);
 	XLogCtl = (XLogCtlData *)
 		ShmemInitStruct("XLOG Ctl", XLOGShmemSize(), &foundXLog);
 
-	if (foundCFile || foundXLog)
+	if (foundCFile || foundXLog || foundCFileWatcher)
 	{
 		/* both should be present or neither */
-		Assert(foundCFile && foundXLog);
+		Assert(foundCFile && foundXLog && foundCFileWatcher);
 		return;
 	}
 
