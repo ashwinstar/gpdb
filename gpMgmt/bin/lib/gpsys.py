@@ -188,10 +188,6 @@ def do_ndd(res):
         if ok and len(out) == 1:
             res['ndd.' + key] = out[0].strip()
 
-    (ok, out) = run('/usr/sbin/ndd -get /dev/e1000g0 link_speed')
-    if ok and len(out) == 1:
-        res['net.link_speed'] = out[0].strip()
-
 def do_solaris(res):
     if not os.path.exists('/etc/release'):
         return False
@@ -203,21 +199,6 @@ def do_solaris(res):
         if i.startswith('Solaris 10'):
             res['solaris.release'] = i
     
-def do_ethtool(res):
-    if not os.path.exists('/sbin/ethtool'):
-        return False
-
-    (ok, out) = run('/sbin/ethtool eth0 | grep Speed')
-    if ok and len(out) == 1:
-        p = out[0].split(':', 1)
-        if len(p) == 2 and p[0].strip() == 'Speed':
-            v = p[1].strip()
-            if v.endswith('Mb/s'):
-                v = v[0:-4]
-                res['net.link_speed'] = v
-                return True
-                
-
 
 parseCommandLine()
 res = {}
@@ -237,7 +218,6 @@ elif system == 'linux':
     do_sysctl(res)
     do_ulimit(res)
     do_meminfo(res)
-    do_ethtool(res)
 elif system == 'darwin': 
     do_sysctl(res)
     do_ulimit(res)

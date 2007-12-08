@@ -50,7 +50,6 @@ sysctl.net.core.netdev_max_backlog	int	= 10000
 sysctl.vm.overcommit_memory		int	= 2
 ulimit.nofile				int	>= 65536
 ulimit.nproc				int	>= 131072
-net.link_speed                          int     = 1000
 '''
 
 
@@ -65,7 +64,6 @@ system.rlim_fd_cur			int	= 65536
 system.shmsys:shminfo_shmmax		int	>= 0x2000000
 system.semsys:seminfo_semmni		int	= 1024
 solaris.release				str	= Solaris 10 8/07 s10x_u4wos_12b X86
-net.link_speed                          int     = 1000
 '''
 
 def to_int(s):
@@ -296,19 +294,8 @@ def error(host, key, value):
 def print_fix():
     global errors
 
-    network_device = (os.uname()[0] == 'SunOS') and '/dev/e1000g0' or 'eth0'
-
     print ''
     for h in errors.keys():
-
-        if 'net' in errors[h]:
-            print
-            print '[FIX %s] please check your network link' % h
-            for (key, value) in errors[h]['net']:
-                if opt['-u'] != 'root':
-                    print 'warning: network speed not checked because of insufficient privilege or device driver %s not found' % network_device
-                else:
-                    print 'warning: network speed != %s or device driver %s not found' % (value, network_device)
 
         if 'sysctl' in errors[h]:
 	    print
