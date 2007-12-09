@@ -121,8 +121,11 @@ describeTablespaces(const char *pattern, bool verbose)
 	printfPQExpBuffer(&buf,
 					  "SELECT spcname AS \"%s\",\n"
 					  "  pg_catalog.pg_get_userbyid(spcowner) AS \"%s\",\n"
-					  "  spclocation AS \"%s\"",
-					  _("Name"), _("Owner"), _("Location"));
+					  "  spclocation AS \"%s\",\n"
+					  "  spcprilocations AS \"%s\",\n"
+					  "  spcmirlocations AS \"%s\"",
+					  _("Name"), _("Owner"), _("Location"),
+					  _("Primary Locations"), _("Mirror Locations"));
 
 	if (verbose)
 		appendPQExpBuffer(&buf,
