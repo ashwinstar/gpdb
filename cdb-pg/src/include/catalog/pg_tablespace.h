@@ -38,9 +38,9 @@ CATALOG(pg_tablespace,1213) BKI_SHARED_RELATION
 	NameData	spcname;		/* tablespace name */
 	Oid			spcowner;		/* owner of tablespace */
 	text		spclocation;	/* physical location (VAR LENGTH) */
+	aclitem		spcacl[1];		/* access permissions (VAR LENGTH) */
 	text		spcprilocations[1];	/* primary segment physical location */
 	text		spcmirlocations[1];	/* mirror segment physical location  */
-	aclitem		spcacl[1];		/* access permissions (VAR LENGTH) */
 } FormData_pg_tablespace;
 
 /* ----------------
@@ -59,9 +59,9 @@ typedef FormData_pg_tablespace *Form_pg_tablespace;
 #define Anum_pg_tablespace_spcname		1
 #define Anum_pg_tablespace_spcowner		2
 #define Anum_pg_tablespace_spclocation	3
-#define Anum_pg_tablespace_spcprilocations	4
-#define Anum_pg_tablespace_spcmirlocations	5
-#define Anum_pg_tablespace_spcacl		6
+#define Anum_pg_tablespace_spcacl		4
+#define Anum_pg_tablespace_spcprilocations	5
+#define Anum_pg_tablespace_spcmirlocations	6
 
 DATA(insert OID = 1663 ( pg_default PGUID "" _null_ _null_  _null_ ));
 DATA(insert OID = 1664 ( pg_global	PGUID "" _null_ _null_  _null_ ));

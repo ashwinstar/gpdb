@@ -57,7 +57,7 @@ devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install
 	@$(MAKE) groupSession
-	@$(MAKE) mkgpcc
+#	@$(MAKE) mkgpcc
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 
@@ -68,7 +68,7 @@ forceplan : HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install
 	@$(MAKE) groupSession
-	@$(MAKE) mkgpcc
+#	@$(MAKE) mkgpcc
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 
@@ -78,7 +78,7 @@ dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install
 	@$(MAKE) groupSession
-	@$(MAKE) mkgpcc
+#	@$(MAKE) mkgpcc
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
@@ -106,7 +106,7 @@ mgmtcopy :
 	@#Copy the management utilities
 	@mkdir -p $(INSTLOC)/bin
 	@cp -rp $(GPMGMT)/bin $(INSTLOC)
-	@cp -rp $(GPCC)/build/bin $(INSTLOC)
+#	@cp -rp $(GPCC)/build/bin $(INSTLOC)
 	@cp $(GPPGDIR)/src/test/regress/*.pl $(INSTLOC)/bin
 	@if [ ! -d ${INSTLOC}/docs ] ; then mkdir ${INSTLOC}/docs ; fi
 	@if [ -d $(GPMGMT)/doc ]; then cp -rp $(GPMGMT)/doc $(INSTLOC)/docs/cli_help; fi
