@@ -1079,10 +1079,37 @@ STOP_SYNC_PROCESS () {
 	MASTER_STANDBY_HOSTNAME=$1;shift
 	MASTER_STANDBY_DATA_DIRECTORY=$1
 	LOG_MSG "[INFO]:-Stopping gpsyncmaster on standby host ${MASTER_STANDBY_HOSTNAME}" 1
-	$TRUSTED_SHELL ${MASTER_STANDBY_HOSTNAME} "$EXPORT_LIB_PATH;$PG_CTL stop -D $MASTER_STANDBY_DATA_DIRECTORY -m fast"
-	RETVAL=$?
-	ERROR_CHK $RETVAL "fast shutdown of sync process on ${MASTER_STANDBY_HOSTNAME}" 1
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+	STATUS_OUTPUT=`$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "$EXPORT_LIB_PATH; ($PG_CTL -D $MASTER_STANDBY_DATA_DIRECTORY status) 2>&1"`
+	if [ `$ECHO $STATUS_OUTPUT | $GREP -c "pg_ctl: server is running"` -eq 1 ];then
+	    # Issue a NoWait fast stop
+	    $TRUSTED_SHELL ${MASTER_STANDBY_HOSTNAME} "$EXPORT_LIB_PATH;$PG_CTL stop -D $MASTER_STANDBY_DATA_DIRECTORY -m fast -W"
+	    RETVAL=$?
+	    ERROR_CHK $RETVAL "fast shutdown of sync process on ${MASTER_ERROR_CHK_HOSTNAME}" 2
+	    $SLEEP 5  # Wait for 5 seconds and see if the shutdown completed.
+	    STATUS_OUTPUT=`$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "$EXPORT_LIB_PATH; ($PG_CTL -D $MASTER_STANDBY_DATA_DIRECTORY status) 2>&1"`
+	    if [ `$ECHO $STATUS_OUTPUT | $GREP -c "pg_ctl: server is running"` -eq 1 ];then
+	    	LOG_MSG "[WARN]: Using immediate option to stop sync process since fast option did not finish in 5 seconds" 2
+    	    $TRUSTED_SHELL ${MASTER_STANDBY_HOSTNAME} "$EXPORT_LIB_PATH;$PG_CTL stop -D $MASTER_STANDBY_DATA_DIRECTORY -m immediate"
+    	    RETVAL=$?
+    	    ERROR_CHK $RETVAL "immediate shutdown of sync process on ${MASTER_STANDBY_HOSTNAME}" 2
+        else
+			if [ `$ECHO $STATUS_OUTPUT | $GREP -c "pg_ctl: no server running"` -eq 0 ];then
+				LOG_MSG "$STATUS_OUTPUT"
+				# UNDONE: Should this be a FATAL?
+				LOG_MSG "[WARN]: Unable to execute pg_ctl status on ${MASTER_STANDBY_HOSTNAME} to check on sync process" 2
+			fi
+		fi
+        LOG_MSG "[INFO]:-Successfully shutdown sync process on ${MASTER_STANDBY_HOSTNAME}" 1
+    else
+		LOG_MSG "$STATUS_OUTPUT"
+		if [ `$ECHO $STATUS_OUTPUT | $GREP -c "pg_ctl: no server running"` -eq 1 ];then
+			LOG_MSG "[WARN]: Sync process not running on ${MASTER_STANDBY_HOSTNAME}" 1
+		else
+		    # UNDONE: Should this be a FATAL?
+			LOG_MSG "[WARN]: Unable to execute pg_ctl status on ${MASTER_STANDBY_HOSTNAME} to check on sync process" 2
+		fi
+    fi
+    LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 PARALLEL_SETUP () {
