@@ -63,7 +63,6 @@ ExecRenameStmt(RenameStmt *stmt)
 
 		case OBJECT_LANGUAGE:
 			RenameLanguage(stmt->subname, stmt->newname);
-			if (Gp_role == GP_ROLE_DISPATCH)
 			break;
 
 		case OBJECT_OPCLASS:
