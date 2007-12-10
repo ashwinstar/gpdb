@@ -509,7 +509,7 @@ dumpRoles(PGconn *conn)
 				i_rolpassword,
 				i_rolvaliduntil,
 				i_rolcomment,
-				i_rolqueuename;
+				i_rolqueuename = -1;  /* keep compiler quiet */
 	int			i;
 
 	/* note: rolconfig is dumped later */
