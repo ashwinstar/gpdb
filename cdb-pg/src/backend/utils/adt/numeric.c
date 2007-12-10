@@ -2699,7 +2699,7 @@ typedef struct IntFloatAvgTransdata
 {
 	int32   _len; /* len for varattrib, do not touch directly */
 #if 1
-	int32   pad;  /* pad so int64 and float64 will be 8 bytes alligned */
+	int32   pad;  /* pad so int64 and float64 will be 8 bytes aligned */
 #endif
 	int64 	count;
 	float8 sum;
@@ -2735,7 +2735,9 @@ static inline Datum intfloat_avg_accum_decum(IntFloatAvgTransdata *transdata, fl
 	return PointerGetDatum(transdata); 
 }
 
-static inline Datum intfloat_avg_amalg_demalg(IntFloatAvgTransdata* tr0, IntFloatAvgTransdata *tr1, bool amalg)
+static inline Datum
+intfloat_avg_amalg_demalg(IntFloatAvgTransdata* tr0,
+						  IntFloatAvgTransdata *tr1, bool amalg)
 {
 	if(tr0 == NULL || VARSIZE(tr0) != sizeof(IntFloatAvgTransdata))
 	{
