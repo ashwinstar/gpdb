@@ -178,16 +178,10 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	 * So let's parse the copy command into a query tree, serialize it, and
 	 * send it down to the QE or DA.
 	 * 
-	 * I can't tell by looking at the code if this COPY statement that
-	 * Alon has laboriously built up from his context info is supposed to be
-	 * the same as the original COPY statement the QD got.
-	 * 
-	 * If it is, we could just pass the original CopyStmt node to this routine,
-	 * and ship it down to the QE or DA.  That would save all the work in Copy.c
-	 * that creates this COPY statement from the cstate info.
-	 * 
-	 * But since I'm not sure he hasn't
-	 * altered things, I'll play it safe and parse the COPY command he built
+	 * Note that we can't just use the original CopyStmt node in this routine,
+	 * but we need to use the re-created command that copy.c prepared for us as
+	 * it may be different from the original command in several cases (such as
+	 * COPY into tables where a default value is evaluated on the QD).
 	 */
 	
 	/*
