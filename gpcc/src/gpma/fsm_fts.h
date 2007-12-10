@@ -1,4 +1,13 @@
 
+#define ARRAY_STOPPING_STATUS                        "stopping"
+#define ARRAY_STOPPED_STATUS                         "stopped"
+#define ARRAY_STARTING_STATUS                        "starting"
+#define ARRAY_RUNNING_STATUS                         "running"
+#define ARRAY_INITIALIZING_STATUS                    "initializing"
+#define ARRAY_INVALID_STATUS                         "invalid"
+#define ARRAY_NO_ARRAY_STATUS                        "no_array"
+#define ARRAY_CONNECTING_STATUS                      "connecting"
+
 static inline void setup_set_segment(cmdslot_t *cmdslot, int idx, char *name, int dbid, int content, int port, int node, char *dir, apr_pool_t *pool)
 {
     char key[128];
@@ -382,21 +391,21 @@ static apr_status_t a_fts_array_status_reply(gpcc_event_t *ev, void *_cmdslot)
 
     /* send the current state */
     if (cmdslot->cmdstate == FTS_WAIT_CMDSTATE) {
-	state = "connecting";
+	state = ARRAY_CONNECTING_STATUS;
     } else if (cmdslot->cmdstate == FTS_EMPTY_CMDSTATE) {
-	state = "none";
+	state = ARRAY_NO_ARRAY_STATUS;
     } else if (cmdslot->cmdstate == FTS_INITIALIZING_CMDSTATE) {
-	state = "initializing";
+	state = ARRAY_INITIALIZING_STATUS;
     } else if (cmdslot->cmdstate == FTS_STOPPED_CMDSTATE) {
-	state = "stopped";
+	state = ARRAY_STOPPED_STATUS;
     } else if (cmdslot->cmdstate ==  FTS_STARTING_CMDSTATE) {
-	state = "starting";
+	state = ARRAY_STARTING_STATUS;
     } else if (cmdslot->cmdstate == FTS_RUNNING_CMDSTATE) {
-	state = "running";
+	state = ARRAY_RUNNING_STATUS;
     } else if (cmdslot->cmdstate ==  FTS_STOPPING_CMDSTATE) {
-	state = "stopping";
+	state = ARRAY_STOPPING_STATUS;
     } else {
-	state = "invalid state";
+	state = ARRAY_INVALID_STATUS;
     }
 
     obj = gpcc_json_http_status_reply(config_get(gpma.cfg, "gpdb.name"), "ok", state);

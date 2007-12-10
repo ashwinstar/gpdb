@@ -1,3 +1,13 @@
+
+#define UNIT_STOPPING_STATUS                        "stopping"
+#define UNIT_STOPPED_STATUS                         "stopped"
+#define UNIT_STARTING_STATUS                        "starting"
+#define UNIT_RUNNING_STATUS                         "running"
+#define UNIT_INITIALIZING_STATUS                    "initializing"
+#define UNIT_INVALID_STATUS                         "invalid"
+#define UNIT_CONNECTING_STATUS                      "connecting"
+
+
 static apr_status_t a_unit_stop(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
@@ -290,22 +300,22 @@ static apr_status_t a_unit_status(gpcc_event_t *ev, void *arg)
 
     switch (slot->cmdstate) {
     case UNIT_CMDSTATE:
-	state = "undefined";
+	state = UNIT_CONNECTING_STATUS;
 	break;
     case UNIT_STOPPING_CMDSTATE:
-	state = "stopping";
+	state = UNIT_STOPPING_STATUS;
 	break;
     case UNIT_STOPPED_CMDSTATE:
-	state = "stopped";
+	state = UNIT_STOPPED_STATUS;
 	break;
     case UNIT_STARTING_CMDSTATE:
-	state = "starting";
+	state = UNIT_STARTING_STATUS;
 	break;
     case UNIT_RUNNING_CMDSTATE:
-	state = "running";
+	state = UNIT_RUNNING_STATUS;
 	break;
     default:
-	state = "invalid";
+	state = UNIT_INVALID_STATUS;
 	break;
     }
     

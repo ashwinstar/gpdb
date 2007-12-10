@@ -39,6 +39,14 @@
 #define CONFIG_MIRROR_BASE_PORT_VALUE              22200
 
 
+#define FTS_STOPPING_STATUS                        "stopping"
+#define FTS_STOPPED_STATUS                         "stopped"
+#define FTS_STARTING_STATUS                        "starting"
+#define FTS_RUNNING_STATUS                         "running"
+#define FTS_INITIALIZING_STATUS                    "initializing"
+#define FTS_INVALID_STATUS                         "invalid"
+#define FTS_NO_ARRAY_STATUS                        "no_array"
+#define FTS_CONNECTING_STATUS                      "connecting"
 
 /* Control block for GPMA */
 typedef struct gpma_t gpma_t;
