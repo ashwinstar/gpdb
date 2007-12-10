@@ -1274,3 +1274,7 @@ SELECT sale.vn,sale.cn,sale.pn,
 CUME_DIST() OVER(partition by sale.vn,sale.cn order by sale.pn desc) as cume_dist1,
 CUME_DIST() OVER(partition by sale.cn,sale.vn order by sale.cn asc) as cume_dist2
 FROM sale order by 1,2,3; --order 1,2,3
+
+-- MPP-2322
+select ord, pn,cn,vn,sum(vn) over (order by ord, pn rows between cn following and cn+1 following) as sum from sale_ord;
+select ord, pn,cn,vn,sum(vn) over (order by ord, pn rows between cn following and cn following) as sum from sale_ord;

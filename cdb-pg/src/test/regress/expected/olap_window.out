@@ -7472,3 +7472,38 @@ FROM sale order by 1,2,3; --order 1,2,3
  50 |  2 | 400 |          1 |          1
 (12 rows)
 
+-- MPP-2322
+select ord, pn,cn,vn,sum(vn) over (order by ord, pn rows between cn following and cn+1 following) as sum from sale_ord;
+ ord | pn  | cn | vn | sum 
+-----+-----+----+----+-----
+   1 | 100 |  2 | 40 |  60
+   2 | 200 |  1 | 10 |  60
+   3 | 200 |  3 | 40 | 100
+   4 | 100 |  1 | 20 |  80
+   5 | 300 |  1 | 30 | 100
+   6 | 400 |  1 | 50 |  80
+   7 | 400 |  2 | 50 |  60
+   8 | 500 |  1 | 30 |  60
+   9 | 500 |  3 | 30 |  40
+  10 | 600 |  3 | 30 |    
+  11 | 700 |  4 | 40 |    
+  12 | 800 |  4 | 40 |    
+(12 rows)
+
+select ord, pn,cn,vn,sum(vn) over (order by ord, pn rows between cn following and cn following) as sum from sale_ord;
+ ord | pn  | cn | vn | sum 
+-----+-----+----+----+-----
+   1 | 100 |  2 | 40 |  40
+   2 | 200 |  1 | 10 |  40
+   3 | 200 |  3 | 40 |  50
+   4 | 100 |  1 | 20 |  30
+   5 | 300 |  1 | 30 |  50
+   6 | 400 |  1 | 50 |  50
+   7 | 400 |  2 | 50 |  30
+   8 | 500 |  1 | 30 |  30
+   9 | 500 |  3 | 30 |  40
+  10 | 600 |  3 | 30 |    
+  11 | 700 |  4 | 40 |    
+  12 | 800 |  4 | 40 |    
+(12 rows)
+

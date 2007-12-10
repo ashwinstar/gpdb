@@ -4285,13 +4285,18 @@ adjustDelayBoundEdgeForRows(WindowStatePerLevel level_state,
 	if (!is_lead_edge)
 	{
 		/*
-		 * If the frame is "0 preceding/following" and the current_row_reader
+		 * If the frame is "0 preceding/following" and the current edge_reader
 		 * is pointing to an invalid position, we simple set the
 		 * trailing edge to the last entry in the frame buffer.
 		 */
-		if (*p_request_num_rows == 0 &&
-			!ntuplestore_acc_tell(frame_buffer->current_row_reader, NULL))
+		if (*p_request_num_rows >= 0 &&
+			!ntuplestore_acc_tell(edge_reader, NULL))
+		{
 			ntuplestore_acc_seek_last(edge_reader);
+			if (*p_num_rows > 0)
+				(*p_num_rows)--;
+		}
+
 		else
 			ntuplestore_acc_advance(edge_reader, -1);
 	}
@@ -4475,9 +4480,24 @@ fetchCurrentRow(WindowState *wstate)
 
 					found = ntuplestore_acc_tell(level_state->lead_reader, &pos);
 					if (found)
+					{
 						ntuplestore_acc_seek(level_state->trail_reader, &pos);
+
+						/* We back off one for the trailing edge. */
+						ntuplestore_acc_advance(level_state->trail_reader, -1);
+					}
+					
 					else
-						ntuplestore_acc_set_invalid(level_state->trail_reader);
+					{
+						if (level_state->num_trail_rows > 0)
+						{
+							ntuplestore_acc_seek_last(level_state->trail_reader);
+							level_state->num_trail_rows--;
+						}
+						
+						else
+							ntuplestore_acc_set_invalid(level_state->trail_reader);
+					}
 				}
 				else
 					adjustDelayBoundEdgeForRows(level_state, wstate,
