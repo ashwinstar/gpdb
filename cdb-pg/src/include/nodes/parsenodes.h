@@ -1418,6 +1418,7 @@ typedef struct CreateTableSpaceStmt
 	char	   *owner;
 	List	   *locations;
 	List	   *mirrorlocations;
+	char	   *masterlocation;
 } CreateTableSpaceStmt;
 
 typedef struct DropTableSpaceStmt

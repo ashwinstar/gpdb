@@ -338,7 +338,14 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 		}
 	}
 	
-	elog((Debug_print_tablespace ? LOG : DEBUG3),"Create Tablespace Using location %s", location);
+	/* If specified, use a special directory for master database. */
+	if (Gp_role == GP_ROLE_DISPATCH && stmt->masterlocation)
+	{
+		location = pstrdup(stmt->masterlocation);
+		elog((Debug_print_tablespace ? LOG : DEBUG3), "dispatcher using location %s", location);
+	}
+	else
+		elog((Debug_print_tablespace ? LOG : DEBUG3),"Create Tablespace Using location %s", location);
 	
 		
 	/* Unix-ify the offered path, and strip any trailing slashes */

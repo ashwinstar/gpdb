@@ -319,6 +319,7 @@ static void doNegateFloat(Value *v);
 %type <list>	window_partition_clause opt_window_partition_clause
 				opt_window_order_clause
 %type <str>		opt_window_name window_name
+				opt_master_location
 
 %type <list>	row type_list array_expr_list
 %type <node>	case_expr case_arg when_clause case_default
@@ -442,7 +443,7 @@ static void doNegateFloat(Value *v);
 	LIKE LIMIT LIST LISTEN LOAD LOCAL LOCALTIME LOCALTIMESTAMP LOCATION
 	LOCK_P LOG_P LOGIN_P
 
-	MATCH MAXVALUE MERGE MINUTE_P MINVALUE MIRROR MODE MONTH_P MOVE
+	MASTER MATCH MAXVALUE MERGE MINUTE_P MINVALUE MIRROR MODE MONTH_P MOVE
 
 	NAMES NATIONAL NATURAL NCHAR NEW NEXT NO NOCREATEDB
 	NOCREATEROLE NOCREATEUSER NOINHERIT NOLOGIN_P NONE NOOVERCOMMIT NOSUPERUSER
@@ -3298,13 +3299,14 @@ opt_procedural:
  *
  *****************************************************************************/
 
-CreateTableSpaceStmt: CREATE TABLESPACE name OptTableSpaceOwner LOCATION cdb_string_list opt_mirror_location
+CreateTableSpaceStmt: CREATE TABLESPACE name OptTableSpaceOwner LOCATION cdb_string_list opt_mirror_location opt_master_location
 				{
 					CreateTableSpaceStmt *n = makeNode(CreateTableSpaceStmt);
 					n->tablespacename = $3;
 					n->owner = $4;
 					n->locations = $6;
 					n->mirrorlocations = $7;
+					n->masterlocation = $8;
 					$$ = (Node *) n;
 				}
 		;
@@ -3315,6 +3317,11 @@ OptTableSpaceOwner: OWNER name			{ $$ = $2; }
 
 opt_mirror_location:
 				MIRROR LOCATION cdb_string_list 	{ $$ = $3; }
+			|	/*EMPTY*/				 	{ $$ = NULL; }
+		;
+
+opt_master_location:
+				MASTER LOCATION Sconst 	{ $$ = $3; }
 			|	/*EMPTY*/				 	{ $$ = NULL; }
 		;
 			
@@ -9769,6 +9776,7 @@ unreserved_keyword:
 			| LOCATION
 			| LOCK_P
 			| LOGIN_P
+			| MASTER
 			| MATCH
 			| MAXVALUE
 			| MERGE

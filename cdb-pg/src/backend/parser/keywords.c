@@ -231,6 +231,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"lock", LOCK_P},
 	{"log", LOG_P},
 	{"login", LOGIN_P},
+	{"master", MASTER},
 	{"match", MATCH},
 	{"maxvalue", MAXVALUE},
 	{"merge", MERGE},
