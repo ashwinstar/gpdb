@@ -7,6 +7,7 @@
 #define ARRAY_INVALID_STATUS                         "invalid"
 #define ARRAY_NO_ARRAY_STATUS                        "no_array"
 #define ARRAY_CONNECTING_STATUS                      "connecting"
+#define ARRAY_BUSY_STATUS                            "busy"
 
 static inline void setup_set_segment(cmdslot_t *cmdslot, int idx, char *name, int dbid, int content, int port, int node, char *dir, apr_pool_t *pool)
 {
@@ -889,3 +890,177 @@ static apr_status_t a_fts_break(gpcc_event_t *ev, void *arg)
 
     return 0;
 }
+
+static apr_status_t a_fts_segment_start(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
+    struct json_object *obj = json_tokener_parse(pkt->payload);
+    cmdslot_t *p;
+    gpcc_event_t *evt;
+    gpcc_net_uri_t *uri;
+    gpcc_net_conn_t conn;
+    char *mode, *url, *seg, *m;
+
+    seg = url = 0;
+    mode = "normal";
+    memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
+    url = ev->pdata + sizeof(gpcc_net_conn_t);
+
+    uri = gpcc_net_uri_alloc(url);
+    m = gpcc_net_uri_param(uri, "mode");
+    seg = gpcc_net_uri_param(uri, "s");
+    
+    if (!seg) {
+	evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+	gpcc_net_uri_free(uri);
+	obj = gpcc_json_http_reply("start", "failure", "parameter 's' is missing");
+	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+	json_object_put(obj);
+	return 0;
+    } else {
+	int i;
+	for (i = 0 ; i < slot->u.fts.nseginfo && strcmp(seg, slot->u.fts.seginfo[i].name) != 0 ; i++);
+	if (i >= slot->u.fts.nseginfo) {
+	    evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
+	    gpcc_evqueue_put(gpma.evq, evt);
+	    gpcc_net_uri_free(uri);
+	    obj = gpcc_json_http_reply("stop", "failure", "invalid parameter 's'");
+	    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+	    json_object_put(obj);
+	    return 0;
+	}
+    }
+    
+    if (m) {
+	char *opt[2] = {"normal", "force"};
+	int i;
+	for (i = 0 ; i < gpcc_lengthof(opt) ; i++) {
+	    if (apr_strnatcasecmp(m, opt[i]) == 0)
+		break;
+	}
+	if (i >= gpcc_lengthof(opt)) {
+	    evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
+	    gpcc_evqueue_put(gpma.evq, evt);
+	    gpcc_net_uri_free(uri);
+	    obj = gpcc_json_http_reply("start", "failure", "invalid parameter 'mode'");
+	    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+	    json_object_put(obj);
+	    return 0;
+	}
+	mode = m;
+    }
+
+    p = cmdslot_alloc("SEGMENT_START", FTS_SEGMENT_START_CMDSTATE);
+    p->u.segment_start.parent_cmdidx = slot->cmdidx;
+    p->u.segment_start.nunit = 1;
+    p->u.segment_start.unit = apr_palloc(p->pool, sizeof(char *) * p->u.segment_start.nunit);
+    p->u.segment_start.unit[0] = apr_pstrdup(p->pool, seg);
+    p->u.segment_start.mode = apr_pstrdup(p->pool, mode);
+    slot->u.fts.active_cmdidx = p->cmdidx;
+    
+    evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
+
+    obj = gpcc_json_http_reply("init", "pending", "pending");
+    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+    json_object_put(obj);
+    
+    return 0;
+}
+
+
+static apr_status_t a_fts_segment_stop(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
+    struct json_object *obj = json_tokener_parse(pkt->payload);
+    cmdslot_t *p;
+    gpcc_event_t *evt;
+    char *mode, *seg, *url, *m;
+    gpcc_net_uri_t *uri;
+    gpcc_net_conn_t conn;
+
+    seg = url = 0;
+    mode = "immediate";
+    memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
+    url = ev->pdata + sizeof(gpcc_net_conn_t);
+    
+    uri = gpcc_net_uri_alloc(url);
+    m = gpcc_net_uri_param(uri, "mode");
+    seg = gpcc_net_uri_param(uri, "s");
+
+    if (!seg) {
+	evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+	gpcc_net_uri_free(uri);
+	obj = gpcc_json_http_reply("stop", "failure", "parameter 's' is missing");
+	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+	json_object_put(obj);
+	return 0;
+    } else {
+	int i;
+	for (i = 0 ; i < slot->u.fts.nseginfo && strcmp(seg, slot->u.fts.seginfo[i].name) != 0 ; i++);
+	if (i >= slot->u.fts.nseginfo) {
+	    evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
+	    gpcc_evqueue_put(gpma.evq, evt);
+	    gpcc_net_uri_free(uri);
+	    obj = gpcc_json_http_reply("stop", "failure", "invalid parameter 's'");
+	    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+	    json_object_put(obj);
+	    return 0;
+	}
+    }
+	    
+	    
+    if (m) {
+	char *opt[3] = {"immediate", "fast", "smart"};
+	int i;
+	for (i = 0 ; i < gpcc_lengthof(opt) ; i++) {
+	    if (apr_strnatcasecmp(m, opt[i]) == 0)
+		break;
+	}
+	if (i >= gpcc_lengthof(opt)) {
+	    /* invalid mode */
+	    evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
+	    gpcc_evqueue_put(gpma.evq, evt);
+	    gpcc_net_uri_free(uri);
+	    obj = gpcc_json_http_reply("stop", "failure", "invalid parameter 'mode'");
+	    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+	    json_object_put(obj);
+	    return 0;
+	}
+	
+	mode = m;
+    }
+
+    gpcc_log_info("SEGMENT_STOP %s %s", seg, mode);
+
+    p = cmdslot_alloc("SEGMENT_STOP", FTS_SEGMENT_STOP_CMDSTATE);
+    p->u.segment_stop.parent_cmdidx = slot->cmdidx;
+    p->u.segment_stop.nunit = 1;
+    p->u.segment_stop.unit = apr_palloc(p->pool, sizeof(char *) * p->u.segment_stop.nunit);
+    p->u.segment_stop.unit[0] = apr_pstrdup(p->pool, seg);
+    p->u.segment_stop.mode = apr_pstrdup(p->pool, mode);
+    slot->u.fts.active_cmdidx = p->cmdidx;
+    
+    evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
+
+
+    obj = gpcc_json_http_reply("init", "pending", "pending");
+    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+    json_object_put(obj);
+    
+    return 0;
+}
+
+static apr_status_t a_fts_segment_command_reply(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+
+    slot->u.fts.active_cmdidx = 0;
+    return 0;
+}
+

@@ -24,7 +24,8 @@
 #include "fsm_array_init.h"
 #include "fsm_array_stop.h"
 #include "fsm_unit.h"
-
+#include "fsm_segment_start.h"
+#include "fsm_segment_stop.h"
 
 apr_status_t a_system_tick(gpcc_event_t* ev, void* arg)
 {
@@ -197,7 +198,7 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(FTS_CMDSTATE, INIT_EVENT, FTS_WAIT_CMDSTATE,
 		 a_fts_init, 0);
 
-		 
+    /* fts break event */
     gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, BREAK_EVENT, FTS_WAIT_CMDSTATE,
 		 a_fts_break, 0);
     gpcc_fsm_put(FTS_STOPPED_CMDSTATE, BREAK_EVENT, FTS_WAIT_CMDSTATE, 
@@ -209,6 +210,7 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(FTS_STOPPING_CMDSTATE, BREAK_EVENT, FTS_WAIT_CMDSTATE,
 		 a_fts_break, 0);
 
+    /* fts wait */
     gpcc_fsm_put(FTS_WAIT_CMDSTATE, ARRAY_STATUS_EVENT, FTS_WAIT_CMDSTATE,
 		 a_fts_array_status_reply, 0);
     gpcc_fsm_put(FTS_WAIT_CMDSTATE, ARRAY_STOP_EVENT, FTS_WAIT_CMDSTATE,
@@ -223,6 +225,7 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(FTS_WAIT_CMDSTATE, ARRAY_ABSENT_EVENT, FTS_EMPTY_CMDSTATE,
 		 0);
 
+    /* fts empty */
     gpcc_fsm_put(FTS_EMPTY_CMDSTATE, ARRAY_INIT_EVENT, FTS_INITIALIZING_CMDSTATE,
 		 a_fts_array_init, 0);
     gpcc_fsm_put(FTS_EMPTY_CMDSTATE, ARRAY_START_EVENT, FTS_EMPTY_CMDSTATE,
@@ -232,7 +235,7 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(FTS_EMPTY_CMDSTATE, ARRAY_STATUS_EVENT, FTS_EMPTY_CMDSTATE,
 		 a_fts_array_status_reply, 0);
 
-
+    /* fts initializing */
     gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, ARRAY_REPLY_MSG_EVENT, FTS_INITIALIZING_CMDSTATE,
 		 a_fts_array_init_reply, 0);
     gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, SUCCESS_EVENT, FTS_STOPPED_CMDSTATE,
@@ -248,7 +251,7 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, ARRAY_STATUS_EVENT, FTS_INITIALIZING_CMDSTATE,
 		 a_fts_array_status_reply, 0);
     
-
+    /* fts stopped */
     gpcc_fsm_put(FTS_WAIT_CMDSTATE, ARRAY_PRESENT_EVENT, FTS_STOPPING_CMDSTATE,
 		 a_fts_create_segment_slot, a_fts_array_stop_forsure, 0);
     gpcc_fsm_put(FTS_STOPPED_CMDSTATE, ARRAY_START_EVENT, FTS_STARTING_CMDSTATE,
@@ -260,6 +263,16 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(FTS_STOPPED_CMDSTATE, ARRAY_STATUS_EVENT, FTS_STOPPED_CMDSTATE,
 		 a_fts_array_status_reply, 0);    
 
+    /* fts stopped - segment command */
+    gpcc_fsm_put(FTS_STOPPED_CMDSTATE, SEGMENT_START_EVENT, FTS_STOPPED_BUSY_CMDSTATE,
+		 a_fts_segment_start, 0);
+    gpcc_fsm_put(FTS_STOPPED_CMDSTATE, SEGMENT_STOP_EVENT, FTS_STOPPED_BUSY_CMDSTATE,
+		 a_fts_segment_stop, 0);
+    gpcc_fsm_put(FTS_STOPPED_BUSY_CMDSTATE, CONTINUE_EVENT, FTS_STOPPED_CMDSTATE, 
+		 a_fts_segment_command_reply, 0);
+
+
+    /* fts starting */
     gpcc_fsm_put(FTS_STARTING_CMDSTATE, ARRAY_START_EVENT, FTS_STARTING_CMDSTATE,
 		 a_fts_busy_ok_reply, 0);    
     gpcc_fsm_put(FTS_STARTING_CMDSTATE, ARRAY_STOP_EVENT, FTS_STARTING_CMDSTATE,
@@ -274,6 +287,14 @@ APR_DECLARE(void) fsm_init(void)
 		 a_fts_running, 0);
     gpcc_fsm_put(FTS_STARTING_CMDSTATE, FAILURE_EVENT, FTS_STOPPED_CMDSTATE,
 		 a_fts_failure, 0);
+
+    /* fts starting - reject segment command */
+    gpcc_fsm_put(FTS_STARTING_CMDSTATE, SEGMENT_START_EVENT, FTS_STARTING_CMDSTATE,
+		 a_fts_busy_reply, 0);
+    gpcc_fsm_put(FTS_STARTING_CMDSTATE, SEGMENT_STOP_EVENT, FTS_STARTING_CMDSTATE,
+		 a_fts_busy_reply, 0);
+
+    /* fts running */
     gpcc_fsm_put(FTS_RUNNING_CMDSTATE, ARRAY_STOP_EVENT, FTS_STOPPING_CMDSTATE,
 		 a_fts_array_stop, 0);
     gpcc_fsm_put(FTS_RUNNING_CMDSTATE, ARRAY_STATUS_EVENT, FTS_RUNNING_CMDSTATE,
@@ -283,6 +304,14 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(FTS_RUNNING_CMDSTATE, ARRAY_INIT_EVENT, FTS_RUNNING_CMDSTATE,
 		 a_fts_busy_reply, 0);
 
+    /* fts running - segment command */
+    gpcc_fsm_put(FTS_RUNNING_CMDSTATE, SEGMENT_START_EVENT, FTS_RUNNING_BUSY_CMDSTATE,
+		 a_fts_segment_start, 0);
+    gpcc_fsm_put(FTS_RUNNING_CMDSTATE, SEGMENT_STOP_EVENT, FTS_RUNNING_BUSY_CMDSTATE,
+		 a_fts_segment_stop, 0);
+    gpcc_fsm_put(FTS_RUNNING_BUSY_CMDSTATE, CONTINUE_EVENT, FTS_RUNNING_CMDSTATE, 0);
+
+    /* fts stopping */
     gpcc_fsm_put(FTS_STOPPING_CMDSTATE, ARRAY_START_EVENT, FTS_STOPPING_CMDSTATE,
 		 a_fts_busy_reply, 0);    
     gpcc_fsm_put(FTS_STOPPING_CMDSTATE, ARRAY_STOP_EVENT, FTS_STOPPING_CMDSTATE,
@@ -298,7 +327,11 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(FTS_STOPPING_CMDSTATE, FAILURE_EVENT, FTS_STOPPED_CMDSTATE,
 		 a_fts_failure, 0);
 
-
+    /* fts starting - reject segment command */
+    gpcc_fsm_put(FTS_STOPPING_CMDSTATE, SEGMENT_START_EVENT, FTS_STOPPING_CMDSTATE,
+		 a_fts_busy_reply, 0);
+    gpcc_fsm_put(FTS_STOPPING_CMDSTATE, SEGMENT_STOP_EVENT, FTS_STOPPING_CMDSTATE,
+		 a_fts_busy_reply, 0);
 
     /* init */
     gpcc_fsm_put(FTS_INITDB_CMDSTATE, INIT_EVENT, FTS_INITDB_CMDSTATE,
@@ -352,6 +385,26 @@ APR_DECLARE(void) fsm_init(void)
 		 a_status_failure, 0);
     gpcc_fsm_put(FTS_STATUS_CMDSTATE, TIMEUP_EVENT, NULL_CMDSTATE,
 		 a_status_timeout, 0);
+
+    /* segment start */
+    gpcc_fsm_put(FTS_SEGMENT_START_CMDSTATE, INIT_EVENT, FTS_SEGMENT_START_WAIT_CMDSTATE,
+		 a_segment_start_do, 0);
+    gpcc_fsm_put(FTS_SEGMENT_START_WAIT_CMDSTATE, UNITS_REPLY_MSG_EVENT, FTS_SEGMENT_START_WAIT_CMDSTATE,
+		 a_segment_start_units_start_reply, 0);
+    gpcc_fsm_put(FTS_SEGMENT_START_WAIT_CMDSTATE, SUCCESS_EVENT, NULL_EVENT,
+		 a_segment_start_success, 0);
+    gpcc_fsm_put(FTS_SEGMENT_START_WAIT_CMDSTATE, FAILURE_EVENT, NULL_EVENT,
+		 a_segment_start_failure, 0);
+
+    /* segment stop */
+    gpcc_fsm_put(FTS_SEGMENT_STOP_CMDSTATE, INIT_EVENT, FTS_SEGMENT_STOP_WAIT_CMDSTATE,
+		 a_segment_stop_do, 0);
+    gpcc_fsm_put(FTS_SEGMENT_STOP_WAIT_CMDSTATE, UNITS_REPLY_MSG_EVENT, FTS_SEGMENT_STOP_WAIT_CMDSTATE,
+		 a_segment_stop_units_stop_reply, 0);
+    gpcc_fsm_put(FTS_SEGMENT_STOP_WAIT_CMDSTATE, SUCCESS_EVENT, NULL_EVENT,
+		 a_segment_stop_success, 0);
+    gpcc_fsm_put(FTS_SEGMENT_STOP_WAIT_CMDSTATE, FAILURE_EVENT, NULL_EVENT,
+		 a_segment_stop_failure, 0);
 
     /* array stop */
     gpcc_fsm_put(FTS_ARRAY_STOP_CMDSTATE, INIT_EVENT, FTS_ARRAY_STOP_WAIT_CMDSTATE,
@@ -449,7 +502,7 @@ APR_DECLARE(void) fsm_init(void)
 		 a_unit_invalid, 0);
     gpcc_fsm_put(UNIT_STOPPED_CMDSTATE, UNIT_START_EVENT, UNIT_STARTING_CMDSTATE,
 		 a_unit_start, 0);
-    gpcc_fsm_put(UNIT_STOPPED_CMDSTATE, UNIT_STOP_EVENT, UNIT_STARTING_CMDSTATE,
+    gpcc_fsm_put(UNIT_STOPPED_CMDSTATE, UNIT_STOP_EVENT, UNIT_STOPPED_CMDSTATE,
 		 a_unit_busy_ok_reply, 0);
     gpcc_fsm_put(UNIT_STARTING_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, UNIT_STARTING_CMDSTATE,
 		 a_unit_start_reply, 0);
@@ -468,12 +521,14 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(UNIT_RUNNING_CMDSTATE, UNIT_START_EVENT, UNIT_RUNNING_CMDSTATE,
 		 a_unit_busy_ok_reply, 0);
 
+    /* unit break event */
     gpcc_fsm_put(UNIT_CMDSTATE, BREAK_EVENT, UNIT_CMDSTATE, 0);
     gpcc_fsm_put(UNIT_STOPPING_CMDSTATE, BREAK_EVENT, UNIT_CMDSTATE, 0);
     gpcc_fsm_put(UNIT_STOPPED_CMDSTATE, BREAK_EVENT, UNIT_CMDSTATE, 0);
     gpcc_fsm_put(UNIT_STARTING_CMDSTATE, BREAK_EVENT, UNIT_CMDSTATE, 0);
     gpcc_fsm_put(UNIT_RUNNING_CMDSTATE, BREAK_EVENT, UNIT_CMDSTATE, 0);
 
+    /* unit status */
     gpcc_fsm_put(UNIT_CMDSTATE, UNIT_STATUS_EVENT, UNIT_CMDSTATE, 
 		 a_unit_status, 0);
     gpcc_fsm_put(UNIT_STOPPING_CMDSTATE, UNIT_STATUS_EVENT, UNIT_STOPPING_CMDSTATE,

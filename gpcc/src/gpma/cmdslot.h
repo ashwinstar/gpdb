@@ -151,8 +151,22 @@ struct cmdslot_t {
 	} array_start;
 
 	struct {
-	    gpcc_net_conn_t conn; /* if we need to send reply over http */
 	    apr_uint32_t parent_cmdidx;
+	    struct {
+		int content;
+		char *definedprimary;
+		int dbid;
+		char *isprimary;
+		char *valid;
+		char *hostname;
+		int port;
+		char *datadir;
+	    } *gpconf;
+	    int nconf;
+	    int nvalid;
+	    char **unit;
+	    int nunit;
+	    char *mode;
 	} segment_start;
 
 	struct {
@@ -164,6 +178,9 @@ struct cmdslot_t {
 	struct {
 	    gpcc_net_conn_t conn; /* if we need to send reply over http */
 	    apr_uint32_t parent_cmdidx;
+	    char *mode;
+	    char **unit;
+	    int nunit;
 	} segment_stop;
 
 	

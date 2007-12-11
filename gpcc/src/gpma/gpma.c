@@ -287,6 +287,14 @@ static void net_accepted(gpcc_net_conn_t conn,
 		    ev = mkfts_event(ARRAY_STOP_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
 				     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
 		}
+		else if (0 == strcmp("/gpcc/segment/start", uri->path)) {
+		    ev = mkfts_event(SEGMENT_START_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0,
+				     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		}
+		else if (0 == strcmp("/gpcc/segment/stop", uri->path)) {
+		    ev = mkfts_event(SEGMENT_STOP_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0,
+				     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		}
 		else 
 		    is_bad_uri = 1;
 	    }
