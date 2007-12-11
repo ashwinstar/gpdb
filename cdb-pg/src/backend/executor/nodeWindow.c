@@ -3408,14 +3408,22 @@ adjustEdgesForRows(WindowFrameBuffer buffer,
 			if (level_state->num_trail_rows <= level_state->trail_rows - 1)
 			{
 				bool found = false;
+				bool was_valid = true;
 				if (ntuplestore_acc_tell(level_state->trail_reader, NULL))
 					found = ntuplestore_acc_advance(level_state->trail_reader, 1);
-				else if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
-						 level_state->trail_rows == 0)
-					found = ntuplestore_acc_seek_first(level_state->trail_reader);
-				
+				else
+				{
+					was_valid = false;
+					
+					if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
+						level_state->trail_rows == 0)
+						found = ntuplestore_acc_seek_first(level_state->trail_reader);
+				}
+
+				/* Only increment num_trail_rows when we found the next tuple. */
 				if (found ||
-					EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail))
+					(was_valid && level_state->agg_filled &&
+					 EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail)))
 					level_state->num_trail_rows++;
 			}
 		}

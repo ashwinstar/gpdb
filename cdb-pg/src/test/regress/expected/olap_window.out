@@ -7507,3 +7507,21 @@ select ord, pn,cn,vn,sum(vn) over (order by ord, pn rows between cn following an
   12 | 800 |  4 | 40 |    
 (12 rows)
 
+-- MPP-2323
+select ord, cn,vn,sum(vn) over (order by ord rows between 3 following and floor(cn) following ) from sale_ord;
+ ord | cn | vn | sum 
+-----+----+----+-----
+   1 |  2 | 40 |    
+   2 |  1 | 10 |    
+   3 |  3 | 40 |  50
+   4 |  1 | 20 |    
+   5 |  1 | 30 |    
+   6 |  1 | 50 |    
+   7 |  2 | 50 |    
+   8 |  1 | 30 |    
+   9 |  3 | 30 |  40
+  10 |  3 | 30 |    
+  11 |  4 | 40 |    
+  12 |  4 | 40 |    
+(12 rows)
+

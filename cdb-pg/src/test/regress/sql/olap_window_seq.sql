@@ -1278,3 +1278,6 @@ FROM sale order by 1,2,3; --order 1,2,3
 -- MPP-2322
 select ord, pn,cn,vn,sum(vn) over (order by ord, pn rows between cn following and cn+1 following) as sum from sale_ord;
 select ord, pn,cn,vn,sum(vn) over (order by ord, pn rows between cn following and cn following) as sum from sale_ord;
+
+-- MPP-2323
+select ord, cn,vn,sum(vn) over (order by ord rows between 3 following and floor(cn) following ) from sale_ord;
