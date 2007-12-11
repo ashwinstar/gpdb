@@ -2,7 +2,7 @@
 '''
 gpfdist -- file distribution web server 
 
-Usage: gpfdist [-?v] [-p port] [-d dir] [-q qchar] [-x xchar] [-h]
+Usage: gpfdist [-?v] [-p port] [-d dir] [-q qchar] [-x xchar] [-h] [-l logfile]
 
          -?       : print this help screen
          -v       : verbose mode
@@ -16,6 +16,7 @@ Usage: gpfdist [-?v] [-p port] [-d dir] [-q qchar] [-x xchar] [-h]
          -x xchar : set escape character (default to qchar)
          -h       : first data row in data is a header row. skip 
                     it (only allowed in CSV format).
+		 -l       : fully qualified path and name of log file 
 	
 '''
 
