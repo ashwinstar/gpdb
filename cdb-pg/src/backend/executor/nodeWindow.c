@@ -4181,7 +4181,11 @@ adjustDelayBoundEdgeForRange(WindowStatePerLevel level_state,
 		 */
 		if (EDGE_IS_BOUND_FOLLOWING(edge) ||
 			EDGE_EQ_CURRENT_ROW(level_state, edge, is_lead_edge))
+		{
+			if (is_lead_edge)
+				level_state->lead_ready = false;
 			return;
+		}
 	}
 
 	advanceEdgeForRange(level_state, wstate,
