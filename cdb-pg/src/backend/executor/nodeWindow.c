@@ -4507,10 +4507,12 @@ fetchCurrentRow(WindowState *wstate)
 					
 					else
 					{
-						if (level_state->num_trail_rows > 0)
+						if (level_state->num_trail_rows > 0 ||
+							level_state->trail_rows == 0)
 						{
 							ntuplestore_acc_seek_last(level_state->trail_reader);
-							level_state->num_trail_rows--;
+							if (level_state->num_trail_rows > 0)
+								level_state->num_trail_rows--;
 						}
 						
 						else
