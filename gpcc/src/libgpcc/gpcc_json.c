@@ -196,6 +196,30 @@ struct json_object *gpcc_json_http_status_reply(const char *array, const char *s
     return obj;
 }
 
+struct json_object *gpcc_json_http_segment_status_reply(const char *segment, const char *status, const char *result) 
+{
+    struct json_object *obj = 0;
+    struct json_object *resobj = 0;
+    struct json_object *arrobj = 0;
+
+    obj = json_object_new_object();
+    json_object_object_add(obj, "status", json_object_new_string((char *)status));
+
+    if (segment) {
+	json_object_object_add(obj, "segment", json_object_new_string((char *) segment));
+    }
+
+    resobj = json_object_new_object();
+
+    arrobj = json_object_new_array();
+    json_object_array_add(arrobj, json_object_new_string((char *) result));
+    json_object_object_add(resobj, "result", arrobj);
+    json_object_object_add(resobj, "total", json_object_new_int(1));
+    json_object_object_add(resobj, "offset", json_object_new_int(0));
+    json_object_object_add(obj, "rset", resobj);
+    
+    return obj;
+}
 
 struct json_object *gpcc_json_alert(const char *segment, const char *alert) 
 {
