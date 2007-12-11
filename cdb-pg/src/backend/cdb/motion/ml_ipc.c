@@ -1101,6 +1101,8 @@ sendAck(MotionConn *conn, bool stop)
 	n = sendto(UDPlistenerFd, (const char *)&msg, sizeof(msg), 0,
 			   (struct sockaddr *)&conn->peer, sizeof(conn->peer));
 
+	/* XXX: need to handle EAGAIN here ? */
+
 	if (n < sizeof(msg))
 		write_log("sendack: got error %d errno %d route %d seq %d\n",
 				  n, errno, conn->route, conn->conn_info.seq);
@@ -3731,6 +3733,9 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 
 	n = sendto(pEntry->txfd, (const char *)&conn->conn_info, sizeof(conn->conn_info), 0,
 			   (struct sockaddr *)&saddr, (socklen_t)sizeof(saddr));
+
+	/* XXX: need to handle EAGAIN here ? */
+
 	if (n != sizeof(conn->conn_info))
 	{
 	    ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
@@ -4584,7 +4589,7 @@ flushUDPBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 			if (n < 0)
 			{
 				ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
-				if (errno == EINTR)
+				if (errno == EINTR || errno == EAGAIN)
 					continue;
 			
 				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
