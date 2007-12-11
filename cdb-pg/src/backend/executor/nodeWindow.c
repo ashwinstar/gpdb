@@ -4293,16 +4293,26 @@ adjustDelayBoundEdgeForRows(WindowStatePerLevel level_state,
 	if (!is_lead_edge)
 	{
 		/*
-		 * If the frame is "0 preceding/following" and the current edge_reader
+		 * If the frame is "0 preceding/following" and the current_row_reader
 		 * is pointing to an invalid position, we simple set the
 		 * trailing edge to the last entry in the frame buffer.
 		 */
-		if (*p_request_num_rows >= 0 &&
-			!ntuplestore_acc_tell(edge_reader, NULL))
+		if (*p_request_num_rows == 0 &&
+			!ntuplestore_acc_tell(frame_buffer->current_row_reader, NULL))
 		{
 			ntuplestore_acc_seek_last(edge_reader);
-			if (*p_num_rows > 0)
-				(*p_num_rows)--;
+		}
+
+		/*
+		 * If the trailing edge points to an invalid position and the
+		 * edge is "x following", we want to set the current trailing
+		 * edge to the end of the buffer.
+		 */
+		else if (*p_num_rows > 0 &&
+				 !ntuplestore_acc_tell(edge_reader, NULL))
+		{
+			ntuplestore_acc_seek_last(edge_reader);
+			(*p_num_rows)--;
 		}
 
 		else
