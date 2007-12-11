@@ -500,8 +500,8 @@ try:
         else:
             match(session, key, value)
 
-    key = 'python.version'
-    matchListMore(session, key, '2.3.5')
+    #key = 'python.version'
+    #matchListMore(session, key, '2.3.5')
 
     key = 'sync.time'
     value = p0.x_res.get(key)
