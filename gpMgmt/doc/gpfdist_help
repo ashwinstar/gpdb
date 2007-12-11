@@ -8,7 +8,7 @@ SYNOPSIS
 
 
 gpfdist -d <directory> [-p <http_port>] [-x <escape_character>] 
-        {[-q <quote_character>] [-h]} [-v]
+        {[-q <quote_character>] [-l <log_file>] [-h]} [-v]
 
 gpfdist -? | --version
 
@@ -73,6 +73,12 @@ of each file will be skipped. This option is only allowed for files
 in CSV format. 
 
 
+-l <log_file>
+
+The fully qualified path and log file name where standard output 
+messages are to be logged.
+
+
 -v (verbose mode)
 
 Runs gpfdist in verbose mode.
@@ -92,9 +98,9 @@ EXAMPLES
 *****************************************************
 
 Serve files from a specified directory using port 8081 (and start 
-gpfdist in the background):
+gpfdist in the background and log output to a log file):
 
-gpfdist -d /var/load_files -p 8081 &
+gpfdist -d /var/load_files -p 8081 -l /home/gpadmin/log &
 
 
 Serve files that are in CSV format and have a header row:

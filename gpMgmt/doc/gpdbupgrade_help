@@ -100,7 +100,7 @@ with the gpfdist protocol:
     from your 3.1 installation to your ETL host.
 
 14. Restart gpfdist using the new binary. For example:
-      gpfdist -d /var/load_files -p 8081 >> gpfdist.log 2>&1 & 
+      gpfdist -d /var/load_files -p 8081 -l /home/gpadmin/gpfdlog & 
 
 *****************************************************
 DESCRIPTION
