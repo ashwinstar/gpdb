@@ -51,6 +51,18 @@ struct exttable_contents
 	PGresult *res;
 } **exttable_cts = NULL;
 
+/*
+ * In 3.1, we have two new columns listing primary and mirror tablespace
+ * locations for each tablespace. Before, these were stored on each
+ * segment but for 3.1 upgrades we must consolidate them.
+ */
+struct tblspc_locs_str
+{
+	PGresult **prilocs;
+	PGresult **mirlocs;
+	int nlocs;
+} tblspc_locs;
+
 /* Convenient for passing the contents of pg_resqueue around */
 PGresult *pg_resqueue_cts = NULL;
 
@@ -256,22 +268,26 @@ addexttablerows(config_t *conf)
 static void
 downgrade_pg_resqueue(config_t *conf)
 {
+	if (strcmp(conf->dbname, "template1") == 0)
 	{
-		if (strcmp(conf->dbname, "template1") == 0)
-		{
-			pg_resqueue_cts = run_query(conf, 0, 
-						"delete from pg_catalog.pg_resqueue"
-						" returning rsqname, rsqcountlimit, "
-						"rsqcostlimit, rsqovercommit, oid;");
-		}
+		pg_resqueue_cts = run_query(conf, 0, 
+					"delete from pg_catalog.pg_resqueue"
+					" returning rsqname, rsqcountlimit, "
+					"rsqcostlimit, rsqovercommit, oid;");
 		mylog(UDEBUG, "found %u resource queues", 
-			  PQntuples(pg_resqueue_cts)); 
-		run_query(conf, 0, "delete from pg_attribute where "
-				  "attnum > 4 AND attrelid = '%u';", ResQueueRelationId);
-		run_query(conf, 0, "update pg_class set relnatts = '4' "
-				 "WHERE oid = '%u'", ResQueueRelationId);
-		readd_pg_resqueue_cts(conf);
+				  PQntuples(pg_resqueue_cts)); 
 	}
+	run_query(conf, 0, "delete from pg_attribute where "
+			  "attnum > 4 AND attrelid = '%u';", ResQueueRelationId);
+	run_query(conf, 0, "update pg_class set relnatts = '4' "
+			 "WHERE oid = '%u'", ResQueueRelationId);
+	readd_pg_resqueue_cts(conf);
+	
+	/* pg_tablespace */
+	run_query(conf, 0, "delete from pg_attribute where "
+			  "attnum > 4 AND attrelid = 'pg_tablespace'::regclass;");
+	run_query(conf, 0, "update pg_class set relnatts = '4' "
+			 "WHERE oid = 'pg_tablespace'::regclass");
 }
 
 /* 
@@ -330,19 +346,33 @@ upgrade_pg_resqueue(config_t *conf)
 	 * will not be updated in other databases. So, we just use raw
 	 * SQL.
 	 */
-	if (1)
-	{
-		run_query(conf, 0, "insert into pg_attribute (attrelid, attname, "
-				  "atttypid, attstattarget, attlen, attnum, attndims, "
-				  "attcacheoff, atttypmod, attbyval, attstorage, attalign, "
-				  "attnotnull, atthasdef, attisdropped, attislocal, "
-				  "attinhcount) values('pg_catalog.pg_resqueue'::regclass, "
-				  "'rsqignorecostlimit', 'float4'::regtype, '-1', '4', '5', "
-				  "'0', '-1', '-1', 't', 'p', 'i', 't', 'f', 'f', 't', '0');");
-		run_query(conf, 0, "update pg_class set relnatts = relnatts + 1 WHERE "
-				  "oid = 'pg_catalog.pg_resqueue'::regclass;");
-	}
+	run_query(conf, 0, "insert into pg_attribute (attrelid, attname, "
+			  "atttypid, attstattarget, attlen, attnum, attndims, "
+			  "attcacheoff, atttypmod, attbyval, attstorage, attalign, "
+			  "attnotnull, atthasdef, attisdropped, attislocal, "
+			  "attinhcount) values('pg_catalog.pg_resqueue'::regclass, "
+			  "'rsqignorecostlimit', 'float4'::regtype, '-1', '4', '5', "
+			  "'0', '-1', '-1', 't', 'p', 'i', 't', 'f', 'f', 't', '0');");
+	run_query(conf, 0, "update pg_class set relnatts = relnatts + 1 WHERE "
+			  "oid = 'pg_catalog.pg_resqueue'::regclass;");
 
+	/* After MPP-2304, we also add columns for pg_tablespace */
+	run_query(conf, 0, "insert into pg_attribute (attrelid, attname, "
+			  "atttypid, attstattarget, attlen, attnum, attndims, "
+			  "attcacheoff, atttypmod, attbyval, attstorage, attalign, "
+			  "attnotnull, atthasdef, attisdropped, attislocal, "
+			  "attinhcount) values('pg_catalog.pg_tablespace'::regclass, "
+			  "'spcprilocations','_text'::regtype,'-1','-1','5','1','-1',"
+			  "'-1','f','x','i','f','f','f','t','0');");
+	run_query(conf, 0, "insert into pg_attribute (attrelid, attname, "
+			  "atttypid, attstattarget, attlen, attnum, attndims, "
+			  "attcacheoff, atttypmod, attbyval, attstorage, attalign, "
+			  "attnotnull, atthasdef, attisdropped, attislocal, "
+			  "attinhcount) values('pg_catalog.pg_tablespace'::regclass, "
+			  "'spcmirlocations','_text'::regtype, '-1', '-1', '6', '1', "
+			  "'-1','-1','f','x','i','f','f','f','t','0');");
+	run_query(conf, 0, "update pg_class set relnatts = relnatts + 2 WHERE "
+			  "oid = 'pg_catalog.pg_tablespace'::regclass;");
 }
 
 static void
@@ -412,12 +442,66 @@ readd_pg_resqueue_cts(config_t *conf)
 	}
 }
 
+static void
+init_tblspc_locs(config_t **segdbs)
+{
+	int size = 0;
+	int i;
+	bool hasmir = false;
+	
+	for (i = 0; segdbs[i] != NULL; i++)
+	{
+		if (strcmp(segdbs[i]->dbname, "template1") == 0 &&
+			segdbs[i]->definedprimary == true)
+			size++;
+		if (segdbs[i]->definedprimary == false)
+			hasmir = true;
+	}
+
+	tblspc_locs.prilocs = malloc(sizeof(PGresult *) * size);
+
+	if (hasmir)
+		tblspc_locs.mirlocs = malloc(sizeof(PGresult *) * size);
+	else
+		tblspc_locs.mirlocs = NULL;
+
+	tblspc_locs.nlocs = size;
+}
+
+static void
+remove_pg_tablespace_rows(config_t *conf)
+{
+	if (strcmp(conf->dbname, "template1") == 0)
+	{
+		int oset = conf->content + 1;
+		PGresult *res;
+
+		if (oset > tblspc_locs.nlocs)
+		{
+			mylog(UERROR, "BUG: oset (%i) > nlocs (%i)", oset,
+				  tblspc_locs.nlocs);
+			exit(1);
+		}
+
+		res = run_query(conf, 0, "delete from pg_catalog.pg_tablespace "
+						"returning oid, spcname, spcowner, spclocation, "
+						"spcacl");
+
+		if (conf->definedprimary)
+			tblspc_locs.prilocs[oset] = res;
+		else
+			tblspc_locs.mirlocs[oset] = res;
+	}
+}
+
 /* 
  * Perform the ALTER TABLE operations necessary to upgrade from 3.0 to 3.1
  */
 static void
 schema_upgrade(config_t *conf)
 {
+	remove_pg_tablespace_rows(conf);
+
 	if (upgrade)
 	{
 		/* exttable */
@@ -482,7 +566,6 @@ schema_upgrade(config_t *conf)
 				  "language c strict volatile;");
 		downgrade_catalog_schema(conf);
 	}
-
 }
 
 static void
@@ -560,12 +643,12 @@ static void
 post_upgrade(config_t *conf)
 {
 
-	/* must be done after 64 bit upgrade */
-	if (upgrade)
-		upgrade_pg_resqueue(conf);
 	/* drop and readd pg_stat_activity */
 	if (upgrade)
 	{
+		/* must be fone here, because of 64 bit change */
+		upgrade_pg_resqueue(conf);
+
 		run_query(conf, 0, "DROP VIEW pg_catalog.pg_stat_activity;");
 		run_query(conf, 0, "CREATE VIEW pg_catalog.pg_stat_activity AS "
    		 	"SELECT "
@@ -851,6 +934,154 @@ run_sql_command(PGconn *conn, char *cmd)
 
 #endif
 
+static char *
+create_master_string(config_t **segdbs, bool pri, char *tblspcname)
+{
+	char *str = NULL;
+	int i;
+
+	mylog(UDEBUG, "building %s string for %s",
+		pri ? "priloc" : "secloc", tblspcname);
+	
+	for (i = 0; segdbs[i]; i++)
+	{
+		int j;
+		PGresult *res;
+		int oset = segdbs[i]->content + 1;
+		
+		if (segdbs[i]->content == -1 ||
+			strcmp("template1", segdbs[i]->dbname) != 0)
+		{
+			continue;
+		}
+
+		if (segdbs[i]->definedprimary == pri)
+		{
+			if (str == NULL)
+			{
+				str = malloc((1024 + 2) * tblspc_locs.nlocs);
+				str[0] = '\0';
+			}
+		}
+		else
+			continue;
+
+		res = pri ? tblspc_locs.prilocs[oset] : tblspc_locs.mirlocs[oset];
+		
+		for (j = 0; j < PQntuples(res); j++)
+		{
+			char *restblspc = PQgetvalue(res, j, 1);
+
+			if (strcmp(tblspcname, restblspc) == 0)
+			{
+				char *loc = PQgetvalue(res, j, 3);
+
+				mylog(UDEBUG, "location is %s", loc);
+				
+				if (str[0] != '\0')
+					strcat(str, ", ");
+
+				if (loc[0] != '\0')
+					strcat(str, loc);
+				
+				break;
+			}
+		}
+	}
+	if (str[0] == '\0')
+	{
+		free(str);
+		str = NULL;
+	}
+	return str;
+}
+
+static void
+readd_pg_tablespace_rows(config_t **segdbs, config_t *conf)
+{
+	int oset;
+	PGresult *res;
+	int i;
+	
+	if (strcmp(conf->dbname, "template1") != 0)
+		return;
+
+	oset = conf->content + 1;
+	
+	res = tblspc_locs.prilocs[oset];
+	
+	for (i = 0; i < PQntuples(res); i++)
+	{
+		char *priloc = NULL;
+		char *mirloc = NULL;
+		char *query;
+		int len;
+
+		if (conf->content == -1 && upgrade)
+		{
+			priloc = create_master_string(segdbs, true,
+										  PQgetvalue(res, i, 1));
+			mylog(UDEBUG, "for tablespace %s, prilocations = '%s'",
+				  PQgetvalue(res, i, 1), priloc == NULL ? "(null)" :
+				  priloc);
+			if (tblspc_locs.mirlocs != NULL)
+			{
+				mirloc = create_master_string(segdbs, false,
+											  PQgetvalue(res, i, 1));
+			}
+			mylog(UDEBUG, "for tablespace %s, mirlocations = '%s'",
+				  PQgetvalue(res, i, 1), mirloc == NULL ? "(null)" :
+				  mirloc);
+		}
+
+
+		len = 8196 + (priloc == NULL ? 0 : strlen(priloc)) +
+			(mirloc == NULL ? 0 : strlen(mirloc)) + 1;
+		query = malloc(len);
+		if (upgrade)
+			snprintf(query, len, "insert into pg_catalog.pg_tablespace "
+					 "(spcname,spcowner,spclocation,spcacl,"
+					 "spcprilocations,spcmirlocations) values"
+					 "('%s','%s','%s',%s%s%s::_aclitem,"
+					 "%s%s%s::_text,%s%s%s::_text) "
+					 "returning gp_oid_update(oid, '%s'::oid, ctid, "
+					 "'pg_catalog.pg_tablespace'::regclass::oid);",
+					 PQgetvalue(res, i, 1), PQgetvalue(res, i, 2),
+					 PQgetvalue(res, i, 3), PQgetisnull(res,i,4) ? "" : "'",
+					 PQgetisnull(res,i,4) ? "NULL" : PQgetvalue(res, i, 4),
+					 PQgetisnull(res,i,4) ? "" : "'",
+					 priloc == NULL ? "" : "'{", 
+					 priloc == NULL ? "NULL" : priloc,
+					 priloc == NULL ? "" : "}'",
+					 mirloc == NULL ? "" : "'{",
+					 mirloc == NULL ? "NULL" : mirloc,
+					 mirloc == NULL ? "" : "}'",
+					 PQgetvalue(res, i, 0));
+		else
+			snprintf(query, len, "insert into pg_catalog.pg_tablespace "
+					 "(spcname,spcowner,spclocation,spcacl) values"
+					 "('%s', '%s', '%s',%s%s%s::_aclitem) returning "
+					 "gp_oid_update(oid, '%s'::oid, ctid, "
+					 "'pg_catalog.pg_tablespace'::regclass::oid);",
+					 PQgetvalue(res, i, 1), PQgetvalue(res, i, 2),
+					 PQgetvalue(res, i, 3), PQgetisnull(res,i,4) ? "" : "'",
+					 PQgetisnull(res,i,4) ? "NULL" : PQgetvalue(res, i, 4),
+					 PQgetisnull(res,i,4) ? "" : "'",
+					 PQgetvalue(res, i, 0));
+
+		run_query(conf, 0, query);
+
+		check_ok(segdbs);
+
+		free(query);
+		
+		if (priloc)
+			free(priloc);
+		if (mirloc)
+			free(mirloc);
+	}
+}
+
 static void
 help(void)
 {
@@ -1099,13 +1330,17 @@ main(int argc, char **argv)
 	setQDexttables(&lconn);
 
 
-	/* get the list of databases and nodes in the cluster */
+	/* 
+	 * Get the list of databases and nodes in the cluster. Order is 
+	 * significant.
+	 */
 	res = run_query(&lconn, 0, "select content, definedprimary, dbid, "
 					"isprimary,"
 					"valid, hostname, port, datname from "
 					"pg_catalog.gp_configuration "
 					"cross join pg_catalog.pg_database "
-					"WHERE (content = -1 AND definedprimary = 't' AND isprimary = 't') "
+					"WHERE (content = -1 AND definedprimary = 't' "
+					"AND isprimary = 't') "
 					" OR (content <> -1) "
 					"order by content," 
 					"definedprimary desc, dbid;");
@@ -1202,7 +1437,9 @@ main(int argc, char **argv)
 			conf->conninfo = strdup(connstr);
 		}
 	}
-	
+
+	init_tblspc_locs(segdbs);
+
 	/*
 	 * We now have a connection open to the database on every segDB 
 	 * (0 is masterDB)
@@ -1252,6 +1489,8 @@ main(int argc, char **argv)
 		if (strcmp(segdbs[i]->dbname, "template1") != 0)
 			continue;
 		
+		readd_pg_tablespace_rows(segdbs, segdbs[i]);
+
 		mylog(UDEBUG, "updating segdb content %d definedprimary %d dbid %d",
 				   segdbs[i]->content, segdbs[i]->definedprimary,
 				   segdbs[i]->dbid);
