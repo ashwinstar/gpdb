@@ -168,6 +168,15 @@ struct json_object *gpcc_json_http_reply(const char *action, const char *status,
 struct json_object *gpcc_json_http_status_reply(const char *array, const char *status, const char *result);
 
 /**
+ *  create http segment status reply object
+ *
+ *  @param status
+ *  @param result
+ *  @return json_object
+ */
+struct json_object *gpcc_json_http_segment_status_reply(const char *segment, const char *status, const char *result);
+
+/**
  *  create alert object
  *
  *  @param segment   segment name
