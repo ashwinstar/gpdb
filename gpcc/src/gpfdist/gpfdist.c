@@ -105,6 +105,10 @@ struct fstream_t {
     int          fskip;		/* reflect opt.h (skip first line) */
     block_t*     fblock;	/* residue block */
     int 	 ferror;	/* error flag */
+    apr_uint64_t fsoff;         /* offset in the fstream */
+    apr_uint64_t fsize;
+    apr_uint64_t flog;          /* print log when foff > flog */
+    apr_uint64_t finterval;     /* interval to print log (5 percent of total size) */
 };
 
 
@@ -262,10 +266,17 @@ fstream_t* fstream_alloc(char** path, int npath, apr_pool_t* pool)
 
     memset(fs->fpath, 0, sizeof(char*) * npath);
     memset(fs->fd, 0, sizeof(gfile_t*) * npath);
-	
+    fs->fsize = 0;
     for (i = 0; i < npath; i++) {
+	apr_finfo_t finfo;
+
 	if (0 == (fs->fpath[i] = apr_pstrdup(pool, path[i])))
 	    gfatal(FLINE, "out of memory");
+
+	if (0 != apr_stat(&finfo, fs->fpath[i], APR_FINFO_TYPE, pool)) 
+	    gfatal(FLINE, "apr_stat %s failed", fs->fpath[i]);
+	
+	fs->fsize += finfo.size;
 
 	/* check READ access right */
 	if (0 == (fs->fd[i] = gfile_open(path[i], O_RDONLY|O_BINARY, pool))) {
@@ -282,7 +293,10 @@ fstream_t* fstream_alloc(char** path, int npath, apr_pool_t* pool)
     }
     fs->fidx = 0;
     fs->foff = 0;
+    fs->fsoff = 0;
     fs->fskip = opt.h;
+    fs->finterval = fs->fsize * 5 / 100;
+    fs->flog = fs->finterval;
 
     return fs;
 }
@@ -352,11 +366,16 @@ block_t* fstream_get_block(fstream_t* fs, apr_pool_t* pool)
 	}
 	b->top += n;
 	fs->foff += n;
+	fs->fsoff += n;
 
-	/* way too verbose
-	if (opt.V)
-	    printf("[INFO] %s [off %lld]\n", fs->fpath[fs->fidx], fs->foff);
-	*/
+	if (opt.V) {
+	    if (fs->fsoff >= fs->flog) {
+		printf("[INFO] %s [reading %lld/%lld=%lld%%]\n", fs->fpath[fs->fidx], fs->fsoff, fs->fsize, (fs->fsoff*100/fs->fsize));
+		fs->flog = fs->fsoff + fs->finterval;
+		fs->flog = (fs->flog > fs->fsize) ? fs->fsize : fs->flog;
+	    }
+	}
+
     }
 
     skipfirst = fs->fskip;
