@@ -510,7 +510,8 @@ cdbconn_setSliceIndex(SegmentDatabaseDescriptor    *segdbDesc,
     }
 
     /* Store updated whoami text. */
-    free(segdbDesc->whoami);
+	if (segdbDesc->whoami != NULL)
+		free(segdbDesc->whoami);
     segdbDesc->whoami = strdup(scratchbuf->data + scratchoff);
 
     /* Give back our scratch space at tail of error_message buffer. */
