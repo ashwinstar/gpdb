@@ -715,7 +715,7 @@ dumpTablespaces(PGconn *conn)
 	 */
 	res = executeQuery(conn, "SELECT spcname, "
 					 "pg_catalog.pg_get_userbyid(spcowner) AS spcowner, "
-					   "spcprilocations, spcmirlocations, spcacl, "
+					   "spclocation, spcprilocations, spcmirlocations, spcacl, "
 					"pg_catalog.shobj_description(oid, 'pg_tablespace') "
 					   "FROM pg_catalog.pg_tablespace "
 					   "WHERE spcname !~ '^pg_' "
@@ -729,11 +729,11 @@ dumpTablespaces(PGconn *conn)
 		PQExpBuffer buf = createPQExpBuffer();
 		char	   *spcname = PQgetvalue(res, i, 0);
 		char	   *spcowner = PQgetvalue(res, i, 1);
-		/*char	   *spclocation = PQgetvalue(res, i, 2);*/
-		char	   *spcprilocation = PQgetvalue(res, i, 2);
-		char	   *spcmirlocation = PQgetvalue(res, i, 3);
-		char	   *spcacl = PQgetvalue(res, i, 4);
-		char	   *spccomment = PQgetvalue(res, i, 5);
+		char	   *spclocation = PQgetvalue(res, i, 2);    /* master  */
+		char	   *spcprilocation = PQgetvalue(res, i, 3); /* primary */
+		char	   *spcmirlocation = PQgetvalue(res, i, 4); /* mirror  */
+		char	   *spcacl = PQgetvalue(res, i, 5);
+		char	   *spccomment = PQgetvalue(res, i, 6);
 		char	   *fspcname;
 		char	  **prilocitems = NULL;	
 		char	  **mirlocitems = NULL;			
@@ -766,9 +766,7 @@ dumpTablespaces(PGconn *conn)
 			
 			appendStringLiteralConn(buf, prilocitems[i], conn);
 		}
-		
-		free(prilocitems);
-		
+
 		/* parse and construct the mirror location strings (if exists) */
 		if(spcmirlocation && strlen(spcmirlocation) > 0)
 		{
@@ -794,6 +792,15 @@ dumpTablespaces(PGconn *conn)
 			free(mirlocitems);
 		}
 		
+		/* Add MASTER LOCATION clause if differs from first primary entry */
+		/* (we could add it anyway, but it won't reflect the original command) */
+		if(strcmp(spclocation, prilocitems[0]) != 0)
+		{
+			/* add MASTER LOCATION clause */
+			appendPQExpBuffer(buf, " MASTER LOCATION ");
+			appendStringLiteralConn(buf, spclocation, conn);								
+		}
+			
 		appendPQExpBuffer(buf, ";\n");
 
 		if (!skip_acls &&
@@ -816,9 +823,10 @@ dumpTablespaces(PGconn *conn)
 		printf("%s", buf->data);
 
 		free(fspcname);
+		free(prilocitems);
 		destroyPQExpBuffer(buf);
 	}
-
+	
 	PQclear(res);
 	printf("\n\n");
 }
