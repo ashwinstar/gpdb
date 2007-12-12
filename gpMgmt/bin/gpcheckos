@@ -3,7 +3,7 @@
 '''
 gpcheckos -- check os for consistency and compatibility with GPDB.
 
-Usage: gpcheckos [--version] [-?v] [-p port] [-u user] [-h host] [-f hostfile] [-c checkfile]
+Usage: gpcheckos [--version] [-?v] [-m] [-p port] [-u user] [-h host] [-f hostfile] [-c checkfile]
 
 
           --version : print version information
@@ -14,7 +14,7 @@ Usage: gpcheckos [--version] [-?v] [-p port] [-u user] [-h host] [-f hostfile] [
           -h host   : the host to connect to (multiple -h is okay)
           -f file   : a file listing all hosts to connect to
           -c file   : a file containing specific checks for this installation
-
+          -m        : check for query dispatcher settings
 '''
 
 import os, sys, getopt, popen2, pickle
@@ -34,10 +34,16 @@ opt['-u'] = os.environ.get('LOGNAME') or os.environ.get('USER')
 opt['-h'] = []
 opt['-f'] = False
 opt['-c'] = None
+opt['-m'] = False
+
 GPHOME = os.environ.get('GPHOME')
 if not GPHOME:
     sys.exit('GPHOME env not set')
 
+
+masterconf = '''
+python.version                          str     >= 2.3.5
+'''
 
 linuxconf = '''
 sysctl.kernel.shmmax			int	>= 500000000
@@ -184,7 +190,7 @@ def print_version():
 def parseCommandLine():
     global opt, argcmd
     try:
-	(options, args) = getopt.getopt(sys.argv[1:], '?evp:u:h:f:c:', ['version'])
+	(options, args) = getopt.getopt(sys.argv[1:], '?evmp:u:h:f:c:', ['version'])
     except Exception, e:
 	usage('Error: ' + str(e))
 
@@ -195,6 +201,7 @@ def parseCommandLine():
 	elif (switch == '-h'):        opt[switch].append(val)
 	elif (switch == '-p'):        opt[switch] = gplib.parse_port(val)
         elif (switch == '--version'): print_version()
+        elif (switch == '-m'):        opt[switch] = True
 
     if opt['-p'] != None:
         if not opt['-p'] > 0: usage('Error: please specify port number for -p switch')
@@ -462,12 +469,16 @@ try:
         usage('Error: missing hosts in -h and/or -f arguments')
 
     conf = Config()
+    if opt['-m']:
+        conf.loads(masterconf, opt['-m'])
+
     if opt['-c']:
         print 'reading config file: %s' % opt['-c']
         f = open(opt['-c'])
         s = f.read()
         f.close()
         conf.loads(s, opt['-c'])
+
 
     opt['-h'] = tab
     session = sshGpSys()
@@ -533,6 +544,9 @@ try:
             conf.loads(sunosconf, overwrite=False)
             matchConfig(session, conf)
             print_fix()
+    elif value == 'darwin' and match(session, key, 'darwin'):
+        matchConfig(session, conf)
+        print_fix()
     else:
         perr(p0.x_peer, 'unknown system (key %s should be either Linux or SunOS)' % key)
 
