@@ -439,7 +439,7 @@ void usage(const char* msg)
     }
     else {
 	fprintf(stderr, "gpfdist -- file distribution web server\n\n");
-	fprintf(stderr, "usage: gpfdist [-?v] [-p port] [-d dir] [-q qchar] [-x xchar] [-h]\n\n");
+	fprintf(stderr, "usage: gpfdist [-?v] [-p port] [-d dir] [-q qchar] [-x xchar] [-h] [-l logfn]\n\n");
 	fprintf(stderr, 
 		"        -?        : print this screen\n"
 		"        -v        : verbose mode\n"
@@ -453,6 +453,7 @@ void usage(const char* msg)
 		"        -x xchar  : set escape character (default to qchar)\n"
 		"        -h        : flag indicates first data row in all files is\n"
 		"                    a header row. skip it.\n"
+		"        -l logfn  : log filename\n"
 		"        --version : print version information.\n\n");
     }
 
