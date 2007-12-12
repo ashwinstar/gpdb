@@ -370,7 +370,7 @@ block_t* fstream_get_block(fstream_t* fs, apr_pool_t* pool)
 
 	if (opt.V) {
 	    if (fs->fsoff >= fs->flog) {
-		printf("[INFO] %s [reading %lld/%lld=%lld%%]\n", fs->fpath[fs->fidx], fs->fsoff, fs->fsize, (fs->fsoff*100/fs->fsize));
+		gprint("%s [reading %lld/%lld=%lld%%]\n", fs->fpath[fs->fidx], fs->fsoff, fs->fsize, (fs->fsoff*100/fs->fsize));
 		fs->flog = fs->fsoff + fs->finterval;
 		fs->flog = (fs->flog > fs->fsize) ? fs->fsize : fs->flog;
 	    }
