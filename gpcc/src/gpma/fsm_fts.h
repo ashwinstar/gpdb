@@ -894,16 +894,16 @@ static apr_status_t a_fts_break(gpcc_event_t *ev, void *arg)
 static apr_status_t a_fts_segment_start(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
-    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
-    struct json_object *obj = json_tokener_parse(pkt->payload);
+    struct json_object *obj = 0;
     cmdslot_t *p;
     gpcc_event_t *evt;
-    gpcc_net_uri_t *uri;
+    gpcc_net_uri_t *uri = 0;
     gpcc_net_conn_t conn;
-    char *mode, *url, *seg, *m;
+    char *mode, *url, *seg, *m, *errmsg;
 
     seg = url = 0;
     mode = "normal";
+    errmsg = "";
     memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
     url = ev->pdata + sizeof(gpcc_net_conn_t);
 
@@ -912,42 +912,24 @@ static apr_status_t a_fts_segment_start(gpcc_event_t *ev, void *arg)
     seg = gpcc_net_uri_param(uri, "s");
     
     if (!seg) {
-	evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
-	gpcc_evqueue_put(gpma.evq, evt);
-	gpcc_net_uri_free(uri);
-	obj = gpcc_json_http_reply("start", "failure", "parameter 's' is missing");
-	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
-	json_object_put(obj);
-	return 0;
+	errmsg = "parameter 's' is missing";
+	goto bail;
     } else {
 	int i;
 	for (i = 0 ; i < slot->u.fts.nseginfo && strcmp(seg, slot->u.fts.seginfo[i].name) != 0 ; i++);
 	if (i >= slot->u.fts.nseginfo) {
-	    evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
-	    gpcc_evqueue_put(gpma.evq, evt);
-	    gpcc_net_uri_free(uri);
-	    obj = gpcc_json_http_reply("stop", "failure", "invalid parameter 's'");
-	    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
-	    json_object_put(obj);
-	    return 0;
+	    errmsg = "invalid parameter 's'";
+	    goto bail;
 	}
     }
     
     if (m) {
 	char *opt[2] = {"normal", "force"};
 	int i;
-	for (i = 0 ; i < gpcc_lengthof(opt) ; i++) {
-	    if (apr_strnatcasecmp(m, opt[i]) == 0)
-		break;
-	}
+	for (i = 0 ; i < gpcc_lengthof(opt) && apr_strnatcasecmp(m, opt[i]) != 0 ; i++);
 	if (i >= gpcc_lengthof(opt)) {
-	    evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
-	    gpcc_evqueue_put(gpma.evq, evt);
-	    gpcc_net_uri_free(uri);
-	    obj = gpcc_json_http_reply("start", "failure", "invalid parameter 'mode'");
-	    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
-	    json_object_put(obj);
-	    return 0;
+	    errmsg = "invalid parameter 'mode'";
+	    goto bail;
 	}
 	mode = m;
     }
@@ -963,10 +945,19 @@ static apr_status_t a_fts_segment_start(gpcc_event_t *ev, void *arg)
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);
 
-    obj = gpcc_json_http_reply("init", "pending", "pending");
+    obj = gpcc_json_http_reply("start", "pending", "pending");
     gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
     json_object_put(obj);
     
+    return 0;
+
+    bail:
+    evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
+    if (uri) gpcc_net_uri_free(uri);
+    obj = gpcc_json_http_reply("start", "failure", errmsg);
+    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+    json_object_put(obj);
     return 0;
 }
 
@@ -974,14 +965,14 @@ static apr_status_t a_fts_segment_start(gpcc_event_t *ev, void *arg)
 static apr_status_t a_fts_segment_stop(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
-    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
-    struct json_object *obj = json_tokener_parse(pkt->payload);
+    struct json_object *obj = 0;
     cmdslot_t *p;
     gpcc_event_t *evt;
-    char *mode, *seg, *url, *m;
-    gpcc_net_uri_t *uri;
+    char *mode, *seg, *url, *m, *errmsg;
+    gpcc_net_uri_t *uri = 0;
     gpcc_net_conn_t conn;
 
+    errmsg = "";
     seg = url = 0;
     mode = "immediate";
     memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
@@ -992,24 +983,14 @@ static apr_status_t a_fts_segment_stop(gpcc_event_t *ev, void *arg)
     seg = gpcc_net_uri_param(uri, "s");
 
     if (!seg) {
-	evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
-	gpcc_evqueue_put(gpma.evq, evt);
-	gpcc_net_uri_free(uri);
-	obj = gpcc_json_http_reply("stop", "failure", "parameter 's' is missing");
-	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
-	json_object_put(obj);
-	return 0;
+	errmsg = "parameter 's' is missing";
+	goto bail;
     } else {
 	int i;
 	for (i = 0 ; i < slot->u.fts.nseginfo && strcmp(seg, slot->u.fts.seginfo[i].name) != 0 ; i++);
 	if (i >= slot->u.fts.nseginfo) {
-	    evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
-	    gpcc_evqueue_put(gpma.evq, evt);
-	    gpcc_net_uri_free(uri);
-	    obj = gpcc_json_http_reply("stop", "failure", "invalid parameter 's'");
-	    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
-	    json_object_put(obj);
-	    return 0;
+	    errmsg = "invalid parameter 's'";
+	    goto bail;
 	}
     }
 	    
@@ -1017,19 +998,11 @@ static apr_status_t a_fts_segment_stop(gpcc_event_t *ev, void *arg)
     if (m) {
 	char *opt[3] = {"immediate", "fast", "smart"};
 	int i;
-	for (i = 0 ; i < gpcc_lengthof(opt) ; i++) {
-	    if (apr_strnatcasecmp(m, opt[i]) == 0)
-		break;
-	}
+	for (i = 0 ; i < gpcc_lengthof(opt) && apr_strnatcasecmp(m, opt[i]) != 0 ; i++) ;
 	if (i >= gpcc_lengthof(opt)) {
 	    /* invalid mode */
-	    evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
-	    gpcc_evqueue_put(gpma.evq, evt);
-	    gpcc_net_uri_free(uri);
-	    obj = gpcc_json_http_reply("stop", "failure", "invalid parameter 'mode'");
-	    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
-	    json_object_put(obj);
-	    return 0;
+	    errmsg = "invalid parameter 'mode'";
+	    goto bail;
 	}
 	
 	mode = m;
@@ -1049,11 +1022,22 @@ static apr_status_t a_fts_segment_stop(gpcc_event_t *ev, void *arg)
     gpcc_evqueue_put(gpma.evq, evt);
 
 
-    obj = gpcc_json_http_reply("init", "pending", "pending");
+    obj = gpcc_json_http_reply("stop", "pending", "pending");
     gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
     json_object_put(obj);
     
     return 0;
+
+
+    bail:
+    evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
+    if (uri) gpcc_net_uri_free(uri);
+    obj = gpcc_json_http_reply("stop", "failure", errmsg);
+    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+    json_object_put(obj);
+    return 0;    
+    
 }
 
 static apr_status_t a_fts_segment_command_reply(gpcc_event_t *ev, void *arg)
