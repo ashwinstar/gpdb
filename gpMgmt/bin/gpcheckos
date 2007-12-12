@@ -43,7 +43,8 @@ if not GPHOME:
 
 masterconf = '''
 python.version                          str     >= 2.3.5
-'''
+env.GPHOME                              str     = %s
+''' % GPHOME
 
 linuxconf = '''
 sysctl.kernel.shmmax			int	>= 500000000
