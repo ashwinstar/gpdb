@@ -63,11 +63,12 @@ struct {
     int v;			/* verbose */
     int V;			/* very verbose */
     int h;			/* skip first-row header */
+    int P;                      /* progress indicator */
     const char* d;		/* directory */
     const char* q;		/* quote char */
     const char* x;		/* escape char */
     const char* l;              /* log filename */
-} opt = { 8080, 0, 0, 0, ".", 0, 0, 0 };
+} opt = { 8080, 0, 0, 0, 0, ".", 0, 0, 0 };
 
 
 /*  A data block */
@@ -368,7 +369,7 @@ block_t* fstream_get_block(fstream_t* fs, apr_pool_t* pool)
 	fs->foff += n;
 	fs->fsoff += n;
 
-	if (opt.V) {
+	if (opt.P) {
 	    if (fs->fsoff >= fs->flog) {
 		gprint("%s [reading %lld/%lld=%lld%%]\n", fs->fpath[fs->fidx], fs->fsoff, fs->fsize, (fs->fsoff*100/fs->fsize));
 		fs->flog = fs->fsoff + fs->finterval;
@@ -473,6 +474,7 @@ void usage(const char* msg)
 		"        -h        : flag indicates first data row in all files is\n"
 		"                    a header row. skip it.\n"
 		"        -l logfn  : log filename\n"
+		"        -P        : progress indicator\n"
 		"        --version : print version information.\n\n");
     }
 
@@ -506,6 +508,7 @@ void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
 	{      NULL, 'x', 1, "set escape character" },
 	{      NULL, 'h', 0, "flag to skip first row in data files" },
 	{      NULL, 'l', 1, "log filename" },
+	{      NULL, 'P', 0, "progress indicator" },
 	{ "version", 256, 0, "print version number" }
     };
     
@@ -524,6 +527,7 @@ void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
 	case 'x': opt.x = arg; break;
 	case 'p': opt.p = atoi(arg); break;
 	case 'l': opt.l = arg; break;
+	case 'P': opt.P = 1; break;
 	case 256: print_version(); break;
 	}
     }
