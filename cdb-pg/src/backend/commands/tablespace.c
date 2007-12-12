@@ -237,8 +237,6 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 		
 		char * firsthost = NULL;
 		
-		elog(WARNING,"Support for tablespaces is experimental... Use at your own risk");
-		
 		if (cdb_component_dbs == NULL) 
 			cdb_component_dbs = getCdbComponentDatabases();
 		
