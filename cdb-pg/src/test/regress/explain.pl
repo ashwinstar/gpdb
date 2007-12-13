@@ -770,6 +770,22 @@ sub analyze_node
 #            print "long: $node->{txt}\n";
 #            print "short: $node->{short}\n";
 
+        # XXX XXX XXX XXX: FINAL "short" fixups
+        while (defined($node->{short}) && length($node->{short})
+               && ($node->{short} =~ m/(\n)|^\s+|\s+$|(\(cost\=)/m))
+        {
+            # remove leading and trailing spaces...
+            $node->{short} =~ s/^\s*//;
+            $node->{short} =~ s/\s*$//;
+
+            # remove newlines
+            $node->{short} =~ s/(\n).*//gm;
+
+            # remove cost=...
+            $node->{short} =~ s/\(cost\=.*//gm;
+
+#            print "short fixup: $node->{short}\n\n\n";
+        }
 
         {
             if ($node->{txt} =~ m/(\d+(\.\d*)?)(\s*ms\s*to\s*end)/i)
