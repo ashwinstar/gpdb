@@ -334,6 +334,8 @@ void InsertIntoErrorTable(CdbSreh *cdbsreh)
 	 */
 	simple_heap_insert(cdbsreh->errtbl, tuple);
 	
+	heap_freetuple(tuple);
+	
 	MemoryContextReset(cdbsreh->badrowcontext);
 }
 
