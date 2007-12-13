@@ -715,7 +715,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 		/* save ourselves some memory: the defaults for thread stack
 		 * size are large (1M+) */
 		pthread_err = pthread_attr_init(&t_atts);
-		if(pthread_err != 0)
+		if (pthread_err != 0)
 		{
 			elog(LOG, "CreateGang: pthread_attr_init failed.  Error %d", pthread_err);
 			goto PTHREAD_ERROR_CLEANUP;
@@ -727,7 +727,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 #else
 		pthread_err = pthread_attr_setstacksize(&t_atts, Max(PTHREAD_STACK_MIN, (64*1024)));
 #endif
-		if(pthread_err != 0)
+		if (pthread_err != 0)
 		{
 			elog(LOG, "CreateGang: pthread_attr_setstacksize failed.  Error %d", pthread_err);
 			goto PTHREAD_ERROR_CLEANUP_ATTR;
@@ -748,7 +748,7 @@ PTHREAD_ERROR_CLEANUP:
 			 * they'll immediately have some problems -- so we need to
 			 * join them, and *then* we can issue our FATAL error */
 
-			for (j = 0; j < threadCount + (i - 1); j++)
+			for (j = 0; j < i; j++)
 			{
 				DoConnectParms *pParms;
 
