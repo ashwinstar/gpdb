@@ -5,6 +5,7 @@ import sys, urllib, httplib, socket
 
 sys.path.append(sys.path[0] + '/lib')
 try:
+    import gpcc
     import simplejson
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
@@ -12,33 +13,8 @@ except ImportError, e:
 %>
 
 <%
-def hitMA(cmd, params):
-    params = urllib.urlencode(params)
-    f = None
-    json = ''
-    try:
-        f = httplib.HTTPConnection("%s:%d" % (sctx['ma.host'], sctx['ma.port']))
-        f.request("GET", "%s?%s" % (cmd, params))
-        response = f.getresponse();
-	return response
-    except socket.error, msg:
-    	sys.stderr.write('requesting http://%s:%d%s failed. %s\n' % (sctx['ma.host'], sctx['ma.port'], cmd, msg))
-        return None
-    except httplib.HTTPException, msg:
-    	sys.stderr.write('requesting http://%s:%d%s failed. %s\n' % (sctx['ma.host'], sctx['ma.port'], cmd, msg))
-        return None
-    except Exception, msg:
-    	sys.stderr.write('requesting http://%s:%d%s failed. %s\n' % (sctx['ma.host'], sctx['ma.port'], cmd, msg))
-        return None
-    finally:
-        if f: f.close()
-    return None
-
-%>
-
-<%
     cfg = None
-    response = hitMA('/gpcc/lscfg', {})
+    response = gpcc.hitMA(sctx['ma.host'], sctx['ma.port'], '/gpcc/lscfg', {})
     if response is None:
        cfg = None
     else:

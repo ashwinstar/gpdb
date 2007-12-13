@@ -1,34 +1,13 @@
 <%!
 import os, sys, urllib, httplib, StringIO, socket
 try:
+    import gpcc
     import simplejson
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 %>
 
 <%
-def hitMA(cmd, params, data):
-    params = urllib.urlencode(params)
-    f = None
-    res = ''
-    try:
-        f = httplib.HTTPConnection('%s:%d' % (sctx['ma.host'], sctx['ma.port']))
-        f.request('POST', '%s?%s' % (cmd, params), data)
-        response = f.getresponse()
-	return response
-    except socket.error, msg:
-    	sys.stderr.write('requesting http://%s:%d%s failed. %s\n' % (sctx['ma.host'], sctx['ma.port'], cmd, msg))
-        return None
-    except httplib.HTTPException, msg:
-    	sys.stderr.write('requesting http://%s:%d%s failed. %s\n' % (sctx['ma.host'], sctx['ma.port'], cmd, msg))
-        return None
-    except Exception, msg:
-    	sys.stderr.write('requesting http://%s:%d%s failed. %s\n' % (sctx['ma.host'], sctx['ma.port'], cmd, msg))
-        return None
-    finally:
-        if f: f.close()
-    return None  
-
 def get_mirror_id(nodes, cid):
     if len(nodes) == 1:
        return nodes[0]
@@ -78,7 +57,7 @@ for id in nodes:
 
 redirect=0
 while redirect < 5:
-    response = hitMA('/gpcc/init', {}, cfg.getvalue())
+    response = gpcc.hitMAbyPost(sctx['ma.host'], sctx['ma.port'], '/gpcc/init', {}, cfg.getvalue())
     if response is None:
         web.output('{ status: "failure",  rset : {  total: 1, offset: 0, errmsg : { "_" : "server error" }}}')
 	break

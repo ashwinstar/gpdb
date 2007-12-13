@@ -1,6 +1,7 @@
 <%!
 import os, sys, urllib, httplib, socket
 try:
+    import gpcc
     import simplejson
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
@@ -17,31 +18,6 @@ def param_set_default(param, key, defvalue):
     if key not in param:
         param[key] = defvalue
 
-%>
-
-<%
-def hitMA(cmd, params):
-    params = urllib.urlencode(params)
-    f = None
-    res = ''
-    try:
-        f = httplib.HTTPConnection('%s:%d' % (sctx['ma.host'], sctx['ma.port']))
-        f.request('GET', '%s?%s' % (cmd, params))
-        response = f.getresponse()
-	return response
-    except socket.error, msg:
-    	sys.stderr.write('requesting http://%s:%d%s failed. %s\n' % (sctx['ma.host'], sctx['ma.port'], cmd, msg))
-        return None
-    except httplib.HTTPException, msg:
-    	sys.stderr.write('requesting http://%s:%d%s failed. %s\n' % (sctx['ma.host'], sctx['ma.port'], cmd, msg))
-        return None
-    except Exception, msg:
-    	sys.stderr.write('requesting http://%s:%d%s failed. %s\n' % (sctx['ma.host'], sctx['ma.port'], cmd, msg))
-        return None
-    finally:
-        if f: f.close()
-    return None
-  
 %>
 
 <%
@@ -68,7 +44,7 @@ params = { 'a' : param['a'], 'mode' : param['mode'] }
 
 redirect=0
 while redirect < 5:
-    response = hitMA('/gpcc/start', params)
+    response = gpcc.hitMA(sctx['ma.host'], sctx['ma.port'], '/gpcc/start', params)
     if response is None:
         web.output('{ status: "failure",  rset : {  total: 1, offset: 0, errmsg : { "_" : "server error" }}}')
 	break
