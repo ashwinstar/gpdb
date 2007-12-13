@@ -1008,7 +1008,8 @@ readd_pg_tablespace_rows(config_t **segdbs, config_t *conf)
 
 	oset = conf->content + 1;
 	
-	res = tblspc_locs.prilocs[oset];
+	res = conf->definedprimary ? tblspc_locs.prilocs[oset] : 
+		tblspc_locs.mirlocs[oset];
 	
 	for (i = 0; i < PQntuples(res); i++)
 	{
