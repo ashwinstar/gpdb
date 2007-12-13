@@ -127,14 +127,14 @@ def hitMA(cmd, params):
             s = response.read()
             return (response.status, getErrorJson(s))
     except socket.error, msg:
-        return (400, getErrorJson(msg))
+        return (-1, getErrorJson(msg))
     except httplib.HTTPException, msg:
-        return (400, getErrorJson(msg))
+        return (-1, getErrorJson(msg))
     except Exception, msg:
-        return (400, getErrorJson(msg))
+        return (-1, getErrorJson(msg))
     finally:
         if f: f.close()
-    return (400, json)
+    return (-1, json)
     
 
 def hitMAbyPost(cmd, params, data):
@@ -154,14 +154,14 @@ def hitMAbyPost(cmd, params, data):
             s = response.read()
             return (response.status, getErrorJson(s))
     except socket.error, msg:
-        return (400, getErrorJson(msg))
+        return (-1, getErrorJson(msg))
     except httplib.HTTPException, msg:
-        return (400, getErrorJson(msg))
+        return (-1, getErrorJson(msg))
     except Exception, msg:
-        return (400, getErrorJson(msg))
+        return (-1, getErrorJson(msg))
     finally:
         if f: f.close()
-    return (400, json)
+    return (-1, json)
 
 def printError(json):
     status = json.get('status')
@@ -376,7 +376,7 @@ def doInit(args):
             redirect += 1
             print 'redirect to %s:%d' % (gp_opt['-h'], gp_opt['-p'])
         else:
-            print 'error: %d' % retcode
+            printError(json)
             return
             
 
