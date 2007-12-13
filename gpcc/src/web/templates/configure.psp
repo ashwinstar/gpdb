@@ -113,7 +113,7 @@ else:
 
             <p style="margin-top: 0pt;">
 % if cfg is None:
-     internal server error.    
+     Internal server error.  Please try later.
 % else:
 	    <table cellspacing="2" cellpadding="4" border="0">
                <tr style="background: #7DC019"><th>Key</th><th>Value</th></tr>
