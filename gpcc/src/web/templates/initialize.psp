@@ -1,7 +1,7 @@
 <%!
 
 
-import sys, urllib, httplib
+import sys, urllib, httplib, socket
 
 sys.path.append(sys.path[0] + '/lib')
 try:
@@ -20,29 +20,38 @@ def hitMA(cmd, params):
         f = httplib.HTTPConnection("%s:%d" % (sctx['ma.host'], sctx['ma.port']))
         f.request("GET", "%s?%s" % (cmd, params))
         response = f.getresponse();
-        if response.status == 200:
-            s = response.read()
-            # print s
-            json = simplejson.loads(s)
+	return response
+    except socket.error, msg:
+        return None
+    except httplib.HTTPException, msg:
+        return None
+    except Exception, msg:
+        return None
     finally:
         if f: f.close()
-    return json
+    return None
+
 %>
 
 <%
+    cfg = None
+    response = hitMA('/gpcc/lscfg', {})
+    if response is None:
+       cfg = None
+    else:
+       cfgjson = simplejson.loads(response.read())
+       x = cfgjson.get('rset', {})
+       cfg = x.get('result', [])
 
-   cfgjson = hitMA('/gpcc/lscfg', {})
-   x = cfgjson.get('rset', {})
-   cfg = x.get('result', [])
-   
-   i = 0
-   for (key, value) in cfg:
-       if key.startswith('node.'):
-       	  i += 1
+    max_node = 0
+    if cfg is not None:
+       i = 0
+       for (key, value) in cfg:
+           if key.startswith('node.'):
+       	       i += 1
+       max_node = i
 
-   max_node = i
-
-   web.header('Content-Type', 'text/html;charset=utf-8')
+    web.header('Content-Type', 'text/html;charset=utf-8')
 %>
 
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
@@ -77,18 +86,20 @@ $(function() {
 	  } else {
 	    $("#initdb").hide();
             if (json.rset.result[0] == "initializing") {
-	        $("#msg").text("Greenplum database is initializing.  Please wait.");
+	        $("#msg").html("Greenplum database is initializing.  Please wait.");
                 setTimeout(function() {
                    $.getJSON("/status.psp", function(json) {
                        status_response(json);
                    })
                 }, 1000);
             } else { 
-		$("#msg").text("Greenplum database '" + json.array + "' was initialized.");
+		$("#msg").html("Greenplum database '" + json.array + "' was initialized.");
 				 		
             }
 	  }
-      } 
+      } else {
+          $("#msg").html("Internal Server Error. Please try later.");
+      }
   }
 
 
@@ -107,13 +118,19 @@ $(function() {
                    })
                 }, 1000);
             } else { 
-		$("#msg").text("Greenplum database '" + json.array + "' was initialized.");
+		$("#msg").html("Greenplum database '" + json.array + "' was initialized.");
 				 		
             }
 	  }
+      } else {
+          $("#msg").html("Internal Server Error. Please try later.");
       }
   }
-
+/*
+  $("#msg").ajaxError(function(request, settings) {
+       $(this).html("Error requesting page " + settings.url);
+  });
+*/
   $.getJSON("/status.psp", function(json) {
        BEGIN_status_response(json);
   });
@@ -237,6 +254,10 @@ $(function() {
 
             <p style="margin-top: 0pt;">
 
+
+% if max_node == 0:
+            <span id="msg">Internal Server Error. Please try later.</span>
+% else:
 	    <span id="msg"></span>
 	    <div id="initdb" style="display:none">
 	    <form id="initdb_form" method="POST" enctype="multipart/form-data">
@@ -302,6 +323,7 @@ $(function() {
 	       </table>
             </form>
 	    </div>
+% endif
 	    </p>
 
 

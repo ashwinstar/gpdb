@@ -1,21 +1,25 @@
 <%!
-import os, sys, urllib, httplib
+import os, sys, urllib, httplib, socket
 %>
 
 <%
 def hitMA(cmd, params):
     params = urllib.urlencode(params)
     f = None
-    res = ''
     try:
         f = httplib.HTTPConnection('%s:%d' % (sctx['ma.host'], sctx['ma.port']))
         f.request('GET', '%s?%s' % (cmd, params))
         response = f.getresponse()
-        if response.status == 200:
-            res = response.read()
+	return response
+    except socket.error, msg:
+        return None
+    except httplib.HTTPException, msg:
+        return None
+    except Exception, msg:
+        return None
     finally:
         if f: f.close()
-    return res
+    return None
   
 %>
 
@@ -24,8 +28,14 @@ web.header('Content-Type', 'text/html;charset=utf-8')
 
 params = { }
 response = hitMA('/gpcc/lscfg', params)
+if response is None:
+    web.output('{ status: "failure",  rset : {  total: 1, offset: 0, errmsg : { "_" : "server error" }'}}')
+    break
+elif response.status == 200:
+    web.output(response.read())
+else:
+    web.output(response.read())
 %>
-${response}
 
 
 

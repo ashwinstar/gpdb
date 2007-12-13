@@ -1,5 +1,5 @@
 <%!
-import os, sys, urllib, httplib
+import os, sys, urllib, httplib, socket
 try:
     import simplejson
 except ImportError, e:
@@ -29,9 +29,16 @@ def hitMA(cmd, params):
         f = httplib.HTTPConnection('%s:%d' % (sctx['ma.host'], sctx['ma.port']))
         f.request('GET', '%s?%s' % (cmd, params))
         response = f.getresponse()
+	return response
+    except socket.error, msg:
+        return None
+    except httplib.HTTPException, msg:
+        return None
+    except Exception, msg:
+        return None
     finally:
         if f: f.close()
-    return response
+    return None
   
 %>
 
@@ -61,6 +68,9 @@ params = { 'a' : param['a'], 'mode' : param['mode'] }
 redirect=0
 while redirect < 5:
     response = hitMA('/gpcc/stop', params)
+    if response is None:
+        web.output('{ status: "failure",  rset : {  total: 1, offset: 0, errmsg : { "_" : "server error" }}}')
+	break
     if response.status == 200:
         web.output(response.read())
 	break

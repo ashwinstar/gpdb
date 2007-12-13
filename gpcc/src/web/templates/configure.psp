@@ -1,6 +1,6 @@
 <%!
 
-import sys, urllib, httplib
+import sys, urllib, httplib, socket
 
 sys.path.append(sys.path[0] + '/lib')
 try:
@@ -19,17 +19,25 @@ def hitMA(cmd, params):
         f = httplib.HTTPConnection("%s:%d" % (sctx['ma.host'], sctx['ma.port']))
         f.request("GET", "%s?%s" % (cmd, params))
         response = f.getresponse();
-        if response.status == 200:
-            s = response.read()
-            # print s
-            json = simplejson.loads(s)
+	return response
+    except socket.error, msg:
+        return None
+    except httplib.HTTPException, msg:
+        return None
+    except Exception, msg:
+        return None
     finally:
         if f: f.close()
-    return json
+    return None
 
-cfgjson = hitMA('/gpcc/lscfg', {})
-x = cfgjson.get('rset', {})
-cfg = x.get('result', [])
+cfg = None
+response = hitMA('/gpcc/lscfg', {})
+if response is None:
+    cfg = None
+else:
+    cfgjson = simplejson.loads(response.read())
+    x = cfgjson.get('rset', {})
+    cfg = x.get('result', [])
 
 %>
 
@@ -104,7 +112,9 @@ cfg = x.get('result', [])
 <div id="clear">&nbsp;</div>
 
             <p style="margin-top: 0pt;">
-
+% if cfg is None:
+     internal server error.    
+% else:
 	    <table cellspacing="2" cellpadding="4" border="0">
                <tr style="background: #7DC019"><th>Key</th><th>Value</th></tr>
 <% i = 0 %>
@@ -119,7 +129,7 @@ cfg = x.get('result', [])
 
 % endfor
 	    </table>
-
+% endif
             <p>&nbsp;</p>
             </td>
         </tr>

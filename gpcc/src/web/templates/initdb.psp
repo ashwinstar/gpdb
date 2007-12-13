@@ -1,5 +1,5 @@
 <%!
-import os, sys, urllib, httplib, StringIO, random
+import os, sys, urllib, httplib, StringIO, socket
 try:
     import simplejson
 except ImportError, e:
@@ -15,9 +15,16 @@ def hitMA(cmd, params, data):
         f = httplib.HTTPConnection('%s:%d' % (sctx['ma.host'], sctx['ma.port']))
         f.request('POST', '%s?%s' % (cmd, params), data)
         response = f.getresponse()
+	return response
+    except socket.error, msg:
+        return None
+    except httplib.HTTPException, msg:
+        return None
+    except Exception, msg:
+        return None
     finally:
         if f: f.close()
-    return response
+    return None  
 
 def get_mirror_id(nodes, cid):
     if len(nodes) == 1:
@@ -69,7 +76,10 @@ for id in nodes:
 redirect=0
 while redirect < 5:
     response = hitMA('/gpcc/init', {}, cfg.getvalue())
-    if response.status == 200:
+    if response is None:
+        web.output('{ status: "failure",  rset : {  total: 1, offset: 0, errmsg : { "_" : "server error" }'}}')
+	break
+    elif response.status == 200:
         web.output(response.read())
 	break
     elif response.status == 301:
@@ -79,7 +89,7 @@ while redirect < 5:
 	sctx['ma.host'] = addr[0]
 	sctx['ma.port'] = int(addr[1])
         sys.stderr.write('redirect to %s' % location);
-	redirect += 1        
+	redirect += 1     
 
 
 cfg.close()
