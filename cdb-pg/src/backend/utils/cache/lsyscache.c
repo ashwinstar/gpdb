@@ -3,6 +3,7 @@
  * lsyscache.c
  *	  Convenience routines for common queries in the system catalog cache.
  *
+ * Portions Copyright (c) 2007, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -17,6 +18,7 @@
 
 #include "access/hash.h"
 #include "bootstrap/bootstrap.h"
+#include "catalog/heap.h"                   /* SystemAttributeDefinition() */    
 #include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
 #include "catalog/pg_namespace.h"
@@ -454,6 +456,16 @@ get_atttypetypmod(Oid relid, AttrNumber attnum,
 {
 	HeapTuple	tp;
 	Form_pg_attribute att_tup;
+
+    /* CDB: Get type for sysattr even if relid is no good (e.g. SubqueryScan) */
+    if (attnum < 0 &&
+        attnum > FirstLowInvalidHeapAttributeNumber)
+    {
+        att_tup = SystemAttributeDefinition(attnum, true);
+	    *typid = att_tup->atttypid;
+	    *typmod = att_tup->atttypmod;
+        return;
+    }
 
 	tp = SearchSysCache(ATTNUM,
 						ObjectIdGetDatum(relid),
