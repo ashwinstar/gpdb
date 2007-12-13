@@ -1,6 +1,6 @@
 <%!
 
-import sys, urllib, httplib, socket
+import sys
 
 sys.path.append(sys.path[0] + '/lib')
 try:

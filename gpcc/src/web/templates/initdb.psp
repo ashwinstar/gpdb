@@ -1,5 +1,5 @@
 <%!
-import os, sys, urllib, httplib, StringIO, socket
+import os, sys, StringIO
 try:
     import gpcc
     import simplejson

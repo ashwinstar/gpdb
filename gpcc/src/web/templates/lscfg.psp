@@ -1,5 +1,5 @@
 <%!
-import os, sys, urllib, httplib, socket
+import os, sys
 try:
     import gpcc
 except ImportError, e:
