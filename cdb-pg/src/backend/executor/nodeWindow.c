@@ -1221,7 +1221,10 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 	if (!ntuplestore_acc_tell(buffer->current_row_reader, NULL))
 		ntuplestore_acc_seek_last(buffer->current_row_reader);
 
-	/* Adjust the trailing edge if it is "ROWS x FOLLOWING". */
+	/*
+	 * Adjust the trailing edge if it is "ROWS x FOLLOWING" or
+	 * it is a delayed edge.
+	 */
 	if (!(level_state->empty_frame &&
 		  EDGE_IS_DELAYED(level_state->frame->trail)))
 	{
@@ -1241,7 +1244,8 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 			}
 		}
 		else if (!level_state->is_rows &&
-				 EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail))
+				 (EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
+				  EDGE_IS_DELAYED(level_state->frame->trail)))
 		{
 			econtext->ecxt_scantuple = wstate->curslot;
 			forwardEdgeForRange(level_state, wstate,
@@ -1262,7 +1266,10 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 		/* If the leading edge is "x PRECEDING" and x > 0, simply return. */
 		if (EDGE_IS_BOUND_PRECEDING(level_state->frame->lead) &&
 			ntuplestore_acc_tell(level_state->lead_reader, NULL))
+		{
+			level_state->lead_ready = true;
 			return;
+		}
 		
 		/* 
 		 * Adjust the leading edge when the edge is "x FOLLOWING" or
@@ -1604,6 +1611,46 @@ hasTuplesInFrame(WindowStatePerLevel level_state,
 		ntuplestore_acc_advance(level_state->trail_reader, 1);
 	else
 	{
+		/*
+		 * When the leading edge and trailing edge are both RANGE x PRECEDING, and
+		 * the trail_reader points to an invalid position but the lead_reader
+		 * points to a valid position, it is possible that there are no
+		 * tuples in the current frame.
+		 */
+		if (!level_state->is_rows &&
+			EDGE_IS_BOUND_PRECEDING(level_state->frame->lead) &&
+			EDGE_IS_BOUND_PRECEDING(level_state->frame->trail) &&
+			ntuplestore_acc_tell(level_state->lead_reader, NULL) &&
+			!ntuplestore_acc_tell(level_state->trail_reader, NULL))
+		{
+			bool is_less = true;
+			MemoryContext oldctx;
+			Datum trail_edge_value;
+			bool trail_edge_value_isnull;
+			bool has_entry;
+			FrameBufferEntry *entry = level_state->curr_entry_buf;
+			
+			oldctx = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
+			trail_edge_value =
+				ExecEvalExpr(level_state->trail_range_expr, econtext,
+							 &(trail_edge_value_isnull), NULL);
+			
+			has_entry = getCurrentValue(level_state->lead_reader, level_state, entry);
+			Assert(has_entry);
+			is_less = cmp_deformed_tuple(entry->keys, entry->nulls,
+										 &trail_edge_value,
+										 &trail_edge_value_isnull,
+										 level_state->col_sort_asc,
+										 level_state->numSortCols,
+										 level_state->ltfunctions,
+										 level_state->eqfunctions,
+										 econtext->ecxt_per_tuple_memory,
+										 false);
+			MemoryContextSwitchTo(oldctx);
+			
+			return (!is_less);
+		}
+
 		if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
 			EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->trail, false))
 			ntuplestore_acc_seek_first(level_state->trail_reader);
