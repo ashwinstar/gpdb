@@ -1585,6 +1585,15 @@ get_rte_attribute_name(RangeTblEntry *rte, AttrNumber attnum)
         attnum <= list_length(rte->eref->colnames))
 		return strVal(list_nth(rte->eref->colnames, attnum - 1));
 
+    /* CDB: Get name of sysattr even if relid is no good (e.g. SubqueryScan) */
+    if (attnum < 0 &&
+        attnum > FirstLowInvalidHeapAttributeNumber)
+    {
+		Form_pg_attribute att_tup = SystemAttributeDefinition(attnum, true);
+
+		return NameStr(att_tup->attname);
+    }
+
 	/* else caller gave us a bogus attnum */
     name = (rte->eref && rte->eref->aliasname) ? rte->eref->aliasname
                                                : "*BOGUS*";
