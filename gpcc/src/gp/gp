@@ -17,7 +17,7 @@ Usage: gp [gp_options] command [command_options] [command_args]
 
 """
 
-import os, sys, getopt, types, time, popen2, urllib, httplib
+import os, sys, getopt, types, time, popen2, urllib, httplib, socket
 
 
 if sys.version_info < (2, 3):
@@ -107,6 +107,8 @@ def checkCommandLine():
         usage('Error: bad -p port parameter')
 
 
+def getErrorJson(msg):
+    return simplejson.loads('{ "status": "failure", "errmsg" : { "_" : "%s"}}' % msg)
 
 def hitMA(cmd, params):
     params = urllib.urlencode(params)
@@ -120,9 +122,19 @@ def hitMA(cmd, params):
             s = response.read()
             # print s
             json = simplejson.loads(s)
+            return (response.status, json)
+        else:
+            s = response.read()
+            return (response.status, getErrorJson(s))
+    except socket.error, msg:
+        return (400, getErrorJson(msg))
+    except httplib.HTTPException, msg:
+        return (400, getErrorJson(msg))
+    except Exception, msg:
+        return (400, getErrorJson(msg))
     finally:
         if f: f.close()
-    return (response.status, json)
+    return (400, json)
     
 
 def hitMAbyPost(cmd, params, data):
@@ -137,9 +149,19 @@ def hitMAbyPost(cmd, params, data):
             s = response.read()
             # print s
             json = simplejson.loads(s)
+            return (response.status, json)
+        else:
+            s = response.read()
+            return (response.status, getErrorJson(s))
+    except socket.error, msg:
+        return (400, getErrorJson(msg))
+    except httplib.HTTPException, msg:
+        return (400, getErrorJson(msg))
+    except Exception, msg:
+        return (400, getErrorJson(msg))
     finally:
         if f: f.close()
-    return (response.status, json)
+    return (400, json)
 
 def printError(json):
     status = json.get('status')
@@ -178,6 +200,8 @@ def getStatus():
             gp_opt['-p'] = int(addr[1])
             redirect += 1
             print 'redirect to %s:%d' % (gp_opt['-h'], gp_opt['-p'])
+        else:
+            return (json, 'failure', '')
     return (json, status, x)
 
 
@@ -224,6 +248,9 @@ def doStart(args):
             gp_opt['-p'] = int(addr[1])
             redirect += 1
             print 'redirect to %s:%d' % (gp_opt['-h'], gp_opt['-p'])
+        else:
+            printError(json)
+            return
 
 
 
@@ -265,6 +292,9 @@ def doStop(args):
             gp_opt['-p'] = int(addr[1])
             redirect += 1
             print 'redirect to %s:%d' % (gp_opt['-h'], gp_opt['-p'])
+        else:
+            printError(json)
+            return
 
 def doStatus(args):
     params = { 'a': gp_opt['-a'] }
@@ -277,18 +307,22 @@ def doStatus(args):
 
 def doListConfig(args):
     params = { 'a': gp_opt['-a'] }
-    json = hitMA('/gpcc/lscfg', params)
-    if json.get('status') != 'ok':
+    (retcode, json) = hitMA('/gpcc/lscfg', params)
+    if retcode == 200:
+        if json.get('status') != 'ok':
+            printError(json)
+            return
+        cfg = json.get('rset', {})
+        cfg = cfg.get('result', [])
+        if not len(cfg):
+            print 'error: unknown; cannot get configuration'
+            return
+        for i in cfg:
+            print i[0], ':', i[1]
+        print
+    else:
         printError(json)
         return
-    cfg = json.get('rset', {})
-    cfg = cfg.get('result', [])
-    if not len(cfg):
-        print 'error: unknown; cannot get configuration'
-        return
-    for i in cfg:
-        print i[0], ':', i[1]
-    print
 
 
 def doInit(args):
@@ -341,6 +375,9 @@ def doInit(args):
             gp_opt['-p'] = int(addr[1])
             redirect += 1
             print 'redirect to %s:%d' % (gp_opt['-h'], gp_opt['-p'])
+        else:
+            print 'error: %d' % retcode
+            return
             
 
 def main():
