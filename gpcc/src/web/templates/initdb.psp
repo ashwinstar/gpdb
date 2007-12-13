@@ -77,7 +77,7 @@ redirect=0
 while redirect < 5:
     response = hitMA('/gpcc/init', {}, cfg.getvalue())
     if response is None:
-        web.output('{ status: "failure",  rset : {  total: 1, offset: 0, errmsg : { "_" : "server error" }'}}')
+        web.output('{ status: "failure",  rset : {  total: 1, offset: 0, errmsg : { "_" : "server error" }}}')
 	break
     elif response.status == 200:
         web.output(response.read())
