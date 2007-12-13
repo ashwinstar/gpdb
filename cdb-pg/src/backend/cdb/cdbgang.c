@@ -714,17 +714,31 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 
 		/* save ourselves some memory: the defaults for thread stack
 		 * size are large (1M+) */
-		pthread_attr_init(&t_atts);
+		pthread_err = pthread_attr_init(&t_atts);
+		if(pthread_err != 0)
+		{
+			elog(LOG, "CreateGang: pthread_attr_init failed.  Error %d", pthread_err);
+			goto PTHREAD_ERROR_CLEANUP;
+		}
+
 #ifdef pg_on_solaris
 		/* Solaris doesn't have PTHREAD_STACK_MIN ? */
-		pthread_attr_setstacksize(&t_atts, (64*1024));
+		pthread_err = pthread_attr_setstacksize(&t_atts, (64*1024));
 #else
-		pthread_attr_setstacksize(&t_atts, Max(PTHREAD_STACK_MIN, (64*1024)));
+		pthread_err = pthread_attr_setstacksize(&t_atts, Max(PTHREAD_STACK_MIN, (64*1024)));
 #endif
+		if(pthread_err != 0)
+		{
+			elog(LOG, "CreateGang: pthread_attr_setstacksize failed.  Error %d", pthread_err);
+			goto PTHREAD_ERROR_CLEANUP_ATTR;
+		}
 
 		pthread_err = pthread_create(&pParms->thread, &t_atts, thread_DoConnect, pParms);
 
+PTHREAD_ERROR_CLEANUP_ATTR:
 		pthread_attr_destroy(&t_atts);
+	
+PTHREAD_ERROR_CLEANUP:
 		if (pthread_err != 0)
 		{
 			int j;

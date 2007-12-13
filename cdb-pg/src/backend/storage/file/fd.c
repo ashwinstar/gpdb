@@ -863,13 +863,14 @@ FileNameOpenFile(FileName fileName, int fileFlags, int fileMode)
 }
 
 File 
-OpenTemporaryFileName(const char* fileName, int fileFlags, bool interXact, bool delOnClose)
+OpenTemporaryFileName(const char* fileName, bool addpostfix, int fileFlags, bool interXact, bool delOnClose)
 {
 	File file;
 	char		tempfilepath[MAXPGPATH];
 
-	if(fileName)
+	if(!addpostfix) 
 	{
+		Assert(fileName);
 		snprintf(tempfilepath, sizeof(tempfilepath),
 				"%s/%s", PG_TEMP_FILES_DIR, fileName
 				);
@@ -881,7 +882,9 @@ OpenTemporaryFileName(const char* fileName, int fileFlags, bool interXact, bool 
 		 * database instance.
 		 */
 		snprintf(tempfilepath, sizeof(tempfilepath),
-				"%s/%s%d.%ld", PG_TEMP_FILES_DIR, PG_TEMP_FILE_PREFIX,
+				"%s/%s_%s_%d.%ld", PG_TEMP_FILES_DIR, 
+				PG_TEMP_FILE_PREFIX,
+				fileName ? fileName : "NoPrefix",
 				MyProcPid, tempFileCounter++);
 	}
 
@@ -946,14 +949,14 @@ OpenTemporaryFileName(const char* fileName, int fileFlags, bool interXact, bool 
  * the file is removed when the File is explicitly closed.
  */
 File
-OpenTemporaryFile(bool interXact)
+OpenTemporaryFile(const char *filePrefix, bool interXact)
 {
 	/*
 	 * File flags when open the file.  Note: we don't use O_EXCL, in case there is an orphaned
 	 * temp file that can be reused.
 	 */
 	int fileFlags = O_RDWR | PG_BINARY | O_TRUNC | O_CREAT;
-	return OpenTemporaryFileName(NULL, fileFlags, interXact, true);
+	return OpenTemporaryFileName(filePrefix, true, fileFlags, interXact, true);
 }
 
 /*

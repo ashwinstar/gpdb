@@ -541,7 +541,12 @@ tuplestore_puttuple_common(Tuplestorestate *state, TuplestorePos *pos, void *tup
 			/*
 			 * Nope; time to switch to tape-based operation.
 			 */
-			state->myfile = BufFileCreateTemp(state->interXact);
+			{
+				extern int currentSliceId;
+				char tmpprefix[50];
+				snprintf(tmpprefix, 50, "TupleStore_Slice%d", currentSliceId);
+				state->myfile = BufFileCreateTemp(tmpprefix, state->interXact);
+			}
 			state->status = TSS_WRITEFILE;
 			dumptuples(state, pos);
 			break;

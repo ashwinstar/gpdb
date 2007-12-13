@@ -9,6 +9,8 @@
 #include "storage/buffile.h"
 #include "utils/tuplestorenew.h"
 
+extern int currentSliceId;
+
 typedef struct NTupleStorePageHeader
 {
 	long blockn;        /* block number */
@@ -394,7 +396,11 @@ static NTupleStorePage *nts_get_free_page(NTupleStore *nts)
 	if(nts->page_cnt >= page_max)
 	{
 		if(!nts->pfile)
-			nts->pfile = BufFileCreateTemp(false);
+		{
+			char tmpprefix[50];
+			snprintf(tmpprefix, 50, "NTupleStore_Slice%d", currentSliceId);
+			nts->pfile = BufFileCreateTemp(tmpprefix, false);
+		}
 
 		page = nts->first_page;
 
@@ -849,9 +855,12 @@ static long ntuplestore_put_lob(NTupleStore *nts, char* data, NTupleStoreLobRef 
 
 	if(!nts->plobfile)
 	{
+		char tmpprefix[50];
 		Assert(nts->rwflag == NTS_NOT_READERWRITER);
 		Assert(nts->lobbytes == 0);
-		nts->plobfile = BufFileCreateTemp(false);
+
+		snprintf(tmpprefix, 50, "NTupleStoreLob_Slice%d", currentSliceId);
+		nts->plobfile = BufFileCreateTemp(tmpprefix, false);
 	}
 
 	lobref->start = nts->lobbytes;

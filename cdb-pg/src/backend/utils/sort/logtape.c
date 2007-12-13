@@ -334,8 +334,12 @@ LogicalTapeSetCreate_Internal(int ntapes)
 
 LogicalTapeSet *LogicalTapeSetCreate(int ntapes)
 {
+	extern int currentSliceId;
 	LogicalTapeSet *lts = LogicalTapeSetCreate_Internal(ntapes);
-	lts->pfile = BufFileCreateTemp(false);
+	char tmpprefix[50];
+
+	snprintf(tmpprefix, 50, "SortTape_Slice%d", currentSliceId);
+	lts->pfile = BufFileCreateTemp(tmpprefix, false);
 	return lts;
 }
 

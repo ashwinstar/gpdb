@@ -92,8 +92,9 @@ struct BufFile
 	 * "common" prefix.  Used by shareinput reader/writer
 	 * It takes form SIRW_%d_%d_%d, pid, address, fileSeqNum.  
 	 */
+	bool 		is_rwfile;
 	bool 		rwfile_iswriter;
-	char* 		rwfile_prefix;
+	char 		file_prefix[MAX_RWFILE_PREFIX_SIZE+1];
 };
 
 static BufFile *makeBufFile(File firstfile);
@@ -123,7 +124,7 @@ makeBufFile(File firstfile)
 	file->pos = 0;
 	file->nbytes = 0;
 
-	file->rwfile_prefix = NULL;
+	file->file_prefix[0] = '\0';
 
 	/* temporary space, we will repalloc later on first peek*/
 	file->peek.buf = palloc(8);	
@@ -162,7 +163,7 @@ extendBufFile(BufFile *file)
 
 	Assert(file->isTemp);
 
-	if(file->rwfile_prefix)
+	if(file->is_rwfile) 
 	{
 		/* next rw file name.  Append the seq number to rwfile_prefix.
 		 */
@@ -173,15 +174,15 @@ extendBufFile(BufFile *file)
 			fileFlags |= O_TRUNC | O_CREAT;
 
 		snprintf(rwfile_next, sizeof(rwfile_next),
-				"%s.%d", file->rwfile_prefix, file->numFiles
+				"%s.%d", file->file_prefix, file->numFiles
 				);
-		pfile = OpenTemporaryFileName(rwfile_next, fileFlags, file->isInterXact, file->rwfile_iswriter);
+		pfile = OpenTemporaryFileName(rwfile_next, false, fileFlags, file->isInterXact, file->rwfile_iswriter);
 
 		if(pfile < 0)
 			return pfile;
 	}
 	else
-		pfile = OpenTemporaryFile(file->isInterXact);
+		pfile = OpenTemporaryFile(file->file_prefix, file->isInterXact);
 
 	Assert(pfile >= 0);
 
@@ -205,17 +206,20 @@ extendBufFile(BufFile *file)
  * memory context that will survive across transaction boundaries.
  */
 BufFile *
-BufFileCreateTemp(bool interXact)
+BufFileCreateTemp(const char * fileName, bool interXact)
 {
 	BufFile    *file;
 	File		pfile;
 
-	pfile = OpenTemporaryFile(interXact);
+	pfile = OpenTemporaryFile(fileName, interXact);
 	Assert(pfile >= 0);
 
 	file = makeBufFile(pfile);
 	file->isTemp = true;
 	file->isInterXact = interXact;
+	file->is_rwfile = false;
+	snprintf(file->file_prefix, MAX_RWFILE_PREFIX_SIZE, "%s", fileName);
+	file->file_prefix[MAX_RWFILE_PREFIX_SIZE] = '\0';
 
 	return file;
 }
@@ -231,6 +235,7 @@ BufFileCreateTemp_ReaderWriter(const char* fileName, bool isWriter)
 		fileFlags |= O_TRUNC | O_CREAT;
 
 	pfile = OpenTemporaryFileName(fileName, 
+					false, /* add postfix */
 					fileFlags,
 					false, /* interXact */
 					isWriter /* del on close */);
@@ -243,9 +248,10 @@ BufFileCreateTemp_ReaderWriter(const char* fileName, bool isWriter)
 	file = makeBufFile(pfile);
 	file->isTemp = true;
 	file->isInterXact = true;
+	file->is_rwfile = true;
 	file->rwfile_iswriter = isWriter;
-	file->rwfile_prefix = palloc(MAX_RWFILE_PREFIX_SIZE);
-	snprintf(file->rwfile_prefix, MAX_RWFILE_PREFIX_SIZE, "%s", fileName);
+	snprintf(file->file_prefix, MAX_RWFILE_PREFIX_SIZE, "%s", fileName);
+	file->file_prefix[MAX_RWFILE_PREFIX_SIZE] = '\0';
 
 	if(!isWriter)
 	{

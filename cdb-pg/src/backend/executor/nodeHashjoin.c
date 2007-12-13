@@ -806,10 +806,14 @@ ExecHashJoinSaveTuple(MinimalTuple tuple, uint32 hashvalue,
 
 	if (file == NULL)
 	{
+		extern int currentSliceId;
+		char tmpprefix[50];
 		MemoryContext   oldcxt;
 		/* First write to this batch file, so open it. */
 		oldcxt = MemoryContextSwitchTo(bfCxt);
-		file = BufFileCreateTemp(false);
+
+		snprintf(tmpprefix, 50, "HashJoin_Slice%d", currentSliceId);
+		file = BufFileCreateTemp(tmpprefix, false);
 
 		MemoryContextSwitchTo(oldcxt);
 

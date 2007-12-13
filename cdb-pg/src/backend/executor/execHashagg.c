@@ -1299,7 +1299,10 @@ batch_put_tuple(HashAggTable *hashtable,
 	if (file == NULL)
 	{
 		/* First write to this batch file, so open it. */
-		file = BufFileCreateTemp(false);
+		char tmpprefix[50];
+		snprintf(tmpprefix, 50, "HashAgg_Slice%d", currentSliceId);
+
+		file = BufFileCreateTemp(tmpprefix, false);
 		info->file = file;
 		info->ntuples = 0L;
 	}

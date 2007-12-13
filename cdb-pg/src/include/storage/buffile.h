@@ -36,7 +36,7 @@ typedef struct BufFile BufFile;
  * prototypes for functions in buffile.c
  */
 
-extern BufFile *BufFileCreateTemp(bool interXact);
+extern BufFile *BufFileCreateTemp(const char * filePrefix, bool interXact);
 extern BufFile *BufFileCreateTemp_ReaderWriter(const char* fileName, bool isWriter);
 extern void BufFileClose(BufFile *file);
 extern size_t BufFileRead(BufFile *file, void *ptr, size_t size);
