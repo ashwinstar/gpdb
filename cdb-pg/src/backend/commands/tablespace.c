@@ -202,10 +202,10 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	HeapTuple	tuple;
 	Oid			tablespaceoid;
 	char	   *location = NULL;
+	char	   *sublocation = NULL;
 	char	   *linkloc;
 	Oid			ownerId;
 	ListCell   *cell;
-	char	*tempstr;
 	int numSegsPerHost = 0;
 	bool hasMirrors = false;
 	struct stat     st;
@@ -530,27 +530,26 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 						location)));
 
 	
- 	tempstr = palloc(MAXPGPATH);
+ 	sublocation = palloc(MAXPGPATH);
  	if (Gp_is_primary)
-		sprintf(tempstr,"%s/seg%d",location,Gp_segment);
+		sprintf(sublocation,"%s/seg%d",location,Gp_segment);
 	else
-		sprintf(tempstr,"%s/mir%d",location,Gp_segment);
-	location=tempstr;
+		sprintf(sublocation,"%s/mir%d",location,Gp_segment);
 	
-	if (mkdir(location, 0700) != 0)
+	if (mkdir(sublocation, 0700) != 0)
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not create subdirectory \"%s\": %m",
-						location)));
+						sublocation)));
 	
 	/*
 	 * Check the target directory is empty.
 	 */
-	if (!directory_is_empty(location))
+	if (!directory_is_empty(sublocation))
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("directory \"%s\" is not empty",
-						location)));
+						sublocation)));
 
 	/*
 	 * Create the PG_VERSION file in the target directory.	This has several
@@ -559,7 +558,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	 * (the emptiness check above will fail), and to label tablespace
 	 * directories by PG version.
 	 */
-	set_short_version(location);
+	set_short_version(sublocation);
 
 	/*
 	 * All seems well, create the symlink
@@ -567,7 +566,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	linkloc = (char *) palloc(10 + 10 + 1);
 	sprintf(linkloc, "pg_tblspc/%u", tablespaceoid);
 
-	if (symlink(location, linkloc) < 0)
+	if (symlink(sublocation, linkloc) < 0)
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not create symbolic link \"%s\": %m",
@@ -593,7 +592,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	}
 
 	pfree(linkloc);
-	pfree(location);
+	pfree(sublocation);
 
 	/* We keep the lock on pg_tablespace until commit */
 	heap_close(rel, NoLock);
@@ -770,7 +769,7 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 
 		xlrec.ts_id = tablespaceoid;
 		rdata[0].data = (char *) &xlrec;
-		rdata[0].len = sizeof(xl_tblspc_drop_rec);
+		rdata[0].len = offsetof(xl_tblspc_drop_rec, ts_path);
 		rdata[0].buffer = InvalidBuffer;
 		rdata[0].next = &(rdata[1]);
 
@@ -1364,6 +1363,22 @@ tblspc_redo(XLogRecPtr lsn, XLogRecord *record)
 		xl_tblspc_create_rec *xlrec = (xl_tblspc_create_rec *) XLogRecGetData(record);
 		char	   *location = xlrec->ts_path;
 		char	   *linkloc;
+		char	   *sublocation;
+		struct stat	st;
+
+		/*
+		 * MPP-2333: Try to create the target directory if it does not exist.
+		 */
+		if (stat(location, &st) < 0)
+		{
+			if (mkdir(location, 0700) != 0)
+			{
+				ereport(ERROR,
+						(errcode_for_file_access(),
+					 errmsg("could not create location directory \"%s\": %m",
+							location)));
+			}
+		}
 
 		/*
 		 * Attempt to coerce target directory to safe permissions.	If this
@@ -1375,14 +1390,27 @@ tblspc_redo(XLogRecPtr lsn, XLogRecord *record)
 				  errmsg("could not set permissions on directory \"%s\": %m",
 						 location)));
 
+		/* Create segment subdirectory. */
+	 	sublocation = palloc(MAXPGPATH);
+ 		if (Gp_is_primary)
+			sprintf(sublocation,"%s/seg%d",location,Gp_segment);
+		else
+			sprintf(sublocation,"%s/mir%d",location,Gp_segment);
+	
+		if (mkdir(sublocation, 0700) != 0)
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not create subdirectory \"%s\": %m",
+							sublocation)));
+	
 		/* Create or re-create the PG_VERSION file in the target directory */
-		set_short_version(location);
+		set_short_version(sublocation);
 
 		/* Create the symlink if not already present */
 		linkloc = (char *) palloc(10 + 10 + 1);
 		sprintf(linkloc, "pg_tblspc/%u", xlrec->ts_id);
 
-		if (symlink(location, linkloc) < 0)
+		if (symlink(sublocation, linkloc) < 0)
 		{
 			if (errno != EEXIST)
 				ereport(ERROR,
@@ -1391,6 +1419,7 @@ tblspc_redo(XLogRecPtr lsn, XLogRecord *record)
 								linkloc)));
 		}
 
+		pfree(sublocation);
 		pfree(linkloc);
 	}
 	else if (info == XLOG_TBLSPC_DROP)
