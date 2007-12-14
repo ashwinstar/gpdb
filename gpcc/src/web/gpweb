@@ -1,12 +1,16 @@
 #!/usr/bin/env python
 """
-gpweb.py -- GPCC Web Server
+gpweb -- GPCC Web Server
 
-Usage: gpweb.py port
-       port - port number
+Usage: gpweb [--version] [-?] [-p port] ma_addr1 [ma_addr2 ... ma_addrN]
+
+       --version      : print version information
+       -?             : print this help screen
+       -p port        : port to use
+       ma_addr        : MA address, e.g.  127.0.0.1:11000
 """
 
-import sys
+import sys, getopt
 
 sys.path.append(sys.path[0] + '/lib')
 try:
@@ -35,8 +39,39 @@ render = mako_render('templates/')
 urls = (
   '/(.*)', 'gpcc')
 
-sctx = {'ma_list' : ('localhost:11000')}
-sctx['ma'] = sctx['ma_list'][0]
+sctx = {}
+
+opt = {}
+opt['-p'] = '8080'
+
+def usage(exitarg):
+    print __doc__
+    sys.exit(exitarg)
+
+def print_version():
+    print '%s version $Revision$' % script_name
+    sys.exit(0)
+
+def parseCommandLine():
+    global opt, sctx
+    try:
+        (options, args) = getopt.getopt(sys.argv[1:], '?p:', ['version'])
+    except Exception, e:
+        usage('Error: ' + str(e))
+    
+    for (switch, val) in options:
+        if (switch == '?'):              usage(0)
+        elif (switch == '-p'):           opt[switch] = val
+        elif (switch == '--version'):    print_version()
+
+    if len(args) == 0:
+        usage('Error: please specify at least one MA address')
+    
+    sctx['ma_list'] = args
+    sctx['ma'] = args[0]
+
+    sys.argv = [sys.argv[0], opt['-p']]
+
 
 class gpcc:
     def _url_filter(self, name):
@@ -80,5 +115,9 @@ class gpcc:
         else:
             render.serve_template(path='index.psp', web=web, param=param, session=sess, sctx=sctx, page=page)
         
-if __name__ == "__main__": web.run(urls, globals())
+
+if __name__ == "__main__": 
+
+    parseCommandLine()
+    web.run(urls, globals())
 
