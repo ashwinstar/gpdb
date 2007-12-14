@@ -963,6 +963,7 @@ DefinePartitionedRelation(CreateStmt *stmt, Oid relOid)
 
 			Assert(tupOid != InvalidOid);
 
+			if (0)
 			{
 				ObjectAddress	myself,		
 						referenced; 

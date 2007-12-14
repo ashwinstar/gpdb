@@ -622,6 +622,11 @@ extern bool	gp_enable_partitioned_tables;
 
 extern bool	gp_enable_partitioned_table_catalog;
 
+/* let tablespace make missing LOCATION directory if necessary */
+
+extern bool	gp_enable_tablespace_auto_mkdir;
+
+
 /* The maximum number of times on average that the hybrid hashed aggregation
  * algorithm will plan to spill an input row to disk before including it in
  * an aggregation.  Increasing this parameter will cause the planner to choose 

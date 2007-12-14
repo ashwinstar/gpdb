@@ -208,8 +208,8 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	char	*tempstr;
 	int numSegsPerHost = 0;
 	bool hasMirrors = false;
+	struct stat     st;
 	int i;
-	
 
 	/* validate */
 
@@ -504,6 +504,20 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 
 	/* Record dependency on owner */
 	recordDependencyOnOwner(TableSpaceRelationId, tablespaceoid, ownerId);
+
+	/*
+	 * MPP-2333: Try to create the target directory if it does not exist.
+	 */
+	if (gp_enable_tablespace_auto_mkdir && (stat(location, &st) < 0))
+	{
+		if (mkdir(location, 0700) != 0)
+		{
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not create location directory \"%s\": %m",
+							location)));
+		}
+	}
 
 	/*
 	 * Attempt to coerce target directory to safe permissions.	If this fails,
