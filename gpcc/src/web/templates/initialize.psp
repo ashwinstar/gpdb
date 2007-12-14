@@ -12,9 +12,10 @@ except ImportError, e:
 
 <%
     cfg = None
-    response = gpcc.hitMA(sctx['ma.host'], sctx['ma.port'], '/gpcc/lscfg', {})
+    response = gpcc.hitMA(sctx['ma'], '/gpcc/lscfg', {})
     if response is None:
        cfg = None
+       sctx['ma'] = gpcc.getMA(sctx['ma_list'], sctx['ma'])
     else:
        cfgjson = simplejson.loads(response.read())
        x = cfgjson.get('rset', {})

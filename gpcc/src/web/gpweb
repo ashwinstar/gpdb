@@ -35,7 +35,8 @@ render = mako_render('templates/')
 urls = (
   '/(.*)', 'gpcc')
 
-sctx = {'ma.host' : 'localhost', 'ma.port': 11000}
+sctx = {'ma_list' : ('localhost:11000')}
+sctx['ma'] = sctx['ma_list'][0]
 
 class gpcc:
     def _url_filter(self, name):

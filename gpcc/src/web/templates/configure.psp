@@ -14,13 +14,27 @@ except ImportError, e:
 <%
 
 cfg = None
-response = gpcc.hitMA(sctx['ma.host'], sctx['ma.port'], '/gpcc/lscfg', {})
-if response is None:
-    cfg = None
-else:
-    cfgjson = simplejson.loads(response.read())
-    x = cfgjson.get('rset', {})
-    cfg = x.get('result', [])
+redirect = 0
+deadma = []
+while redirect < 5:
+    response = gpcc.hitMA(sctx['ma'], '/gpcc/lscfg', {})
+    if response is None:
+        deadma.append(sctx['ma'])
+        ma = gpcc.getMA(sctx['ma_list'], deadma)
+        if ma is not None:
+       	    sctx['ma'] = ma
+        else:
+	    cfg = None
+	    break
+    elif response.status == 200:
+        cfgjson = simplejson.loads(response.read())
+        x = cfgjson.get('rset', {})
+        cfg = x.get('result', [])
+	break
+    elif response.status == 301:
+    	json = simplejson.loads(response.read())
+	sctx['ma'] = json.get('location')
+	redirect += 1 	 
 
 %>
 

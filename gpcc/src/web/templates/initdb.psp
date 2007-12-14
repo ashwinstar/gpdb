@@ -56,20 +56,23 @@ for id in nodes:
 
 
 redirect=0
+deadma = []
 while redirect < 5:
-    response = gpcc.hitMAbyPost(sctx['ma.host'], sctx['ma.port'], '/gpcc/init', {}, cfg.getvalue())
+    response = gpcc.hitMAbyPost(sctx['ma'], '/gpcc/init', {}, cfg.getvalue())
     if response is None:
-        web.output('{ status: "failure",  rset : {  total: 1, offset: 0, errmsg : { "_" : "server error" }}}')
-	break
+	deadma.append(sctx['ma'])
+        ma = gpcc.getMA(sctx['ma_list'], deadma)
+	if ma is not None:
+	   sctx['ma'] = ma
+	else:
+	   web.output('{ status: "failure",  rset : {  total: 1, offset: 0, errmsg : { "_" : "server error" }}}')
+	   break
     elif response.status == 200:
         web.output(response.read())
 	break
     elif response.status == 301:
     	json = simplejson.loads(response.read())
-	location = json.get('location')
-	addr = location.split(':')
-	sctx['ma.host'] = addr[0]
-	sctx['ma.port'] = int(addr[1])
+	sctx['ma'] = json.get('location')
         sys.stderr.write('redirect to %s' % location);
 	redirect += 1     
 
