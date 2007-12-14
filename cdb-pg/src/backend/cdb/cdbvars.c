@@ -199,6 +199,7 @@ int 		gp_sort_max_distinct = 20000;
 bool		gp_enable_partitioned_tables = FALSE;
 bool		gp_enable_partitioned_table_catalog = FALSE;
 
+bool		gp_enable_tablespaces = FALSE;
 bool		gp_enable_tablespace_auto_mkdir = FALSE;
 
 /* Greenplum memory context use mpool */

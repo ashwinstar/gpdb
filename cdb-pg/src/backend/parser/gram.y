@@ -3308,6 +3308,13 @@ CreateTableSpaceStmt: CREATE TABLESPACE name OptTableSpaceOwner LOCATION cdb_str
 					n->mirrorlocations = $7;
 					n->masterlocation = $8;
 					$$ = (Node *) n;
+
+                    if (!gp_enable_tablespaces)
+                    {
+                        ereport(ERROR,
+                                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                                 errmsg("CREATE TABLESPACE not supported")));
+                    }
 				}
 		;
 

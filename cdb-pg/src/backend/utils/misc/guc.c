@@ -1162,6 +1162,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_enable_tablespaces", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable tablespace code"),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_enable_tablespaces,
+		false, NULL, NULL
+	},
+
+	{
 		{"gp_enable_tablespace_auto_mkdir", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable tablespace code to create empty directory if necessary"),
 			NULL,
