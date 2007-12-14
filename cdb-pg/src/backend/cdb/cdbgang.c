@@ -1442,9 +1442,7 @@ addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
 static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bool isprimary, bool i_am_superuser)
 {
 	int		j, start, end;
-	char		temp[256];
-	
-	
+	char	*temp;
 	
 	appendPQExpBufferStr(buffer, "options='");
 
@@ -1494,7 +1492,7 @@ static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bo
 	 * and remove any quotes surrounding the whole thing.
 	 *
 	 */
-	temp[0] = '\0';
+
 	j = 0;
 	start = 0;				/* start */
 	end = strlen(namespace_search_path);	/* end */
@@ -1504,6 +1502,12 @@ static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bo
 		start = 1;
 		end = strlen(namespace_search_path) - 1;
 	}
+
+	temp = malloc(end + 1);
+	if (temp == NULL)
+		elog(ERROR, "Allocation failure: addOptions. (%d bytes)", end + 1);
+	temp[0] = '\0';
+
 	for (; start < end; start++)
 	{
 		if (namespace_search_path[start] != ' ')
@@ -1512,6 +1516,8 @@ static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bo
 	temp[j] = '\0';
 
 	appendPQExpBuffer(buffer, " -c search_path=%s", temp);
+
+	free(temp);
 
 	switch (client_min_messages)
 	{
