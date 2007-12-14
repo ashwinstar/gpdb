@@ -79,7 +79,7 @@ bool		update_process_title = true;
 
 
 /* Different systems want the buffer padded differently */
-#if defined(_AIX) || defined(__linux__) || defined(__svr4__)
+#if defined(_AIX) || defined(__linux__) || defined(__svr4__) || defined(__darwin__)
 #define PS_PADDING '\0'
 #else
 #define PS_PADDING ' '
@@ -107,6 +107,14 @@ static char     ps_username[64];        /*CDB*/
 static int	save_argc;
 static char **save_argv;
 
+/*
+ * GPDB: the real activity location, the location right after
+ * those "con1 seg1 cmd1" strings. Sometimes we need to modify
+ * the original activity string in the ps display output. Use
+ * this pointer to get the real original activity string instead
+ * of get_ps_display(). See MPP-2329.
+ */
+static size_t real_act_prefix_size;
 
 /*
  * Call this early in startup to save the original argc/argv values.
@@ -281,6 +289,7 @@ init_ps_display(const char *username, const char *dbname,
 #endif
 
     ps_buffer_fixed_size = strlen(ps_buffer);
+	real_act_prefix_size = ps_buffer_fixed_size;
 
     set_ps_display(initial_str, true);
     
@@ -290,6 +299,7 @@ init_ps_display(const char *username, const char *dbname,
                                  ps_buffer_size - ps_buffer_fixed_size,
                                  "%s ", host_info);
     ps_buffer_fixed_size += ps_host_info_size;
+	real_act_prefix_size = ps_buffer_fixed_size;
 #endif   /* not PS_USE_NONE */
 }
 
@@ -347,9 +357,11 @@ set_ps_display(const char *activity, bool force)
     if (gp_command_count > 0)
         cp += snprintf(cp, ep-cp, "cmd%d ", gp_command_count);
 
-	  /* Add slice number information */
- 	  if (currentSliceId > 0)
-    	  cp += snprintf(cp, ep-cp,"slice%d ", currentSliceId);
+	/* Add slice number information */
+	if (currentSliceId > 0)
+		cp += snprintf(cp, ep-cp,"slice%d ", currentSliceId);
+
+	real_act_prefix_size = cp - ps_buffer;
 
     /* Append caller's activity string. */
     StrNCpy(cp, activity, ep-cp);
@@ -407,15 +419,13 @@ set_ps_display(const char *activity, bool force)
 #endif   /* not PS_USE_NONE */
 }
 
-
 /*
- * Returns what's currently in the ps display, in case someone needs
- * it.	Note that only the activity part is returned.  On some platforms
- * the string will not be null-terminated, so return the effective
- * length into *displen.
+ * Returns what's currently in the ps display with a given starting
+ * position. On some platforms the string will not be null-terminated,
+ * so return the effective length into *displen.
  */
-const char *
-get_ps_display(int *displen)
+static inline const char *
+get_ps_display_from_position(size_t pos, int *displen)
 {
 #ifdef PS_USE_CLOBBER_ARGV
 	size_t		offset;
@@ -429,15 +439,27 @@ get_ps_display(int *displen)
 
 	/* Remove any trailing spaces to offset the effect of PS_PADDING */
 	offset = ps_buffer_size;
-	while (offset > ps_buffer_fixed_size && ps_buffer[offset-1] == PS_PADDING)
+	while (offset > pos && ps_buffer[offset-1] == PS_PADDING)
 		offset--;
 
-	*displen = offset - ps_buffer_fixed_size;
+	*displen = offset - pos;
 #else
-	*displen = strlen(ps_buffer + ps_buffer_fixed_size);
+	*displen = strlen(ps_buffer + pos);
 #endif
 
-	return ps_buffer + ps_buffer_fixed_size;
+	return ps_buffer + pos;
+}
+
+/*
+ * Returns what's currently in the ps display, in case someone needs
+ * it.	Note that only the activity part is returned.  On some platforms
+ * the string will not be null-terminated, so return the effective
+ * length into *displen.
+ */
+const char *
+get_ps_display(int *displen)
+{
+	return get_ps_display_from_position(ps_buffer_fixed_size, displen);
 }
 
 
@@ -448,5 +470,14 @@ get_ps_display_username(void)
     return ps_username;
 }                               /* get_ps_display_username */
 
-
-
+/*
+ * Returns the real activity string in the ps display without prefix
+ * strings like "con1 seg1 cmd1" for GPDB. On some platforms the
+ * string will not be null-terminated, so return the effective length
+ * into *displen.
+ */
+const char *
+get_real_act_ps_display(int *displen)
+{
+	return get_ps_display_from_position(real_act_prefix_size, displen);
+}
