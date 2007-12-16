@@ -128,6 +128,7 @@ extern int numDispatchAgents(void);
 extern int largestGangsize(void);
 extern struct DispatchAgentSet * getUnamedPortalDispatchAgents(void);
 
+extern int gp_pthread_create(pthread_t *thread, void *(*start_routine)(void *), void *arg, const char *caller);
 /*
  * cdbgang_parse_gpqeid_params
  *
