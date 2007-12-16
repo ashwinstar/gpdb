@@ -632,9 +632,9 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 
 #ifdef pg_on_solaris
 			/* Solaris doesn't have PTHREAD_STACK_MIN ? */
-			pthread_err = pthread_attr_setstacksize(&t_atts, (64*1024));
+			pthread_err = pthread_attr_setstacksize(&t_atts, (256*1024));
 #else
-			pthread_err = pthread_attr_setstacksize(&t_atts, Max(PTHREAD_STACK_MIN, (64*1024)));
+			pthread_err = pthread_attr_setstacksize(&t_atts, Max(PTHREAD_STACK_MIN, (256*1024)));
 #endif
 
 			if (pthread_err != 0)
