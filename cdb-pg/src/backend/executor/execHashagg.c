@@ -476,7 +476,7 @@ agg_hash_initial_pass(AggState *aggstate)
 
 	AssertImply(tupRemaining, streaming);
 	if(tupRemaining) 
-		elog(LOG, "Hashagg does not finish in initial pass, streaming out.");
+		elog(HHA_MSG_LVL, "Hashagg does not finish in initial pass, streaming out.");
 
 	return tupRemaining;
 }
