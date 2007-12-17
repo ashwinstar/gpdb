@@ -3752,12 +3752,11 @@ bool
 pqGetHomeDirectory(char *buf, int bufsize)
 {
 #ifndef WIN32
-	char		pwdbuf[BUFSIZ];
-	struct passwd pwdstr;
-	struct passwd *pwd = NULL;
+	struct passwd *pwd = get_gp_passwdptr(); 
 
-	if (pqGetpwuid(geteuid(), &pwdstr, pwdbuf, sizeof(pwdbuf), &pwd) != 0)
+	if(!pwd)
 		return false;
+
 	StrNCpy(buf, pwd->pw_dir, bufsize);
 	return true;
 #else

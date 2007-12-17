@@ -367,8 +367,7 @@ extern void srandom(unsigned int seed);
 extern char *pqStrerror(int errnum, char *strerrbuf, size_t buflen);
 
 #if !defined(WIN32) || defined(__CYGWIN__)
-extern int pqGetpwuid(uid_t uid, struct passwd * resultbuf, char *buffer,
-		   size_t buflen, struct passwd ** result);
+extern struct passwd * get_gp_passwdptr(void);
 #endif
 
 extern int pqGethostbyname(const char *name,

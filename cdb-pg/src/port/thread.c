@@ -92,30 +92,44 @@ pqStrerror(int errnum, char *strerrbuf, size_t buflen)
  * behaviour, if it is not available or required.
  */
 #ifndef WIN32
-int
-pqGetpwuid(uid_t uid, struct passwd * resultbuf, char *buffer,
-		   size_t buflen, struct passwd ** result)
-{
-#if defined(FRONTEND) && defined(ENABLE_THREAD_SAFETY) && defined(HAVE_GETPWUID_R)
 
+/* header for geteuid */
+#include <sys/types.h>
+#include <unistd.h>
+
+struct passwd *get_gp_passwdptr()
+{
+	static struct passwd *gp_passwd_ptr = NULL;
+
+#if defined(FRONTEND) && defined(ENABLE_THREAD_SAFETY) && defined(HAVE_GETPWUID_R)
+	static char gp_passwd_buf[BUFSIZ];
+	static struct passwd gp_passwd;
+
+	/* First check if we have an singleton */
+	if(gp_passwd_ptr!=NULL)
+		return gp_passwd_ptr;
 #ifdef GETPWUID_R_5ARG
 	/* POSIX version */
-	getpwuid_r(uid, resultbuf, buffer, buflen, result);
+	getpwuid_r(geteuid(), &gp_passwd, 
+			gp_passwd_buf, sizeof(gp_passwd_buf),
+			&gp_passwd_ptr
+		  ); 
 #else
-
 	/*
 	 * Early POSIX draft of getpwuid_r() returns 'struct passwd *'.
 	 * getpwuid_r(uid, resultbuf, buffer, buflen)
 	 */
-	*result = getpwuid_r(uid, resultbuf, buffer, buflen);
+	gp_passwd_ptr = getpwuid_r(geteuid(), &gp_passwd, gp_passwd_buf, sizeof(gp_passwd_buf)); 
 #endif
 #else
+	/* First check if we have an singleton */
+	if(gp_passwd_ptr!=NULL)
+		return gp_passwd_ptr;
 
 	/* no getpwuid_r() available, just use getpwuid() */
-	*result = getpwuid(uid);
+	gp_passwd_ptr = getpwuid(geteuid());
 #endif
-
-	return (*result == NULL) ? -1 : 0;
+	return gp_passwd_ptr;
 }
 #endif
 

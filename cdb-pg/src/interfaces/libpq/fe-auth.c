@@ -542,8 +542,6 @@ pg_fe_getauthname(char *PQerrormsg)
 	char		username[128];
 	DWORD		namesize = sizeof(username) - 1;
 #else
-	char		pwdbuf[BUFSIZ];
-	struct passwd pwdstr;
 	struct passwd *pw = NULL;
 #endif
 
@@ -575,8 +573,11 @@ pg_fe_getauthname(char *PQerrormsg)
 		if (GetUserName(username, &namesize))
 			name = username;
 #else
-		if (pqGetpwuid(geteuid(), &pwdstr, pwdbuf, sizeof(pwdbuf), &pw) == 0)
-			name = pw->pw_name;
+		pw = get_gp_passwdptr();
+		if(!pw)
+			return NULL;
+
+		name = pw->pw_name;
 #endif
 	}
 

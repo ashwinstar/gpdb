@@ -1410,13 +1410,26 @@ addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
 	 */
 	(*segdbCount)++;
 }
-
+	
 int gp_pthread_create(pthread_t *thread, 
 					  void *(*start_routine)(void *), 
 					  void *arg, const char *caller)
 {
 	int pthread_err = 0;
 	pthread_attr_t t_atts;
+
+	/* Call some init function.
+	 * Before any thread is created, we need to init some static stuff.
+	 * The main purpose is to guarantee the non-thread safe stuff are 
+	 * called in main thread, before any child thread get running.  Note
+	 * these staic data structure should be read only after init.  Thread
+	 * creation is a barrier, so there is no need to get lock before we
+	 * use these data structures.
+	 *
+	 * So far, we know we need to do this for getpwuid_r (See MPP-1971,
+	 * glibc getpwuid_r is not thread safe).
+	 */
+	get_gp_passwdptr();
 
 	/* save ourselves some memory: the defaults for thread stack
 	 * size are large (1M+) */
