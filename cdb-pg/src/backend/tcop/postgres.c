@@ -1369,11 +1369,6 @@ exec_simple_query(const char *query_string)
 	bool		was_logged = false;
 	char		msec_str[32];
 
-#define FTIAN_DBG_STR "select gid from"
-
-	if(strncmp(query_string, FTIAN_DBG_STR, sizeof(FTIAN_DBG_STR)-1) == 0)
-		debug_break();
-
 	/*
 	 * Report query to various monitoring facilities.
 	 */
@@ -3119,7 +3114,7 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
 					 MyProcPid, postgres_signal_arg, (unsigned long)pthread_self().p);
 #endif 
 		pthread_kill(main_tid, postgres_signal_arg);
-		/* pthread_exit(NULL); */
+		pthread_exit(NULL); 
 		return;
 	}
 
@@ -3165,7 +3160,6 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
     else
         pts = "Process";
 
-	debug_break();
     write_stderr("\nUnexpected internal error: %s %d received signal %s\n\n",
                  pts, MyProcPid, signame);
 
