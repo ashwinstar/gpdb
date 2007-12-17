@@ -137,7 +137,31 @@ def do_platform(res):
     res['platform.version'] = uname[3]
     res['platform.machine'] = uname[4]
     res['platform.processor'] = uname[5]
+    s = res['platform.system']
+    mem = 0
+    if (s.find('sunos') >= 0): 
+        (ok, out) = run('''sh -c "prtconf | awk '/^Memory/{print}'"''')
+        if ok: 
+            list = out[0].strip().split(' ')
+            val = int(list[2])
+            factor = list[3]
+            if factor == 'Megabytes':
+                mem = val * 1024 * 1024
+    elif (s.find('linux') >= 0):
+	ok, out = run("sh -c 'cat /proc/meminfo | grep MemTotal'")
+        if ok:
+            list = out[0].strip().split(' ')
+            val = int(list[len(list) - 2])
+            factor = list[len(list) - 1]
+            if factor == 'kB': 
+                mem = val * 1024
+    elif (s.find('darwin') >= 0):
+	(ok, out) = run("sysctl hw.physmem")
+        if ok:
+            list = out[0].strip().split(' ')
+            mem = int(list[1])
 
+    res['platform.memory'] = mem
     return True
 
 def do_python(res):

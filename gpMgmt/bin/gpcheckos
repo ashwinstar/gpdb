@@ -521,6 +521,14 @@ try:
         perr(p0.x_peer, 'sync time unavailable')
     else:
         matchSyncTime(session, key, value)
+
+    # check memory matches
+    key = 'platform.memory'
+    value = p0.x_res.get(key)
+    if not value:
+        perr(p0.x_peer, 'physical memory unavailable')
+    else:
+        match(session, key, value)
         
 
     key = 'platform.system'
