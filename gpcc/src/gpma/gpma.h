@@ -46,6 +46,7 @@ struct gpma_t {
     const char*  guid; 	      /* Global unique ID (generated from gpdb_id) */
     const char*  ma_unit;     /* MA ID - e.g. ma.0 */
     int          ma_port;     /* MA Port */
+    const char*  ma_addr[5];  /* MA Address */
     const char*  datadir;     /* dir for config file, log file, etc */
     int          boot_force;  /* force the creation of boot_fname cfg file */
     const char*  boot_fname;  /* NULL if not booting, otherwise the name of the cfgfile */

@@ -16,17 +16,19 @@
 
 gpma_t gpma = {0};
 
+static const char* verify_ma(const char* ma);
 
 /* Print usage info */
 static void usage(const char* msg)
 {
-    fprintf(stderr, "\nUsage: %s [-D?f] [-b cfgfile] ma_unit ma_dir\n\n", gpma.progname);
+    fprintf(stderr, "\nUsage: %s [-D?f] [-b cfgfile] ma_unit ma_dir ma_addr0 [ma_addr1 ma_addr2]\n\n", gpma.progname);
     fprintf(stderr, "    -?         : print this help screen\n");
     fprintf(stderr, "    -D         : debug mode and do not run as daemon\n");
     fprintf(stderr, "    -f         : for the -b option, force the creation of new config\n");
     fprintf(stderr, "    -b cfgfile : boot the Master Agent with cfgfile ('-' for stdin)\n");
     fprintf(stderr, "    ma_unit    : the Master Agent Unit (e.g. ma.1) \n");
     fprintf(stderr, "    ma_dir     : the data directory for storing Master Agent data files\n");
+    fprintf(stderr, "    ma_addrN   : ma address with the format IP:PORT\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "e.g. %s mycluster ma.0\n", gpma.progname);
     fprintf(stderr, "\n");
@@ -44,7 +46,7 @@ void parse_cmdline(int argc, const char* argv[])
     apr_getopt_t* handle;
     char opt;
     const char* optarg;
-    int e;
+    int i, e;
     FILE* f;
     char msg[1024];
     char* p;
@@ -99,11 +101,23 @@ void parse_cmdline(int argc, const char* argv[])
     if (e != APR_EOF) 
 	usage("bad command line");
 
-    if (argc - handle->ind != 2)
-	usage("Please specify ma_unit ma_dir");
+    if (argc - handle->ind < 3)
+	usage("Please specify ma_unit ma_dir ma_addr");
 
     gpma.ma_unit = argv[handle->ind++];
     gpma.datadir = argv[handle->ind++];
+
+    for (i = 0 ; handle->ind < argc ; i++) {
+	const char *v;
+	gpma.ma_addr[i] = argv[handle->ind++];
+	v = verify_ma(gpma.ma_addr[i]);
+	if (v) {
+	    sprintf(msg, "format error: ma.%d %s", i, v);
+	    usage(msg);
+	}
+    }
+    gpma.ma_max = i;
+
 
     /* check ma of the pattern: ma.N */
     sprintf(msg, "MA ID must look like 'ma.N' where N is a number between 0 and 2");
@@ -112,6 +126,8 @@ void parse_cmdline(int argc, const char* argv[])
 	&& 0 != strcmp(gpma.ma_unit, "ma.2")) {
 	usage(msg);
     }
+
+
 
     /* check the boot_fname */
     if (gpma.boot_fname && 0 != strcmp(gpma.boot_fname, "-")) {
@@ -403,73 +419,26 @@ static void net_tick(apr_time_t now)
     gpcc_evqueue_put(gpma.evq, ev);
 }
 
-void node_init(void)
-{
-    char node_name[100];
-    const char* node;
-    int cnt, i;
-    cmdslot_t* cp;
-
-    for (cnt = 0; ; cnt++) {
-	sprintf(node_name, "node.%d", cnt);
-	node = config_get(gpma.cfg, node_name);
-	if (!node) 
-	    break;
-    }
-
-    if (cnt == 0) {
-	gpcc_fatal(FLINE, "No node exists in configuration");
-    }
-    gpma.node_max = cnt;
-    gpma.node_cmdtab = apr_palloc(gpma.pool, (cnt + 1) * sizeof(gpma.node_cmdtab[0]));
-    memset(gpma.node_cmdtab, 0, (cnt + 1) * sizeof(gpma.node_cmdtab[0]));
-    for (i = 0; i < cnt; i++) {
-	sprintf(node_name, "node.%d", i);
-	node = config_get(gpma.cfg, node_name);
-	cp = gpma.node_cmdtab[i] = cmdslot_alloc(node_name, NODE_CMDSTATE);
-	if (apr_tokenize_to_argv(node, &cp->u.node.hosttab, cp->pool)) {
-	    gpcc_fatal(FLINE, "Illegal format for entry '%s' in configuration", node_name);
-	}
-	for (cp->u.node.hosttab_max = 0 ; 
-	     cp->u.node.hosttab[cp->u.node.hosttab_max] ; 
-	     cp->u.node.hosttab_max++) ;
-	cp->u.node.hostidx = 0;
-    }
-
-    gpma.haset_cmdslot = cmdslot_alloc("HASET", HASET_OFF_CMDSTATE);
-    gpma.haset_cmdslot->u.haset.total = cnt;
-}
-
 void ma_init(void)
 {
     char ma_name[100];
     const char* ma;
-    int cnt, i, j;
+    int i;
     cmdslot_t* cp;
     char* p;
-    for (cnt = 0; cnt < 3; cnt++) {
-	sprintf(ma_name, "ma.%d", cnt);
-	ma = config_get(gpma.cfg, ma_name);
-	if (!ma)
-	    break;
-    }
 
-    if (cnt == 0) 
-	gpcc_fatal(FLINE, "No MA exists in configuration");
-
-    gpma.ma_max = cnt;
-    gpma.ma_cmdtab = apr_palloc(gpma.pool, (cnt + 1) * sizeof(gpma.ma_cmdtab[0]));
-    for (i = 0; i < cnt; i++) {
+    gpma.ma_cmdtab = apr_palloc(gpma.pool, (gpma.ma_max + 1) * sizeof(gpma.ma_cmdtab[0]));
+    for (i = 0; i < gpma.ma_max ; i++) {
 	sprintf(ma_name, "ma.%d", i);
 	if (0 == strcmp(ma_name, gpma.ma_unit)) {
 	    gpma.ma_cmdtab[i] = 0;
-	    ma = config_get(gpma.cfg, ma_name);
+	    ma = gpma.ma_addr[i];
 	    p = strchr(ma, ':');
 	    gpma.ma_port = strtol(++p, 0, 0);
 	    continue;
 	}
 
-	ma = config_get(gpma.cfg, ma_name);
+	ma = gpma.ma_addr[i];
 	cp = gpma.ma_cmdtab[i] = cmdslot_alloc(ma_name, MA_OFF_CMDSTATE);
 	cp->u.ma.node_unit = apr_pstrdup(gpma.pool, ma);
 	p = strchr(cp->u.ma.node_unit, ':');
@@ -477,19 +446,11 @@ void ma_init(void)
 	cp->u.ma.port = strtol(p, 0, 0);
 	if (! (0 < cp->u.ma.port && cp->u.ma.port < (1 << 16)))
 	    gpcc_fatal(FLINE, "Illegal ma port specification: %s", ma);
-	for (j = 0; j < gpma.node_max; j++) {
-	    if (0 == strcmp(cp->u.ma.node_unit, gpma.node_cmdtab[j]->cmdname)) {
-		cp->u.ma.node = gpma.node_cmdtab[j];
-		break;
-	    }
-	}
-	if (! cp->u.ma.node) 
-	    gpcc_fatal(FLINE, "Illegal ma node specification: %s", ma);
     }
 
     /* MA set slot */
     gpma.maset_cmdslot = cmdslot_alloc("MASET", MASET_OFF_CMDSTATE);
-    gpma.maset_cmdslot->u.maset.total = cnt;
+    gpma.maset_cmdslot->u.maset.total = gpma.ma_max;
 
     gpma.lma_cmdslot = cmdslot_alloc("LMA", LMA_OFF_CMDSTATE);
 
@@ -534,7 +495,6 @@ void d_main(void)
 
     
     fsm_init();
-    node_init();
     ma_init();
 
     /* create the event queue */
@@ -569,12 +529,6 @@ void d_main(void)
 	if (gpma.ma_cmdtab[i])
 	    gpma.ma_cmdtab[i]->countdown = 1;
     }
-
-    /* HA */
-    /* kick off HASET slot */
-    ev = gpcc_event_alloc(INIT_EVENT, gpma.haset_cmdslot->cmdidx, 0);
-    gpcc_evqueue_put(gpma.evq, ev);    
-
 
     /* MAIN LOOP - 
      *     - get an event from queue
@@ -676,18 +630,6 @@ static void verify_config(void)
     char buf[1024];
     int errcnt = 0;
     char* errmsg[100];
-
-    /* at least 1 ma must be set */
-    for (i = 0; i < 3; i++) {
-	sprintf(buf, "ma.%d", i);
-	if (! (v = config_get(gpma.cfg, buf)))
-	    break;
-	v = verify_ma(v);
-	if (v)
-	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- ma.%d %s", i, v);
-    }
-    if (i == 0) 
-	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- ma.0 not set");
 
     /* guid must match */
     if (! config_eq(gpma.cfg, "sys.guid", gpma.guid)) {

@@ -11,7 +11,6 @@ apr_status_t a_ma_connect(gpcc_event_t* ev, void* arg)
     const char* hname[2];
     const char* hvalue[2];
     int e;
-    char naddr[200];
     char buf[64];
 
     sprintf(buf, "GPMA:%s", gpma.ma_unit);
@@ -23,19 +22,10 @@ apr_status_t a_ma_connect(gpcc_event_t* ev, void* arg)
     hname[1] = "X-GPCC-GUID";
     hvalue[1] = gpma.guid;
 
-    if (sizeof(naddr) - 1 
-	== apr_snprintf(naddr, sizeof(naddr), "%s:%d", 
-			slot->u.ma.node->u.node.hosttab[slot->u.ma.node->u.node.hostidx],
-			slot->u.ma.port)) {
-	gpcc_fatal(FLINE, "address line too long %s:%d", 
-		   slot->u.ma.node->u.node.hosttab[slot->u.ma.node->u.node.hostidx],
-		   slot->u.ma.port);
-    }
-
     gpcc_log_info("gpcc_net_open %s", buf);
     /* use gpcc_net to connect to gpma here */
     if (0 != (e = gpcc_net_open(&slot->u.ma.self_conn, 
-				naddr,
+				slot->u.ma.node_unit,
 				argc, argv,
 				hc, hname, hvalue, slot->cmdidx))) 
 	return -1;
@@ -416,7 +406,6 @@ apr_status_t a_lma_lead(gpcc_event_t *ev, void *arg)
     cmdslot_t *slot = arg;
     char msg[64];
     int i, e;
-    gpcc_event_t *evt;
 
     sprintf(msg, "{\"ma\" : \"%s\"}", gpma.ma_unit);
     for (i = 0 ; i < gpma.ma_max ; i++) {
@@ -431,12 +420,6 @@ apr_status_t a_lma_lead(gpcc_event_t *ev, void *arg)
     
     strcpy(slot->u.lma.leadma, gpma.ma_unit);
     
-    /* kick off the nodes */
-    for (i = 0 ; i < gpma.node_max ; i++) {
-	evt = gpcc_event_alloc(INIT_EVENT, gpma.node_cmdtab[i]->cmdidx, 0);
-	gpcc_evqueue_put(gpma.evq, evt);
-    }
-
     return 0;
 }
 

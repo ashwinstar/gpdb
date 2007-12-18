@@ -123,18 +123,15 @@ struct cmdslot_t {
 	} status;
 
 	struct {
-	    gpcc_net_conn_t conn; /* if we need to send reply over http */
 	    apr_uint32_t parent_cmdidx;
 	} array_init;
 
 	struct {
-	    gpcc_net_conn_t conn; /* if we need to send reply over http */
 	    apr_uint32_t parent_cmdidx;
 	} segment_init;
 
 
 	struct {
-	    /* gpcc_net_conn_t conn;  if we need to send reply over http */
 	    apr_uint32_t parent_cmdidx;
 	    struct {
 		int content;
@@ -170,13 +167,11 @@ struct cmdslot_t {
 	} segment_start;
 
 	struct {
-	    /* gpcc_net_conn_t conn;  if we need to send reply over http */
 	    apr_uint32_t parent_cmdidx;
 	    char *mode;
 	} array_stop;
 
 	struct {
-	    gpcc_net_conn_t conn; /* if we need to send reply over http */
 	    apr_uint32_t parent_cmdidx;
 	    char *mode;
 	    char **unit;
@@ -201,7 +196,6 @@ struct cmdslot_t {
 	    int port;
 	    const char* ma_unit;
 	    const char* node_unit;
-	    cmdslot_t* node;
 	} ma;
 
 	struct {

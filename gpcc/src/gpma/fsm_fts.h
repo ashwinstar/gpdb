@@ -56,6 +56,20 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
     base_port = config_get_or_set_int(gpma.cfg, CONFIG_BASE_PORT_KEY, CONFIG_BASE_PORT_VALUE);
     mirror_base_port = config_get_or_set_int(gpma.cfg, CONFIG_MIRROR_BASE_PORT_KEY, CONFIG_MIRROR_BASE_PORT_VALUE);
 
+    for (i = 0 ;  ; i++) {
+	sprintf(key, "node.%d", i);
+	value = config_get(gpma.cfg, key);
+	if (!value)
+	    break;
+    }
+    if (i == 0) {
+	gpcc_log_error("gpdb must have at least one node");
+	return APR_EINVAL;
+    }
+    cmdslot->u.fts.nnode = i;
+    cmdslot->u.fts.nopened = 0;
+
+
     for (i = 0 ; ; i++) {
 	sprintf(key, "gpdb.seg.m.%d", i);
 	value = config_get(gpma.cfg, key);
@@ -220,38 +234,89 @@ static apr_status_t a_fts_http_redirect_leadma(gpcc_net_conn_t conn, const char 
     return 0;
 }
 
+
+void a_fts_node_init(void)
+{
+    char node_name[100];
+    const char* node;
+    int cnt, i;
+    cmdslot_t* cp;
+    gpcc_event_t *ev;
+
+    for (cnt = 0; ; cnt++) {
+	sprintf(node_name, "node.%d", cnt);
+	node = config_get(gpma.cfg, node_name);
+	if (!node) 
+	    break;
+    }
+
+    if (cnt > 0) {
+	gpma.node_max = cnt;
+	gpma.node_cmdtab = apr_palloc(gpma.pool, (cnt + 1) * sizeof(gpma.node_cmdtab[0]));
+	memset(gpma.node_cmdtab, 0, (cnt + 1) * sizeof(gpma.node_cmdtab[0]));
+	for (i = 0; i < cnt; i++) {
+	    sprintf(node_name, "node.%d", i);
+	    node = config_get(gpma.cfg, node_name);
+	    cp = gpma.node_cmdtab[i] = cmdslot_alloc(node_name, NODE_CMDSTATE);
+	    if (apr_tokenize_to_argv(node, &cp->u.node.hosttab, cp->pool)) {
+		gpcc_fatal(FLINE, "Illegal format for entry '%s' in configuration", node_name);
+	    }
+	    for (cp->u.node.hosttab_max = 0 ; 
+		 cp->u.node.hosttab[cp->u.node.hosttab_max] ; 
+		 cp->u.node.hosttab_max++) ;
+	    cp->u.node.hostidx = 0;
+	}
+    }
+
+
+    /* kick off haset */
+    gpma.haset_cmdslot = cmdslot_alloc("HASET", HASET_OFF_CMDSTATE);
+    gpma.haset_cmdslot->u.haset.total = cnt;
+
+    ev = gpcc_event_alloc(INIT_EVENT, gpma.haset_cmdslot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, ev);
+
+
+    /* kick off node */
+    for (i = 0 ; i < gpma.node_max ; i++) {
+	ev = gpcc_event_alloc(INIT_EVENT, gpma.node_cmdtab[i]->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, ev);
+    }
+}
+
+
 static apr_status_t a_fts_init(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = _cmdslot;
     int i;
-    char key[20];
-    const char *v;
-
-    for (i = 0 ;  ; i++) {
-	sprintf(key, "node.%d", i);
-	v = config_get(gpma.cfg, key);
-	if (!v)
-	    break;
-    }
-    cmdslot->u.fts.nnode = i;
-    cmdslot->u.fts.nopened = 0;
+    gpcc_event_t *evt;
 
     if (config_get(gpma.cfg, "gpdb.name")) {
+	
 	if (setup_init_seginfo(ev, _cmdslot))
 	    gpcc_fatal(FLINE, "seginfo setup error.");
+
+
+	for (i = 0 ; i < cmdslot->u.fts.nseginfo ; i++) {
+	    gpcc_log_info("name=%s, host =%s, dbid = %d, content =%d, port = %d, dir = %s, haidx = %d, ha=%s",
+			  cmdslot->u.fts.seginfo[i].name,
+			  cmdslot->u.fts.seginfo[i].host,
+			  cmdslot->u.fts.seginfo[i].dbid,
+			  cmdslot->u.fts.seginfo[i].content,
+			  cmdslot->u.fts.seginfo[i].port,
+			  cmdslot->u.fts.seginfo[i].dir,
+			  cmdslot->u.fts.seginfo[i].haidx,
+			  cmdslot->u.fts.seginfo[i].ha);
+	}
+
+
+	/* kick off the node */
+	a_fts_node_init();
+    } else {
+	evt = gpcc_event_alloc(ARRAY_ABSENT_EVENT, cmdslot->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
     }
 
-    for (i = 0 ; i < cmdslot->u.fts.nseginfo ; i++) {
-	gpcc_log_info("name=%s, host =%s, dbid = %d, content =%d, port = %d, dir = %s, haidx = %d, ha=%s",
-		      cmdslot->u.fts.seginfo[i].name,
-		      cmdslot->u.fts.seginfo[i].host,
-		      cmdslot->u.fts.seginfo[i].dbid,
-		      cmdslot->u.fts.seginfo[i].content,
-		      cmdslot->u.fts.seginfo[i].port,
-		      cmdslot->u.fts.seginfo[i].dir,
-		      cmdslot->u.fts.seginfo[i].haidx,
-		      cmdslot->u.fts.seginfo[i].ha);
-    }
 
     return 0;
 }
@@ -395,7 +460,7 @@ static apr_status_t a_fts_array_status_reply(gpcc_event_t *ev, void *_cmdslot)
 	state = ARRAY_CONNECTING_STATUS;
     } else if (cmdslot->cmdstate == FTS_EMPTY_CMDSTATE) {
 	state = ARRAY_NO_ARRAY_STATUS;
-    } else if (cmdslot->cmdstate == FTS_INITIALIZING_CMDSTATE) {
+    } else if (cmdslot->cmdstate == FTS_INITIALIZING_CMDSTATE || cmdslot->cmdstate == FTS_INITIALIZING0_CMDSTATE) {
 	state = ARRAY_INITIALIZING_STATUS;
     } else if (cmdslot->cmdstate == FTS_STOPPED_CMDSTATE) {
 	state = ARRAY_STOPPED_STATUS;
@@ -726,12 +791,11 @@ static apr_status_t a_fts_array_config_verify() {
 
 }
 
-static apr_status_t a_fts_array_init(gpcc_event_t *ev, void *_cmdslot)
+static apr_status_t a_fts_array_init_start_nodes(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = _cmdslot;
     char *config;
     gpcc_net_conn_t conn;
-    cmdslot_t *p;
     gpcc_event_t *evt;
     struct json_object *obj;
     int i;
@@ -764,19 +828,57 @@ static apr_status_t a_fts_array_init(gpcc_event_t *ev, void *_cmdslot)
 		      cmdslot->u.fts.seginfo[i].haidx,
 		      cmdslot->u.fts.seginfo[i].ha);
     }
-   
+
+    a_fts_node_init();
+
+    obj = gpcc_json_http_reply("init", "pending", "pending");
+    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+    json_object_put(obj);
+
+    /* check for connection timeout */
+    cmdslot->countdown = 30;
+
+    return 0;
+}
+
+static apr_status_t a_fts_array_init_start_nodes_failure(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    gpcc_event_t *evt;
+    int i;
+
+    /* shutdown nodes and haset */
+    for (i = 0 ; i < gpma.node_max ; i++) {
+	evt = gpcc_event_alloc(SHUTDOWN_EVENT, gpma.node_cmdtab[i]->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+    }
+
+    evt = gpcc_event_alloc(SHUTDOWN_EVENT, gpma.haset_cmdslot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
+
+    gpma.node_max = 0;
+    gpma.haset_cmdslot = 0;
+    gpma.node_cmdtab = 0;
+    cmdslot->u.fts.nnode = 0;
+    cmdslot->u.fts.nopened = 0;
+
+    return 0;
+}
+
+static apr_status_t a_fts_array_init(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    cmdslot_t *p;
+    gpcc_event_t *evt;
+
+    cmdslot->countdown = 0;
     p = cmdslot_alloc("ARRAY_INIT", FTS_ARRAY_INIT_CMDSTATE);
     p->u.array_init.parent_cmdidx = cmdslot->cmdidx;
-    p->u.array_init.conn = conn;
     cmdslot->u.fts.active_cmdidx = p->cmdidx;
     
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);
 
-
-    obj = gpcc_json_http_reply("init", "pending", "pending");
-    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
-    json_object_put(obj);
 
     return 0;
 }
@@ -821,10 +923,11 @@ static apr_status_t a_fts_array_init_failure(gpcc_event_t *ev, void *_cmdslot)
 
     keys = config_keys(gpma.cfg, cmdslot->pool);
     for (i = 0 ; keys[i] ; i++) {
-	if (strstr(keys[i], "gpdb.") == keys[i]) {
+	if (strstr(keys[i], "gpdb.") == keys[i] || strstr(keys[i], "node.") == keys[i]) {
 	    config_set(gpma.cfg, keys[i], 0);
 	}
     }
+
     config_gc(gpma.cfg);
     setup_cleanup_seginfo(ev, _cmdslot);
     apr_pool_clear(cmdslot->pool);
@@ -1045,6 +1148,12 @@ static apr_status_t a_fts_segment_command_reply(gpcc_event_t *ev, void *arg)
     cmdslot_t *slot = arg;
 
     slot->u.fts.active_cmdidx = 0;
+#if 0
+    /* check all segments status  */
+    for (i = 0 ; i < gpma.unit_max ; i++) {
+	gpma.unit_cmdtab[i]->cmdstate
+#endif    
+
     return 0;
 }
 

@@ -151,7 +151,7 @@ apr_status_t a_node_teardown(gpcc_event_t* ev, void* arg)
     if (! slot->u.node.opened) 
 	return 0;
     slot->u.node.opened = 0;
-
+    slot->u.node.conn = 0;
     evt = gpcc_event_alloc(NET_CLOSED_EVENT, gpma.haset_cmdslot->cmdidx, strlen(slot->cmdname)+1);
     memcpy(evt->pdata, slot->cmdname, strlen(slot->cmdname)+1);
     gpcc_evqueue_put(gpma.evq, evt);
@@ -164,3 +164,17 @@ apr_status_t a_node_ping(gpcc_event_t* ev, void* arg)
     return 0;
 }
 
+
+apr_status_t a_node_shutdown(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+
+    if (slot->u.node.conn) {
+	gpcc_net_close(slot->u.node.conn, 0);
+    }
+    if (slot->u.node.proc.pid != 0) {
+	apr_proc_kill(&slot->u.node.proc, SIGTERM);
+    }
+
+    return 0;
+}
