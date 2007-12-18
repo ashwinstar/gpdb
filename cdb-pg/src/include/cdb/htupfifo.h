@@ -43,6 +43,9 @@ typedef struct htup_fifo_state
 	htf_entry	p_first;
 	htf_entry	p_last;
 
+	htf_entry	freelist;
+	int			freelist_count;
+
 	/* A count of HeapTuples in the FIFO. */
 	int			tup_count;
 

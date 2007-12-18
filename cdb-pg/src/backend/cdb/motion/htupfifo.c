@@ -15,6 +15,7 @@
 #include "utils/memutils.h"
 #include "cdb/htupfifo.h"
 
+#define HTF_FREELIST_MAX_LEN (10)
 
 /* Create and initialize a HeapTuple FIFO.	The FIFO state is allocated by
  * this function, then initialized and returned.
@@ -50,6 +51,7 @@ htfifo_create(int max_mem_kb)
  *
  *	   htf - An uninitialized pointer to a htup_fifo_state structure.
  *
+ * XXX: THIS MEMORY PARAMETER IS COMPLETELY IGNORED!
  *	   max_mem_kb - The maximum memory size the FIFO can grow to, in
  *		   kilobytes.  If the FIFO grows larger than this, an error is logged.
  */
@@ -61,6 +63,10 @@ htfifo_init(htup_fifo htf, int max_mem_kb)
 
 	htf->p_first = NULL;
 	htf->p_last = NULL;
+
+	htf->freelist = NULL;
+	htf->freelist_count = 0;
+
 	htf->tup_count = 0;
 	htf->curr_mem_size = 0;
 	htf->max_mem_size = max_mem_kb * 1024;
@@ -80,6 +86,16 @@ htfifo_cleanup(htup_fifo htf)
 	/* TODO:  This can be faster if we didn't reuse code, but this will work. */
 	while ((htup = htfifo_gettuple(htf)) != NULL)
 		heap_freetuple(htup);
+
+	while (htf->freelist)
+	{
+		htf_entry trash = htf->freelist;
+
+		htf->freelist = trash->p_next;
+
+		pfree(trash);
+	}
+	htf->freelist_count = 0;
 
 	htf->p_first = NULL;
 	htf->p_last = NULL;
@@ -118,7 +134,15 @@ htfifo_addtuple(htup_fifo htf, HeapTuple htup)
 	AssertArg(htup != NULL);
 
 	/* Populate the new entry. */
-	p_ent = (htf_entry) palloc(sizeof(htf_entry_data));
+	if (htf->freelist != NULL)
+	{
+		p_ent = htf->freelist;
+		htf->freelist = p_ent->p_next;
+		htf->freelist_count = htf->freelist_count - 1;
+	} else
+	{
+		p_ent = (htf_entry) palloc(sizeof(htf_entry_data));
+	}
 	p_ent->htup = htup;
 	p_ent->p_next = NULL;
 
@@ -197,7 +221,16 @@ htfifo_gettuple(htup_fifo htf)
 		AssertState(htf->curr_mem_size >= 0);
 
 		/* Free the FIFO entry. */
-		pfree(p_ent);
+		if (htf->freelist_count > HTF_FREELIST_MAX_LEN)
+		{
+			pfree(p_ent);
+		}
+		else
+		{
+			p_ent->p_next = htf->freelist;
+			htf->freelist = p_ent;
+			htf->freelist_count = htf->freelist_count + 1;
+		}
 	}
 	else
 	{
