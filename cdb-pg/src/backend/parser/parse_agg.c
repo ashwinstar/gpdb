@@ -877,7 +877,8 @@ parseProcessWindFuncs(ParseState *pstate, Query *qry)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("window functions not allowed in WHERE clause")));
-	if (checkExprHasAggs((Node *) qry->jointree->fromlist))
+/*	if (checkExprHasAggs((Node *) qry->jointree->fromlist)) */
+	if (checkExprHasWindFuncs((Node *) qry->jointree->fromlist))
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("window functions not allowed in JOIN conditions")));
