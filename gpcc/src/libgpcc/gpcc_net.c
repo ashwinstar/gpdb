@@ -100,6 +100,8 @@ static gpcc_net_header_t*
     hdr->hname[i] = 0;
     hdr->hvalue[i] = 0;
 
+    hdr->post = 0;
+    hdr->postlen = 0;
     if (post) {
 	hdr->post = apr_pmemdup(pool, post, postlen+1);
 	((char*)hdr->post)[postlen] = 0;
