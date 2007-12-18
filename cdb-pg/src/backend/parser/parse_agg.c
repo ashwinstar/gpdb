@@ -169,7 +169,8 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 
 	/*
 	 * Aggregates and window functions must never appear in WHERE or 
-	 * JOIN/ON clauses.
+	 * JOIN/ON clauses.  Window function must never appear in HAVING
+	 * clauses.
 	 *
 	 * (Note this check should appear first to deliver an appropriate error
 	 * message; otherwise we are likely to complain about some innocent
@@ -189,10 +190,14 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("window functions not allowed in WHERE clause")));
-	if (checkExprHasAggs((Node *) qry->jointree->fromlist))
+	if (checkExprHasWindFuncs((Node *) qry->jointree->fromlist))
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("window functions not allowed in JOIN conditions")));
+	if (checkExprHasWindFuncs((Node *) qry->havingQual))
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("window functions not allowed in HAVING conditions")));
 	/*
 	 * No aggregates allowed in GROUP BY clauses, either.
 	 *
@@ -691,6 +696,16 @@ checkExprHasWindFuncs_walker(Node *node, checkHasWindFuncs_context *context)
 								   (void *) context, 0);
 		context->sublevels_up--;
 		return result;
+	}
+	else if(IsA(node, A_Expr))
+	{
+		/* could be seen inside an untransformed window clause */
+		return false;
+	}
+	else if(IsA(node, ColumnRef))
+	{
+		/* could be seen inside an untransformed window clause */
+		return false;
 	}
 	return expression_tree_walker(node, checkExprHasWindFuncs_walker,
 								  (void *) context);

@@ -2077,6 +2077,11 @@ grouping_rewrite_walker(Node *node, void *context)
 		/* could be seen inside an untransformed window clause */
 		return false;
 	}
+	else if(IsA(node, ColumnRef))
+	{
+		/* could be seen inside an untransformed window clause */
+		return false;
+	}
 	else if (IsA(node, TypeCast))
 	{
 		return false;
