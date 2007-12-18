@@ -55,6 +55,8 @@ APR_DECLARE(void) fsm_init(void)
 		 a_node_ready, 0);
     gpcc_fsm_put(NODE_CONNWAIT_CMDSTATE, TIMEUP_EVENT, NODE_CONNWAIT_CMDSTATE, 
 		 a_node_check_conn, 0);
+    gpcc_fsm_put(NODE_CONNWAIT_CMDSTATE, NET_CLOSED_EVENT, NODE_OFF_CMDSTATE,
+		 a_node_teardown, 0);
     gpcc_fsm_put(NODE_CONNWAIT_CMDSTATE, FAILURE_EVENT, NODE_OFF_CMDSTATE,
 		 a_node_teardown, 0);
     gpcc_fsm_put(NODE_ON_CMDSTATE, TIMEUP_EVENT, NODE_ON_CMDSTATE,

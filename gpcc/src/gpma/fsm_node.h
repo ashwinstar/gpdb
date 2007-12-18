@@ -147,11 +147,12 @@ apr_status_t a_node_teardown(gpcc_event_t* ev, void* arg)
 
     printf("NODE TEARDOWN\n");
     slot->countdown = 5;
+    slot->u.node.conn = 0;
     
     if (! slot->u.node.opened) 
 	return 0;
     slot->u.node.opened = 0;
-    slot->u.node.conn = 0;
+
     evt = gpcc_event_alloc(NET_CLOSED_EVENT, gpma.haset_cmdslot->cmdidx, strlen(slot->cmdname)+1);
     memcpy(evt->pdata, slot->cmdname, strlen(slot->cmdname)+1);
     gpcc_evqueue_put(gpma.evq, evt);
