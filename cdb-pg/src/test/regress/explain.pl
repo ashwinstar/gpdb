@@ -24,7 +24,7 @@ Options:
 
     -help            brief help message
     -man             full documentation
-    -option          formatting option: perl, yaml, dot, query, jpg
+    -option          formatting option: perl, yaml, dot, query, jpg, json
     -querylist       list of queries
     -direction       direction of query plan graph: LR, RL, TB or BT.
     -colorscheme     graph color scheme
@@ -62,6 +62,8 @@ Options:
 
 =item jpg:   pipe the dot output thru the dot formatter (if it is installed) to get jpg output directly.  (May also support bmp, ps, pdf, png)
     
+=item json:  output in L<json.org> machine and human-readable format
+
 =back
 
 
@@ -1334,6 +1336,10 @@ if (1)
                 {
                     $outfilename .= ".yml";
                 }
+                if ($glob_optn =~ m/json/i)
+                {
+                    $outfilename .= ".json";
+                }
                 if ($glob_optn =~ m/perl|dump/i)
                 {
                     $outfilename .= ".perl";
@@ -1360,6 +1366,10 @@ if (1)
         if ($glob_optn =~ m/yaml/i)
         {
             doyaml($plantree);
+        }
+        if ($glob_optn =~ m/json/i)
+        {
+            doyaml($plantree, "json");
         }
         if ($glob_optn =~ m/perl|dump/i)
         {
@@ -1532,24 +1542,51 @@ sub doquery
 
 sub doyaml
 {
-    my $plantree = shift;
+    my ($plantree, $opti) = @_;
 
-    # YAML might not be installed, so test for it.
+    $opti = "yaml" unless (defined($opti));
 
-    if (eval "require YAML")
+    if ($opti =~ m/json/i)
     {
-        my $map_expr = 'delete $node->{txt};';
+        # JSON might not be installed, so test for it.
 
-        treeMap($plantree, undef, $map_expr);
+        if (eval "require JSON")
+        {
+            my $map_expr = 'delete $node->{txt};';
+
+            treeMap($plantree, undef, $map_expr);
     
-        # because YAML is REQUIREd, not USEd, the symbols are not
-        # imported into the environment.
-        print YAML::Dump($plantree);
+            # because JSON is REQUIREd, not USEd, the symbols are not
+            # imported into the environment.
+            print JSON::objToJson($plantree, {pretty => 1, indent => 2});
+        }
+        else
+        {
+            die("Fatal Error: The required package JSON is not installed -- please download it from www.cpan.org\n");
+            exit(1);
+        }
+
     }
     else
     {
-        die("Fatal Error: The required package YAML is not installed -- please download it from www.cpan.org\n");
-        exit(1)
+        # YAML might not be installed, so test for it.
+
+        if (eval "require YAML")
+        {
+            my $map_expr = 'delete $node->{txt};';
+
+            treeMap($plantree, undef, $map_expr);
+    
+            # because YAML is REQUIREd, not USEd, the symbols are not
+            # imported into the environment.
+            print YAML::Dump($plantree);
+        }
+        else
+        {
+            die("Fatal Error: The required package YAML is not installed -- please download it from www.cpan.org\n");
+            exit(1);
+        }
+        
     }
 
 }
