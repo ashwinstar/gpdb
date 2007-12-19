@@ -169,12 +169,32 @@ apr_status_t a_node_ping(gpcc_event_t* ev, void* arg)
 apr_status_t a_node_shutdown(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
+    char *cmd;
+    const char *user = config_getx(gpma.cfg, CONFIG_USER_KEY, getenv("USER"));
+    int e;
 
     if (slot->u.node.conn) {
 	gpcc_net_close(slot->u.node.conn, 0);
     }
     if (slot->u.node.proc.pid != 0) {
 	apr_proc_kill(&slot->u.node.proc, SIGTERM);
+    }
+
+
+#ifdef SOLARIS2
+    cmd = "pkill gpha";
+#else
+    cmd = "killall -9 gpha";
+#endif
+    if (0 != (e = gpcc_proc_ssh(&slot->u.node.proc, 
+				user, 
+				slot->u.node.hosttab[slot->u.node.hostidx], 
+				22, 
+				cmd, 
+				0, 
+				slot->pool))) {
+	gpcc_warning(FLINE, "kill gpha via ssh failed");
+	return 0;
     }
 
     return 0;
