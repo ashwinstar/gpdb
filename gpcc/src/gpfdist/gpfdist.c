@@ -274,8 +274,11 @@ fstream_t* fstream_alloc(char** path, int npath, apr_pool_t* pool)
 	if (0 == (fs->fpath[i] = apr_pstrdup(pool, path[i])))
 	    gfatal(FLINE, "out of memory");
 
-	if (0 != apr_stat(&finfo, fs->fpath[i], APR_FINFO_TYPE, pool)) 
-	    gfatal(FLINE, "apr_stat %s failed", fs->fpath[i]);
+	if (0 != apr_stat(&finfo, fs->fpath[i], APR_FINFO_TYPE, pool))  {
+	    gwarning(FLINE, "unable to stat file %s", path[i]);
+	    fstream_free(fs);
+	    return 0;
+	}
 	
 	fs->fsize += finfo.size;
 
@@ -790,6 +793,8 @@ char** glob2(char* path, int* retcnt, apr_pool_t* pool)
     char* p;
     char** fpath;
     char** elts;
+    char parent[1024];
+    char lastch;
 
     if (apr_filepath_merge(&p, opt.d, path, 0, pool)) {
 	gwarning(FLINE, "internal erro: apr_filepath_merge(%s, %s) failed", opt.d, path);
@@ -806,18 +811,36 @@ char** glob2(char* path, int* retcnt, apr_pool_t* pool)
     if (!f) 
 	return NULL;
 
+    *parent = 0;
     buf[sizeof(buf) - 1] = 0;
     while (fgets(buf, sizeof(buf) - 1, f)) {
 	char* line = gstring_trim(buf);
 	char** pp;
-	if (!(line && *line))
+	if (!(line && *line)) {
+	    *parent = 0;
 	    continue;
-	pp = apr_array_push(arr);
-	if (! (*pp = apr_pstrdup(pool, line))) {
-	    gwarning(FLINE, "out of memory");
-	    pclose(f);
-	    return NULL;
 	}
+	lastch = line[strlen(line)-1];
+	switch (lastch) {
+	case ':':
+	    strcpy(parent, line);
+	    parent[strlen(parent)-1] = '/';
+	    continue;
+	    break;
+	case '/':
+	    continue;
+	    break;
+	default:
+	    pp = apr_array_push(arr);
+	    if (! (*pp = apr_psprintf(pool, "%s%s", parent, line))) {
+		gwarning(FLINE, "out of memory");
+		pclose(f);
+		return NULL;
+	    }
+	    
+	    break;
+	}
+
     }
     pclose(f);
 
@@ -829,6 +852,14 @@ char** glob2(char* path, int* retcnt, apr_pool_t* pool)
 	*retcnt = n;
     
     qsort(fpath, n, sizeof(char*), fpath_compare);
+
+    if (opt.v) {
+	int i;
+	for (i = 0 ; i < n ; i++) {
+	    gprint("glob2: %s\n", fpath[i]);
+	}
+    }
+    
     return fpath;
 }
 
