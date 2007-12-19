@@ -90,6 +90,41 @@ def gpscp(cmd):
 	for h in opt['-h']: s = s + ' -h ' + h
     return s + ' ' + cmd
 
+################
+def getPlatform():
+    if sys.platform.find('linux') >= 0: return 'linux'
+    if sys.platform.find('darwin') >= 0: return 'darwin'
+    if sys.platform.find('sunos5') >= 0: return 'sunos5'
+    return '?'
+
+################
+def getMemory():
+    if getPlatform() == 'linux':
+	ok, out = run("sh -c 'cat /proc/meminfo | grep MemTotal'")
+	if not ok: return 0
+	list = out.strip().split(' ')
+	val = int(list[len(list) - 2])
+	factor = list[len(list) - 1]
+	if factor == 'kB': return val * 1024
+	return 0
+
+    if getPlatform() == 'darwin':
+	ok, out = run("sysctl hw.physmem")
+	if not ok: return 0
+	list = out.strip().split(' ')
+	val = int(list[1])
+	return val
+	
+    if getPlatform() == 'sunos5':
+	ok, out = run("sh -c \"prtconf | awk '/^Memory/{print}'\"")
+	if not ok: return 0
+	list = out.strip().split(' ')
+	val = int(list[2])
+	factor = list[3]
+	if factor == 'Megabytes': return val * 1024 * 1024
+	return 0
+
+    return 0
 
 ################
 def parseMemorySize(line):
@@ -145,6 +180,11 @@ def parseCommandLine():
 
     if (opt['-B']) > 1024*1024:
 	usage('Error: maximum size for -B parameter is 1MB')
+
+    if opt['-S'] == 0:
+        opt['-S'] = getMemory() / len(opt['-d'])
+    else:
+        opt['-S'] /= len(opt['-d'])
 
     # strip the last '/' from the dir
     dd = []
