@@ -780,6 +780,60 @@ static int fpath_compare(const void *a, const void *b)
     return strcmp(*((char **) a), *((char **) b));
 }
 
+
+char** glob2(char* path, int* retcnt, apr_pool_t* pool)
+{
+    char buf[2000];
+    FILE* f;
+    apr_array_header_t* arr;
+    int n;
+    char* p;
+    char** fpath;
+    char** elts;
+
+    if (apr_filepath_merge(&p, opt.d, path, 0, pool)) {
+	gwarning(FLINE, "internal erro: apr_filepath_merge(%s, %s) failed", opt.d, path);
+	return 0;
+    }
+    n = apr_snprintf(buf, sizeof(buf), "ls -1 %s", p);
+    if (n + 1 == sizeof(buf)) 
+	return NULL;
+
+    if (! (arr = apr_array_make(pool, 20, sizeof(char*))))
+	return NULL;
+
+    f = popen(buf, "r");
+    if (!f) 
+	return NULL;
+
+    buf[sizeof(buf) - 1] = 0;
+    while (fgets(buf, sizeof(buf) - 1, f)) {
+	char* line = gstring_trim(buf);
+	char** pp;
+	if (!(line && *line))
+	    continue;
+	pp = apr_array_push(arr);
+	if (! (*pp = apr_pstrdup(pool, line))) {
+	    gwarning(FLINE, "out of memory");
+	    pclose(f);
+	    return NULL;
+	}
+    }
+    pclose(f);
+
+    n = arr->nelts;
+    fpath = apr_pcalloc(pool, sizeof(char*) * (n + 1));
+    elts = (char**) arr->elts;
+    memcpy(fpath, elts, sizeof(char*) * n);
+    if (retcnt)
+	*retcnt = n;
+    
+    qsort(fpath, n, sizeof(char*), fpath_compare);
+    return fpath;
+}
+
+
+
 char** glob(char* path, int* retcnt, apr_pool_t* pool)
 {
     apr_array_header_t* arr;
@@ -802,12 +856,13 @@ char** glob(char* path, int* retcnt, apr_pool_t* pool)
 	    return 0;
 	p++;
     }
-    
+
+    n = p - fpath;
     if (retcnt) 
-	*retcnt = p - fpath;
+	*retcnt = n;
 
 
-    qsort(fpath, *retcnt, sizeof(char *), fpath_compare);
+    qsort(fpath, n, sizeof(char *), fpath_compare);
     return fpath;
 }
 
@@ -961,7 +1016,7 @@ void session_attach(request_t* r)
 	}
 	else {
 	    /* glob for all files matching r->path pattern */
-	    fpath = glob(r->path, &n, pool);
+	    fpath = glob2(r->path, &n, pool);
 	    if (!fpath || n == 0) {
 		gwarning(FLINE, "bad path: %s", r->path);
 		send_error(r, 404, "not found");
