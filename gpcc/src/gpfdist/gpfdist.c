@@ -793,14 +793,12 @@ char** glob2(char* path, int* retcnt, apr_pool_t* pool)
     char* p;
     char** fpath;
     char** elts;
-    char parent[1024];
-    char lastch;
 
     if (apr_filepath_merge(&p, opt.d, path, 0, pool)) {
 	gwarning(FLINE, "internal erro: apr_filepath_merge(%s, %s) failed", opt.d, path);
 	return 0;
     }
-    n = apr_snprintf(buf, sizeof(buf), "ls -1 %s", p);
+    n = apr_snprintf(buf, sizeof(buf), "ls -1d %s", p);
     if (n + 1 == sizeof(buf)) 
 	return NULL;
 
@@ -811,36 +809,18 @@ char** glob2(char* path, int* retcnt, apr_pool_t* pool)
     if (!f) 
 	return NULL;
 
-    *parent = 0;
     buf[sizeof(buf) - 1] = 0;
     while (fgets(buf, sizeof(buf) - 1, f)) {
 	char* line = gstring_trim(buf);
 	char** pp;
-	if (!(line && *line)) {
-	    *parent = 0;
+	if (!(line && *line))
 	    continue;
+	pp = apr_array_push(arr);
+	if (! (*pp = apr_pstrdup(pool, line))) {
+	    gwarning(FLINE, "out of memory");
+	    pclose(f);
+	    return NULL;
 	}
-	lastch = line[strlen(line)-1];
-	switch (lastch) {
-	case ':':
-	    strcpy(parent, line);
-	    parent[strlen(parent)-1] = '/';
-	    continue;
-	    break;
-	case '/':
-	    continue;
-	    break;
-	default:
-	    pp = apr_array_push(arr);
-	    if (! (*pp = apr_psprintf(pool, "%s%s", parent, line))) {
-		gwarning(FLINE, "out of memory");
-		pclose(f);
-		return NULL;
-	    }
-	    
-	    break;
-	}
-
     }
     pclose(f);
 
