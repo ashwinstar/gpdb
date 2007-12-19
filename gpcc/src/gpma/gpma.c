@@ -21,11 +21,11 @@ static const char* verify_ma(const char* ma);
 /* Print usage info */
 static void usage(const char* msg)
 {
-    fprintf(stderr, "\nUsage: %s [-D?f] [-b cfgfile] ma_unit ma_dir ma_addr0 [ma_addr1 ma_addr2]\n\n", gpma.progname);
+    fprintf(stderr, "\nUsage: %s [-D?f] [-b ha_dir] ma_unit ma_dir ma_addr0 [ma_addr1 ma_addr2]\n\n", gpma.progname);
     fprintf(stderr, "    -?         : print this help screen\n");
     fprintf(stderr, "    -D         : debug mode and do not run as daemon\n");
     fprintf(stderr, "    -f         : for the -b option, force the creation of new config\n");
-    fprintf(stderr, "    -b cfgfile : boot the Master Agent with cfgfile ('-' for stdin)\n");
+    fprintf(stderr, "    -b ha_dir  : the data directory for storing Host Agent data files\n");
     fprintf(stderr, "    ma_unit    : the Master Agent Unit (e.g. ma.1) \n");
     fprintf(stderr, "    ma_dir     : the data directory for storing Master Agent data files\n");
     fprintf(stderr, "    ma_addrN   : ma address with the format IP:PORT\n");
@@ -47,7 +47,6 @@ void parse_cmdline(int argc, const char* argv[])
     char opt;
     const char* optarg;
     int i, e;
-    FILE* f;
     char msg[1024];
     char* p;
 
@@ -85,7 +84,8 @@ void parse_cmdline(int argc, const char* argv[])
 	    gpma.boot_force = 1;
 	    break;
 	case 'b': 
-	    gpma.boot_fname = optarg;
+	    gpma.boot = 1;
+	    gpma.ha_datadir = optarg;
 	    break;
 	case 'D':
 	    gpma.debug = 1;
@@ -127,17 +127,6 @@ void parse_cmdline(int argc, const char* argv[])
 	usage(msg);
     }
 
-
-
-    /* check the boot_fname */
-    if (gpma.boot_fname && 0 != strcmp(gpma.boot_fname, "-")) {
-	f = fopen(gpma.boot_fname, "r");
-	if (!f) {
-	    sprintf(msg, "unable to open boot file %s", gpma.boot_fname);
-	    usage(msg);
-	}
-	fclose(f);
-    }
 }
 
 static void net_opened(gpcc_net_conn_t conn, 
@@ -707,7 +696,7 @@ static void verify_config(void)
  */
 void load_config(void)
 {
-    if (gpma.boot_fname) {
+    if (gpma.boot) {
 
 	/* booting - generate and write a new config file. */
 
@@ -715,11 +704,11 @@ void load_config(void)
 	apr_uint64_t rand;
 	char guidstr[16 + 4];
 	apr_time_t now = apr_time_now();
-	FILE* f = (0 == strcmp(gpma.boot_fname, "-") ? stdin : fopen(gpma.boot_fname, "r"));
-	if (!f) 
-	    gpcc_fatal(FLINE, "unable to open boot config file: '%s'", gpma.boot_fname);
-	gpma.cfg = config_read_stream(f, gpma.pool);
-	fclose(f);
+
+	gpma.cfg = config_create(gpma.pool);
+
+	/* set HA datadir */
+	config_set(gpma.cfg, "ha.datadir", gpma.ha_datadir);
 
 	/* set the csn */
 	config_set_int64(gpma.cfg, "ma.csn", 1);

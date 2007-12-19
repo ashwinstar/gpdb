@@ -48,8 +48,9 @@ struct gpma_t {
     int          ma_port;     /* MA Port */
     const char*  ma_addr[5];  /* MA Address */
     const char*  datadir;     /* dir for config file, log file, etc */
+    const char*  ha_datadir;  /* dir for HA */
     int          boot_force;  /* force the creation of boot_fname cfg file */
-    const char*  boot_fname;  /* NULL if not booting, otherwise the name of the cfgfile */
+    int          boot;        /* TRUE if booting, otherwise retrieve the existing config */
     int          debug;	      /* TRUE if debug run, don't daemonize */
     gpcc_evqueue_t* evq;      /* event queue */
     const char*  gphome;
