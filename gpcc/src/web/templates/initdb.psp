@@ -17,6 +17,7 @@ def get_mirror_id(nodes, cid):
     return nodes[newidx]
 
 def get_config_from_multi_input():
+    param = web.input(node=[])
     array_name = param['array_name']
     base_dir = param['base_directory']
     qd_port = int(param['qd_port'])
@@ -26,7 +27,9 @@ def get_config_from_multi_input():
     mirror = ('mirror' in param) and True or False
     qd_resides = int(param['qd_resides'])
     qe_resides_opt = int(param['qe_resides_opt'])
-    max_node = int(param['max_node'])
+    node_arr = param['node']
+    node_arr = filter(lambda x: (x.strip() != ''), node_arr)
+    max_node = len(node_arr)
 
     nodes = range(0, max_node)
     if qe_resides_opt == 1:
@@ -34,6 +37,11 @@ def get_config_from_multi_input():
 
 
     cfg = StringIO.StringIO()
+    i = 0;
+    for n in node_arr:
+    	cfg.write('node.%d=%s\n' % (i, n))
+	i+=1
+
     cfg.write('gpdb.name=%s\n' % array_name.strip())
     cfg.write('gpdb.seg.master_port=%d\n' % qd_port)
     cfg.write('gpdb.seg.base_port=%d\n' % qe_base_port)
@@ -72,7 +80,7 @@ def get_config_from_textarea():
 web.header('Content-Type', 'text/html;charset=utf-8')
 
 data = None
-if 'multi_input_submit' in param:
+if 'array_name' in param:
    data = get_config_from_multi_input()
 elif 'fileToUpload' in param:
    data = get_config_from_file_upload()

@@ -120,6 +120,7 @@ $(function() {
   	var i = 0;
   	var err = []
         var myform = $("#initdb_input_form").getForm();
+	var nnode = 0;
 
 	for (i = 0 ; i < myform.vars.length ; i++) {
 	    a = myform.vars[i];
@@ -133,10 +134,17 @@ $(function() {
 	       err.push(a.name);
 	    if (a.name == 'qe_mirror_base_port' && ! isPort(a.value))
 	       err.push(a.name);
+	    if (a.name == 'node' && ! isBlank(a.value)) {
+	       nnode++;
+	    }
 	}
+	
+	if (nnode == 0)
+	    err.push('node');
 
 	if (err.length == 0) {
-  	    $(this).unbind('click', ajaxConfig);
+  	    //$(this).unbind('click', ajaxConfig);
+	    $("#initdb_input_form td[@name]").css('color', 'black');
 	    $("#msg")
 	    .ajaxStart(function() {
 	        $("#initdb").hide();
@@ -149,7 +157,7 @@ $(function() {
 	    for (i = 0 ; i < err.length ; i++) {
 	       item += 'td[@name=' + err[i] + '],';
 	    }
-	    $("#initdb_form td[@name]").css('color', 'black');
+	    $("#initdb_input_form td[@name]").css('color', 'black');
 	    $(item).css('color', 'red');
 	}
 
@@ -161,7 +169,7 @@ $(function() {
 
   /* file upload form */
   function ajaxFileUpload() {
-      $(this).unbind('click', ajaxFileUpload);
+      //$(this).unbind('click', ajaxFileUpload);
       $("#msg")
 	.ajaxStart(function(){
   	    $(this).text('Greenplum database is initializing.');
@@ -209,7 +217,7 @@ $(function() {
 	}
 
 	if (err.length == 0) {
-  	    $(this).unbind('click', ajaxText);
+  	    //$(this).unbind('click', ajaxText);
 	    $("#msg")
 	    .ajaxStart(function() {
 	        $("#initdb").hide();
@@ -291,16 +299,14 @@ $(function() {
 
 	    <span id="msg"></span>
 
-<!-- initdb form input -->
+<!-- initdb forms -->
 
          <div id="initdb" style="display:none">
 
-<!--
+<!-- initdb form input -->
+
 	    <div id="initdb_input_form_div">
 	    <form id="initdb_input_form" method="POST" enctype="multipart/form-data">
-<%doc>
-	       <input name="max_node" type="hidden" value="${max_node}">
-</%doc>
 	       <table cellpadding="0" cellspacing="3">
 	         <thead> <tr> <th>Fill in the configuration</th></tr>
 		 </thead>
@@ -325,11 +331,18 @@ $(function() {
 		      <td name="qe_mirror_base_port">Mirror query executor base port:</td>
 		      <td><input name="qe_mirror_base_port" type="text"></td>
 		   </tr>
-<%doc>
+
+% for i in range(4):
+                  <tr>
+		      <td name="node">Node.${i} (host${i} IP1 IP2 IP3 IP4):</td>
+		      <td><input name="node" type="text"></td>
+                  </tr>
+% endfor
+
 		   <tr>
 		      <td>Query dispatcher resides on:</td>
 		      <td><select name="qd_resides">
-% for i in range(0, max_node):
+% for i in range(4):
 		             <option value="${i}">node.${i}</option>
 % endfor
 			  </select>
@@ -352,7 +365,6 @@ $(function() {
 			  </select>
 		      </td>
 		   </tr>
-</%doc>
 		   <tr>
 		      <td>Has Mirror Segment:</td>
 		      <td><input type="checkbox" name="mirror" checked></td>
@@ -364,7 +376,6 @@ $(function() {
 	       </table>
             </form>
 	    </div>
--->
 <!-- END of initdb form input -->
             <hr/>
 <!-- initdb file upload input -->
@@ -409,6 +420,8 @@ $(function() {
 <!-- END of big textarea input -->
 
          </div>
+
+<!-- END of initdb forms -->
 	    </p>
 
 
